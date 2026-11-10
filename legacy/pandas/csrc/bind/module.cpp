@@ -4,11 +4,14 @@
 #include "core/convert.hpp"
 #include "ops/cast.hpp"
 #include "ops/elementwise.hpp"
+#include "ops/hash.hpp"
 #include "ops/selection.hpp"
 #include "parallel/pool.hpp"
 
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/optional.h>
+#include <nanobind/stl/pair.h>
+#include <nanobind/stl/tuple.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/string_view.h>
 #include <nanobind/stl/vector.h>
@@ -80,6 +83,13 @@ void bind_column(nb::module_& m) {
     m.def("binary_op", &sd::binary_op, nb::arg("op"), nb::arg("a"), nb::arg("b"), nb::arg("scalar_side"));
     m.def("unary_op", &sd::unary_op, nb::arg("op"), nb::arg("a"));
     m.def("arange", &sd::arange, nb::arg("start"), nb::arg("step"), nb::arg("n"));
+    // (codes, first, ngroups) of the rows of `cols` taken together.
+    m.def("factorize_rows", [](const std::vector<sd::Column>& cols) {
+        sd::Factorized f = sd::factorize_rows(cols);
+        return std::make_tuple(f.codes, f.first, f.ngroups);
+    }, nb::arg("cols"));
+    m.def("group_counts", &sd::group_counts, nb::arg("codes"), nb::arg("ngroups"));
+    m.def("stable_order", &sd::stable_order, nb::arg("counts"), nb::arg("ascending"));
 }
 
 }  // namespace

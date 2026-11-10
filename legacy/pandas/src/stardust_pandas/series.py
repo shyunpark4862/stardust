@@ -1,6 +1,6 @@
 """Series: one Column plus its row labels (ARCHITECTURE.md §1)."""
 
-from . import _column, _core, _format, _ops
+from . import _column, _core, _format, _ops, _unique
 from ._column import _NO_VALUE
 from ._core import Column
 from ._dtypes import resolve
@@ -159,6 +159,39 @@ class Series:
     def dropna(self, *, ignore_index=False):
         """The rows that are not NA."""
         return self._take(self._col.notna().nonzero(), ignore_index)
+
+    # --- duplicates and unique values (API.md §13) ---
+
+    def unique(self):
+        """The distinct values in order of first appearance, NA included (API.md §11 C6)."""
+        _, first, _ = _unique.codes([self._col])
+        return Series._new(self._col.take(first), RangeIndex(len(first)), self._name)
+
+    def nunique(self, *, dropna=True):
+        """How many distinct values. NaN counts as a value; dropna drops NA only (API.md §13)."""
+        _, _, ngroups = _unique.codes([self._col])
+        return ngroups - (1 if dropna and self._col.null_count else 0)
+
+    def duplicated(self, *, keep="first"):
+        """True for rows that repeat a value (see API.md §13 for keep)."""
+        return Series._new(_unique.duplicated([self._col], keep), self._index, self._name)
+
+    def drop_duplicates(self, *, keep="first", ignore_index=False):
+        """The rows that duplicated(keep=keep) does not mark."""
+        keep_rows = _core.unary_op("invert", _unique.duplicated([self._col], keep))
+        return self._take(keep_rows.nonzero(), ignore_index)
+
+    def value_counts(self, *, normalize=False, sort=True, ascending=False, dropna=True):
+        """A DataFrame of each value and how often it appears (API.md §13)."""
+        from .frame import DataFrame
+
+        name = "value" if self._name is None else self._name
+        count_name = "proportion" if normalize else "count"
+        if name == count_name:
+            raise ValueError(f"the value column cannot be named {count_name!r}")
+        col = self._col.take(self._col.notna().nonzero()) if dropna and self._col.null_count else self._col
+        (keys,), counts = _unique.value_counts([col], normalize, sort, ascending)
+        return DataFrame._new({name: keys, count_name: counts}, RangeIndex(len(counts)))
 
     # --- selection ---
 

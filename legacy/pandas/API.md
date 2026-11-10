@@ -5,6 +5,7 @@ DESIGN.md의 결정(NA 하나, NaN은 값, Copy-on-Write)에서 따라 나오는
 - §6의 정렬 라벨 순서는 4라운드 A6에서 정했다.
 - §9–§11은 M1을 시작하기 전에 사용자가 결정했다 (2026-11-11).
 - §12와 §11의 C7은 M2를 시작하기 전에 사용자가 결정했다 (2026-11-11).
+- §13은 M3를 시작하기 전에 사용자가 결정했다 (2026-11-11).
 - pandas와 다른 점은 **[pandas와 다름]**으로 표시한다.
 
 ---
@@ -265,5 +266,46 @@ NaN은 결측값이 아니라 평범한 float 값이다 (DESIGN §2.1).
 - **`Index` (M2)**: 불변 int64 Column 하나를 감싼다. repr과 `equals`만 있다.
   - 라벨 조회 엔진, `.loc`, 정렬은 M4에서 만든다.
 
-## 13. 미확정
+## 13. 중복과 고유값 (M3)
+- **키가 같다는 것** (§1에 더해)
+  - NaN은 값이다. NaN끼리는 같은 키다. `nunique`와 `value_counts`에서 NaN도 하나의 키로 센다. **[pandas와 다름]**
+    - pandas는 NaN을 결측으로 보고 기본으로 버린다.
+  - `0.0`과 `-0.0`은 같은 키다. 비트가 서로 다른 NaN들도 같은 키다.
+  - NA끼리는 같은 키다. 예외는 merge 하나다 (§5).
+  - `dropna=`는 NA만 버린다.
+- **대표값**: 같은 키로 묶인 값 중에서 먼저 나온 값을 그대로 보여 준다 (pandas와 같다).
+  - 예: `[-0.0, 0.0]`의 unique는 `[-0.0]`이다.
+- **시그니처** (C2: 주 인자만 위치 인자로 받는다)
+  - `Series.unique()`
+    - Series를 돌려준다 (C6). 값은 처음 나타난 순서이고 NA도 포함한다.
+  - `Series.nunique(*, dropna=True)`
+    - int를 돌려준다.
+  - `DataFrame.nunique(*, dropna=True)`
+    - 컬럼별 개수를 dict로 돌려준다. `dtypes`처럼 M4까지만 임시로 이렇게 둔다.
+  - `Series.duplicated(*, keep="first")`
+  - `DataFrame.duplicated(subset=None, *, keep="first")`
+  - `Series.drop_duplicates(*, keep="first", ignore_index=False)`
+  - `DataFrame.drop_duplicates(subset=None, *, keep="first", ignore_index=False)`
+  - `Series.value_counts(*, normalize=False, sort=True, ascending=False, dropna=True)`
+  - `DataFrame.value_counts(subset=None, *, normalize=False, sort=True, ascending=False, dropna=True)`
+  - `keep`은 `"first"`, `"last"`, `"none"`이다 (C5).
+  - `bins`는 없다.
+- **`value_counts`는 항상 DataFrame을 돌려준다.** **[pandas와 다름]**
+  - 이유: pandas처럼 값을 Index로 삼으면, float와 bool은 Index로 쓸 수 없다는 §6의 규칙과 충돌한다.
+  - 컬럼
+    - 키 컬럼과 `count` 컬럼이 있다. `normalize=True`이면 `count` 대신 `proportion`(float64)이다.
+    - `Series.value_counts`의 키 컬럼 이름은 Series 이름이다. 이름이 없으면 `"value"`다.
+    - 키 컬럼 이름이 `count`(또는 `proportion`)와 겹치면 에러다.
+  - 행 순서
+    - `sort=True`이면 개수의 내림차순이다. `ascending=True`이면 오름차순이다.
+    - 개수가 같으면 처음 나타난 순서를 따른다.
+    - `sort=False`이면 처음 나타난 순서다.
+    - NA 키도 같은 규칙을 따른다. **[pandas와 다름]**
+      - pandas는 `dropna=False`일 때 NA를 처음 나타난 자리가 아니라 맨 뒤에 놓는다 (`sort=False`여도 그렇다).
+      - 그런데 pandas의 `unique()`는 NA를 나타난 자리에 둔다. 우리는 둘 다 처음 나타난 순서로 맞춘다.
+  - Index는 RangeIndex다.
+  - `dropna=True`이면 키 중에 NA가 있는 행을 버린다.
+- **factorize**: 공개하지 않는다. 값을 정수 코드로 바꾸는 내부 기능으로만 쓴다.
+
+## 14. 미확정
 - `read_csv`의 옵션과 타입 추론

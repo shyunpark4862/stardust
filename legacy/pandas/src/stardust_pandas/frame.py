@@ -1,6 +1,6 @@
 """DataFrame: named Columns of one length plus row labels (ARCHITECTURE.md §3.1)."""
 
-from . import _column, _core, _format, _ops
+from . import _column, _core, _format, _ops, _unique
 from ._column import _NO_VALUE
 from ._dtypes import resolve
 from .index import RangeIndex
@@ -106,6 +106,43 @@ class DataFrame:
         if unknown:
             raise KeyError(f"no such columns: {unknown}")
         return DataFrame._new({k: f(c, per_column[k]) if k in per_column else c for k, c in self._cols.items()}, self._index)
+
+    # --- duplicates and unique values (API.md §13) ---
+
+    def _key_columns(self, subset):
+        names = list(self._cols) if subset is None else _subset(subset)
+        if not names:
+            raise ValueError("subset must name at least one column")
+        for k in names:
+            if k not in self._cols:
+                raise KeyError(k)
+        return names
+
+    def nunique(self, *, dropna=True):
+        # Provisional: a dict until M4 brings a string Index to label a Series with.
+        return {k: self[k].nunique(dropna=dropna) for k in self._cols}
+
+    def duplicated(self, subset=None, *, keep="first"):
+        """True for rows whose values in `subset` (default: all columns) repeat (API.md §13)."""
+        cols = [self._cols[k] for k in self._key_columns(subset)]
+        return Series._new(_unique.duplicated(cols, keep), self._index, None)
+
+    def drop_duplicates(self, subset=None, *, keep="first", ignore_index=False):
+        """The rows that duplicated(subset, keep=keep) does not mark."""
+        keep_rows = _core.unary_op("invert", self.duplicated(subset, keep=keep)._col)
+        return self._take(keep_rows.nonzero(), ignore_index)
+
+    def value_counts(self, subset=None, *, normalize=False, sort=True, ascending=False, dropna=True):
+        """A DataFrame of each distinct row of `subset` and how often it appears (API.md §13)."""
+        names = self._key_columns(subset)
+        count_name = "proportion" if normalize else "count"
+        if count_name in names:
+            raise ValueError(f"a key column cannot be named {count_name!r}")
+        frame = self.dropna(subset=names) if dropna else self
+        keys, counts = _unique.value_counts([frame._cols[k] for k in names], normalize, sort, ascending)
+        cols = dict(zip(names, keys))
+        cols[count_name] = counts
+        return DataFrame._new(cols, RangeIndex(len(counts)))
 
     # --- element-wise (API.md §12) ---
 
