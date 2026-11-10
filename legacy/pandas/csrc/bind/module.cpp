@@ -1,13 +1,19 @@
 // Python entry point of the native core (`stardust_pandas._core`).
 
+#include "core/column.hpp"
+#include "core/convert.hpp"
 #include "parallel/pool.hpp"
 
 #include <nanobind/nanobind.h>
+#include <nanobind/stl/optional.h>
 #include <nanobind/stl/string.h>
+#include <nanobind/stl/string_view.h>
 #include <nanobind/stl/vector.h>
 
 #include <cstdint>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace nb = nanobind;
@@ -35,6 +41,33 @@ std::vector<std::int64_t> pool_smoke_test(std::int64_t ntasks) {
     return out;
 }
 
+void bind_column(nb::module_& m) {
+    using sd::Column;
+    // A value type: returning one moves a few shared_ptrs into the new Python
+    // object, which is cheaper than a shared_ptr holder (ARCHITECTURE.md §1.1).
+    nb::class_<Column>(m, "Column")
+        .def_prop_ro("dtype", [](const Column& c) { return sd::dtype_name(c.dtype); })
+        .def_prop_ro("null_count", [](const Column& c) { return c.null_count; })
+        .def("__len__", [](const Column& c) { return c.length; })
+        .def("slice", &Column::slice, nb::arg("start"), nb::arg("length"))
+        .def("convert", [](const Column& c, std::string_view dtype) { return c.convert(sd::parse_dtype(dtype)); },
+             nb::arg("dtype"))
+        .def("to_list", &sd::to_list, nb::arg("na").none())
+        .def("to_numpy_view", &sd::to_numpy_view)
+        .def("validity_mask", &sd::validity_mask)
+        // For tests: whether two columns share their values Buffer (zero-copy).
+        .def("_shares_values_with", [](const Column& a, const Column& b) { return a.values == b.values; })
+        .def_static(
+            "from_list",
+            [](nb::handle seq, nb::handle na, std::optional<std::string_view> dtype) {
+                std::optional<sd::DType> dt;
+                if (dtype) dt = sd::parse_dtype(*dtype);
+                return sd::from_list(seq, na, dt);
+            },
+            nb::arg("seq"), nb::arg("na").none(), nb::arg("dtype").none())
+        .def_static("from_numpy", &sd::from_numpy, nb::arg("arr"));
+}
+
 }  // namespace
 
 NB_MODULE(_core, m) {
@@ -47,4 +80,5 @@ NB_MODULE(_core, m) {
         sd::parallel::set_num_threads(static_cast<int>(n));
     }, nb::arg("n"));
     m.def("get_num_threads", &sd::parallel::num_threads);
+    bind_column(m);
 }

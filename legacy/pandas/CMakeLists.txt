@@ -17,6 +17,9 @@ find_package(nanobind CONFIG REQUIRED)
 # binaries), which comes after -O3 on the command line and wins. -Os keeps
 # loops small: little unrolling, little vectorization (stardust-numpy M7.1).
 nanobind_add_module(_core NB_STATIC NOMINSIZE
+  csrc/core/buffer.cpp
+  csrc/core/column.cpp
+  csrc/core/convert.cpp
   csrc/parallel/pool.cpp
   csrc/bind/module.cpp)
 
