@@ -1,10 +1,10 @@
 """DataFrame: named Columns of one length plus row labels (ARCHITECTURE.md §3.1)."""
 
-from . import _column, _format
+from . import _column, _core, _format, _ops
 from ._column import _NO_VALUE
 from ._dtypes import resolve
 from .index import RangeIndex
-from .series import Series
+from .series import Series, fill_column, mask_positions
 
 
 def _check_columns(columns):
@@ -84,6 +84,8 @@ class DataFrame:
         raise ValueError("the truth value of a DataFrame is ambiguous")
 
     def __getitem__(self, key):
+        if isinstance(key, Series):  # a bool mask selects rows (API.md §7)
+            return self._take(mask_positions(key, self._index))
         if not isinstance(key, str):
             raise TypeError(f"column names are str, got {type(key).__name__}")
         try:
@@ -91,6 +93,97 @@ class DataFrame:
         except KeyError:
             raise KeyError(key) from None
         return Series._new(col, self._index, key)
+
+    def _take(self, positions, ignore_index=False):
+        index = RangeIndex(len(positions)) if ignore_index else self._index._take(positions)
+        return DataFrame._new({k: c.take(positions) for k, c in self._cols.items()}, index)
+
+    def _map_columns(self, f, per_column=None):
+        """A DataFrame with f(column) (or f(column, per_column[name])) for each column."""
+        if per_column is None:
+            return DataFrame._new({k: f(c) for k, c in self._cols.items()}, self._index)
+        unknown = [k for k in per_column if k not in self._cols]
+        if unknown:
+            raise KeyError(f"no such columns: {unknown}")
+        return DataFrame._new({k: f(c, per_column[k]) if k in per_column else c for k, c in self._cols.items()}, self._index)
+
+    # --- element-wise (API.md §12) ---
+
+    __hash__ = None
+    __array_ufunc__ = None
+
+    def _binary(self, other, op, reflected=False):
+        if isinstance(other, DataFrame):
+            if set(other._cols) != set(self._cols):
+                raise NotImplementedError("DataFrames with different columns need alignment, which is not supported yet")
+            _ops.check_same_index(self._index, other._index)
+            pairs = {k: (c, other._cols[k], 0) for k, c in self._cols.items()}
+        elif isinstance(other, Series):
+            raise TypeError("operations between a DataFrame and a Series are not supported (API.md §12)")
+        elif _ops.is_operand_scalar(other):
+            pairs = {k: (c, _ops.scalar_column(other, c.dtype), 2) for k, c in self._cols.items()}
+        else:
+            return NotImplemented
+        cols = {}
+        for k, (a, b, side) in pairs.items():
+            if reflected:
+                a, b, side = b, a, 1 if side == 2 else side
+            cols[k] = _ops.apply(op, a, b, side)
+        return DataFrame._new(cols, self._index)
+
+    def __neg__(self):
+        return self._map_columns(lambda c: _core.unary_op("neg", c))
+
+    def __abs__(self):
+        return self._map_columns(lambda c: _core.unary_op("abs", c))
+
+    def __pos__(self):
+        bad = [k for k, c in self._cols.items() if c.dtype not in ("int64", "float64")]
+        if bad:
+            raise TypeError(f"unsupported operand dtype for unary + in columns {bad}")
+        return self
+
+    def __invert__(self):
+        return self._map_columns(lambda c: _core.unary_op("invert", c))
+
+    # --- NA and dtypes ---
+
+    def astype(self, dtype):
+        """Every column, or the columns of a {name: dtype} dict, as that dtype (API.md §12)."""
+        if isinstance(dtype, dict):
+            return self._map_columns(lambda c, dt: c.astype(resolve(dt)), dtype)
+        dtype = resolve(dtype)
+        return self._map_columns(lambda c: c.astype(dtype))
+
+    def isna(self):
+        return self._map_columns(lambda c: c.isna())
+
+    def notna(self):
+        return self._map_columns(lambda c: c.notna())
+
+    def fillna(self, value):
+        """NA rows set to `value`, or per column from a {name: value} dict (API.md §12)."""
+        if isinstance(value, dict):
+            return self._map_columns(fill_column, value)
+        return self._map_columns(lambda c: fill_column(c, value))
+
+    def dropna(self, *, how="any", subset=None, ignore_index=False):
+        """The rows without NA in `subset` (default: all columns); with how="all",
+        only rows where every `subset` value is NA are dropped."""
+        if how not in ("any", "all"):
+            raise ValueError(f"how must be 'any' or 'all', got {how!r}")
+        names = list(self._cols) if subset is None else _subset(subset)
+        for k in names:
+            if k not in self._cols:
+                raise KeyError(k)
+        keep = None
+        combine = "and" if how == "any" else "or"
+        for k in names:
+            valid = self._cols[k].notna()
+            keep = valid if keep is None else _core.binary_op(combine, keep, valid, 0)
+        if keep is None:  # no columns to look at: every row stays
+            keep = _core.Column.from_list([True] * len(self), None, None)
+        return self._take(keep.nonzero(), ignore_index)
 
     def to_numpy(self, *, dtype=None, copy=False, na_value=_NO_VALUE):
         """A 2-D numpy array (API.md §10): all columns must share a dtype,
@@ -126,6 +219,24 @@ class DataFrame:
 
     def __repr__(self):
         return _format.frame_repr(self)
+
+
+def _subset(subset):
+    return [subset] if isinstance(subset, str) else list(subset)
+
+
+def _make_binary(op, reflected):
+    def method(self, other):
+        return self._binary(other, op, reflected)
+
+    return method
+
+
+for _name, _op in {**_ops.ARITH, **_ops.LOGIC}.items():
+    setattr(DataFrame, f"__{_name}__", _make_binary(_op, False))
+    setattr(DataFrame, f"__r{_name}__", _make_binary(_op, True))
+for _name in _ops.COMPARE:
+    setattr(DataFrame, f"__{_name}__", _make_binary(_name, False))
 
 
 def _require_columns(columns, ncols):

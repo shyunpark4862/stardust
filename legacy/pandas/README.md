@@ -33,3 +33,4 @@ python3.15 -m venv .venv && .venv/bin/pip install nanobind scikit-build-core pyt
 ## 진행 상태
 - M0 (환경과 뼈대) 완료
 - M1 (Column 코어: `Series`, `DataFrame`, `RangeIndex`, 생성, `to_numpy`, `head`/`tail`, repr) 완료
+- M2 (원소별 연산: 산술, 비교, Kleene 논리, `astype`, `isna`/`fillna`/`dropna`, 마스크 필터) 완료

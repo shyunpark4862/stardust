@@ -2,9 +2,11 @@
 
 #include <nanobind/nanobind.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <string>
+#include <type_traits>
 
 namespace nb = nanobind;
 
@@ -42,6 +44,53 @@ std::uint8_t* add_validity(Column& col) {
     auto* bits = reinterpret_cast<std::uint8_t*>(col.validity->data());
     std::memset(bits, 0xff, static_cast<std::size_t>(nbytes));
     return bits;
+}
+
+std::shared_ptr<Buffer> rebased_validity(const Column& col) {
+    if (!col.validity) return nullptr;
+    auto out = Buffer::allocate(bitmap::num_bytes(col.length), /*zeroed=*/false);
+    bitmap::copy_bits(col.validity_bits(), col.offset, col.length, reinterpret_cast<std::uint8_t*>(out->data()));
+    return out;
+}
+
+std::shared_ptr<Buffer> and_validity(const Column& a, const Column& b, int scalar_side, std::int64_t n) {
+    const Column* rows[2] = {&a, &b};
+    std::shared_ptr<Buffer> out;
+    for (int side = 1; side <= 2; ++side) {
+        const Column& c = *rows[side - 1];
+        if (!c.validity) continue;
+        if (side == scalar_side) {  // an NA scalar makes every row NA
+            out = Buffer::allocate(bitmap::num_bytes(n), /*zeroed=*/true);
+            return out;
+        }
+        if (!out) {
+            out = rebased_validity(c);
+        } else {
+            auto other = rebased_validity(c);
+            auto* o = reinterpret_cast<std::uint8_t*>(out->data());
+            const auto* p = reinterpret_cast<const std::uint8_t*>(other->data());
+            for (std::int64_t j = 0; j < bitmap::num_bytes(n); ++j) o[j] &= p[j];
+        }
+    }
+    return out;
+}
+
+void finish_fixed(Column& col) {
+    col.null_count = 0;
+    if (!col.validity) return;
+    const auto* bits = col.validity_bits();
+    col.null_count = col.length - bitmap::count_set(bits, 0, col.length);
+    if (col.null_count == 0) {
+        col.validity.reset();
+        return;
+    }
+    // Branch-free: AND every value with all-ones (valid) or zero (NA).
+    auto zero = [&](auto* v) {
+        using T = std::remove_reference_t<decltype(*v)>;
+        for (std::int64_t i = 0; i < col.length; ++i) v[i] &= static_cast<T>(0 - static_cast<T>(bitmap::get(bits, i)));
+    };
+    if (item_size(col.dtype) == 1) zero(reinterpret_cast<std::uint8_t*>(col.values->data()));
+    else zero(reinterpret_cast<std::int64_t*>(col.values->data()));  // int64 and float64: 0.0 is all-zero bits
 }
 
 Column Column::slice(std::int64_t start, std::int64_t len) const {

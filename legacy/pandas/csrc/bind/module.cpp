@@ -2,6 +2,9 @@
 
 #include "core/column.hpp"
 #include "core/convert.hpp"
+#include "ops/cast.hpp"
+#include "ops/elementwise.hpp"
+#include "ops/selection.hpp"
 #include "parallel/pool.hpp"
 
 #include <nanobind/nanobind.h>
@@ -65,7 +68,18 @@ void bind_column(nb::module_& m) {
                 return sd::from_list(seq, na, dt);
             },
             nb::arg("seq"), nb::arg("na").none(), nb::arg("dtype").none())
-        .def_static("from_numpy", &sd::from_numpy, nb::arg("arr"));
+        .def_static("from_numpy", &sd::from_numpy, nb::arg("arr"))
+        .def("astype", [](const Column& c, std::string_view dtype) { return sd::astype(c, sd::parse_dtype(dtype)); },
+             nb::arg("dtype"))
+        .def("isna", [](const Column& c) { return sd::isna(c, true); })
+        .def("notna", [](const Column& c) { return sd::isna(c, false); })
+        .def("fill_na", &sd::fill_na, nb::arg("value"))
+        .def("take", &sd::take, nb::arg("positions"))
+        .def("nonzero", &sd::nonzero)
+        .def("equals", &sd::equals, nb::arg("other"));
+    m.def("binary_op", &sd::binary_op, nb::arg("op"), nb::arg("a"), nb::arg("b"), nb::arg("scalar_side"));
+    m.def("unary_op", &sd::unary_op, nb::arg("op"), nb::arg("a"));
+    m.def("arange", &sd::arange, nb::arg("start"), nb::arg("step"), nb::arg("n"));
 }
 
 }  // namespace

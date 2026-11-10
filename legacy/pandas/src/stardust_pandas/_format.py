@@ -113,12 +113,14 @@ def _trim_front(strings):  # indexes.base.trim_front
 
 def _format_labels(index, positions, truncated):
     """Row labels at `positions`, left-justified to one width."""
-    labels = [index._range[p] for p in positions]
-    if not truncated:  # RangeIndex._format_with_header
+    from .index import RangeIndex
+
+    labels = index._labels_at(positions)
+    if isinstance(index, RangeIndex) and not truncated:  # RangeIndex._format_with_header
         width = max(len(str(index._range[0])), len(str(index._range[-1])))
         return [f"{x:<{width}}" for x in labels]
-    # A truncated frame's index is no longer a range (the middle is cut out),
-    # so pandas formats it as an int64 Index: Index._format_with_header.
+    # An int64 Index, which is also what a truncated RangeIndex becomes (the
+    # middle is cut out): Index._format_with_header.
     strings, _ = _make_fixed_width([f"{x: d}" for x in labels], "left")
     return _trim_front(strings)
 
@@ -139,13 +141,83 @@ def _row_positions(n):
     return list(range(half)) + list(range(n - half, n)), half
 
 
-def _values_at(col, positions):
+def values_at(col, positions):
     if not positions:
         return []
     if positions[-1] - positions[0] + 1 == len(positions):
         return col.slice(positions[0], len(positions)).to_list(NA)
     half = len(positions) // 2  # head and tail
     return col.slice(positions[0], half).to_list(NA) + col.slice(positions[half], half).to_list(NA)
+
+
+# --- Index --------------------------------------------------------------------
+
+DISPLAY_WIDTH = 80  # display.width
+
+
+def _format_object_summary(n, head, tail, name):  # printing.format_object_summary, one level
+    space1 = "\n" + " " * (len(name) + 1)
+    space2 = "\n" + " " * (len(name) + 2)
+    width = DISPLAY_WIDTH
+    truncated = n > MAX_SEQ_ITEMS
+
+    def extend(summary, line, value, width):
+        if len(line.rstrip()) + len(value.rstrip()) >= width:
+            summary += line.rstrip()
+            line = space2
+        return summary, line + value
+
+    if n == 0:
+        return "[], "
+    if n == 1:
+        return f"[{tail[0]}], "
+    if truncated or not (len(", ".join(head)) < width and len(", ".join(tail)) < width):
+        size = max(len(x) for x in head + tail)  # align values that wrap onto several lines
+        head = [x.rjust(size) for x in head]
+        tail = [x.rjust(size) for x in tail]
+    summary, line = "", space2
+    for value in head:
+        summary, line = extend(summary, line, value + ", ", width)
+    if truncated:
+        summary += line.rstrip() + space2 + "..."
+        line = space2
+    for value in tail[:-1]:
+        summary, line = extend(summary, line, value + ", ", width)
+    summary, line = extend(summary, line, tail[-1], width - 2)  # room for the trailing ","
+    summary += line + "],"
+    summary += space1 if len(summary) > width else " "
+    return "[" + summary[len(space2) :]
+
+
+def index_repr(index):  # Index.__repr__
+    n = len(index)
+    if n > MAX_SEQ_ITEMS:
+        k = min(MAX_SEQ_ITEMS // 2, 10)
+        head = [str(x) for x in values_at(index._col, list(range(k)))]
+        tail = [str(x) for x in values_at(index._col, list(range(n - k, n)))]
+    else:
+        head, tail = [], [str(x) for x in index._col.to_list(None)]
+    data = _format_object_summary(n, head, tail, "Index")
+    attrs = [("dtype", f"'{index.dtype}'")]
+    if n > MAX_SEQ_ITEMS:
+        attrs.append(("length", n))
+    indent = len("Index") + 1
+    line_len = len(data.rsplit("\n", 1)[-1]) if "\n" in data else indent + len(data)
+    parts = []
+    for i, (key, value) in enumerate(attrs):
+        attr = f"{key}={value}"
+        comma = 1 if i < len(attrs) - 1 else 0
+        sep = ", " if parts else ""
+        if line_len + len(sep) + len(attr) + comma > DISPLAY_WIDTH:
+            parts.append(("," if parts else "") + "\n" + " " * indent + attr)
+            line_len = indent + len(attr)
+        else:
+            parts.append(sep + attr)
+            line_len += len(sep) + len(attr)
+    tail_text = "".join(parts)
+    if tail_text.startswith("\n"):
+        data = data.rstrip()
+    return f"Index({data}{tail_text})"
 
 
 # --- Series -------------------------------------------------------------------
@@ -165,7 +237,7 @@ def series_repr(s):  # SeriesFormatter.to_string
         return f"Series([], {footer})"
 
     labels = _format_labels(s.index, positions, cut is not None)
-    values, _ = _make_fixed_width(_format_values(_values_at(col, positions), col.dtype), "right")
+    values, _ = _make_fixed_width(_format_values(values_at(col, positions), col.dtype), "right")
     if cut is not None:
         width = len(values[cut - 1])
         values.insert(cut, _justify(["..." if width > 3 else ".."], width, "center")[0])
@@ -201,7 +273,7 @@ def frame_repr(df):  # StringFormatter.to_string over DataFrameFormatter
         if col.dtype != "string":  # numeric (and bool) column labels get a leading space
             header = " " + header
         values, width = _make_fixed_width(
-            _format_values(_values_at(col, positions), col.dtype), "right", minimum=len(header)
+            _format_values(values_at(col, positions), col.dtype), "right", minimum=len(header)
         )
         width = max(width, len(header))
         strcols.append(_justify([header], width, "right") + values)

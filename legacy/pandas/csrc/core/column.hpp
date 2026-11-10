@@ -79,6 +79,20 @@ Column make_fixed(DType dtype, std::int64_t length);
 // about to clear the bits of their NA rows. Only valid while offset == 0.
 std::uint8_t* add_validity(Column& col);
 
+// The validity of rows [0, n) of `col` as a fresh bitmap starting at bit 0,
+// or null when the column has no NA.
+std::shared_ptr<Buffer> rebased_validity(const Column& col);
+
+// Validity of an element-wise result: a row has a value when both inputs do.
+// `scalar_side` 1 or 2 says that `a` or `b` is a one-row scalar applied to
+// every row. Null when no row can be NA.
+std::shared_ptr<Buffer> and_validity(const Column& a, const Column& b, int scalar_side, std::int64_t n);
+
+// Ends building a fixed-width column whose `validity` (offset 0, possibly
+// null) is final: counts the NA rows, drops an all-valid bitmap, and zeroes
+// the values of NA rows (ARCHITECTURE.md §2.4).
+void finish_fixed(Column& col);
+
 // True when the int64 `v` converts to a double and back unchanged.
 inline bool int_is_exact_double(std::int64_t v) {
     const double d = static_cast<double>(v);

@@ -30,4 +30,22 @@ inline std::int64_t count_set(const std::uint8_t* bits, std::int64_t start, std:
     return count;
 }
 
+// Copies bits [offset, offset + n) of `src` to bits [0, n) of `dst`, a byte
+// at a time: output byte j is input bytes k and k + 1 shifted together. The
+// unused high bits of the last output byte are cleared. Never reads past the
+// byte that holds bit offset + n - 1.
+inline void copy_bits(const std::uint8_t* src, std::int64_t offset, std::int64_t n, std::uint8_t* dst) {
+    if (n <= 0) return;
+    const std::int64_t nbytes = num_bytes(n);
+    const std::int64_t first = offset >> 3, last_src = (offset + n - 1) >> 3;
+    const int shift = static_cast<int>(offset & 7);
+    for (std::int64_t j = 0; j < nbytes; ++j) {
+        const std::int64_t k = first + j;
+        unsigned v = src[k] >> shift;
+        if (shift != 0 && k + 1 <= last_src) v |= static_cast<unsigned>(src[k + 1]) << (8 - shift);
+        dst[j] = static_cast<std::uint8_t>(v);
+    }
+    if (n & 7) dst[nbytes - 1] &= static_cast<std::uint8_t>((1u << (n & 7)) - 1);
+}
+
 }  // namespace sd::bitmap

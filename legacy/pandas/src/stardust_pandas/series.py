@@ -1,11 +1,11 @@
 """Series: one Column plus its row labels (ARCHITECTURE.md §1)."""
 
-from . import _column, _format
+from . import _column, _core, _format, _ops
 from ._column import _NO_VALUE
 from ._core import Column
 from ._dtypes import resolve
 from ._na import NA
-from .index import RangeIndex
+from .index import Index, RangeIndex
 
 
 def check_name(name):
@@ -101,3 +101,102 @@ class Series:
 
     def __repr__(self):
         return _format.series_repr(self)
+
+    # --- element-wise (API.md §12) ---
+
+    __hash__ = None  # == returns a Series, so a Series cannot be a dict key
+    __array_ufunc__ = None  # numpy defers to our reflected operators instead of converting us
+
+    def _binary(self, other, op, reflected=False):
+        if isinstance(other, Series):
+            _ops.check_same_index(self._index, other._index)
+            a, b, side = self._col, other._col, 0
+            name = self._name if self._name == other._name else None
+        elif _ops.is_operand_scalar(other):
+            a, b, side = self._col, _ops.scalar_column(other, self._col.dtype), 2
+            name = self._name
+        else:
+            return NotImplemented
+        if reflected:
+            a, b, side = b, a, 1 if side == 2 else side
+        return Series._new(_ops.apply(op, a, b, side), self._index, name)
+
+    def _unary(self, op):
+        return Series._new(_core.unary_op(op, self._col), self._index, self._name)
+
+    def __neg__(self):
+        return self._unary("neg")
+
+    def __abs__(self):
+        return self._unary("abs")
+
+    def __pos__(self):
+        if self.dtype not in ("int64", "float64"):
+            raise TypeError(f"unsupported operand dtype for unary +: {self.dtype}")
+        return self
+
+    def __invert__(self):
+        return self._unary("invert")
+
+    # --- NA and dtypes ---
+
+    def astype(self, dtype):
+        """The values as `dtype` (API.md §12): rounds int -> float, truncates
+        float -> int, formats to string like str(), parses strings strictly."""
+        return Series._new(self._col.astype(resolve(dtype)), self._index, self._name)
+
+    def isna(self):
+        """True where the value is NA. NaN is a value, not NA (API.md §1)."""
+        return Series._new(self._col.isna(), self._index, self._name)
+
+    def notna(self):
+        return Series._new(self._col.notna(), self._index, self._name)
+
+    def fillna(self, value):
+        """NA rows set to `value`, which must convert to the dtype without loss (API.md §12)."""
+        return Series._new(fill_column(self._col, value), self._index, self._name)
+
+    def dropna(self, *, ignore_index=False):
+        """The rows that are not NA."""
+        return self._take(self._col.notna().nonzero(), ignore_index)
+
+    # --- selection ---
+
+    def _take(self, positions, ignore_index=False):
+        index = RangeIndex(len(positions)) if ignore_index else self._index._take(positions)
+        return Series._new(self._col.take(positions), index, self._name)
+
+    def __getitem__(self, key):
+        if isinstance(key, Series):
+            return self._take(mask_positions(key, self._index))
+        raise NotImplementedError("label access (s[label]) arrives with .loc; only bool masks are supported yet")
+
+
+def fill_column(col, value):
+    if value is NA or value is None:
+        return col
+    if not _ops.is_operand_scalar(value):
+        raise TypeError(f"fillna takes a scalar, got {type(value).__name__}")
+    return col.fill_na(Column.from_list([value], NA, col.dtype))  # lossless rule of dtype= (API.md §10)
+
+
+def mask_positions(mask, index):
+    """Positions of the True rows of a bool Series mask aligned with `index`."""
+    if mask.dtype != "bool":
+        raise TypeError(f"a mask must be a bool Series, got dtype {mask.dtype}")
+    _ops.check_same_index(index, mask._index)
+    return mask._col.nonzero()  # NA counts as False (API.md §2)
+
+
+def _make_binary(op, reflected):
+    def method(self, other):
+        return self._binary(other, op, reflected)
+
+    return method
+
+
+for _name, _op in {**_ops.ARITH, **_ops.LOGIC}.items():
+    setattr(Series, f"__{_name}__", _make_binary(_op, False))
+    setattr(Series, f"__r{_name}__", _make_binary(_op, True))
+for _name in _ops.COMPARE:
+    setattr(Series, f"__{_name}__", _make_binary(_name, False))

@@ -4,6 +4,7 @@ DESIGN.md의 결정(NA 하나, NaN은 값, Copy-on-Write)에서 따라 나오는
 - 3라운드(S1–S8)에서 사용자가 모두 권장안으로 결정했다 (2026-11-10).
 - §6의 정렬 라벨 순서는 4라운드 A6에서 정했다.
 - §9–§11은 M1을 시작하기 전에 사용자가 결정했다 (2026-11-11).
+- §12와 §11의 C7은 M2를 시작하기 전에 사용자가 결정했다 (2026-11-11).
 - pandas와 다른 점은 **[pandas와 다름]**으로 표시한다.
 
 ---
@@ -41,6 +42,7 @@ NaN은 결측값이 아니라 평범한 float 값이다 (DESIGN §2.1).
 - `int / int`의 결과는 float64다 (true division).
 - 정수 오버플로는 wrap한다.
 - **`int // 0`과 `int % 0`의 결과는 `NA`다.** **[pandas와 다름]**
+- `int ** 음수`의 결과도 `NA`다 (§12).
 - float를 0으로 나누면 IEEE 754를 따른다 (`inf`, `nan`).
   - 결과가 `NA`가 되지 않는다.
 
@@ -187,11 +189,81 @@ NaN은 결측값이 아니라 평범한 float 값이다 (DESIGN §2.1).
   - `engine`
   - Series 메서드의 `axis`
 - **C5. `keep`은 `"first"`, `"last"`, `"none"`이다.** pandas의 `keep=False`가 `"none"`이다.
+- **C7. 연산은 연산자로만 한다.** `add`, `sub`, `mul`, `div`, `truediv`, `eq`, `abs()` 같은 메서드는 두지 않는다.
+  - 이 메서드들은 연산자의 별칭이고, `div`/`divide`/`truediv`처럼 서로도 별칭이다.
+  - 절댓값은 `abs(s)`로 구한다.
+  - `fill_value`가 필요하면 먼저 `fillna`를 한 뒤 연산한다.
 - **C6. 반환 타입**
   - `Series.unique()`는 Series를 돌려준다.
     - 이름은 유지한다. Index는 RangeIndex다. 값은 처음 나타난 순서다.
   - `DataFrame.value_counts()`는 키 컬럼과 `count` 컬럼을 가진 DataFrame을 돌려준다.
     - 다중 키 groupby와 같은 방식이다 (§4).
 
-## 12. 미확정
+## 12. 원소별 연산 (M2)
+- **피연산자**
+  - Series와 Series: M2에서는 두 Index가 같아야 한다. 다르면 정렬이 필요한데, 정렬은 M4에서 만든다.
+  - Series와 스칼라, 스칼라와 Series
+    - 스칼라는 Python 스칼라, numpy 스칼라, `NA`다.
+    - int64 범위를 넘는 int 스칼라는 에러다.
+  - DataFrame과 스칼라
+  - DataFrame과 DataFrame
+    - 컬럼을 이름으로 짝짓는다.
+    - M2에서는 컬럼 집합과 Index가 같아야 한다. 결과는 왼쪽의 컬럼 순서를 따른다.
+  - DataFrame과 Series는 지원하지 않는다. **[pandas와 다름]**
+  - 결과 이름: Series끼리 연산할 때 이름이 같으면 유지하고, 다르면 `None`이다. 스칼라와 연산하면 유지한다 (pandas와 같다).
+- **산술**: `+`, `-`, `*`, `/`, `//`, `%`, `**`, 단항 `-`와 `+`, `abs(s)`
+  - 결과 dtype
+    - int64와 int64는 int64다. 단, `/`는 float64다.
+    - int64나 float64가 섞이면 float64다. int는 float64로 바꾼 뒤 계산한다.
+    - string `+` string은 string이다 (이어 붙이기). string의 다른 산술은 에러다.
+    - bool의 산술은 에러다. 숫자가 필요하면 `astype("int64")`를 쓴다. **[pandas와 다름]**
+  - `//`와 `%`는 floor 규칙을 따른다 (Python, numpy와 같다). `%`의 결과는 나누는 수의 부호를 따른다.
+  - int 규칙 (§3에 더해)
+    - `int ** 음수`는 NA다. **[pandas와 다름]**
+    - 오버플로는 wrap한다. 예: `INT64_MIN // -1`과 `abs(INT64_MIN)`은 `INT64_MIN`이다.
+  - float는 IEEE 754를 따른다.
+  - NA가 들어가면 결과는 NA다. 예외가 없다. **[pandas와 다름]**
+    - pandas는 `NA ** 0`과 `1 ** NA`를 1로 만든다.
+- **비교**: `==`, `!=`, `<`, `<=`, `>`, `>=`
+  - 결과는 bool이다. 어느 한쪽이 NA인 행은 NA다.
+  - int와 float의 비교는 반올림 없이 수학적으로 정확하게 한다. **[pandas와 다름]**
+    - 예: `2**53 + 1 == 2.0**53`은 False다. pandas는 int를 float로 바꿔서 비교하므로 True다.
+  - NaN은 IEEE 754를 따른다. `NaN == NaN`은 False, `NaN != NaN`은 True다.
+  - string은 코드포인트 순서로 비교한다. UTF-8 바이트 순서와 같고, Python str의 비교와도 같다.
+  - bool은 bool끼리만 비교한다. `False < True`다.
+  - 비교할 수 없는 dtype끼리 비교하면 `==`도 에러다 (예: string과 int). **[pandas와 다름]**
+- **논리**: `&`, `|`, `^`, `~`는 bool에만 쓴다.
+  - `&`와 `|`는 Kleene 규칙을 따른다 (§2).
+  - `^`와 `~`는 NA가 들어가면 NA다.
+  - int의 비트 연산은 지원하지 않는다. **[pandas와 다름]**
+- **`astype(dtype)`**
+  - DataFrame은 dtype 하나나 `{컬럼: dtype}` dict를 받는다.
+  - NA는 그대로 NA다.
+  - int → float: 반올림한다.
+  - float → int: 0 쪽으로 자른다. NaN, inf, int64 범위를 넘는 값은 에러다.
+  - bool → 숫자: 0과 1이다.
+  - 숫자 → bool: 0이 아니면 True다. NaN도 True다.
+  - → string: Python `str()`과 같다. 예: `1.0` → `"1.0"`, `1e20` → `"1e+20"`, NaN → `"nan"`
+  - string → int64, float64: 엄격하게 파싱한다.
+    - 받는 것: 부호, 숫자, 소수점, 지수. float는 `nan`, `inf`도 받는다.
+    - 공백과 `_`는 에러다.
+  - string → bool: `"True"`와 `"False"`만 받고 나머지는 에러다. **[pandas와 다름]**
+- **`isna()`, `notna()`**: NA만 결측으로 본다. NaN은 결측이 아니다.
+- **`fillna(value)`**
+  - 값은 컬럼 dtype으로 손실 없이 바뀌어야 한다. 규칙은 생성자 `dtype=`와 같다 (§10).
+    - 예: int 컬럼에 `2.0`은 되고 `1.5`는 에러다.
+  - DataFrame은 `{컬럼: 값}` dict도 받는다.
+- **`dropna`**
+  - `Series.dropna(*, ignore_index=False)`
+  - `DataFrame.dropna(*, how="any", subset=None, ignore_index=False)`
+    - `how="all"`은 subset 안의 값이 모두 NA인 행만 지운다.
+  - `axis`(열 지우기)와 `thresh`는 없다.
+- **마스크 필터**: `s[mask]`, `df[mask]`
+  - mask는 bool Series다. M2에서는 Index가 같아야 한다.
+  - mask가 NA인 행은 버린다 (§2).
+  - 결과의 Index는 항상 남은 행 라벨의 `Index`(int64)다. 데이터에 따라 RangeIndex가 되는 일은 없다.
+- **`Index` (M2)**: 불변 int64 Column 하나를 감싼다. repr과 `equals`만 있다.
+  - 라벨 조회 엔진, `.loc`, 정렬은 M4에서 만든다.
+
+## 13. 미확정
 - `read_csv`의 옵션과 타입 추론

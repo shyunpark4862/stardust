@@ -7,7 +7,7 @@ from . import _core
 from ._core import get_num_threads, set_num_threads
 from ._na import NA
 from .frame import DataFrame
-from .index import RangeIndex
+from .index import Index, RangeIndex
 from .series import Series
 
-__all__ = ["NA", "DataFrame", "RangeIndex", "Series", "get_num_threads", "set_num_threads"]
+__all__ = ["NA", "DataFrame", "Index", "RangeIndex", "Series", "get_num_threads", "set_num_threads"]
