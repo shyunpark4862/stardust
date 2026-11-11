@@ -86,8 +86,9 @@ lint gbsv(lint n, lint kl, lint ku, lint nrhs, T* ab, lint ldab, lint* ipiv, T* 
 }
 
 // ---- Routines with a workspace. Each asks LAPACK for the size (lwork = -1)
-// once per batch (Scratch::sizes, M8) and takes the memory from the scratch
-// slots reserved for it.
+// once per Scratch (Scratch::sizes, M8: once per batch when it runs serially,
+// once per task when run_batch splits it) and takes the memory from the
+// scratch slots reserved for it.
 
 inline lint work_size(double q) { return std::max<lint>(1, static_cast<lint>(q)); }
 inline lint work_size(cplx q) { return std::max<lint>(1, static_cast<lint>(q.real())); }

@@ -114,7 +114,8 @@ bool pack_loop(const std::byte* p, std::int64_t m, std::int64_t j0, std::int64_t
 // Measured (experiments/opt_impl/out/pack.txt, solve_triangular of a C-order
 // matrix): 1.25x at 256^2, 1.4x at 362^2, 1.5x at 1000^2, 2x at 2000^2; but
 // inv lost 7-11% at 181^2-300^2 (and broke even at 362^2), so the line is at
-// 2^17 (362^2). A variable only so that the experiment can move it
+// 2^17 = 131072 elements (362^2 = 131044 is just below it; square matrices
+// reach it from 363^2). A variable only so that the experiment can move it
 // (_core._set_pack_parallel_min).
 inline std::int64_t kPackParallelMin = 1 << 17;
 
@@ -124,7 +125,8 @@ inline std::int64_t kPackParallelMin = 1 << 17;
 // pack_triangle_large): with the split inside the small-matrix path, small
 // calls got 3-10 ns slower each (solve_tridiagonal (1000,3,3): 36 -> 49 us on
 // one thread). Now the only addition there is one size test before the
-// dtype dispatch: within 1-6% of before (docs/learn/next-optimizations.md).
+// dtype dispatch: +1-8% over before, at most 3 ns a call (DESIGN.md §2.21,
+// docs/learn/next-optimizations.md §8).
 template <class Block>
 [[gnu::noinline]] bool on_pool_by_columns(std::int64_t n, const Block& block) {
     constexpr std::int64_t kCols = 32;

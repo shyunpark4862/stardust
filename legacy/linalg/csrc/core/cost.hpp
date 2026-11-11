@@ -31,10 +31,10 @@ inline constexpr Family kExpm{600, 15};        // expm (M10, experiments/m10_exp
 inline double cost(Family f, double w) { return f.a + f.c * w; }
 
 // gbsv has a fixed part of about 1 us per call that does not get faster on
-// more threads (it slowed down 2-3x when split, for any small band). Split a
+// more threads (it slowed down 1.1-2.7x when split, for any small band). Split a
 // gbsv batch only when n * (kl + ku + 1) reaches this, where the per-band work
-// wins (experiments/m9_threshold/out/band.txt: crossover at n = 64 for kl = ku = 2,
-// n = 48 for kl = ku = 5).
+// wins (experiments/m9_threshold/out/band.txt: the crossover lies between n = 64
+// and 96 for kl = ku = 2, between n = 32 and 48 for kl = ku = 5).
 inline constexpr double kBandSplitMin = 400;
 
 // Accelerate runs two paths of small LAPACK calls through the AMX unit that

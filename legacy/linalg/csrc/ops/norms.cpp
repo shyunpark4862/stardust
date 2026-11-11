@@ -3,8 +3,8 @@
 // No LAPACK here, so NaN propagates (DESIGN.md §2.4). The p-norms avoid
 // overflow and underflow: a fast unscaled pass first, and a second pass
 // scaled by the largest magnitude only when the first one overflowed or all
-// magnitudes were tiny (DESIGN.md §2.11). matrix_norm's 2, -2 and 'nuc' need
-// the SVD and arrive in M5.
+// magnitudes were tiny (DESIGN.md §2.11). matrix_norm's 2, -2 and 'nuc' come
+// from the singular values (svals.hpp, M5), and so check NaN/inf (DESIGN.md §2.14).
 #include "ops/norms.hpp"
 
 #include "core/args.hpp"

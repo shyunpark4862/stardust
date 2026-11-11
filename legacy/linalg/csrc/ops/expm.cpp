@@ -14,8 +14,11 @@
 // when |A|'s powers say the bound would be too optimistic.
 //
 // Decisions (DESIGN.md §2.19):
-//   - The norms of A^4 .. A^10 are exact: those powers are formed with gemm
-//     (user decision: exact first; scipy switches to a randomized 1-norm
+//   - The norms of A^2 .. A^6 are exact: those powers are formed with gemm,
+//     and only when a test needs them (bounds from known norms first). So are
+//     ||A^8|| and ||A^10|| below n = kExpmEstimateMin; from there on they are
+//     estimated with LAPACK's lacn2 instead (user decisions: exact first, then
+//     the estimate after measuring; scipy switches to a randomized 1-norm
 //     estimator for n >= 400). ||  |A|^p ||_1 is exact too: |A| is
 //     nonnegative, so its 1-norm is the largest entry of e^T |A|^p (p gemv).
 //   - Diagonal input: exp of the diagonal, exactly. Triangular input: after
@@ -338,7 +341,9 @@ int expm_one(const Input& x, std::int64_t off, lint n, T* o, Scratch& s) {
     // the best bound on d4, d6, d8 known so far, or the value once known
     auto d4 = [&] { return n4 >= 0 ? root(n4, 4) : root(n2, 2); };
     auto d6 = [&] { return n6 >= 0 ? root(n6, 6) : n4 >= 0 ? root(n4 * n2, 6) : root(n2, 2); };
-    auto d8 = [&] { return n8 >= 0 ? root(n8, 8) : n4 >= 0 ? root(n4, 2) : root(n2, 2); };
+    // (||A^8|| <= ||A^4||^2 gives d8 <= ||A^4||^(1/4); it was ^(1/2) until the
+    // review after M11, which is no bound when ||A^4|| < 1, DESIGN.md §2.22)
+    auto d8 = [&] { return n8 >= 0 ? root(n8, 8) : n4 >= 0 ? root(n4, 4) : root(n2, 2); };
     // eta <= theta with eta = max(dx(), dy()): on the bounds first, then exact
     auto passes = [&](double theta, auto dx, auto dy, auto form) {
         if (std::max(dx(), dy()) <= theta) return true;

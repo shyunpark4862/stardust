@@ -206,7 +206,7 @@ nb::object lu_solve(nb::handle lo, nb::handle uo, nb::handle po, nb::handle bo) 
                 perm[k] = v;
             }
             // x starts as b[perm] (an exact row gather), then L and U are solved
-            // with getrs and no further swaps: the same steps as solve() after getrf.
+            // with no further swaps: the same steps as solve()'s getrs after getrf.
             LapackSlot<T> xs(res + i * n * r.k, n * r.k, s, Scratch::kAlign0);
             T* x = xs.get();
             const bool ok = visit_storage(y.dtype(), [&]<class S>(std::type_identity<S>) {

@@ -34,7 +34,7 @@ void spin_until(Done done) {
 }
 
 // The performance cores: E-cores would finish their tasks later and make
-// everyone wait at the end of a job (ARCHITECTURE.md §5).
+// everyone wait at the end of a job (stardust-numpy ARCHITECTURE.md §5).
 int performance_cores() {
     int n = 0;
     size_t len = sizeof n;
@@ -61,7 +61,8 @@ public:
         if (workers_.empty() || busy_.exchange(true)) {
             // One thread, or another Python thread's job is running (it holds
             // the pool while its GIL is released): do this one serially rather
-            // than wait or oversubscribe (ARCHITECTURE.md §5).
+            // than wait or oversubscribe (stardust-numpy ARCHITECTURE.md §5;
+            // here ARCHITECTURE.md §4).
             serial(ntasks, fn);
             return;
         }

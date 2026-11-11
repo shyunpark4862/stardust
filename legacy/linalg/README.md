@@ -37,6 +37,13 @@ sdla.solve(a, sdnp.asarray([1.0, 2.0]))   # ≈ [0.2, 0.6]
 sdla.slogdet(a)                            # SlogdetResult(sign=1.0, logabsdet=1.609...)
 ```
 
+## 문서
+- **처음 본다면**: [안내서](docs/guide/README.md). 구조, 알고리즘, 설계 이유를 주제별로 설명한 13장짜리 교과서다.
+- 설계: [DESIGN.md](DESIGN.md), [API.md](API.md), [ARCHITECTURE.md](ARCHITECTURE.md), [ROADMAP.md](ROADMAP.md)
+- 마일스톤별 해설: [docs/learn/](docs/learn/README.md)
+- 벤치마크: `bench/`, 측정 기록은 `bench/results/`
+- 설계 결정을 위한 측정: `experiments/`
+
 ## 빌드와 테스트
 stardust-numpy가 옆 폴더(`../stardust-numpy`)에 있어야 한다.
 ```bash

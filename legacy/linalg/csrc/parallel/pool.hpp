@@ -10,7 +10,7 @@
 // What a task computes never depends on how many threads there are: the
 // callers cut work into tasks by size alone, and combine any partial results
 // in task order. So every result is bit-for-bit the same for any thread count
-// (DESIGN.md §2.4).
+// (DESIGN.md §2.18).
 #pragma once
 
 #include <cstdint>
@@ -18,10 +18,13 @@
 
 namespace sdla::parallel {
 
-// Below this much work (elements, roughly) everything runs on the calling
-// thread. M8 measured where 10 threads start to win (bench/m8_threshold.py):
+// kThreshold and kTaskWork came along with the copy and are not used in
+// stardust-linalg: run_batch splits by its cost model (core/cost.hpp), and the
+// long sums use their own constants (core/pairwise.hpp). In stardust-numpy:
+// below this much work (elements, roughly) everything runs on the calling
+// thread. Its M8 measured where 10 threads start to win (bench/m8_threshold.py):
 // f + g at ~16K elements, exp at ~8K, sum at ~32K; one constant for all
-// (DESIGN.md §2.7), so the most demanding one decides.
+// (its DESIGN.md §2.7), so the most demanding one decides.
 inline constexpr std::int64_t kThreshold = 1 << 15;
 
 // How much work one task gets. With the pool's fixed cost per job at ~1.5 us

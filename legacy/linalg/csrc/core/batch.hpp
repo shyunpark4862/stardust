@@ -57,8 +57,9 @@ struct WorkSizes {
     lint work = 1, rwork = 1, iwork = 1;
 };
 
-// Scratch memory for one worker. The driver hands each worker its own, so a
-// body may reuse it across the matrices it processes.
+// Scratch memory for a run of batch elements. The driver makes one for a
+// serial batch and one per task when it splits (run_batch), so a body may
+// reuse it across the matrices it processes.
 // Slots 0-3 (and int slot 0) belong to the function bodies; slots 4-5 (and
 // int slot 1) to the LAPACK wrappers' workspaces (lapack.hpp); slots 6-8 to
 // LapackSlot's stand-ins for misaligned output slots (common.hpp).
@@ -74,7 +75,7 @@ struct Scratch {
 
     // LAPACK's workspace sizes, asked once per routine and argument set (M8,
     // ARCHITECTURE.md §3.4). Within a batch every matrix has the same shape, so
-    // only the first one queries; the sizes, and so the results' bits, are the
+    // only the first one per Scratch queries; the sizes, and so the results' bits, are the
     // ones a per-call query gives (DESIGN.md §2.14: gesdd's path depends on lwork).
     using WorkKey = std::array<lint, 6>;  // routine id, its size arguments, the element size
     template <class Query>
