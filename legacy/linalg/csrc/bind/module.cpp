@@ -7,6 +7,7 @@
 #include "ops/lu.hpp"
 #include "ops/norms.hpp"
 #include "ops/qr.hpp"
+#include "ops/spectral.hpp"
 
 #include <nanobind/nanobind.h>
 
@@ -21,4 +22,5 @@ NB_MODULE(_core, m) {
     sdla::bind_norms(m);
     sdla::bind_factor(m);
     sdla::bind_qr(m);
+    sdla::bind_spectral(m);
 }

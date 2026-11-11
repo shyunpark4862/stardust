@@ -33,7 +33,8 @@ constexpr int kNonFiniteB = 3;  // NaN or inf in the right-hand side
 constexpr int kNotPD = 4;       // Cholesky: not positive definite
 constexpr int kNonFiniteU = 5;  // lu_solve: NaN or inf in 'u'
 constexpr int kBadPerm = 6;     // lu_solve: 'perm' is not a permutation
-constexpr int kNoConvergence = 7;  // an iterative algorithm (SVD, eigenvalues) did not converge
+constexpr int kNoConvergence = 7;     // the SVD did not converge
+constexpr int kNoConvergenceEig = 8;  // an eigenvalue algorithm did not converge
 
 // Turns a batch failure into the Python exception. `arg` names the first
 // matrix argument; the right-hand side is always 'b'.
@@ -46,6 +47,8 @@ constexpr int kNoConvergence = 7;  // an iterative algorithm (SVD, eigenvalues) 
         case kBadPerm: throw nb::value_error(msg("'perm' is not a permutation of 0..n-1").c_str());
         case kNotPD: throw LinAlgError(failure_message(b, f.index, "matrix is not positive definite"));
         case kNoConvergence: throw LinAlgError(failure_message(b, f.index, "SVD did not converge"));
+        case kNoConvergenceEig:
+            throw LinAlgError(failure_message(b, f.index, "eigenvalue algorithm did not converge"));
         default: throw LinAlgError(failure_message(b, f.index, "singular matrix"));
     }
 }

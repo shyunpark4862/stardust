@@ -145,6 +145,140 @@ lint gelsd(lint m, lint n, lint nrhs, T* a, lint lda, T* b, lint ldb, double* sv
     return checked(info, "gelsd");
 }
 
+// Hermitian eigenproblem by divide and conquer (heevd/syevd), lower triangle.
+// jobz 'V': eigenvectors overwrite a. w (n) ascending. info > 0: no convergence.
+template <class T>
+lint syevd(char jobz, lint n, T* a, lint lda, double* w, Scratch& s) {
+    lint info = 0, lwork = -1, liwork = -1, iq = 0;
+    T q{};
+    const char uplo = 'L';
+    if constexpr (std::is_same_v<T, double>) {
+        dsyevd_(&jobz, &uplo, &n, a, &lda, w, &q, &lwork, &iq, &liwork, &info);
+        lwork = work_size(q);
+        liwork = std::max<lint>(1, iq);
+        T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
+        lint* iw = s.get_ints(static_cast<std::size_t>(liwork), Scratch::kIWork);
+        dsyevd_(&jobz, &uplo, &n, a, &lda, w, wk, &lwork, iw, &liwork, &info);
+    } else {
+        double rq = 0;
+        lint lrwork = -1;
+        zheevd_(&jobz, &uplo, &n, a, &lda, w, &q, &lwork, &rq, &lrwork, &iq, &liwork, &info);
+        lwork = work_size(q);
+        lrwork = work_size(rq);
+        liwork = std::max<lint>(1, iq);
+        T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
+        double* rw = s.get<double>(static_cast<std::size_t>(lrwork), Scratch::kRWork);
+        lint* iw = s.get_ints(static_cast<std::size_t>(liwork), Scratch::kIWork);
+        zheevd_(&jobz, &uplo, &n, a, &lda, w, wk, &lwork, rw, &lrwork, iw, &liwork, &info);
+    }
+    return checked(info, "syevd");
+}
+
+// Generalized a v = w b v (itype 1), lower triangles, b Hermitian positive definite.
+// divide: hegvd/sygvd (used with vectors); otherwise hegv/sygv (used for values only).
+// info in 1..n: no convergence; info > n: b is not positive definite.
+template <class T>
+lint sygv(bool divide, char jobz, lint n, T* a, lint lda, T* b, lint ldb, double* w, Scratch& s) {
+    lint info = 0, lwork = -1, itype = 1;
+    T q{};
+    const char uplo = 'L';
+    if constexpr (std::is_same_v<T, double>) {
+        if (divide) {
+            lint liwork = -1, iq = 0;
+            dsygvd_(&itype, &jobz, &uplo, &n, a, &lda, b, &ldb, w, &q, &lwork, &iq, &liwork, &info);
+            lwork = work_size(q);
+            liwork = std::max<lint>(1, iq);
+            T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
+            lint* iw = s.get_ints(static_cast<std::size_t>(liwork), Scratch::kIWork);
+            dsygvd_(&itype, &jobz, &uplo, &n, a, &lda, b, &ldb, w, wk, &lwork, iw, &liwork, &info);
+        } else {
+            dsygv_(&itype, &jobz, &uplo, &n, a, &lda, b, &ldb, w, &q, &lwork, &info);
+            lwork = work_size(q);
+            T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
+            dsygv_(&itype, &jobz, &uplo, &n, a, &lda, b, &ldb, w, wk, &lwork, &info);
+        }
+    } else {
+        if (divide) {
+            lint liwork = -1, iq = 0, lrwork = -1;
+            double rq = 0;
+            zhegvd_(&itype, &jobz, &uplo, &n, a, &lda, b, &ldb, w, &q, &lwork, &rq, &lrwork, &iq, &liwork, &info);
+            lwork = work_size(q);
+            lrwork = work_size(rq);
+            liwork = std::max<lint>(1, iq);
+            T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
+            double* rw = s.get<double>(static_cast<std::size_t>(lrwork), Scratch::kRWork);
+            lint* iw = s.get_ints(static_cast<std::size_t>(liwork), Scratch::kIWork);
+            zhegvd_(&itype, &jobz, &uplo, &n, a, &lda, b, &ldb, w, wk, &lwork, rw, &lrwork, iw, &liwork, &info);
+        } else {
+            double* rw = s.get<double>(static_cast<std::size_t>(std::max<lint>(1, 3 * n - 2)), Scratch::kRWork);
+            zhegv_(&itype, &jobz, &uplo, &n, a, &lda, b, &ldb, w, &q, &lwork, rw, &info);
+            lwork = work_size(q);
+            T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
+            zhegv_(&itype, &jobz, &uplo, &n, a, &lda, b, &ldb, w, wk, &lwork, rw, &info);
+        }
+    }
+    return checked(info, "sygv");
+}
+
+// SVD by divide and conquer: jobz 'S' (reduced U, Vh) or 'A' (complete). a is destroyed.
+// info > 0: no convergence.
+template <class T>
+lint gesdd(char jobz, lint m, lint n, T* a, lint lda, double* sv, T* u, lint ldu, T* vt, lint ldvt, Scratch& s) {
+    lint info = 0, lwork = -1;
+    const lint mn = std::min(m, n), mx = std::max(m, n);
+    lint* iw = s.get_ints(static_cast<std::size_t>(std::max<lint>(1, 8 * mn)), Scratch::kIWork);
+    T q{};
+    if constexpr (std::is_same_v<T, double>) {
+        dgesdd_(&jobz, &m, &n, a, &lda, sv, u, &ldu, vt, &ldvt, &q, &lwork, iw, &info);
+        lwork = work_size(q);
+        T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
+        dgesdd_(&jobz, &m, &n, a, &lda, sv, u, &ldu, vt, &ldvt, wk, &lwork, iw, &info);
+    } else {
+        // zgesdd does not report its real workspace; LAPACK 3.7+'s documented size.
+        const lint lrwork = jobz == 'N' ? std::max<lint>(1, 7 * mn)
+                                        : std::max<lint>(1, mn * std::max(5 * mn + 7, 2 * mx + 2 * mn + 1));
+        double* rw = s.get<double>(static_cast<std::size_t>(lrwork), Scratch::kRWork);
+        zgesdd_(&jobz, &m, &n, a, &lda, sv, u, &ldu, vt, &ldvt, &q, &lwork, rw, iw, &info);
+        lwork = work_size(q);
+        T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
+        zgesdd_(&jobz, &m, &n, a, &lda, sv, u, &ldu, vt, &ldvt, wk, &lwork, rw, iw, &info);
+    }
+    return checked(info, "gesdd");
+}
+
+// Singular values only, by QR iteration (gesvd with jobu = jobvt = 'N'). a is destroyed.
+template <class T>
+lint gesvd_values(lint m, lint n, T* a, lint lda, double* sv, Scratch& s) {
+    lint info = 0, lwork = -1, one = 1;
+    const char no = 'N';
+    T q{}, dummy{};
+    if constexpr (std::is_same_v<T, double>) {
+        dgesvd_(&no, &no, &m, &n, a, &lda, sv, &dummy, &one, &dummy, &one, &q, &lwork, &info);
+        lwork = work_size(q);
+        T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
+        dgesvd_(&no, &no, &m, &n, a, &lda, sv, &dummy, &one, &dummy, &one, wk, &lwork, &info);
+    } else {
+        double* rw = s.get<double>(static_cast<std::size_t>(std::max<lint>(1, 5 * std::min(m, n))), Scratch::kRWork);
+        zgesvd_(&no, &no, &m, &n, a, &lda, sv, &dummy, &one, &dummy, &one, &q, &lwork, rw, &info);
+        lwork = work_size(q);
+        T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
+        zgesvd_(&no, &no, &m, &n, a, &lda, sv, &dummy, &one, &dummy, &one, wk, &lwork, rw, &info);
+    }
+    return checked(info, "gesvd");
+}
+
+// C = op(A) op(B), column-major; op is 'N', 'T' or 'C' (conjugate transpose).
+template <class T>
+void gemm(char ta, char tb, lint m, lint n, lint k, const T* a, lint lda, const T* b, lint ldb, T* c, lint ldc) {
+    auto op = [](char t) { return t == 'N' ? CblasNoTrans : (t == 'T' ? CblasTrans : CblasConjTrans); };
+    if constexpr (std::is_same_v<T, double>) {
+        cblas_dgemm(CblasColMajor, op(ta), op(tb), m, n, k, 1.0, a, lda, b, ldb, 0.0, c, ldc);
+    } else {
+        const T one(1.0), zero(0.0);
+        cblas_zgemm(CblasColMajor, op(ta), op(tb), m, n, k, &one, a, lda, b, ldb, &zero, c, ldc);
+    }
+}
+
 // C = A B for n x n column-major matrices (BLAS gemm; C must not alias A or B).
 template <class T>
 void gemm_square(lint n, const T* a, const T* b, T* c) {

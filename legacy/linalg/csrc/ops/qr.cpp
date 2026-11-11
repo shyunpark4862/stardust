@@ -89,18 +89,6 @@ nb::object qr_impl(nb::handle xo, nb::handle mode_o, bool pivoted) {
 nb::object qr(nb::handle xo, nb::handle mode_o) { return qr_impl(xo, mode_o, false); }
 nb::object qr_pivoted(nb::handle xo, nb::handle mode_o) { return qr_impl(xo, mode_o, true); }
 
-// `rtol=` (API.md §0.4): None -> max(m, n) * eps; else a real number >= 0.
-double parse_rtol(nb::handle o, lint m, lint n, const char* func) {
-    if (o.is_none()) return static_cast<double>(std::max<lint>({m, n, 1})) * 2.220446049250313e-16;
-    if (PyBool_Check(o.ptr()) || !(PyLong_Check(o.ptr()) || PyFloat_Check(o.ptr())))
-        throw nb::type_error((std::string(func) + "(): 'rtol' must be None, an int or a float").c_str());
-    const double v = PyFloat_AsDouble(o.ptr());
-    if (v == -1.0 && PyErr_Occurred()) throw nb::python_error();
-    if (!(v >= 0) || std::isinf(v))
-        throw nb::value_error((std::string(func) + "(): 'rtol' must be a finite number >= 0").c_str());
-    return v;
-}
-
 nb::object lstsq(nb::handle ao, nb::handle bo, nb::handle rtol_o) {
     Input a(ao, "lstsq", "a");
     Input y(bo, "lstsq", "b");

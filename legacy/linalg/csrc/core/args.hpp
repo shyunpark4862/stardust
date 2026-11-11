@@ -23,6 +23,9 @@ std::optional<DType> parse_dtype(nb::handle o, const char* func);
 // in [-ndim, ndim), no repeats. Returns sorted axes in [0, ndim).
 std::vector<int> parse_axes(nb::handle o, int ndim, const char* func);
 
+// `rtol=` (API.md §0.4): None -> max(m, n) * eps; else a finite real number >= 0.
+double parse_rtol(nb::handle o, std::int64_t m, std::int64_t n, const char* func);
+
 // One axis in [-ndim, ndim) -> [0, ndim); ValueError otherwise.
 int normalize_axis(std::int64_t axis, int ndim, const char* func);
 

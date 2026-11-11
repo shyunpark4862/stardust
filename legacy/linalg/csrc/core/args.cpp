@@ -3,6 +3,7 @@
 #include "core/pyrefs.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 
 namespace sdla {
@@ -50,6 +51,18 @@ std::vector<int> parse_axes(nb::handle o, int ndim, const char* func) {
     if (std::adjacent_find(axes.begin(), axes.end()) != axes.end())
         throw nb::value_error((std::string(func) + "(): repeated axis").c_str());
     return axes;
+}
+
+// `rtol=` (API.md §0.4): None -> max(m, n) * eps; else a real number >= 0.
+double parse_rtol(nb::handle o, std::int64_t m, std::int64_t n, const char* func) {
+    if (o.is_none()) return static_cast<double>(std::max<std::int64_t>({m, n, 1})) * 2.220446049250313e-16;
+    if (PyBool_Check(o.ptr()) || !(PyLong_Check(o.ptr()) || PyFloat_Check(o.ptr())))
+        throw nb::type_error((std::string(func) + "(): 'rtol' must be None, an int or a float").c_str());
+    const double v = PyFloat_AsDouble(o.ptr());
+    if (v == -1.0 && PyErr_Occurred()) throw nb::python_error();
+    if (!(v >= 0) || std::isinf(v))
+        throw nb::value_error((std::string(func) + "(): 'rtol' must be a finite number >= 0").c_str());
+    return v;
 }
 
 }  // namespace sdla

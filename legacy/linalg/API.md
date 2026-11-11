@@ -59,7 +59,7 @@
   - `det`은 `1`, `slogdet`은 `(1, 0)`이다 (numpy 2.5.4도 같다, 확인함).
   - `inv`, `cholesky`, 분해 결과는 빈 행렬이다.
   - `matrix_rank`는 `0`, 노름은 `0`이다.
-- 값이 정의되지 않으면 `ValueError`다: `cond`
+- 값이 정의되지 않으면 `ValueError`다: 빈 행렬의 `cond`
 - 배치 축의 크기가 0이면 결과도 그 모양의 빈 배열이다.
 
 ---
@@ -83,6 +83,8 @@ cross(x1, x2, /, *, axis=-1)           # 확장 단계, 축 길이 3
 vector_norm(x, /, *, axis=None, keepdims=False, ord=2)
 matrix_norm(x, /, *, keepdims=False, ord='fro')     # ord: 'fro', 'nuc', 1, -1, 2, -2, inf, -inf
 cond(x, /, *, ord=2)                                # ord는 matrix_norm과 같은 집합
+# cond: 특이 행렬이면 inf (ord=-2는 0). ord ±2 외에는 정사각만 받는다 (DESIGN §2.14)
+# matrix_norm의 2, -2, 'nuc'는 SVD를 쓰므로 NaN/inf가 있으면 ValueError다
 det(x, /)
 slogdet(x, /)            # -> SlogdetResult(sign, logabsdet)
 matrix_rank(x, /, *, rtol=None)
@@ -133,7 +135,8 @@ svdvals(x, /)
 - `ldl`의 `D`는 1×1과 2×2 블록으로 된 블록 대각 행렬이다. 꽉 찬 `(N, N)` 행렬로 반환한다.
 - `schur`, `hessenberg`: 실수 입력이면 실수 결과다 (`schur`는 2×2 블록이 있는 준삼각). 복소 Schur 형식이 필요하면 complex128로 바꿔서 넣는다.
 - 고유벡터와 특이벡터의 부호와 위상은 정하지 않는다 (LAPACK이 내는 그대로).
-- `eigh(a, b)`: `b`는 에르미트 양정치여야 한다. 고유벡터는 `vᴴ b v = I`로 정규화된다.
+- `eigvalsh`, `svdvals`는 LAPACK의 값 전용 모드로 계산한다. 그래서 `eigh`/`svd`의 값과 반올림 수준에서 다를 수 있다 (DESIGN §2.14).
+- `eigh(a, b)`: `b`는 에르미트 양정치여야 한다. 고유벡터는 `vᴴ b v = I`로 정규화된다. `b`가 양정치가 아니면 `LinAlgError`다.
   - `a v = λ b v` 형태만 지원한다. scipy의 `type=2, 3`(`a b v = λ v`, `b a v = λ v`)은 없다.
 - `schur`는 항상 `Z`를, `hessenberg`는 항상 `Q`를 함께 계산한다. 결과 형태를 고정하는 규칙(§0.3) 때문이다. 대신 그만큼 계산이 더 든다.
 

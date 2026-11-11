@@ -10,6 +10,8 @@
 #include "core/args.hpp"
 #include "core/outblock.hpp"
 #include "ops/common.hpp"
+#include "ops/svals.hpp"
+#include "ops/vnorm.hpp"
 
 #include <nanobind/stl/string.h>
 
@@ -21,18 +23,6 @@
 namespace sdla {
 
 namespace {
-
-constexpr double kInf = std::numeric_limits<double>::infinity();
-constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
-// Below this, p-th powers may be subnormal and lose bits: 2^-969 = DBL_MIN * 2^53.
-constexpr double kTiny = 0x1p-969;
-
-enum class Ord { Inf, NegInf, Zero, One, Two, P };
-
-struct VecOrd {
-    Ord kind;
-    double p;
-};
 
 VecOrd parse_vector_ord(nb::handle o, const char* func) {
     if (PyBool_Check(o.ptr()) || !(PyLong_Check(o.ptr()) || PyFloat_Check(o.ptr())))
@@ -46,75 +36,6 @@ VecOrd parse_vector_ord(nb::handle o, const char* func) {
     if (p == 1) return {Ord::One, p};
     if (p == 2) return {Ord::Two, p};
     return {Ord::P, p};
-}
-
-// The norm of a set of magnitudes. `each(f)` calls f(double) once per
-// magnitude (it may be called twice, for the scaled pass); `count` is how
-// many there are. Empty sets have norm 0 (S11).
-template <class Each>
-double vnorm(VecOrd ord, std::int64_t count, Each&& each) {
-    if (count == 0) return 0.0;
-    switch (ord.kind) {
-        case Ord::Inf: {
-            double m = 0;
-            bool nan = false;
-            each([&](double a) {
-                if (a != a) nan = true;
-                else if (a > m) m = a;
-            });
-            return nan ? kNaN : m;
-        }
-        case Ord::NegInf: {
-            double m = kInf;
-            bool nan = false;
-            each([&](double a) {
-                if (a != a) nan = true;
-                else if (a < m) m = a;
-            });
-            return nan ? kNaN : m;
-        }
-        case Ord::Zero: {  // the number of nonzeros (not a norm; Array API). NaN counts.
-            std::int64_t c = 0;
-            each([&](double a) { c += (a != 0); });
-            return static_cast<double>(c);
-        }
-        case Ord::One: {
-            double s = 0;
-            each([&](double a) { s += a; });
-            return s;
-        }
-        case Ord::Two:
-        case Ord::P: {
-            const bool two = ord.kind == Ord::Two;
-            const double p = ord.p;
-            double s = 0, amax = 0;
-            bool nan = false;
-            each([&](double a) {
-                if (a != a) {
-                    nan = true;
-                    return;
-                }
-                s += two ? a * a : std::pow(a, p);
-                if (a > amax) amax = a;
-            });
-            if (nan) return kNaN;
-            if (p > 0) {
-                if (amax == kInf) return kInf;
-                const double top = two ? amax * amax : std::pow(amax, p);
-                if (std::isinf(s) || (amax > 0 && top < kTiny)) {
-                    // Rescaled: amax * (sum (a/amax)^p)^(1/p). Every term is <= 1.
-                    double t = 0;
-                    each([&](double a) {
-                        const double r = a / amax;
-                        t += two ? r * r : std::pow(r, p);
-                    });
-                    return amax * (two ? std::sqrt(t) : std::pow(t, 1 / p));
-                }
-            }
-            return two ? std::sqrt(s) : std::pow(s, 1 / p);
-        }
-    }
-    return kNaN;
 }
 
 // Calls f(magnitude) for every element of x within `axes` (byte offset `base`
@@ -210,27 +131,49 @@ nb::object vector_norm(nb::handle xo, nb::handle axis_o, bool keepdims, nb::hand
 
 // ---------------------------------------------------------- matrix_norm --
 
-enum class MatOrd { Fro, One, NegOne, Inf, NegInf };
-
-[[noreturn]] void not_yet(const char* what) {
-    PyErr_SetString(PyExc_NotImplementedError, what);
-    throw nb::python_error();
-}
+enum class MatOrd { Fro, One, NegOne, Inf, NegInf, Two, NegTwo, Nuc };
 
 MatOrd parse_matrix_ord(nb::handle o) {
     if (PyUnicode_Check(o.ptr())) {
         const std::string s = nb::cast<std::string>(o);
         if (s == "fro") return MatOrd::Fro;
-        if (s == "nuc") not_yet("matrix_norm(): ord='nuc' needs the SVD, which arrives in milestone M5");
+        if (s == "nuc") return MatOrd::Nuc;
     } else if (!PyBool_Check(o.ptr()) && (PyLong_Check(o.ptr()) || PyFloat_Check(o.ptr()))) {
         const double p = PyFloat_AsDouble(o.ptr());
         if (p == 1) return MatOrd::One;
         if (p == -1) return MatOrd::NegOne;
         if (p == kInf) return MatOrd::Inf;
         if (p == -kInf) return MatOrd::NegInf;
-        if (p == 2 || p == -2) not_yet("matrix_norm(): ord=2 and ord=-2 need the SVD, which arrive in milestone M5");
+        if (p == 2) return MatOrd::Two;
+        if (p == -2) return MatOrd::NegTwo;
     }
     throw nb::value_error("matrix_norm(): 'ord' must be 'fro', 'nuc', 1, -1, 2, -2, inf or -inf");
+}
+
+// ord 2, -2, 'nuc' from the singular values. These call LAPACK, so NaN and inf
+// are a ValueError here while the other ords propagate them (DESIGN.md §2.14).
+nb::object matrix_norm_svd(const Input& x, MatOrd ord, const std::vector<std::int64_t>& out_shape) {
+    const lint m = x.shape(-2), n = x.shape(-1), k = std::min(m, n);
+    Batch b({{x.batch_shape(2), x.batch_strides(2)}}, "matrix_norm");
+    return with_type(computes_complex(x.dtype()), [&]<class T>(std::type_identity<T>) -> nb::object {
+        Out out = alloc_c(out_shape, DType::Float64);
+        double* res = out.as<double>();
+        const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+            double* sv = s.get<double>(static_cast<std::size_t>(std::max<lint>(k, 1)), 1);
+            if (const int code = singular_values<T>(x, off[0], m, n, s, sv)) return code;
+            double v = 0;  // empty matrices: 0 (S11)
+            if (k > 0) {
+                if (ord == MatOrd::Two) v = sv[0];
+                else if (ord == MatOrd::NegTwo) v = sv[k - 1];
+                else
+                    for (lint j = 0; j < k; ++j) v += sv[j];
+            }
+            res[i] = v;
+            return 0;
+        });
+        if (f) raise(b, f, "matrix_norm", "x");
+        return out_shape.empty() ? py_scalar(res[0]) : to_sdnp(out);
+    });
 }
 
 nb::object matrix_norm(nb::handle xo, bool keepdims, nb::handle ord_o) {
@@ -243,6 +186,7 @@ nb::object matrix_norm(nb::handle xo, bool keepdims, nb::handle ord_o) {
         out_shape.push_back(1);
         out_shape.push_back(1);
     }
+    if (ord == MatOrd::Two || ord == MatOrd::NegTwo || ord == MatOrd::Nuc) return matrix_norm_svd(x, ord, out_shape);
     // One norm: sums of magnitudes along the lines (columns for 1, rows for inf), then max/min.
     auto norm_at = [&](std::int64_t off) -> double {
         const std::byte* base = x.data() + off;

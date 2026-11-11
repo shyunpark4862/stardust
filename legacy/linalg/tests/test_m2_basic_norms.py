@@ -334,9 +334,6 @@ def test_matrix_norm_matches_numpy(seed, batch, m, n, dtype, ord_, keepdims, lay
 
 def test_matrix_norm_rules():
     x = sdnp.ones((2, 3))
-    for o in (2, -2, "nuc"):
-        with pytest.raises(NotImplementedError, match="M5"):
-            sdla.matrix_norm(x, ord=o)
     for o in (3, "max", 0):
         with pytest.raises(ValueError, match="ord"):
             sdla.matrix_norm(x, ord=o)

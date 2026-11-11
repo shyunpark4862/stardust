@@ -10,6 +10,7 @@ def test_import_and_surface():
         "vecdot", "outer", "trace", "diagonal", "matrix_power", "vector_norm", "matrix_norm",
         "solve_triangular", "cholesky", "cholesky_solve", "lu", "lu_solve",
         "qr", "qr_pivoted", "lstsq",
+        "eigh", "eigvalsh", "svd", "svdvals", "matrix_rank", "pinv", "cond",
     }
     for name in sdla.__all__:
         assert hasattr(sdla, name)
