@@ -132,7 +132,8 @@ nb::object inv(nb::handle xo) {
             T* a;
             lint* ipiv;
             if (const int code = lu_factor<T>(x, off[0], n, s, a, ipiv)) return code;
-            lu_inverse(a, ipiv, n, res + i * n * n);  // this element's slot, filled in place
+            LapackSlot<T> rs(res + i * n * n, n * n, s, Scratch::kAlign0);
+            lu_inverse(a, ipiv, n, rs.get());  // this element's slot, filled in place
             return 0;
         });
         if (f) raise(b, f, "inv", "x");
@@ -156,7 +157,8 @@ nb::object solve(nb::handle ao, nb::handle bo) {
             T* lu;
             lint* ipiv;
             if (const int code = lu_factor<T>(a, off[0], n, s, lu, ipiv)) return code;
-            T* x = res + i * n * k;  // b is packed straight into the output slot (ARCHITECTURE.md §3.2)
+            LapackSlot<T> xs(res + i * n * k, n * k, s, Scratch::kAlign0);
+            T* x = xs.get();  // b is packed straight into the output slot (ARCHITECTURE.md §3.2)
             if (!pack(y.dtype(), y.data() + off[1], n, k, r.rs, r.cs, x, n, true)) return kNonFiniteB;
             if (n > 0 && k > 0) lapack::getrs('N', n, k, lu, n, ipiv, x, n);
             return 0;

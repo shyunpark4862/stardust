@@ -49,8 +49,10 @@ template <class T>
 int tri_body(Vec dl, Vec d, Vec du, lint n, const Input& y, std::int64_t yoff, const Rhs& r, T* x, Scratch& s,
              int c_dl, int c_d, int c_du) {
     const lint nm1 = std::max<lint>(n - 1, 0);
-    T* w = s.get<T>(static_cast<std::size_t>(n + 2 * nm1));
-    T *wd = w, *wdl = w + n, *wdu = w + n + nm1;
+    // three sub-arrays, each on a 16-byte boundary (common.hpp: aligned16)
+    const std::size_t pn = pad2(n), pm = pad2(nm1);
+    T* w = s.get<T>(pn + 2 * pm);
+    T *wd = w, *wdl = w + pn, *wdu = w + pn + pm;
     if (!pack(dl.dt, dl.p, nm1, 1, dl.stride, 0, wdl, nm1, true)) return c_dl;
     if (!pack(d.dt, d.p, n, 1, d.stride, 0, wd, n, true)) return c_d;
     if (!pack(du.dt, du.p, nm1, 1, du.stride, 0, wdu, nm1, true)) return c_du;
@@ -91,8 +93,9 @@ nb::object solve_tridiagonal(nb::handle dlo, nb::handle do_, nb::handle duo, nb:
         T* res = out.as<T>();
         const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             return tri_body<T>({dl.dtype(), dl.data() + off[0], dl.stride(-1)}, {d.dtype(), d.data() + off[1], d.stride(-1)},
-                               {du.dtype(), du.data() + off[2], du.stride(-1)}, n, y, off[3], r, res + i * n * r.k, s,
-                               kNonFinite, kNonFinite2, kNonFinite3);
+                               {du.dtype(), du.data() + off[2], du.stride(-1)}, n, y, off[3], r,
+                               LapackSlot<T>(res + i * n * r.k, n * r.k, s, Scratch::kAlign0).get(), s, kNonFinite,
+                               kNonFinite2, kNonFinite3);
         });
         if (f) raise(b, f, func, "dl", "d", "du");
         return to_sdnp(out);
@@ -128,7 +131,8 @@ nb::object solve_banded(nb::handle abo, nb::handle bo, nb::handle klo, nb::handl
         T* res = out.as<T>();
         const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             const std::byte* base = a.data() + off[0];
-            T* x = res + i * n * r.k;
+            LapackSlot<T> xs(res + i * n * r.k, n * r.k, s, Scratch::kAlign0);
+            T* x = xs.get();
             if (kl == 1 && ku == 1) {
                 // ab[u + i - j, j] = a[i, j]: du = ab[0, 1:], d = ab[1, :], dl = ab[2, :-1].
                 return tri_body<T>({a.dtype(), base + 2 * rs, cs}, {a.dtype(), base + rs, cs},
@@ -182,10 +186,12 @@ nb::object solve_sylvester(nb::handle ao, nb::handle bo, nb::handle co) {
         Out out = alloc_matrices(b.shape(), m, n, dtype_of<T>());
         T* res = out.as<T>();
         const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
-            T* rs_ = s.get<T>(static_cast<std::size_t>(m * m + n * n), 0);  // R, then S
-            T* uw = s.get<T>(static_cast<std::size_t>(m * m + n * n), 1);   // U, then W
-            T *R = rs_, *S = rs_ + m * m, *U = uw, *W = uw + m * m;
-            T* x = res + i * m * n;
+            const std::size_t mm = pad2(m * m), nn = pad2(n * n);  // 16-byte boundaries (aligned16)
+            T* rs_ = s.get<T>(mm + nn, 0);  // R, then S
+            T* uw = s.get<T>(mm + nn, 1);   // U, then W
+            T *R = rs_, *S = rs_ + mm, *U = uw, *W = uw + mm;
+            LapackSlot<T> xs(res + i * m * n, m * n, s, Scratch::kAlign0);
+            T* x = xs.get();
             if (!pack(a.dtype(), a.data() + off[0], m, m, a.stride(-2), a.stride(-1), R, m, true)) return kNonFinite;
             if (m > 0 && lapack::gees(m, R, m, U, m, s) > 0) return kNoConvergenceEig;
             if (!pack(bb.dtype(), bb.data() + off[1], n, n, bb.stride(-2), bb.stride(-1), S, n, true))

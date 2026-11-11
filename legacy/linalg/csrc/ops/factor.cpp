@@ -39,15 +39,16 @@ nb::object solve_triangular(nb::handle ao, nb::handle bo, bool upper, bool unit_
         Out out = alloc_rhs(b, r, n, dtype_of<T>());
         T* res = out.as<T>();
         const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
-            T* t = s.get<T>(static_cast<std::size_t>(n * n));
             // Only the triangle trtrs reads; the diagonal too unless it is taken as 1.
-            if (!pack_triangle(a.dtype(), a.data() + off[0], n, a.stride(-2), a.stride(-1), t, n, !upper,
-                               !unit_diagonal, true))
+            const T* t;
+            lint ld;
+            if (!triangle_operand(a, off[0], n, !upper, !unit_diagonal, s.get<T>(static_cast<std::size_t>(n * n)), t, ld))
                 return kNonFinite;
-            if (!unit_diagonal && zero_on_diagonal(t, n, n)) return kSingular;
-            T* x = res + i * n * r.k;
+            if (!unit_diagonal && zero_on_diagonal(t, n, ld)) return kSingular;
+            LapackSlot<T> xs(res + i * n * r.k, n * r.k, s, Scratch::kAlign0);
+            T* x = xs.get();
             if (!pack(y.dtype(), y.data() + off[1], n, r.k, r.rs, r.cs, x, n, true)) return kNonFiniteB;
-            if (n > 0) lapack::trtrs(upper ? 'U' : 'L', 'N', unit_diagonal ? 'U' : 'N', n, r.k, t, n, x, n);
+            if (n > 0) lapack::trtrs(upper ? 'U' : 'L', 'N', unit_diagonal ? 'U' : 'N', n, r.k, t, ld, x, n);
             return 0;
         });
         if (f) raise(b, f, "solve_triangular", "a");
@@ -66,7 +67,8 @@ nb::object cholesky(nb::handle xo, bool upper) {
         Out out = alloc_matrices(b.shape(), n, n, dtype_of<T>());
         T* res = out.as<T>();
         const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
-            T* o = res + i * n * n;
+            LapackSlot<T> os(res + i * n * n, n * n, s, Scratch::kAlign0);
+            T* o = os.get();
             // L is computed in the output slot itself; for upper=True in scratch, then U = L^H.
             T* l = upper ? s.get<T>(static_cast<std::size_t>(n * n)) : o;
             // The input's lower triangle only (API.md §0.2).
@@ -98,14 +100,16 @@ nb::object cholesky_solve(nb::handle lo, nb::handle bo, bool upper) {
         Out out = alloc_rhs(b, r, n, dtype_of<T>());
         T* res = out.as<T>();
         const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
-            T* t = s.get<T>(static_cast<std::size_t>(n * n));
-            if (!pack_triangle(l.dtype(), l.data() + off[0], n, l.stride(-2), l.stride(-1), t, n, !upper, true, true))
+            const T* t;
+            lint ld;
+            if (!triangle_operand(l, off[0], n, !upper, true, s.get<T>(static_cast<std::size_t>(n * n)), t, ld))
                 return kNonFinite;
             // potrs would divide by a zero diagonal without a word (DESIGN.md §2.12).
-            if (zero_on_diagonal(t, n, n)) return kSingular;
-            T* x = res + i * n * r.k;
+            if (zero_on_diagonal(t, n, ld)) return kSingular;
+            LapackSlot<T> xs(res + i * n * r.k, n * r.k, s, Scratch::kAlign0);
+            T* x = xs.get();
             if (!pack(y.dtype(), y.data() + off[1], n, r.k, r.rs, r.cs, x, n, true)) return kNonFiniteB;
-            if (n > 0 && r.k > 0) lapack::potrs(upper ? 'U' : 'L', n, r.k, t, n, x, n);
+            if (n > 0 && r.k > 0) lapack::potrs(upper ? 'U' : 'L', n, r.k, t, ld, x, n);
             return 0;
         });
         if (f) raise(b, f, "cholesky_solve", "l");
@@ -181,14 +185,15 @@ nb::object lu_solve(nb::handle lo, nb::handle uo, nb::handle po, nb::handle bo) 
         Out out = alloc_rhs(b, r, n, dtype_of<T>());
         T* res = out.as<T>();
         const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
-            // Rebuild getrf's packed form: L strictly below the diagonal (its unit
-            // diagonal is not read), U on and above it.
-            T* t = s.get<T>(static_cast<std::size_t>(n * n));
-            if (!pack_triangle(l.dtype(), l.data() + off[0], n, l.stride(-2), l.stride(-1), t, n, true, false, true))
+            // L strictly below the diagonal (its unit diagonal is not read), U on
+            // and above it: read in place when column-major, else packed (M8).
+            const T *tl, *tu;
+            lint ldl, ldu;
+            if (!triangle_operand(l, off[0], n, true, false, s.get<T>(static_cast<std::size_t>(n * n)), tl, ldl))
                 return kNonFinite;
-            if (!pack_triangle(u.dtype(), u.data() + off[1], n, u.stride(-2), u.stride(-1), t, n, false, true, true))
+            if (!triangle_operand(u, off[1], n, false, true, s.get<T>(static_cast<std::size_t>(n * n), 3), tu, ldu))
                 return kNonFiniteU;
-            if (zero_on_diagonal(t, n, n)) return kSingular;
+            if (zero_on_diagonal(tu, n, ldu)) return kSingular;
             // perm must be a permutation of 0..n-1.
             lint* perm = s.get_ints(static_cast<std::size_t>(n));
             std::uint8_t* seen = s.get<std::uint8_t>(static_cast<std::size_t>(n), 1);
@@ -201,7 +206,8 @@ nb::object lu_solve(nb::handle lo, nb::handle uo, nb::handle po, nb::handle bo) 
             }
             // x starts as b[perm] (an exact row gather), then L and U are solved
             // with getrs and no further swaps: the same steps as solve() after getrf.
-            T* x = res + i * n * r.k;
+            LapackSlot<T> xs(res + i * n * r.k, n * r.k, s, Scratch::kAlign0);
+            T* x = xs.get();
             const bool ok = visit_storage(y.dtype(), [&]<class S>(std::type_identity<S>) {
                 if constexpr (std::is_same_v<S, cplx> && !std::is_same_v<T, cplx>) {
                     return false;  // unreachable
@@ -217,10 +223,11 @@ nb::object lu_solve(nb::handle lo, nb::handle uo, nb::handle po, nb::handle bo) 
                 }
             });
             if (!ok) return kNonFiniteB;
+            // getrs without swaps is trtrs with L (unit) and then with U: the same
+            // calls, the same bits (checked in M8), and no packed L\U matrix needed.
             if (n > 0 && r.k > 0) {
-                lint* ident = s.get<lint>(static_cast<std::size_t>(n), 2);
-                for (lint k = 0; k < n; ++k) ident[k] = k + 1;
-                lapack::getrs('N', n, r.k, t, n, ident, x, n);
+                lapack::trtrs('L', 'N', 'U', n, r.k, tl, ldl, x, n);
+                lapack::trtrs('U', 'N', 'N', n, r.k, tu, ldu, x, n);
             }
             return 0;
         });

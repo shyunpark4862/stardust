@@ -11,6 +11,8 @@
 
 #include <nanobind/nanobind.h>
 
+#include <algorithm>
+#include <cstdint>
 #include <string>
 #include <type_traits>
 
@@ -83,6 +85,61 @@ inline Rhs rhs_of(const Input& y, lint n, const char* func, const char* aname, b
                                   .c_str());
     }
     return {vec, vec ? 1 : y.shape(-1), vec ? 1 : 2, vec ? y.stride(0) : y.stride(-2), vec ? 0 : y.stride(-1)};
+}
+
+// ---- 16-byte alignment (M8) ----------------------------------------------
+// Accelerate's LAPACK can round differently when an array is not 16-byte
+// aligned (found in M8: real svd, schur and eigh gave other bits for a batch
+// element whose output slot sat at an odd multiple of 8 bytes). So every array
+// LAPACK or BLAS gets is 16-byte aligned, and a matrix gives the same bits
+// wherever it sits in a batch.
+
+inline bool aligned16(const void* p) { return reinterpret_cast<std::uintptr_t>(p) % 16 == 0; }
+
+// n doubles rounded up to a whole number of 16-byte units, for sub-arrays of scratch.
+inline std::size_t pad2(std::int64_t n) { return static_cast<std::size_t>((n + 1) & ~std::int64_t(1)); }
+
+// An output slot handed to LAPACK/BLAS: the slot itself when it is 16-byte
+// aligned, else scratch memory that is copied to the slot when this object goes
+// out of scope. Everything written for the slot goes through get().
+template <class T>
+class LapackSlot {
+public:
+    LapackSlot(T* slot, std::int64_t count, Scratch& s, int scratch_slot)
+        : slot_(slot), n_(count), p_(aligned16(slot) ? slot : s.get<T>(static_cast<std::size_t>(count), scratch_slot)) {}
+    ~LapackSlot() {
+        if (p_ != slot_) std::copy(p_, p_ + n_, slot_);
+    }
+    LapackSlot(const LapackSlot&) = delete;
+    LapackSlot& operator=(const LapackSlot&) = delete;
+    T* get() const { return p_; }
+
+private:
+    T* slot_;
+    std::int64_t n_;
+    T* p_;
+};
+
+// An n x n triangle operand that LAPACK only reads (solve_triangular's a,
+// cholesky_solve's l, lu_solve's l and u). When the input already is
+// column-major with T elements, LAPACK reads it in place and only the triangle
+// is checked (M8, ARCHITECTURE.md §3.2); otherwise it is packed into `buf`.
+// The arithmetic, and so the result, is the same either way. Returns false on NaN/inf.
+template <class T>
+bool triangle_operand(const Input& x, std::int64_t off, lint n, bool lower, bool with_diag, T* buf, const T*& a,
+                      lint& lda) {
+    constexpr std::int64_t sz = sizeof(T);
+    const std::byte* p = x.data() + off;
+    // in place only when 16-byte aligned, every column too (see aligned16)
+    if (x.dtype() == dtype_of<T>() && x.stride(-2) == sz && x.stride(-1) % 16 == 0 &&
+        x.stride(-1) / sz >= std::max<lint>(n, 1) && aligned16(p)) {
+        a = reinterpret_cast<const T*>(p);
+        lda = x.stride(-1) / sz;
+        return triangle_finite(a, n, lda, lower, with_diag);
+    }
+    a = buf;
+    lda = std::max<lint>(n, 1);
+    return pack_triangle(x.dtype(), p, n, x.stride(-2), x.stride(-1), buf, lda, lower, with_diag, true);
 }
 
 // The output of a solve: a vector per batch element or a column-major matrix.

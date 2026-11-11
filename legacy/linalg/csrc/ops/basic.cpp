@@ -7,9 +7,11 @@
 
 #include "core/args.hpp"
 #include "core/outblock.hpp"
+#include "core/pairwise.hpp"
 #include "ops/common.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <cstring>
 #include <string>
 #include <utility>
@@ -65,14 +67,24 @@ nb::object vecdot(nb::handle x1o, nb::handle x2o, nb::handle axis_o) {
                 if constexpr ((std::is_same_v<SX, cplx> || std::is_same_v<SY, cplx>) && !std::is_same_v<T, cplx>) {
                     return nb::none();  // unreachable: a complex input makes T complex
                 } else {
-                    // sum_i conj(x1[i]) * x2[i]  (x1 is conjugated: Array API)
+                    // sum_i conj(x1[i]) * x2[i]  (x1 is conjugated: Array API), the
+                    // products summed pairwise (M8): the bits of sdnp.sum(conj(x1) * x2).
                     auto dot = [&](const std::int64_t* off) {
                         const std::byte* p = x.data() + off[0];
                         const std::byte* q = y.data() + off[1];
-                        T acc = T(0);
-                        for (std::int64_t i = 0; i < len; ++i)
-                            acc += mul(conj_if_complex(convert<T>(load<SX>(p + i * sx))), convert<T>(load<SY>(q + i * sy)));
-                        return acc;
+                        auto fill = [&](std::int64_t b0, std::int64_t k, T* out) {
+                            const std::byte* pp = p + b0 * sx;
+                            const std::byte* qq = q + b0 * sy;
+                            if (sx == static_cast<std::int64_t>(sizeof(SX)) && sy == static_cast<std::int64_t>(sizeof(SY))) {
+                                for (std::int64_t i = 0; i < k; ++i)
+                                    out[i] = mul(conj_if_complex(convert<T>(load<SX>(pp + i * static_cast<std::int64_t>(sizeof(SX))))),
+                                                 convert<T>(load<SY>(qq + i * static_cast<std::int64_t>(sizeof(SY)))));
+                            } else {
+                                for (std::int64_t i = 0; i < k; ++i)
+                                    out[i] = mul(conj_if_complex(convert<T>(load<SX>(pp + i * sx))), convert<T>(load<SY>(qq + i * sy)));
+                            }
+                        };
+                        return pairwise_sum<T>(len, fill);
                     };
                     if (b.ndim() == 0) {
                         std::int64_t off[2] = {0, 0};
@@ -171,10 +183,10 @@ nb::object trace(nb::handle xo, nb::handle k_o, nb::handle dtype_o) {
                         for (std::int64_t i = 0; i < dg.len; ++i)
                             acc += static_cast<std::uint64_t>(convert<T>(load<S>(p + i * step)));
                         return static_cast<std::int64_t>(acc);
-                    } else {
-                        T acc = T(0);
-                        for (std::int64_t i = 0; i < dg.len; ++i) acc += convert<T>(load<S>(p + i * step));
-                        return acc;
+                    } else {  // pairwise (M8): the bits of sdnp.sum(diagonal(x))
+                        return pairwise_sum<T>(dg.len, [&](std::int64_t b0, std::int64_t k, T* out) {
+                            for (std::int64_t i = 0; i < k; ++i) out[i] = convert<T>(load<S>(p + (b0 + i) * step));
+                        });
                     }
                 };
                 if (b.ndim() == 0) return py_scalar(sum(0));
@@ -203,11 +215,15 @@ nb::object diagonal(nb::handle xo, nb::handle k_o) {
     Batch b({{x.batch_shape(2), x.batch_strides(2)}}, "diagonal");
     // Extraction, not computation: the input dtype is kept (DESIGN.md §2.11). A copy (S10).
     Out out = alloc_vectors(b.shape(), dg.len, x.dtype());
-    const std::int64_t isz = itemsize(x.dtype());
-    run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch&) {
-        const std::byte* p = x.data() + off[0] + start;
-        std::byte* o = out.data + i * dg.len * isz;
-        for (std::int64_t j = 0; j < dg.len; ++j) std::memcpy(o + j * isz, p + j * step, static_cast<std::size_t>(isz));
+    // a typed strided copy (M8: a memcpy call per element cost 2-3x numpy)
+    visit_storage(x.dtype(), [&]<class S>(std::type_identity<S>) {
+        S* o = reinterpret_cast<S*>(out.data);
+        run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch&) {
+            const std::byte* p = x.data() + off[0] + start;
+            S* oi = o + i * dg.len;
+            for (std::int64_t j = 0; j < dg.len; ++j) oi[j] = load<S>(p + j * step);
+            return 0;
+        });
         return 0;
     });
     return to_sdnp(out);
@@ -247,20 +263,29 @@ nb::object matrix_power(nb::handle xo, nb::handle n_o) {
             }
             // Binary powering, most significant bit first: r = base; for each further bit,
             // r = r*r, then r = r*base if the bit is set. log2(e) squarings + popcount(e)-1 products.
-            T* r = s.get<T>(mm, 2);
-            T* t = s.get<T>(mm, 3);
-            std::copy(base, base + mm, r);
+            // The products ping-pong between two scratch buffers and the last one goes
+            // straight to the output slot (M8: no copies of r).
             int top = 63;
             while (!((e >> top) & 1)) --top;
-            for (int bit = top - 1; bit >= 0; --bit) {
-                lapack::gemm_square(m, r, r, t);
-                std::swap(r, t);
-                if ((e >> bit) & 1) {
-                    lapack::gemm_square(m, r, base, t);
-                    std::swap(r, t);
-                }
+            if (top == 0) {  // x^1 and x^-1: base itself
+                std::copy(base, base + mm, o);
+                return 0;
             }
-            std::copy(r, r + mm, o);
+            const int total = top + std::popcount(e) - 1;  // gemm calls
+            LapackSlot<T> os(o, static_cast<std::int64_t>(mm), s, Scratch::kAlign0);
+            T* buf[2] = {s.get<T>(mm, 2), s.get<T>(mm, 3)};
+            const T* r = base;
+            int done = 0, next = 0;
+            auto product = [&](const T* lhs, const T* rhs) {
+                T* dst = ++done == total ? os.get() : buf[next];
+                lapack::gemm_square(m, lhs, rhs, dst);
+                next ^= 1;
+                r = dst;
+            };
+            for (int bit = top - 1; bit >= 0; --bit) {
+                product(r, r);
+                if ((e >> bit) & 1) product(r, base);
+            }
             return 0;
         });
         if (f) raise(b, f, "matrix_power", "x");

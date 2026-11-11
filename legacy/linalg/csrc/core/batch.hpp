@@ -6,11 +6,14 @@
 
 #include <Python.h>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
+#include <memory>
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace sdla {
@@ -44,26 +47,58 @@ private:
     std::vector<std::int64_t> strides_;  // nops_ x ndim, 0 on broadcast axes
 };
 
+// Workspace sizes from one LAPACK query (lwork = -1): the main workspace and,
+// for the routines that have them, the real and integer workspaces.
+struct WorkSizes {
+    lint work = 1, rwork = 1, iwork = 1;
+};
+
 // Scratch memory for one worker. The driver hands each worker its own, so a
 // body may reuse it across the matrices it processes.
 // Slots 0-3 (and int slot 0) belong to the function bodies; slots 4-5 (and
-// int slot 1) to the LAPACK wrappers' workspaces (lapack.hpp).
+// int slot 1) to the LAPACK wrappers' workspaces (lapack.hpp); slots 6-8 to
+// LapackSlot's stand-ins for misaligned output slots (common.hpp).
 struct Scratch {
-    static constexpr int kSlots = 6;
+    static constexpr int kSlots = 9;
     static constexpr int kWork = 4, kRWork = 5, kIWork = 1;
-    std::vector<std::byte> bytes[kSlots];  // independent areas; slot 0 is the default
-    std::vector<lint> ints[2];
-
+    static constexpr int kAlign0 = 6, kAlign1 = 7, kAlign2 = 8;
     template <class T>
     T* get(std::size_t n, int slot = 0) {
-        std::vector<std::byte>& b = bytes[slot];
-        if (b.size() < n * sizeof(T)) b.resize(n * sizeof(T));
-        return reinterpret_cast<T*>(b.data());
+        return reinterpret_cast<T*>(bytes_[slot].get(n * sizeof(T)));
     }
-    lint* get_ints(std::size_t n, int slot = 0) {
-        if (ints[slot].size() < n) ints[slot].resize(n);
-        return ints[slot].data();
+    lint* get_ints(std::size_t n, int slot = 0) { return reinterpret_cast<lint*>(ints_[slot].get(n * sizeof(lint))); }
+
+    // LAPACK's workspace sizes, asked once per routine and argument set (M8,
+    // ARCHITECTURE.md §3.4). Within a batch every matrix has the same shape, so
+    // only the first one queries; the sizes, and so the results' bits, are the
+    // ones a per-call query gives (DESIGN.md §2.14: gesdd's path depends on lwork).
+    using WorkKey = std::array<lint, 6>;  // routine id, its size arguments, the element size
+    template <class Query>
+    WorkSizes sizes(const WorkKey& key, Query&& query) {
+        for (const auto& [k, v] : work_sizes_)
+            if (k == key) return v;
+        work_sizes_.emplace_back(key, query());
+        return work_sizes_.back().second;
     }
+
+private:
+    // A growing buffer that is not zero-filled (M8): every user writes before
+    // it reads, and std::vector's zero-fill of a large fresh block cost as much
+    // as the packing itself.
+    struct Buf {
+        std::unique_ptr<std::byte[]> p;
+        std::size_t n = 0;
+        std::byte* get(std::size_t want) {
+            if (want > n) {
+                p.reset(new std::byte[want]);
+                n = want;
+            }
+            return p.get();
+        }
+    };
+    Buf bytes_[kSlots];  // independent areas; slot 0 is the default
+    Buf ints_[2];
+    std::vector<std::pair<WorkKey, WorkSizes>> work_sizes_;
 };
 
 // What went wrong with one batch element; code 0 means nothing did.

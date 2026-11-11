@@ -14,6 +14,7 @@
 
 #include "core/args.hpp"
 #include "core/outblock.hpp"
+#include "core/pairwise.hpp"
 #include "core/pyrefs.hpp"
 #include "ops/common.hpp"
 #include "ops/svals.hpp"
@@ -59,7 +60,9 @@ nb::object eigh_impl(nb::handle ao, nb::handle bo, bool vectors) {
         const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             // With vectors, `a` is packed straight into the eigenvector slot; LAPACK
             // overwrites it with the eigenvectors (ARCHITECTURE.md §3.2).
-            T* av = vectors ? vo.as<T>() + i * n * n : s.get<T>(static_cast<std::size_t>(n * n));
+            LapackSlot<T> vs(vectors ? vo.as<T>() + i * n * n : s.get<T>(static_cast<std::size_t>(n * n)), n * n, s,
+                             Scratch::kAlign0);
+            T* av = vs.get();
             // Lower triangles only (API.md §0.2), checked as read (DESIGN.md §2.12).
             if (!pack_triangle(a.dtype(), a.data() + off[0], n, a.stride(-2), a.stride(-1), av, n, true, true, true))
                 return kNonFinite;
@@ -72,7 +75,8 @@ nb::object eigh_impl(nb::handle ao, nb::handle bo, bool vectors) {
             }
             if (n == 0) return 0;
             const char jobz = vectors ? 'V' : 'N';
-            double* w = W + i * n;
+            LapackSlot<double> ws(W + i * n, n, s, Scratch::kAlign1);
+            double* w = ws.get();
             if (!gen) return lapack::syevd(jobz, n, av, n, w, s) > 0 ? kNoConvergenceEig : 0;
             const lint info = lapack::sygv(vectors, jobz, n, av, n, bv, n, w, s);
             if (info > n) return kNotPD;  // b is not positive definite
@@ -119,8 +123,11 @@ nb::object svd(nb::handle xo, nb::handle mode_o) {
         const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             T* a = s.get<T>(static_cast<std::size_t>(lda * n));
             if (!pack(x.dtype(), x.data() + off[0], m, n, x.stride(-2), x.stride(-1), a, lda, true)) return kNonFinite;
-            T* u = uo.as<T>() + i * m * ucols;
-            T* vh = vo.as<T>() + i * vrows * n;
+            LapackSlot<T> us(uo.as<T>() + i * m * ucols, m * ucols, s, Scratch::kAlign0);
+            LapackSlot<T> vs(vo.as<T>() + i * vrows * n, vrows * n, s, Scratch::kAlign1);
+            LapackSlot<double> ss(so.as<double>() + i * k, k, s, Scratch::kAlign2);
+            T* u = us.get();
+            T* vh = vs.get();
             if (k == 0) {  // no singular values; complete U and Vh are identities
                 if (complete) {
                     set_identity(u, m);
@@ -129,7 +136,7 @@ nb::object svd(nb::handle xo, nb::handle mode_o) {
                 return 0;
             }
             // gesdd writes U and Vh straight into their output slots.
-            return lapack::gesdd(complete ? 'A' : 'S', m, n, a, lda, so.as<double>() + i * k, u, m, vh, vrows, s) > 0
+            return lapack::gesdd(complete ? 'A' : 'S', m, n, a, lda, ss.get(), u, m, vh, vrows, s) > 0
                        ? kNoConvergence
                        : 0;
         });
@@ -146,7 +153,8 @@ nb::object svdvals(nb::handle xo) {
     return with_type(computes_complex(x.dtype()), [&]<class T>(std::type_identity<T>) -> nb::object {
         Out so = alloc_vectors(b.shape(), k, DType::Float64);
         const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
-            return singular_values<T>(x, off[0], m, n, s, so.as<double>() + i * k);
+            LapackSlot<double> ss(so.as<double>() + i * k, k, s, Scratch::kAlign0);
+            return singular_values<T>(x, off[0], m, n, s, ss.get());
         });
         if (f) raise(b, f, "svdvals", "x");
         return to_sdnp(so);
@@ -196,7 +204,8 @@ nb::object pinv(nb::handle xo, nb::handle rtol_o) {
     return with_type(computes_complex(x.dtype()), [&]<class T>(std::type_identity<T>) -> nb::object {
         Out po = alloc_matrices(b.shape(), n, m, dtype_of<T>());
         const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
-            T* out = po.as<T>() + i * n * m;
+            LapackSlot<T> os(po.as<T>() + i * n * m, n * m, s, Scratch::kAlign0);
+            T* out = os.get();
             T* a = s.get<T>(static_cast<std::size_t>(lda * n));
             if (!pack(x.dtype(), x.data() + off[0], m, n, x.stride(-2), x.stride(-1), a, lda, true)) return kNonFinite;
             if (k == 0) {
@@ -248,18 +257,18 @@ CondOrd parse_cond_ord(nb::handle o) {
 // The `ord` norm of an n x n column-major buffer (fro, nuc, +-1, +-inf).
 template <class T>
 int square_norm(CondOrd ord, const T* a, lint n, Scratch& s, double& out) {
-    auto mag = [](T v) { return std::abs(v); };
+    // The same sums as matrix_norm (pairwise, logical C order), on the
+    // column-major buffer: element (i, j) at a[j * n + i].
+    const std::byte* base = reinterpret_cast<const std::byte*>(a);
+    constexpr std::int64_t sz = sizeof(T);
     if (ord == CondOrd::Fro) {
-        out = vnorm({Ord::Two, 2.0}, n * n * (std::is_same_v<T, cplx> ? 2 : 1), [&](auto&& f) {
-            for (lint t = 0; t < n * n; ++t) {
-                if constexpr (std::is_same_v<T, cplx>) {
-                    f(std::fabs(a[t].real()));
-                    f(std::fabs(a[t].imag()));
-                } else {
-                    f(std::fabs(a[t]));
-                }
-            }
-        });
+        if constexpr (std::is_same_v<T, cplx>) {
+            auto w = make_walk<double>(base, {n, n, 2}, {sz, n * sz, 8}, [](double v) { return std::fabs(v); });
+            out = vnorm({Ord::Two, 2.0}, w.count(), w);
+        } else {
+            auto w = make_walk<double>(base, {n, n}, {sz, n * sz}, [](double v) { return std::fabs(v); });
+            out = vnorm({Ord::Two, 2.0}, w.count(), w);
+        }
         return 0;
     }
     if (ord == CondOrd::Nuc) {
@@ -267,16 +276,19 @@ int square_norm(CondOrd ord, const T* a, lint n, Scratch& s, double& out) {
         std::copy(a, a + n * n, c);
         double* sv = s.get<double>(static_cast<std::size_t>(n), 1);
         if (lapack::gesvd_values(n, n, c, n, sv, s) > 0) return kNoConvergence;
-        out = 0;
-        for (lint j = 0; j < n; ++j) out += sv[j];
+        out = pairwise_sum<double>(n, [&](std::int64_t b0, std::int64_t len, double* o) {
+            std::copy(sv + b0, sv + b0 + len, o);
+        });
         return 0;
     }
     const bool cols = ord == CondOrd::One || ord == CondOrd::NegOne;
     const bool max = ord == CondOrd::One || ord == CondOrd::Inf;
     double best = max ? 0.0 : kInf;
     for (lint l = 0; l < n; ++l) {
-        double sum = 0;
-        for (lint t = 0; t < n; ++t) sum += mag(cols ? a[l * n + t] : a[t * n + l]);
+        // column l: (0..n-1, l), step 1 element; row l: (l, 0..n-1), step n elements
+        auto w = make_walk<T>(base + (cols ? l * n * sz : l * sz), {n}, {cols ? sz : n * sz},
+                              [](T v) { return magnitude(v); });
+        const double sum = vnorm({Ord::One, 1.0}, n, w);
         best = max ? std::max(best, sum) : std::min(best, sum);
     }
     out = best;

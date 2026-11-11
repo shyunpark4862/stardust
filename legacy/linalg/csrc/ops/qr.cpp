@@ -68,7 +68,8 @@ nb::object qr_impl(nb::handle xo, nb::handle mode_o, bool pivoted) {
             for (lint j = 0; j < n; ++j)
                 for (lint r = 0; r < rrows; ++r) ri[j * rrows + r] = (r <= j && r < k) ? a[j * lda + r] : T(0);
             // Q: the reflectors go to Q's own slot, and orgqr turns them into Q there.
-            T* qi = Q + i * m * qcols;
+            LapackSlot<T> qs(Q + i * m * qcols, m * qcols, s, Scratch::kAlign0);
+            T* qi = qs.get();
             if (m > 0 && qcols > 0) {
                 for (lint j = 0; j < k; ++j) std::copy(a + j * lda, a + j * lda + m, qi + j * m);
                 lapack::orgqr(m, qcols, k, qi, m, tau, s);
@@ -123,7 +124,8 @@ nb::object lstsq(nb::handle ao, nb::handle bo, nb::handle rtol_o) {
                 // definition (API.md §0.4: singular values <= rtol * max are zero)
                 // rtol >= 1 zeroes all of them: rank 0 and solution 0 (DESIGN.md §2.13).
                 const bool all_zero = rcond >= 1.0;
-                if (lapack::gelsd(m, n, nrhs, A, lda, B, ldb, S + i * mn, all_zero ? 0.5 : rcond, rank, s) > 0)
+                LapackSlot<double> sv(S + i * mn, mn, s, Scratch::kAlign0);
+                if (lapack::gelsd(m, n, nrhs, A, lda, B, ldb, sv.get(), all_zero ? 0.5 : rcond, rank, s) > 0)
                     return kNoConvergence;
                 if (all_zero) {
                     rank = 0;

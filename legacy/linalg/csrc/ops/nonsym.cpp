@@ -41,8 +41,8 @@ int eig_one(const Input& x, std::int64_t off, lint n, bool vectors, Scratch& s, 
         cplx dummy{};
         if (lapack::geev(jobvr, n, a, n, w, vectors ? v : &dummy, vectors ? n : 1, s) > 0) return kNoConvergenceEig;
     } else {
-        double* wr = s.get<double>(static_cast<std::size_t>(2 * n), 1);
-        double* wi = wr + n;
+        double* wr = s.get<double>(2 * pad2(n), 1);
+        double* wi = wr + pad2(n);  // 16-byte aligned too (common.hpp)
         double dummy = 0;
         double* vr = vectors ? s.get<double>(static_cast<std::size_t>(n * n), 2) : &dummy;
         if (lapack::geev(jobvr, n, a, n, wr, wi, vr, vectors ? n : 1, s) > 0) return kNoConvergenceEig;
@@ -85,9 +85,9 @@ nb::object eig_impl(nb::handle xo, bool vectors) {
                                  : eig_one<double>(x, off[0], n, vectors, s, w, v);
         if (code) return code;
         // Sorted by (real, imag), stably -- stardust-numpy's complex order (S4).
-        std::vector<lint> idx(static_cast<std::size_t>(n));
-        std::iota(idx.begin(), idx.end(), lint(0));
-        std::stable_sort(idx.begin(), idx.end(), [&](lint p, lint q) {
+        lint* idx = s.get_ints(static_cast<std::size_t>(n));  // scratch, not a vector per matrix (M8)
+        std::iota(idx, idx + n, lint(0));
+        std::stable_sort(idx, idx + n, [&](lint p, lint q) {
             return w[p].real() < w[q].real() || (w[p].real() == w[q].real() && w[p].imag() < w[q].imag());
         });
         cplx* wout = wo.as<cplx>() + i * n;
@@ -117,10 +117,12 @@ nb::object schur(nb::handle xo) {
         Out to = alloc_matrices(b.shape(), n, n, dtype_of<T>());
         Out zo = alloc_matrices(b.shape(), n, n, dtype_of<T>());
         const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
-            T* t = to.as<T>() + i * n * n;  // packed into T's slot; gees overwrites it with T
+            LapackSlot<T> ts(to.as<T>() + i * n * n, n * n, s, Scratch::kAlign0);
+            LapackSlot<T> zs(zo.as<T>() + i * n * n, n * n, s, Scratch::kAlign1);
+            T* t = ts.get();  // packed into T's slot; gees overwrites it with T
             if (!pack(x.dtype(), x.data() + off[0], n, n, x.stride(-2), x.stride(-1), t, n, true)) return kNonFinite;
             if (n == 0) return 0;
-            return lapack::gees(n, t, n, zo.as<T>() + i * n * n, n, s) > 0 ? kNoConvergenceEig : 0;
+            return lapack::gees(n, t, n, zs.get(), n, s) > 0 ? kNoConvergenceEig : 0;
         });
         if (f) raise(b, f, "schur", "x");
         return make_result(Result::Schur, {to_sdnp(to), to_sdnp(zo)});
@@ -146,7 +148,8 @@ nb::object hessenberg(nb::handle xo) {
             for (lint j = 0; j < n; ++j)
                 for (lint r = 0; r < n; ++r) h[j * n + r] = r <= j + 1 ? a[j * n + r] : T(0);
             // Q: the reflectors go to Q's slot, and orghr turns them into Q there.
-            T* q = qo.as<T>() + i * n * n;
+            LapackSlot<T> qs(qo.as<T>() + i * n * n, n * n, s, Scratch::kAlign0);
+            T* q = qs.get();
             std::copy(a, a + n * n, q);
             lapack::orghr(n, q, n, tau, s);
             return 0;

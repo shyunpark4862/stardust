@@ -86,20 +86,32 @@ lint gbsv(lint n, lint kl, lint ku, lint nrhs, T* ab, lint ldab, lint* ipiv, T* 
 }
 
 // ---- Routines with a workspace. Each asks LAPACK for the size (lwork = -1)
-// and takes the memory from the scratch slots reserved for it; M1-M7 query on
-// every call (ARCHITECTURE.md §3.4), M8 measures doing it once per batch.
+// once per batch (Scratch::sizes, M8) and takes the memory from the scratch
+// slots reserved for it.
 
 inline lint work_size(double q) { return std::max<lint>(1, static_cast<lint>(q)); }
 inline lint work_size(cplx q) { return std::max<lint>(1, static_cast<lint>(q.real())); }
 
+// Routine ids for Scratch::sizes keys.
+enum WorkId : lint {
+    kGeqrf = 1, kGeqp3, kOrgqr, kGelsd, kSyevd, kSygvd, kSygv, kGesdd, kGesvd, kGeev, kGees, kGehrd, kOrghr,
+    kSytrf, kTrsyl3
+};
+
+template <class T>
+constexpr lint esize() { return static_cast<lint>(sizeof(T)); }
+
 // QR: A = Q R with Householder reflectors below R's diagonal and their scalars in tau (min(m, n)).
 template <class T>
 lint geqrf(lint m, lint n, T* a, lint lda, T* tau, Scratch& s) {
-    lint info = 0, lwork = -1;
-    T q{};
-    if constexpr (std::is_same_v<T, double>) dgeqrf_(&m, &n, a, &lda, tau, &q, &lwork, &info);
-    else zgeqrf_(&m, &n, a, &lda, tau, &q, &lwork, &info);
-    lwork = work_size(q);
+    lint info = 0;
+    lint lwork = s.sizes({kGeqrf, m, n, lda, 0, esize<T>()}, [&] {
+        lint q_lwork = -1;
+        T q{};
+        if constexpr (std::is_same_v<T, double>) dgeqrf_(&m, &n, a, &lda, tau, &q, &q_lwork, &info);
+        else zgeqrf_(&m, &n, a, &lda, tau, &q, &q_lwork, &info);
+        return WorkSizes{work_size(q)};
+    }).work;
     T* w = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
     if constexpr (std::is_same_v<T, double>) dgeqrf_(&m, &n, a, &lda, tau, w, &lwork, &info);
     else zgeqrf_(&m, &n, a, &lda, tau, w, &lwork, &info);
@@ -109,31 +121,33 @@ lint geqrf(lint m, lint n, T* a, lint lda, T* tau, Scratch& s) {
 // QR with column pivoting: A P = Q R; jpvt (n, 1-based) must be 0 on entry (all columns free).
 template <class T>
 lint geqp3(lint m, lint n, T* a, lint lda, lint* jpvt, T* tau, Scratch& s) {
-    lint info = 0, lwork = -1;
-    T q{};
-    if constexpr (std::is_same_v<T, double>) {
-        dgeqp3_(&m, &n, a, &lda, jpvt, tau, &q, &lwork, &info);
-        lwork = work_size(q);
-        T* w = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
-        dgeqp3_(&m, &n, a, &lda, jpvt, tau, w, &lwork, &info);
-    } else {
-        double* rw = s.get<double>(static_cast<std::size_t>(2 * n), Scratch::kRWork);
-        zgeqp3_(&m, &n, a, &lda, jpvt, tau, &q, &lwork, rw, &info);
-        lwork = work_size(q);
-        T* w = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
-        zgeqp3_(&m, &n, a, &lda, jpvt, tau, w, &lwork, rw, &info);
-    }
+    lint info = 0;
+    double* rw = nullptr;
+    if constexpr (!std::is_same_v<T, double>) rw = s.get<double>(static_cast<std::size_t>(2 * n), Scratch::kRWork);
+    lint lwork = s.sizes({kGeqp3, m, n, lda, 0, esize<T>()}, [&] {
+        lint q_lwork = -1;
+        T q{};
+        if constexpr (std::is_same_v<T, double>) dgeqp3_(&m, &n, a, &lda, jpvt, tau, &q, &q_lwork, &info);
+        else zgeqp3_(&m, &n, a, &lda, jpvt, tau, &q, &q_lwork, rw, &info);
+        return WorkSizes{work_size(q)};
+    }).work;
+    T* w = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
+    if constexpr (std::is_same_v<T, double>) dgeqp3_(&m, &n, a, &lda, jpvt, tau, w, &lwork, &info);
+    else zgeqp3_(&m, &n, a, &lda, jpvt, tau, w, &lwork, rw, &info);
     return checked(info, "geqp3");
 }
 
 // Forms the m x n matrix Q with orthonormal columns from k reflectors (m >= n >= k), in place.
 template <class T>
 lint orgqr(lint m, lint n, lint k, T* a, lint lda, const T* tau, Scratch& s) {
-    lint info = 0, lwork = -1;
-    T q{};
-    if constexpr (std::is_same_v<T, double>) dorgqr_(&m, &n, &k, a, &lda, tau, &q, &lwork, &info);
-    else zungqr_(&m, &n, &k, a, &lda, tau, &q, &lwork, &info);
-    lwork = work_size(q);
+    lint info = 0;
+    lint lwork = s.sizes({kOrgqr, m, n, k, lda, esize<T>()}, [&] {
+        lint q_lwork = -1;
+        T q{};
+        if constexpr (std::is_same_v<T, double>) dorgqr_(&m, &n, &k, a, &lda, tau, &q, &q_lwork, &info);
+        else zungqr_(&m, &n, &k, a, &lda, tau, &q, &q_lwork, &info);
+        return WorkSizes{work_size(q)};
+    }).work;
     T* w = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
     if constexpr (std::is_same_v<T, double>) dorgqr_(&m, &n, &k, a, &lda, tau, w, &lwork, &info);
     else zungqr_(&m, &n, &k, a, &lda, tau, w, &lwork, &info);
@@ -146,21 +160,23 @@ lint orgqr(lint m, lint n, lint k, T* a, lint lda, const T* tau, Scratch& s) {
 template <class T>
 lint gelsd(lint m, lint n, lint nrhs, T* a, lint lda, T* b, lint ldb, double* sv, double rcond, lint& rank,
            Scratch& s) {
-    lint info = 0, lwork = -1, iq = 0;
-    T q{};
+    lint info = 0;
+    const WorkSizes z = s.sizes({kGelsd, m, n, nrhs, ldb, esize<T>()}, [&] {
+        lint q_lwork = -1, iq = 0;
+        T q{};
+        double rq = 0;
+        if constexpr (std::is_same_v<T, double>)
+            dgelsd_(&m, &n, &nrhs, a, &lda, b, &ldb, sv, &rcond, &rank, &q, &q_lwork, &iq, &info);
+        else zgelsd_(&m, &n, &nrhs, a, &lda, b, &ldb, sv, &rcond, &rank, &q, &q_lwork, &rq, &iq, &info);
+        return WorkSizes{work_size(q), work_size(rq), std::max<lint>(1, iq)};
+    });
+    lint lwork = z.work;
+    T* w = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
+    lint* iw = s.get_ints(static_cast<std::size_t>(z.iwork), Scratch::kIWork);
     if constexpr (std::is_same_v<T, double>) {
-        dgelsd_(&m, &n, &nrhs, a, &lda, b, &ldb, sv, &rcond, &rank, &q, &lwork, &iq, &info);
-        lwork = work_size(q);
-        T* w = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
-        lint* iw = s.get_ints(static_cast<std::size_t>(std::max<lint>(1, iq)), Scratch::kIWork);
         dgelsd_(&m, &n, &nrhs, a, &lda, b, &ldb, sv, &rcond, &rank, w, &lwork, iw, &info);
     } else {
-        double rq = 0;
-        zgelsd_(&m, &n, &nrhs, a, &lda, b, &ldb, sv, &rcond, &rank, &q, &lwork, &rq, &iq, &info);
-        lwork = work_size(q);
-        T* w = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
-        double* rw = s.get<double>(static_cast<std::size_t>(work_size(rq)), Scratch::kRWork);
-        lint* iw = s.get_ints(static_cast<std::size_t>(std::max<lint>(1, iq)), Scratch::kIWork);
+        double* rw = s.get<double>(static_cast<std::size_t>(z.rwork), Scratch::kRWork);
         zgelsd_(&m, &n, &nrhs, a, &lda, b, &ldb, sv, &rcond, &rank, w, &lwork, rw, iw, &info);
     }
     return checked(info, "gelsd");
@@ -170,26 +186,24 @@ lint gelsd(lint m, lint n, lint nrhs, T* a, lint lda, T* b, lint ldb, double* sv
 // jobz 'V': eigenvectors overwrite a. w (n) ascending. info > 0: no convergence.
 template <class T>
 lint syevd(char jobz, lint n, T* a, lint lda, double* w, Scratch& s) {
-    lint info = 0, lwork = -1, liwork = -1, iq = 0;
-    T q{};
+    lint info = 0;
     const char uplo = 'L';
+    const WorkSizes z = s.sizes({kSyevd, n, lda, jobz, 0, esize<T>()}, [&] {
+        lint q_lwork = -1, q_liwork = -1, q_lrwork = -1, iq = 0;
+        T q{};
+        double rq = 0;
+        if constexpr (std::is_same_v<T, double>)
+            dsyevd_(&jobz, &uplo, &n, a, &lda, w, &q, &q_lwork, &iq, &q_liwork, &info);
+        else zheevd_(&jobz, &uplo, &n, a, &lda, w, &q, &q_lwork, &rq, &q_lrwork, &iq, &q_liwork, &info);
+        return WorkSizes{work_size(q), work_size(rq), std::max<lint>(1, iq)};
+    });
+    lint lwork = z.work, lrwork = z.rwork, liwork = z.iwork;
+    T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
+    lint* iw = s.get_ints(static_cast<std::size_t>(liwork), Scratch::kIWork);
     if constexpr (std::is_same_v<T, double>) {
-        dsyevd_(&jobz, &uplo, &n, a, &lda, w, &q, &lwork, &iq, &liwork, &info);
-        lwork = work_size(q);
-        liwork = std::max<lint>(1, iq);
-        T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
-        lint* iw = s.get_ints(static_cast<std::size_t>(liwork), Scratch::kIWork);
         dsyevd_(&jobz, &uplo, &n, a, &lda, w, wk, &lwork, iw, &liwork, &info);
     } else {
-        double rq = 0;
-        lint lrwork = -1;
-        zheevd_(&jobz, &uplo, &n, a, &lda, w, &q, &lwork, &rq, &lrwork, &iq, &liwork, &info);
-        lwork = work_size(q);
-        lrwork = work_size(rq);
-        liwork = std::max<lint>(1, iq);
-        T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
         double* rw = s.get<double>(static_cast<std::size_t>(lrwork), Scratch::kRWork);
-        lint* iw = s.get_ints(static_cast<std::size_t>(liwork), Scratch::kIWork);
         zheevd_(&jobz, &uplo, &n, a, &lda, w, wk, &lwork, rw, &lrwork, iw, &liwork, &info);
     }
     return checked(info, "syevd");
@@ -200,42 +214,42 @@ lint syevd(char jobz, lint n, T* a, lint lda, double* w, Scratch& s) {
 // info in 1..n: no convergence; info > n: b is not positive definite.
 template <class T>
 lint sygv(bool divide, char jobz, lint n, T* a, lint lda, T* b, lint ldb, double* w, Scratch& s) {
-    lint info = 0, lwork = -1, itype = 1;
-    T q{};
+    lint info = 0, itype = 1;
     const char uplo = 'L';
+    double* hegv_rw = nullptr;  // zhegv's fixed real workspace
+    if constexpr (!std::is_same_v<T, double>)
+        if (!divide) hegv_rw = s.get<double>(static_cast<std::size_t>(std::max<lint>(1, 3 * n - 2)), Scratch::kRWork);
+    const WorkSizes z = s.sizes({divide ? kSygvd : kSygv, n, lda, ldb, jobz, esize<T>()}, [&] {
+        lint q_lwork = -1, q_liwork = -1, q_lrwork = -1, iq = 0;
+        T q{};
+        double rq = 0;
+        if constexpr (std::is_same_v<T, double>) {
+            if (divide) dsygvd_(&itype, &jobz, &uplo, &n, a, &lda, b, &ldb, w, &q, &q_lwork, &iq, &q_liwork, &info);
+            else dsygv_(&itype, &jobz, &uplo, &n, a, &lda, b, &ldb, w, &q, &q_lwork, &info);
+        } else {
+            if (divide)
+                zhegvd_(&itype, &jobz, &uplo, &n, a, &lda, b, &ldb, w, &q, &q_lwork, &rq, &q_lrwork, &iq, &q_liwork,
+                        &info);
+            else zhegv_(&itype, &jobz, &uplo, &n, a, &lda, b, &ldb, w, &q, &q_lwork, hegv_rw, &info);
+        }
+        return WorkSizes{work_size(q), work_size(rq), std::max<lint>(1, iq)};
+    });
+    lint lwork = z.work, lrwork = z.rwork, liwork = z.iwork;
+    T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
     if constexpr (std::is_same_v<T, double>) {
         if (divide) {
-            lint liwork = -1, iq = 0;
-            dsygvd_(&itype, &jobz, &uplo, &n, a, &lda, b, &ldb, w, &q, &lwork, &iq, &liwork, &info);
-            lwork = work_size(q);
-            liwork = std::max<lint>(1, iq);
-            T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
             lint* iw = s.get_ints(static_cast<std::size_t>(liwork), Scratch::kIWork);
             dsygvd_(&itype, &jobz, &uplo, &n, a, &lda, b, &ldb, w, wk, &lwork, iw, &liwork, &info);
         } else {
-            dsygv_(&itype, &jobz, &uplo, &n, a, &lda, b, &ldb, w, &q, &lwork, &info);
-            lwork = work_size(q);
-            T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
             dsygv_(&itype, &jobz, &uplo, &n, a, &lda, b, &ldb, w, wk, &lwork, &info);
         }
     } else {
         if (divide) {
-            lint liwork = -1, iq = 0, lrwork = -1;
-            double rq = 0;
-            zhegvd_(&itype, &jobz, &uplo, &n, a, &lda, b, &ldb, w, &q, &lwork, &rq, &lrwork, &iq, &liwork, &info);
-            lwork = work_size(q);
-            lrwork = work_size(rq);
-            liwork = std::max<lint>(1, iq);
-            T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
             double* rw = s.get<double>(static_cast<std::size_t>(lrwork), Scratch::kRWork);
             lint* iw = s.get_ints(static_cast<std::size_t>(liwork), Scratch::kIWork);
             zhegvd_(&itype, &jobz, &uplo, &n, a, &lda, b, &ldb, w, wk, &lwork, rw, &lrwork, iw, &liwork, &info);
         } else {
-            double* rw = s.get<double>(static_cast<std::size_t>(std::max<lint>(1, 3 * n - 2)), Scratch::kRWork);
-            zhegv_(&itype, &jobz, &uplo, &n, a, &lda, b, &ldb, w, &q, &lwork, rw, &info);
-            lwork = work_size(q);
-            T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
-            zhegv_(&itype, &jobz, &uplo, &n, a, &lda, b, &ldb, w, wk, &lwork, rw, &info);
+            zhegv_(&itype, &jobz, &uplo, &n, a, &lda, b, &ldb, w, wk, &lwork, hegv_rw, &info);
         }
     }
     return checked(info, "sygv");
@@ -245,46 +259,51 @@ lint sygv(bool divide, char jobz, lint n, T* a, lint lda, T* b, lint ldb, double
 // info > 0: no convergence.
 template <class T>
 lint gesdd(char jobz, lint m, lint n, T* a, lint lda, double* sv, T* u, lint ldu, T* vt, lint ldvt, Scratch& s) {
-    lint info = 0, lwork = -1;
+    lint info = 0;
     const lint mn = std::min(m, n), mx = std::max(m, n);
     lint* iw = s.get_ints(static_cast<std::size_t>(std::max<lint>(1, 8 * mn)), Scratch::kIWork);
-    T q{};
-    if constexpr (std::is_same_v<T, double>) {
-        dgesdd_(&jobz, &m, &n, a, &lda, sv, u, &ldu, vt, &ldvt, &q, &lwork, iw, &info);
-        lwork = work_size(q);
-        T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
-        dgesdd_(&jobz, &m, &n, a, &lda, sv, u, &ldu, vt, &ldvt, wk, &lwork, iw, &info);
-    } else {
+    double* rw = nullptr;
+    if constexpr (!std::is_same_v<T, double>) {
         // zgesdd does not report its real workspace; LAPACK 3.7+'s documented size.
         const lint lrwork = jobz == 'N' ? std::max<lint>(1, 7 * mn)
                                         : std::max<lint>(1, mn * std::max(5 * mn + 7, 2 * mx + 2 * mn + 1));
-        double* rw = s.get<double>(static_cast<std::size_t>(lrwork), Scratch::kRWork);
-        zgesdd_(&jobz, &m, &n, a, &lda, sv, u, &ldu, vt, &ldvt, &q, &lwork, rw, iw, &info);
-        lwork = work_size(q);
-        T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
-        zgesdd_(&jobz, &m, &n, a, &lda, sv, u, &ldu, vt, &ldvt, wk, &lwork, rw, iw, &info);
+        rw = s.get<double>(static_cast<std::size_t>(lrwork), Scratch::kRWork);
     }
+    lint lwork = s.sizes({kGesdd, m, n, lda, jobz, esize<T>()}, [&] {
+        lint q_lwork = -1;
+        T q{};
+        if constexpr (std::is_same_v<T, double>)
+            dgesdd_(&jobz, &m, &n, a, &lda, sv, u, &ldu, vt, &ldvt, &q, &q_lwork, iw, &info);
+        else zgesdd_(&jobz, &m, &n, a, &lda, sv, u, &ldu, vt, &ldvt, &q, &q_lwork, rw, iw, &info);
+        return WorkSizes{work_size(q)};
+    }).work;
+    T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
+    if constexpr (std::is_same_v<T, double>) dgesdd_(&jobz, &m, &n, a, &lda, sv, u, &ldu, vt, &ldvt, wk, &lwork, iw, &info);
+    else zgesdd_(&jobz, &m, &n, a, &lda, sv, u, &ldu, vt, &ldvt, wk, &lwork, rw, iw, &info);
     return checked(info, "gesdd");
 }
 
 // Singular values only, by QR iteration (gesvd with jobu = jobvt = 'N'). a is destroyed.
 template <class T>
 lint gesvd_values(lint m, lint n, T* a, lint lda, double* sv, Scratch& s) {
-    lint info = 0, lwork = -1, one = 1;
+    lint info = 0, one = 1;
     const char no = 'N';
-    T q{}, dummy{};
-    if constexpr (std::is_same_v<T, double>) {
-        dgesvd_(&no, &no, &m, &n, a, &lda, sv, &dummy, &one, &dummy, &one, &q, &lwork, &info);
-        lwork = work_size(q);
-        T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
+    T dummy{};
+    double* rw = nullptr;
+    if constexpr (!std::is_same_v<T, double>)
+        rw = s.get<double>(static_cast<std::size_t>(std::max<lint>(1, 5 * std::min(m, n))), Scratch::kRWork);
+    lint lwork = s.sizes({kGesvd, m, n, lda, 0, esize<T>()}, [&] {
+        lint q_lwork = -1;
+        T q{};
+        if constexpr (std::is_same_v<T, double>)
+            dgesvd_(&no, &no, &m, &n, a, &lda, sv, &dummy, &one, &dummy, &one, &q, &q_lwork, &info);
+        else zgesvd_(&no, &no, &m, &n, a, &lda, sv, &dummy, &one, &dummy, &one, &q, &q_lwork, rw, &info);
+        return WorkSizes{work_size(q)};
+    }).work;
+    T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
+    if constexpr (std::is_same_v<T, double>)
         dgesvd_(&no, &no, &m, &n, a, &lda, sv, &dummy, &one, &dummy, &one, wk, &lwork, &info);
-    } else {
-        double* rw = s.get<double>(static_cast<std::size_t>(std::max<lint>(1, 5 * std::min(m, n))), Scratch::kRWork);
-        zgesvd_(&no, &no, &m, &n, a, &lda, sv, &dummy, &one, &dummy, &one, &q, &lwork, rw, &info);
-        lwork = work_size(q);
-        T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
-        zgesvd_(&no, &no, &m, &n, a, &lda, sv, &dummy, &one, &dummy, &one, wk, &lwork, rw, &info);
-    }
+    else zgesvd_(&no, &no, &m, &n, a, &lda, sv, &dummy, &one, &dummy, &one, wk, &lwork, rw, &info);
     return checked(info, "gesvd");
 }
 
@@ -293,22 +312,30 @@ lint gesvd_values(lint m, lint n, T* a, lint lda, double* sv, Scratch& s) {
 // `wr` holds n values for double (and `wi` n more); for cplx `w` is cplx*.
 // info > 0: the QR algorithm did not converge.
 inline lint geev(char jobvr, lint n, double* a, lint lda, double* wr, double* wi, double* vr, lint ldvr, Scratch& s) {
-    lint info = 0, lwork = -1, one = 1;
+    lint info = 0, one = 1;
     const char no = 'N';
-    double q = 0, dummy = 0;
-    dgeev_(&no, &jobvr, &n, a, &lda, wr, wi, &dummy, &one, vr, &ldvr, &q, &lwork, &info);
-    lwork = work_size(q);
+    double dummy = 0;
+    lint lwork = s.sizes({kGeev, n, lda, ldvr, jobvr, esize<double>()}, [&] {
+        lint q_lwork = -1;
+        double q = 0;
+        dgeev_(&no, &jobvr, &n, a, &lda, wr, wi, &dummy, &one, vr, &ldvr, &q, &q_lwork, &info);
+        return WorkSizes{work_size(q)};
+    }).work;
     double* wk = s.get<double>(static_cast<std::size_t>(lwork), Scratch::kWork);
     dgeev_(&no, &jobvr, &n, a, &lda, wr, wi, &dummy, &one, vr, &ldvr, wk, &lwork, &info);
     return checked(info, "geev");
 }
 inline lint geev(char jobvr, lint n, cplx* a, lint lda, cplx* w, cplx* vr, lint ldvr, Scratch& s) {
-    lint info = 0, lwork = -1, one = 1;
+    lint info = 0, one = 1;
     const char no = 'N';
-    cplx q{}, dummy{};
+    cplx dummy{};
     double* rw = s.get<double>(static_cast<std::size_t>(std::max<lint>(1, 2 * n)), Scratch::kRWork);
-    zgeev_(&no, &jobvr, &n, a, &lda, w, &dummy, &one, vr, &ldvr, &q, &lwork, rw, &info);
-    lwork = work_size(q);
+    lint lwork = s.sizes({kGeev, n, lda, ldvr, jobvr, esize<cplx>()}, [&] {
+        lint q_lwork = -1;
+        cplx q{};
+        zgeev_(&no, &jobvr, &n, a, &lda, w, &dummy, &one, vr, &ldvr, &q, &q_lwork, rw, &info);
+        return WorkSizes{work_size(q)};
+    }).work;
     cplx* wk = s.get<cplx>(static_cast<std::size_t>(lwork), Scratch::kWork);
     zgeev_(&no, &jobvr, &n, a, &lda, w, &dummy, &one, vr, &ldvr, wk, &lwork, rw, &info);
     return checked(info, "geev");
@@ -318,22 +345,32 @@ inline lint geev(char jobvr, lint n, cplx* a, lint lda, cplx* w, cplx* vr, lint 
 // Real input gives the real (quasi-triangular) Schur form. info > 0: no convergence.
 template <class T>
 lint gees(lint n, T* a, lint lda, T* vs, lint ldvs, Scratch& s) {
-    lint info = 0, lwork = -1, sdim = 0;
+    lint info = 0, sdim = 0;
     const char jobvs = 'V', sort = 'N';
-    T q{};
     __LAPACK_bool* bwork = nullptr;  // not referenced when sort = 'N'
     if constexpr (std::is_same_v<T, double>) {
-        double* wr = s.get<double>(static_cast<std::size_t>(2 * n), Scratch::kRWork);
-        dgees_(&jobvs, &sort, nullptr, &n, a, &lda, &sdim, wr, wr + n, vs, &ldvs, &q, &lwork, bwork, &info);
-        lwork = work_size(q);
+        // wr and wi, each starting on a 16-byte boundary (common.hpp: aligned16)
+        const lint half = (n + 1) & ~lint(1);
+        double* wr = s.get<double>(static_cast<std::size_t>(2 * half), Scratch::kRWork);
+        double* wi = wr + half;
+        lint lwork = s.sizes({kGees, n, lda, ldvs, 0, esize<T>()}, [&] {
+            lint q_lwork = -1;
+            T q{};
+            dgees_(&jobvs, &sort, nullptr, &n, a, &lda, &sdim, wr, wi, vs, &ldvs, &q, &q_lwork, bwork, &info);
+            return WorkSizes{work_size(q)};
+        }).work;
         T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
-        dgees_(&jobvs, &sort, nullptr, &n, a, &lda, &sdim, wr, wr + n, vs, &ldvs, wk, &lwork, bwork, &info);
+        dgees_(&jobvs, &sort, nullptr, &n, a, &lda, &sdim, wr, wi, vs, &ldvs, wk, &lwork, bwork, &info);
     } else {
         // w (n complex) and rwork (n real) share the real-workspace slot
         double* rw = s.get<double>(static_cast<std::size_t>(3 * n), Scratch::kRWork);
         cplx* w = reinterpret_cast<cplx*>(rw);
-        zgees_(&jobvs, &sort, nullptr, &n, a, &lda, &sdim, w, vs, &ldvs, &q, &lwork, rw + 2 * n, bwork, &info);
-        lwork = work_size(q);
+        lint lwork = s.sizes({kGees, n, lda, ldvs, 0, esize<T>()}, [&] {
+            lint q_lwork = -1;
+            T q{};
+            zgees_(&jobvs, &sort, nullptr, &n, a, &lda, &sdim, w, vs, &ldvs, &q, &q_lwork, rw + 2 * n, bwork, &info);
+            return WorkSizes{work_size(q)};
+        }).work;
         T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
         zgees_(&jobvs, &sort, nullptr, &n, a, &lda, &sdim, w, vs, &ldvs, wk, &lwork, rw + 2 * n, bwork, &info);
     }
@@ -343,11 +380,14 @@ lint gees(lint n, T* a, lint lda, T* vs, lint ldvs, Scratch& s) {
 // Hessenberg reduction A = Q H Q^H (gehrd, ilo = 1, ihi = n): reflectors below the subdiagonal.
 template <class T>
 lint gehrd(lint n, T* a, lint lda, T* tau, Scratch& s) {
-    lint info = 0, lwork = -1, ilo = 1, ihi = n;
-    T q{};
-    if constexpr (std::is_same_v<T, double>) dgehrd_(&n, &ilo, &ihi, a, &lda, tau, &q, &lwork, &info);
-    else zgehrd_(&n, &ilo, &ihi, a, &lda, tau, &q, &lwork, &info);
-    lwork = work_size(q);
+    lint info = 0, ilo = 1, ihi = n;
+    lint lwork = s.sizes({kGehrd, n, lda, 0, 0, esize<T>()}, [&] {
+        lint q_lwork = -1;
+        T q{};
+        if constexpr (std::is_same_v<T, double>) dgehrd_(&n, &ilo, &ihi, a, &lda, tau, &q, &q_lwork, &info);
+        else zgehrd_(&n, &ilo, &ihi, a, &lda, tau, &q, &q_lwork, &info);
+        return WorkSizes{work_size(q)};
+    }).work;
     T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
     if constexpr (std::is_same_v<T, double>) dgehrd_(&n, &ilo, &ihi, a, &lda, tau, wk, &lwork, &info);
     else zgehrd_(&n, &ilo, &ihi, a, &lda, tau, wk, &lwork, &info);
@@ -357,11 +397,14 @@ lint gehrd(lint n, T* a, lint lda, T* tau, Scratch& s) {
 // Forms Q from gehrd's reflectors, in place (orghr/unghr).
 template <class T>
 lint orghr(lint n, T* a, lint lda, const T* tau, Scratch& s) {
-    lint info = 0, lwork = -1, ilo = 1, ihi = n;
-    T q{};
-    if constexpr (std::is_same_v<T, double>) dorghr_(&n, &ilo, &ihi, a, &lda, tau, &q, &lwork, &info);
-    else zunghr_(&n, &ilo, &ihi, a, &lda, tau, &q, &lwork, &info);
-    lwork = work_size(q);
+    lint info = 0, ilo = 1, ihi = n;
+    lint lwork = s.sizes({kOrghr, n, lda, 0, 0, esize<T>()}, [&] {
+        lint q_lwork = -1;
+        T q{};
+        if constexpr (std::is_same_v<T, double>) dorghr_(&n, &ilo, &ihi, a, &lda, tau, &q, &q_lwork, &info);
+        else zunghr_(&n, &ilo, &ihi, a, &lda, tau, &q, &q_lwork, &info);
+        return WorkSizes{work_size(q)};
+    }).work;
     T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
     if constexpr (std::is_same_v<T, double>) dorghr_(&n, &ilo, &ihi, a, &lda, tau, wk, &lwork, &info);
     else zunghr_(&n, &ilo, &ihi, a, &lda, tau, wk, &lwork, &info);
@@ -372,12 +415,15 @@ lint orghr(lint n, T* a, lint lda, const T* tau, Scratch& s) {
 // info > 0: D has an exact zero on its diagonal (the factorization is still complete).
 template <class T>
 lint sytrf(lint n, T* a, lint lda, lint* ipiv, Scratch& s) {
-    lint info = 0, lwork = -1;
+    lint info = 0;
     const char uplo = 'L';
-    T q{};
-    if constexpr (std::is_same_v<T, double>) dsytrf_(&uplo, &n, a, &lda, ipiv, &q, &lwork, &info);
-    else zhetrf_(&uplo, &n, a, &lda, ipiv, &q, &lwork, &info);
-    lwork = work_size(q);
+    lint lwork = s.sizes({kSytrf, n, lda, 0, 0, esize<T>()}, [&] {
+        lint q_lwork = -1;
+        T q{};
+        if constexpr (std::is_same_v<T, double>) dsytrf_(&uplo, &n, a, &lda, ipiv, &q, &q_lwork, &info);
+        else zhetrf_(&uplo, &n, a, &lda, ipiv, &q, &q_lwork, &info);
+        return WorkSizes{work_size(q)};
+    }).work;
     T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
     if constexpr (std::is_same_v<T, double>) dsytrf_(&uplo, &n, a, &lda, ipiv, wk, &lwork, &info);
     else zhetrf_(&uplo, &n, a, &lda, ipiv, wk, &lwork, &info);
@@ -391,26 +437,26 @@ lint sytrf(lint n, T* a, lint lda, lint* ipiv, Scratch& s) {
 // eigenvalues, and perturbed values were used.
 template <class T>
 lint trsyl3(lint m, lint n, const T* a, lint lda, const T* b, lint ldb, T* c, lint ldc, double& scale, Scratch& s) {
-    lint info = 0, isgn = 1, ldswork = -1;
+    lint info = 0, isgn = 1;
     const char no = 'N';
-    double sq[2] = {0, 0};
-    if constexpr (std::is_same_v<T, double>) {
-        lint liwork = -1, iq = 0;
-        dtrsyl3_(&no, &no, &isgn, &m, &n, a, &lda, b, &ldb, c, &ldc, &scale, &iq, &liwork, sq, &ldswork, &info);
+    // The query returns IWORK's length in iwork[0] and SWORK's rows and columns
+    // in swork[0], swork[1]; kept as (work: rows, rwork: cols, iwork: length).
+    const WorkSizes z = s.sizes({kTrsyl3, m, n, lda, ldb, esize<T>()}, [&] {
+        lint q_liwork = -1, q_ldswork = -1, iq = 0;
+        double sq[2] = {0, 0};
+        if constexpr (std::is_same_v<T, double>)
+            dtrsyl3_(&no, &no, &isgn, &m, &n, a, &lda, b, &ldb, c, &ldc, &scale, &iq, &q_liwork, sq, &q_ldswork, &info);
+        else ztrsyl3_(&no, &no, &isgn, &m, &n, a, &lda, b, &ldb, c, &ldc, &scale, sq, &q_ldswork, &info);
         checked(info, "trsyl3");
-        // the query returns IWORK's length in iwork[0] and SWORK's rows, cols in swork[0], swork[1]
-        liwork = std::max<lint>(1, iq);
-        ldswork = std::max<lint>(2, static_cast<lint>(sq[0]));
-        const lint cols = std::max<lint>(1, static_cast<lint>(sq[1]));
+        return WorkSizes{std::max<lint>(2, static_cast<lint>(sq[0])), std::max<lint>(1, static_cast<lint>(sq[1])),
+                         std::max<lint>(1, iq)};
+    });
+    lint ldswork = z.work, liwork = z.iwork;
+    double* sw = s.get<double>(static_cast<std::size_t>(z.work * z.rwork), Scratch::kRWork);
+    if constexpr (std::is_same_v<T, double>) {
         lint* iw = s.get_ints(static_cast<std::size_t>(liwork), Scratch::kIWork);
-        double* sw = s.get<double>(static_cast<std::size_t>(ldswork * cols), Scratch::kRWork);
         dtrsyl3_(&no, &no, &isgn, &m, &n, a, &lda, b, &ldb, c, &ldc, &scale, iw, &liwork, sw, &ldswork, &info);
     } else {
-        ztrsyl3_(&no, &no, &isgn, &m, &n, a, &lda, b, &ldb, c, &ldc, &scale, sq, &ldswork, &info);
-        checked(info, "trsyl3");
-        ldswork = std::max<lint>(2, static_cast<lint>(sq[0]));
-        const lint cols = std::max<lint>(1, static_cast<lint>(sq[1]));
-        double* sw = s.get<double>(static_cast<std::size_t>(ldswork * cols), Scratch::kRWork);
         ztrsyl3_(&no, &no, &isgn, &m, &n, a, &lda, b, &ldb, c, &ldc, &scale, sw, &ldswork, &info);
     }
     return checked(info, "trsyl3");

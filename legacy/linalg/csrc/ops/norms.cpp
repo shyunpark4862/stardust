@@ -9,12 +9,14 @@
 
 #include "core/args.hpp"
 #include "core/outblock.hpp"
+#include "core/pairwise.hpp"
 #include "ops/common.hpp"
 #include "ops/svals.hpp"
 #include "ops/vnorm.hpp"
 
 #include <nanobind/stl/string.h>
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <string>
@@ -38,58 +40,27 @@ VecOrd parse_vector_ord(nb::handle o, const char* func) {
     return {Ord::P, p};
 }
 
-// Calls f(magnitude) for every element of x within `axes` (byte offset `base`
-// into x's data). For the 2-norm of complex values, the real and imaginary
-// parts are fed separately: |z|^2 = re^2 + im^2, and no hypot is needed.
-template <class F>
-void each_magnitude(const Input& x, const std::byte* base, const std::vector<Py_ssize_t>& shape,
-                    const std::vector<Py_ssize_t>& strides, bool split_complex, F&& f) {
-    visit_storage(x.dtype(), [&]<class S>(std::type_identity<S>) {
-        auto one = [&](const std::byte* p) {
-            const S v = load<S>(p);
-            if constexpr (std::is_same_v<S, std::uint8_t>) f(v ? 1.0 : 0.0);
-            else if constexpr (std::is_same_v<S, std::int64_t>) f(std::fabs(static_cast<double>(v)));
-            else if constexpr (std::is_same_v<S, double>) f(std::fabs(v));
-            else if (split_complex) {
-                f(std::fabs(v.real()));
-                f(std::fabs(v.imag()));
-            } else {
-                f(std::abs(v));
-            }
-        };
-        // Odometer over the axes; the last one is the inner loop.
-        const std::size_t nd = shape.size();
-        if (nd == 0) {
-            one(base);
-            return;
-        }
-        for (Py_ssize_t s : shape)
-            if (s == 0) return;
-        std::vector<Py_ssize_t> idx(nd, 0);
-        const Py_ssize_t n_last = shape[nd - 1], s_last = strides[nd - 1];
-        const std::byte* p = base;
-        while (true) {
-            for (Py_ssize_t i = 0; i < n_last; ++i) one(p + i * s_last);
-            std::size_t d = nd - 1;
-            while (d > 0) {
-                --d;
-                if (++idx[d] < shape[d]) {
-                    p += strides[d];
-                    goto next;
-                }
-                p -= strides[d] * (shape[d] - 1);
-                idx[d] = 0;
-            }
-            return;
-        next:;
-        }
+// The norm of the region of x at `base` with the given shape and strides
+// (bytes), walked in logical C order. For the 2-norm of complex values the
+// real and imaginary parts are separate terms (|z|^2 = re^2 + im^2, no hypot):
+// an extra innermost axis of length 2 over the two doubles.
+double region_norm(VecOrd ord, const Input& x, const std::byte* base, int nd, const std::int64_t* shape,
+                   const std::int64_t* strides) {
+    if (ord.kind == Ord::Two && x.dtype() == DType::Complex128) {
+        std::int64_t sh[kMaxWalkDims], st[kMaxWalkDims];
+        std::copy(shape, shape + nd, sh);
+        std::copy(strides, strides + nd, st);
+        sh[nd] = 2;
+        st[nd] = sizeof(double);
+        auto mag = [](double v) { return std::fabs(v); };  // a lambda type, so it inlines
+        Walk<double, decltype(mag)> w(base, nd + 1, sh, st, mag);
+        return vnorm(ord, w.count(), w);
+    }
+    return visit_storage(x.dtype(), [&]<class S>(std::type_identity<S>) {
+        auto mag = [](S v) { return magnitude(v); };
+        Walk<S, decltype(mag)> w(base, nd, shape, strides, mag);
+        return vnorm(ord, w.count(), w);
     });
-}
-
-std::int64_t product(const std::vector<Py_ssize_t>& s) {
-    std::int64_t n = 1;
-    for (Py_ssize_t v : s) n *= v;
-    return n;
 }
 
 // ---------------------------------------------------------- vector_norm --
@@ -113,10 +84,9 @@ nb::object vector_norm(nb::handle xo, nb::handle axis_o, bool keepdims, nb::hand
             out_shape.push_back(x.shape(d));
         }
     }
-    const bool split = ord.kind == Ord::Two && x.dtype() == DType::Complex128;
-    const std::int64_t count = product(red_shape) * (split ? 2 : 1);
+    const std::vector<std::int64_t> rsh(red_shape.begin(), red_shape.end()), rst(red_strides.begin(), red_strides.end());
     auto norm_at = [&](std::int64_t off) {
-        return vnorm(ord, count, [&](auto&& f) { each_magnitude(x, x.data() + off, red_shape, red_strides, split, f); });
+        return region_norm(ord, x, x.data() + off, static_cast<int>(rsh.size()), rsh.data(), rst.data());
     };
     if (out_shape.empty()) return py_scalar(norm_at(0));
     Batch b({{kept_shape, kept_strides}}, "vector_norm");
@@ -166,7 +136,9 @@ nb::object matrix_norm_svd(const Input& x, MatOrd ord, const std::vector<std::in
                 if (ord == MatOrd::Two) v = sv[0];
                 else if (ord == MatOrd::NegTwo) v = sv[k - 1];
                 else
-                    for (lint j = 0; j < k; ++j) v += sv[j];
+                    v = pairwise_sum<double>(k, [&](std::int64_t b0, std::int64_t len, double* out) {
+                        std::copy(sv + b0, sv + b0 + len, out);
+                    });
             }
             res[i] = v;
             return 0;
@@ -191,22 +163,27 @@ nb::object matrix_norm(nb::handle xo, bool keepdims, nb::handle ord_o) {
     auto norm_at = [&](std::int64_t off) -> double {
         const std::byte* base = x.data() + off;
         if (ord == MatOrd::Fro) {
-            const bool split = x.dtype() == DType::Complex128;
-            const std::vector<Py_ssize_t> shape{m, n}, strides{rs, cs};
-            return vnorm({Ord::Two, 2.0}, m * n * (split ? 2 : 1),
-                         [&](auto&& f) { each_magnitude(x, base, shape, strides, split, f); });
+            const std::int64_t sh[2] = {m, n}, st[2] = {rs, cs};
+            return region_norm({Ord::Two, 2.0}, x, base, 2, sh, st);
         }
+        // One norm: pairwise sums of magnitudes along the lines (columns for 1,
+        // rows for inf), then their max/min, NaN propagating.
         const bool cols = ord == MatOrd::One || ord == MatOrd::NegOne;
         const std::int64_t lines = cols ? n : m, len = cols ? m : n;
         const std::int64_t line_step = cols ? cs : rs, elem_step = cols ? rs : cs;
-        const std::vector<Py_ssize_t> shape{len}, strides{elem_step};
-        std::vector<double> sums(static_cast<std::size_t>(lines));
-        for (std::int64_t l = 0; l < lines; ++l)
-            sums[l] = vnorm({Ord::One, 1.0}, len,
-                            [&](auto&& f) { each_magnitude(x, base + l * line_step, shape, strides, false, f); });
         const bool max = ord == MatOrd::One || ord == MatOrd::Inf;
-        return vnorm({max ? Ord::Inf : Ord::NegInf, 0.0}, lines, [&](auto&& f) {
-            for (double s : sums) f(s);
+        return visit_storage(x.dtype(), [&]<class S>(std::type_identity<S>) {  // one dispatch per matrix
+            double best = max ? 0.0 : kInf;
+            bool nan = false;
+            for (std::int64_t l = 0; l < lines; ++l) {
+                const std::byte* line = base + l * line_step;
+                const double sum = pairwise_sum<double>(len, [&](std::int64_t b0, std::int64_t k, double* out) {
+                    for (std::int64_t t = 0; t < k; ++t) out[t] = magnitude(load<S>(line + (b0 + t) * elem_step));
+                });
+                if (sum != sum) nan = true;
+                else best = max ? (sum > best ? sum : best) : (sum < best ? sum : best);
+            }
+            return lines == 0 ? 0.0 : (nan ? kNaN : best);
         });
     };
     if (out_shape.empty()) return py_scalar(norm_at(0));
