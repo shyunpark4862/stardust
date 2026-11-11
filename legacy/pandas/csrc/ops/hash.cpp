@@ -6,6 +6,7 @@
 #include <cstring>
 #include <numeric>
 #include <string_view>
+#include <string>
 #include <type_traits>
 
 namespace nb = nanobind;
@@ -14,113 +15,29 @@ namespace sd {
 
 namespace {
 
-// murmur3's 64-bit finalizer: every input bit affects every output bit, so
-// the low bits that pick a slot are well mixed even for keys 0, 1, 2, ...
-std::uint64_t fmix64(std::uint64_t k) {
-    k ^= k >> 33;
-    k *= 0xff51afd7ed558ccdULL;
-    k ^= k >> 33;
-    k *= 0xc4ceb9fe1a85ec53ULL;
-    k ^= k >> 33;
-    return k;
-}
-
-// FNV-1a over the bytes, then fmix64 (FNV's low bits are weak on their own).
-// A textbook hash, one byte per step; M10 measures a faster one.
-std::uint64_t hash_bytes(std::string_view s) {
-    std::uint64_t h = 0xcbf29ce484222325ULL;
-    for (unsigned char c : s) {
-        h ^= c;
-        h *= 0x100000001b3ULL;
-    }
-    return fmix64(h);
-}
-
-// The key of a float: its bits, with every NaN made one NaN and -0.0 made
-// 0.0, so equal keys have equal bits (API.md §1).
-std::uint64_t float_key(double d) {
-    if (d != d) return 0x7ff8000000000000ULL;
-    if (d == 0.0) return 0;
-    std::uint64_t bits;
-    std::memcpy(&bits, &d, sizeof bits);
-    return bits;
-}
-
-// Open addressing with linear probing (DESIGN.md §2.5, R3). A slot holds a
-// code (-1 when empty) next to the key's hash, so a probe reads one slot and
-// compares hashes before keys; for 8-byte keys the slot holds the key itself
-// and the probe never leaves the table. The table doubles when half full;
-// slots keep their hashes, so growing never hashes a key again.
-struct Slot {
-    std::uint64_t word;  // the key itself for 8-byte keys, else the key's hash
-    std::int64_t code;
-};
-
-template <bool HasNA, class Key, class KeyOf, class Hash>
-Factorized factorize_with(const Column& col, KeyOf key_of, Hash hash) {
-    constexpr bool kInline = std::is_same_v<Key, std::uint64_t>;
-    using S = Slot;
+template <bool HasNA, class Key, class Hash, class KeyOf>
+Factorized factorize_with(const Column& col, KeyOf key_of) {
     const std::int64_t n = col.length;
     Factorized out;
     out.codes = make_fixed(DType::Int64, n);
     auto* codes = reinterpret_cast<std::int64_t*>(out.codes.values->data());
     std::vector<std::int64_t> first;
-    std::vector<Key> keys;  // strings only: the key of each code, for comparing
-    std::vector<S> slots(16, S{0, -1});
-    std::uint64_t mask = slots.size() - 1;
-    std::int64_t na_code = -1, in_table = 0;
-
-    auto grow = [&] {
-        std::vector<S> old(slots.size() * 2, S{0, -1});
-        old.swap(slots);
-        mask = slots.size() - 1;
-        for (const S& e : old) {
-            if (e.code < 0) continue;
-            std::uint64_t h;
-            if constexpr (kInline) h = hash(e.word);
-            else h = e.word;
-            std::uint64_t s = h & mask;
-            while (slots[s].code >= 0) s = (s + 1) & mask;
-            slots[s] = e;
-        }
-    };
-
+    KeyTable<Key, Hash> table;
+    std::int64_t na_code = -1;
     for (std::int64_t i = 0; i < n; ++i) {
         if constexpr (HasNA) {
-            if (!col.is_valid(i)) {  // all NA rows are one key
+            if (!col.is_valid(i)) {  // all NA rows are one key, kept out of the table
                 if (na_code < 0) {
                     na_code = static_cast<std::int64_t>(first.size());
                     first.push_back(i);
-                    if constexpr (!kInline) keys.push_back(Key{});
                 }
                 codes[i] = na_code;
                 continue;
             }
         }
-        const Key k = key_of(i);
-        const std::uint64_t h = hash(k);
-        std::uint64_t s = h & mask;
-        while (true) {
-            S& e = slots[s];
-            if (e.code < 0) {  // a new key
-                const auto code = static_cast<std::int64_t>(first.size());
-                if constexpr (kInline) e = S{k, code};
-                else e = S{h, code};
-                first.push_back(i);
-                if constexpr (!kInline) keys.push_back(k);
-                codes[i] = code;
-                if (++in_table * 2 > static_cast<std::int64_t>(slots.size())) grow();
-                break;
-            }
-            bool hit;
-            if constexpr (kInline) hit = e.word == k;
-            else hit = e.word == h && keys[e.code] == k;
-            if (hit) {
-                codes[i] = e.code;
-                break;
-            }
-            s = (s + 1) & mask;
-        }
+        auto [code, added] = table.insert(key_of(i), static_cast<std::int64_t>(first.size()));
+        if (added) first.push_back(i);
+        codes[i] = code;
     }
     out.ngroups = static_cast<std::int64_t>(first.size());
     out.first = make_fixed(DType::Int64, out.ngroups);
@@ -130,29 +47,30 @@ Factorized factorize_with(const Column& col, KeyOf key_of, Hash hash) {
 
 // Picks the loop without NA checks when the column has no NA (a property
 // of the column, DESIGN.md §2.1).
-template <class Key, class KeyOf, class Hash>
-Factorized factorize_any(const Column& col, KeyOf key_of, Hash hash) {
-    return col.validity ? factorize_with<true, Key>(col, key_of, hash) : factorize_with<false, Key>(col, key_of, hash);
+template <class Key, class Hash, class KeyOf>
+Factorized factorize_any(const Column& col, KeyOf key_of) {
+    return col.validity ? factorize_with<true, Key, Hash>(col, key_of) : factorize_with<false, Key, Hash>(col, key_of);
 }
 
 }  // namespace
 
 Factorized factorize(const Column& col) {
+    using U = std::uint64_t;
     switch (col.dtype) {
     case DType::Bool: {
         const auto* v = col.data<std::uint8_t>();
-        return factorize_any<std::uint64_t>(col, [v](std::int64_t i) -> std::uint64_t { return v[i]; }, fmix64);
+        return factorize_any<U, Fmix64>(col, [v](std::int64_t i) -> U { return v[i]; });
     }
     case DType::Int64: {
         const auto* v = col.data<std::int64_t>();
-        return factorize_any<std::uint64_t>(col, [v](std::int64_t i) { return static_cast<std::uint64_t>(v[i]); }, fmix64);
+        return factorize_any<U, Fmix64>(col, [v](std::int64_t i) { return static_cast<U>(v[i]); });
     }
     case DType::Float64: {
         const auto* v = col.data<double>();
-        return factorize_any<std::uint64_t>(col, [v](std::int64_t i) { return float_key(v[i]); }, fmix64);
+        return factorize_any<U, Fmix64>(col, [v](std::int64_t i) { return float_key(v[i]); });
     }
     case DType::String:
-        return factorize_any<std::string_view>(col, [&col](std::int64_t i) { return col.string_at(i); }, hash_bytes);
+        return factorize_any<std::string_view, HashBytes>(col, [&col](std::int64_t i) { return col.string_at(i); });
     }
     throw nb::type_error("unknown dtype");
 }
@@ -205,6 +123,98 @@ Column stable_order(const Column& counts, bool ascending) {
     // A comparison sort for now; M7 brings radix sort.
     if (ascending) std::stable_sort(o, o + n, [v](std::int64_t x, std::int64_t y) { return v[x] < v[y]; });
     else std::stable_sort(o, o + n, [v](std::int64_t x, std::int64_t y) { return v[x] > v[y]; });
+    return out;
+}
+
+}  // namespace sd
+
+namespace sd {
+
+bool contains_key(const Column& col, const Column& value) {
+    if (col.dtype != value.dtype || value.length != 1) throw nb::type_error("contains_key: one value of the column's dtype");
+    if (!value.is_valid(0)) return col.null_count > 0;
+    for (std::int64_t i = 0; i < col.length; ++i) {
+        if (!col.is_valid(i)) continue;
+        bool same = false;
+        switch (col.dtype) {
+        case DType::Bool: same = col.data<std::uint8_t>()[i] == value.data<std::uint8_t>()[0]; break;
+        case DType::Int64: same = col.data<std::int64_t>()[i] == value.data<std::int64_t>()[0]; break;
+        case DType::Float64: same = float_key(col.data<double>()[i]) == float_key(value.data<double>()[0]); break;
+        case DType::String: same = col.string_at(i) == value.string_at(0); break;
+        }
+        if (same) return true;
+    }
+    return false;
+}
+
+LabelTable::LabelTable(const Column& labels) : labels_(labels) {
+    if (labels.null_count != 0) throw nb::value_error("index labels cannot be NA");
+    const std::int64_t n = labels.length;
+    codes_.resize(static_cast<std::size_t>(n));
+    auto add = [&](auto& table, auto key, std::int64_t i) {
+        auto [code, added] = table.insert(key, ngroups_);
+        if (added) {
+            first_.push_back(i);
+            ++ngroups_;
+        }
+        codes_[i] = code;
+    };
+    if (labels.dtype == DType::Int64) {
+        ints_ = std::make_unique<KeyTable<std::uint64_t, Fmix64>>();
+        const auto* v = labels.data<std::int64_t>();
+        for (std::int64_t i = 0; i < n; ++i) add(*ints_, static_cast<std::uint64_t>(v[i]), i);
+    } else if (labels.dtype == DType::String) {
+        strings_ = std::make_unique<KeyTable<std::string_view, HashBytes>>();
+        for (std::int64_t i = 0; i < n; ++i) add(*strings_, labels_.string_at(i), i);
+    } else {
+        throw nb::type_error("index labels must be int64 or string");
+    }
+}
+
+Column LabelTable::lookup(const Column& targets) const {
+    if (targets.dtype != labels_.dtype)
+        throw nb::type_error((std::string("cannot look up ") + dtype_name(targets.dtype) + " labels in an " +
+                              dtype_name(labels_.dtype) + " index")
+                                 .c_str());
+    Column out = make_fixed(DType::Int64, targets.length);
+    auto* o = reinterpret_cast<std::int64_t*>(out.values->data());
+    for (std::int64_t i = 0; i < targets.length; ++i) {
+        if (!targets.is_valid(i)) o[i] = -1;
+        else if (ints_) o[i] = ints_->find(static_cast<std::uint64_t>(targets.data<std::int64_t>()[i]));
+        else o[i] = strings_->find(targets.string_at(i));
+    }
+    return out;
+}
+
+Column LabelTable::first_positions(const Column& targets) const {
+    Column out = lookup(targets);
+    auto* o = reinterpret_cast<std::int64_t*>(out.values->data());
+    for (std::int64_t i = 0; i < out.length; ++i)
+        if (o[i] >= 0) o[i] = first_[o[i]];
+    return out;
+}
+
+Column LabelTable::all_positions(const Column& targets) const {
+    if (group_start_.empty()) {  // counting sort of positions by code: CSR groups
+        group_start_.assign(static_cast<std::size_t>(ngroups_ + 1), 0);
+        for (std::int64_t c : codes_) ++group_start_[c + 1];
+        for (std::int64_t g = 0; g < ngroups_; ++g) group_start_[g + 1] += group_start_[g];
+        group_rows_.resize(codes_.size());
+        std::vector<std::int64_t> fill(group_start_.begin(), group_start_.end() - 1);
+        for (std::int64_t i = 0; i < static_cast<std::int64_t>(codes_.size()); ++i) group_rows_[fill[codes_[i]]++] = i;
+    }
+    Column codes = lookup(targets);
+    const auto* c = codes.data<std::int64_t>();
+    std::int64_t total = 0;
+    for (std::int64_t i = 0; i < codes.length; ++i)
+        if (c[i] >= 0) total += group_start_[c[i] + 1] - group_start_[c[i]];
+    Column out = make_fixed(DType::Int64, total);
+    auto* o = reinterpret_cast<std::int64_t*>(out.values->data());
+    std::int64_t k = 0;
+    for (std::int64_t i = 0; i < codes.length; ++i) {
+        if (c[i] < 0) continue;
+        for (std::int64_t j = group_start_[c[i]]; j < group_start_[c[i] + 1]; ++j) o[k++] = group_rows_[j];
+    }
     return out;
 }
 

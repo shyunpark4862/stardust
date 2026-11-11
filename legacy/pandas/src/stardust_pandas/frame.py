@@ -1,10 +1,12 @@
 """DataFrame: named Columns of one length plus row labels (ARCHITECTURE.md §3.1)."""
 
-from . import _column, _core, _format, _ops, _unique
+from . import _column, _core, _format, _ops, _select, _unique
 from ._column import _NO_VALUE
+from ._core import Column
 from ._dtypes import resolve
-from .index import RangeIndex
-from .series import Series, fill_column, mask_positions
+from ._na import NA
+from .index import Index, RangeIndex, ensure_index
+from .series import Series, assignment_values, fill_column
 
 
 def _check_columns(columns):
@@ -20,22 +22,26 @@ def _check_columns(columns):
 class DataFrame:
     __slots__ = ("_cols", "_index")
 
-    def __init__(self, data=None, *, columns=None, dtype=None):
+    def __init__(self, data=None, *, index=None, columns=None, dtype=None):
         dtype = resolve(dtype) if dtype is not None else None
+        target = ensure_index(index) if index is not None else None
         if columns is not None:
             columns = _check_columns(columns)
         if data is None:
-            cols, index = {}, RangeIndex(0)
+            cols, natural = {}, target if target is not None else RangeIndex(0)
             if columns is not None:
                 cols = dict.fromkeys(columns)
         elif isinstance(data, DataFrame):
-            cols, index = dict(data._cols), data._index  # shares the Buffers
+            cols, natural = dict(data._cols), data._index  # shares the Buffers
             if dtype is not None:
                 cols = {k: c.convert(dtype) for k, c in cols.items()}
             if columns is not None:
                 cols = {k: cols.get(k) for k in columns}
+            if target is not None:  # labels given: rearrange to them (API.md §14)
+                cols = {k: c if c is None else _select.reindexed(c, natural, target) for k, c in cols.items()}
+                natural = target
         elif isinstance(data, dict):
-            cols, index = _from_dict(data, dtype)
+            cols, natural = _from_dict(data, dtype, target)
             if columns is not None:
                 cols = {k: cols.get(k) for k in columns}
         elif _column.is_ndarray(data):
@@ -43,14 +49,18 @@ class DataFrame:
                 raise ValueError(f"a DataFrame from a numpy array needs 2 dimensions, got {data.ndim}")
             names = _require_columns(columns, data.shape[1])
             cols = {k: _column.column_from(data[:, j], dtype) for j, k in enumerate(names)}
-            index = RangeIndex(data.shape[0])
+            natural = RangeIndex(data.shape[0])
         elif isinstance(data, (list, tuple)):
-            cols, index = _from_rows(data, columns, dtype)
+            cols, natural = _from_rows(data, columns, dtype)
         else:
             raise TypeError(f"cannot make a DataFrame from {type(data).__name__}")
+        if target is not None and natural is not target:
+            if len(natural) != len(target) and cols:
+                raise ValueError(f"{len(natural)} rows for an index of {len(target)} labels")
+            natural = target
         # Requested columns that the data lacks are all NA (as in pandas).
-        self._cols = {k: c if c is not None else _column.full_na(len(index), dtype) for k, c in cols.items()}
-        self._index = index
+        self._cols = {k: c if c is not None else _column.full_na(len(natural), dtype) for k, c in cols.items()}
+        self._index = natural
 
     @classmethod
     def _new(cls, cols, index):
@@ -61,13 +71,13 @@ class DataFrame:
 
     @property
     def columns(self):
-        # Provisional: a list until M4 brings Index.
-        return list(self._cols)
+        """The column names as a string Index (API.md §14)."""
+        return Index._new(Column.from_list(list(self._cols), NA, "string"))
 
     @property
     def dtypes(self):
-        # Provisional: a dict until M4 brings a string Index to label a Series with.
-        return {k: c.dtype for k, c in self._cols.items()}
+        """The dtype of each column, as a string Series labelled by column name."""
+        return Series._new(Column.from_list([c.dtype for c in self._cols.values()], NA, "string"), self.columns, None)
 
     @property
     def index(self):
@@ -83,16 +93,64 @@ class DataFrame:
     def __bool__(self):
         raise ValueError("the truth value of a DataFrame is ambiguous")
 
-    def __getitem__(self, key):
-        if isinstance(key, Series):  # a bool mask selects rows (API.md §7)
-            return self._take(mask_positions(key, self._index))
-        if not isinstance(key, str):
-            raise TypeError(f"column names are str, got {type(key).__name__}")
+    def __iter__(self):
+        """The column names (API.md §14)."""
+        return iter(list(self._cols))
+
+    def __contains__(self, name):
+        return name in self._cols
+
+    def _column(self, name):
+        if not isinstance(name, str):
+            raise TypeError(f"column names are str, got {type(name).__name__}")
         try:
-            col = self._cols[key]
+            return self._cols[name]
         except KeyError:
-            raise KeyError(key) from None
-        return Series._new(col, self._index, key)
+            raise KeyError(name) from None
+
+    def __getitem__(self, key):
+        """df["a"] (a Series), df[["a", "b"]] (a DataFrame) or df[mask] (rows) (API.md §7)."""
+        if isinstance(key, Series):
+            return self._take(_select.mask_positions(key, self._index))
+        if isinstance(key, list):
+            names = _check_columns(key)
+            return DataFrame._new({k: self._column(k) for k in names}, self._index)
+        return Series._new(self._column(key), self._index, key)
+
+    def __setitem__(self, name, value):
+        """df["c"] = value: a new column at the end, or a whole column replaced (API.md §14)."""
+        if not isinstance(name, str):
+            raise TypeError(f"column names are str, got {type(name).__name__}")
+        n = len(self._index)
+        if isinstance(value, DataFrame):
+            raise TypeError("assign a Series, a list or a scalar to a column")
+        if isinstance(value, Series):
+            col = _select.reindexed(value._col, value._index, self._index)  # matched by label
+        elif _column.is_scalar(value):
+            col = _column.column_from([value] * n)
+        else:
+            col = _column.column_from(value)
+            if not self._cols and n == 0:  # the first column of an empty frame sets the length
+                self._index = RangeIndex(len(col))
+            elif len(col) != n:
+                raise ValueError(f"{len(col)} values for {n} rows")
+        self._cols[name] = col
+
+    @property
+    def loc(self):
+        """Rows (and columns) by label: df.loc[rows] or df.loc[rows, columns] (API.md §14)."""
+        return _FrameIndexer(self, by_label=True)
+
+    @property
+    def iloc(self):
+        """Rows (and columns) by position: df.iloc[rows] or df.iloc[rows, columns]."""
+        return _FrameIndexer(self, by_label=False)
+
+    def reindex(self, labels):
+        """The rows at `labels`, in that order; absent labels are NA (API.md §14)."""
+        target = ensure_index(labels)
+        cols = {k: _select.reindexed(c, self._index, target) for k, c in self._cols.items()}
+        return DataFrame._new(cols, target)
 
     def _take(self, positions, ignore_index=False):
         index = RangeIndex(len(positions)) if ignore_index else self._index._take(positions)
@@ -119,8 +177,9 @@ class DataFrame:
         return names
 
     def nunique(self, *, dropna=True):
-        # Provisional: a dict until M4 brings a string Index to label a Series with.
-        return {k: self[k].nunique(dropna=dropna) for k in self._cols}
+        """How many distinct values each column has, as an int64 Series labelled by column name."""
+        counts = [self[k].nunique(dropna=dropna) for k in self._cols]
+        return Series._new(Column.from_list(counts, NA, "int64"), self.columns, None)
 
     def duplicated(self, subset=None, *, keep="first"):
         """True for rows whose values in `subset` (default: all columns) repeat (API.md §13)."""
@@ -151,13 +210,22 @@ class DataFrame:
 
     def _binary(self, other, op, reflected=False):
         if isinstance(other, DataFrame):
-            if set(other._cols) != set(self._cols):
-                raise NotImplementedError("DataFrames with different columns need alignment, which is not supported yet")
-            _ops.check_same_index(self._index, other._index)
-            pairs = {k: (c, other._cols[k], 0) for k, c in self._cols.items()}
+            # Rows by label, columns by name; what one side lacks is NA there (API.md §14).
+            index, a_pos, b_pos = _select.align(self._index, other._index)
+            names = list(self._cols) + [k for k in other._cols if k not in self._cols]
+            n = len(index)
+            pairs = {}
+            for k in names:
+                a, b = self._cols.get(k), other._cols.get(k)
+                a = a.take(a_pos) if a is not None and a_pos is not None else a
+                b = b.take(b_pos) if b is not None and b_pos is not None else b
+                a = a if a is not None else _column.full_na(n, b.dtype)
+                b = b if b is not None else _column.full_na(n, a.dtype)
+                pairs[k] = (a, b, 0)
         elif isinstance(other, Series):
             raise TypeError("operations between a DataFrame and a Series are not supported (API.md §12)")
         elif _ops.is_operand_scalar(other):
+            index = self._index
             pairs = {k: (c, _ops.scalar_column(other, c.dtype), 2) for k, c in self._cols.items()}
         else:
             return NotImplemented
@@ -166,7 +234,7 @@ class DataFrame:
             if reflected:
                 a, b, side = b, a, 1 if side == 2 else side
             cols[k] = _ops.apply(op, a, b, side)
-        return DataFrame._new(cols, self._index)
+        return DataFrame._new(cols, index)
 
     def __neg__(self):
         return self._map_columns(lambda c: _core.unary_op("neg", c))
@@ -230,7 +298,7 @@ class DataFrame:
 
         dtype = resolve(dtype) if dtype is not None else None
         if dtype is None:
-            kinds = set(self.dtypes.values())
+            kinds = {c.dtype for c in self._cols.values()}
             if len(kinds) == 1:
                 (dtype,) = kinds
             elif kinds == {"int64", "float64"}:
@@ -284,21 +352,27 @@ def _require_columns(columns, ncols):
     return columns
 
 
-def _from_dict(data, dtype):
+def _from_dict(data, dtype, target):
+    """Columns from {name: list | array | Series | scalar}. Series are matched
+    by label: to `target` when given, else to the union of their indexes
+    (API.md §14). Lists must have one value per row; scalars fill every row."""
     names = _check_columns(data.keys())
-    length, index = None, None
+    series = [v for v in data.values() if isinstance(v, Series)]
+    index = target
+    if index is None and series:
+        index = series[0]._index
+        for v in series[1:]:
+            index, _, _ = _select.align(index, v._index)
+    length = len(index) if index is not None else None
     cols = {}
     for k in names:
         v = data[k]
         if _column.is_scalar(v):
-            cols[k] = v  # broadcast below, once the length is known
+            cols[k] = v  # filled in below, once the length is known
             continue
         if isinstance(v, Series):
-            if index is None:
-                index = v._index
-            elif not index.equals(v._index):
-                raise NotImplementedError("Series with different indexes need alignment, which is not supported yet")
-            col = v._col.convert(dtype) if dtype is not None else v._col
+            col = _select.reindexed(v._col, v._index, index)
+            col = col.convert(dtype) if dtype is not None else col
         else:
             col = _column.column_from(v, dtype)
         if length is None:
@@ -336,3 +410,61 @@ def _from_rows(rows, columns, dtype):
         values = [list(c) for c in zip(*rows)]
         return {k: _column.column_from(v, dtype) for k, v in zip(names, values)}, RangeIndex(len(rows))
     raise TypeError("a DataFrame from a list needs rows: all dicts, or all lists/tuples")
+
+
+class _FrameIndexer:
+    """df.loc / df.iloc. A single row gives a one-row DataFrame, since a row
+    of mixed dtypes has no dtype of its own (API.md §14)."""
+
+    __slots__ = ("_df", "_by_label")
+
+    def __init__(self, df, by_label):
+        self._df = df
+        self._by_label = by_label
+
+    def _split(self, key):
+        rows, cols = key if isinstance(key, tuple) and len(key) == 2 else (key, slice(None))
+        df = self._df
+        sel = _select.by_label(df._index, rows) if self._by_label else _select.by_position(len(df), rows)
+        return sel, self._column_names(cols)
+
+    def _column_names(self, key):
+        names = list(self._df._cols)
+        if self._by_label:
+            if isinstance(key, str):
+                self._df._column(key)
+                return key
+            if isinstance(key, slice):
+                if key.step not in (None, 1):
+                    raise ValueError("a column slice cannot have a step")
+                start = names.index(key.start) if key.start is not None else 0
+                stop = names.index(key.stop) + 1 if key.stop is not None else len(names)  # both ends included
+                return names[start:stop]
+            names_key = _check_columns(key)
+            for k in names_key:
+                self._df._column(k)
+            return names_key
+        if isinstance(key, slice):
+            return names[key]
+        if isinstance(key, list):
+            return [names[_select.by_position(len(names), j)[1]] for j in key]
+        return names[_select.by_position(len(names), key)[1]]
+
+    def __getitem__(self, key):
+        df = self._df
+        sel, names = self._split(key)
+        if isinstance(names, str):  # one column
+            return Series._new(df._cols[names], df._index, names)._select(sel)
+        if sel[0] == "one":  # one row: a one-row DataFrame keeps every column's dtype
+            sel = ("slice", sel[1], sel[1] + 1, 1)
+        cols = {k: _select.select_column(df._cols[k], sel) for k in names}
+        return DataFrame._new(cols, _select.select_index(df._index, sel))
+
+    def __setitem__(self, key, value):
+        df = self._df
+        sel, name = self._split(key)
+        if not isinstance(name, str):
+            raise TypeError("assign to one column at a time: df.loc[rows, 'c'] = value (API.md §14)")
+        target = Series._new(df._cols[name], df._index, name)
+        target._assign(sel, value)  # Copy-on-Write: target takes its own Column first
+        df._cols[name] = target._col

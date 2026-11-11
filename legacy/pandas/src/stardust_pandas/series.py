@@ -1,39 +1,40 @@
 """Series: one Column plus its row labels (ARCHITECTURE.md §1)."""
 
-from . import _column, _core, _format, _ops, _unique
+from . import _column, _core, _format, _ops, _select, _unique
 from ._column import _NO_VALUE
 from ._core import Column
 from ._dtypes import resolve
 from ._na import NA
-from .index import Index, RangeIndex
-
-
-def check_name(name):
-    if name is not None and not isinstance(name, str):
-        raise TypeError(f"a Series name must be a str or None, got {type(name).__name__}")  # API.md §10
-    return name
+from .index import RangeIndex, check_name, ensure_index
 
 
 class Series:
     __slots__ = ("_col", "_index", "_name")
 
-    def __init__(self, data=None, *, dtype=None, name=None):
+    def __init__(self, data=None, *, index=None, dtype=None, name=None):
         dtype = resolve(dtype) if dtype is not None else None
+        target = ensure_index(index) if index is not None else None
         if isinstance(data, Series):
             col = data._col.convert(dtype) if dtype is not None else data._col  # shares the Buffers
-            index = data._index
+            if target is not None:  # labels given: rearrange to them (API.md §14)
+                col = _select.reindexed(col, data._index, target)
+            else:
+                target = data._index
             if name is None:
                 name = data._name
         else:
             if data is None:
-                col = Column.from_list([], NA, dtype)
+                col = _column.full_na(len(target), dtype) if target is not None else Column.from_list([], NA, dtype)
             elif isinstance(data, dict):
-                raise NotImplementedError("a Series from a dict needs a label Index, which is not supported yet")
+                raise TypeError("a Series from a dict is not supported; pass the labels as index=")
             else:
                 col = _column.column_from(data, dtype)
-            index = RangeIndex(len(col))
+            if target is None:
+                target = RangeIndex(len(col))
+            elif len(target) != len(col):
+                raise ValueError(f"{len(col)} values for an index of {len(target)} labels")
         self._col = col
-        self._index = index
+        self._index = target
         self._name = check_name(name)
 
     @classmethod
@@ -69,6 +70,19 @@ class Series:
 
     def __bool__(self):
         raise ValueError("the truth value of a Series is ambiguous")
+
+    def __iter__(self):
+        """The values, as in a list (API.md §14)."""
+        return iter(self.to_list())
+
+    def __contains__(self, value):
+        """Whether some row holds `value`, by the key rules of API.md §13 (NaN
+        matches NaN, NA matches NA). Labels: `label in s.index`."""
+        try:
+            probe = Column.from_list([value], NA, self.dtype)
+        except (TypeError, ValueError, OverflowError):
+            return False  # a value of another type is in no row
+        return self._col.contains_key(probe)
 
     def to_list(self):
         """The values as Python scalars; NA rows are sdpd.NA."""
@@ -109,17 +123,18 @@ class Series:
 
     def _binary(self, other, op, reflected=False):
         if isinstance(other, Series):
-            _ops.check_same_index(self._index, other._index)
-            a, b, side = self._col, other._col, 0
-            name = self._name if self._name == other._name else None
+            index, a_pos, b_pos = _select.align(self._index, other._index)
+            a = self._col.take(a_pos) if a_pos is not None else self._col
+            b = other._col.take(b_pos) if b_pos is not None else other._col
+            side, name = 0, _select.merged_name(self._name, other._name)
         elif _ops.is_operand_scalar(other):
             a, b, side = self._col, _ops.scalar_column(other, self._col.dtype), 2
-            name = self._name
+            index, name = self._index, self._name
         else:
             return NotImplemented
         if reflected:
             a, b, side = b, a, 1 if side == 2 else side
-        return Series._new(_ops.apply(op, a, b, side), self._index, name)
+        return Series._new(_ops.apply(op, a, b, side), index, name)
 
     def _unary(self, op):
         return Series._new(_core.unary_op(op, self._col), self._index, self._name)
@@ -193,16 +208,83 @@ class Series:
         (keys,), counts = _unique.value_counts([col], normalize, sort, ascending)
         return DataFrame._new({name: keys, count_name: counts}, RangeIndex(len(counts)))
 
-    # --- selection ---
+    # --- selection and assignment (API.md §14) ---
 
     def _take(self, positions, ignore_index=False):
         index = RangeIndex(len(positions)) if ignore_index else self._index._take(positions)
         return Series._new(self._col.take(positions), index, self._name)
 
+    def _select(self, sel):
+        if sel[0] == "one":
+            return self._col.slice(sel[1], 1).to_list(NA)[0]
+        return Series._new(_select.select_column(self._col, sel), _select.select_index(self._index, sel), self._name)
+
+    def _assign(self, sel, value):
+        labels = None if sel[0] == "one" else _select.select_index(self._index, sel)
+        values = assignment_values(value, self.dtype, labels)
+        # A Column object of our own, so the write cannot show through another
+        # object holding the old one; set_rows copies shared Buffers (CoW).
+        self._col = self._col.share()
+        self._col.set_rows(_select.positions_column(sel), values)
+
+    @property
+    def loc(self):
+        """Rows by label: a label (a scalar), a list of labels, a label slice
+        (both ends included) or a bool Series mask (API.md §14)."""
+        return _Indexer(self, by_label=True)
+
+    @property
+    def iloc(self):
+        """Rows by position: an int, a slice or a list of ints."""
+        return _Indexer(self, by_label=False)
+
     def __getitem__(self, key):
-        if isinstance(key, Series):
-            return self._take(mask_positions(key, self._index))
-        raise NotImplementedError("label access (s[label]) arrives with .loc; only bool masks are supported yet")
+        return self._select(_select.by_label(self._index, key))  # s[x] is s.loc[x] (API.md §7)
+
+    def __setitem__(self, key, value):
+        self._assign(_select.by_label(self._index, key), value)
+
+    def reindex(self, labels):
+        """The values at `labels`, in that order; absent labels are NA (API.md §14)."""
+        target = ensure_index(labels)
+        return Series._new(_select.reindexed(self._col, self._index, target), target, self._name)
+
+
+class _Indexer:
+    __slots__ = ("_obj", "_by_label")
+
+    def __init__(self, obj, by_label):
+        self._obj = obj
+        self._by_label = by_label
+
+    def _sel(self, key):
+        obj = self._obj
+        return _select.by_label(obj._index, key) if self._by_label else _select.by_position(len(obj), key)
+
+    def __getitem__(self, key):
+        return self._obj._select(self._sel(key))
+
+    def __setitem__(self, key, value):
+        self._obj._assign(self._sel(key), value)
+
+
+def assignment_values(value, dtype, labels):
+    """`value` as a Column of `dtype` for rows labelled `labels` (None: one
+    row). Converts without loss only (API.md §14); a Series is matched to the
+    rows by label."""
+    if isinstance(value, Series):
+        if labels is None:
+            raise TypeError("assign a scalar to a single row")
+        col = _select.reindexed(value._col, value._index, labels)
+        return col.convert(dtype) if col.dtype != dtype else col
+    if _column.is_scalar(value):
+        return Column.from_list([value], NA, dtype)
+    if labels is None:
+        raise TypeError("assign a scalar to a single row")
+    col = _column.column_from(value, dtype)
+    if len(col) != len(labels):
+        raise ValueError(f"{len(col)} values for {len(labels)} rows")
+    return col
 
 
 def fill_column(col, value):
@@ -211,14 +293,6 @@ def fill_column(col, value):
     if not _ops.is_operand_scalar(value):
         raise TypeError(f"fillna takes a scalar, got {type(value).__name__}")
     return col.fill_na(Column.from_list([value], NA, col.dtype))  # lossless rule of dtype= (API.md §10)
-
-
-def mask_positions(mask, index):
-    """Positions of the True rows of a bool Series mask aligned with `index`."""
-    if mask.dtype != "bool":
-        raise TypeError(f"a mask must be a bool Series, got dtype {mask.dtype}")
-    _ops.check_same_index(index, mask._index)
-    return mask._col.nonzero()  # NA counts as False (API.md §2)
 
 
 def _make_binary(op, reflected):

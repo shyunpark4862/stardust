@@ -31,14 +31,5 @@ def scalar_column(value, like):
     return Column.from_list([value], NA, None)  # bool, int64 (range-checked), float64 or string
 
 
-def same_index(a, b):
-    return a is b or a.equals(b)
-
-
 def apply(op, a, b, scalar_side):
     return _core.binary_op(op, a, b, scalar_side)
-
-
-def check_same_index(a, b):
-    if not same_index(a, b):
-        raise NotImplementedError("operands with different indexes need alignment, which is not supported yet")

@@ -12,6 +12,7 @@
 #include <nanobind/stl/optional.h>
 #include <nanobind/stl/pair.h>
 #include <nanobind/stl/tuple.h>
+#include <nanobind/stl/unique_ptr.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/string_view.h>
 #include <nanobind/stl/vector.h>
@@ -79,7 +80,20 @@ void bind_column(nb::module_& m) {
         .def("fill_na", &sd::fill_na, nb::arg("value"))
         .def("take", &sd::take, nb::arg("positions"))
         .def("nonzero", &sd::nonzero)
-        .def("equals", &sd::equals, nb::arg("other"));
+        .def("equals", &sd::equals, nb::arg("other"))
+        // A new Column object sharing this one's Buffers. Writers take their
+        // own object first, so a write never shows through another object
+        // that held the same Column (the Buffers themselves are Copy-on-Write).
+        .def("share", [](const Column& c) { return c; })
+        .def("set_rows", &sd::set_rows, nb::arg("positions"), nb::arg("values"))
+        .def("contains_key", &sd::contains_key, nb::arg("value"));
+    nb::class_<sd::LabelTable>(m, "LabelTable")
+        .def(nb::init<const Column&>(), nb::arg("labels"))
+        .def_prop_ro("is_unique", &sd::LabelTable::is_unique)
+        .def("lookup", &sd::LabelTable::lookup, nb::arg("targets"))
+        .def("first_positions", &sd::LabelTable::first_positions, nb::arg("targets"))
+        .def("all_positions", &sd::LabelTable::all_positions, nb::arg("targets"));
+    m.def("concat", &sd::concat, nb::arg("cols"));
     m.def("binary_op", &sd::binary_op, nb::arg("op"), nb::arg("a"), nb::arg("b"), nb::arg("scalar_side"));
     m.def("unary_op", &sd::unary_op, nb::arg("op"), nb::arg("a"));
     m.def("arange", &sd::arange, nb::arg("start"), nb::arg("step"), nb::arg("n"));

@@ -112,17 +112,23 @@ def _trim_front(strings):  # indexes.base.trim_front
 
 
 def _format_labels(index, positions, truncated):
-    """Row labels at `positions`, left-justified to one width."""
+    """Row labels at `positions` (Index._format_with_header)."""
     from .index import RangeIndex
 
     labels = index._labels_at(positions)
     if isinstance(index, RangeIndex) and not truncated:  # RangeIndex._format_with_header
         width = max(len(str(index._range[0])), len(str(index._range[-1])))
         return [f"{x:<{width}}" for x in labels]
+    if index.dtype == "string":  # justify="all": no padding here, only the common space trimmed
+        return _trim_front([" " + _escape(x) for x in labels])
     # An int64 Index, which is also what a truncated RangeIndex becomes (the
-    # middle is cut out): Index._format_with_header.
+    # middle is cut out).
     strings, _ = _make_fixed_width([f"{x: d}" for x in labels], "left")
     return _trim_front(strings)
+
+
+def quote(text):  # printing.default_pprint of a str: quoted, with \t \r \n escaped
+    return f"'{_escape(text)}'"
 
 
 def _pprint_seq(items):  # printing._pprint_seq, for the "Empty DataFrame" lines (no escaping)
@@ -155,7 +161,7 @@ def values_at(col, positions):
 DISPLAY_WIDTH = 80  # display.width
 
 
-def _format_object_summary(n, head, tail, name):  # printing.format_object_summary, one level
+def _format_object_summary(n, head, tail, name, justify):  # printing.format_object_summary, one level
     space1 = "\n" + " " * (len(name) + 1)
     space2 = "\n" + " " * (len(name) + 2)
     width = DISPLAY_WIDTH
@@ -171,7 +177,7 @@ def _format_object_summary(n, head, tail, name):  # printing.format_object_summa
         return "[], "
     if n == 1:
         return f"[{tail[0]}], "
-    if truncated or not (len(", ".join(head)) < width and len(", ".join(tail)) < width):
+    if justify and (truncated or not (len(", ".join(head)) < width and len(", ".join(tail)) < width)):
         size = max(len(x) for x in head + tail)  # align values that wrap onto several lines
         head = [x.rjust(size) for x in head]
         tail = [x.rjust(size) for x in tail]
@@ -191,14 +197,17 @@ def _format_object_summary(n, head, tail, name):  # printing.format_object_summa
 
 def index_repr(index):  # Index.__repr__
     n = len(index)
+    fmt = quote if index.dtype == "string" else str
     if n > MAX_SEQ_ITEMS:
         k = min(MAX_SEQ_ITEMS // 2, 10)
-        head = [str(x) for x in values_at(index._col, list(range(k)))]
-        tail = [str(x) for x in values_at(index._col, list(range(n - k, n)))]
+        head = [fmt(x) for x in values_at(index._col, list(range(k)))]
+        tail = [fmt(x) for x in values_at(index._col, list(range(n - k, n)))]
     else:
-        head, tail = [], [str(x) for x in index._col.to_list(None)]
-    data = _format_object_summary(n, head, tail, "Index")
+        head, tail = [], [fmt(x) for x in index._col.to_list(None)]
+    data = _format_object_summary(n, head, tail, "Index", justify=index.dtype != "string")
     attrs = [("dtype", f"'{index.dtype}'")]
+    if index.name is not None:
+        attrs.append(("name", quote(index.name)))
     if n > MAX_SEQ_ITEMS:
         attrs.append(("length", n))
     indent = len("Index") + 1
@@ -242,7 +251,10 @@ def series_repr(s):  # SeriesFormatter.to_string
         width = len(values[cut - 1])
         values.insert(cut, _justify(["..." if width > 3 else ".."], width, "center")[0])
         labels.insert(cut, "")
-    return _adjoin(3, labels, values) + "\n" + footer
+    text = _adjoin(3, labels, values)
+    if s.index.name is not None:  # a named index heads its labels
+        text = _escape(s.index.name) + "\n" + text
+    return text + "\n" + footer
 
 
 # --- DataFrame ----------------------------------------------------------------
@@ -263,20 +275,27 @@ def frame_repr(df):  # StringFormatter.to_string over DataFrameFormatter
         names = names[:col_cut] + names[-col_cut:]
     positions, row_cut = _row_positions(n)  # _truncate_vertically
 
-    # The index column: a blank header line, then the labels.
-    labels, _ = _make_fixed_width(_format_labels(df.index, positions, row_cut is not None), "left")
+    # The index column: a blank header line, the index name if it has one
+    # (then every column gets a blank second header line), then the labels.
+    labels = _format_labels(df.index, positions, row_cut is not None)
+    named = df.index.name is not None
+    if named:
+        labels = [_escape(df.index.name)] + labels
+    labels, _ = _make_fixed_width(labels, "left")
     strcols = [[""] + labels]
+    nhead = 2 if named else 1
     # The column labels as one Index: Index._format_flat trims their common leading space.
     headers = _trim_front([" " + _escape(name) for name in names])
     for name, header in zip(names, headers):  # _get_strcols_without_index
         col = df._cols[name]
         if col.dtype != "string":  # numeric (and bool) column labels get a leading space
             header = " " + header
+        head = [header, ""] if named else [header]
         values, width = _make_fixed_width(
             _format_values(values_at(col, positions), col.dtype), "right", minimum=len(header)
         )
         width = max(width, len(header))
-        strcols.append(_justify([header], width, "right") + values)
+        strcols.append(_justify(head, width, "right") + values)
 
     if col_cut is not None:  # _insert_dot_separator_horizontal
         strcols.insert(col_cut + 1, [" ..."] * len(strcols[0]))
@@ -291,7 +310,7 @@ def frame_repr(df):  # StringFormatter.to_string over DataFrameFormatter
                 mode = "right"
                 if is_dot_col:
                     width = 4
-            col.insert(row_cut + 1, _justify([dots], width, mode)[0])
+            col.insert(row_cut + nhead, _justify([dots], width, mode)[0])
 
     text = _adjoin(1, *strcols)
     return text + dimensions if truncated else text

@@ -6,6 +6,7 @@ DESIGN.md의 결정(NA 하나, NaN은 값, Copy-on-Write)에서 따라 나오는
 - §9–§11은 M1을 시작하기 전에 사용자가 결정했다 (2026-11-11).
 - §12와 §11의 C7은 M2를 시작하기 전에 사용자가 결정했다 (2026-11-11).
 - §13은 M3를 시작하기 전에 사용자가 결정했다 (2026-11-11).
+- §14는 M4를 시작하기 전에 사용자가 결정했다 (2026-11-11).
 - pandas와 다른 점은 **[pandas와 다름]**으로 표시한다.
 
 ---
@@ -307,5 +308,92 @@ NaN은 결측값이 아니라 평범한 float 값이다 (DESIGN §2.1).
   - `dropna=True`이면 키 중에 NA가 있는 행을 버린다.
 - **factorize**: 공개하지 않는다. 값을 정수 코드로 바꾸는 내부 기능으로만 쓴다.
 
-## 14. 미확정
+## 14. Index, 선택, 정렬, 대입 (M4)
+- **Index**
+  - `Index(data, *, name=None)`: 라벨은 int64나 string이다. float, bool, NA는 에러다 (§6).
+  - `RangeIndex(start=0, stop=None, step=1, *, name=None)`
+  - `name`은 `str` 또는 `None`이다 (Series.name과 같은 규칙).
+    - 연산 결과의 Index 이름은 Series 이름 규칙을 따른다: 같으면 유지하고, 다르면 `None`이다.
+    - repr은 pandas처럼 이름을 보여 준다.
+  - 공개하는 것: `dtype`, `name`, `len()`, 반복(라벨), `in`(라벨), `to_list()`, `equals()`, `is_unique`
+    - `equals()`는 라벨만 비교한다. 이름은 보지 않는다 (pandas와 같다).
+  - 라벨 조회용 해시 테이블은 처음 조회할 때 만들어서 캐시한다 (DESIGN §2.5).
+  - 라벨의 타입은 Index의 dtype과 맞아야 한다.
+    - int Index에는 int 라벨만 쓴다. bool과 float는 쓸 수 없다.
+    - string Index에는 str 라벨만 쓴다.
+    - 타입이 맞지 않으면 TypeError다.
+- **생성자의 `index=`**
+  - `Series(data, *, index=None, dtype=None, name=None)`
+  - `DataFrame(data, *, index=None, columns=None, dtype=None)`
+  - list나 배열을 주면 길이가 `index`와 같아야 한다.
+  - Series를 주면 `index`에 맞춰 다시 배열한다(reindex). 없는 라벨은 NA다.
+- **`reindex(labels)`**: `Series.reindex(labels)`, `DataFrame.reindex(labels)` (행만)
+  - 주어진 라벨 순서로 행을 다시 배열한다. 없는 라벨은 NA다.
+  - 원래 라벨은 고유해야 한다.
+  - `method`, `fill_value` 등은 없다.
+- **M1~M3에서 임시로 둔 반환 타입을 바꾼다.**
+  - `df.columns`는 string `Index`다.
+  - `df.dtypes`는 컬럼 이름을 Index로 하는 string Series다.
+  - `df.nunique()`는 컬럼 이름을 Index로 하는 int64 Series다.
+- **선택**
+  - `s[x]`는 `s.loc[x]`와 같다 (§7).
+  - `.loc`에 쓸 수 있는 것
+    - 라벨 하나: 항상 스칼라를 돌려준다. **[pandas와 다름]**
+      - 라벨이 없으면 KeyError다.
+      - 라벨이 여러 행에 있으면 에러다. 그런 행을 모두 원하면 `s.loc[["a"]]`처럼 리스트로 조회한다.
+    - 라벨 리스트: 각 라벨에 맞는 행을 모두 Index 순서대로 돌려준다. 없는 라벨이 하나라도 있으면 KeyError다.
+    - 라벨 슬라이스 `a:b`
+      - 양 끝을 포함한다.
+      - 양 끝 라벨은 있어야 하고 고유해야 한다.
+      - Index가 정렬되어 있는지 보고 이진 탐색으로 바꾸는 휴리스틱은 쓰지 않는다 (DESIGN §2.5). **[pandas와 다름]**
+    - bool Series 마스크
+  - `.iloc`에 쓸 수 있는 것: 정수(음수 가능), 슬라이스, 정수 리스트
+    - 범위를 벗어나면 IndexError다.
+  - DataFrame
+    - `df.loc[행]`, `df.loc[행, 열]`, `df.iloc[행]`, `df.iloc[행, 열]`
+    - 열 자리에는 이름 하나, 이름 리스트, 이름 슬라이스(양 끝 포함), `:`를 쓴다.
+    - **행을 하나만 고르면 1행짜리 DataFrame을 돌려준다.** **[pandas와 다름]**
+      - pandas는 행을 Series로 돌려주는데, dtype이 섞이면 object가 된다.
+      - 행 하나와 열 하나를 함께 고르면 스칼라다. 예: `df.loc["r", "a"]`
+  - `df[...]`는 이름 하나, 이름 리스트, bool Series를 받는다 (§7).
+  - 슬라이스로 고르면 RangeIndex는 RangeIndex로 남는다. 라벨 리스트나 마스크로 고르면 Index가 된다.
+    - 결과 타입은 무엇으로 골랐는지에 따라 정해지고, 데이터에 따라 바뀌지 않는다.
+- **정렬(alignment)**
+  - 정렬이 일어나는 곳
+    - Series와 Series의 연산
+    - DataFrame과 DataFrame의 연산 (행과 열 모두)
+    - Series dict로 DataFrame을 만들 때
+    - `df["c"] = Series`
+    - 마스크
+  - 두 Index가 같으면 위치대로 계산한다.
+  - 다르면 양쪽 라벨이 모두 고유해야 한다 (§6).
+    - 합집합의 순서는 왼쪽 라벨 순서, 그 다음 오른쪽에만 있는 라벨을 오른쪽 순서대로 붙인 것이다 (A6).
+    - 한쪽에 없는 라벨의 행은 NA다.
+  - int 라벨과 string 라벨은 정렬할 수 없다(에러). RangeIndex는 int64 라벨로 친다. **[pandas와 다름]**
+  - DataFrame끼리 연산할 때 한쪽에만 있는 컬럼은, 다른 쪽을 같은 dtype의 NA 컬럼으로 보고 계산한다.
+  - **마스크**: 마스크와 대상의 라벨 집합이 같아야 한다. **[pandas와 다름]**
+    - 라벨 순서는 달라도 된다.
+    - 대상의 라벨이 마스크에 없거나, 마스크에만 있는 라벨이 있으면 에러다.
+    - pandas는 마스크에만 있는 라벨을 조용히 무시한다.
+- **대입** (Copy-on-Write, §8, DESIGN §2.3)
+  - 지원하는 형태: `df["c"] = 값`, `s.loc[...] = 값`, `s.iloc[...] = 값`, `df.loc[행, "c"] = 값`, `df.iloc[행, j] = 값`
+    - 행은 선택과 같은 방법으로 고른다.
+  - 넣을 수 있는 값
+    - 스칼라 (`NA` 포함)
+    - list: 길이가 고른 행 수와 같아야 한다.
+    - Series: 고른 행의 라벨에 맞춰 정렬한다.
+  - `df["c"] = 값`은 컬럼 전체를 새로 만든다. 새 컬럼이면 끝에 붙는다.
+  - 행에 대입하는 값은 컬럼 dtype으로 손실 없이 바뀌어야 한다. 규칙은 생성자 `dtype=`와 같다 (§10).
+  - 없는 라벨에 대입하면 KeyError다. 행을 늘리지 않는다. **[pandas와 다름]**
+  - 쓰기 전에 버퍼를 다른 객체(다른 Series, DataFrame, 슬라이스, `to_numpy` 뷰)와 공유하고 있으면 먼저 복사한다.
+    - 예: `s = df["a"]; s.iloc[0] = 1`을 해도 `df`는 바뀌지 않는다.
+- **반복과 `in`**
+  - Series: 반복과 `in` 모두 값 기준이다. **[pandas와 다름]**
+    - pandas는 반복은 값, `in`은 라벨이다.
+    - `x in s`는 §13의 키 규칙으로 판단한다. NaN은 NaN과, NA는 NA와 같다.
+    - 라벨이 있는지는 `x in s.index`로 확인한다.
+  - DataFrame: 반복과 `in` 모두 컬럼 이름 기준이다.
+  - Index: 반복과 `in` 모두 라벨 기준이다.
+
+## 15. 미확정
 - `read_csv`의 옵션과 타입 추론

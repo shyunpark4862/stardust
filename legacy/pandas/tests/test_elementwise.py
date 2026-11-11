@@ -154,11 +154,11 @@ def test_names_follow_pandas():
     assert (a + b).name == "x" and (a + sdpd.Series([1], name="y")).name is None and (a * 2).name == "x"
 
 
-def test_operands_need_equal_indexes_until_m4():
+def test_operands_with_different_indexes_align():
     s = sdpd.Series([1, 2, 3])
-    with pytest.raises(NotImplementedError):
-        s.tail(2) + s.head(2)
-    with pytest.raises(ValueError):  # equal indexes, so lengths match; this is a different length
+    out = s.tail(2) + s.head(2)  # labels 1, 2 and 0, 1: union 1, 2, 0 (API.md §14)
+    assert out.index.to_list() == [1, 2, 0] and out.to_list() == [4, NA, NA]
+    with pytest.raises(ValueError):  # the kernel itself still wants equal lengths
         sdpd._core.binary_op("add", s._col, s.head(2)._col, 0)
 
 
@@ -387,7 +387,7 @@ def test_frame_filter():
     assert out["b"].to_list() == ["y", "z"] and out.index.to_list() == [1, 2]
     with pytest.raises(TypeError):
         df[df["a"]]
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ValueError):  # the mask must hold the same labels (API.md §14)
         df[df["a"].tail(2) > 0]
 
 
@@ -422,15 +422,15 @@ def test_frame_operators():
     assert (df + 1)["a"].to_list() == [2, 3] and (2 * df)["b"].to_list() == [1.0, NA]
     other = sdpd.DataFrame({"b": [1.0, 1.0], "a": [10, 20]})
     s = df + other
-    assert s.columns == ["a", "b"] and s["a"].to_list() == [11, 22]  # left's column order
+    assert s.columns.to_list() == ["a", "b"] and s["a"].to_list() == [11, 22]  # left's column order
     assert (df > 1)["a"].to_list() == [False, True]
     assert (-df)["a"].to_list() == [-1, -2] and abs(-df)["a"].to_list() == [1, 2]
     assert df.isna()["b"].to_list() == [False, True]
-    assert df.astype({"a": "float64"}).dtypes == {"a": "float64", "b": "float64"}
+    assert df.astype({"a": "float64"}).dtypes.to_list() == ["float64", "float64"]
     assert df.astype("string")["b"].to_list() == ["0.5", NA]
     with pytest.raises(TypeError):
         df + df["a"]
-    with pytest.raises(NotImplementedError):
-        df + sdpd.DataFrame({"a": [1, 2]})
+    partial = df + sdpd.DataFrame({"a": [1, 2]})  # "b" is only on the left: NA there (API.md §14)
+    assert partial["a"].to_list() == [2, 4] and partial["b"].to_list() == [NA, NA] and partial["b"].dtype == "float64"
     with pytest.raises(KeyError):
         df.astype({"zz": "int64"})

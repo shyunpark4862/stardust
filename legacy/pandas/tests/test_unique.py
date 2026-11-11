@@ -96,7 +96,7 @@ def test_series_unique_family(data):
             total = sum(counts[c] for c in kept)
             order = sorted(kept, key=lambda c: counts[c], reverse=not ascending)  # stable: ties keep first appearance
             vc = s.value_counts(dropna=dropna, ascending=ascending)
-            assert vc.columns == ["v", "count"]
+            assert vc.columns.to_list() == ["v", "count"]
             assert same_list(vc["v"].to_list(), [vals[first[c]] for c in order])
             assert vc["count"].to_list() == [counts[c] for c in order]
             unsorted = s.value_counts(dropna=dropna, sort=False, normalize=True)
@@ -124,7 +124,7 @@ def test_frame_duplicates_and_value_counts(data):
     vc = df.value_counts(subset, dropna=False)
     counts = {c: codes.count(c) for c in first}
     order = sorted(first, key=lambda c: counts[c], reverse=True)
-    assert vc.columns == subset + ["count"]
+    assert vc.columns.to_list() == subset + ["count"]
     for j, k in enumerate(subset):
         assert same_list(vc[k].to_list(), [rows[first[c]][j] for c in order])
     assert vc["count"].to_list() == [counts[c] for c in order]
@@ -186,7 +186,7 @@ def test_errors_and_signatures():
     s = sdpd.Series([1, 1], name="count")
     with pytest.raises(ValueError):
         s.value_counts()  # the key column would clash with "count"
-    assert s.value_counts(normalize=True).columns == ["count", "proportion"]
+    assert s.value_counts(normalize=True).columns.to_list() == ["count", "proportion"]
     with pytest.raises(ValueError):
         sdpd.Series([1]).duplicated(keep=False)  # keep="none" replaces False (API.md §11 C5)
     with pytest.raises(TypeError):
@@ -199,6 +199,6 @@ def test_errors_and_signatures():
         df.duplicated("zz")
     with pytest.raises(ValueError):
         df.duplicated([])
-    assert df.nunique() == {"a": 1, "count": 1}
+    assert df.nunique().to_list() == [1, 1] and df.nunique().index.to_list() == ["a", "count"]
     assert sdpd.Series([], dtype="int64").unique().to_list() == []
     assert sdpd.Series([], dtype="string").value_counts().shape == (0, 2)

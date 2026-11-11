@@ -295,8 +295,8 @@ def test_series_from_series_shares_the_buffer():
 def test_series_rejects():
     with pytest.raises(TypeError):
         sdpd.Series(5)
-    with pytest.raises(NotImplementedError):
-        sdpd.Series({"a": 1})
+    with pytest.raises(TypeError):
+        sdpd.Series({"a": 1})  # labels come through index= (API.md §14)
 
 
 def test_only_the_main_argument_is_positional():  # API.md §11 C2
@@ -331,8 +331,8 @@ def test_head_shares_the_buffer_and_recounts_na():
 
 def test_frame_from_dict():
     df = sdpd.DataFrame({"a": [1, 2], "b": np.array([0.5, 1.5]), "c": sdpd.Series(["x", None])})
-    assert df.columns == ["a", "b", "c"]
-    assert df.dtypes == {"a": "int64", "b": "float64", "c": "string"}
+    assert df.columns.to_list() == ["a", "b", "c"]
+    assert df.dtypes.to_list() == ["int64", "float64", "string"] and df.dtypes.index.equals(df.columns)
     assert df.shape == (2, 3) and len(df) == 2
     assert df["c"].to_list() == ["x", NA] and df["c"].name == "c"
 
@@ -349,13 +349,14 @@ def test_frame_dict_errors():
         sdpd.DataFrame({"a": [1, 2], "b": [1]})
     with pytest.raises(TypeError):
         sdpd.DataFrame({1: [1]})
-    with pytest.raises(NotImplementedError):
-        sdpd.DataFrame({"a": sdpd.Series([1, 2]), "b": sdpd.Series([1, 2, 3]).tail(2)})
+    # Series with different labels are aligned to the union of labels (API.md §14).
+    df = sdpd.DataFrame({"a": sdpd.Series([1, 2]), "b": sdpd.Series([1, 2, 3]).tail(2)})
+    assert df.index.to_list() == [0, 1, 2] and df["a"].to_list() == [1, 2, NA] and df["b"].to_list() == [NA, 2, 3]
 
 
 def test_frame_columns_select_and_fill():
     df = sdpd.DataFrame({"a": [1, 2], "b": [3, 4]}, columns=["b", "z"])
-    assert df.columns == ["b", "z"]
+    assert df.columns.to_list() == ["b", "z"]
     assert df["z"].dtype == "float64" and df["z"].to_list() == [NA, NA]
     with pytest.raises(ValueError):
         sdpd.DataFrame({"a": [1]}, columns=["a", "a"])
@@ -363,13 +364,13 @@ def test_frame_columns_select_and_fill():
 
 def test_frame_from_records():
     df = sdpd.DataFrame([{"a": 1, "b": "x"}, {"b": "y", "c": 2.5}])
-    assert df.columns == ["a", "b", "c"]
+    assert df.columns.to_list() == ["a", "b", "c"]
     assert df["a"].to_list() == [1, NA] and df["c"].to_list() == [NA, 2.5]
 
 
 def test_frame_from_rows_needs_columns():
     df = sdpd.DataFrame([[1, "x"], (2, "y")], columns=["n", "s"])
-    assert df.dtypes == {"n": "int64", "s": "string"}
+    assert df.dtypes.to_list() == ["int64", "string"]
     with pytest.raises(ValueError):
         sdpd.DataFrame([[1, 2]])
     with pytest.raises(ValueError):
@@ -391,7 +392,7 @@ def test_frame_from_2d_numpy():
 
 def test_frame_dtype_applies_to_every_column():
     df = sdpd.DataFrame({"a": [1, 2], "b": [3.0, 4.0]}, dtype="float64")
-    assert df.dtypes == {"a": "float64", "b": "float64"}
+    assert df.dtypes.to_list() == ["float64", "float64"]
     with pytest.raises(ValueError):
         sdpd.DataFrame({"b": [3.5]}, dtype="int64")
 
