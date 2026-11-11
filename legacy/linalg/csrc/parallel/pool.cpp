@@ -48,7 +48,10 @@ public:
     explicit Pool(int n) { start(n); }
     ~Pool() { stop(); }
 
-    int threads() const { return static_cast<int>(workers_.size()) + 1; }  // the caller counts
+    // The caller counts. An atomic copy of workers_.size() + 1: any thread
+    // may ask while set_num_threads rebuilds workers_ (reading the vector
+    // itself raced with that; found in stardust-pandas's M12+ review).
+    int threads() const { return nthreads_.load(std::memory_order_relaxed); }
 
     void resize(int n) {
         while (busy_.exchange(true)) std::this_thread::yield();  // wait for a running job to finish
@@ -58,11 +61,17 @@ public:
     }
 
     void run(std::int64_t ntasks, const std::function<void(std::int64_t)>& fn) {
-        if (workers_.empty() || busy_.exchange(true)) {
-            // One thread, or another Python thread's job is running (it holds
-            // the pool while its GIL is released): do this one serially rather
-            // than wait or oversubscribe (stardust-numpy ARCHITECTURE.md §5;
-            // here ARCHITECTURE.md §4).
+        // Another Python thread's job is running (it holds the pool while its
+        // GIL is released): do this one serially rather than wait or
+        // oversubscribe (stardust-numpy ARCHITECTURE.md §5; here
+        // ARCHITECTURE.md §4). workers_ is read only once the pool is ours:
+        // resize() changes it holding busy_ too.
+        if (busy_.exchange(true)) {
+            serial(ntasks, fn);
+            return;
+        }
+        if (workers_.empty()) {  // one thread
+            busy_ = false;
             serial(ntasks, fn);
             return;
         }
@@ -153,9 +162,11 @@ private:
         stop_flag_ = false;
         const std::uint64_t now = generation_.load();
         for (int i = 1; i < n; ++i) workers_.emplace_back([this, now] { worker_main(now); });
+        nthreads_.store(static_cast<int>(workers_.size()) + 1, std::memory_order_relaxed);
     }
 
     void stop() {
+        nthreads_.store(1, std::memory_order_relaxed);
         {
             std::lock_guard lock(m_);
             stop_ = true;
@@ -178,6 +189,7 @@ private:
     std::atomic<bool> stop_flag_{false};  // stop_, readable while spinning
     std::exception_ptr error_;
     std::atomic<bool> busy_{false};
+    std::atomic<int> nthreads_{1};
 };
 
 Pool& pool() {
