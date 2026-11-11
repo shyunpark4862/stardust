@@ -348,6 +348,17 @@ std::vector<std::int64_t> Partitioned<Key, Hash>::build(std::int64_t n, KeyOf ke
     global_.assign(P, {});
     if (P == 1) {  // the serial pass: codes in order of first appearance, NA rows sharing one
         SwissTable<Key, Hash>& table = tables_[0];
+        // Room for every row up front, as each partition below gets
+        // (M12): growing from 32 slots rehashes ~log2(keys) times, and each
+        // new table is a fresh allocation the first writes fault in -- a
+        // quarter of a 10k-row groupby. The pages of a big table cost only
+        // where keys land (calloc / malloc, see reserve()). 8-byte keys:
+        // never slower than growing, up to 1.9x faster (experiments/
+        // m12_small/reserve2.cpp). Strings: at most 2^16 rows' worth -- a
+        // table sized for 1M rows with 100k string keys was 26% slower than
+        // growing, as each match also reads the key by its code
+        // (reserve_str.cpp); with the cap it is never slower.
+        table.reserve(kInline ? n : std::min<std::int64_t>(n, std::int64_t{1} << 16));
         std::vector<std::int64_t> first;
         parallel::Unlocked unlocked(n);
         for (std::int64_t i = 0; i < n; ++i) {

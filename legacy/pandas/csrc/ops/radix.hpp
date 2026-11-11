@@ -51,9 +51,47 @@ inline std::uint64_t string_prefix(std::string_view s) {
 // digit chunk by chunk -- and then each chunk scatters its elements to its
 // own places. An element's place is exactly the one the serial pass gives
 // it, so the order is the same for any thread count (DESIGN.md §2.6).
+//
+// Serial (M12): when no pass would be split -- one thread, or too few keys
+// for the scatter to reach the threshold -- M10's sort runs instead: all
+// eight histograms in one read of the keys, no per-chunk tables. The same
+// stable sort, so the same order; at 1k-10k keys it is 25-29% faster than
+// eight counting passes (experiments/m12_small/radix.cpp).
+inline void radix_sort_serial(std::vector<std::uint64_t>& keys, std::vector<std::int64_t>& rows) {
+    const std::size_t n = keys.size();
+    std::vector<std::array<std::int64_t, 256>> count(8);
+    for (auto& h : count) h.fill(0);
+    for (std::uint64_t k : keys)
+        for (int d = 0; d < 8; ++d) ++count[d][(k >> (8 * d)) & 0xff];
+    std::vector<std::uint64_t> keys2(n);
+    std::vector<std::int64_t> rows2(n);
+    for (int d = 0; d < 8; ++d) {
+        std::int64_t next[256];  // local: the row stores below cannot alias it
+        next[0] = 0;
+        for (int b = 1; b < 256; ++b) next[b] = next[b - 1] + count[d][b - 1];
+        const int shift = 8 * d;
+        const std::uint64_t* k = keys.data();
+        const std::int64_t* r = rows.data();
+        std::uint64_t* k2 = keys2.data();
+        std::int64_t* r2 = rows2.data();
+        for (std::size_t j = 0; j < n; ++j) {
+            const std::int64_t to = next[(k[j] >> shift) & 0xff]++;
+            k2[to] = k[j];
+            r2[to] = r[j];
+        }
+        keys.swap(keys2);
+        rows.swap(rows2);
+    }
+}
+
 inline void radix_sort(std::vector<std::uint64_t>& keys, std::vector<std::int64_t>& rows) {
     const auto n = static_cast<std::int64_t>(keys.size());
     if (n == 0) return;
+    if (!parallel::available() || n * 2 < parallel::kThreshold) {  // 2: the scatter's cost below
+        parallel::Unlocked unlocked(n * 2);  // the GIL rule of the passes it replaces (API.md §20)
+        radix_sort_serial(keys, rows);
+        return;
+    }
     const std::size_t C = static_cast<std::size_t>(parallel::num_chunks(n));
     std::vector<std::int64_t> at(C * 256);
     std::vector<std::uint64_t> keys2(static_cast<std::size_t>(n));

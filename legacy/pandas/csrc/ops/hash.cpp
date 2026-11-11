@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstring>
+#include <limits>
 #include <numeric>
 #include <string_view>
 #include <string>
@@ -138,6 +139,56 @@ bool contains_key(const Column& col, const Column& value) {
     return found;
 }
 
+namespace {
+
+// The code of every probe row in `table` (-1 for NA rows and keys it does
+// not have), codes above `skip` moved down by one (M12). Dispatched once per
+// call -- dtype, NA or not -- so the row loop is one find and a store: M11
+// asked "valid? string? which dtype?" on every row, half of a one-thread
+// 1M-row merge. Everything the loop reads is a local of the task, so the
+// int64 stores cannot alias it (M11).
+template <class Key, class Hash, class KeyOf>
+void find_rows(const Partitioned<Key, Hash>& table, const Column& probe, KeyOf key_of, std::int64_t skip,
+               std::int64_t* out) {
+    const bool nulls = probe.null_count > 0;
+    parallel::for_chunks(probe.length, [&](std::int64_t lo, std::int64_t hi) {
+        const Partitioned<Key, Hash>& t = table;
+        const KeyOf key = key_of;
+        const std::int64_t s = skip;
+        std::int64_t* o = out;
+        if (!nulls) {
+            for (std::int64_t i = lo; i < hi; ++i) {
+                const std::int64_t c = t.find(key(i));
+                o[i] = c - (c > s);
+            }
+        } else {
+            const std::uint8_t* bits = probe.validity_bits();
+            const std::int64_t off = probe.offset;
+            for (std::int64_t i = lo; i < hi; ++i) {
+                if (!bitmap::get(bits, off + i)) {
+                    o[i] = -1;
+                    continue;
+                }
+                const std::int64_t c = t.find(key(i));
+                o[i] = c - (c > s);
+            }
+        }
+    }, 8);
+}
+
+// Row i's string from pointers held by the closure (not reloaded through
+// the Column after every store).
+auto string_keys(const Column& c) {
+    return [offs = c.string_offsets(), chars = reinterpret_cast<const char*>(c.values->data())](std::int64_t i) {
+        return std::string_view(chars + offs[i], static_cast<std::size_t>(offs[i + 1] - offs[i]));
+    };
+}
+
+// No code is above it: nothing moves.
+constexpr std::int64_t kNoSkip = std::numeric_limits<std::int64_t>::max();
+
+}  // namespace
+
 LabelTable::LabelTable(const Column& labels) : labels_(labels) {
     if (labels.null_count != 0) throw nb::value_error("index labels cannot be NA");
     const std::int64_t n = labels.length;
@@ -164,13 +215,12 @@ Column LabelTable::lookup(const Column& targets) const {
                                  .c_str());
     Column out = make_fixed(DType::Int64, targets.length);
     auto* o = reinterpret_cast<std::int64_t*>(out.values->data());
-    parallel::for_chunks(targets.length, [&](std::int64_t lo, std::int64_t hi) {
-        for (std::int64_t i = lo; i < hi; ++i) {
-            if (!targets.is_valid(i)) o[i] = -1;
-            else if (ints_) o[i] = ints_->find(static_cast<std::uint64_t>(targets.data<std::int64_t>()[i]));
-            else o[i] = strings_->find(targets.string_at(i));
-        }
-    }, 8);
+    if (ints_) {
+        const auto* v = targets.data<std::int64_t>();
+        find_rows(*ints_, targets, [v](std::int64_t i) { return static_cast<std::uint64_t>(v[i]); }, kNoSkip, o);
+    } else {
+        find_rows(*strings_, targets, string_keys(targets), kNoSkip, o);
+    }
     return out;
 }
 
@@ -259,13 +309,28 @@ ValueCodes::ValueCodes(const Column& build) : build_(build) {
 std::vector<std::int64_t> ValueCodes::lookup(const Column& probe) const {
     if (probe.dtype != build_.dtype) throw nb::type_error("lookup: the dtypes differ");
     std::vector<std::int64_t> out(static_cast<std::size_t>(probe.length));
-    parallel::for_chunks(probe.length, [&](std::int64_t lo, std::int64_t hi) {
-        for (std::int64_t i = lo; i < hi; ++i) {
-            std::int64_t c = !probe.is_valid(i) ? -1 : strings_ ? strings_->find(probe.string_at(i)) : words_->find(word_key(probe, i));
-            if (na_code_ >= 0 && c > na_code_) --c;  // the same renumbering as the build rows
-            out[static_cast<std::size_t>(i)] = c;
-        }
-    }, 8);
+    const std::int64_t skip = na_code_ >= 0 ? na_code_ : kNoSkip;  // the same renumbering as the build rows
+    std::int64_t* o = out.data();
+    switch (probe.dtype) {
+    case DType::String:
+        find_rows(*strings_, probe, string_keys(probe), skip, o);
+        break;
+    case DType::Int64: {
+        const auto* v = probe.data<std::int64_t>();
+        find_rows(*words_, probe, [v](std::int64_t i) { return static_cast<std::uint64_t>(v[i]); }, skip, o);
+        break;
+    }
+    case DType::Float64: {
+        const auto* v = probe.data<double>();
+        find_rows(*words_, probe, [v](std::int64_t i) { return float_key(v[i]); }, skip, o);
+        break;
+    }
+    case DType::Bool: {
+        const auto* v = probe.data<std::uint8_t>();
+        find_rows(*words_, probe, [v](std::int64_t i) { return std::uint64_t{v[i]}; }, skip, o);
+        break;
+    }
+    }
     return out;
 }
 
