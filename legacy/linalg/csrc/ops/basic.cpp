@@ -288,7 +288,7 @@ nb::object matrix_power(nb::handle xo, nb::handle n_o) {
                 if ((e >> bit) & 1) product(r, base);
             }
             return 0;
-        });
+        }, n < 0 ? lu_task_cap(m, m, true) : 0);  // x^-1 is getrf + getrs(I)
         if (f) raise(b, f, "matrix_power", "x");
         return to_sdnp(out);
     });

@@ -165,6 +165,13 @@ nb::object solve_banded(nb::handle abo, nb::handle bo, nb::handle klo, nb::handl
 
 // ------------------------------------------------------------------ sylvester --
 
+// From this size on (the smaller of m and n), solve_sylvester runs the Schur
+// decompositions of a and b at the same time. A variable only so that the
+// experiment can move it (_core._set_schur_pair_min). Measured
+// (experiments/opt_impl/out/schur_pair.txt): 0.76-0.96x below n = 6, 1.05x at
+// 6, 1.1-1.3x from 8 to 24, 1.4-1.7x from 32 on; bits the same.
+lint kSchurPairMin = 8;
+
 // a x + x b = c by Bartels-Stewart: a = U R U^H, b = W S W^H (Schur), then
 // R Y + Y S = U^H c W (trsyl3) and x = U Y W^H. A real a, b give the real
 // quasi-triangular Schur forms, which trsyl3 handles directly.
@@ -194,10 +201,26 @@ nb::object solve_sylvester(nb::handle ao, nb::handle bo, nb::handle co) {
             LapackSlot<T> xs(res + i * m * n, m * n, s, Scratch::kAlign0);
             T* x = xs.get();
             if (!pack(a.dtype(), a.data() + off[0], m, m, a.stride(-2), a.stride(-1), R, m, true)) return kNonFinite;
-            if (m > 0 && lapack::gees(m, R, m, U, m, s) > 0) return kNoConvergenceEig;
-            if (!pack(bb.dtype(), bb.data() + off[1], n, n, bb.stride(-2), bb.stride(-1), S, n, true))
-                return kNonFiniteB;
-            if (n > 0 && lapack::gees(n, S, n, W, n, s) > 0) return kNoConvergenceEig;
+            const bool b_finite = pack(bb.dtype(), bb.data() + off[1], n, n, bb.stride(-2), bb.stride(-1), S, n, true);
+            // The two Schur decompositions are independent. Each runs on one core
+            // inside Accelerate, so for large matrices they run at the same time,
+            // b's on a second scratch: the same arrays and workspace sizes, so the
+            // same bits (after M11, docs/learn/next-optimizations.md §1).
+            lint info_a = 0, info_b = 0;
+            if (b_finite && m > 0 && n > 0 && std::min(m, n) >= kSchurPairMin && detail::begin_parallel()) {
+                Scratch s2;
+                detail::run_tasks(2, [&](std::int64_t t) {
+                    if (t == 0) info_a = lapack::gees(m, R, m, U, m, s);
+                    else info_b = lapack::gees(n, S, n, W, n, s2);
+                });
+            } else {
+                if (m > 0) info_a = lapack::gees(m, R, m, U, m, s);
+                if (info_a == 0 && b_finite && n > 0) info_b = lapack::gees(n, S, n, W, n, s);
+            }
+            // reported in argument order, as before: a, a's Schur, b, b's Schur
+            if (info_a > 0) return kNoConvergenceEig;
+            if (!b_finite) return kNonFiniteB;
+            if (info_b > 0) return kNoConvergenceEig;
             if (!pack(c.dtype(), c.data() + off[2], m, n, c.stride(-2), c.stride(-1), x, m, true)) return kNonFinite2;
             if (m == 0 || n == 0) return 0;
             T* tmp = s.get<T>(static_cast<std::size_t>(m * n), 2);
@@ -224,6 +247,7 @@ void bind_special(nb::module_& m) {
     m.def("solve_banded", &solve_banded, nb::arg().none(), nb::arg().none(), nb::kw_only(), nb::arg("lower_bandwidth"),
           nb::arg("upper_bandwidth"));
     m.def("solve_sylvester", &solve_sylvester, nb::arg().none(), nb::arg().none(), nb::arg().none());
+    m.def("_set_schur_pair_min", [](std::int64_t n) { kSchurPairMin = n; });  // experiments only
 }
 
 }  // namespace sdla

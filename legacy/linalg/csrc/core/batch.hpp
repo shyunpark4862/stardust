@@ -135,12 +135,17 @@ bool begin_parallel();  // syncs the pool with sdnp.get_num_threads() (needs the
 void run_tasks(std::int64_t ntasks, const std::function<void(std::int64_t)>& fn);
 }  // namespace detail
 
+// `max_tasks` > 0 caps the number of tasks, and so of threads working at once:
+// for the LAPACK paths that run serialized on the AMX unit the cores share
+// (core/cost.hpp: lu_task_cap; after M11). Which element runs where does not
+// change any result.
 template <class F>
-Failure run_batch(const Batch& b, double element_ns, F&& body) {
+Failure run_batch(const Batch& b, double element_ns, F&& body, int max_tasks = 0) {
     const std::int64_t n = b.size();
     // element_ns == 0 means: never split (e.g. small gbsv bands, core/cost.hpp)
     if (n >= 2 && element_ns > 0 && element_ns * static_cast<double>(n) >= kParallelMinNs && detail::begin_parallel()) {
-        const std::int64_t per = std::max<std::int64_t>(1, static_cast<std::int64_t>(kTaskNs / element_ns));
+        std::int64_t per = std::max<std::int64_t>(1, static_cast<std::int64_t>(kTaskNs / element_ns));
+        if (max_tasks > 0 && (n + per - 1) / per > max_tasks) per = (n + max_tasks - 1) / max_tasks;
         const std::int64_t ntasks = (n + per - 1) / per;
         std::vector<Failure> fails(static_cast<std::size_t>(ntasks));
         std::atomic<std::int64_t> first{std::numeric_limits<std::int64_t>::max()};

@@ -1,7 +1,9 @@
 // The stardust_linalg._core extension module.
 #include "core/batch.hpp"
+#include "core/cost.hpp"
 #include "core/errors.hpp"
 #include "core/outblock.hpp"
+#include "core/pack.hpp"
 #include "core/pyrefs.hpp"
 #include "ops/basic.hpp"
 #include "ops/expm.hpp"
@@ -35,4 +37,7 @@ NB_MODULE(_core, m) {
         sdla::kParallelMinNs = min_ns;
         sdla::kTaskNs = task_ns;
     });
+    // For experiments/opt_impl only: the size from which one matrix is packed on the pool.
+    m.def("_set_pack_parallel_min", [](std::int64_t n) { sdla::detail::kPackParallelMin = n; });
+    m.def("_set_lu_task_cap", [](bool on) { sdla::kLuTaskCapOn = on; });
 }

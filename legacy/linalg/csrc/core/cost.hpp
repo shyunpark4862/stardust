@@ -37,4 +37,27 @@ inline double cost(Family f, double w) { return f.a + f.c * w; }
 // n = 48 for kl = ku = 5).
 inline constexpr double kBandSplitMin = 400;
 
+// Accelerate runs two paths of small LAPACK calls through the AMX unit that
+// the cores share, so they do not scale and get slower beyond a few threads
+// (after M11: experiments/opt_impl/out/lu_scaling.txt, lu_scaling_k.txt;
+// experiments/opt_analysis/out/lapack_scaling.txt):
+//   - getrf for n = 32-40 (best 5 threads; n <= 31 and n >= 48 scale); capped
+//     only to n = 35: beyond, lu's own unpacking still scales and the cap cost
+//     it 5-12% (out/cap_check.txt);
+//   - the triangular solves (trsm, inside getrs/trtrs/potrs) with k >= 8
+//     right-hand sides for n = 24-40 (best 3 threads to n = 34, 5 to 40; k <= 7
+//     and n <= 23 scale).
+// lu_task_cap(n, k) is the cap on tasks for a batch that factors with getrf
+// (`factors`) and/or solves k right-hand sides; 0 = no cap.
+inline bool kLuTaskCapOn = true;  // a variable only for the experiment (_core._set_lu_task_cap)
+inline int lu_task_cap(std::int64_t n, std::int64_t k, bool factors) {
+    if (!kLuTaskCapOn) return 0;
+    int cap = 0;
+    auto tighten = [&](int c) { cap = cap == 0 ? c : (c < cap ? c : cap); };
+    if (factors && n >= 32 && n <= 35) tighten(5);
+    if (k >= 8 && n >= 24 && n <= 34) tighten(3);
+    if (k >= 8 && n >= 35 && n <= 40) tighten(5);
+    return cap;
+}
+
 }  // namespace sdla

@@ -73,7 +73,7 @@ nb::object det(nb::handle xo) {
                 return det_body<T>(x, n, off[0], s, [&](const T* lu, const lint* ipiv, bool sing) {
                     d = det_of(lu, ipiv, n, sing);
                 });
-            });
+            }, lu_task_cap(n, 0, true));
             if (f) raise(b, f, "det", "x");
             return py_scalar(d);
         }
@@ -83,7 +83,7 @@ nb::object det(nb::handle xo) {
             return det_body<T>(x, n, off[0], s, [&](const T* lu, const lint* ipiv, bool sing) {
                 res[i] = det_of(lu, ipiv, n, sing);
             });
-        });
+        }, lu_task_cap(n, 0, true));
         if (f) raise(b, f, "det", "x");
         return to_sdnp(out);
     });
@@ -103,7 +103,7 @@ nb::object slogdet(nb::handle xo) {
                 return det_body<T>(x, n, off[0], s, [&](const T* lu, const lint* ipiv, bool sing) {
                     sign_logabs(lu, ipiv, n, sing, sign, logabs);
                 });
-            });
+            }, lu_task_cap(n, 0, true));
             if (f) raise(b, f, "slogdet", "x");
             return make_slogdet(py_scalar(sign), py_scalar(logabs));
         }
@@ -115,7 +115,7 @@ nb::object slogdet(nb::handle xo) {
             return det_body<T>(x, n, off[0], s, [&](const T* lu, const lint* ipiv, bool sing) {
                 sign_logabs(lu, ipiv, n, sing, sign[i], logabs[i]);
             });
-        });
+        }, lu_task_cap(n, 0, true));
         if (f) raise(b, f, "slogdet", "x");
         return make_slogdet(to_sdnp(sign_out), to_sdnp(logabs_out));
     });
@@ -136,7 +136,7 @@ nb::object inv(nb::handle xo) {
             LapackSlot<T> rs(res + i * n * n, n * n, s, Scratch::kAlign0);
             lu_inverse(a, ipiv, n, rs.get());  // this element's slot, filled in place
             return 0;
-        });
+        }, lu_task_cap(n, n, true));
         if (f) raise(b, f, "inv", "x");
         return to_sdnp(out);
     });
@@ -163,7 +163,7 @@ nb::object solve(nb::handle ao, nb::handle bo) {
             if (!pack(y.dtype(), y.data() + off[1], n, k, r.rs, r.cs, x, n, true)) return kNonFiniteB;
             if (n > 0 && k > 0) lapack::getrs('N', n, k, lu, n, ipiv, x, n);
             return 0;
-        });
+        }, lu_task_cap(n, k, true));
         if (f) raise(b, f, "solve", "a");
         return to_sdnp(out);
     });

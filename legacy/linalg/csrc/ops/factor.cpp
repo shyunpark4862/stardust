@@ -51,7 +51,7 @@ nb::object solve_triangular(nb::handle ao, nb::handle bo, bool upper, bool unit_
             if (!pack(y.dtype(), y.data() + off[1], n, r.k, r.rs, r.cs, x, n, true)) return kNonFiniteB;
             if (n > 0) lapack::trtrs(upper ? 'U' : 'L', 'N', unit_diagonal ? 'U' : 'N', n, r.k, t, ld, x, n);
             return 0;
-        });
+        }, lu_task_cap(n, r.k, false));
         if (f) raise(b, f, "solve_triangular", "a");
         return to_sdnp(out);
     });
@@ -112,7 +112,7 @@ nb::object cholesky_solve(nb::handle lo, nb::handle bo, bool upper) {
             if (!pack(y.dtype(), y.data() + off[1], n, r.k, r.rs, r.cs, x, n, true)) return kNonFiniteB;
             if (n > 0 && r.k > 0) lapack::potrs(upper ? 'U' : 'L', n, r.k, t, ld, x, n);
             return 0;
-        });
+        }, lu_task_cap(n, r.k, false));
         if (f) raise(b, f, "cholesky_solve", "l");
         return to_sdnp(out);
     });
@@ -151,7 +151,7 @@ nb::object lu(nb::handle xo) {
             for (lint r = 0; r < m; ++r) p[r] = r;
             for (lint r = 0; r < kk; ++r) std::swap(p[r], p[ipiv[r] - 1]);
             return 0;
-        });
+        }, lu_task_cap(std::min(m, n), 0, true));
         if (f) raise(b, f, "lu", "x");
         return make_result(Result::LU, {to_sdnp(lo), to_sdnp(uo), to_sdnp(po)});
     });
@@ -231,7 +231,7 @@ nb::object lu_solve(nb::handle lo, nb::handle uo, nb::handle po, nb::handle bo) 
                 lapack::trtrs('U', 'N', 'N', n, r.k, tu, ldu, x, n);
             }
             return 0;
-        });
+        }, lu_task_cap(n, r.k, false));
         if (f) raise(b, f, "lu_solve", "l");
         return to_sdnp(out);
     });

@@ -338,7 +338,7 @@ nb::object cond(nb::handle xo, nb::handle ord_o) {
             if (const int c = square_norm(ord, xi, n, s, ni)) return c;
             C[i] = nx * ni;
             return 0;
-        });
+        }, by_svd ? 0 : lu_task_cap(n, n, true));  // the other ords invert like inv
         if (f) raise(b, f, "cond", "x");
         return b.ndim() == 0 ? py_scalar(C[0]) : to_sdnp(co);
     });
