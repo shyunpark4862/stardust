@@ -86,7 +86,7 @@ class _IndexBase:
     def _first_positions(self, labels_col):
         return self._table().first_positions(labels_col)
 
-    def position_of(self, label):
+    def _position_of(self, label):
         """The one position holding `label`: KeyError when absent or held by several rows (API.md §14)."""
         check_label(self, label)
         positions = self._table().all_positions(Column.from_list([label], NA, self.dtype)).to_list(None)
@@ -96,7 +96,7 @@ class _IndexBase:
             raise KeyError(f"label {label!r} is not unique; select with a list ([{label!r}]) to get every row")
         return positions[0]
 
-    def positions_of(self, labels):
+    def _positions_of(self, labels):
         """Every position holding each label, label by label (KeyError for an absent label)."""
         col = label_column(self, labels)
         missing = _core.binary_op("eq", self._first_positions(col), Column.from_list([-1], None, None), 2).nonzero()
@@ -104,7 +104,7 @@ class _IndexBase:
             raise KeyError(f"labels not in the index: {col.take(missing).to_list(None)}")
         return self._table().all_positions(col)
 
-    def get_indexer(self, target):
+    def _get_indexer(self, target):
         """Per label of `target` (an index), its position here or -1. Needs unique labels here."""
         if not self.is_unique:
             raise ValueError("cannot reindex or align from an index with duplicate labels (API.md §6)")
@@ -169,7 +169,7 @@ class RangeIndex(_IndexBase):
             self._labels = LabelTable(self._column())
         return self._labels
 
-    def position_of(self, label):
+    def _position_of(self, label):
         check_label(self, label)
         r = self._range
         if label not in r:  # arithmetic, no table needed

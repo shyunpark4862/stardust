@@ -12,6 +12,8 @@ DESIGN.md의 결정(NA 하나, NaN은 값, Copy-on-Write)에서 따라 나오는
 - §17은 M7을 시작하기 전에 사용자가 결정했다 (2026-11-11).
 - §18은 M8을 시작하기 전에 사용자가 결정했다 (2026-11-11).
 - §19는 M9를 시작하기 전에 사용자가 결정했다 (2026-11-11).
+- §20은 M11을 시작하기 전에 사용자가 결정했다 (2026-11-11).
+- §21은 M12에서 사용자가 정했다 (2026-11-12).
 - pandas와 다른 점은 **[pandas와 다름]**으로 표시한다.
 
 ---
@@ -602,5 +604,127 @@ NaN은 결측값이 아니라 평범한 float 값이다 (DESIGN §2.1).
   - 대입(`s[i] = v`, `s.iloc[...] = ...`)은 GIL을 쥔 채로 실행한다. 그래서 다른 연산은 대입 전이나 후의 값만 본다.
   - 대입은 먼저 자기만의 Column 객체를 만들고 거기에 쓴다. 진행 중인 연산은 옛 Column 객체를 잡고 있어서 버퍼가 공유 상태이므로, 대입이 CoW 규칙에 따라 버퍼를 복사한다.
 
-## 21. 미확정
+## 21. 공개 API 목록 (M12)
+- 공개하는 이름 전부와 시그니처다. `tests/test_api_surface.py`가 이 목록과 모듈을 맞춰 본다 (사용자 결정 2026-11-12).
+  - 목록에 없는 공개 이름(밑줄로 시작하지 않는 이름)이 있거나, 목록의 이름이 없거나, 인자의 이름, 종류, 기본값이 다르면 테스트가 실패한다.
+  - 위치 전용 인자(`/` 앞)는 이름이 API가 아니므로 개수와 기본값만 본다.
+  - 괄호가 없는 줄은 속성이다.
+- 연산자, `[]`, `len()`, 반복, `in`은 이름이 아니라서 여기 없다. §7, §12, §14에 있다.
+- M12에서 맞춘 것 (사용자 결정 2026-11-12)
+  - `Index`의 내부용 `get_indexer`, `position_of`, `positions_of`를 밑줄로 시작하는 이름으로 바꿨다. §14의 공개 목록에 없던 이름이다.
+  - 문서에 없던 `Series.shape`, `DataFrame.shape`, `RangeIndex.start/stop/step`을 여기 적었다. pandas와 같은 뜻이다.
+    - `shape`: Series는 `(행,)`, DataFrame은 `(행, 열)`
+    - `start`, `stop`, `step`: 생성 인자
+  - `Series`와 `DataFrame`의 `data`는 M1부터 기본값이 `None`이었다(빈 Series와 DataFrame). pandas와 같다. 여기 그대로 적었다.
+- **모듈** (`import stardust_pandas as sdpd`)
+  ```
+  sdpd.Series(data=None, *, index=None, dtype=None, name=None)
+  sdpd.DataFrame(data=None, *, index=None, columns=None, dtype=None)
+  sdpd.Index(data, *, name=None)
+  sdpd.RangeIndex(start=0, stop=None, step=1, *, name=None)
+  sdpd.NA
+  sdpd.concat(objs, *, join="outer", ignore_index=False)
+  sdpd.merge(left, right, *, how="inner", on=None, left_on=None, right_on=None, sort=False, suffixes=("_x", "_y"))
+  sdpd.read_csv(path, *, sep=",", header=True, names=None, usecols=None, dtype=None, na_values=None, nrows=None, index_col=None)
+  sdpd.get_num_threads()
+  sdpd.set_num_threads(n, /)
+  ```
+- **Series**
+  ```
+  Series.dtype
+  Series.index
+  Series.name                # 대입할 수 있다
+  Series.shape
+  Series.loc
+  Series.iloc
+  Series.head(n=5)
+  Series.tail(n=5)
+  Series.astype(dtype)
+  Series.to_list()
+  Series.to_numpy(*, dtype=None, copy=False, na_value=<없음>)
+  Series.isna()
+  Series.notna()
+  Series.fillna(value)
+  Series.dropna(*, ignore_index=False)
+  Series.unique()
+  Series.nunique(*, dropna=True)
+  Series.value_counts(*, normalize=False, sort=True, ascending=False, dropna=True)
+  Series.duplicated(*, keep="first")
+  Series.drop_duplicates(*, keep="first", ignore_index=False)
+  Series.reindex(labels)
+  Series.sort_values(*, ascending=True, na_position="last", ignore_index=False)
+  Series.sort_index(*, ascending=True, ignore_index=False)
+  Series.count()
+  Series.sum(*, skipna=True)
+  Series.mean(*, skipna=True)
+  Series.min(*, skipna=True)
+  Series.max(*, skipna=True)
+  Series.std(*, skipna=True, ddof=1)
+  Series.var(*, skipna=True, ddof=1)
+  ```
+- **DataFrame**
+  ```
+  DataFrame.columns
+  DataFrame.dtypes
+  DataFrame.index
+  DataFrame.shape
+  DataFrame.loc
+  DataFrame.iloc
+  DataFrame.head(n=5)
+  DataFrame.tail(n=5)
+  DataFrame.astype(dtype)
+  DataFrame.to_numpy(*, dtype=None, copy=False, na_value=<없음>)
+  DataFrame.isna()
+  DataFrame.notna()
+  DataFrame.fillna(value)
+  DataFrame.dropna(*, how="any", subset=None, ignore_index=False)
+  DataFrame.nunique(*, dropna=True)
+  DataFrame.value_counts(subset=None, *, normalize=False, sort=True, ascending=False, dropna=True)
+  DataFrame.duplicated(subset=None, *, keep="first")
+  DataFrame.drop_duplicates(subset=None, *, keep="first", ignore_index=False)
+  DataFrame.reindex(labels)
+  DataFrame.sort_values(by, *, ascending=True, na_position="last", ignore_index=False)
+  DataFrame.sort_index(*, ascending=True, ignore_index=False)
+  DataFrame.groupby(by, *, sort=True, dropna=True)
+  DataFrame.merge(right, *, how="inner", on=None, left_on=None, right_on=None, sort=False, suffixes=("_x", "_y"))
+  DataFrame.count()
+  DataFrame.sum(*, skipna=True)
+  DataFrame.mean(*, skipna=True)
+  DataFrame.min(*, skipna=True)
+  DataFrame.max(*, skipna=True)
+  DataFrame.std(*, skipna=True, ddof=1)
+  DataFrame.var(*, skipna=True, ddof=1)
+  ```
+- **Index, RangeIndex**
+  ```
+  Index.dtype
+  Index.name
+  Index.is_unique
+  Index.to_list()
+  Index.equals(other)
+  RangeIndex.dtype
+  RangeIndex.name
+  RangeIndex.is_unique
+  RangeIndex.start
+  RangeIndex.stop
+  RangeIndex.step
+  RangeIndex.to_list()
+  RangeIndex.equals(other)
+  ```
+- **GroupBy** (`df.groupby(...)`가 돌려주는 객체. `g["f"]`, `g[["f", "i"]]`로 값 컬럼을 고른다)
+  ```
+  GroupBy.agg(func=None, /, **named)
+  GroupBy.size()
+  GroupBy.count()
+  GroupBy.sum(*, skipna=True)
+  GroupBy.mean(*, skipna=True)
+  GroupBy.min(*, skipna=True)
+  GroupBy.max(*, skipna=True)
+  GroupBy.std(*, skipna=True, ddof=1)
+  GroupBy.var(*, skipna=True, ddof=1)
+  GroupBy.first(*, skipna=True)
+  GroupBy.last(*, skipna=True)
+  ```
+
+## 22. 미확정
 - 없음.

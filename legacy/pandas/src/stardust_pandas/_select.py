@@ -39,10 +39,10 @@ def by_label(index, key):
     if isinstance(key, slice):
         return ("slice", *label_slice(index, key))
     if _is_listlike(key):
-        return ("take", index.positions_of(key))
+        return ("take", index._positions_of(key))
     if isinstance(key, tuple):
         raise TypeError("a tuple is not a row label (there is no MultiIndex)")
-    return ("one", index.position_of(key))
+    return ("one", index._position_of(key))
 
 
 def label_slice(index, key):
@@ -52,8 +52,8 @@ def label_slice(index, key):
     step = 1 if key.step is None else key.step
     if not _is_int(step) or step == 0:
         raise ValueError("a slice step must be a non-zero int")
-    start = index.position_of(key.start) if key.start is not None else (0 if step > 0 else n - 1)
-    stop_pos = index.position_of(key.stop) if key.stop is not None else (n - 1 if step > 0 else 0)
+    start = index._position_of(key.start) if key.start is not None else (0 if step > 0 else n - 1)
+    stop_pos = index._position_of(key.stop) if key.stop is not None else (n - 1 if step > 0 else 0)
     stop = stop_pos + 1 if step > 0 else stop_pos - 1  # the stop label is included
     if stop < 0:
         stop = None
@@ -127,7 +127,7 @@ def aligned_mask(mask, index):
     if not same_index(index, mask._index):
         if len(mask) != len(index):
             raise ValueError("the mask's labels must be the index's labels (API.md §14)")
-        positions = mask._index.get_indexer(index)  # needs unique mask labels
+        positions = mask._index._get_indexer(index)  # needs unique mask labels
         if len(_core.binary_op("eq", positions, Column.from_list([-1], None, None), 2).nonzero()):
             raise ValueError("the mask's labels must be the index's labels (API.md §14)")
         col = col.take(positions)
@@ -155,10 +155,10 @@ def align(a, b):
     if not a.is_unique or not b.is_unique:
         raise ValueError("cannot align indexes with duplicate labels (API.md §6)")
     a_labels, b_labels = a._column(), b._column()
-    only_b = _core.binary_op("eq", a.get_indexer(b), Column.from_list([-1], None, None), 2).nonzero()
+    only_b = _core.binary_op("eq", a._get_indexer(b), Column.from_list([-1], None, None), 2).nonzero()
     union = Index._new(_core.concat([a_labels, b_labels.take(only_b)]), name)
     a_pos = None if len(only_b) == 0 else _core.concat([_core.arange(0, 1, len(a)), _minus_ones(len(only_b))])
-    b_pos = b.get_indexer(union)
+    b_pos = b._get_indexer(union)
     return union, a_pos, b_pos
 
 
@@ -170,5 +170,5 @@ def reindexed(col, index, target):
     """`col` (labelled by `index`) rearranged to the labels of `target`; absent labels are NA."""
     if same_index(index, target):
         return col
-    return col.take(index.get_indexer(target))
+    return col.take(index._get_indexer(target))
 
