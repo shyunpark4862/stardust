@@ -4,6 +4,7 @@ from . import _column, _core, _format, _ops, _select, _unique
 from ._column import _NO_VALUE
 from ._core import Column
 from ._dtypes import resolve
+from ._reduce import Reductions
 from ._na import NA
 from .index import Index, RangeIndex, ensure_index
 from .series import Series, assignment_values, fill_column
@@ -19,7 +20,7 @@ def _check_columns(columns):
     return columns
 
 
-class DataFrame:
+class DataFrame(Reductions):
     __slots__ = ("_cols", "_index")
 
     def __init__(self, data=None, *, index=None, columns=None, dtype=None):
@@ -164,6 +165,12 @@ class DataFrame:
         if unknown:
             raise KeyError(f"no such columns: {unknown}")
         return DataFrame._new({k: f(c, per_column[k]) if k in per_column else c for k, c in self._cols.items()}, self._index)
+
+    def _reduce(self, op, skipna, ddof):
+        """One row, labelled by the operation, each column keeping its own result
+        dtype (API.md §15). A column the operation does not apply to raises."""
+        cols = {k: _core.reduce(op, c, skipna, ddof) for k, c in self._cols.items()}
+        return DataFrame._new(cols, Index._new(Column.from_list([op], NA, "string")))
 
     # --- duplicates and unique values (API.md §13) ---
 

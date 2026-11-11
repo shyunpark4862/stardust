@@ -1,6 +1,7 @@
 """Series: one Column plus its row labels (ARCHITECTURE.md §1)."""
 
 from . import _column, _core, _format, _ops, _select, _unique
+from ._reduce import Reductions
 from ._column import _NO_VALUE
 from ._core import Column
 from ._dtypes import resolve
@@ -8,7 +9,7 @@ from ._na import NA
 from .index import RangeIndex, check_name, ensure_index
 
 
-class Series:
+class Series(Reductions):
     __slots__ = ("_col", "_index", "_name")
 
     def __init__(self, data=None, *, index=None, dtype=None, name=None):
@@ -207,6 +208,9 @@ class Series:
         col = self._col.take(self._col.notna().nonzero()) if dropna and self._col.null_count else self._col
         (keys,), counts = _unique.value_counts([col], normalize, sort, ascending)
         return DataFrame._new({name: keys, count_name: counts}, RangeIndex(len(counts)))
+
+    def _reduce(self, op, skipna, ddof):  # API.md §15: a Python scalar or NA
+        return _core.reduce(op, self._col, skipna, ddof).to_list(NA)[0]
 
     # --- selection and assignment (API.md §14) ---
 

@@ -7,6 +7,7 @@ DESIGN.md의 결정(NA 하나, NaN은 값, Copy-on-Write)에서 따라 나오는
 - §12와 §11의 C7은 M2를 시작하기 전에 사용자가 결정했다 (2026-11-11).
 - §13은 M3를 시작하기 전에 사용자가 결정했다 (2026-11-11).
 - §14는 M4를 시작하기 전에 사용자가 결정했다 (2026-11-11).
+- §15는 M5를 시작하기 전에 사용자가 결정했다 (2026-11-11).
 - pandas와 다른 점은 **[pandas와 다름]**으로 표시한다.
 
 ---
@@ -395,5 +396,43 @@ NaN은 결측값이 아니라 평범한 float 값이다 (DESIGN §2.1).
   - DataFrame: 반복과 `in` 모두 컬럼 이름 기준이다.
   - Index: 반복과 `in` 모두 라벨 기준이다.
 
-## 15. 미확정
+## 15. 리덕션 (M5)
+- **시그니처** (C3)
+  - `sum`, `mean`, `min`, `max`: `(*, skipna=True)`
+  - `std`, `var`: `(*, skipna=True, ddof=1)`. `ddof`는 0 이상의 int다.
+  - `count()`: NA가 아닌 값의 개수다.
+- **반환값**
+  - Series: Python 스칼라 또는 `NA`다 (§8).
+  - DataFrame: 1행짜리 DataFrame이다. **[pandas와 다름]**
+    - 행 라벨은 리덕션 이름(`"sum"`, `"mean"` 등)이다.
+    - 컬럼마다 자기 결과 dtype을 유지한다.
+    - 리덕션을 할 수 없는 컬럼이 하나라도 있으면 TypeError다 (예: string 컬럼의 `mean`).
+    - pandas는 dtype이 섞이면 object Series를 돌려준다.
+- **dtype별 규칙**
+
+| dtype | sum | mean | min, max | std, var |
+|---|---|---|---|---|
+| int64 | int64 (wrap, §3) | float64: int128로 정확히 더한 뒤 나눔 | int64 | float64 |
+| float64 | float64 | float64 | float64 | float64 |
+| bool | int64: True의 개수 | float64: True의 비율 | bool | TypeError |
+| string | TypeError | TypeError | string (코드포인트 순서) | TypeError |
+
+- **NA**
+  - `skipna=True`(기본값)이면 NA를 건너뛴다.
+  - `skipna=False`이면 NA가 하나라도 있을 때 결과가 NA다.
+  - 값이 모두 NA이거나 없으면: `sum`은 0, `count`는 0이고, 나머지는 NA다 (§2).
+  - `std`, `var`에서 `NA가 아닌 값의 개수 - ddof <= 0`이면 NA다. **[pandas와 다름]** pandas는 NaN이다.
+- **NaN**: `skipna`와 상관없이 결과로 전파된다 (§1).
+- **0.0과 -0.0**: `min`과 `max`는 `-0.0 < 0.0`으로 본다. numpy와 같고, IEEE 754-2019의 minimum, maximum이다.
+- **float 합의 순서**: numpy의 pairwise summation이다. 블록 128개, 누산기 8개, 절반씩 재귀하고, 0.0에서 시작한다.
+  - NA가 없으면 pandas, numpy와 비트까지 같다.
+  - NA 행은 0.0으로 채워져 있으므로 그대로 더한다.
+  - M11에서는 재귀 트리의 가지를 나눠서 병렬로 계산하므로, 스레드 수와 상관없이 비트가 같다.
+- **`var`**는 두 번 훑어서 계산한다.
+  1. 평균을 구한다.
+  2. 편차 제곱 `(x - 평균)²`을 pairwise로 더한다.
+  3. `개수 - ddof`로 나눈다.
+  - `std`는 `sqrt(var)`이다.
+
+## 16. 미확정
 - `read_csv`의 옵션과 타입 추론
