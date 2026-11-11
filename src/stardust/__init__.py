@@ -161,3 +161,5 @@ __all__ = [
     # execution
     "set_num_threads", "get_num_threads",
 ]
+
+from . import linalg  # noqa: E402  (sd.linalg; it needs the array objects above)

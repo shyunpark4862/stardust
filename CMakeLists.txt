@@ -31,9 +31,25 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/array/ops/shape.cpp
   csrc/array/ops/sort.cpp
   csrc/array/ops/ufunc.cpp
+  csrc/linalg/args.cpp
+  csrc/linalg/batch.cpp
+  csrc/linalg/errors.cpp
+  csrc/linalg/input.cpp
+  csrc/linalg/outblock.cpp
+  csrc/linalg/pyrefs.cpp
+  csrc/linalg/ops/basic.cpp
+  csrc/linalg/ops/expm.cpp
+  csrc/linalg/ops/factor.cpp
+  csrc/linalg/ops/lu.cpp
+  csrc/linalg/ops/nonsym.cpp
+  csrc/linalg/ops/norms.cpp
+  csrc/linalg/ops/qr.cpp
+  csrc/linalg/ops/spectral.cpp
+  csrc/linalg/ops/special.cpp
   csrc/parallel/pool.cpp
   csrc/bind/pyutil.cpp
   csrc/bind/array_bind.cpp
+  csrc/bind/linalg_bind.cpp
   csrc/bind/module.cpp)
 
 target_include_directories(_core PRIVATE csrc)

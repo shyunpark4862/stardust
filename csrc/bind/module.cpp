@@ -1,6 +1,7 @@
 // Python entry point of the native core (`stardust._core`).
 
 #include "bind/array_bind.hpp"
+#include "bind/linalg_bind.hpp"
 #include "bind/pyutil.hpp"
 #include "array/ops/copy.hpp"
 #include "array/ops/creation.hpp"
@@ -75,4 +76,5 @@ NB_MODULE(_core, m) {
         sd::parallel::set_num_threads(static_cast<int>(v));
     }, nb::arg());
     m.def("get_num_threads", &sd::parallel::num_threads);
+    sd::bind_linalg(m);  // last: it looks up the array objects bound above
 }

@@ -34,6 +34,9 @@ void set_num_threads(int n);  // n >= 1; 1 means: never use the pool
 // thread, and not already inside a task (no nesting).
 bool available();
 
+// Not inside a task (whatever the thread count): the calling thread may start a job.
+bool available_here();
+
 // Runs fn(t) for t in [0, ntasks). In parallel when available() and the
 // pool is not busy with another Python thread's job (then this call runs on
 // the calling thread alone). The GIL is released for the duration, so other
