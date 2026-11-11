@@ -11,7 +11,13 @@ import stardust_linalg as sdla
 ```
 
 ## 상태
-M0(환경과 설계 검증)까지 진행했다. 공개 함수는 M1부터 들어온다.
+M1까지 진행했다: `solve`, `inv`, `det`, `slogdet`과 `LinAlgError`.
+
+```python
+a = sdnp.asarray([[2.0, 1.0], [1.0, 3.0]])
+sdla.solve(a, sdnp.asarray([1.0, 2.0]))   # ≈ [0.2, 0.6]
+sdla.slogdet(a)                            # SlogdetResult(sign=1.0, logabsdet=1.609...)
+```
 
 ## 빌드와 테스트
 stardust-numpy가 옆 폴더(`../stardust-numpy`)에 있어야 한다.
@@ -23,4 +29,7 @@ python3.15 -m venv .venv && .venv/bin/pip install nanobind scikit-build-core pyt
 ```
 ```bash
 .venv/bin/pip install --no-build-isolation -e .
+```
+```bash
+.venv/bin/python -m pytest -q
 ```
