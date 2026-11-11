@@ -8,6 +8,7 @@
 #include "ops/nonsym.hpp"
 #include "ops/norms.hpp"
 #include "ops/qr.hpp"
+#include "ops/special.hpp"
 #include "ops/spectral.hpp"
 
 #include <nanobind/nanobind.h>
@@ -25,4 +26,5 @@ NB_MODULE(_core, m) {
     sdla::bind_qr(m);
     sdla::bind_spectral(m);
     sdla::bind_nonsym(m);
+    sdla::bind_special(m);
 }

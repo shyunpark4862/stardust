@@ -149,6 +149,12 @@ solve_banded(ab, b, /, *, lower_bandwidth, upper_bandwidth)   # 둘 다 필수
 solve_sylvester(a, b, c, /)           # a x + x b = c를 푼다
 ```
 - `solve_banded`의 `ab`는 띠 저장 형식이다: `(..., lower_bandwidth + upper_bandwidth + 1, N)`, `ab[..., upper_bandwidth + i - j, j] = a[..., i, j]`
+  - 행렬 안에 해당하는 원소만 읽는다. 모서리(행렬 밖)는 읽지도 검사하지도 않는다. 대역폭이 행렬보다 넓어도 된다.
+  - `lower_bandwidth = upper_bandwidth = 1`이면 `solve_tridiagonal`과 같은 루틴(`gtsv`)으로 풀어서, 결과가 비트까지 같다 (DESIGN §2.16).
+- `solve_tridiagonal`: `dl`(부대각), `du`(초대각)는 `d`보다 하나 짧다. 네 인자의 배치 축을 브로드캐스팅한다.
+- `b`는 solve류 규칙(§0.2)을 따른다. 특이 행렬(정확히 0인 피벗)은 `LinAlgError`다.
+- `solve_sylvester`의 `c`는 항상 `(..., M, N)` 행렬이다 (`a`: `(..., M, M)`, `b`: `(..., N, N)`).
+  - `a`와 `-b`가 공통(또는 eps 수준으로 가까운) 고유값을 가지면 해가 하나로 정해지지 않으므로 `LinAlgError`다 (DESIGN §2.16).
 
 ## 6. 확장 단계
 ```

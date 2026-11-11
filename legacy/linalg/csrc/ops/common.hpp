@@ -4,6 +4,7 @@
 #include "core/batch.hpp"
 #include "core/errors.hpp"
 #include "core/input.hpp"
+#include "core/outblock.hpp"
 #include "core/pack.hpp"
 #include "core/types.hpp"
 #include "lapack/lapack.hpp"
@@ -35,13 +36,20 @@ constexpr int kNonFiniteU = 5;  // lu_solve: NaN or inf in 'u'
 constexpr int kBadPerm = 6;     // lu_solve: 'perm' is not a permutation
 constexpr int kNoConvergence = 7;     // the SVD did not converge
 constexpr int kNoConvergenceEig = 8;  // an eigenvalue algorithm did not converge
+constexpr int kNonFinite2 = 9;        // NaN or inf in the argument named `arg2`
+constexpr int kNonFinite3 = 10;       // NaN or inf in the argument named `arg3`
+constexpr int kCloseEigenvalues = 11; // Sylvester: a and -b share an eigenvalue (DESIGN.md §2.16)
 
 // Turns a batch failure into the Python exception. `arg` names the first
-// matrix argument; the right-hand side is always 'b'.
-[[noreturn]] inline void raise(const Batch& b, const Failure& f, const char* func, const char* arg) {
+// matrix argument; the right-hand side is always 'b'. `arg2`, `arg3` name the
+// arguments of kNonFinite2 / kNonFinite3, for functions with more inputs.
+[[noreturn]] inline void raise(const Batch& b, const Failure& f, const char* func, const char* arg,
+                               const char* arg2 = nullptr, const char* arg3 = nullptr) {
     auto msg = [&](const std::string& what) { return failure_message(b, f.index, (std::string(func) + "(): " + what).c_str()); };
     switch (f.code) {
         case kNonFinite: throw nb::value_error(msg(std::string("'") + arg + "' contains NaN or infinity").c_str());
+        case kNonFinite2: throw nb::value_error(msg(std::string("'") + arg2 + "' contains NaN or infinity").c_str());
+        case kNonFinite3: throw nb::value_error(msg(std::string("'") + arg3 + "' contains NaN or infinity").c_str());
         case kNonFiniteB: throw nb::value_error(msg("'b' contains NaN or infinity").c_str());
         case kNonFiniteU: throw nb::value_error(msg("'u' contains NaN or infinity").c_str());
         case kBadPerm: throw nb::value_error(msg("'perm' is not a permutation of 0..n-1").c_str());
@@ -49,6 +57,8 @@ constexpr int kNoConvergenceEig = 8;  // an eigenvalue algorithm did not converg
         case kNoConvergence: throw LinAlgError(failure_message(b, f.index, "SVD did not converge"));
         case kNoConvergenceEig:
             throw LinAlgError(failure_message(b, f.index, "eigenvalue algorithm did not converge"));
+        case kCloseEigenvalues:
+            throw LinAlgError(failure_message(b, f.index, "a and -b have a common or close eigenvalue"));
         default: throw LinAlgError(failure_message(b, f.index, "singular matrix"));
     }
 }
@@ -73,6 +83,11 @@ inline Rhs rhs_of(const Input& y, lint n, const char* func, const char* aname, b
                                   .c_str());
     }
     return {vec, vec ? 1 : y.shape(-1), vec ? 1 : 2, vec ? y.stride(0) : y.stride(-2), vec ? 0 : y.stride(-1)};
+}
+
+// The output of a solve: a vector per batch element or a column-major matrix.
+inline Out alloc_rhs(const Batch& b, const Rhs& r, lint n, DType dt) {
+    return r.vec ? alloc_vectors(b.shape(), n, dt) : alloc_matrices(b.shape(), n, r.k, dt);
 }
 
 // Packs the square matrix of `x` at byte offset `off` into scratch and factors

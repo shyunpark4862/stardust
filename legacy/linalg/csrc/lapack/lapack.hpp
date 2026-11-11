@@ -64,6 +64,27 @@ lint trtrs(char uplo, char trans, char diag, lint n, lint nrhs, const T* a, lint
     return checked(info, "trtrs");
 }
 
+// Solves a tridiagonal system (partial pivoting) in one call: dl, d, du are
+// overwritten by the factorization, b by the solution. info > 0: an exact zero pivot.
+template <class T>
+lint gtsv(lint n, lint nrhs, T* dl, T* d, T* du, T* b, lint ldb) {
+    lint info = 0;
+    if constexpr (std::is_same_v<T, double>) dgtsv_(&n, &nrhs, dl, d, du, b, &ldb, &info);
+    else zgtsv_(&n, &nrhs, dl, d, du, b, &ldb, &info);
+    return checked(info, "gtsv");
+}
+
+// Solves a band system (gbtrf + gbtrs in one call). ab holds the band in rows
+// kl .. 2*kl+ku (ldab >= 2*kl+ku+1); rows 0 .. kl-1 are room for the fill-in.
+// info > 0: an exact zero pivot.
+template <class T>
+lint gbsv(lint n, lint kl, lint ku, lint nrhs, T* ab, lint ldab, lint* ipiv, T* b, lint ldb) {
+    lint info = 0;
+    if constexpr (std::is_same_v<T, double>) dgbsv_(&n, &kl, &ku, &nrhs, ab, &ldab, ipiv, b, &ldb, &info);
+    else zgbsv_(&n, &kl, &ku, &nrhs, ab, &ldab, ipiv, b, &ldb, &info);
+    return checked(info, "gbsv");
+}
+
 // ---- Routines with a workspace. Each asks LAPACK for the size (lwork = -1)
 // and takes the memory from the scratch slots reserved for it; M1-M7 query on
 // every call (ARCHITECTURE.md §3.4), M8 measures doing it once per batch.
@@ -361,6 +382,38 @@ lint sytrf(lint n, T* a, lint lda, lint* ipiv, Scratch& s) {
     if constexpr (std::is_same_v<T, double>) dsytrf_(&uplo, &n, a, &lda, ipiv, wk, &lwork, &info);
     else zhetrf_(&uplo, &n, a, &lda, ipiv, wk, &lwork, &info);
     return checked(info, "sytrf");
+}
+
+// Solves A X + X B = scale C for upper (quasi-)triangular A (m x m) and B (n x n),
+// the Schur forms: the blocked level-3 trsyl3 (LAPACK 3.10), chosen over trsyl
+// by measurement (experiments/m7_drivers, DESIGN.md §2.16). C is overwritten
+// by X; scale <= 1 avoids overflow. info = 1: A and -B have common or close
+// eigenvalues, and perturbed values were used.
+template <class T>
+lint trsyl3(lint m, lint n, const T* a, lint lda, const T* b, lint ldb, T* c, lint ldc, double& scale, Scratch& s) {
+    lint info = 0, isgn = 1, ldswork = -1;
+    const char no = 'N';
+    double sq[2] = {0, 0};
+    if constexpr (std::is_same_v<T, double>) {
+        lint liwork = -1, iq = 0;
+        dtrsyl3_(&no, &no, &isgn, &m, &n, a, &lda, b, &ldb, c, &ldc, &scale, &iq, &liwork, sq, &ldswork, &info);
+        checked(info, "trsyl3");
+        // the query returns IWORK's length in iwork[0] and SWORK's rows, cols in swork[0], swork[1]
+        liwork = std::max<lint>(1, iq);
+        ldswork = std::max<lint>(2, static_cast<lint>(sq[0]));
+        const lint cols = std::max<lint>(1, static_cast<lint>(sq[1]));
+        lint* iw = s.get_ints(static_cast<std::size_t>(liwork), Scratch::kIWork);
+        double* sw = s.get<double>(static_cast<std::size_t>(ldswork * cols), Scratch::kRWork);
+        dtrsyl3_(&no, &no, &isgn, &m, &n, a, &lda, b, &ldb, c, &ldc, &scale, iw, &liwork, sw, &ldswork, &info);
+    } else {
+        ztrsyl3_(&no, &no, &isgn, &m, &n, a, &lda, b, &ldb, c, &ldc, &scale, sq, &ldswork, &info);
+        checked(info, "trsyl3");
+        ldswork = std::max<lint>(2, static_cast<lint>(sq[0]));
+        const lint cols = std::max<lint>(1, static_cast<lint>(sq[1]));
+        double* sw = s.get<double>(static_cast<std::size_t>(ldswork * cols), Scratch::kRWork);
+        ztrsyl3_(&no, &no, &isgn, &m, &n, a, &lda, b, &ldb, c, &ldc, &scale, sw, &ldswork, &info);
+    }
+    return checked(info, "trsyl3");
 }
 
 // C = op(A) op(B), column-major; op is 'N', 'T' or 'C' (conjugate transpose).

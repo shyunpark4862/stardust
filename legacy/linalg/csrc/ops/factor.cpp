@@ -24,11 +24,6 @@ T conj_if_complex(T v) {
     else return v;
 }
 
-// The output of a solve: a vector per batch element or a column-major matrix.
-Out alloc_rhs(const Batch& b, const Rhs& r, lint n, DType dt) {
-    return r.vec ? alloc_vectors(b.shape(), n, dt) : alloc_matrices(b.shape(), n, r.k, dt);
-}
-
 // -------------------------------------------------------- solve_triangular --
 
 nb::object solve_triangular(nb::handle ao, nb::handle bo, bool upper, bool unit_diagonal) {
