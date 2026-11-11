@@ -1372,7 +1372,7 @@
   },
   "argsort list err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "argsort n axis=-1 desc=False stable=False": {
    "ndarray": "int64",
@@ -2074,15 +2074,15 @@
   },
   "asarray dtype numpy err": {
    "error": "TypeError",
-   "msg": "dtype must be one of sdnp.bool, sdnp.int64, sdnp.float64, sdnp.complex128"
+   "msg": "dtype must be one of sd.bool, sd.int64, sd.float64, sd.complex128"
   },
   "asarray dtype python type err": {
    "error": "TypeError",
-   "msg": "dtype must be one of sdnp.bool, sdnp.int64, sdnp.float64, sdnp.complex128"
+   "msg": "dtype must be one of sd.bool, sd.int64, sd.float64, sd.complex128"
   },
   "asarray dtype string err": {
    "error": "TypeError",
-   "msg": "dtype must be one of sdnp.bool, sdnp.int64, sdnp.float64, sdnp.complex128"
+   "msg": "dtype must be one of sd.bool, sd.int64, sd.float64, sd.complex128"
   },
   "asarray float->int saturate": {
    "ndarray": "int64",
@@ -3229,7 +3229,7 @@
   },
   "asarray numpy 0d err": {
    "error": "ValueError",
-   "msg": "0-dimensional arrays are not supported: a scalar is already the result (stardust-numpy has no 0-d arrays)"
+   "msg": "0-dimensional arrays are not supported: a scalar is already the result (stardust has no 0-d arrays)"
   },
   "asarray numpy 5d": {
    "ndarray": "float64",
@@ -3707,11 +3707,11 @@
   },
   "asarray scalar float err": {
    "error": "ValueError",
-   "msg": "0-dimensional arrays are not supported: a scalar is already the result (stardust-numpy has no 0-d arrays)"
+   "msg": "0-dimensional arrays are not supported: a scalar is already the result (stardust has no 0-d arrays)"
   },
   "asarray scalar int err": {
    "error": "ValueError",
-   "msg": "0-dimensional arrays are not supported: a scalar is already the result (stardust-numpy has no 0-d arrays)"
+   "msg": "0-dimensional arrays are not supported: a scalar is already the result (stardust has no 0-d arrays)"
   },
   "asarray str err": {
    "error": "TypeError",
@@ -3910,7 +3910,7 @@
   },
   "astype dtype python err": {
    "error": "TypeError",
-   "msg": "dtype must be one of sdnp.bool, sdnp.int64, sdnp.float64, sdnp.complex128"
+   "msg": "dtype must be one of sd.bool, sd.int64, sd.float64, sd.complex128"
   },
   "astype empty": {
    "ndarray": "int64",
@@ -4256,7 +4256,7 @@
   },
   "astype list err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "astype method b->b": {
    "ndarray": "bool",
@@ -5353,7 +5353,7 @@
   },
   "broadcast_arrays list err": {
    "error": "TypeError",
-   "msg": "every argument must be an sdnp.ndarray"
+   "msg": "every argument must be an sd.ndarray"
   },
   "broadcast_arrays readonly err": {
    "error": "ValueError",
@@ -5625,7 +5625,7 @@
   },
   "broadcast_to list err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "broadcast_to readonly write err": {
    "error": "ValueError",
@@ -5881,7 +5881,7 @@
   },
   "clip list err": {
    "error": "TypeError",
-   "msg": "clip() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "clip() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "clip out": {
    "items": [
@@ -6199,7 +6199,7 @@
   },
   "concat generator err": {
    "error": "TypeError",
-   "msg": "arrays must be a list or tuple of sdnp.ndarray"
+   "msg": "arrays must be a list or tuple of sd.ndarray"
   },
   "concat ib": {
    "ndarray": "int64",
@@ -6275,7 +6275,7 @@
   },
   "concat list member err": {
    "error": "TypeError",
-   "msg": "every element of arrays must be an sdnp.ndarray"
+   "msg": "every element of arrays must be an sd.ndarray"
   },
   "concat ndim mismatch err": {
    "error": "ValueError",
@@ -6283,11 +6283,11 @@
   },
   "concat not sequence err": {
    "error": "TypeError",
-   "msg": "arrays must be a list or tuple of sdnp.ndarray"
+   "msg": "arrays must be a list or tuple of sd.ndarray"
   },
   "concat numpy member err": {
    "error": "TypeError",
-   "msg": "every element of arrays must be an sdnp.ndarray"
+   "msg": "every element of arrays must be an sd.ndarray"
   },
   "concat shape mismatch err": {
    "error": "ValueError",
@@ -7998,7 +7998,7 @@
   },
   "empty () err": {
    "error": "ValueError",
-   "msg": "0-dimensional arrays are not supported (stardust-numpy has no 0-d arrays)"
+   "msg": "0-dimensional arrays are not supported (stardust has no 0-d arrays)"
   },
   "empty (0,)": {
    "items": [
@@ -8322,7 +8322,7 @@
   },
   "empty dtype python type err": {
    "error": "TypeError",
-   "msg": "dtype must be one of sdnp.bool, sdnp.int64, sdnp.float64, sdnp.complex128"
+   "msg": "dtype must be one of sd.bool, sd.int64, sd.float64, sd.complex128"
   },
   "empty dtype=b": {
    "items": [
@@ -10082,7 +10082,7 @@
   "fstring": "[1 2]",
   "full 0d err": {
    "error": "ValueError",
-   "msg": "0-dimensional arrays are not supported (stardust-numpy has no 0-d arrays)"
+   "msg": "0-dimensional arrays are not supported (stardust has no 0-d arrays)"
   },
   "full fill (1+2j)": {
    "ndarray": "complex128",
@@ -26198,7 +26198,7 @@
   },
   "matmul list err": {
    "error": "TypeError",
-   "msg": "x2 must be an sdnp.ndarray"
+   "msg": "x2 must be an sd.ndarray"
   },
   "matmul nan inf": {
    "ndarray": "float64",
@@ -26214,7 +26214,7 @@
   },
   "matmul pyscalar err": {
    "error": "TypeError",
-   "msg": "x2 must be an sdnp.ndarray"
+   "msg": "x2 must be an sd.ndarray"
   },
   "matmul special values": {
    "ndarray": "float64",
@@ -27215,7 +27215,7 @@
   },
   "ones () err": {
    "error": "ValueError",
-   "msg": "0-dimensional arrays are not supported (stardust-numpy has no 0-d arrays)"
+   "msg": "0-dimensional arrays are not supported (stardust has no 0-d arrays)"
   },
   "ones (0,)": {
    "ndarray": "float64",
@@ -27347,7 +27347,7 @@
   },
   "ones dtype python type err": {
    "error": "TypeError",
-   "msg": "dtype must be one of sdnp.bool, sdnp.int64, sdnp.float64, sdnp.complex128"
+   "msg": "dtype must be one of sd.bool, sd.int64, sd.float64, sd.complex128"
   },
   "ones dtype=b": {
    "ndarray": "bool",
@@ -27611,7 +27611,7 @@
   },
   "ones_like numpy err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "ones_like strided": {
    "ndarray": "float64",
@@ -36822,11 +36822,11 @@
   },
   "out not array err": {
    "error": "TypeError",
-   "msg": "out must be an sdnp.ndarray"
+   "msg": "out must be an sd.ndarray"
   },
   "out numpy err": {
    "error": "TypeError",
-   "msg": "out must be an sdnp.ndarray"
+   "msg": "out must be an sd.ndarray"
   },
   "out overlap reversed": {
    "items": [
@@ -37318,7 +37318,7 @@
   "pyscalar isnan nan": true,
   "pyscalar real complex err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "pyscalar sqrt -1.0": {
    "float": "nan:000000000000f87f"
@@ -37459,7 +37459,7 @@
   },
   "ravel list err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "ravel strided": {
    "items": [
@@ -38277,7 +38277,7 @@
   },
   "red all list err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "red all n axis=()": {
    "ndarray": "bool",
@@ -38388,7 +38388,7 @@
   "red all neg zeros only": false,
   "red all pyscalar err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "red all signed zeros": false,
   "red all t axis=()": {
@@ -39295,7 +39295,7 @@
   },
   "red any list err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "red any n axis=()": {
    "ndarray": "bool",
@@ -39414,7 +39414,7 @@
   "red any neg zeros only": false,
   "red any pyscalar err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "red any signed zeros": false,
   "red any t axis=()": {
@@ -40083,7 +40083,7 @@
   },
   "red argmax list err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "red argmax n axis=-1": {
    "ndarray": "int64",
@@ -40163,7 +40163,7 @@
   },
   "red argmax pyscalar err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "red argmax signed zeros": {
    "int": "0"
@@ -40797,7 +40797,7 @@
   },
   "red argmin list err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "red argmin n axis=-1": {
    "ndarray": "int64",
@@ -40877,7 +40877,7 @@
   },
   "red argmin pyscalar err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "red argmin signed zeros": {
    "int": "0"
@@ -41646,7 +41646,7 @@
   },
   "red max list err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "red max n axis=()": {
    "ndarray": "float64",
@@ -41767,7 +41767,7 @@
   },
   "red max pyscalar err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "red max signed zeros": {
    "float": "0x0.0p+0"
@@ -42753,7 +42753,7 @@
   },
   "red mean list err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "red mean n axis=()": {
    "ndarray": "float64",
@@ -42874,7 +42874,7 @@
   },
   "red mean pyscalar err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "red mean signed zeros": {
    "float": "0x0.0p+0"
@@ -43845,7 +43845,7 @@
   },
   "red min list err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "red min n axis=()": {
    "ndarray": "float64",
@@ -43966,7 +43966,7 @@
   },
   "red min pyscalar err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "red min signed zeros": {
    "float": "-0x0.0p+0"
@@ -44631,7 +44631,7 @@
   },
   "red prod dtype python err": {
    "error": "TypeError",
-   "msg": "dtype must be one of sdnp.bool, sdnp.int64, sdnp.float64, sdnp.complex128"
+   "msg": "dtype must be one of sd.bool, sd.int64, sd.float64, sd.complex128"
   },
   "red prod f F-order axis=0": {
    "ndarray": "float64",
@@ -45188,7 +45188,7 @@
   },
   "red prod list err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "red prod n axis=()": {
    "ndarray": "float64",
@@ -45309,7 +45309,7 @@
   },
   "red prod pyscalar err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "red prod signed zeros": {
    "float": "0x0.0p+0"
@@ -46379,7 +46379,7 @@
   },
   "red std list err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "red std n axis=()": {
    "ndarray": "float64",
@@ -46500,7 +46500,7 @@
   },
   "red std pyscalar err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "red std signed zeros": {
    "float": "0x0.0p+0"
@@ -47165,7 +47165,7 @@
   },
   "red sum dtype python err": {
    "error": "TypeError",
-   "msg": "dtype must be one of sdnp.bool, sdnp.int64, sdnp.float64, sdnp.complex128"
+   "msg": "dtype must be one of sd.bool, sd.int64, sd.float64, sd.complex128"
   },
   "red sum f F-order axis=0": {
    "ndarray": "float64",
@@ -47719,7 +47719,7 @@
   },
   "red sum list err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "red sum n axis=()": {
    "ndarray": "float64",
@@ -47840,7 +47840,7 @@
   },
   "red sum pyscalar err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "red sum signed zeros": {
    "float": "0x0.0p+0"
@@ -48910,7 +48910,7 @@
   },
   "red var list err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "red var n axis=()": {
    "ndarray": "float64",
@@ -49031,7 +49031,7 @@
   },
   "red var pyscalar err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "red var signed zeros": {
    "float": "0x0.0p+0"
@@ -51445,7 +51445,7 @@
   },
   "reshape to 0d err": {
    "error": "ValueError",
-   "msg": "0-dimensional arrays are not supported (stardust-numpy has no 0-d arrays)"
+   "msg": "0-dimensional arrays are not supported (stardust has no 0-d arrays)"
   },
   "reshape two -1 err": {
    "error": "ValueError",
@@ -52496,7 +52496,7 @@
   },
   "setitem str value err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "setitem strict bcast err": {
    "items": [
@@ -53415,7 +53415,7 @@
   },
   "sort list err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "sort n axis=-1 desc=False stable=False": {
    "ndarray": "float64",
@@ -54187,7 +54187,7 @@
   },
   "squeeze to 0d err": {
    "error": "ValueError",
-   "msg": "squeezing every axis would give a 0-dimensional array (stardust-numpy has none)"
+   "msg": "squeezing every axis would give a 0-dimensional array (stardust has none)"
   },
   "stack axis=-1": {
    "ndarray": "float64",
@@ -55449,11 +55449,11 @@
   },
   "ufunc abs list err": {
    "error": "TypeError",
-   "msg": "abs() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "abs() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc abs numpy err": {
    "error": "TypeError",
-   "msg": "abs() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "abs() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc abs pyscalar b": {
    "int": "1"
@@ -55667,11 +55667,11 @@
   },
   "ufunc acos list err": {
    "error": "TypeError",
-   "msg": "acos() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "acos() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc acos numpy err": {
    "error": "TypeError",
-   "msg": "acos() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "acos() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc acos pyscalar b": {
    "float": "0x0.0p+0"
@@ -55888,11 +55888,11 @@
   },
   "ufunc acosh list err": {
    "error": "TypeError",
-   "msg": "acosh() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "acosh() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc acosh numpy err": {
    "error": "TypeError",
-   "msg": "acosh() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "acosh() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc acosh pyscalar b": {
    "float": "0x0.0p+0"
@@ -56409,11 +56409,11 @@
   },
   "ufunc add list err": {
    "error": "TypeError",
-   "msg": "add() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "add() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc add numpy err": {
    "error": "TypeError",
-   "msg": "add() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "add() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc add pyscalar b op b": {
    "ndarray": "int64",
@@ -56564,7 +56564,7 @@
   },
   "ufunc add str err": {
    "error": "TypeError",
-   "msg": "add() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'str'"
+   "msg": "add() takes sd.ndarray or Python bool/int/float/complex operands, not 'str'"
   },
   "ufunc asin b large": {
    "ndarray": "float64",
@@ -56766,11 +56766,11 @@
   },
   "ufunc asin list err": {
    "error": "TypeError",
-   "msg": "asin() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "asin() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc asin numpy err": {
    "error": "TypeError",
-   "msg": "asin() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "asin() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc asin pyscalar b": {
    "float": "0x1.921fb54442d18p+0"
@@ -56987,11 +56987,11 @@
   },
   "ufunc asinh list err": {
    "error": "TypeError",
-   "msg": "asinh() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "asinh() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc asinh numpy err": {
    "error": "TypeError",
-   "msg": "asinh() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "asinh() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc asinh pyscalar b": {
    "float": "0x1.c34366179d426p-1"
@@ -57208,11 +57208,11 @@
   },
   "ufunc atan list err": {
    "error": "TypeError",
-   "msg": "atan() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "atan() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc atan numpy err": {
    "error": "TypeError",
-   "msg": "atan() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "atan() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc atan pyscalar b": {
    "float": "0x1.921fb54442d18p-1"
@@ -57643,11 +57643,11 @@
   },
   "ufunc atan2 list err": {
    "error": "TypeError",
-   "msg": "atan2() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "atan2() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc atan2 numpy err": {
    "error": "TypeError",
-   "msg": "atan2() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "atan2() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc atan2 pyscalar b op b": {
    "ndarray": "float64",
@@ -57772,7 +57772,7 @@
   },
   "ufunc atan2 str err": {
    "error": "TypeError",
-   "msg": "atan2() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'str'"
+   "msg": "atan2() takes sd.ndarray or Python bool/int/float/complex operands, not 'str'"
   },
   "ufunc atanh b large": {
    "ndarray": "float64",
@@ -57974,11 +57974,11 @@
   },
   "ufunc atanh list err": {
    "error": "TypeError",
-   "msg": "atanh() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "atanh() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc atanh numpy err": {
    "error": "TypeError",
-   "msg": "atanh() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "atanh() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc atanh pyscalar b": {
    "float": "inf"
@@ -58319,11 +58319,11 @@
   },
   "ufunc bitwise_and list err": {
    "error": "TypeError",
-   "msg": "bitwise_and() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "bitwise_and() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc bitwise_and numpy err": {
    "error": "TypeError",
-   "msg": "bitwise_and() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "bitwise_and() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc bitwise_and pyscalar b op b": {
    "ndarray": "bool",
@@ -58416,7 +58416,7 @@
   "ufunc bitwise_and pyscalars True,False": false,
   "ufunc bitwise_and str err": {
    "error": "TypeError",
-   "msg": "bitwise_and() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'str'"
+   "msg": "bitwise_and() takes sd.ndarray or Python bool/int/float/complex operands, not 'str'"
   },
   "ufunc bitwise_invert b large": {
    "ndarray": "bool",
@@ -58592,11 +58592,11 @@
   },
   "ufunc bitwise_invert list err": {
    "error": "TypeError",
-   "msg": "bitwise_invert() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "bitwise_invert() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc bitwise_invert numpy err": {
    "error": "TypeError",
-   "msg": "bitwise_invert() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "bitwise_invert() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc bitwise_invert pyscalar b": false,
   "ufunc bitwise_invert pyscalar c": {
@@ -58888,11 +58888,11 @@
   },
   "ufunc bitwise_left_shift list err": {
    "error": "TypeError",
-   "msg": "bitwise_left_shift() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "bitwise_left_shift() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc bitwise_left_shift numpy err": {
    "error": "TypeError",
-   "msg": "bitwise_left_shift() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "bitwise_left_shift() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc bitwise_left_shift pyscalar b op b": {
    "error": "TypeError",
@@ -58972,7 +58972,7 @@
   },
   "ufunc bitwise_left_shift str err": {
    "error": "TypeError",
-   "msg": "bitwise_left_shift() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'str'"
+   "msg": "bitwise_left_shift() takes sd.ndarray or Python bool/int/float/complex operands, not 'str'"
   },
   "ufunc bitwise_or 5d bcast": {
    "ndarray": "int64",
@@ -59298,11 +59298,11 @@
   },
   "ufunc bitwise_or list err": {
    "error": "TypeError",
-   "msg": "bitwise_or() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "bitwise_or() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc bitwise_or numpy err": {
    "error": "TypeError",
-   "msg": "bitwise_or() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "bitwise_or() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc bitwise_or pyscalar b op b": {
    "ndarray": "bool",
@@ -59395,7 +59395,7 @@
   "ufunc bitwise_or pyscalars True,False": true,
   "ufunc bitwise_or str err": {
    "error": "TypeError",
-   "msg": "bitwise_or() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'str'"
+   "msg": "bitwise_or() takes sd.ndarray or Python bool/int/float/complex operands, not 'str'"
   },
   "ufunc bitwise_right_shift 5d bcast": {
    "ndarray": "int64",
@@ -59675,11 +59675,11 @@
   },
   "ufunc bitwise_right_shift list err": {
    "error": "TypeError",
-   "msg": "bitwise_right_shift() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "bitwise_right_shift() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc bitwise_right_shift numpy err": {
    "error": "TypeError",
-   "msg": "bitwise_right_shift() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "bitwise_right_shift() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc bitwise_right_shift pyscalar b op b": {
    "error": "TypeError",
@@ -59759,7 +59759,7 @@
   },
   "ufunc bitwise_right_shift str err": {
    "error": "TypeError",
-   "msg": "bitwise_right_shift() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'str'"
+   "msg": "bitwise_right_shift() takes sd.ndarray or Python bool/int/float/complex operands, not 'str'"
   },
   "ufunc bitwise_xor 5d bcast": {
    "ndarray": "int64",
@@ -60085,11 +60085,11 @@
   },
   "ufunc bitwise_xor list err": {
    "error": "TypeError",
-   "msg": "bitwise_xor() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "bitwise_xor() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc bitwise_xor numpy err": {
    "error": "TypeError",
-   "msg": "bitwise_xor() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "bitwise_xor() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc bitwise_xor pyscalar b op b": {
    "ndarray": "bool",
@@ -60182,7 +60182,7 @@
   "ufunc bitwise_xor pyscalars True,False": true,
   "ufunc bitwise_xor str err": {
    "error": "TypeError",
-   "msg": "bitwise_xor() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'str'"
+   "msg": "bitwise_xor() takes sd.ndarray or Python bool/int/float/complex operands, not 'str'"
   },
   "ufunc ceil b large": {
    "ndarray": "bool",
@@ -60366,11 +60366,11 @@
   },
   "ufunc ceil list err": {
    "error": "TypeError",
-   "msg": "ceil() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "ceil() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc ceil numpy err": {
    "error": "TypeError",
-   "msg": "ceil() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "ceil() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc ceil pyscalar b": true,
   "ufunc ceil pyscalar c": {
@@ -60583,11 +60583,11 @@
   },
   "ufunc conj list err": {
    "error": "TypeError",
-   "msg": "conj() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "conj() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc conj numpy err": {
    "error": "TypeError",
-   "msg": "conj() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "conj() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc conj pyscalar b": true,
   "ufunc conj pyscalar c": {
@@ -60802,11 +60802,11 @@
   },
   "ufunc cos list err": {
    "error": "TypeError",
-   "msg": "cos() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "cos() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc cos numpy err": {
    "error": "TypeError",
-   "msg": "cos() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "cos() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc cos pyscalar b": {
    "float": "0x1.14a280fb5068cp-1"
@@ -61023,11 +61023,11 @@
   },
   "ufunc cosh list err": {
    "error": "TypeError",
-   "msg": "cosh() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "cosh() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc cosh numpy err": {
    "error": "TypeError",
-   "msg": "cosh() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "cosh() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc cosh pyscalar b": {
    "float": "0x1.8b07551d9f550p+0"
@@ -61550,11 +61550,11 @@
   },
   "ufunc divide list err": {
    "error": "TypeError",
-   "msg": "divide() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "divide() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc divide numpy err": {
    "error": "TypeError",
-   "msg": "divide() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "divide() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc divide pyscalar b op b": {
    "ndarray": "float64",
@@ -61705,7 +61705,7 @@
   },
   "ufunc divide str err": {
    "error": "TypeError",
-   "msg": "divide() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'str'"
+   "msg": "divide() takes sd.ndarray or Python bool/int/float/complex operands, not 'str'"
   },
   "ufunc equal 5d bcast": {
    "ndarray": "bool",
@@ -62207,11 +62207,11 @@
   },
   "ufunc equal list err": {
    "error": "TypeError",
-   "msg": "equal() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "equal() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc equal numpy err": {
    "error": "TypeError",
-   "msg": "equal() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "equal() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc equal pyscalar b op b": {
    "ndarray": "bool",
@@ -62343,7 +62343,7 @@
   "ufunc equal pyscalars True,False": false,
   "ufunc equal str err": {
    "error": "TypeError",
-   "msg": "equal() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'str'"
+   "msg": "equal() takes sd.ndarray or Python bool/int/float/complex operands, not 'str'"
   },
   "ufunc exp b large": {
    "ndarray": "float64",
@@ -62545,11 +62545,11 @@
   },
   "ufunc exp list err": {
    "error": "TypeError",
-   "msg": "exp() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "exp() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc exp numpy err": {
    "error": "TypeError",
-   "msg": "exp() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "exp() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc exp pyscalar b": {
    "float": "0x1.5bf0a8b145769p+1"
@@ -62766,11 +62766,11 @@
   },
   "ufunc expm1 list err": {
    "error": "TypeError",
-   "msg": "expm1() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "expm1() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc expm1 numpy err": {
    "error": "TypeError",
-   "msg": "expm1() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "expm1() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc expm1 pyscalar b": {
    "float": "0x1.b7e151628aed3p+0"
@@ -62969,11 +62969,11 @@
   },
   "ufunc floor list err": {
    "error": "TypeError",
-   "msg": "floor() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "floor() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc floor numpy err": {
    "error": "TypeError",
-   "msg": "floor() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "floor() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc floor pyscalar b": true,
   "ufunc floor pyscalar c": {
@@ -63394,11 +63394,11 @@
   },
   "ufunc floor_divide list err": {
    "error": "TypeError",
-   "msg": "floor_divide() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "floor_divide() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc floor_divide numpy err": {
    "error": "TypeError",
-   "msg": "floor_divide() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "floor_divide() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc floor_divide pyscalar b op b": {
    "ndarray": "int64",
@@ -63523,7 +63523,7 @@
   },
   "ufunc floor_divide str err": {
    "error": "TypeError",
-   "msg": "floor_divide() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'str'"
+   "msg": "floor_divide() takes sd.ndarray or Python bool/int/float/complex operands, not 'str'"
   },
   "ufunc greater 5d bcast": {
    "ndarray": "bool",
@@ -63933,11 +63933,11 @@
   },
   "ufunc greater list err": {
    "error": "TypeError",
-   "msg": "greater() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "greater() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc greater numpy err": {
    "error": "TypeError",
-   "msg": "greater() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "greater() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc greater pyscalar b op b": {
    "ndarray": "bool",
@@ -64048,7 +64048,7 @@
   "ufunc greater pyscalars True,False": true,
   "ufunc greater str err": {
    "error": "TypeError",
-   "msg": "greater() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'str'"
+   "msg": "greater() takes sd.ndarray or Python bool/int/float/complex operands, not 'str'"
   },
   "ufunc greater_equal 5d bcast": {
    "ndarray": "bool",
@@ -64458,11 +64458,11 @@
   },
   "ufunc greater_equal list err": {
    "error": "TypeError",
-   "msg": "greater_equal() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "greater_equal() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc greater_equal numpy err": {
    "error": "TypeError",
-   "msg": "greater_equal() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "greater_equal() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc greater_equal pyscalar b op b": {
    "ndarray": "bool",
@@ -64573,7 +64573,7 @@
   "ufunc greater_equal pyscalars True,False": true,
   "ufunc greater_equal str err": {
    "error": "TypeError",
-   "msg": "greater_equal() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'str'"
+   "msg": "greater_equal() takes sd.ndarray or Python bool/int/float/complex operands, not 'str'"
   },
   "ufunc imag b large": {
    "ndarray": "bool",
@@ -64787,11 +64787,11 @@
   },
   "ufunc imag list err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "ufunc imag numpy err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "ufunc imag of real readonly err": {
    "error": "ValueError",
@@ -64799,19 +64799,19 @@
   },
   "ufunc imag pyscalar b err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "ufunc imag pyscalar c err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "ufunc imag pyscalar f err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "ufunc imag pyscalar i err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "ufunc isfinite b large": {
    "ndarray": "bool",
@@ -65013,11 +65013,11 @@
   },
   "ufunc isfinite list err": {
    "error": "TypeError",
-   "msg": "isfinite() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "isfinite() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc isfinite numpy err": {
    "error": "TypeError",
-   "msg": "isfinite() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "isfinite() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc isfinite pyscalar b": true,
   "ufunc isfinite pyscalar c": true,
@@ -65223,11 +65223,11 @@
   },
   "ufunc isinf list err": {
    "error": "TypeError",
-   "msg": "isinf() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "isinf() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc isinf numpy err": {
    "error": "TypeError",
-   "msg": "isinf() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "isinf() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc isinf pyscalar b": false,
   "ufunc isinf pyscalar c": false,
@@ -65433,11 +65433,11 @@
   },
   "ufunc isnan list err": {
    "error": "TypeError",
-   "msg": "isnan() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "isnan() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc isnan numpy err": {
    "error": "TypeError",
-   "msg": "isnan() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "isnan() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc isnan pyscalar b": false,
   "ufunc isnan pyscalar c": false,
@@ -65851,11 +65851,11 @@
   },
   "ufunc less list err": {
    "error": "TypeError",
-   "msg": "less() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "less() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc less numpy err": {
    "error": "TypeError",
-   "msg": "less() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "less() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc less pyscalar b op b": {
    "ndarray": "bool",
@@ -65966,7 +65966,7 @@
   "ufunc less pyscalars True,False": false,
   "ufunc less str err": {
    "error": "TypeError",
-   "msg": "less() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'str'"
+   "msg": "less() takes sd.ndarray or Python bool/int/float/complex operands, not 'str'"
   },
   "ufunc less_equal 5d bcast": {
    "ndarray": "bool",
@@ -66376,11 +66376,11 @@
   },
   "ufunc less_equal list err": {
    "error": "TypeError",
-   "msg": "less_equal() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "less_equal() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc less_equal numpy err": {
    "error": "TypeError",
-   "msg": "less_equal() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "less_equal() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc less_equal pyscalar b op b": {
    "ndarray": "bool",
@@ -66491,7 +66491,7 @@
   "ufunc less_equal pyscalars True,False": false,
   "ufunc less_equal str err": {
    "error": "TypeError",
-   "msg": "less_equal() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'str'"
+   "msg": "less_equal() takes sd.ndarray or Python bool/int/float/complex operands, not 'str'"
   },
   "ufunc log b large": {
    "ndarray": "float64",
@@ -66693,11 +66693,11 @@
   },
   "ufunc log list err": {
    "error": "TypeError",
-   "msg": "log() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "log() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc log numpy err": {
    "error": "TypeError",
-   "msg": "log() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "log() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc log pyscalar b": {
    "float": "0x0.0p+0"
@@ -66914,11 +66914,11 @@
   },
   "ufunc log10 list err": {
    "error": "TypeError",
-   "msg": "log10() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "log10() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc log10 numpy err": {
    "error": "TypeError",
-   "msg": "log10() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "log10() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc log10 pyscalar b": {
    "float": "0x0.0p+0"
@@ -67135,11 +67135,11 @@
   },
   "ufunc log1p list err": {
    "error": "TypeError",
-   "msg": "log1p() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "log1p() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc log1p numpy err": {
    "error": "TypeError",
-   "msg": "log1p() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "log1p() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc log1p pyscalar b": {
    "float": "0x1.62e42fefa39efp-1"
@@ -67356,11 +67356,11 @@
   },
   "ufunc log2 list err": {
    "error": "TypeError",
-   "msg": "log2() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "log2() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc log2 numpy err": {
    "error": "TypeError",
-   "msg": "log2() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "log2() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc log2 pyscalar b": {
    "float": "0x0.0p+0"
@@ -67655,11 +67655,11 @@
   },
   "ufunc logical_and list err": {
    "error": "TypeError",
-   "msg": "logical_and() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "logical_and() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc logical_and numpy err": {
    "error": "TypeError",
-   "msg": "logical_and() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "logical_and() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc logical_and pyscalar b op b": {
    "ndarray": "bool",
@@ -67740,7 +67740,7 @@
   "ufunc logical_and pyscalars True,False": false,
   "ufunc logical_and str err": {
    "error": "TypeError",
-   "msg": "logical_and() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'str'"
+   "msg": "logical_and() takes sd.ndarray or Python bool/int/float/complex operands, not 'str'"
   },
   "ufunc logical_not b 1elem": {
    "ndarray": "bool",
@@ -67888,11 +67888,11 @@
   },
   "ufunc logical_not list err": {
    "error": "TypeError",
-   "msg": "logical_not() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "logical_not() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc logical_not numpy err": {
    "error": "TypeError",
-   "msg": "logical_not() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "logical_not() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc logical_not pyscalar b": false,
   "ufunc logical_not pyscalar c": {
@@ -68185,11 +68185,11 @@
   },
   "ufunc logical_or list err": {
    "error": "TypeError",
-   "msg": "logical_or() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "logical_or() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc logical_or numpy err": {
    "error": "TypeError",
-   "msg": "logical_or() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "logical_or() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc logical_or pyscalar b op b": {
    "ndarray": "bool",
@@ -68270,7 +68270,7 @@
   "ufunc logical_or pyscalars True,False": true,
   "ufunc logical_or str err": {
    "error": "TypeError",
-   "msg": "logical_or() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'str'"
+   "msg": "logical_or() takes sd.ndarray or Python bool/int/float/complex operands, not 'str'"
   },
   "ufunc logical_xor 5d bcast": {
    "ndarray": "bool",
@@ -68550,11 +68550,11 @@
   },
   "ufunc logical_xor list err": {
    "error": "TypeError",
-   "msg": "logical_xor() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "logical_xor() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc logical_xor numpy err": {
    "error": "TypeError",
-   "msg": "logical_xor() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "logical_xor() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc logical_xor pyscalar b op b": {
    "ndarray": "bool",
@@ -68635,7 +68635,7 @@
   "ufunc logical_xor pyscalars True,False": true,
   "ufunc logical_xor str err": {
    "error": "TypeError",
-   "msg": "logical_xor() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'str'"
+   "msg": "logical_xor() takes sd.ndarray or Python bool/int/float/complex operands, not 'str'"
   },
   "ufunc maximum 5d bcast": {
    "ndarray": "float64",
@@ -69045,11 +69045,11 @@
   },
   "ufunc maximum list err": {
    "error": "TypeError",
-   "msg": "maximum() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "maximum() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc maximum numpy err": {
    "error": "TypeError",
-   "msg": "maximum() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "maximum() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc maximum pyscalar b op b": {
    "ndarray": "bool",
@@ -69172,7 +69172,7 @@
   "ufunc maximum pyscalars True,False": true,
   "ufunc maximum str err": {
    "error": "TypeError",
-   "msg": "maximum() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'str'"
+   "msg": "maximum() takes sd.ndarray or Python bool/int/float/complex operands, not 'str'"
   },
   "ufunc minimum 5d bcast": {
    "ndarray": "float64",
@@ -69582,11 +69582,11 @@
   },
   "ufunc minimum list err": {
    "error": "TypeError",
-   "msg": "minimum() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "minimum() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc minimum numpy err": {
    "error": "TypeError",
-   "msg": "minimum() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "minimum() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc minimum pyscalar b op b": {
    "ndarray": "bool",
@@ -69709,7 +69709,7 @@
   "ufunc minimum pyscalars True,False": false,
   "ufunc minimum str err": {
    "error": "TypeError",
-   "msg": "minimum() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'str'"
+   "msg": "minimum() takes sd.ndarray or Python bool/int/float/complex operands, not 'str'"
   },
   "ufunc multiply 5d bcast": {
    "ndarray": "float64",
@@ -70211,11 +70211,11 @@
   },
   "ufunc multiply list err": {
    "error": "TypeError",
-   "msg": "multiply() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "multiply() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc multiply numpy err": {
    "error": "TypeError",
-   "msg": "multiply() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "multiply() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc multiply pyscalar b op b": {
    "ndarray": "int64",
@@ -70366,7 +70366,7 @@
   },
   "ufunc multiply str err": {
    "error": "TypeError",
-   "msg": "multiply() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'str'"
+   "msg": "multiply() takes sd.ndarray or Python bool/int/float/complex operands, not 'str'"
   },
   "ufunc negative b large": {
    "ndarray": "int64",
@@ -70578,11 +70578,11 @@
   },
   "ufunc negative list err": {
    "error": "TypeError",
-   "msg": "negative() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "negative() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc negative numpy err": {
    "error": "TypeError",
-   "msg": "negative() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "negative() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc negative pyscalar b": {
    "int": "-1"
@@ -71099,11 +71099,11 @@
   },
   "ufunc not_equal list err": {
    "error": "TypeError",
-   "msg": "not_equal() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "not_equal() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc not_equal numpy err": {
    "error": "TypeError",
-   "msg": "not_equal() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "not_equal() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc not_equal pyscalar b op b": {
    "ndarray": "bool",
@@ -71235,7 +71235,7 @@
   "ufunc not_equal pyscalars True,False": true,
   "ufunc not_equal str err": {
    "error": "TypeError",
-   "msg": "not_equal() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'str'"
+   "msg": "not_equal() takes sd.ndarray or Python bool/int/float/complex operands, not 'str'"
   },
   "ufunc positive b large": {
    "ndarray": "int64",
@@ -71437,11 +71437,11 @@
   },
   "ufunc positive list err": {
    "error": "TypeError",
-   "msg": "positive() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "positive() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc positive numpy err": {
    "error": "TypeError",
-   "msg": "positive() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "positive() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc positive pyscalar b": {
    "int": "1"
@@ -71958,11 +71958,11 @@
   },
   "ufunc pow list err": {
    "error": "TypeError",
-   "msg": "pow() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "pow() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc pow numpy err": {
    "error": "TypeError",
-   "msg": "pow() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "pow() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc pow pyscalar b op b": {
    "ndarray": "int64",
@@ -72113,7 +72113,7 @@
   },
   "ufunc pow str err": {
    "error": "TypeError",
-   "msg": "pow() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'str'"
+   "msg": "pow() takes sd.ndarray or Python bool/int/float/complex operands, not 'str'"
   },
   "ufunc real b large": {
    "ndarray": "bool",
@@ -72327,27 +72327,27 @@
   "ufunc real is self": true,
   "ufunc real list err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "ufunc real numpy err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "ufunc real pyscalar b err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "ufunc real pyscalar c err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "ufunc real pyscalar f err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "ufunc real pyscalar i err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "ufunc remainder 5d bcast": {
    "ndarray": "float64",
@@ -72757,11 +72757,11 @@
   },
   "ufunc remainder list err": {
    "error": "TypeError",
-   "msg": "remainder() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "remainder() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc remainder numpy err": {
    "error": "TypeError",
-   "msg": "remainder() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "remainder() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc remainder pyscalar b op b": {
    "ndarray": "int64",
@@ -72886,7 +72886,7 @@
   },
   "ufunc remainder str err": {
    "error": "TypeError",
-   "msg": "remainder() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'str'"
+   "msg": "remainder() takes sd.ndarray or Python bool/int/float/complex operands, not 'str'"
   },
   "ufunc round b large": {
    "ndarray": "bool",
@@ -73108,11 +73108,11 @@
   },
   "ufunc round list err": {
    "error": "TypeError",
-   "msg": "round() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "round() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc round numpy err": {
    "error": "TypeError",
-   "msg": "round() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "round() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc round pyscalar b": true,
   "ufunc round pyscalar c": {
@@ -73327,7 +73327,7 @@
   },
   "ufunc sign list err": {
    "error": "TypeError",
-   "msg": "sign() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "sign() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc sign nan complex": {
    "ndarray": "complex128",
@@ -73341,7 +73341,7 @@
   },
   "ufunc sign numpy err": {
    "error": "TypeError",
-   "msg": "sign() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "sign() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc sign pyscalar b": {
    "int": "1"
@@ -73558,11 +73558,11 @@
   },
   "ufunc sin list err": {
    "error": "TypeError",
-   "msg": "sin() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "sin() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc sin numpy err": {
    "error": "TypeError",
-   "msg": "sin() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "sin() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc sin pyscalar b": {
    "float": "0x1.aed548f090ceep-1"
@@ -73779,11 +73779,11 @@
   },
   "ufunc sinh list err": {
    "error": "TypeError",
-   "msg": "sinh() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "sinh() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc sinh numpy err": {
    "error": "TypeError",
-   "msg": "sinh() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "sinh() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc sinh pyscalar b": {
    "float": "0x1.2cd9fc44eb982p+0"
@@ -74000,11 +74000,11 @@
   },
   "ufunc sqrt list err": {
    "error": "TypeError",
-   "msg": "sqrt() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "sqrt() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc sqrt numpy err": {
    "error": "TypeError",
-   "msg": "sqrt() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "sqrt() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc sqrt pyscalar b": {
    "float": "0x1.0000000000000p+0"
@@ -74231,11 +74231,11 @@
   },
   "ufunc square list err": {
    "error": "TypeError",
-   "msg": "square() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "square() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc square numpy err": {
    "error": "TypeError",
-   "msg": "square() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "square() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc square pyscalar b": {
    "int": "1"
@@ -74752,11 +74752,11 @@
   },
   "ufunc subtract list err": {
    "error": "TypeError",
-   "msg": "subtract() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "subtract() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc subtract numpy err": {
    "error": "TypeError",
-   "msg": "subtract() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "subtract() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc subtract pyscalar b op b": {
    "ndarray": "int64",
@@ -74907,7 +74907,7 @@
   },
   "ufunc subtract str err": {
    "error": "TypeError",
-   "msg": "subtract() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'str'"
+   "msg": "subtract() takes sd.ndarray or Python bool/int/float/complex operands, not 'str'"
   },
   "ufunc tan b large": {
    "ndarray": "float64",
@@ -75109,11 +75109,11 @@
   },
   "ufunc tan list err": {
    "error": "TypeError",
-   "msg": "tan() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "tan() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc tan numpy err": {
    "error": "TypeError",
-   "msg": "tan() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "tan() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc tan pyscalar b": {
    "float": "0x1.8eb245cbee3a5p+0"
@@ -75330,11 +75330,11 @@
   },
   "ufunc tanh list err": {
    "error": "TypeError",
-   "msg": "tanh() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "tanh() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc tanh numpy err": {
    "error": "TypeError",
-   "msg": "tanh() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "tanh() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc tanh pyscalar b": {
    "float": "0x1.85efab514f394p-1"
@@ -75533,11 +75533,11 @@
   },
   "ufunc trunc list err": {
    "error": "TypeError",
-   "msg": "trunc() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "trunc() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "ufunc trunc numpy err": {
    "error": "TypeError",
-   "msg": "trunc() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
+   "msg": "trunc() takes sd.ndarray or Python bool/int/float/complex operands, not 'numpy.ndarray'"
   },
   "ufunc trunc pyscalar b": true,
   "ufunc trunc pyscalar c": {
@@ -76305,7 +76305,7 @@
   },
   "unique_all list err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "unique_all n": {
    "items": [
@@ -76399,7 +76399,7 @@
   },
   "unique_all pyscalar err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "unique_all signed zeros": {
    "items": [
@@ -76946,7 +76946,7 @@
   },
   "unique_counts list err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "unique_counts n": {
    "items": [
@@ -77000,7 +77000,7 @@
   },
   "unique_counts pyscalar err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "unique_counts signed zeros": {
    "items": [
@@ -77504,7 +77504,7 @@
   },
   "unique_inverse list err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "unique_inverse n": {
    "items": [
@@ -77558,7 +77558,7 @@
   },
   "unique_inverse pyscalar err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "unique_inverse signed zeros": {
    "items": [
@@ -77805,7 +77805,7 @@
   },
   "unique_values list err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "unique_values n": {
    "ndarray": "float64",
@@ -77829,7 +77829,7 @@
   },
   "unique_values pyscalar err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "unique_values signed zeros": {
    "ndarray": "float64",
@@ -78103,7 +78103,7 @@
   },
   "where list err": {
    "error": "TypeError",
-   "msg": "where() takes sdnp.ndarray or Python bool/int/float/complex operands, not 'list'"
+   "msg": "where() takes sd.ndarray or Python bool/int/float/complex operands, not 'list'"
   },
   "where nan": {
    "ndarray": "float64",
@@ -78252,7 +78252,7 @@
   },
   "zeros () err": {
    "error": "ValueError",
-   "msg": "0-dimensional arrays are not supported (stardust-numpy has no 0-d arrays)"
+   "msg": "0-dimensional arrays are not supported (stardust has no 0-d arrays)"
   },
   "zeros (0,)": {
    "ndarray": "float64",
@@ -78384,7 +78384,7 @@
   },
   "zeros dtype python type err": {
    "error": "TypeError",
-   "msg": "dtype must be one of sdnp.bool, sdnp.int64, sdnp.float64, sdnp.complex128"
+   "msg": "dtype must be one of sd.bool, sd.int64, sd.float64, sd.complex128"
   },
   "zeros dtype=b": {
    "ndarray": "bool",
@@ -78652,7 +78652,7 @@
   },
   "zeros_like list err": {
    "error": "TypeError",
-   "msg": "x must be an sdnp.ndarray"
+   "msg": "x must be an sd.ndarray"
   },
   "zeros_like strided": {
    "ndarray": "float64",

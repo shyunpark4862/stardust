@@ -39,11 +39,14 @@ HERE = pathlib.Path(__file__).parent
 THREADS = (1, 3, 10)
 AREAS = ("array", "linalg", "frame")
 
-# Old spellings in error messages and type names -> the merged library's.
+# Old spellings in error messages and type names -> the merged library's
+# (module names, the import aliases messages use, project names in messages).
 RENAMES = [
     ("stardust_linalg", "stardust.linalg"),
     ("stardust_pandas", "stardust.frame"),
     ("stardust_numpy", "stardust"),
+    ("stardust-numpy", "stardust"),
+    ("sdnp.", "sd."),
 ]
 
 
@@ -194,12 +197,13 @@ def main():
     res = run_area("new", args.area)
     bad, msg_only, missing = [], [], sorted(set(golden) - set(res))
     for name, per in res.items():
-        want_all = golden.get(name)
-        if want_all is None:
+        if name not in golden:
             bad.append((name, "-", "case not in the golden file"))
             continue
+        want_all = golden[name]  # None, bool and str are results too
+        per_threads = isinstance(want_all, dict) and "per_threads" in want_all
         for n, got in per.items():
-            want = want_all["per_threads"][n] if "per_threads" in want_all else want_all
+            want = want_all["per_threads"][n] if per_threads else want_all
             if got == want:
                 continue
             if strip_msgs(got) == strip_msgs(want):

@@ -26689,7 +26689,7 @@
   },
   "trace/err numpy dtype": {
    "error": "TypeError",
-   "msg": "trace(): 'dtype' must be sdnp.bool, sdnp.int64, sdnp.float64 or sdnp.complex128, not type"
+   "msg": "trace(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128, not type"
   },
   "trace/float64": {
    "float": "-0x1.3b66ff3afe9f4p+0"

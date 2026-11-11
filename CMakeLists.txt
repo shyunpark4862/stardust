@@ -18,6 +18,22 @@ find_package(nanobind CONFIG REQUIRED)
 # which comes after -O3 on the command line and wins; -Os keeps loops small
 # (little unrolling, little vectorization).
 nanobind_add_module(_core NB_STATIC NOMINSIZE
+  csrc/base/buffer.cpp
+  csrc/array/convert.cpp
+  csrc/array/iter.cpp
+  csrc/array/ndarray.cpp
+  csrc/array/ops/asarray.cpp
+  csrc/array/ops/copy.cpp
+  csrc/array/ops/creation.cpp
+  csrc/array/ops/indexing.cpp
+  csrc/array/ops/matmul.cpp
+  csrc/array/ops/reduction.cpp
+  csrc/array/ops/shape.cpp
+  csrc/array/ops/sort.cpp
+  csrc/array/ops/ufunc.cpp
+  csrc/parallel/pool.cpp
+  csrc/bind/pyutil.cpp
+  csrc/bind/array_bind.cpp
   csrc/bind/module.cpp)
 
 target_include_directories(_core PRIVATE csrc)
