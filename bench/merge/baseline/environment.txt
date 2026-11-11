@@ -1,0 +1,4 @@
+python 3.15.0 arm64 numpy 2.5.4 scipy 1.18.1 pandas 3.1.1 polars 2.1.0
+legacy/numpy 3c70608
+legacy/linalg de5ebc7
+legacy/pandas d8b6b65

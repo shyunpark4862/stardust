@@ -1,0 +1,171 @@
+# stardust 내부 구조
+
+> 상태: **확정** (2026-11-12). 통합이 끝났을 때의 목표 구조다. 결정 근거는 [DESIGN.md](DESIGN.md)에 있다.
+>
+> 지금의 세 저장소(`stardust-numpy`, `stardust-linalg`, `stardust-pandas`)를 하나로 합친 뒤의 모습을 적는다. 각 영역 안의 세부 구조(이터레이터, 배치 드라이버, Copy-on-Write 등)는 영역 문서 `docs/design/<영역>.md`에 새로 쓴다 (§6).
+
+## 1. 층 구조
+
+```
+             Python: stardust (sd)   sd.linalg   sd.frame   (이후 영역 …)
+                         │              │           │
+bind/  ──────────────────┴──────────────┴───────────┴──────────  _core 확장 모듈 하나
+                         │              │           │
+                      array/  ◀──── linalg/       frame/
+                         │                          │
+                         ├──────────┬───────────────┤
+                    accelerate/  parallel/        base/
+```
+
+- **아래로만 의존한다.** 위 층은 아래 층을 쓰고, 아래 층은 위 층을 모른다.
+  - `array/`는 `linalg/`와 `frame/`을 include하지 않는다.
+  - `linalg/`는 `array/`의 `NDArray`를 직접 받는다. buffer protocol을 거치지 않는다 (DESIGN §3.1).
+  - `frame/`은 `array/`를 모른다. 둘을 잇는 코드는 `frame/interop.cpp` 한 파일에만 둔다 (DESIGN §4.3).
+- **새 영역은 디렉터리 하나와 Python 하위 모듈 하나로 붙는다.** 아래 층만 쓰고, 기존 영역을 고치지 않는다. 예: 나중의 sklearn류 `ml/`은 `linalg/`와 `array/` 위에 올라간다.
+  - 새 영역은 `docs/design/<영역>.md`, `docs/api/<영역>.md`, `tests/<영역>/`, `bench/<영역>/`을 함께 갖는다.
+
+## 2. 디렉터리 구조
+
+```
+stardust/                         (저장소: ~/Desktop/stardust/stardust)
+  pyproject.toml  CMakeLists.txt
+  README.md  API.md               (API.md는 영역별 API 문서의 색인과 공통 규칙)
+  DESIGN.md  ARCHITECTURE.md  ROADMAP.md
+  legacy/                         M0에서 이력과 함께 들여온 세 저장소. 마일스톤마다 git mv로 꺼내 가고, M7에서 빈다
+
+  src/stardust/
+    __init__.py                   배열 API (지금 stardust_numpy) + 스레드 수 + dtype 객체
+    _format.py                    배열 repr (지금 stardust_numpy/_format.py)
+    linalg/
+      __init__.py                 _core.linalg 재노출, LinAlgError
+      _results.py  _errors.py     (지금 stardust_linalg)
+    frame/
+      __init__.py                 DataFrame, Series, Index, RangeIndex, NA, concat, merge, read_csv
+      series.py  frame.py  index.py  groupby.py  merge.py  io.py  _*.py   (지금 stardust_pandas)
+
+  csrc/
+    base/                         모든 영역이 쓰는 바닥
+      buffer.hpp/.cpp             참조 카운트 메모리 블록 (numpy판 + pandas판 통합, §4.2)
+      dtype.hpp                   DType enum과 이름, 저장 타입 (§4.3)
+      pairwise.hpp                numpy식 pairwise 합 (세 벌 → 한 벌)
+      neon.hpp                    NEON 보조 함수
+      scalar_cast.hpp             스칼라 변환 규칙 (float → int 포화 등, 지금 numpy·linalg에 두 벌)
+    parallel/
+      pool.hpp/.cpp               스레드풀 하나 (pandas판이 상위 집합, §4.1)
+    accelerate/
+      blas.hpp                    cblas 래퍼 (지금 numpy ops/matmul.cpp 안)
+      lapack.hpp                  LAPACK 래퍼 (지금 linalg lapack/lapack.hpp)
+      vforce.hpp                  vForce 래퍼 (지금 numpy kernels/vforce.hpp)
+    array/                        (지금 stardust-numpy csrc/의 core, kernels, ops)
+      ndarray  iter  convert
+      kernels/  elementwise buffered cast scalar_ops reduce sort simd_sort
+      ops/      asarray copy creation indexing matmul reduction shape sort ufunc lanes
+    linalg/                       (지금 stardust-linalg csrc/)
+      args  batch  pack  cost  errors  common
+      ops/      lu basic norms vnorm factor qr spectral svals nonsym special expm
+    frame/                        (지금 stardust-pandas csrc/)
+      column  bitmap  convert
+      ops/      cast elementwise groupby hash join reduce selection sort radix parse pow5_table
+      io/       csv
+      interop.cpp                 Column ↔ NDArray (DESIGN §4.3)
+    bind/
+      module.cpp                  _core와 하위 모듈 _core.linalg, _core.frame 정의
+      array_bind.cpp  pyutil.cpp  linalg_bind.cpp  frame_bind.cpp
+
+  tests/
+    array/  linalg/  frame/  interop/
+    conftest.py                   공통 fixture (스레드 수 1, 3, 기본값)
+  bench/      array/  linalg/  frame/  merge/      스크립트는 옮기고, 결과는 새로 잰다
+  experiments/                                     새 실험만
+  docs/                                            모두 새로 쓴다 (DESIGN §5.4)
+    design/   array.md  linalg.md  frame.md        영역의 확정 사항과 내부 구조
+    api/      array.md  linalg.md  frame.md        영역별 API 문서 (공개)
+    guide/                                         안내서 한 권
+    learn/                                         통합 마일스톤 해설
+  tools/
+    gen_pow5_table.py             (지금 stardust-pandas/tools)
+```
+
+### 2.1 지금 파일이 가는 곳
+
+| 지금 | 통합 후 |
+|---|---|
+| numpy `csrc/core/{ndarray,iter,convert}` | `csrc/array/` |
+| numpy `csrc/core/{buffer,dtype}` | `csrc/base/` (pandas판과 합침) |
+| numpy `csrc/kernels/neon.hpp` | `csrc/base/neon.hpp` |
+| numpy `csrc/kernels/vforce.hpp` | `csrc/accelerate/vforce.hpp` |
+| numpy `csrc/kernels/reduce.hpp`의 pairwise 부분 | `csrc/base/pairwise.hpp` |
+| numpy `csrc/parallel/pool.*` | 버림 (pandas판으로 대체) |
+| linalg `csrc/core/{input,outblock,pyrefs}` | **없어짐** (§3) |
+| linalg `csrc/core/{types,pairwise}.hpp` | `base/dtype.hpp`, `base/pairwise.hpp`, `base/scalar_cast.hpp`로 흡수 |
+| linalg `csrc/core/{args,batch,pack,cost,errors}` | `csrc/linalg/` |
+| linalg `csrc/lapack/lapack.hpp` | `csrc/accelerate/lapack.hpp` |
+| linalg `csrc/parallel/pool.*` | 버림 |
+| pandas `csrc/core/buffer.*` | `csrc/base/buffer.*` (numpy판과 합침) |
+| pandas `csrc/core/{column,bitmap,convert}` | `csrc/frame/` |
+| pandas `csrc/ops/pairwise.hpp` | `csrc/base/pairwise.hpp` (min/max 부분은 `frame/ops/`에 남김) |
+| pandas `csrc/parallel/pool.*` | `csrc/parallel/pool.*` (통합판의 기준) |
+
+## 3. Python과 C++의 경계
+
+- **"얇은 Python, 두꺼운 C++"** 원칙은 세 프로젝트가 같았고 그대로 둔다.
+  - 예외도 그대로다: `Series`, `DataFrame`은 Python 클래스다 (pandas DESIGN §1.1).
+- **확장 모듈은 `_core` 하나다** (DESIGN §3.2).
+  - `nb::module_::def_submodule`로 `_core.linalg`, `_core.frame`을 만든다.
+  - nanobind 타입 테이블이 하나라서, C++ 어디서든 `nb::cast<const NDArray&>(obj)`로 배열을 직접 받는다.
+- **linalg의 경계 코드가 사라진다.**
+
+  | 지금 (linalg) | 통합 후 |
+  |---|---|
+  | `Input`: `PyObject_TypeCheck` + `PyObject_GetBuffer` + format 문자열 해석 | `const NDArray&` 인자 하나 |
+  | `alloc_matrices` → 블록 객체 → `sdnp.asarray` 호출 | `new_array`의 F-order판으로 `NDArray`를 직접 만든다 |
+  | `pyrefs`: `sdnp.ndarray`, `asarray`, `get_num_threads`, dtype 객체 캐시 | 결과 namedtuple과 `LinAlgError`만 남는다 |
+  | 호출마다 `sdnp.get_num_threads()` Python 호출 | `parallel::num_threads()` |
+
+  - linalg M0에서 잰 이 비용은 결과 하나에 약 200ns다 (asarray 113ns, 블록 할당·해제 82ns, 나머지 12ns). 통합 후 얼마가 줄었는지 M3에서 잰다.
+- `array/`에 F-order 결과를 위한 생성 함수 하나를 더한다.
+  - `new_array_fortran(dtype, batch, m, n)`: 행렬마다 열 우선, 배치 축은 바깥에 C-order (linalg DESIGN §2.3과 같은 배치).
+
+## 4. 공통 부품
+
+### 4.1 스레드풀
+- 하나만 둔다. **pandas판이 기준이다.** numpy판의 상위 집합이기 때문이다.
+  - 핵심(상주 워커, spin 후 대기, atomic 카운터, 호출 스레드 참여, 중첩 금지)은 세 벌이 같다.
+  - pandas판에만 있는 것: `busy()`, `available()`의 "풀이 바쁘면 직렬 경로", 항상 GIL 해제, `for_chunks`, `FirstRow`, `Unlocked`.
+  - linalg판에만 있는 것: `available_here()`. 통합판에 더한다.
+- **병렬화 기준값은 영역마다 따로 둔다.** 측정해서 정한 값이 다르기 때문이다.
+  - array: `1 << 15` (numpy M8), frame: `1 << 17` (pandas M11), linalg: 비용 모델 (`linalg/cost.hpp`, linalg M9)
+  - 풀 헤더의 `kThreshold` 하나를 `array/`, `frame/`의 상수로 옮긴다.
+- 스레드 수 API는 `sd.set_num_threads`, `sd.get_num_threads` 하나다. `sd.frame`에는 두지 않는다.
+
+### 4.2 Buffer
+- numpy판과 pandas판은 이름(`sd::Buffer`)과 정렬(128B)이 같고 내용이 조금 다르다. 한 모듈에 그대로 넣으면 ODR 위반이다.
+- 통합판 = numpy판 + pandas판의 `size()`
+  - numpy판: 작은 배열은 Buffer 안에 데이터를 둔다(256B, numpy M7.7), 외부 메모리를 `adopt`한다.
+  - pandas판: `size()`를 갖는다. Copy-on-Write가 `shared_ptr`의 참조 카운트를 본다 (pandas ARCHITECTURE §3.3).
+- 배열 뷰와 Column이 같은 Buffer를 가리킬 수 있게 되므로 Copy-on-Write 규칙을 넓혀야 한다 (DESIGN §4.3).
+
+### 4.3 dtype
+- C++ enum은 `base/dtype.hpp`에 하나 둔다 (DESIGN §4.2의 추천안).
+  - `Bool, Int64, Float64, Complex128, String, Datetime64`
+  - 컨테이너마다 받는 부분집합을 명시한다: 배열은 앞의 넷, Column은 `Complex128`을 뺀 다섯.
+- `visit_dtype`은 배열용(숫자 넷)과 Column용으로 나눈다. 모든 커널이 여섯 가지를 다 인스턴스화하지 않게 하기 위해서다.
+
+### 4.4 Accelerate 래퍼
+- BLAS(numpy `matmul`), LAPACK(linalg), vForce(numpy 초월함수)를 `accelerate/` 한곳에 둔다.
+- 컴파일 정의 `ACCELERATE_NEW_LAPACK`, `ACCELERATE_LAPACK_ILP64`는 모듈 전체에 건다 (지금 numpy와 linalg가 같다).
+
+## 5. 빌드
+- `nanobind_add_module(_core NB_STATIC NOMINSIZE ...)` 하나.
+- 컴파일 플래그는 numpy판으로 통일한다: `-mcpu=native -ffp-contract=off -fno-builtin-sin -fno-builtin-cos -Wall -Wextra -Wpedantic`
+  - linalg와 pandas에는 `-fno-builtin-sin/-cos`가 없었다. 넣어도 결과가 같은지 M2, M5에서 확인한다.
+- editable 설치는 바뀐 파일만 다시 컴파일한다. 전체 빌드는 세 프로젝트를 합친 만큼 길어진다.
+
+## 6. 영역별 세부 구조
+영역 안의 구조는 그 영역을 옮기는 마일스톤에서 `docs/design/<영역>.md`에 새로 쓴다. 옛 문서에서 지금도 맞는 내용만 가져오고, 이력은 쓰지 않는다.
+
+| 영역 문서 | 다룰 것 | 옛 출처 (참고만) | 쓰는 때 |
+|---|---|---|---|
+| `array.md` | NDArray와 뷰, 이터레이터, 캐스팅, 인덱싱, ufunc, 리덕션, 정렬, matmul, 병렬화 기준 | stardust-numpy DESIGN·ARCHITECTURE | M1 |
+| `linalg.md` | 공통 규칙(실패, 유한성 검사, 결과 레이아웃), 패킹, 배치 드라이버, 비용 모델, 함수별 메모 | stardust-linalg DESIGN·ARCHITECTURE (경계와 "두 개의 풀"은 이 문서 §3, §4.1이 대신함) | M2에서 쓰고 M3에서 경계 부분을 고침 |
+| `frame.md` | Column, 비트맵, NA 규칙, Copy-on-Write, Index와 정렬(alignment), 커널 체계, CSV | stardust-pandas DESIGN·ARCHITECTURE | M5에서 쓰고 M6에서 규칙 변경을 반영 |
