@@ -587,4 +587,4 @@ NaN은 결측값이 아니라 평범한 float 값이다 (DESIGN §2.1).
 - `encoding`, `skiprows`, `comment`, `quotechar`, `thousands`, `decimal`, `parse_dates`, `converters` 등 나머지 옵션은 없다.
 
 ## 20. 미확정
-- 없음. (Eisel-Lemire 숫자 파싱을 직접 구현할지는 M10에서 측정한 뒤에 묻는다. DESIGN §2.5)
+- 없음.

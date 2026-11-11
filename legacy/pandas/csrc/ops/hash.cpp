@@ -219,3 +219,43 @@ Column LabelTable::all_positions(const Column& targets) const {
 }
 
 }  // namespace sd
+
+namespace sd {
+
+namespace {
+
+std::uint64_t word_key(const Column& c, std::int64_t i) {
+    switch (c.dtype) {
+    case DType::Int64: return static_cast<std::uint64_t>(c.data<std::int64_t>()[i]);
+    case DType::Float64: return float_key(c.data<double>()[i]);
+    default: return c.data<std::uint8_t>()[i];
+    }
+}
+
+}  // namespace
+
+ValueCodes::ValueCodes(const Column& build) : build_(build) {
+    const std::int64_t n = build.length;
+    codes_.resize(static_cast<std::size_t>(n));
+    if (build.dtype == DType::String) strings_ = std::make_unique<KeyTable<std::string_view, HashBytes>>();
+    else words_ = std::make_unique<KeyTable<std::uint64_t, Fmix64>>();
+    for (std::int64_t i = 0; i < n; ++i) {
+        if (!build.is_valid(i)) {
+            codes_[i] = -1;
+            continue;
+        }
+        auto [code, added] = strings_ ? strings_->insert(build_.string_at(i), ngroups_) : words_->insert(word_key(build, i), ngroups_);
+        ngroups_ += added;
+        codes_[i] = code;
+    }
+}
+
+std::vector<std::int64_t> ValueCodes::lookup(const Column& probe) const {
+    if (probe.dtype != build_.dtype) throw nb::type_error("lookup: the dtypes differ");
+    std::vector<std::int64_t> out(static_cast<std::size_t>(probe.length));
+    for (std::int64_t i = 0; i < probe.length; ++i)
+        out[i] = !probe.is_valid(i) ? -1 : strings_ ? strings_->find(probe.string_at(i)) : words_->find(word_key(probe, i));
+    return out;
+}
+
+}  // namespace sd

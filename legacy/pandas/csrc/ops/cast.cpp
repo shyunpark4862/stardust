@@ -26,7 +26,13 @@ Column convert_fixed(const Column& col, DType target, F f) {
     out.null_count = col.null_count;
     const From* in = col.data<From>();
     To* o = reinterpret_cast<To*>(out.values->data());
-    for (std::int64_t i = 0; i < col.length; ++i) o[i] = col.is_valid(i) ? f(in[i]) : To{};
+    const std::int64_t n = col.length;  // a local bound: see finish_fixed
+    if (!col.validity) {
+        for (std::int64_t i = 0; i < n; ++i) o[i] = f(in[i]);
+    } else {
+        const std::vector<std::uint8_t> m = valid_bytes(col);
+        for (std::int64_t i = 0; i < n; ++i) o[i] = m[i] ? f(in[i]) : To{};
+    }
     return out;
 }
 
@@ -101,13 +107,14 @@ Column to_string(const Column& col, F format) {
 
 std::int64_t parse_int(std::string_view s) {
     std::int64_t v = 0;
-    if (!text::int_grammar(s) || !text::to_int(s, v)) cannot_parse(s, DType::Int64);
+    if (text::parse_int64(s, v) != 1) cannot_parse(s, DType::Int64);
     return v;
 }
 
 double parse_float(std::string_view s) {
-    if (!text::float_grammar(s)) cannot_parse(s, DType::Float64);
-    return text::to_double(s);
+    double d;
+    if (!text::parse_double(s, d)) cannot_parse(s, DType::Float64);
+    return d;
 }
 
 template <class To, class F>

@@ -2,6 +2,7 @@
 
 #include "ops/hash.hpp"
 #include "ops/pairwise.hpp"
+#include "ops/radix.hpp"
 #include "ops/reduce.hpp"
 #include "ops/selection.hpp"
 
@@ -175,37 +176,6 @@ Column Groups::reduce(std::string_view op, const Column& col, bool skipna, std::
     return out;
 }
 
-namespace {
-
-// -1, 0, 1 for the key values of rows a and b of one key column (API.md §16).
-int compare_key(const Column& c, std::int64_t a, std::int64_t b) {
-    const bool va = c.is_valid(a), vb = c.is_valid(b);
-    if (!va || !vb) return va == vb ? 0 : (va ? -1 : 1);  // NA last
-    switch (c.dtype) {
-    case DType::Int64: {
-        const auto x = c.data<std::int64_t>()[a], y = c.data<std::int64_t>()[b];
-        return x < y ? -1 : x > y;
-    }
-    case DType::Bool: {
-        const int x = c.data<std::uint8_t>()[a], y = c.data<std::uint8_t>()[b];
-        return x < y ? -1 : x > y;
-    }
-    case DType::Float64: {
-        const double x = c.data<double>()[a], y = c.data<double>()[b];
-        const bool nx = std::isnan(x), ny = std::isnan(y);
-        if (nx || ny) return nx == ny ? 0 : (nx ? 1 : -1);  // NaN after +inf (API.md §1)
-        return x < y ? -1 : x > y;                          // -0.0 == 0.0
-    }
-    case DType::String: {
-        const int r = c.string_at(a).compare(c.string_at(b));
-        return r < 0 ? -1 : r > 0;
-    }
-    }
-    return 0;
-}
-
-}  // namespace
-
 Column sort_groups(const std::vector<Column>& keys) {
     const std::int64_t n = keys.empty() ? 0 : keys[0].length;
     // Sort the distinct values of each key, not the groups: give every group
@@ -220,14 +190,17 @@ Column sort_groups(const std::vector<Column>& keys) {
         Factorized f = factorize(k);  // dense codes over the groups; equal keys share a code
         const auto* code = f.codes.data<std::int64_t>();
         const auto* first = f.first.data<std::int64_t>();
-        std::vector<std::int64_t> by_value(static_cast<std::size_t>(f.ngroups));
-        std::iota(by_value.begin(), by_value.end(), std::int64_t{0});
-        std::sort(by_value.begin(), by_value.end(),
-                  [&](std::int64_t a, std::int64_t b) { return compare_key(k, first[a], first[b]) < 0; });
+        // The distinct values in order (radix sort, M10): values first, then
+        // the NA code last (API.md §16).
+        std::vector<std::int64_t> valued, na_code;
+        for (std::int64_t g = 0; g < f.ngroups; ++g) (k.is_valid(first[g]) ? valued : na_code).push_back(first[g]);
+        order_rows(k, valued);
         std::vector<std::int64_t> rank(static_cast<std::size_t>(f.ngroups)), start(static_cast<std::size_t>(f.ngroups + 1), 0);
-        for (std::int64_t r = 0; r < f.ngroups; ++r) rank[by_value[r]] = r;
+        std::int64_t r = 0;
+        for (std::int64_t row : valued) rank[code[row]] = r++;
+        for (std::int64_t row : na_code) rank[code[row]] = r++;
         for (std::int64_t i = 0; i < n; ++i) ++start[rank[code[i]] + 1];
-        for (std::int64_t r = 0; r < f.ngroups; ++r) start[r + 1] += start[r];
+        for (std::int64_t q = 0; q < f.ngroups; ++q) start[q + 1] += start[q];
         for (std::int64_t g : order) next[start[rank[code[g]]]++] = g;  // stable: keeps the order of earlier passes
         order.swap(next);
     }

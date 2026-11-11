@@ -330,7 +330,8 @@ nb::object to_numpy_view(const Column& col) {
 nb::object validity_mask(const Column& col) {
     auto buf = Buffer::allocate(col.length, /*zeroed=*/false);
     auto* out = reinterpret_cast<std::uint8_t*>(buf->data());
-    for (std::int64_t i = 0; i < col.length; ++i) out[i] = col.is_valid(i);
+    const std::vector<std::uint8_t> m = valid_bytes(col);
+    std::memcpy(out, m.data(), m.size());
     return nb::ndarray<nb::numpy, bool>(out, {static_cast<std::size_t>(col.length)}, buffer_owner(buf)).cast();
 }
 

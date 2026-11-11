@@ -111,8 +111,10 @@ class DataFrame(Reductions):
 
     def __getitem__(self, key):
         """df["a"] (a Series), df[["a", "b"]] (a DataFrame) or df[mask] (rows) (API.md §7)."""
-        if isinstance(key, Series):
-            return self._take(_select.mask_positions(key, self._index))
+        if isinstance(key, Series):  # rows by a bool mask: each column compacted directly (M10)
+            sel = ("mask", _select.aligned_mask(key, self._index))
+            return DataFrame._new({k: _select.select_column(c, sel) for k, c in self._cols.items()},
+                                  _select.select_index(self._index, sel))
         if isinstance(key, list):
             names = _check_columns(key)
             return DataFrame._new({k: self._column(k) for k in names}, self._index)

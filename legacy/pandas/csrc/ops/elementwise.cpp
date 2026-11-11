@@ -330,17 +330,6 @@ Column concat_strings(const Column& a, const Column& b, int side) {
 
 // --- logic: Kleene three-valued & and | (API.md §2) ---
 
-// Validity as one byte per row (1 = value) from a bitmap rebased to bit 0,
-// or all ones when the column has no NA.
-std::vector<std::uint8_t> valid_bytes(const Column& col) {
-    std::vector<std::uint8_t> out(static_cast<std::size_t>(col.length), 1);
-    if (auto bits = rebased_validity(col)) {
-        const auto* b = reinterpret_cast<const std::uint8_t*>(bits->data());
-        for (std::int64_t i = 0; i < col.length; ++i) out[i] = bitmap::get(b, i);
-    }
-    return out;
-}
-
 template <Op O, int Side>
 void logic_rows(const std::uint8_t* x, const std::uint8_t* vx, const std::uint8_t* y, const std::uint8_t* vy,
                 std::int64_t n, std::uint8_t* o, std::uint8_t* bits) {
@@ -434,7 +423,8 @@ Column unary_op(std::string_view name, const Column& a) {
         using T = std::remove_cvref_t<decltype(f(0))>;  // input and result share a type here
         const T* x = a.data<T>();
         T* o = reinterpret_cast<T*>(out.values->data());
-        for (std::int64_t i = 0; i < a.length; ++i) o[i] = f(x[i]);
+        const std::int64_t n = a.length;  // a local bound: see finish_fixed
+        for (std::int64_t i = 0; i < n; ++i) o[i] = f(x[i]);
         finish_fixed(out);
         return out;
     };

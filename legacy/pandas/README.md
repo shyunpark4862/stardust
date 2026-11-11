@@ -41,3 +41,4 @@ python3.15 -m venv .venv && .venv/bin/pip install nanobind scikit-build-core pyt
 - M7 (정렬: `sort_values`, `sort_index`, 안정 기수 정렬) 완료
 - M8 (결합: `merge` 해시 조인, `concat`) 완료
 - M9 (`read_csv`: RFC 4180, 타입 추론, 단일 스레드) 완료
+- M10 (단일 코어 최적화: Swiss table, 문자열 해시와 정렬, NA 바이트 마스크, 필터 압축, CSV structural index, Eisel-Lemire) 완료

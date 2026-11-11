@@ -86,14 +86,65 @@ Column take(const Column& col, const Column& positions) {
 
 Column nonzero(const Column& mask) {
     if (mask.dtype != DType::Bool) throw nb::type_error("a mask must be bool");
-    const auto* m = mask.data<std::uint8_t>();
+    const auto* m = mask.data<std::uint8_t>();  // NA rows hold 0 (ARCHITECTURE.md §2.4): never kept
+    const std::int64_t n = mask.length;
     std::int64_t count = 0;
-    for (std::int64_t i = 0; i < mask.length; ++i) count += m[i] && mask.is_valid(i);
-    Column out = make_fixed(DType::Int64, count);
+    for (std::int64_t i = 0; i < n; ++i) count += m[i];
+    // One spare slot: the branch-free loop writes o[k] even when row i is not
+    // kept, so after the last kept row it writes one past the end.
+    Column out = make_fixed(DType::Int64, count + 1);
+    out.length = count;
     auto* o = reinterpret_cast<std::int64_t*>(out.values->data());
     std::int64_t k = 0;
-    for (std::int64_t i = 0; i < mask.length; ++i)
-        if (m[i] && mask.is_valid(i)) o[k++] = i;  // NA rows hold 0 anyway (ARCHITECTURE.md §2.4)
+    for (std::int64_t i = 0; i < n; ++i) {  // branch-free: write always, advance when kept
+        o[k] = i;
+        k += m[i];
+    }
+    return out;
+}
+
+namespace {
+
+// Branch-free compaction: every row is written at `k`, and `k` moves on only
+// when the row is kept, so the loop has no data-dependent branch. Needs one
+// spare slot at the end of `out`.
+template <class T>
+std::int64_t compact(const T* in, const std::uint8_t* keep, std::int64_t n, T* out) {
+    std::int64_t k = 0;
+    for (std::int64_t i = 0; i < n; ++i) {
+        out[k] = in[i];
+        k += keep[i];
+    }
+    return k;
+}
+
+}  // namespace
+
+Column filter(const Column& col, const Column& mask) {
+    if (mask.dtype != DType::Bool || mask.length != col.length) throw nb::type_error("filter: a bool mask of the column's length");
+    const std::int64_t n = col.length;
+    const std::uint8_t* keep = mask.data<std::uint8_t>();  // NA rows hold 0 (ARCHITECTURE.md §2.4): never kept
+    std::int64_t count = 0;
+    for (std::int64_t i = 0; i < n; ++i) count += keep[i];
+    // Strings: take() copies only the kept rows. Two branch-free string
+    // compactions were measured and lost (M10 explainer §6).
+    if (col.dtype == DType::String) return take(col, nonzero(mask));
+    Column out = make_fixed(col.dtype, count + 1);
+    out.length = count;
+    switch (col.dtype) {
+    case DType::Bool: compact(col.data<std::uint8_t>(), keep, n, reinterpret_cast<std::uint8_t*>(out.values->data())); break;
+    case DType::Int64: compact(col.data<std::int64_t>(), keep, n, reinterpret_cast<std::int64_t*>(out.values->data())); break;
+    case DType::Float64: compact(col.data<double>(), keep, n, reinterpret_cast<double*>(out.values->data())); break;
+    case DType::String: break;
+    }
+    if (col.validity) {  // compact the validity as bytes, then pack it into bits
+        std::vector<std::uint8_t> valid = valid_bytes(col), kept(static_cast<std::size_t>(count + 1));
+        compact(valid.data(), keep, n, kept.data());
+        std::uint8_t* bits = add_validity(out);
+        for (std::int64_t i = 0; i < count; ++i)
+            if (!kept[i]) bitmap::clear(bits, i);
+        finish_fixed(out);
+    }
     return out;
 }
 
@@ -106,8 +157,10 @@ Column isna(const Column& col, bool want_na) {
         std::memset(o, flip ^ 1, static_cast<std::size_t>(col.length));
         return out;
     }
-    const auto* b = reinterpret_cast<const std::uint8_t*>(bits->data());
-    for (std::int64_t i = 0; i < col.length; ++i) o[i] = static_cast<std::uint8_t>(bitmap::get(b, i) ^ flip);
+    bitmap::expand(reinterpret_cast<const std::uint8_t*>(bits->data()), col.length, o);  // eight rows per lookup (M10)
+    const std::int64_t n = col.length;  // a local bound: see finish_fixed
+    if (flip)
+        for (std::int64_t i = 0; i < n; ++i) o[i] ^= 1;
     return out;
 }
 

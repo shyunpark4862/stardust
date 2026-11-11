@@ -6,6 +6,8 @@ slices and scalar results apart from gathers:
   ("one", position)                 a single row: a scalar for a Series
   ("slice", start, stop, step)      positions range(start, stop, step)
   ("take", positions)               an int64 Column of positions
+  ("mask", mask)                    a bool Column aligned with the rows (M10:
+                                    columns are compacted directly)
 """
 
 import sys
@@ -33,7 +35,7 @@ def by_label(index, key):
     from .series import Series
 
     if isinstance(key, Series):
-        return ("take", mask_positions(key, index))
+        return ("mask", aligned_mask(key, index))
     if isinstance(key, slice):
         return ("slice", *label_slice(index, key))
     if _is_listlike(key):
@@ -85,6 +87,8 @@ def positions_column(sel):
     if kind == "slice":
         start, stop, step = sel[1:]
         return _core.arange(start, step, len(range(start, stop, step)))
+    if kind == "mask":
+        return sel[1].nonzero()
     return sel[1]
 
 
@@ -93,6 +97,8 @@ def select_column(col, sel):
     if sel[0] == "slice" and sel[3] == 1:
         start, stop = sel[1], max(sel[2], sel[1])
         return col.slice(start, stop - start)
+    if sel[0] == "mask":
+        return col.filter(sel[1])
     return col.take(positions_column(sel))
 
 
@@ -100,16 +106,21 @@ def select_index(index, sel):
     if sel[0] == "slice":
         start, stop, step = sel[1:]
         return index._slice(start, stop, step)
-    return index._take(sel[1])
+    return index._take(positions_column(sel))
 
 
 # --- masks and alignment ---
 
 
 def mask_positions(mask, index):
-    """Positions of the True rows of a bool Series mask (NA counts as False,
-    API.md §2). A mask with other labels is matched to `index` by label; the
-    two must hold the same set of labels (API.md §14)."""
+    """Positions of the True rows of a bool Series mask (see aligned_mask)."""
+    return aligned_mask(mask, index).nonzero()
+
+
+def aligned_mask(mask, index):
+    """The bool Column of a Series mask, in the order of `index` (NA counts
+    as False, API.md §2). A mask with other labels is matched to `index` by
+    label; the two must hold the same set of labels (API.md §14)."""
     if mask.dtype != "bool":
         raise TypeError(f"a mask must be a bool Series, got dtype {mask.dtype}")
     col = mask._col
@@ -120,7 +131,7 @@ def mask_positions(mask, index):
         if len(_core.binary_op("eq", positions, Column.from_list([-1], None, None), 2).nonzero()):
             raise ValueError("the mask's labels must be the index's labels (API.md §14)")
         col = col.take(positions)
-    return col.nonzero()
+    return col
 
 
 def same_index(a, b):

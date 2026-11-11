@@ -434,3 +434,25 @@ def test_frame_operators():
     assert partial["a"].to_list() == [2, 4] and partial["b"].to_list() == [NA, NA] and partial["b"].dtype == "float64"
     with pytest.raises(KeyError):
         df.astype({"zz": "int64"})
+
+
+# --- the Eisel-Lemire float parser (M10) --------------------------------------
+
+HARD_FLOATS = ["0", "-0", "0.0", "1e22", "1e23", "9007199254740993", "9007199254740992.5",
+               "2.2250738585072011e-308", "2.2250738585072014e-308", "4.9406564584124654e-324",
+               "2.4703282292062327e-324", "2.4703282292062328e-324", "1.7976931348623157e308",
+               "1.7976931348623158e308", "1.7976931348623159e308", "1e-400", "1e400", "123456789012345678",
+               "1234567890123456789", "12345678901234567890", ".5", "5.", "7.2057594037927933e16",
+               "0.000000000000000000000000000001", "9007199254740991.4999999999999999999"]
+
+
+@settings(max_examples=EXAMPLES, deadline=None)
+@given(st.lists(
+    st.integers(0, 2**64 - 1).map(lambda b: repr(np.frombuffer(np.uint64(b).tobytes(), dtype=np.float64)[0].item()))
+    | st.builds(lambda m, e: f"{m}e{e}", st.integers(0, 10**19), st.integers(-345, 310))
+    | st.builds(lambda a, b, e: f"{a}.{b}e{e}", st.integers(0, 10**10), st.integers(0, 10**12), st.integers(-30, 30)),
+    max_size=50))
+def test_float_parsing_is_correctly_rounded(texts):
+    texts = [t for t in texts if "nan" not in t and "inf" not in t] + HARD_FLOATS
+    got = sdpd.Series(texts).astype("float64").to_list()
+    assert all(same(g, float(t)) for g, t in zip(got, texts))

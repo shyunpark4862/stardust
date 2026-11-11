@@ -11,6 +11,11 @@ namespace sd {
 // gives an NA row (M4's alignment uses it); others must be in [0, length).
 Column take(const Column& col, const Column& positions);
 
+// The rows of `col` where the bool `mask` is True (NA counts as False),
+// compacted directly: no positions in between (M10). Strings go through
+// take(nonzero(mask)).
+Column filter(const Column& col, const Column& mask);
+
 // Positions (int64) of the rows of a bool mask that are True; NA counts as
 // False (API.md §2).
 Column nonzero(const Column& mask);

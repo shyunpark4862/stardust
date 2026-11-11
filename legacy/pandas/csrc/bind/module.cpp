@@ -86,6 +86,7 @@ void bind_column(nb::module_& m) {
         .def("fill_na", &sd::fill_na, nb::arg("value"))
         .def("take", &sd::take, nb::arg("positions"))
         .def("nonzero", &sd::nonzero)
+        .def("filter", &sd::filter, nb::arg("mask"))
         .def("equals", &sd::equals, nb::arg("other"))
         // A new Column object sharing this one's Buffers. Writers take their
         // own object first, so a write never shows through another object

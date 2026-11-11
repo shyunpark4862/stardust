@@ -2,7 +2,9 @@
 // (row i is bit i % 8 of byte i / 8, as in Arrow); 1 means a value, 0 means NA.
 #pragma once
 
+#include <array>
 #include <cstdint>
+#include <cstring>
 
 namespace sd::bitmap {
 
@@ -46,6 +48,23 @@ inline void copy_bits(const std::uint8_t* src, std::int64_t offset, std::int64_t
         dst[j] = static_cast<std::uint8_t>(v);
     }
     if (n & 7) dst[nbytes - 1] &= static_cast<std::uint8_t>((1u << (n & 7)) - 1);
+}
+
+// For each byte value b, eight bytes holding bit k of b in byte k (0 or 1).
+// Expanding a bitmap through it handles eight rows per lookup, with no
+// branch per row (M10).
+inline constexpr std::array<std::uint64_t, 256> kExpand = [] {
+    std::array<std::uint64_t, 256> t{};
+    for (unsigned b = 0; b < 256; ++b)
+        for (unsigned k = 0; k < 8; ++k) t[b] |= static_cast<std::uint64_t>((b >> k) & 1) << (8 * k);
+    return t;
+}();
+
+// Bits [0, n) of `bits` (starting at bit 0) as n bytes of 0 or 1.
+inline void expand(const std::uint8_t* bits, std::int64_t n, std::uint8_t* out) {
+    const std::int64_t full = n / 8;
+    for (std::int64_t j = 0; j < full; ++j) std::memcpy(out + 8 * j, &kExpand[bits[j]], 8);
+    for (std::int64_t i = full * 8; i < n; ++i) out[i] = get(bits, i);
 }
 
 }  // namespace sd::bitmap

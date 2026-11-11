@@ -10,6 +10,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace sd {
 
@@ -87,6 +88,10 @@ std::shared_ptr<Buffer> rebased_validity(const Column& col);
 // `scalar_side` 1 or 2 says that `a` or `b` is a one-row scalar applied to
 // every row. Null when no row can be NA.
 std::shared_ptr<Buffer> and_validity(const Column& a, const Column& b, int scalar_side, std::int64_t n);
+
+// One byte per row: 1 where the row has a value, 0 where it is NA (all ones
+// without a bitmap). Branch-free kernels select with it (M10).
+std::vector<std::uint8_t> valid_bytes(const Column& col);
 
 // Ends building a fixed-width column whose `validity` (offset 0, possibly
 // null) is final: counts the NA rows, drops an all-valid bitmap, and zeroes

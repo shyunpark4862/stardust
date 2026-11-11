@@ -75,6 +75,13 @@ std::shared_ptr<Buffer> and_validity(const Column& a, const Column& b, int scala
     return out;
 }
 
+std::vector<std::uint8_t> valid_bytes(const Column& col) {
+    std::vector<std::uint8_t> out(static_cast<std::size_t>(col.length), 1);
+    if (auto bits = rebased_validity(col))
+        bitmap::expand(reinterpret_cast<const std::uint8_t*>(bits->data()), col.length, out.data());
+    return out;
+}
+
 void finish_fixed(Column& col) {
     col.null_count = 0;
     if (!col.validity) return;
@@ -84,10 +91,17 @@ void finish_fixed(Column& col) {
         col.validity.reset();
         return;
     }
-    // Branch-free: AND every value with all-ones (valid) or zero (NA).
+    // Branch-free: AND every value with all-ones (valid) or zero (NA), the
+    // bitmap first expanded to one byte per row (M10) so the loop vectorizes.
+    std::vector<std::uint8_t> m(static_cast<std::size_t>(col.length));
+    bitmap::expand(bits, col.length, m.data());
+    // `n` is a local: a store through a uint8_t pointer may alias anything, so
+    // a loop bound read from col.length would be reloaded every iteration and
+    // the loop would not vectorize (M10).
+    const std::int64_t n = col.length;
     auto zero = [&](auto* v) {
         using T = std::remove_reference_t<decltype(*v)>;
-        for (std::int64_t i = 0; i < col.length; ++i) v[i] &= static_cast<T>(0 - static_cast<T>(bitmap::get(bits, i)));
+        for (std::int64_t i = 0; i < n; ++i) v[i] &= static_cast<T>(0 - static_cast<T>(m[i]));
     };
     if (item_size(col.dtype) == 1) zero(reinterpret_cast<std::uint8_t*>(col.values->data()));
     else zero(reinterpret_cast<std::int64_t*>(col.values->data()));  // int64 and float64: 0.0 is all-zero bits

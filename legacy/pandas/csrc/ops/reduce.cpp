@@ -6,6 +6,7 @@
 
 #include <arm_neon.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <string>
@@ -56,13 +57,13 @@ double mean_of(const Column& c, std::int64_t count) {
     if (c.dtype == DType::Int64) {
         __int128 total = 0;
         const auto* v = c.data<std::int64_t>();
-        for (std::int64_t i = 0; i < c.length; ++i) total += v[i];  // NA rows hold 0
+        for (std::int64_t i = 0, n = c.length; i < n; ++i) total += v[i];  // NA rows hold 0
         return static_cast<double>(total) / static_cast<double>(count);
     }
     if (c.dtype == DType::Bool) {
         std::int64_t trues = 0;
         const auto* v = c.data<std::uint8_t>();
-        for (std::int64_t i = 0; i < c.length; ++i) trues += v[i];
+        for (std::int64_t i = 0, n = c.length; i < n; ++i) trues += v[i];
         return static_cast<double>(trues) / static_cast<double>(count);
     }
     const double* v = c.data<double>();
@@ -91,12 +92,29 @@ Column float_minmax(const Column& c) {
         for (; i < n; ++i) best = ieee_minmax<Max>(best, v[i]);
         return scalar(DType::Float64, best);
     }
-    std::int64_t i = 0;
-    while (i < n && !c.is_valid(i)) ++i;
-    if (i == n) return na_value(DType::Float64);
-    double best = v[i];
-    for (++i; i < n; ++i)
-        if (c.is_valid(i)) best = ieee_minmax<Max>(best, v[i]);
+    // With NA (M10): blocks of rows are copied with NA rows replaced by the
+    // identity (+inf for min, -inf for max) -- a branch-free select -- and
+    // folded with the same vector instruction. All-NA was ruled out above.
+    if (c.null_count == n) return na_value(DType::Float64);
+    const std::vector<std::uint8_t> m = valid_bytes(c);
+    const double identity = Max ? -INFINITY : INFINITY;
+    constexpr std::int64_t kBlock = 1024;
+    double buf[kBlock];
+    float64x2_t acc[4];
+    for (auto& a : acc) a = vdupq_n_f64(identity);
+    for (std::int64_t b = 0; b < n; b += kBlock) {
+        const std::int64_t len = std::min(kBlock, n - b);
+        const std::uint8_t* mb = m.data() + b;
+        const double* vb = v + b;
+        for (std::int64_t k = 0; k < len; ++k) buf[k] = mb[k] ? vb[k] : identity;
+        std::int64_t k = 0;
+        for (; k + 8 <= len; k += 8)  // four accumulators: four independent chains
+            for (int a = 0; a < 4; ++a)
+                acc[a] = Max ? vmaxq_f64(acc[a], vld1q_f64(buf + k + 2 * a)) : vminq_f64(acc[a], vld1q_f64(buf + k + 2 * a));
+        for (; k < len; ++k) acc[0] = vsetq_lane_f64(ieee_minmax<Max>(vgetq_lane_f64(acc[0], 0), buf[k]), acc[0], 0);
+    }
+    double best = identity;
+    for (auto& a : acc) best = ieee_minmax<Max>(ieee_minmax<Max>(best, vgetq_lane_f64(a, 0)), vgetq_lane_f64(a, 1));
     return scalar(DType::Float64, best);
 }
 
@@ -171,10 +189,10 @@ Column reduce(std::string_view op, const Column& c, bool skipna, std::int64_t dd
         std::uint64_t total = 0;  // int64 wraps (API.md §3); NA rows hold 0
         if (c.dtype == DType::Int64) {
             const auto* v = c.data<std::int64_t>();
-            for (std::int64_t i = 0; i < c.length; ++i) total += static_cast<std::uint64_t>(v[i]);
+            for (std::int64_t i = 0, n = c.length; i < n; ++i) total += static_cast<std::uint64_t>(v[i]);
         } else {
             const auto* v = c.data<std::uint8_t>();
-            for (std::int64_t i = 0; i < c.length; ++i) total += v[i];
+            for (std::int64_t i = 0, n = c.length; i < n; ++i) total += v[i];
         }
         return scalar(DType::Int64, static_cast<std::int64_t>(total));
     }
@@ -184,10 +202,12 @@ Column reduce(std::string_view op, const Column& c, bool skipna, std::int64_t dd
     if (is_mean) return scalar(DType::Float64, mean);
 
     if (count - ddof <= 0) return na_value(DType::Float64);  // too few values (API.md §15)
+    // NA rows add 0.0. The validity is a byte per row (M10), so this is a
+    // select, not a branch; the sum's order and bits are as before.
+    const std::vector<std::uint8_t> m = valid_bytes(c);
     const double ssd = float_sum(c.length, [&](std::int64_t i) {
-        if (!c.is_valid(i)) return 0.0;
         const double d = as_double(c, i) - mean;
-        return d * d;
+        return m[i] ? d * d : 0.0;
     });
     const double var = ssd / static_cast<double>(count - ddof);
     return scalar(DType::Float64, op == "std" ? std::sqrt(var) : var);
