@@ -49,6 +49,9 @@ def test_index_api():
     assert list(idx) == ["a", "b", "a"] and "b" in idx and "z" not in idx and 1 not in idx
     assert sdpd.Index(["a"], name="x").equals(sdpd.Index(["a"], name="y"))  # names are not compared
     assert sdpd.RangeIndex(3).equals(sdpd.Index([0, 1, 2])) and sdpd.RangeIndex(3).is_unique
+    r = sdpd.RangeIndex(1, 10**9, 3)  # `in` is arithmetic: no table of a billion labels (M12+ review)
+    assert 4 in r and 5 not in r and 10**9 not in r and "4" not in r and True not in r and 4.0 not in r
+    assert np.int64(7) in r and r._labels is None
     assert sdpd.Index([]).dtype == "int64"
     for bad in ([1.5], [True], [1, None]):
         with pytest.raises((TypeError, ValueError)):
@@ -206,6 +209,11 @@ def test_mask_alignment():
         s[sdpd.Series([True, False], index=["a", "b"])]  # "c" missing
     with pytest.raises(ValueError):
         s[sdpd.Series([True, True, True, True], index=["a", "b", "c", "d"])]  # "d" extra; pandas ignores it
+    # Duplicate labels here: a mask of the same length must still hold the same set (M12+ review).
+    dup = sdpd.Series([10, 20, 30], index=[1, 1, 2])
+    with pytest.raises(ValueError):
+        dup[sdpd.Series([True, False, True], index=[1, 2, 3])]  # 3 is not a label of dup
+    assert dup[sdpd.Series([True, False, True], index=[1, 1, 2])].to_list() == [10, 30]  # the same index: by position
 
 
 def test_reindex():

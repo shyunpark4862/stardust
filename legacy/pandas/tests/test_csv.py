@@ -108,6 +108,19 @@ def test_quoting_line_ends_and_bom(tmp_path):
     assert df["k"].to_list() == [1, 2, 3, 4, 5]
 
 
+def test_lone_carriage_return_is_data(tmp_path):
+    # Only \r\n ends a line: a \r anywhere else is a byte of the value (M12+ review).
+    p = tmp_path / "t.csv"
+    p.write_bytes(b"a,b\r\nx\r,y\r\nz,w\r")
+    df = sdpd.read_csv(p)
+    assert df["a"].to_list() == ["x\r", "z"]
+    assert df["b"].to_list() == ["y", "w\r"]
+    q = tmp_path / "q.csv"
+    q.write_bytes(b'a,b\n"q"\r,z\n')  # a closing quote followed by \r, not a separator
+    with pytest.raises(ValueError, match="line 2: a closing quote"):
+        sdpd.read_csv(q)
+
+
 def test_quoted_numbers_are_numbers(tmp_path):
     p = tmp_path / "t.csv"
     p.write_text('a\n"12"\n3\n')

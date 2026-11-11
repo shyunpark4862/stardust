@@ -125,7 +125,11 @@ def aligned_mask(mask, index):
         raise TypeError(f"a mask must be a bool Series, got dtype {mask.dtype}")
     col = mask._col
     if not same_index(index, mask._index):
-        if len(mask) != len(index):
+        # Same length, unique labels here, and every label found in the mask
+        # (unique there too: _get_indexer checks) is the same set. With
+        # duplicates here, the same length means the mask has a label this
+        # index lacks (M12+ review: such masks were accepted).
+        if len(mask) != len(index) or not index.is_unique:
             raise ValueError("the mask's labels must be the index's labels (API.md §14)")
         positions = mask._index._get_indexer(index)  # needs unique mask labels
         if len(_core.binary_op("eq", positions, Column.from_list([-1], None, None), 2).nonzero()):

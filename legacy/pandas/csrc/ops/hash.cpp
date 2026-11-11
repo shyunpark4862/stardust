@@ -108,7 +108,7 @@ Column stable_order(const Column& counts, bool ascending) {
     std::iota(o, o + n, std::int64_t{0});
     const auto* v = counts.data<std::int64_t>();
     parallel::Unlocked unlocked(n);
-    // A comparison sort for now; M7 brings radix sort.
+    // A comparison sort: it orders one count per distinct value, not the rows.
     if (ascending) std::stable_sort(o, o + n, [v](std::int64_t x, std::int64_t y) { return v[x] < v[y]; });
     else std::stable_sort(o, o + n, [v](std::int64_t x, std::int64_t y) { return v[x] > v[y]; });
     return out;

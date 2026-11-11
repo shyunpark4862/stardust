@@ -178,3 +178,21 @@ def test_selection_and_errors():
         df.groupby("k", True)  # keyword-only (API.md §11 C2)
     empty = sdpd.DataFrame({"k": [None, None], "v": [1, 2]}, dtype=None)
     assert empty.groupby("k").sum().shape == (0, 2)
+
+
+def test_groupby_sees_the_frame_as_it_was():
+    # M12+ review: the grouping is computed on first use, so the groupby keeps
+    # the columns of the moment it was made; later writes to df do not mix in.
+    df = sdpd.DataFrame({"k": [1, 1, 2], "v": [1.0, 2.0, 3.0]})
+    g = df.groupby("k")
+    before = g.sum()
+    df["k"] = [5, 6, 6]
+    df["v"] = [10.0, 20.0, 30.0]
+    df.loc[0, "v"] = 100.0
+    for result in (g.sum(), g["v"].sum()):
+        assert result["k"].to_list() == [1, 2]
+        assert result["v"].to_list() == [3.0, 3.0]
+    assert before["v"].to_list() == [3.0, 3.0]
+    g2 = df.groupby("k")  # made after the writes: sees them
+    df["v"] = [0.0, 0.0, 0.0]
+    assert g2.sum()["v"].to_list() == [100.0, 50.0]

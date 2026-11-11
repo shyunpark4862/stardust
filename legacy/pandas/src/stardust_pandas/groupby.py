@@ -49,6 +49,15 @@ class GroupBy(Reductions):
             raise ValueError("key columns must be unique")
         for k in by:
             df._column(k)  # KeyError for an unknown column
+        if grouping is None:
+            # The columns as they are now (M12+ review): a later df["k"] = ...
+            # replaces a dict entry, and the grouping, computed on first use,
+            # must not meet the new columns. Columns are values sharing their
+            # Buffers, so this copies no data; writes into rows copy the
+            # Buffer first (CoW), so they do not show here either.
+            from .frame import DataFrame
+
+            df = DataFrame._new(dict(df._cols), df._index)
         self._df, self._by, self._sort, self._dropna = df, by, sort, dropna
         self._values = [k for k in df._cols if k not in by] if values is None else values
         self._grouping = grouping

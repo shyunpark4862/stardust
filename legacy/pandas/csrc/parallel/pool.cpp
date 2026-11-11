@@ -48,7 +48,15 @@ public:
     explicit Pool(int n) { start(n); }
     ~Pool() { stop(); }
 
-    int threads() const { return static_cast<int>(workers_.size()) + 1; }  // the caller counts
+    // The caller counts. An atomic copy of workers_.size() + 1: any thread
+    // may ask while set_num_threads rebuilds workers_ (M12+ review: reading
+    // the vector itself raced with that).
+    int threads() const { return nthreads_.load(std::memory_order_relaxed); }
+
+    // Whether a job holds the pool now (another Python thread's, with its GIL
+    // released). A call that sees this runs serially, so it should choose the
+    // serial algorithm (available() below).
+    bool busy() const { return busy_.load(std::memory_order_relaxed); }
 
     void resize(int n) {
         while (busy_.exchange(true)) std::this_thread::yield();  // wait for a running job to finish
@@ -58,10 +66,16 @@ public:
     }
 
     void run(std::int64_t ntasks, const std::function<void(std::int64_t)>& fn) {
-        if (workers_.empty() || busy_.exchange(true)) {
-            // One thread, or another Python thread's job is running (it holds
-            // the pool while its GIL is released): do this one serially rather
-            // than wait or oversubscribe (stardust-numpy ARCHITECTURE.md §5).
+        // Another Python thread's job is running (it holds the pool while its
+        // GIL is released): do this one serially rather than wait or
+        // oversubscribe (stardust-numpy ARCHITECTURE.md §5). workers_ is read
+        // only once the pool is ours: resize() changes it holding busy_ too.
+        if (busy_.exchange(true)) {
+            serial(ntasks, fn);
+            return;
+        }
+        if (workers_.empty()) {  // one thread
+            busy_ = false;
             serial(ntasks, fn);
             return;
         }
@@ -152,9 +166,11 @@ private:
         stop_flag_ = false;
         const std::uint64_t now = generation_.load();
         for (int i = 1; i < n; ++i) workers_.emplace_back([this, now] { worker_main(now); });
+        nthreads_.store(static_cast<int>(workers_.size()) + 1, std::memory_order_relaxed);
     }
 
     void stop() {
+        nthreads_.store(1, std::memory_order_relaxed);
         {
             std::lock_guard lock(m_);
             stop_ = true;
@@ -177,6 +193,7 @@ private:
     std::atomic<bool> stop_flag_{false};  // stop_, readable while spinning
     std::exception_ptr error_;
     std::atomic<bool> busy_{false};
+    std::atomic<int> nthreads_{1};
 };
 
 Pool& pool() {
@@ -192,7 +209,12 @@ int num_threads() { return pool().threads(); }
 
 void set_num_threads(int n) { pool().resize(n); }
 
-bool available() { return !t_in_task && pool().threads() > 1; }
+// Not inside a task, more than one thread, and the pool free: a call that
+// sees a busy pool would run every parallel_for serially, so the algorithms
+// that pick a path by this (factorize, radix sort, CSV chunks) take their
+// serial one -- the same result, faster than the split one run serially
+// (M12+ review).
+bool available() { return !t_in_task && pool().threads() > 1 && !pool().busy(); }
 
 void parallel_for(std::int64_t ntasks, const std::function<void(std::int64_t)>& fn) {
     if (ntasks <= 0) return;

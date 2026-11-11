@@ -204,8 +204,8 @@ Column sort_groups(const std::vector<Column>& keys) {
     // Sort the distinct values of each key, not the groups: give every group
     // the rank of its key value (0, 1, ... in key order), then order the
     // groups by rank with a stable counting sort, last key first (an LSD
-    // radix sort). Only the distinct values meet a comparison sort; M7
-    // brings radix sort for those too.
+    // radix sort). The distinct values are ordered by order_rows (a radix
+    // sort, M10).
     std::vector<std::int64_t> order(static_cast<std::size_t>(n)), next(static_cast<std::size_t>(n));
     std::iota(order.begin(), order.end(), std::int64_t{0});
     for (auto it = keys.rbegin(); it != keys.rend(); ++it) {

@@ -166,7 +166,10 @@ class SwissTable {
 public:
     static constexpr bool kInline = std::is_same_v<Key, std::uint64_t>;
 
-    SwissTable() { allocate(32); }
+    // No memory until the first reserve() or insert() (M12+ review: tables
+    // are made and then reserved, and a 32-slot table made up front was
+    // freed at once -- two allocations per partition).
+    SwissTable() = default;
     SwissTable(SwissTable&&) noexcept = default;
     SwissTable& operator=(SwissTable&&) noexcept = default;
 
@@ -187,6 +190,7 @@ public:
     // The same with the key's hash already computed (M11: the partitioned
     // factorize hashes every row once, up front).
     std::pair<std::int64_t, bool> insert(Key k, std::uint64_t h, std::int64_t new_code) {
+        if (!ctrl_) [[unlikely]] allocate(32);
         const std::uint8_t tag = tag_of(h);
         for (std::uint64_t g = (h >> 7) & gmask_;; g = (g + 1) & gmask_) {
             const uint8x16_t ctrl = vld1q_u8(ctrl_.get() + g * 16);
@@ -210,6 +214,7 @@ public:
     }
 
     std::int64_t find(Key k, std::uint64_t h) const {
+        if (!ctrl_) return -1;  // never inserted into
         const std::uint8_t tag = tag_of(h);
         for (std::uint64_t g = (h >> 7) & gmask_;; g = (g + 1) & gmask_) {
             const uint8x16_t ctrl = vld1q_u8(ctrl_.get() + g * 16);
@@ -233,7 +238,7 @@ private:
         void operator()(void* p) const { std::free(p); }
     };
 
-    std::size_t capacity() const { return static_cast<std::size_t>(gmask_ + 1) * 16; }
+    std::size_t capacity() const { return ctrl_ ? static_cast<std::size_t>(gmask_ + 1) * 16 : 0; }
 
     void allocate(std::size_t slots) {
         ctrl_.reset(static_cast<std::uint8_t*>(std::calloc(slots, 1)));

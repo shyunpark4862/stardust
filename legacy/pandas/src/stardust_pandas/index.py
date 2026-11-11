@@ -169,6 +169,14 @@ class RangeIndex(_IndexBase):
             self._labels = LabelTable(self._column())
         return self._labels
 
+    def __contains__(self, label):
+        """Arithmetic, like _position_of: no labels or table are built (M12+ review)."""
+        try:
+            check_label(self, label)
+        except TypeError:
+            return False
+        return label in self._range
+
     def _position_of(self, label):
         check_label(self, label)
         r = self._range

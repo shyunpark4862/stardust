@@ -96,14 +96,15 @@ public:
             const std::int64_t at = next_structural();
             if (at < 0) {  // the end of the input ends the last record
                 if (inside_) csv_error(line_at(p_, record), "a quoted field is never closed");
-                sink(count, field(field_start_, n_, record));
+                sink(count, field(field_start_, n_, record, false));
                 field_start_ = n_;
                 done_ = true;
                 return count + 1;
             }
-            sink(count, field(field_start_, at, record));
+            const bool line_end = p_[at] == '\n';
+            sink(count, field(field_start_, at, record, line_end));
             field_start_ = at + 1;
-            if (p_[at] == '\n') return count + 1;
+            if (line_end) return count + 1;
         }
     }
 
@@ -152,8 +153,12 @@ private:
     }
 
     // The field in bytes [from, to), checked against the quoting rules.
-    Field field(std::int64_t from, std::int64_t to, std::int64_t record) {
-        if (to > from && p_[to - 1] == '\r') --to;  // a \r\n line end (or a last \r at the end of the input)
+    // `line_end`: the field ends at a line feed, so a \r just before it is
+    // the \r\n line end. Anywhere else a \r is a byte of the value (API.md
+    // §19: line ends are \n and \r\n only); after a closing quote it is an
+    // error like any other byte.
+    Field field(std::int64_t from, std::int64_t to, std::int64_t record, bool line_end) {
+        if (line_end && to > from && p_[to - 1] == '\r') --to;
         if (to - from >= (std::int64_t{1} << 32)) csv_error(line_at(p_, record), "a field of 4 GB or more");
         if (!any_quote(from, to)) return {from, static_cast<std::uint32_t>(to - from), 0};
         if (p_[from] != '"') csv_error(line_at(p_, record), "a quote inside an unquoted field");
