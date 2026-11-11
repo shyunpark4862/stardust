@@ -1,7 +1,7 @@
 // Basic types shared by the whole core.
 #pragma once
 
-#include <Accelerate/Accelerate.h>  // ILP64 + new LAPACK via compile definitions (DESIGN.md §1.5)
+#include <Accelerate/Accelerate.h>  // ILP64 + new LAPACK via compile definitions (docs/design/linalg.md §1.2)
 
 #include <cmath>
 #include <complex>
@@ -16,7 +16,7 @@ using cplx = std::complex<double>;
 using lint = __LAPACK_int;  // 64-bit LAPACK integer
 static_assert(sizeof(lint) == 8, "ACCELERATE_LAPACK_ILP64 must be defined");
 
-// The four stardust-numpy dtypes, read from the buffer format of an input.
+// The four sd dtypes, read from the buffer format of an input.
 enum class DType : std::uint8_t { Bool, Int64, Float64, Complex128 };
 
 inline std::int64_t itemsize(DType d) {
@@ -28,7 +28,8 @@ inline std::int64_t itemsize(DType d) {
 }
 
 // What a computing function works in for a given input: bool and int64 become
-// float64 (DESIGN.md §1.4); the result dtype depends on input dtypes only (API §0.3).
+// float64 (docs/design/linalg.md §2.1); the result dtype depends on input dtypes
+// only (docs/api/linalg.md §1.5).
 inline bool computes_complex(DType d) { return d == DType::Complex128; }
 
 template <class T>
@@ -57,7 +58,7 @@ inline S load(const std::byte* p) {
     return v;
 }
 
-// float -> int64 as stardust-numpy converts explicitly (its DESIGN.md S3):
+// float -> int64 as the array area converts explicitly (docs/design/array.md §2.4):
 // toward zero, saturating at the int64 range, NaN -> 0.
 inline std::int64_t saturate_to_int(double v) {
     if (std::isnan(v)) return 0;
@@ -67,7 +68,7 @@ inline std::int64_t saturate_to_int(double v) {
 }
 
 // Converts a stored value S to the computing type T (double, cplx or int64).
-// complex -> real never happens: callers reject it before (S4).
+// complex -> real never happens: callers reject it before (docs/design/array.md §2.4).
 template <class T, class S>
 inline T convert(S v) {
     if constexpr (std::is_same_v<S, std::uint8_t>) return T(v != 0 ? 1 : 0);
@@ -78,10 +79,11 @@ inline T convert(S v) {
     else return T(v);  // double -> double/complex, complex -> complex
 }
 
-// Products of single elements, written exactly as stardust-numpy (and numpy)
-// compute them, so elementwise results agree bit for bit (stardust-numpy
-// scalar_ops.hpp cmul): numpy is built with FMA contraction, which turns
-// a*b - c*d into fma(a, b, -(c*d)). std::complex's operator* does not.
+// Products of single elements, written exactly as the array area (and numpy)
+// compute them, so elementwise results agree bit for bit (cmul in
+// array/kernels/scalar_ops.hpp, docs/design/array.md §5.3): numpy is built with
+// FMA contraction, which turns a*b - c*d into fma(a, b, -(c*d)). std::complex's
+// operator* does not.
 inline double mul(double a, double b) { return a * b; }
 inline cplx mul(cplx a, cplx b) {
     const double ar = a.real(), ai = a.imag(), br = b.real(), bi = b.imag();

@@ -1,6 +1,6 @@
 """Shared helpers. numpy and scipy are the references ("oracles"); results are
 checked by residuals first, and directly against numpy where the answer is
-unique (DESIGN.md §2.6, ARCHITECTURE.md §6)."""
+unique (docs/design/linalg.md §12.1, §13)."""
 
 import numpy as np
 import stardust as sd
@@ -8,7 +8,8 @@ from hypothesis import strategies as st
 
 EPS = np.finfo(np.float64).eps
 
-# Residual tolerance factor c in  ||residual|| <= c * n * eps * scale  (decided in M1).
+# Residual tolerance factor c in  ||residual|| <= c * n * eps * scale
+# (docs/design/linalg.md §13).
 RESIDUAL_C = 10.0
 
 DTYPES = ["bool", "int64", "float64", "complex128"]

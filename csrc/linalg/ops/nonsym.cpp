@@ -1,11 +1,11 @@
-// General eigenvalues, Schur, Hessenberg and LDL (API.md §4; ROADMAP.md M6):
+// General eigenvalues, Schur, Hessenberg and LDL (docs/api/linalg.md §5):
 // eig, eigvals, schur, hessenberg, ldl.
 //
-//   eig, eigvals : geev ('V' / 'N': values-only mode for eigvals, as in M5)
+//   eig, eigvals : geev ('V' / 'N': values-only mode for eigvals, as for eigvalsh)
 //   schur        : gees, no sorting
 //   hessenberg   : gehrd + orghr/unghr
 //   ldl          : sytrf/hetrf (Bunch-Kaufman), chosen over sytrf_rook by
-//                  measurement (experiments/m6_ldl_driver, DESIGN.md §2.15)
+//                  measurement (docs/design/linalg.md §10.6)
 #include "linalg/ops/nonsym.hpp"
 
 #include "linalg/cost.hpp"
@@ -73,7 +73,7 @@ nb::object eig_impl(nb::handle xo, bool vectors) {
     require_square(x);
     const lint n = x.shape(-1);
     Batch b({{x.batch_shape(2), x.batch_strides(2)}}, func);
-    // Always complex128, whatever the input (API.md §0.3).
+    // Always complex128, whatever the input (docs/api/linalg.md §1.5).
     Out wo = alloc_vectors(b.shape(), n, DType::Complex128);
     Out vo;
     if (vectors) vo = alloc_matrices(b.shape(), n, n, DType::Complex128);
@@ -85,8 +85,8 @@ nb::object eig_impl(nb::handle xo, bool vectors) {
         const int code = complex ? eig_one<cplx>(x, off[0], n, vectors, s, w, v)
                                  : eig_one<double>(x, off[0], n, vectors, s, w, v);
         if (code) return code;
-        // Sorted by (real, imag), stably -- stardust-numpy's complex order (S4).
-        lint* idx = s.get_ints(static_cast<std::size_t>(n));  // scratch, not a vector per matrix (M8)
+        // Sorted by (real, imag), stably -- the array's complex order (docs/design/linalg.md §2.6).
+        lint* idx = s.get_ints(static_cast<std::size_t>(n));  // scratch, not a vector per matrix (docs/design/linalg.md §9)
         std::iota(idx, idx + n, lint(0));
         std::stable_sort(idx, idx + n, [&](lint p, lint q) {
             return w[p].real() < w[q].real() || (w[p].real() == w[q].real() && w[p].imag() < w[q].imag());
@@ -166,7 +166,7 @@ nb::object hessenberg(nb::handle xo) {
 // row interchanges and unit lower block columns, recorded in ipiv:
 //   ipiv[k] > 0           : a 1x1 block at k; rows k and ipiv[k]-1 were swapped
 //   ipiv[k] = ipiv[k+1] < 0: a 2x2 block at k, k+1; rows k+1 and -ipiv[k+1]-1 swapped
-// We return the triangular L = M[perm] with x[perm][:, perm] = L D L^H (API.md §4).
+// We return the triangular L = M[perm] with x[perm][:, perm] = L D L^H (docs/api/linalg.md §5).
 // The same reading as scipy.linalg.ldl (its _ldl_sanitize_ipiv and
 // _ldl_construct_tri_factor), so perm, L and D agree with scipy.
 template <class T>
@@ -230,12 +230,13 @@ nb::object ldl(nb::handle xo) {
         Out po = alloc_vectors(b.shape(), n, DType::Int64);
         const Failure f = run_batch(b, cost(kLU, double(n) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             T* a = s.get<T>(static_cast<std::size_t>(n * n));
-            // The lower triangle only (API.md §0.2), checked as read (DESIGN.md §2.12).
+            // The lower triangle only (docs/api/linalg.md §1.4), checked as read
+            // (docs/design/linalg.md §5.4).
             if (!pack_triangle(x.dtype(), x.data() + off[0], n, x.stride(-2), x.stride(-1), a, n, true, true, true))
                 return kNonFinite;
             if (n == 0) return 0;
             lint* ipiv = s.get_ints(static_cast<std::size_t>(n));
-            lapack::sytrf(n, a, n, ipiv, s);  // a zero block of D is not an error (like lu, DESIGN.md §2.15)
+            lapack::sytrf(n, a, n, ipiv, s);  // a zero block of D is not an error (like lu, docs/design/linalg.md §10.6)
             ldl_unpack(a, ipiv, n, s, lo.as<T>() + i * n * n, dout.as<T>() + i * n * n, po.as<std::int64_t>() + i * n);
             return 0;
         });

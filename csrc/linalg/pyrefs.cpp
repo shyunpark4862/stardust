@@ -31,7 +31,7 @@ void load_sdnp_refs(nb::module_& core) {
 }
 
 void bind_setup(nb::module_& m) {
-    // Called once by stardust_linalg/__init__.py with the types defined in Python;
+    // Called once by stardust/linalg/__init__.py with the types defined in Python;
     // `results` lists the namedtuples in the order of the Result enum.
     m.def("_setup", [](nb::handle linalg_error, nb::tuple results) {
         if (results.size() != static_cast<size_t>(Result::Count))

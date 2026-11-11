@@ -1,7 +1,8 @@
-"""After M11 (docs/learn/next-optimizations.md): three changes that must not
-change any result -- solve_sylvester's two Schur decompositions at the same
-time, a cap on tasks for the LU family near n = 32, and large C-order inputs
-transposed on the pool. Every result is the same for any thread count."""
+"""Three optimizations that must not change any result -- solve_sylvester's
+two Schur decompositions at the same time, a cap on tasks for the LU family
+near n = 32, and large C-order inputs transposed on the pool
+(docs/design/linalg.md §8.4, §7.5, §5.6). Every result is the same for any
+thread count."""
 
 import numpy as np
 import pytest

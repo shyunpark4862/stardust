@@ -1,9 +1,9 @@
-// Triangular solves and the Cholesky and LU factorizations (API.md §3, §4; ROADMAP.md M3):
+// Triangular solves and the Cholesky and LU factorizations (docs/api/linalg.md §4, §5):
 // solve_triangular, cholesky, cholesky_solve, lu, lu_solve.
 //
 // Functions that read only one triangle pack and check only that triangle
-// (DESIGN.md §2.12). A zero on the diagonal of a triangular factor is a
-// LinAlgError everywhere, also where LAPACK itself would just divide by it.
+// (docs/design/linalg.md §5.4). A zero on the diagonal of a triangular factor
+// is a LinAlgError everywhere, also where LAPACK itself would just divide by it.
 #include "linalg/ops/factor.hpp"
 
 #include "linalg/cost.hpp"
@@ -72,7 +72,7 @@ nb::object cholesky(nb::handle xo, bool upper) {
             T* o = os.get();
             // L is computed in the output slot itself; for upper=True in scratch, then U = L^H.
             T* l = upper ? s.get<T>(static_cast<std::size_t>(n * n)) : o;
-            // The input's lower triangle only (API.md §0.2).
+            // The input's lower triangle only (docs/api/linalg.md §1.4).
             if (!pack_triangle(x.dtype(), x.data() + off[0], n, x.stride(-2), x.stride(-1), l, n, true, true, true))
                 return kNonFinite;
             if (n > 0 && lapack::potrf('L', n, l, n) > 0) return kNotPD;
@@ -105,7 +105,7 @@ nb::object cholesky_solve(nb::handle lo, nb::handle bo, bool upper) {
             lint ld;
             if (!triangle_operand(l, off[0], n, !upper, true, s.get<T>(static_cast<std::size_t>(n * n)), t, ld))
                 return kNonFinite;
-            // potrs would divide by a zero diagonal without a word (DESIGN.md §2.12).
+            // potrs would divide by a zero diagonal without a word (docs/design/linalg.md §10.3).
             if (zero_on_diagonal(t, n, ld)) return kSingular;
             LapackSlot<T> xs(res + i * n * r.k, n * r.k, s, Scratch::kAlign0);
             T* x = xs.get();
@@ -137,7 +137,7 @@ nb::object lu(nb::handle xo) {
             lint* ipiv = s.get_ints(static_cast<std::size_t>(kk));
             if (!pack(x.dtype(), x.data() + off[0], m, n, x.stride(-2), x.stride(-1), a, m, true)) return kNonFinite;
             // A singular matrix still has an LU factorization; U just has a zero
-            // on its diagonal (DESIGN.md §2.12), so info > 0 is not an error here.
+            // on its diagonal (docs/design/linalg.md §10.2), so info > 0 is not an error here.
             if (m > 0 && n > 0) lapack::getrf(m, n, a, m, ipiv);
             T* li = L + i * m * kk;
             T* ui = U + i * kk * n;
@@ -187,7 +187,8 @@ nb::object lu_solve(nb::handle lo, nb::handle uo, nb::handle po, nb::handle bo) 
         T* res = out.as<T>();
         const Failure f = run_batch(b, cost(kTriangular, double(n) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             // L strictly below the diagonal (its unit diagonal is not read), U on
-            // and above it: read in place when column-major, else packed (M8).
+            // and above it: read in place when column-major, else packed
+            // (docs/design/linalg.md §5.5).
             const T *tl, *tu;
             lint ldl, ldu;
             if (!triangle_operand(l, off[0], n, true, false, s.get<T>(static_cast<std::size_t>(n * n)), tl, ldl))
@@ -225,7 +226,8 @@ nb::object lu_solve(nb::handle lo, nb::handle uo, nb::handle po, nb::handle bo) 
             });
             if (!ok) return kNonFiniteB;
             // getrs without swaps is trtrs with L (unit) and then with U: the same
-            // calls, the same bits (checked in M8), and no packed L\U matrix needed.
+            // calls, the same bits (checked, docs/design/linalg.md §10.2), and no
+            // packed L\U matrix needed.
             if (n > 0 && r.k > 0) {
                 lapack::trtrs('L', 'N', 'U', n, r.k, tl, ldl, x, n);
                 lapack::trtrs('U', 'N', 'N', n, r.k, tu, ldu, x, n);

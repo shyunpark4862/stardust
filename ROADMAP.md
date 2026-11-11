@@ -26,7 +26,7 @@
 |---|---|---|
 | M0 저장소, 이력, 기준선 | 준비 | 완료 (2026-11-12), docs/learn/M0-repository-history-baseline.md |
 | M1 배열 코어 옮기기 | 1단계 | 완료 (2026-11-12), docs/learn/M1-array-core.md |
-| M2 linalg 옮기기 | 1단계 | 대기 |
+| M2 linalg 옮기기 | 1단계 | 완료 (2026-11-12), docs/learn/M2-linalg-move.md |
 | M3 linalg 경계 없애기 | 1단계 | 대기 |
 | M4 공통 바닥 정리 | 2단계 준비 | 대기 |
 | M5 frame 옮기기 | 2단계 | 대기 |
@@ -65,11 +65,14 @@
 ### M3. linalg 경계 없애기
 - `Input` → `const NDArray&`, `alloc_*` + `sdnp.asarray` → `new_array_fortran`, `pyrefs`의 sdnp 참조 제거 (ARCHITECTURE §3)
 - linalg의 `DType`, `saturate_to_int`, `pairwise.hpp`를 `base/`의 것으로 바꾼다.
+- linalg의 알려진 정리 항목(`docs/design/linalg.md` §10.9)을 함께 고친다. 결과는 바뀌지 않는다.
+  - `trace`/`diagonal`에서 k = −2⁶³일 때 `-k`의 부호 있는 오버플로(정의되지 않은 동작)
+  - `ldl`이 LAPACK workspace 몫의 scratch 슬롯을 임시 버퍼로 쓰는 것, `ord` 파서와 도우미의 중복, `cond`의 이중 패킹
 - **측정**: 작은 행렬(`det` 2×2, `inv` 2×2, `solve` 3×3, `qr` 3×3)의 호출 시간이 얼마나 줄었는가. 예상은 결과 하나에 약 200ns.
 - 1단계 끝. 여기서 1단계 보고서를 쓴다.
 
 ### M4. 공통 바닥 정리 (frame을 받을 준비)
-- 스레드풀을 pandas판(상위 집합)으로 바꾸고 `available_here()`를 더한다. 병렬화 기준값을 영역별 상수로 옮긴다 (ARCHITECTURE §4.1).
+- 스레드풀을 pandas판(상위 집합)으로 바꾼다 (`available_here()`는 M2에서 이미 더했다). 병렬화 기준값을 영역별 상수로 옮긴다 (ARCHITECTURE §4.1).
 - `Buffer`에 `size()`를 더한다 (ARCHITECTURE §4.2).
 - `base/dtype.hpp`에 `String`, `Datetime64`를 더하고 `visit_dtype`을 나눈다 (DESIGN §4.2). 사용자에게 보이는 dtype 표기는 M6에서 바꾼다.
 - `accelerate/` 정리: BLAS, LAPACK, vForce 래퍼를 한곳에 모은다.

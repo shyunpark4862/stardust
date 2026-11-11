@@ -1,4 +1,4 @@
-"""M6: eig, eigvals, schur, hessenberg, ldl."""
+"""eig, eigvals, schur, hessenberg, ldl."""
 
 import os
 
@@ -31,7 +31,7 @@ def f_order_strides(shape, itemsize):
 
 
 def lex_sorted(w):
-    """Sorted by (real, imag) along the last axis, stably (S4)."""
+    """Sorted by (real, imag) along the last axis, stably (docs/api/linalg.md §5)."""
     order = np.lexsort((w.imag, w.real), axis=-1)
     return np.take_along_axis(w, order, axis=-1)
 
@@ -53,7 +53,7 @@ def test_eig(seed, batch, n, dtype, layout):
     r = sd.linalg.eig(as_sd(x))
     assert type(r).__name__ == "EigResult" and r._fields == ("eigenvalues", "eigenvectors")
     w, v = npy(r.eigenvalues), npy(r.eigenvectors)
-    # always complex128, sorted by (real, imag) (API.md §0.3, §4)
+    # always complex128, sorted by (real, imag) (docs/api/linalg.md §1.5, §5)
     assert w.dtype == np.complex128 and v.dtype == np.complex128
     assert w.shape == (*batch, n) and v.shape == (*batch, n, n)
     assert r.eigenvectors.strides == f_order_strides(v.shape, 16)
@@ -173,7 +173,7 @@ def test_ldl(seed, batch, n, dtype, layout, small_diag):
     ct = compute_dtype(dtype)
     h = np.ascontiguousarray(with_layout(h, layout)) if layout == "bcast" else h
     h_in = h.astype(ct)
-    if dtype in ("float64", "complex128"):  # NaN above the diagonal: not read (API.md §0.2)
+    if dtype in ("float64", "complex128"):  # NaN above the diagonal: not read (docs/api/linalg.md §1.4)
         h_in = h_in.copy()
         h_in[..., np.triu(np.ones((n, n), bool), 1)] = np.nan
     r = sd.linalg.ldl(as_sd(with_layout(h_in if dtype in ("float64", "complex128") else h, layout)))
@@ -187,7 +187,7 @@ def test_ldl(seed, batch, n, dtype, layout, small_diag):
     hp = np.take_along_axis(np.take_along_axis(hc, p[..., :, None], axis=-2), p[..., None, :], axis=-1)
     scale = max(np.abs(hc).max(initial=0), 1)
     np.testing.assert_allclose(L @ D @ mH(L), hp, atol=200 * max(n, 1) * EPS * scale)
-    if not batch and n:  # scipy.linalg.ldl, read the same way (DESIGN.md §2.15)
+    if not batch and n:  # scipy.linalg.ldl, read the same way (docs/design/linalg.md §10.6)
         sL, sD, sp = sl.ldl(hc, lower=True, hermitian=True)
         assert np.array_equal(p, sp) and np.array_equal(L, sL[sp]) and np.array_equal(D, sD)
 

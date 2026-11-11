@@ -1,4 +1,4 @@
-"""M5: eigh, eigvalsh, svd, svdvals, matrix_rank, pinv, cond, matrix_norm (2, -2, nuc)."""
+"""eigh, eigvalsh, svd, svdvals, matrix_rank, pinv, cond, matrix_norm (2, -2, nuc)."""
 
 import math
 import os
@@ -34,7 +34,7 @@ def hermitian(rng, batch, n, dtype):
 
 
 def poison_upper(x):
-    """NaN above the diagonal: the triangle eigh must not read (API.md §0.2)."""
+    """NaN above the diagonal: the triangle eigh must not read (docs/api/linalg.md §1.4)."""
     x = x.copy()
     n = x.shape[-1]
     x[..., np.triu(np.ones((n, n), bool), 1)] = np.nan
@@ -77,7 +77,8 @@ def test_eigh(seed, batch, n, dtype, layout):
     # The same LAPACK call (syevd/heevd, lower triangle) as numpy: the same bits.
     want = np.linalg.eigh(hc)
     assert np.array_equal(w, want.eigenvalues) and np.array_equal(v, want.eigenvectors)
-    # Values only (a faster LAPACK mode): equal to rounding, not to the bit (DESIGN.md §2.14).
+    # Values only (a faster LAPACK mode): equal to rounding, not to the bit
+    # (docs/design/linalg.md §10.5).
     wv = npy(sd.linalg.eigvalsh(as_sd(h_in)))
     np.testing.assert_allclose(wv, w, rtol=0, atol=20 * max(n, 1) * EPS * scale)
 
@@ -131,7 +132,7 @@ def test_eigh_rules():
         sd.linalg.eigvalsh(sd.ones((2, 3)))
     assert sd.linalg.eigh(sd.zeros((0, 0))).eigenvectors.shape == (0, 0)
     assert sd.linalg.eigvalsh(sd.zeros((2, 0, 0))).shape == (2, 0)
-    # b is positional (API.md §4: eigh(a, b=None, /))
+    # b is positional (docs/api/linalg.md §5: eigh(a, b=None, /))
     with pytest.raises(TypeError):
         sd.linalg.eigh(sd.eye(2), b=sd.eye(2))
 
@@ -169,7 +170,7 @@ def test_svd(seed, batch, m, n, mode, dtype, layout):
     if k:
         # Not bit for bit: gesdd picks its internal path by the workspace size, and
         # numpy and scipy size it differently from LAPACK's own query, which we use
-        # (DESIGN.md §2.14). Singular vectors are unique only up to phase, so
+        # (docs/design/linalg.md §10.5). Singular vectors are unique only up to phase, so
         # compare the singular values directly and the vectors through x = U S Vh above.
         want = np.linalg.svd(x.astype(ct), full_matrices=mode == "complete")
         np.testing.assert_allclose(S, want.S, rtol=0, atol=20 * max(m, n, 1) * EPS * scale)
@@ -260,7 +261,7 @@ def test_cond_matches_numpy(seed, batch, n, dtype, ord_):
 def test_cond_rules():
     z = sd.zeros((3, 3))
     for o in (2, "fro", "nuc", 1, -1, INF, -INF):
-        assert sd.linalg.cond(z, ord=o) == INF  # a singular matrix's condition number (DESIGN.md §2.14)
+        assert sd.linalg.cond(z, ord=o) == INF  # a singular matrix's condition number (docs/design/linalg.md §10.5)
     assert sd.linalg.cond(z, ord=-2) == 0.0
     s = as_sd(np.array([[1.0, 2.0], [2.0, 4.0]]))
     assert sd.linalg.cond(s, ord=1) == INF
@@ -301,7 +302,7 @@ def test_matrix_norm_svd_ords(seed, batch, m, n, dtype, ord_, keepdims):
 def test_matrix_norm_svd_ords_rules():
     nan = as_sd(np.array([[np.nan, 0.0], [0.0, 1.0]]))
     for o in (2, -2, "nuc"):
-        with pytest.raises(ValueError, match="NaN"):  # LAPACK is called: checked (DESIGN.md §2.14)
+        with pytest.raises(ValueError, match="NaN"):  # LAPACK is called: checked (docs/design/linalg.md §2.3)
             sd.linalg.matrix_norm(nan, ord=o)
         assert sd.linalg.matrix_norm(sd.zeros((3, 0)), ord=o) == 0.0
     assert math.isnan(sd.linalg.matrix_norm(nan))  # 'fro' does not call LAPACK: NaN propagates

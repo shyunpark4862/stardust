@@ -68,7 +68,7 @@ NB_MODULE(_core, m) {
     sd::bind_sort(m);
     sd::bind_matmul(m);
     m.def("_build_info", &build_info, "Toolchain facts captured at compile time.");
-    // docs/api/array.md §0.3. Results never depend on the thread count
+    // API.md §3. Results never depend on the thread count
     // (docs/design/array.md §10.5).
     m.def("set_num_threads", [](nb::handle n) {
         const std::int64_t v = sd::parse_int(n, "n");

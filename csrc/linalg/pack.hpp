@@ -1,5 +1,5 @@
 // Packing: one strided input matrix -> an F-order work buffer, in one pass
-// that also converts the dtype and checks finiteness (ARCHITECTURE.md §3.2).
+// that also converts the dtype and checks finiteness (docs/design/linalg.md §5).
 #pragma once
 
 #include "linalg/batch.hpp"
@@ -63,11 +63,11 @@ bool copy_run(const std::byte* src, std::int64_t n, T* dst, bool check) {
 }
 
 // The loop for one source type S, for destination columns [j0, j1). Only
-// float sources can hold NaN or inf. Fast paths (M8): columns contiguous in
-// the source (F-order: a copy per column) and rows contiguous (C-order: a
-// transpose in 32 x 32 tiles, so both the reads and the writes stay within a
-// few cache lines). The result is the same for every path: element (i, j)
-// goes to dst[j * ld + i].
+// float sources can hold NaN or inf. Fast paths (docs/design/linalg.md §5.3):
+// columns contiguous in the source (F-order: a copy per column) and rows
+// contiguous (C-order: a transpose in 32 x 32 tiles, so both the reads and the
+// writes stay within a few cache lines). The result is the same for every
+// path: element (i, j) goes to dst[j * ld + i].
 template <class T, class S>
 bool pack_loop(const std::byte* p, std::int64_t m, std::int64_t j0, std::int64_t j1, std::int64_t rs, std::int64_t cs,
                T* dst, std::int64_t ld, bool check) {
@@ -110,12 +110,12 @@ bool pack_loop(const std::byte* p, std::int64_t m, std::int64_t j0, std::int64_t
 }
 
 // From this many elements on, one C-order matrix is transposed into its work
-// buffer on the thread pool, in blocks of destination columns (after M11).
-// Measured (experiments/opt_impl/out/pack.txt, solve_triangular of a C-order
+// buffer on the thread pool, in blocks of destination columns.
+// Measured (docs/design/linalg.md §5.6, solve_triangular of a C-order
 // matrix): 1.25x at 256^2, 1.4x at 362^2, 1.5x at 1000^2, 2x at 2000^2; but
 // inv lost 7-11% at 181^2-300^2 (and broke even at 362^2), so the line is at
 // 2^17 = 131072 elements (362^2 = 131044 is just below it; square matrices
-// reach it from 363^2). A variable only so that the experiment can move it
+// reach it from 363^2). A variable only so that measurements can move it
 // (_core._set_pack_parallel_min).
 inline std::int64_t kPackParallelMin = 1 << 17;
 
@@ -125,8 +125,8 @@ inline std::int64_t kPackParallelMin = 1 << 17;
 // pack_triangle_large): with the split inside the small-matrix path, small
 // calls got 3-10 ns slower each (solve_tridiagonal (1000,3,3): 36 -> 49 us on
 // one thread). Now the only addition there is one size test before the
-// dtype dispatch: +1-8% over before, at most 3 ns a call (DESIGN.md §2.21,
-// docs/learn/next-optimizations.md §8).
+// dtype dispatch: +1-8% over before, at most 3 ns a call
+// (docs/design/linalg.md §5.6).
 template <class Block>
 [[gnu::noinline]] bool on_pool_by_columns(std::int64_t n, const Block& block) {
     constexpr std::int64_t kCols = 32;
@@ -141,8 +141,8 @@ template <class Block>
 
 // pack() for a large matrix, out of line: a C-order source is transposed on
 // the pool in blocks of destination columns; everything else as in pack().
-// Only the transpose gained from the pool (out/pack.txt: strided inputs got
-// slower).
+// Only the transpose gained from the pool (strided inputs got slower,
+// docs/design/linalg.md §5.6).
 template <class T>
 [[gnu::noinline]] bool pack_large(DType src, const std::byte* p, std::int64_t m, std::int64_t n, std::int64_t rs,
                                   std::int64_t cs, T* dst, std::int64_t ld, bool check) {
@@ -167,13 +167,13 @@ template <class T>
 // element is NaN or inf (the whole matrix is still copied).
 //
 // T is double or cplx; a complex source never meets a double destination,
-// because the destination type comes from promoting all inputs (API §0.3).
+// because the destination type comes from promoting all inputs (docs/api/linalg.md §1.5).
 template <class T>
 bool pack(DType src, const std::byte* p, std::int64_t m, std::int64_t n, std::int64_t rs, std::int64_t cs, T* dst,
           std::int64_t ld, bool check) {
     // A large matrix goes to the out-of-line entry before anything else, so the
-    // small-matrix path below stays as it was (after M11; the test inside the
-    // dispatch cost small calls ~2.5 ns each).
+    // small-matrix path below stays as it was (the test inside the dispatch
+    // cost small calls ~2.5 ns each, docs/design/linalg.md §5.6).
     if (m * n >= detail::kPackParallelMin) [[unlikely]]
         return detail::pack_large(src, p, m, n, rs, cs, dst, ld, check);
     return visit_storage(src, [&]<class S>(std::type_identity<S>) {
@@ -189,7 +189,7 @@ template <class T, class S>
 bool pack_triangle_loop(const std::byte* p, std::int64_t n, std::int64_t j0, std::int64_t j1, std::int64_t rs,
                         std::int64_t cs, T* dst, std::int64_t ld, bool lower, bool with_diag, bool check) {
     bool ok = true;
-    if (rs == static_cast<std::int64_t>(sizeof(S))) {  // columns contiguous: a run per column (M8)
+    if (rs == static_cast<std::int64_t>(sizeof(S))) {  // columns contiguous: a run per column (docs/design/linalg.md §5.3)
         for (std::int64_t j = j0; j < j1; ++j) {
             const std::int64_t i0 = lower ? (with_diag ? j : j + 1) : 0;
             const std::int64_t i1 = lower ? n : (with_diag ? j + 1 : j);
@@ -264,8 +264,8 @@ template <class T>
 
 // Like pack, for an n x n matrix of which only one triangle is read: lower
 // (i >= j) or upper (i <= j), with or without the diagonal. Only those
-// elements are copied and checked (DESIGN.md §2.12); the rest of `dst` is
-// left as it was, since the LAPACK routine that follows does not read it.
+// elements are copied and checked (docs/design/linalg.md §5.4); the rest of
+// `dst` is left as it was, since the LAPACK routine that follows does not read it.
 template <class T>
 bool pack_triangle(DType src, const std::byte* p, std::int64_t n, std::int64_t rs, std::int64_t cs, T* dst,
                    std::int64_t ld, bool lower, bool with_diag, bool check) {
@@ -277,9 +277,9 @@ bool pack_triangle(DType src, const std::byte* p, std::int64_t n, std::int64_t r
     });
 }
 
-// For an operand LAPACK reads in place (M8): true if the triangle that
-// pack_triangle would read has no NaN or inf. a is column-major T with leading
-// dimension ld.
+// For an operand LAPACK reads in place (docs/design/linalg.md §5.5): true if
+// the triangle that pack_triangle would read has no NaN or inf. a is
+// column-major T with leading dimension ld.
 template <class T>
 bool triangle_finite(const T* a, std::int64_t n, std::int64_t ld, bool lower, bool with_diag) {
     bool ok = true;

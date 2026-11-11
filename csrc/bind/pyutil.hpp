@@ -24,7 +24,7 @@ nb::handle dtype_object(DType d);
 
 // `dtype=` argument: None -> nullopt; otherwise must be one of the four
 // dtype objects (Python types like `float` are rejected:
-// docs/api/array.md §0.1).
+// API.md §1).
 std::optional<DType> parse_dtype(nb::handle o);
 
 // `copy=` argument: None / True / False.

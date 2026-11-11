@@ -1,10 +1,11 @@
-// Norms: vector_norm and matrix_norm (API.md §2; ROADMAP.md M2).
+// Norms: vector_norm and matrix_norm (docs/api/linalg.md §3).
 //
-// No LAPACK here, so NaN propagates (DESIGN.md §2.4). The p-norms avoid
-// overflow and underflow: a fast unscaled pass first, and a second pass
+// No LAPACK here, so NaN propagates (docs/design/linalg.md §2.3). The p-norms
+// avoid overflow and underflow: a fast unscaled pass first, and a second pass
 // scaled by the largest magnitude only when the first one overflowed or all
-// magnitudes were tiny (DESIGN.md §2.11). matrix_norm's 2, -2 and 'nuc' come
-// from the singular values (svals.hpp, M5), and so check NaN/inf (DESIGN.md §2.14).
+// magnitudes were tiny (docs/design/linalg.md §10.8). matrix_norm's 2, -2 and
+// 'nuc' come from the singular values (svals.hpp), and so check NaN/inf
+// (docs/design/linalg.md §2.3).
 #include "linalg/ops/norms.hpp"
 
 #include "linalg/args.hpp"
@@ -125,7 +126,7 @@ MatOrd parse_matrix_ord(nb::handle o) {
 }
 
 // ord 2, -2, 'nuc' from the singular values. These call LAPACK, so NaN and inf
-// are a ValueError here while the other ords propagate them (DESIGN.md §2.14).
+// are a ValueError here while the other ords propagate them (docs/design/linalg.md §2.3).
 nb::object matrix_norm_svd(const Input& x, MatOrd ord, const std::vector<std::int64_t>& out_shape) {
     const lint m = x.shape(-2), n = x.shape(-1), k = std::min(m, n);
     Batch b({{x.batch_shape(2), x.batch_strides(2)}}, "matrix_norm");
@@ -135,7 +136,7 @@ nb::object matrix_norm_svd(const Input& x, MatOrd ord, const std::vector<std::in
         const Failure f = run_batch(b, cost(kSVD, double(m) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             double* sv = s.get<double>(static_cast<std::size_t>(std::max<lint>(k, 1)), 1);
             if (const int code = singular_values<T>(x, off[0], m, n, s, sv)) return code;
-            double v = 0;  // empty matrices: 0 (S11)
+            double v = 0;  // empty matrices: 0 (docs/design/linalg.md §2.5)
             if (k > 0) {
                 if (ord == MatOrd::Two) v = sv[0];
                 else if (ord == MatOrd::NegTwo) v = sv[k - 1];
@@ -190,7 +191,7 @@ nb::object matrix_norm(nb::handle xo, bool keepdims, nb::handle ord_o) {
                 else best = max ? (sum > best ? sum : best) : (sum < best ? sum : best);
             };
             if (lines * len >= kSumParallelMin && lines > 1 && detail::begin_parallel()) {
-                // one large matrix: its lines on the pool (M9); each line's sum is
+                // one large matrix: its lines on the pool (docs/design/linalg.md §8.3); each line's sum is
                 // computed as in the serial loop, and max/min do not depend on order
                 std::vector<double> sums(static_cast<std::size_t>(lines));
                 const std::int64_t per = std::max<std::int64_t>(1, kSumLeaf / std::max<std::int64_t>(len, 1));

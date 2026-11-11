@@ -1,4 +1,4 @@
-"""docs/api/array.md is the contract -- every name it lists must exist, and
+"""API.md and docs/api/array.md are the contract -- every name it lists must exist, and
 the package must export nothing it does not list."""
 
 import re
@@ -6,31 +6,15 @@ from pathlib import Path
 
 import stardust as sd
 
-API = (Path(__file__).parents[2] / "docs" / "api" / "array.md").read_text()
+from .._api_doc import signature_blocks
+
+# The array names are in docs/api/array.md; the library-wide ones (thread count) in API.md.
+ROOT = Path(__file__).parents[2]
+API = (ROOT / "API.md").read_text() + "\n" + (ROOT / "docs" / "api" / "array.md").read_text()
 METHODS = {"reshape", "astype", "copy", "tolist", "sum", "prod", "min", "max", "mean", "var", "std",
            "argmin", "argmax", "any", "all"}
 ATTRIBUTES = {"dtype", "shape", "ndim", "size", "strides", "itemsize", "nbytes", "base", "T", "mT"}
 CONSTANTS = {"e", "pi", "inf", "nan", "newaxis", "bool", "int64", "float64", "complex128", "ndarray"}
-
-
-def signature_blocks(text):
-    """The lines of every fenced block without a language tag (```), read fence
-    by fence: a tagged block such as ```python is skipped whole, and its
-    closing fence is not mistaken for the opening of a signature block."""
-    blocks, current, inside = [], None, False
-    for line in text.splitlines():
-        if line.startswith("```"):
-            if not inside:
-                inside = True
-                current = [] if line.strip() == "```" else None
-            else:
-                inside = False
-                if current is not None:
-                    blocks.append(current)
-                current = None
-        elif inside and current is not None:
-            current.append(line)
-    return blocks
 
 
 def api_names():

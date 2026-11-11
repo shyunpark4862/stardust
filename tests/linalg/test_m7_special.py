@@ -1,4 +1,4 @@
-"""M7: solve_tridiagonal, solve_banded, solve_sylvester."""
+"""solve_tridiagonal, solve_banded, solve_sylvester."""
 
 import os
 
@@ -205,7 +205,7 @@ def test_banded_rules():
     ab = np.zeros((3, 6))
     ab[0, 1:], ab[1], ab[2, :-1] = du, d, dl
     b = rng.standard_normal((6, 2))
-    # (1, 1) goes through gtsv: the same bits as solve_tridiagonal (DESIGN.md §2.16)
+    # (1, 1) goes through gtsv: the same bits as solve_tridiagonal (docs/design/linalg.md §10.7)
     x1 = npy(sd.linalg.solve_banded(as_sd(ab), as_sd(b), lower_bandwidth=1, upper_bandwidth=1))
     x2 = npy(sd.linalg.solve_tridiagonal(as_sd(dl), as_sd(d), as_sd(du), as_sd(b)))
     assert np.array_equal(x1, x2)
@@ -308,9 +308,9 @@ def test_sylvester_rules():
     # empty
     assert npy(sd.linalg.solve_sylvester(as_sd(np.zeros((0, 0))), as_sd(b), as_sd(np.zeros((0, 2))))).shape == (0, 2)
     assert npy(sd.linalg.solve_sylvester(as_sd(a), as_sd(np.zeros((0, 0))), as_sd(np.zeros((3, 0))))).shape == (3, 0)
-    # a real a and a complex b: computed in complex (API.md §0.3), with a's complex
+    # a real a and a complex b: computed in complex (docs/api/linalg.md §1.5), with a's complex
     # Schur form. This a has a conjugate pair, where scipy 1.18.1 goes wrong
-    # (a real quasi-triangular form fed to the complex trsyl, DESIGN.md §2.16).
+    # (a real quasi-triangular form fed to the complex trsyl, docs/design/linalg.md §10.7).
     ar = np.array([[0.0, -2.0, 1.0], [1.0, 0.0, 0.5], [0.0, 0.3, 1.0]])
     bc = b + 1j * rng.standard_normal((2, 2))
     x = npy(sd.linalg.solve_sylvester(as_sd(ar), as_sd(bc), as_sd(c)))

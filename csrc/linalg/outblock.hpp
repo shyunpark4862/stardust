@@ -1,5 +1,6 @@
 // Result memory: allocated here, exported through the buffer protocol, and
-// wrapped by sdnp.asarray without a copy (ARCHITECTURE.md §3.3, DESIGN.md §2.9).
+// wrapped by sd.asarray without a copy: the boundary path in use until linalg
+// builds NDArray results directly (docs/design/linalg.md §3.6).
 #pragma once
 
 #include "linalg/types.hpp"
@@ -26,17 +27,17 @@ struct Out {
     }
 };
 
-// (batch..., m, n): every matrix column-major, batch axes outside in C order (DESIGN.md §2.3).
+// (batch..., m, n): every matrix column-major, batch axes outside in C order (docs/design/linalg.md §4).
 Out alloc_matrices(const std::vector<std::int64_t>& batch, std::int64_t m, std::int64_t n, DType dt);
 // (batch..., m): every vector contiguous, batch axes outside in C order.
 Out alloc_vectors(const std::vector<std::int64_t>& batch, std::int64_t m, DType dt);
 // Any shape in C order (results that are not matrices: reductions, scalars per batch element).
 Out alloc_c(const std::vector<std::int64_t>& shape, DType dt);
 
-// The sdnp.ndarray viewing the block (through the cached sdnp.asarray).
+// The sd.ndarray viewing the block (through the cached sd.asarray).
 nb::object to_sdnp(const Out& out);
 
-// A 0-dimensional result is a Python scalar (API.md §0.1, Z1).
+// A 0-dimensional result is a Python scalar (docs/api/linalg.md §1.6).
 nb::object py_scalar(double v);
 nb::object py_scalar(cplx v);
 nb::object py_scalar(std::int64_t v);

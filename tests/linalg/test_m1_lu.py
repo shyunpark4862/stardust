@@ -1,4 +1,4 @@
-"""M1: solve, inv, det, slogdet and the shared pipeline under them."""
+"""solve, inv, det, slogdet and the shared pipeline under them."""
 
 import cmath
 import math
@@ -94,7 +94,7 @@ def test_inv(seed, batch, n, dtype, layout):
     assert x.strides == f_order_strides(a.shape, got.itemsize)
     assert residual_ok(ref, got, np.broadcast_to(np.eye(n), ref.shape))
     np.testing.assert_allclose(got, np.linalg.inv(ref), rtol=1e-12, atol=1e-14)
-    # inv(a) is solve(a, I) bit for bit (DESIGN.md §2.10)
+    # inv(a) is solve(a, I) bit for bit (docs/design/linalg.md §10.2)
     eye = np.broadcast_to(np.eye(n), a.shape)
     assert np.array_equal(got, npy(sd.linalg.solve(as_sd(a), as_sd(eye))))
 

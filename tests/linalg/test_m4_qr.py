@@ -1,4 +1,4 @@
-"""M4: qr, qr_pivoted, lstsq."""
+"""qr, qr_pivoted, lstsq."""
 
 import math
 import os

@@ -1,4 +1,4 @@
-"""Exceptions of stardust-linalg (API.md §7, DESIGN.md §2.4)."""
+"""Exceptions of sd.linalg (docs/api/linalg.md §8; docs/design/linalg.md §2.2)."""
 
 
 class LinAlgError(ValueError):

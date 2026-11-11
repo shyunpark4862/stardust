@@ -2,55 +2,11 @@
 
 `import stardust as sd`의 최상위 이름공간이 배열 API다. 이 문서는 배열의 공개 API와 동작 규칙을 모두 적는다.
 
-- §0은 라이브러리 전체의 공통 규칙이다. §1부터는 배열 영역의 규칙이다.
+- 라이브러리 전체의 공통 규칙(dtype, 에러 종류, 스레드)은 루트 [API.md](../../API.md)에 있다. 이 문서는 배열 영역의 규칙이다.
 - 절 번호(`§N`, `§N.M`)는 코드 주석이 인용한다. 번호를 바꾸지 않는다.
-- 언어 표시가 없는 코드 블록은 `tests/array/test_api_surface.py`가 읽는다.
+- 언어 표시가 없는 코드 블록은 `tests/array/test_api_surface.py`가 읽는다 (API.md의 블록과 함께).
   - 이 블록에는 공개 이름과 시그니처만 쓴다.
   - 블록에 나온 이름과 `sd`가 공개하는 이름은 정확히 같아야 한다. 예시는 본문의 인라인 코드로 쓴다.
-
----
-
-## §0. 공통 규칙
-
-### §0.1 dtype
-```
-bool  int64  float64  complex128
-```
-- dtype은 위의 객체 넷이다. 배열의 `.dtype`도 이 객체를 돌려준다 (`x.dtype is sd.float64`).
-- dtype을 받는 인자(`dtype=`, `astype`)는 이 객체만 받는다.
-  - Python 타입(`float` 등)과 문자열(`"float64"`)은 `TypeError`다.
-- dtype 객체는 `==`로 비교하고 해싱할 수 있다. `str(sd.int64)`는 `'int64'`다.
-- `sd.bool`은 Python의 `bool`과 다른 객체다.
-
-### §0.2 에러 종류
-- **`TypeError`**: 인자의 타입이 맞지 않는다.
-  - 배열이 필요한 자리에 다른 객체를 넣었다.
-  - 함수가 그 dtype을 받지 않는다 (예: complex의 순서 비교).
-  - 암묵적 하향 변환이다 (§1.5).
-  - bool 옵션에 `True`/`False`가 아닌 값을 넣었다 (§1.1).
-- **`ValueError`**: 타입은 맞지만 값이 맞지 않는다.
-  - shape이 맞지 않는다. 축 번호가 범위 밖이거나 중복되었다.
-  - 인자 값이 허용 범위 밖이다 (음수 길이, `step=0`, 스레드 수).
-  - 0차원 배열을 요청했다 (§1.2).
-  - `copy=False`인데 복사가 필요하다 (§1.8).
-  - 쓰기 금지 배열에 썼다.
-  - 원소가 없는 `min`/`max`/`argmin`/`argmax` (§7.4)
-- **`IndexError`**: 인덱스가 범위 밖이거나 허용하지 않는 형태다 (§5).
-- **`OverflowError`**: int64 범위를 벗어난 Python int를 int64로 바꿔야 한다 (§1.5).
-- 원소의 값 때문에 연산이 실패하는 일은 없다 (§1.6). 경고도 내지 않는다.
-
-### §0.3 스레드와 결정성
-```
-set_num_threads(n, /)
-get_num_threads()
-```
-- `n`은 1 이상 1024 이하의 int다.
-  - 범위 밖이면 `ValueError`, int가 아니면(`bool` 포함) `TypeError`다.
-- 기본값은 P코어 수(10)다.
-- **결과는 스레드 수와 무관하게 비트까지 같다.** 리덕션과 정렬도 결정적이다.
-  - 같은 데이터와 같은 메모리 레이아웃이면 언제나 같은 비트가 나온다.
-- 실제로 여러 스레드로 계산할 때는 GIL을 놓는다.
-- 다른 Python 스레드가 이미 스레드풀을 쓰고 있으면, 새 호출은 1스레드로 계산한다. 결과는 같다.
 
 ---
 
@@ -176,7 +132,7 @@ ndarray
 - `e`, `pi`, `inf`, `nan`은 Python `float`다.
 - `newaxis`는 `None`이다.
 - `ndarray`는 배열 타입이다. `isinstance` 검사에 쓴다. 생성자는 없다 (§10).
-- dtype 객체는 §0.1에 있다.
+- dtype 객체는 API.md §1에 있다.
 
 ---
 
@@ -580,7 +536,7 @@ cumulative_prod(x, /, *, axis=None, dtype=None, include_initial=False)
 
 ### §7.8 계산 순서
 - float/complex 리덕션의 덧셈·곱셈 순서는 numpy와 같다고 보장하지 않는다.
-  - 그래서 결과의 마지막 비트가 numpy와 다를 수 있다. 결과는 결정적이다 (§0.3).
+  - 그래서 결과의 마지막 비트가 numpy와 다를 수 있다. 결과는 결정적이다 (API.md §3).
   - 형변환이 없고 출력이 하나인 긴 합(예: float64 배열의 `sum(x)`)은 numpy와 비트가 같다.
 - **float/complex `prod`, `cumulative_prod`의 오버플로**
   - 곱하는 순서가 numpy와 달라서, 중간값이 float 범위를 넘는 입력에서는 결과가 numpy와 크게 다를 수 있다.
@@ -656,7 +612,7 @@ matmul(x1, x2, /)
 dtype  shape  ndim  size  strides  itemsize  nbytes  base  T  mT
 ```
 - 모두 읽기 전용이다. 대입하면 `AttributeError`다.
-- `dtype`: dtype 객체 (§0.1)
+- `dtype`: dtype 객체 (API.md §1)
 - `shape`: int의 tuple. `ndim`은 1 이상이다 (§1.2).
 - `strides`: 바이트 단위의 tuple이다. 음수일 수 있다.
 - `itemsize`: bool 1, int64 8, float64 8, complex128 16

@@ -132,7 +132,7 @@ stardust/                         (저장소: ~/Desktop/stardust/stardust)
 - 하나만 둔다. **pandas판이 기준이다.** numpy판의 상위 집합이기 때문이다.
   - 핵심(상주 워커, spin 후 대기, atomic 카운터, 호출 스레드 참여, 중첩 금지)은 세 벌이 같다.
   - pandas판에만 있는 것: `busy()`, `available()`의 "풀이 바쁘면 직렬 경로", 항상 GIL 해제, `for_chunks`, `FirstRow`, `Unlocked`.
-  - linalg판에만 있는 것: `available_here()`. 통합판에 더한다.
+  - linalg판에만 있는 것: `available_here()`. M2에서 배열의 풀에 더했다.
 - **병렬화 기준값은 영역마다 따로 둔다.** 측정해서 정한 값이 다르기 때문이다.
   - array: `1 << 15` (numpy M8), frame: `1 << 17` (pandas M11), linalg: 비용 모델 (`linalg/cost.hpp`, linalg M9)
   - 풀 헤더의 `kThreshold` 하나를 `array/`, `frame/`의 상수로 옮긴다.

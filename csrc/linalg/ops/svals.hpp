@@ -1,5 +1,6 @@
 // Singular values only, shared by svdvals, matrix_rank, cond and matrix_norm
-// (2, -2, 'nuc'): one routine, so they all see the same numbers (DESIGN.md §2.14).
+// (2, -2, 'nuc'): one routine, so they all see the same numbers
+// (docs/design/linalg.md §10.5).
 #pragma once
 
 #include "linalg/ops/common.hpp"
@@ -10,7 +11,8 @@ namespace sd::linalg {
 
 // The min(m, n) singular values (descending) of the m x n matrix of `x` at byte
 // offset `off`, written to `out`. Returns 0, kNonFinite or kNoConvergence.
-// Values-only mode (gesvd with no vectors; measured fastest for values in M5).
+// Values-only mode (gesvd with no vectors; measured fastest for values,
+// docs/design/linalg.md §10.1).
 template <class T>
 int singular_values(const Input& x, std::int64_t off, lint m, lint n, Scratch& s, double* out) {
     const lint lda = std::max<lint>(m, 1);

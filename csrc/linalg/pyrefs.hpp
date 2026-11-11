@@ -1,4 +1,4 @@
-// Python objects the core uses on every call, looked up once (ARCHITECTURE.md §1).
+// Python objects the core uses on every call, looked up once (docs/design/linalg.md §3.4).
 #pragma once
 
 #include <nanobind/nanobind.h>
@@ -13,12 +13,12 @@ namespace nb = nanobind;
 enum class Result { Slogdet, LU, QR, QRPivoted, Lstsq, Eigh, SVD, Eig, Schur, Hessenberg, LDL, Count };
 
 struct PyRefs {
-    // From stardust_numpy, at import of _core.
+    // From the array bindings on _core itself, at import of _core (docs/design/linalg.md §3.6).
     PyObject* ndarray_type = nullptr;
     PyObject* asarray = nullptr;
     PyObject* get_num_threads = nullptr;
-    PyObject* dtypes[4] = {};  // sdnp.bool, sdnp.int64, sdnp.float64, sdnp.complex128 (DType order)
-    // From stardust_linalg's Python files, via _core._setup().
+    PyObject* dtypes[4] = {};  // sd.bool, sd.int64, sd.float64, sd.complex128 (DType order)
+    // From stardust.linalg's Python files, via _core._setup().
     PyObject* linalg_error = nullptr;
     PyObject* results[static_cast<int>(Result::Count)] = {};
 };

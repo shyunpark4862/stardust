@@ -1,8 +1,8 @@
-// The matrix exponential (API.md §6; ROADMAP.md M10). LAPACK has none, so it
-// is written here: scaling and squaring with Padé approximants, the algorithm
-// of Al-Mohy & Higham 2009 ("A new scaling and squaring algorithm for the
-// matrix exponential", SIAM J. Matrix Anal. Appl. 31(3), Algorithm 5.1), which
-// is also scipy.linalg.expm's.
+// The matrix exponential (docs/api/linalg.md §7; docs/design/linalg.md §11).
+// LAPACK has none, so it is written here: scaling and squaring with Padé
+// approximants, the algorithm of Al-Mohy & Higham 2009 ("A new scaling and
+// squaring algorithm for the matrix exponential", SIAM J. Matrix Anal. Appl.
+// 31(3), Algorithm 5.1), which is also scipy.linalg.expm's.
 //
 //   exp(A) = (exp(2^-s A))^(2^s), and exp(B) ~ r_m(B) = (V - U)^-1 (V + U),
 //
@@ -13,19 +13,20 @@
 // fewer squarings, less error) plus a correction ell() that adds squarings
 // when |A|'s powers say the bound would be too optimistic.
 //
-// Decisions (DESIGN.md §2.19):
+// Decisions (docs/design/linalg.md §11):
 //   - The norms of A^2 .. A^6 are exact: those powers are formed with gemm,
 //     and only when a test needs them (bounds from known norms first). So are
 //     ||A^8|| and ||A^10|| below n = kExpmEstimateMin; from there on they are
-//     estimated with LAPACK's lacn2 instead (user decisions: exact first, then
-//     the estimate after measuring; scipy switches to a randomized 1-norm
-//     estimator for n >= 400). ||  |A|^p ||_1 is exact too: |A| is
+//     estimated with LAPACK's lacn2 instead (exact first, then the estimate
+//     after measuring, docs/design/linalg.md §11.2; scipy switches to a
+//     randomized 1-norm estimator for n >= 400). ||  |A|^p ||_1 is exact too: |A| is
 //     nonnegative, so its 1-norm is the largest entry of e^T |A|^p (p gemv).
 //   - Diagonal input: exp of the diagonal, exactly. Triangular input: after
 //     every squaring the diagonal and the first off-diagonal are overwritten
-//     with their exact values (the paper's Code Fragment 2.1; user decision,
-//     as scipy). The other triangle of the result is exactly 0.
-//   - Finite input only (DESIGN.md §2.4: the final solve is LAPACK's getrf/getrs).
+//     with their exact values (the paper's Code Fragment 2.1, as scipy;
+//     docs/design/linalg.md §11.3). The other triangle of the result is exactly 0.
+//   - Finite input only (docs/design/linalg.md §11.4: the final solve is LAPACK's
+//     getrf/getrs).
 #include "linalg/ops/expm.hpp"
 
 #include "linalg/cost.hpp"
@@ -41,10 +42,10 @@ namespace sd::linalg {
 
 namespace {
 
-// From this size on, ||A^8|| and ||A^10|| are estimated, not formed (M10,
-// measured: experiments/m10_expm/out/estimate.txt: the estimate is faster from
-// n = 100 on, 1.03-1.15x; it changed none of the measured results). A variable only so that the
-// experiment can move it (_core._set_expm_estimate_min).
+// From this size on, ||A^8|| and ||A^10|| are estimated, not formed (measured,
+// docs/design/linalg.md §11.2: the estimate is faster from n = 100 on,
+// 1.03-1.15x; it changed none of the measured results). A variable only so that
+// measurements can move it (_core._set_expm_estimate_min).
 lint kExpmEstimateMin = 100;
 
 // theta_m: the largest ||2^-s A|| (in the eta sense) for which r_m's backward
@@ -206,8 +207,8 @@ template <class T>
 int expm_one(const Input& x, std::int64_t off, lint n, T* o, Scratch& s) {
     if (n == 0) return 0;
     const lint nn = n * n;
-    // Eight n x n arrays in one scratch slot, each 16-byte aligned (M8). The
-    // last one holds |A| as doubles.
+    // Eight n x n arrays in one scratch slot, each 16-byte aligned
+    // (docs/design/linalg.md §6.4). The last one holds |A| as doubles.
     const std::size_t stride = std::is_same_v<T, cplx> ? static_cast<std::size_t>(nn) : pad2(nn);
     T* base = s.get<T>(8 * stride, 0);
     T* buf[8];
@@ -240,10 +241,10 @@ int expm_one(const Input& x, std::int64_t off, lint n, T* o, Scratch& s) {
     double nA = norm1(A, n);
     int s0 = 0;
     if (std::isinf(nA)) {
-        // Finite entries whose column sum overflows (code review after M11:
-        // frexp(inf) gives no exponent, the guard was skipped and the squaring
-        // count came out near INT_MAX). With 2^k >= 4n every column sum of
-        // 2^-k A is below DBL_MAX (a modulus is at most sqrt(2) DBL_MAX).
+        // Finite entries whose column sum overflows (docs/design/linalg.md §11.4:
+        // frexp(inf) gives no exponent, so the guard would be skipped and the
+        // squaring count come out near INT_MAX). With 2^k >= 4n every column sum
+        // of 2^-k A is below DBL_MAX (a modulus is at most sqrt(2) DBL_MAX).
         int k = 2;
         while ((lint(1) << (k - 2)) < n) ++k;
         s0 = k;
@@ -265,9 +266,10 @@ int expm_one(const Input& x, std::int64_t off, lint n, T* o, Scratch& s) {
         const double inv2e = std::ldexp(1.0, -e);
         for (lint k = 0; k < nn; ++k) absb[k] = modulus(A[k]) * inv2e;
     } else {
-        // A subnormal norm: 2^-e itself would overflow to inf (code review after
-        // M11: |A|/2^e became inf/NaN and ell() asked for ~2^31 squarings). Two
-        // exact products instead; every result is <= 1, so neither overflows.
+        // A subnormal norm: 2^-e itself would overflow to inf (|A|/2^e would be
+        // inf/NaN and ell() would ask for ~2^31 squarings, docs/design/linalg.md
+        // §11.4). Two exact products instead; every result is <= 1, so neither
+        // overflows.
         const double f1 = std::ldexp(1.0, 1000), f2 = std::ldexp(1.0, -e - 1000);
         for (lint k = 0; k < nn; ++k) absb[k] = modulus(A[k]) * f1 * f2;
     }
@@ -288,9 +290,9 @@ int expm_one(const Input& x, std::int64_t off, lint n, T* o, Scratch& s) {
     // exact value passes too, so the degree is the one the exact test picks
     // (up to rounding right at a threshold); e.g. degree 3 then needs A^2 only.
     // From n = kExpmEstimateMin on, ||A^8|| and ||A^10|| are estimated
-    // (lacn2) instead of formed, as the paper and scipy do (user decision after
-    // measuring: two gemm were 12-14% of a degree-13 call at n >= 500).
-    // Measured: experiments/m10_expm/out/timing.txt, out/estimate.txt.
+    // (lacn2) instead of formed, as the paper and scipy do (chosen after
+    // measuring: two gemm were 12-14% of a degree-13 call at n >= 500;
+    // docs/design/linalg.md §11.2).
     const bool estimate = n >= kExpmEstimateMin;
     T* A8 = buf[4];
     T *ev = nullptr, *ex = nullptr, *ey = nullptr;
@@ -341,8 +343,8 @@ int expm_one(const Input& x, std::int64_t off, lint n, T* o, Scratch& s) {
     // the best bound on d4, d6, d8 known so far, or the value once known
     auto d4 = [&] { return n4 >= 0 ? root(n4, 4) : root(n2, 2); };
     auto d6 = [&] { return n6 >= 0 ? root(n6, 6) : n4 >= 0 ? root(n4 * n2, 6) : root(n2, 2); };
-    // (||A^8|| <= ||A^4||^2 gives d8 <= ||A^4||^(1/4); it was ^(1/2) until the
-    // review after M11, which is no bound when ||A^4|| < 1, DESIGN.md §2.22)
+    // (||A^8|| <= ||A^4||^2 gives d8 <= ||A^4||^(1/4); ^(1/2) would be no bound
+    // when ||A^4|| < 1, docs/design/linalg.md §11.2)
     auto d8 = [&] { return n8 >= 0 ? root(n8, 8) : n4 >= 0 ? root(n4, 4) : root(n2, 2); };
     // eta <= theta with eta = max(dx(), dy()): on the bounds first, then exact
     auto passes = [&](double theta, auto dx, auto dy, auto form) {
@@ -407,7 +409,7 @@ int expm_one(const Input& x, std::int64_t off, lint n, T* o, Scratch& s) {
     }
     // r_m = (V - U)^-1 (V + U) = I + 2 (V - U)^-1 U. The second form adds I
     // exactly to a small correction, so small ||A|| lose no last bit on the
-    // diagonal (measured: experiments/m10_expm/out/accuracy.txt; scipy does the same).
+    // diagonal (measured, docs/design/linalg.md §11.1; scipy does the same).
     T* Q = buf[4];
     for (lint k = 0; k < nn; ++k) Q[k] = P[k] - U[k];
     lint* ipiv = s.get_ints(static_cast<std::size_t>(n));
@@ -465,7 +467,7 @@ nb::object expm(nb::handle xo) {
 
 void bind_expm(nb::module_& m) {
     m.def("expm", &expm, nb::arg().none());
-    // For experiments/m10_expm only: move the estimator threshold.
+    // For measurements only: move the estimator threshold (docs/design/linalg.md §7.7).
     m.def("_set_expm_estimate_min", [](std::int64_t n) { kExpmEstimateMin = n; });
 }
 

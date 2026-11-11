@@ -1,7 +1,7 @@
-// The LU family: solve, inv, det, slogdet (API.md §2, §3; ROADMAP.md M1).
+// The LU family: solve, inv, det, slogdet (docs/api/linalg.md §3, §4).
 //
-// Every function factors with getrf. Paths chosen by measurement in M1
-// (experiments/m1_solve_driver, DESIGN.md §2.10):
+// Every function factors with getrf. Paths chosen by measurement
+// (docs/design/linalg.md §10.2):
 //   solve : getrf + getrs  (Accelerate's gesv is never faster, and 2x slower at n=2048)
 //   inv   : getrf + getrs against the identity  (fastest up to n=128; inv(a) == solve(a, I) bit for bit)
 #include "linalg/ops/lu.hpp"
@@ -50,7 +50,7 @@ T det_of(const T* lu, const lint* ipiv, lint n, bool singular) {
     return d;
 }
 
-// A body for det/slogdet: factor, tolerate singular matrices (DESIGN.md §2.4).
+// A body for det/slogdet: factor, tolerate singular matrices (docs/design/linalg.md §2.2).
 template <class T, class Emit>
 int det_body(const Input& x, lint n, std::int64_t off, Scratch& s, Emit&& emit) {
     T* a;
@@ -159,7 +159,7 @@ nb::object solve(nb::handle ao, nb::handle bo) {
             lint* ipiv;
             if (const int code = lu_factor<T>(a, off[0], n, s, lu, ipiv)) return code;
             LapackSlot<T> xs(res + i * n * k, n * k, s, Scratch::kAlign0);
-            T* x = xs.get();  // b is packed straight into the output slot (ARCHITECTURE.md §3.2)
+            T* x = xs.get();  // b is packed straight into the output slot (docs/design/linalg.md §5.2)
             if (!pack(y.dtype(), y.data() + off[1], n, k, r.rs, r.cs, x, n, true)) return kNonFiniteB;
             if (n > 0 && k > 0) lapack::getrs('N', n, k, lu, n, ipiv, x, n);
             return 0;
@@ -172,8 +172,8 @@ nb::object solve(nb::handle ao, nb::handle bo) {
 }  // namespace
 
 void bind_lu(nb::module_& m) {
-    // Unnamed args are positional-only (API.md §0.1). .none() lets None reach
-    // Input, which rejects every non-sdnp argument with the same TypeError.
+    // Unnamed args are positional-only (docs/api/linalg.md §1.1). .none() lets None reach
+    // Input, which rejects every non-sd.ndarray argument with the same TypeError.
     m.def("solve", &solve, nb::arg().none(), nb::arg().none());
     m.def("inv", &inv, nb::arg().none());
     m.def("det", &det, nb::arg().none());

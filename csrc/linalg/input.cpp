@@ -14,7 +14,7 @@ DType parse_format(const char* f) {
     if (std::strcmp(f, "q") == 0) return DType::Int64;
     if (std::strcmp(f, "d") == 0) return DType::Float64;
     if (std::strcmp(f, "Zd") == 0) return DType::Complex128;
-    // stardust-numpy only exports these four (its ARCHITECTURE.md §6.5).
+    // sd.ndarray only exports these four (docs/design/array.md §12.3).
     throw nb::type_error((std::string("unexpected buffer format '") + f + "'").c_str());
 }
 

@@ -1,4 +1,4 @@
-"""M10: kron, cross, expm (API.md §1, §6; DESIGN.md §2.19)."""
+"""kron, cross, expm (docs/api/linalg.md §2, §7; docs/design/linalg.md §10.8, §11)."""
 
 import math
 import os
@@ -169,7 +169,7 @@ def test_expm(seed, batch, n, dtype, layout, structure, scale):
         return
     want = sl.expm(a.astype(ct))
     # well within what the conditioning allows for these sizes (scipy is as far
-    # from the exact value: experiments/m10_expm/out/accuracy.txt)
+    # from the exact value: docs/design/linalg.md §11.5)
     assert rel_err(r, want) < 1e-12 * max(1.0, scale)
     if structure in ("upper", "lower", "diagonal"):  # the other triangle is exactly 0
         i, j = np.indices((n, n))
@@ -255,14 +255,14 @@ def test_expm_rules():
     x[2, 1, 1] = np.nan
     with pytest.raises(ValueError, match=r"'x' contains NaN or infinity \(at batch index \(2,\)\)"):
         sd.linalg.expm(as_sd(x))
-    # the same matrix gives the same bits wherever it sits in a batch (M8)
+    # the same matrix gives the same bits wherever it sits in a batch (docs/design/linalg.md §6.4)
     a = rng.standard_normal((7, 5, 5)) * 3
     whole = npy(sd.linalg.expm(as_sd(a)))
     for i in range(7):
         assert np.array_equal(whole[i], npy(sd.linalg.expm(as_sd(a[i]))))
 
 
-# ------------------------------------------------------- thread counts (M9) --
+# ------------------------------------------------------------ thread counts --
 
 
 def test_same_bits_for_any_thread_count():

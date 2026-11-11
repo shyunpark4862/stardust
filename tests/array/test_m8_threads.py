@@ -1,5 +1,5 @@
 """Threads. Every result must be bit-for-bit the same for any thread count
-(docs/api/array.md §0.3), and the pool must survive several Python threads at once."""
+(API.md §3), and the pool must survive several Python threads at once."""
 
 import math
 import threading

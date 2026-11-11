@@ -12,13 +12,16 @@ x = sd.arange(12.0).reshape((3, 4))
 y = sd.sin(x.T) @ x            # vForce, BLAS
 x[x > 5] = 0.0                  # boolean mask scatter
 sd.sum(x, axis=0), x.argmax(axis=1), sd.sort(x, descending=True)
+
+a = sd.asarray([[2.0, 1.0], [1.0, 3.0]])
+sd.linalg.solve(a, sd.asarray([1.0, 2.0]))   # LAPACK gesv: [0.2, 0.6]
 ```
 
 ## 영역
 | 영역 | 이름공간 | 상태 | API |
 |---|---|---|---|
 | 배열 | `sd` | 옮김 (M1) | [docs/api/array.md](docs/api/array.md) |
-| 선형대수 | `sd.linalg` | `legacy/linalg`에서 옮길 예정 (M2–M3) | |
+| 선형대수 | `sd.linalg` | 옮김 (M2), 배열과의 경계 정리는 M3 | [docs/api/linalg.md](docs/api/linalg.md) |
 | 데이터프레임 | `sd.frame` | `legacy/pandas`에서 옮길 예정 (M5–M6) | |
 
 세 교육용 프로젝트(stardust-numpy, stardust-linalg, stardust-pandas)를 하나로 합치는 중이다. 진행 순서는 [ROADMAP.md](ROADMAP.md), 결정은 [DESIGN.md](DESIGN.md), 구조는 [ARCHITECTURE.md](ARCHITECTURE.md)에 있다.

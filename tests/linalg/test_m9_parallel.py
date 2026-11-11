@@ -1,8 +1,8 @@
-"""M9: batches and long sums on the thread pool.
+"""Batches and long sums on the thread pool.
 
 Whatever the thread count (sd.set_num_threads), every result is bit-for-bit
 the same and every error message names the same (smallest) batch index
-(DESIGN.md §2.5, §2.18).
+(docs/design/linalg.md §8.5).
 """
 
 import math
@@ -146,7 +146,7 @@ def test_long_sums_same_for_any_thread_count(n):
         lambda: sd.linalg.matrix_norm(m, ord=math.inf),
     ):
         same_for_all_counts(call)
-    # still numpy's pairwise bits (M8)
+    # still numpy's pairwise bits (docs/design/linalg.md §8.2)
     assert sd.linalg.vecdot(X, Y) == np.sum(x * y)
     assert sd.linalg.vector_norm(X, ord=1) == np.sum(np.abs(x))
 

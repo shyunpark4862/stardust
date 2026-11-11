@@ -1,4 +1,4 @@
-"""Bugs found by the code review after M11 (DESIGN.md §2.22)."""
+"""Bugs found by a code review (docs/design/linalg.md §10.5, §11.4)."""
 
 import subprocess
 import sys

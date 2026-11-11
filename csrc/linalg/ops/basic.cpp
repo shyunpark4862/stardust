@@ -1,8 +1,9 @@
-// Basic operations: vecdot, outer, trace, diagonal, matrix_power, kron, cross (API.md §1; ROADMAP.md M2, M10).
+// Basic operations: vecdot, outer, trace, diagonal, matrix_power, kron, cross
+// (docs/api/linalg.md §2; docs/design/linalg.md §10.8).
 //
 // None of these calls LAPACK, so NaN and inf pass through unchecked
-// (DESIGN.md §2.4) -- except matrix_power with n < 0, which inverts through
-// getrf and so checks like inv (DESIGN.md §2.11).
+// (docs/design/linalg.md §2.3) -- except matrix_power with n < 0, which inverts
+// through getrf and so checks like inv (the same section).
 #include "linalg/ops/basic.hpp"
 
 #include "linalg/args.hpp"
@@ -69,7 +70,8 @@ nb::object vecdot(nb::handle x1o, nb::handle x2o, nb::handle axis_o) {
                     return nb::none();  // unreachable: a complex input makes T complex
                 } else {
                     // sum_i conj(x1[i]) * x2[i]  (x1 is conjugated: Array API), the
-                    // products summed pairwise (M8): the bits of sdnp.sum(conj(x1) * x2).
+                    // products summed pairwise (docs/design/linalg.md §8.2): the bits of
+                    // sd.sum(conj(x1) * x2).
                     auto dot = [&](const std::int64_t* off) {
                         const std::byte* p = x.data() + off[0];
                         const std::byte* q = y.data() + off[1];
@@ -85,7 +87,7 @@ nb::object vecdot(nb::handle x1o, nb::handle x2o, nb::handle axis_o) {
                                     out[i] = mul(conj_if_complex(convert<T>(load<SX>(pp + i * sx))), convert<T>(load<SY>(qq + i * sy)));
                             }
                         };
-                        return pairwise_sum_mt<T>(len, fill);  // on the pool when long (M9)
+                        return pairwise_sum_mt<T>(len, fill);  // on the pool when long (docs/design/linalg.md §8.3)
                     };
                     if (b.ndim() == 0) {
                         std::int64_t off[2] = {0, 0};
@@ -109,7 +111,7 @@ nb::object vecdot(nb::handle x1o, nb::handle x2o, nb::handle axis_o) {
 nb::object outer(nb::handle x1o, nb::handle x2o) {
     Input x(x1o, "outer", "x1");
     Input y(x2o, "outer", "x2");
-    // (..., M) and (..., N) -> (..., M, N); batch axes broadcast (API.md §1, S10).
+    // (..., M) and (..., N) -> (..., M, N); batch axes broadcast (docs/api/linalg.md §2).
     const std::int64_t m = x.shape(-1), n = y.shape(-1), sx = x.stride(-1), sy = y.stride(-1);
     Batch b({{x.batch_shape(1), x.batch_strides(1)}, {y.batch_shape(1), y.batch_strides(1)}}, "outer");
     const bool complex = computes_complex(x.dtype()) || computes_complex(y.dtype());
@@ -126,7 +128,7 @@ nb::object outer(nb::handle x1o, nb::handle x2o) {
                         T* o = res + i * m * n;
                         for (std::int64_t c = 0; c < n; ++c) {
                             const T yc = convert<T>(load<SY>(y.data() + off[1] + c * sy));
-                            for (std::int64_t r = 0; r < m; ++r) o[c * m + r] = mul(xv[r], yc);  // as sdnp's x * y
+                            for (std::int64_t r = 0; r < m; ++r) o[c * m + r] = mul(xv[r], yc);  // as sd's x * y
                         }
                         return 0;
                     });
@@ -161,7 +163,7 @@ nb::object trace(nb::handle xo, nb::handle k_o, nb::handle dtype_o) {
     require_matrix(x);
     const std::int64_t k = parse_int(k_o, "trace", "k");
     const std::optional<DType> want = parse_dtype(dtype_o, "trace");
-    // dtype= is an explicit conversion, as in sdnp.sum (DESIGN.md §2.11; stardust-numpy API §6).
+    // dtype= is an explicit conversion, as in sd.sum (docs/design/linalg.md §2.1; docs/api/array.md §7.5).
     DType acc_dt = computes_complex(x.dtype()) ? DType::Complex128 : DType::Float64;
     if (want) {
         if (*want == DType::Bool) throw nb::type_error("trace() cannot accumulate in bool; use any() or all()");
@@ -180,11 +182,11 @@ nb::object trace(nb::handle xo, nb::handle k_o, nb::handle dtype_o) {
                 auto sum = [&](std::int64_t off) {
                     const std::byte* p = x.data() + off + start;
                     if constexpr (std::is_same_v<T, std::int64_t>) {
-                        std::uint64_t acc = 0;  // wraps on overflow, as stardust-numpy's int64 sum
+                        std::uint64_t acc = 0;  // wraps on overflow, as sd.sum of int64
                         for (std::int64_t i = 0; i < dg.len; ++i)
                             acc += static_cast<std::uint64_t>(convert<T>(load<S>(p + i * step)));
                         return static_cast<std::int64_t>(acc);
-                    } else {  // pairwise (M8): the bits of sdnp.sum(diagonal(x))
+                    } else {  // pairwise (docs/design/linalg.md §8.2): the bits of sd.sum(diagonal(x))
                         return pairwise_sum_mt<T>(dg.len, [&](std::int64_t b0, std::int64_t k, T* out) {
                             for (std::int64_t i = 0; i < k; ++i) out[i] = convert<T>(load<S>(p + (b0 + i) * step));
                         });
@@ -214,9 +216,10 @@ nb::object diagonal(nb::handle xo, nb::handle k_o) {
     const std::int64_t step = x.stride(-2) + x.stride(-1);
     const std::int64_t start = dg.r0 * x.stride(-2) + dg.c0 * x.stride(-1);
     Batch b({{x.batch_shape(2), x.batch_strides(2)}}, "diagonal");
-    // Extraction, not computation: the input dtype is kept (DESIGN.md §2.11). A copy (S10).
+    // Extraction, not computation: the input dtype is kept, and the result is a copy
+    // (docs/design/linalg.md §10.8).
     Out out = alloc_vectors(b.shape(), dg.len, x.dtype());
-    // a typed strided copy (M8: a memcpy call per element cost 2-3x numpy)
+    // a typed strided copy (a memcpy call per element cost 2-3x numpy, docs/design/linalg.md §9)
     visit_storage(x.dtype(), [&]<class S>(std::type_identity<S>) {
         S* o = reinterpret_cast<S*>(out.data);
         run_batch(b, cost(kCopy, double(dg.len)), [&](std::int64_t i, const std::int64_t* off, Scratch&) {
@@ -265,7 +268,7 @@ nb::object matrix_power(nb::handle xo, nb::handle n_o) {
             // Binary powering, most significant bit first: r = base; for each further bit,
             // r = r*r, then r = r*base if the bit is set. log2(e) squarings + popcount(e)-1 products.
             // The products ping-pong between two scratch buffers and the last one goes
-            // straight to the output slot (M8: no copies of r).
+            // straight to the output slot (no copies of r, docs/design/linalg.md §9).
             int top = 63;
             while (!((e >> top) & 1)) --top;
             if (top == 0) {  // x^1 and x^-1: base itself
@@ -302,7 +305,7 @@ nb::object kron(nb::handle x1o, nb::handle x2o) {
     require_matrix(x);
     require_matrix(y);
     // (..., M, N) (x) (..., P, Q) -> (..., M*P, N*Q); the batch axes broadcast like
-    // every other matrix function's (M10, user decision; np.kron differs for ndim > 2).
+    // every other matrix function's (np.kron differs for ndim > 2, docs/design/linalg.md §2.7).
     const std::int64_t m = x.shape(-2), n = x.shape(-1), p = y.shape(-2), q = y.shape(-1);
     Batch b({{x.batch_shape(2), x.batch_strides(2)}, {y.batch_shape(2), y.batch_strides(2)}}, "kron");
     const bool complex = computes_complex(x.dtype()) || computes_complex(y.dtype());

@@ -1,4 +1,4 @@
-"""The package imports (its surface is checked against API.md in test_api_surface.py, M11)."""
+"""The package imports (its surface is checked against docs/api/linalg.md in test_api_surface.py)."""
 
 import stardust as sd
 

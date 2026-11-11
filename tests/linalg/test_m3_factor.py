@@ -1,4 +1,4 @@
-"""M3: solve_triangular, cholesky, cholesky_solve, lu, lu_solve."""
+"""solve_triangular, cholesky, cholesky_solve, lu, lu_solve."""
 
 import os
 
@@ -105,7 +105,7 @@ def test_solve_triangular_rules():
     x = sd.linalg.solve_triangular(as_sd(a), sd.ones((3,)), upper=True, unit_diagonal=True)
     np.testing.assert_allclose(npy(x), np.linalg.solve(np.triu(np.ones((3, 3))), np.ones(3)))
     with pytest.raises(TypeError):
-        sd.linalg.solve_triangular(sd.eye(3), sd.ones((3,)))  # upper is required (S3)
+        sd.linalg.solve_triangular(sd.eye(3), sd.ones((3,)))  # upper is required (docs/api/linalg.md §4)
     with pytest.raises(TypeError):
         sd.linalg.solve_triangular(sd.eye(3), sd.ones((3,)), True)  # keyword-only
     bad = np.eye(3)
@@ -140,7 +140,7 @@ def test_cholesky(seed, batch, n, dtype, layout):
     assert gl.dtype == ct and gl.shape == s.shape
     assert l.strides == f_order_strides(s.shape, gl.itemsize)
     assert np.array_equal(gl, np.tril(gl)) and np.array_equal(gu, np.triu(gu))
-    # U is L^H bit for bit (DESIGN.md §2.12)
+    # U is L^H bit for bit (docs/design/linalg.md §10.3)
     assert np.array_equal(gu, np.conj(np.swapaxes(gl, -1, -2)))
     want = np.linalg.cholesky(s.astype(ct))
     np.testing.assert_allclose(gl, want, rtol=1e-12, atol=1e-12)
@@ -270,7 +270,7 @@ def test_lu_solve_equals_solve(seed, batch, n, k, vector, da, db):
     # The same steps as solve after getrf, so the same bits -- when both factor
     # in the same type. With a real `a` and a complex `b`, solve factors a
     # complex copy of `a` (zgetrf) while lu factors it as real (dgetrf); the
-    # values then agree only to rounding (DESIGN.md §2.12).
+    # values then agree only to rounding (docs/design/linalg.md §10.2).
     if da == "complex128" or db != "complex128":
         assert np.array_equal(npy(got), npy(want))
     else:

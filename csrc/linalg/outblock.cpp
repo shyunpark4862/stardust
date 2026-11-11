@@ -23,8 +23,8 @@ struct OutBlock {
     DType dtype = DType::Float64;
 };
 
-// The exact formats stardust-numpy exports, so it shares instead of copying
-// (stardust-numpy ARCHITECTURE.md §6.5).
+// The exact formats sd.ndarray exports, so sd.asarray shares instead of copying
+// (docs/design/array.md §12.3).
 const char* format_of(DType d) {
     switch (d) {
         case DType::Bool: return "?";
@@ -64,7 +64,8 @@ Out alloc(const std::vector<std::int64_t>& shape, std::vector<std::int64_t> stri
     b.nbytes = nbytes;
     b.shape.assign(shape.begin(), shape.end());
     b.strides.assign(strides.begin(), strides.end());
-    // 128-byte aligned (as stardust-numpy's own buffers); size rounded up to the alignment.
+    // 128-byte aligned (as the array's own buffers, docs/design/array.md §3.2); size rounded up
+    // to the alignment.
     const std::size_t bytes = static_cast<std::size_t>(std::max<std::int64_t>(nbytes, 1) + 127) / 128 * 128;
     b.data.reset(static_cast<std::byte*>(std::aligned_alloc(128, bytes)));
     if (!b.data) throw std::bad_alloc();

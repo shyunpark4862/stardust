@@ -1,7 +1,7 @@
 // The norm of a set of magnitudes, shared by vector_norm, matrix_norm and cond
-// (DESIGN.md §2.11: fast unscaled pass, rescaled second pass only on overflow
-// or when every term is tiny; empty sets have norm 0). Sums are pairwise
-// (M8, DESIGN.md §2.17).
+// (docs/design/linalg.md §10.8: fast unscaled pass, rescaled second pass only
+// on overflow or when every term is tiny; empty sets have norm 0). Sums are
+// pairwise (docs/design/linalg.md §8.2).
 #pragma once
 
 #include "linalg/pairwise.hpp"
@@ -33,7 +33,7 @@ struct VecOrd {
 // A fill for pairwise_sum: walk(begin, len, out) writes |x| at flat positions
 // begin .. begin+len-1. Elements are of storage type S; `mag` maps one to a double.
 // No heap memory: a walk is made per norm, so per row of a batch.
-inline constexpr int kMaxWalkDims = 33;  // stardust-numpy's 32 axes, plus a complex split
+inline constexpr int kMaxWalkDims = 33;  // the array's 32 axes, plus a complex split
 
 template <class S, class Mag>
 class Walk {
@@ -222,10 +222,11 @@ inline double vnorm_serial(VecOrd ord, std::int64_t count, Fill&& fill) {
 }
 
 // The norm of `count` magnitudes, given by fill(begin, len, out) as for
-// pairwise_sum (at most kPairwiseBlock per call). Empty sets have norm 0 (S11).
-// Long sets are cut into the pairwise tree's leaves and run on the pool (M9):
-// the sums are combined along the tree and max/min/count are order-free, so
-// the result is the serial one bit for bit. `fill` must not write anything shared.
+// pairwise_sum (at most kPairwiseBlock per call). Empty sets have norm 0
+// (docs/design/linalg.md §2.5). Long sets are cut into the pairwise tree's
+// leaves and run on the pool (docs/design/linalg.md §8.3): the sums are
+// combined along the tree and max/min/count are order-free, so the result is
+// the serial one bit for bit. `fill` must not write anything shared.
 template <class Fill>
 inline double vnorm(VecOrd ord, std::int64_t count, Fill&& fill) {
     if (count == 0) return 0.0;

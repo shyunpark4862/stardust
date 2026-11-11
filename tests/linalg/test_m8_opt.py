@@ -1,11 +1,10 @@
-"""M8: the optimizations keep the results.
+"""The optimizations keep the results.
 
-- sums are pairwise (user decision, DESIGN.md §2.17): the bits of numpy's and
-  stardust-numpy's sum of the same terms, whatever the input layout;
+- sums are pairwise (docs/design/linalg.md §8.2): the bits of numpy's and
+  sd's sum of the same terms, whatever the input layout;
 - workspace sizes are asked once per batch, and every LAPACK array is 16-byte
   aligned: a batch gives each matrix's own result, bit for bit;
 - read-only triangles are used in place when column-major: the same bits as packed.
-(experiments/m8_bits compares every function's output with the M7 build.)
 """
 
 import math
@@ -150,7 +149,8 @@ def test_norm_layouts_agree():
 def test_batch_equals_one_by_one(call, dtype):
     rng = np.random.default_rng(7)
     # odd n: a float64 batch element's slot sits at an odd multiple of 8 bytes,
-    # where Accelerate rounded differently before M8 (DESIGN.md §2.17)
+    # where Accelerate rounds differently unless arrays are 16-byte aligned
+    # (docs/design/linalg.md §6.4)
     for n in (3, 5, 7, 40):
         x = random_values(rng, (5, n, n), dtype)
         x = x + np.conj(np.swapaxes(x, -1, -2)) + 4 * n * np.eye(n)  # Hermitian, safely nonsingular

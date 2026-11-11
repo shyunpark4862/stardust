@@ -1,6 +1,6 @@
-// Pairwise summation: numpy's (and stardust-numpy's) DOUBLE_pairwise_sum and
-// CDOUBLE_pairwise_sum, for every floating-point sum here (M8, user decision,
-// DESIGN.md §2.17).
+// Pairwise summation: numpy's (and the array area's) DOUBLE_pairwise_sum and
+// CDOUBLE_pairwise_sum, for every floating-point sum here
+// (docs/design/linalg.md §8.2).
 //
 // The tree depends on the length only: runs of at most 128 doubles are summed
 // with 8 independent accumulators (4 complex ones), and longer runs are split
@@ -128,13 +128,13 @@ T pairwise_sum(std::int64_t n, Fill&& fill) {
 }
 
 
-// ---- one long sum on many threads, with the same bits (M9, user decision) --
-// As stardust-numpy does it (its reduce.hpp, M8): the tree depends on n only,
-// so its subtrees of at most kSumLeaf terms are independent. They are summed
-// in parallel and then combined along the very same tree: bit for bit the
-// serial sum, for any thread count.
+// ---- one long sum on many threads, with the same bits (docs/design/linalg.md §8.3) --
+// As the array area does it (array/kernels/reduce.hpp, docs/design/array.md
+// §6.2): the tree depends on n only, so its subtrees of at most kSumLeaf terms
+// are independent. They are summed in parallel and then combined along the
+// very same tree: bit for bit the serial sum, for any thread count.
 
-inline constexpr std::int64_t kSumLeaf = 1 << 12;          // terms per task (stardust-numpy's kTaskWork)
+inline constexpr std::int64_t kSumLeaf = 1 << 12;          // terms per task (the pool's kTaskWork)
 inline constexpr std::int64_t kSumParallelMin = 1 << 15;   // shorter sums stay serial (its kThreshold)
 
 namespace detail {

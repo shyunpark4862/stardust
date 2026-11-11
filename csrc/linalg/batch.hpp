@@ -1,5 +1,5 @@
 // Batch axes: broadcasting them, walking them, and the batch driver every
-// LAPACK function goes through (ARCHITECTURE.md §3.4).
+// LAPACK function goes through (docs/design/linalg.md §6).
 #pragma once
 
 #include "linalg/types.hpp"
@@ -73,10 +73,11 @@ struct Scratch {
     }
     lint* get_ints(std::size_t n, int slot = 0) { return reinterpret_cast<lint*>(ints_[slot].get(n * sizeof(lint))); }
 
-    // LAPACK's workspace sizes, asked once per routine and argument set (M8,
-    // ARCHITECTURE.md §3.4). Within a batch every matrix has the same shape, so
+    // LAPACK's workspace sizes, asked once per routine and argument set
+    // (docs/design/linalg.md §6.3). Within a batch every matrix has the same shape, so
     // only the first one per Scratch queries; the sizes, and so the results' bits, are the
-    // ones a per-call query gives (DESIGN.md §2.14: gesdd's path depends on lwork).
+    // ones a per-call query gives (gesdd's path depends on lwork,
+    // docs/design/linalg.md §10.5).
     using WorkKey = std::array<lint, 6>;  // routine id, its size arguments, the element size
     template <class Query>
     WorkSizes sizes(const WorkKey& key, Query&& query) {
@@ -87,9 +88,9 @@ struct Scratch {
     }
 
 private:
-    // A growing buffer that is not zero-filled (M8): every user writes before
-    // it reads, and std::vector's zero-fill of a large fresh block cost as much
-    // as the packing itself.
+    // A growing buffer that is not zero-filled (docs/design/linalg.md §6.3):
+    // every user writes before it reads, and std::vector's zero-fill of a large
+    // fresh block cost as much as the packing itself.
     struct Buf {
         std::unique_ptr<std::byte[]> p;
         std::size_t n = 0;
@@ -115,35 +116,36 @@ struct Failure {
 
 // The batch driver. Calls body(idx, offsets, scratch) for each batch element;
 // body returns 0 on success or a positive failure code of its own choosing.
-// Returns the failure with the smallest index (ARCHITECTURE.md §3.4, A2).
+// Returns the failure with the smallest index (docs/design/linalg.md §6.5).
 //
-// `element_ns` is the estimated serial cost of one element (core/cost.hpp).
+// `element_ns` is the estimated serial cost of one element (linalg/cost.hpp).
 // When the whole batch is worth it (kParallelMinNs), the elements are cut into
-// tasks of about kTaskNs and run on the thread pool (M9, DESIGN.md §2.18).
+// tasks of about kTaskNs and run on the thread pool (docs/design/linalg.md §7.2).
 // Every element is computed the same way wherever it runs (its own scratch,
-// 16-byte aligned arrays, M8), so results are bit-for-bit those of the serial
-// loop, for any thread count. Failures: each task stops at its first one, and
+// 16-byte aligned arrays, docs/design/linalg.md §6.4), so results are
+// bit-for-bit those of the serial loop, for any thread count. Failures: each task stops at its first one, and
 // every task skips elements past the smallest failure seen so far; the
 // smallest index overall is reported, as in the serial loop.
 inline constexpr std::size_t kMaxOperands = 4;
-// Measured in M9 (experiments/m9_threshold). Variables only so that the
-// experiments can move them (_core._set_tuning); nothing else changes them.
+// Measured (docs/design/linalg.md §7.2). Variables only so that measurements
+// can move them (_core._set_tuning, docs/design/linalg.md §7.7); nothing else
+// changes them.
 inline double kParallelMinNs = 10000;  // a batch whose estimated serial time is below this runs serially
 inline double kTaskNs = 5000;          // estimated serial time of one task
 
 namespace detail {
-bool begin_parallel();  // syncs the pool with sdnp.get_num_threads() (needs the GIL); true if it may split
+bool begin_parallel();  // syncs the pool with sd.get_num_threads() (needs the GIL); true if it may split
 void run_tasks(std::int64_t ntasks, const std::function<void(std::int64_t)>& fn);
 }  // namespace detail
 
 // `max_tasks` > 0 caps the number of tasks, and so of threads working at once:
 // for the LAPACK paths that run serialized on the AMX unit the cores share
-// (core/cost.hpp: lu_task_cap; after M11). Which element runs where does not
-// change any result.
+// (linalg/cost.hpp: lu_task_cap, docs/design/linalg.md §7.5). Which element
+// runs where does not change any result.
 template <class F>
 Failure run_batch(const Batch& b, double element_ns, F&& body, int max_tasks = 0) {
     const std::int64_t n = b.size();
-    // element_ns == 0 means: never split (e.g. small gbsv bands, core/cost.hpp)
+    // element_ns == 0 means: never split (e.g. small gbsv bands, linalg/cost.hpp)
     if (n >= 2 && element_ns > 0 && element_ns * static_cast<double>(n) >= kParallelMinNs && detail::begin_parallel()) {
         std::int64_t per = std::max<std::int64_t>(1, static_cast<std::int64_t>(kTaskNs / element_ns));
         if (max_tasks > 0 && (n + per - 1) / per > max_tasks) per = (n + max_tasks - 1) / max_tasks;

@@ -1,4 +1,4 @@
-"""API.md and the module agree (M11): every name API.md's code blocks define is
+"""docs/api/linalg.md and the module agree: every name its signature blocks define is
 exported, nothing else is, and the keyword-only options are the documented ones."""
 
 import pathlib
@@ -6,20 +6,19 @@ import re
 
 import stardust as sd
 
+from .._api_doc import signature_blocks
+
 API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "linalg.md"
 
 
 def documented():
-    """{name: signature text} for every `name(...)` line in API.md's code blocks."""
+    """{name: signature text} for every `name(...)` line in the signature blocks."""
     names = {}
-    inside = False
-    for line in API.read_text().splitlines():
-        if line.startswith("```"):
-            inside = not inside
-            continue
-        m = re.match(r"([A-Za-z_]+)\((.*?)\)\s*(#.*)?$", line.strip()) if inside else None
-        if m:
-            names[m.group(1)] = m.group(2)
+    for block in signature_blocks(API.read_text()):
+        for line in block:
+            m = re.match(r"([A-Za-z_]+)\((.*?)\)\s*(#.*)?$", line.strip())
+            if m:
+                names[m.group(1)] = m.group(2)
     return names
 
 
@@ -30,7 +29,7 @@ def test_exports_match_api_md():
 
 
 def test_keyword_options_match_api_md():
-    # the names after `*` in API.md are exactly the keyword-only parameters of the function
+    # the names after `*` in docs/api/linalg.md are exactly the keyword-only parameters of the function
     for name, sig in documented().items():
         if name == "LinAlgError":
             continue

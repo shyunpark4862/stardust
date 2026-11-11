@@ -1,5 +1,5 @@
 // Array creation (docs/api/array.md §3). Python-facing signatures take raw handles
-// so that argument rules (docs/api/array.md §0.1, §1.1-§1.3, §1.5) are
+// so that argument rules (API.md §1, docs/api/array.md §1.1-§1.3, §1.5) are
 // enforced in one place.
 #pragma once
 

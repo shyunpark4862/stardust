@@ -1,4 +1,4 @@
-// Thin typed wrappers over Accelerate LAPACK (ARCHITECTURE.md §3.5): one
+// Thin typed wrappers over Accelerate LAPACK (docs/design/linalg.md §1.2): one
 // template per routine, dispatching to the d (double) or z (complex) version.
 // They return LAPACK's `info`; a negative info is a bug in our arguments.
 #pragma once
@@ -86,9 +86,9 @@ lint gbsv(lint n, lint kl, lint ku, lint nrhs, T* ab, lint ldab, lint* ipiv, T* 
 }
 
 // ---- Routines with a workspace. Each asks LAPACK for the size (lwork = -1)
-// once per Scratch (Scratch::sizes, M8: once per batch when it runs serially,
-// once per task when run_batch splits it) and takes the memory from the
-// scratch slots reserved for it.
+// once per Scratch (Scratch::sizes: once per batch when it runs serially,
+// once per task when run_batch splits it; docs/design/linalg.md §6.3) and
+// takes the memory from the scratch slots reserved for it.
 
 inline lint work_size(double q) { return std::max<lint>(1, static_cast<lint>(q)); }
 inline lint work_size(cplx q) { return std::max<lint>(1, static_cast<lint>(q.real())); }
@@ -433,7 +433,7 @@ lint sytrf(lint n, T* a, lint lda, lint* ipiv, Scratch& s) {
 
 // Solves A X + X B = scale C for upper (quasi-)triangular A (m x m) and B (n x n),
 // the Schur forms: the blocked level-3 trsyl3 (LAPACK 3.10), chosen over trsyl
-// by measurement (experiments/m7_drivers, DESIGN.md §2.16). C is overwritten
+// by measurement (docs/design/linalg.md §10.7). C is overwritten
 // by X; scale <= 1 avoids overflow. info = 1: A and -B have common or close
 // eigenvalues, and perturbed values were used.
 template <class T>

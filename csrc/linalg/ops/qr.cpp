@@ -1,10 +1,10 @@
-// QR and least squares: qr, qr_pivoted, lstsq (API.md §3, §4; ROADMAP.md M4).
+// QR and least squares: qr, qr_pivoted, lstsq (docs/api/linalg.md §4, §5).
 //
 // qr        : geqrf, then orgqr/ungqr builds Q in place in its output slot
 // qr_pivoted: geqp3 (column pivoting), then the same
-// lstsq     : gelsd, chosen by measurement in M4 (experiments/m4_lstsq_driver,
-//             DESIGN.md §2.13): faster than gelss everywhere that matters, and
-//             unlike gelsy it gives the singular values the result carries (S6)
+// lstsq     : gelsd, chosen by measurement (docs/design/linalg.md §10.4):
+//             faster than gelss everywhere that matters, and unlike gelsy it
+//             gives the singular values the result carries (docs/api/linalg.md §4)
 #include "linalg/ops/qr.hpp"
 
 #include "linalg/args.hpp"
@@ -23,7 +23,7 @@ namespace sd::linalg {
 
 namespace {
 
-// mode='reduced' | 'complete' (API.md §0.4). true for 'complete'.
+// mode='reduced' | 'complete' (docs/api/linalg.md §1.1). true for 'complete'.
 bool parse_mode(nb::handle o, const char* func) {
     if (!PyUnicode_Check(o.ptr()))
         throw nb::type_error((std::string(func) + "(): 'mode' must be 'reduced' or 'complete'").c_str());
@@ -122,8 +122,8 @@ nb::object lstsq(nb::handle ao, nb::handle bo, nb::handle rtol_o) {
             lint rank = 0;
             if (m > 0 && n > 0) {
                 // xLALSD silently replaces rcond >= 1 by machine epsilon. By our
-                // definition (API.md §0.4: singular values <= rtol * max are zero)
-                // rtol >= 1 zeroes all of them: rank 0 and solution 0 (DESIGN.md §2.13).
+                // definition (docs/api/linalg.md §4: singular values <= rtol * max are zero)
+                // rtol >= 1 zeroes all of them: rank 0 and solution 0 (docs/design/linalg.md §10.4).
                 const bool all_zero = rcond >= 1.0;
                 LapackSlot<double> sv(S + i * mn, mn, s, Scratch::kAlign0);
                 if (lapack::gelsd(m, n, nrhs, A, lda, B, ldb, sv.get(), all_zero ? 0.5 : rcond, rank, s) > 0)

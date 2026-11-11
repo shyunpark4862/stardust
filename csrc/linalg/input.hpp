@@ -1,5 +1,6 @@
-// Reading an argument: an sdnp.ndarray seen through the buffer protocol
-// (ARCHITECTURE.md §3.1).
+// Reading an argument: an sd.ndarray seen through the buffer protocol, the
+// boundary path in use until linalg takes NDArray directly
+// (docs/design/linalg.md §3.6).
 #pragma once
 
 #include "linalg/types.hpp"
@@ -16,7 +17,7 @@ namespace nb = nanobind;
 
 class Input {
 public:
-    // Raises TypeError unless `obj` is an sdnp.ndarray (API.md §0.2).
+    // Raises TypeError unless `obj` is an sd.ndarray (docs/api/linalg.md §1.2).
     // `func` and `arg` only name things in error messages.
     Input(nb::handle obj, const char* func, const char* arg);
     ~Input();
@@ -47,7 +48,7 @@ private:
     const char* arg_;
 };
 
-// Checks shared by the matrix functions; all raise ValueError (API.md §0.2).
+// Checks shared by the matrix functions; all raise ValueError (docs/api/linalg.md §1.2).
 void require_matrix(const Input& x);  // ndim >= 2
 void require_square(const Input& x);  // ndim >= 2 and the last two axes equal
 

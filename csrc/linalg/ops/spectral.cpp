@@ -1,7 +1,7 @@
-// Hermitian eigenvalues and the SVD, and what is built on them (API.md §2, §3, §4;
-// ROADMAP.md M5): eigh, eigvalsh, svd, svdvals, matrix_rank, pinv, cond.
+// Hermitian eigenvalues and the SVD, and what is built on them
+// (docs/api/linalg.md §3, §4, §5): eigh, eigvalsh, svd, svdvals, matrix_rank, pinv, cond.
 //
-// Drivers, measured in M5 (experiments/m5_drivers, DESIGN.md §2.14):
+// Drivers, chosen by measurement (docs/design/linalg.md §10.1, §10.5):
 //   eigh            syevd/heevd  (vectors: fastest at every size; 2x syevr at n=1000)
 //   eigh(a, b)      sygvd/hegvd  (vectors: 8x sygv at n=1000)
 //   eigvalsh        syevd 'N'    (values only; all drivers alike, the same family as eigh)
@@ -9,7 +9,7 @@
 //   svd             gesdd        (10x gesvd at n=1000)
 //   svdvals         gesvd 'N'    (values only: 5-25% faster than gesdd 'N')
 // Values-only modes give values that differ from the ones computed with the
-// vectors at rounding level (user decision, DESIGN.md §2.14).
+// vectors at rounding level (docs/design/linalg.md §10.5).
 #include "linalg/ops/spectral.hpp"
 
 #include "linalg/args.hpp"
@@ -60,11 +60,12 @@ nb::object eigh_impl(nb::handle ao, nb::handle bo, bool vectors) {
         double* W = wo.as<double>();
         const Failure f = run_batch(b, cost(kEigh, double(n) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             // With vectors, `a` is packed straight into the eigenvector slot; LAPACK
-            // overwrites it with the eigenvectors (ARCHITECTURE.md §3.2).
+            // overwrites it with the eigenvectors (docs/design/linalg.md §5.2).
             LapackSlot<T> vs(vectors ? vo.as<T>() + i * n * n : s.get<T>(static_cast<std::size_t>(n * n)), n * n, s,
                              Scratch::kAlign0);
             T* av = vs.get();
-            // Lower triangles only (API.md §0.2), checked as read (DESIGN.md §2.12).
+            // Lower triangles only (docs/api/linalg.md §1.4), checked as read
+            // (docs/design/linalg.md §5.4).
             if (!pack_triangle(a.dtype(), a.data() + off[0], n, a.stride(-2), a.stride(-1), av, n, true, true, true))
                 return kNonFinite;
             T* bv = nullptr;
@@ -176,7 +177,8 @@ nb::object matrix_rank(nb::handle xo, nb::handle rtol_o) {
         const Failure f = run_batch(b, cost(kSVD, double(m) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             double* sv = s.get<double>(static_cast<std::size_t>(std::max<lint>(k, 1)), 1);
             if (const int code = singular_values<T>(x, off[0], m, n, s, sv)) return code;
-            // Singular values <= rtol * the largest count as zero (API.md §0.4, DESIGN.md §2.13);
+            // Singular values <= rtol * the largest count as zero (docs/api/linalg.md §3,
+            // docs/design/linalg.md §10.5);
             // with rtol >= 1 that is all of them.
             const double tol = k > 0 ? rtol * sv[0] : 0.0;
             std::int64_t r = 0;
@@ -313,7 +315,7 @@ nb::object cond(nb::handle xo, nb::handle ord_o) {
             if (by_svd) {
                 double* sv = s.get<double>(static_cast<std::size_t>(k), 1);
                 if (const int code = singular_values<T>(x, off[0], m, n, s, sv)) return code;
-                // A singular matrix has an infinite condition number (DESIGN.md §2.14);
+                // A singular matrix has an infinite condition number (docs/design/linalg.md §10.5);
                 // ord=-2 is its reciprocal, 0. (sv[0] = 0 means x = 0: singular too.)
                 const double hi = sv[0], lo = sv[k - 1];
                 if (ord == CondOrd::Two) C[i] = lo == 0 ? kInf : hi / lo;

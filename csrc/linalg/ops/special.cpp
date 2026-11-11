@@ -1,10 +1,10 @@
-// Special structure (API.md §5; ROADMAP.md M7):
+// Special structure (docs/api/linalg.md §6):
 // solve_tridiagonal, solve_banded, solve_sylvester.
 //
-// Drivers chosen by measurement (experiments/m7_drivers, DESIGN.md §2.16):
+// Drivers chosen by measurement (docs/design/linalg.md §10.7):
 //   solve_tridiagonal : gtsv  (1.2-3x faster than gttrf + gttrs, same bits)
 //   solve_banded      : gbsv  (as fast as gbtrf + gbtrs, same bits); gtsv when
-//                       both bandwidths are 1 (user decision), so that
+//                       both bandwidths are 1, so that
 //                       solve_banded(.., 1, 1) == solve_tridiagonal bit for bit
 //   solve_sylvester   : Bartels-Stewart: gees of a and b, trsyl3 (up to 4.8x
 //                       faster than trsyl), and back with four gemm
@@ -142,7 +142,7 @@ nb::object solve_banded(nb::handle abo, nb::handle bo, nb::handle klo, nb::handl
             }
             // gbsv's layout: the band in rows kl .. 2kl+ku, rows 0 .. kl-1 room for the
             // fill-in. Only the band's elements inside the matrix are read and checked
-            // (DESIGN.md §2.12); the rest is zeroed.
+            // (docs/design/linalg.md §10.7); the rest is zeroed.
             const lint ldab = 2 * kl + ku + 1;
             T* w = s.get<T>(static_cast<std::size_t>(ldab * n));
             std::fill(w, w + ldab * n, T(0));
@@ -167,8 +167,8 @@ nb::object solve_banded(nb::handle abo, nb::handle bo, nb::handle klo, nb::handl
 
 // From this size on (the smaller of m and n), solve_sylvester runs the Schur
 // decompositions of a and b at the same time. A variable only so that the
-// experiment can move it (_core._set_schur_pair_min). Measured
-// (experiments/opt_impl/out/schur_pair.txt): 0.76-0.96x below n = 6, 1.05x at
+// measurements can move it (_core._set_schur_pair_min). Measured
+// (docs/design/linalg.md §8.4): 0.76-0.96x below n = 6, 1.05x at
 // 6, 1.1-1.3x from 8 to 24, 1.4-1.7x from 32 on; bits the same.
 lint kSchurPairMin = 8;
 
@@ -205,7 +205,7 @@ nb::object solve_sylvester(nb::handle ao, nb::handle bo, nb::handle co) {
             // The two Schur decompositions are independent. Each runs on one core
             // inside Accelerate, so for large matrices they run at the same time,
             // b's on a second scratch: the same arrays and workspace sizes, so the
-            // same bits (after M11, docs/learn/next-optimizations.md §1).
+            // same bits (docs/design/linalg.md §8.4).
             lint info_a = 0, info_b = 0;
             if (b_finite && m > 0 && n > 0 && std::min(m, n) >= kSchurPairMin && detail::begin_parallel()) {
                 Scratch s2;

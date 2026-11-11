@@ -1,4 +1,4 @@
-"""M2: vecdot, outer, trace, diagonal, matrix_power, vector_norm, matrix_norm."""
+"""vecdot, outer, trace, diagonal, matrix_power, vector_norm, matrix_norm."""
 
 import math
 import os
@@ -110,7 +110,7 @@ def test_outer_matches_numpy(seed, b1, b2, m, n, d1, d2):
 
 
 def saturating_int64(x):
-    """float -> int64 as stardust-numpy converts explicitly: toward zero, saturating, NaN -> 0."""
+    """float -> int64 as the array area converts explicitly: toward zero, saturating, NaN -> 0."""
     t = np.trunc(np.nan_to_num(x, nan=0.0, posinf=2.0**64, neginf=-(2.0**64)))
     out = np.where(t >= 2.0**63, np.iinfo(np.int64).max, 0)
     out = np.where(t < -(2.0**63), np.iinfo(np.int64).min, out)
@@ -132,7 +132,7 @@ def test_trace_and_diagonal_match_numpy(seed, batch, m, n, k, dtype, layout):
     rng = np.random.default_rng(seed)
     x = with_layout(random_values(rng, (*batch, m, n), dtype), layout)
     diag = np.diagonal(x, offset=k, axis1=-2, axis2=-1)
-    # diagonal: a copy with the input dtype (DESIGN.md §2.11)
+    # diagonal: a copy with the input dtype (docs/design/linalg.md §10.8)
     d = sd.linalg.diagonal(as_sd(x), k=k)
     assert npy(d).dtype == x.dtype and np.array_equal(npy(d), diag)
     # trace, default dtype: computed in float64/complex128
@@ -216,7 +216,7 @@ def test_matrix_power_exact_cases():
     assert np.array_equal(npy(sd.linalg.matrix_power(as_sd(nan), 0)), np.eye(3))  # x^0 = I whatever x holds
     assert np.isnan(npy(sd.linalg.matrix_power(as_sd(nan), 2))).all()  # n >= 0: no check, NaN propagates
     with pytest.raises(ValueError, match="NaN or infinity"):
-        sd.linalg.matrix_power(as_sd(nan), -1)  # n < 0 goes through LAPACK: checked (DESIGN.md §2.11)
+        sd.linalg.matrix_power(as_sd(nan), -1)  # n < 0 goes through LAPACK: checked (docs/design/linalg.md §2.3)
     with pytest.raises(sd.linalg.LinAlgError, match="singular"):
         sd.linalg.matrix_power(sd.zeros((2, 2)), -2)
     big = sd.linalg.matrix_power(sd.eye(2), 2**62 + 1)
@@ -289,7 +289,7 @@ def test_vector_norm_special_values():
 def test_vector_norm_empty_and_errors():
     e = sd.zeros((0,))
     for o in ORDS:
-        assert sd.linalg.vector_norm(e, ord=o) == 0.0  # S11
+        assert sd.linalg.vector_norm(e, ord=o) == 0.0  # docs/api/linalg.md §1.10
     assert npy(sd.linalg.vector_norm(sd.zeros((3, 0)), axis=1)).tolist() == [0.0, 0.0, 0.0]
     assert sd.linalg.vector_norm(sd.zeros((3, 0)), axis=0).shape == (0,)
     x = sd.ones((2, 3))
@@ -340,7 +340,7 @@ def test_matrix_norm_rules():
         sd.linalg.matrix_norm(sd.ones((3,)))
     for shape in [(0, 0), (3, 0), (0, 3)]:
         for o in ("fro", 1, -1, INF, -INF):
-            assert sd.linalg.matrix_norm(sd.zeros(shape), ord=o) == 0.0  # S11
+            assert sd.linalg.matrix_norm(sd.zeros(shape), ord=o) == 0.0  # docs/api/linalg.md §1.10
     assert math.isnan(sd.linalg.matrix_norm(as_sd(np.array([[1.0, np.nan], [0, 1]])), ord=1))
     assert sd.linalg.matrix_norm(sd.ones((4, 2, 3)), keepdims=True).shape == (4, 1, 1)
 

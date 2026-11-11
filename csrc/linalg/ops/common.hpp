@@ -27,7 +27,7 @@ nb::object with_type(bool complex, F&& f) {
     return f(std::type_identity<double>{});
 }
 
-// Failure codes of batch bodies (DESIGN.md §2.4, §2.10, §2.12). Within one
+// Failure codes of batch bodies (docs/design/linalg.md §2.4). Within one
 // batch element the arguments are checked in order; a matrix's singularity
 // right after that matrix.
 constexpr int kNonFinite = 1;   // NaN or inf in the first matrix argument
@@ -40,7 +40,7 @@ constexpr int kNoConvergence = 7;     // the SVD did not converge
 constexpr int kNoConvergenceEig = 8;  // an eigenvalue algorithm did not converge
 constexpr int kNonFinite2 = 9;        // NaN or inf in the argument named `arg2`
 constexpr int kNonFinite3 = 10;       // NaN or inf in the argument named `arg3`
-constexpr int kCloseEigenvalues = 11; // Sylvester: a and -b share an eigenvalue (DESIGN.md §2.16)
+constexpr int kCloseEigenvalues = 11; // Sylvester: a and -b share an eigenvalue (docs/design/linalg.md §10.7)
 
 // Turns a batch failure into the Python exception. `arg` names the first
 // matrix argument; the right-hand side is always 'b'. `arg2`, `arg3` name the
@@ -66,7 +66,7 @@ constexpr int kCloseEigenvalues = 11; // Sylvester: a and -b share an eigenvalue
 }
 
 // The right-hand side of a solve: a 1-D b is one vector (M,), anything else a
-// stack of matrices (..., M, K) (API.md §0.2). Checks M against the matrix size n.
+// stack of matrices (..., M, K) (docs/api/linalg.md §1.3). Checks M against the matrix size n.
 struct Rhs {
     bool vec;
     lint k;            // number of columns (1 for a vector)
@@ -87,12 +87,12 @@ inline Rhs rhs_of(const Input& y, lint n, const char* func, const char* aname, b
     return {vec, vec ? 1 : y.shape(-1), vec ? 1 : 2, vec ? y.stride(0) : y.stride(-2), vec ? 0 : y.stride(-1)};
 }
 
-// ---- 16-byte alignment (M8) ----------------------------------------------
+// ---- 16-byte alignment (docs/design/linalg.md §6.4) ----------------------
 // Accelerate's LAPACK can round differently when an array is not 16-byte
-// aligned (found in M8: real svd, schur and eigh gave other bits for a batch
-// element whose output slot sat at an odd multiple of 8 bytes). So every array
-// LAPACK or BLAS gets is 16-byte aligned, and a matrix gives the same bits
-// wherever it sits in a batch.
+// aligned (real svd, schur and eigh gave other bits for a batch element whose
+// output slot sat at an odd multiple of 8 bytes). So every array LAPACK or
+// BLAS gets is 16-byte aligned, and a matrix gives the same bits wherever it
+// sits in a batch.
 
 inline bool aligned16(const void* p) { return reinterpret_cast<std::uintptr_t>(p) % 16 == 0; }
 
@@ -123,7 +123,7 @@ private:
 // An n x n triangle operand that LAPACK only reads (solve_triangular's a,
 // cholesky_solve's l, lu_solve's l and u). When the input already is
 // column-major with T elements, LAPACK reads it in place and only the triangle
-// is checked (M8, ARCHITECTURE.md §3.2); otherwise it is packed into `buf`.
+// is checked (docs/design/linalg.md §5.5); otherwise it is packed into `buf`.
 // The arithmetic, and so the result, is the same either way. Returns false on NaN/inf.
 template <class T>
 bool triangle_operand(const Input& x, std::int64_t off, lint n, bool lower, bool with_diag, T* buf, const T*& a,
@@ -159,7 +159,7 @@ int lu_factor(const Input& x, std::int64_t off, lint n, Scratch& s, T*& a, lint*
 }
 
 // The inverse from an LU factorization, written to `r` (n x n, column-major):
-// getrs against the identity (DESIGN.md §2.10), so inv(a) == solve(a, I) bit for bit.
+// getrs against the identity (docs/design/linalg.md §10.2), so inv(a) == solve(a, I) bit for bit.
 template <class T>
 void lu_inverse(const T* lu, const lint* ipiv, lint n, T* r) {
     if (n == 0) return;

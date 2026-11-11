@@ -38,12 +38,13 @@ void bind_linalg(nb::module_& core) {
     sd::linalg::bind_nonsym(m);
     sd::linalg::bind_special(m);
     sd::linalg::bind_expm(m);
-    // For experiments/m9_threshold only: move the split constants (M9).
+    // For measurements only: move the split constants (docs/design/linalg.md §7.7).
     m.def("_set_tuning", [](double min_ns, double task_ns) {
         sd::linalg::kParallelMinNs = min_ns;
         sd::linalg::kTaskNs = task_ns;
     });
-    // For experiments/opt_impl only: the size from which one matrix is packed on the pool.
+    // For measurements only: the size from which one matrix is packed on the pool
+    // (docs/design/linalg.md §5.6).
     m.def("_set_pack_parallel_min", [](std::int64_t n) { sd::linalg::detail::kPackParallelMin = n; });
     m.def("_set_lu_task_cap", [](bool on) { sd::linalg::kLuTaskCapOn = on; });
 }
