@@ -26,6 +26,7 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/ops/factor.cpp
   csrc/ops/lu.cpp
   csrc/ops/norms.cpp
+  csrc/ops/qr.cpp
   csrc/bind/module.cpp)
 
 target_include_directories(_core PRIVATE csrc)

@@ -33,6 +33,7 @@ constexpr int kNonFiniteB = 3;  // NaN or inf in the right-hand side
 constexpr int kNotPD = 4;       // Cholesky: not positive definite
 constexpr int kNonFiniteU = 5;  // lu_solve: NaN or inf in 'u'
 constexpr int kBadPerm = 6;     // lu_solve: 'perm' is not a permutation
+constexpr int kNoConvergence = 7;  // an iterative algorithm (SVD, eigenvalues) did not converge
 
 // Turns a batch failure into the Python exception. `arg` names the first
 // matrix argument; the right-hand side is always 'b'.
@@ -44,6 +45,7 @@ constexpr int kBadPerm = 6;     // lu_solve: 'perm' is not a permutation
         case kNonFiniteU: throw nb::value_error(msg("'u' contains NaN or infinity").c_str());
         case kBadPerm: throw nb::value_error(msg("'perm' is not a permutation of 0..n-1").c_str());
         case kNotPD: throw LinAlgError(failure_message(b, f.index, "matrix is not positive definite"));
+        case kNoConvergence: throw LinAlgError(failure_message(b, f.index, "SVD did not converge"));
         default: throw LinAlgError(failure_message(b, f.index, "singular matrix"));
     }
 }
@@ -57,13 +59,16 @@ struct Rhs {
     std::int64_t rs, cs;  // byte strides of rows and columns
 };
 
-inline Rhs rhs_of(const Input& y, lint n, const char* func, const char* aname) {
+inline Rhs rhs_of(const Input& y, lint n, const char* func, const char* aname, bool square = true) {
     const bool vec = y.ndim() == 1;
     const lint rows = vec ? y.shape(0) : y.shape(-2);
-    if (rows != n)
-        throw nb::value_error((std::string(func) + "(): '" + aname + "' is " + std::to_string(n) + "x" +
-                               std::to_string(n) + " but 'b' has " + std::to_string(rows) + " rows")
+    if (rows != n) {
+        const std::string what = square ? "is " + std::to_string(n) + "x" + std::to_string(n)
+                                        : "has " + std::to_string(n) + " rows";
+        throw nb::value_error((std::string(func) + "(): '" + aname + "' " + what + " but 'b' has " +
+                               std::to_string(rows) + " rows")
                                   .c_str());
+    }
     return {vec, vec ? 1 : y.shape(-1), vec ? 1 : 2, vec ? y.stride(0) : y.stride(-2), vec ? 0 : y.stride(-1)};
 }
 

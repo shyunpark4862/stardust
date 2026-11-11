@@ -46,10 +46,13 @@ private:
 
 // Scratch memory for one worker. The driver hands each worker its own, so a
 // body may reuse it across the matrices it processes.
+// Slots 0-3 (and int slot 0) belong to the function bodies; slots 4-5 (and
+// int slot 1) to the LAPACK wrappers' workspaces (lapack.hpp).
 struct Scratch {
-    static constexpr int kSlots = 4;
+    static constexpr int kSlots = 6;
+    static constexpr int kWork = 4, kRWork = 5, kIWork = 1;
     std::vector<std::byte> bytes[kSlots];  // independent areas; slot 0 is the default
-    std::vector<lint> ints;
+    std::vector<lint> ints[2];
 
     template <class T>
     T* get(std::size_t n, int slot = 0) {
@@ -57,9 +60,9 @@ struct Scratch {
         if (b.size() < n * sizeof(T)) b.resize(n * sizeof(T));
         return reinterpret_cast<T*>(b.data());
     }
-    lint* get_ints(std::size_t n) {
-        if (ints.size() < n) ints.resize(n);
-        return ints.data();
+    lint* get_ints(std::size_t n, int slot = 0) {
+        if (ints[slot].size() < n) ints[slot].resize(n);
+        return ints[slot].data();
     }
 };
 

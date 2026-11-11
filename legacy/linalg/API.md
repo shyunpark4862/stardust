@@ -102,6 +102,9 @@ pinv(x, /, *, rtol=None)
 - 삼각 인수의 대각에 정확한 0이 있으면 `LinAlgError`다. `unit_diagonal=True`이면 대각을 읽지 않는다.
 - `lu_solve`: `l`의 대각은 읽지 않고 1로 본다. `perm`은 int64이고, 0..n−1의 순열이어야 한다.
   - 계산 타입이 같으면 `lu_solve(*lu(a), b)`는 `solve(a, b)`와 비트까지 같다.
+- `lstsq`는 최소 노름 해를 준다 (`gelsd`). 특이값 중 `rtol × 최댓값` 이하인 것은 0으로 친다.
+  - `rtol ≥ 1`이면 모든 특이값이 0이므로 `rank`는 0, `solution`은 0이다 (DESIGN §2.13). LAPACK과 numpy는 이 경우 `rtol`을 eps로 바꿔 버린다.
+  - `rtol`은 유한한 0 이상의 실수다. `rank`는 행렬 하나면 Python int, 배치면 int64 배열이다.
 
 ## 4. 분해
 ```

@@ -10,7 +10,7 @@ namespace sdla {
 namespace nb = nanobind;
 
 // The result namedtuples defined in _results.py, in the order _setup receives them.
-enum class Result { Slogdet, LU, Count };
+enum class Result { Slogdet, LU, QR, QRPivoted, Lstsq, Count };
 
 struct PyRefs {
     // From stardust_numpy, at import of _core.

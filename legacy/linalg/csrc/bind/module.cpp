@@ -6,6 +6,7 @@
 #include "ops/factor.hpp"
 #include "ops/lu.hpp"
 #include "ops/norms.hpp"
+#include "ops/qr.hpp"
 
 #include <nanobind/nanobind.h>
 
@@ -19,4 +20,5 @@ NB_MODULE(_core, m) {
     sdla::bind_basic(m);
     sdla::bind_norms(m);
     sdla::bind_factor(m);
+    sdla::bind_qr(m);
 }
