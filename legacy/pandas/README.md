@@ -39,3 +39,4 @@ python3.15 -m venv .venv && .venv/bin/pip install nanobind scikit-build-core pyt
 - M5 (리덕션: `sum`, `mean`, `min`, `max`, `count`, `std`, `var`) 완료
 - M6 (groupby: 단일/다중 키, 리덕션, `first`/`last`/`size`, `agg`) 완료
 - M7 (정렬: `sort_values`, `sort_index`, 안정 기수 정렬) 완료
+- M8 (결합: `merge` 해시 조인, `concat`) 완료

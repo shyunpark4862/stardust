@@ -185,6 +185,12 @@ class DataFrame(Reductions):
         """The rows ordered by label."""
         return self._take(_sort.order([self._index._column()], ascending), ignore_index)
 
+    def merge(self, right, *, how="inner", on=None, left_on=None, right_on=None, sort=False, suffixes=("_x", "_y")):
+        """sdpd.merge(self, right, ...): a hash join on key columns (API.md §18)."""
+        from .merge import merge
+
+        return merge(self, right, how=how, on=on, left_on=left_on, right_on=right_on, sort=sort, suffixes=suffixes)
+
     def groupby(self, by, *, sort=True, dropna=True):
         """Group the rows by the values of the key column(s) `by` (API.md §16)."""
         from .groupby import GroupBy

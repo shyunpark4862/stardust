@@ -6,6 +6,7 @@
 #include "ops/elementwise.hpp"
 #include "ops/groupby.hpp"
 #include "ops/hash.hpp"
+#include "ops/join.hpp"
 #include "ops/reduce.hpp"
 #include "ops/selection.hpp"
 #include "ops/sort.hpp"
@@ -104,6 +105,7 @@ void bind_column(nb::module_& m) {
         .def("reduce", &sd::Groups::reduce, nb::arg("op"), nb::arg("col"), nb::arg("skipna"), nb::arg("ddof"));
     m.def("sort_groups", &sd::sort_groups, nb::arg("keys"));
     m.def("argsort", &sd::argsort, nb::arg("keys"), nb::arg("ascending"), nb::arg("na_last"));
+    m.def("join_indices", &sd::join_indices, nb::arg("left"), nb::arg("right"), nb::arg("how"));
     m.def("binary_op", &sd::binary_op, nb::arg("op"), nb::arg("a"), nb::arg("b"), nb::arg("scalar_side"));
     m.def("unary_op", &sd::unary_op, nb::arg("op"), nb::arg("a"));
     m.def("arange", &sd::arange, nb::arg("start"), nb::arg("step"), nb::arg("n"));

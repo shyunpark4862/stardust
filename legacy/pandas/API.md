@@ -10,6 +10,7 @@ DESIGN.md의 결정(NA 하나, NaN은 값, Copy-on-Write)에서 따라 나오는
 - §15는 M5를 시작하기 전에 사용자가 결정했다 (2026-11-11).
 - §16은 M6를 시작하기 전에 사용자가 결정했다 (2026-11-11). 이때 §4의 '키의 위치'를 고쳤다.
 - §17은 M7을 시작하기 전에 사용자가 결정했다 (2026-11-11).
+- §18은 M8을 시작하기 전에 사용자가 결정했다 (2026-11-11).
 - pandas와 다른 점은 **[pandas와 다름]**으로 표시한다.
 
 ---
@@ -500,5 +501,45 @@ NaN은 결측값이 아니라 평범한 float 값이다 (DESIGN §2.1).
   - 다중 키는 마지막 키부터 차례로 안정 정렬한다.
   - 모든 키가 같은 자릿수를 건너뛰는 일은 하지 않는다. 데이터를 보고 경로를 고르지 않기 위해서다.
 
-## 18. 미확정
+## 18. merge와 concat (M8)
+- **시그니처** (C1, C2)
+  - `sdpd.merge(left, right, *, how="inner", on=None, left_on=None, right_on=None, sort=False, suffixes=("_x", "_y"))`
+  - `df.merge(right, *, ...)`: 인자는 함수와 같다.
+  - `how`는 `"inner"`, `"left"`, `"right"`, `"outer"`다.
+- **키**
+  - 키는 꼭 준다. `on`(양쪽에 같은 이름) 또는 `left_on`과 `right_on`(같은 개수)이다. **[pandas와 다름]**
+    - pandas는 키를 생략하면 공통 컬럼 전체를 키로 쓴다.
+  - 키 컬럼의 dtype은 양쪽이 같아야 한다. 예를 들어 int64와 float64는 에러다. **[pandas와 다름]**
+  - 매칭 규칙 (§1, §5)
+    - NA 키는 아무것과도 매칭되지 않는다.
+    - NaN은 NaN과, `0.0`은 `-0.0`과 매칭된다.
+- **빼는 기능**: `left_index`, `right_index`, `indicator`, `validate`, `how="cross"`, `copy`
+- **결과 컬럼**
+  - 왼쪽 컬럼(왼쪽 순서)이 먼저 오고, 그 다음 오른쪽 컬럼(오른쪽 순서)이다.
+  - `on`으로 조인하면 키 컬럼은 하나로 합친다.
+    - 위치는 왼쪽에서의 위치다.
+    - 값은 왼쪽 행이 있으면 왼쪽 값, 없으면(오른쪽에만 있는 행) 오른쪽 값이다.
+  - `left_on`/`right_on`으로 조인하면 양쪽 키 컬럼이 모두 남는다.
+  - 이름이 겹치는 컬럼(합친 키는 제외)에는 `suffixes`를 붙인다.
+    - 접미사를 붙인 뒤에도 이름이 겹치면 에러다.
+  - 매칭되지 않은 쪽의 값은 NA다. dtype은 그대로다.
+- **결과 행 순서**: §5 그대로다.
+  - `sort=True`이면 키로 안정 정렬한다. 오름차순이고 NA는 맨 뒤다 (§17).
+    - `on`이면 합친 키로 정렬한다.
+    - `left_on`/`right_on`이면 왼쪽 키로 정렬하고, 왼쪽 행이 없으면 오른쪽 키 값을 쓴다.
+- **결과 Index**: RangeIndex다.
+- **`sdpd.concat(objs, *, join="outer", ignore_index=False)`**: 행 방향만 잇는다. `axis`는 없다.
+  - `objs`는 DataFrame들이거나 Series들이다. 섞으면 에러이고, 비어 있어도 에러다.
+  - 컬럼
+    - `join="outer"`: 처음 나타난 순서로 합친다. 어떤 DataFrame에 없는 컬럼은 그 행들이 NA다.
+    - `join="inner"`: 모두에 있는 컬럼만, 첫 DataFrame의 순서로 둔다.
+  - 같은 이름의 컬럼은 dtype이 같아야 한다. Series끼리도 dtype이 같아야 한다. **[pandas와 다름]**
+  - 라벨
+    - 라벨을 이어 붙인다. 중복이 생겨도 된다.
+    - int 라벨과 string 라벨은 섞을 수 없다(에러). RangeIndex는 int64로 친다.
+    - Index와 Series의 이름은 모두 같으면 유지하고, 아니면 `None`이다.
+  - `ignore_index=True`이면 RangeIndex다.
+  - `keys`, `levels`, `names`, `verify_integrity`, `sort`, `copy`는 없다.
+
+## 19. 미확정
 - `read_csv`의 옵션과 타입 추론

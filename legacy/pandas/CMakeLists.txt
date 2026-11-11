@@ -24,6 +24,7 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/ops/elementwise.cpp
   csrc/ops/groupby.cpp
   csrc/ops/hash.cpp
+  csrc/ops/join.cpp
   csrc/ops/reduce.cpp
   csrc/ops/selection.cpp
   csrc/ops/sort.cpp
