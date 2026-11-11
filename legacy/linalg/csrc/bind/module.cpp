@@ -3,6 +3,7 @@
 #include "core/outblock.hpp"
 #include "core/pyrefs.hpp"
 #include "ops/basic.hpp"
+#include "ops/factor.hpp"
 #include "ops/lu.hpp"
 #include "ops/norms.hpp"
 
@@ -17,4 +18,5 @@ NB_MODULE(_core, m) {
     sdla::bind_lu(m);
     sdla::bind_basic(m);
     sdla::bind_norms(m);
+    sdla::bind_factor(m);
 }

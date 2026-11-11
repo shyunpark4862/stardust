@@ -45,7 +45,9 @@ def well_conditioned(rng, batch, n, dtype):
         low = rng.integers(0, 2, (*batch, n, n)).astype(np.bool_)
         return np.tril(low, -1) | np.eye(n, dtype=np.bool_)
     a = random_values(rng, (*batch, n, n), dtype)
-    return a + (2 * n + 2) * np.eye(n, dtype=np.int64)  # a dominant diagonal; keeps the dtype
+    # A dominant diagonal; keeps the dtype. For int64 (entries in [-3, 3]) it is
+    # strictly dominant: diagonal >= 3n - 2 > 3(n - 1) >= any off-diagonal row sum.
+    return a + (3 * n + 1) * np.eye(n, dtype=np.int64)
 
 
 def with_layout(x, layout):

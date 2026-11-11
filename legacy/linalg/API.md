@@ -98,6 +98,10 @@ lstsq(a, b, /, *, rtol=None)    # -> LstsqResult(solution, rank, singular_values
 inv(x, /)
 pinv(x, /, *, rtol=None)
 ```
+- 삼각만 읽는 함수(`solve_triangular`, `cholesky_solve`, `lu_solve`)는 읽는 원소만 NaN/inf를 검사한다. 읽지 않는 삼각의 값은 결과에 영향이 없다 (DESIGN §2.12).
+- 삼각 인수의 대각에 정확한 0이 있으면 `LinAlgError`다. `unit_diagonal=True`이면 대각을 읽지 않는다.
+- `lu_solve`: `l`의 대각은 읽지 않고 1로 본다. `perm`은 int64이고, 0..n−1의 순열이어야 한다.
+  - 계산 타입이 같으면 `lu_solve(*lu(a), b)`는 `solve(a, b)`와 비트까지 같다.
 
 ## 4. 분해
 ```
@@ -121,6 +125,8 @@ svdvals(x, /)
   - `eig`, `eigvals`: (실수부, 허수부)의 사전순. stardust-numpy가 complex를 정렬하는 순서와 같다. 고유벡터도 같은 순서로 재배열한다.
     - Array API 2025.12는 `eig`, `eigh`의 순서를 정하지 않는다. LAPACK의 `geev`는 순서를 보장하지 않는다.
 - `lu`는 정사각이 아닌 `(M, N)`도 받는다. `L`은 `(M, K)`, `U`는 `(K, N)`이다 (`K = min(M, N)`).
+  - 특이 행렬도 에러 없이 분해한다. U의 대각에 0이 나타난다 (DESIGN §2.12).
+- `cholesky(x, upper=True)`는 `cholesky(x)`의 켤레 전치와 비트까지 같다. 양정치가 아니면 `LinAlgError`다.
 - `ldl`의 `D`는 1×1과 2×2 블록으로 된 블록 대각 행렬이다. 꽉 찬 `(N, N)` 행렬로 반환한다.
 - `schur`, `hessenberg`: 실수 입력이면 실수 결과다 (`schur`는 2×2 블록이 있는 준삼각). 복소 Schur 형식이 필요하면 complex128로 바꿔서 넣는다.
 - 고유벡터와 특이벡터의 부호와 위상은 정하지 않는다 (LAPACK이 내는 그대로).

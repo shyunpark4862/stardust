@@ -34,6 +34,34 @@ lint getrs(char trans, lint n, lint nrhs, const T* a, lint lda, const lint* ipiv
     return checked(info, "getrs");
 }
 
+// Cholesky A = L L^H (uplo 'L') in place; reads only that triangle. info > 0: not positive definite.
+template <class T>
+lint potrf(char uplo, lint n, T* a, lint lda) {
+    lint info = 0;
+    if constexpr (std::is_same_v<T, double>) dpotrf_(&uplo, &n, a, &lda, &info);
+    else zpotrf_(&uplo, &n, a, &lda, &info);
+    return checked(info, "potrf");
+}
+
+// Solves A X = B with A = L L^H (or U^H U) from potrf; B is overwritten. No singularity check.
+template <class T>
+lint potrs(char uplo, lint n, lint nrhs, const T* a, lint lda, T* b, lint ldb) {
+    lint info = 0;
+    if constexpr (std::is_same_v<T, double>) dpotrs_(&uplo, &n, &nrhs, a, &lda, b, &ldb, &info);
+    else zpotrs_(&uplo, &n, &nrhs, a, &lda, b, &ldb, &info);
+    return checked(info, "potrs");
+}
+
+// Solves a triangular system; reads only triangle `uplo` (and the diagonal unless diag 'U').
+// info > 0: a zero on the diagonal.
+template <class T>
+lint trtrs(char uplo, char trans, char diag, lint n, lint nrhs, const T* a, lint lda, T* b, lint ldb) {
+    lint info = 0;
+    if constexpr (std::is_same_v<T, double>) dtrtrs_(&uplo, &trans, &diag, &n, &nrhs, a, &lda, b, &ldb, &info);
+    else ztrtrs_(&uplo, &trans, &diag, &n, &nrhs, a, &lda, b, &ldb, &info);
+    return checked(info, "trtrs");
+}
+
 // C = A B for n x n column-major matrices (BLAS gemm; C must not alias A or B).
 template <class T>
 void gemm_square(lint n, const T* a, const T* b, T* c) {

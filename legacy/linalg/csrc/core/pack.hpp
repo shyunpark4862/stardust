@@ -52,4 +52,41 @@ bool pack(DType src, const std::byte* p, std::int64_t m, std::int64_t n, std::in
     });
 }
 
+// Like pack, for an n x n matrix of which only one triangle is read: lower
+// (i >= j) or upper (i <= j), with or without the diagonal. Only those
+// elements are copied and checked (DESIGN.md §2.12); the rest of `dst` is
+// left as it was, since the LAPACK routine that follows does not read it.
+template <class T>
+bool pack_triangle(DType src, const std::byte* p, std::int64_t n, std::int64_t rs, std::int64_t cs, T* dst,
+                   std::int64_t ld, bool lower, bool with_diag, bool check) {
+    return visit_storage(src, [&]<class S>(std::type_identity<S>) {
+        if constexpr (std::is_same_v<S, cplx> && !std::is_same_v<T, cplx>) {
+            return false;  // unreachable
+        } else {
+            bool ok = true;
+            for (std::int64_t j = 0; j < n; ++j) {
+                const std::int64_t i0 = lower ? (with_diag ? j : j + 1) : 0;
+                const std::int64_t i1 = lower ? n : (with_diag ? j + 1 : j);
+                const std::byte* col = p + j * cs;
+                for (std::int64_t i = i0; i < i1; ++i) {
+                    const S v = load<S>(col + i * rs);
+                    if constexpr (std::is_same_v<S, double> || std::is_same_v<S, cplx>) {
+                        if (check) ok &= finite(v);
+                    }
+                    dst[j * ld + i] = convert<T>(v);
+                }
+            }
+            return ok;
+        }
+    });
+}
+
+// True if an n x n column-major matrix has an exact zero on its diagonal.
+template <class T>
+bool zero_on_diagonal(const T* a, std::int64_t n, std::int64_t ld) {
+    for (std::int64_t i = 0; i < n; ++i)
+        if (a[i * ld + i] == T(0)) return true;
+    return false;
+}
+
 }  // namespace sdla

@@ -3,9 +3,14 @@
 
 #include <nanobind/nanobind.h>
 
+#include <initializer_list>
+
 namespace sdla {
 
 namespace nb = nanobind;
+
+// The result namedtuples defined in _results.py, in the order _setup receives them.
+enum class Result { Slogdet, LU, Count };
 
 struct PyRefs {
     // From stardust_numpy, at import of _core.
@@ -15,7 +20,7 @@ struct PyRefs {
     PyObject* dtypes[4] = {};  // sdnp.bool, sdnp.int64, sdnp.float64, sdnp.complex128 (DType order)
     // From stardust_linalg's Python files, via _core._setup().
     PyObject* linalg_error = nullptr;
-    PyObject* slogdet_result = nullptr;
+    PyObject* results[static_cast<int>(Result::Count)] = {};
 };
 
 // The references are deliberately never released: they live until the
@@ -24,5 +29,8 @@ PyRefs& refs();
 
 void load_sdnp_refs();
 void bind_setup(nb::module_& m);
+
+// Builds a result namedtuple from its fields (in field order).
+nb::object make_result(Result r, std::initializer_list<nb::handle> fields);
 
 }  // namespace sdla

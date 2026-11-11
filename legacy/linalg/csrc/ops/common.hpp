@@ -24,20 +24,47 @@ nb::object with_type(bool complex, F&& f) {
     return f(std::type_identity<double>{});
 }
 
-// Failure codes of batch bodies (DESIGN.md §2.4, §2.10).
+// Failure codes of batch bodies (DESIGN.md §2.4, §2.10, §2.12). Within one
+// batch element the arguments are checked in order; a matrix's singularity
+// right after that matrix.
 constexpr int kNonFinite = 1;   // NaN or inf in the first matrix argument
-constexpr int kSingular = 2;    // exact zero pivot
-constexpr int kNonFiniteB = 3;  // NaN or inf in the second argument
+constexpr int kSingular = 2;    // exact zero pivot / zero on a triangular diagonal
+constexpr int kNonFiniteB = 3;  // NaN or inf in the right-hand side
+constexpr int kNotPD = 4;       // Cholesky: not positive definite
+constexpr int kNonFiniteU = 5;  // lu_solve: NaN or inf in 'u'
+constexpr int kBadPerm = 6;     // lu_solve: 'perm' is not a permutation
 
-// Turns a batch failure into the Python exception.
-[[noreturn]] inline void raise(const Batch& b, const Failure& f, const char* func, const char* arg,
-                               const char* arg_b = "b") {
-    if (f.code == kNonFinite || f.code == kNonFiniteB) {
-        const std::string msg =
-            std::string(func) + "(): '" + (f.code == kNonFinite ? arg : arg_b) + "' contains NaN or infinity";
-        throw nb::value_error(failure_message(b, f.index, msg.c_str()).c_str());
+// Turns a batch failure into the Python exception. `arg` names the first
+// matrix argument; the right-hand side is always 'b'.
+[[noreturn]] inline void raise(const Batch& b, const Failure& f, const char* func, const char* arg) {
+    auto msg = [&](const std::string& what) { return failure_message(b, f.index, (std::string(func) + "(): " + what).c_str()); };
+    switch (f.code) {
+        case kNonFinite: throw nb::value_error(msg(std::string("'") + arg + "' contains NaN or infinity").c_str());
+        case kNonFiniteB: throw nb::value_error(msg("'b' contains NaN or infinity").c_str());
+        case kNonFiniteU: throw nb::value_error(msg("'u' contains NaN or infinity").c_str());
+        case kBadPerm: throw nb::value_error(msg("'perm' is not a permutation of 0..n-1").c_str());
+        case kNotPD: throw LinAlgError(failure_message(b, f.index, "matrix is not positive definite"));
+        default: throw LinAlgError(failure_message(b, f.index, "singular matrix"));
     }
-    throw LinAlgError(failure_message(b, f.index, "singular matrix"));
+}
+
+// The right-hand side of a solve: a 1-D b is one vector (M,), anything else a
+// stack of matrices (..., M, K) (API.md §0.2). Checks M against the matrix size n.
+struct Rhs {
+    bool vec;
+    lint k;            // number of columns (1 for a vector)
+    int core;          // 1 or 2 trailing core axes
+    std::int64_t rs, cs;  // byte strides of rows and columns
+};
+
+inline Rhs rhs_of(const Input& y, lint n, const char* func, const char* aname) {
+    const bool vec = y.ndim() == 1;
+    const lint rows = vec ? y.shape(0) : y.shape(-2);
+    if (rows != n)
+        throw nb::value_error((std::string(func) + "(): '" + aname + "' is " + std::to_string(n) + "x" +
+                               std::to_string(n) + " but 'b' has " + std::to_string(rows) + " rows")
+                                  .c_str());
+    return {vec, vec ? 1 : y.shape(-1), vec ? 1 : 2, vec ? y.stride(0) : y.stride(-2), vec ? 0 : y.stride(-1)};
 }
 
 // Packs the square matrix of `x` at byte offset `off` into scratch and factors

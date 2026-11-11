@@ -1,5 +1,8 @@
 #include "core/pyrefs.hpp"
 
+#include <string>
+#include <vector>
+
 namespace sdla {
 
 PyRefs& refs() {
@@ -26,11 +29,22 @@ void load_sdnp_refs() {
 }
 
 void bind_setup(nb::module_& m) {
-    // Called once by stardust_linalg/__init__.py with the types defined in Python.
-    m.def("_setup", [](nb::handle linalg_error, nb::handle slogdet_result) {
+    // Called once by stardust_linalg/__init__.py with the types defined in Python;
+    // `results` lists the namedtuples in the order of the Result enum.
+    m.def("_setup", [](nb::handle linalg_error, nb::tuple results) {
+        if (results.size() != static_cast<size_t>(Result::Count))
+            throw nb::value_error("_setup: wrong number of result types");
         refs().linalg_error = keep(linalg_error);
-        refs().slogdet_result = keep(slogdet_result);
+        for (size_t i = 0; i < results.size(); ++i) refs().results[i] = keep(results[i]);
     });
+}
+
+nb::object make_result(Result r, std::initializer_list<nb::handle> fields) {
+    std::vector<PyObject*> args;
+    for (nb::handle f : fields) args.push_back(f.ptr());
+    PyObject* o = PyObject_Vectorcall(refs().results[static_cast<int>(r)], args.data(), args.size(), nullptr);
+    if (!o) throw nb::python_error();
+    return nb::steal(o);
 }
 
 }  // namespace sdla

@@ -11,9 +11,10 @@ import stardust_linalg as sdla
 ```
 
 ## 상태
-M2까지 진행했다.
+M3까지 진행했다.
 - M1: `solve`, `inv`, `det`, `slogdet`, `LinAlgError`
 - M2: `vecdot`, `outer`, `trace`, `diagonal`, `matrix_power`, `vector_norm`, `matrix_norm` (fro, ±1, ±inf)
+- M3: `solve_triangular`, `cholesky`, `cholesky_solve`, `lu`, `lu_solve`
 
 ```python
 a = sdnp.asarray([[2.0, 1.0], [1.0, 3.0]])
