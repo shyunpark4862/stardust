@@ -113,6 +113,7 @@ MatOrd parse_matrix_ord(nb::handle o) {
         if (s == "nuc") return MatOrd::Nuc;
     } else if (!PyBool_Check(o.ptr()) && (PyLong_Check(o.ptr()) || PyFloat_Check(o.ptr()))) {
         const double p = PyFloat_AsDouble(o.ptr());
+        if (p == -1.0 && PyErr_Occurred()) throw nb::python_error();  // an int too large for a double
         if (p == 1) return MatOrd::One;
         if (p == -1) return MatOrd::NegOne;
         if (p == kInf) return MatOrd::Inf;

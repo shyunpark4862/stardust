@@ -233,21 +233,41 @@ int expm_one(const Input& x, std::int64_t off, lint n, T* o, Scratch& s) {
         }
 
     // ---- guard: ||A|| <= 2^100, so that A^2 .. A^10 cannot overflow
+    // exp(A) = exp(2^-s0 A)^(2^s0): s0 squarings up front.
     double nA = norm1(A, n);
+    int s0 = 0;
+    if (std::isinf(nA)) {
+        // Finite entries whose column sum overflows (code review after M11:
+        // frexp(inf) gives no exponent, the guard was skipped and the squaring
+        // count came out near INT_MAX). With 2^k >= 4n every column sum of
+        // 2^-k A is below DBL_MAX (a modulus is at most sqrt(2) DBL_MAX).
+        int k = 2;
+        while ((lint(1) << (k - 2)) < n) ++k;
+        s0 = k;
+        scale_by_pow2(A, nn, -k);
+        nA = norm1(A, n);
+    }
     int e;
     std::frexp(nA, &e);  // nA = f 2^e, f in [0.5, 1)
-    int s0 = 0;
-    if (e > 100) {  // exp(A) = exp(2^-s0 A)^(2^s0): s0 squarings up front
-        s0 = e - 100;
-        scale_by_pow2(A, nn, -s0);
+    if (e > 100) {
+        s0 += e - 100;
+        scale_by_pow2(A, nn, -(e - 100));
         nA = norm1(A, n);
         std::frexp(nA, &e);
     }
 
     // ---- |A| / 2^e for ell()
     double* absb = reinterpret_cast<double*>(buf[7]);
-    const double inv2e = std::ldexp(1.0, -e);  // e <= 101: a normal double, the product exact
-    for (lint k = 0; k < nn; ++k) absb[k] = modulus(A[k]) * inv2e;
+    if (e >= -1022) {  // 2^-e <= 2^1022, a normal double: one exact product
+        const double inv2e = std::ldexp(1.0, -e);
+        for (lint k = 0; k < nn; ++k) absb[k] = modulus(A[k]) * inv2e;
+    } else {
+        // A subnormal norm: 2^-e itself would overflow to inf (code review after
+        // M11: |A|/2^e became inf/NaN and ell() asked for ~2^31 squarings). Two
+        // exact products instead; every result is <= 1, so neither overflows.
+        const double f1 = std::ldexp(1.0, 1000), f2 = std::ldexp(1.0, -e - 1000);
+        for (lint k = 0; k < nn; ++k) absb[k] = modulus(A[k]) * f1 * f2;
+    }
     double* vecs = s.get<double>(static_cast<std::size_t>(2 * pad2(n)), 2);
     AbsPowers absp(absb, n, e, vecs, vecs + pad2(n));
     const double log2nA = std::log2(nA);

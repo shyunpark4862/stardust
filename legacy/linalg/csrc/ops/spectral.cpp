@@ -245,6 +245,7 @@ CondOrd parse_cond_ord(nb::handle o) {
         if (s == "nuc") return CondOrd::Nuc;
     } else if (!PyBool_Check(o.ptr()) && (PyLong_Check(o.ptr()) || PyFloat_Check(o.ptr()))) {
         const double p = PyFloat_AsDouble(o.ptr());
+        if (p == -1.0 && PyErr_Occurred()) throw nb::python_error();  // an int too large for a double
         if (p == 2) return CondOrd::Two;
         if (p == -2) return CondOrd::NegTwo;
         if (p == 1) return CondOrd::One;
