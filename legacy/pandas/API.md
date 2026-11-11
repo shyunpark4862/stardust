@@ -9,6 +9,7 @@ DESIGN.md의 결정(NA 하나, NaN은 값, Copy-on-Write)에서 따라 나오는
 - §14는 M4를 시작하기 전에 사용자가 결정했다 (2026-11-11).
 - §15는 M5를 시작하기 전에 사용자가 결정했다 (2026-11-11).
 - §16은 M6를 시작하기 전에 사용자가 결정했다 (2026-11-11). 이때 §4의 '키의 위치'를 고쳤다.
+- §17은 M7을 시작하기 전에 사용자가 결정했다 (2026-11-11).
 - pandas와 다른 점은 **[pandas와 다름]**으로 표시한다.
 
 ---
@@ -19,7 +20,7 @@ NaN은 결측값이 아니라 평범한 float 값이다 (DESIGN §2.1).
 - **리덕션**: `sum`, `mean` 등에 NaN이 섞이면 결과가 NaN이 된다. **[pandas와 다름]**
   - `skipna`는 NA만 건너뛴다.
 - **`min`, `max`**: NaN을 전파한다.
-- **정렬**: NaN은 +inf 뒤에 놓는다.
+- **정렬**: NaN은 +inf보다 큰 값으로 친다. 그래서 오름차순에서는 +inf 뒤에, 내림차순에서는 맨 앞에 온다 (§17).
   - NA의 위치는 `na_position`으로 따로 정한다.
 - **키 비교** (groupby, unique, value_counts, duplicated, merge)
   - NaN끼리는 같은 키다.
@@ -470,5 +471,34 @@ NaN은 결측값이 아니라 평범한 float 값이다 (DESIGN §2.1).
   - 그래서 한 그룹의 합은 그 행들만 골라낸 Series의 `sum()`과 비트까지 같다.
   - pandas는 행 순서대로 Kahan 보정 합을 쓴다.
 
-## 17. 미확정
+## 17. 정렬 (M7)
+- **시그니처** (C2, C4)
+  - `Series.sort_values(*, ascending=True, na_position="last", ignore_index=False)`
+  - `DataFrame.sort_values(by, *, ascending=True, na_position="last", ignore_index=False)`
+  - `Series.sort_index(*, ascending=True, ignore_index=False)`
+  - `DataFrame.sort_index(*, ascending=True, ignore_index=False)`
+  - 없는 인자
+    - `kind`: 정렬은 항상 안정 정렬이다.
+    - `key=`: Python 함수를 받는 인자다.
+    - `sort_index`의 `na_position`: Index에는 NA가 없다.
+    - `sort_index`의 `level`, `sort_remaining`: MultiIndex가 없다.
+- **`ascending`과 `na_position`**: 둘 다 값 하나(모든 키에 적용) 또는 키 수만큼의 리스트를 받는다. **[pandas와 다름]**
+  - pandas는 `na_position`에 리스트를 받지 않는다.
+  - `na_position`은 `"first"` 또는 `"last"`다.
+- **순서**
+  - int와 float는 수 순서다.
+    - NaN은 +inf보다 큰 값이다. 그래서 내림차순에서는 맨 앞에 온다. **[pandas와 다름]** pandas는 NaN을 NA처럼 `na_position`으로 놓는다.
+    - `0.0`과 `-0.0`은 같은 값이다.
+  - string은 코드포인트 순서다. bool은 `False < True`다.
+  - NA는 `na_position`이 정하는 곳에 온다. 방향과 상관없다.
+- **안정성**: 키가 같은 행은 원래 순서를 지킨다. 오름차순과 내림차순 모두 그렇다.
+  - 다중 키는 앞의 키부터 차례로 비교한 순서다.
+- **결과**: 행이 그 순서로 재배열되고, 라벨도 행을 따라간다(Index). `ignore_index=True`이면 RangeIndex다.
+- **알고리즘** (DESIGN §2.5)
+  - 숫자와 bool은 64비트 키에 대한 안정 LSD 기수 정렬이다.
+  - string은 고유값의 순위로 바꾼 뒤 안정 counting sort를 한다.
+  - 다중 키는 마지막 키부터 차례로 안정 정렬한다.
+  - 모든 키가 같은 자릿수를 건너뛰는 일은 하지 않는다. 데이터를 보고 경로를 고르지 않기 위해서다.
+
+## 18. 미확정
 - `read_csv`의 옵션과 타입 추론

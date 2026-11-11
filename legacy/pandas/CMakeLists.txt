@@ -26,6 +26,7 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/ops/hash.cpp
   csrc/ops/reduce.cpp
   csrc/ops/selection.cpp
+  csrc/ops/sort.cpp
   csrc/parallel/pool.cpp
   csrc/bind/module.cpp)
 

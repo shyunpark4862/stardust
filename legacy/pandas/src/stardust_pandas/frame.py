@@ -1,6 +1,6 @@
 """DataFrame: named Columns of one length plus row labels (ARCHITECTURE.md §3.1)."""
 
-from . import _column, _core, _format, _ops, _select, _unique
+from . import _column, _core, _format, _ops, _select, _sort, _unique
 from ._column import _NO_VALUE
 from ._core import Column
 from ._dtypes import resolve
@@ -171,6 +171,19 @@ class DataFrame(Reductions):
         dtype (API.md §15). A column the operation does not apply to raises."""
         cols = {k: _core.reduce(op, c, skipna, ddof) for k, c in self._cols.items()}
         return DataFrame._new(cols, Index._new(Column.from_list([op], NA, "string")))
+
+    def sort_values(self, by, *, ascending=True, na_position="last", ignore_index=False):
+        """The rows ordered by the column(s) `by`, first key first (API.md §17).
+        ascending and na_position take one value or one per key."""
+        names = [by] if isinstance(by, str) else list(by)
+        if not names:
+            raise ValueError("sort_values needs at least one column")
+        keys = [self._column(k) for k in names]
+        return self._take(_sort.order(keys, ascending, na_position), ignore_index)
+
+    def sort_index(self, *, ascending=True, ignore_index=False):
+        """The rows ordered by label."""
+        return self._take(_sort.order([self._index._column()], ascending), ignore_index)
 
     def groupby(self, by, *, sort=True, dropna=True):
         """Group the rows by the values of the key column(s) `by` (API.md §16)."""

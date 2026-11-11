@@ -1,6 +1,6 @@
 """Series: one Column plus its row labels (ARCHITECTURE.md §1)."""
 
-from . import _column, _core, _format, _ops, _select, _unique
+from . import _column, _core, _format, _ops, _select, _sort, _unique
 from ._reduce import Reductions
 from ._column import _NO_VALUE
 from ._core import Column
@@ -211,6 +211,17 @@ class Series(Reductions):
 
     def _reduce(self, op, skipna, ddof):  # API.md §15: a Python scalar or NA
         return _core.reduce(op, self._col, skipna, ddof).to_list(NA)[0]
+
+    # --- sorting (API.md §17) ---
+
+    def sort_values(self, *, ascending=True, na_position="last", ignore_index=False):
+        """The rows ordered by value; equal values keep their order. NaN is the
+        largest value; NA goes where na_position says."""
+        return self._take(_sort.order([self._col], ascending, na_position), ignore_index)
+
+    def sort_index(self, *, ascending=True, ignore_index=False):
+        """The rows ordered by label."""
+        return self._take(_sort.order([self._index._column()], ascending), ignore_index)
 
     # --- selection and assignment (API.md §14) ---
 
