@@ -11,7 +11,14 @@ import stardust_linalg as sdla
 ```
 
 ## 상태
-M10까지 진행했다. 기본 단계와 확장 단계의 함수가 모두 들어갔고(randomized SVD는 난수 생성을 정한 뒤로 미룸), 호출 하나의 비용을 줄였고, 배치와 긴 합을 여러 코어로 나눈다.
+M11까지 마쳤다. 기본 단계와 확장 단계의 함수가 모두 들어갔고(randomized SVD는 난수 생성을 정한 뒤로 미룸), 호출 하나의 비용을 줄였고, 배치와 긴 합을 여러 코어로 나눈다.
+
+numpy 2.5.4 / scipy 1.18.1과 같은 줄 248개를 비교하면(10스레드): 189줄이 10% 이상 빠르고, 49줄이 같고, 10줄이 느리다.
+- 작은 행렬은 약 2.8배, 배치는 약 7배 빠르다(numpy와 scipy는 배치를 코어 하나로 돈다).
+- 큰 행렬 하나의 분해는 같은 Accelerate LAPACK이라 거의 같다.
+- 느린 곳은 큰 C-order 삼각 풀기(레이아웃과 무관한 비트를 지키는 전치 비용), 큰 `matrix_power`, 아주 짧은 합이다.
+
+마일스톤별로 들어간 것:
 - M1: `solve`, `inv`, `det`, `slogdet`, `LinAlgError`
 - M2: `vecdot`, `outer`, `trace`, `diagonal`, `matrix_power`, `vector_norm`, `matrix_norm` (fro, ±1, ±inf)
 - M3: `solve_triangular`, `cholesky`, `cholesky_solve`, `lu`, `lu_solve`
@@ -22,6 +29,7 @@ M10까지 진행했다. 기본 단계와 확장 단계의 함수가 모두 들�
 - M8: 최적화 (workspace 재사용, 패킹, pairwise 합, 16바이트 정렬)
 - M9: 배치와 긴 합의 병렬화 (스레드 수는 `sdnp.set_num_threads`를 따름, 결과는 스레드 수와 무관)
 - M10: `kron`, `cross`, `expm` (`expm`은 LAPACK에 없어서 직접 구현: Al-Mohy–Higham 2009)
+- M11: 마일스톤 끝 커밋을 다시 빌드해 같은 자리에서 비교한 최종 보고서, API.md와 모듈을 맞추는 테스트
 
 ```python
 a = sdnp.asarray([[2.0, 1.0], [1.0, 3.0]])

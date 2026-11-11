@@ -1,20 +1,10 @@
-"""The package imports and exposes what API.md lists for the milestones done so far."""
+"""The package imports (its surface is checked against API.md in test_api_surface.py, M11)."""
 
 import stardust_linalg as sdla
 
 
 def test_import_and_surface():
     assert sdla.__version__ == "0.0.1"
-    assert set(sdla.__all__) == {
-        "LinAlgError", "det", "inv", "slogdet", "solve",
-        "vecdot", "outer", "trace", "diagonal", "matrix_power", "vector_norm", "matrix_norm",
-        "solve_triangular", "cholesky", "cholesky_solve", "lu", "lu_solve",
-        "qr", "qr_pivoted", "lstsq",
-        "eigh", "eigvalsh", "svd", "svdvals", "matrix_rank", "pinv", "cond",
-        "eig", "eigvals", "schur", "hessenberg", "ldl",
-        "solve_tridiagonal", "solve_banded", "solve_sylvester",
-        "kron", "cross", "expm",
-    }
     for name in sdla.__all__:
         assert hasattr(sdla, name)
     assert issubclass(sdla.LinAlgError, ValueError)
