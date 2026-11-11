@@ -8,6 +8,7 @@ DESIGN.md의 결정(NA 하나, NaN은 값, Copy-on-Write)에서 따라 나오는
 - §13은 M3를 시작하기 전에 사용자가 결정했다 (2026-11-11).
 - §14는 M4를 시작하기 전에 사용자가 결정했다 (2026-11-11).
 - §15는 M5를 시작하기 전에 사용자가 결정했다 (2026-11-11).
+- §16은 M6를 시작하기 전에 사용자가 결정했다 (2026-11-11). 이때 §4의 '키의 위치'를 고쳤다.
 - pandas와 다른 점은 **[pandas와 다름]**으로 표시한다.
 
 ---
@@ -54,9 +55,9 @@ NaN은 결측값이 아니라 평범한 float 값이다 (DESIGN §2.1).
   - `sort=False`를 주면 키가 처음 나타난 순서를 따른다.
 - **NA 키**: `dropna=True`가 기본이다. NA 키 그룹은 결과에서 버린다.
   - `dropna=False`를 주면 NA 키도 그룹이 된다.
-- **키의 위치**
-  - 단일 키: 결과의 Index가 된다.
-  - 다중 키: 결과의 일반 컬럼이 된다 (DESIGN §2.2).
+- **키의 위치**: 단일 키든 다중 키든 결과의 일반 컬럼이 된다. 결과의 Index는 RangeIndex다 (§16). **[pandas와 다름]**
+  - 처음(3라운드)에는 단일 키가 결과의 Index가 되도록 정했다.
+  - 이것이 "float와 bool은 Index로 쓸 수 없다"(§6)와 충돌해서, M6을 시작할 때 사용자가 고쳤다 (2026-11-11).
 
 ## 5. merge (S5)
 - **결과 행 순서** **[pandas와 다름]**
@@ -434,5 +435,40 @@ NaN은 결측값이 아니라 평범한 float 값이다 (DESIGN §2.1).
   3. `개수 - ddof`로 나눈다.
   - `std`는 `sqrt(var)`이다.
 
-## 16. 미확정
+## 16. groupby (M6)
+- **`df.groupby(by, *, sort=True, dropna=True)`**
+  - `by`는 컬럼 이름 하나 또는 리스트다. Series 키와 `Series.groupby`는 없다.
+  - 키가 아닌 컬럼이 모두 값 컬럼이 된다.
+  - `g["c"]`, `g[["c", "d"]]`로 값 컬럼을 고른다. 키 컬럼은 값 컬럼으로 고를 수 없다.
+- **결과**: DataFrame이다.
+  - 컬럼은 키 컬럼(`by` 순서)이 먼저 오고, 그 다음 집계 컬럼이다.
+  - Index는 RangeIndex다. `value_counts`(§13)와 같은 모양이다.
+- **그룹 순서**
+  - `sort=True`: 키의 오름차순이다.
+    - int와 float는 수 순서다. NaN은 +inf 뒤에 온다 (§1). `0.0`과 `-0.0`은 같은 키다.
+    - string은 코드포인트 순서다. bool은 `False < True`다.
+    - 다중 키는 키를 앞에서부터 차례로 비교한다.
+    - NA 키 그룹(`dropna=False`일 때)은 맨 뒤에 온다. 다중 키에서는 키마다 이 규칙을 적용한다.
+  - `sort=False`: 그룹이 처음 나타난 순서다.
+- **`dropna=True`**: 키 중 하나라도 NA인 행을 버린다. NaN은 값이므로 버리지 않는다. **[pandas와 다름]**
+- **메서드**: 인자는 C3와 같다.
+  - `sum`, `mean`, `min`, `max`: `(*, skipna=True)`
+  - `std`, `var`: `(*, skipna=True, ddof=1)`
+  - `count()`: 값 컬럼마다 NA가 아닌 값의 개수다.
+  - `size()`: 그룹의 행 수다. 결과 컬럼 이름은 `size`다.
+  - `first`, `last`: `(*, skipna=True)`. 그룹에서 NA가 아닌 처음(마지막) 값이다. `skipna=False`이면 처음(마지막) 행의 값이고, NA일 수도 있다.
+  - 결과 dtype과 할 수 없는 조합(예: string의 `mean`)은 §15와 같다. `first`와 `last`는 컬럼 dtype을 그대로 유지한다.
+  - 값이 모두 NA인 그룹: `sum`은 0, `count`는 0이고, 나머지는 NA다.
+- **`agg`**: 함수는 이름(문자열)으로만 준다. `sum mean min max count std var first last` 중 하나다.
+  - `g.agg("sum")`: 모든 값 컬럼에 적용한다.
+  - `g.agg({"f": "sum", "i": "max"})`: 컬럼마다 함수 하나다.
+  - `g.agg(total=("f", "sum"), n=("i", "count"))`: 결과 컬럼 이름을 직접 정한다. 같은 컬럼에 함수 여러 개를 적용할 때 쓴다.
+  - 함수 리스트는 에러다 (MultiIndex가 없다). **[pandas와 다름]**
+  - 결과 컬럼 이름이 키 컬럼과 겹치면 에러다.
+- **float 합의 순서**: 그룹마다 numpy pairwise로 더한다 (§15). **[pandas와 다름]**
+  - 행을 그룹별로 모은 뒤(counting sort), 각 그룹의 행을 원래 순서대로 더한다.
+  - 그래서 한 그룹의 합은 그 행들만 골라낸 Series의 `sum()`과 비트까지 같다.
+  - pandas는 행 순서대로 Kahan 보정 합을 쓴다.
+
+## 17. 미확정
 - `read_csv`의 옵션과 타입 추론

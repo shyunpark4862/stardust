@@ -1,0 +1,239 @@
+#include "ops/groupby.hpp"
+
+#include "ops/hash.hpp"
+#include "ops/pairwise.hpp"
+#include "ops/reduce.hpp"
+#include "ops/selection.hpp"
+
+#include <nanobind/nanobind.h>
+
+#include <algorithm>
+#include <cmath>
+#include <cstring>
+#include <numeric>
+#include <string>
+
+namespace nb = nanobind;
+
+namespace sd {
+
+Groups::Groups(const Column& codes, std::int64_t ngroups) : ngroups_(ngroups) {
+    if (codes.dtype != DType::Int64 || codes.null_count) throw nb::type_error("group codes must be int64 without NA");
+    const auto* c = codes.data<std::int64_t>();
+    const std::int64_t n = codes.length;
+    start_.assign(static_cast<std::size_t>(ngroups + 1), 0);
+    for (std::int64_t i = 0; i < n; ++i) ++start_[c[i] + 1];
+    for (std::int64_t g = 0; g < ngroups; ++g) start_[g + 1] += start_[g];
+    rows_.resize(static_cast<std::size_t>(n));
+    std::vector<std::int64_t> fill(start_.begin(), start_.end() - 1);
+    for (std::int64_t i = 0; i < n; ++i) rows_[fill[c[i]]++] = i;  // stable: rows stay in order within a group
+}
+
+Column Groups::sizes() const {
+    Column out = make_fixed(DType::Int64, ngroups_);
+    auto* o = reinterpret_cast<std::int64_t*>(out.values->data());
+    for (std::int64_t g = 0; g < ngroups_; ++g) o[g] = start_[g + 1] - start_[g];
+    return out;
+}
+
+namespace {
+
+double row_double(const Column& c, std::int64_t i) {
+    switch (c.dtype) {
+    case DType::Int64: return static_cast<double>(c.data<std::int64_t>()[i]);
+    case DType::Float64: return c.data<double>()[i];
+    default: return static_cast<double>(c.data<std::uint8_t>()[i]);
+    }
+}
+
+// Whether row a beats row b for min (Max false) or max (Max true); both have
+// values. Floats follow IEEE 754-2019 minimum/maximum like M5: NaN wins,
+// -0.0 < 0.0.
+template <bool Max>
+bool beats(const Column& c, std::int64_t a, std::int64_t b) {
+    switch (c.dtype) {
+    case DType::Int64: return Max ? c.data<std::int64_t>()[a] > c.data<std::int64_t>()[b] : c.data<std::int64_t>()[a] < c.data<std::int64_t>()[b];
+    case DType::Bool: return Max ? c.data<std::uint8_t>()[a] > c.data<std::uint8_t>()[b] : c.data<std::uint8_t>()[a] < c.data<std::uint8_t>()[b];
+    case DType::String: return Max ? c.string_at(a) > c.string_at(b) : c.string_at(a) < c.string_at(b);
+    case DType::Float64: {
+        const double x = c.data<double>()[a], y = c.data<double>()[b];
+        if (std::isnan(y)) return false;  // the first NaN stays
+        if (std::isnan(x)) return true;
+        const double m = ieee_minmax<Max>(x, y);
+        return std::memcmp(&m, &x, sizeof m) == 0 && std::memcmp(&x, &y, sizeof x) != 0;
+    }
+    }
+    return false;
+}
+
+}  // namespace
+
+Column Groups::reduce(std::string_view op, const Column& col, bool skipna, std::int64_t ddof) const {
+    const DType result = reduction_dtype(op, col.dtype);
+    const bool is_var = op == "var" || op == "std";
+    if (is_var && ddof < 0) throw nb::value_error("ddof must be >= 0");
+    const std::int64_t G = ngroups_;
+    auto count_of = [&](std::int64_t g) {
+        std::int64_t k = 0;
+        for (std::int64_t j = start_[g]; j < start_[g + 1]; ++j) k += col.is_valid(rows_[j]);
+        return k;
+    };
+
+    // min, max, first, last pick a row per group (-1: none); take() then
+    // brings its value, of any dtype, NA when there is none.
+    if (op == "min" || op == "max" || op == "first" || op == "last") {
+        Column winners = make_fixed(DType::Int64, G);
+        auto* w = reinterpret_cast<std::int64_t*>(winners.values->data());
+        for (std::int64_t g = 0; g < G; ++g) {
+            const std::int64_t b = start_[g], e = start_[g + 1];
+            std::int64_t at = -1;
+            if (op == "first" || op == "last") {
+                const bool fwd = op == "first";
+                for (std::int64_t k = 0; k < e - b; ++k) {
+                    const std::int64_t r = rows_[fwd ? b + k : e - 1 - k];
+                    if (!skipna || col.is_valid(r)) {
+                        at = col.is_valid(r) ? r : -1;  // skipna=False: the first row, NA or not
+                        break;
+                    }
+                }
+            } else {
+                bool any_na = false;
+                for (std::int64_t j = b; j < e; ++j) {
+                    const std::int64_t r = rows_[j];
+                    if (!col.is_valid(r)) {
+                        any_na = true;
+                        continue;
+                    }
+                    if (at < 0 || (op == "max" ? beats<true>(col, r, at) : beats<false>(col, r, at))) at = r;
+                }
+                if (!skipna && any_na) at = -1;
+            }
+            w[g] = at;
+        }
+        return take(col, winners);
+    }
+
+    Column out = make_fixed(result, G);
+    std::uint8_t* bits = add_validity(out);
+    for (std::int64_t g = 0; g < G; ++g) {
+        const std::int64_t b = start_[g], n = start_[g + 1] - b;
+        const std::int64_t count = count_of(g);
+        auto set_na = [&] { bitmap::clear(bits, g); };
+        auto get = [&](std::int64_t k) { return row_double(col, rows_[b + k]); };  // NA rows hold 0
+        if (op == "count") {
+            reinterpret_cast<std::int64_t*>(out.values->data())[g] = count;
+            continue;
+        }
+        if (!skipna && count < n) {
+            set_na();
+            continue;
+        }
+        if (op == "sum") {
+            if (result == DType::Float64) {
+                reinterpret_cast<double*>(out.values->data())[g] = float_sum(n, get);
+            } else {
+                std::uint64_t total = 0;  // int64 wraps (API.md §3); bool counts True
+                for (std::int64_t k = 0; k < n; ++k) {
+                    const std::int64_t r = rows_[b + k];
+                    total += col.dtype == DType::Int64 ? static_cast<std::uint64_t>(col.data<std::int64_t>()[r])
+                                                       : col.data<std::uint8_t>()[r];
+                }
+                reinterpret_cast<std::int64_t*>(out.values->data())[g] = static_cast<std::int64_t>(total);
+            }
+            continue;
+        }
+        if (count == 0 || (is_var && count - ddof <= 0)) {
+            set_na();
+            continue;
+        }
+        double mean;
+        if (col.dtype == DType::Int64) {  // exact, as in M5 (API.md §15)
+            __int128 total = 0;
+            for (std::int64_t k = 0; k < n; ++k) total += col.data<std::int64_t>()[rows_[b + k]];
+            mean = static_cast<double>(total) / static_cast<double>(count);
+        } else if (col.dtype == DType::Bool) {
+            std::int64_t trues = 0;
+            for (std::int64_t k = 0; k < n; ++k) trues += col.data<std::uint8_t>()[rows_[b + k]];
+            mean = static_cast<double>(trues) / static_cast<double>(count);
+        } else {
+            mean = float_sum(n, get) / static_cast<double>(count);
+        }
+        double value = mean;
+        if (is_var) {
+            const double ssd = float_sum(n, [&](std::int64_t k) {
+                const std::int64_t r = rows_[b + k];
+                if (!col.is_valid(r)) return 0.0;
+                const double d = row_double(col, r) - mean;
+                return d * d;
+            });
+            value = ssd / static_cast<double>(count - ddof);
+            if (op == "std") value = std::sqrt(value);
+        }
+        reinterpret_cast<double*>(out.values->data())[g] = value;
+    }
+    finish_fixed(out);
+    return out;
+}
+
+namespace {
+
+// -1, 0, 1 for the key values of rows a and b of one key column (API.md §16).
+int compare_key(const Column& c, std::int64_t a, std::int64_t b) {
+    const bool va = c.is_valid(a), vb = c.is_valid(b);
+    if (!va || !vb) return va == vb ? 0 : (va ? -1 : 1);  // NA last
+    switch (c.dtype) {
+    case DType::Int64: {
+        const auto x = c.data<std::int64_t>()[a], y = c.data<std::int64_t>()[b];
+        return x < y ? -1 : x > y;
+    }
+    case DType::Bool: {
+        const int x = c.data<std::uint8_t>()[a], y = c.data<std::uint8_t>()[b];
+        return x < y ? -1 : x > y;
+    }
+    case DType::Float64: {
+        const double x = c.data<double>()[a], y = c.data<double>()[b];
+        const bool nx = std::isnan(x), ny = std::isnan(y);
+        if (nx || ny) return nx == ny ? 0 : (nx ? 1 : -1);  // NaN after +inf (API.md §1)
+        return x < y ? -1 : x > y;                          // -0.0 == 0.0
+    }
+    case DType::String: {
+        const int r = c.string_at(a).compare(c.string_at(b));
+        return r < 0 ? -1 : r > 0;
+    }
+    }
+    return 0;
+}
+
+}  // namespace
+
+Column sort_groups(const std::vector<Column>& keys) {
+    const std::int64_t n = keys.empty() ? 0 : keys[0].length;
+    // Sort the distinct values of each key, not the groups: give every group
+    // the rank of its key value (0, 1, ... in key order), then order the
+    // groups by rank with a stable counting sort, last key first (an LSD
+    // radix sort). Only the distinct values meet a comparison sort; M7
+    // brings radix sort for those too.
+    std::vector<std::int64_t> order(static_cast<std::size_t>(n)), next(static_cast<std::size_t>(n));
+    std::iota(order.begin(), order.end(), std::int64_t{0});
+    for (auto it = keys.rbegin(); it != keys.rend(); ++it) {
+        const Column& k = *it;
+        Factorized f = factorize(k);  // dense codes over the groups; equal keys share a code
+        const auto* code = f.codes.data<std::int64_t>();
+        const auto* first = f.first.data<std::int64_t>();
+        std::vector<std::int64_t> by_value(static_cast<std::size_t>(f.ngroups));
+        std::iota(by_value.begin(), by_value.end(), std::int64_t{0});
+        std::sort(by_value.begin(), by_value.end(),
+                  [&](std::int64_t a, std::int64_t b) { return compare_key(k, first[a], first[b]) < 0; });
+        std::vector<std::int64_t> rank(static_cast<std::size_t>(f.ngroups)), start(static_cast<std::size_t>(f.ngroups + 1), 0);
+        for (std::int64_t r = 0; r < f.ngroups; ++r) rank[by_value[r]] = r;
+        for (std::int64_t i = 0; i < n; ++i) ++start[rank[code[i]] + 1];
+        for (std::int64_t r = 0; r < f.ngroups; ++r) start[r + 1] += start[r];
+        for (std::int64_t g : order) next[start[rank[code[g]]]++] = g;  // stable: keeps the order of earlier passes
+        order.swap(next);
+    }
+    Column out = make_fixed(DType::Int64, n);
+    std::copy(order.begin(), order.end(), reinterpret_cast<std::int64_t*>(out.values->data()));
+    return out;
+}
+
+}  // namespace sd

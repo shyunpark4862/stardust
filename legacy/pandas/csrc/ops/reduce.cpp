@@ -1,5 +1,7 @@
 #include "ops/reduce.hpp"
 
+#include "ops/pairwise.hpp"
+
 #include <nanobind/nanobind.h>
 
 #include <arm_neon.h>
@@ -13,42 +15,6 @@ namespace nb = nanobind;
 namespace sd {
 
 namespace {
-
-// ---- numpy's pairwise summation (DOUBLE_pairwise_sum), as in stardust-numpy:
-// eight accumulators in blocks of 128, the halves of a longer run added
-// recursively. Eight independent chains are faster than one, and the
-// rounding error grows like log n instead of n. API.md §15.
-
-constexpr std::int64_t kPairwiseBlock = 128;  // numpy's PW_BLOCKSIZE, in doubles
-
-template <class Get>
-double pairwise_sum(std::int64_t begin, std::int64_t n, const Get& get) {
-    if (n < 8) {
-        double res = 0.;
-        for (std::int64_t i = 0; i < n; ++i) res += get(begin + i);
-        return res;
-    }
-    if (n <= kPairwiseBlock) {
-        double r[8];
-        for (int j = 0; j < 8; ++j) r[j] = get(begin + j);
-        std::int64_t i = 8;
-        for (; i < n - (n % 8); i += 8)
-            for (int j = 0; j < 8; ++j) r[j] += get(begin + i + j);
-        double res = ((r[0] + r[1]) + (r[2] + r[3])) + ((r[4] + r[5]) + (r[6] + r[7]));
-        for (; i < n; ++i) res += get(begin + i);
-        return res;
-    }
-    std::int64_t n2 = n / 2;
-    n2 -= n2 % 8;
-    return pairwise_sum(begin, n2, get) + pairwise_sum(begin + n2, n - n2, get);
-}
-
-// numpy's add.reduce starts from the identity: 0.0 + pairwise(all). That
-// start is why a sum of -0.0s is +0.0, as in numpy.
-template <class Get>
-double float_sum(std::int64_t n, const Get& get) {
-    return 0.0 + pairwise_sum(0, n, get);
-}
 
 Column one_value(DType dt) { return make_fixed(dt, 1); }
 
@@ -101,15 +67,6 @@ double mean_of(const Column& c, std::int64_t count) {
     }
     const double* v = c.data<double>();
     return float_sum(c.length, [v](std::int64_t i) { return v[i]; }) / static_cast<double>(count);
-}
-
-// IEEE 754-2019 minimum/maximum, which is what AArch64's FMIN/FMAX do: NaN
-// propagates and -0.0 < 0.0 (as numpy, API.md §15). One lane of the vector
-// instruction does the scalar case, so both paths agree bit for bit.
-template <bool Max>
-double ieee_minmax(double a, double b) {
-    const float64x2_t x = vdupq_n_f64(a), y = vdupq_n_f64(b);
-    return vgetq_lane_f64(Max ? vmaxq_f64(x, y) : vminq_f64(x, y), 0);
 }
 
 template <bool Max>
@@ -182,22 +139,28 @@ Column min_max(const Column& c) {
 
 }  // namespace
 
+DType reduction_dtype(std::string_view op, DType dt) {
+    if (op == "count") return DType::Int64;
+    const bool keeps = op == "min" || op == "max" || op == "first" || op == "last";
+    if (keeps) return dt;
+    const bool is_var = op == "var" || op == "std";
+    if (op != "sum" && op != "mean" && !is_var) throw nb::value_error(("unknown reduction '" + std::string(op) + "'").c_str());
+    if (dt == DType::String || (dt == DType::Bool && is_var)) unsupported(op, dt);
+    if (op == "sum") return dt == DType::Float64 ? DType::Float64 : DType::Int64;
+    return DType::Float64;
+}
+
+Column na_scalar(DType dt) { return na_value(dt); }
+
 Column reduce(std::string_view op, const Column& c, bool skipna, std::int64_t ddof) {
     const std::int64_t count = c.length - c.null_count;
     if (op == "count") return scalar<std::int64_t>(DType::Int64, count);
+    if (op == "first" || op == "last") throw nb::value_error("first/last are groupby reductions");
 
+    const DType result = reduction_dtype(op, c.dtype);  // the dtype of the answer, NA included
     const bool is_sum = op == "sum", is_mean = op == "mean", is_var = op == "var" || op == "std";
     const bool is_min = op == "min", is_max = op == "max";
-    if (!(is_sum || is_mean || is_var || is_min || is_max))
-        throw nb::value_error(("unknown reduction '" + std::string(op) + "'").c_str());
-    if (c.dtype == DType::String && !(is_min || is_max)) unsupported(op, c.dtype);
-    if (c.dtype == DType::Bool && is_var) unsupported(op, c.dtype);
     if (is_var && ddof < 0) throw nb::value_error("ddof must be >= 0");
-
-    // The dtype of the result, for an NA answer as well.
-    const DType result = is_sum ? (c.dtype == DType::Float64 ? DType::Float64 : DType::Int64)
-                         : (is_min || is_max) ? c.dtype
-                                              : DType::Float64;
     if (!skipna && c.null_count > 0) return na_value(result);
 
     if (is_sum) {

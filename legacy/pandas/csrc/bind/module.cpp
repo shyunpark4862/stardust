@@ -4,6 +4,7 @@
 #include "core/convert.hpp"
 #include "ops/cast.hpp"
 #include "ops/elementwise.hpp"
+#include "ops/groupby.hpp"
 #include "ops/hash.hpp"
 #include "ops/reduce.hpp"
 #include "ops/selection.hpp"
@@ -96,6 +97,11 @@ void bind_column(nb::module_& m) {
         .def("all_positions", &sd::LabelTable::all_positions, nb::arg("targets"));
     m.def("concat", &sd::concat, nb::arg("cols"));
     m.def("reduce", &sd::reduce, nb::arg("op"), nb::arg("col"), nb::arg("skipna"), nb::arg("ddof"));
+    nb::class_<sd::Groups>(m, "Groups")
+        .def(nb::init<const Column&, std::int64_t>(), nb::arg("codes"), nb::arg("ngroups"))
+        .def("sizes", &sd::Groups::sizes)
+        .def("reduce", &sd::Groups::reduce, nb::arg("op"), nb::arg("col"), nb::arg("skipna"), nb::arg("ddof"));
+    m.def("sort_groups", &sd::sort_groups, nb::arg("keys"));
     m.def("binary_op", &sd::binary_op, nb::arg("op"), nb::arg("a"), nb::arg("b"), nb::arg("scalar_side"));
     m.def("unary_op", &sd::unary_op, nb::arg("op"), nb::arg("a"));
     m.def("arange", &sd::arange, nb::arg("start"), nb::arg("step"), nb::arg("n"));

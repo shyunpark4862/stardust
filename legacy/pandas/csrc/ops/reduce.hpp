@@ -12,4 +12,11 @@ namespace sd {
 // one of sum mean min max count std var; ddof is used by std and var.
 Column reduce(std::string_view op, const Column& col, bool skipna, std::int64_t ddof);
 
+// The result dtype of `op` (sum mean min max count std var first last) on a
+// column of `dt`; TypeError for the combinations API.md §15 rules out.
+DType reduction_dtype(std::string_view op, DType dt);
+
+// A one-row NA Column of `dt`.
+Column na_scalar(DType dt);
+
 }  // namespace sd

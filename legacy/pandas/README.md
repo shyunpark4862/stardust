@@ -37,3 +37,4 @@ python3.15 -m venv .venv && .venv/bin/pip install nanobind scikit-build-core pyt
 - M3 (해싱: factorize, `unique`, `nunique`, `value_counts`, `duplicated`, `drop_duplicates`) 완료
 - M4 (Index와 조회 엔진, `.loc`/`.iloc`/`[]`, 정렬, `reindex`, 대입 + Copy-on-Write) 완료
 - M5 (리덕션: `sum`, `mean`, `min`, `max`, `count`, `std`, `var`) 완료
+- M6 (groupby: 단일/다중 키, 리덕션, `first`/`last`/`size`, `agg`) 완료

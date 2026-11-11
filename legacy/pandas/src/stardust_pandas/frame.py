@@ -172,6 +172,12 @@ class DataFrame(Reductions):
         cols = {k: _core.reduce(op, c, skipna, ddof) for k, c in self._cols.items()}
         return DataFrame._new(cols, Index._new(Column.from_list([op], NA, "string")))
 
+    def groupby(self, by, *, sort=True, dropna=True):
+        """Group the rows by the values of the key column(s) `by` (API.md §16)."""
+        from .groupby import GroupBy
+
+        return GroupBy(self, by, sort=sort, dropna=dropna)
+
     # --- duplicates and unique values (API.md §13) ---
 
     def _key_columns(self, subset):
