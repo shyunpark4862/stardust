@@ -47,13 +47,15 @@ private:
 // Scratch memory for one worker. The driver hands each worker its own, so a
 // body may reuse it across the matrices it processes.
 struct Scratch {
-    std::vector<std::byte> bytes;
+    static constexpr int kSlots = 4;
+    std::vector<std::byte> bytes[kSlots];  // independent areas; slot 0 is the default
     std::vector<lint> ints;
 
     template <class T>
-    T* get(std::size_t n) {
-        if (bytes.size() < n * sizeof(T)) bytes.resize(n * sizeof(T));
-        return reinterpret_cast<T*>(bytes.data());
+    T* get(std::size_t n, int slot = 0) {
+        std::vector<std::byte>& b = bytes[slot];
+        if (b.size() < n * sizeof(T)) b.resize(n * sizeof(T));
+        return reinterpret_cast<T*>(b.data());
     }
     lint* get_ints(std::size_t n) {
         if (ints.size() < n) ints.resize(n);

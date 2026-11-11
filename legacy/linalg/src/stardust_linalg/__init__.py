@@ -10,8 +10,33 @@ from ._results import SlogdetResult
 # The C++ core builds these Python objects itself (ARCHITECTURE.md §1).
 _core._setup(LinAlgError, SlogdetResult)
 
-from ._core import det, inv, slogdet, solve  # noqa: E402
+from ._core import (  # noqa: E402
+    det,
+    diagonal,
+    inv,
+    matrix_norm,
+    matrix_power,
+    outer,
+    slogdet,
+    solve,
+    trace,
+    vecdot,
+    vector_norm,
+)
 
 __version__ = "0.0.1"
 
-__all__ = ["LinAlgError", "det", "inv", "slogdet", "solve"]
+__all__ = [
+    "LinAlgError",
+    "det",
+    "diagonal",
+    "inv",
+    "matrix_norm",
+    "matrix_power",
+    "outer",
+    "slogdet",
+    "solve",
+    "trace",
+    "vecdot",
+    "vector_norm",
+]

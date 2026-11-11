@@ -20,8 +20,19 @@ struct OutBlock {
     std::unique_ptr<std::byte, Free> data;
     std::int64_t nbytes = 0;
     std::vector<Py_ssize_t> shape, strides;
-    bool cplx = false;
+    DType dtype = DType::Float64;
 };
+
+// The exact formats stardust-numpy exports, so it shares instead of copying
+// (stardust-numpy ARCHITECTURE.md §6.5).
+const char* format_of(DType d) {
+    switch (d) {
+        case DType::Bool: return "?";
+        case DType::Int64: return "q";
+        case DType::Float64: return "d";
+        default: return "Zd";
+    }
+}
 
 int block_getbuffer(PyObject* self, Py_buffer* view, int flags) {
     OutBlock& b = *nb::inst_ptr<OutBlock>(self);
@@ -34,9 +45,8 @@ int block_getbuffer(PyObject* self, Py_buffer* view, int flags) {
     view->obj = Py_NewRef(self);  // keeps the block alive while exported
     view->len = b.nbytes;
     view->readonly = 0;
-    view->itemsize = b.cplx ? 16 : 8;
-    // The exact formats stardust-numpy exports, so it shares instead of copying.
-    view->format = (flags & PyBUF_FORMAT) ? const_cast<char*>(b.cplx ? "Zd" : "d") : nullptr;
+    view->itemsize = itemsize(b.dtype);
+    view->format = (flags & PyBUF_FORMAT) ? const_cast<char*>(format_of(b.dtype)) : nullptr;
     view->ndim = static_cast<int>(b.shape.size());
     view->shape = b.shape.data();
     view->strides = b.strides.data();
@@ -48,9 +58,9 @@ int block_getbuffer(PyObject* self, Py_buffer* view, int flags) {
 PyType_Slot block_slots[] = {{Py_bf_getbuffer, reinterpret_cast<void*>(block_getbuffer)}, {0, nullptr}};
 
 // Allocates a block with the given shape and strides; `nbytes` spans all elements.
-Out alloc(std::vector<std::int64_t> shape, std::vector<std::int64_t> strides, std::int64_t nbytes, bool cplx) {
+Out alloc(const std::vector<std::int64_t>& shape, std::vector<std::int64_t> strides, std::int64_t nbytes, DType dt) {
     OutBlock b;
-    b.cplx = cplx;
+    b.dtype = dt;
     b.nbytes = nbytes;
     b.shape.assign(shape.begin(), shape.end());
     b.strides.assign(strides.begin(), strides.end());
@@ -66,44 +76,41 @@ Out alloc(std::vector<std::int64_t> shape, std::vector<std::int64_t> strides, st
     return out;
 }
 
-// C-order strides for the batch axes, starting from the size of one item.
-std::int64_t fill_batch_strides(const std::vector<std::int64_t>& batch, std::vector<std::int64_t>& strides,
-                                std::int64_t item) {
-    std::int64_t s = item;
-    for (std::size_t d = batch.size(); d-- > 0;) {
+// C-order strides for the leading `count` axes of `shape`, starting from the
+// byte size of one trailing block. Returns the total byte size.
+std::int64_t fill_c_strides(const std::vector<std::int64_t>& shape, std::size_t count,
+                            std::vector<std::int64_t>& strides, std::int64_t block) {
+    std::int64_t s = block;
+    for (std::size_t d = count; d-- > 0;) {
         strides[d] = s;
-        s *= batch[d];
+        s *= shape[d];
     }
-    return s;  // total bytes
+    return s;
 }
 
 }  // namespace
 
-Out alloc_matrices(const std::vector<std::int64_t>& batch, std::int64_t m, std::int64_t n, bool cplx) {
-    const std::int64_t isz = cplx ? 16 : 8;
+Out alloc_matrices(const std::vector<std::int64_t>& batch, std::int64_t m, std::int64_t n, DType dt) {
+    const std::int64_t isz = itemsize(dt);
     std::vector<std::int64_t> shape = batch, strides(batch.size() + 2);
     shape.push_back(m);
     shape.push_back(n);
     strides[batch.size()] = isz;
     strides[batch.size() + 1] = isz * m;
-    const std::int64_t total = fill_batch_strides(batch, strides, isz * m * n);
-    return alloc(std::move(shape), std::move(strides), total, cplx);
+    const std::int64_t total = fill_c_strides(shape, batch.size(), strides, isz * m * n);
+    return alloc(shape, std::move(strides), total, dt);
 }
 
-Out alloc_vectors(const std::vector<std::int64_t>& batch, std::int64_t m, bool cplx) {
-    const std::int64_t isz = cplx ? 16 : 8;
-    std::vector<std::int64_t> shape = batch, strides(batch.size() + 1);
+Out alloc_vectors(const std::vector<std::int64_t>& batch, std::int64_t m, DType dt) {
+    std::vector<std::int64_t> shape = batch;
     shape.push_back(m);
-    strides[batch.size()] = isz;
-    const std::int64_t total = fill_batch_strides(batch, strides, isz * m);
-    return alloc(std::move(shape), std::move(strides), total, cplx);
+    return alloc_c(shape, dt);
 }
 
-Out alloc_scalars(const std::vector<std::int64_t>& batch, bool cplx) {
-    const std::int64_t isz = cplx ? 16 : 8;
-    std::vector<std::int64_t> strides(batch.size());
-    const std::int64_t total = fill_batch_strides(batch, strides, isz);
-    return alloc(batch, std::move(strides), total, cplx);
+Out alloc_c(const std::vector<std::int64_t>& shape, DType dt) {
+    std::vector<std::int64_t> strides(shape.size());
+    const std::int64_t total = fill_c_strides(shape, shape.size(), strides, itemsize(dt));
+    return alloc(shape, std::move(strides), total, dt);
 }
 
 nb::object to_sdnp(const Out& out) {
@@ -115,6 +122,7 @@ nb::object to_sdnp(const Out& out) {
 
 nb::object py_scalar(double v) { return nb::steal(PyFloat_FromDouble(v)); }
 nb::object py_scalar(cplx v) { return nb::steal(PyComplex_FromDoubles(v.real(), v.imag())); }
+nb::object py_scalar(std::int64_t v) { return nb::steal(PyLong_FromLongLong(v)); }
 
 void bind_outblock(nb::module_& m) {
     nb::class_<OutBlock>(m, "_OutBlock", nb::type_slots(block_slots));

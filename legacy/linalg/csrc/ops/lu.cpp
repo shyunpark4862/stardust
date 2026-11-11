@@ -6,53 +6,17 @@
 //   inv   : getrf + getrs against the identity  (fastest up to n=128; inv(a) == solve(a, I) bit for bit)
 #include "ops/lu.hpp"
 
-#include "core/batch.hpp"
-#include "core/errors.hpp"
-#include "core/input.hpp"
 #include "core/outblock.hpp"
-#include "core/pack.hpp"
 #include "core/pyrefs.hpp"
-#include "lapack/lapack.hpp"
+#include "ops/common.hpp"
 
 #include <cmath>
 #include <limits>
 #include <string>
-#include <type_traits>
 
 namespace sdla {
 
 namespace {
-
-// Failure codes of the batch bodies.
-constexpr int kNonFinite = 1;   // in the matrix being factored
-constexpr int kSingular = 2;
-constexpr int kNonFiniteB = 3;  // in solve's right-hand side
-
-template <class F>
-nb::object with_type(bool complex, F&& f) {
-    if (complex) return f(std::type_identity<cplx>{});
-    return f(std::type_identity<double>{});
-}
-
-// Turns a batch failure into the Python exception (DESIGN.md §2.4).
-[[noreturn]] void raise(const Batch& b, const Failure& f, const char* func, const char* arg) {
-    if (f.code == kNonFinite)
-        throw nb::value_error(
-            failure_message(b, f.index, (std::string(func) + "(): '" + arg + "' contains NaN or infinity").c_str())
-                .c_str());
-    throw LinAlgError(failure_message(b, f.index, "singular matrix"));
-}
-
-// Packs the square matrix of `x` at byte offset `off` into scratch and factors it.
-// Returns the failure code (0, kNonFinite or kSingular); `a` and `ipiv` point into scratch.
-template <class T>
-int factor(const Input& x, std::int64_t off, lint n, Scratch& s, T*& a, lint*& ipiv) {
-    a = s.get<T>(static_cast<std::size_t>(n * n));
-    ipiv = s.get_ints(static_cast<std::size_t>(n));
-    if (!pack(x.dtype(), x.data() + off, n, n, x.stride(-2), x.stride(-1), a, n, true)) return kNonFinite;
-    if (n == 0) return 0;
-    return lapack::getrf(n, n, a, n, ipiv) > 0 ? kSingular : 0;
-}
 
 // sign * exp(logabs) = det, from an LU factorization. Singular: (0, -inf).
 template <class T>
@@ -90,7 +54,7 @@ template <class T, class Emit>
 int det_body(const Input& x, lint n, std::int64_t off, Scratch& s, Emit&& emit) {
     T* a;
     lint* ipiv;
-    const int code = factor<T>(x, off, n, s, a, ipiv);
+    const int code = lu_factor<T>(x, off, n, s, a, ipiv);
     if (code == kNonFinite) return code;
     emit(a, ipiv, code == kSingular);
     return 0;
@@ -112,8 +76,8 @@ nb::object det(nb::handle xo) {
             if (f) raise(b, f, "det", "x");
             return py_scalar(d);
         }
-        Out out = alloc_scalars(b.shape(), std::is_same_v<T, cplx>);
-        T* res = reinterpret_cast<T*>(out.data);
+        Out out = alloc_c(b.shape(), dtype_of<T>());
+        T* res = out.as<T>();
         const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             return det_body<T>(x, n, off[0], s, [&](const T* lu, const lint* ipiv, bool sing) {
                 res[i] = det_of(lu, ipiv, n, sing);
@@ -147,10 +111,10 @@ nb::object slogdet(nb::handle xo) {
             if (f) raise(b, f, "slogdet", "x");
             return make_result(py_scalar(sign), py_scalar(logabs));
         }
-        Out sign_out = alloc_scalars(b.shape(), std::is_same_v<T, cplx>);
-        Out logabs_out = alloc_scalars(b.shape(), false);
-        T* sign = reinterpret_cast<T*>(sign_out.data);
-        double* logabs = reinterpret_cast<double*>(logabs_out.data);
+        Out sign_out = alloc_c(b.shape(), dtype_of<T>());
+        Out logabs_out = alloc_c(b.shape(), DType::Float64);
+        T* sign = sign_out.as<T>();
+        double* logabs = logabs_out.as<double>();
         const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             return det_body<T>(x, n, off[0], s, [&](const T* lu, const lint* ipiv, bool sing) {
                 sign_logabs(lu, ipiv, n, sing, sign[i], logabs[i]);
@@ -167,17 +131,13 @@ nb::object inv(nb::handle xo) {
     const lint n = x.shape(-1);
     Batch b({{x.batch_shape(2), x.batch_strides(2)}}, "inv");
     return with_type(computes_complex(x.dtype()), [&]<class T>(std::type_identity<T>) -> nb::object {
-        Out out = alloc_matrices(b.shape(), n, n, std::is_same_v<T, cplx>);
-        T* res = reinterpret_cast<T*>(out.data);
+        Out out = alloc_matrices(b.shape(), n, n, dtype_of<T>());
+        T* res = out.as<T>();
         const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             T* a;
             lint* ipiv;
-            if (const int code = factor<T>(x, off[0], n, s, a, ipiv)) return code;
-            if (n == 0) return 0;
-            T* r = res + i * n * n;  // this element's slot; the output is filled in place
-            for (lint k = 0; k < n * n; ++k) r[k] = T(0);
-            for (lint k = 0; k < n; ++k) r[k * n + k] = T(1);
-            lapack::getrs('N', n, n, a, n, ipiv, r, n);
+            if (const int code = lu_factor<T>(x, off[0], n, s, a, ipiv)) return code;
+            lu_inverse(a, ipiv, n, res + i * n * n);  // this element's slot, filled in place
             return 0;
         });
         if (f) raise(b, f, "inv", "x");
@@ -204,19 +164,17 @@ nb::object solve(nb::handle ao, nb::handle bo) {
     const std::int64_t cs = vec ? 0 : y.stride(-1);
     const bool complex = computes_complex(a.dtype()) || computes_complex(y.dtype());
     return with_type(complex, [&]<class T>(std::type_identity<T>) -> nb::object {
-        Out out = vec ? alloc_vectors(b.shape(), n, std::is_same_v<T, cplx>)
-                      : alloc_matrices(b.shape(), n, k, std::is_same_v<T, cplx>);
-        T* res = reinterpret_cast<T*>(out.data);
+        Out out = vec ? alloc_vectors(b.shape(), n, dtype_of<T>()) : alloc_matrices(b.shape(), n, k, dtype_of<T>());
+        T* res = out.as<T>();
         const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             T* lu;
             lint* ipiv;
-            if (const int code = factor<T>(a, off[0], n, s, lu, ipiv)) return code;
+            if (const int code = lu_factor<T>(a, off[0], n, s, lu, ipiv)) return code;
             T* x = res + i * n * k;  // b is packed straight into the output slot (ARCHITECTURE.md §3.2)
             if (!pack(y.dtype(), y.data() + off[1], n, k, rs, cs, x, n, true)) return kNonFiniteB;
             if (n > 0 && k > 0) lapack::getrs('N', n, k, lu, n, ipiv, x, n);
             return 0;
         });
-        if (f.code == kNonFiniteB) raise(b, {f.index, kNonFinite}, "solve", "b");
         if (f) raise(b, f, "solve", "a");
         return to_sdnp(out);
     });

@@ -34,6 +34,9 @@ public:
     std::span<const Py_ssize_t> batch_shape(int core) const { return {view_.shape, size_t(view_.ndim - core)}; }
     std::span<const Py_ssize_t> batch_strides(int core) const { return {view_.strides, size_t(view_.ndim - core)}; }
 
+    std::span<const Py_ssize_t> shape_span() const { return {view_.shape, size_t(view_.ndim)}; }
+    std::span<const Py_ssize_t> strides_span() const { return {view_.strides, size_t(view_.ndim)}; }
+
     const char* func() const { return func_; }
     const char* arg() const { return arg_; }
 

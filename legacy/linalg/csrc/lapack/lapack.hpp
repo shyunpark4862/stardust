@@ -34,4 +34,15 @@ lint getrs(char trans, lint n, lint nrhs, const T* a, lint lda, const lint* ipiv
     return checked(info, "getrs");
 }
 
+// C = A B for n x n column-major matrices (BLAS gemm; C must not alias A or B).
+template <class T>
+void gemm_square(lint n, const T* a, const T* b, T* c) {
+    if constexpr (std::is_same_v<T, double>) {
+        cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, n, n, n, 1.0, a, n, b, n, 0.0, c, n);
+    } else {
+        const T one(1.0), zero(0.0);
+        cblas_zgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, n, n, n, &one, a, n, b, n, &zero, c, n);
+    }
+}
+
 }  // namespace sdla::lapack

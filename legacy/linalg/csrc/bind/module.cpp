@@ -2,7 +2,9 @@
 #include "core/errors.hpp"
 #include "core/outblock.hpp"
 #include "core/pyrefs.hpp"
+#include "ops/basic.hpp"
 #include "ops/lu.hpp"
+#include "ops/norms.hpp"
 
 #include <nanobind/nanobind.h>
 
@@ -13,4 +15,6 @@ NB_MODULE(_core, m) {
     sdla::bind_setup(m);
     sdla::bind_outblock(m);
     sdla::bind_lu(m);
+    sdla::bind_basic(m);
+    sdla::bind_norms(m);
 }

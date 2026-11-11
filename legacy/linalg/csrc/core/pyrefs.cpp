@@ -21,6 +21,8 @@ void load_sdnp_refs() {
     refs().ndarray_type = keep(sdnp.attr("ndarray"));
     refs().asarray = keep(sdnp.attr("asarray"));
     refs().get_num_threads = keep(sdnp.attr("get_num_threads"));
+    const char* names[4] = {"bool", "int64", "float64", "complex128"};
+    for (int i = 0; i < 4; ++i) refs().dtypes[i] = keep(sdnp.attr(names[i]));
 }
 
 void bind_setup(nb::module_& m) {

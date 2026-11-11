@@ -16,12 +16,15 @@ find_package(nanobind CONFIG REQUIRED)
 # NOMINSIZE: nanobind compiles extensions with -Os by default, which comes
 # after -O3 on the command line and wins (stardust-numpy measured this in M7.1).
 nanobind_add_module(_core NB_STATIC NOMINSIZE
+  csrc/core/args.cpp
   csrc/core/batch.cpp
   csrc/core/errors.cpp
   csrc/core/input.cpp
   csrc/core/outblock.cpp
   csrc/core/pyrefs.cpp
+  csrc/ops/basic.cpp
   csrc/ops/lu.cpp
+  csrc/ops/norms.cpp
   csrc/bind/module.cpp)
 
 target_include_directories(_core PRIVATE csrc)

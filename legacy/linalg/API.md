@@ -29,7 +29,7 @@
 
 ### 0.3 결과
 - **결과 dtype은 입력 dtype만으로 정해진다.** 값에 따라 dtype이 바뀌지 않는다.
-  - bool, int64 입력은 float64로 계산한다.
+  - bool, int64 입력은 float64로 계산한다. 원소를 꺼내기만 하는 `diagonal`은 예외로, 입력 dtype을 유지한다 (DESIGN §2.11).
   - `eig`, `eigvals`는 입력이 실수여도 항상 complex128이다.
   - 고유값(`eigh`), 특이값, 노름은 complex 입력에서도 float64다.
   - `matrix_rank`와 `lstsq`의 `rank`는 int64다.
@@ -69,11 +69,14 @@
 vecdot(x1, x2, /, *, axis=-1)          # x1의 켤레를 쓴다 (Array API)
 outer(x1, x2, /)                       # (..., M), (..., N) -> (..., M, N)
 trace(x, /, *, k=0, dtype=None)
-diagonal(x, /, *, k=0)                 # 복사본을 반환한다
+diagonal(x, /, *, k=0)                 # 복사본을 반환한다. 입력 dtype을 유지한다
 matrix_power(x, n, /)                  # n은 int. 음수면 역행렬의 거듭제곱
 kron(x1, x2, /)                        # 확장 단계
 cross(x1, x2, /, *, axis=-1)           # 확장 단계, 축 길이 3
 ```
+- `trace(dtype=)`는 `sdnp.sum`의 `dtype=`과 같다. 입력을 그 dtype으로 명시적 변환한 뒤 누적한다 (DESIGN §2.11).
+- `matrix_power`는 n < 0일 때만 NaN/inf를 검사한다. n < 0의 역행렬은 `inv`와 같은 경로다 (DESIGN §2.11).
+- `vecdot`의 `axis`는 브로드캐스트된 shape 기준이다. 축약하는 축의 크기는 두 입력이 같아야 한다.
 
 ## 2. 노름과 지표
 ```

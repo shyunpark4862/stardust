@@ -12,6 +12,7 @@ struct PyRefs {
     PyObject* ndarray_type = nullptr;
     PyObject* asarray = nullptr;
     PyObject* get_num_threads = nullptr;
+    PyObject* dtypes[4] = {};  // sdnp.bool, sdnp.int64, sdnp.float64, sdnp.complex128 (DType order)
     // From stardust_linalg's Python files, via _core._setup().
     PyObject* linalg_error = nullptr;
     PyObject* slogdet_result = nullptr;

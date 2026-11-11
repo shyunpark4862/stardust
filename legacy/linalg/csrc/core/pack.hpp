@@ -7,29 +7,13 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
-#include <type_traits>
 
 namespace sdla {
 
-namespace detail {
-
-template <class S>
-inline S load(const std::byte* p) {
-    S v;
-    std::memcpy(&v, p, sizeof(S));
-    return v;
-}
-
-template <class T, class S>
-inline T convert(S v) {
-    if constexpr (std::is_same_v<S, std::uint8_t>) return T(v != 0 ? 1.0 : 0.0);
-    else if constexpr (std::is_same_v<S, std::int64_t>) return T(static_cast<double>(v));
-    else return T(v);  // double -> double/complex, complex -> complex
-}
-
 inline bool finite(double v) { return std::isfinite(v); }
 inline bool finite(cplx v) { return std::isfinite(v.real()) && std::isfinite(v.imag()); }
+
+namespace detail {
 
 // The loop for one source type S. Only float sources can hold NaN or inf.
 template <class T, class S>
@@ -62,15 +46,10 @@ bool pack_loop(const std::byte* p, std::int64_t m, std::int64_t n, std::int64_t 
 template <class T>
 bool pack(DType src, const std::byte* p, std::int64_t m, std::int64_t n, std::int64_t rs, std::int64_t cs, T* dst,
           std::int64_t ld, bool check) {
-    switch (src) {
-        case DType::Bool: return detail::pack_loop<T, std::uint8_t>(p, m, n, rs, cs, dst, ld, check);
-        case DType::Int64: return detail::pack_loop<T, std::int64_t>(p, m, n, rs, cs, dst, ld, check);
-        case DType::Float64: return detail::pack_loop<T, double>(p, m, n, rs, cs, dst, ld, check);
-        case DType::Complex128:
-            if constexpr (std::is_same_v<T, cplx>) return detail::pack_loop<T, cplx>(p, m, n, rs, cs, dst, ld, check);
-            break;
-    }
-    return false;  // unreachable: complex into double
+    return visit_storage(src, [&]<class S>(std::type_identity<S>) {
+        if constexpr (std::is_same_v<S, cplx> && !std::is_same_v<T, cplx>) return false;  // unreachable
+        else return detail::pack_loop<T, S>(p, m, n, rs, cs, dst, ld, check);
+    });
 }
 
 }  // namespace sdla
