@@ -1,4 +1,4 @@
-// Basic operations: vecdot, outer, trace, diagonal, matrix_power (API.md §1; ROADMAP.md M2).
+// Basic operations: vecdot, outer, trace, diagonal, matrix_power, kron, cross (API.md §1; ROADMAP.md M2, M10).
 //
 // None of these calls LAPACK, so NaN and inf pass through unchecked
 // (DESIGN.md §2.4) -- except matrix_power with n < 0, which inverts through
@@ -294,9 +294,101 @@ nb::object matrix_power(nb::handle xo, nb::handle n_o) {
     });
 }
 
+// ----------------------------------------------------------------- kron --
+
+nb::object kron(nb::handle x1o, nb::handle x2o) {
+    Input x(x1o, "kron", "x1");
+    Input y(x2o, "kron", "x2");
+    require_matrix(x);
+    require_matrix(y);
+    // (..., M, N) (x) (..., P, Q) -> (..., M*P, N*Q); the batch axes broadcast like
+    // every other matrix function's (M10, user decision; np.kron differs for ndim > 2).
+    const std::int64_t m = x.shape(-2), n = x.shape(-1), p = y.shape(-2), q = y.shape(-1);
+    Batch b({{x.batch_shape(2), x.batch_strides(2)}, {y.batch_shape(2), y.batch_strides(2)}}, "kron");
+    const bool complex = computes_complex(x.dtype()) || computes_complex(y.dtype());
+    return with_type(complex, [&]<class T>(std::type_identity<T>) -> nb::object {
+        Out out = alloc_matrices(b.shape(), m * p, n * q, dtype_of<T>());
+        T* res = out.as<T>();
+        const std::int64_t rows = m * p, block = rows * n * q;
+        run_batch(b, cost(kCopy, double(block)), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+            // both operands converted into scratch once, column-major; NaN passes through
+            T* a = s.get<T>(static_cast<std::size_t>(m * n), 0);
+            T* c = s.get<T>(static_cast<std::size_t>(p * q), 1);
+            pack(x.dtype(), x.data() + off[0], m, n, x.stride(-2), x.stride(-1), a, m, false);
+            pack(y.dtype(), y.data() + off[1], p, q, y.stride(-2), y.stride(-1), c, p, false);
+            T* o = res + i * block;
+            // result column j*q + l, row block i: a[i, j] * c[:, l], with a on the left as
+            // np.kron's multiply (the complex product's bits depend on the order)
+            for (std::int64_t j = 0; j < n; ++j)
+                for (std::int64_t l = 0; l < q; ++l) {
+                    T* col = o + (j * q + l) * rows;
+                    const T* cl = c + l * p;
+                    for (std::int64_t r = 0; r < m; ++r) {
+                        const T arj = a[j * m + r];
+                        T* dst = col + r * p;
+                        for (std::int64_t k = 0; k < p; ++k) dst[k] = mul(arj, cl[k]);
+                    }
+                }
+            return 0;
+        });
+        return to_sdnp(out);
+    });
+}
+
+// ---------------------------------------------------------------- cross --
+
+nb::object cross(nb::handle x1o, nb::handle x2o, nb::handle axis_o) {
+    Input x(x1o, "cross", "x1");
+    Input y(x2o, "cross", "x2");
+    const int nd = std::max(x.ndim(), y.ndim());
+    // As vecdot: the axis counts in the broadcast shape and is not broadcast itself (Array API).
+    const int ax = normalize_axis(parse_int(axis_o, "cross", "axis"), nd, "cross");
+    Padded px(x, nd), py(y, nd);
+    if (px.shape[ax] != 3 || py.shape[ax] != 3)
+        throw nb::value_error(("cross(): 'x1' and 'x2' must have size 3 along the axis, got " +
+                               std::to_string(px.shape[ax]) + " and " + std::to_string(py.shape[ax]))
+                                  .c_str());
+    const std::int64_t sx = px.strides[ax], sy = py.strides[ax];
+    px.erase(ax);
+    py.erase(ax);
+    Batch b({{px.shape, px.strides}, {py.shape, py.strides}}, "cross");
+    // The result: the broadcast shape with the vector axis back in its place, C order.
+    std::vector<std::int64_t> shape = b.shape();
+    shape.insert(shape.begin() + ax, 3);
+    std::int64_t inner = 1;  // elements between two components of one result vector
+    for (std::size_t d = static_cast<std::size_t>(ax); d < b.ndim(); ++d) inner *= b.shape()[d];
+    const bool complex = computes_complex(x.dtype()) || computes_complex(y.dtype());
+    return with_type(complex, [&]<class T>(std::type_identity<T>) -> nb::object {
+        Out out = alloc_c(shape, dtype_of<T>());
+        T* res = out.as<T>();
+        visit_storage(x.dtype(), [&]<class SX>(std::type_identity<SX>) {
+            visit_storage(y.dtype(), [&]<class SY>(std::type_identity<SY>) {
+                if constexpr (!((std::is_same_v<SX, cplx> || std::is_same_v<SY, cplx>) && !std::is_same_v<T, cplx>)) {
+                    run_batch(b, cost(kCopy, 6), [&](std::int64_t i, const std::int64_t* off, Scratch&) {
+                        T u[3], v[3];
+                        for (int k = 0; k < 3; ++k) {
+                            u[k] = convert<T>(load<SX>(x.data() + off[0] + k * sx));
+                            v[k] = convert<T>(load<SY>(y.data() + off[1] + k * sy));
+                        }
+                        T* o = res + (i / inner) * 3 * inner + i % inner;
+                        // numpy's cross: each product rounded, then the difference
+                        o[0] = mul(u[1], v[2]) - mul(u[2], v[1]);
+                        o[inner] = mul(u[2], v[0]) - mul(u[0], v[2]);
+                        o[2 * inner] = mul(u[0], v[1]) - mul(u[1], v[0]);
+                        return 0;
+                    });
+                }
+            });
+        });
+        return to_sdnp(out);
+    });
+}
+
 }  // namespace
 
 void bind_basic(nb::module_& m) {
+    m.def("kron", &kron, nb::arg().none(), nb::arg().none());
+    m.def("cross", &cross, nb::arg().none(), nb::arg().none(), nb::kw_only(), nb::arg("axis") = -1);
     m.def("vecdot", &vecdot, nb::arg().none(), nb::arg().none(), nb::kw_only(), nb::arg("axis") = -1);
     m.def("outer", &outer, nb::arg().none(), nb::arg().none());
     m.def("trace", &trace, nb::arg().none(), nb::kw_only(), nb::arg("k") = 0, nb::arg("dtype").none() = nb::none());

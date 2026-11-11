@@ -23,6 +23,7 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/core/outblock.cpp
   csrc/core/pyrefs.cpp
   csrc/ops/basic.cpp
+  csrc/ops/expm.cpp
   csrc/ops/factor.cpp
   csrc/ops/lu.cpp
   csrc/ops/nonsym.cpp

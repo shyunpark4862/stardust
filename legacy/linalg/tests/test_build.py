@@ -13,6 +13,7 @@ def test_import_and_surface():
         "eigh", "eigvalsh", "svd", "svdvals", "matrix_rank", "pinv", "cond",
         "eig", "eigvals", "schur", "hessenberg", "ldl",
         "solve_tridiagonal", "solve_banded", "solve_sylvester",
+        "kron", "cross", "expm",
     }
     for name in sdla.__all__:
         assert hasattr(sdla, name)

@@ -74,12 +74,18 @@ outer(x1, x2, /)                       # (..., M), (..., N) -> (..., M, N)
 trace(x, /, *, k=0, dtype=None)
 diagonal(x, /, *, k=0)                 # 복사본을 반환한다. 입력 dtype을 유지한다
 matrix_power(x, n, /)                  # n은 int. 음수면 역행렬의 거듭제곱
-kron(x1, x2, /)                        # 확장 단계
-cross(x1, x2, /, *, axis=-1)           # 확장 단계, 축 길이 3
+kron(x1, x2, /)                        # (..., M, N), (..., P, Q) -> (..., M·P, N·Q)  (M10)
+cross(x1, x2, /, *, axis=-1)           # 축 길이 3  (M10)
 ```
 - `trace(dtype=)`는 `sdnp.sum`의 `dtype=`과 같다. 입력을 그 dtype으로 명시적 변환한 뒤 누적한다 (DESIGN §2.11).
 - `matrix_power`는 n < 0일 때만 NaN/inf를 검사한다. n < 0의 역행렬은 `inv`와 같은 경로다 (DESIGN §2.11).
 - `vecdot`의 `axis`는 브로드캐스트된 shape 기준이다. 축약하는 축의 크기는 두 입력이 같아야 한다.
+- `kron`은 마지막 두 축(행렬)끼리의 크로네커 곱이고, 배치 축은 다른 행렬 함수처럼 브로드캐스트한다 (DESIGN §2.19).
+  - 2차원 입력에서는 `np.kron`과 비트까지 같다. 3차원 이상에서는 다르다: `np.kron`은 배치 축까지 곱한다.
+  - 입력은 2차원 이상이어야 한다. 벡터의 크로네커 곱은 `(1, N)`으로 reshape해서 넣는다.
+- `cross`의 `axis`도 `vecdot`처럼 브로드캐스트된 shape 기준이고, 그 축 자체는 브로드캐스트하지 않는다. 두 입력 모두 그 축의 길이가 3이어야 한다(2는 받지 않는다, Array API).
+  - 결과는 브로드캐스트된 shape, C-order다. 켤레를 취하지 않는다. `np.cross`와 비트까지 같다.
+- `kron`, `cross`는 LAPACK을 부르지 않으므로 NaN/inf를 그대로 전파한다. bool, int64 입력은 float64로 계산한다(numpy는 정수를 유지한다).
 
 ## 2. 노름과 지표
 ```
@@ -161,8 +167,12 @@ solve_sylvester(a, b, c, /)           # a x + x b = c를 푼다
 
 ## 6. 확장 단계
 ```
-expm(x, /)
+expm(x, /)                      # 행렬 지수 함수 (M10)
 ```
+- Al-Mohy–Higham 2009의 scaling & squaring + Padé 근사다(scipy와 같은 알고리즘). 직접 구현했다 (DESIGN §2.19).
+- 정사각만 받는다. NaN/inf가 있으면 `ValueError`다(마지막 풀기가 LAPACK이므로 §2.4). 대각 행렬도 같다.
+- 대각 행렬은 대각의 `exp`를 그대로 쓴다. 삼각 행렬은 결과도 삼각이고, 반대쪽 삼각은 정확히 0이다.
+- 결과가 넘치면(예: 고유값의 실수부가 710보다 크면) `inf`가 나온다. 경고나 에러는 없다.
 - randomized SVD의 시그니처는 난수 생성을 정한 뒤에 정한다.
 
 ## 7. 예외

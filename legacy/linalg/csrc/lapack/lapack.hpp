@@ -485,4 +485,26 @@ void gemm_square(lint n, const T* a, const T* b, T* c) {
     }
 }
 
+// y = op(A) x for an n x n column-major A; op 'N', 'T' or 'C' (conjugate transpose).
+template <class T>
+void gemv(char op, lint n, const T* a, const T* x, T* y) {
+    const auto o = op == 'N' ? CblasNoTrans : (op == 'T' ? CblasTrans : CblasConjTrans);
+    if constexpr (std::is_same_v<T, double>) {
+        cblas_dgemv(CblasColMajor, o, n, n, 1.0, a, n, x, 1, 0.0, y, 1);
+    } else {
+        const T one(1.0), zero(0.0);
+        cblas_zgemv(CblasColMajor, o, n, n, &one, a, n, x, 1, &zero, y, 1);
+    }
+}
+
+// One step of the 1-norm estimator (Hager 1984, Higham 1988), reverse
+// communication: on return kase = 1 asks for x <- A x, kase = 2 for
+// x <- A^H x, kase = 0 means `est` is final. Deterministic (no random start).
+// isgn (n ints) is used by the real version only.
+template <class T>
+void lacn2(lint n, T* v, T* x, lint* isgn, double& est, lint& kase, lint* isave) {
+    if constexpr (std::is_same_v<T, double>) dlacn2_(&n, v, x, isgn, &est, &kase, isave);
+    else zlacn2_(&n, v, x, &est, &kase, isave);
+}
+
 }  // namespace sdla::lapack

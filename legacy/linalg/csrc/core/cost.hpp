@@ -25,7 +25,8 @@ inline constexpr Family kEig{700, 200};        // eig, eigvals, schur
 inline constexpr Family kSylvester{500, 370};  // solve_sylvester, w = (m^2 + n^2) / 2
 inline constexpr Family kBanded{20, 3};        // solve_tridiagonal, solve_banded, w = n * (bandwidths + 1)
 inline constexpr Family kStream{12, 0.3};      // vecdot, norms, trace: w = elements summed (per output)
-inline constexpr Family kCopy{2, 0.5};         // diagonal, outer: w = elements copied
+inline constexpr Family kCopy{2, 0.5};         // diagonal, outer, kron, cross: w = elements copied
+inline constexpr Family kExpm{600, 15};        // expm (M10, experiments/m10_expm/out/percost.txt)
 
 inline double cost(Family f, double w) { return f.a + f.c * w; }
 

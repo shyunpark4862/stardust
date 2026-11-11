@@ -4,6 +4,7 @@
 #include "core/outblock.hpp"
 #include "core/pyrefs.hpp"
 #include "ops/basic.hpp"
+#include "ops/expm.hpp"
 #include "ops/factor.hpp"
 #include "ops/lu.hpp"
 #include "ops/nonsym.hpp"
@@ -28,6 +29,7 @@ NB_MODULE(_core, m) {
     sdla::bind_spectral(m);
     sdla::bind_nonsym(m);
     sdla::bind_special(m);
+    sdla::bind_expm(m);
     // For experiments/m9_threshold only: move the split constants (M9).
     m.def("_set_tuning", [](double min_ns, double task_ns) {
         sdla::kParallelMinNs = min_ns;
