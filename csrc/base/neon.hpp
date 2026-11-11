@@ -1,5 +1,6 @@
-// Hand-written NEON kernels for contiguous runs (M7.3), used where the
-// compiler's own vectorization of the scalar definition falls short.
+// Hand-written NEON kernels for contiguous runs (docs/design/array.md §5.2),
+// used where the compiler's own vectorization of the scalar definition
+// falls short.
 //
 // Every kernel here must give exactly the bits of its scalar definition in
 // scalar_ops.hpp (and so of numpy): tests compare all layouts bit for bit.
@@ -25,7 +26,8 @@ struct neon_binary {
 // maximum/minimum: FMAX/FMIN implement IEEE 754-2019 maximum/minimum in one
 // instruction -- NaN propagates and -0 < +0 -- which is exactly fmax_nan.
 // The scalar version needs three branches per element, which the compiler
-// vectorizes into extra compares and selects (M7.2 measured it slower).
+// vectorizes into extra compares and selects (measured slower,
+// docs/design/array.md §5.2).
 namespace detail {
 
 // o = op(a, b) with FMAX/FMIN; a stride of 0 means "a broadcast scalar".

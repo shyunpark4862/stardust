@@ -1,4 +1,4 @@
-"""M1: asarray from nested sequences, ndarrays and Python scalars."""
+"""asarray from nested sequences, ndarrays and Python scalars."""
 
 import math
 
@@ -31,7 +31,7 @@ INT64_MIN = -(2**63)
         [[], []],
         [-0.0, math.inf, -math.inf],
         [INT64_MIN, INT64_MAX],
-        [2**63, 0.5],  # Z4: a big int is fine when the target is float64
+        [2**63, 0.5],  # a big int is fine when the target is float64 (docs/api/array.md §1.5)
     ],
 )
 def test_nested_sequences_match_numpy(data):
@@ -57,7 +57,7 @@ def test_unsupported_types_are_type_errors(data):
 
 @pytest.mark.parametrize("scalar", [5, 2.5, True, 1j])
 def test_scalars_are_rejected_no_zero_dim(scalar):
-    with pytest.raises(ValueError):  # Z2
+    with pytest.raises(ValueError):  # docs/api/array.md §1.2
         sd.asarray(scalar)
 
 
@@ -138,7 +138,7 @@ def test_copy_argument_must_be_bool_or_none(bad):
 
 def test_keyword_only_and_positional_only():
     with pytest.raises(TypeError):
-        sd.asarray([1], sd.int64)  # C1: options are keyword-only
+        sd.asarray([1], sd.int64)  # options are keyword-only (docs/api/array.md §1.1)
     with pytest.raises(TypeError):
         sd.asarray(obj=[1])  # the array argument is positional-only
 

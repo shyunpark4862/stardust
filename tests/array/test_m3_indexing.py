@@ -1,4 +1,4 @@
-"""M3: basic indexing (int, slice, ..., newaxis), assignment, len and iteration."""
+"""Basic indexing (int, slice, ..., newaxis), assignment, len and iteration."""
 
 import math
 
@@ -37,13 +37,13 @@ def test_full_integer_index_gives_python_scalars(dtype):
     v = a[1, 2]
     assert type(v) is {sd.bool: bool, sd.int64: int, sd.float64: float, sd.complex128: complex}[dtype]
     assert type(sd.arange(3)[-1]) is int
-    assert type(a[1, ..., 2]) is type(v)  # Z1: never a 0-d array
+    assert type(a[1, ..., 2]) is type(v)  # never a 0-d array (docs/api/array.md §1.2)
 
 
 @pytest.mark.parametrize("key,exc", [
     (3, IndexError), (-4, IndexError), ((0, 0, 0), IndexError), ((Ellipsis, Ellipsis), IndexError),
     (1.0, IndexError), ("a", IndexError), (slice(None, None, 0), ValueError), (2**70, IndexError),
-    (True, IndexError),  # no 0-d masks (M6 decision)
+    (True, IndexError),  # no 0-d masks (docs/api/array.md §5.1)
 ])
 def test_getitem_errors(key, exc):
     _, a = grid(3, 4)
@@ -133,7 +133,7 @@ def test_setitem_refuses_implicit_downcast():
         i[:] = sd.asarray([1.0, 2.0, 3.0])
     b = sd.zeros(2, dtype=sd.bool)
     with pytest.raises(TypeError):
-        b[0] = 1  # int -> bool would be a downcast (S6), even for 0 and 1
+        b[0] = 1  # int -> bool would be a downcast (docs/api/array.md §1.5), even for 0 and 1
     b[0] = True
     f = sd.zeros(2)
     with pytest.raises(TypeError):
@@ -145,7 +145,7 @@ def test_setitem_refuses_implicit_downcast():
 def test_setitem_integer_range():
     i = sd.zeros(2, dtype=sd.int64)
     with pytest.raises(OverflowError):
-        i[0] = 2**63  # Z4
+        i[0] = 2**63  # docs/api/array.md §1.5
     f = sd.zeros(2)
     f[0] = 2**70  # fine: the target is float64
     assert f[0] == float(2**70)

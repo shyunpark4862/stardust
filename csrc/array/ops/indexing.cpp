@@ -54,7 +54,7 @@ Item classify(nb::handle o) {
     if (p == Py_Ellipsis) return Item(Kind::Ellipsis, o);
     if (PySlice_Check(p)) return Item(Kind::Slice, o);
     // numpy reads a bool as a 0-d mask; with no 0-d arrays that is just
-    // confusing next to x[1] (M6 decision).
+    // confusing next to x[1] (docs/design/array.md §7.1).
     if (PyBool_Check(p)) raise(PyExc_IndexError, "a bool is not a valid index; use an int, or a boolean array");
     if (is_ndarray(o)) return array_item(o, nb::borrow(o));
     const bool text = PyUnicode_Check(p) || PyBytes_Check(p);  // sequences, but never indices
@@ -83,7 +83,8 @@ Item classify(nb::handle o) {
 
 // The items of one key, stored in place: a key has at most 32 axis-consuming
 // items, 32 newaxis and one ellipsis, so a fixed capacity is enough, and a
-// std::vector's growth allocations were most of the cost of x[1, 2] (M7.7).
+// std::vector's growth allocations were most of the cost of x[1, 2]
+// (docs/design/array.md §7.1).
 class Items {
 public:
     static constexpr int kCapacity = 2 * kMaxNdim + 1;
@@ -115,8 +116,8 @@ private:
 //
 // A single boolean mask as the only advanced item is kept as the mask itself
 // (`mask`, covering axes [first, first + mask.ndim)): it is applied by
-// walking it once and copying where it is true ("compress", ARCHITECTURE.md
-// §6.1) instead of first turning it into coordinate arrays (M7.8).
+// walking it once and copying where it is true ("compress") instead of
+// first turning it into coordinate arrays (docs/design/array.md §7.4).
 struct Plan {
     NDArray view;  // ndim may be 0 internally (all ints): never escapes
     int first = 0;
@@ -175,7 +176,8 @@ Plan make_plan(nb::handle x, nb::handle key) {
 
     // Next to an array, an int is an advanced index too (numpy's rule). The
     // advanced items must sit side by side: numpy moves the index dimensions
-    // to the front otherwise, a rule stardust removes by refusing (API.md §4).
+    // to the front otherwise, a rule stardust removes by refusing
+    // (docs/api/array.md §5.2).
     auto advanced = [&](const Item& it) { return it.kind == Kind::Array || (any_array && it.kind == Kind::Int); };
     int first_item = -1, last_item = -1;
     for (int i = 0; i < items.size(); ++i)
@@ -301,7 +303,8 @@ std::vector<std::int64_t> index_shape(const Plan& plan) {
 // when `w_strides` is given, into the offset in a second array laid out over
 // the result shape (the value of a scatter). Offsets are produced a chunk at a
 // time into small buffers and handed to emit(view_off, w_off, n, first_b)
-// right away, so they never make a full pass through memory (M7.8).
+// right away, so they never make a full pass through memory
+// (docs/design/array.md §7.3).
 template <typename Emit>
 void for_each_offset_chunk(const Plan& plan, std::span<const std::int64_t> bshape, const std::int64_t* w_strides,
                            Emit&& emit) {
@@ -375,8 +378,8 @@ std::vector<std::int64_t> result_shape(const Plan& plan, std::span<const std::in
     return shape;
 }
 
-// The fresh result of an advanced index, laid out like the view (M10+, user
-// decision 2026-11-10), as the result of an elementwise operation is: the
+// The fresh result of an advanced index, laid out like the view, as the
+// result of an elementwise operation is (docs/design/array.md §7.3): the
 // view's axes keep their memory order, and the index axes B take the place
 // of the indexed axes (at the outermost of them), in C order among
 // themselves. An F-ordered mT[:, rows] is then an F-ordered result, filled
@@ -421,8 +424,8 @@ NDArray block_of(const NDArray& a, int first, int skip) {
 }
 
 // ---- the common case: one index array selecting single elements ----------
-// x[idx] / x[idx] = v on a 1-D view, same dtype. Measured in M9+ (see
-// experiments/gather_probe): the general path's per-element loop over "k
+// x[idx] / x[idx] = v on a 1-D view, same dtype. As measured in
+// docs/design/array.md §7.3, the general path's per-element loop over "k
 // index arrays", re-reading their strides and shapes, and its separate
 // offset buffer cost 3.5x the work of the plain loop below (read an index,
 // fix a negative one, copy one element). Checking every index first, in a
@@ -509,7 +512,7 @@ nb::object gather_one(const Plan& plan) {
     return wrap(std::move(out));
 }
 
-// ---- one index array with whole blocks around it (M10+) ------------------
+// ---- one index array with whole blocks around it -------------------------
 // x[..., idx, ...] = take along one axis: result[pre, b, post] =
 // view[pre, idx[b], post]. The general path walked the index points and
 // copied each point's block through an iterator of its own -- fine for long
@@ -523,7 +526,7 @@ nb::object gather_one(const Plan& plan) {
 // picks the memory-friendly order and the parallel split, as for any
 // elementwise operation; the kernel turns the index into a byte offset.
 // Every index is checked first (B elements, not the result's), so the loop
-// itself has no error path.
+// itself has no error path (docs/design/array.md §7.3).
 
 struct Take {
     std::int64_t len, stride;  // the indexed axis of the view
@@ -577,7 +580,8 @@ nb::object gather_take(const Plan& plan) {
 // and strides at s) to d (`dst_block`'s layout), converting dtype. Choosing
 // the copy once, outside the per-point loop, lets the common case -- single
 // elements of the same dtype -- be a plain typed assignment the compiler
-// inlines, instead of a call through a kernel pointer per element (M7.8).
+// inlines, instead of a call through a kernel pointer per element
+// (docs/design/array.md §7.3).
 template <typename Visit>
 void with_block_copy(const NDArray& src_block, const NDArray& dst_block, Visit&& visit) {
     if (src_block.ndim == 0 && src_block.dtype == dst_block.dtype) {
@@ -602,13 +606,14 @@ void with_block_copy(const NDArray& src_block, const NDArray& dst_block, Visit&&
     });
 }
 
-// ---- boolean masks in fixed chunks (M10+) ----------------------------------
+// ---- boolean masks in fixed chunks -----------------------------------------
 // The mask is cut, in C order, into chunks of kMaskChunk elements. Pass 1
 // counts the true elements of every chunk; their running sum says where
 // each chunk's selection starts in the result (or in the assigned value);
 // pass 2 walks each chunk on its own. Both passes run on the pool. The
 // chunks depend on the mask's size only and every element lands at its C
-// order position, so the result is the serial one exactly.
+// order position, so the result is the serial one exactly
+// (docs/design/array.md §7.4).
 
 inline constexpr std::int64_t kMaskChunk = 1 << 14;
 
@@ -880,9 +885,9 @@ nb::object value_array(nb::handle value, DType target) {
 // common tiny calls -- skip the key machinery (Items, Plan): the offset is
 // computed directly and the result is the element itself (one int per axis)
 // or a view of the remaining axes. x[1, 2] took 58 ns, numpy 31 ns, nearly
-// all of it in building and walking the general plan (M10+). Anything
-// unusual -- a bool, an int too large, an index out of range -- returns an
-// invalid object and takes the general path, which raises as usual.
+// all of it in building and walking the general plan (docs/design/array.md §7.1).
+// Anything unusual -- a bool, an int too large, an index out of range --
+// returns an invalid object and takes the general path, which raises as usual.
 nb::object leading_ints_fast(nb::handle x, PyObject* key) {
     const NDArray& a = as_ndarray(x);
     PyObject* const* items = &key;
@@ -928,9 +933,9 @@ namespace {
 void scatter(nb::handle x, Plan& plan, nb::handle value) {
     nb::object src_obj = value_array(value, plan.view.dtype);
     NDArray src = as_ndarray(src_obj);
-    check_assignable(src.dtype, plan.view.dtype);  // S6
+    check_assignable(src.dtype, plan.view.dtype);  // docs/design/array.md §2.5
     const NDArray& xa = as_ndarray(x);
-    if (may_share_memory(src, xa)) src = cast_copy(src, src.dtype);  // e.g. x[i] = x[::-1] (R3)
+    if (may_share_memory(src, xa)) src = cast_copy(src, src.dtype);  // e.g. x[i] = x[::-1] (docs/design/array.md §3.5)
     // Indices that live in x would change under the writes: x[x] = v must
     // use x's values from before the assignment, and an index rewritten
     // after its bounds check would write outside x.

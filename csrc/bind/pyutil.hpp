@@ -23,13 +23,14 @@ void register_dtypes(nb::module_& m);
 nb::handle dtype_object(DType d);
 
 // `dtype=` argument: None -> nullopt; otherwise must be one of the four
-// dtype objects (Python types like `float` are rejected: API.md §0).
+// dtype objects (Python types like `float` are rejected:
+// docs/api/array.md §0.1).
 std::optional<DType> parse_dtype(nb::handle o);
 
 // `copy=` argument: None / True / False.
 std::optional<bool> parse_copy(nb::handle o);
 
-// `shape` argument: an int or a tuple of ints (C2).
+// `shape` argument: an int or a tuple of ints (docs/design/array.md §2.8).
 std::vector<std::int64_t> parse_shape(nb::handle o);
 
 // A plain Python int (bool rejected), e.g. `num` or `k`.
@@ -38,8 +39,8 @@ std::int64_t parse_int(nb::handle o, const char* what);
 // Maps axis in [-ndim, ndim) to [0, ndim); ValueError otherwise.
 int normalize_axis(std::int64_t axis, int ndim);
 
-// `axis` argument: an int or a tuple of ints (C2), each normalized against
-// ndim. Repeated axes are a ValueError.
+// `axis` argument: an int or a tuple of ints (docs/design/array.md §2.8), each
+// normalized against ndim. Repeated axes are a ValueError.
 std::vector<int> parse_axes(nb::handle o, int ndim);
 
 inline bool is_ndarray(nb::handle o) { return nb::isinstance<NDArray>(o); }

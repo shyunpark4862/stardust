@@ -54,7 +54,8 @@ def _max_ulp(got, want):
 
 def assert_ulp(arr, expected, max_ulp):
     """Like assert_same, but floats may differ by up to `max_ulp` units in the
-    last place (the accuracy contract of the vForce functions, DESIGN.md §2.6)."""
+    last place (the accuracy contract of the vForce functions,
+    docs/api/array.md §6.4)."""
     expected = np.asarray(expected)
     assert isinstance(arr, sd.ndarray), type(arr)
     assert arr.shape == expected.shape

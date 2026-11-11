@@ -1,4 +1,4 @@
-// The four element types and their promotion order (DESIGN.md §1.3).
+// The four element types and their promotion order (docs/design/array.md §2.1).
 #pragma once
 
 #include <complex>

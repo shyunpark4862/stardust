@@ -1,4 +1,4 @@
-"""M1: dtype objects, ndarray attributes and Python protocols."""
+"""dtype objects, ndarray attributes and Python protocols."""
 
 import operator
 
@@ -47,7 +47,7 @@ def test_shape_one_axes_do_not_break_contiguity():
 @pytest.mark.parametrize("convert", [bool, int, float, complex, operator.index])
 def test_arrays_never_convert_to_scalars(convert):
     with pytest.raises(TypeError):
-        convert(sd.asarray([1]))  # Q4: even a single element
+        convert(sd.asarray([1]))  # even a single element (docs/api/array.md §10.4)
 
 
 def test_arrays_are_unhashable():

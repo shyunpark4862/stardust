@@ -1,9 +1,9 @@
-"""M9: the 16 float64 functions now run on Accelerate vForce.
+"""The 16 float64 functions that run on Accelerate vForce.
 
-The contract (DESIGN.md §2.6): within 8 ULP of numpy/libm, exact C99 Annex F
-special values (signed zeros, infinities, NaN), and a result for an element
-that does not depend on where the element is (position, length, layout,
-thread count).
+The contract (docs/api/array.md §6.4): within 8 ULP of numpy/libm, exact C99
+Annex F special values (signed zeros, infinities, NaN), and a result for an
+element that does not depend on where the element is (position, length,
+layout, thread count).
 """
 
 import math

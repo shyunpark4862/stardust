@@ -21,7 +21,7 @@ thread_local bool t_in_task = false;
 
 // Spin-wait for up to kSpin before sleeping. Measured by the clock, not by
 // iterations: the ARM `yield` hint takes a cycle or two, so a count that
-// looks large is over in a few microseconds (M8's first try).
+// looks large is over in a few microseconds (docs/design/array.md §10.1).
 constexpr auto kSpin = std::chrono::microseconds(100);
 
 template <typename Done>
@@ -34,7 +34,7 @@ void spin_until(Done done) {
 }
 
 // The performance cores: E-cores would finish their tasks later and make
-// everyone wait at the end of a job (ARCHITECTURE.md §5).
+// everyone wait at the end of a job (docs/design/array.md §10.3).
 int performance_cores() {
     int n = 0;
     size_t len = sizeof n;
@@ -50,7 +50,7 @@ public:
 
     // The caller counts. An atomic copy of workers_.size() + 1: any thread
     // may ask while set_num_threads rebuilds workers_ (reading the vector
-    // itself raced with that; found in stardust-pandas's M12+ review).
+    // itself raced with that; docs/design/array.md §10.3).
     int threads() const { return nthreads_.load(std::memory_order_relaxed); }
 
     void resize(int n) {
@@ -63,7 +63,7 @@ public:
     void run(std::int64_t ntasks, const std::function<void(std::int64_t)>& fn) {
         // Another Python thread's job is running (it holds the pool while its
         // GIL is released): do this one serially rather than wait or
-        // oversubscribe (ARCHITECTURE.md §5). workers_ is read only once the
+        // oversubscribe (docs/design/array.md §10.1). workers_ is read only once the
         // pool is ours: resize() changes it holding busy_ too.
         if (busy_.exchange(true)) {
             serial(ntasks, fn);
@@ -126,7 +126,7 @@ private:
     // `seen` is the job generation current when the worker is created: a
     // worker started by set_num_threads must not mistake the last finished
     // job for a new one (it would report it done twice, and a later job
-    // would wait forever for a report that never comes -- a hang M8's
+    // would wait forever for a report that never comes -- a hang the
     // resize-under-load test found).
     void worker_main(std::uint64_t seen) {
         // Ask macOS for the highest QoS class, which keeps the thread on the
@@ -135,12 +135,14 @@ private:
         for (;;) {
             // Spin a little before sleeping: elementwise calls tend to come in
             // runs, and waking a sleeping thread costs tens of microseconds on
-            // macOS (M8 measured ~25 us per job), more than a whole 1M-element add.
+            // macOS (~25 us per job, docs/design/array.md §10.1), more than a whole
+            // 1M-element add.
             spin_until([&] { return generation_.load(std::memory_order_acquire) != seen || stop_flag_; });
             if (generation_.load(std::memory_order_acquire) == seen && !stop_flag_) {
                 // Nothing came while spinning: sleep. (Only here is the mutex
                 // taken: nine workers all grabbing it the moment a job appears
-                // was the remaining ~18 us of a small parallel call, M8.)
+                // was the remaining ~18 us of a small parallel call,
+                // docs/design/array.md §10.1.)
                 std::unique_lock lock(m_);
                 cv_work_.wait(lock, [&] { return stop_ || generation_.load() != seen; });
             }

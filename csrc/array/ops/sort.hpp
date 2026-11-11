@@ -1,5 +1,5 @@
 // sort / argsort and unique_values / unique_counts / unique_inverse /
-// unique_all (API.md §7).
+// unique_all (docs/api/array.md §8).
 #pragma once
 
 #include <nanobind/nanobind.h>

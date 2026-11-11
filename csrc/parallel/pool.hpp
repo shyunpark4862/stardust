@@ -1,4 +1,4 @@
-// The thread pool (ARCHITECTURE.md §5; M8).
+// The thread pool (docs/design/array.md §10).
 //
 // Resident workers sleep on a condition variable. A parallel job is a number
 // of tasks; every participant -- the workers and the calling thread itself --
@@ -9,7 +9,7 @@
 // What a task computes never depends on how many threads there are: the
 // callers cut work into tasks by size alone, and combine any partial results
 // in task order. So every result is bit-for-bit the same for any thread count
-// (DESIGN.md §2.4).
+// (docs/design/array.md §10.5).
 #pragma once
 
 #include <cstdint>
@@ -18,13 +18,13 @@
 namespace sd::parallel {
 
 // Below this much work (elements, roughly) everything runs on the calling
-// thread. M8 measured where 10 threads start to win (bench/m8_threshold.py):
-// f + g at ~16K elements, exp at ~8K, sum at ~32K; one constant for all
-// (DESIGN.md §2.7), so the most demanding one decides.
+// thread. Measured where 10 threads start to win (docs/design/array.md §10.4):
+// f + g at ~16K elements, exp at ~8K, sum at ~32K; one constant for all,
+// so the most demanding one decides.
 inline constexpr std::int64_t kThreshold = 1 << 15;
 
 // How much work one task gets. With the pool's fixed cost per job at ~1.5 us
-// (after M8's spin and lock-free pickup), small tasks balance load well.
+// (spin and lock-free pickup, docs/design/array.md §10.1), small tasks balance load well.
 inline constexpr std::int64_t kTaskWork = 1 << 12;
 
 int num_threads();

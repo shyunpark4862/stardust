@@ -1,4 +1,4 @@
-"""M1: buffer protocol in both directions, tolist, repr/str."""
+"""Buffer protocol in both directions, tolist, repr/str."""
 
 import numpy as np
 import pytest
@@ -94,7 +94,7 @@ def test_misaligned_buffer_is_copied():
 
 def test_bool_bytes_other_than_0_and_1_are_normalized():
     # Our bool kernels count trues by adding bytes, so a '?' buffer holding
-    # other bytes is copied as 0/1 instead of shared (review fix, 2026-11-10).
+    # other bytes is copied as 0/1 instead of shared (docs/design/array.md §12.3).
     raw = np.frombuffer(bytes([2, 0, 255, 1] * 2048), dtype=np.bool_)
     m = sd.asarray(raw)
     assert m.base is not raw

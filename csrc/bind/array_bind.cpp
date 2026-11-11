@@ -107,7 +107,8 @@ nb::object op_reflected(nb::handle self, nb::handle other) {  // other <op> self
     return is_operand(other) ? binary<Op>(other, self, nb::none()) : not_implemented();
 }
 
-// x op= y is op(x, y, out=x): same rules as out= (S6, overlap-safe), same object back.
+// x op= y is op(x, y, out=x): same rules as out= (upward conversion only,
+// overlap-safe: docs/design/array.md §12.2), same object back.
 template <typename Op>
 nb::object op_inplace(nb::handle self, nb::handle other) {
     return is_operand(other) ? binary<Op>(self, other, self) : not_implemented();
@@ -150,7 +151,7 @@ void bind_ndarray(nb::module_& m) {
         .def("reshape", nb::overload_cast<nb::handle, nb::handle, nb::handle>(&reshape), nb::arg(), nb::kw_only(),
              nb::arg("copy").none() = nb::none())
         // .none(): x[None] is newaxis, and nanobind rejects None by default.
-        // Reductions as methods (A2): the same functions, x as self.
+        // Reductions as methods (docs/design/array.md §12.2): the same functions, x as self.
         .def("sum", &sum, nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("dtype").none() = nb::none(),
              nb::arg("keepdims") = false)
         .def("prod", &prod, nb::kw_only(), nb::arg("axis").none() = nb::none(),
@@ -184,9 +185,10 @@ void bind_ndarray(nb::module_& m) {
         })
         .def("__repr__", [](nb::handle self) { return format_call("array_repr", self); })
         .def("__str__", [](nb::handle self) { return format_call("array_str", self); })
-        // Q4: an array is never a scalar, whatever its size. All four hooks
-        // must exist: without __int__/__float__, int()/float() fall back to
-        // the buffer protocol and try to parse the raw bytes as text.
+        // An array is never a scalar, whatever its size
+        // (docs/design/array.md §12.2). All four hooks must exist: without
+        // __int__/__float__, int()/float() fall back to the buffer protocol
+        // and try to parse the raw bytes as text.
         .def("__bool__", [](const NDArray&) -> bool {
             throw nb::type_error("the truth value of an array is ambiguous; use any() or all()");
         })
@@ -217,7 +219,8 @@ void bind_ndarray(nb::module_& m) {
     cls.def("__gt__", &op_forward<Greater>, nb::arg().none());
     cls.def("__ge__", &op_forward<GreaterEqual>, nb::arg().none());
     // @ takes arrays only (no Python scalars). x @= y needs the result to
-    // have x's shape, and S6 like every in-place operator.
+    // have x's shape and converts upward only, like every in-place operator
+    // (docs/design/array.md §9.1).
     cls.def("__matmul__", [](nb::handle self, nb::handle other) {
         return is_ndarray(other) ? matmul(self, other) : not_implemented();
     }, nb::arg().none());
@@ -241,9 +244,10 @@ void bind_ndarray(nb::module_& m) {
     // Arrays are mutable containers: unhashable, like lists. (Defining
     // __eq__ would also do this; being explicit documents it.)
     cls.attr("__hash__") = nb::none();
-    // numpy, seeing `np_array + sdnp_array`, would convert our array through
+    // numpy, seeing `np_array + sd_array`, would convert our array through
     // the buffer protocol and return a numpy result. None tells numpy's
-    // ufuncs to step aside, so mixing the two raises TypeError (M4 decision).
+    // ufuncs to step aside, so mixing the two raises TypeError
+    // (docs/design/array.md §12.2).
     cls.attr("__array_ufunc__") = nb::none();
 
     nb::class_<ArrayIterator>(m, "_ArrayIterator")

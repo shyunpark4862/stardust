@@ -1,4 +1,4 @@
-// matmul and the @ operator (API.md §7).
+// matmul and the @ operator (docs/api/array.md §9).
 #pragma once
 
 #include <nanobind/nanobind.h>

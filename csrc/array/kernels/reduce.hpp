@@ -1,18 +1,19 @@
-// Reduction loops (ARCHITECTURE.md §4.4).
+// Reduction loops (docs/design/array.md §6).
 //
-// A reduction runs on the M2 iterator with two operands, the input and an
+// A reduction runs on the nd iterator with two operands, the input and an
 // output that has extent 1 on every reduced axis, broadcast back to the input
 // shape (stride 0 on those axes). The kernel then does  out = f(out, x).
 // What the iterator hands it decides the strategy:
 //   * out stride 0  -> inner-axis reduction: fold a run into one accumulator
 //   * out stride != 0 -> outer-axis reduction: add a whole row into the
 //     result row, element by element (vectorizes along the kept axis)
-// The binary operations are M4's (ops::Add, ops::Maximum, ...).
+// The binary operations are the elementwise ones (ops::Add, ops::Maximum, ...).
 //
-// M7.5: a float/complex sum folds each run with numpy's pairwise summation
+// A float/complex sum folds each run with numpy's pairwise summation
 // (8 accumulators in blocks of 128, halves added recursively): faster, since
 // 8 independent chains replace one, and more accurate, since the rounding
-// error grows like log n instead of n. max/min fold with NEON FMAX/FMIN.
+// error grows like log n instead of n. max/min fold with NEON FMAX/FMIN
+// (docs/design/array.md §6.2, §6.3).
 #pragma once
 
 #include "array/kernels/elementwise.hpp"
@@ -93,11 +94,11 @@ complex128 pairwise_sum_complex(std::int64_t begin, std::int64_t n, const Get& g
     return {a.real() + b.real(), a.imag() + b.imag()};
 }
 
-// ---- the same sums on many threads, with the same bits (M8) ----------------
+// ---- the same sums on many threads, with the same bits ---------------------
 // pairwise_sum's recursion tree depends on n only. Its subtrees of at most
 // kLeaf elements are independent: they are summed in parallel, then combined
 // along the very same tree. The result is bit-for-bit the serial one (and
-// numpy's), for any thread count.
+// numpy's), for any thread count (docs/design/array.md §6.2).
 
 inline constexpr std::int64_t kLeaf = parallel::kTaskWork;
 
@@ -146,16 +147,16 @@ complex128 pairwise_sum_complex_mt(std::int64_t n, const Get& get) {
         [](complex128 a, complex128 b) { return complex128{a.real() + b.real(), a.imag() + b.imag()}; });
 }
 
-// ---- float and complex products in fixed blocks (M10+) --------------------
+// ---- float and complex products in fixed blocks ---------------------------
 // A product folded left to right is one chain of multiplies, 4 cycles each
 // (prod of 1M float64: 0.78 ms, as numpy). Instead a run is cut into pieces
 // of kLeaf elements; within a piece, eight accumulators take every eighth
 // element and are combined as ((a0*a1)*(a2*a3))*((a4*a5)*(a6*a7)); the pieces
 // are then multiplied left to right. The structure depends on n only, the
 // pieces may run in parallel, and the bits are the same for any thread count
-// -- but not numpy's: the order of the multiplies changed (user decision
-// 2026-11-10). It can also over- or underflow at different points than a
-// left-to-right product of the same numbers.
+// -- but not numpy's: the order of the multiplies changed
+// (docs/design/array.md §6.6). It can also over- or underflow at different points
+// than a left-to-right product of the same numbers.
 
 template <typename T, typename Get>
 T product_piece(std::int64_t b, std::int64_t m, const Get& get) {
@@ -226,7 +227,7 @@ double neon_fold(const double* x, std::int64_t n, double acc) {
 
 // int64 max/min: NEON has no 64-bit integer max/min instruction, so each
 // step is a compare and a select, ~5 cycles of latency. The plain loop was
-// one dependency chain (1.6x slower than numpy, measured after M10); four
+// one dependency chain (1.6x slower than numpy, docs/design/array.md §6.3); four
 // registers still left it latency-bound (no change, measured), eight
 // independent registers (16 lanes) keep enough steps in flight.
 template <bool Max>
@@ -262,7 +263,7 @@ void reduce_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, 
             // any/all stop as soon as the answer is known: any at the first
             // True, all at the first False. Checked once per block of 4096,
             // so the block itself stays a branch-free (vectorized) fold. A
-            // later run of the same output returns at once (M10+).
+            // later run of the same output returns at once (docs/design/array.md §6.4).
             constexpr bool decided = std::is_same_v<Op, ops::LogicalOr>;
             for (std::int64_t off = 0; off < n && acc != decided; off += 4096) {
                 const std::int64_t m = std::min<std::int64_t>(4096, n - off);
@@ -447,7 +448,7 @@ void scan_serial(const std::byte* x, std::int64_t xs, std::byte* o, std::int64_t
     }
 }
 
-// Long lanes are scanned in blocks of kScanBlock elements (M10+):
+// Long lanes are scanned in blocks of kScanBlock elements (docs/design/array.md §6.7):
 //   1. each block is scanned on its own, from its own first element;
 //   2. carry[b] = the end of everything before block b, from the block ends;
 //   3. every element of block b >= 1 becomes carry[b] (op) its local value.
@@ -455,9 +456,9 @@ void scan_serial(const std::byte* x, std::int64_t xs, std::byte* o, std::int64_t
 // element, 0.5 ns); four blocks interleaved in one loop keep four chains in
 // flight, and blocks run in parallel on the pool. The blocks depend on n
 // only, so the result is the same for every thread count; for floats it is
-// not numpy's bits (user decision 2026-11-10). Integer scans wrap and give
-// the same bits either way: they only take this path when it can run in
-// parallel, since step 3 is an extra pass.
+// not numpy's bits. Integer scans wrap and give the same bits either way:
+// they only take this path when it can run in parallel, since step 3 is an
+// extra pass.
 inline constexpr std::int64_t kScanBlock = 4096;
 inline constexpr std::int64_t kScanGroup = 4;  // blocks interleaved in one loop (and one task)
 
@@ -472,7 +473,7 @@ void scan_group(const std::byte* x, std::int64_t xs, std::byte* o, std::int64_t 
         // Eight elements of every block are loaded, scanned, then stored
         // together. One store per block in turn ran 5.7x slower when `o` was
         // freshly allocated memory (first-touch page faults; 1.7 ms against
-        // 0.3 ms for 1M doubles, experiments in the M10+ explainer).
+        // 0.3 ms for 1M doubles, docs/design/array.md §6.7).
         const std::byte* xp[kScanGroup];
         std::byte* op[kScanGroup];
         T acc[kScanGroup];

@@ -1,4 +1,4 @@
-"""M2: the n-d iterator's plan (broadcast, drop, reorder, coalesce)."""
+"""The n-d iterator's plan (broadcast, drop, reorder, coalesce)."""
 
 import numpy as np
 import pytest

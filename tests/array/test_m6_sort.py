@@ -1,4 +1,4 @@
-"""M6: sort, argsort and unique_*."""
+"""sort, argsort and unique_*."""
 
 import math
 
@@ -80,7 +80,7 @@ def test_layouts_and_rules():
     for view in (n.T, n[::-1, ::2], np.asfortranarray(n)):
         assert_same(sd.sort(sd.asarray(view), axis=0), np.sort(view, axis=0))
     with pytest.raises(TypeError):
-        sd.sort(sd.asarray([1j]))  # S5
+        sd.sort(sd.asarray([1j]))  # docs/api/array.md §1.6
     with pytest.raises(TypeError):
         sd.sort(sd.asarray([1.0]), axis=None)  # an int axis only
     with pytest.raises(ValueError):
@@ -143,7 +143,7 @@ def test_unique_nan_and_signed_zero():
     r = sd.unique_counts(sd.asarray([math.nan, 0.0, -0.0, math.nan, 1.0]))
     v = r.values.tolist()
     assert v[:2] == [0.0, 1.0] and math.copysign(1, v[0]) == 1  # first occurrence (+0.0) is kept
-    assert all(math.isnan(t) for t in v[2:]) and len(v) == 4  # each NaN is its own value (N3)
+    assert all(math.isnan(t) for t in v[2:]) and len(v) == 4  # each NaN is its own value (docs/api/array.md §8.3)
     assert r.counts.tolist() == [2, 1, 1, 1]
     assert sd.unique_values(sd.zeros(0)).shape == (0,)
 
@@ -158,7 +158,7 @@ def test_unique_matches_numpy_on_integers(n):
     assert np.array_equal(np.asarray(r.inverse_indices), w.inverse_indices.reshape(n.shape))
 
 
-# ------------------------------------------------ M7: the NEON sorting path
+# ---------------------------------------------------- the NEON sorting path
 
 @pytest.mark.parametrize("n", [31, 32, 33, 47, 48, 64, 100, 1000, 4097])
 @pytest.mark.parametrize("kind", ["int", "float", "float-ties", "extremes"])
@@ -200,8 +200,8 @@ def test_simd_sort_random_int64(values):
 
 
 def test_many_lanes_short_and_long():
-    # Short lanes reuse per-thread scratch, long ones allocate (review fix,
-    # 2026-11-10): 4096 Keyed pairs (64 KB) is the last that fits.
+    # Short lanes reuse per-thread scratch, long ones allocate
+    # (docs/design/array.md §8.7): 4096 Keyed pairs (64 KB) is the last that fits.
     rng = np.random.default_rng(3)
     for shape in [(20_000, 8), (3, 4096), (3, 4097), (2, 50_000)]:
         n = rng.integers(-5, 5, shape).astype(np.float64)
@@ -216,8 +216,8 @@ def test_many_lanes_short_and_long():
 @pytest.mark.parametrize("n", [127, 128, 1023, 1024, 5000, 70_000])
 @pytest.mark.parametrize("kind", ["wide", "narrow", "extremes", "equal", "one-digit"])
 def test_int64_radix_sort_matches_stable_numpy(n, kind):
-    # Tier 3 item 12: int64 lanes from 128 (pairs) / 1024 (values) elements
-    # are radix sorted, relative to the smallest key.
+    # int64 lanes from 128 (pairs) / 1024 (values) elements are radix
+    # sorted, relative to the smallest key (docs/design/array.md §8.4).
     rng = np.random.default_rng(n)
     lo, hi = {"wide": (-2**63, 2**63 - 1), "narrow": (-1000, 1000), "extremes": (-2**63, 2**63 - 1),
               "equal": (7, 8), "one-digit": (-100, 100)}[kind]
@@ -237,7 +237,7 @@ def test_int64_radix_sort_matches_stable_numpy(n, kind):
 
 @pytest.mark.parametrize("n", [2 * 65536 - 1, 2 * 65536, 3 * 65536 + 17, 600_001])
 def test_long_lane_parallel_sort_is_the_stable_result(n):
-    # Tier 3 item 13: pieces of 65536 sorted on the pool, then merged.
+    # Pieces of 65536 sorted on the pool, then merged (docs/design/array.md §8.5).
     rng = np.random.default_rng(n)
     f = rng.integers(-50, 50, n).astype(np.float64) * 0.5  # many ties
     f[::101] = np.nan

@@ -21,7 +21,8 @@ namespace nb = nanobind;
 namespace {
 
 // Calls into Accelerate once so a broken link or a wrong ILP64 setup fails
-// loudly at import-test time rather than in M6.
+// loudly at import-test time rather than at the first BLAS call
+// (docs/design/array.md §1.3).
 double accelerate_smoke_test() {
     const double x[] = {1.0, 2.0, 3.0};
     const double y[] = {4.0, 5.0, 6.0};
@@ -66,7 +67,8 @@ NB_MODULE(_core, m) {
     sd::bind_sort(m);
     sd::bind_matmul(m);
     m.def("_build_info", &build_info, "Toolchain facts captured at compile time.");
-    // API.md §9. Results never depend on the thread count (DESIGN.md §2.4).
+    // docs/api/array.md §0.3. Results never depend on the thread count
+    // (docs/design/array.md §10.5).
     m.def("set_num_threads", [](nb::handle n) {
         const std::int64_t v = sd::parse_int(n, "n");
         if (v < 1 || v > 1024) throw nb::value_error("the number of threads must be between 1 and 1024");

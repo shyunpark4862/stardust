@@ -1,4 +1,4 @@
-// The n-dimensional array object (ARCHITECTURE.md §3.3).
+// The n-dimensional array object (docs/design/array.md §3.3).
 //
 // An array is a *description* of how to read a Buffer: start at `data`, and
 // element (i0, i1, ..., ik) lives at  data + i0*strides[0] + ... + ik*strides[k]
@@ -54,7 +54,8 @@ struct NDArray {
     void update_flags();
 
     // Copies move only the live ndim entries of shape/strides, not all 32
-    // (512 bytes): views and results are copied and moved a lot (M7.7).
+    // (512 bytes): views and results are copied and moved a lot
+    // (docs/design/array.md §11).
     NDArray() = default;
     NDArray(const NDArray& o) { *this = o; }
     NDArray(NDArray&& o) noexcept { *this = std::move(o); }
@@ -106,7 +107,7 @@ NDArray new_array_like(const NDArray& proto, DType dtype, bool zeroed = false);
 //
 // This is the "odometer": the last axis spins fastest; when it wraps, the
 // next axis advances by one, exactly like the digits of a car's odometer.
-// M2 replaces most uses with a smarter iterator; this simple form is enough
+// The nd iterator (iter.hpp) replaces most uses; this simple form is enough
 // for conversions and tolist.
 template <std::size_t N, typename F>
 void for_each_element(std::span<const std::int64_t> shape,

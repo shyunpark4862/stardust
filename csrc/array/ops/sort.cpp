@@ -1,4 +1,4 @@
-// sort, argsort (API.md §7) and the unique_* family (C8).
+// sort, argsort and the unique_* family (docs/api/array.md §8).
 
 #include "array/ops/sort.hpp"
 
@@ -26,9 +26,9 @@ namespace {
 // ------------------------------------------------------------ ordering
 // NaN goes last in both directions, and with descending=True equal keys still
 // keep their original order (the result is never a reversed ascending sort).
-// ARCHITECTURE.md §6.2.
+// docs/design/array.md §8.1.
 //
-// M7.9: instead of a comparator that tests for NaN on every comparison, the
+// Instead of a comparator that tests for NaN on every comparison, the
 // NaNs are first moved to the end (in their original order); the rest is
 // then sorted with a plain comparison.
 
@@ -113,7 +113,7 @@ std::int64_t load_nans_last(const std::byte* x, std::int64_t stride, std::int64_
     }
 }
 
-// ---- int64: LSD radix sort (Tier 3 item 12, user decision 2026-11-10) ----
+// ---- int64: LSD radix sort (docs/design/array.md §8.4) -------------------
 // Picked by dtype and lane length only, never by looking at the data. Stable,
 // so it serves sort and argsort alike. The key maps signed order to unsigned
 // order (sign bit flipped); for descending it is inverted, so larger values
@@ -243,7 +243,7 @@ void sort_buffer(T* a, std::int64_t n, bool stable, auto less) {
 }
 
 // Values alone (sort, unique_values). The NEON sort reorders equal values,
-// so it is used only when that cannot be seen (M7.9c decision): for int64
+// so it is used only when that cannot be seen (docs/design/array.md §8.3): for int64
 // equal values are identical, and for float64 too -- NaNs are already split
 // off -- except that -0.0 == +0.0. So a stable float sort takes it unless the
 // data holds zeros of both signs. stable=False takes it always.
@@ -285,12 +285,11 @@ void sort_keyed_serial(Keyed<T>* a, std::int64_t n, bool stable, bool descending
     sort_buffer(a, n, stable, [&](const Keyed<T>& x, const Keyed<T>& y) { return order(x.value, y.value); });
 }
 
-// ---- one long lane on several threads (Tier 3 item 13) ---------------------
-// ARCHITECTURE §6.2 used to sort a single lane on one thread (user decision
-// 2026-11-10 to change it). A lane of 2 x kSortPiece or more is cut into
-// pieces of kSortPiece elements -- by length alone, never by thread count --
-// each sorted by the serial algorithm on the pool. Then the sorted runs are
-// merged pairwise, level by level. A merge is cut into output chunks of
+// ---- one long lane on several threads (docs/design/array.md §8.5) ----------
+// A lane of 2 x kSortPiece or more is cut into pieces of kSortPiece
+// elements -- by length alone, never by thread count -- each sorted by the
+// serial algorithm on the pool. Then the sorted runs are merged pairwise,
+// level by level. A merge is cut into output chunks of
 // kMergeChunk; where a chunk starts in each run is found by binary search
 // (the "merge path"), so the chunks of every level run in parallel too.
 // Ties take the left run first: merging stable runs gives the stable result
@@ -302,7 +301,7 @@ void sort_keyed_serial(Keyed<T>* a, std::int64_t n, bool stable, bool descending
 // with stable=False: the NEON sort's order of -0.0 and +0.0 (sort) and
 // introsort's order of equal values (argsort) depend on the pieces, so
 // those always take them, keeping the result independent of the thread
-// count (DESIGN §2.4).
+// count (docs/design/array.md §10.5).
 
 inline constexpr std::int64_t kMergeChunk = 1 << 15;
 
@@ -410,7 +409,7 @@ nb::object sort_impl(nb::handle x_obj, nb::handle axis_obj, bool descending, boo
     const char* name = Arg ? "argsort" : "sort";
     const NDArray& x = require_ndarray(x_obj);
     if (x.dtype == DType::Complex128)
-        throw nb::type_error((std::string(name) + "() is not supported for complex128 (no ordering)").c_str());  // S5
+        throw nb::type_error((std::string(name) + "() is not supported for complex128 (no ordering)").c_str());  // docs/design/array.md §2.6
     const int axis = normalize_axis(parse_int(axis_obj, "axis"), x.ndim);
     NDArray out = new_array_like(x, Arg ? DType::Int64 : x.dtype);
     SortCfg cfg{descending, stable};
@@ -423,11 +422,11 @@ nb::object sort_impl(nb::handle x_obj, nb::handle axis_obj, bool descending, boo
 }
 
 // ------------------------------------------------------------------ unique
-// flatten -> stable argsort -> compare neighbours (ARCHITECTURE.md §6.3).
+// flatten -> stable argsort -> compare neighbours (docs/design/array.md §8.6).
 // Stable, so within a group of equal values the first one is the first
 // occurrence in x: that gives `indices`, and the value that is kept (-0.0 or
 // +0.0, whichever came first). NaN never equals anything, so each NaN is its
-// own group (N3).
+// own group (docs/design/array.md §2.6).
 
 template <typename T>
 bool same(const T& a, const T& b) {
@@ -481,9 +480,9 @@ UniqueParts unique_parts(const NDArray& x) {
 nb::object result_type(const char* name) { return nb::module_::import_("stardust._results").attr(name); }
 
 // unique_values needs neither positions nor counts, so it sorts the values
-// alone: half the data to move, and no (value, index) pairs (M7.9b). Still a
-// stable sort, so of -0.0 and +0.0 the first occurrence is kept, as in
-// unique_parts.
+// alone: half the data to move, and no (value, index) pairs
+// (docs/design/array.md §8.6). Still a stable sort, so of -0.0 and +0.0 the
+// first occurrence is kept, as in unique_parts.
 nb::object unique_values(nb::handle x_obj) {
     const NDArray& x = require_ndarray(x_obj);
     const std::int64_t n = x.size();

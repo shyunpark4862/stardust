@@ -1,5 +1,6 @@
-// Array creation (API.md §2). Python-facing signatures take raw handles so
-// that argument rules (C1, C2, Q1, Z1-Z4) are enforced in one place.
+// Array creation (docs/api/array.md §3). Python-facing signatures take raw handles
+// so that argument rules (docs/api/array.md §0.1, §1.1-§1.3, §1.5) are
+// enforced in one place.
 #pragma once
 
 #include "array/ndarray.hpp"

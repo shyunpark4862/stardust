@@ -1,4 +1,5 @@
-// The n-dimensional iterator: a scaled-down numpy `nditer` (ARCHITECTURE.md §4.2).
+// The n-dimensional iterator: a scaled-down numpy `nditer`
+// (docs/design/array.md §4.2).
 //
 // Every elementwise operation (copy, cast, add, ...) has the same shape:
 // walk N arrays of one common shape in lockstep and apply a 1-D "inner loop"
@@ -27,7 +28,8 @@ namespace sd {
 
 inline constexpr int kMaxOperands = 4;  // e.g. where(cond, x1, x2) -> out
 
-// The shortest piece of the innermost axis a parallel run hands out (M8).
+// The shortest piece of the innermost axis a parallel run hands out
+// (docs/design/array.md §10.4).
 inline constexpr std::int64_t kMinInnerPiece = 1024;
 
 // The signature every kernel ("inner loop") has: process n elements; operand
@@ -43,14 +45,14 @@ struct IterOperand {
 
 inline IterOperand operand(const NDArray& a) { return {a.data, a.shape_span(), a.strides_span()}; }
 
-// Naive and Reorder exist so the effect of each step can be measured
-// (bench/m2_iterator.py); production code uses Full, except where the index
+// Naive and Reorder exist so the effect of each step can be measured;
+// production code uses Full, except where the index
 // order itself matters: the one-index scatter runs Naive (C order, one
 // thread) so that with repeated indices the last write wins.
 enum class IterMode { Naive, Reorder, Full };
 
-// How run() may split the work across threads (M8). Results never depend on
-// it -- only which splits are safe does:
+// How run() may split the work across threads (docs/design/array.md §10.5).
+// Results never depend on it -- only which splits are safe does:
 //   Elementwise  every element is computed on its own: any axis may be cut
 //   Reduction    the last operand is the output, broadcast (stride 0) along
 //                the reduced axes; only axes where it has a real stride may
@@ -102,7 +104,7 @@ private:
     bool empty_ = false;
     // Left uninitialized: only the first ndim_ entries (and nop_ operands)
     // are ever written or read. Zero-filling 1.3 KB per iterator was a
-    // visible cost on tiny arrays (M7.7).
+    // visible cost on tiny arrays (docs/design/array.md §11).
     Dims shape_;
     std::array<Dims, kMaxOperands> strides_;
     std::array<std::byte*, kMaxOperands> data_{};

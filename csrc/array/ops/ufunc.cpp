@@ -40,9 +40,10 @@ DType select(const LoopTable& table, DType d, const char* name, std::span<const 
 
 // Operand `o` as an array. Arrays are used as they are -- a dtype that
 // differs from the loop's is converted chunk by chunk while the loop runs
-// (buffered casting, M7.6). A Python scalar becomes a 1-element array of the
-// loop dtype `to` (broadcast by the iterator); conversion follows Z4, so an
-// int that does not fit raises OverflowError only when the loop runs in int64.
+// (buffered casting, docs/design/array.md §4.3). A Python scalar becomes a
+// 1-element array of the loop dtype `to` (broadcast by the iterator);
+// conversion follows docs/design/array.md §2.2, so an int that does not fit
+// raises OverflowError only when the loop runs in int64.
 NDArray prepare(nb::handle o, DType to) {
     if (is_ndarray(o)) return as_ndarray(o);
     const DType kind = *scalar_dtype(o);
@@ -105,11 +106,12 @@ nb::object launch(std::span<const nb::handle> objs, std::span<const DType> in_ty
     if (!out_obj.is_none()) {
         NDArray& out = require_ndarray(out_obj, "out");
         if (!out.writeable) throw nb::value_error("output array is read-only");
-        check_assignable(result, out.dtype);  // S6
+        check_assignable(result, out.dtype);  // docs/design/array.md §2.5
         if (out.dtype == result) {
             // Write straight into out. An input that partly overlaps it is
-            // copied first (R3); one that is the very same view is safe,
-            // since each element is read just before the same place is written.
+            // copied first (docs/design/array.md §3.5); one that is the very same
+            // view is safe, since each element is read just before the same
+            // place is written.
             for (size_t k = 0; k < nin; ++k)
                 if (may_share_memory(ins[k], out) && !same_view(ins[k], out)) ins[k] = cast_copy(ins[k], ins[k].dtype);
             run_loop(inputs, in_types, out, out.shape_span(), loop);
@@ -146,8 +148,9 @@ nb::object where(nb::handle cond, nb::handle x1, nb::handle x2, nb::handle out) 
     return launch(objs, types, d, where_loops[static_cast<int>(d)], out);
 }
 
-// clip keeps x's dtype (M4 decision, Array API): min and max must convert to
-// it implicitly (S6). No complex: it has no order (S5).
+// clip keeps x's dtype (Array API): min and max must convert to it
+// implicitly (docs/design/array.md §2.5). No complex: it has no order
+// (docs/design/array.md §2.6).
 template <typename T> constexpr Loop clip_entry = &clip_loop<T>;
 constexpr std::array<Loop, kNumDTypes> clip_loops = {
     clip_entry<bool>, clip_entry<std::int64_t>, clip_entry<double>, nullptr};

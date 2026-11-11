@@ -1,4 +1,4 @@
-"""M6: matmul and @ (Accelerate BLAS for float64/complex128, own loop for int64)."""
+"""matmul and @ (Accelerate BLAS for float64/complex128, own loop for int64)."""
 
 import numpy as np
 import pytest
@@ -68,7 +68,7 @@ def test_mixed_dtypes_and_c13():
     f = sd.asarray([[0.5, 0.0], [0.0, 0.5]])
     assert (i @ f).dtype is sd.float64 and (i @ f).tolist() == [[0.5, 1.0], [1.5, 2.0]]
     t = sd.asarray([[True, True], [False, True]])
-    assert (t @ t).dtype is sd.int64 and (t @ t).tolist() == [[1, 2], [0, 1]]  # C13
+    assert (t @ t).dtype is sd.int64 and (t @ t).tolist() == [[1, 2], [0, 1]]  # docs/api/array.md §1.4
     assert (sd.asarray([1j, 1.0]) @ sd.asarray([1j, 2.0])) == -1 + 2  # no conjugation
 
 
@@ -100,7 +100,7 @@ def test_inplace_matmul():
         a @= sd.zeros((2, 3))  # the result must keep a's shape
     i = sd.asarray([[1, 0], [0, 1]])
     with pytest.raises(TypeError):
-        i @= sd.asarray([[0.5, 0.0], [0.0, 0.5]])  # S6
+        i @= sd.asarray([[0.5, 0.0], [0.0, 0.5]])  # docs/api/array.md §1.5
 
 
 def test_large_against_numpy():
@@ -112,8 +112,8 @@ def test_large_against_numpy():
 
 
 def test_small_batches_on_the_pool_match_numpy():
-    # Tier 3 item 15: batches of matrices up to 256^3 multiply-adds run on
-    # the pool, each still one BLAS call.
+    # Batches of matrices up to 256^3 multiply-adds run on the pool, each
+    # still one BLAS call (docs/design/array.md §9.4).
     rng = np.random.default_rng(5)
     for shape_a, shape_b in [((1000, 8, 8), (1000, 8, 8)), ((3, 50, 4, 7), (50, 7, 5)), ((40, 128, 64), (64, 32)),
                              ((300, 1, 6), (300, 6, 1)), ((4, 300, 300), (4, 300, 300))]:

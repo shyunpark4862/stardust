@@ -1,4 +1,4 @@
-// Indexing (API.md §4).
+// Indexing (docs/api/array.md §5).
 //
 // Basic indices (int, slice, `...`, newaxis) never copy: they only move the
 // data pointer and rewrite shape/strides. x[2:8:3] is "start 2 elements in,
@@ -18,12 +18,12 @@ namespace sd {
 namespace nb = nanobind;
 
 // x[key]: a view (basic), a copy (advanced), or a Python scalar when every
-// axis is indexed by an int (Z1).
+// axis is indexed by an int (docs/design/array.md §2.2).
 nb::object getitem(nb::handle x, nb::handle key);
 
 // x[key] = value: value (array, nested list or Python scalar) is broadcast to
-// the selected shape and converted upward only (S6). With repeated advanced
-// indices the last write wins.
+// the selected shape and converted upward only (docs/design/array.md §2.5).
+// With repeated advanced indices the last write wins.
 void setitem(nb::handle x, nb::handle key, nb::handle value);
 
 // x[i] for 0 <= i < len(x), without parsing a key: what iteration uses.

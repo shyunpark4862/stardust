@@ -1,5 +1,5 @@
 // A reference-counted block of memory that array data lives in
-// (ARCHITECTURE.md §3.2). Several arrays (views) may share one Buffer.
+// (docs/design/array.md §3.2). Several arrays (views) may share one Buffer.
 #pragma once
 
 #include <nanobind/nanobind.h>
@@ -33,7 +33,8 @@ public:
 
     // Arrays of up to kInline bytes keep their data inside the Buffer object
     // itself, which make_shared allocates together with the reference count:
-    // one allocation for a small array instead of three (M7.7).
+    // one allocation for a small array instead of three
+    // (docs/design/array.md §3.2).
     static constexpr std::size_t kInline = 256;
 
     struct Key {  // lets make_shared call the constructor; nobody else can

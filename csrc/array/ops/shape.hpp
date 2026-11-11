@@ -1,4 +1,4 @@
-// Shape manipulation (API.md §3) and the real/imag views.
+// Shape manipulation (docs/api/array.md §4) and the real/imag views.
 //
 // Almost everything here is a *view*: a new NDArray over the same Buffer with
 // different shape/strides/data. No element is touched -- that is why
@@ -19,12 +19,12 @@ namespace sd {
 namespace nb = nanobind;
 
 // reshape in C (row-major) index order: a view when the strides allow it,
-// otherwise a copy, as `copy` (C9) permits.
+// otherwise a copy, as `copy` (docs/design/array.md §2.8) permits.
 nb::object reshape(nb::handle x, std::span<const std::int64_t> shape, std::optional<bool> copy);
 nb::object reshape(nb::handle x, nb::handle shape, nb::handle copy);
 
 nb::object matrix_transpose(nb::handle x);  // .mT: swap the last two axes
-nb::object transpose_2d(nb::handle x);      // .T: 2-D only (C10)
+nb::object transpose_2d(nb::handle x);      // .T: 2-D only (docs/design/array.md §2.8)
 
 void bind_shape(nb::module_& m);
 

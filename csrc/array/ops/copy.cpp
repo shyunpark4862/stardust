@@ -98,7 +98,7 @@ IterMode parse_mode(const std::string& s) {
     throw nb::value_error("mode must be 'naive', 'reorder' or 'full'");
 }
 
-// Private, for tests and the explainer: the iteration plan after
+// Private, for tests and measurements: the iteration plan after
 // broadcasting/reordering/coalescing (`mode` picks how far to simplify).
 nb::dict iter_plan(nb::list arrays, const std::string& mode) {
     std::vector<IterOperand> ops;
@@ -126,7 +126,8 @@ nb::dict iter_plan(nb::list arrays, const std::string& mode) {
     return out;
 }
 
-// Private: dst[...] = src with the setitem rules (writeable, S6, overlap).
+// Private: dst[...] = src with the setitem rules (writeable, upward
+// conversion only, overlap: docs/design/array.md §7.5).
 void copyto(nb::handle dst_obj, nb::handle src_obj) {
     assign_checked(require_ndarray(dst_obj, "dst"), require_ndarray(src_obj, "src"));
 }

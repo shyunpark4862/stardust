@@ -1,17 +1,21 @@
-// Elementwise functions (API.md §5): the dispatcher between Python operands
+// Elementwise functions (docs/api/array.md §6): the dispatcher between Python operands
 // and the loop tables of kernels/elementwise.hpp.
 //
 // Every call goes through the same four steps:
 //   1. operands   each is an sd.ndarray or a Python bool/int/float/complex
 //   2. loop       promote the operand dtypes, then take the first dtype at or
 //                 above it that the operation has a loop for (numpy's rule).
-//                 C13 and "integers divide in float64" fall out of the tables:
+//                 Bool arithmetic in int64 (docs/design/array.md §2.1) and
+//                 "integers divide in float64" fall out of the tables:
 //                 add has no bool loop, divide has no int64 loop.
 //   3. convert    inputs are cast to the loop dtype chunk by chunk on the way
-//                 (buffered casting, kernels/buffered.hpp; M7.6)
-//   4. run        NdIter over inputs + output; the output is `out=` (S6,
-//                 overlap-safe) or a new array laid out like the inputs
-// With no array operand at all the result is a Python scalar (Z1).
+//                 (buffered casting, kernels/buffered.hpp;
+//                 docs/design/array.md §4.3)
+//   4. run        NdIter over inputs + output; the output is `out=` (upward
+//                 conversion only, overlap-safe: docs/design/array.md §2.5,
+//                 §3.5) or a new array laid out like the inputs
+// With no array operand at all the result is a Python scalar
+// (docs/design/array.md §2.2).
 #pragma once
 
 #include "array/kernels/elementwise.hpp"
@@ -22,8 +26,8 @@ namespace sd {
 
 namespace nb = nanobind;
 
-// What elementwise functions accept as an operand (M4 decision: no lists or
-// foreign arrays -- convert them with asarray first).
+// What elementwise functions accept as an operand (no lists or foreign
+// arrays -- convert them with asarray first; docs/design/array.md §2.8).
 bool is_operand(nb::handle o);
 
 nb::object run_unary(const LoopTable& table, const char* name, nb::handle x, nb::handle out);

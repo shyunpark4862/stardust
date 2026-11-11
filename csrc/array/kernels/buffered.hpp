@@ -1,13 +1,13 @@
-// Buffered casting (ARCHITECTURE.md §4.2 step 6; M7.6).
+// Buffered casting (docs/design/array.md §4.3).
 //
 // When an input's dtype differs from the loop's (int64 + float64 runs the
-// float64 loop), M4 converted the whole input into a temporary array first:
-// one full pass over memory to write it, another to read it back. Here the
-// conversion happens in chunks of kBufferElements instead: cast a chunk into
-// a small buffer that stays in L1, run the kernel on it, move on. Memory
-// traffic is that of the inputs and the output only.
+// float64 loop), converting the whole input into a temporary array first
+// would cost one full pass over memory to write it and another to read it
+// back. Here the conversion happens in chunks of kBufferElements instead:
+// cast a chunk into a small buffer that stays in L1, run the kernel on it,
+// move on. Memory traffic is that of the inputs and the output only.
 //
-// BufferedLoop wraps any kernel with the M2 signature (inputs first, outputs
+// BufferedLoop wraps any kernel with the Loop signature (inputs first, outputs
 // last) and is itself a kernel with that signature, so the iterator does not
 // know it is there.
 #pragma once
@@ -22,7 +22,7 @@
 namespace sd {
 
 // 4096 elements: three 32 KB buffers fit the 128 KB L1 of a P-core
-// (ARCHITECTURE.md §4.2; the other sizes measured in M7.6 are in the explainer).
+// (docs/design/array.md §4.3, with the other sizes measured).
 inline constexpr std::int64_t kBufferElements = 4096;
 
 struct BufferedLoop {
@@ -42,8 +42,9 @@ struct BufferedLoop {
 };
 
 // The kernel; ctx is the BufferedLoop.
-// Per-thread scratch: the ctx is shared by every thread running the loop (M8),
-// so the buffers cannot live in it. Room for every input at the widest dtype.
+// Per-thread scratch (docs/design/array.md §4.3): the ctx is shared by every thread
+// running the loop, so the buffers cannot live in it. Room for every input
+// at the widest dtype.
 inline std::byte* scratch(int k) {
     static constexpr std::int64_t kSlot = kBufferElements * 16;  // complex128
     thread_local std::unique_ptr<std::byte[]> mem =

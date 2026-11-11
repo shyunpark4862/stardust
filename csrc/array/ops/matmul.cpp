@@ -1,15 +1,16 @@
-// matmul (DESIGN.md §2.5, ARCHITECTURE.md §6.4).
+// matmul (docs/design/array.md §9).
 //
 // Shapes follow the Array API: (..., m, k) @ (..., k, n) -> (..., m, n), the
 // leading "batch" axes broadcast, and a 1-D operand is a row (left) or a
 // column (right) vector whose axis is dropped from the result. vector @
-// vector is a Python scalar (Z1).
+// vector is a Python scalar (docs/design/array.md §2.2).
 //
 // float64/complex128 call Accelerate's BLAS (gemm, gemv for a single row or
 // column, dot for a single element). BLAS reads a matrix given a pointer, a
 // "leading dimension" and a transpose flag, so any matrix whose rows or whose
 // columns are contiguous is passed as is; only other layouts are copied
-// first. int64 (and bool, computed in int64 by C13) use our own i-k-j loop.
+// first. int64 (and bool, computed in int64: docs/design/array.md §9.1) use
+// our own i-k-j loop.
 
 #include "array/ops/matmul.hpp"
 
@@ -150,7 +151,7 @@ void blas_matmul(const Mat& a, const Mat& b, T* c) {
 }
 
 // int64: i-k-j order, so the innermost loop walks a row of b and a row of c
-// (DESIGN.md §2.5). Products and sums wrap. Scalar multiplies: NEON has no
+// (docs/design/array.md §9.3). Products and sums wrap. Scalar multiplies: NEON has no
 // 64-bit integer vector multiply.
 void int_matmul(const Mat& a, const Mat& b, std::int64_t* c) {
     const std::int64_t m = a.rows, k = a.cols, n = b.cols;
@@ -162,10 +163,10 @@ void int_matmul(const Mat& a, const Mat& b, std::int64_t* c) {
             const std::byte* brow = b.p + p * b.rs;
             std::int64_t j = 0;
             if (b.cs == sizeof(std::int64_t)) {
-                // Unrolled by 4 (DESIGN.md §2.5: scalar multiplies, unrolled):
+                // Unrolled by 4 (docs/design/array.md §9.3):
                 // four independent multiply-adds per iteration keep the
                 // multiplier busy, and a longer loop body no longer depends on
-                // where the linker happens to place it (M10: the 7-instruction
+                // where the linker happens to place it (the 7-instruction
                 // version ran 1.7x slower when it straddled a 64-byte fetch block).
                 const std::int64_t* bp = reinterpret_cast<const std::int64_t*>(brow);
                 for (; j + 4 <= n; j += 4) {
@@ -183,7 +184,7 @@ void int_matmul(const Mat& a, const Mat& b, std::int64_t* c) {
 
 }  // namespace
 
-// Batched BLAS on the pool (Tier 3 item 15, user decision 2026-11-10):
+// Batched BLAS on the pool (docs/design/array.md §9.4):
 // matrices of at most kSmallBlas multiply-adds, grouped into tasks of about
 // kBlasTaskWork. Accelerate ran a square dgemm on one thread up to 256
 // (CPU time / wall time 1.00) and on several from 288 (1.62), measured.
@@ -193,7 +194,7 @@ inline constexpr std::int64_t kBlasTaskWork = 1 << 15;
 nb::object matmul(nb::handle x1, nb::handle x2) {
     const NDArray& a0 = require_ndarray(x1, "x1");
     const NDArray& b0 = require_ndarray(x2, "x2");
-    const DType d = promote(promote(a0.dtype, b0.dtype), DType::Int64);  // C13: bool @ bool is int64
+    const DType d = promote(promote(a0.dtype, b0.dtype), DType::Int64);  // bool @ bool is int64: docs/design/array.md §9.1
     const NDArray a = a0.dtype == d ? a0 : cast_copy(a0, d);
     const NDArray b = b0.dtype == d ? b0 : cast_copy(b0, d);
     const bool a_vec = a.ndim == 1, b_vec = b.ndim == 1;
@@ -260,10 +261,10 @@ nb::object matmul(nb::handle x1, nb::handle x2) {
             });
         };
         // BLAS: Accelerate threads internally on large matrices; their batches
-        // go one after another so the two never compete (ARCHITECTURE.md §6.4).
-        // Small ones it runs on the calling thread (Tier 3 item 15): those
-        // batches go to the pool, several per task. Each matrix is still one
-        // BLAS call of its own, so the bits do not change.
+        // go one after another so the two never compete. Small ones it runs on
+        // the calling thread: those batches go to the pool, several per task
+        // (docs/design/array.md §9.4). Each matrix is still one BLAS call of
+        // its own, so the bits do not change.
         const std::int64_t work = m * n * k;
         if (count > 1 && work <= kSmallBlas && parallel::available()) {
             const std::int64_t per_task = std::max<std::int64_t>(1, kBlasTaskWork / std::max<std::int64_t>(work, 1));

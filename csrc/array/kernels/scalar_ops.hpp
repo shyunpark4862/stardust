@@ -6,11 +6,12 @@
 // The loop templates (kernels/elementwise.hpp) turn these into 1-D strided
 // inner loops; the dispatcher picks the loop dtype from `ok` (ops/ufunc.cpp).
 //
-// Semantics are DESIGN.md §2.4: integers wrap and never fail (D1), floats and
-// complex follow IEEE 754 and, where numpy spells a formula out (complex
+// Semantics are docs/design/array.md §2.3: integers wrap and never fail, floats
+// and complex follow IEEE 754 and, where numpy spells a formula out (complex
 // multiply/divide, floor_divide on floats, ...), the same formula in the same
-// order so results are bit-for-bit numpy's. -ffp-contract=off keeps the
-// compiler from fusing a*b+c into one FMA behind our back.
+// order so results are bit-for-bit numpy's (docs/design/array.md §5.3).
+// -ffp-contract=off keeps the compiler from fusing a*b+c into one FMA behind
+// our back.
 #pragma once
 
 #include "base/dtype.hpp"
@@ -46,8 +47,9 @@ inline i64 wrap_mul(i64 a, i64 b) { return static_cast<i64>(static_cast<u64>(a) 
 //
 // numpy is compiled with the compiler's default FMA contraction, which turns
 // a*b - c*d into fma(a, b, -(c*d)): the first product is never rounded. To be
-// bit-for-bit equal we write those fmas explicitly (DESIGN.md §2.4: FMA where a
-// kernel needs it, spelled out in the code; -ffp-contract=off everywhere else).
+// bit-for-bit equal we write those fmas explicitly (docs/design/array.md §5.3: FMA
+// where a kernel needs it, spelled out in the code; -ffp-contract=off
+// everywhere else).
 // Measured: 4000 random products, all equal to numpy with this pattern.
 inline c128 cmul(c128 a, c128 b) {
     const double ar = a.real(), ai = a.imag(), br = b.real(), bi = b.imag();
@@ -102,7 +104,7 @@ inline double fmin_nan(double a, double b) {
 }
 
 // ============================================================ binary: arithmetic
-// C13: no bool loops, so bool inputs are computed in int64.
+// No bool loops, so bool inputs are computed in int64 (docs/design/array.md §2.1).
 
 struct Add {
     static constexpr const char* name = "add";
@@ -163,7 +165,8 @@ inline double float_divmod(double a, double b, double* mod_out) {
     return floordiv;
 }
 
-// D1: a // 0 == 0 and a % 0 == a, so a == (a // b) * b + a % b always holds.
+// a // 0 == 0 and a % 0 == a, so a == (a // b) * b + a % b always holds
+// (docs/design/array.md §2.3).
 struct FloorDivide {
     static constexpr const char* name = "floor_divide";
     template <typename T> static constexpr bool ok = is_int<T> || is_float<T>;
@@ -200,8 +203,8 @@ struct Remainder {
 };
 
 // Integer power by repeated squaring (wraps). Negative exponents keep an
-// integer result (D1): only 1 and -1 have integer reciprocals; 0**-n is 0,
-// like division by zero.
+// integer result (docs/design/array.md §2.3): only 1 and -1 have integer
+// reciprocals; 0**-n is 0, like division by zero.
 inline i64 int_pow(i64 base, i64 exp) {
     if (exp < 0) {
         if (base == 1) return 1;
@@ -263,7 +266,7 @@ struct Atan2 {
     static double f(double a, double b) { return std::atan2(a, b); }
 };
 
-// Ordering is undefined for complex (S5): no complex loop.
+// Ordering is undefined for complex (docs/design/array.md §2.6): no complex loop.
 struct Maximum {
     static constexpr const char* name = "maximum";
     template <typename T> static constexpr bool ok = !is_cplx<T>;
@@ -315,8 +318,8 @@ struct GreaterEqual {
 };
 
 // ============================================================ binary: logical and bitwise
-// Logical operations take bool only (M4 decision, Array API): the dispatcher
-// finds no loop for int64 and raises TypeError.
+// Logical operations take bool only (Array API, docs/design/array.md §2.1): the
+// dispatcher finds no loop for int64 and raises TypeError.
 
 struct LogicalAnd {
     static constexpr const char* name = "logical_and";

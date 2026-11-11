@@ -1,8 +1,8 @@
-"""M5: reductions against numpy.
+"""Reductions against numpy.
 
 Integer, bool and min/max/arg* results must be exact. Floating sums are
 compared with a tolerance: the summation order is deliberately not numpy's
-(DESIGN.md §2.4), only deterministic.
+(docs/api/array.md §7.8), only deterministic.
 """
 
 import math
@@ -46,7 +46,7 @@ def layouts(n):
 def compare(got, want, exact):
     want = np.asarray(want)
     if want.ndim == 0:
-        assert not isinstance(got, sd.ndarray), "a full reduction must give a Python scalar (Z1)"
+        assert not isinstance(got, sd.ndarray), "a full reduction must give a Python scalar (docs/api/array.md §1.2)"
         got_np = np.asarray(got, dtype=want.dtype)
         assert type(got) is {"b": bool, "i": int, "f": float, "c": complex}[want.dtype.kind]
     else:
@@ -103,7 +103,7 @@ def test_methods_are_the_functions():
 
 def test_result_dtypes():
     b, i, f, c = (sd.asarray(data(d)) for d in ALL_DTYPES)
-    assert sd.sum(b, axis=0).dtype is sd.int64  # C13
+    assert sd.sum(b, axis=0).dtype is sd.int64  # docs/api/array.md §1.4
     assert sd.prod(b, axis=0).dtype is sd.int64
     assert sd.sum(i, axis=0).dtype is sd.int64
     assert sd.max(b, axis=0).dtype is sd.bool
@@ -121,9 +121,9 @@ def test_dtype_argument():
     assert sd.sum(sd.asarray([1, 2]), dtype=sd.float64) == 3.0
     assert type(sd.prod(sd.asarray([2, 3]), dtype=sd.complex128)) is complex
     with pytest.raises(TypeError):
-        sd.sum(f, dtype=sd.bool)  # no bool accumulation (M5 decision)
+        sd.sum(f, dtype=sd.bool)  # no bool accumulation (docs/api/array.md §7.5)
     with pytest.raises(TypeError):
-        sd.sum(sd.asarray([1j]), dtype=sd.float64)  # S4
+        sd.sum(sd.asarray([1j]), dtype=sd.float64)  # docs/api/array.md §1.5
 
 
 def test_integer_sum_wraps():
@@ -193,7 +193,7 @@ def test_argmin_argmax_match_numpy(axis, keepdims, dtype):
 
 def test_argmax_axis_must_be_int():
     with pytest.raises(TypeError):
-        sd.argmax(sd.zeros((2, 2)), axis=(0, 1))  # C5
+        sd.argmax(sd.zeros((2, 2)), axis=(0, 1))  # docs/api/array.md §7.2
 
 
 # ------------------------------------------------------------- var details
@@ -201,7 +201,7 @@ def test_argmax_axis_must_be_int():
 def test_var_degrees_of_freedom():
     one = sd.asarray([5.0])
     assert sd.var(one) == 0.0
-    assert math.isnan(sd.var(one, correction=1))  # N - correction <= 0 -> nan (M5 decision)
+    assert math.isnan(sd.var(one, correction=1))  # N - correction <= 0 -> nan (docs/api/array.md §7.4)
     assert math.isnan(sd.std(sd.asarray([1.0, 2.0]), correction=2))
     assert sd.var(sd.asarray([1.0, 2.0, 3.0, 4.0]), correction=1) == pytest.approx(5 / 3)
     with pytest.raises(TypeError):
@@ -232,7 +232,7 @@ def test_cumulative_axis_rules():
     v = sd.asarray([1, 2, 3])
     assert sd.cumulative_sum(v).tolist() == [1, 3, 6]  # 1-D: axis may be omitted
     with pytest.raises(ValueError):
-        sd.cumulative_sum(sd.zeros((2, 2)))  # C4: ndim > 1 needs axis
+        sd.cumulative_sum(sd.zeros((2, 2)))  # ndim > 1 needs axis (docs/api/array.md §7.7)
     with pytest.raises(TypeError):
         sd.cumulative_sum(v, axis=(0,))
     assert sd.cumulative_sum(sd.zeros(0), include_initial=True).tolist() == [0.0]
@@ -290,7 +290,7 @@ def test_random_shapes_and_axes(data_):
         compare(sd.max(x, axis=axis, keepdims=keepdims), np.max(n, axis=axis, keepdims=keepdims), exact=True)
 
 
-# ------------------------------------------------- M7 kernels: vector paths
+# ------------------------------------------------------ vector kernel paths
 
 @given(st.lists(st.sampled_from([0.0, -0.0, 1.0, 2.0, -3.0, math.inf, -math.inf, math.nan]), min_size=1, max_size=40))
 def test_vector_folds_match_numpy(values):
@@ -339,9 +339,10 @@ def test_int_min_max_vector_fold_finds_every_position(n):
         assert sd.max(sd.asarray(x)) == x.max()
 
 
-# M10+: float prod and long cumulative scans run in fixed blocks; the results
-# are compared with numpy within rounding, and must not depend on the layout
-# of the same lane's memory more than rounding does.
+# Float prod and long cumulative scans run in fixed blocks
+# (docs/design/array.md §6.6, §6.7); the results are compared with numpy
+# within rounding, and must not depend on the layout of the same lane's
+# memory more than rounding does.
 
 @pytest.mark.parametrize("n", [0, 1, 7, 8, 9, 15, 16, 17, 4095, 4096, 4097, 8191, 8192, 8193, 40_000])
 def test_blocked_float_prod_is_close(n):

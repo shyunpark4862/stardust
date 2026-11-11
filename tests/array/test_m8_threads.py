@@ -1,5 +1,5 @@
-"""M8: threads. Every result must be bit-for-bit the same for any thread count
-(DESIGN.md §2.4), and the pool must survive several Python threads at once."""
+"""Threads. Every result must be bit-for-bit the same for any thread count
+(docs/api/array.md §0.3), and the pool must survive several Python threads at once."""
 
 import math
 import threading
@@ -72,9 +72,9 @@ def battery():
         "gather": lambda: F[IDX],
         "astype": lambda: sd.astype(M, sd.int64),
         "sum complex big": lambda: sd.sum(C),
-        # M10+: blocked over a reduced axis / multi-accumulator / blocked
-        # scans. Not numpy's bits any more, but still the same for every
-        # thread count.
+        # Blocked over a reduced axis / multi-accumulator / blocked scans
+        # (docs/design/array.md §6.9). Not numpy's bits, but still the same for
+        # every thread count.
         "reduced-axis blocks": lambda: (sd.mean(M, axis=0), sd.var(M, axis=0), sd.prod(M, axis=0),
                                         sd.max(M, axis=0), sd.sum(B, axis=0), sd.sum(I, axis=0)),
         "prod float/complex": lambda: (sd.prod(P), sd.prod(P[::3]), sd.prod(S(c[:200_000] / abs(c[:200_000]))),
@@ -83,20 +83,20 @@ def battery():
                                sd.cumulative_sum(F[::-2]), sd.cumulative_sum(I.reshape(-1)[:100_003]),
                                sd.cumulative_sum(S(m.reshape(-1)[:90_000].reshape(30_000, 3)), axis=0),
                                sd.cumulative_prod(P, include_initial=True)),
-        # M10+ tier 2: take along one axis, masks in chunks.
+        # Take along one axis, masks in chunks (docs/design/array.md §7.3, §7.4).
         "take with blocks": lambda: (M[:, S(idx[:500] % 900)], T3[:, :, S(idx[:40] % 70)], M[S(idx[:300] % 700)]),
         "mask gather": lambda: (F[S(f > 0.3)], F[S(f > 2.5)], M[S(m > 0)], M[:, S(m[0] > 0)]),
         "mask scatter": lambda: masked_assign(F, S(f > 0.3)),
-        # Tier 3 item 15: small batched BLAS matmuls on the pool
+        # Small batched BLAS matmuls on the pool (docs/design/array.md §9.4)
         "batched small matmul": lambda: (S(m[:640].reshape(10, 64, 900)[:, :, :64]) @ S(m[:640, :64].reshape(10, 64, 64)),
                                          S(m.reshape(-1)[:64_000].reshape(1000, 8, 8)) @ M[:8, :8],
                                          S(c[:32_000].reshape(500, 8, 8)) @ S(c[:32_000].reshape(500, 8, 8))),
-        # Tier 3 item 13: one long lane sorted in pieces and merged
+        # One long lane sorted in pieces and merged (docs/design/array.md §8.5)
         "long 1-D sort": lambda: (sd.sort(F), sd.argsort(F), sd.sort(F, stable=False),
                                   sd.argsort(S(idx), descending=True), sd.unique_all(S(idx % 5000)),
                                   sd.argsort(S(b.reshape(-1)), stable=False), sd.argsort(S(i.reshape(-1) % 50.0),
                                                                                        stable=False)),
-        # review fix: full reductions with a cast, now blocked
+        # Full reductions with a cast, blocked (docs/design/array.md §6.5)
         "full reductions with a cast": lambda: (sd.sum(B), sd.mean(I), sd.mean(B), sd.sum(I, dtype=sd.float64),
                                                 sd.var(I), sd.any(M), sd.all(F), sd.prod(B[:, :5]),
                                                 sd.sum(S(c), dtype=sd.complex128), sd.mean(S(t3 > 0))),
@@ -207,8 +207,8 @@ def test_resize_while_others_compute():
 
 
 def test_full_reductions_with_a_cast_are_exact_or_close():
-    # Blocked now (review fix): integer results exact, float sums within
-    # rounding of numpy (not its bits: DESIGN.md §2.4).
+    # Blocked (docs/design/array.md §6.5): integer results exact, float sums
+    # within rounding of numpy (not its bits: docs/api/array.md §7.8).
     rng = np.random.default_rng(2)
     b = rng.random(3_000_001) < 0.3
     i = rng.integers(-10**6, 10**6, (1500, 2001))

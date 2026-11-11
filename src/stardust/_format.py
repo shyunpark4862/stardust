@@ -1,8 +1,8 @@
 """repr() and str() of arrays.
 
-Kept in Python on purpose (ARCHITECTURE.md §1): printing is a cold path, and
-string layout is far easier to read here than in C++. The C++ side only hands
-over the (possibly summarized) values via ``ndarray._summary``.
+Kept in Python on purpose (docs/design/array.md §12.1): printing is a cold
+path, and string layout is far easier to read here than in C++. The C++ side
+only hands over the (possibly summarized) values via ``ndarray._summary``.
 
 Layout rules, numpy-like:
   * every element is right-aligned to the widest element of the whole array;

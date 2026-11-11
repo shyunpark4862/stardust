@@ -1,4 +1,4 @@
-"""M3: concat and stack."""
+"""concat and stack."""
 
 import numpy as np
 import pytest

@@ -1,5 +1,5 @@
 // Sorting algorithms over a contiguous buffer, generic in the element type
-// and the comparator (ARCHITECTURE.md §6.2).
+// and the comparator (docs/design/array.md §8.2).
 //
 //   stable=True   top-down merge sort, insertion sort below kSmall elements
 //   stable=False  introsort: quicksort, falling back to heapsort when the

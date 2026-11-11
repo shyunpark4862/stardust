@@ -61,7 +61,7 @@ NDArray keepdims_result(const NDArray& x, const Axes& ax, DType dtype, bool zero
 }
 
 // keepdims=False: drop the reduced axes (a view of the fresh result), or hand
-// back a Python scalar when nothing is left (Z1).
+// back a Python scalar when nothing is left (docs/design/array.md §2.2).
 nb::object finish(NDArray&& res, const Axes& ax, bool keepdims) {
     if (keepdims) return wrap(std::move(res));
     if (ax.count == res.ndim) return load_python(res.dtype, res.data);
@@ -85,7 +85,7 @@ void fill(NDArray& a, T v) {
 
 // Runs a reduction iterator over (x, out): `loop` works in out's dtype; an x
 // of another dtype is converted chunk by chunk on the way (buffered casting,
-// M7.6).
+// docs/design/array.md §4.3).
 void run_fold(const NdIter& it, DType from, DType to, Loop loop) {
     if (from == to) {
         it.run(loop, nullptr, Split::Reduction);
@@ -99,7 +99,7 @@ void run_fold(const NdIter& it, DType from, DType to, Loop loop) {
     it.run(&buffered_loop, &buffered, Split::Reduction);
 }
 
-// ------------------------------------------------ blocked reductions (M10+)
+// ------------------------------------------------------- blocked reductions
 //
 // When the reduced axes come first in memory -- sum(m, axis=0) of a C-ordered
 // matrix -- the kept axes form the innermost run, and run() cuts that into
@@ -111,7 +111,7 @@ void run_fold(const NdIter& it, DType from, DType to, Loop loop) {
 // The blocks depend on the shape, layout and dtypes only, never on the thread
 // count, so the result is the same for every thread count -- but for float
 // add and multiply it is not numpy's bits: the order of the operations
-// changed (user decision 2026-11-10; DESIGN.md §2.4).
+// changed (docs/design/array.md §6.5, §6.9).
 
 constexpr std::int64_t kMaxBlocks = 16;
 // Each block costs extra passes over the output (its start-value copy and
@@ -197,9 +197,9 @@ NDArray as_dtype(const NDArray& x, DType d) { return x.dtype == d ? x : cast_cop
     throw nb::type_error((std::string(name) + "() is not supported for " + dtype_name(d)).c_str());
 }
 
-// sum/prod/cumulative dtype: bool accumulates in int64 (C13); dtype= is an
-// explicit conversion (M1 rules) but never bool: add and multiply have no
-// bool loop (M5 decision).
+// sum/prod/cumulative dtype: bool accumulates in int64; dtype= is an
+// explicit conversion but never bool: add and multiply have no bool loop
+// (docs/design/array.md §6.1, §2.4).
 DType accumulate_dtype(const NDArray& x, nb::handle dtype_obj, const char* name) {
     const std::optional<DType> d = parse_dtype(dtype_obj);
     if (!d) return promote(x.dtype, DType::Int64);
@@ -273,7 +273,7 @@ template <bool Max>
 nb::object arg_extreme_impl(nb::handle x_obj, nb::handle axis_obj, bool keepdims) {
     const char* name = Max ? "argmax" : "argmin";
     const NDArray& x = require_ndarray(x_obj);
-    if (x.dtype == DType::Complex128) unsupported(name, x.dtype);  // S5
+    if (x.dtype == DType::Complex128) unsupported(name, x.dtype);  // docs/design/array.md §2.6
     // complex was rejected above; its branch only satisfies visit_dtype.
     ArgFn lane_fn = visit_dtype(x.dtype, [&]<typename T>(std::type_identity<T>) {
         if constexpr (ops::is_cplx<T>) return &arg_extreme<double, Max>;
@@ -300,7 +300,7 @@ nb::object arg_extreme_impl(nb::handle x_obj, nb::handle axis_obj, bool keepdims
         return wrap(std::move(out));
     }
 
-    const int axis = normalize_axis(parse_int(axis_obj, "axis"), x.ndim);  // C5: int only
+    const int axis = normalize_axis(parse_int(axis_obj, "axis"), x.ndim);  // int only: docs/design/array.md §2.8
     Axes ax;
     ax.reduced[axis] = true;
     ax.count = 1;
@@ -334,7 +334,7 @@ nb::object cumulative(nb::handle x_obj, nb::handle axis_obj, nb::handle dtype_ob
     if (axis_obj.is_none()) {
         if (x.ndim != 1)
             throw nb::value_error((std::string(name) + "() needs axis= for arrays with more than one dimension")
-                                      .c_str());  // C4
+                                      .c_str());  // docs/design/array.md §2.8
         axis = 0;
     } else {
         axis = normalize_axis(parse_int(axis_obj, "axis"), x.ndim);
@@ -382,8 +382,8 @@ double parse_correction(nb::handle o) {
 }
 
 // Two passes: the mean, then the sum of squared deviations from it, divided
-// by N - correction. That is NaN whenever N - correction <= 0 (M5 decision,
-// Array API), which also covers empty input.
+// by N - correction. That is NaN whenever N - correction <= 0 (Array API,
+// docs/design/array.md §6.8), which also covers empty input.
 NDArray var_keepdims(nb::handle x_obj, nb::handle axis_obj, nb::handle correction_obj, Axes& ax) {
     const NDArray& x = require_ndarray(x_obj);
     const double correction = parse_correction(correction_obj);
@@ -433,7 +433,7 @@ nb::object prod(nb::handle x_obj, nb::handle axis, nb::handle dtype, bool keepdi
 // the first real element always replaces it (and -inf/-0.0 stay exact).
 nb::object max(nb::handle x_obj, nb::handle axis, bool keepdims) {
     const NDArray& x = require_ndarray(x_obj);
-    if (x.dtype == DType::Complex128) unsupported("max", x.dtype);  // S5
+    if (x.dtype == DType::Complex128) unsupported("max", x.dtype);  // docs/design/array.md §2.6
     const Axes ax = parse_reduce_axes(x, axis);
     require_nonempty(x, ax, "max");
     return fold<ops::Maximum>(x, ax, x.dtype, keepdims, []<typename T>(std::type_identity<T>) {

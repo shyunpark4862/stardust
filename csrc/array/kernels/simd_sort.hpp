@@ -1,4 +1,5 @@
-// NEON sorting: sorting networks in registers, then bitonic merging (M7.9c).
+// NEON sorting: sorting networks in registers, then bitonic merging
+// (docs/design/array.md §8.3).
 //
 // A 128-bit register holds two float64 or two int64. The sort has two phases:
 //
@@ -13,7 +14,7 @@
 //
 // The network compare-exchanges every pair it touches, so equal values may be
 // reordered: the result is a correct sort but not a stable one. sort.cpp uses
-// it only where that cannot be seen (DESIGN decision in M7.9c).
+// it only where that cannot be seen (docs/design/array.md §8.3).
 #pragma once
 
 #include <arm_neon.h>

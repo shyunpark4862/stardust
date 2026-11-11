@@ -11,8 +11,9 @@ namespace sd {
 
 namespace nb = nanobind;
 
-// S6: an implicit conversion (assignment, out=, in-place) may only go up the
-// promotion order bool < int64 < float64 < complex128.
+// An implicit conversion (assignment, out=, in-place) may only go up the
+// promotion order bool < int64 < float64 < complex128
+// (docs/design/array.md §2.5).
 void check_assignable(DType from, DType to);
 
 // Conservative overlap test on the byte ranges the two arrays can touch.
@@ -25,13 +26,13 @@ bool same_view(const NDArray& a, const NDArray& b);
 // dst[...] = src: src is broadcast to dst's shape and converted to dst's
 // dtype. If the two overlap (and are not the very same view), src is first
 // copied to a temporary, so the result is as if every input element were read
-// before any output element is written (R3). Policy checks (writeable, cast
-// rule) belong to the caller.
+// before any output element is written (docs/design/array.md §3.5). Policy
+// checks (writeable, cast rule) belong to the caller.
 void assign(NDArray& dst, const NDArray& src);
 
 // assign() plus the policy checks shared by setitem, out= and in-place
 // operators: dst must be writeable (ValueError) and src's dtype must convert
-// to dst's implicitly (S6, TypeError).
+// to dst's implicitly (TypeError, docs/design/array.md §2.5).
 void assign_checked(NDArray& dst, const NDArray& src);
 
 // New array with src's values converted to `to`, laid out like src.

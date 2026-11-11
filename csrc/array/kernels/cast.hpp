@@ -1,8 +1,8 @@
 // Cast kernels: one inner loop per (from, to) dtype pair, 4 x 4 = 16 loops,
 // generated from a single template and looked up in a table at runtime.
 //
-// Contiguous runs take an indexed loop the compiler can vectorize (M7.2);
-// anything else the general strided loop.
+// Contiguous runs take an indexed loop the compiler can vectorize
+// (docs/design/array.md §5.1); anything else the general strided loop.
 #pragma once
 
 #include "array/convert.hpp"
@@ -19,10 +19,10 @@ namespace sd {
 // args[0] = source, args[1] = destination.
 template <typename From, typename To>
 void cast_loop(std::byte* const* args, std::int64_t n, const std::int64_t* strides, void*) {
-    if (strides[0] == sizeof(From) && strides[1] == sizeof(To)) {  // contiguous (M7.2)
+    if (strides[0] == sizeof(From) && strides[1] == sizeof(To)) {  // contiguous
         if constexpr (std::is_same_v<From, To>) {
             // A plain copy: memcpy uses the widest loads/stores the CPU has
-            // and is tuned per chip by the OS (M7.4).
+            // and is tuned per chip by the OS (docs/design/array.md §5.1).
             std::memcpy(args[1], args[0], static_cast<size_t>(n) * sizeof(To));
             return;
         }
@@ -30,7 +30,8 @@ void cast_loop(std::byte* const* args, std::int64_t n, const std::int64_t* strid
         To* dst = reinterpret_cast<To*>(args[1]);
         std::int64_t i = 0;
         if constexpr (std::is_same_v<From, double> && std::is_same_v<To, std::int64_t>) {
-            // S3 float -> int64 is the vector FCVTZS, two lanes at a time.
+            // float -> int64 (docs/design/array.md §2.4) is the vector FCVTZS, two
+            // lanes at a time.
             for (; i + 4 <= n; i += 4) {
                 vst1q_s64(dst + i, vcvtq_s64_f64(vld1q_f64(src + i)));
                 vst1q_s64(dst + i + 2, vcvtq_s64_f64(vld1q_f64(src + i + 2)));

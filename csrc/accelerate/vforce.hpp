@@ -1,8 +1,8 @@
-// float64 transcendental functions through Accelerate's vForce (M9;
-// DESIGN.md §2.6).
+// float64 transcendental functions through Accelerate's vForce
+// (docs/design/array.md §5.4).
 //
 // vForce computes a whole array per call (vvexp(y, x, &n)) with SIMD code
-// tuned for Apple chips. M0 checked the 16 functions used here: the result
+// tuned for Apple chips. The 16 functions used here were checked: the result
 // for an element does not depend on its position, the array length or
 // alignment (so exp(x)[i] == exp(x[i]), and thread chunking cannot change
 // results), they keep C99 Annex F special values, use no threads of their
@@ -10,8 +10,8 @@
 // and tan failed those checks and stay on libm; complex functions are libm.
 //
 // vForce wants contiguous arrays. A strided operand (or a broadcast scalar)
-// goes through a small stack buffer first -- the "buffer casting" of M7, here
-// done inside the kernel.
+// goes through a small stack buffer first -- the buffer casting of
+// docs/design/array.md §4.3, here done inside the kernel.
 #pragma once
 
 #include "array/kernels/scalar_ops.hpp"

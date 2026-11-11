@@ -1,9 +1,10 @@
-// Reductions (API.md §6): sum, prod, min, max, mean, var, std, argmin,
+// Reductions (docs/api/array.md §7): sum, prod, min, max, mean, var, std, argmin,
 // argmax, any, all, cumulative_sum, cumulative_prod.
 //
-// Results: a reduction over every axis gives a Python scalar (Z1) unless
-// keepdims=True. Summation order is not numpy's (DESIGN.md §2.4) but is
-// fixed: the same data in the same layout always gives the same bits.
+// Results: a reduction over every axis gives a Python scalar
+// (docs/design/array.md §2.2) unless keepdims=True. Summation order is not
+// numpy's (docs/design/array.md §6.9) but is fixed: the same data in the same
+// layout always gives the same bits.
 #pragma once
 
 #include <nanobind/nanobind.h>

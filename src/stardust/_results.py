@@ -1,4 +1,5 @@
-"""Named result tuples of the unique_* functions (C8; Array API names)."""
+"""Named result tuples of the unique_* functions, with Array API names
+(docs/api/array.md §8.3)."""
 
 from collections import namedtuple
 

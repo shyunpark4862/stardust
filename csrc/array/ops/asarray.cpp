@@ -129,7 +129,7 @@ nb::object from_nested(nb::handle obj, std::optional<DType> dtype) {
 
 // --------------------------------------------------------- buffer protocol --
 
-// Element types we can read from a foreign buffer (ARCHITECTURE.md §6.5).
+// Element types we can read from a foreign buffer (docs/design/array.md §12.3).
 enum class Src { Bool, I8, I16, I32, I64, U8, U16, U32, U64, F16, F32, F64, C64, C128 };
 
 Src parse_format(const char* format, Py_ssize_t itemsize) {
@@ -171,7 +171,8 @@ Src parse_format(const char* format, Py_ssize_t itemsize) {
     return unsupported();
 }
 
-// The dtype a foreign element type widens to without losing information (R5).
+// The dtype a foreign element type widens to without losing information
+// (docs/design/array.md §12.3).
 DType natural_dtype(Src s) {
     switch (s) {
         case Src::Bool: return DType::Bool;

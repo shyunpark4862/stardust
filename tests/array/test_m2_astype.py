@@ -1,4 +1,5 @@
-"""M2: astype, copy, and the assignment engine (overlap, S6)."""
+"""astype, copy, and the assignment engine (overlap, upward-only conversion:
+docs/api/array.md §1.5, §1.7)."""
 
 import math
 
@@ -100,7 +101,7 @@ def test_astype_on_strided_views_matches_numpy(base, target, data):
     assert_same(sd.asarray(view).astype(target), view.astype(NP_DTYPE[target]))
 
 
-# ------------------------------------------------- assignment engine (R3, S6)
+# --------------------------- assignment engine (docs/api/array.md §1.5, §1.7)
 
 copyto = sd._core._copyto
 
@@ -141,7 +142,7 @@ def test_copyto_broadcasts_and_upcasts():
 
 def test_copyto_refuses_implicit_downcast_and_readonly():
     with pytest.raises(TypeError):
-        copyto(sd.zeros(2, dtype=sd.int64), sd.asarray([1.5, 2.5]))  # S6
+        copyto(sd.zeros(2, dtype=sd.int64), sd.asarray([1.5, 2.5]))  # docs/api/array.md §1.5
     src = np.zeros(2)
     src.flags.writeable = False
     with pytest.raises(ValueError):

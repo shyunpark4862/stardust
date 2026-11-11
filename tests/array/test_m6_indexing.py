@@ -1,4 +1,4 @@
-"""M6: advanced indexing (integer arrays, boolean masks): gather and scatter."""
+"""Advanced indexing (integer arrays, boolean masks): gather and scatter."""
 
 import numpy as np
 import pytest
@@ -43,7 +43,7 @@ def test_strided_source_and_indices():
 
 
 @pytest.mark.parametrize("key", [
-    (0, slice(None), [0, 1]),          # int and array separated by a slice (M6 decision)
+    (0, slice(None), [0, 1]),          # int and array separated by a slice (docs/api/array.md §5.2)
     ([0, 1], slice(None), 0),
     ([0, 1], slice(None), [0, 1]),
     ([0, 1], None, [0, 1]),
@@ -85,7 +85,7 @@ def test_repeated_indices_last_write_wins():
 def test_scatter_rules():
     x = sd.zeros(4, dtype=sd.int64)
     with pytest.raises(TypeError):
-        x[[0, 1]] = 1.5  # S6
+        x[[0, 1]] = 1.5  # docs/api/array.md §1.5
     with pytest.raises(ValueError):
         x[[0, 1]] = sd.asarray([1, 2, 3])  # strict broadcasting
     with pytest.raises(ValueError):
@@ -128,7 +128,7 @@ def test_random_integer_indices(data):
     assert_same(x, want)
 
 
-# ----------------------------------------- the fused one-index path (M9+)
+# ------------------- the fused one-index path (docs/design/array.md §7.3)
 
 def test_failed_assignment_writes_nothing():
     # Every index is checked before the first write (numpy behaves the same).
@@ -186,8 +186,9 @@ def test_one_index_mixed_dtype_value_and_threads():
         sd.set_num_threads(before)
 
 
-# M10+: one index array with whole blocks (one loop over the result shape),
-# and boolean masks in fixed chunks. Results must equal numpy exactly.
+# One index array with whole blocks (one loop over the result shape), and
+# boolean masks in fixed chunks (docs/design/array.md §7.3, §7.4). Results
+# must equal numpy exactly.
 
 @pytest.mark.parametrize("layout", ["C", "F", "reversed", "strided"])
 def test_take_along_one_axis_layouts(layout):
@@ -298,7 +299,7 @@ def test_advanced_results_follow_the_input_layout():
     assert np.asarray(g3).strides == (8, 48, 24, 96)
 
 
-# ------------------------------------------------- review fixes (2026-11-10)
+# ---------------------------------------------------------- regression tests
 
 def test_scatter_with_indices_inside_the_target():
     # The indices are read as they were before the assignment.

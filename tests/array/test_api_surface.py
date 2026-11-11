@@ -1,5 +1,5 @@
-"""M10: API.md is the contract -- every name it lists must exist, and the
-package must export nothing it does not list."""
+"""docs/api/array.md is the contract -- every name it lists must exist, and
+the package must export nothing it does not list."""
 
 import re
 from pathlib import Path
@@ -13,15 +13,35 @@ ATTRIBUTES = {"dtype", "shape", "ndim", "size", "strides", "itemsize", "nbytes",
 CONSTANTS = {"e", "pi", "inf", "nan", "newaxis", "bool", "int64", "float64", "complex128", "ndarray"}
 
 
+def signature_blocks(text):
+    """The lines of every fenced block without a language tag (```), read fence
+    by fence: a tagged block such as ```python is skipped whole, and its
+    closing fence is not mistaken for the opening of a signature block."""
+    blocks, current, inside = [], None, False
+    for line in text.splitlines():
+        if line.startswith("```"):
+            if not inside:
+                inside = True
+                current = [] if line.strip() == "```" else None
+            else:
+                inside = False
+                if current is not None:
+                    blocks.append(current)
+                current = None
+        elif inside and current is not None:
+            current.append(line)
+    return blocks
+
+
 def api_names():
     names = set()
-    for block in re.findall(r"```\n(.*?)```", API, re.S):
-        for line in block.splitlines():
+    for block in signature_blocks(API):
+        for line in block:
             code = line.split("#")[0]
             names |= set(re.findall(r"\b([a-z_][a-z0-9_]*)\s*\(", code))
             if "(" not in code:
                 names |= {w for w in code.split() if re.fullmatch(r"[a-z_][a-z0-9_]*", w)}
-    # Most methods are also module functions (A2); copy and tolist are methods only.
+    # Most methods are also module functions (docs/api/array.md §10.2); copy and tolist are methods only.
     return names - {"copy", "tolist"} - ATTRIBUTES
 
 

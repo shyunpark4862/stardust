@@ -25,7 +25,7 @@
 | 마일스톤 | 단계 | 상태 |
 |---|---|---|
 | M0 저장소, 이력, 기준선 | 준비 | 완료 (2026-11-12), docs/learn/M0-repository-history-baseline.md |
-| M1 배열 코어 옮기기 | 1단계 | 대기 |
+| M1 배열 코어 옮기기 | 1단계 | 완료 (2026-11-12), docs/learn/M1-array-core.md |
 | M2 linalg 옮기기 | 1단계 | 대기 |
 | M3 linalg 경계 없애기 | 1단계 | 대기 |
 | M4 공통 바닥 정리 | 2단계 준비 | 대기 |
@@ -59,6 +59,8 @@
 - 이름공간 `sdla` → `sd::linalg`. linalg의 풀 복사본은 지운다(배열의 풀을 쓴다).
 - 컴파일 플래그 통일(`-fno-builtin-sin/-cos`)의 영향을 여기서 확인한다.
 - 문서: `docs/design/linalg.md`(경계 부분은 M3의 모습으로 미리 쓴다), `docs/api/linalg.md`. linalg 코드의 주석 참조를 바꾼다.
+  - linalg 주석은 stardust-numpy 문서도 인용한다 ("stardust-numpy ARCHITECTURE §6.5" 등). `docs/design/array-refmap.md`, `docs/api/array-refmap.md`로 새 배열 문서에 잇는다.
+  - 공통 규칙(dtype 객체, 에러 종류, 스레드)을 `docs/api/array.md §0`에서 루트 `API.md`로 옮기고, 그 절을 인용하던 주석을 고친다.
 
 ### M3. linalg 경계 없애기
 - `Input` → `const NDArray&`, `alloc_*` + `sdnp.asarray` → `new_array_fortran`, `pyrefs`의 sdnp 참조 제거 (ARCHITECTURE §3)
@@ -94,5 +96,5 @@
 - 안내서를 새로 쓴다: 영역을 넘나드는 한 권 (`docs/guide/`, DESIGN §5.4)
 - README 완성, `API.md` 색인 정리
 - 최종 보고서: 기준선 대비 통합판의 성능, 줄어든 코드(중복 제거), 경계 비용
-- 남은 옛 문서 참조가 없는지 확인한다 (코드, 테스트, 새 문서). `legacy/`가 비었는지 확인하고 지운다.
+- 남은 옛 문서 참조가 없는지 확인한다 (코드, 테스트, 새 문서). `legacy/`가 비었는지 확인하고 지운다. 옛 참조 대응표(`docs/*/<영역>-refmap.md`)도 지운다.
 - 옛 저장소 세 개를 동결한다 (README에 "stardust로 옮겨 감" 표시, DESIGN §5.2)

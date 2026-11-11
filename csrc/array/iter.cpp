@@ -137,8 +137,8 @@ NdIter::Plan NdIter::plan(Split split, std::int64_t weight) const {
     // and compared with the limits in float64 elements (x 8). A loop
     // over bools moves an eighth of the memory per element, so it needs
     // 8x the elements to go parallel and gets 8x the elements per task
-    // (M10+: b & b with 4096-bool tasks ran 1.2x slower on 10 threads
-    // than on one). Wider or strided steps count as 8, as before.
+    // (b & b with 4096-bool tasks ran 1.2x slower on 10 threads than on
+    // one, docs/design/array.md §10.4). Wider or strided steps count as 8.
     std::int64_t bytes = 0;
     for (int k = 0; k < nop_; ++k)
         bytes = std::max(bytes, std::min<std::int64_t>(std::abs(strides_[k][ndim_ - 1]), 8));
@@ -151,8 +151,8 @@ NdIter::Plan NdIter::plan(Split split, std::int64_t weight) const {
     const std::int64_t per_index = std::max<std::int64_t>(p.work / extent, 1);
     std::int64_t chunk = std::max<std::int64_t>(8 * parallel::kTaskWork / per_index, 1);
     // Cutting the innermost axis shortens every kernel call: keep the
-    // pieces long enough to stream. M8 measured sum(m, axis=0) of a
-    // 3000x3000 array: 10-element pieces made it 2.7x slower than one
+    // pieces long enough to stream. sum(m, axis=0) of a 3000x3000 array
+    // (docs/design/array.md §10.4): 10-element pieces made it 2.7x slower than one
     // thread; 256, 1024, 4096 gave 1.50, 0.91, 1.11 ms (one thread 1.05).
     if (axis == ndim_ - 1 && ndim_ > 1) chunk = std::max<std::int64_t>(chunk, kMinInnerPiece);
     p.axis = axis;

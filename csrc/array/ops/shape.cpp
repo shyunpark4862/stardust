@@ -52,7 +52,7 @@ std::vector<std::int64_t> resolve_shape(std::vector<std::int64_t> shape, const N
         if (overflow || known == 0 || size % known != 0) throw fail();
         shape[unknown] = size / known;
     }
-    if (checked_size(shape, a.dtype) != size) throw fail();  // also: no 0-d (Z2), no negative extents
+    if (checked_size(shape, a.dtype) != size) throw fail();  // also: no 0-d (docs/design/array.md §2.2), no negative extents
     return shape;
 }
 
@@ -348,7 +348,8 @@ nb::object stack(nb::handle arrays_obj, nb::handle axis_obj) {
 // --------------------------------------------------------------- real / imag
 
 // The out= tail shared by elementwise functions: no out -> the result itself;
-// otherwise the result is written into out (S6, broadcast to out's shape).
+// otherwise the result is written into out (broadcast to out's shape,
+// converted upward only: docs/design/array.md §2.5).
 nb::object finish(nb::object result, nb::handle out) {
     if (out.is_none()) return result;
     assign_checked(require_ndarray(out, "out"), as_ndarray(result));

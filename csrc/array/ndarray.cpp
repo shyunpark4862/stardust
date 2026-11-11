@@ -93,7 +93,7 @@ NDArray new_array_like(const NDArray& proto, DType dtype, bool zeroed) {
     std::array<int, kMaxNdim> order;
     std::iota(order.begin(), order.begin() + proto.ndim, 0);
     // Insertion sort (stable): at most 32 axes, and std::stable_sort would
-    // allocate a scratch buffer on every call (M7.7).
+    // allocate a scratch buffer on every call (docs/design/array.md §11).
     for (int i = 1; i < proto.ndim; ++i)
         for (int j = i; j > 0 && std::llabs(proto.strides[order[j]]) > std::llabs(proto.strides[order[j - 1]]); --j)
             std::swap(order[j], order[j - 1]);

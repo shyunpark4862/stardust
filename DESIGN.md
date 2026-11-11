@@ -255,6 +255,7 @@ R1이 추천안대로 정해지면, 아래 후보를 함수 하나하나 확정�
   - `.T`는 2차원만 받는다. `permute_dims`에 리스트를 주면 "axis must be an int"라는 엉뚱한 메시지가 나온다.
   - `shape`나 `dtype`에 대입하면 "property '' of 'ndarray' object has no setter"처럼 이름이 빈 메시지가 나온다.
   - linalg: `trace(complex, dtype=float64)`는 배열의 캐스팅 규칙 때문에 TypeError다. linalg에서 의도한 동작인지 확인한다.
+  - 배열 (M1에서 API 문서를 새로 쓰다 찾음): `real`/`imag`는 Python 스칼라를 거부하는데 `conj`는 받는다. 연산자 피연산자로 `numpy.float64`는 받고 `numpy.int64`는 거부한다. `arange`의 int 인자는 `dtype=float64`여도 int64 범위여야 한다. 옛 API.md는 `arange`의 `stop`, `step`을 키워드로 쓸 수 있게 적었지만 코드는 셋 다 위치 전용이다(새 문서는 코드대로 적었다).
   - frame: `df.iloc[0, 9]`의 메시지가 열 위치인데도 "out of range for 4 rows"라고 한다.
   - frame: `df.groupby(Series)`가 Series의 값을 키 이름으로 읽어서 "key columns must be unique"를 낸다.
   - frame: `DataFrame({"a": [1, 2]}, index=[1, 2, 3])`가 index 길이 문제인데 "all columns must have the same length"를 낸다.

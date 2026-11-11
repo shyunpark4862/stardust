@@ -1,4 +1,4 @@
-"""M0: the extension builds, imports, and was compiled for the intended target."""
+"""The extension builds, imports, and was compiled for the intended target."""
 
 import stardust as sd
 
@@ -11,7 +11,7 @@ def test_build_targets_this_mac():
     info = sd._core._build_info()
     assert info["cplusplus"] >= 202002  # C++20
     assert info["neon"]
-    assert info["fcma"]  # complex multiply-accumulate, used in M7
+    assert info["fcma"]  # complex multiply-accumulate, used by the complex multiply kernel
 
 
 def test_accelerate_is_linked_with_ilp64():

@@ -1,11 +1,11 @@
 // Inner loops for the operations in scalar_ops.hpp, and the per-operation
-// loop tables (ARCHITECTURE.md §4.1: table[op][dtype]).
+// loop tables (docs/design/array.md §4.1: table[op][dtype]).
 //
-// One template per arity turns Op::f into a 1-D strided loop with the M2
+// One template per arity turns Op::f into a 1-D strided loop with the Loop
 // kernel signature. Each loop first checks for the common layouts --
 // everything contiguous, or one operand a broadcast scalar (stride 0) -- and
 // runs those as plain indexed loops, which the compiler can vectorize; the
-// fully general strided loop is the fallback (M7.2).
+// fully general strided loop is the fallback (docs/design/array.md §5.1).
 #pragma once
 
 #include "array/iter.hpp"
@@ -30,7 +30,7 @@ using binary_result_t = decltype(Op::f(std::declval<T>(), std::declval<T>()));
 template <typename Op, typename T>
 void unary_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, void*) {
     using R = unary_result_t<Op, T>;
-    if constexpr (ops::is_float<T> && vforce_unary<Op> != nullptr) {  // M9: Accelerate vForce, any layout
+    if constexpr (ops::is_float<T> && vforce_unary<Op> != nullptr) {  // Accelerate vForce, any layout
         vforce_unary_run(vforce_unary<Op>, args[0], s[0], args[1], s[1], n);
         return;
     }
@@ -52,7 +52,7 @@ void unary_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, v
 template <typename Op, typename T>
 void binary_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, void*) {
     using R = binary_result_t<Op, T>;
-    if constexpr (ops::is_float<T> && vforce_binary<Op> != nullptr) {  // M9: pow, atan2 through vForce
+    if constexpr (ops::is_float<T> && vforce_binary<Op> != nullptr) {  // pow, atan2 through vForce
         vforce_binary_run(vforce_binary<Op>, args[0], s[0], args[1], s[1], args[2], s[2], n);
         return;
     }
@@ -62,7 +62,7 @@ void binary_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, 
         R* o = reinterpret_cast<R*>(args[2]);
         if (s[0] == sizeof(T) && s[1] == sizeof(T)) {  // array op array
             if constexpr (neon_binary<Op, T>::available) {
-                neon_binary<Op, T>::run(a, b, o, n);  // hand-written NEON (M7.3)
+                neon_binary<Op, T>::run(a, b, o, n);  // hand-written NEON (docs/design/array.md §5.2)
             } else {
                 for (std::int64_t i = 0; i < n; ++i) o[i] = Op::f(a[i], b[i]);
             }
@@ -117,7 +117,7 @@ void clip_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, vo
         const T* hi = reinterpret_cast<const T*>(args[2]);
         T* op = reinterpret_cast<T*>(args[3]);
         if constexpr (ops::is_float<T>) {
-            neon_clip(xp, lo, s[1] / t, hi, s[2] / t, op, n);  // FMAX then FMIN: the same rules (M10+)
+            neon_clip(xp, lo, s[1] / t, hi, s[2] / t, op, n);  // FMAX then FMIN: the same rules
         } else {
             const std::int64_t sl = s[1] / t, sh = s[2] / t;
             for (std::int64_t i = 0; i < n; ++i) op[i] = ops::Minimum::f(ops::Maximum::f(xp[i], lo[i * sl]), hi[i * sh]);

@@ -1,4 +1,4 @@
-"""M3: shape manipulation. Views share memory; numpy is the oracle for values."""
+"""Shape manipulation. Views share memory; numpy is the oracle for values."""
 
 import numpy as np
 import pytest
@@ -77,7 +77,7 @@ def test_reshape_method_and_signature():
     assert_same(a.reshape((3, 2)), n.reshape(3, 2))
     assert_same(a.reshape(6), n.reshape(6))
     with pytest.raises(TypeError):
-        a.reshape(3, 2)  # C2: one shape argument
+        a.reshape(3, 2)  # one shape argument (docs/api/array.md §1.3)
     with pytest.raises(TypeError):
         sd.reshape(a, (6,), False)  # copy is keyword-only
 
@@ -130,7 +130,7 @@ def test_T_and_mT():
     assert_same(a3.mT, np.swapaxes(n3, -1, -2))
     assert_same(sd.matrix_transpose(a3), np.swapaxes(n3, -1, -2))
     with pytest.raises(ValueError):
-        a3.T  # C10: only 2-D
+        a3.T  # only 2-D (docs/api/array.md §10.1)
     with pytest.raises(ValueError):
         sd.arange(3).T
     with pytest.raises(ValueError):
@@ -172,7 +172,7 @@ def test_squeeze():
     with pytest.raises(ValueError):
         sd.squeeze(a, axis=1)  # extent 3
     with pytest.raises(ValueError):
-        sd.squeeze(sd.zeros((1, 1)), axis=(0, 1))  # would be 0-d (Z2)
+        sd.squeeze(sd.zeros((1, 1)), axis=(0, 1))  # would be 0-d (docs/api/array.md §1.2)
     with pytest.raises(TypeError):
         sd.squeeze(a)  # axis is required
 
@@ -265,7 +265,7 @@ def test_real_imag_out():
     assert sd.imag(a, out=out) is out
     assert out.tolist() == [[2, 4], [2, 4]]  # broadcast into out
     with pytest.raises(TypeError):
-        sd.real(a, out=sd.zeros(2, dtype=sd.int64))  # S6: float64 -> int64
+        sd.real(a, out=sd.zeros(2, dtype=sd.int64))  # float64 -> int64 (docs/api/array.md §1.5)
     with pytest.raises(TypeError):
         sd.real(a, sd.zeros(2))  # out is keyword-only
 

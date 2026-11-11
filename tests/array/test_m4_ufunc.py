@@ -1,10 +1,10 @@
-"""M4: every elementwise function on every dtype, against numpy.
+"""Every elementwise function on every dtype, against numpy.
 
 The expected loop dtype comes from the spec below (which dtypes each function
 has a loop for); numpy then computes the reference on inputs already
-converted to that dtype. Where stardust deliberately differs from numpy (D1
-integer division and power, C13 bool arithmetic) the reference is plain
-Python instead.
+converted to that dtype. Where stardust deliberately differs from numpy
+(integer division and power, bool arithmetic: docs/api/array.md §1.6, §1.4)
+the reference is plain Python instead.
 """
 
 import itertools
@@ -53,8 +53,8 @@ BINARY = {
     "bitwise_and": BOOL_INT, "bitwise_or": BOOL_INT, "bitwise_xor": BOOL_INT,
     "bitwise_left_shift": {I}, "bitwise_right_shift": {I},
 }
-# float64 functions that M9 moves to vForce: accurate to 8 ULP by contract
-# (DESIGN.md §2.6). Everything else must match numpy bit for bit.
+# float64 functions that run on vForce: accurate to 8 ULP by contract
+# (docs/api/array.md §6.4). Everything else must match numpy bit for bit.
 VFORCE = {"exp", "log", "log2", "log10", "sin", "asin", "acos", "atan", "atan2", "sinh", "cosh", "tanh",
           "asinh", "acosh", "atanh", "pow"}
 
@@ -68,7 +68,7 @@ def wrap(v):
 
 
 def py_int_binary(name, a, b):
-    """D1 and the shift rule, as plain Python on Python ints."""
+    """docs/api/array.md §1.6 and the shift rule, as plain Python on Python ints."""
     if name == "floor_divide":
         return 0 if b == 0 else wrap(a // b)
     if name == "remainder":
@@ -139,7 +139,7 @@ def test_binary_all_dtype_pairs(name, da, db):
         want = reference_binary(name, a, b, loop)
     check(fn(sd.asarray(a), sd.asarray(b)), want, name, loop)  # scalar-broadcast inner loops
     # The same pairs as contiguous arrays and as strided views: each layout has
-    # its own kernel path (M7), and all must give the same bits.
+    # its own kernel path (docs/design/array.md §5.1), and all must give the same bits.
     fa, fb = (np.ascontiguousarray(v) for v in np.broadcast_arrays(a, b))
     check(fn(sd.asarray(fa), sd.asarray(fb)), want, name, loop)
     check(fn(sd.asarray(fa.T), sd.asarray(fb.T)), want.T, name, loop)
@@ -186,7 +186,7 @@ def test_complex_arithmetic_on_random_values():
     assert_same(sd.pow(sa[:11], small), np.power(a[:11], np.arange(-5, 6) + 0j))  # integer-exponent path
 
 
-# ------------------------------------------------------------- D1 and C13
+# ----------------------------------- integer division and bool arithmetic
 
 def test_integer_division_never_fails():
     a = sd.asarray([7, -7, 0, INT_MIN, INT_MIN])
@@ -216,7 +216,7 @@ def test_bool_arithmetic_is_int64():
                       (abs(t), [1, 0]), (sd.square(t), [1, 0]), (sd.sign(t), [1, 0]), (t**t, [1, 1])]:
         assert got.dtype is sd.int64 and got.tolist() == want
     assert (t / t).dtype is sd.float64
-    # ... but logic and bit operations keep bool (C13)
+    # ... but logic and bit operations keep bool (docs/api/array.md §1.4)
     for got in (t & t, t | t, t ^ t, ~t, sd.maximum(t, t), t == t):
         assert got.dtype is sd.bool
     assert (~t).tolist() == [False, True]
@@ -267,16 +267,16 @@ def test_python_scalar_promotion():
     assert (i + 1.5).dtype is sd.float64 and (i + 1.5).tolist() == [2.5, 3.5]
     assert (i * 1j).dtype is sd.complex128
     assert (sd.asarray([True]) + True).tolist() == [2]
-    assert (sd.asarray([1.0]) + 2**70).tolist() == [float(2**70)]  # Z4: float target is fine
+    assert (sd.asarray([1.0]) + 2**70).tolist() == [float(2**70)]  # float target is fine (docs/api/array.md §1.5)
     with pytest.raises(OverflowError):
-        i + 2**70  # Z4: must become int64
+        i + 2**70  # must become int64 (docs/api/array.md §1.5)
     with pytest.raises(OverflowError):
         i < 2**70
 
 
 def test_scalars_only_give_python_scalars():
     assert sd.add(1, 2) == 3 and type(sd.add(1, 2)) is int
-    assert sd.add(2**62, 2**62) == INT_MIN  # int64 semantics, wraps (Z1)
+    assert sd.add(2**62, 2**62) == INT_MIN  # int64 semantics, wraps (docs/design/array.md §2.2)
     assert sd.add(True, True) == 2
     assert sd.divide(1, 2) == 0.5
     assert math.isnan(sd.sqrt(-1.0))
@@ -316,7 +316,7 @@ def test_out_basic_and_upcast():
 def test_out_rules():
     a = sd.asarray([1.0, 2.0])
     with pytest.raises(TypeError):
-        sd.add(a, a, out=sd.zeros(2, dtype=sd.int64))  # S6
+        sd.add(a, a, out=sd.zeros(2, dtype=sd.int64))  # docs/api/array.md §1.5
     assert sd.less(a, a, out=sd.ones(2)).tolist() == [0.0, 0.0]  # bool -> float64 is upward: fine
     ro = np.zeros(2)
     ro.flags.writeable = False
@@ -376,12 +376,12 @@ def test_inplace_operators():
     assert x is before and x.tolist() == [16.0, 81.0]
     i = sd.asarray([1, 2])
     with pytest.raises(TypeError):
-        i += 0.5  # S6: float64 cannot go into int64
+        i += 0.5  # float64 cannot go into int64 (docs/api/array.md §1.5)
     with pytest.raises(TypeError):
         i /= 2  # divide gives float64
     b = sd.asarray([True])
     with pytest.raises(TypeError):
-        b += True  # bool + bool is int64 (C13)
+        b += True  # bool + bool is int64 (docs/api/array.md §1.4)
     a = sd.arange(5)
     a[1:] += a[:-1]
     assert a.tolist() == [0, 1, 3, 5, 7]
@@ -424,7 +424,7 @@ def test_clip():
     assert math.copysign(1, got[3]) == 1
     assert math.isnan(sd.clip(sd.asarray([1.0]), min=math.nan).tolist()[0])
     with pytest.raises(TypeError):
-        sd.clip(x, min=0.5)  # keeps x's dtype: float bound into int64 (S6)
+        sd.clip(x, min=0.5)  # keeps x's dtype: float bound into int64 (docs/api/array.md §1.5)
     with pytest.raises(TypeError):
         sd.clip(sd.asarray([1j]), min=0)
     with pytest.raises(TypeError):
