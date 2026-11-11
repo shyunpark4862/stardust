@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.venv-legacy/
+.pytest_cache/
+.hypothesis/
+*.egg-info/
+
+# Build
+build/
+dist/
+*.so
+
+# Experiments
+experiments/**/out/
+
+# macOS
+.DS_Store
+
+# Kept locally, not published (DESIGN.md §5.2)
+*.md
+!/README.md
+!/API.md
+!/docs/api/*.md
+bench/
+experiments/
