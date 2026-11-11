@@ -40,3 +40,4 @@ python3.15 -m venv .venv && .venv/bin/pip install nanobind scikit-build-core pyt
 - M6 (groupby: 단일/다중 키, 리덕션, `first`/`last`/`size`, `agg`) 완료
 - M7 (정렬: `sort_values`, `sort_index`, 안정 기수 정렬) 완료
 - M8 (결합: `merge` 해시 조인, `concat`) 완료
+- M9 (`read_csv`: RFC 4180, 타입 추론, 단일 스레드) 완료

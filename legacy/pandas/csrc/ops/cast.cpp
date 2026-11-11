@@ -1,5 +1,7 @@
 #include "ops/cast.hpp"
 
+#include "ops/parse.hpp"
+
 #include <nanobind/nanobind.h>
 
 #include <charconv>
@@ -92,62 +94,20 @@ Column to_string(const Column& col, F format) {
 
 // --- from string: strict ASCII grammars (API.md §12) ---
 
-bool is_digit(char c) { return c >= '0' && c <= '9'; }
-
 [[noreturn]] void cannot_parse(std::string_view s, DType target) {
     nb::str repr = nb::repr(nb::str(s.data(), s.size()));
     throw nb::value_error(("cannot convert string " + std::string(repr.c_str()) + " to " + dtype_name(target)).c_str());
 }
 
 std::int64_t parse_int(std::string_view s) {
-    std::string_view body = s;
-    if (!body.empty() && (body[0] == '+' || body[0] == '-')) body.remove_prefix(1);
-    if (body.empty()) cannot_parse(s, DType::Int64);
-    for (char c : body)
-        if (!is_digit(c)) cannot_parse(s, DType::Int64);
     std::int64_t v = 0;
-    const char* first = s.data() + (s[0] == '+' ? 1 : 0);  // from_chars takes '-' but not '+'
-    auto res = std::from_chars(first, s.data() + s.size(), v);
-    if (res.ec == std::errc::result_out_of_range) cannot_parse(s, DType::Int64);
+    if (!text::int_grammar(s) || !text::to_int(s, v)) cannot_parse(s, DType::Int64);
     return v;
-}
-
-// [+-]? ( digits [. digits?] | . digits ) ( [eE] [+-]? digits )?   or   [+-]? (nan | inf | infinity)
-bool float_grammar(std::string_view s) {
-    std::size_t i = 0, n = s.size();
-    if (i < n && (s[i] == '+' || s[i] == '-')) ++i;
-    std::string rest;
-    for (std::size_t k = i; k < n; ++k) rest += static_cast<char>(s[k] >= 'A' && s[k] <= 'Z' ? s[k] - 'A' + 'a' : s[k]);
-    if (rest == "nan" || rest == "inf" || rest == "infinity") return true;
-    std::size_t digits = 0;
-    while (i < n && is_digit(s[i])) ++i, ++digits;
-    if (i < n && s[i] == '.') {
-        ++i;
-        while (i < n && is_digit(s[i])) ++i, ++digits;
-    }
-    if (digits == 0) return false;
-    if (i < n && (s[i] == 'e' || s[i] == 'E')) {
-        ++i;
-        if (i < n && (s[i] == '+' || s[i] == '-')) ++i;
-        std::size_t exp_digits = 0;
-        while (i < n && is_digit(s[i])) ++i, ++exp_digits;
-        if (exp_digits == 0) return false;
-    }
-    return i == n;
 }
 
 double parse_float(std::string_view s) {
-    if (!float_grammar(s)) cannot_parse(s, DType::Float64);
-    const char* first = s.data() + (s[0] == '+' ? 1 : 0);
-    double v = 0;
-    auto res = std::from_chars(first, s.data() + s.size(), v);
-    if (res.ec == std::errc::result_out_of_range) {
-        // Overflow and deep underflow: like Python's float(), give +-inf or
-        // +-0.0 (and subnormals) by the correctly rounded strtod.
-        std::string copy(s);
-        v = std::strtod(copy.c_str(), nullptr);
-    }
-    return v;
+    if (!text::float_grammar(s)) cannot_parse(s, DType::Float64);
+    return text::to_double(s);
 }
 
 template <class To, class F>

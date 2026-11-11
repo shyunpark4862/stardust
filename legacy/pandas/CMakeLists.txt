@@ -20,6 +20,7 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/core/buffer.cpp
   csrc/core/column.cpp
   csrc/core/convert.cpp
+  csrc/io/csv.cpp
   csrc/ops/cast.cpp
   csrc/ops/elementwise.cpp
   csrc/ops/groupby.cpp

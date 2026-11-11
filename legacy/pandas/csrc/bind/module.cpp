@@ -2,6 +2,7 @@
 
 #include "core/column.hpp"
 #include "core/convert.hpp"
+#include "io/csv.hpp"
 #include "ops/cast.hpp"
 #include "ops/elementwise.hpp"
 #include "ops/groupby.hpp"
@@ -17,6 +18,7 @@
 #include <nanobind/stl/pair.h>
 #include <nanobind/stl/tuple.h>
 #include <nanobind/stl/unique_ptr.h>
+#include <nanobind/stl/unordered_map.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/string_view.h>
 #include <nanobind/stl/vector.h>
@@ -106,6 +108,24 @@ void bind_column(nb::module_& m) {
     m.def("sort_groups", &sd::sort_groups, nb::arg("keys"));
     m.def("argsort", &sd::argsort, nb::arg("keys"), nb::arg("ascending"), nb::arg("na_last"));
     m.def("join_indices", &sd::join_indices, nb::arg("left"), nb::arg("right"), nb::arg("how"));
+    m.def(
+        "read_csv",
+        [](nb::bytes data, std::string_view sep, bool header, std::vector<std::string> names,
+           std::vector<std::string> usecols, std::unordered_map<std::string, std::string> dtypes,
+           std::optional<std::string_view> all_dtype, std::vector<std::string> na_values, std::int64_t nrows) {
+            sd::CsvOptions opt;
+            opt.sep = sep[0];
+            opt.header = header;
+            opt.names = std::move(names);
+            opt.usecols = std::move(usecols);
+            for (const auto& [k, v] : dtypes) opt.dtypes.emplace(k, sd::parse_dtype(v));
+            if (all_dtype) opt.all_dtype = sd::parse_dtype(*all_dtype);
+            opt.na_values = std::move(na_values);
+            opt.nrows = nrows;
+            return sd::read_csv(data.c_str(), data.size(), opt);
+        },
+        nb::arg("data"), nb::arg("sep"), nb::arg("header"), nb::arg("names"), nb::arg("usecols"), nb::arg("dtypes"),
+        nb::arg("all_dtype").none(), nb::arg("na_values"), nb::arg("nrows"));
     m.def("binary_op", &sd::binary_op, nb::arg("op"), nb::arg("a"), nb::arg("b"), nb::arg("scalar_side"));
     m.def("unary_op", &sd::unary_op, nb::arg("op"), nb::arg("a"));
     m.def("arange", &sd::arange, nb::arg("start"), nb::arg("step"), nb::arg("n"));
