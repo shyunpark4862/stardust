@@ -5,6 +5,7 @@
 #include "ops/basic.hpp"
 #include "ops/factor.hpp"
 #include "ops/lu.hpp"
+#include "ops/nonsym.hpp"
 #include "ops/norms.hpp"
 #include "ops/qr.hpp"
 #include "ops/spectral.hpp"
@@ -23,4 +24,5 @@ NB_MODULE(_core, m) {
     sdla::bind_factor(m);
     sdla::bind_qr(m);
     sdla::bind_spectral(m);
+    sdla::bind_nonsym(m);
 }

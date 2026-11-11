@@ -133,6 +133,8 @@ svdvals(x, /)
   - 특이 행렬도 에러 없이 분해한다. U의 대각에 0이 나타난다 (DESIGN §2.12).
 - `cholesky(x, upper=True)`는 `cholesky(x)`의 켤레 전치와 비트까지 같다. 양정치가 아니면 `LinAlgError`다.
 - `ldl`의 `D`는 1×1과 2×2 블록으로 된 블록 대각 행렬이다. 꽉 찬 `(N, N)` 행렬로 반환한다.
+  - `perm`, `L`, `D`는 scipy.linalg.ldl과 같다 (우리 `L`은 scipy의 `lu[perm]`). 특이 행렬도 에러 없이 분해한다 (DESIGN §2.15).
+- `eigvals`는 `geev`의 값 전용 모드로 계산하므로, `eig`의 고유값과 반올림 수준에서 다를 수 있다.
 - `schur`, `hessenberg`: 실수 입력이면 실수 결과다 (`schur`는 2×2 블록이 있는 준삼각). 복소 Schur 형식이 필요하면 complex128로 바꿔서 넣는다.
 - 고유벡터와 특이벡터의 부호와 위상은 정하지 않는다 (LAPACK이 내는 그대로).
 - `eigvalsh`, `svdvals`는 LAPACK의 값 전용 모드로 계산한다. 그래서 `eigh`/`svd`의 값과 반올림 수준에서 다를 수 있다 (DESIGN §2.14).

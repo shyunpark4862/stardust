@@ -11,6 +11,7 @@ def test_import_and_surface():
         "solve_triangular", "cholesky", "cholesky_solve", "lu", "lu_solve",
         "qr", "qr_pivoted", "lstsq",
         "eigh", "eigvalsh", "svd", "svdvals", "matrix_rank", "pinv", "cond",
+        "eig", "eigvals", "schur", "hessenberg", "ldl",
     }
     for name in sdla.__all__:
         assert hasattr(sdla, name)

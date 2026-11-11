@@ -267,6 +267,102 @@ lint gesvd_values(lint m, lint n, T* a, lint lda, double* sv, Scratch& s) {
     return checked(info, "gesvd");
 }
 
+// General eigenproblem (geev): eigenvalues, and right eigenvectors if jobvr 'V'.
+// Real: wr/wi and vr (complex pairs as two real columns); complex: w and vr.
+// `wr` holds n values for double (and `wi` n more); for cplx `w` is cplx*.
+// info > 0: the QR algorithm did not converge.
+inline lint geev(char jobvr, lint n, double* a, lint lda, double* wr, double* wi, double* vr, lint ldvr, Scratch& s) {
+    lint info = 0, lwork = -1, one = 1;
+    const char no = 'N';
+    double q = 0, dummy = 0;
+    dgeev_(&no, &jobvr, &n, a, &lda, wr, wi, &dummy, &one, vr, &ldvr, &q, &lwork, &info);
+    lwork = work_size(q);
+    double* wk = s.get<double>(static_cast<std::size_t>(lwork), Scratch::kWork);
+    dgeev_(&no, &jobvr, &n, a, &lda, wr, wi, &dummy, &one, vr, &ldvr, wk, &lwork, &info);
+    return checked(info, "geev");
+}
+inline lint geev(char jobvr, lint n, cplx* a, lint lda, cplx* w, cplx* vr, lint ldvr, Scratch& s) {
+    lint info = 0, lwork = -1, one = 1;
+    const char no = 'N';
+    cplx q{}, dummy{};
+    double* rw = s.get<double>(static_cast<std::size_t>(std::max<lint>(1, 2 * n)), Scratch::kRWork);
+    zgeev_(&no, &jobvr, &n, a, &lda, w, &dummy, &one, vr, &ldvr, &q, &lwork, rw, &info);
+    lwork = work_size(q);
+    cplx* wk = s.get<cplx>(static_cast<std::size_t>(lwork), Scratch::kWork);
+    zgeev_(&no, &jobvr, &n, a, &lda, w, &dummy, &one, vr, &ldvr, wk, &lwork, rw, &info);
+    return checked(info, "geev");
+}
+
+// Schur form A = Z T Z^H (gees, no sorting): T overwrites a, Z goes to vs.
+// Real input gives the real (quasi-triangular) Schur form. info > 0: no convergence.
+template <class T>
+lint gees(lint n, T* a, lint lda, T* vs, lint ldvs, Scratch& s) {
+    lint info = 0, lwork = -1, sdim = 0;
+    const char jobvs = 'V', sort = 'N';
+    T q{};
+    __LAPACK_bool* bwork = nullptr;  // not referenced when sort = 'N'
+    if constexpr (std::is_same_v<T, double>) {
+        double* wr = s.get<double>(static_cast<std::size_t>(2 * n), Scratch::kRWork);
+        dgees_(&jobvs, &sort, nullptr, &n, a, &lda, &sdim, wr, wr + n, vs, &ldvs, &q, &lwork, bwork, &info);
+        lwork = work_size(q);
+        T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
+        dgees_(&jobvs, &sort, nullptr, &n, a, &lda, &sdim, wr, wr + n, vs, &ldvs, wk, &lwork, bwork, &info);
+    } else {
+        // w (n complex) and rwork (n real) share the real-workspace slot
+        double* rw = s.get<double>(static_cast<std::size_t>(3 * n), Scratch::kRWork);
+        cplx* w = reinterpret_cast<cplx*>(rw);
+        zgees_(&jobvs, &sort, nullptr, &n, a, &lda, &sdim, w, vs, &ldvs, &q, &lwork, rw + 2 * n, bwork, &info);
+        lwork = work_size(q);
+        T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
+        zgees_(&jobvs, &sort, nullptr, &n, a, &lda, &sdim, w, vs, &ldvs, wk, &lwork, rw + 2 * n, bwork, &info);
+    }
+    return checked(info, "gees");
+}
+
+// Hessenberg reduction A = Q H Q^H (gehrd, ilo = 1, ihi = n): reflectors below the subdiagonal.
+template <class T>
+lint gehrd(lint n, T* a, lint lda, T* tau, Scratch& s) {
+    lint info = 0, lwork = -1, ilo = 1, ihi = n;
+    T q{};
+    if constexpr (std::is_same_v<T, double>) dgehrd_(&n, &ilo, &ihi, a, &lda, tau, &q, &lwork, &info);
+    else zgehrd_(&n, &ilo, &ihi, a, &lda, tau, &q, &lwork, &info);
+    lwork = work_size(q);
+    T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
+    if constexpr (std::is_same_v<T, double>) dgehrd_(&n, &ilo, &ihi, a, &lda, tau, wk, &lwork, &info);
+    else zgehrd_(&n, &ilo, &ihi, a, &lda, tau, wk, &lwork, &info);
+    return checked(info, "gehrd");
+}
+
+// Forms Q from gehrd's reflectors, in place (orghr/unghr).
+template <class T>
+lint orghr(lint n, T* a, lint lda, const T* tau, Scratch& s) {
+    lint info = 0, lwork = -1, ilo = 1, ihi = n;
+    T q{};
+    if constexpr (std::is_same_v<T, double>) dorghr_(&n, &ilo, &ihi, a, &lda, tau, &q, &lwork, &info);
+    else zunghr_(&n, &ilo, &ihi, a, &lda, tau, &q, &lwork, &info);
+    lwork = work_size(q);
+    T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
+    if constexpr (std::is_same_v<T, double>) dorghr_(&n, &ilo, &ihi, a, &lda, tau, wk, &lwork, &info);
+    else zunghr_(&n, &ilo, &ihi, a, &lda, tau, wk, &lwork, &info);
+    return checked(info, "orghr");
+}
+
+// Bunch-Kaufman A = L D L^T (sytrf) or L D L^H (hetrf), lower triangle, in place.
+// info > 0: D has an exact zero on its diagonal (the factorization is still complete).
+template <class T>
+lint sytrf(lint n, T* a, lint lda, lint* ipiv, Scratch& s) {
+    lint info = 0, lwork = -1;
+    const char uplo = 'L';
+    T q{};
+    if constexpr (std::is_same_v<T, double>) dsytrf_(&uplo, &n, a, &lda, ipiv, &q, &lwork, &info);
+    else zhetrf_(&uplo, &n, a, &lda, ipiv, &q, &lwork, &info);
+    lwork = work_size(q);
+    T* wk = s.get<T>(static_cast<std::size_t>(lwork), Scratch::kWork);
+    if constexpr (std::is_same_v<T, double>) dsytrf_(&uplo, &n, a, &lda, ipiv, wk, &lwork, &info);
+    else zhetrf_(&uplo, &n, a, &lda, ipiv, wk, &lwork, &info);
+    return checked(info, "sytrf");
+}
+
 // C = op(A) op(B), column-major; op is 'N', 'T' or 'C' (conjugate transpose).
 template <class T>
 void gemm(char ta, char tb, lint m, lint n, lint k, const T* a, lint lda, const T* b, lint ldb, T* c, lint ldc) {

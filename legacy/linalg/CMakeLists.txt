@@ -25,6 +25,7 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/ops/basic.cpp
   csrc/ops/factor.cpp
   csrc/ops/lu.cpp
+  csrc/ops/nonsym.cpp
   csrc/ops/norms.cpp
   csrc/ops/qr.cpp
   csrc/ops/spectral.cpp
