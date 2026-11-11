@@ -8,6 +8,7 @@
 #include "ops/qr.hpp"
 
 #include "core/args.hpp"
+#include "core/cost.hpp"
 #include "core/outblock.hpp"
 #include "core/pyrefs.hpp"
 #include "ops/common.hpp"
@@ -49,7 +50,7 @@ nb::object qr_impl(nb::handle xo, nb::handle mode_o, bool pivoted) {
         if (pivoted) po = alloc_vectors(b.shape(), n, DType::Int64);
         T* Q = qo.as<T>();
         T* R = ro.as<T>();
-        const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+        const Failure f = run_batch(b, cost(kQR, double(m) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             T* a = s.get<T>(static_cast<std::size_t>(lda * n));
             T* tau = s.get<T>(static_cast<std::size_t>(std::max<lint>(k, 1)), 1);
             if (!pack(x.dtype(), x.data() + off[0], m, n, x.stride(-2), x.stride(-1), a, lda, true)) return kNonFinite;
@@ -107,7 +108,7 @@ nb::object lstsq(nb::handle ao, nb::handle bo, nb::handle rtol_o) {
         T* X = xo.as<T>();
         double* S = so.as<double>();
         std::int64_t* RK = rk.as<std::int64_t>();
-        const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+        const Failure f = run_batch(b, cost(kSVD, double(m) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             T* A = s.get<T>(static_cast<std::size_t>(lda * n));
             if (!pack(a.dtype(), a.data() + off[0], m, n, a.stride(-2), a.stride(-1), A, lda, true)) return kNonFinite;
             // b needs max(m, n) rows: gelsd leaves the n-row solution where b was.

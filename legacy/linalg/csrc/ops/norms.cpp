@@ -8,6 +8,7 @@
 #include "ops/norms.hpp"
 
 #include "core/args.hpp"
+#include "core/cost.hpp"
 #include "core/outblock.hpp"
 #include "core/pairwise.hpp"
 #include "ops/common.hpp"
@@ -88,11 +89,13 @@ nb::object vector_norm(nb::handle xo, nb::handle axis_o, bool keepdims, nb::hand
     auto norm_at = [&](std::int64_t off) {
         return region_norm(ord, x, x.data() + off, static_cast<int>(rsh.size()), rsh.data(), rst.data());
     };
+    std::int64_t red_count = 1;
+    for (std::int64_t v : rsh) red_count *= v;
     if (out_shape.empty()) return py_scalar(norm_at(0));
     Batch b({{kept_shape, kept_strides}}, "vector_norm");
     Out out = alloc_c(out_shape, DType::Float64);
     double* res = out.as<double>();
-    run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch&) {
+    run_batch(b, cost(kStream, double(red_count)), [&](std::int64_t i, const std::int64_t* off, Scratch&) {
         res[i] = norm_at(off[0]);
         return 0;
     });
@@ -128,7 +131,7 @@ nb::object matrix_norm_svd(const Input& x, MatOrd ord, const std::vector<std::in
     return with_type(computes_complex(x.dtype()), [&]<class T>(std::type_identity<T>) -> nb::object {
         Out out = alloc_c(out_shape, DType::Float64);
         double* res = out.as<double>();
-        const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+        const Failure f = run_batch(b, cost(kSVD, double(m) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             double* sv = s.get<double>(static_cast<std::size_t>(std::max<lint>(k, 1)), 1);
             if (const int code = singular_values<T>(x, off[0], m, n, s, sv)) return code;
             double v = 0;  // empty matrices: 0 (S11)
@@ -173,15 +176,29 @@ nb::object matrix_norm(nb::handle xo, bool keepdims, nb::handle ord_o) {
         const std::int64_t line_step = cols ? cs : rs, elem_step = cols ? rs : cs;
         const bool max = ord == MatOrd::One || ord == MatOrd::Inf;
         return visit_storage(x.dtype(), [&]<class S>(std::type_identity<S>) {  // one dispatch per matrix
-            double best = max ? 0.0 : kInf;
-            bool nan = false;
-            for (std::int64_t l = 0; l < lines; ++l) {
+            auto line_sum = [&](std::int64_t l) {
                 const std::byte* line = base + l * line_step;
-                const double sum = pairwise_sum<double>(len, [&](std::int64_t b0, std::int64_t k, double* out) {
+                return pairwise_sum<double>(len, [&](std::int64_t b0, std::int64_t k, double* out) {
                     for (std::int64_t t = 0; t < k; ++t) out[t] = magnitude(load<S>(line + (b0 + t) * elem_step));
                 });
+            };
+            double best = max ? 0.0 : kInf;
+            bool nan = false;
+            auto take = [&](double sum) {
                 if (sum != sum) nan = true;
                 else best = max ? (sum > best ? sum : best) : (sum < best ? sum : best);
+            };
+            if (lines * len >= kSumParallelMin && lines > 1 && detail::begin_parallel()) {
+                // one large matrix: its lines on the pool (M9); each line's sum is
+                // computed as in the serial loop, and max/min do not depend on order
+                std::vector<double> sums(static_cast<std::size_t>(lines));
+                const std::int64_t per = std::max<std::int64_t>(1, kSumLeaf / std::max<std::int64_t>(len, 1));
+                detail::run_tasks((lines + per - 1) / per, [&](std::int64_t t) {
+                    for (std::int64_t l = t * per; l < std::min(lines, (t + 1) * per); ++l) sums[l] = line_sum(l);
+                });
+                for (double v : sums) take(v);
+            } else {
+                for (std::int64_t l = 0; l < lines; ++l) take(line_sum(l));
             }
             return lines == 0 ? 0.0 : (nan ? kNaN : best);
         });
@@ -190,7 +207,7 @@ nb::object matrix_norm(nb::handle xo, bool keepdims, nb::handle ord_o) {
     Batch b({{x.batch_shape(2), x.batch_strides(2)}}, "matrix_norm");
     Out out = alloc_c(out_shape, DType::Float64);
     double* res = out.as<double>();
-    run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch&) {
+    run_batch(b, cost(kStream, double(m) * n), [&](std::int64_t i, const std::int64_t* off, Scratch&) {
         res[i] = norm_at(off[0]);
         return 0;
     });

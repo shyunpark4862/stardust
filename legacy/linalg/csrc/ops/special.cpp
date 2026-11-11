@@ -11,6 +11,7 @@
 #include "ops/special.hpp"
 
 #include "core/args.hpp"
+#include "core/cost.hpp"
 #include "core/outblock.hpp"
 #include "core/pyrefs.hpp"
 #include "ops/common.hpp"
@@ -91,7 +92,7 @@ nb::object solve_tridiagonal(nb::handle dlo, nb::handle do_, nb::handle duo, nb:
     return with_type(complex, [&]<class T>(std::type_identity<T>) -> nb::object {
         Out out = alloc_rhs(b, r, n, dtype_of<T>());
         T* res = out.as<T>();
-        const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+        const Failure f = run_batch(b, cost(kBanded, 3.0 * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             return tri_body<T>({dl.dtype(), dl.data() + off[0], dl.stride(-1)}, {d.dtype(), d.data() + off[1], d.stride(-1)},
                                {du.dtype(), du.data() + off[2], du.stride(-1)}, n, y, off[3], r,
                                LapackSlot<T>(res + i * n * r.k, n * r.k, s, Scratch::kAlign0).get(), s, kNonFinite,
@@ -129,7 +130,7 @@ nb::object solve_banded(nb::handle abo, nb::handle bo, nb::handle klo, nb::handl
     return with_type(complex, [&]<class T>(std::type_identity<T>) -> nb::object {
         Out out = alloc_rhs(b, r, n, dtype_of<T>());
         T* res = out.as<T>();
-        const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+        const Failure f = run_batch(b, (kl == 1 && ku == 1) || double(n) * (kl + ku + 1) >= kBandSplitMin ? cost(kBanded, double(n) * (kl + ku + 1)) : 0.0, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             const std::byte* base = a.data() + off[0];
             LapackSlot<T> xs(res + i * n * r.k, n * r.k, s, Scratch::kAlign0);
             T* x = xs.get();
@@ -185,7 +186,7 @@ nb::object solve_sylvester(nb::handle ao, nb::handle bo, nb::handle co) {
     return with_type(complex, [&]<class T>(std::type_identity<T>) -> nb::object {
         Out out = alloc_matrices(b.shape(), m, n, dtype_of<T>());
         T* res = out.as<T>();
-        const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+        const Failure f = run_batch(b, cost(kSylvester, (double(m) * m + double(n) * n) / 2), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             const std::size_t mm = pad2(m * m), nn = pad2(n * n);  // 16-byte boundaries (aligned16)
             T* rs_ = s.get<T>(mm + nn, 0);  // R, then S
             T* uw = s.get<T>(mm + nn, 1);   // U, then W

@@ -30,6 +30,7 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/ops/qr.cpp
   csrc/ops/spectral.cpp
   csrc/ops/special.cpp
+  csrc/parallel/pool.cpp
   csrc/bind/module.cpp)
 
 target_include_directories(_core PRIVATE csrc)

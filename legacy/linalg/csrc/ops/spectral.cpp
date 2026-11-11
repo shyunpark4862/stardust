@@ -13,6 +13,7 @@
 #include "ops/spectral.hpp"
 
 #include "core/args.hpp"
+#include "core/cost.hpp"
 #include "core/outblock.hpp"
 #include "core/pairwise.hpp"
 #include "core/pyrefs.hpp"
@@ -57,7 +58,7 @@ nb::object eigh_impl(nb::handle ao, nb::handle bo, bool vectors) {
         Out vo;
         if (vectors) vo = alloc_matrices(b.shape(), n, n, dtype_of<T>());
         double* W = wo.as<double>();
-        const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+        const Failure f = run_batch(b, cost(kEigh, double(n) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             // With vectors, `a` is packed straight into the eigenvector slot; LAPACK
             // overwrites it with the eigenvectors (ARCHITECTURE.md §3.2).
             LapackSlot<T> vs(vectors ? vo.as<T>() + i * n * n : s.get<T>(static_cast<std::size_t>(n * n)), n * n, s,
@@ -120,7 +121,7 @@ nb::object svd(nb::handle xo, nb::handle mode_o) {
         Out uo = alloc_matrices(b.shape(), m, ucols, dtype_of<T>());
         Out so = alloc_vectors(b.shape(), k, DType::Float64);
         Out vo = alloc_matrices(b.shape(), vrows, n, dtype_of<T>());
-        const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+        const Failure f = run_batch(b, cost(kSVD, double(m) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             T* a = s.get<T>(static_cast<std::size_t>(lda * n));
             if (!pack(x.dtype(), x.data() + off[0], m, n, x.stride(-2), x.stride(-1), a, lda, true)) return kNonFinite;
             LapackSlot<T> us(uo.as<T>() + i * m * ucols, m * ucols, s, Scratch::kAlign0);
@@ -152,7 +153,7 @@ nb::object svdvals(nb::handle xo) {
     Batch b({{x.batch_shape(2), x.batch_strides(2)}}, "svdvals");
     return with_type(computes_complex(x.dtype()), [&]<class T>(std::type_identity<T>) -> nb::object {
         Out so = alloc_vectors(b.shape(), k, DType::Float64);
-        const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+        const Failure f = run_batch(b, cost(kSVD, double(m) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             LapackSlot<double> ss(so.as<double>() + i * k, k, s, Scratch::kAlign0);
             return singular_values<T>(x, off[0], m, n, s, ss.get());
         });
@@ -172,7 +173,7 @@ nb::object matrix_rank(nb::handle xo, nb::handle rtol_o) {
     return with_type(computes_complex(x.dtype()), [&]<class T>(std::type_identity<T>) -> nb::object {
         Out ro = alloc_c(b.shape(), DType::Int64);
         std::int64_t* R = ro.as<std::int64_t>();
-        const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+        const Failure f = run_batch(b, cost(kSVD, double(m) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             double* sv = s.get<double>(static_cast<std::size_t>(std::max<lint>(k, 1)), 1);
             if (const int code = singular_values<T>(x, off[0], m, n, s, sv)) return code;
             // Singular values <= rtol * the largest count as zero (API.md §0.4, DESIGN.md §2.13);
@@ -203,7 +204,7 @@ nb::object pinv(nb::handle xo, nb::handle rtol_o) {
     Batch b({{x.batch_shape(2), x.batch_strides(2)}}, "pinv");
     return with_type(computes_complex(x.dtype()), [&]<class T>(std::type_identity<T>) -> nb::object {
         Out po = alloc_matrices(b.shape(), n, m, dtype_of<T>());
-        const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+        const Failure f = run_batch(b, cost(kSVD, double(m) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             LapackSlot<T> os(po.as<T>() + i * n * m, n * m, s, Scratch::kAlign0);
             T* out = os.get();
             T* a = s.get<T>(static_cast<std::size_t>(lda * n));
@@ -307,7 +308,7 @@ nb::object cond(nb::handle xo, nb::handle ord_o) {
     return with_type(computes_complex(x.dtype()), [&]<class T>(std::type_identity<T>) -> nb::object {
         Out co = alloc_c(b.shape(), DType::Float64);
         double* C = co.as<double>();
-        const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+        const Failure f = run_batch(b, cost(kSVD, double(m) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             if (by_svd) {
                 double* sv = s.get<double>(static_cast<std::size_t>(k), 1);
                 if (const int code = singular_values<T>(x, off[0], m, n, s, sv)) return code;

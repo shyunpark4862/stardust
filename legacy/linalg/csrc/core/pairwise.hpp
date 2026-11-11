@@ -13,9 +13,12 @@
 // so the summing loop is the same for every source layout and vectorizes.
 #pragma once
 
+#include "core/batch.hpp"
 #include "core/types.hpp"
 
 #include <cstdint>
+#include <utility>
+#include <vector>
 
 namespace sdla {
 
@@ -122,6 +125,96 @@ T pairwise_sum(std::int64_t n, Fill&& fill) {
         }
         return 0. + detail::pairwise(0, n, fill);
     }
+}
+
+
+// ---- one long sum on many threads, with the same bits (M9, user decision) --
+// As stardust-numpy does it (its reduce.hpp, M8): the tree depends on n only,
+// so its subtrees of at most kSumLeaf terms are independent. They are summed
+// in parallel and then combined along the very same tree: bit for bit the
+// serial sum, for any thread count.
+
+inline constexpr std::int64_t kSumLeaf = 1 << 12;          // terms per task (stardust-numpy's kTaskWork)
+inline constexpr std::int64_t kSumParallelMin = 1 << 15;   // shorter sums stay serial (its kThreshold)
+
+namespace detail {
+
+inline std::int64_t split_at(std::int64_t m, bool complex) {
+    if (complex) {
+        std::int64_t m2 = m;
+        m2 -= m2 % 8;
+        return m2 / 2;
+    }
+    const std::int64_t m2 = m / 2;
+    return m2 - m2 % 8;
+}
+
+}  // namespace detail
+
+// The leaves to compute: subtrees of at most kSumLeaf terms, left to right; or
+// the whole range as one leaf when the sum is short or no pool is available.
+inline std::vector<std::pair<std::int64_t, std::int64_t>> pairwise_plan(std::int64_t n, bool complex) {
+    std::vector<std::pair<std::int64_t, std::int64_t>> leaves;
+    if (n < kSumParallelMin || !detail::begin_parallel()) {
+        leaves.emplace_back(0, n);
+        return leaves;
+    }
+    auto collect = [&](auto&& self, std::int64_t b, std::int64_t m) -> void {
+        if (m <= kSumLeaf) {
+            leaves.emplace_back(b, m);
+            return;
+        }
+        const std::int64_t m2 = detail::split_at(m, complex);
+        self(self, b, m2);
+        self(self, b + m2, m - m2);
+    };
+    collect(collect, 0, n);
+    return leaves;
+}
+
+// Runs leaf(t) for every leaf of a plan: on the pool when there are several.
+template <class Leaf>
+void pairwise_run(const std::vector<std::pair<std::int64_t, std::int64_t>>& plan, Leaf&& leaf) {
+    if (plan.size() == 1) {
+        leaf(std::int64_t(0));
+        return;
+    }
+    detail::run_tasks(static_cast<std::int64_t>(plan.size()), leaf);
+}
+
+// The leaves' partial sums combined along the tree they came from.
+template <class T>
+T pairwise_combine(std::int64_t n, bool complex, const std::vector<T>& parts) {
+    if (parts.size() == 1) return parts[0];
+    std::size_t next = 0;
+    auto combine = [&](auto&& self, std::int64_t m) -> T {
+        if (m <= kSumLeaf) return parts[next++];
+        const std::int64_t m2 = detail::split_at(m, complex);
+        const T left = self(self, m2);
+        const T right = self(self, m - m2);
+        if constexpr (std::is_same_v<T, cplx>) return {left.real() + right.real(), left.imag() + right.imag()};
+        else return left + right;
+    };
+    return combine(combine, n);
+}
+
+// pairwise_sum on the pool for long sums. `fill` is called from several
+// threads at once, so it must not write anything shared.
+template <class T, class Fill>
+T pairwise_sum_mt(std::int64_t n, Fill&& fill) {
+    constexpr bool complex = std::is_same_v<T, cplx>;
+    if (n < kSumParallelMin) return pairwise_sum<T>(n, fill);  // short: no plan, no allocation
+    const auto plan = pairwise_plan(n, complex);
+    if (plan.size() == 1) return pairwise_sum<T>(n, fill);
+    std::vector<T> parts(plan.size());
+    pairwise_run(plan, [&](std::int64_t t) {
+        auto f = fill;  // a copy per task
+        if constexpr (complex) parts[t] = detail::pairwise_complex(plan[t].first, plan[t].second, f);
+        else parts[t] = detail::pairwise(plan[t].first, plan[t].second, f);
+    });
+    const T s = pairwise_combine(n, complex, parts);
+    if constexpr (complex) return {0. + s.real(), 0. + s.imag()};
+    else return 0. + s;
 }
 
 }  // namespace sdla

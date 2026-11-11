@@ -6,6 +6,7 @@
 //   inv   : getrf + getrs against the identity  (fastest up to n=128; inv(a) == solve(a, I) bit for bit)
 #include "ops/lu.hpp"
 
+#include "core/cost.hpp"
 #include "core/outblock.hpp"
 #include "core/pyrefs.hpp"
 #include "ops/common.hpp"
@@ -68,7 +69,7 @@ nb::object det(nb::handle xo) {
     return with_type(computes_complex(x.dtype()), [&]<class T>(std::type_identity<T>) -> nb::object {
         if (b.ndim() == 0) {
             T d{};
-            const Failure f = run_batch(b, [&](std::int64_t, const std::int64_t* off, Scratch& s) {
+            const Failure f = run_batch(b, cost(kLU, double(n) * n), [&](std::int64_t, const std::int64_t* off, Scratch& s) {
                 return det_body<T>(x, n, off[0], s, [&](const T* lu, const lint* ipiv, bool sing) {
                     d = det_of(lu, ipiv, n, sing);
                 });
@@ -78,7 +79,7 @@ nb::object det(nb::handle xo) {
         }
         Out out = alloc_c(b.shape(), dtype_of<T>());
         T* res = out.as<T>();
-        const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+        const Failure f = run_batch(b, cost(kLU, double(n) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             return det_body<T>(x, n, off[0], s, [&](const T* lu, const lint* ipiv, bool sing) {
                 res[i] = det_of(lu, ipiv, n, sing);
             });
@@ -98,7 +99,7 @@ nb::object slogdet(nb::handle xo) {
         if (b.ndim() == 0) {
             T sign{};
             double logabs = 0;
-            const Failure f = run_batch(b, [&](std::int64_t, const std::int64_t* off, Scratch& s) {
+            const Failure f = run_batch(b, cost(kLU, double(n) * n), [&](std::int64_t, const std::int64_t* off, Scratch& s) {
                 return det_body<T>(x, n, off[0], s, [&](const T* lu, const lint* ipiv, bool sing) {
                     sign_logabs(lu, ipiv, n, sing, sign, logabs);
                 });
@@ -110,7 +111,7 @@ nb::object slogdet(nb::handle xo) {
         Out logabs_out = alloc_c(b.shape(), DType::Float64);
         T* sign = sign_out.as<T>();
         double* logabs = logabs_out.as<double>();
-        const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+        const Failure f = run_batch(b, cost(kLU, double(n) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             return det_body<T>(x, n, off[0], s, [&](const T* lu, const lint* ipiv, bool sing) {
                 sign_logabs(lu, ipiv, n, sing, sign[i], logabs[i]);
             });
@@ -128,7 +129,7 @@ nb::object inv(nb::handle xo) {
     return with_type(computes_complex(x.dtype()), [&]<class T>(std::type_identity<T>) -> nb::object {
         Out out = alloc_matrices(b.shape(), n, n, dtype_of<T>());
         T* res = out.as<T>();
-        const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+        const Failure f = run_batch(b, cost(kLU, double(n) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             T* a;
             lint* ipiv;
             if (const int code = lu_factor<T>(x, off[0], n, s, a, ipiv)) return code;
@@ -153,7 +154,7 @@ nb::object solve(nb::handle ao, nb::handle bo) {
     return with_type(complex, [&]<class T>(std::type_identity<T>) -> nb::object {
         Out out = r.vec ? alloc_vectors(b.shape(), n, dtype_of<T>()) : alloc_matrices(b.shape(), n, k, dtype_of<T>());
         T* res = out.as<T>();
-        const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+        const Failure f = run_batch(b, cost(kLU, double(n) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             T* lu;
             lint* ipiv;
             if (const int code = lu_factor<T>(a, off[0], n, s, lu, ipiv)) return code;

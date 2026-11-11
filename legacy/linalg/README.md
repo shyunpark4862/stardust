@@ -11,7 +11,7 @@ import stardust_linalg as sdla
 ```
 
 ## 상태
-M8까지 진행했다. 기본 단계의 함수가 모두 들어갔고, 호출 하나의 비용을 줄였다.
+M9까지 진행했다. 기본 단계의 함수가 모두 들어갔고, 호출 하나의 비용을 줄였고, 배치와 긴 합을 여러 코어로 나눈다.
 - M1: `solve`, `inv`, `det`, `slogdet`, `LinAlgError`
 - M2: `vecdot`, `outer`, `trace`, `diagonal`, `matrix_power`, `vector_norm`, `matrix_norm` (fro, ±1, ±inf)
 - M3: `solve_triangular`, `cholesky`, `cholesky_solve`, `lu`, `lu_solve`
@@ -20,6 +20,7 @@ M8까지 진행했다. 기본 단계의 함수가 모두 들어갔고, 호출 �
 - M6: `eig`, `eigvals`, `schur`, `hessenberg`, `ldl`
 - M7: `solve_tridiagonal`, `solve_banded`, `solve_sylvester`, 기준선 벤치마크 (`bench/baseline.py`)
 - M8: 최적화 (workspace 재사용, 패킹, pairwise 합, 16바이트 정렬)
+- M9: 배치와 긴 합의 병렬화 (스레드 수는 `sdnp.set_num_threads`를 따름, 결과는 스레드 수와 무관)
 
 ```python
 a = sdnp.asarray([[2.0, 1.0], [1.0, 3.0]])

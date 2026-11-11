@@ -6,6 +6,7 @@
 #include "ops/basic.hpp"
 
 #include "core/args.hpp"
+#include "core/cost.hpp"
 #include "core/outblock.hpp"
 #include "core/pairwise.hpp"
 #include "ops/common.hpp"
@@ -84,7 +85,7 @@ nb::object vecdot(nb::handle x1o, nb::handle x2o, nb::handle axis_o) {
                                     out[i] = mul(conj_if_complex(convert<T>(load<SX>(pp + i * sx))), convert<T>(load<SY>(qq + i * sy)));
                             }
                         };
-                        return pairwise_sum<T>(len, fill);
+                        return pairwise_sum_mt<T>(len, fill);  // on the pool when long (M9)
                     };
                     if (b.ndim() == 0) {
                         std::int64_t off[2] = {0, 0};
@@ -92,7 +93,7 @@ nb::object vecdot(nb::handle x1o, nb::handle x2o, nb::handle axis_o) {
                     }
                     Out out = alloc_c(b.shape(), dtype_of<T>());
                     T* res = out.as<T>();
-                    run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch&) {
+                    run_batch(b, cost(kStream, double(len)), [&](std::int64_t i, const std::int64_t* off, Scratch&) {
                         res[i] = dot(off);
                         return 0;
                     });
@@ -118,7 +119,7 @@ nb::object outer(nb::handle x1o, nb::handle x2o) {
         visit_storage(x.dtype(), [&]<class SX>(std::type_identity<SX>) {
             visit_storage(y.dtype(), [&]<class SY>(std::type_identity<SY>) {
                 if constexpr (!((std::is_same_v<SX, cplx> || std::is_same_v<SY, cplx>) && !std::is_same_v<T, cplx>)) {
-                    run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+                    run_batch(b, cost(kCopy, double(m) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
                         // x1 converted once into scratch; the result column by column (column-major)
                         T* xv = s.get<T>(static_cast<std::size_t>(m));
                         for (std::int64_t r = 0; r < m; ++r) xv[r] = convert<T>(load<SX>(x.data() + off[0] + r * sx));
@@ -184,7 +185,7 @@ nb::object trace(nb::handle xo, nb::handle k_o, nb::handle dtype_o) {
                             acc += static_cast<std::uint64_t>(convert<T>(load<S>(p + i * step)));
                         return static_cast<std::int64_t>(acc);
                     } else {  // pairwise (M8): the bits of sdnp.sum(diagonal(x))
-                        return pairwise_sum<T>(dg.len, [&](std::int64_t b0, std::int64_t k, T* out) {
+                        return pairwise_sum_mt<T>(dg.len, [&](std::int64_t b0, std::int64_t k, T* out) {
                             for (std::int64_t i = 0; i < k; ++i) out[i] = convert<T>(load<S>(p + (b0 + i) * step));
                         });
                     }
@@ -192,7 +193,7 @@ nb::object trace(nb::handle xo, nb::handle k_o, nb::handle dtype_o) {
                 if (b.ndim() == 0) return py_scalar(sum(0));
                 Out out = alloc_c(b.shape(), dtype_of<T>());
                 T* res = out.as<T>();
-                run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch&) {
+                run_batch(b, cost(kStream, double(dg.len)), [&](std::int64_t i, const std::int64_t* off, Scratch&) {
                     res[i] = sum(off[0]);
                     return 0;
                 });
@@ -218,7 +219,7 @@ nb::object diagonal(nb::handle xo, nb::handle k_o) {
     // a typed strided copy (M8: a memcpy call per element cost 2-3x numpy)
     visit_storage(x.dtype(), [&]<class S>(std::type_identity<S>) {
         S* o = reinterpret_cast<S*>(out.data);
-        run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch&) {
+        run_batch(b, cost(kCopy, double(dg.len)), [&](std::int64_t i, const std::int64_t* off, Scratch&) {
             const std::byte* p = x.data() + off[0] + start;
             S* oi = o + i * dg.len;
             for (std::int64_t j = 0; j < dg.len; ++j) oi[j] = load<S>(p + j * step);
@@ -243,7 +244,7 @@ nb::object matrix_power(nb::handle xo, nb::handle n_o) {
         Out out = alloc_matrices(b.shape(), m, m, dtype_of<T>());
         T* res = out.as<T>();
         const std::size_t mm = static_cast<std::size_t>(m * m);
-        const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+        const Failure f = run_batch(b, cost(kLU, double(m) * m), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             T* o = res + i * m * m;
             if (m == 0) return 0;
             if (e == 0) {  // x^0 = I, whatever x holds

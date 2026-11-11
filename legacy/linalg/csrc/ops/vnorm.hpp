@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <limits>
 #include <initializer_list>
+#include <vector>
 
 namespace sdla {
 
@@ -137,43 +138,64 @@ inline void max_and_nan(const double* a, std::int64_t n, double& mx, bool& nan) 
     nan |= bad != 0;
 }
 
-// The norm of `count` magnitudes, given by fill(begin, len, out) as for
-// pairwise_sum (at most kPairwiseBlock per call). Empty sets have norm 0 (S11).
+// The end of a 2- or p-norm from the plain sum s of a^p: NaN, inf, or the
+// rescaled second pass when s overflowed or every term was tiny.
 template <class Fill>
-inline double vnorm(VecOrd ord, std::int64_t count, Fill&& fill) {
-    if (count == 0) return 0.0;
-    auto each_chunk = [&](auto&& f) {
-        double buf[kPairwiseBlock];
+inline double finish_pnorm(bool two, double p, double s, double amax, bool nan, std::int64_t count, Fill& fill) {
+    if (nan) return kNaN;
+    if (p > 0) {
+        if (amax == kInf) return kInf;
+        const double top = two ? amax * amax : std::pow(amax, p);
+        if (std::isinf(s) || (amax > 0 && top < kTiny)) {
+            // Rescaled: amax * (sum (a/amax)^p)^(1/p). Every term is <= 1.
+            auto scaled = [&](std::int64_t b, std::int64_t len, double* out) {
+                fill(b, len, out);
+                for (std::int64_t k = 0; k < len; ++k) {
+                    const double r = out[k] / amax;
+                    out[k] = two ? r * r : std::pow(r, p);
+                }
+            };
+            const double t = pairwise_sum_mt<double>(count, scaled);
+            return amax * (two ? std::sqrt(t) : std::pow(t, 1 / p));
+        }
+    }
+    return two ? std::sqrt(s) : std::pow(s, 1 / p);
+}
+
+// The serial norm (short sets, or no pool): no allocation, one pass.
+template <class Fill>
+inline double vnorm_serial(VecOrd ord, std::int64_t count, Fill&& fill) {
+    double buf[kPairwiseBlock];
+    auto chunks = [&](auto&& f) {
         for (std::int64_t b = 0; b < count; b += kPairwiseBlock) {
             const std::int64_t len = std::min(kPairwiseBlock, count - b);
             fill(b, len, buf);
-            for (std::int64_t k = 0; k < len; ++k) f(buf[k]);
+            f(buf, len);
         }
     };
     switch (ord.kind) {
-        case Ord::Inf: {
-            double m = 0;
-            bool nan = false;
-            double buf[kPairwiseBlock];
-            for (std::int64_t b = 0; b < count; b += kPairwiseBlock) {
-                const std::int64_t len = std::min(kPairwiseBlock, count - b);
-                fill(b, len, buf);
-                max_and_nan(buf, len, m, nan);
-            }
-            return nan ? kNaN : m;
-        }
+        case Ord::Inf:
         case Ord::NegInf: {
-            double m = kInf;
+            const bool max = ord.kind == Ord::Inf;
+            double m = max ? 0.0 : kInf;
             bool nan = false;
-            each_chunk([&](double a) {
-                if (a != a) nan = true;
-                else if (a < m) m = a;
+            chunks([&](const double* v, std::int64_t len) {
+                if (max) {
+                    max_and_nan(v, len, m, nan);
+                } else {
+                    for (std::int64_t k = 0; k < len; ++k) {
+                        if (v[k] != v[k]) nan = true;
+                        else if (v[k] < m) m = v[k];
+                    }
+                }
             });
             return nan ? kNaN : m;
         }
-        case Ord::Zero: {  // the number of nonzeros (not a norm; Array API). NaN counts.
+        case Ord::Zero: {
             std::int64_t c = 0;
-            each_chunk([&](double a) { c += (a != 0); });
+            chunks([&](const double* v, std::int64_t len) {
+                for (std::int64_t k = 0; k < len; ++k) c += (v[k] != 0);
+            });
             return static_cast<double>(c);
         }
         case Ord::One:
@@ -184,8 +206,6 @@ inline double vnorm(VecOrd ord, std::int64_t count, Fill&& fill) {
             const double p = ord.p;
             double amax = 0;
             bool nan = false;
-            // one pass: the terms a^p for the sum, and the largest a on the side
-            // (kept in locals: `out` could alias the captured ones for the compiler)
             auto powers = [&](std::int64_t b, std::int64_t len, double* out) {
                 fill(b, len, out);
                 max_and_nan(out, len, amax, nan);
@@ -195,24 +215,105 @@ inline double vnorm(VecOrd ord, std::int64_t count, Fill&& fill) {
                     for (std::int64_t k = 0; k < len; ++k) out[k] = std::pow(out[k], p);
             };
             const double s = pairwise_sum<double>(count, powers);
-            if (nan) return kNaN;
-            if (p > 0) {
-                if (amax == kInf) return kInf;
-                const double top = two ? amax * amax : std::pow(amax, p);
-                if (std::isinf(s) || (amax > 0 && top < kTiny)) {
-                    // Rescaled: amax * (sum (a/amax)^p)^(1/p). Every term is <= 1.
-                    auto scaled = [&](std::int64_t b, std::int64_t len, double* out) {
-                        fill(b, len, out);
+            return finish_pnorm(two, p, s, amax, nan, count, fill);
+        }
+    }
+    return kNaN;
+}
+
+// The norm of `count` magnitudes, given by fill(begin, len, out) as for
+// pairwise_sum (at most kPairwiseBlock per call). Empty sets have norm 0 (S11).
+// Long sets are cut into the pairwise tree's leaves and run on the pool (M9):
+// the sums are combined along the tree and max/min/count are order-free, so
+// the result is the serial one bit for bit. `fill` must not write anything shared.
+template <class Fill>
+inline double vnorm(VecOrd ord, std::int64_t count, Fill&& fill) {
+    if (count == 0) return 0.0;
+    if (count < kSumParallelMin) return vnorm_serial(ord, count, fill);
+    const auto plan = pairwise_plan(count, false);
+    if (plan.size() == 1) return vnorm_serial(ord, count, fill);
+    const std::size_t parts = plan.size();
+    // max (or min) and NaN, or the nonzero count, of one leaf, chunk by chunk
+    struct Side {
+        double m = 0;
+        bool nan = false;
+        std::int64_t nonzero = 0;
+    };
+    std::vector<Side> side(parts);
+    auto chunks = [&](std::int64_t t, auto&& f) {
+        double buf[kPairwiseBlock];
+        const std::int64_t b0 = plan[t].first, end = b0 + plan[t].second;
+        for (std::int64_t b = b0; b < end; b += kPairwiseBlock) {
+            const std::int64_t len = std::min(kPairwiseBlock, end - b);
+            fill(b, len, buf);
+            f(buf, len, side[t]);
+        }
+    };
+    switch (ord.kind) {
+        case Ord::Inf:
+        case Ord::NegInf: {
+            const bool max = ord.kind == Ord::Inf;
+            for (Side& sd : side) sd.m = max ? 0.0 : kInf;
+            pairwise_run(plan, [&](std::int64_t t) {
+                chunks(t, [&](const double* buf, std::int64_t len, Side& sd) {
+                    if (max) {
+                        max_and_nan(buf, len, sd.m, sd.nan);
+                    } else {
                         for (std::int64_t k = 0; k < len; ++k) {
-                            const double r = out[k] / amax;
-                            out[k] = two ? r * r : std::pow(r, p);
+                            const double a = buf[k];
+                            if (a != a) sd.nan = true;
+                            else if (a < sd.m) sd.m = a;
                         }
-                    };
-                    const double t = pairwise_sum<double>(count, scaled);
-                    return amax * (two ? std::sqrt(t) : std::pow(t, 1 / p));
-                }
+                    }
+                });
+            });
+            double m = max ? 0.0 : kInf;
+            bool nan = false;
+            for (const Side& sd : side) {
+                nan |= sd.nan;
+                m = max ? std::max(m, sd.m) : std::min(m, sd.m);
             }
-            return two ? std::sqrt(s) : std::pow(s, 1 / p);
+            return nan ? kNaN : m;
+        }
+        case Ord::Zero: {  // the number of nonzeros (not a norm; Array API). NaN counts.
+            pairwise_run(plan, [&](std::int64_t t) {
+                chunks(t, [&](const double* buf, std::int64_t len, Side& sd) {
+                    for (std::int64_t k = 0; k < len; ++k) sd.nonzero += (buf[k] != 0);
+                });
+            });
+            std::int64_t c = 0;
+            for (const Side& sd : side) c += sd.nonzero;
+            return static_cast<double>(c);
+        }
+        case Ord::One:
+            return pairwise_sum_mt<double>(count, fill);
+        case Ord::Two:
+        case Ord::P: {
+            const bool two = ord.kind == Ord::Two;
+            const double p = ord.p;
+            // one pass: the terms a^p for the sum, and each leaf's largest a and
+            // NaN on the side (its own Side, so leaves on other threads do not race)
+            std::vector<double> sums(parts);
+            pairwise_run(plan, [&](std::int64_t t) {
+                Side& sd = side[t];
+                auto powers = [&](std::int64_t b, std::int64_t len, double* out) {
+                    fill(b, len, out);
+                    max_and_nan(out, len, sd.m, sd.nan);
+                    if (two)
+                        for (std::int64_t k = 0; k < len; ++k) out[k] = out[k] * out[k];
+                    else
+                        for (std::int64_t k = 0; k < len; ++k) out[k] = std::pow(out[k], p);
+                };
+                sums[t] = detail::pairwise(plan[t].first, plan[t].second, powers);
+            });
+            double amax = 0;
+            bool nan = false;
+            for (const Side& sd : side) {
+                nan |= sd.nan;
+                amax = std::max(amax, sd.m);
+            }
+            const double s = 0. + pairwise_combine(count, false, sums);
+            return finish_pnorm(two, p, s, amax, nan, count, fill);
         }
     }
     return kNaN;

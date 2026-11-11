@@ -8,6 +8,7 @@
 //                  measurement (experiments/m6_ldl_driver, DESIGN.md §2.15)
 #include "ops/nonsym.hpp"
 
+#include "core/cost.hpp"
 #include "core/outblock.hpp"
 #include "core/pyrefs.hpp"
 #include "ops/common.hpp"
@@ -77,7 +78,7 @@ nb::object eig_impl(nb::handle xo, bool vectors) {
     Out vo;
     if (vectors) vo = alloc_matrices(b.shape(), n, n, DType::Complex128);
     const bool complex = computes_complex(x.dtype());
-    const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+    const Failure f = run_batch(b, cost(kEig, double(n) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
         // Unsorted results in scratch (slot 3 and the int-free complex area), then sorted out.
         cplx* w = s.get<cplx>(static_cast<std::size_t>(n * (vectors ? n + 1 : 1)), 3);
         cplx* v = w + n;
@@ -116,7 +117,7 @@ nb::object schur(nb::handle xo) {
     return with_type(computes_complex(x.dtype()), [&]<class T>(std::type_identity<T>) -> nb::object {
         Out to = alloc_matrices(b.shape(), n, n, dtype_of<T>());
         Out zo = alloc_matrices(b.shape(), n, n, dtype_of<T>());
-        const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+        const Failure f = run_batch(b, cost(kEig, double(n) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             LapackSlot<T> ts(to.as<T>() + i * n * n, n * n, s, Scratch::kAlign0);
             LapackSlot<T> zs(zo.as<T>() + i * n * n, n * n, s, Scratch::kAlign1);
             T* t = ts.get();  // packed into T's slot; gees overwrites it with T
@@ -137,7 +138,7 @@ nb::object hessenberg(nb::handle xo) {
     return with_type(computes_complex(x.dtype()), [&]<class T>(std::type_identity<T>) -> nb::object {
         Out ho = alloc_matrices(b.shape(), n, n, dtype_of<T>());
         Out qo = alloc_matrices(b.shape(), n, n, dtype_of<T>());
-        const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+        const Failure f = run_batch(b, cost(kQR, double(n) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             T* a = s.get<T>(static_cast<std::size_t>(n * n));
             if (!pack(x.dtype(), x.data() + off[0], n, n, x.stride(-2), x.stride(-1), a, n, true)) return kNonFinite;
             if (n == 0) return 0;
@@ -227,7 +228,7 @@ nb::object ldl(nb::handle xo) {
         Out lo = alloc_matrices(b.shape(), n, n, dtype_of<T>());
         Out dout = alloc_matrices(b.shape(), n, n, dtype_of<T>());
         Out po = alloc_vectors(b.shape(), n, DType::Int64);
-        const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+        const Failure f = run_batch(b, cost(kLU, double(n) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             T* a = s.get<T>(static_cast<std::size_t>(n * n));
             // The lower triangle only (API.md §0.2), checked as read (DESIGN.md §2.12).
             if (!pack_triangle(x.dtype(), x.data() + off[0], n, x.stride(-2), x.stride(-1), a, n, true, true, true))

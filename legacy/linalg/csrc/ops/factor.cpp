@@ -6,6 +6,7 @@
 // LinAlgError everywhere, also where LAPACK itself would just divide by it.
 #include "ops/factor.hpp"
 
+#include "core/cost.hpp"
 #include "core/outblock.hpp"
 #include "core/pyrefs.hpp"
 #include "ops/common.hpp"
@@ -38,7 +39,7 @@ nb::object solve_triangular(nb::handle ao, nb::handle bo, bool upper, bool unit_
     return with_type(complex, [&]<class T>(std::type_identity<T>) -> nb::object {
         Out out = alloc_rhs(b, r, n, dtype_of<T>());
         T* res = out.as<T>();
-        const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+        const Failure f = run_batch(b, cost(kTriangular, double(n) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             // Only the triangle trtrs reads; the diagonal too unless it is taken as 1.
             const T* t;
             lint ld;
@@ -66,7 +67,7 @@ nb::object cholesky(nb::handle xo, bool upper) {
     return with_type(computes_complex(x.dtype()), [&]<class T>(std::type_identity<T>) -> nb::object {
         Out out = alloc_matrices(b.shape(), n, n, dtype_of<T>());
         T* res = out.as<T>();
-        const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+        const Failure f = run_batch(b, cost(kLU, double(n) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             LapackSlot<T> os(res + i * n * n, n * n, s, Scratch::kAlign0);
             T* o = os.get();
             // L is computed in the output slot itself; for upper=True in scratch, then U = L^H.
@@ -99,7 +100,7 @@ nb::object cholesky_solve(nb::handle lo, nb::handle bo, bool upper) {
     return with_type(complex, [&]<class T>(std::type_identity<T>) -> nb::object {
         Out out = alloc_rhs(b, r, n, dtype_of<T>());
         T* res = out.as<T>();
-        const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+        const Failure f = run_batch(b, cost(kTriangular, double(n) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             const T* t;
             lint ld;
             if (!triangle_operand(l, off[0], n, !upper, true, s.get<T>(static_cast<std::size_t>(n * n)), t, ld))
@@ -131,7 +132,7 @@ nb::object lu(nb::handle xo) {
         T* L = lo.as<T>();
         T* U = uo.as<T>();
         std::int64_t* P = po.as<std::int64_t>();
-        const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+        const Failure f = run_batch(b, cost(kLU, double(m) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             T* a = s.get<T>(static_cast<std::size_t>(m * n));
             lint* ipiv = s.get_ints(static_cast<std::size_t>(kk));
             if (!pack(x.dtype(), x.data() + off[0], m, n, x.stride(-2), x.stride(-1), a, m, true)) return kNonFinite;
@@ -184,7 +185,7 @@ nb::object lu_solve(nb::handle lo, nb::handle uo, nb::handle po, nb::handle bo) 
     return with_type(complex, [&]<class T>(std::type_identity<T>) -> nb::object {
         Out out = alloc_rhs(b, r, n, dtype_of<T>());
         T* res = out.as<T>();
-        const Failure f = run_batch(b, [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+        const Failure f = run_batch(b, cost(kTriangular, double(n) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             // L strictly below the diagonal (its unit diagonal is not read), U on
             // and above it: read in place when column-major, else packed (M8).
             const T *tl, *tu;

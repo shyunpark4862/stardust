@@ -6,9 +6,13 @@
 
 #include <Python.h>
 
+#include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <limits>
 #include <initializer_list>
 #include <memory>
 #include <span>
@@ -112,16 +116,58 @@ struct Failure {
 // body returns 0 on success or a positive failure code of its own choosing.
 // Returns the failure with the smallest index (ARCHITECTURE.md §3.4, A2).
 //
-// M1 runs serially, so it can stop at the first failure: in index order that
-// is already the smallest one, and nothing of a failed call is returned.
-// M9 splits the batch over the thread pool behind this same interface.
+// `element_ns` is the estimated serial cost of one element (core/cost.hpp).
+// When the whole batch is worth it (kParallelMinNs), the elements are cut into
+// tasks of about kTaskNs and run on the thread pool (M9, DESIGN.md §2.18).
+// Every element is computed the same way wherever it runs (its own scratch,
+// 16-byte aligned arrays, M8), so results are bit-for-bit those of the serial
+// loop, for any thread count. Failures: each task stops at its first one, and
+// every task skips elements past the smallest failure seen so far; the
+// smallest index overall is reported, as in the serial loop.
 inline constexpr std::size_t kMaxOperands = 4;
+// Measured in M9 (experiments/m9_threshold). Variables only so that the
+// experiments can move them (_core._set_tuning); nothing else changes them.
+inline double kParallelMinNs = 10000;  // a batch whose estimated serial time is below this runs serially
+inline double kTaskNs = 5000;          // estimated serial time of one task
+
+namespace detail {
+bool begin_parallel();  // syncs the pool with sdnp.get_num_threads() (needs the GIL); true if it may split
+void run_tasks(std::int64_t ntasks, const std::function<void(std::int64_t)>& fn);
+}  // namespace detail
 
 template <class F>
-Failure run_batch(const Batch& b, F&& body) {
+Failure run_batch(const Batch& b, double element_ns, F&& body) {
+    const std::int64_t n = b.size();
+    // element_ns == 0 means: never split (e.g. small gbsv bands, core/cost.hpp)
+    if (n >= 2 && element_ns > 0 && element_ns * static_cast<double>(n) >= kParallelMinNs && detail::begin_parallel()) {
+        const std::int64_t per = std::max<std::int64_t>(1, static_cast<std::int64_t>(kTaskNs / element_ns));
+        const std::int64_t ntasks = (n + per - 1) / per;
+        std::vector<Failure> fails(static_cast<std::size_t>(ntasks));
+        std::atomic<std::int64_t> first{std::numeric_limits<std::int64_t>::max()};
+        detail::run_tasks(ntasks, [&](std::int64_t t) {
+            Scratch scratch;
+            std::int64_t offs[kMaxOperands];
+            const std::int64_t end = std::min(n, (t + 1) * per);
+            for (std::int64_t i = t * per; i < end; ++i) {
+                if (i > first.load(std::memory_order_relaxed)) return;  // a smaller failure is already known
+                b.offsets(i, offs);
+                if (const int code = body(i, static_cast<const std::int64_t*>(offs), scratch)) {
+                    fails[static_cast<std::size_t>(t)] = {i, code};
+                    std::int64_t cur = first.load(std::memory_order_relaxed);
+                    while (i < cur && !first.compare_exchange_weak(cur, i, std::memory_order_relaxed)) {
+                    }
+                    return;
+                }
+            }
+        });
+        Failure best;
+        for (const Failure& f : fails)
+            if (f && (!best || f.index < best.index)) best = f;
+        return best;
+    }
     Scratch scratch;
     std::int64_t offs[kMaxOperands];
-    for (std::int64_t i = 0; i < b.size(); ++i) {
+    for (std::int64_t i = 0; i < n; ++i) {
         b.offsets(i, offs);
         if (const int code = body(i, static_cast<const std::int64_t*>(offs), scratch)) return {i, code};
     }

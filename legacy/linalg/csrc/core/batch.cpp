@@ -1,5 +1,8 @@
 #include "core/batch.hpp"
 
+#include "core/pyrefs.hpp"
+#include "parallel/pool.hpp"
+
 #include <nanobind/nanobind.h>
 
 #include <algorithm>
@@ -69,6 +72,25 @@ std::string Batch::index_str(std::int64_t idx) const {
     for (std::size_t i = 0; i < ix.size(); ++i) r += (i ? ", " : "") + std::to_string(ix[i]);
     return r + (ix.size() == 1 ? ",)" : ")");
 }
+
+namespace detail {
+
+bool begin_parallel() {
+    if (!parallel::available_here()) return false;  // inside a task: no nesting
+    // The thread count follows sdnp.get_num_threads() (DESIGN.md §2.5), read on
+    // every call so sdnp.set_num_threads() applies at once (~7 ns, §2.9).
+    PyObject* r = PyObject_CallNoArgs(refs().get_num_threads);
+    if (!r) throw nb::python_error();
+    const long want = PyLong_AsLong(r);
+    Py_DECREF(r);
+    if (want < 1) return false;
+    if (want != parallel::num_threads()) parallel::set_num_threads(static_cast<int>(want));
+    return parallel::available();
+}
+
+void run_tasks(std::int64_t ntasks, const std::function<void(std::int64_t)>& fn) { parallel::parallel_for(ntasks, fn); }
+
+}  // namespace detail
 
 std::string failure_message(const Batch& b, std::int64_t idx, const char* what) {
     if (b.ndim() == 0) return what;
