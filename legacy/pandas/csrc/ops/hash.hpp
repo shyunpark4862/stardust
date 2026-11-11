@@ -4,11 +4,15 @@
 #pragma once
 
 #include "core/column.hpp"
+#include "parallel/pool.hpp"
 
 #include <arm_neon.h>
 
+#include <algorithm>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <new>
 #include <string_view>
 #include <type_traits>
 #include <vector>
@@ -162,16 +166,35 @@ class SwissTable {
 public:
     static constexpr bool kInline = std::is_same_v<Key, std::uint64_t>;
 
-    std::pair<std::int64_t, bool> insert(Key k, std::int64_t new_code) {
-        const std::uint64_t h = Hash{}(k);
-        const std::uint8_t tag = static_cast<std::uint8_t>(h & 0x7f);
+    SwissTable() { allocate(32); }
+    SwissTable(SwissTable&&) noexcept = default;
+    SwissTable& operator=(SwissTable&&) noexcept = default;
+
+    std::pair<std::int64_t, bool> insert(Key k, std::int64_t new_code) { return insert(k, Hash{}(k), new_code); }
+    std::int64_t find(Key k) const { return find(k, Hash{}(k)); }
+
+    // Room for `n` keys without growing (M11: a partition knows how many
+    // rows it has, an upper bound on its keys). Only on an empty table.
+    // Costs almost nothing up front: the control bytes come zeroed from
+    // calloc (fresh pages, touched only when used) and the slots are left
+    // uninitialized, read only where a control byte says "full".
+    void reserve(std::int64_t n) {
+        std::size_t slots = 32;
+        while (static_cast<std::int64_t>(slots) * 7 < n * 8) slots *= 2;
+        if (slots > capacity()) allocate(slots);
+    }
+
+    // The same with the key's hash already computed (M11: the partitioned
+    // factorize hashes every row once, up front).
+    std::pair<std::int64_t, bool> insert(Key k, std::uint64_t h, std::int64_t new_code) {
+        const std::uint8_t tag = tag_of(h);
         for (std::uint64_t g = (h >> 7) & gmask_;; g = (g + 1) & gmask_) {
-            const uint8x16_t ctrl = vld1q_u8(ctrl_.data() + g * 16);
+            const uint8x16_t ctrl = vld1q_u8(ctrl_.get() + g * 16);
             for (std::uint64_t m = nibbles(vceqq_u8(ctrl, vdupq_n_u8(tag))); m; m = clear_nibble(m)) {
                 const Slot& e = slots_[g * 16 + (__builtin_ctzll(m) >> 2)];
                 if (matches(e, k, h)) return {e.code, false};
             }
-            const std::uint64_t empty = nibbles(vcltzq_s8(vreinterpretq_s8_u8(ctrl)));  // kEmpty has the top bit set
+            const std::uint64_t empty = nibbles(vceqzq_u8(ctrl));
             if (empty) {
                 const std::uint64_t at = g * 16 + (__builtin_ctzll(empty) >> 2);
                 ctrl_[at] = tag;
@@ -180,31 +203,44 @@ public:
                     if (static_cast<std::int64_t>(keys_.size()) <= new_code) keys_.resize(new_code + 1);
                     keys_[new_code] = k;
                 }
-                if (++size_ * 8 > static_cast<std::int64_t>(slots_.size()) * 7) grow();
+                if (++size_ * 8 > static_cast<std::int64_t>(capacity()) * 7) grow();
                 return {new_code, true};
             }
         }
     }
 
-    std::int64_t find(Key k) const {
-        const std::uint64_t h = Hash{}(k);
-        const std::uint8_t tag = static_cast<std::uint8_t>(h & 0x7f);
+    std::int64_t find(Key k, std::uint64_t h) const {
+        const std::uint8_t tag = tag_of(h);
         for (std::uint64_t g = (h >> 7) & gmask_;; g = (g + 1) & gmask_) {
-            const uint8x16_t ctrl = vld1q_u8(ctrl_.data() + g * 16);
+            const uint8x16_t ctrl = vld1q_u8(ctrl_.get() + g * 16);
             for (std::uint64_t m = nibbles(vceqq_u8(ctrl, vdupq_n_u8(tag))); m; m = clear_nibble(m)) {
                 const Slot& e = slots_[g * 16 + (__builtin_ctzll(m) >> 2)];
                 if (matches(e, k, h)) return e.code;
             }
-            if (nibbles(vcltzq_s8(vreinterpretq_s8_u8(ctrl)))) return -1;
+            if (nibbles(vceqzq_u8(ctrl))) return -1;
         }
     }
 
 private:
-    static constexpr std::uint8_t kEmpty = 0x80;
+    // Control bytes: 0 is empty (so calloc'd memory is an empty table);
+    // a full slot holds 0x80 | the low 7 bits of the hash (the tag).
+    static std::uint8_t tag_of(std::uint64_t h) { return static_cast<std::uint8_t>(0x80 | (h & 0x7f)); }
     struct Slot {
         std::uint64_t word;  // the key itself for 8-byte keys, else the key's hash
         std::int64_t code;
     };
+    struct Free {
+        void operator()(void* p) const { std::free(p); }
+    };
+
+    std::size_t capacity() const { return static_cast<std::size_t>(gmask_ + 1) * 16; }
+
+    void allocate(std::size_t slots) {
+        ctrl_.reset(static_cast<std::uint8_t*>(std::calloc(slots, 1)));
+        slots_.reset(static_cast<Slot*>(std::malloc(slots * sizeof(Slot))));
+        if (!ctrl_ || !slots_) throw std::bad_alloc();
+        gmask_ = slots / 16 - 1;
+    }
 
     // A 16-byte compare result (0x00 or 0xFF per byte) as a 64-bit mask with
     // four bits per byte: shift each 16-bit lane right by 4 and narrow.
@@ -223,19 +259,18 @@ private:
     }
 
     void grow() {
-        std::vector<std::uint8_t> old_ctrl(ctrl_.size() * 2, kEmpty);
-        std::vector<Slot> old_slots(slots_.size() * 2);
-        old_ctrl.swap(ctrl_);
-        old_slots.swap(slots_);
-        gmask_ = slots_.size() / 16 - 1;
-        for (std::size_t i = 0; i < old_slots.size(); ++i) {
-            if (old_ctrl[i] & kEmpty) continue;
+        const std::size_t old_n = capacity();
+        std::unique_ptr<std::uint8_t[], Free> old_ctrl = std::move(ctrl_);
+        std::unique_ptr<Slot[], Free> old_slots = std::move(slots_);
+        allocate(old_n * 2);
+        for (std::size_t i = 0; i < old_n; ++i) {
+            if (old_ctrl[i] == 0) continue;
             const Slot& e = old_slots[i];
             std::uint64_t h;
             if constexpr (kInline) h = Hash{}(e.word);
             else h = e.word;
             for (std::uint64_t g = (h >> 7) & gmask_;; g = (g + 1) & gmask_) {
-                const std::uint64_t empty = nibbles(vcltzq_s8(vreinterpretq_s8_u8(vld1q_u8(ctrl_.data() + g * 16))));
+                const std::uint64_t empty = nibbles(vceqzq_u8(vld1q_u8(ctrl_.get() + g * 16)));
                 if (empty) {
                     const std::uint64_t at = g * 16 + (__builtin_ctzll(empty) >> 2);
                     ctrl_[at] = old_ctrl[i];
@@ -246,9 +281,9 @@ private:
         }
     }
 
-    std::vector<std::uint8_t> ctrl_ = std::vector<std::uint8_t>(32, kEmpty);
-    std::vector<Slot> slots_ = std::vector<Slot>(32);
-    std::uint64_t gmask_ = 1;  // groups - 1
+    std::unique_ptr<std::uint8_t[], Free> ctrl_;
+    std::unique_ptr<Slot[], Free> slots_;
+    std::uint64_t gmask_ = 0;  // groups - 1
     std::int64_t size_ = 0;
     std::vector<Key> keys_;
 };
@@ -256,6 +291,247 @@ private:
 // The table everything uses (M10: Swiss, after measuring it against LinearTable).
 template <class Key, class Hash>
 using KeyTable = SwissTable<Key, Hash>;
+
+// factorize split by hash (M11, user decision 2026-11-11). The top bits of
+// a key's hash pick one of P partitions; each partition is factorized by
+// its own Swiss table, in parallel, then the codes are renumbered by the row
+// where each key first appears. So the codes are exactly those of one
+// serial pass over the rows (0, 1, ... in order of first appearance) for
+// any thread count, and each table is small enough to stay in cache.
+//
+// P is 256 from kThreshold rows up when the pool can run in parallel, and
+// 1 otherwise -- then build() is the plain serial pass. The codes do not
+// depend on P at all, so P may follow the thread count (user decision
+// 2026-11-11: one thread keeps the serial speed; DESIGN.md §2.6).
+// Equal keys share a hash, so they always land in one partition. NA rows
+// are kept out of the tables: all of them share one code (API.md §13).
+template <class Key, class Hash>
+class Partitioned {
+public:
+    // Factorizes rows [0, n): key_of(i) is row i's key, valid(i) false for
+    // NA rows. Writes codes[0, n) and returns the first row of each code.
+    template <class KeyOf, class Valid>
+    std::vector<std::int64_t> build(std::int64_t n, KeyOf key_of, Valid valid, std::int64_t* codes);
+
+    // The code of `k`, or -1 when it is not a key of the build rows.
+    std::int64_t find(Key k) const {
+        const std::uint64_t h = Hash{}(k);
+        if (shift_ == 64) return tables_[0].find(k, h);  // one partition: its codes are the codes
+        const std::int64_t local = tables_[static_cast<std::size_t>(h >> shift_)].find(k, h);
+        return local < 0 ? -1 : global_[static_cast<std::size_t>(h >> shift_)][static_cast<std::size_t>(local)];
+    }
+
+    std::int64_t ngroups() const { return ngroups_; }
+    std::int64_t na_code() const { return na_code_; }  // -1 without NA rows
+
+private:
+    int shift_ = 64;  // partition = hash >> shift_ (64: one partition)
+    std::vector<SwissTable<Key, Hash>> tables_;
+    std::vector<std::vector<std::int64_t>> global_;  // per partition: local code -> code
+    std::int64_t ngroups_ = 0;
+    std::int64_t na_code_ = -1;
+};
+
+template <class Key, class Hash>
+template <class KeyOf, class Valid>
+std::vector<std::int64_t> Partitioned<Key, Hash>::build(std::int64_t n, KeyOf key_of, Valid valid, std::int64_t* codes) {
+    using parallel::for_chunks;
+    using parallel::kChunkRows;
+    // 8-byte keys are their own word and rehashing one is a few cycles;
+    // strings keep their hash, computed once (rehashing would read the bytes again).
+    constexpr bool kInline = std::is_same_v<Key, std::uint64_t>;
+    constexpr int kBits = 8;
+    const int bits = n >= parallel::kThreshold && parallel::available() ? kBits : 0;
+    const std::size_t P = std::size_t{1} << bits;
+    shift_ = 64 - bits;
+    tables_ = std::vector<SwissTable<Key, Hash>>(P);
+    global_.assign(P, {});
+    if (P == 1) {  // the serial pass: codes in order of first appearance, NA rows sharing one
+        SwissTable<Key, Hash>& table = tables_[0];
+        std::vector<std::int64_t> first;
+        parallel::Unlocked unlocked(n);
+        for (std::int64_t i = 0; i < n; ++i) {
+            if (!valid(i)) {
+                if (na_code_ < 0) {
+                    na_code_ = static_cast<std::int64_t>(first.size());
+                    first.push_back(i);
+                }
+                codes[i] = na_code_;
+                continue;
+            }
+            auto [code, added] = table.insert(key_of(i), static_cast<std::int64_t>(first.size()));
+            if (added) first.push_back(i);
+            codes[i] = code;
+        }
+        ngroups_ = static_cast<std::int64_t>(first.size());
+        return first;
+    }
+    auto part_of = [this](std::uint64_t h) -> std::size_t { return shift_ == 64 ? 0 : static_cast<std::size_t>(h >> shift_); };
+    const std::size_t C = static_cast<std::size_t>(parallel::num_chunks(n));
+    auto chunk = [](std::int64_t lo) { return static_cast<std::size_t>(lo / kChunkRows); };
+
+    // 1. Count rows per (chunk, partition); strings also keep their hash.
+    std::vector<std::uint64_t> hashes(kInline ? 0 : static_cast<std::size_t>(n));
+    std::vector<std::int64_t> count(C * P, 0);
+    parallel::FirstRow first_na;
+    for_chunks(n, [&](std::int64_t lo, std::int64_t hi) {
+        std::int64_t* cnt = count.data() + chunk(lo) * P;
+        std::int64_t na = -1;
+        for (std::int64_t i = lo; i < hi; ++i) {
+            if (!valid(i)) {
+                if (na < 0) na = i;
+                continue;
+            }
+            const std::uint64_t h = Hash{}(key_of(i));
+            if constexpr (!kInline) hashes[static_cast<std::size_t>(i)] = h;
+            ++cnt[part_of(h)];
+        }
+        if (na >= 0) first_na.offer(na);
+    }, 4);
+    // 2. Where each (partition, chunk) starts: partition by partition, and
+    // within one, chunk by chunk, so every partition lists its rows in row
+    // order -- the order a serial pass would meet them.
+    std::vector<std::int64_t> pstart(P + 1, 0);
+    std::vector<std::int64_t> at(C * P);
+    std::int64_t pos = 0;
+    for (std::size_t p = 0; p < P; ++p) {
+        pstart[p] = pos;
+        for (std::size_t c = 0; c < C; ++c) {
+            at[c * P + p] = pos;
+            pos += count[c * P + p];
+        }
+    }
+    pstart[P] = pos;
+    // 3. Scatter (word, row) entries to their partitions: the key for 8-byte
+    // keys, the hash for strings. A partition then reads its entries front
+    // to back instead of jumping across the rows (M11: reading keys and
+    // hashes through row numbers made one thread 2-4x slower).
+    struct Entry {
+        std::uint64_t word;
+        std::int64_t row;
+    };
+    std::vector<Entry> entries(static_cast<std::size_t>(pos));
+    for_chunks(n, [&](std::int64_t lo, std::int64_t hi) {
+        std::int64_t* next = at.data() + chunk(lo) * P;
+        for (std::int64_t i = lo; i < hi; ++i) {
+            if (!valid(i)) {
+                codes[i] = -1;
+                continue;
+            }
+            std::uint64_t w, h;
+            if constexpr (kInline) {
+                w = key_of(i);
+                h = Hash{}(w);
+            } else {
+                w = h = hashes[static_cast<std::size_t>(i)];
+            }
+            const std::int64_t j = next[part_of(h)]++;
+            entries[static_cast<std::size_t>(j)] = Entry{w, i};
+            codes[i] = j;  // where row i's entry went, until step 6
+        }
+    });
+    // 4. Each partition: local codes in its row order (written over the
+    // entry's word), and its first rows, which are in row order too.
+    std::vector<std::vector<std::int64_t>> firsts(P);
+    parallel::parallel_for(static_cast<std::int64_t>(P), [&](std::int64_t pt) {
+        const auto p = static_cast<std::size_t>(pt);
+        SwissTable<Key, Hash>& table = tables_[p];
+        table.reserve(pstart[p + 1] - pstart[p]);  // never grows: no rehashing, no allocation in the loop
+        std::vector<std::int64_t>& f = firsts[p];
+        f.reserve(static_cast<std::size_t>(pstart[p + 1] - pstart[p]));
+        for (std::int64_t j = pstart[p]; j < pstart[p + 1]; ++j) {
+            Entry& e = entries[static_cast<std::size_t>(j)];
+            std::pair<std::int64_t, bool> r;
+            if constexpr (kInline) r = table.insert(e.word, Hash{}(e.word), static_cast<std::int64_t>(f.size()));
+            else r = table.insert(key_of(e.row), e.word, static_cast<std::int64_t>(f.size()));
+            if (r.second) f.push_back(e.row);
+            e.word = static_cast<std::uint64_t>(r.first);
+        }
+    });
+    // 5. The code of a key is the number of first rows before its own
+    // first row. Each row chunk gathers the first rows that fall in it (a
+    // slice of every partition's sorted list) and numbers them in row order.
+    // A task writes only its own chunk's part of every array, so no two
+    // threads write one cache line (scattered writes from all partitions at
+    // once made 10 threads barely 3x faster than one).
+    const std::int64_t na_first = first_na.any() ? first_na.row() : -1;
+    std::vector<std::int64_t> fstart(C + 1, 0);
+    // bound[p * (C + 1) + c]: where chunk c's rows start in firsts[p]. One
+    // walk down each sorted list (binary searches per chunk and partition
+    // mispredicted enough to cost 7 ms at 630k keys).
+    std::vector<std::int64_t> bound(P * (C + 1));
+    parallel::parallel_for(static_cast<std::int64_t>(P), [&](std::int64_t pt) {
+        const auto p = static_cast<std::size_t>(pt);
+        const auto& f = firsts[p];
+        std::int64_t* b = bound.data() + p * (C + 1);
+        std::size_t l = 0;
+        for (std::size_t c = 0; c <= C; ++c) {
+            const std::int64_t row = static_cast<std::int64_t>(c) * kChunkRows;
+            while (l < f.size() && f[l] < row) ++l;
+            b[c] = static_cast<std::int64_t>(l);
+        }
+    });
+    auto slice = [&](std::size_t p, std::int64_t lo, std::int64_t) {  // firsts[p] within chunk [lo, hi)
+        const std::int64_t* b = bound.data() + p * (C + 1) + chunk(lo);
+        return std::pair{b[0], b[1]};
+    };
+    for_chunks(n, [&](std::int64_t lo, std::int64_t hi) {
+        std::int64_t k = na_first >= lo && na_first < hi;
+        for (std::size_t p = 0; p < P; ++p) {
+            auto [a, b] = slice(p, lo, hi);
+            k += b - a;
+        }
+        fstart[chunk(lo) + 1] = k;
+    });
+    for (std::size_t c = 0; c < C; ++c) fstart[c + 1] += fstart[c];
+    ngroups_ = fstart[C];
+    std::vector<std::int64_t> first(static_cast<std::size_t>(ngroups_));
+    for (std::size_t p = 0; p < P; ++p) global_[p].resize(firsts[p].size());
+    for_chunks(n, [&](std::int64_t lo, std::int64_t hi) {
+        // rank[i - lo]: 1 + the code of first row i, 0 for other rows
+        std::vector<std::int64_t> rank(static_cast<std::size_t>(hi - lo), 0);
+        for (std::size_t p = 0; p < P; ++p) {
+            auto [a, b] = slice(p, lo, hi);
+            for (auto l = a; l < b; ++l) rank[static_cast<std::size_t>(firsts[p][static_cast<std::size_t>(l)] - lo)] = 1;
+        }
+        if (na_first >= lo && na_first < hi) rank[static_cast<std::size_t>(na_first - lo)] = 1;
+        // Branch-free numbering: first rows are often too dense and too
+        // random for a branch to predict.
+        std::int64_t g = fstart[chunk(lo)];
+        std::int64_t* rk = rank.data();
+        for (std::int64_t i = 0, len = hi - lo; i < len; ++i) {
+            const std::int64_t is = rk[i];
+            g += is;
+            rk[i] = g & -is;
+        }
+        for (std::size_t p = 0; p < P; ++p) {
+            auto [a, b] = slice(p, lo, hi);
+            for (auto l = a; l < b; ++l) {
+                const std::int64_t row = firsts[p][static_cast<std::size_t>(l)];
+                const std::int64_t code = rk[row - lo] - 1;
+                global_[p][static_cast<std::size_t>(l)] = code;
+                first[static_cast<std::size_t>(code)] = row;
+            }
+        }
+        if (na_first >= lo && na_first < hi) first[static_cast<std::size_t>(rk[na_first - lo] - 1)] = na_first;
+        if (na_first >= lo && na_first < hi) na_code_ = rank[static_cast<std::size_t>(na_first - lo)] - 1;
+    }, 4);
+    // 6. Entries' local codes -> codes (each partition reads its own entries
+    // front to back), then each row reads its entry, in row order.
+    parallel::parallel_for(static_cast<std::int64_t>(P), [&](std::int64_t pt) {
+        const auto p = static_cast<std::size_t>(pt);
+        const std::vector<std::int64_t>& g = global_[p];
+        for (std::int64_t j = pstart[p]; j < pstart[p + 1]; ++j) {
+            Entry& e = entries[static_cast<std::size_t>(j)];
+            e.word = static_cast<std::uint64_t>(g[static_cast<std::size_t>(e.word)]);
+        }
+    });
+    for_chunks(n, [&](std::int64_t lo, std::int64_t hi) {
+        for (std::int64_t i = lo; i < hi; ++i)
+            codes[i] = codes[i] < 0 ? na_code_ : static_cast<std::int64_t>(entries[static_cast<std::size_t>(codes[i])].word);
+    });
+    return first;
+}
 
 struct Factorized {
     Column codes;  // int64, one per row: 0, 1, ... in order of first appearance
@@ -299,8 +575,9 @@ private:
     Column build_;  // kept alive: string keys point into its bytes
     std::vector<std::int64_t> codes_;
     std::int64_t ngroups_ = 0;
-    std::unique_ptr<KeyTable<std::uint64_t, Fmix64>> words_;
-    std::unique_ptr<KeyTable<std::string_view, HashBytes>> strings_;
+    std::int64_t na_code_ = -1;  // the build's NA code, taken out of the numbering
+    std::unique_ptr<Partitioned<std::uint64_t, Fmix64>> words_;
+    std::unique_ptr<Partitioned<std::string_view, HashBytes>> strings_;
 };
 
 // The lookup engine of an Index (ARCHITECTURE.md §4): the labels (int64 or
@@ -327,8 +604,8 @@ private:
     std::vector<std::int64_t> codes_;  // per position
     std::vector<std::int64_t> first_;  // per code
     std::int64_t ngroups_ = 0;
-    std::unique_ptr<KeyTable<std::uint64_t, Fmix64>> ints_;
-    std::unique_ptr<KeyTable<std::string_view, HashBytes>> strings_;
+    std::unique_ptr<Partitioned<std::uint64_t, Fmix64>> ints_;
+    std::unique_ptr<Partitioned<std::string_view, HashBytes>> strings_;
     // Positions grouped by code (built on first use by all_positions).
     mutable std::vector<std::int64_t> group_start_, group_rows_;
 };

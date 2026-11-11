@@ -1,10 +1,13 @@
 #include "ops/join.hpp"
 
 #include "ops/hash.hpp"
+#include "ops/radix.hpp"
 #include "ops/selection.hpp"
+#include "parallel/pool.hpp"
 
 #include <nanobind/nanobind.h>
 
+#include <atomic>
 #include <string>
 
 namespace nb = nanobind;
@@ -60,8 +63,12 @@ std::pair<Column, Column> join_indices(const std::vector<Column>& left, const st
             continue;
         }
         if (nj != 0 && G > (std::int64_t{1} << 62) / nj) compact();
-        for (std::int64_t i = 0; i < nl; ++i) lc[i] = (lc[i] < 0 || l[i] < 0) ? -1 : lc[i] * nj + l[i];
-        for (std::int64_t i = 0; i < nr; ++i) rc[i] = (rc[i] < 0 || r[i] < 0) ? -1 : rc[i] * nj + r[i];
+        parallel::for_chunks(nl, [&](std::int64_t lo, std::int64_t hi) {
+            for (std::int64_t i = lo; i < hi; ++i) lc[i] = (lc[i] < 0 || l[i] < 0) ? -1 : lc[i] * nj + l[i];
+        });
+        parallel::for_chunks(nr, [&](std::int64_t lo, std::int64_t hi) {
+            for (std::int64_t i = lo; i < hi; ++i) rc[i] = (rc[i] < 0 || r[i] < 0) ? -1 : rc[i] * nj + r[i];
+        });
         G *= nj;
     }
     if (left.size() > 1) compact();  // dense codes for the CSR below
@@ -73,6 +80,7 @@ std::pair<Column, Column> join_indices(const std::vector<Column>& left, const st
         std::vector<std::int64_t> l_dense(lc.size(), -1), r_dense(rc.size(), -1);
         std::vector<std::int64_t> remap(static_cast<std::size_t>(G), -1);
         std::int64_t g2 = 0;
+        parallel::Unlocked unlocked(nl + nr);  // serial: numbering in order of first appearance
         for (std::size_t i = 0; i < lc.size(); ++i)
             if (lc[i] >= 0) {
                 if (remap[lc[i]] < 0) remap[lc[i]] = g2++;
@@ -90,52 +98,74 @@ std::pair<Column, Column> join_indices(const std::vector<Column>& left, const st
     const bool keep_probe = how != "inner";  // left, right (swapped), outer keep unmatched probe rows
     const bool keep_build = how == "outer";
 
-    // Build rows grouped by code, in their order (counting sort, CSR).
-    std::vector<std::int64_t> start(static_cast<std::size_t>(G + 1), 0), rows;
-    for (std::int64_t i = 0; i < nb_; ++i)
-        if (bcode[i] >= 0) ++start[bcode[i] + 1];
-    for (std::int64_t g = 0; g < G; ++g) start[g + 1] += start[g];
-    rows.resize(static_cast<std::size_t>(start[G]));
+    // Build rows grouped by code, in their order (counting sort, CSR); rows
+    // with no code (-1) go to an extra last key and are left out.
+    std::vector<std::int64_t> start, rows;
     {
-        std::vector<std::int64_t> fill(start.begin(), start.end() - 1);
-        for (std::int64_t i = 0; i < nb_; ++i)
-            if (bcode[i] >= 0) rows[fill[bcode[i]]++] = i;
+        std::vector<std::int64_t> key(static_cast<std::size_t>(nb_));
+        parallel::for_chunks(nb_, [&](std::int64_t lo, std::int64_t hi) {
+            for (std::int64_t i = lo; i < hi; ++i) key[i] = bcode[i] < 0 ? G : bcode[i];
+        });
+        counting_sort(key.data(), nb_, G + 1, start, rows);
     }
 
-    // Count, then fill.
-    std::vector<std::uint8_t> probed(static_cast<std::size_t>(G), 0);  // codes some probe row has
-    std::int64_t total = 0;
-    for (std::int64_t p = 0; p < np; ++p) {
-        const std::int64_t m = pcode[p] < 0 ? 0 : start[pcode[p] + 1] - start[pcode[p]];
-        if (pcode[p] >= 0) probed[pcode[p]] = 1;
-        total += m > 0 ? m : (keep_probe ? 1 : 0);
+    // Count per chunk of probe rows, then each chunk fills its own part.
+    // probed: codes some probe row has (several rows may set one flag).
+    std::vector<std::uint8_t> probed(static_cast<std::size_t>(G), 0);
+    auto matches = [&](std::int64_t p) { return pcode[p] < 0 ? 0 : start[pcode[p] + 1] - start[pcode[p]]; };
+    const std::size_t CP = static_cast<std::size_t>(parallel::num_chunks(np));
+    std::vector<std::int64_t> pstart(CP + 1, 0);
+    parallel::for_chunks(np, [&](std::int64_t lo, std::int64_t hi) {
+        std::int64_t t = 0;
+        for (std::int64_t p = lo; p < hi; ++p) {
+            const std::int64_t m = matches(p);
+            if (keep_build && pcode[p] >= 0) std::atomic_ref<std::uint8_t>(probed[pcode[p]]).store(1, std::memory_order_relaxed);
+            t += m > 0 ? m : (keep_probe ? 1 : 0);
+        }
+        pstart[lo / parallel::kChunkRows + 1] = t;
+    });
+    for (std::size_t c = 0; c < CP; ++c) pstart[c + 1] += pstart[c];
+    auto unprobed = [&](std::int64_t i) { return bcode[i] < 0 || !probed[bcode[i]]; };
+    const std::size_t CB = static_cast<std::size_t>(parallel::num_chunks(nb_));
+    std::vector<std::int64_t> bstart(CB + 1, pstart[CP]);
+    if (keep_build) {
+        parallel::for_chunks(nb_, [&](std::int64_t lo, std::int64_t hi) {
+            std::int64_t t = 0;
+            for (std::int64_t i = lo; i < hi; ++i) t += unprobed(i);
+            bstart[lo / parallel::kChunkRows + 1] = t;
+        });
+        for (std::size_t c = 0; c < CB; ++c) bstart[c + 1] += bstart[c];
     }
-    if (keep_build)
-        for (std::int64_t i = 0; i < nb_; ++i) total += bcode[i] < 0 || !probed[bcode[i]];
+    const std::int64_t total = bstart[CB];
     Column pout = make_fixed(DType::Int64, total), bout = make_fixed(DType::Int64, total);
     auto* po = reinterpret_cast<std::int64_t*>(pout.values->data());
     auto* bo = reinterpret_cast<std::int64_t*>(bout.values->data());
-    std::int64_t k = 0;
-    for (std::int64_t p = 0; p < np; ++p) {
-        const std::int64_t b0 = pcode[p] < 0 ? 0 : start[pcode[p]], b1 = pcode[p] < 0 ? 0 : start[pcode[p] + 1];
-        if (b1 > b0) {
-            for (std::int64_t j = b0; j < b1; ++j, ++k) {
+    parallel::for_chunks(np, [&](std::int64_t lo, std::int64_t hi) {
+        std::int64_t k = pstart[lo / parallel::kChunkRows];
+        for (std::int64_t p = lo; p < hi; ++p) {
+            const std::int64_t b0 = pcode[p] < 0 ? 0 : start[pcode[p]], b1 = pcode[p] < 0 ? 0 : start[pcode[p] + 1];
+            if (b1 > b0) {
+                for (std::int64_t j = b0; j < b1; ++j, ++k) {
+                    po[k] = p;
+                    bo[k] = rows[j];
+                }
+            } else if (keep_probe) {
                 po[k] = p;
-                bo[k] = rows[j];
-            }
-        } else if (keep_probe) {
-            po[k] = p;
-            bo[k] = -1;
-            ++k;
-        }
-    }
-    if (keep_build)
-        for (std::int64_t i = 0; i < nb_; ++i)
-            if (bcode[i] < 0 || !probed[bcode[i]]) {
-                po[k] = -1;
-                bo[k] = i;
+                bo[k] = -1;
                 ++k;
             }
+        }
+    });
+    if (keep_build)
+        parallel::for_chunks(nb_, [&](std::int64_t lo, std::int64_t hi) {
+            std::int64_t k = bstart[lo / parallel::kChunkRows];
+            for (std::int64_t i = lo; i < hi; ++i)
+                if (unprobed(i)) {
+                    po[k] = -1;
+                    bo[k] = i;
+                    ++k;
+                }
+        });
     return swap ? std::pair<Column, Column>{bout, pout} : std::pair<Column, Column>{pout, bout};
 }
 

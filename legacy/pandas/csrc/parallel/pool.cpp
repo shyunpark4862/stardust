@@ -196,11 +196,11 @@ bool available() { return !t_in_task && pool().threads() > 1; }
 
 void parallel_for(std::int64_t ntasks, const std::function<void(std::int64_t)>& fn) {
     if (ntasks <= 0) return;
+    GilRelease release;  // a no-op inside a task, where the GIL is already released
     if (ntasks == 1 || !available()) {
         for (std::int64_t t = 0; t < ntasks; ++t) fn(t);  // nested or single: plain loop
         return;
     }
-    GilRelease release;
     pool().run(ntasks, fn);
 }
 

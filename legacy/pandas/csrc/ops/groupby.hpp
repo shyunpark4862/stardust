@@ -25,6 +25,9 @@ public:
     Column reduce(std::string_view op, const Column& col, bool skipna, std::int64_t ddof) const;
 
 private:
+    template <class F>
+    void for_groups(F f) const;
+
     std::int64_t ngroups_;
     std::vector<std::int64_t> start_;  // group g's rows are rows_[start_[g], start_[g + 1])
     std::vector<std::int64_t> rows_;

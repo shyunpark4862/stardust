@@ -3,9 +3,12 @@
 // (API.md §15, §16).
 #pragma once
 
+#include "parallel/pool.hpp"
+
 #include <arm_neon.h>
 
 #include <cstdint>
+#include <vector>
 
 namespace sd {
 
@@ -37,11 +40,62 @@ double pairwise_sum(std::int64_t begin, std::int64_t n, const Get& get) {
     return pairwise_sum(begin, n2, get) + pairwise_sum(begin + n2, n - n2, get);
 }
 
+// The pairwise tree in parallel (M11): the subtrees of at most
+// kPairwiseLeaf values are the tasks, each summed by pairwise_sum itself;
+// then the nodes above them are added in the same shape. Every node is the
+// one the serial recursion computes, so the bits are the same as
+// pairwise_sum(0, n) for any thread count (API.md §15, as in stardust-numpy's
+// pairwise_parallel). The tree depends on n alone.
+inline constexpr std::int64_t kPairwiseLeaf = 1 << 14;
+
+namespace detail {
+
+// The leaves of the tree over [begin, begin + n), left to right.
+inline void pairwise_leaves(std::int64_t begin, std::int64_t n, std::vector<std::int64_t>& starts,
+                            std::vector<std::int64_t>& sizes) {
+    if (n <= kPairwiseLeaf) {
+        starts.push_back(begin);
+        sizes.push_back(n);
+        return;
+    }
+    std::int64_t n2 = n / 2;  // the split of pairwise_sum, for n > kPairwiseBlock
+    n2 -= n2 % 8;
+    pairwise_leaves(begin, n2, starts, sizes);
+    pairwise_leaves(begin + n2, n - n2, starts, sizes);
+}
+
+// Adds the leaf sums back up in the shape of the tree; `next` walks the leaves.
+inline double pairwise_combine(std::int64_t n, const std::vector<double>& leaf, std::size_t& next) {
+    if (n <= kPairwiseLeaf) return leaf[next++];
+    std::int64_t n2 = n / 2;
+    n2 -= n2 % 8;
+    const double left = pairwise_combine(n2, leaf, next);
+    return left + pairwise_combine(n - n2, leaf, next);
+}
+
+}  // namespace detail
+
+// pairwise_sum(0, n, get), bit for bit, with the leaves in parallel.
+// `cost` as in parallel::for_chunks.
+template <class Get>
+double pairwise_sum_parallel(std::int64_t n, const Get& get, std::int64_t cost = 1) {
+    if (n <= kPairwiseLeaf || n * cost < parallel::kThreshold) return pairwise_sum(0, n, get);
+    std::vector<std::int64_t> starts, sizes;
+    detail::pairwise_leaves(0, n, starts, sizes);
+    std::vector<double> leaf(starts.size());
+    parallel::parallel_for(static_cast<std::int64_t>(leaf.size()), [&](std::int64_t t) {
+        const auto k = static_cast<std::size_t>(t);
+        leaf[k] = pairwise_sum(starts[k], sizes[k], get);
+    });
+    std::size_t next = 0;
+    return detail::pairwise_combine(n, leaf, next);
+}
+
 // numpy's add.reduce starts from the identity: 0.0 + pairwise(all). That
 // start is why a sum of -0.0s is +0.0, as in numpy.
 template <class Get>
-double float_sum(std::int64_t n, const Get& get) {
-    return 0.0 + pairwise_sum(0, n, get);
+double float_sum(std::int64_t n, const Get& get, std::int64_t cost = 1) {
+    return 0.0 + pairwise_sum_parallel(n, get, cost);
 }
 
 // IEEE 754-2019 minimum/maximum, which is what AArch64's FMIN/FMAX do: NaN

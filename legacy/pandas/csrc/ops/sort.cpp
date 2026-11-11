@@ -2,6 +2,7 @@
 
 #include "ops/hash.hpp"
 #include "ops/radix.hpp"
+#include "parallel/pool.hpp"
 
 #include <nanobind/nanobind.h>
 
@@ -17,11 +18,43 @@ namespace sd {
 namespace {
 
 // Stable sort of `order` (positions into `key`) by `key`.
+// `order` split into rows with a value and NA rows, each in its order. In
+// parallel: per chunk, count; then each chunk copies to its own places.
+void split_na(const Column& key, const std::vector<std::int64_t>& order, std::vector<std::int64_t>& valid_rows,
+              std::vector<std::int64_t>& na_rows) {
+    const auto n = static_cast<std::int64_t>(order.size());
+    if (!key.validity) {
+        valid_rows = order;
+        return;
+    }
+    const std::size_t C = static_cast<std::size_t>(parallel::num_chunks(n));
+    std::vector<std::int64_t> valid_at(C + 1, 0), na_at(C + 1, 0);
+    parallel::for_chunks(n, [&](std::int64_t lo, std::int64_t hi) {
+        std::int64_t k = 0;
+        for (std::int64_t j = lo; j < hi; ++j) k += key.is_valid(order[j]);
+        valid_at[lo / parallel::kChunkRows + 1] = k;
+        na_at[lo / parallel::kChunkRows + 1] = (hi - lo) - k;
+    });
+    for (std::size_t c = 0; c < C; ++c) {
+        valid_at[c + 1] += valid_at[c];
+        na_at[c + 1] += na_at[c];
+    }
+    valid_rows.resize(static_cast<std::size_t>(valid_at[C]));
+    na_rows.resize(static_cast<std::size_t>(na_at[C]));
+    parallel::for_chunks(n, [&](std::int64_t lo, std::int64_t hi) {
+        std::int64_t v = valid_at[lo / parallel::kChunkRows], a = na_at[lo / parallel::kChunkRows];
+        for (std::int64_t j = lo; j < hi; ++j) {
+            const std::int64_t r = order[j];
+            if (key.is_valid(r)) valid_rows[v++] = r;
+            else na_rows[a++] = r;
+        }
+    });
+}
+
 void sort_by(const Column& key, bool ascending, bool na_last, std::vector<std::int64_t>& order) {
-    const std::size_t n = order.size();
     std::vector<std::int64_t> valid_rows, na_rows;
-    valid_rows.reserve(n);
-    for (std::int64_t r : order) (key.is_valid(r) ? valid_rows : na_rows).push_back(r);
+    split_na(key, order, valid_rows, na_rows);
+    const auto nv = static_cast<std::int64_t>(valid_rows.size());
 
     if (key.dtype == DType::String) {
         // Ranks of the distinct strings stand in for the strings, so that a
@@ -35,15 +68,21 @@ void sort_by(const Column& key, bool ascending, bool na_last, std::vector<std::i
         std::vector<std::uint64_t> rank(static_cast<std::size_t>(f.ngroups));
         for (std::size_t r = 0; r < distinct.size(); ++r) rank[code[distinct[r]]] = r;
         std::vector<std::uint64_t> keys(valid_rows.size());
-        for (std::size_t j = 0; j < valid_rows.size(); ++j) keys[j] = rank[code[valid_rows[j]]];
-        if (!ascending)
-            for (auto& k : keys) k = ~k;
+        parallel::for_chunks(nv, [&](std::int64_t lo, std::int64_t hi) {
+            for (std::int64_t j = lo; j < hi; ++j) {
+                const std::uint64_t k = rank[code[valid_rows[j]]];
+                keys[j] = ascending ? k : ~k;
+            }
+        });
         radix_sort(keys, valid_rows);
     } else {
         std::vector<std::uint64_t> keys(valid_rows.size());
-        for (std::size_t j = 0; j < valid_rows.size(); ++j) keys[j] = radix_key(key, valid_rows[j]);
-        if (!ascending)  // the reverse order; equal keys stay equal, so ties keep their order
-            for (auto& k : keys) k = ~k;
+        parallel::for_chunks(nv, [&](std::int64_t lo, std::int64_t hi) {
+            for (std::int64_t j = lo; j < hi; ++j) {
+                const std::uint64_t k = radix_key(key, valid_rows[j]);
+                keys[j] = ascending ? k : ~k;  // the reverse order; equal keys stay equal, so ties keep their order
+            }
+        });
         radix_sort(keys, valid_rows);
     }
 

@@ -5,6 +5,7 @@
 #include "ops/radix.hpp"
 #include "ops/reduce.hpp"
 #include "ops/selection.hpp"
+#include "parallel/pool.hpp"
 
 #include <nanobind/nanobind.h>
 
@@ -20,14 +21,27 @@ namespace sd {
 
 Groups::Groups(const Column& codes, std::int64_t ngroups) : ngroups_(ngroups) {
     if (codes.dtype != DType::Int64 || codes.null_count) throw nb::type_error("group codes must be int64 without NA");
-    const auto* c = codes.data<std::int64_t>();
-    const std::int64_t n = codes.length;
-    start_.assign(static_cast<std::size_t>(ngroups + 1), 0);
-    for (std::int64_t i = 0; i < n; ++i) ++start_[c[i] + 1];
-    for (std::int64_t g = 0; g < ngroups; ++g) start_[g + 1] += start_[g];
-    rows_.resize(static_cast<std::size_t>(n));
-    std::vector<std::int64_t> fill(start_.begin(), start_.end() - 1);
-    for (std::int64_t i = 0; i < n; ++i) rows_[fill[c[i]]++] = i;  // stable: rows stay in order within a group
+    counting_sort(codes.data<std::int64_t>(), codes.length, ngroups, start_, rows_);
+}
+
+// f(g_lo, g_hi) over the groups, cut into tasks of whole groups with about
+// kChunkRows rows each. Each group is reduced on its own, so where the cuts
+// fall changes nothing in the result.
+template <class F>
+void Groups::for_groups(F f) const {
+    const std::int64_t n = static_cast<std::int64_t>(rows_.size());
+    if (n < parallel::kThreshold) {
+        f(std::int64_t{0}, ngroups_);
+        return;
+    }
+    std::vector<std::int64_t> cuts{0};
+    for (std::int64_t r = parallel::kChunkRows; r < n; r += parallel::kChunkRows) {
+        const auto g = static_cast<std::int64_t>(std::lower_bound(start_.begin(), start_.end() - 1, r) - start_.begin());
+        if (g > cuts.back()) cuts.push_back(g);
+    }
+    if (ngroups_ > cuts.back()) cuts.push_back(ngroups_);
+    parallel::parallel_for(static_cast<std::int64_t>(cuts.size()) - 1,
+                           [&](std::int64_t t) { f(cuts[static_cast<std::size_t>(t)], cuts[static_cast<std::size_t>(t) + 1]); });
 }
 
 Column Groups::sizes() const {
@@ -85,7 +99,8 @@ Column Groups::reduce(std::string_view op, const Column& col, bool skipna, std::
     if (op == "min" || op == "max" || op == "first" || op == "last") {
         Column winners = make_fixed(DType::Int64, G);
         auto* w = reinterpret_cast<std::int64_t*>(winners.values->data());
-        for (std::int64_t g = 0; g < G; ++g) {
+        for_groups([&](std::int64_t g_lo, std::int64_t g_hi) {
+        for (std::int64_t g = g_lo; g < g_hi; ++g) {
             const std::int64_t b = start_[g], e = start_[g + 1];
             std::int64_t at = -1;
             if (op == "first" || op == "last") {
@@ -111,15 +126,19 @@ Column Groups::reduce(std::string_view op, const Column& col, bool skipna, std::
             }
             w[g] = at;
         }
+        });
         return take(col, winners);
     }
 
     Column out = make_fixed(result, G);
-    std::uint8_t* bits = add_validity(out);
-    for (std::int64_t g = 0; g < G; ++g) {
+    // NA per group as a byte (tasks may meet inside a bitmap byte), packed
+    // into the bitmap at the end.
+    std::vector<std::uint8_t> valid(static_cast<std::size_t>(G), 1);
+    for_groups([&](std::int64_t g_lo, std::int64_t g_hi) {
+    for (std::int64_t g = g_lo; g < g_hi; ++g) {
         const std::int64_t b = start_[g], n = start_[g + 1] - b;
         const std::int64_t count = count_of(g);
-        auto set_na = [&] { bitmap::clear(bits, g); };
+        auto set_na = [&] { valid[static_cast<std::size_t>(g)] = 0; };
         auto get = [&](std::int64_t k) { return row_double(col, rows_[b + k]); };  // NA rows hold 0
         if (op == "count") {
             reinterpret_cast<std::int64_t*>(out.values->data())[g] = count;
@@ -172,6 +191,10 @@ Column Groups::reduce(std::string_view op, const Column& col, bool skipna, std::
         }
         reinterpret_cast<double*>(out.values->data())[g] = value;
     }
+    });
+    std::uint8_t* bits = add_validity(out);
+    for (std::int64_t g = 0; g < G; ++g)
+        if (!valid[static_cast<std::size_t>(g)]) bitmap::clear(bits, g);
     finish_fixed(out);
     return out;
 }
@@ -195,13 +218,19 @@ Column sort_groups(const std::vector<Column>& keys) {
         std::vector<std::int64_t> valued, na_code;
         for (std::int64_t g = 0; g < f.ngroups; ++g) (k.is_valid(first[g]) ? valued : na_code).push_back(first[g]);
         order_rows(k, valued);
-        std::vector<std::int64_t> rank(static_cast<std::size_t>(f.ngroups)), start(static_cast<std::size_t>(f.ngroups + 1), 0);
+        std::vector<std::int64_t> rank(static_cast<std::size_t>(f.ngroups));
         std::int64_t r = 0;
         for (std::int64_t row : valued) rank[code[row]] = r++;
         for (std::int64_t row : na_code) rank[code[row]] = r++;
-        for (std::int64_t i = 0; i < n; ++i) ++start[rank[code[i]] + 1];
-        for (std::int64_t q = 0; q < f.ngroups; ++q) start[q + 1] += start[q];
-        for (std::int64_t g : order) next[start[rank[code[g]]]++] = g;  // stable: keeps the order of earlier passes
+        // Stable sort of `order` by rank (keeps the order of earlier passes).
+        std::vector<std::int64_t> key(static_cast<std::size_t>(n)), start, perm;
+        parallel::for_chunks(n, [&](std::int64_t lo, std::int64_t hi) {
+            for (std::int64_t j = lo; j < hi; ++j) key[j] = rank[code[order[j]]];
+        });
+        counting_sort(key.data(), n, f.ngroups, start, perm);
+        parallel::for_chunks(n, [&](std::int64_t lo, std::int64_t hi) {
+            for (std::int64_t j = lo; j < hi; ++j) next[j] = order[perm[j]];
+        });
         order.swap(next);
     }
     Column out = make_fixed(DType::Int64, n);

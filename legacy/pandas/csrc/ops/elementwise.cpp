@@ -1,5 +1,7 @@
 #include "ops/elementwise.hpp"
 
+#include "parallel/pool.hpp"
+
 #include <nanobind/nanobind.h>
 
 #include <algorithm>
@@ -68,19 +70,34 @@ Column map2(const Column& a, const Column& b, int scalar_side, DType result, F f
     Column out = make_fixed(result, n);
     out.validity = and_validity(a, b, scalar_side, n);
     R* o = reinterpret_cast<R*>(out.values->data());
+    // Chunks are multiples of 64 rows, so tasks never share a bitmap byte.
+    // Each task copies its inputs into locals: captures live in the closure
+    // object, and a store through a uint8_t pointer may alias them, so they
+    // would be reloaded every row and the loop would not vectorize (M10).
     if constexpr (CanNA) {
         if (!out.validity) add_validity(out);
         auto* bits = reinterpret_cast<std::uint8_t*>(out.validity->data());
         visit_inputs<A, B>(a, b, scalar_side, [&](auto x, auto y) {
-            for (std::int64_t i = 0; i < n; ++i) {
-                bool na = false;
-                o[i] = f(x[i], y[i], na);
-                if (na) bitmap::clear(bits, i);
-            }
+            parallel::for_chunks(n, [&, x, y](std::int64_t lo, std::int64_t hi) {
+                const auto xx = x;  // locals, not captures: see the comment above
+                const auto yy = y;
+                R* oo = o;
+                std::uint8_t* bb = bits;
+                for (std::int64_t i = lo; i < hi; ++i) {
+                    bool na = false;
+                    oo[i] = f(xx[i], yy[i], na);
+                    if (na) bitmap::clear(bb, i);
+                }
+            });
         });
     } else {
         visit_inputs<A, B>(a, b, scalar_side, [&](auto x, auto y) {
-            for (std::int64_t i = 0; i < n; ++i) o[i] = f(x[i], y[i]);
+            parallel::for_chunks(n, [&, x, y](std::int64_t lo, std::int64_t hi) {
+                const auto xx = x;  // locals, not captures: see the comment above
+                const auto yy = y;
+                R* oo = o;
+                for (std::int64_t i = lo; i < hi; ++i) oo[i] = f(xx[i], yy[i]);
+            });
         });
     }
     finish_fixed(out);
@@ -189,13 +206,15 @@ Column int_arith(Op op, const Column& a, const Column& b, int side) {
     auto run = [&](auto f) { return map2<I, I, I>(a, b, side, DType::Int64, f); };
     auto run_na = [&](auto f) { return map2<I, I, I, true>(a, b, side, DType::Int64, f); };
     switch (op) {
-    case Op::Add: return run(wrap_add);
-    case Op::Sub: return run(wrap_sub);
-    case Op::Mul: return run(wrap_mul);
+    // Lambdas, not function pointers: the loop body is compiled once inside
+    // a task, where a pointer would be an indirect call per row (M11).
+    case Op::Add: return run([](I x, I y) { return wrap_add(x, y); });
+    case Op::Sub: return run([](I x, I y) { return wrap_sub(x, y); });
+    case Op::Mul: return run([](I x, I y) { return wrap_mul(x, y); });
     case Op::TrueDiv: return float_arith<I, I>(op, a, b, side);  // int / int is float64 (API.md §3)
-    case Op::FloorDiv: return run_na(int_floordiv);
-    case Op::Mod: return run_na(int_mod);
-    case Op::Pow: return run_na(int_pow);
+    case Op::FloorDiv: return run_na([](I x, I y, bool& na) { return int_floordiv(x, y, na); });
+    case Op::Mod: return run_na([](I x, I y, bool& na) { return int_mod(x, y, na); });
+    case Op::Pow: return run_na([](I x, I y, bool& na) { return int_pow(x, y, na); });
     default: break;
     }
     throw nb::value_error("not an arithmetic operator");
@@ -287,12 +306,14 @@ Column compare_strings(Op op, const Column& a, const Column& b, int side) {
     Column out = make_fixed(DType::Bool, n);
     out.validity = and_validity(a, b, side, n);
     auto* o = reinterpret_cast<std::uint8_t*>(out.values->data());
-    for (std::int64_t i = 0; i < n; ++i) {
-        // char_traits<char>::compare compares as unsigned char, so this is
-        // UTF-8 byte order, which is code point order (API.md §12).
-        const int c = a.string_at(side == 1 ? 0 : i).compare(b.string_at(side == 2 ? 0 : i));
-        o[i] = from_three_way(op, c < 0 ? -1 : c > 0 ? 1 : 0);
-    }
+    parallel::for_chunks(n, [&](std::int64_t lo, std::int64_t hi) {
+        for (std::int64_t i = lo; i < hi; ++i) {
+            // char_traits<char>::compare compares as unsigned char, so this is
+            // UTF-8 byte order, which is code point order (API.md §12).
+            const int c = a.string_at(side == 1 ? 0 : i).compare(b.string_at(side == 2 ? 0 : i));
+            o[i] = from_three_way(op, c < 0 ? -1 : c > 0 ? 1 : 0);
+        }
+    }, 4);
     finish_fixed(out);
     return out;
 }
@@ -305,24 +326,36 @@ Column concat_strings(const Column& a, const Column& b, int side) {
     out.validity = and_validity(a, b, side, n);
     const auto* bits = out.validity ? reinterpret_cast<const std::uint8_t*>(out.validity->data()) : nullptr;
     auto valid = [&](std::int64_t i) { return !bits || bitmap::get(bits, i); };
-    std::int64_t total = 0;
-    for (std::int64_t i = 0; i < n; ++i)
-        if (valid(i)) total += static_cast<std::int64_t>(a.string_at(side == 1 ? 0 : i).size() + b.string_at(side == 2 ? 0 : i).size());
-    out.values = Buffer::allocate(total, /*zeroed=*/false);
+    auto size = [&](std::int64_t i) -> std::int64_t {
+        if (!valid(i)) return 0;  // NA rows stay empty (ARCHITECTURE.md §2.4)
+        return static_cast<std::int64_t>(a.string_at(side == 1 ? 0 : i).size() + b.string_at(side == 2 ? 0 : i).size());
+    };
+    // Two passes over the same chunks: bytes per chunk, then each chunk
+    // writes from its start (the sum of the chunks before it, in order).
+    std::vector<std::int64_t> start(static_cast<std::size_t>(parallel::num_chunks(n)) + 1, 0);
+    parallel::for_chunks(n, [&](std::int64_t lo, std::int64_t hi) {
+        std::int64_t t = 0;
+        for (std::int64_t i = lo; i < hi; ++i) t += size(i);
+        start[static_cast<std::size_t>(lo / parallel::kChunkRows) + 1] = t;
+    });
+    for (std::size_t c = 1; c < start.size(); ++c) start[c] += start[c - 1];
+    out.values = Buffer::allocate(start.back(), /*zeroed=*/false);
     out.offsets = Buffer::allocate((n + 1) * 8, /*zeroed=*/false);
     auto* offs = reinterpret_cast<std::int64_t*>(out.offsets->data());
     auto* bytes = reinterpret_cast<char*>(out.values->data());
-    std::int64_t pos = 0;
     offs[0] = 0;
-    for (std::int64_t i = 0; i < n; ++i) {
-        if (valid(i)) {  // NA rows stay empty (ARCHITECTURE.md §2.4)
-            for (std::string_view part : {a.string_at(side == 1 ? 0 : i), b.string_at(side == 2 ? 0 : i)}) {
-                std::memcpy(bytes + pos, part.data(), part.size());
-                pos += static_cast<std::int64_t>(part.size());
+    parallel::for_chunks(n, [&](std::int64_t lo, std::int64_t hi) {
+        std::int64_t pos = start[static_cast<std::size_t>(lo / parallel::kChunkRows)];
+        for (std::int64_t i = lo; i < hi; ++i) {
+            if (valid(i)) {
+                for (std::string_view part : {a.string_at(side == 1 ? 0 : i), b.string_at(side == 2 ? 0 : i)}) {
+                    std::memcpy(bytes + pos, part.data(), part.size());
+                    pos += static_cast<std::int64_t>(part.size());
+                }
             }
+            offs[i + 1] = pos;
         }
-        offs[i + 1] = pos;
-    }
+    });
     out.null_count = bits ? n - bitmap::count_set(bits, 0, n) : 0;
     if (out.null_count == 0) out.validity.reset();
     return out;
@@ -330,10 +363,11 @@ Column concat_strings(const Column& a, const Column& b, int side) {
 
 // --- logic: Kleene three-valued & and | (API.md §2) ---
 
+// Rows [lo, n) with lo a multiple of 8: bitmap bytes lo / 8 onward.
 template <Op O, int Side>
 void logic_rows(const std::uint8_t* x, const std::uint8_t* vx, const std::uint8_t* y, const std::uint8_t* vy,
-                std::int64_t n, std::uint8_t* o, std::uint8_t* bits) {
-    for (std::int64_t j = 0; j < bitmap::num_bytes(n); ++j) {
+                std::int64_t lo, std::int64_t n, std::uint8_t* o, std::uint8_t* bits) {
+    for (std::int64_t j = lo / 8; j < bitmap::num_bytes(n); ++j) {
         unsigned byte = 0;
         for (std::int64_t i = j * 8; i < std::min(n, j * 8 + 8); ++i) {
             const std::int64_t ia = Side == 1 ? 0 : i, ib = Side == 2 ? 0 : i;
@@ -366,9 +400,11 @@ Column logic(Op op, const Column& a, const Column& b, int side) {
     const auto* y = b.data<std::uint8_t>();
     auto run = [&](auto op_tag) {
         constexpr Op O = decltype(op_tag)::value;
-        if (side == 1) logic_rows<O, 1>(x, va.data(), y, vb.data(), n, o, bits);
-        else if (side == 2) logic_rows<O, 2>(x, va.data(), y, vb.data(), n, o, bits);
-        else logic_rows<O, 0>(x, va.data(), y, vb.data(), n, o, bits);
+        parallel::for_chunks(n, [&](std::int64_t lo, std::int64_t hi) {
+            if (side == 1) logic_rows<O, 1>(x, va.data(), y, vb.data(), lo, hi, o, bits);
+            else if (side == 2) logic_rows<O, 2>(x, va.data(), y, vb.data(), lo, hi, o, bits);
+            else logic_rows<O, 0>(x, va.data(), y, vb.data(), lo, hi, o, bits);
+        });
     };
     if (op == Op::And) run(std::integral_constant<Op, Op::And>{});
     else if (op == Op::Or) run(std::integral_constant<Op, Op::Or>{});
@@ -423,8 +459,11 @@ Column unary_op(std::string_view name, const Column& a) {
         using T = std::remove_cvref_t<decltype(f(0))>;  // input and result share a type here
         const T* x = a.data<T>();
         T* o = reinterpret_cast<T*>(out.values->data());
-        const std::int64_t n = a.length;  // a local bound: see finish_fixed
-        for (std::int64_t i = 0; i < n; ++i) o[i] = f(x[i]);
+        parallel::for_chunks(a.length, [&, x, o](std::int64_t lo, std::int64_t hi) {
+            const T* xx = x;  // locals, not captures: see map2
+            T* oo = o;
+            for (std::int64_t i = lo; i < hi; ++i) oo[i] = f(xx[i]);
+        });
         finish_fixed(out);
         return out;
     };

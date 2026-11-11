@@ -1,6 +1,7 @@
 #include "ops/reduce.hpp"
 
 #include "ops/pairwise.hpp"
+#include "parallel/pool.hpp"
 
 #include <nanobind/nanobind.h>
 
@@ -10,6 +11,7 @@
 #include <cmath>
 #include <cstring>
 #include <string>
+#include <vector>
 
 namespace nb = nanobind;
 
@@ -18,6 +20,20 @@ namespace sd {
 namespace {
 
 Column one_value(DType dt) { return make_fixed(dt, 1); }
+
+// part(lo, hi) for every for_chunks chunk, then the parts folded in chunk
+// order: fold(fold(fold(first, part0), part1), ...). The chunks depend on
+// n alone, so the result does not depend on the thread count.
+template <class T, class Part, class Fold>
+T over_chunks(std::int64_t n, T first, Part part, Fold fold) {
+    std::vector<T> parts(static_cast<std::size_t>(parallel::num_chunks(n)), first);
+    parallel::for_chunks(n, [&](std::int64_t lo, std::int64_t hi) {
+        parts[static_cast<std::size_t>(lo / parallel::kChunkRows)] = part(lo, hi);
+    });
+    T acc = first;
+    for (const T& p : parts) acc = fold(acc, p);
+    return acc;
+}
 
 Column na_value(DType dt) {
     Column out;
@@ -55,33 +71,47 @@ double as_double(const Column& c, std::int64_t i) {
 // int128 (no overflow, no order dependence), then divides (API.md §15).
 double mean_of(const Column& c, std::int64_t count) {
     if (c.dtype == DType::Int64) {
-        __int128 total = 0;
         const auto* v = c.data<std::int64_t>();
-        for (std::int64_t i = 0, n = c.length; i < n; ++i) total += v[i];  // NA rows hold 0
+        const __int128 total = over_chunks<__int128>(
+            c.length, 0,
+            [v](std::int64_t lo, std::int64_t hi) {
+                __int128 t = 0;
+                for (std::int64_t i = lo; i < hi; ++i) t += v[i];  // NA rows hold 0
+                return t;
+            },
+            [](__int128 a, __int128 b) { return a + b; });
         return static_cast<double>(total) / static_cast<double>(count);
     }
     if (c.dtype == DType::Bool) {
-        std::int64_t trues = 0;
         const auto* v = c.data<std::uint8_t>();
-        for (std::int64_t i = 0, n = c.length; i < n; ++i) trues += v[i];
+        const std::int64_t trues = over_chunks<std::int64_t>(
+            c.length, 0,
+            [v](std::int64_t lo, std::int64_t hi) {
+                std::int64_t t = 0;
+                for (std::int64_t i = lo; i < hi; ++i) t += v[i];
+                return t;
+            },
+            [](std::int64_t a, std::int64_t b) { return a + b; });
         return static_cast<double>(trues) / static_cast<double>(count);
     }
     const double* v = c.data<double>();
     return float_sum(c.length, [v](std::int64_t i) { return v[i]; }) / static_cast<double>(count);
 }
 
+// The IEEE minimum or maximum of rows [lo, hi) (identity when there are
+// none). IEEE 754-2019 minimum/maximum is associative and commutative (NaN
+// wins, -0.0 < 0.0), so chunk results folded in any grouping give the same
+// bits.
 template <bool Max>
-Column float_minmax(const Column& c) {
-    const double* v = c.data<double>();
-    const std::int64_t n = c.length;
-    if (n == 0) return na_value(DType::Float64);
-    if (!c.validity) {  // no NA: four vector accumulators, two lanes each
-        double best = v[0];
-        std::int64_t i = 0;
-        if (n >= 8) {
+double float_minmax_range(const double* v, const std::uint8_t* m, std::int64_t lo, std::int64_t hi) {
+    const double identity = Max ? -INFINITY : INFINITY;
+    double best = identity;
+    if (m == nullptr) {  // no NA: four vector accumulators, two lanes each
+        std::int64_t i = lo;
+        if (hi - lo >= 8) {
             float64x2_t acc[4];
-            for (int k = 0; k < 4; ++k) acc[k] = vld1q_f64(v + 2 * k);
-            for (i = 8; i + 8 <= n; i += 8)
+            for (int k = 0; k < 4; ++k) acc[k] = vld1q_f64(v + lo + 2 * k);
+            for (i = lo + 8; i + 8 <= hi; i += 8)
                 for (int k = 0; k < 4; ++k) {
                     const float64x2_t x = vld1q_f64(v + i + 2 * k);
                     acc[k] = Max ? vmaxq_f64(acc[k], x) : vminq_f64(acc[k], x);
@@ -89,22 +119,19 @@ Column float_minmax(const Column& c) {
             for (int k = 0; k < 4; ++k)
                 for (int lane = 0; lane < 2; ++lane) best = ieee_minmax<Max>(best, acc[k][lane]);
         }
-        for (; i < n; ++i) best = ieee_minmax<Max>(best, v[i]);
-        return scalar(DType::Float64, best);
+        for (; i < hi; ++i) best = ieee_minmax<Max>(best, v[i]);
+        return best;
     }
     // With NA (M10): blocks of rows are copied with NA rows replaced by the
     // identity (+inf for min, -inf for max) -- a branch-free select -- and
-    // folded with the same vector instruction. All-NA was ruled out above.
-    if (c.null_count == n) return na_value(DType::Float64);
-    const std::vector<std::uint8_t> m = valid_bytes(c);
-    const double identity = Max ? -INFINITY : INFINITY;
+    // folded with the same vector instruction.
     constexpr std::int64_t kBlock = 1024;
     double buf[kBlock];
     float64x2_t acc[4];
     for (auto& a : acc) a = vdupq_n_f64(identity);
-    for (std::int64_t b = 0; b < n; b += kBlock) {
-        const std::int64_t len = std::min(kBlock, n - b);
-        const std::uint8_t* mb = m.data() + b;
+    for (std::int64_t b = lo; b < hi; b += kBlock) {
+        const std::int64_t len = std::min(kBlock, hi - b);
+        const std::uint8_t* mb = m + b;
         const double* vb = v + b;
         for (std::int64_t k = 0; k < len; ++k) buf[k] = mb[k] ? vb[k] : identity;
         std::int64_t k = 0;
@@ -113,8 +140,21 @@ Column float_minmax(const Column& c) {
                 acc[a] = Max ? vmaxq_f64(acc[a], vld1q_f64(buf + k + 2 * a)) : vminq_f64(acc[a], vld1q_f64(buf + k + 2 * a));
         for (; k < len; ++k) acc[0] = vsetq_lane_f64(ieee_minmax<Max>(vgetq_lane_f64(acc[0], 0), buf[k]), acc[0], 0);
     }
-    double best = identity;
     for (auto& a : acc) best = ieee_minmax<Max>(ieee_minmax<Max>(best, vgetq_lane_f64(a, 0)), vgetq_lane_f64(a, 1));
+    return best;
+}
+
+template <bool Max>
+Column float_minmax(const Column& c) {
+    const double* v = c.data<double>();
+    const std::int64_t n = c.length;
+    if (n == 0 || c.null_count == n) return na_value(DType::Float64);
+    const std::vector<std::uint8_t> m = c.validity ? valid_bytes(c) : std::vector<std::uint8_t>{};
+    const std::uint8_t* mp = c.validity ? m.data() : nullptr;
+    const double best = over_chunks<double>(
+        n, Max ? -INFINITY : INFINITY,
+        [&](std::int64_t lo, std::int64_t hi) { return float_minmax_range<Max>(v, mp, lo, hi); },
+        [](double a, double b) { return ieee_minmax<Max>(a, b); });
     return scalar(DType::Float64, best);
 }
 
@@ -123,17 +163,31 @@ template <bool Max, class T>
 Column plain_minmax(const Column& c) {
     const T* v = c.data<T>();
     const std::int64_t n = c.length;
-    std::int64_t i = 0;
-    while (i < n && !c.is_valid(i)) ++i;
-    if (i == n) return na_value(c.dtype);
-    T best = v[i];
-    if (!c.validity) {
-        for (++i; i < n; ++i) best = Max ? (v[i] > best ? v[i] : best) : (v[i] < best ? v[i] : best);
-    } else {
-        for (++i; i < n; ++i)
-            if (c.is_valid(i)) best = Max ? (v[i] > best ? v[i] : best) : (v[i] < best ? v[i] : best);
-    }
-    return scalar(c.dtype, best);
+    if (c.null_count == n) return na_value(c.dtype);
+    struct Best {
+        bool any;
+        T value;
+    };
+    auto pick = [](Best a, Best b) -> Best {
+        if (!a.any) return b;
+        if (!b.any) return a;
+        return {true, Max ? (b.value > a.value ? b.value : a.value) : (b.value < a.value ? b.value : a.value)};
+    };
+    const Best best = over_chunks<Best>(
+        n, Best{false, T{}},
+        [&](std::int64_t lo, std::int64_t hi) {
+            Best b{false, T{}};
+            if (!c.validity) {
+                b = {true, v[lo]};
+                for (std::int64_t i = lo + 1; i < hi; ++i) b.value = Max ? (v[i] > b.value ? v[i] : b.value) : (v[i] < b.value ? v[i] : b.value);
+            } else {
+                for (std::int64_t i = lo; i < hi; ++i)
+                    if (c.is_valid(i)) b = pick(b, Best{true, v[i]});
+            }
+            return b;
+        },
+        pick);
+    return scalar(c.dtype, best.value);
 }
 
 template <bool Max>
@@ -144,9 +198,22 @@ Column min_max(const Column& c) {
     case DType::Bool: return plain_minmax<Max, std::uint8_t>(c);
     case DType::String: break;
     }
-    std::int64_t at = -1;  // strings: the winning row, returned as a slice of the column
-    for (std::int64_t i = 0; i < c.length; ++i)
-        if (c.is_valid(i) && (at < 0 || (Max ? c.string_at(i) > c.string_at(at) : c.string_at(i) < c.string_at(at)))) at = i;
+    // Strings: the winning row (the first of equal ones), returned as a
+    // slice of the column.
+    auto better = [&](std::int64_t a, std::int64_t b) {  // b replaces a
+        if (b < 0) return a;
+        if (a < 0) return b;
+        return (Max ? c.string_at(b) > c.string_at(a) : c.string_at(b) < c.string_at(a)) ? b : a;
+    };
+    const std::int64_t at = over_chunks<std::int64_t>(
+        c.length, -1,
+        [&](std::int64_t lo, std::int64_t hi) {
+            std::int64_t w = -1;
+            for (std::int64_t i = lo; i < hi; ++i)
+                if (c.is_valid(i)) w = better(w, i);
+            return w;
+        },
+        better);
     if (at < 0) return na_value(c.dtype);
     return c.slice(at, 1);
 }
@@ -186,14 +253,22 @@ Column reduce(std::string_view op, const Column& c, bool skipna, std::int64_t dd
             const double* v = c.data<double>();
             return scalar(DType::Float64, float_sum(c.length, [v](std::int64_t i) { return v[i]; }));
         }
-        std::uint64_t total = 0;  // int64 wraps (API.md §3); NA rows hold 0
-        if (c.dtype == DType::Int64) {
-            const auto* v = c.data<std::int64_t>();
-            for (std::int64_t i = 0, n = c.length; i < n; ++i) total += static_cast<std::uint64_t>(v[i]);
-        } else {
-            const auto* v = c.data<std::uint8_t>();
-            for (std::int64_t i = 0, n = c.length; i < n; ++i) total += v[i];
-        }
+        // int64 wraps (API.md §3); NA rows hold 0. Wrapping addition is
+        // associative, so the chunk order does not even matter.
+        const bool is_int = c.dtype == DType::Int64;
+        const auto* vi = c.data<std::int64_t>();
+        const auto* vb = c.data<std::uint8_t>();
+        const std::uint64_t total = over_chunks<std::uint64_t>(
+            c.length, 0,
+            [=](std::int64_t lo, std::int64_t hi) {
+                std::uint64_t t = 0;
+                if (is_int)
+                    for (std::int64_t i = lo; i < hi; ++i) t += static_cast<std::uint64_t>(vi[i]);
+                else
+                    for (std::int64_t i = lo; i < hi; ++i) t += vb[i];
+                return t;
+            },
+            [](std::uint64_t a, std::uint64_t b) { return a + b; });
         return scalar(DType::Int64, static_cast<std::int64_t>(total));
     }
     if (is_min || is_max) return is_max ? min_max<true>(c) : min_max<false>(c);
@@ -208,7 +283,7 @@ Column reduce(std::string_view op, const Column& c, bool skipna, std::int64_t dd
     const double ssd = float_sum(c.length, [&](std::int64_t i) {
         const double d = as_double(c, i) - mean;
         return m[i] ? d * d : 0.0;
-    });
+    }, 4);
     const double var = ssd / static_cast<double>(count - ddof);
     return scalar(DType::Float64, op == "std" ? std::sqrt(var) : var);
 }

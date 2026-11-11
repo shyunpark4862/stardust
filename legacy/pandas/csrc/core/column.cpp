@@ -1,5 +1,7 @@
 #include "core/column.hpp"
 
+#include "parallel/pool.hpp"
+
 #include <nanobind/nanobind.h>
 
 #include <algorithm>
@@ -77,8 +79,12 @@ std::shared_ptr<Buffer> and_validity(const Column& a, const Column& b, int scala
 
 std::vector<std::uint8_t> valid_bytes(const Column& col) {
     std::vector<std::uint8_t> out(static_cast<std::size_t>(col.length), 1);
-    if (auto bits = rebased_validity(col))
-        bitmap::expand(reinterpret_cast<const std::uint8_t*>(bits->data()), col.length, out.data());
+    if (auto bits = rebased_validity(col)) {
+        const auto* b = reinterpret_cast<const std::uint8_t*>(bits->data());
+        parallel::for_chunks(col.length, [&](std::int64_t lo, std::int64_t hi) {
+            bitmap::expand(b + lo / 8, hi - lo, out.data() + lo);  // lo is a multiple of 8
+        });
+    }
     return out;
 }
 
@@ -93,15 +99,19 @@ void finish_fixed(Column& col) {
     }
     // Branch-free: AND every value with all-ones (valid) or zero (NA), the
     // bitmap first expanded to one byte per row (M10) so the loop vectorizes.
-    std::vector<std::uint8_t> m(static_cast<std::size_t>(col.length));
-    bitmap::expand(bits, col.length, m.data());
-    // `n` is a local: a store through a uint8_t pointer may alias anything, so
-    // a loop bound read from col.length would be reloaded every iteration and
-    // the loop would not vectorize (M10).
-    const std::int64_t n = col.length;
+    // Per chunk: expand that chunk's bits into a stack buffer, then mask.
+    // Bounds and pointers are locals: a store through a uint8_t pointer may
+    // alias anything, so a bound read through a reference would be reloaded
+    // every iteration and the loop would not vectorize (M10).
     auto zero = [&](auto* v) {
         using T = std::remove_reference_t<decltype(*v)>;
-        for (std::int64_t i = 0; i < n; ++i) v[i] &= static_cast<T>(0 - static_cast<T>(m[i]));
+        parallel::for_chunks(col.length, [bits, v](std::int64_t lo, std::int64_t hi) {
+            std::uint8_t m[parallel::kChunkRows];
+            const std::int64_t len = hi - lo;
+            bitmap::expand(bits + lo / 8, len, m);
+            T* w = v + lo;
+            for (std::int64_t i = 0; i < len; ++i) w[i] &= static_cast<T>(0 - static_cast<T>(m[i]));
+        });
     };
     if (item_size(col.dtype) == 1) zero(reinterpret_cast<std::uint8_t*>(col.values->data()));
     else zero(reinterpret_cast<std::int64_t*>(col.values->data()));  // int64 and float64: 0.0 is all-zero bits

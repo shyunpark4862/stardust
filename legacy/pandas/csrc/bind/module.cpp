@@ -149,7 +149,7 @@ NB_MODULE(_core, m) {
     m.def("set_num_threads", [](std::int64_t n) {
         if (n < 1 || n > 1024) throw nb::value_error("the number of threads must be between 1 and 1024");
         sd::parallel::set_num_threads(static_cast<int>(n));
-    }, nb::arg("n"));
+    });  // no nb::arg: positional only, set_num_threads(n, /) (API.md §20)
     m.def("get_num_threads", &sd::parallel::num_threads);
     bind_column(m);
 }
