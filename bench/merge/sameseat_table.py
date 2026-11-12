@@ -3,8 +3,10 @@ reports): legacy and new runs alternate, so the machine's drift hits both.
 
     .venv/bin/python bench/merge/sameseat_table.py DIR > DIR/table.md
 
-DIR holds array-{legacy,new,legacy1,new1}-r*.json (legacy/numpy/bench/final_report.py)
-and linalg-{legacy,new,legacy1,new1,ref}.json (legacy/linalg/bench/stage_compare.py).
+DIR holds array-{legacy,new,legacy1,new1}-r*.json (legacy/numpy/bench/final_report.py),
+linalg-{legacy,new,legacy1,new1,ref}.json (legacy/linalg/bench/stage_compare.py) and
+frame-{legacy,new,legacy1,new1,pandas}.json (legacy/pandas/bench/final_compare.py), as
+bench/merge/sameseat.sh writes them; areas whose files are missing are skipped.
 Each row keeps its best over the rounds.
 """
 
@@ -37,7 +39,9 @@ def fmt_us(us):
     return f"{us / 1000:.2f}ms" if us >= 1000 else f"{us:.1f}µs" if us >= 1 else f"{us * 1000:.0f}ns"
 
 
-def section(title, old, new, unit_s):
+def section(title, old, new, unit_s, scale=1.0):
+    if not old or not new:
+        return
     keys = [k for k in old if k in new]
     r = {k: new[k] / old[k] for k in keys}
     slow = [k for k in keys if r[k] > BAND]
@@ -48,19 +52,26 @@ def section(title, old, new, unit_s):
     if slow or fast:
         print("| 행 | legacy | new | 비율 |\n|---|---:|---:|---:|")
         for k in slow + fast:
-            o, n = (old[k] * 1e6, new[k] * 1e6) if unit_s else (old[k], new[k])
+            o, n = (old[k] * 1e6, new[k] * 1e6) if unit_s else (old[k] * scale, new[k] * scale)
             print(f"| {k.replace(' | ', ' · ')} | {fmt_us(o)} | {fmt_us(n)} | {r[k]:.2f} |")
         print()
+
+
+def ref_section(title, ref, new):
+    keys = [k for k in ref if k in new]
+    if not keys:
+        return
+    r = [ref[k] / new[k] for k in keys]
+    print(f"## {title}\n")
+    print(f"- {len(keys)}줄: 통합판이 10% 넘게 빠름 {sum(x > BAND for x in r)}, 비슷 {sum(1 / BAND <= x <= BAND for x in r)}, "
+          f"느림 {sum(x < 1 / BAND for x in r)}. ref/new 기하평균 {gmean(r):.2f}\n")
 
 
 section("배열, 기본 스레드", best("array-legacy-r*.json", "times"), best("array-new-r*.json", "times"), True)
 section("배열, 1스레드", best("array-legacy1-r*.json", "times"), best("array-new1-r*.json", "times"), True)
 section("linalg, 기본 스레드", best("linalg-legacy.json", "rows"), best("linalg-new.json", "rows"), False)
 section("linalg, 1스레드", best("linalg-legacy1.json", "rows"), best("linalg-new1.json", "rows"), False)
-
-ref, new = best("linalg-ref.json", "rows"), best("linalg-new.json", "rows")
-keys = [k for k in ref if k in new]
-r = [ref[k] / new[k] for k in keys]
-print("## linalg 대 numpy/scipy (기본 스레드)\n")
-print(f"- {len(keys)}줄: 통합판이 10% 넘게 빠름 {sum(x > BAND for x in r)}, 비슷 {sum(1 / BAND <= x <= BAND for x in r)}, "
-      f"느림 {sum(x < 1 / BAND for x in r)}. ref/new 기하평균 {gmean(r):.2f}")
+ref_section("linalg 대 numpy/scipy (기본 스레드)", best("linalg-ref.json", "rows"), best("linalg-new.json", "rows"))
+section("frame, 기본 스레드", best("frame-legacy.json", "rows"), best("frame-new.json", "rows"), False, 1e-3)
+section("frame, 1스레드", best("frame-legacy1.json", "rows"), best("frame-new1.json", "rows"), False, 1e-3)
+ref_section("frame 대 pandas (기본 스레드)", best("frame-pandas.json", "rows"), best("frame-new.json", "rows"))

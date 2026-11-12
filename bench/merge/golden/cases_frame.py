@@ -1635,18 +1635,21 @@ def cases(L):
     add("err sig agg func keyword", lambda: gdf().groupby("k").agg(func="sum"))
 
     # ---------------------------------------------------------------- threads (§20)
+    # The thread count is library-wide: stardust_pandas.set_num_threads became
+    # sd.set_num_threads (ROADMAP M5).
+    T = L._threads
     def threads_roundtrip():
-        n = F.get_num_threads()
-        F.set_num_threads(n)
-        return isinstance(n, int) and n >= 1 and F.get_num_threads() == n
+        n = T.get_num_threads()
+        T.set_num_threads(n)
+        return isinstance(n, int) and n >= 1 and T.get_num_threads() == n
 
     def threads_bad(arg, **kw):
         def run():
-            n = F.get_num_threads()
+            n = T.get_num_threads()
             try:
-                return F.set_num_threads(arg, **kw) if not kw else F.set_num_threads(**kw)
+                return T.set_num_threads(arg, **kw) if not kw else T.set_num_threads(**kw)
             finally:
-                F.set_num_threads(n)
+                T.set_num_threads(n)
         return run
 
     add("threads roundtrip", threads_roundtrip)
@@ -1654,6 +1657,6 @@ def cases(L):
     add("err threads negative", threads_bad(-1))
     add("err threads float", threads_bad(2.0))
     add("err threads keyword", threads_bad(None, n=2))
-    add("err threads get arg", lambda: F.get_num_threads(1))
+    add("err threads get arg", lambda: T.get_num_threads(1))
 
     yield from out

@@ -1,6 +1,7 @@
 // Python entry point of the native core (`stardust._core`).
 
 #include "bind/array_bind.hpp"
+#include "bind/frame_bind.hpp"
 #include "bind/linalg_bind.hpp"
 #include "bind/pyutil.hpp"
 #include "array/ops/copy.hpp"
@@ -14,6 +15,10 @@
 
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/string.h>
+#include <nanobind/stl/vector.h>
+
+#include <cstdint>
+#include <vector>
 
 #include <Accelerate/Accelerate.h>
 
@@ -49,6 +54,15 @@ nb::dict build_info() {
     return info;
 }
 
+// A check of the pool itself: task t writes t * t into its own slot, so a
+// task that runs twice or never shows up in the result. The result must not
+// depend on the thread count.
+std::vector<std::int64_t> pool_smoke_test(std::int64_t ntasks) {
+    std::vector<std::int64_t> out(static_cast<std::size_t>(ntasks));
+    sd::parallel::parallel_for(ntasks, [&](std::int64_t t) { out[static_cast<std::size_t>(t)] = t * t; });
+    return out;
+}
+
 }  // namespace
 
 NB_MODULE(_core, m) {
@@ -68,6 +82,7 @@ NB_MODULE(_core, m) {
     sd::bind_sort(m);
     sd::bind_matmul(m);
     m.def("_build_info", &build_info, "Toolchain facts captured at compile time.");
+    m.def("_pool_smoke_test", &pool_smoke_test, nb::arg("ntasks"));
     // API.md §3. Results never depend on the thread count
     // (docs/design/array.md §10.5).
     m.def("set_num_threads", [](nb::handle n) {
@@ -76,5 +91,6 @@ NB_MODULE(_core, m) {
         sd::parallel::set_num_threads(static_cast<int>(v));
     }, nb::arg());
     m.def("get_num_threads", &sd::parallel::num_threads);
-    sd::bind_linalg(m);  // last: it looks up the array objects bound above
+    sd::bind_linalg(m);  // after the array: it looks up the array objects bound above
+    sd::bind_frame(m);
 }

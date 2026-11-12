@@ -268,6 +268,15 @@ R1이 추천안대로 정해지면, 아래 후보를 함수 하나하나 확정�
   - frame: `df.groupby(Series)`가 Series의 값을 키 이름으로 읽어서 "key columns must be unique"를 낸다.
   - frame: `DataFrame({"a": [1, 2]}, index=[1, 2, 3])`가 index 길이 문제인데 "all columns must have the same length"를 낸다.
   - frame: CSV에서 같은 따옴표 실수가 위치에 따라 다른 메시지를 낸다 ("never closed" 대 "inside an unquoted field").
+  - 배열 ↔ frame (M5에서 frame API 문서를 새로 쓰다 찾음. §4.4 표에 없는 것만)
+    - **범위 밖 Python int**: frame은 int64 범위 밖의 int 스칼라를 언제나 에러로 막는다. 배열은 int64로 바꿔야 할 때만 `OverflowError`다.
+    - **numpy에서 만들기**: frame은 언제나 복사한다. 배열의 `asarray`는 되도록 복사하지 않는다.
+    - **`==`**: frame은 비교할 수 없는 dtype끼리 `==`면 에러다. 배열은 리스트나 numpy 배열과의 `==`가 에러 없이 False다.
+    - **int 비트 연산**(`&`, `|`, `^`, `~`의 int 판): 배열에만 있다.
+    - **`copy` 인자**: frame에는 `to_numpy`에만 있다. 배열은 `asarray`, `astype`, `reshape`에 있다.
+    - **dtype 인자**: frame은 이름 문자열과 Python 타입(`int` 등)을 받고 `sd.float64`는 `TypeError`다 (§4.2, M6에서 맞춘다).
+    - **에러 종류**: frame은 `KeyError`(`.loc`의 없는 라벨)를 쓰는데 API.md §2의 목록에 없다.
+    - **에러 메시지 안의 문서 번호**: frame의 에러 메시지 19곳이 옛 pandas API.md의 절(`API.md §6`, `§12`, `§14`, `§15`, `§18`, `§19`)을 적는다. 통합판에서 `API.md`는 루트 문서라서 잘못된 곳을 가리킨다. M5는 결과를 바꾸지 않으므로 두었다. 위의 "메시지에 문서 절 번호를 넣지 않는다"를 따라 M6에서 지운다 (`grep -rn 'API.md §' csrc/frame src/stardust/frame`).
 
 ### 8.5 언제 바꾸나
 - 옮기기(M1, M2, M5)는 2라운드와 상관없이 지금 규칙 그대로 한다.

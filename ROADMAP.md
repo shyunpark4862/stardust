@@ -29,7 +29,7 @@
 | M2 linalg 옮기기 | 1단계 | 완료 (2026-11-12), docs/learn/M2-linalg-move.md |
 | M3 linalg 경계 없애기 | 1단계 | 완료 (2026-11-12), docs/learn/M3-linalg-boundary.md (1단계 보고서 포함) |
 | M4 공통 바닥 정리 | 2단계 준비 | 완료 (2026-11-12), docs/learn/M4-shared-foundation.md |
-| M5 frame 옮기기 | 2단계 | 대기 |
+| M5 frame 옮기기 | 2단계 | 완료 (2026-11-12), docs/learn/M5-frame-move.md |
 | M6 frame과 배열 잇기, 일관성 맞추기 | 2단계 | 대기 |
 | M7 마무리 | 마무리 | 대기 |
 

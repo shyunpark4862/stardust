@@ -1,5 +1,7 @@
 """The extension builds, imports, and was compiled for the intended target."""
 
+import pytest
+
 import stardust as sd
 
 
@@ -18,3 +20,27 @@ def test_accelerate_is_linked_with_ilp64():
     info = sd._core._build_info()
     assert info["blas_ilp64"]
     assert info["accelerate_ddot"] == 32.0
+
+
+@pytest.fixture
+def restore_threads():
+    n = sd.get_num_threads()
+    yield
+    sd.set_num_threads(n)
+
+
+def test_pool_defaults_to_performance_cores():
+    assert sd.get_num_threads() == 10  # M4 Pro: 10 P-cores
+
+
+@pytest.mark.parametrize("threads", [1, 2, 10])
+def test_pool_runs_every_task_once(restore_threads, threads):
+    sd.set_num_threads(threads)
+    assert sd.get_num_threads() == threads
+    assert sd._core._pool_smoke_test(10_000) == [t * t for t in range(10_000)]
+
+
+@pytest.mark.parametrize("n", [0, 1025])
+def test_set_num_threads_rejects_out_of_range(restore_threads, n):
+    with pytest.raises(ValueError):
+        sd.set_num_threads(n)

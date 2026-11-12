@@ -47,9 +47,21 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/linalg/ops/spectral.cpp
   csrc/linalg/ops/special.cpp
   csrc/parallel/pool.cpp
+  csrc/frame/column.cpp
+  csrc/frame/convert.cpp
+  csrc/frame/io/csv.cpp
+  csrc/frame/ops/cast.cpp
+  csrc/frame/ops/elementwise.cpp
+  csrc/frame/ops/groupby.cpp
+  csrc/frame/ops/hash.cpp
+  csrc/frame/ops/join.cpp
+  csrc/frame/ops/reduce.cpp
+  csrc/frame/ops/selection.cpp
+  csrc/frame/ops/sort.cpp
   csrc/bind/pyutil.cpp
   csrc/bind/array_bind.cpp
   csrc/bind/linalg_bind.cpp
+  csrc/bind/frame_bind.cpp
   csrc/bind/module.cpp)
 
 target_include_directories(_core PRIVATE csrc)
@@ -58,7 +70,7 @@ target_include_directories(_core PRIVATE csrc)
 # -ffast-math is deliberately absent: NaN and inf must keep their meaning.
 # -ffp-contract=off: clang would otherwise fuse `a + b*c` into one FMA (one
 # rounding instead of two), silently changing results versus the source text
-# and versus numpy. Kernels that want FMA ask for it explicitly.
+# and versus numpy (and pandas). Kernels that want FMA ask for it explicitly.
 # -fno-builtin-sin/-cos: on Apple targets clang merges sin(x) and cos(x) of the
 # same x into one __sincos_stret call, whose results can differ by 1 ULP from
 # sin()/cos() called separately (which is what numpy does).

@@ -41,7 +41,7 @@ stardust/                         (저장소: ~/Desktop/stardust/stardust)
       _results.py  _errors.py     (지금 stardust_linalg)
     frame/
       __init__.py                 DataFrame, Series, Index, RangeIndex, NA, concat, merge, read_csv
-      series.py  frame.py  index.py  groupby.py  merge.py  io.py  _*.py   (지금 stardust_pandas)
+      series.py  frame.py  index.py  groupby.py  merge.py  io.py  _*.py   (M6에서 밑줄 이름으로 숨긴다)
 
   csrc/
     base/                         모든 영역이 쓰는 바닥
@@ -61,11 +61,11 @@ stardust/                         (저장소: ~/Desktop/stardust/stardust)
     linalg/                       (지금 stardust-linalg csrc/)
       args  batch  pack  cost  errors  common
       ops/      lu basic norms vnorm factor qr spectral svals nonsym special expm
-    frame/                        (지금 stardust-pandas csrc/)
-      column  bitmap  convert
+    frame/                        (M5, 이름공간 sd::frame)
+      column  bitmap  convert  parallel (for_chunks, Unlocked, kParallelThreshold)
       ops/      cast elementwise groupby hash join reduce selection sort radix parse pow5_table
       io/       csv
-      interop.cpp                 Column ↔ NDArray (DESIGN §4.3)
+      interop.cpp                 Column ↔ NDArray (DESIGN §4.3, M6)
     bind/
       module.cpp                  _core와 하위 모듈 _core.linalg, _core.frame 정의
       array_bind.cpp  pyutil.cpp  linalg_bind.cpp  frame_bind.cpp
@@ -81,7 +81,7 @@ stardust/                         (저장소: ~/Desktop/stardust/stardust)
     guide/                                         안내서 한 권
     learn/                                         통합 마일스톤 해설
   tools/
-    gen_pow5_table.py             (지금 stardust-pandas/tools)
+    gen_pow5_table.py             frame/ops/pow5_table.hpp를 만든다
 ```
 
 ### 2.1 지금 파일이 가는 곳
@@ -101,8 +101,8 @@ stardust/                         (저장소: ~/Desktop/stardust/stardust)
 | linalg `csrc/parallel/pool.*` | 버림 |
 | pandas `csrc/core/buffer.*` | `csrc/base/buffer.*` (numpy판과 합침) |
 | pandas `csrc/core/{column,bitmap,convert}` | `csrc/frame/` |
-| pandas `csrc/ops/pairwise.hpp` | `csrc/base/pairwise.hpp` (min/max 부분은 `frame/ops/`에 남김) |
-| pandas `csrc/parallel/pool.*` | `csrc/parallel/pool.*` (통합판의 기준) |
+| pandas `csrc/ops/pairwise.hpp` | `csrc/frame/ops/pairwise.hpp`가 `csrc/base/pairwise.hpp`의 정의를 부른다 (min/max는 그대로) |
+| pandas `csrc/parallel/pool.*` | `csrc/parallel/pool.*` (통합판의 기준). `for_chunks`, `Unlocked`, `kChunkRows`, 기준값은 `csrc/frame/parallel.hpp` |
 
 ## 3. Python과 C++의 경계
 
@@ -129,16 +129,16 @@ stardust/                         (저장소: ~/Desktop/stardust/stardust)
 - 하나만 둔다. **pandas판이 기준이다.** numpy판의 상위 집합이기 때문이다.
   - 핵심(상주 워커, spin 후 대기, atomic 카운터, 호출 스레드 참여, 중첩 금지)은 세 벌이 같다.
   - pandas판에만 있는 것: `busy()`, `available()`의 "풀이 바쁘면 직렬 경로", 항상 GIL 해제, `for_chunks`, `FirstRow`, `Unlocked`.
-  - M4: 앞의 셋과 `FirstRow`(영역과 무관)는 공용 풀에 들어갔다. `for_chunks`, `Unlocked`, `kChunkRows`는 frame의 기준값(2¹⁷)과 비트맵에 맞춘 청크 크기에 묶여 있어서 M5에서 `frame/`으로 간다.
+  - M4: 앞의 셋과 `FirstRow`(영역과 무관)는 공용 풀에 들어갔다. `for_chunks`, `Unlocked`, `kChunkRows`는 frame의 기준값(2¹⁷)과 비트맵에 맞춘 청크 크기에 묶여 있어서 M5에서 `frame/parallel.hpp`로 갔다.
   - linalg판에만 있는 것: `available_here()`. M2에서 배열의 풀에 더했다가, M3에서 linalg가 `parallel::available()`만 쓰게 되어 다시 뺐다.
 - **병렬화 기준값은 영역마다 따로 둔다.** 측정해서 정한 값이 다르기 때문이다.
   - array: `1 << 15` (numpy M8), frame: `1 << 17` (pandas M11), linalg: 비용 모델 (`linalg/cost.hpp`, linalg M9)
-  - 풀 헤더의 `kThreshold`는 없앴다(M4). 영역마다 자기 이름공간에 같은 이름의 상수를 둔다: 배열은 `sd::kParallelThreshold`, `sd::kParallelTask`(`array/parallel_limits.hpp`), frame은 M5에서 `sd::frame::kParallelThreshold`.
+  - 풀 헤더의 `kThreshold`는 없앴다(M4). 영역마다 자기 이름공간에 같은 이름의 상수를 둔다: 배열은 `sd::kParallelThreshold`, `sd::kParallelTask`(`array/parallel_limits.hpp`), frame은 `sd::frame::kParallelThreshold`(`frame/parallel.hpp`).
 - 스레드 수 API는 `sd.set_num_threads`, `sd.get_num_threads` 하나다. `sd.frame`에는 두지 않는다.
 
 ### 4.2 Buffer
 - numpy판과 pandas판은 이름(`sd::Buffer`)과 정렬(128B)이 같고 내용이 조금 다르다. 한 모듈에 그대로 넣으면 ODR 위반이다.
-- 통합판 = numpy판 + pandas판의 `size()`
+- 통합판 = numpy판 + pandas판의 `size()`. M5부터 frame도 이것을 쓴다 (256B 이하의 Column 버퍼도 Buffer 안에 놓인다).
   - numpy판: 작은 배열은 Buffer 안에 데이터를 둔다(256B, numpy M7.7), 외부 메모리를 `adopt`한다.
   - pandas판: `size()`를 갖는다. Copy-on-Write가 `shared_ptr`의 참조 카운트를 본다 (pandas ARCHITECTURE §3.3).
 - 배열 뷰와 Column이 같은 Buffer를 가리킬 수 있게 되므로 Copy-on-Write 규칙을 넓혀야 한다 (DESIGN §4.3).
@@ -147,7 +147,8 @@ stardust/                         (저장소: ~/Desktop/stardust/stardust)
 - C++ enum은 `base/dtype.hpp`에 하나 둔다 (DESIGN §4.2의 추천안).
   - `Bool, Int64, Float64, Complex128, String` (M4). `Datetime64`는 frame이 그것을 구현할 때 더한다(지금은 어느 영역에도 코드가 없다).
   - 컨테이너마다 받는 부분집합을 명시한다: 배열은 앞의 넷(`kNumArrayDTypes`, `is_array_dtype`), Column은 `Complex128`을 뺀 넷.
-- `visit_dtype`은 배열 dtype만 받는다. Column용 방문자는 M5에서 frame 코드와 함께 더한다. 모든 커널이 모든 dtype을 인스턴스화하지 않게 하기 위해서다.
+- `visit_dtype`은 배열 dtype만 받는다. 모든 커널이 모든 dtype을 인스턴스화하지 않게 하기 위해서다.
+  - Column용 방문자는 더하지 않았다(M5). frame 코드는 dtype마다 `switch`로 고르고, 그 `switch`들이 `Complex128`을 "frame dtype이 아님"으로 따로 적는다. 방문자로 바꾸는 것은 M6에서 Column ↔ 배열을 이을 때 다시 본다.
 
 ### 4.4 Accelerate 래퍼
 - BLAS(numpy `matmul`), LAPACK(linalg), vForce(numpy 초월함수)를 `accelerate/` 한곳에 둔다.
@@ -156,7 +157,7 @@ stardust/                         (저장소: ~/Desktop/stardust/stardust)
 ## 5. 빌드
 - `nanobind_add_module(_core NB_STATIC NOMINSIZE ...)` 하나.
 - 컴파일 플래그는 numpy판으로 통일한다: `-mcpu=native -ffp-contract=off -fno-builtin-sin -fno-builtin-cos -Wall -Wextra -Wpedantic`
-  - linalg와 pandas에는 `-fno-builtin-sin/-cos`가 없었다. 넣어도 결과가 같은지 M2, M5에서 확인한다.
+  - linalg와 pandas에는 `-fno-builtin-sin/-cos`가 없었다. 넣어도 결과가 같다: linalg는 M2, frame은 M5의 골든 출력으로 확인했다.
 - editable 설치는 바뀐 파일만 다시 컴파일한다. 전체 빌드는 세 프로젝트를 합친 만큼 길어진다.
 
 ## 6. 영역별 세부 구조
