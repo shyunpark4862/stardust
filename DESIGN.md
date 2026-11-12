@@ -118,7 +118,7 @@ stardust-numpy, stardust-linalg, stardust-pandas를 하나의 라이브러리 `s
 |---|---|---|---|---|
 | 1 | `int // 0`, `int % 0`, `int ** 음수` | 0, `a`, 정수 규칙 (실패하지 않음) | NA | **유지.** 배열에는 NA가 없어서 생긴 차이다 |
 | 2 | bool 산술 (`True + True`) | int64로 승격 | TypeError (리덕션 `sum`은 허용) | **통일 → 배열 규칙.** 에러가 값이 될 뿐이라 기존 결과는 바뀌지 않는다 |
-| 3 | int와 float 비교 | float64로 바꿔 비교 (`2**53+1 == 2.0**53`이 True) | 수학적으로 정확한 비교 (False) | **통일 → 정확한 비교.** 배열의 결과가 \|int\| > 2⁵³에서만 바뀐다. 비용을 M6에서 잰다 |
+| 3 | int와 float 비교 | float64로 바꿔 비교 (`2**53+1 == 2.0**53`이 True) | 수학적으로 정확한 비교 (False) | ~~통일 → 정확한 비교.~~ **통일 → 배열 규칙** (M6 준비에서 바꿈, §9.1) |
 | 4 | 암묵적 하향 변환 (대입, `out=`) | dtype만 보고 TypeError | 값을 보고 판단 (2.0은 int 컬럼에 들어감, 1.5는 ValueError) | **유지.** 에러냐 값이냐의 차이다. 문서에 명시한다 |
 | 5 | 생성자 `dtype=`의 손실 변환 | 명시적 변환으로 허용 (`[1.5]` → `[1]`) | 손실 없는 변환만 | **유지** (4와 같은 이유) |
 | 6 | `astype` float → int의 NaN, 범위 밖 값 | NaN → 0, 포화 | ValueError | **유지** (4와 같은 이유) |
@@ -126,7 +126,7 @@ stardust-numpy, stardust-linalg, stardust-pandas를 하나의 라이브러리 `s
 | 8 | 빈 입력, 자유도 부족 리덕션 | NaN 또는 ValueError | NA | **유지** (1과 같은 이유) |
 | 9 | 내림차순 정렬에서 NaN 위치 | 양방향 모두 맨 뒤 | NaN을 +inf보다 큰 값으로: 내림차순이면 맨 앞 | **통일, 방향은 사용자 결정.** 추천은 frame 규칙(NaN = 가장 큰 값). 내림차순이 오름차순의 거울이 되고, max가 NaN을 내는 것과 맞는다 |
 | 10 | `unique`/키에서 NaN끼리 | 서로 다른 값 (Array API) | 같은 키, `-0.0`과 `0.0`도 같음 | **유지.** groupby에서 NaN마다 그룹이 따로 생기면 쓸모가 없다. 배열은 표준을 따른다 |
-| 11 | `mean(int64)` | float64로 바꿔 블록 합 | int128로 정확히 합한 뒤 나눔 | **통일 → int128.** 더 정확하다. 배열의 축 리덕션에서 드는 비용을 M6에서 잰다 |
+| 11 | `mean(int64)` | float64로 바꿔 블록 합 | int128로 정확히 합한 뒤 나눔 | ~~통일 → int128.~~ **통일 → 배열 규칙** (M6 준비에서 바꿈, §9.1) |
 | 12 | 에러 종류 | 값 때문에 실패하는 일이 없다 | 값 때문이면 ValueError, 타입 때문이면 TypeError | 충돌 없음. frame 규칙을 라이브러리 공통 규칙으로 적는다 |
 
 ---
@@ -187,7 +187,8 @@ stardust-numpy, stardust-linalg, stardust-pandas를 하나의 라이브러리 `s
 
 ## 7. 미확정
 - 원격 저장소(GitHub)를 만들지, 만든다면 공개 범위 (1단계 뒤)
-- §4.4의 3번(정확한 비교)과 11번(int128 평균)은 M6에서 비용을 잰 뒤 최종 확인한다. 비용이 크면 다시 묻는다.
+- ~~§4.4의 3번과 11번의 비용 확인~~: M6 준비에서 배열 규칙으로 통일하기로 정했다 (§8, §9.1).
+- numpy의 int 평균 덧셈 순서(8192개 버퍼)를 흉내 내 배열의 1차원 평균을 numpy와 비트까지 맞출지 (§9.8 끝)
 - 2라운드 (§8)
 
 ---
@@ -198,7 +199,8 @@ stardust-numpy, stardust-linalg, stardust-pandas를 하나의 라이브러리 `s
 - **R1**: Array API 관례를 라이브러리 전체의 기준으로 한다 (추천안 수락).
 - **R2**: `std`/`var`의 기본값은 `correction=0` (추천안 수락).
 - **R3의 6번**: `astype` float → int는 배열 규칙(포화, NaN → 0)으로 통일한다 (추천안 수락).
-- **남은 것**: R3의 나머지 행(1, 4, 5, 8, 10)과 R4의 함수별 목록. M6을 시작하기 전에 목록으로 확정한다.
+- **M6 준비 (사용자 2026-11-12)**: §9의 목록을 확정했다. R3의 1, 4, 5, 8, 10번과 새로 더한 12, 13번은 추천안 수락. `Series.unique()` → `unique_values()`(정렬 순서) 수락. §9.3–§9.7 초안대로 확정(linalg의 int 입력은 float64 결과 유지).
+- **3번과 11번은 배열(stardust-numpy) 규칙으로 통일한다** (사용자 결정 2026-11-12, 1라운드의 "frame 규칙으로"를 바꿈). 배열 규칙이 numpy, pandas와 같고 배열 쪽 비용이 없다(§9.8). frame의 비교는 int를 float64로 바꿔 하고, frame의 `mean(int64)`은 배열과 같은 float64 합이다.
 세 공개 API를 대조했다: 동작은 §4.4, 시그니처와 이름은 아래. 대조는 `.venv-legacy`에서 `inspect`로 실제 시그니처를 확인했다.
 
 ### 8.1 R1. 기준을 하나로
@@ -282,3 +284,124 @@ R1이 추천안대로 정해지면, 아래 후보를 함수 하나하나 확정�
 - 옮기기(M1, M2, M5)는 2라운드와 상관없이 지금 규칙 그대로 한다.
 - 2라운드에서 정한 변경은 **M6에서 한 번에** 한다. M6의 이름을 "frame과 배열 잇기, 일관성 맞추기"로 넓힌다. 배열과 linalg 쪽 변경(unique의 NaN, 에러 메시지 형식, 결과 namedtuple)도 M6에 들어간다.
 - 골든 비교에서 M6의 변경은 "예상된 차이" 목록으로 먼저 적고, 그 밖의 차이는 없어야 한다.
+
+---
+
+## 9. M6 변경 목록 (확정, 2026-11-12)
+
+> §4.4, §8의 결정과 후보를 함수 하나하나로 풀어 쓴 목록이다. 사용자가 확정하면 M6의 범위가 되고, 골든 비교의 "예상된 차이"가 된다(§8.5). **결정** = 이미 정함, **추천** = 확정을 기다림.
+> 골든 분류: 값(결과가 바뀜), 메시지(에러 메시지만), 종류(예외 종류), 시그니처(인자 이름·위치), 새것(없던 기능).
+
+### 9.1 값 규칙
+| # | 규칙 | 바뀌는 쪽 | 변경 | 상태 | 골든 |
+|---|---|---|---|---|---|
+| 1 | `int // 0`, `% 0`, `** 음수` | 없음 | frame은 NA, 배열은 0·`a`·정수 규칙 그대로. 두 문서의 한 절에 나란히 적는다 | 결정 | 없음 |
+| 2 | bool 산술 | frame | `True + True`가 TypeError → int64 (배열 규칙) | 결정 | 종류→값 |
+| 3 | int와 float 비교 | frame | 정확한 비교 → int를 float64로 바꿔 비교 (배열 규칙, numpy·pandas와 같음). §9.8 | 결정 | 값 (\|int\| > 2⁵³일 때만) |
+| 4 | 암묵적 하향 변환 | frame | 대입, `fillna`에서 값을 보고 판단 → dtype만 보고 판단: int 컬럼에 `2.0`도 TypeError (배열 규칙) | 결정 | 값→종류 |
+| 5 | 생성자 `dtype=`의 손실 변환 | frame | 손실 없는 변환만 → 명시적 변환으로 허용: `Series([1.5], dtype="int64")`는 `[1]` (배열 규칙) | 결정 | 종류→값 |
+| 6 | `astype` float → int의 NaN, 범위 밖 | frame | ValueError → 포화, NaN → 0 (배열 규칙) | 결정 | 종류→값 |
+| 7 | `std`/`var` 자유도 | frame | `ddof=1` → `correction=0` (이름과 기본값) | 결정 | 시그니처, 값 |
+| 8 | 빈 입력·자유도 부족 리덕션 | 없음 | frame은 NA, 배열은 NaN/ValueError 그대로 (NA가 있느냐의 차이) | 결정 | 없음 |
+| 9 | 내림차순 정렬의 NaN | 배열 | 양방향 맨 뒤 → NaN을 가장 큰 값으로: 내림차순이면 맨 앞 (frame 규칙) | 결정 | 값 |
+| 10 | `unique`/키에서 NaN끼리 | 배열 | `unique_*`가 NaN을 하나로 모은다 (frame 규칙, numpy 2의 기본값). `-0.0`과 `0.0`도 하나 | 결정 | 값 |
+| 11 | `mean(int64)` | frame | int128 정확한 합 → 배열과 같은 float64 합, 같은 덧셈 순서 (배열 규칙). §9.8 | 결정 | 값 (마지막 비트) |
+| 12 | 범위 밖 Python int 스칼라 | frame | 언제나 에러 → int64로 바꿔야 할 때만 `OverflowError` (`float 컬럼 + 2**70`은 float로 계산) (배열 규칙) | 결정 | 종류→값 |
+| 13 | `==`, `!=`에 받을 수 없는 피연산자 | 배열 | `x == [1, 2]`가 조용히 False → TypeError (다른 연산자와 같게) | 결정 | 값→종류 |
+
+### 9.2 dtype 표기 (§4.2, 1라운드 Q5에서 결정)
+- 객체 `sd.bool, sd.int64, sd.float64, sd.complex128, sd.string`. `sd.string`이 새로 생긴다(배열 함수에 주면 TypeError).
+- 두 영역 모두 dtype 인자로 **객체와 그 이름 문자열**을 받는다. Python 타입(`int`, `float`, `bool`, `str`)은 둘 다 TypeError다.
+  - 배열: 지금은 이름 문자열이 TypeError → 받는다 (새것).
+  - frame: 지금은 Python 타입을 받는다 → TypeError (종류).
+- frame의 `.dtype`(Series, Index)은 이름 문자열 → 객체 (값).
+- `DataFrame.dtypes`: 지금은 string Series다. frame에 객체 dtype이 없으므로 **`{컬럼 이름: dtype 객체}` dict로 바꾼다** (추천, 값).
+
+### 9.3 frame 시그니처 (R1: 배열 인자와 주 인자는 `/` 앞, 옵션은 `*` 뒤)
+| 지금 | M6 |
+|---|---|
+| `Series(data=None, *, index=None, dtype=None, name=None)` | `Series(data=None, /, *, index=None, dtype=None, name=None)` |
+| `DataFrame(data=None, *, index=None, columns=None, dtype=None)` | `DataFrame(data=None, /, *, …)` |
+| `Index(data, *, name=None)` | `Index(data, /, *, name=None)` |
+| `RangeIndex(start=0, stop=None, step=1, *, name=None)` | `RangeIndex(start=0, stop=None, step=1, /, *, name=None)` (`arange`와 같다) |
+| `head(n=5)`, `tail(n=5)` | `head(n=5, /)`, `tail(n=5, /)` |
+| `astype(dtype)` | `astype(dtype, /)`. `copy`는 두지 않는다: Copy-on-Write라 뜻이 없다 (추천) |
+| `fillna(value)` | `fillna(value, /)` |
+| `reindex(labels)` | `reindex(labels, /)` |
+| `Index.equals(other)`, `RangeIndex.equals(other)` | `equals(other, /)` |
+| `DataFrame.duplicated(subset=None, *, keep="first")` | `duplicated(subset=None, /, *, keep="first")` (`drop_duplicates`, `value_counts`도) |
+| `std/var(*, skipna=True, ddof=1)` (Series, DataFrame, GroupBy) | `std/var(*, skipna=True, correction=0)` |
+| `DataFrame.groupby(by, *, sort=True, dropna=True)` | `groupby(by, /, *, sort=True, dropna=True)` |
+| `Series.sort_values(*, ascending=True, na_position="last", ignore_index=False)` | `sort_values(*, descending=False, stable=True, na_position="last", ignore_index=False)` |
+| `DataFrame.sort_values(by, *, ascending=True, …)` | `sort_values(by, /, *, descending=False, stable=True, …)`. 키가 여럿이면 `descending`도 리스트를 받는다 |
+| `sort_index(*, ascending=True, ignore_index=False)` | `sort_index(*, descending=False, stable=True, ignore_index=False)` |
+| `value_counts(*, …, sort=True, ascending=False, dropna=True)` | `value_counts(*, …, sort=True, descending=True, dropna=True)` |
+| `merge(left, right, *, …)`, `DataFrame.merge(right, *, …)` | `merge(left, right, /, *, …)`, `merge(right, /, *, …)` |
+| `concat(objs, *, join="outer", ignore_index=False)` | `concat(objs, /, *, …)` (배열의 `concat(arrays, /, *, axis=0)`과 같은 모양) |
+| `read_csv(path, *, …)` | `read_csv(path, /, *, …)` |
+- `stable=False`도 받는다. frame의 정렬은 언제나 안정이라 결과는 같다 (배열과 같은 규칙: "안정이 아니어도 된다"는 허락일 뿐이다).
+
+### 9.4 frame 이름: 바꾸는 것, 더하는 것, 숨기는 것
+- `to_list()` → `tolist()` (Series, Index, RangeIndex)
+- `Series.unique()` → `unique_values()`: 처음 나온 순서 → **정렬한 순서**(배열의 `unique_values`와 같다). NaN은 하나, NA는 맨 뒤. 결과는 Series (추천, 값)
+- 새것
+  - `Series.to_array(*, dtype=None, copy=None, na_value=…)`, `DataFrame.to_array(…)`: §4.3. `copy`는 배열의 `asarray`와 같은 뜻(None: 필요할 때만, False: 복사 금지, True: 언제나)
+  - `to_numpy`의 `copy=False`도 같은 뜻의 `copy=None`으로 (시그니처)
+  - `Series(배열)`, `DataFrame(2차원 배열)`: 언제나 복사 (§4.3)
+  - `isnan()` (Series, DataFrame): NaN 판별. NA 판별 `isna()`와 별개다. float이 아닌 컬럼은 모두 False(배열과 같다)
+  - int 비트 연산 `&`, `|`, `^`, `~`, `<<`, `>>` (int64 Series): 배열에 있는 것과 같은 규칙, NA는 전파 (추천)
+- 숨기기: 하위 모듈 `frame`, `index`, `io`, `series`, `groupby`, `merge` → `_frame` 등. `sd.frame.index`가 Index가 아니라 모듈이 되는 문제를 없앤다 (시그니처)
+- 그대로 두는 것: `GroupBy.size()`(그룹별 행 수. 배열의 `.size`와 같은 "원소 수"의 뜻이고 메서드라 헷갈림이 적다), `skipna`, `na_position`, `by`, `how`, `on`, `keep`, `dropna` (배열에 없는 개념)
+
+### 9.5 배열
+- §9.1의 9, 10, 13번과 §9.2의 이름 문자열
+- §8.4의 불일치 고치기
+  - `full_like(int 배열, 1.5)`: 조용히 1 → TypeError (암묵적 하향 변환 규칙) (종류)
+  - Python int `2**64`: `divide`, `atan2`만 받던 것을 다른 이항 함수와 같게 OverflowError (종류)
+  - `arange(nan)`: 빈 배열 → ValueError (종류)
+  - `permute_dims`에 리스트, `shape`/`dtype` 대입: 메시지를 고친다 (메시지)
+  - `real`/`imag`도 `conj`처럼 Python 스칼라를 받는다 (새것). 연산자 피연산자로 `numpy.int64`도 `numpy.float64`처럼 받는다 (새것)
+  - 문서와 구현이 다른 두 곳(`zeros` 등의 `dtype` 기본값 표기, `arange`의 위치 인자): 문서를 코드에 맞춘다 (없음)
+
+### 9.6 linalg
+- 결과 dtype: bool/int64 입력을 float64로 계산하는 함수(`vecdot`, `trace`, `outer`, `kron`, `cross`, `matrix_power`)
+  - **추천: 그대로 둔다.** linalg는 BLAS/LAPACK이 float에서만 돈다. Array API도 `matrix_power`, 분해, 노름은 float만 정의한다. `vecdot`, `trace`, `outer`, `cross`는 Array API가 int를 int로 두지만, 배열의 `matmul`·`sum`이 이미 그 일을 한다.
+  - 대안: Array API대로 이 넷은 int를 int64로 (값). 정수 오버플로는 wrap이 된다.
+- 결과 레이아웃 F-order(§3.3)는 그대로 둔다. 배열 문서의 "새 배열은 C-order"를 "영역마다 정한 순서"로 고쳐 적는다 (없음)
+- 에러 종류: 잘못된 `ord`의 타입은 세 함수 모두 TypeError, int64를 넘는 Python int(`k`, `n`, `axis`)는 OverflowError (API.md §2) (종류)
+- `axis=[0]`: 리스트도 튜플처럼 받는다 (새것)
+- `trace(complex, dtype=float64)`의 TypeError: 배열의 캐스팅 규칙대로이므로 그대로 둔다. 문서에 적는다 (없음)
+- 그대로: 대각 오프셋 `k`, `svd(mode=)` (라이브러리 안에서 이미 일관)
+
+### 9.7 세 영역 공통
+- **에러 메시지**: `func(): 'arg' …` 형식으로 통일, 문서 절 번호를 넣지 않는다. frame의 `(API.md §N)` 19곳이 여기서 지워진다 (메시지, 많음).
+- **결과 namedtuple**: `stardust._results` 한 모듈에, 이름은 `<함수>Result`. `stardust.linalg._results`를 합친다. 클래스 이름이 바뀌는 것 외의 동작은 같다 (시그니처).
+- **`KeyError`**: API.md §2에 적었다(M5). 바꿀 것 없음.
+
+### 9.8 비용 측정 (§4.4의 3, 11번)
+`bench/merge/m6/cost_probe.cpp`: 맨 커널, 1스레드, 원소 100만 개, 30번 중 최솟값 (µs).
+
+| 측정 | 지금 | 바꾼 뒤 | 비율 |
+|---|---:|---:|---:|
+| 3번: int64 < float64, int가 ±2⁵³ 안 | 128 (단순 비교) | 198 (같은 고리에서 범위도 확인, 밖이면 둘째 패스) | 1.55 |
+| 3번: int64 < float64, int가 대부분 ±2⁵³ 밖 | 128 | 1,330 (원소마다 느린 길) | 10 |
+| 11번: `mean(int64)` 전체 | 97 (double pairwise) | 86 (상위·하위 32비트를 int64로 따로 합함, 2³¹개까지 정확) / 164 (int128 하나, 지금의 frame) | 0.89 / 1.69 |
+| 11번: `mean(int64, axis=0)`, (1000, 1000) | 108 (double 누적) | 179 (상위·하위 누적) | 1.65 |
+
+- 실제 `sd.less(int 배열, float 배열)`은 지금 217µs(버퍼 캐스팅 포함), `sd.mean(int 배열)`은 191µs다. 커널 몫의 차이를 더하면 3번은 약 +30%, 11번은 전체 평균이 같거나 빠르고 축 0 평균이 약 +40%로 짐작한다.
+- 3번의 큰 비용(10배)은 int가 거의 다 2⁵³을 넘는 데이터에서만 든다. 같은 dtype끼리의 비교는 바뀌지 않는다.
+- (frame 규칙으로 통일했다면) frame의 `mean(int64)`도 상위·하위 방식으로 빨라졌을 것이다(164 → 86). 배열 규칙으로 정해서 쓰지 않는다.
+
+**배열(stardust-numpy) 규칙으로 통일한다** (사용자 결정, 2026-11-12). 위 표의 측정은 그 전에 배열을 frame 규칙으로 바꾸는 비용을 잰 것이다.
+- 배열의 지금 규칙은 numpy, pandas와 같다. 옛 stardust-pandas만 일부러 달랐다("[pandas와 다름]").
+
+  | | numpy | pandas | 배열 | frame |
+  |---|---|---|---|---|
+  | `int64(2**53 + 1) == float64(2**53)` | True | True | True | False |
+  | `mean(int64)`, 값이 작을 때 | 기준 | numpy와 비트가 같음 | 같음 | 같음 |
+  | `mean(int64)`, 값이 2⁶²에 가까울 때 | 기준 | 같음 | 원소 10만 개부터 마지막 비트가 다름 | 다름(정확한 합) |
+
+- 3번: frame의 비교가 int를 float64로 바꿔 비교한다. 배열 쪽 비용 없음. frame의 섞인 dtype 비교는 느린 길이 없어져 빨라진다. 결과는 |int| > 2⁵³인 행에서만 바뀐다.
+- 11번: frame의 `mean(int64)`이 배열과 같은 float64 합(같은 덧셈 순서)을 쓴다. 배열 쪽 비용 없음. frame은 int128 합(164µs)보다 빠르다. 결과는 합이 2⁵³을 넘을 때 마지막 비트만 바뀐다.
+- 덧붙여 확인한 것: numpy의 int 평균은 8192개씩 끊은 버퍼마다 pairwise 합을 내어 차례로 더한다. 이 순서를 흉내 내면 1차원 평균이 numpy와 비트까지 같다(무작위 int64 25가지, 원소 9천–300만 개, 띄엄띄엄한 열 포함, 모두 같음). 배열이 지금 큰 값에서 numpy와 마지막 비트가 다른 것도 이렇게 고칠 수 있다. 이것은 §9의 범위 밖이라 따로 정한다.
+
