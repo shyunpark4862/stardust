@@ -101,7 +101,7 @@
 - `trace(dtype=)`는 `sd.sum(dtype=)`과 같은 명시적 변환이다 (array.md §2.4). 입력을 그 dtype으로 바꾼 뒤 누적한다.
   - float → int는 0 방향으로 자르고 포화시킨다. int 누적은 wrap한다.
   - complex → 실수는 TypeError(array.md §2.4), `dtype=bool`도 TypeError다.
-  - 통합 중 M6에서 `trace(complex, dtype=float64)`의 TypeError가 의도한 동작인지 확인한다 (DESIGN §8.4).
+  - `trace(complex, dtype=float64)`의 TypeError는 의도한 동작이다. 배열의 캐스팅 규칙 그대로이고, 실수부의 대각합은 `trace(sd.real(x), dtype=...)`로 구한다 (DESIGN §9.6, docs/api/linalg.md §2).
 - **경고는 내지 않는다.** 넘치면 inf, 정의되지 않으면 에러다.
 
 ### 2.2 실패: `LinAlgError`
@@ -119,12 +119,13 @@
   - `lu`, `ldl`: 분해는 있다. 특이성은 U의 대각, D의 블록에서 보인다.
   - `cond` = inf(`ord=-2`는 0) (§10.5)
 - **배치 중 하나라도 실패하면 호출 전체가 실패한다.** 일부만 계산된 결과는 돌려주지 않는다.
-  - 메시지에 실패한 배치 인덱스를 넣는다: `"singular matrix (at batch index (1, 2))"`. 배치 축이 없으면 붙이지 않는다.
+  - 메시지에 실패한 배치 인덱스를 넣는다: `"inv(): singular matrix (at batch index (1, 2))"`. 배치 축이 없으면 붙이지 않는다.
   - 보고하는 것은 **가장 작은 실패 인덱스**다. 스레드 수와 무관하게 같은 메시지가 나온다 (§6.5).
 - C++ 쪽은 `sd::linalg::LinAlgError`(`std::runtime_error`)를 던지고, 등록한 변환기가 Python `LinAlgError`로 바꾼다 (`errors.cpp`).
+- 메시지는 함수 이름으로 시작한다 (API.md §2.1). 공개 함수는 배열처럼 `bind/errors.hpp`의 `named("inv", &inv)`로 감싸 바인딩한다(`ops/*.cpp`의 `m.def`). 함수 이름을 이미 아는 곳(배치 실패의 `raise`, `ops/common.hpp`; 인자 검사, `args.cpp`)은 직접 `func(): `를 붙이고, `named`는 이미 그 이름으로 시작하는 메시지를 그대로 둔다 (array.md §12.2).
 
 ### 2.3 유한성 검사
-- **LAPACK을 부르는 호출은 항상 유한성을 검사한다.** NaN이나 inf가 있으면 `ValueError`(`"'x' contains NaN or infinity"`)다.
+- **LAPACK을 부르는 호출은 항상 유한성을 검사한다.** NaN이나 inf가 있으면 `ValueError`(`"det(): 'x' contains NaN or infinity"`)다.
   - 이유: LAPACK은 유한하지 않은 입력에서 결과를 보장하지 않는다. 반복 알고리즘(`eig`, `svd`)은 쓰레기 값을 내거나 수렴 실패를 보고할 수 있다. 검사하지 않으면 같은 NaN 입력에도 함수마다 결과가 달라진다.
   - 비용은 O(n²)이고 O(n³) 계산에 비해 작다. 패킹과 한 패스로 한다 (§5.1).
   - 끄는 옵션(`check_finite=`)은 없다.
@@ -169,7 +170,7 @@
 - **배열 인자는 `sd.ndarray`만 받는다.** 리스트와 numpy 배열은 `sd.asarray`로 먼저 바꾼다(numpy 배열은 복사 없음, array.md §12.3).
 - `outer`는 배치를 허용한다(Array API는 1차원만). `diagonal`은 복사본을 돌려준다.
 - **허용오차는 `rtol` 하나다.** 정의: 가장 큰 특이값의 `rtol`배 이하인 특이값은 0이다. 기본값은 `max(m, n)·eps`다. 유한한 0 이상의 실수(int 또는 float) 스칼라만 받는다. 음수, NaN, inf는 ValueError, bool과 문자열은 TypeError다. Array API는 배치마다 다른 rtol(배열)도 허용하지만 받지 않는다.
-- Array API와 다른 곳은 `k`, `svd(mode=)`, `outer`의 배치다. 모두 일관성을 우선했다. 통합 중 M6에서도 유지하는 것이 추천안이다 (DESIGN §8.4).
+- Array API와 다른 곳은 `k`, `svd(mode=)`, `outer`의 배치다. 모두 일관성을 우선했다. M6에서도 그대로 두기로 했다 (DESIGN §9.6).
 - 에러 메시지는 `func(): 'arg' ...` 형식이다. M6에서 라이브러리 전체가 이 형식으로 맞췄다 (API.md §2.1). `LinAlgError`도 `inv(): singular matrix`처럼 함수 이름으로 시작한다.
 - 결과 namedtuple(`SlogdetResult` 등)은 M6에서 `stardust._results` 한 모듈로 모였다 (DESIGN §9.7).
 
@@ -209,7 +210,7 @@
 - 읽는 것: `data` 포인터, shape, 바이트 strides, dtype (`base/dtype.hpp`, array.md §3.1, §3.3)
 - **어떤 strides든 받는다.** 연속이 아니어도, 음수나 0 stride(브로드캐스트)여도 된다. 패킹이 모든 레이아웃을 같은 F-order 버퍼로 만든다 (§5).
 - 행렬 인자는 2차원 이상(`require_matrix`), 정사각이 필요하면 마지막 두 축이 같아야 한다(`require_square`). 아니면 ValueError다.
-- bool/int64 → float64, float → int64(`trace(dtype=)`)의 원소 변환은 배열의 규칙을 그대로 쓴다: float → int64는 배열의 `saturate_to_int64`(`array/convert.hpp`, array.md §2.4)다. dtype은 `base/dtype.hpp`의 `DType` 하나다. 통합 중 M4에서 스칼라 변환 규칙이 `base/`로 내려간다.
+- bool/int64 → float64, float → int64(`trace(dtype=)`)의 원소 변환은 배열의 규칙을 그대로 쓴다: float → int64는 모든 영역이 쓰는 `saturate_to_int64`(`base/saturate.hpp`, array.md §2.4)다. dtype은 `base/dtype.hpp`의 `DType` 하나다.
 
 ### 3.3 결과: F-order `NDArray`
 - **결과는 `NDArray`로 직접 만든다.** strides는 linalg가 정하고(`linalg/outblock.cpp`의 `alloc_matrices`, `alloc_vectors`, `alloc_c`), 메모리와 플래그는 배열의 `new_array_strided`(`array/ndarray.hpp`)가 맡는다.
@@ -671,7 +672,7 @@
 
 ### 10.9 남겨 둔 것
 결과에는 영향이 없고, 이유가 있어 그대로 둔 것들이다.
-- **`ord` 파서 두 벌**(`cond`의 `parse_cond_ord`, `matrix_norm`): 합치면 에러 종류가 바뀐다. 지금 `ord=True`가 `vector_norm`에서는 TypeError, `matrix_norm`/`cond`에서는 ValueError다. 에러 규칙의 일관성은 2라운드에서 정하고 M6에서 함께 고친다 (DESIGN §8.4).
+- **`ord` 파서 두 벌**(`cond`의 `parse_cond_ord`, `matrix_norm`의 `parse_matrix_ord`): 받는 값의 집합이 같지만 따로 있다. 에러 종류는 M6에서 맞췄다: 타입이 틀리면(예: `ord=True`) 세 노름 모두 TypeError, 값이 틀리면 ValueError다 (DESIGN §9.6). 합치는 일은 결과를 바꾸지 않으므로 남겨 두었다.
 - **`check_rhs_rows`**(`solve_tridiagonal`, `solve_banded`): `rhs_of`도 행 수를 보지만, 구조화된 인자는 그 자체가 n×n이 아니라서 "the matrix is n x n"이라고 따로 말해야 한다. 먼저 돌아서 `rhs_of`의 검사에는 닿지 않는다. 중복이 아니라 다른 메시지다.
 - **`cond`(±2 외의 ord)의 두 번째 패킹**: `lu_factor`가 패킹한 사본을 덮어쓰므로 x의 노름을 위해 한 번 더 패킹한다. 없애려면 이미 패킹한 행렬을 받는 `lu_factor` 변형이 필요하다. 드문 경로 하나라서 두었다.
 - 함께 고친 것은 §10.10에 있다.

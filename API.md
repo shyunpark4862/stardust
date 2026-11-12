@@ -29,7 +29,7 @@ bool  int64  float64  complex128  string
 - **`TypeError`**: 인자의 타입이 맞지 않는다.
   - 배열이 필요한 자리에 다른 객체를 넣었다.
   - 함수가 그 dtype을 받지 않는다 (예: complex의 순서 비교).
-  - 암묵적 하향 변환이다 (docs/api/array.md §1.5).
+  - 암묵적 하향 변환이다 (docs/api/array.md §1.5). 데이터프레임의 대입과 `fillna`도 같다 (docs/api/frame.md §3.6, §5.7).
   - bool 옵션에 `True`/`False`가 아닌 값을 넣었다 (docs/api/array.md §1.1).
 - **`ValueError`**: 타입은 맞지만 값이 맞지 않는다.
   - shape이 맞지 않는다. 축 번호가 범위 밖이거나 중복되었다.
@@ -40,7 +40,8 @@ bool  int64  float64  complex128  string
   - 원소가 없는 `min`/`max`/`argmin`/`argmax` (docs/api/array.md §7.4)
 - **`IndexError`**: 인덱스가 범위 밖이거나 허용하지 않는 형태다 (docs/api/array.md §5).
 - **`KeyError`**: 없는 라벨을 찾았다 (데이터프레임의 `.loc`, docs/api/frame.md §5.4).
-- **`OverflowError`**: int64 범위를 벗어난 Python int를 int64로 바꿔야 한다 (docs/api/array.md §1.5).
+- **`OverflowError`**: int64 범위를 벗어난 Python int를 int64로 바꿔야 한다 (docs/api/array.md §1.5, docs/api/frame.md §2.2). float로 계산할 수 있으면 float로 바꾼다.
+  - int 인자(`shape`, `axis`, `k`, `n`, `num` 등)도 int64 범위 밖이면 `OverflowError`다. 배열과 linalg가 같다 (docs/api/array.md §1.3, docs/api/linalg.md §1.1). 예외는 `set_num_threads`의 `n`이다: 범위 밖은 크기와 상관없이 `ValueError`다 (§3).
 - **영역 고유의 예외**는 위 내장 예외의 하위 클래스다. 지금은 `sd.linalg.LinAlgError(ValueError)` 하나다: 특이 행렬, 양정치가 아닌 행렬, 수렴 실패 (docs/api/linalg.md).
 - 배열의 원소별 연산은 원소의 값 때문에 실패하지 않는다 (docs/api/array.md §1.6).
 - 어느 영역도 경고를 내지 않는다. 문제가 있으면 에러를 낸다.

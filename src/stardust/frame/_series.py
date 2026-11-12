@@ -169,6 +169,8 @@ class Series(Reductions):
         return self._unary("abs")
 
     def __pos__(self):
+        if self._dtype == "bool":  # bool takes part as int64, as with - and abs (docs/api/frame.md §3.2)
+            return Series._new(self._col.astype("int64"), self._index, self._name)
         if self._dtype not in ("int64", "float64"):
             raise TypeError(f"unsupported operand dtype for unary +: {self._dtype}")
         return self

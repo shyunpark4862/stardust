@@ -20,7 +20,7 @@ bind/  ──────────────────┴─────�
 - **아래로만 의존한다.** 위 층은 아래 층을 쓰고, 아래 층은 위 층을 모른다.
   - `array/`는 `linalg/`와 `frame/`을 include하지 않는다.
   - `linalg/`는 `array/`의 `NDArray`를 직접 받는다. buffer protocol을 거치지 않는다 (DESIGN §3.1).
-  - `frame/`은 `array/`를 모른다. 둘을 잇는 코드는 `frame/interop.cpp` 한 파일에만 둔다 (DESIGN §4.3).
+  - `frame/`은 `array/`를 모른다. 둘을 잇는 코드는 `frame/interop.{hpp,cpp}` 한 곳에만 둔다 (DESIGN §4.3, M6). `array/` 헤더를 include하는 frame 파일은 `interop.cpp` 하나다. 다른 frame 파일은 `interop.hpp`(Column과 nanobind만 쓰는 선언)를 통해 부른다 (docs/design/frame.md §5.4).
 - **새 영역은 디렉터리 하나와 Python 하위 모듈 하나로 붙는다.** 아래 층만 쓰고, 기존 영역을 고치지 않는다. 예: 나중의 sklearn류 `ml/`은 `linalg/`와 `array/` 위에 올라간다.
   - 새 영역은 `docs/design/<영역>.md`, `docs/api/<영역>.md`, `tests/<영역>/`, `bench/<영역>/`을 함께 갖는다.
 
@@ -34,21 +34,24 @@ stardust/                         (저장소: ~/Desktop/stardust/stardust)
   legacy/                         M0에서 이력과 함께 들여온 세 저장소. 마일스톤마다 git mv로 꺼내 가고, M7에서 빈다
 
   src/stardust/
-    __init__.py                   배열 API (지금 stardust_numpy) + 스레드 수 + dtype 객체
-    _format.py                    배열 repr (지금 stardust_numpy/_format.py)
-    _results.py                   세 영역의 결과 namedtuple (<함수>Result, M6에서 한곳으로)
+    __init__.py                   배열 API + 스레드 수 + dtype 객체 다섯 (sd.string 포함)
+    _format.py                    배열 repr
+    _results.py                   세 영역의 결과 namedtuple (<함수>Result 하나의 모듈, DESIGN §9.7)
     linalg/
       __init__.py                 _core.linalg 재노출, LinAlgError
-      _errors.py                  (지금 stardust_linalg)
+      _errors.py                  LinAlgError(ValueError)
     frame/
       __init__.py                 DataFrame, Series, Index, RangeIndex, NA, concat, merge, read_csv
       _series.py  _frame.py  _index.py  _groupby.py  _merge.py  _io.py  _*.py   (모든 모듈이 밑줄 이름: 공개 이름은 __init__.py만)
+      _column.py                  데이터 → Column, 명시적/암묵적/정확한 값 변환, to_numpy/to_array
+      _errors.py                  에러 메시지의 함수 이름 (API.md §2.1)
 
   csrc/
     base/                         모든 영역이 쓰는 바닥
       buffer.hpp/.cpp             참조 카운트 메모리 블록 (numpy판 + pandas판 통합, §4.2)
       dtype.hpp                   DType enum과 이름, 저장 타입 (§4.3)
       pairwise.hpp                numpy식 pairwise 합의 정의 (트리, 잎, 병렬 계획; 세 벌 → 한 벌)
+      saturate.hpp                float64 → int64 명시적 변환 (포화, NaN → 0; 배열, linalg, frame이 함께 쓴다, M6)
     parallel/
       pool.hpp/.cpp               스레드풀 하나 (pandas판의 의미, §4.1), FirstRow
     accelerate/
@@ -64,16 +67,18 @@ stardust/                         (저장소: ~/Desktop/stardust/stardust)
       ops/      lu basic norms vnorm factor qr spectral svals nonsym special expm
     frame/                        (M5, 이름공간 sd::frame)
       column  bitmap  convert  parallel (for_chunks, Unlocked, kParallelThreshold)
+      interop.hpp/.cpp             Column ↔ NDArray, 배열의 float64 합 (DESIGN §4.3, M6). frame에서 array/를 아는 유일한 파일
       ops/      cast elementwise groupby hash join reduce selection sort radix parse pow5_table
       io/       csv
-      interop.cpp                 Column ↔ NDArray (DESIGN §4.3, M6)
     bind/
       module.cpp                  _core와 하위 모듈 _core.linalg, _core.frame 정의
       array_bind.cpp  pyutil.cpp  linalg_bind.cpp  frame_bind.cpp
+      errors.hpp/.cpp              공개 함수의 에러 메시지에 이름 붙이기 (named, call_named; API.md §2.1, M6)
 
   tests/
-    array/  linalg/  frame/  interop/
-    conftest.py                   공통 fixture (스레드 수 1, 3, 기본값)
+    array/  linalg/  frame/  interop/       interop: frame ↔ 배열의 공유, 복사, 읽기 전용 뷰, Copy-on-Write (M6)
+    test_build.py  test_error_messages.py   빌드와 공용 풀, 세 영역의 에러 메시지 형식 (API.md §2.1)
+    _api_doc.py                   API 문서의 시그니처 블록 파서 (영역마다의 test_api_surface가 쓴다). conftest.py는 array/, linalg/에 따로 있다
   bench/      array/  linalg/  frame/  merge/      스크립트는 옮기고, 결과는 새로 잰다
   experiments/                                     새 실험만
   docs/                                            모두 새로 쓴다 (DESIGN §5.4)
@@ -96,7 +101,7 @@ stardust/                         (저장소: ~/Desktop/stardust/stardust)
 | numpy `csrc/kernels/reduce.hpp`의 pairwise 부분 | `csrc/base/pairwise.hpp` |
 | numpy `csrc/parallel/pool.*` | 버림 (pandas판으로 대체) |
 | linalg `csrc/core/{input,outblock,pyrefs}` | `csrc/linalg/`에 남되 경계 코드는 없어짐 (M3, §3): `Input`은 `NDArray`를 빌리고, `outblock`은 `NDArray`를 만들고, `pyrefs`는 결과 타입과 `LinAlgError`만 든다 |
-| linalg `csrc/core/{types,pairwise}.hpp` | M3: `DType`은 `base/dtype.hpp`, pairwise의 정의는 `base/pairwise.hpp`로 (`linalg/pairwise.hpp`에는 잎을 채우는 방식만 남음), float → int64는 배열의 `saturate_to_int64`. M4에서 스칼라 변환 규칙이 `base/scalar_cast.hpp`로 내려간다 |
+| linalg `csrc/core/{types,pairwise}.hpp` | M3: `DType`은 `base/dtype.hpp`, pairwise의 정의는 `base/pairwise.hpp`로 (`linalg/pairwise.hpp`에는 잎을 채우는 방식만 남음), float → int64는 배열의 `saturate_to_int64`. M6에서 그 함수가 `base/saturate.hpp`로 내려가 frame도 쓴다 (M4에서는 내릴 필요가 없었다, ROADMAP M4) |
 | linalg `csrc/core/{args,batch,pack,cost,errors}` | `csrc/linalg/` |
 | linalg `csrc/lapack/lapack.hpp` | `csrc/accelerate/lapack.hpp` |
 | linalg `csrc/parallel/pool.*` | 버림 |
@@ -142,14 +147,14 @@ stardust/                         (저장소: ~/Desktop/stardust/stardust)
 - 통합판 = numpy판 + pandas판의 `size()`. M5부터 frame도 이것을 쓴다 (256B 이하의 Column 버퍼도 Buffer 안에 놓인다).
   - numpy판: 작은 배열은 Buffer 안에 데이터를 둔다(256B, numpy M7.7), 외부 메모리를 `adopt`한다.
   - pandas판: `size()`를 갖는다. Copy-on-Write가 `shared_ptr`의 참조 카운트를 본다 (pandas ARCHITECTURE §3.3).
-- 배열 뷰와 Column이 같은 Buffer를 가리킬 수 있게 되므로 Copy-on-Write 규칙을 넓혀야 한다 (DESIGN §4.3).
+- M6부터 배열 뷰와 Column이 같은 Buffer를 가리킬 수 있다 (`Series.to_array`). Copy-on-Write 규칙은 그대로다: 읽기 전용 배열 뷰가 `shared_ptr<Buffer>`를 하나 쥐고 있으면 `use_count()`가 늘어 있으므로 frame 쪽 쓰기가 먼저 복사한다 (DESIGN §4.3, docs/design/frame.md §5.4).
 
 ### 4.3 dtype
 - C++ enum은 `base/dtype.hpp`에 하나 둔다 (DESIGN §4.2의 추천안).
   - `Bool, Int64, Float64, Complex128, String` (M4). `Datetime64`는 frame이 그것을 구현할 때 더한다(지금은 어느 영역에도 코드가 없다).
   - 컨테이너마다 받는 부분집합을 명시한다: 배열은 앞의 넷(`kNumArrayDTypes`, `is_array_dtype`), Column은 `Complex128`을 뺀 넷.
 - `visit_dtype`은 배열 dtype만 받는다. 모든 커널이 모든 dtype을 인스턴스화하지 않게 하기 위해서다.
-  - Column용 방문자는 더하지 않았다(M5). frame 코드는 dtype마다 `switch`로 고르고, 그 `switch`들이 `Complex128`을 "frame dtype이 아님"으로 따로 적는다. 방문자로 바꾸는 것은 M6에서 Column ↔ 배열을 이을 때 다시 본다.
+  - Column용 방문자는 더하지 않았다(M5). frame 코드는 dtype마다 `switch`로 고르고, 그 `switch`들이 `Complex128`을 "frame dtype이 아님"으로 따로 적는다. M6에서 Column ↔ 배열을 이을 때도 더하지 않았다. `interop.cpp`는 고정폭 dtype의 바이트를 복사할 뿐이라 `itemsize`로 충분했다.
 
 ### 4.4 Accelerate 래퍼
 - BLAS(numpy `matmul`), LAPACK(linalg), vForce(numpy 초월함수)를 `accelerate/` 한곳에 둔다.

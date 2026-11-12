@@ -3,8 +3,10 @@
 `import stardust as sd`의 하위 모듈 `sd.frame`이 데이터프레임 API다. 이 문서는 데이터프레임의 공개 API와 동작 규칙을 모두 적는다.
 
 - 라이브러리 전체의 공통 규칙(에러 종류, 스레드)은 루트 [API.md](../../API.md)에 있다. 이 문서는 데이터프레임 영역의 규칙이다.
-  - 루트 API.md §1의 dtype 객체는 이 영역에서 아직 쓰지 않는다. 이 영역의 dtype은 문자열이다 (§1.2).
+  - dtype은 루트 API.md §1의 객체(`sd.bool`, `sd.int64`, `sd.float64`, `sd.string`)다. 배열 영역과 같다 (§1.2).
+  - 값 규칙(변환, 비교, 정수 평균, `correction`)도 배열 영역과 같다 (루트 DESIGN §9.1).
 - pandas와 다른 점은 **[pandas와 다름]**으로 표시한다.
+- 배열 영역과 다른 점은 **[배열과 다름]**으로 표시한다. 대부분 frame에만 NA가 있어서 생긴 차이다(§1.4, §1.5). 그렇지 않은 것은 아직 남은 차이로 루트 DESIGN §8.4에 적었다.
 - 절 번호(`§N`, `§N.M`)는 코드 주석이 인용한다. 번호를 바꾸지 않는다.
 - 언어 표시가 없는 코드 블록은 `tests/frame/test_api_surface.py`가 읽는다.
   - 이 블록에는 공개 이름과 시그니처만 쓴다. 한 줄에 이름 하나이고, 줄 끝에 `#` 주석을 붙일 수 있다.
@@ -90,14 +92,15 @@ NA
   - `sum`은 0이다.
   - `count`는 0이다.
   - `mean`, `min`, `max`, `std`, `var`는 `NA`다.
-- **`std`, `var`의 기본 자유도**: `ddof=1`
-  - 배열 영역의 `std`, `var`는 `correction=0`이 기본이라서 다르다 (array.md §7.4).
+- **`std`, `var`의 기본 자유도**: `correction=0` (모분산). 배열 영역과 같다 (array.md §7.4). **[pandas와 다름]** pandas는 `ddof=1`이다.
+  - 표본 분산은 `correction=1`로 쓴다.
+  - 값이 모자라면(`개수 - correction <= 0`) 배열은 NaN, frame은 NA다 (§6.4). **[배열과 다름]**
 
 ### §1.5 정수 연산
 - `int / int`의 결과는 float64다 (true division).
 - 정수 오버플로는 wrap한다. 예: `INT64_MIN // -1`과 `abs(INT64_MIN)`은 `INT64_MIN`이다.
-- **`int // 0`과 `int % 0`의 결과는 `NA`다.** **[pandas와 다름]**
-- **`int ** 음수`의 결과도 `NA`다.** **[pandas와 다름]**
+- **`int // 0`과 `int % 0`의 결과는 `NA`다.** **[pandas와 다름]** **[배열과 다름]** 배열은 `0`과 `a`다 (array.md §1.6).
+- **`int ** 음수`의 결과도 `NA`다.** **[pandas와 다름]** **[배열과 다름]** 배열은 정수 결과를 낸다.
 - float를 0으로 나누면 IEEE 754를 따른다 (`inf`, `nan`).
   - 결과가 `NA`가 되지 않는다.
 
@@ -131,7 +134,7 @@ groupby, `unique_values`, `nunique`, `value_counts`, `duplicated`, `drop_duplica
 - **결측 스칼라**: 싱글턴 `NA` (§1.4)
 - **경고**: 일절 내지 않는다. 문제가 있으면 에러를 낸다 (API.md §2).
 - **대입으로 dtype이 바뀌는 경우**: 에러를 낸다 (§5.7).
-  - 예: int 컬럼에 `1.5`를 대입하는 것
+  - 예: int 컬럼에 `1.5`나 `2.0`을 대입하는 것. 값이 아니라 dtype으로 판단한다 (배열과 같다).
 
 ---
 
@@ -153,27 +156,32 @@ DataFrame(data=None, /, *, index=None, columns=None, dtype=None)
 - `None`과 `NA`는 NA다.
 - `float('nan')`은 NaN 값이다.
 - bool만 있으면 `bool`, int만 있으면 `int64`, float만 있거나 int와 float가 섞이면 `float64`, str만 있으면 `string`이다.
+  - int와 float가 섞이면 int를 float64로 바꾼다. 2^53을 넘는 int는 반올림된다. 배열의 `asarray`, pandas와 같다.
 - 빈 리스트나 값이 모두 NA인 리스트는 `float64`다.
-- **다음 경우는 에러다.**
+- **int64 범위 밖의 int**: int64가 되어야 할 때만 `OverflowError`다 (배열과 같다, array.md §1.5).
+  - float와 섞이면 float64로 바꾼다. 예: `Series([2**70, 0.5])`는 float64다.
+  - int만 있으면 int64가 되어야 하므로 `OverflowError`다. 예: `Series([2**70])`
+  - float64로도 나타낼 수 없을 만큼 크면(약 1.8e308 이상) `OverflowError`다 (Python의 `float(int)`와 같다).
+- **다음 경우는 에러다** (`TypeError`). `dtype=`을 주어도 같다.
   - bool이 다른 타입과 섞인 경우 (예: `[True, 1]`) **[pandas와 다름]**
   - str이 다른 타입과 섞인 경우 **[pandas와 다름]**
-  - int64 범위를 넘는 정수
-  - int와 float가 섞일 때 2^53을 넘어 float64로 정확히 표현할 수 없는 int **[pandas와 다름]**
 
 ### §2.3 생성자의 `dtype=`
-- **손실 없는 숫자 변환만 허용한다.**
-  - int → `float64`: 2^53을 넘어 정확히 표현할 수 없으면 에러다.
-  - 정수 값만 가진 float → `int64`: `[1.0, 2.0]`은 되고 `[1.5]`나 NaN은 에러다.
-  - bool과 숫자 사이, 문자열과 다른 타입 사이의 변환은 에러다. 이런 변환은 `astype`으로 한다 (§3.5).
+- **`dtype=`은 명시적 변환이다.** `astype`(§3.5)과 같은 요청이다. 배열 영역의 생성 함수 `dtype=`과 같다 (array.md §1.5).
+  - 먼저 `data`에서 추론한 대로(§2.2, §2.4) 컬럼을 만들고, 그 컬럼을 `astype`으로 바꾼다.
+  - 손실이 있어도 바꾼다. 예: `Series([1.5], dtype="int64")`는 `[1]`, `Series([math.nan], dtype="int64")`는 `[0]`, `Series([1, 2], dtype="bool")`은 `[True, True]`다.
+  - 예외 하나: int만 있는 list를 `float64`로 요청하면 int64를 거치지 않고 바로 float64로 읽는다. 그래서 int64 범위 밖의 int도 float가 된다. 예: `Series([2**70], dtype="float64")`
+  - Series, DataFrame, numpy 배열, `sd.ndarray`를 `data`로 줄 때도 같다: 그대로 만든 뒤 `astype`
 - dtype의 표기는 §1.2에 있다.
-- 같은 손실 없는 규칙을 `fillna` (§3.6)와 행 대입 (§5.7)이 쓴다.
+- `to_numpy(dtype=)`, `to_array(dtype=)`도 명시적 변환이다 (§2.7, §2.8).
+- `fillna` (§3.6)와 행 대입 (§5.7)은 암묵적 변환이다. dtype만 보고 위로만 바꾼다.
 
 ### §2.4 numpy 배열에서 만들기
 - **항상 복사한다.**
   - numpy 배열은 밖에서 수정될 수 있어서, 메모리를 공유하면 Copy-on-Write가 깨진다.
 - dtype 변환
   - int8~int32, uint8~uint32 → `int64`
-  - uint64 → `int64`. 범위를 넘으면 에러다.
+  - uint64 → `int64`. 범위를 넘으면 `OverflowError`다. `dtype=`은 이 변환 뒤에 적용하므로 `dtype="float64"`를 주어도 같다.
   - float16, float32 → `float64`
   - U 문자열 → `string`
   - object 배열 → list와 같은 규칙 (§2.2)
@@ -225,13 +233,14 @@ DataFrame.to_numpy(*, dtype=None, copy=None, na_value=<없음>)
     - 그 밖의 값은 TypeError다.
     - numpy 프로토콜(`np.asarray(s, copy=...)`)도 같은 규칙이다.
   - NA가 있으면 `na_value`가 필요하다. 없으면 에러다.
-  - `na_value`가 그 dtype에 들어가지 않으면 에러다.
+  - `na_value`가 그 dtype에 들어가지 않으면 `TypeError`다. NA가 없어도 검사한다.
     - 예: int 컬럼에 `na_value=np.nan`. 이때는 `dtype="float64"`도 함께 준다.
+  - **`dtype=`은 명시적 변환이다** (§2.3). 컬럼을 먼저 `astype`(§3.5)으로 바꾼 뒤 위 규칙을 적용한다. 예: float 컬럼의 `to_numpy(dtype="int64")`는 0 쪽으로 자르고 포화시킨다.
   - `string`은 Python str을 담은 object 배열로 돌려준다.
 - **`DataFrame.to_numpy`**
   - 모든 컬럼의 dtype이 같으면 2D 배열을 돌려준다.
   - 컬럼은 버퍼가 따로따로라서 2D 배열은 언제나 새로 만든다. 그래서 `copy=False`는 ValueError다.
-  - int64와 float64가 섞이면 float64로 만든다. 2^53 규칙은 §2.3과 같다.
+  - int64와 float64가 섞이면 float64로 만든다. int는 `astype`처럼 반올림한다 (§3.5).
   - 그 밖의 조합은 에러다.
 
 ### §2.8 배열과 주고받기 (`to_array`, `Series(배열)`)
@@ -242,6 +251,7 @@ DataFrame.to_array(*, dtype=None, copy=None, na_value=<없음>)
 - **`to_array`**: `sd.ndarray`를 돌려준다. 규칙은 `to_numpy`(§2.7)와 같다.
   - `copy=None`이고 NA와 dtype 변환이 없으면 컬럼의 메모리를 함께 쓰는 **읽기 전용** 뷰다(복사 없음).
   - 뷰가 살아 있는 동안 frame 쪽에 대입하면, frame이 먼저 복사한다(Copy-on-Write, §5.7). 뷰의 값은 바뀌지 않는다.
+  - NA를 채우거나(`na_value=`) dtype을 바꿔서 새로 만든 배열, `copy=True`의 배열은 쓸 수 있다. 컬럼과 메모리를 나누지 않는다.
   - string 컬럼은 TypeError다. 배열 영역에는 문자열 dtype이 없다.
 - **`DataFrame.to_array`**: 새 2차원 배열을 **F-order**로 만든다. 컬럼 하나가 메모리에서 이어져 있고, 컬럼마다 한 번씩 복사한다. `sd.linalg`는 F-order 행렬을 그대로 받는다. dtype 규칙은 `DataFrame.to_numpy`와 같고, `copy=False`는 ValueError다.
 - **`Series(배열)`, `DataFrame(2차원 배열)`**: `sd.ndarray`에서 만들면 **언제나 복사한다.** 배열은 다른 쓰기 가능한 뷰를 통해 바뀔 수 있어서 frame의 Copy-on-Write가 따라갈 수 없다.
@@ -256,7 +266,7 @@ DataFrame.to_array(*, dtype=None, copy=None, na_value=<없음>)
 - **Series와 Series**: 라벨로 정렬(alignment)한다 (§5.6).
 - **Series와 스칼라, 스칼라와 Series**
   - 스칼라는 Python 스칼라, numpy 스칼라, `NA`다.
-  - int64 범위를 넘는 int 스칼라는 에러다.
+  - int64 범위 밖의 int 스칼라는 배열과 같은 규칙이다 (array.md §1.5): float64 컬럼과 만나면 float로 바꿔 계산하고(`s_float + 2**70`), 그 밖에는 `OverflowError`다(`s_int + 2**70`).
 - **DataFrame과 스칼라**
 - **DataFrame과 DataFrame**
   - 컬럼을 이름으로 짝짓는다. 행과 열 모두 정렬(alignment)한다 (§5.6).
@@ -270,7 +280,10 @@ DataFrame.to_array(*, dtype=None, copy=None, na_value=<없음>)
   - int64와 int64는 int64다. 단, `/`는 float64다.
   - int64나 float64가 섞이면 float64다. int는 float64로 바꾼 뒤 계산한다.
   - string `+` string은 string이다 (이어 붙이기). string의 다른 산술은 에러다.
-  - **bool의 산술은 에러다.** 숫자가 필요하면 `astype("int64")`를 쓴다. **[pandas와 다름]**
+  - **bool의 산술은 int64의 산술이다.** bool을 int64(0, 1)로 바꾼 뒤 계산한다. 배열 영역과 같다 (array.md §1.4).
+    - 예: `Series([True]) + Series([True])`는 int64 `[2]`, `-s`와 `abs(s)`도 int64다. bool끼리의 `/`는 float64다.
+    - int 규칙(§1.5)이 그대로 적용된다. 예: bool 컬럼을 `False`로 `//`하면 0으로 나누기라서 NA다.
+    - 단항 `+`는 int64와 float64만 받는다. bool은 `TypeError`다. **[배열과 다름]** 배열의 `positive`는 bool을 int64로 바꾼다 (DESIGN §8.4).
 - `//`와 `%`는 floor 규칙을 따른다 (Python, numpy와 같다). `%`의 결과는 나누는 수의 부호를 따른다.
 - int 규칙은 §1.5에 있다: wrap, `// 0`과 `% 0`은 NA, `** 음수`는 NA
 - float는 IEEE 754를 따른다.
@@ -280,11 +293,11 @@ DataFrame.to_array(*, dtype=None, copy=None, na_value=<없음>)
 ### §3.3 비교
 `==`, `!=`, `<`, `<=`, `>`, `>=`
 - 결과는 bool이다. 어느 한쪽이 NA인 행은 NA다.
-- **int와 float의 비교는 반올림 없이 수학적으로 정확하게 한다.** **[pandas와 다름]**
-  - 예: `2**53 + 1 == 2.0**53`은 False다. pandas는 int를 float로 바꿔서 비교하므로 True다.
+- **int와 float의 비교는 int를 float64로 바꿔서 한다.** 배열 영역, numpy, pandas와 같다 (array.md §1.6).
+  - 예: `Series([2**53 + 1]) == 2.0**53`은 True다. 2^53을 넘는 int는 반올림된 뒤 비교된다.
 - NaN은 IEEE 754를 따른다. `NaN == NaN`은 False, `NaN != NaN`은 True다.
 - string은 코드포인트 순서로 비교한다. UTF-8 바이트 순서와 같고, Python str의 비교와도 같다.
-- bool은 bool끼리만 비교한다. `False < True`다.
+- bool은 bool끼리만 비교한다. `False < True`다. **[배열과 다름]** 배열은 bool을 int64로 올려 int와 비교한다 (DESIGN §8.4).
 - **비교할 수 없는 dtype끼리 비교하면 `==`도 에러다** (예: string과 int). **[pandas와 다름]**
 
 ### §3.4 논리와 비트 연산
@@ -308,8 +321,9 @@ DataFrame.astype(dtype, /)
 - DataFrame은 dtype 하나나 `{컬럼: dtype}` dict를 받는다.
 - `copy` 인자는 없다. Copy-on-Write라서 뜻이 없다 (§1.1).
 - NA는 그대로 NA다.
+- 명시적 변환이다. 손실이 있어도 바꾼다. 숫자끼리의 규칙은 배열 영역의 `astype`과 같다 (array.md §1.5).
 - int → float: 반올림한다.
-- float → int: 0 쪽으로 자른다. NaN, inf, int64 범위를 넘는 값은 에러다.
+- float → int: 0 쪽으로 자른다. int64 범위 밖의 값과 ±inf는 포화한다(int64의 최솟값, 최댓값). NaN은 0이다. **[pandas와 다름]** pandas는 NaN과 inf에서 에러다.
 - bool → 숫자: 0과 1이다.
 - 숫자 → bool: 0이 아니면 True다. NaN도 True다.
 - → string: Python `str()`과 같다. 예: `1.0` → `"1.0"`, `1e20` → `"1e+20"`, NaN → `"nan"`
@@ -339,8 +353,12 @@ DataFrame.dropna(*, how="any", subset=None, ignore_index=False)
   - **NA 행은 NA다.** 비교 연산(§3.3)처럼 NA가 결과로 전파된다. 마스크로 쓰면 NA 행은 버려진다 (§5.5).
   - DataFrame은 컬럼마다 같은 규칙이다. 결과는 같은 컬럼 이름의 bool DataFrame이다.
 - **`fillna(value)`**
-  - 값은 컬럼 dtype으로 손실 없이 바뀌어야 한다. 규칙은 생성자 `dtype=`와 같다 (§2.3).
-    - 예: int 컬럼에 `2.0`은 되고 `1.5`는 에러다.
+  - 값은 컬럼 dtype으로 **암묵적으로** 바뀐다. 배열의 대입과 같은 규칙이다 (array.md §1.5): dtype만 보고, 위로만(`bool → int64 → float64`) 바꾼다. 값은 보지 않는다.
+    - 예: float 컬럼에 `1`은 `1.0`이 되고, bool 값은 int 컬럼과 float 컬럼에 들어간다.
+    - 아래로 가면 값과 상관없이 `TypeError`다. 예: int 컬럼에 `2.0`도 `1.5`도 `TypeError`, bool 컬럼에 `1`도 `TypeError`다.
+    - string 컬럼에는 str만, 다른 컬럼에는 str이 아닌 값만 들어간다. 아니면 `TypeError`다.
+    - int64 범위 밖의 int는 float 컬럼에서 float가 되고, 그 밖에서는 `OverflowError`다 (§2.2).
+  - `NA`나 `None`을 주면 그대로다.
   - DataFrame은 `{컬럼: 값}` dict도 받는다.
 - **`dropna`**
   - DataFrame의 `how="all"`은 subset 안의 값이 모두 NA인 행만 지운다.
@@ -516,10 +534,13 @@ Copy-on-Write를 따른다.
   - 스칼라 (`NA` 포함)
   - list: 길이가 고른 행 수와 같아야 한다.
   - Series: 고른 행의 라벨에 맞춰 정렬한다 (§5.6).
-- `df["c"] = 값`은 컬럼 전체를 새로 만든다. 새 컬럼이면 끝에 붙는다.
-- 행에 대입하는 값은 컬럼 dtype으로 손실 없이 바뀌어야 한다. 규칙은 생성자 `dtype=`와 같다 (§2.3).
+- `df["c"] = 값`은 컬럼 전체를 새로 만든다. 새 컬럼이면 끝에 붙는다. dtype은 값에서 추론한다 (§2.2). 기존 컬럼의 dtype과 달라도 된다.
+- 행에 대입하는 값은 컬럼 dtype으로 **암묵적으로** 바뀐다. 규칙은 `fillna`와 같다 (§3.6): dtype만 보고 위로만(`bool → int64 → float64`), 배열의 인덱스 대입과 같다 (array.md §1.5).
+  - 예: int 컬럼의 행에 `2.0`은 `TypeError`, float 컬럼의 행에 `1`은 `1.0`이다.
+  - list는 먼저 dtype을 추론한 뒤(§2.2) 같은 규칙으로 바꾼다. 예: int 컬럼에 `[1, 2.5]`는 float64 list라서 `TypeError`, `[True, 2]`는 추론에서 `TypeError`다.
+  - Series는 라벨로 맞춘 뒤 그 dtype으로 같은 규칙을 적용한다.
 - **없는 라벨에 대입하면 KeyError다.** 행을 늘리지 않는다. **[pandas와 다름]**
-- 쓰기 전에 버퍼를 다른 객체(다른 Series, DataFrame, 슬라이스, `to_numpy` 뷰)와 공유하고 있으면 먼저 복사한다.
+- 쓰기 전에 버퍼를 다른 객체(다른 Series, DataFrame, 슬라이스, `to_numpy` 뷰, `to_array` 뷰)와 공유하고 있으면 먼저 복사한다.
   - 예: `s = df["a"]; s.iloc[0] = 1`을 해도 `df`는 바뀌지 않는다.
 - 다른 Python 스레드와 동시에 대입할 때의 규칙은 §12에 있다.
 
@@ -527,6 +548,7 @@ Copy-on-Write를 따른다.
 - **Series**: 반복과 `in` 모두 값 기준이다. **[pandas와 다름]**
   - pandas는 반복은 값, `in`은 라벨이다.
   - `x in s`는 키 규칙(§1.6)으로 판단한다. NaN은 NaN과, NA는 NA와 같다.
+  - `x`가 컬럼 dtype의 값과 정확히 같을 수 있을 때만 찾는다. int와 float 사이는 손실 없이 바뀌는 값만 찾는다. 예: float 컬럼에서 `2 in s`는 `2.0`을 찾지만, `2**53 + 1 in Series([2.0**53])`은 False다(`==`는 반올림해서 True, §3.3). 타입이 맞지 않는 값은 False다.
   - 라벨이 있는지는 `x in s.index`로 확인한다.
 - **DataFrame**: 반복과 `in` 모두 컬럼 이름 기준이다.
 - **Index**: 반복과 `in` 모두 라벨 기준이다.
@@ -554,7 +576,7 @@ DataFrame.var(*, skipna=True, correction=0)
 ```
 - **인자는 Series, DataFrame, GroupBy(§7.3)에서 같다.**
   - `sum`, `mean`, `min`, `max`: `(*, skipna=True)`
-  - `std`, `var`: `(*, skipna=True, ddof=1)`. `ddof`는 0 이상의 int다.
+  - `std`, `var`: `(*, skipna=True, correction=0)`. `correction`은 int 또는 float다. bool과 그 밖의 타입은 `TypeError`다. 배열 영역의 `std`, `var`와 같은 인자다 (array.md §7.4). **[pandas와 다름]** pandas는 `ddof=1`이다.
   - `count()`: 인자가 없다. NA가 아닌 값의 개수다.
   - `axis`(행 방향 리덕션), `min_count`, `numeric_only`는 없다.
 
@@ -570,7 +592,7 @@ DataFrame.var(*, skipna=True, correction=0)
 
 | dtype | sum | mean | min, max | std, var |
 |---|---|---|---|---|
-| int64 | int64 (wrap, §1.5) | float64: int128로 정확히 더한 뒤 나눔 | int64 | float64 |
+| int64 | int64 (wrap, §1.5) | float64: 배열 영역의 float64 합을 개수로 나눔 (§6.5) | int64 | float64 |
 | float64 | float64 | float64 | float64 | float64 |
 | bool | int64: True의 개수 | float64: True의 비율 | bool | TypeError |
 | string | TypeError | TypeError | string (코드포인트 순서) | TypeError |
@@ -580,7 +602,7 @@ DataFrame.var(*, skipna=True, correction=0)
   - `skipna=True`(기본값)이면 NA를 건너뛴다.
   - `skipna=False`이면 NA가 하나라도 있을 때 결과가 NA다.
   - 값이 모두 NA이거나 없으면: `sum`은 0, `count`는 0이고, 나머지는 NA다 (§1.4).
-  - `std`, `var`에서 `NA가 아닌 값의 개수 - ddof <= 0`이면 NA다. **[pandas와 다름]** pandas는 NaN이다.
+  - `std`, `var`에서 `NA가 아닌 값의 개수 - correction <= 0`이면 NA다. **[pandas와 다름]** pandas는 NaN이다. **[배열과 다름]** 배열은 NaN이다 (§1.4).
 - **NaN**: `skipna`와 상관없이 결과로 전파된다 (§1.3).
 - **0.0과 -0.0**: `min`과 `max`는 `-0.0 < 0.0`으로 본다. numpy와 같고, IEEE 754-2019의 minimum, maximum이다.
 
@@ -589,10 +611,15 @@ DataFrame.var(*, skipna=True, correction=0)
   - NA가 없으면 pandas, numpy와 비트까지 같다.
   - NA 행은 0.0으로 채워져 있으므로 그대로 더한다.
   - 재귀 트리의 가지를 나눠서 병렬로 계산하므로, 스레드 수와 상관없이 비트가 같다 (§12).
+- **int64의 `mean`은 배열 영역의 계산을 그대로 쓴다.** `sd.sum(x, dtype=sd.float64)`(NA 행은 0)를 NA가 아닌 값의 개수로 나눈다.
+  - 그래서 NA가 없으면 `sd.mean(s.to_array())`와 비트까지 같다.
+  - int는 더하기 전에 float64로 바뀐다. 2^53을 넘는 값은 반올림된 뒤 더해진다 (numpy, pandas와 같다).
+  - 형변환이 있는 배열의 리덕션은 numpy와 덧셈 순서가 같다고 보장하지 않으므로, 긴 컬럼에서는 numpy와 마지막 비트가 다를 수 있다 (array.md §7.8, DESIGN §9.8).
+  - bool의 `mean`은 True의 개수를 개수로 나눈다.
 - **`var`**는 두 번 훑어서 계산한다.
-  1. 평균을 구한다.
+  1. 평균을 구한다 (int64는 위의 평균).
   2. 편차 제곱 `(x - 평균)²`을 pairwise로 더한다.
-  3. `개수 - ddof`로 나눈다.
+  3. `개수 - correction`으로 나눈다.
   - `std`는 `sqrt(var)`이다.
 
 ---
@@ -660,6 +687,9 @@ GroupBy.last(*, skipna=True)
   - 행을 그룹별로 모은 뒤(counting sort), 각 그룹의 행을 원래 순서대로 더한다.
   - 그래서 한 그룹의 합은 그 행들만 골라낸 Series의 `sum()`과 비트까지 같다.
   - pandas는 행 순서대로 Kahan 보정 합을 쓴다.
+- **int64의 그룹 `mean`**(과 `std`, `var` 안의 평균)은 그룹의 행을 float64로 바꿔 같은 pairwise로 더한 뒤(0.0에서 시작) 개수로 나눈다.
+  - 그룹이 4,096행 이하이면 그 행들만 골라낸 Series의 `mean()`(§6.5)과 비트까지 같다.
+  - 더 크면 마지막 비트가 다를 수 있다. Series의 `mean()`은 배열 영역의 합을 쓰고, 배열은 형변환을 4,096원소 버퍼 단위로 하며 더한다.
 
 ---
 
@@ -809,6 +839,7 @@ read_csv(path, /, *, sep=",", header=True, names=None, usecols=None, dtype=None,
   1. 모든 필드가 int 문법(§3.5)이고 int64 범위 안이면 **int64**다.
   2. 그렇지 않고 모든 필드가 float 문법이면 **float64**다.
      - 단, int 문법인 필드 중에 int64 범위를 넘거나 float64로 정확히 표현할 수 없는 값이 있으면 string이다. 값이 조용히 바뀌지 않게 하기 위해서다.
+     - list에서 만들 때(§2.2)는 이런 int를 float64로 반올림한다. CSV는 이 규칙을 남겼다 (루트 DESIGN §8.4).
   3. 그렇지 않고 모든 필드가 `True` 또는 `False`이면 **bool**이다.
   4. 그 밖에는 **string**이다.
 - 공백이 들어간 필드(예: `" 1"`)는 숫자가 아니다 (§3.5). **[pandas와 다름]**
@@ -848,6 +879,7 @@ read_csv(path, /, *, sep=",", header=True, names=None, usecols=None, dtype=None,
 - **결과는 스레드 수와 무관하게 비트까지 같다** (API.md §3). 이 영역에서는 float 합, 행 순서, factorize 코드(처음 나타난 순서), 에러 메시지까지 같다.
 - **에러**도 스레드 수와 상관없다. 잘못된 값이 여러 개면 항상 첫 번째(행 순서, CSV는 파일 순서)를 알린다.
 - **GIL**: 작업량이 임계값(131,072 원소) 이상이면 스레드 수와 상관없이 커널을 실행하는 동안 GIL을 놓는다. 그래서 `sd.set_num_threads(1)`이어도 다른 Python 스레드가 함께 돈다.
+  - 예외: int64의 `mean`(과 `std`, `var` 안의 평균)은 배열 영역의 합을 쓰므로(§6.5) 그 부분은 배열의 규칙을 따른다. 배열은 여러 스레드로 계산할 때만 GIL을 놓는다 (API.md §3).
 - **동시 대입**: 연산은 호출한 시점의 값을 본다(스냅샷).
   - 대입(`s[i] = v`, `s.iloc[...] = ...`)은 GIL을 쥔 채로 실행한다. 그래서 다른 연산은 대입 전이나 후의 값만 본다.
   - 대입은 먼저 자기만의 Column 객체를 만들고 거기에 쓴다. 진행 중인 연산은 옛 Column 객체를 잡고 있어서 버퍼가 공유 상태이므로, 대입이 Copy-on-Write 규칙(§5.7)에 따라 버퍼를 복사한다.

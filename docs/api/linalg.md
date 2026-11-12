@@ -42,7 +42,7 @@
 | `k` | 대각선 오프셋. 양수는 위쪽, 음수는 아래쪽 | `int` | `trace`, `diagonal` |
 | `axis` | 축 | `vecdot`, `cross`는 `int`, `vector_norm`은 `int`, `tuple`, `list`, `None` | `vecdot`, `cross`, `vector_norm` |
 | `keepdims` | 줄인 축을 길이 1로 남긴다 | `True`/`False` | `vector_norm`, `matrix_norm` |
-| `dtype` | 누적 dtype | dtype 객체 또는 `None` | `trace` |
+| `dtype` | 누적 dtype | dtype 객체, 그 이름, 또는 `None` | `trace` |
 | `lower_bandwidth`, `upper_bandwidth` | 띠의 아래·위 폭 | 0 이상의 `int` | `solve_banded` |
 
 - **bool 옵션**(`upper`, `unit_diagonal`, `keepdims`)은 `True`/`False`만 받는다. `0`, `1`, `None`은 `TypeError`다.
@@ -300,7 +300,7 @@ matrix_rank(x, /, *, rtol=None)
 ```
 - **`vector_norm`**
   - `axis`는 `int`, `tuple`, `None`이다. `None`이면 모든 축이다. `()`이면 아무 축도 줄이지 않는다(원소별 크기).
-    - 리스트도 tuple처럼 받는다. 예: `axis=[0, 1]`. 배열 영역의 `axis`(array.md §1.3)는 리스트를 받지 않는다.
+    - 리스트도 tuple처럼 받는다. 예: `axis=[0, 1]`. 배열 영역의 `axis`(array.md §1.3)는 리스트를 받지 않는다. 맞출지는 사용자 결정을 기다린다 (DESIGN §7).
     - 중복이나 범위 밖은 `ValueError`다 (array.md §1.3).
   - `ord`는 `int` 또는 `float`이다. `bool`과 문자열은 `TypeError`, NaN은 `ValueError`다.
 

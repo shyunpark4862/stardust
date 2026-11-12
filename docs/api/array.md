@@ -46,7 +46,7 @@
 - **axis**도 인자 하나로 받는다: int 또는 int의 tuple
   - 음수는 뒤에서 센다.
   - 범위 밖이면 `ValueError`, 중복되면 `ValueError`다. int64 범위 밖의 int는 `OverflowError`다.
-  - 리스트는 `TypeError`다. linalg의 `vector_norm`은 리스트도 받는다 (linalg.md §3).
+  - 리스트는 `TypeError`다. linalg의 `vector_norm`은 리스트도 받는다 (linalg.md §3). 배열도 리스트를 받을지는 사용자 결정을 기다린다 (DESIGN §7).
 - 그 밖의 int 인자(`eye`의 `n_rows`, `n_cols`, `k`, `linspace`의 `num`)도 int64 범위 밖이면 `OverflowError`다.
   - int만 받는 함수: `argmin`, `argmax`, `cumulative_sum`, `cumulative_prod`, `sort`, `argsort`, `concat`, `stack`
 - **기본 axis**

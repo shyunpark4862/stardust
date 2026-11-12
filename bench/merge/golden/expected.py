@@ -35,7 +35,7 @@ EXPECTED = {
         (r"^ctor dtype (float from int|string)$", "§9.2: Python types (float, str) are not dtypes: TypeError"),
         (r"^(prop (big )?df dtypes|repr dtypes)$", "§9.2: DataFrame.dtypes is {column: dtype object}"),
         (r"^err (ctor dtype unknown|astype bad dtype|csv dtype bad)$", "§9.2: the dtype message names the accepted spellings (message)"),
-        (r"^err (arith \w+ b,[bi]|unary (neg|abs) b|df neg string)$", "§9.1 #2: bool arithmetic is int64 arithmetic"),
+        (r"^err (arith \w+ b,[bi]|unary (neg|abs|pos) b|df neg string)$", "§9.1 #2: bool arithmetic is int64 arithmetic"),
         (r"^cmp \w+ (exact|exact scalar|int vs float scalar 2\*\*63)$", "§9.1 #3: int vs float compares as float64"),
         (r"^(df set loc lossless|set loc slice scalar lossless|fillna i float lossless"
          r"|err (set|df set|fillna i) lossy|err set (bool into int|int into bool|string into int)"

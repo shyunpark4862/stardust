@@ -1,6 +1,6 @@
 # stardust 설계 문서
 
-> 상태: **확정, 일부 2라운드 진행 중** (2026-11-12). 1라운드 질문(§6)은 Q9만 사용자가 다른 안을 골랐고, 나머지는 추천안을 수락했다. 일관성 원칙(§1.4)이 더해져 §4.4와 시그니처·이름 규칙을 2라운드에서 정한다. M1–M5(옮기기)는 2라운드와 상관없이 진행할 수 있다.
+> 상태: **확정** (2026-11-12). 1라운드 질문(§6)은 Q9만 사용자가 다른 안을 골랐고, 나머지는 추천안을 수락했다. 일관성 원칙(§1.4)이 더해져 §4.4와 시그니처·이름 규칙을 2라운드(§8)에서 다시 정했고, 그 목록(§9)을 M6에서 구현했다. 남은 미확정은 §7에 있다.
 
 stardust-numpy, stardust-linalg, stardust-pandas를 하나의 라이브러리 `stardust`로 합친다. 앞으로 영역을 하나씩 더해 가며 키운다.
 
@@ -88,9 +88,9 @@ stardust-numpy, stardust-linalg, stardust-pandas를 하나의 라이브러리 `s
 - 공유하는 것: Buffer, 스레드풀, pairwise 합, NEON 보조 함수, 빌드 플래그, dtype 정의(§4.2)
 
 ### 4.2 dtype
-- **C++**: `base/dtype.hpp`의 enum 하나 (`Bool, Int64, Float64, Complex128, String`; `Datetime64`는 frame이 구현할 때 더한다, M4). 배열은 앞의 넷, Column은 `Complex128`을 뺀 다섯을 받는다 (ARCHITECTURE §4.3).
-  - 지금은 numpy와 pandas가 같은 이름 `sd::DType`에 다른 값(`Complex128` / `String`)을 쓴다. 한 모듈에서는 어차피 둘 중 하나로 정리해야 한다.
-- **사용자가 dtype을 쓰는 방식** (§6 Q5): 지금 둘이 다르다.
+- **C++**: `base/dtype.hpp`의 enum 하나 (`Bool, Int64, Float64, Complex128, String`; `Datetime64`는 frame이 구현할 때 더한다, M4). 배열은 앞의 넷, Column은 `Complex128`을 뺀 넷을 받는다 (ARCHITECTURE §4.3).
+  - 옛 numpy와 pandas는 같은 이름 `sd::DType`에 다른 값(`Complex128` / `String`)을 썼다. 한 모듈에서는 하나로 정리해야 했다(M4).
+- **사용자가 dtype을 쓰는 방식** (§6 Q5): M6 전에는 둘이 달랐다. M6에서 아래 추천안대로 맞췄다 (§9.2, API.md §1).
   - 배열: dtype 객체(`sdnp.float64`)만 받고, `.dtype`도 객체다. 문자열과 Python 타입은 거부한다.
   - frame: 문자열(`"float64"`)이나 Python 타입(`float`)을 받고, `.dtype`은 문자열이다.
   - **추천안**: 객체 `sd.bool, sd.int64, sd.float64, sd.complex128, sd.string`(+ 나중의 `sd.datetime64`)을 기준으로 한다. 두 영역 모두 객체와 그 이름 문자열을 받고, `.dtype`은 객체를 돌려준다. Python 타입(`float` 등)은 둘 다 받지 않는다(`sd.bool`이 Python `bool`과 헷갈리는 문제도 같이 없앤다).
@@ -104,7 +104,7 @@ stardust-numpy, stardust-linalg, stardust-pandas를 하나의 라이브러리 `s
 - **배열 → frame**: `sd.frame.Series(arr)`, `sd.frame.DataFrame(arr2d)`
   - **항상 복사한다.** 배열은 쓰기 가능한 뷰를 통해 바뀔 수 있어서, frame의 Copy-on-Write가 추적할 수 없다.
   - complex128 배열은 TypeError (frame에 complex가 없다).
-- **Copy-on-Write**: 읽기 전용 배열 뷰가 Buffer 참조를 하나 쥐고 있으면, frame 쪽 쓰기는 참조 카운트를 보고 복사한다 (pandas ARCHITECTURE §3.3의 규칙이 그대로 동작). M6에서 테스트로 확인한다.
+- **Copy-on-Write**: 읽기 전용 배열 뷰가 Buffer 참조를 하나 쥐고 있으면, frame 쪽 쓰기는 참조 카운트를 보고 복사한다 (pandas ARCHITECTURE §3.3의 규칙이 그대로 동작). M6에서 구현하고 테스트로 확인했다 (`frame/interop.cpp`, `tests/interop/`, docs/design/frame.md §5.4).
 - 진짜 numpy와는 지금처럼 주고받는다: 배열의 buffer protocol, frame의 `to_numpy`와 `__array__`
 
 ### 4.4 동작 규칙의 차이 (§6 Q6)
@@ -189,11 +189,12 @@ stardust-numpy, stardust-linalg, stardust-pandas를 하나의 라이브러리 `s
 - 원격 저장소(GitHub)를 만들지, 만든다면 공개 범위 (1단계 뒤)
 - ~~§4.4의 3번과 11번의 비용 확인~~: M6 준비에서 배열 규칙으로 통일하기로 정했다 (§8, §9.1).
 - numpy의 int 평균 덧셈 순서(8192개 버퍼)를 흉내 내 배열의 1차원 평균을 numpy와 비트까지 맞출지 (§9.8 끝)
-- 2라운드 (§8)
+- ~~2라운드 (§8)~~: 결정했고 M6에서 구현했다 (§9).
+- **`axis`에 리스트** (사용자 결정 대기, M6): linalg의 `vector_norm`은 `axis=[0]`을 튜플처럼 받는다 (§9.6, docs/api/linalg.md §3). 배열 영역은 리스트를 TypeError로 막는다 (docs/api/array.md §1.3). 같은 개념의 인자가 영역마다 다르다 (§1.4). **추천: 배열도 리스트를 받는다.** 정해지면 배열의 `axis` 해석(`bind/pyutil.cpp`의 `parse_axes`)과 docs/api/array.md §1.3, docs/api/linalg.md §3의 문장을 고친다. 지금은 두 문서가 차이를 서로 적어 두었다.
 
 ---
 
-## 8. 2라운드: 일관성 (진행 중, 2026-11-12)
+## 8. 2라운드: 일관성 (결정, 2026-11-12. M6에서 구현)
 
 **결정된 것 (사용자 2026-11-12, M0 끝)**
 - **R1**: Array API 관례를 라이브러리 전체의 기준으로 한다 (추천안 수락).
@@ -241,44 +242,48 @@ stardust-numpy, stardust-linalg, stardust-pandas를 하나의 라이브러리 `s
 | 2, 3, 9, 11 | | 통일 | 그대로 |
 
 ### 8.4 R4. 이름과 시그니처 목록
-R1이 추천안대로 정해지면, 아래 후보를 함수 하나하나 확정한 목록으로 만들어 M6 전에 보여 준다.
-- frame: `sort_values(by, /, *, descending=False, stable=True, na_position=...)`, `value_counts`의 방향 인자, `to_list` → `tolist`, `unique()` → `unique_values()`(정렬 순서까지 배열과 같게), `astype(dtype, /, *, copy=...)`, `concat(objs, /, *, ...)`, `merge(left, right, /, *, ...)`, `read_csv(path, /, *, ...)`, `std/var(*, skipna=True, correction=0)`
-- frame에 NaN 판별 `isnan()`을 더한다 (NA 판별 `isna()`와 별개의 개념).
-- 이름은 같은데 개념이 다른 것: 배열 `.size`(원소 수) 대 `GroupBy.size()`(그룹별 행 수)
-- frame의 공개되어 버린 하위 모듈(`frame`, `index`, `io`, `series`)은 `_`로 숨긴다. 안 그러면 `sd.frame.index`가 Index가 아니라 모듈이 된다.
-- 에러 메시지 형식은 `func(): 'arg' ...`(linalg 방식)로 통일하고, 메시지에 문서 절 번호를 넣지 않는다.
-- 결과 namedtuple은 한 모듈(`stardust._results`)에 모으고, 이름은 `<함수>Result`로 통일한다.
-- 배열 문서와 구현이 다른 곳 두 군데(`zeros` 등의 `dtype` 기본값 표기, `arange`의 위치 인자)를 맞춘다.
-- 배열 ↔ linalg: 대각 오프셋 `k`(Array API는 `offset`), `svd(mode=)`(Array API는 `full_matrices`). 라이브러리 안에서는 이미 일관되므로 유지를 추천한다.
+R1이 추천안대로 정해지면, 아래 후보를 함수 하나하나 확정한 목록으로 만들어 M6 전에 보여 준다. 함수별 목록은 §9가 되었고, M6에서 구현했다. 아래 항목에 결과를 적었다: ~~지운 줄~~은 해결, "그대로"는 바꾸지 않기로 한 것, **남음**은 아직 남은 차이다.
+- ~~frame: `sort_values(by, /, *, descending=False, stable=True, na_position=...)`, `value_counts`의 방향 인자, `to_list` → `tolist`, `unique()` → `unique_values()`(정렬 순서까지 배열과 같게), `astype(dtype, /, *, copy=...)`, `concat(objs, /, *, ...)`, `merge(left, right, /, *, ...)`, `read_csv(path, /, *, ...)`, `std/var(*, skipna=True, correction=0)`~~ M6에서 해결 (§9.3, §9.4). `astype`에는 `copy`를 두지 않았다 (§9.3).
+- ~~frame에 NaN 판별 `isnan()`을 더한다 (NA 판별 `isna()`와 별개의 개념).~~ M6에서 해결 (§9.4).
+- 이름은 같은데 개념이 다른 것: 배열 `.size`(원소 수) 대 `GroupBy.size()`(그룹별 행 수). 그대로 (§9.4).
+- ~~frame의 공개되어 버린 하위 모듈(`frame`, `index`, `io`, `series`)은 `_`로 숨긴다. 안 그러면 `sd.frame.index`가 Index가 아니라 모듈이 된다.~~ M6에서 해결: `groupby`, `merge`까지 여섯을 `_frame` 등으로 (§9.4).
+- ~~에러 메시지 형식은 `func(): 'arg' ...`(linalg 방식)로 통일하고, 메시지에 문서 절 번호를 넣지 않는다.~~ M6에서 해결 (API.md §2.1).
+- ~~결과 namedtuple은 한 모듈(`stardust._results`)에 모으고, 이름은 `<함수>Result`로 통일한다.~~ M6에서 해결 (§9.7).
+- ~~배열 문서와 구현이 다른 곳 두 군데(`zeros` 등의 `dtype` 기본값 표기, `arange`의 위치 인자)를 맞춘다.~~ 해결: M1에서 새 문서를 코드대로 썼다 (docs/api/array.md §3.1).
+- 배열 ↔ linalg: 대각 오프셋 `k`(Array API는 `offset`), `svd(mode=)`(Array API는 `full_matrices`). 라이브러리 안에서는 이미 일관되므로 유지를 추천한다. 그대로 (§9.6).
 - 골든 케이스를 쓰다가 찾은 배열 안의 불일치 (M0, 옛 패키지 그대로 기록함)
-  - `full_like(int 배열, 1.5)`는 조용히 1로 자르는데, 암묵적 하향 변환은 에러라는 규칙(S6)과 맞지 않는다. `full_like(int 배열, 1j)`는 에러다.
-  - Python int `2**64`를 `divide`, `atan2`만 받고 다른 이항 함수는 모두 OverflowError를 낸다.
-  - `arange(nan)`이 에러 없이 빈 배열을 돌려준다.
-  - `.T`는 2차원만 받는다. `permute_dims`에 리스트를 주면 "axis must be an int"라는 엉뚱한 메시지가 나온다.
-  - `shape`나 `dtype`에 대입하면 "property '' of 'ndarray' object has no setter"처럼 이름이 빈 메시지가 나온다.
-  - linalg: `trace(complex, dtype=float64)`는 배열의 캐스팅 규칙 때문에 TypeError다. linalg에서 의도한 동작인지 확인한다.
-  - 배열 (M1에서 API 문서를 새로 쓰다 찾음): `real`/`imag`는 Python 스칼라를 거부하는데 `conj`는 받는다. 연산자 피연산자로 `numpy.float64`는 받고 `numpy.int64`는 거부한다. `arange`의 int 인자는 `dtype=float64`여도 int64 범위여야 한다. 옛 API.md는 `arange`의 `stop`, `step`을 키워드로 쓸 수 있게 적었지만 코드는 셋 다 위치 전용이다(새 문서는 코드대로 적었다).
+  - ~~`full_like(int 배열, 1.5)`는 조용히 1로 자르는데, 암묵적 하향 변환은 에러라는 규칙(S6)과 맞지 않는다. `full_like(int 배열, 1j)`는 에러다.~~ M6에서 해결: `dtype=` 없는 `full_like`는 대입과 같은 암묵적 변환이다 (§9.5).
+  - ~~Python int `2**64`를 `divide`, `atan2`만 받고 다른 이항 함수는 모두 OverflowError를 낸다.~~ M6에서 해결: 모두 OverflowError (§9.5).
+  - ~~`arange(nan)`이 에러 없이 빈 배열을 돌려준다.~~ M6에서 해결: nan, inf는 ValueError (§9.5).
+  - `.T`는 2차원만 받는다. 그대로 (Array API, docs/api/array.md). ~~`permute_dims`에 리스트를 주면 "axis must be an int"라는 엉뚱한 메시지가 나온다.~~ M6에서 해결: "'axes' must be an int or a tuple of ints" (§9.5).
+  - ~~`shape`나 `dtype`에 대입하면 "property '' of 'ndarray' object has no setter"처럼 이름이 빈 메시지가 나온다.~~ M6에서 해결: `property 'shape' of 'ndarray' object has no setter` (§9.5).
+  - linalg: `trace(complex, dtype=float64)`는 배열의 캐스팅 규칙 때문에 TypeError다. linalg에서 의도한 동작인지 확인한다. 그대로: 의도한 동작으로 정하고 문서에 적었다 (§9.6, docs/api/linalg.md §2).
+  - 배열 (M1에서 API 문서를 새로 쓰다 찾음): ~~`real`/`imag`는 Python 스칼라를 거부하는데 `conj`는 받는다. 연산자 피연산자로 `numpy.float64`는 받고 `numpy.int64`는 거부한다.~~ M6에서 해결 (§9.5). **남음**: `arange`의 int 인자는 `dtype=float64`여도 int64 범위여야 한다 (docs/api/array.md §1.5의 예외). 옛 API.md는 `arange`의 `stop`, `step`을 키워드로 쓸 수 있게 적었지만 코드는 셋 다 위치 전용이다(새 문서는 코드대로 적었다).
   - 배열 ↔ linalg (M2에서 linalg API 문서를 새로 쓰다 찾음)
-    - **결과 dtype**: linalg는 bool/int64 입력을 float64로 계산한다(`vecdot`, `trace`, `outer`, `kron`, `cross`, `matrix_power`). 배열은 int64를 유지한다(`sum`, `matmul`). 그래서 `sd.linalg.trace(int 행렬)`은 float이고 `sd.sum(sd.linalg.diagonal(int 행렬))`은 int다.
-    - **결과 레이아웃**: linalg의 행렬 결과는 F-order다(DESIGN §3.3에서 유지하기로 함). 배열 API의 "새 배열은 C-order" 규칙(docs/api/array.md §1.9)과 다르다. 규칙 쪽을 "영역마다 정한 순서"로 넓힐지 정한다.
+    - **결과 dtype**: linalg는 bool/int64 입력을 float64로 계산한다(`vecdot`, `trace`, `outer`, `kron`, `cross`, `matrix_power`). 배열은 int64를 유지한다(`sum`, `matmul`). 그래서 `sd.linalg.trace(int 행렬)`은 float이고 `sd.sum(sd.linalg.diagonal(int 행렬))`은 int다. 그대로 (§9.6, docs/api/linalg.md §2).
+    - ~~**결과 레이아웃**: linalg의 행렬 결과는 F-order다(DESIGN §3.3에서 유지하기로 함). 배열 API의 "새 배열은 C-order" 규칙(docs/api/array.md §1.9)과 다르다. 규칙 쪽을 "영역마다 정한 순서"로 넓힐지 정한다.~~ M6에서 해결: F-order는 그대로, 배열 문서의 규칙을 "영역마다 정한 순서"로 넓혔다 (§9.6, docs/api/array.md §1.9).
     - ~~**`.base`**: linalg 결과의 `.base`가 내부 블록 객체였다.~~ M3에서 해결: 결과를 `NDArray`로 직접 만들어 `.base`는 `None`이다.
     - ~~**에러 메시지 형식**: `LinAlgError`와 `OverflowError` 메시지에는 `func(): ` 접두사가 없다. `trace(dtype=sd.bool)`은 콜론 없이 "trace() cannot…"이다.~~ M6에서 해결 (API.md §2.1).
-    - **에러 종류**: 잘못된 `ord`의 타입이 `vector_norm`에서는 TypeError, `matrix_norm`/`cond`에서는 ValueError다. int64를 넘는 Python int가 `k`, `n`, `axis`에서는 ValueError인데, 공통 규칙(API.md §2)은 OverflowError다.
-    - `axis=[0]`의 메시지가 "must be an int, not list"인데 튜플은 받는다.
+    - ~~**에러 종류**: 잘못된 `ord`의 타입이 `vector_norm`에서는 TypeError, `matrix_norm`/`cond`에서는 ValueError다. int64를 넘는 Python int가 `k`, `n`, `axis`에서는 ValueError인데, 공통 규칙(API.md §2)은 OverflowError다.~~ M6에서 해결: `ord`의 타입은 세 함수 모두 TypeError, 범위 밖 int 인자는 배열과 linalg 모두 OverflowError (§9.6, API.md §2).
+    - ~~`axis=[0]`의 메시지가 "must be an int, not list"인데 튜플은 받는다.~~ M6에서 해결: `vector_norm`이 리스트도 받는다 (§9.6). 배열의 `axis`는 아직 리스트를 받지 않는다 (§7).
     - ~~결과 namedtuple이 두 모듈(`stardust._results`, `stardust.linalg._results`)에 나뉘어 있다.~~ M6에서 `stardust._results` 하나로 합쳤다.
-  - frame: `df.iloc[0, 9]`의 메시지가 열 위치인데도 "out of range for 4 rows"라고 한다.
-  - frame: `df.groupby(Series)`가 Series의 값을 키 이름으로 읽어서 "key columns must be unique"를 낸다.
-  - frame: `DataFrame({"a": [1, 2]}, index=[1, 2, 3])`가 index 길이 문제인데 "all columns must have the same length"를 낸다.
-  - frame: CSV에서 같은 따옴표 실수가 위치에 따라 다른 메시지를 낸다 ("never closed" 대 "inside an unquoted field").
+  - **남음** (M6에서 다루지 않음): frame: `df.iloc[0, 9]`의 메시지가 열 위치인데도 "out of range for 4 rows"라고 한다.
+  - **남음** (M6에서 다루지 않음): frame: `df.groupby(Series)`가 Series의 값을 키 이름으로 읽어서 "key columns must be unique"를 낸다.
+  - **남음** (M6에서 다루지 않음): frame: `DataFrame({"a": [1, 2]}, index=[1, 2, 3])`가 index 길이 문제인데 "all columns must have the same length"를 낸다. (M6에서 앞에 `DataFrame(): `만 붙었다.)
+  - **남음** (M6에서 다루지 않음): frame: CSV에서 같은 따옴표 실수가 위치에 따라 다른 메시지를 낸다 ("never closed" 대 "inside an unquoted field").
   - 배열 ↔ frame (M5에서 frame API 문서를 새로 쓰다 찾음. §4.4 표에 없는 것만)
-    - **범위 밖 Python int**: frame은 int64 범위 밖의 int 스칼라를 언제나 에러로 막는다. 배열은 int64로 바꿔야 할 때만 `OverflowError`다.
-    - **numpy에서 만들기**: frame은 언제나 복사한다. 배열의 `asarray`는 되도록 복사하지 않는다.
-    - **`==`**: frame은 비교할 수 없는 dtype끼리 `==`면 에러다. 배열은 리스트나 numpy 배열과의 `==`가 에러 없이 False다.
-    - **int 비트 연산**(`&`, `|`, `^`, `~`의 int 판): 배열에만 있다.
-    - **`copy` 인자**: frame에는 `to_numpy`에만 있다. 배열은 `asarray`, `astype`, `reshape`에 있다.
-    - **dtype 인자**: frame은 이름 문자열과 Python 타입(`int` 등)을 받고 `sd.float64`는 `TypeError`다 (§4.2, M6에서 맞춘다).
-    - **에러 종류**: frame은 `KeyError`(`.loc`의 없는 라벨)를 쓰는데 API.md §2의 목록에 없다.
-    - **에러 메시지 안의 문서 번호**: frame의 에러 메시지 19곳이 옛 pandas API.md의 절(`API.md §6`, `§12`, `§14`, `§15`, `§18`, `§19`)을 적는다. 통합판에서 `API.md`는 루트 문서라서 잘못된 곳을 가리킨다. M5는 결과를 바꾸지 않으므로 두었다. 위의 "메시지에 문서 절 번호를 넣지 않는다"를 따라 M6에서 지운다 (`grep -rn 'API.md §' csrc/frame src/stardust/frame`). M6에서 지웠다.
+    - ~~**범위 밖 Python int**: frame은 int64 범위 밖의 int 스칼라를 언제나 에러로 막는다. 배열은 int64로 바꿔야 할 때만 `OverflowError`다.~~ M6에서 해결: frame도 배열 규칙 (§9.1 12번).
+    - **numpy에서 만들기**: frame은 언제나 복사한다. 배열의 `asarray`는 되도록 복사하지 않는다. 그대로: frame은 Copy-on-Write를 지키려고 언제나 복사한다(`sd.ndarray`에서 만들 때도, §4.3). 차이의 이유가 데이터 모델에 있다 (§1.4).
+    - ~~**`==`**: frame은 비교할 수 없는 dtype끼리 `==`면 에러다. 배열은 리스트나 numpy 배열과의 `==`가 에러 없이 False다.~~ M6에서 해결: 배열도 TypeError (§9.1 13번).
+    - ~~**int 비트 연산**(`&`, `|`, `^`, `~`의 int 판): 배열에만 있다.~~ M6에서 해결: frame에도 `<<`, `>>`까지 배열 규칙으로 (§9.4).
+    - ~~**`copy` 인자**: frame에는 `to_numpy`에만 있다. 배열은 `asarray`, `astype`, `reshape`에 있다.~~ M6에서 정리: frame의 `copy`는 `to_numpy`, `to_array`에 있고 배열의 `asarray`와 같은 뜻(None, True, False)이다. `astype`에는 Copy-on-Write라서 두지 않았다 (§9.3, §9.4).
+    - ~~**dtype 인자**: frame은 이름 문자열과 Python 타입(`int` 등)을 받고 `sd.float64`는 `TypeError`다 (§4.2, M6에서 맞춘다).~~ M6에서 해결 (§9.2).
+    - ~~**에러 종류**: frame은 `KeyError`(`.loc`의 없는 라벨)를 쓰는데 API.md §2의 목록에 없다.~~ M5에서 API.md §2에 적었다 (§9.7).
+    - ~~**에러 메시지 안의 문서 번호**: frame의 에러 메시지 19곳이 옛 pandas API.md의 절(`API.md §6`, `§12`, `§14`, `§15`, `§18`, `§19`)을 적는다. 통합판에서 `API.md`는 루트 문서라서 잘못된 곳을 가리킨다. M5는 결과를 바꾸지 않으므로 두었다. 위의 "메시지에 문서 절 번호를 넣지 않는다"를 따라 M6에서 지운다 (`grep -rn 'API.md §' csrc/frame src/stardust/frame`).~~ M6에서 지웠다.
+  - 배열 ↔ frame (M6에서 문서를 고치다 찾음, 코드에 남은 차이). 고치면 결과가 바뀌므로 M6에서는 문서에만 적었다.
+    - **bool과 int의 비교**: 배열은 bool을 int64로 올려 비교한다(`sd.asarray([True]) == 1`). frame은 bool끼리만 비교하고 bool과 int는 `TypeError`다 (docs/api/frame.md §3.3). §9.1 2번은 산술만 맞췄다.
+    - **bool의 단항 `+`**: 배열의 `positive`(`+x`)는 bool을 int64로 바꾼다. frame의 `+s`는 bool이면 `TypeError`다(`-s`, `abs(s)`는 int64로 맞췄다, docs/api/frame.md §3.2).
+    - **CSV 추론의 정확성 규칙**: list에서 만들 때는 int64 범위 밖이거나 2⁵³을 넘는 int가 float와 섞이면 float64로 반올림한다(§9.1 5번, 12번). `read_csv`의 추론은 그런 값이 있으면 컬럼을 string으로 남긴다 (docs/api/frame.md §10.4).
 
 ### 8.5 언제 바꾸나
 - 옮기기(M1, M2, M5)는 2라운드와 상관없이 지금 규칙 그대로 한다.
@@ -288,6 +293,8 @@ R1이 추천안대로 정해지면, 아래 후보를 함수 하나하나 확정�
 ---
 
 ## 9. M6 변경 목록 (확정, 2026-11-12)
+
+> **M6에서 구현했다** (2026-11-12, 커밋 7c8a128, b3116e4, 031dc61, cf1d6f1, 139146a, a6476c6; 해설은 docs/learn/M6-consistency.md). 아래 목록과 다르게 구현한 곳: (a) 배열의 int 인자(`shape`, `axis`, `k`, `num`)도 linalg처럼 int64 범위 밖이면 OverflowError다 (§9.6은 linalg만 적었다, API.md §2). (b) frame의 그룹별 `mean(int64)`은 배열을 부르지 않고 그룹마다 float64 pairwise로 더한다. Series의 `mean`과 비트가 같은 것은 그룹이 4,096행 이하일 때다 (§9.1 11번의 "같은 덧셈 순서"는 Series에서만, docs/api/frame.md §7.5). (c) `to_numpy(dtype=)`, `to_array(dtype=)`도 생성자의 `dtype=`처럼 명시적 변환이다 (§9.1 5번). (d) list에서 int와 float가 섞이면 int를 float64로 반올림한다. 2⁵³을 넘어도 에러가 아니다 (§9.1 5번, 배열의 `asarray`와 같다). 그 밖에 조회 `x in s`는 손실 없는 변환을 남겼다 (docs/api/frame.md §5.8). 구현하며 찾은, 코드에 남은 차이는 §8.4 끝에, `axis` 리스트는 §7에 있다.
 
 > §4.4, §8의 결정과 후보를 함수 하나하나로 풀어 쓴 목록이다. 사용자가 확정하면 M6의 범위가 되고, 골든 비교의 "예상된 차이"가 된다(§8.5). **결정** = 이미 정함, **추천** = 확정을 기다림.
 > 골든 분류: 값(결과가 바뀜), 메시지(에러 메시지만), 종류(예외 종류), 시그니처(인자 이름·위치), 새것(없던 기능).

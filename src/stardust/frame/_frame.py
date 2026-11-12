@@ -290,10 +290,12 @@ class DataFrame(Reductions):
         return self._map_columns(lambda c: _core.unary_op("abs", c))
 
     def __pos__(self):
-        bad = [k for k, c in self._cols.items() if c.dtype not in ("int64", "float64")]
+        bad = [k for k, c in self._cols.items() if c.dtype not in ("bool", "int64", "float64")]
         if bad:
             raise TypeError(f"unsupported operand dtype for unary + in columns {bad}")
-        return self
+        if all(c.dtype != "bool" for c in self._cols.values()):
+            return self
+        return self._map_columns(lambda c: c.astype("int64") if c.dtype == "bool" else c)  # bool as int64, as with -
 
     def __invert__(self):
         return self._map_columns(lambda c: _core.unary_op("invert", c))

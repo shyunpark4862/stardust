@@ -6,6 +6,7 @@
 - 이 문서는 "지금 코드가 어떻게 되어 있고 왜 그런가"만 적는다. 코드 주석은 이 문서의 절 번호(`frame.md §N.M`)를 가리킨다.
 - 배열 영역과 함께 쓰는 부품(Buffer, 풀, pairwise 합의 정의)은 [array.md](array.md)를 인용한다.
 - 수치는 Apple M4 Pro 한 대에서 잰 값이다 (하드웨어는 array.md §1.1). 따로 적지 않으면 1M 행, 1스레드, 호출당 최솟값이다. 비교 대상은 pandas 3.1.1, Polars 2.1.0이다. 옮기기 전의 같은 코드(stardust-pandas)로 잰 값이고, M5는 결과와 속도를 바꾸지 않는다.
+  - M6에서 값 규칙이 바뀐 커널(int–float 비교, int64 평균, float → int64 `astype`)은 새 규칙으로 다시 재지 않았다. 옛 규칙으로 잰 수치는 그렇다고 적었고, 새 경로의 시간은 적지 않았다.
 - 통합 중 바뀔 곳은 한 줄로만 표시한다 (`통합 중 Mn`). 진행 순서는 [ROADMAP.md](../../ROADMAP.md)에 있다.
 
 ---
@@ -15,11 +16,11 @@
 ### 1.1 범위
 - **있는 것**
   - `Series`, `DataFrame`, `Index`, `RangeIndex`, `NA`
-  - 생성: dict, list, numpy 배열. 꺼내기: `to_numpy`, `to_list`
+  - 생성: dict, list, numpy 배열, `sd.ndarray`. 꺼내기: `to_numpy`, `to_array`, `tolist`
   - 선택: `[]`, `.loc`, `.iloc` (스칼라, 슬라이스, 리스트, bool 마스크), 라벨 정렬(alignment), `reindex`, 대입
-  - 산술, 비교, Kleene 논리, `astype`, `isna`/`notna`, `fillna`, `dropna`
+  - 산술, 비교, Kleene 논리, int64 비트 연산, `astype`, `isna`/`notna`, `isnan`, `fillna`, `dropna`
   - 리덕션: `sum`, `mean`, `min`, `max`, `count`, `std`, `var`
-  - `unique`, `nunique`, `value_counts`, `duplicated`, `drop_duplicates`
+  - `unique_values`, `nunique`, `value_counts`, `duplicated`, `drop_duplicates`
   - `sort_values`(다중 키, 키별 방향과 NA 위치), `sort_index`
   - `groupby` + 집계(`sum`, `mean`, `count`, `size`, `min`, `max`, `first`, `last`, `std`, `var`), `agg`
   - `merge`(inner, left, right, outer, 다중 키), 행 방향 `concat`
@@ -46,15 +47,16 @@
 - 문자열 인터닝, 작은 할당 캐시, 손으로 짠 어셈블리, 런타임 CPU 디스패치
 
 ### 1.4 파일과 층
-- C++은 `csrc/frame/`, 이름공간 `sd::frame`이다. `frame/`은 `base/`와 `parallel/`만 쓰고 `array/`를 모른다 (루트 ARCHITECTURE §1).
+- C++은 `csrc/frame/`, 이름공간 `sd::frame`이다. `frame/`은 `base/`와 `parallel/`만 쓰고 `array/`를 모른다 (루트 ARCHITECTURE §1). 예외는 `frame/interop.cpp` 한 파일이다 (§5.4).
 
   | 파일 | 내용 |
   |---|---|
-  | `frame/column.{hpp,cpp}` | Column, 슬라이스, 손실 없는 int64 ↔ float64 변환, 결과 마무리(`finish_fixed`) |
+  | `frame/column.{hpp,cpp}` | Column, 슬라이스, 손실 없는 int64 ↔ float64 변환(조회 `x in s`용, §2.4), 결과 마무리(`finish_fixed`) |
   | `frame/bitmap.hpp` | validity 비트맵 (§4.4) |
   | `frame/convert.{hpp,cpp}` | Python list, numpy ↔ Column (§3.4) |
+  | `frame/interop.{hpp,cpp}` | Column ↔ `sd.ndarray`, 배열의 float64 합. `frame/`에서 `array/`를 아는 유일한 파일 (§5.4) |
   | `frame/parallel.hpp` | frame의 병렬화 정책: 기준값, 청크, `for_chunks`, `Unlocked` (§11) |
-  | `frame/ops/elementwise`, `cast`, `selection`, `reduce` | 원소별 연산, astype, take/filter/대입, 리덕션 (§7) |
+  | `frame/ops/elementwise`, `cast`, `selection`, `reduce` | 원소별 연산(int64 비트 연산 포함), astype, take/filter/대입/`isnan`, 리덕션 (§7) |
   | `frame/ops/hash` | 해시 테이블, factorize, Index 조회 엔진 (§8) |
   | `frame/ops/groupby`, `sort`, `radix`, `join` | groupby, 정렬, 기수 정렬과 counting sort, merge (§9) |
   | `frame/ops/pairwise.hpp` | float 합(`base/pairwise.hpp`를 부른다), IEEE min/max (§7.4) |
@@ -62,9 +64,13 @@
   | `frame/io/csv.{hpp,cpp}` | `read_csv` (§10) |
   | `bind/frame_bind.cpp` | 하위 모듈 `stardust._core.frame` (확장 모듈은 `_core` 하나, 루트 DESIGN §3.2) |
 
-- 아래 층에서 쓰는 것: `base/buffer.hpp`(Buffer, §4.1), `base/dtype.hpp`(DType, §4.2), `base/pairwise.hpp`(pairwise 합, §7.4), `parallel/pool.hpp`(풀, §11.1)
-- Python은 `src/stardust/frame/`: `_series.py`, `_frame.py`, `_index.py`, `_groupby.py`, `_merge.py`, `_io.py`, `_column.py`, `_dtypes.py`, `_na.py`, `_ops.py`, `_reduce.py`, `_select.py`, `_sort.py`, `_unique.py`, `_format.py`. 테스트는 `tests/frame/`.
-- 통합 중 M6에서 Column ↔ NDArray를 잇는 `frame/interop.cpp`가 생긴다. `frame/`에서 `array/`를 아는 파일은 그것 하나가 된다 (루트 DESIGN §4.3).
+- 아래 층에서 쓰는 것: `base/buffer.hpp`(Buffer, §4.1), `base/dtype.hpp`(DType, §4.2), `base/pairwise.hpp`(pairwise 합, §7.4), `base/saturate.hpp`(float → int64, §7.5), `parallel/pool.hpp`(풀, §11.1)
+- 바인딩에서 쓰는 것: `bind/errors.hpp`(에러 메시지의 함수 이름, §3.1), `bind/pyutil.hpp`(dtype 객체와 배열 꺼내기, `interop.cpp`가 쓴다)
+- Python은 `src/stardust/frame/`: `_series.py`, `_frame.py`, `_index.py`, `_groupby.py`, `_merge.py`, `_io.py`, `_column.py`, `_dtypes.py`, `_errors.py`, `_na.py`, `_ops.py`, `_reduce.py`, `_select.py`, `_sort.py`, `_unique.py`, `_format.py`. 테스트는 `tests/frame/`, 배열과의 경계는 `tests/interop/`.
+  - **모든 모듈이 밑줄 이름이다.** 공개 이름은 `__init__.py`의 `__all__`이 전부다. 구현 모듈을 `index`, `series`처럼 공개 이름으로 두면 `sd.frame.index`가 Index가 아니라 모듈이 된다 (루트 DESIGN §9.4).
+  - `_column.py`: 사용자 데이터 → Column(`column_from`), 변환의 세 갈래(§2.4), `to_numpy`, `to_array`의 규칙
+  - `_dtypes.py`: dtype 인자 읽기(`resolve`)와 dtype 객체(`obj`). Column은 이름 문자열(`"int64"`)을 들고, 공개 `.dtype`만 객체다
+  - `_errors.py`: 메시지의 함수 이름(`named`)과 여러 함수가 함께 쓰는 인자 검사 (§3.1)
 - 컴파일 플래그는 모듈 전체의 것이다 (array.md §1.3). frame에는 특히 `-ffp-contract=off`(FMA로 합치면 pandas, numpy와 비트가 달라진다)와 `-ffast-math` 없음(NaN은 평범한 값이다, §2.2)이 중요하다. frame은 Accelerate를 쓰지 않는다.
 
 ---
@@ -74,8 +80,8 @@
 
 ### 2.1 dtype
 - 넷이다: `bool`, `int64`, `float64`, `string`(UTF-8). C++에서는 `sd::DType`의 `Bool`, `Int64`, `Float64`, `String`이다 (§4.2).
-- Python 쪽 dtype은 아직 문자열이다. `"float64"` 같은 이름이나 Python 타입 `bool`, `int`, `float`, `str`을 받고, `.dtype`은 문자열을 돌려준다 (`_dtypes.py`).
-- 통합 중 M6에서 배열 영역의 dtype 객체로 합친다 (루트 DESIGN §4.2).
+- Python 쪽 dtype은 라이브러리의 dtype 객체(`sd.bool`, `sd.int64`, `sd.float64`, `sd.string`)다. 인자는 객체나 그 이름을 받고, Python 타입(`int` 등)과 `sd.complex128`은 TypeError다 (`_dtypes.resolve`, API.md §1). `.dtype`은 객체, `DataFrame.dtypes`는 `{컬럼: 객체}` dict다.
+- 안에서는 이름 문자열을 쓴다. Column의 `dtype`과 Python 쪽의 `_dtype`은 `"int64"` 같은 이름이고, 공개 속성에서만 객체로 바꾼다(`_dtypes.obj`). `_core.frame`의 바인딩도 dtype을 이름으로 주고받는다.
 
 ### 2.2 NA와 NaN
 - **결측은 `NA` 하나다.** 모든 dtype이 validity 비트맵으로 결측을 갖는다 (§4.4).
@@ -98,7 +104,16 @@
   - RangeIndex를 take한 결과는 남은 라벨이 우연히 등차수열이어도 Index다.
   - 마스크가 우연히 연속된 행을 골라도 복사다.
 - 같은 코드가 데이터에 따라 성공하기도 하고 실패하기도 하지 않게 한다. 예: `na_value`가 결과 dtype에 맞는지는 NA가 없어도 검사한다.
-- 값이 손실 없이 표현되는지는 값을 보고 판단한다(int 컬럼에 `2.0`은 들어가고 `1.5`는 ValueError). 이것은 에러냐 값이냐의 판단이지 결과 dtype을 바꾸지 않는다.
+- **변환은 세 갈래다** (`_column.py`). 어느 것도 값을 보고 에러를 고르지 않는다. 배열 영역과 같은 나눔이다 (array.md §2.4, §2.5).
+
+  | 갈래 | 쓰는 곳 | 규칙 | 함수 |
+  |---|---|---|---|
+  | 명시적 | 생성자의 `dtype=`, `astype`, `to_numpy(dtype=)`, `to_array(dtype=)` | 추론한 컬럼을 `astype`으로. 손실이 있어도 바꾼다 (float → int64는 포화, NaN → 0) | `Column.astype` |
+  | 암묵적 | 행 대입, `fillna` | dtype만 보고 위로만: `bool → int64 → float64`. 아래로는 값과 상관없이 TypeError (int 컬럼에 `2.0`도) | `implicit`, `implicit_scalar` |
+  | 정확한 값 | 조회 `x in s` | 컬럼 dtype에 정확히 같은 값이 있을 때만 (손실 없는 int64 ↔ float64, `Column::convert`). 아니면 그 행이 없는 것이다(False) | `exact` |
+
+  - 조회만 손실 없는 변환을 쓴다. `x in s`는 컬럼 dtype에 `x`와 같은 값이 있는지 묻는 것이라, 그 dtype에 같은 값이 없으면 답은 False다. 그래서 `2**53 + 1 in Series([2.0**53])`은 False이고, `==`는 배열처럼 반올림해 비교하므로 True다 (§7.2).
+  - 범위 밖 Python int는 float64가 될 자리에서만 받는다(`implicit_scalar`, 연산자의 `scalar_column`, `from_list`). int64가 되어야 하면 OverflowError다 (배열과 같다, array.md §2.2).
 
 ### 2.5 numpy, pandas와 비트를 맞추는 곳
 | 연산 | 맞추는 방법 |
@@ -109,13 +124,14 @@
 | int64 산술 | wrap, 바닥 나눗셈 (numpy, Python과 같다) |
 | float → string | Python `str(float)` (§7.5) |
 | string → float, CSV의 float | Python `float(text)`와 비트까지 같다 (§10.4) |
-| int64 평균 | int128 정확한 합 → 한 번 반올림 → 나눗셈. Python `float(sum(v)) / n`과 같다 (§7.4) |
+| int64 평균 | 배열 영역의 `sd.sum(x, dtype=sd.float64)` / 개수. 배열의 `sd.mean`과 비트가 같다. numpy와는 짧은 컬럼에서 같다 (§7.4) |
 
 - pandas의 groupby 합은 Kahan 보정 합이라서 우리와 비트가 다를 수 있다. 우리 그룹 합은 그 그룹의 행만 고른 `Series.sum()`과 같다 (§9.1).
 
 ### 2.6 배열 영역과 다른 곳
-- 규칙의 차이(정수 0 나누기는 NA, bool 산술은 에러, int와 float의 정확한 비교, 내림차순의 NaN, `ddof=1` 등)는 루트 DESIGN §4.4의 표에 있다.
-- 통합 중 M6에서 이 차이를 다시 정한다 (루트 DESIGN §4.4, §8).
+- 값 규칙은 배열 영역과 같다: bool 산술은 int64 산술, int와 float는 float64로 바꿔 비교, 변환의 세 갈래(§2.4), float → int64는 포화와 NaN → 0, `std`/`var`는 `correction=0`, 내림차순의 NaN은 맨 앞, `unique`에서 NaN은 하나 (루트 DESIGN §9.1).
+- **남은 차이는 NA에서 나온다** (루트 DESIGN §9.1 1번, 8번): `int // 0`, `int % 0`, `int ** 음수`는 NA(배열은 0, `a`, 정수 결과), 값이 모자란 리덕션은 NA(배열은 NaN이나 ValueError).
+- 그 밖에 코드에 남은 차이(bool과 int의 비교, bool의 단항 `+`, CSV 추론의 정확성 규칙)는 루트 DESIGN §8.4에 적었다.
 
 ---
 
@@ -175,9 +191,11 @@
 - **list에서 만들기** (`from_list`)는 C++에서 list를 두 번 훑는다.
   1. 원소마다 종류(NA, bool, int, float, str)를 정하고, 숫자는 바로 읽어 둔다. 문자열은 UTF-8 길이만 더한다(`PyUnicode_AsUTF8AndSize`는 UTF-8 표현을 str 객체에 캐시하므로 2단계에서 다시 불러도 싸다).
   2. 본 종류의 조합으로 dtype을 정하고 채운다. 문자열 바이트 버퍼는 한 번에 할당한다.
+  - int64 범위 밖의 int는 1단계에서 double로 읽어 두고 표시만 한다. 2단계에서 float64 컬럼이면 그 double을 쓰고, int64 컬럼이면 OverflowError다 (`int_value`, 배열과 같은 규칙).
+  - `dtype=`은 추론한 컬럼에 `astype`을 한 번 더 한다(명시적 변환, §2.4). int만 있는 list를 float64로 요청할 때만 처음부터 float64로 채운다. 범위 밖의 int도 받기 위해서다.
   - bool을 int보다 먼저 확인한다(`True`는 int의 하위 타입이다). `numpy.int32`, `numpy.bool` 같은 numpy 스칼라는 하위 타입이 아니라서 따로 읽는다.
   - 1M `list[int]` 4.77ms (pandas 50.7ms, Polars 4.76ms). pandas는 시간의 대부분을 입력 정리와 dtype 추론(`sanitize_array`)에 쓴다.
-- 통합 중 M6에서 배열과 주고받는 `to_array`, `Series(arr)`가 생긴다. 규칙은 위와 같은 이유로 같다: 나갈 때 읽기 전용 공유, 들어올 때 복사 (루트 DESIGN §4.3).
+- `sd.ndarray`와 주고받는 `to_array`, `Series(arr)`도 같은 이유로 같은 규칙이다: 나갈 때 읽기 전용 공유, 들어올 때 복사 (§5.4, 루트 DESIGN §4.3).
 
 ---
 
@@ -252,7 +270,7 @@ Column (값 타입: 정수 넷 + shared_ptr 셋)
 - **offsets는 int64**: int32면 한 컬럼이 2GB로 제한된다 (Arrow `large_string`과 같다).
 - **문자열 레이아웃의 득실**
   - 해시, 비교, 필터, 정렬이 Python 객체를 거치지 않고 바이트를 바로 읽는다. 1M 문자열의 `nunique`(키 10만 종)가 pandas 21.5ms 대 15.2ms, 이어 붙이기가 37.4ms 대 4.46ms였다.
-  - `to_list()`는 원소마다 UTF-8을 디코딩해 str 객체를 새로 만든다. 1M에 15.7ms, pandas 3의 `str` dtype은 객체를 이미 들고 있어서 5.3ms다. 받아들인 대가다.
+  - `tolist()`는 원소마다 UTF-8을 디코딩해 str 객체를 새로 만든다. 1M에 15.7ms, pandas 3의 `str` dtype은 객체를 이미 들고 있어서 5.3ms다. 받아들인 대가다.
   - 짧은 문자열을 인라인으로 두는 레이아웃(Polars의 German string)은 쓰지 않는다.
 
 ---
@@ -284,7 +302,7 @@ s._col ─────────► Column B ──┘          s.iloc[0] = 99
 - 복사는 필요할 때만 한다. 테스트는 아무도 Buffer를 들고 있지 않을 때 `to_numpy()`의 주소가 쓰기 전후에 같은지 본다.
 - 10행 Series의 `s.iloc[3] = 1`이 0.94µs다 (pandas 5.94µs).
 - **문자열 컬럼은 항상 새 Buffer를 만든다.** 값의 길이가 바뀔 수 있다.
-- `df["c"] = ...`는 컬럼을 통째로 바꾸는 것이라 dtype이 바뀌어도 된다. 기존 컬럼의 행에 쓸 때는 손실 없는 변환만 받는다 (`docs/api/frame.md`).
+- `df["c"] = ...`는 컬럼을 통째로 바꾸는 것이라 dtype이 바뀌어도 된다. 기존 컬럼의 행에 쓸 때는 암묵적 변환(dtype만 보고 위로만, §2.4)으로 값을 컬럼 dtype에 맞춘 뒤 `set_rows`가 쓴다 (`_series.assignment_values`).
 
 ### 5.3 스냅샷 규칙
 - 연산은 **호출 시점의 값**을 본다. 다른 Python 스레드가 연산 중에 대입해도 결과가 섞이지 않는다.
@@ -295,7 +313,22 @@ s._col ─────────► Column B ──┘          s.iloc[0] = 99
 - 테스트: 한 스레드가 `s.iloc[k] = 1`을 k = 0, 1, 2, …로 쓰는 동안 다른 스레드가 `s + 0`을 반복한다. 모든 결과가 "앞의 k개만 1"인 꼴이어야 한다.
 
 ### 5.4 배열과의 경계
-- 통합 중 M6에서 배열 뷰가 Column과 같은 Buffer를 가리키게 된다. 읽기 전용 배열 뷰가 Buffer 참조를 쥐고 있으면 §5.2의 규칙이 그대로 복사를 일으킨다. 배열 → frame은 항상 복사한다 (루트 DESIGN §4.3).
+- **frame이 배열 영역을 만나는 곳은 `frame/interop.{hpp,cpp}` 하나다** (루트 DESIGN §4.3, ARCHITECTURE §1). `array/`의 헤더(`ndarray.hpp`, `ops/reduction.hpp`)와 `bind/pyutil.hpp`를 include하는 frame 파일은 이것뿐이다. 하는 일은 넷이다.
+
+  | 함수 | 하는 일 | 쓰는 곳 |
+  |---|---|---|
+  | `to_array_view(col, writeable)` | NA 없는 bool/int64/float64 컬럼의 값 위에 1차원 `NDArray`를 만든다. `buffer`는 Column의 values Buffer를 그대로 가리키고, `data`는 `offset`만큼 민 자리다. 복사하지 않는다 | `Series.to_array`, `Column.to_array_view` |
+  | `from_array(arr)` | 1차원 배열을 새 Column으로 복사한다. 연속이면 `memcpy` 한 번, 아니면 원소마다. complex128은 TypeError | `Series(arr)`, `DataFrame(arr2d)`(열마다 `arr[:, j]`) |
+  | `columns_to_array(cols, n)` | 같은 dtype, NA 없는 k개 컬럼으로 (n, k) F-order 배열을 만든다. strides는 `(itemsize, n·itemsize)`, 컬럼마다 `memcpy` 한 번 | `DataFrame.to_array` |
+  | `array_sum_float64(col)` | int64/bool 컬럼 위의 읽기 전용 뷰로 배열의 `sd::sum(view, dtype=float64)`를 부른다. NA 행은 0이라 그대로 더한다 | int64 `mean` (§7.4) |
+
+- **나갈 때는 공유, 읽기 전용이다.** 뷰의 `NDArray::buffer`는 Column과 같은 `shared_ptr<Buffer>`이므로, 뷰가 살아 있는 동안 그 Buffer의 `use_count()`가 하나 늘어 있다. frame 쪽 대입은 §5.2의 규칙 그대로 이것을 보고 먼저 복사한다. Copy-on-Write를 고칠 필요가 없었다. 뷰의 값은 바뀌지 않는다.
+  - 읽기 전용이어야 하는 이유는 numpy 뷰와 같다(§3.4): 쓸 수 있으면 배열을 통해 Series가 바뀐다.
+  - 예외: 이 호출이 방금 만든 Column(dtype 변환이나 NA 채우기의 결과)은 아무도 들고 있지 않으므로 쓸 수 있는 배열로 내준다 (`writeable`, `_column.array_column`의 `fresh`). `copy=True`는 배열 쪽 `asarray(copy=True)`로 복사한다.
+- **들어올 때는 언제나 복사한다.** 배열은 다른 쓰기 가능한 뷰를 통해 바뀔 수 있어서, frame의 Copy-on-Write가 그 쓰기를 볼 수 없다. numpy에서 들어올 때(§3.4)와 같은 이유다.
+- **F-order**: Column은 컬럼마다 따로 연속이다. (n, k) 배열을 F-order로 만들면 컬럼 하나가 연속된 한 덩어리라서 복사가 컬럼마다 `memcpy` 한 번이다. `sd.linalg`의 패킹은 F-order 입력을 가장 빠른 경로(열마다 복사와 유한성 검사를 한 패스로)로 읽는다 (linalg.md §5.3).
+- **int64 평균이 배열의 합을 부르는 이유**: 두 영역의 `mean(int64)`가 비트까지 같아야 한다 (루트 DESIGN §9.1 11번). 같은 계산을 frame에 다시 쓰면 배열의 덧셈 순서(4,096원소 버퍼 단위의 형변환과 블록, array.md §4.3, §6.9)를 따라 해야 한다. 배열의 함수를 그대로 부르면 순서가 저절로 같다. 대가로 이 호출은 Python 객체(읽기 전용 뷰)를 하나 만들고 배열의 공개 함수를 거치므로 GIL이 필요하다 (`interop.hpp`의 "Needs the GIL").
+- 테스트: `tests/interop/test_frame_array.py`가 공유와 복사, 읽기 전용 뷰, 경계를 넘는 Copy-on-Write, F-order strides, `sd.linalg.lstsq(df.to_array(), ...)`, int 평균의 비트, 비교와 float → int 변환이 두 영역에서 같은지를 본다.
 
 ---
 
@@ -370,7 +403,7 @@ s + 1  →  Series.__add__  →  1행 Column(1)
   - 반대쪽 연산(`1 - s`)은 피연산자 순서만 바꿔 같은 커널을 부른다.
   - **NA 스칼라는 반대쪽 dtype의 1행 NA Column이다.** `s_int + NA`는 int64, `s_int / NA`는 float64다. NA를 위한 dtype 규칙이 따로 없다.
   - `__array_ufunc__ = None`: `np.array + s`에서 numpy가 Series를 배열로 바꿔 버리지 않게 한다.
-- **연산 종류도 템플릿 인자다.** 행마다 `switch`로 고르던 int–float 비교가 1.90ms, 템플릿 인자로 올리자 0.71ms였다. Kleene `&`는 5.09ms → 1.07ms였다(분기 없는 식, 연산 종류를 템플릿 인자로).
+- **연산 종류도 템플릿 인자다.** 행마다 `switch`로 고르던 int–float 비교가 1.90ms, 템플릿 인자로 올리자 0.71ms였다(옛 규칙의 정확한 비교에서 잰 값). Kleene `&`는 5.09ms → 1.07ms였다(분기 없는 식, 연산 종류를 템플릿 인자로).
 - **결과 validity**는 세 단계다.
   1. 두 입력의 비트맵을 비트 0으로 맞춘 뒤 AND한다 (`and_validity`). NA 스칼라면 모든 행이 NA다.
   2. 커널이 직접 NA를 만든다: `int // 0`, `int % 0`, `int ** 음수`.
@@ -381,10 +414,10 @@ s + 1  →  Series.__add__  →  1행 Column(1)
   - 바닥 나눗셈: C++의 `/`는 0 쪽으로 자른다. 나머지가 있고 부호가 다르면 몫에서 1을 뺀다. `%`는 나누는 수의 부호를 따른다.
   - 거듭제곱은 제곱을 반복하고 wrap한다 (numpy와 같다).
 - **float `//`, `%`는 numpy의 `npy_divmod`를 그대로 옮겼다.** 정의대로 `floor(a / b)`를 계산하면 `a / b`가 먼저 반올림되어 다르다(`1.0 // 0.1`이 numpy는 9, 정의대로면 10). `fmod`로 정확한 나머지를 먼저 구하고 `(a - mod) / b`를 정수로 맞춘다. 나머지가 0이면 `copysign(0, b)`다.
-- **int와 float를 반올림 없이 비교한다** (`compare_int_double`).
-  - `|i| ≤ 2⁵³`이면 int가 double로 정확히 바뀌므로 일반 비교가 곧 정확한 비교다. 이 빠른 길은 정확성의 조건이지 휴리스틱이 아니다.
-  - 그 밖: `d`가 int64 범위 밖이면 바로 답하고, 아니면 `trunc(d)`(정확한 int64)와 비교한 뒤 소수부의 부호로 정한다. NaN은 순서 없음이다.
-  - 정확성의 대가: 1M `int64 > 0.5`가 707µs, numpy식 변환 비교(pandas)가 439µs다.
+- **int와 float는 int를 float64로 바꿔 비교한다** (`compare_mixed` → `compare_plain<int64_t, double>`). 배열 영역, numpy, pandas와 같은 규칙이다 (루트 DESIGN §9.1 3번). C++의 산술 변환이 int64를 가장 가까운 double로 바꾸고, 같은 dtype끼리의 비교와 같은 커널이다. NaN과의 비교는 IEEE 754대로 False(`!=`만 True)다.
+  - 반올림 없는 정확한 비교는 하지 않는다. 두 규칙의 비용은 루트 DESIGN §9.8에 있다. 이 커널의 시간은 다시 재지 않았다.
+- **bool의 산술은 int64로 바꾼 뒤 int 커널로 간다** (`binary_op`, `unary_op`의 `neg`, `abs`). 배열 영역과 같다. bool 컬럼은 `astype(Int64)`로 한 번 복사된다. 같은 길로 `// 0`의 NA 같은 int 규칙이 그대로 적용된다.
+- **int64 비트 연산** (`int_bitwise`, 단항 `~`는 `unary_op`의 `invert`): `&`, `|`, `^`는 int64끼리(bool은 int64로 올림), `<<`, `>>`는 int64끼리만이다. 시프트 수는 부호 없는 수로 읽어 64 이상(음수 포함)이면 모든 비트가 밀려 나간다(C++에서는 정의되지 않은 동작이라 따로 검사한다). 배열의 `bitwise_*`와 같은 규칙이다. bool끼리의 `&`, `|`, `^`는 아래의 Kleene 논리다.
 - **Kleene 논리** (`&`, `|`): 한쪽이 확실한 False(`&`)나 True(`|`)면 결과가 정해진다. validity를 바이트로 펼치고, 식을 그대로 쓰고, 출력 비트를 8개씩 모아 쓴다.
 
   | 연산 | 값 | NA가 아닌 조건 |
@@ -411,7 +444,7 @@ s + 1  →  Series.__add__  →  1행 Column(1)
 
 ### 7.4 리덕션 (`ops/reduce.cpp`, `ops/pairwise.hpp`)
 - **결과는 1행 Column이다** (NA면 1행 NA). Series는 스칼라로 꺼내고, DataFrame은 컬럼마다 하나씩 모아 1행 DataFrame을 만든다. 행 라벨은 연산 이름이다.
-- 값이 모자라면(`n - ddof ≤ 0`, 모두 NA인 `mean`) NA다. NaN은 실제 계산에서 나올 때만 쓴다.
+- 값이 모자라면(`n - correction ≤ 0`, 모두 NA인 `mean`) NA다. NaN은 실제 계산에서 나올 때만 쓴다. `correction`은 배열처럼 int나 float이고 double로 받는다 (`_reduce._check_correction`).
 - **float 합은 numpy의 pairwise 합이다.** 정의는 모든 영역이 함께 쓰는 `base/pairwise.hpp` 한 벌이다(트리 모양, 잎의 합, 병렬 계획과 합치기; array.md §6.2). frame은 접근자로 부른다.
   ```
   n < 8      : 0.0에서 시작해 차례로
@@ -422,13 +455,15 @@ s + 1  →  Series.__add__  →  1행 Column(1)
   - 사슬 8개가 동시에 진행되어 빠르고(1M에 86~98µs, Polars 85µs, pandas 202µs), 반올림 오차가 log n에 비례한다.
   - **`0.0 +`**: `np.sum([-0.0] * 9)`는 `+0.0`이다. 이 시작 때문이다.
   - NA 행은 0.0이라 분기 없이 함께 더한다 (§4.5). 0.0을 더해도 합은 변하지 않는다.
-  - `mean`, `var`, `std`는 pandas가 계산하는 식(평균 → `(x - 평균)²` → pairwise 합 → `/(n - ddof)`)을 따른다. NA가 없으면 pandas와, 언제나 numpy로 한 단계씩 재현한 값과 비트까지 같다.
+  - float의 `mean`, `var`, `std`는 pandas가 계산하는 식(평균 → `(x - 평균)²` → pairwise 합 → `/(n - correction)`)을 따른다. NA가 없으면 pandas와(`var`, `std`는 같은 자유도를 줄 때), 언제나 numpy로 한 단계씩 재현한 값과 비트까지 같다.
   - **병렬**: 2¹⁴개(`kPairwiseLeaf`) 이하의 부분 트리가 태스크이고(`pairwise::plan`), 위쪽 노드는 같은 트리 모양으로 더한다(`pairwise::combine`). 모든 노드가 직렬 재귀의 노드라서 스레드 수와 무관하게 numpy와 비트가 같다. 잎 크기는 배열(2¹²)과 다르지만 같은 트리 위의 서로 다른 자르기라서 비트는 같다. 나누는 기준은 frame의 기준값이다 (§11.2).
 - **int64 합**은 wrap한다. 결합법칙이 성립하므로 청크 결과를 청크 순서로 접는다.
-- **int64 평균은 `__int128`로 정확히 더한 뒤 한 번 float64로 반올림하고 나눈다.**
-  - pandas는 먼저 float64로 바꿔 더하므로 2⁵³을 넘는 값은 더하기 전에 반올림된다.
-  - 1M개의 int64를 더해도 2⁸³보다 작으므로 넘치지 않는다.
-  - 대가: int128 덧셈은 64비트 덧셈 둘(add + adc)이라 잘 벡터화되지 않는다. 1M `mean`이 152µs, Polars 79µs다.
+- **int64 평균은 배열 영역의 float64 합이다** (`mean_of` → `interop.cpp`의 `array_sum_float64`, §5.4). 컬럼 위의 읽기 전용 뷰로 `sd.sum(x, dtype=sd.float64)`을 부르고 NA가 아닌 개수로 나눈다. NA 행은 0이라 그대로 더한다.
+  - 그래서 `Series.mean()`과 `sd.mean(s.to_array())`가 비트까지 같다 (루트 DESIGN §9.1 11번, 테스트 `test_int_mean_has_the_array_bits`). int는 더하기 전에 float64로 반올림된다(numpy, pandas와 같다).
+  - 덧셈 순서는 배열의 것이다: 4,096원소 버퍼로 형변환하며 접는다 (array.md §4.3, §6.9). 그래서 frame의 float 합(위의 pairwise)과는 순서가 다르고, 길면 numpy와 마지막 비트가 다를 수 있다.
+  - int128로 정확히 더하는 안과 비용 비교는 루트 DESIGN §9.8에 있다. 이 경로의 시간은 frame에서 다시 재지 않았다(배열의 `sd.mean(int 배열)`은 191µs, 같은 절).
+  - `var`, `std`의 평균도 이 값이다. 편차 제곱의 합은 frame의 pairwise다.
+  - bool 평균은 True의 개수(정수 합)를 개수로 나눈다.
 - **float min/max는 IEEE 754-2019 minimum/maximum이다** (`ieee_minmax`). AArch64의 `FMIN`/`FMAX`가 정확히 이것이다: NaN을 전파하고 `-0.0 < 0.0`이다.
   - NA가 없으면 NEON 누산기 4개(각 2레인)로 접는다. 스칼라 경우도 같은 명령의 한 레인으로 계산해서 두 경로의 비트가 같다.
   - NA가 있으면 1,024행 블록마다 NA 행을 항등원(min은 +inf, max는 -inf)으로 바꿔 복사한 뒤(분기 없는 선택) 같은 명령으로 접는다.
@@ -436,7 +471,7 @@ s + 1  →  Series.__add__  →  1행 Column(1)
   - 처음 구현(이긴 행의 위치를 들고, 행마다 dtype `switch`와 NA 비트 확인)은 848µs였다. 값 자체를 들고 다니고 NEON으로 접어 73µs다 (pandas 325µs, Polars 125µs).
   - int64 min은 NEON에 64비트 정수 min이 없어 비교 + `bsl`로 벡터화된다. 119µs, numpy 79µs다.
 - **문자열 min/max**는 이긴 행(같으면 앞의 것)을 골라 1행 슬라이스로 돌려준다.
-- groupby는 같은 함수(`float_sum`, `ieee_minmax`, int128 평균)를 그룹마다 부른다 (§9.1).
+- groupby는 같은 함수(`float_sum`, `ieee_minmax`)를 그룹마다 부른다. int64의 그룹 평균은 배열을 부르지 않고 그룹의 행을 float64로 바꿔 `float_sum`으로 더한다 (§9.1).
 
 ### 7.5 astype과 문자열 문법 (`ops/cast.cpp`, `ops/parse.hpp`)
 - **float → string은 Python `str(float)`이다.** 다시 읽어 같은 값이 되는 가장 짧은 숫자열(`std::to_chars`)을 구하고, 10진 지수가 (-4, 16]이면 고정소수점, 아니면 지수 표기(`1e+16`, 지수는 최소 두 자리)로 쓴다. 정수 값에는 `.0`을 붙인다. NaN, ±inf, 비정규수를 포함한 임의의 float에서 `str(v)`와 같다.
@@ -444,8 +479,8 @@ s + 1  →  Series.__add__  →  1행 Column(1)
 - **string → 숫자는 엄격한 ASCII 문법이다.** 부호, 숫자, 소수점, 지수, 그리고 float는 `nan`, `inf`, `infinity`(대소문자 무관)만 받는다. 공백, `_`, 유니코드 숫자는 받지 않는다(Python `int()`는 받는다).
   - **`astype`과 `read_csv`가 같은 문법 코드(`parse.hpp`)를 쓴다.** 그래서 `read_csv(..., dtype="string")` 뒤에 `astype`해도 같은 결과다.
   - 파서는 §10.4다. 범위를 넘는 float(`1e400`)는 Python처럼 inf다.
-- **float → int64**: 0 쪽으로 자르고, NaN, inf, 범위 밖은 ValueError다. "모두 범위 안인가"를 먼저 분기 없이 확인한다. 값마다 범위를 검사하고 예외를 던지는 람다를 부르던 때 1.90ms, 지금 333µs(10스레드 56µs)다.
-- 실패한 행은 행 순서로 가장 앞의 것을 보고한다 (§11.6).
+- **float → int64**: 배열 영역과 같은 `saturate_to_int64`(`base/saturate.hpp`)다. 0 쪽으로 자르고, 범위 밖과 ±inf는 포화, NaN은 0이다. ARM `FCVTZS` 명령 하나라서 실패하는 행이 없고 분기도 없다 (array.md §2.4). frame에서 이 경로의 시간은 다시 재지 않았다.
+- 실패할 수 있는 변환(string → 숫자, string → bool)은 행 순서로 가장 앞의 실패를 보고한다 (§11.6).
 - string → bool은 `"True"`와 `"False"`만 받는다.
 
 ### 7.6 벡터화를 막는 앨리어싱
@@ -468,7 +503,8 @@ first   [0, 1, 2, 4, 6]                           코드마다 처음 나온 행
 ```
 | 기능 | 계산 |
 |---|---|
-| `unique()` | `col.take(first)` |
+| `unique_values()` | `col.take(first)`를 groupby의 그룹 순서(§9.2)로 정렬 (`sort_groups`) |
+| `drop_duplicates()` | 처음 나온 행만 남긴다 (`duplicated(keep="first")`의 반대) |
 | `nunique()` | 코드의 개수 (`dropna=True`이고 NA가 있으면 1을 뺀다) |
 | `duplicated(keep="first")` | `위치 != first.take(codes)` |
 | `duplicated(keep="last")` | 위와 같고 코드마다 마지막 행을 쓴다 |
@@ -480,7 +516,7 @@ first   [0, 1, 2, 4, 6]                           코드마다 처음 나온 행
 
 - 그래서 "같은 키"의 규칙은 C++ factorize 한 곳에만 있다.
 - 결과에는 원래 값이 나온다. `first`가 원래 행 번호이므로 `take(first)`가 먼저 나온 원래 값(`-0.0`이나 원래 NaN 비트)을 돌려준다.
-- 코드는 **처음 나타난 순서**다. 결과의 순서(`unique`, `sort=False`의 groupby)가 이것으로 정해지고, 스레드 수와 무관하다 (§8.7).
+- 코드는 **처음 나타난 순서**다. 결과의 순서(`drop_duplicates`, `value_counts(sort=False)`, `sort=False`의 groupby)가 이것으로 정해지고, 스레드 수와 무관하다 (§8.7).
 - factorize는 공개하지 않는다.
 
 ### 8.2 키 정규화 (`float_key`)
@@ -615,6 +651,7 @@ rows    [0, 2, 1, 3]            그룹 안에서는 원래 행 순서
 2. `Groups`가 안정 counting sort로 행을 그룹별로 모은다. 그룹 안에서 원래 행 순서를 지킨다.
 3. 그룹마다 §7.4와 같은 함수로 리덕션한다.
    - **sum, mean, var, std**: 그룹의 행을 원래 순서대로 pairwise로 더한다. 그래서 그룹 결과는 `df[df["k"] == 키]["v"].sum()`과 **비트까지 같다.** 테스트의 정답이 이것이다.
+   - **int64의 mean**(과 var, std 안의 평균): 그룹의 행을 float64로 바꿔 `0.0 +` pairwise로 더한다. Series의 int64 `mean`은 배열의 합(§7.4)이라서, 같은 비트가 나오는 것은 그룹이 4,096행 이하일 때다. 4,096은 배열이 형변환하며 접는 버퍼의 크기다 (array.md §4.3). 더 긴 그룹은 마지막 비트가 다를 수 있다 (`docs/api/frame.md` §7.5).
    - **min, max, first, last**: 그룹마다 이긴 행을 고른 뒤 `take`한다 (§7.1). 값이 없는 그룹은 -1이라 NA가 된다.
 4. 출력 순서: 코드 순서(처음 나타난 순서)다. `sort=True`면 §9.2의 순서, `dropna=True`면 NA 키 그룹을 뺀다.
 - 행을 그룹별로 모으는 대가로 행 위치 배열(8B × n)을 한 번 더 쓴다. 대신 float 합이 Series와 같아지고, 그룹을 태스크로 나누기 쉽다.
@@ -833,6 +870,7 @@ CSV는 아무 데서나 자를 수 없다. 따옴표 안의 줄바꿈은 레코�
   - `for_chunks`는 기준값 이상이면 `parallel_for`를 부르고, `parallel_for`는 언제나 GIL을 놓는다.
   - 나누지 않는 직렬 구간(직렬 factorize, 직렬 기수 정렬과 counting sort, merge의 번호 매기기, CSV 파싱, 대량 복사)은 `Unlocked(work)`로 놓는다.
   - 기준값 아래면 GIL을 쥔 채 돈다. 작은 호출에 GIL을 놓고 잡는 비용이 더해지지 않는다.
+  - 예외: int64 `mean`(과 그 평균을 쓰는 `var`, `std`)은 배열의 `sd::sum`을 부르므로(§5.4) 그 합은 배열의 GIL 규칙을 따른다. 1스레드면 GIL을 쥔 채 돈다 (array.md §10.2).
 - 배열 영역은 1스레드면 `parallel_for`를 부르지 않아 GIL을 쥔 채 돈다 (array.md §10.2). 이 차이는 루트 DESIGN §5.1에 적혀 있다.
 - **태스크는 Python 객체를 만지지 않는다.** 에러 메시지(값의 `repr`이 들어간다)는 병렬 구간이 끝나고 GIL을 다시 잡은 뒤 만든다 (§11.6).
 - **GIL을 쥐는 곳**: `set_rows`(§5.3), Index 엔진 캐시를 만들 때(§6.2).
@@ -860,7 +898,7 @@ CSV는 아무 데서나 자를 수 없다. 따옴표 안의 줄바꿈은 레코�
 - 테스트는 1, 3, 기본 스레드 수에서 같은 결과(값의 비트, 행 순서, 에러 메시지)가 나오는지 비교한다.
 
 ### 11.6 에러 위치 (`FirstRow`)
-- `astype("int64")`에서 1M 행 중 세 곳에 inf, NaN, 1e300이 있으면, 어느 청크가 먼저 실패할지는 스레드 일정에 달렸다.
+- string 컬럼의 `astype("int64")`에서 1M 행 중 세 곳에 숫자가 아닌 값이 있으면, 어느 청크가 먼저 실패할지는 스레드 일정에 달렸다.
 - 청크마다 자기의 첫 실패 행만 `FirstRow`에 내고, 가장 작은 행이 이긴다. 앞에서 이미 실패했으면 뒤 청크는 일찍 멈춘다(`failed_before`).
 - 메시지는 병렬 구간이 끝나고 GIL을 다시 잡은 뒤 만든다.
 - CSV는 여기에 "토큰화 에러가 값 에러보다 먼저, 열 순서로"를 더한다 (§10.6).
@@ -937,13 +975,15 @@ CSV는 아무 데서나 자를 수 없다. 따옴표 안의 줄바꿈은 레코�
 - **정답(oracle)**
   - pandas 3.1.1. `docs/api/frame.md`의 "pandas와 다름" 항목은 변환 규칙을 따로 두고 비교한다.
   - 규칙을 Python으로 그대로 옮긴 참조 구현: factorize(Python dict), merge(행 순서 규칙의 이중 반복문), read_csv(옵션과 추론 규칙)
-  - Python 자체: 정렬은 `sorted()`(`reverse=True`에서도 안정), int–float 비교, `str(float)`, `float(text)`, int 평균
+  - Python 자체: 정렬은 `sorted()`(`reverse=True`에서도 안정), `str(float)`, `float(text)`
+  - 배열 영역: int 평균은 `sd.sum(x, dtype=sd.float64)` / 개수, int–float 비교와 float → int 변환은 `sd.equal`, `sd.astype`의 결과와 같아야 한다 (`tests/interop/`)
   - numpy: float 합과 mean/var/std를 한 단계씩 재현해 **비트 단위로** 비교한다. `-0.0`과 `0.0`도 구분한다.
   - groupby: 그 그룹의 행만 고른 Series의 리덕션 (§9.1)
 - repr은 pandas 출력과 글자 단위로 같다(행 0~100, 열 0~23, 극단적 float, 탭과 줄바꿈이 든 문자열).
 - **스레드**: 1, 3, 기본 스레드 수에서 같은 결과. CSV는 여러 512KB 청크에 걸친 파일(따옴표 안 줄바꿈, `""`, CRLF, 한글, 세 청크에 걸친 1.5MB 따옴표 필드, 앞뒤의 에러 두 개)을 직렬 정답과 비교한다.
 - **스냅샷**: §5.3의 동시 대입 테스트
 - Copy-on-Write가 정말 그 자리에서 쓰는지(`to_numpy()` 주소)도 본다 (§5.2).
+- **배열과의 경계** (`tests/interop/test_frame_array.py`): §5.4의 공유, 복사, 읽기 전용 뷰, 뷰가 살아 있을 때의 Copy-on-Write.
 - 공개 이름과 시그니처는 `test_api_surface.py`가 `docs/api/frame.md`와 맞춘다 (루트 DESIGN §5.3).
 
 ### 13.2 측정 방법

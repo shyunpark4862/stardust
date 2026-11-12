@@ -156,6 +156,7 @@ def test_bool_arithmetic_is_int64_arithmetic():
     assert (t + 0.5).dtype is sd.float64 and q[0] == 1.0 and math.isnan(q[1]) and q[2] is NA
     assert (t // t).tolist() == [1, NA, NA]  # the int rule: // 0 is NA
     assert (-t).tolist() == [-1, 0, NA] and abs(t).tolist() == [1, 0, NA]
+    assert (+t).dtype is sd.int64 and (+t).tolist() == [1, 0, NA]
 
 
 def test_numpy_does_not_hijack_operators():

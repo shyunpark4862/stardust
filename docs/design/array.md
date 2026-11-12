@@ -92,7 +92,7 @@
   - 비트 연산은 int64와 bool. 시프트는 int64만이고 bool 입력은 명시적으로 막는다 (`no_bool_inputs`).
   - `divide`는 int64 루프가 없다. 정수는 float64로 나눈다. 초월함수와 `sqrt`도 정수 루프가 없어 float64로 계산한다.
   - 반올림(`floor`/`ceil`/`trunc`/`round`)의 정수 루프는 항등 함수이고 dtype을 유지한다. complex는 `round`만 있다(실수부, 허수부 따로).
-- 통합 중 M6에서 int와 float의 비교가 수학적으로 정확한 비교로 바뀐다 (DESIGN §4.4 3번).
+- int와 float의 비교는 승격 규칙대로 float64 루프에서 한다: int를 float64로 바꾼 뒤 비교한다 (numpy와 같다). frame도 같은 규칙이다 (DESIGN §9.1 3번).
 
 ### 2.2 0차원 배열 없음
 - 결과가 암묵적으로 0차원이 되면 Python 스칼라를 반환한다.
@@ -172,7 +172,7 @@
 - `copy: bool | None`: True는 항상 복사, False는 복사가 필요하면 에러, None은 필요할 때만 복사.
 - 전치: `.T`는 2차원에서만, `.mT`는 마지막 두 축, 일반 축 순서는 `permute_dims`.
 - `where`는 인자 3개 형태만 있다.
-- dtype 지정은 dtype 객체(`sd.bool`, `sd.int64`, `sd.float64`, `sd.complex128`)만 받는다. Python 타입과 문자열은 거부한다. 통합 중 M6에서 이름 문자열도 받게 된다 (DESIGN §4.2).
+- dtype 지정은 dtype 객체(`sd.bool`, `sd.int64`, `sd.float64`, `sd.complex128`)와 그 이름 문자열(`"float64"`)을 받는다 (API.md §1, DESIGN §9.2). Python 타입, 다른 이름, 배열에 없는 `sd.string`은 TypeError다 (`bind/pyutil.cpp`의 `parse_any_dtype`, 이름은 `base/dtype.hpp`의 `dtype_from_name`).
 - ufunc의 피연산자는 ndarray와 Python 스칼라(numpy 스칼라 포함, §12.2)뿐이다. 리스트나 다른 라이브러리의 배열은 `asarray`로 먼저 바꾼다 (`is_operand`). `real`, `imag`도 `conj`처럼 스칼라를 받는다.
 
 ---
@@ -352,7 +352,7 @@ numpy의 `DOUBLE_pairwise_sum`/`CDOUBLE_pairwise_sum`과 같은 알고리즘, �
   - 알고리즘과 순서가 같으니 결과가 numpy와 비트까지 같다.
 - **병렬**: 재귀 트리는 n에만 의존한다. 4096개(`kLeaf = kParallelTask`, complex는 2048개) 이하인 부분 트리를 잎으로 삼아 병렬로 계산하고, 같은 트리를 따라 합친다 (`pairwise_parallel`). 덧셈 하나하나가 직렬 계산과 같은 순서이므로 **스레드 수와 상관없이 numpy와 비트가 같다.** 원소 300만 개에서 1스레드와 10스레드 모두 `sum(x) == np.sum(x)`를 테스트한다.
 - `var`의 두 번째 패스(편차 제곱합)도 안쪽 축이면 같은 pairwise로 접는다.
-- **정의는 `base/pairwise.hpp` 한 벌이다**: 트리 모양, 잎의 합, 병렬 계획(`plan`)과 합치기(`combine`). 배열의 `pairwise_sum`, `pairwise_parallel`(`array/kernels/reduce.hpp`)은 항을 접근자로 넘겨 그것을 부른다. linalg도 같은 정의를 쓴다 (docs/design/linalg.md §8.2). 통합 중 M4에서 frame도 같은 정의를 쓴다.
+- **정의는 `base/pairwise.hpp` 한 벌이다**: 트리 모양, 잎의 합, 병렬 계획(`plan`)과 합치기(`combine`). 배열의 `pairwise_sum`, `pairwise_parallel`(`array/kernels/reduce.hpp`)은 항을 접근자로 넘겨 그것을 부른다. linalg와 frame도 같은 정의를 쓴다 (docs/design/linalg.md §8.2, docs/design/frame.md §7.4).
   - 잎의 합(`pairwise::leaf`, `leaf_complex`)은 `[[gnu::always_inline]]`이다. 배열은 트리 → 람다 → 잎 → 접근자 람다의 여러 겹으로 부르는데, 잎이 인라인되지 않으면 원소마다 호출이 남아 1스레드 `sum(f)`(원소 100만 개)가 110µs에서 152µs로 느려졌다(잰 값).
 
 ### 6.3 max/min, argmax/argmin
@@ -416,7 +416,7 @@ numpy의 `DOUBLE_pairwise_sum`/`CDOUBLE_pairwise_sum`과 같은 알고리즘, �
 - `mean`: 결과 dtype(float64/complex128)으로 합한 뒤 개수로 나눈다. 빈 입력은 `0/0 = nan`이다. 정수 입력은 버퍼 캐스팅으로 float64가 되어 합해진다.
 - `var`: 두 패스다. 평균을 구한 뒤, 평균과의 편차 제곱합(`|x - m|²`)을 임시 배열 없이 커널 하나로 접는다. `N - correction`으로 나눈다. `N - correction ≤ 0`이면 NaN이다 (빈 입력 포함, Array API). 두 번째 패스를 커널 하나로 하므로 numpy의 0.66배 시간이다.
 - `std = sqrt(var)`.
-- 통합 중 M6에서 `mean(int64)`가 int128로 정확히 합한 뒤 나누는 방식으로 바뀐다 (DESIGN §4.4 11번).
+- frame의 int64 `mean`도 이 계산을 그대로 쓴다: `sd.sum(x, dtype=sd.float64)`을 개수로 나눈다 (`frame/interop.cpp`의 `array_sum_float64`, DESIGN §9.1 11번). 그래서 두 영역의 결과가 비트까지 같다.
 
 ### 6.9 numpy와 비트가 달라지는 경우
 결정성(스레드 수와 무관)은 모든 경우에 지킨다. numpy와의 비트 동일성은 아래에서만 포기했다. 이유는 모두 같다: numpy의 순서를 지키면 병렬로 나눌 수 없거나 사슬 하나에 묶여 느리다.
@@ -759,7 +759,7 @@ dtype과 레인 길이만 본다. 데이터를 보고 고르지 않는다 (§1.4
   - `src/stardust/_format.py`: `repr`/`str`. 문자열 배치는 Python이 훨씬 읽기 쉽다. C++는 요약된 값(`ndarray._summary`: 원소가 1000개를 넘으면 축마다 양 끝 3개)만 넘긴다. 큰 배열을 Python 객체로 만들지 않는다.
   - `src/stardust/_results.py`: `unique_*`의 namedtuple (세 영역의 결과 namedtuple이 다 여기 있다)
 - **이유**: 작은 배열에서 연산 한 번의 비용이 Python 로직이 끼면 수 µs로 는다. numpy는 약 1µs 이하다. shape, 브로드캐스팅, 인덱싱을 Python으로 짜고 C++은 커널만 맡는 방식은 읽기 쉽지만, 작은 배열에서 numpy보다 몇 배 느려진다.
-- 확장 모듈은 `stardust._core` 하나다. 통합 중 linalg와 frame이 하위 모듈로 붙는다 (DESIGN §3.2).
+- 확장 모듈은 `stardust._core` 하나다. linalg와 frame은 그 하위 모듈(`_core.linalg`, `_core.frame`)이다 (DESIGN §3.2).
 
 ### 12.2 ndarray 타입 (`bind/array_bind.cpp`)
 - 직접 생성(`sd.ndarray()`)은 막는다. `isinstance` 검사를 위해 이름만 공개한다.
@@ -807,7 +807,7 @@ dtype과 레인 길이만 본다. 데이터를 보고 고르지 않는다 (§1.4
   - numpy와 순서가 다른 리덕션(§6.9)은 조각·블록 경계 근처 길이(0, 1, 7~9, 15~17, 4095~4097, 8191~8193, 16384~16385, 49169, 4만, 10만)에서 상대오차 1e-12 이내를 본다. 정수는 정확히 같아야 한다. pairwise 합의 상대오차 허용치는 1e-15다.
 - **레이아웃**: 원소별 연산의 dtype 쌍 테스트는 세 레이아웃(연속, 스칼라 브로드캐스트, strided)을 모두 돈다. 연산마다 실행 경로가 레이아웃에 따라 갈리기 때문이다.
 - **스레드 결정성** (`test_m8_threads.py`): 1, 2, 3, 7, 10스레드에서 같은 바이트가 나와야 한다. 블록 리덕션, `prod`, 긴 스캔, 정렬 조각, 마스크 청크 경로를 모두 포함한다. 여러 Python 스레드가 동시에 풀을 쓰는 경우와 실행 중 `set_num_threads`도 시험한다.
-- **API 표면** (`test_api_surface.py`): 문서에 적힌 이름이 모두 있는지, 문서에 없는 이름을 내보내지 않는지 확인한다. 통합 중 M1에서 `docs/api/array.md`를 읽게 바뀐다.
+- **API 표면** (`test_api_surface.py`): 문서에 적힌 이름이 모두 있는지, 문서에 없는 이름을 내보내지 않는지 확인한다. `docs/api/array.md`의 시그니처 블록을 읽는다.
 - **고치기 전 코드에서 실패하는지 확인한다.** 버그를 막는 테스트는 고치기 전 빌드에서 실패해야 한다. 패턴이 우연히 대칭이면(예: 길이 40000의 `[::3]`을 뒤집기) 고치기 전에도 통과할 수 있다.
 - 통합 중에는 골든 출력(`bench/merge/golden/`)을 스레드 수 1, 3, 10에서 바이트로 비교한다 (ROADMAP 진행 원칙).
 

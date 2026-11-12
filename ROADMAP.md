@@ -30,7 +30,7 @@
 | M3 linalg 경계 없애기 | 1단계 | 완료 (2026-11-12), docs/learn/M3-linalg-boundary.md (1단계 보고서 포함) |
 | M4 공통 바닥 정리 | 2단계 준비 | 완료 (2026-11-12), docs/learn/M4-shared-foundation.md |
 | M5 frame 옮기기 | 2단계 | 완료 (2026-11-12), docs/learn/M5-frame-move.md |
-| M6 frame과 배열 잇기, 일관성 맞추기 | 2단계 | 대기 |
+| M6 frame과 배열 잇기, 일관성 맞추기 | 2단계 | 완료 (2026-11-12), docs/learn/M6-consistency.md |
 | M7 마무리 | 마무리 | 대기 |
 
 ## 마일스톤
@@ -93,7 +93,7 @@
 - `Series.to_array()`, `DataFrame.to_array()`, 배열에서 Series/DataFrame 만들기 (DESIGN §4.3)
 - DESIGN §4.4와 2라운드(§8)에서 정한 동작, 시그니처, 이름을 세 영역에 걸쳐 맞춘다. 이 마일스톤에서만 결과와 공개 API가 바뀔 수 있다.
   - 시작 전에 바뀌는 것의 목록(DESIGN §8.4)을 함수 단위로 확정하고, 골든 비교의 "예상된 차이"로 적는다.
-  - 3번(정확한 int/float 비교)과 11번(int128 평균)은 배열 쪽 비용을 먼저 잰다. 크면 사용자에게 다시 묻는다 (DESIGN §7).
+  - 3번(int/float 비교)과 11번(int 평균)은 배열 쪽 비용을 먼저 쟀고(DESIGN §9.8), 사용자가 두 항목 모두 배열 규칙으로 통일하기로 정했다 (DESIGN §8).
 - dtype 표기 통일: `.dtype`은 객체, 두 영역 모두 객체와 이름 문자열을 받는다 (DESIGN §4.2).
 - 문서: 바뀐 규칙을 `docs/api/`와 `docs/design/`에 반영한다.
 - `tests/interop/`: 경계를 오가는 테스트, Copy-on-Write와 읽기 전용 뷰의 테스트
