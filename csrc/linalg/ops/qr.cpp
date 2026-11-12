@@ -23,15 +23,6 @@ namespace sd::linalg {
 
 namespace {
 
-// mode='reduced' | 'complete' (docs/api/linalg.md §1.1). true for 'complete'.
-bool parse_mode(nb::handle o, const char* func) {
-    if (!PyUnicode_Check(o.ptr()))
-        throw nb::type_error((std::string(func) + "(): 'mode' must be 'reduced' or 'complete'").c_str());
-    const std::string s = nb::cast<std::string>(o);
-    if (s == "reduced") return false;
-    if (s == "complete") return true;
-    throw nb::value_error((std::string(func) + "(): 'mode' must be 'reduced' or 'complete', got '" + s + "'").c_str());
-}
 
 nb::object qr_impl(nb::handle xo, nb::handle mode_o, bool pivoted) {
     const char* func = pivoted ? "qr_pivoted" : "qr";
@@ -83,8 +74,8 @@ nb::object qr_impl(nb::handle xo, nb::handle mode_o, bool pivoted) {
             return 0;
         });
         if (f) raise(b, f, func, "x");
-        if (pivoted) return make_result(Result::QRPivoted, {to_sdnp(qo), to_sdnp(ro), to_sdnp(po)});
-        return make_result(Result::QR, {to_sdnp(qo), to_sdnp(ro)});
+        if (pivoted) return make_result(Result::QRPivoted, {to_array(qo), to_array(ro), to_array(po)});
+        return make_result(Result::QR, {to_array(qo), to_array(ro)});
     });
 }
 
@@ -141,8 +132,8 @@ nb::object lstsq(nb::handle ao, nb::handle bo, nb::handle rtol_o) {
             return 0;
         });
         if (f) raise(b, f, "lstsq", "a");
-        nb::object rank_obj = b.ndim() == 0 ? py_scalar(RK[0]) : to_sdnp(rk);
-        return make_result(Result::Lstsq, {to_sdnp(xo), rank_obj, to_sdnp(so)});
+        nb::object rank_obj = b.ndim() == 0 ? py_scalar(RK[0]) : to_array(rk);
+        return make_result(Result::Lstsq, {to_array(xo), rank_obj, to_array(so)});
     });
 }
 

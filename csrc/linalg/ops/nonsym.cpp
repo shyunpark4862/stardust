@@ -22,11 +22,6 @@ namespace sd::linalg {
 
 namespace {
 
-template <class T>
-T conj_if_complex(T v) {
-    if constexpr (std::is_same_v<T, cplx>) return std::conj(v);
-    else return v;
-}
 
 // ------------------------------------------------------------ eig, eigvals --
 
@@ -100,8 +95,8 @@ nb::object eig_impl(nb::handle xo, bool vectors) {
         return 0;
     });
     if (f) raise(b, f, func, "x");
-    if (vectors) return make_result(Result::Eig, {to_sdnp(wo), to_sdnp(vo)});
-    return to_sdnp(wo);
+    if (vectors) return make_result(Result::Eig, {to_array(wo), to_array(vo)});
+    return to_array(wo);
 }
 
 nb::object eig(nb::handle x) { return eig_impl(x, true); }
@@ -126,7 +121,7 @@ nb::object schur(nb::handle xo) {
             return lapack::gees(n, t, n, zs.get(), n, s) > 0 ? kNoConvergenceEig : 0;
         });
         if (f) raise(b, f, "schur", "x");
-        return make_result(Result::Schur, {to_sdnp(to), to_sdnp(zo)});
+        return make_result(Result::Schur, {to_array(to), to_array(zo)});
     });
 }
 
@@ -156,7 +151,7 @@ nb::object hessenberg(nb::handle xo) {
             return 0;
         });
         if (f) raise(b, f, "hessenberg", "x");
-        return make_result(Result::Hessenberg, {to_sdnp(ho), to_sdnp(qo)});
+        return make_result(Result::Hessenberg, {to_array(ho), to_array(qo)});
     });
 }
 
@@ -202,7 +197,8 @@ void ldl_unpack(const T* a, const lint* ipiv, lint n, Scratch& s, T* L, T* D, st
     }
     // Replay the interchanges from the last step back to the first, on M's rows
     // (only the columns at and right of the step) and on a running permutation.
-    std::int64_t* perm = reinterpret_cast<std::int64_t*>(s.get<lint>(static_cast<std::size_t>(n), 4));
+    // Slot 3: slots 0-3 are the function body's, 4-5 the LAPACK workspaces' (batch.hpp).
+    std::int64_t* perm = reinterpret_cast<std::int64_t*>(s.get<lint>(static_cast<std::size_t>(n), 3));
     for (lint k = 0; k < n; ++k) perm[k] = k;
     for (lint k = n - 1; k >= 0; --k) {
         const lint t = swap[k];
@@ -241,7 +237,7 @@ nb::object ldl(nb::handle xo) {
             return 0;
         });
         if (f) raise(b, f, "ldl", "x");
-        return make_result(Result::LDL, {to_sdnp(lo), to_sdnp(dout), to_sdnp(po)});
+        return make_result(Result::LDL, {to_array(lo), to_array(dout), to_array(po)});
     });
 }
 

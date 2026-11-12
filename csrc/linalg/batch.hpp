@@ -24,8 +24,8 @@ namespace sd::linalg {
 
 // One operand's batch part: its batch shape and byte strides.
 struct BatchOperand {
-    std::span<const Py_ssize_t> shape;
-    std::span<const Py_ssize_t> strides;
+    std::span<const std::int64_t> shape;
+    std::span<const std::int64_t> strides;
 };
 
 class Batch {
@@ -134,7 +134,7 @@ inline double kParallelMinNs = 10000;  // a batch whose estimated serial time is
 inline double kTaskNs = 5000;          // estimated serial time of one task
 
 namespace detail {
-bool begin_parallel();  // syncs the pool with sd.get_num_threads() (needs the GIL); true if it may split
+bool begin_parallel();  // true if the shared pool may split this call (more than one thread, not inside a task)
 void run_tasks(std::int64_t ntasks, const std::function<void(std::int64_t)>& fn);
 }  // namespace detail
 

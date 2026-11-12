@@ -143,7 +143,9 @@ def test_result_is_fresh_writable_memory():
     x = sd.linalg.inv(a)
     x[0, 0] = 7.0
     assert npy(a)[0, 0] == 2.0 and npy(x)[0, 0] == 7.0
-    assert x.base is not None and x.base is not a
+    # A fresh result owns its memory like every new array: no .base
+    # (docs/api/linalg.md §1.7, docs/api/array.md §10.1).
+    assert x.base is None
 
 
 @pytest.mark.parametrize("bad", [[[1.0, 0.0], [0.0, 1.0]], np.eye(2), 3.0, None])

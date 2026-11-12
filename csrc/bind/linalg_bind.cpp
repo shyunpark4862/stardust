@@ -25,10 +25,8 @@ namespace sd {
 
 void bind_linalg(nb::module_& core) {
     nb::module_ m = core.def_submodule("linalg", "stardust linalg native core");
-    sd::linalg::load_sdnp_refs(core);
     sd::linalg::register_error_translator();
     sd::linalg::bind_setup(m);
-    sd::linalg::bind_outblock(m);
     sd::linalg::bind_lu(m);
     sd::linalg::bind_basic(m);
     sd::linalg::bind_norms(m);

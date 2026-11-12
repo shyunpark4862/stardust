@@ -1,6 +1,6 @@
 #include "linalg/args.hpp"
 
-#include "linalg/pyrefs.hpp"
+#include "bind/pyutil.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -20,8 +20,8 @@ std::int64_t parse_int(nb::handle o, const char* func, const char* what) {
 
 std::optional<DType> parse_dtype(nb::handle o, const char* func) {
     if (o.is_none()) return std::nullopt;
-    for (int i = 0; i < 4; ++i)
-        if (o.ptr() == refs().dtypes[i]) return static_cast<DType>(i);
+    for (int i = 0; i < kNumDTypes; ++i)
+        if (o.ptr() == dtype_object(static_cast<DType>(i)).ptr()) return static_cast<DType>(i);
     throw nb::type_error((std::string(func) +
                           "(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128, not " +
                           Py_TYPE(o.ptr())->tp_name)

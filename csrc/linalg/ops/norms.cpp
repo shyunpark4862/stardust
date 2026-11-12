@@ -71,7 +71,7 @@ nb::object vector_norm(nb::handle xo, nb::handle axis_o, bool keepdims, nb::hand
     Input x(xo, "vector_norm", "x");
     const std::vector<int> axes = parse_axes(axis_o, x.ndim(), "vector_norm");
     const VecOrd ord = parse_vector_ord(ord_o, "vector_norm");
-    std::vector<Py_ssize_t> kept_shape, kept_strides, red_shape, red_strides;
+    std::vector<std::int64_t> kept_shape, kept_strides, red_shape, red_strides;
     std::vector<std::int64_t> out_shape;
     for (int d = 0, j = 0; d < x.ndim(); ++d) {
         const bool reduced = j < static_cast<int>(axes.size()) && axes[j] == d;
@@ -100,7 +100,7 @@ nb::object vector_norm(nb::handle xo, nb::handle axis_o, bool keepdims, nb::hand
         res[i] = norm_at(off[0]);
         return 0;
     });
-    return to_sdnp(out);
+    return to_array(out);
 }
 
 // ---------------------------------------------------------- matrix_norm --
@@ -149,7 +149,7 @@ nb::object matrix_norm_svd(const Input& x, MatOrd ord, const std::vector<std::in
             return 0;
         });
         if (f) raise(b, f, "matrix_norm", "x");
-        return out_shape.empty() ? py_scalar(res[0]) : to_sdnp(out);
+        return out_shape.empty() ? py_scalar(res[0]) : to_array(out);
     });
 }
 
@@ -213,7 +213,7 @@ nb::object matrix_norm(nb::handle xo, bool keepdims, nb::handle ord_o) {
         res[i] = norm_at(off[0]);
         return 0;
     });
-    return to_sdnp(out);
+    return to_array(out);
 }
 
 }  // namespace

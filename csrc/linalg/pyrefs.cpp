@@ -19,17 +19,6 @@ PyObject* keep(nb::handle h) {
 
 }  // namespace
 
-void load_sdnp_refs(nb::module_& core) {
-    // `core` is stardust._core itself, whose array bindings are already done:
-    // importing `stardust` here would find it half-initialized.
-    nb::module_& sdnp = core;
-    refs().ndarray_type = keep(sdnp.attr("ndarray"));
-    refs().asarray = keep(sdnp.attr("asarray"));
-    refs().get_num_threads = keep(sdnp.attr("get_num_threads"));
-    const char* names[4] = {"bool", "int64", "float64", "complex128"};
-    for (int i = 0; i < 4; ++i) refs().dtypes[i] = keep(sdnp.attr(names[i]));
-}
-
 void bind_setup(nb::module_& m) {
     // Called once by stardust/linalg/__init__.py with the types defined in Python;
     // `results` lists the namedtuples in the order of the Result enum.

@@ -152,7 +152,7 @@ solve류 함수(`solve`, `solve_triangular`, `cholesky_solve`, `lu_solve`, `lsts
   - 대상: 해 `(..., N)`, 고유값, 특이값, `perm`, `diagonal`, `det` 등의 배치 결과
 - `cross`, `vecdot`, `vector_norm`, `matrix_norm`, `trace`의 배열 결과는 C 순서다.
 - 결과는 언제나 새 배열이다. 입력과 메모리를 공유하지 않고, 쓸 수 있다.
-  - 결과의 `base`는 `None`이 아니다. 결과 메모리를 가진 내부 객체다.
+  - 결과는 자기 메모리를 소유한다. `base`는 `None`이다 (새로 만든 배열과 같다, array.md §10.1).
 
 ### §1.8 실패할 때
 **에러 종류** (API.md §2)

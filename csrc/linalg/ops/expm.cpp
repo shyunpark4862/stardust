@@ -459,7 +459,7 @@ nb::object expm(nb::handle xo) {
             return expm_one<T>(x, off[0], n, res + i * n * n, s);
         });
         if (f) raise(b, f, "expm", "x");
-        return to_sdnp(out);
+        return to_array(out);
     });
 }
 

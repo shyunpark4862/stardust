@@ -85,8 +85,8 @@ nb::object eigh_impl(nb::handle ao, nb::handle bo, bool vectors) {
             return info > 0 ? kNoConvergenceEig : 0;
         });
         if (f) raise(b, f, func, "a");
-        if (vectors) return make_result(Result::Eigh, {to_sdnp(wo), to_sdnp(vo)});
-        return to_sdnp(wo);
+        if (vectors) return make_result(Result::Eigh, {to_array(wo), to_array(vo)});
+        return to_array(wo);
     });
 }
 
@@ -95,14 +95,6 @@ nb::object eigvalsh(nb::handle a, nb::handle b) { return eigh_impl(a, b, false);
 
 // ---------------------------------------------------------- svd, svdvals --
 
-bool parse_mode(nb::handle o, const char* func) {
-    if (!PyUnicode_Check(o.ptr()))
-        throw nb::type_error((std::string(func) + "(): 'mode' must be 'reduced' or 'complete'").c_str());
-    const std::string s = nb::cast<std::string>(o);
-    if (s == "reduced") return false;
-    if (s == "complete") return true;
-    throw nb::value_error((std::string(func) + "(): 'mode' must be 'reduced' or 'complete', got '" + s + "'").c_str());
-}
 
 template <class T>
 void set_identity(T* a, lint n) {
@@ -143,7 +135,7 @@ nb::object svd(nb::handle xo, nb::handle mode_o) {
                        : 0;
         });
         if (f) raise(b, f, "svd", "x");
-        return make_result(Result::SVD, {to_sdnp(uo), to_sdnp(so), to_sdnp(vo)});
+        return make_result(Result::SVD, {to_array(uo), to_array(so), to_array(vo)});
     });
 }
 
@@ -159,7 +151,7 @@ nb::object svdvals(nb::handle xo) {
             return singular_values<T>(x, off[0], m, n, s, ss.get());
         });
         if (f) raise(b, f, "svdvals", "x");
-        return to_sdnp(so);
+        return to_array(so);
     });
 }
 
@@ -187,15 +179,10 @@ nb::object matrix_rank(nb::handle xo, nb::handle rtol_o) {
             return 0;
         });
         if (f) raise(b, f, "matrix_rank", "x");
-        return b.ndim() == 0 ? py_scalar(R[0]) : to_sdnp(ro);
+        return b.ndim() == 0 ? py_scalar(R[0]) : to_array(ro);
     });
 }
 
-template <class T>
-T conj_if_complex(T v) {
-    if constexpr (std::is_same_v<T, cplx>) return std::conj(v);
-    else return v;
-}
 
 nb::object pinv(nb::handle xo, nb::handle rtol_o) {
     Input x(xo, "pinv", "x");
@@ -232,7 +219,7 @@ nb::object pinv(nb::handle xo, nb::handle rtol_o) {
             return 0;
         });
         if (f) raise(b, f, "pinv", "x");
-        return to_sdnp(po);
+        return to_array(po);
     });
 }
 
@@ -343,7 +330,7 @@ nb::object cond(nb::handle xo, nb::handle ord_o) {
             return 0;
         }, by_svd ? 0 : lu_task_cap(n, n, true));  // the other ords invert like inv
         if (f) raise(b, f, "cond", "x");
-        return b.ndim() == 0 ? py_scalar(C[0]) : to_sdnp(co);
+        return b.ndim() == 0 ? py_scalar(C[0]) : to_array(co);
     });
 }
 

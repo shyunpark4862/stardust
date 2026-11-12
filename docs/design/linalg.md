@@ -6,7 +6,7 @@
 - 이 문서는 "지금 코드가 어떻게 되어 있고 왜 그런가"만 적는다. 코드 주석은 이 문서의 절 번호(`linalg.md §N.M`)를 가리킨다.
 - 배열 영역의 내부(풀, pairwise 합, 버퍼 규칙)는 [array.md](array.md)를 인용한다.
 - 수치는 Apple M4 Pro 한 대에서 잰 값이다. 따로 적지 않으면 float64, 기본 10스레드다. 비교 대상은 numpy 2.5.4, scipy 1.18.1이다 (§12.1).
-- **배열과의 경계(§3)는 M3의 모습으로 적는다** (ROADMAP M2). 지금 코드와 다른 점은 §3.6의 "M2 현재" 한 곳에 모았다. 그 밖에 통합 중 바뀔 곳은 한 줄로만 표시한다 (`통합 중 Mn`).
+- 통합 중 바뀔 곳은 한 줄로만 표시한다 (`통합 중 Mn`).
 
 ---
 
@@ -198,22 +198,24 @@
 - **C++가 하는 것**: 인자 검사(배열인지, dtype, shape), 배치 브로드캐스팅, 패킹, LAPACK 호출, `info` 해석, 결과 배열 만들기, 결과 namedtuple 채우기
 - **Python이 하는 것**
   - `__init__.py`: `_core.linalg`의 함수를 재노출하고, import할 때 한 번 `_core._setup(LinAlgError, _results.ALL)`로 Python 쪽 타입을 C++에 넘긴다.
-  - `_results.py`: 결과 namedtuple 11개. 필드 이름은 Array API에 그 함수가 있으면 그것을 따르고, 행렬은 대문자 한 글자, 벡터는 소문자 단어다.
+  - `_results.py`: 결과 namedtuple 11개. 필드 이름은 Array API에 그 함수가 있으면 그것을 따르고, 나머지는 행렬을 대문자 한 글자로 쓴다 (docs/api/linalg.md §1.6).
   - `_errors.py`: `LinAlgError(ValueError)`
 - **이유**: 함수마다 Python 래퍼를 두면 호출마다 약 1–2µs가 더 든다. 작은 행렬(3×3 `solve` 약 0.5µs)에서는 LAPACK 계산보다 크다.
 - 기각한 대안: 각 함수를 Python으로 감싸고 C++은 "패킹 + LAPACK"만 맡기. 읽기 쉽지만 작은 행렬에서 호출 비용이 몇 배가 된다.
 
 ### 3.2 입력: `const NDArray&`
-- 배열 인자는 C++에서 `NDArray`로 직접 받는다. nanobind 타입 테이블이 하나라서 `nb::cast<const NDArray&>`로 바로 꺼낸다 (ARCHITECTURE §3).
+- 배열 인자는 C++에서 `NDArray`로 직접 받는다. nanobind 타입 테이블이 하나라서 `is_ndarray`/`as_ndarray`(`bind/pyutil.hpp`)로 바로 꺼낸다. `Input`(`linalg/input.*`)은 그 `NDArray`를 빌려 두고 에러 메시지용 이름(함수, 인자)을 함께 든다. 호출 동안 Python 인자가 배열을 살려 둔다 (ARCHITECTURE §3).
   - `sd.ndarray`가 아니면 TypeError다: `"solve(): 'a' must be a stardust.ndarray, not list"`.
 - 읽는 것: `data` 포인터, shape, 바이트 strides, dtype (`base/dtype.hpp`, array.md §3.1, §3.3)
 - **어떤 strides든 받는다.** 연속이 아니어도, 음수나 0 stride(브로드캐스트)여도 된다. 패킹이 모든 레이아웃을 같은 F-order 버퍼로 만든다 (§5).
 - 행렬 인자는 2차원 이상(`require_matrix`), 정사각이 필요하면 마지막 두 축이 같아야 한다(`require_square`). 아니면 ValueError다.
-- bool/int64 → float64, float → int64(`trace(dtype=)`)의 원소 변환은 배열의 규칙(`base/scalar_cast.hpp`, array.md §2.4)을 그대로 쓴다.
+- bool/int64 → float64, float → int64(`trace(dtype=)`)의 원소 변환은 배열의 규칙을 그대로 쓴다: float → int64는 배열의 `saturate_to_int64`(`array/convert.hpp`, array.md §2.4)다. dtype은 `base/dtype.hpp`의 `DType` 하나다. 통합 중 M4에서 스칼라 변환 규칙이 `base/`로 내려간다.
 
 ### 3.3 결과: F-order `NDArray`
-- **행렬 결과는 F-order 생성 함수로 직접 만든다**: `new_array_fortran(dtype, batch, m, n)` (ARCHITECTURE §3). 행렬마다 열 우선이고, 배치 축은 바깥에 C-order다 (§4).
-- 벡터 결과(`(..., M)`, 고유값, 특이값, `perm`)와 행렬이 아닌 결과(노름, `det`, 랭크)는 C-order `new_array`로 만든다.
+- **결과는 `NDArray`로 직접 만든다.** strides는 linalg가 정하고(`linalg/outblock.cpp`의 `alloc_matrices`, `alloc_vectors`, `alloc_c`), 메모리와 플래그는 배열의 `new_array_strided`(`array/ndarray.hpp`)가 맡는다.
+  - 행렬은 열 우선이고, 배치 축은 바깥에 C-order다 (§4).
+  - 벡터 결과(`(..., M)`, 고유값, 특이값, `perm`)와 행렬이 아닌 결과(노름, `det`, 랭크)는 C-order다.
+  - 길이 0인 축이 있어도 strides 공식은 그대로다(0을 곱한다). 배열의 `new_array`는 0인 축을 1로 쳐서 strides가 다르다. linalg 결과의 strides는 옛 패키지와 같아야 하므로(골든 출력) linalg의 공식을 쓴다.
 - 메모리는 배열의 `Buffer`다. 128B로 정렬된다 (array.md §3.2). 결과는 쓰기 가능하고 자기 메모리를 소유한다(`base`는 None).
 - **결과가 0차원이면 Python 스칼라다** (array.md §2.2). 예: 배치 없는 `det`, `trace`, `vector_norm(axis=None)`, `lstsq`의 `rank`. 이때는 배열을 만들지 않는다.
 - 결과 namedtuple은 C++가 필드 배열을 모두 만든 뒤 캐시해 둔 타입을 vectorcall로 불러 채운다 (`make_result`). 필드 2개짜리 namedtuple 하나에 77ns다.
@@ -227,17 +229,27 @@
 ### 3.5 스레드 수
 - linalg는 배열 영역과 같은 풀 하나를 쓴다 (`parallel/pool.*`, array.md §10). 풀의 크기는 `parallel::num_threads()`를 직접 읽는다.
 - `sd.set_num_threads(n)` 하나가 배열과 linalg를 함께 바꾼다. 다음 호출부터 바로 반영된다.
-- 나눌지 정하는 곳은 `detail::begin_parallel()` 하나다. 태스크 안이면(중첩) false, 1스레드면 false다 (§8.1).
+- 나눌지 정하는 곳은 `detail::begin_parallel()` 하나다: `parallel::available()`. 태스크 안이면(중첩) false, 1스레드면 false다 (§8.1).
 
-### 3.6 M2 현재
-> **M2 현재:** 위 §3.2–§3.5는 M3의 모습이다. 지금 코드는 별도 패키지 시절의 buffer protocol 경로를 그대로 쓴다 (ROADMAP M2, M3).
-> - **입력** (`linalg/input.*`의 `Input`): `PyObject_TypeCheck`로 `sd.ndarray`인지 본 뒤 `PyObject_GetBuffer(PyBUF_RECORDS_RO)`로 포인터, shape, strides, format을 읽고, format 문자열(`?`, `q`, `d`, `Zd`)로 dtype을 정한다 (array.md §12.3). 함수가 끝날 때 `PyBuffer_Release`로 놓는다.
-> - **결과** (`linalg/outblock.*`): `alloc_matrices`/`alloc_vectors`/`alloc_c`가 128B 정렬 블록(`_OutBlock`)을 `aligned_alloc`으로 만들고, `bf_getbuffer`로 strides와 format(`d`, `Zd`)을 내보낸다. `to_sdnp`가 캐시해 둔 `sd.asarray`로 감싼다. format이 정확히 같아서 배열이 복사하지 않고 블록을 붙잡는다 (array.md §12.3). 블록의 수명은 배열이 관리한다.
-> - **캐시** (`load_sdnp_refs`): `ndarray` 타입, `asarray`, `get_num_threads`, dtype 객체 넷을 `_core` 모듈 자체에서 찾는다(`import stardust`는 초기화 도중이라 반쯤 만들어진 모듈이 나온다). `dtype=` 인자는 이 dtype 객체와의 동일성으로 해석한다.
-> - **스레드 수**: `begin_parallel`이 나눌 때마다 `sd.get_num_threads()`를 Python으로 불러 풀 크기를 맞춘다. 풀이 하나라서 지금은 아무 일도 하지 않는 호출이다.
-> - **중복**: `linalg/types.hpp`에 linalg 자신의 `DType`, `itemsize`, `saturate_to_int`가, `linalg/pairwise.hpp`에 pairwise 합이 따로 있다 (§8.2). M3에서 `base/`의 것으로 바꾼다.
-> - **비용**: 결과 배열 하나에 약 200ns다. `sd.asarray`로 블록 감싸기 113ns, 블록 할당과 해제 82ns, 그 밖에 입력마다 `GetBuffer`/`Release` 5ns, 나눌 때 `get_num_threads` 7ns. 작은 행렬 호출(약 600–700ns)의 30% 가까이다. M3에서 실제로 줄어든 양을 잰다.
-> - 비교: 같은 기기의 numpy 호출 전체는 `det` 2×2 945ns, `inv` 2×2 1465ns, `solve` 3×3 1804ns, `qr` 3×3 5687ns, scipy `solve` 3×3 8364ns다.
+### 3.6 경계를 없앤 효과
+- 별도 패키지였을 때 linalg는 배열을 buffer protocol로 읽고(`PyObject_GetBuffer`, format 문자열로 dtype 판정), 결과를 자기 블록에 만든 뒤 캐시해 둔 `sd.asarray`로 감쌌다. 스레드 수는 나눌 때마다 Python으로 `get_num_threads()`를 불러 자기 풀에 맞췄다.
+- 그때 잰 비용: `sd.asarray`로 감싸기 113ns, 블록 할당과 해제 82ns, 입력의 `GetBuffer`/`Release` 5ns, `get_num_threads` 7ns. 결과 하나에 약 200ns로 예상했다.
+- **잰 값** (`bench/merge/m3_boundary.py`, 같은 자리에서 앞뒤로 측정, 단위 ns):
+
+  | 호출 | 전 | 후 | 차이 |
+  |---|---:|---:|---:|
+  | `inv` 2×2 | 402 | 283 | −119 |
+  | `solve` 3×3 | 414 | 300 | −115 |
+  | `cholesky` 3×3 | 312 | 188 | −123 |
+  | `qr` 3×3 (결과 2개) | 1178 | 935 | −243 |
+  | `eigh` 3×3 (결과 2개) | 1377 | 1185 | −193 |
+  | `svd` 3×3 (결과 3개) | 3246 | 3008 | −238 |
+  | `det` 2×2 (스칼라) | 136 | 137 | +1 |
+  | `trace` 3×3 (스칼라) | 51 | 48 | −3 |
+
+- **결과 배열 하나에 약 120ns가 줄었다.** 예상(200ns)보다 작은 이유: `NDArray`와 그 Python 객체를 만드는 데 여전히 약 75ns가 든다. 줄어든 것은 `asarray` 호출, 블록 객체, buffer protocol 왕복이다.
+- 스칼라를 돌려주는 함수(`det`, `trace`, `vector_norm`)는 결과 배열을 만들지 않으므로 그대로다. 입력 쪽 절약(약 5ns)은 측정 잡음 안이다.
+- 배치 (1000, 3, 3)의 `solve`, `inv`는 결과가 배열 하나라 약 2–4%다. 계산이 대부분이다.
 
 ---
 
@@ -446,12 +458,12 @@
 
 ### 8.1 풀
 - 배열 영역의 풀 하나를 쓴다 (array.md §10). 상주 워커, spin 후 대기, atomic 카운터로 태스크 분배, 호출 스레드 참여, 병렬일 때만 GIL 해제다.
-- **중첩하지 않는다.** 태스크 안에서는 `begin_parallel()`이 false다(`parallel::available_here()`). 그래서 배치를 나눈 태스크 안의 긴 합, 큰 패킹, Schur 쌍은 그 스레드에서 직렬로 돈다.
+- **중첩하지 않는다.** 태스크 안에서는 `begin_parallel()`이 false다(`parallel::available()`). 그래서 배치를 나눈 태스크 안의 긴 합, 큰 패킹, Schur 쌍은 그 스레드에서 직렬로 돈다.
 - 다른 Python 스레드가 풀을 쓰는 중이면 그 호출은 호출 스레드 혼자 돈다 (array.md §10.1).
 - 태스크 안에서는 Python 객체를 만지지 않는다. 결과 배열과 namedtuple은 태스크 밖에서 만든다.
-- 통합 중 M4에서 풀이 pandas판(상위 집합)으로 바뀐다. linalg에 필요한 `available_here()`는 지금 풀에도 있다 (ARCHITECTURE §4.1).
+- 통합 중 M4에서 풀이 pandas판(상위 집합)으로 바뀐다 (ARCHITECTURE §4.1).
 
-### 8.2 pairwise 합 (`linalg/pairwise.hpp`)
+### 8.2 pairwise 합 (`base/pairwise.hpp`, `linalg/pairwise.hpp`)
 - **부동소수점 합은 모두 numpy의 pairwise 합이다.** 대상: `vecdot`, `trace`, `vector_norm`(1, 2, p), `matrix_norm`(fro, ±1, ±inf, nuc), `cond`(fro, ±1, ±inf, nuc)
   - 알고리즘과 순서는 numpy의 `DOUBLE_pairwise_sum`/`CDOUBLE_pairwise_sum`, 배열의 합과 같다 (array.md §6.2): 128개 이하는 누산기 8개, 그보다 길면 8의 배수에서 둘로 나눠 재귀한다. complex는 잎 하나가 64개이고 실수부, 허수부에 누산기 4개씩이다.
   - 합은 `0.0 + 트리`다. numpy의 `add.reduce`와 같다(확인함).
@@ -463,7 +475,8 @@
 - **잎 버퍼를 거친다.** `fill(begin, len, buf)`이 항을 잎(최대 128개)에 채우고, 같은 루프가 더한다. 원본 레이아웃과 무관하게 더하는 루프가 하나라서 벡터화된다. 대가로 1스레드의 긴 합은 numpy보다 느리다 (§12.4).
 - 오차는 n이 아니라 log n에 비례해 자란다.
 - 기각한 대안: 단순 누산기 8개(오차가 여전히 n에 비례하고, 어떤 기준과도 비트가 맞지 않음)
-- 통합 중 M3에서 배열의 pairwise 합과 함께 `base/pairwise.hpp` 한 벌로 합친다 (ROADMAP M3).
+- **정의는 한 벌이다** (`base/pairwise.hpp`): 트리 모양(`split`), 잎의 합(`leaf`, `leaf_complex`), 병렬 계획과 합치기(`plan`, `combine`)를 배열과 함께 쓴다. linalg만의 것은 잎을 채우는 방식(위의 `fill`)뿐이다. 배열은 같은 정의를 접근자로 부른다 (array.md §6.2).
+- **잎 하나짜리 합은 트리를 부르지 않는다**: n ≤ 128(complex는 64)이면 채우고 바로 더한다 (`pairwise_sum`). 3×3 행렬의 열 합처럼 짧은 합이 배치마다 반복될 때 재귀 함수 호출이 드러난다: `matrix_norm(ord=1)`의 (1000, 3, 3)이 이 길 없이 17µs, 있으면 13µs다(1스레드).
 
 ### 8.3 출력 하나의 긴 합
 - **출력 하나의 합이 2¹⁵항(`kSumParallelMin`, 배열의 `kThreshold`) 이상이면 나눈다.** 배열과 같은 방법이다 (array.md §6.2).
@@ -502,7 +515,7 @@
 
 ## 9. 호출 비용
 작은 행렬에서는 LAPACK 계산이 아니라 호출 경로의 고정비가 시간을 정한다. 결과를 바꾸지 않고 줄인 것들이다.
-- **경계**: 배열을 직접 받고 직접 만든다 (§3). M2 현재는 결과 하나에 약 200ns가 더 든다 (§3.6).
+- **경계**: 배열을 직접 받고 직접 만든다 (§3). buffer protocol과 `sd.asarray`를 거치던 때보다 결과 배열 하나에 약 120ns 빠르다 (§3.6).
 - **Python 래퍼 없음**: 함수는 C++에서 바로 바인딩한다 (§3.1).
 - **workspace 크기 기억, 0 채우기 없음** (§6.3)
 - **짧은 합에는 할당하지 않는다** (§8.3)
@@ -656,12 +669,17 @@
   - NaN이 있으면 나머지 `ord`의 결과는 NaN이다. NaN 없이 inf가 있으면 p > 0에서 inf다.
 - 노름은 원소를 논리적 C 순서로 걷는다(`vnorm.hpp`의 walk, 힙 할당 없음). 최대 33축(배열의 32축 + complex 분할)이다.
 
-### 10.9 알려진 정리 항목
-지금 코드에 남아 있고 결과에는 영향이 없는 것들이다.
-- `trace`/`diagonal`의 k = −2⁶³에서 `-k`가 부호 있는 오버플로(정의되지 않은 동작)다. 지금은 우연히 맞는 결과가 나온다.
-- `ldl`의 풀기(`ldl_unpack`)가 LAPACK workspace 몫인 scratch 슬롯 4를 `perm` 임시 버퍼로 쓴다 (§6.3).
-- `ord` 파서 두 벌(`cond`, `matrix_norm`)의 중복, `conj_if_complex`/`parse_mode`의 복사본, `check_rhs_rows`의 중복 검사
-- `cond`(±2 외의 ord)가 같은 입력을 두 번 패킹한다(`lu_factor`가 덮어쓴 사본을 다시 만든다).
+### 10.9 남겨 둔 것
+결과에는 영향이 없고, 이유가 있어 그대로 둔 것들이다.
+- **`ord` 파서 두 벌**(`cond`의 `parse_cond_ord`, `matrix_norm`): 합치면 에러 종류가 바뀐다. 지금 `ord=True`가 `vector_norm`에서는 TypeError, `matrix_norm`/`cond`에서는 ValueError다. 에러 규칙의 일관성은 2라운드에서 정하고 M6에서 함께 고친다 (DESIGN §8.4).
+- **`check_rhs_rows`**(`solve_tridiagonal`, `solve_banded`): `rhs_of`도 행 수를 보지만, 구조화된 인자는 그 자체가 n×n이 아니라서 "the matrix is n x n"이라고 따로 말해야 한다. 먼저 돌아서 `rhs_of`의 검사에는 닿지 않는다. 중복이 아니라 다른 메시지다.
+- **`cond`(±2 외의 ord)의 두 번째 패킹**: `lu_factor`가 패킹한 사본을 덮어쓰므로 x의 노름을 위해 한 번 더 패킹한다. 없애려면 이미 패킹한 행렬을 받는 `lu_factor` 변형이 필요하다. 드문 경로 하나라서 두었다.
+- 함께 고친 것은 §10.10에 있다.
+
+### 10.10 고친 것 (결과는 같다)
+- `trace`/`diagonal`에서 행렬 밖을 가리키는 오프셋(`k >= n` 또는 `k <= -m`)은 빈 대각을 (0, 0)에서 시작한다. 전에는 k = −2⁶³에서 `-k`가, 아주 큰 |k|에서 `r0 * stride`가 부호 있는 오버플로(정의되지 않은 동작)였다. 테스트: `test_offset_past_the_matrix_is_an_empty_diagonal`.
+- `ldl_unpack`의 `perm` 임시 버퍼는 함수 몫의 scratch 슬롯 3을 쓴다. 전에는 LAPACK workspace 몫인 슬롯 4를 빌렸다 (§6.3).
+- `conj_if_complex`(네 벌)와 `parse_mode`(두 벌)는 `linalg/ops/common.hpp` 한 곳에 있다.
 
 ---
 

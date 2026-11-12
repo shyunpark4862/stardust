@@ -351,7 +351,8 @@ numpy의 `DOUBLE_pairwise_sum`/`CDOUBLE_pairwise_sum`과 같은 알고리즘, �
   - 알고리즘과 순서가 같으니 결과가 numpy와 비트까지 같다.
 - **병렬**: 재귀 트리는 n에만 의존한다. 4096개(`kLeaf = kTaskWork`, complex는 2048개) 이하인 부분 트리를 잎으로 삼아 병렬로 계산하고, 같은 트리를 따라 합친다 (`pairwise_parallel`). 덧셈 하나하나가 직렬 계산과 같은 순서이므로 **스레드 수와 상관없이 numpy와 비트가 같다.** 원소 300만 개에서 1스레드와 10스레드 모두 `sum(x) == np.sum(x)`를 테스트한다.
 - `var`의 두 번째 패스(편차 제곱합)도 안쪽 축이면 같은 pairwise로 접는다.
-- 통합 중 pairwise 합은 `base/pairwise.hpp`로 옮겨 linalg(M3), frame(M4)과 한 벌을 쓴다.
+- **정의는 `base/pairwise.hpp` 한 벌이다**: 트리 모양, 잎의 합, 병렬 계획(`plan`)과 합치기(`combine`). 배열의 `pairwise_sum`, `pairwise_parallel`(`array/kernels/reduce.hpp`)은 항을 접근자로 넘겨 그것을 부른다. linalg도 같은 정의를 쓴다 (docs/design/linalg.md §8.2). 통합 중 M4에서 frame도 같은 정의를 쓴다.
+  - 잎의 합(`pairwise::leaf`, `leaf_complex`)은 `[[gnu::always_inline]]`이다. 배열은 트리 → 람다 → 잎 → 접근자 람다의 여러 겹으로 부르는데, 잎이 인라인되지 않으면 원소마다 호출이 남아 1스레드 `sum(f)`(원소 100만 개)가 110µs에서 152µs로 느려졌다(잰 값).
 
 ### 6.3 max/min, argmax/argmin
 - **float64 `max`/`min`**: NEON 레지스터 4개(레인 8개)로 `FMAX`/`FMIN`을 접고, 레인끼리 `vmaxvq`로 합친다. NaN 전파가 명령에 들어 있다. 순차 비교 대비 14배, numpy와 같다.

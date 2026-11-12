@@ -102,6 +102,13 @@ NDArray new_array(DType dtype, std::span<const std::int64_t> shape, bool zeroed 
 // result. Element order of *values* is unaffected; only the layout is.
 NDArray new_array_like(const NDArray& proto, DType dtype, bool zeroed = false);
 
+// New array with a layout the caller chose: `strides` (bytes, one per axis,
+// none negative) address elements inside `nbytes` of fresh, uninitialized
+// memory. For results whose producer dictates the layout, such as LAPACK's
+// column-major matrices in sd.linalg (docs/design/linalg.md §4).
+NDArray new_array_strided(DType dtype, std::span<const std::int64_t> shape, std::span<const std::int64_t> strides,
+                          std::int64_t nbytes);
+
 // Visits every element in row-major index order, with N arrays of the same
 // shape walked in lockstep: f(p0, p1, ...) receives the element pointers.
 //

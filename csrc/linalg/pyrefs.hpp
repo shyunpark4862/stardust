@@ -13,11 +13,6 @@ namespace nb = nanobind;
 enum class Result { Slogdet, LU, QR, QRPivoted, Lstsq, Eigh, SVD, Eig, Schur, Hessenberg, LDL, Count };
 
 struct PyRefs {
-    // From the array bindings on _core itself, at import of _core (docs/design/linalg.md §3.6).
-    PyObject* ndarray_type = nullptr;
-    PyObject* asarray = nullptr;
-    PyObject* get_num_threads = nullptr;
-    PyObject* dtypes[4] = {};  // sd.bool, sd.int64, sd.float64, sd.complex128 (DType order)
     // From stardust.linalg's Python files, via _core._setup().
     PyObject* linalg_error = nullptr;
     PyObject* results[static_cast<int>(Result::Count)] = {};
@@ -27,7 +22,6 @@ struct PyRefs {
 // process ends, and releasing them during interpreter shutdown would be unsafe.
 PyRefs& refs();
 
-void load_sdnp_refs(nb::module_& core);
 void bind_setup(nb::module_& m);
 
 // Builds a result namedtuple from its fields (in field order).

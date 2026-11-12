@@ -13,7 +13,7 @@ namespace nb = nanobind;
 
 namespace {
 
-std::string shape_str(std::span<const Py_ssize_t> s) {
+std::string shape_str(std::span<const std::int64_t> s) {
     std::string r = "(";
     for (std::size_t i = 0; i < s.size(); ++i) r += (i ? ", " : "") + std::to_string(s[i]);
     return r + (s.size() == 1 ? ",)" : ")");
@@ -76,17 +76,8 @@ std::string Batch::index_str(std::int64_t idx) const {
 namespace detail {
 
 bool begin_parallel() {
-    if (!parallel::available_here()) return false;  // inside a task: no nesting
-    // The thread count follows sd.get_num_threads() (API.md §3), read each time
-    // a split is considered so sd.set_num_threads() applies at once (~7 ns). The
-    // pool is shared with the array area, so this only re-reads its own size
-    // (docs/design/linalg.md §3.5, §3.6).
-    PyObject* r = PyObject_CallNoArgs(refs().get_num_threads);
-    if (!r) throw nb::python_error();
-    const long want = PyLong_AsLong(r);
-    Py_DECREF(r);
-    if (want < 1) return false;
-    if (want != parallel::num_threads()) parallel::set_num_threads(static_cast<int>(want));
+    // One pool for every area, sized by sd.set_num_threads() (API.md §3);
+    // false inside a task (no nesting) or with one thread.
     return parallel::available();
 }
 

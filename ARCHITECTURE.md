@@ -96,8 +96,8 @@ stardust/                         (저장소: ~/Desktop/stardust/stardust)
 | numpy `csrc/kernels/vforce.hpp` | `csrc/accelerate/vforce.hpp` |
 | numpy `csrc/kernels/reduce.hpp`의 pairwise 부분 | `csrc/base/pairwise.hpp` |
 | numpy `csrc/parallel/pool.*` | 버림 (pandas판으로 대체) |
-| linalg `csrc/core/{input,outblock,pyrefs}` | **없어짐** (§3) |
-| linalg `csrc/core/{types,pairwise}.hpp` | `base/dtype.hpp`, `base/pairwise.hpp`, `base/scalar_cast.hpp`로 흡수 |
+| linalg `csrc/core/{input,outblock,pyrefs}` | `csrc/linalg/`에 남되 경계 코드는 없어짐 (M3, §3): `Input`은 `NDArray`를 빌리고, `outblock`은 `NDArray`를 만들고, `pyrefs`는 결과 타입과 `LinAlgError`만 든다 |
+| linalg `csrc/core/{types,pairwise}.hpp` | M3: `DType`은 `base/dtype.hpp`, pairwise의 정의는 `base/pairwise.hpp`로 (`linalg/pairwise.hpp`에는 잎을 채우는 방식만 남음), float → int64는 배열의 `saturate_to_int64`. M4에서 스칼라 변환 규칙이 `base/scalar_cast.hpp`로 내려간다 |
 | linalg `csrc/core/{args,batch,pack,cost,errors}` | `csrc/linalg/` |
 | linalg `csrc/lapack/lapack.hpp` | `csrc/accelerate/lapack.hpp` |
 | linalg `csrc/parallel/pool.*` | 버림 |
@@ -112,19 +112,18 @@ stardust/                         (저장소: ~/Desktop/stardust/stardust)
   - 예외도 그대로다: `Series`, `DataFrame`은 Python 클래스다 (pandas DESIGN §1.1).
 - **확장 모듈은 `_core` 하나다** (DESIGN §3.2).
   - `nb::module_::def_submodule`로 `_core.linalg`, `_core.frame`을 만든다.
-  - nanobind 타입 테이블이 하나라서, C++ 어디서든 `nb::cast<const NDArray&>(obj)`로 배열을 직접 받는다.
-- **linalg의 경계 코드가 사라진다.**
+  - nanobind 타입 테이블이 하나라서, C++ 어디서든 `is_ndarray`/`as_ndarray`(`bind/pyutil.hpp`)로 배열을 직접 받는다.
+- **linalg의 경계 코드를 없앴다** (M3).
 
-  | 지금 (linalg) | 통합 후 |
+  | 별도 패키지 시절 (linalg) | 지금 |
   |---|---|
   | `Input`: `PyObject_TypeCheck` + `PyObject_GetBuffer` + format 문자열 해석 | `const NDArray&` 인자 하나 |
-  | `alloc_matrices` → 블록 객체 → `sdnp.asarray` 호출 | `new_array`의 F-order판으로 `NDArray`를 직접 만든다 |
+  | `alloc_matrices` → 블록 객체 → `sdnp.asarray` 호출 | linalg가 정한 strides로 `new_array_strided`가 `NDArray`를 직접 만든다 |
   | `pyrefs`: `sdnp.ndarray`, `asarray`, `get_num_threads`, dtype 객체 캐시 | 결과 namedtuple과 `LinAlgError`만 남는다 |
   | 호출마다 `sdnp.get_num_threads()` Python 호출 | `parallel::num_threads()` |
 
-  - linalg M0에서 잰 이 비용은 결과 하나에 약 200ns다 (asarray 113ns, 블록 할당·해제 82ns, 나머지 12ns). 통합 후 얼마가 줄었는지 M3에서 잰다.
-- `array/`에 F-order 결과를 위한 생성 함수 하나를 더한다.
-  - `new_array_fortran(dtype, batch, m, n)`: 행렬마다 열 우선, 배치 축은 바깥에 C-order (linalg DESIGN §2.3과 같은 배치).
+  - 예상은 결과 하나에 약 200ns(asarray 113ns, 블록 할당·해제 82ns, 나머지 12ns)였고, 잰 값은 결과 배열 하나에 약 120ns다. `NDArray`와 Python 객체를 만드는 약 75ns는 남는다 (docs/design/linalg.md §3.6).
+- `array/`에는 F-order 전용이 아니라 **strides를 받는 생성 함수**를 더했다: `new_array_strided(dtype, shape, strides, nbytes)`. 레이아웃(행렬마다 열 우선, 배치 축은 바깥에 C-order, 길이 0인 축도 그대로 곱함)은 linalg의 정책이라 linalg에 두고, 메모리와 플래그만 배열이 맡는다.
 
 ## 4. 공통 부품
 
@@ -132,7 +131,7 @@ stardust/                         (저장소: ~/Desktop/stardust/stardust)
 - 하나만 둔다. **pandas판이 기준이다.** numpy판의 상위 집합이기 때문이다.
   - 핵심(상주 워커, spin 후 대기, atomic 카운터, 호출 스레드 참여, 중첩 금지)은 세 벌이 같다.
   - pandas판에만 있는 것: `busy()`, `available()`의 "풀이 바쁘면 직렬 경로", 항상 GIL 해제, `for_chunks`, `FirstRow`, `Unlocked`.
-  - linalg판에만 있는 것: `available_here()`. M2에서 배열의 풀에 더했다.
+  - linalg판에만 있는 것: `available_here()`. M2에서 배열의 풀에 더했다가, M3에서 linalg가 `parallel::available()`만 쓰게 되어 다시 뺐다.
 - **병렬화 기준값은 영역마다 따로 둔다.** 측정해서 정한 값이 다르기 때문이다.
   - array: `1 << 15` (numpy M8), frame: `1 << 17` (pandas M11), linalg: 비용 모델 (`linalg/cost.hpp`, linalg M9)
   - 풀 헤더의 `kThreshold` 하나를 `array/`, `frame/`의 상수로 옮긴다.

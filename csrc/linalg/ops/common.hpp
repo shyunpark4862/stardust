@@ -168,4 +168,21 @@ void lu_inverse(const T* lu, const lint* ipiv, lint n, T* r) {
     lapack::getrs('N', n, n, lu, n, ipiv, r, n);
 }
 
+template <class T>
+T conj_if_complex(T v) {
+    if constexpr (std::is_same_v<T, cplx>) return std::conj(v);
+    else return v;
+}
+
+// mode='reduced' | 'complete' (docs/api/linalg.md §1.1); true for 'complete'.
+// Shared by qr, qr_pivoted and svd.
+inline bool parse_mode(nb::handle o, const char* func) {
+    if (!PyUnicode_Check(o.ptr()))
+        throw nb::type_error((std::string(func) + "(): 'mode' must be 'reduced' or 'complete'").c_str());
+    const std::string s = nb::cast<std::string>(o);
+    if (s == "reduced") return false;
+    if (s == "complete") return true;
+    throw nb::value_error((std::string(func) + "(): 'mode' must be 'reduced' or 'complete', got '" + s + "'").c_str());
+}
+
 }  // namespace sd::linalg

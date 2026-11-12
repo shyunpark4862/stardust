@@ -25,7 +25,7 @@ namespace {
 
 // Shape and strides of an operand padded on the left to `nd` axes (size 1, stride 0).
 struct Padded {
-    std::vector<Py_ssize_t> shape, strides;
+    std::vector<std::int64_t> shape, strides;
     Padded(const Input& x, int nd) : shape(nd, 1), strides(nd, 0) {
         const int lead = nd - x.ndim();
         for (int d = 0; d < x.ndim(); ++d) {
@@ -39,11 +39,6 @@ struct Padded {
     }
 };
 
-template <class T>
-T conj_if_complex(T v) {
-    if constexpr (std::is_same_v<T, cplx>) return std::conj(v);
-    else return v;
-}
 
 // --------------------------------------------------------------- vecdot --
 
@@ -99,7 +94,7 @@ nb::object vecdot(nb::handle x1o, nb::handle x2o, nb::handle axis_o) {
                         res[i] = dot(off);
                         return 0;
                     });
-                    return to_sdnp(out);
+                    return to_array(out);
                 }
             });
         });
@@ -135,7 +130,7 @@ nb::object outer(nb::handle x1o, nb::handle x2o) {
                 }
             });
         });
-        return to_sdnp(out);
+        return to_array(out);
     });
 }
 
@@ -145,6 +140,13 @@ nb::object outer(nb::handle x1o, nb::handle x2o) {
 struct Diag {
     std::int64_t len, r0, c0;
     Diag(std::int64_t m, std::int64_t n, std::int64_t k) {
+        // An offset past the matrix gives an empty diagonal starting at
+        // (0, 0): -k would overflow at k = INT64_MIN, and r0 * stride for a
+        // huge |k| would too (both undefined behaviour).
+        if (k >= n || k <= -m) {
+            len = r0 = c0 = 0;
+            return;
+        }
         r0 = k >= 0 ? 0 : -k;
         c0 = k >= 0 ? k : 0;
         len = std::max<std::int64_t>(0, std::min(m - r0, n - c0));
@@ -199,7 +201,7 @@ nb::object trace(nb::handle xo, nb::handle k_o, nb::handle dtype_o) {
                     res[i] = sum(off[0]);
                     return 0;
                 });
-                return to_sdnp(out);
+                return to_array(out);
             }
         });
     };
@@ -230,7 +232,7 @@ nb::object diagonal(nb::handle xo, nb::handle k_o) {
         });
         return 0;
     });
-    return to_sdnp(out);
+    return to_array(out);
 }
 
 // --------------------------------------------------------- matrix_power --
@@ -293,7 +295,7 @@ nb::object matrix_power(nb::handle xo, nb::handle n_o) {
             return 0;
         }, n < 0 ? lu_task_cap(m, m, true) : 0);  // x^-1 is getrf + getrs(I)
         if (f) raise(b, f, "matrix_power", "x");
-        return to_sdnp(out);
+        return to_array(out);
     });
 }
 
@@ -334,7 +336,7 @@ nb::object kron(nb::handle x1o, nb::handle x2o) {
                 }
             return 0;
         });
-        return to_sdnp(out);
+        return to_array(out);
     });
 }
 
@@ -383,7 +385,7 @@ nb::object cross(nb::handle x1o, nb::handle x2o, nb::handle axis_o) {
                 }
             });
         });
-        return to_sdnp(out);
+        return to_array(out);
     });
 }
 

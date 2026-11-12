@@ -208,7 +208,6 @@ void set_num_threads(int n) { pool().resize(n); }
 
 bool available() { return !t_in_task && pool().threads() > 1; }
 
-bool available_here() { return !t_in_task; }
 
 void parallel_for(std::int64_t ntasks, const std::function<void(std::int64_t)>& fn) {
     if (ntasks <= 0) return;

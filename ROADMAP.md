@@ -27,7 +27,7 @@
 | M0 저장소, 이력, 기준선 | 준비 | 완료 (2026-11-12), docs/learn/M0-repository-history-baseline.md |
 | M1 배열 코어 옮기기 | 1단계 | 완료 (2026-11-12), docs/learn/M1-array-core.md |
 | M2 linalg 옮기기 | 1단계 | 완료 (2026-11-12), docs/learn/M2-linalg-move.md |
-| M3 linalg 경계 없애기 | 1단계 | 대기 |
+| M3 linalg 경계 없애기 | 1단계 | 완료 (2026-11-12), docs/learn/M3-linalg-boundary.md (1단계 보고서 포함) |
 | M4 공통 바닥 정리 | 2단계 준비 | 대기 |
 | M5 frame 옮기기 | 2단계 | 대기 |
 | M6 frame과 배열 잇기, 일관성 맞추기 | 2단계 | 대기 |
@@ -63,7 +63,7 @@
   - 공통 규칙(dtype 객체, 에러 종류, 스레드)을 `docs/api/array.md §0`에서 루트 `API.md`로 옮기고, 그 절을 인용하던 주석을 고친다.
 
 ### M3. linalg 경계 없애기
-- `Input` → `const NDArray&`, `alloc_*` + `sdnp.asarray` → `new_array_fortran`, `pyrefs`의 sdnp 참조 제거 (ARCHITECTURE §3)
+- `Input` → `const NDArray&`, `alloc_*` + `sdnp.asarray` → `new_array_strided`, `pyrefs`의 sdnp 참조 제거 (ARCHITECTURE §3)
 - linalg의 `DType`, `saturate_to_int`, `pairwise.hpp`를 `base/`의 것으로 바꾼다.
 - linalg의 알려진 정리 항목(`docs/design/linalg.md` §10.9)을 함께 고친다. 결과는 바뀌지 않는다.
   - `trace`/`diagonal`에서 k = −2⁶³일 때 `-k`의 부호 있는 오버플로(정의되지 않은 동작)
@@ -72,7 +72,10 @@
 - 1단계 끝. 여기서 1단계 보고서를 쓴다.
 
 ### M4. 공통 바닥 정리 (frame을 받을 준비)
-- 스레드풀을 pandas판(상위 집합)으로 바꾼다 (`available_here()`는 M2에서 이미 더했다). 병렬화 기준값을 영역별 상수로 옮긴다 (ARCHITECTURE §4.1).
+- 스레드풀을 pandas판(상위 집합)으로 바꾼다. 병렬화 기준값을 영역별 상수로 옮긴다 (ARCHITECTURE §4.1).
+- 스칼라 변환 규칙(`saturate_to_int64`, `cast_value`)을 `array/convert.hpp`에서 `base/scalar_cast.hpp`로 내린다. `base/neon.hpp`, `accelerate/vforce.hpp`가 `array/kernels/scalar_ops.hpp`를 include하는 역방향 의존도 함께 없앤다.
+- frame의 pairwise 합을 `base/pairwise.hpp`의 정의로 바꾼다 (배열과 linalg는 M3에서 바꿨다).
+- 풀을 바꾼 뒤 같은 자리 비교(`bench/merge/sameseat_table.py`)를 돌린다. 짧은 병렬 호출(예: `solve_tridiagonal` (1000, 3, 3), 10스레드)은 프로세스마다 약 7µs와 10.5µs로 갈리므로 프로세스를 여러 번 띄워 분포로 본다 (docs/learn/M3-linalg-boundary.md §6.3).
 - `Buffer`에 `size()`를 더한다 (ARCHITECTURE §4.2).
 - `base/dtype.hpp`에 `String`, `Datetime64`를 더하고 `visit_dtype`을 나눈다 (DESIGN §4.2). 사용자에게 보이는 dtype 표기는 M6에서 바꾼다.
 - `accelerate/` 정리: BLAS, LAPACK, vForce 래퍼를 한곳에 모은다.

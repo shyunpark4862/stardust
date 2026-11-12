@@ -1,18 +1,16 @@
-// Pairwise summation: numpy's (and the array area's) DOUBLE_pairwise_sum and
-// CDOUBLE_pairwise_sum, for every floating-point sum here
-// (docs/design/linalg.md §8.2).
+// Pairwise summation for every floating-point sum in linalg: numpy's
+// DOUBLE_pairwise_sum and CDOUBLE_pairwise_sum as defined once in
+// base/pairwise.hpp (the tree, the leaf sums, the parallel plan), so linalg's
+// sums have the array area's bits (docs/design/linalg.md §8.2). A sum is
+// 0.0 + tree, as numpy's add.reduce does.
 //
-// The tree depends on the length only: runs of at most 128 doubles are summed
-// with 8 independent accumulators (4 complex ones), and longer runs are split
-// in two at a multiple of 8, recursively. The rounding error grows like log n
-// instead of n, and 8 chains run in parallel on the hardware. A sum is
-// 0.0 + tree, as numpy's add.reduce does, so the same terms give numpy's bits.
-//
-// The terms come from fill(begin, len, buf): it writes terms begin .. begin+len-1
-// (at most one leaf) to buf, in order. A leaf is filled first and then summed,
-// so the summing loop is the same for every source layout and vectorizes.
+// What is linalg's own is how terms reach a leaf: fill(begin, len, buf)
+// writes terms begin .. begin+len-1 (at most one leaf) to buf, in order. A
+// leaf is filled first and then summed, so the summing loop is the same for
+// every source layout and vectorizes.
 #pragma once
 
+#include "base/pairwise.hpp"
 #include "linalg/batch.hpp"
 #include "linalg/types.hpp"
 
@@ -22,82 +20,35 @@
 
 namespace sd::linalg {
 
-inline constexpr std::int64_t kPairwiseBlock = 128;  // numpy's PW_BLOCKSIZE, in doubles
+inline constexpr std::int64_t kPairwiseBlock = pairwise::kBlock;  // numpy's PW_BLOCKSIZE, in doubles
 
 namespace detail {
 
 inline double pairwise_leaf(const double* a, std::int64_t n) {
-    if (n < 8) {
-        double res = 0.;
-        for (std::int64_t i = 0; i < n; ++i) res += a[i];
-        return res;
-    }
-    double r[8];
-    for (int j = 0; j < 8; ++j) r[j] = a[j];
-    std::int64_t i = 8;
-    for (; i < n - (n % 8); i += 8)
-        for (int j = 0; j < 8; ++j) r[j] += a[i + j];  // 8 independent chains
-    double res = ((r[0] + r[1]) + (r[2] + r[3])) + ((r[4] + r[5]) + (r[6] + r[7]));
-    for (; i < n; ++i) res += a[i];
-    return res;
+    return pairwise::leaf(n, [a](std::int64_t i) { return a[i]; });
+}
+
+inline cplx pairwise_leaf_complex(const cplx* a, std::int64_t n) {
+    return pairwise::leaf_complex(n, [a](std::int64_t i) { return a[i]; });
 }
 
 template <class Fill>
 double pairwise(std::int64_t begin, std::int64_t n, Fill& fill) {
-    if (n <= kPairwiseBlock) {
+    return pairwise::tree(begin, n, [&fill](std::int64_t b, std::int64_t m) {
         double buf[kPairwiseBlock];
-        fill(begin, n, buf);
-        return pairwise_leaf(buf, n);
-    }
-    std::int64_t n2 = n / 2;
-    n2 -= n2 % 8;
-    return pairwise(begin, n2, fill) + pairwise(begin + n2, n - n2, fill);
-}
-
-// The complex leaf: numpy counts doubles, so a leaf holds 64 complex numbers
-// and the real and imaginary parts have 4 accumulators each.
-inline cplx pairwise_leaf_complex(const cplx* a, std::int64_t n) {
-    if (n < 4) {
-        double rr = 0., ri = 0.;
-        for (std::int64_t i = 0; i < n; ++i) {
-            rr += a[i].real();
-            ri += a[i].imag();
-        }
-        return {rr, ri};
-    }
-    double re[4], im[4];
-    for (int j = 0; j < 4; ++j) {
-        re[j] = a[j].real();
-        im[j] = a[j].imag();
-    }
-    std::int64_t i = 4;
-    for (; i < n - (n % 4); i += 4)
-        for (int j = 0; j < 4; ++j) {
-            re[j] += a[i + j].real();
-            im[j] += a[i + j].imag();
-        }
-    double rr = (re[0] + re[1]) + (re[2] + re[3]);
-    double ri = (im[0] + im[1]) + (im[2] + im[3]);
-    for (; i < n; ++i) {
-        rr += a[i].real();
-        ri += a[i].imag();
-    }
-    return {rr, ri};
+        fill(b, m, buf);
+        return pairwise_leaf(buf, m);
+    });
 }
 
 template <class Fill>
 cplx pairwise_complex(std::int64_t begin, std::int64_t n, Fill& fill) {
-    if (n <= kPairwiseBlock / 2) {
+    return pairwise::tree_complex(begin, n, [&fill](std::int64_t b, std::int64_t m) {
         alignas(16) double raw[kPairwiseBlock];  // not cplx[]: its constructor would zero it
         cplx* buf = reinterpret_cast<cplx*>(raw);
-        fill(begin, n, buf);
-        return pairwise_leaf_complex(buf, n);
-    }
-    std::int64_t n2 = n;  // numpy: n2 = (2n)/2 - ((2n)/2) % 8 doubles
-    n2 -= n2 % 8;
-    n2 /= 2;
-    const cplx a = pairwise_complex(begin, n2, fill), b = pairwise_complex(begin + n2, n - n2, fill);
-    return {a.real() + b.real(), a.imag() + b.imag()};
+        fill(b, m, buf);
+        return pairwise_leaf_complex(buf, m);
+    });
 }
 
 }  // namespace detail
@@ -105,7 +56,9 @@ cplx pairwise_complex(std::int64_t begin, std::int64_t n, Fill& fill) {
 // The sum of n terms (double or cplx), 0 + tree as numpy's add.reduce.
 template <class T, class Fill>
 T pairwise_sum(std::int64_t n, Fill&& fill) {
-    // A single leaf inline (short sums: no recursive call), else the tree.
+    // A single leaf inline: short sums (a 3x3 matrix's columns, a short
+    // diagonal) skip the recursive tree call. Measured: matrix_norm(ord=1) of
+    // (1000, 3, 3) is 13 us with this path and 17 us without, at one thread.
     if constexpr (std::is_same_v<T, cplx>) {
         cplx s;
         if (n <= kPairwiseBlock / 2) {
@@ -127,54 +80,23 @@ T pairwise_sum(std::int64_t n, Fill&& fill) {
     }
 }
 
-
 // ---- one long sum on many threads, with the same bits (docs/design/linalg.md §8.3) --
-// As the array area does it (array/kernels/reduce.hpp, docs/design/array.md
-// §6.2): the tree depends on n only, so its subtrees of at most kSumLeaf terms
-// are independent. They are summed in parallel and then combined along the
-// very same tree: bit for bit the serial sum, for any thread count.
-
+// The subtrees of at most kSumLeaf terms are summed in parallel and combined
+// along the very same tree (pairwise::plan, pairwise::combine): bit for bit
+// the serial sum, for any thread count. The constants are the array area's.
 inline constexpr std::int64_t kSumLeaf = 1 << 12;          // terms per task (the pool's kTaskWork)
 inline constexpr std::int64_t kSumParallelMin = 1 << 15;   // shorter sums stay serial (its kThreshold)
 
-namespace detail {
-
-inline std::int64_t split_at(std::int64_t m, bool complex) {
-    if (complex) {
-        std::int64_t m2 = m;
-        m2 -= m2 % 8;
-        return m2 / 2;
-    }
-    const std::int64_t m2 = m / 2;
-    return m2 - m2 % 8;
-}
-
-}  // namespace detail
-
 // The leaves to compute: subtrees of at most kSumLeaf terms, left to right; or
 // the whole range as one leaf when the sum is short or no pool is available.
-inline std::vector<std::pair<std::int64_t, std::int64_t>> pairwise_plan(std::int64_t n, bool complex) {
-    std::vector<std::pair<std::int64_t, std::int64_t>> leaves;
-    if (n < kSumParallelMin || !detail::begin_parallel()) {
-        leaves.emplace_back(0, n);
-        return leaves;
-    }
-    auto collect = [&](auto&& self, std::int64_t b, std::int64_t m) -> void {
-        if (m <= kSumLeaf) {
-            leaves.emplace_back(b, m);
-            return;
-        }
-        const std::int64_t m2 = detail::split_at(m, complex);
-        self(self, b, m2);
-        self(self, b + m2, m - m2);
-    };
-    collect(collect, 0, n);
-    return leaves;
+inline pairwise::Leaves pairwise_plan(std::int64_t n, bool complex) {
+    if (n < kSumParallelMin || !detail::begin_parallel()) return {{0, n}};
+    return pairwise::plan(n, kSumLeaf, complex);
 }
 
 // Runs leaf(t) for every leaf of a plan: on the pool when there are several.
 template <class Leaf>
-void pairwise_run(const std::vector<std::pair<std::int64_t, std::int64_t>>& plan, Leaf&& leaf) {
+void pairwise_run(const pairwise::Leaves& plan, Leaf&& leaf) {
     if (plan.size() == 1) {
         leaf(std::int64_t(0));
         return;
@@ -184,18 +106,9 @@ void pairwise_run(const std::vector<std::pair<std::int64_t, std::int64_t>>& plan
 
 // The leaves' partial sums combined along the tree they came from.
 template <class T>
-T pairwise_combine(std::int64_t n, bool complex, const std::vector<T>& parts) {
+T pairwise_combine(std::int64_t n, bool /*complex: from T*/, const std::vector<T>& parts) {
     if (parts.size() == 1) return parts[0];
-    std::size_t next = 0;
-    auto combine = [&](auto&& self, std::int64_t m) -> T {
-        if (m <= kSumLeaf) return parts[next++];
-        const std::int64_t m2 = detail::split_at(m, complex);
-        const T left = self(self, m2);
-        const T right = self(self, m - m2);
-        if constexpr (std::is_same_v<T, cplx>) return {left.real() + right.real(), left.imag() + right.imag()};
-        else return left + right;
-    };
-    return combine(combine, n);
+    return pairwise::combine(n, kSumLeaf, parts);
 }
 
 // pairwise_sum on the pool for long sums. `fill` is called from several

@@ -259,7 +259,7 @@ R1이 추천안대로 정해지면, 아래 후보를 함수 하나하나 확정�
   - 배열 ↔ linalg (M2에서 linalg API 문서를 새로 쓰다 찾음)
     - **결과 dtype**: linalg는 bool/int64 입력을 float64로 계산한다(`vecdot`, `trace`, `outer`, `kron`, `cross`, `matrix_power`). 배열은 int64를 유지한다(`sum`, `matmul`). 그래서 `sd.linalg.trace(int 행렬)`은 float이고 `sd.sum(sd.linalg.diagonal(int 행렬))`은 int다.
     - **결과 레이아웃**: linalg의 행렬 결과는 F-order다(DESIGN §3.3에서 유지하기로 함). 배열 API의 "새 배열은 C-order" 규칙(docs/api/array.md §1.9)과 다르다. 규칙 쪽을 "영역마다 정한 순서"로 넓힐지 정한다.
-    - **`.base`**: linalg 결과의 `.base`는 내부 블록 객체다. 배열 규칙(새로 만든 배열의 `.base`는 `None`)과 다르다. M3에서 결과를 `NDArray`로 직접 만들면 자연히 맞는다.
+    - ~~**`.base`**: linalg 결과의 `.base`가 내부 블록 객체였다.~~ M3에서 해결: 결과를 `NDArray`로 직접 만들어 `.base`는 `None`이다.
     - **에러 메시지 형식**: `LinAlgError`와 `OverflowError` 메시지에는 `func(): ` 접두사가 없다. `trace(dtype=sd.bool)`은 콜론 없이 "trace() cannot…"이다.
     - **에러 종류**: 잘못된 `ord`의 타입이 `vector_norm`에서는 TypeError, `matrix_norm`/`cond`에서는 ValueError다. int64를 넘는 Python int가 `k`, `n`, `axis`에서는 ValueError인데, 공통 규칙(API.md §2)은 OverflowError다.
     - `axis=[0]`의 메시지가 "must be an int, not list"인데 튜플은 받는다.

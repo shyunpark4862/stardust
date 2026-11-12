@@ -19,11 +19,6 @@ namespace sd::linalg {
 
 namespace {
 
-template <class T>
-T conj_if_complex(T v) {
-    if constexpr (std::is_same_v<T, cplx>) return std::conj(v);
-    else return v;
-}
 
 // -------------------------------------------------------- solve_triangular --
 
@@ -53,7 +48,7 @@ nb::object solve_triangular(nb::handle ao, nb::handle bo, bool upper, bool unit_
             return 0;
         }, lu_task_cap(n, r.k, false));
         if (f) raise(b, f, "solve_triangular", "a");
-        return to_sdnp(out);
+        return to_array(out);
     });
 }
 
@@ -84,7 +79,7 @@ nb::object cholesky(nb::handle xo, bool upper) {
             return 0;
         });
         if (f) raise(b, f, "cholesky", "x");
-        return to_sdnp(out);
+        return to_array(out);
     });
 }
 
@@ -114,7 +109,7 @@ nb::object cholesky_solve(nb::handle lo, nb::handle bo, bool upper) {
             return 0;
         }, lu_task_cap(n, r.k, false));
         if (f) raise(b, f, "cholesky_solve", "l");
-        return to_sdnp(out);
+        return to_array(out);
     });
 }
 
@@ -153,7 +148,7 @@ nb::object lu(nb::handle xo) {
             return 0;
         }, lu_task_cap(std::min(m, n), 0, true));
         if (f) raise(b, f, "lu", "x");
-        return make_result(Result::LU, {to_sdnp(lo), to_sdnp(uo), to_sdnp(po)});
+        return make_result(Result::LU, {to_array(lo), to_array(uo), to_array(po)});
     });
 }
 
@@ -235,7 +230,7 @@ nb::object lu_solve(nb::handle lo, nb::handle uo, nb::handle po, nb::handle bo) 
             return 0;
         }, lu_task_cap(n, r.k, false));
         if (f) raise(b, f, "lu_solve", "l");
-        return to_sdnp(out);
+        return to_array(out);
     });
 }
 

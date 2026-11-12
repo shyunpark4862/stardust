@@ -17,6 +17,7 @@
 #pragma once
 
 #include "array/kernels/elementwise.hpp"
+#include "base/pairwise.hpp"
 #include "parallel/pool.hpp"
 
 #include <arm_neon.h>
@@ -30,121 +31,56 @@
 namespace sd {
 
 // ---- pairwise summation (numpy's DOUBLE/CDOUBLE_pairwise_sum) --------------
+// The tree and the leaf sums are base/pairwise.hpp, shared by every area; here
+// the terms reach a leaf through an accessor (docs/design/array.md §6.2).
 
-inline constexpr std::int64_t kPairwiseBlock = 128;  // numpy's PW_BLOCKSIZE, in doubles
+inline constexpr std::int64_t kPairwiseBlock = pairwise::kBlock;  // numpy's PW_BLOCKSIZE, in doubles
 
 // Sum of get(begin), ..., get(begin + n - 1).
 template <typename Get>
 double pairwise_sum(std::int64_t begin, std::int64_t n, const Get& get) {
-    if (n < 8) {
-        double res = 0.;
-        for (std::int64_t i = 0; i < n; ++i) res += get(begin + i);
-        return res;
-    }
-    if (n <= kPairwiseBlock) {
-        double r[8];
-        for (int j = 0; j < 8; ++j) r[j] = get(begin + j);
-        std::int64_t i = 8;
-        for (; i < n - (n % 8); i += 8)
-            for (int j = 0; j < 8; ++j) r[j] += get(begin + i + j);  // 8 independent chains
-        double res = ((r[0] + r[1]) + (r[2] + r[3])) + ((r[4] + r[5]) + (r[6] + r[7]));
-        for (; i < n; ++i) res += get(begin + i);
-        return res;
-    }
-    std::int64_t n2 = n / 2;
-    n2 -= n2 % 8;
-    return pairwise_sum(begin, n2, get) + pairwise_sum(begin + n2, n - n2, get);
+    return pairwise::tree(begin, n, [&](std::int64_t b, std::int64_t m) {
+        return pairwise::leaf(m, [&](std::int64_t i) { return get(b + i); });
+    });
 }
 
 // The complex version: real and imaginary parts summed side by side. numpy
 // counts doubles, so a block holds 64 complex numbers and 4 accumulators.
 template <typename Get>
 complex128 pairwise_sum_complex(std::int64_t begin, std::int64_t n, const Get& get) {
-    if (n < 4) {
-        double rr = 0., ri = 0.;
-        for (std::int64_t i = 0; i < n; ++i) {
-            const complex128 z = get(begin + i);
-            rr += z.real();
-            ri += z.imag();
-        }
-        return {rr, ri};
-    }
-    if (n <= kPairwiseBlock / 2) {
-        complex128 r[4];
-        for (int j = 0; j < 4; ++j) r[j] = get(begin + j);
-        std::int64_t i = 4;
-        for (; i < n - (n % 4); i += 4)
-            for (int j = 0; j < 4; ++j) {
-                const complex128 z = get(begin + i + j);
-                r[j] = {r[j].real() + z.real(), r[j].imag() + z.imag()};
-            }
-        double rr = (r[0].real() + r[1].real()) + (r[2].real() + r[3].real());
-        double ri = (r[0].imag() + r[1].imag()) + (r[2].imag() + r[3].imag());
-        for (; i < n; ++i) {
-            const complex128 z = get(begin + i);
-            rr += z.real();
-            ri += z.imag();
-        }
-        return {rr, ri};
-    }
-    std::int64_t n2 = n;  // numpy: n2 = (2n)/2 - ((2n)/2) % 8 doubles
-    n2 -= n2 % 8;
-    n2 /= 2;
-    const complex128 a = pairwise_sum_complex(begin, n2, get), b = pairwise_sum_complex(begin + n2, n - n2, get);
-    return {a.real() + b.real(), a.imag() + b.imag()};
+    return pairwise::tree_complex(begin, n, [&](std::int64_t b, std::int64_t m) {
+        return pairwise::leaf_complex(m, [&](std::int64_t i) { return get(b + i); });
+    });
 }
 
 // ---- the same sums on many threads, with the same bits ---------------------
-// pairwise_sum's recursion tree depends on n only. Its subtrees of at most
-// kLeaf elements are independent: they are summed in parallel, then combined
-// along the very same tree. The result is bit-for-bit the serial one (and
-// numpy's), for any thread count (docs/design/array.md §6.2).
+// The subtrees of at most kLeaf elements are summed in parallel, then combined
+// along the very same tree (pairwise::plan, pairwise::combine). The result is
+// bit-for-bit the serial one (and numpy's), for any thread count
+// (docs/design/array.md §6.2).
 
 inline constexpr std::int64_t kLeaf = parallel::kTaskWork;
 
-template <typename Split, typename SumLeaf, typename Add>
-auto pairwise_parallel(std::int64_t n, std::int64_t leaf, Split split, SumLeaf sum_leaf, Add add) {
-    std::vector<std::pair<std::int64_t, std::int64_t>> leaves;  // (begin, n), left to right
-    auto collect = [&](auto&& self, std::int64_t b, std::int64_t m) -> void {
-        if (m <= leaf) {
-            leaves.emplace_back(b, m);
-            return;
-        }
-        const std::int64_t m2 = split(m);
-        self(self, b, m2);
-        self(self, b + m2, m - m2);
-    };
-    collect(collect, 0, n);
-    using R = decltype(sum_leaf(0, 0));
-    std::vector<R> part(leaves.size());
+template <typename T, typename SumLeaf>
+T pairwise_parallel(std::int64_t n, std::int64_t leaf, const SumLeaf& sum_leaf) {
+    const pairwise::Leaves leaves = pairwise::plan(n, leaf, std::is_same_v<T, complex128>);
+    std::vector<T> part(leaves.size());
     parallel::parallel_for(static_cast<std::int64_t>(leaves.size()),
                            [&](std::int64_t t) { part[t] = sum_leaf(leaves[t].first, leaves[t].second); });
-    size_t next = 0;
-    auto combine = [&](auto&& self, std::int64_t m) -> R {
-        if (m <= leaf) return part[next++];
-        const std::int64_t m2 = split(m);
-        const R left = self(self, m2);
-        return add(left, self(self, m - m2));
-    };
-    return combine(combine, n);
+    return pairwise::combine(n, leaf, part);
 }
 
 template <typename Get>
 double pairwise_sum_mt(std::int64_t n, const Get& get) {
     if (n < parallel::kThreshold || !parallel::available()) return pairwise_sum(0, n, get);
-    return pairwise_parallel(
-        n, kLeaf, [](std::int64_t m) { return m / 2 - (m / 2) % 8; },
-        [&](std::int64_t b, std::int64_t m) { return pairwise_sum(b, m, get); },
-        [](double a, double b) { return a + b; });
+    return pairwise_parallel<double>(n, kLeaf, [&](std::int64_t b, std::int64_t m) { return pairwise_sum(b, m, get); });
 }
 
 template <typename Get>
 complex128 pairwise_sum_complex_mt(std::int64_t n, const Get& get) {
     if (n < parallel::kThreshold || !parallel::available()) return pairwise_sum_complex(0, n, get);
-    return pairwise_parallel(
-        n, kLeaf / 2, [](std::int64_t m) { return (m - m % 8) / 2; },
-        [&](std::int64_t b, std::int64_t m) { return pairwise_sum_complex(b, m, get); },
-        [](complex128 a, complex128 b) { return complex128{a.real() + b.real(), a.imag() + b.imag()}; });
+    return pairwise_parallel<complex128>(n, kLeaf / 2,
+                                         [&](std::int64_t b, std::int64_t m) { return pairwise_sum_complex(b, m, get); });
 }
 
 // ---- float and complex products in fixed blocks ---------------------------

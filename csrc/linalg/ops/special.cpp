@@ -99,7 +99,7 @@ nb::object solve_tridiagonal(nb::handle dlo, nb::handle do_, nb::handle duo, nb:
                                kNonFinite2, kNonFinite3);
         });
         if (f) raise(b, f, func, "dl", "d", "du");
-        return to_sdnp(out);
+        return to_array(out);
     });
 }
 
@@ -159,7 +159,7 @@ nb::object solve_banded(nb::handle abo, nb::handle bo, nb::handle klo, nb::handl
             return b_ok ? 0 : kNonFiniteB;
         });
         if (f) raise(b, f, func, "ab");
-        return to_sdnp(out);
+        return to_array(out);
     });
 }
 
@@ -235,7 +235,7 @@ nb::object solve_sylvester(nb::handle ao, nb::handle bo, nb::handle co) {
             return 0;
         });
         if (f) raise(b, f, func, "a", "c");
-        return to_sdnp(out);
+        return to_array(out);
     });
 }
 

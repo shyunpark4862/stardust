@@ -389,3 +389,13 @@ def test_outer_equals_sdnp_broadcast_multiply():
     y = as_sd(rng.standard_normal((3, 5)) + 1j * rng.standard_normal((3, 5)))
     want = sd.multiply(sd.expand_dims(x, axis=-1), sd.expand_dims(y, axis=-2))
     assert np.array_equal(npy(sd.linalg.outer(x, y)), npy(want))
+
+
+@pytest.mark.parametrize("k", [-(2**63), -(10**18), -3, 4, 10**18, 2**63 - 1])
+def test_offset_past_the_matrix_is_an_empty_diagonal(k):
+    # k = -2**63 once negated -k (signed overflow, undefined behaviour); any
+    # offset past the matrix is an empty diagonal (docs/api/linalg.md §2).
+    a = sd.ones((3, 4))
+    assert sd.linalg.trace(a, k=k) == 0.0
+    assert sd.linalg.diagonal(a, k=k).shape == (0,)
+    assert sd.linalg.diagonal(sd.ones((5, 3, 4)), k=k).shape == (5, 0)

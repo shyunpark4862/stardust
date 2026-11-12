@@ -85,7 +85,7 @@ nb::object det(nb::handle xo) {
             });
         }, lu_task_cap(n, 0, true));
         if (f) raise(b, f, "det", "x");
-        return to_sdnp(out);
+        return to_array(out);
     });
 }
 
@@ -117,7 +117,7 @@ nb::object slogdet(nb::handle xo) {
             });
         }, lu_task_cap(n, 0, true));
         if (f) raise(b, f, "slogdet", "x");
-        return make_slogdet(to_sdnp(sign_out), to_sdnp(logabs_out));
+        return make_slogdet(to_array(sign_out), to_array(logabs_out));
     });
 }
 
@@ -138,7 +138,7 @@ nb::object inv(nb::handle xo) {
             return 0;
         }, lu_task_cap(n, n, true));
         if (f) raise(b, f, "inv", "x");
-        return to_sdnp(out);
+        return to_array(out);
     });
 }
 
@@ -165,7 +165,7 @@ nb::object solve(nb::handle ao, nb::handle bo) {
             return 0;
         }, lu_task_cap(n, k, true));
         if (f) raise(b, f, "solve", "a");
-        return to_sdnp(out);
+        return to_array(out);
     });
 }
 

@@ -100,4 +100,17 @@ NDArray new_array_like(const NDArray& proto, DType dtype, bool zeroed) {
     return allocate(dtype, proto.shape_span(), {order.data(), static_cast<size_t>(proto.ndim)}, zeroed);
 }
 
+NDArray new_array_strided(DType dtype, std::span<const std::int64_t> shape, std::span<const std::int64_t> strides,
+                          std::int64_t nbytes) {
+    NDArray a;
+    a.dtype = dtype;
+    a.ndim = static_cast<int>(shape.size());
+    std::copy(shape.begin(), shape.end(), a.shape.begin());
+    std::copy(strides.begin(), strides.end(), a.strides.begin());
+    a.buffer = Buffer::allocate(nbytes, false);
+    a.data = a.buffer->data();
+    a.update_flags();
+    return a;
+}
+
 }  // namespace sd

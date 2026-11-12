@@ -1,6 +1,9 @@
 // Basic types shared by the whole core.
 #pragma once
 
+#include "array/convert.hpp"  // saturate_to_int64: float -> int64 as the array area converts
+#include "base/dtype.hpp"
+
 #include <Accelerate/Accelerate.h>  // ILP64 + new LAPACK via compile definitions (docs/design/linalg.md §1.2)
 
 #include <cmath>
@@ -16,16 +19,8 @@ using cplx = std::complex<double>;
 using lint = __LAPACK_int;  // 64-bit LAPACK integer
 static_assert(sizeof(lint) == 8, "ACCELERATE_LAPACK_ILP64 must be defined");
 
-// The four sd dtypes, read from the buffer format of an input.
-enum class DType : std::uint8_t { Bool, Int64, Float64, Complex128 };
-
-inline std::int64_t itemsize(DType d) {
-    switch (d) {
-        case DType::Bool: return 1;
-        case DType::Complex128: return 16;
-        default: return 8;
-    }
-}
+// DType and itemsize are the library's (base/dtype.hpp): an input's dtype is
+// its NDArray's.
 
 // What a computing function works in for a given input: bool and int64 become
 // float64 (docs/design/linalg.md §2.1); the result dtype depends on input dtypes
@@ -58,22 +53,13 @@ inline S load(const std::byte* p) {
     return v;
 }
 
-// float -> int64 as the array area converts explicitly (docs/design/array.md §2.4):
-// toward zero, saturating at the int64 range, NaN -> 0.
-inline std::int64_t saturate_to_int(double v) {
-    if (std::isnan(v)) return 0;
-    if (v >= 9223372036854775808.0) return std::numeric_limits<std::int64_t>::max();
-    if (v < -9223372036854775808.0) return std::numeric_limits<std::int64_t>::min();
-    return static_cast<std::int64_t>(v);
-}
-
 // Converts a stored value S to the computing type T (double, cplx or int64).
 // complex -> real never happens: callers reject it before (docs/design/array.md §2.4).
 template <class T, class S>
 inline T convert(S v) {
     if constexpr (std::is_same_v<S, std::uint8_t>) return T(v != 0 ? 1 : 0);
     else if constexpr (std::is_same_v<T, std::int64_t>) {
-        if constexpr (std::is_same_v<S, double>) return saturate_to_int(v);
+        if constexpr (std::is_same_v<S, double>) return saturate_to_int64(v);  // the array area's rule (array/convert.hpp)
         else return static_cast<std::int64_t>(v);
     } else if constexpr (std::is_same_v<S, std::int64_t>) return T(static_cast<double>(v));
     else return T(v);  // double -> double/complex, complex -> complex
