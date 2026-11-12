@@ -12,6 +12,9 @@
 #include "array/ops/shape.hpp"
 #include "array/ops/ufunc.hpp"
 
+#include <string>
+#include <type_traits>
+
 namespace sd {
 
 namespace {
@@ -96,6 +99,25 @@ struct ArrayIterator {
 // NotImplemented, so Python can try the other side and then raise TypeError.
 
 nb::object not_implemented() { return nb::borrow(Py_NotImplemented); }
+
+// == and != cannot give NotImplemented: when both sides do, Python falls back
+// to identity and `x == [1, 2]` would quietly be False. So an operand we do
+// not take is first offered to the other side's comparison (a type that knows
+// sd.ndarray answers), and if it declines this is a TypeError, like
+// `x < [1, 2]` and `x + [1, 2]` (docs/api/array.md §10.3).
+template <typename Op>
+nb::object op_equality(nb::handle self, nb::handle other) {
+    if (is_operand(other)) return binary<Op>(self, other, nb::none());
+    constexpr bool eq = std::is_same_v<Op, ops::Equal>;
+    if (richcmpfunc cmp = Py_TYPE(other.ptr())->tp_richcompare) {
+        nb::object r = nb::steal(cmp(other.ptr(), self.ptr(), eq ? Py_EQ : Py_NE));  // == and != reflect to themselves
+        if (!r.is_valid()) throw nb::python_error();
+        if (r.ptr() != Py_NotImplemented) return r;
+    }
+    throw nb::type_error((std::string("'") + (eq ? "==" : "!=") + "' not supported between instances of '" +
+                          Py_TYPE(self.ptr())->tp_name + "' and '" + Py_TYPE(other.ptr())->tp_name + "'")
+                             .c_str());
+}
 
 template <typename Op>
 nb::object op_forward(nb::handle self, nb::handle other) {
@@ -212,8 +234,8 @@ void bind_ndarray(nb::module_& m) {
     def_arith<LeftShift>(cls, "__lshift__", "__rlshift__", "__ilshift__");
     def_arith<RightShift>(cls, "__rshift__", "__rrshift__", "__irshift__");
     // Python reflects comparisons itself (x > y becomes y < x).
-    cls.def("__eq__", &op_forward<Equal>, nb::arg().none());
-    cls.def("__ne__", &op_forward<NotEqual>, nb::arg().none());
+    cls.def("__eq__", &op_equality<Equal>, nb::arg().none());
+    cls.def("__ne__", &op_equality<NotEqual>, nb::arg().none());
     cls.def("__lt__", &op_forward<Less>, nb::arg().none());
     cls.def("__le__", &op_forward<LessEqual>, nb::arg().none());
     cls.def("__gt__", &op_forward<Greater>, nb::arg().none());
@@ -249,6 +271,11 @@ void bind_ndarray(nb::module_& m) {
     // ufuncs to step aside, so mixing the two raises TypeError
     // (docs/design/array.md §12.2).
     cls.attr("__array_ufunc__") = nb::none();
+
+    // nanobind's properties have no name, so assigning one said "property ''
+    // of 'ndarray' object has no setter". __set_name__ gives each its name.
+    for (const char* name : {"dtype", "shape", "strides", "ndim", "size", "itemsize", "nbytes", "base", "T", "mT"})
+        cls.attr(name).attr("__set_name__")(cls, name);
 
     nb::class_<ArrayIterator>(m, "_ArrayIterator")
         .def("__iter__", [](nb::handle self) { return nb::borrow(self); })

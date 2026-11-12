@@ -59,7 +59,8 @@ To cast_value(From v) {
 // ---- Python scalars ----
 
 // The dtype a Python scalar maps to (bool, int, float, complex and their
-// subclasses), or nullopt if `o` is not one of those.
+// subclasses; numpy's bool, integer, floating and complexfloating scalars
+// likewise), or nullopt if `o` is not one of those.
 std::optional<DType> scalar_dtype(nb::handle o);
 
 // Converts Python scalar `o` (whose dtype is `src`, from scalar_dtype) to T.

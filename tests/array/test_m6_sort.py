@@ -28,11 +28,13 @@ def sample(dtype, shape=(4, 37), seed=0):
 
 
 def reference_argsort(lane, descending):
-    """Stable, NaN last in both directions, ties in original order."""
+    """Stable, NaN the largest value (last ascending, first descending), ties in original order."""
     def key(i):
         v = lane[i]
         nan = isinstance(v, float) and math.isnan(v)
-        return (nan, 0 if nan else (-v if descending else v))
+        if descending:
+            return (not nan, 0 if nan else -v)
+        return (nan, 0 if nan else v)
     return sorted(range(len(lane)), key=key)
 
 
@@ -91,27 +93,54 @@ def test_layouts_and_rules():
     assert sd.argsort(sd.zeros(0)).dtype is sd.int64
 
 
-def test_descending_keeps_tie_order_and_nan_last():
-    x = sd.asarray([1.0, math.nan, 3.0, 1.0, 3.0])
-    assert sd.argsort(x, descending=True).tolist() == [2, 4, 0, 3, 1]
+def test_descending_keeps_tie_order_and_puts_nan_first():
+    # NaN is the largest value (docs/api/array.md §8.2), as in the frame's sort_values.
+    x = sd.asarray([1.0, math.nan, 3.0, 1.0, 3.0, math.nan])
+    assert sd.argsort(x, descending=True).tolist() == [1, 5, 2, 4, 0, 3]
+    assert sd.argsort(x).tolist() == [0, 3, 2, 4, 1, 5]
+    got = sd.sort(x, descending=True).tolist()
+    assert all(math.isnan(v) for v in got[:2]) and got[2:] == [3.0, 3.0, 1.0, 1.0]
+    for stable in (True, False):
+        idx = sd.argsort(x, descending=True, stable=stable).tolist()
+        assert sorted(idx[:2]) == [1, 5]  # the NaNs come first either way
+    inf = sd.asarray([math.inf, math.nan, -math.inf])
+    assert sd.argsort(inf, descending=True).tolist() == [1, 0, 2]  # NaN is above +inf
+    assert sd.argsort(inf).tolist() == [2, 0, 1]
+
+
+def test_descending_matches_the_frame():
+    # One rule for the two areas (DESIGN.md §9.1 #9).
+    from stardust import frame as F
+    v = [2.0, math.nan, -0.0, 0.0, 2.0, math.nan, -1.0]
+    s = F.Series(v)
+    for desc in (False, True):
+        got = sd.argsort(sd.asarray(v), descending=desc).tolist()
+        want = s.sort_values(descending=desc).index.tolist()
+        assert got == want
 
 
 # ------------------------------------------------------------------ unique
 
+def _is_nan(v):
+    if isinstance(v, complex):
+        return math.isnan(v.real) or math.isnan(v.imag)
+    return isinstance(v, float) and math.isnan(v)
+
+
 def reference_unique(flat):
-    """Sorted distinct values; every NaN on its own; first occurrences."""
+    """Sorted distinct values; all NaNs one value, the last; first occurrences."""
     def key(i):
         v = flat[i]
+        if _is_nan(v):
+            return (True, 0, 0)
         if isinstance(v, complex):
-            nan = math.isnan(v.real) or math.isnan(v.imag)
-            return (nan, 0, 0) if nan else (False, v.real, v.imag)
-        nan = isinstance(v, float) and math.isnan(v)
-        return (nan, 0 if nan else v)
+            return (False, v.real, v.imag)
+        return (False, v, 0)
     order = sorted(range(len(flat)), key=key)
     groups = []
     for i in order:
         v = flat[i]
-        if groups and flat[groups[-1][0]] == v:  # nan == nan is False: a new group
+        if groups and (flat[groups[-1][0]] == v or (_is_nan(v) and _is_nan(flat[groups[-1][0]]))):
             groups[-1].append(i)
         else:
             groups.append([i])
@@ -140,12 +169,67 @@ def test_unique_all(dtype):
 
 
 def test_unique_nan_and_signed_zero():
-    r = sd.unique_counts(sd.asarray([math.nan, 0.0, -0.0, math.nan, 1.0]))
+    # All NaNs are one value, sorted last; -0.0 and 0.0 are one value. The
+    # value shown is the first occurrence (docs/api/array.md §8.3).
+    x = sd.asarray([math.nan, 0.0, -0.0, math.nan, 1.0])
+    r = sd.unique_all(x)
     v = r.values.tolist()
-    assert v[:2] == [0.0, 1.0] and math.copysign(1, v[0]) == 1  # first occurrence (+0.0) is kept
-    assert all(math.isnan(t) for t in v[2:]) and len(v) == 4  # each NaN is its own value (docs/api/array.md §8.3)
-    assert r.counts.tolist() == [2, 1, 1, 1]
+    assert len(v) == 3 and v[:2] == [0.0, 1.0] and math.copysign(1, v[0]) == 1 and math.isnan(v[2])
+    assert r.counts.tolist() == [2, 1, 2]
+    assert r.indices.tolist() == [1, 4, 0]
+    assert r.inverse_indices.tolist() == [2, 0, 0, 2, 1]
+    u = sd.unique_values(sd.asarray([-0.0, 0.0, math.nan]))
+    assert math.copysign(1, u.tolist()[0]) == -1 and len(u.tolist()) == 2
     assert sd.unique_values(sd.zeros(0)).shape == (0,)
+    assert sd.unique_values(sd.asarray([math.nan] * 3)).shape == (1,)
+
+
+def test_unique_shows_the_first_nan_bits_and_matches_the_frame():
+    a = np.array([np.nan, 1.0, np.nan, 1.0])
+    a.view(np.int64)[0] |= 7  # a NaN with a payload, first
+    a.view(np.int64)[2] ^= np.int64(-(2**63))  # a negative NaN
+    for fn in (sd.unique_values, lambda x: sd.unique_all(x).values, lambda x: sd.unique_counts(x).values,
+               lambda x: sd.unique_inverse(x).values):
+        got = np.asarray(fn(sd.asarray(a)))
+        assert got.view(np.int64).tolist() == [a.view(np.int64)[1], a.view(np.int64)[0]]
+    from stardust import frame as F
+    v = [np.nan, 0.0, -0.0, 2.0, np.nan, -1.0]
+    want = F.Series(v).unique_values().tolist()
+    got = sd.unique_values(sd.asarray(v)).tolist()
+    assert len(got) == len(want) and all(
+        (math.isnan(g) and math.isnan(w)) or (g == w and math.copysign(1, g) == math.copysign(1, w))
+        for g, w in zip(got, want))
+
+
+def test_unique_complex_nan_is_one_value():
+    # Any complex number with a NaN part is the NaN, one value after the
+    # others (numpy 2 collapses them too; it shows its smallest NaN, we the first).
+    nan = math.nan
+    c = sd.asarray([complex(nan, 2), complex(1, nan), 1 + 0j, complex(nan, nan), 1j, 1 + 0j])
+    r = sd.unique_all(c)
+    assert r.values.tolist()[:2] == [1j, 1 + 0j] and repr(r.values.tolist()[2]) == repr(complex(nan, 2))
+    assert r.indices.tolist() == [4, 2, 0] and r.counts.tolist() == [1, 2, 3]
+    assert r.inverse_indices.tolist() == [2, 2, 1, 2, 0, 1]
+    _, w_inverse, w_counts = np.unique(np.asarray(c), return_inverse=True, return_counts=True, equal_nan=True)
+    assert r.counts.tolist() == w_counts.tolist()
+    assert r.inverse_indices.tolist() == w_inverse.tolist()
+
+
+@given(hnp.arrays(np.float64, hnp.array_shapes(min_dims=1, max_dims=2, max_side=8),
+                  elements=st.sampled_from([np.nan, -np.nan, 0.0, -0.0, 1.5, -2.0, np.inf, -np.inf])))
+def test_unique_matches_numpy_equal_nan_on_floats(n):
+    # numpy 2's np.unique defaults to equal_nan=True (np.unique_all does not:
+    # it follows the Array API): the same groups, counts and first indices.
+    # Which of -0.0 / 0.0 numpy shows depends on its sort, so values are
+    # compared as numbers.
+    r = sd.unique_all(sd.asarray(n))
+    values, index, inverse, counts = np.unique(n, return_index=True, return_inverse=True, return_counts=True,
+                                               equal_nan=True)
+    assert np.array_equal(np.asarray(r.values), values, equal_nan=True)
+    assert r.counts.tolist() == counts.tolist()
+    assert r.indices.tolist() == index.tolist()
+    assert np.array_equal(np.asarray(r.inverse_indices), inverse.reshape(n.shape))
+    assert np.array_equal(np.asarray(sd.unique_values(sd.asarray(n))), values, equal_nan=True)
 
 
 @given(hnp.arrays(np.int64, hnp.array_shapes(min_dims=1, max_dims=3, max_side=6), elements=st.integers(-4, 4)))
@@ -178,8 +262,10 @@ def test_simd_sort_sizes_and_values(n, kind):
     for stable in (True, False):
         assert_same(sd.sort(sd.asarray(v), stable=stable), np.sort(v, stable=True))
         got = np.asarray(sd.sort(sd.asarray(v), descending=True, stable=stable))
-        assert np.array_equal(got[~np.isnan(got)] if got.dtype.kind == "f" else got,
-                              np.sort(v[~np.isnan(v)] if v.dtype.kind == "f" else v)[::-1])
+        assert np.array_equal(got, np.sort(v)[::-1], equal_nan=True)  # NaN first: the reverse of ascending
+        if got.dtype.kind == "f":
+            k = int(np.isnan(v).sum())
+            assert np.isnan(got[:k]).all() and not np.isnan(got[k:]).any()
     assert_same(sd.unique_values(sd.asarray(v)), np.asarray(sd.unique_all(sd.asarray(v)).values))
 
 
@@ -209,7 +295,7 @@ def test_many_lanes_short_and_long():
         x = sd.asarray(n)
         assert_same(sd.sort(x, axis=1), np.sort(n, axis=1, kind="stable"))
         assert_same(sd.argsort(x, axis=1), np.argsort(n, axis=1, kind="stable"))
-        assert_same(sd.sort(x, axis=1, descending=True), -np.sort(-n, axis=1, kind="stable"))
+        assert_same(sd.sort(x, axis=1, descending=True), np.sort(n, axis=1)[:, ::-1])  # NaN first
 
 
 

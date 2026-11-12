@@ -14,13 +14,13 @@ namespace sd::linalg {
 namespace nb = nanobind;
 
 // A Python int; bool is rejected (as in the array area, docs/design/array.md §2.8).
-// TypeError otherwise.
+// TypeError otherwise; OverflowError outside int64 (API.md §2).
 std::int64_t parse_int(nb::handle o, const char* func, const char* what);
 
 // `dtype=`: None -> nullopt, else one of the four sd dtype objects (API.md §1).
 std::optional<DType> parse_dtype(nb::handle o, const char* func);
 
-// `axis=` of reductions: None -> every axis; an int or a tuple of ints, each
+// `axis=` of reductions: None -> every axis; an int or a tuple (or list) of ints, each
 // in [-ndim, ndim), no repeats. Returns sorted axes in [0, ndim).
 std::vector<int> parse_axes(nb::handle o, int ndim, const char* func);
 

@@ -102,7 +102,8 @@
 - Python 스칼라로 꺼낸 다음부터는 Python 의미론이다. 오버플로가 없다.
 - int64 범위를 벗어난 Python int는 **int64로 변환되어야 할 때만** OverflowError다.
   - `int_arr + 2**70`은 에러, `float_arr + 2**70`은 float로 바뀌어 정상이다.
-  - ufunc에서는 스칼라를 루프 dtype으로 바꿀 때 판정하므로, 루프가 int64일 때만 에러가 난다 (`prepare`).
+  - ufunc에서는 **승격한 피연산자 dtype**으로 판정한다 (`check_int_scalars`). 그것이 bool이나 int64이면 루프가 float64여도(`divide`, `atan2`, `sqrt`) 에러다. 루프 dtype으로 판정하던 때는 `divide(int_arr, 2**64)`만 정상이라 다른 이항 함수와 어긋났다 (DESIGN §9.5). frame도 같은 규칙이다.
+  - 이름 붙은 int 인자(`shape`, `axis`, `k`, `num`)도 범위 밖이면 OverflowError다 (`parse_int`, API.md §2). `set_num_threads`만 범위 1~1024 밖을 모두 ValueError로 낸다.
 - 배열은 크기와 상관없이 스칼라가 아니다. `bool()`, `int()`, `float()`, `complex()`는 원소가 하나여도 TypeError다 (§12.2).
 
 ### 2.3 원소 연산은 값 때문에 실패하지 않는다
@@ -127,7 +128,7 @@
 - 범위 밖의 Python int는 int64로 변환될 때만 OverflowError다 (§2.2). 변환 대상이 float/complex이면 float로 바꾼다: `asarray([2**70, 0.5])`는 정상이다.
 
 ### 2.5 암묵적 변환은 위로만
-- 대입(`x[...] = v`), `out=`, in-place 연산자(`x += y`)는 승격 순서의 **위로만** 변환한다. 아래로 가면 TypeError다 (`check_assignable`, `array/ops/copy.hpp`).
+- 대입(`x[...] = v`), `out=`, in-place 연산자(`x += y`), `dtype=` 없는 `full_like`의 채움 값은 승격 순서의 **위로만** 변환한다. 아래로 가면 TypeError다 (`check_assignable`, `array/ops/copy.hpp`). `full_like(int_arr, 1.5)`는 `int_arr[...] = 1.5`와 같은 일이다. `dtype=`을 주면 `full`처럼 명시적 변환이다 (§2.4).
   - 예: `int_arr += 1.5`는 TypeError, `float_arr[0] = 1`은 정상이다.
 - `out=`가 결과보다 넓은 dtype이면 결과 dtype으로 계산한 뒤 `out`으로 변환한다 (§4.3).
 - `clip`은 x의 dtype을 유지한다. `min`/`max`는 x의 dtype으로 암묵적으로 변환되어야 한다.
@@ -137,9 +138,9 @@
 - **complex에는 순서가 없다.** `<` 등의 비교, `max`/`min`, `sort`/`argsort`, `argmax`/`argmin`, `clip`은 complex에서 TypeError다. 해당 연산에는 complex 루프가 없다.
 - `max`, `min`, `maximum`, `minimum`, `clip`은 NaN을 전파한다. `maximum`/`minimum`은 `-0 < +0`으로 본다 (IEEE 754-2019 maximum/minimum).
 - `argmax`/`argmin`은 첫 NaN의 위치를 반환한다. 동점이면 첫 인덱스다.
-- `sort`는 NaN을 양방향 모두 맨 끝에 놓는다 (§8.1).
-- `unique_*`는 NaN을 각각 별개의 값으로 본다 (Array API, `nan != nan`과 일관된다). complex는 (실수부, 허수부)의 사전순으로 비교한다.
-- 통합 중 M6에서 내림차순 정렬의 NaN 위치(DESIGN §4.4 9번)가 바뀐다. `unique`의 NaN 규칙은 DESIGN §8.3에서 결정 대기 중이다.
+- **NaN은 가장 큰 값이다.** `sort`는 오름차순에서 맨 끝, 내림차순에서 맨 앞에 놓는다 (§8.1). frame의 정렬과 같다 (DESIGN §9.1 9번).
+- `unique_*`는 NaN을 모두 하나의 값으로 본다 (frame의 키 규칙, numpy 2 `np.unique`의 기본값. Array API와는 다르다: DESIGN §9.1 10번). `-0.0`과 `0.0`도 하나다. 보여 주는 값은 처음 나온 것이다. complex는 (실수부, 허수부)의 사전순으로 비교하고, NaN 부분이 있으면 NaN이다.
+- `==`, `!=`는 받지 않는 피연산자(리스트, numpy 배열, `None`)에 TypeError다 (§12.2). 다른 연산자와 같다 (DESIGN §9.1 13번).
 
 ### 2.7 numpy와의 비트 동일성
 무엇이 numpy와 비트까지 같고, 무엇이 다른지 정해 두었다. 테스트가 이 구분을 그대로 고정한다 (§13.1).
@@ -172,7 +173,7 @@
 - 전치: `.T`는 2차원에서만, `.mT`는 마지막 두 축, 일반 축 순서는 `permute_dims`.
 - `where`는 인자 3개 형태만 있다.
 - dtype 지정은 dtype 객체(`sd.bool`, `sd.int64`, `sd.float64`, `sd.complex128`)만 받는다. Python 타입과 문자열은 거부한다. 통합 중 M6에서 이름 문자열도 받게 된다 (DESIGN §4.2).
-- ufunc의 피연산자는 ndarray와 Python 스칼라뿐이다. 리스트나 다른 라이브러리의 배열은 `asarray`로 먼저 바꾼다 (`is_operand`).
+- ufunc의 피연산자는 ndarray와 Python 스칼라(numpy 스칼라 포함, §12.2)뿐이다. 리스트나 다른 라이브러리의 배열은 `asarray`로 먼저 바꾼다 (`is_operand`). `real`, `imag`도 `conj`처럼 스칼라를 받는다.
 
 ---
 
@@ -516,8 +517,9 @@ numpy의 `DOUBLE_pairwise_sum`/`CDOUBLE_pairwise_sum`과 같은 알고리즘, �
 ## 8. 정렬과 unique
 
 ### 8.1 순서 규칙 (`array/ops/sort.cpp`)
-- 비교 함수는 하나다. NaN은 양방향 모두 맨 끝이다.
-- **NaN 분리**: 레인을 버퍼로 읽어 올 때 NaN이 아닌 값은 앞에서부터, NaN은 뒤에서부터 채운다(각각 원래 순서). 앞부분만 NaN 검사 없는 평범한 비교로 정렬한다. 비교마다 있던 분기가 사라져 1.22배다.
+- 비교 함수는 하나다. NaN은 가장 큰 값이다: 오름차순이면 맨 끝, 내림차순이면 맨 앞이다.
+- **NaN 분리** (`load_split_nans`): 레인을 버퍼로 읽어 올 때 NaN과 나머지를 따로 채운다(각각 원래 순서). 오름차순이면 NaN을 뒤에, 내림차순이면 앞에 둔다. 나머지 부분만 NaN 검사 없는 평범한 비교로 정렬한다. 비교마다 있던 분기가 사라져 1.22배다.
+  - NaN끼리는 언제나 원래 순서다. 그래서 내림차순의 NaN 묶음도 안정 정렬의 결과와 같다. 내림차순으로 바꾸는 데 드는 비용은 없다 (정렬할 구간의 시작이 NaN 개수만큼 밀릴 뿐이다).
 - **`descending=True`에서도 동점 원소의 원래 순서가 유지된다.** 비교 함수를 뒤집지, 오름차순 결과를 뒤집지 않는다. 예외는 동점을 구별할 수 없는 경로(NEON 값 정렬, §8.3)로, 거기서는 결과를 뒤집는다.
 - complex는 정렬할 수 없다 (§2.6). `unique_*`만 (실수부, 허수부) 사전순을 쓴다.
 
@@ -574,7 +576,8 @@ dtype과 레인 길이만 본다. 데이터를 보고 고르지 않는다 (§1.4
 ### 8.6 unique_*
 - 처리 순서: 평탄화 → 안정 argsort → 이웃 비교. 안정하므로 같은 값 묶음의 첫 원소가 x에서의 첫 등장이다. 그래서 `indices`가 나오고, `-0.0`과 `+0.0` 중 먼저 나온 쪽이 남는다.
 - `unique_values`는 위치와 개수가 필요 없으므로 값만 안정 정렬하고 제자리에서 압축한다. 옮길 데이터가 절반이다 (1.24배).
-- NaN은 어떤 값과도 같지 않으므로 각각 따로 남는다 (§2.6).
+- **NaN은 하나의 묶음이다** (§2.6). NaN 분리(§8.1)로 이미 맨 뒤에 원래 순서대로 모여 있으므로, 이웃 비교는 NaN이 아닌 부분에서만 하고 NaN 구간 전체를 마지막 묶음 하나로 친다. 그 묶음의 값은 x에서 처음 나온 NaN이다(비트 그대로). NaN끼리 비교하지 않으므로 비트가 다른 NaN도 같은 묶음이다. 추가 비용은 없다.
+  - numpy는 정렬된 결과의 첫 원소를 보여 주므로 `-0.0`/`+0.0`과 complex NaN에서 보여 주는 값이 입력 순서와 무관하게 정해지지 않는다. 우리는 frame과 같이 처음 나온 값이다.
 - **해시 기반 경로는 두지 않는다.** int64는 기수 정렬로 이미 numpy보다 빠르다 (`unique_counts` 값 1000종 3.9ms 대 8.4ms, 모두 다른 값 9.3ms 대 20ms). 해시는 값 종류가 적으면 더 빠를 수 있지만 모두 다르면 느려질 수 있고, 데이터를 보고 경로를 고르면 §1.4의 휴리스틱이 된다.
 
 ### 8.7 작업 버퍼
@@ -761,6 +764,9 @@ dtype과 레인 길이만 본다. 데이터를 보고 고르지 않는다 (§1.4
 ### 12.2 ndarray 타입 (`bind/array_bind.cpp`)
 - 직접 생성(`sd.ndarray()`)은 막는다. `isinstance` 검사를 위해 이름만 공개한다.
 - **연산자**는 ufunc의 얇은 래퍼다. 받지 않는 피연산자(리스트, numpy 배열, None)에는 `NotImplemented`를 돌려 Python이 반대쪽을 시도한 뒤 TypeError를 내게 한다. 비교의 반사는 Python이 한다.
+  - **`==`, `!=`는 예외다** (`op_equality`). 양쪽이 모두 `NotImplemented`면 Python은 TypeError 대신 객체 동일성으로 대체한다. 그래서 받지 않는 피연산자이면 반대쪽 타입의 비교(`tp_richcompare`)를 직접 불러 보고, 그쪽도 `NotImplemented`이면 TypeError를 낸다. `[1] == x`처럼 반대쪽이 왼쪽이어도 Python이 우리 `__eq__`를 부르므로 같다.
+- **피연산자의 numpy 스칼라** (`scalar_dtype`): `numpy.float64`, `numpy.complex128`은 Python 타입의 서브클래스라 그대로 받는다. 그 밖의 numpy 스칼라는 타입 이름이 `numpy.`으로 시작할 때만 numpy의 추상 타입(`bool`, `integer`, `floating`, `complexfloating`)과 `isinstance`로 대조한다. numpy를 직접 import하지 않고, 이미 import된 모듈(`PyImport_GetModule`)에서 한 번 가져온다. `timedelta64`는 `integer`의 하위 타입이지만 `__index__`가 없어 받지 않는다. 값은 Python 스칼라와 같은 변환 함수(`__index__`, `__float__`, `__complex__`)로 읽는다. frame도 numpy 스칼라를 받는다.
+- **속성의 이름**: nanobind의 `def_prop_ro`가 만든 `property`에는 이름이 없어 대입하면 "property '' of 'ndarray' object has no setter"가 나왔다. 바인딩 끝에 각 property의 `__set_name__`을 불러 이름을 넣는다.
 - **in-place 연산자** `x op= y`는 `op(x, y, out=x)`다. `out=`와 같은 규칙(위로만 변환, 겹침 안전)이고 같은 객체를 돌려준다.
 - **스칼라 변환 금지**: `__bool__`, `__int__`, `__float__`, `__complex__`가 모두 TypeError다. 원소가 하나여도 그렇다. 넷 다 있어야 한다: `__int__`/`__float__`가 없으면 `int()`/`float()`가 버퍼 프로토콜로 넘어가 원시 바이트를 문자열로 해석하려 한다.
 - `__hash__ = None` (가변 컨테이너). `v in x`는 TypeError다: `__contains__`가 없으면 조용히 반복으로 떨어진다. `==`와 `any()`를 쓴다.

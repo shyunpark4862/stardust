@@ -18,6 +18,7 @@
 #include <nanobind/stl/vector.h>
 
 #include <cstdint>
+#include <stdexcept>
 #include <vector>
 
 #include <Accelerate/Accelerate.h>
@@ -86,8 +87,14 @@ NB_MODULE(_core, m) {
     // API.md §3. Results never depend on the thread count
     // (docs/design/array.md §10.5).
     m.def("set_num_threads", [](nb::handle n) {
-        const std::int64_t v = sd::parse_int(n, "n");
-        if (v < 1 || v > 1024) throw nb::value_error("the number of threads must be between 1 and 1024");
+        constexpr const char* kRange = "the number of threads must be between 1 and 1024";
+        std::int64_t v = 0;
+        try {
+            v = sd::parse_int(n, "n");
+        } catch (const std::overflow_error&) {  // out of 1..1024 like any other int: ValueError (API.md §3)
+            throw nb::value_error(kRange);
+        }
+        if (v < 1 || v > 1024) throw nb::value_error(kRange);
         sd::parallel::set_num_threads(static_cast<int>(v));
     }, nb::arg());
     m.def("get_num_threads", &sd::parallel::num_threads);

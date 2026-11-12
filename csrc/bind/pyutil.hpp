@@ -37,15 +37,17 @@ std::optional<bool> parse_copy(nb::handle o);
 // `shape` argument: an int or a tuple of ints (docs/design/array.md §2.8).
 std::vector<std::int64_t> parse_shape(nb::handle o);
 
-// A plain Python int (bool rejected), e.g. `num` or `k`.
+// A plain Python int (bool rejected), e.g. `num` or `k`. TypeError for
+// anything else, OverflowError outside int64 (API.md §2).
 std::int64_t parse_int(nb::handle o, const char* what);
 
 // Maps axis in [-ndim, ndim) to [0, ndim); ValueError otherwise.
 int normalize_axis(std::int64_t axis, int ndim);
 
 // `axis` argument: an int or a tuple of ints (docs/design/array.md §2.8), each
-// normalized against ndim. Repeated axes are a ValueError.
-std::vector<int> parse_axes(nb::handle o, int ndim);
+// normalized against ndim. Repeated axes are a ValueError. `what` names the
+// argument in messages (permute_dims calls it "axes").
+std::vector<int> parse_axes(nb::handle o, int ndim, const char* what = "axis");
 
 inline bool is_ndarray(nb::handle o) { return nb::isinstance<NDArray>(o); }
 inline NDArray& as_ndarray(nb::handle o) { return *nb::inst_ptr<NDArray>(o); }

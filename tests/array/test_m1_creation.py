@@ -67,6 +67,26 @@ def test_like_functions_keep_shape_dtype_and_layout():
         sd.zeros_like([1, 2])
 
 
+def test_full_like_converts_implicitly_unless_dtype_is_given():
+    # Without dtype= the fill value meets x's dtype as in x[...] = value: upward
+    # only (docs/api/array.md §1.5). dtype= is explicit, as in full.
+    i, b, f = sd.asarray([1, 2]), sd.asarray([True]), sd.asarray([1.0])
+    for x, bad in [(i, 1.5), (i, 2.0), (i, 1j), (b, 1), (b, 0.0), (f, 1j)]:
+        with pytest.raises(TypeError, match="cannot implicitly convert"):
+            sd.full_like(x, bad)
+        with pytest.raises(TypeError):
+            x[0] = bad  # the same rule
+    assert_same(sd.full_like(i, True), np.array([1, 1]))
+    assert_same(sd.full_like(f, 2), np.array([2.0]))
+    assert_same(sd.full_like(i, 1.5, dtype=sd.int64), np.array([1, 1]))  # explicit
+    assert_same(sd.full_like(b, 2, dtype=sd.bool), np.array([True]))
+    with pytest.raises(TypeError):
+        sd.full_like(i, 1j, dtype=sd.int64)  # complex -> int64 is never allowed
+    with pytest.raises(OverflowError):
+        sd.full_like(i, 2**63)
+    assert sd.full_like(f, 2**70).tolist() == [float(2**70)]
+
+
 # ------------------------------------------------------------- arange ----
 
 @pytest.mark.parametrize(
@@ -100,6 +120,13 @@ def test_arange_dtype_and_errors():
         sd.arange(1j)
     with pytest.raises(TypeError):
         sd.arange(0, 5, dtype=float)
+    # NaN or inf anywhere: no length can be computed (numpy raises too)
+    for args in [(math.nan,), (0, math.nan), (0, 1, math.nan), (math.inf,), (0, -math.inf, -1), (0, 1, math.inf),
+                 (-math.inf, 0)]:
+        with pytest.raises(ValueError, match="finite"):
+            sd.arange(*args)
+        with pytest.raises(ValueError, match="finite"):
+            sd.arange(*args, dtype=sd.int64)
     # more than 2**63 - 1 elements: not a "negative dimensions" error
     for args in [(-2**63, 2**63 - 1), (2**63 - 1, -2**63, -1)]:
         with pytest.raises(ValueError, match="too many elements"):

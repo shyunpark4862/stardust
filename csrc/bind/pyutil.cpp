@@ -1,5 +1,6 @@
 #include "bind/pyutil.hpp"
 
+#include <stdexcept>
 #include <string>
 
 namespace sd {
@@ -59,7 +60,8 @@ std::int64_t parse_int(nb::handle o, const char* what) {
         throw nb::type_error((std::string(what) + " must be an int").c_str());
     int overflow = 0;
     long long v = PyLong_AsLongLongAndOverflow(o.ptr(), &overflow);
-    if (overflow != 0) throw nb::value_error((std::string(what) + " is too large").c_str());
+    if (overflow != 0)  // an int that must become an int64 (API.md §2)
+        throw std::overflow_error(std::string(what) + " is too large");
     return v;
 }
 
@@ -70,12 +72,20 @@ int normalize_axis(std::int64_t axis, int ndim) {
     return static_cast<int>(axis < 0 ? axis + ndim : axis);
 }
 
-std::vector<int> parse_axes(nb::handle o, int ndim) {
+std::vector<int> parse_axes(nb::handle o, int ndim, const char* what) {
+    // An int or a tuple of ints; a list is a TypeError (docs/api/array.md §1.3).
+    auto as_int = [&](nb::handle item) {
+        if (!PyLong_Check(item.ptr()) || PyBool_Check(item.ptr()))
+            throw nb::type_error((std::string(what) + " must be an int or a tuple of ints, not '" +
+                                  Py_TYPE(item.ptr())->tp_name + "'")
+                                     .c_str());
+        return normalize_axis(parse_int(item, what), ndim);
+    };
     std::vector<int> axes;
     if (PyTuple_Check(o.ptr())) {
-        for (nb::handle item : nb::borrow<nb::tuple>(o)) axes.push_back(normalize_axis(parse_int(item, "axis"), ndim));
+        for (nb::handle item : nb::borrow<nb::tuple>(o)) axes.push_back(as_int(item));
     } else {
-        axes.push_back(normalize_axis(parse_int(o, "axis"), ndim));
+        axes.push_back(as_int(o));
     }
     for (size_t i = 0; i < axes.size(); ++i)
         for (size_t j = 0; j < i; ++j)

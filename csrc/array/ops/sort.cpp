@@ -24,12 +24,13 @@ namespace sd {
 namespace {
 
 // ------------------------------------------------------------ ordering
-// NaN goes last in both directions, and with descending=True equal keys still
-// keep their original order (the result is never a reversed ascending sort).
+// NaN is the largest value: last in ascending order, first in descending
+// order. Equal keys keep their original order in both directions (NaNs among
+// themselves too), so descending is not a reversed ascending sort.
 // docs/design/array.md §8.1.
 //
 // Instead of a comparator that tests for NaN on every comparison, the
-// NaNs are first moved to the end (in their original order); the rest is
+// NaNs are first moved to their end (in their original order); the rest is
 // then sorted with a plain comparison.
 
 template <typename T>
@@ -93,23 +94,26 @@ private:
     T* ptr_;
 };
 
-// Fills buf[0, n) from a strided lane with make(i, value): values that are
-// not NaN first, then the NaNs, each part in its original order. Returns
-// how many are not NaN (the part that still needs sorting).
+// Fills buf[0, n) from a strided lane with make(i, value), the values that
+// are not NaN and the NaNs apart, each part in its original order: NaNs
+// after the rest (ascending) or before it (descending, NaN being the
+// largest value). Returns how many are NaN; the rest -- buf[0, n - nans) or
+// buf[nans, n) -- still needs sorting.
 template <typename T, typename E, typename Make>
-std::int64_t load_nans_last(const std::byte* x, std::int64_t stride, std::int64_t n, E* buf, Make make) {
+std::int64_t load_split_nans(const std::byte* x, std::int64_t stride, std::int64_t n, E* buf, bool nans_first,
+                             Make make) {
     if constexpr (!ops::is_float<T> && !ops::is_cplx<T>) {
         for (std::int64_t i = 0; i < n; ++i) buf[i] = make(i, load_as<T>(x + i * stride));
-        return n;
+        return 0;
     } else {
         std::int64_t nans = 0;
         for (std::int64_t i = 0; i < n; ++i) nans += is_nan(load_as<T>(x + i * stride));
-        std::int64_t front = 0, back = n - nans;
+        std::int64_t rest = nans_first ? nans : 0, nan = nans_first ? 0 : n - nans;
         for (std::int64_t i = 0; i < n; ++i) {
             const T v = load_as<T>(x + i * stride);
-            buf[is_nan(v) ? back++ : front++] = make(i, v);
+            buf[is_nan(v) ? nan++ : rest++] = make(i, v);
         }
-        return n - nans;
+        return nans;
     }
 }
 
@@ -389,8 +393,9 @@ template <typename T>
 void sort_lane(const std::byte* x, std::byte* o, const LaneCtx& c) {
     const SortCfg& cfg = *static_cast<const SortCfg*>(c.user);
     const LaneBuffer<T> buf(c.n, 0);
-    const std::int64_t m = load_nans_last<T>(x, c.x_stride, c.n, buf.get(), [](std::int64_t, T v) { return v; });
-    sort_values(buf.get(), m, cfg.stable, cfg.descending);
+    const std::int64_t nans = load_split_nans<T>(x, c.x_stride, c.n, buf.get(), cfg.descending,
+                                                 [](std::int64_t, T v) { return v; });
+    sort_values(buf.get() + (cfg.descending ? nans : 0), c.n - nans, cfg.stable, cfg.descending);
     for (std::int64_t i = 0; i < c.n; ++i) *reinterpret_cast<T*>(o + i * c.o_stride) = buf[i];
 }
 
@@ -398,9 +403,9 @@ template <typename T>
 void argsort_lane(const std::byte* x, std::byte* o, const LaneCtx& c) {
     const SortCfg& cfg = *static_cast<const SortCfg*>(c.user);
     const LaneBuffer<Keyed<T>> buf(c.n, 0);
-    const std::int64_t m = load_nans_last<T>(x, c.x_stride, c.n, buf.get(),
-                                             [](std::int64_t i, T v) { return Keyed<T>{v, i}; });
-    sort_keyed(buf.get(), m, cfg.stable, cfg.descending);
+    const std::int64_t nans = load_split_nans<T>(x, c.x_stride, c.n, buf.get(), cfg.descending,
+                                                 [](std::int64_t i, T v) { return Keyed<T>{v, i}; });
+    sort_keyed(buf.get() + (cfg.descending ? nans : 0), c.n - nans, cfg.stable, cfg.descending);
     for (std::int64_t i = 0; i < c.n; ++i) *reinterpret_cast<std::int64_t*>(o + i * c.o_stride) = buf[i].index;
 }
 
@@ -425,12 +430,14 @@ nb::object sort_impl(nb::handle x_obj, nb::handle axis_obj, bool descending, boo
 // flatten -> stable argsort -> compare neighbours (docs/design/array.md §8.6).
 // Stable, so within a group of equal values the first one is the first
 // occurrence in x: that gives `indices`, and the value that is kept (-0.0 or
-// +0.0, whichever came first). NaN never equals anything, so each NaN is its
-// own group (docs/design/array.md §2.6).
+// +0.0, whichever came first). All NaNs are one value, the last one
+// (docs/design/array.md §2.6): the NaNs are split off to the end in their
+// original order, so they form one group whose shown value is the first NaN
+// of x, bits and all. A complex number with a NaN part is a NaN.
 
 template <typename T>
 bool same(const T& a, const T& b) {
-    return a == b;  // false for NaN (and for complex with a NaN part)
+    return a == b;  // used on the values that are not NaN only
 }
 
 struct UniqueParts {
@@ -449,12 +456,12 @@ UniqueParts unique_parts(const NDArray& x) {
     std::vector<std::int64_t> order(n);
     visit_dtype(x.dtype, [&]<typename T>(std::type_identity<T>) {
         auto buf = buffer<Keyed<T>>(n);
-        const std::int64_t m = load_nans_last<T>(flat.data, flat.itemsize(), n, buf.get(),
-                                                 [](std::int64_t i, T v) { return Keyed<T>{v, i}; });
+        const std::int64_t m = n - load_split_nans<T>(flat.data, flat.itemsize(), n, buf.get(), /*nans_first=*/false,
+                                                      [](std::int64_t i, T v) { return Keyed<T>{v, i}; });
         sort_keyed(buf.get(), m, /*stable=*/true, /*descending=*/false);
         for (std::int64_t i = 0; i < n; ++i) {
             order[i] = buf[i].index;
-            if (i == 0 || !same(buf[i - 1].value, buf[i].value)) starts.push_back(i);
+            if (i == 0 || (i < m && !same(buf[i - 1].value, buf[i].value)) || i == m) starts.push_back(i);
         }
         const std::int64_t g[] = {static_cast<std::int64_t>(starts.size())};
         r.values = new_array(x.dtype, g);
@@ -482,7 +489,7 @@ nb::object result_type(const char* name) { return nb::module_::import_("stardust
 // unique_values needs neither positions nor counts, so it sorts the values
 // alone: half the data to move, and no (value, index) pairs
 // (docs/design/array.md §8.6). Still a stable sort, so of -0.0 and +0.0 the
-// first occurrence is kept, as in unique_parts.
+// first occurrence is kept, and of the NaNs the first, as in unique_parts.
 nb::object unique_values(nb::handle x_obj) {
     const NDArray& x = require_ndarray(x_obj);
     const std::int64_t n = x.size();
@@ -493,12 +500,13 @@ nb::object unique_values(nb::handle x_obj) {
     }
     return visit_dtype(x.dtype, [&]<typename T>(std::type_identity<T>) {
         auto buf = buffer<T>(n);
-        const std::int64_t m =
-            load_nans_last<T>(flat.data, flat.itemsize(), n, buf.get(), [](std::int64_t, T v) { return v; });
+        const std::int64_t m = n - load_split_nans<T>(flat.data, flat.itemsize(), n, buf.get(), /*nans_first=*/false,
+                                                      [](std::int64_t, T v) { return v; });
         sort_values(buf.get(), m, /*stable=*/true, /*descending=*/false);
         std::int64_t groups = 0;  // compact in place: keep the first of every run of equal values
-        for (std::int64_t i = 0; i < n; ++i)
+        for (std::int64_t i = 0; i < m; ++i)
             if (i == 0 || !same(buf[groups - 1], buf[i])) buf[groups++] = buf[i];
+        if (m < n) buf[groups++] = buf[m];  // the NaNs: one value, the first NaN of x
         const std::int64_t g[] = {groups};
         NDArray out = new_array(x.dtype, g);
         std::copy(buf.get(), buf.get() + groups, reinterpret_cast<T*>(out.data));

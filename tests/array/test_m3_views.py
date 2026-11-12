@@ -145,6 +145,16 @@ def test_permute_dims():
         with pytest.raises(ValueError):
             sd.permute_dims(a, bad)
     assert_same(sd.permute_dims(sd.arange(3), 0), np.arange(3))
+    # A list is a TypeError like every axis argument (docs/api/array.md §1.3), and the message says so.
+    for bad, name in [([2, 1, 0], "axes"), ((2, 1.0, 0), "axes")]:
+        with pytest.raises(TypeError, match=f"^{name} must be an int or a tuple of ints"):
+            sd.permute_dims(a, bad)
+    with pytest.raises(TypeError, match="^source must be an int or a tuple of ints, not 'list'"):
+        sd.moveaxis(a, [0], (1,))
+    with pytest.raises(TypeError, match="^axis must be an int or a tuple of ints, not 'list'"):
+        sd.sum(a, axis=[0])
+    with pytest.raises(OverflowError):
+        sd.permute_dims(a, (2**63, 0, 1))  # an int outside int64 (API.md §2)
 
 
 @pytest.mark.parametrize("src,dst", [(0, 2), (-1, 0), ((0, 1), (2, 0)), ((0, 2), (-1, -3)), ((), ())])
@@ -257,6 +267,33 @@ def test_real_imag_of_real_dtypes(dtype):
     im = sd.imag(a)
     assert im.dtype is dtype and im.tolist() == [[0] * 3] * 2
     assert not im._flags()["writeable"]
+
+
+@pytest.mark.parametrize("value", [True, False, 3, -7, 2.5, -0.0, 3 - 4j, complex(0, -0.0), np.int64(3),
+                                   np.float32(2.5), np.bool_(True)])
+def test_real_imag_conj_take_python_scalars(value):
+    # Like conj (docs/api/array.md §6.4): the result is the Python scalar of the dtype in §6.3.
+    def py(fn):
+        r = fn(sd.asarray([value]))
+        return r.tolist()[0]
+    for fn in (sd.real, sd.imag, sd.conj):
+        got = fn(value)
+        want = py(fn)
+        assert type(got) is type(want) and repr(got) == repr(want)
+    out = sd.zeros((2, 2), dtype=sd.complex128)
+    assert sd.imag(value, out=out) is out and out.tolist() == [[complex(value).imag] * 2] * 2
+    with pytest.raises(TypeError):
+        sd.real([value])
+    with pytest.raises(TypeError, match="^imag\\(\\) takes sd.ndarray or Python"):
+        sd.imag("1")
+
+
+def test_real_imag_scalar_ints_follow_the_int64_rule():
+    with pytest.raises(OverflowError):
+        sd.real(2**63)  # an int is an int64 (docs/api/array.md §1.5), as with conj
+    with pytest.raises(OverflowError):
+        sd.conj(2**63)
+    assert sd.real(2**63 - 1) == 2**63 - 1 and sd.imag(-(2**63)) == 0
 
 
 def test_real_imag_out():

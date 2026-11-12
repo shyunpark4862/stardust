@@ -44,6 +44,13 @@ def test_attributes(dtype):
     assert a._flags() == {"c_contiguous": True, "f_contiguous": False, "writeable": True}
 
 
+@pytest.mark.parametrize("name", ["dtype", "shape", "strides", "ndim", "size", "itemsize", "nbytes", "base", "T", "mT"])
+def test_attributes_are_read_only_and_say_which(name):
+    a = sd.zeros((2, 2))
+    with pytest.raises(AttributeError, match=f"property '{name}' of 'ndarray' object has no setter"):
+        setattr(a, name, getattr(a, name))
+
+
 def test_shape_one_axes_do_not_break_contiguity():
     a = sd.zeros((1, 5, 1))
     assert a._flags()["c_contiguous"] and a._flags()["f_contiguous"]

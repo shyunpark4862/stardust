@@ -121,6 +121,10 @@ MatOrd parse_matrix_ord(nb::handle o) {
         if (p == -kInf) return MatOrd::NegInf;
         if (p == 2) return MatOrd::Two;
         if (p == -2) return MatOrd::NegTwo;
+    } else {  // a wrong type: TypeError, as in vector_norm (docs/api/linalg.md §3)
+        throw nb::type_error(("matrix_norm(): 'ord' must be a str, an int or a float, not " +
+                              std::string(Py_TYPE(o.ptr())->tp_name))
+                                 .c_str());
     }
     throw nb::value_error("matrix_norm(): 'ord' must be 'fro', 'nuc', 1, -1, 2, -2, inf or -inf");
 }

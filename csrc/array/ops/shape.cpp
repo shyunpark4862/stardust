@@ -1,6 +1,7 @@
 #include "array/ops/shape.hpp"
 
 #include "bind/pyutil.hpp"
+#include "array/convert.hpp"
 #include "array/iter.hpp"
 #include "array/ops/copy.hpp"
 
@@ -118,7 +119,7 @@ nb::object permuted(nb::handle x, std::span<const int> order) {
 
 nb::object permute_dims(nb::handle x, nb::handle axes_obj) {
     const NDArray& a = require_ndarray(x);
-    const std::vector<int> axes = parse_axes(axes_obj, a.ndim);
+    const std::vector<int> axes = parse_axes(axes_obj, a.ndim, "axes");
     if (static_cast<int>(axes.size()) != a.ndim)
         throw nb::value_error(("axes must list each of the " + std::to_string(a.ndim) + " axes exactly once").c_str());
     return permuted(x, axes);
@@ -126,8 +127,8 @@ nb::object permute_dims(nb::handle x, nb::handle axes_obj) {
 
 nb::object moveaxis(nb::handle x, nb::handle source_obj, nb::handle destination_obj) {
     const NDArray& a = require_ndarray(x);
-    const std::vector<int> source = parse_axes(source_obj, a.ndim);
-    const std::vector<int> destination = parse_axes(destination_obj, a.ndim);
+    const std::vector<int> source = parse_axes(source_obj, a.ndim, "source");
+    const std::vector<int> destination = parse_axes(destination_obj, a.ndim, "destination");
     if (source.size() != destination.size())
         throw nb::value_error("source and destination must have the same number of axes");
     // The axes that stay keep their relative order; the moved ones are
@@ -367,14 +368,39 @@ nb::object complex_part(nb::handle x, std::int64_t byte_offset) {
     return wrap(std::move(v));
 }
 
+nb::object real(nb::handle x, nb::handle out);
+nb::object imag(nb::handle x, nb::handle out);
+
+// real/imag of a Python scalar, as conj takes one (docs/api/array.md §6.2):
+// the same function on a 1-element array of the scalar's dtype, then that
+// element as a Python scalar -- or, with out=, written into out.
+nb::object scalar_part(nb::handle x, nb::handle out, const char* name, nb::object (*part)(nb::handle, nb::handle)) {
+    const std::optional<DType> kind = scalar_dtype(x);
+    if (!kind)
+        throw nb::type_error((std::string(name) + "() takes sd.ndarray or Python bool/int/float/complex operands, not '" +
+                              Py_TYPE(x.ptr())->tp_name + "'")
+                                 .c_str());
+    const std::int64_t one[] = {1};
+    NDArray a = new_array(*kind, one);
+    visit_dtype(*kind, [&]<typename T>(std::type_identity<T>) {
+        *reinterpret_cast<T*>(a.data) = scalar_from_python<T>(x, *kind);
+    });
+    nb::object r = part(wrap(std::move(a)), out);
+    if (!out.is_none()) return r;
+    const NDArray& v = as_ndarray(r);
+    return load_python(v.dtype, v.data);
+}
+
 nb::object real(nb::handle x, nb::handle out) {
-    const NDArray& a = require_ndarray(x);
+    if (!is_ndarray(x)) return scalar_part(x, out, "real", &real);
+    const NDArray& a = as_ndarray(x);
     if (a.dtype == DType::Complex128) return finish(complex_part(x, 0), out);
     return finish(nb::borrow(x), out);  // a real array is its own real part
 }
 
 nb::object imag(nb::handle x, nb::handle out) {
-    const NDArray& a = require_ndarray(x);
+    if (!is_ndarray(x)) return scalar_part(x, out, "imag", &imag);
+    const NDArray& a = as_ndarray(x);
     if (a.dtype == DType::Complex128) return finish(complex_part(x, sizeof(double)), out);
     // A real array has no imaginary storage to view: a fresh array of zeros,
     // read-only like numpy's, since writing to it could not reach x.

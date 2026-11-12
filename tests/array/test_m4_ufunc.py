@@ -9,6 +9,7 @@ the reference is plain Python instead.
 
 import itertools
 import math
+import operator
 
 import numpy as np
 import pytest
@@ -274,6 +275,32 @@ def test_python_scalar_promotion():
         i < 2**70
 
 
+@pytest.mark.parametrize("name", ["add", "subtract", "multiply", "divide", "floor_divide", "remainder", "pow",
+                                  "atan2", "maximum", "minimum", "equal", "less", "bitwise_and"])
+def test_big_python_int_one_rule_for_every_binary_function(name):
+    # A Python int becomes an int64 when the promoted operand dtype is bool or
+    # int64, whatever loop runs: divide and atan2 compute in float64 but still
+    # raise (docs/api/array.md §1.5).
+    fn = getattr(sd, name)
+    for x in (sd.asarray([1, 2]), sd.asarray([True, False]), 1, True):
+        for big in (2**63, 2**64, -(2**63) - 1):
+            with pytest.raises(OverflowError):
+                fn(x, big)
+            with pytest.raises(OverflowError):
+                fn(big, x)
+    if name != "bitwise_and":  # next to a float, the int becomes a float
+        assert fn(sd.asarray([1.0]), 2**70).dtype in (sd.float64, sd.bool)
+        assert isinstance(fn(2**70, 1.5), (float, bool))
+
+
+def test_big_python_int_in_unary_functions():
+    with pytest.raises(OverflowError):
+        sd.sqrt(2**64)  # an int operand is an int64, even though sqrt computes in float64
+    with pytest.raises(OverflowError):
+        sd.exp(-(2**63) - 1)
+    assert sd.sqrt(2**63 - 1) == math.sqrt(2**63 - 1)
+
+
 def test_scalars_only_give_python_scalars():
     assert sd.add(1, 2) == 3 and type(sd.add(1, 2)) is int
     assert sd.add(2**62, 2**62) == INT_MIN  # int64 semantics, wraps (docs/design/array.md §2.2)
@@ -296,7 +323,56 @@ def test_operands_must_be_arrays_or_python_scalars():
         np.array([1, 2]) + x  # numpy steps aside (__array_ufunc__ = None)
     with pytest.raises(TypeError):
         x + np.array([1, 2])
-    assert (x == None) is False  # noqa: E711 -- NotImplemented, then identity
+
+
+@pytest.mark.parametrize("bad", [[1, 2], (1, 2), np.array([1, 2]), "1", None, object(), sd.int64])
+def test_equality_with_a_rejected_operand_is_a_type_error(bad):
+    # == and != reject what the other operators reject, whichever side the
+    # array is on: no fallback to identity (docs/api/array.md §10.3).
+    x = sd.asarray([1, 2])
+    for op in (operator.eq, operator.ne):
+        with pytest.raises(TypeError):
+            op(x, bad)
+        with pytest.raises(TypeError):
+            op(bad, x)
+    for fn in (sd.equal, sd.not_equal, sd.add):
+        with pytest.raises(TypeError):
+            fn(x, bad)
+    assert (x == x).tolist() == [True, True] and (x != 2).tolist() == [True, False]
+
+
+@pytest.mark.parametrize("scalar, dtype", [
+    (np.int64(3), sd.int64), (np.int8(-3), sd.int64), (np.uint32(3), sd.int64), (np.uint64(3), sd.int64),
+    (np.bool_(True), sd.bool), (np.float32(0.5), sd.float64), (np.float16(0.5), sd.float64),
+    (np.float64(0.5), sd.float64), (np.complex64(1j), sd.complex128), (np.complex128(1j), sd.complex128)])
+def test_numpy_scalars_are_operands_like_python_scalars(scalar, dtype):
+    # numpy's bool, integer, floating and complexfloating scalars count as the
+    # Python scalar of their kind (docs/api/array.md §6.2), wherever a Python
+    # scalar is taken: operators, functions, asarray, fill values, assignment.
+    py = scalar.item()
+    for x in (sd.asarray([True, False]), sd.asarray([1, 2]), sd.asarray([1.0, 2.0])):
+        assert_same(x + scalar, np.asarray(x + py))
+        assert_same(scalar * x, np.asarray(py * x))
+        assert_same(x == scalar, np.asarray(x == py))
+    assert sd.add(scalar, 0) == py + 0 and type(sd.multiply(scalar, True)) is type(sd.multiply(py, True))
+    assert sd.asarray([scalar]).dtype is dtype
+    assert sd.full(2, scalar).dtype is dtype
+    z = sd.zeros(1, dtype=sd.complex128)
+    z[0] = scalar
+    assert z.tolist() == [complex(py)]
+
+
+def test_numpy_scalars_follow_the_python_rules():
+    with pytest.raises(OverflowError):
+        sd.asarray([1]) + np.uint64(2**64 - 1)  # becomes an int64, like a Python int
+    assert (sd.asarray([1.0]) + np.uint64(2**64 - 1)).tolist() == [1.0 + 2**64]
+    i = sd.asarray([1, 2])
+    with pytest.raises(TypeError):
+        i += np.float32(0.5)  # implicit downcast, as with 0.5
+    with pytest.raises(TypeError):
+        sd.asarray([np.timedelta64(1, "s")])  # not a number
+    with pytest.raises(TypeError):
+        sd.add(i, np.datetime64("2020-01-01"))
 
 
 # ------------------------------------------------------------------- out=

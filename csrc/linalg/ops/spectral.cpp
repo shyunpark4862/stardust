@@ -241,6 +241,10 @@ CondOrd parse_cond_ord(nb::handle o) {
         if (p == -1) return CondOrd::NegOne;
         if (p == kInf) return CondOrd::Inf;
         if (p == -kInf) return CondOrd::NegInf;
+    } else {  // a wrong type: TypeError, as in vector_norm (docs/api/linalg.md §3)
+        throw nb::type_error(("cond(): 'ord' must be a str, an int or a float, not " +
+                              std::string(Py_TYPE(o.ptr())->tp_name))
+                                 .c_str());
     }
     throw nb::value_error("cond(): 'ord' must be 'fro', 'nuc', 1, -1, 2, -2, inf or -inf");
 }

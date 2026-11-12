@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
 #include <string>
 
 namespace sd::linalg {
@@ -14,7 +15,8 @@ std::int64_t parse_int(nb::handle o, const char* func, const char* what) {
             (std::string(func) + "(): '" + what + "' must be an int, not " + Py_TYPE(o.ptr())->tp_name).c_str());
     int overflow = 0;
     const long long v = PyLong_AsLongLongAndOverflow(o.ptr(), &overflow);
-    if (overflow) throw nb::value_error((std::string(func) + "(): '" + what + "' is out of range").c_str());
+    if (overflow)  // an int that must become an int64 (API.md §2)
+        throw std::overflow_error(std::string(func) + "(): '" + what + "' is out of range");
     return v;
 }
 
@@ -41,8 +43,11 @@ std::vector<int> parse_axes(nb::handle o, int ndim, const char* func) {
         for (int d = 0; d < ndim; ++d) axes.push_back(d);
         return axes;
     }
-    if (PyTuple_Check(o.ptr())) {
-        for (nb::handle item : nb::borrow<nb::tuple>(o)) axes.push_back(normalize_axis(parse_int(item, func, "axis"), ndim, func));
+    if (PyTuple_Check(o.ptr()) || PyList_Check(o.ptr())) {  // a list like a tuple (docs/api/linalg.md §3)
+        nb::object seq = nb::steal(PySequence_Tuple(o.ptr()));
+        if (!seq.is_valid()) throw nb::python_error();
+        for (nb::handle item : nb::borrow<nb::tuple>(seq))
+            axes.push_back(normalize_axis(parse_int(item, func, "axis"), ndim, func));
     } else {
         axes.push_back(normalize_axis(parse_int(o, func, "axis"), ndim, func));
     }

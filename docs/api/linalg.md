@@ -40,13 +40,13 @@
 | `rtol` | 가장 큰 특이값 대비 상대 허용오차 | `None` 또는 실수 (§1.1 아래) | `matrix_rank`, `pinv`, `lstsq` |
 | `ord` | 노름의 종류 | 함수마다 다르다 (§3) | `vector_norm`, `matrix_norm`, `cond` |
 | `k` | 대각선 오프셋. 양수는 위쪽, 음수는 아래쪽 | `int` | `trace`, `diagonal` |
-| `axis` | 축 | `vecdot`, `cross`는 `int`, `vector_norm`은 `int`, `tuple`, `None` | `vecdot`, `cross`, `vector_norm` |
+| `axis` | 축 | `vecdot`, `cross`는 `int`, `vector_norm`은 `int`, `tuple`, `list`, `None` | `vecdot`, `cross`, `vector_norm` |
 | `keepdims` | 줄인 축을 길이 1로 남긴다 | `True`/`False` | `vector_norm`, `matrix_norm` |
 | `dtype` | 누적 dtype | dtype 객체 또는 `None` | `trace` |
 | `lower_bandwidth`, `upper_bandwidth` | 띠의 아래·위 폭 | 0 이상의 `int` | `solve_banded` |
 
 - **bool 옵션**(`upper`, `unit_diagonal`, `keepdims`)은 `True`/`False`만 받는다. `0`, `1`, `None`은 `TypeError`다.
-- **int 인자**(`k`, `n`, `axis`, 대역폭)는 `int`만 받는다. `bool`과 `float`은 `TypeError`, int64 범위 밖은 `ValueError`다.
+- **int 인자**(`k`, `n`, `axis`, 대역폭)는 `int`만 받는다. `bool`과 `float`은 `TypeError`, int64 범위 밖은 `OverflowError`다 (API.md §2, 배열 영역과 같다).
 - **`mode`**: 다른 문자열은 `ValueError`, 문자열이 아니면 `TypeError`다.
 - **`rtol`**
   - `None`이면 `max(M, N) · eps`다. `eps`는 float64의 머신 엡실론이다.
@@ -97,6 +97,8 @@ solve류 함수(`solve`, `solve_triangular`, `cholesky_solve`, `lu_solve`, `lsts
 - **결과 dtype은 입력의 dtype만으로 정해진다.** 값에 따라 바뀌지 않는다.
 - **계산 dtype**: 배열 인자 중 하나라도 complex128이면 complex128, 아니면 float64다.
   - bool과 int64 입력은 float64로 바꿔서 계산한다. 계산만 하는 함수(`vecdot`, `outer`, `kron`, `cross`, `matrix_power`, `trace`)도 같다.
+    - **그래서 int 입력의 결과도 float64다.** 배열 영역과 다른 점이다: `sd.matmul`, `sd.sum`은 int64를 유지한다. 예: `trace(int64 행렬)`은 `float`, `sd.sum(diagonal(int64 행렬), axis=-1)`은 `int`다.
+    - 이유: LAPACK과 BLAS는 float에서만 돈다. int 결과가 필요하면 배열 영역의 함수(`sd.matmul`, `sd.sum`)를 쓰거나 `trace(dtype=sd.int64)`를 준다 (DESIGN §9.6).
   - 예: `det(int64 행렬)`은 `float`, 실수 `a`와 complex `b`의 `solve`는 complex128이다.
 - **함수별 결과 dtype**
 
@@ -147,7 +149,7 @@ solve류 함수(`solve`, `solve_triangular`, `cholesky_solve`, `lu_solve`, `lsts
 - **행렬 결과는 행렬마다 F 순서(열 우선)다.** 배치 축은 그 바깥에 C 순서로 놓인다.
   - 예: `inv`의 `(2, 3, 3)` float64 결과의 strides는 `(72, 8, 24)`다.
   - 대상: 마지막 두 축이 행렬인 모든 결과. 해 `(..., N, K)`, 역행렬, 분해의 행렬, `outer`, `kron`, `matrix_power`, `expm`, `solve_sylvester`
-  - array.md §1.9의 "새로 만드는 배열은 C 순서"의 예외다. 값은 같고 strides만 다르다.
+  - 결과 순서는 영역마다 정한다 (array.md §1.9). 배열 영역이 새로 만드는 배열은 C 순서이고, linalg의 행렬 결과는 F 순서다. 값은 같고 strides만 다르다.
 - **벡터 결과는 연속이다.** 배치 축은 그 바깥에 C 순서로 놓인다.
   - 대상: 해 `(..., N)`, 고유값, 특이값, `perm`, `diagonal`, `det` 등의 배치 결과
 - `cross`, `vecdot`, `vector_norm`, `matrix_norm`, `trace`의 배열 결과는 C 순서다.
@@ -159,6 +161,7 @@ solve류 함수(`solve`, `solve_triangular`, `cholesky_solve`, `lu_solve`, `lsts
 - **`TypeError`**
   - 배열 인자가 `sd.ndarray`가 아니다.
   - 옵션의 타입이 틀렸다 (§1.1). 필수 옵션을 빠뜨렸다. positional-only 인자를 키워드로 넘겼다.
+  - `ord`의 타입이 틀렸다. `vector_norm`, `matrix_norm`, `cond` 모두 같다 (§3).
   - `lu_solve`의 `perm`이 int64 배열이 아니다.
   - `trace(dtype=)`의 변환이 허용되지 않는다 (§2).
 - **`ValueError`**
@@ -176,7 +179,9 @@ solve류 함수(`solve`, `solve_triangular`, `cholesky_solve`, `lu_solve`, `lsts
   | `eigenvalue algorithm did not converge` | 고유값 계산이 수렴하지 않았다 |
   | `SVD did not converge` | SVD가 수렴하지 않았다 |
   | `a and -b have a common or close eigenvalue` | `solve_sylvester`의 해가 하나로 정해지지 않는다 |
-- **`OverflowError`**: `ord`, `rtol`에 float로 바꿀 수 없을 만큼 큰 int를 넣었다.
+- **`OverflowError`**
+  - int 인자(`k`, `n`, `axis`, 대역폭)가 int64 범위 밖이다 (§1.1).
+  - `ord`, `rtol`에 float로 바꿀 수 없을 만큼 큰 int를 넣었다.
 
 **특이의 판정**
 - LAPACK이 보고하는 **정확한 0 피벗**만 특이로 본다. 삼각 인수는 대각의 정확한 0이다.
@@ -262,7 +267,8 @@ cross(x1, x2, /, *, axis=-1)           # 축 길이 3
   - `dtype=None`이면 §1.5의 계산 dtype이다. bool, int64 입력도 float64다.
   - `dtype=`은 `sd.sum`의 `dtype=`과 같다 (array.md §7.5). 입력을 그 dtype으로 명시적 변환한 뒤 누적한다.
     - float → int64는 0 방향으로 자르고 포화시킨다 (array.md §1.5). int64 누적은 wrap한다 (array.md §1.6).
-    - complex 입력에 실수 dtype은 `TypeError`다. `dtype=sd.bool`도 `TypeError`다.
+    - complex 입력에 실수 dtype은 `TypeError`다. 배열의 캐스팅 규칙(array.md §1.5)대로다: complex → float64/int64는 명시적 변환에서도 허수부를 잃으므로 받지 않는다. 실수부의 대각합은 `trace(sd.real(x), dtype=...)`로 구한다.
+    - `dtype=sd.bool`도 `TypeError`다 (`sd.sum`과 같다).
 - **`diagonal`**
   - 오프셋 `k`의 대각선을 `(..., L)`로 꺼낸 **복사본**이다. 뷰가 아니다.
   - 정사각이 아니어도 된다. 대각선이 행렬 밖이면 길이 0이다.
@@ -294,7 +300,8 @@ matrix_rank(x, /, *, rtol=None)
 ```
 - **`vector_norm`**
   - `axis`는 `int`, `tuple`, `None`이다. `None`이면 모든 축이다. `()`이면 아무 축도 줄이지 않는다(원소별 크기).
-    - 리스트는 `TypeError`, 중복이나 범위 밖은 `ValueError`다 (array.md §1.3).
+    - 리스트도 tuple처럼 받는다. 예: `axis=[0, 1]`. 배열 영역의 `axis`(array.md §1.3)는 리스트를 받지 않는다.
+    - 중복이나 범위 밖은 `ValueError`다 (array.md §1.3).
   - `ord`는 `int` 또는 `float`이다. `bool`과 문자열은 `TypeError`, NaN은 `ValueError`다.
 
     | `ord` | 값 |
@@ -317,10 +324,11 @@ matrix_rank(x, /, *, rtol=None)
     | `2` / `-2` | 가장 큰 / 가장 작은 특이값 | SVD |
     | `inf` / `-inf` | 행 절댓값 합의 최댓값 / 최솟값 | 아니다 |
     - 같은 값의 `float`도 받는다. 예: `ord=1.0`
-    - 그 밖의 값은 `ValueError`다. `True`, 대소문자가 다른 문자열(`'FRO'`)도 `ValueError`다.
+    - `str`, `int`, `float`가 아닌 타입은 `TypeError`다. `bool`(`True`)도 `TypeError`다 (`vector_norm`과 같다).
+    - 타입은 맞지만 위에 없는 값은 `ValueError`다. 예: `ord=3`, 대소문자가 다른 문자열(`'FRO'`)
   - SVD를 쓰는 `ord`는 유한성을 검사하고, `svdvals`와 같은 특이값을 쓴다 (§1.9).
 - **`cond`**
-  - `ord`의 집합은 `matrix_norm`과 같다.
+  - `ord`의 집합과 에러 규칙(타입은 `TypeError`, 값은 `ValueError`)은 `matrix_norm`과 같다.
   - `ord`가 `2`, `-2`이면 특이값의 비다. 정사각이 아니어도 된다.
   - 그 밖의 `ord`는 `matrix_norm(x) * matrix_norm(inv(x))`다. 정사각이어야 한다(`ValueError`).
   - 모든 `ord`에서 유한성을 검사한다.

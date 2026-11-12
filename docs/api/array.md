@@ -39,13 +39,15 @@
 ### §1.3 shape과 axis 인자
 - **shape**은 인자 하나로 받는다: int 또는 int의 tuple
   - 리스트, float, bool은 `TypeError`다.
+  - int64 범위 밖의 int는 `OverflowError`다 (API.md §2).
   - 음수 길이는 `ValueError`다. 길이 0은 허용한다.
   - 차원 수는 1 이상 32 이하다. 32를 넘으면 `ValueError`다.
   - 전체 크기가 너무 크면 `ValueError`다.
 - **axis**도 인자 하나로 받는다: int 또는 int의 tuple
   - 음수는 뒤에서 센다.
-  - 범위 밖이면 `ValueError`, 중복되면 `ValueError`다.
-  - 리스트는 `TypeError`다.
+  - 범위 밖이면 `ValueError`, 중복되면 `ValueError`다. int64 범위 밖의 int는 `OverflowError`다.
+  - 리스트는 `TypeError`다. linalg의 `vector_norm`은 리스트도 받는다 (linalg.md §3).
+- 그 밖의 int 인자(`eye`의 `n_rows`, `n_cols`, `k`, `linspace`의 `num`)도 int64 범위 밖이면 `OverflowError`다.
   - int만 받는 함수: `argmin`, `argmax`, `cumulative_sum`, `cumulative_prod`, `sort`, `argsort`, `concat`, `stack`
 - **기본 axis**
   - 리덕션: `axis=None` (모든 축)
@@ -57,6 +59,10 @@
 - 이항 연산의 결과 dtype은 두 피연산자 중 높은 쪽이다.
 - Python 스칼라도 같은 규칙을 따른다: `bool` → bool, `int` → int64, `float` → float64, `complex` → complex128
   - 예: bool 배열 `+ 1`은 int64, int64 배열 `+ 1.5`는 float64다.
+  - **numpy 스칼라는 같은 종류의 Python 스칼라로 본다**: `numpy.bool` → `bool`, numpy 정수(`int8`…`uint64`) → `int`, numpy 실수(`float16`…`float64`) → `float`, numpy 복소수 → `complex`. 이 문서에서 "Python 스칼라"는 이것까지 뜻한다.
+    - 예: `x + np.int64(1)`, `asarray([np.float32(0.5)])`, `x[0] = np.bool_(True)`
+    - numpy 정수도 int64 범위 규칙(§1.5)을 따른다. 예: int64 배열 `+ np.uint64(2**64 - 1)`은 `OverflowError`다.
+    - `numpy.datetime64`, `numpy.timedelta64`, `numpy.str_`는 수가 아니다. `TypeError`다.
 - **산술에서 bool은 int64로 승격한다.**
   - 해당: `add`, `subtract`, `multiply`, `floor_divide`, `remainder`, `pow`, `negative`, `positive`, `abs`, `square`, `sign`, `matmul`, `sum`, `prod`, `cumulative_sum`, `cumulative_prod`
   - 예: `True + True`는 `2`, bool 배열끼리의 `@`는 int64다.
@@ -66,25 +72,27 @@
 
 ### §1.5 변환 규칙
 **암묵적 변환**
-- 해당: `out=`, in-place 연산자, 인덱스 대입, `clip`의 `min`/`max`
+- 해당: `out=`, in-place 연산자, 인덱스 대입, `clip`의 `min`/`max`, `dtype=` 없는 `full_like`의 `fill_value`
 - 결과를 대상 dtype으로 바꿀 때 상향 변환만 허용한다. 하향 변환은 `TypeError`다.
   - 판단은 dtype으로만 한다. 값은 보지 않는다. 예: int64 배열에 `2.0`을 대입해도 `TypeError`다.
   - bool 대상에 int64를 넣는 것도 하향 변환이다.
+  - 예: `full_like(int64 배열, 1.5)`는 `x[...] = 1.5`와 같이 `TypeError`다.
 
 **명시적 변환**
-- 해당: `astype`, 생성 함수의 `dtype=`, `sum`/`prod`/`cumulative_*`의 `dtype=`, `full`/`full_like`에서 `fill_value`를 결과 dtype으로 바꾸는 일
+- 해당: `astype`, 생성 함수의 `dtype=`, `sum`/`prod`/`cumulative_*`의 `dtype=`. `full`, `full_like`에 `dtype=`을 주면 `fill_value`를 그 dtype으로 바꾸는 일도 여기에 든다.
 - 손실이 있어도 변환한다.
-  - 예: `asarray([1.5], dtype=sd.int64)`는 `[1]`, `full_like(int64 배열, 1.5)`는 1로 채운다.
+  - 예: `asarray([1.5], dtype=sd.int64)`는 `[1]`, `full(3, 1.5, dtype=sd.int64)`와 `full_like(int64 배열, 1.5, dtype=sd.int64)`는 1로 채운다.
 - **float → int64**: 0 방향으로 자른다. 범위를 벗어나면 포화시킨다. NaN은 0이 된다.
 - **complex → float64, complex → int64**: `TypeError`다. 허수부를 잃기 때문이다. 실수부가 필요하면 `real(x)`를 쓴다.
 - **X → bool**: 모든 dtype에서 허용한다. 결과는 `x != 0`이다. complex도 허용하고, NaN은 `True`가 된다.
 
 **int64 범위를 벗어난 Python int**
 - **int64로 바뀌어야 할 때만** `OverflowError`다.
-  - 대상은 연산의 계산 dtype이다. float64나 complex128로 계산하면 float로 바꿔서 정상 동작한다.
+  - 원소별 함수에서는 **승격한 피연산자 dtype**(§1.4)이 기준이다. 그것이 bool이나 int64이면 int는 int64가 되어야 한다. 함수가 float64로 계산해도 그렇다. 모든 원소별 함수가 이 규칙 하나를 따른다.
+  - 피연산자에 float64나 complex128이 있으면 float로 바꿔서 정상 동작한다.
   - 예: int64 배열 `+ 2**70`은 에러, float64 배열 `+ 2**70`은 정상이다.
-  - 예: `divide(int64 배열, 2**70)`과 `atan2(int64 배열, 2**70)`은 float64로 계산하므로 정상이다.
-  - 예: `asarray([2**70, 0.5])`는 정상, `asarray([2**70])`는 에러다.
+  - 예: `divide(int64 배열, 2**70)`, `atan2(int64 배열, 2**70)`, `sqrt(2**70)`도 에러다. `divide(float64 배열, 2**70)`은 정상이다.
+  - 그 밖의 곳은 변환 대상 dtype이 기준이다. 예: `asarray([2**70, 0.5])`는 정상, `asarray([2**70])`는 에러다. `full_like(float64 배열, 2**70)`은 정상이다.
 - 예외: `arange`의 int 인자는 `dtype=`과 상관없이 int64 범위여야 한다.
 
 ### §1.6 수치 의미론
@@ -117,9 +125,12 @@
 - `True`, `False`, `None` 외의 값은 `TypeError`다.
 
 ### §1.9 새 배열의 메모리 순서
+- **결과의 메모리 순서는 영역마다 정해서 적는다.** 값은 순서와 무관하고 strides만 다르다. 아래는 배열 영역(`sd`)의 규칙이다.
+  - linalg의 행렬 결과는 F 순서다 (linalg.md §1.7).
+  - frame의 `DataFrame.to_array`는 F 순서다 (frame.md §2.8).
 - **입력의 메모리 순서를 따르는 연산**: 원소별 함수와 연산자, `where`, `clip`, 축 리덕션, `copy`, `astype`, `asarray(copy=True)`, `*_like`, `sort`, `argsort`, 고급 인덱싱 (§5.2)
   - 예: F 순서 입력이면 결과도 F 순서다.
-- **그 밖에 새로 만드는 배열은 C 순서다.** 예: 생성 함수, 복사가 필요한 `reshape`/`ravel`, `concat`, `stack`, `cumulative_*`, `matmul`, `unique_*`
+- **그 밖에 배열 영역이 새로 만드는 배열은 C 순서다.** 예: 생성 함수, 복사가 필요한 `reshape`/`ravel`, `concat`, `stack`, `cumulative_*`, `matmul`, `unique_*`
 
 ---
 
@@ -162,15 +173,16 @@ eye(n_rows, n_cols=None, /, *, k=0, dtype=None)
   - `asarray`: §3.2
 - `dtype=`을 주면 명시적 변환이다 (§1.5).
 - `array` 함수는 없다. 변환은 `asarray`, 복사는 `asarray(x, copy=True)`로 한다.
-- `fill_value`는 Python `bool`, `int`, `float`, `complex`만 받는다. 배열은 `TypeError`다.
+- `fill_value`는 Python `bool`, `int`, `float`, `complex`만 받는다 (numpy 스칼라 포함, §1.4). 배열은 `TypeError`다.
+- `full_like`에 `dtype=`이 없으면 `fill_value`는 `x`의 dtype으로 **암묵적 변환**된다 (§1.5). 예: `full_like(int64 배열, 1.5)`는 `TypeError`다. `dtype=`을 주면 명시적 변환이다.
 - `*_like`의 `x`는 `sd.ndarray`여야 한다. 결과는 `x`의 메모리 순서를 따른다 (§1.9).
 - `empty`, `empty_like`의 값은 정해져 있지 않다.
 
 ### §3.2 `asarray`
 - **받는 입력**
   - `sd.ndarray`
-  - 중첩 시퀀스: `list`와 `tuple`만 받는다. 원소는 Python `bool`, `int`, `float`, `complex` 또는 `sd.ndarray`다.
-    - `range`, 문자열, `None`, numpy 스칼라는 `TypeError`다.
+  - 중첩 시퀀스: `list`와 `tuple`만 받는다. 원소는 Python `bool`, `int`, `float`, `complex`(numpy 스칼라 포함, §1.4) 또는 `sd.ndarray`다.
+    - `range`, 문자열, `None`은 `TypeError`다.
   - 버퍼 프로토콜 객체: 예: numpy 배열, `bytes`, `memoryview` (§3.3)
   - Python 스칼라는 0차원이 되므로 `ValueError`다 (§1.2).
 - **중첩 시퀀스의 dtype 추론**
@@ -205,7 +217,7 @@ eye(n_rows, n_cols=None, /, *, k=0, dtype=None)
   - `step == 0`은 `ValueError`다.
   - float 값은 `start + i*step`으로 계산한다. numpy와 몇 ULP 다를 수 있다.
   - `dtype=`을 주면 위의 값을 그 dtype으로 명시적 변환한다. 예: `arange(0, 3, 0.5, dtype=sd.int64)`는 `[0, 0, 1, 1, 2, 2]`다.
-  - 인자에 NaN이 있으면 빈 배열이다.
+  - 인자에 NaN이나 inf가 있으면 `ValueError`다. 길이를 정할 수 없기 때문이다.
 - **`linspace(start, stop, num, /, *, dtype=None, endpoint=True)`**
   - `num`은 필수다. int만 받는다(bool 제외). 음수는 `ValueError`다.
   - `endpoint=True`이면 `stop`을 포함한다.
@@ -394,9 +406,9 @@ where(condition, x1, x2, /, *, out=None)
 
 ### §6.2 피연산자, 결과, `out=`
 - **피연산자는 `sd.ndarray`와 Python 스칼라(`bool`, `int`, `float`, `complex`)만 받는다.**
-  - 리스트, numpy 배열, numpy 정수 스칼라는 `TypeError`다. 필요하면 먼저 `asarray`로 변환한다.
-  - Python 스칼라 타입의 서브클래스는 받는다. 예: `numpy.float64`는 `float`의 서브클래스라서 받는다.
-  - 예외: `real`, `imag`는 `sd.ndarray`만 받는다.
+  - 리스트, numpy 배열, 문자열, `None`은 `TypeError`다. 필요하면 먼저 `asarray`로 변환한다.
+  - Python 스칼라 타입의 서브클래스와 numpy 스칼라도 받는다 (§1.4). 예: `numpy.float64`, `numpy.int64`, `numpy.bool`
+  - 모든 원소별 함수가 같다. `real`, `imag`, `conj`도 Python 스칼라를 받는다.
   - 연산자의 규칙은 §10.3에 있다.
 - **피연산자가 모두 Python 스칼라이면 결과도 Python 스칼라다** (§1.2). 계산은 dtype 의미론을 따른다.
   - 예: `add(2**62, 2**62)`는 wrap되어 `-2**63`이다. `add(True, True)`는 `2`다.
@@ -449,7 +461,8 @@ where(condition, x1, x2, /, *, out=None)
   - complex 입력의 `real`, `imag`는 stride를 이용한 **뷰**다. 쓰면 원본이 바뀐다.
   - complex가 아닌 입력의 `real`은 `x` 자신을 반환한다.
   - complex가 아닌 입력의 `imag`는 같은 dtype의 0 배열을 새로 만들어 반환한다. 이 배열은 쓰기 금지다.
-  - `conj`는 언제나 새 배열이다. complex가 아니면 값이 같은 사본이다. Python 스칼라도 받는다.
+  - `conj`는 언제나 새 배열이다. complex가 아니면 값이 같은 사본이다.
+  - 셋 다 Python 스칼라를 받는다. 결과는 §6.3의 dtype에 맞는 Python 스칼라다. 예: `real(3 - 4j)`는 `3.0`, `imag(3)`은 `0`, `real(True)`는 `True`다.
 - **`clip(x, /, *, min=None, max=None, out=None)`**
   - 결과는 `x`의 dtype이다.
   - `min`, `max`는 Python 스칼라 또는 `sd.ndarray`다. 배열이면 `x`에 브로드캐스트한다. 생략하면 그쪽은 자르지 않는다.
@@ -563,17 +576,24 @@ unique_all(x, /)         # -> (values, indices, inverse_indices, counts)
 - `axis`는 int다. `axis=None`은 없다.
 - bool, int64, float64를 받는다. complex는 `TypeError`다.
 - `argsort`의 결과는 int64다.
-- **NaN은 오름차순과 내림차순 모두 맨 끝에 놓는다.** NaN끼리는 원래 순서를 유지한다.
+- **NaN은 가장 큰 값이다.** `+inf`보다도 크다. 그래서 오름차순에서는 맨 끝, 내림차순에서는 맨 앞에 온다 (frame과 같다, frame.md §8.2).
+  - NaN끼리는 언제나 원래 순서를 유지한다. 부호나 payload가 다른 NaN도 같은 값이다.
 - `stable=True`이면 같은 값의 원래 순서를 유지한다. `descending=True`일 때도 그렇다.
+  - 그래서 내림차순은 오름차순 결과를 뒤집은 것과 값의 순서는 같지만, 같은 값끼리의 순서는 뒤집지 않는다. 예: `argsort([1.0, nan, 3.0, 1.0, nan], descending=True)`는 `[1, 4, 2, 0, 3]`이다.
 - `stable=False`이면 같은 값의 순서는 정해져 있지 않다. 예: `-0.0`과 `0.0`의 순서, `argsort`에서 같은 값의 인덱스 순서
   - 그래도 결정적이다. 스레드 수와 무관하다.
 
 ### §8.3 `unique_*`
 - 입력을 평탄화해서 처리한다.
 - 결과 `values`는 오름차순으로 정렬한다.
-- **NaN은 각각 별개의 값이다.** `nan != nan`과 일관된다. NaN은 맨 끝에 원래 순서대로 남는다.
+- **NaN은 모두 하나의 값이다.** 가장 큰 값이라 맨 끝에 온다 (§8.2). 부호나 payload가 다른 NaN도 같은 값이다.
+  - frame의 키 규칙(frame.md §1.6), numpy 2의 `np.unique`(기본값 `equal_nan=True`)와 같다. Array API와 `np.unique_all`은 NaN을 서로 다른 값으로 본다.
 - `-0.0`과 `0.0`은 같은 값이다.
+- **같은 값으로 묶인 것 중에서는 처음 나온 값을 그대로 보여 준다.** `indices`와 같은 원소다.
+  - 예: `unique_values([-0.0, 0.0])`는 `[-0.0]`, `[0.0, -0.0]`이면 `[0.0]`이다. NaN도 처음 나온 NaN의 비트를 그대로 보여 준다.
+  - numpy는 정렬 결과에 따라 고르므로 `-0.0`과 `0.0` 중 무엇을 보여 줄지 정해져 있지 않다.
 - bool과 complex도 받는다. complex의 순서는 (실수부, 허수부)의 사전순이다.
+  - 실수부나 허수부가 NaN인 complex는 모두 NaN 하나로 묶여 맨 끝에 온다. numpy 2의 `np.unique`도 하나로 묶지만, 보여 주는 값은 numpy 순서에서 가장 앞인 NaN이다.
 - 여러 값을 돌려주는 함수는 namedtuple을 반환한다.
 
   | 함수 | 타입 | 필드 |
@@ -611,7 +631,7 @@ matmul(x1, x2, /)
 ```
 dtype  shape  ndim  size  strides  itemsize  nbytes  base  T  mT
 ```
-- 모두 읽기 전용이다. 대입하면 `AttributeError`다.
+- 모두 읽기 전용이다. 대입하면 `AttributeError`다. 메시지에 속성 이름이 나온다: `property 'shape' of 'ndarray' object has no setter`
 - `dtype`: dtype 객체 (API.md §1)
 - `shape`: int의 tuple. `ndim`은 1 이상이다 (§1.2).
 - `strides`: 바이트 단위의 tuple이다. 음수일 수 있다.
@@ -654,9 +674,9 @@ sum  prod  min  max  mean  var  std  argmin  argmax  any  all
   - 쓰기 금지 배열이면 `ValueError`다.
 - **피연산자**는 원소별 함수와 같다 (§6.2). `@`는 `sd.ndarray`끼리만 된다 (§9).
   - 리스트나 numpy 배열과 섞어 쓰면 어느 쪽이 왼쪽이든 `TypeError`다.
-  - 예외: `==`와 `!=`는 에러가 나지 않는다. 양쪽이 모두 `NotImplemented`를 돌려주면 Python이 객체 동일성 비교로 대체하기 때문이다.
-    - 그래서 `x == [1, 2]`와 `x == np.array([1, 2])`는 `False`, `!=`는 `True`다. 원소별 비교가 아니다.
-    - 원소별로 비교하려면 먼저 `asarray`로 변환한다. `sd.equal(x, [1, 2])`는 `TypeError`다.
+  - **`==`와 `!=`도 같다.** `x == [1, 2]`, `x == np.array([1, 2])`, `x == None`, `x != "a"`는 `TypeError`다. `sd.equal(x, [1, 2])`와 같다.
+    - Python의 기본 동작(양쪽이 `NotImplemented`면 객체 동일성 비교)으로 떨어지지 않는다. 받지 않는 피연산자이면 먼저 반대쪽 타입의 비교를 부르고, 그쪽도 처리하지 않으면 `TypeError`다.
+    - 원소별로 비교하려면 먼저 `asarray`로 변환한다. `None`인지는 `x is None`으로 본다.
 - `divmod`와 `in`은 지원하지 않는다 (`TypeError`).
 
 ### §10.4 Python 프로토콜

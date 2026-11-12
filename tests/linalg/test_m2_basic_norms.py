@@ -306,6 +306,49 @@ def test_vector_norm_empty_and_errors():
     assert sd.linalg.vector_norm(x, axis=(0, 1), keepdims=True).shape == (1, 1)
 
 
+def test_vector_norm_axis_list_is_a_tuple():
+    # A list is taken like a tuple (DESIGN.md §9.6, docs/api/linalg.md §3).
+    rng = np.random.default_rng(5)
+    n = rng.standard_normal((2, 3, 4))
+    x = as_sd(n)
+    for axis in ([0], [2, 0], [-1], [], [0, 1, 2]):
+        got = sd.linalg.vector_norm(x, axis=axis, keepdims=True)
+        assert np.array_equal(npy(got), npy(sd.linalg.vector_norm(x, axis=tuple(axis), keepdims=True)))
+    with pytest.raises(ValueError, match="repeated"):
+        sd.linalg.vector_norm(x, axis=[0, -3])
+    with pytest.raises(TypeError):
+        sd.linalg.vector_norm(x, axis=[0.0])
+
+
+@pytest.mark.parametrize("call", [
+    lambda o: sd.linalg.vector_norm(sd.ones((2, 2)), ord=o),
+    lambda o: sd.linalg.matrix_norm(sd.ones((2, 2)), ord=o),
+    lambda o: sd.linalg.cond(sd.eye(2), ord=o),
+])
+def test_ord_of_a_wrong_type_is_a_type_error_everywhere(call):
+    # The same error kind in the three functions (DESIGN.md §9.6).
+    for bad in (True, False, [2], (1,), 1j, b"fro"):
+        with pytest.raises(TypeError, match="'ord' must be"):
+            call(bad)
+
+
+@pytest.mark.parametrize("call", [
+    lambda v: sd.linalg.trace(sd.eye(2), k=v),
+    lambda v: sd.linalg.diagonal(sd.eye(2), k=v),
+    lambda v: sd.linalg.matrix_power(sd.eye(2), v),
+    lambda v: sd.linalg.vecdot(sd.ones(2), sd.ones(2), axis=v),
+    lambda v: sd.linalg.cross(sd.ones(3), sd.ones(3), axis=v),
+    lambda v: sd.linalg.vector_norm(sd.ones(2), axis=v),
+    lambda v: sd.linalg.vector_norm(sd.ones(2), axis=(v,)),
+    lambda v: sd.linalg.solve_banded(sd.ones((1, 2)), sd.ones(2), lower_bandwidth=v, upper_bandwidth=0),
+])
+def test_int_argument_outside_int64_is_overflow_error(call):
+    # API.md §2: an int that must become an int64 (was ValueError).
+    for big in (2**63, -(2**63) - 1, 2**100):
+        with pytest.raises(OverflowError, match="out of range"):
+            call(big)
+
+
 # ----------------------------------------------------------- matrix_norm --
 
 
@@ -333,7 +376,7 @@ def test_matrix_norm_matches_numpy(seed, batch, m, n, dtype, ord_, keepdims, lay
 
 def test_matrix_norm_rules():
     x = sd.ones((2, 3))
-    for o in (3, "max", 0):
+    for o in (3, "max", 0, "FRO", 1.5):
         with pytest.raises(ValueError, match="ord"):
             sd.linalg.matrix_norm(x, ord=o)
     with pytest.raises(ValueError, match="2 dimensions"):

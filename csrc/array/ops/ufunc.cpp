@@ -38,12 +38,24 @@ DType select(const LoopTable& table, DType d, const char* name, std::span<const 
     no_loop(name, inputs);
 }
 
+// A Python int operand becomes an int64 when the promoted operand dtype is
+// bool or int64, whatever loop then runs (docs/api/array.md §1.5): so
+// divide(int_array, 2**64) and sqrt(2**64) are an OverflowError like
+// add(int_array, 2**64), while next to a float or complex operand the int
+// becomes a float. prepare() alone would only see the loop dtype (float64
+// for divide), so the range is checked here first.
+void check_int_scalars(std::span<const nb::handle> objs, DType promoted) {
+    if (promoted > DType::Int64) return;
+    for (nb::handle o : objs)
+        if (!is_ndarray(o) && scalar_dtype(o) == DType::Int64) (void)scalar_from_python<std::int64_t>(o, DType::Int64);
+}
+
 // Operand `o` as an array. Arrays are used as they are -- a dtype that
 // differs from the loop's is converted chunk by chunk while the loop runs
 // (buffered casting, docs/design/array.md §4.3). A Python scalar becomes a
 // 1-element array of the loop dtype `to` (broadcast by the iterator);
-// conversion follows docs/design/array.md §2.2, so an int that does not fit
-// raises OverflowError only when the loop runs in int64.
+// conversion follows docs/design/array.md §2.2 (an int that does not fit
+// was already rejected by check_int_scalars where it must be an int64).
 NDArray prepare(nb::handle o, DType to) {
     if (is_ndarray(o)) return as_ndarray(o);
     const DType kind = *scalar_dtype(o);
@@ -189,6 +201,7 @@ nb::object run_unary(const LoopTable& table, const char* name, nb::handle x, nb:
     const DType d = operand_dtype(x, name);
     const DType loop = select(table, d, name, std::span(&d, 1));
     const nb::handle objs[] = {x};
+    check_int_scalars(objs, d);
     return launch(objs, std::span(&loop, 1), table[static_cast<int>(loop)].out, table[static_cast<int>(loop)].loop,
                   out);
 }
@@ -197,8 +210,10 @@ nb::object run_binary(const LoopTable& table, const char* name, bool no_bool_inp
                       nb::handle out) {
     const DType dtypes[] = {operand_dtype(a, name), operand_dtype(b, name)};
     if (no_bool_inputs && (dtypes[0] == DType::Bool || dtypes[1] == DType::Bool)) no_loop(name, dtypes);
-    const DType loop = select(table, promote(dtypes[0], dtypes[1]), name, dtypes);
+    const DType promoted = promote(dtypes[0], dtypes[1]);
+    const DType loop = select(table, promoted, name, dtypes);
     const nb::handle objs[] = {a, b};
+    check_int_scalars(objs, promoted);
     const DType types[] = {loop, loop};
     return launch(objs, types, table[static_cast<int>(loop)].out, table[static_cast<int>(loop)].loop, out);
 }

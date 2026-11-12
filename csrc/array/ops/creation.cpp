@@ -2,6 +2,7 @@
 
 #include "bind/pyutil.hpp"
 #include "array/convert.hpp"
+#include "array/ops/copy.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -75,11 +76,16 @@ nb::object empty_like(nb::handle x, nb::handle dtype) {
     return wrap(new_array_like(p, parse_dtype(dtype).value_or(p.dtype)));
 }
 
+// Without dtype= the fill value meets x's dtype implicitly: upward only,
+// like x[...] = fill_value (full_like(int array, 1.5) is a TypeError). With
+// dtype= the conversion is explicit, as in full (docs/api/array.md §1.5).
 nb::object full_like(nb::handle x, nb::handle fill_value, nb::handle dtype) {
     const NDArray& p = require_ndarray(x);
     const DType kind = require_scalar(fill_value, "fill_value");
-    const DType target = parse_dtype(dtype).value_or(p.dtype);
-    check_castable(kind, target);
+    const std::optional<DType> requested = parse_dtype(dtype);
+    const DType target = requested.value_or(p.dtype);
+    if (requested) check_castable(kind, target);
+    else check_assignable(kind, target);
     NDArray a = new_array_like(p, target);
     fill_scalar(a, fill_value, kind);
     return wrap(std::move(a));
@@ -124,10 +130,12 @@ nb::object arange(nb::handle start_obj, nb::handle stop_obj, nb::handle step_obj
     const double a = scalar_from_python<double>(start, kinds[0]);
     const double b = scalar_from_python<double>(stop, kinds[1]);
     const double s = scalar_from_python<double>(step_obj, kinds[2]);
+    if (!std::isfinite(a) || !std::isfinite(b) || !std::isfinite(s))
+        throw nb::value_error("arange arguments must be finite (not nan or inf)");
     if (s == 0) throw nb::value_error("arange step must not be zero");
     const double len = std::ceil((b - a) / s);
     if (len >= 9.2e18) throw nb::value_error("arange would produce too many elements");
-    const std::int64_t n = len > 0 ? static_cast<std::int64_t>(len) : 0;  // also catches nan
+    const std::int64_t n = len > 0 ? static_cast<std::int64_t>(len) : 0;
     NDArray out = new_array(dtype.value_or(DType::Float64), std::vector<std::int64_t>{n});
     visit_dtype(out.dtype, [&]<typename T>(std::type_identity<T>) {
         T* p = reinterpret_cast<T*>(out.data);

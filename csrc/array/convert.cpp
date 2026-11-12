@@ -14,13 +14,61 @@ void check_castable(DType from, DType to) {
     }
 }
 
+namespace {
+
+// numpy's abstract scalar types (numpy.bool, numpy.integer, numpy.floating,
+// numpy.complexfloating), looked up once numpy has been imported -- a numpy
+// scalar cannot exist before that, and stardust never imports numpy itself.
+// numpy.float64 and numpy.complex128 subclass float and complex, so they are
+// taken before this is reached.
+struct NumpyScalarTypes {
+    PyObject* types[4] = {};  // in DType order; owned for the process lifetime
+    bool ready = false;
+};
+
+NumpyScalarTypes& numpy_scalar_types() {
+    static NumpyScalarTypes t;
+    if (t.ready) return t;
+    PyObject* np = PyImport_GetModule(nb::str("numpy").ptr());  // only if already imported
+    if (np == nullptr) {
+        PyErr_Clear();
+        return t;
+    }
+    const char* names[4] = {"bool", "integer", "floating", "complexfloating"};
+    for (int k = 0; k < 4; ++k) {
+        t.types[k] = PyObject_GetAttrString(np, names[k]);
+        if (t.types[k] == nullptr) PyErr_Clear();
+    }
+    Py_DECREF(np);
+    t.ready = true;
+    return t;
+}
+
+// A numpy scalar of one of the four kinds -> its dtype (docs/api/array.md §6.2).
+// numpy.timedelta64 is a numpy.integer without __index__: not an int.
+std::optional<DType> numpy_scalar_dtype(PyObject* p) {
+    if (std::strncmp(Py_TYPE(p)->tp_name, "numpy.", 6) != 0) return std::nullopt;
+    const NumpyScalarTypes& t = numpy_scalar_types();
+    for (int k = 0; k < 4; ++k) {
+        if (t.types[k] == nullptr) continue;
+        const int is = PyObject_IsInstance(p, t.types[k]);
+        if (is < 0) throw nb::python_error();
+        if (is == 0) continue;
+        if (k == 1 && !PyIndex_Check(p)) return std::nullopt;
+        return static_cast<DType>(k);
+    }
+    return std::nullopt;
+}
+
+}  // namespace
+
 std::optional<DType> scalar_dtype(nb::handle o) {
     PyObject* p = o.ptr();
     if (PyBool_Check(p)) return DType::Bool;  // before PyLong: bool is an int subclass
     if (PyLong_Check(p)) return DType::Int64;
     if (PyFloat_Check(p)) return DType::Float64;
     if (PyComplex_Check(p)) return DType::Complex128;
-    return std::nullopt;
+    return numpy_scalar_dtype(p);
 }
 
 namespace {
@@ -50,7 +98,12 @@ T scalar_from_python(nb::handle o, DType src) {
         return truth != 0;
     } else {
         switch (src) {
-            case DType::Bool: return cast_value<T>(p == Py_True);
+            case DType::Bool: {
+                if (PyBool_Check(p)) return cast_value<T>(p == Py_True);
+                const int truth = PyObject_IsTrue(p);  // numpy.bool
+                if (truth < 0) throw nb::python_error();
+                return cast_value<T>(truth != 0);
+            }
             case DType::Int64: {
                 if constexpr (std::is_same_v<T, std::int64_t>) return py_to_int64(p);
                 else return cast_value<T>(py_to_double(p));
