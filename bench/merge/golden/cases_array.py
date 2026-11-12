@@ -1,6 +1,6 @@
 """Golden cases for the array area (see golden.py for the contract).
 
-Covers the whole public API of stardust_numpy (legacy/numpy/API.md): every
+Covers the whole public API of stardust_numpy (stardust-numpy/API.md, the frozen repository): every
 name in ``__all__`` plus the ndarray attributes, methods, operators and
 Python protocols. Inputs come only from ``L.rng(seed)`` and fixed literals.
 

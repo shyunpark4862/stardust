@@ -1,5 +1,5 @@
 """Golden cases for the frame area: stardust_pandas, later stardust.frame
-(see golden.py for the contract; the spec is legacy/pandas/API.md).
+(see golden.py for the contract; the spec is stardust-pandas/API.md, the frozen repository).
 
 Inputs are deterministic (fixed literals, L.rng(seed)) and built lazily per
 cases(L) call, so every thread count gets fresh objects. A case that assigns

@@ -182,7 +182,7 @@ def test_python_threads_at_once():
     assert len(got) == 20 and all(g == want for g in got)
 
 
-def test_thread_count_follows_sdnp():
+def test_thread_count_is_library_wide():
     rng = np.random.default_rng(6)
     a = as_sd(matrices(rng, (500,), 3, "float64"))
     ref = bits(sd.linalg.qr(a))

@@ -72,7 +72,7 @@ NB_MODULE(_core, m) {
     // nanobind reports objects still alive when its module is torn down. A
     // user's global dict holding sd.float64 at interpreter exit (finalization
     // order is not ours to control) triggers it without any real leak, so the
-    // check is off; tests/test_m1_ndarray.py measures refcounts directly instead.
+    // check is off; tests/array/test_ndarray.py measures refcounts directly instead.
     nb::set_leak_warnings(false);
     sd::register_dtypes(m);  // first: other bindings use the dtype objects
     sd::bind_ndarray(m);

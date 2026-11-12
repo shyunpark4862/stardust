@@ -206,6 +206,6 @@ def test_ldl_rules():
      lambda z: sd.linalg.ldl(z)],
 )
 @pytest.mark.parametrize("bad", [[[1.0]], np.eye(2), None])
-def test_only_sdnp_arrays(call, bad):
+def test_only_sd_arrays(call, bad):
     with pytest.raises(TypeError, match=r"^\w+\(\): '\w+' must be an sd\.ndarray, not "):
         call(bad)

@@ -59,7 +59,7 @@ REFS = {"array": ["numpy"], "linalg": ["ref"], "frame": ["pandas", "polars-1", "
 
 
 def baseline_md(data, env):
-    lines = ["# 벤치마크 기준선 (M0)", "", "옛 세 패키지를 `legacy/`의 마지막 커밋에서 빌드해 한자리에서 잰 값이다. 행마다 여러 라운드 중 가장 빠른 값.", "",
+    lines = ["# 벤치마크 기준선 (M0)", "", "옛 세 패키지를 마지막 커밋에서 빌드해 한자리에서 잰 값이다 (M7부터 동결한 옛 저장소 `../stardust-{numpy,linalg,pandas}`에 있다). 행마다 여러 라운드 중 가장 빠른 값.", "",
              "```", env.strip(), "```", ""]
     for area, cols in data.items():
         if not cols:

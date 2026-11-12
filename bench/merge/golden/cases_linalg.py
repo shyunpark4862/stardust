@@ -1,6 +1,6 @@
 """Golden cases for the linalg area (see golden.py for the contract).
 
-Covers every name in stardust_linalg.__all__ (legacy/linalg/API.md): all four
+Covers every name in stardust_linalg.__all__ (stardust-linalg/API.md, the frozen repository): all four
 input dtypes, the input layouts the packing code tells apart (C, F, strided,
 negative strides, stride-0 batch), tiny / medium / large (>= 2^17 elements:
 the C-order transpose on the pool) matrices, batches big enough to run on the

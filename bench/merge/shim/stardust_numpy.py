@@ -1,4 +1,4 @@
-"""Lets the old benchmark scripts (legacy/*/bench) time stardust: `import
+"""Lets the old benchmark scripts (bench/{array,linalg,frame}) time stardust: `import
 stardust_numpy` gets stardust's array namespace. Put this directory first on
 PYTHONPATH (bench/merge/rerun.sh)."""
 

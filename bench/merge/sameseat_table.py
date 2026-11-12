@@ -3,9 +3,9 @@ reports): legacy and new runs alternate, so the machine's drift hits both.
 
     .venv/bin/python bench/merge/sameseat_table.py DIR > DIR/table.md
 
-DIR holds array-{legacy,new,legacy1,new1}-r*.json (legacy/numpy/bench/final_report.py),
-linalg-{legacy,new,legacy1,new1,ref}.json (legacy/linalg/bench/stage_compare.py) and
-frame-{legacy,new,legacy1,new1,pandas}.json (legacy/pandas/bench/final_compare.py), as
+DIR holds array-{legacy,new,legacy1,new1}-r*.json (bench/array/final_report.py),
+linalg-{legacy,new,legacy1,new1,ref}.json (bench/linalg/stage_compare.py) and
+frame-{legacy,new,legacy1,new1,pandas}.json (bench/frame/final_compare.py), as
 bench/merge/sameseat.sh writes them; areas whose files are missing are skipped.
 Each row keeps its best over the rounds.
 """

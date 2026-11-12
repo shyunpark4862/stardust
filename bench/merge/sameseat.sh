@@ -17,9 +17,9 @@ OLD=$ROOT/.venv-legacy/bin/python
 NEW=$ROOT/.venv/bin/python
 SHIM=$ROOT/bench/merge/shim
 DATA=$ROOT/build/baseline-data
-A=legacy/numpy/bench/final_report.py
-L=legacy/linalg/bench/stage_compare.py
-F=legacy/pandas/bench/final_compare.py
+A=bench/array/final_report.py
+L=bench/linalg/stage_compare.py
+F=bench/frame/final_compare.py
 mkdir -p $OUT
 rm -f $OUT/*.json(N)
 for r in $(seq $ROUNDS); do

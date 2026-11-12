@@ -149,7 +149,7 @@ def test_result_is_fresh_writable_memory():
 
 
 @pytest.mark.parametrize("bad", [[[1.0, 0.0], [0.0, 1.0]], np.eye(2), 3.0, None])
-def test_only_sdnp_arrays(bad):
+def test_only_sd_arrays(bad):
     for f in (sd.linalg.det, sd.linalg.slogdet, sd.linalg.inv):
         with pytest.raises(TypeError, match=r"^\w+\(\): '\w+' must be an sd\.ndarray, not "):
             f(bad)

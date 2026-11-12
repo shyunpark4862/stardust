@@ -31,7 +31,6 @@ stardust/                         (저장소: ~/Desktop/stardust/stardust)
   pyproject.toml  CMakeLists.txt
   README.md  API.md               (API.md는 영역별 API 문서의 색인과 공통 규칙)
   DESIGN.md  ARCHITECTURE.md  ROADMAP.md
-  legacy/                         M0에서 이력과 함께 들여온 세 저장소. 마일스톤마다 git mv로 꺼내 가고, M7에서 빈다
 
   src/stardust/
     __init__.py                   배열 API + 스레드 수 + dtype 객체 다섯 (sd.string 포함)
@@ -146,7 +145,7 @@ stardust/                         (저장소: ~/Desktop/stardust/stardust)
 - numpy판과 pandas판은 이름(`sd::Buffer`)과 정렬(128B)이 같고 내용이 조금 다르다. 한 모듈에 그대로 넣으면 ODR 위반이다.
 - 통합판 = numpy판 + pandas판의 `size()`. M5부터 frame도 이것을 쓴다 (256B 이하의 Column 버퍼도 Buffer 안에 놓인다).
   - numpy판: 작은 배열은 Buffer 안에 데이터를 둔다(256B, numpy M7.7), 외부 메모리를 `adopt`한다.
-  - pandas판: `size()`를 갖는다. Copy-on-Write가 `shared_ptr`의 참조 카운트를 본다 (pandas ARCHITECTURE §3.3).
+  - pandas판: `size()`를 갖는다. Copy-on-Write가 `shared_ptr`의 참조 카운트를 본다 (docs/design/frame.md §5.2).
 - M6부터 배열 뷰와 Column이 같은 Buffer를 가리킬 수 있다 (`Series.to_array`). Copy-on-Write 규칙은 그대로다: 읽기 전용 배열 뷰가 `shared_ptr<Buffer>`를 하나 쥐고 있으면 `use_count()`가 늘어 있으므로 frame 쪽 쓰기가 먼저 복사한다 (DESIGN §4.3, docs/design/frame.md §5.4).
 
 ### 4.3 dtype

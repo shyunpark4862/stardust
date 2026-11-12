@@ -283,7 +283,7 @@ DataFrame.to_array(*, dtype=None, copy=None, na_value=<없음>)
   - **bool의 산술은 int64의 산술이다.** bool을 int64(0, 1)로 바꾼 뒤 계산한다. 배열 영역과 같다 (array.md §1.4).
     - 예: `Series([True]) + Series([True])`는 int64 `[2]`, `-s`와 `abs(s)`도 int64다. bool끼리의 `/`는 float64다.
     - int 규칙(§1.5)이 그대로 적용된다. 예: bool 컬럼을 `False`로 `//`하면 0으로 나누기라서 NA다.
-    - 단항 `+`는 int64와 float64만 받는다. bool은 `TypeError`다. **[배열과 다름]** 배열의 `positive`는 bool을 int64로 바꾼다 (DESIGN §8.4).
+    - 단항 `+`는 bool, int64, float64를 받는다. bool은 `-`, `abs`처럼 int64가 된다 (배열의 `positive`와 같다). string은 `TypeError`다.
 - `//`와 `%`는 floor 규칙을 따른다 (Python, numpy와 같다). `%`의 결과는 나누는 수의 부호를 따른다.
 - int 규칙은 §1.5에 있다: wrap, `// 0`과 `% 0`은 NA, `** 음수`는 NA
 - float는 IEEE 754를 따른다.

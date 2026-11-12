@@ -1,11 +1,12 @@
 #!/bin/zsh
 # M0: the benchmark baseline (ROADMAP.md, safety net 3). The three old
-# packages, built from legacy/ at their final commits (.venv-legacy), timed
+# packages, built from their final commits (.venv-legacy; since M7 the frozen
+# repositories ../stardust-{numpy,linalg,pandas} hold them), timed
 # with each project's own final-report script, in one sitting, next to the
 # reference libraries. M7 reruns the same rows on stardust.
-#   array : legacy/numpy/bench/final_report.py     (default threads, 1 thread, numpy)
-#   linalg: legacy/linalg/bench/stage_compare.py   (default threads, 1 thread, numpy/scipy)
-#   frame : legacy/pandas/bench/final_compare.py   (default threads, 1 thread, pandas, Polars)
+#   array : bench/array/final_report.py     (default threads, 1 thread, numpy)
+#   linalg: bench/linalg/stage_compare.py   (default threads, 1 thread, numpy/scipy)
+#   frame : bench/frame/final_compare.py   (default threads, 1 thread, pandas, Polars)
 # Results: bench/merge/baseline/<area>-<column>.json
 # Usage: zsh bench/merge/baseline.sh [ROUNDS]   (from the repository root; keep the machine quiet)
 set -e
@@ -18,11 +19,11 @@ mkdir -p $OUT $DATA
 rm -f $OUT/*.json(N)
 
 $PY -c "import platform, numpy, scipy, pandas, polars; print('python', platform.python_version(), platform.machine(), 'numpy', numpy.__version__, 'scipy', scipy.__version__, 'pandas', pandas.__version__, 'polars', polars.__version__)" > $OUT/environment.txt
-for n in numpy linalg pandas; do echo "legacy/$n $(git log -1 --format=%h -- legacy/$n)" >> $OUT/environment.txt; done
+for n in numpy linalg pandas; do echo "stardust-$n $(git -C ../stardust-$n log -1 --format=%h)" >> $OUT/environment.txt; done
 
-A=legacy/numpy/bench/final_report.py
-L=legacy/linalg/bench/stage_compare.py
-F=legacy/pandas/bench/final_compare.py
+A=bench/array/final_report.py
+L=bench/linalg/stage_compare.py
+F=bench/frame/final_compare.py
 for r in $(seq $ROUNDS); do
   echo "round $r: array"
   # final_report.py keeps the best of 7 repeats per row and overwrites its output,

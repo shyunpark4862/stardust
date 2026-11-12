@@ -14,8 +14,8 @@ PY=$ROOT/.venv/bin/python
 export PYTHONPATH=$ROOT/bench/merge/shim
 mkdir -p $OUT
 rm -f $OUT/*.json(N)
-A=legacy/numpy/bench/final_report.py
-L=legacy/linalg/bench/stage_compare.py
+A=bench/array/final_report.py
+L=bench/linalg/stage_compare.py
 for r in $(seq $ROUNDS); do
   if (( ${AREAS[(Ie)array]} )); then
     echo "round $r: array"

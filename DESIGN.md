@@ -104,7 +104,7 @@ stardust-numpy, stardust-linalg, stardust-pandas를 하나의 라이브러리 `s
 - **배열 → frame**: `sd.frame.Series(arr)`, `sd.frame.DataFrame(arr2d)`
   - **항상 복사한다.** 배열은 쓰기 가능한 뷰를 통해 바뀔 수 있어서, frame의 Copy-on-Write가 추적할 수 없다.
   - complex128 배열은 TypeError (frame에 complex가 없다).
-- **Copy-on-Write**: 읽기 전용 배열 뷰가 Buffer 참조를 하나 쥐고 있으면, frame 쪽 쓰기는 참조 카운트를 보고 복사한다 (pandas ARCHITECTURE §3.3의 규칙이 그대로 동작). M6에서 구현하고 테스트로 확인했다 (`frame/interop.cpp`, `tests/interop/`, docs/design/frame.md §5.4).
+- **Copy-on-Write**: 읽기 전용 배열 뷰가 Buffer 참조를 하나 쥐고 있으면, frame 쪽 쓰기는 참조 카운트를 보고 복사한다 (docs/design/frame.md §5.2의 규칙이 그대로 동작). M6에서 구현하고 테스트로 확인했다 (`frame/interop.cpp`, `tests/interop/`, docs/design/frame.md §5.4).
 - 진짜 numpy와는 지금처럼 주고받는다: 배열의 buffer protocol, frame의 `to_numpy`와 `__array__`
 
 ### 4.4 동작 규칙의 차이 (§6 Q6)
@@ -279,7 +279,7 @@ R1이 추천안대로 정해지면, 아래 후보를 함수 하나하나 확정�
     - ~~**`copy` 인자**: frame에는 `to_numpy`에만 있다. 배열은 `asarray`, `astype`, `reshape`에 있다.~~ M6에서 정리: frame의 `copy`는 `to_numpy`, `to_array`에 있고 배열의 `asarray`와 같은 뜻(None, True, False)이다. `astype`에는 Copy-on-Write라서 두지 않았다 (§9.3, §9.4).
     - ~~**dtype 인자**: frame은 이름 문자열과 Python 타입(`int` 등)을 받고 `sd.float64`는 `TypeError`다 (§4.2, M6에서 맞춘다).~~ M6에서 해결 (§9.2).
     - ~~**에러 종류**: frame은 `KeyError`(`.loc`의 없는 라벨)를 쓰는데 API.md §2의 목록에 없다.~~ M5에서 API.md §2에 적었다 (§9.7).
-    - ~~**에러 메시지 안의 문서 번호**: frame의 에러 메시지 19곳이 옛 pandas API.md의 절(`API.md §6`, `§12`, `§14`, `§15`, `§18`, `§19`)을 적는다. 통합판에서 `API.md`는 루트 문서라서 잘못된 곳을 가리킨다. M5는 결과를 바꾸지 않으므로 두었다. 위의 "메시지에 문서 절 번호를 넣지 않는다"를 따라 M6에서 지운다 (`grep -rn 'API.md §' csrc/frame src/stardust/frame`).~~ M6에서 지웠다.
+    - ~~**에러 메시지 안의 문서 번호**: frame의 에러 메시지 19곳이 옛 pandas `API.md`의 절 번호(6, 12, 14, 15, 18, 19절)를 적는다. 통합판에서 `API.md`는 루트 문서라서 잘못된 곳을 가리킨다. M5는 결과를 바꾸지 않으므로 두었다. 위의 "메시지에 문서 절 번호를 넣지 않는다"를 따라 M6에서 지운다 (`grep -rn 'API.md §' csrc/frame src/stardust/frame`).~~ M6에서 지웠다.
   - 배열 ↔ frame (M6에서 문서를 고치다 찾음, 코드에 남은 차이). 고치면 결과가 바뀌므로 M6에서는 문서에만 적었다.
     - **bool과 int의 비교**: 배열은 bool을 int64로 올려 비교한다(`sd.asarray([True]) == 1`). frame은 bool끼리만 비교하고 bool과 int는 `TypeError`다 (docs/api/frame.md §3.3). §9.1 2번은 산술만 맞췄다.
     - **bool의 단항 `+`**: 배열의 `positive`(`+x`)는 bool을 int64로 바꾼다. frame의 `+s`는 bool이면 `TypeError`다(`-s`, `abs(s)`는 int64로 맞췄다, docs/api/frame.md §3.2).

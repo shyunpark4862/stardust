@@ -404,7 +404,7 @@ def test_matrix_norm_rules():
     ],
 )
 @pytest.mark.parametrize("bad", [[[1.0]], np.eye(2), None, 1.0])
-def test_only_sdnp_arrays(call, bad):
+def test_only_sd_arrays(call, bad):
     with pytest.raises(TypeError, match=r"^\w+\(\): '\w+' must be an sd\.ndarray, not "):
         call(bad)
 
@@ -426,7 +426,7 @@ def test_keyword_only_options():
         sd.linalg.matrix_power(x, n=2)
 
 
-def test_outer_equals_sdnp_broadcast_multiply():
+def test_outer_equals_broadcast_multiply():
     rng = np.random.default_rng(5)
     x = as_sd(rng.standard_normal((3, 4)) + 1j * rng.standard_normal((3, 4)))
     y = as_sd(rng.standard_normal((3, 5)) + 1j * rng.standard_normal((3, 5)))
