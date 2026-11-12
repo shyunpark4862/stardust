@@ -46,7 +46,9 @@
 - **axis**도 인자 하나로 받는다: int 또는 int의 tuple
   - 음수는 뒤에서 센다.
   - 범위 밖이면 `ValueError`, 중복되면 `ValueError`다. int64 범위 밖의 int는 `OverflowError`다.
-  - 리스트는 `TypeError`다. linalg의 `vector_norm`은 리스트도 받는다 (linalg.md §3). 배열도 리스트를 받을지는 사용자 결정을 기다린다 (DESIGN §7).
+  - **리스트도 tuple처럼 받는다**: `sum(x, axis=[0, 2])`. linalg의 `axis`와 같다 (linalg.md §3).
+  - int만 받는 함수(아래)는 tuple과 리스트 모두 `TypeError`다.
+  - shape은 리스트를 받지 않는다 (위).
 - 그 밖의 int 인자(`eye`의 `n_rows`, `n_cols`, `k`, `linspace`의 `num`)도 int64 범위 밖이면 `OverflowError`다.
   - int만 받는 함수: `argmin`, `argmax`, `cumulative_sum`, `cumulative_prod`, `sort`, `argsort`, `concat`, `stack`
 - **기본 axis**
@@ -251,7 +253,7 @@ astype(x, dtype, /, *, copy=True)
   - `shape`에 `-1`을 하나 쓸 수 있다. 둘 이상이면 `ValueError`다.
   - 크기가 맞지 않으면 `ValueError`다.
 - **`ravel`**: 1차원으로 편다. 가능하면 뷰를 반환한다. `flatten`은 없다.
-- **`permute_dims`**: `axes`는 모든 축의 순열이다. int 또는 tuple이고, 리스트는 `TypeError`다.
+- **`permute_dims`**: `axes`는 모든 축의 순열이다. int, tuple 또는 리스트다 (§1.3).
 - **`matrix_transpose`**: 마지막 두 축을 바꾼다. `.mT`와 같다. 2차원 미만은 `ValueError`다.
 - **`moveaxis`**: `source`, `destination`은 int 또는 같은 길이의 tuple이다.
 - **`squeeze`**: `axis`는 필수다. 길이가 1이 아닌 축은 `ValueError`다. 모든 축을 없애면 `ValueError`다 (§1.2).

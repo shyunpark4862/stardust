@@ -82,17 +82,17 @@ int normalize_axis(std::int64_t axis, int ndim) {
 }
 
 std::vector<int> parse_axes(nb::handle o, int ndim, const char* what) {
-    // An int or a tuple of ints; a list is a TypeError (docs/api/array.md §1.3).
+    // An int, or a tuple or list of ints, as in sd.linalg (docs/api/array.md §1.3).
     auto as_int = [&](nb::handle item) {
         if (!PyLong_Check(item.ptr()) || PyBool_Check(item.ptr()))
-            throw nb::type_error((std::string("'") + what + "' must be an int or a tuple of ints, not " +
+            throw nb::type_error((std::string("'") + what + "' must be an int or a tuple or list of ints, not " +
                                   Py_TYPE(item.ptr())->tp_name)
                                      .c_str());
         return normalize_axis(parse_int(item, what), ndim);
     };
     std::vector<int> axes;
-    if (PyTuple_Check(o.ptr())) {
-        for (nb::handle item : nb::borrow<nb::tuple>(o)) axes.push_back(as_int(item));
+    if (PyTuple_Check(o.ptr()) || PyList_Check(o.ptr())) {
+        for (nb::handle item : o) axes.push_back(as_int(item));
     } else {
         axes.push_back(as_int(o));
     }

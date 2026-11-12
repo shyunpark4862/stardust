@@ -300,7 +300,7 @@ matrix_rank(x, /, *, rtol=None)
 ```
 - **`vector_norm`**
   - `axis`는 `int`, `tuple`, `None`이다. `None`이면 모든 축이다. `()`이면 아무 축도 줄이지 않는다(원소별 크기).
-    - 리스트도 tuple처럼 받는다. 예: `axis=[0, 1]`. 배열 영역의 `axis`(array.md §1.3)는 리스트를 받지 않는다. 맞출지는 사용자 결정을 기다린다 (DESIGN §7).
+    - 리스트도 tuple처럼 받는다. 예: `axis=[0, 1]`. 배열 영역의 `axis`와 같다 (array.md §1.3).
     - 중복이나 범위 밖은 `ValueError`다 (array.md §1.3).
   - `ord`는 `int` 또는 `float`이다. `bool`과 문자열은 `TypeError`, NaN은 `ValueError`다.
 

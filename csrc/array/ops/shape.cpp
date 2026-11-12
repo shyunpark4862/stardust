@@ -170,7 +170,7 @@ nb::object squeeze(nb::handle x, nb::handle axis_obj) {
 
 nb::object expand_dims(nb::handle x, nb::handle axis_obj) {
     const NDArray& a = require_ndarray(x);
-    const int added = PyTuple_Check(axis_obj.ptr()) ? static_cast<int>(PyTuple_GET_SIZE(axis_obj.ptr())) : 1;
+    const int added = PyTuple_Check(axis_obj.ptr()) || PyList_Check(axis_obj.ptr()) ? static_cast<int>(PySequence_Size(axis_obj.ptr())) : 1;
     const int out_ndim = a.ndim + added;
     if (out_ndim > kMaxNdim)
         throw nb::value_error(("arrays may have at most " + std::to_string(kMaxNdim) + " dimensions").c_str());

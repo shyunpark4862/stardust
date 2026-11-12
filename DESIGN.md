@@ -190,7 +190,7 @@ stardust-numpy, stardust-linalg, stardust-pandas를 하나의 라이브러리 `s
 - ~~§4.4의 3번과 11번의 비용 확인~~: M6 준비에서 배열 규칙으로 통일하기로 정했다 (§8, §9.1).
 - numpy의 int 평균 덧셈 순서(8192개 버퍼)를 흉내 내 배열의 1차원 평균을 numpy와 비트까지 맞출지 (§9.8 끝)
 - ~~2라운드 (§8)~~: 결정했고 M6에서 구현했다 (§9).
-- **`axis`에 리스트** (사용자 결정 대기, M6): linalg의 `vector_norm`은 `axis=[0]`을 튜플처럼 받는다 (§9.6, docs/api/linalg.md §3). 배열 영역은 리스트를 TypeError로 막는다 (docs/api/array.md §1.3). 같은 개념의 인자가 영역마다 다르다 (§1.4). **추천: 배열도 리스트를 받는다.** 정해지면 배열의 `axis` 해석(`bind/pyutil.cpp`의 `parse_axes`)과 docs/api/array.md §1.3, docs/api/linalg.md §3의 문장을 고친다. 지금은 두 문서가 차이를 서로 적어 두었다.
+- ~~**`axis`에 리스트**~~ **사용자 결정 (2026-11-12): 배열도 리스트를 받는다.** linalg의 `vector_norm`(§9.6)과 같게, 배열의 모든 `axis`/`axes` 인자가 리스트를 tuple처럼 받는다 (`bind/pyutil.cpp`의 `parse_axes`, docs/api/array.md §1.3). int만 받는 함수와 shape은 그대로다.
 
 ---
 
@@ -265,7 +265,7 @@ R1이 추천안대로 정해지면, 아래 후보를 함수 하나하나 확정�
     - ~~**`.base`**: linalg 결과의 `.base`가 내부 블록 객체였다.~~ M3에서 해결: 결과를 `NDArray`로 직접 만들어 `.base`는 `None`이다.
     - ~~**에러 메시지 형식**: `LinAlgError`와 `OverflowError` 메시지에는 `func(): ` 접두사가 없다. `trace(dtype=sd.bool)`은 콜론 없이 "trace() cannot…"이다.~~ M6에서 해결 (API.md §2.1).
     - ~~**에러 종류**: 잘못된 `ord`의 타입이 `vector_norm`에서는 TypeError, `matrix_norm`/`cond`에서는 ValueError다. int64를 넘는 Python int가 `k`, `n`, `axis`에서는 ValueError인데, 공통 규칙(API.md §2)은 OverflowError다.~~ M6에서 해결: `ord`의 타입은 세 함수 모두 TypeError, 범위 밖 int 인자는 배열과 linalg 모두 OverflowError (§9.6, API.md §2).
-    - ~~`axis=[0]`의 메시지가 "must be an int, not list"인데 튜플은 받는다.~~ M6에서 해결: `vector_norm`이 리스트도 받는다 (§9.6). 배열의 `axis`는 아직 리스트를 받지 않는다 (§7).
+    - ~~`axis=[0]`의 메시지가 "must be an int, not list"인데 튜플은 받는다.~~ M6에서 해결: `vector_norm`이 리스트도 받는다 (§9.6). 배열의 `axis`도 리스트를 받는다 (사용자 결정, §7).
     - ~~결과 namedtuple이 두 모듈(`stardust._results`, `stardust.linalg._results`)에 나뉘어 있다.~~ M6에서 `stardust._results` 하나로 합쳤다.
   - **남음** (M6에서 다루지 않음): frame: `df.iloc[0, 9]`의 메시지가 열 위치인데도 "out of range for 4 rows"라고 한다.
   - **남음** (M6에서 다루지 않음): frame: `df.groupby(Series)`가 Series의 값을 키 이름으로 읽어서 "key columns must be unique"를 낸다.
@@ -294,7 +294,7 @@ R1이 추천안대로 정해지면, 아래 후보를 함수 하나하나 확정�
 
 ## 9. M6 변경 목록 (확정, 2026-11-12)
 
-> **M6에서 구현했다** (2026-11-12, 커밋 7c8a128, b3116e4, 031dc61, cf1d6f1, 139146a, a6476c6; 해설은 docs/learn/M6-consistency.md). 아래 목록과 다르게 구현한 곳: (a) 배열의 int 인자(`shape`, `axis`, `k`, `num`)도 linalg처럼 int64 범위 밖이면 OverflowError다 (§9.6은 linalg만 적었다, API.md §2). (b) frame의 그룹별 `mean(int64)`은 배열을 부르지 않고 그룹마다 float64 pairwise로 더한다. Series의 `mean`과 비트가 같은 것은 그룹이 4,096행 이하일 때다 (§9.1 11번의 "같은 덧셈 순서"는 Series에서만, docs/api/frame.md §7.5). (c) `to_numpy(dtype=)`, `to_array(dtype=)`도 생성자의 `dtype=`처럼 명시적 변환이다 (§9.1 5번). (d) list에서 int와 float가 섞이면 int를 float64로 반올림한다. 2⁵³을 넘어도 에러가 아니다 (§9.1 5번, 배열의 `asarray`와 같다). 그 밖에 조회 `x in s`는 손실 없는 변환을 남겼다 (docs/api/frame.md §5.8). 구현하며 찾은, 코드에 남은 차이는 §8.4 끝에, `axis` 리스트는 §7에 있다.
+> **M6에서 구현했다** (2026-11-12, 커밋 7c8a128, b3116e4, 031dc61, cf1d6f1, 139146a, a6476c6; 해설은 docs/learn/M6-consistency.md). 아래 목록과 다르게 구현한 곳: (a) 배열의 int 인자(`shape`, `axis`, `k`, `num`)도 linalg처럼 int64 범위 밖이면 OverflowError다 (§9.6은 linalg만 적었다, API.md §2). (b) frame의 그룹별 `mean(int64)`은 배열을 부르지 않고 그룹마다 float64 pairwise로 더한다. Series의 `mean`과 비트가 같은 것은 그룹이 4,096행 이하일 때다 (§9.1 11번의 "같은 덧셈 순서"는 Series에서만, docs/api/frame.md §7.5). (c) `to_numpy(dtype=)`, `to_array(dtype=)`도 생성자의 `dtype=`처럼 명시적 변환이다 (§9.1 5번). (d) list에서 int와 float가 섞이면 int를 float64로 반올림한다. 2⁵³을 넘어도 에러가 아니다 (§9.1 5번, 배열의 `asarray`와 같다). 그 밖에 조회 `x in s`는 손실 없는 변환을 남겼다 (docs/api/frame.md §5.8). 구현하며 찾은, 코드에 남은 차이는 §8.4 끝에 있다. `axis` 리스트는 사용자 결정으로 두 영역 모두 받는다 (§7).
 
 > §4.4, §8의 결정과 후보를 함수 하나하나로 풀어 쓴 목록이다. 사용자가 확정하면 M6의 범위가 되고, 골든 비교의 "예상된 차이"가 된다(§8.5). **결정** = 이미 정함, **추천** = 확정을 기다림.
 > 골든 분류: 값(결과가 바뀜), 메시지(에러 메시지만), 종류(예외 종류), 시그니처(인자 이름·위치), 새것(없던 기능).

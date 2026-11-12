@@ -145,14 +145,14 @@ def test_permute_dims():
         with pytest.raises(ValueError):
             sd.permute_dims(a, bad)
     assert_same(sd.permute_dims(sd.arange(3), 0), np.arange(3))
-    # A list is a TypeError like every axis argument (docs/api/array.md §1.3), and the message says so.
-    for bad, name in [([2, 1, 0], "axes"), ((2, 1.0, 0), "axes")]:
-        with pytest.raises(TypeError, match=rf"^permute_dims\(\): '{name}' must be an int or a tuple of ints"):
-            sd.permute_dims(a, bad)
-    with pytest.raises(TypeError, match=r"^moveaxis\(\): 'source' must be an int or a tuple of ints, not list$"):
-        sd.moveaxis(a, [0], (1,))
-    with pytest.raises(TypeError, match=r"^sum\(\): 'axis' must be an int or a tuple of ints, not list$"):
-        sd.sum(a, axis=[0])
+    # A list works like a tuple for every axis argument, as in sd.linalg (docs/api/array.md §1.3).
+    assert_same(sd.permute_dims(a, [2, 1, 0]), n.transpose((2, 1, 0)))
+    assert_same(sd.moveaxis(a, [0], (1,)), np.moveaxis(n, [0], (1,)))
+    assert_same(sd.sum(a, axis=[0, 2]), np.sum(n, axis=(0, 2)))
+    with pytest.raises(TypeError, match=r"^permute_dims\(\): 'axes' must be an int or a tuple or list of ints, not float$"):
+        sd.permute_dims(a, (2, 1.0, 0))
+    with pytest.raises(TypeError, match=r"^sum\(\): 'axis' must be an int or a tuple or list of ints, not float$"):
+        sd.sum(a, axis=1.5)
     with pytest.raises(OverflowError):
         sd.permute_dims(a, (2**63, 0, 1))  # an int outside int64 (API.md §2)
 

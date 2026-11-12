@@ -162,7 +162,7 @@
 - 이름: Array API의 이름을 쓴다 (`acos`, `concat`, `pow`, `permute_dims`). Array API에 없는 함수만 numpy 이름을 쓴다 (`ravel`).
 - 모듈 함수가 정식 API다. 정해진 목록(`reshape`, `astype`, `copy`, 리덕션 등)만 메서드로도 제공한다. 메서드는 같은 C++ 함수를 x를 self로 해서 부른다.
 - 배열 인자와 그 함수의 "본 인자"(`reshape`의 `shape`, `full`의 `fill_value`)는 positional-only, 이름 붙은 옵션(`dtype`, `axis`, `keepdims`, `out`, `copy`, …)은 keyword-only다.
-- shape과 axes는 int 또는 tuple 인자 하나로 받는다 (`bind/pyutil.hpp`의 `parse_shape`, `parse_axes`). 반복된 축은 ValueError다.
+- shape은 int 또는 tuple, axes는 int, tuple 또는 리스트 인자 하나로 받는다 (`bind/pyutil.hpp`의 `parse_shape`, `parse_axes`). 리스트를 받는 것은 linalg와 맞춘 것이다 (DESIGN §7). 반복된 축은 ValueError다.
 - 함수 하나에 이름 하나. 별칭이 없다. `flatten`은 없고 `ravel`만, `dot`은 없고 `matmul`과 `@`만 있다.
 - 기본 axis: 리덕션은 `axis=None`, `sort`/`argsort`는 `axis=-1`, 누적 연산은 ndim>1이면 axis가 필수다.
 - 모든 리덕션은 int/tuple axis와 `keepdims`를 받는다. `argmin`/`argmax`는 int axis만 받는다.

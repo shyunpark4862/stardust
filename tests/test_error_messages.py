@@ -23,8 +23,8 @@ def message(call):
 NAMED = [
     # array: functions, the same function as a method, a property
     (lambda: sd.zeros(-1), ValueError, "zeros(): negative dimensions are not allowed"),
-    (lambda: sd.sum(sd.ones(3), axis=[0]), TypeError, "sum(): 'axis' must be an int or a tuple of ints, not list"),
-    (lambda: sd.ones(3).sum(axis=[0]), TypeError, "sum(): 'axis' must be an int or a tuple of ints, not list"),
+    (lambda: sd.sum(sd.ones(3), axis=1.5), TypeError, "sum(): 'axis' must be an int or a tuple or list of ints, not float"),
+    (lambda: sd.ones(3).sum(axis=1.5), TypeError, "sum(): 'axis' must be an int or a tuple or list of ints, not float"),
     (lambda: sd.ones(3).astype("float32"), TypeError,
      "astype(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names), not 'float32'"),
     (lambda: sd.add(sd.ones(2), sd.ones(3)), ValueError, "add(): shapes could not be broadcast together: (2,) (3,)"),
