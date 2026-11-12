@@ -282,7 +282,7 @@ R1이 추천안대로 정해지면, 아래 후보를 함수 하나하나 확정�
     - ~~**에러 메시지 안의 문서 번호**: frame의 에러 메시지 19곳이 옛 pandas `API.md`의 절 번호(6, 12, 14, 15, 18, 19절)를 적는다. 통합판에서 `API.md`는 루트 문서라서 잘못된 곳을 가리킨다. M5는 결과를 바꾸지 않으므로 두었다. 위의 "메시지에 문서 절 번호를 넣지 않는다"를 따라 M6에서 지운다 (`grep -rn 'API.md §' csrc/frame src/stardust/frame`).~~ M6에서 지웠다.
   - 배열 ↔ frame (M6에서 문서를 고치다 찾음, 코드에 남은 차이). 고치면 결과가 바뀌므로 M6에서는 문서에만 적었다.
     - **bool과 int의 비교**: 배열은 bool을 int64로 올려 비교한다(`sd.asarray([True]) == 1`). frame은 bool끼리만 비교하고 bool과 int는 `TypeError`다 (docs/api/frame.md §3.3). §9.1 2번은 산술만 맞췄다.
-    - **bool의 단항 `+`**: 배열의 `positive`(`+x`)는 bool을 int64로 바꾼다. frame의 `+s`는 bool이면 `TypeError`다(`-s`, `abs(s)`는 int64로 맞췄다, docs/api/frame.md §3.2).
+    - ~~**bool의 단항 `+`**: frame의 `+s`는 bool이면 `TypeError`였다.~~ M6 마지막 커밋(900cac8)에서 해결: `-s`, `abs(s)`처럼 int64다 (docs/api/frame.md §3.2).
     - **CSV 추론의 정확성 규칙**: list에서 만들 때는 int64 범위 밖이거나 2⁵³을 넘는 int가 float와 섞이면 float64로 반올림한다(§9.1 5번, 12번). `read_csv`의 추론은 그런 값이 있으면 컬럼을 string으로 남긴다 (docs/api/frame.md §10.4).
 
 ### 8.5 언제 바꾸나

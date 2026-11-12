@@ -2,8 +2,8 @@
 
 Float sums are numpy's pairwise summation, so numpy run over the same values
 (NA rows hold 0.0, docs/design/frame.md §4.5) is a bit-for-bit oracle; without NA,
-pandas is too. int64 means sum exactly, which Python's own int and float
-arithmetic reproduce.
+pandas is too. int64 means are the array area's float64 sum over the count
+(DESIGN.md §9.1 #11), so sd.sum(..., dtype=sd.float64) is their oracle.
 """
 
 import math

@@ -12,6 +12,9 @@
 | 선형대수 | `sd.linalg` | [docs/api/linalg.md](docs/api/linalg.md) |
 | 데이터프레임 | `sd.frame` | [docs/api/frame.md](docs/api/frame.md) |
 
+- 처음 보는 사람은 안내서 [docs/guide/](docs/guide/README.md)부터 읽는다. 규칙의 이유와 구조를 이어서 설명한다. 안내서와 이 문서가 다르면 이 문서가 맞다.
+- 설계의 근거와 측정은 `docs/design/<영역>.md`, 통합의 결정은 [DESIGN.md](DESIGN.md)에 있다.
+
 ---
 
 ## §1. dtype

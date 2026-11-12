@@ -1,9 +1,10 @@
 # stardust
 
 배열, 선형대수, 데이터프레임을 처음부터 다시 만드는 교육용 라이브러리다 ("rebuilding the wheel").
-- 계산 코어는 C++20, Python 바인딩은 nanobind로 만든다.
+- 계산 코어는 C++20, Python 바인딩은 nanobind로 만든다. 확장 모듈은 `stardust._core` 하나다.
 - 대상 기기는 Apple M4 Pro 한 대다. NEON, Accelerate(BLAS, LAPACK, vForce)를 쓰고, 스레드풀은 직접 만들었다.
 - 영역 사이의 일관성을 가장 앞에 둔다: 같은 개념은 어느 영역에서든 같은 이름, 같은 시그니처, 같은 동작이다.
+- 결과는 스레드 수와 무관하게 비트까지 같다. numpy, scipy, pandas가 정답지이고, 다른 곳은 문서에 이유와 함께 적었다.
 
 ```python
 import stardust as sd
@@ -14,17 +15,50 @@ x[x > 5] = 0.0                  # boolean mask scatter
 sd.sum(x, axis=0), x.argmax(axis=1), sd.sort(x, descending=True)
 
 a = sd.asarray([[2.0, 1.0], [1.0, 3.0]])
-sd.linalg.solve(a, sd.asarray([1.0, 2.0]))   # LAPACK gesv: [0.2, 0.6]
+print(sd.linalg.solve(a, sd.asarray([1.0, 2.0])).tolist())  # [0.19999999999999996, 0.6000000000000001]
+```
+
+데이터프레임:
+```python
+import stardust as sd
+
+df = sd.frame.DataFrame({"k": ["b", "a", "b", "a"], "v": [1, 2, 3, None]})
+g = df.groupby("k").sum()
+print(g["k"].tolist(), g["v"].tolist())  # ['a', 'b'] [2, 4]
+print(df["v"].dtype is sd.int64, df["v"].isna().tolist())  # True [False, False, False, True]
+```
+
+영역을 넘어서: Series를 배열로 꺼내 `sd.linalg`에 넘긴다. NA 없는 숫자 컬럼은 복사 없이 읽기 전용 뷰가 되고, `DataFrame.to_array()`는 linalg가 바로 읽는 F-order 행렬이다.
+```python
+import stardust as sd
+
+df = sd.frame.DataFrame({"x1": [1.0, 2.0, 3.0, 4.0], "x2": [0.0, 1.0, 0.0, 1.0], "y": [1.0, 3.0, 3.0, 5.0]})
+y = df["y"].to_array()                       # sd.ndarray, 컬럼과 메모리를 함께 쓴다
+print(sd.linalg.vector_norm(y))  # 6.6332495807108
+beta = sd.linalg.lstsq(df[["x1", "x2"]].to_array(), y).solution
+print([round(b, 12) for b in beta.tolist()])  # [1.0, 1.0]
 ```
 
 ## 영역
-| 영역 | 이름공간 | 상태 | API |
+| 영역 | 이름공간 | 내용 | API |
 |---|---|---|---|
-| 배열 | `sd` | 옮김 (M1) | [docs/api/array.md](docs/api/array.md) |
-| 선형대수 | `sd.linalg` | 옮김 (M2), 배열과의 경계 정리는 M3 | [docs/api/linalg.md](docs/api/linalg.md) |
-| 데이터프레임 | `sd.frame` | 옮김 (M5), 배열과 잇기와 일관성 맞추기는 M6 | [docs/api/frame.md](docs/api/frame.md) |
+| 배열 | `sd` | N차원 `ndarray`(dtype 넷, 임의의 strides, 0차원 없음), ufunc, 리덕션, 인덱싱, 정렬과 unique, `matmul` | [docs/api/array.md](docs/api/array.md) |
+| 선형대수 | `sd.linalg` | 함수 37개: 분해, 선형 시스템, 노름, 특수 구조, `expm`. 행렬 묶음(배치)을 받고 F-order 배열을 돌려준다 | [docs/api/linalg.md](docs/api/linalg.md) |
+| 데이터프레임 | `sd.frame` | `Series`, `DataFrame`, `Index`, NA, Copy-on-Write, groupby, merge, sort, `read_csv`. `to_array()`로 배열과 잇는다 | [docs/api/frame.md](docs/api/frame.md) |
 
-세 교육용 프로젝트(stardust-numpy, stardust-linalg, stardust-pandas)를 하나로 합치는 중이다. 진행 순서는 [ROADMAP.md](ROADMAP.md), 결정은 [DESIGN.md](DESIGN.md), 구조는 [ARCHITECTURE.md](ARCHITECTURE.md)에 있다.
+- 세 영역이 함께 쓰는 규칙(dtype 객체, 에러 종류와 메시지, 스레드)은 [API.md](API.md)에 있다.
+- 세 교육용 프로젝트(stardust-numpy, stardust-linalg, stardust-pandas)를 합쳐 만들었다. 옛 저장소는 동결했다.
+
+## 문서
+| 문서 | 내용 |
+|---|---|
+| [docs/guide/](docs/guide/README.md) | **안내서.** 처음 보는 사람을 위한 한 권: 세 영역을 함께 쓰는 법과, 라이브러리가 어떻게 만들어졌고 왜 그런지 (13장) |
+| [API.md](API.md) | 공통 규칙과 영역별 API 문서의 색인 |
+| [DESIGN.md](DESIGN.md) | 통합의 결정과 일관성 규칙 |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | 층 구조, 디렉터리, 공통 부품 |
+| `docs/design/` | 영역의 설계: [배열](docs/design/array.md), [선형대수](docs/design/linalg.md), [데이터프레임](docs/design/frame.md) |
+| [docs/learn/M7-final-report.md](docs/learn/M7-final-report.md) | 통합의 최종 보고서: 성능, 줄어든 코드, 경계 비용, 남은 것 |
+| `docs/learn/` | 마일스톤마다의 해설 (M0–M7). 진행 순서는 [ROADMAP.md](ROADMAP.md) |
 
 ## 빌드와 테스트
 macOS (Apple Silicon), Python 3.15에서 확인했다.
@@ -38,4 +72,6 @@ python3.15 -m venv .venv && .venv/bin/pip install nanobind scikit-build-core pyt
 .venv/bin/python -m pytest -q
 ```
 
-통합 전후의 결과가 비트까지 같은지는 골든 출력으로 확인한다 (`bench/merge/golden/golden.py`, [docs/learn/M0-repository-history-baseline.md](docs/learn/M0-repository-history-baseline.md)).
+문서와 통합의 검사:
+- `.venv/bin/python tools/check_refs.py`: 코드, 테스트, 문서의 `docs/design/array.md §6.2` 같은 참조가 모두 있는 절을 가리키는지 본다.
+- `.venv/bin/python bench/merge/golden/golden.py check array` (`linalg`, `frame`도): 옛 패키지로 기록한 골든 출력 12,424개와 비트까지 비교한다. 일부러 바꾼 결과는 `bench/merge/golden/expected.py`에 이유와 함께 적혀 있다 ([docs/learn/M0-repository-history-baseline.md](docs/learn/M0-repository-history-baseline.md)).

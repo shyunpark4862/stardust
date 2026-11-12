@@ -31,7 +31,7 @@
 | M4 공통 바닥 정리 | 2단계 준비 | 완료 (2026-11-12), docs/learn/M4-shared-foundation.md |
 | M5 frame 옮기기 | 2단계 | 완료 (2026-11-12), docs/learn/M5-frame-move.md |
 | M6 frame과 배열 잇기, 일관성 맞추기 | 2단계 | 완료 (2026-11-12), docs/learn/M6-consistency.md |
-| M7 마무리 | 마무리 | 대기 |
+| M7 마무리 | 마무리 | 완료 (2026-11-12), docs/learn/M7-final-report.md (최종 보고서), 안내서 docs/guide/ |
 
 ## 마일스톤
 

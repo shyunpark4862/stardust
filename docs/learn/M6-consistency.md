@@ -126,7 +126,7 @@ DESIGN §9의 목록에 없거나 목록과 다르게 한 것이다. DESIGN §9 
 
 ## 6. 남은 것
 - **`axis`에 리스트**: linalg의 `vector_norm`만 받던 것을, 사용자 결정으로 배열의 모든 `axis`/`axes` 인자도 받게 했다 (DESIGN §7). int만 받는 함수와 shape은 그대로다.
-- **코드에 남은 배열 ↔ frame 차이** (DESIGN §8.4 끝, 문서를 고치다 찾음): bool과 int의 비교(배열은 되고 frame은 TypeError), bool의 단항 `+`(배열은 int64, frame은 TypeError), CSV 추론의 정확성 규칙(list는 반올림, CSV는 string으로 남김). 고치면 결과가 바뀌므로 문서에만 적었다.
+- **코드에 남은 배열 ↔ frame 차이** (DESIGN §8.4 끝, 문서를 고치다 찾음): bool과 int의 비교(배열은 되고 frame은 TypeError), CSV 추론의 정확성 규칙(list는 반올림, CSV는 string으로 남김). 고치면 결과가 바뀌므로 문서에만 적었다.
 - **M6에서 다루지 않은 메시지** (DESIGN §8.4): `df.iloc[0, 9]`, `df.groupby(Series)`, `DataFrame({...}, index=...)`의 길이 메시지, CSV 따옴표 메시지 둘. `arange`의 int 인자는 `dtype=float64`여도 int64 범위여야 한다.
 - numpy의 int 평균 덧셈 순서를 흉내 낼지 (DESIGN §7, 그대로)
 - **새 규칙으로 다시 재지 않은 frame 커널**: int–float 비교, int 평균, float → int `astype` (docs/design/frame.md 머리말). 성능 표(§1)가 채워지면 함께 본다.
