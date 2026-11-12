@@ -24,7 +24,9 @@ def resolve(dtype, func):
     if type(dtype) is type(OBJECTS["bool"]):
         what = f"sd.{dtype}"  # a dtype the frame does not have: sd.complex128
     else:
-        what = repr(dtype) if isinstance(dtype, (str, type)) else type(dtype).__name__
+        # a string as itself, a type by its short name (<class 'int64'>, not numpy.int64), else its type
+        what = repr(dtype) if isinstance(dtype, str) else (
+            f"<class {dtype.__name__!r}>" if isinstance(dtype, type) else type(dtype).__name__)
     raise TypeError(named(func, f"'dtype' must be sd.bool, sd.int64, sd.float64 or sd.string (or their names), not {what}"))
 
 

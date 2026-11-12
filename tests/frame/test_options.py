@@ -1,7 +1,8 @@
 """Options take what the array area's options take (DESIGN.md §10.1 #4, #4b,
-#4c; API.md §2, §2.1): a bool option True or False, an int argument a Python
-int in int64, a string option a str. Every public signature is searched for
-bool defaults, so a new bool option is checked without being listed here."""
+#4c, #13; API.md §2, §2.1): a bool option True or False, an int argument an
+int by operator.index (numpy integers too) in int64, a string option a str.
+Every public signature is searched for bool defaults, so a new bool option is
+checked without being listed here."""
 
 import inspect
 
@@ -69,9 +70,13 @@ def test_bool_options_take_true_or_false(owner, name, option, tmp_path):
 def test_int_arguments(obj, name):
     f = getattr(obj, name)
     assert len(f(2)) == 2 and len(f(-1)) == 2 and len(f(2**63 - 1)) == 3 and len(f(-(2**63))) == 0
-    for bad, shown in ((True, "bool"), (2.0, "float"), ("2", "str"), (None, "NoneType"), (np.int64(2), "int64")):
+    for bad, shown in ((True, "bool"), (2.0, "float"), ("2", "str"), (None, "NoneType"), (np.True_, "bool"),
+                       (np.float64(2), "float64")):
         with pytest.raises(TypeError, match=rf"^{name}\(\): 'n' must be an int, not {shown}$"):
             f(bad)
+    assert len(f(np.int64(2))) == 2 and len(f(np.uint8(1))) == 1  # numpy integers (DESIGN.md §10.1 #13)
+    with pytest.raises(OverflowError, match=rf"^{name}\(\): 'n' is out of range$"):
+        f(np.uint64(2**63))
     for big in (2**63, -(2**63) - 1, 2**100):
         with pytest.raises(OverflowError, match=rf"^{name}\(\): 'n' is out of range$"):
             f(big)
@@ -115,3 +120,21 @@ def test_list_arguments_take_no_generators(call):
     with pytest.raises(TypeError, match="not generator"):
         call(x for x in ["a"])
     assert sd.frame.concat((S,)).tolist() == S.tolist() and DF.sort_values(("a", "b")).shape == DF.shape
+
+
+def test_correction_takes_numpy_numbers():
+    # an int or a float, numpy integers too, as sd.var (DESIGN.md §10.1 #13)
+    s = sd.frame.Series([1.0, 2.0, 4.0])
+    assert s.var(correction=np.int64(1)) == s.var(correction=1)
+    assert DF.groupby("a").std(correction=np.int8(0))["b"].tolist() == DF.groupby("a").std()["b"].tolist()
+    for bad, shown in ((True, "bool"), (np.True_, "bool"), (None, "NoneType"), ("1", "str")):
+        with pytest.raises(TypeError, match=rf"^var\(\): 'correction' must be an int or a float, not {shown}$"):
+            s.var(correction=bad)
+
+
+def test_copy_option_message():
+    for bad, shown in ((1, "int"), ("no", "str")):
+        with pytest.raises(TypeError, match=rf"^to_numpy\(\): 'copy' must be True, False or None, not {shown}$"):
+            S.to_numpy(copy=bad, na_value=0)
+        with pytest.raises(TypeError, match=rf"^to_array\(\): 'copy' must be True, False or None, not {shown}$"):
+            S.to_array(copy=bad, na_value=0)

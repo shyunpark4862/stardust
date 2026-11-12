@@ -383,8 +383,8 @@ nb::object imag(nb::handle x, nb::handle out);
 nb::object scalar_part(nb::handle x, nb::handle out, nb::object (*part)(nb::handle, nb::handle)) {
     const std::optional<DType> kind = scalar_dtype(x);
     if (!kind)
-        throw nb::type_error((std::string("'x' must be an sd.ndarray or a Python bool, int, float or complex, not ") +
-                              Py_TYPE(x.ptr())->tp_name)
+        throw nb::type_error((std::string("'x' must be an sd.ndarray or a bool, int, float or complex, not ") +
+                              py_type_name(x))
                                  .c_str());
     const std::int64_t one[] = {1};
     NDArray a = new_array(*kind, one);
@@ -461,25 +461,25 @@ nb::object transpose_2d(nb::handle x) {
 
 void bind_shape(nb::module_& m) {
     using nb::arg;
-    m.def("reshape", named("reshape", nb::overload_cast<nb::handle, nb::handle, nb::handle>(&reshape)), arg(), arg(),
+    m.def("reshape", named("reshape", nb::overload_cast<nb::handle, nb::handle, nb::handle>(&reshape)), arg().none(), arg().none(),
           nb::kw_only(), arg("copy").none() = nb::none());
     m.def("ravel", [](nb::handle x) {
         return call_named("ravel", [&] {
             const std::int64_t flat[] = {-1};
             return reshape(x, flat, std::nullopt);
         });
-    }, arg());
-    m.def("permute_dims", named("permute_dims", &permute_dims), arg(), arg());
-    m.def("matrix_transpose", named("matrix_transpose", &matrix_transpose), arg());
-    m.def("moveaxis", named("moveaxis", &moveaxis), arg(), arg(), arg());
-    m.def("squeeze", named("squeeze", &squeeze), arg(), nb::kw_only(), arg("axis"));
-    m.def("expand_dims", named("expand_dims", &expand_dims), arg(), nb::kw_only(), arg("axis"));
-    m.def("broadcast_to", named("broadcast_to", &broadcast_to), arg(), arg());
+    }, arg().none());
+    m.def("permute_dims", named("permute_dims", &permute_dims), arg().none(), arg().none());
+    m.def("matrix_transpose", named("matrix_transpose", &matrix_transpose), arg().none());
+    m.def("moveaxis", named("moveaxis", &moveaxis), arg().none(), arg().none(), arg().none());
+    m.def("squeeze", named("squeeze", &squeeze), arg().none(), nb::kw_only(), arg("axis").none());
+    m.def("expand_dims", named("expand_dims", &expand_dims), arg().none(), nb::kw_only(), arg("axis").none());
+    m.def("broadcast_to", named("broadcast_to", &broadcast_to), arg().none(), arg().none());
     m.def("broadcast_arrays", named("broadcast_arrays", &broadcast_arrays));
-    m.def("concat", named("concat", &concat), arg(), nb::kw_only(), arg("axis").none() = 0);
-    m.def("stack", named("stack", &stack), arg(), nb::kw_only(), arg("axis") = 0);
-    m.def("real", named("real", &real), arg(), nb::kw_only(), arg("out").none() = nb::none());
-    m.def("imag", named("imag", &imag), arg(), nb::kw_only(), arg("out").none() = nb::none());
+    m.def("concat", named("concat", &concat), arg().none(), nb::kw_only(), arg("axis").none() = 0);
+    m.def("stack", named("stack", &stack), arg().none(), nb::kw_only(), arg("axis").none() = 0);
+    m.def("real", named("real", &real), arg().none(), nb::kw_only(), arg("out").none() = nb::none());
+    m.def("imag", named("imag", &imag), arg().none(), nb::kw_only(), arg("out").none() = nb::none());
 }
 
 }  // namespace sd

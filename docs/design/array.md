@@ -104,6 +104,8 @@
   - `int_arr + 2**70`은 에러, `float_arr + 2**70`은 float로 바뀌어 정상이다.
   - ufunc에서는 **승격한 피연산자 dtype**으로 판정한다 (`check_int_scalars`). 그것이 bool이나 int64이면 루프가 float64여도(`divide`, `atan2`, `sqrt`) 에러다. 루프 dtype으로 판정하던 때는 `divide(int_arr, 2**64)`만 정상이라 다른 이항 함수와 어긋났다 (DESIGN §9.5). frame도 같은 규칙이다.
   - 이름 붙은 int 인자(`shape`, `axis`, `k`, `num`)도 범위 밖이면 OverflowError다 (`parse_int`, API.md §2). `set_num_threads`만 범위 1~1024 밖을 모두 ValueError로 낸다.
+  - int 인자는 `operator.index`의 규칙으로 읽는다(`index_value`, `bind/pyutil.cpp`): Python int는 바로, 그 밖에는 `__index__`가 있으면 `PyNumber_Index`로(numpy 정수). bool, `numpy.bool_`(`__index__`가 TypeError), `sd.ndarray`(`__index__`는 거부용)는 int가 아니다. linalg의 `parse_int`와 frame의 `check_int`도 같은 규칙이다 (DESIGN.md §10.1 13번).
+  - bool 옵션은 `nb::handle`로 받아 `parse_bool`로 본다. nanobind의 `bool` 변환에 맡기면 틀린 값이 시그니처 덤프(`incompatible function arguments`)가 된다. 인자마다 `.none()`을 붙여 `None`도 검사까지 오게 한다 (DESIGN.md §10.3).
 - 배열은 크기와 상관없이 스칼라가 아니다. `bool()`, `int()`, `float()`, `complex()`는 원소가 하나여도 TypeError다 (§12.2).
 
 ### 2.3 원소 연산은 값 때문에 실패하지 않는다
@@ -785,8 +787,10 @@ dtype과 레인 길이만 본다. 데이터를 보고 고르지 않는다 (§1.4
   - **format이 우리 저장 타입과 정확히 같고, 원소가 자연 정렬되어 있으면** 복사하지 않는다 (`Buffer::adopt`). 커널은 `alignof(T)` 정렬을 가정하므로 정렬되지 않은 버퍼는 복사한다. 읽기 전용 버퍼는 쓰기 금지 배열이 된다.
   - **`?` 버퍼에 0/1이 아닌 바이트가 있으면** 0/1로 정규화해서 복사한다(`copy=False`이면 에러). bool 커널은 바이트를 더해 True를 센다(§7.4, `sum`). 검사는 모든 바이트의 OR이 1 이하인지 보는 벡터 리덕션 하나다 (1e6개 8.3µs, 원소별 비교는 235µs). 공유한 뒤 바깥에서 바이트를 바꾸는 경우는 막지 않는다. 입구 한 곳에서 막는 것이 모든 bool 커널을 한 번에 지킨다.
   - **정보 손실이 없는 확장**이면 복사하면서 변환한다: `int8/16/32`, `uint8/16/32` → int64, `float16/32` → float64, `complex64` → complex128. `copy=False`이면 에러다.
+  - **big-endian**(format `>`, `!`)은 복사하면서 바이트를 뒤집는다(DESIGN.md §10.1 10번). complex는 실수부와 허수부를 따로 뒤집는다. 공유는 하지 않는다(`copy=False`이면 에러). 이 기계는 little-endian이라 `<`, `=`, `@`는 native다.
   - `dtype=`을 주면 그 dtype으로 명시적 변환한다 (§2.4).
-  - **그 외는 에러다**: `uint64`(int64로 손실), big-endian, 지원하지 않는 format, 0차원 버퍼.
+  - **그 외는 에러다**: `uint64`(int64로 손실. 값이 아니라 dtype으로 판단한다, `dtype=`을 주어도 에러), 지원하지 않는 format, 0차원 버퍼.
+  - `range`는 버퍼가 아니다. `PySequence_List`로 int 리스트를 만들어 중첩 시퀀스 길(§12.4)로 보낸다 (DESIGN.md §10.1 12번).
   - 복사 결과는 원본의 메모리 축 순서를 따른다.
 
 ### 12.4 중첩 시퀀스에서 만들기

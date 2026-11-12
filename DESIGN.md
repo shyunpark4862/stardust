@@ -258,7 +258,7 @@ R1이 추천안대로 정해지면, 아래 후보를 함수 하나하나 확정�
   - `.T`는 2차원만 받는다. 그대로 (Array API, docs/api/array.md). ~~`permute_dims`에 리스트를 주면 "axis must be an int"라는 엉뚱한 메시지가 나온다.~~ M6에서 해결: "'axes' must be an int or a tuple of ints" (§9.5).
   - ~~`shape`나 `dtype`에 대입하면 "property '' of 'ndarray' object has no setter"처럼 이름이 빈 메시지가 나온다.~~ M6에서 해결: `property 'shape' of 'ndarray' object has no setter` (§9.5).
   - linalg: `trace(complex, dtype=float64)`는 배열의 캐스팅 규칙 때문에 TypeError다. linalg에서 의도한 동작인지 확인한다. 그대로: 의도한 동작으로 정하고 문서에 적었다 (§9.6, docs/api/linalg.md §2).
-  - 배열 (M1에서 API 문서를 새로 쓰다 찾음): ~~`real`/`imag`는 Python 스칼라를 거부하는데 `conj`는 받는다. 연산자 피연산자로 `numpy.float64`는 받고 `numpy.int64`는 거부한다.~~ M6에서 해결 (§9.5). **남음**: `arange`의 int 인자는 `dtype=float64`여도 int64 범위여야 한다 (docs/api/array.md §1.5의 예외). 옛 API.md는 `arange`의 `stop`, `step`을 키워드로 쓸 수 있게 적었지만 코드는 셋 다 위치 전용이다(새 문서는 코드대로 적었다).
+  - 배열 (M1에서 API 문서를 새로 쓰다 찾음): ~~`real`/`imag`는 Python 스칼라를 거부하는데 `conj`는 받는다. 연산자 피연산자로 `numpy.float64`는 받고 `numpy.int64`는 거부한다.~~ M6에서 해결 (§9.5). ~~`arange`의 int 인자는 `dtype=float64`여도 int64 범위여야 한다 (docs/api/array.md §1.5의 예외).~~ M8에서 해결: 결과가 float64, complex128이면 int64 밖의 int도 float로 읽는다 (§10.1 11번, docs/api/array.md §3.4). 옛 API.md는 `arange`의 `stop`, `step`을 키워드로 쓸 수 있게 적었지만 코드는 셋 다 위치 전용이다(새 문서는 코드대로 적었다).
   - 배열 ↔ linalg (M2에서 linalg API 문서를 새로 쓰다 찾음)
     - **결과 dtype**: linalg는 bool/int64 입력을 float64로 계산한다(`vecdot`, `trace`, `outer`, `kron`, `cross`, `matrix_power`). 배열은 int64를 유지한다(`sum`, `matmul`). 그래서 `sd.linalg.trace(int 행렬)`은 float이고 `sd.sum(sd.linalg.diagonal(int 행렬))`은 int다. 그대로 (§9.6, docs/api/linalg.md §2).
     - ~~**결과 레이아웃**: linalg의 행렬 결과는 F-order다(DESIGN §3.3에서 유지하기로 함). 배열 API의 "새 배열은 C-order" 규칙(docs/api/array.md §1.9)과 다르다. 규칙 쪽을 "영역마다 정한 순서"로 넓힐지 정한다.~~ M6에서 해결: F-order는 그대로, 배열 문서의 규칙을 "영역마다 정한 순서"로 넓혔다 (§9.6, docs/api/array.md §1.9).
@@ -267,10 +267,10 @@ R1이 추천안대로 정해지면, 아래 후보를 함수 하나하나 확정�
     - ~~**에러 종류**: 잘못된 `ord`의 타입이 `vector_norm`에서는 TypeError, `matrix_norm`/`cond`에서는 ValueError다. int64를 넘는 Python int가 `k`, `n`, `axis`에서는 ValueError인데, 공통 규칙(API.md §2)은 OverflowError다.~~ M6에서 해결: `ord`의 타입은 세 함수 모두 TypeError, 범위 밖 int 인자는 배열과 linalg 모두 OverflowError (§9.6, API.md §2).
     - ~~`axis=[0]`의 메시지가 "must be an int, not list"인데 튜플은 받는다.~~ M6에서 해결: `vector_norm`이 리스트도 받는다 (§9.6). 배열의 `axis`도 리스트를 받는다 (사용자 결정, §7).
     - ~~결과 namedtuple이 두 모듈(`stardust._results`, `stardust.linalg._results`)에 나뉘어 있다.~~ M6에서 `stardust._results` 하나로 합쳤다.
-  - **남음** (M6에서 다루지 않음): frame: `df.iloc[0, 9]`의 메시지가 열 위치인데도 "out of range for 4 rows"라고 한다.
-  - **남음** (M6에서 다루지 않음): frame: `df.groupby(Series)`가 Series의 값을 키 이름으로 읽어서 "key columns must be unique"를 낸다.
-  - **남음** (M6에서 다루지 않음): frame: `DataFrame({"a": [1, 2]}, index=[1, 2, 3])`가 index 길이 문제인데 "all columns must have the same length"를 낸다. (M6에서 앞에 `DataFrame(): `만 붙었다.)
-  - **남음** (M6에서 다루지 않음): frame: CSV에서 같은 따옴표 실수가 위치에 따라 다른 메시지를 낸다 ("never closed" 대 "inside an unquoted field").
+  - ~~frame: `df.iloc[0, 9]`의 메시지가 열 위치인데도 "out of range for 4 rows"라고 한다.~~ M8에서 해결: `position 9 is out of range for 4 columns` (§10.3).
+  - ~~frame: `df.groupby(Series)`가 Series의 값을 키 이름으로 읽어서 "key columns must be unique"를 낸다.~~ M8에서 해결: `groupby(): 'by' must be a column name or a list of them, not Series` (§10.1 12번, §10.3).
+  - ~~frame: `DataFrame({"a": [1, 2]}, index=[1, 2, 3])`가 index 길이 문제인데 "all columns must have the same length"를 낸다. (M6에서 앞에 `DataFrame(): `만 붙었다.)~~ M8에서 해결: `DataFrame(): column 'a' has 2 values, but 'index' has 3 labels` (§10.3).
+  - ~~frame: CSV에서 같은 따옴표 실수가 위치에 따라 다른 메시지를 낸다 ("never closed" 대 "inside an unquoted field").~~ M8에서 해결: 따옴표로 시작하지 않은 필드의 따옴표는 뒤에 따옴표가 몇 개 오든 "a quote inside an unquoted field"다. "never closed"는 따옴표로 시작한 필드가 끝까지 닫히지 않을 때만이다 (§10.3).
   - 배열 ↔ frame (M5에서 frame API 문서를 새로 쓰다 찾음. §4.4 표에 없는 것만)
     - ~~**범위 밖 Python int**: frame은 int64 범위 밖의 int 스칼라를 언제나 에러로 막는다. 배열은 int64로 바꿔야 할 때만 `OverflowError`다.~~ M6에서 해결: frame도 배열 규칙 (§9.1 12번).
     - **numpy에서 만들기**: frame은 언제나 복사한다. 배열의 `asarray`는 되도록 복사하지 않는다. 그대로: frame은 Copy-on-Write를 지키려고 언제나 복사한다(`sd.ndarray`에서 만들 때도, §4.3). 차이의 이유가 데이터 모델에 있다 (§1.4).
@@ -281,9 +281,11 @@ R1이 추천안대로 정해지면, 아래 후보를 함수 하나하나 확정�
     - ~~**에러 종류**: frame은 `KeyError`(`.loc`의 없는 라벨)를 쓰는데 API.md §2의 목록에 없다.~~ M5에서 API.md §2에 적었다 (§9.7).
     - ~~**에러 메시지 안의 문서 번호**: frame의 에러 메시지 19곳이 옛 pandas `API.md`의 절 번호(6, 12, 14, 15, 18, 19절)를 적는다. 통합판에서 `API.md`는 루트 문서라서 잘못된 곳을 가리킨다. M5는 결과를 바꾸지 않으므로 두었다. 위의 "메시지에 문서 절 번호를 넣지 않는다"를 따라 M6에서 지운다 (`grep -rn 'API.md §' csrc/frame src/stardust/frame`).~~ M6에서 지웠다.
   - 배열 ↔ frame (M6에서 문서를 고치다 찾음, 코드에 남은 차이). 고치면 결과가 바뀌므로 M6에서는 문서에만 적었다.
-    - **bool과 int의 비교**: 배열은 bool을 int64로 올려 비교한다(`sd.asarray([True]) == 1`). frame은 bool끼리만 비교하고 bool과 int는 `TypeError`다 (docs/api/frame.md §3.3). §9.1 2번은 산술만 맞췄다.
+    - ~~**bool과 int의 비교**: 배열은 bool을 int64로 올려 비교한다(`sd.asarray([True]) == 1`). frame은 bool끼리만 비교하고 bool과 int는 `TypeError`다 (docs/api/frame.md §3.3). §9.1 2번은 산술만 맞췄다.~~ M8에서 해결: frame도 bool을 int64로 올려 비교한다 (§10.1 2번).
     - ~~**bool의 단항 `+`**: frame의 `+s`는 bool이면 `TypeError`였다.~~ M6 마지막 커밋(900cac8)에서 해결: `-s`, `abs(s)`처럼 int64다 (docs/api/frame.md §3.2).
-    - **CSV 추론의 정확성 규칙**: list에서 만들 때는 int64 범위 밖이거나 2⁵³을 넘는 int가 float와 섞이면 float64로 반올림한다(§9.1 5번, 12번). `read_csv`의 추론은 그런 값이 있으면 컬럼을 string으로 남긴다 (docs/api/frame.md §10.4).
+    - ~~**CSV 추론의 정확성 규칙**: list에서 만들 때는 int64 범위 밖이거나 2⁵³을 넘는 int가 float와 섞이면 float64로 반올림한다(§9.1 5번, 12번). `read_csv`의 추론은 그런 값이 있으면 컬럼을 string으로 남긴다 (docs/api/frame.md §10.4).~~ M8에서 해결: `read_csv`도 list 추론처럼 float64로 반올림한다 (§10.1 3번).
+  - 배열 ↔ linalg ↔ frame (M8에서 메시지를 고치다 찾음)
+    - 호출 모양이 틀린 경우(없는 키워드 이름, 인자 개수)는 배열과 linalg에서 nanobind의 `incompatible function arguments` 덤프가 그대로 나온다. 그대로: 인자의 값이 틀린 것이 아니라 호출이 틀린 것이고, Python의 `got an unexpected keyword argument`에 해당한다. 고치려면 바인딩마다 `*args, **kwargs`로 받아 직접 풀어야 한다 (API.md §2.1).
 
 ### 8.5 언제 바꾸나
 - 옮기기(M1, M2, M5)는 2라운드와 상관없이 지금 규칙 그대로 한다.
@@ -438,6 +440,7 @@ R1이 추천안대로 정해지면, 아래 후보를 함수 하나하나 확정�
 | 10 | numpy에서 가져오기 | 배열은 big-endian·uint64를 거부, frame은 받거나 값을 보고 판단 | big-endian은 두 영역 모두 받는다(값이 같다). uint64는 두 영역 모두 dtype만 보고 TypeError (사용자 결정, §9.1 4번과 같은 원리). object 배열은 frame만 받는다 — 문자열 dtype이 frame에만 있어서다. 문서에 [배열과 다름]으로 적는다 | 종류, 값 |
 | 11 | `arange`의 int 인자, `dtype=float64` | int64 범위여야 한다 | float로 읽는다 (§9.1 12번과 같게) | 종류→값 |
 | 12 | 작은 것: pickle, 해싱, `in`, `range` | Series만 pickle 실패, Index만 해싱됨, `1.0 in Index`는 False, `sd.asarray(range)`는 TypeError | Series도 pickle 된다. Index는 해싱 불가(Series처럼). `in`은 Series 규칙(손실 없는 변환, docs/api/frame.md §5.8). `range`는 배열도 받는다. generator는 두 영역 모두 받지 않는다 | 값, 종류 |
+| 13 | numpy 정수 스칼라를 int 인자로 (`np.int64(3)` 등, `np.bool_`은 아님) | `arange`, 인덱싱, `.iloc`은 받는다. `zeros(shape)`, `eye`, `axis`, `linspace(num)`, `matrix_power(n)`, `ord`, `head(n)`, `RangeIndex(...)`, `set_num_threads`는 TypeError | 세 영역에서 Python int를 받는 모든 자리가 받는다. 규칙 하나: `operator.index`(`PyNumber_Index`). bool과 `numpy.bool_`은 TypeError, int64 밖은 OverflowError 그대로 (리드 결정, M8 2단계). 이유: 인덱싱이 이미 받고 numpy 사용자가 자주 넘긴다. int 인자마다 다른 규칙을 두지 않는다 (API.md §2) | 종류→값 |
 
 ### 10.2 이름과 시그니처
 - `RangeIndex(start, stop=None, step=1, /, *, name=None)`: `arange`처럼 첫 인자가 필수다 (§9.3이 "arange와 같다"고 적은 대로).

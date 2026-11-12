@@ -133,6 +133,53 @@ def test_arange_dtype_and_errors():
             sd.arange(*args)
 
 
+def test_arange_int_arguments_are_floats_for_float_results():
+    # DESIGN.md §10.1 #11: an int must become an int64 only for an int64 (or bool) result;
+    # with dtype=float64 or complex128 one outside int64 is read as a float (as §9.1 #12)
+    assert_same(sd.arange(0, 2**70, 2**68, dtype=sd.float64), np.arange(0.0, 2.0**70, 2.0**68))
+    assert sd.arange(2**64, 2**64 + 2**12, 2**11, dtype=sd.float64).tolist() == [2.0**64, 2.0**64 + 2**11]
+    assert sd.arange(-(2**65), dtype=sd.complex128).tolist() == []
+    assert sd.arange(2**63, 2**63 + 2**12, 2**11, dtype="complex128").tolist() == [2.0**63 + 0j, 2.0**63 + 2**11 + 0j]
+    assert sd.arange(np.uint64(2**63), 2**63 + 2**12, 2**11, dtype=sd.float64).tolist() == [2.0**63, 2.0**63 + 2**11]
+    # inside int64 the values are computed exactly in int64, then converted (unchanged)
+    assert sd.arange(2**62, 2**62 + 3, dtype=sd.float64).tolist() == [2.0**62] * 3
+    for kwargs in ({}, {"dtype": sd.int64}, {"dtype": sd.bool}):
+        with pytest.raises(OverflowError):
+            sd.arange(0, 2**63, 2**62, **kwargs)
+    # the argument kinds: bool, int or float; complex and others are TypeErrors that say so
+    for bad, shown in (("a", "str"), (1j, "complex"), (None, "NoneType"), (sd.ones(1), "ndarray")):
+        with pytest.raises(TypeError, match=rf"^arange\(\): 'start' must be a bool, int or float, not {shown}$"):
+            sd.arange(bad)
+    with pytest.raises(TypeError, match=r"^arange\(\): 'step' must be a bool, int or float, not complex$"):
+        sd.arange(0, 1, 1j)
+
+
+def test_numpy_integers_are_int_arguments():
+    # DESIGN.md §10.1 #13: operator.index semantics for every int argument; numpy.bool_ is not an int
+    assert sd.zeros(np.int64(2)).shape == (2,) and sd.ones((np.int32(2), np.uint8(3))).shape == (2, 3)
+    assert sd.full(np.int16(2), 1).tolist() == [1, 1] and sd.empty((np.int64(0),)).shape == (0,)
+    assert_same(sd.eye(np.int64(3), np.int8(4), k=np.int64(1)), np.eye(3, 4, k=1))
+    assert_same(sd.linspace(0, 1, np.int64(5)), np.linspace(0, 1, 5))
+    assert sd.arange(np.int64(3)).tolist() == [0, 1, 2]
+    assert sd.reshape(sd.arange(6), (np.int64(2), -1)).shape == (2, 3)
+    for bad, shown in ((np.True_, "bool"), (np.float64(2.0), "float64"), (sd.ones(1), "ndarray")):
+        with pytest.raises(TypeError, match=rf"^zeros\(\): 'shape' must be an int or a tuple of ints, not {shown}$"):
+            sd.zeros(bad)
+        with pytest.raises(TypeError, match=rf"^eye\(\): 'n_rows' must be an int, not {shown}$"):
+            sd.eye(bad)
+    with pytest.raises(TypeError, match=r"^zeros\(\): 'shape' must be an int or a tuple of ints, not a tuple holding bool$"):
+        sd.zeros((np.True_,))
+    with pytest.raises(OverflowError, match=r"^zeros\(\): 'shape' is out of range$"):
+        sd.zeros(np.uint64(2**63))
+
+
+def test_bool_options_take_true_or_false():
+    # DESIGN.md §10.3: the frame's message, no nanobind argument dump
+    for bad, shown in ((1, "int"), (None, "NoneType"), (np.True_, "bool"), ("yes", "str")):
+        with pytest.raises(TypeError, match=rf"^linspace\(\): 'endpoint' must be True or False, not {shown}$"):
+            sd.linspace(0, 1, 3, endpoint=bad)
+
+
 # ----------------------------------------------------------- linspace ----
 
 @pytest.mark.parametrize(

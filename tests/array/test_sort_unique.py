@@ -341,3 +341,17 @@ def test_long_lane_parallel_sort_is_the_stable_result(n):
     got = sd.unique_counts(sd.asarray(i[: n // 2] % 1000))
     assert_same(got.values, want.values)
     assert_same(got.counts, want.counts)
+
+
+@pytest.mark.parametrize("func", [sd.sort, sd.argsort])
+def test_options_are_checked(func):
+    # DESIGN.md §10.3 (the frame's message format) and §10.1 #13 (numpy integers as axis)
+    x = sd.asarray([[3, 1], [2, 4]])
+    name = func.__name__
+    for option in ("descending", "stable"):
+        for bad, shown in ((1, "int"), (None, "NoneType"), (np.True_, "bool")):
+            with pytest.raises(TypeError, match=rf"^{name}\(\): '{option}' must be True or False, not {shown}$"):
+                func(x, **{option: bad})
+    with pytest.raises(TypeError, match=rf"^{name}\(\): 'axis' must be an int, not NoneType$"):
+        func(x, axis=None)
+    assert func(x, axis=np.int64(0)).tolist() == func(x, axis=0).tolist()

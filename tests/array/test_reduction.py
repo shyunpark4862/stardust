@@ -391,3 +391,54 @@ def test_blocked_scan_keeps_the_first_element():
     x[4096] = math.nan
     got = np.asarray(sd.cumulative_sum(sd.asarray(x)))
     assert not np.isnan(got[:4096]).any() and np.isnan(got[4096:]).all()
+
+
+# ----------------------------------------------------- option arguments ----
+# DESIGN.md §10.3: a bool option given anything but True or False, or None where None is
+# not a value, is a TypeError in the frame's format; never nanobind's argument dump.
+
+BOOL_OPTIONS = [
+    (sd.sum, "keepdims"), (sd.prod, "keepdims"), (sd.min, "keepdims"), (sd.max, "keepdims"),
+    (sd.mean, "keepdims"), (sd.var, "keepdims"), (sd.std, "keepdims"), (sd.argmin, "keepdims"),
+    (sd.argmax, "keepdims"), (sd.any, "keepdims"), (sd.all, "keepdims"),
+    (sd.cumulative_sum, "include_initial"), (sd.cumulative_prod, "include_initial"),
+]
+
+
+@pytest.mark.parametrize(("func", "option"), BOOL_OPTIONS)
+def test_bool_options_take_true_or_false(func, option):
+    x = sd.asarray([1.0, 2.0, 3.0])
+    name = func.__name__
+    for bad, shown in ((1, "int"), (0, "int"), (None, "NoneType"), (np.True_, "bool"), ("yes", "str")):
+        with pytest.raises(TypeError, match=rf"^{name}\(\): '{option}' must be True or False, not {shown}$"):
+            func(x, **{option: bad})
+        if option == "keepdims":  # the method is the same function
+            with pytest.raises(TypeError, match=rf"^{name}\(\): '{option}' must be True or False, not {shown}$"):
+                getattr(x, name)(**{option: bad})
+
+
+def test_none_reaches_the_argument_checks():
+    x = sd.asarray([1.0, 2.0])
+    with pytest.raises(TypeError, match=r"^std\(\): 'correction' must be an int or a float, not NoneType$"):
+        sd.std(x, correction=None)
+    with pytest.raises(TypeError, match=r"^var\(\): 'correction' must be an int or a float, not NoneType$"):
+        x.var(correction=None)
+    with pytest.raises(TypeError, match=r"^sum\(\): 'x' must be an sd\.ndarray, not NoneType$"):
+        sd.sum(None)
+    with pytest.raises(TypeError, match=r"^cumulative_sum\(\): 'axis' must be an int, not float$"):
+        sd.cumulative_sum(x, axis=0.0)
+
+
+def test_numpy_integers_are_int_arguments():
+    # DESIGN.md §10.1 #13: axis= and correction= take numpy integers as ints
+    x = sd.asarray([[1.0, 2.0], [3.0, 5.0]])
+    assert sd.sum(x, axis=np.int64(0)).tolist() == [4.0, 7.0]
+    assert sd.sum(x, axis=(np.int32(0), np.int64(1))) == 11.0
+    assert x.mean(axis=[np.int8(1)]).tolist() == [1.5, 4.0]
+    assert sd.argmax(x, axis=np.int64(-1)).tolist() == [1, 1]
+    assert sd.cumulative_sum(x, axis=np.int64(1)).tolist() == [[1.0, 3.0], [3.0, 8.0]]
+    assert sd.var(x, correction=np.int64(1)) == sd.var(x, correction=1)
+    with pytest.raises(TypeError, match=r"^sum\(\): 'axis' must be an int or a tuple or list of ints, not bool$"):
+        sd.sum(x, axis=np.True_)
+    with pytest.raises(TypeError, match=r"^var\(\): 'correction' must be an int or a float, not bool$"):
+        sd.var(x, correction=np.True_)

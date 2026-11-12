@@ -107,6 +107,8 @@ print(y.tolist())  # [1.0, 0.0, 0.0]
   - 이 함수(`saturate_to_int64`)는 `base/saturate.hpp`에 있고 세 영역이 함께 쓴다: 배열의 `astype`, linalg의 `trace(dtype=)`, frame의 `astype`.
 - **complex → 실수**는 TypeError다. 허수부를 잃는다. `sd.real(x)`를 쓴다.
 - **범위 밖 Python int**는 int64가 되어야 할 때만 OverflowError다. float와 만나면 float가 된다.
+  - `arange`도 같다. `dtype=sd.float64`면 int 인자가 int64 밖이어도 float로 읽는다. 결과가 int64면 에러다 (DESIGN.md §10.1 11번).
+- **numpy의 dtype도 dtype으로만 판단한다.** numpy uint64 배열은 값이 작아도 `asarray`와 `Series` 모두 TypeError다. int64로 손실 없이 바뀐다고 dtype이 보장하지 않기 때문이다. 대입에서 `2.0`을 값과 상관없이 거부하는 것과 같은 원리다 (DESIGN.md §10.1 10번).
 
 ```python
 import stardust as sd
@@ -116,6 +118,7 @@ try:
 except OverflowError as e:
     print(e)  # Python int too large to convert to int64
 print(sd.asarray([2**70, 0.5]).tolist())  # [1.1805916207174113e+21, 0.5]
+print(sd.arange(0, 2**70, 2**69, dtype=sd.float64).tolist())  # [0.0, 5.902958103587057e+20]
 try:
     sd.astype(sd.asarray([1j]), sd.float64)
 except TypeError as e:

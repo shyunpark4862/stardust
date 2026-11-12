@@ -131,7 +131,7 @@
 ### 2.6 배열 영역과 다른 곳
 - 값 규칙은 배열 영역과 같다: bool 산술은 int64 산술, int와 float는 float64로 바꿔 비교, 변환의 세 갈래(§2.4), float → int64는 포화와 NaN → 0, `std`/`var`는 `correction=0`, 내림차순의 NaN은 맨 앞, `unique`에서 NaN은 하나 (루트 DESIGN §9.1).
 - **dtype 승격은 한 곳이다** (루트 DESIGN §10.1 2번, M8): `promote_columns`(`column.hpp`)가 배열의 `sd::promote`(bool < int64 < float64)를 쓰고, string은 string하고만 만난다. list 추론(`convert.cpp`의 `inferred_dtype`)이 C++에서 부르고, Python의 `concat`, `DataFrame.to_numpy`/`to_array`의 공통 dtype은 `_dtypes.common` → `_core.promote_types`로 같은 함수를 부른다. 비교 커널은 bool이 숫자를 만나면 bool을 int64로 바꾼다(산술과 같은 길). bool의 `std`/`var`는 0과 1의 값으로 float 경로를 그대로 탄다.
-- **옵션 검사도 한 곳이다** (`_errors.py`): `check_bool`, `check_int`, `check_choice`, `name_list`. 메시지는 API.md §2.1의 형식이다.
+- **옵션 검사도 한 곳이다** (`_errors.py`): `check_bool`, `check_int`, `check_real`, `check_choice`, `name_list`. 메시지는 API.md §2.1의 형식이다. `check_int`는 배열의 `index_value`와 같은 `operator.index` 규칙이다(numpy 정수는 int, bool과 `numpy.bool_`은 아니다, 루트 DESIGN §10.1 13번).
 - **남은 차이는 NA에서 나온다** (루트 DESIGN §9.1 1번, 8번): `int // 0`, `int % 0`, `int ** 음수`는 NA(배열은 0, `a`, 정수 결과), 값이 모자란 리덕션은 NA(배열은 NaN이나 ValueError).
 - 그 밖에 코드에 남은 차이(bool과 int의 비교, bool의 단항 `+`, CSV 추론의 정확성 규칙)는 루트 DESIGN §8.4에 적었다.
 
@@ -183,6 +183,7 @@
 - **들어올 때는 항상 복사한다** (`from_numpy`).
   - numpy 배열은 밖에서 언제든 바뀔 수 있다. 메모리를 공유하면 Copy-on-Write가 "아무도 쓰지 않는다"고 판단할 근거가 없다.
   - 복사하면서 int32, float16 등을 int64, float64로 넓힌다. stride가 있는 배열도 읽는다. 문자열과 object 배열은 Python 층이 `tolist()`로 바꿔 `from_list`로 보낸다.
+  - big-endian 배열은 Python 층이 native 순서로 바꾼 뒤 넘긴다. uint64는 값을 보지 않고 TypeError다. 둘 다 배열의 `asarray`와 같은 규칙이다 (루트 DESIGN §10.1 10번).
   - 1M int64에 109µs다 (pandas 101µs, Polars는 공유해서 1.75µs). 대부분 새 메모리의 페이지 폴트다.
   - 그래서 frame은 `Buffer::adopt`(버퍼 프로토콜로 가져온 메모리)를 쓰지 않는다.
 - **나갈 때는 공유한다** (`to_numpy_view`).

@@ -34,8 +34,26 @@ std::optional<DType> parse_any_dtype(nb::handle o);
 // anything else by its type's name.
 std::string describe_dtype_arg(nb::handle o);
 
-// The name of `o`'s type, for "..., not list" in messages.
-inline std::string py_type_name(nb::handle o) { return Py_TYPE(o.ptr())->tp_name; }
+// The short name of `o`'s type, for "..., not list" in messages: the type's
+// __name__, without a module path ("ndarray", "int64", not
+// "stardust._core.ndarray" or "numpy.int64"; API.md §2.1).
+std::string py_type_name(nb::handle o);
+
+// A bool option: True or False only. 1, None and numpy.bool_ are TypeErrors
+// ("'keepdims' must be True or False, not int", API.md §2.1).
+bool parse_bool(nb::handle o, const char* what);
+
+// An int argument by operator.index semantics (API.md §2): a Python int or an
+// object with __index__ (numpy.int64, ...); bool, numpy.bool_ and sd.ndarray
+// are not ints. NotInt and Overflow (outside int64) let the caller name what
+// it accepts.
+enum class IndexResult { Ok, NotInt, Overflow };
+IndexResult index_value(nb::handle o, std::int64_t& out);
+
+// A real-number argument (correction=, ord=, rtol=): a Python float (numpy.float64
+// is one), or an int by the rule above. nullopt for anything else; OverflowError
+// is left to the double conversion (an int beyond the double range).
+std::optional<double> real_value(nb::handle o);
 
 // An array `dtype=` argument: None -> nullopt; otherwise one of the four
 // array dtypes, as an object or a name (API.md §1). TypeError otherwise,
@@ -48,8 +66,8 @@ std::optional<bool> parse_copy(nb::handle o);
 // `shape` argument: an int or a tuple of ints (docs/design/array.md §2.8).
 std::vector<std::int64_t> parse_shape(nb::handle o);
 
-// A plain Python int (bool rejected), e.g. `num` or `k`. TypeError for
-// anything else, OverflowError outside int64 (API.md §2).
+// An int argument (index_value), e.g. `num` or `k`. TypeError for anything
+// else, OverflowError outside int64 (API.md §2).
 std::int64_t parse_int(nb::handle o, const char* what);
 
 // Maps axis in [-ndim, ndim) to [0, ndim); ValueError otherwise.

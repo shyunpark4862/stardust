@@ -10,14 +10,14 @@
 namespace sd::linalg {
 
 std::int64_t parse_int(nb::handle o, const char* func, const char* what) {
-    if (!PyLong_Check(o.ptr()) || PyBool_Check(o.ptr()))
-        throw nb::type_error(
-            (std::string(func) + "(): '" + what + "' must be an int, not " + Py_TYPE(o.ptr())->tp_name).c_str());
-    int overflow = 0;
-    const long long v = PyLong_AsLongLongAndOverflow(o.ptr(), &overflow);
-    if (overflow)  // an int that must become an int64 (API.md §2)
-        throw std::overflow_error(std::string(func) + "(): '" + what + "' is out of range");
-    return v;
+    std::int64_t v = 0;
+    switch (index_value(o, v)) {  // operator.index semantics, as in the array area (bind/pyutil.hpp)
+        case IndexResult::Ok: return v;
+        case IndexResult::Overflow:  // an int that must become an int64 (API.md §2)
+            throw std::overflow_error(std::string(func) + "(): '" + what + "' is out of range");
+        case IndexResult::NotInt: break;
+    }
+    throw nb::type_error((std::string(func) + "(): '" + what + "' must be an int, not " + py_type_name(o)).c_str());
 }
 
 std::optional<DType> parse_dtype(nb::handle o, const char* func) {
@@ -43,13 +43,23 @@ std::vector<int> parse_axes(nb::handle o, int ndim, const char* func) {
         for (int d = 0; d < ndim; ++d) axes.push_back(d);
         return axes;
     }
+    auto one = [&](nb::handle item) {  // the array area's message (bind/pyutil.cpp parse_axes)
+        std::int64_t v = 0;
+        switch (index_value(item, v)) {
+            case IndexResult::Ok: return normalize_axis(v, ndim, func);
+            case IndexResult::Overflow: throw std::overflow_error(std::string(func) + "(): 'axis' is out of range");
+            case IndexResult::NotInt: break;
+        }
+        throw nb::type_error((std::string(func) + "(): 'axis' must be an int or a tuple or list of ints, not " +
+                              py_type_name(item))
+                                 .c_str());
+    };
     if (PyTuple_Check(o.ptr()) || PyList_Check(o.ptr())) {  // a list like a tuple (docs/api/linalg.md §3)
         nb::object seq = nb::steal(PySequence_Tuple(o.ptr()));
         if (!seq.is_valid()) throw nb::python_error();
-        for (nb::handle item : nb::borrow<nb::tuple>(seq))
-            axes.push_back(normalize_axis(parse_int(item, func, "axis"), ndim, func));
+        for (nb::handle item : nb::borrow<nb::tuple>(seq)) axes.push_back(one(item));
     } else {
-        axes.push_back(normalize_axis(parse_int(o, func, "axis"), ndim, func));
+        axes.push_back(one(o));
     }
     std::sort(axes.begin(), axes.end());
     if (std::adjacent_find(axes.begin(), axes.end()) != axes.end())
@@ -60,10 +70,11 @@ std::vector<int> parse_axes(nb::handle o, int ndim, const char* func) {
 // `rtol=` (docs/api/linalg.md §1.1): None -> max(m, n) * eps; else a real number >= 0.
 double parse_rtol(nb::handle o, std::int64_t m, std::int64_t n, const char* func) {
     if (o.is_none()) return static_cast<double>(std::max<std::int64_t>({m, n, 1})) * 2.220446049250313e-16;
-    if (PyBool_Check(o.ptr()) || !(PyLong_Check(o.ptr()) || PyFloat_Check(o.ptr())))
-        throw nb::type_error((std::string(func) + "(): 'rtol' must be None, an int or a float").c_str());
-    const double v = PyFloat_AsDouble(o.ptr());
-    if (v == -1.0 && PyErr_Occurred()) throw nb::python_error();
+    const std::optional<double> r = real_value(o);
+    if (!r)
+        throw nb::type_error(
+            (std::string(func) + "(): 'rtol' must be None, an int or a float, not " + py_type_name(o)).c_str());
+    const double v = *r;
     if (!(v >= 0) || std::isinf(v))
         throw nb::value_error((std::string(func) + "(): 'rtol' must be a finite number >= 0").c_str());
     return v;

@@ -32,9 +32,22 @@ void fill_scalar(NDArray& a, nb::handle value, DType value_dtype) {
 
 DType require_scalar(nb::handle o, const char* what) {
     if (auto d = scalar_dtype(o)) return *d;
-    throw nb::type_error((std::string("'") + what + "' must be a Python bool, int, float or complex, not " +
-                          Py_TYPE(o.ptr())->tp_name)
-                             .c_str());
+    throw nb::type_error(
+        (std::string("'") + what + "' must be a bool, int, float or complex, not " + py_type_name(o)).c_str());
+}
+
+// arange's arguments: real numbers only (docs/api/array.md §3.1).
+DType require_real(nb::handle o, const char* what) {
+    const std::optional<DType> d = scalar_dtype(o);
+    if (d && *d != DType::Complex128) return *d;
+    throw nb::type_error((std::string("'") + what + "' must be a bool, int or float, not " + py_type_name(o)).c_str());
+}
+
+// A bool or int argument that fits int64 (arange decides by this whether int
+// arguments may be read as floats, docs/api/array.md §3.1).
+bool fits_int64(nb::handle o) {
+    std::int64_t v = 0;
+    return index_value(o, v) != IndexResult::Overflow;  // NotInt: a bool or numpy.bool_
 }
 
 }  // namespace
@@ -105,12 +118,13 @@ nb::object arange(nb::handle start_obj, nb::handle stop_obj, nb::handle step_obj
     DType kinds[3];
     nb::handle args[3] = {start, stop, step_obj};
     const char* names[3] = {"start", stop_obj.is_none() ? "start" : "stop", "step"};  // as the caller wrote them
-    for (int i = 0; i < 3; ++i) {
-        kinds[i] = require_scalar(args[i], names[i]);
-        if (kinds[i] == DType::Complex128)
-            throw nb::type_error((std::string("'") + names[i] + "' must be a real number, not complex").c_str());
-    }
-    const bool integral = std::max({kinds[0], kinds[1], kinds[2]}) <= DType::Int64;
+    for (int i = 0; i < 3; ++i) kinds[i] = require_real(args[i], names[i]);
+    // All ints: computed exactly in int64. With a float or complex dtype= an
+    // int need not become an int64 (§9.1 #12 of DESIGN.md): when one is
+    // outside int64, the arguments are read as floats instead.
+    bool integral = std::max({kinds[0], kinds[1], kinds[2]}) <= DType::Int64;
+    if (integral && dtype && (*dtype == DType::Float64 || *dtype == DType::Complex128))
+        integral = fits_int64(start) && fits_int64(stop) && fits_int64(step_obj);
 
     if (integral) {
         const std::int64_t a = scalar_from_python<std::int64_t>(start, kinds[0]);
@@ -156,8 +170,7 @@ nb::object linspace(nb::handle start, nb::handle stop, nb::handle num_obj, nb::h
     const DType ke = require_scalar(stop, "stop");
     const std::int64_t num = parse_int(num_obj, "num");
     if (num < 0) throw nb::value_error("'num' must be non-negative");
-    if (!PyBool_Check(endpoint_obj.ptr())) throw nb::type_error("'endpoint' must be True or False");
-    const bool endpoint = endpoint_obj.ptr() == Py_True;
+    const bool endpoint = parse_bool(endpoint_obj, "endpoint");
 
     const DType inferred = promote(ks, ke) == DType::Complex128 ? DType::Complex128 : DType::Float64;
     const DType target = parse_dtype(dtype_obj).value_or(inferred);
@@ -202,20 +215,20 @@ nb::object eye(nb::handle n_rows_obj, nb::handle n_cols_obj, nb::handle k_obj, n
 
 void bind_creation(nb::module_& m) {
     using nb::arg;
-    m.def("asarray", named("asarray", &asarray), arg(), nb::kw_only(), arg("dtype") = nb::none(), arg("copy") = nb::none());
-    m.def("zeros", named("zeros", &zeros), arg(), nb::kw_only(), arg("dtype") = nb::none());
-    m.def("ones", named("ones", &ones), arg(), nb::kw_only(), arg("dtype") = nb::none());
-    m.def("empty", named("empty", &empty), arg(), nb::kw_only(), arg("dtype") = nb::none());
-    m.def("full", named("full", &full), arg(), arg(), nb::kw_only(), arg("dtype") = nb::none());
-    m.def("zeros_like", named("zeros_like", &zeros_like), arg(), nb::kw_only(), arg("dtype") = nb::none());
-    m.def("ones_like", named("ones_like", &ones_like), arg(), nb::kw_only(), arg("dtype") = nb::none());
-    m.def("empty_like", named("empty_like", &empty_like), arg(), nb::kw_only(), arg("dtype") = nb::none());
-    m.def("full_like", named("full_like", &full_like), arg(), arg(), nb::kw_only(), arg("dtype") = nb::none());
-    m.def("arange", named("arange", &arange), arg(), arg() = nb::none(), arg() = 1, nb::kw_only(),
-          arg("dtype") = nb::none());
-    m.def("linspace", named("linspace", &linspace), arg(), arg(), arg(), nb::kw_only(), arg("dtype") = nb::none(),
-          arg("endpoint") = true);
-    m.def("eye", named("eye", &eye), arg(), arg() = nb::none(), nb::kw_only(), arg("k") = 0, arg("dtype") = nb::none());
+    m.def("asarray", named("asarray", &asarray), arg().none(), nb::kw_only(), arg("dtype").none() = nb::none(), arg("copy").none() = nb::none());
+    m.def("zeros", named("zeros", &zeros), arg().none(), nb::kw_only(), arg("dtype").none() = nb::none());
+    m.def("ones", named("ones", &ones), arg().none(), nb::kw_only(), arg("dtype").none() = nb::none());
+    m.def("empty", named("empty", &empty), arg().none(), nb::kw_only(), arg("dtype").none() = nb::none());
+    m.def("full", named("full", &full), arg().none(), arg().none(), nb::kw_only(), arg("dtype").none() = nb::none());
+    m.def("zeros_like", named("zeros_like", &zeros_like), arg().none(), nb::kw_only(), arg("dtype").none() = nb::none());
+    m.def("ones_like", named("ones_like", &ones_like), arg().none(), nb::kw_only(), arg("dtype").none() = nb::none());
+    m.def("empty_like", named("empty_like", &empty_like), arg().none(), nb::kw_only(), arg("dtype").none() = nb::none());
+    m.def("full_like", named("full_like", &full_like), arg().none(), arg().none(), nb::kw_only(), arg("dtype").none() = nb::none());
+    m.def("arange", named("arange", &arange), arg().none(), arg().none() = nb::none(), arg().none() = 1, nb::kw_only(),
+          arg("dtype").none() = nb::none());
+    m.def("linspace", named("linspace", &linspace), arg().none(), arg().none(), arg().none(), nb::kw_only(), arg("dtype").none() = nb::none(),
+          arg("endpoint").none() = true);
+    m.def("eye", named("eye", &eye), arg().none(), arg().none() = nb::none(), nb::kw_only(), arg("k").none() = 0, arg("dtype").none() = nb::none());
 }
 
 }  // namespace sd

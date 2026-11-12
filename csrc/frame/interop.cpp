@@ -61,7 +61,7 @@ nb::object columns_to_array(const std::vector<Column>& cols, std::int64_t n) {
 
 double array_sum_float64(const Column& col) {
     const nb::object view = wrap(view_of(col, /*writeable=*/false));
-    return nb::cast<double>(sd::sum(view, nb::none(), dtype_object(DType::Float64), /*keepdims=*/false));
+    return nb::cast<double>(sd::sum(view, nb::none(), dtype_object(DType::Float64), /*keepdims=*/nb::handle(Py_False)));
 }
 
 }  // namespace sd::frame

@@ -193,5 +193,68 @@ def test_array_keys_examples():
     assert df.iloc[sd.asarray([2, 0]), sd.asarray([1])]["c"].tolist() == ["z", "x"]
     s.iloc[sd.asarray([0, 2])] = 0
     assert s.tolist() == [0, 20, 0]
+    with pytest.raises(IndexError, match=r"^positions must be ints, not ndarray$"):
+        s.iloc[sd.asarray([[0, 1]])]  # 2-D: positions must be ints, as with numpy (IndexError, DESIGN.md §10.3)
+
+
+# --- one rule in both areas (DESIGN.md §10.1 #10, #12, #13; §10.3) ---------------
+
+@pytest.mark.parametrize("code", [">i2", ">i4", ">i8", ">u4", ">f4", ">f8"])
+def test_big_endian_numpy_input_is_read_by_value_in_both_areas(code):
+    src = np.array([3, -1, 250]).astype(code) if code[1] != "u" else np.array([3, 1, 250]).astype(code)
+    native = src.astype(src.dtype.newbyteorder("="))
+    assert sd.asarray(src).tolist() == S(src).tolist() == native.tolist()
+
+
+@pytest.mark.parametrize("values", [[1, 2], [2**63], []])
+def test_uint64_numpy_input_is_rejected_by_dtype_in_both_areas(values):
+    arr = np.array(values, dtype=np.uint64)
+    for make in (sd.asarray, S, lambda a: DF({"a": a}), sd.frame.Index):
+        with pytest.raises(TypeError, match=r"uint64 buffers cannot be converted to int64 without loss$"):
+            make(arr)
+
+
+def test_object_arrays_are_frame_only():
+    # strings live only in the frame, so only the frame reads numpy object arrays (§10.5)
+    arr = np.array(["a", None], dtype=object)
+    assert S(arr).tolist() == ["a", NA]
     with pytest.raises(TypeError):
-        s.iloc[sd.asarray([[0, 1]])]  # 2-D: positions must be ints, as with numpy
+        sd.asarray(arr)
+
+
+def test_range_in_both_areas_and_no_generators():
+    assert sd.asarray(range(1, 7, 2)).tolist() == S(range(1, 7, 2)).tolist() == [1, 3, 5]
+    for make in (sd.asarray, S, sd.frame.Index):
+        with pytest.raises(TypeError):
+            make(i for i in range(3))
+
+
+def test_numpy_integers_are_ints_in_all_three_areas():
+    n = np.int64(2)
+    x = sd.asarray([[1.0, 2.0], [3.0, 4.0]])
+    assert sd.zeros(n).shape == (2,) and sd.eye(n).shape == (2, 2) and len(sd.linspace(0, 1, n)) == 2
+    assert sd.sum(x, axis=n - 1).tolist() == [3.0, 7.0]
+    assert sd.linalg.matrix_power(x, n).tolist() == (x @ x).tolist()
+    assert sd.linalg.vector_norm(sd.asarray([3.0, 4.0]), ord=n) == 5.0
+    assert len(S([1, 2, 3]).head(n)) == 2 and sd.frame.RangeIndex(n).tolist() == [0, 1]
+    assert S([1, 2, 3]).iloc[n] == 3 and x[n - 1, n - 2] == 3.0
+    for call in (lambda: sd.zeros(np.True_), lambda: sd.linalg.matrix_power(x, np.True_), lambda: S([1]).head(np.True_),
+                 lambda: sd.frame.RangeIndex(np.True_)):
+        with pytest.raises(TypeError, match=r"must be an int, not bool$|must be an int or a tuple of ints, not bool$"):
+            call()
+
+
+def test_to_array_dtype_and_na_value_messages():
+    s = S([1, None])
+    with pytest.raises(TypeError, match=r"^to_array\(\): 'dtype' must be sd\.bool, sd\.int64 or sd\.float64 \(or their "
+                                        r"names\), not sd\.string"):
+        S([1, 2]).to_array(dtype=sd.string)
+    with pytest.raises(TypeError, match=r"^to_array\(\): 'dtype' must be"):
+        DF({"a": [1]}).to_array(dtype="string")
+    # an int outside int64 for an int64 array: OverflowError, as anywhere an int must become an int64
+    for call in (lambda: s.to_array(na_value=2**70), lambda: s.to_numpy(na_value=-(2**63) - 1)):
+        with pytest.raises(OverflowError, match=r"'na_value' is out of range for int64$"):
+            call()
+    assert s.to_array(dtype=sd.float64, na_value=2**70).tolist() == [1.0, 2.0**70]
+    with pytest.raises(ValueError, match=r"^to_array\(\): cannot convert an int64 column with NA to an array; "):
+        s.to_array()

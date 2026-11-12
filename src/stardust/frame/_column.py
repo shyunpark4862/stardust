@@ -20,7 +20,8 @@ def is_ndarray(obj):
 
 def is_scalar(obj):
     np = sys.modules.get("numpy")
-    return obj is None or obj is NA or isinstance(obj, (bool, int, float, str)) or (
+    # complex too: a scalar the frame cannot store, so its message says that (not "cannot make a column")
+    return obj is None or obj is NA or isinstance(obj, (bool, int, float, complex, str)) or (
         np is not None and isinstance(obj, np.generic)
     )
 
@@ -52,6 +53,8 @@ def _from_ndarray(arr, dtype, func):
         return Column.from_list(arr.tolist(), NA, dtype, func=func)
     if kind not in "biuf":
         raise TypeError(named(func, f"unsupported numpy dtype {arr.dtype}"))
+    if kind == "u" and arr.dtype.itemsize == 8:  # by dtype, not by value, as sd.asarray (DESIGN.md §10.1 #10)
+        raise TypeError(named(func, "uint64 buffers cannot be converted to int64 without loss"))
     if not arr.dtype.isnative:
         arr = arr.astype(arr.dtype.newbyteorder("="))
     col = Column.from_numpy(arr, func=func)  # always a copy, widened to int64/float64
@@ -113,8 +116,18 @@ def full_na(length, dtype=None):
     return Column.from_list([None] * length, NA, dtype)
 
 
+def article(word):
+    """'a bool', 'an int64': the article a dtype name takes in a message."""
+    return f"an {word}" if word[:1] in "aeiou" else f"a {word}"
+
+
 def _check_na_value(na_value, dtype, func):
-    """Raises unless `na_value` can stand in an array of `dtype` (docs/api/frame.md §2.7)."""
+    """Raises unless `na_value` can stand in an array of `dtype` (docs/api/frame.md §2.7).
+    An int outside int64 for an int64 array is an OverflowError, as when
+    any int must become an int64 (API.md §2)."""
+    if dtype == "int64" and isinstance(na_value, int) and not isinstance(na_value, bool) \
+            and not -(2**63) <= na_value < 2**63:
+        raise OverflowError(named(func, "'na_value' is out of range for int64"))
     ok = {
         "bool": isinstance(na_value, bool),
         "int64": isinstance(na_value, int) and not isinstance(na_value, bool) and -(2**63) <= na_value < 2**63,
@@ -141,7 +154,7 @@ def common_dtype(cols, func, what):
 def check_copy(copy, func):
     """copy= as in the array area's asarray: True, False or None."""
     if copy is not None and not isinstance(copy, bool):
-        raise TypeError(named(func, "'copy' must be True, False or None"))
+        raise TypeError(named(func, f"'copy' must be True, False or None, not {type(copy).__name__}"))
     return copy
 
 
@@ -158,7 +171,7 @@ def to_numpy(col, dtype, copy, na_value, func):
     if na_value is not _NO_VALUE:
         _check_na_value(na_value, col.dtype, func)
     elif col.null_count > 0:
-        raise ValueError(named(func, f"cannot convert a {col.dtype} column with NA to numpy; "
+        raise ValueError(named(func, f"cannot convert {article(col.dtype)} column with NA to numpy; "
                                      "pass na_value= to fill the NA rows"))
 
     if col.dtype == "string":
@@ -182,6 +195,9 @@ def array_column(col, dtype, copy, na_value, func):
     without NA -- and whether it was just made (nobody else holds its Buffer).
     The checks of to_numpy (docs/api/frame.md §2.8)."""
     fresh = False
+    if dtype == "string":  # the dtype argument, before any conversion (the column need not be string)
+        raise TypeError(named(func, "'dtype' must be sd.bool, sd.int64 or sd.float64 (or their names), not sd.string "
+                                    "(the array area has no string dtype)"))
     if dtype is not None and dtype != col.dtype:
         if copy is False:
             raise ValueError(named(func, "copy=False, but a dtype conversion requires a copy"))
@@ -191,7 +207,7 @@ def array_column(col, dtype, copy, na_value, func):
     if na_value is not _NO_VALUE:
         _check_na_value(na_value, col.dtype, func)
     elif col.null_count > 0:
-        raise ValueError(named(func, f"cannot convert a {col.dtype} column with NA to an array; "
+        raise ValueError(named(func, f"cannot convert {article(col.dtype)} column with NA to an array; "
                                      "pass na_value= to fill the NA rows"))
     if col.null_count > 0:
         if copy is False:

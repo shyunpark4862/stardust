@@ -21,7 +21,7 @@ def check_name(name, what="a Series", func=None):
     if name is not None and not isinstance(name, str):
         # docs/api/frame.md §2.6, §5.1
         if func is None:
-            raise TypeError(f"the name of {what} must be a str or None, got {type(name).__name__}")
+            raise TypeError(f"the name of {what} must be a str or None, not {type(name).__name__}")
         raise TypeError(f"{func}(): 'name' must be a str or None, not {type(name).__name__}")
     return name
 
@@ -38,7 +38,7 @@ def check_label(index, label, func=None):
     ok = _is_int_label(label) if index._dtype == "int64" else isinstance(label, str)
     if not ok:
         kind = "an int" if index._dtype == "int64" else "a str"
-        raise TypeError(named(func, f"a label of {_an(index._dtype)} index must be {kind}, got {type(label).__name__}"))
+        raise TypeError(named(func, f"a label of {_an(index._dtype)} index must be {kind}, not {type(label).__name__}"))
 
 
 def _an(dtype):
@@ -346,8 +346,10 @@ def _labels_from(data, func):
         data = list(data) if isinstance(data, range) else data
         # No labels to infer from: int64, since float64 (the empty list's dtype) cannot label.
         col = column_from(data, "int64" if len(data) == 0 else None, func)
+    if col.null_count and col.null_count == len(col):  # all NA ([None]): the dtype says nothing
+        raise ValueError(f"{func}(): an index cannot hold NA")
     if col.dtype not in ("int64", "string"):
-        raise TypeError(f"{func}(): index labels must be int64 or string, got {col.dtype}")
+        raise TypeError(f"{func}(): index labels must be int64 or string, not {col.dtype}")
     if col.null_count:
         raise ValueError(f"{func}(): an index cannot hold NA")
     return col

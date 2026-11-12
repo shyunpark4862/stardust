@@ -90,7 +90,7 @@ print(filled.tolist(), filled._flags()["writeable"])  # [1, 2, 0] True
 try:
     sd.frame.Series([1, None]).to_array()
 except ValueError as e:
-    print(e)  # to_array(): cannot convert a int64 column with NA to an array; pass na_value= to fill the NA rows
+    print(e)  # to_array(): cannot convert an int64 column with NA to an array; pass na_value= to fill the NA rows
 try:
     sd.frame.Series(["a"]).to_array()
 except TypeError as e:

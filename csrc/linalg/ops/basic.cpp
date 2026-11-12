@@ -394,12 +394,12 @@ nb::object cross(nb::handle x1o, nb::handle x2o, nb::handle axis_o) {
 
 void bind_basic(nb::module_& m) {
     m.def("kron", named("kron", &kron), nb::arg().none(), nb::arg().none());
-    m.def("cross", named("cross", &cross), nb::arg().none(), nb::arg().none(), nb::kw_only(), nb::arg("axis") = -1);
-    m.def("vecdot", named("vecdot", &vecdot), nb::arg().none(), nb::arg().none(), nb::kw_only(), nb::arg("axis") = -1);
+    m.def("cross", named("cross", &cross), nb::arg().none(), nb::arg().none(), nb::kw_only(), nb::arg("axis").none() = -1);
+    m.def("vecdot", named("vecdot", &vecdot), nb::arg().none(), nb::arg().none(), nb::kw_only(), nb::arg("axis").none() = -1);
     m.def("outer", named("outer", &outer), nb::arg().none(), nb::arg().none());
-    m.def("trace", named("trace", &trace), nb::arg().none(), nb::kw_only(), nb::arg("k") = 0, nb::arg("dtype").none() = nb::none());
-    m.def("diagonal", named("diagonal", &diagonal), nb::arg().none(), nb::kw_only(), nb::arg("k") = 0);
-    m.def("matrix_power", named("matrix_power", &matrix_power), nb::arg().none(), nb::arg());
+    m.def("trace", named("trace", &trace), nb::arg().none(), nb::kw_only(), nb::arg("k").none() = 0, nb::arg("dtype").none() = nb::none());
+    m.def("diagonal", named("diagonal", &diagonal), nb::arg().none(), nb::kw_only(), nb::arg("k").none() = 0);
+    m.def("matrix_power", named("matrix_power", &matrix_power), nb::arg().none(), nb::arg().none());
 }
 
 }  // namespace sd::linalg

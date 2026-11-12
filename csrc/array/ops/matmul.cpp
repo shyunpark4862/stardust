@@ -288,6 +288,6 @@ nb::object matmul(nb::handle x1, nb::handle x2) {
     return wrap(std::move(out));
 }
 
-void bind_matmul(nb::module_& m) { m.def("matmul", named("matmul", &matmul), nb::arg(), nb::arg()); }
+void bind_matmul(nb::module_& m) { m.def("matmul", named("matmul", &matmul), nb::arg().none(), nb::arg().none()); }
 
 }  // namespace sd

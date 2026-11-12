@@ -95,7 +95,12 @@ public:
         for (std::int64_t count = 0;; ++count) {
             const std::int64_t at = next_structural();
             if (at < 0) {  // the end of the input ends the last record
-                if (inside_) csv_error(line_at(p_, record), "a quoted field is never closed");
+                // An odd quote count runs to the end of the input. If the field
+                // holding the open quote does not start with one, the mistake is
+                // the same as with an even count: a quote inside an unquoted field.
+                if (inside_)
+                    csv_error(line_at(p_, record), p_[field_start_] == '"' ? "a quoted field is never closed"
+                                                                           : "a quote inside an unquoted field");
                 sink(count, field(field_start_, n_, record, false));
                 field_start_ = n_;
                 done_ = true;

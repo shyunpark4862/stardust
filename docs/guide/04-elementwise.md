@@ -121,7 +121,7 @@ except TypeError as e:
 try:
     sd.asarray([1, 2]) == [1, 2]
 except TypeError as e:
-    print(e)  # '==' not supported between instances of 'stardust._core.ndarray' and 'list'
+    print(e)  # '==' not supported between instances of 'ndarray' and 'list'
 ```
 
 ## 8. frame의 원소별 연산

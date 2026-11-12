@@ -151,7 +151,8 @@ print(a.tolist())  # [0.0, 1.0, 3.0, 5.0, 7.0]
 - **내보내기**: `np.asarray(x)`는 복사하지 않는다. 테스트도 이 길로 결과를 numpy에 가져와 비교한다.
 - **가져오기**: format이 저장 타입과 같고 정렬되어 있으면 복사하지 않는다(`Buffer::adopt`). 읽기 전용 버퍼는 쓰기 금지 배열이 된다.
   - 손실 없는 확장(int32 → int64, float32 → float64 등)은 복사하면서 변환한다. `copy=False`면 에러다.
-  - 손실이 있는 것(uint64 → int64)은 에러다.
+  - 손실이 있을 수 있는 dtype(uint64 → int64)은 값과 상관없이 에러다. 데이터프레임도 같다.
+  - big-endian 배열(`>f8` 등)은 바이트를 뒤집으며 복사한다. 값은 같다.
 
 ```python
 import numpy as np

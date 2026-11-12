@@ -6,6 +6,7 @@
 // is a LinAlgError everywhere, also where LAPACK itself would just divide by it.
 #include "linalg/ops/factor.hpp"
 #include "bind/errors.hpp"
+#include "bind/pyutil.hpp"
 
 #include "linalg/cost.hpp"
 #include "linalg/outblock.hpp"
@@ -23,9 +24,11 @@ namespace {
 
 // -------------------------------------------------------- solve_triangular --
 
-nb::object solve_triangular(nb::handle ao, nb::handle bo, bool upper, bool unit_diagonal) {
+nb::object solve_triangular(nb::handle ao, nb::handle bo, nb::handle upper_o, nb::handle unit_diagonal_o) {
     Input a(ao, "solve_triangular", "a");
     Input y(bo, "solve_triangular", "b");
+    const bool upper = parse_bool(upper_o, "upper");
+    const bool unit_diagonal = parse_bool(unit_diagonal_o, "unit_diagonal");
     require_square(a);
     const lint n = a.shape(-1);
     const Rhs r = rhs_of(y, n, "solve_triangular", "a");
@@ -55,8 +58,9 @@ nb::object solve_triangular(nb::handle ao, nb::handle bo, bool upper, bool unit_
 
 // ---------------------------------------------------------------- cholesky --
 
-nb::object cholesky(nb::handle xo, bool upper) {
+nb::object cholesky(nb::handle xo, nb::handle upper_o) {
     Input x(xo, "cholesky", "x");
+    const bool upper = parse_bool(upper_o, "upper");
     require_square(x);
     const lint n = x.shape(-1);
     Batch b({{x.batch_shape(2), x.batch_strides(2)}}, "cholesky");
@@ -84,9 +88,10 @@ nb::object cholesky(nb::handle xo, bool upper) {
     });
 }
 
-nb::object cholesky_solve(nb::handle lo, nb::handle bo, bool upper) {
+nb::object cholesky_solve(nb::handle lo, nb::handle bo, nb::handle upper_o) {
     Input l(lo, "cholesky_solve", "l");
     Input y(bo, "cholesky_solve", "b");
+    const bool upper = parse_bool(upper_o, "upper");
     require_square(l);
     const lint n = l.shape(-1);
     const Rhs r = rhs_of(y, n, "cholesky_solve", "l");
@@ -239,10 +244,10 @@ nb::object lu_solve(nb::handle lo, nb::handle uo, nb::handle po, nb::handle bo) 
 
 void bind_factor(nb::module_& m) {
     m.def("solve_triangular", named("solve_triangular", &solve_triangular), nb::arg().none(), nb::arg().none(), nb::kw_only(),
-          nb::arg("upper"), nb::arg("unit_diagonal") = false);
-    m.def("cholesky", named("cholesky", &cholesky), nb::arg().none(), nb::kw_only(), nb::arg("upper") = false);
+          nb::arg("upper").none(), nb::arg("unit_diagonal").none() = false);
+    m.def("cholesky", named("cholesky", &cholesky), nb::arg().none(), nb::kw_only(), nb::arg("upper").none() = false);
     m.def("cholesky_solve", named("cholesky_solve", &cholesky_solve), nb::arg().none(), nb::arg().none(), nb::kw_only(),
-          nb::arg("upper") = false);
+          nb::arg("upper").none() = false);
     m.def("lu", named("lu", &lu), nb::arg().none());
     m.def("lu_solve", named("lu_solve", &lu_solve), nb::arg().none(), nb::arg().none(), nb::arg().none(), nb::arg().none());
 }

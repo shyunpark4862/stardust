@@ -284,7 +284,7 @@ def test_real_imag_conj_take_python_scalars(value):
     assert sd.imag(value, out=out) is out and out.tolist() == [[complex(value).imag] * 2] * 2
     with pytest.raises(TypeError):
         sd.real([value])
-    with pytest.raises(TypeError, match=r"^imag\(\): 'x' must be an sd\.ndarray or a Python bool, int, float or complex, not str$"):
+    with pytest.raises(TypeError, match=r"^imag\(\): 'x' must be an sd\.ndarray or a bool, int, float or complex, not str$"):
         sd.imag("1")
 
 

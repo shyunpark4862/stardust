@@ -8,6 +8,7 @@
 // (docs/design/linalg.md §2.3).
 #include "linalg/ops/norms.hpp"
 #include "bind/errors.hpp"
+#include "bind/pyutil.hpp"
 
 #include "linalg/args.hpp"
 #include "linalg/cost.hpp"
@@ -30,10 +31,10 @@ namespace sd::linalg {
 namespace {
 
 VecOrd parse_vector_ord(nb::handle o, const char* func) {
-    if (PyBool_Check(o.ptr()) || !(PyLong_Check(o.ptr()) || PyFloat_Check(o.ptr())))
-        throw nb::type_error((std::string(func) + "(): 'ord' must be an int or a float").c_str());
-    const double p = PyFloat_AsDouble(o.ptr());
-    if (p == -1.0 && PyErr_Occurred()) throw nb::python_error();
+    const std::optional<double> r = real_value(o);  // numpy integers too (API.md §2)
+    if (!r)
+        throw nb::type_error((std::string(func) + "(): 'ord' must be an int or a float, not " + py_type_name(o)).c_str());
+    const double p = *r;
     if (std::isnan(p)) throw nb::value_error((std::string(func) + "(): 'ord' must not be NaN").c_str());
     if (p == kInf) return {Ord::Inf, p};
     if (p == -kInf) return {Ord::NegInf, p};
@@ -68,8 +69,9 @@ double region_norm(VecOrd ord, const Input& x, const std::byte* base, int nd, co
 
 // ---------------------------------------------------------- vector_norm --
 
-nb::object vector_norm(nb::handle xo, nb::handle axis_o, bool keepdims, nb::handle ord_o) {
+nb::object vector_norm(nb::handle xo, nb::handle axis_o, nb::handle keepdims_o, nb::handle ord_o) {
     Input x(xo, "vector_norm", "x");
+    const bool keepdims = parse_bool(keepdims_o, "keepdims");
     const std::vector<int> axes = parse_axes(axis_o, x.ndim(), "vector_norm");
     const VecOrd ord = parse_vector_ord(ord_o, "vector_norm");
     std::vector<std::int64_t> kept_shape, kept_strides, red_shape, red_strides;
@@ -113,9 +115,8 @@ MatOrd parse_matrix_ord(nb::handle o) {
         const std::string s = nb::cast<std::string>(o);
         if (s == "fro") return MatOrd::Fro;
         if (s == "nuc") return MatOrd::Nuc;
-    } else if (!PyBool_Check(o.ptr()) && (PyLong_Check(o.ptr()) || PyFloat_Check(o.ptr()))) {
-        const double p = PyFloat_AsDouble(o.ptr());
-        if (p == -1.0 && PyErr_Occurred()) throw nb::python_error();  // an int too large for a double
+    } else if (const std::optional<double> r = real_value(o)) {  // numpy integers too (API.md §2)
+        const double p = *r;
         if (p == 1) return MatOrd::One;
         if (p == -1) return MatOrd::NegOne;
         if (p == kInf) return MatOrd::Inf;
@@ -124,7 +125,7 @@ MatOrd parse_matrix_ord(nb::handle o) {
         if (p == -2) return MatOrd::NegTwo;
     } else {  // a wrong type: TypeError, as in vector_norm (docs/api/linalg.md §3)
         throw nb::type_error(("matrix_norm(): 'ord' must be a str, an int or a float, not " +
-                              std::string(Py_TYPE(o.ptr())->tp_name))
+                              py_type_name(o))
                                  .c_str());
     }
     throw nb::value_error("matrix_norm(): 'ord' must be 'fro', 'nuc', 1, -1, 2, -2, inf or -inf");
@@ -158,8 +159,9 @@ nb::object matrix_norm_svd(const Input& x, MatOrd ord, const std::vector<std::in
     });
 }
 
-nb::object matrix_norm(nb::handle xo, bool keepdims, nb::handle ord_o) {
+nb::object matrix_norm(nb::handle xo, nb::handle keepdims_o, nb::handle ord_o) {
     Input x(xo, "matrix_norm", "x");
+    const bool keepdims = parse_bool(keepdims_o, "keepdims");
     require_matrix(x);
     const MatOrd ord = parse_matrix_ord(ord_o);
     const std::int64_t m = x.shape(-2), n = x.shape(-1), rs = x.stride(-2), cs = x.stride(-1);
@@ -225,9 +227,9 @@ nb::object matrix_norm(nb::handle xo, bool keepdims, nb::handle ord_o) {
 
 void bind_norms(nb::module_& m) {
     m.def("vector_norm", named("vector_norm", &vector_norm), nb::arg().none(), nb::kw_only(), nb::arg("axis").none() = nb::none(),
-          nb::arg("keepdims") = false, nb::arg("ord") = 2);
-    m.def("matrix_norm", named("matrix_norm", &matrix_norm), nb::arg().none(), nb::kw_only(), nb::arg("keepdims") = false,
-          nb::arg("ord") = "fro");
+          nb::arg("keepdims").none() = false, nb::arg("ord").none() = 2);
+    m.def("matrix_norm", named("matrix_norm", &matrix_norm), nb::arg().none(), nb::kw_only(), nb::arg("keepdims").none() = false,
+          nb::arg("ord").none() = "fro");
 }
 
 }  // namespace sd::linalg

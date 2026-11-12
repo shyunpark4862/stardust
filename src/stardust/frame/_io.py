@@ -28,6 +28,8 @@ def read_csv(path, /, *, sep=",", header=True, names=None, usecols=None, dtype=N
     na_values texts are NA (docs/api/frame.md §10.3)."""
     from ._frame import DataFrame
 
+    if not isinstance(path, (str, bytes, os.PathLike)):  # open()'s own message names no function
+        raise TypeError(f"read_csv(): 'path' must be a str or a path-like object, not {type_name(path)}")
     if not isinstance(sep, str):
         raise TypeError(f"read_csv(): 'sep' must be a str, not {type_name(sep)}")
     if len(sep) != 1 or sep in '"\r\n':
@@ -45,7 +47,7 @@ def read_csv(path, /, *, sep=",", header=True, names=None, usecols=None, dtype=N
         dtypes = {k: resolve(v, "read_csv") for k, v in dtype.items()}
     elif dtype is not None:
         all_dtype = resolve(dtype, "read_csv")
-    if nrows is not None and check_int(nrows, "nrows", "read_csv") < 0:
+    if nrows is not None and (nrows := check_int(nrows, "nrows", "read_csv")) < 0:
         raise ValueError(f"read_csv(): 'nrows' must be >= 0, not {nrows}")
 
     with open(os.fspath(path), "rb") as f:

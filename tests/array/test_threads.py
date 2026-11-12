@@ -143,6 +143,12 @@ def test_set_and_get_num_threads():
     for bad, exc in [(0, ValueError), (-1, ValueError), (True, TypeError), (2.0, TypeError), (2000, ValueError)]:
         with pytest.raises(exc):
             sd.set_num_threads(bad)
+    sd.set_num_threads(np.int64(2))  # a numpy integer is an int (DESIGN.md §10.1 #13)
+    assert sd.get_num_threads() == 2
+    for bad, shown in ((np.True_, "bool"), (None, "NoneType")):
+        with pytest.raises(TypeError, match=rf"^set_num_threads\(\): 'n' must be an int, not {shown}$"):
+            sd.set_num_threads(bad)
+    sd.set_num_threads(1)
     with pytest.raises(TypeError):
         sd.set_num_threads(n=2)  # positional-only
 

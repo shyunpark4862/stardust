@@ -38,9 +38,10 @@
   - **bool 옵션**은 `True`나 `False`만 받는다. 다른 값(`1`, `None`, `numpy.bool_`)은 TypeError다. 예: `descending=1`, `stable=None`, `skipna=0`
     - 메시지: `sum(): 'skipna' must be True or False, not int`
     - 해당: `skipna`, `ignore_index`, `sort`, `dropna`, `normalize`, `descending`, `stable`, `header`. 기본값이 bool인 인자 모두다.
-  - **int 인자**(`head(n)`, `tail(n)`, `read_csv(nrows=)`, `RangeIndex`의 세 인자)는 Python int다. 배열의 `zeros`, `eye`의 int 인자와 같다 (array.md §1.3).
-    - bool, float, numpy 정수 스칼라는 TypeError다: `head(): 'n' must be an int, not bool`
+  - **int 인자**(`head(n)`, `tail(n)`, `read_csv(nrows=)`, `RangeIndex`의 세 인자)는 `operator.index`의 규칙으로 읽는다: Python int와 numpy 정수(`np.int64(3)`)를 받는다. 배열의 `zeros`, `eye`, linalg의 `matrix_power`와 같다 (array.md §1.3, API.md §2).
+    - bool, `numpy.bool_`, float는 TypeError다: `head(): 'n' must be an int, not bool`
     - int64 범위 밖이면 OverflowError다: `head(): 'n' is out of range`
+  - **수 인자**(`std`, `var`의 `correction`)는 int나 float이고, numpy 정수도 받는다. bool은 TypeError다: `var(): 'correction' must be an int or a float, not bool`
   - **문자열 옵션**(`keep`, `how`, `join`, `na_position`, `sep`)에 문자열이 아닌 값을 주면 TypeError, 받지 않는 문자열이면 ValueError다. linalg의 `mode=`, `ord=`와 같다.
     - 예: `keep=False`는 TypeError다 (`keep="none"`을 쓴다). 메시지: `duplicated(): 'keep' must be 'first', 'last' or 'none', not bool`
   - **list를 받는 인자**(`by`, `subset`, `on`, `left_on`, `right_on`, `usecols`, `names`, `na_values`, `concat`의 `objs`)는 list나 tuple을 받는다(컬럼 이름 하나는 str로도). generator, Series, set 같은 다른 iterable은 TypeError다. 배열의 `concat`, `axis=`와 같다.
@@ -200,12 +201,14 @@ DataFrame(data=None, /, *, index=None, columns=None, dtype=None)
 ### §2.4 numpy 배열에서 만들기
 - **항상 복사한다.**
   - numpy 배열은 밖에서 수정될 수 있어서, 메모리를 공유하면 Copy-on-Write가 깨진다.
-- dtype 변환
+- dtype 변환: 배열의 `asarray`(array.md §3.3)와 같은 규칙이다.
   - int8~int32, uint8~uint32 → `int64`
-  - uint64 → `int64`. 범위를 넘으면 `OverflowError`다. `dtype=`은 이 변환 뒤에 적용하므로 `dtype="float64"`를 주어도 같다.
+  - **uint64는 TypeError다.** 값이 int64 범위 안이어도, `dtype=`을 주어도 그렇다. dtype만 보고 판단한다 (배열과 같다).
   - float16, float32 → `float64`
+  - **big-endian 배열**(`>i8`, `>f8` 등)도 받는다. 값은 native 순서의 같은 배열과 같다 (배열과 같다).
   - U 문자열 → `string`
-  - object 배열 → list와 같은 규칙 (§2.2)
+  - object 배열 → list와 같은 규칙 (§2.2). **[배열과 다름]** 배열의 `asarray`는 object 배열을 받지 않는다. 문자열 dtype이 frame에만 있어서다 (DESIGN.md §10.5).
+  - complex 배열은 TypeError다 (frame에는 complex dtype이 없다).
 - float 배열의 NaN은 NaN 값이다.
 
 ### §2.5 DataFrame 생성 입력
@@ -256,6 +259,7 @@ DataFrame.to_numpy(*, dtype=None, copy=None, na_value=<없음>)
   - NA가 있으면 `na_value`가 필요하다. 없으면 에러다.
   - `na_value`가 그 dtype에 들어가지 않으면 `TypeError`다. NA가 없어도 검사한다.
     - 예: int 컬럼에 `na_value=np.nan`. 이때는 `dtype="float64"`도 함께 준다.
+    - int64 배열에 int64 범위 밖의 int(`na_value=2**70`)는 `OverflowError`다. int가 int64가 되어야 하는 곳의 규칙이다 (API.md §2). `dtype="float64"`와 함께면 float로 바뀐다.
   - **`dtype=`은 명시적 변환이다** (§2.3). 컬럼을 먼저 `astype`(§3.5)으로 바꾼 뒤 위 규칙을 적용한다. 예: float 컬럼의 `to_numpy(dtype="int64")`는 0 쪽으로 자르고 포화시킨다.
   - `string`은 Python str을 담은 object 배열로 돌려준다.
 - **`DataFrame.to_numpy`**
@@ -274,7 +278,7 @@ DataFrame.to_array(*, dtype=None, copy=None, na_value=<없음>)
   - `copy=None`이고 NA와 dtype 변환이 없으면 컬럼의 메모리를 함께 쓰는 **읽기 전용** 뷰다(복사 없음).
   - 뷰가 살아 있는 동안 frame 쪽에 대입하면, frame이 먼저 복사한다(Copy-on-Write, §5.7). 뷰의 값은 바뀌지 않는다.
   - NA를 채우거나(`na_value=`) dtype을 바꿔서 새로 만든 배열, `copy=True`의 배열은 쓸 수 있다. 컬럼과 메모리를 나누지 않는다.
-  - string 컬럼은 TypeError다. 배열 영역에는 문자열 dtype이 없다.
+  - string 컬럼은 TypeError다. 배열 영역에는 문자열 dtype이 없다. `dtype=sd.string`도 컬럼의 dtype과 상관없이 TypeError다: `to_array(): 'dtype' must be sd.bool, sd.int64 or sd.float64 (or their names), not sd.string ...`
 - **`DataFrame.to_array`**: 새 2차원 배열을 **F-order**로 만든다. 컬럼 하나가 메모리에서 이어져 있고, 컬럼마다 한 번씩 복사한다. `sd.linalg`는 F-order 행렬을 그대로 받는다. dtype 규칙은 `DataFrame.to_numpy`와 같고, `copy=False`는 ValueError다.
 - **`Series(배열)`, `DataFrame(2차원 배열)`**: `sd.ndarray`에서 만들면 **언제나 복사한다.** 배열은 다른 쓰기 가능한 뷰를 통해 바뀔 수 있어서 frame의 Copy-on-Write가 따라갈 수 없다.
   - bool, int64, float64 배열을 받는다. complex128은 TypeError다. `Series`는 1차원, `DataFrame`은 2차원만 받는다.
@@ -350,9 +354,12 @@ DataFrame.astype(dtype, /)
 - bool → 숫자: 0과 1이다.
 - 숫자 → bool: 0이 아니면 True다. NaN도 True다.
 - → string: Python `str()`과 같다. 예: `1.0` → `"1.0"`, `1e20` → `"1e+20"`, NaN → `"nan"`
-- **string → int64, float64: 엄격하게 파싱한다.**
-  - 받는 것: 부호, 숫자, 소수점, 지수. float는 `nan`, `inf`도 받는다.
-  - 공백과 `_`는 에러다.
+- **string → int64, float64: 엄격하게 파싱한다.** `read_csv`의 추론과 `dtype=`도 같은 문법이다 (§10.4).
+  - int64: `[+-]?` 뒤에 ASCII 숫자 하나 이상. 예: `"7"`, `"+7"`, `"-0"`, `"007"`. int64 범위 밖(`"9223372036854775808"`)은 에러다. 소수점과 지수는 받지 않는다(`"1.0"`, `"1e3"`은 에러).
+  - float64: `[+-]?` 뒤에 `숫자[.숫자?]` 또는 `.숫자`, 그 뒤에 지수 `[eE][+-]?숫자`를 붙일 수 있다. 예: `"1."`, `".5"`, `"+.5"`, `"-.5e2"`, `"1E+05"`. 숫자가 하나도 없으면(`"."`, `"e5"`) 에러다.
+  - float64는 `[+-]?` 뒤의 `nan`, `inf`, `infinity`도 받는다. 대소문자를 가리지 않는다. 예: `"NaN"`, `"nAn"`, `"-nan"`, `"INF"`, `"+inf"`, `"Infinity"`, `"-INFINITY"`. `"-nan"`은 부호 비트가 켜진 NaN이다. `"infinit"`, `"nan(1)"`은 에러다.
+  - 결과는 올바르게 반올림한다(Python `float()`와 같다). 범위를 넘으면 `±inf`, 아주 작으면 `±0.0`이나 비정규수다.
+  - 공백(앞, 뒤), `_`, `0x` 접두사, ASCII가 아닌 숫자, 빈 문자열은 에러다.
 - **string → bool**: `"True"`와 `"False"`만 받고 나머지는 에러다. **[pandas와 다름]**
 
 ### §3.6 결측: `isna`, `notna`, `isnan`, `fillna`, `dropna`
@@ -464,9 +471,9 @@ RangeIndex.tolist()
 RangeIndex.equals(other, /)
 ```
 - Index는 바뀌지 않는다(불변).
-- **`Index(data)`**: 라벨은 int64나 string이다. float, bool, NA는 에러다 (§1.7).
+- **`Index(data)`**: 라벨은 int64나 string이다. float, bool, NA는 에러다 (§1.7). 모두 NA이면(`Index([None])`) 추론한 dtype을 말하지 않고 `Index(): an index cannot hold NA`다.
 - **`RangeIndex`**: `start`, `stop`, `step`은 생성 인자다. 배열의 `arange`처럼 위치로만 주고, 첫 인자는 꼭 준다(`RangeIndex(5)`는 `0`부터 `4`). int64 라벨로 친다.
-  - 세 인자는 int 인자다 (§1.1): Python int만 받고(bool, float, numpy 정수는 TypeError), int64 범위 밖이면 OverflowError다. `arange`와 같다.
+  - 세 인자는 int 인자다 (§1.1): Python int와 numpy 정수를 받고(bool, `numpy.bool_`, float는 TypeError), int64 범위 밖이면 OverflowError다. `arange`와 같다.
 - **`name`**은 `str` 또는 `None`이다 (`Series.name`과 같은 규칙, §2.6).
   - 연산 결과의 Index 이름은 Series 이름 규칙을 따른다: 같으면 유지하고, 다르면 `None`이다 (§3.1).
   - repr은 pandas처럼 이름을 보여 준다.
@@ -517,9 +524,10 @@ DataFrame.iloc
     - 양 끝 라벨은 있어야 하고 고유해야 한다.
     - Index가 정렬되어 있는지 보고 이진 탐색으로 바꾸는 휴리스틱은 쓰지 않는다. **[pandas와 다름]**
   - bool Series 마스크 (§5.5)
-- **`.iloc`에 쓸 수 있는 것**: 정수(음수 가능), 슬라이스, 정수 리스트
-  - 범위를 벗어나면 IndexError다.
-- **배열 키**: 리스트를 받는 자리(라벨 리스트, 정수 리스트, DataFrame의 열 자리)는 1차원 numpy 배열과 `sd.ndarray`도 받는다. 리스트와 같은 뜻이고, 두 배열은 같은 결과를 낸다. bool 배열은 마스크가 아니다: bool은 위치나 int 라벨이 아니라서 TypeError다. 마스크는 bool Series다 (§5.5).
+- **`.iloc`에 쓸 수 있는 것**: 정수(음수 가능, numpy 정수 포함), 슬라이스, 정수 리스트
+  - 범위를 벗어나면 IndexError다. DataFrame의 열 자리는 메시지가 열을 말한다: `position 9 is out of range for 2 columns`
+  - **위치 키의 형태가 틀리면 IndexError다.** 배열의 인덱스와 같다 (API.md §2). 예: `s.iloc[True]`, `s.iloc[1.0]`, `s.iloc["a"]`는 `cannot select rows by position with float; use an int, a slice or a list of ints`, `s.iloc[[1.0]]`은 `positions must be ints, not float`다.
+- **배열 키**: 리스트를 받는 자리(라벨 리스트, 정수 리스트, DataFrame의 열 자리)는 1차원 numpy 배열과 `sd.ndarray`도 받는다. 리스트와 같은 뜻이고, 두 배열은 같은 결과를 낸다. bool 배열은 마스크가 아니다: bool은 위치나 int 라벨이 아니라서 `.iloc`에서는 IndexError, `.loc`에서는 TypeError다. 마스크는 bool Series다 (§5.5).
 - **DataFrame**
   - `df.loc[행]`, `df.loc[행, 열]`, `df.iloc[행]`, `df.iloc[행, 열]`
   - 열 자리에는 이름 하나, 이름 리스트, 이름 슬라이스(양 끝 포함), `:`를 쓴다.
@@ -839,6 +847,7 @@ read_csv(path, /, *, sep=",", header=True, names=None, usecols=None, dtype=None,
 - `dtype`: dtype 하나(모든 컬럼) 또는 `{컬럼: dtype}`이다.
   - 지정한 컬럼은 추론하지 않고, `astype`의 엄격한 파싱(§3.5)으로 읽는다. 읽을 수 없는 값은 에러이고, 줄 번호를 알려 준다.
 - `na_values`: 빈 필드 말고도 NA로 읽을 문자열의 리스트다.
+- `path`: str, bytes나 경로 객체(`os.PathLike`)다. 다른 값은 TypeError다: `read_csv(): 'path' must be a str or a path-like object, not int`
 - `nrows`: 데이터 행을 최대 몇 개까지 읽을지다. int 인자다 (§1.1): bool은 TypeError, 음수는 ValueError다.
 - `index_col`: Index가 될 컬럼 이름(str) 하나다.
   - int64나 string이어야 하고, NA가 없어야 한다 (§1.7).
@@ -853,7 +862,8 @@ read_csv(path, /, *, sep=",", header=True, names=None, usecols=None, dtype=None,
 - **따옴표**는 RFC 4180을 따른다.
   - 큰따옴표로 감싼 필드 안에서는 구분 문자와 줄바꿈도 값이다. `""`는 `"`다.
   - 닫는 따옴표 뒤에는 구분 문자나 줄바꿈이나 파일 끝만 올 수 있다.
-  - 따옴표로 감싸지 않은 필드 안의 `"`는 에러다.
+  - 따옴표로 감싸지 않은 필드 안의 `"`는 에러다: `line N: a quote inside an unquoted field`. 뒤에 따옴표가 몇 개 오든(홀수여서 파일 끝까지 이어져도) 같은 메시지다.
+  - 따옴표로 시작한 필드가 파일 끝까지 닫히지 않으면 `line N: a quoted field is never closed`다.
 - **모든 행의 필드 개수가 컬럼 수와 같아야 한다.** 다르면 에러이고, 줄 번호를 알려 준다. **[pandas와 다름]**
 - **완전히 빈 줄은 빈 필드 하나짜리 행이다.** **[pandas와 다름]**
   - 컬럼이 하나인 파일에서는 NA 행이 되고, 컬럼이 여럿이면 필드 개수 에러다.

@@ -99,7 +99,7 @@ NB_MODULE(_core, m) {
             if (v < 1 || v > 1024) throw nb::value_error(kRange);
             sd::parallel::set_num_threads(static_cast<int>(v));
         });
-    }, nb::arg());
+    }, nb::arg().none());
     m.def("get_num_threads", &sd::parallel::num_threads);
     sd::bind_linalg(m);  // after the array: it looks up the array objects bound above
     sd::bind_frame(m);

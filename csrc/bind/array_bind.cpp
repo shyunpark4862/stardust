@@ -116,7 +116,7 @@ nb::object op_equality(nb::handle self, nb::handle other) {
         if (r.ptr() != Py_NotImplemented) return r;
     }
     throw nb::type_error((std::string("'") + (eq ? "==" : "!=") + "' not supported between instances of '" +
-                          Py_TYPE(self.ptr())->tp_name + "' and '" + Py_TYPE(other.ptr())->tp_name + "'")
+                          py_type_name(self) + "' and '" + py_type_name(other) + "'")
                              .c_str());
 }
 
@@ -168,27 +168,27 @@ void bind_ndarray(nb::module_& m) {
         .def_prop_ro("mT", named(".mT", &matrix_transpose))
         .def("tolist", [](const NDArray& a) { return tolist(a, 0, a.data); })
         .def("astype", named("astype", &astype),
-             nb::arg(), nb::kw_only(), nb::arg("copy").none() = true)
+             nb::arg().none(), nb::kw_only(), nb::arg("copy").none() = true)
         .def("copy", [](const NDArray& a) { return wrap(cast_copy(a, a.dtype)); })
-        .def("reshape", named("reshape", nb::overload_cast<nb::handle, nb::handle, nb::handle>(&reshape)), nb::arg(),
+        .def("reshape", named("reshape", nb::overload_cast<nb::handle, nb::handle, nb::handle>(&reshape)), nb::arg().none(),
              nb::kw_only(), nb::arg("copy").none() = nb::none())
         // .none(): x[None] is newaxis, and nanobind rejects None by default.
         // Reductions as methods (docs/design/array.md §12.2): the same functions, x as self.
         .def("sum", named("sum", &sum), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("dtype").none() = nb::none(),
-             nb::arg("keepdims") = false)
+             nb::arg("keepdims").none() = false)
         .def("prod", named("prod", &prod), nb::kw_only(), nb::arg("axis").none() = nb::none(),
-             nb::arg("dtype").none() = nb::none(), nb::arg("keepdims") = false)
-        .def("min", named("min", &min), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims") = false)
-        .def("max", named("max", &max), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims") = false)
-        .def("mean", named("mean", &mean), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims") = false)
-        .def("var", named("var", &var), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("correction") = 0,
-             nb::arg("keepdims") = false)
-        .def("std", named("std", &stddev), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("correction") = 0,
-             nb::arg("keepdims") = false)
-        .def("argmin", named("argmin", &argmin), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims") = false)
-        .def("argmax", named("argmax", &argmax), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims") = false)
-        .def("any", named("any", &any), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims") = false)
-        .def("all", named("all", &all), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims") = false)
+             nb::arg("dtype").none() = nb::none(), nb::arg("keepdims").none() = false)
+        .def("min", named("min", &min), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims").none() = false)
+        .def("max", named("max", &max), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims").none() = false)
+        .def("mean", named("mean", &mean), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims").none() = false)
+        .def("var", named("var", &var), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("correction").none() = 0,
+             nb::arg("keepdims").none() = false)
+        .def("std", named("std", &stddev), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("correction").none() = 0,
+             nb::arg("keepdims").none() = false)
+        .def("argmin", named("argmin", &argmin), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims").none() = false)
+        .def("argmax", named("argmax", &argmax), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims").none() = false)
+        .def("any", named("any", &any), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims").none() = false)
+        .def("all", named("all", &all), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims").none() = false)
         .def("__getitem__", &getitem, nb::arg().none())
         .def("__setitem__", &setitem, nb::arg().none(), nb::arg().none())
         .def("__len__", [](const NDArray& a) { return a.shape[0]; })

@@ -43,10 +43,13 @@ except TypeError as e:
 - **dtype은 객체 다섯이다**: `sd.bool, sd.int64, sd.float64, sd.complex128, sd.string`. 모든 영역이 객체나 그 이름 문자열을 받고, `.dtype`은 객체다. Python 타입(`float`)과 다른 이름(`"float32"`)은 어디서나 TypeError다 (API.md §1).
   - 전에는 배열은 객체만, frame은 문자열과 Python 타입만 받았다.
   - Python 타입을 받지 않으니 `sd.bool`과 Python `bool`이 헷갈리는 문제도 같이 없어졌다.
-- **에러 종류**: 타입이면 TypeError, 값이면 ValueError, 없는 라벨은 KeyError, int64 밖의 int는 OverflowError, 수치적 실패는 `LinAlgError(ValueError)`. 경고는 없다 (API.md §2).
+- **에러 종류**: 타입이면 TypeError, 값이면 ValueError, 위치 인덱스의 형태가 틀리면 IndexError(배열의 `x[1.0]`, frame의 `s.iloc[1.0]`), 없는 라벨은 KeyError, int64 밖의 int는 OverflowError, 수치적 실패는 `LinAlgError(ValueError)`. 경고는 없다 (API.md §2).
+- **int 인자는 하나의 규칙이다**: `operator.index`. Python int와 numpy 정수(`np.int64(3)`)를 받고 bool과 `numpy.bool_`은 받지 않는다. `zeros(shape)`, `axis`, `linspace(num)`, `matrix_power(n)`, `ord`, `head(n)`, `RangeIndex`, `set_num_threads`가 모두 같다. 인덱싱과 `.iloc`이 이미 numpy 정수를 받았기 때문에 나머지를 거기에 맞췄다 (DESIGN.md §10.1 13번).
 - **에러 메시지**: 공개 함수와 메서드의 에러는 `이름(): `으로 시작하고, 인자는 작은따옴표로 쓴다. 연산자와 인덱싱은 Python의 형식이다. 메시지에 문서의 절 번호를 넣지 않는다(문서의 번호는 바뀌어도 메시지는 사용자 코드가 붙잡고 있을 수 있다) (API.md §2.1).
   - 배열과 linalg는 바인딩이 이름을 붙인다: `named("zeros", &zeros)`가 예외를 잡아 같은 종류로 메시지만 바꿔 다시 던진다. 에러가 없을 때의 비용은 없다. 그래서 여러 함수가 함께 쓰는 헬퍼는 이름을 몰라도 된다.
   - frame은 Python이 이름을 안다(`_errors.named`). 사용자가 닿는 C++ 커널은 `func=`를 받아 바인딩의 `call_named`가 붙인다.
+- **같은 실수에는 같은 메시지다** (DESIGN.md §10.3). 옵션의 종류마다 검사가 하나다: bool 옵션은 `'x' must be True or False, not int`, int 인자는 `'n' must be an int, not float`, 문자열 옵션은 `'how' must be 'inner', ... or 'outer', not NoneType`. 받은 타입은 모듈 경로 없는 짧은 이름이다(`not ndarray`, `not int64`).
+  - 배열과 linalg는 nanobind가 인자를 바꾸기 전에 검사한다. bool 옵션도 `bool`이 아니라 `nb::handle`로 받아 `parse_bool`이 보고, 모든 인자에 `.none()`을 붙여 `None`도 검사까지 오게 한다. 그러지 않으면 nanobind가 `incompatible function arguments`와 함께 C++ 시그니처를 늘어놓는다. 검사는 포인터 비교 하나라 작은 호출도 느려지지 않는다.
 
 ```python
 import stardust as sd
@@ -96,9 +99,8 @@ print(names)  # ['astype()', 'astype()', 'vector_norm()']
 - 배열 `.size`(원소 수)와 `GroupBy.size()`(그룹별 행 수)
 
 **코드에 남은 차이** (M6에서 찾아 문서에만 적음, DESIGN.md §8.4)
-- M8에서 고친 것: bool과 int의 비교(frame도 bool을 int64로 올린다), CSV의 정확성 규칙(`read_csv`도 list처럼 반올림한다, 11장 §6), `df.groupby(Series)`(이제 `'by'` 인자의 TypeError다). DESIGN.md §10.1에 M8의 목록이 있다.
-- `arange`의 int 인자는 `dtype=float64`여도 int64 범위여야 한다.
-- 메시지 몇 개: `df.iloc[0, 9]`가 열 위치인데 "rows"라고 한다 등.
+- M8에서 고친 것: bool과 int의 비교(frame도 bool을 int64로 올린다), CSV의 정확성 규칙(`read_csv`도 list처럼 반올림한다, 11장 §6), `df.groupby(Series)`(이제 `'by'` 인자의 TypeError다), `arange`의 int 인자(`dtype=float64`면 int64 밖도 float로 읽는다), numpy에서 가져오기(big-endian은 두 영역 모두 받고 uint64는 두 영역 모두 TypeError), 메시지(`df.iloc[0, 9]`는 "2 columns"라고 한다 등). DESIGN.md §10에 M8의 목록이 있다.
+- numpy object 배열은 frame만 받는다. 문자열 dtype이 frame에만 있어서다 (DESIGN.md §10.5).
 
 ```python
 import stardust as sd

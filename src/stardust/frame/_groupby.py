@@ -78,7 +78,7 @@ class GroupBy(Reductions):
         elif isinstance(key, list):  # as df[[...]]
             names = key
         else:
-            raise TypeError(f"column names are str, got {type_name(key)}")
+            raise TypeError(f"column names must be str, not {type_name(key)}")
         for k in names:
             self._df._column(k)
             if k in self._by:

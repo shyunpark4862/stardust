@@ -8,9 +8,11 @@ Python's own form, without a name.
 
 Every option of one kind goes through one check here, so the same mistake
 gets the same exception and message everywhere (API.md §2, §2.1): bool
-options (check_bool), int arguments (check_int), string options
-(check_choice) and lists of column names (name_list).
+options (check_bool), int arguments (check_int), real numbers (check_real),
+string options (check_choice) and lists of column names (name_list).
 """
+
+import operator
 
 _INT64_MIN, _INT64_MAX = -(2**63), 2**63 - 1
 
@@ -33,16 +35,42 @@ def check_bool(value, what, func):
     return value
 
 
+def as_index(value):
+    """`value` as an int by operator.index semantics, or None when it is not
+    one: a Python int or anything with __index__ (numpy.int64, ...); bool and
+    numpy.bool_ are not ints (API.md §2, the array's index_value in bind/pyutil.cpp)."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return int(value)
+    try:
+        return operator.index(value)  # numpy.bool_ and sd.ndarray refuse
+    except TypeError:
+        return None
+
+
 def check_int(value, what, func):
     """An int argument (head(n), nrows, RangeIndex's start/stop/step) by the
-    array area's rules (docs/api/array.md §1.3): a Python int; bool and every
-    other type (numpy integers too, as sd.zeros and sd.eye) are TypeErrors,
-    an int outside int64 is an OverflowError."""
-    if not isinstance(value, int) or isinstance(value, bool):  # the array's parse_int (bind/pyutil.cpp)
+    array area's rules (docs/api/array.md §1.3): an int by operator.index
+    (numpy integers too); bool and every other type are TypeErrors, an int
+    outside int64 is an OverflowError."""
+    v = as_index(value)
+    if v is None:
         raise TypeError(named(func, f"'{what}' must be an int, not {type_name(value)}"))
-    if not _INT64_MIN <= value <= _INT64_MAX:
+    if not _INT64_MIN <= v <= _INT64_MAX:
         raise OverflowError(named(func, f"'{what}' is out of range"))
-    return int(value)
+    return v
+
+
+def check_real(value, what, func):
+    """A real-number argument (correction=): a float, or an int as check_int
+    reads it (numpy integers too), as float; TypeError otherwise."""
+    if isinstance(value, float):
+        return value
+    v = as_index(value)
+    if v is None:
+        raise TypeError(named(func, f"'{what}' must be an int or a float, not {type_name(value)}"))
+    return float(v)
 
 
 def _one_of(choices):

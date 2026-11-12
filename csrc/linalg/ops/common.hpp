@@ -8,6 +8,7 @@
 #include "linalg/pack.hpp"
 #include "linalg/types.hpp"
 #include "accelerate/lapack.hpp"
+#include "bind/pyutil.hpp"
 
 #include <nanobind/nanobind.h>
 
@@ -175,12 +176,15 @@ T conj_if_complex(T v) {
 // mode='reduced' | 'complete' (docs/api/linalg.md §1.1); true for 'complete'.
 // Shared by qr, qr_pivoted and svd.
 inline bool parse_mode(nb::handle o, const char* func) {
+    // A string option: the frame's check_choice format (API.md §2.1).
     if (!PyUnicode_Check(o.ptr()))
-        throw nb::type_error((std::string(func) + "(): 'mode' must be 'reduced' or 'complete'").c_str());
+        throw nb::type_error(
+            (std::string(func) + "(): 'mode' must be 'reduced' or 'complete', not " + py_type_name(o)).c_str());
     const std::string s = nb::cast<std::string>(o);
     if (s == "reduced") return false;
     if (s == "complete") return true;
-    throw nb::value_error((std::string(func) + "(): 'mode' must be 'reduced' or 'complete', got '" + s + "'").c_str());
+    throw nb::value_error(
+        (std::string(func) + "(): 'mode' must be 'reduced' or 'complete', not " + nb::repr(o).c_str()).c_str());
 }
 
 }  // namespace sd::linalg

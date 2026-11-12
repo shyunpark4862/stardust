@@ -93,9 +93,12 @@ def test_range_index_arguments_are_int_arguments():
     for args in ((2**63,), (0, 2**63), (0, 1, -(2**63) - 1)):
         with pytest.raises(OverflowError, match=r"^RangeIndex\(\): '(start|stop|step)' is out of range$"):
             sd.frame.RangeIndex(*args)
-    for bad in (True, 1.0, np.int64(3), "3", None):
+    for bad in (True, 1.0, np.True_, "3", None):
         with pytest.raises(TypeError, match=r"^RangeIndex\(\): 'start' must be an int, not "):
             sd.frame.RangeIndex(bad)
+    # numpy integers are ints wherever an int is (DESIGN.md §10.1 #13)
+    r = sd.frame.RangeIndex(np.int64(1), np.int32(7), np.int8(2))
+    assert r.tolist() == [1, 3, 5] and all(type(v) is int for v in r.tolist())
     with pytest.raises(TypeError, match=r"'step' must be an int, not bool"):
         sd.frame.RangeIndex(0, 3, True)
 
@@ -392,3 +395,35 @@ def test_repr_with_string_and_named_index(n, name):
     ints = sd.frame.DataFrame({"a": [1.5] * n}, index=sd.frame.Index(list(range(100, 100 + n)), name=name))
     pints = pd.DataFrame({"a": [1.5] * n}, index=pd.Index(list(range(100, 100 + n)), name=name))
     assert repr(ints) == pints.to_string(**LABEL_OPTS)
+
+
+def test_position_keys_of_the_wrong_kind_are_index_errors():
+    # as an array index of the wrong kind (DESIGN.md §10.3, API.md §2)
+    s = sd.frame.Series([10, 20, 30])
+    df = sd.frame.DataFrame({"a": [1, 2], "b": [3, 4]})
+    for key, shown in ((True, "bool"), (1.0, "float"), ("a", "str"), (None, "NoneType")):
+        with pytest.raises(IndexError, match=rf"^cannot select rows by position with {shown}; "):
+            s.iloc[key]
+        with pytest.raises(IndexError, match=rf"^cannot select rows by position with {shown}; "):
+            df.iloc[key]
+    for key, shown in (([1.0], "float"), ([0, True], "bool"), (np.array([0.5]), "float64")):
+        with pytest.raises(IndexError, match=rf"^positions must be ints, not {shown}$"):
+            s.iloc[key]
+    with pytest.raises(IndexError, match=r"^cannot select columns by position with float; "):
+        df.iloc[0, 1.0]
+    # a column position out of range says columns (DESIGN.md §8.4)
+    with pytest.raises(IndexError, match=r"^position 9 is out of range for 2 columns$"):
+        df.iloc[0, 9]
+    with pytest.raises(IndexError, match=r"^position -3 is out of range for 2 columns$"):
+        df.iloc[:, [0, -3]]
+    with pytest.raises(IndexError, match=r"^position 5 is out of range for 2 rows$"):
+        df.iloc[5, 0]
+    assert s.iloc[np.int64(1)] == 20 and df.iloc[np.int64(1), np.int64(0)] == 2
+
+
+def test_label_type_messages_use_not():
+    s = sd.frame.Series([1, 2], index=[10, 20])
+    with pytest.raises(TypeError, match=r"^a label of an int64 index must be an int, not float$"):
+        s.loc[1.5]
+    with pytest.raises(TypeError, match=r"^a label of a string index must be a str, not int$"):
+        sd.frame.Series([1], index=["a"]).loc[0]

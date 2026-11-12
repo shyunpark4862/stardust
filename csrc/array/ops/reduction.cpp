@@ -271,8 +271,9 @@ std::int64_t arg_whole(const std::byte* p, std::int64_t n, std::int64_t item, DT
 }
 
 template <bool Max>
-nb::object arg_extreme_impl(nb::handle x_obj, nb::handle axis_obj, bool keepdims) {
+nb::object arg_extreme_impl(nb::handle x_obj, nb::handle axis_obj, nb::handle keepdims_obj) {
     const NDArray& x = require_ndarray(x_obj);
+    const bool keepdims = parse_bool(keepdims_obj, "keepdims");
     if (x.dtype == DType::Complex128) unsupported(x.dtype);  // docs/design/array.md §2.6
     // complex was rejected above; its branch only satisfies visit_dtype.
     ArgFn lane_fn = visit_dtype(x.dtype, [&]<typename T>(std::type_identity<T>) {
@@ -325,8 +326,9 @@ void scan_with_initial_fn(const std::byte* x, std::byte* o, const LaneCtx& c) {
 }
 
 template <typename Op>
-nb::object cumulative(nb::handle x_obj, nb::handle axis_obj, nb::handle dtype_obj, bool include_initial) {
+nb::object cumulative(nb::handle x_obj, nb::handle axis_obj, nb::handle dtype_obj, nb::handle include_initial_obj) {
     const NDArray& x = require_ndarray(x_obj);
+    const bool include_initial = parse_bool(include_initial_obj, "include_initial");
     int axis;
     if (axis_obj.is_none()) {
         if (x.ndim != 1)
@@ -371,11 +373,8 @@ NDArray mean_keepdims(const NDArray& x, const Axes& ax) {
 }
 
 double parse_correction(nb::handle o) {
-    if (PyBool_Check(o.ptr()) || !(PyLong_Check(o.ptr()) || PyFloat_Check(o.ptr())))
-        throw nb::type_error("'correction' must be an int or a float");
-    const double c = PyFloat_AsDouble(o.ptr());
-    if (c == -1.0 && PyErr_Occurred()) throw nb::python_error();
-    return c;
+    if (const std::optional<double> c = real_value(o)) return *c;  // numpy integers too (API.md §2)
+    throw nb::type_error(("'correction' must be an int or a float, not " + py_type_name(o)).c_str());
 }
 
 // Two passes: the mean, then the sum of squared deviations from it, divided
@@ -411,16 +410,18 @@ NDArray var_keepdims(nb::handle x_obj, nb::handle axis_obj, nb::handle correctio
 
 }  // namespace
 
-nb::object sum(nb::handle x_obj, nb::handle axis, nb::handle dtype, bool keepdims) {
+nb::object sum(nb::handle x_obj, nb::handle axis, nb::handle dtype, nb::handle keepdims_obj) {
     const NDArray& x = require_ndarray(x_obj);
+    const bool keepdims = parse_bool(keepdims_obj, "keepdims");
     const Axes ax = parse_reduce_axes(x, axis);
     // Starts from +0, so an empty sum is 0 (and sum([-0.0]) is +0.0, as in numpy).
     return fold<ops::Add>(x, ax, accumulate_dtype(x, dtype), keepdims,
                           []<typename T>(std::type_identity<T>) { return T(0); });
 }
 
-nb::object prod(nb::handle x_obj, nb::handle axis, nb::handle dtype, bool keepdims) {
+nb::object prod(nb::handle x_obj, nb::handle axis, nb::handle dtype, nb::handle keepdims_obj) {
     const NDArray& x = require_ndarray(x_obj);
+    const bool keepdims = parse_bool(keepdims_obj, "keepdims");
     const Axes ax = parse_reduce_axes(x, axis);
     return fold<ops::Multiply>(x, ax, accumulate_dtype(x, dtype), keepdims,
                                []<typename T>(std::type_identity<T>) { return T(1); });
@@ -428,8 +429,9 @@ nb::object prod(nb::handle x_obj, nb::handle axis, nb::handle dtype, bool keepdi
 
 // max starts from the lowest value of the dtype, min from the highest: then
 // the first real element always replaces it (and -inf/-0.0 stay exact).
-nb::object max(nb::handle x_obj, nb::handle axis, bool keepdims) {
+nb::object max(nb::handle x_obj, nb::handle axis, nb::handle keepdims_obj) {
     const NDArray& x = require_ndarray(x_obj);
+    const bool keepdims = parse_bool(keepdims_obj, "keepdims");
     if (x.dtype == DType::Complex128) unsupported(x.dtype);  // docs/design/array.md §2.6
     const Axes ax = parse_reduce_axes(x, axis);
     require_nonempty(x, ax);
@@ -439,8 +441,9 @@ nb::object max(nb::handle x_obj, nb::handle axis, bool keepdims) {
     });
 }
 
-nb::object min(nb::handle x_obj, nb::handle axis, bool keepdims) {
+nb::object min(nb::handle x_obj, nb::handle axis, nb::handle keepdims_obj) {
     const NDArray& x = require_ndarray(x_obj);
+    const bool keepdims = parse_bool(keepdims_obj, "keepdims");
     if (x.dtype == DType::Complex128) unsupported(x.dtype);
     const Axes ax = parse_reduce_axes(x, axis);
     require_nonempty(x, ax);
@@ -451,31 +454,38 @@ nb::object min(nb::handle x_obj, nb::handle axis, bool keepdims) {
 }
 
 // any/all look at x != 0 (every dtype; nan counts as true).
-nb::object any(nb::handle x_obj, nb::handle axis, bool keepdims) {
+nb::object any(nb::handle x_obj, nb::handle axis, nb::handle keepdims_obj) {
     const NDArray& x = require_ndarray(x_obj);
+    const bool keepdims = parse_bool(keepdims_obj, "keepdims");
     return fold<ops::LogicalOr>(x, parse_reduce_axes(x, axis), DType::Bool, keepdims,
                                 []<typename T>(std::type_identity<T>) { return T(false); });
 }
 
-nb::object all(nb::handle x_obj, nb::handle axis, bool keepdims) {
+nb::object all(nb::handle x_obj, nb::handle axis, nb::handle keepdims_obj) {
     const NDArray& x = require_ndarray(x_obj);
+    const bool keepdims = parse_bool(keepdims_obj, "keepdims");
     return fold<ops::LogicalAnd>(x, parse_reduce_axes(x, axis), DType::Bool, keepdims,
                                  []<typename T>(std::type_identity<T>) { return T(true); });
 }
 
-nb::object mean(nb::handle x_obj, nb::handle axis, bool keepdims) {
+nb::object mean(nb::handle x_obj, nb::handle axis, nb::handle keepdims_obj) {
     const NDArray& x = require_ndarray(x_obj);
+    const bool keepdims = parse_bool(keepdims_obj, "keepdims");
     const Axes ax = parse_reduce_axes(x, axis);
     return finish(mean_keepdims(x, ax), ax, keepdims);
 }
 
-nb::object var(nb::handle x, nb::handle axis, nb::handle correction, bool keepdims) {
+nb::object var(nb::handle x, nb::handle axis, nb::handle correction, nb::handle keepdims_obj) {
+    require_ndarray(x);
+    const bool keepdims = parse_bool(keepdims_obj, "keepdims");
     Axes ax;
     NDArray v = var_keepdims(x, axis, correction, ax);
     return finish(std::move(v), ax, keepdims);
 }
 
-nb::object stddev(nb::handle x, nb::handle axis, nb::handle correction, bool keepdims) {
+nb::object stddev(nb::handle x, nb::handle axis, nb::handle correction, nb::handle keepdims_obj) {
+    require_ndarray(x);
+    const bool keepdims = parse_bool(keepdims_obj, "keepdims");
     Axes ax;
     NDArray v = var_keepdims(x, axis, correction, ax);
     double* p = reinterpret_cast<double*>(v.data);
@@ -483,29 +493,31 @@ nb::object stddev(nb::handle x, nb::handle axis, nb::handle correction, bool kee
     return finish(std::move(v), ax, keepdims);
 }
 
-nb::object argmin(nb::handle x, nb::handle axis, bool keepdims) { return arg_extreme_impl<false>(x, axis, keepdims); }
-nb::object argmax(nb::handle x, nb::handle axis, bool keepdims) { return arg_extreme_impl<true>(x, axis, keepdims); }
+nb::object argmin(nb::handle x, nb::handle axis, nb::handle keepdims) { return arg_extreme_impl<false>(x, axis, keepdims); }
+nb::object argmax(nb::handle x, nb::handle axis, nb::handle keepdims) { return arg_extreme_impl<true>(x, axis, keepdims); }
 
 void bind_reductions(nb::module_& m) {
     using nb::arg;
+    // .none() on every argument: None reaches the checks, which name the argument (API.md §2.1).
     const auto axis = arg("axis").none() = nb::none();
     const auto dtype = arg("dtype").none() = nb::none();
-    const auto keepdims = arg("keepdims") = false;
-    m.def("sum", named("sum", &sum), arg(), nb::kw_only(), axis, dtype, keepdims);
-    m.def("prod", named("prod", &prod), arg(), nb::kw_only(), axis, dtype, keepdims);
-    m.def("min", named("min", &min), arg(), nb::kw_only(), axis, keepdims);
-    m.def("max", named("max", &max), arg(), nb::kw_only(), axis, keepdims);
-    m.def("mean", named("mean", &mean), arg(), nb::kw_only(), axis, keepdims);
-    m.def("var", named("var", &var), arg(), nb::kw_only(), axis, arg("correction") = 0, keepdims);
-    m.def("std", named("std", &stddev), arg(), nb::kw_only(), axis, arg("correction") = 0, keepdims);
-    m.def("argmin", named("argmin", &argmin), arg(), nb::kw_only(), axis, keepdims);
-    m.def("argmax", named("argmax", &argmax), arg(), nb::kw_only(), axis, keepdims);
-    m.def("any", named("any", &any), arg(), nb::kw_only(), axis, keepdims);
-    m.def("all", named("all", &all), arg(), nb::kw_only(), axis, keepdims);
-    m.def("cumulative_sum", named("cumulative_sum", &cumulative<ops::Add>), arg(), nb::kw_only(), axis, dtype,
-          arg("include_initial") = false);
-    m.def("cumulative_prod", named("cumulative_prod", &cumulative<ops::Multiply>), arg(), nb::kw_only(), axis, dtype,
-          arg("include_initial") = false);
+    const auto keepdims = arg("keepdims").none() = false;
+    const auto correction = arg("correction").none() = 0;
+    m.def("sum", named("sum", &sum), arg().none(), nb::kw_only(), axis, dtype, keepdims);
+    m.def("prod", named("prod", &prod), arg().none(), nb::kw_only(), axis, dtype, keepdims);
+    m.def("min", named("min", &min), arg().none(), nb::kw_only(), axis, keepdims);
+    m.def("max", named("max", &max), arg().none(), nb::kw_only(), axis, keepdims);
+    m.def("mean", named("mean", &mean), arg().none(), nb::kw_only(), axis, keepdims);
+    m.def("var", named("var", &var), arg().none(), nb::kw_only(), axis, correction, keepdims);
+    m.def("std", named("std", &stddev), arg().none(), nb::kw_only(), axis, correction, keepdims);
+    m.def("argmin", named("argmin", &argmin), arg().none(), nb::kw_only(), axis, keepdims);
+    m.def("argmax", named("argmax", &argmax), arg().none(), nb::kw_only(), axis, keepdims);
+    m.def("any", named("any", &any), arg().none(), nb::kw_only(), axis, keepdims);
+    m.def("all", named("all", &all), arg().none(), nb::kw_only(), axis, keepdims);
+    m.def("cumulative_sum", named("cumulative_sum", &cumulative<ops::Add>), arg().none(), nb::kw_only(), axis, dtype,
+          arg("include_initial").none() = false);
+    m.def("cumulative_prod", named("cumulative_prod", &cumulative<ops::Multiply>), arg().none(), nb::kw_only(), axis, dtype,
+          arg("include_initial").none() = false);
 }
 
 }  // namespace sd

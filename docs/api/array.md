@@ -18,7 +18,8 @@
   - 함수의 본 인자. 예: `reshape`의 `shape`, `full`의 `fill_value`, `permute_dims`의 `axes`
 - **keyword-only (`*` 뒤)**: 이름이 붙은 옵션은 모두 keyword-only다.
   - 옵션 이름: `dtype`, `axis`, `keepdims`, `out`, `copy`, `stable`, `descending`, `correction`, `min`, `max`, `k`, `endpoint`, `include_initial`
-- **bool 옵션**(`keepdims`, `stable`, `descending`, `endpoint`, `include_initial`)은 `True`/`False`만 받는다. `0`, `1`은 `TypeError`다.
+- **bool 옵션**(`keepdims`, `stable`, `descending`, `endpoint`, `include_initial`)은 `True`/`False`만 받는다. `0`, `1`, `None`, `numpy.bool_`은 `TypeError`다. 메시지는 데이터프레임과 같다: `sort(): 'stable' must be True or False, not int` (API.md §2.1).
+- 옵션에 `None`을 주어도 그 옵션의 검사가 받는다. `None`이 뜻이 있는 옵션(`axis=None`, `dtype=None`, `copy=None`)이 아니면 다른 틀린 값과 같은 `TypeError`다. 예: `sort(x, axis=None)`은 `sort(): 'axis' must be an int, not NoneType`
 - **이름**
   - Python Array API Standard의 이름을 쓴다. 예: `acos`, `concat`, `pow`, `permute_dims`
   - Array API에 없는 함수만 numpy 이름을 쓴다 (`ravel`).
@@ -37,6 +38,9 @@
 - Python 스칼라로 꺼낸 다음에는 Python 의미론을 따른다. 오버플로가 없다.
 
 ### §1.3 shape과 axis 인자
+- **int 인자는 `operator.index`의 규칙으로 읽는다** (shape, axis와 아래의 그 밖의 int 인자 모두). Python int와 numpy 정수(`np.int64(3)`, `np.uint8(2)` 등 `__index__`가 있는 객체)는 int다. bool과 `numpy.bool_`은 int가 아니다(`TypeError`). 인덱싱(§5.1)이 이미 numpy 정수를 받으므로 int를 받는 모든 자리를 같게 했다. linalg와 데이터프레임도 같다 (API.md §2).
+  - 예: `zeros(np.int64(3))`, `eye(n)`(n이 numpy 정수), `sum(x, axis=np.int64(0))`, `linspace(0, 1, np.int64(5))`, `set_num_threads(np.int64(2))`
+  - int나 float를 받는 인자(`correction`)도 numpy 정수를 int로 받는다.
 - **shape**은 인자 하나로 받는다: int 또는 int의 tuple
   - 리스트, float, bool은 `TypeError`다.
   - int64 범위 밖의 int는 `OverflowError`다 (API.md §2).
@@ -95,7 +99,7 @@
   - 예: int64 배열 `+ 2**70`은 에러, float64 배열 `+ 2**70`은 정상이다.
   - 예: `divide(int64 배열, 2**70)`, `atan2(int64 배열, 2**70)`, `sqrt(2**70)`도 에러다. `divide(float64 배열, 2**70)`은 정상이다.
   - 그 밖의 곳은 변환 대상 dtype이 기준이다. 예: `asarray([2**70, 0.5])`는 정상, `asarray([2**70])`는 에러다. `full_like(float64 배열, 2**70)`은 정상이다.
-- 예외: `arange`의 int 인자는 `dtype=`과 상관없이 int64 범위여야 한다.
+- `arange`도 같은 규칙이다: int 인자는 결과가 int64(또는 bool)일 때만 int64가 되어야 한다. `dtype=sd.float64`나 `sd.complex128`이면 int64 범위 밖의 int도 float로 읽는다 (§3.4).
 
 ### §1.6 수치 의미론
 - **원소 연산은 값 때문에 실패하지 않는다.** 각 dtype은 자기 dtype의 표준 산술을 따른다.
@@ -184,7 +188,9 @@ eye(n_rows, n_cols=None, /, *, k=0, dtype=None)
 - **받는 입력**
   - `sd.ndarray`
   - 중첩 시퀀스: `list`와 `tuple`만 받는다. 원소는 Python `bool`, `int`, `float`, `complex`(numpy 스칼라 포함, §1.4) 또는 `sd.ndarray`다.
-    - `range`, 문자열, `None`은 `TypeError`다.
+    - 문자열, `None`은 `TypeError`다.
+  - `range`: 그 int의 리스트로 받는다. `asarray(range(3))`은 `asarray([0, 1, 2])`와 같다. 데이터프레임도 `range`를 받는다 (frame.md §2.1). 맨 바깥에서만이다: 리스트 안의 `range`는 원소로 받지 않는다.
+    - generator와 그 밖의 iterable은 `TypeError`다. 데이터프레임도 같다.
   - 버퍼 프로토콜 객체: 예: numpy 배열, `bytes`, `memoryview` (§3.3)
   - Python 스칼라는 0차원이 되므로 `ValueError`다 (§1.2).
 - **중첩 시퀀스의 dtype 추론**
@@ -193,7 +199,7 @@ eye(n_rows, n_cols=None, /, *, k=0, dtype=None)
   - `[]`는 shape `(0,)`, `[[]]`는 shape `(1, 0)`이다. 원소가 없으면 dtype은 float64다.
 - **복사 여부** (`copy=None`)
   - `sd.ndarray`이고 dtype 변환이 없으면 **`x` 자신**을 반환한다.
-  - 시퀀스는 언제나 복사한다. 그래서 `copy=False`이면 `ValueError`다.
+  - 시퀀스와 `range`는 언제나 복사한다. 그래서 `copy=False`이면 `ValueError`다.
   - 버퍼는 §3.3을 따른다.
 
 ### §3.3 버퍼 프로토콜로 가져오기
@@ -207,18 +213,22 @@ eye(n_rows, n_cols=None, /, *, k=0, dtype=None)
   - `float16`/`float32` → float64
   - `complex64` → complex128
   - `copy=False`이면 `ValueError`다.
-- **그 외 format은 `TypeError`다.** 예: `uint64`(int64로 바꾸면 손실), 문자열, big-endian 바이트 순서
+- **big-endian 바이트 순서**(format `>`, `!`)도 받는다. 값은 native 순서의 같은 배열과 같다. 바이트를 뒤집어야 하므로 언제나 복사한다(`copy=False`이면 `ValueError`). 바이트 하나짜리(`?`, `b`, `B`)는 순서가 없어서 native와 같다. 데이터프레임도 같다 (frame.md §2.4).
+- **그 외 format은 `TypeError`다.** 예: `uint64`, 문자열
+  - `uint64`는 dtype만 보고 거부한다. 값이 모두 int64 범위 안이어도, `dtype=`을 주어도 `TypeError`다 (int64로 바꾸면 손실이 날 수 있는 dtype이다. §1.5의 "dtype으로만 판단"과 같은 원리). 데이터프레임도 같다.
 - 0차원 버퍼는 `ValueError`, 32차원을 넘는 버퍼도 `ValueError`다.
 
 ### §3.4 `arange`, `linspace`, `eye`
 - **`arange(start, stop=None, step=1, /, *, dtype=None)`**
   - 인자 셋 모두 positional-only다.
   - 인자가 하나면 그 값이 `stop`이고 `start`는 0이다. 예: `arange(5)`
-  - 인자는 실수(Python `bool`, `int`, `float`)만 받는다. complex는 `TypeError`다.
+  - 인자는 실수(Python `bool`, `int`, `float`, numpy 스칼라 포함)만 받는다. complex와 그 밖의 타입은 `TypeError`다: `arange(): 'start' must be a bool, int or float, not str`
   - 길이는 `ceil((stop - start) / step)`이고, 음수이면 0이다.
   - `step == 0`은 `ValueError`다.
   - float 값은 `start + i*step`으로 계산한다. numpy와 몇 ULP 다를 수 있다.
   - `dtype=`을 주면 위의 값을 그 dtype으로 명시적 변환한다. 예: `arange(0, 3, 0.5, dtype=sd.int64)`는 `[0, 0, 1, 1, 2, 2]`다.
+  - 인자가 모두 int이고 int64 범위 안이면 값을 int64로 정확히 계산한 뒤 변환한다. 예: `arange(2**62, 2**62 + 3, dtype=sd.float64)`는 `[2**62, 2**62, 2**62]`(float64로 반올림)이다.
+  - **결과가 float64나 complex128(`dtype=`)이면 int 인자를 float로 읽는다**: 인자 중 하나라도 int64 범위 밖이면 모든 인자를 float64로 바꿔(반올림) float로 계산한다. 예: `arange(0, 2**70, 2**68, dtype=sd.float64)`는 `[0.0, 2.0**68, 2.0**69, 3 * 2.0**68]`이다. 결과가 int64나 bool이면 범위 밖의 int는 `OverflowError`다 (§1.5).
   - 인자에 NaN이나 inf가 있으면 `ValueError`다. 길이를 정할 수 없기 때문이다.
 - **`linspace(start, stop, num, /, *, dtype=None, endpoint=True)`**
   - `num`은 필수다. int만 받는다(bool 제외). 음수는 `ValueError`다.
@@ -314,7 +324,7 @@ astype(x, dtype, /, *, copy=True)
   - Python `bool`, `int`, `float`, `complex`
   - `sd.ndarray`
   - `asarray`가 받는 시퀀스와 버퍼. `asarray`로 변환한 뒤 대입한다.
-- **원소 하나를 고르는 인덱스에는 Python 스칼라만 대입할 수 있다.** 배열이나 리스트는 `ValueError`다.
+- **원소 하나를 고르는 인덱스에는 Python 스칼라만 대입할 수 있다.** 배열, 리스트, 문자열 등 그 밖의 값은 타입이 틀린 것이므로 `TypeError`다: `x[0] = 'a'`, `x[0] = [7]`, `x[0] = sd.asarray([7])`. 메시지는 `only a bool, int, float or complex can be assigned to a single element, not list`다.
 - **브로드캐스팅은 엄격하다.** `value`는 선택된 영역의 shape으로 `broadcast_to`될 수 있어야 한다.
   - numpy처럼 `value`의 앞쪽 길이-1 축을 떼어내지 않는다. 예: shape `(3,)` 자리에 `(1, 3)`은 `ValueError`다.
 - 하향 변환은 `TypeError`다 (§1.5). int64 범위 밖 Python int를 int64 배열에 넣으면 `OverflowError`다.

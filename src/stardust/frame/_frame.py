@@ -22,7 +22,7 @@ def _check_columns(columns, func=None):
     columns = list(columns)
     for c in columns:
         if not isinstance(c, str):
-            raise TypeError(named(func, f"column names must be str, got {type(c).__name__}"))  # docs/api/frame.md §1.7
+            raise TypeError(named(func, f"column names must be str, not {type_name(c)}"))  # docs/api/frame.md §1.7
     if len(set(columns)) != len(columns):
         raise ValueError(named(func, "column names must be unique"))
     return columns
@@ -122,7 +122,7 @@ class DataFrame(Reductions):
         """The column `name`. For indexing (func None) a missing one is
         KeyError(name), as in a dict; a public function names itself."""
         if not isinstance(name, str):
-            raise TypeError(named(func, f"column names are str, got {type(name).__name__}"))
+            raise TypeError(named(func, f"column names must be str, not {type_name(name)}"))
         try:
             return self._cols[name]
         except KeyError:
@@ -142,7 +142,7 @@ class DataFrame(Reductions):
     def __setitem__(self, name, value):
         """df["c"] = value: a new column at the end, or a whole column replaced (docs/api/frame.md §5.7)."""
         if not isinstance(name, str):
-            raise TypeError(f"column names are str, got {type(name).__name__}")
+            raise TypeError(f"column names must be str, not {type_name(name)}")
         n = len(self._index)
         if isinstance(value, DataFrame):
             raise TypeError("assign a Series, a list or a scalar to a column")
@@ -182,9 +182,8 @@ class DataFrame(Reductions):
         """A DataFrame with f(column) (or f(column, per_column[name])) for each column."""
         if per_column is None:
             return DataFrame._new({k: f(c) for k, c in self._cols.items()}, self._index)
-        unknown = [k for k in per_column if k not in self._cols]
-        if unknown:
-            raise KeyError(f"{func}(): no columns {unknown}")
+        for k in per_column:  # the first missing one, as every other column argument (_column)
+            self._column(k, func)
         return DataFrame._new({k: f(c, per_column[k]) if k in per_column else c for k, c in self._cols.items()}, self._index)
 
     def _reduce(self, op, skipna, correction):
@@ -454,6 +453,8 @@ def _from_dict(data, dtype, target):
         if length is None:
             length = len(col)
         elif len(col) != length:
+            if target is not None:  # index= sets the length: say so (DESIGN.md §8.4)
+                raise ValueError(f"DataFrame(): column {k!r} has {len(col)} values, but 'index' has {length} labels")
             raise ValueError("DataFrame(): all columns must have the same length")
         cols[k] = col
     if length is None:
@@ -523,8 +524,8 @@ class _FrameIndexer:
         if isinstance(key, slice):
             return names[key]
         if isinstance(key, list) or _select.is_array(key):  # a numpy array or sd.ndarray of positions too
-            return [names[_select.by_position(len(names), j)[1]] for j in _select.array_items(key)]
-        return names[_select.by_position(len(names), key)[1]]
+            return [names[_select.by_position(len(names), j, "columns")[1]] for j in _select.array_items(key)]
+        return names[_select.by_position(len(names), key, "columns")[1]]
 
     def __getitem__(self, key):
         df = self._df

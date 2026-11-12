@@ -16,7 +16,7 @@ std::string where(const Input& x) { return std::string(x.func()) + "(): '" + x.a
 Input::Input(nb::handle obj, const char* func, const char* arg) : func_(func), arg_(arg) {
     if (!is_ndarray(obj)) {
         throw nb::type_error((std::string(func) + "(): '" + arg + "' must be an sd.ndarray, not " +
-                              Py_TYPE(obj.ptr())->tp_name)
+                              py_type_name(obj))
                                  .c_str());
     }
     x_ = &as_ndarray(obj);

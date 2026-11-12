@@ -61,6 +61,22 @@ def test_scalars_are_rejected_no_zero_dim(scalar):
         sd.asarray(scalar)
 
 
+def test_range_is_its_list_and_generators_are_rejected():
+    # DESIGN.md §10.1 #12: a range as the list of its ints (the frame takes one too); not a generator
+    for r in (range(5), range(0), range(10, -3, -4), range(2**62, 2**62 + 3)):
+        assert_same(sd.asarray(r), np.asarray(list(r), dtype=np.int64) if len(r) else np.asarray([], dtype=np.float64))
+    assert sd.asarray(range(3), dtype=sd.float64).tolist() == [0.0, 1.0, 2.0]
+    assert sd.asarray(range(3), copy=True).tolist() == [0, 1, 2]
+    with pytest.raises(ValueError, match=r"^asarray\(\): copy=False, but a range can only be converted by copying$"):
+        sd.asarray(range(3), copy=False)
+    with pytest.raises(OverflowError):
+        sd.asarray(range(2**63, 2**63 + 1))
+    with pytest.raises(TypeError, match=r"^asarray\(\): cannot convert an object of type 'generator' to an array$"):
+        sd.asarray(i for i in range(3))
+    with pytest.raises(TypeError):
+        sd.asarray(iter([1, 2]))
+
+
 def test_int_out_of_int64_range_overflows_only_when_target_is_int64():
     with pytest.raises(OverflowError):
         sd.asarray([2**63])

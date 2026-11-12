@@ -347,7 +347,7 @@ def fill_column(col, value, func):
     if value is NA or value is None:
         return col
     if not _ops.is_operand_scalar(value):
-        raise TypeError(f"{func}(): 'value' must be a scalar, not {type(value).__name__}")
+        raise TypeError(f"{func}(): 'value' must be None, a bool, int, float or str, not {type(value).__name__}")
     return col.fill_na(_column.implicit_scalar(value, col.dtype, func))  # implicit, by dtype (docs/api/frame.md §3.6)
 
 

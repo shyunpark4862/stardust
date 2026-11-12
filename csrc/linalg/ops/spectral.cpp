@@ -12,6 +12,7 @@
 // vectors at rounding level (docs/design/linalg.md §10.5).
 #include "linalg/ops/spectral.hpp"
 #include "bind/errors.hpp"
+#include "bind/pyutil.hpp"
 
 #include "linalg/args.hpp"
 #include "linalg/cost.hpp"
@@ -233,9 +234,8 @@ CondOrd parse_cond_ord(nb::handle o) {
         const std::string s = nb::cast<std::string>(o);
         if (s == "fro") return CondOrd::Fro;
         if (s == "nuc") return CondOrd::Nuc;
-    } else if (!PyBool_Check(o.ptr()) && (PyLong_Check(o.ptr()) || PyFloat_Check(o.ptr()))) {
-        const double p = PyFloat_AsDouble(o.ptr());
-        if (p == -1.0 && PyErr_Occurred()) throw nb::python_error();  // an int too large for a double
+    } else if (const std::optional<double> r = real_value(o)) {  // numpy integers too (API.md §2)
+        const double p = *r;
         if (p == 2) return CondOrd::Two;
         if (p == -2) return CondOrd::NegTwo;
         if (p == 1) return CondOrd::One;
@@ -244,7 +244,7 @@ CondOrd parse_cond_ord(nb::handle o) {
         if (p == -kInf) return CondOrd::NegInf;
     } else {  // a wrong type: TypeError, as in vector_norm (docs/api/linalg.md §3)
         throw nb::type_error(("cond(): 'ord' must be a str, an int or a float, not " +
-                              std::string(Py_TYPE(o.ptr())->tp_name))
+                              py_type_name(o))
                                  .c_str());
     }
     throw nb::value_error("cond(): 'ord' must be 'fro', 'nuc', 1, -1, 2, -2, inf or -inf");
@@ -344,11 +344,11 @@ nb::object cond(nb::handle xo, nb::handle ord_o) {
 void bind_spectral(nb::module_& m) {
     m.def("eigh", named("eigh", &eigh), nb::arg().none(), nb::arg().none() = nb::none());
     m.def("eigvalsh", named("eigvalsh", &eigvalsh), nb::arg().none(), nb::arg().none() = nb::none());
-    m.def("svd", named("svd", &svd), nb::arg().none(), nb::kw_only(), nb::arg("mode") = "reduced");
+    m.def("svd", named("svd", &svd), nb::arg().none(), nb::kw_only(), nb::arg("mode").none() = "reduced");
     m.def("svdvals", named("svdvals", &svdvals), nb::arg().none());
     m.def("matrix_rank", named("matrix_rank", &matrix_rank), nb::arg().none(), nb::kw_only(), nb::arg("rtol").none() = nb::none());
     m.def("pinv", named("pinv", &pinv), nb::arg().none(), nb::kw_only(), nb::arg("rtol").none() = nb::none());
-    m.def("cond", named("cond", &cond), nb::arg().none(), nb::kw_only(), nb::arg("ord") = 2);
+    m.def("cond", named("cond", &cond), nb::arg().none(), nb::kw_only(), nb::arg("ord").none() = 2);
 }
 
 }  // namespace sd::linalg

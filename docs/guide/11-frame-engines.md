@@ -144,7 +144,7 @@ t = sd.frame.read_csv(str(p))
 print(t.dtypes)  # {'id': int64, 'v': float64, 'name': string}
 print(t["v"].isna().tolist(), t["name"].tolist())  # [False, True, False] ['a, b', '', 'c']
 p.write_text("x\n1.5\n9007199254740993\n")
-print(sd.frame.read_csv(str(p)).dtypes)  # {'x': string}
+print(sd.frame.read_csv(str(p)).dtypes)  # {'x': float64}
 p.write_text('x\n"abc\n')
 try:
     sd.frame.read_csv(str(p))

@@ -1028,7 +1028,11 @@ void setitem(nb::handle x, nb::handle key, nb::handle value) {
         // One element. Only a Python scalar fits: an array, even of shape
         // (1,), does not broadcast to () (strict broadcasting). No engine
         // needed either -- convert the value and store it.
-        if (!kind) throw nb::value_error("only a Python scalar can be assigned to a single element");
+        // A wrong type of value: TypeError, like x[0] = 1j into a float array (docs/api/array.md §5).
+        if (!kind)
+            throw nb::type_error(
+                ("only a bool, int, float or complex can be assigned to a single element, not " + py_type_name(value))
+                    .c_str());
         check_assignable(*kind, dst.dtype);
         visit_dtype(dst.dtype, [&]<typename T>(std::type_identity<T>) {
             const T v = scalar_from_python<T>(value, *kind);

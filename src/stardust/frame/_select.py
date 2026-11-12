@@ -75,11 +75,14 @@ def label_slice(index, key):
     return slice(start, stop, step).indices(n)
 
 
-def by_position(n, key):
+def by_position(n, key, what="rows"):
+    """A selection of `n` positions (`what`: rows, or columns for df.iloc[:, j]).
+    A key of the wrong kind is an IndexError, as an array index of the wrong
+    kind (API.md §2)."""
     if _is_int(key):
         pos = int(key) + n if key < 0 else int(key)
         if not 0 <= pos < n:
-            raise IndexError(f"position {key} is out of range for {n} rows")
+            raise IndexError(f"position {key} is out of range for {n} {what}")
         return ("one", pos)
     if isinstance(key, slice):
         return ("slice", *key.indices(n))
@@ -87,11 +90,12 @@ def by_position(n, key):
         positions = array_items(key)
         for p in positions:
             if not _is_int(p):
-                raise TypeError(f"positions must be ints, got {type(p).__name__}")
+                raise IndexError(f"positions must be ints, not {type(p).__name__}")
             if not -n <= p < n:
-                raise IndexError(f"position {p} is out of range for {n} rows")
+                raise IndexError(f"position {p} is out of range for {n} {what}")
         return ("take", Column.from_list([int(p) + n if p < 0 else int(p) for p in positions], None, "int64"))
-    raise TypeError(f"cannot select rows by position with {type(key).__name__}")
+    raise IndexError(f"cannot select {what} by position with {type(key).__name__}; "
+                     "use an int, a slice or a list of ints")
 
 
 def positions_column(sel):

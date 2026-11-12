@@ -245,8 +245,8 @@ nb::object solve_sylvester(nb::handle ao, nb::handle bo, nb::handle co) {
 void bind_special(nb::module_& m) {
     m.def("solve_tridiagonal", named("solve_tridiagonal", &solve_tridiagonal), nb::arg().none(), nb::arg().none(), nb::arg().none(),
           nb::arg().none());
-    m.def("solve_banded", named("solve_banded", &solve_banded), nb::arg().none(), nb::arg().none(), nb::kw_only(), nb::arg("lower_bandwidth"),
-          nb::arg("upper_bandwidth"));
+    m.def("solve_banded", named("solve_banded", &solve_banded), nb::arg().none(), nb::arg().none(), nb::kw_only(), nb::arg("lower_bandwidth").none(),
+          nb::arg("upper_bandwidth").none());
     m.def("solve_sylvester", named("solve_sylvester", &solve_sylvester), nb::arg().none(), nb::arg().none(), nb::arg().none());
     m.def("_set_schur_pair_min", [](std::int64_t n) { kSchurPairMin = n; });  // experiments only
 }

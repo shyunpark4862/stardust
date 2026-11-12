@@ -3,6 +3,7 @@
 // Three sources, in this order:
 //   1. an ndarray            -> returned as is, or converted/copied
 //   2. nested lists / tuples -> shape discovered, dtype inferred, values copied
+//      (a range as the list of its ints)
 //   3. the buffer protocol   -> zero-copy when the element type matches exactly
 //                               (e.g. a numpy float64 array), else a converting copy
 
@@ -81,7 +82,7 @@ void validate(PyObject* o, size_t depth, const std::vector<std::int64_t>& shape,
     if (depth == shape.size()) {
         if (auto d = scalar_dtype(o)) return merge(*d);
         if (is_seq(o) || is_ndarray(o)) ragged(shape);
-        throw nb::type_error(("cannot store an object of type '" + std::string(Py_TYPE(o)->tp_name) +
+        throw nb::type_error(("cannot store an object of type '" + py_type_name(nb::handle(o)) +
                               "' in an array (only bool, int, float and complex)").c_str());
     }
     if (is_ndarray(o)) {
@@ -132,11 +133,17 @@ nb::object from_nested(nb::handle obj, std::optional<DType> dtype) {
 // Element types we can read from a foreign buffer (docs/design/array.md §12.3).
 enum class Src { Bool, I8, I16, I32, I64, U8, U16, U32, U64, F16, F32, F64, C64, C128 };
 
-Src parse_format(const char* format, Py_ssize_t itemsize) {
+// `swapped`: the elements are big-endian ('>' or '!'), so their bytes are
+// reversed on the way in (a copy, never a shared view; docs/api/array.md §3.2).
+// This machine is little-endian (Apple silicon, docs/design/array.md §1.3).
+Src parse_format(const char* format, Py_ssize_t itemsize, bool& swapped) {
     const std::string fmt = format ? format : "B";  // NULL format means unsigned bytes
     size_t i = 0;
-    if (!fmt.empty() && (fmt[0] == '>' || fmt[0] == '!'))
-        throw nb::type_error("buffers with non-native (big-endian) byte order are not supported");
+    swapped = false;
+    if (!fmt.empty() && (fmt[0] == '>' || fmt[0] == '!')) {
+        swapped = itemsize > 1;
+        i = 1;
+    }
     if (!fmt.empty() && (fmt[0] == '@' || fmt[0] == '=' || fmt[0] == '<')) i = 1;
     const std::string code = fmt.substr(i);
     auto unsupported = [&]() -> Src {
@@ -211,6 +218,19 @@ void visit_src(Src s, F&& f) {
     __builtin_unreachable();
 }
 
+// An element stored big-endian: each part's bytes reversed (a complex number
+// is two parts, its real and imaginary halves).
+template <typename S>
+S load_swapped(const std::byte* p) {
+    constexpr std::size_t part = std::is_same_v<S, std::complex<float>> || std::is_same_v<S, std::complex<double>>
+                                     ? sizeof(S) / 2
+                                     : sizeof(S);
+    std::byte tmp[sizeof(S)];
+    for (std::size_t k = 0; k < sizeof(S); k += part)
+        for (std::size_t b = 0; b < part; ++b) tmp[k + b] = p[k + part - 1 - b];
+    return load<S>(tmp);
+}
+
 // __fp16 is a storage-only type; do arithmetic conversions from float.
 template <typename S>
 auto widen(S v) {
@@ -231,7 +251,8 @@ nb::object from_buffer(nb::handle obj, std::optional<DType> dtype, std::optional
     if (PyObject_GetBuffer(obj.ptr(), &view, PyBUF_RECORDS_RO) != 0) throw nb::python_error();
     ViewGuard guard{&view};
 
-    const Src src = parse_format(view.format, view.itemsize);
+    bool swapped = false;
+    const Src src = parse_format(view.format, view.itemsize, swapped);
     const DType natural = natural_dtype(src);
     if (view.ndim == 0) throw nb::value_error(kNoZeroDim);
     if (view.ndim > kMaxNdim)
@@ -260,7 +281,8 @@ nb::object from_buffer(nb::handle obj, std::optional<DType> dtype, std::optional
     // must hold only 0 and 1; any other byte makes it a normalizing copy.
     // The OR of all bytes is at most 1 exactly then (a branch-free scan).
     bool valid = true;
-    if (target == DType::Bool && is_storage_of(src, target) && aligned && copy != true) {
+    const bool shareable = is_storage_of(src, target) && !swapped;
+    if (target == DType::Bool && shareable && aligned && copy != true) {
         std::uint8_t any = 0;
         foreign.update_flags();
         if (foreign.c_contiguous) {
@@ -273,7 +295,7 @@ nb::object from_buffer(nb::handle obj, std::optional<DType> dtype, std::optional
         valid = any <= 1;
     }
 
-    if (is_storage_of(src, target) && aligned && valid && copy != true) {
+    if (shareable && aligned && valid && copy != true) {
         foreign.data = static_cast<std::byte*>(view.buf);
         foreign.writeable = !view.readonly;
         foreign.base = nb::borrow(view.obj ? view.obj : obj.ptr());
@@ -289,9 +311,13 @@ nb::object from_buffer(nb::handle obj, std::optional<DType> dtype, std::optional
     NDArray dst = new_array_like(foreign, target);  // keeps the source's memory order
     visit_src(src, [&]<typename S>(std::type_identity<S>) {
         visit_dtype(target, [&]<typename T>(std::type_identity<T>) {
-            for_each_element<2>(dst.shape_span(), {static_cast<std::byte*>(view.buf), dst.data},
-                                {foreign.strides.data(), dst.strides.data()},
-                                [](std::byte* ps, std::byte* pd) { store(pd, cast_value<T>(widen(load<S>(ps)))); });
+            auto run = [&](auto&& load_one) {
+                for_each_element<2>(dst.shape_span(), {static_cast<std::byte*>(view.buf), dst.data},
+                                    {foreign.strides.data(), dst.strides.data()},
+                                    [&](std::byte* ps, std::byte* pd) { store(pd, cast_value<T>(widen(load_one(ps)))); });
+            };
+            if (swapped) run([](const std::byte* p) { return load_swapped<S>(p); });
+            else run([](const std::byte* p) { return load<S>(p); });
         });
     });
     return wrap(std::move(dst));
@@ -315,8 +341,14 @@ nb::object asarray(nb::handle obj, nb::handle dtype_obj, nb::handle copy_obj) {
         if (copy == false) throw nb::value_error("copy=False, but a list or tuple can only be converted by copying");
         return from_nested(obj, dtype);
     }
+    if (PyRange_Check(obj.ptr())) {  // as the list of its ints (the frame takes a range too, docs/api/array.md §3.2)
+        if (copy == false) throw nb::value_error("copy=False, but a range can only be converted by copying");
+        nb::object items = nb::steal(PySequence_List(obj.ptr()));
+        if (!items.is_valid()) throw nb::python_error();
+        return from_nested(items, dtype);
+    }
     if (PyObject_CheckBuffer(obj.ptr())) return from_buffer(obj, dtype, copy);
-    throw nb::type_error(("cannot convert an object of type '" + std::string(Py_TYPE(obj.ptr())->tp_name) +
+    throw nb::type_error(("cannot convert an object of type '" + py_type_name(obj) +
                           "' to an array").c_str());
 }
 

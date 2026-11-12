@@ -175,7 +175,6 @@ def test_unknown_dtype_errors(dtype):
         (np.array([1, 2], dtype=np.int8), "int64"),
         (np.array([1, 2], dtype=np.int32), "int64"),
         (np.array([1, 2], dtype=np.uint32), "int64"),
-        (np.array([2**63 - 1], dtype=np.uint64), "int64"),
         (np.array([1.5], dtype=np.float16), "float64"),
         (np.array([1.5], dtype=np.float32), "float64"),
         (np.array([True, False]), "bool"),
@@ -191,8 +190,16 @@ def test_numpy_widening(arr, dtype):
 
 
 def test_numpy_errors():
-    with pytest.raises(OverflowError):
-        sd.frame.Series(np.array([2**63], dtype=np.uint64))
+    # uint64 by its dtype, whatever the values, as sd.asarray (DESIGN.md §10.1 #10)
+    for arr in (np.array([1], dtype=np.uint64), np.array([2**63], dtype=np.uint64)):
+        with pytest.raises(TypeError, match=r"^Series\(\): uint64 buffers cannot be converted to int64 without loss$"):
+            sd.frame.Series(arr)
+        with pytest.raises(TypeError, match="uint64"):
+            sd.frame.Series(arr, dtype="float64")
+        with pytest.raises(TypeError, match="uint64"):
+            sd.frame.DataFrame({"a": arr})
+        with pytest.raises(TypeError, match="uint64"):
+            sd.frame.Index(arr)
     with pytest.raises(TypeError):
         sd.frame.Series(np.array([1 + 2j]))
     with pytest.raises(ValueError):
@@ -648,3 +655,37 @@ def test_frame_objects_pickle():
     sliced = pickle.loads(pickle.dumps(df.iloc[1:]))  # a slice pickles its own rows
     assert sliced["s"].tolist() == [NA, "é"] and sliced["b"].tolist() == [False, NA] and sliced.index.tolist() == [6, 7]
     assert (sliced["i"] + 1).tolist() == [NA, 4]
+
+
+def test_construction_messages_name_the_problem():
+    # DESIGN.md §8.4 and §10.3: the message says what is wrong
+    with pytest.raises(ValueError, match=r"^DataFrame\(\): column 'a' has 2 values, but 'index' has 3 labels$"):
+        sd.frame.DataFrame({"a": [1, 2]}, index=[1, 2, 3])
+    with pytest.raises(ValueError, match=r"^DataFrame\(\): all columns must have the same length$"):
+        sd.frame.DataFrame({"a": [1, 2], "b": [1]})
+    for labels in ([None], [None, None], [sd.frame.NA]):
+        with pytest.raises(ValueError, match=r"^Index\(\): an index cannot hold NA$"):
+            sd.frame.Index(labels)
+    with pytest.raises(TypeError, match=r"^Index\(\): index labels must be int64 or string, not float64$"):
+        sd.frame.Index([1.5, None])
+    df = sd.frame.DataFrame({"a": [1, None]})
+    with pytest.raises(KeyError, match=r"astype\(\): no column 'zz'"):
+        df.astype({"zz": "float64"})
+    with pytest.raises(KeyError, match=r"fillna\(\): no column 'zz'"):
+        df.fillna({"a": 0, "zz": 1})
+    # column names: one message everywhere
+    for call in (lambda: df[1], lambda: df.__setitem__(1, [1, 2]), lambda: sd.frame.DataFrame({1: [1]}),
+                 lambda: df.groupby("a")[1], lambda: sd.frame.merge(df, df, on=[1])):
+        with pytest.raises(TypeError, match=r"column names must be str, not int$"):
+            call()
+
+
+def test_complex_values_are_values_the_frame_cannot_store():
+    msg = r"cannot store an object of type 'complex' in a column \(only bool, int, float, str and None\)$"
+    df = sd.frame.DataFrame({"a": [1, 2]})
+    for call in (lambda: sd.frame.Series([1j]), lambda: sd.frame.DataFrame({"a": [1], "b": 1j}),
+                 lambda: df.__setitem__("c", 1j), lambda: sd.frame.Series([1, 2]).iloc.__setitem__(0, 1j)):
+        with pytest.raises(TypeError, match=msg):
+            call()
+    with pytest.raises(TypeError, match=r"^fillna\(\): 'value' must be None, a bool, int, float or str, not complex$"):
+        sd.frame.Series([1.0, None]).fillna(1j)

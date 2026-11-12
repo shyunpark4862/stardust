@@ -411,8 +411,10 @@ void argsort_lane(const std::byte* x, std::byte* o, const LaneCtx& c) {
 }
 
 template <bool Arg>
-nb::object sort_impl(nb::handle x_obj, nb::handle axis_obj, bool descending, bool stable) {
+nb::object sort_impl(nb::handle x_obj, nb::handle axis_obj, nb::handle descending_obj, nb::handle stable_obj) {
     const NDArray& x = require_ndarray(x_obj);
+    const bool descending = parse_bool(descending_obj, "descending");
+    const bool stable = parse_bool(stable_obj, "stable");
     if (x.dtype == DType::Complex128)
         throw nb::type_error("not supported for complex128 (no ordering)");  // docs/design/array.md §2.6
     const int axis = normalize_axis(parse_int(axis_obj, "axis"), x.ndim);
@@ -534,14 +536,15 @@ nb::object unique_all(nb::handle x) {
 
 void bind_sort(nb::module_& m) {
     using nb::arg;
-    m.def("sort", named("sort", &sort_impl<false>), arg(), nb::kw_only(), arg("axis") = -1, arg("descending") = false,
-          arg("stable") = true);
-    m.def("argsort", named("argsort", &sort_impl<true>), arg(), nb::kw_only(), arg("axis") = -1, arg("descending") = false,
-          arg("stable") = true);
-    m.def("unique_values", named("unique_values", &unique_values), arg());
-    m.def("unique_counts", named("unique_counts", &unique_counts), arg());
-    m.def("unique_inverse", named("unique_inverse", &unique_inverse), arg());
-    m.def("unique_all", named("unique_all", &unique_all), arg());
+    // .none() on every argument: None reaches the checks, which name the argument (API.md §2.1).
+    m.def("sort", named("sort", &sort_impl<false>), arg().none(), nb::kw_only(), arg("axis").none() = -1,
+          arg("descending").none() = false, arg("stable").none() = true);
+    m.def("argsort", named("argsort", &sort_impl<true>), arg().none(), nb::kw_only(), arg("axis").none() = -1,
+          arg("descending").none() = false, arg("stable").none() = true);
+    m.def("unique_values", named("unique_values", &unique_values), arg().none());
+    m.def("unique_counts", named("unique_counts", &unique_counts), arg().none());
+    m.def("unique_inverse", named("unique_inverse", &unique_inverse), arg().none());
+    m.def("unique_all", named("unique_all", &unique_all), arg().none());
 }
 
 }  // namespace sd

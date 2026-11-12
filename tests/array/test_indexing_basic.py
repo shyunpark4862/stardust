@@ -155,10 +155,16 @@ def test_setitem_strict_broadcasting():
     _, a = grid(2, 3)
     with pytest.raises(ValueError):
         a[0] = sd.asarray([[1.0, 2.0, 3.0]])  # (1, 3) into (3,): numpy would drop the leading 1
-    with pytest.raises(ValueError):
+    # a single element takes a scalar only: anything else is a wrong type (DESIGN.md §10.3)
+    msg = r"^only a bool, int, float or complex can be assigned to a single element, not "
+    with pytest.raises(TypeError, match=msg + "ndarray$"):
         a[0, 0] = sd.asarray([5.0])  # an array never fits a single element
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError, match=msg + "list$"):
         a[0, 0] = [5.0]
+    with pytest.raises(TypeError, match=msg + "str$"):
+        a[0, 0] = "a"
+    with pytest.raises(TypeError, match=msg + "NoneType$"):
+        a[1] = sd.zeros(3); a[1, 2] = None
     with pytest.raises(ValueError):
         a[:] = sd.asarray([1.0, 2.0])
 

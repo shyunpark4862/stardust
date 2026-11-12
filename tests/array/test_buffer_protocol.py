@@ -43,12 +43,36 @@ def test_lossless_widening_copies(np_dtype, target):
 
 
 def test_lossy_or_foreign_formats_are_rejected():
-    with pytest.raises(TypeError):
-        sd.asarray(np.array([1], dtype=np.uint64))
-    with pytest.raises(TypeError):
-        sd.asarray(np.array([1.0], dtype=">f8"))
+    # uint64 by its dtype, whatever the values (DESIGN.md §10.1 #10), with dtype= too
+    for arr in (np.array([1], dtype=np.uint64), np.array([2**64 - 1], dtype=np.uint64)):
+        with pytest.raises(TypeError, match=r"^asarray\(\): uint64 buffers cannot be converted to int64 without loss$"):
+            sd.asarray(arr)
+        with pytest.raises(TypeError):
+            sd.asarray(arr, dtype=sd.float64)
     with pytest.raises(TypeError):
         sd.asarray(np.array(["a"]))
+
+
+@pytest.mark.parametrize("code", [">i2", ">i4", ">i8", ">u2", ">u4", ">f2", ">f4", ">f8", ">c8", ">c16", ">?", ">i1"])
+def test_big_endian_buffers_are_read_by_value(code):
+    # DESIGN.md §10.1 #10: the values are the same as the native array's; always a copy
+    values = np.array([[1, 0], [3, 120]]) * ((1 - 2j) if code[1] == "c" else 1)
+    src = values.astype(code)
+    a = sd.asarray(src)
+    assert (a.base is src) == (code == ">?")  # a bool byte has no order: shared; int8 widens anyway
+    native = src.astype(src.dtype.newbyteorder("="))
+    assert_same(a, native.astype({"b": np.bool_, "i": np.int64, "u": np.int64, "f": np.float64,
+                                  "c": np.complex128}[src.dtype.kind]))
+    if src.dtype.itemsize > 1:
+        with pytest.raises(ValueError, match="can only be converted by copying"):
+            sd.asarray(src, copy=False)
+
+
+def test_big_endian_strided_and_with_dtype():
+    src = np.arange(12.0).reshape(3, 4).astype(">f8")[::2, ::-1]
+    assert_same(sd.asarray(src), np.ascontiguousarray(src).astype(np.float64))
+    assert sd.asarray(np.array([1.5, -2.5], dtype=">f8"), dtype=sd.int64).tolist() == [1, -2]
+    assert sd.asarray(np.array([7], dtype=">i8"), copy=True).tolist() == [7]
 
 
 def test_zero_dim_buffers_are_rejected():

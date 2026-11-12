@@ -29,6 +29,8 @@ EXPECTED = {
         (r"^setattr (shape|dtype) err$", "§9.5: assigning an attribute names it (message)"),
         (r"^(ufunc (real|imag) pyscalar [bifc] err|pyscalar real complex err)$", "§9.5: real and imag take Python scalars, like conj"),
         (r"^ufunc (real|imag) (list|numpy) err$", "§9.5: real and imag take Python scalars: the message lists them (message)"),
+        # M8 (DESIGN.md §10)
+        (r"^setitem elem with (array|list) err$", "§10.3: a single element takes a scalar only: anything else is a TypeError"),
     ],
     "linalg": [
         (r"^trace/err numpy dtype$", "§9.2: the dtype message names the accepted names (message)"),
@@ -78,10 +80,13 @@ EXPECTED = {
          r"|err value_counts name count|err df value_counts count column)$",
          "§10.2: value_counts' columns are values and counts, as unique_counts' fields"),
         (r"^repr (big index|columns|index .*)$", "§10.2: Index repr writes dtype=int64, as the array's repr"),
+        (r"^(err )?ctor numpy uint64( max int64| too big)?$",
+         "§10.1 #10: a numpy uint64 array is a TypeError by its dtype, as in sd.asarray, whatever its values"),
+        (r"^err sel iloc (str|float|list float)$", "§10.3: a position key of the wrong kind is an IndexError, as an array index"),
     ],
 }
 
 EXPECTED_MESSAGES = {
-    area: [(r".", "§9.7: one error-message format (func(): 'arg' ..., no document section numbers)")]
+    area: [(r".", "§9.7, §10.3: one error-message format (func(): 'arg' ..., short type names, no document section numbers)")]
     for area in ("array", "linalg", "frame")
 }

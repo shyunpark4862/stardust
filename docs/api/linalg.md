@@ -45,12 +45,14 @@
 | `dtype` | 누적 dtype | dtype 객체, 그 이름, 또는 `None` | `trace` |
 | `lower_bandwidth`, `upper_bandwidth` | 띠의 아래·위 폭 | 0 이상의 `int` | `solve_banded` |
 
-- **bool 옵션**(`upper`, `unit_diagonal`, `keepdims`)은 `True`/`False`만 받는다. `0`, `1`, `None`은 `TypeError`다.
-- **int 인자**(`k`, `n`, `axis`, 대역폭)는 `int`만 받는다. `bool`과 `float`은 `TypeError`, int64 범위 밖은 `OverflowError`다 (API.md §2, 배열 영역과 같다).
-- **`mode`**: 다른 문자열은 `ValueError`, 문자열이 아니면 `TypeError`다.
+- **옵션의 검사와 메시지는 배열·데이터프레임과 같다** (API.md §2.1). `None`을 주어도 그 옵션의 검사가 받는다. `None`이 뜻이 있는 옵션(`axis=None`, `rtol=None`, `dtype=None`)이 아니면 다른 틀린 값과 같은 `TypeError`다. 예: `svd(x, mode=None)`은 `svd(): 'mode' must be 'reduced' or 'complete', not NoneType`
+- **bool 옵션**(`upper`, `unit_diagonal`, `keepdims`)은 `True`/`False`만 받는다. `0`, `1`, `None`, `numpy.bool_`은 `TypeError`다: `cholesky(): 'upper' must be True or False, not int`
+- **int 인자**(`k`, `n`, `axis`, 대역폭)는 `operator.index`의 규칙으로 읽는다: `int`와 numpy 정수(`np.int64(2)`)를 받는다. `bool`, `numpy.bool_`, `float`은 `TypeError`, int64 범위 밖은 `OverflowError`다 (API.md §2, 배열 영역과 같다).
+  - 메시지: `matrix_power(): 'n' must be an int, not float`. `vector_norm`의 `axis`는 tuple과 list도 받으므로 `'axis' must be an int or a tuple or list of ints, not float`다 (배열과 같다).
+- **`mode`**: 다른 문자열은 `ValueError`, 문자열이 아니면 `TypeError`다. 메시지는 데이터프레임의 문자열 옵션과 같다: `'mode' must be 'reduced' or 'complete', not 'full'`, `..., not NoneType`
 - **`rtol`**
   - `None`이면 `max(M, N) · eps`다. `eps`는 float64의 머신 엡실론이다.
-  - 유한한 0 이상의 `int` 또는 `float`이다. 음수, NaN, inf는 `ValueError`다.
+  - 유한한 0 이상의 `int` 또는 `float`이다(numpy 정수 포함). 음수, NaN, inf는 `ValueError`다.
   - `bool`, 배열, 문자열은 `TypeError`다. 배치마다 다른 허용오차(배열)는 받지 않는다.
   - float로 바꿀 수 없을 만큼 큰 int는 `OverflowError`다.
 - **`dtype`**: dtype 객체나 그 이름을 받는다 (API.md §1). 다른 것은 `TypeError`다.
@@ -302,7 +304,7 @@ matrix_rank(x, /, *, rtol=None)
   - `axis`는 `int`, `tuple`, `None`이다. `None`이면 모든 축이다. `()`이면 아무 축도 줄이지 않는다(원소별 크기).
     - 리스트도 tuple처럼 받는다. 예: `axis=[0, 1]`. 배열 영역의 `axis`와 같다 (array.md §1.3).
     - 중복이나 범위 밖은 `ValueError`다 (array.md §1.3).
-  - `ord`는 `int` 또는 `float`이다. `bool`과 문자열은 `TypeError`, NaN은 `ValueError`다.
+  - `ord`는 `int` 또는 `float`이다. numpy 정수는 그 int다(`ord=np.int64(1)`은 `ord=1`). `bool`, `numpy.bool_`, 문자열, `None`은 `TypeError`, NaN은 `ValueError`다.
 
     | `ord` | 값 |
     |---|---|
@@ -323,7 +325,7 @@ matrix_rank(x, /, *, rtol=None)
     | `1` / `-1` | 열 절댓값 합의 최댓값 / 최솟값 | 아니다 |
     | `2` / `-2` | 가장 큰 / 가장 작은 특이값 | SVD |
     | `inf` / `-inf` | 행 절댓값 합의 최댓값 / 최솟값 | 아니다 |
-    - 같은 값의 `float`도 받는다. 예: `ord=1.0`
+    - 같은 값의 `float`와 numpy 정수도 받는다. 예: `ord=1.0`, `ord=np.int64(1)`
     - `str`, `int`, `float`가 아닌 타입은 `TypeError`다. `bool`(`True`)도 `TypeError`다 (`vector_norm`과 같다).
     - 타입은 맞지만 위에 없는 값은 `ValueError`다. 예: `ord=3`, 대소문자가 다른 문자열(`'FRO'`)
   - SVD를 쓰는 `ord`는 유한성을 검사하고, `svdvals`와 같은 특이값을 쓴다 (§1.9).

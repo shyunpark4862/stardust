@@ -1,5 +1,6 @@
 #include "frame/convert.hpp"
 
+#include "bind/pyutil.hpp"
 #include "frame/ops/cast.hpp"
 
 #include <cstring>
@@ -16,7 +17,7 @@ namespace {
 // What a Python value is, for dtype inference.
 enum class Kind : std::uint8_t { NA, Bool, Int, Float, Str };
 
-std::string type_name(PyObject* o) { return Py_TYPE(o)->tp_name; }
+std::string type_name(PyObject* o) { return py_type_name(nb::handle(o)); }
 
 Kind classify(PyObject* o, PyObject* na) {
     if (o == Py_None || o == na) return Kind::NA;
@@ -251,16 +252,8 @@ Column from_numpy(const nb::ndarray<nb::ro, nb::ndim<1>, nb::device::cpu>& arr) 
         case 8: widen<std::int64_t, std::uint8_t>(out, data, n, stride); break;
         case 16: widen<std::int64_t, std::uint16_t>(out, data, n, stride); break;
         case 32: widen<std::int64_t, std::uint32_t>(out, data, n, stride); break;
-        case 64: {
-            const auto* in = static_cast<const std::uint64_t*>(data);
-            for (std::int64_t i = 0; i < n; ++i) {
-                const std::uint64_t v = in[i * stride];
-                if (v > static_cast<std::uint64_t>(INT64_MAX))
-                    throw std::overflow_error("uint64 value " + std::to_string(v) + " does not fit in int64");
-                out[i] = static_cast<std::int64_t>(v);
-            }
-            break;
-        }
+        case 64:  // by dtype, not by value, as sd.asarray (DESIGN.md §10.1 #10)
+            throw nb::type_error("uint64 buffers cannot be converted to int64 without loss");
         default: return unsupported();
         }
         return col;

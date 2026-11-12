@@ -164,6 +164,28 @@ def test_malformed_files(tmp_path, text, match):
         sd.frame.read_csv(p)
 
 
+@pytest.mark.parametrize("text", ['a,b\n1,x"y\n', 'a,b\n1,x"y"z\n', 'a,b\n1,x"y\n2,3\n', 'a,b\n1,x"\n'])
+def test_a_stray_quote_has_one_message(tmp_path, text):
+    # the same mistake, wherever it is and however many quotes follow (DESIGN.md §8.4, §10.3)
+    p = tmp_path / "t.csv"
+    p.write_text(text)
+    with pytest.raises(ValueError, match=r"line 2: a quote inside an unquoted field$"):
+        sd.frame.read_csv(p)
+
+
+def test_an_open_quote_is_never_closed(tmp_path):
+    p = tmp_path / "t.csv"
+    p.write_text('a,b\n1,"y\n2,3\n')
+    with pytest.raises(ValueError, match=r"line 2: a quoted field is never closed$"):
+        sd.frame.read_csv(p)
+
+
+def test_path_must_be_a_path():
+    for bad, shown in ((1, "int"), (None, "NoneType"), (["a.csv"], "list")):
+        with pytest.raises(TypeError, match=rf"^read_csv\(\): 'path' must be a str or a path-like object, not {shown}$"):
+            sd.frame.read_csv(bad)
+
+
 @pytest.mark.parametrize("values", [
     [2**53 + 1, 0.5], [2**63, 1], [-(2**63) - 1, 2], [2**70, 3.25, None], [12345678901234567890123, 1.0],
     [2**63 - 1, 1.5], [-(2**63), 0.5], [9007199254740993, 9007199254740995, 1e300],

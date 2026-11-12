@@ -8,14 +8,12 @@ name the operation.
 """
 
 
-from ._errors import check_bool, type_name
+from ._errors import check_bool, check_real
 
 
 def _check_correction(correction, func):
-    # the array area's rule: an int or a float, bool excluded
-    if isinstance(correction, bool) or not isinstance(correction, (int, float)):
-        raise TypeError(f"{func}(): 'correction' must be an int or a float, not {type_name(correction)}")
-    return float(correction)
+    # the array area's rule: an int or a float (numpy numbers too), bool excluded
+    return check_real(correction, "correction", func)
 
 
 def _skipna(skipna, func):
