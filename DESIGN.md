@@ -88,7 +88,7 @@ stardust-numpy, stardust-linalg, stardust-pandas를 하나의 라이브러리 `s
 - 공유하는 것: Buffer, 스레드풀, pairwise 합, NEON 보조 함수, 빌드 플래그, dtype 정의(§4.2)
 
 ### 4.2 dtype
-- **C++**: `base/dtype.hpp`의 enum 하나 (`Bool, Int64, Float64, Complex128, String, Datetime64`). 배열은 앞의 넷, Column은 `Complex128`을 뺀 다섯을 받는다 (ARCHITECTURE §4.3).
+- **C++**: `base/dtype.hpp`의 enum 하나 (`Bool, Int64, Float64, Complex128, String`; `Datetime64`는 frame이 구현할 때 더한다, M4). 배열은 앞의 넷, Column은 `Complex128`을 뺀 다섯을 받는다 (ARCHITECTURE §4.3).
   - 지금은 numpy와 pandas가 같은 이름 `sd::DType`에 다른 값(`Complex128` / `String`)을 쓴다. 한 모듈에서는 어차피 둘 중 하나로 정리해야 한다.
 - **사용자가 dtype을 쓰는 방식** (§6 Q5): 지금 둘이 다르다.
   - 배열: dtype 객체(`sdnp.float64`)만 받고, `.dtype`도 객체다. 문자열과 Python 타입은 거부한다.

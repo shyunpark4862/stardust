@@ -51,6 +51,10 @@ public:
     // The caller counts. An atomic copy of workers_.size() + 1: any thread
     // may ask while set_num_threads rebuilds workers_ (reading the vector
     // itself raced with that; docs/design/array.md §10.3).
+    // Whether a job holds the pool now (another Python thread's, with its GIL
+    // released). A call that sees this runs serially (available()).
+    bool busy() const { return busy_.load(std::memory_order_relaxed); }
+
     int threads() const { return nthreads_.load(std::memory_order_relaxed); }
 
     void resize(int n) {
@@ -206,16 +210,16 @@ int num_threads() { return pool().threads(); }
 
 void set_num_threads(int n) { pool().resize(n); }
 
-bool available() { return !t_in_task && pool().threads() > 1; }
+bool available() { return !t_in_task && pool().threads() > 1 && !pool().busy(); }
 
 
 void parallel_for(std::int64_t ntasks, const std::function<void(std::int64_t)>& fn) {
     if (ntasks <= 0) return;
+    GilRelease release;  // a no-op inside a task, where the GIL is already released
     if (ntasks == 1 || !available()) {
         for (std::int64_t t = 0; t < ntasks; ++t) fn(t);  // nested or single: plain loop
         return;
     }
-    GilRelease release;
     pool().run(ntasks, fn);
 }
 

@@ -30,6 +30,9 @@ public:
     Buffer& operator=(const Buffer&) = delete;
 
     std::byte* data() const { return data_; }
+    // Bytes of data (what was allocated or adopted). Column slices check their
+    // ranges against it.
+    std::int64_t size() const { return size_; }
 
     // Arrays of up to kInline bytes keep their data inside the Buffer object
     // itself, which make_shared allocates together with the reference count:
@@ -45,6 +48,7 @@ public:
 private:
     void* raw_ = nullptr;  // pointer returned by malloc/calloc (own memory only)
     std::byte* data_ = nullptr;
+    std::int64_t size_ = 0;
     bool external_ = false;
     Py_buffer view_{};
     alignas(kAlignment) std::byte inline_[kInline];

@@ -9,9 +9,9 @@
 #pragma once
 
 #include "array/iter.hpp"
-#include "base/neon.hpp"
+#include "array/kernels/neon.hpp"
 #include "array/kernels/scalar_ops.hpp"
-#include "accelerate/vforce.hpp"
+#include "array/kernels/vforce.hpp"
 
 #include <array>
 #include <type_traits>
@@ -139,7 +139,7 @@ struct LoopEntry {
     Loop loop = nullptr;
     DType out = DType::Bool;
 };
-using LoopTable = std::array<LoopEntry, kNumDTypes>;
+using LoopTable = std::array<LoopEntry, kNumArrayDTypes>;
 
 namespace detail {
 

@@ -48,9 +48,9 @@ void cast_loop(std::byte* const* args, std::int64_t n, const std::int64_t* strid
 
 namespace detail {
 template <typename From>
-inline constexpr std::array<Loop, kNumDTypes> cast_row = {
+inline constexpr std::array<Loop, kNumArrayDTypes> cast_row = {
     cast_loop<From, bool>, cast_loop<From, std::int64_t>, cast_loop<From, double>, cast_loop<From, complex128>};
-inline constexpr std::array<std::array<Loop, kNumDTypes>, kNumDTypes> cast_table = {
+inline constexpr std::array<std::array<Loop, kNumArrayDTypes>, kNumArrayDTypes> cast_table = {
     cast_row<bool>, cast_row<std::int64_t>, cast_row<double>, cast_row<complex128>};
 }  // namespace detail
 

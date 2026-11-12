@@ -73,8 +73,9 @@
 - SME 직접 사용 (§1.1)
 
 ### 1.5 층 사이의 의존
-- 배열 영역의 C++은 `csrc/base/`(Buffer, dtype, NEON 보조), `csrc/parallel/`(스레드풀), `csrc/accelerate/`(vForce), `csrc/array/`(ndarray, 이터레이터, 커널, 연산), `csrc/bind/`(nanobind)로 나뉜다.
-- 지금 `base/neon.hpp`와 `accelerate/vforce.hpp`는 연산 정의(`array/kernels/scalar_ops.hpp`)를 include한다. 아래 층이 위 층을 아는 유일한 곳이다. 통합 중 M4에서 정리한다.
+- 배열 영역의 C++은 `csrc/base/`(Buffer, dtype, pairwise 합), `csrc/parallel/`(스레드풀), `csrc/accelerate/`(BLAS, vForce 래퍼), `csrc/array/`(ndarray, 이터레이터, 커널, 연산, 병렬화 기준값), `csrc/bind/`(nanobind)로 나뉜다.
+- **아래 층은 위 층을 모른다.** `base/`, `parallel/`, `accelerate/`는 `array/`를 include하지 않는다.
+  - NEON 커널(`array/kernels/neon.hpp`)과 "어느 연산이 vForce로 가는가"의 표(`array/kernels/vforce.hpp`)는 배열의 연산 정의(`ops::Maximum`, `ops::Exp` …)에 묶여 있어서 배열 영역에 둔다. `accelerate/vforce.hpp`에는 연산과 무관한 부분(함수 타입, `vvpow`/`vvatan2`의 인자 순서를 맞추는 래퍼, strided 실행기)만 있다.
 
 ---
 
@@ -178,11 +179,10 @@
 ## 3. 데이터 모델
 
 ### 3.1 DType (`base/dtype.hpp`)
-- `enum class DType : uint8_t { Bool, Int64, Float64, Complex128 }`. 값의 크기 순서가 승격 순서다.
+- `enum class DType : uint8_t { Bool, Int64, Float64, Complex128, String }`. 배열은 앞의 넷(`kNumArrayDTypes`, `is_array_dtype`)을 쓰고, 그 값의 크기 순서가 승격 순서다. `String`은 frame의 컬럼용이다 (DESIGN §4.2).
 - 저장 타입: `bool`, `int64_t`, `double`, `std::complex<double>`.
-- `visit_dtype(d, f)`가 런타임 dtype을 컴파일 시점 타입으로 바꾼다. 템플릿 함수 하나가 dtype마다 한 번씩 인스턴스화된다.
+- `visit_dtype(d, f)`가 런타임 dtype을 컴파일 시점 타입으로 바꾼다. 템플릿 함수 하나가 dtype마다 한 번씩 인스턴스화된다. 배열 dtype만 받는다 (`String`을 넘기지 않는 것은 호출하는 쪽의 몫이다).
 - Python 쪽 dtype 객체는 C++가 만든 싱글턴 넷이다. 그래서 dtype 비교는 동일성 비교다 (`bind/pyutil.hpp`).
-- 통합 중 M4에서 `String`, `Datetime64`가 더해지고 `visit_dtype`이 배열용과 Column용으로 나뉜다 (ARCHITECTURE §4.3).
 
 ### 3.2 Buffer (`base/buffer.hpp`)
 참조 카운트로 수명을 관리하는 메모리 블록이다. 여러 배열(뷰)이 한 Buffer를 공유한다.
@@ -192,7 +192,7 @@
   - 그래서 작은 배열 하나의 할당이 세 번(Buffer, 데이터, `shared_ptr` 제어 블록)에서 한 번이 된다 (§11).
   - 대가로 모든 Buffer 객체가 256B 커진다. 큰 배열에서는 무시할 만하다.
 - **외부 메모리** (`adopt`): 버퍼 프로토콜로 가져온 메모리다. `Py_buffer`를 쥐고 있다가 소멸할 때 release한다. 마지막 소유자는 GIL이 없는 곳(워커 스레드)에서 사라질 수 있으므로 소멸자가 GIL을 잡는다.
-- 통합 중 M4에서 pandas판과 합쳐 `size()`가 더해진다 (ARCHITECTURE §4.2).
+- `size()`: 데이터의 바이트 수(할당한 크기, 또는 가져온 버퍼의 `len`). frame의 Column이 범위를 확인할 때 쓴다.
 
 ### 3.3 NDArray (`array/ndarray.hpp`)
 배열은 Buffer를 읽는 방법에 대한 **설명**이다. 원소 `(i0, …, ik)`는 `data + Σ i_d·strides[d]`에 있다 (strides는 바이트 단위). 전치, 슬라이스, 브로드캐스트는 이 설명만 바꾸고 메모리는 건드리지 않는다.
@@ -289,7 +289,7 @@ numpy `nditer`의 축소판이다. N차원 문제를 되도록 적고, 길고, �
 - `sqrt`, `floor`/`ceil`/`trunc`/`round`, `abs`, `square`, `sign`은 손으로 짜지 않는다. 연속 루프를 컴파일러가 NEON으로 벡터화한다 (`fsqrt.2d`, `frintm.2d` 등이 바이너리에 있음을 확인했다).
 - 같은 dtype의 연속 복사(캐스트 표의 대각선)는 `memcpy`다. OS가 칩에 맞춰 튜닝한 함수다 (`x.copy()` 118 → 94µs, numpy와 같음).
 
-### 5.2 손으로 짠 NEON (`base/neon.hpp`)
+### 5.2 손으로 짠 NEON (`array/kernels/neon.hpp`)
 컴파일러의 벡터화가 부족한 곳에만 둔다. 모든 커널은 스칼라 정의(`scalar_ops.hpp`)와 비트가 같아야 하고, 테스트가 세 레이아웃(연속, 스칼라 브로드캐스트, strided)을 모두 비트로 비교한다.
 - **float64 `maximum`/`minimum`**: `FMAX`/`FMIN` 명령 하나가 IEEE 754-2019 maximum/minimum이다(NaN 전파, `-0 < +0`). 스칼라 정의는 분기 셋(NaN, NaN, ±0)이라 자동 벡터화하면 비교와 선택이 늘어 오히려 느려진다(0.66배). 명령 하나로 3.9배, 캐시 안에서는 원소당 0.77 → 0.16ns다. 레지스터 두 개씩 처리해 load를 더 띄운다. 한쪽이 스칼라인 경우(`maximum(x, 0.0)`)도 같은 커널이다.
 - **`clip`**: `minimum(maximum(x, lo), hi)`를 한 패스로 한다. `FMAX` 다음 `FMIN`이라 의미가 정확히 같다. 두 경계가 모두 스칼라인 흔한 경우는 splat을 루프 밖에서 한 번만 한다. 1스레드 143µs, numpy 230µs (원래의 범용 루프는 910µs).
@@ -304,7 +304,7 @@ numpy `nditer`의 축소판이다. N차원 문제를 되도록 적고, 길고, �
 - complex 초월함수는 C 라이브러리의 C99 함수(`cexp` 등)를 스칼라로 부른다. libc++의 `std::exp(complex)`는 자체 구현이라 numpy와 다르다. C++에는 `<complex.h>`가 없어 직접 선언한다.
 - 반올림 `round`는 `rint`(현재 모드 = 가장 가까운 짝수)다.
 
-### 5.4 vForce (`accelerate/vforce.hpp`)
+### 5.4 vForce (`array/kernels/vforce.hpp`, `accelerate/vforce.hpp`)
 float64 초월함수는 함수마다 구현을 나눈다.
 - **vForce를 쓰는 16개**: `exp` `log` `log2` `log10` `sin` `asin` `acos` `atan` `sinh` `cosh` `tanh` `asinh` `acosh` `atanh`, 이항 `pow` `atan2`
 - **libm을 쓰는 넷**: `expm1` `log1p` `cos` `tan`. vForce가 IEEE / C99 Annex F 의미론을 어긴다: `cos(±0) ≠ 1`, `expm1`/`log1p`/`tan`이 `-0`의 부호를 잃음, `expm1`이 서브노멀 입력을 0으로 만듦.
@@ -326,7 +326,7 @@ float64 초월함수는 함수마다 구현을 나눈다.
   - 비연속 입력, 스칼라(stride 0), 비연속 출력은 커널 안에서 1024원소(8KB) 스택 버퍼에 모으고 흩는다. 레이아웃과 상관없이 vForce 경로를 탄다.
   - int/bool 입력은 버퍼 캐스팅(§4.3)을 거쳐 float64로 넘긴다.
   - 스칼라 입력도 n=1로 같은 경로를 탄다. 그래야 `exp(x)[i] == exp(x[i])`가 성립한다.
-- 통합 중 M4에서 BLAS·LAPACK 래퍼와 함께 `accelerate/`에 정리된다.
+- 어느 연산이 vForce로 가는지는 `array/kernels/vforce.hpp`의 표가, vForce 호출과 strided 처리는 `accelerate/vforce.hpp`가 맡는다 (§1.5).
 
 ---
 
@@ -349,7 +349,7 @@ numpy의 `DOUBLE_pairwise_sum`/`CDOUBLE_pairwise_sum`과 같은 알고리즘, �
   - 속도: 덧셈 지연에 묶인 사슬 하나가 8개가 된다. 순차 합 대비 5.6배다.
   - 정확도: 오차가 n이 아니라 log n에 비례해 자란다. 원소 1e7개의 상대 오차가 3.7e-14에서 0이 된다.
   - 알고리즘과 순서가 같으니 결과가 numpy와 비트까지 같다.
-- **병렬**: 재귀 트리는 n에만 의존한다. 4096개(`kLeaf = kTaskWork`, complex는 2048개) 이하인 부분 트리를 잎으로 삼아 병렬로 계산하고, 같은 트리를 따라 합친다 (`pairwise_parallel`). 덧셈 하나하나가 직렬 계산과 같은 순서이므로 **스레드 수와 상관없이 numpy와 비트가 같다.** 원소 300만 개에서 1스레드와 10스레드 모두 `sum(x) == np.sum(x)`를 테스트한다.
+- **병렬**: 재귀 트리는 n에만 의존한다. 4096개(`kLeaf = kParallelTask`, complex는 2048개) 이하인 부분 트리를 잎으로 삼아 병렬로 계산하고, 같은 트리를 따라 합친다 (`pairwise_parallel`). 덧셈 하나하나가 직렬 계산과 같은 순서이므로 **스레드 수와 상관없이 numpy와 비트가 같다.** 원소 300만 개에서 1스레드와 10스레드 모두 `sum(x) == np.sum(x)`를 테스트한다.
 - `var`의 두 번째 패스(편차 제곱합)도 안쪽 축이면 같은 pairwise로 접는다.
 - **정의는 `base/pairwise.hpp` 한 벌이다**: 트리 모양, 잎의 합, 병렬 계획(`plan`)과 합치기(`combine`). 배열의 `pairwise_sum`, `pairwise_parallel`(`array/kernels/reduce.hpp`)은 항을 접근자로 넘겨 그것을 부른다. linalg도 같은 정의를 쓴다 (docs/design/linalg.md §8.2). 통합 중 M4에서 frame도 같은 정의를 쓴다.
   - 잎의 합(`pairwise::leaf`, `leaf_complex`)은 `[[gnu::always_inline]]`이다. 배열은 트리 → 람다 → 잎 → 접근자 람다의 여러 겹으로 부르는데, 잎이 인라인되지 않으면 원소마다 호출이 남아 1스레드 `sum(f)`(원소 100만 개)가 110µs에서 152µs로 느려졌다(잰 값).
@@ -372,7 +372,7 @@ numpy의 `DOUBLE_pairwise_sum`/`CDOUBLE_pairwise_sum`과 같은 알고리즘, �
 - 블록마다 출력의 사본(시작값으로 채움)에 접고(풀에서 병렬), 사본들을 블록 순서대로 출력에 접는다. 모든 접기의 시작값은 다시 접어도 값이 그대로다 (`0 + p`, `1 × p`, `max(최솟값, p)`, `false ∨ p`).
 - **쓰는 조건**: 이터레이터의 분할 계획(`NdIter::plan`)이 태스크를 8개보다 적게 만들고, 일이 병렬 기준값 이상이고, (출력이 원소 2개 이상이거나 형변환이 있을 때).
   - 형변환이 있는 전체 리덕션(`sum(bool)`, `mean(int64)`)은 버퍼 캐스팅이 커널에 4096원소씩 넘기므로 커널이 구간을 나눌 수 없다. 블록이 없으면 1스레드로 돈다 (bool 1e7개 `sum`: 1스레드 1.47ms, 10스레드 1.33ms).
-- **블록 수**: 가장 긴 줄이는 축을 `min(16, extent/32, 일/(8·kTaskWork))`개로 나눈다. 2개 미만이거나 원래 계획의 태스크 수보다 많지 않으면 나누지 않는다.
+- **블록 수**: 가장 긴 줄이는 축을 `min(16, extent/32, 일/(8·kParallelTask))`개로 나눈다. 2개 미만이거나 원래 계획의 태스크 수보다 많지 않으면 나누지 않는다.
   - 상한 16(`kMaxBlocks`).
   - 블록 하나는 인덱스 32개 이상(`kMinBlock`): 블록마다 출력 크기만큼의 일(사본 채우기, 마지막 접기)이 더 든다. (64, 2000)을 8행짜리 블록 8개로 나누면 1스레드가 30% 느리다. 하한 32면 이 비용이 약 10분의 1이다.
 - 블록 구조는 shape, 레이아웃, dtype만으로 정한다. 스레드가 1개여도 같은 구조로 계산한다. 그래서 스레드 수와 무관하게 같은 비트이고, float 덧셈·곱셈은 numpy와 비트가 다를 수 있다. max/min, any/all, 정수 합은 그래도 같다.
@@ -596,13 +596,13 @@ dtype과 레인 길이만 본다. 데이터를 보고 고르지 않는다 (§1.4
   - 원소 하나(벡터 × 벡터): `dot`. complex는 `cblas_zdotu_sub`(켤레 없음, matmul은 켤레를 취하지 않는다)
 - **레이아웃**: BLAS는 포인터, leading dimension, 전치 플래그로 행렬을 읽는다. 행이나 열 중 한 방향이 연속이면 그대로 넘긴다. 열이 연속이면 "cols×rows 행 우선 행렬의 전치"로 넘긴다. 그 외에는 연속 행 우선 복사본을 만든다. 벡터의 stride가 0이거나 음수면 복사한다.
 - 한 행렬은 항상 BLAS 호출 하나다. 그래서 배치를 어떻게 나눠도 비트가 같다.
-- 통합 중 M4에서 cblas 호출부가 `accelerate/blas.hpp`로 옮겨진다.
+- BLAS 호출은 `accelerate/blas.hpp`의 `blas::dot`, `blas::gemv`, `blas::gemm`(float64와 complex128을 템플릿 하나로)을 거친다.
 
 ### 9.3 int64 커널 (int64, bool)
 - 자체 커널이다. 루프 순서는 i-k-j라서 가장 안쪽 루프가 b의 한 행과 c의 한 행을 걷는다. 블로킹과 패킹은 하지 않는다. 곱셈과 덧셈은 wrap한다.
 - **곱셈은 스칼라 + 4배 언롤**이다. AArch64 NEON에는 64비트 정수 벡터 곱셈이 없다. 독립 곱셈-덧셈 4개가 곱셈기를 바쁘게 한다.
   - 언롤에는 이유가 하나 더 있다. 명령어 7개짜리 루프는 반복마다 명령 인출 속도에 묶이고, 64바이트 인출 블록 경계를 가로지르면 1.7배 느려진다. 같은 소스가 링커가 놓는 주소에 따라 7.5ms와 12.9ms로 갈렸다(`-falign-loops=64`로 확인). 몸체가 커지면 위치에 둔감해진다. 정렬 옵션은 넣지 않는다.
-- **병렬**: 출력 행 묶음을 태스크로 한다. 태스크 하나는 곱셈-덧셈 약 4096개(`kTaskWork`) 분량의 행이다. 행끼리 독립이므로 나누는 방식이 비트를 바꾸지 않는다. 태스크가 하나뿐이면 직렬이다.
+- **병렬**: 출력 행 묶음을 태스크로 한다. 태스크 하나는 곱셈-덧셈 약 4096개(`kParallelTask`) 분량의 행이다. 행끼리 독립이므로 나누는 방식이 비트를 바꾸지 않는다. 태스크가 하나뿐이면 직렬이다.
 - 결과: 300³ 1스레드 5.16ms, 10스레드 784µs, numpy 8.47ms. 500³은 10스레드에서 7.5배 (§10.6).
 
 ### 9.4 배치
@@ -641,11 +641,13 @@ dtype과 레인 길이만 본다. 데이터를 보고 고르지 않는다 (§1.4
 - 태스크의 예외는 하나만 잡아 호출 스레드에서 다시 던진다.
 - 워커는 macOS QoS `USER_INTERACTIVE`로 올려 P코어가 비어 있으면 P코어에 머문다.
 - 풀은 소멸시키지 않는다. 인터프리터 종료 중에 스레드를 join하는 것은 불안정하고, 종료하면 OS가 회수한다.
-- 통합 중 M4에서 pandas판 풀(상위 집합)로 바뀌고 기준값은 영역별 상수로 옮겨진다 (ARCHITECTURE §4.1).
+- 풀은 모든 영역이 같이 쓴다. 언제 나눌지(기준값)는 영역의 몫이다: 배열은 `array/parallel_limits.hpp`의 `kParallelThreshold`, `kParallelTask` (§10.4).
+- `parallel::FirstRow`: 여러 태스크가 검사하다 실패한 가장 앞의 위치(행, 원소)를 고른다. 스레드 수와 무관하게 같은 위치를 에러로 보고하기 위해서다 (frame이 쓴다).
 
 ### 10.2 GIL
-- `parallel_for`가 실제로 병렬로 돌 때만 GIL을 놓는다 (`GilRelease`). 다른 Python 스레드는 그동안 계속 돈다.
-- 호출 스레드 혼자 도는 작업(기준값 미만, 1스레드, 중첩)은 GIL을 쥔 채 돈다.
+- `parallel_for`는 부르면 언제나 GIL을 놓는다 (`GilRelease`). 풀이 바빠 직렬로 돌게 되어도 놓는다. 다른 Python 스레드는 그동안 계속 돈다.
+- `parallel_for`를 부를지(일이 기준값 이상인지)는 호출하는 쪽이 정한다. 기준값 미만, 1스레드, 중첩인 작업은 `parallel_for`를 부르지 않고 GIL을 쥔 채 돈다.
+- `available()`은 풀이 다른 Python 스레드의 일로 바쁘면 false다. 그런 호출은 어차피 직렬로 도므로, 경로를 고르는 알고리즘이 직렬 경로를 고른다(같은 결과, 나눠 놓고 직렬로 도는 것보다 빠름).
 - 태스크 안에서는 Python 객체를 만지지 않는다. `NDArray` 복사도 `base` 참조 횟수를 바꾸므로 태스크 밖에서 미리 한다 (§6.5).
 
 ### 10.3 스레드 수
@@ -660,8 +662,8 @@ dtype과 레인 길이만 본다. 데이터를 보고 고르지 않는다 (§1.4
 
 | 상수 | 값 | 근거 |
 |---|---|---|
-| `kThreshold` | 2¹⁵ (float64 원소 기준) | 이보다 작은 일은 1스레드로 돈다. 10스레드가 이기기 시작하는 크기가 `f + g` 약 1.6만, `exp` 약 8천, `sum` 약 3.2만이다. 상수 하나로 두고 가장 늦게 이득이 나는 `sum`에 맞췄다 |
-| `kTaskWork` | 2¹² (float64 원소 기준) | 태스크 하나의 일. 고정 비용이 약 1.5µs라 작은 태스크로도 부하가 고르게 나뉜다 |
+| `kParallelThreshold` | 2¹⁵ (float64 원소 기준) | 이보다 작은 일은 1스레드로 돈다. 10스레드가 이기기 시작하는 크기가 `f + g` 약 1.6만, `exp` 약 8천, `sum` 약 3.2만이다. 상수 하나로 두고 가장 늦게 이득이 나는 `sum`에 맞췄다 |
+| `kParallelTask` | 2¹² (float64 원소 기준) | 태스크 하나의 일. 고정 비용이 약 1.5µs라 작은 태스크로도 부하가 고르게 나뉜다 |
 | `kMinInnerPiece` | 1024원소 | 안쪽 축을 자를 때의 최소 조각. 3000×3000 `sum(axis=0)` 10스레드: 조각 10이면 1스레드의 2.7배 느림, 256 → 1.50ms, **1024 → 0.91ms**, 4096 → 1.11ms (1스레드 1.05ms) |
 
 - **일은 바이트로 센다.** 원소 수 × 피연산자 안쪽 stride 중 가장 큰 것(8바이트 상한)이고, 기준값과 태스크 크기는 위 값 × 8바이트다.
@@ -673,7 +675,7 @@ dtype과 레인 길이만 본다. 데이터를 보고 고르지 않는다 (§1.4
 
   | 경로 | 나누는 기준 |
   |---|---|
-  | pairwise 합, `prod`, 정수 스캔 | n ≥ `kThreshold`, 잎·조각 4096원소 |
+  | pairwise 합, `prod`, 정수 스캔 | n ≥ `kParallelThreshold`, 잎·조각 4096원소 |
   | float/complex 스캔 | n ≥ 8192, 블록 4096 (구조는 1스레드에서도 같다) |
   | 블록 리덕션 | §6.5 |
   | bool 마스크 | 청크 2¹⁴원소, 청크가 둘 이상이면 |

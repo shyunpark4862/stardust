@@ -35,7 +35,7 @@
   - 감싼 루틴: `getrf getrs potrf potrs trtrs geqrf geqp3 orgqr gelsd syevd sygv gesdd gesvd sytrf geev gees gehrd orghr gtsv gbsv trsyl3 lacn2`, 그리고 BLAS `gemm`, `gemv`. complex판(`ungqr`, `heevd`, `hegvd` 등)은 같은 래퍼가 부른다. `sygv`는 인자 하나로 `sygvd`와 `sygv`를 고른다.
   - 행렬곱(`matrix_power`, `expm`, `solve_sylvester`)은 `sd.matmul`을 거치지 않고 `cblas_dgemm`/`cblas_zgemm`을 직접 부른다. 작업 버퍼가 이미 C++ 안에 F-order로 있기 때문이다.
 - **인터페이스**: 새 LAPACK, ILP64 (`ACCELERATE_NEW_LAPACK`, `ACCELERATE_LAPACK_ILP64`, array.md §1.3). 정수 인자는 `lint`(64비트)이고 `static_assert`로 확인한다.
-- 통합 중 M4에서 BLAS, vForce 래퍼와 함께 `accelerate/` 정리가 끝난다 (ARCHITECTURE §4.4).
+- `accelerate/`에는 LAPACK(`lapack.hpp`, linalg), BLAS(`blas.hpp`, 배열의 `matmul`), vForce(`vforce.hpp`, 배열의 초월함수) 래퍼가 함께 있다 (ARCHITECTURE §4.4).
 
 **Accelerate에 대해 측정한 사실** (설계의 전제)
 - **내부 스레드를 쓰는 것은 `getrf`의 n ≥ 768뿐이다.**
@@ -402,7 +402,7 @@
 | `kTaskNs` | 5µs | 태스크 하나의 추정 직렬 시간. 태스크 하나는 `max(1, kTaskNs / element_ns)`개의 원소다. 2.5µs는 작은 배치에 조금 낫고 큰 배치에 조금 나빴고, 10µs는 그 반대였다. 80µs는 태스크 수가 모자라 느렸다 |
 
 - 나누는 조건: 배치 원소 2개 이상, `element_ns > 0`, `element_ns × n ≥ kParallelMinNs`, 그리고 `begin_parallel()`이 참(태스크 밖, 2스레드 이상)
-- 풀의 기준값 `kThreshold`(원소 2¹⁵개, array.md §10.4)는 linalg의 배치 분할에 쓰지 않는다. 일의 크기를 원소 수가 아니라 시간으로 재기 때문이다 (ARCHITECTURE §4.1).
+- 배열의 기준값 `kParallelThreshold`(원소 2¹⁵개, array.md §10.4)는 linalg의 배치 분할에 쓰지 않는다. 일의 크기를 원소 수가 아니라 시간으로 재기 때문이다 (ARCHITECTURE §4.1).
 
 ### 7.3 크기 기준은 없다
 - **큰 행렬의 배치도 나눈다.** 배치 8에서 n = 128–1024 모든 크기에서 나누는 쪽이 빨랐다. 내부 스레드를 쓰는 `getrf`(n ≥ 768)의 `solve`, `inv`도 1.7–2배 빨랐다.
@@ -461,7 +461,7 @@
 - **중첩하지 않는다.** 태스크 안에서는 `begin_parallel()`이 false다(`parallel::available()`). 그래서 배치를 나눈 태스크 안의 긴 합, 큰 패킹, Schur 쌍은 그 스레드에서 직렬로 돈다.
 - 다른 Python 스레드가 풀을 쓰는 중이면 그 호출은 호출 스레드 혼자 돈다 (array.md §10.1).
 - 태스크 안에서는 Python 객체를 만지지 않는다. 결과 배열과 namedtuple은 태스크 밖에서 만든다.
-- 통합 중 M4에서 풀이 pandas판(상위 집합)으로 바뀐다 (ARCHITECTURE §4.1).
+- 다른 Python 스레드의 일로 풀이 바쁘면 `available()`이 false라 그 호출은 나누지 않는다 (array.md §10.2).
 
 ### 8.2 pairwise 합 (`base/pairwise.hpp`, `linalg/pairwise.hpp`)
 - **부동소수점 합은 모두 numpy의 pairwise 합이다.** 대상: `vecdot`, `trace`, `vector_norm`(1, 2, p), `matrix_norm`(fro, ±1, ±inf, nuc), `cond`(fro, ±1, ±inf, nuc)
@@ -479,8 +479,8 @@
 - **잎 하나짜리 합은 트리를 부르지 않는다**: n ≤ 128(complex는 64)이면 채우고 바로 더한다 (`pairwise_sum`). 3×3 행렬의 열 합처럼 짧은 합이 배치마다 반복될 때 재귀 함수 호출이 드러난다: `matrix_norm(ord=1)`의 (1000, 3, 3)이 이 길 없이 17µs, 있으면 13µs다(1스레드).
 
 ### 8.3 출력 하나의 긴 합
-- **출력 하나의 합이 2¹⁵항(`kSumParallelMin`, 배열의 `kThreshold`) 이상이면 나눈다.** 배열과 같은 방법이다 (array.md §6.2).
-  - pairwise 트리는 길이로만 정해진다. 2¹²항(`kSumLeaf`, 배열의 `kTaskWork`) 이하인 부분 트리(잎)를 병렬로 더하고, 같은 트리 순서로 합친다 (`pairwise_plan`, `pairwise_run`, `pairwise_combine`).
+- **출력 하나의 합이 2¹⁵항(`kSumParallelMin`, 배열의 `kParallelThreshold`) 이상이면 나눈다.** 배열과 같은 방법이다 (array.md §6.2).
+  - pairwise 트리는 길이로만 정해진다. 2¹²항(`kSumLeaf`, 배열의 `kParallelTask`) 이하인 부분 트리(잎)를 병렬로 더하고, 같은 트리 순서로 합친다 (`pairwise_plan`, `pairwise_run`, `pairwise_combine`).
   - 덧셈 하나하나가 직렬과 같은 순서이므로 결과는 직렬(그리고 numpy)과 비트까지 같다.
 - 대상: `vecdot`, `trace`, `vector_norm`(모든 ord), `matrix_norm` fro
   - 최댓값, 최솟값, 개수(`ord=0`)는 순서와 무관하므로 잎마다 구해 합친다.

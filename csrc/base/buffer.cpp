@@ -9,6 +9,7 @@ namespace sd {
 
 std::shared_ptr<Buffer> Buffer::allocate(std::int64_t nbytes, bool zeroed) {
     auto buf = std::make_shared<Buffer>(Key{});  // the Buffer and its reference count, together
+    buf->size_ = nbytes;
     if (static_cast<std::size_t>(nbytes) <= kInline) {
         buf->data_ = buf->inline_;
         if (zeroed) std::memset(buf->inline_, 0, static_cast<std::size_t>(nbytes));
@@ -31,6 +32,7 @@ std::shared_ptr<Buffer> Buffer::adopt(const Py_buffer& view) {
     buf->external_ = true;
     buf->view_ = view;
     buf->data_ = static_cast<std::byte*>(view.buf);
+    buf->size_ = view.len;
     return buf;
 }
 

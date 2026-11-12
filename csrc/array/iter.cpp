@@ -1,5 +1,6 @@
 #include "array/iter.hpp"
 
+#include "array/parallel_limits.hpp"
 #include "parallel/pool.hpp"
 
 #include <algorithm>
@@ -144,12 +145,12 @@ NdIter::Plan NdIter::plan(Split split, std::int64_t weight) const {
         bytes = std::max(bytes, std::min<std::int64_t>(std::abs(strides_[k][ndim_ - 1]), 8));
     p.work = weight * (bytes ? bytes : 8);
     for (int d = 0; d < ndim_; ++d) p.work *= shape_[d];
-    const int axis = p.work >= 8 * parallel::kThreshold ? split_axis(split) : -1;
+    const int axis = p.work >= 8 * kParallelThreshold ? split_axis(split) : -1;
     if (axis < 0) return p;
-    // Cut `axis` into pieces of about kTaskWork elements' worth each.
+    // Cut `axis` into pieces of about kParallelTask elements' worth each.
     const std::int64_t extent = shape_[axis];
     const std::int64_t per_index = std::max<std::int64_t>(p.work / extent, 1);
-    std::int64_t chunk = std::max<std::int64_t>(8 * parallel::kTaskWork / per_index, 1);
+    std::int64_t chunk = std::max<std::int64_t>(8 * kParallelTask / per_index, 1);
     // Cutting the innermost axis shortens every kernel call: keep the
     // pieces long enough to stream. sum(m, axis=0) of a 3000x3000 array
     // (docs/design/array.md §10.4): 10-element pieces made it 2.7x slower than one

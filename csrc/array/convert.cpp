@@ -66,6 +66,7 @@ T scalar_from_python(nb::handle o, DType src) {
                     __builtin_unreachable();
                 }
             }
+            case DType::String: break;  // scalar_dtype() never gives it: not a Python scalar's dtype
         }
         __builtin_unreachable();
     }

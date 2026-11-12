@@ -20,7 +20,7 @@ std::int64_t parse_int(nb::handle o, const char* func, const char* what) {
 
 std::optional<DType> parse_dtype(nb::handle o, const char* func) {
     if (o.is_none()) return std::nullopt;
-    for (int i = 0; i < kNumDTypes; ++i)
+    for (int i = 0; i < kNumArrayDTypes; ++i)
         if (o.ptr() == dtype_object(static_cast<DType>(i)).ptr()) return static_cast<DType>(i);
     throw nb::type_error((std::string(func) +
                           "(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128, not " +

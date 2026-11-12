@@ -84,8 +84,8 @@ T pairwise_sum(std::int64_t n, Fill&& fill) {
 // The subtrees of at most kSumLeaf terms are summed in parallel and combined
 // along the very same tree (pairwise::plan, pairwise::combine): bit for bit
 // the serial sum, for any thread count. The constants are the array area's.
-inline constexpr std::int64_t kSumLeaf = 1 << 12;          // terms per task (the pool's kTaskWork)
-inline constexpr std::int64_t kSumParallelMin = 1 << 15;   // shorter sums stay serial (its kThreshold)
+inline constexpr std::int64_t kSumLeaf = 1 << 12;          // terms per task (the array area's kParallelTask)
+inline constexpr std::int64_t kSumParallelMin = 1 << 15;   // shorter sums stay serial (its kParallelThreshold)
 
 // The leaves to compute: subtrees of at most kSumLeaf terms, left to right; or
 // the whole range as one leaf when the sum is short or no pool is available.

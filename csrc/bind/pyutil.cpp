@@ -8,7 +8,7 @@ namespace {
 
 // Borrowed: the module attributes (sd.bool, ...) own the four objects, and
 // nothing in _core can run after the module itself is torn down.
-PyObject* g_dtype_objects[kNumDTypes] = {};
+PyObject* g_dtype_objects[kNumArrayDTypes] = {};
 
 }  // namespace
 
@@ -28,7 +28,7 @@ nb::handle dtype_object(DType d) { return g_dtype_objects[static_cast<int>(d)]; 
 
 std::optional<DType> parse_dtype(nb::handle o) {
     if (o.is_none()) return std::nullopt;
-    for (int i = 0; i < kNumDTypes; ++i)
+    for (int i = 0; i < kNumArrayDTypes; ++i)
         if (o.ptr() == g_dtype_objects[i]) return static_cast<DType>(i);
     throw nb::type_error("dtype must be one of sd.bool, sd.int64, sd.float64, sd.complex128");
 }

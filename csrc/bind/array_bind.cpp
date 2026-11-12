@@ -19,7 +19,7 @@ namespace {
 static_assert(sizeof(Py_ssize_t) == sizeof(std::int64_t), "shape/strides are handed out as Py_ssize_t*");
 
 // PEP 3118 format codes of our dtypes ('q' = int64, 'Zd' = complex double).
-const char* const kFormats[kNumDTypes] = {"?", "q", "d", "Zd"};
+const char* const kFormats[kNumArrayDTypes] = {"?", "q", "d", "Zd"};
 
 int getbuffer(PyObject* self, Py_buffer* view, int flags) {
     const NDArray& a = *nb::inst_ptr<NDArray>(self);

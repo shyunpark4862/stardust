@@ -33,7 +33,7 @@ DType operand_dtype(nb::handle o, const char* name) {
 // numpy's loop selection: the first dtype at or above `d` with a loop.
 // Returns that dtype; the table entry says what it writes.
 DType select(const LoopTable& table, DType d, const char* name, std::span<const DType> inputs) {
-    for (int k = static_cast<int>(d); k < kNumDTypes; ++k)
+    for (int k = static_cast<int>(d); k < kNumArrayDTypes; ++k)
         if (table[k].loop) return static_cast<DType>(k);
     no_loop(name, inputs);
 }
@@ -133,7 +133,7 @@ nb::object launch(std::span<const nb::handle> objs, std::span<const DType> in_ty
 // ------------------------------------------------------------------ where, clip
 
 template <typename T> constexpr Loop where_entry = &where_loop<T>;
-constexpr std::array<Loop, kNumDTypes> where_loops = {
+constexpr std::array<Loop, kNumArrayDTypes> where_loops = {
     where_entry<bool>, where_entry<std::int64_t>, where_entry<double>, where_entry<complex128>};
 
 nb::object where(nb::handle cond, nb::handle x1, nb::handle x2, nb::handle out) {
@@ -152,7 +152,7 @@ nb::object where(nb::handle cond, nb::handle x1, nb::handle x2, nb::handle out) 
 // implicitly (docs/design/array.md §2.5). No complex: it has no order
 // (docs/design/array.md §2.6).
 template <typename T> constexpr Loop clip_entry = &clip_loop<T>;
-constexpr std::array<Loop, kNumDTypes> clip_loops = {
+constexpr std::array<Loop, kNumArrayDTypes> clip_loops = {
     clip_entry<bool>, clip_entry<std::int64_t>, clip_entry<double>, nullptr};
 
 nb::object clip(nb::handle x, nb::handle lo, nb::handle hi, nb::handle out) {

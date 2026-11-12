@@ -47,18 +47,16 @@ stardust/                         (저장소: ~/Desktop/stardust/stardust)
     base/                         모든 영역이 쓰는 바닥
       buffer.hpp/.cpp             참조 카운트 메모리 블록 (numpy판 + pandas판 통합, §4.2)
       dtype.hpp                   DType enum과 이름, 저장 타입 (§4.3)
-      pairwise.hpp                numpy식 pairwise 합 (세 벌 → 한 벌)
-      neon.hpp                    NEON 보조 함수
-      scalar_cast.hpp             스칼라 변환 규칙 (float → int 포화 등, 지금 numpy·linalg에 두 벌)
+      pairwise.hpp                numpy식 pairwise 합의 정의 (트리, 잎, 병렬 계획; 세 벌 → 한 벌)
     parallel/
-      pool.hpp/.cpp               스레드풀 하나 (pandas판이 상위 집합, §4.1)
+      pool.hpp/.cpp               스레드풀 하나 (pandas판의 의미, §4.1), FirstRow
     accelerate/
-      blas.hpp                    cblas 래퍼 (지금 numpy ops/matmul.cpp 안)
-      lapack.hpp                  LAPACK 래퍼 (지금 linalg lapack/lapack.hpp)
-      vforce.hpp                  vForce 래퍼 (지금 numpy kernels/vforce.hpp)
-    array/                        (지금 stardust-numpy csrc/의 core, kernels, ops)
-      ndarray  iter  convert
-      kernels/  elementwise buffered cast scalar_ops reduce sort simd_sort
+      blas.hpp                    BLAS 래퍼 (dot, gemv, gemm; 배열의 matmul이 쓴다)
+      lapack.hpp                  LAPACK 래퍼 (linalg가 쓴다)
+      vforce.hpp                  vForce 래퍼 (연산과 무관한 부분)
+    array/                        (stardust-numpy csrc/의 core, kernels, ops)
+      ndarray  iter  convert  parallel_limits
+      kernels/  elementwise buffered cast scalar_ops reduce sort simd_sort neon vforce
       ops/      asarray copy creation indexing matmul reduction shape sort ufunc lanes
     linalg/                       (지금 stardust-linalg csrc/)
       args  batch  pack  cost  errors  common
@@ -92,8 +90,8 @@ stardust/                         (저장소: ~/Desktop/stardust/stardust)
 |---|---|
 | numpy `csrc/core/{ndarray,iter,convert}` | `csrc/array/` |
 | numpy `csrc/core/{buffer,dtype}` | `csrc/base/` (pandas판과 합침) |
-| numpy `csrc/kernels/neon.hpp` | `csrc/base/neon.hpp` |
-| numpy `csrc/kernels/vforce.hpp` | `csrc/accelerate/vforce.hpp` |
+| numpy `csrc/kernels/neon.hpp` | `csrc/array/kernels/neon.hpp` (M1에서 `base/`에 두었다가 M4에서 옮김: 배열의 연산 정의에 묶여 있다) |
+| numpy `csrc/kernels/vforce.hpp` | 둘로 나눔 (M4): 연산과 무관한 래퍼는 `csrc/accelerate/vforce.hpp`, 연산 → vForce 함수 표는 `csrc/array/kernels/vforce.hpp` |
 | numpy `csrc/kernels/reduce.hpp`의 pairwise 부분 | `csrc/base/pairwise.hpp` |
 | numpy `csrc/parallel/pool.*` | 버림 (pandas판으로 대체) |
 | linalg `csrc/core/{input,outblock,pyrefs}` | `csrc/linalg/`에 남되 경계 코드는 없어짐 (M3, §3): `Input`은 `NDArray`를 빌리고, `outblock`은 `NDArray`를 만들고, `pyrefs`는 결과 타입과 `LinAlgError`만 든다 |
@@ -131,10 +129,11 @@ stardust/                         (저장소: ~/Desktop/stardust/stardust)
 - 하나만 둔다. **pandas판이 기준이다.** numpy판의 상위 집합이기 때문이다.
   - 핵심(상주 워커, spin 후 대기, atomic 카운터, 호출 스레드 참여, 중첩 금지)은 세 벌이 같다.
   - pandas판에만 있는 것: `busy()`, `available()`의 "풀이 바쁘면 직렬 경로", 항상 GIL 해제, `for_chunks`, `FirstRow`, `Unlocked`.
+  - M4: 앞의 셋과 `FirstRow`(영역과 무관)는 공용 풀에 들어갔다. `for_chunks`, `Unlocked`, `kChunkRows`는 frame의 기준값(2¹⁷)과 비트맵에 맞춘 청크 크기에 묶여 있어서 M5에서 `frame/`으로 간다.
   - linalg판에만 있는 것: `available_here()`. M2에서 배열의 풀에 더했다가, M3에서 linalg가 `parallel::available()`만 쓰게 되어 다시 뺐다.
 - **병렬화 기준값은 영역마다 따로 둔다.** 측정해서 정한 값이 다르기 때문이다.
   - array: `1 << 15` (numpy M8), frame: `1 << 17` (pandas M11), linalg: 비용 모델 (`linalg/cost.hpp`, linalg M9)
-  - 풀 헤더의 `kThreshold` 하나를 `array/`, `frame/`의 상수로 옮긴다.
+  - 풀 헤더의 `kThreshold`는 없앴다(M4). 영역마다 자기 이름공간에 같은 이름의 상수를 둔다: 배열은 `sd::kParallelThreshold`, `sd::kParallelTask`(`array/parallel_limits.hpp`), frame은 M5에서 `sd::frame::kParallelThreshold`.
 - 스레드 수 API는 `sd.set_num_threads`, `sd.get_num_threads` 하나다. `sd.frame`에는 두지 않는다.
 
 ### 4.2 Buffer
@@ -146,9 +145,9 @@ stardust/                         (저장소: ~/Desktop/stardust/stardust)
 
 ### 4.3 dtype
 - C++ enum은 `base/dtype.hpp`에 하나 둔다 (DESIGN §4.2의 추천안).
-  - `Bool, Int64, Float64, Complex128, String, Datetime64`
-  - 컨테이너마다 받는 부분집합을 명시한다: 배열은 앞의 넷, Column은 `Complex128`을 뺀 다섯.
-- `visit_dtype`은 배열용(숫자 넷)과 Column용으로 나눈다. 모든 커널이 여섯 가지를 다 인스턴스화하지 않게 하기 위해서다.
+  - `Bool, Int64, Float64, Complex128, String` (M4). `Datetime64`는 frame이 그것을 구현할 때 더한다(지금은 어느 영역에도 코드가 없다).
+  - 컨테이너마다 받는 부분집합을 명시한다: 배열은 앞의 넷(`kNumArrayDTypes`, `is_array_dtype`), Column은 `Complex128`을 뺀 넷.
+- `visit_dtype`은 배열 dtype만 받는다. Column용 방문자는 M5에서 frame 코드와 함께 더한다. 모든 커널이 모든 dtype을 인스턴스화하지 않게 하기 위해서다.
 
 ### 4.4 Accelerate 래퍼
 - BLAS(numpy `matmul`), LAPACK(linalg), vForce(numpy 초월함수)를 `accelerate/` 한곳에 둔다.

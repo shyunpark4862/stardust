@@ -28,7 +28,7 @@
 | M1 배열 코어 옮기기 | 1단계 | 완료 (2026-11-12), docs/learn/M1-array-core.md |
 | M2 linalg 옮기기 | 1단계 | 완료 (2026-11-12), docs/learn/M2-linalg-move.md |
 | M3 linalg 경계 없애기 | 1단계 | 완료 (2026-11-12), docs/learn/M3-linalg-boundary.md (1단계 보고서 포함) |
-| M4 공통 바닥 정리 | 2단계 준비 | 대기 |
+| M4 공통 바닥 정리 | 2단계 준비 | 완료 (2026-11-12), docs/learn/M4-shared-foundation.md |
 | M5 frame 옮기기 | 2단계 | 대기 |
 | M6 frame과 배열 잇기, 일관성 맞추기 | 2단계 | 대기 |
 | M7 마무리 | 마무리 | 대기 |
@@ -73,11 +73,10 @@
 
 ### M4. 공통 바닥 정리 (frame을 받을 준비)
 - 스레드풀을 pandas판(상위 집합)으로 바꾼다. 병렬화 기준값을 영역별 상수로 옮긴다 (ARCHITECTURE §4.1).
-- 스칼라 변환 규칙(`saturate_to_int64`, `cast_value`)을 `array/convert.hpp`에서 `base/scalar_cast.hpp`로 내린다. `base/neon.hpp`, `accelerate/vforce.hpp`가 `array/kernels/scalar_ops.hpp`를 include하는 역방향 의존도 함께 없앤다.
-- frame의 pairwise 합을 `base/pairwise.hpp`의 정의로 바꾼다 (배열과 linalg는 M3에서 바꿨다).
+- `base/neon.hpp`, `accelerate/vforce.hpp`가 `array/kernels/scalar_ops.hpp`를 include하는 역방향 의존을 없앤다. (M4에서 한 방법: 둘은 배열의 연산 정의에 묶인 배열 코드라서 `array/kernels/`로 돌려보냈다. vForce는 연산과 무관한 래퍼만 `accelerate/`에 남겼다. 스칼라 변환 규칙을 `base/`로 내릴 필요는 없었다.)
 - 풀을 바꾼 뒤 같은 자리 비교(`bench/merge/sameseat_table.py`)를 돌린다. 짧은 병렬 호출(예: `solve_tridiagonal` (1000, 3, 3), 10스레드)은 프로세스마다 약 7µs와 10.5µs로 갈리므로 프로세스를 여러 번 띄워 분포로 본다 (docs/learn/M3-linalg-boundary.md §6.3).
 - `Buffer`에 `size()`를 더한다 (ARCHITECTURE §4.2).
-- `base/dtype.hpp`에 `String`, `Datetime64`를 더하고 `visit_dtype`을 나눈다 (DESIGN §4.2). 사용자에게 보이는 dtype 표기는 M6에서 바꾼다.
+- `base/dtype.hpp`에 `String`을 더한다 (DESIGN §4.2). `Datetime64`와 Column용 방문자는 frame 코드가 들어오는 M5 이후에 더한다. 사용자에게 보이는 dtype 표기는 M6에서 바꾼다.
 - `accelerate/` 정리: BLAS, LAPACK, vForce 래퍼를 한곳에 모은다.
 - 배열과 linalg의 결과는 비트까지 같다.
 
@@ -86,6 +85,7 @@
 - 이름공간 `sd` → `sd::frame` (Buffer와 풀은 `base/`, `parallel/`의 것을 쓴다).
 - `sdpd.set_num_threads` → `sd.set_num_threads`. 테스트의 import와 스레드 수 호출만 바꾼다.
 - dtype 표기 통일(DESIGN §4.2, Q5)은 M6에서 한다. 여기서는 frame의 문자열 dtype을 그대로 둔다.
+- frame의 pairwise 합(세 번째 사본)을 `base/pairwise.hpp`의 정의로 바꾼다. `for_chunks`, `Unlocked`, `kChunkRows`는 `frame/`으로, frame의 기준값은 `sd::frame::kParallelThreshold`(2¹⁷)로.
 - frame의 결과는 비트까지 같다.
 - 문서: `docs/design/frame.md`, `docs/api/frame.md`. frame 코드의 주석 참조를 바꾼다.
 

@@ -14,13 +14,15 @@
 
 #include "array/ops/matmul.hpp"
 
+#include "accelerate/blas.hpp"
+
 #include "bind/pyutil.hpp"
 #include "array/convert.hpp"
 #include "array/kernels/elementwise.hpp"
 #include "array/ops/copy.hpp"
+#include "array/parallel_limits.hpp"
 #include "parallel/pool.hpp"
 
-#include <Accelerate/Accelerate.h>
 
 #include <algorithm>
 #include <memory>
@@ -33,7 +35,7 @@ namespace sd {
 
 namespace {
 
-using blas_int = __LAPACK_int;
+using blas_int = blas::Int;
 
 // A rows x cols matrix in memory: element (i, j) at p + i*rs + j*cs bytes.
 struct Mat {
@@ -45,7 +47,7 @@ struct Mat {
 // dimension ld, or -- when the columns are the contiguous direction -- as the
 // transpose of a row-major cols x rows matrix.
 struct BlasView {
-    CBLAS_TRANSPOSE trans;
+    blas::Trans trans;
     blas_int ld;
 };
 
@@ -95,15 +97,12 @@ void blas_matmul(const Mat& a, const Mat& b, T* c) {
         std::fill(c, c + m * n, T(0));
         return;
     }
-    constexpr bool cplx = ops::is_cplx<T>;
-    const T one(1), zero(0);
     if (m == 1 && n == 1) {  // dot
         blas_int ia, ib;
         std::unique_ptr<T[]> ka, kb;
         const T* x = blas_vector<T>(a.p, k, a.cs, ia, ka);
         const T* y = blas_vector<T>(b.p, k, b.rs, ib, kb);
-        if constexpr (cplx) cblas_zdotu_sub(k, x, ia, y, ib, c);  // unconjugated: matmul never conjugates
-        else *c = cblas_ddot(k, x, ia, y, ib);
+        blas::dot<T>(k, x, ia, y, ib, c);
         return;
     }
     if (n == 1 || m == 1) {  // gemv: one row times a matrix, or a matrix times one column
@@ -126,8 +125,7 @@ void blas_matmul(const Mat& a, const Mat& b, T* c) {
         // gemv takes the *stored* matrix: rows x cols as given, or cols x rows when transposed.
         const blas_int sr = v->trans == CblasNoTrans ? mt.rows : mt.cols;
         const blas_int sc = v->trans == CblasNoTrans ? mt.cols : mt.rows;
-        if constexpr (cplx) cblas_zgemv(CblasRowMajor, v->trans, sr, sc, &one, ap, v->ld, x, inc, &zero, c, 1);
-        else cblas_dgemv(CblasRowMajor, v->trans, sr, sc, one, ap, v->ld, x, inc, zero, c, 1);
+        blas::gemv<T>(v->trans, sr, sc, ap, v->ld, x, inc, c);
         return;
     }
     std::unique_ptr<T[]> ka, kb;
@@ -144,10 +142,7 @@ void blas_matmul(const Mat& a, const Mat& b, T* c) {
         bp = kb.get();
         vb = BlasView{CblasNoTrans, static_cast<blas_int>(n)};
     }
-    if constexpr (cplx)
-        cblas_zgemm(CblasRowMajor, va->trans, vb->trans, m, n, k, &one, ap, va->ld, bp, vb->ld, &zero, c, n);
-    else
-        cblas_dgemm(CblasRowMajor, va->trans, vb->trans, m, n, k, one, ap, va->ld, bp, vb->ld, zero, c, n);
+    blas::gemm<T>(va->trans, vb->trans, m, n, k, ap, va->ld, bp, vb->ld, c, n);
 }
 
 // int64: i-k-j order, so the innermost loop walks a row of b and a row of c
@@ -243,9 +238,9 @@ nb::object matmul(nb::handle x1, nb::handle x2) {
     }
     const std::int64_t item = out.itemsize();
     if (d == DType::Int64) {
-        // Our own loop: tasks of whole output rows, about kTaskWork multiply-adds
+        // Our own loop: tasks of whole output rows, about kParallelTask multiply-adds
         // each (rows of c are independent, so the bits do not depend on the cut).
-        const std::int64_t rows = std::max<std::int64_t>(1, parallel::kTaskWork / std::max<std::int64_t>(k * n, 1));
+        const std::int64_t rows = std::max<std::int64_t>(1, kParallelTask / std::max<std::int64_t>(k * n, 1));
         const std::int64_t per_batch = (m + rows - 1) / rows;
         parallel::parallel_for(count * per_batch, [&](std::int64_t task) {
             const std::int64_t t = task / per_batch, r0 = (task % per_batch) * rows, r1 = std::min(m, r0 + rows);

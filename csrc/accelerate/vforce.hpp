@@ -9,12 +9,16 @@
 // own, and stay within a few ULP of libm (contract: 8 ULP). expm1, log1p, cos
 // and tan failed those checks and stay on libm; complex functions are libm.
 //
+// This file is the operator-independent part: the function types, the
+// wrappers that fix vvpow's and vvatan2's argument order, and the strided
+// runners. Which array operator maps to which vForce function is the array
+// area's (array/kernels/vforce.hpp).
+//
 // vForce wants contiguous arrays. A strided operand (or a broadcast scalar)
 // goes through a small stack buffer first -- the buffer casting of
 // docs/design/array.md §4.3, here done inside the kernel.
 #pragma once
 
-#include "array/kernels/scalar_ops.hpp"
 
 #include <Accelerate/Accelerate.h>
 
@@ -25,21 +29,6 @@ namespace sd {
 
 using VUnary = void (*)(double*, const double*, const int*);
 
-template <typename Op> inline constexpr VUnary vforce_unary = nullptr;
-template <> inline constexpr VUnary vforce_unary<ops::Exp> = &vvexp;
-template <> inline constexpr VUnary vforce_unary<ops::Log> = &vvlog;
-template <> inline constexpr VUnary vforce_unary<ops::Log2> = &vvlog2;
-template <> inline constexpr VUnary vforce_unary<ops::Log10> = &vvlog10;
-template <> inline constexpr VUnary vforce_unary<ops::Sin> = &vvsin;
-template <> inline constexpr VUnary vforce_unary<ops::Asin> = &vvasin;
-template <> inline constexpr VUnary vforce_unary<ops::Acos> = &vvacos;
-template <> inline constexpr VUnary vforce_unary<ops::Atan> = &vvatan;
-template <> inline constexpr VUnary vforce_unary<ops::Sinh> = &vvsinh;
-template <> inline constexpr VUnary vforce_unary<ops::Cosh> = &vvcosh;
-template <> inline constexpr VUnary vforce_unary<ops::Tanh> = &vvtanh;
-template <> inline constexpr VUnary vforce_unary<ops::Asinh> = &vvasinh;
-template <> inline constexpr VUnary vforce_unary<ops::Acosh> = &vvacosh;
-template <> inline constexpr VUnary vforce_unary<ops::Atanh> = &vvatanh;
 
 // Binary functions, normalized to f(out, a, b, n) = op(a, b) elementwise.
 using VBinary = void (*)(double*, const double*, const double*, const int*);
@@ -47,9 +36,6 @@ using VBinary = void (*)(double*, const double*, const double*, const int*);
 inline void vf_pow(double* o, const double* a, const double* b, const int* n) { vvpow(o, b, a, n); }  // vvpow(z, y, x): x^y
 inline void vf_atan2(double* o, const double* a, const double* b, const int* n) { vvatan2(o, a, b, n); }  // atan2(y, x)
 
-template <typename Op> inline constexpr VBinary vforce_binary = nullptr;
-template <> inline constexpr VBinary vforce_binary<ops::Pow> = &vf_pow;
-template <> inline constexpr VBinary vforce_binary<ops::Atan2> = &vf_atan2;
 
 namespace vforce_detail {
 

@@ -7,6 +7,7 @@
 #include "array/kernels/reduce.hpp"
 #include "array/ops/copy.hpp"
 #include "array/ops/lanes.hpp"
+#include "array/parallel_limits.hpp"
 #include "parallel/pool.hpp"
 
 #include <algorithm>
@@ -134,13 +135,13 @@ Blocks plan_blocks(const NDArray& x, const NDArray& out, const NdIter& it) {
     // gives each block its own serial buffered fold.
     if (out.size() <= 1 && x.dtype == out.dtype) return {};
     const NdIter::Plan p = it.plan(Split::Reduction);
-    if (p.tasks >= 8 || p.work < 8 * parallel::kThreshold) return {};  // run() splits well enough, or too small
+    if (p.tasks >= 8 || p.work < 8 * kParallelThreshold) return {};  // run() splits well enough, or too small
     Blocks b;
     for (int d = 0; d < x.ndim; ++d)  // the longest reduced axis
         if (out.shape[d] == 1 && x.shape[d] > 1 && (b.axis < 0 || x.shape[d] > x.shape[b.axis])) b.axis = d;
     if (b.axis < 0) return {};
     const std::int64_t extent = x.shape[b.axis];
-    const std::int64_t want = std::min({kMaxBlocks, extent / kMinBlock, p.work / (8 * parallel::kTaskWork)});
+    const std::int64_t want = std::min({kMaxBlocks, extent / kMinBlock, p.work / (8 * kParallelTask)});
     if (want < 2 || want <= p.tasks) return {};
     b.size = (extent + want - 1) / want;
     b.count = (extent + b.size - 1) / b.size;
@@ -245,12 +246,12 @@ void arg_lane(const std::byte* x, std::byte* o, const LaneCtx& c) {
 // piece with a NaN wins, otherwise the best value, earlier piece on a tie --
 // so the answer is the serial one exactly.
 std::int64_t arg_whole(const std::byte* p, std::int64_t n, std::int64_t item, DType dtype, ArgFn lane, bool max) {
-    if (n < parallel::kThreshold || !parallel::available()) return lane(p, n, item);
-    const std::int64_t pieces = (n + parallel::kTaskWork - 1) / parallel::kTaskWork;
+    if (n < kParallelThreshold || !parallel::available()) return lane(p, n, item);
+    const std::int64_t pieces = (n + kParallelTask - 1) / kParallelTask;
     std::vector<std::int64_t> at(pieces);
     parallel::parallel_for(pieces, [&](std::int64_t t) {
-        const std::int64_t begin = t * parallel::kTaskWork;
-        at[t] = begin + lane(p + begin * item, std::min(parallel::kTaskWork, n - begin), item);
+        const std::int64_t begin = t * kParallelTask;
+        at[t] = begin + lane(p + begin * item, std::min(kParallelTask, n - begin), item);
     });
     return visit_dtype(dtype, [&]<typename T>(std::type_identity<T>) -> std::int64_t {
         if constexpr (ops::is_cplx<T>) {

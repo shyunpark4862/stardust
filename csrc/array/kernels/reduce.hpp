@@ -18,6 +18,7 @@
 
 #include "array/kernels/elementwise.hpp"
 #include "base/pairwise.hpp"
+#include "array/parallel_limits.hpp"
 #include "parallel/pool.hpp"
 
 #include <arm_neon.h>
@@ -59,7 +60,7 @@ complex128 pairwise_sum_complex(std::int64_t begin, std::int64_t n, const Get& g
 // bit-for-bit the serial one (and numpy's), for any thread count
 // (docs/design/array.md §6.2).
 
-inline constexpr std::int64_t kLeaf = parallel::kTaskWork;
+inline constexpr std::int64_t kLeaf = kParallelTask;
 
 template <typename T, typename SumLeaf>
 T pairwise_parallel(std::int64_t n, std::int64_t leaf, const SumLeaf& sum_leaf) {
@@ -72,13 +73,13 @@ T pairwise_parallel(std::int64_t n, std::int64_t leaf, const SumLeaf& sum_leaf) 
 
 template <typename Get>
 double pairwise_sum_mt(std::int64_t n, const Get& get) {
-    if (n < parallel::kThreshold || !parallel::available()) return pairwise_sum(0, n, get);
+    if (n < kParallelThreshold || !parallel::available()) return pairwise_sum(0, n, get);
     return pairwise_parallel<double>(n, kLeaf, [&](std::int64_t b, std::int64_t m) { return pairwise_sum(b, m, get); });
 }
 
 template <typename Get>
 complex128 pairwise_sum_complex_mt(std::int64_t n, const Get& get) {
-    if (n < parallel::kThreshold || !parallel::available()) return pairwise_sum_complex(0, n, get);
+    if (n < kParallelThreshold || !parallel::available()) return pairwise_sum_complex(0, n, get);
     return pairwise_parallel<complex128>(n, kLeaf / 2,
                                          [&](std::int64_t b, std::int64_t m) { return pairwise_sum_complex(b, m, get); });
 }
@@ -118,7 +119,7 @@ T product_mt(std::int64_t n, const Get& get) {
     const std::int64_t pieces = std::max<std::int64_t>((n + kLeaf - 1) / kLeaf, 1);
     auto piece = [&](std::int64_t t) { return product_piece<T>(t * kLeaf, std::min(kLeaf, n - t * kLeaf), get); };
     T r = piece(0);
-    if (n < parallel::kThreshold || !parallel::available()) {
+    if (n < kParallelThreshold || !parallel::available()) {
         for (std::int64_t t = 1; t < pieces; ++t) r = ops::Multiply::f(r, piece(t));
         return r;
     }
@@ -221,13 +222,13 @@ void reduce_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, 
             return;
         }
         if constexpr (order_free<Op, T>) {
-            if (n >= parallel::kThreshold && parallel::available()) {
+            if (n >= kParallelThreshold && parallel::available()) {
                 // A long run with one output (a full reduction): pieces in parallel.
-                const std::int64_t pieces = (n + parallel::kTaskWork - 1) / parallel::kTaskWork;
+                const std::int64_t pieces = (n + kParallelTask - 1) / kParallelTask;
                 auto part = std::make_unique_for_overwrite<T[]>(static_cast<size_t>(pieces));  // not vector<bool>
                 parallel::parallel_for(pieces, [&](std::int64_t t) {
-                    const std::int64_t begin = t * parallel::kTaskWork;
-                    const std::int64_t m = std::min(parallel::kTaskWork, n - begin);
+                    const std::int64_t begin = t * kParallelTask;
+                    const std::int64_t m = std::min(kParallelTask, n - begin);
                     const std::byte* first = x + begin * s[0];
                     part[t] = load_as<T>(first);  // each piece folds onto its own first element
                     std::byte* piece[] = {const_cast<std::byte*>(first + s[0]), reinterpret_cast<std::byte*>(&part[t])};
@@ -454,7 +455,7 @@ void scan_group(const std::byte* x, std::int64_t xs, std::byte* o, std::int64_t 
 template <typename Op, typename T>
 void scan_lane(const std::byte* x, std::int64_t xs, std::byte* o, std::int64_t os, std::int64_t n) {
     const bool blocked = (ops::is_float<T> || ops::is_cplx<T>) ? n >= 2 * kScanBlock
-                                                                 : n >= parallel::kThreshold && parallel::available();
+                                                                 : n >= kParallelThreshold && parallel::available();
     if (!blocked) {
         scan_serial<Op, T>(x, xs, o, os, n);
         return;
