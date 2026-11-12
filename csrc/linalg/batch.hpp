@@ -15,6 +15,7 @@
 #include <limits>
 #include <initializer_list>
 #include <memory>
+#include <new>
 #include <span>
 #include <string>
 #include <utility>
@@ -91,13 +92,23 @@ private:
     // A growing buffer that is not zero-filled (docs/design/linalg.md §6.3):
     // every user writes before it reads, and std::vector's zero-fill of a large
     // fresh block cost as much as the packing itself.
+    // Whole cache lines of its own (kLine-aligned, size rounded up): the tasks
+    // of a split batch each have a Scratch, and malloc may hand tiny blocks
+    // (lu_solve's 3-byte `seen`, 24-byte `perm`) of different threads out of
+    // the same line; written once per element, that line then bounced between
+    // the cores (lu_solve (1000, 3, 3) 13 -> 17 us, docs/design/linalg.md §6.3).
+    static constexpr std::size_t kLine = 128;  // Apple M-series cache line
+    struct LineFree {
+        void operator()(std::byte* q) const { ::operator delete[](q, std::align_val_t{kLine}); }
+    };
     struct Buf {
-        std::unique_ptr<std::byte[]> p;
+        std::unique_ptr<std::byte[], LineFree> p;
         std::size_t n = 0;
         std::byte* get(std::size_t want) {
             if (want > n) {
-                p.reset(new std::byte[want]);
-                n = want;
+                const std::size_t size = (want + kLine - 1) / kLine * kLine;
+                p.reset(static_cast<std::byte*>(::operator new[](size, std::align_val_t{kLine})));
+                n = size;
             }
             return p.get();
         }
