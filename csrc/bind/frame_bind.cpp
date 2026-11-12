@@ -40,9 +40,14 @@ namespace {
 // The optional `func` of a kernel the Python layer calls for a public function:
 // that function's name, put in front of the kernel's error messages
 // (bind/errors.hpp). None for operators and indexing, which keep Python's form.
-using Func = std::optional<std::string>;
+// Taken as the Python object itself: converting it to std::string on every
+// call was ~15 ns of a ~200 ns tiny reduction; a str's UTF-8 is cached.
+using Func = nb::handle;
 
-const char* name_of(const Func& func) { return func ? func->c_str() : nullptr; }
+const char* name_of(const Func& func) {
+    if (!func.is_valid() || func.is_none() || !PyUnicode_Check(func.ptr())) return nullptr;
+    return PyUnicode_AsUTF8(func.ptr());
+}
 
 template <class F>
 decltype(auto) named_call(const Func& func, F&& f) {

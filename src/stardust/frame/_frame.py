@@ -189,7 +189,7 @@ class DataFrame(Reductions):
     def _reduce(self, op, skipna, correction):
         """One row, labelled by the operation, each column keeping its own result
         dtype (docs/api/frame.md §6.2). A column the operation does not apply to raises."""
-        cols = {k: _core.reduce(op, c, skipna, correction, func=op) for k, c in self._cols.items()}
+        cols = {k: _core.reduce(op, c, skipna, correction, op) for k, c in self._cols.items()}
         return DataFrame._new(cols, Index._new(Column.from_list([op], NA, "string")))
 
     def sort_values(self, by, /, *, descending=False, stable=True, na_position="last", ignore_index=False):

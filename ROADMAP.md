@@ -32,7 +32,7 @@
 | M5 frame 옮기기 | 2단계 | 완료 (2026-11-12), docs/learn/M5-frame-move.md |
 | M6 frame과 배열 잇기, 일관성 맞추기 | 2단계 | 완료 (2026-11-12), docs/learn/M6-consistency.md |
 | M7 마무리 | 마무리 | 완료 (2026-11-12), docs/learn/M7-final-report.md (최종 보고서), 안내서 docs/guide/ |
-| M8 일관성 2차 | 다듬기 | 진행 중 (2026-11-12), 변경 목록 DESIGN §10 |
+| M8 일관성 2차 | 다듬기 | 완료 (2026-11-12), docs/learn/M8-consistency-2.md, 변경 목록 DESIGN §10 |
 
 ## 마일스톤
 

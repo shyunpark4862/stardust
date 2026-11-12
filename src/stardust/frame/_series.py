@@ -248,7 +248,7 @@ class Series(Reductions):
         return DataFrame._new({name: keys, count_name: counts}, RangeIndex(len(counts)))
 
     def _reduce(self, op, skipna, correction):  # docs/api/frame.md §6.2: a Python scalar or NA
-        return _core.reduce(op, self._col, skipna, correction, func=op).to_list(NA)[0]
+        return _core.reduce(op, self._col, skipna, correction, op).to_list(NA)[0]
 
     # --- sorting (docs/api/frame.md §8) ---
 

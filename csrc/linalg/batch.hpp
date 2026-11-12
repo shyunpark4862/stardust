@@ -97,18 +97,33 @@ private:
     // (lu_solve's 3-byte `seen`, 24-byte `perm`) of different threads out of
     // the same line; written once per element, that line then bounced between
     // the cores (lu_solve (1000, 3, 3) 13 -> 17 us, docs/design/linalg.md §6.3).
+    // Only small buffers need it: a large one spans many lines anyway, and the
+    // aligned operator new skips malloc's reuse of freed blocks, so a large
+    // buffer came back as fresh pages on every call (solve_triangular
+    // (300, 300) 37 -> 49 us, 1 thread). From kSmall bytes up: plain new[].
     static constexpr std::size_t kLine = 128;  // Apple M-series cache line
-    struct LineFree {
-        void operator()(std::byte* q) const { ::operator delete[](q, std::align_val_t{kLine}); }
+    static constexpr std::size_t kSmall = 4096;
+    struct Free {
+        bool aligned = false;
+        void operator()(std::byte* q) const {
+            if (aligned) ::operator delete[](q, std::align_val_t{kLine});
+            else delete[] q;
+        }
     };
     struct Buf {
-        std::unique_ptr<std::byte[], LineFree> p;
+        std::unique_ptr<std::byte[], Free> p;
         std::size_t n = 0;
         std::byte* get(std::size_t want) {
             if (want > n) {
-                const std::size_t size = (want + kLine - 1) / kLine * kLine;
-                p.reset(static_cast<std::byte*>(::operator new[](size, std::align_val_t{kLine})));
-                n = size;
+                if (want < kSmall) {
+                    const std::size_t size = (want + kLine - 1) / kLine * kLine;
+                    p = std::unique_ptr<std::byte[], Free>(
+                        static_cast<std::byte*>(::operator new[](size, std::align_val_t{kLine})), Free{true});
+                    n = size;
+                } else {
+                    p = std::unique_ptr<std::byte[], Free>(new std::byte[want], Free{false});
+                    n = want;
+                }
             }
             return p.get();
         }
