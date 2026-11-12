@@ -34,7 +34,17 @@
   - 정렬은 `stable=True`도 받는다. frame의 정렬은 언제나 안정이라서 `stable=False`여도 결과가 같다 (§8.1).
   - 리스트로 바꾸기는 `tolist()`다. 고유값은 `unique_values()`이고 정렬한 순서다 (§4.2).
   - `to_numpy`의 `copy`는 배열의 `asarray`와 같은 뜻이다 (§2.7).
-- **bool 옵션**은 `True`나 `False`만 받는다. 다른 값은 TypeError다 (API.md §2). 예: `descending=1`, `stable=None`
+- **옵션의 타입은 배열 영역과 같은 규칙이다** (API.md §2). 종류마다 검사가 하나라서 같은 실수에는 같은 예외와 메시지가 나온다.
+  - **bool 옵션**은 `True`나 `False`만 받는다. 다른 값(`1`, `None`, `numpy.bool_`)은 TypeError다. 예: `descending=1`, `stable=None`, `skipna=0`
+    - 메시지: `sum(): 'skipna' must be True or False, not int`
+    - 해당: `skipna`, `ignore_index`, `sort`, `dropna`, `normalize`, `descending`, `stable`, `header`. 기본값이 bool인 인자 모두다.
+  - **int 인자**(`head(n)`, `tail(n)`, `read_csv(nrows=)`, `RangeIndex`의 세 인자)는 Python int다. 배열의 `zeros`, `eye`의 int 인자와 같다 (array.md §1.3).
+    - bool, float, numpy 정수 스칼라는 TypeError다: `head(): 'n' must be an int, not bool`
+    - int64 범위 밖이면 OverflowError다: `head(): 'n' is out of range`
+  - **문자열 옵션**(`keep`, `how`, `join`, `na_position`, `sep`)에 문자열이 아닌 값을 주면 TypeError, 받지 않는 문자열이면 ValueError다. linalg의 `mode=`, `ord=`와 같다.
+    - 예: `keep=False`는 TypeError다 (`keep="none"`을 쓴다). 메시지: `duplicated(): 'keep' must be 'first', 'last' or 'none', not bool`
+  - **list를 받는 인자**(`by`, `subset`, `on`, `left_on`, `right_on`, `usecols`, `names`, `na_values`, `concat`의 `objs`)는 list나 tuple을 받는다(컬럼 이름 하나는 str로도). generator, Series, set 같은 다른 iterable은 TypeError다. 배열의 `concat`, `axis=`와 같다.
+    - 라벨을 받는 자리(`Index(data)`, `reindex(labels)`, `index=`)는 list, tuple, range, numpy 배열, `sd.ndarray`, Index를 받는다. generator는 TypeError다.
 - **별칭을 두지 않는다.**
   - `tolist`만 둔다 (`to_list` 없음).
   - `unique_values`만 둔다 (`unique` 없음).
@@ -83,9 +93,18 @@ NA
 - 결측 스칼라는 싱글턴 `sd.frame.NA` 하나다. 모든 dtype에 쓴다.
 - **비교와 산술**: `NA`가 들어간 연산의 결과는 `NA`다.
 - **논리 연산**: Kleene 3값 논리를 쓴다.
-  - `True | NA == True`
-  - `False & NA == False`
+  - `True | NA`는 `True`다.
+  - `False & NA`는 `False`다.
   - 나머지 조합은 `NA`다.
+- **스칼라 `NA`의 연산자는 1행짜리 Series의 규칙이다.** `NA op x`는 `Series([x])`와 `NA`의 연산(같은 쪽)을 한 뒤 값을 꺼낸 것과 같다. `NA`는 상대의 dtype을 따른다 (§3.1).
+  - 예: `NA + 1`, `NA < 2.5`, `NA + "a"`, `NA ** 0`은 `NA`다. `NA | True`는 `True`, `NA & False`는 `False`, `NA ^ True`와 `NA | 1`(int의 비트 연산)은 `NA`다.
+  - Series가 받지 않는 조합은 같은 TypeError다. 예: `NA - "a"`, `NA & 1.5`. int64 밖의 int는 `Series([2**70])`처럼 OverflowError다.
+  - Python 스칼라와 numpy 스칼라를 어느 쪽에 두어도 같다 (`1 + NA`, `numpy.int64(1) < NA`).
+  - 단항 연산자 `-NA`, `+NA`, `abs(NA)`, `~NA`는 `NA`다.
+  - Series, DataFrame과의 연산은 그쪽의 규칙이다. 받지 않는 피연산자(list, `None`, 배열)는 Series처럼 `==`, `!=`도 TypeError다 (§3.1).
+- **`NA == NA`도 `NA`다.** 위 규칙의 결과다: NA는 어떤 값과도, 자기 자신과도 같은지 알 수 없다 (pandas의 `pd.NA`와 같다).
+  - NA인지는 `x is NA`로 확인한다. `x == NA`는 언제나 `NA`라서 `if`에 쓰면 TypeError다.
+  - NA는 해싱할 수 있다. dict, set, list의 `in`은 먼저 객체 동일성을 보므로 `NA in [NA]`는 True다. 하지만 `NA in [1, 2]`는 `NA == 1`을 진릿값으로 바꾸다가 TypeError다.
 - **필터**: 마스크 값이 NA인 행은 False로 취급해서 버린다 (§5.5).
 - **`bool(NA)`**: TypeError를 낸다.
 - **값이 모두 NA인 경우의 리덕션** (빈 컬럼도 같다, §6.4)
@@ -151,20 +170,22 @@ DataFrame(data=None, /, *, index=None, columns=None, dtype=None)
   - list나 배열을 주면 길이가 `index`와 같아야 한다.
   - Series를 주면 `index`에 맞춰 다시 배열한다(reindex). 없는 라벨은 NA다.
 - `name`은 §2.6에 있다.
+- **pickle**: Series, DataFrame, Index, RangeIndex는 pickle할 수 있다. 값은 비트까지 그대로이고(NaN의 비트, `-0.0`), 슬라이스는 자기 행만 저장한다. **[배열과 다름]** `sd.ndarray`는 아직 pickle할 수 없다.
+- **`bool(x)`**: Series, DataFrame, Index 모두 TypeError다. 배열과 같다. 비었는지는 `len(x) == 0`으로 본다. **[pandas와 다름]** pandas는 ValueError이고, Index는 진릿값이 있다.
 
 ### §2.2 list에서 dtype 추론
 - `None`과 `NA`는 NA다.
 - `float('nan')`은 NaN 값이다.
-- bool만 있으면 `bool`, int만 있으면 `int64`, float만 있거나 int와 float가 섞이면 `float64`, str만 있으면 `string`이다.
+- **값의 dtype은 배열과 같은 규칙으로 승격한다: bool < int64 < float64.** 배열의 `asarray`와 같다. 같은 규칙을 `concat`(§9.2), `DataFrame.to_numpy`/`to_array`의 공통 dtype(§2.7), 비교(§3.3)도 쓴다.
+  - bool만 있으면 `bool`, int만 있거나 bool과 섞이면 `int64`, float가 있으면 `float64`, str만 있으면 `string`이다.
+  - 예: `Series([True, 1])`은 int64 `[1, 1]`, `Series([True, 1.5])`는 float64 `[1.0, 1.5]`다. **[pandas와 다름]** pandas는 object다.
   - int와 float가 섞이면 int를 float64로 바꾼다. 2^53을 넘는 int는 반올림된다. 배열의 `asarray`, pandas와 같다.
 - 빈 리스트나 값이 모두 NA인 리스트는 `float64`다.
 - **int64 범위 밖의 int**: int64가 되어야 할 때만 `OverflowError`다 (배열과 같다, array.md §1.5).
   - float와 섞이면 float64로 바꾼다. 예: `Series([2**70, 0.5])`는 float64다.
   - int만 있으면 int64가 되어야 하므로 `OverflowError`다. 예: `Series([2**70])`
   - float64로도 나타낼 수 없을 만큼 크면(약 1.8e308 이상) `OverflowError`다 (Python의 `float(int)`와 같다).
-- **다음 경우는 에러다** (`TypeError`). `dtype=`을 주어도 같다.
-  - bool이 다른 타입과 섞인 경우 (예: `[True, 1]`) **[pandas와 다름]**
-  - str이 다른 타입과 섞인 경우 **[pandas와 다름]**
+- **str이 다른 타입과 섞이면 에러다** (`TypeError`). object dtype이 없기 때문이다. `dtype=`을 주어도 같다. **[pandas와 다름]**
 
 ### §2.3 생성자의 `dtype=`
 - **`dtype=`은 명시적 변환이다.** `astype`(§3.5)과 같은 요청이다. 배열 영역의 생성 함수 `dtype=`과 같다 (array.md §1.5).
@@ -238,10 +259,11 @@ DataFrame.to_numpy(*, dtype=None, copy=None, na_value=<없음>)
   - **`dtype=`은 명시적 변환이다** (§2.3). 컬럼을 먼저 `astype`(§3.5)으로 바꾼 뒤 위 규칙을 적용한다. 예: float 컬럼의 `to_numpy(dtype="int64")`는 0 쪽으로 자르고 포화시킨다.
   - `string`은 Python str을 담은 object 배열로 돌려준다.
 - **`DataFrame.to_numpy`**
-  - 모든 컬럼의 dtype이 같으면 2D 배열을 돌려준다.
+  - 2D 배열의 dtype은 컬럼 dtype들을 승격한 것이다: bool < int64 < float64 (§2.2, 배열의 `stack`과 같다). 바꿀 때는 `astype`과 같다: int는 반올림하고(§3.5), bool은 0과 1이다.
+    - 예: int64와 bool 컬럼은 int64, int64와 float64 컬럼은 float64 배열이다.
+  - string 컬럼은 string 컬럼끼리만 모인다. 다른 dtype과 섞이면 TypeError다. `dtype=`을 주면 그 dtype으로 바꾼다.
   - 컬럼은 버퍼가 따로따로라서 2D 배열은 언제나 새로 만든다. 그래서 `copy=False`는 ValueError다.
-  - int64와 float64가 섞이면 float64로 만든다. int는 `astype`처럼 반올림한다 (§3.5).
-  - 그 밖의 조합은 에러다.
+- **numpy 프로토콜**: `np.asarray(s)`, `np.asarray(df)`, `np.asarray(index)`는 `to_numpy()`의 배열이다. `dtype=`, `copy=`도 같은 규칙이다. Index(와 RangeIndex)는 라벨의 int64 배열이나 str의 object 배열이다.
 
 ### §2.8 배열과 주고받기 (`to_array`, `Series(배열)`)
 ```
@@ -272,6 +294,7 @@ DataFrame.to_array(*, dtype=None, copy=None, na_value=<없음>)
   - 컬럼을 이름으로 짝짓는다. 행과 열 모두 정렬(alignment)한다 (§5.6).
   - 결과의 컬럼은 왼쪽의 컬럼 순서를 따르고, 오른쪽에만 있는 컬럼을 오른쪽 순서대로 뒤에 붙인다 (§1.7).
 - **DataFrame과 Series는 지원하지 않는다.** **[pandas와 다름]**
+- **받지 않는 피연산자는 `==`, `!=`도 TypeError다.** list, tuple, `None`, numpy 배열, `sd.ndarray`, 그 밖의 객체가 해당한다. `<`와 같고 배열과 같다 (array.md §6.2, §10.3). Python의 기본 동작(객체 동일성으로 조용히 False)을 쓰지 않는다. 메시지는 Python의 형식이다: `'==' not supported between instances of 'Series' and 'list'` (API.md §2.1). **[pandas와 다름]**
 - **결과 이름**: Series끼리 연산할 때 이름이 같으면 유지하고, 다르면 `None`이다. 스칼라와 연산하면 유지한다 (pandas와 같다).
 
 ### §3.2 산술
@@ -297,8 +320,8 @@ DataFrame.to_array(*, dtype=None, copy=None, na_value=<없음>)
   - 예: `Series([2**53 + 1]) == 2.0**53`은 True다. 2^53을 넘는 int는 반올림된 뒤 비교된다.
 - NaN은 IEEE 754를 따른다. `NaN == NaN`은 False, `NaN != NaN`은 True다.
 - string은 코드포인트 순서로 비교한다. UTF-8 바이트 순서와 같고, Python str의 비교와도 같다.
-- bool은 bool끼리만 비교한다. `False < True`다. **[배열과 다름]** 배열은 bool을 int64로 올려 int와 비교한다 (DESIGN §8.4).
-- **비교할 수 없는 dtype끼리 비교하면 `==`도 에러다** (예: string과 int). **[pandas와 다름]**
+- bool끼리는 `False < True`다. **bool과 int, float의 비교는 bool을 int64(0, 1)로 올려서 한다.** 배열과 같은 승격이다 (§2.2). 예: `Series([True, False]) == 1`은 `[True, False]`, `Series([True]) < 1.5`는 `[True]`다.
+- **비교할 수 없는 dtype끼리 비교하면 `==`도 에러다** (예: string과 int, string과 bool). **[pandas와 다름]**
 
 ### §3.4 논리와 비트 연산
 `&`, `|`, `^`, `~`, `<<`, `>>`
@@ -404,9 +427,9 @@ DataFrame.value_counts(subset=None, /, *, normalize=False, sort=True, descending
   - 이유: pandas처럼 값을 Index로 삼으면, float와 bool은 Index로 쓸 수 없다는 규칙(§1.7)과 충돌한다.
   - `DataFrame.value_counts()`는 다중 키 groupby와 같은 방식이다 (§7.2).
 - **컬럼**
-  - 키 컬럼과 `count` 컬럼이 있다. `normalize=True`이면 `count` 대신 `proportion`(float64)이다.
-  - `Series.value_counts`의 키 컬럼 이름은 Series 이름이다. 이름이 없으면 `"value"`다.
-  - 키 컬럼 이름이 `count`(또는 `proportion`)와 겹치면 에러다.
+  - 키 컬럼과 `counts` 컬럼이 있다. 배열의 `unique_counts`가 돌려주는 필드 `values`, `counts`와 같은 이름이다 (array.md §8.3). `normalize=True`이면 `counts` 대신 `proportion`(float64)이다. **[pandas와 다름]** pandas는 `count`다.
+  - `Series.value_counts`의 키 컬럼 이름은 Series 이름이다. 이름이 없으면 `"values"`다.
+  - 키 컬럼 이름이 `counts`(또는 `proportion`)와 겹치면 에러다.
 - **행 순서**
   - `sort=True`이면 개수의 내림차순이다(`descending=True`가 기본값). `descending=False`이면 오름차순이다.
     - `descending`은 bool 옵션이다 (§1.1). 정렬 함수와 이름이 같고, 기본값만 다르다.
@@ -425,7 +448,7 @@ DataFrame.value_counts(subset=None, /, *, normalize=False, sort=True, descending
 ### §5.1 Index와 RangeIndex
 ```
 Index(data, /, *, name=None)
-RangeIndex(start=0, stop=None, step=1, /, *, name=None)
+RangeIndex(start, stop=None, step=1, /, *, name=None)
 Index.dtype
 Index.name
 Index.is_unique
@@ -442,12 +465,16 @@ RangeIndex.equals(other, /)
 ```
 - Index는 바뀌지 않는다(불변).
 - **`Index(data)`**: 라벨은 int64나 string이다. float, bool, NA는 에러다 (§1.7).
-- **`RangeIndex`**: `start`, `stop`, `step`은 생성 인자다. 배열의 `arange`처럼 위치로만 준다. int64 라벨로 친다.
+- **`RangeIndex`**: `start`, `stop`, `step`은 생성 인자다. 배열의 `arange`처럼 위치로만 주고, 첫 인자는 꼭 준다(`RangeIndex(5)`는 `0`부터 `4`). int64 라벨로 친다.
+  - 세 인자는 int 인자다 (§1.1): Python int만 받고(bool, float, numpy 정수는 TypeError), int64 범위 밖이면 OverflowError다. `arange`와 같다.
 - **`name`**은 `str` 또는 `None`이다 (`Series.name`과 같은 규칙, §2.6).
   - 연산 결과의 Index 이름은 Series 이름 규칙을 따른다: 같으면 유지하고, 다르면 `None`이다 (§3.1).
   - repr은 pandas처럼 이름을 보여 준다.
 - 공개하는 것: `dtype`, `name`, `len()`, 반복(라벨), `in`(라벨), `tolist()`, `equals()`, `is_unique`
   - `equals()`는 라벨만 비교한다. 이름은 보지 않는다 (pandas와 같다).
+- **Index는 값이 아니다.** `==`, `!=`는 `<`처럼 TypeError다. 라벨 비교는 `equals()`로 한다. 해싱할 수 없고(dict 키나 set에 넣을 수 없다, Series와 같다), `bool(index)`도 TypeError다(§2.1). **[pandas와 다름]** pandas의 `==`는 원소별 비교다.
+  - `in`의 규칙은 Series의 `in`과 같다 (§5.8): `1.0 in Index([1, 2])`는 True다.
+- **repr**은 `Index([1, 2], dtype=int64)`처럼 dtype을 배열의 repr과 같은 모양으로 쓴다. **[pandas와 다름]** pandas는 `dtype='int64'`다. RangeIndex의 repr에는 dtype이 없다(`RangeIndex(start=0, stop=3, step=1)`, pandas와 같다).
 - 라벨 조회용 해시 테이블은 처음 조회할 때 만들어서 캐시한다.
 - **라벨의 타입은 Index의 dtype과 맞아야 한다.**
   - int Index에는 int 라벨만 쓴다. bool과 float는 쓸 수 없다.
@@ -492,6 +519,7 @@ DataFrame.iloc
   - bool Series 마스크 (§5.5)
 - **`.iloc`에 쓸 수 있는 것**: 정수(음수 가능), 슬라이스, 정수 리스트
   - 범위를 벗어나면 IndexError다.
+- **배열 키**: 리스트를 받는 자리(라벨 리스트, 정수 리스트, DataFrame의 열 자리)는 1차원 numpy 배열과 `sd.ndarray`도 받는다. 리스트와 같은 뜻이고, 두 배열은 같은 결과를 낸다. bool 배열은 마스크가 아니다: bool은 위치나 int 라벨이 아니라서 TypeError다. 마스크는 bool Series다 (§5.5).
 - **DataFrame**
   - `df.loc[행]`, `df.loc[행, 열]`, `df.iloc[행]`, `df.iloc[행, 열]`
   - 열 자리에는 이름 하나, 이름 리스트, 이름 슬라이스(양 끝 포함), `:`를 쓴다.
@@ -548,10 +576,13 @@ Copy-on-Write를 따른다.
 - **Series**: 반복과 `in` 모두 값 기준이다. **[pandas와 다름]**
   - pandas는 반복은 값, `in`은 라벨이다.
   - `x in s`는 키 규칙(§1.6)으로 판단한다. NaN은 NaN과, NA는 NA와 같다.
-  - `x`가 컬럼 dtype의 값과 정확히 같을 수 있을 때만 찾는다. int와 float 사이는 손실 없이 바뀌는 값만 찾는다. 예: float 컬럼에서 `2 in s`는 `2.0`을 찾지만, `2**53 + 1 in Series([2.0**53])`은 False다(`==`는 반올림해서 True, §3.3). 타입이 맞지 않는 값은 False다.
+  - `x`가 컬럼 dtype의 값과 정확히 같을 수 있을 때만 찾는다. bool, int, float 사이는 손실 없이 바뀌는 값만 찾는다. 예: float 컬럼에서 `2 in s`는 `2.0`을 찾지만, `2**53 + 1 in Series([2.0**53])`은 False다(`==`는 반올림해서 True, §3.3).
+    - bool은 숫자다 (§2.2): int 컬럼에서 `True in s`는 `1`을 찾고, bool 컬럼에서 `1 in s`는 `True`를, `0.0 in s`는 `False`를 찾는다. `2 in Series([True])`는 False다.
+    - 타입이 맞지 않는 값(숫자 컬럼의 str, string 컬럼의 숫자)은 False다.
   - 라벨이 있는지는 `x in s.index`로 확인한다.
 - **DataFrame**: 반복과 `in` 모두 컬럼 이름 기준이다.
-- **Index**: 반복과 `in` 모두 라벨 기준이다.
+- **Index**: 반복과 `in` 모두 라벨 기준이다. `in`은 Series의 `in`과 같은 규칙이다: `1.0 in Index([1, 2])`, `True in RangeIndex(3)`은 True다.
+  - 라벨로 고르는 `.loc`은 이와 달리 라벨의 타입이 맞아야 한다 (§5.1): `s.loc[1.0]`은 TypeError다.
 
 ---
 
@@ -594,7 +625,7 @@ DataFrame.var(*, skipna=True, correction=0)
 |---|---|---|---|---|
 | int64 | int64 (wrap, §1.5) | float64: 배열 영역의 float64 합을 개수로 나눔 (§6.5) | int64 | float64 |
 | float64 | float64 | float64 | float64 | float64 |
-| bool | int64: True의 개수 | float64: True의 비율 | bool | TypeError |
+| bool | int64: True의 개수 | float64: True의 비율 | bool | float64: 0과 1의 값으로. `sd.std`, `sd.var`와 비트까지 같다 |
 | string | TypeError | TypeError | string (코드포인트 순서) | TypeError |
 
 ### §6.4 NA와 NaN
@@ -668,14 +699,16 @@ GroupBy.last(*, skipna=True)
 - `sum`, `mean`, `min`, `max`, `std`, `var`
   - 결과 dtype과 할 수 없는 조합(예: string의 `mean`)은 §6과 같다.
 - `count()`: 값 컬럼마다 NA가 아닌 값의 개수다.
-- `size()`: 그룹의 행 수다. 결과 컬럼 이름은 `size`다.
+- `size()`: 그룹의 행 수다. 결과 컬럼 이름은 `size`다. `agg("size")`도 같다 (§7.4).
 - `first`, `last`: 그룹에서 NA가 아닌 처음(마지막) 값이다.
   - `skipna=False`이면 처음(마지막) 행의 값이고, NA일 수도 있다.
   - 컬럼 dtype을 그대로 유지한다.
 - 값이 모두 NA인 그룹: `sum`은 0, `count`는 0이고, 나머지는 NA다.
 
 ### §7.4 `agg`
-- 함수는 이름(문자열)으로만 준다. `sum mean min max count std var first last` 중 하나다.
+- 함수는 이름(문자열)으로만 준다. `sum mean min max count std var first last size` 중 하나다.
+  - 인자는 기본값이다: `agg("std")`는 `std()`와 같고 `correction=0`이다.
+  - `"size"`는 그룹의 행 수다. `agg("size")`는 `size()`와 같은 `size` 컬럼 하나이고, dict와 이름 붙인 집계에서는 그 컬럼 자리에 행 수가 온다.
   - `g.agg("sum")`: 모든 값 컬럼에 적용한다.
   - `g.agg({"f": "sum", "i": "max"})`: 컬럼마다 함수 하나다.
   - `g.agg(total=("f", "sum"), n=("i", "count"))`: 결과 컬럼 이름을 직접 정한다. 같은 컬럼에 함수 여러 개를 적용할 때 쓴다.
@@ -775,11 +808,13 @@ DataFrame.merge(right, /, *, how="inner", on=None, left_on=None, right_on=None, 
 concat(objs, /, *, join="outer", ignore_index=False)
 ```
 - 행 방향만 잇는다. `axis`는 없다. 모양은 배열의 `concat(arrays, /, *, axis=0)`과 같다.
-- `objs`는 DataFrame들이거나 Series들이다. 섞으면 에러이고, 비어 있어도 에러다.
+- `objs`는 DataFrame들이나 Series들의 list나 tuple이다. 배열의 `concat`과 같다. generator나 DataFrame 하나는 TypeError다. 섞으면 에러이고, 비어 있어도 에러다.
 - **컬럼**
   - `join="outer"`: 처음 나타난 순서로 합친다. 어떤 DataFrame에 없는 컬럼은 그 행들이 NA다.
   - `join="inner"`: 모두에 있는 컬럼만, 첫 DataFrame의 순서로 둔다.
-- **같은 이름의 컬럼은 dtype이 같아야 한다.** Series끼리도 dtype이 같아야 한다. **[pandas와 다름]**
+- **같은 이름의 컬럼은 dtype을 승격해서 잇는다: bool < int64 < float64** (§2.2). 배열의 `concat`과 같다. Series끼리도 같다.
+  - 예: int64와 float64는 float64(int는 반올림), int64와 bool은 int64다. 한쪽에 없는 컬럼의 NA 행은 승격한 dtype의 NA다.
+  - string은 string끼리만 잇는다. 다른 dtype과 만나면 TypeError다.
 - **라벨**
   - 라벨을 이어 붙인다. 중복이 생겨도 된다.
   - int 라벨과 string 라벨은 섞을 수 없다(에러). RangeIndex는 int64로 친다.
@@ -795,7 +830,7 @@ read_csv(path, /, *, sep=",", header=True, names=None, usecols=None, dtype=None,
 ```
 
 ### §10.1 인자
-- `sep`: 구분 문자 하나다. 따옴표나 줄바꿈 문자는 쓸 수 없다.
+- `sep`: 구분 문자 하나다. 따옴표나 줄바꿈 문자는 쓸 수 없다. str이 아니면 TypeError다 (§1.1).
 - `header`
   - `True`: 첫 레코드가 컬럼 이름이다.
   - `False`: `names=`가 꼭 필요하다 (list의 list에 `columns=`를 요구하는 것과 같다, §2.5).
@@ -804,8 +839,8 @@ read_csv(path, /, *, sep=",", header=True, names=None, usecols=None, dtype=None,
 - `dtype`: dtype 하나(모든 컬럼) 또는 `{컬럼: dtype}`이다.
   - 지정한 컬럼은 추론하지 않고, `astype`의 엄격한 파싱(§3.5)으로 읽는다. 읽을 수 없는 값은 에러이고, 줄 번호를 알려 준다.
 - `na_values`: 빈 필드 말고도 NA로 읽을 문자열의 리스트다.
-- `nrows`: 데이터 행을 최대 몇 개까지 읽을지다.
-- `index_col`: Index가 될 컬럼 이름 하나다.
+- `nrows`: 데이터 행을 최대 몇 개까지 읽을지다. int 인자다 (§1.1): bool은 TypeError, 음수는 ValueError다.
+- `index_col`: Index가 될 컬럼 이름(str) 하나다.
   - int64나 string이어야 하고, NA가 없어야 한다 (§1.7).
   - Index 이름은 컬럼 이름이다. 이 컬럼은 컬럼 목록에서 빠진다.
 - `encoding`, `skiprows`, `comment`, `quotechar`, `thousands`, `decimal`, `parse_dates`, `converters` 등 나머지 옵션은 없다.
@@ -837,9 +872,9 @@ read_csv(path, /, *, sep=",", header=True, names=None, usecols=None, dtype=None,
 - 따옴표는 필드의 경계일 뿐이다. `"12"`는 `12`와 같다.
 - **추론 순서**
   1. 모든 필드가 int 문법(§3.5)이고 int64 범위 안이면 **int64**다.
-  2. 그렇지 않고 모든 필드가 float 문법이면 **float64**다.
-     - 단, int 문법인 필드 중에 int64 범위를 넘거나 float64로 정확히 표현할 수 없는 값이 있으면 string이다. 값이 조용히 바뀌지 않게 하기 위해서다.
-     - list에서 만들 때(§2.2)는 이런 int를 float64로 반올림한다. CSV는 이 규칙을 남겼다 (루트 DESIGN §8.4).
+  2. 그렇지 않고 모든 필드가 float 문법이면 **float64**다. int 문법도 float 문법이다.
+     - int인 필드는 float64로 반올림한다. list에서 만들 때(§2.2)와 같다. 2^53을 넘는 int는 반올림되고, int64 범위 밖의 int도 float64가 된다. 예: `2**70`이 있는 컬럼, `9007199254740993`과 `0.5`가 있는 컬럼
+     - list는 int만 있고 int64 범위 밖의 int가 있으면 OverflowError다(§2.2). CSV는 그런 필드를 float 문법으로 읽어 float64 컬럼으로 만든다. 추론은 에러를 내지 않고 다음 타입으로 넘어가기 때문이다.
   3. 그렇지 않고 모든 필드가 `True` 또는 `False`이면 **bool**이다.
   4. 그 밖에는 **string**이다.
 - 공백이 들어간 필드(예: `" 1"`)는 숫자가 아니다 (§3.5). **[pandas와 다름]**
@@ -868,7 +903,7 @@ read_csv(path, /, *, sep=",", header=True, names=None, usecols=None, dtype=None,
 - **int 표기**: NA가 있어도 numpy int64 규칙을 따른다.
   - pandas의 nullable `Int64`는 음수를 한 칸 넓게 쓴다. 예: `-1`과 `<NA>`가 섞이면 `   -1`이 된다.
 - **dtype 이름**: `bool`, `int64`, `float64`, `string` (§1.2)
-- Index의 이름은 pandas처럼 보여 준다 (§5.1).
+- Index의 이름은 pandas처럼 보여 준다 (§5.1). dtype은 배열의 repr처럼 따옴표 없이 쓴다: `Index([1, 2], dtype=int64)` **[pandas와 다름]**
 
 ---
 

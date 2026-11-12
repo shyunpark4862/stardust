@@ -27,6 +27,7 @@
 #include <nanobind/stl/vector.h>
 
 #include <cstdint>
+#include <cstring>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -49,6 +50,45 @@ decltype(auto) named_call(const Func& func, F&& f) {
 }
 
 const auto kFunc = nb::arg("func").none() = nb::none();
+
+nb::bytes bytes_of(const std::byte* p, std::int64_t n) { return nb::bytes(reinterpret_cast<const char*>(p), static_cast<std::size_t>(n)); }
+
+std::shared_ptr<sd::Buffer> buffer_of(const nb::bytes& b) {
+    auto buf = sd::Buffer::allocate(static_cast<std::int64_t>(b.size()), /*zeroed=*/false);
+    std::memcpy(buf->data(), b.c_str(), b.size());
+    return buf;
+}
+
+// (dtype, length, null_count, values, validity or None, offsets or None):
+// the rows [offset, offset + length) rebased to 0.
+nb::tuple column_state(const sd::frame::Column& c) {
+    nb::object validity = nb::none(), offsets = nb::none();
+    if (auto v = sd::frame::rebased_validity(c)) validity = bytes_of(v->data(), v->size());
+    nb::bytes values;
+    if (c.dtype == sd::DType::String) {
+        const std::int64_t* o = c.string_offsets();
+        std::vector<std::int64_t> rebased(static_cast<std::size_t>(c.length) + 1);
+        for (std::int64_t i = 0; i <= c.length; ++i) rebased[static_cast<std::size_t>(i)] = o[i] - o[0];
+        offsets = bytes_of(reinterpret_cast<const std::byte*>(rebased.data()), (c.length + 1) * 8);
+        values = bytes_of(c.values->data() + o[0], o[c.length] - o[0]);
+    } else {
+        const std::int64_t size = sd::itemsize(c.dtype);
+        values = bytes_of(c.values->data() + c.offset * size, c.length * size);
+    }
+    return nb::make_tuple(sd::dtype_name(c.dtype), c.length, c.null_count, values, validity, offsets);
+}
+
+sd::frame::Column column_from_state(const nb::tuple& state) {
+    if (state.size() != 6) throw nb::value_error("not a pickled Column");
+    sd::frame::Column c;
+    c.dtype = sd::frame::parse_dtype(nb::cast<std::string_view>(state[0]));
+    c.length = nb::cast<std::int64_t>(state[1]);
+    c.null_count = nb::cast<std::int64_t>(state[2]);
+    c.values = buffer_of(nb::cast<nb::bytes>(state[3]));
+    if (!state[4].is_none()) c.validity = buffer_of(nb::cast<nb::bytes>(state[4]));
+    if (!state[5].is_none()) c.offsets = buffer_of(nb::cast<nb::bytes>(state[5]));
+    return c;
+}
 
 void bind_column(nb::module_& m) {
     using sd::frame::Column;
@@ -98,7 +138,11 @@ void bind_column(nb::module_& m) {
         // that held the same Column (the Buffers themselves are Copy-on-Write).
         .def("share", [](const Column& c) { return c; })
         .def("set_rows", &sd::frame::set_rows, nb::arg("positions"), nb::arg("values"))
-        .def("contains_key", &sd::frame::contains_key, nb::arg("value"));
+        .def("contains_key", &sd::frame::contains_key, nb::arg("value"))
+        // Pickling (DESIGN.md §10.1 #12): the column's own rows as bytes, so a
+        // slice pickles only its rows and the bits round-trip exactly.
+        .def("__getstate__", &column_state)
+        .def("__setstate__", [](Column& c, const nb::tuple& state) { new (&c) Column(column_from_state(state)); });
     nb::class_<sd::frame::LabelTable>(m, "LabelTable")
         .def(nb::init<const Column&>(), nb::arg("labels"))
         .def_prop_ro("is_unique", &sd::frame::LabelTable::is_unique)
@@ -106,6 +150,15 @@ void bind_column(nb::module_& m) {
         .def("first_positions", &sd::frame::LabelTable::first_positions, nb::arg("targets"))
         .def("all_positions", &sd::frame::LabelTable::all_positions, nb::arg("targets"));
     m.def("concat", &sd::frame::concat, nb::arg("cols"));
+    // The common dtype of column dtypes by the frame's promotion
+    // (promote_columns): a name, or None when a string meets another dtype.
+    m.def("promote_types", [](const std::vector<std::string>& names) -> std::optional<std::string> {
+        if (names.empty()) throw nb::value_error("promote_types needs at least one dtype");
+        std::optional<sd::DType> d = sd::frame::parse_dtype(names[0]);
+        for (std::size_t i = 1; i < names.size() && d; ++i) d = sd::frame::promote_columns(*d, sd::frame::parse_dtype(names[i]));
+        if (!d) return std::nullopt;
+        return std::string(sd::dtype_name(*d));
+    }, nb::arg("dtypes"));
     m.def("columns_to_array", &sd::frame::columns_to_array, nb::arg("cols"), nb::arg("n"));
     m.def("reduce", [](std::string_view op, const Column& col, bool skipna, double correction, const Func& func) {
         return named_call(func, [&] { return sd::frame::reduce(op, col, skipna, correction); });

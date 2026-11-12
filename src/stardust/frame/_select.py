@@ -24,10 +24,23 @@ def _is_int(x):
     return (isinstance(x, int) and not isinstance(x, bool)) or (np is not None and isinstance(x, np.integer))
 
 
-def _is_listlike(key):
-    from ._column import is_ndarray
+def is_array(key):
+    """A numpy array or an sd.ndarray: keys that select as lists do (DESIGN.md §10.1 #7)."""
+    from ._column import is_ndarray, is_sdarray
 
-    return isinstance(key, (list, _IndexBase)) or is_ndarray(key)
+    return is_ndarray(key) or is_sdarray(key)
+
+
+def array_items(key):
+    """The elements of a list-like key. A 1-D sd.ndarray gives Python scalars
+    (as its tolist()); a numpy array numpy scalars, which select the same."""
+    from ._column import is_sdarray
+
+    return key.tolist() if is_sdarray(key) and key.ndim == 1 else list(key)
+
+
+def _is_listlike(key):
+    return isinstance(key, (list, _IndexBase)) or is_array(key)
 
 
 # --- rows by label (.loc) and by position (.iloc) ---
@@ -41,7 +54,7 @@ def by_label(index, key):
     if isinstance(key, slice):
         return ("slice", *label_slice(index, key))
     if _is_listlike(key):
-        return ("take", index._positions_of(key))
+        return ("take", index._positions_of(array_items(key) if is_array(key) else key))
     if isinstance(key, tuple):
         raise TypeError("a tuple is not a row label (there is no MultiIndex)")
     return ("one", index._position_of(key))
@@ -70,8 +83,8 @@ def by_position(n, key):
         return ("one", pos)
     if isinstance(key, slice):
         return ("slice", *key.indices(n))
-    if isinstance(key, list) or (_is_listlike(key) and not isinstance(key, _IndexBase)):
-        positions = list(key)
+    if isinstance(key, list) or is_array(key):
+        positions = array_items(key)
         for p in positions:
             if not _is_int(p):
                 raise TypeError(f"positions must be ints, got {type(p).__name__}")

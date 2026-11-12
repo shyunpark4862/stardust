@@ -9,7 +9,7 @@ table never goes stale.
 import sys
 
 from . import _core, _dtypes, _format
-from ._errors import named
+from ._errors import check_int, named, type_name
 from ._na import NA
 
 Column = _core.Column
@@ -45,6 +45,23 @@ def _an(dtype):
     return f"an {dtype}" if dtype == "int64" else f"a {dtype}"
 
 
+def _an_obj(obj):
+    return f"an {type_name(obj)}" if type_name(obj)[0] in "AEIOU" else f"a {type_name(obj)}"
+
+
+def _probe(label, dtype):
+    """A one-row Column of `dtype` equal to `label`, or None when no label of
+    `dtype` equals it (an Index holds no NA)."""
+    from ._column import exact
+
+    if label is NA or label is None:
+        return None
+    try:
+        return exact(label, dtype)
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
 def label_column(index, labels, func=None):
     """`labels` (a list-like, Index or RangeIndex) as a Column of the index's dtype."""
     if isinstance(labels, (Index, RangeIndex)):
@@ -73,11 +90,38 @@ class _IndexBase:
         return iter(self.tolist())
 
     def __contains__(self, label):
-        try:
-            check_label(self, label)
-        except TypeError:
-            return False
-        return self._first_positions(Column.from_list([label], NA, self._dtype)).to_list(None)[0] >= 0
+        """Whether some label equals `label`, by the rule of `x in s` (docs/api/frame.md
+        §5.8): a value of another type is in no row unless it converts to the
+        labels' dtype without loss (1.0 in an int Index is found)."""
+        probe = _probe(label, self._dtype)
+        return probe is not None and self._first_positions(probe).to_list(None)[0] >= 0
+
+    # An Index is not a value: == and != are TypeErrors, as < is (labels are
+    # compared with equals()), and an Index cannot be a dict key or a truth
+    # value (DESIGN.md §10.1 #1b, #9, #12).
+    __hash__ = None
+
+    def __eq__(self, other):
+        raise TypeError(f"'==' not supported between instances of {type_name(self)!r} and {type_name(other)!r}; "
+                        "compare labels with equals()")
+
+    def __ne__(self, other):
+        raise TypeError(f"'!=' not supported between instances of {type_name(self)!r} and {type_name(other)!r}; "
+                        "compare labels with equals()")
+
+    def __bool__(self):
+        raise TypeError(f"the truth value of {_an_obj(self)} is ambiguous")
+
+    def __array__(self, dtype=None, copy=None):
+        """numpy's protocol: the labels, by the rules of Series.to_numpy (docs/api/frame.md §2.7)."""
+        from ._column import _NO_VALUE, to_numpy
+
+        arr = to_numpy(self._column(), None, copy, _NO_VALUE, None)
+        if dtype is None:
+            return arr
+        import numpy as np
+
+        return np.asarray(arr, dtype=dtype, copy=False if copy is False else None)
 
     def equals(self, other, /):
         """True when `other` holds the same labels in the same order (names are not compared)."""
@@ -127,10 +171,11 @@ class RangeIndex(_IndexBase):
 
     __slots__ = ("_range", "_name", "_labels")
 
-    def __init__(self, start=0, stop=None, step=1, /, *, name=None):
-        for arg, v in (("start", start), ("stop", stop), ("step", step)):
-            if not hasattr(type(v), "__index__") and not (v is None and arg == "stop"):  # what range() takes
-                raise TypeError(f"RangeIndex(): '{arg}' must be an int, not {type(v).__name__}")
+    def __init__(self, start, stop=None, step=1, /, *, name=None):
+        # int arguments, as arange's start/stop/step are required and take ints (API.md §2)
+        start, step = check_int(start, "start", "RangeIndex"), check_int(step, "step", "RangeIndex")
+        if stop is not None:
+            stop = check_int(stop, "stop", "RangeIndex")
         if step == 0:
             raise ValueError("RangeIndex(): 'step' must not be zero")
         if stop is None:
@@ -149,6 +194,9 @@ class RangeIndex(_IndexBase):
 
     def _copy(self):
         return RangeIndex._from_range(self._range, self._name)
+
+    def __reduce__(self):  # pickled without the lookup table
+        return (RangeIndex._from_range, (self._range, self._name))
 
     @property
     def start(self):
@@ -190,12 +238,10 @@ class RangeIndex(_IndexBase):
         return self._labels
 
     def __contains__(self, label):
-        """Arithmetic, like _position_of: no labels or table are built (docs/design/frame.md §6.1)."""
-        try:
-            check_label(self, label)
-        except TypeError:
-            return False
-        return label in self._range
+        """Arithmetic, like _position_of: no labels or table are built (docs/design/frame.md §6.1).
+        The probe follows Index.__contains__ (1.0 is found)."""
+        probe = _probe(label, "int64")
+        return probe is not None and probe.to_list(None)[0] in self._range
 
     def _position_of(self, label):
         check_label(self, label)
@@ -245,6 +291,9 @@ class Index(_IndexBase):
         obj._labels = self._labels  # same labels, same table
         return obj
 
+    def __reduce__(self):  # pickled without the lookup table
+        return (Index._new, (self._col, self._name))
+
     @property
     def dtype(self):
         return _dtypes.obj(self._col.dtype)
@@ -286,9 +335,14 @@ def _labels_from(data, func):
     """The label Column of an Index made from `data` by the public function `func`."""
     from ._column import column_from
 
+    from ._column import is_ndarray, is_sdarray
+
     if isinstance(data, _IndexBase):
         col = data._column()
     else:
+        if not isinstance(data, (list, tuple, range)) and not is_ndarray(data) and not is_sdarray(data):
+            raise TypeError(named(func, "labels must be a list, tuple, range, numpy array, sd.ndarray or Index, "
+                                        f"not {type_name(data)}"))
         data = list(data) if isinstance(data, range) else data
         # No labels to infer from: int64, since float64 (the empty list's dtype) cannot label.
         col = column_from(data, "int64" if len(data) == 0 else None, func)

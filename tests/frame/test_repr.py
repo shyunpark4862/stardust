@@ -80,7 +80,7 @@ def test_series_repr_matches_pandas(data):
     name = data.draw(st.none() | text)
     ours = sd.frame.Series(values, dtype=dtype, name=name)
     theirs = pd.Series(pandas_column(values, dtype), name=name)
-    na_rep = "<NA>" if dtype == "float64" and NA in values else "NaN"
+    na_rep = "<NA>" if dtype == "float64" and any(x is NA for x in values) else "NaN"
     assert repr(ours) == fix_dtype_names(theirs.to_string(na_rep=na_rep, **SERIES_OPTS))
 
 
@@ -101,8 +101,8 @@ def test_frame_repr_matches_pandas(data):
     ours = sd.frame.DataFrame({k: sd.frame.Series(v, dtype=dt) for k, (dt, v) in zip(names, columns)})
     theirs = pd.DataFrame({k: pandas_column(v, dt) for k, (dt, v) in zip(names, columns)}, index=pd.RangeIndex(n if names else 0))
     # na_rep only reaches float columns; they never mix NaN and NA here.
-    na_rep = "<NA>" if any(dt == "float64" and NA in v for dt, v in columns) else "NaN"
-    if na_rep == "<NA>" and any(dt == "float64" and any(x != x for x in v) for dt, v in columns):
+    na_rep = "<NA>" if any(dt == "float64" and any(x is NA for x in v) for dt, v in columns) else "NaN"
+    if na_rep == "<NA>" and any(dt == "float64" and any(x is not NA and x != x for x in v) for dt, v in columns):
         return  # a NaN column next to an NA column: one na_rep cannot express both
     assert repr(ours) == theirs.to_string(na_rep=na_rep, **FRAME_OPTS)
 

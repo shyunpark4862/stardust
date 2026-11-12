@@ -1,7 +1,7 @@
 """merge (a hash join) and concat (docs/api/frame.md §9)."""
 
-from . import _column, _core, _select, _sort
-from ._errors import name_list
+from . import _column, _core, _dtypes, _select, _sort
+from ._errors import check_bool, check_choice, name_list, type_name
 from ._index import Index, RangeIndex, _IndexBase
 
 Column = _core.Column
@@ -30,8 +30,8 @@ def merge(left, right, /, *, how="inner", on=None, left_on=None, right_on=None, 
 
     if not isinstance(left, DataFrame) or not isinstance(right, DataFrame):
         raise TypeError("merge(): 'left' and 'right' must be DataFrames")
-    if how not in HOWS:
-        raise ValueError(f"merge(): 'how' must be one of {', '.join(HOWS)}, got {how!r}")
+    check_choice(how, "how", HOWS, "merge")
+    check_bool(sort, "sort", "merge")
     if on is not None:
         if left_on is not None or right_on is not None:
             raise ValueError("merge(): pass on= or left_on=/right_on=, not both")
@@ -88,43 +88,55 @@ def _sort_keys(out, lkeys, rkeys, overlap, suffixes, no_left):
     return keys
 
 
+def _promoted(cols, what):
+    """`cols` as their common dtype (bool < int64 < float64, as the array
+    area's concat; DESIGN.md §10.1 #2). Strings join only strings."""
+    dtype = _dtypes.common(c.dtype for c in cols)
+    if dtype is None:
+        raise TypeError(f"concat(): {what} dtypes {sorted({c.dtype for c in cols})} cannot be joined; "
+                        "a string column joins only string columns")
+    return [c if c.dtype == dtype else c.astype(dtype) for c in cols]
+
+
 def concat(objs, /, *, join="outer", ignore_index=False):
-    """DataFrames (or Series) one after another, rows only (docs/api/frame.md §9.2)."""
+    """DataFrames (or Series) one after another, rows only (docs/api/frame.md §9.2).
+    Columns of different dtypes promote as in the array area's concat."""
     from ._frame import DataFrame
     from ._series import Series
 
-    try:
-        objs = list(objs)
-    except TypeError:
-        raise TypeError(f"concat(): 'objs' must be a list of DataFrames or Series, not {type(objs).__name__}") from None
+    if not isinstance(objs, (list, tuple)):  # as sd.concat: a list or a tuple, no generators
+        raise TypeError(f"concat(): 'objs' must be a list or tuple of DataFrames or Series, not {type_name(objs)}")
     if not objs:
         raise ValueError("concat(): 'objs' must hold at least one object")
-    if join not in ("outer", "inner"):
-        raise ValueError(f"concat(): 'join' must be 'outer' or 'inner', got {join!r}")
-    index = None if ignore_index else _concat_labels([o.index for o in objs])
-    n = sum(len(o) for o in objs)
+    check_choice(join, "join", ("outer", "inner"), "concat")
+    check_bool(ignore_index, "ignore_index", "concat")
     if all(isinstance(o, Series) for o in objs):
-        dtypes = {o._dtype for o in objs}
-        if len(dtypes) != 1:
-            raise TypeError(f"concat(): Series of dtypes {sorted(dtypes)} cannot be joined")
+        kind = "Series"
+    elif all(isinstance(o, DataFrame) for o in objs):
+        kind = "DataFrame"
+    else:
+        raise TypeError("concat(): 'objs' must be all DataFrames or all Series, not a mix")
+    n = sum(len(o) for o in objs)
+    index = None if ignore_index else _concat_labels([o.index for o in objs])
+    if index is None or len(index) == 0:  # no labels to keep: RangeIndex
+        index = RangeIndex(n)
+    if kind == "Series":
         names = {o.name for o in objs}
         name = names.pop() if len(names) == 1 else None
-        return Series._new(_core.concat([o._col for o in objs]), index or RangeIndex(n), name)
-    if not all(isinstance(o, DataFrame) for o in objs):
-        raise TypeError("concat(): 'objs' must be all DataFrames or all Series, not a mix")
+        return Series._new(_core.concat(_promoted([o._col for o in objs], "Series of")), index, name)
     if join == "outer":
         names = list(dict.fromkeys(k for o in objs for k in o._cols))
     else:
         names = [k for k in objs[0]._cols if all(k in o._cols for o in objs)]
     cols = {}
     for k in names:
-        dtypes = {o._cols[k].dtype for o in objs if k in o._cols}
-        if len(dtypes) != 1:
-            raise TypeError(f"concat(): column {k!r} has dtypes {sorted(dtypes)}; make them one with astype")
-        (dtype,) = dtypes
-        parts = [o._cols[k] if k in o._cols else _column.full_na(len(o), dtype) for o in objs]
+        present = _promoted([o._cols[k] for o in objs if k in o._cols], f"column {k!r} of")
+        dtype = present[0].dtype
+        parts, it = [], iter(present)
+        for o in objs:
+            parts.append(next(it) if k in o._cols else _column.full_na(len(o), dtype))
         cols[k] = _core.concat(parts)
-    return DataFrame._new(cols, index or RangeIndex(n))
+    return DataFrame._new(cols, index)
 
 
 def _concat_labels(indexes):

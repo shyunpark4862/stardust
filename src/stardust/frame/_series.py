@@ -4,6 +4,7 @@ from . import _column, _core, _dtypes, _format, _ops, _select, _sort, _unique
 from ._reduce import Reductions
 from ._column import _NO_VALUE
 from ._dtypes import resolve
+from ._errors import check_bool, check_int
 from ._na import NA
 from ._index import RangeIndex, check_name, ensure_index
 
@@ -47,6 +48,9 @@ class Series(Reductions):
         obj._name = name
         return obj
 
+    def __reduce__(self):  # pickling: the Column pickles its own rows (DESIGN.md §10.1 #12)
+        return (Series._new, (self._col, self._index, self._name))
+
     @property
     def dtype(self):
         return _dtypes.obj(self._col.dtype)
@@ -75,7 +79,7 @@ class Series(Reductions):
         return len(self._col)
 
     def __bool__(self):
-        raise ValueError("the truth value of a Series is ambiguous")
+        raise TypeError("the truth value of a Series is ambiguous")  # as an array's (DESIGN.md §10.1 #9)
 
     def __iter__(self):
         """The values, as in a list (docs/api/frame.md §5.8)."""
@@ -130,11 +134,11 @@ class Series(Reductions):
 
     def head(self, n=5, /):
         """The first n rows; with n < 0, all rows but the last -n."""
-        return self._slice(*_column.head_bounds(len(self), n))
+        return self._slice(*_column.head_bounds(len(self), check_int(n, "n", "head")))
 
     def tail(self, n=5, /):
         """The last n rows; with n < 0, all rows but the first -n."""
-        return self._slice(*_column.tail_bounds(len(self), n))
+        return self._slice(*_column.tail_bounds(len(self), check_int(n, "n", "tail")))
 
     def __repr__(self):
         return _format.series_repr(self)
@@ -203,7 +207,7 @@ class Series(Reductions):
 
     def dropna(self, *, ignore_index=False):
         """The rows that are not NA."""
-        return self._take(self._col.notna().nonzero(), ignore_index)
+        return self._take(self._col.notna().nonzero(), check_bool(ignore_index, "ignore_index", "dropna"))
 
     # --- duplicates and unique values (docs/api/frame.md §4) ---
 
@@ -215,6 +219,7 @@ class Series(Reductions):
 
     def nunique(self, *, dropna=True):
         """How many distinct values. NaN counts as a value; dropna drops NA only (docs/api/frame.md §4.2)."""
+        check_bool(dropna, "dropna", "nunique")
         _, _, ngroups = _unique.codes([self._col])
         return ngroups - (1 if dropna and self._col.null_count else 0)
 
@@ -224,6 +229,7 @@ class Series(Reductions):
 
     def drop_duplicates(self, *, keep="first", ignore_index=False):
         """The rows that duplicated(keep=keep) does not mark."""
+        check_bool(ignore_index, "ignore_index", "drop_duplicates")
         keep_rows = _core.unary_op("invert", _unique.duplicated([self._col], keep, "drop_duplicates"))
         return self._take(keep_rows.nonzero(), ignore_index)
 
@@ -231,8 +237,10 @@ class Series(Reductions):
         """A DataFrame of each value and how often it appears (docs/api/frame.md §4.3)."""
         from ._frame import DataFrame
 
-        name = "value" if self._name is None else self._name
-        count_name = "proportion" if normalize else "count"
+        check_bool(normalize, "normalize", "value_counts")
+        check_bool(dropna, "dropna", "value_counts")
+        name = "values" if self._name is None else self._name  # the fields of unique_counts
+        count_name = "proportion" if normalize else "counts"
         if name == count_name:
             raise ValueError(f"value_counts(): the value column cannot be named {count_name!r}")
         col = self._col.take(self._col.notna().nonzero()) if dropna and self._col.null_count else self._col
@@ -248,10 +256,12 @@ class Series(Reductions):
         """The rows ordered by value; equal values keep their order (always: stable=False
         is accepted and changes nothing). NaN is the largest value; NA goes where
         na_position says."""
+        check_bool(ignore_index, "ignore_index", "sort_values")
         return self._take(_sort.order([self._col], descending, na_position, stable, "sort_values"), ignore_index)
 
     def sort_index(self, *, descending=False, stable=True, ignore_index=False):
         """The rows ordered by label."""
+        check_bool(ignore_index, "ignore_index", "sort_index")
         return self._take(_sort.order([self._index._column()], descending, "last", stable, "sort_index"), ignore_index)
 
     # --- selection and assignment (docs/api/frame.md §5) ---
@@ -341,15 +351,10 @@ def fill_column(col, value, func):
     return col.fill_na(_column.implicit_scalar(value, col.dtype, func))  # implicit, by dtype (docs/api/frame.md §3.6)
 
 
-def _make_binary(op, reflected):
-    def method(self, other):
-        return self._binary(other, op, reflected)
+def _defer():  # a DataFrame answers DataFrame-Series operations (with a TypeError)
+    from ._frame import DataFrame
 
-    return method
+    return DataFrame
 
 
-for _name, _op in {**_ops.ARITH, **_ops.BITWISE}.items():
-    setattr(Series, f"__{_name}__", _make_binary(_op, False))
-    setattr(Series, f"__r{_name}__", _make_binary(_op, True))
-for _name in _ops.COMPARE:
-    setattr(Series, f"__{_name}__", _make_binary(_name, False))
+_ops.attach(Series, _defer)

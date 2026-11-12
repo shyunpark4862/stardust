@@ -7,7 +7,7 @@ live in one place: the C++ factorize.
 """
 
 from . import _core
-from ._sort import check_bool
+from ._errors import check_bool, check_choice
 
 Column = _core.Column
 
@@ -22,8 +22,7 @@ def codes(cols):
 def duplicated(cols, keep, func):
     """bool Column: True for rows whose key already appeared (keep="first"),
     appears again later (keep="last"), or appears more than once ("none")."""
-    if keep not in KEEP:
-        raise ValueError(f"{func}(): 'keep' must be 'first', 'last' or 'none', got {keep!r}")
+    check_choice(keep, "keep", KEEP, func)
     n = len(cols[0])
     row_codes, first, ngroups = codes(cols)
     if keep == "none":
@@ -45,7 +44,9 @@ def unique_values(col):
 
 def value_counts(cols, normalize, sort, descending, func):
     """(key columns, count column): one row per key."""
-    check_bool("descending", descending, func)
+    check_bool(normalize, "normalize", func)
+    check_bool(sort, "sort", func)
+    check_bool(descending, "descending", func)
     row_codes, first, ngroups = codes(cols)
     counts, _ = _core.group_counts(row_codes, ngroups)
     order = _core.stable_order(counts, not descending) if sort else _core.arange(0, 1, ngroups)

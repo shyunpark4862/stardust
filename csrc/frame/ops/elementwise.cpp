@@ -438,6 +438,11 @@ Column binary_op(std::string_view name, const Column& a, const Column& b, int sc
         return float_arith<double, double>(op, a, b, scalar_side);
     }
     if (is_compare(op)) {
+        // A bool meeting a number takes part as int64, as in the array area
+        // (promote_columns, docs/api/frame.md §3.3): True == 1, False < 0.5.
+        if ((da == DType::Bool && is_numeric(db)) || (db == DType::Bool && is_numeric(da)))
+            return binary_op(name, da == DType::Bool ? astype(a, DType::Int64) : a,
+                             db == DType::Bool ? astype(b, DType::Int64) : b, scalar_side);
         if (is_numeric(da) && is_numeric(db)) {
             if (da == db) return da == DType::Int64 ? compare_plain<I, I>(op, a, b, scalar_side)
                                                     : compare_plain<double, double>(op, a, b, scalar_side);

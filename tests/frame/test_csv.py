@@ -47,10 +47,9 @@ def oracle_column(fields):
     ints = all(INT_RE.match(t) for t in present)
     if ints and all(-(2**63) <= int(t) < 2**63 for t in present):
         return "int64", [NA if t is None else int(t) for t, _ in fields]
-    floats = all(FLOAT_RE.match(t) for t in present) and all(
-        not INT_RE.match(t) or (-(2**63) <= int(t) < 2**63 and float(int(t)) == int(t)) for t in present)
-    if floats:
-        return "float64", [NA if t is None else float(t) for t, _ in fields]
+    # an int beyond int64 or 2**53 is float syntax: rounded to float64, as list inference (DESIGN.md §10.1 #3)
+    if all(FLOAT_RE.match(t) for t in present):
+        return "float64", [NA if t is None else float(int(t)) if INT_RE.match(t) else float(t) for t, _ in fields]
     if all(t in ("True", "False") for t in present):
         return "bool", [NA if t is None else t == "True" for t, _ in fields]
     return "string", [NA if t is None else t for t, _ in fields]
@@ -165,6 +164,22 @@ def test_malformed_files(tmp_path, text, match):
         sd.frame.read_csv(p)
 
 
+@pytest.mark.parametrize("values", [
+    [2**53 + 1, 0.5], [2**63, 1], [-(2**63) - 1, 2], [2**70, 3.25, None], [12345678901234567890123, 1.0],
+    [2**63 - 1, 1.5], [-(2**63), 0.5], [9007199254740993, 9007199254740995, 1e300],
+])
+def test_big_ints_round_as_list_inference(tmp_path, values):
+    # an int beyond int64, or beyond 2**53 next to a float, makes a float64 column, rounded as
+    # Series(list) rounds it (DESIGN.md §10.1 #3, docs/api/frame.md §10.4); it used to stay a string
+    p = tmp_path / "t.csv"
+    p.write_text("x\n" + "".join(("" if v is None else repr(v) if isinstance(v, float) else str(v)) + "\n" for v in values))
+    got = sd.frame.read_csv(p)["x"]
+    want = sd.frame.Series([float(v) if isinstance(v, int) and not -(2**63) <= v < 2**63 else v for v in values])
+    assert got.dtype is sd.float64 and want.dtype is sd.float64
+    assert [np.float64(v).tobytes() if v is not NA else None for v in got.tolist()] == \
+        [np.float64(v).tobytes() if v is not NA else None for v in want.tolist()]
+
+
 def test_options(tmp_path):
     p = tmp_path / "t.csv"
     p.write_text("k;x;y\nb;1;2.5\na;2;3.5\nc;3;4.5\n")
@@ -184,6 +199,14 @@ def test_options(tmp_path):
         (lambda: sd.frame.read_csv(p, sep=";", dtype={"zz": "int64"}), KeyError),
         (lambda: sd.frame.read_csv(p, sep=";", index_col="y"), ValueError),  # float labels (docs/api/frame.md §10.1)
         (lambda: sd.frame.read_csv(p, sep=";", nrows=-1), ValueError),
+        (lambda: sd.frame.read_csv(p, sep=";", nrows=True), TypeError),  # an int argument (DESIGN.md §10.1 #4b)
+        (lambda: sd.frame.read_csv(p, sep=";", nrows=2.0), TypeError),
+        (lambda: sd.frame.read_csv(p, sep=";", nrows=2**64), OverflowError),
+        (lambda: sd.frame.read_csv(p, sep=0), TypeError),  # a string option (DESIGN.md §10.1 #4c)
+        (lambda: sd.frame.read_csv(p, sep=";", header=1), TypeError),
+        (lambda: sd.frame.read_csv(p, sep=";", index_col=0), TypeError),
+        (lambda: sd.frame.read_csv(p, sep=";", usecols=(c for c in "k")), TypeError),  # no generators
+        (lambda: sd.frame.read_csv(p, sep=";", usecols="k"), TypeError),
         (lambda: sd.frame.read_csv(p, ";"), TypeError),  # keyword-only (docs/api/frame.md §1.1)
     ):
         with pytest.raises(error):

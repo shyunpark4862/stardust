@@ -122,9 +122,22 @@ def test_bool_reductions():
     b = sd.frame.Series([True, False, True, None])
     assert b.sum() == 2 and type(b.sum()) is int
     assert b.mean() == 2 / 3 and b.min() is False and b.max() is True and b.count() == 3
-    for op in ("std", "var"):
-        with pytest.raises(TypeError):
-            getattr(b, op)()
+    # std and var of 0 and 1, as sd.std on bool (DESIGN.md §10.1 #2)
+    assert b.var() == sd.var(sd.asarray([True, False, True]))
+    assert b.std(correction=1) == sd.std(sd.asarray([True, False, True]), correction=1)
+
+
+@settings(max_examples=60, deadline=None)
+@given(st.lists(st.booleans(), min_size=1, max_size=3000), st.sampled_from([0, 1, 0.5]))
+def test_bool_std_var_have_the_array_bits(values, correction):
+    s, x = sd.frame.Series(values), sd.asarray(values)
+    for op in ("var", "std"):
+        ours = getattr(s, op)(correction=correction)
+        theirs = getattr(sd, op)(x, correction=correction)
+        assert ours is NA if len(values) <= correction else ours == theirs or (math.isnan(ours) and math.isnan(theirs))
+    keys = [i % 3 for i in range(len(values))]
+    g = sd.frame.DataFrame({"k": keys, "b": values}).groupby("k").var()
+    assert g["b"].dtype is sd.float64 and len(g) == len(set(keys))
 
 
 def test_string_reductions():
@@ -141,6 +154,10 @@ def test_arguments():
     for bad in (True, "1", None):  # an int or a float, as in the array area
         with pytest.raises(TypeError):
             s.var(correction=bad)
+    for op in ("sum", "mean", "min", "max", "std", "var"):  # bool options take True or False (API.md §2)
+        for bad in (1, 0, None, "yes"):
+            with pytest.raises(TypeError, match=rf"^{op}\(\): 'skipna' must be True or False, not "):
+                getattr(s, op)(skipna=bad)
     assert s.var(correction=0.5) == 0.5 / 1.5
     with pytest.raises(TypeError):
         s.sum(True)  # keyword-only (docs/api/frame.md §1.1)
@@ -158,8 +175,7 @@ def test_frame_reductions_are_one_row():
     assert [str(d) for d in m.dtypes.values()] == ["float64"] * 3 and m.loc["mean", "a"] == 1.5
     assert df.count().loc["count", "a"] == 2
     assert [str(d) for d in df.max().dtypes.values()] == ["int64", "float64", "bool"]
-    with pytest.raises(TypeError):
-        df.std()  # the bool column has no std
+    assert df.std().loc["std", "t"] == sd.std(sd.asarray([True, False, True]))  # bool has a std now
     mixed = sd.frame.DataFrame({"s": ["x", "y"], "n": [1, 2]})
     assert mixed.min().loc["min", "s"] == "x"
     with pytest.raises(TypeError):

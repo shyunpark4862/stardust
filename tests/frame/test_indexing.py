@@ -22,7 +22,8 @@ EXAMPLES = int(os.environ.get("SDPD_EXAMPLES", 300))
 
 
 def pd_index_repr(idx):
-    return repr(idx).replace("dtype='str'", "dtype='string'")
+    # the dtype as the array's repr writes it: dtype=int64, not dtype='int64' (DESIGN.md §10.2)
+    return repr(idx).replace("dtype='str'", "dtype=string").replace("dtype='int64'", "dtype=int64")
 
 
 # --- Index ---------------------------------------------------------------------
@@ -50,14 +51,53 @@ def test_index_api():
     assert sd.frame.Index(["a"], name="x").equals(sd.frame.Index(["a"], name="y"))  # names are not compared
     assert sd.frame.RangeIndex(3).equals(sd.frame.Index([0, 1, 2])) and sd.frame.RangeIndex(3).is_unique
     r = sd.frame.RangeIndex(1, 10**9, 3)  # `in` is arithmetic: no table of a billion labels (docs/design/frame.md §6.1)
-    assert 4 in r and 5 not in r and 10**9 not in r and "4" not in r and True not in r and 4.0 not in r
+    assert 4 in r and 5 not in r and 10**9 not in r and "4" not in r and 2**70 not in r
+    # `in` is the Series rule (docs/api/frame.md §5.8): a lossless conversion finds 4.0 and True (1)
+    assert 4.0 in r and True in r and False not in r and 4.5 not in r and math.nan not in r and NA not in r
     assert np.int64(7) in r and r._labels is None
+    ints = sd.frame.Index([1, 2])
+    assert 1.0 in ints and 2 in ints and True in ints and 1.5 not in ints and "1" not in ints and NA not in ints
+    assert all((x in ints) == (x in sd.frame.Series([1, 2])) for x in (1, 1.0, True, False, 1.5, "1", None, NA))
     assert sd.frame.Index([]).dtype is sd.int64
     for bad in ([1.5], [True], [1, None]):
         with pytest.raises((TypeError, ValueError)):
             sd.frame.Index(bad)
     with pytest.raises(TypeError):
         sd.frame.Index([1], name=1)
+    with pytest.raises(TypeError):
+        sd.frame.Index(x for x in [1, 2])  # no generators, as in the array area (DESIGN.md §10.1 #12)
+
+
+@pytest.mark.parametrize("idx", [sd.frame.Index([1, 2]), sd.frame.Index(["a"]), sd.frame.RangeIndex(3)])
+def test_an_index_is_not_a_value(idx):
+    # == and != are TypeErrors as < is; labels are compared with equals() (DESIGN.md §10.1 #1b)
+    for op in (lambda a, b: a == b, lambda a, b: a != b, lambda a, b: a < b):
+        with pytest.raises(TypeError):
+            op(idx, idx)
+        with pytest.raises(TypeError):
+            op(idx, [1, 2])
+    with pytest.raises(TypeError):
+        hash(idx)  # unhashable, as a Series (DESIGN.md §10.1 #12)
+    with pytest.raises(TypeError):
+        bool(idx)  # as an array's and a Series' (DESIGN.md §10.1 #9)
+    with pytest.raises(TypeError):
+        bool(sd.frame.Index([]))  # empty too: not len()
+    assert idx.equals(idx)
+
+
+def test_range_index_arguments_are_int_arguments():
+    # the first argument is required and all three are ints in int64, as arange's (DESIGN.md §10.1 #8, §10.2)
+    with pytest.raises(TypeError):
+        sd.frame.RangeIndex()
+    assert sd.frame.RangeIndex(-(2**63), 2**63 - 1, 2**62).tolist() == [-(2**63), -(2**62), 0, 2**62]
+    for args in ((2**63,), (0, 2**63), (0, 1, -(2**63) - 1)):
+        with pytest.raises(OverflowError, match=r"^RangeIndex\(\): '(start|stop|step)' is out of range$"):
+            sd.frame.RangeIndex(*args)
+    for bad in (True, 1.0, np.int64(3), "3", None):
+        with pytest.raises(TypeError, match=r"^RangeIndex\(\): 'start' must be an int, not "):
+            sd.frame.RangeIndex(bad)
+    with pytest.raises(TypeError, match=r"'step' must be an int, not bool"):
+        sd.frame.RangeIndex(0, 3, True)
 
 
 def test_label_types_must_match():

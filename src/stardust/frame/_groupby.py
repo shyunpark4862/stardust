@@ -8,11 +8,11 @@ first appearance, with NA-key groups dropped (dropna=True) or last.
 """
 
 from . import _core, _unique
-from ._errors import name_list
+from ._errors import check_bool, name_list, type_name
 from ._reduce import Reductions
 from ._index import RangeIndex
 
-AGG_FUNCS = ("sum", "mean", "min", "max", "count", "std", "var", "first", "last")
+AGG_FUNCS = ("sum", "mean", "min", "max", "count", "std", "var", "first", "last", "size")
 
 
 class _Grouping:
@@ -45,6 +45,8 @@ class GroupBy(Reductions):
     def __init__(self, df, by, *, sort=True, dropna=True, values=None, grouping=None):
         # Made by df.groupby(by): the messages name groupby().
         by = name_list(by, "by", "groupby")
+        check_bool(sort, "sort", "groupby")
+        check_bool(dropna, "dropna", "groupby")
         if not by:
             raise ValueError("groupby(): 'by' must name at least one column")
         if len(set(by)) != len(by):
@@ -71,7 +73,12 @@ class GroupBy(Reductions):
 
     def __getitem__(self, key):
         """g["c"] or g[["c", "d"]]: aggregate only those value columns."""
-        names = [key] if isinstance(key, str) else list(key)
+        if isinstance(key, str):
+            names = [key]
+        elif isinstance(key, list):  # as df[[...]]
+            names = key
+        else:
+            raise TypeError(f"column names are str, got {type_name(key)}")
         for k in names:
             self._df._column(k)
             if k in self._by:
@@ -96,6 +103,8 @@ class GroupBy(Reductions):
     def _apply(self, op, name, func, skipna=True, correction=0):
         if op not in AGG_FUNCS:
             raise ValueError(f"{func}(): unknown aggregation {op!r}; use one of {', '.join(AGG_FUNCS)}")
+        if op == "size":  # the group sizes, whatever the column (as size())
+            return self._state().groups.sizes()
         return self._state().groups.reduce(op, self._df._cols[name], skipna, correction, func=func)
 
     def _reduce(self, op, skipna, correction, func=None):  # the Reductions methods (docs/api/frame.md §7.3)
@@ -104,10 +113,10 @@ class GroupBy(Reductions):
 
     def first(self, *, skipna=True):
         """Each group's first value that is not NA (skipna=False: its first row's value)."""
-        return self._reduce("first", skipna, 1)
+        return self._reduce("first", check_bool(skipna, "skipna", "first"), 1)
 
     def last(self, *, skipna=True):
-        return self._reduce("last", skipna, 1)
+        return self._reduce("last", check_bool(skipna, "skipna", "last"), 1)
 
     def size(self):
         """How many rows each group has, in a column named "size"."""
@@ -119,7 +128,9 @@ class GroupBy(Reductions):
         if (func is None) == (not named):
             raise TypeError("agg(): pass either one function name / dict, or named aggregations (name=(column, function))")
         if isinstance(func, str):
-            return self._reduce(func, True, 1, "agg") if func in AGG_FUNCS else self._apply(func, None, "agg")
+            if func == "size":  # agg("size") is size(): one "size" column (docs/api/frame.md §7.4)
+                return self._result({"size": self._apply("size", None, "agg")}, "agg")
+            return self._reduce(func, True, 0, "agg") if func in AGG_FUNCS else self._apply(func, None, "agg")
         if isinstance(func, dict):
             plan = {}
             for col, f in func.items():

@@ -4,22 +4,19 @@ import os
 
 from . import _core
 from ._dtypes import resolve
+from ._errors import check_bool, check_int, type_name
 from ._index import Index, RangeIndex
 
 
 def _str_list(value, what):  # for read_csv()
     if value is None:
         return []
-    if isinstance(value, str):
-        raise TypeError(f"read_csv(): '{what}' takes a list of str, not a str")
-    try:
-        values = list(value)
-    except TypeError:
-        raise TypeError(f"read_csv(): '{what}' takes a list of str, not {type(value).__name__}") from None
-    for v in values:
+    if not isinstance(value, (list, tuple)):  # no generators, as the array area's list arguments
+        raise TypeError(f"read_csv(): '{what}' must be a list of str, not {type_name(value)}")
+    for v in value:
         if not isinstance(v, str):
-            raise TypeError(f"read_csv(): '{what}' takes str, got {type(v).__name__}")
-    return values
+            raise TypeError(f"read_csv(): '{what}' must be a list of str, not a list holding {type_name(v)}")
+    return list(value)
 
 
 def read_csv(path, /, *, sep=",", header=True, names=None, usecols=None, dtype=None, na_values=None, nrows=None,
@@ -31,10 +28,13 @@ def read_csv(path, /, *, sep=",", header=True, names=None, usecols=None, dtype=N
     na_values texts are NA (docs/api/frame.md §10.3)."""
     from ._frame import DataFrame
 
-    if not isinstance(sep, str) or len(sep) != 1 or sep in '"\r\n':
-        raise ValueError(f"read_csv(): 'sep' must be one character other than a quote or a line break, got {sep!r}")
-    if not isinstance(header, bool):
-        raise TypeError("read_csv(): 'header' must be True or False")
+    if not isinstance(sep, str):
+        raise TypeError(f"read_csv(): 'sep' must be a str, not {type_name(sep)}")
+    if len(sep) != 1 or sep in '"\r\n':
+        raise ValueError(f"read_csv(): 'sep' must be one character other than a quote or a line break, not {sep!r}")
+    check_bool(header, "header", "read_csv")
+    if index_col is not None and not isinstance(index_col, str):
+        raise TypeError(f"read_csv(): 'index_col' must be a column name (str) or None, not {type_name(index_col)}")
     names, usecols, na_values = _str_list(names, "names"), _str_list(usecols, "usecols"), _str_list(na_values, "na_values")
     if not header and not names:
         raise ValueError("read_csv(): 'names' is required when header=False")
@@ -45,8 +45,8 @@ def read_csv(path, /, *, sep=",", header=True, names=None, usecols=None, dtype=N
         dtypes = {k: resolve(v, "read_csv") for k, v in dtype.items()}
     elif dtype is not None:
         all_dtype = resolve(dtype, "read_csv")
-    if nrows is not None and (not isinstance(nrows, int) or isinstance(nrows, bool) or nrows < 0):
-        raise ValueError(f"read_csv(): 'nrows' must be an int >= 0, got {nrows!r}")
+    if nrows is not None and check_int(nrows, "nrows", "read_csv") < 0:
+        raise ValueError(f"read_csv(): 'nrows' must be >= 0, not {nrows}")
 
     with open(os.fspath(path), "rb") as f:
         data = f.read()

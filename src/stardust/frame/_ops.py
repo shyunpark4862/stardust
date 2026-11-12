@@ -8,6 +8,7 @@ Only operators exist; there are no add/sub/... methods (docs/api/frame.md §1.1)
 import sys
 
 from . import _core
+from ._errors import type_name
 from ._na import NA
 
 Column = _core.Column
@@ -38,3 +39,37 @@ def scalar_column(value, like):
 
 def apply(op, a, b, scalar_side):
     return _core.binary_op(op, a, b, scalar_side)
+
+
+SYMBOLS = {"eq": "==", "ne": "!="}
+
+
+def not_supported(op, a, b):
+    """== and != with an operand the other operators reject (a list, a numpy
+    array, None, ...): a TypeError, as < gives, not Python's fallback to
+    identity (DESIGN.md §10.1 #1, as in the array area)."""
+    return TypeError(f"'{SYMBOLS[op]}' not supported between instances of {type_name(a)!r} and {type_name(b)!r}")
+
+
+def make_binary(op, reflected, defer):
+    """The method for operator `op`. `defer`: the types to leave the operation
+    to (NotImplemented), so their reflected method answers."""
+    if op in SYMBOLS:
+        def method(self, other):
+            result = self._binary(other, op, reflected)
+            if result is NotImplemented and not isinstance(other, defer()):
+                raise not_supported(op, self, other)
+            return result
+    else:
+        def method(self, other):
+            return self._binary(other, op, reflected)
+    return method
+
+
+def attach(cls, defer):
+    """The operator methods of Series or DataFrame."""
+    for name, op in {**ARITH, **BITWISE}.items():
+        setattr(cls, f"__{name}__", make_binary(op, False, defer))
+        setattr(cls, f"__r{name}__", make_binary(op, True, defer))
+    for name in COMPARE:
+        setattr(cls, f"__{name}__", make_binary(name, False, defer))

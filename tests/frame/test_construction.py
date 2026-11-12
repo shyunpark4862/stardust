@@ -1,6 +1,7 @@
 """Building Series/DataFrame and getting data back out (docs/api/frame.md §2, §1.1)."""
 
 import math
+import operator
 
 import numpy as np
 import pytest
@@ -48,8 +49,6 @@ def test_none_and_na_are_na_but_nan_is_a_value():
 @pytest.mark.parametrize(
     ("values", "error"),
     [
-        ([True, 1], TypeError),
-        ([True, 1.5], TypeError),
         (["a", 1], TypeError),
         (["a", True], TypeError),
         ([2**63], OverflowError),
@@ -67,6 +66,20 @@ def test_inference_of_ints_with_floats_rounds_as_the_array_area():
     assert sd.frame.Series([2**53 + 1, 0.5]).tolist() == [float(2**53 + 1), 0.5]
     assert sd.frame.Series([1.5, 2**70]).tolist() == [1.5, float(2**70)]
     assert sd.frame.Series([2**70], dtype="float64").tolist() == [float(2**70)]
+
+
+def test_bool_promotes_in_inference_as_the_array_area():
+    # bool < int64 < float64, as sd.asarray (DESIGN.md §10.1 #2, docs/api/frame.md §2.2)
+    s = sd.frame.Series([True, 1, None])
+    assert s.dtype == sd.int64 and s.tolist() == [1, 1, NA]
+    assert sd.frame.Series([False, 1.5]).tolist() == [0.0, 1.5]
+    assert sd.frame.Series([True, 2**70, 0.5]).tolist() == [1.0, float(2**70), 0.5]
+    assert sd.frame.Series([np.True_, np.int32(3)]).tolist() == [1, 3]
+    assert sd.frame.DataFrame([[True, 1], [2, False]], columns=["a", "b"]).dtypes == {"a": sd.int64, "b": sd.int64}
+    for values in ([True, 1], [True, 1.5], [True, 1, 2.5]):
+        assert sd.frame.Series(values).tolist() == sd.asarray(values).tolist()
+    with pytest.raises(TypeError, match="str values cannot be mixed with bool, int values"):
+        sd.frame.Series(["a", True, 1])
 
 
 def test_big_exact_int_mixed_with_float_is_fine():
@@ -309,8 +322,13 @@ def test_frame_to_numpy():
     assert sd.frame.DataFrame({"a": [1, 2]}).to_numpy().flags.writeable
     with pytest.raises(TypeError):
         sd.frame.DataFrame({"a": [1], "b": ["x"]}).to_numpy()
+    # the common dtype promotes bool < int64 < float64, as in the array area (DESIGN.md §10.1 #2)
+    mixed = sd.frame.DataFrame({"a": [1], "b": [True]}).to_numpy()
+    assert mixed.dtype == np.int64 and mixed.tolist() == [[1, 1]]
+    assert sd.frame.DataFrame({"a": [True], "b": [0.5]}).to_numpy().tolist() == [[1.0, 0.5]]
+    assert sd.frame.DataFrame({"a": [True], "b": [False]}).to_numpy().dtype == np.bool_
     with pytest.raises(TypeError):
-        sd.frame.DataFrame({"a": [1], "b": [True]}).to_numpy()
+        sd.frame.DataFrame({"a": [True], "b": ["x"]}).to_numpy()
     with pytest.raises(ValueError):
         df.to_numpy()
     # a 2-D array of separate columns is always new: copy=False cannot hold (docs/api/frame.md §2.7)
@@ -330,7 +348,7 @@ def test_series_basics():
     s = sd.frame.Series([1, 2, 3], name="v")
     assert (len(s), s.shape, s.name, s.dtype) == (3, (3,), "v", sd.int64)
     assert s.index.equals(sd.frame.RangeIndex(3))
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):  # as an array's (DESIGN.md §10.1 #9)
         bool(s)
 
 
@@ -554,3 +572,79 @@ def test_na_singleton():
     assert pickle.loads(pickle.dumps(NA)) is NA
     with pytest.raises(TypeError):
         bool(NA)
+    assert {NA: 1}[NA] == 1 and len({NA, NA}) == 1  # hashable; containers look up by identity
+
+
+SCALARS = [0, 1, -3, 2.5, math.nan, True, False, "a", "", np.int32(2), np.float64(0.5), np.True_]
+OPERATORS = [operator.add, operator.sub, operator.mul, operator.truediv, operator.floordiv, operator.mod, operator.pow,
+             operator.eq, operator.ne, operator.lt, operator.le, operator.gt, operator.ge,
+             operator.and_, operator.or_, operator.xor, operator.lshift, operator.rshift]
+
+
+def _one_row(op, x, na_left):
+    """What a one-row Series gives: Series([x]) with NA on the same side (or a TypeError)."""
+    s = sd.frame.Series([x])
+    try:
+        out = op(NA, s) if na_left else op(s, NA)
+    except TypeError:
+        return TypeError
+    return out.tolist()[0]
+
+
+@pytest.mark.parametrize("op", OPERATORS, ids=lambda f: f.__name__)
+def test_na_scalar_operators_are_a_one_row_series(op):
+    # DESIGN.md §10.1 #5, docs/api/frame.md §1.4: NA op x is Series([x])'s rule, unwrapped
+    for x in SCALARS:
+        for na_left in (True, False):
+            want = _one_row(op, x, na_left)
+            if want is TypeError:
+                with pytest.raises(TypeError):
+                    op(NA, x) if na_left else op(x, NA)
+            else:
+                got = op(NA, x) if na_left else op(x, NA)
+                assert got is want or got == want, (op, x, na_left)
+    assert op(NA, NA) is NA  # NA with NA is NA for every operator, == included
+
+
+def test_na_scalar_logic_is_kleene():
+    assert (NA | True) is True and (True | NA) is True and (NA | False) is NA
+    assert (NA & False) is False and (False & NA) is False and (NA & True) is NA
+    assert (NA ^ True) is NA and (NA | 1) is NA  # | with an int is bitwise: NA
+    assert (NA == NA) is NA and (NA != 1) is NA and (1 < NA) is NA and (NA + "a") is NA and (NA ** 0) is NA
+    for f in (operator.neg, operator.pos, abs, operator.invert):
+        assert f(NA) is NA
+    for bad in (lambda: NA - "a", lambda: NA & 1.5, lambda: NA << 0.5, lambda: NA + 2**70):
+        with pytest.raises((TypeError, OverflowError)):
+            bad()
+    for other in ([1], None, np.array([1]), sd.asarray([1]), object()):  # as Series == other (DESIGN.md §10.1 #1)
+        for op in (operator.eq, operator.ne, operator.add, operator.lt):
+            with pytest.raises(TypeError):
+                op(NA, other)
+            with pytest.raises(TypeError):
+                op(other, NA)
+    s, df = sd.frame.Series([1, None]), sd.frame.DataFrame({"a": [True, None]})
+    assert (NA + s).tolist() == [NA, NA] and (NA == s).tolist() == [NA, NA] and (NA | df)["a"].tolist() == [True, NA]
+    assert (np.int64(1) + NA) is NA and (np.float64(1.5) < NA) is NA  # numpy scalars defer to NA
+
+
+# --- pickling (DESIGN.md §10.1 #12) ---------------------------------------------
+
+
+def test_frame_objects_pickle():
+    import pickle
+
+    s = sd.frame.Series([1.5, None, math.nan, -0.0], index=["a", "b", "c", "d"], name="v")
+    df = sd.frame.DataFrame({"i": [1, None, 3], "s": ["x", None, "é"], "b": [True, False, None]}, index=[5, 6, 7])
+    for obj in (s, df, s.iloc[1:3], df.iloc[1:], s.index, df.index, sd.frame.RangeIndex(2, 9, 3, name="r"), df.columns):
+        back = pickle.loads(pickle.dumps(obj))
+        assert type(back) is type(obj) and repr(back) == repr(obj)
+    back = pickle.loads(pickle.dumps(s))
+    assert back.index.equals(s.index) and back.name == "v"
+    bits = lambda x: [np.float64(v).tobytes() for v in x.fillna(0.0).tolist()]
+    assert bits(back) == bits(s)
+    idx = sd.frame.Index(["a", "b"])
+    assert "a" in idx  # builds the lookup table, which is not pickled
+    assert pickle.loads(pickle.dumps(idx)).tolist() == ["a", "b"]
+    sliced = pickle.loads(pickle.dumps(df.iloc[1:]))  # a slice pickles its own rows
+    assert sliced["s"].tolist() == [NA, "é"] and sliced["b"].tolist() == [False, NA] and sliced.index.tolist() == [6, 7]
+    assert (sliced["i"] + 1).tolist() == [NA, 4]

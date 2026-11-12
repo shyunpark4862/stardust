@@ -205,7 +205,7 @@ def index_repr(index):  # Index.__repr__
     else:
         head, tail = [], [fmt(x) for x in index._col.to_list(None)]
     data = _format_object_summary(n, head, tail, "Index", justify=index._dtype != "string")
-    attrs = [("dtype", f"'{index._dtype}'")]
+    attrs = [("dtype", index._dtype)]  # dtype=int64, as the array's repr
     if index.name is not None:
         attrs.append(("name", quote(index.name)))
     if n > MAX_SEQ_ITEMS:

@@ -1,7 +1,7 @@
 """Sort orders for sort_values and sort_index (docs/api/frame.md §8)."""
 
 from . import _core
-from ._errors import named
+from ._errors import check_bool, check_choice, named
 
 
 def _per_key(value, n, what, check, func):
@@ -14,16 +14,8 @@ def _per_key(value, n, what, check, func):
     return values
 
 
-def check_bool(what, v, func):
-    """A bool option takes True or False only (API.md §2)."""
-    if not isinstance(v, bool):
-        raise TypeError(named(func, f"'{what}' must be True or False, got {v!r}"))
-    return v
-
-
 def _check_na_position(v, func):
-    if v not in ("first", "last"):
-        raise ValueError(named(func, f"'na_position' must be 'first' or 'last', got {v!r}"))
+    check_choice(v, "na_position", ("first", "last"), func)
 
 
 def order(keys, descending=False, na_position="last", stable=True, func=None):
@@ -32,8 +24,8 @@ def order(keys, descending=False, na_position="last", stable=True, func=None):
 
     Always stable: stable=False only allows an unstable sort, as in the array
     area, so it gives the same order (docs/api/frame.md §8.1)."""
-    check_bool("stable", stable, func)
+    check_bool(stable, "stable", func)
     n = len(keys)
-    desc = _per_key(descending, n, "descending", lambda v: check_bool("descending", v, func), func)
+    desc = _per_key(descending, n, "descending", lambda v: check_bool(v, "descending", func), func)
     nas = _per_key(na_position, n, "na_position", lambda v: _check_na_position(v, func), func)
     return _core.argsort(keys, [not d for d in desc], [p == "last" for p in nas])

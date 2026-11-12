@@ -125,9 +125,16 @@ def test_concat_frames():
     inner = sd.frame.concat([a, b], join="inner", ignore_index=True)
     assert inner.columns.tolist() == ["y"] and inner.index.equals(sd.frame.RangeIndex(3))
     assert sd.frame.concat([sd.frame.DataFrame({"a": [1]}), sd.frame.DataFrame({"a": [2]})]).index.tolist() == [0, 0]
+    # dtypes promote, as the array area's concat (DESIGN.md §10.1 #2): int64 + float64 is float64
+    up = sd.frame.concat([a, sd.frame.DataFrame({"x": [0.5], "z": ["t"]}, index=["r"])])
+    assert up["x"].dtype is sd.float64 and up["x"].tolist() == [1.0, 2.0, 0.5] and up["y"].tolist() == [1.5, 2.5, NA]
     for bad, error in (
-        (lambda: sd.frame.concat([a, sd.frame.DataFrame({"x": [0.5]}, index=["r"])]), TypeError),  # int64 + float64
+        (lambda: sd.frame.concat([a, sd.frame.DataFrame({"x": ["s"]}, index=["r"])]), TypeError),  # int64 + string
         (lambda: sd.frame.concat([a, sd.frame.DataFrame({"x": [1]})]), TypeError),  # string labels + int labels
+        (lambda: sd.frame.concat(x for x in [a, a]), TypeError),  # a list or tuple, as sd.concat
+        (lambda: sd.frame.concat(a), TypeError),
+        (lambda: sd.frame.concat([a], join=0), TypeError),
+        (lambda: sd.frame.concat([a], ignore_index=1), TypeError),
         (lambda: sd.frame.concat([]), ValueError),
         (lambda: sd.frame.concat([a, a["x"]]), TypeError),
         (lambda: sd.frame.concat([a], join="left"), ValueError),
@@ -141,5 +148,12 @@ def test_concat_series():
     out = sd.frame.concat([s, s.tail(1)])
     assert out.tolist() == [1, 2, 2] and out.index.tolist() == [0, 1, 1] and out.name == "v"
     assert sd.frame.concat([s, sd.frame.Series([3], name="w")]).name is None
+    assert sd.frame.concat((s, s)).tolist() == [1, 2, 1, 2]  # a tuple too
+    # bool < int64 < float64, as sd.concat (DESIGN.md §10.1 #2)
+    for parts in (([1, 2], [1.5]), ([1, 2], [True]), ([True], [0.5, None]), ([True, False], [False])):
+        got = sd.frame.concat([sd.frame.Series(p) for p in parts])
+        want = sd.concat([sd.asarray([0 if v is None else v for v in p]) for p in parts])
+        assert got.dtype == want.dtype
+        assert [0 if v is NA else v for v in got.tolist()] == want.tolist()
     with pytest.raises(TypeError):
-        sd.frame.concat([s, sd.frame.Series([1.5])])
+        sd.frame.concat([s, sd.frame.Series(["a"])])

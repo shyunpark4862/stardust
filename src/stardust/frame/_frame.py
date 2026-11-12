@@ -2,7 +2,7 @@
 
 from . import _column, _core, _dtypes, _format, _ops, _select, _sort, _unique
 from ._column import _NO_VALUE
-from ._errors import name_list, named
+from ._errors import check_bool, check_choice, check_int, name_list, named, type_name
 from ._dtypes import resolve
 from ._reduce import Reductions
 from ._na import NA
@@ -14,6 +14,11 @@ Column = _core.Column
 
 def _check_columns(columns, func=None):
     """`func`: the public function, or None for indexing (df[[...]], .loc)."""
+    from ._index import _IndexBase
+
+    # a list-like of names; not a generator (as the array area's list arguments)
+    if not isinstance(columns, (list, tuple, dict, type({}.keys()), _IndexBase)) and not _column.is_ndarray(columns):
+        raise TypeError(named(func, f"column names must be given as a list, not {type_name(columns)}"))
     columns = list(columns)
     for c in columns:
         if not isinstance(c, str):
@@ -79,6 +84,9 @@ class DataFrame(Reductions):
         obj._index = index
         return obj
 
+    def __reduce__(self):  # pickling: each Column pickles its own rows (DESIGN.md §10.1 #12)
+        return (DataFrame._new, (self._cols, self._index))
+
     @property
     def columns(self):
         """The column names as a string Index (docs/api/frame.md §2.6)."""
@@ -101,7 +109,7 @@ class DataFrame(Reductions):
         return len(self._index)
 
     def __bool__(self):
-        raise ValueError("the truth value of a DataFrame is ambiguous")
+        raise TypeError("the truth value of a DataFrame is ambiguous")  # as an array's (DESIGN.md §10.1 #9)
 
     def __iter__(self):
         """The column names (docs/api/frame.md §5.8)."""
@@ -192,10 +200,12 @@ class DataFrame(Reductions):
         if not names:
             raise ValueError("sort_values(): 'by' must name at least one column")
         keys = [self._column(k, "sort_values") for k in names]
+        check_bool(ignore_index, "ignore_index", "sort_values")
         return self._take(_sort.order(keys, descending, na_position, stable, "sort_values"), ignore_index)
 
     def sort_index(self, *, descending=False, stable=True, ignore_index=False):
         """The rows ordered by label."""
+        check_bool(ignore_index, "ignore_index", "sort_index")
         return self._take(_sort.order([self._index._column()], descending, "last", stable, "sort_index"), ignore_index)
 
     def merge(self, right, /, *, how="inner", on=None, left_on=None, right_on=None, sort=False, suffixes=("_x", "_y")):
@@ -223,6 +233,7 @@ class DataFrame(Reductions):
 
     def nunique(self, *, dropna=True):
         """How many distinct values each column has, as an int64 Series labelled by column name."""
+        check_bool(dropna, "dropna", "nunique")
         counts = [self[k].nunique(dropna=dropna) for k in self._cols]
         return Series._new(Column.from_list(counts, NA, "int64"), self.columns, None)
 
@@ -236,12 +247,14 @@ class DataFrame(Reductions):
     def drop_duplicates(self, subset=None, /, *, keep="first", ignore_index=False):
         """The rows that duplicated(subset, keep=keep) does not mark."""
         keep_rows = _core.unary_op("invert", self._duplicated(subset, keep, "drop_duplicates"))
-        return self._take(keep_rows.nonzero(), ignore_index)
+        return self._take(keep_rows.nonzero(), check_bool(ignore_index, "ignore_index", "drop_duplicates"))
 
     def value_counts(self, subset=None, /, *, normalize=False, sort=True, descending=True, dropna=True):
         """A DataFrame of each distinct row of `subset` and how often it appears (docs/api/frame.md §4.3)."""
         names = self._key_columns(subset, "value_counts")
-        count_name = "proportion" if normalize else "count"
+        check_bool(normalize, "normalize", "value_counts")
+        check_bool(dropna, "dropna", "value_counts")
+        count_name = "proportion" if normalize else "counts"  # the field of unique_counts
         if count_name in names:
             raise ValueError(f"value_counts(): a key column cannot be named {count_name!r}")
         frame = self.dropna(subset=names) if dropna else self
@@ -328,8 +341,8 @@ class DataFrame(Reductions):
     def dropna(self, *, how="any", subset=None, ignore_index=False):
         """The rows without NA in `subset` (default: all columns); with how="all",
         only rows where every `subset` value is NA are dropped."""
-        if how not in ("any", "all"):
-            raise ValueError(f"dropna(): 'how' must be 'any' or 'all', got {how!r}")
+        check_choice(how, "how", ("any", "all"), "dropna")
+        check_bool(ignore_index, "ignore_index", "dropna")
         names = list(self._cols) if subset is None else name_list(subset, "subset", "dropna")
         for k in names:
             if k not in self._cols:
@@ -344,27 +357,34 @@ class DataFrame(Reductions):
         return self._take(keep.nonzero(), ignore_index)
 
     def to_numpy(self, *, dtype=None, copy=None, na_value=_NO_VALUE):
-        """A 2-D numpy array (docs/api/frame.md §2.7): all columns must share a dtype,
-        except that int64 and float64 together give float64. NA rows follow
-        the Series.to_numpy rules. The array is always new (the columns are
-        separate buffers), so copy=False is a ValueError."""
+        """A 2-D numpy array (docs/api/frame.md §2.7) of the columns' common dtype:
+        bool < int64 < float64, as in the array area; a string column with
+        another dtype has none. NA rows follow the Series.to_numpy rules. The
+        array is always new (the columns are separate buffers), so copy=False
+        is a ValueError."""
+        return self._to_numpy(dtype, copy, na_value, "to_numpy")
+
+    def _to_numpy(self, dtype, copy, na_value, func):
         import numpy as np
 
-        if _column.check_copy(copy, "to_numpy") is False:
-            raise ValueError("to_numpy(): copy=False, but a 2-D array of the columns requires a copy")
-        dtype = resolve(dtype, "to_numpy") if dtype is not None else None
+        if _column.check_copy(copy, func) is False:
+            raise ValueError(named(func, "copy=False, but a 2-D array of the columns requires a copy"))
+        dtype = resolve(dtype, func) if dtype is not None else None
         if dtype is None:
-            kinds = {c.dtype for c in self._cols.values()}
-            if len(kinds) == 1:
-                (dtype,) = kinds
-            elif kinds == {"int64", "float64"}:
-                dtype = "float64"
-            elif kinds:
-                raise TypeError(f"to_numpy(): columns of dtypes {sorted(kinds)} have no common numpy dtype; pass dtype=")
-        arrays = [_column.to_numpy(c, dtype, True, na_value, "to_numpy") for c in self._cols.values()]
+            dtype = _column.common_dtype(self._cols.values(), func, "numpy")
+        arrays = [_column.to_numpy(c, dtype, True, na_value, func) for c in self._cols.values()]
         if not arrays:
             return np.empty((len(self), 0))
         return np.stack(arrays, axis=1)
+
+    def __array__(self, dtype=None, copy=None):
+        """numpy's protocol: to_numpy's array (DESIGN.md §10.1 #6), no function name in messages."""
+        arr = self._to_numpy(None, copy, _NO_VALUE, None)
+        if dtype is None:
+            return arr
+        import numpy as np
+
+        return np.asarray(arr, dtype=dtype, copy=False if copy is False else None)
 
     def to_array(self, *, dtype=None, copy=None, na_value=_NO_VALUE):
         """A new 2-D sd.ndarray in F order (docs/api/frame.md §2.8): one column after
@@ -374,13 +394,7 @@ class DataFrame(Reductions):
             raise ValueError("to_array(): copy=False, but a 2-D array of the columns requires a copy")
         dtype = resolve(dtype, "to_array") if dtype is not None else None
         if dtype is None:
-            kinds = {c.dtype for c in self._cols.values()}
-            if len(kinds) == 1:
-                (dtype,) = kinds
-            elif kinds == {"int64", "float64"}:
-                dtype = "float64"
-            elif kinds:
-                raise TypeError(f"to_array(): columns of dtypes {sorted(kinds)} have no common array dtype; pass dtype=")
+            dtype = _column.common_dtype(self._cols.values(), "to_array", "array")
         cols = [_column.array_column(c, dtype, True, na_value, "to_array")[0] for c in self._cols.values()]
         if cols and cols[0].dtype == "string":
             raise TypeError("to_array(): a string column has no array (the array area has no string dtype)")
@@ -392,28 +406,17 @@ class DataFrame(Reductions):
 
     def head(self, n=5, /):
         """The first n rows; with n < 0, all rows but the last -n."""
-        return self._slice(*_column.head_bounds(len(self), n))
+        return self._slice(*_column.head_bounds(len(self), check_int(n, "n", "head")))
 
     def tail(self, n=5, /):
         """The last n rows; with n < 0, all rows but the first -n."""
-        return self._slice(*_column.tail_bounds(len(self), n))
+        return self._slice(*_column.tail_bounds(len(self), check_int(n, "n", "tail")))
 
     def __repr__(self):
         return _format.frame_repr(self)
 
 
-def _make_binary(op, reflected):
-    def method(self, other):
-        return self._binary(other, op, reflected)
-
-    return method
-
-
-for _name, _op in {**_ops.ARITH, **_ops.BITWISE}.items():
-    setattr(DataFrame, f"__{_name}__", _make_binary(_op, False))
-    setattr(DataFrame, f"__r{_name}__", _make_binary(_op, True))
-for _name in _ops.COMPARE:
-    setattr(DataFrame, f"__{_name}__", _make_binary(_name, False))
+_ops.attach(DataFrame, lambda: ())  # DataFrame._binary itself rejects a Series
 
 
 def _require_columns(columns, ncols):  # for DataFrame()
@@ -519,8 +522,8 @@ class _FrameIndexer:
             return names_key
         if isinstance(key, slice):
             return names[key]
-        if isinstance(key, list):
-            return [names[_select.by_position(len(names), j)[1]] for j in key]
+        if isinstance(key, list) or _select.is_array(key):  # a numpy array or sd.ndarray of positions too
+            return [names[_select.by_position(len(names), j)[1]] for j in _select.array_items(key)]
         return names[_select.by_position(len(names), key)[1]]
 
     def __getitem__(self, key):

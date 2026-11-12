@@ -4,7 +4,7 @@ sd.ndarrays (docs/api/frame.md §2)."""
 import sys
 
 from .. import _core as _sd_core
-from . import _core
+from . import _core, _dtypes
 from ._errors import named
 from ._na import NA
 
@@ -88,11 +88,24 @@ def implicit_scalar(value, dtype, func=None):
     return implicit(Column.from_list([value], NA, None, func=func), dtype, func)
 
 
+_NUMBERS = ("bool", "int64", "float64")
+
+
 def exact(value, dtype):
     """A one-row Column of `dtype` equal to `value`, for lookups (`value in s`):
-    ValueError, TypeError or OverflowError when no value of `dtype` equals it."""
+    ValueError, TypeError or OverflowError when no value of `dtype` equals it.
+    bool is a number here as everywhere (bool < int64 < float64): True is 1
+    and 1.0, and 0 or 1 find False or True in a bool column."""
     col = Column.from_list([value], NA, None)
-    return col if col.dtype == dtype else col.convert(dtype)  # lossless only
+    if col.dtype == dtype:
+        return col
+    if col.dtype in _NUMBERS and dtype in _NUMBERS and "bool" in (col.dtype, dtype):
+        if col.dtype == "bool":
+            return col.astype(dtype)  # 0 and 1: exact in int64 and float64
+        if col.null_count == 0 and col.to_list(None)[0] not in (0, 1):  # NaN too
+            raise ValueError(f"{value!r} is not a bool value")
+        return col.astype("bool")
+    return col.convert(dtype)  # lossless only
 
 
 def full_na(length, dtype=None):
@@ -110,6 +123,19 @@ def _check_na_value(na_value, dtype, func):
     }[dtype]
     if not ok:
         raise TypeError(named(func, f"na_value={na_value!r} does not fit an array of dtype {dtype}; pass dtype= as well"))
+
+
+def common_dtype(cols, func, what):
+    """The dtype a 2-D array of `cols` takes (DataFrame.to_numpy, to_array): the
+    columns' dtypes promoted, bool < int64 < float64, as in the array area;
+    TypeError when a string column meets another dtype."""
+    dtypes = {c.dtype for c in cols}
+    if not dtypes:
+        return None
+    dtype = _dtypes.common(dtypes)
+    if dtype is None:
+        raise TypeError(named(func, f"columns of dtypes {sorted(dtypes)} have no common {what} dtype; pass dtype="))
+    return dtype
 
 
 def check_copy(copy, func):

@@ -96,10 +96,9 @@ print(names)  # ['astype()', 'astype()', 'vector_norm()']
 - 배열 `.size`(원소 수)와 `GroupBy.size()`(그룹별 행 수)
 
 **코드에 남은 차이** (M6에서 찾아 문서에만 적음, DESIGN.md §8.4)
-- bool과 int의 비교: 배열은 bool을 int64로 올려 비교하고, frame은 TypeError다.
-- 정확성 규칙: list에서 만들 때는 2⁵³을 넘는 int가 float와 섞이면 반올림하고, `read_csv`는 컬럼을 string으로 남긴다 (11장 §6).
+- M8에서 고친 것: bool과 int의 비교(frame도 bool을 int64로 올린다), CSV의 정확성 규칙(`read_csv`도 list처럼 반올림한다, 11장 §6), `df.groupby(Series)`(이제 `'by'` 인자의 TypeError다). DESIGN.md §10.1에 M8의 목록이 있다.
 - `arange`의 int 인자는 `dtype=float64`여도 int64 범위여야 한다.
-- 메시지 몇 개: `df.iloc[0, 9]`가 열 위치인데 "rows"라고 한다, `df.groupby(Series)`의 엉뚱한 메시지 등.
+- 메시지 몇 개: `df.iloc[0, 9]`가 열 위치인데 "rows"라고 한다 등.
 
 ```python
 import stardust as sd

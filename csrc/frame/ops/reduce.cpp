@@ -222,7 +222,7 @@ DType reduction_dtype(std::string_view op, DType dt) {
     if (keeps) return dt;
     const bool is_var = op == "var" || op == "std";
     if (op != "sum" && op != "mean" && !is_var) throw nb::value_error(("unknown reduction '" + std::string(op) + "'").c_str());
-    if (dt == DType::String || (dt == DType::Bool && is_var)) unsupported(op, dt);
+    if (dt == DType::String) unsupported(op, dt);  // bool's std/var are of 0 and 1, as sd.std on bool
     if (op == "sum") return dt == DType::Float64 ? DType::Float64 : DType::Int64;
     return DType::Float64;
 }

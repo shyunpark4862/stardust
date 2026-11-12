@@ -31,3 +31,12 @@ def resolve(dtype, func):
 def obj(name):
     """The dtype object for a column's dtype name."""
     return OBJECTS[name]
+
+
+def common(names):
+    """The dtype name that dtype names `names` promote to: bool < int64 <
+    float64, as in the array area; None when a string meets another dtype
+    (there is no object dtype). One rule for the whole frame: the C++
+    promote_columns, which list inference uses too (DESIGN.md §10.1 #2)."""
+    names = list(dict.fromkeys(names))
+    return names[0] if len(names) == 1 else _sd_core.frame.promote_types(names)

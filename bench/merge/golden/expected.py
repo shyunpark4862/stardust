@@ -1,4 +1,4 @@
-"""Cases whose results M6 changes on purpose (DESIGN.md §9), per area:
+"""Cases whose results M6 and M8 change on purpose (DESIGN.md §9, §10), per area:
 (regex on the case name, reason). golden.py check reports them per reason and
 flags patterns that match nothing.
 
@@ -60,6 +60,24 @@ EXPECTED = {
         (r"^(big )?unique ", "§9.4: unique() -> unique_values(): sorted order, NaN once, NA last"),
         (r"^(err logic (and|or|xor) (i,i|b,i|b,1)|err unary invert i|err df and int)$",
          "§9.4: int64 bitwise operators & | ^ ~ (bool with int64 is int64); a float column still raises"),
+        # M8 (DESIGN.md §10)
+        (r"^err (ctor bool\+int|cmp (eq f,b|lt b,1|lt b,i)|concat (df|series) dtypes)$",
+         "§10.1 #2: bool < int64 < float64 everywhere: list inference, comparisons, concat"),
+        (r"^err (df )?reduce (std|var) (allNA )?b( ddof=\d)?( skipna=False)?$|^err (df reduce std bool|groupby bool std)$",
+         "§10.1 #2: bool has std and var (of 0 and 1), as sd.std on bool"),
+        (r"^(big )?csv (inference|int over|crlf bom|dtype|header False|na_values)$|^big csv$",
+         "§10.1 #3: read_csv infers an int beyond int64 or 2**53 next to floats as float64 (rounded), as list inference"),
+        (r"^err csv nrows bool$", "§10.1 #4b: nrows is an int argument: bool is a TypeError"),
+        (r"^err duplicated keep False$", "§10.1 #4c: a string option given a non-string is a TypeError"),
+        (r"^err bool\((series|df)\)$", "§10.1 #9: bool(Series), bool(DataFrame) are TypeErrors, as bool(array)"),
+        (r"^(in series (int|bool)|index in (Index int|RangeIndex big))$",
+         "§10.1 #12 (+ #2): `in` converts without loss, on an Index too; bool is a number (True finds 1)"),
+        (r"^(concat generator|err groupby series key)$",
+         "§10.1 #12: no generators (or other iterables) where a list or tuple goes, as sd.concat"),
+        (r"^((big )?(df )?value_counts .*|value_counts unnamed|df value_counts|big df value_counts|repr value_counts"
+         r"|err value_counts name count|err df value_counts count column)$",
+         "§10.2: value_counts' columns are values and counts, as unique_counts' fields"),
+        (r"^repr (big index|columns|index .*)$", "§10.2: Index repr writes dtype=int64, as the array's repr"),
     ],
 }
 

@@ -14,5 +14,8 @@ from ._index import Index, RangeIndex  # noqa: E402
 from ._io import read_csv  # noqa: E402
 from ._merge import concat, merge  # noqa: E402
 from ._series import Series  # noqa: E402
+from . import _na  # noqa: E402
+
+_na._attach()  # NA's operators use the Series kernels and rules (docs/api/frame.md §1.4)
 
 __all__ = ["NA", "DataFrame", "Index", "RangeIndex", "Series", "concat", "merge", "read_csv"]

@@ -296,43 +296,32 @@ public:
                         continue;
                     }
                     double d;
-                    if (r == -1 || !text::parse_double(s, d)) {  // beyond int64, or no number: text
+                    if (!text::parse_double(s, d)) {  // no number: text. An int beyond int64 is float syntax.
                         kind = Text;
                         continue;
                     }
-                    kind = Float;  // the chunk's ints so far become doubles, if exactly
-                    for (std::int64_t k = r0; k < row && kind == Float; ++k) {
-                        if (!valid[k]) continue;
-                        if (!int_is_exact_double(iv[k])) kind = Text;
-                        else dv[k] = static_cast<double>(iv[k]);
-                    }
+                    kind = Float;  // the chunk's ints so far become doubles, rounded as in list inference
+                    for (std::int64_t k = r0; k < row; ++k)
+                        if (valid[k]) dv[k] = static_cast<double>(iv[k]);
                     dv[row] = d;
                     continue;
                 }
-                const int r = text::parse_int64(s, v);
-                if (r != 0) {  // an int in a float column: exactly, or text
-                    if (r < 0 || !int_is_exact_double(v)) kind = Text;
-                    else dv[row] = static_cast<double>(v);
-                } else if (!text::parse_double(s, dv[row])) {
-                    kind = Text;
-                }
+                // A float column: an int is rounded to float64 (beyond int64 too: it is float syntax),
+                // as list inference rounds an int next to a float (docs/api/frame.md §2.2, §10.4).
+                if (text::parse_int64(s, v) == 1) dv[row] = static_cast<double>(v);
+                else if (!text::parse_double(s, dv[row])) kind = Text;
             }
             kinds[c] = kind;
         });
         if (std::find(any.begin(), any.end(), 1) == any.end()) return build(DType::Float64);  // all NA: float64 (docs/api/frame.md §10.4)
         Kind kind = Int;
         for (std::uint8_t k : kinds) kind = std::max(kind, static_cast<Kind>(k));
-        if (kind == Float) {  // chunks of ints become doubles, if exactly
-            std::atomic<bool> inexact{false};
+        if (kind == Float) {  // chunks of ints become doubles, rounded
             each_chunk([&](std::size_t c, const std::vector<Field>& f, std::int64_t r0) {
                 if (kinds[c] != Int) return;
-                for (std::int64_t row = r0; row < r0 + static_cast<std::int64_t>(f.size()); ++row) {
-                    if (!valid[row]) continue;
-                    if (!int_is_exact_double(iv[row])) inexact = true;
-                    dv[row] = static_cast<double>(iv[row]);
-                }
+                for (std::int64_t row = r0; row < r0 + static_cast<std::int64_t>(f.size()); ++row)
+                    if (valid[row]) dv[row] = static_cast<double>(iv[row]);
             });
-            if (inexact) kind = Text;
         }
         if (kind == Text) return build(all_bool() ? DType::Bool : DType::String);
         if (kind == Float) col.dtype = DType::Float64;

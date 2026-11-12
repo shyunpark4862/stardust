@@ -106,9 +106,9 @@ def test_series_unique_family(data):
             total = sum(counts[c] for c in kept)
             order = sorted(kept, key=lambda c: counts[c], reverse=descending)  # stable: ties keep first appearance
             vc = s.value_counts(dropna=dropna, descending=descending)
-            assert vc.columns.tolist() == ["v", "count"]
+            assert vc.columns.tolist() == ["v", "counts"]
             assert same_list(vc["v"].tolist(), [vals[first[c]] for c in order])
-            assert vc["count"].tolist() == [counts[c] for c in order]
+            assert vc["counts"].tolist() == [counts[c] for c in order]
             unsorted = s.value_counts(dropna=dropna, sort=False, normalize=True)
             assert same_list(unsorted["v"].tolist(), [vals[first[c]] for c in kept])
             assert unsorted["proportion"].tolist() == [counts[c] / total for c in kept]
@@ -134,12 +134,12 @@ def test_frame_duplicates_and_value_counts(data):
     vc = df.value_counts(subset, dropna=False)
     counts = {c: codes.count(c) for c in first}
     order = sorted(first, key=lambda c: counts[c], reverse=True)
-    assert vc.columns.tolist() == subset + ["count"]
+    assert vc.columns.tolist() == subset + ["counts"]
     for j, k in enumerate(subset):
         assert same_list(vc[k].tolist(), [rows[first[c]][j] for c in order])
-    assert vc["count"].tolist() == [counts[c] for c in order]
+    assert vc["counts"].tolist() == [counts[c] for c in order]
     with_na = {c for c in first if any(v is NA for v in rows[first[c]])}
-    assert df.value_counts(subset)["count"].tolist() == [counts[c] for c in order if c not in with_na]
+    assert df.value_counts(subset)["counts"].tolist() == [counts[c] for c in order if c not in with_na]
 
 
 def test_many_columns_compact_the_combined_code():
@@ -171,7 +171,7 @@ def test_value_counts_matches_pandas(dtype):
                             ({"normalize": True}, {"normalize": True})):
         vc, pvc = ours.value_counts(**kwargs), theirs.value_counts(**pkwargs)
         assert vc["k"].tolist() == [NA if v is pd.NA else v for v in pvc.index.tolist()]
-        assert vc[pvc.name].tolist() == pvc.tolist()
+        assert vc["counts" if pvc.name == "count" else pvc.name].tolist() == pvc.tolist()  # [pandas: count]
     assert ours.nunique() == theirs.nunique() and ours.nunique(dropna=False) == theirs.nunique(dropna=False)
     assert ours.duplicated(keep="none").tolist() == theirs.duplicated(keep=False).tolist()
 
@@ -181,8 +181,8 @@ def test_na_key_keeps_its_first_appearance():
     # sort=False). Ours keeps first appearance (docs/api/frame.md §4.3);
     # unique_values is sorted with NA last (§4.2).
     s = sd.frame.Series([3, None, 1, 3, None, 2, 1, 3])
-    assert s.value_counts(dropna=False)["value"].tolist() == [3, NA, 1, 2]
-    assert s.value_counts(dropna=False, sort=False)["value"].tolist() == [3, NA, 1, 2]
+    assert s.value_counts(dropna=False)["values"].tolist() == [3, NA, 1, 2]
+    assert s.value_counts(dropna=False, sort=False)["values"].tolist() == [3, NA, 1, 2]
     assert s.unique_values().tolist() == [1, 2, 3, NA]
 
 
@@ -212,28 +212,35 @@ def test_float_keys_differ_from_pandas_on_nan():
     s = sd.frame.Series([1.0, math.nan, -0.0, 0.0, math.nan])
     assert s.nunique() == 3  # NaN is a value (docs/api/frame.md §4.2); pandas says 2
     vc = s.value_counts()
-    assert same_list(vc["value"].tolist(), [math.nan, -0.0, 1.0])
-    assert vc["count"].tolist() == [2, 2, 1]
+    assert same_list(vc["values"].tolist(), [math.nan, -0.0, 1.0])
+    assert vc["counts"].tolist() == [2, 2, 1]
 
 
 def test_errors_and_signatures():
-    s = sd.frame.Series([1, 1], name="count")
+    s = sd.frame.Series([1, 1], name="counts")
     with pytest.raises(ValueError):
-        s.value_counts()  # the key column would clash with "count"
-    assert s.value_counts(normalize=True).columns.tolist() == ["count", "proportion"]
-    with pytest.raises(ValueError):
-        sd.frame.Series([1]).duplicated(keep=False)  # keep="none" replaces False (docs/api/frame.md §1.1)
+        s.value_counts()  # the key column would clash with "counts"
+    assert s.value_counts(normalize=True).columns.tolist() == ["counts", "proportion"]
+    with pytest.raises(TypeError, match=r"^duplicated\(\): 'keep' must be 'first', 'last' or 'none', not bool$"):
+        sd.frame.Series([1]).duplicated(keep=False)  # keep="none" replaces False; a string option (API.md §2)
+    with pytest.raises(ValueError, match=r"^drop_duplicates\(\): 'keep' must be 'first', 'last' or 'none', not 'x'$"):
+        sd.frame.Series([1]).drop_duplicates(keep="x")
+    for bad in (dict(normalize=1), dict(sort=None), dict(dropna=0)):  # bool options (DESIGN.md §10.1 #4)
+        with pytest.raises(TypeError, match=r"^value_counts\(\): '\w+' must be True or False, not "):
+            sd.frame.Series([1]).value_counts(**bad)
+    with pytest.raises(TypeError, match=r"^nunique\(\): 'dropna' must be True or False, not int$"):
+        sd.frame.Series([1]).nunique(dropna=1)
     with pytest.raises(TypeError):
         sd.frame.Series([1]).duplicated("first")  # keyword-only (docs/api/frame.md §1.1)
-    df = sd.frame.DataFrame({"a": [1, 1], "count": [2, 2]})
+    df = sd.frame.DataFrame({"a": [1, 1], "counts": [2, 2]})
     with pytest.raises(ValueError):
         df.value_counts()
-    assert df.value_counts("a")["count"].tolist() == [2]
+    assert df.value_counts("a")["counts"].tolist() == [2]
     with pytest.raises(KeyError):
         df.duplicated("zz")
     with pytest.raises(ValueError):
         df.duplicated([])
-    assert df.nunique().tolist() == [1, 1] and df.nunique().index.tolist() == ["a", "count"]
+    assert df.nunique().tolist() == [1, 1] and df.nunique().index.tolist() == ["a", "counts"]
     assert sd.frame.Series([], dtype="int64").unique_values().tolist() == []
     with pytest.raises(TypeError):
         sd.frame.Series([1]).value_counts(descending=1)  # a bool option takes True or False (API.md §2)
@@ -241,5 +248,5 @@ def test_errors_and_signatures():
         sd.frame.Series([1]).value_counts(ascending=True)  # renamed: descending (docs/api/frame.md §4.1)
     with pytest.raises(TypeError):
         df.duplicated(subset=["a"])  # subset is positional-only (docs/api/frame.md §1.1)
-    assert df.value_counts("a", descending=False)["count"].tolist() == [2]
+    assert df.value_counts("a", descending=False)["counts"].tolist() == [2]
     assert sd.frame.Series([], dtype="string").value_counts().shape == (0, 2)

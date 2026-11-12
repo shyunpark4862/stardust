@@ -44,12 +44,22 @@ NAMED = [
     (lambda: S(["a"]).sum(), TypeError, "sum(): cannot compute sum of a string column"),
     (lambda: DF({"k": [1], "v": ["a"]}).groupby("k").agg("sum"), TypeError, "agg(): cannot compute sum of a string column"),
     (lambda: DF({"a": [1]}).drop_duplicates(keep="x"), ValueError,
-     "drop_duplicates(): 'keep' must be 'first', 'last' or 'none', got 'x'"),
+     "drop_duplicates(): 'keep' must be 'first', 'last' or 'none', not 'x'"),
     (lambda: DF({"a": [1]}).sort_values("zz"), KeyError, "sort_values(): no column 'zz'"),
     (lambda: DF({"a": [1]}).sort_values(1), TypeError, "sort_values(): 'by' must be a column name or a list of them, not int"),
     (lambda: F.merge(DF({"a": [1]}), DF({"a": [1.0]}), on="a"), TypeError,
      "merge(): join keys must have one dtype, got int64 and float64"),
     (lambda: F.read_csv("/nonexistent", header=False), ValueError, "read_csv(): 'names' is required when header=False"),
+    # frame options: one check per kind, the array's wording (API.md §2.1, DESIGN.md §10.1 #4)
+    (lambda: S([1]).head(True), TypeError, "head(): 'n' must be an int, not bool"),
+    (lambda: S([1]).tail(2**64), OverflowError, "tail(): 'n' is out of range"),
+    (lambda: S([1]).dropna(ignore_index=1), TypeError, "dropna(): 'ignore_index' must be True or False, not int"),
+    (lambda: DF({"a": [1]}).groupby("a", sort=None), TypeError, "groupby(): 'sort' must be True or False, not NoneType"),
+    (lambda: F.merge(DF({"a": [1]}), DF({"a": [1]}), on="a", how=None), TypeError,
+     "merge(): 'how' must be 'inner', 'left', 'right' or 'outer', not NoneType"),
+    (lambda: F.concat(x for x in [S([1])]), TypeError,
+     "concat(): 'objs' must be a list or tuple of DataFrames or Series, not generator"),
+    (lambda: F.read_csv("/nonexistent", nrows=True), TypeError, "read_csv(): 'nrows' must be an int, not bool"),
 ]
 
 
@@ -66,6 +76,8 @@ PYTHON_FORM = [
     (lambda: ~sd.ones(1), TypeError, "unsupported operand dtype for unary ~: float64"),
     (lambda: sd.ones(2) + sd.ones(3), ValueError, "shapes could not be broadcast together: (2,) (3,)"),
     (lambda: sd.ones(2) == [1, 2], TypeError, "'==' not supported between instances of"),
+    (lambda: S([1, 2]) == [1, 2], TypeError, "'==' not supported between instances of 'Series' and 'list'"),
+    (lambda: F.Index([1]) != F.Index([1]), TypeError, "'!=' not supported between instances of 'Index' and 'Index'"),
     (lambda: -S(["a"]), TypeError, "unsupported operand dtype for unary -: string"),
     (lambda: abs(S(["a"])), TypeError, "unsupported operand dtype for abs(): string"),
     (lambda: DF({"a": [1]})["zz"], KeyError, "zz"),
@@ -87,7 +99,7 @@ def test_no_message_cites_a_document():
     calls = [c for c, _, _ in NAMED + PYTHON_FORM] + [
         lambda: DF({"a": [1]}) + S([1]),
         lambda: S([1, 2], index=[0, 0]).reindex([0]),
-        lambda: F.concat([S([1]), S([1.0])]),
+        lambda: F.concat([S([1]), S(["a"])]),
         lambda: F.Index([1.5]),
         lambda: F.read_csv("/nonexistent", header=False),
         lambda: np.asarray(S([1, None])),

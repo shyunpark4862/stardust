@@ -8,11 +8,18 @@ name the operation.
 """
 
 
+from ._errors import check_bool, type_name
+
+
 def _check_correction(correction, func):
     # the array area's rule: an int or a float, bool excluded
     if isinstance(correction, bool) or not isinstance(correction, (int, float)):
-        raise TypeError(f"{func}(): 'correction' must be an int or a float")
+        raise TypeError(f"{func}(): 'correction' must be an int or a float, not {type_name(correction)}")
     return float(correction)
+
+
+def _skipna(skipna, func):
+    return check_bool(skipna, "skipna", func)
 
 
 class Reductions:
@@ -20,24 +27,24 @@ class Reductions:
 
     def sum(self, *, skipna=True):
         """Sum of the values; 0 when there are none (docs/api/frame.md §6.4)."""
-        return self._reduce("sum", skipna, 0)
+        return self._reduce("sum", _skipna(skipna, "sum"), 0)
 
     def mean(self, *, skipna=True):
-        return self._reduce("mean", skipna, 0)
+        return self._reduce("mean", _skipna(skipna, "mean"), 0)
 
     def min(self, *, skipna=True):
-        return self._reduce("min", skipna, 0)
+        return self._reduce("min", _skipna(skipna, "min"), 0)
 
     def max(self, *, skipna=True):
-        return self._reduce("max", skipna, 0)
+        return self._reduce("max", _skipna(skipna, "max"), 0)
 
     def std(self, *, skipna=True, correction=0):
         """Standard deviation with divisor (count - correction); NA when that is <= 0."""
-        return self._reduce("std", skipna, _check_correction(correction, "std"))
+        return self._reduce("std", _skipna(skipna, "std"), _check_correction(correction, "std"))
 
     def var(self, *, skipna=True, correction=0):
         """Variance with divisor (count - correction); NA when that is <= 0."""
-        return self._reduce("var", skipna, _check_correction(correction, "var"))
+        return self._reduce("var", _skipna(skipna, "var"), _check_correction(correction, "var"))
 
     def count(self):
         """How many values are not NA."""

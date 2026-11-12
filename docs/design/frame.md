@@ -130,6 +130,8 @@
 
 ### 2.6 배열 영역과 다른 곳
 - 값 규칙은 배열 영역과 같다: bool 산술은 int64 산술, int와 float는 float64로 바꿔 비교, 변환의 세 갈래(§2.4), float → int64는 포화와 NaN → 0, `std`/`var`는 `correction=0`, 내림차순의 NaN은 맨 앞, `unique`에서 NaN은 하나 (루트 DESIGN §9.1).
+- **dtype 승격은 한 곳이다** (루트 DESIGN §10.1 2번, M8): `promote_columns`(`column.hpp`)가 배열의 `sd::promote`(bool < int64 < float64)를 쓰고, string은 string하고만 만난다. list 추론(`convert.cpp`의 `inferred_dtype`)이 C++에서 부르고, Python의 `concat`, `DataFrame.to_numpy`/`to_array`의 공통 dtype은 `_dtypes.common` → `_core.promote_types`로 같은 함수를 부른다. 비교 커널은 bool이 숫자를 만나면 bool을 int64로 바꾼다(산술과 같은 길). bool의 `std`/`var`는 0과 1의 값으로 float 경로를 그대로 탄다.
+- **옵션 검사도 한 곳이다** (`_errors.py`): `check_bool`, `check_int`, `check_choice`, `name_list`. 메시지는 API.md §2.1의 형식이다.
 - **남은 차이는 NA에서 나온다** (루트 DESIGN §9.1 1번, 8번): `int // 0`, `int % 0`, `int ** 음수`는 NA(배열은 0, `a`, 정수 결과), 값이 모자란 리덕션은 NA(배열은 NaN이나 ValueError).
 - 그 밖에 코드에 남은 차이(bool과 int의 비교, bool의 단항 `+`, CSV 추론의 정확성 규칙)는 루트 DESIGN §8.4에 적었다.
 
@@ -756,9 +758,9 @@ rows    [0, 2, 1, 3]            그룹 안에서는 원래 행 순서
 ## 10. read_csv (`io/csv.cpp`)
 
 ### 10.1 규칙
-옵션과 추론 규칙은 `docs/api/frame.md`에 있다. 구조를 정한 원칙은 **"파일에 적힌 것과 다른 값이 나오지 않는다"**이다.
+옵션과 추론 규칙은 `docs/api/frame.md`에 있다. 구조를 정한 원칙은 **"파일에 적힌 것과 다른 값이 나오지 않는다"**이다. 예외 하나는 숫자의 반올림이다: float 컬럼의 int는 list에서 만들 때처럼 float64로 반올림한다 (§10.5, 루트 DESIGN §10.1 3번).
 - NA는 **따옴표 없는 빈 필드**와 `na_values`의 텍스트뿐이다. 텍스트 `NaN`은 float의 NaN 값이고, `""`는 빈 문자열이다.
-- 공백이 섞인 숫자, int64를 넘는 정수, `true` 같은 모호한 값은 추측하지 않고 string으로 둔다.
+- 공백이 섞인 숫자, `true` 같은 모호한 값은 추측하지 않고 string으로 둔다.
 - 형식이 틀린 파일(필드 개수, 따옴표 규칙, 올바르지 않은 UTF-8)은 줄 번호와 함께 ValueError다.
 - 줄 끝은 `\n`과 `\r\n`뿐이다. 그 밖의 `\r`은 값의 바이트이고, 닫는 따옴표 뒤의 `\r`은 에러다.
 - 숫자 문법은 `astype`과 같은 코드다 (§7.5).
@@ -802,12 +804,13 @@ simdjson/simdcsv의 방식이다.
 - 결과: float 48.6 → 24.8ms. 정답은 Python `float(text)`다: 무작위 double의 `repr`, 자릿수가 많은 수, 반올림 경계의 어려운 수(2⁻¹⁰⁷⁴ 근처, 최대값 근처, 정확히 중간인 수)에서 비트까지 같다.
 
 ### 10.5 타입 추론
-- 컬럼마다 int64 → float64 → bool → string 중 값이 바뀌지 않는 첫 dtype이다.
+- 컬럼마다 int64 → float64 → bool → string 중 첫 dtype이다.
   - int64: 모두 int 문법이고 int64 범위 안
-  - float64: 모두 float 문법이고, int 문법인 필드는 float64로 정확히 표현된다(`int_is_exact_double`)
+  - float64: 모두 float 문법이다. int 문법도 float 문법이다
   - bool: 모두 `True` 또는 `False`
-- **float64 쪽의 정확성 조건이 핵심이다.** 한 열에 `1.5`와 `9007199254740993`(2⁵³ + 1)이 있으면 pandas는 float64로 읽어 둘째 값이 `9007199254740992`가 된다. 우리 열은 string이 된다. 사용자가 원하면 `dtype=`으로 고른다.
-- `int_is_exact_double`은 "2⁵³ 이하인가"가 아니라 "왕복해도 같은가"를 본다. `2⁶⁰`처럼 2⁵³보다 커도 정확한 수는 통과한다. 2⁶³ 이상인지를 먼저 본다(`INT64_MAX`는 double로 2⁶³이 되고, 그것을 int64로 되돌리는 것은 정의되지 않은 동작이다).
+- **float 컬럼의 int는 list 추론처럼 float64로 반올림한다** (루트 DESIGN §10.1 3번, M8). 한 열에 `1.5`와 `9007199254740993`(2⁵³ + 1)이 있으면 둘째 값은 `9007199254740992.0`이다. pandas, numpy, `Series([1.5, 2**53 + 1])`과 같다. int64 범위 안의 int는 `parse_int64` 뒤에 `double`로 바꾸고(가장 가까운 값, 짝수 쪽), 범위 밖의 int는 `parse_double`이 직접 읽는다. 둘 다 올바르게 반올림하므로 Python의 `float(int(text))`와 비트까지 같다.
+  - M7까지는 정확히 표현되지 않는 int가 있으면 string으로 두었다(`int_is_exact_double`). list는 반올림하고 CSV는 string으로 남기는 차이를 없앴다. 값을 그대로 지키려면 `dtype="string"`으로 고른다.
+  - list는 int만 있고 int64 밖의 int가 있으면 OverflowError지만, CSV의 추론은 에러를 내지 않고 다음 dtype으로 넘어가므로 float64다.
 - 모두 NA인 열은 float64다 (list 추론과 같다).
 
 ### 10.6 파일을 청크로

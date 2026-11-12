@@ -149,6 +149,12 @@ def test_agg_forms():
     assert g.agg({"y": "max", "x": "min"}).columns.tolist() == ["k", "y", "x"]
     named = g.agg(total=("x", "sum"), top=("x", "max"), avg=("y", "mean"))
     assert named.columns.tolist() == ["k", "total", "top", "avg"] and named["total"].tolist() == [4, 2]
+    # "size" is an aggregation too, as size() (DESIGN.md §10.2)
+    assert repr(g.agg("size")) == repr(g.size()) and g.agg("size")["size"].tolist() == [2, 1]
+    assert g.agg({"x": "size"})["x"].tolist() == [2, 1] and g.agg(n=("y", "size"))["n"].tolist() == [2, 1]
+    # every form of agg("std") is std(): correction=0
+    for f in ("std", "var"):
+        assert repr(g.agg(f)) == repr(getattr(g, f)()) == repr(g.agg({"x": f, "y": f}))
     for bad, error in (
         (lambda: g.agg(["sum", "mean"]), TypeError),
         (lambda: g.agg({"x": ["sum"]}), TypeError),
@@ -176,6 +182,15 @@ def test_selection_and_errors():
         df.groupby([])
     with pytest.raises(TypeError):
         df.groupby("k", True)  # keyword-only (docs/api/frame.md §1.1)
+    for bad in (dict(sort=1), dict(dropna=None)):  # bool options (DESIGN.md §10.1 #4)
+        with pytest.raises(TypeError, match=r"^groupby\(\): '(sort|dropna)' must be True or False, not "):
+            df.groupby("k", **bad)
+    for bad in ((c for c in ["k"]), df["k"], {"k"}):  # a name or a list or tuple of names (DESIGN.md §10.1 #12)
+        with pytest.raises(TypeError, match=r"^groupby\(\): 'by' must be a column name or a list of them, not "):
+            df.groupby(bad)
+    assert df.groupby(("k",))["v"].sum()["v"].tolist() == [1, 2]
+    with pytest.raises(TypeError):
+        df.groupby("k").first(skipna=0)
     empty = sd.frame.DataFrame({"k": [None, None], "v": [1, 2]}, dtype=None)
     assert empty.groupby("k").sum().shape == (0, 2)
 

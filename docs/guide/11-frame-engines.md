@@ -39,7 +39,7 @@ s = sd.frame.Series([3.0, float("nan"), 1.0, 3.0, -0.0, 0.0, None, float("nan")]
 print(s.nunique(), s.duplicated().tolist())  # 4 [False, False, False, True, False, True, False, True]
 print(s.drop_duplicates().tolist())  # [3.0, nan, 1.0, -0.0, <NA>]
 vc = s.value_counts()
-print(vc["value"].tolist(), vc["count"].tolist())  # [3.0, nan, -0.0, 1.0] [2, 2, 2, 1]
+print(vc["values"].tolist(), vc["counts"].tolist())  # [3.0, nan, -0.0, 1.0] [2, 2, 2, 1]
 ```
 
 - **같은 키**: NaN끼리 같다(페이로드와 부호 무관). `-0.0`과 `0.0`이 같다. NA끼리 같다(merge만 예외, §5).
@@ -130,7 +130,7 @@ print(sd.frame.merge(left, right, on="k", how="left")["b"].tolist())  # ['z', 'x
 ## 6. read_csv
 원칙은 **"파일에 적힌 것과 다른 값이 나오지 않는다"**이다 (docs/design/frame.md §10.1).
 - NA는 따옴표 없는 빈 필드와 `na_values`의 텍스트뿐이다. 텍스트 `NaN`은 float의 NaN이고, `""`는 빈 문자열이다.
-- float64로 정확히 표현되지 않는 정수가 float와 섞이면 컬럼을 string으로 둔다. pandas는 float64로 읽어 값이 바뀐다.
+- 숫자의 반올림만은 예외다: float 컬럼의 int는 list에서 만들 때처럼 float64로 반올림한다(2⁵³을 넘거나 int64 밖이어도). pandas, numpy와 같다. 값을 그대로 지키려면 `dtype=`으로 고른다.
 - 형식이 틀린 파일은 줄 번호와 함께 ValueError다.
 
 ```python

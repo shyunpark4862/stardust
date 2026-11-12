@@ -3,8 +3,10 @@
 #include "frame/ops/cast.hpp"
 
 #include <cstring>
+#include <optional>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace sd::frame {
@@ -72,6 +74,28 @@ const char* kind_name(Kind k) {
     return "?";
 }
 
+[[noreturn, gnu::cold, gnu::noinline]] void str_mixed(const bool* seen) {
+    std::string others;
+    for (Kind o : {Kind::Bool, Kind::Int, Kind::Float})
+        if (seen[int(o)]) others += std::string(others.empty() ? "" : ", ") + kind_name(o);
+    throw nb::type_error(("str values cannot be mixed with " + others + " values (there is no object dtype)").c_str());
+}
+
+// The column dtype of the values seen (`seen` by Kind). They promote as
+// everywhere in the frame (promote_columns, docs/api/frame.md §2.2): bool <
+// int64 < float64, the array area's asarray rule, so [True, 1] is int64 and
+// an int next to a float becomes float64 (rounded). There is no object
+// dtype, so a str mixes with nothing else. Empty or all NA: float64. Out of
+// line, so from_list's row loops keep their registers.
+[[gnu::noinline]] DType inferred_dtype(const bool* seen) {
+    const bool s = seen[int(Kind::Str)];
+    if (s && (seen[int(Kind::Bool)] || seen[int(Kind::Int)] || seen[int(Kind::Float)])) str_mixed(seen);
+    std::optional<DType> d;
+    for (auto [k, dt] : {std::pair{Kind::Bool, DType::Bool}, std::pair{Kind::Int, DType::Int64},
+                         std::pair{Kind::Float, DType::Float64}, std::pair{Kind::Str, DType::String}})
+        if (seen[int(k)]) d = d ? promote_columns(*d, dt) : dt;
+    return d.value_or(DType::Float64);
+}
 
 }  // namespace
 
@@ -120,23 +144,7 @@ Column from_list(nb::handle seq, nb::handle na, std::optional<DType> dtype) {
         }
         }
     }
-    const bool b = seen[int(Kind::Bool)], in = seen[int(Kind::Int)], f = seen[int(Kind::Float)],
-               s = seen[int(Kind::Str)];
-
-    // There is no object dtype, so bool and str do not mix with anything
-    // (docs/api/frame.md §2.2). int with float is float64 (rounded, as in
-    // the array area).
-    auto mixed = [&](Kind k) {
-        std::string others;
-        for (Kind o : {Kind::Bool, Kind::Int, Kind::Float, Kind::Str})
-            if (o != k && seen[int(o)]) others += std::string(others.empty() ? "" : ", ") + kind_name(o);
-        throw nb::type_error((std::string(kind_name(k)) + " values cannot be mixed with " + others +
-                              " values (there is no object dtype)")
-                                 .c_str());
-    };
-    if (b && (in || f || s)) mixed(Kind::Bool);
-    if (s && (in || f)) mixed(Kind::Str);
-    DType target = s ? DType::String : b ? DType::Bool : f ? DType::Float64 : in ? DType::Int64 : DType::Float64;
+    DType target = inferred_dtype(seen);
     // dtype= is an explicit conversion: the inferred column, then astype
     // (docs/api/frame.md §2.3). Ints asked for as float64 are read as float64
     // directly, so ints outside int64 can still become floats.
@@ -169,14 +177,14 @@ Column from_list(nb::handle seq, nb::handle na, std::optional<DType> dtype) {
         case DType::Bool:
             reinterpret_cast<std::uint8_t*>(out)[i] = static_cast<std::uint8_t>(k == Kind::NA ? 0 : scratch[i]);
             break;
-        case DType::Int64:  // only ints (and NA) get here
+        case DType::Int64:  // ints, bools (0 and 1) and NA get here
             if (k == Kind::Int && !big.empty() && big[i]) int_too_large();
-            reinterpret_cast<std::int64_t*>(out)[i] = k == Kind::Int ? scratch[i] : 0;  // NA rows hold 0 (docs/design/frame.md §4.5)
+            reinterpret_cast<std::int64_t*>(out)[i] = k == Kind::NA ? 0 : scratch[i];  // NA rows hold 0 (docs/design/frame.md §4.5)
             break;
         case DType::Float64: {
             double d = 0.0;
             if (k == Kind::Float || (k == Kind::Int && !big.empty() && big[i])) std::memcpy(&d, &scratch[i], sizeof d);
-            else if (k == Kind::Int) d = static_cast<double>(scratch[i]);
+            else if (k == Kind::Int || k == Kind::Bool) d = static_cast<double>(scratch[i]);
             reinterpret_cast<double*>(out)[i] = d;
             break;
         }

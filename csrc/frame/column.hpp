@@ -9,6 +9,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -88,6 +89,17 @@ std::vector<std::uint8_t> valid_bytes(const Column& col);
 // null) is final: counts the NA rows, drops an all-valid bitmap, and zeroes
 // the values of NA rows (docs/design/frame.md §4.5).
 void finish_fixed(Column& col);
+
+// The frame's promotion of two column dtypes (DESIGN.md §10.1 #2): the
+// array area's sd::promote, bool < int64 < float64, wherever two dtypes
+// meet -- list inference, concat, the common dtype of to_numpy/to_array,
+// comparisons. A string meets only a string (there is no object dtype):
+// nullopt otherwise.
+inline std::optional<DType> promote_columns(DType a, DType b) {
+    if (a == b) return a;
+    if (a == DType::String || b == DType::String) return std::nullopt;
+    return sd::promote(a, b);
+}
 
 // True when the int64 `v` converts to a double and back unchanged.
 inline bool int_is_exact_double(std::int64_t v) {

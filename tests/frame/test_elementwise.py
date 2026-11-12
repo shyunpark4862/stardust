@@ -222,12 +222,38 @@ def test_comparison_examples():
     assert (sd.frame.Series([1, None]) == NA).tolist() == [NA, NA]
 
 
-@pytest.mark.parametrize("pair", [(["a"], 1), (["a"], True), ([True], 1), ([True], 1.5), ([1], "1")])
+@pytest.mark.parametrize("pair", [(["a"], 1), (["a"], True), ([True], "1"), ([1], "1")])
 def test_incomparable_dtypes_raise_even_for_equality(pair):
     values, other = pair
     for op in COMPARE.values():
         with pytest.raises(TypeError):
             op(sd.frame.Series(values), other)
+
+
+def test_bool_compares_with_numbers_as_int64():
+    # a bool promotes, as in the array area (DESIGN.md §10.1 #2, docs/api/frame.md §3.3)
+    b = sd.frame.Series([True, False, None])
+    assert (b == 1).tolist() == [True, False, NA]
+    assert (b < 0.5).tolist() == [False, True, NA]
+    assert (sd.frame.Series([0, 1, 2]) >= sd.frame.Series([False, True, True])).tolist() == [True, True, True]
+    for op in COMPARE.values():
+        x, y = [True, False, True], [1, 0, 2]
+        assert op(sd.frame.Series(x), sd.frame.Series(y)).tolist() == op(sd.asarray(x), sd.asarray(y)).tolist()
+        assert op(sd.frame.Series(x), 0.5).tolist() == op(sd.asarray(x), 0.5).tolist()
+
+
+@pytest.mark.parametrize("other", [[1, 2], (1, 2), None, np.array([1, 2]), sd.asarray([1, 2]), {1: 2}, object()])
+def test_equality_with_an_unsupported_operand_raises(other):
+    # == and != raise as < does, not Python's identity fallback (DESIGN.md §10.1 #1)
+    s, df = sd.frame.Series([1, 2]), sd.frame.DataFrame({"a": [1, 2]})
+    for obj in (s, df):
+        for op in (lambda a, b: a == b, lambda a, b: a != b, lambda a, b: b == a, lambda a, b: b != a):
+            with pytest.raises(TypeError):
+                op(obj, other)
+    with pytest.raises(TypeError, match=r"^'==' not supported between instances of 'Series' and 'list'$"):
+        s == [1, 2]
+    with pytest.raises(TypeError, match="DataFrame and a Series"):
+        s == df
 
 
 # --- logic --------------------------------------------------------------------
@@ -528,7 +554,8 @@ def test_index_basics():
 @pytest.mark.parametrize("values", [[], [7], [0, 2, 5], list(range(30)), [x * 1000 for x in range(30)],
                                      list(range(0, 400, 2)), list(range(101)), list(range(100)), [-5, 10**15, 3]])
 def test_index_repr_matches_pandas(values):
-    assert repr(sd.frame.Index(values)) == repr(pd.Index(np.array(values, dtype=np.int64)))
+    # but dtype=int64, as the array's repr (DESIGN.md §10.2) [pandas: dtype='int64']
+    assert repr(sd.frame.Index(values)) == repr(pd.Index(np.array(values, dtype=np.int64))).replace("dtype='int64'", "dtype=int64")
 
 
 @pytest.mark.parametrize("n", [5, 70])
