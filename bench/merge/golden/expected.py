@@ -28,6 +28,8 @@ EXPECTED = {
          "§9.1 #7: std/var default correction=0"),
         (r"^err reduce (std ddof negative|var ddof float)$", "§9.1 #7: correction takes any int or float, as in the array area"),
         (r"^err (arith add i,2\*\*64|ctor int too big)$", "§9.1 #12: the array's message for an int outside int64 (message)"),
+        (r"^((big )?reduce mean (huge )?i( skipna=False)?|df reduce mean)$", "§9.1 #11: int mean is the array area's float64 sum over the count"),
+        (r"^err ctor scalar$", "§4.3: a Series can be made from an sd.ndarray (message lists it)"),
         (r"^err threads (float|keyword)$", "M5: the thread setter is sd.set_num_threads (API.md §3)"),
         (r"^sig keyword (head|astype|fillna|reindex|df sort_values|groupby|duplicated|merge|concat|Index|Series|equals)$",
          "§9.3: main arguments are positional-only: passing one by keyword is a TypeError"),

@@ -1,5 +1,6 @@
 #include "frame/ops/reduce.hpp"
 
+#include "frame/interop.hpp"
 #include "frame/ops/pairwise.hpp"
 #include "frame/parallel.hpp"
 
@@ -67,21 +68,11 @@ double as_double(const Column& c, std::int64_t i) {
     }
 }
 
-// The mean of the rows with a value; count > 0. int64 sums exactly in
-// int128 (no overflow, no order dependence), then divides (docs/api/frame.md §6.3).
+// The mean of the rows with a value; count > 0. int64 is summed as float64 the
+// way the array area sums it (NA rows hold 0), then divided (docs/api/frame.md §6.3).
 double mean_of(const Column& c, std::int64_t count) {
-    if (c.dtype == DType::Int64) {
-        const auto* v = c.data<std::int64_t>();
-        const __int128 total = over_chunks<__int128>(
-            c.length, 0,
-            [v](std::int64_t lo, std::int64_t hi) {
-                __int128 t = 0;
-                for (std::int64_t i = lo; i < hi; ++i) t += v[i];  // NA rows hold 0
-                return t;
-            },
-            [](__int128 a, __int128 b) { return a + b; });
-        return static_cast<double>(total) / static_cast<double>(count);
-    }
+    if (c.dtype == DType::Int64)  // the array area's float64 sum, so both areas agree to the bit (DESIGN.md §9.1 #11)
+        return array_sum_float64(c) / static_cast<double>(count);
     if (c.dtype == DType::Bool) {
         const auto* v = c.data<std::uint8_t>();
         const std::int64_t trues = over_chunks<std::int64_t>(

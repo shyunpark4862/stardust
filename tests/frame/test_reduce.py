@@ -81,9 +81,13 @@ def test_int_reductions(values):
     if not present:
         assert s.mean() is NA and s.min() is NA and s.max() is NA
         return
-    assert same(s.mean(), float(sum(present)) / len(present))  # exact sum, one rounding, then divide
+    # the array area's float64 sum of the column (NA rows hold 0), then divide (DESIGN.md §9.1 #11)
+    filled_i = [0 if v is None else v for v in values]
+    mean = float(sd.sum(sd.asarray(filled_i), dtype=sd.float64)) / len(present)
+    assert same(s.mean(), mean)
+    if len(present) == len(values):  # short and without NA: numpy's mean too
+        assert same(s.mean(), float(np.mean(np.array(values, dtype=np.int64))))
     assert s.min() == min(present) and s.max() == max(present)
-    mean = float(sum(present)) / len(present)
     filled = np.array([float(v) if v is not None else 0.0 for v in values])
     sqr = np.where([v is not None for v in values], (filled - mean) ** 2, 0.0)
     assert same(s.var(), float(np.sum(sqr) / len(present)))

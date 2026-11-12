@@ -167,15 +167,12 @@ Column Groups::reduce(std::string_view op, const Column& col, bool skipna, doubl
             continue;
         }
         double mean;
-        if (col.dtype == DType::Int64) {  // exact, as the column mean (docs/api/frame.md §6.3)
-            __int128 total = 0;
-            for (std::int64_t k = 0; k < n; ++k) total += col.data<std::int64_t>()[rows_[b + k]];
-            mean = static_cast<double>(total) / static_cast<double>(count);
-        } else if (col.dtype == DType::Bool) {
+        if (col.dtype == DType::Bool) {
             std::int64_t trues = 0;
             for (std::int64_t k = 0; k < n; ++k) trues += col.data<std::uint8_t>()[rows_[b + k]];
             mean = static_cast<double>(trues) / static_cast<double>(count);
-        } else {
+        } else {  // float64, and int64 as float64 the way the array area sums it: 0 + pairwise,
+                  // the column mean's bits for groups of up to 4096 rows (docs/api/frame.md §7.5)
             mean = float_sum(n, get) / static_cast<double>(count);
         }
         double value = mean;

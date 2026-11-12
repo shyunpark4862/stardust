@@ -49,6 +49,7 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/parallel/pool.cpp
   csrc/frame/column.cpp
   csrc/frame/convert.cpp
+  csrc/frame/interop.cpp
   csrc/frame/io/csv.cpp
   csrc/frame/ops/cast.cpp
   csrc/frame/ops/elementwise.cpp

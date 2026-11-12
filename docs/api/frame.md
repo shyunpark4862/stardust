@@ -234,6 +234,20 @@ DataFrame.to_numpy(*, dtype=None, copy=None, na_value=<없음>)
   - int64와 float64가 섞이면 float64로 만든다. 2^53 규칙은 §2.3과 같다.
   - 그 밖의 조합은 에러다.
 
+### §2.8 배열과 주고받기 (`to_array`, `Series(배열)`)
+```
+Series.to_array(*, dtype=None, copy=None, na_value=<없음>)
+DataFrame.to_array(*, dtype=None, copy=None, na_value=<없음>)
+```
+- **`to_array`**: `sd.ndarray`를 돌려준다. 규칙은 `to_numpy`(§2.7)와 같다.
+  - `copy=None`이고 NA와 dtype 변환이 없으면 컬럼의 메모리를 함께 쓰는 **읽기 전용** 뷰다(복사 없음).
+  - 뷰가 살아 있는 동안 frame 쪽에 대입하면, frame이 먼저 복사한다(Copy-on-Write, §5.7). 뷰의 값은 바뀌지 않는다.
+  - string 컬럼은 TypeError다. 배열 영역에는 문자열 dtype이 없다.
+- **`DataFrame.to_array`**: 새 2차원 배열을 **F-order**로 만든다. 컬럼 하나가 메모리에서 이어져 있고, 컬럼마다 한 번씩 복사한다. `sd.linalg`는 F-order 행렬을 그대로 받는다. dtype 규칙은 `DataFrame.to_numpy`와 같고, `copy=False`는 ValueError다.
+- **`Series(배열)`, `DataFrame(2차원 배열)`**: `sd.ndarray`에서 만들면 **언제나 복사한다.** 배열은 다른 쓰기 가능한 뷰를 통해 바뀔 수 있어서 frame의 Copy-on-Write가 따라갈 수 없다.
+  - bool, int64, float64 배열을 받는다. complex128은 TypeError다. `Series`는 1차원, `DataFrame`은 2차원만 받는다.
+  - `dtype=`는 명시적 변환이다 (§2.3).
+
 ---
 
 ## §3. 원소별 연산

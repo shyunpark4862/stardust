@@ -1,7 +1,9 @@
-"""Turning user data into Columns, and Columns into numpy arrays (docs/api/frame.md §2)."""
+"""Turning user data into Columns, and Columns into numpy arrays and
+sd.ndarrays (docs/api/frame.md §2)."""
 
 import sys
 
+from .. import _core as _sd_core
 from . import _core
 from ._na import NA
 
@@ -22,13 +24,22 @@ def is_scalar(obj):
     )
 
 
+def is_sdarray(obj):
+    return isinstance(obj, _sd_core.ndarray)
+
+
 def column_from(data, dtype=None):
-    """A Column holding `data` (a list, tuple, range or 1-D numpy array), as `dtype` if given."""
+    """A Column holding `data` (a list, tuple, range, 1-D numpy array or 1-D
+    sd.ndarray), as `dtype` if given. An sd.ndarray is always copied
+    (docs/api/frame.md §2.8)."""
+    if is_sdarray(data):
+        col = Column.from_array(data)
+        return col.astype(dtype) if dtype is not None else col  # dtype= is explicit
     if is_ndarray(data):
         return _from_ndarray(data, dtype)
     if isinstance(data, (list, tuple, range)):
         return Column.from_list(data, NA, dtype)
-    raise TypeError(f"cannot make a column from {type(data).__name__}; expected a list, tuple, range or numpy array")
+    raise TypeError(f"cannot make a column from {type(data).__name__}; expected a list, tuple, range, numpy array or sd.ndarray")
 
 
 def _from_ndarray(arr, dtype):
@@ -135,6 +146,37 @@ def to_numpy(col, dtype, copy, na_value):
     arr = view.copy()
     arr[~col.validity_mask()] = na_value
     return arr
+
+
+def array_column(col, dtype, copy, na_value):
+    """(column, fresh): `col` ready to become an sd.ndarray -- of `dtype`,
+    without NA -- and whether it was just made (nobody else holds its Buffer).
+    The checks of to_numpy (docs/api/frame.md §2.8)."""
+    fresh = False
+    if dtype is not None and dtype != col.dtype:
+        if copy is False:
+            raise ValueError("copy=False, but a dtype conversion requires a copy")
+        col, fresh = col.astype(dtype), True  # dtype= is explicit
+    if col.dtype == "string":
+        raise TypeError("a string column has no array (the array area has no string dtype)")
+    if na_value is not _NO_VALUE:
+        _check_na_value(na_value, col.dtype)
+    elif col.null_count > 0:
+        raise ValueError(f"cannot convert a {col.dtype} column with NA to an array; pass na_value= to fill the NA rows")
+    if col.null_count > 0:
+        if copy is False:
+            raise ValueError("copy=False, but filling the NA rows requires a copy")
+        col, fresh = col.fill_na(Column.from_list([na_value], NA, col.dtype)), True
+    return col, fresh
+
+
+def to_array(col, dtype, copy, na_value):
+    """The sd.ndarray for one column; see Series.to_array."""
+    check_copy(copy)
+    col, fresh = array_column(col, dtype, copy, na_value)
+    if copy and not fresh:
+        return _sd_core.asarray(col.to_array_view(False), copy=True)
+    return col.to_array_view(fresh)  # shares the column's Buffer; read-only unless just made
 
 
 def head_bounds(length, n):

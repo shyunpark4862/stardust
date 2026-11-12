@@ -4,6 +4,7 @@
 
 #include "frame/column.hpp"
 #include "frame/convert.hpp"
+#include "frame/interop.hpp"
 #include "frame/io/csv.hpp"
 #include "frame/ops/cast.hpp"
 #include "frame/ops/elementwise.hpp"
@@ -47,6 +48,8 @@ void bind_column(nb::module_& m) {
              nb::arg("dtype"))
         .def("to_list", &sd::frame::to_list, nb::arg("na").none())
         .def("to_numpy_view", &sd::frame::to_numpy_view)
+        .def("to_array_view", &sd::frame::to_array_view, nb::arg("writeable"))
+        .def_static("from_array", &sd::frame::from_array, nb::arg("arr"))
         .def("validity_mask", &sd::frame::validity_mask)
         // For tests: whether two columns share their values Buffer (zero-copy).
         .def("_shares_values_with", [](const Column& a, const Column& b) { return a.values == b.values; })
@@ -81,6 +84,7 @@ void bind_column(nb::module_& m) {
         .def("first_positions", &sd::frame::LabelTable::first_positions, nb::arg("targets"))
         .def("all_positions", &sd::frame::LabelTable::all_positions, nb::arg("targets"));
     m.def("concat", &sd::frame::concat, nb::arg("cols"));
+    m.def("columns_to_array", &sd::frame::columns_to_array, nb::arg("cols"), nb::arg("n"));
     m.def("reduce", &sd::frame::reduce, nb::arg("op"), nb::arg("col"), nb::arg("skipna"), nb::arg("correction"));
     nb::class_<sd::frame::Groups>(m, "Groups")
         .def(nb::init<const Column&, std::int64_t>(), nb::arg("codes"), nb::arg("ngroups"))

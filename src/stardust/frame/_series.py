@@ -106,6 +106,13 @@ class Series(Reductions):
         """
         return _column.to_numpy(self._col, resolve(dtype) if dtype is not None else None, copy, na_value)
 
+    def to_array(self, *, dtype=None, copy=None, na_value=_NO_VALUE):
+        """The values as an sd.ndarray (docs/api/frame.md §2.8), by the rules of
+        to_numpy: without NA and a dtype conversion, a read-only view sharing
+        the column's memory; copy=, na_value= and dtype= as there. A string
+        column is a TypeError (the array area has no string dtype)."""
+        return _column.to_array(self._col, resolve(dtype) if dtype is not None else None, copy, na_value)
+
     def __array__(self, dtype=None, copy=None):
         arr = self.to_numpy(copy=copy)
         if dtype is None:

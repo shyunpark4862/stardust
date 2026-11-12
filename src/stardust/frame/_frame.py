@@ -46,6 +46,12 @@ class DataFrame(Reductions):
             cols, natural = _from_dict(data, dtype, target)
             if columns is not None:
                 cols = {k: cols.get(k) for k in columns}
+        elif _column.is_sdarray(data):  # always copied (docs/api/frame.md §2.8)
+            if data.ndim != 2:
+                raise ValueError(f"a DataFrame from an sd.ndarray needs 2 dimensions, got {data.ndim}")
+            names = _require_columns(columns, data.shape[1])
+            cols = {k: _column.column_from(data[:, j], dtype) for j, k in enumerate(names)}
+            natural = RangeIndex(data.shape[0])
         elif _column.is_ndarray(data):
             if data.ndim != 2:
                 raise ValueError(f"a DataFrame from a numpy array needs 2 dimensions, got {data.ndim}")
@@ -351,6 +357,26 @@ class DataFrame(Reductions):
         if not arrays:
             return np.empty((len(self), 0))
         return np.stack(arrays, axis=1)
+
+    def to_array(self, *, dtype=None, copy=None, na_value=_NO_VALUE):
+        """A new 2-D sd.ndarray in F order (docs/api/frame.md §2.8): one column after
+        another in memory, each copied once, the layout sd.linalg works in.
+        The dtype rules are to_numpy's; copy=False is a ValueError."""
+        if _column.check_copy(copy) is False:
+            raise ValueError("copy=False, but a 2-D array of the columns requires a copy")
+        dtype = resolve(dtype) if dtype is not None else None
+        if dtype is None:
+            kinds = {c.dtype for c in self._cols.values()}
+            if len(kinds) == 1:
+                (dtype,) = kinds
+            elif kinds == {"int64", "float64"}:
+                dtype = "float64"
+            elif kinds:
+                raise TypeError(f"columns of dtypes {sorted(kinds)} have no common array dtype; pass dtype=")
+        cols = [_column.array_column(c, dtype, True, na_value)[0] for c in self._cols.values()]
+        if cols and cols[0].dtype == "string":
+            raise TypeError("a string column has no array (the array area has no string dtype)")
+        return _core.columns_to_array(cols, len(self))
 
     def _slice(self, start, stop):
         cols = {k: c.slice(start, stop - start) for k, c in self._cols.items()}
