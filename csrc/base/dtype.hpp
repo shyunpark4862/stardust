@@ -5,6 +5,8 @@
 
 #include <complex>
 #include <cstdint>
+#include <optional>
+#include <string_view>
 #include <type_traits>
 
 namespace sd {
@@ -16,6 +18,8 @@ enum class DType : std::uint8_t { Bool, Int64, Float64, Complex128, String };
 
 // The array area's dtypes: DType values [0, kNumArrayDTypes).
 inline constexpr int kNumArrayDTypes = 4;
+// Every DType value: [0, kNumDTypes).
+inline constexpr int kNumDTypes = 5;
 
 constexpr bool is_array_dtype(DType d) { return static_cast<int>(d) < kNumArrayDTypes; }
 
@@ -44,6 +48,14 @@ constexpr const char* dtype_name(DType d) {
         case DType::String: return "string";
     }
     __builtin_unreachable();
+}
+
+// The DType whose dtype_name is `name`, if any (API.md §1: a dtype argument
+// takes the object or its name).
+constexpr std::optional<DType> dtype_from_name(std::string_view name) {
+    for (int i = 0; i < kNumDTypes; ++i)
+        if (name == dtype_name(static_cast<DType>(i))) return static_cast<DType>(i);
+    return std::nullopt;
 }
 
 // C++ storage type of each dtype.

@@ -46,10 +46,11 @@
 - **`keep`은 `"first"`, `"last"`, `"none"`이다.** pandas의 `keep=False`가 `"none"`이다.
 
 ### §1.2 dtype
-- dtype은 넷이다: `bool`, `int64`, `float64`, `string`
-  - dtype 이름은 문자열이다. `Series.dtype`, `Index.dtype`, `DataFrame.dtypes`의 값, repr이 이 이름을 쓴다.
-  - **NA가 있어도 dtype 이름은 바뀌지 않는다.** pandas는 nullable dtype을 쓰면 `Int64`, `boolean` 등으로 쓴다.
-- dtype을 받는 인자는 `"bool"`, `"int64"`, `"float64"`, `"string"` 또는 Python 타입 `bool`, `int`, `float`, `str`을 받는다.
+- dtype은 넷이다: `sd.bool`, `sd.int64`, `sd.float64`, `sd.string` (API.md §1의 객체)
+  - `Series.dtype`, `Index.dtype`은 이 객체를 돌려준다. `DataFrame.dtypes`는 `{컬럼 이름: dtype 객체}` dict다(§2.6). repr은 이름(`dtype: int64`)을 쓴다.
+  - **NA가 있어도 dtype은 바뀌지 않는다.** pandas는 nullable dtype을 쓰면 `Int64`, `boolean` 등으로 쓴다.
+- dtype을 받는 인자는 이 객체나 그 이름(`"bool"`, `"int64"`, `"float64"`, `"string"`)을 받는다 (API.md §1).
+  - Python 타입(`bool`, `int`, `float`, `str`), `sd.complex128`, 다른 이름은 `TypeError`다.
   - 해당: 생성자의 `dtype=` (§2.3), `astype` (§3.5), `to_numpy(dtype=)` (§2.7), `read_csv(dtype=)` (§10.1)
 
 ### §1.3 NaN
@@ -197,7 +198,7 @@ DataFrame.tail(n=5)
 - **`Series.name`**: `str` 또는 `None`만 쓸 수 있다. **[pandas와 다름]**
   - Index의 `name`도 같은 규칙이다 (§5.1).
 - `df.columns`는 string `Index`다.
-- `df.dtypes`는 컬럼 이름을 Index로 하는 string Series다.
+- `df.dtypes`는 `{컬럼 이름: dtype 객체}` dict다. 순서는 컬럼 순서다. frame에는 객체를 담는 dtype이 없어서 Series가 아니다.
 
 ### §2.7 `to_list`, `to_numpy`
 ```

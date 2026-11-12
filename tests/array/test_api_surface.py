@@ -14,7 +14,7 @@ API = (ROOT / "API.md").read_text() + "\n" + (ROOT / "docs" / "api" / "array.md"
 METHODS = {"reshape", "astype", "copy", "tolist", "sum", "prod", "min", "max", "mean", "var", "std",
            "argmin", "argmax", "any", "all"}
 ATTRIBUTES = {"dtype", "shape", "ndim", "size", "strides", "itemsize", "nbytes", "base", "T", "mT"}
-CONSTANTS = {"e", "pi", "inf", "nan", "newaxis", "bool", "int64", "float64", "complex128", "ndarray"}
+CONSTANTS = {"e", "pi", "inf", "nan", "newaxis", "bool", "int64", "float64", "complex128", "string", "ndarray"}
 
 
 def api_names():

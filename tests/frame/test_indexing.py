@@ -45,14 +45,14 @@ def test_range_index_repr_with_name():
 
 def test_index_api():
     idx = sd.frame.Index(["a", "b", "a"], name="k")
-    assert idx.name == "k" and idx.dtype == "string" and len(idx) == 3 and not idx.is_unique
+    assert idx.name == "k" and idx.dtype is sd.string and len(idx) == 3 and not idx.is_unique
     assert list(idx) == ["a", "b", "a"] and "b" in idx and "z" not in idx and 1 not in idx
     assert sd.frame.Index(["a"], name="x").equals(sd.frame.Index(["a"], name="y"))  # names are not compared
     assert sd.frame.RangeIndex(3).equals(sd.frame.Index([0, 1, 2])) and sd.frame.RangeIndex(3).is_unique
     r = sd.frame.RangeIndex(1, 10**9, 3)  # `in` is arithmetic: no table of a billion labels (docs/design/frame.md §6.1)
     assert 4 in r and 5 not in r and 10**9 not in r and "4" not in r and True not in r and 4.0 not in r
     assert np.int64(7) in r and r._labels is None
-    assert sd.frame.Index([]).dtype == "int64"
+    assert sd.frame.Index([]).dtype is sd.int64
     for bad in ([1.5], [True], [1, None]):
         with pytest.raises((TypeError, ValueError)):
             sd.frame.Index(bad)
@@ -137,7 +137,7 @@ def test_slices_keep_range_index_and_share_buffers():
 def test_frame_selection():
     df = sd.frame.DataFrame({"a": [1, 2, 3], "b": ["x", "y", "z"], "c": [0.5, 1.5, 2.5]}, index=["r1", "r2", "r3"])
     row = df.loc["r2"]
-    assert isinstance(row, sd.frame.DataFrame) and row.shape == (1, 3) and row.dtypes.to_list() == ["int64", "string", "float64"]
+    assert isinstance(row, sd.frame.DataFrame) and row.shape == (1, 3) and [str(d) for d in row.dtypes.values()] == ["int64", "string", "float64"]
     assert df.loc["r2", "b"] == "y" and df.iloc[2, 0] == 3 and df.iloc[-1, -1] == 2.5
     assert df.loc[["r3", "r1"], "a"].to_list() == [3, 1]
     assert df.loc[:, "b":"c"].columns.to_list() == ["b", "c"]
@@ -193,7 +193,7 @@ def test_frame_alignment():
     out = left + sd.frame.DataFrame({"a": [10, 20], "b": [0.5, 0.5]}, index=["y", "z"])
     assert out.index.to_list() == ["x", "y", "z"] and out["a"].to_list() == [NA, 12, NA]
     mixed = left + right  # "b" and "c" are each on one side: computed against an NA column of their dtype
-    assert mixed.columns.to_list() == ["a", "b", "c"] and mixed["c"].dtype == "string"
+    assert mixed.columns.to_list() == ["a", "b", "c"] and mixed["c"].dtype is sd.string
     assert mixed["c"].to_list() == [NA, NA, NA] and mixed["a"].to_list() == [NA, 12, NA]
     df = sd.frame.DataFrame({"p": sd.frame.Series([1, 2], index=["b", "a"]), "q": sd.frame.Series([3], index=["c"])})
     assert df.index.to_list() == ["b", "a", "c"] and df["q"].to_list() == [NA, NA, 3]
@@ -296,7 +296,7 @@ def test_frame_assignment():
     df["d"] = sd.frame.Series([9], index=["y"])
     df["a"] = ["p", "q"]  # replacing a whole column may change its dtype
     assert df.columns.to_list() == ["a", "b", "c", "d"]
-    assert df["d"].to_list() == [NA, 9] and df["a"].dtype == "string" and df["c"].to_list() == ["k", "k"]
+    assert df["d"].to_list() == [NA, 9] and df["a"].dtype is sd.string and df["c"].to_list() == ["k", "k"]
     df.loc["y", "b"] = 2
     df.iloc[0, 1] = NA
     df.loc[df["b"].notna(), "c"] = "z"
@@ -329,8 +329,8 @@ def test_iteration_and_contains():
 
 def test_columns_dtypes_nunique_are_index_and_series():
     df = sd.frame.DataFrame({"a": [1, 1], "b": ["x", "y"]})
-    assert isinstance(df.columns, sd.frame.Index) and df.columns.dtype == "string"
-    assert df.dtypes.loc["b"] == "string" and df.nunique().loc["b"] == 2 and df.nunique().dtype == "int64"
+    assert isinstance(df.columns, sd.frame.Index) and df.columns.dtype is sd.string
+    assert df.dtypes["b"] is sd.string and df.nunique().loc["b"] == 2 and df.nunique().dtype is sd.int64
 
 
 # --- repr with labels -------------------------------------------------------------

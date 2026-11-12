@@ -36,7 +36,7 @@ NA = sd.frame.NA
     ],
 )
 def test_inference(values, dtype):
-    assert sd.frame.Series(values).dtype == dtype
+    assert str(sd.frame.Series(values).dtype) == dtype
 
 
 def test_none_and_na_are_na_but_nan_is_a_value():
@@ -95,9 +95,16 @@ def test_float_round_trip_is_bit_exact(values):
 # --- dtype= -------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("spelling", ["int64", int])
+@pytest.mark.parametrize("spelling", ["int64", sd.int64])
 def test_dtype_spellings(spelling):
-    assert sd.frame.Series([1], dtype=spelling).dtype == "int64"
+    assert sd.frame.Series([1], dtype=spelling).dtype is sd.int64
+
+
+@pytest.mark.parametrize("bad", [int, float, bool, str, sd.complex128, "complex128", "float32"])
+def test_dtype_rejects_python_types_and_other_dtypes(bad):
+    # the library's dtype objects or their names only (API.md §1)
+    with pytest.raises(TypeError):
+        sd.frame.Series([1], dtype=bad)
 
 
 @pytest.mark.parametrize(
@@ -112,7 +119,7 @@ def test_dtype_spellings(spelling):
 )
 def test_lossless_dtype(values, dtype, expected):
     s = sd.frame.Series(values, dtype=dtype)
-    assert s.dtype == dtype and s.to_list() == expected
+    assert str(s.dtype) == dtype and s.to_list() == expected
 
 
 @pytest.mark.parametrize(
@@ -155,7 +162,7 @@ def test_lossy_dtype_errors(values, dtype, error):
 )
 def test_numpy_widening(arr, dtype):
     s = sd.frame.Series(arr)
-    assert s.dtype == dtype
+    assert str(s.dtype) == dtype
     assert s.to_list() == [NA if v is None else v for v in arr.tolist()]
 
 
@@ -268,7 +275,7 @@ def test_frame_to_numpy():
 
 def test_series_basics():
     s = sd.frame.Series([1, 2, 3], name="v")
-    assert (len(s), s.shape, s.name, s.dtype) == (3, (3,), "v", "int64")
+    assert (len(s), s.shape, s.name, s.dtype) == (3, (3,), "v", sd.int64)
     assert s.index.equals(sd.frame.RangeIndex(3))
     with pytest.raises(ValueError):
         bool(s)
@@ -332,7 +339,7 @@ def test_head_shares_the_buffer_and_recounts_na():
 def test_frame_from_dict():
     df = sd.frame.DataFrame({"a": [1, 2], "b": np.array([0.5, 1.5]), "c": sd.frame.Series(["x", None])})
     assert df.columns.to_list() == ["a", "b", "c"]
-    assert df.dtypes.to_list() == ["int64", "float64", "string"] and df.dtypes.index.equals(df.columns)
+    assert [str(d) for d in df.dtypes.values()] == ["int64", "float64", "string"] and list(df.dtypes) == df.columns.to_list()
     assert df.shape == (2, 3) and len(df) == 2
     assert df["c"].to_list() == ["x", NA] and df["c"].name == "c"
 
@@ -357,7 +364,7 @@ def test_frame_dict_errors():
 def test_frame_columns_select_and_fill():
     df = sd.frame.DataFrame({"a": [1, 2], "b": [3, 4]}, columns=["b", "z"])
     assert df.columns.to_list() == ["b", "z"]
-    assert df["z"].dtype == "float64" and df["z"].to_list() == [NA, NA]
+    assert df["z"].dtype is sd.float64 and df["z"].to_list() == [NA, NA]
     with pytest.raises(ValueError):
         sd.frame.DataFrame({"a": [1]}, columns=["a", "a"])
 
@@ -370,7 +377,7 @@ def test_frame_from_records():
 
 def test_frame_from_rows_needs_columns():
     df = sd.frame.DataFrame([[1, "x"], (2, "y")], columns=["n", "s"])
-    assert df.dtypes.to_list() == ["int64", "string"]
+    assert [str(d) for d in df.dtypes.values()] == ["int64", "string"]
     with pytest.raises(ValueError):
         sd.frame.DataFrame([[1, 2]])
     with pytest.raises(ValueError):
@@ -382,7 +389,7 @@ def test_frame_from_rows_needs_columns():
 def test_frame_from_2d_numpy():
     arr = np.arange(6, dtype=np.int32).reshape(3, 2)
     df = sd.frame.DataFrame(arr, columns=["a", "b"])
-    assert df["b"].to_list() == [1, 3, 5] and df["a"].dtype == "int64"
+    assert df["b"].to_list() == [1, 3, 5] and df["a"].dtype is sd.int64
     assert sd.frame.DataFrame(np.array([["x", "y"]]), columns=["p", "q"])["q"].to_list() == ["y"]
     with pytest.raises(ValueError):
         sd.frame.DataFrame(arr)
@@ -392,7 +399,7 @@ def test_frame_from_2d_numpy():
 
 def test_frame_dtype_applies_to_every_column():
     df = sd.frame.DataFrame({"a": [1, 2], "b": [3.0, 4.0]}, dtype="float64")
-    assert df.dtypes.to_list() == ["float64", "float64"]
+    assert [str(d) for d in df.dtypes.values()] == ["float64", "float64"]
     with pytest.raises(ValueError):
         sd.frame.DataFrame({"b": [3.5]}, dtype="int64")
 
@@ -401,7 +408,7 @@ def test_frame_empty():
     assert sd.frame.DataFrame().shape == (0, 0)
     assert sd.frame.DataFrame([]).shape == (0, 0)
     df = sd.frame.DataFrame(columns=["a"], dtype="string")
-    assert df.shape == (0, 1) and df["a"].dtype == "string"
+    assert df.shape == (0, 1) and df["a"].dtype is sd.string
 
 
 def test_frame_from_frame_shares_columns():

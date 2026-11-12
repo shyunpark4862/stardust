@@ -6,9 +6,9 @@ namespace sd {
 
 namespace {
 
-// Borrowed: the module attributes (sd.bool, ...) own the four objects, and
+// Borrowed: the module attributes (sd.bool, ...) own the five objects, and
 // nothing in _core can run after the module itself is torn down.
-PyObject* g_dtype_objects[kNumArrayDTypes] = {};
+PyObject* g_dtype_objects[kNumDTypes] = {};
 
 }  // namespace
 
@@ -17,7 +17,7 @@ void register_dtypes(nb::module_& m) {
         .def("__repr__", [](const PyDType& d) { return dtype_name(d.value); })
         .def("__str__", [](const PyDType& d) { return dtype_name(d.value); });
 
-    for (DType d : {DType::Bool, DType::Int64, DType::Float64, DType::Complex128}) {
+    for (DType d : {DType::Bool, DType::Int64, DType::Float64, DType::Complex128, DType::String}) {
         nb::object obj = nb::cast(PyDType{d});
         m.attr(dtype_name(d)) = obj;
         g_dtype_objects[static_cast<int>(d)] = obj.ptr();
@@ -26,11 +26,25 @@ void register_dtypes(nb::module_& m) {
 
 nb::handle dtype_object(DType d) { return g_dtype_objects[static_cast<int>(d)]; }
 
+std::optional<DType> parse_any_dtype(nb::handle o) {
+    if (o.is_none()) return std::nullopt;
+    for (int i = 0; i < kNumDTypes; ++i)
+        if (o.ptr() == g_dtype_objects[i]) return static_cast<DType>(i);
+    if (PyUnicode_Check(o.ptr())) {
+        Py_ssize_t len = 0;
+        const char* s = PyUnicode_AsUTF8AndSize(o.ptr(), &len);
+        if (s == nullptr) throw nb::python_error();
+        if (auto d = dtype_from_name(std::string_view(s, static_cast<std::size_t>(len)))) return d;
+    }
+    return std::nullopt;  // the caller raises, naming what it accepts
+}
+
 std::optional<DType> parse_dtype(nb::handle o) {
     if (o.is_none()) return std::nullopt;
-    for (int i = 0; i < kNumArrayDTypes; ++i)
-        if (o.ptr() == g_dtype_objects[i]) return static_cast<DType>(i);
-    throw nb::type_error("dtype must be one of sd.bool, sd.int64, sd.float64, sd.complex128");
+    const std::optional<DType> d = parse_any_dtype(o);
+    if (!d || !is_array_dtype(*d))
+        throw nb::type_error("dtype must be one of sd.bool, sd.int64, sd.float64, sd.complex128 or their names");
+    return d;
 }
 
 std::optional<bool> parse_copy(nb::handle o) {

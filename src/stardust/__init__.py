@@ -105,6 +105,7 @@ from ._core import (
     sqrt,
     square,
     squeeze,
+    string,
     stack,
     std,
     subtract,
@@ -130,7 +131,7 @@ newaxis = None
 
 __all__ = [
     # dtypes and constants
-    "bool", "int64", "float64", "complex128", "e", "pi", "inf", "nan", "newaxis",
+    "bool", "int64", "float64", "complex128", "string", "e", "pi", "inf", "nan", "newaxis",
     # the array type
     "ndarray",
     # creation

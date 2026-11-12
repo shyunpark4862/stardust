@@ -53,7 +53,7 @@
   - 유한한 0 이상의 `int` 또는 `float`이다. 음수, NaN, inf는 `ValueError`다.
   - `bool`, 배열, 문자열은 `TypeError`다. 배치마다 다른 허용오차(배열)는 받지 않는다.
   - float로 바꿀 수 없을 만큼 큰 int는 `OverflowError`다.
-- **`dtype`**: dtype 객체만 받는다 (API.md §1). 문자열은 `TypeError`다.
+- **`dtype`**: dtype 객체나 그 이름을 받는다 (API.md §1). 다른 것은 `TypeError`다.
 
 ### §1.2 입력 배열
 - **배열 인자는 `sd.ndarray`만 받는다.** 리스트, numpy 배열, Python 스칼라는 `TypeError`다.

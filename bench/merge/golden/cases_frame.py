@@ -86,13 +86,14 @@ def _column(s):
 
 def _index(x, F):
     if isinstance(x, F.RangeIndex):
-        return {"RangeIndex": [x.start, x.stop, x.step], "name": x.name, "dtype": x.dtype, "len": len(x)}
+        return {"RangeIndex": [x.start, x.stop, x.step], "name": x.name, "dtype": str(x.dtype), "len": len(x)}
     if isinstance(x, F.Index):
         labels = x.to_list()
-        out = {"Index": x.dtype, "name": x.name, "len": len(x)}
+        dt = str(x.dtype)  # a name (old package) or a dtype object (M6): the same text
+        out = {"Index": dt, "name": x.name, "len": len(x)}
         if len(labels) <= EMBED:
-            out["labels"] = [str(v) if x.dtype == "int64" else v for v in labels]
-        elif x.dtype == "int64":
+            out["labels"] = [str(v) if dt == "int64" else v for v in labels]
+        elif dt == "int64":
             out["sha"] = _sha(np.asarray(labels, dtype=np.int64).tobytes())
         else:
             out["sha"] = _jsha(labels)
@@ -114,6 +115,8 @@ def _obj(v, F):  # an element of an object array
 
 def encode(x, L):
     F = L.F
+    if type(x).__name__ == "DType":  # a dtype object (M6) is encoded as its name, as the old package's strings
+        return str(x)
     if x is F.NA:
         return {"NA": True}
     if isinstance(x, F.Series):
@@ -583,7 +586,7 @@ def cases(L):
     add("to_numpy int NA int", lambda: F.Series([1, None]).to_numpy(na_value=-1))
     add("to_numpy int NA as float", lambda: F.Series([1, None]).to_numpy(dtype="float64", na_value=nan))
     add("to_numpy bool NA", lambda: F.Series([True, None]).to_numpy(na_value=False))
-    add("to_numpy dtype int->float", lambda: F.Series([1, 2]).to_numpy(dtype=float))
+    add("to_numpy dtype int->float", lambda: F.Series([1, 2]).to_numpy(dtype="float64"))
     add("to_numpy dtype float->int", lambda: F.Series([1.0, 2.0]).to_numpy(dtype="int64"))
     add("err to_numpy NA no na_value", lambda: F.Series([1, None]).to_numpy())
     add("err to_numpy int na_value nan", lambda: F.Series([1, None]).to_numpy(na_value=nan))
@@ -795,9 +798,9 @@ def cases(L):
             add(f"{'' if ok else 'err '}astype {src}->{dt}", lambda mk=mk, dt=dt: mk().astype(dt))
     add("astype f->int ok", lambda: F.Series([1.9, -1.9, -0.0, None, 2.0**62]).astype("int64"))
     add("err astype f->int inf", lambda: F.Series([inf]).astype("int64"))
-    add("err astype f->int range", lambda: F.Series([2.0**63]).astype(int))
-    add("astype i->f rounding", lambda: F.Series([2**53 + 1, 2**63 - 1, -(2**63)]).astype(float))
-    add("astype f->string specials", lambda: F.Series([1.0, 1e20, nan, -0.0, inf, 0.1, 1e-7, 123456789.125, None]).astype(str))
+    add("err astype f->int range", lambda: F.Series([2.0**63]).astype("int64"))
+    add("astype i->f rounding", lambda: F.Series([2**53 + 1, 2**63 - 1, -(2**63)]).astype("float64"))
+    add("astype f->string specials", lambda: F.Series([1.0, 1e20, nan, -0.0, inf, 0.1, 1e-7, 123456789.125, None]).astype("string"))
     add("astype s->int", lambda: F.Series(["+5", "-0", "007", "9223372036854775807", None]).astype("int64"))
     add("astype s->float", lambda: F.Series(["nan", "inf", "-inf", "1e5", ".5", "5.", "+1.5E-3", "NaN", "-0"]).astype("float64"))
     add("astype s->bool", lambda: F.Series(["True", "False", None]).astype("bool"))
@@ -815,8 +818,8 @@ def cases(L):
     add("big astype f->string", lambda: D.BF.astype("string"))
     add("big astype string roundtrip", lambda: D.BF.astype("string").astype("float64"))
     add("big astype i->f", lambda: D.HI.astype("float64"))
-    add("big astype i->string->i", lambda: D.BI.astype(str).astype(int))
-    add("big astype f->bool", lambda: D.BF.astype(bool))
+    add("big astype i->string->i", lambda: D.BI.astype("string").astype("int64"))
+    add("big astype f->bool", lambda: D.BF.astype("bool"))
     add("big astype b->int", lambda: D.BB.astype("int64"))
     add("err big astype f->int nan", lambda: D.BF.astype("int64"))
 
@@ -1487,7 +1490,7 @@ def cases(L):
         ("options", "k;x;y\nb;1;2.5\na;2;3.5\nc;3;4.5\n",
          {"sep": ";", "usecols": ["y", "k"], "index_col": "k", "nrows": 2, "dtype": {"y": "string"}}),
         ("dtype all string", "k;x;y\nb;1;2.5\n", {"sep": ";", "dtype": "string"}),
-        ("dtype float for ints", "a,b\n1,2\n3,4\n", {"dtype": {"a": float}}),
+        ("dtype float for ints", "a,b\n1,2\n3,4\n", {"dtype": {"a": "float64"}}),
         ("dtype bool", "a\nTrue\n\nFalse\n", {"dtype": {"a": "bool"}}),
         ("header False names", "1,2\n3,4\n", {"header": False, "names": ["a", "b"]}),
         ("names rename", "1,2\n3,4\n", {"names": ["p", "q"]}),

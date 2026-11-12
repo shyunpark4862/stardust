@@ -284,7 +284,7 @@ def test_csv_chunks_match_the_oracle(tmp_path, kinds):
     df = sd.frame.read_csv(path)
     for j, k in enumerate(names):
         dtype, values = oracle_column(cols[j])
-        assert df[k].dtype == dtype
+        assert str(df[k].dtype) == dtype
         assert all(same(a, b) for a, b in zip(df[k].to_list(), values))
 
 

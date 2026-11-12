@@ -17,6 +17,11 @@ packages and stardust:
     L.F   frame module   (stardust_pandas | stardust.frame)
     L.np  numpy, L.rng(seed) a numpy Generator, L.arr(np_array) -> L.A array
 
+A milestone that changes results on purpose (M6) lists the cases it expects
+to differ in expected.py: {area: [(regex on the case name, reason)]}. Such
+mismatches are reported per reason and do not fail the check; a pattern that
+matches nothing is reported as stale, so the list stays exact.
+
 Every case runs at 1, 3 and 10 threads. A result is stored as a SHA-256 of
 its bytes plus dtype, shape and strides (so a layout change is a mismatch
 too); errors as their type and message. Messages are compared after the old
@@ -30,6 +35,7 @@ import importlib
 import json
 import math
 import pathlib
+import re
 import sys
 import traceback
 
@@ -156,6 +162,16 @@ def run_area(lib, area):
     return out
 
 
+def load_expected(area):
+    """[(compiled regex, reason)] for this area from expected.py, or []."""
+    path = HERE / "expected.py"
+    if not path.exists():
+        return []
+    ns = {}
+    exec(path.read_text(), ns)
+    return [(re.compile(rx), reason) for rx, reason in ns["EXPECTED"].get(area, [])]
+
+
 def strip_msgs(e):
     if isinstance(e, dict):
         return {k: strip_msgs(v) for k, v in e.items() if k != "msg"}
@@ -170,6 +186,7 @@ def main():
     ap.add_argument("area", choices=AREAS)
     ap.add_argument("--out", help="record: output file (default: <area>.json next to this script)")
     ap.add_argument("--golden", help="check: golden file (default: <area>.json next to this script)")
+    ap.add_argument("-v", "--verbose", action="store_true", help="check: print every expected difference")
     args = ap.parse_args()
     default = HERE / f"{args.area}.json"
 
@@ -210,6 +227,26 @@ def main():
                 msg_only.append((name, n, got, want))
             else:
                 bad.append((name, n, f"got {got}\n      want {want}"))
+    expected = load_expected(args.area)
+    seen = {i: [] for i in range(len(expected))}
+    diffs = bad + [(name, n, f"message: got {got.get('msg')!r}\n      want {want.get('msg')!r}")
+                   for name, n, got, want in msg_only]
+    for name, n, why in diffs:
+        hit = next((i for i, (rx, _) in enumerate(expected) if rx.search(name)), None)
+        if hit is not None:
+            seen[hit].append((name, n, why))
+    covered = {(name, n) for hits in seen.values() for name, n, _ in hits}
+    bad = [b for b in bad if (b[0], b[1]) not in covered]
+    msg_only = [m for m in msg_only if (m[0], m[1]) not in covered]
+    for i, (rx, reason) in enumerate(expected):
+        cases = sorted({name for name, _, _ in seen[i]})
+        if not cases:
+            print(f"STALE    expected pattern {rx.pattern!r} ({reason}) matched no mismatch")
+            continue
+        print(f"EXPECTED {reason}: {len(cases)} cases ({', '.join(cases[:4])}{', ...' if len(cases) > 4 else ''})")
+        if args.verbose:
+            for name, n, why in seen[i]:
+                print(f"           {name} [threads {n}]: {why}")
     for name, n, why in bad:
         print(f"MISMATCH {name} [threads {n}]: {why}")
     for name, n, got, want in msg_only:
@@ -217,7 +254,9 @@ def main():
     for name in missing:
         print(f"MISSING  {name}")
     total = len(golden)
-    print(f"{args.area}: {total} golden cases, {len(bad)} mismatches, {len(msg_only)} message-only, {len(missing)} missing")
+    nexp = len({name for name, _ in covered})
+    print(f"{args.area}: {total} golden cases, {len(bad)} mismatches, {len(msg_only)} message-only, {len(missing)} missing"
+          f", {nexp} expected differences")
     sys.exit(1 if bad or missing else 0)
 
 

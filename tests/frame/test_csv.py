@@ -95,7 +95,7 @@ def test_inference_and_values_follow_the_rules(tmp_path_factory, data):
     assert df.columns.to_list() == names and len(df) == nrows
     for j, k in enumerate(names):
         dtype, values = oracle_column(columns[j])
-        assert df[k].dtype == dtype, (columns[j], df[k].dtype)
+        assert str(df[k].dtype) == dtype, (columns[j], df[k].dtype)
         assert all(same(a, b) for a, b in zip(df[k].to_list(), values)), (df[k].to_list(), values)
 
 
@@ -171,7 +171,7 @@ def test_options(tmp_path):
     df = sd.frame.read_csv(p, sep=";", usecols=["y", "k"], index_col="k", nrows=2, dtype={"y": "string"})
     assert df.columns.to_list() == ["y"] and df.index.to_list() == ["b", "a"] and df.index.name == "k"
     assert df["y"].to_list() == ["2.5", "3.5"]
-    assert sd.frame.read_csv(p, sep=";", dtype="string")["x"].dtype == "string"
+    assert sd.frame.read_csv(p, sep=";", dtype="string")["x"].dtype is sd.string
     q = tmp_path / "noheader.csv"
     q.write_text("1,2\n3,4\n")
     assert sd.frame.read_csv(q, header=False, names=["a", "b"])["b"].to_list() == [2, 4]
@@ -198,7 +198,7 @@ def test_empty_and_header_only(tmp_path):
     h = tmp_path / "h.csv"
     h.write_text("a,b\n")
     df = sd.frame.read_csv(h)
-    assert df.shape == (0, 2) and df.dtypes.to_list() == ["float64", "float64"]
+    assert df.shape == (0, 2) and [str(d) for d in df.dtypes.values()] == ["float64", "float64"]
 
 
 def test_invalid_utf8(tmp_path):

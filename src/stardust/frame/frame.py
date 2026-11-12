@@ -1,6 +1,6 @@
 """DataFrame: named Columns of one length plus row labels (docs/design/frame.md §5.1)."""
 
-from . import _column, _core, _format, _ops, _select, _sort, _unique
+from . import _column, _core, _dtypes, _format, _ops, _select, _sort, _unique
 from ._column import _NO_VALUE
 from ._dtypes import resolve
 from ._reduce import Reductions
@@ -78,8 +78,8 @@ class DataFrame(Reductions):
 
     @property
     def dtypes(self):
-        """The dtype of each column, as a string Series labelled by column name."""
-        return Series._new(Column.from_list([c.dtype for c in self._cols.values()], NA, "string"), self.columns, None)
+        """The dtype of each column: {column name: dtype object}, in column order."""
+        return {k: _dtypes.obj(c.dtype) for k, c in self._cols.items()}
 
     @property
     def index(self):

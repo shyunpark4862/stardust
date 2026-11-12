@@ -1,17 +1,28 @@
-"""The dtype names (docs/design/frame.md §2.1) and the spellings accepted for them (docs/api/frame.md §1.2)."""
+"""The frame's dtypes (docs/design/frame.md §2.1) and how a dtype argument is
+read (docs/api/frame.md §1.2): the library's dtype objects (sd.bool,
+sd.int64, sd.float64, sd.string) or their names, as in the array area
+(API.md §1). Columns keep the name; the public `.dtype` is the object."""
+
+from .. import _core as _sd_core
 
 DTYPES = ("bool", "int64", "float64", "string")
 
-_PYTHON_TYPES = {bool: "bool", int: "int64", float: "float64", str: "string"}
+OBJECTS = {name: getattr(_sd_core, name) for name in DTYPES}
+_NAMES = {obj: name for name, obj in OBJECTS.items()}
 
 
 def resolve(dtype):
-    """The dtype name for `dtype`: one of DTYPES, or the Python type bool, int, float or str."""
+    """The dtype name for `dtype`: a frame dtype object or its name."""
     if isinstance(dtype, str):
         if dtype in DTYPES:
             return dtype
-    elif isinstance(dtype, type) and dtype in _PYTHON_TYPES:
-        return _PYTHON_TYPES[dtype]
+    elif type(dtype) is type(OBJECTS["bool"]) and dtype in _NAMES:
+        return _NAMES[dtype]
     raise TypeError(
-        f"unsupported dtype {dtype!r}; use 'bool', 'int64', 'float64', 'string' or bool, int, float, str"
+        f"unsupported dtype {dtype!r}; use sd.bool, sd.int64, sd.float64, sd.string or their names"
     )
+
+
+def obj(name):
+    """The dtype object for a column's dtype name."""
+    return OBJECTS[name]

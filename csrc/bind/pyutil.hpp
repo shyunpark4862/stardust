@@ -13,8 +13,8 @@ namespace sd {
 
 namespace nb = nanobind;
 
-// Python-side dtype object. Exactly four instances exist (sd.bool, ...),
-// so dtypes compare by identity.
+// Python-side dtype object. Exactly five instances exist (sd.bool, ...,
+// sd.string), so dtypes compare by identity.
 struct PyDType {
     DType value;
 };
@@ -22,9 +22,13 @@ struct PyDType {
 void register_dtypes(nb::module_& m);
 nb::handle dtype_object(DType d);
 
-// `dtype=` argument: None -> nullopt; otherwise must be one of the four
-// dtype objects (Python types like `float` are rejected:
-// API.md §1).
+// A dtype object or its name -> its DType (any of the five); None and
+// anything else -> nullopt. Python types like `float` are not dtypes (API.md §1).
+std::optional<DType> parse_any_dtype(nb::handle o);
+
+// An array `dtype=` argument: None -> nullopt; otherwise one of the four
+// array dtypes, as an object or a name (API.md §1). TypeError otherwise,
+// sd.string included.
 std::optional<DType> parse_dtype(nb::handle o);
 
 // `copy=` argument: None / True / False.

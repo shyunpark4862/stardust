@@ -122,8 +122,8 @@ def aligned_mask(mask, index):
     """The bool Column of a Series mask, in the order of `index` (NA counts
     as False, docs/api/frame.md §5.5). A mask with other labels is matched to `index` by
     label; the two must hold the same set of labels (docs/api/frame.md §5.5)."""
-    if mask.dtype != "bool":
-        raise TypeError(f"a mask must be a bool Series, got dtype {mask.dtype}")
+    if mask._dtype != "bool":
+        raise TypeError(f"a mask must be a bool Series, got dtype {mask._dtype}")
     col = mask._col
     if not same_index(index, mask._index):
         # Same length, unique labels here, and every label found in the mask
@@ -155,8 +155,8 @@ def align(a, b):
     name = merged_name(a.name, b.name)
     if same_index(a, b):
         return a._with_name(name), None, None
-    if a.dtype != b.dtype:
-        raise TypeError(f"cannot align {a.dtype} labels with {b.dtype} labels (API.md §14)")
+    if a._dtype != b._dtype:
+        raise TypeError(f"cannot align {a._dtype} labels with {b._dtype} labels (API.md §14)")
     if not a.is_unique or not b.is_unique:
         raise ValueError("cannot align indexes with duplicate labels (API.md §6)")
     a_labels, b_labels = a._column(), b._column()

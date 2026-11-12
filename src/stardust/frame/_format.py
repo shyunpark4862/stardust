@@ -119,7 +119,7 @@ def _format_labels(index, positions, truncated):
     if isinstance(index, RangeIndex) and not truncated:  # RangeIndex._format_with_header
         width = max(len(str(index._range[0])), len(str(index._range[-1])))
         return [f"{x:<{width}}" for x in labels]
-    if index.dtype == "string":  # justify="all": no padding here, only the common space trimmed
+    if index._dtype == "string":  # justify="all": no padding here, only the common space trimmed
         return _trim_front([" " + _escape(x) for x in labels])
     # An int64 Index, which is also what a truncated RangeIndex becomes (the
     # middle is cut out).
@@ -197,15 +197,15 @@ def _format_object_summary(n, head, tail, name, justify):  # printing.format_obj
 
 def index_repr(index):  # Index.__repr__
     n = len(index)
-    fmt = quote if index.dtype == "string" else str
+    fmt = quote if index._dtype == "string" else str
     if n > MAX_SEQ_ITEMS:
         k = min(MAX_SEQ_ITEMS // 2, 10)
         head = [fmt(x) for x in values_at(index._col, list(range(k)))]
         tail = [fmt(x) for x in values_at(index._col, list(range(n - k, n)))]
     else:
         head, tail = [], [fmt(x) for x in index._col.to_list(None)]
-    data = _format_object_summary(n, head, tail, "Index", justify=index.dtype != "string")
-    attrs = [("dtype", f"'{index.dtype}'")]
+    data = _format_object_summary(n, head, tail, "Index", justify=index._dtype != "string")
+    attrs = [("dtype", f"'{index._dtype}'")]
     if index.name is not None:
         attrs.append(("name", quote(index.name)))
     if n > MAX_SEQ_ITEMS:

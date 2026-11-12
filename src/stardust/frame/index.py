@@ -8,7 +8,7 @@ table never goes stale.
 
 import sys
 
-from . import _core, _format
+from . import _core, _dtypes, _format
 from ._na import NA
 
 Column = _core.Column
@@ -30,9 +30,9 @@ def _is_int_label(x):
 
 def check_label(index, label):
     """Raises TypeError unless `label` has the type of the index's labels (docs/api/frame.md §5.1)."""
-    ok = _is_int_label(label) if index.dtype == "int64" else isinstance(label, str)
+    ok = _is_int_label(label) if index._dtype == "int64" else isinstance(label, str)
     if not ok:
-        raise TypeError(f"a label of an {index.dtype} index must be {'an int' if index.dtype == 'int64' else 'a str'}, "
+        raise TypeError(f"a label of an {index._dtype} index must be {'an int' if index._dtype == 'int64' else 'a str'}, "
                         f"got {type(label).__name__}")
 
 
@@ -40,13 +40,13 @@ def label_column(index, labels):
     """`labels` (a list-like, Index or RangeIndex) as a Column of the index's dtype."""
     if isinstance(labels, (Index, RangeIndex)):
         col = labels._column()
-        if col.dtype != index.dtype:
-            raise TypeError(f"cannot use {col.dtype} labels with an {index.dtype} index")
+        if col.dtype != index._dtype:
+            raise TypeError(f"cannot use {col.dtype} labels with an {index._dtype} index")
         return col
     labels = list(labels)
     for x in labels:
         check_label(index, x)
-    return Column.from_list(labels, NA, index.dtype)
+    return Column.from_list(labels, NA, index._dtype)
 
 
 class _IndexBase:
@@ -68,7 +68,7 @@ class _IndexBase:
             check_label(self, label)
         except TypeError:
             return False
-        return self._first_positions(Column.from_list([label], NA, self.dtype)).to_list(None)[0] >= 0
+        return self._first_positions(Column.from_list([label], NA, self._dtype)).to_list(None)[0] >= 0
 
     def equals(self, other):
         """True when `other` holds the same labels in the same order (names are not compared)."""
@@ -91,7 +91,7 @@ class _IndexBase:
     def _position_of(self, label):
         """The one position holding `label`: KeyError when absent or held by several rows (docs/api/frame.md §5.4)."""
         check_label(self, label)
-        positions = self._table().all_positions(Column.from_list([label], NA, self.dtype)).to_list(None)
+        positions = self._table().all_positions(Column.from_list([label], NA, self._dtype)).to_list(None)
         if not positions:
             raise KeyError(label)
         if len(positions) > 1:
@@ -150,6 +150,10 @@ class RangeIndex(_IndexBase):
 
     @property
     def dtype(self):
+        return _dtypes.obj("int64")
+
+    @property
+    def _dtype(self):  # the name, for the code here
         return "int64"
 
     @property
@@ -241,6 +245,10 @@ class Index(_IndexBase):
 
     @property
     def dtype(self):
+        return _dtypes.obj(self._col.dtype)
+
+    @property
+    def _dtype(self):  # the name, for the code here
         return self._col.dtype
 
     def __len__(self):

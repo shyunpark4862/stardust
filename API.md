@@ -16,14 +16,14 @@
 
 ## §1. dtype
 ```
-bool  int64  float64  complex128
+bool  int64  float64  complex128  string
 ```
-- dtype은 위의 객체 넷이다. 배열의 `.dtype`도 이 객체를 돌려준다 (`x.dtype is sd.float64`).
-- dtype을 받는 인자(`dtype=`, `astype`)는 이 객체만 받는다.
-  - Python 타입(`float` 등)과 문자열(`"float64"`)은 `TypeError`다.
-- dtype 객체는 `==`로 비교하고 해싱할 수 있다. `str(sd.int64)`는 `'int64'`다.
+- dtype은 위의 객체 다섯이다. 배열과 데이터프레임 모두 `.dtype`이 이 객체를 돌려준다 (`x.dtype is sd.float64`).
+  - 배열은 앞의 넷을, 데이터프레임은 `complex128`을 뺀 넷을 쓴다. 영역이 쓰지 않는 dtype을 주면 `TypeError`다 (예: `sd.zeros(3, dtype=sd.string)`).
+- dtype을 받는 인자(`dtype=`, `astype`)는 **이 객체나 그 이름 문자열**을 받는다: `dtype=sd.float64`와 `dtype="float64"`는 같다.
+  - Python 타입(`float` 등), numpy dtype, 다른 이름(`"float32"`)은 `TypeError`다.
+- dtype 객체는 `==`로 비교하고 해싱할 수 있다. `str(sd.int64)`는 `'int64'`다. 이름 문자열과 `==`로 같지는 않다 (`sd.int64 == "int64"`는 False).
 - `sd.bool`은 Python의 `bool`과 다른 객체다.
-- **예외**: 데이터프레임 영역은 아직 dtype을 이름 문자열로 받고 돌려준다 (docs/api/frame.md §1.2). 두 영역의 표기는 M6에서 맞춘다 (DESIGN.md §4.2).
 
 ## §2. 에러 종류
 - **`TypeError`**: 인자의 타입이 맞지 않는다.

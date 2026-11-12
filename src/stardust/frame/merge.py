@@ -100,7 +100,7 @@ def concat(objs, *, join="outer", ignore_index=False):
     index = None if ignore_index else _concat_labels([o.index for o in objs])
     n = sum(len(o) for o in objs)
     if all(isinstance(o, Series) for o in objs):
-        dtypes = {o.dtype for o in objs}
+        dtypes = {o._dtype for o in objs}
         if len(dtypes) != 1:
             raise TypeError(f"Series of dtypes {sorted(dtypes)} cannot be joined (API.md §18)")
         names = {o.name for o in objs}
@@ -124,7 +124,7 @@ def concat(objs, *, join="outer", ignore_index=False):
 
 
 def _concat_labels(indexes):
-    dtypes = {i.dtype for i in indexes}
+    dtypes = {i._dtype for i in indexes}
     if len(dtypes) != 1:
         raise TypeError("cannot join int labels with string labels (API.md §18)")
     names = {i.name for i in indexes}

@@ -89,8 +89,8 @@ def test_arithmetic_matches_numpy(data):
 
 def test_result_dtypes():
     i, f = sd.frame.Series([1, 2]), sd.frame.Series([1.5, 2.5])
-    assert (i + i).dtype == "int64" and (i / i).dtype == "float64" and (i + f).dtype == "float64"
-    assert (i // i).dtype == "int64" and (i ** i).dtype == "int64" and (i + 1.5).dtype == "float64"
+    assert (i + i).dtype is sd.int64 and (i / i).dtype is sd.float64 and (i + f).dtype is sd.float64
+    assert (i // i).dtype is sd.int64 and (i ** i).dtype is sd.int64 and (i + 1.5).dtype is sd.float64
 
 
 def test_int_edge_cases():
@@ -110,8 +110,8 @@ def test_na_propagates_without_exceptions():
     s = sd.frame.Series([1, None])
     assert (s ** 0).to_list() == [1, NA]  # pandas gives 1 for NA ** 0 (docs/api/frame.md §3.2)
     assert (1 ** s).to_list() == [1, NA]
-    assert (s + NA).to_list() == [NA, NA] and (s + NA).dtype == "int64"
-    assert (s / NA).dtype == "float64"
+    assert (s + NA).to_list() == [NA, NA] and (s + NA).dtype is sd.int64
+    assert (s / NA).dtype is sd.float64
 
 
 def test_strings_concatenate():
@@ -183,7 +183,7 @@ def test_numeric_comparison_is_exact(data):
     xs_v = [None if x is None else (float(x) if dtx == "float64" else x) for x in xs]
     ys_v = [None if y is None else (float(y) if dty == "float64" else y) for y in ys]
     expected = [NA if x is None or y is None else COMPARE[op](x, y) for x, y in zip(xs_v, ys_v)]
-    assert got.dtype == "bool" and got.to_list() == expected
+    assert got.dtype is sd.bool and got.to_list() == expected
 
 
 @settings(max_examples=EXAMPLES, deadline=None)
@@ -393,7 +393,7 @@ def test_frame_filter():
 
 def test_index_basics():
     idx = sd.frame.Index([3, 1, 2])
-    assert idx.to_list() == [3, 1, 2] and idx.dtype == "int64" and len(idx) == 3
+    assert idx.to_list() == [3, 1, 2] and idx.dtype is sd.int64 and len(idx) == 3
     assert sd.frame.Index([0, 1]).equals(sd.frame.RangeIndex(2)) and sd.frame.RangeIndex(2).equals(sd.frame.Index([0, 1]))
     with pytest.raises(ValueError):
         sd.frame.Index([1, None])
@@ -426,12 +426,12 @@ def test_frame_operators():
     assert (df > 1)["a"].to_list() == [False, True]
     assert (-df)["a"].to_list() == [-1, -2] and abs(-df)["a"].to_list() == [1, 2]
     assert df.isna()["b"].to_list() == [False, True]
-    assert df.astype({"a": "float64"}).dtypes.to_list() == ["float64", "float64"]
+    assert [str(d) for d in df.astype({"a": "float64"}).dtypes.values()] == ["float64", "float64"]
     assert df.astype("string")["b"].to_list() == ["0.5", NA]
     with pytest.raises(TypeError):
         df + df["a"]
     partial = df + sd.frame.DataFrame({"a": [1, 2]})  # "b" is only on the left: NA there (docs/api/frame.md §5.6)
-    assert partial["a"].to_list() == [2, 4] and partial["b"].to_list() == [NA, NA] and partial["b"].dtype == "float64"
+    assert partial["a"].to_list() == [2, 4] and partial["b"].to_list() == [NA, NA] and partial["b"].dtype is sd.float64
     with pytest.raises(KeyError):
         df.astype({"zz": "int64"})
 

@@ -146,11 +146,11 @@ def test_frame_reductions_are_one_row():
     out = df.sum()
     assert isinstance(out, sd.frame.DataFrame) and out.shape == (1, 3) and out.index.to_list() == ["sum"]
     assert out.loc["sum", "a"] == 3 and out.loc["sum", "t"] == 2
-    assert out.dtypes.to_list() == ["int64", "float64", "int64"]
+    assert [str(d) for d in out.dtypes.values()] == ["int64", "float64", "int64"]
     m = df.mean()
-    assert m.dtypes.to_list() == ["float64"] * 3 and m.loc["mean", "a"] == 1.5
+    assert [str(d) for d in m.dtypes.values()] == ["float64"] * 3 and m.loc["mean", "a"] == 1.5
     assert df.count().loc["count", "a"] == 2
-    assert df.max().dtypes.to_list() == ["int64", "float64", "bool"]
+    assert [str(d) for d in df.max().dtypes.values()] == ["int64", "float64", "bool"]
     with pytest.raises(TypeError):
         df.std()  # the bool column has no std
     mixed = sd.frame.DataFrame({"s": ["x", "y"], "n": [1, 2]})

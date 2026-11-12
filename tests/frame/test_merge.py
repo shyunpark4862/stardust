@@ -121,7 +121,7 @@ def test_concat_frames():
     b = sd.frame.DataFrame({"y": [3.5], "z": ["s"]}, index=["p"])
     out = sd.frame.concat([a, b])
     assert out.columns.to_list() == ["x", "y", "z"] and out.index.to_list() == ["p", "q", "p"]
-    assert out["x"].to_list() == [1, 2, NA] and out["z"].to_list() == [NA, NA, "s"] and out["x"].dtype == "int64"
+    assert out["x"].to_list() == [1, 2, NA] and out["z"].to_list() == [NA, NA, "s"] and out["x"].dtype is sd.int64
     inner = sd.frame.concat([a, b], join="inner", ignore_index=True)
     assert inner.columns.to_list() == ["y"] and inner.index.equals(sd.frame.RangeIndex(3))
     assert sd.frame.concat([sd.frame.DataFrame({"a": [1]}), sd.frame.DataFrame({"a": [2]})]).index.to_list() == [0, 0]

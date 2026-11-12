@@ -15,10 +15,15 @@ def test_dtype_objects_are_four_distinct_singletons():
     assert sd.asarray([1.0]).dtype is sd.float64
 
 
-@pytest.mark.parametrize("bad", [float, int, "float64", np.float64, np.dtype("float64")])
-def test_dtype_argument_accepts_only_dtype_objects(bad):
+@pytest.mark.parametrize("bad", [float, int, np.float64, np.dtype("float64"), sd.string, "string", "float32"])
+def test_dtype_argument_accepts_only_dtype_objects_and_names(bad):
     with pytest.raises(TypeError):
         sd.zeros(3, dtype=bad)
+
+
+@pytest.mark.parametrize("name", ["bool", "int64", "float64", "complex128"])
+def test_dtype_argument_accepts_names(name):
+    assert sd.zeros(3, dtype=name).dtype is getattr(sd, name)
 
 
 def test_ndarray_cannot_be_constructed_directly():

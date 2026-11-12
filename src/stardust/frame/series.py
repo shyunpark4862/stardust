@@ -1,6 +1,6 @@
 """Series: one Column plus its row labels (docs/design/frame.md §3.1)."""
 
-from . import _column, _core, _format, _ops, _select, _sort, _unique
+from . import _column, _core, _dtypes, _format, _ops, _select, _sort, _unique
 from ._reduce import Reductions
 from ._column import _NO_VALUE
 from ._dtypes import resolve
@@ -49,6 +49,10 @@ class Series(Reductions):
 
     @property
     def dtype(self):
+        return _dtypes.obj(self._col.dtype)
+
+    @property
+    def _dtype(self):  # the name, for the code here
         return self._col.dtype
 
     @property
@@ -81,7 +85,7 @@ class Series(Reductions):
         """Whether some row holds `value`, by the key rules of docs/api/frame.md §1.6 (NaN
         matches NaN, NA matches NA). Labels: `label in s.index`."""
         try:
-            probe = Column.from_list([value], NA, self.dtype)
+            probe = Column.from_list([value], NA, self._dtype)
         except (TypeError, ValueError, OverflowError):
             return False  # a value of another type is in no row
         return self._col.contains_key(probe)
@@ -148,8 +152,8 @@ class Series(Reductions):
         return self._unary("abs")
 
     def __pos__(self):
-        if self.dtype not in ("int64", "float64"):
-            raise TypeError(f"unsupported operand dtype for unary +: {self.dtype}")
+        if self._dtype not in ("int64", "float64"):
+            raise TypeError(f"unsupported operand dtype for unary +: {self._dtype}")
         return self
 
     def __invert__(self):
@@ -237,7 +241,7 @@ class Series(Reductions):
 
     def _assign(self, sel, value):
         labels = None if sel[0] == "one" else _select.select_index(self._index, sel)
-        values = assignment_values(value, self.dtype, labels)
+        values = assignment_values(value, self._dtype, labels)
         # A Column object of our own, so the write cannot show through another
         # object holding the old one; set_rows copies shared Buffers (CoW).
         self._col = self._col.share()
