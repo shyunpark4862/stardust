@@ -412,3 +412,55 @@ R1이 추천안대로 정해지면, 아래 후보를 함수 하나하나 확정�
 - 11번: frame의 `mean(int64)`이 배열과 같은 float64 합(같은 덧셈 순서)을 쓴다. 배열 쪽 비용 없음. frame은 int128 합(164µs)보다 빠르다. 결과는 합이 2⁵³을 넘을 때 마지막 비트만 바뀐다.
 - 덧붙여 확인한 것: numpy의 int 평균은 8192개씩 끊은 버퍼마다 pairwise 합을 내어 차례로 더한다. 이 순서를 흉내 내면 1차원 평균이 numpy와 비트까지 같다(무작위 int64 25가지, 원소 9천–300만 개, 띄엄띄엄한 열 포함, 모두 같음). 배열이 지금 큰 값에서 numpy와 마지막 비트가 다른 것도 이렇게 고칠 수 있다. 이것은 §9의 범위 밖이라 따로 정한다.
 
+
+---
+
+## 10. M8 일관성 2차: 변경 목록 (확정, 2026-11-12)
+
+> M7 뒤의 감사에서 찾은 비일관과 §8.4의 "남음" 항목을 함수 단위로 풀어 쓴 목록이다. 사용자가 제안대로 확정했다(2026-11-12). M6처럼 골든 비교의 "예상된 차이"로 묶어 한 마일스톤(M8)에서 바꾼다. 원칙은 그대로다: 라이브러리 안의 일관성이 먼저(§1.4), 기준은 배열 영역의 규칙과 API.md.
+> 골든 분류는 §9와 같다: 값, 메시지, 종류, 시그니처, 새것.
+
+### 10.1 동작
+| # | 대상 | 지금 | M8 | 골든 |
+|---|---|---|---|---|
+| 1 | frame의 `==`, `!=`에 받을 수 없는 피연산자 (list, numpy 배열, `None`, …) | 조용히 False/True | TypeError (§9.1 13번을 frame까지) | 값→종류 |
+| 1b | `Index == …`, `Index != …` | 같은 객체인지만 봄 | TypeError, `<`와 같다. 내용 비교는 `.equals()` (사용자 결정) | 값→종류 |
+| 2 | bool을 숫자로 보는 규칙 (bool < int64 < float64) | 산술과 `fillna(True)`에만 있다 | frame의 모든 경로가 배열의 승격 규칙: list 추론(`Series([True, 1])` → int64), `concat`(int+float → float64, int+bool → int64), `to_numpy`/`to_array`의 공통 dtype, bool의 `std`/`var`, bool과 int의 비교 | 종류→값 |
+| 3 | `read_csv`의 추론: int64 밖이거나 2⁵³을 넘는 int | 컬럼이 string으로 남는다 | list 추론과 같게 float64 (2번, §9.1 12번) | 값 |
+| 4 | frame의 bool 옵션 (`ignore_index`, `sort`, `dropna`, `normalize`, `skipna` …) | 진릿값으로 읽는다 | True/False가 아니면 TypeError (API.md §2) | 값→종류 |
+| 4b | frame의 int 인자 (`head(n)`, `tail(n)` …) | bool, int64 밖의 int를 받는다 | 배열의 int 인자 규칙: bool은 TypeError, int64 밖은 OverflowError | 값→종류 |
+| 4c | 문자열 옵션에 문자열이 아닌 값 (`keep=0`, `how=None`, `na_position=0`, `join=0`, `read_csv(nrows=True)` …) | frame은 ValueError | TypeError (linalg와 같게, API.md §2) | 종류 |
+| 5 | 스칼라 `NA`의 연산 | `NA + 1`, `NA \| True` 등이 TypeError | Series 안과 같은 규칙: 산술과 비교는 NA, 논리는 Kleene (`NA \| True` → True, `NA & False` → False). docs/api/frame.md §1.4가 이미 그렇게 적었다 | 종류→값 |
+| 6 | `np.asarray(DataFrame)`, `np.asarray(Index)` | 컬럼 이름 배열, object 배열 | DataFrame과 Index에도 `__array__` (`to_numpy`의 규칙, §4.3) | 값 |
+| 7 | `.iloc`/`.loc`의 키로 `sd.ndarray` | TypeError (numpy 배열은 받는다) | numpy 배열처럼 받는다 | 종류→값 |
+| 8 | `RangeIndex`의 인자가 int64 밖 | 통과한다 | OverflowError (API.md §2, `arange`와 같게) | 값→종류 |
+| 9 | `bool(x)` | 배열·`NA`는 TypeError, Series·DataFrame은 ValueError, Index는 진릿값 | 모두 TypeError (배열 규칙, 사용자 결정) | 종류, 값→종류 |
+| 10 | numpy에서 가져오기 | 배열은 big-endian·uint64를 거부, frame은 받거나 값을 보고 판단 | big-endian은 두 영역 모두 받는다(값이 같다). uint64는 두 영역 모두 dtype만 보고 TypeError (사용자 결정, §9.1 4번과 같은 원리). object 배열은 frame만 받는다 — 문자열 dtype이 frame에만 있어서다. 문서에 [배열과 다름]으로 적는다 | 종류, 값 |
+| 11 | `arange`의 int 인자, `dtype=float64` | int64 범위여야 한다 | float로 읽는다 (§9.1 12번과 같게) | 종류→값 |
+| 12 | 작은 것: pickle, 해싱, `in`, `range` | Series만 pickle 실패, Index만 해싱됨, `1.0 in Index`는 False, `sd.asarray(range)`는 TypeError | Series도 pickle 된다. Index는 해싱 불가(Series처럼). `in`은 Series 규칙(손실 없는 변환, docs/api/frame.md §5.8). `range`는 배열도 받는다. generator는 두 영역 모두 받지 않는다 | 값, 종류 |
+
+### 10.2 이름과 시그니처
+- `RangeIndex(start, stop=None, step=1, /, *, name=None)`: `arange`처럼 첫 인자가 필수다 (§9.3이 "arange와 같다"고 적은 대로).
+- `value_counts`의 결과 컬럼: `value`, `count` → `values`, `counts` (`unique_counts`의 필드와 같게, 사용자 결정).
+- `GroupBy.agg("size")`를 받는다 (메서드 `size()`와 같게).
+- Index와 RangeIndex의 repr: `dtype='int64'` → `dtype=int64` (배열과 같게). Series의 `dtype: int64`는 그대로다.
+
+### 10.3 에러 종류와 메시지
+- 내부 이름이 새어 나오는 곳을 없앤다: `reduce(): incompatible function arguments … Column`, `concat(df)`의 AttributeError, `head('a')`의 `'>=' not supported`, `reindex(5)`의 `object of type 'int' has no len()` 등. Python 층에서 인자를 먼저 검사한다.
+- 같은 실수에는 같은 메시지 형식: bool 옵션은 `'x' must be True or False, not int`. nanobind의 `incompatible function arguments` 덤프가 나오는 공개 옵션도 이 형식으로 바꾼다. 받은 타입은 짧은 이름(`not list`, `not ndarray`)으로 쓴다. 이 규칙을 API.md §2.1에 적는다.
+- 위치 인덱스의 형태가 틀렸을 때: frame도 IndexError (배열과 같게, API.md §2).
+- 배열의 단일 원소 대입에서 타입이 틀렸을 때(`x[0] = 'a'`): ValueError → TypeError.
+- 틀린 메시지를 고친다: `fillna(1j)`, `arange('a')`, `to_array(dtype=sd.string)`, `to_array(na_value=2**70)`(→ OverflowError), `vector_norm(axis=1.0)`, `vector_norm(ord=np.int64(1))`, `merge(how=)`의 따옴표, `astype({'zz': …})`, `Index([None])`, "a int64" 문법, §8.4의 "남음" 넷(`iloc[0, 9]`, `groupby(Series)`, `DataFrame(…, index=)` 길이, CSV 따옴표).
+
+### 10.4 문서
+- docs/api/frame.md: §1.4의 NA 스칼라(5번이 맞춘다), §2.4 numpy 입력(10번), §3.5의 엄격한 파싱이 받는 철자(`Infinity`, `NAN`, `+inf`, …: 지금 코드대로 적는다), 그대로 두는 차이의 [배열과 다름] 표시.
+- docs/api/array.md: `range`, big-endian, `arange`의 float 인자, 원소 대입의 예외 종류.
+- §8.4: M8에서 해결한 줄을 표시한다.
+
+### 10.5 그대로 두는 것 (이유와 함께, M8에서 바꾸지 않는다)
+- NA에서 나온 차이: `int // 0`·`% 0`·`** 음수`의 NA, 값이 모자란 리덕션의 NA (§9.1 1, 8번).
+- frame은 numpy와 배열에서 만들 때 언제나 복사한다 (Copy-on-Write).
+- linalg는 int 입력을 float64로 계산한다 (§9.6). `GroupBy.size()`, linalg의 `k`, `svd(mode=)` (§9.4, §9.6).
+- 그룹별 int 평균은 4,096행까지만 `Series.mean`과 비트가 같다 (§9 머리말 (b)).
+- frame에만 object 배열 입력이 있다 (10번).
+- Series에 `ndim`, `size`, `prod`, `any`, `all` 등이 없는 것은 기능의 범위 문제라 이번 목록 밖이다.
