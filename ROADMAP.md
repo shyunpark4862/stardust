@@ -32,6 +32,7 @@
 | M5 frame 옮기기 | 2단계 | 완료 (2026-11-12), docs/learn/M5-frame-move.md |
 | M6 frame과 배열 잇기, 일관성 맞추기 | 2단계 | 완료 (2026-11-12), docs/learn/M6-consistency.md |
 | M7 마무리 | 마무리 | 완료 (2026-11-12), docs/learn/M7-final-report.md (최종 보고서), 안내서 docs/guide/ |
+| M8 일관성 2차 | 다듬기 | 진행 중 (2026-11-12), 변경 목록 DESIGN §10 |
 
 ## 마일스톤
 
@@ -106,6 +107,14 @@
 - 옛 저장소 세 개를 동결한다 (README에 "stardust로 옮겨 감" 표시, DESIGN §5.2)
 
 ---
+
+### M8. 일관성 2차
+- M7 뒤의 감사에서 찾은 비일관과 DESIGN §8.4의 "남음" 항목을 고친다. 함수 단위 목록은 DESIGN §10 (사용자 확정 2026-11-12).
+- M6처럼 골든 비교의 "예상된 차이"(`bench/merge/golden/expected.py`)로 묶고, 그 밖의 차이는 없어야 한다.
+- 단계
+  1. frame의 동작과 이름 (§10.1의 frame 항목, §10.2)
+  2. 배열·linalg 항목, 에러 메시지 정리, 문서 (§10.1의 나머지, §10.3, §10.4)
+  3. 골든·같은 자리 성능 확인, 해설 `docs/learn/M8-consistency-2.md`
 
 # 특수함수 영역 (sd.special)
 
