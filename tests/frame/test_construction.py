@@ -41,7 +41,7 @@ def test_inference(values, dtype):
 
 def test_none_and_na_are_na_but_nan_is_a_value():
     s = sd.frame.Series([1.0, None, NA, math.nan])
-    out = s.to_list()
+    out = s.tolist()
     assert out[0] == 1.0 and out[1] is NA and out[2] is NA and math.isnan(out[3])
 
 
@@ -64,33 +64,33 @@ def test_inference_errors(values, error):
 
 def test_inference_of_ints_with_floats_rounds_as_the_array_area():
     # int with float is float64, rounded; an int outside int64 becomes a float (docs/api/frame.md §2.2)
-    assert sd.frame.Series([2**53 + 1, 0.5]).to_list() == [float(2**53 + 1), 0.5]
-    assert sd.frame.Series([1.5, 2**70]).to_list() == [1.5, float(2**70)]
-    assert sd.frame.Series([2**70], dtype="float64").to_list() == [float(2**70)]
+    assert sd.frame.Series([2**53 + 1, 0.5]).tolist() == [float(2**53 + 1), 0.5]
+    assert sd.frame.Series([1.5, 2**70]).tolist() == [1.5, float(2**70)]
+    assert sd.frame.Series([2**70], dtype="float64").tolist() == [float(2**70)]
 
 
 def test_big_exact_int_mixed_with_float_is_fine():
-    assert sd.frame.Series([2**60, 0.5]).to_list() == [float(2**60), 0.5]
+    assert sd.frame.Series([2**60, 0.5]).tolist() == [float(2**60), 0.5]
 
 
 @settings(max_examples=200, deadline=None)
 @given(st.lists(st.none() | st.integers(-(2**63), 2**63 - 1)))
 def test_int_round_trip(values):
     s = sd.frame.Series(values, dtype="int64")
-    assert s.to_list() == [NA if v is None else v for v in values]
+    assert s.tolist() == [NA if v is None else v for v in values]
 
 
 @settings(max_examples=200, deadline=None)
 @given(st.lists(st.none() | st.text()))
 def test_string_round_trip(values):
     s = sd.frame.Series(values, dtype="string")
-    assert s.to_list() == [NA if v is None else v for v in values]
+    assert s.tolist() == [NA if v is None else v for v in values]
 
 
 @settings(max_examples=200, deadline=None)
 @given(st.lists(st.none() | st.floats()))
 def test_float_round_trip_is_bit_exact(values):
-    out = sd.frame.Series(values, dtype="float64").to_list()
+    out = sd.frame.Series(values, dtype="float64").tolist()
     for v, o in zip(values, out):
         if v is None:
             assert o is NA
@@ -125,7 +125,7 @@ def test_dtype_rejects_python_types_and_other_dtypes(bad):
 )
 def test_lossless_dtype(values, dtype, expected):
     s = sd.frame.Series(values, dtype=dtype)
-    assert str(s.dtype) == dtype and s.to_list() == expected
+    assert str(s.dtype) == dtype and s.tolist() == expected
 
 
 @pytest.mark.parametrize(
@@ -144,7 +144,7 @@ def test_lossless_dtype(values, dtype, expected):
 def test_dtype_is_an_explicit_conversion(values, dtype, expected):
     # dtype= converts as astype does, as in the array area (docs/api/frame.md §2.3)
     s = sd.frame.Series(values, dtype=dtype)
-    assert str(s.dtype) == dtype and s.to_list() == expected
+    assert str(s.dtype) == dtype and s.tolist() == expected
 
 
 @pytest.mark.parametrize("dtype", ["int32", "object"])
@@ -174,7 +174,7 @@ def test_unknown_dtype_errors(dtype):
 def test_numpy_widening(arr, dtype):
     s = sd.frame.Series(arr)
     assert str(s.dtype) == dtype
-    assert s.to_list() == [NA if v is None else v for v in arr.tolist()]
+    assert s.tolist() == [NA if v is None else v for v in arr.tolist()]
 
 
 def test_numpy_errors():
@@ -190,17 +190,17 @@ def test_numpy_is_copied():
     arr = np.array([1, 2, 3])
     s = sd.frame.Series(arr)
     arr[0] = 100
-    assert s.to_list() == [1, 2, 3]  # CoW cannot see writes into foreign memory (docs/api/frame.md §2.4)
+    assert s.tolist() == [1, 2, 3]  # CoW cannot see writes into foreign memory (docs/api/frame.md §2.4)
 
 
 def test_numpy_strided():
     arr = np.arange(20, dtype=np.int16)[::-3]
-    assert sd.frame.Series(arr).to_list() == arr.tolist()
+    assert sd.frame.Series(arr).tolist() == arr.tolist()
 
 
 def test_numpy_nan_is_a_value():
     s = sd.frame.Series(np.array([1.0, np.nan]))
-    assert s.to_numpy().tolist()[0] == 1.0 and math.isnan(s.to_list()[1])
+    assert s.to_numpy().tolist()[0] == 1.0 and math.isnan(s.tolist()[1])
 
 
 # --- to_numpy -----------------------------------------------------------------
@@ -213,6 +213,39 @@ def test_to_numpy_is_a_read_only_view():
     assert np.shares_memory(a, b)
     c = s.to_numpy(copy=True)
     assert c.flags.writeable and not np.shares_memory(a, c)
+
+
+@pytest.mark.parametrize(
+    ("values", "kwargs"),
+    [
+        ([1, None], {"na_value": 0}),  # filling NA rows
+        (["a"], {}),  # a string column becomes an object array
+        ([1, 2], {"dtype": "float64"}),  # a dtype conversion
+    ],
+)
+def test_to_numpy_copy_as_in_asarray(values, kwargs):
+    # copy=None copies only when it must, True always, False never (docs/api/frame.md §2.7)
+    s = sd.frame.Series(values)
+    for copy in (None, True):
+        assert s.to_numpy(copy=copy, **kwargs).tolist() == s.to_numpy(**kwargs).tolist()
+    with pytest.raises(ValueError):
+        s.to_numpy(copy=False, **kwargs)
+
+
+def test_to_numpy_copy_without_a_copy_needed():
+    s = sd.frame.Series([1.5, 2.5])
+    view = s.to_numpy(copy=False)
+    assert not view.flags.writeable and np.shares_memory(view, s.to_numpy())
+    assert np.shares_memory(view, s.to_numpy(dtype="float64", copy=False))  # the same dtype is no conversion
+    assert s.to_numpy(copy=True).flags.writeable
+    for bad in (0, 1, "yes"):
+        with pytest.raises(TypeError):
+            s.to_numpy(copy=bad)
+    with pytest.raises(ValueError):  # numpy asks with copy=False through the protocol
+        np.asarray(sd.frame.Series([1, None]), copy=False)
+    assert np.asarray(s, copy=True).flags.writeable and not np.asarray(s).flags.writeable
+    with pytest.raises(ValueError):
+        np.asarray(s, dtype=np.float32, copy=False)
 
 
 def test_to_numpy_view_of_a_slice():
@@ -280,6 +313,12 @@ def test_frame_to_numpy():
         sd.frame.DataFrame({"a": [1], "b": [True]}).to_numpy()
     with pytest.raises(ValueError):
         df.to_numpy()
+    # a 2-D array of separate columns is always new: copy=False cannot hold (docs/api/frame.md §2.7)
+    assert df.to_numpy(copy=True, na_value=0).tolist() == df.to_numpy(copy=None, na_value=0).tolist()
+    with pytest.raises(ValueError):
+        sd.frame.DataFrame({"a": [1.0]}).to_numpy(copy=False)
+    with pytest.raises(TypeError):
+        sd.frame.DataFrame({"a": [1.0]}).to_numpy(copy=1)
     # dtype= converts as astype does
     assert sd.frame.DataFrame({"a": [True], "b": [1]}).to_numpy(dtype="int64").tolist() == [[1, 1]]
 
@@ -310,7 +349,7 @@ def test_series_from_series_shares_the_buffer():
     t = sd.frame.Series(s)
     assert t.name == "a" and t._col._shares_values_with(s._col)
     assert sd.frame.Series(s, name="b").name == "b"
-    assert sd.frame.Series(s, dtype="float64").to_list() == [1.0, 2.0]
+    assert sd.frame.Series(s, dtype="float64").tolist() == [1.0, 2.0]
 
 
 def test_series_rejects():
@@ -329,15 +368,75 @@ def test_only_the_main_argument_is_positional():  # docs/api/frame.md §1.1
         sd.frame.Series([1]).to_numpy("int64")
 
 
+def test_main_arguments_are_positional_only(tmp_path):  # docs/api/frame.md §1.1: `/` before the main argument
+    s, df = sd.frame.Series([1, 2]), sd.frame.DataFrame({"a": [1, 2], "b": ["x", "y"]})
+    path = tmp_path / "x.csv"
+    path.write_text("a\n1\n")
+    keyword_calls = [
+        lambda: sd.frame.Series(data=[1]),
+        lambda: sd.frame.DataFrame(data={"a": [1]}),
+        lambda: sd.frame.Index(data=[1]),
+        lambda: sd.frame.RangeIndex(stop=3),
+        lambda: sd.frame.RangeIndex(0, 3, step=1),
+        lambda: s.head(n=1),
+        lambda: df.tail(n=1),
+        lambda: s.astype(dtype="float64"),
+        lambda: df.astype(dtype="float64"),
+        lambda: s.fillna(value=0),
+        lambda: df.fillna(value=0),
+        lambda: s.reindex(labels=[0]),
+        lambda: df.reindex(labels=[0]),
+        lambda: s.index.equals(other=s.index),
+        lambda: sd.frame.Index([1]).equals(other=sd.frame.Index([1])),
+        lambda: df.duplicated(subset=["a"]),
+        lambda: df.drop_duplicates(subset=["a"]),
+        lambda: df.value_counts(subset=["a"]),
+        lambda: df.groupby(by="a"),
+        lambda: df.sort_values(by="a"),
+        lambda: sd.frame.merge(left=df, right=df, on="a"),
+        lambda: sd.frame.merge(df, right=df, on="a"),
+        lambda: df.merge(right=df, on="a"),
+        lambda: sd.frame.concat(objs=[s]),
+        lambda: sd.frame.read_csv(path=path),
+    ]
+    for call in keyword_calls:
+        with pytest.raises(TypeError):
+            call()
+    # the same calls with the main argument in place work
+    assert sd.frame.RangeIndex(0, 3, 1).tolist() == [0, 1, 2]
+    assert s.head(1).tolist() == [1] and df.tail(1)["b"].tolist() == ["y"]
+    assert s.astype("float64").tolist() == [1.0, 2.0] and s.reindex([1]).tolist() == [2]
+    assert df.sort_values("a", descending=True)["a"].tolist() == [2, 1]
+    assert sd.frame.merge(df, df, on="a").shape == (2, 3) and df.merge(df, on="b").shape == (2, 3)
+    assert sd.frame.concat([s, s]).tolist() == [1, 2, 1, 2] and sd.frame.read_csv(path)["a"].tolist() == [1]
+    with pytest.raises(TypeError):
+        s.astype("float64", copy=False)  # no copy: Copy-on-Write (docs/api/frame.md §1.1)
+
+
+def test_tolist_has_no_alias():  # docs/api/frame.md §1.1
+    for obj in (sd.frame.Series([1]), sd.frame.Index([1]), sd.frame.RangeIndex(2)):
+        assert obj.tolist() == list(obj)
+        with pytest.raises(AttributeError):
+            obj.to_list()
+
+
+def test_submodules_are_private():
+    # sd.frame.index was a module, not an Index (docs/api/frame.md §1.1)
+    for name in ("frame", "index", "io", "series", "groupby"):
+        assert not hasattr(sd.frame, name), name
+    assert sd.frame.merge.__module__ == "stardust.frame._merge" and callable(sd.frame.merge)
+    assert sd.frame.__all__ == ["NA", "DataFrame", "Index", "RangeIndex", "Series", "concat", "merge", "read_csv"]
+
+
 @pytest.mark.parametrize("n", [0, 1, 3, 5, 7, -1, -3, -7, 100, -100])
 def test_head_tail_match_python_slicing(n):
     values = list(range(7))
     s = sd.frame.Series(values)
     expected_head = values[:n] if n >= 0 else values[: max(len(values) + n, 0)]
     expected_tail = (values[-n:] if n > 0 else []) if n >= 0 else values[-n:]
-    assert s.head(n).to_list() == expected_head
-    assert s.tail(n).to_list() == expected_tail
-    assert s.tail(n).index.to_list() == [values.index(v) for v in expected_tail]
+    assert s.head(n).tolist() == expected_head
+    assert s.tail(n).tolist() == expected_tail
+    assert s.tail(n).index.tolist() == [values.index(v) for v in expected_tail]
 
 
 def test_head_shares_the_buffer_and_recounts_na():
@@ -352,15 +451,15 @@ def test_head_shares_the_buffer_and_recounts_na():
 
 def test_frame_from_dict():
     df = sd.frame.DataFrame({"a": [1, 2], "b": np.array([0.5, 1.5]), "c": sd.frame.Series(["x", None])})
-    assert df.columns.to_list() == ["a", "b", "c"]
-    assert [str(d) for d in df.dtypes.values()] == ["int64", "float64", "string"] and list(df.dtypes) == df.columns.to_list()
+    assert df.columns.tolist() == ["a", "b", "c"]
+    assert [str(d) for d in df.dtypes.values()] == ["int64", "float64", "string"] and list(df.dtypes) == df.columns.tolist()
     assert df.shape == (2, 3) and len(df) == 2
-    assert df["c"].to_list() == ["x", NA] and df["c"].name == "c"
+    assert df["c"].tolist() == ["x", NA] and df["c"].name == "c"
 
 
 def test_frame_dict_scalars_broadcast():
     df = sd.frame.DataFrame({"a": [1, 2, 3], "b": 0.5})
-    assert df["b"].to_list() == [0.5, 0.5, 0.5]
+    assert df["b"].tolist() == [0.5, 0.5, 0.5]
     with pytest.raises(ValueError):
         sd.frame.DataFrame({"a": 1, "b": 2})
 
@@ -372,21 +471,21 @@ def test_frame_dict_errors():
         sd.frame.DataFrame({1: [1]})
     # Series with different labels are aligned to the union of labels (docs/api/frame.md §2.5).
     df = sd.frame.DataFrame({"a": sd.frame.Series([1, 2]), "b": sd.frame.Series([1, 2, 3]).tail(2)})
-    assert df.index.to_list() == [0, 1, 2] and df["a"].to_list() == [1, 2, NA] and df["b"].to_list() == [NA, 2, 3]
+    assert df.index.tolist() == [0, 1, 2] and df["a"].tolist() == [1, 2, NA] and df["b"].tolist() == [NA, 2, 3]
 
 
 def test_frame_columns_select_and_fill():
     df = sd.frame.DataFrame({"a": [1, 2], "b": [3, 4]}, columns=["b", "z"])
-    assert df.columns.to_list() == ["b", "z"]
-    assert df["z"].dtype is sd.float64 and df["z"].to_list() == [NA, NA]
+    assert df.columns.tolist() == ["b", "z"]
+    assert df["z"].dtype is sd.float64 and df["z"].tolist() == [NA, NA]
     with pytest.raises(ValueError):
         sd.frame.DataFrame({"a": [1]}, columns=["a", "a"])
 
 
 def test_frame_from_records():
     df = sd.frame.DataFrame([{"a": 1, "b": "x"}, {"b": "y", "c": 2.5}])
-    assert df.columns.to_list() == ["a", "b", "c"]
-    assert df["a"].to_list() == [1, NA] and df["c"].to_list() == [NA, 2.5]
+    assert df.columns.tolist() == ["a", "b", "c"]
+    assert df["a"].tolist() == [1, NA] and df["c"].tolist() == [NA, 2.5]
 
 
 def test_frame_from_rows_needs_columns():
@@ -403,8 +502,8 @@ def test_frame_from_rows_needs_columns():
 def test_frame_from_2d_numpy():
     arr = np.arange(6, dtype=np.int32).reshape(3, 2)
     df = sd.frame.DataFrame(arr, columns=["a", "b"])
-    assert df["b"].to_list() == [1, 3, 5] and df["a"].dtype is sd.int64
-    assert sd.frame.DataFrame(np.array([["x", "y"]]), columns=["p", "q"])["q"].to_list() == ["y"]
+    assert df["b"].tolist() == [1, 3, 5] and df["a"].dtype is sd.int64
+    assert sd.frame.DataFrame(np.array([["x", "y"]]), columns=["p", "q"])["q"].tolist() == ["y"]
     with pytest.raises(ValueError):
         sd.frame.DataFrame(arr)
     with pytest.raises(ValueError):
@@ -414,7 +513,7 @@ def test_frame_from_2d_numpy():
 def test_frame_dtype_applies_to_every_column():
     df = sd.frame.DataFrame({"a": [1, 2], "b": [3.0, 4.0]}, dtype="float64")
     assert [str(d) for d in df.dtypes.values()] == ["float64", "float64"]
-    assert sd.frame.DataFrame({"b": [3.5]}, dtype="int64")["b"].to_list() == [3]  # explicit, as astype
+    assert sd.frame.DataFrame({"b": [3.5]}, dtype="int64")["b"].tolist() == [3]  # explicit, as astype
 
 
 def test_frame_empty():
@@ -440,8 +539,8 @@ def test_frame_getitem():
 def test_frame_head_tail():
     df = sd.frame.DataFrame({"a": list(range(10)), "b": [str(i) for i in range(10)]})
     t = df.tail(3)
-    assert t["b"].to_list() == ["7", "8", "9"] and t.index.to_list() == [7, 8, 9]
-    assert df.head(-8)["a"].to_list() == [0, 1]
+    assert t["b"].tolist() == ["7", "8", "9"] and t.index.tolist() == [7, 8, 9]
+    assert df.head(-8)["a"].tolist() == [0, 1]
 
 
 # --- NA -----------------------------------------------------------------------

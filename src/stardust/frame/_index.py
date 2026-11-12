@@ -61,7 +61,7 @@ class _IndexBase:
         return self._table().is_unique
 
     def __iter__(self):
-        return iter(self.to_list())
+        return iter(self.tolist())
 
     def __contains__(self, label):
         try:
@@ -70,7 +70,7 @@ class _IndexBase:
             return False
         return self._first_positions(Column.from_list([label], NA, self._dtype)).to_list(None)[0] >= 0
 
-    def equals(self, other):
+    def equals(self, other, /):
         """True when `other` holds the same labels in the same order (names are not compared)."""
         if isinstance(self, RangeIndex) and isinstance(other, RangeIndex):
             return self._range == other._range
@@ -118,7 +118,7 @@ class RangeIndex(_IndexBase):
 
     __slots__ = ("_range", "_name", "_labels")
 
-    def __init__(self, start=0, stop=None, step=1, *, name=None):
+    def __init__(self, start=0, stop=None, step=1, /, *, name=None):
         if stop is None:
             start, stop = 0, start
         self._range = range(start, stop, step)
@@ -163,7 +163,7 @@ class RangeIndex(_IndexBase):
     def __len__(self):
         return len(self._range)
 
-    def to_list(self):
+    def tolist(self):
         return list(self._range)
 
     def _column(self):
@@ -213,7 +213,7 @@ class Index(_IndexBase):
 
     __slots__ = ("_col", "_name", "_labels")
 
-    def __init__(self, data, *, name=None):
+    def __init__(self, data, /, *, name=None):
         from ._column import column_from
 
         if isinstance(data, _IndexBase):
@@ -254,7 +254,7 @@ class Index(_IndexBase):
     def __len__(self):
         return len(self._col)
 
-    def to_list(self):
+    def tolist(self):
         return self._col.to_list(None)
 
     def _column(self):

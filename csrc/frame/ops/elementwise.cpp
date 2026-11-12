@@ -19,7 +19,7 @@ namespace sd::frame {
 
 namespace {
 
-enum class Op { Add, Sub, Mul, TrueDiv, FloorDiv, Mod, Pow, Eq, Ne, Lt, Le, Gt, Ge, And, Or, Xor };
+enum class Op { Add, Sub, Mul, TrueDiv, FloorDiv, Mod, Pow, Eq, Ne, Lt, Le, Gt, Ge, And, Or, Xor, LShift, RShift };
 
 struct OpInfo {
     std::string_view name;
@@ -32,6 +32,7 @@ constexpr OpInfo kOps[] = {
     {"floordiv", Op::FloorDiv, "//"}, {"mod", Op::Mod, "%"}, {"pow", Op::Pow, "**"}, {"eq", Op::Eq, "=="},
     {"ne", Op::Ne, "!="},        {"lt", Op::Lt, "<"},   {"le", Op::Le, "<="},   {"gt", Op::Gt, ">"},
     {"ge", Op::Ge, ">="},        {"and", Op::And, "&"}, {"or", Op::Or, "|"},    {"xor", Op::Xor, "^"},
+    {"lshift", Op::LShift, "<<"}, {"rshift", Op::RShift, ">>"},
 };
 
 const OpInfo& parse_op(std::string_view name) {
@@ -387,6 +388,26 @@ Column logic(Op op, const Column& a, const Column& b, int side) {
     return out;
 }
 
+// --- int64 bitwise operators: the array area's rules (docs/api/frame.md §3.4). The
+// shift count is read as unsigned, so 64 or more (negative counts included)
+// shifts every bit out: << gives 0, >> the sign (0 or -1). C++ leaves a
+// shift by >= 64 undefined, hence the test. ---
+
+Column int_bitwise(Op op, const Column& a, const Column& b, int side) {
+    using I = std::int64_t;
+    using U = std::uint64_t;
+    auto run = [&](auto f) { return map2<I, I, I>(a, b, side, DType::Int64, f); };
+    switch (op) {
+    case Op::And: return run([](I x, I y) { return x & y; });
+    case Op::Or: return run([](I x, I y) { return x | y; });
+    case Op::Xor: return run([](I x, I y) { return x ^ y; });
+    case Op::LShift: return run([](I x, I y) { return static_cast<U>(y) >= 64 ? I{0} : static_cast<I>(static_cast<U>(x) << y); });
+    case Op::RShift: return run([](I x, I y) { return static_cast<U>(y) >= 64 ? (x < 0 ? I{-1} : I{0}) : x >> y; });  // arithmetic
+    default: break;
+    }
+    throw nb::value_error("not a bitwise operator");
+}
+
 }  // namespace
 
 Column binary_op(std::string_view name, const Column& a, const Column& b, int scalar_side) {
@@ -426,8 +447,20 @@ Column binary_op(std::string_view name, const Column& a, const Column& b, int sc
         if (da == DType::String && db == DType::String) return compare_strings(op, a, b, scalar_side);
         return unsupported(" (these dtypes cannot be compared)");
     }
+    // & | ^: Kleene logic on two bools (docs/api/frame.md §1.4); otherwise
+    // bitwise on int64, a bool taking part as int64 as in the array area.
+    // << >> take int64 only, as in the array area.
+    const bool shift = op == Op::LShift || op == Op::RShift;
+    if (shift) {
+        if (da == DType::Int64 && db == DType::Int64) return int_bitwise(op, a, b, scalar_side);
+        return unsupported(" (shifts take int64)");
+    }
     if (da == DType::Bool && db == DType::Bool) return logic(op, a, b, scalar_side);
-    return unsupported(" (logical operators take bool)");
+    auto int_like = [](DType dt) { return dt == DType::Int64 || dt == DType::Bool; };
+    if (int_like(da) && int_like(db))
+        return int_bitwise(op, da == DType::Bool ? astype(a, DType::Int64) : a,
+                           db == DType::Bool ? astype(b, DType::Int64) : b, scalar_side);
+    return unsupported(" (bitwise operators take bool and int64)");
 }
 
 Column unary_op(std::string_view name, const Column& a) {
@@ -458,6 +491,7 @@ Column unary_op(std::string_view name, const Column& a) {
     }
     if (name == "invert") {
         if (a.dtype == DType::Bool) return map1(DType::Bool, [](std::uint8_t x) -> std::uint8_t { return !x; });
+        if (a.dtype == DType::Int64) return map1(DType::Int64, [](std::int64_t x) { return ~x; });  // bitwise, as in the array area
         return unsupported();
     }
     throw nb::value_error(("unknown operator '" + std::string(name) + "'").c_str());

@@ -15,7 +15,9 @@ Column = _core.Column
 # Python operator -> kernel name. The reflected forms (1 - s) swap operands;
 # comparisons need none, since Python itself turns `1 < s` into `s > 1`.
 ARITH = {"add": "add", "sub": "sub", "mul": "mul", "truediv": "truediv", "floordiv": "floordiv", "mod": "mod", "pow": "pow"}
-LOGIC = {"and": "and", "or": "or", "xor": "xor"}
+# & | ^ are Kleene logic on bool and bitwise on int64; << >> take int64 only
+# (docs/api/frame.md §3.4). The kernel picks by dtype.
+BITWISE = {"and": "and", "or": "or", "xor": "xor", "lshift": "lshift", "rshift": "rshift"}
 COMPARE = ("eq", "ne", "lt", "le", "gt", "ge")
 
 
@@ -29,7 +31,7 @@ def scalar_column(value, like):
     side (`like`), so the result has the dtype the operation would have had."""
     if value is NA:
         return Column.from_list([None], NA, like)
-    if like == "float64" and isinstance(value, int) and not isinstance(value, bool):
+    if like == "float64" and isinstance(value, int) and not isinstance(value, bool) and not -(2**63) <= value < 2**63:
         return Column.from_list([value], NA, "float64")  # an int outside int64 becomes a float, as in the array area
     return Column.from_list([value], NA, None)  # bool, int64 (OverflowError outside it), float64 or string
 

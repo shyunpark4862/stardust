@@ -23,6 +23,10 @@ Column nonzero(const Column& mask);
 // bool, no NA: whether each row is NA (or, with `want_na` false, is not).
 Column isna(const Column& col, bool want_na);
 
+// bool: whether each value is NaN (docs/api/frame.md §3.6). Columns other than
+// float64 have no NaN: all False. NA rows stay NA, as in a comparison.
+Column isnan(const Column& col);
+
 // The column with its NA rows set to `value`, a one-row column of the same dtype.
 Column fill_na(const Column& col, const Column& value);
 

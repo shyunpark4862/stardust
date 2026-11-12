@@ -58,22 +58,22 @@ def test_merge_rows_and_order(data):
                            "lid": list(range(nl))}, dtype=None)
     right = sd.frame.DataFrame({**{k: sd.frame.Series([t[j] for t in rk], dtype=dt) for j, (k, dt) in enumerate(zip(names, dts))},
                             "rid": list(range(nr))})
-    lk = [tuple(left[k].to_list()[i] for k in names) for i in range(nl)]  # as stored (None -> NA)
-    rk = [tuple(right[k].to_list()[i] for k in names) for i in range(nr)]
+    lk = [tuple(left[k].tolist()[i] for k in names) for i in range(nl)]  # as stored (None -> NA)
+    rk = [tuple(right[k].tolist()[i] for k in names) for i in range(nr)]
     how = data.draw(st.sampled_from(["inner", "left", "right", "outer"]))
     out = sd.frame.merge(left, right, how=how, on=names)
     pairs = oracle(lk, rk, how)
-    assert out["lid"].to_list() == [NA if l is None else l for l, _ in pairs]
-    assert out["rid"].to_list() == [NA if r is None else r for _, r in pairs]
-    assert out.columns.to_list() == names + ["lid", "rid"] and out.index.equals(sd.frame.RangeIndex(len(pairs)))
+    assert out["lid"].tolist() == [NA if l is None else l for l, _ in pairs]
+    assert out["rid"].tolist() == [NA if r is None else r for _, r in pairs]
+    assert out.columns.tolist() == names + ["lid", "rid"] and out.index.equals(sd.frame.RangeIndex(len(pairs)))
     for j, k in enumerate(names):  # one key column: left's value, else right's
         want = [lk[l][j] if l is not None else rk[r][j] for l, r in pairs]
-        got = out[k].to_list()
+        got = out[k].tolist()
         assert all((g is NA and w is NA) or norm(g) == norm(w) for g, w in zip(got, want))
     if pairs:
         srt = sd.frame.merge(left, right, how=how, on=names, sort=True)
-        expected = sd.frame.DataFrame({k: out[k] for k in names}).sort_values(names).index.to_list()
-        assert srt["lid"].to_list() == [out["lid"].to_list()[i] for i in expected]
+        expected = sd.frame.DataFrame({k: out[k] for k in names}).sort_values(names).index.tolist()
+        assert srt["lid"].tolist() == [out["lid"].tolist()[i] for i in expected]
 
 
 @pytest.mark.parametrize("how", ["inner", "left"])
@@ -82,18 +82,18 @@ def test_matches_pandas_without_na(how):
     right = {"k": ["b", "d", "a", "b"], "rid": [0, 1, 2, 3]}
     ours = sd.frame.merge(sd.frame.DataFrame(left), sd.frame.DataFrame(right), how=how, on="k")
     theirs = pd.merge(pd.DataFrame(left), pd.DataFrame(right), how=how, on="k")
-    assert ours["lid"].to_list() == theirs["lid"].tolist()
-    assert ours["rid"].to_list() == [NA if math.isnan(v) else int(v) for v in theirs["rid"].astype(float).tolist()]
+    assert ours["lid"].tolist() == theirs["lid"].tolist()
+    assert ours["rid"].tolist() == [NA if math.isnan(v) else int(v) for v in theirs["rid"].astype(float).tolist()]
 
 
 def test_left_on_right_on_and_suffixes():
     left = sd.frame.DataFrame({"k": [1, 2], "v": ["a", "b"]})
     right = sd.frame.DataFrame({"key": [2, 3], "v": ["x", "y"], "k": [7, 8]})
     out = sd.frame.merge(left, right, how="outer", left_on="k", right_on="key", suffixes=("_l", "_r"))
-    assert out.columns.to_list() == ["k_l", "v_l", "key", "v_r", "k_r"]
-    assert out["k_l"].to_list() == [1, 2, NA] and out["key"].to_list() == [NA, 2, 3]
+    assert out.columns.tolist() == ["k_l", "v_l", "key", "v_r", "k_r"]
+    assert out["k_l"].tolist() == [1, 2, NA] and out["key"].tolist() == [NA, 2, 3]
     srt = sd.frame.merge(left, right, how="outer", left_on="k", right_on="key", sort=True, suffixes=("_l", "_r"))
-    assert srt["v_r"].to_list() == [NA, "x", "y"]
+    assert srt["v_r"].tolist() == [NA, "x", "y"]
     with pytest.raises(ValueError):  # "v" + "" collides with "v" from the right side... both suffixes empty
         sd.frame.merge(left, sd.frame.DataFrame({"k": [1], "v": [1]}), on="k", suffixes=("", ""))
 
@@ -113,18 +113,18 @@ def test_merge_errors():
     ):
         with pytest.raises(error):
             bad()
-    assert a.merge(a, on="k").columns.to_list() == ["k", "x_x", "x_y"]
+    assert a.merge(a, on="k").columns.tolist() == ["k", "x_x", "x_y"]
 
 
 def test_concat_frames():
     a = sd.frame.DataFrame({"x": [1, 2], "y": [1.5, 2.5]}, index=["p", "q"])
     b = sd.frame.DataFrame({"y": [3.5], "z": ["s"]}, index=["p"])
     out = sd.frame.concat([a, b])
-    assert out.columns.to_list() == ["x", "y", "z"] and out.index.to_list() == ["p", "q", "p"]
-    assert out["x"].to_list() == [1, 2, NA] and out["z"].to_list() == [NA, NA, "s"] and out["x"].dtype is sd.int64
+    assert out.columns.tolist() == ["x", "y", "z"] and out.index.tolist() == ["p", "q", "p"]
+    assert out["x"].tolist() == [1, 2, NA] and out["z"].tolist() == [NA, NA, "s"] and out["x"].dtype is sd.int64
     inner = sd.frame.concat([a, b], join="inner", ignore_index=True)
-    assert inner.columns.to_list() == ["y"] and inner.index.equals(sd.frame.RangeIndex(3))
-    assert sd.frame.concat([sd.frame.DataFrame({"a": [1]}), sd.frame.DataFrame({"a": [2]})]).index.to_list() == [0, 0]
+    assert inner.columns.tolist() == ["y"] and inner.index.equals(sd.frame.RangeIndex(3))
+    assert sd.frame.concat([sd.frame.DataFrame({"a": [1]}), sd.frame.DataFrame({"a": [2]})]).index.tolist() == [0, 0]
     for bad, error in (
         (lambda: sd.frame.concat([a, sd.frame.DataFrame({"x": [0.5]}, index=["r"])]), TypeError),  # int64 + float64
         (lambda: sd.frame.concat([a, sd.frame.DataFrame({"x": [1]})]), TypeError),  # string labels + int labels
@@ -139,7 +139,7 @@ def test_concat_frames():
 def test_concat_series():
     s = sd.frame.Series([1, 2], name="v")
     out = sd.frame.concat([s, s.tail(1)])
-    assert out.to_list() == [1, 2, 2] and out.index.to_list() == [0, 1, 1] and out.name == "v"
+    assert out.tolist() == [1, 2, 2] and out.index.tolist() == [0, 1, 1] and out.name == "v"
     assert sd.frame.concat([s, sd.frame.Series([3], name="w")]).name is None
     with pytest.raises(TypeError):
         sd.frame.concat([s, sd.frame.Series([1.5])])

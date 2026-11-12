@@ -234,6 +234,24 @@ Column isna(const Column& col, bool want_na) {
     return out;
 }
 
+Column isnan(const Column& col) {
+    Column out = make_fixed(DType::Bool, col.length);
+    out.validity = rebased_validity(col);
+    auto* o = reinterpret_cast<std::uint8_t*>(out.values->data());
+    if (col.dtype != DType::Float64) {
+        std::memset(o, 0, static_cast<std::size_t>(col.length));
+    } else {
+        const double* x = col.data<double>();
+        for_chunks(col.length, [x, o](std::int64_t lo, std::int64_t hi) {
+            const double* xx = x;  // locals: see isna
+            std::uint8_t* oo = o;
+            for (std::int64_t i = lo; i < hi; ++i) oo[i] = xx[i] != xx[i];  // NaN is the one value unequal to itself
+        });
+    }
+    finish_fixed(out);  // NA rows hold 0 (docs/design/frame.md §4.5)
+    return out;
+}
+
 Column fill_na(const Column& col, const Column& value) {
     if (value.dtype != col.dtype || value.length != 1 || value.null_count != 0)
         throw nb::type_error("fill value must be one value of the column's dtype");

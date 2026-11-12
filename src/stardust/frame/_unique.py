@@ -1,4 +1,4 @@
-"""unique, duplicated, value_counts on top of factorize (docs/api/frame.md §4).
+"""unique_values, duplicated, value_counts on top of factorize (docs/api/frame.md §4).
 
 factorize gives every row the code of its key (0, 1, ... in order of first
 appearance) and the first row of each code. Everything here is column
@@ -7,6 +7,7 @@ live in one place: the C++ factorize.
 """
 
 from . import _core
+from ._sort import check_bool
 
 Column = _core.Column
 
@@ -34,11 +35,20 @@ def duplicated(cols, keep):
     return _core.binary_op("ne", positions, first.take(row_codes), 0)
 
 
-def value_counts(cols, normalize, sort, ascending):
+def unique_values(col):
+    """The distinct values of `col` in sorted order, NA last (docs/api/frame.md §4.2):
+    one representative per key, ordered as groupby orders its groups."""
+    _, first, _ = codes([col])
+    reps = col.take(first)
+    return reps.take(_core.sort_groups([reps]))
+
+
+def value_counts(cols, normalize, sort, descending):
     """(key columns, count column): one row per key."""
+    check_bool("descending", descending)
     row_codes, first, ngroups = codes(cols)
     counts, _ = _core.group_counts(row_codes, ngroups)
-    order = _core.stable_order(counts, ascending) if sort else _core.arange(0, 1, ngroups)
+    order = _core.stable_order(counts, not descending) if sort else _core.arange(0, 1, ngroups)
     keys = [c.take(first.take(order)) for c in cols]
     counts = counts.take(order)
     if normalize:

@@ -92,20 +92,20 @@ def test_inference_and_values_follow_the_rules(tmp_path_factory, data):
     rows = [[(n, False) for n in names]] + [[columns[j][i] for j in range(ncols)] for i in range(nrows)]
     write(path, rows)
     df = sd.frame.read_csv(path)
-    assert df.columns.to_list() == names and len(df) == nrows
+    assert df.columns.tolist() == names and len(df) == nrows
     for j, k in enumerate(names):
         dtype, values = oracle_column(columns[j])
         assert str(df[k].dtype) == dtype, (columns[j], df[k].dtype)
-        assert all(same(a, b) for a, b in zip(df[k].to_list(), values)), (df[k].to_list(), values)
+        assert all(same(a, b) for a, b in zip(df[k].tolist(), values)), (df[k].tolist(), values)
 
 
 def test_quoting_line_ends_and_bom(tmp_path):
     p = tmp_path / "t.csv"
     p.write_bytes(b'\xef\xbb\xbfk,s\r\n1,"he said ""hi"""\r\n2,""\r\n3,"a,b\nc"\r\n4,\r\n5,"12"')
     df = sd.frame.read_csv(p)
-    assert df.columns.to_list() == ["k", "s"]
-    assert df["s"].to_list() == ['he said "hi"', "", "a,b\nc", NA, "12"]
-    assert df["k"].to_list() == [1, 2, 3, 4, 5]
+    assert df.columns.tolist() == ["k", "s"]
+    assert df["s"].tolist() == ['he said "hi"', "", "a,b\nc", NA, "12"]
+    assert df["k"].tolist() == [1, 2, 3, 4, 5]
 
 
 def test_lone_carriage_return_is_data(tmp_path):
@@ -113,8 +113,8 @@ def test_lone_carriage_return_is_data(tmp_path):
     p = tmp_path / "t.csv"
     p.write_bytes(b"a,b\r\nx\r,y\r\nz,w\r")
     df = sd.frame.read_csv(p)
-    assert df["a"].to_list() == ["x\r", "z"]
-    assert df["b"].to_list() == ["y", "w\r"]
+    assert df["a"].tolist() == ["x\r", "z"]
+    assert df["b"].tolist() == ["y", "w\r"]
     q = tmp_path / "q.csv"
     q.write_bytes(b'a,b\n"q"\r,z\n')  # a closing quote followed by \r, not a separator
     with pytest.raises(ValueError, match="line 2: a closing quote"):
@@ -124,23 +124,23 @@ def test_lone_carriage_return_is_data(tmp_path):
 def test_quoted_numbers_are_numbers(tmp_path):
     p = tmp_path / "t.csv"
     p.write_text('a\n"12"\n3\n')
-    assert sd.frame.read_csv(p)["a"].to_list() == [12, 3]
+    assert sd.frame.read_csv(p)["a"].tolist() == [12, 3]
 
 
 def test_na_values_and_nan(tmp_path):
     p = tmp_path / "t.csv"
     p.write_text("a,b\n1.5,x\nNaN,NA\n,null\n")
     df = sd.frame.read_csv(p)
-    assert math.isnan(df["a"].to_list()[1]) and df["a"].to_list()[2] is NA  # NaN is a value, empty is NA
-    assert df["b"].to_list() == ["x", "NA", "null"]
+    assert math.isnan(df["a"].tolist()[1]) and df["a"].tolist()[2] is NA  # NaN is a value, empty is NA
+    assert df["b"].tolist() == ["x", "NA", "null"]
     df = sd.frame.read_csv(p, na_values=["NA", "null"])
-    assert df["b"].to_list() == ["x", NA, NA]
+    assert df["b"].tolist() == ["x", NA, NA]
 
 
 def test_blank_lines(tmp_path):
     one = tmp_path / "one.csv"
     one.write_text("a\n1\n\n3\n")
-    assert sd.frame.read_csv(one)["a"].to_list() == [1, NA, 3]  # a blank line is a row with one empty field
+    assert sd.frame.read_csv(one)["a"].tolist() == [1, NA, 3]  # a blank line is a row with one empty field
     two = tmp_path / "two.csv"
     two.write_text("a,b\n1,2\n\n3,4\n")
     with pytest.raises(ValueError, match="line 3"):
@@ -169,13 +169,13 @@ def test_options(tmp_path):
     p = tmp_path / "t.csv"
     p.write_text("k;x;y\nb;1;2.5\na;2;3.5\nc;3;4.5\n")
     df = sd.frame.read_csv(p, sep=";", usecols=["y", "k"], index_col="k", nrows=2, dtype={"y": "string"})
-    assert df.columns.to_list() == ["y"] and df.index.to_list() == ["b", "a"] and df.index.name == "k"
-    assert df["y"].to_list() == ["2.5", "3.5"]
+    assert df.columns.tolist() == ["y"] and df.index.tolist() == ["b", "a"] and df.index.name == "k"
+    assert df["y"].tolist() == ["2.5", "3.5"]
     assert sd.frame.read_csv(p, sep=";", dtype="string")["x"].dtype is sd.string
     q = tmp_path / "noheader.csv"
     q.write_text("1,2\n3,4\n")
-    assert sd.frame.read_csv(q, header=False, names=["a", "b"])["b"].to_list() == [2, 4]
-    assert sd.frame.read_csv(q, names=["p", "q"]).columns.to_list() == ["p", "q"]  # renames the header (1, 2)
+    assert sd.frame.read_csv(q, header=False, names=["a", "b"])["b"].tolist() == [2, 4]
+    assert sd.frame.read_csv(q, names=["p", "q"]).columns.tolist() == ["p", "q"]  # renames the header (1, 2)
     for bad, error in (
         (lambda: sd.frame.read_csv(q, header=False), ValueError),
         (lambda: sd.frame.read_csv(p, sep=";;"), ValueError),
@@ -214,4 +214,4 @@ def test_numbers_match_pandas(tmp_path):
     path = tmp_path / "n.csv"
     with open(path, "w") as f:
         f.write("i\n" + "\n".join(map(str, ints.tolist())) + "\n")
-    assert sd.frame.read_csv(path)["i"].to_list() == pd.read_csv(path)["i"].tolist()
+    assert sd.frame.read_csv(path)["i"].tolist() == pd.read_csv(path)["i"].tolist()

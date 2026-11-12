@@ -23,10 +23,19 @@
 
 ### §1.1 시그니처와 이름
 - **pandas의 시그니처가 일관되지 않으면 일관되게 바꾼다.** 아래 규칙이 그 결과다.
-- **주 인자만 위치 인자로 받는다.** 나머지는 모두 keyword-only(`*` 뒤)다.
-  - 주 인자의 예: `Series(data)`, `DataFrame(data)`, `head(n)`, `tail(n)`, `astype(dtype)`, `fillna(value)`, `sort_values(by)`, `groupby(by)`, `duplicated(subset)`, `merge(right)`, `concat(objs)`
+- **주 인자는 positional-only(`/` 앞)이고, 나머지는 모두 keyword-only(`*` 뒤)다.** 배열 영역과 같은 규칙이다 (array.md §1.1).
+  - 주 인자: `Series(data)`, `DataFrame(data)`, `Index(data)`, `RangeIndex(start, stop, step)`, `head(n)`, `tail(n)`, `astype(dtype)`, `fillna(value)`, `reindex(labels)`, `equals(other)`, `sort_values(by)`, `groupby(by)`, `duplicated(subset)`, `drop_duplicates(subset)`, `value_counts(subset)`, `merge(left, right)`, `merge(right)`, `concat(objs)`, `read_csv(path)`
+  - 주 인자를 키워드로 주면 TypeError다. 예: `s.head(n=3)`, `df.sort_values(by="a")`
+  - 주 인자의 이름은 API가 아니다. 문서에 적은 이름은 설명을 위한 것이다.
+- **이름은 배열 영역(Python Array API)을 따른다.**
+  - 정렬 방향은 `descending=False`다 (`ascending` 없음). `value_counts`의 기본값은 `descending=True`다 (§4.3).
+  - 정렬은 `stable=True`도 받는다. frame의 정렬은 언제나 안정이라서 `stable=False`여도 결과가 같다 (§8.1).
+  - 리스트로 바꾸기는 `tolist()`다. 고유값은 `unique_values()`이고 정렬한 순서다 (§4.2).
+  - `to_numpy`의 `copy`는 배열의 `asarray`와 같은 뜻이다 (§2.7).
+- **bool 옵션**은 `True`나 `False`만 받는다. 다른 값은 TypeError다 (API.md §2). 예: `descending=1`, `stable=None`
 - **별칭을 두지 않는다.**
-  - `to_list`만 둔다 (`tolist` 없음).
+  - `tolist`만 둔다 (`to_list` 없음).
+  - `unique_values`만 둔다 (`unique` 없음).
   - `isna`, `notna`만 둔다 (`isnull`, `notnull` 없음).
   - `merge`는 함수 `sd.frame.merge(left, right)`와 메서드 `df.merge(right)`를 모두 둔다.
   - `concat`은 함수만 둔다.
@@ -36,14 +45,15 @@
   - `fill_value`가 필요하면 먼저 `fillna`를 한 뒤 연산한다.
 - **리덕션 인자는 Series, DataFrame, GroupBy에서 같다** (§6.1).
 - **이 설계에서 의미가 없는 인자는 두지 않는다.**
-  - `copy`: Copy-on-Write를 쓰므로 필요 없다. `to_numpy`만 예외다.
+  - `copy`: Copy-on-Write를 쓰므로 필요 없다 (`astype`에도 없다). `to_numpy`만 예외다.
   - `inplace`
   - `level`: MultiIndex가 없다.
-  - `kind`: 정렬은 항상 안정 정렬이다.
+  - `kind`: 정렬은 항상 안정 정렬이다. 배열 영역의 `stable`은 받는다 (§8.1).
   - `errors`: 항상 에러를 낸다.
   - `engine`
   - Series 메서드의 `axis`
 - **`keep`은 `"first"`, `"last"`, `"none"`이다.** pandas의 `keep=False`가 `"none"`이다.
+- **하위 모듈은 공개하지 않는다.** 구현 모듈은 `_series`, `_frame`, `_index`처럼 밑줄로 시작한다. 그래서 `sd.frame.index` 같은 이름은 없다. 공개 이름은 `sd.frame.__all__`이 전부다.
 
 ### §1.2 dtype
 - dtype은 넷이다: `sd.bool`, `sd.int64`, `sd.float64`, `sd.string` (API.md §1의 객체)
@@ -55,7 +65,7 @@
 
 ### §1.3 NaN
 NaN은 결측값이 아니라 평범한 float 값이다.
-- `isna()`는 NaN을 결측으로 보지 않는다 (§3.6).
+- `isna()`는 NaN을 결측으로 보지 않는다. NaN은 `isnan()`으로 찾는다 (§3.6).
 - **리덕션**: `sum`, `mean` 등에 NaN이 섞이면 결과가 NaN이 된다. **[pandas와 다름]**
   - `skipna`는 NA만 건너뛴다.
   - `min`, `max`도 NaN을 전파한다.
@@ -92,14 +102,14 @@ NA
   - 결과가 `NA`가 되지 않는다.
 
 ### §1.6 같은 키
-groupby, `unique`, `nunique`, `value_counts`, `duplicated`, `drop_duplicates`, merge, Series의 `in`은 같은 규칙으로 키를 비교한다.
+groupby, `unique_values`, `nunique`, `value_counts`, `duplicated`, `drop_duplicates`, merge, Series의 `in`은 같은 규칙으로 키를 비교한다.
 - **NaN끼리는 같은 키다.** 비트가 서로 다른 NaN들도 같은 키다.
 - **`-0.0`과 `0.0`은 같은 키다.**
 - 해시 테이블에 넣기 전에 키를 정규화해서 처리한다.
 - **NA끼리는 같은 키다.** 예외는 merge 하나다: NA 키는 아무것과도 매칭되지 않는다 (§9.1).
 - 배열 영역과 다르다. 배열의 `unique_*`는 NaN을 서로 다른 값으로 취급한다 (array.md §8.3).
 - **대표값**: 같은 키로 묶인 값 중에서 먼저 나온 값을 그대로 보여 준다 (pandas와 같다).
-  - 예: `[-0.0, 0.0]`의 unique는 `[-0.0]`이다.
+  - 예: `[-0.0, 0.0]`의 `unique_values()`는 `[-0.0]`이다.
 
 ### §1.7 라벨
 - **Index에 쓸 수 있는 dtype**: `int64`, `string`, 그리고 `RangeIndex`
@@ -129,8 +139,8 @@ groupby, `unique`, `nunique`, `value_counts`, `duplicated`, `drop_duplicates`, m
 
 ### §2.1 생성자
 ```
-Series(data=None, *, index=None, dtype=None, name=None)
-DataFrame(data=None, *, index=None, columns=None, dtype=None)
+Series(data=None, /, *, index=None, dtype=None, name=None)
+DataFrame(data=None, /, *, index=None, columns=None, dtype=None)
 ```
 - `data`를 주지 않으면 빈 Series, 빈 DataFrame이다 (pandas와 같다).
 - `data`에서 dtype을 정하는 규칙은 §2.2–§2.4, DataFrame이 받는 입력은 §2.5에 있다.
@@ -185,14 +195,14 @@ Series.dtype
 Series.index
 Series.name                # 대입할 수 있다
 Series.shape
-Series.head(n=5)
-Series.tail(n=5)
+Series.head(n=5, /)
+Series.tail(n=5, /)
 DataFrame.columns
 DataFrame.dtypes
 DataFrame.index
 DataFrame.shape
-DataFrame.head(n=5)
-DataFrame.tail(n=5)
+DataFrame.head(n=5, /)
+DataFrame.tail(n=5, /)
 ```
 - `shape`: Series는 `(행,)`, DataFrame은 `(행, 열)`이다. pandas와 같다.
 - **`Series.name`**: `str` 또는 `None`만 쓸 수 있다. **[pandas와 다름]**
@@ -200,20 +210,27 @@ DataFrame.tail(n=5)
 - `df.columns`는 string `Index`다.
 - `df.dtypes`는 `{컬럼 이름: dtype 객체}` dict다. 순서는 컬럼 순서다. frame에는 객체를 담는 dtype이 없어서 Series가 아니다.
 
-### §2.7 `to_list`, `to_numpy`
+### §2.7 `tolist`, `to_numpy`
 ```
-Series.to_list()
-Series.to_numpy(*, dtype=None, copy=False, na_value=<없음>)
-DataFrame.to_numpy(*, dtype=None, copy=False, na_value=<없음>)
+Series.tolist()
+Series.to_numpy(*, dtype=None, copy=None, na_value=<없음>)
+DataFrame.to_numpy(*, dtype=None, copy=None, na_value=<없음>)
 ```
+- **`tolist()`**: 값을 Python 스칼라의 list로 돌려준다. NA 행은 `NA`다. `Index.tolist()`도 있다 (§5.1).
 - **`to_numpy`**
-  - NA가 없으면 복사 없이 읽기 전용 뷰를 돌려준다. `copy=True`이면 쓰기 가능한 복사본을 돌려준다.
+  - **`copy`는 배열의 `asarray(copy=)`와 같은 뜻이다** (array.md §1.8, §3.2).
+    - `None`(기본값): 필요할 때만 복사한다. NA가 없고 dtype 변환이 없으면 복사 없이 읽기 전용 뷰를 돌려준다.
+    - `True`: 언제나 쓰기 가능한 복사본을 돌려준다.
+    - `False`: 복사하지 않는다. 복사가 필요하면 ValueError다. 복사가 필요한 경우는 NA 행을 채울 때, dtype을 바꿀 때, string 컬럼(object 배열을 새로 만든다)이다.
+    - 그 밖의 값은 TypeError다.
+    - numpy 프로토콜(`np.asarray(s, copy=...)`)도 같은 규칙이다.
   - NA가 있으면 `na_value`가 필요하다. 없으면 에러다.
   - `na_value`가 그 dtype에 들어가지 않으면 에러다.
     - 예: int 컬럼에 `na_value=np.nan`. 이때는 `dtype="float64"`도 함께 준다.
   - `string`은 Python str을 담은 object 배열로 돌려준다.
 - **`DataFrame.to_numpy`**
   - 모든 컬럼의 dtype이 같으면 2D 배열을 돌려준다.
+  - 컬럼은 버퍼가 따로따로라서 2D 배열은 언제나 새로 만든다. 그래서 `copy=False`는 ValueError다.
   - int64와 float64가 섞이면 float64로 만든다. 2^53 규칙은 §2.3과 같다.
   - 그 밖의 조합은 에러다.
 
@@ -256,19 +273,26 @@ DataFrame.to_numpy(*, dtype=None, copy=False, na_value=<없음>)
 - bool은 bool끼리만 비교한다. `False < True`다.
 - **비교할 수 없는 dtype끼리 비교하면 `==`도 에러다** (예: string과 int). **[pandas와 다름]**
 
-### §3.4 논리
-`&`, `|`, `^`, `~`
-- bool에만 쓴다.
-- `&`와 `|`는 Kleene 규칙을 따른다 (§1.4).
-- `^`와 `~`는 NA가 들어가면 NA다.
-- **int의 비트 연산은 지원하지 않는다.** **[pandas와 다름]**
+### §3.4 논리와 비트 연산
+`&`, `|`, `^`, `~`, `<<`, `>>`
+- **bool과 bool**: `&`, `|`, `^`, `~`는 논리 연산이다. 결과는 bool이다.
+  - `&`와 `|`는 Kleene 규칙을 따른다 (§1.4).
+  - `^`와 `~`는 NA가 들어가면 NA다.
+- **int64**: `&`, `|`, `^`, `~`, `<<`, `>>`는 비트 연산이다. 결과는 int64다. 규칙은 배열 영역의 `bitwise_*`와 같다 (array.md §6.4).
+  - bool이 int64와 만나면 bool을 int64(0, 1)로 바꾼 뒤 계산한다. 예: `Series([True]) & Series([3])`은 int64 `[1]`이다.
+  - `<<`, `>>`는 int64끼리만 받는다. bool은 TypeError다 (배열과 같다).
+  - 시프트 수는 부호 없는 수로 읽는다. 그래서 음수이거나 64 이상이면 모든 비트가 밀려 나간다. `<<`는 0, `>>`는 부호(0 또는 -1)다. 예: `s << -1`은 0이다.
+  - `<<`의 오버플로는 wrap한다 (§1.5). `>>`는 산술 시프트다.
+  - **NA가 들어가면 결과는 NA다.** Kleene 규칙은 bool끼리의 논리 연산에만 쓴다.
+- float64와 string은 TypeError다. Python float 스칼라도 TypeError다 (`s & 1.0`).
 
 ### §3.5 `astype`
 ```
-Series.astype(dtype)
-DataFrame.astype(dtype)
+Series.astype(dtype, /)
+DataFrame.astype(dtype, /)
 ```
 - DataFrame은 dtype 하나나 `{컬럼: dtype}` dict를 받는다.
+- `copy` 인자는 없다. Copy-on-Write라서 뜻이 없다 (§1.1).
 - NA는 그대로 NA다.
 - int → float: 반올림한다.
 - float → int: 0 쪽으로 자른다. NaN, inf, int64 범위를 넘는 값은 에러다.
@@ -280,18 +304,26 @@ DataFrame.astype(dtype)
   - 공백과 `_`는 에러다.
 - **string → bool**: `"True"`와 `"False"`만 받고 나머지는 에러다. **[pandas와 다름]**
 
-### §3.6 결측: `isna`, `notna`, `fillna`, `dropna`
+### §3.6 결측: `isna`, `notna`, `isnan`, `fillna`, `dropna`
 ```
 Series.isna()
 Series.notna()
-Series.fillna(value)
+Series.isnan()
+Series.fillna(value, /)
 Series.dropna(*, ignore_index=False)
 DataFrame.isna()
 DataFrame.notna()
-DataFrame.fillna(value)
+DataFrame.isnan()
+DataFrame.fillna(value, /)
 DataFrame.dropna(*, how="any", subset=None, ignore_index=False)
 ```
 - **`isna()`, `notna()`**: NA만 결측으로 본다. NaN은 결측이 아니다 (§1.3).
+  - 결과는 bool이고 NA가 없다.
+- **`isnan()`**: 값이 NaN인지 본다. `isna()`와 별개다.
+  - float64 컬럼: NaN이면 True다. 부호나 payload가 다른 NaN도 True다.
+  - 다른 dtype: NaN이 없으므로 모두 False다 (배열의 `isnan`이 int에 False인 것과 같다).
+  - **NA 행은 NA다.** 비교 연산(§3.3)처럼 NA가 결과로 전파된다. 마스크로 쓰면 NA 행은 버려진다 (§5.5).
+  - DataFrame은 컬럼마다 같은 규칙이다. 결과는 같은 컬럼 이름의 bool DataFrame이다.
 - **`fillna(value)`**
   - 값은 컬럼 dtype으로 손실 없이 바뀌어야 한다. 규칙은 생성자 `dtype=`와 같다 (§2.3).
     - 예: int 컬럼에 `2.0`은 되고 `1.5`는 에러다.
@@ -306,15 +338,15 @@ DataFrame.dropna(*, how="any", subset=None, ignore_index=False)
 
 ### §4.1 함수
 ```
-Series.unique()
+Series.unique_values()
 Series.nunique(*, dropna=True)
 Series.duplicated(*, keep="first")
 Series.drop_duplicates(*, keep="first", ignore_index=False)
-Series.value_counts(*, normalize=False, sort=True, ascending=False, dropna=True)
+Series.value_counts(*, normalize=False, sort=True, descending=True, dropna=True)
 DataFrame.nunique(*, dropna=True)
-DataFrame.duplicated(subset=None, *, keep="first")
-DataFrame.drop_duplicates(subset=None, *, keep="first", ignore_index=False)
-DataFrame.value_counts(subset=None, *, normalize=False, sort=True, ascending=False, dropna=True)
+DataFrame.duplicated(subset=None, /, *, keep="first")
+DataFrame.drop_duplicates(subset=None, /, *, keep="first", ignore_index=False)
+DataFrame.value_counts(subset=None, /, *, normalize=False, sort=True, descending=True, dropna=True)
 ```
 - 키를 비교하는 규칙은 §1.6에 있다.
 - `keep`은 `"first"`, `"last"`, `"none"`이다 (§1.1).
@@ -323,9 +355,13 @@ DataFrame.value_counts(subset=None, *, normalize=False, sort=True, ascending=Fal
 - factorize는 공개하지 않는다. 값을 정수 코드로 바꾸는 내부 기능으로만 쓴다.
 
 ### §4.2 결과
-- **`Series.unique()`는 Series를 돌려준다.**
-  - 값은 처음 나타난 순서이고 NA도 포함한다.
+- **`Series.unique_values()`는 Series를 돌려준다.**
+  - **값은 정렬한 순서다.** 배열의 `unique_values`와 같다 (array.md §8.3). 처음 나타난 순서가 아니다. **[pandas와 다름]**
+    - 순서는 groupby의 `sort=True`와 같다 (§7.2): 수 순서이고 NaN은 +inf 뒤, string은 코드포인트 순서, bool은 `False < True`다.
+    - NaN은 하나다. `-0.0`과 `0.0`도 하나이고, 먼저 나온 값을 보여 준다 (§1.6).
+    - NA도 포함하고, 맨 뒤에 온다.
   - 이름은 유지한다. Index는 RangeIndex다.
+  - 처음 나타난 순서가 필요하면 `drop_duplicates()`를 쓴다.
 - **`Series.nunique()`는 int를 돌려준다.**
 - **`DataFrame.nunique()`**는 컬럼 이름을 Index로 하는 int64 Series를 돌려준다.
 - **NaN은 값이다.** `nunique`와 `value_counts`에서 NaN도 하나의 키로 센다. **[pandas와 다름]**
@@ -340,12 +376,13 @@ DataFrame.value_counts(subset=None, *, normalize=False, sort=True, ascending=Fal
   - `Series.value_counts`의 키 컬럼 이름은 Series 이름이다. 이름이 없으면 `"value"`다.
   - 키 컬럼 이름이 `count`(또는 `proportion`)와 겹치면 에러다.
 - **행 순서**
-  - `sort=True`이면 개수의 내림차순이다. `ascending=True`이면 오름차순이다.
+  - `sort=True`이면 개수의 내림차순이다(`descending=True`가 기본값). `descending=False`이면 오름차순이다.
+    - `descending`은 bool 옵션이다 (§1.1). 정렬 함수와 이름이 같고, 기본값만 다르다.
   - 개수가 같으면 처음 나타난 순서를 따른다.
   - `sort=False`이면 처음 나타난 순서다.
   - NA 키도 같은 규칙을 따른다. **[pandas와 다름]**
     - pandas는 `dropna=False`일 때 NA를 처음 나타난 자리가 아니라 맨 뒤에 놓는다 (`sort=False`여도 그렇다).
-    - 그런데 pandas의 `unique()`는 NA를 나타난 자리에 둔다. 여기서는 둘 다 처음 나타난 순서로 맞춘다.
+    - 그런데 pandas의 `unique()`는 NA를 나타난 자리에 둔다. 여기서는 `value_counts`를 처음 나타난 순서로 맞춘다.
 - Index는 RangeIndex다.
 - `dropna=True`이면 키 중에 NA가 있는 행을 버린다.
 
@@ -355,29 +392,29 @@ DataFrame.value_counts(subset=None, *, normalize=False, sort=True, ascending=Fal
 
 ### §5.1 Index와 RangeIndex
 ```
-Index(data, *, name=None)
-RangeIndex(start=0, stop=None, step=1, *, name=None)
+Index(data, /, *, name=None)
+RangeIndex(start=0, stop=None, step=1, /, *, name=None)
 Index.dtype
 Index.name
 Index.is_unique
-Index.to_list()
-Index.equals(other)
+Index.tolist()
+Index.equals(other, /)
 RangeIndex.dtype
 RangeIndex.name
 RangeIndex.is_unique
 RangeIndex.start
 RangeIndex.stop
 RangeIndex.step
-RangeIndex.to_list()
-RangeIndex.equals(other)
+RangeIndex.tolist()
+RangeIndex.equals(other, /)
 ```
 - Index는 바뀌지 않는다(불변).
 - **`Index(data)`**: 라벨은 int64나 string이다. float, bool, NA는 에러다 (§1.7).
-- **`RangeIndex`**: `start`, `stop`, `step`은 생성 인자다. int64 라벨로 친다.
+- **`RangeIndex`**: `start`, `stop`, `step`은 생성 인자다. 배열의 `arange`처럼 위치로만 준다. int64 라벨로 친다.
 - **`name`**은 `str` 또는 `None`이다 (`Series.name`과 같은 규칙, §2.6).
   - 연산 결과의 Index 이름은 Series 이름 규칙을 따른다: 같으면 유지하고, 다르면 `None`이다 (§3.1).
   - repr은 pandas처럼 이름을 보여 준다.
-- 공개하는 것: `dtype`, `name`, `len()`, 반복(라벨), `in`(라벨), `to_list()`, `equals()`, `is_unique`
+- 공개하는 것: `dtype`, `name`, `len()`, 반복(라벨), `in`(라벨), `tolist()`, `equals()`, `is_unique`
   - `equals()`는 라벨만 비교한다. 이름은 보지 않는다 (pandas와 같다).
 - 라벨 조회용 해시 테이블은 처음 조회할 때 만들어서 캐시한다.
 - **라벨의 타입은 Index의 dtype과 맞아야 한다.**
@@ -387,8 +424,8 @@ RangeIndex.equals(other)
 
 ### §5.2 `reindex`
 ```
-Series.reindex(labels)
-DataFrame.reindex(labels)        # 행만
+Series.reindex(labels, /)
+DataFrame.reindex(labels, /)        # 행만
 ```
 - 주어진 라벨 순서로 행을 다시 배열한다. 없는 라벨은 NA다.
 - 원래 라벨은 고유해야 한다.
@@ -550,7 +587,7 @@ DataFrame.var(*, skipna=True, correction=0)
 
 ### §7.1 함수
 ```
-DataFrame.groupby(by, *, sort=True, dropna=True)
+DataFrame.groupby(by, /, *, sort=True, dropna=True)
 GroupBy.agg(func=None, /, **named)
 GroupBy.size()
 GroupBy.count()
@@ -616,16 +653,21 @@ GroupBy.last(*, skipna=True)
 
 ### §8.1 함수
 ```
-Series.sort_values(*, ascending=True, na_position="last", ignore_index=False)
-Series.sort_index(*, ascending=True, ignore_index=False)
-DataFrame.sort_values(by, *, ascending=True, na_position="last", ignore_index=False)
-DataFrame.sort_index(*, ascending=True, ignore_index=False)
+Series.sort_values(*, descending=False, stable=True, na_position="last", ignore_index=False)
+Series.sort_index(*, descending=False, stable=True, ignore_index=False)
+DataFrame.sort_values(by, /, *, descending=False, stable=True, na_position="last", ignore_index=False)
+DataFrame.sort_index(*, descending=False, stable=True, ignore_index=False)
 ```
-- **`ascending`과 `na_position`**: 둘 다 값 하나(모든 키에 적용) 또는 키 수만큼의 리스트를 받는다. **[pandas와 다름]**
+- **`descending`**: 방향이다. 배열 영역의 `sort`, `argsort`와 같은 이름이다. pandas의 `ascending=True`가 `descending=False`다. **[pandas와 다름]**
+- **`descending`과 `na_position`**: 둘 다 값 하나(모든 키에 적용) 또는 키 수만큼의 리스트를 받는다. **[pandas와 다름]**
   - pandas는 `na_position`에 리스트를 받지 않는다.
+  - `descending`의 값은 `True`나 `False`다. 그 밖의 값은 TypeError다 (§1.1).
   - `na_position`은 `"first"` 또는 `"last"`다.
+  - 리스트의 길이가 키 수와 다르면 ValueError다.
+- **`stable`**: `True`나 `False`를 받는다. 다른 값은 TypeError다.
+  - frame의 정렬은 언제나 안정 정렬이라서 `stable=False`여도 결과가 같다. 배열 영역과 같은 규칙이다: `stable=False`는 "안정이 아니어도 된다"는 허락일 뿐이다.
 - **없는 인자**
-  - `kind`: 정렬은 항상 안정 정렬이다.
+  - `kind`: 정렬은 항상 안정 정렬이다. `stable`을 쓴다.
   - `key=`: Python 함수를 받는 인자다.
   - `sort_index`의 `na_position`: Index에는 NA가 없다.
   - `sort_index`의 `level`, `sort_remaining`: MultiIndex가 없다.
@@ -652,8 +694,8 @@ DataFrame.sort_index(*, ascending=True, ignore_index=False)
 
 ### §9.1 merge
 ```
-merge(left, right, *, how="inner", on=None, left_on=None, right_on=None, sort=False, suffixes=("_x", "_y"))
-DataFrame.merge(right, *, how="inner", on=None, left_on=None, right_on=None, sort=False, suffixes=("_x", "_y"))
+merge(left, right, /, *, how="inner", on=None, left_on=None, right_on=None, sort=False, suffixes=("_x", "_y"))
+DataFrame.merge(right, /, *, how="inner", on=None, left_on=None, right_on=None, sort=False, suffixes=("_x", "_y"))
 ```
 - `df.merge(right, ...)`는 `merge(df, right, ...)`와 같다.
 - `how`는 `"inner"`, `"left"`, `"right"`, `"outer"`다.
@@ -686,9 +728,9 @@ DataFrame.merge(right, *, how="inner", on=None, left_on=None, right_on=None, sor
 
 ### §9.2 concat
 ```
-concat(objs, *, join="outer", ignore_index=False)
+concat(objs, /, *, join="outer", ignore_index=False)
 ```
-- 행 방향만 잇는다. `axis`는 없다.
+- 행 방향만 잇는다. `axis`는 없다. 모양은 배열의 `concat(arrays, /, *, axis=0)`과 같다.
 - `objs`는 DataFrame들이거나 Series들이다. 섞으면 에러이고, 비어 있어도 에러다.
 - **컬럼**
   - `join="outer"`: 처음 나타난 순서로 합친다. 어떤 DataFrame에 없는 컬럼은 그 행들이 NA다.
@@ -705,7 +747,7 @@ concat(objs, *, join="outer", ignore_index=False)
 
 ## §10. read_csv
 ```
-read_csv(path, *, sep=",", header=True, names=None, usecols=None, dtype=None, na_values=None, nrows=None, index_col=None)
+read_csv(path, /, *, sep=",", header=True, names=None, usecols=None, dtype=None, na_values=None, nrows=None, index_col=None)
 ```
 
 ### §10.1 인자

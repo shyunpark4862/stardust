@@ -147,7 +147,7 @@ def test_arguments():
 def test_frame_reductions_are_one_row():
     df = sd.frame.DataFrame({"a": [1, 2, None], "b": [0.5, 1.5, 2.5], "t": [True, False, True]})
     out = df.sum()
-    assert isinstance(out, sd.frame.DataFrame) and out.shape == (1, 3) and out.index.to_list() == ["sum"]
+    assert isinstance(out, sd.frame.DataFrame) and out.shape == (1, 3) and out.index.tolist() == ["sum"]
     assert out.loc["sum", "a"] == 3 and out.loc["sum", "t"] == 2
     assert [str(d) for d in out.dtypes.values()] == ["int64", "float64", "int64"]
     m = df.mean()

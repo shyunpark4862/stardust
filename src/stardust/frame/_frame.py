@@ -5,8 +5,8 @@ from ._column import _NO_VALUE
 from ._dtypes import resolve
 from ._reduce import Reductions
 from ._na import NA
-from .index import Index, RangeIndex, ensure_index
-from .series import Series, assignment_values, fill_column
+from ._index import Index, RangeIndex, ensure_index
+from ._series import Series, assignment_values, fill_column
 
 Column = _core.Column
 
@@ -24,7 +24,7 @@ def _check_columns(columns):
 class DataFrame(Reductions):
     __slots__ = ("_cols", "_index")
 
-    def __init__(self, data=None, *, index=None, columns=None, dtype=None):
+    def __init__(self, data=None, /, *, index=None, columns=None, dtype=None):
         dtype = resolve(dtype) if dtype is not None else None
         target = ensure_index(index) if index is not None else None
         if columns is not None:
@@ -150,7 +150,7 @@ class DataFrame(Reductions):
         """Rows (and columns) by position: df.iloc[rows] or df.iloc[rows, columns]."""
         return _FrameIndexer(self, by_label=False)
 
-    def reindex(self, labels):
+    def reindex(self, labels, /):
         """The rows at `labels`, in that order; absent labels are NA (docs/api/frame.md §5.2)."""
         target = ensure_index(labels)
         cols = {k: _select.reindexed(c, self._index, target) for k, c in self._cols.items()}
@@ -175,28 +175,28 @@ class DataFrame(Reductions):
         cols = {k: _core.reduce(op, c, skipna, correction) for k, c in self._cols.items()}
         return DataFrame._new(cols, Index._new(Column.from_list([op], NA, "string")))
 
-    def sort_values(self, by, *, ascending=True, na_position="last", ignore_index=False):
+    def sort_values(self, by, /, *, descending=False, stable=True, na_position="last", ignore_index=False):
         """The rows ordered by the column(s) `by`, first key first (docs/api/frame.md §8.1).
-        ascending and na_position take one value or one per key."""
+        descending and na_position take one value or one per key. Always stable."""
         names = [by] if isinstance(by, str) else list(by)
         if not names:
             raise ValueError("sort_values needs at least one column")
         keys = [self._column(k) for k in names]
-        return self._take(_sort.order(keys, ascending, na_position), ignore_index)
+        return self._take(_sort.order(keys, descending, na_position, stable), ignore_index)
 
-    def sort_index(self, *, ascending=True, ignore_index=False):
+    def sort_index(self, *, descending=False, stable=True, ignore_index=False):
         """The rows ordered by label."""
-        return self._take(_sort.order([self._index._column()], ascending), ignore_index)
+        return self._take(_sort.order([self._index._column()], descending, "last", stable), ignore_index)
 
-    def merge(self, right, *, how="inner", on=None, left_on=None, right_on=None, sort=False, suffixes=("_x", "_y")):
+    def merge(self, right, /, *, how="inner", on=None, left_on=None, right_on=None, sort=False, suffixes=("_x", "_y")):
         """sd.frame.merge(self, right, ...): a hash join on key columns (docs/api/frame.md §9.1)."""
-        from .merge import merge
+        from ._merge import merge
 
         return merge(self, right, how=how, on=on, left_on=left_on, right_on=right_on, sort=sort, suffixes=suffixes)
 
-    def groupby(self, by, *, sort=True, dropna=True):
+    def groupby(self, by, /, *, sort=True, dropna=True):
         """Group the rows by the values of the key column(s) `by` (docs/api/frame.md §7.1)."""
-        from .groupby import GroupBy
+        from ._groupby import GroupBy
 
         return GroupBy(self, by, sort=sort, dropna=dropna)
 
@@ -216,24 +216,24 @@ class DataFrame(Reductions):
         counts = [self[k].nunique(dropna=dropna) for k in self._cols]
         return Series._new(Column.from_list(counts, NA, "int64"), self.columns, None)
 
-    def duplicated(self, subset=None, *, keep="first"):
+    def duplicated(self, subset=None, /, *, keep="first"):
         """True for rows whose values in `subset` (default: all columns) repeat (docs/api/frame.md §4.1)."""
         cols = [self._cols[k] for k in self._key_columns(subset)]
         return Series._new(_unique.duplicated(cols, keep), self._index, None)
 
-    def drop_duplicates(self, subset=None, *, keep="first", ignore_index=False):
+    def drop_duplicates(self, subset=None, /, *, keep="first", ignore_index=False):
         """The rows that duplicated(subset, keep=keep) does not mark."""
         keep_rows = _core.unary_op("invert", self.duplicated(subset, keep=keep)._col)
         return self._take(keep_rows.nonzero(), ignore_index)
 
-    def value_counts(self, subset=None, *, normalize=False, sort=True, ascending=False, dropna=True):
+    def value_counts(self, subset=None, /, *, normalize=False, sort=True, descending=True, dropna=True):
         """A DataFrame of each distinct row of `subset` and how often it appears (docs/api/frame.md §4.3)."""
         names = self._key_columns(subset)
         count_name = "proportion" if normalize else "count"
         if count_name in names:
             raise ValueError(f"a key column cannot be named {count_name!r}")
         frame = self.dropna(subset=names) if dropna else self
-        keys, counts = _unique.value_counts([frame._cols[k] for k in names], normalize, sort, ascending)
+        keys, counts = _unique.value_counts([frame._cols[k] for k in names], normalize, sort, descending)
         cols = dict(zip(names, keys))
         cols[count_name] = counts
         return DataFrame._new(cols, RangeIndex(len(counts)))
@@ -288,7 +288,7 @@ class DataFrame(Reductions):
 
     # --- NA and dtypes ---
 
-    def astype(self, dtype):
+    def astype(self, dtype, /):
         """Every column, or the columns of a {name: dtype} dict, as that dtype (docs/api/frame.md §3.5)."""
         if isinstance(dtype, dict):
             return self._map_columns(lambda c, dt: c.astype(resolve(dt)), dtype)
@@ -301,7 +301,11 @@ class DataFrame(Reductions):
     def notna(self):
         return self._map_columns(lambda c: c.notna())
 
-    def fillna(self, value):
+    def isnan(self):
+        """Series.isnan for every column (docs/api/frame.md §3.6)."""
+        return self._map_columns(_core.isnan)
+
+    def fillna(self, value, /):
         """NA rows set to `value`, or per column from a {name: value} dict (docs/api/frame.md §3.6)."""
         if isinstance(value, dict):
             return self._map_columns(fill_column, value)
@@ -325,12 +329,15 @@ class DataFrame(Reductions):
             keep = _core.Column.from_list([True] * len(self), None, None)
         return self._take(keep.nonzero(), ignore_index)
 
-    def to_numpy(self, *, dtype=None, copy=False, na_value=_NO_VALUE):
+    def to_numpy(self, *, dtype=None, copy=None, na_value=_NO_VALUE):
         """A 2-D numpy array (docs/api/frame.md §2.7): all columns must share a dtype,
         except that int64 and float64 together give float64. NA rows follow
-        the Series.to_numpy rules."""
+        the Series.to_numpy rules. The array is always new (the columns are
+        separate buffers), so copy=False is a ValueError."""
         import numpy as np
 
+        if _column.check_copy(copy) is False:
+            raise ValueError("copy=False, but a 2-D array of the columns requires a copy")
         dtype = resolve(dtype) if dtype is not None else None
         if dtype is None:
             kinds = {c.dtype for c in self._cols.values()}
@@ -349,11 +356,11 @@ class DataFrame(Reductions):
         cols = {k: c.slice(start, stop - start) for k, c in self._cols.items()}
         return DataFrame._new(cols, self._index._slice(start, stop))
 
-    def head(self, n=5):
+    def head(self, n=5, /):
         """The first n rows; with n < 0, all rows but the last -n."""
         return self._slice(*_column.head_bounds(len(self), n))
 
-    def tail(self, n=5):
+    def tail(self, n=5, /):
         """The last n rows; with n < 0, all rows but the first -n."""
         return self._slice(*_column.tail_bounds(len(self), n))
 
@@ -372,7 +379,7 @@ def _make_binary(op, reflected):
     return method
 
 
-for _name, _op in {**_ops.ARITH, **_ops.LOGIC}.items():
+for _name, _op in {**_ops.ARITH, **_ops.BITWISE}.items():
     setattr(DataFrame, f"__{_name}__", _make_binary(_op, False))
     setattr(DataFrame, f"__r{_name}__", _make_binary(_op, True))
 for _name in _ops.COMPARE:

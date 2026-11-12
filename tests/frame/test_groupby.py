@@ -60,7 +60,7 @@ def test_groups_match_reductions_of_their_rows(data):
     def norm(v):
         return ("nan",) if isinstance(v, float) and math.isnan(v) else (("na",) if v is NA else v)
 
-    rows = [tuple(df[k].to_list()[r] for k in by) for r in range(n)]
+    rows = [tuple(df[k].tolist()[r] for k in by) for r in range(n)]
     groups = {}
     for r, t in enumerate(rows):
         groups.setdefault(tuple(norm(v) for v in t), []).append(r)
@@ -73,19 +73,19 @@ def test_groups_match_reductions_of_their_rows(data):
     out = g.sum()
     assert out.shape[0] == len(members) and out.index.equals(sd.frame.RangeIndex(len(members)))
     for j, k in enumerate(by):
-        assert all(same(a, rows[m[0]][j]) for a, m in zip(out[k].to_list(), members))  # first row's key values
+        assert all(same(a, rows[m[0]][j]) for a, m in zip(out[k].tolist(), members))  # first row's key values
 
     results = {op: getattr(g, op)() for op in ("sum", "mean", "min", "max", "count", "var", "std", "first", "last")}
-    sizes = g.size()["size"].to_list()
+    sizes = g.size()["size"].tolist()
     for gi, m in enumerate(members):
         assert sizes[gi] == len(m)
         for col in ("f", "i"):
-            part = sd.frame.Series([df[col].to_list()[r] for r in m], dtype=df[col].dtype)
+            part = sd.frame.Series([df[col].tolist()[r] for r in m], dtype=df[col].dtype)
             for op in ("sum", "mean", "min", "max", "count", "var", "std"):
-                assert same(results[op][col].to_list()[gi], getattr(part, op)()), (op, col, m)
-            present = [v for v in part.to_list() if v is not NA]
-            assert same(results["first"][col].to_list()[gi], present[0] if present else NA)
-            assert same(results["last"][col].to_list()[gi], present[-1] if present else NA)
+                assert same(results[op][col].tolist()[gi], getattr(part, op)()), (op, col, m)
+            present = [v for v in part.tolist() if v is not NA]
+            assert same(results["first"][col].tolist()[gi], present[0] if present else NA)
+            assert same(results["last"][col].tolist()[gi], present[-1] if present else NA)
 
 
 def test_float_group_sum_is_bitwise_the_series_sum():
@@ -94,8 +94,8 @@ def test_float_group_sum_is_bitwise_the_series_sum():
     vals = rng.standard_normal(10_000) * 10.0 ** rng.integers(-8, 8, 10_000)
     df = sd.frame.DataFrame({"k": keys, "v": vals})
     out = df.groupby("k").sum()
-    for row, k in enumerate(out["k"].to_list()):
-        assert same(out["v"].to_list()[row], float(np.sum(vals[keys == k])))  # numpy pairwise on the group's rows
+    for row, k in enumerate(out["k"].tolist()):
+        assert same(out["v"].tolist()[row], float(np.sum(vals[keys == k])))  # numpy pairwise on the group's rows
 
 
 @pytest.mark.parametrize("op", ["sum", "mean", "min", "max", "count", "first", "last", "size"])
@@ -107,48 +107,48 @@ def test_int_and_string_keys_match_pandas(op):
     theirs = pd.DataFrame({"k": k, "i": pd.array(i, dtype="Int64"), "s": pd.array(s, dtype="string[python]")})
     cols = ["i"] if op in ("sum", "mean") else ["i", "s"]
     if op == "size":
-        assert ours.groupby("k").size()["size"].to_list() == theirs.groupby("k").size().tolist()
+        assert ours.groupby("k").size()["size"].tolist() == theirs.groupby("k").size().tolist()
         return
     got = getattr(ours.groupby("k")[cols], op)()
     want = getattr(theirs.groupby("k", as_index=False)[cols], op)()
-    assert got["k"].to_list() == want["k"].tolist()
+    assert got["k"].tolist() == want["k"].tolist()
     for c in cols:
-        assert got[c].to_list() == [NA if v is pd.NA else v for v in want[c].tolist()]
+        assert got[c].tolist() == [NA if v is pd.NA else v for v in want[c].tolist()]
 
 
 def test_sort_order_rules():
     df = sd.frame.DataFrame({"k": [2.0, math.nan, -0.0, None, math.inf, 0.0, -1.0], "v": list(range(7))})
     out = df.groupby("k", dropna=False).sum()
-    keys = out["k"].to_list()
+    keys = out["k"].tolist()
     assert keys[:3] == [-1.0, 0.0, 2.0] and math.copysign(1, keys[1]) == -1  # -0.0 came first: its value is kept
     assert keys[3] == math.inf and math.isnan(keys[4]) and keys[5] is NA  # NaN after +inf, NA last
-    assert out["v"].to_list() == [6, 2 + 5, 0, 4, 1, 3]
+    assert out["v"].tolist() == [6, 2 + 5, 0, 4, 1, 3]
     assert df.groupby("k").sum().shape[0] == 5  # dropna drops NA, keeps NaN (docs/api/frame.md §7.2)
-    unsorted = df.groupby("k", sort=False, dropna=False).sum()["v"].to_list()
+    unsorted = df.groupby("k", sort=False, dropna=False).sum()["v"].tolist()
     assert unsorted == [0, 1, 2 + 5, 3, 4, 6]
     multi = sd.frame.DataFrame({"a": ["x", "x", "y", None], "b": [2, 1, 1, 1], "v": [1, 2, 3, 4]})
     m = multi.groupby(["a", "b"], dropna=False).sum()
-    assert m["a"].to_list() == ["x", "x", "y", NA] and m["b"].to_list() == [1, 2, 1, 1]
+    assert m["a"].tolist() == ["x", "x", "y", NA] and m["b"].tolist() == [1, 2, 1, 1]
 
 
 def test_skipna_and_all_na_groups():
     df = sd.frame.DataFrame({"k": [1, 1, 2], "v": [None, 3.0, None]})
     g = df.groupby("k")
-    assert g.sum()["v"].to_list() == [3.0, 0.0]
-    assert g.mean()["v"].to_list() == [3.0, NA] and g.count()["v"].to_list() == [1, 0]
-    assert g.sum(skipna=False)["v"].to_list() == [NA, NA]
-    assert g.first()["v"].to_list() == [3.0, NA] and g.first(skipna=False)["v"].to_list() == [NA, NA]
-    assert g.last(skipna=False)["v"].to_list() == [3.0, NA]
-    assert g.var()["v"].to_list() == [0.0, NA] and g.var(correction=1)["v"].to_list() == [NA, NA]
+    assert g.sum()["v"].tolist() == [3.0, 0.0]
+    assert g.mean()["v"].tolist() == [3.0, NA] and g.count()["v"].tolist() == [1, 0]
+    assert g.sum(skipna=False)["v"].tolist() == [NA, NA]
+    assert g.first()["v"].tolist() == [3.0, NA] and g.first(skipna=False)["v"].tolist() == [NA, NA]
+    assert g.last(skipna=False)["v"].tolist() == [3.0, NA]
+    assert g.var()["v"].tolist() == [0.0, NA] and g.var(correction=1)["v"].tolist() == [NA, NA]
 
 
 def test_agg_forms():
     df = sd.frame.DataFrame({"k": ["a", "b", "a"], "x": [1, 2, 3], "y": [0.5, 1.0, 1.5]})
     g = df.groupby("k")
-    assert g.agg("sum").columns.to_list() == ["k", "x", "y"]
-    assert g.agg({"y": "max", "x": "min"}).columns.to_list() == ["k", "y", "x"]
+    assert g.agg("sum").columns.tolist() == ["k", "x", "y"]
+    assert g.agg({"y": "max", "x": "min"}).columns.tolist() == ["k", "y", "x"]
     named = g.agg(total=("x", "sum"), top=("x", "max"), avg=("y", "mean"))
-    assert named.columns.to_list() == ["k", "total", "top", "avg"] and named["total"].to_list() == [4, 2]
+    assert named.columns.tolist() == ["k", "total", "top", "avg"] and named["total"].tolist() == [4, 2]
     for bad, error in (
         (lambda: g.agg(["sum", "mean"]), TypeError),
         (lambda: g.agg({"x": ["sum"]}), TypeError),
@@ -166,8 +166,8 @@ def test_selection_and_errors():
     df = sd.frame.DataFrame({"k": ["a", "b"], "s": ["x", "y"], "v": [1, 2]})
     with pytest.raises(TypeError):
         df.groupby("k").sum()  # the string column has no sum (docs/api/frame.md §6.3)
-    assert df.groupby("k")["v"].sum()["v"].to_list() == [1, 2]
-    assert df.groupby("k").max()["s"].to_list() == ["x", "y"]
+    assert df.groupby("k")["v"].sum()["v"].tolist() == [1, 2]
+    assert df.groupby("k").max()["s"].tolist() == ["x", "y"]
     with pytest.raises(KeyError):
         df.groupby("zz")
     with pytest.raises(ValueError):
@@ -191,9 +191,9 @@ def test_groupby_sees_the_frame_as_it_was():
     df["v"] = [10.0, 20.0, 30.0]
     df.loc[0, "v"] = 100.0
     for result in (g.sum(), g["v"].sum()):
-        assert result["k"].to_list() == [1, 2]
-        assert result["v"].to_list() == [3.0, 3.0]
-    assert before["v"].to_list() == [3.0, 3.0]
+        assert result["k"].tolist() == [1, 2]
+        assert result["v"].tolist() == [3.0, 3.0]
+    assert before["v"].tolist() == [3.0, 3.0]
     g2 = df.groupby("k")  # made after the writes: sees them
     df["v"] = [0.0, 0.0, 0.0]
-    assert g2.sum()["v"].to_list() == [100.0, 50.0]
+    assert g2.sum()["v"].tolist() == [100.0, 50.0]

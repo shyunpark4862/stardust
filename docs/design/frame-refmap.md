@@ -14,7 +14,7 @@
 | 옛 참조 | 내용 | 새 절 | 인용 수 |
 |---|---|---|---|
 | ARCHITECTURE §0 | 하드웨어 사실 (128B, NEON, 64비트 정수 곱 없음) | array.md §1.1 | 1 (지운 `core/buffer.hpp`) |
-| ARCHITECTURE §1 (A1) | Python API 층 + C++ Column과 커널 | §3.1 | 1 (`series.py`) |
+| ARCHITECTURE §1 (A1) | Python API 층 + C++ Column과 커널 | §3.1 | 1 (`_series.py`) |
 | ARCHITECTURE §1.1 | M0 검증, Column은 값 타입 (190 대 89ns, nanobind keep-alive) | §3.2 (A1의 측정은 §3.1) | 2 (`core/column.hpp`, `bind/module.cpp` → `bind/frame_bind.cpp`) |
 | ARCHITECTURE §2 (A2, A3) | Column 메모리 구조 | §4 | 0 |
 | ARCHITECTURE §2.1 | Buffer: 참조 카운트, 128B | §4.1 (Buffer 자체는 array.md §3.2) | 1 (지운 `core/buffer.hpp`) |
@@ -23,10 +23,10 @@
 | ARCHITECTURE §2.4 | NA 자리의 값은 0, 문자열은 길이 0 | §4.5 | 11: `ARCHITECTURE.md §2.4` 10 (`core/convert.cpp` 2, `core/column.cpp` 1, `core/column.hpp` 1, `ops/elementwise.cpp` 2, `ops/selection.cpp` 3, `tests/test_reduce.py` 1) + `ops/reduce.cpp`의 맨 "§2.4" 1 |
 | ARCHITECTURE §2.5 | dtype별 값 저장, bool은 1바이트(A3), offsets는 int64 | §4.6 | 1 (`core/column.hpp`) |
 | ARCHITECTURE §3 (A4) | DataFrame과 Copy-on-Write | §5 | 0 |
-| ARCHITECTURE §3.1 | DataFrame: 이름 → Column 매핑 + Index, 2D 블록 없음 | §5.1 | 1 (`frame.py`) |
+| ARCHITECTURE §3.1 | DataFrame: 이름 → Column 매핑 + Index, 2D 블록 없음 | §5.1 | 1 (`_frame.py`) |
 | ARCHITECTURE §3.2 | Copy-on-Write: 쓰기 직전에 참조 카운트 | §5.2 | 1 (`ops/selection.hpp`) |
 | ARCHITECTURE §3.3 | Copy-on-Write의 구현: `share()`, `use_count()`, 문자열은 새 Buffer | §5.2 (스냅샷은 §5.3) | 0 |
-| ARCHITECTURE §4 (A5) | RangeIndex, Index, 조회 엔진(`LabelTable`), CSR | §6.1, §6.2 | 2: `ops/hash.hpp`(엔진) → §6.2, `index.py`(RangeIndex) → §6.1 |
+| ARCHITECTURE §4 (A5) | RangeIndex, Index, 조회 엔진(`LabelTable`), CSR | §6.1, §6.2 | 2: `ops/hash.hpp`(엔진) → §6.2, `_index.py`(RangeIndex) → §6.1 |
 | ARCHITECTURE §5 (A6) | 정렬(alignment): 같으면 위치대로, 다르면 합집합 + `take` | §6.3 | 1 (`_select.py`) |
 | A6 (ID만) | 합집합 라벨의 순서 | `docs/api/frame-refmap.md`에서 센다. 구현은 §6.3 | (2, API 표의 몫) |
 | ARCHITECTURE §6 (A7) | 커널 체계, 병렬화, 테스트 | §7–§13 | 0 |
@@ -60,7 +60,7 @@
 | (§2.5 factorize 중심) | groupby, merge, unique가 그 위에 | §8.1 | 1 (`ops/hash.hpp` 머리말) |
 | (§2.5 해시 테이블, R3) | linear probing 다음 Swiss table, 비교 측정 | §8.3 | 1 (`ops/hash.hpp`의 `LinearTable`) |
 | (§2.5 임계값 상수 하나) | | §11.2 (영역마다 하나: §11.1) | 1 (`parallel/pool.hpp` → `frame/parallel.hpp`) |
-| (§2.5 Index 조회 엔진 캐시, R6) | 처음 조회할 때 만들고 캐시 | §6.2 | 3 (`index.py`) |
+| (§2.5 Index 조회 엔진 캐시, R6) | 처음 조회할 때 만들고 캐시 | §6.2 | 3 (`_index.py`) |
 | (§2.5 제외: 데이터를 보고 경로를 고르는 휴리스틱) | 정렬된 라벨의 이진 탐색 없음 | §1.3, §6.4 | 2 (`_select.py`, `tests/test_indexing.py`) |
 | (§2.5 groupby의 그룹별 pairwise 합) | Series.sum()과 비트까지 같다 | §9.1 | 0 |
 | (§2.5 join, 정렬, 문자열 R4, CSV, 필터) | | §9.7, §9.3, §4.6, §10, §7.3 | 0 |
@@ -93,7 +93,7 @@ DESIGN.md §5.4에 따라 주석의 마일스톤 번호는 지운다. 설계 사
 | "M10 explainer §6" | 1 | `ops/selection.cpp`(문자열 압축 두 번 실패) → §7.3 |
 | M11 | 16 | 아래 표 |
 | M12 | 4 | `ops/radix.hpp`(직렬 기수 정렬) → §9.5. `ops/hash.hpp`(미리 잡기) → §8.5. `ops/hash.cpp`(`find_rows`) → §8.8. `tests/test_api_surface.py` 첫 줄 → 지운다 |
-| "M12+ review" | 10 | `ops/hash.hpp`(첫 `reserve`/`insert`에서만 할당) → §8.3. `index.py`, `tests/test_indexing.py` 1(RangeIndex의 `in`은 산술) → §6.1. `_select.py`, `tests/test_indexing.py` 1(중복 라벨 마스크) → §6.3. `groupby.py`, `tests/test_groupby.py`(부른 순간의 컬럼) → §5.3. `tests/test_csv.py`(`\r`) → §10.1. 지운 `parallel/pool.cpp` 2(스레드 수 atomic, 바쁜 풀) → array.md §10.3, §10.1 |
+| "M12+ review" | 10 | `ops/hash.hpp`(첫 `reserve`/`insert`에서만 할당) → §8.3. `_index.py`, `tests/test_indexing.py` 1(RangeIndex의 `in`은 산술) → §6.1. `_select.py`, `tests/test_indexing.py` 1(중복 라벨 마스크) → §6.3. `_groupby.py`, `tests/test_groupby.py`(부른 순간의 컬럼) → §5.3. `tests/test_csv.py`(`\r`) → §10.1. 지운 `parallel/pool.cpp` 2(스레드 수 atomic, 바쁜 풀) → array.md §10.3, §10.1 |
 
 ### 3.1 M10 (31)
 | 있는 곳 | 내용 | 새 절 |
@@ -108,7 +108,7 @@ DESIGN.md §5.4에 따라 주석의 마일스톤 번호는 지운다. 설계 사
 | `ops/hash.hpp` 2 (Swiss table, "after measuring it against LinearTable") | | §8.3 |
 | `ops/hash.hpp` 1 (문자열 해시) | mum + fmix64 | §8.4 |
 | `ops/hash.hpp` 1 ("The build side of a hash join"), `ops/join.cpp` 1 | build/probe | §9.7 |
-| `ops/selection.hpp`, `_select.py`, `frame.py` | 분기 없는 마스크 압축 | §7.3 |
+| `ops/selection.hpp`, `_select.py`, `_frame.py` | 분기 없는 마스크 압축 | §7.3 |
 | `ops/reduce.cpp` 1 ("With NA (M10): blocks …") | NA가 있는 min/max | §7.4 |
 | `ops/parse.hpp` 3, `tests/test_elementwise.py` 1 | Eisel-Lemire, 한 패스, SWAR | §10.4 |
 

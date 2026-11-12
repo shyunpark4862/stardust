@@ -19,7 +19,7 @@
 | §1 (S1) | NaN은 값, 리덕션·정렬의 NaN, 키 비교(NaN끼리, `-0.0`과 `0.0`, 키 정규화) | NaN §1.3, 키 비교 §1.6 | 4 (C++ 2: `ops/hash.hpp`; Python 1: `isna`; 테스트 1) |
 | §2 (S2) | NA: 산술·비교, Kleene 논리, 필터에서 False, `bool(NA)`, 모두 NA인 리덕션, `ddof=1` | §1.4 (모두 NA인 리덕션은 §6.4도) | 6 |
 | §3 (S3) | 정수 연산: `int / int`, wrap, `// 0`·`% 0`·`** 음수`는 NA, float 0 나누기 | §1.5 | 6 |
-| §4 (S4) | groupby의 `sort`, `dropna`, 키의 위치 | §7.2 | 1 (`groupby.py`, 키 컬럼) |
+| §4 (S4) | groupby의 `sort`, `dropna`, 키의 위치 | §7.2 | 1 (`_groupby.py`, 키 컬럼) |
 | §5 (S5) | merge의 결과 행 순서, NA 키, 접미사 | §9.1 | 7 |
 | §6 (S6) | 라벨: Index dtype, Index의 NA, 중복 라벨, 컬럼 이름, 정렬(alignment)의 라벨 순서 | §1.7 (`index_col`은 §10.1, 헤더의 중복 이름은 §10.2도) | 10 |
 | §7 (S7) | `[]`: `df["a"]`, `df[[...]]`, `df[mask]`, `s[x]`는 `.loc` | §5.3 | 2 |
@@ -49,7 +49,7 @@
 | C3 | 옛 API.md §11 | 리덕션 인자는 Series, DataFrame, GroupBy에서 같다. `count`는 인자가 없다 | §6.1 (§1.1이 가리킨다), GroupBy는 §7.3 | 3 (`API.md §11 C3` 2, `C3`만 1: `tests/test_reduce.py`) |
 | C4 | 옛 API.md §11 | 의미가 없는 인자를 두지 않는다 (`copy`, `inplace`, `level`, `kind`, `errors`, `engine`, Series의 `axis`) | §1.1, `sort_*`의 없는 인자는 §8.1 | 2 (`C4`만, `tests/test_sort.py`) |
 | C5 | 옛 API.md §11 | `keep`은 `"first"`, `"last"`, `"none"` | §1.1, §4.1 | 1 |
-| C6 | 옛 API.md §11 | `Series.unique()`는 Series, `DataFrame.value_counts()`는 DataFrame | `unique` §4.2, `value_counts` §4.3 | 1 (`series.py`, `unique`) |
+| C6 | 옛 API.md §11 | `Series.unique()`는 Series, `DataFrame.value_counts()`는 DataFrame | `unique` §4.2, `value_counts` §4.3 | 1 (`_series.py`, `unique`) |
 | C7 | 옛 API.md §11 | 연산은 연산자로만. `add`, `abs()` 같은 메서드 없음 | §1.1 | 1 (`_ops.py`) |
 | A6 | 옛 API.md §6 (4라운드 결정) | 정렬(alignment) 결과의 라벨 순서: 왼쪽 순서, 그 다음 오른쪽에만 있는 라벨 | §1.7, 정렬이 일어나는 곳은 §5.6 | 2 (`A6`만: `_select.py`, `tests/test_indexing.py`) |
 

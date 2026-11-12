@@ -63,7 +63,7 @@
   | `bind/frame_bind.cpp` | 하위 모듈 `stardust._core.frame` (확장 모듈은 `_core` 하나, 루트 DESIGN §3.2) |
 
 - 아래 층에서 쓰는 것: `base/buffer.hpp`(Buffer, §4.1), `base/dtype.hpp`(DType, §4.2), `base/pairwise.hpp`(pairwise 합, §7.4), `parallel/pool.hpp`(풀, §11.1)
-- Python은 `src/stardust/frame/`: `series.py`, `frame.py`, `index.py`, `groupby.py`, `merge.py`, `io.py`, `_column.py`, `_dtypes.py`, `_na.py`, `_ops.py`, `_reduce.py`, `_select.py`, `_sort.py`, `_unique.py`, `_format.py`. 테스트는 `tests/frame/`.
+- Python은 `src/stardust/frame/`: `_series.py`, `_frame.py`, `_index.py`, `_groupby.py`, `_merge.py`, `_io.py`, `_column.py`, `_dtypes.py`, `_na.py`, `_ops.py`, `_reduce.py`, `_select.py`, `_sort.py`, `_unique.py`, `_format.py`. 테스트는 `tests/frame/`.
 - 통합 중 M6에서 Column ↔ NDArray를 잇는 `frame/interop.cpp`가 생긴다. `frame/`에서 `array/`를 아는 파일은 그것 하나가 된다 (루트 DESIGN §4.3).
 - 컴파일 플래그는 모듈 전체의 것이다 (array.md §1.3). frame에는 특히 `-ffp-contract=off`(FMA로 합치면 pandas, numpy와 비트가 달라진다)와 `-ffast-math` 없음(NaN은 평범한 값이다, §2.2)이 중요하다. frame은 Accelerate를 쓰지 않는다.
 
@@ -290,7 +290,7 @@ s._col ─────────► Column B ──┘          s.iloc[0] = 99
 - 커널이 GIL을 놓으므로(§11.4) 대입과 연산이 겹칠 수 있다. 그래도 규칙이 지켜지는 이유:
   - 진행 중인 연산은 nanobind 인자로 옛 Column 객체를 잡고 있다. 대입은 `share()`로 새 Column 객체를 만든 뒤 쓴다. 그래서 Buffer의 참조 카운트가 2 이상이고, 대입은 복사한다 (§5.2).
   - 남은 틈은 하나다: `set_rows`가 Buffer를 그 자리에서 고치는 동안 다른 스레드의 연산이 시작되는 경우. 그래서 **`set_rows`는 크기와 상관없이 GIL을 쥔 채 돈다.**
-- **groupby는 부른 순간의 컬럼 매핑을 복사해 둔다** (`groupby.py`). 키 코드는 처음 쓸 때 계산해서 캐시하는데, 값 컬럼을 매번 df에서 읽으면 그 사이 `df["k"] = ...`가 옛 키와 새 값을 섞는다. 데이터는 복사하지 않는다(행 대입은 CoW로 복사되므로 보이지 않는다).
+- **groupby는 부른 순간의 컬럼 매핑을 복사해 둔다** (`_groupby.py`). 키 코드는 처음 쓸 때 계산해서 캐시하는데, 값 컬럼을 매번 df에서 읽으면 그 사이 `df["k"] = ...`가 옛 키와 새 값을 섞는다. 데이터는 복사하지 않는다(행 대입은 CoW로 복사되므로 보이지 않는다).
 - 테스트: 한 스레드가 `s.iloc[k] = 1`을 k = 0, 1, 2, …로 쓰는 동안 다른 스레드가 `s + 0`을 반복한다. 모든 결과가 "앞의 k개만 1"인 꼴이어야 한다.
 
 ### 5.4 배열과의 경계
@@ -300,7 +300,7 @@ s._col ─────────► Column B ──┘          s.iloc[0] = 99
 
 ## 6. Index와 정렬(alignment)
 
-### 6.1 RangeIndex와 Index (`index.py`)
+### 6.1 RangeIndex와 Index (`_index.py`)
 - **`RangeIndex`**: `(start, stop, step)`만 든다. 버퍼가 없다.
   - 스칼라 조회와 `in`은 산술이다. 라벨을 한꺼번에 볼 때(정렬, 여러 라벨 조회)만 라벨 배열을 만든다. `5 in RangeIndex(3e7)`이 라벨 3천만 개와 테이블을 만들면 158ms가 든다.
 - **`Index`**: 불변 Column 하나(int64 또는 string, NA 없음)와 이름을 든다. float와 bool은 Index가 될 수 없다 (`docs/api/frame.md`).

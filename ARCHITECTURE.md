@@ -41,7 +41,7 @@ stardust/                         (저장소: ~/Desktop/stardust/stardust)
       _results.py  _errors.py     (지금 stardust_linalg)
     frame/
       __init__.py                 DataFrame, Series, Index, RangeIndex, NA, concat, merge, read_csv
-      series.py  frame.py  index.py  groupby.py  merge.py  io.py  _*.py   (M6에서 밑줄 이름으로 숨긴다)
+      _series.py  _frame.py  _index.py  _groupby.py  _merge.py  _io.py  _*.py   (모든 모듈이 밑줄 이름: 공개 이름은 __init__.py만)
 
   csrc/
     base/                         모든 영역이 쓰는 바닥

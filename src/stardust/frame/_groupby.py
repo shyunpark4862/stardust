@@ -9,7 +9,7 @@ first appearance, with NA-key groups dropped (dropna=True) or last.
 
 from . import _core, _unique
 from ._reduce import Reductions
-from .index import RangeIndex
+from ._index import RangeIndex
 
 AGG_FUNCS = ("sum", "mean", "min", "max", "count", "std", "var", "first", "last")
 
@@ -55,7 +55,7 @@ class GroupBy(Reductions):
             # must not meet the new columns. Columns are values sharing their
             # Buffers, so this copies no data; writes into rows copy the
             # Buffer first (CoW), so they do not show here either.
-            from .frame import DataFrame
+            from ._frame import DataFrame
 
             df = DataFrame._new(dict(df._cols), df._index)
         self._df, self._by, self._sort, self._dropna = df, by, sort, dropna
@@ -81,7 +81,7 @@ class GroupBy(Reductions):
 
     def _result(self, columns):
         """The keys, then `columns` ({name: per-group Column in code order})."""
-        from .frame import DataFrame
+        from ._frame import DataFrame
 
         state = self._state()
         cols = dict(state.keys)

@@ -13,9 +13,11 @@ def _per_key(value, n, what, check):
     return values
 
 
-def _check_ascending(v):
+def check_bool(what, v):
+    """A bool option takes True or False only (API.md §2)."""
     if not isinstance(v, bool):
-        raise TypeError(f"ascending must be True or False, got {v!r}")
+        raise TypeError(f"{what} must be True or False, got {v!r}")
+    return v
 
 
 def _check_na_position(v):
@@ -23,9 +25,13 @@ def _check_na_position(v):
         raise ValueError(f"na_position must be 'first' or 'last', got {v!r}")
 
 
-def order(keys, ascending=True, na_position="last"):
-    """Positions that sort rows by `keys` (Columns), first key first. Stable."""
+def order(keys, descending=False, na_position="last", stable=True):
+    """Positions that sort rows by `keys` (Columns), first key first.
+
+    Always stable: stable=False only allows an unstable sort, as in the array
+    area, so it gives the same order (docs/api/frame.md §8.1)."""
+    check_bool("stable", stable)
     n = len(keys)
-    asc = _per_key(ascending, n, "ascending", _check_ascending)
+    desc = _per_key(descending, n, "descending", lambda v: check_bool("descending", v))
     nas = _per_key(na_position, n, "na_position", _check_na_position)
-    return _core.argsort(keys, asc, [p == "last" for p in nas])
+    return _core.argsort(keys, [not d for d in desc], [p == "last" for p in nas])

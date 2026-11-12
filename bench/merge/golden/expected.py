@@ -29,5 +29,13 @@ EXPECTED = {
         (r"^err reduce (std ddof negative|var ddof float)$", "§9.1 #7: correction takes any int or float, as in the array area"),
         (r"^err (arith add i,2\*\*64|ctor int too big)$", "§9.1 #12: the array's message for an int outside int64 (message)"),
         (r"^err threads (float|keyword)$", "M5: the thread setter is sd.set_num_threads (API.md §3)"),
+        (r"^sig keyword (head|astype|fillna|reindex|df sort_values|groupby|duplicated|merge|concat|Index|Series|equals)$",
+         "§9.3: main arguments are positional-only: passing one by keyword is a TypeError"),
+        (r"^err (sort_values ascending int|df sort_values ascending length)$",
+         "§9.3: ascending -> descending: the message names descending (message)"),
+        (r"^err sig tolist$", "§9.4: to_list -> tolist, no alias: the absent spelling is to_list (message)"),
+        (r"^(big )?unique ", "§9.4: unique() -> unique_values(): sorted order, NaN once, NA last"),
+        (r"^(err logic (and|or|xor) (i,i|b,i|b,1)|err unary invert i|err df and int)$",
+         "§9.4: int64 bitwise operators & | ^ ~ (bool with int64 is int64); a float column still raises"),
     ],
 }

@@ -1,7 +1,7 @@
 """merge (a hash join) and concat (docs/api/frame.md §9)."""
 
 from . import _column, _core, _select, _sort
-from .index import Index, RangeIndex, _IndexBase
+from ._index import Index, RangeIndex, _IndexBase
 
 Column = _core.Column
 
@@ -18,14 +18,14 @@ def _names(value, what):
     return names
 
 
-def merge(left, right, *, how="inner", on=None, left_on=None, right_on=None, sort=False, suffixes=("_x", "_y")):
+def merge(left, right, /, *, how="inner", on=None, left_on=None, right_on=None, sort=False, suffixes=("_x", "_y")):
     """Join two DataFrames on key columns with a hash join (docs/api/frame.md §9.1).
 
     Keys are explicit: on= (the same names on both sides) or left_on= and
     right_on=. Rows come in left order, each with its matches in right
     order; outer appends unmatched right rows; right is the mirror image
     (docs/api/frame.md §9.1). NA keys match nothing; NaN matches NaN."""
-    from .frame import DataFrame
+    from ._frame import DataFrame
 
     if not isinstance(left, DataFrame) or not isinstance(right, DataFrame):
         raise TypeError("merge joins two DataFrames")
@@ -87,10 +87,10 @@ def _sort_keys(out, lkeys, rkeys, overlap, suffixes, no_left):
     return keys
 
 
-def concat(objs, *, join="outer", ignore_index=False):
+def concat(objs, /, *, join="outer", ignore_index=False):
     """DataFrames (or Series) one after another, rows only (docs/api/frame.md §9.2)."""
-    from .frame import DataFrame
-    from .series import Series
+    from ._frame import DataFrame
+    from ._series import Series
 
     objs = list(objs)
     if not objs:

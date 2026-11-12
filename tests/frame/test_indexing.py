@@ -86,26 +86,26 @@ def test_selection_matches_pandas_on_unique_labels(data):
     one = data.draw(st.sampled_from(labels))
     assert ours.loc[one] == theirs.loc[one]
     some = data.draw(st.lists(st.sampled_from(labels), max_size=6))
-    assert ours.loc[some].to_list() == theirs.loc[some].tolist()
-    assert ours.loc[some].index.to_list() == some
+    assert ours.loc[some].tolist() == theirs.loc[some].tolist()
+    assert ours.loc[some].index.tolist() == some
     a, b = data.draw(st.sampled_from(labels)), data.draw(st.sampled_from(labels))
     step = data.draw(st.sampled_from([None, 1, 2, -1, -2]))
     # pandas' label slice on unique labels matches ours (positions of a and b, both ends kept).
-    assert ours.loc[a:b:step].to_list() == theirs.loc[a:b:step].tolist()
+    assert ours.loc[a:b:step].tolist() == theirs.loc[a:b:step].tolist()
     start, stop = data.draw(st.integers(-n - 2, n + 2)), data.draw(st.integers(-n - 2, n + 2))
     pstep = data.draw(st.sampled_from([None, 1, 3, -1]))
-    assert ours.iloc[start:stop:pstep].to_list() == theirs.iloc[start:stop:pstep].tolist()
+    assert ours.iloc[start:stop:pstep].tolist() == theirs.iloc[start:stop:pstep].tolist()
     pos = data.draw(st.integers(-n, n - 1))
     assert ours.iloc[pos] == theirs.iloc[pos]
     plist = data.draw(st.lists(st.integers(-n, n - 1), max_size=5))
-    assert ours.iloc[plist].to_list() == theirs.iloc[plist].tolist()
+    assert ours.iloc[plist].tolist() == theirs.iloc[plist].tolist()
 
 
 def test_duplicate_labels():
     s = sd.frame.Series([10, 20, 30], index=["a", "b", "a"])
     with pytest.raises(KeyError):
         s.loc["a"]  # a scalar lookup must find one row (docs/api/frame.md §5.4)
-    assert s.loc[["a", "b"]].to_list() == [10, 30, 20]
+    assert s.loc[["a", "b"]].tolist() == [10, 30, 20]
     assert s["b"] == 20
     with pytest.raises(KeyError):
         s.loc["a":"b"]  # slice ends must be unique
@@ -128,9 +128,9 @@ def test_missing_labels_and_positions():
 def test_slices_keep_range_index_and_share_buffers():
     s = sd.frame.Series(list(range(10)))
     part = s.iloc[2:8:2]
-    assert isinstance(part.index, sd.frame.RangeIndex) and part.index.to_list() == [2, 4, 6]
+    assert isinstance(part.index, sd.frame.RangeIndex) and part.index.tolist() == [2, 4, 6]
     shared = s.loc[3:6]
-    assert shared._col._shares_values_with(s._col) and shared.to_list() == [3, 4, 5, 6]
+    assert shared._col._shares_values_with(s._col) and shared.tolist() == [3, 4, 5, 6]
     assert isinstance(s.loc[[1, 2]].index, sd.frame.Index)
 
 
@@ -139,11 +139,11 @@ def test_frame_selection():
     row = df.loc["r2"]
     assert isinstance(row, sd.frame.DataFrame) and row.shape == (1, 3) and [str(d) for d in row.dtypes.values()] == ["int64", "string", "float64"]
     assert df.loc["r2", "b"] == "y" and df.iloc[2, 0] == 3 and df.iloc[-1, -1] == 2.5
-    assert df.loc[["r3", "r1"], "a"].to_list() == [3, 1]
-    assert df.loc[:, "b":"c"].columns.to_list() == ["b", "c"]
-    assert df.loc["r2", ["c", "a"]].columns.to_list() == ["c", "a"]
-    assert df.iloc[1:, [2, 0]].index.to_list() == ["r2", "r3"]
-    assert df[["c", "a"]].columns.to_list() == ["c", "a"]
+    assert df.loc[["r3", "r1"], "a"].tolist() == [3, 1]
+    assert df.loc[:, "b":"c"].columns.tolist() == ["b", "c"]
+    assert df.loc["r2", ["c", "a"]].columns.tolist() == ["c", "a"]
+    assert df.iloc[1:, [2, 0]].index.tolist() == ["r2", "r3"]
+    assert df[["c", "a"]].columns.tolist() == ["c", "a"]
     assert df.iloc[0].shape == (1, 3)
     with pytest.raises(KeyError):
         df.loc["r2", "zz"]
@@ -167,11 +167,11 @@ def test_alignment_order_and_values(data):
     union = la + [x for x in lb if x not in la]  # left order, then right-only labels (docs/api/frame.md §1.7)
     da, db = dict(zip(la, va)), dict(zip(lb, vb))
     if la == lb:
-        assert out.index.to_list() == la
+        assert out.index.tolist() == la
     else:
-        assert out.index.to_list() == union
-    expected = [da[k] + db[k] if k in da and k in db else NA for k in out.index.to_list()]
-    assert out.to_list() == expected
+        assert out.index.tolist() == union
+    expected = [da[k] + db[k] if k in da and k in db else NA for k in out.index.tolist()]
+    assert out.tolist() == expected
 
 
 def test_alignment_errors_and_names():
@@ -184,27 +184,27 @@ def test_alignment_errors_and_names():
     with pytest.raises(TypeError):
         sd.frame.Series([1], index=[0]) + sd.frame.Series([1], index=["0"])
     same = sd.frame.Series([1, 2], index=["d", "d"])
-    assert (same + same).to_list() == [2, 4]  # identical labels: by position, duplicates fine
+    assert (same + same).tolist() == [2, 4]  # identical labels: by position, duplicates fine
 
 
 def test_frame_alignment():
     left = sd.frame.DataFrame({"a": [1, 2], "b": [1.5, 2.5]}, index=["x", "y"])
     right = sd.frame.DataFrame({"c": ["p", "q"], "a": [10, 20]}, index=["y", "z"])
     out = left + sd.frame.DataFrame({"a": [10, 20], "b": [0.5, 0.5]}, index=["y", "z"])
-    assert out.index.to_list() == ["x", "y", "z"] and out["a"].to_list() == [NA, 12, NA]
+    assert out.index.tolist() == ["x", "y", "z"] and out["a"].tolist() == [NA, 12, NA]
     mixed = left + right  # "b" and "c" are each on one side: computed against an NA column of their dtype
-    assert mixed.columns.to_list() == ["a", "b", "c"] and mixed["c"].dtype is sd.string
-    assert mixed["c"].to_list() == [NA, NA, NA] and mixed["a"].to_list() == [NA, 12, NA]
+    assert mixed.columns.tolist() == ["a", "b", "c"] and mixed["c"].dtype is sd.string
+    assert mixed["c"].tolist() == [NA, NA, NA] and mixed["a"].tolist() == [NA, 12, NA]
     df = sd.frame.DataFrame({"p": sd.frame.Series([1, 2], index=["b", "a"]), "q": sd.frame.Series([3], index=["c"])})
-    assert df.index.to_list() == ["b", "a", "c"] and df["q"].to_list() == [NA, NA, 3]
+    assert df.index.tolist() == ["b", "a", "c"] and df["q"].tolist() == [NA, NA, 3]
     given = sd.frame.DataFrame({"p": sd.frame.Series([1, 2], index=["b", "a"]), "r": [7, 8, 9]}, index=["a", "c", "b"])
-    assert given["p"].to_list() == [2, NA, 1] and given["r"].to_list() == [7, 8, 9]
+    assert given["p"].tolist() == [2, NA, 1] and given["r"].tolist() == [7, 8, 9]
 
 
 def test_mask_alignment():
     s = sd.frame.Series([1, 2, 3], index=["a", "b", "c"])
     mask = sd.frame.Series([True, False, True], index=["c", "b", "a"])
-    assert s[mask].to_list() == [1, 3]
+    assert s[mask].tolist() == [1, 3]
     with pytest.raises(ValueError):
         s[sd.frame.Series([True, False], index=["a", "b"])]  # "c" missing
     with pytest.raises(ValueError):
@@ -213,24 +213,24 @@ def test_mask_alignment():
     dup = sd.frame.Series([10, 20, 30], index=[1, 1, 2])
     with pytest.raises(ValueError):
         dup[sd.frame.Series([True, False, True], index=[1, 2, 3])]  # 3 is not a label of dup
-    assert dup[sd.frame.Series([True, False, True], index=[1, 1, 2])].to_list() == [10, 30]  # the same index: by position
+    assert dup[sd.frame.Series([True, False, True], index=[1, 1, 2])].tolist() == [10, 30]  # the same index: by position
 
 
 def test_reindex():
     s = sd.frame.Series([1, 2, 3], index=["a", "b", "c"], name="v")
     r = s.reindex(["c", "z", "a"])
-    assert r.to_list() == [3, NA, 1] and r.index.to_list() == ["c", "z", "a"] and r.name == "v"
+    assert r.tolist() == [3, NA, 1] and r.index.tolist() == ["c", "z", "a"] and r.name == "v"
     with pytest.raises(ValueError):
         sd.frame.Series([1, 2], index=["a", "a"]).reindex(["a"])
     df = sd.frame.DataFrame({"x": [1, 2]}, index=[5, 6])
-    assert df.reindex([6, 7])["x"].to_list() == [2, NA]
+    assert df.reindex([6, 7])["x"].tolist() == [2, NA]
 
 
 def test_constructor_index():
     s = sd.frame.Series([1, 2], index=["a", "b"], name="v")
-    assert s.index.to_list() == ["a", "b"]
-    assert sd.frame.Series(s, index=["b", "c"]).to_list() == [2, NA]
-    assert sd.frame.Series(index=["a", "b"]).to_list() == [NA, NA]
+    assert s.index.tolist() == ["a", "b"]
+    assert sd.frame.Series(s, index=["b", "c"]).tolist() == [2, NA]
+    assert sd.frame.Series(index=["a", "b"]).tolist() == [NA, NA]
     with pytest.raises(ValueError):
         sd.frame.Series([1, 2], index=["a"])
     assert sd.frame.DataFrame([[1], [2]], columns=["a"], index=["x", "y"]).loc["y", "a"] == 2
@@ -247,11 +247,11 @@ def test_series_assignment():
     s.iloc[-1] = NA
     s.loc[["a", "c"]] = [100, 300]
     s.loc["c":"d"] = 7
-    assert s.to_list() == [100, 20, 7, 7]
+    assert s.tolist() == [100, 20, 7, 7]
     s[s > 50] = 0
-    assert s.to_list() == [0, 20, 7, 7]
+    assert s.tolist() == [0, 20, 7, 7]
     s.loc[["d", "a"]] = sd.frame.Series([1, 2], index=["a", "d"])  # matched by label
-    assert s.to_list() == [1, 20, 7, 2]
+    assert s.tolist() == [1, 20, 7, 2]
     for bad in (1.5, 7.0, "x"):  # by dtype only: float64 into int64 is down, whatever the value (docs/api/frame.md §5.7)
         with pytest.raises(TypeError):
             s.loc["a"] = bad
@@ -262,24 +262,24 @@ def test_series_assignment():
     t = sd.frame.Series(["x", None, "z"])
     t.iloc[1] = "yy"
     t.iloc[[0, 2]] = NA
-    assert t.to_list() == [NA, "yy", NA]
+    assert t.tolist() == [NA, "yy", NA]
 
 
 def test_copy_on_write():
     df = sd.frame.DataFrame({"a": [1, 2, 3]})
     col = df["a"]
     col.iloc[0] = 99
-    assert col.to_list() == [99, 2, 3] and df["a"].to_list() == [1, 2, 3]
+    assert col.tolist() == [99, 2, 3] and df["a"].tolist() == [1, 2, 3]
     s = sd.frame.Series([1, 2, 3, 4])
     head = s.head(2)
     head.iloc[0] = -1
-    assert s.to_list() == [1, 2, 3, 4] and head.to_list() == [-1, 2]
+    assert s.tolist() == [1, 2, 3, 4] and head.tolist() == [-1, 2]
     view = s.to_numpy()
     s.iloc[1] = 50
     assert view.tolist() == [1, 2, 3, 4]
     other = sd.frame.Series(s)
     other.iloc[0] = 0
-    assert s.to_list() == [1, 50, 3, 4]
+    assert s.tolist() == [1, 50, 3, 4]
 
 
 def test_write_in_place_when_nothing_else_holds_the_buffer():
@@ -295,15 +295,15 @@ def test_frame_assignment():
     df["c"] = "k"
     df["d"] = sd.frame.Series([9], index=["y"])
     df["a"] = ["p", "q"]  # replacing a whole column may change its dtype
-    assert df.columns.to_list() == ["a", "b", "c", "d"]
-    assert df["d"].to_list() == [NA, 9] and df["a"].dtype is sd.string and df["c"].to_list() == ["k", "k"]
+    assert df.columns.tolist() == ["a", "b", "c", "d"]
+    assert df["d"].tolist() == [NA, 9] and df["a"].dtype is sd.string and df["c"].tolist() == ["k", "k"]
     df.loc["y", "b"] = 2
     df.iloc[0, 1] = NA
     df.loc[df["b"].notna(), "c"] = "z"
-    assert df["b"].to_list() == [NA, 2.0] and df["c"].to_list() == ["k", "z"]
+    assert df["b"].tolist() == [NA, 2.0] and df["c"].tolist() == ["k", "z"]
     alias = df["b"]
     df.loc["y", "b"] = 3.0
-    assert alias.to_list() == [NA, 2.0]  # the Series taken before the write keeps its values
+    assert alias.tolist() == [NA, 2.0]  # the Series taken before the write keeps its values
     with pytest.raises(KeyError):
         df.loc["y", "new"] = 1
     with pytest.raises(TypeError):

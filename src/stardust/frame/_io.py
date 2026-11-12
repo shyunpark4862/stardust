@@ -4,7 +4,7 @@ import os
 
 from . import _core
 from ._dtypes import resolve
-from .index import Index, RangeIndex
+from ._index import Index, RangeIndex
 
 
 def _str_list(value, what):
@@ -19,14 +19,14 @@ def _str_list(value, what):
     return values
 
 
-def read_csv(path, *, sep=",", header=True, names=None, usecols=None, dtype=None, na_values=None, nrows=None,
+def read_csv(path, /, *, sep=",", header=True, names=None, usecols=None, dtype=None, na_values=None, nrows=None,
              index_col=None):
     """A DataFrame from a UTF-8 CSV file (RFC 4180 quoting).
 
     Types are inferred per column (int64, then float64, then bool, then
     string) unless dtype= gives them; only unquoted empty fields and the
     na_values texts are NA (docs/api/frame.md §10.3)."""
-    from .frame import DataFrame
+    from ._frame import DataFrame
 
     if not isinstance(sep, str) or len(sep) != 1 or sep in '"\r\n':
         raise ValueError(f"sep must be one character other than a quote or a line break, got {sep!r}")

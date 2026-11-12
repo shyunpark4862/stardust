@@ -13,7 +13,7 @@ slices and scalar results apart from gathers:
 import sys
 
 from . import _core
-from .index import Index, _IndexBase
+from ._index import Index, _IndexBase
 
 Column = _core.Column
 
@@ -33,7 +33,7 @@ def _is_listlike(key):
 
 
 def by_label(index, key):
-    from .series import Series
+    from ._series import Series
 
     if isinstance(key, Series):
         return ("mask", aligned_mask(key, index))

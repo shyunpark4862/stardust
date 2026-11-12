@@ -109,6 +109,7 @@ void bind_column(nb::module_& m) {
         nb::arg("all_dtype").none(), nb::arg("na_values"), nb::arg("nrows"));
     m.def("binary_op", &sd::frame::binary_op, nb::arg("op"), nb::arg("a"), nb::arg("b"), nb::arg("scalar_side"));
     m.def("unary_op", &sd::frame::unary_op, nb::arg("op"), nb::arg("a"));
+    m.def("isnan", &sd::frame::isnan, nb::arg("col"));
     m.def("arange", &sd::frame::arange, nb::arg("start"), nb::arg("step"), nb::arg("n"));
     // (codes, first, ngroups) of the rows of `cols` taken together.
     m.def("factorize_rows", [](const std::vector<sd::frame::Column>& cols) {

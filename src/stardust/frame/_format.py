@@ -113,7 +113,7 @@ def _trim_front(strings):  # indexes.base.trim_front
 
 def _format_labels(index, positions, truncated):
     """Row labels at `positions` (Index._format_with_header)."""
-    from .index import RangeIndex
+    from ._index import RangeIndex
 
     labels = index._labels_at(positions)
     if isinstance(index, RangeIndex) and not truncated:  # RangeIndex._format_with_header
@@ -266,7 +266,7 @@ def frame_repr(df):  # StringFormatter.to_string over DataFrameFormatter
     dimensions = f"\n\n[{n} rows x {len(names)} columns]"
     truncated = n > MAX_ROWS or len(names) > MAX_COLS  # show_dimensions="truncate"
     if n == 0 or not names:
-        text = f"Empty DataFrame\nColumns: {_pprint_seq(names)}\nIndex: {_pprint_seq(df.index.to_list())}"
+        text = f"Empty DataFrame\nColumns: {_pprint_seq(names)}\nIndex: {_pprint_seq(df.index.tolist())}"
         return text + dimensions if truncated else text
 
     col_cut = None

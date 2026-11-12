@@ -8,7 +8,7 @@ import pathlib
 import re
 
 import stardust as sd
-from stardust.frame.groupby import GroupBy
+from stardust.frame._groupby import GroupBy
 
 from .._api_doc import signature_blocks
 

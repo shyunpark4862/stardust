@@ -99,11 +99,22 @@ def _check_na_value(na_value, dtype):
         raise TypeError(f"na_value={na_value!r} does not fit an array of dtype {dtype}; pass dtype= as well")
 
 
+def check_copy(copy):
+    """copy= as in the array area's asarray: True, False or None."""
+    if copy is not None and not isinstance(copy, bool):
+        raise TypeError("copy must be True, False or None")
+    return copy
+
+
 def to_numpy(col, dtype, copy, na_value):
-    """The numpy array for one column; see Series.to_numpy."""
+    """The numpy array for one column; see Series.to_numpy. copy=None copies
+    only when it must, True always, False never (ValueError instead)."""
     import numpy as np
 
+    check_copy(copy)
     if dtype is not None and dtype != col.dtype:
+        if copy is False:
+            raise ValueError("copy=False, but a dtype conversion requires a copy")
         col = col.astype(dtype)  # dtype= is explicit (docs/api/frame.md §2.7)
     if na_value is not _NO_VALUE:
         _check_na_value(na_value, col.dtype)
@@ -111,12 +122,16 @@ def to_numpy(col, dtype, copy, na_value):
         raise ValueError(f"cannot convert a {col.dtype} column with NA to numpy; pass na_value= to fill the NA rows")
 
     if col.dtype == "string":
+        if copy is False:
+            raise ValueError("copy=False, but a string column can only be converted by copying")
         arr = np.empty(len(col), dtype=object)  # filled element-wise so numpy cannot reinterpret the strs
         arr[:] = col.to_list(None if na_value is _NO_VALUE else na_value)
         return arr
     view = col.to_numpy_view()
     if col.null_count == 0:
         return view.copy() if copy else view
+    if copy is False:
+        raise ValueError("copy=False, but filling the NA rows requires a copy")
     arr = view.copy()
     arr[~col.validity_mask()] = na_value
     return arr

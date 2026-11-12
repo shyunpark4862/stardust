@@ -5,7 +5,7 @@ from ._reduce import Reductions
 from ._column import _NO_VALUE
 from ._dtypes import resolve
 from ._na import NA
-from .index import RangeIndex, check_name, ensure_index
+from ._index import RangeIndex, check_name, ensure_index
 
 Column = _core.Column
 
@@ -13,7 +13,7 @@ Column = _core.Column
 class Series(Reductions):
     __slots__ = ("_col", "_index", "_name")
 
-    def __init__(self, data=None, *, index=None, dtype=None, name=None):
+    def __init__(self, data=None, /, *, index=None, dtype=None, name=None):
         dtype = resolve(dtype) if dtype is not None else None
         target = ensure_index(index) if index is not None else None
         if isinstance(data, Series):
@@ -79,7 +79,7 @@ class Series(Reductions):
 
     def __iter__(self):
         """The values, as in a list (docs/api/frame.md §5.8)."""
-        return iter(self.to_list())
+        return iter(self.tolist())
 
     def __contains__(self, value):
         """Whether some row holds `value`, by the key rules of docs/api/frame.md §1.6 (NaN
@@ -90,32 +90,38 @@ class Series(Reductions):
             return False  # a value of another type is in no row
         return self._col.contains_key(probe)
 
-    def to_list(self):
+    def tolist(self):
         """The values as Python scalars; NA rows are sd.frame.NA."""
         return self._col.to_list(NA)
 
-    def to_numpy(self, *, dtype=None, copy=False, na_value=_NO_VALUE):
+    def to_numpy(self, *, dtype=None, copy=None, na_value=_NO_VALUE):
         """The values as a numpy array (docs/api/frame.md §2.7).
 
-        Without NA this is a read-only view of the column (copy=True gives a
-        writable copy). With NA, na_value= fills those rows; it must fit the
-        result dtype. dtype= converts first, without loss only. A string
-        column gives an object array of str.
+        copy has the array area's asarray meaning: None copies only when it
+        must (without NA and a dtype conversion this is a read-only view of the
+        column), True always gives a writable copy, False never copies
+        (ValueError when it would have to). With NA, na_value= fills those
+        rows; it must fit the result dtype. dtype= converts first, as astype.
+        A string column gives an object array of str.
         """
         return _column.to_numpy(self._col, resolve(dtype) if dtype is not None else None, copy, na_value)
 
     def __array__(self, dtype=None, copy=None):
-        arr = self.to_numpy(copy=bool(copy))
-        return arr if dtype is None else arr.astype(dtype, copy=False)
+        arr = self.to_numpy(copy=copy)
+        if dtype is None:
+            return arr
+        import numpy as np
+
+        return np.asarray(arr, dtype=dtype, copy=False if copy is False else None)
 
     def _slice(self, start, stop):
         return Series._new(self._col.slice(start, stop - start), self._index._slice(start, stop), self._name)
 
-    def head(self, n=5):
+    def head(self, n=5, /):
         """The first n rows; with n < 0, all rows but the last -n."""
         return self._slice(*_column.head_bounds(len(self), n))
 
-    def tail(self, n=5):
+    def tail(self, n=5, /):
         """The last n rows; with n < 0, all rows but the first -n."""
         return self._slice(*_column.tail_bounds(len(self), n))
 
@@ -161,7 +167,7 @@ class Series(Reductions):
 
     # --- NA and dtypes ---
 
-    def astype(self, dtype):
+    def astype(self, dtype, /):
         """The values as `dtype` (docs/api/frame.md §3.5): rounds int -> float, truncates
         float -> int, formats to string like str(), parses strings strictly."""
         return Series._new(self._col.astype(resolve(dtype)), self._index, self._name)
@@ -173,7 +179,12 @@ class Series(Reductions):
     def notna(self):
         return Series._new(self._col.notna(), self._index, self._name)
 
-    def fillna(self, value):
+    def isnan(self):
+        """True where the value is NaN (docs/api/frame.md §3.6). NaN is a float value, so
+        other dtypes are all False; NA rows are NA, as in a comparison."""
+        return Series._new(_core.isnan(self._col), self._index, self._name)
+
+    def fillna(self, value, /):
         """NA rows set to `value`, which must convert to the dtype without loss (docs/api/frame.md §3.6)."""
         return Series._new(fill_column(self._col, value), self._index, self._name)
 
@@ -183,10 +194,11 @@ class Series(Reductions):
 
     # --- duplicates and unique values (docs/api/frame.md §4) ---
 
-    def unique(self):
-        """The distinct values in order of first appearance, NA included (docs/api/frame.md §4.2)."""
-        _, first, _ = _unique.codes([self._col])
-        return Series._new(self._col.take(first), RangeIndex(len(first)), self._name)
+    def unique_values(self):
+        """The distinct values in sorted order, NA last (docs/api/frame.md §4.2): as the
+        array area's unique_values, with NaN once and 0.0 equal to -0.0 (§1.6)."""
+        values = _unique.unique_values(self._col)
+        return Series._new(values, RangeIndex(len(values)), self._name)
 
     def nunique(self, *, dropna=True):
         """How many distinct values. NaN counts as a value; dropna drops NA only (docs/api/frame.md §4.2)."""
@@ -202,16 +214,16 @@ class Series(Reductions):
         keep_rows = _core.unary_op("invert", _unique.duplicated([self._col], keep))
         return self._take(keep_rows.nonzero(), ignore_index)
 
-    def value_counts(self, *, normalize=False, sort=True, ascending=False, dropna=True):
+    def value_counts(self, *, normalize=False, sort=True, descending=True, dropna=True):
         """A DataFrame of each value and how often it appears (docs/api/frame.md §4.3)."""
-        from .frame import DataFrame
+        from ._frame import DataFrame
 
         name = "value" if self._name is None else self._name
         count_name = "proportion" if normalize else "count"
         if name == count_name:
             raise ValueError(f"the value column cannot be named {count_name!r}")
         col = self._col.take(self._col.notna().nonzero()) if dropna and self._col.null_count else self._col
-        (keys,), counts = _unique.value_counts([col], normalize, sort, ascending)
+        (keys,), counts = _unique.value_counts([col], normalize, sort, descending)
         return DataFrame._new({name: keys, count_name: counts}, RangeIndex(len(counts)))
 
     def _reduce(self, op, skipna, correction):  # docs/api/frame.md §6.2: a Python scalar or NA
@@ -219,14 +231,15 @@ class Series(Reductions):
 
     # --- sorting (docs/api/frame.md §8) ---
 
-    def sort_values(self, *, ascending=True, na_position="last", ignore_index=False):
-        """The rows ordered by value; equal values keep their order. NaN is the
-        largest value; NA goes where na_position says."""
-        return self._take(_sort.order([self._col], ascending, na_position), ignore_index)
+    def sort_values(self, *, descending=False, stable=True, na_position="last", ignore_index=False):
+        """The rows ordered by value; equal values keep their order (always: stable=False
+        is accepted and changes nothing). NaN is the largest value; NA goes where
+        na_position says."""
+        return self._take(_sort.order([self._col], descending, na_position, stable), ignore_index)
 
-    def sort_index(self, *, ascending=True, ignore_index=False):
+    def sort_index(self, *, descending=False, stable=True, ignore_index=False):
         """The rows ordered by label."""
-        return self._take(_sort.order([self._index._column()], ascending), ignore_index)
+        return self._take(_sort.order([self._index._column()], descending, "last", stable), ignore_index)
 
     # --- selection and assignment (docs/api/frame.md §5) ---
 
@@ -264,7 +277,7 @@ class Series(Reductions):
     def __setitem__(self, key, value):
         self._assign(_select.by_label(self._index, key), value)
 
-    def reindex(self, labels):
+    def reindex(self, labels, /):
         """The values at `labels`, in that order; absent labels are NA (docs/api/frame.md §5.2)."""
         target = ensure_index(labels)
         return Series._new(_select.reindexed(self._col, self._index, target), target, self._name)
@@ -322,7 +335,7 @@ def _make_binary(op, reflected):
     return method
 
 
-for _name, _op in {**_ops.ARITH, **_ops.LOGIC}.items():
+for _name, _op in {**_ops.ARITH, **_ops.BITWISE}.items():
     setattr(Series, f"__{_name}__", _make_binary(_op, False))
     setattr(Series, f"__r{_name}__", _make_binary(_op, True))
 for _name in _ops.COMPARE:

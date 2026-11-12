@@ -32,11 +32,11 @@ def bits(v):
 def canon(x):
     """Something == can compare bit for bit."""
     if isinstance(x, (sd.frame.Series,)):
-        return (x.dtype, [bits(v) for v in x.to_list()], canon(x.index))
+        return (x.dtype, [bits(v) for v in x.tolist()], canon(x.index))
     if isinstance(x, sd.frame.DataFrame):
         return (list(x.columns), [canon(x[c]) for c in x.columns], canon(x.index))
     if isinstance(x, (sd.frame.Index, sd.frame.RangeIndex)):
-        return [bits(v) for v in x.to_list()]
+        return [bits(v) for v in x.tolist()]
     if isinstance(x, float):
         return bits(x)
     return x
@@ -115,13 +115,13 @@ def test_elementwise_and_selection(name):
 def test_chunked_kernels_match_numpy():
     # The chunk boundaries must not lose or repeat rows.
     sd.set_num_threads(DEFAULT)
-    m = D.MASK.to_list()
-    assert sd.frame.Series(ints)[D.MASK].to_list() == ints[np.array(m)].tolist()
-    assert (sd.frame.Series(ints) + 1).to_list() == (ints + 1).tolist()
-    expect_na = [v is sd.frame.NA for v in D.F.to_list()]
-    assert D.F.isna().to_list() == expect_na
-    kept = [v for v in D.S.to_list() if v is not sd.frame.NA]
-    assert D.S.dropna().to_list() == kept
+    m = D.MASK.tolist()
+    assert sd.frame.Series(ints)[D.MASK].tolist() == ints[np.array(m)].tolist()
+    assert (sd.frame.Series(ints) + 1).tolist() == (ints + 1).tolist()
+    expect_na = [v is sd.frame.NA for v in D.F.tolist()]
+    assert D.F.isna().tolist() == expect_na
+    kept = [v for v in D.S.tolist() if v is not sd.frame.NA]
+    assert D.S.dropna().tolist() == kept
 
 
 def test_snapshot_under_concurrent_writes():
@@ -141,7 +141,7 @@ def test_snapshot_under_concurrent_writes():
     t.start()
     seen = 0
     while not done.is_set() or seen == 0:
-        r = np.asarray((s + 0).to_list())
+        r = np.asarray((s + 0).tolist())
         k = int(r[:writes].sum())
         assert (r[:k] == 1).all() and (r[k:] == 0).all()
         seen += 1
@@ -160,7 +160,7 @@ def test_errors_name_the_first_bad_row():
     vals = np.arange(N, dtype=np.float64)
     vals[[150_001, 70_000, 199_999]] = [np.inf, 0.5e300, np.nan]
     f = sd.frame.Series(vals)  # float -> int64 saturates now, with no error (docs/api/frame.md §3.5)
-    got = same_for_all_thread_counts(lambda: f.astype("int64").iloc[[70_000, 150_001, 199_999]].to_list())
+    got = same_for_all_thread_counts(lambda: f.astype("int64").iloc[[70_000, 150_001, 199_999]].tolist())
     assert got == [2**63 - 1, 2**63 - 1, 0]
     words2 = [str(i) for i in range(N)]
     words2[180_000], words2[90_000] = "x1", "x2"
@@ -194,9 +194,9 @@ def test_float_sum_is_numpy_pairwise(n):
 
 
 HASHING = {
-    "unique int": lambda: D.I.unique(),
-    "unique float": lambda: D.F.unique(),
-    "unique string": lambda: D.S.unique(),
+    "unique int": lambda: D.I.unique_values(),
+    "unique float": lambda: D.F.unique_values(),
+    "unique string": lambda: D.S.unique_values(),
     "nunique high": lambda: sd.frame.Series(rng_hi).nunique(),
     "value_counts": lambda: D.S.value_counts(),
     "duplicated": lambda: D.F.duplicated(),
@@ -221,16 +221,16 @@ def test_hashing(name):
 def test_factorize_order_is_first_appearance():
     sd.set_num_threads(DEFAULT)
     for s in (D.I, D.S, sd.frame.Series(rng_hi)):
-        expect = list(dict.fromkeys(s.to_list()))
-        assert s.unique().to_list() == expect
+        expect = list(dict.fromkeys(s.tolist()))
+        assert s.drop_duplicates().tolist() == expect
 
 
 SORTS = {
     "int": lambda: D.I.sort_values(),
-    "float desc na first": lambda: D.F.sort_values(ascending=False, na_position="first"),
+    "float desc na first": lambda: D.F.sort_values(descending=True, na_position="first"),
     "string": lambda: D.S.sort_values(),
     "bool": lambda: D.B.sort_values(),
-    "two keys": lambda: D.DF.sort_values(["s", "f"], ascending=[False, True]),
+    "two keys": lambda: D.DF.sort_values(["s", "f"], descending=[True, False]),
     "sort_index": lambda: D.F.sort_values().sort_index(),
 }
 
@@ -242,10 +242,10 @@ def test_sorts(name):
 
 def test_sort_matches_python_sorted():
     sd.set_num_threads(DEFAULT)
-    vals = D.S.to_list()
+    vals = D.S.tolist()
     order = sorted((i for i, v in enumerate(vals) if v is not sd.frame.NA), key=lambda i: vals[i])
     order += [i for i, v in enumerate(vals) if v is sd.frame.NA]
-    assert D.S.sort_values().index.to_list() == order
+    assert D.S.sort_values().index.tolist() == order
 
 
 # --- read_csv in chunks (docs/design/frame.md §10.6): files of several 512 KB chunks ---
@@ -285,7 +285,7 @@ def test_csv_chunks_match_the_oracle(tmp_path, kinds):
     for j, k in enumerate(names):
         dtype, values = oracle_column(cols[j])
         assert str(df[k].dtype) == dtype
-        assert all(same(a, b) for a, b in zip(df[k].to_list(), values))
+        assert all(same(a, b) for a, b in zip(df[k].tolist(), values))
 
 
 def test_csv_long_quoted_field_spans_chunks(tmp_path):
@@ -295,7 +295,7 @@ def test_csv_long_quoted_field_spans_chunks(tmp_path):
     df = same_for_all_thread_counts(lambda: sd.frame.read_csv(path))
     sd.set_num_threads(DEFAULT)
     df = sd.frame.read_csv(path)
-    assert df["a"].to_list() == [1, 2] and df["b"].to_list() == [long, "x"]
+    assert df["a"].tolist() == [1, 2] and df["b"].tolist() == [long, "x"]
 
 
 def test_csv_errors_are_the_first_in_file_order(tmp_path):
