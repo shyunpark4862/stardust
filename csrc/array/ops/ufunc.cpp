@@ -29,8 +29,9 @@ DType operand_dtype(nb::handle o, const char* what) {
 // The function: "not supported for complex128 and complex128". An operator
 // (see ufunc.hpp): "unsupported operand dtypes for <: complex128 and complex128".
 [[noreturn]] void no_loop(std::span<const DType> dtypes, const char* symbol) {
-    std::string names;
-    for (size_t i = 0; i < dtypes.size(); ++i) names += (i ? " and " : "") + std::string(dtype_name(dtypes[i]));
+    std::string names;  // "a", "a and b", "a, b and c"
+    for (size_t i = 0; i < dtypes.size(); ++i)
+        names += (i == 0 ? "" : i + 1 == dtypes.size() ? " and " : ", ") + std::string(dtype_name(dtypes[i]));
     if (symbol == nullptr) throw nb::type_error(("not supported for " + names).c_str());
     throw nb::type_error((std::string("unsupported operand ") + (dtypes.size() > 1 ? "dtypes" : "dtype") + " for " +
                           symbol + ": " + names)
@@ -84,29 +85,33 @@ NDArray new_result(std::span<const nb::handle> objs, std::span<const std::int64_
     return new_array(dtype, shape);
 }
 
-// Runs `loop` over ins + out. Inputs whose dtype is not the loop's
-// (`in_types`) are converted through small buffers on the way in.
-void run_loop(std::span<const NDArray> ins, std::span<const DType> in_types, const NDArray& out,
-              std::span<const std::int64_t> shape, Loop loop) {
+// Runs `loop` over ins + outs. Inputs whose dtype is not the loop's
+// (`in_types`) are converted through small buffers on the way in. `weight`
+// is the loop's work per element in units of an add (the iterator's
+// parallel threshold, docs/design/special.md §3.3); 1 for the array's own.
+void run_loop(std::span<const NDArray> ins, std::span<const DType> in_types, std::span<const NDArray> outs,
+              std::span<const std::int64_t> shape, Loop loop, std::int64_t weight) {
     std::array<IterOperand, kMaxOperands> ops;
     BufferedLoop buffered;
     buffered.inner = loop;
     buffered.nin = static_cast<int>(ins.size());
-    buffered.nop = buffered.nin + 1;
+    buffered.nop = buffered.nin + static_cast<int>(outs.size());
     for (size_t k = 0; k < ins.size(); ++k) {
         ops[k] = operand(ins[k]);
         if (ins[k].dtype != in_types[k])
             buffered.add_cast(static_cast<int>(k), cast_kernel(ins[k].dtype, in_types[k]), itemsize(in_types[k]));
     }
-    ops[ins.size()] = operand(out);
-    const NdIter it(shape, std::span(ops.data(), ins.size() + 1));
-    if (buffered.needed()) it.run(&buffered_loop, &buffered);
-    else it.run(loop);
+    for (size_t j = 0; j < outs.size(); ++j) ops[ins.size() + j] = operand(outs[j]);
+    const NdIter it(shape, std::span(ops.data(), ins.size() + outs.size()));
+    if (buffered.needed()) it.run(&buffered_loop, &buffered, Split::Elementwise, weight);
+    else it.run(loop, nullptr, Split::Elementwise, weight);
 }
 
 // Steps 3 and 4 (see ufunc.hpp): convert, then run into out= or a new array.
+// With nout > 1 the loop writes nout results of dtype `result`, returned as
+// a tuple; there is no out= then (the caller passes None).
 nb::object launch(std::span<const nb::handle> objs, std::span<const DType> in_types, DType result, Loop loop,
-                  nb::handle out_obj) {
+                  nb::handle out_obj, int nout = 1, std::int64_t weight = 1) {
     const size_t nin = objs.size();
     std::array<NDArray, kMaxInputs> ins;
     std::array<std::span<const std::int64_t>, kMaxInputs> shapes;  // fixed arrays: no allocation per call
@@ -133,20 +138,31 @@ nb::object launch(std::span<const nb::handle> objs, std::span<const DType> in_ty
             // place is written.
             for (size_t k = 0; k < nin; ++k)
                 if (may_share_memory(ins[k], out) && !same_view(ins[k], out)) ins[k] = cast_copy(ins[k], ins[k].dtype);
-            run_loop(inputs, in_types, out, out.shape_span(), loop);
+            run_loop(inputs, in_types, std::span(&out, 1), out.shape_span(), loop, weight);
         } else {
             // out is a wider dtype: compute, then convert into it.
             NDArray tmp = new_result(objs, shape, result);
-            run_loop(inputs, in_types, tmp, shape, loop);
+            run_loop(inputs, in_types, std::span(&tmp, 1), shape, loop, weight);
             assign(out, tmp);
         }
         return nb::borrow(out_obj);
     }
 
-    NDArray res = new_result(objs, shape, result);
-    run_loop(inputs, in_types, res, shape, loop);
-    if (scalars_only) return load_python(result, res.data);
-    return wrap(std::move(res));
+    if (nout == 1) {
+        NDArray res = new_result(objs, shape, result);
+        run_loop(inputs, in_types, std::span(&res, 1), shape, loop, weight);
+        if (scalars_only) return load_python(result, res.data);
+        return wrap(std::move(res));
+    }
+    std::array<NDArray, kMaxOperands - 1> res;
+    for (int j = 0; j < nout; ++j) res[j] = new_result(objs, shape, result);
+    run_loop(inputs, in_types, std::span(res.data(), static_cast<size_t>(nout)), shape, loop, weight);
+    nb::list results;
+    for (int j = 0; j < nout; ++j) {
+        if (scalars_only) results.append(load_python(result, res[j].data));
+        else results.append(wrap(std::move(res[j])));
+    }
+    return nb::tuple(results);
 }
 
 // ------------------------------------------------------------------ where, clip
@@ -223,6 +239,21 @@ nb::object run_binary(const LoopTable& table, bool no_bool_inputs, nb::handle a,
     check_int_scalars(objs, promoted);
     const DType types[] = {loop, loop};
     return launch(objs, types, table[static_cast<int>(loop)].out, table[static_cast<int>(loop)].loop, out);
+}
+
+nb::object run_nary(const LoopTable& table, int nout, std::span<const char* const> names,
+                    std::span<const nb::handle> objs, nb::handle out, std::int64_t weight) {
+    const size_t nin = objs.size();
+    std::array<DType, kMaxInputs> dtypes;
+    for (size_t k = 0; k < nin; ++k) dtypes[k] = operand_dtype(objs[k], names[k]);
+    DType promoted = dtypes[0];
+    for (size_t k = 1; k < nin; ++k) promoted = promote(promoted, dtypes[k]);
+    const DType loop = select(table, promoted, std::span(dtypes.data(), nin), nullptr);
+    check_int_scalars(objs, promoted);
+    std::array<DType, kMaxInputs> types;
+    types.fill(loop);
+    const LoopEntry& e = table[static_cast<int>(loop)];
+    return launch(objs, std::span(types.data(), nin), e.out, e.loop, out, nout, weight);
 }
 
 namespace {

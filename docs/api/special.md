@@ -1,6 +1,6 @@
 # 특수함수 API (sd.special)
 
-> 상태: **확정** (2026-11-12), 구현 전. 설계와 결정 근거는 [docs/design/special.md](../design/special.md)에 있다. 보장 영역과 특수값 표는 각 마일스톤에서 측정한 뒤 채운다.
+> 상태: **확정** (2026-11-12). S0(기반)까지 구현했고 공개 함수는 아직 없다. 설계와 결정 근거는 [docs/design/special.md](../design/special.md)에 있다. 보장 영역과 특수값 표는 각 마일스톤에서 측정한 뒤 채운다.
 
 `import stardust as sd`의 하위 모듈 `sd.special`이 특수함수 API다 (scipy.special의 부분집합).
 

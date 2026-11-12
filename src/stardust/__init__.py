@@ -165,3 +165,4 @@ __all__ = [
 
 from . import linalg  # noqa: E402  (sd.linalg; it needs the array objects above)
 from . import frame  # noqa: E402  (sd.frame)
+from . import special  # noqa: E402  (sd.special)

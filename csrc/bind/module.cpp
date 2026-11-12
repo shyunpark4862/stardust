@@ -4,6 +4,7 @@
 #include "bind/errors.hpp"
 #include "bind/frame_bind.hpp"
 #include "bind/linalg_bind.hpp"
+#include "bind/special_bind.hpp"
 #include "bind/pyutil.hpp"
 #include "array/ops/copy.hpp"
 #include "array/ops/creation.hpp"
@@ -103,4 +104,5 @@ NB_MODULE(_core, m) {
     m.def("get_num_threads", &sd::parallel::num_threads);
     sd::bind_linalg(m);  // after the array: it looks up the array objects bound above
     sd::bind_frame(m);
+    sd::bind_special(m);  // after the array, like linalg
 }

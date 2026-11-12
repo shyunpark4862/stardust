@@ -15,6 +15,7 @@
 
 #include <array>
 #include <type_traits>
+#include <utility>
 
 namespace sd {
 
@@ -133,6 +134,70 @@ void clip_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, vo
             ops::Minimum::f(ops::Maximum::f(load_as<T>(x), load_as<T>(lo)), load_as<T>(hi));
 }
 
+// ---- n inputs, m outputs (docs/design/special.md §3.1) ---------------------
+// For operations with more operands than binary has, or more than one
+// result: Op says how many with `nin` and `nout`, and f takes nin values.
+// With nout == 1 it returns the result; otherwise a std::array of nout
+// results (airy: Ai, Ai', Bi, Bi'). Used by sd.special.
+//
+// The functions this serves cost tens to hundreds of nanoseconds per
+// element, so the loop keeps to two layouts: everything contiguous (indexed
+// pointers, as in unary_loop) and the general strided loop. A broadcast
+// scalar parameter (betainc(a, b, x) with scalar a, b) takes the strided
+// loop; its stride-0 loads cost nothing next to the function.
+
+namespace detail {
+
+template <typename Op, typename T, typename Seq> struct NaryResult;
+template <typename Op, typename T, std::size_t... I>
+struct NaryResult<Op, T, std::index_sequence<I...>> {
+    using type = decltype(Op::f(((void)I, std::declval<T>())...));
+};
+
+template <typename R> struct NaryOut { using type = R; static constexpr int n = 1; };
+template <typename R, std::size_t N> struct NaryOut<std::array<R, N>> { using type = R; static constexpr int n = N; };
+
+}  // namespace detail
+
+template <typename Op, typename T>
+using nary_result_t = typename detail::NaryResult<Op, T, std::make_index_sequence<Op::nin>>::type;
+
+// args: the nin inputs, then the nout outputs
+template <typename Op, typename T>
+void nary_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, void*) {
+    constexpr int nin = Op::nin;
+    using Ret = nary_result_t<Op, T>;
+    using R = typename detail::NaryOut<Ret>::type;
+    constexpr int nout = detail::NaryOut<Ret>::n;
+    static_assert(nout == Op::nout, "Op::f returns nout results");
+    static_assert(nin + nout <= kMaxOperands);
+    bool contiguous = true;
+    for (int k = 0; k < nin; ++k) contiguous = contiguous && s[k] == sizeof(T);
+    for (int j = 0; j < nout; ++j) contiguous = contiguous && s[nin + j] == sizeof(R);
+    auto store = [&](auto&& out_at, const Ret& r) {
+        if constexpr (nout == 1) out_at(0) = r;
+        else for (int j = 0; j < nout; ++j) out_at(j) = r[static_cast<std::size_t>(j)];
+    };
+    if (contiguous) {
+        [&]<std::size_t... I>(std::index_sequence<I...>) {
+            const T* const x[] = {reinterpret_cast<const T*>(args[I])...};
+            R* o[nout];
+            for (int j = 0; j < nout; ++j) o[j] = reinterpret_cast<R*>(args[nin + j]);
+            for (std::int64_t i = 0; i < n; ++i) store([&](int j) -> R& { return o[j][i]; }, Op::f(x[I][i]...));
+        }(std::make_index_sequence<nin>{});
+        return;
+    }
+    [&]<std::size_t... I>(std::index_sequence<I...>) {
+        std::array<std::byte*, nin + nout> p;
+        for (int k = 0; k < nin + nout; ++k) p[static_cast<std::size_t>(k)] = args[k];
+        for (std::int64_t i = 0; i < n; ++i) {
+            store([&](int j) -> R& { return *reinterpret_cast<R*>(p[static_cast<std::size_t>(nin + j)]); },
+                  Op::f(load_as<T>(p[I])...));
+            for (int k = 0; k < nin + nout; ++k) p[static_cast<std::size_t>(k)] += s[k];
+        }
+    }(std::make_index_sequence<nin>{});
+}
+
 // One table row: the loop for each computation dtype (null where Op has
 // none), and the dtype that loop writes.
 struct LoopEntry {
@@ -154,6 +219,16 @@ constexpr LoopEntry entry() {
     }
 }
 
+template <typename Op, typename T>
+constexpr LoopEntry nary_entry() {
+    if constexpr (!Op::template ok<T>) {
+        return {};
+    } else {
+        using R = typename NaryOut<nary_result_t<Op, T>>::type;
+        return {&nary_loop<Op, T>, dtype_of<R>};  // every output has this dtype
+    }
+}
+
 template <typename Op, int Arity>
 constexpr LoopTable make_table() {
     return {entry<Op, bool, Arity>(), entry<Op, std::int64_t, Arity>(), entry<Op, double, Arity>(),
@@ -164,5 +239,8 @@ constexpr LoopTable make_table() {
 
 template <typename Op> inline constexpr LoopTable unary_table = detail::make_table<Op, 1>();
 template <typename Op> inline constexpr LoopTable binary_table = detail::make_table<Op, 2>();
+template <typename Op>
+inline constexpr LoopTable nary_table = {detail::nary_entry<Op, bool>(), detail::nary_entry<Op, std::int64_t>(),
+                                         detail::nary_entry<Op, double>(), detail::nary_entry<Op, complex128>()};
 
 }  // namespace sd

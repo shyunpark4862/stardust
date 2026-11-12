@@ -26,7 +26,10 @@
 
 namespace sd {
 
-inline constexpr int kMaxOperands = 4;  // e.g. where(cond, x1, x2) -> out
+// The most operands one iterator walks: inputs and outputs together.
+// hyp2f1(a, b, c, z) -> out and airy(x) -> (ai, aip, bi, bip) need 5
+// (docs/design/special.md §3.1).
+inline constexpr int kMaxOperands = 5;
 
 // The shortest piece of the innermost axis a parallel run hands out
 // (docs/design/array.md §10.4).

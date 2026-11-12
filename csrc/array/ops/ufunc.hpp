@@ -22,6 +22,8 @@
 
 #include <nanobind/nanobind.h>
 
+#include <span>
+
 namespace sd {
 
 namespace nb = nanobind;
@@ -37,6 +39,20 @@ bool is_operand(nb::handle o);
 nb::object run_unary(const LoopTable& table, nb::handle x, nb::handle out, const char* symbol);
 nb::object run_binary(const LoopTable& table, bool no_bool_inputs, nb::handle a, nb::handle b, nb::handle out,
                       const char* symbol);
+
+// Any number of inputs (1 to kMaxOperands - 1) and nout outputs, all of one
+// dtype (kernels/elementwise.hpp, nary_loop). `names` names the inputs in
+// messages ('a', 'b', 'x'). With nout > 1 the result is a tuple and `out`
+// must be None. `weight`: work per element in adds (docs/design/special.md
+// §3.3). The function name is the binding's to add (bind/errors.hpp).
+nb::object run_nary(const LoopTable& table, int nout, std::span<const char* const> names,
+                    std::span<const nb::handle> objs, nb::handle out, std::int64_t weight);
+
+template <typename Op>
+nb::object nary(std::span<const nb::handle> objs, nb::handle out, std::int64_t weight) {
+    static_assert(Op::args.size() == static_cast<std::size_t>(Op::nin));
+    return run_nary(nary_table<Op>, Op::nout, Op::args, objs, out, weight);
+}
 
 template <typename Op>
 nb::object unary(nb::handle x, nb::handle out, const char* symbol = nullptr) {

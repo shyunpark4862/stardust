@@ -64,6 +64,7 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/bind/array_bind.cpp
   csrc/bind/linalg_bind.cpp
   csrc/bind/frame_bind.cpp
+  csrc/bind/special_bind.cpp
   csrc/bind/module.cpp)
 
 target_include_directories(_core PRIVATE csrc)

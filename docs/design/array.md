@@ -242,7 +242,7 @@ using Loop = void (*)(std::byte* const* args, std::int64_t n, const std::int64_t
 - `array/kernels/elementwise.hpp`가 이것을 루프로 바꾸고, 연산마다 `table[dtype]`(루프와 출력 dtype)을 템플릿 인스턴스화로 채운다.
 - 캐스트도 같은 형태의 `cast[from][to]` 표다 (16개, `array/kernels/cast.hpp`).
 - **Python 스칼라 피연산자**는 루프 dtype으로 미리 변환한 원소 1개짜리 배열이 되고, 이터레이터가 stride 0으로 브로드캐스트한다.
-- 피연산자는 최대 4개다 (`kMaxOperands`, `where(cond, x1, x2) → out`).
+- 피연산자는 최대 5개다 (`kMaxOperands`). 배열 안에서는 `where(cond, x1, x2) → out`의 4개가 가장 많고, 5개는 sd.special의 `hyp2f1(a, b, c, z) → out`과 `airy(x) → 출력 넷` 때문이다 (S0에서 4 → 5, docs/design/special.md §3.1).
 
 ### 4.2 nd 이터레이터 (`array/iter.cpp`의 `NdIter`)
 numpy `nditer`의 축소판이다. N차원 문제를 되도록 적고, 길고, 메모리를 따라가는 1차원 구간으로 바꾼다.
