@@ -54,13 +54,19 @@ def test_none_and_na_are_na_but_nan_is_a_value():
         (["a", True], TypeError),
         ([2**63], OverflowError),
         ([-(2**63) - 1], OverflowError),
-        ([2**53 + 1, 0.5], ValueError),
         ([object()], TypeError),
     ],
 )
 def test_inference_errors(values, error):
     with pytest.raises(error):
         sd.frame.Series(values)
+
+
+def test_inference_of_ints_with_floats_rounds_as_the_array_area():
+    # int with float is float64, rounded; an int outside int64 becomes a float (docs/api/frame.md §2.2)
+    assert sd.frame.Series([2**53 + 1, 0.5]).to_list() == [float(2**53 + 1), 0.5]
+    assert sd.frame.Series([1.5, 2**70]).to_list() == [1.5, float(2**70)]
+    assert sd.frame.Series([2**70], dtype="float64").to_list() == [float(2**70)]
 
 
 def test_big_exact_int_mixed_with_float_is_fine():
@@ -123,23 +129,28 @@ def test_lossless_dtype(values, dtype, expected):
 
 
 @pytest.mark.parametrize(
-    ("values", "dtype", "error"),
+    ("values", "dtype", "expected"),
     [
-        ([1.5], "int64", ValueError),
-        ([math.nan], "int64", ValueError),
-        ([1e19], "int64", ValueError),
-        ([2**53 + 1], "float64", ValueError),
-        ([True], "int64", TypeError),
-        ([1], "bool", TypeError),
-        ([1], "string", TypeError),
-        (["1"], "int64", TypeError),
-        ([1], "int32", TypeError),
-        ([1], "object", TypeError),
+        ([1.5, -2.7], "int64", [1, -2]),
+        ([math.nan], "int64", [0]),
+        ([1e19, -1e19], "int64", [2**63 - 1, -(2**63)]),
+        ([2**53 + 1], "float64", [float(2**53 + 1)]),
+        ([True], "int64", [1]),
+        ([1, 0], "bool", [True, False]),
+        ([1], "string", ["1"]),
+        (["1"], "int64", [1]),
     ],
 )
-def test_lossy_dtype_errors(values, dtype, error):
-    with pytest.raises(error):
-        sd.frame.Series(values, dtype=dtype)
+def test_dtype_is_an_explicit_conversion(values, dtype, expected):
+    # dtype= converts as astype does, as in the array area (docs/api/frame.md §2.3)
+    s = sd.frame.Series(values, dtype=dtype)
+    assert str(s.dtype) == dtype and s.to_list() == expected
+
+
+@pytest.mark.parametrize("dtype", ["int32", "object"])
+def test_unknown_dtype_errors(dtype):
+    with pytest.raises(TypeError):
+        sd.frame.Series([1], dtype=dtype)
 
 
 # --- numpy in -----------------------------------------------------------------
@@ -240,13 +251,16 @@ def test_to_numpy_fill(values, kwargs, expected, np_dtype):
         ([True, None], {"na_value": 0}, TypeError),
         (["a", None], {"na_value": 0}, TypeError),
         ([1], {"na_value": 0.5}, TypeError),  # checked even without NA: errors do not depend on the data
-        ([2**53 + 1], {"dtype": "float64"}, ValueError),
-        ([True], {"dtype": "int64"}, TypeError),
     ],
 )
 def test_to_numpy_errors(values, kwargs, error):
     with pytest.raises(error):
         sd.frame.Series(values).to_numpy(**kwargs)
+
+
+def test_to_numpy_dtype_is_an_explicit_conversion():
+    assert sd.frame.Series([2**53 + 1]).to_numpy(dtype="float64").tolist() == [float(2**53 + 1)]
+    assert sd.frame.Series([True]).to_numpy(dtype="int64").tolist() == [1]
 
 
 def test_numpy_protocol():
@@ -266,8 +280,8 @@ def test_frame_to_numpy():
         sd.frame.DataFrame({"a": [1], "b": [True]}).to_numpy()
     with pytest.raises(ValueError):
         df.to_numpy()
-    with pytest.raises(TypeError):  # dtype= converts without loss only; bool -> int64 is astype's job
-        sd.frame.DataFrame({"a": [True], "b": [1]}).to_numpy(dtype="int64")
+    # dtype= converts as astype does
+    assert sd.frame.DataFrame({"a": [True], "b": [1]}).to_numpy(dtype="int64").tolist() == [[1, 1]]
 
 
 # --- Series -------------------------------------------------------------------
@@ -400,8 +414,7 @@ def test_frame_from_2d_numpy():
 def test_frame_dtype_applies_to_every_column():
     df = sd.frame.DataFrame({"a": [1, 2], "b": [3.0, 4.0]}, dtype="float64")
     assert [str(d) for d in df.dtypes.values()] == ["float64", "float64"]
-    with pytest.raises(ValueError):
-        sd.frame.DataFrame({"b": [3.5]}, dtype="int64")
+    assert sd.frame.DataFrame({"b": [3.5]}, dtype="int64")["b"].to_list() == [3]  # explicit, as astype
 
 
 def test_frame_empty():

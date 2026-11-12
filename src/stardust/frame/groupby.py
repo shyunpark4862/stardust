@@ -91,13 +91,13 @@ class GroupBy(Reductions):
             cols[name] = col.take(state.order)
         return DataFrame._new(cols, RangeIndex(len(state.order)))
 
-    def _apply(self, op, name, skipna=True, ddof=1):
+    def _apply(self, op, name, skipna=True, correction=0):
         if op not in AGG_FUNCS:
             raise ValueError(f"unknown aggregation {op!r}; use one of {', '.join(AGG_FUNCS)}")
-        return self._state().groups.reduce(op, self._df._cols[name], skipna, ddof)
+        return self._state().groups.reduce(op, self._df._cols[name], skipna, correction)
 
-    def _reduce(self, op, skipna, ddof):  # the Reductions methods (docs/api/frame.md §7.3)
-        return self._result({k: self._apply(op, k, skipna, ddof) for k in self._values})
+    def _reduce(self, op, skipna, correction):  # the Reductions methods (docs/api/frame.md §7.3)
+        return self._result({k: self._apply(op, k, skipna, correction) for k in self._values})
 
     def first(self, *, skipna=True):
         """Each group's first value that is not NA (skipna=False: its first row's value)."""

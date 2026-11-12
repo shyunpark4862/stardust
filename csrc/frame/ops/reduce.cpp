@@ -238,15 +238,14 @@ DType reduction_dtype(std::string_view op, DType dt) {
 
 Column na_scalar(DType dt) { return na_value(dt); }
 
-Column reduce(std::string_view op, const Column& c, bool skipna, std::int64_t ddof) {
+Column reduce(std::string_view op, const Column& c, bool skipna, double correction) {
     const std::int64_t count = c.length - c.null_count;
     if (op == "count") return scalar<std::int64_t>(DType::Int64, count);
     if (op == "first" || op == "last") throw nb::value_error("first/last are groupby reductions");
 
     const DType result = reduction_dtype(op, c.dtype);  // the dtype of the answer, NA included
-    const bool is_sum = op == "sum", is_mean = op == "mean", is_var = op == "var" || op == "std";
+    const bool is_sum = op == "sum", is_mean = op == "mean";
     const bool is_min = op == "min", is_max = op == "max";
-    if (is_var && ddof < 0) throw nb::value_error("ddof must be >= 0");
     if (!skipna && c.null_count > 0) return na_value(result);
 
     if (is_sum) {
@@ -277,7 +276,7 @@ Column reduce(std::string_view op, const Column& c, bool skipna, std::int64_t dd
     const double mean = mean_of(c, count);
     if (is_mean) return scalar(DType::Float64, mean);
 
-    if (count - ddof <= 0) return na_value(DType::Float64);  // too few values (docs/api/frame.md §6.4)
+    if (static_cast<double>(count) - correction <= 0) return na_value(DType::Float64);  // too few values (docs/api/frame.md §6.4)
     // NA rows add 0.0. The validity is a byte per row (docs/design/frame.md §4.4), so this is a
     // select, not a branch; the sum's order and bits are as before.
     const std::vector<std::uint8_t> m = valid_bytes(c);
@@ -285,7 +284,7 @@ Column reduce(std::string_view op, const Column& c, bool skipna, std::int64_t dd
         const double d = as_double(c, i) - mean;
         return m[i] ? d * d : 0.0;
     }, 4);
-    const double var = ssd / static_cast<double>(count - ddof);
+    const double var = ssd / (static_cast<double>(count) - correction);
     return scalar(DType::Float64, op == "std" ? std::sqrt(var) : var);
 }
 

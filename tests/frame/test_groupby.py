@@ -139,7 +139,7 @@ def test_skipna_and_all_na_groups():
     assert g.sum(skipna=False)["v"].to_list() == [NA, NA]
     assert g.first()["v"].to_list() == [3.0, NA] and g.first(skipna=False)["v"].to_list() == [NA, NA]
     assert g.last(skipna=False)["v"].to_list() == [3.0, NA]
-    assert g.var()["v"].to_list() == [NA, NA] and g.var(ddof=0)["v"].to_list() == [0.0, NA]
+    assert g.var()["v"].to_list() == [0.0, NA] and g.var(correction=1)["v"].to_list() == [NA, NA]
 
 
 def test_agg_forms():

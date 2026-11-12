@@ -1,5 +1,7 @@
 #include "frame/convert.hpp"
 
+#include "frame/ops/cast.hpp"
+
 #include <cstring>
 #include <stdexcept>
 #include <string>
@@ -30,15 +32,26 @@ Kind classify(PyObject* o, PyObject* na) {
     throw nb::type_error(("unsupported value of type '" + type_name(o) + "'").c_str());
 }
 
-std::int64_t int_value(PyObject* o) {
+// The int64 value of a Python int (or numpy integer). `big` is set instead
+// when it does not fit, and `as_double` then holds it rounded to float64: a
+// float column takes it, an int64 column cannot (the array's rule,
+// docs/api/frame.md §2.2).
+std::int64_t int_value(PyObject* o, bool& big, double& as_double) {
     nb::object index = nb::steal(PyNumber_Index(o));  // numpy integers -> int
     if (!index.is_valid()) throw nb::python_error();
     int overflow = 0;
     long long v = PyLong_AsLongLongAndOverflow(index.ptr(), &overflow);
-    if (overflow != 0) throw std::overflow_error("int " + std::string(nb::repr(index).c_str()) + " does not fit in int64");
+    if (overflow != 0) {
+        big = true;
+        as_double = PyLong_AsDouble(index.ptr());  // OverflowError past the float range, as in Python
+        if (as_double == -1.0 && PyErr_Occurred()) throw nb::python_error();
+        return 0;
+    }
     if (v == -1 && PyErr_Occurred()) throw nb::python_error();
     return v;
 }
+
+[[noreturn]] void int_too_large() { throw std::overflow_error("Python int too large to convert to int64"); }
 
 double float_value(PyObject* o) {
     double d = PyFloat_AsDouble(o);
@@ -57,10 +70,6 @@ const char* kind_name(Kind k) {
     return "?";
 }
 
-[[noreturn]] void cannot_store(PyObject* o, DType target) {
-    throw nb::type_error(
-        ("cannot store a value of type '" + type_name(o) + "' in a column of dtype " + dtype_name(target)).c_str());
-}
 
 }  // namespace
 
@@ -74,6 +83,7 @@ Column from_list(nb::handle seq, nb::handle na, std::optional<DType> dtype) {
     // (int64 or double bits), strings only measured.
     std::vector<Kind> kinds(static_cast<std::size_t>(n));
     std::vector<std::int64_t> scratch(static_cast<std::size_t>(n));
+    std::vector<std::uint8_t> big;  // per value, only once an int outside int64 is met
     bool seen[5] = {};
     std::int64_t nulls = 0, nbytes = 0;
     for (std::int64_t i = 0; i < n; ++i) {
@@ -84,7 +94,17 @@ Column from_list(nb::handle seq, nb::handle na, std::optional<DType> dtype) {
         switch (k) {
         case Kind::NA: ++nulls; break;
         case Kind::Bool: scratch[i] = PyObject_IsTrue(o); break;
-        case Kind::Int: scratch[i] = int_value(o); break;
+        case Kind::Int: {
+            bool is_big = false;
+            double d = 0;
+            scratch[i] = int_value(o, is_big, d);
+            if (is_big) {
+                big.resize(static_cast<std::size_t>(n));
+                big[i] = 1;
+                std::memcpy(&scratch[i], &d, sizeof d);
+            }
+            break;
+        }
         case Kind::Float: {
             double d = float_value(o);
             std::memcpy(&scratch[i], &d, sizeof d);
@@ -101,24 +121,24 @@ Column from_list(nb::handle seq, nb::handle na, std::optional<DType> dtype) {
     const bool b = seen[int(Kind::Bool)], in = seen[int(Kind::Int)], f = seen[int(Kind::Float)],
                s = seen[int(Kind::Str)];
 
-    DType target;
-    if (dtype) {
-        target = *dtype;
-    } else {
-        // There is no object dtype, so bool and str do not mix with anything
-        // (docs/api/frame.md §2.2). int with float is float64, checked for exactness below.
-        auto mixed = [&](Kind k) {
-            std::string others;
-            for (Kind o : {Kind::Bool, Kind::Int, Kind::Float, Kind::Str})
-                if (o != k && seen[int(o)]) others += std::string(others.empty() ? "" : ", ") + kind_name(o);
-            throw nb::type_error((std::string(kind_name(k)) + " values cannot be mixed with " + others +
-                                  " values (there is no object dtype)")
-                                     .c_str());
-        };
-        if (b && (in || f || s)) mixed(Kind::Bool);
-        if (s && (in || f)) mixed(Kind::Str);
-        target = s ? DType::String : b ? DType::Bool : f ? DType::Float64 : in ? DType::Int64 : DType::Float64;
-    }
+    // There is no object dtype, so bool and str do not mix with anything
+    // (docs/api/frame.md §2.2). int with float is float64 (rounded, as in
+    // the array area).
+    auto mixed = [&](Kind k) {
+        std::string others;
+        for (Kind o : {Kind::Bool, Kind::Int, Kind::Float, Kind::Str})
+            if (o != k && seen[int(o)]) others += std::string(others.empty() ? "" : ", ") + kind_name(o);
+        throw nb::type_error((std::string(kind_name(k)) + " values cannot be mixed with " + others +
+                              " values (there is no object dtype)")
+                                 .c_str());
+    };
+    if (b && (in || f || s)) mixed(Kind::Bool);
+    if (s && (in || f)) mixed(Kind::Str);
+    DType target = s ? DType::String : b ? DType::Bool : f ? DType::Float64 : in ? DType::Int64 : DType::Float64;
+    // dtype= is an explicit conversion: the inferred column, then astype
+    // (docs/api/frame.md §2.3). Ints asked for as float64 are read as float64
+    // directly, so ints outside int64 can still become floats.
+    if (dtype && *dtype == DType::Float64 && target == DType::Int64) target = DType::Float64;
 
     // Pass 2: fill the column.
     Column col;
@@ -145,40 +165,16 @@ Column from_list(nb::handle seq, nb::handle na, std::optional<DType> dtype) {
         if (k == Kind::NA) bitmap::clear(bits, i);
         switch (target) {
         case DType::Bool:
-            if (k != Kind::NA && k != Kind::Bool) cannot_store(o, target);
             reinterpret_cast<std::uint8_t*>(out)[i] = static_cast<std::uint8_t>(k == Kind::NA ? 0 : scratch[i]);
             break;
-        case DType::Int64: {
-            std::int64_t v = 0;  // NA rows hold 0 (docs/design/frame.md §4.5)
-            if (k == Kind::Int) {
-                v = scratch[i];
-            } else if (k == Kind::Float) {
-                double d;
-                std::memcpy(&d, &scratch[i], sizeof d);
-                if (!double_is_exact_int(d))
-                    throw nb::value_error(("float " + std::string(nb::repr(nb::handle(o)).c_str()) +
-                                           " cannot be converted to int64 without loss")
-                                              .c_str());
-                v = static_cast<std::int64_t>(d);
-            } else if (k != Kind::NA) {
-                cannot_store(o, target);
-            }
-            reinterpret_cast<std::int64_t*>(out)[i] = v;
+        case DType::Int64:  // only ints (and NA) get here
+            if (k == Kind::Int && !big.empty() && big[i]) int_too_large();
+            reinterpret_cast<std::int64_t*>(out)[i] = k == Kind::Int ? scratch[i] : 0;  // NA rows hold 0 (docs/design/frame.md §4.5)
             break;
-        }
         case DType::Float64: {
             double d = 0.0;
-            if (k == Kind::Float) {
-                std::memcpy(&d, &scratch[i], sizeof d);
-            } else if (k == Kind::Int) {
-                if (!int_is_exact_double(scratch[i]))
-                    throw nb::value_error(("int " + std::to_string(scratch[i]) +
-                                           " cannot be represented exactly as float64")
-                                              .c_str());
-                d = static_cast<double>(scratch[i]);
-            } else if (k != Kind::NA) {
-                cannot_store(o, target);
-            }
+            if (k == Kind::Float || (k == Kind::Int && !big.empty() && big[i])) std::memcpy(&d, &scratch[i], sizeof d);
+            else if (k == Kind::Int) d = static_cast<double>(scratch[i]);
             reinterpret_cast<double*>(out)[i] = d;
             break;
         }
@@ -188,14 +184,13 @@ Column from_list(nb::handle seq, nb::handle na, std::optional<DType> dtype) {
                 const char* utf8 = PyUnicode_AsUTF8AndSize(o, &size);  // cached by pass 1
                 std::memcpy(out + pos, utf8, static_cast<std::size_t>(size));
                 pos += size;
-            } else if (k != Kind::NA) {
-                cannot_store(o, target);
             }
             offs[i + 1] = pos;  // NA rows are empty strings (docs/design/frame.md §4.5)
             break;
         case DType::Complex128: break;  // not a frame dtype
         }
     }
+    if (dtype && *dtype != col.dtype) return astype(col, *dtype);
     return col;
 }
 

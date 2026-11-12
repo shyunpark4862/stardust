@@ -81,11 +81,11 @@ void bind_column(nb::module_& m) {
         .def("first_positions", &sd::frame::LabelTable::first_positions, nb::arg("targets"))
         .def("all_positions", &sd::frame::LabelTable::all_positions, nb::arg("targets"));
     m.def("concat", &sd::frame::concat, nb::arg("cols"));
-    m.def("reduce", &sd::frame::reduce, nb::arg("op"), nb::arg("col"), nb::arg("skipna"), nb::arg("ddof"));
+    m.def("reduce", &sd::frame::reduce, nb::arg("op"), nb::arg("col"), nb::arg("skipna"), nb::arg("correction"));
     nb::class_<sd::frame::Groups>(m, "Groups")
         .def(nb::init<const Column&, std::int64_t>(), nb::arg("codes"), nb::arg("ngroups"))
         .def("sizes", &sd::frame::Groups::sizes)
-        .def("reduce", &sd::frame::Groups::reduce, nb::arg("op"), nb::arg("col"), nb::arg("skipna"), nb::arg("ddof"));
+        .def("reduce", &sd::frame::Groups::reduce, nb::arg("op"), nb::arg("col"), nb::arg("skipna"), nb::arg("correction"));
     m.def("sort_groups", &sd::frame::sort_groups, nb::arg("keys"));
     m.def("argsort", &sd::frame::argsort, nb::arg("keys"), nb::arg("ascending"), nb::arg("na_last"));
     m.def("join_indices", &sd::frame::join_indices, nb::arg("left"), nb::arg("right"), nb::arg("how"));

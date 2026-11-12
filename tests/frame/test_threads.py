@@ -159,9 +159,9 @@ def test_errors_name_the_first_bad_row():
     # for every thread count.
     vals = np.arange(N, dtype=np.float64)
     vals[[150_001, 70_000, 199_999]] = [np.inf, 0.5e300, np.nan]
-    f = sd.frame.Series(vals)
-    msg = same_for_all_thread_counts(lambda: error_message(lambda: f.astype("int64")))
-    assert "5e+299" in msg
+    f = sd.frame.Series(vals)  # float -> int64 saturates now, with no error (docs/api/frame.md §3.5)
+    got = same_for_all_thread_counts(lambda: f.astype("int64").iloc[[70_000, 150_001, 199_999]].to_list())
+    assert got == [2**63 - 1, 2**63 - 1, 0]
     words2 = [str(i) for i in range(N)]
     words2[180_000], words2[90_000] = "x1", "x2"
     s = sd.frame.Series(words2)

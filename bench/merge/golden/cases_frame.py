@@ -385,8 +385,19 @@ LOGIC = [("and", operator.and_), ("or", operator.or_), ("xor", operator.xor)]
 REDUCTIONS = ["sum", "mean", "min", "max", "std", "var"]
 
 
+# M6 renamed some arguments (DESIGN.md §9); the cases spell the old ones and
+# _kw translates them for stardust, so both packages compute the same thing.
+_NEW = [False]
+
+
+def _kw(kw):
+    if not _NEW[0] or kw is None:
+        return kw
+    return {("correction" if k == "ddof" else k): v for k, v in kw.items()}
+
+
 def _red(obj, op, **kw):
-    return getattr(obj, op)(**kw)
+    return getattr(obj, op)(**_kw(kw))
 
 
 def cases(L):
@@ -394,6 +405,7 @@ def cases(L):
     add = lambda name, fn: out.append((name, fn))  # noqa: E731
     F, np_ = L.F, L.np
     NA = F.NA
+    _NEW[0] = F.__name__ != "stardust_pandas"
     D = _Data(L)
 
     def S(values, **kw):
@@ -1204,15 +1216,15 @@ def cases(L):
                     add(f"{p}reduce {op} {k} ddof={dd} skipna=False",
                         lambda mk=mk, op=op, dd=dd: _red(mk(), op, ddof=dd, skipna=False))
         add(f"reduce count {k}", lambda mk=mk: mk().count())
-    add("err reduce std ddof negative", lambda: sf().std(ddof=-1))
-    add("err reduce var ddof float", lambda: sf().var(ddof=1.5))
+    add("err reduce std ddof negative", lambda: _red(sf(), "std", ddof=-1))
+    add("err reduce var ddof float", lambda: _red(sf(), "var", ddof=1.5))
     add("err reduce sum positional", lambda: sf().sum(False))
     add("err reduce sum axis", lambda: sf().sum(axis=0))
     add("reduce result types", lambda: [type(v).__name__ for v in (si().sum(), si().mean(), sb().sum(), sb().min(), ss().max())])
     for op in REDUCTIONS:
         add(f"df reduce {op}", lambda op=op: _red(F.DataFrame({"f": SF, "i": SI, "b2": SF2}), op))
         add(f"df reduce {op} skipna=False", lambda op=op: _red(F.DataFrame({"i": SI, "f": SF2}), op, skipna=False))
-    add("df reduce std ddof", lambda: F.DataFrame({"i": SI2, "f": SF2}).std(ddof=0))
+    add("df reduce std ddof", lambda: _red(F.DataFrame({"i": SI2, "f": SF2}), "std", ddof=0))
     add("df reduce min mixed", lambda: sdf().min())
     add("df reduce max mixed", lambda: sdf_l().max(skipna=False))
     add("df reduce count", lambda: sdf().count())
@@ -1260,7 +1272,7 @@ def cases(L):
               ("mean", {"skipna": False})]
 
     def gcall(g, f, kw):
-        return getattr(g, f)() if kw is None else getattr(g, f)(**kw)
+        return getattr(g, f)() if kw is None else getattr(g, f)(**_kw(kw))
 
     def gname(f, kw):
         return f + ("" if not kw else " " + ",".join(f"{a}={b}" for a, b in kw.items()))

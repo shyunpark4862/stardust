@@ -246,14 +246,14 @@ def test_series_assignment():
     s.loc["b"] = 20
     s.iloc[-1] = NA
     s.loc[["a", "c"]] = [100, 300]
-    s.loc["c":"d"] = 7.0  # lossless float -> int (docs/api/frame.md §5.7)
+    s.loc["c":"d"] = 7
     assert s.to_list() == [100, 20, 7, 7]
     s[s > 50] = 0
     assert s.to_list() == [0, 20, 7, 7]
     s.loc[["d", "a"]] = sd.frame.Series([1, 2], index=["a", "d"])  # matched by label
     assert s.to_list() == [1, 20, 7, 2]
-    for bad, error in ((1.5, ValueError), ("x", TypeError), (True, TypeError)):
-        with pytest.raises(error):
+    for bad in (1.5, 7.0, "x"):  # by dtype only: float64 into int64 is down, whatever the value (docs/api/frame.md §5.7)
+        with pytest.raises(TypeError):
             s.loc["a"] = bad
     with pytest.raises(KeyError):
         s.loc["new"] = 1  # no enlargement (docs/api/frame.md §5.7)

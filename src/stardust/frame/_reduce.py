@@ -1,16 +1,18 @@
 """Reductions shared by Series and DataFrame (docs/api/frame.md §6).
 
 The signatures are the same everywhere (docs/api/frame.md §6.1): sum, mean, min and
-max take (*, skipna=True); std and var add ddof=1; count takes nothing.
-Each class supplies _reduce(op, skipna, ddof); the methods here only check
-arguments and name the operation.
+max take (*, skipna=True); std and var add correction=0, as in the array
+area (API.md §1); count takes nothing. Each class supplies
+_reduce(op, skipna, correction); the methods here only check arguments and
+name the operation.
 """
 
 
-def _check_ddof(ddof):
-    if not isinstance(ddof, int) or isinstance(ddof, bool) or ddof < 0:
-        raise ValueError(f"ddof must be an int >= 0, got {ddof!r}")
-    return ddof
+def _check_correction(correction):
+    # the array area's rule: an int or a float, bool excluded
+    if isinstance(correction, bool) or not isinstance(correction, (int, float)):
+        raise TypeError("correction must be an int or a float")
+    return float(correction)
 
 
 class Reductions:
@@ -29,13 +31,13 @@ class Reductions:
     def max(self, *, skipna=True):
         return self._reduce("max", skipna, 0)
 
-    def std(self, *, skipna=True, ddof=1):
-        """Standard deviation with divisor (count - ddof); NA when that is <= 0."""
-        return self._reduce("std", skipna, _check_ddof(ddof))
+    def std(self, *, skipna=True, correction=0):
+        """Standard deviation with divisor (count - correction); NA when that is <= 0."""
+        return self._reduce("std", skipna, _check_correction(correction))
 
-    def var(self, *, skipna=True, ddof=1):
-        """Variance with divisor (count - ddof); NA when that is <= 0."""
-        return self._reduce("var", skipna, _check_ddof(ddof))
+    def var(self, *, skipna=True, correction=0):
+        """Variance with divisor (count - correction); NA when that is <= 0."""
+        return self._reduce("var", skipna, _check_correction(correction))
 
     def count(self):
         """How many values are not NA."""

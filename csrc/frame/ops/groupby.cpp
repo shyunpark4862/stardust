@@ -84,10 +84,9 @@ bool beats(const Column& c, std::int64_t a, std::int64_t b) {
 
 }  // namespace
 
-Column Groups::reduce(std::string_view op, const Column& col, bool skipna, std::int64_t ddof) const {
+Column Groups::reduce(std::string_view op, const Column& col, bool skipna, double correction) const {
     const DType result = reduction_dtype(op, col.dtype);
     const bool is_var = op == "var" || op == "std";
-    if (is_var && ddof < 0) throw nb::value_error("ddof must be >= 0");
     const std::int64_t G = ngroups_;
     auto count_of = [&](std::int64_t g) {
         std::int64_t k = 0;
@@ -163,7 +162,7 @@ Column Groups::reduce(std::string_view op, const Column& col, bool skipna, std::
             }
             continue;
         }
-        if (count == 0 || (is_var && count - ddof <= 0)) {
+        if (count == 0 || (is_var && static_cast<double>(count) - correction <= 0)) {
             set_na();
             continue;
         }
@@ -187,7 +186,7 @@ Column Groups::reduce(std::string_view op, const Column& col, bool skipna, std::
                 const double d = row_double(col, r) - mean;
                 return d * d;
             });
-            value = ssd / static_cast<double>(count - ddof);
+            value = ssd / (static_cast<double>(count) - correction);
             if (op == "std") value = std::sqrt(value);
         }
         reinterpret_cast<double*>(out.values->data())[g] = value;

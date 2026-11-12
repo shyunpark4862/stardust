@@ -36,7 +36,7 @@ class DataFrame(Reductions):
         elif isinstance(data, DataFrame):
             cols, natural = dict(data._cols), data._index  # shares the Buffers
             if dtype is not None:
-                cols = {k: c.convert(dtype) for k, c in cols.items()}
+                cols = {k: c.astype(dtype) for k, c in cols.items()}
             if columns is not None:
                 cols = {k: cols.get(k) for k in columns}
             if target is not None:  # labels given: rearrange to them (docs/api/frame.md §2.1)
@@ -169,10 +169,10 @@ class DataFrame(Reductions):
             raise KeyError(f"no such columns: {unknown}")
         return DataFrame._new({k: f(c, per_column[k]) if k in per_column else c for k, c in self._cols.items()}, self._index)
 
-    def _reduce(self, op, skipna, ddof):
+    def _reduce(self, op, skipna, correction):
         """One row, labelled by the operation, each column keeping its own result
         dtype (docs/api/frame.md §6.2). A column the operation does not apply to raises."""
-        cols = {k: _core.reduce(op, c, skipna, ddof) for k, c in self._cols.items()}
+        cols = {k: _core.reduce(op, c, skipna, correction) for k, c in self._cols.items()}
         return DataFrame._new(cols, Index._new(Column.from_list([op], NA, "string")))
 
     def sort_values(self, by, *, ascending=True, na_position="last", ignore_index=False):
@@ -407,7 +407,7 @@ def _from_dict(data, dtype, target):
             continue
         if isinstance(v, Series):
             col = _select.reindexed(v._col, v._index, index)
-            col = col.convert(dtype) if dtype is not None else col
+            col = col.astype(dtype) if dtype is not None else col
         else:
             col = _column.column_from(v, dtype)
         if length is None:

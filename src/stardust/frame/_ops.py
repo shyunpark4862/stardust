@@ -29,7 +29,9 @@ def scalar_column(value, like):
     side (`like`), so the result has the dtype the operation would have had."""
     if value is NA:
         return Column.from_list([None], NA, like)
-    return Column.from_list([value], NA, None)  # bool, int64 (range-checked), float64 or string
+    if like == "float64" and isinstance(value, int) and not isinstance(value, bool):
+        return Column.from_list([value], NA, "float64")  # an int outside int64 becomes a float, as in the array area
+    return Column.from_list([value], NA, None)  # bool, int64 (OverflowError outside it), float64 or string
 
 
 def apply(op, a, b, scalar_side):

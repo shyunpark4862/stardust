@@ -1,5 +1,6 @@
 #include "frame/ops/cast.hpp"
 
+#include "base/saturate.hpp"
 #include "frame/ops/parse.hpp"
 #include "frame/parallel.hpp"
 
@@ -189,18 +190,8 @@ Column astype(const Column& col, DType target) {
         if (from == DType::Bool) return convert_fixed<double, B>(col, target, [](B x) { return x ? 1.0 : 0.0; });
         return from_string<double>(col, target, [](std::string_view t, double& v) { return parse_float(t, v); });
     case DType::Int64:
-        if (from == DType::Float64) {
-            // Truncates toward zero; there is no int for NaN, inf or values
-            // outside [-2^63, 2^63).
-            parallel::FirstRow bad;
-            Column out = convert_fixed<I, double>(
-                col, target, [](double x) { return static_cast<I>(x); },
-                [](double x) { return x >= -9223372036854775808.0 && x < 9223372036854775808.0; }, bad);
-            if (bad.any())
-                throw nb::value_error(("cannot convert float " + python_float_str(col.data<double>()[bad.row()]) +
-                                       " to int64").c_str());
-            return out;
-        }
+        if (from == DType::Float64)  // the array's rule: truncate, saturate, NaN -> 0 (docs/api/frame.md §3.5)
+            return convert_fixed<I, double>(col, target, [](double x) { return saturate_to_int64(x); });
         if (from == DType::Bool) return convert_fixed<I, B>(col, target, [](B x) { return static_cast<I>(x); });
         return from_string<I>(col, target, [](std::string_view t, I& v) { return parse_int(t, v); });
     case DType::Bool:

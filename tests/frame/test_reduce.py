@@ -55,19 +55,20 @@ def test_float_reductions_match_numpy_bitwise(data):
     assert same(s.mean(), float(mean))
     assert same(s.min(), float(np.min(filled[valid])))
     assert same(s.max(), float(np.max(filled[valid])))
-    for ddof in (0, 1):
-        if count - ddof <= 0:
-            assert s.var(ddof=ddof) is NA
+    for correction in (0, 1):
+        if count - correction <= 0:
+            assert s.var(correction=correction) is NA
             continue
         sqr = np.where(valid, (filled - mean) ** 2, 0.0)  # pandas' nanvar, step by step
-        var = np.sum(sqr) / (count - ddof)
-        assert same(s.var(ddof=ddof), float(var))
-        assert same(s.std(ddof=ddof), float(np.sqrt(var)))
+        var = np.sum(sqr) / (count - correction)
+        assert same(s.var(correction=correction), float(var))
+        assert same(s.std(correction=correction), float(np.sqrt(var)))
     if count == n:  # no NA: pandas itself is the oracle
         p = pd.Series(values, dtype="float64")
         assert same(s.sum(), float(p.sum())) and same(s.mean(), float(p.mean()))
         if n > 1:
-            assert same(s.var(), float(p.var())) and same(s.std(), float(p.std()))
+            assert same(s.var(correction=1), float(p.var())) and same(s.std(correction=1), float(p.std()))
+            assert same(s.var(), float(p.var(ddof=0)))  # the default is correction=0, as in the array area
 
 
 @settings(max_examples=EXAMPLES, deadline=None)
@@ -85,8 +86,9 @@ def test_int_reductions(values):
     mean = float(sum(present)) / len(present)
     filled = np.array([float(v) if v is not None else 0.0 for v in values])
     sqr = np.where([v is not None for v in values], (filled - mean) ** 2, 0.0)
+    assert same(s.var(), float(np.sum(sqr) / len(present)))
     if len(present) > 1:
-        assert same(s.var(), float(np.sum(sqr) / (len(present) - 1)))
+        assert same(s.var(correction=1), float(np.sum(sqr) / (len(present) - 1)))
 
 
 def test_nan_propagates_whatever_skipna_says():
@@ -108,7 +110,7 @@ def test_all_na_and_empty():
     for s in (sd.frame.Series([None, None], dtype="int64"), sd.frame.Series([], dtype="float64")):
         assert s.sum() == 0 and s.count() == 0
         assert s.mean() is NA and s.min() is NA and s.max() is NA and s.std() is NA and s.var() is NA
-    assert sd.frame.Series([5.0]).var() is NA and sd.frame.Series([5.0]).var(ddof=0) == 0.0  # pandas gives NaN for the first
+    assert sd.frame.Series([5.0]).var(correction=1) is NA and sd.frame.Series([5.0]).var() == 0.0
     assert sd.frame.Series([1, None]).sum(skipna=False) is NA
 
 
@@ -132,9 +134,10 @@ def test_string_reductions():
 
 def test_arguments():
     s = sd.frame.Series([1.0, 2.0])
-    for bad in (-1, 1.5, True):
-        with pytest.raises(ValueError):
-            s.var(ddof=bad)
+    for bad in (True, "1", None):  # an int or a float, as in the array area
+        with pytest.raises(TypeError):
+            s.var(correction=bad)
+    assert s.var(correction=0.5) == 0.5 / 1.5
     with pytest.raises(TypeError):
         s.sum(True)  # keyword-only (docs/api/frame.md §1.1)
     with pytest.raises(TypeError):

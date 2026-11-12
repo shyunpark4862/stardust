@@ -23,7 +23,7 @@ public:
 
     // One result per group, in code order: sum mean min max count std var
     // first last, with the dtypes and NA rules of docs/api/frame.md §6 and §7.3.
-    Column reduce(std::string_view op, const Column& col, bool skipna, std::int64_t ddof) const;
+    Column reduce(std::string_view op, const Column& col, bool skipna, double correction) const;
 
 private:
     template <class F>

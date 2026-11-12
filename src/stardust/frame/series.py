@@ -17,7 +17,7 @@ class Series(Reductions):
         dtype = resolve(dtype) if dtype is not None else None
         target = ensure_index(index) if index is not None else None
         if isinstance(data, Series):
-            col = data._col.convert(dtype) if dtype is not None else data._col  # shares the Buffers
+            col = data._col.astype(dtype) if dtype is not None else data._col  # shares the Buffers
             if target is not None:  # labels given: rearrange to them (docs/api/frame.md §2.1)
                 col = _select.reindexed(col, data._index, target)
             else:
@@ -85,7 +85,7 @@ class Series(Reductions):
         """Whether some row holds `value`, by the key rules of docs/api/frame.md §1.6 (NaN
         matches NaN, NA matches NA). Labels: `label in s.index`."""
         try:
-            probe = Column.from_list([value], NA, self._dtype)
+            probe = Column.from_list([None], NA, self._dtype) if value is NA else _column.exact(value, self._dtype)
         except (TypeError, ValueError, OverflowError):
             return False  # a value of another type is in no row
         return self._col.contains_key(probe)
@@ -214,8 +214,8 @@ class Series(Reductions):
         (keys,), counts = _unique.value_counts([col], normalize, sort, ascending)
         return DataFrame._new({name: keys, count_name: counts}, RangeIndex(len(counts)))
 
-    def _reduce(self, op, skipna, ddof):  # docs/api/frame.md §6.2: a Python scalar or NA
-        return _core.reduce(op, self._col, skipna, ddof).to_list(NA)[0]
+    def _reduce(self, op, skipna, correction):  # docs/api/frame.md §6.2: a Python scalar or NA
+        return _core.reduce(op, self._col, skipna, correction).to_list(NA)[0]
 
     # --- sorting (docs/api/frame.md §8) ---
 
@@ -290,18 +290,18 @@ class _Indexer:
 
 def assignment_values(value, dtype, labels):
     """`value` as a Column of `dtype` for rows labelled `labels` (None: one
-    row). Converts without loss only (docs/api/frame.md §5.7); a Series is matched to the
-    rows by label."""
+    row). Converts by dtype only, as the array area does (docs/api/frame.md §5.7); a Series is
+    matched to the rows by label."""
     if isinstance(value, Series):
         if labels is None:
             raise TypeError("assign a scalar to a single row")
         col = _select.reindexed(value._col, value._index, labels)
-        return col.convert(dtype) if col.dtype != dtype else col
+        return _column.implicit(col, dtype)
     if _column.is_scalar(value):
-        return Column.from_list([value], NA, dtype)
+        return _column.implicit_scalar(value, dtype)
     if labels is None:
         raise TypeError("assign a scalar to a single row")
-    col = _column.column_from(value, dtype)
+    col = _column.implicit(_column.column_from(value), dtype)
     if len(col) != len(labels):
         raise ValueError(f"{len(col)} values for {len(labels)} rows")
     return col
@@ -312,7 +312,7 @@ def fill_column(col, value):
         return col
     if not _ops.is_operand_scalar(value):
         raise TypeError(f"fillna takes a scalar, got {type(value).__name__}")
-    return col.fill_na(Column.from_list([value], NA, col.dtype))  # lossless rule of dtype= (docs/api/frame.md §2.3)
+    return col.fill_na(_column.implicit_scalar(value, col.dtype))  # implicit, by dtype (docs/api/frame.md §3.6)
 
 
 def _make_binary(op, reflected):

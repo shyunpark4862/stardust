@@ -1,5 +1,7 @@
 #include "frame/ops/elementwise.hpp"
 
+#include "frame/ops/cast.hpp"
+
 #include "frame/parallel.hpp"
 
 #include <nanobind/nanobind.h>
@@ -222,27 +224,6 @@ Column int_arith(Op op, const Column& a, const Column& b, int side) {
 
 // --- comparison ---
 
-// Three-way comparison of an int64 and a double without rounding the int
-// (docs/api/frame.md §3.3): -1, 0, 1, or 2 when d is NaN (unordered).
-int compare_int_double(std::int64_t i, double d) {
-    if (d != d) return 2;
-    // Ints within +-2^53 convert to double exactly, so a plain double
-    // comparison is already exact for them.
-    if (i >= -(std::int64_t{1} << 53) && i <= (std::int64_t{1} << 53)) {
-        const double x = static_cast<double>(i);
-        return x < d ? -1 : x > d ? 1 : 0;
-    }
-    if (d >= 9223372036854775808.0) return -1;  // d >= 2^63 > every int64
-    if (d < -9223372036854775808.0) return 1;
-    // d is now in [-2^63, 2^63): split it into its integral part t (exact as
-    // an int64) and a fraction with d's sign.
-    const double td = std::trunc(d);
-    const auto t = static_cast<std::int64_t>(td);
-    if (i != t) return i < t ? -1 : 1;
-    const double frac = d - td;
-    return frac > 0 ? -1 : frac < 0 ? 1 : 0;
-}
-
 constexpr bool from_three_way(Op op, int c) {
     switch (op) {
     case Op::Eq: return c == 0;
@@ -286,19 +267,12 @@ Column compare_plain(Op op, const Column& a, const Column& b, int side) {
     throw nb::value_error("not a comparison");
 }
 
+// int64 against float64: the int is converted to float64 first, as in the
+// array area, numpy and pandas (docs/api/frame.md §3.3): 2**53 + 1 == 2.0**53.
 Column compare_mixed(Op op, const Column& a, const Column& b, int side) {
     using I = std::int64_t;
-    return with_compare_op(op, [&](auto tag) {
-        constexpr Op O = decltype(tag)::value;
-        if (a.dtype == DType::Int64)
-            return map2<std::uint8_t, I, double>(a, b, side, DType::Bool, [](I x, double y) -> std::uint8_t {
-                return from_three_way(O, compare_int_double(x, y));
-            });
-        return map2<std::uint8_t, double, I>(a, b, side, DType::Bool, [](double x, I y) -> std::uint8_t {
-            const int c = compare_int_double(y, x);
-            return from_three_way(O, c == 2 ? 2 : -c);
-        });
-    });
+    if (a.dtype == DType::Int64) return compare_plain<I, double>(op, a, b, side);
+    return compare_plain<double, I>(op, a, b, side);
 }
 
 Column compare_strings(Op op, const Column& a, const Column& b, int side) {
@@ -432,7 +406,11 @@ Column binary_op(std::string_view name, const Column& a, const Column& b, int sc
             if (op == Op::Add && da == db) return concat_strings(a, b, scalar_side);
             return unsupported(" (strings support + and comparisons)");
         }
-        if (da == DType::Bool || db == DType::Bool) return unsupported(" (no arithmetic on bool; use astype(\"int64\"))");
+        // bool takes part as int64, as in the array area (docs/api/frame.md §3.2):
+        // True + True == 2, and the int rules (NA for // 0) apply from there.
+        if (da == DType::Bool || db == DType::Bool)
+            return binary_op(name, da == DType::Bool ? astype(a, DType::Int64) : a,
+                             db == DType::Bool ? astype(b, DType::Int64) : b, scalar_side);
         if (da == DType::Int64 && db == DType::Int64) return int_arith(op, a, b, scalar_side);
         if (da == DType::Int64) return float_arith<I, double>(op, a, b, scalar_side);
         if (db == DType::Int64) return float_arith<double, I>(op, a, b, scalar_side);
@@ -471,6 +449,7 @@ Column unary_op(std::string_view name, const Column& a) {
         throw nb::type_error(("unsupported operand dtype for " + std::string(name) + ": " + dtype_name(a.dtype)).c_str());
     };
     if (name == "neg" || name == "abs") {
+        if (a.dtype == DType::Bool) return unary_op(name, astype(a, DType::Int64));  // as in the array area
         const bool neg = name == "neg";
         if (a.dtype == DType::Int64)
             return map1(DType::Int64, [neg](std::int64_t x) { return neg || x < 0 ? wrap_neg(x) : x; });

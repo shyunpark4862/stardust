@@ -124,13 +124,9 @@ def test_strings_concatenate():
 @pytest.mark.parametrize(
     "expr",
     [
-        lambda: sd.frame.Series([True]) + sd.frame.Series([True]),
-        lambda: sd.frame.Series([True]) + 1,
-        lambda: sd.frame.Series([1]) + True,
         lambda: sd.frame.Series(["a"]) * 2,
         lambda: sd.frame.Series(["a"]) - "a",
         lambda: sd.frame.Series(["a"]) + 1,
-        lambda: -sd.frame.Series([True]),
         lambda: -sd.frame.Series(["a"]),
         lambda: +sd.frame.Series(["a"]),
         lambda: ~sd.frame.Series([1]),
@@ -142,6 +138,17 @@ def test_strings_concatenate():
 def test_unsupported_operations(expr):
     with pytest.raises((TypeError, OverflowError)):
         expr()
+
+
+def test_bool_arithmetic_is_int64_arithmetic():
+    # bool takes part as int64, as in the array area (docs/api/frame.md §3.2)
+    t = sd.frame.Series([True, False, None])
+    assert (t + t).dtype is sd.int64 and (t + t).to_list() == [2, 0, NA]
+    assert (t + 1).to_list() == [2, 1, NA] and (2 * t).to_list() == [2, 0, NA]
+    q = (t / t).to_list()
+    assert (t + 0.5).dtype is sd.float64 and q[0] == 1.0 and math.isnan(q[1]) and q[2] is NA
+    assert (t // t).to_list() == [1, NA, NA]  # the int rule: // 0 is NA
+    assert (-t).to_list() == [-1, 0, NA] and abs(t).to_list() == [1, 0, NA]
 
 
 def test_numpy_does_not_hijack_operators():
@@ -170,7 +177,7 @@ NEAR_2_53 = st.sampled_from([2**53, 2**53 + 1, -(2**53) - 1, 2**63 - 1, -(2**63)
 
 @settings(max_examples=EXAMPLES, deadline=None)
 @given(st.data())
-def test_numeric_comparison_is_exact(data):
+def test_numeric_comparison_converts_ints_to_float(data):
     op = data.draw(st.sampled_from(list(COMPARE)))
     dtx, dty = data.draw(st.sampled_from(["int64", "float64"])), data.draw(st.sampled_from(["int64", "float64"]))
     n = data.draw(st.integers(0, 20))
@@ -179,9 +186,10 @@ def test_numeric_comparison_is_exact(data):
     xs = data.draw(st.lists(with_na(elems[dtx]), min_size=n, max_size=n))
     ys = data.draw(st.lists(with_na(elems[dty]), min_size=n, max_size=n))
     got = COMPARE[op](sd.frame.Series(xs, dtype=dtx), sd.frame.Series(ys, dtype=dty))
-    # Python compares int with float exactly; the values here are what the columns hold.
-    xs_v = [None if x is None else (float(x) if dtx == "float64" else x) for x in xs]
-    ys_v = [None if y is None else (float(y) if dty == "float64" else y) for y in ys]
+    # int with float compares as float64, as in the array area, numpy and pandas (docs/api/frame.md §3.3).
+    as_float = dtx != dty or dtx == "float64"
+    xs_v = [None if x is None else (float(x) if as_float else x) for x in xs]
+    ys_v = [None if y is None else (float(y) if as_float else y) for y in ys]
     expected = [NA if x is None or y is None else COMPARE[op](x, y) for x, y in zip(xs_v, ys_v)]
     assert got.dtype is sd.bool and got.to_list() == expected
 
@@ -200,7 +208,7 @@ def test_string_and_bool_comparison(data):
 
 
 def test_comparison_examples():
-    assert (sd.frame.Series([2**53 + 1]) == 2.0**53).to_list() == [False]  # pandas says True
+    assert (sd.frame.Series([2**53 + 1]) == 2.0**53).to_list() == [True]  # as numpy, pandas and the array area
     assert (sd.frame.Series([math.nan]) != sd.frame.Series([math.nan])).to_list() == [True]
     assert (1 < sd.frame.Series([0, 2])).to_list() == [False, True]
     assert (sd.frame.Series([1, None]) == NA).to_list() == [NA, NA]
@@ -297,10 +305,13 @@ def test_float_to_int_truncates(values):
     assert got == [NA if v is None else math.trunc(v) for v in values]
 
 
-@pytest.mark.parametrize("value", [math.nan, math.inf, -math.inf, 2.0**63, -(2.0**63) * 2])
-def test_float_to_int_rejects(value):
-    with pytest.raises(ValueError):
-        sd.frame.Series([value]).astype("int64")
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [(math.nan, 0), (math.inf, 2**63 - 1), (-math.inf, -(2**63)), (2.0**63, 2**63 - 1), (-(2.0**63) * 2, -(2**63))],
+)
+def test_float_to_int_saturates(value, expected):
+    # the array area's rule (docs/api/frame.md §3.5)
+    assert sd.frame.Series([value]).astype("int64").to_list() == [expected]
 
 
 def test_bool_and_number_conversions():
@@ -322,17 +333,17 @@ def test_isna_notna():
 
 
 def test_fillna():
-    assert sd.frame.Series([1, None]).fillna(2.0).to_list() == [1, 2]
+    # the fill value converts by dtype only, as an assignment (docs/api/frame.md §3.6, §5.7)
     assert sd.frame.Series([1.5, None]).fillna(0).to_list() == [1.5, 0.0]
     assert sd.frame.Series(["a", None]).fillna("z").to_list() == ["a", "z"]
     assert sd.frame.Series([True, None]).fillna(False).to_list() == [True, False]
     assert sd.frame.Series([1, None]).fillna(NA).to_list() == [1, NA]
-    with pytest.raises(ValueError):
-        sd.frame.Series([1, None]).fillna(1.5)
+    assert sd.frame.Series([1, None]).fillna(True).to_list() == [1, 1]  # bool -> int64 goes up
+    for value in (2.0, 1.5):  # float64 -> int64 goes down, whatever the value
+        with pytest.raises(TypeError):
+            sd.frame.Series([1, None]).fillna(value)
     with pytest.raises(TypeError):
         sd.frame.Series(["a", None]).fillna(1)
-    with pytest.raises(TypeError):
-        sd.frame.Series([1, None]).fillna(True)
     df = sd.frame.DataFrame({"a": [1, None], "b": ["x", None]})
     assert df.fillna({"a": 0})["b"].to_list() == ["x", NA] and df.fillna({"a": 0})["a"].to_list() == [1, 0]
     with pytest.raises(KeyError):

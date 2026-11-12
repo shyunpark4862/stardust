@@ -42,7 +42,44 @@ def _from_ndarray(arr, dtype):
     if not arr.dtype.isnative:
         arr = arr.astype(arr.dtype.newbyteorder("="))
     col = Column.from_numpy(arr)  # always a copy, widened to int64/float64
-    return col.convert(dtype) if dtype is not None else col
+    return col.astype(dtype) if dtype is not None else col  # dtype= is explicit (docs/api/frame.md §2.3)
+
+
+# Implicit conversions an assignment or fillna makes on its own: by dtype
+# only, never by value, as in the array area (docs/api/frame.md §5.7).
+_UPCAST = {("bool", "int64"), ("bool", "float64"), ("int64", "float64")}
+
+
+def implicit(col, dtype):
+    """`col` as `dtype` for an assignment or fillna: the same dtype, an all-NA
+    column, or a conversion up bool -> int64 -> float64; TypeError otherwise
+    (int64 into bool, float64 into int64 -- even 2.0 -- and strings)."""
+    if col.dtype == dtype:
+        return col
+    if col.null_count == len(col):
+        return full_na(len(col), dtype)
+    if (col.dtype, dtype) in _UPCAST:
+        return col.astype(dtype)
+    if col.dtype != "string" and dtype != "string":
+        raise TypeError(f"cannot implicitly convert {col.dtype} to {dtype} (that would lose information); "
+                        "convert explicitly with astype")
+    raise TypeError(f"cannot store {col.dtype} values in a column of dtype {dtype}")
+
+
+def implicit_scalar(value, dtype):
+    """A one-row Column of `dtype` holding the scalar `value` (implicit, as above)."""
+    if value is None or value is NA:
+        return Column.from_list([None], NA, dtype)
+    if dtype == "float64" and isinstance(value, int) and not isinstance(value, bool):
+        return Column.from_list([value], NA, "float64")  # an int outside int64 still becomes a float
+    return implicit(Column.from_list([value], NA, None), dtype)
+
+
+def exact(value, dtype):
+    """A one-row Column of `dtype` equal to `value`, for lookups (`value in s`):
+    ValueError, TypeError or OverflowError when no value of `dtype` equals it."""
+    col = Column.from_list([value], NA, None)
+    return col if col.dtype == dtype else col.convert(dtype)  # lossless only
 
 
 def full_na(length, dtype=None):
@@ -67,7 +104,7 @@ def to_numpy(col, dtype, copy, na_value):
     import numpy as np
 
     if dtype is not None and dtype != col.dtype:
-        col = col.convert(dtype)
+        col = col.astype(dtype)  # dtype= is explicit (docs/api/frame.md §2.7)
     if na_value is not _NO_VALUE:
         _check_na_value(na_value, col.dtype)
     elif col.null_count > 0:
