@@ -5,14 +5,14 @@ is docs/api/linalg.md.
 """
 
 from .. import _core as _sd_core
-from . import _results
+from .. import _results
 from ._errors import LinAlgError
 
 # The functions live in the submodule stardust._core.linalg (DESIGN.md §3.2).
 _core = _sd_core.linalg
 
 # The C++ core builds these Python objects itself.
-_core._setup(LinAlgError, _results.ALL)
+_core._setup(LinAlgError, _results.LINALG)
 
 __version__ = "0.0.1"
 

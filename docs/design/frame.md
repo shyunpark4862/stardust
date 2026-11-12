@@ -124,6 +124,7 @@
 ### 3.1 얇은 Python, C++ Column과 커널
 - **C++**: Buffer, 비트맵, Column, 해시 테이블과 Index 조회 엔진, 모든 커널(원소별, take, filter, factorize, 리덕션, 정렬, groupby, join, CSV)
 - **Python**: `Series`, `DataFrame`, `Index`, `GroupBy` 클래스, 인자 검증, 정렬(alignment) 절차 조립, `repr`
+- **에러 메시지의 함수 이름** (API.md §2.1): 공개 메서드의 Python 코드가 이름을 안다. 여러 메서드가 함께 쓰는 헬퍼는 `func`를 받아 `_errors.named(func, ...)`로 메시지를 만들고, 사용자가 닿는 커널(`Column.from_list`, `astype`, `reduce`, `Groups.reduce`, `join_indices` 등)은 `func=` 인자를 받아 바인딩에서 이름을 붙인다(`bind/errors.hpp`의 `call_named`). 연산자와 인덱싱은 `func=None`으로 불러 Python의 형식을 남긴다.
 - 배열 영역은 반대로 ndarray까지 C++로 만들었다 (array.md §12.1). frame은 그렇게 하지 않는다.
   - pandas 연산 하나의 고정비는 수 µs다. Python 층이 수백 ns를 더해도 pandas보다 훨씬 빠르다.
   - 데이터가 크면 커널 시간이 전부다.

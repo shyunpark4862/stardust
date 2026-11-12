@@ -25,7 +25,7 @@ std::optional<DType> parse_dtype(nb::handle o, const char* func) {
     if (const std::optional<DType> d = parse_any_dtype(o); d && is_array_dtype(*d)) return d;
     throw nb::type_error((std::string(func) +
                           "(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names), not " +
-                          Py_TYPE(o.ptr())->tp_name)
+                          describe_dtype_arg(o))
                              .c_str());
 }
 

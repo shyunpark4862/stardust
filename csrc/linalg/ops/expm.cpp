@@ -28,6 +28,7 @@
 //   - Finite input only (docs/design/linalg.md §11.4: the final solve is LAPACK's
 //     getrf/getrs).
 #include "linalg/ops/expm.hpp"
+#include "bind/errors.hpp"
 
 #include "linalg/cost.hpp"
 #include "linalg/outblock.hpp"
@@ -466,7 +467,7 @@ nb::object expm(nb::handle xo) {
 }  // namespace
 
 void bind_expm(nb::module_& m) {
-    m.def("expm", &expm, nb::arg().none());
+    m.def("expm", named("expm", &expm), nb::arg().none());
     // For measurements only: move the estimator threshold (docs/design/linalg.md §7.7).
     m.def("_set_expm_estimate_min", [](std::int64_t n) { kExpmEstimateMin = n; });
 }

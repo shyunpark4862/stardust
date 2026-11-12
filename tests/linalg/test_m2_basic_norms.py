@@ -405,7 +405,7 @@ def test_matrix_norm_rules():
 )
 @pytest.mark.parametrize("bad", [[[1.0]], np.eye(2), None, 1.0])
 def test_only_sdnp_arrays(call, bad):
-    with pytest.raises(TypeError, match="stardust.ndarray"):
+    with pytest.raises(TypeError, match=r"^\w+\(\): '\w+' must be an sd\.ndarray, not "):
         call(bad)
 
 

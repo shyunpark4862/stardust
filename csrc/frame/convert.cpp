@@ -29,7 +29,9 @@ Kind classify(PyObject* o, PyObject* na) {
         if (PyIndex_Check(o)) return Kind::Int;
         if (Py_TYPE(o)->tp_as_number && Py_TYPE(o)->tp_as_number->nb_float) return Kind::Float;
     }
-    throw nb::type_error(("unsupported value of type '" + type_name(o) + "'").c_str());
+    throw nb::type_error(("cannot store an object of type '" + type_name(o) +
+                          "' in a column (only bool, int, float, str and None)")
+                             .c_str());
 }
 
 // The int64 value of a Python int (or numpy integer). `big` is set instead

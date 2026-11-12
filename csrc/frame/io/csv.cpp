@@ -30,7 +30,7 @@ struct Field {  // 16 bytes, was 24: a million rows of fields are many megabytes
 constexpr std::uint8_t kQuoted = 1, kEscaped = 2;
 
 [[noreturn]] void csv_error(std::int64_t line, const std::string& what) {
-    throw nb::value_error(("read_csv: line " + std::to_string(line) + ": " + what).c_str());
+    throw nb::value_error(("line " + std::to_string(line) + ": " + what).c_str());
 }
 
 // The 1-based line of byte `offset`: errors are rare, so lines are counted
@@ -526,11 +526,11 @@ std::pair<std::vector<std::string>, std::vector<Column>> read_csv(const char* da
             csv_error(line, std::to_string(names.size()) + " names for a header of " + std::to_string(rec.size()) + " fields");
         }
     }
-    if (names.empty()) throw nb::value_error("read_csv: header=False needs names= (API.md §19)");
+    if (names.empty()) throw nb::value_error("'names' is required when header=False");
     {
         std::unordered_set<std::string> seen;
         for (const auto& k : names)
-            if (!seen.insert(k).second) throw nb::value_error(("read_csv: column name '" + k + "' repeats (API.md §6)").c_str());
+            if (!seen.insert(k).second) throw nb::value_error(("column name '" + k + "' repeats").c_str());
     }
 
     // Which file column feeds each output column.
@@ -538,7 +538,7 @@ std::pair<std::vector<std::string>, std::vector<Column>> read_csv(const char* da
     std::vector<std::int64_t> source(out_names.size());
     for (std::size_t j = 0; j < out_names.size(); ++j) {
         auto it = std::find(names.begin(), names.end(), out_names[j]);
-        if (it == names.end()) throw nb::key_error(("read_csv: no column '" + out_names[j] + "'").c_str());
+        if (it == names.end()) throw nb::key_error(("'usecols' names a column that is not in the file: '" + out_names[j] + "'").c_str());
         source[j] = it - names.begin();
     }
     const std::size_t ncols = names.size();

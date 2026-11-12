@@ -59,6 +59,7 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/frame/ops/reduce.cpp
   csrc/frame/ops/selection.cpp
   csrc/frame/ops/sort.cpp
+  csrc/bind/errors.cpp
   csrc/bind/pyutil.cpp
   csrc/bind/array_bind.cpp
   csrc/bind/linalg_bind.cpp

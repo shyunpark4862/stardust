@@ -8,10 +8,10 @@ name the operation.
 """
 
 
-def _check_correction(correction):
+def _check_correction(correction, func):
     # the array area's rule: an int or a float, bool excluded
     if isinstance(correction, bool) or not isinstance(correction, (int, float)):
-        raise TypeError("correction must be an int or a float")
+        raise TypeError(f"{func}(): 'correction' must be an int or a float")
     return float(correction)
 
 
@@ -33,11 +33,11 @@ class Reductions:
 
     def std(self, *, skipna=True, correction=0):
         """Standard deviation with divisor (count - correction); NA when that is <= 0."""
-        return self._reduce("std", skipna, _check_correction(correction))
+        return self._reduce("std", skipna, _check_correction(correction, "std"))
 
     def var(self, *, skipna=True, correction=0):
         """Variance with divisor (count - correction); NA when that is <= 0."""
-        return self._reduce("var", skipna, _check_correction(correction))
+        return self._reduce("var", skipna, _check_correction(correction, "var"))
 
     def count(self):
         """How many values are not NA."""

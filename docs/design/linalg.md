@@ -83,7 +83,7 @@
 | `linalg/ops/special.cpp` | `solve_tridiagonal`, `solve_banded`, `solve_sylvester` |
 | `linalg/ops/expm.cpp` | `expm` (§11) |
 | `accelerate/lapack.hpp` | LAPACK/BLAS 래퍼 (§1.2) |
-| `src/stardust/linalg/` | `__init__.py`(재노출), `_results.py`(결과 namedtuple), `_errors.py`(`LinAlgError`) |
+| `src/stardust/linalg/` | `__init__.py`(재노출), `_errors.py`(`LinAlgError`). 결과 namedtuple은 세 영역 공통의 `src/stardust/_results.py` |
 
 - 층은 아래로만 의존한다: `linalg/` → `array/`, `parallel/`, `accelerate/`, `base/` (ARCHITECTURE §1).
 
@@ -170,8 +170,8 @@
 - `outer`는 배치를 허용한다(Array API는 1차원만). `diagonal`은 복사본을 돌려준다.
 - **허용오차는 `rtol` 하나다.** 정의: 가장 큰 특이값의 `rtol`배 이하인 특이값은 0이다. 기본값은 `max(m, n)·eps`다. 유한한 0 이상의 실수(int 또는 float) 스칼라만 받는다. 음수, NaN, inf는 ValueError, bool과 문자열은 TypeError다. Array API는 배치마다 다른 rtol(배열)도 허용하지만 받지 않는다.
 - Array API와 다른 곳은 `k`, `svd(mode=)`, `outer`의 배치다. 모두 일관성을 우선했다. 통합 중 M6에서도 유지하는 것이 추천안이다 (DESIGN §8.4).
-- 에러 메시지는 `func(): 'arg' ...` 형식이다. 통합 중 M6에서 라이브러리 전체가 이 형식으로 맞춘다 (DESIGN §8.4).
-- 통합 중 M6에서 결과 namedtuple(`SlogdetResult` 등)이 `stardust._results` 한 모듈로 모인다 (DESIGN §8.4).
+- 에러 메시지는 `func(): 'arg' ...` 형식이다. M6에서 라이브러리 전체가 이 형식으로 맞췄다 (API.md §2.1). `LinAlgError`도 `inv(): singular matrix`처럼 함수 이름으로 시작한다.
+- 결과 namedtuple(`SlogdetResult` 등)은 M6에서 `stardust._results` 한 모듈로 모였다 (DESIGN §9.7).
 
 ### 2.7 numpy/scipy와 다르게 동작하는 곳
 설계로 정한 차이다. 비트 수준의 차이는 §12.2에 있다.
@@ -197,15 +197,15 @@
 ### 3.1 얇은 Python, 두꺼운 C++
 - **C++가 하는 것**: 인자 검사(배열인지, dtype, shape), 배치 브로드캐스팅, 패킹, LAPACK 호출, `info` 해석, 결과 배열 만들기, 결과 namedtuple 채우기
 - **Python이 하는 것**
-  - `__init__.py`: `_core.linalg`의 함수를 재노출하고, import할 때 한 번 `_core._setup(LinAlgError, _results.ALL)`로 Python 쪽 타입을 C++에 넘긴다.
-  - `_results.py`: 결과 namedtuple 11개. 필드 이름은 Array API에 그 함수가 있으면 그것을 따르고, 나머지는 행렬을 대문자 한 글자로 쓴다 (docs/api/linalg.md §1.6).
+  - `__init__.py`: `_core.linalg`의 함수를 재노출하고, import할 때 한 번 `_core._setup(LinAlgError, stardust._results.LINALG)`로 Python 쪽 타입을 C++에 넘긴다.
+  - `stardust/_results.py`(세 영역 공통): linalg의 결과 namedtuple 11개. 필드 이름은 Array API에 그 함수가 있으면 그것을 따르고, 나머지는 행렬을 대문자 한 글자로 쓴다 (docs/api/linalg.md §1.6).
   - `_errors.py`: `LinAlgError(ValueError)`
 - **이유**: 함수마다 Python 래퍼를 두면 호출마다 약 1–2µs가 더 든다. 작은 행렬(3×3 `solve` 약 0.5µs)에서는 LAPACK 계산보다 크다.
 - 기각한 대안: 각 함수를 Python으로 감싸고 C++은 "패킹 + LAPACK"만 맡기. 읽기 쉽지만 작은 행렬에서 호출 비용이 몇 배가 된다.
 
 ### 3.2 입력: `const NDArray&`
 - 배열 인자는 C++에서 `NDArray`로 직접 받는다. nanobind 타입 테이블이 하나라서 `is_ndarray`/`as_ndarray`(`bind/pyutil.hpp`)로 바로 꺼낸다. `Input`(`linalg/input.*`)은 그 `NDArray`를 빌려 두고 에러 메시지용 이름(함수, 인자)을 함께 든다. 호출 동안 Python 인자가 배열을 살려 둔다 (ARCHITECTURE §3).
-  - `sd.ndarray`가 아니면 TypeError다: `"solve(): 'a' must be a stardust.ndarray, not list"`.
+  - `sd.ndarray`가 아니면 TypeError다: `"solve(): 'a' must be an sd.ndarray, not list"`.
 - 읽는 것: `data` 포인터, shape, 바이트 strides, dtype (`base/dtype.hpp`, array.md §3.1, §3.3)
 - **어떤 strides든 받는다.** 연속이 아니어도, 음수나 0 stride(브로드캐스트)여도 된다. 패킹이 모든 레이아웃을 같은 F-order 버퍼로 만든다 (§5).
 - 행렬 인자는 2차원 이상(`require_matrix`), 정사각이 필요하면 마지막 두 축이 같아야 한다(`require_square`). 아니면 ValueError다.
@@ -222,7 +222,7 @@
 
 ### 3.4 Python 객체 캐시 (`linalg/pyrefs.*`)
 - C++가 쓰는 Python 객체는 **결과 namedtuple 타입 11개와 `LinAlgError`뿐이다.** `_setup`이 import할 때 한 번 받는다.
-  - 순서는 C++ `enum class Result`와 `_results.ALL`이 같아야 한다. 개수가 다르면 `_setup`이 ValueError를 낸다.
+  - 순서는 C++ `enum class Result`와 `_results.LINALG`가 같아야 한다. 개수가 다르면 `_setup`이 ValueError를 낸다.
 - 참조는 일부러 놓지 않는다. 프로세스가 끝날 때까지 살고, 인터프리터 종료 중에 놓는 것은 안전하지 않다.
 - `LinAlgError`를 받기 전(이론상 import 도중)에 실패가 나면 `ValueError`로 바꾼다.
 

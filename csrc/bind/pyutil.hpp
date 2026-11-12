@@ -1,5 +1,7 @@
 // Glue between Python objects and the C++ core: dtype objects, argument
 // parsing shared by many functions, and wrapping NDArray as a Python object.
+// The parsers' messages name the argument ('axis') but not the function: the
+// binding adds that (bind/errors.hpp).
 #pragma once
 
 #include "array/ndarray.hpp"
@@ -7,6 +9,7 @@
 #include <nanobind/nanobind.h>
 
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace sd {
@@ -25,6 +28,14 @@ nb::handle dtype_object(DType d);
 // A dtype object or its name -> its DType (any of the five); None and
 // anything else -> nullopt. Python types like `float` are not dtypes (API.md §1).
 std::optional<DType> parse_any_dtype(nb::handle o);
+
+// What a rejected dtype argument was, for messages: a dtype object by its
+// name (sd.string), a string or a type as itself ('float32', <class 'float'>),
+// anything else by its type's name.
+std::string describe_dtype_arg(nb::handle o);
+
+// The name of `o`'s type, for "..., not list" in messages.
+inline std::string py_type_name(nb::handle o) { return Py_TYPE(o.ptr())->tp_name; }
 
 // An array `dtype=` argument: None -> nullopt; otherwise one of the four
 // array dtypes, as an object or a name (API.md §1). TypeError otherwise,

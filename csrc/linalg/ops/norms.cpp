@@ -7,6 +7,7 @@
 // 'nuc' come from the singular values (svals.hpp), and so check NaN/inf
 // (docs/design/linalg.md §2.3).
 #include "linalg/ops/norms.hpp"
+#include "bind/errors.hpp"
 
 #include "linalg/args.hpp"
 #include "linalg/cost.hpp"
@@ -223,9 +224,9 @@ nb::object matrix_norm(nb::handle xo, bool keepdims, nb::handle ord_o) {
 }  // namespace
 
 void bind_norms(nb::module_& m) {
-    m.def("vector_norm", &vector_norm, nb::arg().none(), nb::kw_only(), nb::arg("axis").none() = nb::none(),
+    m.def("vector_norm", named("vector_norm", &vector_norm), nb::arg().none(), nb::kw_only(), nb::arg("axis").none() = nb::none(),
           nb::arg("keepdims") = false, nb::arg("ord") = 2);
-    m.def("matrix_norm", &matrix_norm, nb::arg().none(), nb::kw_only(), nb::arg("keepdims") = false,
+    m.def("matrix_norm", named("matrix_norm", &matrix_norm), nb::arg().none(), nb::kw_only(), nb::arg("keepdims") = false,
           nb::arg("ord") = "fro");
 }
 

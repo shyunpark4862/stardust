@@ -478,8 +478,9 @@ Column unary_op(std::string_view name, const Column& a) {
         finish_fixed(out);
         return out;
     };
-    auto unsupported = [&]() -> Column {
-        throw nb::type_error(("unsupported operand dtype for " + std::string(name) + ": " + dtype_name(a.dtype)).c_str());
+    auto unsupported = [&]() -> Column {  // Python's form: -s, abs(s), ~s
+        const char* symbol = name == "neg" ? "unary -" : name == "abs" ? "abs()" : "unary ~";
+        throw nb::type_error((std::string("unsupported operand dtype for ") + symbol + ": " + dtype_name(a.dtype)).c_str());
     };
     if (name == "neg" || name == "abs") {
         if (a.dtype == DType::Bool) return unary_op(name, astype(a, DType::Int64));  // as in the array area

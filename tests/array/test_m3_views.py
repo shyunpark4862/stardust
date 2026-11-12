@@ -147,11 +147,11 @@ def test_permute_dims():
     assert_same(sd.permute_dims(sd.arange(3), 0), np.arange(3))
     # A list is a TypeError like every axis argument (docs/api/array.md §1.3), and the message says so.
     for bad, name in [([2, 1, 0], "axes"), ((2, 1.0, 0), "axes")]:
-        with pytest.raises(TypeError, match=f"^{name} must be an int or a tuple of ints"):
+        with pytest.raises(TypeError, match=rf"^permute_dims\(\): '{name}' must be an int or a tuple of ints"):
             sd.permute_dims(a, bad)
-    with pytest.raises(TypeError, match="^source must be an int or a tuple of ints, not 'list'"):
+    with pytest.raises(TypeError, match=r"^moveaxis\(\): 'source' must be an int or a tuple of ints, not list$"):
         sd.moveaxis(a, [0], (1,))
-    with pytest.raises(TypeError, match="^axis must be an int or a tuple of ints, not 'list'"):
+    with pytest.raises(TypeError, match=r"^sum\(\): 'axis' must be an int or a tuple of ints, not list$"):
         sd.sum(a, axis=[0])
     with pytest.raises(OverflowError):
         sd.permute_dims(a, (2**63, 0, 1))  # an int outside int64 (API.md §2)
@@ -284,7 +284,7 @@ def test_real_imag_conj_take_python_scalars(value):
     assert sd.imag(value, out=out) is out and out.tolist() == [[complex(value).imag] * 2] * 2
     with pytest.raises(TypeError):
         sd.real([value])
-    with pytest.raises(TypeError, match="^imag\\(\\) takes sd.ndarray or Python"):
+    with pytest.raises(TypeError, match=r"^imag\(\): 'x' must be an sd\.ndarray or a Python bool, int, float or complex, not str$"):
         sd.imag("1")
 
 

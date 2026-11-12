@@ -7,15 +7,18 @@ from ._dtypes import resolve
 from ._index import Index, RangeIndex
 
 
-def _str_list(value, what):
+def _str_list(value, what):  # for read_csv()
     if value is None:
         return []
     if isinstance(value, str):
-        raise TypeError(f"{what} takes a list of str")
-    values = list(value)
+        raise TypeError(f"read_csv(): '{what}' takes a list of str, not a str")
+    try:
+        values = list(value)
+    except TypeError:
+        raise TypeError(f"read_csv(): '{what}' takes a list of str, not {type(value).__name__}") from None
     for v in values:
         if not isinstance(v, str):
-            raise TypeError(f"{what} takes str, got {type(v).__name__}")
+            raise TypeError(f"read_csv(): '{what}' takes str, got {type(v).__name__}")
     return values
 
 
@@ -29,21 +32,21 @@ def read_csv(path, /, *, sep=",", header=True, names=None, usecols=None, dtype=N
     from ._frame import DataFrame
 
     if not isinstance(sep, str) or len(sep) != 1 or sep in '"\r\n':
-        raise ValueError(f"sep must be one character other than a quote or a line break, got {sep!r}")
+        raise ValueError(f"read_csv(): 'sep' must be one character other than a quote or a line break, got {sep!r}")
     if not isinstance(header, bool):
-        raise TypeError("header must be True or False")
+        raise TypeError("read_csv(): 'header' must be True or False")
     names, usecols, na_values = _str_list(names, "names"), _str_list(usecols, "usecols"), _str_list(na_values, "na_values")
     if not header and not names:
-        raise ValueError("header=False needs names= (API.md §19)")
+        raise ValueError("read_csv(): 'names' is required when header=False")
     if usecols and len(set(usecols)) != len(usecols):
-        raise ValueError("usecols must not repeat a name")
+        raise ValueError("read_csv(): 'usecols' must not repeat a name")
     dtypes, all_dtype = {}, None
     if isinstance(dtype, dict):
-        dtypes = {k: resolve(v) for k, v in dtype.items()}
+        dtypes = {k: resolve(v, "read_csv") for k, v in dtype.items()}
     elif dtype is not None:
-        all_dtype = resolve(dtype)
+        all_dtype = resolve(dtype, "read_csv")
     if nrows is not None and (not isinstance(nrows, int) or isinstance(nrows, bool) or nrows < 0):
-        raise ValueError(f"nrows must be an int >= 0, got {nrows!r}")
+        raise ValueError(f"read_csv(): 'nrows' must be an int >= 0, got {nrows!r}")
 
     with open(os.fspath(path), "rb") as f:
         data = f.read()
@@ -51,15 +54,16 @@ def read_csv(path, /, *, sep=",", header=True, names=None, usecols=None, dtype=N
                                      -1 if nrows is None else nrows)
     unknown = [k for k in dtypes if k not in out_names]
     if unknown:
-        raise KeyError(f"dtype names columns that are not read: {unknown}")
+        raise KeyError(f"read_csv(): 'dtype' names columns that are not read: {unknown}")
     columns = dict(zip(out_names, cols))
     n = len(cols[0]) if cols else 0
     index = RangeIndex(n)
     if index_col is not None:
         if index_col not in columns:
-            raise KeyError(f"index_col {index_col!r} is not a column that is read")
+            raise KeyError(f"read_csv(): 'index_col' names a column that is not read: {index_col!r}")
         labels = columns.pop(index_col)
         if labels.dtype not in ("int64", "string") or labels.null_count:
-            raise ValueError(f"index_col {index_col!r} must be int64 or string without NA (API.md §6), got {labels.dtype}")
+            raise ValueError(f"read_csv(): the 'index_col' column {index_col!r} must be int64 or string without NA, "
+                             f"got {labels.dtype}")
         index = Index._new(labels, index_col)
     return DataFrame._new(columns, index)

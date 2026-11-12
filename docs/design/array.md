@@ -757,7 +757,7 @@ dtype과 레인 길이만 본다. 데이터를 보고 고르지 않는다 (§1.4
 - **Python이 하는 것** (호출 빈도가 낮은 경로만)
   - `src/stardust/__init__.py`: `_core`의 재노출과 상수(`e`, `pi`, `inf`, `nan`, `newaxis`)
   - `src/stardust/_format.py`: `repr`/`str`. 문자열 배치는 Python이 훨씬 읽기 쉽다. C++는 요약된 값(`ndarray._summary`: 원소가 1000개를 넘으면 축마다 양 끝 3개)만 넘긴다. 큰 배열을 Python 객체로 만들지 않는다.
-  - `src/stardust/_results.py`: `unique_*`의 namedtuple
+  - `src/stardust/_results.py`: `unique_*`의 namedtuple (세 영역의 결과 namedtuple이 다 여기 있다)
 - **이유**: 작은 배열에서 연산 한 번의 비용이 Python 로직이 끼면 수 µs로 는다. numpy는 약 1µs 이하다. shape, 브로드캐스팅, 인덱싱을 Python으로 짜고 C++은 커널만 맡는 방식은 읽기 쉽지만, 작은 배열에서 numpy보다 몇 배 느려진다.
 - 확장 모듈은 `stardust._core` 하나다. 통합 중 linalg와 frame이 하위 모듈로 붙는다 (DESIGN §3.2).
 
@@ -772,6 +772,9 @@ dtype과 레인 길이만 본다. 데이터를 보고 고르지 않는다 (§1.4
 - `__hash__ = None` (가변 컨테이너). `v in x`는 TypeError다: `__contains__`가 없으면 조용히 반복으로 떨어진다. `==`와 `any()`를 쓴다.
 - `__array_ufunc__ = None`: numpy가 `np_array + sd_array`를 보고 우리 배열을 버퍼 프로토콜로 바꿔 numpy 결과를 돌려주는 것을 막는다. 섞으면 TypeError다.
 - 리덕션 등 정해진 메서드는 모듈 함수를 x를 self로 해서 부른다 (§2.8).
+- **에러 메시지의 함수 이름** (API.md §2.1): 헬퍼와 커널은 이름 없이 메시지를 쓰고, 공개 함수와 메서드의 바인딩이 `bind/errors.hpp`의 `named("zeros", &zeros)`로 `zeros(): `를 붙인다. 예외를 잡아 같은 종류로 메시지만 바꿔 다시 던지므로, 에러가 없을 때의 비용은 없다. 이미 그 이름으로 시작하는 메시지(linalg가 직접 붙인 것)는 그대로 둔다.
+  - 연산자는 `named` 없이 바인딩하고, ufunc에 연산자 기호를 넘긴다(`binary<Op>(a, b, out, "+")`). dtype이 맞지 않으면 Python의 형식인 `unsupported operand dtypes for +: ...`가 된다. 같은 커널을 `sd.add`로 부르면 `add(): not supported for ...`다.
+  - 프로퍼티(`.T`, `.mT`)는 `named(".T", ...)`로 `.T: `가 붙는다.
 - `__getitem__`은 `None`을 받는다(`x[None]`은 `newaxis`). nanobind는 기본으로 None을 거부한다.
 - 연속성 플래그는 공개 속성이 아니다. 테스트와 해설용 비공개 메서드 `_flags()`가 `c_contiguous`, `f_contiguous`, `writeable`을 dict로 돌려준다.
 - nanobind의 종료 시 누수 경고는 끈다. 사용자 전역에 남은 dtype 객체 같은, 실제 누수가 아닌 경우에도 뜬다. 참조 횟수는 테스트가 직접 잰다.

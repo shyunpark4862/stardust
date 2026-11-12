@@ -125,7 +125,7 @@ solve류 함수(`solve`, `solve_triangular`, `cholesky_solve`, `lu_solve`, `lsts
 - **결과의 형태는 옵션에 따라 바뀌지 않는다.** 결과의 개수가 다른 변형은 함수를 따로 둔다.
   - 예: `eigh` / `eigvalsh`, `eig` / `eigvals`, `svd` / `svdvals`, `qr` / `qr_pivoted`
   - 그래서 `schur`는 언제나 `Z`를, `hessenberg`는 언제나 `Q`를 함께 계산한다.
-- **결과가 여럿이면 namedtuple이다.**
+- **결과가 여럿이면 namedtuple이다.** 타입은 세 영역이 함께 쓰는 `stardust._results`에 있고, 이름은 함수 이름의 `<함수>Result`다.
 
 | 타입 | 필드 | 함수 |
 |---|---|---|
@@ -172,7 +172,7 @@ solve류 함수(`solve`, `solve_triangular`, `cholesky_solve`, `lu_solve`, `lsts
   - 값이 정의되지 않는다: 빈 행렬의 `cond` (§1.10)
 - **`LinAlgError`** (`ValueError`의 하위 클래스, §8): 수치적인 실패
 
-  | 메시지 | 언제 |
+  | 메시지 (`함수(): ` 다음) | 언제 |
   |---|---|
   | `singular matrix` | 특이 행렬을 풀거나 역행렬을 구한다 |
   | `matrix is not positive definite` | `cholesky`의 입력, `eigh`/`eigvalsh`의 `b`가 양정치가 아니다 |
@@ -208,9 +208,9 @@ solve류 함수(`solve`, `solve_triangular`, `cholesky_solve`, `lu_solve`, `lsts
 - 타입, 차원, 모양, 옵션의 에러는 계산 전에 낸다. 배치 인덱스가 없다.
 
 **메시지 형식**
-- `TypeError`, `ValueError`의 메시지는 `함수(): `로 시작한다. 인자 이름을 따옴표로 쓴다.
+- 라이브러리 공통 형식이다 (API.md §2.1). 모든 메시지가 `함수(): `로 시작하고, 인자 이름을 따옴표로 쓴다.
   - 예: `solve(): 'a' must be square in its last two dimensions, got 2x3`
-- `LinAlgError`의 메시지는 위 표의 문장이다. 함수 이름이 없다.
+- `LinAlgError`의 메시지는 `함수(): ` 다음에 위 표의 문장이다. 예: `inv(): singular matrix (at batch index (1,))`
 
 ### §1.9 유한성 검사
 - **LAPACK을 부르는 함수는 계산 전에 언제나 유한성을 검사한다.** NaN이나 inf가 있으면 `ValueError`다.

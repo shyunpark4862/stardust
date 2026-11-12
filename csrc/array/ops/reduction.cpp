@@ -1,5 +1,6 @@
 #include "array/ops/reduction.hpp"
 
+#include "bind/errors.hpp"
 #include "bind/pyutil.hpp"
 #include "array/convert.hpp"
 #include "array/kernels/buffered.hpp"
@@ -194,18 +195,17 @@ void run_reduce(const NDArray& x, NDArray& out, Loop loop) {
 
 NDArray as_dtype(const NDArray& x, DType d) { return x.dtype == d ? x : cast_copy(x, d); }
 
-[[noreturn]] void unsupported(const char* name, DType d) {
-    throw nb::type_error((std::string(name) + "() is not supported for " + dtype_name(d)).c_str());
+[[noreturn]] void unsupported(DType d) {
+    throw nb::type_error((std::string("not supported for ") + dtype_name(d)).c_str());
 }
 
 // sum/prod/cumulative dtype: bool accumulates in int64; dtype= is an
 // explicit conversion but never bool: add and multiply have no bool loop
 // (docs/design/array.md §6.1, §2.4).
-DType accumulate_dtype(const NDArray& x, nb::handle dtype_obj, const char* name) {
+DType accumulate_dtype(const NDArray& x, nb::handle dtype_obj) {
     const std::optional<DType> d = parse_dtype(dtype_obj);
     if (!d) return promote(x.dtype, DType::Int64);
-    if (*d == DType::Bool)
-        throw nb::type_error((std::string(name) + "() cannot accumulate in bool; use any() or all()").c_str());
+    if (*d == DType::Bool) throw nb::type_error("cannot accumulate in bool; use any() or all()");
     check_castable(x.dtype, *d);
     return *d;
 }
@@ -220,17 +220,17 @@ nb::object fold(const NDArray& x, const Axes& ax, DType loop_dtype, bool keepdim
             fill<T>(out, start(std::type_identity<T>{}));
             run_reduce(x, out, &reduce_loop<Op, T>);
         } else {
-            unsupported(Op::name, loop_dtype);
+            unsupported(loop_dtype);
         }
     });
     return finish(std::move(out), ax, keepdims);
 }
 
 // min/max have no identity: an output with nothing to fold is an error.
-void require_nonempty(const NDArray& x, const Axes& ax, const char* name) {
-    if (ax.per_output == 0 && output_size(x, ax) > 0)
-        throw nb::value_error((std::string(name) + "() of an empty array (or along an empty axis) is undefined")
-                                  .c_str());
+constexpr const char* kEmpty = "undefined for an empty array (or along an empty axis)";
+
+void require_nonempty(const NDArray& x, const Axes& ax) {
+    if (ax.per_output == 0 && output_size(x, ax) > 0) throw nb::value_error(kEmpty);
 }
 
 // ---------------------------------------------------------- argmin / argmax
@@ -272,17 +272,14 @@ std::int64_t arg_whole(const std::byte* p, std::int64_t n, std::int64_t item, DT
 
 template <bool Max>
 nb::object arg_extreme_impl(nb::handle x_obj, nb::handle axis_obj, bool keepdims) {
-    const char* name = Max ? "argmax" : "argmin";
     const NDArray& x = require_ndarray(x_obj);
-    if (x.dtype == DType::Complex128) unsupported(name, x.dtype);  // docs/design/array.md §2.6
+    if (x.dtype == DType::Complex128) unsupported(x.dtype);  // docs/design/array.md §2.6
     // complex was rejected above; its branch only satisfies visit_dtype.
     ArgFn lane_fn = visit_dtype(x.dtype, [&]<typename T>(std::type_identity<T>) {
         if constexpr (ops::is_cplx<T>) return &arg_extreme<double, Max>;
         else return &arg_extreme<T, Max>;
     });
-    auto empty_error = [&] {
-        return nb::value_error((std::string(name) + "() of an empty sequence is undefined").c_str());
-    };
+    auto empty_error = [] { return nb::value_error(kEmpty); };
 
     if (axis_obj.is_none()) {
         // Over everything: the index into the flattened (C order) array.
@@ -328,19 +325,18 @@ void scan_with_initial_fn(const std::byte* x, std::byte* o, const LaneCtx& c) {
 }
 
 template <typename Op>
-nb::object cumulative(nb::handle x_obj, nb::handle axis_obj, nb::handle dtype_obj, bool include_initial,
-                      const char* name) {
+nb::object cumulative(nb::handle x_obj, nb::handle axis_obj, nb::handle dtype_obj, bool include_initial) {
     const NDArray& x = require_ndarray(x_obj);
     int axis;
     if (axis_obj.is_none()) {
         if (x.ndim != 1)
-            throw nb::value_error((std::string(name) + "() needs axis= for arrays with more than one dimension")
-                                      .c_str());  // docs/design/array.md §2.8
+            // docs/design/array.md §2.8
+            throw nb::value_error("'axis' is required for arrays with more than one dimension");
         axis = 0;
     } else {
         axis = normalize_axis(parse_int(axis_obj, "axis"), x.ndim);
     }
-    const DType d = accumulate_dtype(x, dtype_obj, name);
+    const DType d = accumulate_dtype(x, dtype_obj);
     const NDArray xin = as_dtype(x, d);
     std::vector<std::int64_t> shape(x.shape_span().begin(), x.shape_span().end());
     if (include_initial) shape[axis] += 1;
@@ -376,7 +372,7 @@ NDArray mean_keepdims(const NDArray& x, const Axes& ax) {
 
 double parse_correction(nb::handle o) {
     if (PyBool_Check(o.ptr()) || !(PyLong_Check(o.ptr()) || PyFloat_Check(o.ptr())))
-        throw nb::type_error("correction must be an int or a float");
+        throw nb::type_error("'correction' must be an int or a float");
     const double c = PyFloat_AsDouble(o.ptr());
     if (c == -1.0 && PyErr_Occurred()) throw nb::python_error();
     return c;
@@ -419,14 +415,14 @@ nb::object sum(nb::handle x_obj, nb::handle axis, nb::handle dtype, bool keepdim
     const NDArray& x = require_ndarray(x_obj);
     const Axes ax = parse_reduce_axes(x, axis);
     // Starts from +0, so an empty sum is 0 (and sum([-0.0]) is +0.0, as in numpy).
-    return fold<ops::Add>(x, ax, accumulate_dtype(x, dtype, "sum"), keepdims,
+    return fold<ops::Add>(x, ax, accumulate_dtype(x, dtype), keepdims,
                           []<typename T>(std::type_identity<T>) { return T(0); });
 }
 
 nb::object prod(nb::handle x_obj, nb::handle axis, nb::handle dtype, bool keepdims) {
     const NDArray& x = require_ndarray(x_obj);
     const Axes ax = parse_reduce_axes(x, axis);
-    return fold<ops::Multiply>(x, ax, accumulate_dtype(x, dtype, "prod"), keepdims,
+    return fold<ops::Multiply>(x, ax, accumulate_dtype(x, dtype), keepdims,
                                []<typename T>(std::type_identity<T>) { return T(1); });
 }
 
@@ -434,9 +430,9 @@ nb::object prod(nb::handle x_obj, nb::handle axis, nb::handle dtype, bool keepdi
 // the first real element always replaces it (and -inf/-0.0 stay exact).
 nb::object max(nb::handle x_obj, nb::handle axis, bool keepdims) {
     const NDArray& x = require_ndarray(x_obj);
-    if (x.dtype == DType::Complex128) unsupported("max", x.dtype);  // docs/design/array.md §2.6
+    if (x.dtype == DType::Complex128) unsupported(x.dtype);  // docs/design/array.md §2.6
     const Axes ax = parse_reduce_axes(x, axis);
-    require_nonempty(x, ax, "max");
+    require_nonempty(x, ax);
     return fold<ops::Maximum>(x, ax, x.dtype, keepdims, []<typename T>(std::type_identity<T>) {
         if constexpr (ops::is_float<T>) return -std::numeric_limits<double>::infinity();
         else return std::numeric_limits<T>::lowest();
@@ -445,9 +441,9 @@ nb::object max(nb::handle x_obj, nb::handle axis, bool keepdims) {
 
 nb::object min(nb::handle x_obj, nb::handle axis, bool keepdims) {
     const NDArray& x = require_ndarray(x_obj);
-    if (x.dtype == DType::Complex128) unsupported("min", x.dtype);
+    if (x.dtype == DType::Complex128) unsupported(x.dtype);
     const Axes ax = parse_reduce_axes(x, axis);
-    require_nonempty(x, ax, "min");
+    require_nonempty(x, ax);
     return fold<ops::Minimum>(x, ax, x.dtype, keepdims, []<typename T>(std::type_identity<T>) {
         if constexpr (ops::is_float<T>) return std::numeric_limits<double>::infinity();
         else return std::numeric_limits<T>::max();
@@ -495,23 +491,21 @@ void bind_reductions(nb::module_& m) {
     const auto axis = arg("axis").none() = nb::none();
     const auto dtype = arg("dtype").none() = nb::none();
     const auto keepdims = arg("keepdims") = false;
-    m.def("sum", &sum, arg(), nb::kw_only(), axis, dtype, keepdims);
-    m.def("prod", &prod, arg(), nb::kw_only(), axis, dtype, keepdims);
-    m.def("min", &min, arg(), nb::kw_only(), axis, keepdims);
-    m.def("max", &max, arg(), nb::kw_only(), axis, keepdims);
-    m.def("mean", &mean, arg(), nb::kw_only(), axis, keepdims);
-    m.def("var", &var, arg(), nb::kw_only(), axis, arg("correction") = 0, keepdims);
-    m.def("std", &stddev, arg(), nb::kw_only(), axis, arg("correction") = 0, keepdims);
-    m.def("argmin", &argmin, arg(), nb::kw_only(), axis, keepdims);
-    m.def("argmax", &argmax, arg(), nb::kw_only(), axis, keepdims);
-    m.def("any", &any, arg(), nb::kw_only(), axis, keepdims);
-    m.def("all", &all, arg(), nb::kw_only(), axis, keepdims);
-    m.def("cumulative_sum", [](nb::handle x, nb::handle axis, nb::handle dtype, bool include_initial) {
-        return cumulative<ops::Add>(x, axis, dtype, include_initial, "cumulative_sum");
-    }, arg(), nb::kw_only(), axis, dtype, arg("include_initial") = false);
-    m.def("cumulative_prod", [](nb::handle x, nb::handle axis, nb::handle dtype, bool include_initial) {
-        return cumulative<ops::Multiply>(x, axis, dtype, include_initial, "cumulative_prod");
-    }, arg(), nb::kw_only(), axis, dtype, arg("include_initial") = false);
+    m.def("sum", named("sum", &sum), arg(), nb::kw_only(), axis, dtype, keepdims);
+    m.def("prod", named("prod", &prod), arg(), nb::kw_only(), axis, dtype, keepdims);
+    m.def("min", named("min", &min), arg(), nb::kw_only(), axis, keepdims);
+    m.def("max", named("max", &max), arg(), nb::kw_only(), axis, keepdims);
+    m.def("mean", named("mean", &mean), arg(), nb::kw_only(), axis, keepdims);
+    m.def("var", named("var", &var), arg(), nb::kw_only(), axis, arg("correction") = 0, keepdims);
+    m.def("std", named("std", &stddev), arg(), nb::kw_only(), axis, arg("correction") = 0, keepdims);
+    m.def("argmin", named("argmin", &argmin), arg(), nb::kw_only(), axis, keepdims);
+    m.def("argmax", named("argmax", &argmax), arg(), nb::kw_only(), axis, keepdims);
+    m.def("any", named("any", &any), arg(), nb::kw_only(), axis, keepdims);
+    m.def("all", named("all", &all), arg(), nb::kw_only(), axis, keepdims);
+    m.def("cumulative_sum", named("cumulative_sum", &cumulative<ops::Add>), arg(), nb::kw_only(), axis, dtype,
+          arg("include_initial") = false);
+    m.def("cumulative_prod", named("cumulative_prod", &cumulative<ops::Multiply>), arg(), nb::kw_only(), axis, dtype,
+          arg("include_initial") = false);
 }
 
 }  // namespace sd

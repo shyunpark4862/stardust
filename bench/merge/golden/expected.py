@@ -1,7 +1,11 @@
 """Cases whose results M6 changes on purpose (DESIGN.md §9), per area:
 (regex on the case name, reason). golden.py check reports them per reason and
-flags patterns that match nothing. Message-only differences of a listed case
-are accepted too.
+flags patterns that match nothing.
+
+EXPECTED: any difference (value, error type or message) of a listed case is
+accepted. EXPECTED_MESSAGES: only message-only differences are accepted; a
+real mismatch in a case it matches is still reported, so its patterns may be
+broad.
 """
 
 EXPECTED = {
@@ -55,4 +59,9 @@ EXPECTED = {
         (r"^(err logic (and|or|xor) (i,i|b,i|b,1)|err unary invert i|err df and int)$",
          "§9.4: int64 bitwise operators & | ^ ~ (bool with int64 is int64); a float column still raises"),
     ],
+}
+
+EXPECTED_MESSAGES = {
+    area: [(r".", "§9.7: one error-message format (func(): 'arg' ..., no document section numbers)")]
+    for area in ("array", "linalg", "frame")
 }

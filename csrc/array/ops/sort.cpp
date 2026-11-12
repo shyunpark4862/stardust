@@ -2,6 +2,7 @@
 
 #include "array/ops/sort.hpp"
 
+#include "bind/errors.hpp"
 #include "bind/pyutil.hpp"
 #include "array/kernels/elementwise.hpp"
 #include "array/kernels/simd_sort.hpp"
@@ -411,10 +412,9 @@ void argsort_lane(const std::byte* x, std::byte* o, const LaneCtx& c) {
 
 template <bool Arg>
 nb::object sort_impl(nb::handle x_obj, nb::handle axis_obj, bool descending, bool stable) {
-    const char* name = Arg ? "argsort" : "sort";
     const NDArray& x = require_ndarray(x_obj);
     if (x.dtype == DType::Complex128)
-        throw nb::type_error((std::string(name) + "() is not supported for complex128 (no ordering)").c_str());  // docs/design/array.md §2.6
+        throw nb::type_error("not supported for complex128 (no ordering)");  // docs/design/array.md §2.6
     const int axis = normalize_axis(parse_int(axis_obj, "axis"), x.ndim);
     NDArray out = new_array_like(x, Arg ? DType::Int64 : x.dtype);
     SortCfg cfg{descending, stable};
@@ -534,14 +534,14 @@ nb::object unique_all(nb::handle x) {
 
 void bind_sort(nb::module_& m) {
     using nb::arg;
-    m.def("sort", &sort_impl<false>, arg(), nb::kw_only(), arg("axis") = -1, arg("descending") = false,
+    m.def("sort", named("sort", &sort_impl<false>), arg(), nb::kw_only(), arg("axis") = -1, arg("descending") = false,
           arg("stable") = true);
-    m.def("argsort", &sort_impl<true>, arg(), nb::kw_only(), arg("axis") = -1, arg("descending") = false,
+    m.def("argsort", named("argsort", &sort_impl<true>), arg(), nb::kw_only(), arg("axis") = -1, arg("descending") = false,
           arg("stable") = true);
-    m.def("unique_values", &unique_values, arg());
-    m.def("unique_counts", &unique_counts, arg());
-    m.def("unique_inverse", &unique_inverse, arg());
-    m.def("unique_all", &unique_all, arg());
+    m.def("unique_values", named("unique_values", &unique_values), arg());
+    m.def("unique_counts", named("unique_counts", &unique_counts), arg());
+    m.def("unique_inverse", named("unique_inverse", &unique_inverse), arg());
+    m.def("unique_all", named("unique_all", &unique_all), arg());
 }
 
 }  // namespace sd

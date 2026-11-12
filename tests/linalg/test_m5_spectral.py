@@ -118,7 +118,7 @@ def test_eigh_generalized(seed, batch_a, batch_b, n, da, db):
 
 
 def test_eigh_rules():
-    with pytest.raises(sd.linalg.LinAlgError, match="^matrix is not positive definite$"):
+    with pytest.raises(sd.linalg.LinAlgError, match=r"^eigh\(\): matrix is not positive definite$"):
         sd.linalg.eigh(sd.eye(2), as_sd(np.array([[1.0, 0.0], [0.0, -1.0]])))
     with pytest.raises(sd.linalg.LinAlgError, match="positive definite"):
         sd.linalg.eigvalsh(sd.eye(2), as_sd(-np.eye(2)))
@@ -322,5 +322,5 @@ def test_matrix_norm_svd_ords_rules():
 )
 @pytest.mark.parametrize("bad", [[[1.0]], np.eye(2), None])
 def test_only_sdnp_arrays(call, bad):
-    with pytest.raises(TypeError, match="stardust.ndarray"):
+    with pytest.raises(TypeError, match=r"^\w+\(\): '\w+' must be an sd\.ndarray, not "):
         call(bad)

@@ -36,9 +36,10 @@ stardust/                         (저장소: ~/Desktop/stardust/stardust)
   src/stardust/
     __init__.py                   배열 API (지금 stardust_numpy) + 스레드 수 + dtype 객체
     _format.py                    배열 repr (지금 stardust_numpy/_format.py)
+    _results.py                   세 영역의 결과 namedtuple (<함수>Result, M6에서 한곳으로)
     linalg/
       __init__.py                 _core.linalg 재노출, LinAlgError
-      _results.py  _errors.py     (지금 stardust_linalg)
+      _errors.py                  (지금 stardust_linalg)
     frame/
       __init__.py                 DataFrame, Series, Index, RangeIndex, NA, concat, merge, read_csv
       _series.py  _frame.py  _index.py  _groupby.py  _merge.py  _io.py  _*.py   (모든 모듈이 밑줄 이름: 공개 이름은 __init__.py만)

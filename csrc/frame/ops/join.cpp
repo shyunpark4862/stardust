@@ -22,7 +22,7 @@ std::pair<Column, Column> join_indices(const std::vector<Column>& left, const st
     for (std::size_t j = 0; j < left.size(); ++j)
         if (left[j].dtype != right[j].dtype)
             throw nb::type_error((std::string("join keys must have one dtype, got ") + dtype_name(left[j].dtype) +
-                                  " and " + dtype_name(right[j].dtype) + " (API.md §18)")
+                                  " and " + dtype_name(right[j].dtype))
                                      .c_str());
 
     // Build on the right keys, probe with the left ones, rather than

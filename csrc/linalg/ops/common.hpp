@@ -55,13 +55,11 @@ constexpr int kCloseEigenvalues = 11; // Sylvester: a and -b share an eigenvalue
         case kNonFiniteB: throw nb::value_error(msg("'b' contains NaN or infinity").c_str());
         case kNonFiniteU: throw nb::value_error(msg("'u' contains NaN or infinity").c_str());
         case kBadPerm: throw nb::value_error(msg("'perm' is not a permutation of 0..n-1").c_str());
-        case kNotPD: throw LinAlgError(failure_message(b, f.index, "matrix is not positive definite"));
-        case kNoConvergence: throw LinAlgError(failure_message(b, f.index, "SVD did not converge"));
-        case kNoConvergenceEig:
-            throw LinAlgError(failure_message(b, f.index, "eigenvalue algorithm did not converge"));
-        case kCloseEigenvalues:
-            throw LinAlgError(failure_message(b, f.index, "a and -b have a common or close eigenvalue"));
-        default: throw LinAlgError(failure_message(b, f.index, "singular matrix"));
+        case kNotPD: throw LinAlgError(msg("matrix is not positive definite"));
+        case kNoConvergence: throw LinAlgError(msg("SVD did not converge"));
+        case kNoConvergenceEig: throw LinAlgError(msg("eigenvalue algorithm did not converge"));
+        case kCloseEigenvalues: throw LinAlgError(msg("a and -b have a common or close eigenvalue"));
+        default: throw LinAlgError(msg("singular matrix"));
     }
 }
 

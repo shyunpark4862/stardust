@@ -594,7 +594,7 @@ unique_all(x, /)         # -> (values, indices, inverse_indices, counts)
   - numpy는 정렬 결과에 따라 고르므로 `-0.0`과 `0.0` 중 무엇을 보여 줄지 정해져 있지 않다.
 - bool과 complex도 받는다. complex의 순서는 (실수부, 허수부)의 사전순이다.
   - 실수부나 허수부가 NaN인 complex는 모두 NaN 하나로 묶여 맨 끝에 온다. numpy 2의 `np.unique`도 하나로 묶지만, 보여 주는 값은 numpy 순서에서 가장 앞인 NaN이다.
-- 여러 값을 돌려주는 함수는 namedtuple을 반환한다.
+- 여러 값을 돌려주는 함수는 namedtuple을 반환한다. 타입은 세 영역이 함께 쓰는 `stardust._results`에 있고, 이름은 `<함수>Result`다 (linalg.md §1.6).
 
   | 함수 | 타입 | 필드 |
   |---|---|---|

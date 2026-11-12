@@ -8,6 +8,7 @@ first appearance, with NA-key groups dropped (dropna=True) or last.
 """
 
 from . import _core, _unique
+from ._errors import name_list
 from ._reduce import Reductions
 from ._index import RangeIndex
 
@@ -42,13 +43,14 @@ class GroupBy(Reductions):
     __slots__ = ("_df", "_by", "_values", "_grouping", "_sort", "_dropna")
 
     def __init__(self, df, by, *, sort=True, dropna=True, values=None, grouping=None):
-        by = [by] if isinstance(by, str) else list(by)
+        # Made by df.groupby(by): the messages name groupby().
+        by = name_list(by, "by", "groupby")
         if not by:
-            raise ValueError("groupby needs at least one key column")
+            raise ValueError("groupby(): 'by' must name at least one column")
         if len(set(by)) != len(by):
-            raise ValueError("key columns must be unique")
+            raise ValueError("groupby(): key columns must be unique")
         for k in by:
-            df._column(k)  # KeyError for an unknown column
+            df._column(k, "groupby")  # KeyError for an unknown column
         if grouping is None:
             # The columns as they are now (docs/design/frame.md §5.3): a later df["k"] = ...
             # replaces a dict entry, and the grouping, computed on first use,
@@ -79,7 +81,7 @@ class GroupBy(Reductions):
         return GroupBy(self._df, self._by, sort=self._sort, dropna=self._dropna, values=names,
                        grouping=self._grouping)
 
-    def _result(self, columns):
+    def _result(self, columns, func):
         """The keys, then `columns` ({name: per-group Column in code order})."""
         from ._frame import DataFrame
 
@@ -87,17 +89,18 @@ class GroupBy(Reductions):
         cols = dict(state.keys)
         for name, col in columns.items():
             if name in cols:
-                raise ValueError(f"result column {name!r} would repeat a key column")
+                raise ValueError(f"{func}(): result column {name!r} would repeat a key column")
             cols[name] = col.take(state.order)
         return DataFrame._new(cols, RangeIndex(len(state.order)))
 
-    def _apply(self, op, name, skipna=True, correction=0):
+    def _apply(self, op, name, func, skipna=True, correction=0):
         if op not in AGG_FUNCS:
-            raise ValueError(f"unknown aggregation {op!r}; use one of {', '.join(AGG_FUNCS)}")
-        return self._state().groups.reduce(op, self._df._cols[name], skipna, correction)
+            raise ValueError(f"{func}(): unknown aggregation {op!r}; use one of {', '.join(AGG_FUNCS)}")
+        return self._state().groups.reduce(op, self._df._cols[name], skipna, correction, func=func)
 
-    def _reduce(self, op, skipna, correction):  # the Reductions methods (docs/api/frame.md §7.3)
-        return self._result({k: self._apply(op, k, skipna, correction) for k in self._values})
+    def _reduce(self, op, skipna, correction, func=None):  # the Reductions methods (docs/api/frame.md §7.3)
+        func = func or op  # sum() is named sum; agg("sum") names agg
+        return self._result({k: self._apply(op, k, func, skipna, correction) for k in self._values}, func)
 
     def first(self, *, skipna=True):
         """Each group's first value that is not NA (skipna=False: its first row's value)."""
@@ -108,30 +111,30 @@ class GroupBy(Reductions):
 
     def size(self):
         """How many rows each group has, in a column named "size"."""
-        return self._result({"size": self._state().groups.sizes()})
+        return self._result({"size": self._state().groups.sizes()}, "size")
 
     def agg(self, func=None, /, **named):
         """agg("sum") for every value column, agg({"c": "sum"}) per column, or
         agg(out=("c", "sum")) with chosen result names (docs/api/frame.md §7.4)."""
         if (func is None) == (not named):
-            raise TypeError("pass either one function name / dict, or named aggregations (name=(column, function))")
+            raise TypeError("agg(): pass either one function name / dict, or named aggregations (name=(column, function))")
         if isinstance(func, str):
-            return self._reduce(func, True, 1) if func in AGG_FUNCS else self._apply(func, None)
+            return self._reduce(func, True, 1, "agg") if func in AGG_FUNCS else self._apply(func, None, "agg")
         if isinstance(func, dict):
             plan = {}
             for col, f in func.items():
                 if not isinstance(f, str):
-                    raise TypeError(f"one function name per column; for several, use named aggregations (got {f!r})")
+                    raise TypeError(f"agg(): one function name per column; for several, use named aggregations (got {f!r})")
                 plan[col] = (col, f)
         elif func is not None:
-            raise TypeError("a list of functions is not supported (no MultiIndex); use named aggregations")
+            raise TypeError("agg(): a list of functions is not supported (no MultiIndex); use named aggregations")
         else:
             plan = {}
             for out, spec in named.items():
                 if not (isinstance(spec, tuple) and len(spec) == 2 and all(isinstance(x, str) for x in spec)):
-                    raise TypeError(f"a named aggregation is name=(column, function), got {out}={spec!r}")
+                    raise TypeError(f"agg(): a named aggregation is name=(column, function), got {out}={spec!r}")
                 plan[out] = spec
         for col, _ in plan.values():
             if col not in self._values:
-                raise KeyError(f"{col!r} is not a value column of this groupby")
-        return self._result({out: self._apply(f, col) for out, (col, f) in plan.items()})
+                raise KeyError(f"agg(): {col!r} is not a value column of this groupby")
+        return self._result({out: self._apply(f, col, "agg") for out, (col, f) in plan.items()}, "agg")

@@ -18,9 +18,15 @@ packages and stardust:
     L.np  numpy, L.rng(seed) a numpy Generator, L.arr(np_array) -> L.A array
 
 A milestone that changes results on purpose (M6) lists the cases it expects
-to differ in expected.py: {area: [(regex on the case name, reason)]}. Such
-mismatches are reported per reason and do not fail the check; a pattern that
-matches nothing is reported as stale, so the list stays exact.
+to differ in expected.py: EXPECTED = {area: [(regex on the case name, reason)]}.
+Such mismatches are reported per reason and do not fail the check; a pattern
+that matches nothing is reported as stale, so the list stays exact.
+
+A change to error messages alone goes in EXPECTED_MESSAGES, of the same shape.
+Its patterns accept only message-only differences: a real mismatch in a case
+they match is still a MISMATCH, so a broad pattern (even r".") hides nothing
+but messages. EXPECTED is tried first; a message pattern that accepts no
+difference left over by EXPECTED is stale too.
 
 Every case runs at 1, 3 and 10 threads. A result is stored as a SHA-256 of
 its bytes plus dtype, shape and strides (so a layout change is a mismatch
@@ -163,13 +169,18 @@ def run_area(lib, area):
 
 
 def load_expected(area):
-    """[(compiled regex, reason)] for this area from expected.py, or []."""
+    """(EXPECTED, EXPECTED_MESSAGES) for this area from expected.py: two lists
+    of (compiled regex, reason), empty when absent."""
     path = HERE / "expected.py"
     if not path.exists():
-        return []
+        return [], []
     ns = {}
     exec(path.read_text(), ns)
-    return [(re.compile(rx), reason) for rx, reason in ns["EXPECTED"].get(area, [])]
+
+    def compiled(name):
+        return [(re.compile(rx), reason) for rx, reason in ns.get(name, {}).get(area, [])]
+
+    return compiled("EXPECTED"), compiled("EXPECTED_MESSAGES")
 
 
 def strip_msgs(e):
@@ -227,26 +238,42 @@ def main():
                 msg_only.append((name, n, got, want))
             else:
                 bad.append((name, n, f"got {got}\n      want {want}"))
-    expected = load_expected(args.area)
-    seen = {i: [] for i in range(len(expected))}
-    diffs = bad + [(name, n, f"message: got {got.get('msg')!r}\n      want {want.get('msg')!r}")
-                   for name, n, got, want in msg_only]
-    for name, n, why in diffs:
-        hit = next((i for i, (rx, _) in enumerate(expected) if rx.search(name)), None)
-        if hit is not None:
-            seen[hit].append((name, n, why))
-    covered = {(name, n) for hits in seen.values() for name, n, _ in hits}
+    expected, expected_msgs = load_expected(args.area)
+
+    def message(got, want):
+        return f"message: got {got.get('msg')!r}\n      want {want.get('msg')!r}"
+
+    def match(patterns, diffs):
+        """{pattern index: [(name, n, why)]} for the diffs whose name a pattern matches (first match wins)."""
+        seen = {i: [] for i in range(len(patterns))}
+        for name, n, why in diffs:
+            hit = next((i for i, (rx, _) in enumerate(patterns) if rx.search(name)), None)
+            if hit is not None:
+                seen[hit].append((name, n, why))
+        return seen
+
+    def covered_by(seen):
+        return {(name, n) for hits in seen.values() for name, n, _ in hits}
+
+    # EXPECTED takes any difference; EXPECTED_MESSAGES then only message-only ones.
+    seen = match(expected, bad + [(name, n, message(got, want)) for name, n, got, want in msg_only])
+    covered = covered_by(seen)
     bad = [b for b in bad if (b[0], b[1]) not in covered]
     msg_only = [m for m in msg_only if (m[0], m[1]) not in covered]
-    for i, (rx, reason) in enumerate(expected):
-        cases = sorted({name for name, _, _ in seen[i]})
-        if not cases:
-            print(f"STALE    expected pattern {rx.pattern!r} ({reason}) matched no mismatch")
-            continue
-        print(f"EXPECTED {reason}: {len(cases)} cases ({', '.join(cases[:4])}{', ...' if len(cases) > 4 else ''})")
-        if args.verbose:
-            for name, n, why in seen[i]:
-                print(f"           {name} [threads {n}]: {why}")
+    seen_msgs = match(expected_msgs, [(name, n, message(got, want)) for name, n, got, want in msg_only])
+    covered_msgs = covered_by(seen_msgs)
+    msg_only = [m for m in msg_only if (m[0], m[1]) not in covered_msgs]
+    for label, patterns, hits in (("", expected, seen), ("(message) ", expected_msgs, seen_msgs)):
+        for i, (rx, reason) in enumerate(patterns):
+            cases = sorted({name for name, _, _ in hits[i]})
+            if not cases:
+                print(f"STALE    expected {label}pattern {rx.pattern!r} ({reason}) matched no "
+                      f"{'message-only difference' if label else 'mismatch'}")
+                continue
+            print(f"EXPECTED {label}{reason}: {len(cases)} cases ({', '.join(cases[:4])}{', ...' if len(cases) > 4 else ''})")
+            if args.verbose:
+                for name, n, why in hits[i]:
+                    print(f"           {name} [threads {n}]: {why}")
     for name, n, why in bad:
         print(f"MISMATCH {name} [threads {n}]: {why}")
     for name, n, got, want in msg_only:
@@ -254,7 +281,7 @@ def main():
     for name in missing:
         print(f"MISSING  {name}")
     total = len(golden)
-    nexp = len({name for name, _ in covered})
+    nexp = len({name for name, _ in covered | covered_msgs})
     print(f"{args.area}: {total} golden cases, {len(bad)} mismatches, {len(msg_only)} message-only, {len(missing)} missing"
           f", {nexp} expected differences")
     sys.exit(1 if bad or missing else 0)

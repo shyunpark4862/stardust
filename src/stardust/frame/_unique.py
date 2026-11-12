@@ -19,11 +19,11 @@ def codes(cols):
     return _core.factorize_rows(cols)
 
 
-def duplicated(cols, keep):
+def duplicated(cols, keep, func):
     """bool Column: True for rows whose key already appeared (keep="first"),
     appears again later (keep="last"), or appears more than once ("none")."""
     if keep not in KEEP:
-        raise ValueError(f"keep must be 'first', 'last' or 'none', got {keep!r}")
+        raise ValueError(f"{func}(): 'keep' must be 'first', 'last' or 'none', got {keep!r}")
     n = len(cols[0])
     row_codes, first, ngroups = codes(cols)
     if keep == "none":
@@ -43,9 +43,9 @@ def unique_values(col):
     return reps.take(_core.sort_groups([reps]))
 
 
-def value_counts(cols, normalize, sort, descending):
+def value_counts(cols, normalize, sort, descending, func):
     """(key columns, count column): one row per key."""
-    check_bool("descending", descending)
+    check_bool("descending", descending, func)
     row_codes, first, ngroups = codes(cols)
     counts, _ = _core.group_counts(row_codes, ngroups)
     order = _core.stable_order(counts, not descending) if sort else _core.arange(0, 1, ngroups)

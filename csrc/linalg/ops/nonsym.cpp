@@ -7,6 +7,7 @@
 //   ldl          : sytrf/hetrf (Bunch-Kaufman), chosen over sytrf_rook by
 //                  measurement (docs/design/linalg.md §10.6)
 #include "linalg/ops/nonsym.hpp"
+#include "bind/errors.hpp"
 
 #include "linalg/cost.hpp"
 #include "linalg/outblock.hpp"
@@ -244,11 +245,11 @@ nb::object ldl(nb::handle xo) {
 }  // namespace
 
 void bind_nonsym(nb::module_& m) {
-    m.def("eig", &eig, nb::arg().none());
-    m.def("eigvals", &eigvals, nb::arg().none());
-    m.def("schur", &schur, nb::arg().none());
-    m.def("hessenberg", &hessenberg, nb::arg().none());
-    m.def("ldl", &ldl, nb::arg().none());
+    m.def("eig", named("eig", &eig), nb::arg().none());
+    m.def("eigvals", named("eigvals", &eigvals), nb::arg().none());
+    m.def("schur", named("schur", &schur), nb::arg().none());
+    m.def("hessenberg", named("hessenberg", &hessenberg), nb::arg().none());
+    m.def("ldl", named("ldl", &ldl), nb::arg().none());
 }
 
 }  // namespace sd::linalg

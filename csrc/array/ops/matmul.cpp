@@ -16,6 +16,7 @@
 
 #include "accelerate/blas.hpp"
 
+#include "bind/errors.hpp"
 #include "bind/pyutil.hpp"
 #include "array/convert.hpp"
 #include "array/kernels/elementwise.hpp"
@@ -196,8 +197,8 @@ nb::object matmul(nb::handle x1, nb::handle x2) {
     const std::int64_t m = a_vec ? 1 : a.shape[a.ndim - 2], k = a.shape[a.ndim - 1];
     const std::int64_t kb = b_vec ? b.shape[0] : b.shape[b.ndim - 2], n = b_vec ? 1 : b.shape[b.ndim - 1];
     if (k != kb)
-        throw nb::value_error(("matmul: the last axis of x1 (" + std::to_string(k) +
-                               ") must match the second-to-last axis of x2 (" + std::to_string(kb) + ")")
+        throw nb::value_error(("the last axis of 'x1' (" + std::to_string(k) +
+                               ") must match the second-to-last axis of 'x2' (" + std::to_string(kb) + ")")
                                   .c_str());
 
     // Batch axes: everything before the matrix axes, broadcast together.
@@ -287,6 +288,6 @@ nb::object matmul(nb::handle x1, nb::handle x2) {
     return wrap(std::move(out));
 }
 
-void bind_matmul(nb::module_& m) { m.def("matmul", &matmul, nb::arg(), nb::arg()); }
+void bind_matmul(nb::module_& m) { m.def("matmul", named("matmul", &matmul), nb::arg(), nb::arg()); }
 
 }  // namespace sd

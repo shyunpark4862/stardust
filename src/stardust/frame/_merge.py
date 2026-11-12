@@ -1,6 +1,7 @@
 """merge (a hash join) and concat (docs/api/frame.md §9)."""
 
 from . import _column, _core, _select, _sort
+from ._errors import name_list
 from ._index import Index, RangeIndex, _IndexBase
 
 Column = _core.Column
@@ -8,13 +9,13 @@ Column = _core.Column
 HOWS = ("inner", "left", "right", "outer")
 
 
-def _names(value, what):
-    names = [value] if isinstance(value, str) else list(value)
+def _names(value, what):  # for merge()
+    names = name_list(value, what, "merge")
     if not names:
-        raise ValueError(f"{what} needs at least one column")
+        raise ValueError(f"merge(): '{what}' must name at least one column")
     for k in names:
         if not isinstance(k, str):
-            raise TypeError(f"{what} takes column names (str), got {type(k).__name__}")
+            raise TypeError(f"merge(): '{what}' takes column names (str), got {type(k).__name__}")
     return names
 
 
@@ -28,25 +29,25 @@ def merge(left, right, /, *, how="inner", on=None, left_on=None, right_on=None, 
     from ._frame import DataFrame
 
     if not isinstance(left, DataFrame) or not isinstance(right, DataFrame):
-        raise TypeError("merge joins two DataFrames")
+        raise TypeError("merge(): 'left' and 'right' must be DataFrames")
     if how not in HOWS:
-        raise ValueError(f"how must be one of {', '.join(HOWS)}, got {how!r}")
+        raise ValueError(f"merge(): 'how' must be one of {', '.join(HOWS)}, got {how!r}")
     if on is not None:
         if left_on is not None or right_on is not None:
-            raise ValueError("pass on= or left_on=/right_on=, not both")
+            raise ValueError("merge(): pass on= or left_on=/right_on=, not both")
         lkeys = rkeys = _names(on, "on")
     elif left_on is not None and right_on is not None:
         lkeys, rkeys = _names(left_on, "left_on"), _names(right_on, "right_on")
         if len(lkeys) != len(rkeys):
-            raise ValueError(f"{len(lkeys)} left keys for {len(rkeys)} right keys")
+            raise ValueError(f"merge(): {len(lkeys)} left keys for {len(rkeys)} right keys")
     else:
-        raise ValueError("merge needs its keys: on= or left_on= and right_on= (API.md §18)")
+        raise ValueError("merge(): the keys are required: on= or left_on= and right_on=")
     if not (isinstance(suffixes, tuple) and len(suffixes) == 2 and all(isinstance(x, str) for x in suffixes)):
-        raise TypeError("suffixes must be a tuple of two str")
+        raise TypeError("merge(): 'suffixes' must be a tuple of two str")
 
-    lcols = [left._column(k) for k in lkeys]
-    rcols = [right._column(k) for k in rkeys]
-    lpos, rpos = _core.join_indices(lcols, rcols, how)
+    lcols = [left._column(k, "merge") for k in lkeys]
+    rcols = [right._column(k, "merge") for k in rkeys]
+    lpos, rpos = _core.join_indices(lcols, rcols, how, func="merge")
 
     merged = set(lkeys) if on is not None else set()  # one key column per name with on=
     overlap = (set(left._cols) & set(right._cols)) - merged
@@ -54,7 +55,7 @@ def merge(left, right, /, *, how="inner", on=None, left_on=None, right_on=None, 
 
     def put(name, col):
         if name in out:
-            raise ValueError(f"result column {name!r} appears twice; choose other suffixes")
+            raise ValueError(f"merge(): result column {name!r} appears twice; choose other suffixes")
         out[name] = col
 
     no_left = _core.binary_op("eq", lpos, Column.from_list([-1], None, None), 2).nonzero()
@@ -92,22 +93,25 @@ def concat(objs, /, *, join="outer", ignore_index=False):
     from ._frame import DataFrame
     from ._series import Series
 
-    objs = list(objs)
+    try:
+        objs = list(objs)
+    except TypeError:
+        raise TypeError(f"concat(): 'objs' must be a list of DataFrames or Series, not {type(objs).__name__}") from None
     if not objs:
-        raise ValueError("concat needs at least one object")
+        raise ValueError("concat(): 'objs' must hold at least one object")
     if join not in ("outer", "inner"):
-        raise ValueError(f"join must be 'outer' or 'inner', got {join!r}")
+        raise ValueError(f"concat(): 'join' must be 'outer' or 'inner', got {join!r}")
     index = None if ignore_index else _concat_labels([o.index for o in objs])
     n = sum(len(o) for o in objs)
     if all(isinstance(o, Series) for o in objs):
         dtypes = {o._dtype for o in objs}
         if len(dtypes) != 1:
-            raise TypeError(f"Series of dtypes {sorted(dtypes)} cannot be joined (API.md §18)")
+            raise TypeError(f"concat(): Series of dtypes {sorted(dtypes)} cannot be joined")
         names = {o.name for o in objs}
         name = names.pop() if len(names) == 1 else None
         return Series._new(_core.concat([o._col for o in objs]), index or RangeIndex(n), name)
     if not all(isinstance(o, DataFrame) for o in objs):
-        raise TypeError("concat takes DataFrames or Series, not a mix")
+        raise TypeError("concat(): 'objs' must be all DataFrames or all Series, not a mix")
     if join == "outer":
         names = list(dict.fromkeys(k for o in objs for k in o._cols))
     else:
@@ -116,7 +120,7 @@ def concat(objs, /, *, join="outer", ignore_index=False):
     for k in names:
         dtypes = {o._cols[k].dtype for o in objs if k in o._cols}
         if len(dtypes) != 1:
-            raise TypeError(f"column {k!r} has dtypes {sorted(dtypes)}; make them one with astype (API.md §18)")
+            raise TypeError(f"concat(): column {k!r} has dtypes {sorted(dtypes)}; make them one with astype")
         (dtype,) = dtypes
         parts = [o._cols[k] if k in o._cols else _column.full_na(len(o), dtype) for o in objs]
         cols[k] = _core.concat(parts)
@@ -126,6 +130,6 @@ def concat(objs, /, *, join="outer", ignore_index=False):
 def _concat_labels(indexes):
     dtypes = {i._dtype for i in indexes}
     if len(dtypes) != 1:
-        raise TypeError("cannot join int labels with string labels (API.md §18)")
+        raise TypeError("concat(): cannot join int labels with string labels")
     names = {i.name for i in indexes}
     return Index._new(_core.concat([i._column() for i in indexes]), names.pop() if len(names) == 1 else None)

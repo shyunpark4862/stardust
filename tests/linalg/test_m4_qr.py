@@ -200,5 +200,5 @@ def test_lstsq_rules():
 @pytest.mark.parametrize("call", [lambda z: sd.linalg.qr(z), lambda z: sd.linalg.qr_pivoted(z), lambda z: sd.linalg.lstsq(z, z)])
 @pytest.mark.parametrize("bad", [[[1.0]], np.eye(2), None])
 def test_only_sdnp_arrays(call, bad):
-    with pytest.raises(TypeError, match="stardust.ndarray"):
+    with pytest.raises(TypeError, match=r"^\w+\(\): '\w+' must be an sd\.ndarray, not "):
         call(bad)

@@ -6,6 +6,7 @@
 //             faster than gelss everywhere that matters, and unlike gelsy it
 //             gives the singular values the result carries (docs/api/linalg.md §4)
 #include "linalg/ops/qr.hpp"
+#include "bind/errors.hpp"
 
 #include "linalg/args.hpp"
 #include "linalg/cost.hpp"
@@ -140,9 +141,9 @@ nb::object lstsq(nb::handle ao, nb::handle bo, nb::handle rtol_o) {
 }  // namespace
 
 void bind_qr(nb::module_& m) {
-    m.def("qr", &qr, nb::arg().none(), nb::kw_only(), nb::arg("mode") = "reduced");
-    m.def("qr_pivoted", &qr_pivoted, nb::arg().none(), nb::kw_only(), nb::arg("mode") = "reduced");
-    m.def("lstsq", &lstsq, nb::arg().none(), nb::arg().none(), nb::kw_only(), nb::arg("rtol").none() = nb::none());
+    m.def("qr", named("qr", &qr), nb::arg().none(), nb::kw_only(), nb::arg("mode") = "reduced");
+    m.def("qr_pivoted", named("qr_pivoted", &qr_pivoted), nb::arg().none(), nb::kw_only(), nb::arg("mode") = "reduced");
+    m.def("lstsq", named("lstsq", &lstsq), nb::arg().none(), nb::arg().none(), nb::kw_only(), nb::arg("rtol").none() = nb::none());
 }
 
 }  // namespace sd::linalg

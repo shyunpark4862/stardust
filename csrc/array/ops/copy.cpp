@@ -1,5 +1,6 @@
 #include "array/ops/copy.hpp"
 
+#include "bind/errors.hpp"
 #include "bind/pyutil.hpp"
 #include "array/convert.hpp"
 #include "array/kernels/cast.hpp"
@@ -81,7 +82,7 @@ NDArray cast_copy(const NDArray& src, DType to, IterMode mode) {
 
 nb::object astype(nb::handle x, nb::handle dtype_obj, nb::handle copy_obj) {
     const NDArray& a = require_ndarray(x);
-    if (dtype_obj.is_none()) throw nb::type_error("astype requires a dtype");
+    if (dtype_obj.is_none()) throw nb::type_error("'dtype' is required");
     const DType to = *parse_dtype(dtype_obj);
     const std::optional<bool> copy = parse_copy(copy_obj);
     if (to == a.dtype && copy != true) return nb::borrow(x);
@@ -136,7 +137,7 @@ void copyto(nb::handle dst_obj, nb::handle src_obj) {
 
 void bind_copy(nb::module_& m) {
     using nb::arg;
-    m.def("astype", &astype, arg(), arg(), nb::kw_only(), arg("copy").none() = true);
+    m.def("astype", named("astype", &astype), arg(), arg(), nb::kw_only(), arg("copy").none() = true);
     m.def("_iter_plan", &iter_plan, arg("arrays"), arg("mode") = "full");
     m.def("_copy_with_mode", [](const NDArray& a, const std::string& mode) {
         return wrap(cast_copy(a, a.dtype, parse_mode(mode)));

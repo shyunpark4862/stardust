@@ -1,5 +1,6 @@
 #include "array/ops/shape.hpp"
 
+#include "bind/errors.hpp"
 #include "bind/pyutil.hpp"
 #include "array/convert.hpp"
 #include "array/iter.hpp"
@@ -121,7 +122,7 @@ nb::object permute_dims(nb::handle x, nb::handle axes_obj) {
     const NDArray& a = require_ndarray(x);
     const std::vector<int> axes = parse_axes(axes_obj, a.ndim, "axes");
     if (static_cast<int>(axes.size()) != a.ndim)
-        throw nb::value_error(("axes must list each of the " + std::to_string(a.ndim) + " axes exactly once").c_str());
+        throw nb::value_error(("'axes' must list each of the " + std::to_string(a.ndim) + " axes exactly once").c_str());
     return permuted(x, axes);
 }
 
@@ -130,7 +131,7 @@ nb::object moveaxis(nb::handle x, nb::handle source_obj, nb::handle destination_
     const std::vector<int> source = parse_axes(source_obj, a.ndim, "source");
     const std::vector<int> destination = parse_axes(destination_obj, a.ndim, "destination");
     if (source.size() != destination.size())
-        throw nb::value_error("source and destination must have the same number of axes");
+        throw nb::value_error("'source' and 'destination' must have the same number of axes");
     // The axes that stay keep their relative order; the moved ones are
     // inserted at their destinations, smallest destination first.
     std::vector<int> order;
@@ -231,7 +232,11 @@ nb::object broadcast_to(nb::handle x, nb::handle shape_obj) {
 
 nb::tuple broadcast_arrays(nb::args arrays) {
     std::vector<std::span<const std::int64_t>> shapes;
-    for (nb::handle h : arrays) shapes.push_back(require_ndarray(h, "every argument").shape_span());
+    for (nb::handle h : arrays) {
+        if (!is_ndarray(h))
+            throw nb::type_error(("every argument must be an sd.ndarray, not " + py_type_name(h)).c_str());
+        shapes.push_back(as_ndarray(h).shape_span());
+    }
     if (shapes.empty()) return nb::tuple();
     const std::vector<std::int64_t> shape = broadcast_shapes(shapes);
     nb::list out;
@@ -243,10 +248,11 @@ nb::tuple broadcast_arrays(nb::args arrays) {
 
 std::vector<nb::handle> array_list(nb::handle arrays) {
     if (!PyList_Check(arrays.ptr()) && !PyTuple_Check(arrays.ptr()))
-        throw nb::type_error("arrays must be a list or tuple of sd.ndarray");
+        throw nb::type_error(("'arrays' must be a list or tuple of sd.ndarray, not " + py_type_name(arrays)).c_str());
     std::vector<nb::handle> out;
     for (nb::handle h : arrays) {
-        require_ndarray(h, "every element of arrays");
+        if (!is_ndarray(h))
+            throw nb::type_error(("'arrays' must hold sd.ndarray only, not " + py_type_name(h)).c_str());
         out.push_back(h);
     }
     if (out.empty()) throw nb::value_error("need at least one array");
@@ -374,11 +380,11 @@ nb::object imag(nb::handle x, nb::handle out);
 // real/imag of a Python scalar, as conj takes one (docs/api/array.md §6.2):
 // the same function on a 1-element array of the scalar's dtype, then that
 // element as a Python scalar -- or, with out=, written into out.
-nb::object scalar_part(nb::handle x, nb::handle out, const char* name, nb::object (*part)(nb::handle, nb::handle)) {
+nb::object scalar_part(nb::handle x, nb::handle out, nb::object (*part)(nb::handle, nb::handle)) {
     const std::optional<DType> kind = scalar_dtype(x);
     if (!kind)
-        throw nb::type_error((std::string(name) + "() takes sd.ndarray or Python bool/int/float/complex operands, not '" +
-                              Py_TYPE(x.ptr())->tp_name + "'")
+        throw nb::type_error((std::string("'x' must be an sd.ndarray or a Python bool, int, float or complex, not ") +
+                              Py_TYPE(x.ptr())->tp_name)
                                  .c_str());
     const std::int64_t one[] = {1};
     NDArray a = new_array(*kind, one);
@@ -392,14 +398,14 @@ nb::object scalar_part(nb::handle x, nb::handle out, const char* name, nb::objec
 }
 
 nb::object real(nb::handle x, nb::handle out) {
-    if (!is_ndarray(x)) return scalar_part(x, out, "real", &real);
+    if (!is_ndarray(x)) return scalar_part(x, out, &real);
     const NDArray& a = as_ndarray(x);
     if (a.dtype == DType::Complex128) return finish(complex_part(x, 0), out);
     return finish(nb::borrow(x), out);  // a real array is its own real part
 }
 
 nb::object imag(nb::handle x, nb::handle out) {
-    if (!is_ndarray(x)) return scalar_part(x, out, "imag", &imag);
+    if (!is_ndarray(x)) return scalar_part(x, out, &imag);
     const NDArray& a = as_ndarray(x);
     if (a.dtype == DType::Complex128) return finish(complex_part(x, sizeof(double)), out);
     // A real array has no imaginary storage to view: a fresh array of zeros,
@@ -435,7 +441,8 @@ nb::object reshape(nb::handle x, nb::handle shape, nb::handle copy) {
 
 nb::object matrix_transpose(nb::handle x) {
     const NDArray& a = require_ndarray(x);
-    if (a.ndim < 2) throw nb::value_error("matrix_transpose requires an array with at least 2 dimensions");
+    if (a.ndim < 2)
+        throw nb::value_error(("the array must have at least 2 dimensions, got " + std::to_string(a.ndim)).c_str());
     std::vector<int> order(a.ndim);
     std::iota(order.begin(), order.end(), 0);
     std::swap(order[a.ndim - 2], order[a.ndim - 1]);
@@ -445,30 +452,34 @@ nb::object matrix_transpose(nb::handle x) {
 nb::object transpose_2d(nb::handle x) {
     const NDArray& a = as_ndarray(x);
     if (a.ndim != 2)
-        throw nb::value_error(".T requires a 2-dimensional array; use permute_dims or matrix_transpose (.mT)");
+        throw nb::value_error(("the array must have 2 dimensions, got " + std::to_string(a.ndim) +
+                               "; use permute_dims or matrix_transpose (.mT)")
+                                  .c_str());
     const int order[] = {1, 0};
     return permuted(x, order);
 }
 
 void bind_shape(nb::module_& m) {
     using nb::arg;
-    m.def("reshape", nb::overload_cast<nb::handle, nb::handle, nb::handle>(&reshape), arg(), arg(), nb::kw_only(),
-          arg("copy").none() = nb::none());
+    m.def("reshape", named("reshape", nb::overload_cast<nb::handle, nb::handle, nb::handle>(&reshape)), arg(), arg(),
+          nb::kw_only(), arg("copy").none() = nb::none());
     m.def("ravel", [](nb::handle x) {
-        const std::int64_t flat[] = {-1};
-        return reshape(x, flat, std::nullopt);
+        return call_named("ravel", [&] {
+            const std::int64_t flat[] = {-1};
+            return reshape(x, flat, std::nullopt);
+        });
     }, arg());
-    m.def("permute_dims", &permute_dims, arg(), arg());
-    m.def("matrix_transpose", &matrix_transpose, arg());
-    m.def("moveaxis", &moveaxis, arg(), arg(), arg());
-    m.def("squeeze", &squeeze, arg(), nb::kw_only(), arg("axis"));
-    m.def("expand_dims", &expand_dims, arg(), nb::kw_only(), arg("axis"));
-    m.def("broadcast_to", &broadcast_to, arg(), arg());
-    m.def("broadcast_arrays", &broadcast_arrays);
-    m.def("concat", &concat, arg(), nb::kw_only(), arg("axis").none() = 0);
-    m.def("stack", &stack, arg(), nb::kw_only(), arg("axis") = 0);
-    m.def("real", &real, arg(), nb::kw_only(), arg("out").none() = nb::none());
-    m.def("imag", &imag, arg(), nb::kw_only(), arg("out").none() = nb::none());
+    m.def("permute_dims", named("permute_dims", &permute_dims), arg(), arg());
+    m.def("matrix_transpose", named("matrix_transpose", &matrix_transpose), arg());
+    m.def("moveaxis", named("moveaxis", &moveaxis), arg(), arg(), arg());
+    m.def("squeeze", named("squeeze", &squeeze), arg(), nb::kw_only(), arg("axis"));
+    m.def("expand_dims", named("expand_dims", &expand_dims), arg(), nb::kw_only(), arg("axis"));
+    m.def("broadcast_to", named("broadcast_to", &broadcast_to), arg(), arg());
+    m.def("broadcast_arrays", named("broadcast_arrays", &broadcast_arrays));
+    m.def("concat", named("concat", &concat), arg(), nb::kw_only(), arg("axis").none() = 0);
+    m.def("stack", named("stack", &stack), arg(), nb::kw_only(), arg("axis") = 0);
+    m.def("real", named("real", &real), arg(), nb::kw_only(), arg("out").none() = nb::none());
+    m.def("imag", named("imag", &imag), arg(), nb::kw_only(), arg("out").none() = nb::none());
 }
 
 }  // namespace sd

@@ -13,6 +13,7 @@ slices and scalar results apart from gathers:
 import sys
 
 from . import _core
+from ._errors import named
 from ._index import Index, _IndexBase
 
 Column = _core.Column
@@ -131,10 +132,10 @@ def aligned_mask(mask, index):
         # duplicates here, the same length means the mask has a label this
         # index lacks (docs/design/frame.md §6.3).
         if len(mask) != len(index) or not index.is_unique:
-            raise ValueError("the mask's labels must be the index's labels (API.md §14)")
+            raise ValueError("the mask's labels must be the index's labels")
         positions = mask._index._get_indexer(index)  # needs unique mask labels
         if len(_core.binary_op("eq", positions, Column.from_list([-1], None, None), 2).nonzero()):
-            raise ValueError("the mask's labels must be the index's labels (API.md §14)")
+            raise ValueError("the mask's labels must be the index's labels")
         col = col.take(positions)
     return col
 
@@ -148,17 +149,18 @@ def merged_name(a, b):
     return a if a == b else None
 
 
-def align(a, b):
+def align(a, b, func=None):
     """(union index, positions into a, positions into b) for labels a and b.
     Positions are None when that side needs no reordering; -1 means NA.
-    The union keeps a's labels in order, then b's other labels (docs/api/frame.md §1.7)."""
+    The union keeps a's labels in order, then b's other labels (docs/api/frame.md §1.7).
+    `func`: the public function, or None for an operator."""
     name = merged_name(a.name, b.name)
     if same_index(a, b):
         return a._with_name(name), None, None
     if a._dtype != b._dtype:
-        raise TypeError(f"cannot align {a._dtype} labels with {b._dtype} labels (API.md §14)")
+        raise TypeError(named(func, f"cannot align {a._dtype} labels with {b._dtype} labels"))
     if not a.is_unique or not b.is_unique:
-        raise ValueError("cannot align indexes with duplicate labels (API.md §6)")
+        raise ValueError(named(func, "cannot align indexes with duplicate labels"))
     a_labels, b_labels = a._column(), b._column()
     only_b = _core.binary_op("eq", a._get_indexer(b), Column.from_list([-1], None, None), 2).nonzero()
     union = Index._new(_core.concat([a_labels, b_labels.take(only_b)]), name)
@@ -171,9 +173,9 @@ def _minus_ones(n):
     return Column.from_list([-1] * n, None, "int64")
 
 
-def reindexed(col, index, target):
+def reindexed(col, index, target, func=None):
     """`col` (labelled by `index`) rearranged to the labels of `target`; absent labels are NA."""
     if same_index(index, target):
         return col
-    return col.take(index._get_indexer(target))
+    return col.take(index._get_indexer(target, func))
 

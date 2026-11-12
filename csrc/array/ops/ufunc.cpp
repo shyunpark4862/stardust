@@ -1,5 +1,6 @@
 #include "array/ops/ufunc.hpp"
 
+#include "bind/errors.hpp"
 #include "bind/pyutil.hpp"
 #include "array/convert.hpp"
 #include "array/kernels/buffered.hpp"
@@ -16,26 +17,32 @@ namespace {
 
 constexpr int kMaxInputs = kMaxOperands - 1;
 
-DType operand_dtype(nb::handle o, const char* name) {
+// `what` names the argument: 'x', 'x1', 'min', ...
+DType operand_dtype(nb::handle o, const char* what) {
     if (is_ndarray(o)) return as_ndarray(o).dtype;
     if (std::optional<DType> kind = scalar_dtype(o)) return *kind;
-    throw nb::type_error((std::string(name) + "() takes sd.ndarray or Python bool/int/float/complex operands, not '" +
-                          Py_TYPE(o.ptr())->tp_name + "'")
+    throw nb::type_error((std::string("'") + what + "' must be an sd.ndarray or a Python bool, int, float or complex, not " +
+                          Py_TYPE(o.ptr())->tp_name)
                              .c_str());
 }
 
-[[noreturn]] void no_loop(const char* name, std::span<const DType> dtypes) {
-    std::string msg = std::string(name) + "() is not supported for ";
-    for (size_t i = 0; i < dtypes.size(); ++i) msg += (i ? ", " : "") + std::string(dtype_name(dtypes[i]));
-    throw nb::type_error(msg.c_str());
+// The function: "not supported for complex128 and complex128". An operator
+// (see ufunc.hpp): "unsupported operand dtypes for <: complex128 and complex128".
+[[noreturn]] void no_loop(std::span<const DType> dtypes, const char* symbol) {
+    std::string names;
+    for (size_t i = 0; i < dtypes.size(); ++i) names += (i ? " and " : "") + std::string(dtype_name(dtypes[i]));
+    if (symbol == nullptr) throw nb::type_error(("not supported for " + names).c_str());
+    throw nb::type_error((std::string("unsupported operand ") + (dtypes.size() > 1 ? "dtypes" : "dtype") + " for " +
+                          symbol + ": " + names)
+                             .c_str());
 }
 
 // numpy's loop selection: the first dtype at or above `d` with a loop.
 // Returns that dtype; the table entry says what it writes.
-DType select(const LoopTable& table, DType d, const char* name, std::span<const DType> inputs) {
+DType select(const LoopTable& table, DType d, std::span<const DType> inputs, const char* symbol) {
     for (int k = static_cast<int>(d); k < kNumArrayDTypes; ++k)
         if (table[k].loop) return static_cast<DType>(k);
-    no_loop(name, inputs);
+    no_loop(inputs, symbol);
 }
 
 // A Python int operand becomes an int64 when the promoted operand dtype is
@@ -149,12 +156,12 @@ constexpr std::array<Loop, kNumArrayDTypes> where_loops = {
     where_entry<bool>, where_entry<std::int64_t>, where_entry<double>, where_entry<complex128>};
 
 nb::object where(nb::handle cond, nb::handle x1, nb::handle x2, nb::handle out) {
-    const DType dc = operand_dtype(cond, "where");
+    const DType dc = operand_dtype(cond, "condition");
     if (dc != DType::Bool)
-        throw nb::type_error(("where() condition must be bool, not " + std::string(dtype_name(dc)) +
+        throw nb::type_error(("'condition' must be bool, not " + std::string(dtype_name(dc)) +
                               "; compare explicitly, e.g. x != 0")
                                  .c_str());
-    const DType d = promote(operand_dtype(x1, "where"), operand_dtype(x2, "where"));
+    const DType d = promote(operand_dtype(x1, "x1"), operand_dtype(x2, "x2"));
     const nb::handle objs[] = {cond, x1, x2};
     const DType types[] = {DType::Bool, d, d};
     return launch(objs, types, d, where_loops[static_cast<int>(d)], out);
@@ -168,10 +175,10 @@ constexpr std::array<Loop, kNumArrayDTypes> clip_loops = {
     clip_entry<bool>, clip_entry<std::int64_t>, clip_entry<double>, nullptr};
 
 nb::object clip(nb::handle x, nb::handle lo, nb::handle hi, nb::handle out) {
-    const DType d = operand_dtype(x, "clip");
-    if (d == DType::Complex128) throw nb::type_error("clip() is not supported for complex128 (no ordering)");
-    for (nb::handle bound : {lo, hi})
-        if (!bound.is_none()) check_assignable(operand_dtype(bound, "clip"), d);
+    const DType d = operand_dtype(x, "x");
+    if (d == DType::Complex128) throw nb::type_error("not supported for complex128 (no ordering)");
+    if (!lo.is_none()) check_assignable(operand_dtype(lo, "min"), d);
+    if (!hi.is_none()) check_assignable(operand_dtype(hi, "max"), d);
     const int k = static_cast<int>(d);
     if (lo.is_none() && hi.is_none()) {
         const nb::handle objs[] = {x};
@@ -197,21 +204,21 @@ nb::object clip(nb::handle x, nb::handle lo, nb::handle hi, nb::handle out) {
 
 bool is_operand(nb::handle o) { return is_ndarray(o) || scalar_dtype(o).has_value(); }
 
-nb::object run_unary(const LoopTable& table, const char* name, nb::handle x, nb::handle out) {
-    const DType d = operand_dtype(x, name);
-    const DType loop = select(table, d, name, std::span(&d, 1));
+nb::object run_unary(const LoopTable& table, nb::handle x, nb::handle out, const char* symbol) {
+    const DType d = operand_dtype(x, "x");
+    const DType loop = select(table, d, std::span(&d, 1), symbol);
     const nb::handle objs[] = {x};
     check_int_scalars(objs, d);
     return launch(objs, std::span(&loop, 1), table[static_cast<int>(loop)].out, table[static_cast<int>(loop)].loop,
                   out);
 }
 
-nb::object run_binary(const LoopTable& table, const char* name, bool no_bool_inputs, nb::handle a, nb::handle b,
-                      nb::handle out) {
-    const DType dtypes[] = {operand_dtype(a, name), operand_dtype(b, name)};
-    if (no_bool_inputs && (dtypes[0] == DType::Bool || dtypes[1] == DType::Bool)) no_loop(name, dtypes);
+nb::object run_binary(const LoopTable& table, bool no_bool_inputs, nb::handle a, nb::handle b, nb::handle out,
+                      const char* symbol) {
+    const DType dtypes[] = {operand_dtype(a, "x1"), operand_dtype(b, "x2")};
+    if (no_bool_inputs && (dtypes[0] == DType::Bool || dtypes[1] == DType::Bool)) no_loop(dtypes, symbol);
     const DType promoted = promote(dtypes[0], dtypes[1]);
-    const DType loop = select(table, promoted, name, dtypes);
+    const DType loop = select(table, promoted, dtypes, symbol);
     const nb::handle objs[] = {a, b};
     check_int_scalars(objs, promoted);
     const DType types[] = {loop, loop};
@@ -222,12 +229,14 @@ namespace {
 
 template <typename Op>
 void def_unary(nb::module_& m) {
-    m.def(Op::name, &unary<Op>, nb::arg(), nb::kw_only(), nb::arg("out").none() = nb::none());
+    m.def(Op::name, named(Op::name, +[](nb::handle x, nb::handle out) { return unary<Op>(x, out); }), nb::arg(),
+          nb::kw_only(), nb::arg("out").none() = nb::none());
 }
 
 template <typename Op>
 void def_binary(nb::module_& m) {
-    m.def(Op::name, &binary<Op>, nb::arg(), nb::arg(), nb::kw_only(), nb::arg("out").none() = nb::none());
+    m.def(Op::name, named(Op::name, +[](nb::handle a, nb::handle b, nb::handle out) { return binary<Op>(a, b, out); }),
+          nb::arg(), nb::arg(), nb::kw_only(), nb::arg("out").none() = nb::none());
 }
 
 template <typename... Ops>
@@ -246,8 +255,8 @@ void bind_ufuncs(nb::module_& m) {
     def_unaries<Negative, Positive, Abs, Square, Sqrt, Sign, Exp, Expm1, Log, Log1p, Log2, Log10, Sin, Cos, Tan,
                 Asin, Acos, Atan, Sinh, Cosh, Tanh, Asinh, Acosh, Atanh, Floor, Ceil, Trunc, Round, IsNan, IsInf,
                 IsFinite, LogicalNot, BitwiseInvert, Conj>(m);
-    m.def("where", &where, nb::arg(), nb::arg(), nb::arg(), nb::kw_only(), nb::arg("out").none() = nb::none());
-    m.def("clip", &clip, nb::arg(), nb::kw_only(), nb::arg("min").none() = nb::none(),
+    m.def("where", named("where", &where), nb::arg(), nb::arg(), nb::arg(), nb::kw_only(), nb::arg("out").none() = nb::none());
+    m.def("clip", named("clip", &clip), nb::arg(), nb::kw_only(), nb::arg("min").none() = nb::none(),
           nb::arg("max").none() = nb::none(), nb::arg("out").none() = nb::none());
 }
 

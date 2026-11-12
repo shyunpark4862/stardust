@@ -99,7 +99,7 @@ def test_solve_triangular(seed, batch, n, k, vector, upper, unit, da, db, layout
 def test_solve_triangular_rules():
     a = np.triu(np.ones((3, 3)))
     a[1, 1] = 0.0
-    with pytest.raises(sd.linalg.LinAlgError, match="^singular matrix$"):
+    with pytest.raises(sd.linalg.LinAlgError, match=r"^solve_triangular\(\): singular matrix$"):
         sd.linalg.solve_triangular(as_sd(a), sd.ones((3,)), upper=True)
     # with unit_diagonal the diagonal is not read, so the zero does not matter
     x = sd.linalg.solve_triangular(as_sd(a), sd.ones((3,)), upper=True, unit_diagonal=True)
@@ -148,7 +148,7 @@ def test_cholesky(seed, batch, n, dtype, layout):
 
 
 def test_cholesky_rules():
-    with pytest.raises(sd.linalg.LinAlgError, match="^matrix is not positive definite$"):
+    with pytest.raises(sd.linalg.LinAlgError, match=r"^cholesky\(\): matrix is not positive definite$"):
         sd.linalg.cholesky(as_sd(np.array([[1.0, 2.0], [2.0, 1.0]])))
     batch = np.stack([np.eye(2), np.eye(2), -np.eye(2)])
     with pytest.raises(sd.linalg.LinAlgError, match=r"positive definite \(at batch index \(2,\)\)"):
@@ -324,7 +324,7 @@ def test_lu_solve_rules():
 )
 @pytest.mark.parametrize("bad", [[[1.0]], np.eye(2), None])
 def test_only_sdnp_arrays(call, bad):
-    with pytest.raises(TypeError, match="stardust.ndarray"):
+    with pytest.raises(TypeError, match=r"^\w+\(\): '\w+' must be an sd\.ndarray, not "):
         call(bad)
 
 

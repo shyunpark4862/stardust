@@ -40,11 +40,20 @@ std::optional<DType> parse_any_dtype(nb::handle o) {
     return std::nullopt;  // the caller raises, naming what it accepts
 }
 
+std::string describe_dtype_arg(nb::handle o) {
+    if (const std::optional<DType> d = parse_any_dtype(o); d && !PyUnicode_Check(o.ptr()))
+        return std::string("sd.") + dtype_name(*d);  // a dtype the area does not have: sd.string
+    if (PyUnicode_Check(o.ptr()) || PyType_Check(o.ptr())) return nb::repr(o).c_str();
+    return Py_TYPE(o.ptr())->tp_name;
+}
+
 std::optional<DType> parse_dtype(nb::handle o) {
     if (o.is_none()) return std::nullopt;
     const std::optional<DType> d = parse_any_dtype(o);
     if (!d || !is_array_dtype(*d))
-        throw nb::type_error("dtype must be one of sd.bool, sd.int64, sd.float64, sd.complex128 or their names");
+        throw nb::type_error(("'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names), not " +
+                              describe_dtype_arg(o))
+                                 .c_str());
     return d;
 }
 
@@ -52,16 +61,16 @@ std::optional<bool> parse_copy(nb::handle o) {
     if (o.is_none()) return std::nullopt;
     if (o.ptr() == Py_True) return true;
     if (o.ptr() == Py_False) return false;
-    throw nb::type_error("copy must be True, False or None");
+    throw nb::type_error("'copy' must be True, False or None");
 }
 
 std::int64_t parse_int(nb::handle o, const char* what) {
     if (!PyLong_Check(o.ptr()) || PyBool_Check(o.ptr()))
-        throw nb::type_error((std::string(what) + " must be an int").c_str());
+        throw nb::type_error((std::string("'") + what + "' must be an int, not " + Py_TYPE(o.ptr())->tp_name).c_str());
     int overflow = 0;
     long long v = PyLong_AsLongLongAndOverflow(o.ptr(), &overflow);
     if (overflow != 0)  // an int that must become an int64 (API.md §2)
-        throw std::overflow_error(std::string(what) + " is too large");
+        throw std::overflow_error(std::string("'") + what + "' is out of range");
     return v;
 }
 
@@ -76,8 +85,8 @@ std::vector<int> parse_axes(nb::handle o, int ndim, const char* what) {
     // An int or a tuple of ints; a list is a TypeError (docs/api/array.md §1.3).
     auto as_int = [&](nb::handle item) {
         if (!PyLong_Check(item.ptr()) || PyBool_Check(item.ptr()))
-            throw nb::type_error((std::string(what) + " must be an int or a tuple of ints, not '" +
-                                  Py_TYPE(item.ptr())->tp_name + "'")
+            throw nb::type_error((std::string("'") + what + "' must be an int or a tuple of ints, not " +
+                                  Py_TYPE(item.ptr())->tp_name)
                                      .c_str());
         return normalize_axis(parse_int(item, what), ndim);
     };
@@ -94,7 +103,8 @@ std::vector<int> parse_axes(nb::handle o, int ndim, const char* what) {
 }
 
 NDArray& require_ndarray(nb::handle o, const char* what) {
-    if (!is_ndarray(o)) throw nb::type_error((std::string(what) + " must be an sd.ndarray").c_str());
+    if (!is_ndarray(o))
+        throw nb::type_error((std::string("'") + what + "' must be an sd.ndarray, not " + py_type_name(o)).c_str());
     return as_ndarray(o);
 }
 
@@ -107,12 +117,15 @@ NDArray view_of(nb::handle x) {
 
 std::vector<std::int64_t> parse_shape(nb::handle o) {
     if (PyLong_Check(o.ptr()) && !PyBool_Check(o.ptr())) return {parse_int(o, "shape")};
-    if (!PyTuple_Check(o.ptr())) throw nb::type_error("shape must be an int or a tuple of ints");
+    if (!PyTuple_Check(o.ptr()))
+        throw nb::type_error(("'shape' must be an int or a tuple of ints, not " + py_type_name(o)).c_str());
     std::vector<std::int64_t> shape;
     for (nb::handle item : nb::borrow<nb::tuple>(o)) {
         if (!PyLong_Check(item.ptr()) || PyBool_Check(item.ptr()))
-            throw nb::type_error("shape must be an int or a tuple of ints");
-        shape.push_back(parse_int(item, "shape entry"));
+            throw nb::type_error((std::string("'shape' must be an int or a tuple of ints, not a tuple holding ") +
+                                  Py_TYPE(item.ptr())->tp_name)
+                                     .c_str());
+        shape.push_back(parse_int(item, "shape"));
     }
     return shape;
 }

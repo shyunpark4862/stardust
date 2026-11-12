@@ -9,7 +9,7 @@ namespace sd::linalg {
 
 namespace nb = nanobind;
 
-// The result namedtuples defined in _results.py, in the order _setup receives them.
+// The result namedtuples defined in stardust/_results.py (LINALG), in the order _setup receives them.
 enum class Result { Slogdet, LU, QR, QRPivoted, Lstsq, Eigh, SVD, Eig, Schur, Hessenberg, LDL, Count };
 
 struct PyRefs {

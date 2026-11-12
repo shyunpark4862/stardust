@@ -211,7 +211,7 @@ Column min_max(const Column& c) {
 }
 
 [[noreturn]] void unsupported(std::string_view op, DType dt) {
-    throw nb::type_error(("cannot compute " + std::string(op) + " of a " + dtype_name(dt) + " column (API.md §15)").c_str());
+    throw nb::type_error(("cannot compute " + std::string(op) + " of a " + dtype_name(dt) + " column").c_str());
 }
 
 }  // namespace

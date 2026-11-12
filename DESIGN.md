@@ -262,10 +262,10 @@ R1이 추천안대로 정해지면, 아래 후보를 함수 하나하나 확정�
     - **결과 dtype**: linalg는 bool/int64 입력을 float64로 계산한다(`vecdot`, `trace`, `outer`, `kron`, `cross`, `matrix_power`). 배열은 int64를 유지한다(`sum`, `matmul`). 그래서 `sd.linalg.trace(int 행렬)`은 float이고 `sd.sum(sd.linalg.diagonal(int 행렬))`은 int다.
     - **결과 레이아웃**: linalg의 행렬 결과는 F-order다(DESIGN §3.3에서 유지하기로 함). 배열 API의 "새 배열은 C-order" 규칙(docs/api/array.md §1.9)과 다르다. 규칙 쪽을 "영역마다 정한 순서"로 넓힐지 정한다.
     - ~~**`.base`**: linalg 결과의 `.base`가 내부 블록 객체였다.~~ M3에서 해결: 결과를 `NDArray`로 직접 만들어 `.base`는 `None`이다.
-    - **에러 메시지 형식**: `LinAlgError`와 `OverflowError` 메시지에는 `func(): ` 접두사가 없다. `trace(dtype=sd.bool)`은 콜론 없이 "trace() cannot…"이다.
+    - ~~**에러 메시지 형식**: `LinAlgError`와 `OverflowError` 메시지에는 `func(): ` 접두사가 없다. `trace(dtype=sd.bool)`은 콜론 없이 "trace() cannot…"이다.~~ M6에서 해결 (API.md §2.1).
     - **에러 종류**: 잘못된 `ord`의 타입이 `vector_norm`에서는 TypeError, `matrix_norm`/`cond`에서는 ValueError다. int64를 넘는 Python int가 `k`, `n`, `axis`에서는 ValueError인데, 공통 규칙(API.md §2)은 OverflowError다.
     - `axis=[0]`의 메시지가 "must be an int, not list"인데 튜플은 받는다.
-    - 결과 namedtuple이 두 모듈(`stardust._results`, `stardust.linalg._results`)에 나뉘어 있다.
+    - ~~결과 namedtuple이 두 모듈(`stardust._results`, `stardust.linalg._results`)에 나뉘어 있다.~~ M6에서 `stardust._results` 하나로 합쳤다.
   - frame: `df.iloc[0, 9]`의 메시지가 열 위치인데도 "out of range for 4 rows"라고 한다.
   - frame: `df.groupby(Series)`가 Series의 값을 키 이름으로 읽어서 "key columns must be unique"를 낸다.
   - frame: `DataFrame({"a": [1, 2]}, index=[1, 2, 3])`가 index 길이 문제인데 "all columns must have the same length"를 낸다.
@@ -278,7 +278,7 @@ R1이 추천안대로 정해지면, 아래 후보를 함수 하나하나 확정�
     - **`copy` 인자**: frame에는 `to_numpy`에만 있다. 배열은 `asarray`, `astype`, `reshape`에 있다.
     - **dtype 인자**: frame은 이름 문자열과 Python 타입(`int` 등)을 받고 `sd.float64`는 `TypeError`다 (§4.2, M6에서 맞춘다).
     - **에러 종류**: frame은 `KeyError`(`.loc`의 없는 라벨)를 쓰는데 API.md §2의 목록에 없다.
-    - **에러 메시지 안의 문서 번호**: frame의 에러 메시지 19곳이 옛 pandas API.md의 절(`API.md §6`, `§12`, `§14`, `§15`, `§18`, `§19`)을 적는다. 통합판에서 `API.md`는 루트 문서라서 잘못된 곳을 가리킨다. M5는 결과를 바꾸지 않으므로 두었다. 위의 "메시지에 문서 절 번호를 넣지 않는다"를 따라 M6에서 지운다 (`grep -rn 'API.md §' csrc/frame src/stardust/frame`).
+    - **에러 메시지 안의 문서 번호**: frame의 에러 메시지 19곳이 옛 pandas API.md의 절(`API.md §6`, `§12`, `§14`, `§15`, `§18`, `§19`)을 적는다. 통합판에서 `API.md`는 루트 문서라서 잘못된 곳을 가리킨다. M5는 결과를 바꾸지 않으므로 두었다. 위의 "메시지에 문서 절 번호를 넣지 않는다"를 따라 M6에서 지운다 (`grep -rn 'API.md §' csrc/frame src/stardust/frame`). M6에서 지웠다.
 
 ### 8.5 언제 바꾸나
 - 옮기기(M1, M2, M5)는 2라운드와 상관없이 지금 규칙 그대로 한다.

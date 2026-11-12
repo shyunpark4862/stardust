@@ -5,6 +5,7 @@
 // (docs/design/linalg.md §5.4). A zero on the diagonal of a triangular factor
 // is a LinAlgError everywhere, also where LAPACK itself would just divide by it.
 #include "linalg/ops/factor.hpp"
+#include "bind/errors.hpp"
 
 #include "linalg/cost.hpp"
 #include "linalg/outblock.hpp"
@@ -237,13 +238,13 @@ nb::object lu_solve(nb::handle lo, nb::handle uo, nb::handle po, nb::handle bo) 
 }  // namespace
 
 void bind_factor(nb::module_& m) {
-    m.def("solve_triangular", &solve_triangular, nb::arg().none(), nb::arg().none(), nb::kw_only(),
+    m.def("solve_triangular", named("solve_triangular", &solve_triangular), nb::arg().none(), nb::arg().none(), nb::kw_only(),
           nb::arg("upper"), nb::arg("unit_diagonal") = false);
-    m.def("cholesky", &cholesky, nb::arg().none(), nb::kw_only(), nb::arg("upper") = false);
-    m.def("cholesky_solve", &cholesky_solve, nb::arg().none(), nb::arg().none(), nb::kw_only(),
+    m.def("cholesky", named("cholesky", &cholesky), nb::arg().none(), nb::kw_only(), nb::arg("upper") = false);
+    m.def("cholesky_solve", named("cholesky_solve", &cholesky_solve), nb::arg().none(), nb::arg().none(), nb::kw_only(),
           nb::arg("upper") = false);
-    m.def("lu", &lu, nb::arg().none());
-    m.def("lu_solve", &lu_solve, nb::arg().none(), nb::arg().none(), nb::arg().none(), nb::arg().none());
+    m.def("lu", named("lu", &lu), nb::arg().none());
+    m.def("lu_solve", named("lu_solve", &lu_solve), nb::arg().none(), nb::arg().none(), nb::arg().none(), nb::arg().none());
 }
 
 }  // namespace sd::linalg

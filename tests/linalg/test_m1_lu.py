@@ -151,7 +151,7 @@ def test_result_is_fresh_writable_memory():
 @pytest.mark.parametrize("bad", [[[1.0, 0.0], [0.0, 1.0]], np.eye(2), 3.0, None])
 def test_only_sdnp_arrays(bad):
     for f in (sd.linalg.det, sd.linalg.slogdet, sd.linalg.inv):
-        with pytest.raises(TypeError, match="stardust.ndarray"):
+        with pytest.raises(TypeError, match=r"^\w+\(\): '\w+' must be an sd\.ndarray, not "):
             f(bad)
     with pytest.raises(TypeError, match="'a' must be"):
         sd.linalg.solve(bad, sd.ones((2,)))
@@ -210,7 +210,7 @@ def test_singular_raises_linalgerror_with_smallest_batch_index():
         sd.linalg.inv(as_sd(a))
     with pytest.raises(sd.linalg.LinAlgError, match=r"batch index \(1,\)"):
         sd.linalg.solve(as_sd(a), sd.ones((2,)))
-    with pytest.raises(sd.linalg.LinAlgError, match=r"^singular matrix$"):
+    with pytest.raises(sd.linalg.LinAlgError, match=r"^inv\(\): singular matrix$"):
         sd.linalg.inv(sd.zeros((2, 2)))
     with pytest.raises(sd.linalg.LinAlgError, match=r"batch index \(0, 1\)"):
         sd.linalg.inv(as_sd(np.stack([np.eye(2), np.zeros((2, 2))])[None]))

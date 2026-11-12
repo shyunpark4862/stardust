@@ -5,6 +5,7 @@
 // (docs/design/linalg.md §2.3) -- except matrix_power with n < 0, which inverts
 // through getrf and so checks like inv (the same section).
 #include "linalg/ops/basic.hpp"
+#include "bind/errors.hpp"
 
 #include "linalg/args.hpp"
 #include "linalg/cost.hpp"
@@ -168,7 +169,7 @@ nb::object trace(nb::handle xo, nb::handle k_o, nb::handle dtype_o) {
     // dtype= is an explicit conversion, as in sd.sum (docs/design/linalg.md §2.1; docs/api/array.md §7.5).
     DType acc_dt = computes_complex(x.dtype()) ? DType::Complex128 : DType::Float64;
     if (want) {
-        if (*want == DType::Bool) throw nb::type_error("trace() cannot accumulate in bool; use any() or all()");
+        if (*want == DType::Bool) throw nb::type_error("trace(): cannot accumulate in bool; use any() or all()");
         if (x.dtype() == DType::Complex128 && *want != DType::Complex128) complex_to_real("trace", *want);
         acc_dt = *want;
     }
@@ -392,13 +393,13 @@ nb::object cross(nb::handle x1o, nb::handle x2o, nb::handle axis_o) {
 }  // namespace
 
 void bind_basic(nb::module_& m) {
-    m.def("kron", &kron, nb::arg().none(), nb::arg().none());
-    m.def("cross", &cross, nb::arg().none(), nb::arg().none(), nb::kw_only(), nb::arg("axis") = -1);
-    m.def("vecdot", &vecdot, nb::arg().none(), nb::arg().none(), nb::kw_only(), nb::arg("axis") = -1);
-    m.def("outer", &outer, nb::arg().none(), nb::arg().none());
-    m.def("trace", &trace, nb::arg().none(), nb::kw_only(), nb::arg("k") = 0, nb::arg("dtype").none() = nb::none());
-    m.def("diagonal", &diagonal, nb::arg().none(), nb::kw_only(), nb::arg("k") = 0);
-    m.def("matrix_power", &matrix_power, nb::arg().none(), nb::arg());
+    m.def("kron", named("kron", &kron), nb::arg().none(), nb::arg().none());
+    m.def("cross", named("cross", &cross), nb::arg().none(), nb::arg().none(), nb::kw_only(), nb::arg("axis") = -1);
+    m.def("vecdot", named("vecdot", &vecdot), nb::arg().none(), nb::arg().none(), nb::kw_only(), nb::arg("axis") = -1);
+    m.def("outer", named("outer", &outer), nb::arg().none(), nb::arg().none());
+    m.def("trace", named("trace", &trace), nb::arg().none(), nb::kw_only(), nb::arg("k") = 0, nb::arg("dtype").none() = nb::none());
+    m.def("diagonal", named("diagonal", &diagonal), nb::arg().none(), nb::kw_only(), nb::arg("k") = 0);
+    m.def("matrix_power", named("matrix_power", &matrix_power), nb::arg().none(), nb::arg());
 }
 
 }  // namespace sd::linalg

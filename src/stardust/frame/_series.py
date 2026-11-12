@@ -14,12 +14,12 @@ class Series(Reductions):
     __slots__ = ("_col", "_index", "_name")
 
     def __init__(self, data=None, /, *, index=None, dtype=None, name=None):
-        dtype = resolve(dtype) if dtype is not None else None
-        target = ensure_index(index) if index is not None else None
+        dtype = resolve(dtype, "Series") if dtype is not None else None
+        target = ensure_index(index, "Series") if index is not None else None
         if isinstance(data, Series):
-            col = data._col.astype(dtype) if dtype is not None else data._col  # shares the Buffers
+            col = data._col.astype(dtype, func="Series") if dtype is not None else data._col  # shares the Buffers
             if target is not None:  # labels given: rearrange to them (docs/api/frame.md §2.1)
-                col = _select.reindexed(col, data._index, target)
+                col = _select.reindexed(col, data._index, target, "Series")
             else:
                 target = data._index
             if name is None:
@@ -28,16 +28,16 @@ class Series(Reductions):
             if data is None:
                 col = _column.full_na(len(target), dtype) if target is not None else Column.from_list([], NA, dtype)
             elif isinstance(data, dict):
-                raise TypeError("a Series from a dict is not supported; pass the labels as index=")
+                raise TypeError("Series(): a Series from a dict is not supported; pass the labels as index=")
             else:
-                col = _column.column_from(data, dtype)
+                col = _column.column_from(data, dtype, "Series")
             if target is None:
                 target = RangeIndex(len(col))
             elif len(target) != len(col):
-                raise ValueError(f"{len(col)} values for an index of {len(target)} labels")
+                raise ValueError(f"Series(): {len(col)} values for an index of {len(target)} labels")
         self._col = col
         self._index = target
-        self._name = check_name(name)
+        self._name = check_name(name, "a Series", "Series")
 
     @classmethod
     def _new(cls, col, index, name):
@@ -104,17 +104,21 @@ class Series(Reductions):
         rows; it must fit the result dtype. dtype= converts first, as astype.
         A string column gives an object array of str.
         """
-        return _column.to_numpy(self._col, resolve(dtype) if dtype is not None else None, copy, na_value)
+        return self._to_numpy(dtype, copy, na_value, "to_numpy")
+
+    def _to_numpy(self, dtype, copy, na_value, func):
+        return _column.to_numpy(self._col, resolve(dtype, func) if dtype is not None else None, copy, na_value, func)
 
     def to_array(self, *, dtype=None, copy=None, na_value=_NO_VALUE):
         """The values as an sd.ndarray (docs/api/frame.md §2.8), by the rules of
         to_numpy: without NA and a dtype conversion, a read-only view sharing
         the column's memory; copy=, na_value= and dtype= as there. A string
         column is a TypeError (the array area has no string dtype)."""
-        return _column.to_array(self._col, resolve(dtype) if dtype is not None else None, copy, na_value)
+        return _column.to_array(self._col, resolve(dtype, "to_array") if dtype is not None else None, copy, na_value,
+                                "to_array")
 
     def __array__(self, dtype=None, copy=None):
-        arr = self.to_numpy(copy=copy)
+        arr = self._to_numpy(None, copy, _NO_VALUE, None)  # numpy's protocol: no function name
         if dtype is None:
             return arr
         import numpy as np
@@ -177,7 +181,7 @@ class Series(Reductions):
     def astype(self, dtype, /):
         """The values as `dtype` (docs/api/frame.md §3.5): rounds int -> float, truncates
         float -> int, formats to string like str(), parses strings strictly."""
-        return Series._new(self._col.astype(resolve(dtype)), self._index, self._name)
+        return Series._new(self._col.astype(resolve(dtype, "astype"), func="astype"), self._index, self._name)
 
     def isna(self):
         """True where the value is NA. NaN is a value, not NA (docs/api/frame.md §1.3)."""
@@ -193,7 +197,7 @@ class Series(Reductions):
 
     def fillna(self, value, /):
         """NA rows set to `value`, which must convert to the dtype without loss (docs/api/frame.md §3.6)."""
-        return Series._new(fill_column(self._col, value), self._index, self._name)
+        return Series._new(fill_column(self._col, value, "fillna"), self._index, self._name)
 
     def dropna(self, *, ignore_index=False):
         """The rows that are not NA."""
@@ -214,11 +218,11 @@ class Series(Reductions):
 
     def duplicated(self, *, keep="first"):
         """True for rows that repeat a value (see docs/api/frame.md §4.1 for keep)."""
-        return Series._new(_unique.duplicated([self._col], keep), self._index, self._name)
+        return Series._new(_unique.duplicated([self._col], keep, "duplicated"), self._index, self._name)
 
     def drop_duplicates(self, *, keep="first", ignore_index=False):
         """The rows that duplicated(keep=keep) does not mark."""
-        keep_rows = _core.unary_op("invert", _unique.duplicated([self._col], keep))
+        keep_rows = _core.unary_op("invert", _unique.duplicated([self._col], keep, "drop_duplicates"))
         return self._take(keep_rows.nonzero(), ignore_index)
 
     def value_counts(self, *, normalize=False, sort=True, descending=True, dropna=True):
@@ -228,13 +232,13 @@ class Series(Reductions):
         name = "value" if self._name is None else self._name
         count_name = "proportion" if normalize else "count"
         if name == count_name:
-            raise ValueError(f"the value column cannot be named {count_name!r}")
+            raise ValueError(f"value_counts(): the value column cannot be named {count_name!r}")
         col = self._col.take(self._col.notna().nonzero()) if dropna and self._col.null_count else self._col
-        (keys,), counts = _unique.value_counts([col], normalize, sort, descending)
+        (keys,), counts = _unique.value_counts([col], normalize, sort, descending, "value_counts")
         return DataFrame._new({name: keys, count_name: counts}, RangeIndex(len(counts)))
 
     def _reduce(self, op, skipna, correction):  # docs/api/frame.md §6.2: a Python scalar or NA
-        return _core.reduce(op, self._col, skipna, correction).to_list(NA)[0]
+        return _core.reduce(op, self._col, skipna, correction, func=op).to_list(NA)[0]
 
     # --- sorting (docs/api/frame.md §8) ---
 
@@ -242,11 +246,11 @@ class Series(Reductions):
         """The rows ordered by value; equal values keep their order (always: stable=False
         is accepted and changes nothing). NaN is the largest value; NA goes where
         na_position says."""
-        return self._take(_sort.order([self._col], descending, na_position, stable), ignore_index)
+        return self._take(_sort.order([self._col], descending, na_position, stable, "sort_values"), ignore_index)
 
     def sort_index(self, *, descending=False, stable=True, ignore_index=False):
         """The rows ordered by label."""
-        return self._take(_sort.order([self._index._column()], descending, "last", stable), ignore_index)
+        return self._take(_sort.order([self._index._column()], descending, "last", stable, "sort_index"), ignore_index)
 
     # --- selection and assignment (docs/api/frame.md §5) ---
 
@@ -286,8 +290,8 @@ class Series(Reductions):
 
     def reindex(self, labels, /):
         """The values at `labels`, in that order; absent labels are NA (docs/api/frame.md §5.2)."""
-        target = ensure_index(labels)
-        return Series._new(_select.reindexed(self._col, self._index, target), target, self._name)
+        target = ensure_index(labels, "reindex")
+        return Series._new(_select.reindexed(self._col, self._index, target, "reindex"), target, self._name)
 
 
 class _Indexer:
@@ -327,12 +331,12 @@ def assignment_values(value, dtype, labels):
     return col
 
 
-def fill_column(col, value):
+def fill_column(col, value, func):
     if value is NA or value is None:
         return col
     if not _ops.is_operand_scalar(value):
-        raise TypeError(f"fillna takes a scalar, got {type(value).__name__}")
-    return col.fill_na(_column.implicit_scalar(value, col.dtype))  # implicit, by dtype (docs/api/frame.md §3.6)
+        raise TypeError(f"{func}(): 'value' must be a scalar, not {type(value).__name__}")
+    return col.fill_na(_column.implicit_scalar(value, col.dtype, func))  # implicit, by dtype (docs/api/frame.md §3.6)
 
 
 def _make_binary(op, reflected):

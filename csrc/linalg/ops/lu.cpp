@@ -5,6 +5,7 @@
 //   solve : getrf + getrs  (Accelerate's gesv is never faster, and 2x slower at n=2048)
 //   inv   : getrf + getrs against the identity  (fastest up to n=128; inv(a) == solve(a, I) bit for bit)
 #include "linalg/ops/lu.hpp"
+#include "bind/errors.hpp"
 
 #include "linalg/cost.hpp"
 #include "linalg/outblock.hpp"
@@ -174,10 +175,10 @@ nb::object solve(nb::handle ao, nb::handle bo) {
 void bind_lu(nb::module_& m) {
     // Unnamed args are positional-only (docs/api/linalg.md §1.1). .none() lets None reach
     // Input, which rejects every non-sd.ndarray argument with the same TypeError.
-    m.def("solve", &solve, nb::arg().none(), nb::arg().none());
-    m.def("inv", &inv, nb::arg().none());
-    m.def("det", &det, nb::arg().none());
-    m.def("slogdet", &slogdet, nb::arg().none());
+    m.def("solve", named("solve", &solve), nb::arg().none(), nb::arg().none());
+    m.def("inv", named("inv", &inv), nb::arg().none());
+    m.def("det", named("det", &det), nb::arg().none());
+    m.def("slogdet", named("slogdet", &slogdet), nb::arg().none());
 }
 
 }  // namespace sd::linalg

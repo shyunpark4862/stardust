@@ -1,8 +1,30 @@
-"""Named result tuples of the unique_* functions, with Array API names
-(docs/api/array.md §8.3)."""
+"""Named result tuples of every area, in one module (DESIGN.md §9.7). Each is
+named after its function: <FunctionName>Result in CamelCase, with the Array
+API's spellings (UniqueAllResult, EighResult, QRResult, SVDResult, ...).
+
+Field names follow the Array API where it has the function
+(docs/api/array.md §8.3, docs/api/linalg.md §1.6)."""
 
 from collections import namedtuple
 
+# array: unique_* (built by csrc/array/ops/sort.cpp, which looks them up by name)
 UniqueAllResult = namedtuple("UniqueAllResult", ["values", "indices", "inverse_indices", "counts"])
 UniqueCountsResult = namedtuple("UniqueCountsResult", ["values", "counts"])
 UniqueInverseResult = namedtuple("UniqueInverseResult", ["values", "inverse_indices"])
+
+# linalg (built by the C++ core, which receives them in LINALG)
+SlogdetResult = namedtuple("SlogdetResult", ["sign", "logabsdet"])
+LUResult = namedtuple("LUResult", ["L", "U", "perm"])
+QRResult = namedtuple("QRResult", ["Q", "R"])
+QRPivotedResult = namedtuple("QRPivotedResult", ["Q", "R", "perm"])
+LstsqResult = namedtuple("LstsqResult", ["solution", "rank", "singular_values"])
+EighResult = namedtuple("EighResult", ["eigenvalues", "eigenvectors"])
+SVDResult = namedtuple("SVDResult", ["U", "S", "Vh"])
+EigResult = namedtuple("EigResult", ["eigenvalues", "eigenvectors"])
+SchurResult = namedtuple("SchurResult", ["T", "Z"])
+HessenbergResult = namedtuple("HessenbergResult", ["H", "Q"])
+LDLResult = namedtuple("LDLResult", ["L", "D", "perm"])
+
+# The order the C++ core expects in _core.linalg._setup (csrc/linalg/pyrefs.hpp, enum Result).
+LINALG = (SlogdetResult, LUResult, QRResult, QRPivotedResult, LstsqResult, EighResult, SVDResult,
+          EigResult, SchurResult, HessenbergResult, LDLResult)

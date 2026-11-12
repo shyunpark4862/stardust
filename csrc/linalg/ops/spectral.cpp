@@ -11,6 +11,7 @@
 // Values-only modes give values that differ from the ones computed with the
 // vectors at rounding level (docs/design/linalg.md §10.5).
 #include "linalg/ops/spectral.hpp"
+#include "bind/errors.hpp"
 
 #include "linalg/args.hpp"
 #include "linalg/cost.hpp"
@@ -341,13 +342,13 @@ nb::object cond(nb::handle xo, nb::handle ord_o) {
 }  // namespace
 
 void bind_spectral(nb::module_& m) {
-    m.def("eigh", &eigh, nb::arg().none(), nb::arg().none() = nb::none());
-    m.def("eigvalsh", &eigvalsh, nb::arg().none(), nb::arg().none() = nb::none());
-    m.def("svd", &svd, nb::arg().none(), nb::kw_only(), nb::arg("mode") = "reduced");
-    m.def("svdvals", &svdvals, nb::arg().none());
-    m.def("matrix_rank", &matrix_rank, nb::arg().none(), nb::kw_only(), nb::arg("rtol").none() = nb::none());
-    m.def("pinv", &pinv, nb::arg().none(), nb::kw_only(), nb::arg("rtol").none() = nb::none());
-    m.def("cond", &cond, nb::arg().none(), nb::kw_only(), nb::arg("ord") = 2);
+    m.def("eigh", named("eigh", &eigh), nb::arg().none(), nb::arg().none() = nb::none());
+    m.def("eigvalsh", named("eigvalsh", &eigvalsh), nb::arg().none(), nb::arg().none() = nb::none());
+    m.def("svd", named("svd", &svd), nb::arg().none(), nb::kw_only(), nb::arg("mode") = "reduced");
+    m.def("svdvals", named("svdvals", &svdvals), nb::arg().none());
+    m.def("matrix_rank", named("matrix_rank", &matrix_rank), nb::arg().none(), nb::kw_only(), nb::arg("rtol").none() = nb::none());
+    m.def("pinv", named("pinv", &pinv), nb::arg().none(), nb::kw_only(), nb::arg("rtol").none() = nb::none());
+    m.def("cond", named("cond", &cond), nb::arg().none(), nb::kw_only(), nb::arg("ord") = 2);
 }
 
 }  // namespace sd::linalg

@@ -2,6 +2,7 @@
 
 #include "bind/frame_bind.hpp"
 
+#include "bind/errors.hpp"
 #include "frame/column.hpp"
 #include "frame/convert.hpp"
 #include "frame/interop.hpp"
@@ -35,6 +36,20 @@ namespace nb = nanobind;
 
 namespace {
 
+// The optional `func` of a kernel the Python layer calls for a public function:
+// that function's name, put in front of the kernel's error messages
+// (bind/errors.hpp). None for operators and indexing, which keep Python's form.
+using Func = std::optional<std::string>;
+
+const char* name_of(const Func& func) { return func ? func->c_str() : nullptr; }
+
+template <class F>
+decltype(auto) named_call(const Func& func, F&& f) {
+    return sd::call_named(name_of(func), std::forward<F>(f));
+}
+
+const auto kFunc = nb::arg("func").none() = nb::none();
+
 void bind_column(nb::module_& m) {
     using sd::frame::Column;
     // A value type: returning one moves a few shared_ptrs into the new Python
@@ -49,21 +64,28 @@ void bind_column(nb::module_& m) {
         .def("to_list", &sd::frame::to_list, nb::arg("na").none())
         .def("to_numpy_view", &sd::frame::to_numpy_view)
         .def("to_array_view", &sd::frame::to_array_view, nb::arg("writeable"))
-        .def_static("from_array", &sd::frame::from_array, nb::arg("arr"))
+        .def_static("from_array", [](nb::handle arr, const Func& func) {
+            return named_call(func, [&] { return sd::frame::from_array(arr); });
+        }, nb::arg("arr"), kFunc)
         .def("validity_mask", &sd::frame::validity_mask)
         // For tests: whether two columns share their values Buffer (zero-copy).
         .def("_shares_values_with", [](const Column& a, const Column& b) { return a.values == b.values; })
         .def_static(
             "from_list",
-            [](nb::handle seq, nb::handle na, std::optional<std::string_view> dtype) {
-                std::optional<sd::DType> dt;
-                if (dtype) dt = sd::frame::parse_dtype(*dtype);
-                return sd::frame::from_list(seq, na, dt);
+            [](nb::handle seq, nb::handle na, std::optional<std::string_view> dtype, const Func& func) {
+                return named_call(func, [&] {
+                    std::optional<sd::DType> dt;
+                    if (dtype) dt = sd::frame::parse_dtype(*dtype);
+                    return sd::frame::from_list(seq, na, dt);
+                });
             },
-            nb::arg("seq"), nb::arg("na").none(), nb::arg("dtype").none())
-        .def_static("from_numpy", &sd::frame::from_numpy, nb::arg("arr"))
-        .def("astype", [](const Column& c, std::string_view dtype) { return sd::frame::astype(c, sd::frame::parse_dtype(dtype)); },
-             nb::arg("dtype"))
+            nb::arg("seq"), nb::arg("na").none(), nb::arg("dtype").none(), kFunc)
+        .def_static("from_numpy", [](const nb::ndarray<nb::ro, nb::ndim<1>, nb::device::cpu>& arr, const Func& func) {
+            return named_call(func, [&] { return sd::frame::from_numpy(arr); });
+        }, nb::arg("arr"), kFunc)
+        .def("astype", [](const Column& c, std::string_view dtype, const Func& func) {
+            return named_call(func, [&] { return sd::frame::astype(c, sd::frame::parse_dtype(dtype)); });
+        }, nb::arg("dtype"), kFunc)
         .def("isna", [](const Column& c) { return sd::frame::isna(c, true); })
         .def("notna", [](const Column& c) { return sd::frame::isna(c, false); })
         .def("fill_na", &sd::frame::fill_na, nb::arg("value"))
@@ -85,29 +107,39 @@ void bind_column(nb::module_& m) {
         .def("all_positions", &sd::frame::LabelTable::all_positions, nb::arg("targets"));
     m.def("concat", &sd::frame::concat, nb::arg("cols"));
     m.def("columns_to_array", &sd::frame::columns_to_array, nb::arg("cols"), nb::arg("n"));
-    m.def("reduce", &sd::frame::reduce, nb::arg("op"), nb::arg("col"), nb::arg("skipna"), nb::arg("correction"));
+    m.def("reduce", [](std::string_view op, const Column& col, bool skipna, double correction, const Func& func) {
+        return named_call(func, [&] { return sd::frame::reduce(op, col, skipna, correction); });
+    }, nb::arg("op"), nb::arg("col"), nb::arg("skipna"), nb::arg("correction"), kFunc);
     nb::class_<sd::frame::Groups>(m, "Groups")
         .def(nb::init<const Column&, std::int64_t>(), nb::arg("codes"), nb::arg("ngroups"))
         .def("sizes", &sd::frame::Groups::sizes)
-        .def("reduce", &sd::frame::Groups::reduce, nb::arg("op"), nb::arg("col"), nb::arg("skipna"), nb::arg("correction"));
+        .def("reduce", [](const sd::frame::Groups& g, std::string_view op, const Column& col, bool skipna, double correction,
+                          const Func& func) {
+            return named_call(func, [&] { return g.reduce(op, col, skipna, correction); });
+        }, nb::arg("op"), nb::arg("col"), nb::arg("skipna"), nb::arg("correction"), kFunc);
     m.def("sort_groups", &sd::frame::sort_groups, nb::arg("keys"));
     m.def("argsort", &sd::frame::argsort, nb::arg("keys"), nb::arg("ascending"), nb::arg("na_last"));
-    m.def("join_indices", &sd::frame::join_indices, nb::arg("left"), nb::arg("right"), nb::arg("how"));
+    m.def("join_indices", [](const std::vector<Column>& left, const std::vector<Column>& right, std::string_view how,
+                             const Func& func) {
+        return named_call(func, [&] { return sd::frame::join_indices(left, right, how); });
+    }, nb::arg("left"), nb::arg("right"), nb::arg("how"), kFunc);
     m.def(
         "read_csv",
         [](nb::bytes data, std::string_view sep, bool header, std::vector<std::string> names,
            std::vector<std::string> usecols, std::unordered_map<std::string, std::string> dtypes,
            std::optional<std::string_view> all_dtype, std::vector<std::string> na_values, std::int64_t nrows) {
-            sd::frame::CsvOptions opt;
-            opt.sep = sep[0];
-            opt.header = header;
-            opt.names = std::move(names);
-            opt.usecols = std::move(usecols);
-            for (const auto& [k, v] : dtypes) opt.dtypes.emplace(k, sd::frame::parse_dtype(v));
-            if (all_dtype) opt.all_dtype = sd::frame::parse_dtype(*all_dtype);
-            opt.na_values = std::move(na_values);
-            opt.nrows = nrows;
-            return sd::frame::read_csv(data.c_str(), data.size(), opt);
+            return sd::call_named("read_csv", [&] {
+                sd::frame::CsvOptions opt;
+                opt.sep = sep[0];
+                opt.header = header;
+                opt.names = std::move(names);
+                opt.usecols = std::move(usecols);
+                for (const auto& [k, v] : dtypes) opt.dtypes.emplace(k, sd::frame::parse_dtype(v));
+                if (all_dtype) opt.all_dtype = sd::frame::parse_dtype(*all_dtype);
+                opt.na_values = std::move(na_values);
+                opt.nrows = nrows;
+                return sd::frame::read_csv(data.c_str(), data.size(), opt);
+            });
         },
         nb::arg("data"), nb::arg("sep"), nb::arg("header"), nb::arg("names"), nb::arg("usecols"), nb::arg("dtypes"),
         nb::arg("all_dtype").none(), nb::arg("na_values"), nb::arg("nrows"));

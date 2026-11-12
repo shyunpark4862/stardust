@@ -3,6 +3,7 @@
 
 #include "bind/array_bind.hpp"
 
+#include "bind/errors.hpp"
 #include "bind/pyutil.hpp"
 #include "array/convert.hpp"
 #include "array/ops/copy.hpp"
@@ -107,8 +108,8 @@ nb::object not_implemented() { return nb::borrow(Py_NotImplemented); }
 // `x < [1, 2]` and `x + [1, 2]` (docs/api/array.md §10.3).
 template <typename Op>
 nb::object op_equality(nb::handle self, nb::handle other) {
-    if (is_operand(other)) return binary<Op>(self, other, nb::none());
     constexpr bool eq = std::is_same_v<Op, ops::Equal>;
+    if (is_operand(other)) return binary<Op>(self, other, nb::none(), eq ? "==" : "!=");
     if (richcmpfunc cmp = Py_TYPE(other.ptr())->tp_richcompare) {
         nb::object r = nb::steal(cmp(other.ptr(), self.ptr(), eq ? Py_EQ : Py_NE));  // == and != reflect to themselves
         if (!r.is_valid()) throw nb::python_error();
@@ -119,33 +120,32 @@ nb::object op_equality(nb::handle self, nb::handle other) {
                              .c_str());
 }
 
+// Operators keep Python's message form, with the operator's symbol and no
+// function name (bind/errors.hpp): "unsupported operand dtypes for <: ...".
 template <typename Op>
-nb::object op_forward(nb::handle self, nb::handle other) {
-    return is_operand(other) ? binary<Op>(self, other, nb::none()) : not_implemented();
-}
-
-template <typename Op>
-nb::object op_reflected(nb::handle self, nb::handle other) {  // other <op> self
-    return is_operand(other) ? binary<Op>(other, self, nb::none()) : not_implemented();
+void def_compare(nb::class_<NDArray>& cls, const char* method, const char* symbol) {
+    cls.def(method, [symbol](nb::handle self, nb::handle other) {
+        return is_operand(other) ? binary<Op>(self, other, nb::none(), symbol) : not_implemented();
+    }, nb::arg().none());
 }
 
 // x op= y is op(x, y, out=x): same rules as out= (upward conversion only,
 // overlap-safe: docs/design/array.md §12.2), same object back.
 template <typename Op>
-nb::object op_inplace(nb::handle self, nb::handle other) {
-    return is_operand(other) ? binary<Op>(self, other, self) : not_implemented();
+void def_arith(nb::class_<NDArray>& cls, const char* fwd, const char* refl, const char* inplace, const char* symbol,
+               const char* inplace_symbol) {
+    def_compare<Op>(cls, fwd, symbol);
+    cls.def(refl, [symbol](nb::handle self, nb::handle other) {  // other <op> self
+        return is_operand(other) ? binary<Op>(other, self, nb::none(), symbol) : not_implemented();
+    }, nb::arg().none());
+    cls.def(inplace, [inplace_symbol](nb::handle self, nb::handle other) {
+        return is_operand(other) ? binary<Op>(self, other, self, inplace_symbol) : not_implemented();
+    }, nb::arg().none());
 }
 
 template <typename Op>
-nb::object op_unary(nb::handle self) {
-    return unary<Op>(self, nb::none());
-}
-
-template <typename Op>
-void def_arith(nb::class_<NDArray>& cls, const char* fwd, const char* refl, const char* inplace) {
-    cls.def(fwd, &op_forward<Op>, nb::arg().none());
-    cls.def(refl, &op_reflected<Op>, nb::arg().none());
-    cls.def(inplace, &op_inplace<Op>, nb::arg().none());
+void def_unary(nb::class_<NDArray>& cls, const char* method, const char* symbol) {
+    cls.def(method, [symbol](nb::handle self) { return unary<Op>(self, nb::none(), symbol); });
 }
 
 nb::object format_call(const char* fn, nb::handle self) {
@@ -164,31 +164,31 @@ void bind_ndarray(nb::module_& m) {
         .def_prop_ro("itemsize", [](const NDArray& a) { return a.itemsize(); })
         .def_prop_ro("nbytes", [](const NDArray& a) { return a.nbytes(); })
         .def_prop_ro("base", [](const NDArray& a) { return a.base.is_valid() ? a.base : nb::none(); })
-        .def_prop_ro("T", &transpose_2d)
-        .def_prop_ro("mT", &matrix_transpose)
+        .def_prop_ro("T", named(".T", &transpose_2d))
+        .def_prop_ro("mT", named(".mT", &matrix_transpose))
         .def("tolist", [](const NDArray& a) { return tolist(a, 0, a.data); })
-        .def("astype", [](nb::handle self, nb::handle dtype, nb::handle copy) { return astype(self, dtype, copy); },
+        .def("astype", named("astype", &astype),
              nb::arg(), nb::kw_only(), nb::arg("copy").none() = true)
         .def("copy", [](const NDArray& a) { return wrap(cast_copy(a, a.dtype)); })
-        .def("reshape", nb::overload_cast<nb::handle, nb::handle, nb::handle>(&reshape), nb::arg(), nb::kw_only(),
-             nb::arg("copy").none() = nb::none())
+        .def("reshape", named("reshape", nb::overload_cast<nb::handle, nb::handle, nb::handle>(&reshape)), nb::arg(),
+             nb::kw_only(), nb::arg("copy").none() = nb::none())
         // .none(): x[None] is newaxis, and nanobind rejects None by default.
         // Reductions as methods (docs/design/array.md §12.2): the same functions, x as self.
-        .def("sum", &sum, nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("dtype").none() = nb::none(),
+        .def("sum", named("sum", &sum), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("dtype").none() = nb::none(),
              nb::arg("keepdims") = false)
-        .def("prod", &prod, nb::kw_only(), nb::arg("axis").none() = nb::none(),
+        .def("prod", named("prod", &prod), nb::kw_only(), nb::arg("axis").none() = nb::none(),
              nb::arg("dtype").none() = nb::none(), nb::arg("keepdims") = false)
-        .def("min", &min, nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims") = false)
-        .def("max", &max, nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims") = false)
-        .def("mean", &mean, nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims") = false)
-        .def("var", &var, nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("correction") = 0,
+        .def("min", named("min", &min), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims") = false)
+        .def("max", named("max", &max), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims") = false)
+        .def("mean", named("mean", &mean), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims") = false)
+        .def("var", named("var", &var), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("correction") = 0,
              nb::arg("keepdims") = false)
-        .def("std", &stddev, nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("correction") = 0,
+        .def("std", named("std", &stddev), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("correction") = 0,
              nb::arg("keepdims") = false)
-        .def("argmin", &argmin, nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims") = false)
-        .def("argmax", &argmax, nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims") = false)
-        .def("any", &any, nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims") = false)
-        .def("all", &all, nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims") = false)
+        .def("argmin", named("argmin", &argmin), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims") = false)
+        .def("argmax", named("argmax", &argmax), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims") = false)
+        .def("any", named("any", &any), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims") = false)
+        .def("all", named("all", &all), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims") = false)
         .def("__getitem__", &getitem, nb::arg().none())
         .def("__setitem__", &setitem, nb::arg().none(), nb::arg().none())
         .def("__len__", [](const NDArray& a) { return a.shape[0]; })
@@ -221,25 +221,25 @@ void bind_ndarray(nb::module_& m) {
         })
         .def("__index__", [](const NDArray&) -> int { throw nb::type_error("an array cannot be used as an index"); });
     using namespace ops;
-    def_arith<Add>(cls, "__add__", "__radd__", "__iadd__");
-    def_arith<Subtract>(cls, "__sub__", "__rsub__", "__isub__");
-    def_arith<Multiply>(cls, "__mul__", "__rmul__", "__imul__");
-    def_arith<Divide>(cls, "__truediv__", "__rtruediv__", "__itruediv__");
-    def_arith<FloorDivide>(cls, "__floordiv__", "__rfloordiv__", "__ifloordiv__");
-    def_arith<Remainder>(cls, "__mod__", "__rmod__", "__imod__");
-    def_arith<Pow>(cls, "__pow__", "__rpow__", "__ipow__");
-    def_arith<BitwiseAnd>(cls, "__and__", "__rand__", "__iand__");
-    def_arith<BitwiseOr>(cls, "__or__", "__ror__", "__ior__");
-    def_arith<BitwiseXor>(cls, "__xor__", "__rxor__", "__ixor__");
-    def_arith<LeftShift>(cls, "__lshift__", "__rlshift__", "__ilshift__");
-    def_arith<RightShift>(cls, "__rshift__", "__rrshift__", "__irshift__");
+    def_arith<Add>(cls, "__add__", "__radd__", "__iadd__", "+", "+=");
+    def_arith<Subtract>(cls, "__sub__", "__rsub__", "__isub__", "-", "-=");
+    def_arith<Multiply>(cls, "__mul__", "__rmul__", "__imul__", "*", "*=");
+    def_arith<Divide>(cls, "__truediv__", "__rtruediv__", "__itruediv__", "/", "/=");
+    def_arith<FloorDivide>(cls, "__floordiv__", "__rfloordiv__", "__ifloordiv__", "//", "//=");
+    def_arith<Remainder>(cls, "__mod__", "__rmod__", "__imod__", "%", "%=");
+    def_arith<Pow>(cls, "__pow__", "__rpow__", "__ipow__", "**", "**=");
+    def_arith<BitwiseAnd>(cls, "__and__", "__rand__", "__iand__", "&", "&=");
+    def_arith<BitwiseOr>(cls, "__or__", "__ror__", "__ior__", "|", "|=");
+    def_arith<BitwiseXor>(cls, "__xor__", "__rxor__", "__ixor__", "^", "^=");
+    def_arith<LeftShift>(cls, "__lshift__", "__rlshift__", "__ilshift__", "<<", "<<=");
+    def_arith<RightShift>(cls, "__rshift__", "__rrshift__", "__irshift__", ">>", ">>=");
     // Python reflects comparisons itself (x > y becomes y < x).
     cls.def("__eq__", &op_equality<Equal>, nb::arg().none());
     cls.def("__ne__", &op_equality<NotEqual>, nb::arg().none());
-    cls.def("__lt__", &op_forward<Less>, nb::arg().none());
-    cls.def("__le__", &op_forward<LessEqual>, nb::arg().none());
-    cls.def("__gt__", &op_forward<Greater>, nb::arg().none());
-    cls.def("__ge__", &op_forward<GreaterEqual>, nb::arg().none());
+    def_compare<Less>(cls, "__lt__", "<");
+    def_compare<LessEqual>(cls, "__le__", "<=");
+    def_compare<Greater>(cls, "__gt__", ">");
+    def_compare<GreaterEqual>(cls, "__ge__", ">=");
     // @ takes arrays only (no Python scalars). x @= y needs the result to
     // have x's shape and converts upward only, like every in-place operator
     // (docs/design/array.md §9.1).
@@ -258,10 +258,10 @@ void bind_ndarray(nb::module_& m) {
         assign_checked(x, as_ndarray(r));
         return nb::borrow(self);
     }, nb::arg().none());
-    cls.def("__neg__", &op_unary<Negative>);
-    cls.def("__pos__", &op_unary<Positive>);
-    cls.def("__abs__", &op_unary<Abs>);
-    cls.def("__invert__", &op_unary<BitwiseInvert>);
+    def_unary<Negative>(cls, "__neg__", "unary -");
+    def_unary<Positive>(cls, "__pos__", "unary +");
+    def_unary<Abs>(cls, "__abs__", "abs()");
+    def_unary<BitwiseInvert>(cls, "__invert__", "unary ~");
 
     // Arrays are mutable containers: unhashable, like lists. (Defining
     // __eq__ would also do this; being explicit documents it.)
