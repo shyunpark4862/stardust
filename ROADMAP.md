@@ -1,6 +1,6 @@
-# stardust 통합 로드맵
+# stardust 로드맵
 
-> 상태: **확정** (2026-11-12). DESIGN.md §6의 1라운드 결과를 반영했다.
+> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S9, 구현 전)이다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -104,3 +104,81 @@
 - 최종 보고서: 기준선 대비 통합판의 성능, 줄어든 코드(중복 제거), 경계 비용
 - 남은 옛 문서 참조가 없는지 확인한다 (코드, 테스트, 새 문서). `legacy/`가 비었는지 확인하고 지운다. 옛 참조 대응표(`docs/*/<영역>-refmap.md`)도 지운다.
 - 옛 저장소 세 개를 동결한다 (README에 "stardust로 옮겨 감" 표시, DESIGN §5.2)
+
+---
+
+# 특수함수 영역 (sd.special)
+
+> 상태: **확정** (2026-11-12). 설계는 [docs/design/special.md](docs/design/special.md), API는 [docs/api/special.md](docs/api/special.md).
+>
+> **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
+
+## 진행 원칙
+- 통합 로드맵의 원칙을 따른다: 마일스톤마다 해설(`docs/learn/S<n>-<주제>.md`)을 쓰고, 커밋하고, 해설을 전달하고, 사용자가 승인하면 다음으로 간다.
+- **배열 영역을 고치는 일은 S0에만 있다.** 기존 함수의 결과는 비트까지 같아야 한다 (골든 출력, 스레드 수 1, 3, 10).
+- 마일스톤마다 확인하는 것
+  - 정확도: mpmath 기준값 대비 최대·99.9% ULP를 보장 영역과 느슨한 영역으로 나눠 표로 낸다 (docs/design/special.md §6).
+  - 비트: NEON 경로 = 스칼라 정의, 스레드 1·3·10, `f(x)[i] == f(x[i])`
+  - 성능: scipy와 같은 자리에서 번갈아 잰다. 1스레드와 10스레드, 원소 10⁶개와 스칼라 1개.
+- 마일스톤을 시작하기 전에 물을 것은 docs/design/special.md §10에 있다.
+
+## 진행 상태
+| 마일스톤 | 상태 |
+|---|---|
+| S0 기반 | 대기 |
+| S1 로지스틱·정보 | 대기 |
+| S2 오차함수 | 대기 |
+| S3 감마와 제타 | 대기 |
+| S4 불완전 함수 | 대기 |
+| S5 리덕션, 지수적분, 타원 | 대기 |
+| S6 Bessel과 Airy | 대기 |
+| S7 초기하와 Lambert W | 대기 |
+| S8 복소수 | 대기 |
+| S9 마무리 | 대기 |
+
+## 마일스톤
+
+### S0. 기반
+- **배열 영역** (docs/design/special.md §3.1, §3.3)
+  - 일반 n항 원소별 디스패처 `nary<Op, N>`. `unary`, `binary`는 그대로 둔다.
+  - `kMaxOperands` 4 → 5. 그 비용을 잰다 (짧은 원소별 호출, 1스레드).
+  - 이터레이터에 원소당 비용(작업량 가중치)을 넘기는 길
+  - 골든 출력으로 배열·linalg·frame의 결과가 비트까지 같은지 확인한다.
+- **special 뼈대**: `csrc/special/`(`common.hpp`, `cf.hpp`, `cost.hpp`), `bind/special_bind.cpp`, `src/stardust/special/`, `tests/special/`(`test_api_surface.py`가 docs/api/special.md를 읽는다), `bench/special/`
+- **도구**: mpmath 기준값 생성 `tools/special_ref.py`와 `tests/special/ref/`, 정확도 표 `bench/special/accuracy.py`, scipy와의 같은 자리 비교, 원소당 비용 측정. `pyproject.toml`의 `test`에 mpmath를 더한다.
+
+### S1. 로지스틱과 정보량
+- `expit logit log_expit xlogy xlog1py entr rel_entr`
+- NEON `expit`, `logit`. 커널 안의 vForce 버퍼 경로(Q16)를 처음 만든다. vForce의 특수값을 이 함수들에 대해 다시 확인한다.
+
+### S2. 오차함수
+- `erf erfc erfcx erfinv erfcinv ndtr log_ndtr ndtri` (Cephes 3구간, AS241)
+- NEON `erf erfc ndtr ndtri`. Horner와 Estrin, 분기 없애기를 잰다.
+
+### S3. 감마와 제타
+- `gamma gammaln rgamma digamma beta betaln binom zeta polygamma`
+- `gamma`의 후보 A(Lanczos)와 B(Cephes)를 견주어 고른다 (docs/design/special.md §1.3). NEON `gammaln`
+
+### S4. 불완전 함수
+- `gammainc gammaincc betainc betaincc`, 역함수 `gammaincinv gammainccinv betaincinv betainccinv`, 앞 인자(`special/prefix.hpp`)
+- 원소마다 반복 횟수가 다를 때의 스레드 분할을 잰다.
+- 불완전 베타의 세 번째 구간을 넣을지 측정 뒤 묻는다.
+- 이 마일스톤이 끝나면 `sd.stats` 설계를 시작할 수 있다.
+
+### S5. 리덕션, 지수적분, 타원적분
+- `logsumexp softmax log_softmax` (두 패스, 한 패스 방식은 해설에서 비교), `expi expn`, `ellipk`(AGM), `ellipe`(Carlson)
+
+### S6. Bessel과 Airy
+- 0·1차 12개 (Cephes Chebyshev, Hankel 점근)
+- `jv yv iv kv`, `jve yve ive kve` (Temme, Steed, Hankel)
+- `airy` (`AiryResult`, 출력 넷)
+
+### S7. 초기하 함수와 Lambert W
+- `hyp1f1 hyp2f1` (실수, 선형 변환, 퇴화 극한 공식 하나), `lambertw` (가지 0, −1)
+
+### S8. 복소수
+- `wofz`, `loggamma` (새 함수), `erf erfc erfcx lambertw`의 complex 입력
+
+### S9. 마무리
+- 정확도 보고서, 성능 보고서 (scipy 대비), 안내서(`docs/guide/`)의 special 장, README와 `API.md` 색인
+

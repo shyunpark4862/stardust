@@ -45,6 +45,7 @@ print([round(b, 12) for b in beta.tolist()])  # [1.0, 1.0]
 | 배열 | `sd` | N차원 `ndarray`(dtype 넷, 임의의 strides, 0차원 없음), ufunc, 리덕션, 인덱싱, 정렬과 unique, `matmul` | [docs/api/array.md](docs/api/array.md) |
 | 선형대수 | `sd.linalg` | 함수 37개: 분해, 선형 시스템, 노름, 특수 구조, `expm`. 행렬 묶음(배치)을 받고 F-order 배열을 돌려준다 | [docs/api/linalg.md](docs/api/linalg.md) |
 | 데이터프레임 | `sd.frame` | `Series`, `DataFrame`, `Index`, NA, Copy-on-Write, groupby, merge, sort, `read_csv`. `to_array()`로 배열과 잇는다 | [docs/api/frame.md](docs/api/frame.md) |
+| 특수함수 | `sd.special` | **설계 확정, 구현 전** ([ROADMAP.md](ROADMAP.md) S0–S9). scipy.special의 부분집합: 오차함수, 감마, 불완전 감마·베타, Bessel, 초기하 등 | [docs/api/special.md](docs/api/special.md) |
 
 - 세 영역이 함께 쓰는 규칙(dtype 객체, 에러 종류와 메시지, 스레드)은 [API.md](API.md)에 있다.
 - 세 교육용 프로젝트(stardust-numpy, stardust-linalg, stardust-pandas)를 합쳐 만들었다. 옛 저장소는 동결했다.
@@ -56,7 +57,7 @@ print([round(b, 12) for b in beta.tolist()])  # [1.0, 1.0]
 | [API.md](API.md) | 공통 규칙과 영역별 API 문서의 색인 |
 | [DESIGN.md](DESIGN.md) | 통합의 결정과 일관성 규칙 |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | 층 구조, 디렉터리, 공통 부품 |
-| `docs/design/` | 영역의 설계: [배열](docs/design/array.md), [선형대수](docs/design/linalg.md), [데이터프레임](docs/design/frame.md) |
+| `docs/design/` | 영역의 설계: [배열](docs/design/array.md), [선형대수](docs/design/linalg.md), [데이터프레임](docs/design/frame.md), [특수함수](docs/design/special.md) |
 | [docs/learn/M7-final-report.md](docs/learn/M7-final-report.md) | 통합의 최종 보고서: 성능, 줄어든 코드, 경계 비용, 남은 것 |
 | `docs/learn/` | 마일스톤마다의 해설 (M0–M7). 진행 순서는 [ROADMAP.md](ROADMAP.md) |
 
