@@ -101,3 +101,6 @@
 ## 8. 다음 (S4 불완전 함수) 전에 물을 것
 - docs/design/special.md §10에 따라 S4 함수(`gammainc gammaincc betainc betaincc`와 역함수 넷)의 scipy와 다른 특수값, 보장 영역을 묻는다.
 - 불완전 베타에 세 번째 구간(큰 a, b의 Temme 전개)을 넣을지는 측정 뒤 묻는다.
+
+## 9. 승인
+2026-11-14, 사용자가 S3를 승인했다. §1의 "확인 부탁" 세 곳(양수 서브노멀 rgamma, beta(inf, 1e300), 거대한 k의 binom), gammaln의 NEON 생략, zeta의 24 ULP도 이대로 둔다. 다음은 S4다.
