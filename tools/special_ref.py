@@ -127,6 +127,139 @@ def _rel_entr_inputs(rng):
     return (x, y), np.ones(x.size, dtype=bool)
 
 
+# ---- S2: the error function and the normal distribution (docs/api/special.md §2).
+# Guaranteed region: the whole domain (user decision 2026-11-13).
+
+SQRT2 = np.sqrt(2.0)
+
+
+def _erf_like_inputs(rng, lo, hi, extra, edges):
+    x = np.concatenate([grid(lo, hi, 4001), signed_wide(rng, 3000), extra(rng), around(edges)])
+    return (x,), np.isfinite(x)
+
+
+def _erf_inputs(rng):
+    return _erf_like_inputs(rng, -6, 6, lambda r: r.uniform(-1, 1, 500), [0.0, 1.0, -1.0, 8.0, -8.0, 5e-324, -5e-324])
+
+
+def _erfc_inputs(rng):
+    return _erf_like_inputs(rng, -10, 30, lambda r: r.uniform(26.5, 27.3, 1000),
+                            [0.0, 1.0, -1.0, 8.0, -8.0, 26.55, 27.23, 5e-324])
+
+
+def _erfcx_inputs(rng):
+    x = np.concatenate([grid(-26.6, 30, 4001), loguniform(rng, 1e-300, 1e308, 2000), -loguniform(rng, 1e-300, 26.6, 1500),
+                        around([0.0, 1.0, -1.0, 8.0, 1e8, -26.6])])
+    return (x,), np.isfinite(x)
+
+
+def _ndtr_inputs(rng):
+    return _erf_like_inputs(rng, -40, 10, lambda r: r.uniform(-38.5, -37.0, 1000),
+                            [0.0, SQRT2, -SQRT2, 8 * SQRT2, -8 * SQRT2, -37.5, -38.47])
+
+
+def _log_ndtr_inputs(rng):
+    return _erf_like_inputs(rng, -50, 40, lambda r: r.uniform(37.0, 38.5, 1000),
+                            [0.0, SQRT2, -SQRT2, 8 * SQRT2, -8 * SQRT2, 37.5, 38.47])
+
+
+def _ndtri_inputs(rng):
+    tail = np.exp(-25.0)  # where AS241 switches its tail rational (s = 5)
+    p = np.concatenate([rng.uniform(0, 1, 3000), loguniform(rng, 5e-324, 0.5, 2500), 1 - loguniform(rng, 2**-53, 0.5, 2000),
+                        around([0.075, 0.925, 0.5, tail, 1 - tail, 5e-324, 2.5e-317])])
+    p = p[(p > 0) & (p < 1)]
+    return (p,), np.ones(p.size, dtype=bool)
+
+
+def _erfinv_inputs(rng):
+    tail = 1 - 2 * np.exp(-25.0)
+    y = np.concatenate([rng.uniform(-1, 1, 3000), loguniform(rng, 5e-324, 0.5, 2500, signed=True),
+                        (1 - loguniform(rng, 2**-53, 0.5, 2000)) * rng.choice([-1.0, 1.0], 2000),
+                        around([0.85, -0.85, tail, -tail, 0.0, 5e-324, -5e-324])])
+    y = y[np.abs(y) < 1]
+    return (y,), np.ones(y.size, dtype=bool)
+
+
+def _erfcinv_inputs(rng):
+    tail = 2 * np.exp(-25.0)
+    z = np.concatenate([rng.uniform(0, 2, 3000), loguniform(rng, 5e-324, 1, 2500), 2 - loguniform(rng, 2**-52, 1, 1500),
+                        1 + loguniform(rng, 1e-16, 0.5, 500, signed=True), around([0.15, 1.85, 1.0, tail, 2 - tail, 5e-324])])
+    z = z[(z > 0) & (z < 2)]
+    return (z,), np.ones(z.size, dtype=bool)
+
+
+def _mp_erfc(x):
+    return mpmath.mpf(0) if x > 1e10 else (mpmath.mpf(2) if x < -1e10 else mpmath.erfc(x))
+
+
+def _mp_erfcx(x):
+    if x > 1e8:  # asymptotic series; mpmath's erfc overflows a float internally for huge x
+        return (1 / (x * mpmath.sqrt(mpmath.pi))) * (1 - 1 / (2 * x * x) + 3 / (4 * x**4) - 15 / (8 * x**6))
+    return mpmath.exp(x * x) * mpmath.erfc(x)
+
+
+def _mp_ndtr(x):
+    return mpmath.mpf(0) if x < -1e10 else (mpmath.mpf(1) if x > 1e10 else mpmath.ncdf(x))
+
+
+def _mp_log_ndtr(x):
+    if x >= 0:
+        return mpmath.log1p(-_mp_ndtr(-x))
+    if x < -1e10:  # log(phi(x) / |x|) + log(1 - 1/x^2 + ...)
+        return -x * x / 2 - mpmath.log(-x) - mpmath.log(2 * mpmath.pi) / 2 + mpmath.log1p(-1 / (x * x))
+    return mpmath.log(mpmath.ncdf(x))
+
+
+def _newton_log(g, dg, x0):
+    """Solve g(x) = 0 by Newton's method from x0 (g a log-space residual, so deep tails converge)."""
+    x = mpmath.mpf(x0)
+    for _ in range(100):
+        dx = g(x) / dg(x)
+        x -= dx
+        if abs(dx) <= abs(x) * mpmath.mpf(10) ** -45 or dx == 0:
+            return x
+    raise RuntimeError("no convergence")
+
+
+def _start(name, v):
+    import stardust as sd  # our own value is a good start; Newton makes the reference independent of it
+    return getattr(sd.special, name)(float(v))
+
+
+def _mp_ndtri(p):
+    x0 = _start("ndtri", p)
+    if p > 0.5:  # solve on the upper tail, where 1 - p is exact
+        q = 1 - p
+        return -_newton_log(lambda x: mpmath.log(mpmath.ncdf(x)) - mpmath.log(q),
+                            lambda x: mpmath.npdf(x) / mpmath.ncdf(x), -x0)
+    return _newton_log(lambda x: mpmath.log(mpmath.ncdf(x)) - mpmath.log(p), lambda x: mpmath.npdf(x) / mpmath.ncdf(x), x0)
+
+
+def _derfc(x):
+    return -2 / mpmath.sqrt(mpmath.pi) * mpmath.exp(-x * x)
+
+
+def _mp_erfinv(y):
+    if y == 0:
+        return mpmath.mpf(0)
+    s, a = (1, y) if y > 0 else (-1, -y)
+    x0 = abs(_start("erfinv", a))
+    if a < 0.5:
+        r = _newton_log(lambda x: mpmath.log(mpmath.erf(x)) - mpmath.log(a), lambda x: -_derfc(x) / mpmath.erf(x), x0)
+    else:
+        c = 1 - a
+        r = _newton_log(lambda x: mpmath.log(mpmath.erfc(x)) - mpmath.log(c), lambda x: _derfc(x) / mpmath.erfc(x), x0)
+    return s * r
+
+
+def _mp_erfcinv(z):
+    if z == 1:
+        return mpmath.mpf(0)
+    s, c = (1, z) if z < 1 else (-1, 2 - z)
+    x0 = abs(_start("erfcinv", c))
+    return s * _newton_log(lambda x: mpmath.log(mpmath.erfc(x)) - mpmath.log(c), lambda x: _derfc(x) / mpmath.erfc(x), x0)
+
+
 def _zero_at_zero(f):
     return lambda *a: mpmath.mpf(0) if a[0] == 0 else f(*a)
 
@@ -142,6 +275,15 @@ FUNCTIONS = {
     "xlog1py": (2, _zero_at_zero(lambda x, y: x * mpmath.log1p(y)), _xlog1py_inputs),
     "entr": (1, _zero_at_zero(lambda x: -x * mpmath.log(x)), _entr_inputs),
     "rel_entr": (2, _zero_at_zero(lambda x, y: x * mpmath.log(x / y)), _rel_entr_inputs),
+    # S2
+    "erf": (1, lambda x: mpmath.erf(x), _erf_inputs),
+    "erfc": (1, _mp_erfc, _erfc_inputs),
+    "erfcx": (1, _mp_erfcx, _erfcx_inputs),
+    "ndtr": (1, _mp_ndtr, _ndtr_inputs),
+    "log_ndtr": (1, _mp_log_ndtr, _log_ndtr_inputs),
+    "ndtri": (1, _mp_ndtri, _ndtri_inputs),
+    "erfinv": (1, _mp_erfinv, _erfinv_inputs),
+    "erfcinv": (1, _mp_erfcinv, _erfcinv_inputs),
 }
 
 

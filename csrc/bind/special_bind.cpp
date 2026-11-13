@@ -11,6 +11,7 @@
 #include "bind/pyutil.hpp"
 #include "special/cost.hpp"
 #include "special/kernels/chunked.hpp"
+#include "special/ops/erf.hpp"
 #include "special/ops/logistic.hpp"
 #include "special/ops/testing.hpp"
 
@@ -91,13 +92,16 @@ void bind_special(nb::module_& core) {
     nb::module_ m = core.def_submodule("special", "stardust special-function native core");
     using namespace special;
     def_naries<Expit, Logit, LogExpit, Xlogy, Xlog1py, Entr, RelEntr>(m);  // S1, docs/api/special.md §5
+    def_naries<Erf, Erfc, Erfcx, Erfinv, Erfcinv, Ndtr, LogNdtr, Ndtri>(m);  // S2, §2
+    def_naries<ErfcSelect, ErfcEstrin>(m);  // S2 measurement variants (special/ops/erf.hpp)
     def_naries<Fma3, Sum4, Powers4, CfTan>(m);  // engine tests (special/ops/testing.hpp)
     m.def("_parallel_tasks", &parallel_tasks, nb::arg("n"), nb::arg("weight"));
     m.def("_weight", [](const std::string& name) -> std::int64_t {
         std::int64_t w = 0;
         auto check = [&]<typename Op>() { if (name == Op::name) w = weight_of(Op::cost_ns); };
         [&]<typename... Ops>() { (check.template operator()<Ops>(), ...); }
-            .template operator()<Expit, Logit, LogExpit, Xlogy, Xlog1py, Entr, RelEntr, Fma3, Sum4, Powers4, CfTan>();
+            .template operator()<Expit, Logit, LogExpit, Xlogy, Xlog1py, Entr, RelEntr, Erf, Erfc, Erfcx, Erfinv,
+                                 Erfcinv, Ndtr, LogNdtr, Ndtri, Fma3, Sum4, Powers4, CfTan>();
         if (w == 0) throw nb::key_error(name.c_str());
         return w;
     }, nb::arg("name"));

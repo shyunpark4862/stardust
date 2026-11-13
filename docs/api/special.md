@@ -1,6 +1,6 @@
 # 특수함수 API (sd.special)
 
-> 상태: **확정** (2026-11-12). S1까지 구현했다(§5의 7개). 설계와 결정 근거는 [docs/design/special.md](../design/special.md)에 있다. 보장 영역과 특수값 표는 각 마일스톤에서 측정한 뒤 채운다.
+> 상태: **확정** (2026-11-12). S2까지 구현했다(§2의 8개, §5의 7개). 설계와 결정 근거는 [docs/design/special.md](../design/special.md)에 있다. 보장 영역과 특수값 표는 각 마일스톤에서 측정한 뒤 채운다.
 
 `import stardust as sd`의 하위 모듈 `sd.special`이 특수함수 API다 (scipy.special의 부분집합).
 
@@ -54,7 +54,24 @@ ndtri(p, /, *, out=None)
 - `erfcx(x) = exp(x²)·erfc(x)`
 - `ndtr`는 표준정규분포의 cdf, `ndtri`는 그 역함수다. `ndtri(0)`은 `-inf`, `ndtri(1)`은 `inf`, [0, 1] 밖은 NaN
 - `erfinv`는 [−1, 1], `erfcinv`는 [0, 2]에서 정의된다.
-- 보장 영역, 특수값: S2에서 확정
+- **보장 영역**: 여덟 함수 모두 정의역 전체다 (사용자 결정 2026-11-13). `erf erfc erfcx ndtr log_ndtr`는 유한한 모든 x, `erfinv`는 −1 < y < 1, `erfcinv`는 0 < z < 2, `ndtri`는 0 < p < 1(서브노멀 포함)이다. 결과가 서브노멀이면 docs/design/special.md §2.3의 절대오차 규칙을 따른다.
+- **잰 정확도** (mpmath 대비 최대 ULP, bench/special/s2/accuracy.md): `erf` 2.3, `erfc` 7.8, `erfcx` 6.1, `ndtr` 6.7, `log_ndtr` 7.0, `ndtri` 5.4, `erfinv` 4.6, `erfcinv` 4.5
+- **특수값**: ±0, ±inf, NaN, 경계값에서 scipy와 비트까지 같다. 다른 곳은 아래 표의 굵은 줄이다 (docs/design/special.md §2.4).
+
+  | 입력 | 값 | 비고 |
+  |---|---|---|
+  | `erf(±0)`, `erf(±inf)` | ±0, ±1 | |
+  | `erfc(+inf)`, `erfc(-inf)` | 0, 2 | |
+  | `erfc(x)`, 26.55 < x < 27.23 | 서브노멀 값 | **scipy는 x > 26.7에서 0** |
+  | `erfcx(+inf)`, `erfcx(-inf)` | 0, inf | `erfcx(x)`는 x < −26.63에서 inf |
+  | `ndtr(+inf)`, `ndtr(-inf)` | 1, 0 | |
+  | `ndtr(x)`, −38.47 < x < −37.5 | 서브노멀 값 | **scipy는 x < −37.7에서 0** |
+  | `log_ndtr(+inf)`, `log_ndtr(-inf)` | −0.0, −inf | |
+  | `log_ndtr(x)`, 37.5 < x < 38.47 | 서브노멀 값 | **scipy는 x > 37.7에서 −0.0** |
+  | `ndtri(±0)`, `ndtri(1)`, `ndtri(0.5)` | −inf, inf, 0 | [0, 1] 밖과 ±inf는 NaN |
+  | `erfinv(±1)`, `erfinv(-0.0)` | ±inf, **−0.0** | **scipy는 `erfinv(-0.0) = 0.0`**. [−1, 1] 밖은 NaN |
+  | `erfcinv(0)`, `erfcinv(2)`, `erfcinv(1)` | inf, −inf, −0.0 | [0, 2] 밖은 NaN |
+  | `erfcinv(5e-324)` | 27.21 | **scipy는 inf** (z/2가 0으로 언더플로) |
 
 ## §3. 감마와 베타
 ```

@@ -127,6 +127,9 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 | `out`을 위치 인자로도 받는다 | keyword-only | docs/api/array.md §1.1 |
 | complex 입력을 대부분 받는다 | 실수만 (S8 뒤 일부) | Q6, Q7 |
 | `logsumexp(a, axis, b, keepdims, return_sign)` | `logsumexp(x, /, *, axis=None, keepdims=False)` | Q13 |
+| `erfc`, `ndtr`, `log_ndtr`의 서브노멀 꼬리가 0(−0.0) | 참값(서브노멀) | 서브노멀 규칙(§2.3), 사용자 결정 (S2, 2026-11-13) |
+| `erfcinv(5e-324)`가 inf | 27.21 | z/2의 언더플로, 사용자 결정 (S2) |
+| `erfinv(-0.0)`이 0.0 | −0.0 | 홀함수의 부호, 사용자 결정 (S2) |
 | `expit(x)`가 x < −709.78에서 0 | 참값 eˣ(서브노멀), x < −745.13에서 0 | 서브노멀 규칙(§2.3), 사용자 결정 (S1, 2026-11-13) |
 | `lambertw`는 언제나 complex를 돌려주고 `tol=`이 있다 | 실수 입력이면 float64. `tol=` 없음 | Q6, 결정성 (§5.11) |
 | `airy`는 네 배열의 tuple | `AiryResult(ai, aip, bi, bip)` namedtuple | DESIGN §9.7 |
@@ -167,6 +170,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 - 기법
   - 다항식 평가: Horner(곱셈-덧셈이 차례로 이어짐)와 Estrin(트리, 병렬도 높음)을 비교한다. `-ffp-contract=off`이므로 FMA는 코드에 적은 곳에서만 생긴다 (array.md §1.3). 스칼라 정의도 같은 식을 써야 비트가 같다.
   - 분기 없애기: 두 구간을 모두 계산한 뒤 `vbslq`로 고른다. 구간이 셋이면 셋 다 계산하는 비용과 분기 비용을 잰다.
+  - **S2의 측정 결과** (bench/special/s2/variants.md, docs/learn/S2-erf.md): 차수 5–8의 유리식이 셋인 `erfc`와 `ndtri`에서는 원소마다 자기 구간만 계산하는 스칼라 분기가 NEON 고르기보다 빠르거나 같았다(구간이 무작위로 섞인 입력만 예외, 4.7 대 4.2 ns). 고르기용 상수와 남의 구간 계산이 레인 두 개의 이득보다 크다. 그래서 S2 함수는 1단계(exp·log의 인자)만 NEON, 2단계는 vForce, 3단계는 스칼라 분기다. 결과의 비트는 두 방식이 같다. Estrin은 Horner와 속도가 같고 오차가 조금 컸다(9.1 대 7.8 ULP).
 - **안의 `exp`/`log`** (Q16): 커널이 입력을 1024원소(8KB) 스택 버퍼 단위로 처리한다.
   1. NEON으로 `exp`/`log`의 인자(예: `-x²`)를 버퍼에 만든다.
   2. vForce(`vvexp`, `vvlog`)를 버퍼 전체에 한 번 부른다.
@@ -217,6 +221,11 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 - `ndtri`: Wichura AS241 (PPND16). 중심 `|q| ≤ 0.425`의 유리식, 꼬리 `r = √(-log p)`의 유리식 둘. 정확도 약 1e-16. **3구간**
 - `erfinv(y)`, `erfcinv(z)`: ndtri의 핵심을 `q`로 직접 부른다. `erfinv(y)`는 `q = y/2`(정확)로 중심식을 써서 작은 y에서 `(1+y)/2`의 소거가 없다. `erfcinv(z) = -ndtri(z/2)/√2`
 - `ndtr(x) = erfc(-x/√2)/2`. `log_ndtr`: `x > 6`은 `log1p(-ndtr(-x))`, 중간은 `log(ndtr(x))`, `x < -20`은 점근급수. **3구간**
+- **S2에서 바꾼 것** (docs/learn/S2-erf.md)
+  - `exp(-x²)`는 Cephes `expx2`의 지수 두 번 대신 `hi = x·x`, `lo = fma(x, x, −hi)`로 `exp(−hi)·(1 − lo)`다. `ndtr`은 `t = x/√2`의 반올림을 피해 `exp(−x²/2)`를 x에서 직접 만든다.
+  - `erfcx`는 `x ≥ 8`을 Cephes R/S 대신 점근급수(17항)로 한다. R/S는 x = 26.64까지 맞춘 식이라 x ≈ 10⁴에서 21 ULP가 났다. 구간은 셋(x < 1, P/Q, 점근)이다.
+  - `log_ndtr`는 두 구간이다: `x ≥ 0`은 `log1p(−ndtr(−x))`, `x < 0`은 `−x²/2 + log(erfcx(−x/√2)/2)`. 두 항의 부호가 같고 erfcx는 언더플로하지 않아서 점근급수가 필요 없다.
+  - `erfinv`의 중심 구간은 `y·(비율/(2√2))`다. `q = y/2`를 먼저 만들면 서브노멀 y의 마지막 비트가 사라진다. `erfcinv`의 꼬리는 `log(min(z, 2−z)) − log 2`다.
 
 ### 5.2 감마
 - `gamma`: 후보 A Lanczos(Boost `lanczos13m53`, g ≈ 6.0247, 13항), 후보 B Cephes(구간 [2, 3]의 유리식 + 점화식, x > 33은 Stirling). `x < 0.5`는 반사. 오버플로는 x > 171.62

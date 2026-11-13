@@ -43,6 +43,15 @@ inline constexpr double kXlogy = 3.5;
 inline constexpr double kXlog1py = 4.8;
 inline constexpr double kEntr = 2.9;
 inline constexpr double kRelEntr = 10.8;
+// S2 (special/ops/erf.hpp), bench/special/s2/cost.md
+inline constexpr double kErf = 5.4;
+inline constexpr double kErfc = 5.6;
+inline constexpr double kErfcx = 7.5;
+inline constexpr double kErfinv = 7.2;
+inline constexpr double kErfcinv = 8.7;
+inline constexpr double kNdtr = 6.3;
+inline constexpr double kLogNdtr = 14.6;
+inline constexpr double kNdtri = 8.1;
 }  // namespace cost
 
 }  // namespace sd::special
