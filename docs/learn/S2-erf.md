@@ -118,3 +118,6 @@
 
 ## 8. 다음 (S3 감마와 제타) 전에 물을 것
 docs/design/special.md §10에 따라 두 가지를 묻는다: S3 함수(`gamma gammaln rgamma digamma beta betaln binom zeta polygamma`)의 scipy와 다른 특수값, 보장 영역. 또 `gamma`의 후보 A(Lanczos)와 B(Cephes)를 견주어 고른다(§1.3의 규칙). 규칙으로 갈리지 않으면 묻는다.
+
+## 9. 승인
+2026-11-14, 사용자가 S2를 승인했다. 다음은 S3다.
