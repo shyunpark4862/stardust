@@ -35,6 +35,14 @@ inline constexpr double kFma3 = 0.24;
 inline constexpr double kSum4 = 0.30;
 inline constexpr double kPowers4 = 0.45;
 inline constexpr double kCfTan = 16;
+// S1 (special/ops/logistic.hpp), bench/special/s1/cost.md
+inline constexpr double kExpit = 1.3;
+inline constexpr double kLogit = 3.5;
+inline constexpr double kLogExpit = 14.5;
+inline constexpr double kXlogy = 3.5;
+inline constexpr double kXlog1py = 4.8;
+inline constexpr double kEntr = 2.9;
+inline constexpr double kRelEntr = 10.8;
 }  // namespace cost
 
 }  // namespace sd::special

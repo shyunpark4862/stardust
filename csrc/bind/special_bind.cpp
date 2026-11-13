@@ -10,6 +10,8 @@
 #include "bind/errors.hpp"
 #include "bind/pyutil.hpp"
 #include "special/cost.hpp"
+#include "special/kernels/chunked.hpp"
+#include "special/ops/logistic.hpp"
 #include "special/ops/testing.hpp"
 
 #include <nanobind/nanobind.h>
@@ -27,11 +29,23 @@ namespace {
 
 template <std::size_t> using handle_t = nb::handle;
 
+// An Op is either a scalar definition f (the n-ary loop) or a chunk kernel
+// (NEON + vForce, special/kernels/chunked.hpp).
+template <typename Op>
+constexpr const LoopTable& table_of() {
+    if constexpr (requires { &Op::chunk; }) return special::chunked_table<Op>;
+    else return nary_table<Op>;
+}
+
+template <typename Op>
+nb::object call(std::span<const nb::handle> objs, nb::handle out) {
+    return run_nary(table_of<Op>(), Op::nout, Op::args, objs, out, special::weight_of(Op::cost_ns));
+}
+
 // One elementwise function: Op::nin positional inputs, then out= when it has
 // one result.
 template <typename Op>
 void def_nary(nb::module_& m) {
-    constexpr std::int64_t weight = special::weight_of(Op::cost_ns);
     [&]<std::size_t... I>(std::index_sequence<I...>) {
         if constexpr (Op::nout == 1) {
             m.def(
@@ -39,7 +53,7 @@ void def_nary(nb::module_& m) {
                 [](handle_t<I>... xs, nb::handle out) {
                     return call_named(Op::name, [&] {
                         const nb::handle objs[] = {xs...};
-                        return nary<Op>(objs, out, weight);
+                        return call<Op>(objs, out);
                     });
                 },
                 ((void)I, nb::arg().none())..., nb::kw_only(), nb::arg("out").none() = nb::none());
@@ -49,7 +63,7 @@ void def_nary(nb::module_& m) {
                 [](handle_t<I>... xs) {
                     return call_named(Op::name, [&] {
                         const nb::handle objs[] = {xs...};
-                        return nary<Op>(objs, nb::none(), weight);
+                        return call<Op>(objs, nb::none());
                     });
                 },
                 ((void)I, nb::arg().none())...);
@@ -76,14 +90,16 @@ std::int64_t parallel_tasks(std::int64_t n, std::int64_t weight) {
 void bind_special(nb::module_& core) {
     nb::module_ m = core.def_submodule("special", "stardust special-function native core");
     using namespace special;
+    def_naries<Expit, Logit, LogExpit, Xlogy, Xlog1py, Entr, RelEntr>(m);  // S1, docs/api/special.md §5
     def_naries<Fma3, Sum4, Powers4, CfTan>(m);  // engine tests (special/ops/testing.hpp)
     m.def("_parallel_tasks", &parallel_tasks, nb::arg("n"), nb::arg("weight"));
     m.def("_weight", [](const std::string& name) -> std::int64_t {
-        if (name == Fma3::name) return weight_of(Fma3::cost_ns);
-        if (name == Sum4::name) return weight_of(Sum4::cost_ns);
-        if (name == Powers4::name) return weight_of(Powers4::cost_ns);
-        if (name == CfTan::name) return weight_of(CfTan::cost_ns);
-        throw nb::key_error(name.c_str());
+        std::int64_t w = 0;
+        auto check = [&]<typename Op>() { if (name == Op::name) w = weight_of(Op::cost_ns); };
+        [&]<typename... Ops>() { (check.template operator()<Ops>(), ...); }
+            .template operator()<Expit, Logit, LogExpit, Xlogy, Xlog1py, Entr, RelEntr, Fma3, Sum4, Powers4, CfTan>();
+        if (w == 0) throw nb::key_error(name.c_str());
+        return w;
     }, nb::arg("name"));
 }
 

@@ -25,11 +25,26 @@ def function(name):
     return getattr(sd.special, name, None) or getattr(sd.special._core, name)
 
 
+# A subnormal result is held to an absolute error instead (docs/design/special.md §2.3):
+# 45 units of the smallest subnormal, about 1e-14 relative at the bottom of the normal range.
+SUBNORMAL_ABS = 45 * 2.0**-1074
+
+
+def contract_error(got, hi, lo):
+    """The relative error, or for a subnormal reference the absolute error scaled so that
+    the subnormal bound maps onto the relative one (1 means "the bound")."""
+    rel = refdata.rel_error(got, hi, lo)
+    sub = np.isfinite(hi) & (np.abs(hi) < 2.0**-1022)
+    with np.errstate(invalid="ignore", over="ignore"):
+        absolute = np.abs((np.asarray(got) - hi) - lo) / SUBNORMAL_ABS * GUARANTEED
+    return np.where(sub, absolute, rel)
+
+
 @pytest.mark.parametrize("name", refdata.names())
 def test_accuracy(name):
     xs, hi, lo, guaranteed = refdata.load(name)
     got = np.asarray(function(name)(*(sd.asarray(x) for x in xs)))
-    err = refdata.rel_error(got, hi, lo)
+    err = contract_error(got, hi, lo)
     assert err[guaranteed].max() <= GUARANTEED, (name, xs[0][guaranteed][np.argmax(err[guaranteed])])
     if (~guaranteed).any():
         assert err[~guaranteed].max() <= LOOSE[name], (name, xs[0][~guaranteed][np.argmax(err[~guaranteed])])

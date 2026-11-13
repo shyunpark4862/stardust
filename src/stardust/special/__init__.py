@@ -12,6 +12,9 @@ _core = _sd_core.special
 
 __version__ = "0.0.1"
 
-__all__ = []
+__all__ = [
+    # S1: logistic and information (docs/api/special.md §5)
+    "expit", "logit", "log_expit", "xlogy", "xlog1py", "entr", "rel_entr",
+]
 
 globals().update({_name: getattr(_core, _name) for _name in __all__})

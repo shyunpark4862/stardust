@@ -1,6 +1,6 @@
 # 특수함수 API (sd.special)
 
-> 상태: **확정** (2026-11-12). S0(기반)까지 구현했고 공개 함수는 아직 없다. 설계와 결정 근거는 [docs/design/special.md](../design/special.md)에 있다. 보장 영역과 특수값 표는 각 마일스톤에서 측정한 뒤 채운다.
+> 상태: **확정** (2026-11-12). S1까지 구현했다(§5의 7개). 설계와 결정 근거는 [docs/design/special.md](../design/special.md)에 있다. 보장 영역과 특수값 표는 각 마일스톤에서 측정한 뒤 채운다.
 
 `import stardust as sd`의 하위 모듈 `sd.special`이 특수함수 API다 (scipy.special의 부분집합).
 
@@ -102,7 +102,27 @@ rel_entr(x, y, /, *, out=None)
 - `xlogy(x, y) = x·log(y)`. `x = 0`이고 y가 NaN이 아니면 0이다. `xlog1py`도 같다.
 - `entr(x) = -x·log(x)`. `entr(0)`은 0, 음수는 `-inf`다.
 - `rel_entr(x, y) = x·log(x/y)`. 규약은 scipy와 같다: `x = 0, y ≥ 0`이면 0, 그 밖의 음수는 `inf`다.
-- 특수값: S1에서 확정
+- **보장 영역**: 일곱 함수 모두 정의역 전체다 (사용자 결정 2026-11-13). `expit`, `log_expit`는 유한한 모든 x, `logit`은 0 < p < 1, `xlogy`는 y > 0, `xlog1py`는 y > −1, `entr`는 x ≥ 0, `rel_entr`는 x, y > 0이다. 결과가 넘치거나 서브노멀이면 §1.3과 docs/design/special.md §2.3을 따른다.
+- **잰 정확도** (mpmath 대비 최대 ULP, bench/special/s1/accuracy.md): `expit` 2.1, `logit` 2.8, `log_expit` 1.2, `xlogy` 1.2, `xlog1py` 1.2, `entr` 1.3, `rel_entr` 2.1
+- **특수값**: scipy와 비트까지 같다. 예외는 `expit`의 서브노멀 꼬리 하나다(아래 표). 시험 입력은 ±0, ±inf, NaN, 서브노멀, 경계값을 서로 조합한 것이다.
+
+  | 입력 | 값 | 비고 |
+  |---|---|---|
+  | `expit(±0)` | 0.5 | |
+  | `expit(+inf)`, `expit(-inf)` | 1.0, 0.0 | |
+  | `expit(x)`, −745.13 < x < −709.78 | eˣ (서브노멀) | **scipy는 0** (docs/design/special.md §2.4) |
+  | `logit(±0)`, `logit(1)` | −inf, inf | |
+  | `logit(p)`, p < 0 또는 p > 1, ±inf | NaN | |
+  | `log_expit(+inf)`, `log_expit(-inf)` | −0.0, −inf | |
+  | `xlogy(0, y)`, `xlog1py(0, y)` | 0 | y가 NaN이 아니면 (y ≤ 0, ±inf 포함). x = −0도 +0 |
+  | `xlogy(x, 0)` | x > 0: −inf, x < 0: inf | |
+  | `xlogy(inf, 1)` | NaN | inf · 0 |
+  | `xlog1py(x, -1)` | x > 0: −inf | |
+  | `entr(0)`, `entr(1)`, `entr(+inf)` | 0, −0.0, −inf | |
+  | `entr(x)`, x < 0 | −inf | |
+  | `rel_entr(0, y)`, y ≥ 0 (inf 포함) | 0 | |
+  | `rel_entr(x, y)`, 그 밖의 음수 입력 | inf | |
+  | `rel_entr(inf, y)`, `rel_entr(x, inf)` | inf, −inf | x, y는 양의 유한수. `rel_entr(inf, inf)`는 NaN |
 
 ## §6. 리덕션
 ```

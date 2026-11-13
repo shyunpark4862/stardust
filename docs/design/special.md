@@ -127,6 +127,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 | `out`을 위치 인자로도 받는다 | keyword-only | docs/api/array.md §1.1 |
 | complex 입력을 대부분 받는다 | 실수만 (S8 뒤 일부) | Q6, Q7 |
 | `logsumexp(a, axis, b, keepdims, return_sign)` | `logsumexp(x, /, *, axis=None, keepdims=False)` | Q13 |
+| `expit(x)`가 x < −709.78에서 0 | 참값 eˣ(서브노멀), x < −745.13에서 0 | 서브노멀 규칙(§2.3), 사용자 결정 (S1, 2026-11-13) |
 | `lambertw`는 언제나 complex를 돌려주고 `tol=`이 있다 | 실수 입력이면 float64. `tol=` 없음 | Q6, 결정성 (§5.11) |
 | `airy`는 네 배열의 tuple | `AiryResult(ai, aip, bi, bip)` namedtuple | DESIGN §9.7 |
 | 경고(`SpecialFunctionWarning`) | 내지 않는다 | API.md §2 |
@@ -281,9 +282,11 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 
 ### 5.12 로지스틱·정보
 - `expit`: `x ≥ 0`이면 `1/(1+e^{-x})`, 아니면 `e^x/(1+e^x)`. NEON은 둘 다 계산해 고른다.
-- `logit(p)`: `log(p/(1-p))`는 p ≈ ½에서 상대 정확도를 잃는다. `p ∈ [0.25, 0.75]`는 `2·atanh(2p-1)`(빼기가 정확), 그 밖은 `log(p) - log1p(-p)`. **2구간**
+- `logit(p)`: `log(p/(1-p))`는 p ≈ ½에서 상대 정확도를 잃는다. `p ∈ [0.25, 0.75]`는 `2·atanh(2p-1)`(빼기가 정확), 그 밖은 `log(p/(1-p))`. **2구간**
+  - S1에서 바꿈: 처음 계획한 바깥 식 `log(p) - log1p(-p)`는 vForce에 맞는 `log1p`가 없어서(−0의 부호를 잃음, array.md §5.4) 쓰지 않았다. 바깥에서는 `|log(p/(1-p))| ≥ log 3`이라 비의 반올림이 몇 ULP에 그친다. 잰 최대 2.8 ULP다.
 - `log_expit`: `x ≥ 0`은 `-log1p(e^{-x})`, 아니면 `x - log1p(e^x)`
-- `xlogy`, `xlog1py`, `entr`, `rel_entr`: 정의 그대로, 0의 규약은 scipy를 따른다 (`xlogy(0, y)`는 y가 NaN이 아니면 0)
+- `xlogy`, `xlog1py`, `entr`: 정의 그대로, 0의 규약은 scipy를 따른다 (`xlogy(0, y)`는 y가 NaN이 아니면 0)
+- `rel_entr(x, y)`: `x·log(x/y)` 그대로면 x ≈ y에서 비의 반올림 오차가 0에 가까운 log에 그대로 남는다(잰 상대오차 7e-5). 그래서 `x/y ∈ [½, 2]`이면 `x·log1p((x-y)/y)`(x − y는 Sterbenz로 정확), 비가 0·서브노멀·inf가 되면 `x·(log x − log y)`. scipy 1.18도 x ≈ y에서 정확하다.
 
 ### 5.13 복소수 (S8)
 - `wofz`(Faddeeva): 후보 Weideman 유리 근사(N = 32, 한 식), Poppe–Wijers. `erf`, `erfc`, `erfcx`의 complex는 `wofz`로 계산한다.

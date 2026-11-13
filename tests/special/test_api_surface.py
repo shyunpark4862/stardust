@@ -14,8 +14,6 @@ API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "special.md"
 # Documented but not implemented yet: each milestone (ROADMAP.md, S1-S8) moves its
 # functions from here to sd.special.__all__. Empty after S8.
 PLANNED = {
-    # S1
-    "expit", "logit", "log_expit", "xlogy", "xlog1py", "entr", "rel_entr",
     # S2
     "erf", "erfc", "erfcx", "erfinv", "erfcinv", "ndtr", "log_ndtr", "ndtri",
     # S3

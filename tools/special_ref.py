@@ -70,9 +70,78 @@ def _cf_tan_inputs(rng):
     return (x,), np.abs(x) <= 1.0
 
 
+# ---- S1: logistic and information (docs/api/special.md §5). Guaranteed region: the whole
+# domain (user decision 2026-11-13), so every finite input is "guaranteed".
+
+def signed_wide(rng, n):
+    """Finite reals of every magnitude, both signs."""
+    return loguniform(rng, 1e-320, 1e308, n, signed=True)
+
+
+def _expit_inputs(rng):
+    x = np.concatenate([grid(-40, 40, 4001), signed_wide(rng, 3000), rng.uniform(-745.2, -700, 1000),
+                        around([0.0, 36.7, -36.7, 709.78, -709.78, -745.13, -745.14, 5e-324, -5e-324])])
+    return (x,), np.isfinite(x)
+
+
+def _logit_inputs(rng):
+    near1 = 1.0 - loguniform(rng, 2**-53, 0.5, 2000)
+    p = np.concatenate([rng.uniform(0, 1, 3000), loguniform(rng, 1e-320, 0.5, 2000), near1,
+                        0.5 + rng.uniform(-1e-6, 1e-6, 500), around([0.25, 0.5, 0.75, 5e-324]),
+                        around([1.0 - 2**-53], 2)])
+    p = p[(p > 0) & (p < 1)]
+    return (p,), np.ones(p.size, dtype=bool)
+
+
+def _xlogy_inputs(rng):
+    n = 4000
+    x = loguniform(rng, 1e-300, 1e300, n, signed=True)
+    y = np.concatenate([loguniform(rng, 1e-320, 1e308, n - 1000), 1.0 + rng.uniform(-1e-8, 1e-8, 1000)])
+    return (x, y), np.ones(n, dtype=bool)
+
+
+def _xlog1py_inputs(rng):
+    n = 4000
+    x = loguniform(rng, 1e-300, 1e300, n, signed=True)
+    y = np.concatenate([loguniform(rng, 1e-320, 1e308, 1500), -loguniform(rng, 1e-320, 0.5, 1500),
+                        -1.0 + loguniform(rng, 2**-53, 0.5, 1000)])
+    return (x, y), np.ones(n, dtype=bool)
+
+
+def _entr_inputs(rng):
+    x = np.concatenate([loguniform(rng, 5e-324, 1e308, 4000), 1.0 + rng.uniform(-1e-8, 1e-8, 1000),
+                        around([1.0, np.exp(-1.0), 5e-324])])
+    x = x[x >= 0]  # x < 0 is the -inf convention, checked in tests/special/test_logistic.py
+    return (x,), np.ones(x.size, dtype=bool)
+
+
+def _rel_entr_inputs(rng):
+    n = 2000
+    x1, y1 = loguniform(rng, 1e-300, 1e300, n), loguniform(rng, 1e-300, 1e300, n)  # ratios of every size
+    x2 = loguniform(rng, 1e-300, 1e300, n)
+    y2 = x2 * (1.0 + loguniform(rng, 1e-15, 0.9, n, signed=True))  # x / y near 1
+    x3 = loguniform(rng, 1e-300, 1e-100, 500)
+    y3 = loguniform(rng, 1e100, 1e300, 500)  # x / y underflows
+    x = np.concatenate([x1, x2, x3, y3])
+    y = np.concatenate([y1, y2, y3, x3])
+    return (x, y), np.ones(x.size, dtype=bool)
+
+
+def _zero_at_zero(f):
+    return lambda *a: mpmath.mpf(0) if a[0] == 0 else f(*a)
+
+
 FUNCTIONS = {
     # the engine's test function (csrc/special/ops/testing.hpp): checks the pipeline end to end
     "_cf_tan": (1, mpmath.tan, _cf_tan_inputs),
+    # S1
+    "expit": (1, lambda x: 1 / (1 + mpmath.exp(-x)), _expit_inputs),
+    "logit": (1, lambda p: mpmath.log(p / (1 - p)), _logit_inputs),
+    "log_expit": (1, lambda x: -mpmath.log1p(mpmath.exp(-x)), _expit_inputs),
+    "xlogy": (2, _zero_at_zero(lambda x, y: x * mpmath.log(y)), _xlogy_inputs),
+    "xlog1py": (2, _zero_at_zero(lambda x, y: x * mpmath.log1p(y)), _xlog1py_inputs),
+    "entr": (1, _zero_at_zero(lambda x: -x * mpmath.log(x)), _entr_inputs),
+    "rel_entr": (2, _zero_at_zero(lambda x, y: x * mpmath.log(x / y)), _rel_entr_inputs),
 }
 
 
