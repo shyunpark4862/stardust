@@ -112,3 +112,6 @@
 
 ## 7. 다음 (S2 오차함수) 전에 물을 것
 docs/design/special.md §10에 따라 S2 함수(`erf erfc erfcx erfinv erfcinv ndtr log_ndtr ndtri`)에 대해 두 가지를 묻는다: scipy와 특수값을 다르게 할 곳, 함수마다의 보장 영역. 그 목록은 S1처럼 scipy를 재 보고 만든다.
+
+## 8. 승인
+2026-11-13, 사용자가 S1을 승인했다. 다음은 S2다.
