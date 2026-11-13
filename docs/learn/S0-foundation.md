@@ -122,8 +122,8 @@
   - 스칼라 호출에서 sd는 Python 인자를 해석하고 원소 1개짜리 배열을 거친다. 이 고정 비용이 약 0.1µs다. 배열의 스칼라 호출(`sd.add(1.0, 2.0)` 0.166µs)과 같은 경로다.
 - `pyproject.toml`의 `test`에 mpmath를 더했다.
 
-## 8. 이 마일스톤에서 확인받을 것
-1. **`kMaxOperands` 5의 비용** (docs/design/special.md §10): §3의 결과로 5를 그대로 둘지
+## 8. 이 마일스톤에서 확인받은 것 (2026-11-13, 사용자가 둘 다 승인)
+1. **`kMaxOperands` 5의 비용** (docs/design/special.md §10): §3의 결과로 5를 그대로 둔다.
 2. **셋 이상의 dtype 메시지 형식**: `a, b and c` (둘일 때는 그대로)
 
 S1을 시작하기 전에는 S1 함수(`expit logit log_expit xlogy xlog1py entr rel_entr`)의 두 가지를 묻는다(§10): scipy와 특수값을 다르게 할 곳의 목록, 함수마다의 보장 영역.
