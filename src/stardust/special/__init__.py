@@ -17,6 +17,8 @@ __all__ = [
     "expit", "logit", "log_expit", "xlogy", "xlog1py", "entr", "rel_entr",
     # S2: the error function and the normal distribution (§2)
     "erf", "erfc", "erfcx", "erfinv", "erfcinv", "ndtr", "log_ndtr", "ndtri",
+    # S3: gamma, beta and zeta (§3, §7)
+    "gamma", "gammaln", "rgamma", "digamma", "polygamma", "beta", "betaln", "binom", "zeta",
 ]
 
 globals().update({_name: getattr(_core, _name) for _name in __all__})

@@ -21,7 +21,13 @@ LOOSE = {
 }
 
 
+MIXED = refdata.MIXED
+ALIAS = refdata.ALIAS
+mixed_error = refdata.mixed_error
+
+
 def function(name):
+    name = ALIAS.get(name, name)
     return getattr(sd.special, name, None) or getattr(sd.special._core, name)
 
 
@@ -45,9 +51,15 @@ def test_accuracy(name):
     xs, hi, lo, guaranteed = refdata.load(name)
     got = np.asarray(function(name)(*(sd.asarray(x) for x in xs)))
     err = contract_error(got, hi, lo)
-    assert err[guaranteed].max() <= GUARANTEED, (name, xs[0][guaranteed][np.argmax(err[guaranteed])])
+    if guaranteed.any():
+        assert err[guaranteed].max() <= GUARANTEED, (name, [x[guaranteed][np.argmax(err[guaranteed])] for x in xs],
+                                                     err[guaranteed].max())
     if (~guaranteed).any():
-        assert err[~guaranteed].max() <= LOOSE[name], (name, xs[0][~guaranteed][np.argmax(err[~guaranteed])])
+        if name in MIXED:
+            m = mixed_error(got, hi, lo)[~guaranteed]
+            assert m.max() <= GUARANTEED, (name, [x[~guaranteed][np.argmax(m)] for x in xs], m.max())
+        else:
+            assert err[~guaranteed].max() <= LOOSE[name], (name, xs[0][~guaranteed][np.argmax(err[~guaranteed])])
 
 
 @pytest.mark.parametrize("name", refdata.names())

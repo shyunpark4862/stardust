@@ -130,6 +130,8 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 | `erfc`, `ndtr`, `log_ndtr`의 서브노멀 꼬리가 0(−0.0) | 참값(서브노멀) | 서브노멀 규칙(§2.3), 사용자 결정 (S2, 2026-11-13) |
 | `erfcinv(5e-324)`가 inf | 27.21 | z/2의 언더플로, 사용자 결정 (S2) |
 | `erfinv(-0.0)`이 0.0 | −0.0 | 홀함수의 부호, 사용자 결정 (S2) |
+| gamma·rgamma의 서브노멀 꼬리와 깊은 음수의 부호, `gammaln(±5e-324)`·`betaln(5e-324, 1)` = inf, `rgamma(-5e-324)` = −0.0, beta·betaln의 NaN 입력 → inf, `zeta(inf, q>1)` = NaN | 참값 | 사용자 결정 (S3, 2026-11-14). 같은 원칙으로 `beta(inf, 1e300)`, 거대한 k의 `binom` |
+| `binom(n, k)`가 음의 정수 n에서 NaN | 정수 k ≥ 0이면 n(n−1)…(n−k+1)/k! | 사용자 결정 (S3) |
 | `expit(x)`가 x < −709.78에서 0 | 참값 eˣ(서브노멀), x < −745.13에서 0 | 서브노멀 규칙(§2.3), 사용자 결정 (S1, 2026-11-13) |
 | `lambertw`는 언제나 complex를 돌려주고 `tol=`이 있다 | 실수 입력이면 float64. `tol=` 없음 | Q6, 결정성 (§5.11) |
 | `airy`는 네 배열의 tuple | `AiryResult(ai, aip, bi, bip)` namedtuple | DESIGN §9.7 |
@@ -170,6 +172,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 - 기법
   - 다항식 평가: Horner(곱셈-덧셈이 차례로 이어짐)와 Estrin(트리, 병렬도 높음)을 비교한다. `-ffp-contract=off`이므로 FMA는 코드에 적은 곳에서만 생긴다 (array.md §1.3). 스칼라 정의도 같은 식을 써야 비트가 같다.
   - 분기 없애기: 두 구간을 모두 계산한 뒤 `vbslq`로 고른다. 구간이 셋이면 셋 다 계산하는 비용과 분기 비용을 잰다.
+  - S3: `gammaln`은 NEON으로 짜지 않았다. 구간이 넷(작은 x, Taylor, 점화, Stirling)이고 S2의 측정(분기 방식이 빠르거나 같음)으로 보아 레인 둘의 이득이 없다. 스칼라 libm 정의다.
   - **S2의 측정 결과** (bench/special/s2/variants.md, docs/learn/S2-erf.md): 차수 5–8의 유리식이 셋인 `erfc`와 `ndtri`에서는 원소마다 자기 구간만 계산하는 스칼라 분기가 NEON 고르기보다 빠르거나 같았다(구간이 무작위로 섞인 입력만 예외, 4.7 대 4.2 ns). 고르기용 상수와 남의 구간 계산이 레인 두 개의 이득보다 크다. 그래서 S2 함수는 1단계(exp·log의 인자)만 NEON, 2단계는 vForce, 3단계는 스칼라 분기다. 결과의 비트는 두 방식이 같다. Estrin은 Horner와 속도가 같고 오차가 조금 컸다(9.1 대 7.8 ULP).
 - **안의 `exp`/`log`** (Q16): 커널이 입력을 1024원소(8KB) 스택 버퍼 단위로 처리한다.
   1. NEON으로 `exp`/`log`의 인자(예: `-x²`)를 버퍼에 만든다.
@@ -235,6 +238,12 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 - `polygamma(n, x)`: `n = 0`은 digamma, `n ≥ 1`은 `(-1)^{n+1} n! ζ(n+1, x)` (§5.6의 Hurwitz zeta)
 - `beta`, `betaln`: Lanczos 비(Boost `beta`)로 세 Γ를 한 식에 모아 오버플로와 소거를 피한다. 큰 인자는 log 형태
 - `binom(n, k)`: 정수 k가 작으면 곱(정확), 그 밖은 `1/((n+1)·B(n-k+1, k+1))`. 음의 n은 반사
+- **S3에서 정하고 바꾼 것** (docs/learn/S3-gamma.md)
+  - `gamma`: 후보 B(Cephes)를 골랐다. 최대 4.4 대 6.5 ULP(x > 0), 3.4배 빠르다(§1.3의 규칙). A(Lanczos)는 오버플로를 넘는 scaled 경로(서브노멀 꼬리, beta, 음수 zeta, polygamma)에 쓴다.
+  - 정확한 인자: 반사식은 `Γ(x)Γ(−x) = −π/(x·sinpi(x))`, `Γ(x+1) = x·Γ(x)`. 꼭 만들어야 하는 합(a+b, n−k+1)은 TwoSum으로 hi + lo를 들고 `Γ(hi+lo) ≈ Γ(hi)(1 + ψ(hi)·lo)`. `sinpi`·`cospi`는 인자를 정확히 줄인다.
+  - `gammaln`(x > 0): 2 둘레의 Taylor 전개(계수는 ζ(k)−1, 28항)와 Stirling 두 근사. 1 근처는 `lgamma(2+e) − log1p(e)`. Cephes의 [2, 3] 유리식은 쓰지 않는다. **2구간**
+  - `beta`: a+b ≤ 170은 Cephes Γ 셋, 그 위는 Γ를 가수·지수로 나눈 scaled 곱, 한 인자가 7000을 넘으면 Γ 비율 `L(a)/L(c)·e^E·cgh^{−b}`(E가 작게 남도록 정리)
+  - `zeta`: Riemann x ≥ 0은 Euler–Maclaurin(q = 1), x < 0은 함수방정식(scaled). Hurwitz는 Cephes `zeta.c`. q^{−s}가 언더플로하면 scaled로 더한다(polygamma).
 
 ### 5.3 불완전 감마 (`gammainc`, `gammaincc`)
 - `x < a + 1`: 거듭제곱급수로 P, `x ≥ a + 1`: Lentz 연분수로 Q. 나머지는 보수

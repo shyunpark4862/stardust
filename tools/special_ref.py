@@ -260,6 +260,126 @@ def _mp_erfcinv(z):
     return s * _newton_log(lambda x: mpmath.log(mpmath.erfc(x)) - mpmath.log(c), lambda x: _derfc(x) / mpmath.erfc(x), x0)
 
 
+# ---- S3: gamma, beta and zeta (docs/api/special.md §3, §7). Guaranteed (relative 1e-14,
+# user decision 2026-11-14): gamma, rgamma, Riemann zeta everywhere; gammaln, digamma,
+# polygamma for x > 0; beta for a, b > 0; Hurwitz zeta for q > 0; binom for n >= 0. The
+# rest -- and all of betaln -- is held to |error| <= 1e-14 max(1, |value|) (test_reference).
+
+def _noninteger(x):
+    return x[x != np.floor(x)]
+
+
+def _near_poles(rng, n, reach):
+    """-k + d for k = 0..reach, d both sides and of every size down to 1e-15."""
+    k = rng.integers(0, reach, n).astype(float)
+    d = loguniform(rng, 1e-15, 0.5, n) * rng.choice([-1.0, 1.0], n)
+    return _noninteger(-k + d)
+
+
+def _gamma_inputs(rng):
+    x = np.concatenate([loguniform(rng, 1e-300, 171.6, 2500), grid(0.01, 171.6, 1500), np.arange(1.0, 24.0),
+                        _near_poles(rng, 1500, 180), _noninteger(rng.uniform(-184.5, 0, 1500)),
+                        around([0.5, 1.0, 2.0, 2.5, 13.0, 23.0, 171.6, 5e-324])])
+    x = x[(x != 0) & (x <= 171.62)]
+    return (x,), np.ones(x.size, dtype=bool)
+
+
+def _rgamma_inputs(rng):
+    (x,), g = _gamma_inputs(rng)
+    x = np.concatenate([x, rng.uniform(171.6, 178.5, 500), -loguniform(rng, 5e-324, 1e-10, 200)])
+    return (x,), np.ones(x.size, dtype=bool)
+
+
+def _gammaln_inputs(rng):
+    x = np.concatenate([loguniform(rng, 5e-324, 1e305, 2500), 1 + loguniform(rng, 1e-17, 0.5, 800, signed=True),
+                        2 + loguniform(rng, 1e-16, 0.5, 800, signed=True), grid(0.01, 20, 800),
+                        _near_poles(rng, 1000, 1000), -_noninteger(loguniform(rng, 1e-300, 1e15, 800)),
+                        around([-2.4570247382208006, -2.7476826467274127, 0.5, 1.5, 2.5, 13.0])])
+    x = x[x != 0]
+    return (x,), x > 0
+
+
+def _digamma_inputs(rng):
+    root = 1.4616321449683623
+    x = np.concatenate([loguniform(rng, 1e-300, 1e300, 2500), root + loguniform(rng, 1e-17, 0.3, 800, signed=True),
+                        grid(0.01, 20, 800), _near_poles(rng, 1000, 1000), -_noninteger(loguniform(rng, 1e-3, 1e15, 800)),
+                        around([root, 1.0, 2.0, 10.0])])
+    x = x[x != 0]
+    return (x,), x > 0
+
+
+def _polygamma_inputs(rng):
+    n = np.concatenate([rng.integers(1, 31, 3000), np.full(300, 50), np.full(300, 100), np.full(300, 170),
+                        rng.integers(1, 6, 1000)]).astype(float)
+    x = np.concatenate([loguniform(rng, 1e-3, 1e6, 3900), _near_poles(rng, 1000, 30)[:1000]])
+    m = min(n.size, x.size)
+    n, x = n[:m], x[:m]
+    return (n, x), x > 0
+
+
+def _beta_inputs(rng):
+    m = 2000
+    a = np.concatenate([loguniform(rng, 1e-5, 3000, m), loguniform(rng, 1e4, 1e15, m), loguniform(rng, 1e-300, 1e-5, 500),
+                        _noninteger(rng.uniform(-30, 30, 1000))])
+    b = np.concatenate([loguniform(rng, 1e-5, 3000, m), loguniform(rng, 1e-3, 60, m), loguniform(rng, 1e-3, 10, 500),
+                        _noninteger(rng.uniform(-30, 30, 1000))])
+    k = min(a.size, b.size)
+    a, b = a[:k], b[:k]
+    return (a, b), (a > 0) & (b > 0)
+
+
+def _betaln_inputs(rng):
+    m = 1500
+    a = np.concatenate([loguniform(rng, 1e-300, 1e300, m), loguniform(rng, 1e-3, 50, m), 1 + loguniform(rng, 1e-12, 1, m)])
+    b = np.concatenate([loguniform(rng, 1e-300, 1e300, m), loguniform(rng, 1e-3, 50, m), 1 + loguniform(rng, 1e-12, 1, m)])
+    return (a, b), np.zeros(a.size, dtype=bool)  # betaln: the mixed bound everywhere
+
+
+def _binom_inputs(rng):
+    m = 2500
+    n = np.concatenate([rng.uniform(0, 1000, m), rng.uniform(0, 50, m), rng.integers(-40, 60, 800).astype(float),
+                        rng.uniform(-30, 0, 800)])
+    k = np.concatenate([rng.uniform(0, 1, m) * (n[:m] + 1), rng.uniform(0, 80, m), rng.integers(0, 30, 800).astype(float),
+                        rng.uniform(0, 20, 800)])
+    return (n, k), n >= 0
+
+
+def _zeta_inputs(rng):
+    x = np.concatenate([1 + loguniform(rng, 1e-15, 1e3, 2500), rng.uniform(0, 1, 1000), -loguniform(rng, 1e-15, 260, 2500),
+                        around([0.0, 1.0, 2.0, -1.0, -2.0, -171.0, -250.5]), -2 * rng.integers(1, 130, 50).astype(float)])
+    x = x[x != 1]
+    return (x,), np.ones(x.size, dtype=bool)
+
+
+def _hurwitz_inputs(rng):
+    m = 3500
+    x = np.concatenate([1 + loguniform(rng, 1e-12, 100, m), rng.integers(2, 12, 800).astype(float)])
+    q = np.concatenate([loguniform(rng, 1e-3, 1e10, m), _noninteger(rng.uniform(-20, 0, 1000))[:800]])
+    k = min(x.size, q.size)
+    return (x[:k], q[:k]), q[:k] > 0
+
+
+def _mp_polygamma(n, x):
+    return mpmath.psi(int(n), x)
+
+
+def _mp_binom(n, k):
+    if k == mpmath.floor(k) and k >= 0:  # the falling factorial (S3 user decision)
+        r = mpmath.mpf(1)
+        for i in range(1, int(k) + 1):
+            r *= (n - k + i) / i
+        return r
+    return mpmath.binomial(n, k)
+
+
+def _mp_beta(a, b):
+    return mpmath.beta(a, b)
+
+
+def _mp_zeta(x):
+    return mpmath.zeta(x)
+
+
 def _zero_at_zero(f):
     return lambda *a: mpmath.mpf(0) if a[0] == 0 else f(*a)
 
@@ -284,6 +404,17 @@ FUNCTIONS = {
     "ndtri": (1, _mp_ndtri, _ndtri_inputs),
     "erfinv": (1, _mp_erfinv, _erfinv_inputs),
     "erfcinv": (1, _mp_erfcinv, _erfcinv_inputs),
+    # S3
+    "gamma": (1, mpmath.gamma, _gamma_inputs),
+    "rgamma": (1, mpmath.rgamma, _rgamma_inputs),
+    "gammaln": (1, lambda x: mpmath.log(abs(mpmath.gamma(x))), _gammaln_inputs),
+    "digamma": (1, mpmath.digamma, _digamma_inputs),
+    "polygamma": (2, _mp_polygamma, _polygamma_inputs),
+    "beta": (2, _mp_beta, _beta_inputs),
+    "betaln": (2, lambda a, b: mpmath.log(abs(mpmath.beta(a, b))), _betaln_inputs),
+    "binom": (2, _mp_binom, _binom_inputs),
+    "zeta": (1, _mp_zeta, _zeta_inputs),
+    "zeta_hurwitz": (2, lambda x, q: mpmath.zeta(x, q), _hurwitz_inputs),
 }
 
 
@@ -302,6 +433,36 @@ def double_double(v):
     return hi, float(v - mpmath.mpf(hi))
 
 
+def _at(f, args, dps):
+    with mpmath.workdps(dps):
+        try:
+            return +f(*(mpmath.mpf(a) for a in args))
+        except (ValueError, ZeroDivisionError):
+            return mpmath.nan
+
+
+def evaluate(f, args):
+    """f(args) at DPS digits, checked against twice the digits and doubled until the two agree
+    to 30 digits: mpmath loses digits silently in places (a + b with a/b = 1e290 in beta,
+    Hurwitz zeta at large q), and the reference must not."""
+    # start above the largest argument's decimal exponent: a sum a + b with a = 1e281 needs
+    # 281 more digits to keep b, and two precisions that both drop it would agree
+    big = max([abs(a) for a in args if np.isfinite(a)] + [1.0])
+    dps = DPS + int(np.log10(big)) + 10
+    v = _at(f, args, dps)
+    while dps < 4000:
+        w = _at(f, args, 2 * dps)
+        if isinstance(v, mpmath.mpc) or isinstance(w, mpmath.mpc):
+            v = w
+            break
+        if mpmath.isnan(v) or mpmath.isnan(w) or mpmath.isinf(w) or v == w or abs(v - w) <= abs(w) * mpmath.mpf(10) ** -30:
+            v = w
+            break
+        dps *= 2
+        v = w
+    return v
+
+
 def build(name):
     nin, f, inputs = FUNCTIONS[name]
     rng = np.random.default_rng(20261113)
@@ -309,12 +470,8 @@ def build(name):
     xs = tuple(np.asarray(x, dtype=np.float64) for x in xs)
     n = xs[0].size
     hi, lo = np.empty(n), np.empty(n)
-    mpmath.mp.dps = DPS
     for i in range(n):
-        try:
-            v = f(*(mpmath.mpf(float(x[i])) for x in xs))
-        except (ValueError, ZeroDivisionError):
-            v = mpmath.nan
+        v = evaluate(f, tuple(float(x[i]) for x in xs))
         if isinstance(v, mpmath.mpc):  # a real function outside its real domain
             v = v.real if v.imag == 0 else mpmath.nan
         hi[i], lo[i] = double_double(v)

@@ -22,9 +22,13 @@ def use_build(site):
     sys.path.insert(0, str(site))
 
 
+ALIAS = {"zeta_hurwitz": "zeta"}  # reference files named apart from their function
+
+
 def sd_function(name):
     import stardust as sd
 
+    name = ALIAS.get(name, name)
     return getattr(sd.special, name, None) or getattr(sd.special._core, name)
 
 
@@ -32,6 +36,7 @@ def sd_function(name):
 # scipy.special.<name>. None: nothing to compare with.
 COUNTERPART = {
     "_cf_tan": "numpy.tan",
+    "zeta_hurwitz": "scipy.special.zeta",
 }
 
 
@@ -68,7 +73,8 @@ def sample_inputs(name, n, seed=0):
     """n inputs drawn (with replacement) from the guaranteed-region reference inputs:
     the distribution the function is measured on."""
     xs, _, _, guaranteed = ref_load(name)
-    idx = np.random.default_rng(seed).choice(np.flatnonzero(guaranteed), n)
+    pool = np.flatnonzero(guaranteed) if guaranteed.any() else np.arange(guaranteed.size)  # betaln: no guaranteed region
+    idx = np.random.default_rng(seed).choice(pool, n)
     return tuple(np.ascontiguousarray(x[idx]) for x in xs)
 
 

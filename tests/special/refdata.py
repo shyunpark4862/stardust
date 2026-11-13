@@ -17,6 +17,20 @@ import numpy as np
 REF = pathlib.Path(__file__).parent / "ref"
 
 
+# Functions whose region outside the guaranteed one is held to |error| <= 1e-14 max(1, |value|)
+# (S3 user decision), and reference files named apart from their function.
+MIXED = {"gammaln", "digamma", "polygamma", "beta", "betaln", "binom", "zeta_hurwitz"}
+ALIAS = {"zeta_hurwitz": "zeta"}
+
+
+def mixed_error(got, hi, lo):
+    """|got - (hi + lo)| / max(1, |hi|)."""
+    finite, special = _special(got, hi)
+    with np.errstate(invalid="ignore", over="ignore"):
+        err = np.abs((np.asarray(got, dtype=np.float64) - hi) - lo) / np.maximum(1.0, np.abs(hi))
+    return np.where(finite, err, special)
+
+
 def names():
     """The functions with a reference file."""
     return sorted(p.stem for p in REF.glob("*.npz"))

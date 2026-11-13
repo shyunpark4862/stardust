@@ -1,6 +1,6 @@
 # 특수함수 API (sd.special)
 
-> 상태: **확정** (2026-11-12). S2까지 구현했다(§2의 8개, §5의 7개). 설계와 결정 근거는 [docs/design/special.md](../design/special.md)에 있다. 보장 영역과 특수값 표는 각 마일스톤에서 측정한 뒤 채운다.
+> 상태: **확정** (2026-11-12). S3까지 구현했다(§2의 8개, §3의 8개, §5의 7개, §7의 `zeta`). 설계와 결정 근거는 [docs/design/special.md](../design/special.md)에 있다. 보장 영역과 특수값 표는 각 마일스톤에서 측정한 뒤 채운다.
 
 `import stardust as sd`의 하위 모듈 `sd.special`이 특수함수 API다 (scipy.special의 부분집합).
 
@@ -89,7 +89,28 @@ binom(n, k, /, *, out=None)
 - 극점: `gamma(0.0)`은 `inf`, `gamma(-0.0)`은 `-inf`, 음의 정수에서는 NaN이다. `gammaln`은 0과 음의 정수에서 `inf`다 (scipy와 같다).
 - `polygamma(n, x)`의 `n`은 int64나 float64다. 0 이상의 정수 값만 정의되고, 정수가 아니거나 음수이면 NaN이다. `n = 0`은 `digamma`와 같다.
 - `binom(n, k)`는 실수 n, k의 일반화 이항계수다.
-- 보장 영역, 특수값: S3에서 확정
+- **보장 영역** (사용자 결정 2026-11-14): 상대오차 1e-14는 `gamma`, `rgamma`의 정의역 전체, `gammaln`, `digamma`, `polygamma`의 x > 0, `beta`의 a, b > 0, `binom`의 n ≥ 0이다. 그 밖(음수 쪽)과 `betaln` 전체는 |오차| ≤ 1e-14·max(1, |값|)이다. log|Γ|, ψ, log B에는 음수 쪽이나 B = 1인 곡선 위에 0이 무한히 많아 상대오차를 보장할 수 없기 때문이다.
+- **잰 정확도** (bench/special/s3/accuracy.md, 보장 영역 최대 ULP): `gamma` 6.2, `rgamma` 5.1, `gammaln` 5.5, `digamma` 2.1, `polygamma` 17, `beta` 9.0, `binom` 9.3. 혼합 한계 영역(오차/max(1,|값|), 2⁻⁵² 단위): `gammaln` 2.1, `digamma` 15, `polygamma` 3.1, `beta` 6.8, `betaln` 7.6, `binom` 8.0
+- **특수값**: 극점과 ±inf의 규약은 scipy와 비트까지 같다. 다른 곳(docs/design/special.md §2.4)은 아래 표의 굵은 줄이다.
+
+  | 입력 | 값 | 비고 |
+  |---|---|---|
+  | `gamma(±0)`, `gamma(-n)`, `gamma(-inf)` | ±inf, NaN, NaN | |
+  | `gamma(x)`, −184 < x < −171 (정수 아님) | 서브노멀 값, 부호 포함 | **scipy는 0**. 더 아래는 부호 있는 0 (`gamma(-1e10-0.5) = -0.0`, **scipy +0.0**) |
+  | `rgamma(±0)`, `rgamma(-n)`, `rgamma(±inf)` | ±0, 0, 0 | |
+  | `rgamma(x)`, 171.6 < x < 177.8 | 서브노멀 값 | **scipy는 0** |
+  | `rgamma(-5e-324)` | −5e-324 | **scipy는 −0.0** |
+  | `rgamma(-1e10-0.5)` | −inf | **scipy는 inf** |
+  | `gammaln(±0)`, `gammaln(-n)`, `gammaln(-inf)` | inf, inf, −inf | |
+  | `gammaln(±5e-324)` | 744.44 | **scipy는 inf** |
+  | `digamma(+0)`, `digamma(-0)`, `digamma(-n)` | −inf, inf, NaN | |
+  | `polygamma(n, x)` | n이 음수·정수 아님·±inf이면 NaN | |
+  | `beta`, `betaln`의 0·음의 정수 인자 | scipy(Cephes `beta.c`)의 규약 | NaN이 하나라도 있으면 NaN (**scipy는 inf**) |
+  | `beta(inf, 1e300)` | 0 | **scipy는 NaN** (내부의 1e6·b 오버플로) |
+  | `binom(n, k)`, k ≥ 0 정수 | n(n−1)…(n−k+1)/k! | **음의 정수 n도** (`binom(-5, 2) = 15`, scipy NaN) |
+  | `binom(n, k)`, 거대한 k | 반사식과 Γ 비율 | `binom(-0.5, 1e300) = 5.6e-151` (**scipy −5.1e-151**), `binom(0, 1e300) = 0` (**scipy −2.9e-301**) |
+  | `zeta(1)`, `zeta(inf)`, `zeta(-2n)` | inf, 1, 0 | |
+  | `zeta(inf, q)` | q > 1이면 0, q = 1이면 1, 0 < q < 1이면 inf | **scipy는 q > 1에서 NaN** |
 
 ## §4. 불완전 감마와 베타
 ```
@@ -160,6 +181,7 @@ expi(x, /, *, out=None)
 expn(n, x, /, *, out=None)
 ```
 - `zeta(x)`는 Riemann ζ, `zeta(x, q)`는 Hurwitz ζ(x, q)다. Riemann은 `x < 1`도 정의된다(함수방정식). Hurwitz의 `x < 1`은 NaN이다 (scipy와 같다).
+- `zeta`는 S3에서 구현했다(`expi`, `expn`은 S5). 보장 영역: Riemann은 정의역 전체, Hurwitz는 q > 0(그 밖은 |오차| ≤ 1e-14·max(1, |값|)). 잰 최대: Riemann 24 ULP(0 < x < 1, Euler–Maclaurin의 상쇄), Hurwitz 5.5 ULP. 특수값은 §3의 표에 있다.
 - `expi`는 지수적분 Ei, `expn(n, x)`는 일반화 지수적분 Eₙ(x)다. `n`은 int64나 float64이고, 0 이상의 정수 값만 정의된다. 정수가 아니거나 음수이면 NaN이다. **scipy는 `expn(1.5, 1.0)`에서 n을 1로 자른다. 우리는 NaN이다.**
 
 ## §8. Bessel 함수

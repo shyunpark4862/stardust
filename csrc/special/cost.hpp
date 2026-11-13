@@ -52,6 +52,17 @@ inline constexpr double kErfcinv = 8.7;
 inline constexpr double kNdtr = 6.3;
 inline constexpr double kLogNdtr = 14.6;
 inline constexpr double kNdtri = 8.1;
+// S3 (special/ops/gamma.hpp, zeta.hpp), bench/special/s3/cost.md
+inline constexpr double kGamma = 18;
+inline constexpr double kRgamma = 20;
+inline constexpr double kGammaln = 11;
+inline constexpr double kDigamma = 9;
+inline constexpr double kPolygamma = 123;
+inline constexpr double kBeta = 60;
+inline constexpr double kBetaln = 80;
+inline constexpr double kBinom = 104;
+inline constexpr double kZeta = 91;
+inline constexpr double kHurwitz = 87;
 }  // namespace cost
 
 }  // namespace sd::special

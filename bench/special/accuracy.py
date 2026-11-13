@@ -1,6 +1,7 @@
 """The accuracy table of sd.special (docs/design/special.md §6): for every function with
 a reference file, the largest and the 99.9th-percentile error in ULP, in the guaranteed
-region and outside it, next to scipy's on the same inputs.
+region and outside it, next to scipy's on the same inputs. Outside the guaranteed region
+the functions in refdata.MIXED report error / max(1, |value|) in units of 2^-52 ("mixed").
 
     .venv/bin/python bench/special/accuracy.py [NAME ...] > table.md
 """
@@ -35,8 +36,14 @@ def main(argv):
         for label, m in (("guaranteed", g), ("loose", ~g)):
             if not m.any():
                 continue
-            s = stats(serr[m]) if serr is not None else ("-", "-")
-            print(f"| `{name}` | {m.sum()} | {label} | {' | '.join(stats(err[m]))} | `{common.counterpart(name)}` | "
+            e, se = err, serr
+            if label == "loose" and name in refdata.MIXED:
+                # the mixed bound: error / max(1, |value|), in units of 2^-52 (45 = the 1e-14 bound)
+                label = "mixed"
+                e = refdata.mixed_error(got, hi, lo) / 2.0**-52
+                se = refdata.mixed_error(ref(*xs), hi, lo) / 2.0**-52 if ref is not None else None
+            s = stats(se[m]) if se is not None else ("-", "-")
+            print(f"| `{name}` | {m.sum()} | {label} | {' | '.join(stats(e[m]))} | `{common.counterpart(name)}` | "
                   f"{' | '.join(s)} |")
 
 

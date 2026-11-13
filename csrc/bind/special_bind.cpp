@@ -12,6 +12,7 @@
 #include "special/cost.hpp"
 #include "special/kernels/chunked.hpp"
 #include "special/ops/erf.hpp"
+#include "special/ops/gamma.hpp"
 #include "special/ops/logistic.hpp"
 #include "special/ops/testing.hpp"
 
@@ -94,6 +95,22 @@ void bind_special(nb::module_& core) {
     def_naries<Expit, Logit, LogExpit, Xlogy, Xlog1py, Entr, RelEntr>(m);  // S1, docs/api/special.md §5
     def_naries<Erf, Erfc, Erfcx, Erfinv, Erfcinv, Ndtr, LogNdtr, Ndtri>(m);  // S2, §2
     def_naries<ErfcSelect, ErfcEstrin>(m);  // S2 measurement variants (special/ops/erf.hpp)
+    def_naries<Gamma, Rgamma, Gammaln, Digamma, Polygamma, Beta, Betaln, Binom>(m);  // S3, §3
+    def_naries<GammaLanczos>(m);  // S3 measurement variant (gamma candidate A)
+    // zeta(x, q=None, /, *, out=None): Riemann with one argument, Hurwitz with two (§7)
+    m.def(
+        "zeta",
+        [](nb::handle x, nb::handle q, nb::handle out) {
+            return call_named("zeta", [&] {
+                if (q.is_none()) {
+                    const nb::handle objs[] = {x};
+                    return call<Zeta>(objs, out);
+                }
+                const nb::handle objs[] = {x, q};
+                return call<Hurwitz>(objs, out);
+            });
+        },
+        nb::arg().none(), nb::arg().none() = nb::none(), nb::kw_only(), nb::arg("out").none() = nb::none());
     def_naries<Fma3, Sum4, Powers4, CfTan>(m);  // engine tests (special/ops/testing.hpp)
     m.def("_parallel_tasks", &parallel_tasks, nb::arg("n"), nb::arg("weight"));
     m.def("_weight", [](const std::string& name) -> std::int64_t {
@@ -101,7 +118,9 @@ void bind_special(nb::module_& core) {
         auto check = [&]<typename Op>() { if (name == Op::name) w = weight_of(Op::cost_ns); };
         [&]<typename... Ops>() { (check.template operator()<Ops>(), ...); }
             .template operator()<Expit, Logit, LogExpit, Xlogy, Xlog1py, Entr, RelEntr, Erf, Erfc, Erfcx, Erfinv,
-                                 Erfcinv, Ndtr, LogNdtr, Ndtri, Fma3, Sum4, Powers4, CfTan>();
+                                 Erfcinv, Ndtr, LogNdtr, Ndtri, Gamma, Rgamma, Gammaln, Digamma, Polygamma,
+                                 Beta, Betaln, Binom, Zeta, Fma3, Sum4, Powers4, CfTan>();
+        if (name == "zeta_hurwitz") w = weight_of(Hurwitz::cost_ns);  // zeta's two-argument form
         if (w == 0) throw nb::key_error(name.c_str());
         return w;
     }, nb::arg("name"));
