@@ -47,6 +47,7 @@ bool  int64  float64  complex128  string
   - 원소가 없는 `min`/`max`/`argmin`/`argmax` (docs/api/array.md §7.4)
 - **`IndexError`**: 인덱스가 범위 밖이거나 허용하지 않는 형태다 (docs/api/array.md §5). 데이터프레임의 위치 인덱스(`.iloc`)도 같다: `s.iloc[1.0]`, `s.iloc[True]`, `s.iloc[[1.0]]` (docs/api/frame.md §5.4).
 - **`KeyError`**: 없는 라벨을 찾았다 (데이터프레임의 `.loc`, docs/api/frame.md §5.4).
+- **`BufferError`**: 버퍼나 DLPack으로 데이터를 주고받을 수 없다. Array API와 DLPack이 정한 예외다. CPU가 아닌 장치의 배열을 `from_dlpack`으로 가져올 때, 읽기 전용 배열을 옛 DLPack 형식으로 내보낼 때가 그렇다 (docs/api/array.md §3.5, §10.5). 버퍼 프로토콜의 내보내기 실패도 Python의 규칙대로 `BufferError`다.
 - **`OverflowError`**: int64 범위를 벗어난 Python int를 int64로 바꿔야 한다 (docs/api/array.md §1.5, docs/api/frame.md §2.2). float로 계산할 수 있으면 float로 바꾼다.
   - int 인자(`shape`, `axis`, `k`, `n`, `num` 등)도 int64 범위 밖이면 `OverflowError`다. 배열과 linalg가 같다 (docs/api/array.md §1.3, docs/api/linalg.md §1.1). 예외는 `set_num_threads`의 `n`이다: 범위 밖은 크기와 상관없이 `ValueError`다 (§3).
 - **영역 고유의 예외**는 위 내장 예외의 하위 클래스다. 지금은 `sd.linalg.LinAlgError(ValueError)` 하나다: 특이 행렬, 양정치가 아닌 행렬, 수렴 실패 (docs/api/linalg.md).
@@ -64,10 +65,11 @@ bool  int64  float64  complex128  string
   - 인자가 아닌 낱말에는 따옴표가 없다. 예: `axis 3 is out of bounds for an array of dimension 2`의 axis는 배열의 축이다.
   - 받은 값은 타입 이름으로 보인다(`not list`). 문자열과 타입은 그 자체로 보인다(`not 'float32'`, `not <class 'float'>`).
   - **타입 이름은 모듈 경로 없는 짧은 이름이다**: `not ndarray`, `not int64`, `not Int64DType`, `not <class 'int64'>`. `stardust._core.ndarray`, `numpy.int64`, `numpy.dtypes.Int64DType`처럼 쓰지 않는다.
+    - Python이 직접 내는 메시지도 같다. C++로 묶은 타입도 Python으로 쓴 클래스처럼 짧은 이름을 갖는다: `unsupported operand type(s) for +: 'ndarray' and 'list'`, `unhashable type: 'ndarray'`, `cannot pickle 'ndarray' object`, `'ndarray' object has no attribute 'foo'`
 - **같은 실수에는 어느 영역에서든 같은 메시지다** (DESIGN.md §10.3). 옵션의 종류마다 검사가 하나라서 형식이 하나다.
   - bool 옵션: `sort(): 'stable' must be True or False, not int`, `sum(): 'skipna' must be True or False, not NoneType`
   - int 인자: `head(): 'n' must be an int, not float`, int64 범위 밖은 `head(): 'n' is out of range`(`OverflowError`)
-  - 문자열 옵션: `merge(): 'how' must be 'inner', 'left', 'right' or 'outer', not NoneType`(타입, `TypeError`), `..., not 'x'`(값, `ValueError`). linalg의 `mode`도 같다.
+  - 문자열 옵션: `merge(): 'how' must be 'inner', 'left', 'right' or 'outer', not NoneType`(타입, `TypeError`), `..., not 'x'`(값, `ValueError`). linalg의 `mode`, 배열의 `meshgrid(indexing=)`, `searchsorted(side=)`, `quantile(method=)`도 같다.
   - 수 인자: `std(): 'correction' must be an int or a float, not NoneType`
   - **`None`도 같은 검사를 거친다.** `None`이 뜻이 있는 옵션(`axis=None`, `dtype=None`, `copy=None`, `rtol=None`)이 아니면 다른 틀린 값과 같다: `svd(): 'mode' must be 'reduced' or 'complete', not NoneType`, `astype(): 'dtype' must be ... not NoneType`
 - **공개 함수의 메시지에 내부 이름이 나오지 않는다.** C++ 클래스(`Column`), 바인딩의 시그니처(nanobind의 `incompatible function arguments` 목록), Python 내부의 메시지(`object of type 'int' has no len()`, `'>=' not supported between ...`, `AttributeError`)가 그렇다. 인자를 먼저 검사해서 위의 형식으로 낸다.

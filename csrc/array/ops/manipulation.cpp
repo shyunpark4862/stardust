@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -66,11 +67,16 @@ nb::object flip(nb::handle x, nb::handle axis_obj) {
 
 // ------------------------------------------------------------------- roll
 
+// `shift`: an int, or a tuple or list of ints paired with `axis` (which takes
+// lists too, docs/api/array.md §1.3). Outside int64: OverflowError (API.md §2).
 std::int64_t parse_shift(nb::handle o) {
     std::int64_t v = 0;
-    if (index_value(o, v) != IndexResult::Ok)
-        throw nb::type_error(("'shift' must be an int or a tuple of ints, not " + py_type_name(o)).c_str());
-    return v;
+    switch (index_value(o, v)) {
+        case IndexResult::Ok: return v;
+        case IndexResult::Overflow: throw std::overflow_error("'shift' is out of range");
+        case IndexResult::NotInt: break;
+    }
+    throw nb::type_error(("'shift' must be an int or a tuple or list of ints, not " + py_type_name(o)).c_str());
 }
 
 nb::object roll(nb::handle x, nb::handle shift_obj, nb::handle axis_obj) {
@@ -81,14 +87,26 @@ nb::object roll(nb::handle x, nb::handle shift_obj, nb::handle axis_obj) {
             throw nb::type_error("'shift' must be an int when 'axis' is None");
         const nb::object flat = flattened(x);
         const nb::object rolled = roll(flat, shift_obj, nb::int_(0));
-        return reshape(rolled, a.shape_span(), std::nullopt);
+        // The rolled copy is new, C-ordered and owns its memory: give it x's
+        // shape in place, so the result owns its memory too (`base` is None,
+        // docs/api/array.md §10.1) instead of being a view of the copy.
+        NDArray r = as_ndarray(rolled);
+        r.ndim = a.ndim;
+        std::int64_t step = r.itemsize();
+        for (int d = a.ndim - 1; d >= 0; --d) {
+            r.shape[d] = a.shape[d];
+            r.strides[d] = step;
+            step *= a.shape[d];
+        }
+        r.update_flags();
+        return wrap(std::move(r));
     }
     const std::vector<int> axes = parse_axes(axis_obj, a.ndim);
     std::vector<std::int64_t> shifts;
     if (PyTuple_Check(shift_obj.ptr()) || PyList_Check(shift_obj.ptr())) {
         for (nb::handle h : shift_obj) shifts.push_back(parse_shift(h));
         if (shifts.size() != axes.size())
-            throw nb::value_error("'shift' and 'axis' must have the same length when both are tuples");
+            throw nb::value_error("'shift' and 'axis' must have the same length when both are sequences");
     } else {
         shifts.assign(axes.size(), parse_shift(shift_obj));
     }
@@ -139,7 +157,9 @@ nb::object repeat(nb::handle x, nb::handle repeats_obj, nb::handle axis_obj) {
 
     std::vector<std::int64_t> counts;
     std::int64_t one = 0;
-    if (index_value(repeats_obj, one) == IndexResult::Ok) {
+    const IndexResult one_kind = index_value(repeats_obj, one);
+    if (one_kind == IndexResult::Overflow) throw std::overflow_error("'repeats' is out of range");  // API.md §2
+    if (one_kind == IndexResult::Ok) {
         counts.assign(n, one);
     } else if (is_ndarray(repeats_obj)) {
         const NDArray& r = as_ndarray(repeats_obj);
@@ -213,20 +233,33 @@ nb::object repeat(nb::handle x, nb::handle repeats_obj, nb::handle axis_obj) {
 
 // ------------------------------------------------------------------- tile
 
+// `repetitions`: an int or a tuple of ints, like `shape` (no lists,
+// docs/api/array.md §1.3). Outside int64: OverflowError (API.md §2).
 std::vector<std::int64_t> parse_reps(nb::handle o) {
-    std::vector<std::int64_t> reps;
-    auto one = [](nb::handle h) {
-        std::int64_t v = 0;
-        if (index_value(h, v) != IndexResult::Ok)
-            throw nb::type_error(("'repetitions' must be a tuple of ints, not " + py_type_name(h)).c_str());
-        if (v < 0) throw nb::value_error("'repetitions' must be non-negative");
-        return v;
+    auto one = [](nb::handle h, std::int64_t& v) {  // false: not an int
+        switch (index_value(h, v)) {
+            case IndexResult::Ok: return true;
+            case IndexResult::Overflow: throw std::overflow_error("'repetitions' is out of range");
+            case IndexResult::NotInt: return false;
+        }
+        __builtin_unreachable();
     };
-    if (PyTuple_Check(o.ptr()) || PyList_Check(o.ptr())) {
-        for (nb::handle h : o) reps.push_back(one(h));
+    std::vector<std::int64_t> reps;
+    std::int64_t v = 0;
+    if (!PyTuple_Check(o.ptr())) {
+        if (!one(o, v))
+            throw nb::type_error(("'repetitions' must be an int or a tuple of ints, not " + py_type_name(o)).c_str());
+        reps.push_back(v);  // numpy: an int is (int,)
     } else {
-        reps.push_back(one(o));  // numpy: an int is (int,)
+        for (nb::handle h : o) {
+            if (!one(h, v))
+                throw nb::type_error(
+                    ("'repetitions' must be an int or a tuple of ints, not a tuple holding " + py_type_name(h)).c_str());
+            reps.push_back(v);
+        }
     }
+    for (std::int64_t r : reps)
+        if (r < 0) throw nb::value_error("'repetitions' must be non-negative");
     return reps;
 }
 
@@ -337,11 +370,7 @@ nb::tuple unstack(nb::handle x, nb::handle axis_obj) {
 // --------------------------------------------------------------- meshgrid
 
 nb::tuple meshgrid(nb::args arrays, nb::handle indexing_obj) {
-    if (!nb::isinstance<nb::str>(indexing_obj))
-        throw nb::type_error(("'indexing' must be a str, not " + py_type_name(indexing_obj)).c_str());
-    const std::string indexing = nb::borrow<nb::str>(indexing_obj).c_str();
-    if (indexing != "xy" && indexing != "ij")
-        throw nb::value_error(("'indexing' must be 'xy' or 'ij', not '" + indexing + "'").c_str());
+    const std::string indexing = parse_choice(indexing_obj, "indexing", {"xy", "ij"});
     std::vector<std::int64_t> shape;
     for (nb::handle h : arrays) {
         if (!is_ndarray(h)) throw nb::type_error(("every argument must be an sd.ndarray, not " + py_type_name(h)).c_str());
@@ -419,10 +448,27 @@ nb::object triangle(nb::handle x, nb::handle k_obj) {
 
 // ------------------------------------------------------------------- diff
 
-// prepend/append: an array, used as is, or a Python scalar, broadcast to x's
-// shape with length 1 along the axis (numpy).
-nb::object edge(nb::handle v, const NDArray& a, int axis) {
-    if (is_ndarray(v)) return nb::borrow(v);
+// prepend/append (`what` names which): an array with x's number of
+// dimensions and x's shape off the axis, used as is, or a Python scalar,
+// broadcast to x's shape with length 1 along the axis (numpy). Checked here,
+// so the messages name the argument rather than concat's or full's.
+nb::object edge(nb::handle v, const NDArray& a, int axis, const char* what) {
+    const std::string name = std::string("'") + what + "'";
+    if (is_ndarray(v)) {
+        const NDArray& e = as_ndarray(v);
+        if (e.ndim != a.ndim)
+            throw nb::value_error((name + " must have as many dimensions as 'x' (" + std::to_string(a.ndim) + "), not " +
+                                   std::to_string(e.ndim))
+                                      .c_str());
+        for (int d = 0; d < a.ndim; ++d)
+            if (d != axis && e.shape[d] != a.shape[d])
+                throw nb::value_error((name + " must have the shape of 'x' " + shape_str(a.shape_span()) +
+                                       " except along axis " + std::to_string(axis) + ", not " + shape_str(e.shape_span()))
+                                          .c_str());
+        return nb::borrow(v);
+    }
+    if (!scalar_dtype(v))
+        throw nb::type_error((name + " must be an sd.ndarray or a bool, int, float or complex, not " + py_type_name(v)).c_str());
     std::vector<std::int64_t> shape = shape_of(a);
     shape[axis] = 1;
     nb::list s;
@@ -438,9 +484,9 @@ nb::object diff(nb::handle x, nb::handle axis_obj, nb::handle n_obj, nb::handle 
     nb::object cur = nb::borrow(x);
     if (!prepend.is_none() || !append.is_none()) {
         nb::list parts;
-        if (!prepend.is_none()) parts.append(edge(prepend, a, axis));
+        if (!prepend.is_none()) parts.append(edge(prepend, a, axis, "prepend"));
         parts.append(cur);
-        if (!append.is_none()) parts.append(edge(append, a, axis));
+        if (!append.is_none()) parts.append(edge(append, a, axis, "append"));
         cur = concat_arrays(parts, nb::int_(axis));
     }
     // n times: x[1:] - x[:-1] along the axis, with subtract (bool becomes

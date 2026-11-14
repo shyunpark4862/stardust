@@ -190,8 +190,18 @@ void bind_ndarray(nb::module_& m) {
         .def("argmax", named("argmax", &argmax), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims").none() = false)
         .def("any", named("any", &any), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims").none() = false)
         .def("all", named("all", &all), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims").none() = false)
+        // There is no constructor (docs/api/array.md §10). Without this
+        // __init__, nanobind says "stardust._core.ndarray: no constructor defined!".
+        .def("__init__", [](NDArray*, nb::args, nb::kwargs) {
+            throw nb::type_error("ndarray(): there is no constructor; use asarray() or another creation function");
+        })
         .def("__getitem__", &getitem, nb::arg().none())
         .def("__setitem__", &setitem, nb::arg().none(), nb::arg().none())
+        // Python's message for a container without deletion, as for a tuple
+        // (docs/api/array.md §5.3). Without it, `del x[0]` said "AttributeError: __delitem__".
+        .def("__delitem__", [](const NDArray&, nb::handle) {
+            throw nb::type_error("'ndarray' object doesn't support item deletion");
+        }, nb::arg().none())
         .def("__len__", [](const NDArray& a) { return a.shape[0]; })
         .def("__iter__", [](nb::handle self) { return ArrayIterator{nb::borrow(self), 0, as_ndarray(self).shape[0]}; })
         // Without this, `v in x` would quietly fall back to iterating x.
@@ -267,6 +277,7 @@ void bind_ndarray(nb::module_& m) {
     // Arrays are mutable containers: unhashable, like lists. (Defining
     // __eq__ would also do this; being explicit documents it.)
     cls.attr("__hash__") = nb::none();
+    use_short_type_name(cls);
     // numpy, seeing `np_array + sd_array`, would convert our array through
     // the buffer protocol and return a numpy result. None tells numpy's
     // ufuncs to step aside, so mixing the two raises TypeError
@@ -280,12 +291,13 @@ void bind_ndarray(nb::module_& m) {
 
     bind_dlpack(m, cls);  // from_dlpack, __dlpack__, __dlpack_device__
 
-    nb::class_<ArrayIterator>(m, "_ArrayIterator")
+    auto it_cls = nb::class_<ArrayIterator>(m, "_ArrayIterator")
         .def("__iter__", [](nb::handle self) { return nb::borrow(self); })
         .def("__next__", [](ArrayIterator& it) {
             if (it.next >= it.stop) throw nb::stop_iteration();
             return item_along_axis0(it.array, it.next++);
         });
+    use_short_type_name(it_cls);
 }
 
 }  // namespace sd

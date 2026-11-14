@@ -491,6 +491,15 @@ def test_clip():
     y = sd.clip(x)
     assert y.tolist() == x.tolist() and y is not x
     assert sd.clip(x, min=sd.asarray([0, 1, 2, 3]), max=4).tolist() == [0, 1, 4, 4]
+    # An array min/max broadcasts to x, never x to it: the result has x's shape (docs/api/array.md §6.4).
+    m = sd.asarray([[-5, 0, 5, 10], [1, 2, 3, 4]])
+    assert sd.clip(m, min=sd.asarray([0, 1, 2, 3]), max=sd.asarray([[4], [2]])).tolist() == [[0, 1, 4, 4], [1, 2, 2, 2]]
+    with pytest.raises(ValueError, match=r"^clip\(\): 'min' of shape \(2, 4\) cannot be broadcast to the shape of "
+                                         r"'x' \(4,\)$"):
+        sd.clip(x, min=sd.zeros((2, 4), dtype=sd.int64))
+    with pytest.raises(ValueError, match=r"^clip\(\): 'max' of shape \(3,\) cannot be broadcast to the shape of "
+                                         r"'x' \(4,\)$"):
+        sd.clip(x, max=sd.asarray([1, 2, 3]))
     assert sd.clip(x, min=5, max=1).tolist() == [1, 1, 1, 1]  # min > max: max wins, like numpy
     f = sd.asarray([math.nan, 1.0, 3.0, -0.0])
     got = sd.clip(f, min=0.0, max=2.0).tolist()

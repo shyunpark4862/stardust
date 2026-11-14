@@ -130,6 +130,44 @@ def test_roll_errors():
         sd.roll(sd.asarray(X3), (1, 2))
     with pytest.raises(ValueError, match="same length"):
         sd.roll(sd.asarray(X3), (1, 2), axis=(0,))
+    with pytest.raises(TypeError, match=r"^roll\(\): 'shift' must be an int or a tuple or list of ints, not float$"):
+        sd.roll(sd.asarray(X3), 1.5, axis=0)
+
+
+def test_roll_takes_lists_like_axis():
+    # shift pairs with axis, which takes lists (docs/api/array.md §1.3, §4.4)
+    same(sd.roll(sd.asarray(X3), [1, -2], axis=[0, 2]), np.roll(X3, (1, -2), (0, 2)))
+
+
+@pytest.mark.parametrize("axis", [None, 0, (0, 1)])
+def test_roll_result_owns_its_memory(axis):
+    # a new array (docs/api/array.md §4.4, §10.1), also when axis=None goes through the flattened array
+    r = sd.roll(sd.asarray(X3), 1, axis=axis)
+    assert r.base is None
+    same(r, np.roll(X3, 1, axis))
+    assert r._flags()["c_contiguous"]
+
+
+@pytest.mark.parametrize(("call", "name"), [
+    (lambda: sd.roll(sd.asarray(X3), 2**70), "shift"),
+    (lambda: sd.roll(sd.asarray(X3), (2**70,), axis=(0,)), "shift"),
+    (lambda: sd.repeat(sd.asarray(X3), 2**70), "repeats"),
+    (lambda: sd.repeat(sd.asarray(X3), -(2**70)), "repeats"),
+    (lambda: sd.tile(sd.asarray(X3), 2**70), "repetitions"),
+    (lambda: sd.tile(sd.asarray(X3), (1, 2**70)), "repetitions"),
+])
+def test_int_arguments_outside_int64_overflow(call, name):
+    # API.md §2, docs/api/array.md §1.3: like shape and axis
+    with pytest.raises(OverflowError, match=rf"^\w+\(\): '{name}' is out of range$"):
+        call()
+
+
+def test_int_only_axis():
+    # unstack and repeat take an int axis only (docs/api/array.md §1.3)
+    for f in (lambda ax: sd.unstack(sd.asarray(X3), axis=ax), lambda ax: sd.repeat(sd.asarray(X3), 2, axis=ax)):
+        for bad in [(0,), [0]]:
+            with pytest.raises(TypeError, match=r"'axis' must be an int, not (tuple|list)$"):
+                f(bad)
 
 
 def test_repeat():
@@ -145,12 +183,25 @@ def test_repeat():
         sd.repeat(sd.asarray([1.0, 2.0, 3.0]), 2**62)
     with pytest.raises(TypeError, match="'repeats' must be an int or an int64 array"):
         sd.repeat(sd.asarray([1, 2]), 1.5)
+    same(sd.repeat(sd.asarray([1, 2]), np.int64(2)), np.repeat([1, 2], 2))
 
 
 @pytest.mark.parametrize("reps", [(2,), 2, (2, 1, 3), (1, 1, 1), (2, 1, 1, 3), (0, 2), (3, 2, 1, 2, 1)])
 def test_tile(reps):
     same(sd.tile(sd.asarray(X3), reps), np.tile(X3, reps))
     same(sd.tile(sd.asarray([True, False]), reps), np.tile([True, False], reps))
+
+
+def test_tile_repetitions_are_like_shape():
+    # an int or a tuple of ints; a list is a TypeError, as for shape (docs/api/array.md §1.3, §4.4)
+    with pytest.raises(TypeError, match=r"^tile\(\): 'repetitions' must be an int or a tuple of ints, not list$"):
+        sd.tile(sd.asarray(X3), [2])
+    with pytest.raises(TypeError,
+                       match=r"^tile\(\): 'repetitions' must be an int or a tuple of ints, not a tuple holding float$"):
+        sd.tile(sd.asarray(X3), (2, 1.0))
+    with pytest.raises(ValueError, match=r"^tile\(\): 'repetitions' must be non-negative$"):
+        sd.tile(sd.asarray(X3), (2, -1))
+    same(sd.tile(sd.asarray(X3), (np.int64(2),)), np.tile(X3, 2))
 
 
 def test_tile_many_dimensions():
@@ -188,6 +239,23 @@ def test_diff():
         sd.diff(x, n=-1)
 
 
+def test_diff_edge_errors_name_the_argument():
+    x2 = sd.ones((2, 3))
+    with pytest.raises(TypeError, match=r"^diff\(\): 'prepend' must be an sd.ndarray or a bool, int, float or complex, "
+                                        r"not list$"):
+        sd.diff(sd.asarray([1.0, 2.0]), prepend=[0])
+    with pytest.raises(TypeError, match=r"^diff\(\): 'append' must be an sd.ndarray or a bool, int, float or complex, "
+                                        r"not str$"):
+        sd.diff(sd.asarray([1.0, 2.0]), append="a")
+    with pytest.raises(ValueError, match=r"^diff\(\): 'prepend' must have as many dimensions as 'x' \(2\), not 1$"):
+        sd.diff(x2, axis=1, prepend=sd.asarray([0.0]))
+    with pytest.raises(ValueError, match=r"^diff\(\): 'append' must have the shape of 'x' \(2, 3\) except along axis 1, "
+                                         r"not \(3, 1\)$"):
+        sd.diff(x2, axis=1, append=sd.ones((3, 1)))
+    same(sd.diff(x2, axis=1, prepend=sd.zeros((2, 1)), append=np.int64(4)),
+         np.diff(np.ones((2, 3)), axis=1, prepend=np.zeros((2, 1)), append=4))
+
+
 # ---------------------------------------------------------- indexing, search
 
 def test_take():
@@ -198,6 +266,9 @@ def test_take():
     same(sd.take(sd.asarray([5, 6, 7]), sd.asarray([2, 0])), np.array([7, 5]))
     with pytest.raises(IndexError):
         sd.take(sd.asarray([5, 6, 7]), 3)
+    # take names itself like take_along_axis (API.md §2.1)
+    with pytest.raises(IndexError, match=r"^take\(\): index 5 is out of bounds for axis 0 with size 3$"):
+        sd.take(sd.asarray([5, 6, 7]), sd.asarray([0, 5]))
     with pytest.raises(ValueError, match="'axis' is required"):
         sd.take(sd.asarray(X3), 0)
     with pytest.raises(TypeError, match="'indices' must be an int64 array, not bool"):
@@ -284,6 +355,29 @@ def test_searchsorted():
         sd.searchsorted(sd.asarray([1.0]), 1j)
 
 
+def test_searchsorted_arguments():
+    s = sd.asarray([1.0, 2.0, 3.0])
+    with pytest.raises(TypeError, match=r"^searchsorted\(\): 'side' must be 'left' or 'right', not NoneType$"):
+        sd.searchsorted(s, 1.0, side=None)
+    # sorter is an array of positions; an int would sort nothing
+    for bad, shown in [(1, "int"), (1.5, "float"), ([0, 1, 2], "list")]:
+        with pytest.raises(TypeError, match=rf"^searchsorted\(\): 'sorter' must be an int64 array, not {shown}$"):
+            sd.searchsorted(s, 1.0, sorter=bad)
+    with pytest.raises(TypeError, match=r"^searchsorted\(\): 'sorter' must be an int64 array, not float64$"):
+        sd.searchsorted(s, 1.0, sorter=sd.asarray([0.0, 1.0, 2.0]))
+    with pytest.raises(IndexError, match=r"^searchsorted\(\): index 9 is out of bounds for axis 0 with size 3$"):
+        sd.searchsorted(s, 1.0, sorter=sd.asarray([0, 1, 9]))
+    with pytest.raises(TypeError, match=r"^searchsorted\(\): 'x2' must be an sd.ndarray or a bool, int, float or "
+                                        r"complex, not NoneType$"):
+        sd.searchsorted(s, None)
+    # An int outside int64 (docs/api/array.md §1.5): an error only where it must become an int64.
+    with pytest.raises(OverflowError, match=r"^searchsorted\(\): "):
+        sd.searchsorted(sd.asarray([1, 2]), 2**70)
+    assert sd.searchsorted(s, 2**70) == 3
+    assert sd.searchsorted(s, -(2**70)) == 0
+    assert sd.searchsorted(sd.asarray([1, 2]), True) == 0
+
+
 # ---------------------------------------------------------------- dtypes
 
 def test_dtype_functions():
@@ -312,10 +406,16 @@ def test_dtype_functions():
         sd.isdtype(sd.string, "numeric")
     with pytest.raises(TypeError, match=r"can_cast\(\): 'from_' must be sd.bool, .* or an sd.ndarray, not sd.string"):
         sd.can_cast(sd.string, sd.float64)
-    with pytest.raises(TypeError, match=r"^finfo\(\): 'type' must be float64 or complex128, not int64$"):
-        sd.finfo(sd.int64)
-    with pytest.raises(TypeError, match=r"^iinfo\(\): 'type' must be int64, not float64$"):
-        sd.iinfo(sd.float64)
+    # The accepted values are exactly the ones each takes, whatever was wrong.
+    finfo_msg = r"^finfo\(\): 'type' must be sd.float64 or sd.complex128 \(or their names\) or an sd.ndarray of those dtypes, not "
+    iinfo_msg = r"^iinfo\(\): 'type' must be sd.int64 \(or its name\) or an sd.ndarray of int64, not "
+    for arg, shown in [(sd.int64, "sd.int64"), ("int64", "'int64'"), (sd.ones(1, dtype=sd.int64), "an int64 array"),
+                       (1, "int"), (sd.string, "sd.string")]:
+        with pytest.raises(TypeError, match=finfo_msg + shown + "$"):
+            sd.finfo(arg)
+    for arg, shown in [(sd.float64, "sd.float64"), (sd.ones(1), "a float64 array"), (1, "int")]:
+        with pytest.raises(TypeError, match=iinfo_msg + shown + "$"):
+            sd.iinfo(arg)
     f, nf = sd.finfo(sd.float64), np.finfo(np.float64)
     assert (f.bits, f.eps, f.max, f.min, f.smallest_normal, f.dtype) == (64, nf.eps, nf.max, nf.min, nf.smallest_normal,
                                                                         sd.float64)
@@ -344,8 +444,17 @@ def test_tensordot(axes, shape_b):
 def test_tensordot_errors():
     with pytest.raises(ValueError, match="'axes' has a repeated axis"):
         sd.tensordot(sd.asarray(X3), sd.asarray(X3), axes=([0, 0], [0, 1]))
-    with pytest.raises(ValueError, match="shape mismatch"):
+    with pytest.raises(ValueError, match=r"^tensordot\(\): shape mismatch: axis 0 of 'x1' has length 3, "
+                                         r"axis 1 of 'x2' has 4$"):
         sd.tensordot(sd.asarray(X3), sd.asarray(X3), axes=([0], [1]))
+    # every wrong form of axes: one message naming the wrong value's type, as for axis=(1.5,)
+    for bad, shown in [(1.5, "float"), (([1.0], [0]), "float"), (([1], 0), "int"), (([1], [0], [2]), "tuple"),
+                       (None, "NoneType")]:
+        with pytest.raises(TypeError, match=rf"^tensordot\(\): 'axes' must be an int or a pair of int sequences, "
+                                            rf"not {shown}$"):
+            sd.tensordot(sd.asarray(X3), sd.asarray(X3), axes=bad)
+    with pytest.raises(OverflowError, match=r"^tensordot\(\): 'axes' is out of range$"):
+        sd.tensordot(sd.asarray(X3), sd.asarray(X3), axes=([2**70], [0]))
     with pytest.raises(ValueError, match="larger than"):
         sd.tensordot(sd.asarray([1.0]), sd.asarray([1.0]), axes=2)
 
@@ -395,6 +504,17 @@ def test_dlpack_errors_and_lifetime():
         sd.from_dlpack([1.0, 2.0])
     with pytest.raises(ValueError, match="0-dimensional"):
         sd.from_dlpack(np.array(1.0))
+
+    class OnTheGpu:  # a producer on another device (docs/api/array.md §3.5)
+        def __dlpack_device__(self):
+            return (2, 0)
+
+        def __dlpack__(self, **kw):
+            raise AssertionError("not reached")
+
+    # BufferError, as the Array API asks (API.md §2), named like every error of a function (§2.1)
+    with pytest.raises(BufferError, match=r"^from_dlpack\(\): only CPU arrays can be imported$"):
+        sd.from_dlpack(OnTheGpu())
     cap = sd.asarray([1.0, 2.0]).__dlpack__()
     del cap  # an unconsumed capsule frees its tensor
     for _ in range(3):
@@ -419,6 +539,12 @@ def test_bincount():
         sd.bincount(sd.asarray([1, -1]))
     with pytest.raises(TypeError, match="bool or int64"):
         sd.bincount(sd.asarray([1.0]))
+    # weights: any real dtype (bool, int64, float64), summed as float64; complex is a TypeError (docs/api/array.md §7.12)
+    xi = sd.asarray([0, 1, 1])
+    for w in ([2, 3, 4], [True, False, True]):
+        same(sd.bincount(xi, weights=sd.asarray(w)), np.bincount([0, 1, 1], weights=w))
+    with pytest.raises(TypeError, match=r"^bincount\(\): 'weights' must be real, not complex128$"):
+        sd.bincount(xi, weights=sd.asarray([1j, 2j, 3j]))
 
 
 HIST_X = RNG.standard_normal(150_000)  # more than one 65536-element block

@@ -70,17 +70,15 @@ constexpr MethodName kMethods[] = {
 };
 
 Method parse_method(nb::handle o) {
-    if (!nb::isinstance<nb::str>(o))
-        throw nb::type_error(("'method' must be a str, not " + py_type_name(o)).c_str());
-    const std::string_view s = nb::borrow<nb::str>(o).c_str();
+    static const std::vector<const char*> names = [] {
+        std::vector<const char*> v;
+        for (const MethodName& m : kMethods) v.push_back(m.name.data());  // literals: NUL-terminated
+        return v;
+    }();
+    const std::string s = parse_choice(o, "method", names);  // the string-option message (API.md §2.1)
     for (const MethodName& m : kMethods)
         if (m.name == s) return m.method;
-    std::string names;
-    for (const MethodName& m : kMethods) {
-        if (!names.empty()) names += ", ";
-        names += "'" + std::string(m.name) + "'";
-    }
-    throw nb::value_error(("'method' must be one of " + names + ", not '" + std::string(s) + "'").c_str());
+    __builtin_unreachable();
 }
 
 // --------------------------------------------------------------- positions
@@ -279,7 +277,7 @@ std::vector<double> parse_q(nb::handle o, bool& scalar) {
         scalar = true;
         qs.push_back(*v);
     } else {
-        throw nb::type_error(("'q' must be a float or an ndarray, not " + py_type_name(o)).c_str());
+        throw nb::type_error(("'q' must be an int, a float or an sd.ndarray, not " + py_type_name(o)).c_str());
     }
     for (double q : qs)
         if (!(q >= 0 && q <= 1)) throw nb::value_error("'q' must be in the range [0, 1]");

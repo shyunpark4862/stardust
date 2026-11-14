@@ -32,6 +32,15 @@ NAMED = [
     (lambda: sd.ones((2, 2, 2)).T, ValueError, r".T: the array must have 2 dimensions, got 3"),
     (lambda: sd.ones(3).mT, ValueError, ".mT: the array must have at least 2 dimensions, got 1"),
     (lambda: sd.set_num_threads(0), ValueError, "set_num_threads(): 'n' must be between 1 and 1024"),
+    # functions built on indexing or on other public functions still name themselves
+    (lambda: sd.take(sd.ones(3), sd.asarray([5])), IndexError, "take(): index 5 is out of bounds for axis 0 with size 3"),
+    (lambda: sd.searchsorted(sd.asarray([1, 2]), 2**70), OverflowError, "searchsorted(): "),
+    (lambda: sd.meshgrid(sd.ones(2), indexing=None), TypeError, "meshgrid(): 'indexing' must be 'xy' or 'ij', not NoneType"),
+    (lambda: sd.finfo(sd.int64), TypeError,
+     "finfo(): 'type' must be sd.float64 or sd.complex128 (or their names) or an sd.ndarray of those dtypes, not sd.int64"),
+    # no constructor: the class name, as a constructor would say (docs/api/array.md §10)
+    (lambda: sd.ndarray(), TypeError, "ndarray(): there is no constructor; use asarray() or another creation function"),
+    (lambda: sd.ndarray([1.0]), TypeError, "ndarray(): there is no constructor"),
     # linalg: LinAlgError too
     (lambda: sd.linalg.inv(sd.zeros((2, 2))), sd.linalg.LinAlgError, "inv(): singular matrix"),
     (lambda: sd.linalg.trace(sd.eye(2), dtype=sd.bool), TypeError, "trace(): cannot accumulate in bool; use any() or all()"),
@@ -83,6 +92,26 @@ PYTHON_FORM = [
     (lambda: DF({"a": [1]})["zz"], KeyError, "zz"),
     (lambda: S([1]).iloc[5], IndexError, "position 5 is out of range for 1 rows"),
     (lambda: setattr(sd.ones(1), "shape", (1,)), AttributeError, "property 'shape' of 'ndarray' object has no setter"),
+    # Python's own messages name the type without its module (API.md §2.1)
+    (lambda: sd.ones(1) + [1], TypeError, "unsupported operand type(s) for +: 'ndarray' and 'list'"),
+    (lambda: [1] - sd.ones(1), TypeError, "unsupported operand type(s) for -: 'list' and 'ndarray'"),
+    (lambda: sd.ones((2, 2)) @ 2, TypeError, "unsupported operand type(s) for @: 'ndarray' and 'int'"),
+    (lambda: sd.ones(1) + np.ones(1), TypeError, "operand 'ndarray' does not support ufuncs"),
+    (lambda: hash(sd.ones(1)), TypeError, "unhashable type: 'ndarray'"),
+    (lambda: __import__("pickle").dumps(sd.ones(1)), TypeError, "cannot pickle 'ndarray' object"),
+    (lambda: __import__("copy").copy(sd.ones(1)), TypeError, "cannot pickle 'ndarray' object"),
+    (lambda: __import__("copy").deepcopy(sd.ones(1)), TypeError, "cannot pickle 'ndarray' object"),
+    (lambda: sd.ones(1).foo, AttributeError, "'ndarray' object has no attribute 'foo'"),
+    (lambda: sd.float64.foo, AttributeError, "'DType' object has no attribute 'foo'"),
+    (lambda: iter(sd.ones(1)).foo, AttributeError, "'_ArrayIterator' object has no attribute 'foo'"),
+    (lambda: sd.ones(1).__delitem__(0), TypeError, "'ndarray' object doesn't support item deletion"),
+    # indexing and its assignment: one strict-broadcast message for basic and advanced keys
+    (lambda: sd.ones((2, 2)).__setitem__(slice(None), sd.ones((2, 2, 2))), ValueError,
+     "cannot broadcast a value of shape (2, 2, 2) to the indexed shape (2, 2)"),
+    (lambda: sd.ones((2, 2)).__setitem__([0, 1], sd.ones((2, 2, 2))), ValueError,
+     "cannot broadcast a value of shape (2, 2, 2) to the indexed shape (2, 2)"),
+    (lambda: sd.ones((2, 2))[[0, 1], [0, 1, 0]], IndexError,
+     "shape mismatch: indexing arrays could not be broadcast together with shapes (2,) (3,)"),
 ]
 
 
@@ -174,6 +203,13 @@ def test_the_same_mistake_has_the_same_message(call, text):
 
 
 DUMP = re.compile(r"incompatible function arguments|stardust\._core|numpy\.|nanobind")
+
+
+def test_array_types_keep_their_module():
+    # Only the name in messages is short: the module, repr and pickling by reference are Python's (API.md §2.1).
+    assert sd.ndarray.__module__ == "stardust._core" and sd.ndarray.__name__ == "ndarray"
+    assert repr(sd.ndarray) == "<class 'stardust._core.ndarray'>"
+    assert __import__("pickle").loads(__import__("pickle").dumps(sd.ndarray)) is sd.ndarray
 
 
 def _calls(module, names):

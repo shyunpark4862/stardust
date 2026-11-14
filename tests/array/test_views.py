@@ -161,6 +161,9 @@ def test_permute_dims():
 def test_moveaxis(src, dst):
     n, a = grid(2, 3, 4)
     assert_same(sd.moveaxis(a, src, dst), np.moveaxis(n, src, dst))
+    # source and destination are axes: lists work like tuples (docs/api/array.md §1.3, §4.1)
+    as_list = (lambda v: list(v) if isinstance(v, tuple) else v)
+    assert_same(sd.moveaxis(a, as_list(src), as_list(dst)), np.moveaxis(n, src, dst))
 
 
 def test_moveaxis_errors():

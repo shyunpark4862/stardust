@@ -15,9 +15,10 @@ PyObject* g_dtype_objects[kNumDTypes] = {};
 }  // namespace
 
 void register_dtypes(nb::module_& m) {
-    nb::class_<PyDType>(m, "DType")
+    auto cls = nb::class_<PyDType>(m, "DType")
         .def("__repr__", [](const PyDType& d) { return dtype_name(d.value); })
         .def("__str__", [](const PyDType& d) { return dtype_name(d.value); });
+    use_short_type_name(cls);
 
     for (DType d : {DType::Bool, DType::Int64, DType::Float64, DType::Complex128, DType::String}) {
         nb::object obj = nb::cast(PyDType{d});
@@ -51,6 +52,13 @@ std::string describe_dtype_arg(nb::handle o) {
         return std::string("<class '") + (dot ? dot + 1 : name) + "'>";
     }
     return py_type_name(o);
+}
+
+void use_short_type_name(nb::handle type) {
+    auto* t = reinterpret_cast<PyTypeObject*>(type.ptr());
+    // tp_name points into the type's own copy of its full name (freed with
+    // the type), so pointing past the last dot keeps that ownership.
+    if (const char* dot = std::strrchr(t->tp_name, '.')) t->tp_name = dot + 1;
 }
 
 std::string py_type_name(nb::handle o) {
@@ -120,6 +128,22 @@ std::optional<DType> parse_dtype(nb::handle o) {
                               describe_dtype_arg(o))
                                  .c_str());
     return d;
+}
+
+std::string parse_choice(nb::handle o, const char* what, std::span<const char* const> choices) {
+    std::string listed;
+    size_t i = 0;
+    for (const char* c : choices) {
+        if (i > 0) listed += i + 1 == choices.size() ? " or " : ", ";
+        listed += std::string("'") + c + "'";
+        ++i;
+    }
+    const std::string head = std::string("'") + what + "' must be " + listed + ", not ";
+    if (!nb::isinstance<nb::str>(o)) throw nb::type_error((head + py_type_name(o)).c_str());
+    const std::string s = nb::borrow<nb::str>(o).c_str();
+    for (const char* c : choices)
+        if (s == c) return s;
+    throw nb::value_error((head + nb::repr(o).c_str()).c_str());
 }
 
 std::optional<bool> parse_copy(nb::handle o) {

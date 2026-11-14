@@ -8,7 +8,9 @@
 
 #include <nanobind/nanobind.h>
 
+#include <initializer_list>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -39,6 +41,13 @@ std::string describe_dtype_arg(nb::handle o);
 // "stardust._core.ndarray" or "numpy.int64"; API.md §2.1).
 std::string py_type_name(nb::handle o);
 
+// Gives a bound class the short type name Python's own messages use
+// ("unsupported operand type(s) for +: 'ndarray' and 'list'", "unhashable
+// type: 'ndarray'", pickle, missing attributes). nanobind names the type
+// "stardust._core.ndarray" in tp_name; classes written in Python have just
+// "ndarray" there (API.md §2.1). __module__ and repr(type) are unchanged.
+void use_short_type_name(nb::handle type);
+
 // A bool option: True or False only. 1, None and numpy.bool_ are TypeErrors
 // ("'keepdims' must be True or False, not int", API.md §2.1).
 bool parse_bool(nb::handle o, const char* what);
@@ -59,6 +68,14 @@ std::optional<double> real_value(nb::handle o);
 // array dtypes, as an object or a name (API.md §1). TypeError otherwise,
 // sd.string included.
 std::optional<DType> parse_dtype(nb::handle o);
+
+// A string option: one of `choices`. The message lists them the same way
+// for a wrong type (TypeError, "not NoneType") and a wrong value (ValueError,
+// "not 'x'"): "'side' must be 'left' or 'right', not ..." (API.md §2.1).
+std::string parse_choice(nb::handle o, const char* what, std::span<const char* const> choices);
+inline std::string parse_choice(nb::handle o, const char* what, std::initializer_list<const char*> choices) {
+    return parse_choice(o, what, std::span<const char* const>(choices.begin(), choices.size()));
+}
 
 // `copy=` argument: None / True / False.
 std::optional<bool> parse_copy(nb::handle o);

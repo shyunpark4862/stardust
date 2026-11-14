@@ -8,6 +8,7 @@
 #include "array/convert.hpp"
 #include "array/kernels/scalar_ops.hpp"
 #include "array/ops/copy.hpp"
+#include "array/ops/creation.hpp"
 #include "array/ops/indexing.hpp"
 #include "array/ops/lanes.hpp"
 #include "array/ops/reduction.hpp"
@@ -24,6 +25,19 @@ namespace sd {
 namespace {
 
 nb::object full_slice() { return nb::slice(nb::none(), nb::none(), nb::none()); }
+
+// x[key] for a function built on indexing: indexing keeps Python's message
+// form and raises a Python exception, which the binding's name would not
+// reach. Here its IndexError becomes a C++ one, so it gets "take(): " too.
+nb::object gather_named(nb::handle x, nb::handle key) {
+    try {
+        return getitem(x, key);
+    } catch (nb::python_error& e) {
+        if (!e.matches(PyExc_IndexError)) throw;
+        const std::string msg = nb::str(e.value()).c_str();
+        throw nb::index_error(msg.c_str());
+    }
+}
 
 // An index argument: a Python int or an int64 array. A bool array would be
 // read as a mask by indexing, which is not what take means.
@@ -54,7 +68,7 @@ nb::object take(nb::handle x, nb::handle indices, nb::handle axis_obj) {
     nb::list key;
     for (int d = 0; d < axis; ++d) key.append(full_slice());
     key.append(indices);
-    return getitem(x, nb::tuple(key));
+    return gather_named(x, nb::tuple(key));
 }
 
 // take_along_axis runs elementwise over the result, in memory order: x is
@@ -251,26 +265,26 @@ bool before(T a, T b) {
 nb::object searchsorted(nb::handle x1, nb::handle x2, nb::handle side_obj, nb::handle sorter_obj) {
     const NDArray& a = require_ndarray(x1, "x1");
     if (a.ndim != 1) throw nb::value_error("'x1' must be 1-D");
-    if (!nb::isinstance<nb::str>(side_obj))
-        throw nb::type_error(("'side' must be a str, not " + py_type_name(side_obj)).c_str());
-    const std::string side = nb::borrow<nb::str>(side_obj).c_str();
-    if (side != "left" && side != "right") throw nb::value_error(("'side' must be 'left' or 'right', not '" + side + "'").c_str());
-    const bool right = side == "right";
+    const bool right = parse_choice(side_obj, "side", {"left", "right"}) == "right";
 
     // The values, in the dtype both sides promote to.
     std::optional<DType> v_dtype;
     if (is_ndarray(x2)) v_dtype = as_ndarray(x2).dtype;
     else v_dtype = scalar_dtype(x2);
-    if (!v_dtype) throw nb::type_error(("'x2' must be an sd.ndarray or a Python scalar, not " + py_type_name(x2)).c_str());
+    if (!v_dtype)
+        throw nb::type_error(("'x2' must be an sd.ndarray or a bool, int, float or complex, not " + py_type_name(x2)).c_str());
     const DType d = promote(a.dtype, *v_dtype);
     if (d == DType::Complex128) throw nb::type_error("not supported for complex128");  // no order (§2.6)
 
     nb::object keys_obj = nb::borrow(x1);
     if (!sorter_obj.is_none()) {
+        // An array of positions only: an int would not sort anything.
+        if (!is_ndarray(sorter_obj))
+            throw nb::type_error(("'sorter' must be an int64 array, not " + py_type_name(sorter_obj)).c_str());
         check_indices(sorter_obj, "sorter");
-        if (!is_ndarray(sorter_obj) || as_ndarray(sorter_obj).ndim != 1 || as_ndarray(sorter_obj).shape[0] != a.shape[0])
+        if (as_ndarray(sorter_obj).ndim != 1 || as_ndarray(sorter_obj).shape[0] != a.shape[0])
             throw nb::value_error("'sorter' must be a 1-D int64 array as long as 'x1'");
-        keys_obj = getitem(x1, sorter_obj);  // x1 in sorted order
+        keys_obj = gather_named(x1, sorter_obj);  // x1 in sorted order
     }
     NDArray keys = new_array(d, as_ndarray(keys_obj).shape_span());
     if (keys.size() > 0) assign(keys, as_ndarray(keys_obj));
@@ -278,11 +292,12 @@ nb::object searchsorted(nb::handle x1, nb::handle x2, nb::handle side_obj, nb::h
     const bool scalar = !is_ndarray(x2);
     NDArray vals;
     if (scalar) {
-        const std::int64_t one[] = {1};
-        vals = new_array(d, one);
+        // Converted straight to the promoted dtype (docs/api/array.md §1.5): an
+        // int outside int64 is an OverflowError only when that dtype is an
+        // integer one. The C++ asarray, so the message is "searchsorted(): ".
         nb::list one_value;
         one_value.append(x2);
-        assign(vals, as_ndarray(nb::module_::import_("stardust._core").attr("asarray")(one_value)));
+        vals = as_ndarray(asarray(one_value, dtype_object(d), nb::none()));
     } else {
         vals = new_array(d, as_ndarray(x2).shape_span());
         if (vals.size() > 0) assign(vals, as_ndarray(x2));

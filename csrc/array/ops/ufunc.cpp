@@ -222,11 +222,29 @@ template <typename T> constexpr Loop clip_entry = &clip_loop<T>;
 constexpr std::array<Loop, kNumArrayDTypes> clip_loops = {
     clip_entry<bool>, clip_entry<std::int64_t>, clip_entry<double>, nullptr};
 
+// An array min/max broadcasts to x, never x to it: the result has x's shape
+// (docs/api/array.md §6.4).
+void check_bound_shape(nb::handle x, nb::handle bound, const char* what) {
+    if (!is_ndarray(x) || !is_ndarray(bound)) return;
+    const std::span<const std::int64_t> xs = as_ndarray(x).shape_span(), bs = as_ndarray(bound).shape_span();
+    bool ok = bs.size() <= xs.size();
+    for (size_t d = 0; ok && d < bs.size(); ++d) {
+        const std::int64_t e = bs[d], t = xs[xs.size() - bs.size() + d];
+        ok = e == 1 || e == t;
+    }
+    if (!ok)
+        throw nb::value_error((std::string("'") + what + "' of shape " + shape_str(bs) +
+                               " cannot be broadcast to the shape of 'x' " + shape_str(xs))
+                                  .c_str());
+}
+
 nb::object clip(nb::handle x, nb::handle lo, nb::handle hi, nb::handle out) {
     const DType d = operand_dtype(x, "x");
     if (d == DType::Complex128) throw nb::type_error("not supported for complex128");
     if (!lo.is_none()) check_assignable(operand_dtype(lo, "min"), d);
     if (!hi.is_none()) check_assignable(operand_dtype(hi, "max"), d);
+    if (!lo.is_none()) check_bound_shape(x, lo, "min");
+    if (!hi.is_none()) check_bound_shape(x, hi, "max");
     const int k = static_cast<int>(d);
     if (lo.is_none() && hi.is_none()) {
         const nb::handle objs[] = {x};

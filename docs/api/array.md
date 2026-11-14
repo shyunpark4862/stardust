@@ -53,8 +53,8 @@
   - **리스트도 tuple처럼 받는다**: `sum(x, axis=[0, 2])`. linalg의 `axis`와 같다 (linalg.md §3).
   - int만 받는 함수(아래)는 tuple과 리스트 모두 `TypeError`다.
   - shape은 리스트를 받지 않는다 (위).
-- 그 밖의 int 인자(`eye`의 `n_rows`, `n_cols`, `k`, `linspace`의 `num`)도 int64 범위 밖이면 `OverflowError`다.
-  - int만 받는 함수: `argmin`, `argmax`, `cumulative_sum`, `cumulative_prod`, `sort`, `argsort`, `concat`, `stack`
+- 그 밖의 int 인자(`eye`의 `n_rows`, `n_cols`, `k`, `linspace`의 `num`, `roll`의 `shift`, `repeat`의 `repeats`, `tile`의 `repetitions`)도 int64 범위 밖이면 `OverflowError`다.
+  - int만 받는 함수: `argmin`, `argmax`, `nanargmin`, `nanargmax`, `cumulative_sum`, `cumulative_prod`, `nancumulative_sum`, `nancumulative_prod`, `sort`, `argsort`, `concat`, `stack`, `repeat`, `unstack`, `take`, `take_along_axis`, `diff`, `vecdot`
 - **기본 axis**
   - 리덕션: `axis=None` (모든 축)
   - `sort`, `argsort`: `axis=-1`
@@ -269,6 +269,7 @@ from_dlpack(x, /, *, device=None, copy=None)
 - dtype은 bool, int64, float64, complex128만 받는다. 그 밖은 `TypeError`다(버퍼 프로토콜과 달리 넓히는 복사도 하지 않는다). 0차원은 `ValueError`다.
 - 정렬되지 않은 메모리와 0·1이 아닌 bool 바이트는 복사한다(§3.3과 같다). 이때 `copy=False`이면 `ValueError`다.
 - `copy=True`이면 언제나 원본과 메모리를 공유하지 않는 배열이다. 생산자가 복사해 주면 그 복사본을 그대로 쓴다. `device`는 `None` 또는 CPU 장치 `(1, 0)`만 받는다.
+- CPU가 아닌 장치의 배열과 지원하지 않는 DLPack 버전(2.0 이상)은 `BufferError`다(Array API, API.md §2).
 - 내보내기(`x.__dlpack__`, `x.__dlpack_device__`)는 §10.5에 있다.
 
 ### §3.6 `meshgrid`, `tril`, `triu`
@@ -311,7 +312,7 @@ diff(x, /, *, axis=-1, n=1, prepend=None, append=None)
 - **`ravel`**: 1차원으로 편다. 가능하면 뷰를 반환한다. `flatten`은 없다.
 - **`permute_dims`**: `axes`는 모든 축의 순열이다. int, tuple 또는 리스트다 (§1.3).
 - **`matrix_transpose`**: 마지막 두 축을 바꾼다. `.mT`와 같다. 2차원 미만은 `ValueError`다.
-- **`moveaxis`**: `source`, `destination`은 int 또는 같은 길이의 tuple이다.
+- **`moveaxis`**: `source`, `destination`은 int 또는 같은 길이의 tuple이나 리스트다. 축 인자라서 리스트도 받는다 (§1.3).
 - **`squeeze`**: `axis`는 필수다. 길이가 1이 아닌 축은 `ValueError`다. 모든 축을 없애면 `ValueError`다 (§1.2).
 - **`expand_dims`**: `axis`는 필수다. int 또는 tuple이다. 축 번호는 결과 배열 기준이다.
 - **`broadcast_to`, `broadcast_arrays`**
@@ -336,17 +337,20 @@ diff(x, /, *, axis=-1, n=1, prepend=None, append=None)
 ### §4.4 `flip`, `roll`, `repeat`, `tile`, `unstack`, `diff`
 - **`flip`**: `axis`(int 또는 tuple, `None`은 모든 축)의 순서를 뒤집은 **뷰**다. 음수 stride를 쓴다.
 - **`roll`**: 축을 따라 원소를 돌린 새 배열이다.
-  - `shift`는 int 또는 tuple, `axis`는 int 또는 tuple이다. 둘 다 tuple이면 길이가 같아야 한다(`ValueError`). `shift`가 int이고 `axis`가 tuple이면 모든 축에 같은 양이다.
+  - `shift`는 int 또는 int의 tuple이나 리스트, `axis`는 int 또는 tuple이나 리스트다(§1.3). `shift`는 `axis`와 짝을 이루므로 `axis`처럼 리스트도 받는다. 둘 다 시퀀스이면 길이가 같아야 한다(`ValueError`). `shift`가 int이고 `axis`가 시퀀스이면 모든 축에 같은 양이다.
   - `axis=None`이면 평탄화해서 돌리고 원래 shape으로 되돌린다. 이때 `shift`는 int여야 한다(`TypeError`).
+  - 결과는 메모리를 직접 소유한다. `base`는 `None`이다 (§10.1).
 - **`repeat`**: 축을 따라 각 원소를 `repeats`번 되풀이한 새 배열이다.
   - `repeats`는 int 또는 1차원 int64 배열(길이가 축 길이나 1)이다. 음수는 `ValueError`다.
   - `axis=None`이면 평탄화한 배열을 되풀이한다.
 - **`tile(x, repetitions, /)`**: `x`를 축마다 `repetitions`번 이어 붙인 새 배열이다.
   - `repetitions`는 int의 tuple이다(numpy처럼 int 하나도 받는다). 길이가 `x.ndim`과 다르면 짧은 쪽 앞에 1을 채운다.
+  - shape과 같이 리스트는 받지 않는다(`TypeError`, §1.3). 음수는 `ValueError`다.
 - **`unstack(x, /, *, axis=0)`**: 축을 따라 나눈 **뷰**들의 tuple이다. 1차원 `x`는 원소(Python 스칼라)의 tuple이다(§1.2).
 - **`diff(x, /, *, axis=-1, n=1, prepend=None, append=None)`**
   - 축을 따라 `x[1:] - x[:-1]`을 `n`번 한다. 빼기는 `subtract`의 규칙이다. 그래서 bool은 int64가 된다(numpy는 `not_equal`로 bool을 낸다).
-  - `prepend`, `append`는 배열 또는 Python 스칼라다. 스칼라는 그 축의 길이가 1인 배열로 넓혀 붙인다. 배열은 `concat`의 규칙을 따른다.
+  - `prepend`, `append`는 배열 또는 Python 스칼라다. 그 밖의 값은 `TypeError`다. 스칼라는 그 축의 길이가 1인 배열로 넓혀 붙인다.
+  - 배열은 `x`와 차원 수가 같고, `axis` 밖의 축 길이가 `x`와 같아야 한다(`ValueError`). 붙이는 일과 dtype은 `concat`의 규칙을 따른다.
   - `n=0`이면 `x` 자신이다. 음수는 `ValueError`다.
 
 ---
@@ -370,6 +374,7 @@ diff(x, /, *, axis=-1, n=1, prepend=None, append=None)
   - 변환한 dtype이 int64나 bool이 아니면 `IndexError`다. 예: `x[[1.0]]`
   - 빈 리스트 `[]`는 위치가 하나도 없는 정수 인덱스다.
 - **numpy의 의미론을 따른다.** 인덱스 배열끼리 브로드캐스트하고, 마스크는 참인 위치들의 정수 인덱스와 같다.
+  - 인덱스 배열끼리 브로드캐스트되지 않으면 `IndexError`다(numpy와 같다). 메시지는 `shape mismatch: indexing arrays could not be broadcast together with shapes (2,) (3,)`다.
   - 정수 배열 안의 음수도 뒤에서 센다. 범위 밖이면 `IndexError`다.
   - 마스크의 shape이 인덱싱하는 축과 맞지 않으면 `IndexError`다.
 - **떨어진 고급 인덱스는 `IndexError`다.**
@@ -389,12 +394,13 @@ diff(x, /, *, axis=-1, n=1, prepend=None, append=None)
 - **원소 하나를 고르는 인덱스에는 Python 스칼라만 대입할 수 있다.** 배열, 리스트, 문자열 등 그 밖의 값은 타입이 틀린 것이므로 `TypeError`다: `x[0] = 'a'`, `x[0] = [7]`, `x[0] = sd.asarray([7])`. 메시지는 `only a bool, int, float or complex can be assigned to a single element, not list`다.
 - **브로드캐스팅은 엄격하다.** `value`는 선택된 영역의 shape으로 `broadcast_to`될 수 있어야 한다.
   - numpy처럼 `value`의 앞쪽 길이-1 축을 떼어내지 않는다. 예: shape `(3,)` 자리에 `(1, 3)`은 `ValueError`다.
+  - 기본 인덱스와 고급 인덱스의 메시지가 같다: `cannot broadcast a value of shape (1, 3) to the indexed shape (3,)`
 - 하향 변환은 `TypeError`다 (§1.5). int64 범위 밖 Python int를 int64 배열에 넣으면 `OverflowError`다.
 - 고급 인덱스에 같은 위치가 여러 번 나오면 마지막 값이 남는다.
 - 고급 인덱스 대입은 인덱스를 모두 검사한 뒤에 쓴다. 범위 밖 인덱스가 있으면 `IndexError`가 나고 `x`는 바뀌지 않는다.
 - 쓰기 금지 배열에 대입하면 `ValueError`다.
 - `value`와 `x`의 메모리가 겹쳐도 된다 (§1.7).
-- `del x[idx]`는 지원하지 않는다.
+- `del x[idx]`는 지원하지 않는다. `TypeError`다. 메시지는 tuple과 같은 Python의 형식이다: `'ndarray' object doesn't support item deletion`
 
 ### §5.4 `take`, `take_along_axis`, `nonzero`
 ```
@@ -562,7 +568,9 @@ where(condition, x1, x2, /, *, out=None)
   - 셋 다 Python 스칼라를 받는다. 결과는 §6.3의 dtype에 맞는 Python 스칼라다. 예: `real(3 - 4j)`는 `3.0`, `imag(3)`은 `0`, `real(True)`는 `True`다.
 - **`clip(x, /, *, min=None, max=None, out=None)`**
   - 결과는 `x`의 dtype이다.
-  - `min`, `max`는 Python 스칼라 또는 `sd.ndarray`다. 배열이면 `x`에 브로드캐스트한다. 생략하면 그쪽은 자르지 않는다.
+  - `min`, `max`는 Python 스칼라 또는 `sd.ndarray`다. 생략하면 그쪽은 자르지 않는다.
+  - 배열이면 `x`의 shape으로 브로드캐스트한다. 거꾸로 `x`를 넓히지는 않는다. 그래서 결과의 shape은 `x`의 shape이다. 브로드캐스트되지 않으면 `ValueError`다: `clip(): 'min' of shape (2, 3) cannot be broadcast to the shape of 'x' (3,)`
+  - `x`가 Python 스칼라이면 원소별 함수처럼 셋을 함께 브로드캐스트한다(§6.2).
   - `min`, `max`는 `x`의 dtype으로 암묵적 변환될 수 있어야 한다 (§1.5). 예: int 배열에 `min=0.5`는 `TypeError`다.
   - `min > max`이면 결과는 `max`다.
   - NaN과 부호 있는 0은 `maximum`/`minimum`과 같은 규칙이다. `min`이나 `max`가 NaN이면 결과는 NaN이다.
@@ -631,6 +639,7 @@ cumulative_prod(x, /, *, axis=None, dtype=None, include_initial=False)
   - 분모는 `N - correction`이다. 기본값 `correction=0`은 모분산이다. 표본 분산은 `correction=1`로 쓴다.
   - `N - correction ≤ 0`이면 결과는 NaN이다. 빈 배열의 NaN도 이 규칙에 포함된다.
   - `correction`은 int 또는 float다. bool은 `TypeError`다.
+  - 음수도 받는다. 분모 `N - correction`이 `N`보다 커진다(numpy의 `ddof`와 같다). `nanvar`, `nanstd`, `cov`와 데이터프레임의 `var`, `std`도 같다.
 
 ### §7.5 `dtype=` (`sum`, `prod`, `cumulative_*`)
 - 명시적 변환이다 (§1.5). 입력을 그 dtype으로 변환한 뒤 누적한다.
@@ -735,7 +744,8 @@ histogram(x, /, *, bins=10, range=None, weights=None, density=False)
 - numpy의 함수다(Array API에는 없다). 값은 numpy와 비트까지 같다.
 - **`bincount`**: `x`는 0 이상의 1차원 bool 또는 int64 배열이다(음수는 `ValueError`).
   - 결과 길이는 `max(x) + 1`과 `minlength` 중 큰 쪽이다.
-  - 결과는 개수(int64)다. `weights`(1차원, `x`와 같은 길이, 실수)를 주면 그 합(float64)이다. 합은 원소 순서대로 더한다.
+  - 결과는 개수(int64)다. `weights`(1차원, `x`와 같은 길이)를 주면 그 합(float64)이다. 합은 원소 순서대로 더한다.
+    - `weights`는 실수 dtype(bool, int64, float64)이다. float64로 바꿔서 더한다(numpy와 같다). complex는 `TypeError`다.
 - **`histogram`**: 결과는 `HistogramResult(hist, bin_edges)`이다(tuple로 풀 수 있다).
   - `x`는 아무 shape이나 받는다(C 순서로 편다). complex는 `TypeError`다.
   - `bins`가 int이면 `range`(기본은 데이터의 최솟값·최댓값) 사이의 같은 너비 구간이다. 경계는 `linspace`다. 1차원 배열이면 그 값들이 경계다(단조 증가해야 한다; 그 dtype을 그대로 돌려준다). 경계가 0개나 1개이면 구간이 없어서 `hist`가 비어 있다(numpy와 같다). 문자열 규칙(`'auto'` 등)은 없다.
@@ -798,7 +808,8 @@ count_nonzero(x, /, *, axis=None, keepdims=False)
 - **`searchsorted`**: 정렬된 1차원 `x1`에서 `x2`의 각 값이 들어갈 위치(int64, `x2`와 같은 shape)다.
   - `side='left'`는 같은 값의 앞, `'right'`는 뒤다. 순서는 `sort`와 같다(NaN이 가장 크다, §8.2).
   - `x2`는 배열 또는 Python 스칼라다(스칼라면 결과도 Python `int`). 둘을 승격한 dtype으로 비교한다. complex는 `TypeError`다.
-  - `sorter`는 `x1`을 정렬하는 int64 위치 배열이다(`argsort`의 결과). `x1`이 1차원이 아니면 `ValueError`다.
+  - `sorter`는 `x1`을 정렬하는 int64 위치 배열이다(`argsort`의 결과). 배열만 받는다: int나 리스트는 `TypeError`다. `x1`과 길이가 다른 1차원 배열이 아니면 `ValueError`, 범위 밖의 위치는 `IndexError`다. `x1`이 1차원이 아니면 `ValueError`다.
+  - `x2`의 Python int는 승격한 dtype이 int64일 때만 int64 범위 안이어야 한다(§1.5). 예: float64 `x1`에 `2**70`은 정상이다.
 - **`count_nonzero`**: `x != 0`인 원소 수(int64)다. `axis`, `keepdims`는 리덕션과 같다(§7.2). NaN은 0이 아니다.
 
 ---
@@ -827,7 +838,8 @@ vecdot(x1, x2, /, *, axis=-1)
 ---
 
 ## §10. ndarray
-배열은 생성 함수로만 만든다. `sd.ndarray(...)`를 직접 부르면 `TypeError`다.
+배열은 생성 함수로만 만든다. `sd.ndarray(...)`를 직접 부르면 `TypeError`다: `ndarray(): there is no constructor; use asarray() or another creation function`
+- Python이 내는 메시지(연산자, 해싱, `pickle`, 없는 속성)도 타입을 모듈 경로 없이 `'ndarray'`로 부른다 (API.md §2.1). `sd.ndarray.__module__`과 `repr(sd.ndarray)`는 `stardust._core`를 그대로 보인다.
 
 ### §10.1 속성
 ```

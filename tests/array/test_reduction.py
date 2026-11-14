@@ -206,6 +206,11 @@ def test_var_degrees_of_freedom():
     assert sd.var(sd.asarray([1.0, 2.0, 3.0, 4.0]), correction=1) == pytest.approx(5 / 3)
     with pytest.raises(TypeError):
         sd.var(one, correction=True)
+    # A negative correction is allowed: the denominator N - correction grows (numpy's ddof, docs/api/array.md §7.4).
+    x = np.array([1.0, 2.0, 4.0])
+    for name in ("var", "std", "nanvar", "nanstd"):
+        assert getattr(sd, name)(sd.asarray(x), correction=-1) == pytest.approx(getattr(np, name)(x, ddof=-1))
+    assert sd.cov(sd.asarray(x), correction=-1.5) == pytest.approx(np.sum((x - x.mean()) ** 2) / (3 + 1.5))
 
 
 def test_var_complex_is_mean_squared_modulus():

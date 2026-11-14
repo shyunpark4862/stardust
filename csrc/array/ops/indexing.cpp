@@ -292,7 +292,17 @@ Plan make_plan(nb::handle x, nb::handle key) {
 std::vector<std::int64_t> index_shape(const Plan& plan) {
     std::vector<std::span<const std::int64_t>> shapes;
     for (const NDArray& ix : plan.indices) shapes.push_back(ix.shape_span());
-    std::vector<std::int64_t> b = broadcast_shapes(shapes);
+    // Index arrays that do not broadcast together are a wrong form of index:
+    // IndexError, as in numpy and as for a mask of the wrong shape (docs/api/array.md §5.2).
+    std::vector<std::int64_t> b;
+    try {
+        b = broadcast_shapes(shapes);
+    } catch (const nb::builtin_exception& e) {
+        if (e.type() != nb::exception_type::value_error) throw;
+        std::string msg = "shape mismatch: indexing arrays could not be broadcast together with shapes";
+        for (auto sh : shapes) msg += " " + shape_str(sh);
+        raise(PyExc_IndexError, msg);
+    }
     if (plan.view.ndim - static_cast<int>(plan.indices.size()) + static_cast<int>(b.size()) > kMaxNdim)
         raise(PyExc_IndexError, "the result would have more than " + std::to_string(kMaxNdim) + " dimensions");
     return b;
@@ -928,6 +938,22 @@ nb::object getitem(nb::handle x, nb::handle key) {
 
 namespace {
 
+// x[key] = value with a value that does not broadcast (strictly: never more
+// axes, docs/api/array.md §5.3) to the selected shape. One message for basic
+// and advanced keys.
+nb::builtin_exception value_shape_error(std::span<const std::int64_t> value, std::span<const std::int64_t> indexed) {
+    return nb::value_error(("cannot broadcast a value of shape " + shape_str(value) + " to the indexed shape " +
+                            shape_str(indexed))
+                               .c_str());
+}
+
+void check_value_shape(std::span<const std::int64_t> value, std::span<const std::int64_t> indexed) {
+    const std::ptrdiff_t off = static_cast<std::ptrdiff_t>(indexed.size()) - static_cast<std::ptrdiff_t>(value.size());
+    if (off < 0) throw value_shape_error(value, indexed);
+    for (size_t d = 0; d < value.size(); ++d)
+        if (value[d] != 1 && value[d] != indexed[d + off]) throw value_shape_error(value, indexed);
+}
+
 // x[advanced key] = value: the value is broadcast (strictly) to the result
 // shape, then each index point's block is written into x.
 void scatter(nb::handle x, Plan& plan, nb::handle value) {
@@ -955,11 +981,7 @@ void scatter(nb::handle x, Plan& plan, nb::handle value) {
     }
     const int nd = static_cast<int>(shape.size());
     const int off = nd - src.ndim;
-    auto fail = [&] {
-        return nb::value_error(("cannot broadcast a value of shape " + shape_str(src.shape_span()) +
-                                " to the indexed shape " + shape_str(shape))
-                                   .c_str());
-    };
+    auto fail = [&] { return value_shape_error(src.shape_span(), shape); };
     if (off < 0) throw fail();
     NDArray w = src;
     w.ndim = nd;
@@ -1041,6 +1063,8 @@ void setitem(nb::handle x, nb::handle key, nb::handle value) {
         return;
     }
     nb::object src = value_array(value, dst.dtype);
+    check_assignable(as_ndarray(src).dtype, dst.dtype);  // the dtype first, as for an advanced key
+    check_value_shape(as_ndarray(src).shape_span(), dst.shape_span());
     assign_checked(dst, as_ndarray(src));
 }
 

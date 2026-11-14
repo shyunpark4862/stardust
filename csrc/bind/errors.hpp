@@ -26,9 +26,9 @@ std::string with_name(const char* func, const char* msg);
 
 // Inside a catch block: rethrows the exception being handled with `func`'s
 // name in front of its message (TypeError, ValueError, IndexError, KeyError,
-// OverflowError and LinAlgError keep their type). Anything else -- a Python
-// error already set, MemoryError, nanobind's own control flow -- is rethrown
-// as it is.
+// BufferError, OverflowError and LinAlgError keep their type). Anything
+// else -- a Python error already set, MemoryError, nanobind's own control
+// flow -- is rethrown as it is.
 [[noreturn]] void rethrow_named(const char* func);
 
 template <class F>

@@ -120,14 +120,21 @@ def test_quantile_errors():
         sd.quantile(x, sd.asarray([0.5, 2.0]))
     with pytest.raises(ValueError, match="'q' must be a scalar or 1-D"):
         sd.quantile(x, sd.asarray([[0.5]]))
-    with pytest.raises(TypeError, match="'q' must be a float or an ndarray, not list"):
-        sd.quantile(x, [0.5])
+    # the number-argument form with sd.ndarray (API.md §2.1); an int is a number too
+    for bad, shown in [([0.5], "list"), (None, "NoneType"), (True, "bool")]:
+        with pytest.raises(TypeError, match=rf"^quantile\(\): 'q' must be an int, a float or an sd.ndarray, not {shown}$"):
+            sd.quantile(x, bad)
+    assert sd.quantile(x, 1) == sd.quantile(x, 1.0)
     with pytest.raises(TypeError, match="'q' must be real"):
         sd.quantile(x, sd.asarray([0.5j]))
-    with pytest.raises(ValueError, match="'method' must be one of 'inverted_cdf'"):
+    # The string-option message (API.md §2.1): the same list for a wrong value and a wrong type.
+    methods = (r"'method' must be 'inverted_cdf', 'averaged_inverted_cdf', .*, 'midpoint' or 'nearest', not ")
+    with pytest.raises(ValueError, match=r"^quantile\(\): " + methods + "'foo'$"):
         sd.quantile(x, 0.5, method="foo")
-    with pytest.raises(TypeError, match="'method' must be a str, not int"):
+    with pytest.raises(TypeError, match=r"^quantile\(\): " + methods + "int$"):
         sd.quantile(x, 0.5, method=1)
+    with pytest.raises(TypeError, match=r"^nanquantile\(\): " + methods + "NoneType$"):
+        sd.nanquantile(x, 0.5, method=None)
     with pytest.raises(TypeError, match="not supported for complex128"):
         sd.quantile(sd.asarray([1j]), 0.5)
     with pytest.raises(TypeError, match="'keepdims' must be True or False"):

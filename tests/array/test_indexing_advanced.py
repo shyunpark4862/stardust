@@ -61,6 +61,40 @@ def test_index_errors(key):
         sd.asarray(N)[key]
 
 
+def test_index_arrays_that_do_not_broadcast():
+    # a wrong form of index: IndexError, as in numpy and for a mask of the wrong shape (docs/api/array.md §5.2)
+    msg = r"^shape mismatch: indexing arrays could not be broadcast together with shapes \(2,\) \(3,\)$"
+    x = sd.asarray(N)
+    with pytest.raises(IndexError, match=msg):
+        x[sd.asarray([0, 1]), sd.asarray([0, 1, 2])]
+    with pytest.raises(IndexError, match=msg):
+        x[[0, 1], [0, 1, 2]] = 0
+    with pytest.raises(IndexError):
+        x[:, [0, 1], [[0, 1, 2]] * 3]
+
+
+def test_item_deletion_is_not_supported():
+    # Python's own form, as for a tuple (docs/api/array.md §5.3)
+    x = sd.asarray([1.0, 2.0])
+    for key in (0, slice(None), [0]):
+        with pytest.raises(TypeError, match=r"^'ndarray' object doesn't support item deletion$"):
+            del x[key]
+    assert x.tolist() == [1.0, 2.0]
+
+
+@pytest.mark.parametrize("key", [slice(None), (slice(None), slice(0, 2)), Ellipsis, [0, 1], (slice(None), [0, 1])],
+                         ids=repr)
+def test_value_shape_message_is_the_same_for_basic_and_advanced_keys(key):
+    # strict broadcasting (docs/api/array.md §5.3), one message
+    x = sd.zeros((2, 2))
+    for v in [sd.ones((2, 2, 2)), sd.ones((3,)), sd.ones((1, 2, 2))]:
+        with pytest.raises(ValueError, match=r"^cannot broadcast a value of shape \(\d+(, \d+)*,?\) to the indexed "
+                                             r"shape \(2, 2\)$"):
+            x[key] = v
+    with pytest.raises(TypeError):  # the dtype is checked first, for both kinds of key
+        sd.zeros((2, 2), dtype=sd.int64)[key] = sd.ones((3,))
+
+
 # ------------------------------------------------------------------ scatter
 
 def test_setitem_matches_numpy():

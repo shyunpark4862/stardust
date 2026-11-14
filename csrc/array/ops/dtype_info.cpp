@@ -12,6 +12,8 @@
 #include <algorithm>
 #include <cfloat>
 #include <climits>
+#include <initializer_list>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -88,28 +90,54 @@ bool isdtype(nb::handle dtype_obj, nb::handle kind) {
 
 nb::object results(const char* name) { return nb::module_::import_("stardust._results").attr(name); }
 
+// finfo and iinfo take some of the array dtypes only; one message names
+// exactly those, whatever was wrong (not a dtype at all, or another dtype).
+DType info_arg(nb::handle o, std::initializer_list<DType> accepted, const char* accepted_names) {
+    std::optional<DType> d;
+    std::string got;
+    if (is_ndarray(o)) {
+        d = as_ndarray(o).dtype;
+        const std::string name = dtype_name(*d);
+        got = (name[0] == 'i' ? "an " : "a ") + name + " array";  // an int64 array, a bool array
+    } else {
+        d = parse_any_dtype(o);
+        got = describe_dtype_arg(o);
+    }
+    if (!d || std::find(accepted.begin(), accepted.end(), *d) == accepted.end())
+        throw nb::type_error((std::string("'type' must be ") + accepted_names + ", not " + got).c_str());
+    return *d;
+}
+
 // finfo of float64; complex128 describes its float64 parts (Array API).
 nb::object finfo(nb::handle type) {
-    const DType d = dtype_arg(type, "type");
-    if (d != DType::Float64 && d != DType::Complex128)
-        throw nb::type_error((std::string("'type' must be float64 or complex128, not ") + dtype_name(d)).c_str());
+    info_arg(type, {DType::Float64, DType::Complex128},
+             "sd.float64 or sd.complex128 (or their names) or an sd.ndarray of those dtypes");
     return results("FinfoResult")(64, DBL_EPSILON, DBL_MAX, -DBL_MAX, DBL_MIN, dtype_object(DType::Float64));
 }
 
 nb::object iinfo(nb::handle type) {
-    const DType d = dtype_arg(type, "type");
-    if (d != DType::Int64) throw nb::type_error((std::string("'type' must be int64, not ") + dtype_name(d)).c_str());
+    info_arg(type, {DType::Int64}, "sd.int64 (or its name) or an sd.ndarray of int64");
     return results("IinfoResult")(64, INT64_MAX, INT64_MIN, dtype_object(DType::Int64));
 }
 
 // ------------------------------------------------------------- tensordot
 
+// Every wrong form of `axes` -- not an int or a pair, a pair entry that is not
+// a sequence, an entry that is not an int -- names the wrong value's type, as
+// `axis` does for (1.5,) (API.md §2.1).
+[[noreturn]] void bad_axes(nb::handle o) {
+    throw nb::type_error(("'axes' must be an int or a pair of int sequences, not " + py_type_name(o)).c_str());
+}
+
 std::vector<int> axis_list(nb::handle o, int ndim) {
     std::vector<int> axes;
-    if (!PyTuple_Check(o.ptr()) && !PyList_Check(o.ptr()))
-        throw nb::type_error(("each entry of 'axes' must be a sequence of ints, not " + py_type_name(o)).c_str());
+    if (!PyTuple_Check(o.ptr()) && !PyList_Check(o.ptr())) bad_axes(o);
     for (nb::handle h : o) {
-        const int d = normalize_axis(parse_int(h, "axes"), ndim);
+        std::int64_t v = 0;
+        const IndexResult r = index_value(h, v);
+        if (r == IndexResult::NotInt) bad_axes(h);
+        if (r == IndexResult::Overflow) throw std::overflow_error("'axes' is out of range");
+        const int d = normalize_axis(v, ndim);
         if (std::find(axes.begin(), axes.end(), d) != axes.end()) throw nb::value_error("'axes' has a repeated axis");
         axes.push_back(d);
     }
@@ -133,12 +161,12 @@ nb::object tensordot(nb::handle x1, nb::handle x2, nb::handle axes_obj) {
         cb = axis_list(axes_obj[1], b.ndim);
         if (ca.size() != cb.size()) throw nb::value_error("the two axis lists of 'axes' must have the same length");
     } else {
-        throw nb::type_error(("'axes' must be an int or a pair of int sequences, not " + py_type_name(axes_obj)).c_str());
+        bad_axes(axes_obj);
     }
     for (size_t i = 0; i < ca.size(); ++i)
         if (a.shape[ca[i]] != b.shape[cb[i]])
-            throw nb::value_error(("shape mismatch: axis " + std::to_string(ca[i]) + " of x1 has length " +
-                                   std::to_string(a.shape[ca[i]]) + ", axis " + std::to_string(cb[i]) + " of x2 has " +
+            throw nb::value_error(("shape mismatch: axis " + std::to_string(ca[i]) + " of 'x1' has length " +
+                                   std::to_string(a.shape[ca[i]]) + ", axis " + std::to_string(cb[i]) + " of 'x2' has " +
                                    std::to_string(b.shape[cb[i]]))
                                       .c_str());
     // x1 -> (free..., contracted...) as (M, K); x2 -> (contracted..., free...) as (K, N); one matmul.
