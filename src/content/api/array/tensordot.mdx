@@ -244,7 +244,7 @@ array([ 32, 104], dtype=int64)
 >>> sd.tensordot(x, x, axes=([1], [0]))
 Traceback (most recent call last):
     ...
-ValueError: tensordot(): shape mismatch: axis 1 of x1 has length 3, axis 0 of x2 has 2
+ValueError: tensordot(): shape mismatch: axis 1 of 'x1' has length 3, axis 0 of 'x2' has 2
 ```
 
 기본값 `axes=2`는 "x1의 마지막 두 축과 x2의 처음 두 축"이라서, 모양이 `(2, 3)`과 `(3, 4)`인 배열에 옵션 없이 쓰면 에러가 나요. 2차원 배열의 행렬곱을 원했다면 `axes=1`이나 `@`를 쓰세요.
@@ -253,7 +253,7 @@ ValueError: tensordot(): shape mismatch: axis 1 of x1 has length 3, axis 0 of x2
 >>> sd.tensordot(x, y)
 Traceback (most recent call last):
     ...
-ValueError: tensordot(): shape mismatch: axis 0 of x1 has length 2, axis 0 of x2 has 3
+ValueError: tensordot(): shape mismatch: axis 0 of 'x1' has length 2, axis 0 of 'x2' has 3
 ```
 
 ### `axes=(1, 0)`은 안 돼요
@@ -268,7 +268,7 @@ ValueError: tensordot(): shape mismatch: axis 0 of x1 has length 2, axis 0 of x2
 >>> sd.tensordot(x, y, axes=(1, 0))
 Traceback (most recent call last):
     ...
-TypeError: tensordot(): each entry of 'axes' must be a sequence of ints, not int
+TypeError: tensordot(): 'axes' must be an int or a pair of int sequences, not int
 ```
 
 ### 그 밖의 틀린 `axes`

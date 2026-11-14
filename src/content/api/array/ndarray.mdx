@@ -53,7 +53,7 @@ True
 >>> sd.ndarray()
 Traceback (most recent call last):
     ...
-TypeError: stardust._core.ndarray: no constructor defined!
+TypeError: ndarray(): there is no constructor; use asarray() or another creation function
 ```
 
 배열 하나로 할 수 있는 일을 한눈에 보면 이래요.
@@ -270,7 +270,7 @@ TypeError: reshape(): incompatible function arguments. ...
 >>> x.sort()
 Traceback (most recent call last):
     ...
-AttributeError: 'stardust._core.ndarray' object has no attribute 'sort'
+AttributeError: 'ndarray' object has no attribute 'sort'
 >>> sd.sort(x, descending=True)
 array([[3.0, 2.0, 1.0],
        [6.0, 5.0, 4.0]], dtype=float64)
@@ -342,7 +342,7 @@ array([[ 1,  4],
 >>> a + [1, 2, 3]
 Traceback (most recent call last):
     ...
-TypeError: unsupported operand type(s) for +: 'stardust._core.ndarray' and 'list'
+TypeError: unsupported operand type(s) for +: 'ndarray' and 'list'
 >>> a + sd.asarray([1, 2, 3])
 array([2, 4, 6], dtype=int64)
 ```
@@ -502,12 +502,12 @@ same
 >>> hash(x)
 Traceback (most recent call last):
     ...
-TypeError: unhashable type: 'stardust._core.ndarray'
+TypeError: unhashable type: 'ndarray'
 >>> import copy
 >>> copy.copy(x)
 Traceback (most recent call last):
     ...
-TypeError: cannot pickle 'stardust._core.ndarray' object
+TypeError: cannot pickle 'ndarray' object
 ```
 
 ## 화면에 보이는 모습: `repr`과 `str`
@@ -573,7 +573,7 @@ numpy의 함수와 연산자에 stardust 배열을 **그대로 넣으면** `Type
 >>> np.sin(s)
 Traceback (most recent call last):
     ...
-TypeError: operand 'stardust._core.ndarray' does not support ufuncs (__array_ufunc__=None)
+TypeError: operand 'ndarray' does not support ufuncs (__array_ufunc__=None)
 >>> np.sin(np.asarray(s))
 array([-0.50636564,  0.90929743,  0.14112001])
 ```

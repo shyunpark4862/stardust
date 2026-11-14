@@ -269,7 +269,7 @@ TypeError: take(): 'indices' must be an int64 array, not bool
 >>> sd.take(x, sd.asarray([4]))
 Traceback (most recent call last):
     ...
-IndexError: index 4 is out of bounds for axis 0 with size 4
+IndexError: take(): index 4 is out of bounds for axis 0 with size 4
 >>> sd.take_along_axis(s, sd.asarray([[5], [0]]), axis=1)
 Traceback (most recent call last):
     ...

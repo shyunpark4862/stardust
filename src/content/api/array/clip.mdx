@@ -25,12 +25,12 @@ params:
     desc: 결과를 적어 넣을 배열. None이면 새 배열을 만들어요.
 returns:
   type: ndarray 또는 Python 숫자
-  desc: x와 같은 dtype의 새 배열. x가 Python 숫자면 Python 숫자예요.
+  desc: x와 같은 dtype의 새 배열. 모양도 x와 같아요. x가 Python 숫자면 Python 숫자예요(한계에 배열을 줬다면 그 모양의 배열).
 raises:
   - type: TypeError
     desc: min이나 max가 x의 dtype으로 손실 없이 바뀔 수 없을 때(정수 배열에 실수 한계 등), x가 복소수일 때, min·max를 이름 없이 넘겼을 때, 리스트처럼 배열도 숫자도 아닌 것을 넣었을 때, out의 dtype이 결과를 담을 수 없을 때.
   - type: ValueError
-    desc: x, min, max, out의 모양이 서로 맞지 않을 때.
+    desc: 한계 배열(min, max)을 x의 모양으로 넓힐 수 없을 때, out의 모양이 맞지 않을 때.
   - type: OverflowError
     desc: 정수 배열에 int64 범위를 벗어난 Python 정수를 한계로 줬을 때.
 seeAlso: [maximum, where, comparison, astype, broadcasting]
@@ -128,7 +128,7 @@ array([-3,  0,  5, 12], dtype=int64)
 
 ### 한계도 배열로 줄 수 있어요
 
-`min`이나 `max`에 배열을 주면 자리마다 다른 한계를 써요. 모양은 [브로드캐스팅](/api/array/broadcasting/) 규칙으로 맞춰요.
+`min`이나 `max`에 배열을 주면 자리마다 다른 한계를 써요. 한계 배열은 [브로드캐스팅](/api/array/broadcasting/) 규칙으로 `x`의 모양에 맞춰 넓혀요.
 
 ```python
 >>> lo = sd.asarray([0, 0, 6, 0])
@@ -148,25 +148,33 @@ array([[2, 6, 4],
 
 첫 행은 2 이상, 둘째 행은 3 이상이 되고, 동시에 열마다 5, 6, 7 이하가 됐어요.
 
-<Callout type="warn" title="결과가 x보다 커질 수 있어요">
+<Callout type="info" title="결과는 언제나 x와 같은 모양이에요">
 
-한계 배열의 모양이 `x`보다 크면, 결과도 셋을 함께 브로드캐스트한 모양으로 커져요. 예를 들어 `(4,)`인 `x`에 `(2, 1)`인 `min`을 주면 결과는 `(2, 4)`예요. 결과가 `x`와 같은 모양이어야 한다면 한계 배열의 모양을 확인하세요.
+한계 배열을 `x`의 모양으로 넓힐 뿐, 거꾸로 `x`를 넓히지는 않아요. 그래서 결과의 모양은 언제나 `x`의 모양이에요. 한계 배열이 `x`보다 커서 `x`의 모양으로 맞출 수 없으면 `ValueError`예요. 예를 들어 `(4,)`인 `x`에 `(2, 1)`인 `min`은 줄 수 없어요.
 
 </Callout>
 
 ```python
 >>> sd.clip(x, min=sd.asarray([[0], [4]]))
-array([[ 0,  0,  5, 12],
-       [ 4,  4,  5, 12]], dtype=int64)
+Traceback (most recent call last):
+    ...
+ValueError: clip(): 'min' of shape (2, 1) cannot be broadcast to the shape of 'x' (4,)
 ```
 
-맞출 수 없는 모양이면 `ValueError`예요.
+길이가 맞지 않는 한계 배열도 마찬가지예요.
 
 ```python
 >>> sd.clip(x, min=sd.asarray([0, 1]))
 Traceback (most recent call last):
     ...
-ValueError: clip(): shapes could not be broadcast together: (4,) (2,)
+ValueError: clip(): 'min' of shape (2,) cannot be broadcast to the shape of 'x' (4,)
+```
+
+`x`가 배열이 아니라 Python 숫자일 때만은 다른 원소별 함수처럼 셋을 함께 맞춰요. 그래서 한계 배열의 모양을 따른 배열이 나와요.
+
+```python
+>>> sd.clip(2.5, min=sd.asarray([0.0, 3.0]))
+array([2.5, 3.0], dtype=float64)
 ```
 
 ## 결과는 언제나 `x`의 dtype이에요
@@ -317,6 +325,7 @@ array([ 0.5,  0.5,  5.0, 12.0], dtype=float64)
 
 - `min`, `max`는 keyword-only예요. `np.clip(x, 0, 10)`처럼 자리로 넘길 수 없어요. 이름도 `a_min`, `a_max`가 아니라 `min`, `max`예요.
 - **결과는 언제나 `x`의 dtype이에요.** numpy는 `np.clip(int 배열, 0.5, 10)`의 결과를 float로 승격하지만, stardust는 `TypeError`예요.
+- 한계 배열은 `x`의 모양으로만 넓혀요. numpy는 셋을 함께 브로드캐스트해서 결과가 `x`보다 커질 수 있지만, stardust는 `ValueError`예요. 결과는 언제나 `x`와 같은 모양이에요.
 - `min`이나 `max`가 NaN이면 결과는 NaN이에요.
 - `min > max`이면 결과는 `max`예요(numpy와 같아요).
 - 복소수는 `TypeError`예요.

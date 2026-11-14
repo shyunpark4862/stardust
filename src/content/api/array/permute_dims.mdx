@@ -198,7 +198,7 @@ ValueError: .T: the array must have 2 dimensions, got 3; use permute_dims or mat
   <ArrayFig name="결과 shape" data={[3, 4, 2]} tones={['', '', 'b']} />
 </Fig>
 
-여러 축을 한꺼번에 옮길 수도 있어요. `source`와 `destination`에 같은 개수의 축 번호를 tuple로 주면, 같은 자리끼리 짝이 돼요.
+여러 축을 한꺼번에 옮길 수도 있어요. `source`와 `destination`에 같은 개수의 축 번호를 tuple(또는 리스트)로 주면, 같은 자리끼리 짝이 돼요.
 
 ```python
 >>> sd.moveaxis(t, (0, 1), (2, 0)).shape

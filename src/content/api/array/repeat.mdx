@@ -29,9 +29,11 @@ returns:
   desc: 되풀이한 결과를 담은 새 배열. dtype은 x와 같아요.
 raises:
   - type: TypeError
-    desc: x가 배열이 아닐 때, repeats가 int나 int64 배열이 아닐 때(리스트, 실수, bool 포함), repetitions가 int나 int의 tuple이 아닐 때, axis가 int·None이 아닐 때, 옵션을 이름 없이 넘겼을 때.
+    desc: x가 배열이 아닐 때, repeats가 int나 int64 배열이 아닐 때(리스트, 실수, bool 포함), repetitions가 int나 int의 tuple이 아닐 때(리스트 포함), axis가 int·None이 아닐 때, 옵션을 이름 없이 넘겼을 때.
   - type: ValueError
     desc: 횟수가 음수일 때, repeats 배열이 1차원이 아니거나 길이가 축의 길이와 맞지 않을 때, axis가 범위를 벗어날 때.
+  - type: OverflowError
+    desc: 횟수에 int64 범위를 벗어난 Python 정수를 줬을 때.
 seeAlso: [concat, broadcast_to, reshape]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -306,13 +308,13 @@ array([], dtype=int64)
 
 ### `tile`의 `repetitions`는 int나 tuple
 
-`repetitions`에는 int 하나나 int의 tuple을 써요. 배열이나 실수는 받지 않아요.
+`repetitions`에는 int 하나나 int의 tuple을 써요. 모양(shape)을 적을 때처럼 리스트는 받지 않아요. 배열이나 실수도 받지 않아요.
 
 ```python
 >>> sd.tile(v, 1.5)
 Traceback (most recent call last):
     ...
-TypeError: tile(): 'repetitions' must be a tuple of ints, not float
+TypeError: tile(): 'repetitions' must be an int or a tuple of ints, not float
 ```
 
 ### 인자를 넘기는 방법
@@ -345,4 +347,4 @@ TypeError: repeat(): 'axis' must be an int, not tuple
 - 두 함수 모두 numpy의 `np.repeat`, `np.tile`과 같은 결과예요.
 - **`repeats`에 리스트를 받지 않아요.** `np.repeat(v, [1, 2, 3])` 대신 `sd.repeat(v, sd.asarray([1, 2, 3]))`로 써요. 배열도 int64만 받아요.
 - `repeat`의 `axis`는 keyword-only이고 int만 받아요.
-- `tile`의 `repetitions`는 numpy처럼 int 하나도 받고, 차원 수가 다를 때 1을 채우는 규칙도 같아요.
+- `tile`의 `repetitions`는 numpy처럼 int 하나도 받고, 차원 수가 다를 때 1을 채우는 규칙도 같아요. 다만 리스트는 받지 않아요. `np.tile(m, [2, 1])` 대신 `sd.tile(m, (2, 1))`로 써요.

@@ -219,13 +219,13 @@ array([[1, 2, 3],
 >>> sd.diff(x, axis=1, prepend=sd.asarray([0, 10]))
 Traceback (most recent call last):
     ...
-ValueError: diff(): axis 1 is out of bounds for an array of dimension 1
+ValueError: diff(): 'prepend' must have as many dimensions as 'x' (2), not 1
 >>> sd.diff(x, axis=1, prepend=sd.asarray([[0], [10]]))
 array([[ 1,  1,  1],
        [-6,  1,  1]], dtype=int64)
 ```
 
-에러 메시지는 "붙이려는 1차원 배열에는 1번 축이 없다"는 뜻이에요. `(2, 1)` 모양의 세로 배열로 주면 각 행 앞에 하나씩 붙어요.
+에러 메시지는 "`x`가 2차원이니 붙이는 배열도 2차원이어야 한다"는 뜻이에요. `(2, 1)` 모양의 세로 배열로 주면 각 행 앞에 하나씩 붙어요.
 
 붙이는 값의 종류가 다르면 [dtype 승격](/api/array/dtypes/) 규칙을 따라요. 정수 배열에 실수를 붙이면 결과는 실수예요.
 

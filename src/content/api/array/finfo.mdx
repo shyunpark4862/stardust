@@ -248,16 +248,16 @@ int64
 >>> sd.finfo(sd.int64)
 Traceback (most recent call last):
     ...
-TypeError: finfo(): 'type' must be float64 or complex128, not int64
+TypeError: finfo(): 'type' must be sd.float64 or sd.complex128 (or their names) or an sd.ndarray of those dtypes, not sd.int64
 >>> sd.iinfo(sd.float64)
 Traceback (most recent call last):
     ...
-TypeError: iinfo(): 'type' must be int64, not float64
+TypeError: iinfo(): 'type' must be sd.int64 (or its name) or an sd.ndarray of int64, not sd.float64
 ```
 
 어느 쪽인지 모를 배열을 받는다면 [`isdtype`](/api/array/dtype-tools/)으로 먼저 확인하세요.
 
-### 네 가지 dtype만 받아요
+### stardust의 dtype과 그 이름만 받아요
 
 Python의 `float`, 숫자 하나, `"float32"` 같은 다른 이름은 받지 않아요.
 
@@ -265,11 +265,11 @@ Python의 `float`, 숫자 하나, `"float32"` 같은 다른 이름은 받지 않
 >>> sd.finfo(float)
 Traceback (most recent call last):
     ...
-TypeError: finfo(): 'type' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names) or an sd.ndarray, not <class 'float'>
+TypeError: finfo(): 'type' must be sd.float64 or sd.complex128 (or their names) or an sd.ndarray of those dtypes, not <class 'float'>
 >>> sd.finfo(1.0)
 Traceback (most recent call last):
     ...
-TypeError: finfo(): 'type' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names) or an sd.ndarray, not float
+TypeError: finfo(): 'type' must be sd.float64 or sd.complex128 (or their names) or an sd.ndarray of those dtypes, not float
 ```
 
 ### 정수의 한계와 실수의 정밀도는 다른 이야기예요

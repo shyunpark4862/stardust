@@ -160,7 +160,7 @@ array([1.75,  3.0, 4.75], dtype=float64)
 >>> sd.quantile(x, [0.25, 0.5])
 Traceback (most recent call last):
     ...
-TypeError: quantile(): 'q' must be a float or an ndarray, not list
+TypeError: quantile(): 'q' must be an int, a float or an sd.ndarray, not list
 ```
 
 `q`가 배열이면 결과도 배열이에요. 원소가 하나뿐인 배열이어도 그래요. 숫자 하나를 원하면 `q`를 숫자로 주세요.
@@ -308,7 +308,7 @@ closest_observation 1.0
 >>> sd.quantile(x, 0.5, method='percentile')
 Traceback (most recent call last):
     ...
-ValueError: quantile(): 'method' must be one of 'inverted_cdf', 'averaged_inverted_cdf', 'closest_observation', 'interpolated_inverted_cdf', 'hazen', 'weibull', 'linear', 'median_unbiased', 'normal_unbiased', 'lower', 'higher', 'midpoint', 'nearest', not 'percentile'
+ValueError: quantile(): 'method' must be 'inverted_cdf', 'averaged_inverted_cdf', 'closest_observation', 'interpolated_inverted_cdf', 'hazen', 'weibull', 'linear', 'median_unbiased', 'normal_unbiased', 'lower', 'higher', 'midpoint' or 'nearest', not 'percentile'
 ```
 
 ## 결과는 언제나 float64
@@ -391,7 +391,7 @@ ValueError: quantile(): 'q' must be a scalar or 1-D
 >>> sd.quantile(x, True)
 Traceback (most recent call last):
     ...
-TypeError: quantile(): 'q' must be a float or an ndarray, not bool
+TypeError: quantile(): 'q' must be an int, a float or an sd.ndarray, not bool
 ```
 
 ### `method`는 이름을 붙여서
