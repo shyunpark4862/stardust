@@ -29,7 +29,7 @@ inline bool is_nonpos_int(double x) { return x <= 0.0 && x == std::floor(x); }
 inline double gamma_sign(double x) { return x > 0.0 || sinpi(x) > 0.0 ? 1.0 : -1.0; }
 
 // Candidate B for x > 0: Cephes gamma.c (recurrence into [2, 3] and P/Q,
-// Stirling from 33). Measured against A in S3 (docs/learn/S3-gamma.md).
+// Stirling from 33). Measured against A in S3.
 inline double gamma_cephes_pos(double x) {
     if (x > 171.62437695630272) return kInf;
     if (x >= 33.0) {
@@ -60,7 +60,7 @@ inline double gamma_cephes_pos(double x) {
 }
 
 // Gamma(y), y > 0, as m 2^e: candidate B where it is finite (S3 chose it:
-// more accurate and 3.4x faster, docs/learn/S3-gamma.md), the scaled
+// more accurate and 3.4x faster), the scaled
 // Lanczos form A beyond.
 inline Scaled gamma_pos_scaled(double y) {
     return y <= 171.6 ? scaled(gamma_cephes_pos(y)) : gamma_scaled(y);
@@ -312,6 +312,10 @@ struct Betaln : Real {
         if (std::isnan(a) || std::isnan(b)) return kNaN;
         if (is_nonpos_int(a)) return negint(a, b);
         if (is_nonpos_int(b)) return negint(b, a);
+        if (a > 0.0 && b > 0.0 && a + b < 40.0) {  // log of Boost's beta (special/boost.hpp)
+            const double r = bst::beta(a, b);
+            if (bst::normal(r)) return std::log(r);
+        }
         if (std::fabs(a) < std::fabs(b)) std::swap(a, b);
         if (a == kInf) return b == kInf ? kNaN : (b > 0.0 ? -kInf : kInf);
         if (std::fabs(a) <= kScaledMax && std::fabs(b) <= kScaledMax) return log_abs(beta_scaled(a, b));

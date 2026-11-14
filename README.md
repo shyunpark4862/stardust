@@ -53,14 +53,11 @@ print([round(b, 12) for b in beta.tolist()])  # [1.0, 1.0]
 ## 문서
 | 문서 | 내용 |
 |---|---|
-| [docs/guide/](docs/guide/README.md) | **안내서.** 처음 보는 사람을 위한 한 권: 네 영역을 함께 쓰는 법과, 라이브러리가 어떻게 만들어졌고 왜 그런지 (15장) |
 | [API.md](API.md) | 공통 규칙과 영역별 API 문서의 색인 |
 | [DESIGN.md](DESIGN.md) | 통합의 결정과 일관성 규칙 |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | 층 구조, 디렉터리, 공통 부품 |
 | `docs/design/` | 영역의 설계: [배열](docs/design/array.md), [선형대수](docs/design/linalg.md), [데이터프레임](docs/design/frame.md), [특수함수](docs/design/special.md) |
-| [docs/learn/M7-final-report.md](docs/learn/M7-final-report.md) | 통합의 최종 보고서: 성능, 줄어든 코드, 경계 비용, 남은 것 |
-| [docs/learn/S9-final-report.md](docs/learn/S9-final-report.md) | 특수함수 영역의 최종 보고서: 정확도와 성능(scipy 대비), 남은 것 |
-| `docs/learn/` | 마일스톤마다의 해설 (통합 M0–M8, 특수함수 S0–S9). 진행 순서는 [ROADMAP.md](ROADMAP.md) |
+| [ROADMAP.md](ROADMAP.md) | 진행 순서와 마일스톤. 안내서와 마일스톤 해설은 2026-11-15에 지웠다(나중에 한 번에 다시 쓴다) |
 
 ## 빌드와 테스트
 macOS (Apple Silicon), Python 3.15에서 확인했다.
@@ -76,4 +73,4 @@ python3.15 -m venv .venv && .venv/bin/pip install nanobind scikit-build-core pyt
 
 문서와 통합의 검사:
 - `.venv/bin/python tools/check_refs.py`: 코드, 테스트, 문서의 `docs/design/array.md §6.2` 같은 참조가 모두 있는 절을 가리키는지 본다.
-- `.venv/bin/python bench/merge/golden/golden.py check array` (`linalg`, `frame`도): 옛 패키지로 기록한 골든 출력 12,424개와 비트까지 비교한다. 일부러 바꾼 결과는 `bench/merge/golden/expected.py`에 이유와 함께 적혀 있다 ([docs/learn/M0-repository-history-baseline.md](docs/learn/M0-repository-history-baseline.md)).
+- `.venv/bin/python bench/merge/golden/golden.py check array` (`linalg`, `frame`도): 옛 패키지로 기록한 골든 출력 12,424개와 비트까지 비교한다. 일부러 바꾼 결과는 `bench/merge/golden/expected.py`에 이유와 함께 적혀 있다.

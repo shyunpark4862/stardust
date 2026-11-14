@@ -9,7 +9,7 @@ where <doc> is one of the documents below, written with its path
 `linalg.md`), or bare for the root documents (`API.md`, `DESIGN.md`,
 `ARCHITECTURE.md`, also `DESIGN §N` and `ARCHITECTURE §N`). Short names `array.md`, `linalg.md`, `frame.md` mean the
 api document when written in docs/api/ or code, the design document when
-written in docs/design/. docs/learn/ (milestone notes, history) is not checked.
+written in docs/design/.
 Prints each broken reference; exits 1 if there is any.
 """
 
@@ -22,7 +22,7 @@ DOCS = {
     "API.md": "API.md", "DESIGN.md": "DESIGN.md", "ARCHITECTURE.md": "ARCHITECTURE.md", "ROADMAP.md": "ROADMAP.md",
     **{f"docs/{k}/{a}.md": f"docs/{k}/{a}.md" for k in ("api", "design") for a in ("array", "linalg", "frame")},
 }
-SCAN = ["csrc", "src", "tests", "tools", "docs/api", "docs/design", "docs/guide", "bench/merge",
+SCAN = ["csrc", "src", "tests", "tools", "docs/api", "docs/design", "bench/merge",
         "API.md", "DESIGN.md", "ARCHITECTURE.md", "ROADMAP.md", "README.md", "CMakeLists.txt"]
 SUFFIXES = {".cpp", ".hpp", ".py", ".md", ".txt", ".sh"}
 NAME = r"(?<![\w/.-])((?:docs/(?:api|design)/)?(?:array|linalg|frame)\.md|API\.md|DESIGN(?:\.md)?|ARCHITECTURE(?:\.md)?|ROADMAP\.md)"

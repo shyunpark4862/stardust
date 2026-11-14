@@ -1,4 +1,4 @@
-"""Tier 2 of docs/learn/next-optimizations.md (M10+ indexing): the cases
+"""Tier 2 of the M10+ optimization notes (docs/learn, removed 2026-11-15) (M10+ indexing): the cases
 before and after, 1 and 10 threads, against numpy.
 
 Run:  .venv/bin/python bench/indexing_tier2.py [--save NAME]

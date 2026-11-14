@@ -189,7 +189,9 @@ void bind_special(nb::module_& core) {
             return call_named("airy", [&] {
                 const nb::handle objs[] = {x};
                 const nb::object t = call<Airy>(objs, nb::none());
-                return nb::module_::import_("stardust._results").attr("AiryResult")(*t);
+                // the namedtuple type, looked up once (kept for the module's lifetime)
+                static const nb::handle cls = nb::object(nb::module_::import_("stardust._results").attr("AiryResult")).release();
+                return cls(*t);
             });
         },
         nb::arg().none());

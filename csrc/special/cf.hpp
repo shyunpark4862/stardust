@@ -56,7 +56,7 @@ CfResult lentz(double b0, Term&& term, int max_terms, double tol = kEps) {
 // The same fraction from its n-th term back: t = a_k / (b_k + t), k = n..1,
 // then b0 + t. Each step's rounding is damped by the next division, while
 // Lentz's forward ratios C_k D_k multiply theirs together: measured in S4
-// (docs/learn/S4-incomplete.md), Lentz lost up to 17 ULP over 60 terms of the
+// Lentz lost up to 17 ULP over 60 terms of the
 // incomplete gamma's fraction, the backward pass under 2. So lentz() finds
 // how many terms are needed and this pass computes the value.
 template <class Term>

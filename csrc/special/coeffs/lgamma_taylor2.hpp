@@ -1,4 +1,4 @@
-// The Taylor series of log Gamma about 2 (docs/learn/S3-gamma.md):
+// The Taylor series of log Gamma about 2:
 //     lgamma(2 + e) = (1 - euler) e + sum_{k>=2} (-1)^k (zeta(k) - 1) / k e^k
 // Not fitted coefficients: these are the series' own values, computed with
 // mpmath at 40 digits (2026-11-14) and rounded. zeta(k) - 1 ~ 2^-k, so on

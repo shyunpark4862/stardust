@@ -7,7 +7,7 @@
 ## 역할 분담 (세 프로젝트와 같다)
 - 구현은 Claude가 전부 한다.
 - 마일스톤마다 해설을 쓴다: 무엇을, 어떻게, 왜 바꿨는지, 측정 결과와 함께.
-  - 위치: `docs/learn/M<n>-<주제>.md`
+  - 위치: `docs/learn/M<n>-<주제>.md` (2026-11-15에 지웠다. 안내서와 해설은 나중에 한 번에 다시 쓴다)
 - **영역을 옮기는 마일스톤은 그 영역의 문서도 새로 쓴다** (DESIGN §5.4): `docs/design/<영역>.md`, `docs/api/<영역>.md`, 코드 주석의 옛 문서 참조 교체
 - 마일스톤마다 멈춘다: 커밋하고, 해설을 전달하고, 사용자가 승인하면 다음으로 간다.
 
@@ -24,15 +24,15 @@
 ## 진행 상태
 | 마일스톤 | 단계 | 상태 |
 |---|---|---|
-| M0 저장소, 이력, 기준선 | 준비 | 완료 (2026-11-12), docs/learn/M0-repository-history-baseline.md |
-| M1 배열 코어 옮기기 | 1단계 | 완료 (2026-11-12), docs/learn/M1-array-core.md |
-| M2 linalg 옮기기 | 1단계 | 완료 (2026-11-12), docs/learn/M2-linalg-move.md |
-| M3 linalg 경계 없애기 | 1단계 | 완료 (2026-11-12), docs/learn/M3-linalg-boundary.md (1단계 보고서 포함) |
-| M4 공통 바닥 정리 | 2단계 준비 | 완료 (2026-11-12), docs/learn/M4-shared-foundation.md |
-| M5 frame 옮기기 | 2단계 | 완료 (2026-11-12), docs/learn/M5-frame-move.md |
-| M6 frame과 배열 잇기, 일관성 맞추기 | 2단계 | 완료 (2026-11-12), docs/learn/M6-consistency.md |
-| M7 마무리 | 마무리 | 완료 (2026-11-12), docs/learn/M7-final-report.md (최종 보고서), 안내서 docs/guide/ |
-| M8 일관성 2차 | 다듬기 | 완료 (2026-11-12), docs/learn/M8-consistency-2.md, 변경 목록 DESIGN §10 |
+| M0 저장소, 이력, 기준선 | 준비 | 완료 (2026-11-12) |
+| M1 배열 코어 옮기기 | 1단계 | 완료 (2026-11-12) |
+| M2 linalg 옮기기 | 1단계 | 완료 (2026-11-12) |
+| M3 linalg 경계 없애기 | 1단계 | 완료 (2026-11-12) (1단계 보고서 포함) |
+| M4 공통 바닥 정리 | 2단계 준비 | 완료 (2026-11-12) |
+| M5 frame 옮기기 | 2단계 | 완료 (2026-11-12) |
+| M6 frame과 배열 잇기, 일관성 맞추기 | 2단계 | 완료 (2026-11-12) |
+| M7 마무리 | 마무리 | 완료 (2026-11-12) (최종 보고서) |
+| M8 일관성 2차 | 다듬기 | 완료 (2026-11-12), 변경 목록 DESIGN §10 |
 
 ## 마일스톤
 
@@ -75,7 +75,7 @@
 ### M4. 공통 바닥 정리 (frame을 받을 준비)
 - 스레드풀을 pandas판(상위 집합)으로 바꾼다. 병렬화 기준값을 영역별 상수로 옮긴다 (ARCHITECTURE §4.1).
 - `base/neon.hpp`, `accelerate/vforce.hpp`가 `array/kernels/scalar_ops.hpp`를 include하는 역방향 의존을 없앤다. (M4에서 한 방법: 둘은 배열의 연산 정의에 묶인 배열 코드라서 `array/kernels/`로 돌려보냈다. vForce는 연산과 무관한 래퍼만 `accelerate/`에 남겼다. 스칼라 변환 규칙을 `base/`로 내릴 필요는 없었다.)
-- 풀을 바꾼 뒤 같은 자리 비교(`bench/merge/sameseat_table.py`)를 돌린다. 짧은 병렬 호출(예: `solve_tridiagonal` (1000, 3, 3), 10스레드)은 프로세스마다 약 7µs와 10.5µs로 갈리므로 프로세스를 여러 번 띄워 분포로 본다 (docs/learn/M3-linalg-boundary.md §6.3).
+- 풀을 바꾼 뒤 같은 자리 비교(`bench/merge/sameseat_table.py`)를 돌린다. 짧은 병렬 호출(예: `solve_tridiagonal` (1000, 3, 3), 10스레드)은 프로세스마다 약 7µs와 10.5µs로 갈리므로 프로세스를 여러 번 띄워 분포로 본다.
 - `Buffer`에 `size()`를 더한다 (ARCHITECTURE §4.2).
 - `base/dtype.hpp`에 `String`을 더한다 (DESIGN §4.2). `Datetime64`와 Column용 방문자는 frame 코드가 들어오는 M5 이후에 더한다. 사용자에게 보이는 dtype 표기는 M6에서 바꾼다.
 - `accelerate/` 정리: BLAS, LAPACK, vForce 래퍼를 한곳에 모은다.
@@ -100,7 +100,7 @@
 - `tests/interop/`: 경계를 오가는 테스트, Copy-on-Write와 읽기 전용 뷰의 테스트
 
 ### M7. 마무리
-- 안내서를 새로 쓴다: 영역을 넘나드는 한 권 (`docs/guide/`, DESIGN §5.4)
+- 안내서를 새로 쓴다: 영역을 넘나드는 한 권 (DESIGN §5.4; 2026-11-15에 지웠다)
 - README 완성, `API.md` 색인 정리
 - 최종 보고서: 기준선 대비 통합판의 성능, 줄어든 코드(중복 제거), 경계 비용
 - 남은 옛 문서 참조가 없는지 확인한다 (코드, 테스트, 새 문서). `legacy/`가 비었는지 확인하고 지운다. 옛 참조 대응표(`docs/*/<영역>-refmap.md`)도 지운다.
@@ -114,7 +114,7 @@
 - 단계
   1. frame의 동작과 이름 (§10.1의 frame 항목, §10.2)
   2. 배열·linalg 항목, 에러 메시지 정리, 문서 (§10.1의 나머지, §10.3, §10.4)
-  3. 골든·같은 자리 성능 확인, 해설 `docs/learn/M8-consistency-2.md`
+  3. 골든·같은 자리 성능 확인
 
 # 특수함수 영역 (sd.special)
 
@@ -123,7 +123,7 @@
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
 ## 진행 원칙
-- 통합 로드맵의 원칙을 따른다: 마일스톤마다 해설(`docs/learn/S<n>-<주제>.md`)을 쓰고, 커밋하고, 해설을 전달하고, 사용자가 승인하면 다음으로 간다.
+- 통합 로드맵의 원칙을 따른다: 마일스톤마다 커밋하고, 결과를 전달하고, 사용자가 승인하면 다음으로 간다. 해설과 안내서는 쓰지 않는다(2026-11-15 사용자 결정: 나중에 한 번에 쓴다. 그때까지 쓴 `docs/learn/`, `docs/guide/`는 지웠다).
 - **배열 영역을 고치는 일은 S0에만 있다.** 기존 함수의 결과는 비트까지 같아야 한다 (골든 출력, 스레드 수 1, 3, 10).
 - 마일스톤마다 확인하는 것
   - 정확도: mpmath 기준값 대비 최대·99.9% ULP를 보장 영역과 느슨한 영역으로 나눠 표로 낸다 (docs/design/special.md §6).
@@ -134,17 +134,18 @@
 ## 진행 상태
 | 마일스톤 | 상태 |
 |---|---|
-| S0 기반 | 완료 (2026-11-13), docs/learn/S0-foundation.md |
-| S1 로지스틱·정보 | 완료 (2026-11-13), docs/learn/S1-logistic.md |
-| S2 오차함수 | 완료 (2026-11-14), docs/learn/S2-erf.md |
-| S3 감마와 제타 | 완료 (2026-11-14), docs/learn/S3-gamma.md |
-| S4 불완전 함수 | 완료 (2026-11-14), docs/learn/S4-incomplete.md |
-| S5 리덕션, 지수적분, 타원 | 완료 (2026-11-14), docs/learn/S5-reduce-expint-ellip.md |
-| S6 Bessel과 Airy | 완료 (2026-11-14), docs/learn/S6-bessel-airy.md |
-| S7 초기하와 Lambert W | 완료 (2026-11-14), docs/learn/S7-hyper-lambertw.md |
-| S8 복소수 | 완료 (2026-11-14), docs/learn/S8-complex.md |
-| S9 마무리 | 완료 (2026-11-14), docs/learn/S9-final-report.md |
-| S10 Boost.Math 도입 (S9 뒤 후속, 사용자 결정) | 완료 (2026-11-14), docs/learn/S10-boost.md |
+| S0 기반 | 완료 (2026-11-13) |
+| S1 로지스틱·정보 | 완료 (2026-11-13) |
+| S2 오차함수 | 완료 (2026-11-14) |
+| S3 감마와 제타 | 완료 (2026-11-14) |
+| S4 불완전 함수 | 완료 (2026-11-14) |
+| S5 리덕션, 지수적분, 타원 | 완료 (2026-11-14) |
+| S6 Bessel과 Airy | 완료 (2026-11-14) |
+| S7 초기하와 Lambert W | 완료 (2026-11-14) |
+| S8 복소수 | 완료 (2026-11-14) |
+| S9 마무리 | 완료 (2026-11-14) |
+| S10 Boost.Math 도입 (S9 뒤 후속, 사용자 결정) | 완료 (2026-11-14) |
+| S11 최적화 (Debye ν ≥ 30, Boost 조합, 스칼라 지름길) | 완료 (2026-11-15), bench/special/s11/ |
 
 ## 마일스톤
 
@@ -190,5 +191,5 @@
 - `wofz`, `loggamma` (새 함수), `erf erfc erfcx lambertw`의 complex 입력
 
 ### S9. 마무리
-- 정확도 보고서, 성능 보고서 (scipy 대비), 안내서(`docs/guide/`)의 special 장, README와 `API.md` 색인
+- 정확도 보고서, 성능 보고서 (scipy 대비), 안내서의 special 장(2026-11-15에 지웠다), README와 `API.md` 색인
 

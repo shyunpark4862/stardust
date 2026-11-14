@@ -159,7 +159,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
   - `unary`, `binary`는 손대지 않는다. 기존 함수의 결과와 경로가 비트까지 같다 (골든 출력으로 확인).
   - `kMaxOperands` 4 → 5. `hyp2f1(a, b, c, z) → out`이 5개다. `NdIter`, `BufferedLoop`의 고정 배열이 하나씩 커진다. 이 비용(스택 몇십 바이트, 루프 하나)을 S0에서 잰다.
 - 출력이 여럿인 원소별 함수(`airy`의 넷)는 출력 4 + 입력 1 = 5개다. 같은 디스패처가 출력 개수를 받는다.
-- **S0에서 정한 모양** (docs/learn/S0-foundation.md)
+- **S0에서 정한 모양**
   - Op 구조체가 `nin`, `nout`, 인자 이름 `args`를 갖는다. `f`는 `nout == 1`이면 값 하나, 아니면 `std::array`를 돌려준다.
   - 출력이 여럿이면 결과는 tuple이다(스칼라 입력이면 float의 tuple). `out=`은 없다.
   - 루프가 없는 dtype의 메시지는 입력 dtype을 모두 적는다. 셋 이상이면 `float64, complex128 and float64`처럼 쉼표로 잇는다 (둘일 때는 전과 같다).
@@ -185,7 +185,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
   - 다항식 평가: Horner(곱셈-덧셈이 차례로 이어짐)와 Estrin(트리, 병렬도 높음)을 비교한다. `-ffp-contract=off`이므로 FMA는 코드에 적은 곳에서만 생긴다 (array.md §1.3). 스칼라 정의도 같은 식을 써야 비트가 같다.
   - 분기 없애기: 두 구간을 모두 계산한 뒤 `vbslq`로 고른다. 구간이 셋이면 셋 다 계산하는 비용과 분기 비용을 잰다.
   - S3: `gammaln`은 NEON으로 짜지 않았다. 구간이 넷(작은 x, Taylor, 점화, Stirling)이고 S2의 측정(분기 방식이 빠르거나 같음)으로 보아 레인 둘의 이득이 없다. 스칼라 libm 정의다.
-  - **S2의 측정 결과** (bench/special/s2/variants.md, docs/learn/S2-erf.md): 차수 5–8의 유리식이 셋인 `erfc`와 `ndtri`에서는 원소마다 자기 구간만 계산하는 스칼라 분기가 NEON 고르기보다 빠르거나 같았다(구간이 무작위로 섞인 입력만 예외, 4.7 대 4.2 ns). 고르기용 상수와 남의 구간 계산이 레인 두 개의 이득보다 크다. 그래서 S2 함수는 1단계(exp·log의 인자)만 NEON, 2단계는 vForce, 3단계는 스칼라 분기다. 결과의 비트는 두 방식이 같다. Estrin은 Horner와 속도가 같고 오차가 조금 컸다(9.1 대 7.8 ULP).
+  - **S2의 측정 결과** (bench/special/s2/variants.md): 차수 5–8의 유리식이 셋인 `erfc`와 `ndtri`에서는 원소마다 자기 구간만 계산하는 스칼라 분기가 NEON 고르기보다 빠르거나 같았다(구간이 무작위로 섞인 입력만 예외, 4.7 대 4.2 ns). 고르기용 상수와 남의 구간 계산이 레인 두 개의 이득보다 크다. 그래서 S2 함수는 1단계(exp·log의 인자)만 NEON, 2단계는 vForce, 3단계는 스칼라 분기다. 결과의 비트는 두 방식이 같다. Estrin은 Horner와 속도가 같고 오차가 조금 컸다(9.1 대 7.8 ULP).
 - **안의 `exp`/`log`** (Q16): 커널이 입력을 1024원소(8KB) 스택 버퍼 단위로 처리한다.
   1. NEON으로 `exp`/`log`의 인자(예: `-x²`)를 버퍼에 만든다.
   2. vForce(`vvexp`, `vvlog`)를 버퍼 전체에 한 번 부른다.
@@ -236,7 +236,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 - `ndtri`: Wichura AS241 (PPND16). 중심 `|q| ≤ 0.425`의 유리식, 꼬리 `r = √(-log p)`의 유리식 둘. 정확도 약 1e-16. **3구간**
 - `erfinv(y)`, `erfcinv(z)`: ndtri의 핵심을 `q`로 직접 부른다. `erfinv(y)`는 `q = y/2`(정확)로 중심식을 써서 작은 y에서 `(1+y)/2`의 소거가 없다. `erfcinv(z) = -ndtri(z/2)/√2`
 - `ndtr(x) = erfc(-x/√2)/2`. `log_ndtr`: `x > 6`은 `log1p(-ndtr(-x))`, 중간은 `log(ndtr(x))`, `x < -20`은 점근급수. **3구간**
-- **S2에서 바꾼 것** (docs/learn/S2-erf.md)
+- **S2에서 바꾼 것**
   - `exp(-x²)`는 Cephes `expx2`의 지수 두 번 대신 `hi = x·x`, `lo = fma(x, x, −hi)`로 `exp(−hi)·(1 − lo)`다. `ndtr`은 `t = x/√2`의 반올림을 피해 `exp(−x²/2)`를 x에서 직접 만든다.
   - `erfcx`는 `x ≥ 8`을 Cephes R/S 대신 점근급수(17항)로 한다. R/S는 x = 26.64까지 맞춘 식이라 x ≈ 10⁴에서 21 ULP가 났다. 구간은 셋(x < 1, P/Q, 점근)이다.
   - `log_ndtr`는 두 구간이다: `x ≥ 0`은 `log1p(−ndtr(−x))`, `x < 0`은 `−x²/2 + log(erfcx(−x/√2)/2)`. 두 항의 부호가 같고 erfcx는 언더플로하지 않아서 점근급수가 필요 없다.
@@ -250,7 +250,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 - `polygamma(n, x)`: `n = 0`은 digamma, `n ≥ 1`은 `(-1)^{n+1} n! ζ(n+1, x)` (§5.6의 Hurwitz zeta)
 - `beta`, `betaln`: Lanczos 비(Boost `beta`)로 세 Γ를 한 식에 모아 오버플로와 소거를 피한다. 큰 인자는 log 형태
 - `binom(n, k)`: 정수 k가 작으면 곱(정확), 그 밖은 `1/((n+1)·B(n-k+1, k+1))`. 음의 n은 반사
-- **S3에서 정하고 바꾼 것** (docs/learn/S3-gamma.md)
+- **S3에서 정하고 바꾼 것**
   - `gamma`: 후보 B(Cephes)를 골랐다. 최대 4.4 대 6.5 ULP(x > 0), 3.4배 빠르다(§1.3의 규칙). A(Lanczos)는 오버플로를 넘는 scaled 경로(서브노멀 꼬리, beta, 음수 zeta, polygamma)에 쓴다.
   - 정확한 인자: 반사식은 `Γ(x)Γ(−x) = −π/(x·sinpi(x))`, `Γ(x+1) = x·Γ(x)`. 꼭 만들어야 하는 합(a+b, n−k+1)은 TwoSum으로 hi + lo를 들고 `Γ(hi+lo) ≈ Γ(hi)(1 + ψ(hi)·lo)`. `sinpi`·`cospi`는 인자를 정확히 줄인다.
   - `gammaln`(x > 0): 2 둘레의 Taylor 전개(계수는 ζ(k)−1, 28항)와 Stirling 두 근사. 1 근처는 `lgamma(2+e) − log1p(e)`. Cephes의 [2, 3] 유리식은 쓰지 않는다. **2구간**
@@ -270,7 +270,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 - `x > (a+1)/(a+b+2)`이면 대칭으로 옮긴다 (변환). 기본은 Lentz 연분수 (NR `betacf`). b·x가 작거나 b < 1이면 거듭제곱급수
 - 큰 a, b(예: 둘 다 > 10⁴)에서 연분수의 반복이 `O(√max(a,b))`로 는다. 세 번째 구간(Temme 균등 점근전개)은 S4에서 정확도와 속도를 잰 뒤 넣을지 사용자에게 묻는다. **2–3구간**
 - 역함수(`gammaincinv`, `gammainccinv`, `betaincinv`, `betainccinv`): 초기값 2–3가지(감마: Wilson–Hilferty, 작은 p의 거듭제곱 근사; 베타: 정규 근사, 작은 x의 거듭제곱 근사) + Halley 반복. 반복은 상대 변화가 ε 아래가 되거나 상한(예: 20회)에서 멈춘다. DiDonato–Morris의 초기값 열 가지 남짓은 가져오지 않는다.
-- **S4에서 정하고 바꾼 것** (docs/learn/S4-incomplete.md)
+- **S4에서 정하고 바꾼 것**
   - 앞 인자: Lanczos 대신 Stirling 정규화 `Γ(z) = √(2π/z)(z/e)^z Γ*(z)`로 큰 부분을 지수 하나 E = a·μ(x/a − 1)(μ(t) = t − log(1+t))에 모았다. E는 정확한 입력에서 double-double로 만든다(`special/dd.hpp`). scipy(Cephes)는 a log x − x − lgamma(a)를 float64로 만들어 꼬리에서 수천 ULP를 잃는다.
   - 불완전 감마: 네 갈래다. x < 1.1의 작은 a는 Boost의 `tgamma_small_upper_part`(Γ(1+a) − 1과 x^a − 1을 expm1로), 급수 P, 연분수 Q, a > 20이고 |x − a| < 0.4a이면 Temme. Temme의 c_k(η) 계수는 DLMF 8.12의 정의식을 mpmath로 전개해 만들었다(`tools/gen_temme_igamma.py`, 맞춘 값이 아니다).
   - 연분수는 Lentz로 항 수만 찾고 값은 꼬리부터 거꾸로 계산한다(`cf.hpp` `lentz_backward`). Lentz 그대로는 60항에서 17 ULP를 잃었다.
@@ -281,7 +281,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 - `zeta(x, q)`: Hurwitz, Euler–Maclaurin (Cephes `zeta.c`: 앞 N항 직접 합 + Bernoulli 꼬리). Riemann(`q` 생략)의 `x < 1`은 함수방정식(변환). Hurwitz의 `x < 1`은 NaN (scipy와 같다)
 - `expn(n, x)`: `x ≤ 1` 거듭제곱급수, `x > 1` Lentz 연분수 (NR `expint`), 큰 n은 균등 점근. **3구간**
 - `expi(x)`: `x < 0`은 `-E₁(-x)` (변환), `0 < x < 40`은 거듭제곱급수(양의 항만이라 소거 없음), 큰 x는 점근급수. **2구간**. Cephes `ei.c`의 여섯 구간 유리식은 쓰지 않는다.
-- **S5에서 정하고 바꾼 것** (docs/learn/S5-reduce-expint-ellip.md)
+- **S5에서 정하고 바꾼 것**
   - `expn`: 큰 n의 균등 점근은 넣지 않았다. 연분수의 b = x + n이 크면 곧바로 수렴하고, 급수는 x^k/k!로 줄어서 n = 1e5까지 6.3 ULP다. **2구간**
   - `expi`: 양의 0점 x₀ = 0.3725… 둘레 [0.3, 0.45]에 Taylor 급수를 더했다(정확한 d = x − x₀, 계수는 `tools/gen_ei_taylor.py`). 거듭제곱급수는 거기서 γ + log x와 상쇄해 scipy가 5e15 ULP를 잃는다. **3구간**
 
@@ -297,14 +297,14 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
   - CF1(Lentz)로 `J_{ν+1}/J_ν` 비, Y·K는 앞으로 점화, Wronskian으로 J·I를 맞춘다.
   - 큰 x(x > max(25, ν²)): Hankel 점근 (CF1의 반복이 x에 비례해 늘기 때문)
   - **3구간**. 큰 ν의 Debye 균등 점근은 넣지 않는다. 큰 ν는 맞지만 O(ν)로 느리다. 느슨한 영역에 시간도 적는다.
-  - S10에서 바꿈(코드리뷰): `iv kv ive kve`는 ν ≥ 1e4에서 Debye 균등 점근전개(DLMF 10.41.3–4, U₀–U₄)를 쓴다. O(ν) 점화식은 `iv(1e9, 1e9)`에 26초가 걸리고 CF1의 항 수 상한(5e7)에 걸려 0을 냈다(참값은 inf). 지수 νη(스케일 판은 νη ∓ x)는 ν와 s = √(ν² + x²)가 크게 상쇄하므로 double-double로 만들고 한 번만 지수를 취한다. ν = 1e4–4e4에서 점화식과 7e-16 안으로 일치한다. `jv yv`의 큰 차수는 그대로 O(ν)다.
+  - S10에서 바꿈(코드리뷰), S11에서 넓힘: `iv kv ive kve`는 ν ≥ 30에서 Debye 균등 점근전개(DLMF 10.41.3–4, U₀–U₁₀, `coeffs/debye_u.hpp`, `tools/gen_debye.py`; 다음 항은 ν = 30에서 2e-16)를 쓴다(S10에서는 ν ≥ 1e4, U₀–U₄). ν = 100–1e4에서 원소당 14–121 µs이던 것이 약 0.15 µs가 됐다. O(ν) 점화식은 `iv(1e9, 1e9)`에 26초가 걸리고 CF1의 항 수 상한(5e7)에 걸려 0을 냈다(참값은 inf). 지수 νη(스케일 판은 νη ∓ x)는 ν와 s = √(ν² + x²)가 크게 상쇄하므로 double-double로 만들고 한 번만 지수를 취한다. ν = 1e4–4e4에서 점화식과 7e-16 안으로 일치한다. `jv yv`의 큰 차수는 그대로 O(ν)다.
 - 음의 ν는 반사 공식(변환). 음의 x는 정수 ν에서만 정의(scipy와 같다), 그 밖은 NaN
 
 ### 5.9 Airy (`airy`)
 - 작은 |x|(≤ 2 근처): Maclaurin 급수. 큰 양의 x: 지수 감소 점근, 큰 음의 x: 진동 점근. 중간: 1/3차 Bessel 관계식(§5.8의 함수) **3구간**
 - 출력 넷(Ai, Ai′, Bi, Bi′)을 한 번에 계산한다. 같은 중간값을 함께 쓴다.
 
-- **S6에서 정하고 바꾼 것** (docs/learn/S6-bessel-airy.md)
+- **S6에서 정하고 바꾼 것**
   - 0·1차: Cephes 그대로이되 Hankel 위상을 반올림하지 않는다(libm의 sin x, cos x로 덧셈정리), e^±x는 m·2^e, log(x/2)는 log x − log 2.
   - 실수 차수: Γ₁·Γ₂는 1/Γ(1+z)의 Taylor 계수(생성), x ≥ 30이고 ν < x이면 작은 차수의 Hankel에서 위로 재귀(진동 영역의 CF1은 0.3·x ULP를 잃는다), 다섯 재귀 모두 double-double, x² < ν + 1이면 거듭제곱급수, Hankel은 항이 앞항의 2배를 넘지 않을 때만. **4구간**(급수, Temme/Steed, 위로 재귀, Hankel)
   - Airy: 위상 ζ를 double-double로. |x| ≲ 1e12까지 포락선 기준 안이다.
@@ -327,7 +327,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
   - Halley 반복을 수렴할 때까지(상한 있음). scipy의 `tol=`은 두지 않는다: 결과의 정확도는 함수가 정한다.
   - k = 0은 x ≥ −1/e, k = −1은 −1/e ≤ x < 0에서 정의. 그 밖은 실수 값이 없으므로 NaN (S8 뒤 complex 입력은 complex 결과)
 
-- **S7에서 정하고 바꾼 것** (docs/learn/S7-hyper-lambertw.md)
+- **S7에서 정하고 바꾼 것**
   - `hyp1f1`: 급수 항을 double-double로(연이은 곱이 k ULP를 쌓아 x ≈ 500에서 120 ULP였다), Kummer의 b − a도 double-double, x ≤ −700 근처는 Kummer 형태의 점근식(Γ(b − a)를 1차 보정). b < 0에서 두 형태가 모두 상쇄하면 양의 b′에서 b에 대한 재귀(DLMF 13.3.2). 큰 |a|(a < 0)의 상쇄는 느슨한 영역으로 남았다(Bessel형 전개를 넣지 않음).
   - `hyp2f1`: 급수 항을 double-double로. c − a − b가 정수에 1e-3 안으로 가깝지만 정수가 아니면 1 − z ≥ 1e-3에서 급수, 1e-8 안이면 정수 m의 극한식.
   - `lambertw`: 분기점 둘레 급수의 계수를 정의에서 생성(`tools/gen_lambertw_branch.py`), e·x + 1은 e를 double-double로.
@@ -351,7 +351,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 - `loggamma`: Re z > 7이나 |Im z| > 7은 Stirling 8항, Re z < 0.1은 반사식(Hare의 2πik), 0.1 ≤ Re z ≤ 4이고 |Im z| ≤ 3이면 아래의 상쇄 없는 꼴, 나머지는 위로 올리는 점화식(곱이 음의 축을 건너는 횟수를 센다).
   - 1과 2의 영점 둘레에서 점화식은 Stirling 값(크기 13 안팎)과 곱의 로그가 크게 상쇄한다(잰 최대 293 ULP, scipy 439). 그곳은 Re z ≤ 1.5까지 log1p(z−2) + loggamma(z−1)로 내린 뒤, w = z − 1로 loggamma(1+w) = −γw + Σ_{j≤6} μ(w/j) + Σ d_k w^k (μ(t) = t − log(1+t), d_k = (−1)^k ζ(k, 7)/k, `coeffs/loggamma_taylor.hpp`)로 계산한다. 각 부분이 서로 상쇄하지 않는다.
 - `lambertw`의 complex: 분기점 근처(|z + 1/e| < 0.3, k = 0과 위쪽의 k = −1, 아래쪽의 k = 1)는 S7의 분기점 급수(e·z + 1을 double-double로), 그 밖은 log1p(z)나 점근식 L₁ − L₂ + L₂/L₁에서 시작하는 Halley 반복. |z|가 1e150을 넘거나 (k ≠ 0에서) 1e-150보다 작으면 w + log w = log z + 2πik에 Halley를 쓴다(w·eʷ가 넘치지 않게). 실수축 위의 실수 가지(k = 0, 위쪽의 k = −1, 아래쪽의 k = 1)는 실수 함수의 값을 그대로 낸다.
-- **S8에서 정하고 바꾼 것** (docs/learn/S8-complex.md)
+- **S8에서 정하고 바꾼 것**
   - `wofz`: 설계 후보 대신 격자 Taylor + 연분수(위). 연분수 항 수에 여유 4.
   - `loggamma`: scipy와 같은 구조에 1–2 둘레의 상쇄 없는 꼴을 더했다(Taylor 원판 둘 대신).
   - 복소수의 오차는 크기 기준, 영점 쪽은 포락선(사용자 결정). 오버플로하는 결과의 부호는 정확한 위상을 따른다.
@@ -365,7 +365,10 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
   |---|---|---|
   | `zeta` | x > −60 (자명한 영점 제외) | x ≤ −60 (Boost 1.7e3 ULP) |
   | `i0 i1 k0 k1` | 전부 | 결과가 정상 범위 밖(i0·i1의 713 근처 참값, k1(5e-324)) |
-  | `iv`, `kv` | \|ν\| < 30, \|ν\| < 400 (x > 0) | 그 밖 (Boost가 결과가 작은 곳에서 30배까지) |
+  | `iv`, `kv` | \|ν\| < 30, \|ν\| < 400 (x > 0) | 그 밖 (Boost가 결과가 작은 곳에서 30배까지). ν ≥ 30은 Debye. `kv`의 30 ≤ ν < 400은 둘 다 계약 안이고 Boost가 5% 빨라 Boost |
+  | `ive`, `kve` (S11) | 같은 구간에서 Boost의 값 × e^{∓x}, 0 < x < 700 | 그 밖 |
+  | `i0e i1e k0e k1e` (S11) | Boost의 값 × e^{∓x}, 0 < x < 700 | 그 밖 |
+  | `betaln` (S11) | log(Boost의 beta), a, b > 0, a + b < 40 | 그 밖. `rgamma` = 1/Boost gamma는 16% 느려져서 되돌렸다 |
   | `expi` | x ≥ −700 | 서브노멀 꼬리 |
   | `lambertw` (실수, 두 가지) | \|x + 1/e\| ≥ 0.05 | 분기점 근처 (Boost 2e7 ULP) |
   | `digamma` | x > 0 | x < 0 (Boost가 극점 근처에서 틀림) |

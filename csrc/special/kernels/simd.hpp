@@ -72,7 +72,7 @@ V horner1(V x, const std::array<double, N>& c) {
 // The same polynomials by Estrin's scheme: pairs a + b x first, then pairs of
 // pairs with x^2, x^4, ... -- a tree of depth log2(N) instead of a chain of N
 // steps, so independent multiplies can overlap. Different rounding, so not
-// bit-equal to horner(); measured against it in S2 (docs/learn/S2-erf.md).
+// bit-equal to horner(); measured against it in S2.
 // Unrolled at compile time (the levels are template recursion).
 namespace detail {
 template <class V, std::size_t N>

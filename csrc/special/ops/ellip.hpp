@@ -13,7 +13,7 @@
 // decision 2026-11-14): as accurate as the two methods below (max 3.0 / 4.2
 // ULP against 2.3 / 4.0) and 4-8x faster.
 //
-// Private, for comparison (the design's methods, docs/learn/S5-reduce-expint-ellip.md):
+// Private, for comparison (the design's methods):
 // _ellipk_agm: the arithmetic-geometric mean, K = pi / (2 AGM(1, sqrt(1 - m))),
 // quadratic convergence in 5-7 steps.
 // _ellipe_carlson: Carlson's symmetric form. The textbook one,

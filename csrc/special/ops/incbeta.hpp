@@ -22,7 +22,7 @@
 // small denominator near its switch point for large a and b (BFRAC's b0 =
 // a (lambda + 1) / (a + 1) keeps away from it); without BASYM, BFRAC reached
 // 82 ULP at a, b ~ 6e4 near the mean; without BGRAT, b ~ 1e-3 with a ~ 1e5
-// near x = 1 lost 2800 ULP (docs/learn/S4-incomplete.md).
+// near x = 1 lost 2800 ULP.
 //
 // The inverses solve I = p (or 1 - I = q, the smaller) by Halley's method in
 // x, or in y = 1 - x when the root is above 1/2, from the initial values of

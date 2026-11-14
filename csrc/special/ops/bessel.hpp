@@ -31,6 +31,7 @@
 #include "special/boost.hpp"
 
 #include "special/cf.hpp"
+#include "special/coeffs/debye_u.hpp"
 #include "special/coeffs/rgamma_taylor.hpp"
 #include "special/common.hpp"
 #include "special/cost.hpp"
@@ -429,7 +430,7 @@ inline bool use_power_series(double nu, double x) { return x * x < nu + 1.0; }
 // ~16 x): Hankel at mu = nu - floor(nu) and mu + 1, then the three-term
 // recurrence up to nu. For nu < x the recurrence is neutral (its roots have
 // modulus 1) in both directions, while CF1 there loses ~0.3 x ULP to the
-// same neutrality (measured, docs/learn/S6-bessel-airy.md).
+// same neutrality (measured).
 inline bool jy_upward(double nu, double x, JY& out) {
     const double mu = nu - std::floor(nu);
     JY a, b;
@@ -562,11 +563,11 @@ inline double jv_or_yv(double v, double x, bool want_y) {
 // s = sqrt(nu^2 + x^2), p = nu / s and eta nu = s - nu log((nu + s) / x),
 //     I_nu(x) ~ e^(nu eta) / sqrt(2 pi s) sum U_k(p) / nu^k,
 //     K_nu(x) ~ sqrt(pi / (2 s)) e^(-nu eta) sum (-1)^k U_k(p) / nu^k,
-// U_0..U_4 (the next term is below 1e-20 relative from nu = 1e4). The recurrences above take
+// U_0..U_10 (coeffs/debye_u.hpp; the next term is below 2e-16 relative from nu = 30). The recurrences above take
 // O(nu) steps (iv(1e9, 1e9) took 26 s and lost the answer to CF1's cap); here the exponent
 // nu eta (-+ x for the scaled forms), with nu and s ~ 1e9 cancelling to a few hundred, is
 // formed in double-double and exponentiated once.
-inline constexpr double kDebyeOrder = 1e4;
+inline constexpr double kDebyeOrder = 30.0;
 // The value itself (not e^-+x times the scaled one: with x ~ 1e9 both factors leave
 // exp_scaled's range and their saturated exponents would cancel). nu >= kDebyeOrder, x > 0.
 inline double debye_value(double v, double x, bool want_k, bool scaled_out) {
@@ -578,12 +579,16 @@ inline double debye_value(double v, double x, bool want_k, bool scaled_out) {
     const dd::DD lg = dd::log(s + nu) - dd::log(x);  // log((nu + s) / x)
     const dd::DD nueta = s - lg * nu;
     const double p = nu / sh, p2 = p * p, inv = 1.0 / nu;
-    const double u1 = p * (3.0 - 5.0 * p2) / 24.0;
-    const double u2 = p2 * (81.0 + p2 * (-462.0 + 385.0 * p2)) / 1152.0;
-    const double u3 = p * p2 * (30375.0 + p2 * (-369603.0 + p2 * (765765.0 - 425425.0 * p2))) / 414720.0;
-    const double u4 =
-        p2 * p2 * (4465125.0 + p2 * (-94121676.0 + p2 * (349922430.0 + p2 * (-446185740.0 + 185910725.0 * p2)))) /
-        39813120.0;
+    // sum_k U_k(p) / nu^k and sum_k (-1)^k U_k(p) / nu^k, U_k = p^k V_k(p^2) (coeffs/debye_u.hpp)
+    double sum_i = 0.0, sum_k = 0.0;
+    for (int k = kDebyeTerms - 1; k >= 0; --k) {
+        const auto& c = kDebyeV[static_cast<std::size_t>(k)];
+        double v = 0.0;
+        for (std::size_t j = c.size() - static_cast<std::size_t>(k) - 1; j < c.size(); ++j) v = v * p2 + c[j];
+        const double u = v * std::pow(p, k);
+        sum_i = sum_i * inv + u;
+        sum_k = sum_k * -inv + u;
+    }
     auto expo = [](dd::DD e) {  // e^(hi + lo); beyond exp_scaled's range the result is 0 or inf anyway
         Scaled r = exp_scaled(e.hi);
         r.m = std::fma(r.m, e.lo, r.m);  // e^lo = 1 + lo where the result is in range
@@ -591,14 +596,13 @@ inline double debye_value(double v, double x, bool want_k, bool scaled_out) {
     };
     // exponents: I ~ e^(nu eta), K ~ e^(-nu eta); the scaled ones e^-x I, e^x K
     const dd::DD ei = scaled_out ? nueta - x : nueta, ek = scaled_out ? -nueta + x : -nueta;
-    const Scaled k = expo(ek) * sc(std::sqrt(kPi / (2.0 * sh)) * (1.0 + inv * (-u1 + inv * (u2 + inv * (-u3 + inv * u4)))));
+    const Scaled k = expo(ek) * sc(std::sqrt(kPi / (2.0 * sh)) * sum_k);
     if (want_k) return value(k);  // K_-nu = K_nu
-    const Scaled i = expo(ei) * sc((1.0 + inv * (u1 + inv * (u2 + inv * (u3 + inv * u4)))) / std::sqrt(2.0 * kPi * sh));
+    const Scaled i = expo(ei) * sc(sum_i / std::sqrt(2.0 * kPi * sh));
     if (v >= 0.0 || is_int(nu)) return value(i);
     // I_-nu = I_nu + (2/pi) sin(nu pi) K_nu; scaled, the K term is e^-x K_nu: exponent -nu eta - x
     const Scaled kterm = (scaled_out ? expo(-nueta - x) : expo(-nueta)) *
-                         sc(std::sqrt(kPi / (2.0 * sh)) * (1.0 + inv * (-u1 + inv * (u2 + inv * (-u3 + inv * u4)))) *
-                            kTwoOverPi * sinpi(nu));
+                         sc(std::sqrt(kPi / (2.0 * sh)) * sum_k * kTwoOverPi * sinpi(nu));
     return value(i) + value(kterm);
 }
 
@@ -654,6 +658,28 @@ inline double kv_route(double v, double x) {
     }
     return iv_or_kv(v, x, true, false);
 }
+// ive, kve: Boost's iv, kv times e^-+x in the same regions for 0 < x < 700 (both factors in
+// range there; one more rounding).
+inline double ive_route(double v, double x) {
+    if (std::fabs(v) < 30.0 && x > 0.0 && x < 700.0) {
+        const double r = bst::i(v, x);
+        if (bst::normal(r)) {
+            const double s = r * std::exp(-x);
+            if (bst::normal(s)) return s;
+        }
+    }
+    return iv_or_kv(v, x, false, true);
+}
+inline double kve_route(double v, double x) {
+    if (std::fabs(v) < 400.0 && x > 0.0 && x < 700.0) {
+        const double r = bst::k(v, x);
+        if (bst::normal(r)) {
+            const double s = r * std::exp(x);
+            if (bst::normal(s)) return s;
+        }
+    }
+    return iv_or_kv(v, x, true, true);
+}
 
 }  // namespace bessel_detail
 
@@ -672,8 +698,8 @@ SD_BESSEL_OP(Jve, "jve", kJv, bessel_detail::jv_or_yv(v, x, false))  // real x: 
 SD_BESSEL_OP(Yve, "yve", kYv, bessel_detail::jv_or_yv(v, x, true))
 SD_BESSEL_OP(Iv, "iv", kIv, bessel_detail::iv_route(v, x))
 SD_BESSEL_OP(Kv, "kv", kKv, bessel_detail::kv_route(v, x))
-SD_BESSEL_OP(Ive, "ive", kIv, bessel_detail::iv_or_kv(v, x, false, true))
-SD_BESSEL_OP(Kve, "kve", kKv, bessel_detail::iv_or_kv(v, x, true, true))
+SD_BESSEL_OP(Ive, "ive", kIv, bessel_detail::ive_route(v, x))
+SD_BESSEL_OP(Kve, "kve", kKv, bessel_detail::kve_route(v, x))
 #undef SD_BESSEL_OP
 
 }  // namespace sd::special

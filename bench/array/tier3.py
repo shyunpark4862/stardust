@@ -1,4 +1,4 @@
-"""Tier 3 items 12-15 of docs/learn/next-optimizations.md: radix sort,
+"""Tier 3 items 12-15 of the M10+ optimization notes (docs/learn, removed 2026-11-15): radix sort,
 parallel 1-D sort, hash unique, batched small matmul. 1 and 10 threads
 against numpy.
 

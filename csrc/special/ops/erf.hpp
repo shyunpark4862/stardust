@@ -315,7 +315,7 @@ struct Erfcx : Real {
 //     x <  0:  -x^2/2 + log(erfcx(-x / sqrt 2) / 2)
 // The second needs neither the subnormal ndtr nor an asymptotic series: the
 // two terms have the same sign, and erfcx never underflows. (The design's
-// three regions became two; docs/learn/S2-erf.md.)
+// three regions became two.)
 struct LogNdtr : Real {
     static constexpr const char* name = "log_ndtr";
     static constexpr int nin = 1, nout = 1;

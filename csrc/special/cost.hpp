@@ -65,7 +65,7 @@ inline constexpr double kGammaln = 11;
 inline constexpr double kDigamma = 9;
 inline constexpr double kPolygamma = 123;
 inline constexpr double kBeta = 60;
-inline constexpr double kBetaln = 80;
+inline constexpr double kBetaln = 32;  // log of Boost beta for a + b < 40 (S11)
 inline constexpr double kBinom = 104;
 inline constexpr double kZeta = 18;  // Boost for x > -60 (special/boost.hpp)
 inline constexpr double kHurwitz = 87;
@@ -86,10 +86,10 @@ inline constexpr double kEllipe = 9.7;
 inline constexpr double kEllipkAgm = 30;   // the comparison variants
 inline constexpr double kEllipeCarlson = 65;
 // S6 (special/ops/bessel01.hpp, bessel.hpp, airy.hpp), bench/special/s6/cost.md
-inline constexpr double kI0 = 4.5, kI0e = 12, kI1 = 4.7, kI1e = 13;  // i0, i1, k0, k1: Boost
-inline constexpr double kK0 = 11, kK0e = 16, kK1 = 11, kK1e = 16;
+inline constexpr double kI0 = 4.5, kI0e = 11, kI1 = 4.7, kI1e = 12;  // Boost (and its value times e^-+x, S11)
+inline constexpr double kK0 = 11, kK0e = 13.5, kK1 = 11, kK1e = 13.5;
 inline constexpr double kJ0 = 11, kJ1 = 12, kY0 = 14, kY1 = 13;
-inline constexpr double kJv = 750, kYv = 750, kIv = 1890, kKv = 873;  // the reference mix: |v| up to 1000
+inline constexpr double kJv = 750, kYv = 750, kIv = 222, kKv = 151;  // the reference mix: |v| up to 1000 (Debye from 30, S11)
 inline constexpr double kAiry = 270;
 // S7 (special/ops/lambertw.hpp, hyper.hpp), bench/special/s7/cost.md
 inline constexpr double kLambertw = 11, kLambertwM1 = 18;  // Boost away from the branch point
