@@ -51,7 +51,8 @@
   --focus: var(--blue-400);
 
   --ok: #0f7b5f;
-  --ok-soft: #e9f7f2;
+  --ok-soft: #ecf8f3;
+  --ok-line: #b7e2d0;
   --warn: #9a5b00;
   --warn-soft: #fff8e6;
   --warn-line: #f2d590;

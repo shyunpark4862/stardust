@@ -1,8 +1,8 @@
 ---
 /*
  * An aside inside a document. The three types share one shape; the tint says
- * how to read it: blue for something worth knowing, amber for something that
- * can go wrong.
+ * how to read it: blue for something worth knowing, green for a useful way
+ * of doing things, amber for something that can go wrong.
  */
 interface Props {
   type?: 'note' | 'tip' | 'warn';
@@ -58,6 +58,11 @@ const labels = { note: '참고', tip: '팁', warn: '주의' };
     border-radius: var(--radius-md);
     background: var(--c-bg);
   }
+  .callout--tip {
+    --c: var(--ok);
+    --c-bg: var(--ok-soft);
+    --c-line: var(--ok-line);
+  }
   .callout--warn {
     --c: var(--warn);
     --c-bg: var(--warn-soft);
@@ -90,6 +95,7 @@ const labels = { note: '참고', tip: '팁', warn: '주의' };
     border-color: var(--c-line);
     background: rgb(255 255 255 / 0.7);
   }
+  .callout--tip .callout__body :global(:not(pre) > code),
   .callout--warn .callout__body :global(:not(pre) > code) {
     color: var(--slate-800);
   }
