@@ -609,13 +609,25 @@ T product_piece(std::int64_t b, std::int64_t m, const Get& get) {
 
 측정(설계 문서): float64 100만 개가 1스레드 99µs(numpy 0.78ms의 7.8배), 10스레드 22µs예요. complex 30만 개는 numpy 1.17ms에 대해 75µs / 13µs예요.
 
+성능 종합의 표와 같은 조건(원소 100만 개, numpy 2.5.4, 7라운드 중 가장 빠른 값)으로 다시 잰 값은 이래요.
+
 <Bench
   rows={[
-    { label: 'prod(f), 100만 개', times: [780e-6, 99e-6, 22e-6] },
-    { label: 'prod(complex), 30만 개', times: [1.17e-3, 75e-6, 13e-6] },
+    { label: 'prod(f), 100만 개', times: [821e-6, 114e-6, 293e-6] },
+    { label: 'prod(f), 같은 방법으로 재측정', times: [796e-6, 105e-6, 21e-6] },
+    { label: 'prod(f), 설계 문서', times: [780e-6, 99e-6, 22e-6] },
+    { label: 'prod(complex), 30만 개, 설계 문서', times: [1.17e-3, 75e-6, 13e-6] },
   ]}
-  caption="설계 문서의 측정값이에요(이번 벤치마크 표에는 prod가 없어요)."
+  caption="첫 줄은 두 번째 벤치마크 표의 값이고, 둘째 줄은 이 문서를 쓰며 같은 순서와 반복 수로 세 번 다시 잰 것의 가운데 값이에요."
 />
+
+1스레드는 세 측정 모두 numpy의 7~7.8배예요. 문제는 벤치마크 표의 10스레드 값 293µs예요. 1스레드(114µs)보다 느리니, 병렬화가 오히려 손해라는 뜻이 돼요. 그래서 코드와 측정을 다시 봤어요.
+
+- **코드에는 1스레드보다 느려질 이유가 보이지 않아요.** `product_mt`는 100만 개를 4096원소 조각 245개로 나눠 `parallel_for`로 돌리고, 조각 결과를 `part` 배열에 모아 왼쪽부터 곱해요. 조각 하나가 0.5µs 정도의 일이고, 조각 결과를 쓰는 것은 조각마다 한 번뿐이라 캐시 줄을 다투는 비용도 무시할 만해요.
+- **데이터 때문도 아니에요.** 이 입력의 곱은 언더플로해서 0이 되므로 서브노멀 연산을 의심할 수 있어요. 그런데 모두 1.0인 입력, 1에 아주 가까운 입력, 넘쳐서 `inf`가 되는 입력도 1스레드 103~107µs, 10스레드 22~25µs로 같았어요.
+- **같은 방법으로 다시 재면 재현되지 않아요.** 벤치마크 스크립트와 같은 순서(numpy → 1스레드 → 10스레드, 앞뒤에 `nextafter`와 `cumulative_prod`)와 같은 반복 수로 세 번 다시 쟀더니 10스레드가 21.1, 21.3, 24.6µs였어요. 스레드 수를 1, 2, 4, 10으로 바꿔 가면 105, 63, 33, 22µs로 고르게 줄어요.
+
+그래서 293µs는 그 측정 한 번에만 생긴 값으로 보고, 원인은 확인하지 못했다고 적어 둬요. 이 페이지의 설명은 재측정 값(10스레드 약 21µs, numpy의 약 37배)을 기준으로 해요.
 
 ### 정확도: 한계는 같고, 비트는 달라요
 
@@ -729,11 +741,12 @@ void scan_group(const std::byte* x, std::int64_t xs, std::byte* o, std::int64_t 
 <Bench
   rows={[
     { label: 'cumulative_sum(f)', times: [2.64e-3, 404e-6, 84e-6] },
+    { label: 'cumulative_prod(f)', times: [2.38e-3, 412e-6, 81e-6] },
   ]}
-  caption="원소 100만 개, float64. numpy 2.5.4의 np.cumsum과 비교해요."
+  caption="원소 100만 개, float64. numpy 2.5.4의 np.cumsum, np.cumprod와 비교해요. cumulative_prod는 같은 조건의 두 번째 측정이에요."
 />
 
-이번 벤치마크는 numpy 2.64ms, 1스레드 404µs(6.5배), 10스레드 84µs(31배)예요. 설계 문서의 측정은 `cumulative_sum` 1스레드 354µs(직렬 495µs), 10스레드 70µs, numpy 2.2ms이고, `cumulative_prod`는 386µs / 74µs, numpy 2.4ms예요.
+이번 벤치마크는 numpy 2.64ms, 1스레드 404µs(6.5배), 10스레드 84µs(31배)예요. `cumulative_prod`도 성능 종합의 표와 같은 조건에서 numpy 2.38ms, 1스레드 412µs(5.8배), 10스레드 81µs(29.5배)로 거의 같은 모양이에요. 덧셈과 곱셈이 같은 2단계 블록 스캔 코드(`Op`만 다른 같은 템플릿)를 써요. 설계 문서의 측정은 `cumulative_sum` 1스레드 354µs(직렬 495µs), 10스레드 70µs, numpy 2.2ms이고, `cumulative_prod`는 386µs / 74µs, numpy 2.4ms예요.
 
 numpy보다 이만큼 빠른 이유는 두 층이에요. 첫째, stardust의 직렬 스캔(495µs, 원소당 약 0.5ns)부터가 덧셈 지연 하나에 해당하는 속도인데, numpy의 `cumsum`은 원소당 약 2.6ns예요. numpy 쪽이 왜 지연 하나보다 몇 배 느린지는 numpy 내부의 문제라 이 문서에서는 확인하지 않았어요. 둘째, 블록 스캔이 사슬 4개를 동시에 굴려 1스레드에서 1.4배를 더 얻고, 블록 묶음이 병렬로 돌아 10스레드에서 직렬의 약 7배가 돼요.
 
@@ -844,6 +857,21 @@ numpy의 기본 버퍼 크기는 `np.getbufsize()` = 8192원소이고(numpy 2.5.
 - **`var`:** 메모리 왕복이 numpy보다 적어서 1스레드에서도 1.42배예요.
 - **`cumulative_sum`:** 직렬 스캔부터 numpy보다 빠르고, 블록 스캔과 병렬로 더 벌어져요.
 
+같은 조건으로 잰 두 번째 측정이에요. 첫 표에 없던 리덕션 셋을 더했어요.
+
+<Bench
+  rows={[
+    { label: 'prod(f)', times: [821e-6, 114e-6, 293e-6] },
+    { label: 'cumulative_prod(f)', times: [2.38e-3, 412e-6, 81e-6] },
+    { label: 'nansum(f, NaN 1%)', times: [476e-6, 160e-6, 27e-6] },
+  ]}
+  caption="원소 100만 개, float64. prod의 10스레드 293µs는 다시 재면 21~25µs로 재현되지 않았어요(위 float/complex prod 절)."
+/>
+
+- **`prod`:** 1스레드 7.2배는 누산기 8개로 곱셈 사슬을 8개로 나눈 효과예요. 10스레드 값은 위 "float/complex `prod`" 절에서 설명한 것처럼 재현되지 않은 값이에요. 다시 재면 약 21µs예요.
+- **`cumulative_prod`:** `cumulative_sum`과 같은 블록 스캔이라 배율도 비슷해요(5.8배, 29.5배).
+- **`nansum`:** 1스레드 3.0배, 10스레드 17.4배예요. 차이는 패스 수에서 나요. numpy 2.5.4의 `nansum`(`numpy/lib/_nanfunctions_impl.py`)은 `_replace_nan`으로 `np.isnan(a)` 마스크를 만들고, `a`를 통째로 복사하고, `np.copyto(a, 0, where=mask)`로 NaN 자리를 0으로 바꾼 뒤 `np.sum`을 불러요[8]. 마스크와 복사본이라는 새 배열 둘을 쓰고 읽어요. stardust의 `nansum`은 위 "항을 접근자로 넘기기"의 접근자에서 NaN을 0으로 바꿔 pairwise 트리에 바로 흘려 보내요(`nan_fold` → `nan_fold_keepdims`, `reduce_loop`의 NaN 건너뛰기 판). 입력을 한 번 읽을 뿐이라 `sum(f)`(117µs)보다 조금 느린 160µs예요. 같은 트리를 지나므로 "NaN을 0으로 바꾼 배열의 `sum`"과 비트가 같아요. numpy도 결국 그 배열의 pairwise `sum`이라, 이 입력에서 1스레드와 10스레드 모두 numpy와 비트까지 같았어요(직접 확인).
+
 스레드 수에 따른 배율이에요(설계 문서, 원소 400만 개, 1스레드 대비).
 
 <Plot
@@ -896,3 +924,4 @@ numpy의 기본 버퍼 크기는 `np.getbufsize()` = 8192원소이고(numpy 2.5.
 5. numpy 소스의 `_var` 함수(`numpy/_core/_methods.py`), numpy 2.5.4에서 확인.
 6. IEEE Std 754-2019, *IEEE Standard for Floating-Point Arithmetic*. (maximum/minimum 연산)
 7. Arm, *Neon Intrinsics Reference*. (`vmaxq_f64`, `vmaxnmq_f64`, `vmaxvq_f64`, `vcgtq_s64`, `vbslq_s64`, `vceqq_f64`, `vminvq_u32`)
+8. numpy 소스의 `nansum`과 `_replace_nan` 함수(`numpy/lib/_nanfunctions_impl.py`), numpy 2.5.4에서 확인.

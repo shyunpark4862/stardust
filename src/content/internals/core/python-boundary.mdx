@@ -998,6 +998,33 @@ C++ 정적 변수가 쥔 Python 객체는 일부러 놓지 않는 것이 있어�
 - 작은 연산의 남은 비용은 한곳에 몰려 있지 않아요. `x[1]`(뷰 하나를 돌려주는 인덱싱)을 프로파일러로 보면 nanobind 인스턴스 등록과 할당, `NDArray` 복사, 메서드 호출 경로에 고르게 퍼져 있었어요. 자세한 내용은 [작은 배열의 호출 비용](/internals/array/small-arrays/)에 있어요.
 - 큰 배열에서는 경계 비용이 측정 오차 안이에요. 버퍼 프로토콜과 DLPack으로 가져오기는 공유할 수 있으면 원소 수와 무관한 상수 시간이에요.
 
+### numpy와 배열을 주고받는 고정 비용
+
+그 "상수 시간"이 얼마인지 성능 종합의 표와 같은 조건(Apple M4 Pro, numpy 2.5.4, 7라운드 중 가장 빠른 값)으로 쟀어요. 원소 100만 개 float64 배열이지만 복사가 없으니 크기와 상관없는 값이에요.
+
+<Bench
+  rows={[
+    { label: 'np.asarray(sd 배열)', times: [13e-9, 106e-9, 104e-9] },
+    { label: 'from_dlpack(numpy 배열)', times: [119e-9, 276e-9, 278e-9] },
+    { label: 'sd.asarray(numpy 배열)', times: [13e-9, 175e-9, 177e-9] },
+  ]}
+  caption="numpy 열은 첫째·셋째 줄이 np.asarray(numpy 배열), 둘째 줄이 np.from_dlpack(numpy 배열)이에요. 스레드를 쓰지 않아 1스레드와 10스레드가 같아요."
+/>
+
+**`np.asarray(sd 배열)` 106ns 대 13ns는 같은 일이 아니에요.** numpy 열의 13ns는 `np.asarray(numpy 배열)`이고, 이미 numpy 배열이면 같은 객체를 그대로 돌려주는 값이에요. `np.asarray(sd 배열)`은 numpy가 남의 객체에서 새 numpy 배열을 만드는 일이에요. stardust 배열에는 `__array__`도 `__array_interface__`도 없어서 numpy는 버퍼 프로토콜로 가져가요. 결과의 `base`가 `memoryview`인 것으로 확인했어요. 그러니 공정한 비교 대상은 numpy가 다른 외부 버퍼를 받는 비용이에요. 이 문서를 쓰며 잰 값으로, 미리 만든 `memoryview`를 `np.asarray`로 받는 데 90ns가 걸렸어요. 106ns는 이와 비슷한 크기예요. 차이 16ns에는 우리 `getbuffer` 한 번과 numpy가 안에서 새로 만드는 `memoryview`가 들어 있어요. 우리 `getbuffer`는 shape과 strides를 복사하지 않고 `NDArray` 안의 배열을 그대로 가리키므로 가벼워요. Python에서 `memoryview(sd 배열)`이 47ns, `memoryview(numpy 배열)`이 68ns였어요.
+
+**`sd.from_dlpack(numpy 배열)` 276ns 대 119ns.** 코드(위 "가져오기 (`sd.from_dlpack`)")가 하는 Python 수준의 일을 세면 이래요.
+
+1. `nb::hasattr(x, "__dlpack__")`, `nb::hasattr(x, "__dlpack_device__")`: 속성 조회 두 번.
+2. `x.attr("__dlpack_device__")()`: 조회와 호출, 돌아온 tuple이 CPU인지 확인.
+3. `x.attr("__dlpack__")(max_version=(1, 0), copy=None)`: 조회, `max_version` tuple 만들기, 키워드 인자 호출. numpy가 `DLManagedTensorVersioned`를 할당해 capsule에 넣어 줘요.
+4. capsule 이름 바꾸기, 소유자 capsule(`sd_dlpack_owner`) 만들기, `NDArray` 채우기, `wrap`으로 Python 객체 만들기.
+5. (측정에 포함) 결과가 버려질 때 소유자 capsule의 소멸자가 numpy의 `deleter`를 불러요.
+
+Python에서 같은 호출을 따로 재면 `hasattr(f, '__dlpack__')` 22ns, `f.__dlpack_device__()` 25ns, `f.__dlpack__(max_version=(1, 1), copy=None)` 56ns였어요. 1~3단계를 Python에서 부르면 합쳐서 120ns 안팎이에요. numpy의 `np.from_dlpack`도 3단계는 해야 하지만, 1·2단계에 해당하는 조회와 호출을 하는지는 numpy 소스에서 확인하지 않았어요. stardust 쪽을 C++ 안에서 단계별로 나눠 재지도 않았으므로, 157ns 차이의 정확한 몫은 확인하지 못했어요. 어느 쪽이든 한 번에 수백 ns인 비용이라, 큰 배열을 주고받을 때는 문제가 되지 않아요.
+
+`sd.asarray(numpy 배열)` 175ns의 내역은 [변환과 승격](/internals/array/conversion/)의 "복사 없이 공유하는 비용"에 있어요. 약 37ns는 numpy 배열에도 numpy 스칼라 검사(`PyObject_IsInstance` 네 번)를 먼저 하는 순서에서 나와요.
+
 ## 참고 문헌
 
 1. W. Jakob, nanobind 문서. https://nanobind.readthedocs.io/ (pybind11과의 차이를 설명하는 절)

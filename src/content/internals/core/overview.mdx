@@ -696,7 +696,7 @@ git 이력은 표준 명령만으로 보존했어요. 저장소마다 `git fetch
 | 타입까지 C++ | 작은 `sum(a)` 92ns (numpy 581ns), `x[1, 2]` 25ns (numpy 35ns), 작은 `a + b` 181ns (numpy 158ns) |
 | `NOMINSIZE`(`-O3`) | 연속 fast path가 `-Os` 빌드보다 약 2배 빨라요 |
 | `FCVTZS` 직접 호출 | 설계 때 측정으로 분기 세 개 판 464µs → 89µs. 지금 벤치마크로 `astype(f, int64)` 108µs, numpy 284µs |
-| 풀 하나, 영역별 기준값 | 병렬 호출 고정 비용 약 1.5µs. 원소 100만 개 `sin` 10스레드 138µs (numpy 4.00ms) |
+| 풀 하나, 영역별 기준값 | 병렬 호출 고정 비용 약 1.5µs. 원소 100만 개 `sin` 10스레드 138µs (numpy 4.00ms), 다시 재면 102µs (측정마다 흔들림이 커요) |
 
 연산별 수치와 그 원인은 [성능 종합](/internals/array/performance/)에 있어요.
 
