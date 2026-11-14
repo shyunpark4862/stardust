@@ -51,17 +51,10 @@ array([100,   1,   2,   3,   4,   5], dtype=int64)
 
 | 결과 | 연산 |
 |---|---|
-| **뷰** | 기본 인덱싱 `x[1]`, `x[1:3]`, `x[..., 0]`, `x[:, sd.newaxis]` |
-| | `permute_dims`, `matrix_transpose`, `moveaxis`, `.T`, `.mT` |
-| | `squeeze`, `expand_dims`, `flip`, `unstack` |
-| | 복소수 배열의 `real`, `imag` |
-| | 2차원 이상 배열을 `for`로 돌 때 나오는 각 행 |
-| **읽기 전용 뷰** | `broadcast_to`, `broadcast_arrays` |
-| **가능하면 뷰, 안 되면 복사본** | `reshape`, `ravel` |
-| **복사본** | 고급 인덱싱 `x[[0, 2]]`, `x[x > 0]` |
-| | `x.copy()`, `astype`(기본값), `asarray(x, copy=True)` |
-| | 산술·비교 같은 원소별 연산과 집계의 결과 |
-| | `roll`, `concat`, `stack`, `repeat`, `tile`, `sort`, `take`, `where` 등 |
+| **뷰**<br />고치면 원본도 바뀌어요 | 기본 인덱싱 `x[1]`, `x[1:3]`, `x[..., 0]`, `x[:, sd.newaxis]`<br />축 순서 바꾸기 `permute_dims`, `matrix_transpose`, `moveaxis`, `.T`, `.mT`<br />축 넣고 빼기, 뒤집기 `squeeze`, `expand_dims`, `flip`, `unstack`<br />복소수 배열의 `real`, `imag`<br />2차원 이상 배열을 `for`로 돌 때 나오는 각 행 |
+| **읽기 전용 뷰**<br />고칠 수 없어요 | `broadcast_to`, `broadcast_arrays` |
+| **가능하면 뷰**<br />뷰일 때만 원본이 바뀌어요 | `reshape`, `ravel` |
+| **복사본**<br />원본과 따로예요 | 고급 인덱싱 `x[[0, 2]]`, `x[x > 0]`<br />복사 `x.copy()`, `astype`(기본값), `asarray(x, copy=True)`<br />원소별 연산과 집계의 결과<br />`roll`, `concat`, `stack`, `repeat`, `tile`, `sort`, `take`, `where` 등 |
 
 몇 가지를 직접 확인해 볼게요. 뷰를 고치면 원본에 그대로 나타나요.
 

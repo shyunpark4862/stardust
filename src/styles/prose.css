@@ -239,3 +239,22 @@
   overflow-x: auto;
   overflow-y: hidden;
 }
+
+/* Cells that list several lines (<br />) need room for inline code chips. */
+.prose td:has(br) {
+  line-height: 2;
+}
+
+/* A first column of short labels with a note under them stays narrow. */
+.prose td:first-child:has(br) {
+  min-width: 9.5rem;
+  line-height: var(--leading-snug);
+  color: var(--fg-subtle);
+  font-size: var(--text-sm);
+}
+
+.prose td:first-child:has(br) strong {
+  display: inline-block;
+  margin-bottom: var(--space-1);
+  font-size: var(--text-base);
+}
