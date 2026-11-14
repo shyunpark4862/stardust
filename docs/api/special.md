@@ -448,7 +448,7 @@ ncfdtri(dfn, dfd, nc, p, /, *, out=None)
   | **`ncfdtr(inf, dfd, nc, f)`** | `fdtr(inf, dfd, f)` | 분자 → 1. **scipy는 NaN** |
   | **`ncfdtr(dfn, dfd, inf, f)`** | 0 (`ncfdtrc`는 1) | **scipy는 NaN**. f도 inf이면 NaN |
   | 역함수의 p = 0, 1 | 정의역의 두 끝(0 또는 −inf, inf) | |
-- **보장 영역**: 사용자 결정을 기다린다(T2 보고). 목표는 다른 special 함수와 같은 1e-14(약 45 ULP)다.
+- **보장 영역** (사용자 결정 2026-11-15): 아래 '잰 범위' 전체다. 순방향 6개는 상대오차 1e-14(약 45 ULP), 역함수 `chndtrix nctdtrit ncfdtri`는 §4처럼 `|Δx/x| ≤ 1e-14·max(1, κ)`다. 결과가 서브노멀이면 docs/design/special.md §2.3의 절대오차 규칙을 따른다. `chndtr(0, nc, 0)` = NaN(`chdtr(0, 0)`과 일관)도 같은 날 확정했다.
   - **잰 값** (bench/special/t2/accuracy.md, 최대 ULP; 역함수는 ULP/max(1, κ)): `chndtr` 6.8, `chndtrc` 9.5, `chndtrix` 4.5, `nctdtr` 7.8, `nctdtrc` 7.5, `nctdtrit` 8.8, `ncfdtr` 12, `ncfdtrc` 23, `ncfdtri` 9.9
   - 같은 점에서 scipy(Boost): 최대 7e3 ULP(`ncfdtrc`)부터 8.8e15 ULP(0이나 엉뚱한 값), inf·NaN(역함수)까지.
   - 잰 범위: 자유도 1e-2–1e4(카이제곱·F), 1e-1–1e5(t); nc 1e-3–1e4(카이제곱·F), |δ| ≤ 100(t); 확률은 1e-300까지. 근이 double 범위 밖이면 0이나 ±inf이고 순방향 함수로 확인한다(tests/special/test_noncentral.py).
