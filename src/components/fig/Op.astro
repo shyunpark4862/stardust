@@ -7,18 +7,21 @@ interface Props {
 const { note } = Astro.props;
 ---
 
-<span class="op">
+<span class:list={['op', note && 'op--noted']}>
+  {note && <span class="op__pad" aria-hidden="true">{note}</span>}
   <span class="op__sym"><slot /></span>
   {note && <span class="op__note">{note}</span>}
 </span>
 
 <style>
-  /* The note hangs below the symbol without taking space, so the symbol
-     itself is what lines up with the middle of the neighbouring grids. */
+  /* A note sits under the symbol and an invisible copy of it sits above, so
+     the symbol stays on the middle line of the neighbouring grids while the
+     operator is as wide as its note and never runs into its neighbours. */
   .op {
-    position: relative;
     display: inline-flex;
-    justify-content: center;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1);
     padding-inline: var(--space-1);
   }
   .op__sym {
@@ -27,15 +30,15 @@ const { note } = Astro.props;
     line-height: 1;
     color: var(--slate-400);
   }
-  .op__note {
-    position: absolute;
-    top: calc(100% + var(--space-1));
-    left: 50%;
-    transform: translateX(-50%);
+  .op__note,
+  .op__pad {
     font-family: var(--font-mono);
     font-size: var(--text-xs);
     line-height: 1.2;
     color: var(--fg-subtle);
     white-space: nowrap;
+  }
+  .op__pad {
+    visibility: hidden;
   }
 </style>

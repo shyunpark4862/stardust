@@ -16,6 +16,7 @@ import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
 import ArrayFig from '../../../components/fig/ArrayFig.astro';
 import Op from '../../../components/fig/Op.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
 
 ## 한눈에 보기
 
@@ -322,12 +323,17 @@ array([[1],
 array([[1, 2, 3]], dtype=int64)
 ```
 
-<Fig caption="newaxis를 놓은 자리에 길이 1인 축이 생겨요. 뒤에 두면 세로 (3, 1), 앞에 두면 가로 (1, 3)이에요.">
-  <ArrayFig name="v" data={[1, 2, 3]} note="shape (3,)" />
-  <Op note="v[:, newaxis]">→</Op>
-  <ArrayFig data={[[1], [2], [3]]} note="shape (3, 1)" />
-  <Op note="v[newaxis, :]">→</Op>
-  <ArrayFig data={[[1, 2, 3]]} note="shape (1, 3)" />
+<Fig column caption="newaxis를 놓은 자리에 길이 1인 축이 생겨요. 뒤에 두면 세로 (3, 1), 앞에 두면 가로 (1, 3)이에요.">
+  <FigRow>
+    <ArrayFig name="v" data={[1, 2, 3]} note="shape (3,)" />
+    <Op note="v[:, newaxis]">→</Op>
+    <ArrayFig data={[[1], [2], [3]]} note="shape (3, 1)" />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="v" data={[1, 2, 3]} note="shape (3,)" />
+    <Op note="v[newaxis, :]">→</Op>
+    <ArrayFig data={[[1, 2, 3]]} note="shape (1, 3)" />
+  </FigRow>
 </Fig>
 
 가장 많이 쓰는 곳은 [브로드캐스팅](/api/array/broadcasting/)이에요. 1차원 배열 하나를 세로로 세워 원래 배열과 계산하면 "모든 짝"의 결과가 표로 나와요. 아래는 모든 원소 쌍 사이의 거리예요.
