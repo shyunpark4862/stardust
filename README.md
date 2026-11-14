@@ -45,7 +45,7 @@ print([round(b, 12) for b in beta.tolist()])  # [1.0, 1.0]
 | 배열 | `sd` | N차원 `ndarray`(dtype 넷, 임의의 strides, 0차원 없음), ufunc, 리덕션, 인덱싱, 정렬과 unique, `matmul` | [docs/api/array.md](docs/api/array.md) |
 | 선형대수 | `sd.linalg` | 함수 37개: 분해, 선형 시스템, 노름, 특수 구조, `expm`. 행렬 묶음(배치)을 받고 F-order 배열을 돌려준다 | [docs/api/linalg.md](docs/api/linalg.md) |
 | 데이터프레임 | `sd.frame` | `Series`, `DataFrame`, `Index`, NA, Copy-on-Write, groupby, merge, sort, `read_csv`. `to_array()`로 배열과 잇는다 | [docs/api/frame.md](docs/api/frame.md) |
-| 특수함수 | `sd.special` | **S8까지 완료 (로지스틱·정보 7, 오차함수 8, 감마·베타·제타 9, 불완전 감마·베타 8, 리덕션·지수적분·타원 7, Bessel·Airy 21, 초기하·Lambert W 3, 복소수 2와 erf·erfc·erfcx·lambertw의 complex)** ([ROADMAP.md](ROADMAP.md) S0–S9). scipy.special의 부분집합: 오차함수, 감마, 불완전 감마·베타, Bessel, 초기하 등 | [docs/api/special.md](docs/api/special.md) |
+| 특수함수 | `sd.special` | **S0–S9 완료 (로지스틱·정보 7, 오차함수 8, 감마·베타·제타 9, 불완전 감마·베타 8, 리덕션·지수적분·타원 7, Bessel·Airy 21, 초기하·Lambert W 3, 복소수 2와 erf·erfc·erfcx·lambertw의 complex)** ([ROADMAP.md](ROADMAP.md) S0–S9). scipy.special의 부분집합: 오차함수, 감마, 불완전 감마·베타, Bessel, 초기하 등 | [docs/api/special.md](docs/api/special.md) |
 
 - 세 영역이 함께 쓰는 규칙(dtype 객체, 에러 종류와 메시지, 스레드)은 [API.md](API.md)에 있다.
 - 세 교육용 프로젝트(stardust-numpy, stardust-linalg, stardust-pandas)를 합쳐 만들었다. 옛 저장소는 동결했다.
@@ -53,13 +53,14 @@ print([round(b, 12) for b in beta.tolist()])  # [1.0, 1.0]
 ## 문서
 | 문서 | 내용 |
 |---|---|
-| [docs/guide/](docs/guide/README.md) | **안내서.** 처음 보는 사람을 위한 한 권: 세 영역을 함께 쓰는 법과, 라이브러리가 어떻게 만들어졌고 왜 그런지 (13장) |
+| [docs/guide/](docs/guide/README.md) | **안내서.** 처음 보는 사람을 위한 한 권: 네 영역을 함께 쓰는 법과, 라이브러리가 어떻게 만들어졌고 왜 그런지 (15장) |
 | [API.md](API.md) | 공통 규칙과 영역별 API 문서의 색인 |
 | [DESIGN.md](DESIGN.md) | 통합의 결정과 일관성 규칙 |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | 층 구조, 디렉터리, 공통 부품 |
 | `docs/design/` | 영역의 설계: [배열](docs/design/array.md), [선형대수](docs/design/linalg.md), [데이터프레임](docs/design/frame.md), [특수함수](docs/design/special.md) |
 | [docs/learn/M7-final-report.md](docs/learn/M7-final-report.md) | 통합의 최종 보고서: 성능, 줄어든 코드, 경계 비용, 남은 것 |
-| `docs/learn/` | 마일스톤마다의 해설 (M0–M7). 진행 순서는 [ROADMAP.md](ROADMAP.md) |
+| [docs/learn/S9-final-report.md](docs/learn/S9-final-report.md) | 특수함수 영역의 최종 보고서: 정확도와 성능(scipy 대비), 남은 것 |
+| `docs/learn/` | 마일스톤마다의 해설 (통합 M0–M8, 특수함수 S0–S9). 진행 순서는 [ROADMAP.md](ROADMAP.md) |
 
 ## 빌드와 테스트
 macOS (Apple Silicon), Python 3.15에서 확인했다.

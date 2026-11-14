@@ -143,7 +143,7 @@
 | S6 Bessel과 Airy | 완료 (2026-11-14), docs/learn/S6-bessel-airy.md |
 | S7 초기하와 Lambert W | 완료 (2026-11-14), docs/learn/S7-hyper-lambertw.md |
 | S8 복소수 | 완료 (2026-11-14), docs/learn/S8-complex.md |
-| S9 마무리 | 대기 |
+| S9 마무리 | 완료 (2026-11-14), docs/learn/S9-final-report.md |
 
 ## 마일스톤
 

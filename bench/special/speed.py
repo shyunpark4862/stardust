@@ -10,6 +10,7 @@ and a single Python-float call. Inputs: the guaranteed-region reference inputs
 """
 
 import argparse
+import sys
 
 import numpy as np
 
@@ -28,8 +29,9 @@ def main():
 
     names = a.names or common.ref_names()
     best = {}
-    for _ in range(a.rounds):
+    for rnd in range(a.rounds):
         for name in names:
+            print(f"round {rnd + 1}/{a.rounds}: {name}", file=sys.stderr, flush=True)  # progress, at once
             f, ref = common.sd_function(name), common.scipy_function(name)
             xs = common.sample_inputs(name, N)
             sxs = tuple(sd.asarray(x) for x in xs)
