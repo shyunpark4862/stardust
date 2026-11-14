@@ -37,11 +37,12 @@
   - 생성 함수, 뷰 연산, 브로드캐스팅, `concat`/`stack`
   - 인덱싱: 기본 인덱싱(int, slice, `...`, `newaxis`)은 뷰, 고급 인덱싱(정수 배열, bool 마스크)은 복사본. 대입도 지원한다.
   - ufunc: 산술, 비교, 논리, 비트, 수학 함수, `maximum`/`minimum`, `where`, `clip`, `out=`, in-place 연산
-  - 리덕션: `sum`, `prod`, `min`, `max`, `mean`, `var`, `std`, `argmin`, `argmax`, `any`, `all`, `cumulative_sum`, `cumulative_prod`
+  - 리덕션: `sum`, `prod`, `min`, `max`, `mean`, `var`, `std`, `argmin`, `argmax`, `any`, `all`, `cumulative_sum`, `cumulative_prod`, 그 nan판, `quantile`/`median`, `cov`/`corrcoef`, `bincount`/`histogram` (T0, T0b)
   - 캐스팅과 type promotion, `repr`
-  - `matmul`, `sort`/`argsort`, `unique_*`
+  - `matmul`, `tensordot`, `sort`/`argsort`, `unique_*`, `searchsorted`
+  - Array API 2024의 모든 함수 (T0b에서 채웠다): `take`, `take_along_axis`, `nonzero`, `flip`, `roll`, `repeat`, `tile`, `unstack`, `meshgrid`, `tril`/`triu`, `diff`, dtype 도구, DLPack
 - **없는 것**
-  - 0차원 배열 (§2.2), `nonzero`, `dot`
+  - 0차원 배열 (§2.2), `dot`
   - 문자열/object/datetime/structured dtype, masked array, memmap, polynomial
   - 서브클래싱, `__array_function__`
 
@@ -333,6 +334,11 @@ float64 초월함수는 함수마다 구현을 나눈다.
 
 ---
 
+### 5.5 Array API 2024의 원소별 함수 (T0b)
+- `copysign`, `hypot`, `logaddexp`, `nextafter`, `reciprocal`, `signbit`은 `scalar_ops.hpp`의 Op다. 다른 ufunc와 같은 디스패처(타입 표, `out=`, 스칼라 fast path)를 쓴다.
+- 값은 numpy의 스칼라 공식이다. `logaddexp`는 `npy_logaddexp`(같으면 `x + log 2`)이고, `hypot`·`nextafter`·`copysign`은 libm이다.
+- complex `reciprocal`은 numpy의 Smith 공식이다. numpy의 arm64 빌드는 분모 `re + im*r`를 FMA 하나로 묶는다. 그래서 `std::fma`로 맞췄다. 잰 결과, FMA 없이는 9%의 원소가 1 ULP 달랐다.
+
 ## 6. 리덕션
 
 ### 6.1 구조 (`array/kernels/reduce.hpp`)
@@ -462,6 +468,13 @@ numpy의 nan 함수처럼 NaN을 중립값으로 바꾼 뒤 이름 앞의 `nan`�
 - `fact = N - correction ≤ 0`이면 NaN이다. `var`의 규칙과 같다(§6.8). numpy는 경고를 내고 `fact = 0`으로 나누어 inf나 NaN을 낸다.
 - 평균의 합 순서와 BLAS가 numpy와 다르다. 그래서 비트는 같지 않고, 테스트는 상대 1e-13으로 비교한다.
 - `corrcoef`: 대각의 제곱근으로 행과 열을 차례로 나누고(`c / s[:, None] / s[None, :]`의 순서) [-1, 1]로 자른다. complex의 나눗셈은 실수부와 허수부를 따로 나눈다. 유한한 값이면 numpy의 복소 나눗셈(Smith)과 결과가 같다.
+
+### 6.13 bincount, histogram (`array/ops/histogram.cpp`, T0b)
+- `bincount`: 원소 순서대로 한 번에 센다(가중치 합도 같은 순서). numpy와 비트가 같다.
+- `histogram`: numpy의 `_histograms_impl.histogram`을 단계마다 옮겼다.
+  - 같은 너비 구간: 경계는 `linspace`다. 구간 번호는 `((v - first) / (last - first)) * bins`를 정수로 자른 뒤 numpy처럼 두 번 고친다(끝 구간, 경계 비교). 가중치는 65536개 블록마다 0.0부터 더하고(numpy의 `bincount`), 블록 결과를 차례로 더한다. 그래서 비트가 같다. int 가중치는 numpy처럼 블록 합을 double로 구한 뒤 int64로 바꾼다.
+  - 경계 배열: 개수는 구간마다 직접 센다(정확하다). 가중치가 있으면 numpy처럼 블록마다 값으로 정렬한 누적합을 경계에서 읽어 더하고 차를 낸다. 정렬은 안정 정렬이다. numpy의 quicksort와 같은 값들의 순서가 다를 수 있어서, 같은 값에 다른 가중치가 있으면 마지막 비트가 다를 수 있다.
+  - `density`: `hist / 너비 / sum(hist)`. 합은 `sd.sum`이다(연속 float64 하나의 합은 numpy와 비트가 같다, §6.2).
 
 ---
 
@@ -616,6 +629,11 @@ dtype과 레인 길이만 본다. 데이터를 보고 고르지 않는다 (§1.4
 - 64KB 이하의 레인은 스레드별 scratch를 쓴다 (`kScratchBytes`). 슬롯 0은 레인, 슬롯 1은 merge sort의 절반 복사본이다. 짧은 레인을 많이 정렬할 때(`(100000, 8)`의 `sort(axis=1)`) 레인마다 할당하지 않는다. 더 긴 레인은 할당한다.
 
 ---
+
+### 8.8 searchsorted, nonzero, take (`array/ops/searching.cpp`, T0b)
+- `searchsorted`: 두 쪽을 승격한 dtype의 연속 복사본에서 `lower_bound`/`upper_bound`를 쓴다. 비교는 `sort`의 순서(NaN이 가장 크다)다. `sorter`가 있으면 먼저 `x1[sorter]`로 모은다. 찾을 값이 많으면 4096개씩 나누어 병렬로 찾는다(위치는 정수라서 나누는 방법과 상관없이 같다).
+- `nonzero`: `x`를 C 순서 bool 배열로 바꾸고(bool 변환이 `x != 0`이다), 참의 수를 센 뒤 축마다 위치를 채운다. 위치는 나눗셈 대신 자릿수 올림(odometer)으로 센다.
+- `take`, `take_along_axis`, `repeat`: 키를 만들어 고급 인덱싱의 gather(§7.3)를 부른다. `take_along_axis`는 numpy처럼 다른 축마다 `arange`를 브로드캐스트한다.
 
 ## 9. matmul (`array/ops/matmul.cpp`)
 
@@ -828,6 +846,12 @@ dtype과 레인 길이만 본다. 데이터를 보고 고르지 않는다 (§1.4
 - 중첩 시퀀스는 두 패스다. 1a) 각 깊이의 첫 원소로 shape을 읽고, 1b) 모든 원소가 그 shape인지 확인하며 원소 종류를 승격하고, 2) 행 우선 순서로 값을 쓴다.
 
 ---
+
+### 12.5 DLPack (`array/ops/dlpack.cpp`, T0b)
+- DLPack 1.0 ABI의 구조체를 직접 적었다(헤더를 vendor하지 않는다). 버전 있는 capsule `dltensor_versioned`와 옛 `dltensor` 둘 다 읽고 쓴다.
+- **가져오기**: capsule 이름을 `used_...`로 바꾸고, 텐서를 들고 있는 새 capsule을 배열의 `base`로 둔다. 그 capsule이 사라질 때 생산자의 deleter를 부른다. 검사(장치, dtype, 0차원)보다 소유권을 먼저 가져온다. 그래서 에러가 나도 메모리가 새지 않는다. 정렬·bool 규칙은 버퍼 프로토콜(§12.3)과 같다. `buffer`는 비어 있고 `base`가 메모리를 붙잡는다.
+- **내보내기**: 배열의 뷰(버퍼와 base를 붙잡는다)와 shape/strides(원소 단위)를 담은 구조를 `manager_ctx`에 둔다. deleter는 어느 스레드에서든 불릴 수 있어서 GIL을 잡고 지운다. 쓰지 않은 capsule은 소멸자에서 deleter를 부른다.
+- 쓰기 금지 배열은 버전 있는 형식의 읽기 전용 표시로 내보낸다. 옛 형식은 그 표시가 없어서 `BufferError`다(numpy와 같다).
 
 ## 13. 테스트와 측정
 

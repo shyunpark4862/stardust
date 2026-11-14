@@ -9,6 +9,7 @@
 #include "array/ops/copy.hpp"
 #include "array/ops/indexing.hpp"
 #include "array/ops/matmul.hpp"
+#include "array/ops/dlpack.hpp"
 #include "array/ops/reduction.hpp"
 #include "array/ops/shape.hpp"
 #include "array/ops/ufunc.hpp"
@@ -276,6 +277,8 @@ void bind_ndarray(nb::module_& m) {
     // of 'ndarray' object has no setter". __set_name__ gives each its name.
     for (const char* name : {"dtype", "shape", "strides", "ndim", "size", "itemsize", "nbytes", "base", "T", "mT"})
         cls.attr(name).attr("__set_name__")(cls, name);
+
+    bind_dlpack(m, cls);  // from_dlpack, __dlpack__, __dlpack_device__
 
     nb::class_<ArrayIterator>(m, "_ArrayIterator")
         .def("__iter__", [](nb::handle self) { return nb::borrow(self); })

@@ -26,10 +26,15 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/array/ops/copy.cpp
   csrc/array/ops/covariance.cpp
   csrc/array/ops/creation.cpp
+  csrc/array/ops/dlpack.cpp
+  csrc/array/ops/dtype_info.cpp
+  csrc/array/ops/histogram.cpp
   csrc/array/ops/indexing.cpp
+  csrc/array/ops/manipulation.cpp
   csrc/array/ops/matmul.cpp
   csrc/array/ops/quantile.cpp
   csrc/array/ops/reduction.cpp
+  csrc/array/ops/searching.cpp
   csrc/array/ops/shape.cpp
   csrc/array/ops/sort.cpp
   csrc/array/ops/ufunc.cpp

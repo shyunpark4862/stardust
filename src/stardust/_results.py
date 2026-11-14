@@ -12,6 +12,12 @@ UniqueAllResult = namedtuple("UniqueAllResult", ["values", "indices", "inverse_i
 UniqueCountsResult = namedtuple("UniqueCountsResult", ["values", "counts"])
 UniqueInverseResult = namedtuple("UniqueInverseResult", ["values", "inverse_indices"])
 
+# array: finfo / iinfo (built by csrc/array/ops/dtype_info.cpp, by name); the Array API's attributes
+FinfoResult = namedtuple("FinfoResult", ["bits", "eps", "max", "min", "smallest_normal", "dtype"])
+IinfoResult = namedtuple("IinfoResult", ["bits", "max", "min", "dtype"])
+# array: histogram (csrc/array/ops/histogram.cpp, by name); numpy's (hist, bin_edges) order
+HistogramResult = namedtuple("HistogramResult", ["hist", "bin_edges"])
+
 # linalg (built by the C++ core, which receives them in LINALG)
 SlogdetResult = namedtuple("SlogdetResult", ["sign", "logabsdet"])
 LUResult = namedtuple("LUResult", ["L", "U", "perm"])

@@ -314,10 +314,10 @@ void bind_ufuncs(nb::module_& m) {
     using namespace ops;
     def_binaries<Add, Subtract, Multiply, Divide, FloorDivide, Remainder, Pow, Atan2, Maximum, Minimum,
                  Equal, NotEqual, Less, LessEqual, Greater, GreaterEqual, LogicalAnd, LogicalOr, LogicalXor,
-                 BitwiseAnd, BitwiseOr, BitwiseXor, LeftShift, RightShift>(m);
+                 BitwiseAnd, BitwiseOr, BitwiseXor, LeftShift, RightShift, Copysign, Hypot, Logaddexp, Nextafter>(m);
     def_unaries<Negative, Positive, Abs, Square, Sqrt, Sign, Exp, Expm1, Log, Log1p, Log2, Log10, Sin, Cos, Tan,
                 Asin, Acos, Atan, Sinh, Cosh, Tanh, Asinh, Acosh, Atanh, Floor, Ceil, Trunc, Round, IsNan, IsInf,
-                IsFinite, LogicalNot, BitwiseInvert, Conj>(m);
+                IsFinite, LogicalNot, BitwiseInvert, Conj, Reciprocal, Signbit>(m);
     m.def("where", named("where", &where), nb::arg().none(), nb::arg().none(), nb::arg().none(), nb::kw_only(), nb::arg("out").none() = nb::none());
     m.def("clip", named("clip", &clip), nb::arg().none(), nb::kw_only(), nb::arg("min").none() = nb::none(),
           nb::arg("max").none() = nb::none(), nb::arg("out").none() = nb::none());

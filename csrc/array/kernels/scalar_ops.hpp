@@ -283,6 +283,66 @@ struct Minimum {
     static double f(double a, double b) { return fmin_nan(a, b); }
 };
 
+// ---- Array API 2024 additions (T0b): numpy's scalar formulas -------------
+
+struct Copysign {
+    static constexpr const char* name = "copysign";
+    template <typename T> static constexpr bool ok = is_float<T>;
+    static double f(double a, double b) { return std::copysign(a, b); }
+};
+
+struct Hypot {
+    static constexpr const char* name = "hypot";
+    template <typename T> static constexpr bool ok = is_float<T>;
+    static double f(double a, double b) { return std::hypot(a, b); }
+};
+
+// numpy's npy_logaddexp: equal inputs (infinities of one sign included) are
+// x + log 2; otherwise the larger plus log1p(exp(-|x - y|)); NaN stays NaN.
+struct Logaddexp {
+    static constexpr const char* name = "logaddexp";
+    template <typename T> static constexpr bool ok = is_float<T>;
+    static double f(double x, double y) {
+        constexpr double kLogE2 = 0.693147180559945309417232121458176568;
+        if (x == y) return x + kLogE2;
+        const double tmp = x - y;
+        if (tmp > 0) return x + std::log1p(std::exp(-tmp));
+        if (tmp <= 0) return y + std::log1p(std::exp(tmp));
+        return tmp;
+    }
+};
+
+struct Nextafter {
+    static constexpr const char* name = "nextafter";
+    template <typename T> static constexpr bool ok = is_float<T>;
+    static double f(double a, double b) { return std::nextafter(a, b); }
+};
+
+// 1/x. Integers are computed in float64 (Array API; numpy keeps integer
+// division). Complex: numpy's CDOUBLE_reciprocal (Smith's method on 1/z),
+// whose denominator numpy's arm64 build fuses into one FMA (measured: all
+// bits equal with the fma, 9% of them off without).
+struct Reciprocal {
+    static constexpr const char* name = "reciprocal";
+    template <typename T> static constexpr bool ok = is_float<T> || is_cplx<T>;
+    static double f(double x) { return 1.0 / x; }
+    static c128 f(c128 z) {
+        const double re = z.real(), im = z.imag();
+        if (std::fabs(im) <= std::fabs(re)) {
+            const double r = im / re, d = std::fma(im, r, re);
+            return {1 / d, -r / d};
+        }
+        const double r = re / im, d = std::fma(re, r, im);
+        return {r / d, -1 / d};
+    }
+};
+
+struct Signbit {
+    static constexpr const char* name = "signbit";
+    template <typename T> static constexpr bool ok = is_float<T>;
+    static bool f(double x) { return std::signbit(x); }
+};
+
 // NaN-skipping minimum/maximum, for nanmin/nanmax only (not public
 // ufuncs): a NaN loses to any number, two NaNs give NaN; ±0 ties as in
 // minimum/maximum. What the NEON FMINNM/FMAXNM instructions do.

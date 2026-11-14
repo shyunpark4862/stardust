@@ -151,6 +151,23 @@ ndarray
 - `ndarray`는 배열 타입이다. `isinstance` 검사에 쓴다. 생성자는 없다 (§10).
 - dtype 객체는 API.md §1에 있다.
 
+### §2.1 데이터 타입 함수
+```
+can_cast(from_, to, /)
+result_type(*arrays_and_dtypes)
+isdtype(dtype, kind)
+finfo(type, /)
+iinfo(type, /)
+```
+- dtype 인자는 dtype 객체나 그 이름이다. `can_cast`, `result_type`, `finfo`, `iinfo`는 배열도 받는다(그 dtype). `sd.string`은 `TypeError`다.
+- **`can_cast`**: 암묵적 변환이 되는지다. bool < int64 < float64 < complex128의 위쪽으로만 된다 (§1.5).
+- **`result_type`**: 인자들을 승격한 dtype이다 (§1.4). Python 스칼라(`bool`, `int`, `float`, `complex`)도 받는다. 종류마다 dtype이 하나라서 스칼라는 같은 종류의 배열과 똑같이 승격한다. 인자가 없으면 `ValueError`다.
+- **`isdtype(dtype, kind)`**: `kind`는 dtype, 종류 이름, 또는 그 tuple이다.
+  - 종류 이름: `'bool'`, `'signed integer'`(int64), `'unsigned integer'`(해당 없음), `'integral'`(int64), `'real floating'`(float64), `'complex floating'`(complex128), `'numeric'`(bool 밖의 셋). 그 밖의 이름은 `ValueError`다.
+  - `dtype`은 dtype 객체만 받는다(이름은 `TypeError`).
+- **`finfo`**: float64와 complex128을 받는다. 결과는 `FinfoResult(bits, eps, max, min, smallest_normal, dtype)`이다. complex128은 실수부·허수부의 float64를 설명하고, `dtype`은 `sd.float64`다.
+- **`iinfo`**: int64만 받는다. 결과는 `IinfoResult(bits, max, min, dtype)`이다.
+
 ---
 
 ## §3. 배열 생성
@@ -169,6 +186,10 @@ full_like(x, fill_value, /, *, dtype=None)
 arange(start, stop=None, step=1, /, *, dtype=None)
 linspace(start, stop, num, /, *, dtype=None, endpoint=True)
 eye(n_rows, n_cols=None, /, *, k=0, dtype=None)
+meshgrid(*arrays, indexing='xy')
+tril(x, /, *, k=0)
+triu(x, /, *, k=0)
+from_dlpack(x, /, *, device=None, copy=None)
 ```
 - **`dtype=None`일 때의 dtype**
   - `zeros`, `ones`, `empty`, `eye`: float64
@@ -240,6 +261,25 @@ eye(n_rows, n_cols=None, /, *, k=0, dtype=None)
   - `k`는 대각선 오프셋이다. 양수는 위쪽, 음수는 아래쪽이다. 범위를 벗어나면 0 행렬이다.
   - `n_rows`, `n_cols`는 0 이상의 int다.
 
+### §3.5 DLPack (`from_dlpack`)
+- 다른 라이브러리(numpy, PyTorch 등)의 CPU 배열을 **복사 없이** 가져온다. `x`는 `__dlpack__`이 있는 객체다.
+  - DLPack 1.0의 버전 있는 capsule을 먼저 청하고, 받지 못하면 옛 형식으로 청한다.
+  - 결과는 외부 메모리를 공유한다. `base`는 그 메모리를 붙잡은 capsule이다. 임의의 strides(음수 포함)를 그대로 쓴다.
+  - 읽기 전용 표시가 있으면 쓰기 금지 배열이 된다.
+- dtype은 bool, int64, float64, complex128만 받는다. 그 밖은 `TypeError`다(버퍼 프로토콜과 달리 넓히는 복사도 하지 않는다). 0차원은 `ValueError`다.
+- 정렬되지 않은 메모리와 0·1이 아닌 bool 바이트는 복사한다(§3.3과 같다). 이때 `copy=False`이면 `ValueError`다.
+- `copy=True`이면 언제나 새 배열이다. `device`는 `None` 또는 CPU 장치 `(1, 0)`만 받는다.
+- 내보내기(`x.__dlpack__`, `x.__dlpack_device__`)는 §10.5에 있다.
+
+### §3.6 `meshgrid`, `tril`, `triu`
+- **`meshgrid(*arrays, indexing='xy')`**
+  - 인자는 1차원 `sd.ndarray`다. 결과는 같은 수의 배열의 tuple이고, 각자 자기 dtype을 유지한다. 인자가 없으면 `()`다.
+  - `indexing='xy'`이면 처음 두 축을 바꾼다(numpy와 같다). `'ij'`는 바꾸지 않는다.
+  - 결과는 새 배열(C 순서)이다.
+- **`tril(x, /, *, k=0)`, `triu(x, /, *, k=0)`**
+  - 마지막 두 축을 행렬로 보고 아래쪽(`tril`: `j ≤ i + k`)이나 위쪽(`triu`: `j ≥ i + k`)만 남긴다. 나머지는 0(`False`)이다.
+  - 2차원 미만은 `ValueError`다. 앞의 축은 배치다. 결과는 새 배열이다.
+
 ---
 
 ## §4. shape 조작과 뷰
@@ -258,6 +298,12 @@ broadcast_arrays(*arrays)
 concat(arrays, /, *, axis=0)
 stack(arrays, /, *, axis=0)
 astype(x, dtype, /, *, copy=True)
+flip(x, /, *, axis=None)
+roll(x, /, shift, *, axis=None)
+repeat(x, repeats, /, *, axis=None)
+tile(x, repetitions, /)
+unstack(x, /, *, axis=0)
+diff(x, /, *, axis=-1, n=1, prepend=None, append=None)
 ```
 - **`reshape`**: 가능하면 뷰를 반환한다. 아니면 복사한다 (§1.8).
   - `shape`에 `-1`을 하나 쓸 수 있다. 둘 이상이면 `ValueError`다.
@@ -286,6 +332,22 @@ astype(x, dtype, /, *, copy=True)
 - `copy=True`(기본값)이면 같은 dtype이어도 항상 새 배열이다.
 - `copy=False`이면 같은 dtype일 때 `x` 자신을 반환하고, 변환이 필요하면 `ValueError`다.
 - `copy=None`이면 같은 dtype일 때 `x` 자신을 반환한다.
+
+### §4.4 `flip`, `roll`, `repeat`, `tile`, `unstack`, `diff`
+- **`flip`**: `axis`(int 또는 tuple, `None`은 모든 축)의 순서를 뒤집은 **뷰**다. 음수 stride를 쓴다.
+- **`roll`**: 축을 따라 원소를 돌린 새 배열이다.
+  - `shift`는 int 또는 tuple, `axis`는 int 또는 tuple이다. 둘 다 tuple이면 길이가 같아야 한다(`ValueError`). `shift`가 int이고 `axis`가 tuple이면 모든 축에 같은 양이다.
+  - `axis=None`이면 평탄화해서 돌리고 원래 shape으로 되돌린다. 이때 `shift`는 int여야 한다(`TypeError`).
+- **`repeat`**: 축을 따라 각 원소를 `repeats`번 되풀이한 새 배열이다.
+  - `repeats`는 int 또는 1차원 int64 배열(길이가 축 길이나 1)이다. 음수는 `ValueError`다.
+  - `axis=None`이면 평탄화한 배열을 되풀이한다.
+- **`tile(x, repetitions, /)`**: `x`를 축마다 `repetitions`번 이어 붙인 새 배열이다.
+  - `repetitions`는 int의 tuple이다(numpy처럼 int 하나도 받는다). 길이가 `x.ndim`과 다르면 짧은 쪽 앞에 1을 채운다.
+- **`unstack(x, /, *, axis=0)`**: 축을 따라 나눈 **뷰**들의 tuple이다. 1차원 `x`는 원소(Python 스칼라)의 tuple이다(§1.2).
+- **`diff(x, /, *, axis=-1, n=1, prepend=None, append=None)`**
+  - 축을 따라 `x[1:] - x[:-1]`을 `n`번 한다. 빼기는 `subtract`의 규칙이다. 그래서 bool은 int64가 된다(numpy는 `not_equal`로 bool을 낸다).
+  - `prepend`, `append`는 배열 또는 Python 스칼라다. 스칼라는 그 축의 길이가 1인 배열로 넓혀 붙인다. 배열은 `concat`의 규칙을 따른다.
+  - `n=0`이면 `x` 자신이다. 음수는 `ValueError`다.
 
 ---
 
@@ -333,6 +395,19 @@ astype(x, dtype, /, *, copy=True)
 - 쓰기 금지 배열에 대입하면 `ValueError`다.
 - `value`와 `x`의 메모리가 겹쳐도 된다 (§1.7).
 - `del x[idx]`는 지원하지 않는다.
+
+### §5.4 `take`, `take_along_axis`, `nonzero`
+```
+take(x, indices, /, *, axis=None)
+take_along_axis(x, indices, /, *, axis=-1)
+nonzero(x, /)
+```
+- **`take`**: `x[:, ..., :, indices]`(`axis` 자리)와 같다. 결과는 복사본이다.
+  - `indices`는 int 또는 int64 배열이다. numpy처럼 여러 차원도 받는다. 결과 shape은 `x.shape[:axis] + indices.shape + x.shape[axis+1:]`이다. bool 배열은 `TypeError`다(마스크가 아니다).
+  - 음수는 뒤에서 센다. 범위 밖은 `IndexError`다.
+  - `axis`는 int다. 1차원 `x`이면 생략할 수 있고, 2차원 이상이면 필수다(`cumulative_sum`과 같다).
+- **`take_along_axis`**: `indices`(int64, `x`와 같은 차원 수)를 축을 따라 고른다. 다른 축은 서로 브로드캐스트한다. `argsort`의 결과로 정렬된 값을 얻을 때 쓴다.
+- **`nonzero`**: `x != 0`인 위치를 축마다 int64 배열 하나씩, 그 tuple로 돌려준다. 위치는 C 순서다. NaN은 0이 아니다. complex는 실수부나 허수부가 0이 아니면 참이다.
 
 ---
 
@@ -409,6 +484,13 @@ isfinite(x, /, *, out=None)
 real(x, /, *, out=None)
 imag(x, /, *, out=None)
 conj(x, /, *, out=None)
+# 부호, 크기, 로그 합 (Array API 2024)
+copysign(x1, x2, /, *, out=None)
+hypot(x1, x2, /, *, out=None)
+logaddexp(x1, x2, /, *, out=None)
+nextafter(x1, x2, /, *, out=None)
+reciprocal(x, /, *, out=None)
+signbit(x, /, *, out=None)
 # 기타
 clip(x, /, *, min=None, max=None, out=None)
 where(condition, x1, x2, /, *, out=None)
@@ -449,6 +531,9 @@ where(condition, x1, x2, /, *, out=None)
 | `bitwise_left_shift` `bitwise_right_shift` | `TypeError` | int64 | `TypeError` | `TypeError` |
 | `maximum` `minimum` | bool | int64 | float64 | `TypeError` |
 | `isnan` `isinf` `isfinite` | bool | bool | bool | bool |
+| `copysign` `hypot` `logaddexp` `nextafter` | float64 | float64 | float64 | `TypeError` |
+| `reciprocal` | float64 | float64 | float64 | complex128 |
+| `signbit` | bool | bool | bool | `TypeError` |
 | `real` `imag` | bool | int64 | float64 | float64 |
 | `conj` | bool | int64 | float64 | complex128 |
 - 표의 열은 승격한 입력 dtype이다 (§1.4). 예: bool과 int64의 `bitwise_and`는 int64다.
@@ -486,6 +571,10 @@ where(condition, x1, x2, /, *, out=None)
   - 인자 3개 형태만 있다.
   - `condition`은 bool만 받는다. 다른 dtype은 `TypeError`다.
   - 세 인자를 서로 브로드캐스트한다.
+- **`copysign`, `hypot`, `logaddexp`, `nextafter`, `reciprocal`, `signbit`**: numpy의 스칼라 공식 그대로다(비트까지 같다).
+  - `logaddexp`: 두 값이 같으면 `x + log 2`, 아니면 큰 쪽 + `log1p(exp(-|x - y|))`. 같은 부호의 inf끼리도 경고 없이 그 inf다.
+  - `reciprocal`: 정수도 float64로 계산한다(Array API; numpy는 정수 나눗셈). complex는 numpy의 Smith 공식이다.
+  - `signbit`: -0.0과 음수 NaN에서도 부호 비트를 본다.
 - **정확도**
   - float64 입력의 `exp` `log` `log2` `log10` `sin` `asin` `acos` `atan` `atan2` `sinh` `cosh` `tanh` `asinh` `acosh` `atanh` `pow`는 numpy와 몇 ULP까지 다를 수 있다 (8 ULP 이내).
   - 특수값(±0, ±inf, NaN)은 부호까지 정확하다.
@@ -638,6 +727,23 @@ corrcoef(x, /, *, rowvar=True)
 - 평균과 행렬곱은 stardust의 것이다. 그래서 값은 numpy와 마지막 몇 비트가 다를 수 있다(§7.8). 결과는 결정적이다.
 - numpy의 `y`, `bias`, `fweights`, `aweights`, `dtype` 인자는 없다.
 
+### §7.12 `bincount`, `histogram`
+```
+bincount(x, /, *, weights=None, minlength=0)
+histogram(x, /, *, bins=10, range=None, weights=None, density=False)
+```
+- numpy의 함수다(Array API에는 없다). 값은 numpy와 비트까지 같다.
+- **`bincount`**: `x`는 0 이상의 1차원 bool 또는 int64 배열이다(음수는 `ValueError`).
+  - 결과 길이는 `max(x) + 1`과 `minlength` 중 큰 쪽이다.
+  - 결과는 개수(int64)다. `weights`(1차원, `x`와 같은 길이, 실수)를 주면 그 합(float64)이다. 합은 원소 순서대로 더한다.
+- **`histogram`**: 결과는 `HistogramResult(hist, bin_edges)`이다(tuple로 풀 수 있다).
+  - `x`는 아무 shape이나 받는다(C 순서로 편다). complex는 `TypeError`다.
+  - `bins`가 int이면 `range`(기본은 데이터의 최솟값·최댓값) 사이의 같은 너비 구간이다. 경계는 `linspace`다. 1차원 배열이면 그 값들이 경계다(단조 증가해야 한다; 그 dtype을 그대로 돌려준다). 문자열 규칙(`'auto'` 등)은 없다.
+  - 마지막 구간은 오른쪽 끝을 포함한다. 범위 밖의 값과 NaN은 세지 않는다. `range` 없이 데이터에 NaN이나 inf가 있으면 `ValueError`다.
+  - `hist`는 개수(int64)다. `weights`(`x`와 같은 shape)를 주면 그 dtype의 합이다(bool은 int64). 같은 너비 구간에서는 numpy처럼 65536개씩 블록으로 더한다.
+  - 경계 배열과 가중치를 함께 쓰면 numpy처럼 블록마다 정렬한 누적합의 차로 계산한다. 같은 값의 원소들 사이에서는 정렬 순서가 numpy와 다를 수 있어서, 그때는 마지막 비트가 다를 수 있다.
+  - `density=True`이면 `hist / 구간 너비 / hist의 합`(float64)이다.
+
 ---
 
 ## §8. 정렬과 집합
@@ -650,6 +756,8 @@ unique_values(x, /)
 unique_counts(x, /)      # -> (values, counts)
 unique_inverse(x, /)     # -> (values, inverse_indices)
 unique_all(x, /)         # -> (values, indices, inverse_indices, counts)
+searchsorted(x1, x2, /, *, side='left', sorter=None)
+count_nonzero(x, /, *, axis=None, keepdims=False)
 ```
 - `x`는 `sd.ndarray`여야 한다.
 
@@ -686,11 +794,20 @@ unique_all(x, /)         # -> (values, indices, inverse_indices, counts)
   - `inverse_indices`: 입력의 각 원소가 `values`의 몇 번째인지. shape은 `x`와 같다.
   - `indices`, `inverse_indices`, `counts`는 int64다.
 
+### §8.4 `searchsorted`, `count_nonzero`
+- **`searchsorted`**: 정렬된 1차원 `x1`에서 `x2`의 각 값이 들어갈 위치(int64, `x2`와 같은 shape)다.
+  - `side='left'`는 같은 값의 앞, `'right'`는 뒤다. 순서는 `sort`와 같다(NaN이 가장 크다, §8.2).
+  - `x2`는 배열 또는 Python 스칼라다(스칼라면 결과도 Python `int`). 둘을 승격한 dtype으로 비교한다. complex는 `TypeError`다.
+  - `sorter`는 `x1`을 정렬하는 int64 위치 배열이다(`argsort`의 결과). `x1`이 1차원이 아니면 `ValueError`다.
+- **`count_nonzero`**: `x != 0`인 원소 수(int64)다. `axis`, `keepdims`는 리덕션과 같다(§7.2). NaN은 0이 아니다.
+
 ---
 
 ## §9. 행렬곱
 ```
 matmul(x1, x2, /)
+tensordot(x1, x2, /, *, axes=2)
+vecdot(x1, x2, /, *, axis=-1)
 ```
 - `x1`, `x2`는 `sd.ndarray`여야 한다. Python 스칼라도 `TypeError`다. 연산자는 `@`, `@=`다.
 - `dot`은 없다.
@@ -702,6 +819,10 @@ matmul(x1, x2, /)
   - `x1`의 마지막 축과 `x2`의 끝에서 두 번째 축의 길이가 다르면 `ValueError`다.
 - 결과 dtype은 승격 규칙을 따른다. bool끼리는 int64다 (§1.4). 정수 곱과 합은 wrap한다.
 - complex도 받는다. `x1`을 켤레로 바꾸지 않는다.
+
+- **`tensordot`**: `axes`가 int `n`이면 `x1`의 마지막 `n`축과 `x2`의 처음 `n`축을 줄인다. 두 축 목록의 쌍(`([1, 0], [0, 2])`)이면 그 축들을 차례로 짝지어 줄인다. 짝지은 축의 길이가 다르면 `ValueError`다.
+  - 결과 shape은 `x1`의 남은 축 다음 `x2`의 남은 축이다. 모두 줄이면 Python 스칼라다. 계산은 `matmul` 한 번이다(dtype도 `matmul`과 같다).
+- **`vecdot`**: `sd.linalg.vecdot`과 같은 함수다(docs/api/linalg.md). `x1`을 켤레로 바꾼다.
 
 ---
 
@@ -776,6 +897,10 @@ sum  prod  min  max  mean  var  std  argmin  argmax  any  all
 - format 문자는 bool `?`, int64 `q`, float64 `d`, complex128 `Zd`다.
 - shape과 strides를 그대로 내보낸다. 복사가 없다.
 - 쓰기 금지 배열은 읽기 전용 버퍼로 내보낸다.
+- **DLPack**: `x.__dlpack__(*, stream=None, max_version=None, dl_device=None, copy=None)`, `x.__dlpack_device__()`(언제나 `(1, 0)`, CPU)
+  - `max_version`이 `(1, 0)` 이상이면 DLPack 1.0의 버전 있는 capsule, 아니면 옛 형식이다. `np.from_dlpack(x)`가 복사 없이 받는다.
+  - 쓰기 금지 배열은 버전 있는 형식에서 읽기 전용 표시를 단다. 옛 형식은 그 표시가 없어서 `BufferError`다(numpy와 같다).
+  - `copy=True`이면 복사본을 내보낸다. `stream`은 `None`, `dl_device`는 `None` 또는 `(1, 0)`만 받는다.
 
 ### §10.6 `repr`, `str`
 - `repr(x)`는 `array([...], dtype=<dtype>)` 형태다.
