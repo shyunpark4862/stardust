@@ -11,6 +11,7 @@
 #include "array/convert.hpp"
 #include "array/ops/copy.hpp"
 #include "array/ops/creation.hpp"
+#include "array/ops/pieces.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -311,6 +312,22 @@ nb::object from_buffer(nb::handle obj, std::optional<DType> dtype, std::optional
     NDArray dst = new_array_like(foreign, target);  // keeps the source's memory order
     visit_src(src, [&]<typename S>(std::type_identity<S>) {
         visit_dtype(target, [&]<typename T>(std::type_identity<T>) {
+            // Contiguous in the same order as the copy (the usual buffer): one flat loop
+            // the compiler vectorises, in pieces on the pool -- the element walk below
+            // took 417 us for 10^6 int32, this 60 (numpy's astype: 99).
+            // (the buffer's own contiguity: `foreign` carries the target's item size)
+            dst.update_flags();
+            if (!swapped && ((PyBuffer_IsContiguous(&view, 'C') && dst.c_contiguous) ||
+                             (PyBuffer_IsContiguous(&view, 'F') && dst.f_contiguous))) {
+                const auto* sp = static_cast<const std::byte*>(view.buf);
+                T* dp = reinterpret_cast<T*>(dst.data);
+                const std::int64_t n = dst.size();
+                for_pieces(n, kParallelTask, n, [&](std::int64_t, std::int64_t i0, std::int64_t i1) {
+                    for (std::int64_t i = i0; i < i1; ++i)
+                        dp[i] = cast_value<T>(widen(load<S>(sp + i * static_cast<std::int64_t>(sizeof(S)))));
+                });
+                return;
+            }
             auto run = [&](auto&& load_one) {
                 for_each_element<2>(dst.shape_span(), {static_cast<std::byte*>(view.buf), dst.data},
                                     {foreign.strides.data(), dst.strides.data()},

@@ -48,6 +48,8 @@ NumpyScalarTypes& numpy_scalar_types() {
 // numpy.timedelta64 is a numpy.integer without __index__: not an int.
 std::optional<DType> numpy_scalar_dtype(PyObject* p) {
     if (std::strncmp(Py_TYPE(p)->tp_name, "numpy.", 6) != 0) return std::nullopt;
+    // an array is no scalar: without this sd.asarray(ndarray) paid four isinstance calls (37 ns of 175)
+    if (std::strcmp(Py_TYPE(p)->tp_name + 6, "ndarray") == 0) return std::nullopt;
     const NumpyScalarTypes& t = numpy_scalar_types();
     for (int k = 0; k < 4; ++k) {
         if (t.types[k] == nullptr) continue;

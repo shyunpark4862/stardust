@@ -149,10 +149,24 @@ def test_copyto_refuses_implicit_downcast_and_readonly():
         copyto(sd.asarray(src), sd.asarray([1.0, 2.0]))
 
 
-def test_may_share_memory_is_a_byte_range_test():
+def test_may_share_memory_is_a_byte_range_test_with_the_interleaved_case():
     n = np.arange(10.0)
     share = sd._core._may_share_memory
     assert share(sd.asarray(n[:5]), sd.asarray(n[4:]))
     assert not share(sd.asarray(n[:5]), sd.asarray(n[5:]))
-    # Conservative: interleaved halves never touch the same element, but their ranges overlap.
-    assert share(sd.asarray(n[::2]), sd.asarray(n[1::2]))
+    # Interleaved halves: the ranges overlap, but the starts differ by one element
+    # modulo the common stride, so no byte is shared (docs/design/array.md §3.5).
+    assert not share(sd.asarray(n[::2]), sd.asarray(n[1::2]))
+    assert not share(sd.asarray(n[::3]), sd.asarray(n[2::3]))
+    # Still conservative where the strides' gcd cannot tell: these never meet either.
+    assert share(sd.asarray(n[0:9:4]), sd.asarray(n[2:9:6]))
+    assert share(sd.asarray(n[::2]), sd.asarray(n[2::2]))
+
+
+def test_interleaved_in_place_matches_a_copy():
+    n = np.arange(10.0)
+    x = sd.asarray(n.copy())
+    x[::2] += x[1::2]
+    want = n.copy()
+    want[::2] = n[::2] + n[1::2]
+    assert np.array_equal(np.asarray(x), want)

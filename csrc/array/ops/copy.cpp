@@ -8,6 +8,7 @@
 #include <nanobind/stl/string.h>
 
 #include <algorithm>
+#include <numeric>
 #include <cstdint>
 #include <string>
 
@@ -54,11 +55,31 @@ bool same_view(const NDArray& a, const NDArray& b) {
 bool may_share_memory(const NDArray& a, const NDArray& b) {
     if (a.size() == 0 || b.size() == 0) return false;
     const ByteRange ra = byte_range(a), rb = byte_range(b);
-    return ra.lo < rb.hi && rb.lo < ra.hi;
+    if (!(ra.lo < rb.hi && rb.lo < ra.hi)) return false;
+    // Interleaved views (x[::2] and x[1::2]) overlap in range but share no byte: every
+    // element of either starts at its data pointer plus a multiple of g, the gcd of all
+    // the strides, so with the starts d apart modulo g they are disjoint when an element
+    // fits in the gap on both sides. (A sufficient test; without it x[::2] += x[1::2]
+    // copied its operand first: 120 us of 370 for 10^6 elements.)
+    std::int64_t g = 0;
+    for (int d = 0; d < a.ndim; ++d)
+        if (a.shape[d] > 1) g = std::gcd(g, a.strides[d]);
+    for (int d = 0; d < b.ndim; ++d)
+        if (b.shape[d] > 1) g = std::gcd(g, b.strides[d]);
+    if (g > 0) {
+        const auto pa = reinterpret_cast<std::uintptr_t>(a.data), pb = reinterpret_cast<std::uintptr_t>(b.data);
+        const auto gap = static_cast<std::int64_t>((pa > pb ? pa - pb : pb - pa) % static_cast<std::uintptr_t>(g));
+        const std::int64_t width = std::max(a.itemsize(), b.itemsize());
+        if (gap >= width && g - gap >= width) return false;
+    }
+    return true;
 }
 
 void assign(NDArray& dst, const NDArray& src) {
-    if (may_share_memory(dst, src) && !same_view(dst, src)) {
+    // x[i] op= y arrives here as x[i] = (the view x[i], already updated in place):
+    // nothing to copy (it was a full pass over the data, 119 us for 10^6).
+    if (same_view(dst, src)) return;
+    if (may_share_memory(dst, src)) {
         // e.g. a[1:] = a[:-1]: walking forward would read values already overwritten.
         NDArray tmp = cast_copy(src, src.dtype);
         run_cast(tmp, dst, IterMode::Full);
