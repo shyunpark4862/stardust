@@ -12,6 +12,7 @@
 #include "bind/pyutil.hpp"
 #include "array/convert.hpp"
 #include "array/ops/copy.hpp"
+#include "array/ops/sort.hpp"
 #include "array/parallel_limits.hpp"
 #include "parallel/pool.hpp"
 
@@ -172,24 +173,41 @@ struct Job {
     std::int64_t lanes;             // output positions; the result row stride
 };
 
+// Lanes up to this long are sorted (the NEON sort) rather than selected:
+// measured per element, sorting 16 / 256 / 1000 / 4096 values took 2.4 / 4.1
+// / 5.6 / 7.3 ns against 8.3 / 8.0 / 7.8 / 7.5 ns for nth_element, which wins
+// above (6.9 ns at 1e6 against 13.9 ns).
+constexpr std::int64_t kSortSelect = 4096;
+
 // Puts the order statistics at the (ascending, distinct) positions ks[0..count)
 // in place, within p[lo..hi): the middle position first, then each half
 // only inside its side of it -- about n log(count) work instead of the
 // n * count of selecting left to right. A position at either end of its
 // range is just the smallest or largest of the range, a plain scan.
+// Everything compares in the total order -0.0 < +0.0 (TotalLess), the order
+// the sorts use too, so every path picks the same value, sign included.
 void select(double* p, std::int64_t lo, std::int64_t hi, const std::int64_t* ks, int count) {
     if (count == 0) return;
     if (count > 32) {  // many positions: sorting the range is cheaper
-        std::sort(p + lo, p + hi);
+        sort_float64_total(p + lo, hi - lo, false);
         return;
     }
     const int mid = count / 2;
     const std::int64_t k = ks[mid];
-    if (k == lo) std::iter_swap(p + k, std::min_element(p + lo, p + hi));
-    else if (k == hi - 1) std::iter_swap(p + k, std::max_element(p + lo, p + hi));
-    else std::nth_element(p + lo, p + k, p + hi);
+    if (k == lo) std::iter_swap(p + k, std::min_element(p + lo, p + hi, TotalLess{}));
+    else if (k == hi - 1) std::iter_swap(p + k, std::max_element(p + lo, p + hi, TotalLess{}));
+    else std::nth_element(p + lo, p + k, p + hi, TotalLess{});
     select(p, lo, k, ks, mid);
     select(p, k + 1, hi, ks + mid + 1, count - mid - 1);
+}
+
+// The order statistics at ks: a short lane is sorted; a long lane that is
+// the only one is sorted in parallel pieces when the pool is free (10
+// threads, 1e6 values: 4.1 ms against 6.9 ms selecting); otherwise selected.
+void order_statistics(double* p, std::int64_t n, bool only_lane, const std::int64_t* ks, int count) {
+    if (n <= kSortSelect) sort_float64_total(p, n, false);
+    else if (only_lane && n >= 2 * (1 << 16) && parallel::available()) sort_float64_total(p, n, true);
+    else select(p, 0, n, ks, count);
 }
 
 void run_lane(const Job& job, double* p, double* out) {
@@ -214,11 +232,12 @@ void run_lane(const Job& job, double* p, double* out) {
         // divided by the count.
         const std::int64_t h = n / 2;
         if (n % 2) {
-            std::nth_element(p, p + h, p + n);
+            const std::int64_t ks[] = {h};
+            order_statistics(p, n, job.lanes == 1, ks, 1);
             out[0] = (0.0 + p[h]) / 1.0;
         } else {
             const std::int64_t ks[] = {h - 1, h};
-            select(p, 0, n, ks, 2);
+            order_statistics(p, n, job.lanes == 1, ks, 2);
             out[0] = (0.0 + p[h - 1] + p[h]) / 2.0;
         }
         return;
@@ -234,7 +253,7 @@ void run_lane(const Job& job, double* p, double* out) {
     }
     std::sort(ks.begin(), ks.end());
     ks.erase(std::unique(ks.begin(), ks.end()), ks.end());
-    select(p, 0, n, ks.data(), static_cast<int>(ks.size()));
+    order_statistics(p, n, job.lanes == 1, ks.data(), static_cast<int>(ks.size()));
     for (std::int64_t j = 0; j < results; ++j) {
         const Pick& k = picks[j];
         out[j * job.lanes] = k.lerp ? lerp(p[k.lo], p[k.hi], k.gamma) : p[k.lo];

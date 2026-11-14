@@ -199,14 +199,31 @@ std::int64_t neon_fold_int(const std::int64_t* x, std::int64_t n, std::int64_t a
     return acc;
 }
 
-// args: x, out (read and written)
-template <typename Op, typename T>
+// The nan* reductions read x through this: a NaN (complex: either part)
+// counts as `fill`, the identity of the fold (0 for sums, 1 for products).
+// Folding x so is folding a copy of x with its NaNs replaced -- the same
+// order, the same bits -- without making the copy (docs/design/array.md §6.11).
+template <typename T>
+inline T nan_as(T v, T fill) {
+    if constexpr (ops::is_cplx<T>) return (std::isnan(v.real()) || std::isnan(v.imag())) ? fill : v;
+    else if constexpr (ops::is_float<T>) return v != v ? fill : v;
+    else return v;
+}
+
+// args: x, out (read and written). SkipNan: x's NaNs read as the identity
+// (Add and Multiply of float64 / complex128 only).
+template <typename Op, typename T, bool SkipNan = false>
 void reduce_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, void*) {
     const std::byte* x = args[0];
     std::byte* o = args[1];
+    [[maybe_unused]] const T identity = std::is_same_v<Op, ops::Multiply> ? T(1) : T(0);
+    auto value = [&](T v) {
+        if constexpr (SkipNan) return nan_as(v, identity);
+        else return v;
+    };
     if (s[1] == 0) {  // inner-axis: fold the run into one value
         T acc = load_as<T>(o);
-        auto at = [&](std::int64_t i) { return load_as<T>(x + i * s[0]); };
+        auto at = [&](std::int64_t i) { return value(load_as<T>(x + i * s[0])); };
         if constexpr (ops::is_bool<T> && (std::is_same_v<Op, ops::LogicalOr> || std::is_same_v<Op, ops::LogicalAnd>)) {
             // any/all stop as soon as the answer is known: any at the first
             // True, all at the first False. Checked once per block of 4096,
@@ -251,7 +268,15 @@ void reduce_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, 
                 return;
             }
         }
-        if constexpr (std::is_same_v<Op, ops::Add> && ops::is_float<T>) {
+        if constexpr (std::is_same_v<Op, ops::Add> && ops::is_float<T> && SkipNan) {
+            // A typed contiguous read lets the NaN select vectorize (2x on 1e7).
+            if (s[0] == sizeof(T)) {
+                const T* xp = reinterpret_cast<const T*>(x);
+                acc = acc + pairwise_sum_mt(n, [xp](std::int64_t i) { const T v = xp[i]; return v != v ? T(0) : v; });
+            } else {
+                acc = acc + pairwise_sum_mt(n, at);
+            }
+        } else if constexpr (std::is_same_v<Op, ops::Add> && ops::is_float<T>) {
             acc = acc + pairwise_sum_mt(n, at);
         } else if constexpr (std::is_same_v<Op, ops::Add> && ops::is_cplx<T>) {
             const complex128 p = pairwise_sum_complex_mt(n, at);
@@ -259,7 +284,7 @@ void reduce_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, 
         } else if constexpr (std::is_same_v<Op, ops::Multiply> && (ops::is_float<T> || ops::is_cplx<T>)) {
             if (s[0] == sizeof(T)) {
                 const T* xp = reinterpret_cast<const T*>(x);
-                acc = Op::f(acc, product_mt<T>(n, [xp](std::int64_t i) { return xp[i]; }));
+                acc = Op::f(acc, product_mt<T>(n, [&](std::int64_t i) { return value(xp[i]); }));
             } else {
                 acc = Op::f(acc, product_mt<T>(n, at));
             }
@@ -289,12 +314,67 @@ void reduce_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, 
     if (s[0] == sizeof(T) && s[1] == sizeof(T)) {  // outer-axis, contiguous rows: o = f(o, x)
         T* op = reinterpret_cast<T*>(o);
         const T* xp = reinterpret_cast<const T*>(x);
-        if constexpr (neon_binary<Op, T>::available) neon_binary<Op, T>::run(op, xp, op, n);
-        else for (std::int64_t i = 0; i < n; ++i) op[i] = Op::f(op[i], xp[i]);
+        if constexpr (neon_binary<Op, T>::available && !SkipNan) neon_binary<Op, T>::run(op, xp, op, n);
+        else for (std::int64_t i = 0; i < n; ++i) op[i] = Op::f(op[i], value(xp[i]));
         return;
     }
     for (std::int64_t i = 0; i < n; ++i, x += s[0], o += s[1])
-        *reinterpret_cast<T*>(o) = Op::f(load_as<T>(o), load_as<T>(x));
+        *reinterpret_cast<T*>(o) = Op::f(load_as<T>(o), value(load_as<T>(x)));
+}
+
+// Counting folds into int64 (order-free): Kind 0 counts the non-NaN
+// elements (nanmean, nanvar), Kind 1 the nonzero ones (count_nonzero; NaN
+// is nonzero). A long run of one output is counted in parallel pieces.
+// args: x, out (int64)
+template <typename T, int Kind>
+void count_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, void*) {
+    const std::byte* x = args[0];
+    std::byte* o = args[1];
+    auto hit = [&](std::int64_t i) -> std::int64_t {
+        const T v = load_as<T>(x + i * s[0]);
+        if constexpr (Kind == 0) {
+            if constexpr (ops::is_cplx<T>) return !(std::isnan(v.real()) || std::isnan(v.imag()));
+            else if constexpr (ops::is_float<T>) return v == v;
+            else return 1;
+        } else {
+            if constexpr (ops::is_cplx<T>) return v.real() != 0 || v.imag() != 0;
+            else return v != T(0);
+        }
+    };
+    auto run = [&](std::int64_t b, std::int64_t e) {
+        std::int64_t acc = 0;
+        if (s[0] == sizeof(T)) {  // typed and contiguous: vectorizes
+            const T* xp = reinterpret_cast<const T*>(x);
+            for (std::int64_t i = b; i < e; ++i) {
+                const T v = xp[i];
+                if constexpr (Kind == 0) {
+                    if constexpr (ops::is_cplx<T>) acc += !(v.real() != v.real() || v.imag() != v.imag());
+                    else if constexpr (ops::is_float<T>) acc += v == v;
+                    else acc += 1;
+                } else {
+                    if constexpr (ops::is_cplx<T>) acc += v.real() != 0 || v.imag() != 0;
+                    else acc += v != T(0);
+                }
+            }
+            return acc;
+        }
+        for (std::int64_t i = b; i < e; ++i) acc += hit(i);
+        return acc;
+    };
+    if (s[1] == 0) {
+        std::int64_t acc = 0;
+        if (n >= kParallelThreshold && parallel::available()) {
+            const std::int64_t pieces = (n + kParallelTask - 1) / kParallelTask;
+            std::vector<std::int64_t> part(pieces);
+            parallel::parallel_for(pieces, [&](std::int64_t t) { part[t] = run(t * kParallelTask, std::min(n, (t + 1) * kParallelTask)); });
+            for (std::int64_t v : part) acc += v;
+        } else {
+            acc = run(0, n);
+        }
+        *reinterpret_cast<std::int64_t*>(o) += acc;
+        return;
+    }
+    for (std::int64_t i = 0; i < n; ++i) *reinterpret_cast<std::int64_t*>(o + i * s[1]) += hit(i);
 }
 
 // Sum of squared deviations, the second pass of var: out += |x - m|^2.
@@ -308,16 +388,18 @@ void sq_dev_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, 
     std::byte* o = args[2];
     auto sq = [&](std::int64_t i) {
         const T v = load_as<T>(x + i * s[0]);
-        if constexpr (SkipNan) {
-            if constexpr (ops::is_cplx<T>) {
-                if (std::isnan(v.real()) || std::isnan(v.imag())) return 0.0;
-            } else {
-                if (std::isnan(v)) return 0.0;
-            }
-        }
         const T d = v - load_as<T>(m + i * s[1]);
-        if constexpr (ops::is_cplx<T>) return d.real() * d.real() + d.imag() * d.imag();
-        else return d * d;
+        double sq;
+        if constexpr (ops::is_cplx<T>) sq = d.real() * d.real() + d.imag() * d.imag();
+        else sq = d * d;
+        if constexpr (SkipNan) {
+            // A select, not a branch: NaNs scattered at random defeat branch prediction.
+            bool nan;
+            if constexpr (ops::is_cplx<T>) nan = v.real() != v.real() || v.imag() != v.imag();
+            else nan = v != v;
+            return nan ? 0.0 : sq;
+        }
+        return sq;
     };
     if (s[2] == 0) {  // inner-axis: pairwise, like sum
         *reinterpret_cast<double*>(o) += pairwise_sum_mt(n, sq);
@@ -332,22 +414,32 @@ void sq_dev_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, 
 // was. Strict > keeps the first index within a lane; between the lanes a tie
 // goes to the smaller index. NaNs are only noted on the way (any NaN wins,
 // the first one) and then located by a scalar rescan, as they are rare.
-template <bool Max>
+// SkipNan (nanargmin/nanargmax): a NaN reads as +inf (min) or -inf (max),
+// numpy's replacement, so it never wins over a number and the first of
+// equal values still wins.
+template <bool Max, bool SkipNan = false>
 std::int64_t neon_arg_extreme(const double* x, std::int64_t n) {
-    float64x2_t best = vld1q_f64(x);
+    const double far = Max ? -std::numeric_limits<double>::infinity() : std::numeric_limits<double>::infinity();
+    const float64x2_t farv = vdupq_n_f64(far);
+    auto load = [&](const double* p) {
+        const float64x2_t v = vld1q_f64(p);
+        if constexpr (SkipNan) return vbslq_f64(vceqq_f64(v, v), v, farv);
+        else return v;
+    };
+    float64x2_t best = load(x);
     int64x2_t at = {0, 1}, idx = {0, 1};
     const int64x2_t two = vdupq_n_s64(2);
     uint64x2_t ordered = vceqq_f64(best, best);  // all-ones while a lane has seen no NaN (x == x)
     std::int64_t i = 2;
     for (; i + 2 <= n; i += 2) {
-        const float64x2_t v = vld1q_f64(x + i);
+        const float64x2_t v = load(x + i);
         idx = vaddq_s64(idx, two);
         const uint64x2_t better = Max ? vcgtq_f64(v, best) : vcltq_f64(v, best);
         best = vbslq_f64(better, v, best);
         at = vbslq_s64(better, idx, at);
-        ordered = vandq_u64(ordered, vceqq_f64(v, v));
+        if constexpr (!SkipNan) ordered = vandq_u64(ordered, vceqq_f64(v, v));
     }
-    if (vminvq_u32(vreinterpretq_u32_u64(ordered)) == 0)  // some lane met a NaN
+    if (!SkipNan && vminvq_u32(vreinterpretq_u32_u64(ordered)) == 0)  // some lane met a NaN
         for (std::int64_t k = 0;; ++k)
             if (std::isnan(x[k])) return k;
     double b0 = vgetq_lane_f64(best, 0), b1 = vgetq_lane_f64(best, 1);
@@ -359,29 +451,42 @@ std::int64_t neon_arg_extreme(const double* x, std::int64_t n) {
         a = a1;
     }
     for (; i < n; ++i) {  // the odd last element
-        if (std::isnan(x[i])) return i;
-        if (Max ? x[i] > b : x[i] < b) {
-            b = x[i];
+        double v = x[i];
+        if constexpr (SkipNan) {
+            if (v != v) v = far;
+        } else {
+            if (std::isnan(v)) return i;
+        }
+        if (Max ? v > b : v < b) {
+            b = v;
             a = i;
         }
     }
     return a;
 }
 
-template <typename T, bool Max>
+template <typename T, bool Max, bool SkipNan = false>
 std::int64_t arg_extreme(const std::byte* p, std::int64_t n, std::int64_t stride) {
     if constexpr (ops::is_float<T>) {
-        if (stride == sizeof(double) && n >= 2) return neon_arg_extreme<Max>(reinterpret_cast<const double*>(p), n);
+        if (stride == sizeof(double) && n >= 2) return neon_arg_extreme<Max, SkipNan>(reinterpret_cast<const double*>(p), n);
     }
-    T best = load_as<T>(p);
+    [[maybe_unused]] const double far = Max ? -std::numeric_limits<double>::infinity() : std::numeric_limits<double>::infinity();
+    auto load = [&](const std::byte* q) {
+        T v = load_as<T>(q);
+        if constexpr (SkipNan && ops::is_float<T>) {
+            if (v != v) v = far;
+        }
+        return v;
+    };
+    T best = load(p);
     std::int64_t at = 0;
-    if constexpr (ops::is_float<T>) {
+    if constexpr (ops::is_float<T> && !SkipNan) {
         if (std::isnan(best)) return 0;  // the first NaN wins outright
     }
     p += stride;
     for (std::int64_t i = 1; i < n; ++i, p += stride) {
-        const T v = load_as<T>(p);
-        if constexpr (ops::is_float<T>) {
+        const T v = load(p);
+        if constexpr (ops::is_float<T> && !SkipNan) {
             if (std::isnan(v)) return i;
         }
         if (Max ? v > best : v < best) {
@@ -396,15 +501,22 @@ std::int64_t arg_extreme(const std::byte* p, std::int64_t n, std::int64_t stride
 // The first output is the first input itself (not identity + x), so -0.0
 // survives, as in numpy.
 
-template <typename Op, typename T>
+// SkipNan (nancumulative_*): x's NaNs read as the identity, as in reduce_loop.
+template <typename Op, typename T, bool SkipNan = false>
+inline T scan_value(T v) {
+    if constexpr (SkipNan) return nan_as(v, std::is_same_v<Op, ops::Multiply> ? T(1) : T(0));
+    else return v;
+}
+
+template <typename Op, typename T, bool SkipNan = false>
 void scan_serial(const std::byte* x, std::int64_t xs, std::byte* o, std::int64_t os, std::int64_t n) {
     if (n == 0) return;
-    T acc = load_as<T>(x);
+    T acc = scan_value<Op, T, SkipNan>(load_as<T>(x));
     *reinterpret_cast<T*>(o) = acc;
     for (std::int64_t i = 1; i < n; ++i) {
         x += xs;
         o += os;
-        acc = Op::f(acc, load_as<T>(x));
+        acc = Op::f(acc, scan_value<Op, T, SkipNan>(load_as<T>(x)));
         *reinterpret_cast<T*>(o) = acc;
     }
 }
@@ -425,7 +537,7 @@ inline constexpr std::int64_t kScanGroup = 4;  // blocks interleaved in one loop
 
 // Contig: both strides are sizeof(T), known to the compiler (a runtime
 // stride made the loop 2.3x slower, measured).
-template <typename Op, typename T, bool Contig>
+template <typename Op, typename T, bool Contig, bool SkipNan = false>
 void scan_group(const std::byte* x, std::int64_t xs, std::byte* o, std::int64_t os, std::int64_t first,
                 std::int64_t blocks, std::int64_t n) {
     if constexpr (Contig) xs = os = sizeof(T);
@@ -445,8 +557,8 @@ void scan_group(const std::byte* x, std::int64_t xs, std::byte* o, std::int64_t 
         // Typed accesses when contiguous: through load_as (a memcpy) the
         // compiler kept v on the stack, three memory operations per element.
         auto ld = [&](int j, std::int64_t i) {
-            if constexpr (Contig) return reinterpret_cast<const T*>(xp[j])[i];
-            else return load_as<T>(xp[j] + i * xs);
+            if constexpr (Contig) return scan_value<Op, T, SkipNan>(reinterpret_cast<const T*>(xp[j])[i]);
+            else return scan_value<Op, T, SkipNan>(load_as<T>(xp[j] + i * xs));
         };
         auto st = [&](int j, std::int64_t i, T val) {
             if constexpr (Contig) reinterpret_cast<T*>(op[j])[i] = val;
@@ -472,16 +584,16 @@ void scan_group(const std::byte* x, std::int64_t xs, std::byte* o, std::int64_t 
     }
     for (; b < first + blocks; ++b) {
         const std::int64_t begin = b * kScanBlock;
-        scan_serial<Op, T>(x + begin * xs, xs, o + begin * os, os, std::min(kScanBlock, n - begin));
+        scan_serial<Op, T, SkipNan>(x + begin * xs, xs, o + begin * os, os, std::min(kScanBlock, n - begin));
     }
 }
 
-template <typename Op, typename T>
+template <typename Op, typename T, bool SkipNan = false>
 void scan_lane(const std::byte* x, std::int64_t xs, std::byte* o, std::int64_t os, std::int64_t n) {
     const bool blocked = (ops::is_float<T> || ops::is_cplx<T>) ? n >= 2 * kScanBlock
                                                                  : n >= kParallelThreshold && parallel::available();
     if (!blocked) {
-        scan_serial<Op, T>(x, xs, o, os, n);
+        scan_serial<Op, T, SkipNan>(x, xs, o, os, n);
         return;
     }
     const std::int64_t blocks = (n + kScanBlock - 1) / kScanBlock;
@@ -489,8 +601,8 @@ void scan_lane(const std::byte* x, std::int64_t xs, std::byte* o, std::int64_t o
     const bool contig = xs == sizeof(T) && os == sizeof(T);
     parallel::parallel_for(groups, [&](std::int64_t g) {
         const std::int64_t first = g * kScanGroup, count = std::min(kScanGroup, blocks - first);
-        if (contig) scan_group<Op, T, true>(x, xs, o, os, first, count, n);
-        else scan_group<Op, T, false>(x, xs, o, os, first, count, n);
+        if (contig) scan_group<Op, T, true, SkipNan>(x, xs, o, os, first, count, n);
+        else scan_group<Op, T, false, SkipNan>(x, xs, o, os, first, count, n);
     });
     auto at = [&](std::int64_t i) -> T& { return *reinterpret_cast<T*>(o + i * os); };
     auto carry = std::make_unique_for_overwrite<T[]>(static_cast<size_t>(blocks));

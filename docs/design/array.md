@@ -336,7 +336,7 @@ float64 초월함수는 함수마다 구현을 나눈다.
 
 ### 5.5 Array API 2024의 원소별 함수 (T0b)
 - `copysign`, `hypot`, `logaddexp`, `nextafter`, `reciprocal`, `signbit`은 `scalar_ops.hpp`의 Op다. 다른 ufunc와 같은 디스패처(타입 표, `out=`, 스칼라 fast path)를 쓴다.
-- 값은 numpy의 스칼라 공식이다. `logaddexp`는 `npy_logaddexp`(같으면 `x + log 2`)이고, `hypot`·`nextafter`·`copysign`은 libm이다.
+- 값은 numpy의 스칼라 공식이다. `logaddexp`는 `npy_logaddexp`(같으면 `x + log 2`)이고, `hypot`·`copysign`은 libm이다. `nextafter`는 비트 패턴을 한 칸 옮겨 직접 계산한다(libm과 같은 결과, NaN·같은 값·0·inf 경계 포함). libm의 `nextafter`보다 8배 빠르다.
 - complex `reciprocal`은 numpy의 Smith 공식이다. numpy의 arm64 빌드는 분모 `re + im*r`를 FMA 하나로 묶는다. 그래서 `std::fma`로 맞췄다. 잰 결과, FMA 없이는 9%의 원소가 1 ULP 달랐다.
 
 ## 6. 리덕션
@@ -441,26 +441,33 @@ numpy의 `DOUBLE_pairwise_sum`/`CDOUBLE_pairwise_sum`과 같은 알고리즘, �
 
 ### 6.10 분위수 (`array/ops/quantile.cpp`, T0)
 - **레인 모으기**: 남는 축을 앞에, 줄이는 축을 뒤에 둔 뷰를 C 순서 float64 행렬로 복사한다(`assign`). 한 행이 한 레인이다. 레인은 그 행 안에서 제자리로 고른다.
-- **고르기**: 필요한 위치들(분위수마다 이웃 둘)을 정렬·중복 제거한 뒤 가운데 위치부터 `nth_element`로 고르고, 양쪽 절반을 그 안에서만 다시 고른다(약 n·log(위치 수)). 범위의 첫 위치나 끝 위치는 `min_element`/`max_element` 한 번이다. 위치가 32개를 넘으면 범위를 정렬한다.
+- **고르기**: 필요한 위치들(분위수마다 이웃 둘)을 정렬·중복 제거한다. 레인 길이에 따라 세 길 중 하나다.
+  - 4096개 이하: NEON 정렬(§8.3)로 레인 전체를 정렬한다. 원소당 16개 2.4 ns, 1000개 5.6 ns로 `nth_element`(7.5–8.3 ns)보다 빠르다.
+  - 레인이 하나뿐이고 13만 개 이상이며 풀이 비어 있으면: 조각으로 나눈 병렬 정렬(§8.5). 1e6개, 10스레드에서 3.8 ms(고르기는 6.6 ms).
+  - 그 밖: 가운데 위치부터 `nth_element`로 고르고, 양쪽 절반을 그 안에서만 다시 고른다(약 n·log(위치 수)). 범위의 첫 위치나 끝 위치는 `min_element`/`max_element` 한 번이다. 위치가 32개를 넘으면 범위를 정렬한다.
+  - 셋 다 같은 전순서(-0.0 < +0.0, `TotalLess`)를 쓴다. NEON 정렬의 병합은 같은 값을 어느 쪽에서든 가져와서 -0.0과 +0.0이 섞인다. 그래서 정렬한 뒤 0의 구간을 "-0.0 모두, 그다음 +0.0 모두"로 다시 쓴다(`sort_float64_total`). 병렬 정렬의 병합도 `TotalLess`로 비교한다.
 - **numpy와 비트가 같은 이유**: 값은 순서 통계량만 쓴다. 순서 통계량은 고르는 방법과 상관없이 같다. 위치와 보간은 numpy 2.x 소스를 그대로 옮겼다.
   - `_compute_virtual_index`의 `n*q + (alpha + q*(1 - alpha - beta)) - 1`, 메서드별 위치식, `np.around`의 짝수 반올림(`nearbyint`)
   - `_get_indexes`: 범위를 넘으면 이웃이 둘 다 마지막 원소인데, `_get_gamma`가 빼는 위치는 −1이다. 그래서 gamma = v + 1이다. 이것도 그대로 따른다(마지막 원소가 inf이면 numpy처럼 `inf - inf`로 NaN).
   - `_closest_observation`의 `floor(index) % 2`는 Python의 나머지(나누는 수의 부호)다.
   - `_lerp`: `diff = b - a`, `t ≥ 0.5`이면 `b - diff*(1 - t)`, 아니면 `a + diff*t`. `-ffp-contract=off`(§1.3)라서 FMA로 합쳐지지 않는다.
   - `median`은 quantile이 아니라 numpy의 `_median`이다: 가운데 하나나 둘을 +0.0부터 더해 개수로 나눈다.
-- **같지 않은 것**: -0.0과 +0.0이 한 순위에 섞여 있으면 어느 부호가 나올지는 고르는 알고리즘에 따른다. numpy의 introselect와 같다고 보장하지 않는다.
+- **같지 않은 것**: -0.0과 +0.0이 한 순위에 섞여 있으면 우리는 전순서로 정한다. numpy의 introselect는 정해 두지 않아서 부호가 다를 수 있다. 전순서 덕분에 세 길 중 어느 것을 타도(스레드 수에 따라 길이 바뀌어도) 같은 비트다.
 - **결과 dtype**: 사용자 결정으로 언제나 float64다. numpy처럼 정수를 유지하면 빈 레인의 NaN을 담을 수 없기 때문이다. 정수는 float64로 바꾼 뒤 고른다. numpy는 정수로 `b - a`를 계산하는데, |x| < 2⁵³이면 결과가 같다.
 - **NaN과 빈 레인**: 행을 훑어 NaN이 있으면 그 레인은 NaN이다. nan판은 `remove_if`로 NaN을 앞으로 모아 길이를 줄인다. 길이가 0이면 NaN이다(numpy는 `IndexError`를 내거나 경고를 낸다).
-- **병렬**: 레인은 서로 독립이다. 그래서 행을 묶어(작업당 원소 4096개 이상) 나누어도 비트가 같다. 레인 하나짜리(`axis=None`)는 직렬이다.
+- **병렬**: 레인은 서로 독립이다. 그래서 행을 묶어(작업당 원소 4096개 이상) 나누어도 비트가 같다. 레인 하나짜리(`axis=None`)는 위의 병렬 정렬을 쓴다.
 
-### 6.11 NaN을 건너뛰는 리덕션 (`array/ops/reduction.cpp`, T0)
-numpy의 nan 함수처럼 NaN을 중립값으로 바꾼 뒤 이름 앞의 `nan`을 뗀 리덕션을 부른다. 그래서 NaN이 없으면 비트가 같다.
-- `replace_nan`: 원소별 커널 하나로 복사본(x와 같은 메모리 순서)과, 필요하면 "NaN 아님" bool 배열을 함께 만든다. 같은 순서라서 리덕션의 접는 순서도 같다.
-- `nansum`·`nanprod`·`nancumulative_*`: 0이나 1로 바꾼 복사본을 이름 앞의 `nan`을 뗀 함수에 넘긴다.
-- `nanmean`: 복사본의 합을, bool 배열을 int64로 합한 개수로 나눈다.
-- `nanvar`: 평균은 `nanmean`과 같다. 두 번째 패스는 `sq_dev_loop<T, SkipNan>`이 NaN 자리에 +0.0을 더한다. 편차 제곱은 모두 +0.0 이상이라서, pairwise 트리에 +0.0을 더해도 다른 부분합의 비트는 바뀌지 않는다. 복사본이 필요 없다.
-- `nanmin`·`nanmax`: 복사 없이 접는다. 시작값을 NaN으로 두고 NaN을 건너뛰는 최소/최대(`ops::NanMinimum`/`NanMaximum`)로 접는다. NEON의 FMINNM/FMAXNM이 이 의미다. 순서와 무관한 접기(§6.4)라서 긴 레인은 조각으로 병렬로 접는다. 모두 NaN이면 NaN이 남는다.
-- `nanargmin`·`nanargmax`: ±inf로 바꾼 복사본에서 `argmin`/`argmax`를 부른다. 그 전에 "NaN 아님"의 any로 모두 NaN인 레인을 찾아 `ValueError`를 낸다(numpy와 같은 순서와 메시지).
+### 6.11 NaN을 건너뛰는 리덕션 (`array/ops/reduction.cpp`, `array/kernels/reduce.hpp`, T0)
+numpy의 nan 함수는 NaN을 중립값(합은 0, 곱은 1, argmin은 +inf)으로 바꾼 복사본에 이름 앞의 `nan`을 뗀 함수를 부른다. 우리는 복사본을 만들지 않고 같은 값을 계산한다. NaN이 없으면 이름 앞의 `nan`을 뗀 함수와 비트가 같다.
+- **합과 곱** (`nansum`, `nanprod`, `nanmean`·`nanvar`의 합): `reduce_loop<Op, T, SkipNan>`이 원소를 읽을 때 NaN을 중립값으로 본다(`nan_as`). 이터레이터, 블록 리덕션(§6.5), pairwise 트리(§6.2)가 복사본을 접을 때와 똑같다. 그래서 "NaN을 바꾼 복사본의 `sum`"과 비트가 같다(테스트가 레이아웃·축·스레드 수마다 대조한다).
+  - 블록 리덕션의 블록을 합치는 단계는 NaN을 건너뛰지 않는 원래 연산이다(`run_reduce_loops`). 부분합에 생긴 NaN(inf − inf)은 남아야 하기 때문이다.
+  - 연속 float64는 typed 포인터로 읽어 NaN 선택이 벡터화된다(1e7개: 2.6 → 1.6 ms, `sum`은 1.25 ms).
+  - `dtype=`이 x를 다른 dtype으로 바꾸면 NaN을 변환 전에 없애야 해서, 그때만 복사본(`replace_nan`)을 만든다.
+- **개수** (`nanmean`, `nanvar`의 N, `count_nonzero`): `count_loop<T, Kind>`가 x를 직접 읽어 int64로 센다. 마스크 배열이 없다. 정수라서 순서와 무관하고, 긴 레인은 조각으로 병렬로 센다.
+- **`nanvar`**: 평균은 위의 합 ÷ 개수다. 두 번째 패스는 `sq_dev_loop<T, SkipNan>`이 NaN 자리에 +0.0을 더한다. 분기가 아니라 선택이다(무작위 NaN은 분기 예측을 깬다). 편차 제곱은 모두 +0.0 이상이라서, pairwise 트리에 +0.0을 더해도 다른 부분합의 비트는 바뀌지 않는다.
+- **`nanmin`·`nanmax`**: 시작값을 NaN으로 두고 NaN을 건너뛰는 최소/최대(`ops::NanMinimum`/`NanMaximum`)로 접는다. NEON의 FMINNM/FMAXNM이 이 의미다. 순서와 무관한 접기(§6.4)라서 긴 레인은 조각으로 병렬로 접는다. 모두 NaN이면 NaN이 남는다.
+- **`nanargmin`·`nanargmax`**: argmin 커널(`arg_extreme<T, Max, SkipNan>`, NEON 포함)이 NaN을 +inf(min)/−inf(max)로 읽는다. numpy가 바꾸는 값 그대로라서 결과도 같다. 그 전에 레인마다 NaN 아닌 수를 세어 0인 레인이 있으면 `ValueError`를 낸다(numpy와 같은 순서와 메시지).
+- **`nancumulative_*`**: 스캔 커널(`scan_lane<Op, T, SkipNan>`)이 NaN을 중립값으로 읽는다.
 - bool·int64는 NaN이 없으므로 이름 앞의 `nan`을 뗀 함수로 바로 간다.
 
 ### 6.12 cov, corrcoef (`array/ops/covariance.cpp`, T0)
@@ -470,9 +477,12 @@ numpy의 nan 함수처럼 NaN을 중립값으로 바꾼 뒤 이름 앞의 `nan`�
 - `corrcoef`: 대각의 제곱근으로 행과 열을 차례로 나누고(`c / s[:, None] / s[None, :]`의 순서) [-1, 1]로 자른다. complex의 나눗셈은 실수부와 허수부를 따로 나눈다. 유한한 값이면 numpy의 복소 나눗셈(Smith)과 결과가 같다.
 
 ### 6.13 bincount, histogram (`array/ops/histogram.cpp`, T0b)
-- `bincount`: 원소 순서대로 한 번에 센다(가중치 합도 같은 순서). numpy와 비트가 같다.
+- `bincount`: 이미 연속 int64이면 복사하지 않는다. 최소·최대를 한 번에 구한다(병렬). 개수는 정수라서 16개 구간으로 나누어 각자 세고 더한다(구간마다의 개수 배열이 입력보다 작을 때). 가중치 합은 numpy처럼 원소 순서대로 직렬이다. numpy와 비트가 같다.
 - `histogram`: numpy의 `_histograms_impl.histogram`을 단계마다 옮겼다.
   - 같은 너비 구간: 경계는 `linspace`다. 구간 번호는 `((v - first) / (last - first)) * bins`를 정수로 자른 뒤 numpy처럼 두 번 고친다(끝 구간, 경계 비교). 가중치는 65536개 블록마다 0.0부터 더하고(numpy의 `bincount`), 블록 결과를 차례로 더한다. 그래서 비트가 같다. int 가중치는 numpy처럼 블록 합을 double로 구한 뒤 int64로 바꾼다.
+    - 블록 합은 서로 독립이라서 병렬로 구하고(메모리가 허락할 때), 결과에는 블록 순서대로 더한다. 비트는 직렬과 같다. 개수(가중치 없음)는 `bincount`처럼 16개 구간으로 나누어 센다.
+    - 구간 계산에 쓰는 값(경계, 너비)은 블록 함수 안의 지역 값으로 둔다. double 버퍼에 쓸 때마다 컴파일러가 그 값들을 다시 읽어서 1스레드가 1.5배 느렸다.
+    - C 순서 float64 입력은 복사하지 않는다(전에는 배열과 vector로 두 번 복사했다).
   - 경계 배열: 개수는 구간마다 직접 센다(정확하다). 가중치가 있으면 numpy처럼 블록마다 값으로 정렬한 누적합을 경계에서 읽어 더하고 차를 낸다. 정렬은 안정 정렬이다. numpy의 quicksort와 같은 값들의 순서가 다를 수 있어서, 같은 값에 다른 가중치가 있으면 마지막 비트가 다를 수 있다.
   - `density`: `hist / 너비 / sum(hist)`. 합은 `sd.sum`이다(연속 float64 하나의 합은 numpy와 비트가 같다, §6.2).
 
@@ -632,8 +642,12 @@ dtype과 레인 길이만 본다. 데이터를 보고 고르지 않는다 (§1.4
 
 ### 8.8 searchsorted, nonzero, take (`array/ops/searching.cpp`, T0b)
 - `searchsorted`: 두 쪽을 승격한 dtype의 연속 복사본에서 `lower_bound`/`upper_bound`를 쓴다. 비교는 `sort`의 순서(NaN이 가장 크다)다. `sorter`가 있으면 먼저 `x1[sorter]`로 모은다. 찾을 값이 많으면 4096개씩 나누어 병렬로 찾는다(위치는 정수라서 나누는 방법과 상관없이 같다).
-- `nonzero`: `x`를 C 순서 bool 배열로 바꾸고(bool 변환이 `x != 0`이다), 참의 수를 센 뒤 축마다 위치를 채운다. 위치는 나눗셈 대신 자릿수 올림(odometer)으로 센다.
-- `take`, `take_along_axis`, `repeat`: 키를 만들어 고급 인덱싱의 gather(§7.3)를 부른다. `take_along_axis`는 numpy처럼 다른 축마다 `arange`를 브로드캐스트한다.
+- `nonzero`: C 순서인 x를 그대로 읽는다(아니면 자기 dtype으로 한 번 복사). C 순서를 65536개 조각으로 나누어 조각마다 참의 수를 세고, 앞부분 합으로 쓸 자리를 정해 병렬로 채운다.
+  - 채우기는 분기가 없다. 모든 위치를 k에 쓰고, 참일 때만 k를 늘린다. 무작위 마스크에서 분기는 예측이 빗나간다(1e7개: 25 → 3.8 ms).
+  - 다차원은 마지막 축의 위치만 원소마다 쓴다. 앞 축의 위치는 행 안에서 같으므로 행마다 그 출력 구간을 한 번에 채운다(원소마다 축 수만큼 쓰던 것: 20 → 4.2 ms).
+- `take`: 키를 만들어 고급 인덱싱의 gather(§7.3)를 부른다.
+- `take_along_axis`: 결과를 메모리 순서대로 원소별로 돈다. x는 그 축의 stride를 0으로 둔 뷰로 보고(각 위치가 자기 레인의 첫 원소를 가리킨다), 원소마다 `x_view + index * stride`를 읽는다. 어느 축이든 메모리를 순서대로 지나고 이터레이터가 병렬로 나눈다. 인덱스의 범위는 먼저 한 번 검사한다(병렬, 분기 없음). 다차원 고급 인덱싱으로 하던 것보다 1스레드 3.5배, 10스레드 12배 빠르다.
+- `repeat`: 출력의 겹치지 않는 부분(앞 축의 행, 또는 그 축의 원소 구간)으로 나누어 블록을 직접 복사한다.
 
 ## 9. matmul (`array/ops/matmul.cpp`)
 

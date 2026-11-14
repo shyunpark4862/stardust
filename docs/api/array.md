@@ -704,7 +704,7 @@ nanmedian(x, /, *, axis=None, keepdims=False)
   - numpy는 `lower`·`higher`·`nearest`·`inverted_cdf`·`closest_observation`에서 정수 dtype을 유지한다. 값은 같다(|x| < 2⁵³).
 - **값**: numpy와 비트가 같다. 정렬된 레인에서 같은 위치를 고르고, numpy의 보간식 `_lerp`를 같은 순서로 계산한다.
   - `median`은 numpy처럼 가운데 하나나 둘의 평균이다(+0.0에서 시작하는 합을 개수로 나눈다). `quantile(x, 0.5)`와는 마지막 비트가 다를 수 있다.
-  - -0.0과 +0.0이 같은 순위에 함께 있으면 어느 쪽 부호가 나올지는 정하지 않는다(numpy도 같다).
+  - 순위는 -0.0을 +0.0보다 작게 본다. 그래서 둘이 섞인 레인에서도 결과는 스레드 수와 상관없이 같다. numpy는 이 경우의 부호가 정해져 있지 않아서 numpy와는 다를 수 있다.
 - **NaN**: `quantile`, `median`은 NaN이 있는 레인의 결과가 NaN이다. `nanquantile`, `nanmedian`은 NaN을 빼고 계산한다.
 - **빈 레인**(모두 NaN 포함): NaN이다. 경고는 없다. numpy의 `quantile`은 빈 레인에서 `IndexError`를 낸다.
 - complex는 `TypeError`다.

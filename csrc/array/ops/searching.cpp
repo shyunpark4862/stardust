@@ -9,6 +9,7 @@
 #include "array/kernels/scalar_ops.hpp"
 #include "array/ops/copy.hpp"
 #include "array/ops/indexing.hpp"
+#include "array/ops/lanes.hpp"
 #include "array/ops/reduction.hpp"
 #include "array/parallel_limits.hpp"
 #include "parallel/pool.hpp"
@@ -56,6 +57,26 @@ nb::object take(nb::handle x, nb::handle indices, nb::handle axis_obj) {
     return getitem(x, nb::tuple(key));
 }
 
+// take_along_axis runs elementwise over the result, in memory order: x is
+// seen with stride 0 along `axis` (so each position points at x[..., 0, ...]
+// of its own lane) and each element reads x_view + index * stride. Every
+// axis walks memory in order -- lane by lane, axis=0 of a C matrix was 2.5x
+// slower -- and the iterator splits the work over the pool. The indices were
+// bounds-checked before.
+struct AlongCtx {
+    std::int64_t n_x, x_stride;
+};
+
+template <typename T>
+void along_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, void* ctx) {
+    const AlongCtx& c = *static_cast<const AlongCtx*>(ctx);
+    for (std::int64_t i = 0; i < n; ++i) {
+        std::int64_t k = *reinterpret_cast<const std::int64_t*>(args[1] + i * s[1]);
+        if (k < 0) k += c.n_x;
+        *reinterpret_cast<T*>(args[2] + i * s[2]) = *reinterpret_cast<const T*>(args[0] + i * s[0] + k * c.x_stride);
+    }
+}
+
 nb::object take_along_axis(nb::handle x, nb::handle indices, nb::handle axis_obj) {
     const NDArray& a = require_ndarray(x);
     if (!is_ndarray(indices)) throw nb::type_error(("'indices' must be an int64 array, not " + py_type_name(indices)).c_str());
@@ -66,68 +87,167 @@ nb::object take_along_axis(nb::handle x, nb::handle indices, nb::handle axis_obj
                                std::to_string(ix.ndim))
                                   .c_str());
     const int axis = normalize_axis(parse_int(axis_obj, "axis"), a.ndim);
-    // numpy's _make_along_axis_idx: arange along every other axis, shaped to
-    // broadcast against indices.
-    nb::list key;
-    for (int d = 0; d < a.ndim; ++d) {
+    const int nd = a.ndim;
+    // The result: indices' length along the axis, the broadcast of both elsewhere.
+    std::vector<std::int64_t> shape(nd);
+    for (int d = 0; d < nd; ++d) {
         if (d == axis) {
-            key.append(indices);
-            continue;
+            shape[d] = ix.shape[d];
+        } else if (a.shape[d] == ix.shape[d] || ix.shape[d] == 1) {
+            shape[d] = a.shape[d];
+        } else if (a.shape[d] == 1) {
+            shape[d] = ix.shape[d];
+        } else {
+            std::vector<std::int64_t> xs(a.shape_span().begin(), a.shape_span().end()), is(ix.shape_span().begin(), ix.shape_span().end());
+            xs[axis] = is[axis] = 1;
+            throw nb::value_error(("shapes could not be broadcast together: " + shape_str(xs) + " " + shape_str(is)).c_str());
         }
-        std::vector<std::int64_t> shape(a.ndim, 1);
-        shape[d] = a.shape[d];
-        NDArray r = new_array(DType::Int64, shape);
-        std::int64_t* p = reinterpret_cast<std::int64_t*>(r.data);
-        for (std::int64_t i = 0; i < a.shape[d]; ++i) p[i] = i;
-        key.append(wrap(std::move(r)));
     }
-    return getitem(x, nb::tuple(key));
+    NDArray out = new_array(a.dtype, shape);
+    if (out.size() == 0) return wrap(std::move(out));
+    const std::int64_t n_x = a.shape[axis];
+
+    // Bounds first (numpy's message for the first bad index in C order).
+    NDArray ic = ix;
+    if (!ix.c_contiguous) {
+        ic = new_array(DType::Int64, ix.shape_span());
+        assign(ic, ix);
+    }
+    {
+        const std::int64_t* q = reinterpret_cast<const std::int64_t*>(ic.data);
+        const std::int64_t m = ic.size();
+        // A branch-free scan for any bad index (in parallel pieces when long); only then the first one.
+        const std::int64_t pieces = (m + kParallelTask - 1) / kParallelTask;
+        std::vector<char> bad_piece(pieces, 0);
+        auto scan = [&](std::int64_t t) {
+            bool b = false;
+            for (std::int64_t i = t * kParallelTask, e = std::min(m, (t + 1) * kParallelTask); i < e; ++i)
+                b |= q[i] < -n_x || q[i] >= n_x;
+            bad_piece[t] = b;
+        };
+        if (m >= kParallelThreshold && parallel::available()) parallel::parallel_for(pieces, scan);
+        else for (std::int64_t t = 0; t < pieces; ++t) scan(t);
+        const bool bad = std::any_of(bad_piece.begin(), bad_piece.end(), [](char c) { return c != 0; });
+        if (bad)
+            for (std::int64_t i = 0; i < m; ++i)
+                if (q[i] < -n_x || q[i] >= n_x)
+                    throw nb::index_error(("index " + std::to_string(q[i]) + " is out of bounds for axis " +
+                                           std::to_string(axis) + " with size " + std::to_string(n_x))
+                                              .c_str());
+    }
+
+    // x and the indices seen with the result's shape (stride 0 where broadcast);
+    // x also has stride 0 along the axis: the index supplies that offset.
+    auto spread = [&](const NDArray& v, bool zero_axis) {
+        NDArray b = v;
+        for (int d = 0; d < nd; ++d)
+            if ((d == axis && zero_axis) || (d != axis && v.shape[d] != shape[d]) || (d == axis && v.shape[d] != shape[d])) {
+                b.shape[d] = shape[d];
+                b.strides[d] = 0;
+            }
+        b.update_flags();
+        return b;
+    };
+    const NDArray xb = spread(a, true), ib = spread(ic, false);
+    const IterOperand ops[] = {operand(xb), operand(ib), operand(out)};
+    AlongCtx ctx{n_x, a.strides[axis]};
+    Loop loop = nullptr;
+    visit_dtype(a.dtype, [&]<typename T>(std::type_identity<T>) { loop = &along_loop<T>; });
+    NdIter(out.shape_span(), ops).run(loop, &ctx, Split::Elementwise);
+    return wrap(std::move(out));
 }
 
 // --------------------------------------------------------- nonzero
 
-// x != 0 as a C-ordered bool array (the bool conversion: NaN counts as true).
-NDArray truth(const NDArray& a) {
-    NDArray m = new_array(DType::Bool, a.shape_span());
-    if (m.size() > 0) assign(m, a);
-    return m;
+
+// Chunks of the C-order index range: each is counted, then filled at its
+// prefix offset, both in parallel. The positions are the same for any split.
+constexpr std::int64_t kNonzeroChunk = 1 << 16;
+
+template <typename T>
+bool truthy(const T& v) {
+    if constexpr (ops::is_cplx<T>) return v.real() != 0 || v.imag() != 0;
+    else return v != T(0);  // NaN is nonzero
 }
 
 nb::tuple nonzero(nb::handle x) {
     const NDArray& a = require_ndarray(x);
-    const NDArray m = truth(a);
-    const bool* p = reinterpret_cast<const bool*>(m.data);
-    const std::int64_t size = m.size();
-    const std::int64_t count = std::count(p, p + size, true);
+    // A C-ordered source: x itself when it already is one, else a copy in its own dtype.
+    NDArray c = a;
+    if (!a.c_contiguous) {
+        c = new_array(a.dtype, a.shape_span());
+        if (c.size() > 0) assign(c, a);
+    }
+    const std::int64_t size = c.size(), nd = a.ndim;
+    const std::int64_t chunks = (size + kNonzeroChunk - 1) / kNonzeroChunk;
+    std::vector<std::int64_t> start(chunks + 1, 0);
     std::vector<NDArray> out;
     std::vector<std::int64_t*> dst;
-    const std::int64_t shape[] = {count};
-    for (int d = 0; d < a.ndim; ++d) {
-        out.push_back(new_array(DType::Int64, shape));
-        dst.push_back(reinterpret_cast<std::int64_t*>(out.back().data));
-    }
-    // Walk the C-order index like an odometer instead of dividing.
-    std::vector<std::int64_t> at(a.ndim, 0);
-    for (std::int64_t i = 0, k = 0; i < size; ++i) {
-        if (p[i]) {
-            for (int d = 0; d < a.ndim; ++d) dst[d][k] = at[d];
-            ++k;
+    visit_dtype(a.dtype, [&]<typename T>(std::type_identity<T>) {
+        const T* p = reinterpret_cast<const T*>(c.data);
+        auto for_chunks = [&](auto&& fn) {
+            if (size >= kParallelThreshold && chunks > 1 && parallel::available()) parallel::parallel_for(chunks, fn);
+            else for (std::int64_t t = 0; t < chunks; ++t) fn(t);
+        };
+        for_chunks([&](std::int64_t t) {
+            const std::int64_t b = t * kNonzeroChunk, e = std::min(size, b + kNonzeroChunk);
+            std::int64_t k = 0;
+            for (std::int64_t i = b; i < e; ++i) k += truthy(p[i]);
+            start[t + 1] = k;
+        });
+        for (std::int64_t t = 0; t < chunks; ++t) start[t + 1] += start[t];
+        const std::int64_t shape[] = {start[chunks]};
+        for (int d = 0; d < nd; ++d) {
+            out.push_back(new_array(DType::Int64, shape));
+            dst.push_back(reinterpret_cast<std::int64_t*>(out.back().data));
         }
-        for (int d = a.ndim - 1; d >= 0; --d) {
-            if (++at[d] < a.shape[d]) break;
-            at[d] = 0;
-        }
-    }
+        for_chunks([&](std::int64_t t) {
+            const std::int64_t b = t * kNonzeroChunk, e = std::min(size, b + kNonzeroChunk);
+            // Branch-free: every position is written at k, and k moves on only
+            // past a nonzero one (a random mask defeats branch prediction:
+            // 25 ms -> 6 ms for 1e7 elements). `k < end` keeps the writes inside
+            // this chunk's part; it is almost always true, so it predicts well.
+            std::int64_t k = start[t];
+            const std::int64_t end_k = start[t + 1];
+            if (nd == 1) {
+                std::int64_t* o = dst[0];
+                for (std::int64_t i = b; i < e; ++i) {
+                    if (k < end_k) o[k] = i;
+                    k += truthy(p[i]);
+                }
+                return;
+            }
+            // Row by row of the last axis: the last index is written per
+            // element (branch-free, as above); the leading indices are constant
+            // along a row, so they are filled once per row over its output range.
+            std::int64_t at[kMaxNdim];
+            for (std::int64_t d = nd - 1, r = b; d >= 0; --d) {
+                at[d] = r % a.shape[d];
+                r /= a.shape[d];
+            }
+            const std::int64_t last = a.shape[nd - 1];
+            std::int64_t* o = dst[nd - 1];
+            for (std::int64_t i = b; i < e;) {
+                const std::int64_t row_end = std::min(e, i + (last - at[nd - 1]));
+                const std::int64_t k0 = k;
+                for (std::int64_t j = at[nd - 1]; i < row_end; ++i, ++j) {
+                    if (k < end_k) o[k] = j;
+                    k += truthy(p[i]);
+                }
+                for (std::int64_t d = 0; d < nd - 1; ++d) std::fill(dst[d] + k0, dst[d] + k, at[d]);
+                at[nd - 1] = 0;
+                for (std::int64_t d = nd - 2; d >= 0; --d) {
+                    if (++at[d] < a.shape[d]) break;
+                    at[d] = 0;
+                }
+            }
+        });
+    });
     nb::list r;
     for (NDArray& o : out) r.append(wrap(std::move(o)));
     return nb::tuple(r);
 }
 
-nb::object count_nonzero(nb::handle x, nb::handle axis, nb::handle keepdims) {
-    const NDArray& a = require_ndarray(x);
-    parse_bool(keepdims, "keepdims");
-    return sum(wrap(truth(a)), axis, nb::none(), keepdims);  // bool sums in int64
-}
 
 // ---------------------------------------------------- searchsorted
 

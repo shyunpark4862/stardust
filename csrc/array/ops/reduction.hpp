@@ -35,6 +35,7 @@ nb::object nanvar(nb::handle x, nb::handle axis, nb::handle correction, nb::hand
 nb::object nanstd(nb::handle x, nb::handle axis, nb::handle correction, nb::handle keepdims);
 nb::object nanargmin(nb::handle x, nb::handle axis, nb::handle keepdims);
 nb::object nanargmax(nb::handle x, nb::handle axis, nb::handle keepdims);
+nb::object count_nonzero(nb::handle x, nb::handle axis, nb::handle keepdims);  // docs/api/array.md §8.4
 
 void bind_reductions(nb::module_& m);
 

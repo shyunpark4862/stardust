@@ -386,3 +386,61 @@ def test_quantile_same_bits_at_every_thread_count():
         assert all(np.array_equal(results[i], results[i % 2]) for i in range(len(results)))
     finally:
         sd.set_num_threads(before)
+
+
+# ------------------------------------------------- optimized paths (A-C review)
+
+def test_quantile_signed_zero_ties_total_order_and_thread_independent():
+    # -0.0 ranks below +0.0 on every path (sort, select, parallel sort), so
+    # the result is the same at every thread count (docs/api/array.md §7.10).
+    rng = np.random.default_rng(12)
+    qs = sd.asarray(np.linspace(0, 1, 41))
+    before = sd.get_num_threads()
+    try:
+        for n in (2, 17, 3000, 5000, 300_000):
+            x = rng.choice([-0.0, 0.0, -1.0, 1.0], n)
+            total = np.concatenate([np.sort(x[x < 0]), -np.zeros(np.sum((x == 0) & np.signbit(x))),
+                                    np.zeros(np.sum((x == 0) & ~np.signbit(x))), np.sort(x[x > 0])])
+            want = total[np.floor((n - 1) * np.linspace(0, 1, 41)).astype(int)]
+            got = []
+            for t in (1, 3, 10):
+                sd.set_num_threads(t)
+                got.append(np.asarray(sd.quantile(sd.asarray(x), qs, method="lower")))
+                assert np.array_equal(got[-1].view(np.int64), want.view(np.int64)), (n, t)
+    finally:
+        sd.set_num_threads(before)
+
+
+def nan_copy(x, value):
+    c = np.copy(x, order="K")
+    c[np.isnan(c)] = value
+    return c
+
+
+@pytest.mark.parametrize("layout", ["C", "F", "T"])
+@pytest.mark.parametrize("cplx", [False, True])
+def test_nan_reductions_are_the_plain_ones_on_a_filled_copy(layout, cplx):
+    # The nan* folds read NaN as the identity instead of copying: the bits
+    # must be those of the plain reduction on the NaN-replaced copy.
+    rng = np.random.default_rng(13)
+    x = rng.standard_normal((64, 2000)) * 3
+    if cplx:
+        x = x + 1j * rng.standard_normal(x.shape)
+    x[rng.random(x.shape) < 0.2] = np.nan
+    x = {"C": x, "F": np.asfortranarray(x), "T": x.T}[layout]
+    a, f0, f1 = sd.asarray(x), sd.asarray(nan_copy(x, 0)), sd.asarray(nan_copy(x, 1))
+    for axis in (None, 0, 1, (0, 1)):
+        for got, want in ((sd.nansum(a, axis=axis), sd.sum(f0, axis=axis)), (sd.nanprod(a, axis=axis), sd.prod(f1, axis=axis))):
+            if isinstance(got, sd.ndarray):
+                assert_same(got, np.asarray(want))
+            else:
+                assert_same(sd.asarray([got]), np.asarray([want]))
+        nz = sd.asarray(np.asarray(x) != 0)
+        assert np.array_equal(np.asarray(sd.count_nonzero(a, axis=axis)), np.asarray(sd.count_nonzero(nz, axis=axis)))
+    for axis in (0, 1):
+        assert_same(sd.nancumulative_sum(a, axis=axis), np.asarray(sd.cumulative_sum(f0, axis=axis)))
+    if not cplx:
+        for axis in (None, 0, 1):
+            fi, fn = sd.asarray(nan_copy(x, np.inf)), sd.asarray(nan_copy(x, -np.inf))
+            assert np.array_equal(np.asarray(sd.nanargmin(a, axis=axis)), np.asarray(sd.argmin(fi, axis=axis)))
+            assert np.array_equal(np.asarray(sd.nanargmax(a, axis=axis)), np.asarray(sd.argmax(fn, axis=axis)))

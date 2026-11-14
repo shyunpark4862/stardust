@@ -205,6 +205,40 @@ def test_take_along_axis():
         sd.take_along_axis(sd.asarray(X3), sd.asarray([0]), axis=0)
 
 
+@pytest.mark.parametrize("shape", [(3_000_000,), (500, 3000), (40, 50, 600), (5, 1, 7)])
+def test_nonzero_large_and_strided(shape):
+    rng = np.random.default_rng(14)
+    for p in (0.3, 0.0, 1.0):
+        z = (rng.random(shape) < p).astype(float)
+        for v in (z, z.T if z.ndim > 1 else z[::-1]):
+            for g, w in zip(sd.nonzero(sd.asarray(v)), np.nonzero(v)):
+                same(g, w)
+
+
+def test_take_along_axis_broadcast_and_bounds():
+    rng = np.random.default_rng(15)
+    x = rng.standard_normal((4, 5, 6))
+    for axis in (0, 1, 2):
+        others = [d for d in range(3) if d != axis]
+        shapes = [list(x.shape)]
+        for length, ones in ((3, []), (2, others[:1]), (1, others)):  # other lengths along the axis, 1s elsewhere
+            sh = list(x.shape)
+            sh[axis] = length
+            for d in ones:
+                sh[d] = 1
+            shapes.append(sh)
+        for ishape in shapes:
+            n = x.shape[axis]
+            idx = rng.integers(-n, n, ishape)
+            same(sd.take_along_axis(sd.asarray(x), sd.asarray(idx), axis=axis), np.take_along_axis(x, idx, axis=axis))
+    same(sd.take_along_axis(sd.asarray(x).mT, sd.asarray(np.zeros((4, 6, 2), int)), axis=2),
+         np.take_along_axis(x.transpose(0, 2, 1), np.zeros((4, 6, 2), int), axis=2))
+    with pytest.raises(IndexError, match="index 6 is out of bounds for axis 2 with size 6"):
+        sd.take_along_axis(sd.asarray(x), sd.asarray(np.full((4, 5, 1), 6)), axis=2)
+    with pytest.raises(ValueError, match="could not be broadcast"):
+        sd.take_along_axis(sd.asarray(x), sd.asarray(np.zeros((3, 5, 1), int)), axis=2)
+
+
 def test_nonzero_and_count_nonzero():
     z = RNG.integers(0, 3, (3, 4, 5)).astype(float)
     z[0, 0, 0] = np.nan  # NaN is nonzero

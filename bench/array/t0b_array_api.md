@@ -1,43 +1,55 @@
 # T0b 측정: Array API 채우기, bincount·histogram
 
-- 실행: `.venv/bin/python bench/array/t0b_array_api.py` (2026-11-15, Apple Silicon, numpy 2.5.4)
+- 실행: `.venv/bin/python bench/array/t0b_array_api.py` (2026-11-15, 최적화 검토 뒤, Apple Silicon, numpy 2.5.4)
 - 호출당 시간(5회 중 최선). `np/sd`가 1보다 크면 stardust가 빠르다. 10스레드 열은 실행마다 흔들린다.
 - 배열: `v`, `w` 1e6 float64, `m` 1000×1000, `s` 정렬된 1e5, `big` 1e7.
 
 | 경우 | sd 1T | sd 10T | numpy | np/sd 1T | np/sd 10T |
 |---|---:|---:|---:|---:|---:|
-| `copysign(v, w)` | 0.1552 ms | 0.0730 ms | 0.2660 ms | 1.71× | 3.64× |
-| `hypot(v, w)` | 1.2704 ms | 0.2191 ms | 1.5313 ms | 1.21× | 6.99× |
-| `logaddexp(v, w)` | 15.3557 ms | 2.0152 ms | 15.7821 ms | 1.03× | 7.83× |
-| `nextafter(v, w)` | 5.5436 ms | 0.6839 ms | 5.5559 ms | 1.00× | 8.12× |
-| `reciprocal(v)` | 0.1283 ms | 0.0458 ms | 0.1289 ms | 1.00× | 2.81× |
-| `reciprocal(z complex)` | 0.9528 ms | 0.1709 ms | 3.7851 ms | 3.97× | 22.15× |
-| `signbit(v)` | 0.0753 ms | 0.0368 ms | 0.0750 ms | 1.00× | 2.03× |
-| `roll(v, 12345)` | 0.1027 ms | 0.0607 ms | 0.1077 ms | 1.05× | 1.77× |
-| `roll(m, 7, axis=(0,1))` | 0.1484 ms | 0.0710 ms | 0.1585 ms | 1.07× | 2.23× |
-| `repeat(m, 2, axis=1)` | 0.5347 ms | 0.1097 ms | 0.5376 ms | 1.01× | 4.90× |
-| `tile(m, (2, 2))` | 0.5116 ms | 0.1966 ms | 0.5840 ms | 1.14× | 2.97× |
-| `tril(m)` | 0.1968 ms | 0.1936 ms | 0.3697 ms | 1.88× | 1.91× |
-| `diff(v)` | 0.1097 ms | 0.0615 ms | 0.1117 ms | 1.02× | 1.82× |
-| `diff(m, axis=0)` | 0.1037 ms | 0.0570 ms | 0.1031 ms | 0.99× | 1.81× |
-| `meshgrid(x1, y1)` | 0.1390 ms | 0.1392 ms | 0.1576 ms | 1.13× | 1.13× |
-| `take(v, idx)` | 0.7435 ms | 0.1671 ms | 1.8769 ms | 2.52× | 11.23× |
-| `take_along_axis(m, am, axis=1)` | 1.6327 ms | 1.6256 ms | 2.3578 ms | 1.44× | 1.45× |
-| `nonzero(nz 1e6)` | 2.3217 ms | 2.3698 ms | 3.7966 ms | 1.64× | 1.60× |
-| `count_nonzero(big 1e7)` | 2.3678 ms | 0.9091 ms | 2.5707 ms | 1.09× | 2.83× |
-| `searchsorted(s 1e5, v 1e6)` | 42.6056 ms | 5.7996 ms | 81.0543 ms | 1.90× | 13.98× |
-| `bincount(ints 1e6)` | 0.8853 ms | 0.8720 ms | 1.0441 ms | 1.18× | 1.20× |
-| `histogram(v, 100)` | 2.7756 ms | 2.7572 ms | 4.2037 ms | 1.51× | 1.52× |
-| `histogram(v, 100, weights)` | 3.0462 ms | 3.0009 ms | 4.3794 ms | 1.44× | 1.46× |
-| `tensordot(a3, b2, axes=2)` | 0.2317 ms | 0.2325 ms | 0.2316 ms | 1.00× | 1.00× |
-| `flip(small) (call cost)` | 0.0001 ms | 0.0001 ms | 0.0002 ms | 2.09× | 2.14× |
-| `hypot(1.0, 2.0) (scalar call)` | 0.0001 ms | 0.0001 ms | 0.0003 ms | 5.93× | 6.28× |
+| `copysign(v, w)` | 0.1587 ms | 0.0674 ms | 0.2629 ms | 1.66× | 3.90× |
+| `hypot(v, w)` | 1.2757 ms | 0.2006 ms | 1.5335 ms | 1.20× | 7.64× |
+| `logaddexp(v, w)` | 15.5188 ms | 1.9268 ms | 15.7462 ms | 1.01× | 8.17× |
+| `nextafter(v, w)` | 0.6712 ms | 0.1231 ms | 5.5652 ms | 8.29× | 45.22× |
+| `reciprocal(v)` | 0.1292 ms | 0.0459 ms | 0.1285 ms | 0.99× | 2.80× |
+| `reciprocal(z complex)` | 0.9649 ms | 0.1616 ms | 3.7955 ms | 3.93× | 23.49× |
+| `signbit(v)` | 0.0755 ms | 0.0338 ms | 0.0753 ms | 1.00× | 2.23× |
+| `roll(v, 12345)` | 0.1058 ms | 0.0479 ms | 0.1066 ms | 1.01× | 2.23× |
+| `roll(m, 7, axis=(0,1))` | 0.1510 ms | 0.0641 ms | 0.1669 ms | 1.11× | 2.60× |
+| `repeat(m, 2, axis=1)` | 0.5175 ms | 0.1044 ms | 0.5280 ms | 1.02× | 5.06× |
+| `tile(m, (2, 2))` | 0.6249 ms | 0.1838 ms | 0.6334 ms | 1.01× | 3.45× |
+| `tril(m)` | 0.2006 ms | 0.2083 ms | 0.3738 ms | 1.86× | 1.79× |
+| `diff(v)` | 0.1425 ms | 0.0555 ms | 0.1207 ms | 0.85× | 2.18× |
+| `diff(m, axis=0)` | 0.1389 ms | 0.0495 ms | 0.1050 ms | 0.76× | 2.12× |
+| `meshgrid(x1, y1)` | 0.1395 ms | 0.1402 ms | 0.1579 ms | 1.13× | 1.13× |
+| `take(v, idx)` | 0.7391 ms | 0.1596 ms | 1.8507 ms | 2.50× | 11.59× |
+| `take_along_axis(m, am, axis=1)` | 0.4586 ms | 0.1364 ms | 2.3443 ms | 5.11× | 17.18× |
+| `nonzero(nz 1e6)` | 0.3763 ms | 0.0789 ms | 3.8330 ms | 10.19× | 48.59× |
+| `count_nonzero(big 1e7)` | 1.0986 ms | 0.4152 ms | 2.5559 ms | 2.33× | 6.16× |
+| `searchsorted(s 1e5, v 1e6)` | 43.0046 ms | 5.7418 ms | 81.6435 ms | 1.90× | 14.22× |
+| `bincount(ints 1e6)` | 0.3671 ms | 0.1096 ms | 1.0350 ms | 2.82× | 9.44× |
+| `histogram(v, 100)` | 2.1960 ms | 0.4043 ms | 4.2522 ms | 1.94× | 10.52× |
+| `histogram(v, 100, weights)` | 2.1614 ms | 0.4056 ms | 4.5091 ms | 2.09× | 11.12× |
+| `tensordot(a3, b2, axes=2)` | 0.2334 ms | 0.2323 ms | 0.2314 ms | 0.99× | 1.00× |
+| `flip(small) (call cost)` | 0.0001 ms | 0.0001 ms | 0.0002 ms | 2.05× | 2.08× |
+| `hypot(1.0, 2.0) (scalar call)` | 0.0001 ms | 0.0001 ms | 0.0003 ms | 5.76× | 6.22× |
 
 ## 읽는 법
-- **원소별 6개**: 다른 ufunc와 같은 디스패처라서 10스레드로 나뉜다(`logaddexp`, `nextafter` 8배). 1스레드는 numpy와 같다(같은 libm 공식). complex `reciprocal`은 1스레드도 3.9배다(numpy의 complex 루프가 느리다).
-- **`repeat`, `meshgrid`**: 처음에는 gather(인덱스 배열)와 stride 0 뷰의 `assign`으로 만들어 numpy의 0.76배, 0.43배였다. 행 단위로 직접 채우는 루프로 바꿔 1.0배, 1.13배가 되었다. `repeat`은 출력의 겹치지 않는 부분으로 나누어 병렬이다.
-- **`searchsorted`**: 찾을 값을 나누어 병렬로 찾는다(10스레드 14배). 1스레드도 2배다(numpy는 매번 앞 결과를 힌트로 쓰는 분기가 많다).
-- **`take`**: 고급 인덱싱의 gather(§7.3)다. 1스레드 2.4배, 10스레드 10배.
-- **`histogram`, `bincount`**: numpy의 블록 구조를 그대로 따라서 직렬이다(가중치 합의 비트를 맞추려고). 그래도 1.2–1.5배다.
+- 2026-11-15 최적화 검토(A–C) 뒤의 값이다. 전의 값과의 비교는 아래에 있다.
+- **원소별 6개**: 다른 ufunc와 같은 디스패처라서 10스레드로 나뉜다. `nextafter`는 비트 연산으로 직접 계산한다(libm과 같은 결과, 8배). complex `reciprocal`은 1스레드도 3.9배다.
+- **`nonzero`**: 조각마다 세고 분기 없이 병렬로 채운다. 1스레드 10배, 10스레드 49배.
+- **`take_along_axis`**: 결과를 원소별로 돌며 `x_view + index * stride`를 읽는다. 1스레드 5배, 10스레드 17배.
+- **`histogram`, `bincount`**: 복사가 없고, 개수는 구간별로, 가중치 합은 65536 블록별로 병렬이다(비트는 numpy와 같다). 10스레드 9–11배.
+- **`searchsorted`**: 찾을 값을 나누어 병렬로 찾는다(10스레드 14배).
+- **`repeat`, `meshgrid`**: 행 단위로 직접 채운다. `diff`는 `subtract`이고, 따로 재면 numpy와 같다(이 표의 0.8배는 측정마다 흔들린다).
 - **`tensordot`**: 거의 전부 BLAS다. numpy와 같다.
-- 호출 비용: `flip(small)` 0.1µs(numpy 0.2µs), 스칼라 `hypot(1.0, 2.0)` 0.05µs(numpy 0.3µs).
+
+## 최적화 검토 전후 (1스레드 / 10스레드)
+| 경우 | 전 | 후 |
+|---|---|---|
+| `nextafter(v, w)` | 5.6 / 0.67 ms | 0.67 / 0.12 ms |
+| `nonzero(nz 1e6)` | 2.3 / 2.4 ms (1e7: 23 ms) | 0.38 / 0.08 ms (1e7: 3.8 ms) |
+| `take_along_axis(m, am, axis=1)` | 1.6 / 1.6 ms | 0.46 / 0.14 ms |
+| `count_nonzero(big 1e7)` | 2.4 / 0.81 ms | 1.1 / 0.42 ms |
+| `bincount` (1e7) | 9.5 / 9.2 ms | 3.7 / 1.1 ms |
+| `histogram(v, 100)` | 2.3 / 2.4 ms | 2.2 / 0.40 ms |
+| `histogram(v, 100, weights)` | 2.6 / 2.6 ms | 2.2 / 0.41 ms |

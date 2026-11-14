@@ -366,6 +366,28 @@ void sort_long(E* a, std::int64_t n, SortPiece sort_piece, Less less) {
     if (src != a) std::copy(src, src + n, a);
 }
 
+}  // namespace
+
+void sort_float64_total(double* a, std::int64_t n, bool parallel) {
+    // The NEON sort's merges take equal values from either run, so -0.0 and
+    // +0.0 come out mixed. They are contiguous in the sorted result, so the
+    // zero run is rewritten as all -0.0 then all +0.0: the total order.
+    // (Without this, merging pieces under TotalLess read unsorted runs and
+    // wrote out of bounds.) The pieces' merges then compare by TotalLess too.
+    auto piece = [](double* p, std::int64_t m) {
+        simd_sort::sort<simd_sort::F64>(p, m);
+        double* z0 = std::lower_bound(p, p + m, 0.0);
+        double* z1 = std::upper_bound(z0, p + m, 0.0);
+        const std::int64_t negative = std::count_if(z0, z1, [](double v) { return std::signbit(v); });
+        std::fill(z0, z0 + negative, -0.0);
+        std::fill(z0 + negative, z1, 0.0);
+    };
+    if (parallel && n >= 2 * kSortPiece && parallel::available()) sort_long(a, n, piece, TotalLess{});
+    else piece(a, n);
+}
+
+namespace {
+
 template <typename T>
 void sort_values(T* a, std::int64_t n, bool stable, bool descending) {
     // int64 takes the radix sort, parallel by itself
