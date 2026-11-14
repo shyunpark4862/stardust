@@ -148,15 +148,26 @@
   padding-left: 0;
 }
 
+/* A quotation is body text set apart, not a headline: same size and weight,
+   one step quieter, with a rule exactly as tall as the text. */
 .prose blockquote {
+  position: relative;
   margin-inline: 0;
-  padding: var(--space-1) 0 var(--space-1) var(--space-6);
-  border-left: 2px solid var(--blue-500);
-  font-size: var(--text-lg);
-  font-weight: 500;
-  line-height: 1.65;
-  letter-spacing: var(--tracking-tight);
-  color: var(--fg);
+  padding-left: var(--space-5);
+  color: var(--fg-muted);
+}
+
+.prose blockquote::before {
+  content: '';
+  position: absolute;
+  inset: 0.35em auto 0.35em 0;
+  width: 3px;
+  border-radius: var(--radius-full);
+  background: var(--slate-300);
+}
+
+.prose blockquote > * + * {
+  margin-top: var(--space-3);
 }
 
 .prose hr {

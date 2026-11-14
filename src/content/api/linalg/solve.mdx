@@ -1,0 +1,47 @@
+---
+name: solve
+group: 선형 시스템
+order: 1
+signature: sd.linalg.solve(a, b, /)
+summary: 선형 시스템 a @ x = b를 일반 LU 분해로 푼다.
+tag: Array API
+params:
+  - name: a
+    type: ndarray
+    kind: positional-only
+    desc: 계수 행렬. 모양은 (..., N, N).
+  - name: b
+    type: ndarray
+    kind: positional-only
+    desc: 우변. 모양은 (..., N) 또는 (..., N, K).
+returns:
+  type: ndarray
+  desc: b와 같은 모양의 해.
+raises:
+  - type: LinAlgError
+    desc: 행렬이 특이할 때.
+seeAlso: [solve_triangular, cholesky_solve]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 설명
+
+함수의 동작을 길게 풀어 쓰는 자리다. 이 글은 자리 채움이며, 실제 설명은 나중에 쓴다.
+
+<Callout type="warn">
+  `solve`는 언제나 일반 LU로 푼다. 행렬의 구조는 옵션이 아니라 함수 이름으로 고른다.
+</Callout>
+
+## 예제
+
+```python
+import stardust as sd
+
+a = sd.asarray([[2.0, 1.0], [1.0, 3.0]])
+b = sd.asarray([1.0, 2.0])
+sd.linalg.solve(a, b).tolist()   # [0.19999999999999996, 0.6000000000000001]
+```
+
+## 참고
+
+구현에 대한 짧은 메모나 다른 라이브러리와 다른 점을 적는 자리다.

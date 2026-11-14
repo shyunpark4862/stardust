@@ -1,0 +1,83 @@
+---
+/** A list of documented fields: parameters, the return value, or errors. */
+interface Field {
+  name?: string;
+  kind?: string;
+  type: string;
+  desc: string;
+}
+interface Props {
+  items: Field[];
+}
+const { items } = Astro.props;
+const named = items.some((f) => f.name);
+---
+
+<dl class:list={['fields', named && 'fields--named']}>
+  {
+    items.map((f) => (
+      <div class="fields__row">
+        {named && (
+          <dt class="fields__key">
+            <code>{f.name}</code>
+            {f.kind && <span class="fields__kind">{f.kind}</span>}
+          </dt>
+        )}
+        <dd class="fields__type">{f.type}</dd>
+        <dd class="fields__text">{f.desc}</dd>
+      </div>
+    ))
+  }
+</dl>
+
+<style>
+  .fields {
+    margin-bottom: 0;
+    border-top: 1px solid var(--line);
+  }
+  .fields__row {
+    display: grid;
+    grid-template-columns: 148px 1fr;
+    gap: var(--space-4);
+    padding-block: var(--space-3);
+    border-bottom: 1px solid var(--line);
+    font-size: var(--text-base);
+    line-height: var(--leading-snug);
+  }
+  .fields--named .fields__row {
+    grid-template-columns: 168px 132px 1fr;
+  }
+  .fields__key {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-1);
+  }
+  .fields__key code {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--fg);
+  }
+  .fields__kind {
+    font-size: var(--text-xs);
+    color: var(--fg-subtle);
+  }
+  .fields__type {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    color: var(--blue-700);
+  }
+  .fields__text {
+    margin: 0;
+    color: var(--slate-700);
+  }
+  @media (max-width: 640px) {
+    .fields__row,
+    .fields--named .fields__row {
+      grid-template-columns: 1fr;
+      gap: var(--space-1);
+    }
+  }
+</style>

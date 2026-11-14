@@ -2,6 +2,8 @@ export interface NavItem {
   label: string;
   href: string;
   badge?: string;
+  /** Show the label in the code font (function names). */
+  mono?: boolean;
 }
 export interface NavGroup {
   title: string;
@@ -30,9 +32,7 @@ export const sidebars: Record<string, NavGroup[]> = {
     },
     {
       title: '영역',
-      items: [
-        { label: '선형대수', href: '/api/linalg/', badge: '샘플' },
-      ],
+      items: [{ label: '선형대수', href: '/api/linalg/', badge: '샘플' }],
     },
   ],
   internals: [

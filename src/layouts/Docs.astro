@@ -2,7 +2,7 @@
 import Base from './Base.astro';
 import Badge from '../components/Badge.astro';
 import '../styles/prose.css';
-import { sidebars, topNav } from '../data/nav';
+import { sidebars, topNav, type NavGroup } from '../data/nav';
 
 interface Heading {
   depth: number;
@@ -16,10 +16,17 @@ interface Props {
   description?: string;
   section?: string;
   sample?: boolean;
+  /** Replaces the section's default sidebar. */
+  groups?: NavGroup[];
+  /** Replaces the section name above the title. */
+  eyebrow?: string;
+  /** Set the title in the code font (function pages). */
+  monoTitle?: boolean;
 }
 const fm = Astro.props.frontmatter ?? (Astro.props as Required<Props>['frontmatter']);
 const { title, description, section, sample = false } = fm;
-const groups = sidebars[section] ?? [];
+const groups = Astro.props.groups ?? sidebars[section] ?? [];
+const { eyebrow, monoTitle = false } = Astro.props;
 const toc = (Astro.props.headings ?? []).filter((h) => h.depth === 2 || h.depth === 3);
 const path = Astro.url.pathname;
 const sectionLabel = topNav.find((n) => n.href === `/${section}/`)?.label ?? '';
@@ -43,7 +50,7 @@ const sectionLabel = topNav.find((n) => n.href === `/${section}/`)?.label ?? '';
                 {g.items.map((item) => (
                   <li>
                     <a class="side__link" href={item.href} aria-current={path === item.href ? 'page' : undefined}>
-                      <span>{item.label}</span>
+                      <span class:list={[item.mono && 'side__mono']}>{item.label}</span>
                       {item.badge && <Badge>{item.badge}</Badge>}
                     </a>
                   </li>
@@ -57,8 +64,8 @@ const sectionLabel = topNav.find((n) => n.href === `/${section}/`)?.label ?? '';
 
     <article class="docs__main">
       <header class="page-head">
-        <p class="eyebrow">{sectionLabel}</p>
-        <h1 class="page-head__title">{title}</h1>
+        <p class="eyebrow">{eyebrow ?? sectionLabel}</p>
+        <h1 class:list={['page-head__title', monoTitle && 'page-head__title--mono']}>{title}</h1>
         {description && <p class="page-head__lead">{description}</p>}
         {
           sample && (
@@ -187,6 +194,10 @@ const sectionLabel = topNav.find((n) => n.href === `/${section}/`)?.label ?? '';
       color var(--dur-fast) var(--ease),
       background-color var(--dur-fast) var(--ease);
   }
+  .side__mono {
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+  }
   .side__link:hover {
     color: var(--fg);
     background: var(--bg-subtle);
@@ -207,6 +218,12 @@ const sectionLabel = topNav.find((n) => n.href === `/${section}/`)?.label ?? '';
     margin-top: var(--space-3);
     font-size: var(--text-3xl);
     letter-spacing: var(--tracking-display);
+  }
+  .page-head__title--mono {
+    font-family: var(--font-mono);
+    font-size: var(--text-2xl);
+    font-weight: 600;
+    letter-spacing: -0.02em;
   }
   .page-head__lead {
     margin-top: var(--space-4);

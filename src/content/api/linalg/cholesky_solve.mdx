@@ -1,0 +1,28 @@
+---
+name: cholesky_solve
+group: 선형 시스템
+order: 3
+signature: sd.linalg.cholesky_solve(c, b, /, *, upper=False)
+summary: Cholesky 인자를 받아 양정치 시스템을 푼다.
+params:
+  - name: c
+    type: ndarray
+    kind: positional-only
+    desc: cholesky가 돌려준 삼각 인자.
+  - name: b
+    type: ndarray
+    kind: positional-only
+    desc: 우변.
+  - name: upper
+    type: bool
+    kind: keyword-only
+    desc: c가 위 삼각이면 True.
+returns:
+  type: ndarray
+  desc: b와 같은 모양의 해.
+seeAlso: [cholesky, solve]
+---
+
+## 설명
+
+자리 채움이다.

@@ -1,0 +1,28 @@
+---
+name: cholesky
+group: 분해
+order: 1
+signature: sd.linalg.cholesky(x, /, *, upper=False)
+summary: 양정치 행렬의 Cholesky 분해를 구한다.
+tag: Array API
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 대칭 양정치 행렬. 모양은 (..., N, N).
+  - name: upper
+    type: bool
+    kind: keyword-only
+    desc: True면 위 삼각 인자를 돌려준다.
+returns:
+  type: ndarray
+  desc: 삼각 인자. 모양은 x와 같다.
+raises:
+  - type: LinAlgError
+    desc: 행렬이 양정치가 아닐 때.
+seeAlso: [cholesky_solve]
+---
+
+## 설명
+
+자리 채움이다.

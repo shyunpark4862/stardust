@@ -1,0 +1,89 @@
+---
+import Docs from '../../../layouts/Docs.astro';
+import Badge from '../../../components/Badge.astro';
+import { areaOf, areaSidebar, documentedAreas, groupsOf, hrefOf } from '../../../data/api';
+
+export async function getStaticPaths() {
+  return (await documentedAreas()).map((area) => ({ params: { area } }));
+}
+
+const { area } = Astro.params;
+const info = areaOf(area);
+const groups = await groupsOf(area);
+const headings = groups.map((g) => ({ depth: 2, slug: g.title, text: g.title }));
+---
+
+<Docs
+  title={info.name}
+  description={`${info.ns}의 함수 목록이다. 이름을 누르면 그 함수의 페이지로 간다.`}
+  section="api"
+  eyebrow={info.ns}
+  groups={await areaSidebar(area)}
+  headings={headings}
+  sample
+>
+  {
+    groups.map((g) => (
+      <>
+        <h2 id={g.title}>{g.title}</h2>
+        <ul class="fn-list">
+          {g.entries.map((e) => (
+            <li>
+              <a class="fn" href={hrefOf(e)}>
+                <span class="fn__name">{e.data.name}</span>
+                <span class="fn__summary">{e.data.summary}</span>
+                {e.data.tag && <Badge tone="accent">{e.data.tag}</Badge>}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </>
+    ))
+  }
+</Docs>
+
+<style>
+  .fn-list {
+    padding: 0;
+    border-top: 1px solid var(--line);
+    list-style: none;
+  }
+  .fn-list li {
+    margin: 0;
+  }
+  .fn {
+    display: grid;
+    grid-template-columns: 200px 1fr auto;
+    align-items: center;
+    gap: var(--space-4);
+    min-height: 52px;
+    margin-inline: calc(var(--space-3) * -1);
+    padding: var(--space-3);
+    border-bottom: 1px solid var(--line);
+    transition: background-color var(--dur-fast) var(--ease);
+  }
+  .fn:hover {
+    background: var(--bg-subtle);
+  }
+  .fn__name {
+    font-family: var(--font-mono);
+    font-size: var(--text-base);
+    font-weight: 600;
+    color: var(--accent);
+  }
+  .fn__summary {
+    font-size: var(--text-base);
+    line-height: var(--leading-snug);
+    color: var(--fg-muted);
+  }
+  @media (max-width: 640px) {
+    .fn {
+      grid-template-columns: 1fr auto;
+      gap: var(--space-1) var(--space-3);
+    }
+    .fn__summary {
+      grid-column: 1 / -1;
+      grid-row: 2;
+    }
+  }
+</style>

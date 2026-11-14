@@ -1,0 +1,41 @@
+---
+name: solve_triangular
+group: 선형 시스템
+order: 2
+signature: sd.linalg.solve_triangular(a, b, /, *, upper, unit_diagonal=False)
+summary: 삼각 행렬을 계수로 하는 선형 시스템을 푼다.
+params:
+  - name: a
+    type: ndarray
+    kind: positional-only
+    desc: 삼각 행렬. 모양은 (..., N, N).
+  - name: b
+    type: ndarray
+    kind: positional-only
+    desc: 우변.
+  - name: upper
+    type: bool
+    kind: keyword-only, 필수
+    desc: 위 삼각이면 True.
+  - name: unit_diagonal
+    type: bool
+    kind: keyword-only
+    desc: 대각을 1로 보고 읽지 않는다.
+returns:
+  type: ndarray
+  desc: b와 같은 모양의 해.
+seeAlso: [solve, cholesky_solve]
+---
+
+## 설명
+
+옵션이 여럿인 함수가 어떻게 보이는지 확인하는 견본이다.
+
+## 예제
+
+```python
+import stardust as sd
+
+u = sd.asarray([[2.0, 1.0], [0.0, 3.0]])
+sd.linalg.solve_triangular(u, sd.asarray([4.0, 3.0]), upper=True)
+```
