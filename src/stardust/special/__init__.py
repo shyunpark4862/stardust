@@ -24,6 +24,9 @@ __all__ = [
     "betainc", "betaincc", "betaincinv", "betainccinv",
     # S5: reductions, exponential integrals, elliptic integrals (§6, §7, §10)
     "logsumexp", "softmax", "log_softmax", "expi", "expn", "ellipk", "ellipe",
+    # S6: Bessel and Airy (§8, §9)
+    "i0", "i0e", "i1", "i1e", "j0", "j1", "y0", "y1", "k0", "k0e", "k1", "k1e",
+    "jv", "yv", "iv", "kv", "jve", "yve", "ive", "kve", "airy",
 ]
 
 globals().update({_name: getattr(_core, _name) for _name in __all__})

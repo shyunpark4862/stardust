@@ -25,9 +25,17 @@ def use_build(site):
 ALIAS = {"zeta_hurwitz": "zeta"}  # reference files named apart from their function
 
 
+# one output of a several-output function (tests/special/refdata.py PART)
+PART = {"airy_ai": ("airy", 0), "airy_aip": ("airy", 1), "airy_bi": ("airy", 2), "airy_bip": ("airy", 3)}
+
+
 def sd_function(name):
     import stardust as sd
 
+    if name in PART:
+        base, i = PART[name]
+        f = getattr(sd.special, base)
+        return lambda *a: f(*a)[i]
     name = ALIAS.get(name, name)
     return getattr(sd.special, name, None) or getattr(sd.special._core, name)
 
@@ -36,6 +44,8 @@ def sd_function(name):
 # scipy.special.<name>. None: nothing to compare with.
 COUNTERPART = {
     "_cf_tan": "numpy.tan",
+    "airy_ai": "scipy.special.airy[0]", "airy_aip": "scipy.special.airy[1]",
+    "airy_bi": "scipy.special.airy[2]", "airy_bip": "scipy.special.airy[3]",
     "zeta_hurwitz": "scipy.special.zeta",
 }
 
@@ -48,6 +58,12 @@ def counterpart(name):
 def scipy_function(name):
     import importlib
 
+    if name in PART:
+        import scipy.special
+
+        base, i = PART[name]
+        f = getattr(scipy.special, base)
+        return lambda *a: f(*a)[i]
     path = counterpart(name)
     if path is None:
         return None

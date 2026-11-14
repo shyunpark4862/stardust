@@ -571,6 +571,110 @@ def _ellip_inputs(rng):
     return (x,), np.ones(x.size, dtype=bool)
 
 
+# S6: Bessel and Airy (S6 user decisions). The oscillatory functions store `scale` =
+# max(1, M / |f|) where the envelope bound applies (x >= 0.99 z1, z1 the function's first
+# positive zero; every x for a negative non-integer order; x < 0 for Airy), so the test's
+# relative bound times scale is |error| <= 1e-14 M. iv with a negative non-integer order:
+# scale = (|I_a| + |(2/pi) sin(a pi) K_a|) / |I_-a|.
+
+
+def _bessel01_inputs(lo, hi, signed=False):
+    def f(rng):
+        m = 1200
+        x = np.concatenate([loguniform(rng, 1e-300, hi, m), loguniform(rng, lo, hi, m)])
+        if signed:
+            x *= rng.choice([-1.0, 1.0], x.size)
+        return (x,), np.ones(x.size, dtype=bool)
+    return f
+
+
+def _jy01_inputs(rng):
+    m = 900
+    x = np.concatenate([loguniform(rng, 1e-300, 10, m), loguniform(rng, 1, 1e4, m), loguniform(rng, 1e4, 1e300, m // 3)])
+    return (x,), np.ones(x.size, dtype=bool)
+
+
+def _envelope_scale(kind, n):
+    """scale(args, value) for J (kind 'j') or Y ('y') of order n (None: the first argument)."""
+    def scale(args, v):
+        nu = mpmath.mpf(args[0]) if n is None else mpmath.mpf(n)
+        x = mpmath.mpf(args[-1])
+        if x <= 0:
+            return 1.0
+        M = mpmath.sqrt(mpmath.besselj(nu, x) ** 2 + mpmath.bessely(nu, x) ** 2)
+        if nu >= 0:
+            z1 = mpmath.besseljzero(nu, 1) if kind == "j" else mpmath.besselyzero(nu, 1)
+            if x < mpmath.mpf("0.99") * z1:
+                return 1.0
+        return max(1.0, float(M / abs(v))) if v != 0 else float("inf")
+    return scale
+
+
+def _iv_scale(args, v):
+    nu, x = mpmath.mpf(args[0]), mpmath.mpf(args[1])
+    if nu >= 0 or nu == mpmath.floor(nu) or x <= 0:
+        return 1.0
+    a = -nu
+    size = abs(mpmath.besseli(a, x)) + abs(2 / mpmath.pi * mpmath.sin(a * mpmath.pi) * mpmath.besselk(a, x))
+    return max(1.0, float(size / abs(v))) if v != 0 else float("inf")
+
+
+def _order_inputs(lo_x, hi_x, negative=True):
+    def f(rng):
+        m = 500
+        nu = np.concatenate([rng.uniform(-50 if negative else 0, 50, 3 * m), rng.uniform(-1000 if negative else 0, 1000, m // 2),
+                             rng.integers(-20 if negative else 0, 21, m // 2).astype(float)])
+        x = np.concatenate([loguniform(rng, lo_x, hi_x, 3 * m), loguniform(rng, 30, hi_x, m // 2), loguniform(rng, lo_x, hi_x, m // 2)])
+        return (nu, x), np.ones(nu.size, dtype=bool)
+    return f
+
+
+def _wide(f):
+    """f(v, x) with 0.9 |v| + 20 more digits for |v| > 20: mpmath forms K_v, Y_v (and J_v for
+    v < 0) through the reflection (I_-v - I_v) / sin(v pi), cancelling ~0.43 |v| digits, and
+    returns a wrong value at its default precision without noticing (besselk(806.7, 626.3) =
+    -4.3e66; the value is 2.2e-70). Checked against 2x the digits."""
+    def g(v, x):
+        extra = int(0.9 * abs(v)) + 20 if abs(v) > 20 else 0
+        with mpmath.workdps(mpmath.mp.dps + extra):
+            return +f(v, x)
+    return g
+
+
+def _airy_inputs(rng):
+    m = 700
+    x = np.concatenate([rng.uniform(-2, 1, m), loguniform(rng, 1, 110, m), -rng.uniform(2, 9.7, m),
+                        -loguniform(rng, 9.7, 1e11, m), loguniform(rng, 1e-300, 1e-3, m // 4, signed=True)])
+    return (x,), np.ones(x.size, dtype=bool)
+
+
+def _airy_part(i):
+    fs = [mpmath.airyai, lambda x: mpmath.airyai(x, 1), mpmath.airybi, lambda x: mpmath.airybi(x, 1)]
+    return fs[i]
+
+
+def _airy_scale(i):
+    def scale(args, v):
+        x = mpmath.mpf(args[0])
+        if x >= 0:
+            return 1.0
+        if i % 2 == 0:
+            env = mpmath.sqrt(mpmath.airyai(x) ** 2 + mpmath.airybi(x) ** 2)
+        else:
+            env = mpmath.sqrt(mpmath.airyai(x, 1) ** 2 + mpmath.airybi(x, 1) ** 2)
+        return max(1.0, float(env / abs(v))) if v != 0 else float("inf")
+    return scale
+
+
+# name -> scale(args, value), for the functions whose bound is not plain relative
+SCALES = {
+    "j0": _envelope_scale("j", 0), "j1": _envelope_scale("j", 1), "y0": _envelope_scale("y", 0),
+    "y1": _envelope_scale("y", 1), "jv": _envelope_scale("j", None), "yv": _envelope_scale("y", None),
+    "iv": _iv_scale, "airy_ai": _airy_scale(0), "airy_aip": _airy_scale(1), "airy_bi": _airy_scale(2),
+    "airy_bip": _airy_scale(3),
+}
+
+
 INVERSES = {"gammaincinv", "gammainccinv", "betaincinv", "betainccinv"}
 
 
@@ -619,6 +723,29 @@ FUNCTIONS = {
     "expn": (2, lambda n, x: mpmath.expint(int(n), x), _expn_inputs),
     "ellipk": (1, mpmath.ellipk, _ellip_inputs),
     "ellipe": (1, mpmath.ellipe, _ellip_inputs),
+    # S6
+    "i0": (1, lambda x: mpmath.besseli(0, x), _bessel01_inputs(1e-3, 713.9, True)),
+    "i1": (1, lambda x: mpmath.besseli(1, x), _bessel01_inputs(1e-3, 713.9, True)),
+    "i0e": (1, lambda x: mpmath.besseli(0, x) * mpmath.exp(-abs(x)), _bessel01_inputs(1e-3, 1e300, True)),
+    "i1e": (1, lambda x: mpmath.besseli(1, x) * mpmath.exp(-abs(x)), _bessel01_inputs(1e-3, 1e300, True)),
+    "k0": (1, lambda x: mpmath.besselk(0, x), _bessel01_inputs(1e-3, 745)),
+    "k1": (1, lambda x: mpmath.besselk(1, x), _bessel01_inputs(1e-3, 745)),
+    "k0e": (1, lambda x: mpmath.besselk(0, x) * mpmath.exp(x), _bessel01_inputs(1e-3, 1e300)),
+    "k1e": (1, lambda x: mpmath.besselk(1, x) * mpmath.exp(x), _bessel01_inputs(1e-3, 1e300)),
+    "j0": (1, lambda x: mpmath.besselj(0, x), _jy01_inputs),
+    "j1": (1, lambda x: mpmath.besselj(1, x), _jy01_inputs),
+    "y0": (1, lambda x: mpmath.bessely(0, x), _jy01_inputs),
+    "y1": (1, lambda x: mpmath.bessely(1, x), _jy01_inputs),
+    "jv": (2, _wide(mpmath.besselj), _order_inputs(1e-3, 1e5)),
+    "yv": (2, _wide(mpmath.bessely), _order_inputs(1e-3, 1e5)),
+    "iv": (2, mpmath.besseli, _order_inputs(1e-3, 700)),
+    "kv": (2, _wide(mpmath.besselk), _order_inputs(1e-3, 700)),
+    "ive": (2, lambda v, x: mpmath.besseli(v, x) * mpmath.exp(-x), _order_inputs(1e-3, 1e5, False)),
+    "kve": (2, _wide(lambda v, x: mpmath.besselk(v, x) * mpmath.exp(x)), _order_inputs(1e-3, 1e5)),
+    "airy_ai": (1, _airy_part(0), _airy_inputs),
+    "airy_aip": (1, _airy_part(1), _airy_inputs),
+    "airy_bi": (1, _airy_part(2), _airy_inputs),
+    "airy_bip": (1, _airy_part(3), _airy_inputs),
 }
 
 
@@ -751,6 +878,9 @@ def build(name):
                     scale[i] = max(1.0, float(k))
                 else:
                     v = evaluate(f, args)
+                    if name in SCALES and mpmath.isfinite(v):
+                        with mpmath.workdps(40):
+                            scale[i] = SCALES[name](args, v)
             except (_Timeout, mpmath.libmp.NoConvergence, RuntimeError, ZeroDivisionError):
                 keep[i] = False
                 continue

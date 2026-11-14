@@ -24,6 +24,8 @@ REF = pathlib.Path(__file__).parent / "ref"
 # (S3 user decision), and reference files named apart from their function.
 MIXED = {"gammaln", "digamma", "polygamma", "beta", "betaln", "binom", "zeta_hurwitz"}
 ALIAS = {"zeta_hurwitz": "zeta"}
+# Reference files for one output of a several-output function: name -> (function, index).
+PART = {"airy_ai": ("airy", 0), "airy_aip": ("airy", 1), "airy_bi": ("airy", 2), "airy_bip": ("airy", 3)}
 
 
 def mixed_error(got, hi, lo):

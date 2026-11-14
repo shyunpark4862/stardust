@@ -107,6 +107,9 @@ inline double log_abs(Scaled s) {
 
 // e^x for any finite x: 2^n e^r with r = x - n log 2 (Cody-Waite, log 2 in two parts).
 inline Scaled exp_scaled(double x) {
+    // beyond every result's range (value() clamps the exponent): keeps n's conversion defined
+    if (x > 1e5) return {0.5, 200000};
+    if (x < -1e5) return {0.5, -200000};
     const double n = std::nearbyint(x / kLn2Hi);
     double r = std::fma(-n, kLn2Hi, x);
     r = std::fma(-n, kLn2Lo, r);

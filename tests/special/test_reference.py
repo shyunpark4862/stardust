@@ -28,6 +28,10 @@ mixed_error = refdata.mixed_error
 
 
 def function(name):
+    if name in refdata.PART:
+        base, i = refdata.PART[name]
+        f = getattr(sd.special, base)
+        return lambda *a: f(*a)[i]
     name = ALIAS.get(name, name)
     return getattr(sd.special, name, None) or getattr(sd.special._core, name)
 

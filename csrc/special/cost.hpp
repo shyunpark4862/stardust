@@ -85,6 +85,12 @@ inline constexpr double kEllipk = 8.0;
 inline constexpr double kEllipe = 9.7;
 inline constexpr double kEllipkAgm = 30;   // the comparison variants
 inline constexpr double kEllipeCarlson = 65;
+// S6 (special/ops/bessel01.hpp, bessel.hpp, airy.hpp), bench/special/s6/cost.md
+inline constexpr double kI0 = 16, kI0e = 12, kI1 = 16, kI1e = 13;
+inline constexpr double kK0 = 24, kK0e = 16, kK1 = 24, kK1e = 16;
+inline constexpr double kJ0 = 11, kJ1 = 12, kY0 = 14, kY1 = 13;
+inline constexpr double kJv = 750, kYv = 750, kIv = 2000, kKv = 1600;  // the reference mix: |v| up to 1000
+inline constexpr double kAiry = 300;
 }  // namespace cost
 
 }  // namespace sd::special

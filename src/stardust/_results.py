@@ -25,6 +25,9 @@ SchurResult = namedtuple("SchurResult", ["T", "Z"])
 HessenbergResult = namedtuple("HessenbergResult", ["H", "Q"])
 LDLResult = namedtuple("LDLResult", ["L", "D", "perm"])
 
+# special: airy (built by csrc/bind/special_bind.cpp, which looks it up by name)
+AiryResult = namedtuple("AiryResult", ["ai", "aip", "bi", "bip"])
+
 # The order the C++ core expects in _core.linalg._setup (csrc/linalg/pyrefs.hpp, enum Result).
 LINALG = (SlogdetResult, LUResult, QRResult, QRPivotedResult, LstsqResult, EighResult, SVDResult,
           EigResult, SchurResult, HessenbergResult, LDLResult)

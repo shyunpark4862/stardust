@@ -134,6 +134,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 | `binom(n, k)`가 음의 정수 n에서 NaN | 정수 k ≥ 0이면 n(n−1)…(n−k+1)/k! | 사용자 결정 (S3) |
 | `expi(x)`가 709.78 < x < 716.4에서 inf, `expn(n, x)`의 서브노멀 꼬리가 0, `expn`의 n이 int32를 넘으면 NaN | 참값 | 사용자 결정 (S5, 2026-11-14) |
 | `expn(inf, x)`가 1.7e-10 | NaN (Q17: 정수가 아니다) | 사용자 결정 (S5) |
+| Bessel·Airy의 ±inf 인자에서 NaN, `i0`·`i1`의 713–713.98 inf, `k0`·`k1`의 5e-324, 차수 극한(`yv(inf, x)` 등)의 NaN과 `yve`의 부호, 음의 차수 x = 0의 `iv(-1.5, 0)`·`yv(-½, 0)`·`yv(-1.5, 0)`, e-스케일 판의 x = 0 NaN, `airy(105)` | 참값 | 사용자 결정 (S6, 2026-11-14). `k0(5e-324)`는 같은 원칙 |
 | `gammainc(1e-300, 5e-324)` > 1, `gammainc(5e-324, x)` = 0, `gammainc(1, 5e-324)` = 0, `betainc(2, 1e300, 5e-324)` = NaN, `gammaincinv(5e-324, 0.5)`·`betaincinv(2, 3, 5e-324)`·`betainccinv(2, 3, 5e-324)` = NaN, 근이 언더플로하는 `betaincinv`가 DBL_MIN | 참값 | 사용자 결정 (S4, 2026-11-14) |
 | `expit(x)`가 x < −709.78에서 0 | 참값 eˣ(서브노멀), x < −745.13에서 0 | 서브노멀 규칙(§2.3), 사용자 결정 (S1, 2026-11-13) |
 | `lambertw`는 언제나 complex를 돌려주고 `tol=`이 있다 | 실수 입력이면 float64. `tol=` 없음 | Q6, 결정성 (§5.11) |
@@ -294,6 +295,11 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 ### 5.9 Airy (`airy`)
 - 작은 |x|(≤ 2 근처): Maclaurin 급수. 큰 양의 x: 지수 감소 점근, 큰 음의 x: 진동 점근. 중간: 1/3차 Bessel 관계식(§5.8의 함수) **3구간**
 - 출력 넷(Ai, Ai′, Bi, Bi′)을 한 번에 계산한다. 같은 중간값을 함께 쓴다.
+
+- **S6에서 정하고 바꾼 것** (docs/learn/S6-bessel-airy.md)
+  - 0·1차: Cephes 그대로이되 Hankel 위상을 반올림하지 않는다(libm의 sin x, cos x로 덧셈정리), e^±x는 m·2^e, log(x/2)는 log x − log 2.
+  - 실수 차수: Γ₁·Γ₂는 1/Γ(1+z)의 Taylor 계수(생성), x ≥ 30이고 ν < x이면 작은 차수의 Hankel에서 위로 재귀(진동 영역의 CF1은 0.3·x ULP를 잃는다), 다섯 재귀 모두 double-double, x² < ν + 1이면 거듭제곱급수, Hankel은 항이 앞항의 2배를 넘지 않을 때만. **4구간**(급수, Temme/Steed, 위로 재귀, Hankel)
+  - Airy: 위상 ζ를 double-double로. |x| ≲ 1e12까지 포락선 기준 안이다.
 
 ### 5.10 타원적분 (`ellipk(m)`, `ellipe(m)`; scipy와 같은 매개변수 m)
 - `ellipk`: AGM. `K = π / (2·AGM(1, √(1-m)))`, 이차 수렴(약 5회). `m < 0`은 변환. m → 1의 log 특이점은 `1-m`이 정확하므로(m ≥ 0.5에서 Sterbenz) AGM이 그대로 처리한다.

@@ -11,6 +11,9 @@
 #include "bind/pyutil.hpp"
 #include "special/cost.hpp"
 #include "special/kernels/chunked.hpp"
+#include "special/ops/airy.hpp"
+#include "special/ops/bessel.hpp"
+#include "special/ops/bessel01.hpp"
 #include "special/ops/ellip.hpp"
 #include "special/ops/erf.hpp"
 #include "special/ops/expint.hpp"
@@ -105,6 +108,19 @@ void bind_special(nb::module_& core) {
     def_naries<Betainc, Betaincc, Betaincinv, Betainccinv>(m);  // S4, §3
     def_naries<Expi, Expn, Ellipk, Ellipe>(m);  // S5, §7, §10
     def_naries<EllipkAgm, EllipeCarlson>(m);  // S5 measurement variants (the design's methods)
+    def_naries<I0, I0e, I1, I1e, K0, K0e, K1, K1e, J0, J1, Y0, Y1>(m);  // S6, §8.1
+    def_naries<Jv, Yv, Iv, Kv, Jve, Yve, Ive, Kve>(m);  // S6, §8.2
+    // airy(x, /) -> AiryResult(ai, aip, bi, bip) (§9; stardust._results)
+    m.def(
+        "airy",
+        [](nb::handle x) {
+            return call_named("airy", [&] {
+                const nb::handle objs[] = {x};
+                const nb::object t = call<Airy>(objs, nb::none());
+                return nb::module_::import_("stardust._results").attr("AiryResult")(*t);
+            });
+        },
+        nb::arg().none());
     def_naries<GammaLanczos>(m);  // S3 measurement variant (gamma candidate A)
     // zeta(x, q=None, /, *, out=None): Riemann with one argument, Hurwitz with two (§7)
     m.def(
@@ -143,7 +159,8 @@ void bind_special(nb::module_& core) {
             .template operator()<Expit, Logit, LogExpit, Xlogy, Xlog1py, Entr, RelEntr, Erf, Erfc, Erfcx, Erfinv,
                                  Erfcinv, Ndtr, LogNdtr, Ndtri, Gamma, Rgamma, Gammaln, Digamma, Polygamma,
                                  Beta, Betaln, Binom, Zeta, Gammainc, Gammaincc,
-                                 Gammaincinv, Gammainccinv, Betainc, Betaincc, Betaincinv, Betainccinv, Expi, Expn, Ellipk, Ellipe, Fma3, Sum4, Powers4, CfTan>();
+                                 Gammaincinv, Gammainccinv, Betainc, Betaincc, Betaincinv, Betainccinv, Expi, Expn, Ellipk, Ellipe, I0, I0e, I1, I1e, K0, K0e, K1, K1e, J0, J1, Y0,
+                                 Y1, Jv, Yv, Iv, Kv, Jve, Yve, Ive, Kve, Airy, Fma3, Sum4, Powers4, CfTan>();
         if (name == "zeta_hurwitz") w = weight_of(Hurwitz::cost_ns);  // zeta's two-argument form
         if (w == 0) throw nb::key_error(name.c_str());
         return w;
