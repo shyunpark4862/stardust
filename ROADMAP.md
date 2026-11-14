@@ -213,7 +213,7 @@
 | T0b 배열: Array API 채우기 | 승인 (2026-11-15) |
 | T1 special 감싸기와 `ndtri_exp` | 완료·승인 (2026-11-15) |
 | T2 special 비중심 분포 함수 | 완료·승인 (2026-11-15) |
-| T3 `sd.random` | 대기 |
+| T3 `sd.random` | 완료, 승인 대기 (2026-11-15) |
 | T4 분포 엔진과 연속 기본 12 | 대기 |
 | T5 이산 10 | 대기 |
 | T6 극값·수명 6과 비중심 3 | 대기 |
@@ -248,7 +248,9 @@
 - 보장 영역(2026-11-15 사용자): 잰 범위 전체(카이제곱·F 자유도 1e-2–1e4, nc 1e-3–1e4; t 자유도 1e-1–1e5, |δ| ≤ 100; 확률 1e-300까지). `chndtr(0, nc, 0)` = NaN(`chdtr(0, 0)`과 일관)으로 확정. 승인 2026-11-15.
 
 ### T3. `sd.random`
-- 계수기형 생성기, `default_rng`, `random integers choice permutation shuffle`
+- 계수기형 생성기, `default_rng`, `random integers choice permutation` (`shuffle`은 R9로 뺐다)
+- 결정(2026-11-15 사용자): docs/design/random.md R5–R10 (Philox4×64-10, numpy SeedSequence 해시, spawn·state·피클, 공유 시 구간 원자적 예약, shuffle 없이 permutation, integers 브로드캐스트, choice p 허용치).
+- 결과: docs/api/random.md, docs/design/random.md §2–§6; 측정 bench/random/t3_speed.md; 테스트 tests/random/test_random.py.
 
 ### T4. 분포 엔진과 연속 기본 12
 - 분포 구조체와 (분포, 메서드) Op, 신형 API의 Python 클래스, 참값 도구(`tools/stats_ref.py`)

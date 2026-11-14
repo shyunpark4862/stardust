@@ -13,7 +13,7 @@
 | 데이터프레임 | `sd.frame` | [docs/api/frame.md](docs/api/frame.md) |
 | 특수함수 | `sd.special` | [docs/api/special.md](docs/api/special.md) (S0–S11 완료: 로지스틱·정보 7, 오차함수 8, 감마·베타·제타 9, 불완전 감마·베타 8, 리덕션·지수적분·타원 7, Bessel·Airy 21, 초기하·Lambert W 3, 복소수 2와 erf·erfc·erfcx·lambertw의 complex) |
 | 통계 | `sd.stats`, `sd.stats.tests` | [docs/api/stats.md](docs/api/stats.md) (설계 초안, 구현 전) |
-| 난수 | `sd.random` | [docs/api/random.md](docs/api/random.md) (설계 초안, 구현 전) |
+| 난수 | `sd.random` | [docs/api/random.md](docs/api/random.md) (T3: Philox4×64-10, `default_rng`, `random`·`integers`·`choice`·`permutation`·`spawn`·`state`) |
 
 - 설계의 근거와 측정은 `docs/design/<영역>.md`, 통합의 결정은 [DESIGN.md](DESIGN.md)에 있다.
 

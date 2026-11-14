@@ -1,8 +1,6 @@
 # 난수 영역 설계 (sd.random)
 
-> 상태: **초안** (2026-11-15). 큰 결정은 사용자가 정했다(§1). 시작 전에 물을 것은 §6에 있다.
->
-> **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
+> 상태: **T3 구현 중** (2026-11-15). 결정은 §1(R1–R10).
 
 `sd.random`은 난수의 바탕이다. 분포별 표본은 여기가 아니라 `sd.stats`의 각 분포(`X.sample(shape, rng=rng)`, [stats.md](stats.md) §4)에 있다.
 
@@ -17,36 +15,39 @@
 | R1 위치 | 별도 모듈 `sd.random`. stats 안이 아니다 |
 | R2 생성기 | **계수기형 자체 설계**: 원소 번호에서 바로 난수를 만든다. 모든 연산이 병렬이고 스레드 수와 무관하게 같은 값이다. numpy와 값은 다르다(numpy의 비트 호환 대신 고른 것) |
 | R3 API | Generator 객체: `rng = sd.random.default_rng(seed)`. 전역 함수와 전역 상태가 없다 |
-| R4 범위 | 생성기 + 기본 도구만: `random`([0, 1) 균등), `integers`, `choice`, `permutation`, `shuffle`. 분포별 표본은 stats에 (R1과 함께 정함: 중복이 없고, 매개변수 규칙이 하나다) |
+| R4 범위 | 생성기 + 기본 도구만: `random`([0, 1) 균등), `integers`, `choice`, `permutation`. 분포별 표본은 stats에 (R1과 함께 정함: 중복이 없고, 매개변수 규칙이 하나다). `shuffle`은 R9로 뺐다 |
+| R5 생성기 (T3, 2026-11-15) | Philox4×64-10 (§2) |
+| R6 시드 | int(0 이상, 크기 제한 없음)·그런 int의 시퀀스·None(OS 엔트로피). 키는 numpy SeedSequence와 같은 해시로 만든다(그래서 키는 numpy Philox의 키와 같다; 값은 계수기 쓰는 법이 달라 다르다) |
+| R7 spawn·상태 | `spawn(n)`(독립 생성기), 상태 읽기·쓰기(`state`), 피클·복사 모두 |
+| R8 공유 | 한 Generator를 여러 Python 스레드가 함께 쓰면 호출마다 자기 구간을 원자적으로 예약한다. 깨지지 않고 같은 난수를 두 번 쓰지 않지만, 어느 스레드가 어느 구간을 받는지는 실행 순서에 따른다. 재현하려면 스레드마다 `spawn` |
+| R9 섞기 | `shuffle` 없이 `permutation`만. stardust에는 인자를 제자리에서 바꾸는 함수가 없다(값을 바꾸는 것은 `out=`, `+=`, 인덱스 대입). 제자리가 필요하면 `x[...] = rng.permutation(x)`. 방법은 재서 정하고, 결과는 스레드 수와 무관하다 |
+| R10 인자 | `integers`의 `low`·`high`는 int 또는 int64 배열이고 `shape`와 함께 브로드캐스트한다(numpy와 같은 규칙). `choice`의 `p`는 음수·NaN이 없고 합이 1에서 sqrt(eps) 안이어야 하며(numpy와 같다), 합으로 나눠 쓴다 |
 
-## 2. 생성기
-- 후보: **Philox4×64-10** (Salmon et al., "Parallel random numbers: as easy as 1, 2, 3", SC 2011; Random123). 키(128비트)와 계수기(256비트)에서 64비트 넷을 만드는 함수다. 상태가 없어서 어느 계수기 값이든 바로 계산된다.
-- 정확성: Random123의 알려진 답(KAT) 벡터와 비트까지 맞춘다.
-- 다른 후보(마일스톤에서 정한다): Philox4×32-10(32비트 곱셈, NEON 친화), Threefry, 다른 해시형.
+## 2. 생성기 (`csrc/random/philox.hpp`)
+- **Philox4×64-10** (Salmon et al., "Parallel random numbers: as easy as 1, 2, 3", SC 2011; Random123). 키(128비트)와 계수기(256비트)에서 64비트 넷을 만드는 함수다. 상태가 없어서 어느 계수기 값이든 바로 계산된다.
+- 정확성: Random123의 알려진 답(KAT) 세 벡터와 비트까지 같고, numpy의 Philox 블록과도 같다(tests/random/test_random.py).
+- **블록 넷을 함께**: 한 블록은 곱셈 20번이 이어지는 의존 사슬이라 지연 시간에 묶인다(블록당 약 12 ns). 독립인 블록 넷의 라운드를 섞어 곱셈기를 채운다(`philox4`). 균등 난수 10⁶개 2.98 → 1.14 ms. 블록마다 비트는 같다.
 
 ## 3. 결정성: 원소의 부분 수열
-- Generator는 키(시드에서)와 위치 `pos`(지금까지 쓴 원소 수)를 든다.
-- 크기 n의 호출에서 원소 i(0 ≤ i < n)는 계수기 (`pos + i`, j)를 쓴다. j는 그 원소 안에서 몇 번째 난수인지다(기각 표본이 다시 뽑을 때 늘어난다). 호출이 끝나면 `pos += n`.
-- 그래서 원소 하나의 값은 (키, 원소 번호)만으로 정해진다. 이터레이터가 작업을 어떻게 나누든, 스레드가 몇 개든 같은 값이다(DESIGN.md의 결정성 규칙).
-- 같은 시드와 같은 호출 순서면 같은 값이다. 호출을 나누어 부르면(n을 두 번에) 앞의 원소들은 같다.
+- Generator는 키와 위치 `pos`(지금까지 쓴 원소 수)를 든다. 크기 n인 호출의 원소 i는 스트림의 원소 e = pos + i이고, 호출이 끝나면 `pos += n`이다.
+- **원소 e의 단어**: 첫 단어는 계수기 (e / 4, 0, 0, 0) 블록의 e mod 4번째 단어다(이웃한 원소 넷이 블록 하나를 나눈다). 기각 표본에 더 필요한 단어는 계수기 (e, j, 0, 0), j ≥ 1 블록에서 차례로 받는다. 두 계수기는 둘째 단어(0과 1 이상)로 갈려서 만나지 않는다.
+- 그래서 원소 하나의 값은 (키, e)만으로 정해진다. 작업을 어떻게 나누든, 스레드가 몇 개든 같은 값이다. 호출을 나누어 불러도 앞의 원소들은 같다.
+- 위치의 예약은 잠금 안에서 한다(R8). 계산은 잠금 밖이다.
 
-## 4. 기본 도구
-| 함수 | 방법(안) |
+## 4. 기본 도구 (`csrc/random/random.cpp`, `src/stardust/random/__init__.py`)
+| 함수 | 방법 |
 |---|---|
-| `random` | 64비트의 위 53비트 × 2⁻⁵³ (numpy와 같은 변환) |
-| `integers` | Lemire의 거의 나눗셈 없는 방법(기각은 원소 안에서) |
-| `permutation`, `shuffle` | 원소마다 무작위 키를 만들어 정렬(병렬, 결정적, O(n log n)) 또는 Fisher–Yates(순차). 마일스톤에서 재서 정한다 |
-| `choice` | 복원은 `integers`, 비복원은 `permutation`의 앞부분, 가중치는 누적합과 이분 탐색 |
-- dtype: 실수는 float64, 정수는 int64. 범위·인자 규칙은 docs/api/random.md.
+| `random` | 첫 단어의 위 53비트 × 2⁻⁵³ (numpy와 같은 변환) |
+| `integers` | Lemire의 거의 나눗셈 없는 방법(r = high − low, w·r의 위 64비트; 아래 64비트가 2⁶⁴ mod r보다 작으면 기각하고 그 원소의 추가 단어로 다시). 범위가 하나인 흔한 호출은 2⁶⁴ mod r을 한 번만 구한다(범위 2⁶³에서 원소 절반이 나눗셈을 했다: 5.7 → 1.5 ms). 64비트 부호 없는 산술이라 int64의 어떤 쌍이든 정확하다 |
+| `permutation` | Fisher–Yates. 걸음 i는 원소 pos + i의 단어로 [i, n)을 고른다. **재서 골랐다**: 무작위 64비트 키를 정렬하는 방법(병렬)은 10⁶개 1스레드 8.6 ms, 10스레드 3.8 ms였고 Fisher–Yates(순차)는 3.0 ms다 |
+| `choice` 복원 | 균등은 `integers`, 가중치는 누적합(마지막을 1로 나눔)과 `searchsorted(side='right')`(확률 0인 원소는 뽑히지 않는다) |
+| `choice` 비복원 | 균등은 Fisher–Yates의 앞 k걸음. k ≤ n/16이면 건드린 항목만 해시 맵에 둔다(O(k): 10⁶개에서 1000개 0.03 ms; 처음에는 전체를 섞어 8.9 ms였다). 가중치는 Efraimidis–Spirakis: 원소마다 E/p(E는 표준 지수)를 만들어 작은 k개(확률 0은 inf) |
+- dtype: 실수는 float64, 정수는 int64.
 
-## 5. 측정과 테스트
-- KAT 벡터, 스레드 1·3·10에서 같은 비트, 호출을 나눈 것과 한 번에 부른 것의 일치.
-- 통계 검사: 균등성(KS·카이제곱), 정수의 치우침, 섞기의 균등성. 필요하면 외부 검사기(PractRand 등)로 한 번 잰다.
-- 속도: numpy Generator(PCG64, Philox)와 1·10스레드로 비교한다.
+## 5. 시드 (R6)
+- numpy `SeedSequence`(풀 크기 4)를 Python으로 옮겼다(numpy에 기대지 않으려고). 키는 `generate_state(2, uint64)`라 numpy Philox의 키와 같다. `spawn`도 numpy와 같은 키다(spawn_key에 번호를 붙인다). 테스트가 numpy와 비교한다.
+- `None`은 `secrets.randbits(128)`이다.
 
-## 6. 시작하기 전에 물을 것
-- 생성기의 최종 선택(Philox4×64-10 / 4×32-10 / 기타)과 라운드 수
-- 시드: 받는 타입(int, 정수 배열, None = OS 엔트로피), 시드에서 키를 만드는 방법(numpy의 SeedSequence 같은 해시)
-- 독립 생성기 나누기(`spawn`), 상태 읽기·쓰기, 피클
-- 같은 Generator를 여러 Python 스레드가 함께 쓸 때의 규칙(위치 `pos`의 갱신)
-- `permutation`·`shuffle`의 방법(정렬 대 Fisher–Yates), `shuffle`이 제자리인지
+## 6. 측정
+- bench/random/t3_speed.md: numpy Generator(PCG64, Philox)와 1·10스레드 비교. 요약은 docs/api/random.md §1.8.
+- 테스트(tests/random/test_random.py): KAT, 계수기 배치, SeedSequence·spawn의 numpy 일치, 스레드 1·3·10과 나눈 호출의 같은 비트, 경계, 통계 검사(KS, 카이제곱: 정수·기각 구간·섞기 24가지·가중치), 비복원, 상태·피클·복사, 공유 Generator의 구간 예약, 에러 메시지.

@@ -19,6 +19,7 @@ find_package(nanobind CONFIG REQUIRED)
 # (little unrolling, little vectorization).
 nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/base/buffer.cpp
+  csrc/random/random.cpp
   csrc/array/convert.cpp
   csrc/array/iter.cpp
   csrc/array/ndarray.cpp

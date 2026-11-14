@@ -222,3 +222,4 @@ from . import linalg  # noqa: E402  (sd.linalg; it needs the array objects above
 from .linalg import vecdot  # noqa: E402  (Array API: the same function at the top level and in linalg)
 from . import frame  # noqa: E402  (sd.frame)
 from . import special  # noqa: E402  (sd.special)
+from . import random  # noqa: E402  (sd.random)

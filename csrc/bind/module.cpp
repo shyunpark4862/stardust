@@ -5,6 +5,7 @@
 #include "bind/frame_bind.hpp"
 #include "bind/linalg_bind.hpp"
 #include "bind/special_bind.hpp"
+#include "random/random.hpp"
 #include "bind/pyutil.hpp"
 #include "array/ops/copy.hpp"
 #include "array/ops/creation.hpp"
@@ -117,4 +118,5 @@ NB_MODULE(_core, m) {
     sd::bind_linalg(m);  // after the array: it looks up the array objects bound above
     sd::bind_frame(m);
     sd::bind_special(m);  // after the array, like linalg
+    sd::bind_random(m);  // after the array too (it returns ndarrays)
 }
