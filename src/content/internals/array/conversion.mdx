@@ -81,7 +81,7 @@ DType select(const LoopTable& table, DType d, std::span<const DType> inputs, con
 몇 가지를 따라가 볼게요.
 
 - `int_arr / int_arr`: 승격하면 int64예요. `divide`에는 int64 루프가 없으니 위로 올라가 float64 루프를 써요. 입력은 실행 중에 float64로 변환돼요.
-- `bool_arr + bool_arr`: 승격하면 bool인데 `add`에는 bool 루프가 없어요. 위로 올라가 int64 루프를 써요. numpy는 bool끼리 더하면 bool(논리합)이지만(numpy 2.5.4에서 확인), stardust는 int64예요. `sum`, `prod`, 누적 연산도 bool을 int64로 쌓아요.
+- `bool_arr + bool_arr`: 승격하면 bool인데 `add`에는 bool 루프가 없어요. 위로 올라가 int64 루프를 써요. numpy 2.5.4는 bool끼리 더하면 bool(논리합)이지만, stardust는 int64예요. `sum`, `prod`, 누적 연산도 bool을 int64로 쌓아요.
 - `logical_and(int_arr, int_arr)`: 승격하면 int64예요. `logical_and`는 bool 루프만 있고, 선택은 **위로만** 가므로 bool까지 내려가지 않아요. `TypeError: logical_and(): not supported for int64 and int64`예요(Array API 표준의 규칙과 같아요).
 - 시프트는 루프 표만으로는 bool 입력을 막을 수 없어요. bool은 위로 올라가 int64 루프에 닿기 때문이에요. 그래서 연산 정의에 `no_bool_inputs` 표시를 두고, 디스패치가 bool 입력을 먼저 거부해요.
 
@@ -139,7 +139,7 @@ Python 스칼라 피연산자는 **루프 dtype으로 미리 변환한** 원소 
 
 ### int와 float의 비교
 
-`int_arr == float_arr`은 승격 규칙대로 float64 루프에서 비교해요. int를 float64로 바꾼 뒤 비교하므로, $2^{53}$을 넘는 정수는 반올림된 다음 비교돼요. `asarray([2**53 + 1]) == asarray([2.0**53])`은 `True`예요. numpy와 같고, frame도 같은 규칙을 따르도록 맞췄어요.
+`int_arr == float_arr`은 승격 규칙대로 float64 루프에서 비교해요. int를 float64로 바꾼 뒤 비교하므로, $2^{53}$을 넘는 정수는 반올림된 다음 비교돼요. `asarray([2**53 + 1]) == asarray([2.0**53])`은 `True`예요. numpy와 같고, frame도 같은 규칙을 따라요.
 
 ## 중첩 시퀀스에서 만들기
 
@@ -150,7 +150,7 @@ Python 스칼라 피연산자는 **루프 dtype으로 미리 변환한** 원소 
 1. **ndarray**: 그대로 돌려주거나, `dtype`이 다르거나 `copy=True`이면 변환·복사해요.
 2. **Python 스칼라**: 0차원 배열이 될 것이므로 `ValueError`예요.
 3. **list, tuple**: 아래의 두 패스 알고리즘으로 만들어요.
-4. **range**: `PySequence_List`로 int 리스트를 만든 뒤 3번 길로 보내요. 버퍼가 아니라서 그래요(frame도 range를 받아서, 두 영역을 맞췄어요).
+4. **range**: `PySequence_List`로 int 리스트를 만든 뒤 3번 길로 보내요. 버퍼가 아니라서 그래요(frame도 range를 받아요).
 5. **버퍼 프로토콜**을 지원하는 객체: 다음 절.
 6. 그 밖은 `TypeError`예요. generator는 받지 않아요.
 
@@ -220,7 +220,7 @@ ValueError: asarray(): inhomogeneous nested sequence: expected every level to ma
 - `PyList_GET_ITEM`/`PyTuple_GET_ITEM` 매크로로 원소를 **빌린 참조**로 읽어요. 원소마다 참조 카운트를 올렸다 내리는 일이 없어요. list와 tuple만 받으니 일반 시퀀스 프로토콜(`PySequence_GetItem`)을 쓸 필요가 없어요.
 - 원소의 종류 판정은 `PyBool_Check` → `PyLong_Check` → `PyFloat_Check` → `PyComplex_Check` 순서예요. `bool`은 `int`의 서브클래스라 반드시 먼저 봐야 해요.
 
-원소 1000개짜리 리스트에서 numpy 17µs, stardust 7µs예요(numpy 2.5.4, Apple M4 Pro). stardust가 list·tuple과 네 가지 스칼라만 받는 반면, numpy의 같은 경로는 원소마다 더 많은 경우(배열 프로토콜을 가진 객체, 임의의 시퀀스, 문자열과 object dtype 등)를 다뤄야 해요. 두 구현의 시간을 항목별로 나눠 재 보지는 않았어요.
+원소 1000개짜리 리스트에서 numpy 17µs, stardust 7µs예요(numpy 2.5.4, Apple M4 Pro). stardust가 list·tuple과 네 가지 스칼라만 받는 반면, numpy의 같은 경로는 원소마다 더 많은 경우(배열 프로토콜을 가진 객체, 임의의 시퀀스, 문자열과 object dtype 등)를 다뤄야 해요.
 
 ### 범위 밖의 Python int
 
@@ -301,7 +301,7 @@ valid = any <= 1;
 
 모든 바이트가 0 또는 1이면 OR도 0 또는 1이고, 2 이상의 바이트가 하나라도 있으면 OR에 1보다 높은 비트가 켜져요. 원소마다 비교하고 분기하는 대신 OR만 하므로 컴파일러가 16바이트씩 NEON으로 벡터화해요. 원소 100만 개에서 8.3µs이고, 원소별 비교로 짰을 때는 235µs였어요. 0/1이 아닌 바이트가 있으면 0/1로 정규화해서 복사해요.
 
-입구 한 곳에서 막으면 모든 bool 커널을 한 번에 지킬 수 있어요. 대신 공유한 **뒤에** 바깥(numpy 쪽)에서 바이트를 바꾸는 경우는 막지 못해요. 이 한계는 문서에 적어 두었어요.
+입구 한 곳에서 막으면 모든 bool 커널을 한 번에 지킬 수 있어요. 대신 공유한 **뒤에** 바깥(numpy 쪽)에서 바이트를 바꾸는 경우는 막지 못해요.
 
 ```python
 >>> b = np.array([0, 2, 1], dtype=np.uint8).view(np.bool_)
@@ -333,14 +333,14 @@ visit_src(src, [&]<typename S>(std::type_identity<S>) {
 ```
 
 - **넓히기는 모두 정확해요.** 32비트 이하의 정수는 int64에, float16과 float32의 모든 값은 float64에, complex64는 complex128에 정확히 들어가요. 그래서 이 변환은 `dtype=` 없이도 자동으로 해요.
-- **`uint64`는 값이 아니라 dtype으로 거부해요.** $2^{63}$ 이상의 값이 하나도 없어도 `TypeError`예요. 값을 보고 판단하면 같은 코드가 데이터에 따라 성공하기도 하고 실패하기도 하고, dtype을 값에 따라 바꾸면 결과 dtype이 데이터에 따라 달라져요. frame도 같은 규칙으로 맞췄어요. `dtype=`을 주어도 거부해요.
+- **`uint64`는 값이 아니라 dtype으로 거부해요.** $2^{63}$ 이상의 값이 하나도 없어도 `TypeError`예요. 값을 보고 판단하면 같은 코드가 데이터에 따라 성공하기도 하고 실패하기도 하고, dtype을 값에 따라 바꾸면 결과 dtype이 데이터에 따라 달라져요. frame도 같은 규칙이에요. `dtype=`을 주어도 거부해요.
 - **big-endian**은 복사하면서 바이트를 뒤집어요(`load_swapped`). complex는 실수부와 허수부를 **따로** 뒤집어요. 16바이트를 통째로 뒤집으면 두 부분의 자리가 바뀌니까요. 공유는 하지 않아요.
 - **float16**(`__fp16`)은 저장 전용 타입이라 먼저 `float`로 바꾼 다음(`widen`) 변환해요.
 - `dtype=`을 주면 넓힌 값에 명시적 변환(`cast_value`, 아래 절)을 한 번 더 해요. `asarray(np_float32, dtype=sd.int64)`는 float32 → float64 → int64(포화)예요.
 - **결과의 레이아웃은 원본의 메모리 축 순서를 따라요.** F 순서 numpy 배열을 가져오면 F 순서 결과가 나와요(int32 `(2, 3)` F 순서 배열의 결과 strides가 `(8, 16)`).
 - 0차원 버퍼와 32차원을 넘는 버퍼는 `ValueError`예요.
 
-복사 경로는 행 우선 odometer(`for_each_element`)에 원소마다 `memcpy` load와 변환을 하는 단순한 루프예요. 원천 타입마다 손으로 벡터화하지는 않았어요.
+복사 경로는 행 우선 odometer(`for_each_element`)에 원소마다 `memcpy` load와 변환을 하는 단순한 루프예요. 원천 타입마다 손으로 벡터화한 경로는 없어요.
 
 ### 넓히는 복사의 속도: numpy `astype`의 4분의 1
 
@@ -354,7 +354,7 @@ visit_src(src, [&]<typename S>(std::type_identity<S>) {
   caption="numpy는 i32.astype(np.int64), f32.astype(np.float64)."
 />
 
-1스레드에서 0.24배, 0.22배이고 10스레드도 같아요. **원인은 넓히기가 아니라 복사 루프예요.** 이 문서를 쓰며 경로를 바꿔 가며 잰 값으로 확인했어요(원소 100만 개, 1스레드, 7라운드 중 가장 빠른 값).
+1스레드에서 0.24배, 0.22배이고 10스레드도 같아요. **원인은 넓히기가 아니라 복사 루프예요.** 아래는 경로를 바꿔 가며 잰 값이에요(원소 100만 개, 1스레드, 7라운드 중 가장 빠른 값).
 
 | 연산 | 시간 | 지나는 경로 |
 |---|---:|---|
@@ -368,7 +368,7 @@ visit_src(src, [&]<typename S>(std::type_identity<S>) {
 
 - 타입을 바꾸지 않는 복사도 버퍼 프로토콜 경로로 가면 430µs로 똑같아요. 그러니 4배 차이는 int32 → int64나 float32 → float64 변환 비용이 아니에요.
 - 같은 100만 원소 복사를 stardust 배열에서 하면 102µs로 numpy와 같아요. 이쪽은 이터레이터와 캐스트 커널 표([연산 엔진](/internals/array/engine/), 아래 "캐스트 커널 표")를 거쳐요. 연속 구간을 길게 합치고, 같은 타입이면 `memcpy`이고, 병렬로 나눠요.
-- 버퍼 프로토콜의 복사는 그 엔진을 쓰지 않고 `from_buffer` 안의 `for_each_element<2>`를 돌려요. 이 루프는 원소마다 두 포인터를 **런타임 바이트 stride**만큼 옮기며 `load<S>`(`memcpy`)와 `store`를 해요. stride가 컴파일 시점에 알려지지 않으면 컴파일러가 연속 접근으로 보고 벡터화하기 어렵다는 것은 [원소별 커널](/internals/array/elementwise/)의 "바이트 stride 루프는 벡터화되지 않아요"에서 본 문제와 같은 구조예요. 이 루프의 기계어를 직접 확인하지는 않았어요. 원소당 약 0.42ns예요.
+- 버퍼 프로토콜의 복사는 그 엔진을 쓰지 않고 `from_buffer` 안의 `for_each_element<2>`를 돌려요. 이 루프는 원소마다 두 포인터를 **런타임 바이트 stride**만큼 옮기며 `load<S>`(`memcpy`)와 `store`를 해요. stride가 컴파일 시점에 알려지지 않으면 컴파일러가 연속 접근으로 보고 벡터화하기 어렵다는 것은 [원소별 커널](/internals/array/elementwise/)의 "바이트 stride 루프는 벡터화되지 않아요"에서 본 문제와 같은 구조예요. 원소당 약 0.42ns예요.
 - 이 루프는 `parallel_for`를 부르지 않아요. 그래서 10스레드여도 413µs로 1스레드와 같아요.
 - 결과 배열을 새로 할당하는 비용은 두 라이브러리 모두 같은 조건이에요(numpy의 `astype`도 새 배열을 만들어요).
 
@@ -382,7 +382,7 @@ visit_src(src, [&]<typename S>(std::type_identity<S>) {
 |---|---:|---:|
 | `asarray(numpy float64 배열)` | 13ns (`np.asarray`) | 175ns (`sd.asarray`) |
 
-이 두 수치는 **같은 일을 비교한 것이 아니에요.** `np.asarray(ndarray)`는 이미 numpy 배열이면 같은 객체를 그대로 돌려줘요. 하는 일이 인자 확인뿐이에요. stardust에 맞는 비교 대상은 `sd.asarray(sd 배열)`이고, 이것은 20ns예요(같은 객체를 돌려줘요, 이 문서를 쓰며 잰 값). `sd.asarray(numpy 배열)`은 다른 라이브러리의 객체를 받아 새 Python 객체를 만드는 일이에요.
+이 두 수치는 **같은 일을 비교한 것이 아니에요.** `np.asarray(ndarray)`는 이미 numpy 배열이면 같은 객체를 그대로 돌려줘요. 하는 일이 인자 확인뿐이에요. stardust에 맞는 비교 대상은 `sd.asarray(sd 배열)`이고, 이것은 20ns예요(같은 객체를 돌려줘요). `sd.asarray(numpy 배열)`은 다른 라이브러리의 객체를 받아 새 Python 객체를 만드는 일이에요.
 
 그 175ns가 어디에 쓰이는지 코드 순서대로 보면 이래요(`asarray` → `from_buffer`).
 
@@ -392,7 +392,7 @@ visit_src(src, [&]<typename S>(std::type_identity<S>) {
 4. `Buffer::adopt(view)`로 `Py_buffer`를 넘겨받는 Buffer(`shared_ptr`, 할당 1번)와 `wrap`으로 nanobind 인스턴스(할당 1번)를 만들어요.
 5. (측정에 포함) 결과가 버려질 때 Buffer의 소멸자가 GIL을 확인(`PyGILState_Ensure`)한 뒤 `PyBuffer_Release`를 부르고, 메모리를 돌려줘요.
 
-몇 단계의 몫은 대조 실험으로 나눌 수 있었어요(이 문서를 쓰며 잰 값).
+입력을 바꾼 대조 측정으로 몇 단계의 몫을 나눌 수 있어요.
 
 | 입력 | `sd.asarray` | 빠지는 단계 |
 |---|---:|---|
@@ -402,7 +402,7 @@ visit_src(src, [&]<typename S>(std::type_identity<S>) {
 
 - **약 37ns는 1단계예요.** 배열인 것이 분명한 입력에 스칼라 검사를 먼저 하는 순서 때문이에요. `asarray`에서 numpy 배열 타입을 스칼라 검사 전에 걸러 내면 줄일 수 있어요.
 - **약 26ns는 numpy의 버퍼 내보내기 비용이에요.** Python에서 `memoryview(f)`가 68ns, `memoryview(memoryview)`가 32ns로 비슷한 차이가 나요.
-- **남은 약 113ns**는 함수 호출과 인자 해석, `NDArray` 구성, 할당 두 번, 해제예요. 이 안의 몫은 나눠 재지 않았어요. numpy도 `np.asarray(memoryview)`로 외부 버퍼를 받으면 90ns가 걸리니, 외부 객체로 새 배열 객체를 만드는 일 자체의 비용은 두 라이브러리가 비슷한 크기예요.
+- **남은 약 113ns**는 함수 호출과 인자 해석, `NDArray` 구성, 할당 두 번, 해제예요. numpy도 `np.asarray(memoryview)`로 외부 버퍼를 받으면 90ns가 걸리니, 외부 객체로 새 배열 객체를 만드는 일 자체의 비용은 두 라이브러리가 비슷한 크기예요.
 
 반대 방향(stardust 배열을 numpy가 읽는 것)은 `bf_getbuffer` 슬롯으로 복사 없이 내보내요. format은 `?`, `q`, `d`, `Zd`예요. [데이터 모델](/internals/array/data-model/)과 [Python과 C++의 경계](/internals/core/python-boundary/)에 있어요.
 
@@ -430,7 +430,7 @@ DLPack 1.0의 C 구조체(`DLTensor`, `DLManagedTensor`, `DLManagedTensorVersion
 - 만든 배열의 `buffer`는 **비어 있고**, `base`가 owner capsule이에요. 메모리는 owner capsule이 살아 있는 동안 유지되고, 배열이 사라지면 capsule이 사라지며 생산자의 `deleter`가 불려요.
 - 버전 있는 형식의 `READ_ONLY` 표시는 `writeable = false`가 돼요.
 - 정렬과 bool 바이트 규칙은 버퍼 프로토콜과 같아요. 어긋나면 복사하는데, 이 경우의 복사본은 원본의 메모리 순서가 아니라 **C 순서**로 만들어요(바이트 단위 복사, bool은 0/1로 정규화).
-- `copy=True`: 생산자가 "복사했음"(`IS_COPIED`) 표시를 달았으면 다시 복사하지 않아요. 표시가 없으면(옛 형식 등) 우리가 복사해요. 예전에는 이 표시를 보지 않아 두 번 복사했어요.
+- `copy=True`: 생산자가 "복사했음"(`IS_COPIED`) 표시를 달았으면 다시 복사하지 않아요. 표시가 없으면(옛 형식 등) 우리가 복사해요.
 
 ### 내보내기
 
@@ -540,19 +540,19 @@ array([                   1,                   -2,                    0,
 
 **평범한 C++ 캐스트를 쓸 수 없는 이유.** `static_cast<std::int64_t>(x)`는 C++ 표준에서 "자른 값이 대상 타입으로 표현될 수 없으면 동작이 정의되지 않는다"고 정해져 있어요(`[conv.fpint]`) [6]. NaN, $\pm\infty$, $|x| \ge 2^{63}$이 모두 여기에 해당해요. 정의되지 않은 동작이면 컴파일러는 그런 입력이 없다고 가정해도 되고, 결과는 플랫폼과 최적화 수준에 따라 달라질 수 있어요. 실제로 x86의 `CVTTSD2SI` 명령은 이런 입력에 모두 $-2^{63}$("integer indefinite" 값)을 내요 [7]. numpy는 이 캐스트를 C로 하고, 잘못된 값이면 `RuntimeWarning: invalid value encountered in cast`를 내요. 이 Mac(arm64)의 numpy 2.5.4에서는 위 예와 같은 값이 나왔지만 경고가 함께 떴어요.
 
-stardust는 "원소 연산은 값 때문에 실패하지 않는다", "경고는 없다"는 원칙을 따라 값을 하나로 정했어요. 그 값이 NaN → 0, 포화예요.
+stardust는 이런 입력에도 값을 하나로 정해요. NaN → 0, 포화예요. 원소 단계의 변환이 실패하거나 경고를 내지 않아야 변환 커널에 에러 경로가 없어서 컴파일러가 루프를 벡터화할 수 있고, 같은 입력이 플랫폼과 최적화 수준에 상관없이 같은 값을 내요.
 
-**규칙을 분기 셋으로 쓰면 느려요.** 처음에는 규칙을 그대로 코드로 적었어요.
+**규칙을 분기 셋으로 쓰면 느려요.** 규칙을 그대로 코드로 적으면 이래요.
 
 ```cpp
-// 처음 구현 (설명용으로 줄임): 정의된 동작이지만 벡터화되지 않는다
+// 규칙을 그대로 적은 코드 (설명용으로 줄임): 정의된 동작이지만 벡터화되지 않는다
 if (std::isnan(x)) return 0;
 if (x >= 0x1p63) return INT64_MAX;
 if (x < -0x1p63) return INT64_MIN;
 return static_cast<std::int64_t>(x);   // 여기서는 범위 안이라 정의된 동작
 ```
 
-정의된 동작이지만 clang이 이 루프를 벡터화하지 못했어요. 원소 100만 개 `astype` float → int64가 464µs, numpy가 243µs였어요(설계 문서에 적힌 측정, 1스레드).
+정의된 동작이지만 clang은 이 루프를 벡터화하지 못해요. 이렇게 짜면 원소 100만 개 `astype` float → int64가 1스레드 464µs로, numpy보다 1.9배 느렸어요.
 
 **ARM에는 이 규칙 자체인 명령이 있어요.** AArch64의 `FCVTZS`(Floating-point Convert to Signed integer, rounding toward Zero)는 0 방향으로 자르고, 범위를 벗어나면 가장 가까운 표현 가능한 값으로 포화시키고, NaN이면 0을 내요 [8]. 규칙이 정확히 같으니 명령을 직접 불러요.
 
@@ -565,9 +565,9 @@ inline std::int64_t saturate_to_int64(double x) { return vcvtd_s64_f64(x); }
 - `vcvtd_s64_f64`는 스칼라 `FCVTZS` 하나로 컴파일되는 ACLE(Arm C Language Extensions) intrinsic이에요 [9]. intrinsic은 C++ 함수처럼 보이지만 명령 하나로 바뀌므로, C++의 캐스트 규칙이 아니라 **명령의 정의**를 따라요. 그래서 NaN과 범위 밖 값에서도 정의된 결과예요.
 - 이 함수를 원소마다 부르는 루프는 컴파일러가 벡터 `FCVTZS`(128비트 레지스터에 두 개씩)로 바꿔요. 분기가 없으니 막을 것이 없어요.
 - 연속 캐스트 루프는 벡터판 `vcvtq_s64_f64`를 직접 쓰고, 한 번에 레지스터 두 개(원소 4개)씩 처리해 load를 더 많이 겹쳐 띄워요.
-- 이 함수는 배열, linalg, frame이 함께 써요. 처음에는 배열 영역에 있었는데, frame의 `astype`도 같은 규칙(포화, NaN → 0)으로 통일하면서 공통 기반(`csrc/base/`)으로 내렸어요.
+- 이 함수는 배열, linalg, frame이 함께 써요. frame의 `astype`도 같은 규칙(포화, NaN → 0)을 따르므로 공통 기반(`csrc/base/`)에 있어요.
 
-같은 설계 문서 측정에서 464µs가 89µs가 되었어요(numpy 243µs). 이번 벤치마크(원소 100만 개, numpy 2.5.4)에서는 이래요.
+명령 하나로 바꾸면 분기 셋으로 쓴 루프보다 5배 넘게 빨라요. 성능 종합의 측정(원소 100만 개, numpy 2.5.4)에서는 이래요.
 
 <Bench
   rows={[
@@ -575,8 +575,6 @@ inline std::int64_t saturate_to_int64(double x) { return vcvtd_s64_f64(x); }
   ]}
   caption="float64 → int64 변환, 원소 100만 개. stardust 1스레드가 numpy보다 2.6배, 10스레드가 7.7배 빨라요."
 />
-
-numpy 쪽 시간이 어디에 쓰이는지는 프로파일로 나눠 보지 않았어요.
 
 <Callout type="note" title="이식성">
   이 구현은 ARM의 `FCVTZS` 의미에 기대요. stardust의 대상은 Apple silicon Mac 하나이고 런타임 CPU 디스패치를 하지 않아요. 다른 아키텍처로 옮긴다면 같은 규칙을 그 아키텍처의 명령이나 분기 없는 선택(select)으로 다시 써야 해요. 규칙 자체는 `saturate_to_int64` 한 함수에 모여 있어요.
@@ -604,7 +602,7 @@ Traceback (most recent call last):
 TypeError: cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
 ```
 
-- **dtype만 보고 판정해요.** `int_arr[0] = 2.0`도 `TypeError`예요. 값을 보고 판단하면(2.0은 되고 1.5는 안 되고) 같은 코드가 데이터에 따라 성공하기도 하고 실패하기도 해요. 비용은 enum 비교 한 번이에요. frame도 이 규칙으로 바꿨어요(예전에는 값을 보고 판단했어요).
+- **dtype만 보고 판정해요.** `int_arr[0] = 2.0`도 `TypeError`예요. 값을 보고 판단하면(2.0은 되고 1.5는 안 되고) 같은 코드가 데이터에 따라 성공하기도 하고 실패하기도 해요. 비용은 enum 비교 한 번이에요. frame도 같은 규칙이에요.
 - `out=`에서는 **루프의 출력 dtype**과 `out`의 dtype을 비교해요. `sd.add(int_arr, int_arr, out=float_arr)`는 int64 결과를 float64로 올리는 것이라 괜찮아요.
 - `full_like(int_arr, 1.5)`는 `int_arr[...] = 1.5`와 같은 일이라 `TypeError`예요. `dtype=`을 주면 `full`처럼 명시적 변환이에요.
 - `clip`은 x의 dtype을 유지해요(Array API). 그래서 `min`/`max`가 x의 dtype으로 암묵적으로 변환될 수 있어야 해요.
@@ -629,7 +627,7 @@ Python int는 크기 제한이 없지만 int64는 $[-2^{63}, 2^{63}-1]$이에요
 | `asarray([2**70, 0.5])` | float64 | 종류가 float64로 승격 |
 | `asarray([2**70])` | `OverflowError` | int64로 저장해야 해요 |
 
-ufunc에서는 **루프 dtype이 아니라 승격한 피연산자 dtype**으로 판정해요(`check_int_scalars`). 루프 dtype으로 판정하던 때는 `divide(int_arr, 2**64)`만 정상이었어요. `divide`의 루프가 float64라서요. 그러면 다른 이항 함수(`add`, `multiply` …)와 어긋나서, 승격한 dtype이 bool이나 int64이면 어느 루프로 계산하든 int를 int64로 보도록 고쳤어요. frame도 같은 규칙이에요.
+ufunc에서는 **루프 dtype이 아니라 승격한 피연산자 dtype**으로 판정해요(`check_int_scalars`). 루프 dtype으로 판정하면 `divide`의 루프가 float64라서 `divide(int_arr, 2**64)`만 정상이 되고, 다른 이항 함수(`add`, `multiply` …)와 어긋나요. 그래서 승격한 dtype이 bool이나 int64이면 어느 루프로 계산하든 int를 int64로 봐요. frame도 같은 규칙이에요.
 
 ```cpp
 // csrc/array/ops/ufunc.cpp (발췌)
@@ -693,7 +691,7 @@ std::int64_t py_to_int64(PyObject* p) {
 
 - **넓히기**(int8–uint32 → int64, float16/32 → float64, complex64 → complex128, bool → 무엇이든)는 모두 정확해요.
 - **int64 → float64**는 round-to-nearest-even 한 번이에요. $|x| \le 2^{53}$이면 정확해요. numpy와 비트가 같아요.
-- **float64 → int64**는 위 식 그대로예요. 범위 안의 유한한 값은 numpy와 같은 값이에요(둘 다 0 방향 자르기). NaN, $\pm\infty$, 범위 밖 값은 stardust가 NaN → 0, 포화로 정해 두었고, numpy는 C에서 정의되지 않은 동작이라 플랫폼에 따라 값이 다르고 경고를 내요.
+- **float64 → int64**는 위 식 그대로예요. 범위 안의 유한한 값은 numpy와 같은 값이에요(둘 다 0 방향 자르기). NaN, $\pm\infty$, 범위 밖 값은 stardust에서 NaN → 0, 포화이고, numpy는 C에서 정의되지 않은 동작이라 플랫폼에 따라 값이 다르고 경고를 내요.
 - **X → bool**은 `x != 0`이라 반올림이 없어요. NaN은 True, `-0.0`은 False예요.
 - **Python 스칼라**: int → float64는 CPython의 변환(`PyFloat_AsDouble`)을 그대로 써요. float → float64는 그대로 복사예요.
 - 버퍼 단위 캐스팅으로 변환한 값은 같은 `cast_value`를 거치므로, 미리 전체를 변환한 경우와 비트가 같아요.

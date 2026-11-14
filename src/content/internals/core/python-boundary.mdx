@@ -54,7 +54,7 @@ sd.sum(x, axis=0)
 
 nanobind는 C++ 함수와 클래스를 Python 확장 모듈로 노출하는 라이브러리예요. pybind11을 만든 Wenzel Jakob이 pybind11의 후속으로 만들었고, 문서는 더 작은 바이너리, 더 빠른 컴파일, 더 낮은 호출 오버헤드를 내세워요 [1].
 
-stardust가 nanobind를 쓰는 것은 원래의 세 프로젝트(stardust-numpy, stardust-linalg, stardust-pandas)가 모두 C++20 + nanobind였고 통합판이 그것을 이어받았기 때문이에요. 설계 문서에는 다른 바인딩 도구(pybind11, Cython, 손으로 쓴 C API)와 비교해 고른 기록이 따로 없어요. 대신 실제로 잰 사실은 있어요. macOS `sample` 프로파일러로 작은 호출을 보면 **nanobind의 함수 호출 경로 자체는 약 10ns**이고, 작은 배열 연산의 나머지 비용은 대부분 stardust 쪽(할당, `NDArray` 복사, 이터레이터 준비)에 있었어요. 바인딩 도구가 병목이 아니니, 남은 비용은 C++ 안에서 줄일 수 있었어요.
+macOS `sample` 프로파일러로 작은 호출을 보면 **nanobind의 함수 호출 경로 자체는 약 10ns**이고, 작은 배열 연산의 나머지 비용은 대부분 stardust 쪽(할당, `NDArray` 복사, 이터레이터 준비)에 있어요. 바인딩 도구가 병목이 아니니, 남은 비용은 C++ 안에서 줄일 수 있어요.
 
 ### 어떻게 쓰나: 거의 모든 인자를 `nb::handle`로
 
@@ -125,7 +125,7 @@ nanobind에는 numpy, PyTorch 같은 배열을 C++에서 받는 `nb::ndarray`가
 
 ### Python 객체 안의 C++ 구조체
 
-`sd.ndarray`는 `nb::class_<NDArray>`로 바인딩한 타입이에요. Python 객체 하나가 `NDArray` 하나를 값으로 담아요. 결과를 돌려줄 때는 `wrap(NDArray&& a)`(= `nb::cast(std::move(a))`)가 새 Python 객체를 만들고 `NDArray`를 그 안으로 move해요. `shared_ptr` 대신 값으로 담는 이유는 데이터프레임 쪽 측정이 보여 줘요. nanobind에 `shared_ptr`을 돌려주면 Python 객체마다 `shared_ptr<void>` 복사본을 힙에 새로 만들고 전역 keep-alive 표에 등록해서, 원소 10개 Column `add`가 190ns였어요. 값 타입으로 바꾸니 89ns였어요.
+`sd.ndarray`는 `nb::class_<NDArray>`로 바인딩한 타입이에요. Python 객체 하나가 `NDArray` 하나를 값으로 담아요. 결과를 돌려줄 때는 `wrap(NDArray&& a)`(= `nb::cast(std::move(a))`)가 새 Python 객체를 만들고 `NDArray`를 그 안으로 move해요. `shared_ptr` 대신 값으로 담는 이유는 데이터프레임 쪽 측정이 보여 줘요. nanobind에 `shared_ptr`을 돌려주면 Python 객체마다 `shared_ptr<void>` 복사본을 힙에 새로 만들고 전역 keep-alive 표에 등록해서, 원소 10개 Column `add`가 190ns예요. 값 타입으로 담으면 89ns예요.
 
 `NDArray`의 모양은 이래요. 자세한 내용은 [데이터 모델](/internals/array/data-model/)에 있어요.
 
@@ -162,7 +162,7 @@ inline NDArray& as_ndarray(nb::handle o) { return *nb::inst_ptr<NDArray>(o); }
 })
 ```
 
-`sd.ndarray`는 `isinstance(x, sd.ndarray)` 검사를 위해 이름만 공개해요. 배열은 `asarray`, `zeros`, `arange` 같은 생성 함수로만 만들어요. API 문서도 생성자가 없다고 정해 두었어요(함수 하나에 이름 하나라는 규칙과 같은 생각이에요). `__init__`을 아예 정의하지 않으면 nanobind가 "stardust._core.ndarray: no constructor defined!"라는 내부 이름이 섞인 메시지를 내서, 정해진 형식의 메시지를 내는 `__init__`을 일부러 넣었어요.
+`sd.ndarray`는 `isinstance(x, sd.ndarray)` 검사를 위해 이름만 공개해요. 배열은 `asarray`, `zeros`, `arange` 같은 생성 함수로만 만들어요. 생성자까지 두면 같은 일을 하는 길이 둘이 되기 때문이에요. `__init__`을 아예 정의하지 않으면 nanobind가 "stardust._core.ndarray: no constructor defined!"라는 내부 이름이 섞인 메시지를 내서, 정해진 형식의 메시지를 내는 `__init__`을 일부러 넣었어요.
 
 ### 속성
 
@@ -175,7 +175,7 @@ inline NDArray& as_ndarray(nb::handle o) { return *nb::inst_ptr<NDArray>(o); }
 | `base` | 메모리를 실제로 가진 Python 객체 또는 `None` | 아래 "수명과 소유권" |
 | `T`, `mT` | 전치 뷰 | `.T`는 2차원만, `.mT`는 마지막 두 축 |
 
-모두 읽기 전용(`def_prop_ro`)이에요. 한 가지 손볼 곳이 있었어요. nanobind가 만든 `property`에는 이름이 없어서 `x.shape = (3,)`에 "property '' of 'ndarray' object has no setter"라는 빈 이름 메시지가 나왔어요. 바인딩 끝에서 각 property의 `__set_name__`을 직접 불러 이름을 넣어요.
+모두 읽기 전용(`def_prop_ro`)이에요. 한 가지 손보는 곳이 있어요. nanobind가 만든 `property`에는 이름이 없어서, 그대로 두면 `x.shape = (3,)`에 "property '' of 'ndarray' object has no setter"라는 빈 이름 메시지가 나와요. 바인딩 끝에서 각 property의 `__set_name__`을 직접 불러 이름을 넣어요.
 
 ```cpp
 for (const char* name : {"dtype", "shape", "strides", "ndim", "size", "itemsize", "nbytes", "base", "T", "mT"})
@@ -224,7 +224,7 @@ void def_arith(nb::class_<NDArray>& cls, const char* fwd, const char* refl, cons
 }
 ```
 
-- **받는 피연산자**는 `sd.ndarray`와 Python 스칼라(`bool`, `int`, `float`, `complex`)와 numpy 스칼라예요(`is_operand`). 리스트, numpy 배열, `None`이면 `NotImplemented`를 돌려줘요. 그러면 Python이 반대쪽의 반사 메서드를 시도하고, 그쪽도 거절하면 Python 자신의 TypeError를 내요. 리스트나 다른 라이브러리의 배열을 몰래 배열로 바꾸지 않는 것이 설계 규칙이에요. 필요하면 `sd.asarray`로 먼저 바꿔요.
+- **받는 피연산자**는 `sd.ndarray`와 Python 스칼라(`bool`, `int`, `float`, `complex`)와 numpy 스칼라예요(`is_operand`). 리스트, numpy 배열, `None`이면 `NotImplemented`를 돌려줘요. 그러면 Python이 반대쪽의 반사 메서드를 시도하고, 그쪽도 거절하면 Python 자신의 TypeError를 내요. 리스트나 다른 라이브러리의 배열을 몰래 배열로 바꾸면 어떤 변환과 복사가 일어났는지 코드에 드러나지 않아서, 바꾸지 않아요. 필요하면 `sd.asarray`로 먼저 바꿔요.
 - **in-place 연산자** `x op= y`는 `op(x, y, out=x)`예요. `out=`과 같은 규칙(승격 순서의 위로만 변환, 메모리 겹침 안전)이 적용되고 같은 객체를 돌려줘요.
 - **`@`**는 배열끼리만 받아요(스칼라 없음). `x @= y`는 결과의 shape이 `x`와 같아야 해요.
 - **연산자 기호를 커널에 넘겨요.** 마지막 인자 `symbol`(`"+"`, `"+="`)은 에러 메시지에 쓰여요. 아래 "에러 메시지 체계"에서 다뤄요.
@@ -353,7 +353,7 @@ IndexResult index_value(nb::handle o, std::int64_t& out) {
 }
 ```
 
-- **bool은 int가 아니에요.** Python의 `True`는 `int`의 하위 클래스라 그대로 두면 `sd.zeros(True)`가 길이 1 배열이 돼요. API 규칙은 bool을 int 인자로 받지 않는 것이라, 맨 먼저 `PyBool_Check`로 걸러요. `numpy.bool_`은 `__index__`가 TypeError를 내므로 저절로 걸러져요.
+- **bool은 int가 아니에요.** Python의 `True`는 `int`의 하위 클래스라 그대로 두면 `sd.zeros(True)`가 길이 1 배열이 돼요. 이런 코드는 거의 언제나 실수라서 bool은 int 인자로 받지 않고, 맨 먼저 `PyBool_Check`로 걸러요. `numpy.bool_`은 `__index__`가 TypeError를 내므로 저절로 걸러져요.
 - **Python int는 빠른 길로 가요.** `PyLong_Check`가 참이면 `PyNumber_Index`를 부르지 않고 바로 읽어요. 대부분의 호출이 이 길이에요.
 - **세 가지 결과를 돌려줘요.** `Ok`, `NotInt`, `Overflow`로 나눠 돌려주고, 메시지는 부른 쪽이 정해요. `axis`는 "an int or a tuple or list of ints", `shape`은 "an int or a tuple of ints"처럼 그 인자가 받는 것을 정확히 말해야 하기 때문이에요.
 - **int64 밖이면 OverflowError예요.** `PyLong_AsLongLongAndOverflow`는 예외를 만들지 않고 넘침만 알려 줘서, 정해진 메시지로 바꾸기 쉬워요. 예외가 `set_num_threads` 하나 있어요. 1~1024 밖이면 크기와 상관없이 `ValueError: 'n' must be between 1 and 1024`예요. `2**70`도 "범위 밖의 스레드 수"라는 같은 실수라서예요.
@@ -371,7 +371,7 @@ Traceback (most recent call last):
 OverflowError: zeros(): 'shape' is out of range
 ```
 
-**shape은 tuple만, axis는 list도** 받아요. `axis`가 list를 받는 것은 linalg의 `vector_norm(axis=[0, 1])`과 맞추려고 사용자가 정한 것이에요. `shape`은 Array API대로 int나 tuple이에요.
+**shape은 tuple만, axis는 list도** 받아요. `axis`가 list도 받는 것은 linalg의 `vector_norm(axis=[0, 1])`과 같은 모양을 받기 위해서예요. `shape`은 Array API대로 int나 tuple이에요.
 
 ### bool 옵션은 `True`와 `False`만
 
@@ -639,7 +639,7 @@ GilRelease::~GilRelease() {
 | special | 배열의 이터레이터를 거치므로 배열과 같아요 |
 | frame | 일이 기준값(2¹⁷) 이상이면 **1스레드여도** 놓아요(`frame/parallel.hpp`의 `Unlocked`) |
 
-데이터프레임만 1스레드에서도 놓는 것은 API 문서에 적힌 차이예요. 큰 데이터프레임 작업을 하는 동안 다른 Python 스레드가 계속 돌게 하려는 거예요. 배열의 큰 float64 `matmul`은 Accelerate가 안에서 스레드를 쓰는 BLAS 호출 하나인데, 지금 코드는 이 호출 동안 GIL을 놓지 않아요.
+데이터프레임만 1스레드에서도 놓는 것은 큰 데이터프레임 작업을 하는 동안 다른 Python 스레드가 계속 돌게 하려는 거예요. 배열의 큰 float64 `matmul`은 Accelerate가 안에서 스레드를 쓰는 BLAS 호출 하나인데, 지금 코드는 이 호출 동안 GIL을 놓지 않아요.
 
 ### 다른 스레드에서 GIL을 다시 잡는 곳
 
@@ -766,7 +766,7 @@ Traceback (most recent call last):
 ValueError: asarray(): copy=False, but this buffer can only be converted by copying
 ```
 
-**uint64는 값을 보지 않고 거절해요.** uint64를 int64로 바꾸면 2⁶³ 이상의 값이 손실돼요. 값을 훑어서 범위 안이면 받는 방법도 있지만, 그러면 같은 코드가 데이터에 따라 성공하거나 실패해요. dtype만 보고 판단한다는 암묵적 변환 규칙과 같게, `dtype=`을 주어도 TypeError예요. 데이터프레임도 같아요.
+**uint64는 값을 보지 않고 거절해요.** uint64를 int64로 바꾸면 2⁶³ 이상의 값이 손실돼요. 값을 훑어서 범위 안이면 받는 방법도 있지만, 그러면 같은 코드가 데이터에 따라 성공하거나 실패해요. 암묵적 변환도 값이 아니라 dtype만 보고 판단하므로, 같은 이유로 `dtype=`을 주어도 TypeError예요. 데이터프레임도 같아요.
 
 ### bool 버퍼의 바이트 검사
 
@@ -988,19 +988,19 @@ C++ 정적 변수가 쥔 Python 객체는 일부러 놓지 않는 것이 있어�
 |---|---:|---|
 | nanobind 함수 호출 경로 | 약 10ns | `sample` 프로파일러 |
 | `NDArray` + Python 객체 만들기 | 약 75ns | linalg 결과 하나에 남는 비용 |
-| linalg 경계(버퍼 프로토콜 왕복 + `asarray` 감싸기) 제거 | 결과 하나에 약 −120ns | 확장 모듈 하나로 합친 효과 |
+| linalg 경계(버퍼 프로토콜 왕복 + `asarray` 감싸기) 제거 | 결과 하나에 약 −120ns | 확장 모듈이 하나라서 얻는 효과 |
 | Column을 `shared_ptr` 대신 값 타입으로 | 원소 10개 `add` 190ns → 89ns | nanobind의 keep-alive 등록 비용 |
 | frame 커널의 `func`를 `str` 대신 `nb::handle`로 | 작은 리덕션 약 200ns 중 약 15ns 절약 | UTF-8 캐시 사용 |
 | bool 버퍼 바이트 검사 (원소 100만 개) | 8.3µs | 원소별 비교 235µs |
 | 에러 이름 붙이기 (`named`) | 정상 경로 0 | 예외가 날 때만 비용 |
 
 - `x[1, 2]`가 numpy보다 빠른 것은 앞쪽 축이 모두 Python int인 키에서 일반 키 해석을 건너뛰기 때문이에요.
-- 작은 연산의 남은 비용은 한곳에 몰려 있지 않아요. `x[1]`(뷰 하나를 돌려주는 인덱싱)을 프로파일러로 보면 nanobind 인스턴스 등록과 할당, `NDArray` 복사, 메서드 호출 경로에 고르게 퍼져 있었어요. 자세한 내용은 [작은 배열의 호출 비용](/internals/array/small-arrays/)에 있어요.
+- 작은 연산의 남은 비용은 한곳에 몰려 있지 않아요. `x[1]`(뷰 하나를 돌려주는 인덱싱)을 프로파일러로 보면 nanobind 인스턴스 등록과 할당, `NDArray` 복사, 메서드 호출 경로에 고르게 퍼져 있어요. 자세한 내용은 [작은 배열의 호출 비용](/internals/array/small-arrays/)에 있어요.
 - 큰 배열에서는 경계 비용이 측정 오차 안이에요. 버퍼 프로토콜과 DLPack으로 가져오기는 공유할 수 있으면 원소 수와 무관한 상수 시간이에요.
 
 ### numpy와 배열을 주고받는 고정 비용
 
-그 "상수 시간"이 얼마인지 성능 종합의 표와 같은 조건(Apple M4 Pro, numpy 2.5.4, 7라운드 중 가장 빠른 값)으로 쟀어요. 원소 100만 개 float64 배열이지만 복사가 없으니 크기와 상관없는 값이에요.
+그 "상수 시간"은 성능 종합의 표와 같은 조건(Apple M4 Pro, numpy 2.5.4, 7라운드 중 가장 빠른 값)에서 이래요. 원소 100만 개 float64 배열이지만 복사가 없으니 크기와 상관없는 값이에요.
 
 <Bench
   rows={[
@@ -1011,7 +1011,7 @@ C++ 정적 변수가 쥔 Python 객체는 일부러 놓지 않는 것이 있어�
   caption="numpy 열은 첫째·셋째 줄이 np.asarray(numpy 배열), 둘째 줄이 np.from_dlpack(numpy 배열)이에요. 스레드를 쓰지 않아 1스레드와 10스레드가 같아요."
 />
 
-**`np.asarray(sd 배열)` 106ns 대 13ns는 같은 일이 아니에요.** numpy 열의 13ns는 `np.asarray(numpy 배열)`이고, 이미 numpy 배열이면 같은 객체를 그대로 돌려주는 값이에요. `np.asarray(sd 배열)`은 numpy가 남의 객체에서 새 numpy 배열을 만드는 일이에요. stardust 배열에는 `__array__`도 `__array_interface__`도 없어서 numpy는 버퍼 프로토콜로 가져가요. 결과의 `base`가 `memoryview`인 것으로 확인했어요. 그러니 공정한 비교 대상은 numpy가 다른 외부 버퍼를 받는 비용이에요. 이 문서를 쓰며 잰 값으로, 미리 만든 `memoryview`를 `np.asarray`로 받는 데 90ns가 걸렸어요. 106ns는 이와 비슷한 크기예요. 차이 16ns에는 우리 `getbuffer` 한 번과 numpy가 안에서 새로 만드는 `memoryview`가 들어 있어요. 우리 `getbuffer`는 shape과 strides를 복사하지 않고 `NDArray` 안의 배열을 그대로 가리키므로 가벼워요. Python에서 `memoryview(sd 배열)`이 47ns, `memoryview(numpy 배열)`이 68ns였어요.
+**`np.asarray(sd 배열)` 106ns 대 13ns는 같은 일이 아니에요.** numpy 열의 13ns는 `np.asarray(numpy 배열)`이고, 이미 numpy 배열이면 같은 객체를 그대로 돌려주는 값이에요. `np.asarray(sd 배열)`은 numpy가 남의 객체에서 새 numpy 배열을 만드는 일이에요. stardust 배열에는 `__array__`도 `__array_interface__`도 없어서 numpy는 버퍼 프로토콜로 가져가요. 결과의 `base`가 `memoryview`예요. 그러니 공정한 비교 대상은 numpy가 다른 외부 버퍼를 받는 비용이에요. 같은 조건에서 미리 만든 `memoryview`를 `np.asarray`로 받으면 90ns예요. 106ns는 이와 비슷한 크기예요. 차이 16ns에는 우리 `getbuffer` 한 번과 numpy가 안에서 새로 만드는 `memoryview`가 들어 있어요. 우리 `getbuffer`는 shape과 strides를 복사하지 않고 `NDArray` 안의 배열을 그대로 가리키므로 가벼워요. Python에서 `memoryview(sd 배열)`은 47ns, `memoryview(numpy 배열)`은 68ns예요.
 
 **`sd.from_dlpack(numpy 배열)` 276ns 대 119ns.** 코드(위 "가져오기 (`sd.from_dlpack`)")가 하는 Python 수준의 일을 세면 이래요.
 
@@ -1021,7 +1021,7 @@ C++ 정적 변수가 쥔 Python 객체는 일부러 놓지 않는 것이 있어�
 4. capsule 이름 바꾸기, 소유자 capsule(`sd_dlpack_owner`) 만들기, `NDArray` 채우기, `wrap`으로 Python 객체 만들기.
 5. (측정에 포함) 결과가 버려질 때 소유자 capsule의 소멸자가 numpy의 `deleter`를 불러요.
 
-Python에서 같은 호출을 따로 재면 `hasattr(f, '__dlpack__')` 22ns, `f.__dlpack_device__()` 25ns, `f.__dlpack__(max_version=(1, 1), copy=None)` 56ns였어요. 1~3단계를 Python에서 부르면 합쳐서 120ns 안팎이에요. numpy의 `np.from_dlpack`도 3단계는 해야 하지만, 1·2단계에 해당하는 조회와 호출을 하는지는 numpy 소스에서 확인하지 않았어요. stardust 쪽을 C++ 안에서 단계별로 나눠 재지도 않았으므로, 157ns 차이의 정확한 몫은 확인하지 못했어요. 어느 쪽이든 한 번에 수백 ns인 비용이라, 큰 배열을 주고받을 때는 문제가 되지 않아요.
+Python에서 같은 호출을 따로 재면 `hasattr(f, '__dlpack__')` 22ns, `f.__dlpack_device__()` 25ns, `f.__dlpack__(max_version=(1, 1), copy=None)` 56ns예요. 1~3단계를 Python에서 부르면 합쳐서 120ns 안팎이에요. numpy의 `np.from_dlpack`도 3단계는 해야 해요. 157ns 차이가 단계별로 어떻게 나뉘는지는 아직 밝히지 못했어요. 어느 쪽이든 한 번에 수백 ns인 비용이라, 큰 배열을 주고받을 때는 문제가 되지 않아요.
 
 `sd.asarray(numpy 배열)` 175ns의 내역은 [변환과 승격](/internals/array/conversion/)의 "복사 없이 공유하는 비용"에 있어요. 약 37ns는 numpy 배열에도 numpy 스칼라 검사(`PyObject_IsInstance` 네 번)를 먼저 하는 순서에서 나와요.
 
