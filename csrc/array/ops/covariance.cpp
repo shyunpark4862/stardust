@@ -14,7 +14,7 @@
 #include "array/ops/copy.hpp"
 #include "array/ops/ufunc.hpp"
 #include "array/ops/reduction.hpp"
-#include "array/parallel_limits.hpp"
+#include "array/ops/pieces.hpp"
 #include "parallel/pool.hpp"
 
 #include <algorithm>
@@ -25,21 +25,6 @@
 namespace sd {
 
 namespace {
-
-double parse_correction(nb::handle o) {
-    if (const std::optional<double> c = real_value(o)) return *c;
-    throw nb::type_error(("'correction' must be an int or a float, not " + py_type_name(o)).c_str());
-}
-
-// Rows [0, rows) in parallel pieces of about kParallelTask elements of `width`.
-template <typename F>
-void for_rows(std::int64_t rows, std::int64_t width, F&& fn) {
-    const std::int64_t per = std::max<std::int64_t>(1, kParallelTask / std::max<std::int64_t>(width, 1));
-    const std::int64_t tasks = (rows + per - 1) / per;
-    if (rows * width >= kParallelThreshold && tasks > 1 && parallel::available())
-        parallel::parallel_for(tasks, [&](std::int64_t t) { fn(t * per, std::min(rows, (t + 1) * per)); });
-    else fn(0, rows);
-}
 
 // The covariance matrix (p, p): float64, or complex128 for complex x.
 //   1. each variable's mean: sd.mean of x itself along the observations;
@@ -124,8 +109,7 @@ NDArray cov_matrix(nb::handle x_obj, bool rowvar, double correction) {
                     }
                 }
             };
-            if (p * p >= kParallelThreshold && blocks > 1 && parallel::available()) parallel::parallel_for(blocks, block_row);
-            else for (std::int64_t b = 0; b < blocks; ++b) block_row(b);
+            for_pieces(blocks, 1, p * p, [&](std::int64_t b, std::int64_t, std::int64_t) { block_row(b); });
         }
     });
     return c;
@@ -163,7 +147,7 @@ nb::object corrcoef(nb::handle x, nb::handle rowvar_obj) {
                 if constexpr (ops::is_cplx<T>) sd[i] = std::sqrt(a[i * p + i].real());
                 else sd[i] = std::sqrt(a[i * p + i]);
             }
-            for_rows(p, p, [&](std::int64_t r0, std::int64_t r1) {
+            for_pieces(p, kParallelTask / p, p * p, [&](std::int64_t, std::int64_t r0, std::int64_t r1) {
                 for (std::int64_t i = r0; i < r1; ++i)
                     for (std::int64_t j = 0; j < p; ++j) {
                         T v = a[i * p + j];

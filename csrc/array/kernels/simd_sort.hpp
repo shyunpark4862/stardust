@@ -145,8 +145,13 @@ template <typename Tr>
 void sort(typename Tr::T* data, std::int64_t n) {
     using T = typename Tr::T;
     const std::int64_t padded = (n + 15) / 16 * 16;  // whole blocks; the padding (kMax) sorts to the end
-    auto buf = std::make_unique_for_overwrite<T[]>(static_cast<size_t>(2 * padded));
-    T* src = buf.get();
+    // Small inputs sort in a stack buffer: a heap allocation per call
+    // dominated many short lanes (quantile of shape (3e5, 10): 2x).
+    constexpr std::int64_t kStack = 256;
+    T stack[2 * kStack];
+    std::unique_ptr<T[]> heap;
+    if (padded > kStack) heap = std::make_unique_for_overwrite<T[]>(static_cast<size_t>(2 * padded));
+    T* src = heap ? heap.get() : stack;
     T* dst = src + padded;
     std::copy(data, data + n, src);
     std::fill(src + n, src + padded, Tr::kMax);

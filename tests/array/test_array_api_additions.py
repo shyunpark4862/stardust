@@ -69,6 +69,13 @@ def test_tril_triu(k):
     same(sd.triu(sd.asarray(b), k=k), np.triu(b, k))
 
 
+def test_tril_triu_extreme_k():
+    m = np.arange(12.0).reshape(3, 4)
+    for k in (2**63 - 1, -(2**63) + 10, 5, -4):
+        same(sd.tril(sd.asarray(m), k=k), np.tril(m, k))
+        same(sd.triu(sd.asarray(m), k=k), np.triu(m, k))
+
+
 def test_tril_errors_and_copy():
     with pytest.raises(ValueError, match=r"tril\(\): 'x' must have at least 2 dimensions"):
         sd.tril(sd.asarray([1.0, 2.0]))
@@ -134,6 +141,8 @@ def test_repeat():
         sd.repeat(sd.asarray([1, 2]), -1)
     with pytest.raises(ValueError, match="'repeats' has length 3 but the axis has length 2"):
         sd.repeat(sd.asarray([1, 2]), sd.asarray([1, 2, 3]))
+    with pytest.raises(ValueError, match="array is too big"):
+        sd.repeat(sd.asarray([1.0, 2.0, 3.0]), 2**62)
     with pytest.raises(TypeError, match="'repeats' must be an int or an int64 array"):
         sd.repeat(sd.asarray([1, 2]), 1.5)
 
@@ -333,6 +342,8 @@ def test_tensordot(axes, shape_b):
 
 
 def test_tensordot_errors():
+    with pytest.raises(ValueError, match="'axes' has a repeated axis"):
+        sd.tensordot(sd.asarray(X3), sd.asarray(X3), axes=([0, 0], [0, 1]))
     with pytest.raises(ValueError, match="shape mismatch"):
         sd.tensordot(sd.asarray(X3), sd.asarray(X3), axes=([0], [1]))
     with pytest.raises(ValueError, match="larger than"):
@@ -351,7 +362,9 @@ def test_from_dlpack_shares_numpy_memory():
     same(a, x)
     x[0, 0] = 99.0
     assert a[0, 0] == 99.0
-    assert sd.from_dlpack(x, copy=True).base is None
+    copied = sd.from_dlpack(x, copy=True)  # numpy makes the copy (DLPack's is-copied flag): no second one
+    x[0, 1] = -5.0
+    assert copied[0, 1] == 2.0
     for v in (np.array([1 + 2j]), np.array([True, False]), np.array([3, -4])):
         same(sd.from_dlpack(v), v)
     ro = np.arange(3.0)
@@ -425,6 +438,16 @@ def test_histogram_bits(kw):
     assert got.hist is got[0] and got.bin_edges is got[1]
     same(got.hist, hist)
     same(got.bin_edges, edges)
+
+
+def test_histogram_empty_bins_array():
+    for edges in (np.array([], float), np.array([1.0])):
+        for kw in ({}, {"weights": np.ones(3)}):
+            got = sd.histogram(sd.asarray([1.0, 2.0, 3.0]), bins=sd.asarray(edges),
+                               **{k: sd.asarray(v) for k, v in kw.items()})
+            hist, e = np.histogram([1.0, 2.0, 3.0], bins=edges, **kw)
+            same(got.hist, hist)
+            same(got.bin_edges, e)
 
 
 def test_histogram_edges_cases():

@@ -459,6 +459,8 @@ nb::object transpose_2d(nb::handle x) {
     return permuted(x, order);
 }
 
+nb::object concat_arrays(nb::handle arrays, nb::handle axis) { return concat(arrays, axis); }
+
 void bind_shape(nb::module_& m) {
     using nb::arg;
     m.def("reshape", named("reshape", nb::overload_cast<nb::handle, nb::handle, nb::handle>(&reshape)), arg().none(), arg().none(),

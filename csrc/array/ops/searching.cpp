@@ -11,7 +11,7 @@
 #include "array/ops/indexing.hpp"
 #include "array/ops/lanes.hpp"
 #include "array/ops/reduction.hpp"
-#include "array/parallel_limits.hpp"
+#include "array/ops/pieces.hpp"
 #include "parallel/pool.hpp"
 
 #include <algorithm>
@@ -117,16 +117,12 @@ nb::object take_along_axis(nb::handle x, nb::handle indices, nb::handle axis_obj
         const std::int64_t* q = reinterpret_cast<const std::int64_t*>(ic.data);
         const std::int64_t m = ic.size();
         // A branch-free scan for any bad index (in parallel pieces when long); only then the first one.
-        const std::int64_t pieces = (m + kParallelTask - 1) / kParallelTask;
-        std::vector<char> bad_piece(pieces, 0);
-        auto scan = [&](std::int64_t t) {
+        std::vector<char> bad_piece((m + kParallelTask - 1) / kParallelTask, 0);
+        for_pieces(m, kParallelTask, m, [&](std::int64_t t, std::int64_t b0, std::int64_t e0) {
             bool b = false;
-            for (std::int64_t i = t * kParallelTask, e = std::min(m, (t + 1) * kParallelTask); i < e; ++i)
-                b |= q[i] < -n_x || q[i] >= n_x;
+            for (std::int64_t i = b0; i < e0; ++i) b |= q[i] < -n_x || q[i] >= n_x;
             bad_piece[t] = b;
-        };
-        if (m >= kParallelThreshold && parallel::available()) parallel::parallel_for(pieces, scan);
-        else for (std::int64_t t = 0; t < pieces; ++t) scan(t);
+        });
         const bool bad = std::any_of(bad_piece.begin(), bad_piece.end(), [](char c) { return c != 0; });
         if (bad)
             for (std::int64_t i = 0; i < m; ++i)
@@ -185,12 +181,7 @@ nb::tuple nonzero(nb::handle x) {
     std::vector<std::int64_t*> dst;
     visit_dtype(a.dtype, [&]<typename T>(std::type_identity<T>) {
         const T* p = reinterpret_cast<const T*>(c.data);
-        auto for_chunks = [&](auto&& fn) {
-            if (size >= kParallelThreshold && chunks > 1 && parallel::available()) parallel::parallel_for(chunks, fn);
-            else for (std::int64_t t = 0; t < chunks; ++t) fn(t);
-        };
-        for_chunks([&](std::int64_t t) {
-            const std::int64_t b = t * kNonzeroChunk, e = std::min(size, b + kNonzeroChunk);
+        for_pieces(size, kNonzeroChunk, size, [&](std::int64_t t, std::int64_t b, std::int64_t e) {
             std::int64_t k = 0;
             for (std::int64_t i = b; i < e; ++i) k += truthy(p[i]);
             start[t + 1] = k;
@@ -201,8 +192,7 @@ nb::tuple nonzero(nb::handle x) {
             out.push_back(new_array(DType::Int64, shape));
             dst.push_back(reinterpret_cast<std::int64_t*>(out.back().data));
         }
-        for_chunks([&](std::int64_t t) {
-            const std::int64_t b = t * kNonzeroChunk, e = std::min(size, b + kNonzeroChunk);
+        for_pieces(size, kNonzeroChunk, size, [&](std::int64_t t, std::int64_t b, std::int64_t e) {
             // Branch-free: every position is written at k, and k moves on only
             // past a nonzero one (a random mask defeats branch prediction:
             // 25 ms -> 6 ms for 1e7 elements). `k < end` keeps the writes inside

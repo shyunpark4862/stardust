@@ -13,7 +13,7 @@
 #include "array/convert.hpp"
 #include "array/ops/copy.hpp"
 #include "array/ops/sort.hpp"
-#include "array/parallel_limits.hpp"
+#include "array/ops/pieces.hpp"
 #include "parallel/pool.hpp"
 
 #include <algorithm>
@@ -336,15 +336,8 @@ nb::object compute(nb::handle x_obj, const std::vector<double>* qs, bool q_scala
     };
     // Each lane is independent and selected in its own row: any split gives
     // the same bits.
-    const std::int64_t per_task = std::max<std::int64_t>(1, kParallelTask / std::max<std::int64_t>(n, 1));
-    if (lanes * n >= kParallelThreshold && lanes > 1 && parallel::available()) {
-        const std::int64_t tasks = (lanes + per_task - 1) / per_task;
-        parallel::parallel_for(tasks, [&](std::int64_t t) {
-            lane_range(t * per_task, std::min(lanes, (t + 1) * per_task));
-        });
-    } else {
-        lane_range(0, lanes);
-    }
+    for_pieces(lanes, kParallelTask / std::max<std::int64_t>(n, 1), lanes * n,
+               [&](std::int64_t, std::int64_t begin, std::int64_t end) { lane_range(begin, end); });
     if (scalar_result) return to_python(res[0]);
     return wrap(std::move(out));
 }

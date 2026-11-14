@@ -58,7 +58,7 @@ struct DLManagedTensorVersioned {
 
 constexpr std::int32_t kDLCPU = 1;
 constexpr std::uint8_t kDLInt = 0, kDLFloat = 2, kDLComplex = 5, kDLBool = 6;
-constexpr std::uint64_t kFlagReadOnly = 1u << 0;
+constexpr std::uint64_t kFlagReadOnly = 1u << 0, kFlagIsCopied = 1u << 1;
 constexpr std::uint32_t kMajor = 1, kMinor = 0;
 
 DLDataType to_dl(DType d) {
@@ -155,7 +155,7 @@ nb::object dlpack(nb::handle self, nb::handle stream, nb::handle max_version, nb
         m->version = {kMajor, kMinor};
         m->manager_ctx = e;
         m->deleter = &delete_export<DLManagedTensorVersioned>;
-        m->flags = read_only ? kFlagReadOnly : 0;
+        m->flags = (read_only ? kFlagReadOnly : 0) | (copy == true ? kFlagIsCopied : 0);
         fill_tensor(m->dl_tensor, *e);
         PyObject* cap = PyCapsule_New(m, "dltensor_versioned", &versioned_capsule_destructor);
         if (!cap) {
@@ -214,22 +214,33 @@ nb::object from_dlpack(nb::handle x, nb::handle device, nb::handle copy_obj) {
 
     // Take ownership first, so every error below still frees the tensor.
     DLTensor* t = nullptr;
-    bool read_only = false;
+    bool read_only = false, copied = false;
     nb::object owner;
     if (PyCapsule_IsValid(cap.ptr(), "dltensor_versioned")) {
         auto* m = static_cast<DLManagedTensorVersioned*>(PyCapsule_GetPointer(cap.ptr(), "dltensor_versioned"));
         PyCapsule_SetName(cap.ptr(), "used_dltensor_versioned");
-        owner = nb::steal(PyCapsule_New(m, "sd_dlpack_owner", &owner_versioned));
+        PyObject* own = PyCapsule_New(m, "sd_dlpack_owner", &owner_versioned);
+        if (!own) {  // we own the tensor now: free it before failing
+            m->deleter(m);
+            throw nb::python_error();
+        }
+        owner = nb::steal(own);
         if (m->version.major > kMajor)
             throw nb::buffer_error(("DLPack version " + std::to_string(m->version.major) + "." +
                                     std::to_string(m->version.minor) + " is newer than the supported 1.x")
                                        .c_str());
         t = &m->dl_tensor;
         read_only = m->flags & kFlagReadOnly;
+        copied = m->flags & kFlagIsCopied;  // the producer already made the copy= asked for
     } else if (PyCapsule_IsValid(cap.ptr(), "dltensor")) {
         auto* m = static_cast<DLManagedTensor*>(PyCapsule_GetPointer(cap.ptr(), "dltensor"));
         PyCapsule_SetName(cap.ptr(), "used_dltensor");
-        owner = nb::steal(PyCapsule_New(m, "sd_dlpack_owner", &owner_legacy));
+        PyObject* own = PyCapsule_New(m, "sd_dlpack_owner", &owner_legacy);
+        if (!own) {
+            m->deleter(m);
+            throw nb::python_error();
+        }
+        owner = nb::steal(own);
         t = &m->dl_tensor;
     } else {
         throw nb::type_error("__dlpack__ did not return a DLPack capsule");
@@ -292,7 +303,7 @@ nb::object from_dlpack(nb::handle x, nb::handle device, nb::handle copy_obj) {
         });
         return wrap(std::move(c));
     }
-    if (copy == true) return wrap(cast_copy(a, a.dtype));
+    if (copy == true && !copied) return wrap(cast_copy(a, a.dtype));
     return wrap(std::move(a));
 }
 

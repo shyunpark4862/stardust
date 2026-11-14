@@ -150,6 +150,14 @@ def test_median_bits():
     check(sd.median(sd.asarray([NAN, 1.0])), np.float64(NAN))
 
 
+@pytest.mark.parametrize("length", [1, 2, 3, 4, 5, 6, 7, 10, 16, 31, 33, 100, 300])
+def test_median_short_lanes(length):
+    # Lanes under 6 take an insertion sort, longer ones the NEON sort (stack buffer up to 256).
+    x = np.random.default_rng(length).standard_normal((50, length))
+    check(sd.median(sd.asarray(x), axis=1), np.median(x, axis=1))
+    check(sd.quantile(sd.asarray(x), sd.asarray(QS), axis=1, method="hazen"), np.quantile(x, QS, axis=1, method="hazen"))
+
+
 def test_median_signed_zero_like_numpy():
     # numpy's median is mean() of the middle values: a sum that starts at +0.0.
     check(sd.median(sd.asarray([-0.0])), np.median(np.array([-0.0])))

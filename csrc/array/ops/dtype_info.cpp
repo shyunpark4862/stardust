@@ -108,7 +108,11 @@ std::vector<int> axis_list(nb::handle o, int ndim) {
     std::vector<int> axes;
     if (!PyTuple_Check(o.ptr()) && !PyList_Check(o.ptr()))
         throw nb::type_error(("each entry of 'axes' must be a sequence of ints, not " + py_type_name(o)).c_str());
-    for (nb::handle h : o) axes.push_back(normalize_axis(parse_int(h, "axes"), ndim));
+    for (nb::handle h : o) {
+        const int d = normalize_axis(parse_int(h, "axes"), ndim);
+        if (std::find(axes.begin(), axes.end(), d) != axes.end()) throw nb::value_error("'axes' has a repeated axis");
+        axes.push_back(d);
+    }
     return axes;
 }
 

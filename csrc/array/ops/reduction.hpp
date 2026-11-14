@@ -37,6 +37,10 @@ nb::object nanargmin(nb::handle x, nb::handle axis, nb::handle keepdims);
 nb::object nanargmax(nb::handle x, nb::handle axis, nb::handle keepdims);
 nb::object count_nonzero(nb::handle x, nb::handle axis, nb::handle keepdims);  // docs/api/array.md §8.4
 
+// The `correction` argument of var, std, nanvar, nanstd and cov: an int or a
+// float (bool is a TypeError, API.md §2).
+double parse_correction(nb::handle o);
+
 void bind_reductions(nb::module_& m);
 
 }  // namespace sd

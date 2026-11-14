@@ -268,7 +268,7 @@ from_dlpack(x, /, *, device=None, copy=None)
   - 읽기 전용 표시가 있으면 쓰기 금지 배열이 된다.
 - dtype은 bool, int64, float64, complex128만 받는다. 그 밖은 `TypeError`다(버퍼 프로토콜과 달리 넓히는 복사도 하지 않는다). 0차원은 `ValueError`다.
 - 정렬되지 않은 메모리와 0·1이 아닌 bool 바이트는 복사한다(§3.3과 같다). 이때 `copy=False`이면 `ValueError`다.
-- `copy=True`이면 언제나 새 배열이다. `device`는 `None` 또는 CPU 장치 `(1, 0)`만 받는다.
+- `copy=True`이면 언제나 원본과 메모리를 공유하지 않는 배열이다. 생산자가 복사해 주면 그 복사본을 그대로 쓴다. `device`는 `None` 또는 CPU 장치 `(1, 0)`만 받는다.
 - 내보내기(`x.__dlpack__`, `x.__dlpack_device__`)는 §10.5에 있다.
 
 ### §3.6 `meshgrid`, `tril`, `triu`
@@ -738,7 +738,7 @@ histogram(x, /, *, bins=10, range=None, weights=None, density=False)
   - 결과는 개수(int64)다. `weights`(1차원, `x`와 같은 길이, 실수)를 주면 그 합(float64)이다. 합은 원소 순서대로 더한다.
 - **`histogram`**: 결과는 `HistogramResult(hist, bin_edges)`이다(tuple로 풀 수 있다).
   - `x`는 아무 shape이나 받는다(C 순서로 편다). complex는 `TypeError`다.
-  - `bins`가 int이면 `range`(기본은 데이터의 최솟값·최댓값) 사이의 같은 너비 구간이다. 경계는 `linspace`다. 1차원 배열이면 그 값들이 경계다(단조 증가해야 한다; 그 dtype을 그대로 돌려준다). 문자열 규칙(`'auto'` 등)은 없다.
+  - `bins`가 int이면 `range`(기본은 데이터의 최솟값·최댓값) 사이의 같은 너비 구간이다. 경계는 `linspace`다. 1차원 배열이면 그 값들이 경계다(단조 증가해야 한다; 그 dtype을 그대로 돌려준다). 경계가 0개나 1개이면 구간이 없어서 `hist`가 비어 있다(numpy와 같다). 문자열 규칙(`'auto'` 등)은 없다.
   - 마지막 구간은 오른쪽 끝을 포함한다. 범위 밖의 값과 NaN은 세지 않는다. `range` 없이 데이터에 NaN이나 inf가 있으면 `ValueError`다.
   - `hist`는 개수(int64)다. `weights`(`x`와 같은 shape)를 주면 그 dtype의 합이다(bool은 int64). 같은 너비 구간에서는 numpy처럼 65536개씩 블록으로 더한다.
   - 경계 배열과 가중치를 함께 쓰면 numpy처럼 블록마다 정렬한 누적합의 차로 계산한다. 같은 값의 원소들 사이에서는 정렬 순서가 numpy와 다를 수 있어서, 그때는 마지막 비트가 다를 수 있다.
@@ -820,7 +820,7 @@ vecdot(x1, x2, /, *, axis=-1)
 - 결과 dtype은 승격 규칙을 따른다. bool끼리는 int64다 (§1.4). 정수 곱과 합은 wrap한다.
 - complex도 받는다. `x1`을 켤레로 바꾸지 않는다.
 
-- **`tensordot`**: `axes`가 int `n`이면 `x1`의 마지막 `n`축과 `x2`의 처음 `n`축을 줄인다. 두 축 목록의 쌍(`([1, 0], [0, 2])`)이면 그 축들을 차례로 짝지어 줄인다. 짝지은 축의 길이가 다르면 `ValueError`다.
+- **`tensordot`**: `axes`가 int `n`이면 `x1`의 마지막 `n`축과 `x2`의 처음 `n`축을 줄인다. 두 축 목록의 쌍(`([1, 0], [0, 2])`)이면 그 축들을 차례로 짝지어 줄인다. 짝지은 축의 길이가 다르거나, 한 목록에 같은 축이 두 번 있으면 `ValueError`다.
   - 결과 shape은 `x1`의 남은 축 다음 `x2`의 남은 축이다. 모두 줄이면 Python 스칼라다. 계산은 `matmul` 한 번이다(dtype도 `matmul`과 같다).
 - **`vecdot`**: `sd.linalg.vecdot`과 같은 함수다(docs/api/linalg.md). `x1`을 켤레로 바꾼다.
 

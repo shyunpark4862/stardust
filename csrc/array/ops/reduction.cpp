@@ -21,6 +21,11 @@
 
 namespace sd {
 
+double parse_correction(nb::handle o) {
+    if (const std::optional<double> c = real_value(o)) return *c;  // numpy integers too (API.md §2)
+    throw nb::type_error(("'correction' must be an int or a float, not " + py_type_name(o)).c_str());
+}
+
 namespace {
 
 // ------------------------------------------------------------------ axes
@@ -383,10 +388,6 @@ NDArray mean_keepdims(const NDArray& x, const Axes& ax) {
     return out;
 }
 
-double parse_correction(nb::handle o) {
-    if (const std::optional<double> c = real_value(o)) return *c;  // numpy integers too (API.md §2)
-    throw nb::type_error(("'correction' must be an int or a float, not " + py_type_name(o)).c_str());
-}
 
 // Sum over `ax` of |xin - m|^2 (m: the mean, keepdims shape), float64.
 template <bool SkipNan>

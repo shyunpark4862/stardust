@@ -15,8 +15,7 @@
 #include "array/ops/copy.hpp"
 #include "array/ops/creation.hpp"
 #include "array/ops/reduction.hpp"
-#include "array/parallel_limits.hpp"
-#include "parallel/pool.hpp"
+#include "array/ops/pieces.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -60,11 +59,6 @@ bool use_groups(std::int64_t n, std::int64_t bins) {
     return n >= kParallelThreshold && bins * kGroups <= n && parallel::available();
 }
 
-template <typename F>
-void for_groups(std::int64_t n, F&& fn) {
-    parallel::parallel_for(kGroups, [&](std::int64_t g) { fn(g, n * g / kGroups, n * (g + 1) / kGroups); });
-}
-
 // counts[bin_of(i)] += 1 for i in [0, n), skipping bins < 0.
 template <typename BinOf>
 void count_into(std::int64_t* counts, std::int64_t bins, std::int64_t n, BinOf&& bin_of) {
@@ -74,7 +68,7 @@ void count_into(std::int64_t* counts, std::int64_t bins, std::int64_t n, BinOf&&
         return;
     }
     std::vector<std::int64_t> local(static_cast<size_t>(kGroups * bins), 0);
-    for_groups(n, [&](std::int64_t g, std::int64_t b0, std::int64_t e0) {
+    for_pieces(n, (n + kGroups - 1) / kGroups, n, [&](std::int64_t g, std::int64_t b0, std::int64_t e0) {
         std::int64_t* c = local.data() + g * bins;
         for (std::int64_t i = b0; i < e0; ++i)
             if (const std::int64_t b = bin_of(i); b >= 0) ++c[b];
@@ -98,19 +92,16 @@ nb::object bincount(nb::handle x_obj, nb::handle weights_obj, nb::handle minleng
     // min and max in one branch-free pass (in parallel pieces when long).
     std::int64_t lo = 0, top = -1;
     {
-        const std::int64_t pieces = n >= kParallelThreshold && parallel::available() ? kGroups : 1;
-        std::vector<std::int64_t> mins(pieces, 0), maxs(pieces, -1);
-        auto scan = [&](std::int64_t g) {
-            std::int64_t a = 0, b = -1;
-            for (std::int64_t i = n * g / pieces, e = n * (g + 1) / pieces; i < e; ++i) {
+        std::vector<std::int64_t> mins(kGroups, 0), maxs(kGroups, -1);
+        for_pieces(n, (n + kGroups - 1) / kGroups, n, [&](std::int64_t g, std::int64_t b, std::int64_t e) {
+            std::int64_t a = 0, c = -1;
+            for (std::int64_t i = b; i < e; ++i) {
                 a = std::min(a, v[i]);
-                b = std::max(b, v[i]);
+                c = std::max(c, v[i]);
             }
             mins[g] = a;
-            maxs[g] = b;
-        };
-        if (pieces > 1) parallel::parallel_for(pieces, scan);
-        else scan(0);
+            maxs[g] = c;
+        });
         lo = *std::min_element(mins.begin(), mins.end());
         top = *std::max_element(maxs.begin(), maxs.end());
     }
@@ -159,11 +150,10 @@ std::pair<double, double> outer_edges(const double* a, std::int64_t n, nb::handl
         last = 1;
     } else {
         // numpy's a.min() / a.max(); any NaN or inf makes the range not finite.
-        const std::int64_t pieces = n >= kParallelThreshold && parallel::available() ? kGroups : 1;
-        std::vector<double> mins(pieces), maxs(pieces);
-        std::vector<char> nan(pieces, 0);
-        auto scan = [&](std::int64_t g) {
-            const std::int64_t b = n * g / pieces, e = n * (g + 1) / pieces;
+        // Pieces that do not run keep (a[0], a[0], no NaN): neutral for the min/max.
+        std::vector<double> mins(kGroups, a[0]), maxs(kGroups, a[0]);
+        std::vector<char> nan(kGroups, 0);
+        for_pieces(n, (n + kGroups - 1) / kGroups, n, [&](std::int64_t g, std::int64_t b, std::int64_t e) {
             double lo_ = a[b], hi_ = a[b];
             bool any_nan = false;
             for (std::int64_t i = b; i < e; ++i) {
@@ -174,9 +164,7 @@ std::pair<double, double> outer_edges(const double* a, std::int64_t n, nb::handl
             mins[g] = lo_;
             maxs[g] = hi_;
             nan[g] = any_nan;
-        };
-        if (pieces > 1) parallel::parallel_for(pieces, scan);
-        else scan(0);
+        });
         first = *std::min_element(mins.begin(), mins.end());
         last = *std::max_element(maxs.begin(), maxs.end());
         if (std::any_of(nan.begin(), nan.end(), [](char c) { return c != 0; })) first = std::numeric_limits<double>::quiet_NaN();
@@ -220,7 +208,7 @@ Edges make_edges(const double* a, std::int64_t n, nb::handle bins, nb::handle ra
     const double* p = reinterpret_cast<const double*>(ef.data);
     for (std::int64_t i = 0; i + 1 < b.shape[0]; ++i)
         if (p[i] > p[i + 1]) throw nb::value_error("'bins' must increase monotonically, when an array");
-    e.bins = b.shape[0] - 1;
+    e.bins = std::max<std::int64_t>(b.shape[0] - 1, 0);  // no edges or one edge: no bins (numpy's empty result)
     return e;
 }
 
@@ -269,7 +257,12 @@ nb::object histogram(nb::handle x_obj, nb::handle bins_obj, nb::handle range_obj
 
     const std::int64_t hshape[] = {bins};
     NDArray hist;
-    if (weights_obj.is_none()) {
+    if (bins == 0) {  // an edges array of length 0 or 1: nothing to count (and edge[] may be empty)
+        hist = new_array(weights_obj.is_none() || require_ndarray(weights_obj, "weights").dtype == DType::Bool
+                             ? DType::Int64
+                             : require_ndarray(weights_obj, "weights").dtype,
+                         hshape);
+    } else if (weights_obj.is_none()) {
         hist = new_array(DType::Int64, hshape, /*zeroed=*/true);
         count_into(reinterpret_cast<std::int64_t*>(hist.data), bins, n, [&](std::int64_t i) { return bin_of(a[i]); });
     } else {

@@ -13,7 +13,9 @@
 #include "array/ops/copy.hpp"
 #include "array/ops/creation.hpp"
 #include "array/ops/indexing.hpp"
+#include "array/ops/pieces.hpp"
 #include "array/ops/shape.hpp"
+#include "array/ops/ufunc.hpp"
 #include "array/parallel_limits.hpp"
 #include "parallel/pool.hpp"
 
@@ -26,8 +28,6 @@ namespace sd {
 
 namespace {
 
-nb::object core(const char* name) { return nb::module_::import_("stardust._core").attr(name); }
-
 std::vector<std::int64_t> shape_of(const NDArray& a) { return {a.shape_span().begin(), a.shape_span().end()}; }
 
 // x as a C-ordered 1-D array (a view when x already is one).
@@ -35,8 +35,6 @@ nb::object flattened(nb::handle x) {
     const std::int64_t n = as_ndarray(x).size();
     return reshape(x, std::span<const std::int64_t>(&n, 1), std::nullopt);
 }
-
-NDArray new_c_array(DType d, const std::vector<std::int64_t>& shape) { return new_array(d, shape); }
 
 // A view of `a` restricted to [begin, begin + n) along `axis`.
 NDArray range_view(const NDArray& a, int axis, std::int64_t begin, std::int64_t n) {
@@ -107,7 +105,7 @@ nb::object roll(nb::handle x, nb::handle shift_obj, nb::handle axis_obj) {
         const std::int64_t s = ((shifts[i] % n) + n) % n;
         if (s) rolled.push_back({axes[i], n, s});
     }
-    NDArray out = new_c_array(a.dtype, shape_of(a));
+    NDArray out = new_array(a.dtype, shape_of(a));
     const int k = static_cast<int>(rolled.size());
     for (int mask = 0; mask < (1 << k); ++mask) {
         NDArray src = a, dst = out;
@@ -164,7 +162,7 @@ nb::object repeat(nb::handle x, nb::handle repeats_obj, nb::handle axis_obj) {
     std::int64_t total = 0;
     for (std::int64_t c : counts) {
         if (c < 0) throw nb::value_error("'repeats' must be non-negative");
-        total += c;
+        if (__builtin_add_overflow(total, c, &total)) throw nb::value_error("array is too big");  // (as new_array says)
     }
     // Direct block copies from a C-ordered source: for each position before
     // the axis, each element (block of the trailing axes) is written
@@ -202,16 +200,12 @@ nb::object repeat(nb::handle x, nb::handle repeats_obj, nb::handle axis_obj) {
                 }
             }
         };
-        if (out.size() < kParallelThreshold || !parallel::available()) {
-            piece(0, outer, 0, n);
-        } else if (outer > 1) {
-            const std::int64_t rows = std::max<std::int64_t>(1, kParallelTask / std::max<std::int64_t>(total * inner, 1));
-            parallel::parallel_for((outer + rows - 1) / rows, [&](std::int64_t t) {
-                piece(t * rows, std::min(outer, (t + 1) * rows), 0, n);
-            });
+        if (outer > 1) {
+            for_pieces(outer, kParallelTask / std::max<std::int64_t>(total * inner, 1), out.size(),
+                       [&](std::int64_t, std::int64_t o0, std::int64_t o1) { piece(o0, o1, 0, n); });
         } else {
-            const std::int64_t per = std::max<std::int64_t>(1, kParallelTask / std::max<std::int64_t>(inner, 1));
-            parallel::parallel_for((n + per - 1) / per, [&](std::int64_t t) { piece(0, 1, t * per, std::min(n, (t + 1) * per)); });
+            for_pieces(n, kParallelTask / std::max<std::int64_t>(inner, 1), out.size(),
+                       [&](std::int64_t, std::int64_t i0, std::int64_t i1) { piece(0, 1, i0, i1); });
         }
     });
     return wrap(std::move(out));
@@ -400,6 +394,9 @@ nb::object triangle(nb::handle x, nb::handle k_obj) {
     if (out.size() == 0) return wrap(std::move(out));
     assign(out, a);
     const std::int64_t rows = a.shape[a.ndim - 2], cols = a.shape[a.ndim - 1], item = out.itemsize();
+    // Past the matrix's corners every k means the same; clamping first keeps
+    // i + k + 1 from overflowing (k = 2**63 - 1 zeroed the wrong triangle).
+    const std::int64_t kk = std::clamp<std::int64_t>(k, -rows - 1, cols + 1);
     const std::int64_t mats = out.size() / (rows * cols);
     std::byte* p = out.data;
     for (std::int64_t m = 0; m < mats; ++m)
@@ -409,11 +406,11 @@ nb::object triangle(nb::handle x, nb::handle k_obj) {
             // 0 / False / +0.0 / 0j in every dtype.
             std::int64_t lo, hi;  // the zeroed columns [lo, hi)
             if constexpr (Lower) {
-                lo = std::clamp<std::int64_t>(i + k + 1, 0, cols);
+                lo = std::clamp<std::int64_t>(i + kk + 1, 0, cols);
                 hi = cols;
             } else {
                 lo = 0;
-                hi = std::clamp<std::int64_t>(i + k, 0, cols);
+                hi = std::clamp<std::int64_t>(i + kk, 0, cols);
             }
             if (hi > lo) std::memset(row + lo * item, 0, static_cast<size_t>((hi - lo) * item));
         }
@@ -444,18 +441,17 @@ nb::object diff(nb::handle x, nb::handle axis_obj, nb::handle n_obj, nb::handle 
         if (!prepend.is_none()) parts.append(edge(prepend, a, axis));
         parts.append(cur);
         if (!append.is_none()) parts.append(edge(append, a, axis));
-        cur = core("concat")(parts, nb::arg("axis") = axis);
+        cur = concat_arrays(parts, nb::int_(axis));
     }
-    // n times: x[1:] - x[:-1] along the axis, with sd.subtract (bool becomes
+    // n times: x[1:] - x[:-1] along the axis, with subtract (bool becomes
     // int64, as in subtract; numpy uses not_equal there).
-    const nb::object subtract = core("subtract");
     for (std::int64_t i = 0; i < n; ++i) {
         const NDArray& c = as_ndarray(cur);
         const std::int64_t len = c.shape[axis];
         if (len == 0) break;
         NDArray hi = range_view(view_of(cur), axis, 1, len - 1);
         NDArray lo = range_view(view_of(cur), axis, 0, len - 1);
-        cur = subtract(wrap(std::move(hi)), wrap(std::move(lo)));
+        cur = binary<ops::Subtract>(wrap(std::move(hi)), wrap(std::move(lo)), nb::none());
     }
     return cur;
 }

@@ -24,7 +24,8 @@ nb::object reshape(nb::handle x, std::span<const std::int64_t> shape, std::optio
 nb::object reshape(nb::handle x, nb::handle shape, nb::handle copy);
 
 nb::object matrix_transpose(nb::handle x);  // .mT: swap the last two axes
-nb::object transpose_2d(nb::handle x);      // .T: 2-D only (docs/design/array.md §2.8)
+nb::object transpose_2d(nb::handle x);
+nb::object concat_arrays(nb::handle arrays, nb::handle axis);  // concat (docs/api/array.md §4.2), for C++ callers      // .T: 2-D only (docs/design/array.md §2.8)
 
 void bind_shape(nb::module_& m);
 

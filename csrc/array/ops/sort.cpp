@@ -368,7 +368,17 @@ void sort_long(E* a, std::int64_t n, SortPiece sort_piece, Less less) {
 
 }  // namespace
 
+// Below this, an insertion sort beats the NEON sort's 16-element blocks
+// (median over lanes of 4: 20 ms against 29 ms for 7.5e5 lanes; of 6: 23
+// against 20, measured).
+constexpr std::int64_t kTinySort = 6;
+
 void sort_float64_total(double* a, std::int64_t n, bool parallel) {
+    if (n < kTinySort) {
+        // Tiny: an insertion sort in the total order itself.
+        sorting::insertion_sort(a, n, TotalLess{});
+        return;
+    }
     // The NEON sort's merges take equal values from either run, so -0.0 and
     // +0.0 come out mixed. They are contiguous in the sorted result, so the
     // zero run is rewritten as all -0.0 then all +0.0: the total order.
