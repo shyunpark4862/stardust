@@ -5,6 +5,8 @@
 // equation for x < 0.
 #pragma once
 
+#include "special/boost.hpp"
+
 #include "special/coeffs/cephes_gamma.hpp"
 #include "special/cost.hpp"
 #include "special/gamma_core.hpp"
@@ -130,6 +132,10 @@ struct Zeta : Real {
         if (x == kInf) return 1.0;
         if (x == -kInf) return kNaN;
         if (std::fabs(x) < 0x1p-30) return -0.5 - kLogSqrt2Pi * x;  // zeta(x) = -1/2 - log(2 pi) x / 2 + O(x^2)
+        if (x > -60.0 && (x > 0.0 || sinpi(0.5 * x) != 0.0)) {  // Boost (special/boost.hpp); not the trivial zeros
+            const double r = bst::zeta(x);
+            if (bst::normal(r)) return r;
+        }
         if (x >= 0.0) return zeta_detail::euler_maclaurin(x, x - 1.0, 1.0);
         const double s = sinpi(0.5 * x);
         if (s == 0.0) return 0.0;

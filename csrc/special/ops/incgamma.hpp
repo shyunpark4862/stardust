@@ -22,6 +22,8 @@
 // initial value; x times the derivative is a D.
 #pragma once
 
+#include "special/boost.hpp"
+
 #include "special/cf.hpp"
 #include "special/coeffs/temme_igamma.hpp"
 #include "special/common.hpp"
@@ -351,6 +353,10 @@ struct Gammaincinv : Real {
     static double f(double a, double p) {
         double out;
         if (igam_inverse_edge(a, p, false, out)) return out;
+        if (p >= 1e-300 && std::isfinite(a)) {  // Boost (special/boost.hpp); subnormal roots are ours
+            const double r = bst::gamma_p_inv(a, p);
+            if (bst::normal(r) && r >= 1e-300) return r;
+        }
         return igam_detail::igam_inverse(a, p, false);
     }
 };
@@ -363,6 +369,10 @@ struct Gammainccinv : Real {
     static double f(double a, double q) {
         double out;
         if (igam_inverse_edge(a, q, true, out)) return out;
+        if (std::isfinite(a)) {  // Boost (special/boost.hpp)
+            const double r = bst::gamma_q_inv(a, q);
+            if (bst::normal(r)) return r;
+        }
         return igam_detail::igam_inverse(a, q, true);
     }
 };

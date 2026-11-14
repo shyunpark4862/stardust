@@ -20,10 +20,10 @@ LOOSE = {
     # reduction, stays at 2 ULP). The guaranteed region |x| <= 1 measures 6.7 ULP.
     "_cf_tan": 1.0,
     # S7 (user decision: guaranteed only where a positive-term form exists). hyp1f1's loose
-    # region: a < 0 with x > 0 cancels up to 1e29 in every form used (measured 3.9e-3,
-    # docs/learn/S7-hyper-lambertw.md); hyp2f1's: z > 0.9, z < -1, negative parameters
-    # (measured 6.6e-13).
-    "hyp1f1": 1e-2,
+    # region goes to Boost.Math (S10, special/boost.hpp; ours cancelled up to 1e29 there,
+    # 3.9e-3 measured): 2.8e-13 measured. hyp2f1's: z > 0.9, z < -1, negative parameters
+    # (measured 5.8e-13).
+    "hyp1f1": 1e-12,
     "hyp2f1": 1e-12,
 }
 

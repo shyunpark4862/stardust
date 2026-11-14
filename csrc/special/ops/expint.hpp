@@ -23,6 +23,8 @@
 // x < 0: Ei(x) = -E_1(-x).
 #pragma once
 
+#include "special/boost.hpp"
+
 #include "special/cf.hpp"
 #include "special/coeffs/ei_taylor.hpp"
 #include "special/common.hpp"
@@ -108,6 +110,10 @@ struct Expi : Real {
         if (x == 0.0) return -kInf;
         if (x == kInf) return kInf;
         if (x == -kInf) return -0.0;
+        if (x >= -700.0) {  // Boost (special/boost.hpp); the subnormal tail below and overflow are ours
+            const double r = bst::expint(x);
+            if (bst::normal(r)) return r;
+        }
         if (x > 0.0) return expint_detail::ei_pos(x);
         return -expint_detail::en(1.0, -x);
     }

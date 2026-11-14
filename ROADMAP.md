@@ -144,6 +144,7 @@
 | S7 초기하와 Lambert W | 완료 (2026-11-14), docs/learn/S7-hyper-lambertw.md |
 | S8 복소수 | 완료 (2026-11-14), docs/learn/S8-complex.md |
 | S9 마무리 | 완료 (2026-11-14), docs/learn/S9-final-report.md |
+| S10 Boost.Math 도입 (S9 뒤 후속, 사용자 결정) | 완료 (2026-11-14), docs/learn/S10-boost.md |
 
 ## 마일스톤
 

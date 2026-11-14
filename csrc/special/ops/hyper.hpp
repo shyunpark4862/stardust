@@ -24,6 +24,8 @@
 // polynomial ends first.
 #pragma once
 
+#include "special/boost.hpp"
+
 #include "special/common.hpp"
 #include "special/cost.hpp"
 #include "special/dd.hpp"
@@ -176,6 +178,16 @@ inline double hyp1f1(double a, double b, double x) {
         if (a > 0.0) return 0.0;
         if (nonpos_int(b - a)) return 0.0;  // 1/Gamma(b - a) = 0: the e^x term (0)
         return (gamma_detail::gamma_sign(b) * gamma_detail::gamma_sign(b - a) > 0.0) ? kInf : -kInf;
+    }
+    // Boost (special/boost.hpp): the loose region, where every form of ours cancels (a < 0, x > 0
+    // measured 3.9e-3, Boost 3e-12), and inside the guaranteed one x >= 0 with b < 11 (8x faster,
+    // as accurate). A non-finite Boost result, or a subnormal one in the guaranteed region, is ours.
+    {
+        const bool guaranteed = a >= 0.0 && b > 0.0 && (x >= 0.0 || b >= a);
+        if (!guaranteed || (x >= 0.0 && b < 11.0)) {
+            const double r = bst::hyp1f1(a, b, x);
+            if (guaranteed ? bst::normal(r) : std::isfinite(r)) return r;
+        }
     }
     if (x > 0.0) {
         const Series direct = m_nonneg(a, b, x);

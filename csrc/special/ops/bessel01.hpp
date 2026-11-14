@@ -20,6 +20,8 @@
 //     i1(+-inf) = +-inf, j0, j1, y0, y1 -> 0.
 #pragma once
 
+#include "special/boost.hpp"
+
 #include "special/coeffs/cephes_bessel.hpp"
 #include "special/common.hpp"
 #include "special/cost.hpp"
@@ -160,10 +162,14 @@ SD_BESSEL01_OP(Y0, "y0", kY0)
 SD_BESSEL01_OP(Y1, "y1", kY1)
 #undef SD_BESSEL01_OP
 
+// i0, i1, k0, k1: Boost (special/boost.hpp; 2-4.5x faster, as accurate), ours where its
+// result overflows or leaves the normal range (the true values of i0, i1 near 713, k1(5e-324)).
 inline double I0::f(double x) {
     if (std::isnan(x)) return kNaN;
     x = std::fabs(x);
-    return std::isinf(x) ? kInf : bessel01_detail::i0(x);
+    if (std::isinf(x)) return kInf;
+    const double r = bst::i(0.0, x);
+    return bst::normal(r) ? r : bessel01_detail::i0(x);
 }
 inline double I0e::f(double x) {
     if (std::isnan(x)) return kNaN;
@@ -173,7 +179,8 @@ inline double I0e::f(double x) {
 inline double I1::f(double x) {
     if (std::isnan(x)) return kNaN;
     const double a = std::fabs(x);
-    const double r = std::isinf(a) ? kInf : bessel01_detail::i1(a);
+    double r = std::isinf(a) ? kInf : bst::i(1.0, a);
+    if (!std::isinf(a) && !bst::normal(r)) r = bessel01_detail::i1(a);
     return x < 0.0 ? -r : r;  // scipy: i1(-0.0) = +0.0
 }
 inline double I1e::f(double x) {
@@ -187,6 +194,8 @@ inline double K0::f(double x) {
     if (std::isnan(x) || x < 0.0) return kNaN;
     if (x == 0.0) return kInf;
     if (std::isinf(x)) return 0.0;
+    const double r = bst::k(0.0, x);
+    if (bst::normal(r)) return r;
     return x <= 2.0 ? k0_small(x) : value(exp_scaled(-x) * scaled(k0e_large(x)));
 }
 inline double K0e::f(double x) {
@@ -201,6 +210,8 @@ inline double K1::f(double x) {
     if (std::isnan(x) || x < 0.0) return kNaN;
     if (x == 0.0) return kInf;
     if (std::isinf(x)) return 0.0;
+    const double r = bst::k(1.0, x);
+    if (bst::normal(r)) return r;
     return x <= 2.0 ? k1_small(x) : value(exp_scaled(-x) * scaled(k1e_large(x)));
 }
 inline double K1e::f(double x) {

@@ -28,6 +28,8 @@
 // half-integers: yv(-1/2, 0) = 0, scipy -inf).
 #pragma once
 
+#include "special/boost.hpp"
+
 #include "special/cf.hpp"
 #include "special/coeffs/rgamma_taylor.hpp"
 #include "special/common.hpp"
@@ -591,6 +593,23 @@ inline double iv_or_kv(double v, double x, bool want_k, bool scaled_out) {
     return value(scaled_out ? I : I * exp_scaled(x));
 }
 
+// iv for |v| < 30 and kv for |v| < 400 (x > 0): Boost (special/boost.hpp; 2-7x faster
+// there, as accurate); ours elsewhere and where Boost's result is not normal.
+inline double iv_route(double v, double x) {
+    if (std::fabs(v) < 30.0 && x > 0.0 && std::isfinite(x)) {
+        const double r = bst::i(v, x);
+        if (bst::normal(r)) return r;
+    }
+    return iv_or_kv(v, x, false, false);
+}
+inline double kv_route(double v, double x) {
+    if (std::fabs(v) < 400.0 && x > 0.0 && std::isfinite(x)) {
+        const double r = bst::k(v, x);
+        if (bst::normal(r)) return r;
+    }
+    return iv_or_kv(v, x, true, false);
+}
+
 }  // namespace bessel_detail
 
 #define SD_BESSEL_OP(Struct, Name, Cost, Body)                                 \
@@ -606,8 +625,8 @@ SD_BESSEL_OP(Jv, "jv", kJv, bessel_detail::jv_or_yv(v, x, false))
 SD_BESSEL_OP(Yv, "yv", kYv, bessel_detail::jv_or_yv(v, x, true))
 SD_BESSEL_OP(Jve, "jve", kJv, bessel_detail::jv_or_yv(v, x, false))  // real x: exp(-|Im x|) = 1
 SD_BESSEL_OP(Yve, "yve", kYv, bessel_detail::jv_or_yv(v, x, true))
-SD_BESSEL_OP(Iv, "iv", kIv, bessel_detail::iv_or_kv(v, x, false, false))
-SD_BESSEL_OP(Kv, "kv", kKv, bessel_detail::iv_or_kv(v, x, true, false))
+SD_BESSEL_OP(Iv, "iv", kIv, bessel_detail::iv_route(v, x))
+SD_BESSEL_OP(Kv, "kv", kKv, bessel_detail::kv_route(v, x))
 SD_BESSEL_OP(Ive, "ive", kIv, bessel_detail::iv_or_kv(v, x, false, true))
 SD_BESSEL_OP(Kve, "kve", kKv, bessel_detail::iv_or_kv(v, x, true, true))
 #undef SD_BESSEL_OP

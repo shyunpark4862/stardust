@@ -29,6 +29,8 @@
 // AS 109 (Cran, Martin & Thomas 1977).
 #pragma once
 
+#include "special/boost.hpp"
+
 #include "special/cf.hpp"
 #include "special/common.hpp"
 #include "special/cost.hpp"
@@ -402,6 +404,11 @@ struct Betainc : Real {
     static double f(double a, double b, double x) {
         double out;
         if (ibeta_detail::ibeta_edge(a, b, x, false, out)) return out;
+        if (a <= 6.0 && b <= 6.0) {  // Boost (special/boost.hpp; the same region as betaincc, so
+                                     // the pair still adds to 1); subnormal tails are ours
+            const double r = bst::ibeta(a, b, x);
+            if (bst::normal(r)) return r;
+        }
         return ibeta_detail::ibeta(a, b, x).i;
     }
 };
@@ -414,6 +421,10 @@ struct Betaincc : Real {
     static double f(double a, double b, double x) {
         double out;
         if (ibeta_detail::ibeta_edge(a, b, x, true, out)) return out;
+        if (a <= 6.0 && b <= 6.0) {  // Boost (special/boost.hpp); subnormal tails are ours
+            const double r = bst::ibetac(a, b, x);
+            if (bst::normal(r)) return r;
+        }
         return ibeta_detail::ibeta(a, b, x).ic;
     }
 };
@@ -450,6 +461,10 @@ struct Betaincinv : Real {
     static double f(double a, double b, double p) {
         double out;
         if (ibeta_inverse_edge(a, b, p, false, out)) return out;
+        if (a >= 10.0 && b >= 10.0) {  // Boost (special/boost.hpp)
+            const double r = bst::ibeta_inv(a, b, p);
+            if (bst::normal(r)) return r;
+        }
         return ibeta_inverse_dispatch(a, b, p, false);
     }
 };
@@ -462,6 +477,10 @@ struct Betainccinv : Real {
     static double f(double a, double b, double q) {
         double out;
         if (ibeta_inverse_edge(a, b, q, true, out)) return out;
+        if (a >= 1.0 && b >= 1.0) {  // Boost (special/boost.hpp)
+            const double r = bst::ibetac_inv(a, b, q);
+            if (bst::normal(r)) return r;
+        }
         return ibeta_inverse_dispatch(a, b, q, true);
     }
 };

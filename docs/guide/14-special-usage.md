@@ -103,7 +103,8 @@ print(np.array_equal(a.view(np.uint64), b.view(np.uint64)), a[7] == sd.special.k
 ## 6. 얼마나 빠른가
 수치는 docs/learn/S9-final-report.md §3에 있다. 요약하면
 - 10⁶개 배열에서 대부분의 함수는 1스레드로도 scipy와 비슷하거나 빠르고, 10스레드에서는 몇 배에서 수십 배 빠르다. scipy.special의 ufunc는 1스레드다.
-- 1스레드에서 크게 느린 함수가 있다: `hyp1f1`·`hyp2f1`(급수를 double-double로 계산), 큰 차수의 `iv`·`kv`(Debye 전개를 넣지 않아 차수에 비례), `beta`·`zeta` 일부. 정확도와 맞바꾼 것이고, 후속 후보로 적어 두었다.
+- 1스레드에서 크게 느린 함수가 있다: `hyp2f1`과 보장 영역 일부의 `hyp1f1`(급수를 double-double로 계산), 큰 차수의 `iv`·`kv`(Debye 전개를 넣지 않아 차수에 비례), `beta`·`betaln` 일부. 정확도와 맞바꾼 것이고, 후속 후보로 적어 두었다.
+- S10부터 20개 함수의 일부 구간은 Boost.Math를 부른다. 그 구간에서 Boost가 계약을 지키고 느리지 않다고 잰 곳이다(15장 §2).
 - 함수마다 원소 하나의 비용(`cost.hpp`)을 재서, 비싼 함수는 작은 배열에서도 스레드를 나눈다(15장 §1).
 
 ## 더 읽을 곳

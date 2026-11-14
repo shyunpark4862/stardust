@@ -69,6 +69,10 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/bind/module.cpp)
 
 target_include_directories(_core PRIVATE csrc)
+# Boost.Math (headers only, the subset sd.special calls; third_party/boost_math/README.md).
+# SYSTEM: its headers are not held to our warning flags.
+target_include_directories(_core SYSTEM PRIVATE third_party/boost_math/include)
+target_compile_definitions(_core PRIVATE BOOST_MATH_STANDALONE)
 
 # The only target is this Mac (Apple M4 Pro): -mcpu=native resolves to apple-m4.
 # -ffast-math is deliberately absent: NaN and inf must keep their meaning.

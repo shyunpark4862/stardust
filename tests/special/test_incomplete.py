@@ -101,7 +101,8 @@ def test_pairs_add_to_one():
     y = rng.uniform(0, 1, 2000)
     s = np.asarray(S.betainc(sd.asarray(a), sd.asarray(b), sd.asarray(y))) + \
         np.asarray(S.betaincc(sd.asarray(a), sd.asarray(b), sd.asarray(y)))
-    assert np.max(np.abs(s - 1)) <= 4e-16
+    # a, b <= 6 go to Boost (special/boost.hpp), which computes the two apart: 3 ULP measured
+    assert np.max(np.abs(s - 1)) <= 8e-16
 
 
 def test_beta_symmetry():

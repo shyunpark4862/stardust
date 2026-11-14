@@ -355,6 +355,28 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
   - `loggamma`: scipy와 같은 구조에 1–2 둘레의 상쇄 없는 꼴을 더했다(Taylor 원판 둘 대신).
   - 복소수의 오차는 크기 기준, 영점 쪽은 포락선(사용자 결정). 오버플로하는 결과의 부호는 정확한 위상을 따른다.
 
+### 5.14 Boost.Math (S10)
+- **사용자 결정 (2026-11-14, S9 뒤)**: "Boost로 갈아끼는 게 이득인 부분은 다 갈고, 손해인 부분만 우리가 작성한다." 계수만 가져오지 않고 Boost.Math를 직접 부른다. 헤더는 쓰는 것만 `third_party/boost_math/`에 둔다(125개, 2.7 MB, BSL-1.0, `tools/vendor_boost_math.py`).
+- **손해의 기준** (사용자 결정): 구간마다 Boost가 계약(1e-14, 특수값은 우리 규칙)을 참값 파일의 모든 점에서 지키고, 1스레드에서 느리지 않을 때(10% 안은 같은 것으로 본다)만 바꾼다. 더 정확해도 느리면 우리 것이다(`erf` 계열, `gammaln`, `j0 j1 y0 y1`). 일부 점만 틀리면 구간을 잘게 나눠 지키는 구간만 바꾼다.
+- **바꾼 구간** (`csrc/special/boost.hpp`, 측정 `bench/special/boost/routing.md`). 특수값(NaN, inf, 0, 극점)은 Boost를 부르기 전에 우리가 정하고, Boost의 결과가 정상 범위가 아니면(서브노멀, 0, inf, NaN) 우리 코드로 다시 계산한다.
+
+  | 함수 | Boost 구간 | 우리 구간 (이유) |
+  |---|---|---|
+  | `zeta` | x > −60 (자명한 영점 제외) | x ≤ −60 (Boost 1.7e3 ULP) |
+  | `i0 i1 k0 k1` | 전부 | 결과가 정상 범위 밖(i0·i1의 713 근처 참값, k1(5e-324)) |
+  | `iv`, `kv` | \|ν\| < 30, \|ν\| < 400 (x > 0) | 그 밖 (Boost가 결과가 작은 곳에서 30배까지) |
+  | `expi` | x ≥ −700 | 서브노멀 꼬리 |
+  | `lambertw` (실수, 두 가지) | \|x + 1/e\| ≥ 0.05 | 분기점 근처 (Boost 2e7 ULP) |
+  | `digamma` | x > 0 | x < 0 (Boost가 극점 근처에서 틀림) |
+  | `gamma` | x > −170, 극점 제외 | 서브노멀 꼬리 |
+  | `beta` | a, b > 0, a + b < 40 | 큰 인자 (Boost 1.8e3 ULP) |
+  | `gammaincinv`, `gammainccinv` | p ≥ 1e-300이고 근이 1e-300 이상 / 전부 | 서브노멀 근 |
+  | `betainc`, `betaincc` | a, b ≤ 6 | 큰 a, b (Boost 18배까지) |
+  | `betaincinv`, `betainccinv` | a, b ≥ 10 / a, b ≥ 1 | 작은 a, b (Boost가 언더플로를 틀림) |
+  | `hyp1f1` | 느슨한 영역 전부, 보장 영역의 x ≥ 0이고 b < 11 | 보장 영역의 나머지 (Boost 208 ULP) |
+- 그대로 둔 것: Airy(우리는 네 값을 한 번에 계산해 277 ns, Boost는 넷을 따로 불러 약 720 ns이고 \|x\| > 15에서 틀린다), `expit`, `logit`, `erf` 계열, `expn`, `polygamma`, 타원적분, `jv`·`yv`, 불완전 감마(Boost가 느리거나 틀린다). Boost에 없는 함수(복소수 전부, `erfcx`, 정규분포, e-스케일 Bessel, `hyp2f1`, Hurwitz 제타, 리덕션)도 우리 것이다.
+- 내부 호출: `hyp2f1`과 `hyp1f1`의 우리 식이 부르는 `Gamma::f`, `Digamma::f`도 바뀐 구간에서는 Boost다. `betainc`와 `betaincc`의 합은 3 ULP까지 1에서 벗어난다(Boost가 둘을 따로 계산한다; 전에는 같은 BRATIO 호출이라 2 ULP 안).
+
 ---
 
 ## 6. 정답지와 측정

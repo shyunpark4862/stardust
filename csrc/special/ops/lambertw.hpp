@@ -14,6 +14,7 @@
 // Boost). Below it, and x > 0 on k = -1, there is no real value: NaN.
 #pragma once
 
+#include "special/boost.hpp"
 #include "special/coeffs/lambertw_branch.hpp"
 #include "special/common.hpp"
 #include "special/cost.hpp"
@@ -83,6 +84,23 @@ inline double wm1(double x) {
     return halley(w, x);
 }
 
+// The real branches as the public functions compute them: Boost (special/boost.hpp)
+// away from the branch point, ours near it.
+inline double w0_routed(double x) {
+    if (x != 0.0 && std::isfinite(x) && std::fabs(x - kMinusInvE) >= 0.05) {
+        const double r = bst::w0(x);
+        if (bst::normal(r)) return r;
+    }
+    return w0(x);
+}
+inline double wm1_routed(double x) {
+    if (x < 0.0 && std::fabs(x - kMinusInvE) >= 0.05) {
+        const double r = bst::wm1(x);
+        if (bst::normal(r)) return r;
+    }
+    return wm1(x);
+}
+
 // ---- complex argument, any branch k (S8) ---------------------------------------
 using cplx = std::complex<double>;
 inline constexpr double kTwoPi = 6.283185307179586477;
@@ -146,8 +164,8 @@ inline cplx cw(cplx z, double k) {
     // the real branches on the real axis (exactly real): W_0 on [-1/e, inf), W_-1 from above
     // and W_1 from below on [-1/e, 0)
     if (y == 0.0 && x > kMinusInvE) {
-        if (k == 0.0) return {w0(x), y};
-        if (x < 0.0 && ((k == -1.0 && !below) || (k == 1.0 && below))) return {wm1(x), y};
+        if (k == 0.0) return {w0_routed(x), y};
+        if (x < 0.0 && ((k == -1.0 && !below) || (k == 1.0 && below))) return {wm1_routed(x), y};
     }
     const cplx L = clog(z) + cplx{0.0, kTwoPi * k};
     const double r = std::hypot(x, y);
@@ -182,14 +200,14 @@ struct Lambertw0 : Real {
     static constexpr int nin = 1, nout = 1;
     static constexpr std::array<const char*, 1> args{"x"};
     static constexpr double cost_ns = cost::kLambertw;
-    static double f(double x) { return lambertw_detail::w0(x); }
+    static double f(double x) { return lambertw_detail::w0_routed(x); }
 };
 struct LambertwM1 : Real {
     static constexpr const char* name = "lambertw";
     static constexpr int nin = 1, nout = 1;
     static constexpr std::array<const char*, 1> args{"x"};
     static constexpr double cost_ns = cost::kLambertwM1;
-    static double f(double x) { return lambertw_detail::wm1(x); }
+    static double f(double x) { return lambertw_detail::wm1_routed(x); }
 };
 // A complex argument, any branch: the second operand is k (an integer, passed as complex).
 struct LambertwComplex {

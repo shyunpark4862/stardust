@@ -11,6 +11,7 @@
 #pragma once
 
 #include "special/cost.hpp"
+#include "special/boost.hpp"
 #include "special/gamma_core.hpp"
 #include "special/ops/zeta.hpp"
 
@@ -193,6 +194,10 @@ struct Gamma : Real {
         if (x == 0.0) return std::copysign(kInf, x);
         if (x > 171.62437695630272) return kInf;
         if (std::fabs(x) < 0x1p-30) return 1.0 / x - kEuler;  // -5e-324: -inf, not inf / inf
+        if (x > -170.0 && (x > 0.0 || !is_nonpos_int(x))) {  // Boost (special/boost.hpp): no subnormal tail
+            const double r = bst::tgamma(x);
+            if (bst::normal(r)) return r;
+        }
         if (x > 0.0) return gamma_cephes_pos(x);
         if (is_nonpos_int(x)) return kNaN;  // and -inf
         return gamma_neg_direct(x);
@@ -260,7 +265,11 @@ struct Digamma : Real {
         if (x == kInf) return x;
         if (x == -kInf) return kNaN;
         if (x == 0.0) return std::copysign(kInf, -x);
-        if (x > 0.0) return digamma_pos(x);
+        if (x > 0.0) {  // Boost (special/boost.hpp); x < 0 is ours (its reflection loses at the poles)
+            const double r = bst::digamma(x);
+            if (std::isfinite(r)) return r;
+            return digamma_pos(x);
+        }
         if (x == std::floor(x)) return kNaN;
         if (x > -1.0) return digamma_pos(x + 1.0) - 1.0 / x;
         return digamma_pos(-x) - 1.0 / x - kPi * cospi(x) / sinpi(x);
@@ -334,6 +343,10 @@ struct Beta : Real {
         if (std::isnan(a) || std::isnan(b)) return kNaN;
         if (is_nonpos_int(a)) return negint(a, b);
         if (is_nonpos_int(b)) return negint(b, a);
+        if (a > 0.0 && b > 0.0 && a + b < 40.0) {  // Boost (special/boost.hpp)
+            const double r = bst::beta(a, b);
+            if (bst::normal(r)) return r;
+        }
         if (std::fabs(a) < std::fabs(b)) std::swap(a, b);
         if (a == kInf) return b == kInf ? kNaN : (b > 0.0 ? 0.0 : (Gamma::f(b) > 0 ? kInf : -kInf));  // B(inf, inf): NaN (scipy)
         if (a > 0.0 && b > 0.0 && a + b <= 170.0) {
