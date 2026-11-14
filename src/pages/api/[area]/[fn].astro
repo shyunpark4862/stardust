@@ -1,6 +1,7 @@
 ---
 import { getCollection, render } from 'astro:content';
 import Docs from '../../../layouts/Docs.astro';
+import { inlineHtml } from '../../../data/inline';
 import Badge from '../../../components/Badge.astro';
 import { areaCrumbs, areaNav, areaSidebar, groupsOf, hrefOf, isSingle, splitId } from '../../../data/api';
 import RefCard from '../../../components/RefCard.astro';
@@ -80,7 +81,7 @@ const headings = [
             <li>
               <a class="related__link" href={hrefOf(e)}>
                 <span class:list={['related__name', !isSingle(e) && 'related__name--text']}>{e.data.title}</span>
-                <span class="related__summary">{e.data.summary}</span>
+                <span class="related__summary" set:html={inlineHtml(e.data.summary)} />
               </a>
             </li>
           ))}

@@ -1,5 +1,6 @@
 ---
 import Docs from '../../../layouts/Docs.astro';
+import { inlineHtml } from '../../../data/inline';
 import Badge from '../../../components/Badge.astro';
 import { areaCrumbs, areaNav, areaOf, areaSidebar, documentedAreas, groupId, groupsOf, hrefOf, isSingle } from '../../../data/api';
 
@@ -32,7 +33,7 @@ const headings = groups.map((g) => ({ depth: 2, slug: groupId(g.title), text: g.
               <a class="fn" href={hrefOf(e)}>
                 <span class:list={['fn__name', !isSingle(e) && 'fn__name--text']}>{e.data.title}</span>
                 <span class="fn__summary">
-                  {e.data.summary}
+                  <Fragment set:html={inlineHtml(e.data.summary)} />
                   {!isSingle(e) && e.data.names.length > 0 && (
                     <span class="fn__names">{e.data.names.join('  ')}</span>
                   )}

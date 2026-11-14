@@ -1,6 +1,7 @@
 ---
 import { getCollection, render } from 'astro:content';
 import Docs from '../../../layouts/Docs.astro';
+import { inlineHtml } from '../../../data/inline';
 import {
   internalsAreaNav,
   internalsCrumbs,
@@ -56,7 +57,7 @@ const headings = [
             <li>
               <a class="related__link" href={internalsHref(e)}>
                 <span class="related__name">{e.data.title}</span>
-                <span class="related__summary">{e.data.summary}</span>
+                <span class="related__summary" set:html={inlineHtml(e.data.summary)} />
               </a>
             </li>
           ))}

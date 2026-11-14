@@ -1,5 +1,6 @@
 ---
 import Docs from '../../../layouts/Docs.astro';
+import { inlineHtml } from '../../../data/inline';
 import { groupId } from '../../../data/api';
 import {
   internalsAreaNav,
@@ -39,7 +40,7 @@ const headings = groups.map((g) => ({ depth: 2, slug: groupId(g.title), text: g.
             <li>
               <a class="topic" href={internalsHref(e)}>
                 <span class="topic__title">{e.data.title}</span>
-                <span class="topic__summary">{e.data.summary}</span>
+                <span class="topic__summary" set:html={inlineHtml(e.data.summary)} />
               </a>
             </li>
           ))}

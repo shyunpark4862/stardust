@@ -152,3 +152,16 @@ samp {
     transition: none;
   }
 }
+
+/* Inline code in summaries and other places outside .prose. */
+.page-head__lead code,
+.fn__summary code,
+.related__summary code,
+.topic__summary code {
+  padding: 0.1em 0.35em;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-subtle);
+  font-size: 0.86em;
+  color: var(--blue-800);
+}

@@ -3,6 +3,7 @@ import Base from './Base.astro';
 import Badge from '../components/Badge.astro';
 import 'katex/dist/katex.min.css';
 import '../styles/prose.css';
+import { inlineHtml, plainText } from '../data/inline';
 import { sidebars, topNav, type AreaNav, type Crumb, type NavGroup } from '../data/nav';
 
 interface Heading {
@@ -37,7 +38,7 @@ const crumbs: Crumb[] = Astro.props.crumbs ?? (sectionNav ? [{ label: sectionNav
 const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
 ---
 
-<Base title={title} description={description}>
+<Base title={title} description={description && plainText(description)}>
   <div class="container docs">
     <aside class="docs__side">
       <button class="side-toggle" type="button" aria-expanded="false" aria-controls="side-nav">
@@ -155,7 +156,7 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
           )
         }
         <h1 class:list={['page-head__title', monoTitle && 'page-head__title--mono']}>{title}</h1>
-        {description && <p class="page-head__lead">{description}</p>}
+        {description && <p class="page-head__lead" set:html={inlineHtml(description)} />}
         <slot name="head" />
         {
           sample && (
