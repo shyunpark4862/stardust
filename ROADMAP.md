@@ -193,3 +193,71 @@
 ### S9. 마무리
 - 정확도 보고서, 성능 보고서 (scipy 대비), 안내서의 special 장(2026-11-15에 지웠다), README와 `API.md` 색인
 
+---
+
+# 통계 영역 (sd.stats, sd.random)
+
+> 상태: **설계 초안** (2026-11-15). 설계는 [docs/design/stats.md](docs/design/stats.md), [docs/design/random.md](docs/design/random.md), API는 [docs/api/stats.md](docs/api/stats.md), [docs/api/random.md](docs/api/random.md).
+>
+> **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
+
+## 진행 원칙
+- special과 같다: 마일스톤마다 시작 전에 scipy와 다를 특수값과 보장 영역을 묻고, 구현하고, 정확도·속도를 재고, 커밋하고, 결과를 전달하고, 승인받으면 다음으로 간다. 해설과 안내서는 쓰지 않는다.
+- 배열·linalg·frame의 기존 결과는 비트까지 같아야 한다(골든 출력, 스레드 1·3·10).
+- 마일스톤을 시작하기 전에 물을 것은 docs/design/stats.md의 11장과 docs/design/random.md의 6장에 있다.
+
+## 진행 상태
+| 마일스톤 | 상태 |
+|---|---|
+| T0 배열 추가 | 대기 |
+| T1 special 감싸기와 `ndtri_exp` | 대기 |
+| T2 special 비중심 분포 함수 | 대기 |
+| T3 `sd.random` | 대기 |
+| T4 분포 엔진과 연속 기본 12 | 대기 |
+| T5 이산 10 | 대기 |
+| T6 극값·수명 6과 비중심 3 | 대기 |
+| T7 표본 (`sample`) | 대기 |
+| T8 기술통계 | 대기 |
+| T9 다변량: 정규, t, 다항, 디리클레 | 대기 |
+| T10 행렬 분포: Wishart, 역Wishart, 행렬 정규 | 대기 |
+| T11 `sd.stats.tests` (설계 질문부터) | 대기 |
+
+## 마일스톤
+
+### T0. 배열 추가
+- `cov`, `corrcoef`, `quantile`, `median`, NaN을 건너뛰는 리덕션 (배열 영역, docs/design/array.md와 docs/api/array.md에 더한다)
+
+### T1. special 감싸기와 `ndtri_exp`
+- `stdtr stdtrit chdtr chdtrc chdtri fdtr fdtrc fdtri pdtr pdtrc bdtr bdtrc nbdtr nbdtrc`(기존 함수의 조합), `ndtri_exp`
+
+### T2. special 비중심 분포 함수
+- `chndtr chndtrix nctdtr nctdtrit ncfdtr ncfdtri`. 보장 영역은 재고 나서 묻는다.
+
+### T3. `sd.random`
+- 계수기형 생성기, `default_rng`, `random integers choice permutation shuffle`
+
+### T4. 분포 엔진과 연속 기본 12
+- 분포 구조체와 (분포, 메서드) Op, 신형 API의 Python 클래스, 참값 도구(`tools/stats_ref.py`)
+- 정규, t, 카이제곱, F, 감마, 베타, 지수, 로그정규, 균등, 코시, 라플라스, 베이불
+
+### T5. 이산 10
+- 이항, 포아송, 기하, 음이항, 초기하, 베르누이, 이산 균등, 베타이항, 로그 급수, Zipf
+
+### T6. 극값·수명 6과 비중심 3
+- 로지스틱, Gumbel, GEV, 파레토, 레일리, 역감마, 비중심 카이제곱·t·F
+
+### T7. 표본
+- 모든 분포의 `sample` (직접 알고리즘 또는 역함수 법)
+
+### T8. 기술통계
+- `describe skew kurtosis moment zscore rankdata sem iqr mode entropy differential_entropy`
+
+### T9. 다변량: 정규, t, 다항, 디리클레
+- `pdf logpdf sample mean covariance entropy`, 다변량 정규·t의 `cdf`(Genz, 느슨한 계약)
+
+### T10. 행렬 분포
+- Wishart, 역Wishart, 행렬 정규
+
+### T11. `sd.stats.tests`
+- 검정과 상관. 설계 질문부터 시작한다.
+
