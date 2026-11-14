@@ -13,6 +13,8 @@
 #include "special/kernels/chunked.hpp"
 #include "special/ops/erf.hpp"
 #include "special/ops/gamma.hpp"
+#include "special/ops/incbeta.hpp"
+#include "special/ops/incgamma.hpp"
 #include "special/ops/logistic.hpp"
 #include "special/ops/testing.hpp"
 
@@ -96,6 +98,8 @@ void bind_special(nb::module_& core) {
     def_naries<Erf, Erfc, Erfcx, Erfinv, Erfcinv, Ndtr, LogNdtr, Ndtri>(m);  // S2, §2
     def_naries<ErfcSelect, ErfcEstrin>(m);  // S2 measurement variants (special/ops/erf.hpp)
     def_naries<Gamma, Rgamma, Gammaln, Digamma, Polygamma, Beta, Betaln, Binom>(m);  // S3, §3
+    def_naries<Gammainc, Gammaincc, Gammaincinv, Gammainccinv>(m);  // S4, §3
+    def_naries<Betainc, Betaincc, Betaincinv, Betainccinv>(m);  // S4, §3
     def_naries<GammaLanczos>(m);  // S3 measurement variant (gamma candidate A)
     // zeta(x, q=None, /, *, out=None): Riemann with one argument, Hurwitz with two (§7)
     m.def(
@@ -119,7 +123,8 @@ void bind_special(nb::module_& core) {
         [&]<typename... Ops>() { (check.template operator()<Ops>(), ...); }
             .template operator()<Expit, Logit, LogExpit, Xlogy, Xlog1py, Entr, RelEntr, Erf, Erfc, Erfcx, Erfinv,
                                  Erfcinv, Ndtr, LogNdtr, Ndtri, Gamma, Rgamma, Gammaln, Digamma, Polygamma,
-                                 Beta, Betaln, Binom, Zeta, Fma3, Sum4, Powers4, CfTan>();
+                                 Beta, Betaln, Binom, Zeta, Gammainc, Gammaincc,
+                                 Gammaincinv, Gammainccinv, Betainc, Betaincc, Betaincinv, Betainccinv, Fma3, Sum4, Powers4, CfTan>();
         if (name == "zeta_hurwitz") w = weight_of(Hurwitz::cost_ns);  // zeta's two-argument form
         if (w == 0) throw nb::key_error(name.c_str());
         return w;

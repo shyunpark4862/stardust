@@ -6,6 +6,9 @@ stores, in tests/special/ref/<name>.npz,
     x0, x1, ...   the inputs (float64)
     hi, lo        the reference as a double-double: value ~= hi + lo, |lo| <= ulp(hi) / 2
     guaranteed    bool: the input lies in the function's guaranteed region (docs/api/special.md §1.4)
+    scale         the bound's multiplier at each point (S4 on): max(1, kappa) for the inverses,
+                  whose contract is |dx / x| <= 1e-14 max(1, kappa); 1 elsewhere (absent in
+                  older files)
 
 so an error can be measured to a fraction of an ULP without mpmath at test time.
 """
@@ -41,6 +44,12 @@ def load(name):
     with np.load(REF / f"{name}.npz") as f:
         nin = int(f["nin"])
         return tuple(f[f"x{k}"] for k in range(nin)), f["hi"], f["lo"], f["guaranteed"]
+
+
+def scale(name):
+    """The bound's multiplier at each reference point (ones where the file has none)."""
+    with np.load(REF / f"{name}.npz") as f:
+        return f["scale"] if "scale" in f.files else np.ones(f["hi"].size)
 
 
 def _special(got, hi):

@@ -19,6 +19,9 @@ __all__ = [
     "erf", "erfc", "erfcx", "erfinv", "erfcinv", "ndtr", "log_ndtr", "ndtri",
     # S3: gamma, beta and zeta (§3, §7)
     "gamma", "gammaln", "rgamma", "digamma", "polygamma", "beta", "betaln", "binom", "zeta",
+    # S4: incomplete gamma and beta, and their inverses (§3)
+    "gammainc", "gammaincc", "gammaincinv", "gammainccinv",
+    "betainc", "betaincc", "betaincinv", "betainccinv",
 ]
 
 globals().update({_name: getattr(_core, _name) for _name in __all__})

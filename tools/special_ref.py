@@ -384,6 +384,167 @@ def _zero_at_zero(f):
     return lambda *a: mpmath.mpf(0) if a[0] == 0 else f(*a)
 
 
+# S4: the incomplete gamma and beta functions and their inverses. Guaranteed everywhere
+# (S4 user decision); the sets cover a <= 1e6 (gamma) and a, b <= 1e5 (beta). The inverses
+# store `scale` = max(1, kappa), kappa = |F / (x F')|: their contract is |dx / x| <= 1e-14 scale.
+
+
+def _gammainc_inputs(rng):
+    m = 600
+    a = np.concatenate([loguniform(rng, 1e-3, 1e3, m), loguniform(rng, 1e-3, 1.0, m // 2), loguniform(rng, 20, 1e6, m),
+                        loguniform(rng, 1e3, 1e6, m // 2), loguniform(rng, 1e-300, 1e-3, m // 2), loguniform(rng, 1, 50, m // 2)])
+    x = np.concatenate([a[:m] * loguniform(rng, 1e-3, 1e3, m), loguniform(rng, 1e-3, 1.1, m // 2),
+                        a[m + m // 2:2 * m + m // 2] * (1 + rng.uniform(-0.4, 0.4, m)),
+                        a[2 * m + m // 2:3 * m] * (1 + rng.normal(0, 1, m // 2) * 5 / np.sqrt(a[2 * m + m // 2:3 * m])),
+                        loguniform(rng, 1e-300, 10, m // 2), loguniform(rng, 1e-300, 1e-3, m // 2)])
+    # region boundaries: x = 0.5, 1.1; a = 20; |x - a| = 0.4 a; the scipy errors of S4
+    ea = np.array([0.3, 0.3, 0.8, 0.8, 21.0, 21.0, 100.0, 100.0, 1e-300, 5e-324, 1.0, 0.5, 2.0])
+    ex = np.array([0.5, 0.5000000000000001, 1.1, 1.0999999999999999, 21 * 1.4, 21 * 0.6, 140.0, 60.0, 5e-324, 0.5,
+                   5e-324, 1e-320, 1e-300])
+    return (np.concatenate([a, ea]), np.concatenate([x, ex])), np.ones(a.size + ea.size, dtype=bool)
+
+
+def _mp_gammainc(a, x):
+    try:
+        return mpmath.gammainc(a, 0, x, regularized=True)
+    except mpmath.libmp.NoConvergence:  # large a: P = x^a e^-x / Gamma(a+1) 1F1(1; a+1; x), more terms
+        return mpmath.exp(a * mpmath.log(x) - x - mpmath.loggamma(a + 1)) * mpmath.hyp1f1(1, a + 1, x, maxterms=10**7)
+
+
+def _mp_gammaincc(a, x):
+    try:
+        return mpmath.gammainc(a, x, mpmath.inf, regularized=True)
+    except mpmath.libmp.NoConvergence:
+        with mpmath.workdps(2 * mpmath.mp.dps):
+            return 1 - _mp_gammainc(a, x)
+
+
+def _beta_sets(rng, m):
+    a = np.concatenate([loguniform(rng, 1e-2, 1e3, m), loguniform(rng, 1e2, 1e5, m), loguniform(rng, 1e-3, 1, m),
+                        loguniform(rng, 1e-3, 10, m), loguniform(rng, 1e-2, 1e2, m)])
+    b = np.concatenate([loguniform(rng, 1e-2, 1e3, m), loguniform(rng, 1e2, 1e5, m), loguniform(rng, 1e-3, 1, m),
+                        loguniform(rng, 1e2, 1e5, m), loguniform(rng, 1e-2, 1e2, m)])
+    return a, b
+
+
+def _betainc_inputs(rng):
+    m = 400
+    a, b = _beta_sets(rng, m)
+    mean = a[m:2 * m] / (a[m:2 * m] + b[m:2 * m])
+    sd_ = np.sqrt(a[m:2 * m] * b[m:2 * m] / ((a[m:2 * m] + b[m:2 * m]) ** 2 * (a[m:2 * m] + b[m:2 * m] + 1)))
+    x = np.concatenate([rng.uniform(0, 1, m), np.clip(mean + rng.normal(0, 3, m) * sd_, 1e-300, 1 - 1e-16),
+                        rng.uniform(0, 1, m), loguniform(rng, 1e-8, 1e-1, m), 1 - loguniform(rng, 1e-16, 1e-2, m)])
+    ea = np.array([2.0, 0.5, 3.0, 1e-300])
+    eb = np.array([1e300, 0.5, 5.0, 1e-300])
+    ex = np.array([5e-324, 0.5, 0.375, 0.5])
+    a, b, x = np.concatenate([a, ea]), np.concatenate([b, eb]), np.concatenate([x, ex])
+    keep = (x > 0) & (x < 1)
+    return (a[keep], b[keep], x[keep]), np.ones(keep.sum(), dtype=bool)
+
+
+def _mp_betainc(a, b, x):
+    return mpmath.betainc(a, b, 0, x, regularized=True)
+
+
+def _mp_betaincc(a, b, x):
+    return mpmath.betainc(b, a, 0, 1 - x, regularized=True)  # 1 - x is exact in mpmath
+
+
+def _gammaincinv_inputs(rng):
+    m = 500
+    a = np.concatenate([loguniform(rng, 1e-3, 1e3, 2 * m), loguniform(rng, 1e3, 1e6, m), loguniform(rng, 1e-300, 1e-3, m)])
+    p = np.concatenate([loguniform(rng, 1e-300, 0.999, m), rng.uniform(0, 1, m), loguniform(rng, 1e-300, 0.999, m),
+                        rng.uniform(0, 1, m)])
+    ea, ep = np.array([5e-324, 1e-300, 2.0, 1.0]), np.array([0.5, 0.5, 1e-320, 0.5])
+    a, p = np.concatenate([a, ea]), np.concatenate([p, ep])
+    keep = (p > 0) & (p < 1)
+    return (a[keep], p[keep]), np.ones(keep.sum(), dtype=bool)
+
+
+def _betaincinv_inputs(rng):
+    m = 300
+    a, b = _beta_sets(rng, m)
+    p = np.concatenate([loguniform(rng, 1e-300, 0.999, 3 * m), rng.uniform(0, 1, 2 * m)])
+    rng.shuffle(p)
+    ea, eb, ep = np.array([2.0, 0.01]), np.array([3.0, 36.0]), np.array([5e-324, 3e-169])
+    a, b, p = np.concatenate([a, ea]), np.concatenate([b, eb]), np.concatenate([p, ep])
+    keep = (p > 0) & (p < 1)
+    return (a[keep], b[keep], p[keep]), np.ones(keep.sum(), dtype=bool)
+
+
+def _solve_log(logF, dlogF, x0, hi=None):
+    """The root of log F(x) = 0 by Newton's method in s = log x, from x0 > 0 (our own value: the
+    reference does not depend on it beyond the start), kept below `hi`. dlogF(x) = x F'(x) / F(x)."""
+    x = mpmath.mpf(x0)
+    for _ in range(200):
+        xn = x * mpmath.exp(-logF(x) / dlogF(x))
+        if hi is not None and xn >= hi:
+            xn = (x + hi) / 2
+        if abs(xn - x) <= abs(xn) * mpmath.mpf(10) ** -40:
+            return xn
+        x = xn
+    raise RuntimeError("no convergence")
+
+
+def _gamma_inverse(upper):
+    """gammaincinv (P(a, x) = p) or gammainccinv (Q(a, x) = p): solves the smaller of p, 1 - p
+    against its own function. Returns (x, kappa), kappa = |p / (x F'(x))|."""
+    name = "gammainccinv" if upper else "gammaincinv"
+
+    def f(a, p):
+        x0 = _start2(name, a, p)
+        lg = mpmath.loggamma(a)
+        dP = lambda x: mpmath.exp((a - 1) * mpmath.log(x) - x - lg)
+        P = lambda x: mpmath.gammainc(a, 0, x, regularized=True)
+        Q = lambda x: mpmath.gammainc(a, x, mpmath.inf, regularized=True)
+        use_p = (p <= 0.5) != upper  # the function whose value at the root is <= 1/2
+        t = p if p <= 0.5 else 1 - p
+        F = P if use_p else Q
+        tiny = mpmath.mpf(2) ** -1075
+        if x0 == 0:  # ours underflowed: the reference is 0 if the root is below 2^-1075
+            if (P(tiny) >= t) if use_p else (Q(tiny) <= t):
+                return mpmath.mpf(0), 1.0
+            x0 = 2.0**-1074
+        x = _solve_log(lambda x: mpmath.log(F(x)) - mpmath.log(t),
+                       lambda x: (1 if use_p else -1) * x * dP(x) / F(x), x0)
+        return x, abs(p / (x * dP(x)))
+    return f
+
+
+def _beta_inverse(upper):
+    """betaincinv (I_x(a, b) = p) or betainccinv (1 - I = p). At mpmath's precision 1 - p is
+    exact, so the function solved is the one mpmath evaluates accurately at the root: I_x(a, b)
+    in x when the root is below 1/2, I_y(b, a) = 1 - I in y = 1 - x above (mpmath's betainc
+    near an argument of 1 - 1e-28 loses digits). Returns (x, kappa), kappa = |p / (x F'(x))|."""
+    name = "betainccinv" if upper else "betaincinv"
+
+    def f(a, b, p):
+        x0 = _start2(name, a, b, p)
+        if x0 == 0 or x0 == 1:
+            return mpmath.mpf(x0), 1.0
+        lb = mpmath.log(mpmath.beta(a, b))
+        dI = lambda x: mpmath.exp((a - 1) * mpmath.log(x) + (b - 1) * mpmath.log1p(-x) - lb)
+        target_i = 1 - p if upper else p
+        if x0 <= 0.5:
+            F = lambda x: mpmath.betainc(a, b, 0, x, regularized=True)
+            x = _solve_log(lambda x: mpmath.log(F(x)) - mpmath.log(target_i), lambda x: x * dI(x) / F(x), x0, 1)
+        else:
+            G = lambda y: mpmath.betainc(b, a, 0, y, regularized=True)
+            y = _solve_log(lambda y: mpmath.log(G(y)) - mpmath.log(1 - target_i), lambda y: y * dI(1 - y) / G(y),
+                           1 - mpmath.mpf(x0), 1)
+            x = 1 - y
+        return x, abs(p / (x * dI(x)))
+    return f
+
+
+def _start2(name, *v):
+    import stardust as sd
+    return float(getattr(sd.special, name)(*(float(t) for t in v)))
+
+
+INVERSES = {"gammaincinv", "gammainccinv", "betaincinv", "betainccinv"}
+
+
 FUNCTIONS = {
     # the engine's test function (csrc/special/ops/testing.hpp): checks the pipeline end to end
     "_cf_tan": (1, mpmath.tan, _cf_tan_inputs),
@@ -415,6 +576,15 @@ FUNCTIONS = {
     "binom": (2, _mp_binom, _binom_inputs),
     "zeta": (1, _mp_zeta, _zeta_inputs),
     "zeta_hurwitz": (2, lambda x, q: mpmath.zeta(x, q), _hurwitz_inputs),
+    # S4
+    "gammainc": (2, _mp_gammainc, _gammainc_inputs),
+    "gammaincc": (2, _mp_gammaincc, _gammainc_inputs),
+    "gammaincinv": (2, _gamma_inverse(False), _gammaincinv_inputs),
+    "gammainccinv": (2, _gamma_inverse(True), _gammaincinv_inputs),
+    "betainc": (3, _mp_betainc, _betainc_inputs),
+    "betaincc": (3, _mp_betaincc, _betainc_inputs),
+    "betaincinv": (3, _beta_inverse(False), _betaincinv_inputs),
+    "betainccinv": (3, _beta_inverse(True), _betaincinv_inputs),
 }
 
 
@@ -463,29 +633,79 @@ def evaluate(f, args):
     return v
 
 
+class _Timeout(Exception):
+    pass
+
+
+def _alarm(*_):
+    raise _Timeout
+
+
+def evaluate_inverse(f, args):
+    """(x, kappa) of an inverse, at two precisions doubled until x agrees to 30 digits."""
+    dps = DPS + 10
+    with mpmath.workdps(dps):
+        v, k = f(*(mpmath.mpf(a) for a in args))
+    while dps < 1000:
+        with mpmath.workdps(2 * dps):
+            w, k = f(*(mpmath.mpf(a) for a in args))
+        if v == w or abs(v - w) <= abs(w) * mpmath.mpf(10) ** -30:
+            return w, k
+        dps *= 2
+        v = w
+    return v, k
+
+
+# mpmath's betainc near the mean of a, b ~ 1e5 can take minutes per point: a point that
+# takes longer than this is dropped (and counted).
+POINT_SECONDS = 30
+
+
 def build(name):
+    import signal
+
     nin, f, inputs = FUNCTIONS[name]
     rng = np.random.default_rng(20261113)
     xs, guaranteed = inputs(rng)
     xs = tuple(np.asarray(x, dtype=np.float64) for x in xs)
     n = xs[0].size
-    hi, lo = np.empty(n), np.empty(n)
-    for i in range(n):
-        v = evaluate(f, tuple(float(x[i]) for x in xs))
-        if isinstance(v, mpmath.mpc):  # a real function outside its real domain
-            v = v.real if v.imag == 0 else mpmath.nan
-        hi[i], lo[i] = double_double(v)
+    hi, lo, scale = np.empty(n), np.empty(n), np.ones(n)
+    keep = np.ones(n, dtype=bool)
+    old = signal.signal(signal.SIGALRM, _alarm)
+    try:
+        for i in range(n):
+            args = tuple(float(x[i]) for x in xs)
+            signal.alarm(POINT_SECONDS)
+            try:
+                if name in INVERSES:
+                    v, k = evaluate_inverse(f, args)
+                    scale[i] = max(1.0, float(k))
+                else:
+                    v = evaluate(f, args)
+            except (_Timeout, mpmath.libmp.NoConvergence, RuntimeError, ZeroDivisionError):
+                keep[i] = False
+                continue
+            finally:
+                signal.alarm(0)
+            if isinstance(v, mpmath.mpc):  # a real function outside its real domain
+                v = v.real if v.imag == 0 else mpmath.nan
+            hi[i], lo[i] = double_double(v)
+    finally:
+        signal.signal(signal.SIGALRM, old)
+    xs = tuple(x[keep] for x in xs)
     OUT.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(OUT / f"{name}.npz", nin=nin, hi=hi, lo=lo, guaranteed=np.asarray(guaranteed, dtype=bool),
+    np.savez_compressed(OUT / f"{name}.npz", nin=nin, hi=hi[keep], lo=lo[keep], scale=scale[keep],
+                        guaranteed=np.asarray(guaranteed, dtype=bool)[keep],
                         **{f"x{k}": x for k, x in enumerate(xs)}, mpmath=mpmath.__version__, dps=DPS)
-    return n
+    return int(keep.sum()), int((~keep).sum())
 
 
 def main(argv):
     names = argv or list(FUNCTIONS)
     for name in names:
-        n = build(name)
-        print(f"{name}: {n} points -> {(OUT / name).with_suffix('.npz').relative_to(ROOT)}")
+        n, dropped = build(name)
+        note = f" ({dropped} dropped: over {POINT_SECONDS} s, or mpmath did not converge)" if dropped else ""
+        print(f"{name}: {n} points -> {(OUT / name).with_suffix('.npz').relative_to(ROOT)}{note}", flush=True)
 
 
 if __name__ == "__main__":

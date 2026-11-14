@@ -45,7 +45,7 @@ print([round(b, 12) for b in beta.tolist()])  # [1.0, 1.0]
 | 배열 | `sd` | N차원 `ndarray`(dtype 넷, 임의의 strides, 0차원 없음), ufunc, 리덕션, 인덱싱, 정렬과 unique, `matmul` | [docs/api/array.md](docs/api/array.md) |
 | 선형대수 | `sd.linalg` | 함수 37개: 분해, 선형 시스템, 노름, 특수 구조, `expm`. 행렬 묶음(배치)을 받고 F-order 배열을 돌려준다 | [docs/api/linalg.md](docs/api/linalg.md) |
 | 데이터프레임 | `sd.frame` | `Series`, `DataFrame`, `Index`, NA, Copy-on-Write, groupby, merge, sort, `read_csv`. `to_array()`로 배열과 잇는다 | [docs/api/frame.md](docs/api/frame.md) |
-| 특수함수 | `sd.special` | **S3까지 완료 (로지스틱·정보 7, 오차함수 8, 감마·베타·제타 9)** ([ROADMAP.md](ROADMAP.md) S0–S9). scipy.special의 부분집합: 오차함수, 감마, 불완전 감마·베타, Bessel, 초기하 등 | [docs/api/special.md](docs/api/special.md) |
+| 특수함수 | `sd.special` | **S4까지 완료 (로지스틱·정보 7, 오차함수 8, 감마·베타·제타 9, 불완전 감마·베타 8)** ([ROADMAP.md](ROADMAP.md) S0–S9). scipy.special의 부분집합: 오차함수, 감마, 불완전 감마·베타, Bessel, 초기하 등 | [docs/api/special.md](docs/api/special.md) |
 
 - 세 영역이 함께 쓰는 규칙(dtype 객체, 에러 종류와 메시지, 스레드)은 [API.md](API.md)에 있다.
 - 세 교육용 프로젝트(stardust-numpy, stardust-linalg, stardust-pandas)를 합쳐 만들었다. 옛 저장소는 동결했다.

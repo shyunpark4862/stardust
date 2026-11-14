@@ -138,7 +138,7 @@
 | S1 로지스틱·정보 | 완료 (2026-11-13), docs/learn/S1-logistic.md |
 | S2 오차함수 | 완료 (2026-11-14), docs/learn/S2-erf.md |
 | S3 감마와 제타 | 완료 (2026-11-14), docs/learn/S3-gamma.md |
-| S4 불완전 함수 | 대기 |
+| S4 불완전 함수 | 완료 (2026-11-14), docs/learn/S4-incomplete.md |
 | S5 리덕션, 지수적분, 타원 | 대기 |
 | S6 Bessel과 Airy | 대기 |
 | S7 초기하와 Lambert W | 대기 |

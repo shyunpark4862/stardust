@@ -23,10 +23,16 @@ namespace sd::special {
 // add on contiguous float64, per element (bench/special/cost.py).
 inline constexpr double kAddNs = 0.19;  // measured 0.185 (2026-11-13)
 
-// The weight NdIter::run takes: the cost in adds, at least 1.
+// The weight NdIter::run takes: the cost in adds, at least 1 and at most
+// kMaxWeight. NdIter cuts tasks of 4096 / weight elements: uncapped, the S4
+// functions (weight 800-8500) got one element per task, and 10 threads
+// contending for the pool's counter reached only 5.4-7.8x of one thread;
+// capped at 256 (16-element tasks) 8.1-8.9x, at 64 about the same
+// (bench/special/s4/threads.md). 256 keeps the parallel start at 128 elements.
+inline constexpr std::int64_t kMaxWeight = 256;
 constexpr std::int64_t weight_of(double ns) {
     const double w = ns / kAddNs;
-    return w < 1.0 ? 1 : static_cast<std::int64_t>(w + 0.5);
+    return w < 1.0 ? 1 : std::min<std::int64_t>(static_cast<std::int64_t>(w + 0.5), kMaxWeight);
 }
 
 namespace cost {
@@ -63,6 +69,15 @@ inline constexpr double kBetaln = 80;
 inline constexpr double kBinom = 104;
 inline constexpr double kZeta = 91;
 inline constexpr double kHurwitz = 87;
+// S4 (special/ops/incgamma.hpp, incbeta.hpp), bench/special/s4/cost.md
+inline constexpr double kGammainc = 146;
+inline constexpr double kGammaincc = 146;
+inline constexpr double kGammaincinv = 426;
+inline constexpr double kGammainccinv = 597;
+inline constexpr double kBetainc = 557;
+inline constexpr double kBetaincc = 553;
+inline constexpr double kBetaincinv = 1095;
+inline constexpr double kBetainccinv = 1625;
 }  // namespace cost
 
 }  // namespace sd::special

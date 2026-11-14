@@ -2,6 +2,7 @@
 a reference file, the largest and the 99.9th-percentile error in ULP, in the guaranteed
 region and outside it, next to scipy's on the same inputs. Outside the guaranteed region
 the functions in refdata.MIXED report error / max(1, |value|) in units of 2^-52 ("mixed").
+The S4 inverses report ULP / max(1, kappa) (their contract, docs/api/special.md §4).
 
     .venv/bin/python bench/special/accuracy.py [NAME ...] > table.md
 """
@@ -30,9 +31,10 @@ def main(argv):
     for name in names:
         xs, hi, lo, g = refdata.load(name)
         got = np.asarray(common.sd_function(name)(*(sd.asarray(x) for x in xs)))
-        err = refdata.ulp_error(got, hi, lo)
+        sc = refdata.scale(name)  # max(1, kappa) for the inverses, else 1
+        err = refdata.ulp_error(got, hi, lo) / sc
         ref = common.scipy_function(name)
-        serr = refdata.ulp_error(ref(*xs), hi, lo) if ref is not None else None
+        serr = refdata.ulp_error(ref(*xs), hi, lo) / sc if ref is not None else None
         for label, m in (("guaranteed", g), ("loose", ~g)):
             if not m.any():
                 continue

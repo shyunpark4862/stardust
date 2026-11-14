@@ -16,7 +16,7 @@
 // divide: f = a1 / tail.
 //
 // The incomplete gamma and beta functions (S4) and the Bessel ratios (S6)
-// use it.
+// use it, S4 through lentz_backward().
 #pragma once
 
 #include "special/common.hpp"
@@ -51,6 +51,29 @@ CfResult lentz(double b0, Term&& term, int max_terms, double tol = kEps) {
         if (std::fabs(delta - 1.0) <= tol) return {f, n, true};
     }
     return {f, max_terms, false};
+}
+
+// The same fraction from its n-th term back: t = a_k / (b_k + t), k = n..1,
+// then b0 + t. Each step's rounding is damped by the next division, while
+// Lentz's forward ratios C_k D_k multiply theirs together: measured in S4
+// (docs/learn/S4-incomplete.md), Lentz lost up to 17 ULP over 60 terms of the
+// incomplete gamma's fraction, the backward pass under 2. So lentz() finds
+// how many terms are needed and this pass computes the value.
+template <class Term>
+double cf_backward(double b0, Term&& term, int n) {
+    double t = 0.0;
+    for (int k = n; k >= 1; --k) {
+        const auto [a, b] = term(k);
+        t = a / (b + t);
+    }
+    return b0 + t;
+}
+
+// lentz() for the count, cf_backward() over it and a few more terms for the value.
+template <class Term>
+CfResult lentz_backward(double b0, Term&& term, int max_terms) {
+    const CfResult r = lentz(b0, term, max_terms);
+    return {cf_backward(b0, term, r.terms + 4), r.terms, r.converged};
 }
 
 }  // namespace sd::special

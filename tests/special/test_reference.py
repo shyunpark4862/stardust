@@ -1,6 +1,7 @@
 """Every function with a reference file (tests/special/ref, made by tools/special_ref.py)
 meets its accuracy contract (docs/api/special.md §1.4): relative error at most 1e-14
-in the guaranteed region; outside it, at most the documented loose bound."""
+in the guaranteed region (times max(1, kappa) for the S4 inverses); outside it, at most
+the documented loose bound."""
 
 import numpy as np
 import pytest
@@ -50,7 +51,7 @@ def contract_error(got, hi, lo):
 def test_accuracy(name):
     xs, hi, lo, guaranteed = refdata.load(name)
     got = np.asarray(function(name)(*(sd.asarray(x) for x in xs)))
-    err = contract_error(got, hi, lo)
+    err = contract_error(got, hi, lo) / refdata.scale(name)  # the inverses: max(1, kappa) (S4)
     if guaranteed.any():
         assert err[guaranteed].max() <= GUARANTEED, (name, [x[guaranteed][np.argmax(err[guaranteed])] for x in xs],
                                                      err[guaranteed].max())

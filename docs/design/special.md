@@ -132,6 +132,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 | `erfinv(-0.0)`이 0.0 | −0.0 | 홀함수의 부호, 사용자 결정 (S2) |
 | gamma·rgamma의 서브노멀 꼬리와 깊은 음수의 부호, `gammaln(±5e-324)`·`betaln(5e-324, 1)` = inf, `rgamma(-5e-324)` = −0.0, beta·betaln의 NaN 입력 → inf, `zeta(inf, q>1)` = NaN | 참값 | 사용자 결정 (S3, 2026-11-14). 같은 원칙으로 `beta(inf, 1e300)`, 거대한 k의 `binom` |
 | `binom(n, k)`가 음의 정수 n에서 NaN | 정수 k ≥ 0이면 n(n−1)…(n−k+1)/k! | 사용자 결정 (S3) |
+| `gammainc(1e-300, 5e-324)` > 1, `gammainc(5e-324, x)` = 0, `gammainc(1, 5e-324)` = 0, `betainc(2, 1e300, 5e-324)` = NaN, `gammaincinv(5e-324, 0.5)`·`betaincinv(2, 3, 5e-324)`·`betainccinv(2, 3, 5e-324)` = NaN, 근이 언더플로하는 `betaincinv`가 DBL_MIN | 참값 | 사용자 결정 (S4, 2026-11-14) |
 | `expit(x)`가 x < −709.78에서 0 | 참값 eˣ(서브노멀), x < −745.13에서 0 | 서브노멀 규칙(§2.3), 사용자 결정 (S1, 2026-11-13) |
 | `lambertw`는 언제나 complex를 돌려주고 `tol=`이 있다 | 실수 입력이면 float64. `tol=` 없음 | Q6, 결정성 (§5.11) |
 | `airy`는 네 배열의 tuple | `AiryResult(ai, aip, bi, bip)` namedtuple | DESIGN §9.7 |
@@ -163,6 +164,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 - 함수마다 원소당 비용이 100배 넘게 다르다 (xlogy 2.5ns, betaincinv 744ns, scipy 1스레드 기준).
 - 그래서 배열의 기준값(`kParallelThreshold`, 원소 2¹⁵개)을 그대로 쓰지 않는다. 함수마다 원소당 비용 `c`(ns)를 `special/cost.hpp`에 두고, 일의 양을 `n·c`로 센다. linalg의 비용 모델(linalg.md §7)과 같은 생각이다.
   - 배열의 이터레이터는 이미 작업량 가중치를 받는다 (레인 처리, array.md §4.5). 같은 장치를 쓴다.
+  - S4에서 더함: 가중치의 상한 `kMaxWeight` = 256. 이터레이터는 태스크를 4096/가중치 원소로 자르는데, 가중치 800–8500인 불완전 함수는 태스크 하나가 원소 하나가 되어 10스레드가 4.8–7.8배에 그쳤다. 상한 256(태스크 16원소)에서 8.1–8.9배다 (bench/special/s4/threads.md).
   - `c`는 S0의 측정 도구로 함수마다 재고, 입력 분포는 보장 영역에서 고르게 뽑는다.
   - 가중치의 단위는 연속 float64 `add`의 원소당 비용이다 (`kAddNs`, 1스레드에서 0.18–0.19ns). 가중치 `w`인 함수는 원소 `2¹⁵/w`개부터 병렬이 되고, 태스크 하나는 원소 약 `2¹²/w`개다 (`bench/special/cost.py`).
 - 원소마다 반복 횟수가 다르다(연분수, Halley 반복). 정적 분할이면 스레드마다 일이 달라진다. 풀의 청크 분할(array.md §10)이 이것을 얼마나 흡수하는지 S4에서 잰다.
@@ -258,6 +260,12 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 - `x > (a+1)/(a+b+2)`이면 대칭으로 옮긴다 (변환). 기본은 Lentz 연분수 (NR `betacf`). b·x가 작거나 b < 1이면 거듭제곱급수
 - 큰 a, b(예: 둘 다 > 10⁴)에서 연분수의 반복이 `O(√max(a,b))`로 는다. 세 번째 구간(Temme 균등 점근전개)은 S4에서 정확도와 속도를 잰 뒤 넣을지 사용자에게 묻는다. **2–3구간**
 - 역함수(`gammaincinv`, `gammainccinv`, `betaincinv`, `betainccinv`): 초기값 2–3가지(감마: Wilson–Hilferty, 작은 p의 거듭제곱 근사; 베타: 정규 근사, 작은 x의 거듭제곱 근사) + Halley 반복. 반복은 상대 변화가 ε 아래가 되거나 상한(예: 20회)에서 멈춘다. DiDonato–Morris의 초기값 열 가지 남짓은 가져오지 않는다.
+- **S4에서 정하고 바꾼 것** (docs/learn/S4-incomplete.md)
+  - 앞 인자: Lanczos 대신 Stirling 정규화 `Γ(z) = √(2π/z)(z/e)^z Γ*(z)`로 큰 부분을 지수 하나 E = a·μ(x/a − 1)(μ(t) = t − log(1+t))에 모았다. E는 정확한 입력에서 double-double로 만든다(`special/dd.hpp`). scipy(Cephes)는 a log x − x − lgamma(a)를 float64로 만들어 꼬리에서 수천 ULP를 잃는다.
+  - 불완전 감마: 네 갈래다. x < 1.1의 작은 a는 Boost의 `tgamma_small_upper_part`(Γ(1+a) − 1과 x^a − 1을 expm1로), 급수 P, 연분수 Q, a > 20이고 |x − a| < 0.4a이면 Temme. Temme의 c_k(η) 계수는 DLMF 8.12의 정의식을 mpmath로 전개해 만들었다(`tools/gen_temme_igamma.py`, 맞춘 값이 아니다).
+  - 연분수는 Lentz로 항 수만 찾고 값은 꼬리부터 거꾸로 계산한다(`cf.hpp` `lentz_backward`). Lentz 그대로는 60항에서 17 ULP를 잃었다.
+  - 불완전 베타: NR `betacf` 대신 DiDonato–Morris의 BRATIO(TOMS 708) 구조를 따른다. BPSER(급수), BUP(유한합으로 a·b 옮기기), BGRAT(큰 a·작은 b, x ≈ 1), BFRAC(평균 아래 연분수), BASYM(a, b > 100의 평균 근처, Temme형 균등 점근전개)이다. BGRAT와 BASYM은 측정 뒤 사용자 결정으로 넣었다(2026-11-14). 근사 방식이 다섯이라 §1.1 Q8의 "2–3구간"을 넘는다.
+  - 역함수: Halley는 F와 목표가 두 배 넘게 차이 나는 동안 log F에 대한 Newton 걸음을 쓴다(꼬리에서 선형 걸음은 한 번에 F/F′ ≈ 1씩만 움직인다). 감마의 초기값은 하한 둘(작은 x 근사, 큰 x 점근식)과 Wilson–Hilferty, 베타는 AS 109다.
 
 ### 5.6 제타와 지수적분
 - `zeta(x, q)`: Hurwitz, Euler–Maclaurin (Cephes `zeta.c`: 앞 N항 직접 합 + Bernoulli 꼬리). Riemann(`q` 생략)의 `x < 1`은 함수방정식(변환). Hurwitz의 `x < 1`은 NaN (scipy와 같다)

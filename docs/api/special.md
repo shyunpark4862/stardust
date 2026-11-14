@@ -125,7 +125,28 @@ betainccinv(a, b, q, /, *, out=None)
 ```
 - 모두 정규화된 함수다. `gammainc`는 P(a, x), `gammaincc`는 Q(a, x) = 1 − P, `betainc`는 I_x(a, b), `betaincc`는 1 − I_x(a, b)다.
 - 보수(`*cc`)는 1에서 빼서 계산하지 않는다. 꼬리에서도 상대 정확도가 유지된다.
-- 보장 영역, 특수값: S4에서 확정
+- 역함수는 `gammainc(a, x) = p`, `gammaincc(a, x) = q`, `betainc(a, b, x) = p`, `betaincc(a, b, x) = q`의 x를 돌려준다.
+- **보장 영역** (사용자 결정 2026-11-14): 네 순방향 함수는 정의역 전체(a, b > 0, x의 정의역 안)에서 상대오차 1e-14다. 결과가 서브노멀이면 docs/design/special.md §2.3의 절대오차 규칙을 따른다. 네 역함수는 `|Δx/x| ≤ 1e-14·max(1, κ)`다. κ = |F/(x·F′)|는 p(또는 q)에 대한 x의 조건수다. 입력의 마지막 비트가 허용하는 만큼 정확하다는 뜻이다. 예를 들어 a가 작으면 x ≈ (p·Γ(a+1))^(1/a)라서 p의 1 ULP가 x를 1/a ULP 움직인다. 테스트는 감마 a ≤ 1e6, 베타 a, b ≤ 1e5를 덮는다.
+- **잰 정확도** (bench/special/s4/accuracy.md, 최대 ULP): `gammainc` 8.9, `gammaincc` 13, `betainc` 33, `betaincc` 19. 역함수(ULP / max(1, κ)): `gammaincinv` 6.7, `gammainccinv` 8.8, `betaincinv` 59 ULP(상대오차로 기준 안), `betainccinv` 20
+- **특수값**: 끝점과 ±inf, NaN의 규약은 scipy와 비트까지 같다. 다른 곳(docs/design/special.md §2.4)은 아래 표의 굵은 줄이다.
+
+  | 입력 | 값 | 비고 |
+  |---|---|---|
+  | `gammainc(0, x)`, x > 0 | 1 | `gammainc(0, 0)`은 NaN |
+  | `gammainc(a, 0)`, `gammainc(a, inf)` | 0, 1 | `gammainc(inf, inf)`은 NaN, `gammainc(inf, x)`는 0 |
+  | 음수 a, x | NaN | |
+  | `gammainc(1e-300, 5e-324)` | 1.0 | **scipy는 1.0000000000000238 (> 1)** |
+  | `gammainc(5e-324, 0.5)`, `gammainc(5e-324, 1e-300)` | 1.0 | **scipy는 0** (참값 1 − 2.8e-324) |
+  | `gammainc(1, 5e-324)` | 5e-324 | **scipy는 0** |
+  | `betainc(a, b, 0)`, `betainc(a, b, 1)` | 0, 1 | x의 끝점이 a = 0, b = 0보다 먼저다 (`betainc(0, 1, 0) = 0`) |
+  | `betainc(0, b, x)`, `betainc(a, 0, x)`, 0 < x < 1 | 1, 0 | `betainc(0, 0, x)`, `betainc(inf, inf, x)`는 NaN |
+  | `betainc(inf, b, x)`, `betainc(a, inf, x)` | 0, 1 | x가 [0, 1] 밖이면 NaN |
+  | `betainc(2, 1e300, 5e-324)` | 1.2205e-47 | **scipy는 NaN** |
+  | `gammaincinv(a, 0)`, `gammaincinv(a, 1)` | 0, inf | `gammainccinv`은 반대. a = 0, inf이면 (0, 1) 안에서 NaN |
+  | `gammaincinv(5e-324, 0.5)` | 0 | **scipy는 NaN** (근 0.5^(1/a)가 언더플로) |
+  | `betaincinv(a, b, 0)`, `betaincinv(a, b, 1)` | 0, 1 | `betainccinv`은 반대. a, b가 0이면 끝점에서도 NaN, inf이면 (0, 1) 안에서 NaN |
+  | `betaincinv(2, 3, 5e-324)`, `betainccinv(2, 3, 5e-324)` | 7.2e-163, 1.0 | **scipy는 NaN** |
+  | `betaincinv(0.0102, 36.2, 3.13e-169)` | 0 | **scipy는 2.2e-308** (DBL_MIN에 고정. 근은 1e-16522) |
 
 ## §5. 로지스틱과 정보량
 ```
