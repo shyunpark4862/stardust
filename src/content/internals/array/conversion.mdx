@@ -322,23 +322,24 @@ ValueError: asarray(): copy=False, but this bool buffer holds bytes other than 0
 NDArray dst = new_array_like(foreign, target);   // 원본의 메모리 축 순서를 따른다
 visit_src(src, [&]<typename S>(std::type_identity<S>) {
     visit_dtype(target, [&]<typename T>(std::type_identity<T>) {
-        // 빠른 경로: 버퍼가 결과와 같은 순서로 연속이고 바이트 순서가 같을 때
-        if (!swapped && ((PyBuffer_IsContiguous(&view, 'C') && dst.c_contiguous) ||
-                         (PyBuffer_IsContiguous(&view, 'F') && dst.f_contiguous))) {
+        // 평탄한 경로: 버퍼가 결과와 같은 순서로 연속일 때 (바이트 순서는 상관없다)
+        if ((PyBuffer_IsContiguous(&view, 'C') && dst.c_contiguous) ||
+            (PyBuffer_IsContiguous(&view, 'F') && dst.f_contiguous)) {
             const auto* sp = static_cast<const std::byte*>(view.buf);
             T* dp = reinterpret_cast<T*>(dst.data);
             const std::int64_t n = dst.size();
             for_pieces(n, kParallelTask, n, [&](std::int64_t, std::int64_t i0, std::int64_t i1) {
-                for (std::int64_t i = i0; i < i1; ++i)
-                    dp[i] = cast_value<T>(widen(load<S>(sp + i * sizeof(S))));
+                if (swapped)
+                    for (std::int64_t i = i0; i < i1; ++i)
+                        dp[i] = cast_value<T>(widen(load_swapped<S>(sp + i * sizeof(S))));
+                else
+                    for (std::int64_t i = i0; i < i1; ++i)
+                        dp[i] = cast_value<T>(widen(load<S>(sp + i * sizeof(S))));
             });
             return;
         }
-        // 일반 경로: 원소마다 런타임 stride로 걷는다
-        auto run = [&](auto&& load_one) {
-            for_each_element<2>(dst.shape_span(), {src_ptr, dst.data}, {foreign.strides.data(), dst.strides.data()},
-                                [&](std::byte* ps, std::byte* pd) { store(pd, cast_value<T>(widen(load_one(ps)))); });
-        };
+        // 일반 경로: 논리적 C 순서를 조각으로 잘라 풀에서 돈다 (아래 "일반 경로")
+        auto run = [&](auto&& load_one) { /* 조각마다 odometer + strided 안쪽 루프 */ };
         if (swapped) run([](const std::byte* p) { return load_swapped<S>(p); });
         else run([](const std::byte* p) { return load<S>(p); });
     });
@@ -347,7 +348,7 @@ visit_src(src, [&]<typename S>(std::type_identity<S>) {
 
 - **넓히기는 모두 정확해요.** 32비트 이하의 정수는 int64에, float16과 float32의 모든 값은 float64에, complex64는 complex128에 정확히 들어가요. 그래서 이 변환은 `dtype=` 없이도 자동으로 해요.
 - **`uint64`는 값이 아니라 dtype으로 거부해요.** $2^{63}$ 이상의 값이 하나도 없어도 `TypeError`예요. 값을 보고 판단하면 같은 코드가 데이터에 따라 성공하기도 하고 실패하기도 하고, dtype을 값에 따라 바꾸면 결과 dtype이 데이터에 따라 달라져요. frame도 같은 규칙이에요. `dtype=`을 주어도 거부해요.
-- **big-endian**은 복사하면서 바이트를 뒤집어요(`load_swapped`). complex는 실수부와 허수부를 **따로** 뒤집어요. 16바이트를 통째로 뒤집으면 두 부분의 자리가 바뀌니까요. 공유는 하지 않아요.
+- **big-endian**은 복사하면서 바이트를 뒤집어요(`load_swapped`, 아래 "바이트 뒤집기"). 공유는 하지 않아요.
 - **float16**(`__fp16`)은 저장 전용 타입이라 먼저 `float`로 바꾼 다음(`widen`) 변환해요.
 - `dtype=`을 주면 넓힌 값에 명시적 변환(`cast_value`, 아래 절)을 한 번 더 해요. `asarray(np_float32, dtype=sd.int64)`는 float32 → float64 → int64(포화)예요.
 - **결과의 레이아웃은 원본의 메모리 축 순서를 따라요.** F 순서 numpy 배열을 가져오면 F 순서 결과가 나와요(int32 `(2, 3)` F 순서 배열의 결과 strides가 `(8, 16)`).
@@ -355,18 +356,86 @@ visit_src(src, [&]<typename S>(std::type_identity<S>) {
 
 복사 루프는 두 갈래예요.
 
-**빠른 경로: 평탄한 루프 하나.** 버퍼가 연속이고(C 순서든 F 순서든) 바이트 순서가 기계와 같으면, 원본과 결과는 **같은 순서로 놓인 원소 $n$개의 줄 두 개**예요. 결과 배열은 원본의 메모리 축 순서를 따라 만들므로(`new_array_like`), C 연속 버퍼의 결과는 C 연속이고 F 연속 버퍼의 결과는 F 연속이에요. 그러면 shape가 몇 차원이든 메모리 순서로 $i$번째 원소를 읽어 $i$번째 자리에 쓰면 돼요.
+**평탄한 경로: 루프 하나.** 버퍼가 연속이면(C 순서든 F 순서든, 바이트 순서가 어느 쪽이든), 원본과 결과는 **같은 순서로 놓인 원소 $n$개의 줄 두 개**예요. 결과 배열은 원본의 메모리 축 순서를 따라 만들므로(`new_array_like`), C 연속 버퍼의 결과는 C 연속이고 F 연속 버퍼의 결과는 F 연속이에요. 그러면 shape가 몇 차원이든 메모리 순서로 $i$번째 원소를 읽어 $i$번째 자리에 쓰면 돼요.
 
 $$
 \texttt{dst}[i] = \operatorname{cast}_T\bigl(\texttt{src}[i]\bigr), \qquad i = 0, 1, \dots, n - 1
 $$
 
-- **컴파일러가 벡터화해요.** 원본 주소가 `sp + i * sizeof(S)`라서 원소 간격이 컴파일 시점 상수예요. `load<S>`는 고정 크기 `std::memcpy`라 load 명령 하나로 접히고, 결과 쪽은 `T*` 인덱스 접근이에요. 간격이 런타임 값인 루프는 컴파일러가 연속 접근임을 알 수 없어 벡터화하지 못해요([원소별 커널](/internals/array/elementwise/)의 "바이트 stride 루프는 벡터화되지 않아요"와 같은 문제예요). `S`와 `T`의 조합마다 템플릿이 따로 인스턴스화되므로, 원천 타입마다 손으로 쓴 SIMD 경로 없이 조합마다 맞는 루프가 만들어져요.
+- **컴파일러가 벡터화해요.** 원본 주소가 `sp + i * sizeof(S)`라서 원소 간격이 컴파일 시점 상수예요. `load<S>`는 고정 크기 `std::memcpy`라 load 명령 하나로 접히고, 결과 쪽은 `T*` 인덱스 접근이에요. big-endian이면 load 뒤에 바이트 뒤집기 명령이 하나 붙을 뿐 루프의 모양은 같아요. 바이트 순서 분기는 조각마다 한 번, 루프 밖에서 해요. 간격이 런타임 값인 루프는 컴파일러가 연속 접근임을 알 수 없어 벡터화하지 못해요([원소별 커널](/internals/array/elementwise/)의 "바이트 stride 루프는 벡터화되지 않아요"와 같은 문제예요). `S`와 `T`의 조합마다 템플릿이 따로 인스턴스화되므로, 원천 타입마다 손으로 쓴 SIMD 경로 없이 조합마다 맞는 루프가 만들어져요.
 - **정렬되지 않은 버퍼도 이 경로예요.** 읽기가 `memcpy`라서 원본 주소가 원소 크기의 배수가 아니어도 정의된 동작이에요. 정렬이 맞지 않아 공유하지 못한 float64 버퍼가 이 경로로 복사돼요.
 - **풀에 나눠요.** `for_pieces`가 $[0, n)$을 4096원소(`kParallelTask`)짜리 조각으로 자르고, 원소가 $2^{15}$개 이상이면 스레드풀에서 돌려요([연산 엔진](/internals/array/engine/)의 "이터레이터 밖: `for_pieces`"). 조각마다 서로 다른 자리에 쓰고 값은 원소마다 독립이라, 결과는 스레드 수와 무관해요.
 - 복사에 쓰는 임시 메모리는 없어요. 추가 메모리는 결과 배열뿐이에요.
 
-**일반 경로: 원소마다 걷기.** 연속이 아닌 버퍼(`np_arr[::2]`, `m[:, 1:]` 등)와 big-endian 버퍼는 행 우선 odometer(`for_each_element<2>`)로 돌아요. 원소마다 두 포인터를 런타임 바이트 stride만큼 옮기며 `memcpy` load, 변환, store를 해요. big-endian은 원소마다 바이트를 뒤집어야 하고, 연속이 아닌 버퍼는 원소 간격이 축마다 달라 평탄한 루프로 쓸 수 없어요. 이 경로는 한 스레드에서 돌아요. 이런 버퍼는 드물어서 단순한 루프 하나로 두었어요.
+**일반 경로: 조각마다 odometer, 안쪽은 strided 루프.** 연속이 아닌 버퍼(`np_arr[::2]`, `m[:, 1:]`, 전치한 뷰 등)는 원소 간격이 축마다 달라 평탄한 루프로 쓸 수 없어요. 이 경로는 원소를 **논리적 C 순서**(마지막 축이 가장 빨리 도는 순서)로 $0, 1, \dots, n - 1$번까지 번호 매기고, 그 번호 구간을 평탄한 경로와 똑같이 `for_pieces`로 잘라 풀에서 돌려요.
+
+```cpp
+// csrc/array/ops/asarray.cpp, 일반 경로 (줄이고 다듬은 발췌)
+// shp: shape, ss / ds: 원본과 결과의 축별 바이트 stride, nd: 차원 수
+for_pieces(n, kParallelTask, n, [&](std::int64_t, std::int64_t i0, std::int64_t i1) {
+    // 1. 조각의 첫 번호 i0를 축별 인덱스로 풀고, 두 배열에서의 바이트 오프셋을 구한다
+    std::int64_t idx[kMaxNdim], rem = i0, so = 0, dof = 0;
+    for (int d = nd - 1; d >= 0; --d) {
+        idx[d] = rem % shp[d];
+        rem /= shp[d];
+        so += idx[d] * ss[d];
+        dof += idx[d] * ds[d];
+    }
+    const std::int64_t inner = shp[nd - 1], si = ss[nd - 1], di = ds[nd - 1];
+    for (std::int64_t i = i0; i < i1;) {
+        // 2. 마지막 축을 따라 갈 수 있는 만큼: 평범한 strided 루프
+        const std::int64_t len = std::min(inner - idx[nd - 1], i1 - i);
+        const std::byte* ps = sbase + so;
+        std::byte* pd = dbase + dof;
+        for (std::int64_t k = 0; k < len; ++k, ps += si, pd += di)
+            store(pd, cast_value<T>(widen(load_one(ps))));
+        i += len, so += len * si, dof += len * di, idx[nd - 1] += len;
+        // 3. 축 끝에 닿았으면 자리올림
+        for (int d = nd - 1; d > 0 && idx[d] == shp[d]; --d) {
+            so += ss[d - 1] - shp[d] * ss[d];
+            dof += ds[d - 1] - shp[d] * ds[d];
+            idx[d] = 0;
+            ++idx[d - 1];
+        }
+    }
+});
+```
+
+- **조각의 시작점은 나눗셈으로 구해요.** 번호 $i_0$의 축별 인덱스는 shape을 진법의 밑으로 삼은 자릿수예요. 마지막 축부터 `%`와 `/`로 풀면서, 인덱스에 그 축의 stride를 곱해 더하면 원본과 결과에서의 바이트 오프셋이 나와요. 조각마다 한 번, $O(\text{ndim})$이에요. 그래서 조각은 앞 조각이 어디서 끝났는지 몰라도 혼자 시작할 수 있고, 어느 스레드가 어느 조각을 맡아도 같은 원소를 같은 자리에 써요.
+- **안쪽 루프는 평탄해요.** 마지막 축을 따라 `len`개를 도는 동안 하는 일은 포인터 두 개에 상수(`si`, `di`)를 더하는 것과 load, 변환, store뿐이에요. 축 인덱스를 올리고 끝을 검사하는 odometer의 일은 마지막 축 한 줄에 한 번만 해요. 원소마다 odometer를 한 칸씩 돌리면(원소마다 자리올림 검사) 100만 개에 약 420µs가 드는데, 이 구조로는 약 240µs예요.
+- **자리올림.** 축 $d$가 끝에 닿으면 인덱스를 0으로 되돌리고 축 $d - 1$을 한 칸 올려요. 오프셋은 `ss[d - 1] - shp[d] * ss[d]`만큼 옮겨요. 축 $d$를 처음으로 되감고(`- shp[d] * ss[d]`) 바깥 축을 한 칸 나아가는(`+ ss[d - 1]`) 것을 한 번에 더한 값이에요.
+- **1차원에서는 odometer가 사라져요.** `nd == 1`이면 자리올림 루프가 돌지 않고, 조각 하나가 strided 루프 하나예요.
+- **결과는 스레드 수와 무관해요.** 조각마다 서로 다른 원소를 쓰고, 값은 원소마다 독립이에요.
+
+안쪽 루프의 간격 `si`, `di`는 런타임 값이라 컴파일러가 벡터화하지 못해요. 그래서 이 경로의 1스레드 속도는 원소당 약 0.24ns로, 평탄한 루프(약 0.09ns)의 2.5~3배예요. 마지막 축이 실제로는 붙어 있는 버퍼(`m[:, 1:]`처럼 행 안에서는 연속이고 행 사이만 떨어진 경우)도 같은 루프를 타요. 간격이 원소 크기와 같은지 보고 평탄한 루프로 가르는 일은 하지 않아요.
+
+### 바이트 뒤집기
+
+big-endian 버퍼(`>f8`, `>i4` 등)의 원소는 바이트 순서가 이 기계(little-endian)와 반대예요. `load_swapped<S>`가 원소 하나를 읽으면서 뒤집어요.
+
+```cpp
+// csrc/array/ops/asarray.cpp, load_swapped (줄인 발췌)
+template <typename S>
+S load_swapped(const std::byte* p) {
+    if constexpr (/* S가 complex가 아니고 크기가 2, 4, 8바이트 */) {
+        U u;                                   // 같은 크기의 부호 없는 정수 (uint16/32/64)
+        std::memcpy(&u, p, sizeof u);
+        u = __builtin_bswap64(u);              // 크기에 따라 bswap16 / bswap32 / bswap64
+        S v;
+        std::memcpy(&v, &u, sizeof v);
+        return v;
+    } else if constexpr (/* S가 complex */) {
+        using P = typename S::value_type;      // float 또는 double
+        return S(load_swapped<P>(p), load_swapped<P>(p + sizeof(P)));
+    }
+    /* 1바이트 타입: 뒤집을 것이 없다 */
+}
+```
+
+- **뒤집기는 명령 하나예요.** `__builtin_bswap16/32/64`는 정수의 바이트 순서를 뒤집는 컴파일러 내장 함수이고, ARM64에서는 `REV` 명령 하나(벡터화되면 `REV16`/`REV32`/`REV64`의 벡터판)로 번역돼요. 바이트를 하나씩 임시 배열에 거꾸로 옮기는 루프보다 빠르고, 평탄한 루프 안에서 벡터화를 막지 않아요.
+- **float도 정수로 뒤집어요.** 바이트를 같은 크기의 부호 없는 정수로 읽어(`memcpy`) 뒤집고, 그 비트를 다시 float로 읽어요(`memcpy`). `memcpy` 두 번은 컴파일하면 사라져요.
+- **complex는 실수부와 허수부를 따로 뒤집어요.** complex128의 16바이트는 double 두 개가 (실수부, 허수부) 순서로 놓인 것이고, big-endian에서도 두 부분의 순서는 같아요. 16바이트를 통째로 뒤집으면 두 부분의 자리가 바뀌어요. 그래서 부분 타입 `P`로 자기 자신을 두 번 불러 8바이트(complex64는 4바이트)씩 뒤집어요.
+- **연속인 big-endian 버퍼는 평탄한 경로예요.** 뒤집기가 load에 붙은 명령 하나라, 평탄한 루프의 벡터화가 그대로 유지돼요. 연속이 아닌 big-endian 버퍼는 일반 경로에서 같은 `load_swapped`를 써요.
 
 ### 복사하는 경로의 속도
 
@@ -390,12 +459,42 @@ $$
 | `sd.asarray(f, copy=True)` (float64 → float64) | 98µs | 35µs | 95µs (`copy`) | 평탄한 루프 |
 | `sd.asarray(i64, copy=True)` (int64 → int64) | 87µs | 36µs | 97µs (`copy`) | 평탄한 루프 |
 | `sd.asarray(F, copy=True)` (stardust 배열의 복사) | 101µs | 40µs | 101µs (`copy`) | 엔진의 캐스트 커널 |
-| `sd.asarray(i32[::2])` (연속이 아닌 int32 100만 개) | 424µs | 415µs | 257µs (`astype`) | 원소마다 걷기 |
-| `sd.asarray(i32.astype('>i4'))` (big-endian) | 420µs | 421µs | 192µs (`astype`) | 원소마다 걷기 |
 
 - **넓히든 안 넓히든 같은 시간이에요.** 100만 원소에 90µs 안팎, 원소당 약 0.09ns예요. 8MB(int32는 4MB)를 읽고 8MB를 새 메모리에 쓰는 일이라, 시간을 정하는 것은 변환이 아니라 메모리 왕복이에요. numpy의 연속 캐스트 루프, stardust 배열끼리의 복사(엔진의 캐스트 커널, 아래 "캐스트 커널 표")와도 같은 속도예요.
 - **10스레드에서 2.7~2.9배예요.** 메모리에 묶인 연산이라 코어 수만큼 빨라지지는 않아요. stardust 배열의 복사(101µs → 40µs)와 같은 비율이에요.
-- **일반 경로는 원소당 약 0.42ns예요.** 평탄한 루프의 4~5배이고 스레드 수에 반응하지 않아요. numpy의 `astype`은 같은 입력에서 1.6~2.2배 빨라요.
+
+big-endian 버퍼와 연속이 아닌 버퍼예요(같은 조건, 원소 100만 개). numpy 쪽은 같은 변환을 하는 `astype`이에요.
+
+<Bench
+  rows={[
+    { label: 'asarray(>f8)', times: [122e-6, 85e-6, 34e-6] },
+    { label: 'asarray(>i4)', times: [185e-6, 77e-6, 32e-6] },
+    { label: 'asarray(>c8)', times: [513e-6, 148e-6, 66e-6] },
+    { label: 'asarray(>c16)', times: [433e-6, 234e-6, 76e-6] },
+    { label: 'asarray(i32[::2])', times: [250e-6, 241e-6, 34e-6] },
+    { label: 'asarray(m[:, ::2]) float32', times: [240e-6, 250e-6, 37e-6] },
+    { label: 'asarray(m[:, 1:]) float32', times: [138e-6, 244e-6, 38e-6] },
+  ]}
+  caption="위 넷은 연속인 big-endian 버퍼(평탄한 경로), 아래 셋은 연속이 아닌 버퍼(일반 경로). m은 float32 2차원 배열이고 결과는 (1000, 1000)이에요."
+/>
+
+| 연산 | numpy (`astype`) | 1스레드 | 배율 | 10스레드 | 배율 | 지나는 경로 |
+|---|---:|---:|:---:|---:|:---:|---|
+| `sd.asarray(f.astype('>f8'))` | 122µs | 85µs | 1.43× | 34µs | 3.59× | 평탄한 루프 + 뒤집기 |
+| `sd.asarray(i32.astype('>i4'))` → int64 | 185µs | 77µs | 2.40× | 32µs | 5.69× | 평탄한 루프 + 뒤집기 |
+| `sd.asarray(i16be)` (`>i2` → int64) | 191µs | 105µs | 1.82× | 32µs | 6.02× | 평탄한 루프 + 뒤집기 |
+| `sd.asarray(c8be)` (`>c8` → complex128) | 513µs | 148µs | 3.47× | 66µs | 7.80× | 평탄한 루프 + 뒤집기 |
+| `sd.asarray(c16be)` (`>c16`) | 433µs | 234µs | 1.85× | 76µs | 5.68× | 평탄한 루프 + 뒤집기 |
+| `sd.asarray(i32[::2])` (1차원, 한 칸 건너) → int64 | 250µs | 241µs | 1.04× | 34µs | 7.31× | 일반 경로 |
+| `sd.asarray(m[:1000, ::2])` (float32, 열을 한 칸 건너) | 240µs | 250µs | 0.96× | 37µs | 6.50× | 일반 경로 |
+| `sd.asarray(m[:1000, 1:1001])` (float32, 행 안은 연속) | 138µs | 244µs | **0.56×** | 38µs | 3.62× | 일반 경로 |
+| `sd.asarray(be[::2])` (`be`는 `>f8` `(2000, 1000)`, 행을 한 칸 건너) | 105µs | 267µs | **0.39×** | 38µs | 2.74× | 일반 경로 + 뒤집기 |
+| `sd.asarray(m[:1000, :1000].T)` (float32, 전치한 뷰) | 136µs | 637µs | **0.21×** | 384µs | **0.35×** | 일반 경로 |
+
+- **연속인 big-endian은 numpy보다 빨라요.** 뒤집기가 벡터화된 평탄한 루프 안의 명령 하나라, 기계 바이트 순서의 복사와 거의 같은 시간이에요. `>f8`의 1스레드 시간은 실행에 따라 85µs와 125µs 사이를 오가요. 느린 쪽이어도 numpy와 같아요. complex는 numpy보다 1.9~3.5배 빨라요.
+- **마지막 축이 떨어져 있는 버퍼는 1스레드에서 numpy와 같아요.** `i32[::2]`와 `m[:, ::2]`는 두 라이브러리 모두 원소마다 간격을 건너뛰는 스칼라 루프라 원소당 약 0.24ns로 같아요. 10스레드에서는 조각으로 나뉘어 6.5~7.3배예요.
+- **마지막 축이 붙어 있는 2차원 버퍼는 1스레드에서 0.4~0.6배예요.** `m[:, 1:]`이나 `be[::2]`는 행 하나가 연속이라, numpy는 행마다 연속 캐스트 루프를 돌려요. stardust의 일반 경로는 안쪽 루프의 간격이 런타임 값이라 이 경우에도 스칼라 루프예요. 10스레드에서는 2.7~3.6배로 numpy보다 빨라요.
+- **전치한 뷰는 10스레드에서도 느려요.** 일반 경로는 논리적 C 순서로 걷는데, 결과 배열은 원본의 메모리 축 순서를 따라 만들어져요. 전치한 뷰에서는 논리적 마지막 축이 원본과 결과 양쪽에서 메모리상 가장 멀리 뛰는 축이라, 안쪽 루프가 원소마다 수 KB씩 건너뛰며 읽고 써요. 캐시 미스가 시간을 정해서 스레드를 늘려도 1.7배밖에 빨라지지 않아요. numpy는 순회 축을 메모리 순서로 다시 정렬해서 136µs예요. 연속인 F 순서 배열(`np.asfortranarray(m)`)은 평탄한 경로라 해당하지 않아요. 연속이 아니면서 축 순서가 뒤집힌 버퍼만 이래요.
 - 결과 배열을 새로 할당하는 비용은 두 라이브러리 모두 같은 조건이에요(numpy의 `astype`과 `copy`도 새 배열을 만들어요).
 - numpy 배열이 아닌 버퍼도 같은 경로예요. 8000바이트 `bytearray`의 `asarray`(uint8 → int64 8000개)가 0.72µs예요.
 
@@ -703,8 +802,8 @@ std::int64_t py_to_int64(PyObject* p) {
 | 암묵적 변환 검사 | $O(1)$ | 없음 | dtype만 봐요 |
 | 중첩 시퀀스 | $O(N + M)$ (두 번 방문) | $O(\text{ndim})$ | 재귀 깊이 33 이하 |
 | 버퍼 공유 | $O(\text{ndim})$, bool이면 $O(n)$ 검사 | 없음 | bool 검사 100만 개 8.3µs |
-| 버퍼 복사·넓히기 (연속, 기계 바이트 순서) | $O(n)$, 병렬 | 결과 배열 | 평탄한 루프, 원소당 약 0.09ns (numpy `astype`과 같음) |
-| 버퍼 복사·넓히기 (연속이 아니거나 big-endian) | $O(n)$, 직렬 | 결과 배열 | 원소마다 걷기, 원소당 약 0.42ns |
+| 버퍼 복사·넓히기 (연속, 어느 바이트 순서든) | $O(n)$, 병렬 | 결과 배열 | 평탄한 루프, 원소당 약 0.09ns (numpy `astype`과 같거나 빠름) |
+| 버퍼 복사·넓히기 (연속이 아님) | $O(n)$, 병렬. 조각마다 시작점 계산 $O(\text{ndim})$ | 결과 배열 | 조각마다 odometer + strided 안쪽 루프, 원소당 약 0.24ns |
 | DLPack 공유 | $O(\text{ndim})$, bool이면 $O(n \cdot \text{ndim})$ 검사 | 없음 | |
 | `astype` | $O(n)$, 병렬 | 결과 배열 | 연속 f → i는 벡터 `FCVTZS` |
 
