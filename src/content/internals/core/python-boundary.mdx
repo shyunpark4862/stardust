@@ -1007,7 +1007,7 @@ C++ 정적 변수가 쥔 Python 객체는 일부러 놓지 않는 것이 있어�
   rows={[
     { label: 'np.asarray(sd 배열)', times: [13e-9, 106e-9, 104e-9] },
     { label: 'from_dlpack(numpy 배열)', times: [119e-9, 276e-9, 278e-9] },
-    { label: 'sd.asarray(numpy 배열)', times: [13e-9, 175e-9, 177e-9] },
+    { label: 'sd.asarray(numpy 배열)', times: [11e-9, 136e-9, 146e-9] },
   ]}
   caption="numpy 열은 첫째·셋째 줄이 np.asarray(numpy 배열), 둘째 줄이 np.from_dlpack(numpy 배열)이에요. 스레드를 쓰지 않아 1스레드와 10스레드가 같아요."
 />
@@ -1024,7 +1024,7 @@ C++ 정적 변수가 쥔 Python 객체는 일부러 놓지 않는 것이 있어�
 
 Python에서 같은 호출을 따로 재면 `hasattr(f, '__dlpack__')` 22ns, `f.__dlpack_device__()` 25ns, `f.__dlpack__(max_version=(1, 1), copy=None)` 56ns예요. 1~3단계를 Python에서 부르면 합쳐서 120ns 안팎이에요. numpy의 `np.from_dlpack`도 3단계는 해야 해요. 157ns 차이가 단계별로 어떻게 나뉘는지는 아직 밝히지 못했어요. 어느 쪽이든 한 번에 수백 ns인 비용이라, 큰 배열을 주고받을 때는 문제가 되지 않아요.
 
-`sd.asarray(numpy 배열)` 175ns의 내역은 [변환과 승격](/internals/array/conversion/)의 "복사 없이 공유하는 비용"에 있어요. 약 37ns는 numpy 배열에도 numpy 스칼라 검사(`PyObject_IsInstance` 네 번)를 먼저 하는 순서에서 나와요.
+`sd.asarray(numpy 배열)` 136ns(재는 때에 따라 136~147ns)의 내역은 [변환과 승격](/internals/array/conversion/)의 "복사 없이 공유하는 비용"에 있어요. 30~40ns는 numpy가 버퍼를 내주는 비용이고, 나머지 약 110ns가 새 배열 객체를 만들고 해제하는 비용이에요. numpy 배열은 타입 이름만 보고 스칼라 검사(`PyObject_IsInstance` 네 번)를 건너뛰어요.
 
 ## 참고 문헌
 
