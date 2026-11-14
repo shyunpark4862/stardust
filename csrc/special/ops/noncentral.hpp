@@ -129,6 +129,7 @@ struct GammaFamily {
     double gbound(dd::DD s) const { return std::min(1.0, ratio(s)); }  // >= P(s+1) / P(s)
     // log of a bound on G(s): P(s) <= T(s) / (1 - y/(s+1)) (the series' ratios are at most
     // y/(s+1)); Q(s) <= T(s-1) y / (y - s + 1) (below); else 1
+    bool deep(double s) const { return !(y > 0x1p-20 * (s + 1.0) && y < 0x1p20 * (s + 1.0)); }
     double log_gbound(double s) const {  // rough logs (for the e^-2000 test)
         auto log_d = [&](double a) { return a > 0.0 ? a * std::log(y) - y - std::lgamma(a + 1.0) : -y; };
         if (!upper) return s + 1.0 > y ? log_d(s) - std::log1p(-y / (s + 1.0)) : 0.0;
@@ -176,6 +177,7 @@ struct BetaFamily {
     double gbound_down(dd::DD) const { return 1.0; }  // >= (1 - I(s-1)) / (1 - I(s))
     // log of a bound on G(s): I_x(s, b) <= T(s) / (1 - r) for the ratio bound r < 1 (gbound's),
     // 1 - I_x(s, b) = I_y(b, s) likewise with the roles turned; else 1
+    bool deep(double) const { return x.hi < 0x1p-20 || y.hi < 0x1p-20; }
     double log_gbound(double s) const {  // rough logs (for the e^-2000 test)
         auto log_t = [&](double c, double d, double lx, double ly) {  // log(x^c y^d / (c B(c, d)))
             return c * lx + d * ly - std::log(c) - (std::lgamma(c) + std::lgamma(d) - std::lgamma(c + d));
@@ -220,19 +222,31 @@ double mixture(double mu, double h, double s0, const Fam& f, double mu_lo = 0.0)
     // j*: the weights' mode, moved to where term_ratio crosses 1 if that is further
     // into the tail (below the mode for a lower family, above it for an upper one).
     const double jmode = std::max(0.0, std::floor(mu - h));
-    double lo = 0.0, hi = std::ceil(std::max(4.0 * mu, 64.0));  // integers: the bisection ends
-    while (term_ratio(hi) > 1.0 && hi < 0x1p52) hi *= 2.0;
-    while (hi - lo > 1.0) {
-        const double mid = std::floor(0.5 * (lo + hi));
-        (term_ratio(mid) > 1.0 ? lo : hi) = mid;
+    // The crossing matters only on the tail side of the mode: below it for a lower family
+    // (term_ratio(jmode) <= 1), above it for an upper one (> 1). Else j* is the mode itself
+    // (one ratio instead of a bisection: most inputs).
+    double jstar = jmode;
+    const bool past = term_ratio(jmode) <= 1.0;
+    if (lower ? (past && jmode > 0.0) : !past) {
+        double lo = lower ? 0.0 : jmode, hi = lower ? jmode : std::ceil(std::max(4.0 * mu, jmode + 64.0));  // integers
+        if (!lower)
+            while (term_ratio(hi) > 1.0 && hi < 0x1p52) hi *= 2.0;
+        if (lower && term_ratio(0.0) <= 1.0) hi = 0.0;
+        while (hi - lo > 1.0) {
+            const double mid = std::floor(0.5 * (lo + hi));
+            (term_ratio(mid) > 1.0 ? lo : hi) = mid;
+        }
+        jstar = hi;
     }
-    const double jstar = lower ? std::min(jmode, hi) : std::max(jmode, hi);
     // A sum far below the double range: its largest term, ~ the one at j*, under e^-2000
     // (a margin no misplacement of j* can bridge). Also keeps the walk off j* ~ 2^52 (a
     // tail at x ~ 1e100) and off exponents beyond Scaled's exp (-1.4e5).
     // (Rough logs suffice for that margin: lgamma, no prefix.)
     const double a = jstar + h;
-    if ((a > 0.0 ? a * std::log(mu) - mu - std::lgamma(a + 1.0) : -mu) + f.log_gbound(jstar + s0) < -2000.0) return 0.0;
+    // Only where it can happen: j* off the mode, or an argument 2^20 away from the shape.
+    if ((jstar != jmode || f.deep(jstar + s0)) &&
+        (a > 0.0 ? a * std::log(mu) - mu - std::lgamma(a + 1.0) : -mu) + f.log_gbound(jstar + s0) < -2000.0)
+        return 0.0;
 
     // J: past j* on the unstable side (up for a lower family, down for an upper one)
     // until the bound times the bounded tail beyond, prod / (1 - r), is below kTol.
@@ -490,6 +504,13 @@ inline double zeroin(const G& g, double a, double fa, double b, double fb) {
         a = b, fa = fb;
         b += std::fabs(d) > tol ? d : (m > 0.0 ? tol : -tol);
         fb = g(b);
+        // Converging superlinearly: after a step below 3e-9 |b| the secant through the last
+        // two points is exact to the last bit (its error ~ the product of the last two,
+        // < 1e-17), so it ends here instead of closing the bracket (two evaluations fewer).
+        if (std::fabs(b - a) <= 3e-9 * std::fabs(b) && fb != fa && std::isfinite(fb)) {
+            const double x = b - fb * (b - a) / (fb - fa);
+            if ((x - b) * (x - c) <= 0.0 || std::fabs(x - b) <= 1e-8 * std::fabs(b)) return x;
+        }
     }
     return b;
 }

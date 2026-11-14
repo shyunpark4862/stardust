@@ -131,6 +131,58 @@ inline double f_value(double dfn, double dfd, double x, bool upper) {
     return upper ? r.ic : r.i;
 }
 
+// |t| with P(|T| > |t|) = q2 for df >= 1: Hill's start (CACM algorithm 396, ~6 digits)
+// and Halley steps on the tail itself, F(t) = t_tail(df, -t), F' = -f,
+// F''/F' = -(df + 1) t / (df + t^2). A step below 4e-6 |t| leaves ~1e-17 (cubic), so
+// most inputs take one tail evaluation; betaincinv, the general way, takes four or five
+// (1100 -> 300 ns). False if it does not settle (the caller's general way).
+inline bool t_quantile(double df, double q2, double& out) {
+    double t;
+    if (df == 1.0) {
+        t = 1.0 / std::tan(0.5 * kPi * q2);
+    } else if (df == 2.0) {
+        t = std::sqrt(2.0 / (q2 * (2.0 - q2)) - 2.0);
+    } else {
+        const double a = 1.0 / (df - 0.5), b = 48.0 / (a * a);
+        double c = ((20700.0 * a / b - 98.0) * a - 16.0) * a + 96.36;
+        const double d = ((94.5 / (b + c) - 3.0) / b + 1.0) * std::sqrt(a * 0.5 * kPi) * df;
+        double y = std::pow(d * q2, 2.0 / df);
+        if (y > 0.05 + a) {
+            const double x = one<Ndtri>(0.5 * q2);
+            y = x * x;
+            if (df < 5.0) c += 0.3 * (df - 4.5) * (x + 0.6);
+            c = (((0.05 * d * x - 5.0) * x - 7.0) * x - 2.0) * x + b + c;
+            y = (((((0.4 * y + 6.3) * y + 36.0) * y + 94.5) / c - y - 3.0) / b + 1.0) * x;
+            y = std::expm1(a * y * y);
+        } else {
+            y = ((1.0 / (((df + 6.0) / (df * y) - 0.089 * d - 0.822) * (df + 2.0) * 3.0) + 0.5 / (df + 4.0)) * y - 1.0) *
+                    (df + 1.0) / (df + 2.0) +
+                1.0 / y;
+        }
+        t = std::sqrt(df * y);
+    }
+    if (!(t > 0.0) || !std::isfinite(t)) return false;
+    const double q = 0.5 * q2;
+    const double norm = 1.0 / (std::sqrt(df) * Beta::f(0.5 * df, 0.5));  // the density at 0
+    for (int it = 0; it < 8; ++it) {
+        const double tail = t_tail(df, t);
+        const double w = df / (df + t * t);  // (1 + t^2/df)^-1
+        const double dens = norm * std::pow(w, 0.5 * (df + 1.0));
+        if (!(dens > 0.0) || !(tail > 0.0)) return false;
+        const double r = (tail - q) / -dens;  // Newton's step
+        const double step = r / (1.0 + 0.5 * r * (df + 1.0) * t / (df + t * t));
+        const double tn = t - step;
+        if (!(tn > 0.0) || !std::isfinite(tn)) return false;
+        const bool done = std::fabs(step) <= 4e-6 * tn;
+        t = tn;
+        if (done) {
+            out = t;
+            return true;
+        }
+    }
+    return false;
+}
+
 }  // namespace distr_detail
 
 // ---------------------------------------------------------------- Student t
@@ -165,6 +217,10 @@ struct Stdtrit : Real {
         if (std::isinf(df)) return distr_detail::one<Ndtri>(p);
         const bool lower = p < 0.5;
         const double q2 = 2.0 * (lower ? p : 1.0 - p);  // the two-sided tail, exact
+        if (df >= 1.0 && q2 > 1e-12) {  // (farther out the tail and density lose t^2 against df: the general way)
+            double t;
+            if (distr_detail::t_quantile(df, q2, t)) return lower ? -t : t;
+        }
         const double a = 0.5 * df;
         // Solve for the smaller of x = df / (df + t^2) and y = 1 - x: x < 1/2
         // exactly when q2 = I_x(a, 1/2) is below I_{1/2}(a, 1/2) (choosing by
