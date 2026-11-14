@@ -94,6 +94,9 @@ inline constexpr double kAiry = 270;
 // S7 (special/ops/lambertw.hpp, hyper.hpp), bench/special/s7/cost.md
 inline constexpr double kLambertw = 20, kLambertwM1 = 43;
 inline constexpr double kHyp1f1 = 1600, kHyp2f1 = 2200;  // the reference mix (weight capped at kMaxWeight)
+// S8 (special/ops/wofz.hpp, loggamma.hpp, lambertw.hpp), bench/special/s8/cost.md
+inline constexpr double kWofz = 57, kErfC = 47, kErfcC = 57, kErfcxC = 47;  // the reference mix
+inline constexpr double kLoggammaC = 111, kLambertwC = 130;  // (all capped at kMaxWeight)
 }  // namespace cost
 
 }  // namespace sd::special

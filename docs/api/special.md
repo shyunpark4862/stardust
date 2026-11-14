@@ -333,8 +333,32 @@ lambertw(x, /, *, k=0, out=None)
 wofz(z, /, *, out=None)
 loggamma(z, /, *, out=None)
 ```
-- S8부터 `erf`, `erfc`, `erfcx`, `lambertw`가 complex를 받는다. complex 입력이면 결과도 complex128이다.
-- `wofz`는 Faddeeva 함수 `w(z) = exp(-z²)·erfc(-iz)`다.
-- `loggamma`는 log Γ의 주가지다. 실수 입력은 x > 0에서 `gammaln`과 같고, `loggamma(0.0)`은 `inf`, x < 0은 NaN이다 (scipy와 같다).
-- `lambertw`의 `k`: S8부터 complex 입력은 모든 정수 가지를 받는다. 실수 입력은 그대로 0과 −1만 받는다.
-- 이 절의 이름은 S8 전까지 `sd.special.__all__`에 없다.
+- S8부터 `erf`, `erfc`, `erfcx`, `lambertw`가 complex를 받는다. 입력이 complex(complex128 배열이나 Python complex)이면 복소 루프로 가고 결과도 complex128이다. 실수 입력은 그대로 실수 루프다(결과 float64).
+- `wofz`는 Faddeeva 함수 `w(z) = exp(-z²)·erfc(-iz)`다. 실수 입력도 결과는 complex128이다(scipy와 같다).
+- `loggamma`는 log Γ의 주가지다. 음의 실수축을 자른 평면에서 연속인 가지이고(scipy, mpmath와 같다), 자름 위의 x ± 0i는 허수부 0의 부호로 위·아래를 고른다. 실수 입력은 x > 0에서 `gammaln`과 같고, `loggamma(±0.0)`은 `inf`, x < 0은 NaN이다(scipy와 같다).
+- `lambertw(z, *, k=0)`: `k`는 int다. complex 입력은 모든 정수 가지를 받는다. 실수 입력은 그대로 0과 −1만 받는다(다른 값은 `ValueError`). `k`가 int가 아니면(bool 포함) `TypeError`다.
+  - 가지 자름(k = 0은 (−∞, −1/e], k ≠ 0은 (−∞, 0)) 위의 x ± 0i는 C99처럼 허수부 0의 부호로 위(+0)·아래(−0)의 극한을 고른다(사용자 결정 2026-11-14). **(−1/e, 0) 위의 x − 0i에서 k = −1은 아래쪽 극한(= k = 1 위쪽 값의 켤레)이다. scipy는 이곳에서 실수 값(위쪽)을 낸다.**
+- **오차의 정의** (사용자 결정 2026-11-14): 복소수의 상대오차는 크기 기준 |오차| / |값|이다. 실수부와 허수부를 따로 재지 않는다.
+- **보장** (사용자 결정 2026-11-14): 정의역 전체에서 아래와 같다.
+  - `wofz`: Im z ≥ 0은 상대 1e-14다. Im z < 0에서는 w에 영점이 있어서 포락선 기준 |오차| ≤ 1e-14·(2|exp(−z²)| + |w(−z)|)이다(계산식 w(z) = 2exp(−z²) − w(−z)의 두 항 크기).
+  - `erfc`: Re z ≥ 0은 상대, Re z < 0은 |오차| ≤ 1e-14·(2 + |erfc(−z)|)다.
+  - `erf`: |z| < 2는 상대, |z| ≥ 2는 |오차| ≤ 1e-14·(1 + |erfc(±z)|)다(±는 Re를 0 이상으로 만드는 쪽).
+  - `erfcx`: Re z ≥ 0은 상대, Re z < 0은 |오차| ≤ 1e-14·(2|exp(z²)| + |erfcx(−z)|)다.
+  - `loggamma`: Re z > 0은 상대 1e-14다. Re z ≤ 0은 |오차| ≤ 1e-14·max(1, |loggamma(z)|)다(S3의 `gammaln`과 같은 꼴).
+  - `lambertw`(complex): 모든 가지, 정의역 전체에서 상대 1e-14다.
+  - exp(−z²)의 위상 −2xy는 double-double로 정확히 만든다. |xy|가 double을 넘으면(|z| > 1e154이고 |Re z| ≈ |Im z|) 위상을 표현할 수 없어서, 결과의 크기가 0이나 1로 정해지지 않는 곳은 NaN이다(scipy도 NaN).
+- **특수값**: 아래 표의 굵은 줄 말고는 scipy와 같다. 실수축·허수축 위의 0인 부분의 부호는 도함수의 방향을 따른다(아래). scipy의 부호는 일관되지 않아서 비트까지는 맞추지 않는다.
+
+  | 입력 | 값 | 비고 |
+  |---|---|---|
+  | `erf(x ± 0i)`, `erfc(x ± 0i)`, `erfcx(x ± 0i)` | 실수 함수의 값, 허수부 ±0 | 허수부 부호: `erf`는 Im z의 부호, `erfc`·`erfcx`는 그 반대 |
+  | `erf(iy)`, `erfc(iy)`, `wofz(iy)` | i·erfi(y), 1 − i·erfi(y), erfcx(y) | 0인 부분은 정확히 0(`wofz`의 허수부는 Re z의 부호) |
+  | **`erf(1e300+1e300j)`** | **1** | scipy NaN. |erfc| ≤ 1/(√π|z|)라 위상과 상관없이 1 |
+  | 결과가 오버플로하는 곳(예: `erfc(1+30j)`) | 참 위상 쪽의 ±inf | scipy는 반올림한 위상의 부호나 NaN |
+  | `loggamma(-n ± 0i)` (n = 0, 1, …) | **inf + nan·i** | 극점: 실수부는 inf, 허수부는 다가가는 방향마다 다르다. scipy nan + nan·i |
+  | **`loggamma(inf ± 0i)`, `loggamma(inf + iy)`** | **inf ± 0i, inf ± inf·i** | scipy NaN |
+  | **`loggamma(x ± inf·i)`, `loggamma(-inf + iy)`(y ≠ 0)** | **−inf ± inf·i, −inf ∓ inf·i** | scipy NaN. `loggamma(-inf ± 0i)`은 NaN(극점이 쌓인다) |
+  | **`lambertw(5e-324, k ≠ 0)`** | **참값(−751.06 ± 3.146i)** | scipy inf + nan·i |
+  | **`lambertw(z, k)`, z가 무한대** | **inf + i(arg z + 2πk)** | scipy는 `infj` 등에서 NaN |
+  | **`lambertw(-0.36787944117144233 ± 0j, k)`** | **참값 −1 ± 8.2e-9i** | scipy NaN. 실수 입력은 S7대로 −1 |
+  | `lambertw(0j)`, `lambertw(0j, k ≠ 0)` | 0(부호 유지), −inf + 0i | scipy와 같다 |

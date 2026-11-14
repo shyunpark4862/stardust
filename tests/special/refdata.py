@@ -26,15 +26,22 @@ MIXED = {"gammaln", "digamma", "polygamma", "beta", "betaln", "binom", "zeta_hur
 ALIAS = {"zeta_hurwitz": "zeta"}
 # Reference files for one output of a several-output function: name -> (function, index).
 PART = {"airy_ai": ("airy", 0), "airy_aip": ("airy", 1), "airy_bi": ("airy", 2), "airy_bip": ("airy", 3)}
-# Reference files for a keyword option of a function: name -> (function, keywords).
-KW = {"lambertw_m1": ("lambertw", {"k": -1})}
+# Reference files for a keyword option of a function, or for a complex argument of a
+# function whose real file has its name: name -> (function, keywords).
+KW = {
+    "lambertw_m1": ("lambertw", {"k": -1}),
+    # S8: complex arguments (x0 is complex128; hi, lo hold both parts as double-doubles)
+    "erf_complex": ("erf", {}), "erfc_complex": ("erfc", {}), "erfcx_complex": ("erfcx", {}),
+    "lambertw_c0": ("lambertw", {"k": 0}), "lambertw_cm1": ("lambertw", {"k": -1}),
+    "lambertw_c1": ("lambertw", {"k": 1}), "lambertw_c4": ("lambertw", {"k": 4}),
+}
 
 
 def mixed_error(got, hi, lo):
     """|got - (hi + lo)| / max(1, |hi|)."""
     finite, special = _special(got, hi)
     with np.errstate(invalid="ignore", over="ignore"):
-        err = np.abs((np.asarray(got, dtype=np.float64) - hi) - lo) / np.maximum(1.0, np.abs(hi))
+        err = _diff(got, hi, lo) / np.maximum(1.0, np.abs(hi))
     return np.where(finite, err, special)
 
 
@@ -62,27 +69,42 @@ def scale(name):
 
 def _special(got, hi):
     """The error where the reference is NaN or infinite, or the result is: 0 for an
-    exact match (NaN for NaN, the same infinity), inf otherwise. None where both are finite."""
+    exact match (NaN for NaN, the same infinity; for complex, part by part), inf otherwise.
+    None where both are finite."""
+    if np.iscomplexobj(hi):
+        got = np.asarray(got, dtype=np.complex128)
+        finite = np.isfinite(hi) & np.isfinite(got)
+        def same(g, h):
+            return (np.isnan(h) & np.isnan(g)) | (g == h)
+        match = same(got.real, hi.real) & same(got.imag, hi.imag)
+        return finite, np.where(match, 0.0, np.inf)
     got = np.asarray(got, dtype=np.float64)
     finite = np.isfinite(hi) & np.isfinite(got)
     match = (np.isnan(hi) & np.isnan(got)) | (np.isinf(hi) & (got == hi))
     return finite, np.where(match, 0.0, np.inf)
 
 
+def _diff(got, hi, lo):
+    """|got - (hi + lo)|, for complex the modulus of the difference (S8: the relative error
+    of a complex value is |error| / |value|)."""
+    if np.iscomplexobj(hi):
+        got = np.asarray(got, dtype=np.complex128)
+        return np.hypot((got.real - hi.real) - lo.real, (got.imag - hi.imag) - lo.imag)
+    return np.abs((np.asarray(got, dtype=np.float64) - hi) - lo)
+
+
 def ulp_error(got, hi, lo):
     """|got - (hi + lo)| in units of the spacing of float64 at |hi|."""
     finite, special = _special(got, hi)
-    got = np.asarray(got, dtype=np.float64)
     with np.errstate(invalid="ignore", over="ignore"):
-        err = np.abs((got - hi) - lo) / np.spacing(np.abs(hi))
+        err = _diff(got, hi, lo) / np.spacing(np.abs(hi))
     return np.where(finite, err, special)
 
 
 def rel_error(got, hi, lo):
     """|got - (hi + lo)| / |hi + lo|; 0 where both are 0."""
     finite, special = _special(got, hi)
-    got = np.asarray(got, dtype=np.float64)
     with np.errstate(invalid="ignore", divide="ignore", over="ignore"):
-        diff = np.abs((got - hi) - lo)
+        diff = _diff(got, hi, lo)
         err = np.where(diff == 0, 0.0, diff / np.abs(hi))
     return np.where(finite, err, special)

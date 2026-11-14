@@ -794,6 +794,234 @@ FUNCTIONS = {
 }
 
 
+# ---- S8: complex arguments (docs/api/special.md §12). The relative error is |error| / |f|
+# (S8 user decision); `scale` carries the envelope where zeros make it unreachable:
+#   wofz  Im z < 0:  (2 |exp(-z^2)| + |w(-z)|) / |w(z)|
+#   erfc  Re z < 0:  (2 + |erfc(-z)|) / |erfc(z)|
+#   erf   |z| >= 2:  (1 + |erfc(+-z)|) / |erf(z)|  (the sign making Re >= 0)
+#   erfcx Re z < 0:  (2 |exp(z^2)| + |erfcx(-z)|) / |erfcx(z)|
+#   loggamma Re z <= 0: max(1, 1/|f|)  (|error| <= 1e-14 max(1, |f|))
+# mpmath has no signed zeros: on a branch cut, Im z = -0 is the limit from below, taken
+# as conj(f(conj z)) (loggamma) or conj(W_{-k}(conj z)) (lambertw).
+
+
+def _w_mp(z):
+    return mpmath.exp(-z * z) * mpmath.erfc(-1j * z)
+
+
+def _erfcx_mp(z):
+    return mpmath.exp(z * z) * mpmath.erfc(z)
+
+
+def _cpoints(rng, n, lo, hi, arg_lo=-np.pi, arg_hi=np.pi):
+    """n points with log|z| uniform in [log lo, log hi] and arg uniform in [arg_lo, arg_hi]."""
+    return loguniform(rng, lo, hi, n) * np.exp(1j * rng.uniform(arg_lo, arg_hi, n))
+
+
+def _near(points, scales=(1e-14, 1e-10, 1e-6, 1e-3)):
+    """Points at the given distances around each point, in four directions."""
+    out = []
+    for p in points:
+        for d in scales:
+            out += [p + d, p - d, p + 1j * d, p - 1j * d]
+    return np.array(out)
+
+
+def _axes(rng, n, lo, hi):
+    """Points on both axes, with both signs and both signed zeros."""
+    x = loguniform(rng, lo, hi, n, signed=True)
+    return np.concatenate([x + 0j, x - 0j, 1j * x, complex(-0.0, 1.0) * x])
+
+
+# The first zeros of erfc and erf (to 4 digits, refined by findroot): erfc's in the second
+# quadrant and their conjugates, erf's in the first and their reflections.
+_ERFC_ZEROS = [-1.3548 + 1.9915j, -2.1769 + 2.6911j, -2.7756 + 3.2382j]
+_ERF_ZEROS = [1.4506 + 1.8806j, 2.2447 + 2.6165j, 2.8340 + 3.1756j]
+
+
+def _refine(f, guesses):
+    out = []
+    for g in guesses:
+        with mpmath.workdps(30):
+            z = complex(mpmath.findroot(f, mpmath.mpc(g.real, g.imag)))
+        out.append(z)
+    return out
+
+
+def _erfc_zeros():
+    zs = _refine(mpmath.erfc, _ERFC_ZEROS)
+    return zs + [z.conjugate() for z in zs]
+
+
+def _erf_zeros():
+    zs = _refine(mpmath.erf, _ERF_ZEROS)
+    return zs + [z.conjugate() for z in zs] + [-z for z in zs] + [-z.conjugate() for z in zs]
+
+
+def _wofz_inputs(rng):
+    z = np.concatenate([
+        rng.uniform(-7, 7, 2000) + 1j * rng.uniform(0, 4, 2000),  # the grid (both signs of Re z)
+        rng.uniform(-40, 40, 1000) + 1j * rng.uniform(0, 15, 1000),  # the continued fraction
+        rng.uniform(-40, 40, 500) + 1j * loguniform(rng, 1e-300, 1, 500),  # near the real axis
+        _cpoints(rng, 1500, 1e-300, 1e300, 0, np.pi),  # the upper half plane, every size
+        rng.uniform(-8, 8, 1500) + 1j * rng.uniform(-6, 0, 1500),  # the lower half plane
+        _near([1j * z for z in _erfc_zeros()]),  # zeros of w: w(z) = 0 where erfc(-iz) = 0
+        _axes(rng, 200, 1e-300, 1e3),
+        np.array([7 + 4j, 7 + 4.0000001j, 7.0000001 + 2j, 3e8 / 2 + 3e8 / 2 * 1j, 1e-300 + 1e-300j]),
+    ])
+    return (z,), np.isfinite(z)
+
+
+def _wofz_scale(z, v):
+    if z.imag >= 0:
+        return 1.0
+    return max(1.0, float((2 * abs(mpmath.exp(-z * z)) + abs(_w_mp(-z))) / abs(v)))
+
+
+def _erf_family_inputs(zeros):
+    def build(rng):
+        z = np.concatenate([
+            _cpoints(rng, 2000, 1e-300, 30), _cpoints(rng, 500, 30, 1e150),
+            rng.uniform(-4, 4, 1500) + 1j * rng.uniform(-4, 4, 1500),
+            rng.uniform(-30, 30, 500) + 1j * rng.uniform(-30, 30, 500),
+            _near(zeros()), _axes(rng, 200, 1e-300, 1e3),
+            np.array([0.5 + 0j, 0.3 + 0.4j, 0.30000001 + 0.4j, 2 + 0j, 1.2 + 1.6j, 1.2000001 + 1.6j]),
+        ])
+        return (z,), np.isfinite(z)
+    return build
+
+
+def _erf_scale(z, v):
+    if abs(z) < 2:
+        return 1.0
+    zp = z if z.real >= 0 else -z
+    return max(1.0, float((1 + abs(mpmath.erfc(zp))) / abs(v)))
+
+
+def _erfc_scale(z, v):
+    if z.real >= 0:
+        return 1.0
+    return max(1.0, float((2 + abs(mpmath.erfc(-z))) / abs(v)))
+
+
+def _erfcx_scale(z, v):
+    if z.real >= 0:
+        return 1.0
+    return max(1.0, float((2 * abs(mpmath.exp(z * z)) + abs(_erfcx_mp(-z))) / abs(v)))
+
+
+def _loggamma_inputs(rng):
+    neg = -loguniform(rng, 1e-3, 300, 400)
+    z = np.concatenate([
+        rng.uniform(0, 8, 2000) + 1j * rng.uniform(-8, 8, 2000),  # the right box
+        rng.uniform(0.1, 4.2, 1500) + 1j * rng.uniform(-2.5, 2.5, 1500),  # around the zeros
+        rng.uniform(-40, 0.1, 1500) + 1j * rng.uniform(-8, 8, 1500),  # the left box (reflection)
+        _cpoints(rng, 1500, 1e-300, 1e300),
+        _near([1 + 0j, 2 + 0j]), _near([-1 + 0j, -2 + 0j, -10 + 0j], (1e-10, 1e-3)),
+        neg + 0j, neg - 0j,  # the cut: both sides
+        np.array([0.1 + 2j, 0.1 - 2j, 4 + 2j, 4.0000001 + 0.5j, 1.5 + 0j, 7 + 7j, 7.0000001 + 1j]),
+    ])
+    z = z[~((z.imag == 0) & (z.real <= 0) & (z.real == np.floor(z.real)))]  # the poles are tests
+    return (z,), np.isfinite(z)
+
+
+def _loggamma_scale(z, v):
+    if z.real > 0:
+        return 1.0
+    return max(1.0, float(1 / abs(v)))
+
+
+def _lambertw_mp(k):
+    return lambda z: mpmath.lambertw(z, k)
+
+
+def _lambertw_c_inputs(rng):
+    em = -np.exp(-1.0)
+    near_bp = em + loguniform(rng, 1e-17, 0.5, 1000) * np.exp(1j * rng.uniform(-np.pi, np.pi, 1000))
+    cut = -loguniform(rng, 1e-300, 1e300, 300)
+    z = np.concatenate([
+        _cpoints(rng, 2000, 1e-300, 1e300), rng.uniform(-3, 3, 1500) + 1j * rng.uniform(-3, 3, 1500),
+        near_bp, cut + 0j, cut - 0j, _near([em + 0j, 0j, -1 + 0j], (1e-12, 1e-6, 1e-2)),
+        np.array([complex(-0.36787944117144233, 0.0), complex(-0.36787944117144233, -0.0)]),
+    ])
+    z = z[z != 0]
+    return (z,), np.isfinite(z)
+
+
+# name: (mpmath function of mpc z, input builder, scale or None, cut): on the negative real
+# axis with Im z = -0 the value is conj(cut(x)) (None: no cut there)
+COMPLEX = {
+    "wofz": (_w_mp, _wofz_inputs, _wofz_scale, None),
+    "erf_complex": (mpmath.erf, _erf_family_inputs(_erf_zeros), _erf_scale, None),
+    "erfc_complex": (mpmath.erfc, _erf_family_inputs(_erfc_zeros), _erfc_scale, None),
+    "erfcx_complex": (_erfcx_mp, _erf_family_inputs(lambda: [-z for z in _erfc_zeros()]), _erfcx_scale, None),
+    "loggamma": (mpmath.loggamma, _loggamma_inputs, _loggamma_scale, mpmath.loggamma),
+    "lambertw_c0": (_lambertw_mp(0), _lambertw_c_inputs, None, _lambertw_mp(0)),
+    "lambertw_cm1": (_lambertw_mp(-1), _lambertw_c_inputs, None, _lambertw_mp(1)),
+    "lambertw_c1": (_lambertw_mp(1), _lambertw_c_inputs, None, _lambertw_mp(-1)),
+    "lambertw_c4": (_lambertw_mp(4), _lambertw_c_inputs, None, _lambertw_mp(-4)),
+}
+
+
+def evaluate_complex(f, z):
+    """f(z) at enough digits for exp(-z^2)'s phase (2 log10|z| more), checked against twice the
+    digits until both parts agree to 30 digits."""
+    big = max(1.0, abs(z))
+    dps = DPS + 2 * int(np.log10(big)) + 10
+    def at(d):
+        with mpmath.workdps(d):
+            return +f(mpmath.mpc(z.real, z.imag))
+    v = at(dps)
+    while dps < 2000:
+        w = at(2 * dps)
+        tol = abs(w) * mpmath.mpf(10) ** -30
+        if not (mpmath.isfinite(w.real) and mpmath.isfinite(w.imag)) or abs(v - w) <= tol:
+            return w
+        dps *= 2
+        v = w
+    return v
+
+
+def build_complex(name):
+    import signal
+
+    f, inputs, scale_of, cut = COMPLEX[name]
+    rng = np.random.default_rng(20261114)
+    (z,), guaranteed = inputs(rng)
+    z = np.asarray(z, dtype=np.complex128)
+    n = z.size
+    hi, lo, scale = np.empty(n, dtype=np.complex128), np.empty(n, dtype=np.complex128), np.ones(n)
+    keep = np.ones(n, dtype=bool)
+    old = signal.signal(signal.SIGALRM, _alarm)
+    try:
+        for i in range(n):
+            signal.alarm(POINT_SECONDS)
+            try:
+                zi = complex(z[i])
+                if cut is not None and zi.imag == 0 and np.signbit(zi.imag) and zi.real < 0:
+                    v = mpmath.conj(evaluate_complex(cut, zi))  # the limit from below
+                else:
+                    v = evaluate_complex(f, zi)
+                if scale_of is not None and mpmath.isfinite(v.real) and mpmath.isfinite(v.imag) and v != 0:
+                    with mpmath.workdps(40):
+                        scale[i] = scale_of(mpmath.mpc(z[i].real, z[i].imag), v)
+            except (_Timeout, mpmath.libmp.NoConvergence, RuntimeError, ZeroDivisionError, ValueError):
+                keep[i] = False
+                continue
+            finally:
+                signal.alarm(0)
+            rh, rl = double_double(mpmath.re(v))
+            ih, il = double_double(mpmath.im(v))
+            hi[i], lo[i] = complex(rh, ih), complex(rl, il)
+    finally:
+        signal.signal(signal.SIGALRM, old)
+    OUT.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(OUT / f"{name}.npz", nin=1, hi=hi[keep], lo=lo[keep], scale=scale[keep],
+                        guaranteed=np.asarray(guaranteed, dtype=bool)[keep], x0=z[keep],
+                        mpmath=mpmath.__version__, dps=DPS)
+    return int(keep.sum()), int((~keep).sum())
+
+
 def build_reduce():
     """tests/special/ref/reduce_cases.npz: arrays for logsumexp, softmax and log_softmax with
     their references (S5). Each case is a 1-d array; `start` holds the offsets into the
@@ -945,8 +1173,13 @@ def build(name):
 
 
 def main(argv):
-    names = argv or list(FUNCTIONS) + ["reduce_cases"]
+    names = argv or list(FUNCTIONS) + list(COMPLEX) + ["reduce_cases"]
     for name in names:
+        if name in COMPLEX:
+            n, dropped = build_complex(name)
+            note = f" ({dropped} dropped)" if dropped else ""
+            print(f"{name}: {n} points -> tests/special/ref/{name}.npz{note}", flush=True)
+            continue
         if name == "reduce_cases":
             print(f"reduce_cases: {build_reduce()} arrays -> tests/special/ref/reduce_cases.npz", flush=True)
             continue

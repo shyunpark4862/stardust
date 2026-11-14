@@ -27,8 +27,14 @@ ALIAS = {"zeta_hurwitz": "zeta"}  # reference files named apart from their funct
 
 # one output of a several-output function (tests/special/refdata.py PART)
 PART = {"airy_ai": ("airy", 0), "airy_aip": ("airy", 1), "airy_bi": ("airy", 2), "airy_bip": ("airy", 3)}
-# a keyword option (tests/special/refdata.py KW); scipy's lambertw is complex: its real part
-KW = {"lambertw_m1": ("lambertw", {"k": -1})}
+# a keyword option, or a complex argument (tests/special/refdata.py KW); scipy's lambertw
+# is complex: its real part for the real files
+KW = {
+    "lambertw_m1": ("lambertw", {"k": -1}),
+    "erf_complex": ("erf", {}), "erfc_complex": ("erfc", {}), "erfcx_complex": ("erfcx", {}),
+    "lambertw_c0": ("lambertw", {"k": 0}), "lambertw_cm1": ("lambertw", {"k": -1}),
+    "lambertw_c1": ("lambertw", {"k": 1}), "lambertw_c4": ("lambertw", {"k": 4}),
+}
 
 
 def sd_function(name):
@@ -54,6 +60,9 @@ COUNTERPART = {
     "airy_bi": "scipy.special.airy[2]", "airy_bip": "scipy.special.airy[3]",
     "lambertw_m1": "scipy.special.lambertw(k=-1).real", "lambertw": "scipy.special.lambertw.real",
     "zeta_hurwitz": "scipy.special.zeta",
+    "erf_complex": "scipy.special.erf", "erfc_complex": "scipy.special.erfc", "erfcx_complex": "scipy.special.erfcx",
+    "lambertw_c0": "scipy.special.lambertw(k=0)", "lambertw_cm1": "scipy.special.lambertw(k=-1)",
+    "lambertw_c1": "scipy.special.lambertw(k=1)", "lambertw_c4": "scipy.special.lambertw(k=4)",
 }
 
 
@@ -71,6 +80,11 @@ def scipy_function(name):
         base, i = PART[name]
         f = getattr(scipy.special, base)
         return lambda *a: f(*a)[i]
+    if name.startswith("lambertw_c"):
+        import scipy.special
+
+        k = KW[name][1]["k"]
+        return lambda z: scipy.special.lambertw(z, k)
     if name in ("lambertw", "lambertw_m1"):
         import numpy
         import scipy.special
@@ -80,6 +94,8 @@ def scipy_function(name):
     path = counterpart(name)
     if path is None:
         return None
+    if name.endswith("_complex"):
+        path = f"scipy.special.{KW[name][0]}"
     module, attr = path.rsplit(".", 1)
     return getattr(importlib.import_module(module), attr)
 

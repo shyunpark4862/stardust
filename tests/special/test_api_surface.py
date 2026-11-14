@@ -13,10 +13,7 @@ API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "special.md"
 
 # Documented but not implemented yet: each milestone (ROADMAP.md, S1-S8) moves its
 # functions from here to sd.special.__all__. Empty after S8.
-PLANNED = {
-    # S8
-    "wofz", "loggamma",
-}
+PLANNED: set[str] = set()
 
 
 def documented():

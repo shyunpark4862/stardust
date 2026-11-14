@@ -148,5 +148,6 @@ def test_messages_name_the_documented_arguments():
     for name, arg in [("ndtri", "p"), ("erfinv", "y"), ("erfcinv", "z"), ("erf", "x")]:
         with pytest.raises(TypeError, match=rf"^{name}\(\): '{arg}' must be"):
             getattr(S, name)("a")
-    with pytest.raises(TypeError, match=r"^erf\(\): not supported for complex128$"):
-        S.erf(1j)
+    # erf takes complex from S8 (docs/api/special.md §12); erfinv does not
+    with pytest.raises(TypeError, match=r"^erfinv\(\): not supported for complex128$"):
+        S.erfinv(1j)

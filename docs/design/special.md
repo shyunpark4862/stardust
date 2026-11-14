@@ -136,6 +136,11 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 | `expn(inf, x)`가 1.7e-10 | NaN (Q17: 정수가 아니다) | 사용자 결정 (S5) |
 | `hyp1f1(-1, 2, inf)` = inf, `hyp1f1(0, 0, x)` = inf, `hyp2f1(a, b, c, -inf)` = NaN | 참값·극한 | 사용자 결정 (S7, 2026-11-14) |
 | `lambertw`(−1/e에 가장 가까운 double) = NaN | −1 (분기점으로 본다) | 사용자 결정 (S7, Boost와 같다) |
+| `erf(1e300+1e300j)` = NaN, `loggamma`의 무한대 인자 NaN, `lambertw(5e-324, k≠0)` = inf + nan·i, `lambertw(infj)` 등 NaN, `lambertw`(−1/e에 가장 가까운 double + 0j) = NaN | 참값·극한 | 사용자 결정 (S8, 2026-11-14) |
+| `loggamma`의 극점이 nan + nan·i | inf + nan·i (허수부는 방향마다 다르다) | 사용자 결정 (S8) |
+| `lambertw(x − 0j, k=-1)`이 −1/e < x < 0에서 실수(위쪽 값) | 아래쪽 극한(가지 자름의 ±0j는 C99식) | 사용자 결정 (S8) |
+| 결과가 오버플로하는 곳의 ±inf 부호(반올림한 위상), `erf(5e-324+30j)` = inf | 정확한 위상의 부호, 참값 | 같은 원칙 (S8) |
+| 실수축·허수축 위 0인 부분의 부호가 일관되지 않다(`erfc(0+0j)`은 −0, `erfc(0.5+0j)`은 +0) | 도함수의 방향 | S8 (docs/api/special.md §12) |
 | Bessel·Airy의 ±inf 인자에서 NaN, `i0`·`i1`의 713–713.98 inf, `k0`·`k1`의 5e-324, 차수 극한(`yv(inf, x)` 등)의 NaN과 `yve`의 부호, 음의 차수 x = 0의 `iv(-1.5, 0)`·`yv(-½, 0)`·`yv(-1.5, 0)`, e-스케일 판의 x = 0 NaN, `airy(105)` | 참값 | 사용자 결정 (S6, 2026-11-14). `k0(5e-324)`는 같은 원칙 |
 | `gammainc(1e-300, 5e-324)` > 1, `gammainc(5e-324, x)` = 0, `gammainc(1, 5e-324)` = 0, `betainc(2, 1e300, 5e-324)` = NaN, `gammaincinv(5e-324, 0.5)`·`betaincinv(2, 3, 5e-324)`·`betainccinv(2, 3, 5e-324)` = NaN, 근이 언더플로하는 `betaincinv`가 DBL_MIN | 참값 | 사용자 결정 (S4, 2026-11-14) |
 | `expit(x)`가 x < −709.78에서 0 | 참값 eˣ(서브노멀), x < −745.13에서 0 | 서브노멀 규칙(§2.3), 사용자 결정 (S1, 2026-11-13) |
@@ -335,10 +340,20 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 - `rel_entr(x, y)`: `x·log(x/y)` 그대로면 x ≈ y에서 비의 반올림 오차가 0에 가까운 log에 그대로 남는다(잰 상대오차 7e-5). 그래서 `x/y ∈ [½, 2]`이면 `x·log1p((x-y)/y)`(x − y는 Sterbenz로 정확), 비가 0·서브노멀·inf가 되면 `x·(log x − log y)`. scipy 1.18도 x ≈ y에서 정확하다.
 
 ### 5.13 복소수 (S8)
-- `wofz`(Faddeeva): 후보 Weideman 유리 근사(N = 32, 한 식), Poppe–Wijers. `erf`, `erfc`, `erfcx`의 complex는 `wofz`로 계산한다.
-- `loggamma`: 복소 Stirling + 점화식 + 반사, 가지를 연속으로 맞춘다 (scipy와 같은 가지).
-- `lambertw`의 complex: 임의 가지 k, Halley
-- 대상은 Q19로 정했다: `wofz`, `loggamma`, 그리고 `erf erfc erfcx lambertw`의 complex 입력. complex 입력이면 결과도 complex128이다.
+- 대상은 Q19로 정했다: `wofz`, `loggamma`, 그리고 `erf erfc erfcx lambertw`의 complex 입력. complex 입력이면 결과도 complex128이다. 실수와 복소수를 둘 다 받는 함수는 바인딩이 입력의 dtype으로 루프를 고른다(실수 Op와 복소 Op가 따로 있다).
+- `wofz`(Faddeeva): 위쪽 반평면 Re z ≥ 0만 계산하고 나머지는 대칭 w(−z̄) = conj w(z)와 w(z) = 2exp(−z²) − w(−z)로 옮긴다.
+  - 0 ≤ Re z ≤ 7, 0 ≤ Im z ≤ 4: 0.1 격자의 가장 가까운 점 z₀ 둘레 Taylor 급수. 표(`coeffs/wofz_grid.hpp`, `tools/gen_wofz_grid.py`)에는 w(z₀)만 double-double로 두고, 계수는 w′ = −2zw + 2i/√π의 재귀 a_{n+1} = −(2z₀aₙ + 2a_{n−1})/(n+1)로 만든다. |z − z₀| ≤ 0.0707이라 20항 안팎이다.
+  - 그 밖: Laplace 연분수. 항 수는 Poppe–Wijers 식을 Johnson이 맞춘 것에 4를 더했다(더하지 않으면 76 ULP, 4이면 2.8 ULP). |z|가 3e8을 넘으면 첫 항 i/(√π z)만 쓴다.
+  - exp(−z²): −z² = (y−x)(y+x) − 2ixy를 double-double로 정확히 만들고, 위상의 두 조각을 libm의 sin·cos(정확한 인자 축소)에 넣는다.
+  - 설계의 후보(Weideman 유리 근사, Poppe–Wijers 한 식)는 쓰지 않았다. scipy(Johnson의 Faddeeva 패키지, 연분수와 Algorithm 916)를 재 보니 위쪽 반평면에서도 178 ULP라, 정확도 기준(§1.3)으로 격자 Taylor를 골랐다.
+- `erfcx(z) = w(iz)`. `erfc(z)`는 Re z ≥ 0에서 exp(−z²)·w(iz)(m·2ᵉ 꼴로 곱해 오버플로를 피한다), Re z < 0에서 2 − erfc(−z). `erf(z)`는 |z| < ½에서 Taylor 급수, 그 밖 Re z ≥ 0에서 1 − erfc(z), Re z < 0에서 −erf(−z). 실수축·허수축은 따로 다뤄 0인 부분을 정확히 0으로 낸다.
+- `loggamma`: Re z > 7이나 |Im z| > 7은 Stirling 8항, Re z < 0.1은 반사식(Hare의 2πik), 0.1 ≤ Re z ≤ 4이고 |Im z| ≤ 3이면 아래의 상쇄 없는 꼴, 나머지는 위로 올리는 점화식(곱이 음의 축을 건너는 횟수를 센다).
+  - 1과 2의 영점 둘레에서 점화식은 Stirling 값(크기 13 안팎)과 곱의 로그가 크게 상쇄한다(잰 최대 293 ULP, scipy 439). 그곳은 Re z ≤ 1.5까지 log1p(z−2) + loggamma(z−1)로 내린 뒤, w = z − 1로 loggamma(1+w) = −γw + Σ_{j≤6} μ(w/j) + Σ d_k w^k (μ(t) = t − log(1+t), d_k = (−1)^k ζ(k, 7)/k, `coeffs/loggamma_taylor.hpp`)로 계산한다. 각 부분이 서로 상쇄하지 않는다.
+- `lambertw`의 complex: 분기점 근처(|z + 1/e| < 0.3, k = 0과 위쪽의 k = −1, 아래쪽의 k = 1)는 S7의 분기점 급수(e·z + 1을 double-double로), 그 밖은 log1p(z)나 점근식 L₁ − L₂ + L₂/L₁에서 시작하는 Halley 반복. |z|가 1e150을 넘거나 (k ≠ 0에서) 1e-150보다 작으면 w + log w = log z + 2πik에 Halley를 쓴다(w·eʷ가 넘치지 않게). 실수축 위의 실수 가지(k = 0, 위쪽의 k = −1, 아래쪽의 k = 1)는 실수 함수의 값을 그대로 낸다.
+- **S8에서 정하고 바꾼 것** (docs/learn/S8-complex.md)
+  - `wofz`: 설계 후보 대신 격자 Taylor + 연분수(위). 연분수 항 수에 여유 4.
+  - `loggamma`: scipy와 같은 구조에 1–2 둘레의 상쇄 없는 꼴을 더했다(Taylor 원판 둘 대신).
+  - 복소수의 오차는 크기 기준, 영점 쪽은 포락선(사용자 결정). 오버플로하는 결과의 부호는 정확한 위상을 따른다.
 
 ---
 

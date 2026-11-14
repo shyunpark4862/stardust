@@ -22,8 +22,10 @@
 #include "special/ops/lambertw.hpp"
 #include "special/ops/incbeta.hpp"
 #include "special/ops/incgamma.hpp"
+#include "special/ops/loggamma.hpp"
 #include "special/ops/logistic.hpp"
 #include "special/ops/testing.hpp"
+#include "special/ops/wofz.hpp"
 #include "special/reduce.hpp"
 
 #include <nanobind/nanobind.h>
@@ -86,6 +88,27 @@ void def_nary(nb::module_& m) {
 template <typename... Ops>
 void def_naries(nb::module_& m) { (def_nary<Ops>(m), ...); }
 
+// A complex128 operand: a complex sd.ndarray or a Python complex (S8: the functions
+// that take complex choose their complex loop by the input, not by promotion).
+bool is_complex_operand(nb::handle o) {
+    if (is_ndarray(o)) return as_ndarray(o).dtype == DType::Complex128;
+    return PyComplex_Check(o.ptr());
+}
+
+// A one-input function with a real Op and a complex Op of the same name (S8, §12).
+template <typename Real, typename Complex>
+void def_real_complex(nb::module_& m) {
+    m.def(
+        Real::name,
+        [](nb::handle x, nb::handle out) {
+            return call_named(Real::name, [&] {
+                const nb::handle objs[] = {x};
+                return is_complex_operand(x) ? call<Complex>(objs, out) : call<Real>(objs, out);
+            });
+        },
+        nb::arg().none(), nb::kw_only(), nb::arg("out").none() = nb::none());
+}
+
 // For tests: how many tasks the iterator cuts a contiguous float64
 // elementwise call of n elements into, at `weight` adds per element
 // (one input, one output). Depends on n and weight only, never on the
@@ -103,7 +126,10 @@ void bind_special(nb::module_& core) {
     nb::module_ m = core.def_submodule("special", "stardust special-function native core");
     using namespace special;
     def_naries<Expit, Logit, LogExpit, Xlogy, Xlog1py, Entr, RelEntr>(m);  // S1, docs/api/special.md §5
-    def_naries<Erf, Erfc, Erfcx, Erfinv, Erfcinv, Ndtr, LogNdtr, Ndtri>(m);  // S2, §2
+    def_real_complex<Erf, ErfComplex>(m);  // S2, §2; complex S8, §12
+    def_real_complex<Erfc, ErfcComplex>(m);
+    def_real_complex<Erfcx, ErfcxComplex>(m);
+    def_naries<Erfinv, Erfcinv, Ndtr, LogNdtr, Ndtri>(m);  // S2, §2
     def_naries<ErfcSelect, ErfcEstrin>(m);  // S2 measurement variants (special/ops/erf.hpp)
     def_naries<Gamma, Rgamma, Gammaln, Digamma, Polygamma, Beta, Betaln, Binom>(m);  // S3, §3
     def_naries<Gammainc, Gammaincc, Gammaincinv, Gammainccinv>(m);  // S4, §3
@@ -113,15 +139,24 @@ void bind_special(nb::module_& core) {
     def_naries<I0, I0e, I1, I1e, K0, K0e, K1, K1e, J0, J1, Y0, Y1>(m);  // S6, §8.1
     def_naries<Jv, Yv, Iv, Kv, Jve, Yve, Ive, Kve>(m);  // S6, §8.2
     def_naries<Hyp1f1, Hyp2f1>(m);  // S7, §11
-    // lambertw(x, /, *, k=0, out=None): k is the int 0 or -1 (§11)
+    def_naries<Wofz, Loggamma>(m);  // S8, §12
+    // lambertw(x, /, *, k=0, out=None): k is an int; 0 or -1 for a real x (§11), any for a
+    // complex one (§12)
     m.def(
         "lambertw",
         [](nb::handle x, nb::handle k, nb::handle out) {
             return call_named("lambertw", [&] {
-                if (!PyLong_Check(k.ptr()) || PyBool_Check(k.ptr()))
-                    throw nb::type_error("'k' must be an int (0 or -1)");
+                if (!PyLong_Check(k.ptr()) || PyBool_Check(k.ptr())) throw nb::type_error("'k' must be an int");
+                if (is_complex_operand(x)) {
+                    const long kv = PyLong_AsLong(k.ptr());
+                    if (kv == -1 && PyErr_Occurred()) throw nb::python_error();
+                    const nb::object kc = nb::steal(PyComplex_FromDoubles(static_cast<double>(kv), 0.0));
+                    const nb::handle objs[] = {x, kc};
+                    return call<LambertwComplex>(objs, out);
+                }
                 const long kv = PyLong_AsLong(k.ptr());
-                if (kv != 0 && kv != -1) throw nb::value_error("'k' must be 0 or -1");
+                if (kv == -1 && PyErr_Occurred()) PyErr_Clear();
+                if ((kv != 0 && kv != -1) || PyErr_Occurred()) throw nb::value_error("'k' must be 0 or -1 for a real argument");
                 const nb::handle objs[] = {x};
                 return kv == 0 ? call<Lambertw0>(objs, out) : call<LambertwM1>(objs, out);
             });
@@ -177,9 +212,14 @@ void bind_special(nb::module_& core) {
                                  Erfcinv, Ndtr, LogNdtr, Ndtri, Gamma, Rgamma, Gammaln, Digamma, Polygamma,
                                  Beta, Betaln, Binom, Zeta, Gammainc, Gammaincc,
                                  Gammaincinv, Gammainccinv, Betainc, Betaincc, Betaincinv, Betainccinv, Expi, Expn, Ellipk, Ellipe, I0, I0e, I1, I1e, K0, K0e, K1, K1e, J0, J1, Y0,
-                                 Y1, Jv, Yv, Iv, Kv, Jve, Yve, Ive, Kve, Airy, Lambertw0, Hyp1f1, Hyp2f1, Fma3, Sum4, Powers4, CfTan>();
+                                 Y1, Jv, Yv, Iv, Kv, Jve, Yve, Ive, Kve, Airy, Lambertw0, Hyp1f1, Hyp2f1, Wofz, Loggamma, Fma3, Sum4, Powers4, CfTan>();
         if (name == "zeta_hurwitz") w = weight_of(Hurwitz::cost_ns);  // zeta's two-argument form
         if (name == "lambertw_m1") w = weight_of(LambertwM1::cost_ns);  // lambertw(k=-1)
+        // S8: the complex loops (reference-file names: erf_complex, lambertw_c1, ...)
+        if (name == "erf_complex") w = weight_of(ErfComplex::cost_ns);
+        if (name == "erfc_complex") w = weight_of(ErfcComplex::cost_ns);
+        if (name == "erfcx_complex") w = weight_of(ErfcxComplex::cost_ns);
+        if (name.rfind("lambertw_c", 0) == 0) w = weight_of(LambertwComplex::cost_ns);
         if (w == 0) throw nb::key_error(name.c_str());
         return w;
     }, nb::arg("name"));

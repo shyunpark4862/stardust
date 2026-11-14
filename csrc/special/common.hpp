@@ -14,7 +14,8 @@
 //
 // f is a pure function: no global state, errno never read. Every input is a
 // float64 (docs/design/special.md Q6): bool and int64 arrays are converted on
-// the way in, complex has no loop (until S8).
+// the way in, complex has no loop -- except the S8 functions (ops/wofz.hpp,
+// loggamma.hpp, lambertw.hpp), whose complex Ops take std::complex<double>.
 #pragma once
 
 #include "array/kernels/scalar_ops.hpp"

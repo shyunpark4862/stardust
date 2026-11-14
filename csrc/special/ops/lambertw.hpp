@@ -20,6 +20,7 @@
 
 #include <array>
 #include <cmath>
+#include <complex>
 
 namespace sd::special {
 
@@ -82,6 +83,98 @@ inline double wm1(double x) {
     return halley(w, x);
 }
 
+// ---- complex argument, any branch k (S8) ---------------------------------------
+using cplx = std::complex<double>;
+inline constexpr double kTwoPi = 6.283185307179586477;
+
+inline cplx cmul(cplx a, cplx b) { return ops::cmul(a, b); }
+inline cplx cdiv(cplx a, cplx b) { return ops::cdiv(a, b); }
+inline double norm1(cplx a) { return std::fabs(a.real()) + std::fabs(a.imag()); }
+inline cplx clog(cplx z) { return {std::log(std::hypot(z.real(), z.imag())), std::atan2(z.imag(), z.real())}; }
+inline cplx cexp(cplx z) {
+    const double m = std::exp(z.real());
+    return {m * std::cos(z.imag()), m * std::sin(z.imag())};
+}
+// The principal square root (Kahan): the sign of a zero imaginary part picks the side of the cut.
+inline cplx csqrt(cplx z) {
+    const double x = z.real(), y = z.imag();
+    if (x == 0.0 && y == 0.0) return {0.0, y};
+    const double t = std::sqrt(0.5 * (std::fabs(x) + std::hypot(x, y)));
+    if (x >= 0.0) return {t, y / (2.0 * t)};
+    return {std::fabs(y) / (2.0 * t), std::copysign(t, y)};
+}
+inline cplx chorner(cplx p) {
+    cplx r = kLambertwBranch[0];
+    for (std::size_t i = 1; i < kLambertwBranch.size(); ++i) r = cmul(r, p) + kLambertwBranch[i];
+    return r;
+}
+
+// Halley on w e^w - z.
+inline cplx challey(cplx w, cplx z) {
+    for (int it = 0; it < 64; ++it) {
+        const cplx ew = cexp(w);
+        const cplx f = cmul(w, ew) - z;
+        const cplx wp1 = w + 1.0;
+        const cplx d = cmul(ew, wp1) - cdiv(cmul(w + 2.0, f), 2.0 * wp1);
+        const cplx wn = w - cdiv(f, d);
+        if (norm1(wn - w) <= 0x1p-53 * norm1(wn) || !std::isfinite(wn.real()) || !std::isfinite(wn.imag())) return wn;
+        w = wn;
+    }
+    return w;
+}
+// For |z| beyond 1e150 or below 1e-150 (k != 0), where w e^w would overflow or
+// underflow: Halley on w + log w - L, L = log z + 2 pi i k (|W| > 300 there, away
+// from where the logarithm's branch could differ).
+inline cplx challey_log(cplx w, cplx L) {
+    for (int it = 0; it < 64; ++it) {
+        const cplx iw = cdiv(1.0, w);
+        const cplx g = w + clog(w) - L;
+        const cplx g1 = 1.0 + iw, g2 = -cmul(iw, iw);
+        const cplx wn = w - cdiv(g, g1 - cdiv(cmul(g, g2), 2.0 * g1));
+        if (norm1(wn - w) <= 0x1p-53 * norm1(wn)) return wn;
+        w = wn;
+    }
+    return w;
+}
+
+inline cplx cw(cplx z, double k) {
+    const double x = z.real(), y = z.imag();
+    if (std::isnan(x) || std::isnan(y)) return {kNaN, std::isnan(y) ? kNaN : 0.0};
+    if (x == 0.0 && y == 0.0) return k == 0.0 ? z : cplx{-kInf, 0.0};
+    if (std::isinf(x) || std::isinf(y)) return {kInf, std::atan2(y, x) + kTwoPi * k};  // log z + 2 pi i k
+    const bool below = std::signbit(y);
+    // the real branches on the real axis (exactly real): W_0 on [-1/e, inf), W_-1 from above
+    // and W_1 from below on [-1/e, 0)
+    if (y == 0.0 && x > kMinusInvE) {
+        if (k == 0.0) return {w0(x), y};
+        if (x < 0.0 && ((k == -1.0 && !below) || (k == 1.0 && below))) return {wm1(x), y};
+    }
+    const cplx L = clog(z) + cplx{0.0, kTwoPi * k};
+    const double r = std::hypot(x, y);
+    if (k == 0.0 && r < 1e-9) return z - cmul(z, z);  // the cube is below 2^-53 relative
+    if (r > 1e150 || (k != 0.0 && r < 1e-150)) {
+        const cplx L2 = clog(L);
+        return challey_log(L - L2 + cdiv(L2, L), L);
+    }
+    // e z + 1 with e as a double-double: exact to rounding near -1/e
+    const cplx ez1{std::fma(kEHi, x, 1.0) + kELo * x, kEHi * y + kELo * y};
+    const bool nearbp = std::hypot(ez1.real(), ez1.imag()) < 0.3 * kEHi;  // |z + 1/e| < 0.3
+    const bool branch = k == 0.0 || (k == -1.0 && !below) || (k == 1.0 && below);
+    cplx w;
+    if (nearbp && branch) {
+        const cplx p = csqrt(2.0 * ez1);
+        const cplx pk = k == 0.0 ? p : -p;  // k = -1 above, k = 1 below: the other sign
+        if (norm1(2.0 * ez1) <= 0.25) return chorner(pk);  // |p| <= 1/2 (as the real case)
+        w = chorner(pk);
+    } else if (k == 0.0 && r < 3.0 && x > -0.5) {
+        w = clog(1.0 + z);  // W(z) ~ log(1 + z) near 0
+    } else {
+        const cplx L2 = clog(L);
+        w = L - L2 + cdiv(L2, L);
+    }
+    return challey(w, z);
+}
+
 }  // namespace lambertw_detail
 
 struct Lambertw0 : Real {
@@ -97,6 +190,17 @@ struct LambertwM1 : Real {
     static constexpr std::array<const char*, 1> args{"x"};
     static constexpr double cost_ns = cost::kLambertwM1;
     static double f(double x) { return lambertw_detail::wm1(x); }
+};
+// A complex argument, any branch: the second operand is k (an integer, passed as complex).
+struct LambertwComplex {
+    static constexpr const char* name = "lambertw";
+    static constexpr int nin = 2, nout = 1;
+    static constexpr std::array<const char*, 2> args{"z", "k"};
+    static constexpr double cost_ns = cost::kLambertwC;
+    template <typename T> static constexpr bool ok = ops::is_cplx<T>;
+    static std::complex<double> f(std::complex<double> z, std::complex<double> k) {
+        return lambertw_detail::cw(z, k.real());
+    }
 };
 
 }  // namespace sd::special

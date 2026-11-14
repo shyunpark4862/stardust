@@ -57,7 +57,7 @@ def contract_error(got, hi, lo):
     rel = refdata.rel_error(got, hi, lo)
     sub = np.isfinite(hi) & (np.abs(hi) < 2.0**-1022)
     with np.errstate(invalid="ignore", over="ignore"):
-        absolute = np.abs((np.asarray(got) - hi) - lo) / SUBNORMAL_ABS * GUARANTEED
+        absolute = refdata._diff(got, hi, lo) / SUBNORMAL_ABS * GUARANTEED
     return np.where(sub, absolute, rel)
 
 
@@ -84,6 +84,7 @@ def test_scalar_path_gives_the_same_bits(name):
     f = function(name)
     got = np.asarray(f(*(sd.asarray(x) for x in xs)))
     idx = np.linspace(0, got.size - 1, 200).astype(int)
+    scalar = complex if np.iscomplexobj(xs[0]) else float
     for i in idx:
-        v = f(*(float(x[i]) for x in xs))
-        assert np.float64(v).view(np.uint64) == got[i].view(np.uint64), (name, i)
+        v = f(*(scalar(x[i]) for x in xs))
+        assert np.array([v], dtype=got.dtype).view(np.uint64).tolist() == got[i:i + 1].view(np.uint64).tolist(), (name, i)

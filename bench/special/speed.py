@@ -11,6 +11,8 @@ and a single Python-float call. Inputs: the guaranteed-region reference inputs
 
 import argparse
 
+import numpy as np
+
 import common
 
 N = 10**6
@@ -31,7 +33,7 @@ def main():
             f, ref = common.sd_function(name), common.scipy_function(name)
             xs = common.sample_inputs(name, N)
             sxs = tuple(sd.asarray(x) for x in xs)
-            one = tuple(float(x[0]) for x in xs)
+            one = tuple(complex(x[0]) if np.iscomplexobj(x) else float(x[0]) for x in xs)
             rows = {}
             for t in (1, 10):
                 sd.set_num_threads(t)

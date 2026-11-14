@@ -29,6 +29,8 @@ __all__ = [
     "jv", "yv", "iv", "kv", "jve", "yve", "ive", "kve", "airy",
     # S7: hypergeometric and Lambert W (§11)
     "hyp1f1", "hyp2f1", "lambertw",
+    # S8: complex (§12; erf, erfc, erfcx and lambertw also take complex)
+    "wofz", "loggamma",
 ]
 
 globals().update({_name: getattr(_core, _name) for _name in __all__})
