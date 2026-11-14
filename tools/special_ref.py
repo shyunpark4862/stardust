@@ -644,7 +644,7 @@ def _wide(f):
 def _airy_inputs(rng):
     m = 700
     x = np.concatenate([rng.uniform(-2, 1, m), loguniform(rng, 1, 110, m), -rng.uniform(2, 9.7, m),
-                        -loguniform(rng, 9.7, 1e11, m), loguniform(rng, 1e-300, 1e-3, m // 4, signed=True)])
+                        -loguniform(rng, 9.7, 1e12, m), loguniform(rng, 1e-300, 1e-3, m // 4, signed=True)])
     return (x,), np.ones(x.size, dtype=bool)
 
 
@@ -673,6 +673,46 @@ SCALES = {
     "iv": _iv_scale, "airy_ai": _airy_scale(0), "airy_aip": _airy_scale(1), "airy_bi": _airy_scale(2),
     "airy_bip": _airy_scale(3),
 }
+
+
+# S7 (user decisions): lambertw everywhere; hyp1f1, hyp2f1 guaranteed only where a form with
+# positive terms exists (the flag per point), the rest is their loose region.
+
+
+def _lambertw_inputs(branch):
+    def f(rng):
+        m = 1500
+        if branch == 0:
+            x = np.concatenate([loguniform(rng, 1e-300, 1e300, m), -loguniform(rng, 1e-300, 0.367879441, m // 2),
+                                -np.exp(-1) + loguniform(rng, 1e-16, 0.05, m // 2)])
+        else:
+            x = np.concatenate([-loguniform(rng, 1e-300, 0.367879441, m), -np.exp(-1) + loguniform(rng, 1e-16, 0.05, m // 2)])
+        return (x,), np.ones(x.size, dtype=bool)
+    return f
+
+
+def _hyp1f1_inputs(rng):
+    m = 400
+    a = np.concatenate([rng.uniform(0, 50, m), rng.uniform(0, 50, m), rng.uniform(0, 5, m), rng.uniform(0, 20, m),
+                        rng.uniform(-50, 0, m // 2), rng.uniform(-50, 50, m // 2)])
+    b = np.concatenate([rng.uniform(0.01, 50, m), a[m:2 * m] + rng.uniform(0, 30, m), a[2 * m:3 * m] + rng.uniform(0, 5, m),
+                        a[3 * m:4 * m] + rng.uniform(0, 20, m), rng.uniform(0.1, 50, m // 2), rng.uniform(-50, 0, m // 2)])
+    x = np.concatenate([loguniform(rng, 1e-3, 700, m), -loguniform(rng, 1e-3, 700, m), rng.uniform(-10, 10, m),
+                        -loguniform(rng, 700, 1e5, m), rng.uniform(-100, 100, m // 2), rng.uniform(-100, 100, m // 2)])
+    g = (a >= 0) & (b > 0) & ((x >= 0) | (b >= a))
+    return (a, b, x), g
+
+
+def _hyp2f1_inputs(rng):
+    m = 500
+    a = np.concatenate([rng.uniform(0, 20, m), rng.uniform(0, 10, m // 2), rng.uniform(0, 10, m // 2), rng.uniform(-20, 20, m)])
+    b = np.concatenate([rng.uniform(0, 20, m), rng.uniform(0, 10, m // 2), rng.uniform(0, 10, m // 2), rng.uniform(-20, 20, m)])
+    c = np.concatenate([np.minimum(a[:m], b[:m]) + rng.uniform(0.01, 20, m), rng.uniform(0.01, 10, m // 2),
+                        rng.uniform(0.01, 10, m // 2), rng.uniform(-20, 20, m)])
+    z = np.concatenate([rng.uniform(-1, 0.9, m), 1 - loguniform(rng, 1e-12, 0.1, m // 2), -loguniform(rng, 1, 1e8, m // 2),
+                        rng.uniform(-10, 0.999, m)])
+    g = (a >= 0) & (b >= 0) & (c > 0) & (c >= np.minimum(a, b)) & (z >= -1) & (z <= 0.9)
+    return (a, b, c, z), g
 
 
 INVERSES = {"gammaincinv", "gammainccinv", "betaincinv", "betainccinv"}
@@ -746,6 +786,11 @@ FUNCTIONS = {
     "airy_aip": (1, _airy_part(1), _airy_inputs),
     "airy_bi": (1, _airy_part(2), _airy_inputs),
     "airy_bip": (1, _airy_part(3), _airy_inputs),
+    # S7
+    "lambertw": (1, lambda x: mpmath.lambertw(x, 0), _lambertw_inputs(0)),
+    "lambertw_m1": (1, lambda x: mpmath.lambertw(x, -1), _lambertw_inputs(-1)),
+    "hyp1f1": (3, mpmath.hyp1f1, _hyp1f1_inputs),
+    "hyp2f1": (4, mpmath.hyp2f1, _hyp2f1_inputs),
 }
 
 

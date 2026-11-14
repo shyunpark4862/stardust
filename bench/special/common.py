@@ -27,6 +27,8 @@ ALIAS = {"zeta_hurwitz": "zeta"}  # reference files named apart from their funct
 
 # one output of a several-output function (tests/special/refdata.py PART)
 PART = {"airy_ai": ("airy", 0), "airy_aip": ("airy", 1), "airy_bi": ("airy", 2), "airy_bip": ("airy", 3)}
+# a keyword option (tests/special/refdata.py KW); scipy's lambertw is complex: its real part
+KW = {"lambertw_m1": ("lambertw", {"k": -1})}
 
 
 def sd_function(name):
@@ -36,6 +38,10 @@ def sd_function(name):
         base, i = PART[name]
         f = getattr(sd.special, base)
         return lambda *a: f(*a)[i]
+    if name in KW:
+        base, kw = KW[name]
+        f = getattr(sd.special, base)
+        return lambda *a: f(*a, **kw)
     name = ALIAS.get(name, name)
     return getattr(sd.special, name, None) or getattr(sd.special._core, name)
 
@@ -46,6 +52,7 @@ COUNTERPART = {
     "_cf_tan": "numpy.tan",
     "airy_ai": "scipy.special.airy[0]", "airy_aip": "scipy.special.airy[1]",
     "airy_bi": "scipy.special.airy[2]", "airy_bip": "scipy.special.airy[3]",
+    "lambertw_m1": "scipy.special.lambertw(k=-1).real", "lambertw": "scipy.special.lambertw.real",
     "zeta_hurwitz": "scipy.special.zeta",
 }
 
@@ -64,6 +71,12 @@ def scipy_function(name):
         base, i = PART[name]
         f = getattr(scipy.special, base)
         return lambda *a: f(*a)[i]
+    if name in ("lambertw", "lambertw_m1"):
+        import numpy
+        import scipy.special
+
+        k = -1 if name == "lambertw_m1" else 0
+        return lambda x: numpy.real(scipy.special.lambertw(x, k))
     path = counterpart(name)
     if path is None:
         return None

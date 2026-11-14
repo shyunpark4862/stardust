@@ -26,6 +26,8 @@ MIXED = {"gammaln", "digamma", "polygamma", "beta", "betaln", "binom", "zeta_hur
 ALIAS = {"zeta_hurwitz": "zeta"}
 # Reference files for one output of a several-output function: name -> (function, index).
 PART = {"airy_ai": ("airy", 0), "airy_aip": ("airy", 1), "airy_bi": ("airy", 2), "airy_bip": ("airy", 3)}
+# Reference files for a keyword option of a function: name -> (function, keywords).
+KW = {"lambertw_m1": ("lambertw", {"k": -1})}
 
 
 def mixed_error(got, hi, lo):

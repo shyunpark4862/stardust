@@ -134,6 +134,8 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 | `binom(n, k)`가 음의 정수 n에서 NaN | 정수 k ≥ 0이면 n(n−1)…(n−k+1)/k! | 사용자 결정 (S3) |
 | `expi(x)`가 709.78 < x < 716.4에서 inf, `expn(n, x)`의 서브노멀 꼬리가 0, `expn`의 n이 int32를 넘으면 NaN | 참값 | 사용자 결정 (S5, 2026-11-14) |
 | `expn(inf, x)`가 1.7e-10 | NaN (Q17: 정수가 아니다) | 사용자 결정 (S5) |
+| `hyp1f1(-1, 2, inf)` = inf, `hyp1f1(0, 0, x)` = inf, `hyp2f1(a, b, c, -inf)` = NaN | 참값·극한 | 사용자 결정 (S7, 2026-11-14) |
+| `lambertw`(−1/e에 가장 가까운 double) = NaN | −1 (분기점으로 본다) | 사용자 결정 (S7, Boost와 같다) |
 | Bessel·Airy의 ±inf 인자에서 NaN, `i0`·`i1`의 713–713.98 inf, `k0`·`k1`의 5e-324, 차수 극한(`yv(inf, x)` 등)의 NaN과 `yve`의 부호, 음의 차수 x = 0의 `iv(-1.5, 0)`·`yv(-½, 0)`·`yv(-1.5, 0)`, e-스케일 판의 x = 0 NaN, `airy(105)` | 참값 | 사용자 결정 (S6, 2026-11-14). `k0(5e-324)`는 같은 원칙 |
 | `gammainc(1e-300, 5e-324)` > 1, `gammainc(5e-324, x)` = 0, `gammainc(1, 5e-324)` = 0, `betainc(2, 1e300, 5e-324)` = NaN, `gammaincinv(5e-324, 0.5)`·`betaincinv(2, 3, 5e-324)`·`betainccinv(2, 3, 5e-324)` = NaN, 근이 언더플로하는 `betaincinv`가 DBL_MIN | 참값 | 사용자 결정 (S4, 2026-11-14) |
 | `expit(x)`가 x < −709.78에서 0 | 참값 eˣ(서브노멀), x < −745.13에서 0 | 서브노멀 규칙(§2.3), 사용자 결정 (S1, 2026-11-13) |
@@ -318,6 +320,11 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
   - 초기값: 분기점(−1/e) 근처는 `p = √(2(ex+1))`의 급수, 그 밖은 log 점근(`L₁ - L₂ + L₂/L₁`), k = 0의 작은 x는 Padé
   - Halley 반복을 수렴할 때까지(상한 있음). scipy의 `tol=`은 두지 않는다: 결과의 정확도는 함수가 정한다.
   - k = 0은 x ≥ −1/e, k = −1은 −1/e ≤ x < 0에서 정의. 그 밖은 실수 값이 없으므로 NaN (S8 뒤 complex 입력은 complex 결과)
+
+- **S7에서 정하고 바꾼 것** (docs/learn/S7-hyper-lambertw.md)
+  - `hyp1f1`: 급수 항을 double-double로(연이은 곱이 k ULP를 쌓아 x ≈ 500에서 120 ULP였다), Kummer의 b − a도 double-double, x ≤ −700 근처는 Kummer 형태의 점근식(Γ(b − a)를 1차 보정). b < 0에서 두 형태가 모두 상쇄하면 양의 b′에서 b에 대한 재귀(DLMF 13.3.2). 큰 |a|(a < 0)의 상쇄는 느슨한 영역으로 남았다(Bessel형 전개를 넣지 않음).
+  - `hyp2f1`: 급수 항을 double-double로. c − a − b가 정수에 1e-3 안으로 가깝지만 정수가 아니면 1 − z ≥ 1e-3에서 급수, 1e-8 안이면 정수 m의 극한식.
+  - `lambertw`: 분기점 둘레 급수의 계수를 정의에서 생성(`tools/gen_lambertw_branch.py`), e·x + 1은 e를 double-double로.
 
 ### 5.12 로지스틱·정보
 - `expit`: `x ≥ 0`이면 `1/(1+e^{-x})`, 아니면 `e^x/(1+e^x)`. NEON은 둘 다 계산해 고른다.

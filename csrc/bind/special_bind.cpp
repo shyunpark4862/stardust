@@ -18,6 +18,8 @@
 #include "special/ops/erf.hpp"
 #include "special/ops/expint.hpp"
 #include "special/ops/gamma.hpp"
+#include "special/ops/hyper.hpp"
+#include "special/ops/lambertw.hpp"
 #include "special/ops/incbeta.hpp"
 #include "special/ops/incgamma.hpp"
 #include "special/ops/logistic.hpp"
@@ -110,6 +112,21 @@ void bind_special(nb::module_& core) {
     def_naries<EllipkAgm, EllipeCarlson>(m);  // S5 measurement variants (the design's methods)
     def_naries<I0, I0e, I1, I1e, K0, K0e, K1, K1e, J0, J1, Y0, Y1>(m);  // S6, §8.1
     def_naries<Jv, Yv, Iv, Kv, Jve, Yve, Ive, Kve>(m);  // S6, §8.2
+    def_naries<Hyp1f1, Hyp2f1>(m);  // S7, §11
+    // lambertw(x, /, *, k=0, out=None): k is the int 0 or -1 (§11)
+    m.def(
+        "lambertw",
+        [](nb::handle x, nb::handle k, nb::handle out) {
+            return call_named("lambertw", [&] {
+                if (!PyLong_Check(k.ptr()) || PyBool_Check(k.ptr()))
+                    throw nb::type_error("'k' must be an int (0 or -1)");
+                const long kv = PyLong_AsLong(k.ptr());
+                if (kv != 0 && kv != -1) throw nb::value_error("'k' must be 0 or -1");
+                const nb::handle objs[] = {x};
+                return kv == 0 ? call<Lambertw0>(objs, out) : call<LambertwM1>(objs, out);
+            });
+        },
+        nb::arg().none(), nb::kw_only(), nb::arg("k").none() = 0, nb::arg("out").none() = nb::none());
     // airy(x, /) -> AiryResult(ai, aip, bi, bip) (§9; stardust._results)
     m.def(
         "airy",
@@ -160,8 +177,9 @@ void bind_special(nb::module_& core) {
                                  Erfcinv, Ndtr, LogNdtr, Ndtri, Gamma, Rgamma, Gammaln, Digamma, Polygamma,
                                  Beta, Betaln, Binom, Zeta, Gammainc, Gammaincc,
                                  Gammaincinv, Gammainccinv, Betainc, Betaincc, Betaincinv, Betainccinv, Expi, Expn, Ellipk, Ellipe, I0, I0e, I1, I1e, K0, K0e, K1, K1e, J0, J1, Y0,
-                                 Y1, Jv, Yv, Iv, Kv, Jve, Yve, Ive, Kve, Airy, Fma3, Sum4, Powers4, CfTan>();
+                                 Y1, Jv, Yv, Iv, Kv, Jve, Yve, Ive, Kve, Airy, Lambertw0, Hyp1f1, Hyp2f1, Fma3, Sum4, Powers4, CfTan>();
         if (name == "zeta_hurwitz") w = weight_of(Hurwitz::cost_ns);  // zeta's two-argument form
+        if (name == "lambertw_m1") w = weight_of(LambertwM1::cost_ns);  // lambertw(k=-1)
         if (w == 0) throw nb::key_error(name.c_str());
         return w;
     }, nb::arg("name"));

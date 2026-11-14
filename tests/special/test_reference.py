@@ -19,6 +19,12 @@ LOOSE = {
     # x^2 is all that is left: 0.83 measured at a few ULP from pi/2 (np.tan, with its argument
     # reduction, stays at 2 ULP). The guaranteed region |x| <= 1 measures 6.7 ULP.
     "_cf_tan": 1.0,
+    # S7 (user decision: guaranteed only where a positive-term form exists). hyp1f1's loose
+    # region: a < 0 with x > 0 cancels up to 1e29 in every form used (measured 3.9e-3,
+    # docs/learn/S7-hyper-lambertw.md); hyp2f1's: z > 0.9, z < -1, negative parameters
+    # (measured 6.6e-13).
+    "hyp1f1": 1e-2,
+    "hyp2f1": 1e-12,
 }
 
 
@@ -28,6 +34,10 @@ mixed_error = refdata.mixed_error
 
 
 def function(name):
+    if name in refdata.KW:
+        base, kw = refdata.KW[name]
+        f = getattr(sd.special, base)
+        return lambda *a: f(*a, **kw)
     if name in refdata.PART:
         base, i = refdata.PART[name]
         f = getattr(sd.special, base)

@@ -11,7 +11,7 @@
 | 배열 | `sd` | [docs/api/array.md](docs/api/array.md) |
 | 선형대수 | `sd.linalg` | [docs/api/linalg.md](docs/api/linalg.md) |
 | 데이터프레임 | `sd.frame` | [docs/api/frame.md](docs/api/frame.md) |
-| 특수함수 | `sd.special` | [docs/api/special.md](docs/api/special.md) (S6까지: 로지스틱·정보 7, 오차함수 8, 감마·베타·제타 9, 불완전 감마·베타 8, 리덕션·지수적분·타원 7, Bessel·Airy 21) |
+| 특수함수 | `sd.special` | [docs/api/special.md](docs/api/special.md) (S7까지: 로지스틱·정보 7, 오차함수 8, 감마·베타·제타 9, 불완전 감마·베타 8, 리덕션·지수적분·타원 7, Bessel·Airy 21, 초기하·Lambert W 3) |
 
 - 처음 보는 사람은 안내서 [docs/guide/](docs/guide/README.md)부터 읽는다. 규칙의 이유와 구조를 이어서 설명한다. 안내서와 이 문서가 다르면 이 문서가 맞다.
 - 설계의 근거와 측정은 `docs/design/<영역>.md`, 통합의 결정은 [DESIGN.md](DESIGN.md)에 있다.

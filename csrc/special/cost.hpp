@@ -90,7 +90,10 @@ inline constexpr double kI0 = 16, kI0e = 12, kI1 = 16, kI1e = 13;
 inline constexpr double kK0 = 24, kK0e = 16, kK1 = 24, kK1e = 16;
 inline constexpr double kJ0 = 11, kJ1 = 12, kY0 = 14, kY1 = 13;
 inline constexpr double kJv = 750, kYv = 750, kIv = 2000, kKv = 1600;  // the reference mix: |v| up to 1000
-inline constexpr double kAiry = 300;
+inline constexpr double kAiry = 270;
+// S7 (special/ops/lambertw.hpp, hyper.hpp), bench/special/s7/cost.md
+inline constexpr double kLambertw = 20, kLambertwM1 = 43;
+inline constexpr double kHyp1f1 = 1600, kHyp2f1 = 2200;  // the reference mix (weight capped at kMaxWeight)
 }  // namespace cost
 
 }  // namespace sd::special

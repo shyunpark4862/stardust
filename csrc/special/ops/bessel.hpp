@@ -144,7 +144,7 @@ inline JY jy_temme(double nu, double x) {
     // relative to the downward recurrence's start (NR), from the forward pass.
     int isign = 1, terms = 0;
     {
-        double b = xi2 * nu, d = 0.0, c = std::max(nu * xi, kTiny), h = c;
+        double b = xi2 * nu, d = 0.0, c = std::max(nu * xi, kTiny);
         for (int i = 1; i <= 50000000; ++i) {
             b += xi2;
             d = b - d;
@@ -153,7 +153,6 @@ inline JY jy_temme(double nu, double x) {
             if (std::fabs(c) < kTiny) c = kTiny;
             d = 1.0 / d;
             const double del = c * d;
-            h *= del;
             if (d < 0.0) isign = -isign;
             terms = i;
             if (std::fabs(del - 1.0) <= kEps) break;
