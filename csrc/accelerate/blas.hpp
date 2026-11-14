@@ -2,8 +2,8 @@
 // type-generic wrappers over Accelerate's CBLAS, one template per routine for
 // float64 and complex128 (the LAPACK side is accelerate/lapack.hpp).
 //
-// All are row-major with alpha = 1 and beta = 0, and unconjugated: matmul
-// never conjugates. Integers are Accelerate's 64-bit __LAPACK_int (ILP64, set
+// All are row-major with alpha = 1 and beta = 0, and unconjugated (matmul
+// never conjugates) -- except syrk_upper, cov's A A^H. Integers are Accelerate's 64-bit __LAPACK_int (ILP64, set
 // in CMakeLists.txt).
 #pragma once
 
@@ -40,6 +40,16 @@ void gemm(Trans ta, Trans tb, Int m, Int n, Int k, const T* a, Int lda, const T*
     if constexpr (std::is_same_v<T, std::complex<double>>)
         cblas_zgemm(CblasRowMajor, ta, tb, m, n, k, &one, a, lda, b, ldb, &zero, c, ldc);
     else cblas_dgemm(CblasRowMajor, ta, tb, m, n, k, one, a, lda, b, ldb, zero, c, ldc);
+}
+
+// The upper triangle of C (n x n, leading dimension ldc) = A A^T for float64
+// (dsyrk) or A A^H for complex128 (zherk, whose diagonal is exactly real);
+// A is n x k row-major. Half the multiply-adds of gemm (cov, docs/design/array.md §6.12).
+template <class T>
+void syrk_upper(Int n, Int k, const T* a, Int lda, T* c, Int ldc) {
+    if constexpr (std::is_same_v<T, std::complex<double>>)
+        cblas_zherk(CblasRowMajor, CblasUpper, CblasNoTrans, n, k, 1.0, a, lda, 0.0, c, ldc);
+    else cblas_dsyrk(CblasRowMajor, CblasUpper, CblasNoTrans, n, k, 1.0, a, lda, 0.0, c, ldc);
 }
 
 }  // namespace sd::blas

@@ -471,10 +471,14 @@ numpy의 nan 함수는 NaN을 중립값(합은 0, 곱은 1, argmin은 +inf)으�
 - bool·int64는 NaN이 없으므로 이름 앞의 `nan`을 뗀 함수로 바로 간다.
 
 ### 6.12 cov, corrcoef (`array/ops/covariance.cpp`, T0)
-- numpy의 순서를 따른다: 변수를 행으로 둔 float64/complex128 복사본 → `sd.mean(axis=1)` → 행마다 빼기(행 묶음으로 병렬) → `X @ conj(X).T`(§9의 matmul) → `1/fact`를 곱한다(numpy처럼 나누지 않고 곱한다).
+- numpy의 순서를 따른다: 변수의 평균 → 중심화 → `X X^H` → `1/fact`를 곱한다(numpy처럼 나누지 않고 곱한다). 단계는 다음과 같다.
+  1. 평균: x 자체에서 관측 축으로 `sd.mean`(`rowvar=False`면 전치한 뷰).
+  2. 중심화: `subtract(x, 평균, out=X)` 하나로 C 순서 (p, n) 행렬을 만든다. 복사와 중심화가 한 패스다(전에는 복사·평균·중심화가 각각 패스였다).
+  3. 곱: BLAS. `n ≤ 4p`이면 `dsyrk`/`zherk`(위 삼각만, gemm의 절반), 아니면 `gemm`(`B = X^H`). Accelerate의 syrk는 관측이 많으면 오히려 느려서(p = 20, n = 1e5: 3.5 ms 대 2.0 ms) 모양으로 고른다. 경계는 C++로 잰 표에서 정했다(p = 2000, n = 200: syrk 2.4배; n ≥ 4p에서는 gemm이 같거나 빠름). numpy의 `dot(X, X.T)`도 syrk를 쓴다.
+  4. 위 삼각을 아래로 복사하면서 `1/fact`를 곱한다. 64×64 타일 단위다(열 방향으로 쓰면 원소마다 캐시를 놓쳐 p = 2000에서 1.7 ms였다). 블록 행마다 병렬이다. 결과는 정확히 대칭(complex는 에르미트, 대각은 실수)이다.
 - `fact = N - correction ≤ 0`이면 NaN이다. `var`의 규칙과 같다(§6.8). numpy는 경고를 내고 `fact = 0`으로 나누어 inf나 NaN을 낸다.
 - 평균의 합 순서와 BLAS가 numpy와 다르다. 그래서 비트는 같지 않고, 테스트는 상대 1e-13으로 비교한다.
-- `corrcoef`: 대각의 제곱근으로 행과 열을 차례로 나누고(`c / s[:, None] / s[None, :]`의 순서) [-1, 1]로 자른다. complex의 나눗셈은 실수부와 허수부를 따로 나눈다. 유한한 값이면 numpy의 복소 나눗셈(Smith)과 결과가 같다.
+- `corrcoef`: 대각의 제곱근으로 행과 열을 차례로 나누고(`c / s[:, None] / s[None, :]`의 순서) [-1, 1]로 자른다(행마다 병렬). complex의 나눗셈은 실수부와 허수부를 따로 나눈다. 유한한 값이면 numpy의 복소 나눗셈(Smith)과 결과가 같다.
 
 ### 6.13 bincount, histogram (`array/ops/histogram.cpp`, T0b)
 - `bincount`: 이미 연속 int64이면 복사하지 않는다. 최소·최대를 한 번에 구한다(병렬). 개수는 정수라서 16개 구간으로 나누어 각자 세고 더한다(구간마다의 개수 배열이 입력보다 작을 때). 가중치 합은 numpy처럼 원소 순서대로 직렬이다. numpy와 비트가 같다.
@@ -661,9 +665,10 @@ dtype과 레인 길이만 본다. 데이터를 보고 고르지 않는다 (§1.4
   - 행렬 × 행렬: `cblas_dgemm`/`cblas_zgemm`
   - 한 행 또는 한 열: `gemv`
   - 원소 하나(벡터 × 벡터): `dot`. complex는 `cblas_zdotu_sub`(켤레 없음, matmul은 켤레를 취하지 않는다)
+  - `cov`의 `X X^H`: `cblas_dsyrk`/`cblas_zherk` 또는 `gemm`(§6.12)
 - **레이아웃**: BLAS는 포인터, leading dimension, 전치 플래그로 행렬을 읽는다. 행이나 열 중 한 방향이 연속이면 그대로 넘긴다. 열이 연속이면 "cols×rows 행 우선 행렬의 전치"로 넘긴다. 그 외에는 연속 행 우선 복사본을 만든다. 벡터의 stride가 0이거나 음수면 복사한다.
 - 한 행렬은 항상 BLAS 호출 하나다. 그래서 배치를 어떻게 나눠도 비트가 같다.
-- BLAS 호출은 `accelerate/blas.hpp`의 `blas::dot`, `blas::gemv`, `blas::gemm`(float64와 complex128을 템플릿 하나로)을 거친다.
+- BLAS 호출은 `accelerate/blas.hpp`의 `blas::dot`, `blas::gemv`, `blas::gemm`, `blas::syrk_upper`(float64와 complex128을 템플릿 하나로)를 거친다.
 
 ### 9.3 int64 커널 (int64, bool)
 - 자체 커널이다. 루프 순서는 i-k-j라서 가장 안쪽 루프가 b의 한 행과 c의 한 행을 걷는다. 블로킹과 패킹은 하지 않는다. 곱셈과 덧셈은 wrap한다.

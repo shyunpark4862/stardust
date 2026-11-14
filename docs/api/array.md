@@ -724,7 +724,7 @@ corrcoef(x, /, *, rowvar=True)
   - int 또는 float다. numpy와 달리 정수가 아닌 값도 받는다.
 - `corrcoef`: `cov`를 각 표준편차로 나누고, 실수부(complex는 허수부도)를 [-1, 1]로 자른다. `correction`은 약분되므로 없다.
   - 변수가 하나면 `c / c`(1.0 또는 NaN)다.
-- 평균과 행렬곱은 stardust의 것이다. 그래서 값은 numpy와 마지막 몇 비트가 다를 수 있다(§7.8). 결과는 결정적이다.
+- 평균과 행렬곱(BLAS)은 stardust의 것이다. 그래서 값은 numpy와 마지막 몇 비트가 다를 수 있다(§7.8). 결과는 결정적이고 정확히 대칭이다(complex는 에르미트, 대각은 실수).
 - numpy의 `y`, `bias`, `fweights`, `aweights`, `dtype` 인자는 없다.
 
 ### §7.12 `bincount`, `histogram`

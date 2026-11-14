@@ -1,8 +1,8 @@
 // cov and corrcoef (docs/api/array.md §7.11).
 //
 // numpy's steps in numpy's order: each variable's mean, the centred matrix
-// X, X @ X^H (our matmul), times 1/(N - correction). The mean and the matmul
-// are ours, so the bits are not numpy's (docs/design/array.md §6.12).
+// X, X X^H, times 1/(N - correction). The mean and the BLAS call are ours,
+// so the bits are not numpy's (docs/design/array.md §6.12).
 
 #include "array/ops/covariance.hpp"
 
@@ -10,8 +10,9 @@
 #include "bind/pyutil.hpp"
 #include "array/convert.hpp"
 #include "array/kernels/scalar_ops.hpp"
+#include "accelerate/blas.hpp"
 #include "array/ops/copy.hpp"
-#include "array/ops/matmul.hpp"
+#include "array/ops/ufunc.hpp"
 #include "array/ops/reduction.hpp"
 #include "array/parallel_limits.hpp"
 #include "parallel/pool.hpp"
@@ -30,14 +31,32 @@ double parse_correction(nb::handle o) {
     throw nb::type_error(("'correction' must be an int or a float, not " + py_type_name(o)).c_str());
 }
 
+// Rows [0, rows) in parallel pieces of about kParallelTask elements of `width`.
+template <typename F>
+void for_rows(std::int64_t rows, std::int64_t width, F&& fn) {
+    const std::int64_t per = std::max<std::int64_t>(1, kParallelTask / std::max<std::int64_t>(width, 1));
+    const std::int64_t tasks = (rows + per - 1) / per;
+    if (rows * width >= kParallelThreshold && tasks > 1 && parallel::available())
+        parallel::parallel_for(tasks, [&](std::int64_t t) { fn(t * per, std::min(rows, (t + 1) * per)); });
+    else fn(0, rows);
+}
+
 // The covariance matrix (p, p): float64, or complex128 for complex x.
+//   1. each variable's mean: sd.mean of x itself along the observations;
+//   2. the centred matrix X (p, n), C-ordered in the result dtype, written
+//      by one subtract (x - mean, out=X) -- the copy and the centring in one pass;
+//   3. X X^H by BLAS: syrk / herk (the upper triangle, half of gemm's work;
+//      numpy's dot(X, X.T) takes syrk too) or gemm, by the shape;
+//   4. the lower triangle copied from the upper one (so the result is exactly
+//      symmetric / Hermitian, with a real diagonal) and everything times
+//      1/fact, in one pass.
 NDArray cov_matrix(nb::handle x_obj, bool rowvar, double correction) {
     const NDArray& x = require_ndarray(x_obj);
     if (x.ndim != 1 && x.ndim != 2) throw nb::value_error("'x' must be 1-D or 2-D");
     const DType d = x.dtype == DType::Complex128 ? DType::Complex128 : DType::Float64;
 
     // Variables in rows: a 1-D x is one variable; rowvar=False transposes a 2-D x.
-    NDArray view = x;
+    NDArray view = view_of(x_obj);
     if (x.ndim == 1) {
         view.ndim = 2;
         view.shape[0] = 1;
@@ -50,52 +69,63 @@ NDArray cov_matrix(nb::handle x_obj, bool rowvar, double correction) {
     }
     view.update_flags();
     const std::int64_t p = view.shape[0], n = view.shape[1];
-    const std::int64_t shape[] = {p, n};
-    NDArray xc = new_array(d, shape);
-    assign(xc, view);
+    const std::int64_t cshape[] = {p, p};
+    NDArray c = new_array(d, cshape);
+    if (p == 0) return c;
 
-    // Centre each row on its mean (sd.mean, so the same bits as mean(x, axis=1)).
-    const NDArray mu = as_ndarray(mean(wrap(NDArray(xc)), nb::int_(1), nb::bool_(true)));
+    nb::object v = wrap(NDArray(view));
+    const nb::object mu = mean(v, nb::int_(1), nb::bool_(true));  // (p, 1)
+    const std::int64_t xshape[] = {p, n};
+    NDArray xc = new_array(d, xshape);
+    nb::object xc_obj = wrap(NDArray(xc));
+    binary<ops::Subtract>(v, mu, xc_obj);
+
     visit_dtype(d, [&]<typename T>(std::type_identity<T>) {
         if constexpr (ops::is_float<T> || ops::is_cplx<T>) {
-            T* a = reinterpret_cast<T*>(xc.data);
-            const T* m = reinterpret_cast<const T*>(mu.data);
-            auto centre = [&](std::int64_t first, std::int64_t last) {
-                for (std::int64_t i = first; i < last; ++i)
-                    for (std::int64_t k = 0; k < n; ++k) a[i * n + k] = a[i * n + k] - m[i];
-            };
-            // Rows in tasks of at least kParallelThreshold elements: smaller ones cost more to hand out than they save.
-            const std::int64_t rows = std::max<std::int64_t>(1, kParallelThreshold / std::max<std::int64_t>(n, 1));
-            const std::int64_t tasks = (p + rows - 1) / rows;
-            if (tasks > 1 && parallel::available()) {
-                parallel::parallel_for(tasks, [&](std::int64_t t) { centre(t * rows, std::min(p, (t + 1) * rows)); });
+            T* cp = reinterpret_cast<T*>(c.data);
+            const T* xp = reinterpret_cast<const T*>(xc.data);
+            if (n > 0) {
+                nb::gil_scoped_release release;  // BLAS may take a while; it touches no Python objects
+                // syrk does half of gemm's multiply-adds, but Accelerate's syrk
+                // is slower when there are many more observations than
+                // variables (p = 20, n = 1e5: 3.5 ms against 2.0 ms). Measured:
+                // syrk wins or ties while n <= 4p (p = 2000, n = 200: 2.4x),
+                // gemm from there on.
+                if (n <= 4 * p) blas::syrk_upper<T>(p, n, xp, n, cp, p);
+                else blas::gemm<T>(CblasNoTrans, ops::is_cplx<T> ? CblasConjTrans : CblasTrans, p, p, n, xp, n, xp, n, cp, p);
             } else {
-                centre(0, p);
+                std::fill(cp, cp + p * p, T(0));
             }
-        }
-    });
-
-    // X^H as a transposed view (of a conjugated copy for complex).
-    NDArray xh = xc;
-    if (d == DType::Complex128) {
-        xh = new_array(d, shape);
-        const complex128* a = reinterpret_cast<const complex128*>(xc.data);
-        complex128* h = reinterpret_cast<complex128*>(xh.data);
-        for (std::int64_t i = 0; i < p * n; ++i) h[i] = {a[i].real(), -a[i].imag()};
-    }
-    std::swap(xh.shape[0], xh.shape[1]);
-    std::swap(xh.strides[0], xh.strides[1]);
-    xh.update_flags();
-    NDArray c = as_ndarray(matmul(wrap(std::move(xc)), wrap(std::move(xh))));
-
-    // numpy multiplies by 1/fact; fact <= 0 gives NaN, as var does
-    // (docs/design/array.md §6.8).
-    const double fact = static_cast<double>(n) - correction;
-    const double scale = fact > 0 ? 1.0 / fact : std::numeric_limits<double>::quiet_NaN();
-    visit_dtype(d, [&]<typename T>(std::type_identity<T>) {
-        if constexpr (ops::is_float<T> || ops::is_cplx<T>) {
-            T* a = reinterpret_cast<T*>(c.data);
-            for (std::int64_t i = 0; i < c.size(); ++i) a[i] = a[i] * scale;
+            // numpy multiplies by 1/fact; fact <= 0 gives NaN, as var does
+            // (docs/design/array.md §6.8). The lower triangle is the upper one
+            // mirrored (conjugated for complex).
+            const double fact = static_cast<double>(n) - correction;
+            const double scale = fact > 0 ? 1.0 / fact : std::numeric_limits<double>::quiet_NaN();
+            // In 64 x 64 tiles: writing the lower triangle column by column
+            // (stride p) missed the cache on every element (p = 2000: 1.7 ms
+            // of a 2.7 ms cov). Each task owns the tiles of one block row of
+            // the upper triangle and their mirrors, which no other task touches.
+            constexpr std::int64_t kTile = 64;
+            const std::int64_t blocks = (p + kTile - 1) / kTile;
+            auto block_row = [&](std::int64_t bi) {
+                const std::int64_t i0 = bi * kTile, i1 = std::min(p, i0 + kTile);
+                for (std::int64_t j0 = i0; j0 < p; j0 += kTile) {
+                    const std::int64_t j1 = std::min(p, j0 + kTile);
+                    for (std::int64_t i = i0; i < i1; ++i) {
+                        if constexpr (ops::is_cplx<T>) {
+                            if (j0 == i0) cp[i * p + i] = T(cp[i * p + i].real(), 0.0);  // |x|^2 sums: real
+                        }
+                        for (std::int64_t j = std::max(j0, i); j < j1; ++j) {
+                            const T val = cp[i * p + j] * scale;
+                            cp[i * p + j] = val;
+                            if constexpr (ops::is_cplx<T>) cp[j * p + i] = T(val.real(), -val.imag());
+                            else cp[j * p + i] = val;
+                        }
+                    }
+                }
+            };
+            if (p * p >= kParallelThreshold && blocks > 1 && parallel::available()) parallel::parallel_for(blocks, block_row);
+            else for (std::int64_t b = 0; b < blocks; ++b) block_row(b);
         }
     });
     return c;
@@ -133,17 +163,19 @@ nb::object corrcoef(nb::handle x, nb::handle rowvar_obj) {
                 if constexpr (ops::is_cplx<T>) sd[i] = std::sqrt(a[i * p + i].real());
                 else sd[i] = std::sqrt(a[i * p + i]);
             }
-            for (std::int64_t i = 0; i < p; ++i)
-                for (std::int64_t j = 0; j < p; ++j) {
-                    T v = a[i * p + j];
-                    if constexpr (ops::is_cplx<T>) {
-                        const double re = v.real() / sd[i] / sd[j], im = v.imag() / sd[i] / sd[j];
-                        v = {clip(re), clip(im)};
-                    } else {
-                        v = clip(v / sd[i] / sd[j]);
+            for_rows(p, p, [&](std::int64_t r0, std::int64_t r1) {
+                for (std::int64_t i = r0; i < r1; ++i)
+                    for (std::int64_t j = 0; j < p; ++j) {
+                        T v = a[i * p + j];
+                        if constexpr (ops::is_cplx<T>) {
+                            const double re = v.real() / sd[i] / sd[j], im = v.imag() / sd[i] / sd[j];
+                            v = {clip(re), clip(im)};
+                        } else {
+                            v = clip(v / sd[i] / sd[j]);
+                        }
+                        a[i * p + j] = v;
                     }
-                    a[i * p + j] = v;
-                }
+            });
         }
     });
     return wrap(std::move(c));

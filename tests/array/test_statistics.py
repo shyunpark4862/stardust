@@ -363,6 +363,19 @@ def test_corrcoef():
     np.testing.assert_allclose(np.asarray(sd.corrcoef(sd.asarray(z))), np.corrcoef(z), rtol=1e-13, atol=1e-15)
 
 
+@pytest.mark.parametrize("shape", [(40, 100), (40, 1000), (3, 5000)])  # syrk (n <= 4p) and gemm paths
+def test_cov_exactly_symmetric(shape):
+    rng = np.random.default_rng(16)
+    x = rng.standard_normal(shape)
+    c = np.asarray(sd.cov(sd.asarray(x)))
+    assert np.array_equal(c, c.T)
+    np.testing.assert_allclose(c, np.cov(x, ddof=0), rtol=1e-12, atol=1e-14)
+    z = x + 1j * rng.standard_normal(shape)
+    cz = np.asarray(sd.cov(sd.asarray(z)))
+    assert np.array_equal(cz, cz.conj().T) and np.all(cz.diagonal().imag == 0)
+    np.testing.assert_allclose(cz, np.cov(z, ddof=0), rtol=1e-12, atol=1e-14)
+
+
 def test_cov_errors():
     with pytest.raises(ValueError, match=r"cov\(\): 'x' must be 1-D or 2-D"):
         sd.cov(sd.zeros((2, 2, 2)))
