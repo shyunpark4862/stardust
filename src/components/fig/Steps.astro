@@ -1,0 +1,117 @@
+---
+/**
+ * A call path or pipeline drawn as a vertical rail of steps.
+ *
+ *   steps  [{ label, note?, where?, depth? }]
+ *            label  what runs (shown in the code font)
+ *            note   what it does
+ *            where  file or layer it lives in (small tag on the right)
+ *            depth  0 (default), 1 or 2: indent for a branch or sub-step
+ *
+ * Use inside <Fig column caption="...">.
+ */
+interface Step {
+  label: string;
+  note?: string;
+  where?: string;
+  depth?: number;
+}
+interface Props {
+  steps: Step[];
+}
+const { steps } = Astro.props;
+---
+
+<ol class="steps">
+  {
+    steps.map((s) => (
+      <li class="step" style={`--depth:${s.depth ?? 0}`}>
+        <span class="step__dot" aria-hidden="true" />
+        <div class="step__body">
+          <div class="step__head">
+            <code class="step__label">{s.label}</code>
+            {s.where && <span class="step__where">{s.where}</span>}
+          </div>
+          {s.note && <p class="step__note">{s.note}</p>}
+        </div>
+      </li>
+    ))
+  }
+</ol>
+
+<style>
+  .steps {
+    width: 100%;
+    max-width: 640px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .step {
+    position: relative;
+    display: grid;
+    grid-template-columns: 12px minmax(0, 1fr);
+    gap: var(--space-4);
+    margin: 0;
+    padding-left: calc(var(--depth) * var(--space-6));
+    padding-bottom: var(--space-3);
+  }
+  .step:last-child {
+    padding-bottom: 0;
+  }
+  /* The rail: a line from this dot down to the next one. */
+  .step:not(:last-child)::before {
+    content: '';
+    position: absolute;
+    top: 22px;
+    bottom: -10px;
+    left: calc(var(--depth) * var(--space-6) + 5.5px);
+    width: 1px;
+    background: var(--blue-200);
+  }
+  .step__dot {
+    width: 12px;
+    height: 12px;
+    margin-top: 12px;
+    border: 2px solid var(--blue-500);
+    border-radius: 50%;
+    background: var(--bg);
+  }
+  .step__body {
+    padding: var(--space-2) var(--space-4);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--bg);
+  }
+  .step__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-1) var(--space-3);
+  }
+  .step__label {
+    padding: 0;
+    border: 0;
+    background: none;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    line-height: 1.6;
+    color: var(--fg);
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .step__where {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    line-height: 1.6;
+    color: var(--accent);
+    white-space: nowrap;
+  }
+  .step__note {
+    margin: 0;
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    color: var(--fg-muted);
+  }
+</style>

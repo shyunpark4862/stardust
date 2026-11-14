@@ -5,6 +5,9 @@ order: 1
 summary: stardust가 어떤 층으로 나뉘고, 왜 확장 모듈 하나에 모든 영역을 넣었는지, 어떤 규칙으로 빌드하고 어떤 기계를 겨냥하는지 설명해요. 배열, 선형대수, 데이터프레임, 특수함수가 함께 쓰는 바닥을 다뤄요.
 seeAlso: [python-boundary, threads]
 ---
+import Steps from '../../../components/fig/Steps.astro';
+import Layers from '../../../components/fig/Layers.astro';
+import Fig from '../../../components/fig/Fig.astro';
 import Callout from '../../../components/Callout.astro';
 import Bench from '../../../components/fig/Bench.astro';
 
@@ -28,33 +31,67 @@ stardust는 numpy, 선형대수(scipy.linalg 계열), 데이터프레임(pandas 
 
 층을 그림으로 보면 이래요.
 
-```text
-                Python 패키지 src/stardust/
-      sd (배열)     sd.linalg     sd.frame (Series, DataFrame…)     sd.special
-          │             │             │                                │
-──────────┴─────────────┴─────────────┴────────────────────────────────┴──────────
-   bind/   nanobind 바인딩: 모듈 등록, 인자 해석 도구(pyutil), 에러 이름(errors)
-──────────┬─────────────┬─────────────┬────────────────────────────────┬──────────
-          │             │             │                                │
-       array/  ◀──── linalg/       frame/ ──(interop.cpp만)──▶ array/   special/ ──▶ array/
-          │             │             │                                │
-          ├─────────────┴──────┬──────┴───────────────┬────────────────┘
-     accelerate/           parallel/               base/
-   BLAS·LAPACK·vForce      스레드풀 하나          dtype, Buffer, pairwise 합, 포화 변환
-```
+<Fig column caption="위 층은 아래 층만 써요. 영역끼리는 화살표로 적은 방향으로만 기대요.">
+  <Layers
+    layers={[
+      {
+        title: 'Python 패키지',
+        note: 'src/stardust/',
+        items: [
+          { name: 'sd', note: '배열' },
+          { name: 'sd.linalg', note: '선형대수' },
+          { name: 'sd.frame', note: 'Series, DataFrame' },
+          { name: 'sd.special', note: '특수함수' },
+        ],
+      },
+      {
+        title: '바인딩',
+        note: 'csrc/bind/ · nanobind',
+        items: [
+          { name: 'module', note: '모듈 등록' },
+          { name: 'pyutil', note: '인자 해석 도구' },
+          { name: 'errors', note: '에러에 함수 이름 붙이기' },
+        ],
+      },
+      {
+        title: '영역',
+        note: 'csrc/',
+        items: [
+          { name: 'array/' },
+          { name: 'linalg/', uses: 'array' },
+          { name: 'frame/', uses: 'array (interop.cpp만)' },
+          { name: 'special/', uses: 'array' },
+        ],
+      },
+      {
+        title: '공통 기반',
+        tone: 'dark',
+        items: [
+          { name: 'accelerate/', note: 'BLAS · LAPACK · vForce' },
+          { name: 'parallel/', note: '스레드풀 하나' },
+          { name: 'base/', note: 'dtype, Buffer, pairwise 합, 포화 변환' },
+        ],
+      },
+    ]}
+  />
+</Fig>
 
 Python에서 `sd.add(x, y)`를 부르면 이런 길을 지나요.
 
-```text
-sd.add(x, y)                              Python: sd.add는 _core.add를 그대로 재노출한 것
-  └─ nanobind 함수 호출 경로 (약 10ns)       인자를 nb::handle로 넘김
-      └─ named("add", …) 래퍼                에러가 나면 메시지 앞에 "add(): "를 붙임
-          └─ binary<Add>(x, y, out)          array/ops/ufunc: 피연산자 dtype → 루프 dtype 선택
-              └─ NdIter                      array/iter: 브로드캐스팅, 축 합치기, 병렬 분할 계획
-                  └─ 커널 (NEON, 버퍼 캐스팅)  array/kernels: 순수 C++, Python을 모름
-                      └─ parallel_for        parallel/: 크기가 기준값 이상이면 GIL을 놓고 나눠 실행
-  ◀─ wrap(NDArray)                          결과 NDArray를 Python 객체로 감싸 돌려줌
-```
+<Fig column caption="sd.add(x, y) 한 번이 지나는 길. 위에서 아래로 내려갔다가, 결과를 감싸 Python으로 돌아와요.">
+  <Steps
+    steps={[
+      { label: 'sd.add(x, y)', where: 'Python', note: 'sd.add는 _core.add를 그대로 다시 내보낸 이름이에요.' },
+      { label: 'nanobind 함수 호출', where: '약 10ns', note: '인자를 nb::handle로 넘겨요.' },
+      { label: 'named("add", …) 래퍼', where: 'bind/', note: '에러가 나면 메시지 앞에 "add(): "를 붙여요.' },
+      { label: 'binary<Add>(x, y, out)', where: 'array/ops/ufunc', note: '피연산자 dtype에서 루프 dtype을 골라요.' },
+      { label: 'NdIter', where: 'array/iter', note: '브로드캐스팅, 축 합치기, 병렬 분할 계획.' },
+      { label: '커널 (NEON, 버퍼 캐스팅)', where: 'array/kernels', note: '순수 C++이고 Python을 몰라요.' },
+      { label: 'parallel_for', where: 'parallel/', note: '크기가 기준값 이상이면 GIL을 놓고 나눠 실행해요.' },
+      { label: 'wrap(NDArray)', where: 'bind/', note: '결과 NDArray를 Python 객체로 감싸 돌려줘요.' },
+    ]}
+  />
+</Fig>
 
 이 페이지는 이 구조 전체를 다뤄요. Python과 C++ 사이를 오가는 세부(nanobind, 인자 해석, 에러 메시지, 버퍼 프로토콜, DLPack, 수명)는 [Python과 C++의 경계](/internals/core/python-boundary/), 스레드풀은 [스레드풀과 결정성](/internals/core/threads/)에 있어요.
 

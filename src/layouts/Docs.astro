@@ -353,7 +353,8 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
     display: flex;
     align-items: stretch;
     gap: var(--space-1);
-    margin-bottom: var(--space-2);
+    /* Same left and right edges as the filter box and the link highlights. */
+    margin: 0 calc(var(--space-3) * -1) var(--space-2);
   }
   .area__home {
     flex: 1;
@@ -364,7 +365,6 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
     height: 36px;
     align-items: center;
     padding-inline: var(--space-3);
-    margin-left: calc(var(--space-3) * -1);
     border-radius: var(--radius-sm);
     transition: background-color var(--dur-fast) var(--ease);
   }
@@ -395,7 +395,6 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
     justify-content: center;
     width: 36px;
     height: 36px;
-    margin-right: calc(var(--space-2) * -1);
     border-radius: var(--radius-sm);
     color: var(--fg-subtle);
     list-style: none;
@@ -456,6 +455,7 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
   /* Name filter */
   .filter {
     position: relative;
+    margin-inline: calc(var(--space-3) * -1);
   }
   .filter__icon {
     position: absolute;
@@ -834,6 +834,10 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
       margin: 0 0 var(--space-4);
       padding: var(--space-2) 0 0;
       box-shadow: none;
+    }
+    .area,
+    .filter {
+      margin-inline: 0;
     }
     .side__group--fold > .side__title {
       min-height: 44px;

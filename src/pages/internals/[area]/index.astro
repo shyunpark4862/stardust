@@ -34,13 +34,16 @@ const headings = groups.map((g) => ({ depth: 2, slug: groupId(g.title), text: g.
   {
     groups.map((g) => (
       <>
-        <h2 id={groupId(g.title)}>{g.title}</h2>
-        <ul class="topics">
+        <h2 class="group-head" id={groupId(g.title)}>
+          {g.title}
+          <span class="group-head__count">{g.entries.length}</span>
+        </h2>
+        <ul class="cards">
           {g.entries.map((e) => (
             <li>
-              <a class="topic" href={internalsHref(e)}>
-                <span class="topic__title">{e.data.title}</span>
-                <span class="topic__summary" set:html={inlineHtml(e.data.summary)} />
+              <a class="card" href={internalsHref(e)}>
+                <span class="card__title">{e.data.title}</span>
+                <span class="card__summary" set:html={inlineHtml(e.data.summary)} />
               </a>
             </li>
           ))}
@@ -51,40 +54,73 @@ const headings = groups.map((g) => ({ depth: 2, slug: groupId(g.title), text: g.
 </Docs>
 
 <style>
-  .topics {
+  .group-head {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-3);
+  }
+  .group-head__count {
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    font-weight: 400;
+    letter-spacing: 0;
+    color: var(--fg-subtle);
+  }
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3);
     padding: 0;
-    border-top: 1px solid var(--line);
     list-style: none;
   }
-  .topics li {
+  .cards li {
+    display: grid;
     margin: 0;
   }
-  .topic {
-    display: grid;
-    grid-template-columns: 200px 1fr;
-    align-items: baseline;
-    gap: var(--space-4);
-    margin-inline: calc(var(--space-3) * -1);
-    padding: var(--space-4) var(--space-3);
-    border-bottom: 1px solid var(--line);
-    transition: background-color var(--dur-fast) var(--ease);
+  .card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-4) var(--space-5);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--bg);
+    transition:
+      border-color var(--dur-fast) var(--ease),
+      background-color var(--dur-fast) var(--ease);
   }
-  .topic:hover {
-    background: var(--bg-subtle);
+  .card:hover {
+    border-color: var(--accent-soft-line);
+    background: var(--accent-soft);
   }
-  .topic__title {
+  .card__title {
+    font-size: var(--text-md);
+    font-weight: 650;
+    line-height: var(--leading-snug);
+    color: var(--fg);
+  }
+  .card__title--mono {
+    font-family: var(--font-mono);
+    font-size: var(--text-base);
     font-weight: 600;
     color: var(--accent);
   }
-  .topic__summary {
-    font-size: var(--text-base);
-    line-height: var(--leading-snug);
+  .card__summary {
+    font-size: var(--text-sm);
+    line-height: 1.65;
     color: var(--fg-muted);
   }
+  .card__names {
+    margin-top: auto;
+    padding-top: var(--space-2);
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    line-height: 1.6;
+    color: var(--fg-subtle);
+  }
   @media (max-width: 640px) {
-    .topic {
-      grid-template-columns: 1fr;
-      gap: var(--space-1);
+    .cards {
+      grid-template-columns: minmax(0, 1fr);
     }
   }
 </style>

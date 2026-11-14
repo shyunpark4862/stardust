@@ -5,6 +5,7 @@ order: 1
 summary: 원소별 연산, 형변환, 복사, 축 방향 연산이 모두 같은 장치 위에서 돌아요. 1차원 커널 하나, N차원 문제를 긴 1차원 구간으로 바꾸는 이터레이터, 형변환을 작은 버퍼로 끼워 넣는 래퍼, 루프를 고르는 디스패처가 어떻게 생겼고 왜 그렇게 만들었는지 설명해요.
 seeAlso: [elementwise, conversion, reductions, data-model, small-arrays]
 ---
+import Steps from '../../../components/fig/Steps.astro';
 import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
 import ArrayFig from '../../../components/fig/ArrayFig.astro';
@@ -29,17 +30,21 @@ import Bench from '../../../components/fig/Bench.astro';
 
 `x + y` 한 번이 지나가는 길은 이래요.
 
-```text
-Python: x + y
-  └─ ndarray.__add__  →  binary<ops::Add>(x, y, out=None, "+")          bind/array_bind.cpp
-       └─ run_binary: 피연산자 dtype → 승격 → 루프 dtype 선택             ops/ufunc.cpp
-            └─ launch: 스칼라만? out=? 새 결과 배열 할당(new_result)
-                 └─ run_loop: dtype이 다른 입력이 있으면 BufferedLoop로 감쌈
-                      └─ NdIter: 브로드캐스트 → 크기 1 축 제거 → 축 재정렬 → 차원 합치기
-                           └─ run: 일이 2^15 이상이면 조각으로 나눠 스레드풀에, 아니면 직렬
-                                └─ 가장 안쪽 구간마다 kernel(args, n, strides, ctx)
-                                     └─ binary_loop<Add, double>: 연속이면 인덱스 루프(NEON으로 벡터화)
-```
+<Fig column caption="x + y 한 번이 연산 엔진을 지나는 길.">
+  <Steps
+    steps={[
+      { label: 'x + y', where: 'Python' },
+      { label: 'ndarray.__add__ → binary<ops::Add>(x, y, out=None, "+")', where: 'bind/array_bind.cpp' },
+      { label: 'run_binary', where: 'ops/ufunc.cpp', note: '피연산자 dtype → 승격 → 루프 dtype 선택.' },
+      { label: 'launch', note: '스칼라만인지, out=이 있는지 보고 새 결과 배열을 할당해요(new_result).' },
+      { label: 'run_loop', note: 'dtype이 다른 입력이 있으면 BufferedLoop로 감싸요.' },
+      { label: 'NdIter', note: '브로드캐스트 → 크기 1 축 제거 → 축 재정렬 → 차원 합치기.' },
+      { label: 'run', note: '일이 2^15 이상이면 조각으로 나눠 스레드풀에, 아니면 직렬로.' },
+      { label: 'kernel(args, n, strides, ctx)', note: '가장 안쪽 구간마다 한 번 불려요.' },
+      { label: 'binary_loop<Add, double>', note: '연속이면 인덱스 루프예요(NEON으로 벡터화).' },
+    ]}
+  />
+</Fig>
 
 핵심 아이디어는 네 가지예요.
 

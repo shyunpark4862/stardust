@@ -1,0 +1,153 @@
+---
+/**
+ * A layered architecture: rows stacked top (what the user calls) to bottom
+ * (what everything stands on), each row a set of boxes.
+ *
+ *   layers  [{ title, note?, tone?, items: [{ name, note?, uses? }] }]
+ *             tone  'dark' for the bottom-most layer
+ *             uses  what this box depends on in the same layer ("array")
+ *
+ * Use inside <Fig column caption="...">.
+ */
+interface Item {
+  name: string;
+  note?: string;
+  uses?: string;
+}
+interface Layer {
+  title: string;
+  note?: string;
+  tone?: 'dark';
+  items: Item[];
+}
+interface Props {
+  layers: Layer[];
+}
+const { layers } = Astro.props;
+---
+
+<div class="layers">
+  {
+    layers.map((l) => (
+      <section class:list={['layer', l.tone && `layer--${l.tone}`]}>
+        <header class="layer__head">
+          <span class="layer__title">{l.title}</span>
+          {l.note && <span class="layer__note">{l.note}</span>}
+        </header>
+        <ul class="layer__items" style={`--n:${l.items.length}`}>
+          {l.items.map((it) => (
+            <li class="layer__item">
+              <code class="layer__name">{it.name}</code>
+              {it.note && <span class="layer__desc">{it.note}</span>}
+              {it.uses && <span class="layer__uses">→ {it.uses}</span>}
+            </li>
+          ))}
+        </ul>
+      </section>
+    ))
+  }
+</div>
+
+<style>
+  .layers {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+    width: 100%;
+  }
+  .layer {
+    position: relative;
+    padding: var(--space-4);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--bg);
+  }
+  /* Connector to the layer below. */
+  .layer:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    width: 1px;
+    height: var(--space-5);
+    background: var(--line-strong);
+  }
+  .layer--dark {
+    border-color: var(--night-700);
+    background: var(--night-800);
+  }
+  .layer__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-1) var(--space-3);
+    margin-bottom: var(--space-3);
+  }
+  .layer__title {
+    font-size: var(--text-sm);
+    font-weight: 650;
+    color: var(--fg);
+  }
+  .layer__note {
+    font-size: var(--text-xs);
+    color: var(--fg-subtle);
+  }
+  .layer__items {
+    display: grid;
+    grid-template-columns: repeat(var(--n), minmax(0, 1fr));
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .layer__item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--blue-200);
+    border-radius: var(--radius-sm);
+    background: var(--blue-50);
+    line-height: 1.5;
+  }
+  .layer__name {
+    padding: 0;
+    border: 0;
+    background: none;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--blue-800);
+    white-space: normal;
+  }
+  .layer__desc {
+    font-size: var(--text-xs);
+    color: var(--fg-muted);
+  }
+  .layer__uses {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--accent);
+  }
+  .layer--dark .layer__title {
+    color: #eef3ff;
+  }
+  .layer--dark .layer__note {
+    color: #a9b6d3;
+  }
+  .layer--dark .layer__item {
+    border-color: rgb(190 210 255 / 0.18);
+    background: rgb(255 255 255 / 0.06);
+  }
+  .layer--dark .layer__name {
+    color: var(--blue-200);
+  }
+  .layer--dark .layer__desc {
+    color: #a9b6d3;
+  }
+  @media (max-width: 640px) {
+    .layer__items {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+</style>

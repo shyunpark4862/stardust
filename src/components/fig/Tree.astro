@@ -1,0 +1,106 @@
+---
+/**
+ * A tree: a decision tree, a recursive split, a hierarchy.
+ *
+ *   root  { label, note?, tone?, children? }   (children nest the same shape)
+ *           tone 'a' highlights a node, 'b' marks a leaf/result strongly
+ *
+ * Use inside <Fig column caption="...">.
+ */
+interface Node {
+  label: string;
+  note?: string;
+  tone?: 'a' | 'b';
+  children?: Node[];
+}
+interface Props {
+  root: Node;
+}
+const { root } = Astro.props;
+
+const esc = (s: string) => s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+// Rendered as nested lists; the connectors are drawn in CSS.
+const render = (n: Node): string =>
+  `<li><div class="tree__node${n.tone ? ` tree__node--${n.tone}` : ''}"><span class="tree__label">${esc(n.label)}</span>` +
+  (n.note ? `<span class="tree__note">${esc(n.note)}</span>` : '') +
+  `</div>${n.children?.length ? `<ul>${n.children.map(render).join('')}</ul>` : ''}</li>`;
+---
+
+<ul class="tree" set:html={render(root)} />
+
+<style is:global>
+  .tree,
+  .tree ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .tree {
+    width: 100%;
+    max-width: 640px;
+  }
+  .tree ul {
+    margin-left: 14px;
+    padding-left: 22px;
+    border-left: 1px solid var(--blue-200);
+  }
+  .tree li {
+    position: relative;
+    margin: 0;
+    padding-top: var(--space-2);
+  }
+  /* Elbow from the parent's line to this node. */
+  .tree ul > li::before {
+    content: '';
+    position: absolute;
+    top: calc(var(--space-2) + 17px);
+    left: -22px;
+    width: 18px;
+    height: 1px;
+    background: var(--blue-200);
+  }
+  /* The parent's line stops at the last child's elbow. */
+  .tree ul > li:last-child::after {
+    content: '';
+    position: absolute;
+    top: calc(var(--space-2) + 18px);
+    bottom: 0;
+    left: -23px;
+    width: 3px;
+    background: var(--bg-subtle);
+  }
+  .tree__node {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-1) var(--space-3);
+    min-height: 34px;
+    padding: var(--space-1) var(--space-3);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+    line-height: 1.6;
+  }
+  .tree__node--a {
+    border-color: var(--blue-300);
+    background: var(--blue-50);
+  }
+  .tree__node--b {
+    border-color: var(--blue-600);
+    background: var(--blue-600);
+  }
+  .tree__label {
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--fg);
+  }
+  .tree__note {
+    font-size: var(--text-sm);
+    color: var(--fg-muted);
+  }
+  .tree__node--b .tree__label,
+  .tree__node--b .tree__note {
+    color: #fff;
+  }
+</style>

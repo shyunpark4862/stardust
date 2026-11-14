@@ -5,6 +5,8 @@ order: 1
 summary: sum·prod·max·argmax·any·cumulative_sum·mean·var가 안에서 어떻게 접히는지 설명해요. numpy와 비트까지 같은 pairwise 합, 스레드 수와 상관없이 같은 비트를 내는 블록 분할, numpy와 비트가 달라지는 경우와 그 이유를 다뤄요.
 seeAlso: [statistics, engine, accuracy, performance]
 ---
+import Tree from '../../../components/fig/Tree.astro';
+import Steps from '../../../components/fig/Steps.astro';
 import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
 import ArrayFig from '../../../components/fig/ArrayFig.astro';
@@ -42,18 +44,22 @@ export const lin = (xs, ys, x) => {
 
 호출 하나가 지나가는 길은 이래요.
 
-```text
-sd.sum(x, axis=..., dtype=..., keepdims=...)          (bind: 인자 파싱)
-  └ parse_reduce_axes        줄일 축 표시, 출력 하나에 접히는 원소 수
-  └ keepdims_result          출력 할당 (줄이는 축은 길이 1, x의 축 순서)
-  └ fill(out, 시작값)          0, 1, -inf, +inf, false, true
-  └ run_reduce
-       ├ plan_blocks          블록으로 나눌지 결정 (모양·레이아웃·dtype만 봄)
-       ├ reduce_blocked       나누면: 블록마다 사본에 접고, 블록 순서대로 합침
-       └ run_fold             안 나누면: NdIter + (필요하면) 버퍼 캐스팅
-            └ reduce_loop<Op, T>   커널: out = f(out, x)
-  └ finish                   keepdims=False면 축을 떼고, 다 줄였으면 Python 스칼라
-```
+<Fig column caption="sd.sum 한 번이 지나는 단계. 들여쓴 줄은 run_reduce 안에서 갈리는 길이에요.">
+  <Steps
+    steps={[
+      { label: 'sd.sum(x, axis=..., dtype=..., keepdims=...)', where: 'bind', note: '인자 파싱.' },
+      { label: 'parse_reduce_axes', note: '줄일 축 표시, 출력 하나에 접히는 원소 수.' },
+      { label: 'keepdims_result', note: '출력 할당. 줄이는 축은 길이 1이고, x의 축 순서를 따라요.' },
+      { label: 'fill(out, 시작값)', note: '0, 1, -inf, +inf, false, true 가운데 하나.' },
+      { label: 'run_reduce' },
+      { label: 'plan_blocks', depth: 1, note: '블록으로 나눌지 정해요. 모양·레이아웃·dtype만 봐요.' },
+      { label: 'reduce_blocked', depth: 1, note: '나누면: 블록마다 사본에 접고, 블록 순서대로 합쳐요.' },
+      { label: 'run_fold', depth: 1, note: '안 나누면: NdIter + (필요하면) 버퍼 캐스팅.' },
+      { label: 'reduce_loop<Op, T>', depth: 2, note: '커널: out = f(out, x)' },
+      { label: 'finish', note: 'keepdims=False면 축을 떼고, 다 줄였으면 Python 스칼라로.' },
+    ]}
+  />
+</Fig>
 
 ## 리덕션을 이터레이터 위에 올리기
 
@@ -215,15 +221,23 @@ double tree(std::int64_t begin, std::int64_t n, const LeafSum& leaf_sum) {
 
 원소 1000개의 트리는 이런 모양이에요. 왼쪽 자식은 언제나 8의 배수이고, 잎은 64~128개 사이예요.
 
-```text
-1000
-├─ 496
-│  ├─ 248 ── 120 (잎) + 128 (잎)
-│  └─ 248 ── 120 (잎) + 128 (잎)
-└─ 504
-   ├─ 248 ── 120 (잎) + 128 (잎)
-   └─ 256 ── 128 (잎) + 128 (잎)
-```
+<Fig column caption="n = 1000의 pairwise 트리. 128개 이하가 되면 잎(진한 칸)이고, 잎 안에서는 차례로 더해요.">
+  <Tree
+    root={{
+      label: '1000',
+      children: [
+        { label: '496', children: [
+          { label: '248', children: [{ label: '120', tone: 'b' }, { label: '128', tone: 'b' }] },
+          { label: '248', children: [{ label: '120', tone: 'b' }, { label: '128', tone: 'b' }] },
+        ] },
+        { label: '504', children: [
+          { label: '248', children: [{ label: '120', tone: 'b' }, { label: '128', tone: 'b' }] },
+          { label: '256', children: [{ label: '128', tone: 'b' }, { label: '128', tone: 'b' }] },
+        ] },
+      ],
+    }}
+  />
+</Fig>
 
 **complex**는 numpy가 double 개수로 세기 때문에 잎이 complex 64개이고, 실수부와 허수부에 누산기가 4개씩이에요. 자르는 위치도 double 단위로 계산한 것을 complex 단위로 되돌린 $(n - n \bmod 8)/2$예요(`split_complex`). 이것까지 똑같이 해야 complex 합이 numpy와 비트가 같아요.
 

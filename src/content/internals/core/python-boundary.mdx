@@ -5,6 +5,7 @@ order: 1
 summary: Python 객체와 C++ 객체가 만나는 곳을 설명해요. nanobind 바인딩, ndarray 타입, 인자 해석 규칙, 에러 메시지 체계, GIL, 버퍼 프로토콜과 DLPack, 그리고 메모리를 누가 붙잡고 있는지를 다뤄요.
 seeAlso: [overview, threads]
 ---
+import Steps from '../../../components/fig/Steps.astro';
 import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
 import ArrayFig from '../../../components/fig/ArrayFig.astro';
@@ -30,23 +31,23 @@ stardust의 계산은 모두 C++에 있고, 사용자는 Python에서 불러요.
 
 `sd.sum(x, axis=0)` 한 번이 경계를 넘는 모습을 그리면 이래요.
 
-```text
-Python                                   C++ (stardust._core)
-──────                                   ─────────────────────
-sd.sum(x, axis=0)
-  │  nb_func vectorcall (약 10ns)
-  └───────────────────────────────────▶  named("sum", &sum) 래퍼  ── try {
-                                           sum(nb::handle x, nb::handle axis,
-                                               nb::handle dtype, nb::handle keepdims)
-                                             require_ndarray(x)  → NDArray& (복사 없음)
-                                             parse_axes(axis)    → std::vector<int>
-                                             parse_dtype(dtype)  → optional<DType>
-                                             parse_bool(keepdims)
-                                             ...커널 (필요하면 GIL을 놓고 풀에서)
-                                             wrap(NDArray) 또는 Python 스칼라
-                                         } catch → "sum(): " + 메시지, 같은 예외 종류
-  ◀───────────────────────────────────  nb::object
-```
+<Fig column caption="sd.sum(x, axis=0) 한 번의 왕복. Python 쪽은 호출과 결과뿐이고, 검사와 계산은 모두 C++에서 해요.">
+  <Steps
+    steps={[
+      { label: 'sd.sum(x, axis=0)', where: 'Python' },
+      { label: 'nb_func vectorcall', where: '약 10ns', note: 'nanobind가 인자를 C++ 함수로 넘겨요.' },
+      { label: 'named("sum", &sum) 래퍼', where: 'C++ · try', note: '여기서부터 나는 예외는 "sum(): " + 메시지, 같은 예외 종류로 Python에 올라가요.' },
+      { label: 'sum(nb::handle x, axis, dtype, keepdims)', where: 'C++', note: '인자는 모두 타입 없는 handle로 받아요.' },
+      { label: 'require_ndarray(x)', depth: 1, note: 'NDArray& 를 꺼내요. 복사는 없어요.' },
+      { label: 'parse_axes(axis)', depth: 1, note: 'std::vector<int>' },
+      { label: 'parse_dtype(dtype)', depth: 1, note: 'optional<DType>' },
+      { label: 'parse_bool(keepdims)', depth: 1 },
+      { label: '커널', where: 'C++', note: '필요하면 GIL을 놓고 스레드풀에서 계산해요.' },
+      { label: 'wrap(NDArray) 또는 Python 스칼라', where: 'C++' },
+      { label: 'nb::object', where: 'Python', note: '결과가 Python으로 돌아와요.' },
+    ]}
+  />
+</Fig>
 
 ## nanobind
 
