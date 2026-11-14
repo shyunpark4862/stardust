@@ -411,7 +411,7 @@ ndtri_exp(y, /, *, out=None)
   | **`nbdtr(k, 0, p)`**, 0 < p ≤ 1 | 1 | 실패가 없다. **scipy는 NaN** |
   | `nbdtr(k, inf, p)` | 0 | |
   | `ndtri_exp(0)`, `ndtri_exp(-inf)`, y > 0 | inf, −inf, NaN | |
-- **정확도**: 목표는 다른 special 함수와 같은 1e-14(약 45 ULP)다. 보장 영역은 사용자 결정을 기다린다(T1 보고).
+- **보장 영역** (사용자 결정 2026-11-15): 잰 범위 전체다. 순방향 11개와 `ndtri_exp`는 상대오차 1e-14(약 45 ULP), 역함수 `stdtrit chdtri fdtri`는 §4처럼 `|Δx/x| ≤ 1e-14·max(1, κ)`다. 결과가 서브노멀이면 docs/design/special.md §2.3의 절대오차 규칙을 따른다. 범위는 아래 '잰 범위'이고, 그 밖(더 큰 자유도·k·n)도 값을 계산하지만 보장하지 않는다. 경계값 `fdtr(inf, inf, x)`, `nbdtr(k, 0, p)`, `chdtri(inf, p)` = NaN도 같은 날 확정했다.
   - **잰 값** (bench/special/t1/accuracy.md, 최대 ULP; 역함수는 ULP/max(1, κ)): `stdtr` 9.0, `stdtrit` 6.9, `chdtr` 6.1, `chdtrc` 9.7, `chdtri` 7.2, `fdtr` 16, `fdtrc` 18, `fdtri` 23, `pdtr` 4.5, `pdtrc` 13, `bdtr` 10, `bdtrc` 9.5, `nbdtr` 14, `nbdtrc` 19, `ndtri_exp` 6.5
   - 같은 점에서 scipy: 최대 25 ULP(`chdtri`)부터 4.9e16 ULP(`fdtri`), inf(`stdtrit` 등)까지.
   - 잰 범위: 자유도 1e-2–1e6(t), 1e-2–1e4(F), k·n 1e4까지, `ndtri_exp`의 y는 −1e300–0. 근이 double 범위 밖이면(`fdtri` → 0, `stdtrit` → −inf) 순방향 함수로 확인한다(tests/special/test_distributions.py).
