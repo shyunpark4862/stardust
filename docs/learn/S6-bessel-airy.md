@@ -83,4 +83,4 @@ NR의 `bessjy`·`bessik`(Temme 급수, Steed의 CF2, CF1 + Wronskian)에서 시�
 - **ν = −inf**: `jv(-inf, x)`, `iv(-inf, x)`는 scipy의 0을 따랐다(수학적으로는 극한이 없다). `kv(-inf, x) = inf`는 결정 ④와 같은 원칙이다.
 
 ## 10. 승인
-- (대기)
+- 2026-11-14 사용자 승인("승인, S7로"). §9의 Airy |x| > 1e12 처리와 Debye 후속 여부는 S7 질문과 함께 묻는다.
