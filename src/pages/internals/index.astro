@@ -1,19 +1,30 @@
 ---
 import Docs from '../../layouts/Docs.astro';
 import LinkCard from '../../components/LinkCard.astro';
+import { internalsAreas } from '../../data/nav';
+import { internalsAreasWithPages } from '../../data/internals';
+
+const written = await internalsAreasWithPages();
 ---
 
 <Docs
-  title="구현 개요"
-  description="stardust가 안에서 어떻게 움직이는지 주제별로 풀어 쓰는 곳의 들머리예요."
+  title="구현"
+  description="stardust가 안에서 어떻게 만들어졌는지 풀어 쓴 글이에요. 알고리즘, 자료 구조, 최적화와 그 이유, 성능과 정확도를 다뤄요."
   section="internals"
-  sample
 >
   <div class="grid">
-    <LinkCard href="/internals/thread-pool/" title="스레드풀" meta="parallel" badge="샘플" badgeTone="accent">
-      구현 상세 글 한 편이 어떻게 보이는지 확인하는 견본이에요.
-    </LinkCard>
-    <LinkCard title="다음 주제" meta="—" badge="준비 중">주제가 늘어나면 카드가 여기에 쌓여요.</LinkCard>
+    {
+      internalsAreas.map((a) => (
+        <LinkCard
+          href={written.includes(a.key) ? `/internals/${a.key}/` : undefined}
+          title={a.name}
+          meta={a.ns}
+          badge={written.includes(a.key) ? undefined : '준비 중'}
+        >
+          {a.desc || '준비 중이에요.'}
+        </LinkCard>
+      ))
+    }
   </div>
 </Docs>
 

@@ -54,12 +54,6 @@ export const sidebars: Record<string, NavGroup[]> = {
       title: '구현',
       items: [{ label: '개요', href: '/internals/' }],
     },
-    {
-      title: '주제',
-      items: [
-        { label: '스레드풀', href: '/internals/thread-pool/', badge: '샘플' },
-      ],
-    },
   ],
 };
 
@@ -70,4 +64,13 @@ export const areas = [
   { key: 'special', name: '특수함수', ns: 'sd.special', desc: '오차함수, 감마, 불완전 감마·베타, Bessel, 초기하', status: 'done' },
   { key: 'stats', name: '통계', ns: 'sd.stats', desc: '단변량·다변량 분포, 기술통계, 검정', status: 'draft' },
   { key: 'random', name: '난수', ns: 'sd.random', desc: '계수기형 생성기, 스레드 수와 무관한 결정성', status: 'draft' },
+] as const;
+
+/** Areas of the internals section. "core" is what every area is built on. */
+export const internalsAreas = [
+  { key: 'core', name: '공통 기반', ns: 'stardust', desc: '층 구조와 빌드, 스레드풀과 결정성, Python과 C++의 경계' },
+  { key: 'array', name: '배열', ns: 'sd', desc: '데이터 모델, 연산 엔진, 커널, 집계, 인덱싱, 정렬, 행렬곱, 성능과 정확도' },
+  { key: 'linalg', name: '선형대수', ns: 'sd.linalg', desc: '' },
+  { key: 'frame', name: '데이터프레임', ns: 'sd.frame', desc: '' },
+  { key: 'special', name: '특수함수', ns: 'sd.special', desc: '' },
 ] as const;

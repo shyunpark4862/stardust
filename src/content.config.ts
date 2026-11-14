@@ -41,4 +41,21 @@ const api = defineCollection({
   }),
 });
 
-export const collections = { api };
+/**
+ * How the library works inside: src/content/internals/<area>/<slug>.mdx.
+ * Long-form articles; the body carries everything, the frontmatter only
+ * places the page.
+ */
+const internals = defineCollection({
+  loader: glob({ pattern: '**/*.mdx', base: './src/content/internals' }),
+  schema: z.object({
+    title: z.string(),
+    group: z.string(),
+    order: z.number().default(100),
+    summary: z.string(),
+    /** Slugs of related pages in the same area. */
+    seeAlso: z.array(z.string()).default([]),
+  }),
+});
+
+export const collections = { api, internals };

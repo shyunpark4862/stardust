@@ -227,3 +227,15 @@
     box-decoration-break: clone;
   }
 }
+
+/* Math (KaTeX): display formulas scroll on their own instead of the page. */
+.prose .katex {
+  font-size: 1.05em;
+}
+
+.prose .katex-display {
+  margin-block: var(--space-6);
+  padding-block: var(--space-2);
+  overflow-x: auto;
+  overflow-y: hidden;
+}

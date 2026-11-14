@@ -1,0 +1,89 @@
+---
+import Docs from '../../../layouts/Docs.astro';
+import { groupId } from '../../../data/api';
+import {
+  internalsAreaNav,
+  internalsAreaOf,
+  internalsAreasWithPages,
+  internalsCrumbs,
+  internalsGroups,
+  internalsHref,
+  internalsSidebar,
+} from '../../../data/internals';
+
+export async function getStaticPaths() {
+  return (await internalsAreasWithPages()).map((area) => ({ params: { area } }));
+}
+
+const { area } = Astro.params;
+const info = internalsAreaOf(area);
+const groups = await internalsGroups(area);
+const headings = groups.map((g) => ({ depth: 2, slug: groupId(g.title), text: g.title }));
+---
+
+<Docs
+  title={info.name}
+  description={`${info.name}이 안에서 어떻게 만들어졌는지 주제별로 풀어 쓴 글이에요.`}
+  section="internals"
+  crumbs={internalsCrumbs(area).slice(0, 1)}
+  groups={await internalsSidebar(area)}
+  area={await internalsAreaNav(area)}
+  headings={headings}
+>
+  {
+    groups.map((g) => (
+      <>
+        <h2 id={groupId(g.title)}>{g.title}</h2>
+        <ul class="topics">
+          {g.entries.map((e) => (
+            <li>
+              <a class="topic" href={internalsHref(e)}>
+                <span class="topic__title">{e.data.title}</span>
+                <span class="topic__summary">{e.data.summary}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </>
+    ))
+  }
+</Docs>
+
+<style>
+  .topics {
+    padding: 0;
+    border-top: 1px solid var(--line);
+    list-style: none;
+  }
+  .topics li {
+    margin: 0;
+  }
+  .topic {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    align-items: baseline;
+    gap: var(--space-4);
+    margin-inline: calc(var(--space-3) * -1);
+    padding: var(--space-4) var(--space-3);
+    border-bottom: 1px solid var(--line);
+    transition: background-color var(--dur-fast) var(--ease);
+  }
+  .topic:hover {
+    background: var(--bg-subtle);
+  }
+  .topic__title {
+    font-weight: 600;
+    color: var(--accent);
+  }
+  .topic__summary {
+    font-size: var(--text-base);
+    line-height: var(--leading-snug);
+    color: var(--fg-muted);
+  }
+  @media (max-width: 640px) {
+    .topic {
+      grid-template-columns: 1fr;
+      gap: var(--space-1);
+    }
+  }
+</style>

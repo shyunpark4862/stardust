@@ -1,5 +1,7 @@
 import { defineConfig } from 'astro/config';
 import mdx from '@astrojs/mdx';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 
 /** Removes the first `count` characters of a highlighted line. */
 function stripPrefix(line, count) {
@@ -41,6 +43,9 @@ const replTransformer = {
 export default defineConfig({
   integrations: [mdx()],
   markdown: {
+    // $...$ and $$...$$ render as math (KaTeX) in Markdown and MDX.
+    remarkPlugins: [remarkMath],
+    rehypePlugins: [rehypeKatex],
     shikiConfig: { theme: 'github-light', wrap: false, transformers: [replTransformer] },
   },
 });
