@@ -13,11 +13,12 @@ const { note } = Astro.props;
 </span>
 
 <style>
+  /* The note hangs below the symbol without taking space, so the symbol
+     itself is what lines up with the middle of the neighbouring grids. */
   .op {
+    position: relative;
     display: inline-flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--space-1);
+    justify-content: center;
     padding-inline: var(--space-1);
   }
   .op__sym {
@@ -27,6 +28,10 @@ const { note } = Astro.props;
     color: var(--slate-400);
   }
   .op__note {
+    position: absolute;
+    top: calc(100% + var(--space-1));
+    left: 50%;
+    transform: translateX(-50%);
     font-family: var(--font-mono);
     font-size: var(--text-xs);
     line-height: 1.2;

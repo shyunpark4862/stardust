@@ -2,7 +2,7 @@
 import Base from './Base.astro';
 import Badge from '../components/Badge.astro';
 import '../styles/prose.css';
-import { sidebars, topNav, type NavGroup } from '../data/nav';
+import { sidebars, topNav, type AreaNav, type Crumb, type NavGroup } from '../data/nav';
 
 interface Heading {
   depth: number;
@@ -18,18 +18,22 @@ interface Props {
   sample?: boolean;
   /** Replaces the section's default sidebar. */
   groups?: NavGroup[];
-  /** Replaces the section name above the title. */
-  eyebrow?: string;
+  /** Path above the title. Defaults to the section name. */
+  crumbs?: Crumb[];
+  /** Reference pages: the area header, name filter and collapsible groups. */
+  area?: AreaNav;
   /** Set the title in the code font (function pages). */
   monoTitle?: boolean;
 }
 const fm = Astro.props.frontmatter ?? (Astro.props as Required<Props>['frontmatter']);
 const { title, description, section, sample = false } = fm;
 const groups = Astro.props.groups ?? sidebars[section] ?? [];
-const { eyebrow, monoTitle = false } = Astro.props;
+const { area, monoTitle = false } = Astro.props;
 const toc = (Astro.props.headings ?? []).filter((h) => h.depth === 2 || h.depth === 3);
 const path = Astro.url.pathname;
-const sectionLabel = topNav.find((n) => n.href === `/${section}/`)?.label ?? '';
+const sectionNav = topNav.find((n) => n.href === `/${section}/`);
+const crumbs: Crumb[] = Astro.props.crumbs ?? (sectionNav ? [{ label: sectionNav.label, href: sectionNav.href }] : []);
+const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
 ---
 
 <Base title={title} description={description}>
@@ -41,30 +45,114 @@ const sectionLabel = topNav.find((n) => n.href === `/${section}/`)?.label ?? '';
           <path d="M3.5 5.25 7 8.75l3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
         </svg>
       </button>
-      <nav class="side" id="side-nav" aria-label="문서 메뉴">
-        {
-          groups.map((g) => (
-            <div class="side__group">
-              <p class="side__title">{g.title}</p>
-              <ul class="side__list">
-                {g.items.map((item) => (
-                  <li>
-                    <a class="side__link" href={item.href} aria-current={path === item.href ? 'page' : undefined}>
-                      <span class:list={[item.mono && 'side__mono']}>{item.label}</span>
-                      {item.badge && <Badge>{item.badge}</Badge>}
-                    </a>
-                  </li>
-                ))}
-              </ul>
+      <div class="side" id="side-nav">
+        {area && (
+          <div class="side__head">
+            <div class="area">
+              <a class="area__home" href={area.current.href} aria-current={path === area.current.href ? 'page' : undefined}>
+                <span class="area__ns">{area.current.ns}</span>
+                <span class="area__name">{area.current.name}</span>
+              </a>
+              <details class="area__switch">
+                <summary class="area__switch-btn" aria-label="다른 영역으로">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                    <path d="M4 5.5 7 2.5l3 3M4 8.5l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </summary>
+                <ul class="area__menu">
+                  {area.all.map((a) => (
+                    <li>
+                      {a.href ? (
+                        <a class="area__item" href={a.href} aria-current={a.key === area.current.key ? 'true' : undefined}>
+                          <span>{a.name}</span>
+                          <code>{a.ns}</code>
+                        </a>
+                      ) : (
+                        <span class="area__item area__item--off">
+                          <span>{a.name}</span>
+                          <Badge>준비 중</Badge>
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </details>
             </div>
-          ))
-        }
-      </nav>
+            <div class="filter">
+              <svg class="filter__icon" width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <circle cx="6" cy="6" r="4.25" stroke="currentColor" stroke-width="1.5" />
+                <path d="m9.25 9.25 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+              </svg>
+              <input class="filter__input" type="search" placeholder="이름으로 찾기" aria-label="문서 이름으로 찾기" autocomplete="off" spellcheck="false" />
+              <kbd class="filter__key" aria-hidden="true">/</kbd>
+            </div>
+          </div>
+        )}
+        <nav aria-label="문서 메뉴">
+          {
+            groups.map((g) =>
+              area ? (
+                <details class="side__group side__group--fold" open={isCurrentGroup(g)} data-current={isCurrentGroup(g) ? '' : undefined}>
+                  <summary class="side__title">
+                    <span>{g.title}</span>
+                    <svg class="side__chev" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                      <path d="m4.5 3 3 3-3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                  </summary>
+                  <ul class="side__list">
+                    {g.items.map((item) => (
+                      <li>
+                        <a
+                          class="side__link"
+                          href={item.href}
+                          aria-current={path === item.href ? 'page' : undefined}
+                          data-search={[item.label, ...(item.names ?? [])].join(' ').toLowerCase()}
+                        >
+                          <span class="side__label">
+                            <span class:list={[item.mono && 'side__mono']}>{item.label}</span>
+                            {item.names && <span class="side__names">{item.names.join(' ')}</span>}
+                          </span>
+                          {item.badge && <Badge>{item.badge}</Badge>}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ) : (
+                <div class="side__group">
+                  <p class="side__title">{g.title}</p>
+                  <ul class="side__list">
+                    {g.items.map((item) => (
+                      <li>
+                        <a class="side__link" href={item.href} aria-current={path === item.href ? 'page' : undefined}>
+                          <span class:list={[item.mono && 'side__mono']}>{item.label}</span>
+                          {item.badge && <Badge>{item.badge}</Badge>}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ),
+            )
+          }
+          {area && <p class="filter__empty" hidden>맞는 이름이 없어요.</p>}
+        </nav>
+      </div>
     </aside>
 
     <article class="docs__main">
       <header class="page-head">
-        <p class="eyebrow">{eyebrow ?? sectionLabel}</p>
+        {
+          crumbs.length > 0 && (
+            <nav class="crumbs" aria-label="현재 위치">
+              <ol>
+                {crumbs.map((c) => (
+                  <li>{c.href ? <a href={c.href}>{c.label}</a> : <span>{c.label}</span>}</li>
+                ))}
+              </ol>
+            </nav>
+          )
+        }
         <h1 class:list={['page-head__title', monoTitle && 'page-head__title--mono']}>{title}</h1>
         {description && <p class="page-head__lead">{description}</p>}
         {
@@ -93,12 +181,89 @@ const sectionLabel = topNav.find((n) => n.href === `/${section}/`)?.label ?? '';
                 </li>
               ))}
             </ul>
+            <a class="toc__top" href="#">
+              맨 위로
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                <path d="M6 9.5v-7M3 5l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </a>
           </nav>
         )
       }
     </aside>
   </div>
+  <a class="to-top" href="#" aria-label="맨 위로">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+    </svg>
+  </a>
 </Base>
+
+<script>
+  // Back to top: the floating button appears once the reader is well into
+  // the page; both it and the table-of-contents link scroll smoothly up.
+  const toTop = document.querySelector<HTMLElement>('.to-top');
+  const showTop = () => toTop?.classList.toggle('is-shown', scrollY > innerHeight * 1.2);
+  showTop();
+  addEventListener('scroll', showTop, { passive: true });
+  document.querySelectorAll<HTMLAnchorElement>('.to-top, .toc__top').forEach((a) =>
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      scrollTo({ top: 0 });
+      history.replaceState(null, '', location.pathname);
+    }),
+  );
+</script>
+
+<script>
+  // Reference sidebar: bring the current page into view, filter by name.
+  const side = document.querySelector<HTMLElement>('.docs__side');
+  const current = side?.querySelector<HTMLElement>('.side__link[aria-current="page"]');
+  if (side && current && side.scrollHeight > side.clientHeight) {
+    side.scrollTop = current.offsetTop - side.clientHeight / 2;
+  }
+
+  const input = document.querySelector<HTMLInputElement>('.filter__input');
+  const groups = [...document.querySelectorAll<HTMLDetailsElement>('.side__group--fold')];
+  const empty = document.querySelector<HTMLElement>('.filter__empty');
+  const initiallyOpen = new Map(groups.map((g) => [g, g.open]));
+  const apply = () => {
+    const q = (input?.value ?? '').trim().toLowerCase();
+    let any = false;
+    for (const g of groups) {
+      let hit = false;
+      g.querySelectorAll<HTMLAnchorElement>('.side__link').forEach((a) => {
+        const match = !q || (a.dataset.search ?? '').includes(q);
+        a.parentElement!.hidden = !match;
+        hit ||= match;
+      });
+      g.hidden = !hit;
+      g.open = q ? hit : initiallyOpen.get(g)!;
+      any ||= hit;
+    }
+    if (empty) empty.hidden = any;
+  };
+  input?.addEventListener('input', apply);
+  input?.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      input.value = '';
+      apply();
+      input.blur();
+    }
+    if (e.key === 'Enter') {
+      const first = document.querySelector<HTMLAnchorElement>('.side__group--fold:not([hidden]) li:not([hidden]) .side__link');
+      if (first) location.href = first.href;
+    }
+  });
+  // "/" focuses the filter from anywhere on the page.
+  addEventListener('keydown', (e) => {
+    const t = e.target as HTMLElement;
+    if (e.key === '/' && input && !/^(INPUT|TEXTAREA)$/.test(t.tagName) && !t.isContentEditable) {
+      e.preventDefault();
+      input.focus();
+    }
+  });
+</script>
 
 <script>
   // Small screens: the sidebar folds behind a button.
@@ -158,9 +323,242 @@ const sectionLabel = topNav.find((n) => n.href === `/${section}/`)?.label ?? '';
     padding-block: var(--space-10) var(--space-24);
   }
 
+  /* The area header and filter stay put while the list scrolls under them. */
+  .side__head {
+    position: sticky;
+    top: calc(var(--space-10) * -1);
+    z-index: 5;
+    margin-top: calc(var(--space-10) * -1);
+    margin-inline: calc(var(--space-3) * -1);
+    margin-bottom: var(--space-5);
+    padding: var(--space-10) var(--space-3) var(--space-4);
+    background: var(--bg);
+    box-shadow: 0 1px 0 var(--line);
+  }
+
+  /* Area header */
+  .area {
+    display: flex;
+    align-items: stretch;
+    gap: var(--space-1);
+    margin-bottom: var(--space-3);
+  }
+  .area__home {
+    flex: 1;
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    min-width: 0;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    transition:
+      border-color var(--dur-fast) var(--ease),
+      background-color var(--dur-fast) var(--ease);
+  }
+  .area__home:hover {
+    border-color: var(--line-strong);
+    background: var(--bg-subtle);
+  }
+  .area__home[aria-current='page'] {
+    border-color: var(--accent-soft-line);
+    background: var(--accent-soft);
+  }
+  .area__ns {
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--accent);
+  }
+  .area__name {
+    font-size: var(--text-base);
+    font-weight: 650;
+    color: var(--fg);
+  }
+  .area__switch {
+    position: relative;
+  }
+  .area__switch-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 100%;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    color: var(--fg-subtle);
+    list-style: none;
+    cursor: pointer;
+    transition:
+      border-color var(--dur-fast) var(--ease),
+      color var(--dur-fast) var(--ease);
+  }
+  .area__switch-btn::-webkit-details-marker {
+    display: none;
+  }
+  .area__switch-btn:hover,
+  .area__switch[open] .area__switch-btn {
+    border-color: var(--line-strong);
+    color: var(--fg);
+  }
+  .area__menu {
+    position: absolute;
+    top: calc(100% + var(--space-1));
+    right: 0;
+    z-index: 10;
+    width: 232px;
+    margin: 0;
+    padding: var(--space-1);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--bg);
+    box-shadow: var(--shadow-md);
+    list-style: none;
+  }
+  .area__item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    min-height: 36px;
+    padding-inline: var(--space-3);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-base);
+    color: var(--fg-muted);
+  }
+  .area__item code {
+    font-size: var(--text-xs);
+    color: var(--fg-subtle);
+  }
+  a.area__item:hover {
+    background: var(--bg-subtle);
+    color: var(--fg);
+  }
+  .area__item[aria-current='true'] {
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .area__item--off {
+    color: var(--fg-subtle);
+  }
+
+  /* Name filter */
+  .filter {
+    position: relative;
+  }
+  .filter__icon {
+    position: absolute;
+    top: 50%;
+    left: var(--space-3);
+    color: var(--fg-subtle);
+    transform: translateY(-50%);
+    pointer-events: none;
+  }
+  .filter__input {
+    width: 100%;
+    height: 36px;
+    padding: 0 var(--space-8) 0 calc(var(--space-3) + 14px + var(--space-2));
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--bg-subtle);
+    font: inherit;
+    font-size: var(--text-sm);
+    color: var(--fg);
+    transition:
+      border-color var(--dur-fast) var(--ease),
+      background-color var(--dur-fast) var(--ease);
+  }
+  .filter__input::placeholder {
+    color: var(--fg-subtle);
+  }
+  .filter__input:focus {
+    border-color: var(--accent-soft-line);
+    background: var(--bg);
+    outline: none;
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .filter__input::-webkit-search-cancel-button {
+    display: none;
+  }
+  .filter__key {
+    position: absolute;
+    top: 50%;
+    right: var(--space-2);
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--bg);
+    font-size: var(--text-xs);
+    line-height: 1;
+    color: var(--fg-subtle);
+    transform: translateY(-50%);
+  }
+  .filter__input:focus + .filter__key,
+  .filter__input:not(:placeholder-shown) + .filter__key {
+    display: none;
+  }
+  .filter__empty {
+    padding: var(--space-3) 0;
+    font-size: var(--text-sm);
+    color: var(--fg-subtle);
+  }
+
   /* Sidebar */
   .side-toggle {
     display: none;
+  }
+  .side__group--fold + .side__group--fold {
+    margin-top: var(--space-1);
+  }
+  .side__group--fold > .side__title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 32px;
+    margin-inline: calc(var(--space-3) * -1);
+    padding-inline: var(--space-3);
+    border-radius: var(--radius-sm);
+    list-style: none;
+    cursor: pointer;
+    user-select: none;
+  }
+  .side__group--fold > .side__title::-webkit-details-marker {
+    display: none;
+  }
+  .side__group--fold > .side__title:hover {
+    color: var(--fg);
+    background: var(--bg-subtle);
+  }
+  .side__chev {
+    transition: transform var(--dur-fast) var(--ease);
+  }
+  .side__group--fold[open] .side__chev {
+    transform: rotate(90deg);
+  }
+  .side__group--fold .side__list {
+    margin-top: var(--space-1);
+    margin-bottom: var(--space-3);
+  }
+  .side__label {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .side__names {
+    overflow: hidden;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 400;
+    line-height: 1.4;
+    color: var(--fg-subtle);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .side__link:has(.side__names) {
+    padding-block: var(--space-1);
   }
   .side__group + .side__group {
     margin-top: var(--space-8);
@@ -208,6 +606,92 @@ const sectionLabel = topNav.find((n) => n.href === `/${section}/`)?.label ?? '';
     font-weight: 600;
   }
 
+  /* Path above the title */
+  .crumbs ol {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: var(--text-sm);
+    line-height: var(--leading-snug);
+    color: var(--fg-subtle);
+  }
+  .crumbs li {
+    display: flex;
+    align-items: center;
+  }
+  .crumbs li + li::before {
+    content: '';
+    width: 5px;
+    height: 5px;
+    margin-inline: var(--space-2) var(--space-3);
+    border-top: 1.5px solid var(--slate-300);
+    border-right: 1.5px solid var(--slate-300);
+    transform: rotate(45deg);
+  }
+  .crumbs a {
+    color: var(--fg-muted);
+    transition: color var(--dur-fast) var(--ease);
+  }
+  .crumbs a:hover {
+    color: var(--accent);
+  }
+  .crumbs li:last-child a {
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  /* Back to top */
+  .toc__top {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin-top: var(--space-5);
+    padding-left: var(--space-4);
+    font-size: var(--text-sm);
+    color: var(--fg-subtle);
+    transition: color var(--dur-fast) var(--ease);
+  }
+  .toc__top:hover {
+    color: var(--accent);
+  }
+  .to-top {
+    position: fixed;
+    right: var(--gutter);
+    bottom: var(--space-8);
+    z-index: 40;
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-full);
+    background: rgb(255 255 255 / 0.92);
+    box-shadow: var(--shadow-md);
+    color: var(--fg-muted);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    opacity: 0;
+    transform: translateY(8px);
+    pointer-events: none;
+    transition:
+      opacity var(--dur) var(--ease),
+      transform var(--dur) var(--ease),
+      color var(--dur-fast) var(--ease),
+      border-color var(--dur-fast) var(--ease);
+  }
+  .to-top:global(.is-shown) {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+  }
+  .to-top:hover {
+    border-color: var(--accent-soft-line);
+    color: var(--accent);
+  }
+
   /* Page header */
   .page-head {
     padding-bottom: var(--space-8);
@@ -215,7 +699,7 @@ const sectionLabel = topNav.find((n) => n.href === `/${section}/`)?.label ?? '';
     border-bottom: 1px solid var(--line);
   }
   .page-head__title {
-    margin-top: var(--space-3);
+    margin-top: var(--space-4);
     font-size: var(--text-3xl);
     letter-spacing: var(--tracking-display);
   }
@@ -317,6 +801,15 @@ const sectionLabel = topNav.find((n) => n.href === `/${section}/`)?.label ?? '';
       padding-block: var(--space-3) var(--space-4);
     }
     .side__link {
+      min-height: 44px;
+    }
+    .side__head {
+      position: static;
+      margin: 0 0 var(--space-4);
+      padding: var(--space-2) 0 0;
+      box-shadow: none;
+    }
+    .side__group--fold > .side__title {
       min-height: 44px;
     }
     .docs__main {

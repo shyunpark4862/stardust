@@ -1,5 +1,5 @@
 import { getCollection, type CollectionEntry } from 'astro:content';
-import { areas, type NavGroup } from './nav';
+import { areas, type AreaNav, type Crumb, type NavGroup } from './nav';
 
 export type ApiEntry = CollectionEntry<'api'>;
 
@@ -76,20 +76,46 @@ export async function documentedAreas(): Promise<string[]> {
   return [...new Set(entries.map((e) => splitId(e)[0]))];
 }
 
-/** Sidebar for every page under /api/<area>/. */
+/** Sidebar groups for every page under /api/<area>/. */
 export async function areaSidebar(area: string): Promise<NavGroup[]> {
   const groups = await groupsOf(area);
-  return [
-    {
-      title: 'API',
-      items: [
-        { label: '전체 영역', href: '/api/' },
-        { label: `${areaOf(area).name} 개요`, href: `/api/${area}/` },
-      ],
-    },
-    ...groups.map((g) => ({
-      title: g.title,
-      items: g.entries.map((e) => ({ label: e.data.title, href: hrefOf(e), mono: isSingle(e) })),
+  return groups.map((g) => ({
+    title: g.title,
+    items: g.entries.map((e) => ({
+      label: e.data.title,
+      href: hrefOf(e),
+      mono: isSingle(e),
+      names: isSingle(e) ? undefined : e.data.names,
     })),
+  }));
+}
+
+/** The area header of the sidebar: this area, and a way to the others. */
+export async function areaNav(area: string): Promise<AreaNav> {
+  const documented = await documentedAreas();
+  const info = areaOf(area);
+  return {
+    current: { key: info.key, name: info.name, ns: info.ns, href: `/api/${area}/` },
+    all: areas.map((a) => ({
+      key: a.key,
+      name: a.name,
+      ns: a.ns,
+      href: documented.includes(a.key) ? `/api/${a.key}/` : undefined,
+    })),
+  };
+}
+
+/** Anchor of a group heading on its area page: "비교, 논리, 비트" -> "비교-논리-비트". */
+export function groupId(title: string): string {
+  return title.replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '');
+}
+
+/** API › area › group, for pages under /api/<area>/. */
+export function areaCrumbs(area: string, group?: string): Crumb[] {
+  const crumbs: Crumb[] = [
+    { label: 'API', href: '/api/' },
+    { label: areaOf(area).name, href: `/api/${area}/` },
   ];
+  if (group) crumbs.push({ label: group, href: `/api/${area}/#${groupId(group)}` });
+  return crumbs;
 }

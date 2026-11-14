@@ -1,0 +1,55 @@
+---
+/**
+ * The reference card of a function page: arguments, return value and errors.
+ * Placed in the page body as <Reference /> (right after "한눈에 보기"); the
+ * page route puts the entry's frontmatter in Astro.locals.apiEntry.
+ */
+import ApiFields from './ApiFields.astro';
+
+const data = Astro.locals.apiEntry;
+---
+
+{
+  data && (
+    <div class="ref">
+      {data.params.length > 0 && (
+        <>
+          <h2 class="ref__h" id="인자">인자</h2>
+          <ApiFields items={data.params} />
+        </>
+      )}
+      {data.returns && (
+        <>
+          <h2 class="ref__h" id="반환">반환</h2>
+          <ApiFields items={[data.returns]} />
+        </>
+      )}
+      {data.raises.length > 0 && (
+        <>
+          <h2 class="ref__h" id="에러">에러</h2>
+          <ApiFields items={data.raises} />
+        </>
+      )}
+    </div>
+  )
+}
+
+<style>
+  /* Arguments, return value and errors read as one block, so their headings
+     are a step smaller than the body's sections and carry no rule. */
+  .ref {
+    margin-top: var(--space-12);
+  }
+  .ref :global(.ref__h) {
+    margin-top: var(--space-8);
+    padding-top: 0;
+    border-top: 0;
+    font-size: var(--text-lg);
+  }
+  .ref :global(.ref__h:first-child) {
+    margin-top: 0;
+  }
+  .ref :global(.ref__h + *) {
+    margin-top: var(--space-3);
+  }
+</style>

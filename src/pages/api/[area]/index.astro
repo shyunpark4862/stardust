@@ -1,7 +1,7 @@
 ---
 import Docs from '../../../layouts/Docs.astro';
 import Badge from '../../../components/Badge.astro';
-import { areaOf, areaSidebar, documentedAreas, groupsOf, hrefOf, isSingle } from '../../../data/api';
+import { areaCrumbs, areaNav, areaOf, areaSidebar, documentedAreas, groupId, groupsOf, hrefOf, isSingle } from '../../../data/api';
 
 export async function getStaticPaths() {
   return (await documentedAreas()).map((area) => ({ params: { area } }));
@@ -10,21 +10,22 @@ export async function getStaticPaths() {
 const { area } = Astro.params;
 const info = areaOf(area);
 const groups = await groupsOf(area);
-const headings = groups.map((g) => ({ depth: 2, slug: g.title, text: g.title }));
+const headings = groups.map((g) => ({ depth: 2, slug: groupId(g.title), text: g.title }));
 ---
 
 <Docs
   title={info.name}
   description={`${info.ns}의 문서 목록이에요. 이름을 누르면 그 페이지로 가요.`}
   section="api"
-  eyebrow={info.ns}
+  crumbs={areaCrumbs(area).slice(0, 1)}
   groups={await areaSidebar(area)}
+  area={await areaNav(area)}
   headings={headings}
 >
   {
     groups.map((g) => (
       <>
-        <h2 id={g.title}>{g.title}</h2>
+        <h2 id={groupId(g.title)}>{g.title}</h2>
         <ul class="fn-list">
           {g.entries.map((e) => (
             <li>

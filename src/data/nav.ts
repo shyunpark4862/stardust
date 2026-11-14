@@ -4,10 +4,24 @@ export interface NavItem {
   badge?: string;
   /** Show the label in the code font (function names). */
   mono?: boolean;
+  /** Public names on a family page: shown under the label and matched by the filter. */
+  names?: string[];
 }
 export interface NavGroup {
   title: string;
   items: NavItem[];
+}
+
+/** One step of the path shown above a page title. */
+export interface Crumb {
+  label: string;
+  href?: string;
+}
+
+/** The area a reference page belongs to, and where the other areas are. */
+export interface AreaNav {
+  current: { key: string; name: string; ns: string; href: string };
+  all: { key: string; name: string; ns: string; href?: string }[];
 }
 
 /** Top navigation. One entry per site section. */

@@ -2,8 +2,8 @@
 import { getCollection, render } from 'astro:content';
 import Docs from '../../../layouts/Docs.astro';
 import Badge from '../../../components/Badge.astro';
-import ApiFields from '../../../components/ApiFields.astro';
-import { areaOf, areaSidebar, groupsOf, hrefOf, isSingle, splitId } from '../../../data/api';
+import { areaCrumbs, areaNav, areaSidebar, groupsOf, hrefOf, isSingle, splitId } from '../../../data/api';
+import RefCard from '../../../components/RefCard.astro';
 
 export async function getStaticPaths() {
   const entries = await getCollection('api');
@@ -16,7 +16,6 @@ export async function getStaticPaths() {
 const { entry } = Astro.props;
 const { area } = Astro.params;
 const { data } = entry;
-const info = areaOf(area);
 const { Content, headings: bodyHeadings } = await render(entry);
 
 // Neighbours inside the area, in sidebar order.
@@ -28,14 +27,24 @@ const related = data.seeAlso
   .map((slug) => ordered.find((e) => splitId(e)[1] === slug))
   .filter((e) => e !== undefined);
 
+// The reference card (arguments, return value, errors) is placed by the page
+// body with <Reference />, right after its first section; RefCard reads the
+// data from here.
+Astro.locals.apiEntry = data;
 const fixed = [
   data.params.length > 0 && '인자',
   data.returns && '반환',
   data.raises.length > 0 && '에러',
-].filter((t): t is string => Boolean(t));
+]
+  .filter((t): t is string => Boolean(t))
+  .map((text) => ({ depth: 2, slug: text, text }));
+const [first, ...rest] = bodyHeadings.filter((h) => h.depth <= 3);
+const firstH2 = rest.findIndex((h) => h.depth === 2);
 const headings = [
-  ...fixed.map((text) => ({ depth: 2, slug: text, text })),
-  ...bodyHeadings,
+  ...(first ? [first] : []),
+  ...(firstH2 === -1 ? rest : rest.slice(0, firstH2)),
+  ...fixed,
+  ...(firstH2 === -1 ? [] : rest.slice(firstH2)),
   ...(related.length > 0 ? [{ depth: 2, slug: '함께-보기', text: '함께 보기' }] : []),
 ];
 ---
@@ -44,9 +53,10 @@ const headings = [
   title={data.title}
   description={data.summary}
   section="api"
-  eyebrow={info.ns}
+  crumbs={areaCrumbs(area, data.group)}
   monoTitle={isSingle(entry)}
   groups={await areaSidebar(area)}
+  area={await areaNav(area)}
   headings={headings}
   sample={data.sample}
 >
@@ -59,32 +69,7 @@ const headings = [
     )
   }
 
-  {
-    data.params.length > 0 && (
-      <>
-        <h2 class="ref-h" id="인자">인자</h2>
-        <ApiFields items={data.params} />
-      </>
-    )
-  }
-  {
-    data.returns && (
-      <>
-        <h2 class="ref-h" id="반환">반환</h2>
-        <ApiFields items={[data.returns]} />
-      </>
-    )
-  }
-  {
-    data.raises.length > 0 && (
-      <>
-        <h2 class="ref-h" id="에러">에러</h2>
-        <ApiFields items={data.raises} />
-      </>
-    )
-  }
-
-  <Content />
+  <Content components={{ Reference: RefCard }} />
 
   {
     related.length > 0 && (
@@ -148,16 +133,6 @@ const headings = [
     line-height: 1.75;
     color: var(--blue-800);
     overflow-x: auto;
-  }
-
-  /* ---- Reference card headings ----
-     Arguments, return value and errors read as one block, so their headings
-     are a step smaller than the body's sections and carry no rule. */
-  .ref-h {
-    margin-top: var(--space-10);
-    padding-top: 0;
-    border-top: 0;
-    font-size: var(--text-lg);
   }
 
   /* ---- See also ---- */

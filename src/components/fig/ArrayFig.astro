@@ -28,7 +28,8 @@ const show = (v: Cell) => (typeof v === 'boolean' ? (v ? 'True' : 'False') : Str
 ---
 
 <div class="arr">
-  {name && <span class="arr__name">{name}</span>}
+  {/* The label rows are always present, so a row of figures lines up on its grids. */}
+  <span class="arr__name" aria-hidden={name ? undefined : 'true'}>{name}</span>
   <div class:list={['arr__body', axes && 'arr__body--axes']}>
     {axes && is2d && (
       <span class="arr__axis arr__axis--0">
@@ -44,7 +45,7 @@ const show = (v: Cell) => (typeof v === 'boolean' ? (v ? 'True' : 'False') : Str
       }
     </div>
   </div>
-  {note && <span class="arr__note">{note}</span>}
+  <span class="arr__note" aria-hidden={note ? undefined : 'true'}>{note}</span>
 </div>
 
 <style>
@@ -54,19 +55,23 @@ const show = (v: Cell) => (typeof v === 'boolean' ? (v ? 'True' : 'False') : Str
     align-items: center;
     gap: var(--space-2);
   }
-  .arr__name {
+  /* Name above and note below have the same fixed height, so the grid sits
+     exactly in the middle of the figure and neighbours centre on it. */
+  .arr__name,
+  .arr__note {
+    height: 18px;
     font-family: var(--font-mono);
+    line-height: 18px;
+    white-space: nowrap;
+  }
+  .arr__name {
     font-size: var(--text-sm);
     font-weight: 600;
-    line-height: 1.2;
     color: var(--fg);
   }
   .arr__note {
-    font-family: var(--font-mono);
     font-size: var(--text-xs);
-    line-height: 1.2;
     color: var(--fg-subtle);
-    white-space: nowrap;
   }
   .arr__body--axes {
     display: grid;
@@ -74,6 +79,8 @@ const show = (v: Cell) => (typeof v === 'boolean' ? (v ? 'True' : 'False') : Str
     grid-template-rows: auto auto;
     gap: var(--space-1) var(--space-2);
     align-items: center;
+    /* Mirror the axis-1 label row above, keeping the grid centred. */
+    padding-bottom: calc(0.6875rem + var(--space-1));
   }
   .arr__axis {
     font-family: var(--font-mono);
@@ -100,15 +107,15 @@ const show = (v: Cell) => (typeof v === 'boolean' ? (v ? 'True' : 'False') : Str
   }
   .arr__grid {
     display: grid;
-    grid-template-columns: repeat(var(--cols), minmax(40px, auto));
-    gap: 3px;
+    grid-template-columns: repeat(var(--cols), minmax(var(--cell-w, 40px), auto));
+    gap: var(--cell-gap, 3px);
   }
   .arr__cell {
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 36px;
-    padding-inline: var(--space-2);
+    height: var(--cell-h, 36px);
+    padding-inline: var(--cell-pad, var(--space-2));
     border: 1px solid var(--line-strong);
     border-radius: 5px;
     background: var(--bg);
@@ -138,5 +145,17 @@ const show = (v: Cell) => (typeof v === 'boolean' ? (v ? 'True' : 'False') : Str
     border-color: var(--line);
     background: transparent;
     color: var(--slate-400);
+  }
+  /* Narrow screens: smaller cells, so ten-wide arrays still fit. */
+  @media (max-width: 640px) {
+    .arr {
+      --cell-w: 28px;
+      --cell-h: 30px;
+      --cell-gap: 2px;
+      --cell-pad: 5px;
+    }
+    .arr__cell {
+      font-size: var(--text-xs);
+    }
   }
 </style>
