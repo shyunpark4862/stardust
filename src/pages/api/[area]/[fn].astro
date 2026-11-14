@@ -62,7 +62,7 @@ const headings = [
 >
   {
     data.signatures.length > 0 && (
-      <div class="sig">
+      <div class="sig" slot="head">
         <pre class="sig__code"><code>{data.signatures.join('\n')}</code></pre>
         {data.tag && <Badge tone="accent">{data.tag}</Badge>}
       </div>
@@ -113,9 +113,12 @@ const headings = [
 
 <style>
   /* ---- Signature ---- */
+  /* The signature belongs to the page head: it sits under the lead, above
+     the rule that separates the head from the body. */
   .sig {
     display: flex;
     align-items: flex-start;
+    margin-top: var(--space-6);
     gap: var(--space-4);
     padding: var(--space-4) var(--space-5);
     border: 1px solid var(--line);

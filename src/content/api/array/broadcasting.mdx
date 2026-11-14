@@ -11,7 +11,7 @@ import Fig from '../../../components/fig/Fig.astro';
 import ArrayFig from '../../../components/fig/ArrayFig.astro';
 import Op from '../../../components/fig/Op.astro';
 
-## 무엇인가요
+## 한눈에 보기
 
 배열끼리 더하거나 곱하는 연산은 **같은 자리의 원소끼리** 짝지어 계산해요. 그러려면 두 배열의 모양(shape)이 같아야 할 것 같지만, 실제로는 모양이 달라도 되는 경우가 많아요.
 
@@ -318,6 +318,16 @@ ValueError: assignment destination is read-only
 ### 행렬곱은 다른 규칙이에요
 
 `@`와 `sd.matmul`은 원소끼리 짝짓는 연산이 아니에요. 마지막 두 축은 행렬곱의 규칙(앞 행렬의 열 수와 뒤 행렬의 행 수가 같아야 한다)을 따르고, 그 **앞쪽 축들만** 브로드캐스팅돼요.
+
+## 비슷한 기능과의 차이
+
+| 하고 싶은 일 | 쓸 것 | 브로드캐스팅과 다른 점 |
+|---|---|---|
+| 늘어난 모습을 배열로 받기 | [`broadcast_to`, `broadcast_arrays`](/api/array/broadcast_to/) | 계산 없이 늘린 결과만 돌려줘요. 값을 복사하지 않는 읽기 전용 배열이에요. |
+| 같은 값을 실제로 여러 벌 만들기 | [`repeat`, `tile`](/api/array/repeat/) | 메모리에 값을 정말로 되풀이해 적어요. 고칠 수 있는 대신 그만큼 메모리를 써요. |
+| 길이 1인 축을 원하는 자리에 넣기 | [`expand_dims`](/api/array/squeeze/), `x[:, sd.newaxis]` | 늘어날 방향을 정해 주는 준비 단계예요. 그 자체로는 값이 늘어나지 않아요. |
+| 배열을 나란히 이어 붙이기 | [`concat`, `stack`](/api/array/concat/) | 원소를 짝짓지 않아요. 브로드캐스팅도 하지 않아서 모양이 정확히 맞아야 해요. |
+| 행렬끼리 곱하기 | [`matmul`](/api/array/matmul/), `@` | 마지막 두 축은 행렬곱 규칙을 따르고, 앞쪽 축만 브로드캐스팅해요. |
 
 ## numpy를 아는 분께
 
