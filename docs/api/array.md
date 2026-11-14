@@ -155,7 +155,7 @@ ndarray
 ```
 can_cast(from_, to, /)
 result_type(*arrays_and_dtypes)
-isdtype(dtype, kind)
+isdtype(dtype, kind, /)
 finfo(type, /)
 iinfo(type, /)
 ```
@@ -164,7 +164,7 @@ iinfo(type, /)
 - **`result_type`**: 인자들을 승격한 dtype이다 (§1.4). Python 스칼라(`bool`, `int`, `float`, `complex`)도 받는다. 종류마다 dtype이 하나라서 스칼라는 같은 종류의 배열과 똑같이 승격한다. 인자가 없으면 `ValueError`다.
 - **`isdtype(dtype, kind)`**: `kind`는 dtype, 종류 이름, 또는 그 tuple이다.
   - 종류 이름: `'bool'`, `'signed integer'`(int64), `'unsigned integer'`(해당 없음), `'integral'`(int64), `'real floating'`(float64), `'complex floating'`(complex128), `'numeric'`(bool 밖의 셋). 그 밖의 이름은 `ValueError`다.
-  - `dtype`은 dtype 객체만 받는다(이름은 `TypeError`).
+  - `dtype`은 다른 dtype 인자처럼 dtype 객체나 그 이름이다(배열은 받지 않는다). `kind`의 dtype도 이름으로 쓸 수 있다.
 - **`finfo`**: float64와 complex128을 받는다. 결과는 `FinfoResult(bits, eps, max, min, smallest_normal, dtype)`이다. complex128은 실수부·허수부의 float64를 설명하고, `dtype`은 `sd.float64`다.
 - **`iinfo`**: int64만 받는다. 결과는 `IinfoResult(bits, max, min, dtype)`이다.
 

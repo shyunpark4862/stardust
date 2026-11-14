@@ -112,6 +112,12 @@ def test_roll(shift, axis):
     same(sd.roll(sd.asarray(X3), shift=shift, axis=axis), np.roll(X3, shift, axis))
 
 
+def test_roll_x_is_positional_only():
+    assert "(arg0: object | None, /, shift" in sd.roll.__nb_signature__[0][0]
+    with pytest.raises(TypeError):
+        sd.roll(x=sd.asarray([1.0]), shift=1)
+
+
 def test_roll_errors():
     with pytest.raises(TypeError, match="'shift' must be an int when 'axis' is None"):
         sd.roll(sd.asarray(X3), (1, 2))
@@ -256,6 +262,17 @@ def test_dtype_functions():
     assert sd.isdtype(sd.float64, ("bool", sd.float64)) and not sd.isdtype(sd.int64, sd.float64)
     with pytest.raises(ValueError, match="'kind' must be"):
         sd.isdtype(sd.int64, "integer")
+    # Names work as in every dtype argument (API.md §1); messages are the shared ones.
+    assert sd.isdtype("float64", "real floating") and sd.isdtype(sd.int64, ("bool", "int64"))
+    with pytest.raises(TypeError, match=r"isdtype\(\): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128 "
+                                        r"\(or their names\), not sd.string"):
+        sd.isdtype(sd.string, "numeric")
+    with pytest.raises(TypeError, match=r"can_cast\(\): 'from_' must be sd.bool, .* or an sd.ndarray, not sd.string"):
+        sd.can_cast(sd.string, sd.float64)
+    with pytest.raises(TypeError, match=r"^finfo\(\): 'type' must be float64 or complex128, not int64$"):
+        sd.finfo(sd.int64)
+    with pytest.raises(TypeError, match=r"^iinfo\(\): 'type' must be int64, not float64$"):
+        sd.iinfo(sd.float64)
     f, nf = sd.finfo(sd.float64), np.finfo(np.float64)
     assert (f.bits, f.eps, f.max, f.min, f.smallest_normal, f.dtype) == (64, nf.eps, nf.max, nf.min, nf.smallest_normal,
                                                                         sd.float64)
@@ -398,3 +415,5 @@ def test_histogram_edges_cases():
         sd.histogram(sd.asarray([1.0, 2.0]), weights=sd.asarray([1.0]))
     with pytest.raises(TypeError, match="complex128"):
         sd.histogram(sd.asarray([1j]))
+    with pytest.raises(TypeError, match=r"'range' must hold two ints or floats, not bool"):
+        sd.histogram(sd.asarray([1.0]), range=(0, True))

@@ -19,14 +19,17 @@ namespace sd {
 
 namespace {
 
-// A dtype argument (the object or its name) or an array (its dtype). Array
-// dtypes only: sd.string is a TypeError.
-DType dtype_arg(nb::handle o, const char* what) {
-    if (is_ndarray(o)) return as_ndarray(o).dtype;
+constexpr const char* kDTypes = "sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names)";
+
+// A dtype argument (the object or its name, API.md §1), or, when
+// `arrays` is set, an array (its dtype). Array dtypes only: sd.string is a
+// TypeError. The message is the one every dtype argument uses.
+DType dtype_arg(nb::handle o, const char* what, bool arrays = true) {
+    if (arrays && is_ndarray(o)) return as_ndarray(o).dtype;
     const std::optional<DType> d = parse_any_dtype(o);
     if (!d || !is_array_dtype(*d))
-        throw nb::type_error(("'" + std::string(what) + "' must be an array dtype or an sd.ndarray, not " +
-                              describe_dtype_arg(o))
+        throw nb::type_error(("'" + std::string(what) + "' must be " + kDTypes + (arrays ? " or an sd.ndarray" : "") +
+                              ", not " + describe_dtype_arg(o))
                                  .c_str());
     return *d;
 }
@@ -46,7 +49,7 @@ nb::object result_type(nb::args args) {
         } else if (const std::optional<DType> s = scalar_dtype(h)) {
             r = promote(r, *s);
         } else {
-            throw nb::type_error(("arguments must be arrays, dtypes or Python scalars, not " + py_type_name(h)).c_str());
+            throw nb::type_error(("'arrays_and_dtypes' must be sd.ndarray, dtypes or Python scalars, not " + py_type_name(h)).c_str());
         }
     }
     return nb::borrow(dtype_object(r));
@@ -55,7 +58,10 @@ nb::object result_type(nb::args args) {
 // isdtype(dtype, kind): kind is a dtype, one of the Array API's kind names,
 // or a tuple of them.
 bool is_kind(DType d, nb::handle kind) {
-    if (const std::optional<DType> k = parse_any_dtype(kind); k && !PyUnicode_Check(kind.ptr())) return d == *k;
+    if (const std::optional<DType> k = parse_any_dtype(kind)) {  // a dtype (or its name): equality
+        if (!is_array_dtype(*k)) return false;
+        return d == *k;
+    }
     if (!nb::isinstance<nb::str>(kind))
         throw nb::type_error(("'kind' must be a dtype, a str or a tuple of them, not " + py_type_name(kind)).c_str());
     const std::string s = nb::borrow<nb::str>(kind).c_str();
@@ -71,15 +77,13 @@ bool is_kind(DType d, nb::handle kind) {
 }
 
 bool isdtype(nb::handle dtype_obj, nb::handle kind) {
-    const std::optional<DType> d = parse_any_dtype(dtype_obj);
-    if (!d || !is_array_dtype(*d) || PyUnicode_Check(dtype_obj.ptr()))
-        throw nb::type_error(("'dtype' must be an array dtype object, not " + describe_dtype_arg(dtype_obj)).c_str());
+    const DType d = dtype_arg(dtype_obj, "dtype", /*arrays=*/false);
     if (PyTuple_Check(kind.ptr())) {
         for (nb::handle k : kind)
-            if (is_kind(*d, k)) return true;
+            if (is_kind(d, k)) return true;
         return false;
     }
-    return is_kind(*d, kind);
+    return is_kind(d, kind);
 }
 
 nb::object results(const char* name) { return nb::module_::import_("stardust._results").attr(name); }
@@ -88,13 +92,13 @@ nb::object results(const char* name) { return nb::module_::import_("stardust._re
 nb::object finfo(nb::handle type) {
     const DType d = dtype_arg(type, "type");
     if (d != DType::Float64 && d != DType::Complex128)
-        throw nb::type_error((std::string("finfo() needs float64 or complex128, not ") + dtype_name(d)).c_str());
+        throw nb::type_error((std::string("'type' must be float64 or complex128, not ") + dtype_name(d)).c_str());
     return results("FinfoResult")(64, DBL_EPSILON, DBL_MAX, -DBL_MAX, DBL_MIN, dtype_object(DType::Float64));
 }
 
 nb::object iinfo(nb::handle type) {
     const DType d = dtype_arg(type, "type");
-    if (d != DType::Int64) throw nb::type_error((std::string("iinfo() needs int64, not ") + dtype_name(d)).c_str());
+    if (d != DType::Int64) throw nb::type_error((std::string("'type' must be int64, not ") + dtype_name(d)).c_str());
     return results("IinfoResult")(64, INT64_MAX, INT64_MIN, dtype_object(DType::Int64));
 }
 

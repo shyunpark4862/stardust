@@ -465,7 +465,9 @@ nb::object diff(nb::handle x, nb::handle axis_obj, nb::handle n_obj, nb::handle 
 void bind_manipulation(nb::module_& m) {
     using nb::arg;
     m.def("flip", named("flip", &flip), arg().none(), nb::kw_only(), arg("axis").none() = nb::none());
-    m.def("roll", named("roll", &roll), arg().none(), arg("shift").none(), nb::kw_only(), arg("axis").none() = nb::none());
+    // nanobind prints no "/" before a named positional argument; x is positional-only all the same.
+    m.def("roll", named("roll", &roll), arg().none(), arg("shift").none(), nb::kw_only(), arg("axis").none() = nb::none(),
+          nb::sig("def roll(arg0: object | None, /, shift: object | None, *, axis: object | None = None) -> object"));
     m.def("repeat", named("repeat", &repeat), arg().none(), arg().none(), nb::kw_only(), arg("axis").none() = nb::none());
     m.def("tile", named("tile", &tile), arg().none(), arg().none());
     m.def("unstack", named("unstack", &unstack), arg().none(), nb::kw_only(), arg("axis").none() = 0);

@@ -95,9 +95,11 @@ std::pair<double, double> outer_edges(const std::vector<double>& a, nb::handle r
     double first, last;
     if (!range.is_none()) {
         if (!(PyTuple_Check(range.ptr()) || PyList_Check(range.ptr())) || nb::len(range) != 2)
-            throw nb::type_error("'range' must be None or a (min, max) pair");
+            throw nb::type_error(("'range' must be None or a (min, max) pair, not " + py_type_name(range)).c_str());
         const std::optional<double> lo = real_value(range[0]), hi = real_value(range[1]);
-        if (!lo || !hi) throw nb::type_error("'range' must hold two real numbers");
+        for (int k = 0; k < 2; ++k)
+            if (!(k ? hi : lo))
+                throw nb::type_error(("'range' must hold two ints or floats, not " + py_type_name(range[k])).c_str());
         first = *lo;
         last = *hi;
         if (first > last) throw nb::value_error("'range' must have min <= max");

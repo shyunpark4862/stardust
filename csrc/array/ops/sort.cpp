@@ -416,7 +416,7 @@ nb::object sort_impl(nb::handle x_obj, nb::handle axis_obj, nb::handle descendin
     const bool descending = parse_bool(descending_obj, "descending");
     const bool stable = parse_bool(stable_obj, "stable");
     if (x.dtype == DType::Complex128)
-        throw nb::type_error("not supported for complex128 (no ordering)");  // docs/design/array.md §2.6
+        throw nb::type_error("not supported for complex128");  // docs/design/array.md §2.6
     const int axis = normalize_axis(parse_int(axis_obj, "axis"), x.ndim);
     NDArray out = new_array_like(x, Arg ? DType::Int64 : x.dtype);
     SortCfg cfg{descending, stable};

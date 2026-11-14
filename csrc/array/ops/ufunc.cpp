@@ -224,7 +224,7 @@ constexpr std::array<Loop, kNumArrayDTypes> clip_loops = {
 
 nb::object clip(nb::handle x, nb::handle lo, nb::handle hi, nb::handle out) {
     const DType d = operand_dtype(x, "x");
-    if (d == DType::Complex128) throw nb::type_error("not supported for complex128 (no ordering)");
+    if (d == DType::Complex128) throw nb::type_error("not supported for complex128");
     if (!lo.is_none()) check_assignable(operand_dtype(lo, "min"), d);
     if (!hi.is_none()) check_assignable(operand_dtype(hi, "max"), d);
     const int k = static_cast<int>(d);
