@@ -12,6 +12,8 @@
 #include "parallel/pool.hpp"
 
 #include <algorithm>
+#include <cstdint>
+#include <bit>
 #include <iterator>
 #include <array>
 #include <cmath>
@@ -252,18 +254,33 @@ void sort_buffer(T* a, std::int64_t n, bool stable, auto less) {
 // which cannot be seen (docs/design/array.md §8.3): for int64 equal values are
 // identical, and for float64 too -- NaNs are already split off -- except that
 // -0.0 == +0.0. A stable float sort of data with zeros of both signs still
-// takes it: the zeros are remembered in their input order and written back over
-// the zero run afterwards, which is exactly what a stable sort leaves there
-// (ascending or descending: equal values keep their input order in both). The
-// merge sort this replaces took 64 ms for 10^6 values, the NEON sort 14.
+// takes it: the zeros' signs are recorded in their input order, one bit each,
+// and written back over the zero run afterwards, which is exactly what a stable
+// sort leaves there (ascending or descending: equal values keep their input order
+// in both). The merge sort this replaces took 64 ms for 10^6 values, the NEON sort
+// 14; the bits (rather than a copy of the zeros) keep half-zero data at 14 too.
 inline constexpr std::int64_t kSimdMin = 32;  // below this, insertion/merge sort is as fast
 
-template <typename T>
-bool zeros_of_both_signs(const T* a, std::int64_t n) {
-    bool neg = false, pos = false;
-    for (std::int64_t i = 0; i < n; ++i)
-        if (a[i] == 0) (std::signbit(a[i]) ? neg : pos) = true;
-    return neg && pos;
+// The signs of the zeros of a[0, n) in order, bit z of the result for the z-th zero
+// (branch-free), and the count of each sign.
+struct ZeroSigns {
+    std::vector<std::uint64_t> bits;
+    std::int64_t count = 0, negative = 0;
+};
+inline ZeroSigns zero_signs(const double* a, std::int64_t n) {
+    ZeroSigns z;
+    z.bits.assign(static_cast<std::size_t>(n / 64 + 1), 0);
+    std::uint64_t* w = z.bits.data();
+    std::int64_t c = 0, neg = 0;
+    for (std::int64_t i = 0; i < n; ++i) {
+        const std::uint64_t is_zero = a[i] == 0.0;
+        const std::uint64_t sign = std::signbit(a[i]) ? 1 : 0;
+        w[c >> 6] |= (sign & is_zero) << (c & 63);
+        c += static_cast<std::int64_t>(is_zero);
+        neg += static_cast<std::int64_t>(sign & is_zero);
+    }
+    z.count = c, z.negative = neg;
+    return z;
 }
 
 template <typename T>
@@ -273,17 +290,26 @@ void sort_values_serial(T* a, std::int64_t n, bool stable, bool descending) {
     }
     if constexpr (ops::is_float<T> || ops::is_int<T>) {
         if (n >= kSimdMin) {
-            std::vector<T> zeros;  // the zeros in input order, when a stable sort could tell them apart
+            ZeroSigns zeros;  // when a stable sort could tell the zeros apart
+            bool rewrite = false;
             if constexpr (ops::is_float<T>) {
-                if (stable && zeros_of_both_signs(a, n))
-                    std::copy_if(a, a + n, std::back_inserter(zeros), [](T v) { return v == 0; });
+                if (stable) {
+                    zeros = zero_signs(a, n);
+                    rewrite = zeros.negative > 0 && zeros.negative < zeros.count;
+                }
             }
             simd_sort::sort<std::conditional_t<ops::is_float<T>, simd_sort::F64, simd_sort::I64>>(a, n);
             if (descending) std::reverse(a, a + n);  // ties are indistinguishable here
-            if (!zeros.empty()) {
-                T* z0 = descending ? std::partition_point(a, a + n, [](T v) { return v > 0; })
-                                   : std::partition_point(a, a + n, [](T v) { return v < 0; });
-                std::copy(zeros.begin(), zeros.end(), z0);
+            if constexpr (ops::is_float<T>) {
+                if (rewrite) {
+                    T* z0 = descending ? std::partition_point(a, a + n, [](T v) { return v > 0; })
+                                       : std::partition_point(a, a + n, [](T v) { return v < 0; });
+                    const std::uint64_t* w = zeros.bits.data();
+                    for (std::int64_t k = 0; k < zeros.count; ++k) {
+                        const std::uint64_t bit = (w[k >> 6] >> (k & 63)) & 1;
+                        z0[k] = std::bit_cast<T>(bit << 63);  // +0.0 or -0.0
+                    }
+                }
             }
             return;
         }

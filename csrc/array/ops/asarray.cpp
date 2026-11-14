@@ -223,9 +223,22 @@ void visit_src(Src s, F&& f) {
 // is two parts, its real and imaginary halves).
 template <typename S>
 S load_swapped(const std::byte* p) {
-    constexpr std::size_t part = std::is_same_v<S, std::complex<float>> || std::is_same_v<S, std::complex<double>>
-                                     ? sizeof(S) / 2
-                                     : sizeof(S);
+    constexpr bool cplx = std::is_same_v<S, std::complex<float>> || std::is_same_v<S, std::complex<double>>;
+    if constexpr (!cplx && (sizeof(S) == 2 || sizeof(S) == 4 || sizeof(S) == 8)) {  // one part: a byte swap instruction
+        using U = std::conditional_t<sizeof(S) == 2, std::uint16_t, std::conditional_t<sizeof(S) == 4, std::uint32_t, std::uint64_t>>;
+        U u;
+        std::memcpy(&u, p, sizeof u);
+        if constexpr (sizeof(S) == 2) u = __builtin_bswap16(u);
+        else if constexpr (sizeof(S) == 4) u = __builtin_bswap32(u);
+        else u = __builtin_bswap64(u);
+        S v;
+        std::memcpy(&v, &u, sizeof v);
+        return v;
+    } else if constexpr (cplx) {  // two parts, each swapped on its own
+        using P = typename S::value_type;
+        return S(load_swapped<P>(p), load_swapped<P>(p + sizeof(P)));
+    }
+    constexpr std::size_t part = cplx ? sizeof(S) / 2 : sizeof(S);
     std::byte tmp[sizeof(S)];
     for (std::size_t k = 0; k < sizeof(S); k += part)
         for (std::size_t b = 0; b < part; ++b) tmp[k + b] = p[k + part - 1 - b];
@@ -317,21 +330,59 @@ nb::object from_buffer(nb::handle obj, std::optional<DType> dtype, std::optional
             // took 417 us for 10^6 int32, this 60 (numpy's astype: 99).
             // (the buffer's own contiguity: `foreign` carries the target's item size)
             dst.update_flags();
-            if (!swapped && ((PyBuffer_IsContiguous(&view, 'C') && dst.c_contiguous) ||
-                             (PyBuffer_IsContiguous(&view, 'F') && dst.f_contiguous))) {
+            if ((PyBuffer_IsContiguous(&view, 'C') && dst.c_contiguous) ||
+                (PyBuffer_IsContiguous(&view, 'F') && dst.f_contiguous)) {
                 const auto* sp = static_cast<const std::byte*>(view.buf);
                 T* dp = reinterpret_cast<T*>(dst.data);
                 const std::int64_t n = dst.size();
+                constexpr std::int64_t w = static_cast<std::int64_t>(sizeof(S));
                 for_pieces(n, kParallelTask, n, [&](std::int64_t, std::int64_t i0, std::int64_t i1) {
-                    for (std::int64_t i = i0; i < i1; ++i)
-                        dp[i] = cast_value<T>(widen(load<S>(sp + i * static_cast<std::int64_t>(sizeof(S)))));
+                    if (swapped) {  // byte-reversed (a big-endian buffer): the same flat loop
+                        for (std::int64_t i = i0; i < i1; ++i) dp[i] = cast_value<T>(widen(load_swapped<S>(sp + i * w)));
+                    } else {
+                        for (std::int64_t i = i0; i < i1; ++i) dp[i] = cast_value<T>(widen(load<S>(sp + i * w)));
+                    }
                 });
                 return;
             }
+            // Anything else (strided, byte-swapped): the logical C-order index cut into
+            // pieces on the pool, each walked by an odometer whose innermost axis is a plain
+            // strided loop (the element-by-element walk took 420 us for 10^6 swapped
+            // float64 on one thread, whatever the thread count).
             auto run = [&](auto&& load_one) {
-                for_each_element<2>(dst.shape_span(), {static_cast<std::byte*>(view.buf), dst.data},
-                                    {foreign.strides.data(), dst.strides.data()},
-                                    [&](std::byte* ps, std::byte* pd) { store(pd, cast_value<T>(widen(load_one(ps)))); });
+                const int nd = dst.ndim;
+                const std::int64_t n = dst.size();
+                if (n == 0) return;
+                const std::int64_t* shp = dst.shape.data();
+                const std::int64_t* ss = foreign.strides.data();
+                const std::int64_t* ds = dst.strides.data();
+                const auto* sbase = static_cast<const std::byte*>(view.buf);
+                std::byte* dbase = dst.data;
+                for_pieces(n, kParallelTask, n, [&](std::int64_t, std::int64_t i0, std::int64_t i1) {
+                    std::int64_t idx[kMaxNdim];
+                    std::int64_t rem = i0, so = 0, dof = 0;
+                    for (int d = nd - 1; d >= 0; --d) {
+                        idx[d] = rem % shp[d];
+                        rem /= shp[d];
+                        so += idx[d] * ss[d];
+                        dof += idx[d] * ds[d];
+                    }
+                    const std::int64_t inner = shp[nd - 1], si = ss[nd - 1], di = ds[nd - 1];
+                    for (std::int64_t i = i0; i < i1;) {
+                        const std::int64_t len = std::min(inner - idx[nd - 1], i1 - i);
+                        const std::byte* ps = sbase + so;
+                        std::byte* pd = dbase + dof;
+                        for (std::int64_t k = 0; k < len; ++k, ps += si, pd += di)
+                            store(pd, cast_value<T>(widen(load_one(ps))));
+                        i += len, so += len * si, dof += len * di, idx[nd - 1] += len;
+                        for (int d = nd - 1; d > 0 && idx[d] == shp[d]; --d) {  // carry
+                            so += ss[d - 1] - shp[d] * ss[d];
+                            dof += ds[d - 1] - shp[d] * ds[d];
+                            idx[d] = 0;
+                            ++idx[d - 1];
+                        }
+                    }
+                });
             };
             if (swapped) run([](const std::byte* p) { return load_swapped<S>(p); });
             else run([](const std::byte* p) { return load<S>(p); });

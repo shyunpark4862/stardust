@@ -27,6 +27,25 @@ using unary_result_t = decltype(Op::f(std::declval<T>()));
 template <typename Op, typename T>
 using binary_result_t = decltype(Op::f(std::declval<T>(), std::declval<T>()));
 
+// In place (out is exactly an input: x += y, sd.sin(x, out=x)): the plain indexed
+// loop below gets a runtime overlap check from the compiler, which sees out == x as an
+// overlap and falls back to scalar code (add in place: 260 us for 10^6 against 185 into
+// another array). Read a block, compute, then write it: correct for out == x (each
+// element is read before its own place is written, and blocks do not interact), and
+// free of the check. Partial overlaps never reach the loops: they are copied first
+// (docs/design/array.md §3.5).
+inline constexpr int kInPlaceBlock = 16;
+template <typename F, typename R, typename... P>
+inline void in_place_blocks(R* o, std::int64_t n, F&& f, const P*... in) {
+    std::int64_t i = 0;
+    for (; i + kInPlaceBlock <= n; i += kInPlaceBlock) {
+        R v[kInPlaceBlock];
+        for (int k = 0; k < kInPlaceBlock; ++k) v[k] = f(in[i + k]...);
+        for (int k = 0; k < kInPlaceBlock; ++k) o[i + k] = v[k];
+    }
+    for (; i < n; ++i) o[i] = f(in[i]...);
+}
+
 // args: x, out
 template <typename Op, typename T>
 void unary_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, void*) {
@@ -40,6 +59,12 @@ void unary_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, v
         // but now the compiler sees a[i] -> o[i] and can use vector registers.
         const T* x = reinterpret_cast<const T*>(args[0]);
         R* o = reinterpret_cast<R*>(args[1]);
+        if constexpr (std::is_same_v<R, T>) {
+            if (static_cast<const void*>(o) == static_cast<const void*>(x)) {
+                in_place_blocks(o, n, [](T v) { return Op::f(v); }, x);
+                return;
+            }
+        }
         for (std::int64_t i = 0; i < n; ++i) o[i] = Op::f(x[i]);
         return;
     }
@@ -65,7 +90,12 @@ void binary_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, 
             if constexpr (neon_binary<Op, T>::available) {
                 neon_binary<Op, T>::run(a, b, o, n);  // hand-written NEON (docs/design/array.md §5.2)
             } else {
-                for (std::int64_t i = 0; i < n; ++i) o[i] = Op::f(a[i], b[i]);
+                bool same = false;
+                if constexpr (std::is_same_v<R, T>)
+                    same = static_cast<const void*>(o) == static_cast<const void*>(a) ||
+                           static_cast<const void*>(o) == static_cast<const void*>(b);
+                if (same) in_place_blocks(o, n, [](T u, T v) { return Op::f(u, v); }, a, b);
+                else for (std::int64_t i = 0; i < n; ++i) o[i] = Op::f(a[i], b[i]);
             }
             return;
         }
@@ -74,6 +104,12 @@ void binary_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, 
                 neon_binary<Op, T>::run_scalar_b(a, b, o, n);
             } else {
                 const T bv = *b;
+                if constexpr (std::is_same_v<R, T>) {
+                    if (static_cast<const void*>(o) == static_cast<const void*>(a)) {  // x += 1.0
+                        in_place_blocks(o, n, [bv](T u) { return Op::f(u, bv); }, a);
+                        return;
+                    }
+                }
                 for (std::int64_t i = 0; i < n; ++i) o[i] = Op::f(a[i], bv);
             }
             return;
