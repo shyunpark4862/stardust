@@ -90,8 +90,8 @@ inline PQ small_a_upper(double a, double x) {
 
 // P by the series: D sum_n x^n / ((a+1)...(a+n)). x - 1/(3x) < a, so the
 // terms fall at least like (x / (a + n))^n.
-inline PQ series_lower(double a, double x, dd::DD E) {
-    const Scaled d = gamma_prefix(a, E);
+inline PQ series_lower(double a, double x) {
+    const Scaled d = gamma_prefix(a, x);
     double sum = 1.0, term = 1.0, ap = a;
     if (d.m != 0.0) {
         for (int n = 0; n < 100000; ++n) {
@@ -101,14 +101,16 @@ inline PQ series_lower(double a, double x, dd::DD E) {
             if (term <= sum * 0x1p-56) break;
         }
     }
-    const double p = value(d * scaled(sum));
-    return {p, 1.0 - p, value(d) * a};
+    const double dv = value(d);
+    // (the product in one rounding; through the split form only where it may leave the normals)
+    const double p = dv >= 0x1p-900 ? dv * sum : value(d * scaled(sum));
+    return {p, 1.0 - p, dv * a};
 }
 
 // Q by Lentz: a D / (x + 1 - a - 1(1-a) / (x + 3 - a - 2(2-a) / ...)), the
 // fraction's tail evaluated on its own (cf.hpp: b0 = 0).
-inline PQ cf_upper(double a, double x, dd::DD E) {
-    const Scaled d = gamma_prefix(a, E);
+inline PQ cf_upper(double a, double x) {
+    const Scaled d = gamma_prefix(a, x);
     double tail = 1.0;
     if (d.m != 0.0) {
         tail = lentz_backward(
@@ -120,8 +122,9 @@ inline PQ cf_upper(double a, double x, dd::DD E) {
                    100000)
                    .value;
     }
-    const double q = value(d * scaled(a / tail));
-    return {1.0 - q, q, value(d) * a};
+    const double dv = value(d);
+    const double q = dv >= 0x1p-900 ? dv * (a / tail) : value(d * scaled(a / tail));
+    return {1.0 - q, q, dv * a};
 }
 
 // Temme (DLMF 8.12.8): with eta = sign(x - a) sqrt(2 E / a),
@@ -176,12 +179,11 @@ inline PQ igam(double a, double x) {
     if (x < 1.1) {
         const bool small = x < 0.5 ? a <= -0.4 / std::log(x) : a <= 0.75 * x;
         if (small) return small_a_upper(a, x);
-        return series_lower(a, x, gamma_exponent(a, x));
+        return series_lower(a, x);
     }
-    const dd::DD E = gamma_exponent(a, x);
-    if (a > 20.0 && std::fabs(x - a) < 0.4 * a) return temme(a, x, E);
-    if (x - 1.0 / (3.0 * x) < a) return series_lower(a, x, E);
-    return cf_upper(a, x, E);
+    if (a > 20.0 && std::fabs(x - a) < 0.4 * a) return temme(a, x, gamma_exponent(a, x));
+    if (x - 1.0 / (3.0 * x) < a) return series_lower(a, x);
+    return cf_upper(a, x);
 }
 
 // scipy's conventions on the edges; NaN for a < 0, x < 0 or NaN.

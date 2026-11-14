@@ -274,6 +274,13 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 - `x^a e^{-x}/Γ(a)`를 따로 계산하면 a가 크면 넘친다. Lanczos 형태로 `(x/(a+g-½))^a · e^{a-x}·…`처럼 한 식으로 모은다 (Boost `regularised_gamma_prefix`). 베타도 같다 (`ibeta_power_terms`)
 - 이 값은 불완전 함수의 도함수이기도 하다. 역함수의 Halley 반복이 이것을 다시 쓴다.
 
+- **속도 (2026-11-15, 최적화 1단계)**: 앞 인자가 `gammainc` 시간의 3/4였다(174 ns 중 132 ns). 정밀도는 그대로 두고 계산만 바꿨다.
+  - **표 기반 로그**: λ = 2^k·c·(1 + r), c = i/128(97점, `coeffs/dd_log_table.hpp`, `tools/gen_dd_log_table.py`), |r| ≤ 2⁻⁷·⁵⁸. log(1 + r)는 r², r³까지 hi + lo, 나머지는 float64다. 31 ns → 7 ns. mpmath 대비 상대오차는 log 2⁻⁷⁷(급수판 2⁻⁶⁴·⁵), mu 2⁻⁶⁸(급수판 2⁻⁶²)로 오히려 좋아졌다. 급수판은 비정상 입력(서브노멀 등)의 뒷길로 남겼다.
+  - **나눗셈**: double-double 몫을 나눗셈 두 번과 fma 하나로 줄였다(세 번째 보정항은 지수에 쓸모가 없었다).
+  - **a < 13의 앞 인자**: Stirling 꼴을 거치지 않고 e^(a log x − x)/Γ(a+1)로 바로 구한다(지수는 double-double).
+  - **지수 분리 생략**: 결과가 정상 범위(|E| < 700)이면 `Scaled`의 frexp·ldexp를 건너뛴다.
+  - 결과: 앞 인자 132 → 38 ns, `gammainc` 핵심 174 → 74 ns. 순방향 값은 최대 4 ULP 달라졌고 정확도 표는 같거나 좋아졌다. 역함수의 출력은 비트까지 같다. 측정은 bench/special/opt1/.
+
 ### 5.5 불완전 베타 (`betainc`, `betaincc`)
 - `x > (a+1)/(a+b+2)`이면 대칭으로 옮긴다 (변환). 기본은 Lentz 연분수 (NR `betacf`). b·x가 작거나 b < 1이면 거듭제곱급수
 - 큰 a, b(예: 둘 다 > 10⁴)에서 연분수의 반복이 `O(√max(a,b))`로 는다. 세 번째 구간(Temme 균등 점근전개)은 S4에서 정확도와 속도를 잰 뒤 넣을지 사용자에게 묻는다. **2–3구간**

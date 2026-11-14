@@ -13,7 +13,11 @@
 // mu(t) = t - log(1 + t) -- with ~2^-64 relative accuracy.
 #pragma once
 
+#include "special/coeffs/dd_log_table.hpp"
+
 #include <cmath>
+#include <cstdint>
+#include <cstring>
 
 namespace sd::special::dd {
 
@@ -60,15 +64,17 @@ inline DD operator*(DD a, double b) {
     return quick_two_sum(p.hi, p.lo);
 }
 
+// Quotients: q1 and one correction from the exact remainder (fma), ~2^-104
+// relative (a third correction term, 8 ns of 31, bought nothing the exponents use).
 inline DD operator/(DD a, DD b) {
     const double q1 = a.hi / b.hi;
-    DD r = a - b * q1;
-    const double q2 = r.hi / b.hi;
-    r = r - b * q2;
-    const double q3 = r.hi / b.hi;
-    return quick_two_sum(q1, q2) + q3;
+    const double r = (std::fma(-q1, b.hi, a.hi) + a.lo) - q1 * b.lo;
+    return quick_two_sum(q1, r / b.hi);
 }
-inline DD operator/(DD a, double b) { return a / DD{b, 0.0}; }
+inline DD operator/(DD a, double b) {
+    const double q1 = a.hi / b;
+    return quick_two_sum(q1, (std::fma(-q1, b, a.hi) + a.lo) / b);
+}
 
 inline DD ldexp(DD a, int e) { return {std::ldexp(a.hi, e), std::ldexp(a.lo, e)}; }
 
@@ -83,7 +89,7 @@ inline constexpr DD kLn2 = {0.69314718055994529, 2.3190468138462996e-17};
 //     mu = s t - 2 s^3 / 3 - 2 s^5 / 5 - 2 s^7 (1/7 + s^2/9 + ...)
 // |s| <= 1/3: the first three terms in double-double, the tail (at most
 // 2^-12 of mu) in float64, to s^45 ((1/9)^19 below 2^-58 of the tail).
-inline DD log1pmx_neg(DD t) {  // returns mu(t) >= 0
+inline DD log1pmx_series(DD t) {  // returns mu(t) >= 0
     const DD s = t / (t + 2.0);
     const DD s2 = s * s;
     const DD s3 = s2 * s;
@@ -97,7 +103,7 @@ inline DD log1pmx_neg(DD t) {  // returns mu(t) >= 0
 
 // log(lambda) for lambda = hi + lo > 0 (normal): lambda = m 2^k with
 // m in [1/sqrt 2, sqrt 2), log m = 2 atanh((m - 1) / (m + 1)).
-inline DD log(DD lam) {
+inline DD log_series(DD lam) {
     int k = 0;
     double mh = std::frexp(lam.hi, &k);
     if (mh < 0.70710678118654752) {
@@ -117,7 +123,108 @@ inline DD log(DD lam) {
     const DD logm = s * 2.0 + s3 * kTwoThirds + s3 * (2.0 * w * tail);
     return kLn2 * static_cast<double>(k) + logm;
 }
+
+// ---- the fast forms (the ones used): a table instead of the long series
+//
+// lambda = 2^k c (1 + r) with c = i/128 the table point nearest the mantissa m in
+// [3/4, 3/2) and |r| <= 2^-7.58, r = (m - c)/c as hi + lo (m - c is exact; the
+// table's rounded 1/c is corrected by one fma). Then
+//     log(1 + r) = r - r^2/2 + r^3/3 - r^4 (1/4 - r/5 + ... + r^6/10),
+// r^2 and r^3 as hi + lo, the rest in float64 (below 2^-30 of r^2), the series cut
+// at r^11/11 < 2^-86. The series versions above took 31 ns (three divisions and 12
+// to 20 terms); these take a quarter of it (7 ns) and are closer to the true value:
+// against mpmath on 60 000 points, log 2^-77 (the series 2^-64.5) and mu 2^-68
+// (the series 2^-62) relative (docs/design/special.md §5.4).
+struct Reduced {
+    double k;      // the binary exponent
+    DD logc;       // log c
+    DD r;
+};
+inline bool reduce(DD lam, Reduced& out) {
+    std::uint64_t bits;
+    std::memcpy(&bits, &lam.hi, sizeof bits);
+    const int e = static_cast<int>(bits >> 52);  // sign 0 (lam > 0) and the biased exponent
+    if (e <= 23 || e >= 2023) return false;  // 0, negative, subnormal, huge, inf, NaN: the series versions
+    int k = e - 1023;
+    bits = (bits & 0x000fffffffffffffULL) | 0x3ff0000000000000ULL;
+    double m;
+    std::memcpy(&m, &bits, sizeof m);  // in [1, 2)
+    if (m >= 1.5) {
+        m *= 0.5;
+        ++k;
+    }
+    const std::uint64_t sbits = static_cast<std::uint64_t>(1023 - k) << 52;
+    double scale;
+    std::memcpy(&scale, &sbits, sizeof scale);  // 2^-k
+    const int i = static_cast<int>(m * 128.0 + 0.5);  // 96 .. 192
+    const LogPoint& c = kLogTable[static_cast<std::size_t>(i - 96)];
+    const double cv = i * 0x1p-7;
+    const double d = m - cv;  // exact
+    const double rh = d * c.inv;
+    const double rl = (std::fma(-rh, cv, d) + lam.lo * scale) * c.inv;
+    out = {static_cast<double>(k), {c.hi, c.lo}, quick_two_sum(rh, rl)};
+    return true;
+}
+inline constexpr DD kThird = {0.33333333333333331, 1.8503717077085941e-17};
+// r^2/2 and r^3/3 - r^4/4 + ... of log(1 + r), each as hi + lo (not normalised).
+inline void log1p_parts(DD r, DD& half_r2, DD& tail) {
+    DD r2 = two_prod(r.hi, r.hi);
+    r2.lo += 2.0 * r.hi * r.lo;
+    DD r3 = two_prod(r.hi, r2.hi);
+    r3.lo += r.hi * r2.lo + r.lo * r2.hi;
+    const double x = r.hi;
+    const double q = 0.25 + x * (-0.2 + x * (1.0 / 6 + x * (-1.0 / 7 + x * (0.125 + x * (-1.0 / 9 + x * 0.1)))));
+    half_r2 = {0.5 * r2.hi, 0.5 * r2.lo};
+    const double th = r3.hi * kThird.hi;
+    tail = {th, std::fma(r3.hi, kThird.hi, -th) + r3.hi * kThird.lo + r3.lo * kThird.hi - (r2.hi * r2.hi) * q};
+}
+// A sum of hi + lo terms: the high parts by two_sum, every low part and error into one
+// double (they are 2^-53 of the terms: their own rounding is 2^-106).
+struct Acc {
+    double hi = 0.0, lo = 0.0;
+    void add(double h, double l) {
+        const DD s = two_sum(hi, h);
+        hi = s.hi;
+        lo += s.lo + l;
+    }
+    DD value() const { return quick_two_sum(hi, lo); }
+};
+
+// log(lambda) for lambda = hi + lo > 0.
+inline DD log(DD lam) {
+    Reduced z;
+    if (!reduce(lam, z)) return log_series(lam);
+    DD half_r2, tail;
+    log1p_parts(z.r, half_r2, tail);
+    const DD kl = two_prod(kLn2.hi, z.k);
+    Acc s;
+    s.add(kl.hi, kl.lo + kLn2.lo * z.k);
+    s.add(z.logc.hi, z.logc.lo);
+    s.add(z.r.hi, z.r.lo);
+    s.add(-half_r2.hi, -half_r2.lo);
+    s.add(tail.hi, tail.lo);
+    return s.value();
+}
 inline DD log(double x) { return log(DD{x, 0.0}); }
+
+// mu(t) = t - log(1 + t) >= 0 for t = hi + lo > -1 (any size: the reduction is of 1 + t).
+// At c = 1, k = 0 (t small) r is t itself and t - r vanishes exactly, leaving
+// r^2/2 - r^3/3 + ... with its own relative accuracy.
+inline DD log1pmx_neg(DD t) {
+    Reduced z;
+    if (!reduce(two_sum(1.0, t.hi) + t.lo, z)) return log1pmx_series(t);
+    DD half_r2, tail;
+    log1p_parts(z.r, half_r2, tail);
+    const DD kl = two_prod(kLn2.hi, z.k);
+    Acc s;
+    s.add(t.hi, t.lo);
+    s.add(-kl.hi, -(kl.lo + kLn2.lo * z.k));
+    s.add(-z.logc.hi, -z.logc.lo);
+    s.add(-z.r.hi, -z.r.lo);
+    s.add(half_r2.hi, half_r2.lo);
+    s.add(-tail.hi, -tail.lo);
+    return s.value();
+}
 
 // a * mu(lambda - 1) = a (lambda - 1 - log lambda) >= 0 for lambda = hi + lo:
 // the atanh series near 1, a (lambda - 1) - a log(lambda) elsewhere (there

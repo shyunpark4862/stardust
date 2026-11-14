@@ -82,12 +82,28 @@ inline dd::DD gamma_exponent(double a, double x) {
 // e^-E (1 - E.lo) as m 2^e: D(a, x) without over- or underflow.
 inline Scaled exp_minus(dd::DD E) {
     if (!(E.hi < 1e300)) return {0.0, 0};  // also E = inf (a huge exponent)
+    if (std::fabs(E.hi) < 700.0) return scaled(std::exp(-E.hi) * (1.0 - E.lo));  // a normal double: no split
     return exp_scaled(-E.hi) * scaled(1.0 - E.lo);
 }
 
 // D(a, x) = x^a e^-x / Gamma(a + 1) as m 2^e.
 inline Scaled gamma_prefix(double a, dd::DD E) {  // E = gamma_exponent(a, x)
+    if (std::fabs(E.hi) < 700.0 && a < 0x1p900)
+        return scaled(std::exp(-E.hi) * (1.0 - E.lo) / (std::sqrt(2.0 * kPi * a) * gamma_star(a)));
     return exp_minus(E) / scaled(std::sqrt(2.0 * kPi * a) * gamma_star(a));
+}
+
+// D(a, x) from a and x. Below a = 13 the Stirling form buys nothing (Gamma* there is
+// Gamma(a + 1) e^(a (1 - log a)), a second exponent): directly e^(a log x - x) /
+// Gamma(a + 1), the exponent a double-double (132 ns -> 40 with the table log).
+inline Scaled gamma_prefix(double a, double x) {
+    if (a < 13.0 && a >= 1e-9 && x > 0x1p-1000 && x < 0x1p1000) {
+        const dd::DD L = dd::log(x) * a - x;
+        const double g1 = a * prefix_detail::gamma_small(a);  // Gamma(a + 1)
+        if (std::fabs(L.hi) < 700.0) return scaled(std::exp(L.hi) * (1.0 + L.lo) / g1);
+        return exp_scaled(L.hi) * scaled((1.0 + L.lo) / g1);
+    }
+    return gamma_prefix(a, gamma_exponent(a, x));
 }
 
 // ---- incomplete beta ----------------------------------------------------
