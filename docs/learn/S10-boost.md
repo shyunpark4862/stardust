@@ -50,4 +50,4 @@
 - 회귀 테스트: `test_review_fixes_hyper`, `test_review_fixes_lambertw_k`(tests/special/test_hyper_lambertw.py), `test_huge_order_debye`(test_bessel_airy.py).
 
 ## 6. 승인
-- (대기)
+- 2026-11-14 사용자 승인("승인"). §4의 확인 건(최대 ULP가 늘어난 함수, `betainc + betaincc`의 합)과 §5의 코드리뷰 수정을 그대로 받아들였다.
