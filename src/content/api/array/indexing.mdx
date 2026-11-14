@@ -1,0 +1,736 @@
+---
+kind: concept
+title: 인덱싱과 대입
+group: 기본 개념
+order: 5
+summary: 대괄호 `x[...]`로 배열의 일부를 골라 읽고, 고른 자리에 값을 써넣는 규칙이에요. 무엇으로 고르느냐에 따라 결과가 뷰가 되기도, 복사본이 되기도 해요.
+seeAlso: [views, broadcasting, constants, take, nonzero, where]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+배열 이름 뒤에 대괄호를 붙여 `x[...]`라고 쓰면 배열의 일부를 고를 수 있어요. 이것을 인덱싱(indexing)이라고 해요. 대괄호 안에는 **축마다 하나씩**, 쉼표로 나눠서 "어디를 고를지"를 적어요. 2차원 배열이면 앞이 행(axis 0), 뒤가 열(axis 1)이에요.
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]])
+>>> x[1, 2]
+7
+>>> x[1]
+array([5, 6, 7, 8], dtype=int64)
+>>> x[:, 1]
+array([ 2,  6, 10], dtype=int64)
+```
+
+<Fig caption="x[1, 2]는 1행 2열의 원소 하나, x[1]은 1행 전체, x[:, 1]은 1열 전체예요. 번호는 0부터 세요.">
+  <ArrayFig name="x[1, 2]" data={[[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]]} tones={[['m', 'm', 'm', 'm'], ['m', 'm', 'b', 'm'], ['m', 'm', 'm', 'm']]} axes />
+  <ArrayFig name="x[1]" data={[[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]]} tones={[['m', 'm', 'm', 'm'], ['a', 'a', 'a', 'a'], ['m', 'm', 'm', 'm']]} />
+  <ArrayFig name="x[:, 1]" data={[[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]]} tones={[['m', 'a', 'm', 'm'], ['m', 'a', 'm', 'm'], ['m', 'a', 'm', 'm']]} />
+</Fig>
+
+대괄호 안에 쓸 수 있는 것은 크게 두 가지로 나뉘고, 둘은 결과의 성격이 달라요.
+
+| 종류 | 쓰는 것 | 결과 |
+|---|---|---|
+| 기본 인덱스 | 정수 하나, 슬라이스(`1:3`), `...`, `sd.newaxis` | 원본을 들여다보는 **뷰** |
+| 고급 인덱스 | 정수 배열·리스트, bool 마스크 | 값을 옮겨 담은 **복사본** |
+
+뷰(view)는 원본과 메모리를 함께 쓰는 배열이라서, 뷰를 고치면 원본도 바뀌어요. 복사본은 원본과 상관없는 새 배열이에요. 이 차이는 [뷰와 복사](/api/array/views/)에 자세히 있어요.
+
+같은 대괄호를 `=`의 왼쪽에 쓰면 고른 자리에 값을 **써넣어요.** 이것을 대입이라고 해요. 대입은 [뒤쪽 절](#고른-자리에-값-쓰기-대입)에서 다뤄요.
+
+## 정수로 한 자리 고르기
+
+정수 하나는 그 축에서 **한 자리**를 골라요. 고른 축은 결과에서 사라져요. 그래서 2차원 배열에 정수 하나를 주면 1차원(행 하나)이 되고, 정수 두 개를 주면 원소 하나가 남아요.
+
+모든 축을 정수로 고르면 결과는 배열이 아니라 **Python 숫자**예요. stardust에는 차원이 0인 배열이 없기 때문이에요([배열의 기본](/api/array/basics/) 참고).
+
+```python
+>>> type(x[1, 2])
+<class 'int'>
+>>> x[1].shape
+(4,)
+```
+
+음수는 뒤에서부터 세요. `-1`은 마지막, `-2`는 끝에서 둘째예요.
+
+```python
+>>> x[-1]
+array([ 9, 10, 11, 12], dtype=int64)
+>>> x[-1, -1]
+12
+```
+
+범위를 벗어난 정수는 `IndexError`예요. 3행짜리 배열의 행 번호는 `0, 1, 2`(또는 `-1, -2, -3`)뿐이에요.
+
+```python
+>>> x[3]
+Traceback (most recent call last):
+    ...
+IndexError: index 3 is out of bounds for axis 0 with size 3
+>>> x[0, 4]
+Traceback (most recent call last):
+    ...
+IndexError: index 4 is out of bounds for axis 1 with size 4
+```
+
+축의 수보다 많은 인덱스를 줘도 `IndexError`예요.
+
+```python
+>>> x[0, 0, 0]
+Traceback (most recent call last):
+    ...
+IndexError: too many indices for array: array is 2-dimensional, but 3 were indexed
+```
+
+<Callout title="x[1][2]와 x[1, 2]">
+
+`x[1][2]`도 같은 값 `7`을 줘요. 먼저 `x[1]`로 행을 고르고, 그 행에서 다시 `[2]`를 고른 것이라서요. 하지만 두 단계를 거치므로 `x[1, 2]`처럼 한 번에 쓰는 편이 빠르고 읽기도 좋아요.
+
+</Callout>
+
+## 슬라이스로 범위 고르기
+
+`start:stop:step` 모양의 슬라이스(slice)는 **연속된 범위**를 골라요. `start`에서 시작해서 `stop` **바로 앞까지**, `step`칸씩 건너뛰며 골라요. 셋 다 생략할 수 있어요.
+
+| 슬라이스 | 뜻 |
+|---|---|
+| `:` | 처음부터 끝까지 전부 |
+| `1:3` | 1번과 2번 (3번은 빠져요) |
+| `1:` | 1번부터 끝까지 |
+| `:2` | 처음부터 1번까지 |
+| `::2` | 처음부터 한 칸씩 건너뛰며 (0, 2, 4, ...) |
+| `::-1` | 끝에서부터 거꾸로 |
+
+```python
+>>> x[0:2, 1:3]
+array([[2, 3],
+       [6, 7]], dtype=int64)
+>>> x[::2]
+array([[ 1,  2,  3,  4],
+       [ 9, 10, 11, 12]], dtype=int64)
+>>> x[:, ::-1]
+array([[ 4,  3,  2,  1],
+       [ 8,  7,  6,  5],
+       [12, 11, 10,  9]], dtype=int64)
+```
+
+<Fig caption="x[0:2, 1:3]은 0~1행과 1~2열이 겹치는 네모, x[::2]는 0행과 2행이에요. 슬라이스의 끝 번호는 결과에 들어가지 않아요.">
+  <ArrayFig name="x[0:2, 1:3]" data={[[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]]} tones={[['m', 'a', 'a', 'm'], ['m', 'a', 'a', 'm'], ['m', 'm', 'm', 'm']]} axes />
+  <ArrayFig name="x[::2]" data={[[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]]} tones={[['a', 'a', 'a', 'a'], ['m', 'm', 'm', 'm'], ['a', 'a', 'a', 'a']]} />
+</Fig>
+
+슬라이스는 정수와 달리 범위를 벗어나도 에러가 아니에요. 있는 데까지만 골라요. 고를 것이 없으면 길이 0인 배열이 나와요.
+
+```python
+>>> x[0:100, 0]
+array([1, 5, 9], dtype=int64)
+>>> x[10:20]
+array([], shape=(0, 4), dtype=int64)
+```
+
+`step`이 0이면 앞으로 나아갈 수 없으므로 `ValueError`예요.
+
+```python
+>>> x[::0]
+Traceback (most recent call last):
+    ...
+ValueError: slice step cannot be zero
+```
+
+### 정수와 길이 1인 슬라이스는 달라요
+
+`x[:, 1]`과 `x[:, 1:2]`는 같은 값을 고르지만 모양이 달라요. 정수는 그 축을 **없애고**, 슬라이스는 길이가 1이어도 축을 **남겨요.**
+
+```python
+>>> x[:, 1]
+array([ 2,  6, 10], dtype=int64)
+>>> x[:, 1:2]
+array([[ 2],
+       [ 6],
+       [10]], dtype=int64)
+```
+
+<Fig caption="같은 세 값이지만 정수로 고르면 1차원 (3,), 슬라이스로 고르면 세로 모양 (3, 1)이에요.">
+  <ArrayFig name="x[:, 1]" data={[2, 6, 10]} tones={['a', 'a', 'a']} note="shape (3,)" />
+  <ArrayFig name="x[:, 1:2]" data={[[2], [6], [10]]} tones={[['a'], ['a'], ['a']]} note="shape (3, 1)" />
+</Fig>
+
+계산에 다시 쓸 때 이 차이가 중요해져요. 세로 모양 `(3, 1)`은 `x`와 [브로드캐스팅](/api/array/broadcasting/)이 맞아서 각 행에 다른 값을 더할 수 있지만, `(3,)`은 맞지 않아요.
+
+## `...`과 `newaxis`
+
+### `...`: 나머지 축 전부
+
+`...`(Ellipsis, 말줄임표)은 "**여기에 필요한 만큼 `:`이 있다**"는 뜻이에요. 축이 많은 배열에서 마지막 축만 고르고 싶을 때, 차원 수와 상관없이 `x[..., 0]`이라고 쓸 수 있어요.
+
+```python
+>>> x[..., 0]
+array([1, 5, 9], dtype=int64)
+>>> t = sd.reshape(sd.arange(24), (2, 3, 4))
+>>> t[..., 0]
+array([[ 0,  4,  8],
+       [12, 16, 20]], dtype=int64)
+```
+
+2차원에서 `x[..., 0]`은 `x[:, 0]`, 3차원에서 `t[..., 0]`은 `t[:, :, 0]`과 같아요. `...`은 한 번만 쓸 수 있어요.
+
+```python
+>>> x[..., ...]
+Traceback (most recent call last):
+    ...
+IndexError: an index can only have a single ellipsis ('...')
+```
+
+### `newaxis`: 길이 1인 축 끼워 넣기
+
+`sd.newaxis`는 아무것도 고르지 않고, 그 자리에 **길이 1인 축을 새로 넣어요.** 1차원 배열을 세로 모양으로 세울 때 가장 많이 써요.
+
+```python
+>>> a = sd.asarray([1, 2, 3])
+>>> a[:, sd.newaxis]
+array([[1],
+       [2],
+       [3]], dtype=int64)
+>>> a[sd.newaxis, :]
+array([[1, 2, 3]], dtype=int64)
+```
+
+<Fig caption="newaxis를 뒤에 두면 세로 (3, 1), 앞에 두면 가로 (1, 3)이 돼요. 값은 그대로이고 모양만 바뀌어요.">
+  <ArrayFig name="a" data={[1, 2, 3]} note="shape (3,)" />
+  <Op note="a[:, newaxis]">→</Op>
+  <ArrayFig data={[[1], [2], [3]]} note="shape (3, 1)" />
+  <Op note="a[newaxis, :]">→</Op>
+  <ArrayFig data={[[1, 2, 3]]} note="shape (1, 3)" />
+</Fig>
+
+다른 인덱스와 섞어 쓸 수도 있어요. 정수로 행 하나를 고르면서 축 하나를 넣으면 행 모양이 유지돼요.
+
+```python
+>>> x[0, sd.newaxis]
+array([[1, 2, 3, 4]], dtype=int64)
+>>> x[:, :, sd.newaxis].shape
+(3, 4, 1)
+```
+
+`sd.newaxis`의 정체는 Python의 `None`이에요. 자세한 것은 [상수](/api/array/constants/)에 있어요.
+
+## 기본 인덱스의 결과는 뷰예요
+
+정수, 슬라이스, `...`, `newaxis`만으로 고른 결과는 값을 복사하지 않고 **원본의 일부를 들여다보는 창**이에요. 그래서 결과를 고치면 원본이 바뀌어요.
+
+```python
+>>> y = sd.asarray([[1, 2, 3], [4, 5, 6]])
+>>> row = y[0]
+>>> row[0] = 100
+>>> y
+array([[100,   2,   3],
+       [  4,   5,   6]], dtype=int64)
+>>> row.base is y
+True
+```
+
+`base`는 이 배열이 누구의 메모리를 쓰고 있는지 알려 주는 속성이에요. 큰 배열에서 일부를 잘라 써도 복사가 일어나지 않아서 빠르고 메모리도 아껴요. 원본과 떨어진 배열이 필요하면 `.copy()`를 붙여요.
+
+```python
+>>> row2 = y[1].copy()
+>>> row2[0] = -1
+>>> y
+array([[100,   2,   3],
+       [  4,   5,   6]], dtype=int64)
+```
+
+## 정수 배열로 고르기
+
+대괄호 안에 정수 하나 대신 **정수의 리스트나 배열**을 주면, 그 자리들을 적힌 순서대로 골라 와요. 슬라이스와 달리 순서를 마음대로 정하고, 같은 자리를 여러 번 고를 수도 있어요.
+
+```python
+>>> x[[2, 0]]
+array([[ 9, 10, 11, 12],
+       [ 1,  2,  3,  4]], dtype=int64)
+>>> x[[1, 1, 0]]
+array([[5, 6, 7, 8],
+       [5, 6, 7, 8],
+       [1, 2, 3, 4]], dtype=int64)
+>>> x[:, [0, 3]]
+array([[ 1,  4],
+       [ 5,  8],
+       [ 9, 12]], dtype=int64)
+```
+
+음수도 뒤에서부터 세고, 범위를 벗어나면 `IndexError`예요. 이런 인덱스를 고급 인덱스(advanced index)라고 부르고, 결과는 언제나 **복사본**이에요.
+
+```python
+>>> x[[0, -1]]
+array([[ 1,  2,  3,  4],
+       [ 9, 10, 11, 12]], dtype=int64)
+>>> x[[5]]
+Traceback (most recent call last):
+    ...
+IndexError: index 5 is out of bounds for axis 0 with size 3
+```
+
+`[]`, numpy 배열, 중첩 리스트도 받아요. 안에 든 값은 정수여야 해요. `[1.0]`처럼 실수가 들어 있으면 값이 정수와 같아도 `IndexError`예요.
+
+```python
+>>> x[[1.0]]
+Traceback (most recent call last):
+    ...
+IndexError: arrays used as indices must be of integer or boolean type, not float64
+```
+
+### 두 축에 배열을 주면 짝을 지어요
+
+가장 헷갈리는 부분이에요. 행과 열 **두 축 모두에** 정수 배열을 주면, "0행과 2행의 1열과 3열" 네 칸이 아니라 **같은 자리끼리 짝을 지은** `(0, 1)`과 `(2, 3)` 두 칸을 골라요.
+
+```python
+>>> x[[0, 2], [1, 3]]
+array([ 2, 12], dtype=int64)
+```
+
+<Fig caption="x[[0, 2], [1, 3]]은 (0, 1)과 (2, 3), 두 칸이에요. 행 목록과 열 목록을 같은 순서끼리 짝지어요.">
+  <ArrayFig name="x" data={[[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]]} tones={[['m', 'b', 'm', 'm'], ['m', 'm', 'm', 'm'], ['m', 'm', 'm', 'b']]} axes />
+  <Op note="짝짓기">→</Op>
+  <ArrayFig name="결과" data={[2, 12]} tones={['b', 'b']} note="shape (2,)" />
+</Fig>
+
+행 목록과 열 목록이 만드는 **네모 영역 전체**를 원한다면 방법이 두 가지예요. 하나는 두 단계로 나눠 고르는 것, 다른 하나는 행 목록을 세로 모양으로 세워서 아래 절의 브로드캐스팅을 이용하는 것이에요.
+
+```python
+>>> x[[0, 2]][:, [1, 3]]
+array([[ 2,  4],
+       [10, 12]], dtype=int64)
+>>> x[[[0], [2]], [1, 3]]
+array([[ 2,  4],
+       [10, 12]], dtype=int64)
+```
+
+<Fig caption="네모 영역을 원하면 0·2행과 1·3열이 만나는 네 칸을 고르도록 써야 해요.">
+  <ArrayFig name="x" data={[[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]]} tones={[['m', 'b', 'm', 'b'], ['m', 'm', 'm', 'm'], ['m', 'b', 'm', 'b']]} axes />
+  <Op>→</Op>
+  <ArrayFig name="결과" data={[[2, 4], [10, 12]]} tones={[['b', 'b'], ['b', 'b']]} note="shape (2, 2)" />
+</Fig>
+
+한쪽만 배열이고 다른 쪽이 슬라이스라면 짝짓기가 없어요. `x[[0, 2], 1:3]`은 "0·2행의 1~2열" 네모예요.
+
+```python
+>>> x[[0, 2], 1:3]
+array([[ 2,  3],
+       [10, 11]], dtype=int64)
+```
+
+### 인덱스 배열끼리는 브로드캐스팅돼요
+
+짝을 지을 때 두 인덱스 배열의 모양은 [브로드캐스팅](/api/array/broadcasting/) 규칙으로 맞춰요. 위의 `x[[[0], [2]], [1, 3]]`이 네모를 고른 이유가 이것이에요. 행 인덱스 `(2, 1)`과 열 인덱스 `(2,)`가 `(2, 2)`로 늘어나서, 모든 조합이 짝을 이뤄요.
+
+```python
+>>> r = sd.asarray([[0], [2]])
+>>> c = sd.asarray([1, 3])
+>>> x[r, c]
+array([[ 2,  4],
+       [10, 12]], dtype=int64)
+```
+
+<Fig caption="r은 옆으로, c는 아래로 늘어나요. 같은 자리의 (행, 열) 짝이 결과의 그 자리에 들어가요.">
+  <ArrayFig name="r" data={[[0, 0], [2, 2]]} tones={[['a', 'g'], ['a', 'g']]} note="shape (2, 1)" />
+  <Op>,</Op>
+  <ArrayFig name="c" data={[[1, 3], [1, 3]]} tones={[['a', 'a'], ['g', 'g']]} note="shape (2,)" />
+  <Op note="x[r, c]">→</Op>
+  <ArrayFig data={[[2, 4], [10, 12]]} note="shape (2, 2)" />
+</Fig>
+
+브로드캐스팅되지 않는 모양이면 `ValueError`예요.
+
+```python
+>>> x[[0, 1], [0, 1, 2]]
+Traceback (most recent call last):
+    ...
+ValueError: shapes could not be broadcast together: (2,) (3,)
+```
+
+### 결과의 모양은 인덱스 배열의 모양을 따라요
+
+인덱스 배열이 2차원이면 결과에도 그 두 축이 생겨요. 아래는 `x`의 행을 2×2 모양으로 골라 늘어놓은 결과라서, 모양이 `(2, 2)` 뒤에 행의 길이 `4`가 붙은 `(2, 2, 4)`예요.
+
+```python
+>>> x[sd.asarray([[0, 1], [1, 2]])].shape
+(2, 2, 4)
+```
+
+## bool 마스크로 고르기
+
+`x`와 같은 모양의 bool 배열을 대괄호에 넣으면, **`True`인 자리의 값만** 골라 와요. 이런 bool 배열을 마스크(mask)라고 해요. 비교 연산의 결과가 바로 bool 배열이라서, "조건에 맞는 값만 고르기"를 아주 짧게 쓸 수 있어요.
+
+```python
+>>> x > 6
+array([[False, False, False, False],
+       [False, False,  True,  True],
+       [ True,  True,  True,  True]], dtype=bool)
+>>> x[x > 6]
+array([ 7,  8,  9, 10, 11, 12], dtype=int64)
+```
+
+<Fig caption="마스크가 True인 칸을 왼쪽 위부터 행 순서대로 모아 1차원 배열로 만들어요.">
+  <ArrayFig name="x > 6" data={[[false, false, false, false], [false, false, true, true], [true, true, true, true]]} tones={[['m', 'm', 'm', 'm'], ['m', 'm', 'a', 'a'], ['a', 'a', 'a', 'a']]} />
+  <Op note="x[x > 6]">→</Op>
+  <ArrayFig data={[7, 8, 9, 10, 11, 12]} tones={['a', 'a', 'a', 'a', 'a', 'a']} note="shape (6,)" />
+</Fig>
+
+결과는 언제나 1차원이에요. `True`가 몇 개일지 미리 알 수 없어서 원래의 네모 모양을 지킬 수 없기 때문이에요. `True`가 하나도 없으면 빈 배열이에요.
+
+```python
+>>> x[x > 100]
+array([], dtype=int64)
+```
+
+### 한 축에만 마스크 쓰기
+
+마스크를 한 축에만 줄 수도 있어요. 이때 마스크의 길이는 그 축의 길이와 같아야 해요. 아래는 열 마스크로 0열과 3열을 고른 예예요.
+
+```python
+>>> keep = sd.asarray([True, False, False, True])
+>>> x[:, keep]
+array([[ 1,  4],
+       [ 5,  8],
+       [ 9, 12]], dtype=int64)
+>>> x[sd.asarray([True, False])]
+Traceback (most recent call last):
+    ...
+IndexError: boolean index did not match indexed array along axis 0; size of axis is 3 but size of corresponding boolean axis is 2
+```
+
+마스크는 "`True`인 자리 번호의 목록"과 같아요. `x[:, keep]`은 `x[:, [0, 3]]`과 같은 결과예요.
+
+### 조건 여러 개를 합치기
+
+"15보다 크고 45보다 작은 값"처럼 조건을 합칠 때는 `&`(그리고), `|`(또는), `~`(아니다)를 쓰고, **각 조건을 괄호로 감싸요.**
+
+```python
+>>> v = sd.asarray([10, 20, 30, 40, 50])
+>>> v[(v > 15) & (v < 45)]
+array([20, 30, 40], dtype=int64)
+>>> v[(v < 15) | (v > 45)]
+array([10, 50], dtype=int64)
+>>> v[~(v > 25)]
+array([10, 20], dtype=int64)
+```
+
+<Callout type="warn" title="and, or, 괄호 빠뜨리기">
+
+Python의 `and`, `or`, `not`은 배열 전체를 참이나 거짓 하나로 바꾸려 해서 에러가 나요. 또 `&`는 `>`보다 먼저 계산되므로, 괄호를 빼먹은 `v > 15 & v < 45`는 `v > (15 & v) < 45`로 읽혀 역시 에러예요.
+
+```python
+>>> v[(v > 15) and (v < 45)]
+Traceback (most recent call last):
+    ...
+TypeError: the truth value of an array is ambiguous; use any() or all()
+>>> v[v > 15 & v < 45]
+Traceback (most recent call last):
+    ...
+TypeError: the truth value of an array is ambiguous; use any() or all()
+```
+
+</Callout>
+
+## 떨어진 고급 인덱스는 에러예요
+
+고급 인덱스(정수 배열, 마스크)가 둘 이상일 때, 그 **사이에 슬라이스나 `...`, `newaxis`가 끼어 있으면** stardust는 `IndexError`를 내요. 이때는 배열 옆에 붙은 정수 하나도 고급 인덱스로 쳐요.
+
+```python
+>>> t = sd.reshape(sd.arange(24), (2, 3, 4))
+>>> t[0, :, [0, 1]]
+Traceback (most recent call last):
+    ...
+IndexError: advanced indices (arrays, and ints next to them) separated by a slice, newaxis or ellipsis are not supported; index in two steps, e.g. x[0][:, idx]
+```
+
+`t[0, :, [0, 1]]`은 "0번 판에서, 모든 행의, 0열과 1열"을 뜻하려는 것이겠지요. 그러면 결과는 3행 2열이어야 자연스러워요. 그런데 고급 인덱스가 떨어져 있으면 "배열이 만든 축을 결과의 어느 자리에 놓을지"가 애매해져요. 이런 경우를 조용히 어떤 규칙으로 처리하면 기대와 다른 모양이 나오기 쉬워서, stardust는 아예 받지 않아요.
+
+에러 메시지가 알려 주는 대로 **두 단계로 나눠** 쓰면 돼요. 먼저 정수로 판을 고르고(뷰라서 비용이 거의 없어요), 그다음 열을 골라요.
+
+```python
+>>> t[0][:, [0, 1]]
+array([[0, 1],
+       [4, 5],
+       [8, 9]], dtype=int64)
+```
+
+<Fig caption="t[0]으로 3×4 판 하나를 고른 다음, [:, [0, 1]]로 0열과 1열을 골라요. 결과는 3행 2열이에요.">
+  <ArrayFig name="t[0]" data={[[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]]} tones={[['a', 'a', 'm', 'm'], ['a', 'a', 'm', 'm'], ['a', 'a', 'm', 'm']]} axes />
+  <Op note="[:, [0, 1]]">→</Op>
+  <ArrayFig data={[[0, 1], [4, 5], [8, 9]]} tones={[['a', 'a'], ['a', 'a'], ['a', 'a']]} note="shape (3, 2)" />
+</Fig>
+
+고급 인덱스가 **붙어 있으면** 괜찮아요. 고급 인덱스가 하나뿐인 경우(`x[[0, 2], 1:3]`, `t[..., [0, 1]]`)도 괜찮아요.
+
+```python
+>>> t[:, [0, 1], [0, 1]]
+array([[ 0,  5],
+       [12, 17]], dtype=int64)
+>>> t[..., [0, 1]].shape
+(2, 3, 2)
+```
+
+## 고른 자리에 값 쓰기 (대입)
+
+`x[인덱스] = 값`이라고 쓰면 고른 자리에 값을 써넣어요. 어떤 인덱스든 쓸 수 있고, **언제나 `x` 자신이 바뀌어요.** 읽을 때는 고급 인덱스가 복사본을 만들지만, 대입에서는 복사본에 쓰는 것이 아니라 원본의 그 자리에 바로 써요.
+
+```python
+>>> z = sd.asarray([[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]])
+>>> z[0] = 0
+>>> z[z > 10] = -1
+>>> z[[1, 2], [0, 0]] = 99
+>>> z
+array([[ 0,  0,  0,  0],
+       [99,  6,  7,  8],
+       [99, 10, -1, -1]], dtype=int64)
+```
+
+<Fig caption="z[0] = 0은 0행 전체, z[z > 10] = -1은 조건에 맞는 칸, z[[1, 2], [0, 0]] = 99는 (1, 0)과 (2, 0) 칸에 써요.">
+  <ArrayFig name="z" data={[[0, 0, 0, 0], [99, 6, 7, 8], [99, 10, -1, -1]]} tones={[['a', 'a', 'a', 'a'], ['b', '', '', ''], ['b', '', 'a', 'a']]} axes />
+</Fig>
+
+<Callout type="warn" title="고급 인덱스로 고른 뒤에 쓰면 원본은 그대로예요">
+
+`z[[0]] = 5`는 원본에 써요. 하지만 `z[[0]][0, 0] = 5`는 먼저 `z[[0]]`으로 **복사본**을 만든 다음 그 복사본에 쓰기 때문에, 원본은 바뀌지 않아요. 에러도 나지 않아서 알아채기 어려워요. 고급 인덱스는 대입식에서 맨 마지막 대괄호 하나에만 쓰세요.
+
+```python
+>>> z[[0]][0, 0] = 5
+>>> z[0]
+array([0, 0, 0, 0], dtype=int64)
+```
+
+</Callout>
+
+### 값의 모양: 고른 영역으로 늘어날 수 있어야 해요
+
+숫자 하나를 대입하면 고른 모든 자리에 같은 값이 들어가요. 배열(또는 리스트)을 대입하면, 그 값이 고른 영역의 모양으로 [브로드캐스팅](/api/array/broadcasting/)될 수 있어야 해요.
+
+```python
+>>> w = sd.zeros((2, 3))
+>>> w[:, 0] = sd.asarray([1.0, 2.0])
+>>> w[1] = [7.0, 8.0, 9.0]
+>>> w[...] = w + sd.asarray([10.0, 20.0, 30.0])
+>>> w
+array([[11.0, 20.0, 30.0],
+       [17.0, 28.0, 39.0]], dtype=float64)
+```
+
+모양이 맞지 않으면 `ValueError`예요. 오른쪽 값이 **더 많은 차원**을 가진 것도 안 돼요. 길이 1인 축이라도 떼어내 주지 않아요.
+
+```python
+>>> w[0] = sd.asarray([1.0, 2.0])
+Traceback (most recent call last):
+    ...
+ValueError: operand of shape (2,) cannot be broadcast to (3,)
+>>> w[0] = sd.asarray([[1.0, 2.0, 3.0]])
+Traceback (most recent call last):
+    ...
+ValueError: operand has more dimensions than the iteration shape
+```
+
+### 원소 하나에는 숫자만
+
+정수만으로 원소 하나를 고른 자리에는 Python 숫자(`bool`, `int`, `float`, `complex`)만 넣을 수 있어요. 원소가 하나뿐인 리스트나 배열도 안 돼요.
+
+```python
+>>> w[0, 0] = [5.0]
+Traceback (most recent call last):
+    ...
+TypeError: only a bool, int, float or complex can be assigned to a single element, not list
+>>> w[0, 0] = sd.asarray([5.0])
+Traceback (most recent call last):
+    ...
+TypeError: only a bool, int, float or complex can be assigned to a single element, not ndarray
+```
+
+원소 하나는 숫자 하나라서, 그 자리에 들어갈 것도 숫자 하나여야 한다는 규칙이에요. 배열에서 값을 꺼내 넣으려면 `w[0, 0] = a[0]`처럼 숫자로 꺼내서 넣어요.
+
+### 배열의 dtype은 바뀌지 않아요
+
+대입은 배열의 원소 종류(dtype)를 바꾸지 않아요. 그래서 넣는 값은 그 dtype에 **잃는 것 없이** 담길 수 있어야 해요. 정수 배열에 실수를 넣는 것은, 값이 `2.0`처럼 정수와 같아도 `TypeError`예요. 값이 아니라 종류만 보고 판단하기 때문이에요.
+
+```python
+>>> k = sd.asarray([1, 2, 3])
+>>> k[0] = 2.0
+Traceback (most recent call last):
+    ...
+TypeError: cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
+>>> k[0] = True
+>>> k
+array([1, 2, 3], dtype=int64)
+```
+
+넓은 쪽으로는 괜찮아요. 순서는 `bool < int64 < float64 < complex128`이고, 왼쪽 것은 오른쪽 배열에 넣을 수 있어요. 실수 배열에 정수나 bool은 넣을 수 있지만 복소수는 안 돼요. 자세한 규칙은 [원소 종류(dtype)](/api/array/dtypes/)에 있어요.
+
+```python
+>>> w[0, 0] = 1
+>>> w[0, 1] = 1j
+Traceback (most recent call last):
+    ...
+TypeError: cannot implicitly convert complex128 to float64 (that would lose information); convert explicitly with astype
+```
+
+int64에 담을 수 없을 만큼 큰 Python 정수는 `OverflowError`예요.
+
+```python
+>>> k[0] = 2**70
+Traceback (most recent call last):
+    ...
+OverflowError: Python int too large to convert to int64
+```
+
+### 같은 자리가 여러 번 나오면 마지막 값이 남아요
+
+고급 인덱스에 같은 자리가 여러 번 있으면, 차례로 써서 **마지막 값**이 남아요.
+
+```python
+>>> k = sd.asarray([0, 0, 0])
+>>> k[[0, 0, 0]] = sd.asarray([7, 8, 9])
+>>> k
+array([9, 0, 0], dtype=int64)
+```
+
+`+=`도 마찬가지예요. `k[[1, 1]] += 1`은 1번 자리에 1을 **두 번** 더하지 않아요. `k[[1, 1]]`을 읽어 1을 더한 값 `[1, 1]`을 1번 자리에 두 번 쓰는 것이라, 결과는 한 번 더한 것과 같아요.
+
+```python
+>>> k[[1, 1]] += 1
+>>> k
+array([9, 1, 0], dtype=int64)
+```
+
+<Callout type="tip" title="같은 자리에 쌓아 더하려면">
+
+
+"자리 번호 목록에 나온 횟수만큼 더하기"가 필요하면 `sd.bincount`로 자리마다 몇 번 나왔는지를 세서 더하세요. `minlength`에 배열의 길이를 주면 결과의 길이가 맞아요.
+
+```python
+>>> idx = sd.asarray([1, 1, 2])
+>>> k + sd.bincount(idx, minlength=3)
+array([9, 3, 1], dtype=int64)
+```
+
+</Callout>
+
+### 인덱스를 모두 검사한 다음에 써요
+
+고급 인덱스에 범위 밖 번호가 하나라도 있으면 `IndexError`가 나고, **아무 자리도 바뀌지 않아요.** 앞쪽의 올바른 자리만 써지고 중간에 멈추는 일은 없어요.
+
+```python
+>>> k[[0, 5]] = 100
+Traceback (most recent call last):
+    ...
+IndexError: index 5 is out of bounds for axis 0 with size 3
+>>> k
+array([9, 1, 0], dtype=int64)
+```
+
+### 읽기 전용 배열에는 쓸 수 없어요
+
+`sd.broadcast_to`의 결과나 읽기 전용 numpy 배열을 가져온 배열처럼, 쓰기가 막힌 배열에 대입하면 `ValueError`예요. 왜 막혀 있는지는 [뷰와 복사](/api/array/views/)에 있어요.
+
+```python
+>>> b = sd.broadcast_to(sd.asarray([1, 2]), (2, 2))
+>>> b[0, 0] = 5
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+```
+
+### 같은 배열의 일부끼리 옮겨도 돼요
+
+오른쪽 값이 왼쪽과 같은 메모리를 쓰고 있어도 결과는 **오른쪽을 다 읽은 다음 쓴 것**과 같아요. 그래서 값을 한 칸씩 미는 이런 코드가 뜻대로 동작해요.
+
+```python
+>>> s = sd.arange(5)
+>>> s[1:] = s[:-1]
+>>> s
+array([0, 0, 1, 2, 3], dtype=int64)
+>>> s[::-1] = s
+>>> s
+array([3, 2, 1, 0, 0], dtype=int64)
+```
+
+### 원소를 지울 수는 없어요
+
+배열의 크기는 바뀌지 않으므로 `del x[0]`은 지원하지 않아요. 일부를 뺀 배열이 필요하면 남길 것만 골라 새 배열을 만들어요. 예를 들어 0번을 뺀 나머지는 `x[1:]`, 조건에 맞는 것을 뺀 나머지는 `x[~조건]`이에요.
+
+```python
+>>> del s[0]
+Traceback (most recent call last):
+    ...
+AttributeError: __delitem__
+```
+
+## 조심할 점
+
+### 인덱스로 쓸 수 없는 것
+
+정수, 슬라이스, `...`, `newaxis`, 정수 배열, bool 배열이 아닌 것은 `IndexError`예요. 실수 `1.0`도, 문자열도 안 돼요. bool 값 하나(`True`, `False`)도 안 돼요. 마스크는 배열이어야 해요.
+
+```python
+>>> x[1.0]
+Traceback (most recent call last):
+    ...
+IndexError: only integers, slices (`:`), ellipsis (`...`), newaxis (`None`) and integer or boolean arrays are valid indices
+>>> x[True]
+Traceback (most recent call last):
+    ...
+IndexError: a bool is not a valid index; use an int, or a boolean array
+```
+
+계산 결과로 얻은 실수를 인덱스로 쓰려면 `int(...)`로 바꿔서 넣으세요. numpy의 정수(`np.int64(1)`)는 정수로 받아요.
+
+### 튜플과 리스트는 뜻이 달라요
+
+`x[(0, 1)]`은 `x[0, 1]`과 같아요. 대괄호 안의 쉼표가 원래 튜플을 만드는 것이라서요. 반면 `x[[0, 1]]`은 정수 배열 인덱스로, 0행과 1행을 골라요.
+
+```python
+>>> x[(0, 1)]
+2
+>>> x[[0, 1]]
+array([[1, 2, 3, 4],
+       [5, 6, 7, 8]], dtype=int64)
+```
+
+### 같은 값, 다른 결과: 뷰인지 복사본인지
+
+`x[0:2]`와 `x[[0, 1]]`은 같은 값을 보여 주지만, 앞의 것은 뷰이고 뒤의 것은 복사본이에요. 결과를 고칠 생각이라면 이 차이가 결과를 바꿔요.
+
+```python
+>>> x[0:2].base is x
+True
+>>> x[[0, 1]].base is None
+True
+```
+
+## 비슷한 기능과의 차이
+
+| 하고 싶은 일 | 쓸 것 | 대괄호 인덱싱과 다른 점 |
+|---|---|---|
+| 한 축을 따라 자리 목록으로 고르기 | `sd.take(x, idx, axis=1)` | 축을 숫자로 정해요. `x[:, idx]`와 같은 결과예요. |
+| 행마다 다른 자리를 고르기 | `sd.take_along_axis` | `argsort`의 결과처럼 행마다 다른 목록을 쓸 때예요. |
+| 조건에 맞는 자리의 번호 얻기 | `sd.nonzero(조건)` | 값이 아니라 자리 번호를 축마다 돌려줘요. |
+| 조건에 따라 두 값 중 하나 고르기 | `sd.where(조건, a, b)` | 모양을 그대로 유지해요. 마스크 인덱싱은 1차원으로 모아요. |
+| 길이 1인 축 넣기 | `sd.expand_dims` | `x[:, sd.newaxis]`와 같아요. 축 번호로 써요. |
+
+마스크 인덱싱과 `where`를 비교하면 이래요. `x[x > 6]`은 맞는 값만 모은 짧은 1차원 배열이고, `sd.where(x > 6, x, 0)`은 맞지 않는 자리를 0으로 채운 같은 모양의 배열이에요.
+
+자세한 것은 [위치로 고르기](/api/array/take/), [nonzero](/api/array/nonzero/), [where](/api/array/where/)에 있어요.
+
+## numpy를 아는 분께
+
+규칙은 대부분 numpy와 같아요. 다른 점은 이래요.
+
+- **떨어진 고급 인덱스는 `IndexError`예요.** numpy는 `x[0, :, [0, 1]]`의 배열 축을 맨 앞으로 옮기지만 stardust는 받지 않아요. `x[0][:, [0, 1]]`처럼 두 단계로 쓰세요. 붙어 있는 경우는 numpy와 결과가 같아요.
+- 모든 축을 정수로 고르면 numpy 스칼라가 아니라 Python `int`·`float` 등이 나와요.
+- **원소 하나에는 Python 숫자만** 대입돼요. `x[0, 0] = [7]`은 `TypeError`예요.
+- **대입의 브로드캐스팅이 엄격해요.** 오른쪽 값의 앞쪽 길이 1인 축을 떼어내지 않아요(`(1, 3)`을 `(3,)` 자리에 넣을 수 없어요).
+- **하향 변환을 하지 않아요.** numpy는 int 배열에 `1.5`를 넣으면 `1`로 잘라 넣지만, stardust는 `TypeError`예요.
+- 인덱스 배열끼리 브로드캐스팅이 안 되면 `IndexError`가 아니라 `ValueError`예요.
+- `x[True]`, `x[False]`는 `IndexError`예요(numpy는 새 축을 만들어요).
+- `np.ix_`는 없어요. `x[[[0], [2]], [1, 3]]`처럼 세로 모양 인덱스를 직접 만들거나 두 단계로 고르세요.

@@ -1,0 +1,272 @@
+---
+title: 삼각 부분 남기기
+names: [tril, triu]
+group: 배열 만들기
+order: 7
+signatures:
+  - "sd.tril(x, /, *, k=0)"
+  - "sd.triu(x, /, *, k=0)"
+summary: 행렬에서 대각선과 그 아래쪽(tril) 또는 대각선과 그 위쪽(triu)만 남기고 나머지 칸을 0으로 바꾼 새 배열을 돌려줘요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 2차원 이상의 배열. 마지막 두 축을 행렬로 봐요. 어떤 dtype이든 받아요.
+  - name: k
+    type: int
+    kind: keyword-only
+    desc: 경계가 되는 대각선의 위치. 0은 주대각선, 양수는 위쪽, 음수는 아래쪽이에요.
+returns:
+  type: ndarray
+  desc: x와 같은 모양, 같은 dtype의 새 배열. 남기지 않은 칸은 0(bool이면 False)이에요.
+raises:
+  - type: TypeError
+    desc: x가 stardust 배열이 아닐 때, k가 정수가 아닐 때, k를 이름 없이 넘겼을 때.
+  - type: ValueError
+    desc: x가 2차원보다 작을 때.
+  - type: OverflowError
+    desc: k가 int64 범위를 벗어날 때.
+seeAlso: [eye, where, filled, indexing]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+정사각 행렬에 왼쪽 위에서 오른쪽 아래로 대각선을 그으면 행렬이 두 삼각형으로 나뉘어요. `tril`은 **아래 삼각형**(lower triangle)을, `triu`는 **위 삼각형**(upper triangle)을 남겨요. 대각선은 둘 다 남기고, 반대쪽 칸은 0으로 바꿔요.
+
+```python
+>>> import stardust as sd
+>>> m = sd.asarray([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+>>> sd.tril(m)
+array([[1, 0, 0],
+       [4, 5, 0],
+       [7, 8, 9]], dtype=int64)
+>>> sd.triu(m)
+array([[1, 2, 3],
+       [0, 5, 6],
+       [0, 0, 9]], dtype=int64)
+```
+
+<Fig caption="tril은 대각선과 그 아래를, triu는 대각선과 그 위를 남겨요. 흐린 칸은 0으로 바뀌는 칸이에요.">
+  <ArrayFig name="m" data={[[1, 2, 3], [4, 5, 6], [7, 8, 9]]} tones={[['b', '', ''], ['', 'b', ''], ['', '', 'b']]} axes note="대각선 (진한 칸)" />
+  <Op note="tril">→</Op>
+  <ArrayFig name="sd.tril(m)" data={[[1, 0, 0], [4, 5, 0], [7, 8, 9]]} tones={[['b', 'm', 'm'], ['a', 'b', 'm'], ['a', 'a', 'b']]} />
+  <Op note="triu">→</Op>
+  <ArrayFig name="sd.triu(m)" data={[[1, 2, 3], [0, 5, 6], [0, 0, 9]]} tones={[['b', 'a', 'a'], ['m', 'b', 'a'], ['m', 'm', 'b']]} />
+</Fig>
+
+이름의 끝 글자 `l`과 `u`가 lower(아래)와 upper(위)예요. 원래 배열 `m`은 바뀌지 않고, 결과는 언제나 새 배열이에요.
+
+## 어느 칸이 남나요
+
+행 번호를 `i`, 열 번호를 `j`라고 하면 대각선은 `i == j`인 칸이에요.
+
+| 함수 | 남는 칸 | 0이 되는 칸 |
+|---|---|---|
+| `tril(x)` | `j ≤ i` (대각선과 그 왼쪽 아래) | `j > i` |
+| `triu(x)` | `j ≥ i` (대각선과 그 오른쪽 위) | `j < i` |
+
+## k: 경계를 옮기기
+
+`k`는 경계가 되는 대각선을 옆으로 옮겨요. [`eye`](/api/array/eye/)의 `k`와 뜻이 같아요. `k`번 대각선은 "열 번호 - 행 번호 = `k`"인 칸들이고, 양수면 오른쪽 위, 음수면 왼쪽 아래예요. 정확한 규칙은 이래요.
+
+- `tril(x, k=k)`: `j ≤ i + k`인 칸을 남겨요.
+- `triu(x, k=k)`: `j ≥ i + k`인 칸을 남겨요.
+
+### 대각선 빼고 남기기
+
+가장 자주 쓰는 것은 `k=1`과 `k=-1`이에요. **대각선을 빼고** 엄밀하게 위쪽이나 아래쪽만 남겨요.
+
+```python
+>>> sd.triu(m, k=1)
+array([[0, 2, 3],
+       [0, 0, 6],
+       [0, 0, 0]], dtype=int64)
+>>> sd.tril(m, k=-1)
+array([[0, 0, 0],
+       [4, 0, 0],
+       [7, 8, 0]], dtype=int64)
+```
+
+<Fig caption="triu(k=1)은 대각선 바로 위부터, tril(k=-1)은 대각선 바로 아래부터 남겨요. 대각선 자체는 0이 돼요.">
+  <ArrayFig name="sd.triu(m, k=1)" data={[[0, 2, 3], [0, 0, 6], [0, 0, 0]]} tones={[['m', 'a', 'a'], ['m', 'm', 'a'], ['m', 'm', 'm']]} />
+  <ArrayFig name="sd.tril(m, k=-1)" data={[[0, 0, 0], [4, 0, 0], [7, 8, 0]]} tones={[['m', 'm', 'm'], ['a', 'm', 'm'], ['a', 'a', 'm']]} />
+</Fig>
+
+반대 방향으로 옮기면 대각선 너머의 한 줄까지 더 남겨요.
+
+```python
+>>> sd.tril(m, k=1)
+array([[1, 2, 0],
+       [4, 5, 6],
+       [7, 8, 9]], dtype=int64)
+```
+
+`k`가 행렬 크기를 넘어서면 전부 남거나 전부 0이 돼요. 에러는 아니에요.
+
+```python
+>>> sd.tril(m, k=10)
+array([[1, 2, 3],
+       [4, 5, 6],
+       [7, 8, 9]], dtype=int64)
+>>> sd.tril(m, k=-10)
+array([[0, 0, 0],
+       [0, 0, 0],
+       [0, 0, 0]], dtype=int64)
+```
+
+## 직사각형 행렬
+
+정사각형이 아니어도 돼요. 규칙(`j ≤ i + k`, `j ≥ i + k`)은 그대로이고, 대각선은 왼쪽 위 `(0, 0)`에서 시작해요.
+
+```python
+>>> r = sd.asarray([[1, 2, 3, 4], [5, 6, 7, 8]])
+>>> sd.triu(r)
+array([[1, 2, 3, 4],
+       [0, 6, 7, 8]], dtype=int64)
+>>> sd.tril(r)
+array([[1, 0, 0, 0],
+       [5, 6, 0, 0]], dtype=int64)
+```
+
+## 여러 행렬을 한꺼번에
+
+3차원 이상의 배열을 넣으면 **마지막 두 축**을 행렬로 보고, 앞쪽 축은 "행렬 여러 개를 쌓은 것"(배치)으로 봐요. 행렬마다 따로 삼각 부분을 남겨요.
+
+```python
+>>> batch = sd.asarray([[[1, 2], [3, 4]], [[5, 6], [7, 8]]])
+>>> batch.shape
+(2, 2, 2)
+>>> lower = sd.tril(batch)
+>>> lower.shape
+(2, 2, 2)
+>>> lower[0]
+array([[1, 0],
+       [3, 4]], dtype=int64)
+>>> lower[1]
+array([[5, 0],
+       [7, 8]], dtype=int64)
+```
+
+2×2 행렬 두 개가 각각 `tril`된 결과예요. 앞쪽 축이 몇 개든 같아요.
+
+## 결과의 dtype
+
+dtype은 입력 그대로예요. 0으로 바꾸는 칸은 그 dtype의 0이에요. bool이면 `False`, 복소수면 `0j`예요.
+
+```python
+>>> sd.triu(sd.asarray([[1+1j, 2j], [3, 4]]))
+array([[(1+1j),     2j],
+       [    0j, (4+0j)]], dtype=complex128)
+```
+
+## 이럴 때 써요
+
+### 짝(쌍)마다 한 번씩만 보기
+
+`n`개 항목 사이의 관계를 담은 `n×n` 표(거리, 상관계수 등)는 보통 대각선을 기준으로 대칭이에요. `(a, b)`와 `(b, a)`가 같은 값이라서, 모든 짝을 한 번씩만 보려면 대각선 위쪽만 보면 돼요. 모두 `True`인 bool 행렬에 `triu(k=1)`을 하면 그 자리를 표시하는 **마스크**(고를 자리를 `True`로 표시한 배열)가 돼요.
+
+```python
+>>> mask = sd.triu(sd.ones((3, 3), dtype=sd.bool), k=1)
+>>> mask
+array([[False,  True,  True],
+       [False, False,  True],
+       [False, False, False]], dtype=bool)
+>>> corr = sd.asarray([[1.0, 0.8, 0.3], [0.8, 1.0, 0.5], [0.3, 0.5, 1.0]])
+>>> corr[mask]
+array([0.8, 0.3, 0.5], dtype=float64)
+```
+
+세 항목의 짝 `(0, 1)`, `(0, 2)`, `(1, 2)`의 상관계수를 한 번씩만 꺼냈어요. 대각선의 `1.0`(자기 자신과의 상관)도 빠졌어요. 마스크로 고르는 방법은 [인덱싱과 대입](/api/array/indexing/)에 자세히 있어요.
+
+### 행렬을 겹치지 않게 나누기
+
+`tril(k=-1)`과 `triu()`는 겹치는 칸 없이 행렬을 둘로 나눠요. 다시 더하면 원래 행렬이에요. 대각선을 어느 한쪽에만 넣어야 두 번 더해지지 않아요.
+
+```python
+>>> sd.tril(m, k=-1) + sd.triu(m)
+array([[1, 2, 3],
+       [4, 5, 6],
+       [7, 8, 9]], dtype=int64)
+```
+
+### 위쪽 절반으로 대칭 행렬 채우기
+
+위 삼각형만 채워진 행렬에서 대칭 행렬을 만들 때도 써요. 위 삼각형에, 대각선을 뺀 위 삼각형을 뒤집은 것(`.T`, 전치)을 더해요.
+
+```python
+>>> u = sd.asarray([[1, 2, 3], [0, 4, 5], [0, 0, 6]])
+>>> sd.triu(u) + sd.triu(u, k=1).T
+array([[1, 2, 3],
+       [2, 4, 5],
+       [3, 5, 6]], dtype=int64)
+```
+
+## 조심할 점
+
+### 2차원 이상이어야 해요
+
+1차원 배열에는 "대각선"이 없어서 `ValueError`예요.
+
+```python
+>>> sd.tril(sd.asarray([1, 2, 3]))
+Traceback (most recent call last):
+    ...
+ValueError: tril(): 'x' must have at least 2 dimensions
+```
+
+### k는 이름을 붙여서, 정수로
+
+`sd.tril(m, 1)`처럼 자리로 넘기면 `TypeError`예요. 언제나 `k=1`로 써요. 실수도 받지 않아요.
+
+```python
+>>> sd.tril(m, k=1.0)
+Traceback (most recent call last):
+    ...
+TypeError: tril(): 'k' must be an int, not float
+```
+
+### 곱하기 마스크와는 NaN에서 달라요
+
+"아래 삼각형만 1인 행렬을 곱하면 되지 않나?" 싶을 수 있어요. 대부분은 같은 결과지만, 지우는 칸에 NaN(숫자가 아님)이 있으면 달라요. `NaN × 0`은 NaN이라서 곱하기로는 지워지지 않아요. `tril`과 `triu`는 값을 곱하는 게 아니라 **0으로 바꿔 넣기** 때문에 NaN도 깨끗이 0이 돼요.
+
+```python
+>>> withnan = sd.asarray([[1.0, sd.nan], [2.0, 3.0]])
+>>> withnan * sd.tril(sd.ones((2, 2)))
+array([[1.0, nan],
+       [2.0, 3.0]], dtype=float64)
+>>> sd.tril(withnan)
+array([[1.0, 0.0],
+       [2.0, 3.0]], dtype=float64)
+```
+
+### 지운 칸을 0이 아닌 값으로 채우려면
+
+`tril`과 `triu`는 언제나 0으로 채워요. 다른 값(-1이나 NaN 등)으로 채우고 싶으면 bool 마스크를 만들어 [`where`](/api/array/where/)로 골라요.
+
+```python
+>>> lower = sd.tril(sd.ones((3, 3), dtype=sd.bool))
+>>> sd.where(lower, m, -1)
+array([[ 1, -1, -1],
+       [ 4,  5, -1],
+       [ 7,  8,  9]], dtype=int64)
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | 차이 |
+|---|---|---|
+| 기존 행렬의 삼각 부분 남기기 | `tril`, `triu` | 배열을 받아서 새 배열을 돌려줘요. |
+| 대각선 한 줄만 1인 행렬 만들기 | [`eye`](/api/array/eye/) | 배열을 받지 않고 새로 만들어요. 삼각형이 아니라 한 줄이에요. |
+| 지운 칸을 원하는 값으로 | [`where`](/api/array/where/)와 bool 마스크 | 0 대신 아무 값이나 넣을 수 있어요. |
+| 행렬의 대각선 값 꺼내기 | `sd.linalg.diagonal` | 1차원 배열로 꺼내요. |
+
+## numpy를 아는 분께
+
+- `k`는 keyword-only예요. `np.tril(m, 1)`처럼 자리로 넘길 수 없어요.
+- **1차원 입력은 `ValueError`예요.** numpy는 1차원 배열을 행렬처럼 늘려서 받아 주지만 stardust는 받지 않아요.
+- 리스트는 받지 않아요. 먼저 `asarray`로 바꾸세요.
+- 3차원 이상에서 마지막 두 축을 행렬로 보는 것은 numpy와 같아요.

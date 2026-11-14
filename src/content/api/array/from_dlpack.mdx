@@ -1,0 +1,267 @@
+---
+title: from_dlpack
+names: [from_dlpack]
+group: 배열 만들기
+order: 8
+signatures:
+  - "sd.from_dlpack(x, /, *, device=None, copy=None)"
+summary: numpy, PyTorch, JAX 같은 다른 라이브러리의 배열을 복사하지 않고 stardust 배열로 가져와요. 결과는 원래 배열과 메모리를 함께 써요.
+params:
+  - name: x
+    type: DLPack을 지원하는 배열
+    kind: positional-only
+    desc: __dlpack__ 메서드가 있는 객체. numpy 배열, PyTorch 텐서, stardust 배열 등이에요. CPU 메모리에 있어야 해요.
+  - name: device
+    type: None 또는 (1, 0)
+    kind: keyword-only
+    desc: 결과를 둘 장치. stardust는 CPU만 쓰므로 None이나 CPU를 뜻하는 (1, 0)만 받아요.
+  - name: copy
+    type: True, False 또는 None
+    kind: keyword-only
+    desc: None이면 꼭 필요할 때만 복사해요. True면 언제나 복사하고, False면 복사가 필요할 때 에러를 내요.
+returns:
+  type: ndarray
+  desc: x와 같은 값을 담은 배열. copy=True가 아니면 보통 x와 메모리를 함께 써요.
+raises:
+  - type: TypeError
+    desc: x가 DLPack을 지원하지 않을 때(리스트 등), x의 dtype이 bool·int64·float64·complex128이 아닐 때, copy가 True·False·None이 아닐 때.
+  - type: ValueError
+    desc: x가 0차원일 때, device가 None이나 (1, 0)이 아닐 때, copy=False인데 복사가 필요할 때.
+  - type: BufferError
+    desc: x가 CPU가 아닌 장치(GPU 등)에 있을 때.
+seeAlso: [asarray, views, ndarray, dtypes]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+DLPack(디엘팩)은 여러 배열 라이브러리가 함께 지키는 **"배열 메모리를 서로 빌려주는 약속"** 이에요. numpy, PyTorch, JAX, CuPy 등 많은 라이브러리가 이 약속을 지켜서, 데이터를 복사하지 않고도 서로의 배열을 넘겨받을 수 있어요. `from_dlpack`은 이 약속으로 다른 라이브러리의 배열을 stardust 배열로 가져와요.
+
+```python
+>>> import stardust as sd
+>>> import numpy as np
+>>> n = np.array([1.0, 2.0, 3.0])
+>>> a = sd.from_dlpack(n)
+>>> a
+array([1.0, 2.0, 3.0], dtype=float64)
+```
+
+이제 `a`는 stardust 배열이라 stardust의 모든 함수에 넣을 수 있어요. 가져올 때 원소를 하나하나 옮겨 적지 않기 때문에, 배열이 아무리 커도 거의 시간이 걸리지 않아요.
+
+PyTorch 텐서도 같은 방법으로 가져와요. CPU에 있는 텐서 `t`라면 `sd.from_dlpack(t)` 한 줄이에요. 어느 라이브러리에서 왔는지 신경 쓸 필요 없이 `__dlpack__` 메서드만 있으면 돼요.
+
+## 메모리를 함께 써요
+
+`from_dlpack`의 결과는 원래 배열의 메모리를 **그대로 빌려 써요.** 같은 메모리를 두 이름으로 보는 셈이라, 한쪽에서 값을 고치면 다른 쪽에서도 바뀐 값이 보여요.
+
+```python
+>>> n[0] = 99.0
+>>> a
+array([99.0,  2.0,  3.0], dtype=float64)
+>>> a[1] = -1.0
+>>> n
+array([99., -1.,  3.])
+```
+
+<Fig caption="a와 n은 같은 메모리를 보는 두 개의 창이에요. 어느 쪽에서 고쳐도 둘 다 바뀌어요.">
+  <ArrayFig name="n (numpy)" data={['99.0', '-1.0', '3.0']} tones={['b', 'b', '']} note="원래 배열" />
+  <Op note="같은 메모리">⇄</Op>
+  <ArrayFig name="a (stardust)" data={['99.0', '-1.0', '3.0']} tones={['b', 'b', '']} note="sd.from_dlpack(n)" />
+</Fig>
+
+이 성질은 장점이자 함정이에요. 큰 데이터를 주고받을 때 메모리와 시간을 아낄 수 있지만, 한쪽에서 고친 것이 다른 쪽 코드에 뜻하지 않게 영향을 줄 수 있어요. 원래 데이터를 건드리지 않고 마음껏 고치고 싶으면 다음 절의 `copy=True`를 쓰세요. 뷰와 복사의 일반적인 이야기는 [뷰와 복사](/api/array/views/)에 있어요.
+
+원래 배열의 변수가 사라져도 괜찮아요. stardust 배열이 메모리를 붙잡고 있어서, 데이터는 `a`가 살아 있는 동안 그대로 남아요.
+
+```python
+>>> del n
+>>> a
+array([99.0, -1.0,  3.0], dtype=float64)
+```
+
+## copy: 복사할까요
+
+| `copy` | 뜻 |
+|---|---|
+| `None` (기본값) | 될 수 있으면 메모리를 함께 써요. 아주 드문 경우에만 복사해요. |
+| `True` | 언제나 복사해요. 결과는 원래 배열과 완전히 따로예요. |
+| `False` | 절대 복사하지 않아요. 복사 없이는 가져올 수 없으면 `ValueError`예요. |
+
+```python
+>>> src = np.array([1.0, 2.0, 3.0])
+>>> c = sd.from_dlpack(src, copy=True)
+>>> src[0] = 100.0
+>>> c
+array([1.0, 2.0, 3.0], dtype=float64)
+```
+
+`copy=True`로 가져온 `c`는 `src`를 고쳐도 바뀌지 않아요.
+
+`copy=None`일 때 복사가 일어나는 경우는 원래 배열의 메모리가 stardust가 그대로 쓸 수 없는 상태일 때뿐이에요. 예를 들어 bool 배열의 메모리에 0과 1이 아닌 값이 들어 있는 경우예요. 평범하게 만든 배열이라면 거의 만날 일이 없어요. 이런 경우에 `copy=False`를 주면 에러로 알려 줘요.
+
+```python
+>>> odd = np.frombuffer(bytes([0, 1, 2]), dtype=np.bool_)
+>>> sd.from_dlpack(odd)
+array([False,  True,  True], dtype=bool)
+>>> sd.from_dlpack(odd, copy=False)
+Traceback (most recent call last):
+    ...
+ValueError: from_dlpack(): copy=False, but this bool tensor holds bytes other than 0 and 1
+```
+
+<Callout type="tip" title="공유가 꼭 필요할 때는 copy=False">
+  "가져온 배열을 고쳐서 원래 라이브러리 쪽에도 반영되게 하고 싶다"면 `copy=False`를 주세요. 메모리를 함께 쓰지 못하는 상황이면 조용히 복사하는 대신 에러로 알려 주므로, 고친 값이 어디에도 반영되지 않는 실수를 막을 수 있어요.
+</Callout>
+
+`copy`에는 `True`, `False`, `None`만 쓸 수 있어요.
+
+```python
+>>> sd.from_dlpack(np.array([1.0]), copy=1)
+Traceback (most recent call last):
+    ...
+TypeError: from_dlpack(): 'copy' must be True, False or None, not int
+```
+
+## 가져올 수 있는 원소 종류
+
+stardust 배열의 원소 종류는 네 가지뿐이에요. `from_dlpack`은 원래 배열의 종류가 이 넷 중 하나와 **정확히 같을 때만** 가져와요.
+
+| 원래 배열의 종류 | `from_dlpack` |
+|---|---|
+| bool | 가져와요 → `bool` |
+| int64 | 가져와요 → `int64` |
+| float64 | 가져와요 → `float64` |
+| complex128 | 가져와요 → `complex128` |
+| int32, float32, uint8, uint64 등 그 밖의 종류 | `TypeError` |
+
+```python
+>>> sd.from_dlpack(np.array([True, False]))
+array([ True, False], dtype=bool)
+>>> sd.from_dlpack(np.array([1+2j]))
+array([(1+2j)], dtype=complex128)
+>>> i32 = np.array([1, 2], dtype=np.int32)
+>>> sd.from_dlpack(i32)
+Traceback (most recent call last):
+    ...
+TypeError: from_dlpack(): DLPack dtype int32 is not an array dtype (bool, int64, float64, complex128)
+```
+
+<Callout type="warn" title="float32는 그대로 가져올 수 없어요">
+  PyTorch나 JAX의 실수 텐서는 기본이 float32인 경우가 많아요. 이런 배열은 `from_dlpack`이 거절해요. `from_dlpack`은 "복사 없이 가져오기"가 목적이라 종류를 바꾸는 복사를 하지 않기 때문이에요. 원래 라이브러리에서 먼저 float64로 바꾼 다음 넘기세요(PyTorch라면 `t.double()`, numpy라면 `n.astype(np.float64)`).
+</Callout>
+
+```python
+>>> sd.from_dlpack(i32.astype(np.int64))
+array([1, 2], dtype=int64)
+```
+
+numpy 배열이라면 [`asarray`](/api/array/asarray/)를 써도 돼요. `asarray`는 int32나 float32처럼 값을 잃지 않고 넓힐 수 있는 종류를 복사하면서 바꿔 줘요.
+
+```python
+>>> sd.asarray(i32)
+array([1, 2], dtype=int64)
+```
+
+## 잘라 낸 배열도 그대로
+
+원래 배열이 다른 배열의 일부를 잘라 낸 것이어도(한 칸씩 건너뛰거나 거꾸로 뒤집은 것 등) 복사 없이 그대로 가져와요.
+
+```python
+>>> big = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+>>> sd.from_dlpack(big[:, ::2])
+array([[1.0, 3.0],
+       [4.0, 6.0]], dtype=float64)
+>>> sd.from_dlpack(big[:, ::-1])
+array([[3.0, 2.0, 1.0],
+       [6.0, 5.0, 4.0]], dtype=float64)
+```
+
+## 읽기 전용 배열
+
+원래 배열이 값을 고칠 수 없게 표시돼 있으면, 가져온 stardust 배열도 읽기 전용이에요. 고치려 하면 `ValueError`예요.
+
+```python
+>>> frozen = np.array([1.0, 2.0])
+>>> frozen.flags.writeable = False
+>>> f = sd.from_dlpack(frozen)
+>>> f[0] = 5.0
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+```
+
+고칠 수 있는 배열이 필요하면 `copy=True`로 가져오거나 `f.copy()`로 복사하세요.
+
+## 반대 방향: stardust 배열을 내보내기
+
+stardust 배열도 DLPack 약속을 지켜요. 그래서 다른 라이브러리의 `from_dlpack`에 stardust 배열을 넣으면 복사 없이 넘어가요. numpy는 `np.from_dlpack(x)`, PyTorch는 `torch.from_dlpack(x)`예요.
+
+```python
+>>> x = sd.asarray([1, 2, 3])
+>>> m = np.from_dlpack(x)
+>>> m[0] = 100
+>>> x
+array([100,   2,   3], dtype=int64)
+```
+
+## 조심할 점
+
+### CPU에 있는 배열만
+
+stardust는 CPU 메모리에서만 계산해요. GPU에 있는 PyTorch 텐서나 CuPy 배열은 가져올 수 없어요(`BufferError`). 원래 라이브러리에서 먼저 CPU로 옮기세요(PyTorch라면 `t.cpu()`).
+
+`device` 인자도 같은 이유로 `None`이나 CPU를 뜻하는 `(1, 0)`만 받아요. 보통은 쓸 일이 없어요.
+
+```python
+>>> sd.from_dlpack(np.array([1.0]), device="cpu")
+Traceback (most recent call last):
+    ...
+ValueError: from_dlpack(): 'device' must be None or the CPU device (1, 0)
+```
+
+### DLPack을 모르는 객체
+
+리스트, 튜플 같은 Python 객체에는 `__dlpack__`이 없어서 받지 않아요. 이런 데이터는 `asarray`로 바꿔요.
+
+```python
+>>> sd.from_dlpack([1, 2])
+Traceback (most recent call last):
+    ...
+TypeError: from_dlpack(): 'x' must support the DLPack protocol (__dlpack__), not list
+```
+
+### 0차원 배열
+
+stardust에는 차원이 0인 배열이 없어서, 0차원 배열(숫자 하나짜리)은 가져올 수 없어요. 원래 라이브러리에서 길이 1인 배열로 바꾸거나(`n.reshape(1)`) 숫자로 꺼내 쓰세요.
+
+```python
+>>> sd.from_dlpack(np.array(5.0))
+Traceback (most recent call last):
+    ...
+ValueError: from_dlpack(): 0-dimensional arrays are not supported (stardust has no 0-d arrays)
+```
+
+## asarray와의 차이
+
+둘 다 다른 라이브러리의 배열을 복사 없이 가져올 수 있어서 헷갈리기 쉬워요. 무엇을 받느냐와 종류가 다를 때의 처리가 달라요.
+
+| | `asarray` | `from_dlpack` |
+|---|---|---|
+| 받는 것 | 리스트·튜플, `range`, 버퍼를 내어 주는 객체(numpy 배열, `bytes`, `memoryview`) | DLPack을 지원하는 객체(numpy, PyTorch, JAX, CuPy 등의 배열) |
+| PyTorch·JAX 텐서 | 받지 못하는 경우가 많아요 | 받아요 (CPU에 있을 때) |
+| 종류가 정확히 같을 때 | 복사 없이 메모리를 함께 써요 | 복사 없이 메모리를 함께 써요 |
+| int32·float32 등 | 넓히면서 복사해요 | `TypeError` |
+| `dtype=` 인자 | 있어요 | 없어요 |
+
+- numpy 배열이나 리스트처럼 흔한 데이터라면 `asarray`가 편해요.
+- PyTorch, JAX처럼 버퍼를 내어 주지 않는 라이브러리의 배열이거나, "반드시 복사 없이"를 보장받고 싶으면 `from_dlpack`을 쓰세요.
+
+## numpy를 아는 분께
+
+- `np.from_dlpack`과 같은 역할이에요. 다른 점은 받는 원소 종류가 bool, int64, float64, complex128 넷뿐이라는 점이에요. float32나 int32 텐서는 `TypeError`예요.
+- 0차원 배열은 `ValueError`예요.
+- `device`는 `None`이나 `(1, 0)`만 받아요. `"cpu"` 같은 문자열은 받지 않아요.
+- `copy=`는 numpy와 같은 뜻이에요.

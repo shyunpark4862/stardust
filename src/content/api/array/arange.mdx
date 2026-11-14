@@ -1,0 +1,311 @@
+---
+title: arange
+names: [arange]
+group: 배열 만들기
+order: 3
+signatures:
+  - "sd.arange(start, stop=None, step=1, /, *, dtype=None)"
+summary: 시작값에서 일정한 간격(step)으로 늘어나는 수를, 끝값 바로 앞까지 차례로 담은 1차원 배열을 만들어요. Python의 range를 배열로 만든 것과 비슷해요.
+params:
+  - name: start
+    type: bool, int 또는 float
+    kind: positional-only
+    desc: 첫 값. 인자를 하나만 주면 그 값은 stop이 되고 start는 0이에요.
+  - name: stop
+    type: bool, int, float 또는 None
+    kind: positional-only
+    desc: 끝값. 결과에 들어가지 않아요(바로 앞에서 멈춰요).
+  - name: step
+    type: bool, int 또는 float
+    kind: positional-only
+    desc: 이웃한 두 값의 간격. 음수면 줄어드는 수열이에요. 0은 안 돼요.
+  - name: dtype
+    type: dtype 또는 None
+    kind: keyword-only
+    desc: 결과의 원소 종류. None이면 인자가 모두 정수일 때 int64, 하나라도 실수면 float64예요.
+returns:
+  type: ndarray
+  desc: 1차원 배열. 길이는 ceil((stop - start) / step)이고, 그 값이 0 이하면 빈 배열이에요.
+raises:
+  - type: TypeError
+    desc: 인자가 bool·int·float이 아닐 때(복소수, 문자열 등), dtype이 틀렸을 때, step이나 stop을 이름을 붙여 넘겼을 때.
+  - type: ValueError
+    desc: step이 0일 때, 인자에 NaN이나 무한대가 있을 때.
+  - type: OverflowError
+    desc: 결과가 정수 배열인데 인자가 int64 범위를 벗어날 때.
+seeAlso: [linspace, filled, reshape, meshgrid]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+`arange`는 일정한 간격으로 늘어나는 수를 담은 1차원 배열을 만들어요. 가장 자주 쓰는 모양은 인자 하나짜리예요. `sd.arange(n)`은 `0`부터 `n - 1`까지 `n`개의 정수예요.
+
+```python
+>>> import stardust as sd
+>>> sd.arange(5)
+array([0, 1, 2, 3, 4], dtype=int64)
+```
+
+인자를 둘 주면 시작과 끝, 셋 주면 시작과 끝과 간격이에요.
+
+```python
+>>> sd.arange(2, 6)
+array([2, 3, 4, 5], dtype=int64)
+>>> sd.arange(0, 10, 3)
+array([0, 3, 6, 9], dtype=int64)
+```
+
+<Fig caption="sd.arange(0, 10, 3): 0에서 출발해 3씩 건너뛰어요. 끝값 10에 닿기 전에 멈추므로 10은 들어가지 않아요.">
+  <ArrayFig name="수직선" data={[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]} tones={['b', 'm', 'm', 'a', 'm', 'm', 'a', 'm', 'm', 'a', 'g']} note="start = 0, stop = 10 (점선, 들어가지 않음)" />
+  <Op note="step = 3">→</Op>
+  <ArrayFig name="sd.arange(0, 10, 3)" data={[0, 3, 6, 9]} tones={['b', 'a', 'a', 'a']} note="shape (4,)" />
+</Fig>
+
+## 인자는 몇 개 줄까요
+
+| 호출 | 뜻 | 결과 |
+|---|---|---|
+| `arange(stop)` | 0부터 `stop` 앞까지, 1씩 | `arange(4)` → `[0, 1, 2, 3]` |
+| `arange(start, stop)` | `start`부터 `stop` 앞까지, 1씩 | `arange(2, 5)` → `[2, 3, 4]` |
+| `arange(start, stop, step)` | `start`부터 `stop` 앞까지, `step`씩 | `arange(1, 10, 4)` → `[1, 5, 9]` |
+
+인자가 하나일 때 그 값이 `start`가 아니라 **`stop`** 이라는 점이 처음에는 어색할 수 있어요. Python의 `range`와 같은 약속이에요.
+
+세 인자는 모두 **자리로만** 넘겨요. `sd.arange(0, 10, step=2)`처럼 이름을 붙이면 `TypeError`예요. 이름을 붙일 수 있는 것은 `dtype=`뿐이에요.
+
+### 끝값은 들어가지 않아요
+
+`arange`의 범위는 "**시작은 포함, 끝은 제외**"예요. `sd.arange(2, 6)`에 `6`이 없는 이유예요. 이렇게 정해 두면 좋은 점이 있어요.
+
+- `arange(n)`의 길이가 정확히 `n`이에요.
+- `arange(a, b)`의 길이가 `b - a`예요.
+- `arange(0, 5)`와 `arange(5, 10)`을 이으면 빈틈도 겹침도 없이 `arange(0, 10)`이 돼요.
+
+배열의 위치(인덱스)가 0부터 `n - 1`까지라서, 위치를 늘어놓을 때 특히 잘 맞아요.
+
+```python
+>>> x = sd.asarray([10.0, 20.0, 30.0, 40.0])
+>>> sd.arange(4)
+array([0, 1, 2, 3], dtype=int64)
+>>> x[sd.arange(0, 4, 2)]
+array([10.0, 30.0], dtype=float64)
+```
+
+## 간격(step)
+
+`step`은 이웃한 두 값의 차이예요. 기본값은 `1`이에요.
+
+```python
+>>> sd.arange(1, 10, 2)
+array([1, 3, 5, 7, 9], dtype=int64)
+>>> sd.arange(-2, 3)
+array([-2, -1,  0,  1,  2], dtype=int64)
+```
+
+### 거꾸로 세기
+
+`step`이 음수면 줄어드는 수열이에요. 이때는 `start`가 `stop`보다 커야 하고, 역시 `stop`은 들어가지 않아요.
+
+```python
+>>> sd.arange(5, 0, -1)
+array([5, 4, 3, 2, 1], dtype=int64)
+>>> sd.arange(10, 0, -3)
+array([10,  7,  4,  1], dtype=int64)
+```
+
+### 갈 수 없는 방향이면 빈 배열이에요
+
+`start`에서 `step` 방향으로 가도 `stop`에 다가갈 수 없으면 결과는 **빈 배열**이에요. 에러가 아니에요.
+
+```python
+>>> sd.arange(5, 2)
+array([], dtype=int64)
+>>> sd.arange(0, 5, -1)
+array([], dtype=int64)
+>>> sd.arange(3, 3)
+array([], dtype=int64)
+```
+
+## 길이는 어떻게 정해지나요
+
+결과의 길이는 이 식으로 정해요.
+
+> 길이 = `ceil((stop - start) / step)`, 이 값이 0보다 작으면 0
+
+`ceil`은 올림이에요. "`start`부터 `step`씩 몇 번 가야 `stop`에 닿거나 넘어서는가"를 센 것이에요.
+
+| 호출 | `(stop - start) / step` | 올림 | 결과 |
+|---|:---:|:---:|---|
+| `arange(0, 10, 3)` | 3.33… | 4 | `[0, 3, 6, 9]` |
+| `arange(0, 9, 3)` | 3 | 3 | `[0, 3, 6]` |
+| `arange(0, 7, 2)` | 3.5 | 4 | `[0, 2, 4, 6]` |
+| `arange(5, 2)` | -3 | -3 → 0 | `[]` |
+
+각 값은 `start + i * step`(`i`는 0, 1, 2, …)으로 계산해요.
+
+## 결과의 dtype
+
+`dtype=`을 주지 않으면 인자를 보고 정해요.
+
+- 인자가 **모두 정수**(`True`, `False`도 정수로 봐요)이면 int64
+- 인자 중 **하나라도 실수**이면 float64
+
+```python
+>>> sd.arange(5.0)
+array([0.0, 1.0, 2.0, 3.0, 4.0], dtype=float64)
+>>> sd.arange(0.5, 3)
+array([0.5, 1.5, 2.5], dtype=float64)
+>>> sd.arange(0, 2.5, 0.5)
+array([0.0, 0.5, 1.0, 1.5, 2.0], dtype=float64)
+```
+
+`dtype=`을 주면 위에서 계산한 값을 그 종류로 **바꿔요.** 값이 달라지더라도 바꾸는 명시적 변환이에요.
+
+```python
+>>> sd.arange(5, dtype=sd.float64)
+array([0.0, 1.0, 2.0, 3.0, 4.0], dtype=float64)
+>>> sd.arange(3, dtype=sd.complex128)
+array([    0j, (1+0j), (2+0j)], dtype=complex128)
+```
+
+<Callout type="warn" title="dtype=sd.int64는 간격을 정수로 바꾸지 않아요">
+  값을 **먼저** `start + i * step`으로 계산하고, 그다음에 정수로 바꿔요(소수점 아래를 버려요). 그래서 `sd.arange(0, 3, 0.5, dtype=sd.int64)`는 `[0, 1, 2]`가 아니라 `0, 0.5, 1, …`을 각각 자른 `[0, 0, 1, 1, 2, 2]`예요.
+</Callout>
+
+```python
+>>> sd.arange(0, 3, 0.5, dtype=sd.int64)
+array([0, 0, 1, 1, 2, 2], dtype=int64)
+```
+
+## 실수 간격은 조심하세요
+
+`step`에 `0.1` 같은 실수를 쓰면 두 가지 일이 생겨요.
+
+**첫째, 값이 아주 조금씩 어긋나요.** 컴퓨터의 실수는 `0.1`을 정확히 담지 못해서, `0.1`을 세 번 더한 값이 `0.3`이 아니라 `0.30000000000000004`가 돼요. stardust만의 문제가 아니라 실수 계산 전반의 성질이에요.
+
+```python
+>>> sd.arange(0, 1, 0.1)
+array([                0.0,                 0.1,                 0.2,
+       0.30000000000000004,                 0.4,                 0.5,
+        0.6000000000000001,  0.7000000000000001,                 0.8,
+                       0.9], dtype=float64)
+```
+
+**둘째, 끝값이 들어갈지 말지가 흔들려요.** 이쪽이 더 위험해요. 길이를 정하는 `(stop - start) / step`에도 오차가 끼어들어, 정확히 3이어야 할 값이 3을 살짝 넘으면 올림해서 4가 돼요. 그러면 들어가지 않아야 할 끝값이 들어가요.
+
+```python
+>>> (0.4 - 0.1) / 0.1
+3.0000000000000004
+>>> sd.arange(0.1, 0.4, 0.1)
+array([                0.1,                 0.2, 0.30000000000000004,
+                       0.4], dtype=float64)
+```
+
+`0.4`는 끝값이라 빠져야 하는데 들어가 있어요. 같은 코드라도 숫자가 조금만 달라지면 끝값이 빠지기도 해서, 결과의 길이를 미리 알 수 없어요.
+
+<Callout type="tip" title="실수 수열은 linspace로">
+  "0.1부터 0.3까지 3개"처럼 **양 끝과 개수**를 알고 있다면 [`linspace`](/api/array/linspace/)가 안전해요. 개수를 직접 정하므로 길이가 흔들리지 않고, 끝값도 정확히 들어가요. 간격이 꼭 필요하면 정수로 `arange`를 만든 뒤 나누는 방법도 있어요.
+</Callout>
+
+```python
+>>> sd.linspace(0.1, 0.3, 3)
+array([0.1, 0.2, 0.3], dtype=float64)
+>>> sd.arange(1, 4) / 10
+array([0.1, 0.2, 0.3], dtype=float64)
+```
+
+## 조심할 점
+
+### step은 0이 될 수 없어요
+
+간격이 0이면 영원히 `stop`에 닿지 못해요. `ValueError`예요.
+
+```python
+>>> sd.arange(0, 5, 0)
+Traceback (most recent call last):
+    ...
+ValueError: arange(): 'step' must not be zero
+```
+
+### NaN과 무한대
+
+인자에 NaN(숫자가 아님)이나 무한대가 있으면 길이를 정할 수 없어서 `ValueError`예요.
+
+```python
+>>> sd.arange(0, sd.inf)
+Traceback (most recent call last):
+    ...
+ValueError: arange(): 'start', 'stop' and 'step' must be finite (not nan or inf)
+```
+
+### 복소수와 그 밖의 타입
+
+인자는 Python의 `bool`, `int`, `float`만 받아요. 복소수에는 크고 작음이 없어서 "끝값에 닿았는지"를 판단할 수 없기 때문이에요. 복소수 수열이 필요하면 `linspace`를 쓰세요.
+
+```python
+>>> sd.arange(0, 3, 1j)
+Traceback (most recent call last):
+    ...
+TypeError: arange(): 'step' must be a bool, int or float, not complex
+>>> sd.arange("3")
+Traceback (most recent call last):
+    ...
+TypeError: arange(): 'start' must be a bool, int or float, not str
+```
+
+### 아주 큰 정수
+
+결과가 정수 배열일 때는 인자가 int64 범위(약 ±9.2 × 10¹⁸) 안이어야 해요. 넘으면 `OverflowError`예요. `dtype=sd.float64`를 주면 실수로 계산해요(실수라서 끝자리는 반올림돼요).
+
+```python
+>>> sd.arange(2**70)
+Traceback (most recent call last):
+    ...
+OverflowError: arange(): Python int too large to convert to int64
+>>> sd.arange(0, 2**70, 2**68, dtype=sd.float64)
+array([                   0.0, 2.9514790517935283e+20,
+        5.902958103587057e+20,  8.854437155380585e+20], dtype=float64)
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | 차이 |
+|---|---|---|
+| 정수 수열, 위치 목록 | `arange` | 간격을 정해요. 끝값은 빠져요. |
+| 양 끝 사이를 고르게 나눈 실수 | [`linspace`](/api/array/linspace/) | 개수를 정해요. 끝값이 기본으로 들어가요. |
+| 같은 값으로 채운 배열 | [`zeros`, `full`](/api/array/filled/) | 모든 칸이 같은 값이에요. |
+| 2차원 이상의 수열 | `arange` 다음에 [`reshape`](/api/array/reshape/) | `sd.reshape(sd.arange(6), (2, 3))` |
+
+### `arange`와 `linspace`
+
+둘 다 고른 간격의 수열을 만들지만 무엇을 정하느냐가 달라요.
+
+| | `arange(start, stop, step)` | `linspace(start, stop, num)` |
+|---|---|---|
+| 정하는 것 | 간격 | 개수 |
+| 끝값 | 들어가지 않아요 | 기본으로 들어가요 |
+| 길이 | 계산해서 나와요 (실수면 흔들릴 수 있어요) | `num` 그대로 |
+| 기본 dtype | 인자가 모두 정수면 int64 | 언제나 실수(또는 복소수) |
+| 잘 맞는 곳 | 정수, 위치 | 실수 구간, 그래프의 x축 |
+
+### `arange`와 Python의 `range`
+
+`sd.asarray(range(5))`도 같은 배열을 만들지만, `range`는 정수만 받아요. `arange`는 실수 간격도 받고, Python 리스트를 거치지 않고 곧바로 배열을 만들어요.
+
+```python
+>>> sd.asarray(range(5))
+array([0, 1, 2, 3, 4], dtype=int64)
+```
+
+## numpy를 아는 분께
+
+- 인자 셋 모두 **positional-only**예요. `np.arange(0, 10, step=2)`나 `np.arange(stop=5)`처럼 이름을 붙일 수 없어요.
+- 복소수 인자는 `TypeError`예요.
+- NaN이나 무한대 인자는 `ValueError`예요.
+- 실수 값은 `start + i * step`으로 계산해요. numpy와 마지막 몇 자리가 다를 수 있어요.
+- `dtype=sd.float64`면 int64 범위 밖의 정수 인자도 실수로 읽어서 받아 줘요.
+- `like=`, `device=` 인자는 없어요.

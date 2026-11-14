@@ -1,0 +1,280 @@
+---
+title: 길이 1인 축 넣고 빼기
+names: [squeeze, expand_dims]
+group: 모양과 축
+order: 3
+signatures:
+  - "sd.squeeze(x, /, *, axis)"
+  - "sd.expand_dims(x, /, *, axis)"
+summary: expand_dims는 길이 1인 축을 원하는 자리에 넣고, squeeze는 길이 1인 축을 빼요. 원소는 그대로이고 모양만 바뀌어요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 모양을 바꿀 배열.
+  - name: axis
+    type: int, 또는 int의 tuple·list
+    kind: keyword-only, 필수
+    desc: squeeze는 뺄 축(x 기준), expand_dims는 새 축이 놓일 자리(결과 기준). 생략할 수 없어요.
+returns:
+  type: ndarray
+  desc: 길이 1인 축이 빠지거나 더해진 배열. 값을 복사하지 않고 x와 메모리를 함께 써요(뷰).
+raises:
+  - type: TypeError
+    desc: x가 배열이 아닐 때, axis를 빠뜨리거나 이름 없이 넘겼을 때, axis가 int·tuple·list가 아닐 때(None 포함).
+  - type: ValueError
+    desc: squeeze하려는 축의 길이가 1이 아닐 때, 모든 축을 빼서 0차원이 될 때, 축 번호가 범위를 벗어나거나 겹칠 때.
+seeAlso: [reshape, broadcasting, broadcast_to, constants]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+길이가 1인 축은 원소의 개수에 영향을 주지 않아요. 원소 세 개는 모양이 `(3,)`이어도, `(1, 3)`이어도, `(3, 1)`이어도 여전히 세 개예요. 하지만 이 차이가 계산 결과를 크게 바꿀 때가 있어요. 이 페이지의 두 함수는 이런 **길이 1인 축을 넣고 빼는** 도구예요.
+
+`expand_dims`는 원하는 자리에 길이 1인 축을 넣어요.
+
+```python
+>>> import stardust as sd
+>>> v = sd.asarray([1, 2, 3])
+>>> sd.expand_dims(v, axis=0)
+array([[1, 2, 3]], dtype=int64)
+>>> sd.expand_dims(v, axis=1)
+array([[1],
+       [2],
+       [3]], dtype=int64)
+```
+
+<Fig caption="같은 원소 세 개가 axis=0이면 가로 한 줄(1, 3), axis=1이면 세로 한 줄(3, 1)이 돼요.">
+  <ArrayFig name="v" data={[1, 2, 3]} note="shape (3,)" />
+  <Op note="axis=0">→</Op>
+  <ArrayFig name="expand_dims(v, axis=0)" data={[[1, 2, 3]]} tones={[['a', 'a', 'a']]} note="shape (1, 3)" />
+  <Op note="axis=1">→</Op>
+  <ArrayFig name="expand_dims(v, axis=1)" data={[[1], [2], [3]]} tones={[['a'], ['a'], ['a']]} note="shape (3, 1)" />
+</Fig>
+
+`squeeze`는 반대로 길이 1인 축을 빼요.
+
+```python
+>>> c = sd.asarray([[1], [2], [3]])
+>>> c.shape
+(3, 1)
+>>> sd.squeeze(c, axis=1)
+array([1, 2, 3], dtype=int64)
+```
+
+두 함수 모두 **`axis`를 꼭 적어야** 해요. 어느 축을 넣고 빼는지 코드에 드러나게 하기 위해서예요.
+
+## 왜 필요한가요
+
+길이 1인 축이 가장 크게 영향을 주는 곳은 [브로드캐스팅](/api/array/broadcasting/)이에요. 두 배열을 원소끼리 계산할 때, 길이 1인 축은 상대 배열의 길이만큼 늘어나요. 그래서 같은 원소 세 개라도 **어느 방향으로 늘어날지**가 모양에 따라 달라져요.
+
+```python
+>>> m = sd.asarray([[10, 20, 30], [40, 50, 60]])
+>>> w = sd.asarray([1, 2])
+>>> m + sd.expand_dims(w, axis=1)
+array([[11, 21, 31],
+       [42, 52, 62]], dtype=int64)
+```
+
+행이 두 개인 `m`의 각 행에 서로 다른 값을 더하고 싶어요. `w`의 모양 `(2,)`을 그대로 쓰면 오른쪽 끝의 길이 3과 2가 맞지 않아 에러가 나요. `expand_dims`로 세로 모양 `(2, 1)`을 만들면 옆으로 늘어나서 행마다 하나씩 더해져요.
+
+<Fig caption="w를 (2, 1)로 세우면 옆으로 늘어나서, m의 첫 행에는 1이, 둘째 행에는 2가 더해져요.">
+  <ArrayFig name="m" data={[[10, 20, 30], [40, 50, 60]]} note="shape (2, 3)" />
+  <Op>+</Op>
+  <ArrayFig name="expand_dims(w, axis=1)" data={[[1, 1, 1], [2, 2, 2]]} tones={[['a', 'g', 'g'], ['a', 'g', 'g']]} note="shape (2, 1)" />
+  <Op>=</Op>
+  <ArrayFig data={[[11, 21, 31], [42, 52, 62]]} note="shape (2, 3)" />
+</Fig>
+
+반대로 `squeeze`는 계산 중에 생긴 쓸모없는 길이 1인 축을 정리할 때 써요. 예를 들어 `(n, 1)` 모양으로 나온 결과를 1차원 `(n,)`으로 돌려놓아야 다른 1차원 배열과 섞어 써도 의도하지 않은 큰 결과가 나오지 않아요.
+
+```python
+>>> col = sd.asarray([[1], [2], [3]])
+>>> (col - v).shape
+(3, 3)
+>>> (sd.squeeze(col, axis=1) - v).shape
+(3,)
+```
+
+길이가 같은 두 배열을 원소끼리 빼려던 것인데, 한쪽이 세로 모양이라 3×3 표가 나와 버렸어요. `squeeze`로 축을 빼면 원래 뜻대로 계산돼요.
+
+## `expand_dims`: 축 번호는 결과 기준이에요
+
+`expand_dims`의 `axis`는 "**결과 배열에서 새 축이 몇 번째에 있을지**"를 뜻해요. 원래 배열의 축 번호가 아니에요.
+
+```python
+>>> x = sd.zeros((2, 3))
+>>> sd.expand_dims(x, axis=0).shape
+(1, 2, 3)
+>>> sd.expand_dims(x, axis=1).shape
+(2, 1, 3)
+>>> sd.expand_dims(x, axis=2).shape
+(2, 3, 1)
+>>> sd.expand_dims(x, axis=-1).shape
+(2, 3, 1)
+```
+
+결과가 3차원이니 `axis`는 0, 1, 2(또는 -1, -2, -3)를 쓸 수 있어요. `axis=-1`은 언제나 "맨 뒤에 축 하나 붙이기"라 편해요.
+
+여러 축을 한꺼번에 넣을 때도 번호는 모두 결과 기준이에요.
+
+```python
+>>> sd.expand_dims(v, axis=(0, 2)).shape
+(1, 3, 1)
+>>> sd.expand_dims(v, axis=(0, 1)).shape
+(1, 1, 3)
+```
+
+결과가 3차원이고, 그중 0번과 2번 자리가 길이 1인 새 축이에요. 남은 자리에 원래 축이 순서대로 들어가요.
+
+### `sd.newaxis`와 비교
+
+인덱싱에서 `sd.newaxis`를 써도 같은 일을 할 수 있어요. `v[:, sd.newaxis]`는 `expand_dims(v, axis=1)`과 같아요.
+
+```python
+>>> v[:, sd.newaxis].shape
+(3, 1)
+>>> v[sd.newaxis, :].shape
+(1, 3)
+```
+
+짧은 식 안에서는 `sd.newaxis`가, 축 번호를 변수로 다루거나 차원 수가 정해지지 않은 코드에서는 `expand_dims`가 편해요.
+
+## `squeeze`: 길이 1인 축만 뺄 수 있어요
+
+`squeeze`의 `axis`는 **원래 배열의 축 번호**예요. 그 축의 길이가 정말 1이어야 해요.
+
+```python
+>>> z = sd.zeros((1, 3, 1))
+>>> sd.squeeze(z, axis=0).shape
+(3, 1)
+>>> sd.squeeze(z, axis=-1).shape
+(1, 3)
+>>> sd.squeeze(z, axis=(0, 2)).shape
+(3,)
+```
+
+길이가 1이 아닌 축을 빼려고 하면 `ValueError`예요. 원소를 버리지 않고는 그 축을 없앨 수 없으니까요.
+
+```python
+>>> sd.squeeze(c, axis=0)
+Traceback (most recent call last):
+    ...
+ValueError: squeeze(): cannot squeeze axis 0: its size is 3, not 1
+```
+
+<Callout type="tip" title="squeeze는 모양 검사 역할도 해요">
+
+  "이 축은 분명히 길이 1이어야 한다"고 믿는 자리에 `squeeze(x, axis=...)`를 쓰면, 그 믿음이 틀렸을 때 바로 에러로 알려 줘요. 길이 1인 축을 모두 찾아 지우는 방식이었다면 조용히 다른 모양이 나왔을 거예요.
+
+</Callout>
+
+## 결과는 원본과 메모리를 함께 써요
+
+두 함수는 값을 복사하지 않아요. 결과는 원본의 메모리를 다른 모양으로 보여 주는 **뷰**라, 결과를 고치면 원본도 바뀌어요. 자세한 것은 [뷰와 복사](/api/array/views/)에 있어요.
+
+```python
+>>> e = sd.expand_dims(v, axis=0)
+>>> e.base is v
+True
+>>> e[0, 0] = 100
+>>> v
+array([100,   2,   3], dtype=int64)
+```
+
+```python
+>>> v[0] = 1
+```
+
+## 조심할 점
+
+### `axis`는 생략할 수 없어요
+
+`axis`를 빼먹거나 이름 없이 자리로 넘기면 `TypeError`예요. "모든 길이 1인 축을 알아서 빼 달라"는 뜻의 `axis=None`도 받지 않아요.
+
+```python
+>>> sd.squeeze(c)
+Traceback (most recent call last):
+    ...
+TypeError: squeeze(): incompatible function arguments. The following argument types are supported:
+    ...
+>>> sd.squeeze(c, axis=None)
+Traceback (most recent call last):
+    ...
+TypeError: squeeze(): 'axis' must be an int or a tuple or list of ints, not NoneType
+```
+
+길이 1인 축을 모두 지우는 방식은 데이터에 따라 결과의 차원 수가 달라져요. 예를 들어 행이 여러 개인 표를 기대했는데 어쩌다 행이 하나뿐인 데이터가 들어오면, 행 축까지 사라져 버려요. 그래서 어느 축을 뺄지 늘 직접 적도록 했어요.
+
+### 모든 축을 뺄 수는 없어요
+
+stardust에는 차원이 0인 배열이 없어요. 그래서 `squeeze`로 모든 축을 빼서 0차원이 되는 경우는 `ValueError`예요.
+
+```python
+>>> one = sd.asarray([[7]])
+>>> sd.squeeze(one, axis=(0, 1))
+Traceback (most recent call last):
+    ...
+ValueError: squeeze(): squeezing every axis would give a 0-dimensional array (stardust has none)
+>>> sd.squeeze(one, axis=0)
+array([7], dtype=int64)
+```
+
+값 하나를 꺼내고 싶으면 `one[0, 0]`처럼 인덱싱하면 Python 숫자가 나와요.
+
+```python
+>>> one[0, 0]
+7
+```
+
+### 축 번호의 범위
+
+`expand_dims`의 축 번호는 결과 기준이라, 원래 배열에는 없는 번호도 쓸 수 있어요(1차원 `v`에 `axis=1`). 하지만 결과의 차원 수를 넘는 번호는 안 돼요. 같은 축을 두 번 써도 에러예요.
+
+```python
+>>> sd.expand_dims(v, axis=2)
+Traceback (most recent call last):
+    ...
+ValueError: expand_dims(): axis 2 is out of bounds for an array of dimension 2
+>>> sd.squeeze(z, axis=(0, 0))
+Traceback (most recent call last):
+    ...
+ValueError: squeeze(): repeated axis
+```
+
+에러 메시지의 "dimension 2"는 원래 배열이 아니라 **결과 배열**의 차원 수예요.
+
+### 빈 tuple은 아무것도 하지 않아요
+
+`axis=()`를 주면 넣거나 뺄 축이 없어서 모양이 그대로예요.
+
+```python
+>>> sd.expand_dims(v, axis=()).shape
+(3,)
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | 차이 |
+|---|---|---|
+| 길이 1인 축 넣기 | `expand_dims`, `x[:, sd.newaxis]` | 원소 수와 순서는 그대로예요. |
+| 길이 1인 축 빼기 | `squeeze` | 길이가 1이 아닌 축은 뺄 수 없어요. |
+| 아무 모양으로나 바꾸기 | `reshape` | 길이를 모두 적어야 해요. 축을 넣는 자리가 덜 드러나요. |
+| 길이 1인 축을 실제 길이로 늘리기 | `broadcast_to` | 축의 개수가 아니라 길이를 바꿔요. 결과는 읽기 전용이에요. |
+| 합계 후 축을 길이 1로 남기기 | 리덕션의 `keepdims=True` | 합계를 내면서 곧바로 길이 1인 축을 남겨요. |
+
+`sd.reshape(v, (3, 1))`도 `expand_dims(v, axis=1)`과 같은 결과예요. 하지만 `reshape`는 원래 길이 3을 알아야 하고, 실수로 `(1, 3)`이라고 써도 에러 없이 다른 결과가 나와요. 축 하나를 넣고 빼는 일에는 [`reshape`](/api/array/reshape/)보다 이 페이지의 함수가 뜻이 분명해요.
+
+합계나 평균을 낸 뒤 원래 배열과 다시 계산하려는 경우라면, `expand_dims`를 따로 부르기보다 `sd.sum(x, axis=1, keepdims=True)`처럼 `keepdims`를 주는 것이 더 간단해요.
+
+## numpy를 아는 분께
+
+- **`squeeze`의 `axis`가 필수예요.** `np.squeeze(x)`처럼 길이 1인 축을 모두 지우는 방식은 없어요. `axis=None`도 `TypeError`예요.
+- 모든 축을 빼는 `squeeze`는 0차원 배열 대신 `ValueError`예요.
+- `axis`는 keyword-only예요. `np.expand_dims(v, 0)`처럼 자리로 넘길 수 없고 `axis=0`으로 써요.
+- `axis`에 리스트도 받아요(`axis=[0, 2]`).
+- 결과는 numpy와 같이 뷰예요.

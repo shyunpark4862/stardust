@@ -1,0 +1,339 @@
+---
+title: 몫과 나머지
+names: [floor_divide, remainder]
+group: 산술
+order: 2
+signatures:
+  - "sd.floor_divide(x1, x2, /, *, out=None)"
+  - "sd.remainder(x1, x2, /, *, out=None)"
+summary: 나눗셈의 몫(내림한 값)과 나머지를 원소마다 구해요. 연산자 //, %와 같은 일을 하고, 음수에서도 Python과 같은 규칙을 따라요.
+params:
+  - name: x1, x2
+    type: ndarray 또는 Python 숫자
+    kind: positional-only
+    desc: 나눠지는 수(x1)와 나누는 수(x2). 모양이 다르면 브로드캐스팅 규칙으로 맞춰요. 복소수는 받지 않아요.
+  - name: out
+    type: ndarray 또는 None
+    kind: keyword-only
+    desc: 결과를 적어 넣을 배열. None이면 새 배열을 만들어요.
+returns:
+  type: ndarray 또는 Python 숫자
+  desc: 두 입력을 브로드캐스트한 모양의 결과. bool·int64 입력은 int64, float64가 섞이면 float64예요. 두 입력이 모두 Python 숫자면 결과도 Python 숫자예요.
+raises:
+  - type: TypeError
+    desc: 복소수를 넣었을 때, 배열도 숫자도 아닌 것을 넣었을 때, out의 dtype이 결과를 담을 수 없을 때.
+  - type: ValueError
+    desc: 두 입력이나 out의 모양이 브로드캐스팅으로 맞지 않을 때.
+  - type: OverflowError
+    desc: 정수 배열에 int64 범위를 벗어난 Python 정수를 계산하려 할 때.
+seeAlso: [arithmetic, rounding, broadcasting, sign]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+`floor_divide`는 나눗셈의 **몫**, `remainder`는 **나머지**를 원소마다 구해요. 연산자로는 `//`와 `%`예요.
+
+초를 "몇 분 몇 초"로 바꾸는 예로 볼게요. 60으로 나눈 몫이 분, 나머지가 초예요.
+
+```python
+>>> import stardust as sd
+>>> seconds = sd.asarray([125, 3600, 7322])
+>>> seconds // 60
+array([  2,  60, 122], dtype=int64)
+>>> seconds % 60
+array([5, 0, 2], dtype=int64)
+```
+
+<Fig caption="125초는 60초짜리 묶음 2개(몫)와 남은 5초(나머지)예요.">
+  <ArrayFig name="seconds" data={[125, 3600, 7322]} tones={['a', '', '']} />
+  <Op note="// 60">→</Op>
+  <ArrayFig name="분" data={[2, 60, 122]} tones={['b', '', '']} />
+  <Op note="% 60">→</Op>
+  <ArrayFig name="초" data={[5, 0, 2]} tones={['b', '', '']} />
+</Fig>
+
+함수 이름으로 써도 같아요.
+
+```python
+>>> sd.floor_divide(seconds, 60)
+array([  2,  60, 122], dtype=int64)
+>>> sd.remainder(seconds, 60)
+array([5, 0, 2], dtype=int64)
+```
+
+| 연산자 | 함수 | 하는 일 |
+|:---:|:---:|---|
+| `x1 // x2` | `sd.floor_divide(x1, x2)` | `x1 / x2`를 **내림**한 값 |
+| `x1 % x2` | `sd.remainder(x1, x2)` | 나머지. 부호는 나누는 수 `x2`를 따라요 |
+
+두 함수는 짝이에요. 몫과 나머지는 언제나 **`x1 == (x1 // x2) * x2 + (x1 % x2)`** 관계를 지켜요. "몫만큼 묶고 남은 것이 나머지"라는 뜻이에요.
+
+```python
+>>> (seconds // 60) * 60 + seconds % 60
+array([ 125, 3600, 7322], dtype=int64)
+```
+
+## 음수가 섞이면
+
+가장 헷갈리는 부분이에요. `//`는 몫의 소수 부분을 **버리는** 것이 아니라 **내림**(더 작은 쪽 정수로)해요. 양수에서는 둘이 같지만, 음수에서는 달라요. `-7 / 2 = -3.5`를 버리면 `-3`이지만, 내림하면 `-4`예요.
+
+그리고 나머지 `%`의 부호는 **나누는 수(`x2`)의 부호를 따라요.** 위의 관계를 지키려면 그렇게 될 수밖에 없어요.
+
+```python
+>>> x = sd.asarray([7, -7, 7, -7])
+>>> y = sd.asarray([2, 2, -2, -2])
+>>> x // y
+array([ 3, -4, -4,  3], dtype=int64)
+>>> x % y
+array([ 1,  1, -1, -1], dtype=int64)
+```
+
+| `x1` | `x2` | `x1 / x2` | `x1 // x2` | `x1 % x2` | 확인: 몫 × `x2` + 나머지 |
+|:---:|:---:|:---:|:---:|:---:|:---:|
+| 7 | 2 | 3.5 | 3 | 1 | 3 × 2 + 1 = 7 |
+| -7 | 2 | -3.5 | -4 | 1 | -4 × 2 + 1 = -7 |
+| 7 | -2 | -3.5 | -4 | -1 | -4 × (-2) - 1 = 7 |
+| -7 | -2 | 3.5 | 3 | -1 | 3 × (-2) - 1 = -7 |
+
+Python의 `//`와 `%`도 똑같은 규칙이라서 결과가 같아요.
+
+```python
+>>> -7 // 2, -7 % 2
+(-4, 1)
+```
+
+<Callout type="tip" title="나누는 수가 양수면 나머지는 언제나 0 이상">
+
+`x % n`에서 `n`이 양수면 `x`가 음수여도 결과는 `0`부터 `n - 1` 사이예요. 그래서 원형으로 도는 번호(요일, 시계, 고리 모양 버퍼)를 계산할 때 따로 부호를 처리하지 않아도 돼요.
+
+</Callout>
+
+`-5`부터 `5`까지를 3으로 나눠 보면 규칙이 잘 보여요. 나머지는 `0, 1, 2`를 쉬지 않고 되풀이하고, 몫은 나머지가 한 바퀴 돌 때마다 1씩 커져요.
+
+```python
+>>> n = sd.arange(-5, 6)
+>>> n // 3
+array([-2, -2, -1, -1, -1,  0,  0,  0,  1,  1,  1], dtype=int64)
+>>> n % 3
+array([1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2], dtype=int64)
+```
+
+### 버림 몫과 그 나머지가 필요하면
+
+C나 Java처럼 0 쪽으로 버리는 몫이 필요하면 `/`로 나눈 뒤 [`trunc`](/api/array/rounding/)를 써요. 이때 나머지는 나눠지는 수의 부호를 따라요.
+
+```python
+>>> a = sd.asarray([7, -7])
+>>> sd.trunc(a / 2)
+array([ 3.0, -3.0], dtype=float64)
+>>> a - 2 * sd.trunc(a / 2)
+array([ 1.0, -1.0], dtype=float64)
+```
+
+결과가 실수라는 점에 주의하세요. 정수가 필요하면 `.astype(sd.int64)`로 바꿔요.
+
+## 자주 쓰는 곳
+
+### 짝수·홀수와 n번째마다
+
+`% 2 == 0`은 짝수, `% n == 0`은 n의 배수예요. 결과가 bool 배열이라 인덱싱이나 `sum`과 함께 쓰기 좋아요.
+
+```python
+>>> sd.asarray([3, 4, 7]) % 2 == 0
+array([False,  True, False], dtype=bool)
+>>> sd.arange(10) % 3 == 0
+array([ True, False, False,  True, False, False,  True, False, False,
+        True], dtype=bool)
+```
+
+### 원형으로 도는 번호
+
+길이 6인 고리에서 각 자리로부터 두 칸 앞의 번호를 구해요. 끝을 넘어가면 처음으로 돌아와요.
+
+```python
+>>> i = sd.arange(6)
+>>> (i + 2) % 6
+array([2, 3, 4, 5, 0, 1], dtype=int64)
+```
+
+음수 쪽으로 넘어가도 같아요. `-1`은 마지막 자리 `4`가 돼요.
+
+```python
+>>> sd.asarray([-2, -1, 0, 1, 2]) % 5
+array([3, 4, 0, 1, 2], dtype=int64)
+```
+
+### 각도를 0°~360°로 맞추기
+
+실수에도 쓸 수 있어요. 370°와 -30°를 한 바퀴 안의 각도로 바꿔요.
+
+```python
+>>> sd.asarray([370.0, -30.0, 720.0]) % 360
+array([ 10.0, 330.0,   0.0], dtype=float64)
+```
+
+## 결과의 dtype
+
+| 입력 (승격한 dtype) | 결과 |
+|---|:---:|
+| bool | int64 |
+| int64 | int64 |
+| float64 | float64 |
+| complex128 | `TypeError` |
+
+정수끼리면 정수, 실수가 하나라도 섞이면 실수예요. bool은 `True`를 1, `False`를 0으로 보는 정수로 계산해요. `/`와 달리 `//`는 정수끼리 계산하면 정수가 나와요.
+
+```python
+>>> sd.asarray([7.5, -7.5]) // 2
+array([ 3.0, -4.0], dtype=float64)
+>>> sd.asarray([7.5, -7.5]) % 2
+array([1.5, 0.5], dtype=float64)
+>>> sd.asarray([True, False]) // sd.asarray([True, True])
+array([1, 0], dtype=int64)
+```
+
+두 인자가 모두 Python 숫자면 결과도 Python 숫자예요.
+
+```python
+>>> sd.floor_divide(7, 2)
+3
+>>> sd.remainder(-7.0, 2)
+1.0
+```
+
+## 0으로 나누기
+
+에러가 나지 않아요. 결과는 dtype에 따라 달라요.
+
+**정수**는 `x // 0`이 `0`, `x % 0`이 `x` 자신이에요. 이상해 보이지만 이렇게 정해 두면 위의 관계 `x == (x // 0) * 0 + x % 0`이 0으로 나눌 때도 그대로 지켜져요.
+
+```python
+>>> sd.asarray([5, -5, 0]) // 0
+array([0, 0, 0], dtype=int64)
+>>> sd.asarray([5, -5, 0]) % 0
+array([ 5, -5,  0], dtype=int64)
+```
+
+**실수**는 실수 계산의 약속대로 `//`가 무한대나 NaN(숫자가 아님), `%`는 NaN이에요.
+
+```python
+>>> sd.asarray([5.0, -5.0, 0.0]) // 0
+array([ inf, -inf,  nan], dtype=float64)
+>>> sd.asarray([5.0, -5.0, 0.0]) % 0
+array([nan, nan, nan], dtype=float64)
+```
+
+<Callout type="warn" title="정수를 0으로 나눠도 조용히 0이에요">
+
+정수 배열에서 0으로 나눈 자리는 에러도 경고도 없이 몫이 `0`이 돼요. 나누는 값에 0이 들어 있을 수 있다면 `y == 0`인 자리를 미리 따로 처리하세요.
+
+</Callout>
+
+## `out`과 제자리 연산자
+
+`out=`에 배열을 주면 결과를 그 배열에 적고, 그 배열을 돌려줘요. `x //= y`, `x %= y`도 결과를 `x`에 직접 써요. 정수 배열에 `//=`를 쓰는 것은 결과도 정수라서 괜찮아요.
+
+```python
+>>> m = sd.asarray([10, 11, 12])
+>>> m //= 4
+>>> m
+array([2, 2, 3], dtype=int64)
+>>> buf = sd.zeros(3, dtype=sd.int64)
+>>> sd.remainder(sd.asarray([10, 11, 12]), 4, out=buf) is buf
+True
+>>> buf
+array([2, 3, 0], dtype=int64)
+```
+
+결과가 `out`의 dtype에 손실 없이 들어가야 해요. 실수 결과를 정수 배열에 담을 수는 없어요.
+
+```python
+>>> sd.floor_divide(sd.asarray([7.5]), 2, out=sd.zeros(1, dtype=sd.int64))
+Traceback (most recent call last):
+    ...
+TypeError: floor_divide(): cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
+```
+
+## 조심할 점
+
+### 복소수는 받지 않아요
+
+복소수에는 크고 작음이 없어서 "내림"을 정할 수 없어요. 그래서 복소수가 섞이면 `TypeError`예요. 연산자로 썼을 때와 함수로 썼을 때 메시지가 조금 달라요.
+
+```python
+>>> sd.floor_divide(sd.asarray([1 + 1j]), 2)
+Traceback (most recent call last):
+    ...
+TypeError: floor_divide(): not supported for complex128 and int64
+>>> sd.asarray([1 + 1j]) % 2
+Traceback (most recent call last):
+    ...
+TypeError: unsupported operand dtypes for %: complex128 and int64
+```
+
+### 실수의 나머지는 어긋날 수 있어요
+
+0.1 같은 수는 실수로 정확히 나타낼 수 없어서, 수학적으로 나눠떨어져야 할 계산이 그렇지 않게 나오기도 해요. 1.0은 0.1의 정확히 10배가 아니라 아주 조금 작은 값으로 계산되기 때문이에요.
+
+```python
+>>> sd.asarray([1.0]) // 0.1
+array([9.0], dtype=float64)
+>>> sd.asarray([1.0]) % 0.1
+array([0.09999999999999995], dtype=float64)
+```
+
+실수의 몫과 나머지로 "나눠떨어지는지"를 판단하는 것은 피하세요. 가능하면 정수로 바꿔서 계산하세요.
+
+### 무한대
+
+무한대를 나누면 몫과 나머지 모두 NaN이에요. 유한한 수를 무한대로 나눈 나머지는, 부호가 같으면 그 수 자신이고 다르면 무한대예요.
+
+```python
+>>> sd.asarray([sd.inf]) // 3
+array([nan], dtype=float64)
+>>> sd.asarray([5.0, -5.0]) % sd.inf
+array([5.0, inf], dtype=float64)
+```
+
+### 가장 작은 정수를 -1로 나누면
+
+int64에서 가장 작은 수 `-2**63`을 `-1`로 나눈 몫 `2**63`은 int64에 담을 수 없어요. 에러 없이 반대쪽으로 넘어가서 다시 `-2**63`이 돼요.
+
+```python
+>>> sd.asarray([-2**63]) // -1
+array([-9223372036854775808], dtype=int64)
+```
+
+### `divmod`는 쓸 수 없어요
+
+Python의 `divmod(a, b)`는 배열에 쓸 수 없어요. 몫과 나머지를 따로 계산하세요.
+
+```python
+>>> divmod(seconds, 60)
+Traceback (most recent call last):
+    ...
+TypeError: unsupported operand type(s) for divmod(): 'stardust._core.ndarray' and 'int'
+```
+
+## 비슷한 함수와의 차이
+
+| 함수 | 결과 | `-7`과 `2`의 결과 |
+|---|---|:---:|
+| `divide` (`/`) | 실수 몫 그대로 | `-3.5` |
+| `floor_divide` (`//`) | 내림한 몫 | `-4` |
+| `trunc(x1 / x2)` | 0 쪽으로 버린 몫 (실수) | `-3.0` |
+| `remainder` (`%`) | 나누는 수의 부호를 따르는 나머지 | `1` |
+| `x1 - x2 * trunc(x1 / x2)` | 나눠지는 수의 부호를 따르는 나머지 (실수) | `-1.0` |
+
+- `floor_divide`는 결과가 정수끼리면 정수지만, `floor(x1 / x2)`는 언제나 실수예요. 아주 큰 정수에서는 `/`가 정밀도를 잃기 때문에 `//`가 정확해요.
+
+## numpy를 아는 분께
+
+- `mod`, `fmod`, `divmod` 함수는 없어요. Python의 `divmod()`도 배열에 쓸 수 없어요.
+- 정수를 0으로 나누면 numpy처럼 몫은 `0`이지만, 나머지는 `0`이 아니라 **나눠지는 수 자신**이에요(`a % 0 == a`). 경고도 없어요.
+- 몫과 나머지의 부호 규칙(내림, 나머지는 나누는 수의 부호)은 numpy와 같아요.
+- 복소수는 `TypeError`예요. `out`은 keyword-only이고 `where=` 인자는 없어요.

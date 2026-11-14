@@ -1,0 +1,419 @@
+---
+title: 거듭제곱과 제곱근
+names: [pow, square, sqrt, reciprocal, hypot]
+group: 산술
+order: 3
+signatures:
+  - "sd.pow(x1, x2, /, *, out=None)"
+  - "sd.square(x, /, *, out=None)"
+  - "sd.sqrt(x, /, *, out=None)"
+  - "sd.reciprocal(x, /, *, out=None)"
+  - "sd.hypot(x1, x2, /, *, out=None)"
+summary: 거듭제곱(pow, square), 제곱근(sqrt), 역수(reciprocal), 두 수의 제곱합의 제곱근(hypot)을 원소마다 계산해요. pow는 연산자 **와 같아요.
+params:
+  - name: x
+    type: ndarray 또는 Python 숫자
+    kind: positional-only
+    desc: square·sqrt·reciprocal에 넣을 값.
+  - name: x1, x2
+    type: ndarray 또는 Python 숫자
+    kind: positional-only
+    desc: pow에서는 밑(x1)과 지수(x2), hypot에서는 두 변의 길이. 모양이 다르면 브로드캐스팅 규칙으로 맞춰요.
+  - name: out
+    type: ndarray 또는 None
+    kind: keyword-only
+    desc: 결과를 적어 넣을 배열. None이면 새 배열을 만들어요.
+returns:
+  type: ndarray 또는 Python 숫자
+  desc: pow·square는 입력의 dtype을 따르고(bool은 int64), sqrt·reciprocal은 float64(복소수는 complex128), hypot은 언제나 float64예요. 입력이 모두 Python 숫자면 결과도 Python 숫자예요.
+raises:
+  - type: TypeError
+    desc: hypot에 복소수를 넣었을 때, 배열도 숫자도 아닌 것을 넣었을 때, out의 dtype이 결과를 담을 수 없을 때.
+  - type: ValueError
+    desc: 두 입력이나 out의 모양이 브로드캐스팅으로 맞지 않을 때.
+  - type: OverflowError
+    desc: 정수 배열이나 정수 Python 숫자와 함께 int64 범위를 벗어난 Python 정수를 넣었을 때.
+seeAlso: [arithmetic, exp-log, sign, broadcasting, trig]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+## 한눈에 보기
+
+이 페이지의 다섯 함수는 모두 **원소별 함수**예요. 원소마다 따로 계산해서 같은 모양의 배열을 돌려줘요.
+
+| 함수 | 계산 | 연산자로 쓰면 |
+|---|:---:|:---:|
+| `pow(x1, x2)` | x1의 x2제곱 | `x1 ** x2` |
+| `square(x)` | x² | `x ** 2` |
+| `sqrt(x)` | √x | `x ** 0.5`와 비슷 |
+| `reciprocal(x)` | 1/x | `1 / x` |
+| `hypot(x1, x2)` | √(x1² + x2²) | 없음 |
+
+```python
+>>> import stardust as sd
+>>> a = sd.asarray([1, 2, 3, 4])
+>>> a ** 2
+array([ 1,  4,  9, 16], dtype=int64)
+>>> sd.sqrt(a)
+array([               1.0, 1.4142135623730951, 1.7320508075688772,
+                      2.0], dtype=float64)
+>>> sd.reciprocal(a)
+array([               1.0,                0.5, 0.3333333333333333,
+                     0.25], dtype=float64)
+```
+
+<Fig caption="x²과 √x는 대각선 y = x를 사이에 두고 서로 거울에 비친 모양이에요. 0과 1에서는 셋이 만나요.">
+  <Plot
+    curves={[
+      { f: (x) => x * x, label: 'square(x)' },
+      { f: Math.sqrt, label: 'sqrt(x)' },
+      { f: (x) => x, label: 'y = x', dashed: true },
+    ]}
+    domain={[0, 2.5]}
+    range={[0, 2.5]}
+    xTicks={[
+      { v: 1, label: '1' },
+      { v: 2, label: '2' },
+    ]}
+    yTicks={[
+      { v: 1, label: '1' },
+      { v: 2, label: '2' },
+    ]}
+  />
+</Fig>
+
+## pow와 `**`
+
+`sd.pow(x1, x2)`와 `x1 ** x2`는 같은 계산이에요. 밑과 지수 어느 쪽이든 배열이나 숫자를 놓을 수 있어요.
+
+```python
+>>> sd.pow(a, 2)
+array([ 1,  4,  9, 16], dtype=int64)
+>>> 2 ** a
+array([ 2,  4,  8, 16], dtype=int64)
+>>> a ** 0.5
+array([               1.0, 1.4142135623730951, 1.7320508075688774,
+                      2.0], dtype=float64)
+```
+
+둘 다 배열이면 같은 자리끼리 계산하고, 모양이 다르면 [브로드캐스팅](/api/array/broadcasting/)으로 맞춰요. 아래는 세 밑을 각각 1제곱, 2제곱한 표예요.
+
+```python
+>>> base = sd.asarray([2.0, 3.0, 4.0])
+>>> base ** sd.asarray([[1], [2]])
+array([[ 2.0,  3.0,  4.0],
+       [ 4.0,  9.0, 16.0]], dtype=float64)
+```
+
+### 결과의 dtype
+
+두 입력 중 넓은 쪽 dtype을 따라요. **정수끼리면 정수**예요. 지수가 실수면 결과도 실수예요. bool은 int64로 계산해요.
+
+```python
+>>> a ** 2.0
+array([ 1.0,  4.0,  9.0, 16.0], dtype=float64)
+>>> sd.asarray([True, False]) ** 2
+array([1, 0], dtype=int64)
+```
+
+### 음수 지수: 정수끼리면 결과도 정수예요
+
+가장 조심할 부분이에요. 정수 배열에 정수 음수 지수를 쓰면 결과도 **정수**예요. `2 ** -1`은 `0.5`가 아니라 그것을 정수로 나타낸 `0`이 돼요.
+
+```python
+>>> sd.asarray([1, -1, 2, 0]) ** -1
+array([ 1, -1,  0,  0], dtype=int64)
+>>> sd.pow(2, -1)
+0
+```
+
+정해진 규칙은 이래요. `1`의 음수 제곱은 `1`, `-1`은 지수가 짝수면 `1`이고 홀수면 `-1`, 나머지는 모두 `0`이에요(0의 음수 제곱도 `0`이에요).
+
+<Callout type="warn" title="Python의 2 ** -1과 결과가 달라요">
+
+Python에서 `2 ** -1`은 `0.5`지만, `sd.pow(2, -1)`과 정수 배열의 `** -1`은 `0`이에요. 소수 결과를 원한다면 밑을 실수로 만들어 주세요. 역수만 필요하면 `sd.reciprocal`이 가장 간단해요.
+
+</Callout>
+
+```python
+>>> b = sd.asarray([1, 2, 4])
+>>> b.astype(sd.float64) ** -1
+array([ 1.0,  0.5, 0.25], dtype=float64)
+>>> sd.reciprocal(b)
+array([ 1.0,  0.5, 0.25], dtype=float64)
+>>> sd.pow(2.0, -1)
+0.5
+```
+
+### 정수 거듭제곱은 쉽게 넘쳐요
+
+거듭제곱은 값이 아주 빨리 커져요. int64는 약 9.2 × 10¹⁸까지만 담기 때문에, 그보다 큰 결과는 에러 없이 **반대쪽으로 넘어가서**(wrap) 엉뚱한 값이 돼요. `2 ** 63`은 음수가 되고 `2 ** 64`는 0이 돼요.
+
+```python
+>>> sd.asarray([2]) ** 63
+array([-9223372036854775808], dtype=int64)
+>>> sd.asarray([2]) ** 64
+array([0], dtype=int64)
+>>> sd.asarray([10]) ** 20
+array([7766279631452241920], dtype=int64)
+```
+
+큰 거듭제곱이 필요하면 밑을 실수로 만들어 계산하세요. 실수는 약 1.8 × 10³⁰⁸까지 담아요.
+
+```python
+>>> sd.asarray([2.0]) ** 64
+array([1.8446744073709552e+19], dtype=float64)
+```
+
+### 음수의 분수 제곱
+
+`(-8) ** (1/3)`은 수학 시간에 `-2`라고 배우지만, 실수 계산에서는 **NaN**(숫자가 아님)이에요. 지수 `1/3`이 실수로는 정확히 1/3이 아니어서, 음수의 "실수 제곱"이 정해지지 않기 때문이에요. 에러는 나지 않아요.
+
+```python
+>>> sd.asarray([-8.0]) ** (1 / 3)
+array([nan], dtype=float64)
+```
+
+복소수 배열로 계산하면 값이 나오지만, `-2`가 아니라 복소수 세제곱근 중 하나예요.
+
+```python
+>>> sd.asarray([-8.0 + 0j]) ** (1 / 3)
+array([(1+1.732050807568877j)], dtype=complex128)
+```
+
+음수의 실수 세제곱근을 원한다면 부호와 크기를 나눠서 계산하세요.
+
+```python
+>>> c = sd.asarray([-8.0, 8.0, 27.0])
+>>> sd.sign(c) * sd.abs(c) ** (1 / 3)
+array([-2.0,  2.0,  3.0], dtype=float64)
+```
+
+### 0과 특수값
+
+`0 ** 0`은 `1`이에요. NaN의 0제곱도 `1`이에요. 실수 0의 음수 제곱은 무한대예요.
+
+```python
+>>> sd.asarray([0, 1, 2]) ** 0
+array([1, 1, 1], dtype=int64)
+>>> sd.asarray([sd.nan]) ** 0
+array([1.0], dtype=float64)
+>>> sd.asarray([0.0]) ** -1
+array([inf], dtype=float64)
+```
+
+## square: 제곱
+
+`sd.square(x)`는 `x * x`, `x ** 2`와 같은 값이에요. dtype도 pow와 같은 규칙이라 정수는 정수로 남고, bool은 int64가 돼요.
+
+```python
+>>> sd.square(sd.asarray([1.5, -2.0]))
+array([2.25,  4.0], dtype=float64)
+>>> sd.square(sd.asarray([True, False]))
+array([1, 0], dtype=int64)
+>>> sd.square(sd.asarray([1 + 2j]))
+array([(-3+4j)], dtype=complex128)
+```
+
+정수의 제곱도 넘칠 수 있어요. 2³²의 제곱 2⁶⁴는 int64에 담을 수 없어서 0이 돼요.
+
+```python
+>>> sd.square(sd.asarray([2**31, 2**32]))
+array([4611686018427387904,                   0], dtype=int64)
+```
+
+## sqrt: 제곱근
+
+결과는 **언제나 실수**예요. 정수를 넣어도 float64가 나와요.
+
+```python
+>>> sd.sqrt(sd.asarray([4, 9, 2]))
+array([               2.0,                3.0, 1.4142135623730951], dtype=float64)
+```
+
+### 음수의 제곱근은 NaN이에요
+
+실수 배열에서 음수의 제곱근은 에러가 아니라 **NaN**이에요. 복소수 답을 원하면 **복소수 배열**을 넣어야 해요. 같은 `-1`이라도 dtype에 따라 결과가 달라요.
+
+```python
+>>> sd.sqrt(sd.asarray([-1.0, 4.0]))
+array([nan, 2.0], dtype=float64)
+>>> sd.sqrt(sd.asarray([-1 + 0j, 4 + 0j]))
+array([    1j, (2+0j)], dtype=complex128)
+>>> sd.sqrt(-1)
+nan
+>>> sd.sqrt(-1 + 0j)
+1j
+```
+
+실수 배열을 복소수로 바꾸려면 `x.astype(sd.complex128)`이나 `x + 0j`를 쓰면 돼요.
+
+```python
+>>> sd.sqrt(sd.asarray([-4.0]) + 0j)
+array([2j], dtype=complex128)
+```
+
+무한대의 제곱근은 무한대, NaN은 NaN이에요. `-0.0`의 제곱근은 `-0.0`이에요(부호 있는 0은 [부호와 절댓값](/api/array/sign/)을 보세요).
+
+```python
+>>> sd.sqrt(sd.asarray([sd.inf, -0.0, sd.nan]))
+array([ inf, -0.0,  nan], dtype=float64)
+```
+
+### `** 0.5`보다 sqrt를 쓰세요
+
+`x ** 0.5`도 제곱근이지만, `sqrt`는 언제나 가장 가까운 실수를 정확히 돌려줘요. `** 0.5`는 일반적인 거듭제곱 계산이라 마지막 자리가 다를 수 있어요.
+
+```python
+>>> sd.sqrt(sd.asarray([3.0]))
+array([1.7320508075688772], dtype=float64)
+>>> sd.asarray([3.0]) ** 0.5
+array([1.7320508075688774], dtype=float64)
+```
+
+## reciprocal: 역수
+
+`sd.reciprocal(x)`는 `1 / x`예요. **정수를 넣어도 결과는 실수**예요. `x ** -1`과 다른 점이 여기 있어요.
+
+```python
+>>> sd.reciprocal(sd.asarray([1, 2, 4]))
+array([ 1.0,  0.5, 0.25], dtype=float64)
+>>> sd.asarray([1, 2, 4]) ** -1
+array([1, 0, 0], dtype=int64)
+```
+
+0의 역수는 무한대예요. `-0.0`의 역수는 `-inf`예요. 복소수도 받아요.
+
+```python
+>>> sd.reciprocal(sd.asarray([0.0, -0.0]))
+array([ inf, -inf], dtype=float64)
+>>> sd.reciprocal(sd.asarray([1 + 1j]))
+array([(0.5-0.5j)], dtype=complex128)
+```
+
+<Fig caption="1/x는 0에서 끊기고, 0에 가까워질수록 한없이 커져요. 양쪽의 부호가 반대예요.">
+  <Plot
+    curves={[{ f: (x) => 1 / x, label: 'reciprocal(x)' }]}
+    domain={[-3, 3]}
+    range={[-4, 4]}
+    xTicks={[
+      { v: -2, label: '-2' },
+      { v: -1, label: '-1' },
+      { v: 1, label: '1' },
+      { v: 2, label: '2' },
+    ]}
+    yTicks={[
+      { v: -2, label: '-2' },
+      { v: 2, label: '2' },
+    ]}
+  />
+</Fig>
+
+## hypot: 직각삼각형의 빗변
+
+`sd.hypot(x1, x2)`는 `√(x1² + x2²)`예요. 두 변의 길이가 `x1`, `x2`인 직각삼각형의 빗변이고, 원점에서 점 `(x1, x2)`까지의 거리예요.
+
+```python
+>>> sd.hypot(sd.asarray([3.0, 5.0]), sd.asarray([4.0, 12.0]))
+array([ 5.0, 13.0], dtype=float64)
+>>> sd.hypot(3, 4)
+5.0
+```
+
+### 왜 직접 계산하지 않나요
+
+`sd.sqrt(x**2 + y**2)`로 써도 보통은 같은 값이에요. 그런데 값이 아주 크거나 아주 작으면, 중간의 **제곱이 실수의 범위를 벗어나** 결과가 틀려요. `hypot`은 제곱을 그대로 만들지 않고 계산해서 이 문제가 없어요.
+
+```python
+>>> big = sd.asarray([1e200])
+>>> sd.sqrt(big**2 + big**2)
+array([inf], dtype=float64)
+>>> sd.hypot(big, big)
+array([1.414213562373095e+200], dtype=float64)
+>>> tiny = sd.asarray([1e-200])
+>>> sd.sqrt(tiny**2 + tiny**2)
+array([0.0], dtype=float64)
+>>> sd.hypot(tiny, tiny)
+array([1.414213562373095e-200], dtype=float64)
+```
+
+### 여러 점까지의 거리
+
+좌표 배열을 넣으면 점마다 거리가 나와요. 방향(각도)은 [`atan2`](/api/array/trig/)로 구하면 돼요.
+
+```python
+>>> px = sd.asarray([0.0, 3.0, -1.0])
+>>> py = sd.asarray([0.0, 4.0, 1.0])
+>>> sd.hypot(px, py)
+array([               0.0,                5.0, 1.4142135623730951], dtype=float64)
+```
+
+결과는 언제나 float64예요. 한쪽이 무한대면 다른 쪽이 NaN이어도 결과는 무한대예요(어느 방향이든 무한히 멀기 때문이에요).
+
+```python
+>>> sd.hypot(sd.inf, sd.nan)
+inf
+```
+
+`hypot`은 **복소수를 받지 않아요.** 복소수의 크기가 필요하면 `sd.abs`를 써요.
+
+```python
+>>> sd.hypot(sd.asarray([1 + 1j]), 1)
+Traceback (most recent call last):
+    ...
+TypeError: hypot(): not supported for complex128 and int64
+>>> sd.abs(sd.asarray([3 + 4j]))
+array([5.0], dtype=float64)
+```
+
+## `out`: 결과를 기존 배열에 쓰기
+
+다른 원소별 함수처럼 `out=`에 배열을 주면 그 배열에 결과를 적고, 그 배열을 돌려줘요. `x **= 2` 같은 제자리 연산자도 있어요. 결과가 `out`(또는 `x`)의 dtype에 손실 없이 들어가야 해요. `sqrt`의 결과는 실수라서 정수 배열에 담을 수 없어요.
+
+```python
+>>> sd.pow(sd.asarray([1.0, 2.0]), 2, out=sd.zeros(2))
+array([1.0, 4.0], dtype=float64)
+>>> sd.sqrt(a, out=sd.zeros(4, dtype=sd.int64))
+Traceback (most recent call last):
+    ...
+TypeError: sqrt(): cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
+```
+
+## 조심할 점
+
+- **정수끼리의 음수 지수는 정수 결과**예요. `sd.pow(2, -1)`은 `0`이에요. 소수가 필요하면 밑을 실수로 바꾸거나 `reciprocal`을 써요.
+- **정수 거듭제곱의 오버플로**는 에러 없이 엉뚱한 값을 내요. 큰 결과가 예상되면 실수로 계산하세요.
+- **음수의 제곱근과 분수 제곱은 NaN**이에요. 복소수 답이 필요하면 복소수 배열을 넣어요.
+- **실수도 넘쳐요.** `1e155 ** 2`처럼 결과가 약 1.8 × 10³⁰⁸을 넘으면 `inf`예요.
+- **리스트는 받지 않아요.** 먼저 [`asarray`](/api/array/asarray/)로 바꿔요.
+
+```python
+>>> sd.asarray([1e154, 1e155]) ** 2
+array([1e+308,    inf], dtype=float64)
+>>> sd.sqrt([4.0, 9.0])
+Traceback (most recent call last):
+    ...
+TypeError: sqrt(): 'x' must be an sd.ndarray or a bool, int, float or complex, not list
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | 메모 |
+|---|---|---|
+| 제곱 | `square(x)`, `x ** 2`, `x * x` | 셋 다 같은 값, 같은 dtype이에요. |
+| 제곱근 | `sqrt(x)` | `x ** 0.5`보다 정확해요. 결과는 언제나 실수예요. |
+| 역수 | `reciprocal(x)`, `1 / x` | 둘 다 실수 결과예요. `x ** -1`은 정수 배열이면 정수예요. |
+| 2차원 거리 | `hypot(x, y)` | `sqrt(x**2 + y**2)`보다 범위가 넓어요. |
+| 복소수의 크기 | [`abs(z)`](/api/array/sign/) | `hypot(real(z), imag(z))`와 같은 값이에요. |
+| e의 x제곱 | [`exp(x)`](/api/array/exp-log/) | `sd.e ** x`보다 정확해요. |
+| 2의 x제곱 | `2.0 ** x` | 따로 함수가 없어요. 밑을 실수로 쓰면 음수 지수도 돼요. |
+
+## numpy를 아는 분께
+
+- `power`, `float_power`, `cbrt` 함수는 없어요. `pow`나 `**`를 쓰세요.
+- 정수의 음수 지수는 numpy처럼 에러가 아니라 **정수 결과**예요(`1`, `±1`, 나머지는 `0`).
+- `reciprocal`은 정수를 넣어도 **float64**예요. numpy는 정수 나눗셈을 해서 `reciprocal(2) == 0`이에요.
+- `hypot`은 복소수를 받지 않아요(`TypeError`). 음수의 `sqrt`나 분수 제곱은 경고 없이 NaN이에요.
+- `pow`의 실수 결과는 numpy와 마지막 몇 자리(8 ULP 이내)가 다를 수 있어요. `sqrt`, `square`, `reciprocal`, `hypot`은 numpy와 비트까지 같아요.

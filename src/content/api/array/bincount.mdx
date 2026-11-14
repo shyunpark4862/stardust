@@ -1,0 +1,231 @@
+---
+title: bincount
+names: [bincount]
+group: 통계
+order: 3
+signatures:
+  - "sd.bincount(x, /, *, weights=None, minlength=0)"
+summary: 0 이상의 정수 배열에서 0, 1, 2, … 가 각각 몇 번 나오는지 세요. weights를 주면 개수 대신 값마다 가중치의 합을 구해요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 셀 값. 0 이상의 정수가 든 1차원 int64 또는 bool 배열이어야 해요.
+  - name: weights
+    type: ndarray 또는 None
+    kind: keyword-only
+    desc: x와 같은 길이의 1차원 실수(또는 정수·bool) 배열. 주면 개수 대신 가중치의 합을 구해요.
+  - name: minlength
+    type: int
+    kind: keyword-only
+    desc: 결과의 최소 길이. 기본값 0이에요.
+returns:
+  type: ndarray
+  desc: 길이가 max(x) + 1과 minlength 중 큰 쪽인 1차원 배열. i번 칸이 값 i의 개수(int64)예요. weights를 주면 가중치의 합(float64)이에요.
+raises:
+  - type: TypeError
+    desc: x나 weights가 배열이 아닐 때, x가 int64·bool이 아닐 때, weights가 복소수일 때, minlength가 int가 아닐 때.
+  - type: ValueError
+    desc: x가 1차원이 아니거나 음수가 있을 때, weights의 모양이 x와 다를 때, minlength가 음수일 때.
+seeAlso: [unique, histogram, count_nonzero, sum]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+주사위를 여덟 번 던진 결과가 있어요. 각 눈이 몇 번 나왔는지 세고 싶다면 `bincount`를 써요.
+
+```python
+>>> import stardust as sd
+>>> dice = sd.asarray([3, 6, 1, 3, 3, 5, 6, 2])
+>>> sd.bincount(dice)
+array([0, 1, 1, 3, 0, 1, 2], dtype=int64)
+```
+
+결과의 **`i`번 칸이 값 `i`가 나온 횟수**예요. 0은 한 번도 없고, 1과 2는 한 번씩, 3은 세 번, 4는 0번, 5는 한 번, 6은 두 번 나왔다는 뜻이에요. 0번 칸은 주사위에 0이 없으니 언제나 0이에요.
+
+<Fig caption="bincount: 값 하나하나가 자기 번호의 칸에 표를 하나씩 던져요. 결과의 칸 번호가 곧 값이에요.">
+  <ArrayFig name="dice" data={[3, 6, 1, 3, 3, 5, 6, 2]} tones={['a', '', '', 'a', 'a', '', '', '']} />
+  <Op note="개수 세기">→</Op>
+  <ArrayFig name="sd.bincount(dice)" data={[0, 1, 1, 3, 0, 1, 2]} tones={['', '', '', 'b', '', '', '']} note="칸 0, 1, 2, …, 6" />
+</Fig>
+
+결과에는 **나오지 않은 값의 칸도** 0으로 들어 있어요(위의 0과 4). 값이 결과의 칸 번호와 바로 대응하니까, "값 4는 몇 번?"을 `counts[4]`로 바로 물어볼 수 있어요.
+
+```python
+>>> counts = sd.bincount(dice)
+>>> counts[3]
+3
+>>> counts[4]
+0
+```
+
+## 결과의 길이와 `minlength`
+
+결과의 길이는 기본적으로 **`x`에서 가장 큰 값 + 1**이에요. 0부터 가장 큰 값까지 칸이 하나씩 있어요.
+
+이 때문에 같은 종류의 데이터라도 결과의 길이가 달라질 수 있어요. 주사위를 몇 번만 던져서 6이 한 번도 안 나오면 결과가 6칸(0~5)뿐이에요. 언제나 같은 길이를 원하면 `minlength`로 **최소 길이**를 정해 두세요.
+
+```python
+>>> few = sd.asarray([1, 3, 3])
+>>> sd.bincount(few)
+array([0, 1, 0, 2], dtype=int64)
+>>> sd.bincount(few, minlength=7)
+array([0, 1, 0, 2, 0, 0, 0], dtype=int64)
+```
+
+`minlength`보다 큰 값이 있으면 결과는 그만큼 더 길어져요. `minlength`는 줄이는 데는 쓰이지 않아요.
+
+```python
+>>> sd.bincount(dice, minlength=3)
+array([0, 1, 1, 3, 0, 1, 2], dtype=int64)
+```
+
+## `weights`: 개수 대신 합
+
+`weights`에 `x`와 같은 길이의 배열을 주면, 값마다 **한 번에 1씩 세는 대신 그 자리의 가중치를 더해요.** 그룹별 합계를 구할 때 아주 편해요.
+
+매장 번호(0, 1, 2)와 그 매장의 판매액이 짝지어 있다고 해 볼게요.
+
+```python
+>>> store = sd.asarray([0, 2, 1, 0, 2, 2])
+>>> sales = sd.asarray([120.0, 80.0, 50.0, 30.0, 10.0, 60.0])
+>>> sd.bincount(store, weights=sales)
+array([150.0,  50.0, 150.0], dtype=float64)
+```
+
+0번 매장은 `120 + 30`, 1번 매장은 `50`, 2번 매장은 `80 + 10 + 60`이에요.
+
+<Fig caption="weights가 있으면 각 원소가 표 하나 대신 자기 가중치만큼을 자기 칸에 더해요.">
+  <ArrayFig name="store" data={[0, 2, 1, 0, 2, 2]} tones={['a', '', '', 'a', '', '']} />
+  <ArrayFig name="sales" data={[120, 80, 50, 30, 10, 60]} tones={['a', '', '', 'a', '', '']} />
+  <Op note="칸별 합">→</Op>
+  <ArrayFig data={[150, 50, 150]} tones={['b', '', '']} note="매장 0, 1, 2" />
+</Fig>
+
+개수로 나누면 그룹별 평균이 돼요.
+
+```python
+>>> sd.bincount(store, weights=sales) / sd.bincount(store)
+array([75.0, 50.0, 50.0], dtype=float64)
+```
+
+`weights`를 주면 결과는 언제나 **실수(float64)**예요. 정수 가중치를 줘도 그래요.
+
+```python
+>>> sd.bincount(dice, weights=sd.asarray([1, 1, 1, 1, 1, 1, 1, 1]))
+array([0.0, 1.0, 1.0, 3.0, 0.0, 1.0, 2.0], dtype=float64)
+```
+
+## bool 배열
+
+bool 배열을 넣으면 `False`를 0, `True`를 1로 보고 세요. 거짓과 참의 개수를 한꺼번에 얻을 수 있어요.
+
+```python
+>>> sd.bincount(sd.asarray([True, False, True]))
+array([1, 2], dtype=int64)
+```
+
+## 조심할 점
+
+### 음수는 셀 수 없어요
+
+결과의 칸 번호는 0부터 시작해서 음수 칸이 없어요. `x`에 음수가 하나라도 있으면 `ValueError`예요.
+
+```python
+>>> sd.bincount(sd.asarray([1, -1]))
+Traceback (most recent call last):
+    ...
+ValueError: bincount(): 'x' must be non-negative
+```
+
+음수가 섞인 정수를 세려면 가장 작은 값을 빼서 0부터 시작하게 옮긴 다음 세거나, [`unique_counts`](/api/array/unique/)를 쓰세요.
+
+### 실수 배열은 받지 않아요
+
+`x`는 int64나 bool이어야 해요. 값이 `1.0`, `2.0`처럼 정수로 보여도 실수 배열이면 `TypeError`예요. 특히 `sd.asarray([])`는 실수 배열이라는 점을 조심하세요.
+
+```python
+>>> sd.bincount(sd.asarray([1.0, 2.0]))
+Traceback (most recent call last):
+    ...
+TypeError: bincount(): 'x' must be a bool or int64 array, not float64
+>>> sd.bincount(sd.asarray([], dtype=sd.int64), minlength=3)
+array([0, 0, 0], dtype=int64)
+```
+
+실수 값을 구간별로 세고 싶다면 [`histogram`](/api/array/histogram/)이 맞는 도구예요.
+
+### 1차원만
+
+2차원 이상은 받지 않아요. 모든 원소를 세려면 먼저 [`ravel`](/api/array/reshape/)로 펴세요.
+
+```python
+>>> sd.bincount(sd.asarray([[1, 2], [2, 0]]))
+Traceback (most recent call last):
+    ...
+ValueError: bincount(): 'x' must be 1-D
+>>> sd.bincount(sd.ravel(sd.asarray([[1, 2], [2, 0]])))
+array([1, 1, 2], dtype=int64)
+```
+
+### 큰 값 하나가 큰 배열을 만들어요
+
+결과의 길이가 가장 큰 값 + 1이라서, 값이 `1000000` 하나만 있어도 칸이 백만 개 넘게 생겨요. 값이 드문드문 크게 흩어져 있다면 [`unique_counts`](/api/array/unique/)가 나아요. 실제로 나온 값만 돌려주기 때문이에요.
+
+```python
+>>> sd.bincount(sd.asarray([1_000_000])).shape
+(1000001,)
+```
+
+### `weights`의 조건
+
+`weights`는 `x`와 길이가 같은 1차원 배열이어야 해요. 리스트는 받지 않고, 복소수도 안 돼요.
+
+```python
+>>> sd.bincount(dice, weights=sd.asarray([1.0]))
+Traceback (most recent call last):
+    ...
+ValueError: bincount(): 'weights' must be 1-D and as long as 'x'
+>>> sd.bincount(dice, weights=[1.0] * 8)
+Traceback (most recent call last):
+    ...
+TypeError: bincount(): 'weights' must be an sd.ndarray, not list
+```
+
+가중치에 NaN(숫자가 아님)이 있으면 그 칸의 합은 NaN이 돼요.
+
+### `minlength`는 0 이상의 int
+
+```python
+>>> sd.bincount(dice, minlength=-1)
+Traceback (most recent call last):
+    ...
+ValueError: bincount(): 'minlength' must be non-negative
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | `bincount`와 다른 점 |
+|---|---|---|
+| 정수가 아닌 값, 음수, 큰 값의 개수 | `unique_counts` | 실제로 나온 값과 그 개수만 돌려줘요. 빈 칸이 없어요. |
+| 실수 값을 구간별로 세기 | `histogram` | 구간의 경계를 정해서 세요. |
+| 0이 아닌 원소의 수 | `count_nonzero` | 값마다 나누지 않고 전체 개수 하나를 돌려줘요. |
+| 조건에 맞는 원소의 수 | `sum`에 bool 배열 | `sd.sum(x == 3)`처럼 한 값만 셀 때 간단해요. |
+
+같은 데이터로 `unique_counts`와 비교해 볼게요. `bincount`는 0과 4처럼 나오지 않은 값의 칸도 있고, `unique_counts`는 나온 값만 있어요.
+
+```python
+>>> sd.unique_counts(dice)
+UniqueCountsResult(values=array([1, 2, 3, 5, 6], dtype=int64), counts=array([1, 1, 3, 1, 2], dtype=int64))
+```
+
+## numpy를 아는 분께
+
+- `x`와 `weights`는 `sd.ndarray`만 받아요. 리스트는 `asarray`로 먼저 바꾸세요.
+- `x`는 int64나 bool이어야 해요. numpy처럼 실수 배열을 안전하게 바꿀 수 있는지 따지지 않고, 실수 배열이면 언제나 `TypeError`예요.
+- `weights`와 `minlength`는 keyword-only예요.
+- 값은 numpy와 마지막 자리까지 같아요. 가중치는 원소 순서대로 더해요.

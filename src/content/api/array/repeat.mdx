@@ -1,0 +1,346 @@
+---
+title: 되풀이하기
+names: [repeat, tile]
+group: 잇기와 되풀이
+order: 3
+signatures:
+  - "sd.repeat(x, repeats, /, *, axis=None)"
+  - "sd.tile(x, repetitions, /)"
+summary: 같은 값을 여러 번 되풀이해서 더 큰 배열을 만들어요. repeat은 원소 하나하나를 되풀이하고, tile은 배열 전체를 타일처럼 이어 붙여요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 되풀이할 배열.
+  - name: repeats
+    type: int 또는 1차원 int64 배열
+    kind: positional-only
+    desc: (repeat) 각 원소를 되풀이할 횟수. 배열이면 원소마다 횟수를 따로 정해요. 0 이상이어야 해요.
+  - name: axis
+    type: int 또는 None
+    kind: keyword-only
+    desc: (repeat) 되풀이할 축. None이면 x를 한 줄로 편 다음 되풀이해요.
+  - name: repetitions
+    type: int 또는 int의 tuple
+    kind: positional-only
+    desc: (tile) 축마다 배열 전체를 이어 붙일 횟수. 0 이상이어야 해요.
+returns:
+  type: ndarray
+  desc: 되풀이한 결과를 담은 새 배열. dtype은 x와 같아요.
+raises:
+  - type: TypeError
+    desc: x가 배열이 아닐 때, repeats가 int나 int64 배열이 아닐 때(리스트, 실수, bool 포함), repetitions가 int나 int의 tuple이 아닐 때, axis가 int·None이 아닐 때, 옵션을 이름 없이 넘겼을 때.
+  - type: ValueError
+    desc: 횟수가 음수일 때, repeats 배열이 1차원이 아니거나 길이가 축의 길이와 맞지 않을 때, axis가 범위를 벗어날 때.
+seeAlso: [concat, broadcast_to, reshape]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+두 함수 모두 "두 번 되풀이"를 하지만 **무엇을** 되풀이하는지가 달라요.
+
+- `repeat`은 **원소 하나하나**를 그 자리에서 되풀이해요. `1, 1, 2, 2, 3, 3`
+- `tile`은 **배열 전체**를 통째로 이어 붙여요. `1, 2, 3, 1, 2, 3`
+
+```python
+>>> import stardust as sd
+>>> v = sd.asarray([1, 2, 3])
+>>> sd.repeat(v, 2)
+array([1, 1, 2, 2, 3, 3], dtype=int64)
+>>> sd.tile(v, 2)
+array([1, 2, 3, 1, 2, 3], dtype=int64)
+```
+
+<Fig caption="repeat은 같은 원소가 붙어서 나오고, tile은 배열 전체가 한 덩어리로 반복돼요. 원소 수는 둘 다 6개예요.">
+  <ArrayFig name="v" data={[1, 2, 3]} tones={['a', 'b', '']} />
+  <Op note="repeat 2">→</Op>
+  <ArrayFig name="sd.repeat(v, 2)" data={[1, 1, 2, 2, 3, 3]} tones={['a', 'a', 'b', 'b', '', '']} />
+  <Op note="tile 2">→</Op>
+  <ArrayFig name="sd.tile(v, 2)" data={[1, 2, 3, 1, 2, 3]} tones={['a', 'b', '', 'a', 'b', '']} />
+</Fig>
+
+이름으로 기억하면 쉬워요. `repeat`은 말을 더듬듯 한 글자씩 되풀이하는 것이고, `tile`은 같은 무늬의 타일을 바닥에 줄지어 까는 것이에요.
+
+## `repeat`: 원소마다 되풀이하기
+
+### 원소마다 횟수를 다르게
+
+`repeats`에 int64 배열을 주면 **원소마다 다른 횟수**로 되풀이해요. 배열의 길이는 되풀이할 축의 길이와 같아야 해요. 횟수가 0인 원소는 결과에서 빠져요.
+
+```python
+>>> sd.repeat(v, sd.asarray([1, 0, 3]))
+array([1, 3, 3, 3], dtype=int64)
+```
+
+<Fig caption="repeats=[1, 0, 3]: 1은 한 번, 2는 0번(빠짐), 3은 세 번 나와요.">
+  <ArrayFig name="v" data={[1, 2, 3]} tones={['a', 'm', 'b']} />
+  <ArrayFig name="repeats" data={[1, 0, 3]} tones={['a', 'm', 'b']} />
+  <Op>→</Op>
+  <ArrayFig name="결과" data={[1, 3, 3, 3]} tones={['a', 'b', 'b', 'b']} />
+</Fig>
+
+값과 그 값의 개수가 따로 있는 **도수표를 펼칠 때** 유용해요. "10점 2명, 20점 0명, 30점 1명"을 한 사람씩 늘어놓은 배열로 만들 수 있어요.
+
+```python
+>>> score = sd.asarray([10, 20, 30])
+>>> count = sd.asarray([2, 0, 1])
+>>> sd.repeat(score, count)
+array([10, 10, 30], dtype=int64)
+```
+
+### `axis`: 2차원에서 되풀이하기
+
+2차원 이상에서는 `axis`로 되풀이할 방향을 골라요. `axis=0`은 **행마다**, `axis=1`은 **열마다** 되풀이해요.
+
+```python
+>>> m = sd.asarray([[1, 2], [3, 4]])
+>>> sd.repeat(m, 2, axis=0)
+array([[1, 2],
+       [1, 2],
+       [3, 4],
+       [3, 4]], dtype=int64)
+>>> sd.repeat(m, 2, axis=1)
+array([[1, 1, 2, 2],
+       [3, 3, 4, 4]], dtype=int64)
+```
+
+<Fig caption="repeat, axis=0: 각 행이 바로 아래에 한 번 더 나와요.">
+  <ArrayFig name="m" data={[[1, 2], [3, 4]]} tones={[['a', 'a'], ['b', 'b']]} axes />
+  <Op note="axis=0">→</Op>
+  <ArrayFig name="sd.repeat(m, 2, axis=0)" data={[[1, 2], [1, 2], [3, 4], [3, 4]]} tones={[['a', 'a'], ['a', 'a'], ['b', 'b'], ['b', 'b']]} />
+</Fig>
+
+<Fig caption="repeat, axis=1: 각 열이 바로 옆에 한 번 더 나와요.">
+  <ArrayFig name="m" data={[[1, 2], [3, 4]]} tones={[['a', 'b'], ['a', 'b']]} axes />
+  <Op note="axis=1">→</Op>
+  <ArrayFig name="sd.repeat(m, 2, axis=1)" data={[[1, 1, 2, 2], [3, 3, 4, 4]]} tones={[['a', 'a', 'b', 'b'], ['a', 'a', 'b', 'b']]} />
+</Fig>
+
+행마다 횟수를 다르게 줄 수도 있어요.
+
+```python
+>>> sd.repeat(m, sd.asarray([1, 3]), axis=0)
+array([[1, 2],
+       [3, 4],
+       [3, 4],
+       [3, 4]], dtype=int64)
+```
+
+두 방향으로 모두 되풀이하면 작은 그림을 **확대**하는 효과가 나요. 각 칸이 2×2 블록이 돼요.
+
+```python
+>>> sd.repeat(sd.repeat(m, 2, axis=0), 2, axis=1)
+array([[1, 1, 2, 2],
+       [1, 1, 2, 2],
+       [3, 3, 4, 4],
+       [3, 3, 4, 4]], dtype=int64)
+```
+
+### `axis=None`(기본값): 한 줄로 펴서 되풀이
+
+`axis`를 주지 않으면 배열을 **행 순서로 한 줄로 편 다음** 되풀이해요. 그래서 2차원 배열을 넣어도 결과는 1차원이에요.
+
+```python
+>>> sd.repeat(m, 2)
+array([1, 1, 2, 2, 3, 3, 4, 4], dtype=int64)
+```
+
+<Callout type="warn" title="2차원에서 axis를 빼먹으면 1차원이 돼요">
+
+  `sd.repeat(m, 2)`는 행이나 열을 되풀이하는 것이 아니라 **배열을 한 줄로 펴 버려요.** 모양을 지키고 싶다면 `axis=0`이나 `axis=1`을 꼭 적으세요.
+
+</Callout>
+
+## `tile`: 배열 전체를 이어 붙이기
+
+`tile`의 `repetitions`는 **축마다 몇 번 이어 붙일지**예요. 2차원 배열에 `(2, 1)`을 주면 아래로 2번, 옆으로 1번(그대로) 이어 붙여요.
+
+```python
+>>> sd.tile(m, (2, 1))
+array([[1, 2],
+       [3, 4],
+       [1, 2],
+       [3, 4]], dtype=int64)
+>>> sd.tile(m, (1, 2))
+array([[1, 2, 1, 2],
+       [3, 4, 3, 4]], dtype=int64)
+>>> sd.tile(m, (2, 2))
+array([[1, 2, 1, 2],
+       [3, 4, 3, 4],
+       [1, 2, 1, 2],
+       [3, 4, 3, 4]], dtype=int64)
+```
+
+<Fig caption="tile(m, (2, 2)): m 전체가 하나의 타일이 되어 아래로 두 번, 옆으로 두 번 깔려요.">
+  <ArrayFig name="m" data={[[1, 2], [3, 4]]} tones={[['a', 'a'], ['a', 'a']]} />
+  <Op note="(2, 2)">→</Op>
+  <ArrayFig name="sd.tile(m, (2, 2))" data={[[1, 2, 1, 2], [3, 4, 3, 4], [1, 2, 1, 2], [3, 4, 3, 4]]} tones={[['a', 'a', '', ''], ['a', 'a', '', ''], ['', '', 'a', 'a'], ['', '', 'a', 'a']]} />
+</Fig>
+
+### `repetitions`의 길이가 차원 수와 다르면
+
+`repetitions`가 배열의 차원 수보다 **짧으면 앞쪽에 1을 채워서** 맞춰요. 그래서 2차원 배열에 int 하나를 주면 `(1, n)`, 곧 **옆으로만** 이어 붙여요.
+
+```python
+>>> sd.tile(m, 2)
+array([[1, 2, 1, 2],
+       [3, 4, 3, 4]], dtype=int64)
+```
+
+반대로 `repetitions`가 **더 길면 배열 쪽 앞에 길이 1인 축을 채워서** 맞춰요. 1차원 배열을 2차원으로 늘어놓을 때 써요.
+
+```python
+>>> sd.tile(v, (2, 1))
+array([[1, 2, 3],
+       [1, 2, 3]], dtype=int64)
+>>> sd.tile(v, (2, 2))
+array([[1, 2, 3, 1, 2, 3],
+       [1, 2, 3, 1, 2, 3]], dtype=int64)
+```
+
+`v`의 모양 `(3,)`을 `(1, 3)`으로 본 다음 아래로 2번, 옆으로 1번(또는 2번) 이어 붙인 결과예요.
+
+| `x.shape` | `repetitions` | 맞춘 뒤 | 결과 모양 |
+|:---:|:---:|:---:|:---:|
+| `(2, 2)` | `2` | `(1, 2)` | `(2, 4)` |
+| `(2, 2)` | `(2, 1)` | `(2, 1)` | `(4, 2)` |
+| `(3,)` | `(2, 1)` | 배열을 `(1, 3)`으로 | `(2, 3)` |
+| `(2, 2)` | `(2, 1, 1)` | 배열을 `(1, 2, 2)`로 | `(2, 2, 2)` |
+
+## repeat과 tile을 나란히
+
+같은 2차원 배열을 "아래로 두 배"로 늘리는 두 방법을 비교해 볼게요. 모양은 둘 다 `(4, 2)`지만 행의 순서가 달라요.
+
+<Fig caption="repeat(m, 2, axis=0)은 같은 행끼리 붙어 있고(1, 1, 2, 2번째 행), tile(m, (2, 1))은 배열 전체가 차례로 반복돼요(1, 2, 1, 2번째 행).">
+  <ArrayFig name="m" data={[[1, 2], [3, 4]]} tones={[['a', 'a'], ['b', 'b']]} />
+  <Op note="repeat axis=0">→</Op>
+  <ArrayFig data={[[1, 2], [1, 2], [3, 4], [3, 4]]} tones={[['a', 'a'], ['a', 'a'], ['b', 'b'], ['b', 'b']]} note="같은 행끼리" />
+  <Op note="tile (2, 1)">→</Op>
+  <ArrayFig data={[[1, 2], [3, 4], [1, 2], [3, 4]]} tones={[['a', 'a'], ['b', 'b'], ['a', 'a'], ['b', 'b']]} note="통째로" />
+</Fig>
+
+| 구분 | `repeat` | `tile` |
+|---|---|---|
+| 되풀이하는 단위 | 원소(또는 행·열) 하나하나 | 배열 전체 |
+| `[1, 2, 3]`을 두 번 | `[1, 1, 2, 2, 3, 3]` | `[1, 2, 3, 1, 2, 3]` |
+| 방향 정하기 | `axis`로 축 하나 | `repetitions`로 축마다 횟수 |
+| 원소마다 다른 횟수 | 돼요 (int64 배열) | 안 돼요 |
+| 기본 동작 | `axis=None`: 한 줄로 펴서 되풀이 | 마지막 축부터 맞춰 이어 붙이기 |
+| 차원이 늘어날 수 있나 | 아니요 (`axis=None`이면 1차원) | `repetitions`가 길면 늘어나요 |
+
+어느 쪽을 쓸지는 결과에서 **같은 값끼리 붙어 있어야 하는지**로 고르면 돼요. 붙어 있어야 하면 `repeat`(각 학생의 점수를 과목 수만큼), 같은 패턴이 반복되어야 하면 `tile`(일주일 요일 패턴을 4주치로)이에요.
+
+```python
+>>> week = sd.asarray([0, 0, 0, 0, 0, 1, 1])
+>>> sd.tile(week, 2)
+array([0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1], dtype=int64)
+```
+
+## 결과는 새 배열이에요
+
+두 함수 모두 값을 실제로 여러 번 저장한 **새 배열**을 만들어요. 원본과 메모리를 함께 쓰지 않으므로 결과를 고쳐도 원본은 그대로예요. 대신 되풀이한 만큼 메모리를 써요.
+
+```python
+>>> big = sd.tile(v, 2)
+>>> big[0] = 100
+>>> v
+array([1, 2, 3], dtype=int64)
+```
+
+읽기만 할 거라면 메모리를 쓰지 않는 [`broadcast_to`](/api/array/broadcast_to/)도 있어요. 길이 1인 축을 늘리는 경우에 한해 `tile`과 같은 값을 보여 줘요.
+
+## 조심할 점
+
+### `repeats`에는 리스트를 쓸 수 없어요
+
+원소마다 횟수를 다르게 줄 때는 **int64 배열**로 줘야 해요. Python 리스트나 tuple, 실수 배열, bool 배열은 받지 않아요.
+
+```python
+>>> sd.repeat(v, [1, 2, 3])
+Traceback (most recent call last):
+    ...
+TypeError: repeat(): 'repeats' must be an int or an int64 array, not list
+>>> sd.repeat(v, sd.asarray([1.0, 2.0, 3.0]))
+Traceback (most recent call last):
+    ...
+TypeError: repeat(): 'repeats' must be an int or an int64 array, not float64
+```
+
+`sd.asarray([1, 2, 3])`처럼 정수 배열로 바꿔서 넘기세요.
+
+### `repeats` 배열의 길이
+
+`repeats` 배열의 길이는 되풀이할 축의 길이와 같거나 1이어야 해요. 길이가 1이면 모든 원소에 같은 횟수를 써요. `axis=None`일 때는 한 줄로 편 뒤의 길이(원소 전체 개수)와 맞아야 해요.
+
+```python
+>>> sd.repeat(v, sd.asarray([1, 2]))
+Traceback (most recent call last):
+    ...
+ValueError: repeat(): 'repeats' has length 2 but the axis has length 3
+>>> sd.repeat(m, sd.asarray([1, 3]))
+Traceback (most recent call last):
+    ...
+ValueError: repeat(): 'repeats' has length 2 but the axis has length 4
+```
+
+둘째 예는 `axis`를 빼먹어서 `m`이 원소 4개짜리 한 줄로 펴졌기 때문에 생긴 에러예요. 행마다 횟수를 주려던 것이라면 `axis=0`을 적으세요.
+
+### 횟수는 0 이상
+
+음수 횟수는 `ValueError`예요. 0은 허용해서, 모두 0이면 빈 배열이 나와요.
+
+```python
+>>> sd.repeat(v, -1)
+Traceback (most recent call last):
+    ...
+ValueError: repeat(): 'repeats' must be non-negative
+>>> sd.tile(v, 0)
+array([], dtype=int64)
+```
+
+### `tile`의 `repetitions`는 int나 tuple
+
+`repetitions`에는 int 하나나 int의 tuple을 써요. 배열이나 실수는 받지 않아요.
+
+```python
+>>> sd.tile(v, 1.5)
+Traceback (most recent call last):
+    ...
+TypeError: tile(): 'repetitions' must be a tuple of ints, not float
+```
+
+### 인자를 넘기는 방법
+
+`repeats`와 `repetitions`는 두 번째 자리에 그대로 쓰고(`repeats=2`처럼 이름을 붙이면 에러예요), `repeat`의 `axis`는 반드시 `axis=`로 써요. `sd.repeat(m, 2, 0)`은 `TypeError`예요.
+
+`axis`는 int 하나만 받아요. 여러 축을 한꺼번에 되풀이하려면 `repeat`을 두 번 부르거나(위의 확대 예처럼), 배열 전체를 반복하는 것이라면 `tile`을 쓰세요.
+
+```python
+>>> sd.repeat(m, 2, axis=(0,))
+Traceback (most recent call last):
+    ...
+TypeError: repeat(): 'axis' must be an int, not tuple
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | 차이 |
+|---|---|---|
+| 원소마다 되풀이 | `repeat` | 같은 값끼리 붙어요. |
+| 배열 전체를 반복 | `tile` | 패턴이 반복돼요. |
+| 길이 1인 축을 늘려 보기 | `broadcast_to` | 복사하지 않아요. 읽기 전용이에요. |
+| 서로 다른 배열을 잇기 | `concat` | 여러 배열을 받아요. `tile(x, 3)`은 `concat([x, x, x])`와 같아요. |
+| 원소 수는 그대로, 모양만 바꾸기 | `reshape` | 원소가 늘어나지 않아요. |
+
+`tile(v, 3)`은 [`concat`](/api/array/concat/)으로 `sd.concat([v, v, v])`라고 써도 같아요. 같은 배열을 여러 번 이을 때는 `tile`이 짧고, 서로 다른 배열을 이을 때는 `concat`을 써요.
+
+## numpy를 아는 분께
+
+- 두 함수 모두 numpy의 `np.repeat`, `np.tile`과 같은 결과예요.
+- **`repeats`에 리스트를 받지 않아요.** `np.repeat(v, [1, 2, 3])` 대신 `sd.repeat(v, sd.asarray([1, 2, 3]))`로 써요. 배열도 int64만 받아요.
+- `repeat`의 `axis`는 keyword-only이고 int만 받아요.
+- `tile`의 `repetitions`는 numpy처럼 int 하나도 받고, 차원 수가 다를 때 1을 채우는 규칙도 같아요.

@@ -1,0 +1,437 @@
+---
+kind: concept
+title: 뷰와 복사
+group: 기본 개념
+order: 6
+summary: 어떤 연산은 원본과 메모리를 함께 쓰는 뷰를, 어떤 연산은 독립된 복사본을 돌려줘요. 어느 쪽인지에 따라 결과를 고쳤을 때 원본이 바뀌는지가 달라져요.
+seeAlso: [indexing, ndarray, asarray, reshape, broadcast_to, astype]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 무엇인가요
+
+배열 `x`를 2행 3열로 바꾼 `m`을 만들고, `m`의 한 칸을 고쳐 볼게요.
+
+```python
+>>> import stardust as sd
+>>> x = sd.arange(6)
+>>> m = sd.reshape(x, (2, 3))
+>>> m[0, 0] = 100
+>>> x
+array([100,   1,   2,   3,   4,   5], dtype=int64)
+```
+
+`m`만 고쳤는데 `x`도 바뀌었어요. `reshape`가 값을 새로 복사한 것이 아니라, **`x`의 메모리를 2행 3열로 보여 주는 창**을 만들었기 때문이에요. 이렇게 자기 메모리 없이 다른 배열의 메모리를 들여다보는 배열을 뷰(view)라고 해요.
+
+<Fig caption="m은 x와 같은 여섯 칸을 2행 3열로 보여 줄 뿐이에요. 어느 쪽에서 고치든 같은 칸이 바뀌어요.">
+  <ArrayFig name="x" data={[100, 1, 2, 3, 4, 5]} tones={['b', '', '', '', '', '']} note="메모리의 주인" />
+  <Op note="같은 메모리">⇄</Op>
+  <ArrayFig name="m (뷰)" data={[[100, 1, 2], [3, 4, 5]]} tones={[['b', '', ''], ['', '', '']]} note="shape (2, 3)" />
+</Fig>
+
+반대로 복사본(copy)은 값을 새 메모리에 옮겨 담은 배열이에요. 복사본을 고쳐도 원본은 그대로예요.
+
+```python
+>>> c = m.copy()
+>>> c[0, 0] = -1
+>>> x
+array([100,   1,   2,   3,   4,   5], dtype=int64)
+```
+
+## 왜 뷰를 쓰나요
+
+뷰를 만드는 데는 원소 수와 상관없이 **거의 비용이 들지 않아요.** 값을 옮기지 않고 "어디서부터 어떤 모양으로 볼지"만 새로 정하기 때문이에요. 백만 개짜리 배열에서 앞의 세 개를 잘라 보거나, 행과 열을 바꿔 보거나, 모양을 바꿔 보는 일이 모두 한순간에 끝나고 메모리도 더 쓰지 않아요.
+
+대신 **결과를 고치면 원본이 바뀐다**는 점을 알고 써야 해요. 이 페이지는 어떤 연산이 뷰를 주는지, 뷰인지 어떻게 확인하는지, 원본과 떨어진 배열은 어떻게 만드는지를 다뤄요.
+
+## 뷰를 돌려주는 연산과 복사본을 돌려주는 연산
+
+| 결과 | 연산 |
+|---|---|
+| **뷰** | 기본 인덱싱 `x[1]`, `x[1:3]`, `x[..., 0]`, `x[:, sd.newaxis]` |
+| | `permute_dims`, `matrix_transpose`, `moveaxis`, `.T`, `.mT` |
+| | `squeeze`, `expand_dims`, `flip`, `unstack` |
+| | 복소수 배열의 `real`, `imag` |
+| | 2차원 이상 배열을 `for`로 돌 때 나오는 각 행 |
+| **읽기 전용 뷰** | `broadcast_to`, `broadcast_arrays` |
+| **가능하면 뷰, 안 되면 복사본** | `reshape`, `ravel` |
+| **복사본** | 고급 인덱싱 `x[[0, 2]]`, `x[x > 0]` |
+| | `x.copy()`, `astype`(기본값), `asarray(x, copy=True)` |
+| | 산술·비교 같은 원소별 연산과 집계의 결과 |
+| | `roll`, `concat`, `stack`, `repeat`, `tile`, `sort`, `take`, `where` 등 |
+
+몇 가지를 직접 확인해 볼게요. 뷰를 고치면 원본에 그대로 나타나요.
+
+```python
+>>> x = sd.arange(6)
+>>> m = sd.reshape(x, (2, 3))
+>>> mt = m.T
+>>> mt[2, 1] = 50
+>>> m
+array([[ 0,  1,  2],
+       [ 3,  4, 50]], dtype=int64)
+>>> f = sd.flip(x)
+>>> f[0] = 99
+>>> x
+array([ 0,  1,  2,  3,  4, 99], dtype=int64)
+```
+
+<Fig caption="m.T는 m의 행과 열을 바꿔 보여 주는 뷰예요. mt[2, 1]은 m[1, 2]와 같은 칸이에요.">
+  <ArrayFig name="m" data={[[0, 1, 2], [3, 4, 50]]} tones={[['', '', ''], ['', '', 'b']]} axes note="shape (2, 3)" />
+  <Op note="m.T">⇄</Op>
+  <ArrayFig name="mt" data={[[0, 3], [1, 4], [2, 50]]} tones={[['', ''], ['', ''], ['', 'b']]} note="shape (3, 2)" />
+</Fig>
+
+복소수 배열의 `real`과 `imag`도 뷰라서, 실수부나 허수부만 골라 고칠 수 있어요.
+
+```python
+>>> z = sd.asarray([1 + 2j, 3 - 4j])
+>>> sd.imag(z)[...] = 0.0
+>>> z
+array([(1+0j), (3+0j)], dtype=complex128)
+```
+
+`unstack`이 돌려주는 조각들과, `for`로 돌 때 나오는 각 행도 뷰예요.
+
+```python
+>>> g = sd.asarray([[1, 2], [3, 4]])
+>>> for row in g:
+...     row[0] = 0
+>>> g
+array([[0, 2],
+       [0, 4]], dtype=int64)
+```
+
+반면 고급 인덱싱의 결과는 복사본이라서, 고쳐도 원본은 그대로예요.
+
+```python
+>>> p = g[[0, 1]]
+>>> p[0, 0] = 100
+>>> g
+array([[0, 2],
+       [0, 4]], dtype=int64)
+```
+
+### 같은 배열을 그대로 돌려주는 경우
+
+뷰도 복사본도 아니고 **받은 배열 자신**을 돌려주는 경우도 있어요. 바꿀 것이 없을 때예요.
+
+```python
+>>> a = sd.asarray([1.0, 2.0])
+>>> sd.asarray(a) is a
+True
+>>> sd.astype(a, sd.float64, copy=None) is a
+True
+>>> sd.real(a) is a
+True
+```
+
+`is`가 `True`면 두 이름이 같은 배열을 가리키는 것이라, 한쪽을 고치면 다른 쪽에서도 보여요.
+
+## `base`로 확인하기
+
+배열의 `base` 속성은 그 배열이 **누구의 메모리를 쓰고 있는지** 알려 줘요.
+
+- 자기 메모리를 가진 배열이면 `None`이에요.
+- 뷰면 메모리의 실제 주인 배열이에요. 뷰의 뷰라도 중간 단계를 건너뛰고 맨 처음 주인을 가리켜요.
+
+```python
+>>> x = sd.arange(6)
+>>> x.base is None
+True
+>>> m = sd.reshape(x, (2, 3))
+>>> m.base is x
+True
+>>> m.T[0].base is x
+True
+>>> x[[0, 1]].base is None
+True
+```
+
+`m.T[0]`은 `x` → `m` → `m.T` → `m.T[0]`의 세 단계를 거친 뷰지만, `base`는 곧바로 `x`예요.
+
+numpy 배열을 [asarray](/api/array/asarray/)로 복사 없이 가져온 배열은 그 numpy 배열이 주인이에요.
+
+```python
+>>> import numpy as np
+>>> n = np.array([1.0, 2.0, 3.0])
+>>> sd.asarray(n).base is n
+True
+```
+
+<Callout title="뷰인지 확인하는 습관">
+
+"이 결과를 고치면 원본이 바뀔까?"가 궁금하면 `결과.base is 원본`을 확인해 보세요. `True`면 뷰예요. 원본 자체가 다른 배열의 뷰라면 `결과.base is 원본.base`로 확인해요.
+
+</Callout>
+
+## `reshape`와 `ravel`은 "가능하면" 뷰예요
+
+`reshape`(모양 바꾸기)와 `ravel`(한 줄로 펴기)은 뷰를 만들 수 있으면 뷰를, 없으면 복사본을 돌려줘요. 대부분은 뷰가 되지만, **행과 열을 바꾼 배열**처럼 원소가 메모리에 놓인 순서와 새로 보여 줄 순서가 맞지 않으면 복사가 필요해요.
+
+```python
+>>> x = sd.arange(6)
+>>> m = sd.reshape(x, (2, 3))
+>>> sd.ravel(m).base is x
+True
+>>> sd.ravel(m.T)
+array([0, 3, 1, 4, 2, 5], dtype=int64)
+>>> sd.ravel(m.T).base is None
+True
+```
+
+<Fig caption="m은 메모리 순서대로 읽으면 바로 한 줄이 돼요. m.T를 행 순서로 펴면 0, 3, 1, 4, 2, 5로 메모리를 건너뛰며 읽어야 해서 새 배열에 옮겨 담아요.">
+  <ArrayFig name="x의 메모리" data={[0, 1, 2, 3, 4, 5]} />
+  <Op note="ravel(m)">→</Op>
+  <ArrayFig name="뷰" data={[0, 1, 2, 3, 4, 5]} tones={['a', 'a', 'a', 'a', 'a', 'a']} />
+  <Op note="ravel(m.T)">→</Op>
+  <ArrayFig name="복사본" data={[0, 3, 1, 4, 2, 5]} tones={['b', 'b', 'b', 'b', 'b', 'b']} />
+</Fig>
+
+그래서 `reshape`나 `ravel`의 결과를 고칠 때는 원본이 바뀔 수도, 안 바뀔 수도 있어요. 결과를 고칠 생각이라면 어느 쪽인지에 기대지 말고, 아래의 `copy=` 인자로 분명히 정하세요.
+
+## `copy=` 인자로 정하기
+
+복사 여부를 직접 정할 수 있는 함수에는 `copy=` 인자가 있어요. 세 가지 값의 뜻은 어느 함수에서나 같아요.
+
+| `copy` | 뜻 |
+|---|---|
+| `True` | 언제나 복사해요. 결과는 원본과 메모리를 함께 쓰지 않아요. |
+| `False` | 절대 복사하지 않아요. 복사 없이는 안 되면 `ValueError`예요. |
+| `None` | 복사가 꼭 필요할 때만 해요. |
+
+함수마다 기본값이 달라요.
+
+| 함수 | 기본값 | `copy=None`에서 복사하지 않는 경우 |
+|---|:---:|---|
+| `asarray(obj, copy=...)` | `None` | 이미 같은 dtype의 stardust 배열이면 그 배열 자신 |
+| `reshape(x, shape, copy=...)` | `None` | 뷰로 만들 수 있으면 뷰 |
+| `astype(x, dtype, copy=...)` | `True` | 이미 같은 dtype이면 그 배열 자신 |
+| `from_dlpack(x, copy=...)` | `None` | 메모리를 그대로 받을 수 있으면 함께 써요 |
+
+```python
+>>> sd.reshape(m, (3, 2), copy=True).base is None
+True
+>>> sd.reshape(m.T, (6,), copy=False)
+Traceback (most recent call last):
+    ...
+ValueError: reshape(): copy=False, but this reshape cannot be done without copying
+>>> sd.astype(x, sd.float64, copy=False)
+Traceback (most recent call last):
+    ...
+ValueError: astype(): copy=False, but a dtype conversion requires a copy
+```
+
+`copy=False`는 "복사가 일어나면 알려 달라"는 확인 장치로 쓸 수 있어요. 큰 배열을 다루면서 복사를 피하고 싶을 때 유용해요.
+
+`copy`에는 `True`, `False`, `None`만 쓸 수 있어요. `1`이나 `0`은 `TypeError`예요.
+
+```python
+>>> sd.reshape(m, (3, 2), copy=1)
+Traceback (most recent call last):
+    ...
+TypeError: reshape(): 'copy' must be True, False or None, not int
+```
+
+## 읽기 전용 배열
+
+어떤 배열은 읽을 수만 있고 쓸 수는 없어요. 대표적인 것은 셋이에요.
+
+- **`broadcast_to`, `broadcast_arrays`의 결과.** 같은 값을 여러 자리에서 보여 주는 뷰라서, 한 칸을 고치면 여러 칸이 한꺼번에 바뀌는 사고가 나요. 그래서 막혀 있어요.
+- **읽기 전용 메모리를 가져온 배열.** 읽기 전용 numpy 배열을 `asarray`로 복사 없이 가져오면 stardust 배열도 읽기 전용이에요.
+- **복소수가 아닌 배열의 `imag`.** 허수부가 없으니 0으로 채운 새 배열이고, 고칠 대상이 없어서 막혀 있어요.
+
+```python
+>>> row = sd.asarray([1, 2, 3])
+>>> b = sd.broadcast_to(row, (2, 3))
+>>> b
+array([[1, 2, 3],
+       [1, 2, 3]], dtype=int64)
+>>> b[0, 0] = 10
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+```
+
+<Fig caption="b의 두 행은 row의 같은 세 칸을 두 번 보여 줘요. b[0, 0]을 고치면 b[1, 0]도 함께 바뀌므로 쓰기를 막아요.">
+  <ArrayFig name="row" data={[1, 2, 3]} tones={['b', '', '']} note="실제 메모리" />
+  <Op note="broadcast_to">→</Op>
+  <ArrayFig name="b" data={[[1, 2, 3], [1, 2, 3]]} tones={[['b', '', ''], ['g', 'g', 'g']]} note="읽기 전용" />
+</Fig>
+
+읽기 전용 배열에는 대입뿐 아니라 `+=` 같은 in-place 연산자도, 원소별 함수의 `out=`도 쓸 수 없어요. 모두 `ValueError`예요.
+
+```python
+>>> b += 1
+Traceback (most recent call last):
+    ...
+ValueError: output array is read-only
+>>> sd.add(b, 1, out=b)
+Traceback (most recent call last):
+    ...
+ValueError: add(): output array is read-only
+```
+
+numpy에서 가져온 읽기 전용 배열도 같아요.
+
+```python
+>>> n = np.array([1.0, 2.0, 3.0])
+>>> n.flags.writeable = False
+>>> a = sd.asarray(n)
+>>> a[0] = 5.0
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+```
+
+고쳐야 한다면 **복사본을 만들어** 고치면 돼요. 복사본은 언제나 쓸 수 있어요.
+
+```python
+>>> bc = b.copy()
+>>> bc[0, 0] = 10
+>>> bc
+array([[10,  2,  3],
+       [ 1,  2,  3]], dtype=int64)
+```
+
+<Callout type="tip" title="쓸 수 있는지 미리 알기">
+
+배열에는 읽기 전용인지 알려 주는 속성이 따로 없어요. 위의 세 경우에서 온 배열이 아니면 쓸 수 있어요. 출처를 알 수 없는 배열을 고쳐야 한다면 처음부터 `x.copy()`로 내 배열을 만들어 쓰는 것이 가장 안전해요.
+
+</Callout>
+
+## 메모리가 겹칠 때
+
+뷰가 있으면 같은 배열의 두 부분이 한 식에 함께 나올 수 있어요. 예를 들어 `s[1:] = s[:-1]`은 값을 오른쪽으로 한 칸씩 미는 코드인데, 읽는 곳과 쓰는 곳이 겹쳐요. 앞에서부터 차례로 쓰면 이미 덮어쓴 값을 다시 읽게 되어 `[0, 0, 0, 0, 0]` 같은 엉뚱한 결과가 나올 수 있어요.
+
+stardust는 이런 걱정을 하지 않아도 되게 했어요. 대입, in-place 연산자, `out=`은 **입력을 모두 읽은 다음에 결과를 쓴 것**과 언제나 같은 결과를 내요.
+
+```python
+>>> s = sd.arange(5)
+>>> s[1:] = s[:-1]
+>>> s
+array([0, 0, 1, 2, 3], dtype=int64)
+>>> s = sd.arange(5)
+>>> s[1:] += s[:-1]
+>>> s
+array([0, 1, 3, 5, 7], dtype=int64)
+>>> s = sd.arange(5)
+>>> sd.add(s, s[::-1], out=s)
+array([4, 4, 4, 4, 4], dtype=int64)
+```
+
+<Fig caption="s[1:] = s[:-1]은 원래의 [0, 1, 2, 3]을 다 읽어 둔 다음 1~4번 자리에 써요. 덮어쓴 값을 다시 읽지 않아요.">
+  <ArrayFig name="s (전)" data={[0, 1, 2, 3, 4]} tones={['a', 'a', 'a', 'a', 'm']} note="읽는 곳 s[:-1]" />
+  <Op note="s[1:] = s[:-1]">→</Op>
+  <ArrayFig name="s (후)" data={[0, 0, 1, 2, 3]} tones={['m', 'a', 'a', 'a', 'a']} note="쓰는 곳 s[1:]" />
+</Fig>
+
+값을 뒤집어 제자리에 쓰는 것도 마찬가지로 뜻대로 돼요.
+
+```python
+>>> s = sd.arange(5)
+>>> s[...] = s[::-1]
+>>> s
+array([4, 3, 2, 1, 0], dtype=int64)
+```
+
+## 독립된 복사본 만들기
+
+원본과 완전히 떨어진 배열이 필요하면 둘 중 하나를 써요.
+
+```python
+>>> x = sd.arange(4)
+>>> y1 = x.copy()
+>>> y2 = sd.asarray(x, copy=True)
+>>> y1[0] = 100
+>>> y2[0] = 200
+>>> x
+array([0, 1, 2, 3], dtype=int64)
+>>> y1.base is None
+True
+```
+
+`x.copy()`의 결과는 언제나 자기 메모리를 가진 새 배열이고, 읽기 전용인 배열을 복사해도 쓸 수 있는 배열이 나와요. Python의 `copy.copy(x)`, `copy.deepcopy(x)`는 쓸 수 없어요([ndarray](/api/array/ndarray/) 참고).
+
+## 조심할 점
+
+### `y = x`는 복사가 아니에요
+
+Python의 `=`는 이름을 하나 더 붙일 뿐 배열을 만들지 않아요. 뷰도 아니고 **같은 배열**이에요.
+
+```python
+>>> x = sd.arange(4)
+>>> y = x
+>>> y[0] = 100
+>>> x
+array([100,   1,   2,   3], dtype=int64)
+```
+
+### `v = v + 1`과 `v += 1`은 달라요
+
+뷰 `v`에 대해 `v = v + 1`은 **새 배열**을 만들어 `v`라는 이름을 그쪽으로 옮겨요. 원본은 그대로예요. `v += 1`은 `v`가 보여 주는 칸에 **직접** 써서 원본이 바뀌어요.
+
+```python
+>>> x = sd.arange(6)
+>>> v = x[2:4]
+>>> v = v + 1
+>>> x
+array([0, 1, 2, 3, 4, 5], dtype=int64)
+>>> v = x[2:4]
+>>> v += 1
+>>> x
+array([0, 1, 3, 4, 4, 5], dtype=int64)
+```
+
+뷰에 값을 넣으려면 `v = 0`이 아니라 `v[...] = 0`처럼 대괄호를 써야 해요. `v = 0`은 `v`라는 이름이 숫자 0을 가리키게 할 뿐이에요.
+
+### 작은 뷰가 큰 배열을 붙잡아요
+
+뷰는 원본의 메모리를 쓰므로, 뷰가 살아 있는 동안에는 **원본 전체가 메모리에서 사라지지 않아요.** 큰 배열에서 몇 개만 잘라 오래 보관하려면 복사본으로 만들어 두세요. 그래야 원본을 다 쓴 뒤 메모리가 풀려요.
+
+```python
+>>> big = sd.zeros(1_000_000)
+>>> head = big[:3]
+>>> head.base is big
+True
+>>> head = big[:3].copy()
+>>> head.base is None
+True
+```
+
+### numpy와도 메모리를 함께 써요
+
+`sd.asarray(numpy 배열)`과 `np.asarray(stardust 배열)`은 가능하면 복사 없이 메모리를 함께 써요. 한쪽을 고치면 다른 쪽에도 보여요.
+
+```python
+>>> x = sd.arange(3)
+>>> nx = np.asarray(x)
+>>> nx[0] = 7
+>>> x
+array([7, 1, 2], dtype=int64)
+```
+
+## 비슷한 기능과의 차이
+
+| 하고 싶은 일 | 쓸 것 | 결과 |
+|---|---|---|
+| 원본과 떨어진 복사본 | `x.copy()`, `sd.asarray(x, copy=True)` | 언제나 새 배열 |
+| dtype을 바꾸면서 복사 | `sd.astype(x, dtype)` | 기본값 `copy=True`라 같은 dtype이어도 새 배열 |
+| 배열이면 그대로, 아니면 변환 | `sd.asarray(obj)` | 이미 배열이면 그 배열 자신 |
+| 모양만 바꿔 보기 | `sd.reshape(x, shape)` | 가능하면 뷰 |
+| 복사 없이 모양만 바꾸고 싶을 때 | `sd.reshape(x, shape, copy=False)` | 뷰가 안 되면 `ValueError` |
+| 이름을 하나 더 붙이기 | `y = x` | 같은 배열 |
+
+## numpy를 아는 분께
+
+- 뷰와 복사본의 구분은 numpy와 거의 같아요. 기본 인덱싱은 뷰, 고급 인덱싱은 복사본이에요.
+- `base`는 바로 위 단계가 아니라 **메모리를 실제로 가진 배열**을 가리켜요. 뷰의 뷰도 원래 주인을 가리켜요.
+- `flags` 속성이 없어요. 읽기 전용인지 확인하거나 바꾸는 방법(`x.flags.writeable`)은 없어요.
+- `broadcast_to`와 `broadcast_arrays`의 결과는 언제나 읽기 전용이에요.
+- 복소수가 아닌 배열의 `imag`는 읽기 전용인 0 배열이에요.
+- `copy=` 인자의 뜻(`True`/`False`/`None`)은 numpy 2와 같아요. `copy=False`에서 복사가 필요하면 `ValueError`예요.
+- `np.array(x)`·`np.copy`에 해당하는 함수는 없어요. `x.copy()`나 `sd.asarray(x, copy=True)`를 쓰세요. `copy.copy(x)`는 `TypeError`예요.
+- 메모리가 겹치는 대입과 in-place 연산은 언제나 "입력을 다 읽은 뒤 쓴 것"과 같아요.

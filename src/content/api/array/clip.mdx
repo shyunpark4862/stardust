@@ -1,0 +1,321 @@
+---
+title: clip
+names: [clip]
+group: 고르기와 판별
+order: 3
+signatures:
+  - "sd.clip(x, /, *, min=None, max=None, out=None)"
+summary: 배열의 값을 정해진 범위 안으로 밀어 넣어요. min보다 작은 값은 min으로, max보다 큰 값은 max로 바꿔요.
+params:
+  - name: x
+    type: ndarray 또는 Python 숫자
+    kind: positional-only
+    desc: 범위 안으로 넣을 값. 복소수는 받지 않아요.
+  - name: min
+    type: Python 숫자, ndarray, 또는 None
+    kind: keyword-only
+    desc: 아래 한계. None이면 아래쪽은 자르지 않아요. x의 dtype으로 손실 없이 바뀔 수 있어야 해요.
+  - name: max
+    type: Python 숫자, ndarray, 또는 None
+    kind: keyword-only
+    desc: 위 한계. None이면 위쪽은 자르지 않아요. x의 dtype으로 손실 없이 바뀔 수 있어야 해요.
+  - name: out
+    type: ndarray 또는 None
+    kind: keyword-only
+    desc: 결과를 적어 넣을 배열. None이면 새 배열을 만들어요.
+returns:
+  type: ndarray 또는 Python 숫자
+  desc: x와 같은 dtype의 새 배열. x가 Python 숫자면 Python 숫자예요.
+raises:
+  - type: TypeError
+    desc: min이나 max가 x의 dtype으로 손실 없이 바뀔 수 없을 때(정수 배열에 실수 한계 등), x가 복소수일 때, min·max를 이름 없이 넘겼을 때, 리스트처럼 배열도 숫자도 아닌 것을 넣었을 때, out의 dtype이 결과를 담을 수 없을 때.
+  - type: ValueError
+    desc: x, min, max, out의 모양이 서로 맞지 않을 때.
+  - type: OverflowError
+    desc: 정수 배열에 int64 범위를 벗어난 Python 정수를 한계로 줬을 때.
+seeAlso: [maximum, where, comparison, astype, broadcasting]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+## 한눈에 보기
+
+`clip`은 값을 범위 안으로 밀어 넣어요. 범위 안의 값은 그대로 두고, 아래로 벗어난 값은 아래 한계로, 위로 벗어난 값은 위 한계로 바꿔요.
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([-3, 0, 5, 12])
+>>> sd.clip(x, min=0, max=10)
+array([ 0,  0,  5, 10], dtype=int64)
+```
+
+`-3`은 0보다 작아서 `0`이 되고, `12`는 10보다 커서 `10`이 됐어요. `0`과 `5`는 범위 안이라 그대로예요. 원래 배열 `x`는 바뀌지 않아요.
+
+<Fig caption="범위를 벗어난 값만 가장 가까운 한계로 바뀌어요.">
+  <ArrayFig name="x" data={[-3, 0, 5, 12]} tones={['a', '', '', 'a']} />
+  <Op note="min=0, max=10">→</Op>
+  <ArrayFig name="결과" data={[0, 0, 5, 10]} tones={['b', '', '', 'b']} />
+</Fig>
+
+입력과 결과를 그래프로 그리면, 범위 안에서는 그대로 지나가고 바깥에서는 평평하게 눌린 모양이에요.
+
+<Fig caption="clip(x, min=-1, max=1): -1과 1 사이에서는 결과가 x와 같고, 그 밖에서는 한계값에 머물러요.">
+  <Plot
+    curves={[
+      { f: (t) => Math.min(Math.max(t, -1), 1), label: 'clip' },
+      { f: (t) => t, label: 'x', dashed: true },
+    ]}
+    domain={[-3, 3]}
+    range={[-2, 2]}
+    xTicks={[
+      { v: -1, label: '-1' },
+      { v: 0, label: '0' },
+      { v: 1, label: '1' },
+    ]}
+    yTicks={[
+      { v: -1, label: '-1' },
+      { v: 1, label: '1' },
+    ]}
+  />
+</Fig>
+
+실제로 자주 쓰는 경우는 이런 것들이에요.
+
+```python
+>>> prob = sd.asarray([-0.1, 0.4, 1.2])
+>>> sd.clip(prob, min=0.0, max=1.0)
+array([0.0, 0.4, 1.0], dtype=float64)
+```
+
+계산 오차로 확률이 0보다 조금 작거나 1보다 조금 커졌을 때 0과 1 사이로 되돌려요. 비슷하게, 계산 오차로 `1.0000000000000002`가 된 값을 `acos`에 넣으면 NaN(숫자가 아님)이 나오는데, 먼저 `clip`하면 막을 수 있어요.
+
+```python
+>>> c = sd.asarray([1.0000000000000002, 0.5])
+>>> sd.acos(c)
+array([               nan, 1.0471975511965976], dtype=float64)
+>>> sd.acos(sd.clip(c, min=-1.0, max=1.0))
+array([               0.0, 1.0471975511965976], dtype=float64)
+```
+
+## `min`과 `max`
+
+### 한쪽만 줄 수도 있어요
+
+`min`과 `max`는 각각 생략할 수 있어요. 생략한 쪽은 자르지 않아요.
+
+```python
+>>> sd.clip(x, min=0)
+array([ 0,  0,  5, 12], dtype=int64)
+>>> sd.clip(x, max=10)
+array([-3,  0,  5, 10], dtype=int64)
+```
+
+둘 다 생략해도 에러가 아니에요. 아무것도 자르지 않은 **새 배열**(사본)이 나와요.
+
+```python
+>>> sd.clip(x)
+array([-3,  0,  5, 12], dtype=int64)
+```
+
+### 이름을 꼭 붙여야 해요
+
+`min`과 `max`는 반드시 `min=`, `max=`로 써야 해요. `sd.clip(x, 0, 10)`처럼 자리로 넘기면 `TypeError`예요. 숫자 두 개만 있으면 어느 쪽이 아래 한계인지 읽는 사람이 헷갈리기 쉽기 때문이에요.
+
+### 한계도 배열로 줄 수 있어요
+
+`min`이나 `max`에 배열을 주면 자리마다 다른 한계를 써요. 모양은 [브로드캐스팅](/api/array/broadcasting/) 규칙으로 맞춰요.
+
+```python
+>>> lo = sd.asarray([0, 0, 6, 0])
+>>> hi = sd.asarray([1, 1, 8, 20])
+>>> sd.clip(x, min=lo, max=hi)
+array([ 0,  0,  6, 12], dtype=int64)
+```
+
+2차원 배열에서 행마다 다른 아래 한계, 열마다 다른 위 한계를 줄 수도 있어요.
+
+```python
+>>> m = sd.asarray([[1, 9, 4], [7, 2, 8]])
+>>> sd.clip(m, min=sd.asarray([[2], [3]]), max=sd.asarray([5, 6, 7]))
+array([[2, 6, 4],
+       [5, 3, 7]], dtype=int64)
+```
+
+첫 행은 2 이상, 둘째 행은 3 이상이 되고, 동시에 열마다 5, 6, 7 이하가 됐어요.
+
+<Callout type="warn" title="결과가 x보다 커질 수 있어요">
+
+한계 배열의 모양이 `x`보다 크면, 결과도 셋을 함께 브로드캐스트한 모양으로 커져요. 예를 들어 `(4,)`인 `x`에 `(2, 1)`인 `min`을 주면 결과는 `(2, 4)`예요. 결과가 `x`와 같은 모양이어야 한다면 한계 배열의 모양을 확인하세요.
+
+</Callout>
+
+```python
+>>> sd.clip(x, min=sd.asarray([[0], [4]]))
+array([[ 0,  0,  5, 12],
+       [ 4,  4,  5, 12]], dtype=int64)
+```
+
+맞출 수 없는 모양이면 `ValueError`예요.
+
+```python
+>>> sd.clip(x, min=sd.asarray([0, 1]))
+Traceback (most recent call last):
+    ...
+ValueError: clip(): shapes could not be broadcast together: (4,) (2,)
+```
+
+## 결과는 언제나 `x`의 dtype이에요
+
+`clip`은 `x`의 값 일부를 한계값으로 **바꿔 넣는** 함수예요. 그래서 결과의 dtype은 언제나 `x`의 dtype이고, 한계값은 `x`의 dtype으로 **손실 없이** 바뀔 수 있어야 해요. 정수 배열에 실수 한계를 주면 `TypeError`예요.
+
+```python
+>>> sd.clip(x, min=0.5)
+Traceback (most recent call last):
+    ...
+TypeError: clip(): cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
+```
+
+<Callout type="warn" title="0.0도 안 돼요">
+
+판단은 **값이 아니라 종류**로 해요. `0.0`은 정수 `0`과 값이 같지만 실수라서, 정수 배열에 `min=0.0`을 줘도 같은 `TypeError`예요. `-sd.inf`도 실수라서 정수 배열의 한계로 쓸 수 없어요. 정수 배열에는 정수 한계를 쓰세요.
+
+</Callout>
+
+```python
+>>> sd.clip(x, min=0.0)
+Traceback (most recent call last):
+    ...
+TypeError: clip(): cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
+```
+
+정말 실수 한계로 자르고 싶다면 `x`를 먼저 실수 배열로 바꾸세요. 결과도 실수 배열이 돼요.
+
+```python
+>>> sd.clip(x.astype(sd.float64), min=0.5)
+array([ 0.5,  0.5,  5.0, 12.0], dtype=float64)
+```
+
+반대 방향, 곧 실수 배열에 정수 한계를 주는 것은 괜찮아요. 정수는 손실 없이 실수가 되니까요.
+
+```python
+>>> sd.clip(prob, min=0, max=1)
+array([0.0, 0.4, 1.0], dtype=float64)
+```
+
+| `x`의 dtype | 쓸 수 있는 한계 | 쓸 수 없는 한계 |
+|---|---|---|
+| bool | bool | int, float |
+| int64 | bool, int | float (`0.0`, `-sd.inf` 포함) |
+| float64 | bool, int, float | complex |
+| complex128 | (`clip` 자체가 `TypeError`) | |
+
+`x`에 Python 숫자를 줘도 같은 규칙이에요. Python `int`는 int64로 보기 때문에 `sd.clip(3, min=0.0)`도 `TypeError`예요.
+
+```python
+>>> sd.clip(2.5, min=0, max=1)
+1.0
+```
+
+## 조심할 점
+
+### `min`이 `max`보다 크면
+
+`min > max`처럼 범위가 뒤집혀 있어도 에러가 나지 않아요. 이때 결과는 모든 자리가 `max`예요. 먼저 `min`으로 올린 다음 `max`로 내리는 것과 같기 때문이에요.
+
+```python
+>>> sd.clip(x, min=5, max=2)
+array([2, 2, 2, 2], dtype=int64)
+```
+
+한계를 계산해서 넣는 코드라면, 뒤집힌 범위가 들어와도 조용히 지나간다는 점을 기억하세요.
+
+### NaN
+
+`x`의 NaN은 NaN 그대로 남아요. NaN은 어떤 한계와 비교해도 벗어났다고 판단되지 않기 때문이에요.
+
+```python
+>>> sd.clip(sd.asarray([2.0, sd.nan, -1.0]), min=0.0, max=1.0)
+array([1.0, nan, 0.0], dtype=float64)
+```
+
+반대로 **한계가 NaN이면 결과 전체가 NaN**이에요. 한계를 다른 계산으로 구했다면 NaN이 섞이지 않았는지 확인하세요.
+
+```python
+>>> sd.clip(prob, min=sd.nan)
+array([nan, nan, nan], dtype=float64)
+```
+
+### `-0.0`
+
+`-0.0`은 `0.0`보다 작은 것으로 쳐요. 그래서 `min=0.0`으로 자르면 `-0.0`은 `0.0`이 돼요. 규칙은 [`maximum`, `minimum`](/api/array/maximum/)과 같아요.
+
+```python
+>>> sd.clip(sd.asarray([-0.0]), min=0.0)
+array([0.0], dtype=float64)
+```
+
+### 복소수와 리스트
+
+복소수에는 크고 작음이 없어서 `TypeError`예요. 리스트도 받지 않아요. 먼저 [`asarray`](/api/array/asarray/)로 배열로 바꾸세요.
+
+```python
+>>> sd.clip(sd.asarray([1j]), min=0)
+Traceback (most recent call last):
+    ...
+TypeError: clip(): not supported for complex128
+>>> sd.clip(x, min=[0])
+Traceback (most recent call last):
+    ...
+TypeError: clip(): 'min' must be an sd.ndarray or a bool, int, float or complex, not list
+```
+
+## `out`: 결과를 기존 배열에 쓰기
+
+`out=`에 배열을 주면 그 배열에 결과를 적어요. `x` 자신을 주면 제자리에서 잘라요.
+
+```python
+>>> v = sd.asarray([-3, 0, 5, 12])
+>>> sd.clip(v, min=0, max=10, out=v)
+array([ 0,  0,  5, 10], dtype=int64)
+>>> v
+array([ 0,  0,  5, 10], dtype=int64)
+```
+
+`out`의 dtype은 결과(`x`의 dtype)를 손실 없이 담을 수 있어야 해요. 정수 결과를 실수 배열에 담는 것은 되지만, 실수 결과를 정수 배열에 담을 수는 없어요.
+
+```python
+>>> sd.clip(prob, min=0, out=sd.zeros(3, dtype=sd.int64))
+Traceback (most recent call last):
+    ...
+TypeError: clip(): cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | `clip`과 다른 점 |
+|---|---|---|
+| 아래만 막기 | `maximum(x, lo)` | `clip(x, min=lo)`와 같지만, 결과 dtype이 두 입력을 승격한 것이에요(정수 배열과 `0.5`면 float64). |
+| 위만 막기 | `minimum(x, hi)` | `clip(x, max=hi)`와 같고, dtype 규칙은 위와 같아요. |
+| 범위 밖의 값을 다른 값으로 | `where` | 한계값이 아니라 원하는 아무 값(예: NaN)으로 바꿀 수 있어요. |
+| 범위 밖의 값을 버리기 | `x[(x >= lo) & (x <= hi)]` | 값을 바꾸지 않고 빼 버려요. 결과의 크기가 줄어요. |
+
+`maximum`과 `clip`의 dtype 차이를 비교해 보세요.
+
+```python
+>>> sd.maximum(x, 0.5)
+array([ 0.5,  0.5,  5.0, 12.0], dtype=float64)
+```
+
+`clip(x, min=0.5)`는 에러였지만 `maximum(x, 0.5)`는 실수 배열을 돌려줘요. `clip`은 `x`의 값을 바꿔 넣는 것이고, `maximum`은 두 값을 비교해 새 값을 만드는 것이라서 규칙이 달라요.
+
+## numpy를 아는 분께
+
+- `min`, `max`는 keyword-only예요. `np.clip(x, 0, 10)`처럼 자리로 넘길 수 없어요. 이름도 `a_min`, `a_max`가 아니라 `min`, `max`예요.
+- **결과는 언제나 `x`의 dtype이에요.** numpy는 `np.clip(int 배열, 0.5, 10)`의 결과를 float로 승격하지만, stardust는 `TypeError`예요.
+- `min`이나 `max`가 NaN이면 결과는 NaN이에요.
+- `min > max`이면 결과는 `max`예요(numpy와 같아요).
+- 복소수는 `TypeError`예요.
+- `x[...] = ...`와 같은 암묵적 변환 규칙을 따라요. 자세한 것은 [계산 규칙](/api/array/numerics/)에 있어요.

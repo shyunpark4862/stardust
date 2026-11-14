@@ -1,0 +1,331 @@
+---
+title: 쌍곡선함수
+names: [sinh, cosh, tanh, asinh, acosh, atanh]
+group: 삼각함수와 쌍곡선함수
+order: 2
+signatures:
+  - "sd.sinh(x, /, *, out=None)"
+  - "sd.cosh(x, /, *, out=None)"
+  - "sd.tanh(x, /, *, out=None)"
+  - "sd.asinh(x, /, *, out=None)"
+  - "sd.acosh(x, /, *, out=None)"
+  - "sd.atanh(x, /, *, out=None)"
+summary: 지수함수로 정의되는 쌍곡선 사인·코사인·탄젠트(sinh, cosh, tanh)와 그 역함수(asinh, acosh, atanh)예요. 이름은 삼각함수와 비슷하지만 주기가 없는 다른 함수예요. 원소마다 따로 계산해요.
+params:
+  - name: x
+    type: ndarray 또는 Python 숫자
+    kind: positional-only
+    desc: 계산할 값. 삼각함수와 달리 각도가 아니에요.
+  - name: out
+    type: ndarray 또는 None
+    kind: keyword-only
+    desc: 결과를 적어 넣을 배열. None이면 새 배열을 만들어요.
+returns:
+  type: ndarray 또는 Python 숫자
+  desc: 입력과 같은 모양의 결과. 실수 입력은 float64, 복소수 입력은 complex128이에요. 입력이 Python 숫자면 결과도 Python 숫자예요.
+raises:
+  - type: TypeError
+    desc: 리스트처럼 배열도 숫자도 아닌 것을 넣었을 때, out의 dtype이 결과를 담을 수 없을 때.
+  - type: ValueError
+    desc: out의 모양이 입력과 맞지 않을 때.
+seeAlso: [trig, exp-log, broadcasting]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+## 한눈에 보기
+
+쌍곡선함수는 지수함수 `exp`를 조합해서 만든 함수예요.
+
+| 함수 | 정의 | 결과의 범위 |
+|---|:---:|---|
+| `sinh(x)` | (eˣ - e⁻ˣ) / 2 | 모든 실수 |
+| `cosh(x)` | (eˣ + e⁻ˣ) / 2 | 1 이상 |
+| `tanh(x)` | sinh(x) / cosh(x) | -1과 1 사이 |
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([-2.0, 0.0, 2.0])
+>>> sd.sinh(x)
+array([-3.6268604078470186,                 0.0,  3.6268604078470186], dtype=float64)
+>>> sd.cosh(x)
+array([3.7621956910836314,                1.0, 3.7621956910836314], dtype=float64)
+>>> sd.tanh(x)
+array([-0.9640275800758169,                 0.0,  0.9640275800758169], dtype=float64)
+```
+
+정의대로 `exp`로 계산해 봐도 같은 값이에요(마지막 자리는 조금 다를 수 있어요).
+
+```python
+>>> (sd.exp(x) + sd.exp(-x)) / 2
+array([3.7621956910836314,                1.0, 3.7621956910836314], dtype=float64)
+```
+
+`asinh`, `acosh`, `atanh`는 이 셋을 거꾸로 돌리는 역함수예요.
+
+## 삼각함수와 무엇이 다른가요
+
+이름이 [`sin`, `cos`, `tan`](/api/array/trig/)에 `h`(hyperbolic, 쌍곡선)만 붙은 모양이라 헷갈리기 쉽지만, **전혀 다른 함수**예요.
+
+| | 삼각함수 `sin`, `cos`, `tan` | 쌍곡선함수 `sinh`, `cosh`, `tanh` |
+|---|---|---|
+| 입력 | 각도(라디안) | 그냥 수 |
+| 주기 | 2π마다 되풀이 | 되풀이하지 않아요 |
+| `sin`·`sinh`의 크기 | -1과 1 사이 | 한없이 커져요 |
+| 기본 관계 | sin² + cos² = 1 (원) | cosh² - sinh² = 1 (쌍곡선) |
+
+같은 값을 넣어도 결과가 달라요.
+
+```python
+>>> v = sd.asarray([0.0, 1.0, 2.0])
+>>> sd.sin(v)
+array([               0.0, 0.8414709848078965, 0.9092974268256816], dtype=float64)
+>>> sd.sinh(v)
+array([               0.0, 1.1752011936438014, 3.6268604078470186], dtype=float64)
+```
+
+삼각함수가 원 위의 점을 나타내듯, 쌍곡선함수는 쌍곡선 위의 점을 나타내서 이런 이름이 붙었어요. 그래서 `cosh² - sinh²`은 언제나 1이에요(실수 계산이라 마지막 자리는 조금 어긋나요).
+
+```python
+>>> sd.cosh(v) ** 2 - sd.sinh(v) ** 2
+array([               1.0, 0.9999999999999996, 0.9999999999999982], dtype=float64)
+```
+
+## sinh, cosh, tanh
+
+<Fig caption="sinh는 원점을 지나 양쪽으로 커지고, cosh는 1에서 시작해 양쪽으로 커져요. tanh는 -1과 1 사이에 머물러요.">
+  <Plot
+    curves={[
+      { f: Math.sinh, label: 'sinh' },
+      { f: Math.cosh, label: 'cosh' },
+      { f: Math.tanh, label: 'tanh' },
+    ]}
+    domain={[-3, 3]}
+    range={[-4, 4]}
+    xTicks={[
+      { v: -2, label: '-2' },
+      { v: -1, label: '-1' },
+      { v: 1, label: '1' },
+      { v: 2, label: '2' },
+    ]}
+    yTicks={[
+      { v: -1, label: '-1' },
+      { v: 1, label: '1' },
+      { v: 3, label: '3' },
+    ]}
+  />
+</Fig>
+
+- **`sinh(x)`**: 원점에 대칭이에요. `sinh(-x) = -sinh(x)`.
+- **`cosh(x)`**: 좌우 대칭이고 가장 작은 값은 `cosh(0) = 1`이에요. 양 끝을 잡고 늘어뜨린 줄이나 쇠사슬이 이 모양(현수선)이에요.
+- **`tanh(x)`**: 0 근처에서는 거의 `x`와 같고, 멀어질수록 -1이나 1에 붙어요.
+
+```python
+>>> sd.cosh(sd.asarray([-1.0, 1.0]))
+array([1.5430806348152437, 1.5430806348152437], dtype=float64)
+>>> sd.sinh(sd.asarray([-1.0, 1.0]))
+array([-1.1752011936438014,  1.1752011936438014], dtype=float64)
+```
+
+### tanh: 부드럽게 -1과 1 사이로
+
+`tanh`는 어떤 값이든 -1과 1 사이로 눌러 넣어요. 값을 딱 잘라 내는 대신 부드럽게 누르고 싶을 때(신경망의 활성화 함수, 신호의 부드러운 포화) 자주 써요.
+
+```python
+>>> sd.tanh(sd.asarray([-20.0, -1.0, 0.0, 1.0, 20.0]))
+array([               -1.0, -0.7615941559557649,                 0.0,
+        0.7615941559557649,                 1.0], dtype=float64)
+>>> sd.tanh(sd.asarray([sd.inf, -sd.inf]))
+array([ 1.0, -1.0], dtype=float64)
+```
+
+20만 넣어도 결과가 정확히 `1.0`이에요. 수학적으로는 1보다 아주 조금 작지만, 그 차이가 float64로 나타낼 수 있는 것보다 작아요.
+
+## asinh, acosh, atanh: 역함수
+
+쌍곡선함수의 결과를 넣으면 원래 값을 돌려줘요.
+
+```python
+>>> sd.asinh(sd.sinh(sd.asarray([0.5, 3.0])))
+array([0.5, 3.0], dtype=float64)
+>>> sd.atanh(sd.tanh(sd.asarray([0.25])))
+array([0.25], dtype=float64)
+```
+
+| 함수 | 받는 값의 범위 | 돌려주는 값의 범위 |
+|---|---|---|
+| `asinh(x)` | 모든 실수 | 모든 실수 |
+| `acosh(x)` | 1 이상 | 0 이상 |
+| `atanh(x)` | -1과 1 사이 (끝 포함) | 모든 실수 (끝에서 ±inf) |
+
+<Fig caption="asinh는 모든 곳에서, acosh는 1부터, atanh는 -1과 1 사이에서만 값이 있어요.">
+  <Plot
+    curves={[
+      { f: Math.asinh, label: 'asinh' },
+      { f: Math.acosh, label: 'acosh' },
+      { f: Math.atanh, label: 'atanh' },
+    ]}
+    domain={[-4, 4]}
+    range={[-3, 3]}
+    xTicks={[
+      { v: -1, label: '-1' },
+      { v: 1, label: '1' },
+      { v: 3, label: '3' },
+    ]}
+    yTicks={[
+      { v: -2, label: '-2' },
+      { v: 2, label: '2' },
+    ]}
+  />
+</Fig>
+
+### acosh는 0 이상만 돌려줘요
+
+`cosh`는 좌우 대칭이라 `cosh(-2)`와 `cosh(2)`가 같아요. 그래서 `acosh`는 둘 중 **0 이상인 쪽**만 돌려줘요. `-2`를 넣었다가 되돌리면 `2`가 나와요.
+
+```python
+>>> sd.acosh(sd.cosh(sd.asarray([-2.0, 2.0])))
+array([2.0, 2.0], dtype=float64)
+```
+
+### 범위 밖의 값
+
+`acosh`에 1보다 작은 값, `atanh`에 -1과 1 밖의 값을 넣으면 **NaN**(숫자가 아님)이에요. `atanh`의 양 끝 `-1`과 `1`은 각각 `-inf`, `inf`예요. 어느 경우에도 에러는 나지 않아요.
+
+```python
+>>> sd.acosh(sd.asarray([0.5, 1.0, 2.0, 10.0]))
+array([               nan,                0.0, 1.3169578969248166,
+        2.993222846126381], dtype=float64)
+>>> sd.atanh(sd.asarray([-1.0, -0.5, 0.0, 0.5, 1.0, 2.0]))
+array([               -inf, -0.5493061443340548,                 0.0,
+        0.5493061443340548,                 inf,                 nan], dtype=float64)
+```
+
+### asinh: 음수도 받는 로그 같은 함수
+
+`asinh(x)`는 큰 `x`에서 `log(2x)`와 거의 같아서 로그처럼 큰 값을 눌러 줘요. 그런데 `log`와 달리 **0과 음수도 받아요.** 그래서 양수와 음수가 섞인, 폭이 아주 넓은 데이터(손익, 신호 세기)의 크기를 줄여 보고 싶을 때 쓰기 좋아요.
+
+```python
+>>> d = sd.asarray([-1000.0, -1.0, 0.0, 1.0, 1000.0])
+>>> sd.log(d)
+array([              nan,               nan,              -inf,
+                     0.0, 6.907755278982137], dtype=float64)
+>>> sd.asinh(d)
+array([ -7.600902709541987, -0.8813735870195429,                 0.0,
+        0.8813735870195429,   7.600902709541987], dtype=float64)
+```
+
+## 입력과 결과의 종류
+
+결과는 실수 입력이면 **float64**예요. 정수나 bool은 실수로 바꿔서 계산해요. Python 숫자를 넣으면 결과도 Python 숫자예요.
+
+```python
+>>> sd.sinh(sd.asarray([1, 2]))
+array([1.1752011936438014, 3.6268604078470186], dtype=float64)
+>>> sd.cosh(0)
+1.0
+>>> sd.atanh(1)
+inf
+```
+
+### 복소수
+
+복소수 배열을 넣으면 결과는 complex128이에요. 복소수에서는 `acosh`, `atanh`에 범위 제한이 없어서, 실수로는 NaN이던 값도 계산돼요.
+
+```python
+>>> sd.acosh(sd.asarray([0.5]))
+array([nan], dtype=float64)
+>>> sd.acosh(sd.asarray([0.5 + 0j]))
+array([1.0471975511965979j], dtype=complex128)
+>>> sd.atanh(sd.asarray([2.0 + 0j]))
+array([(0.5493061443340549+1.5707963267948966j)], dtype=complex128)
+```
+
+복소수에서는 삼각함수와 쌍곡선함수가 서로 이어져요. 예를 들어 `cosh(iπ)`는 `cos(π)`와 같은 `-1`이에요.
+
+```python
+>>> sd.cosh(1j * sd.pi)
+(-1+0j)
+```
+
+### 리스트는 받지 않아요
+
+먼저 [`asarray`](/api/array/asarray/)로 바꾸세요.
+
+```python
+>>> sd.sinh([1.0])
+Traceback (most recent call last):
+    ...
+TypeError: sinh(): 'x' must be an sd.ndarray or a bool, int, float or complex, not list
+```
+
+## `out`: 결과를 기존 배열에 쓰기
+
+`out=`에 배열을 주면 그 배열에 결과를 적고, 그 배열을 돌려줘요. 결과가 실수라서 정수 배열에는 담을 수 없어요.
+
+```python
+>>> buf = sd.zeros(3)
+>>> sd.tanh(x, out=buf) is buf
+True
+>>> sd.cosh(sd.asarray([0.0]), out=sd.zeros(1, dtype=sd.int64))
+Traceback (most recent call last):
+    ...
+TypeError: cosh(): cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
+```
+
+## 조심할 점
+
+### sinh와 cosh는 금방 넘쳐요
+
+`sinh`, `cosh`는 `exp`처럼 빨리 커져서, `x`가 약 710을 넘으면 결과가 무한대예요. 에러는 나지 않아요.
+
+```python
+>>> sd.sinh(sd.asarray([710.0, 711.0]))
+array([1.1169973830808555e+308,                     inf], dtype=float64)
+>>> sd.cosh(sd.asarray([-sd.inf, sd.inf, sd.nan]))
+array([inf, inf, nan], dtype=float64)
+```
+
+### tanh를 sinh / cosh로 계산하지 마세요
+
+정의는 `tanh = sinh / cosh`지만, 그대로 계산하면 큰 `x`에서 무한대를 무한대로 나누게 되어 NaN이 나와요. `tanh`는 이런 문제 없이 바로 계산해요.
+
+```python
+>>> big = sd.asarray([1000.0])
+>>> sd.sinh(big) / sd.cosh(big)
+array([nan], dtype=float64)
+>>> sd.tanh(big)
+array([1.0], dtype=float64)
+```
+
+<Callout type="tip" title="공식보다 함수를 쓰세요">
+
+`(sd.exp(x) - sd.exp(-x)) / 2`처럼 정의를 직접 계산하면, 큰 값에서 넘치거나 0 근처에서 정밀도를 잃어요. `sinh(1e-8)`은 정확히 `1e-08`이지만, 공식으로 계산하면 여덟째 자리부터 틀려요. 언제나 전용 함수를 쓰세요.
+
+</Callout>
+
+```python
+>>> small = sd.asarray([1e-8])
+>>> sd.sinh(small)
+array([1e-08], dtype=float64)
+>>> (sd.exp(small) - sd.exp(-small)) / 2
+array([9.99999993922529e-09], dtype=float64)
+```
+
+## 비슷한 함수와의 차이
+
+| 함수 | 관계 |
+|---|---|
+| [`sin`, `cos`, `tan`](/api/array/trig/) | 이름만 비슷한 삼각함수예요. 각도를 받고, 2π마다 되풀이해요. |
+| [`asin`, `acos`, `atan`](/api/array/trig/) | 삼각함수의 역함수예요. `asinh` 등과 헷갈리지 마세요. |
+| [`exp`](/api/array/exp-log/) | 쌍곡선함수는 `exp(x)`와 `exp(-x)`의 조합이에요. |
+| [`log`](/api/array/exp-log/) | `asinh`, `acosh`, `atanh`는 로그로 나타낼 수 있어요. 예: `acosh(x) = log(x + √(x² - 1))`. |
+| [`clip`](/api/array/clip/) | 값을 -1과 1 사이로 딱 잘라요. `tanh`는 부드럽게 눌러요. |
+
+## numpy를 아는 분께
+
+- 역함수의 이름이 `arcsinh`, `arccosh`, `arctanh`가 아니라 `asinh`, `acosh`, `atanh`예요. 별칭은 없어요.
+- 정의역 밖의 값(`acosh(0.5)`, `atanh(2.0)`)은 경고 없이 NaN, `atanh(±1)`은 경고 없이 ±inf예요.
+- 값은 numpy와 마지막 몇 자리(8 ULP 이내)가 다를 수 있어요. 특수값(±0, ±inf, NaN)의 결과는 부호까지 같아요.
+- `out`은 keyword-only이고 `where=` 인자는 없어요. Python 숫자를 넣으면 Python `float`·`complex`가 나와요.

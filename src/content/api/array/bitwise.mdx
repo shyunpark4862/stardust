@@ -1,0 +1,363 @@
+---
+title: 비트 연산
+names: [bitwise_and, bitwise_or, bitwise_xor, bitwise_invert, bitwise_left_shift, bitwise_right_shift]
+group: 비교, 논리, 비트
+order: 3
+signatures:
+  - "sd.bitwise_and(x1, x2, /, *, out=None)"
+  - "sd.bitwise_or(x1, x2, /, *, out=None)"
+  - "sd.bitwise_xor(x1, x2, /, *, out=None)"
+  - "sd.bitwise_invert(x, /, *, out=None)"
+  - "sd.bitwise_left_shift(x1, x2, /, *, out=None)"
+  - "sd.bitwise_right_shift(x1, x2, /, *, out=None)"
+summary: 정수를 2진수로 적었을 때의 자릿수(비트)끼리 계산해요. 플래그를 켜고 끄거나, 2의 거듭제곱을 곱하고 나눌 때 써요.
+params:
+  - name: x1, x2
+    type: ndarray 또는 Python 숫자
+    kind: positional-only
+    desc: 두 입력. and·or·xor는 bool과 int64를, 시프트는 int64만 받아요. 시프트에서 x2는 밀어낼 칸 수예요.
+  - name: x
+    type: ndarray 또는 Python 숫자
+    kind: positional-only
+    desc: bitwise_invert의 입력. bool이나 int64.
+  - name: out
+    type: ndarray 또는 None
+    kind: keyword-only
+    desc: 결과를 적어 넣을 배열. None이면 새 배열을 만들어요.
+returns:
+  type: ndarray 또는 Python 숫자
+  desc: 입력을 브로드캐스트한 모양의 배열. bool끼리는 bool, 그 밖에는 int64예요. 입력이 모두 Python 숫자면 Python 숫자예요.
+raises:
+  - type: TypeError
+    desc: 실수나 복소수를 넣었을 때, 시프트에 bool을 넣었을 때, 리스트처럼 배열도 숫자도 아닌 것을 넣었을 때, out의 dtype이 결과를 담을 수 없을 때.
+  - type: ValueError
+    desc: 두 입력이나 out의 모양이 서로 맞지 않을 때.
+  - type: OverflowError
+    desc: int64 범위를 벗어난 Python 정수를 넣었을 때.
+seeAlso: [logical, comparison, arithmetic, floor-divide]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+컴퓨터는 정수를 0과 1의 줄, 곧 2진수로 저장해요. 그 한 자리 한 자리를 **비트**(bit)라고 해요. 비트 연산은 두 정수의 **같은 자리 비트끼리** 계산하는 연산이에요.
+
+예를 들어 12는 2진수로 `1100`, 10은 `1010`이에요. `12 & 10`은 같은 자리 비트가 **둘 다 1인 자리만** 1로 남겨서 `1000`, 곧 8이 돼요.
+
+```python
+>>> import stardust as sd
+>>> a = sd.asarray([12])
+>>> a & 10
+array([8], dtype=int64)
+>>> sd.bitwise_and(a, 10)
+array([8], dtype=int64)
+```
+
+<Fig caption="12 & 10: 자리마다 둘 다 1인 곳만 1이 남아요. 결과 1000은 10진수로 8이에요.">
+  <ArrayFig name="12" data={[1, 1, 0, 0]} tones={['a', 'a', '', '']} note="8 4 2 1의 자리" />
+  <Op>&</Op>
+  <ArrayFig name="10" data={[1, 0, 1, 0]} tones={['a', '', 'a', '']} />
+  <Op>=</Op>
+  <ArrayFig name="8" data={[1, 0, 0, 0]} tones={['b', '', '', '']} />
+</Fig>
+
+배열을 넣으면 원소마다 따로 계산해요. 여섯 함수와 연산자는 다음과 같아요.
+
+| 함수 | 연산자 | 하는 일 |
+|---|:---:|---|
+| `bitwise_and(x1, x2)` | `x1 & x2` | 둘 다 1인 자리만 1 |
+| `bitwise_or(x1, x2)` | `x1 \| x2` | 하나라도 1인 자리가 1 |
+| `bitwise_xor(x1, x2)` | `x1 ^ x2` | 둘이 다른 자리가 1 |
+| `bitwise_invert(x)` | `~x` | 모든 자리를 뒤집기 |
+| `bitwise_left_shift(x1, x2)` | `x1 << x2` | 비트를 왼쪽으로 `x2`칸 밀기 |
+| `bitwise_right_shift(x1, x2)` | `x1 >> x2` | 비트를 오른쪽으로 `x2`칸 밀기 |
+
+```python
+>>> a | 10
+array([14], dtype=int64)
+>>> a ^ 10
+array([6], dtype=int64)
+```
+
+| 자리 (8 4 2 1) | 12 | 10 | `&` | `\|` | `^` |
+|---|:---:|:---:|:---:|:---:|:---:|
+| 2진수 | 1100 | 1010 | 1000 | 1110 | 0110 |
+| 10진수 | 12 | 10 | 8 | 14 | 6 |
+
+## and, or, xor: 플래그 다루기
+
+비트 연산이 가장 흔히 쓰이는 곳은 **여러 개의 예·아니오를 정수 하나에 담는** 경우예요. 이런 비트 하나하나를 플래그(flag, 깃발)라고 불러요. 예를 들어 파일 권한을 "읽기 1, 쓰기 2, 실행 4"로 정하면, 정수 하나로 세 가지 권한을 함께 나타낼 수 있어요.
+
+```python
+>>> READ, WRITE, EXEC = 1, 2, 4
+>>> perm = sd.asarray([READ | WRITE, READ, READ | WRITE | EXEC, 0])
+>>> perm
+array([3, 1, 7, 0], dtype=int64)
+```
+
+| 하고 싶은 일 | 식 | 쓰는 연산 |
+|---|---|---|
+| 쓰기 권한이 있는지 보기 | `(perm & WRITE) != 0` | `&`로 그 비트만 남기기 |
+| 실행 권한 켜기 | `perm \| EXEC` | `\|`로 그 비트를 1로 |
+| 쓰기 권한 끄기 | `perm & ~WRITE` | `~`로 뒤집은 것과 `&` |
+| 읽기 권한 뒤집기 | `perm ^ READ` | `^`로 그 비트만 반대로 |
+
+```python
+>>> (perm & WRITE) != 0
+array([ True, False,  True, False], dtype=bool)
+>>> perm | EXEC
+array([7, 5, 7, 4], dtype=int64)
+>>> perm & ~WRITE
+array([1, 1, 5, 0], dtype=int64)
+>>> perm ^ READ
+array([2, 0, 6, 1], dtype=int64)
+```
+
+Python에서 `&`, `|`, `^`는 `==`, `!=` 같은 비교보다 **먼저** 계산돼요. 그래서 첫째 식은 괄호가 없어도 우연히 같은 결과가 나오지만, 반대로 비교 두 개를 `|`로 이으면 괄호 없이는 에러가 나요.
+
+```python
+>>> perm & WRITE != 0
+array([ True, False,  True, False], dtype=bool)
+>>> perm == 3 | perm == 7
+Traceback (most recent call last):
+    ...
+TypeError: the truth value of an array is ambiguous; use any() or all()
+>>> (perm == 3) | (perm == 7)
+array([ True, False,  True, False], dtype=bool)
+```
+
+어느 쪽이 되고 어느 쪽이 안 되는지 외우기보다, 비트 연산과 비교를 섞을 때는 **언제나 괄호를 쓰는** 편이 안전해요. 우선순위 표와 자세한 이유는 [논리 연산](/api/array/logical/#연산자-우선순위-괄호를-꼭-쓰세요)에 있어요.
+
+`^`는 같은 값으로 두 번 하면 원래대로 돌아와요.
+
+```python
+>>> sd.bitwise_xor(sd.bitwise_xor(a, 10), 10)
+array([12], dtype=int64)
+```
+
+## bitwise_invert: 모든 비트 뒤집기
+
+`~x`는 x의 모든 비트를 0은 1로, 1은 0으로 뒤집어요. int64에서 이 결과는 언제나 **`-x - 1`**과 같아요. 음수를 저장하는 방식(2의 보수) 때문이에요.
+
+```python
+>>> n = sd.asarray([-7, -1, 0, 5, 7])
+>>> ~n
+array([ 6,  0, -1, -6, -8], dtype=int64)
+>>> -n - 1
+array([ 6,  0, -1, -6, -8], dtype=int64)
+```
+
+`~0`이 `1`이 아니라 `-1`이라는 점에 주의하세요. "0이면 1, 아니면 0"을 원했다면 비트 반전이 아니라 비교 `n == 0`이 필요해요.
+
+## 시프트: 비트를 밀기
+
+`x << k`는 비트를 왼쪽으로 `k`칸 밀고, 빈 오른쪽 칸은 0으로 채워요. 2진수에서 한 칸 왼쪽으로 미는 것은 2를 곱하는 것과 같아서, 결과는 `x * 2**k`예요.
+
+```python
+>>> n << 2
+array([-28,  -4,   0,  20,  28], dtype=int64)
+>>> 1 << sd.arange(5)
+array([ 1,  2,  4,  8, 16], dtype=int64)
+```
+
+`x >> k`는 오른쪽으로 `k`칸 밀어요. 밀려난 비트는 버리고, 왼쪽 빈칸은 **부호 비트로** 채워요(양수는 0, 음수는 1). 그래서 결과는 `x // 2**k`, 곧 2의 거듭제곱으로 나누고 **아래쪽으로** 내린 값이에요. 음수에서 `-7 >> 1`이 `-3`이 아니라 `-4`인 것도 이 때문이에요.
+
+```python
+>>> n >> 1
+array([-4, -1,  0,  2,  3], dtype=int64)
+>>> n // 2
+array([-4, -1,  0,  2,  3], dtype=int64)
+```
+
+<Fig caption="12 >> 2: 비트가 오른쪽으로 두 칸 밀려나요. 오른쪽 끝 두 비트는 버려지고 왼쪽은 0으로 채워져서 3이 돼요.">
+  <ArrayFig name="12" data={[1, 1, 0, 0]} tones={['a', 'a', 'm', 'm']} />
+  <Op note=">> 2">→</Op>
+  <ArrayFig name="3" data={[0, 0, 1, 1]} tones={['g', 'g', 'a', 'a']} />
+</Fig>
+
+밀 칸 수도 배열로 줄 수 있어요. 원소마다 다른 칸 수만큼 밀어요.
+
+```python
+>>> sd.asarray([1, 1, 1]) << sd.asarray([0, 1, 2])
+array([1, 2, 4], dtype=int64)
+```
+
+### 밀려 나간 비트는 사라져요
+
+int64는 비트가 64개뿐이라, 왼쪽으로 밀어서 넘친 비트는 그냥 사라져요. 에러는 나지 않아요. 맨 왼쪽 비트는 부호를 나타내므로, 1이 그 자리에 들어가면 음수가 돼요.
+
+```python
+>>> sd.asarray([1]) << sd.asarray([62, 63, 64])
+array([ 4611686018427387904, -9223372036854775808,                    0], dtype=int64)
+>>> sd.asarray([2**62]) << 1
+array([-9223372036854775808], dtype=int64)
+```
+
+`x * 2**k`와 같다는 것은 넘치지 않을 때의 이야기예요. 큰 수를 밀 때는 결과가 int64 범위 안에 있는지 먼저 확인하세요.
+
+### 64칸 이상이나 음수만큼 밀면
+
+stardust는 밀 칸 수가 **64 이상이거나 음수이면** 모든 비트가 밀려 나간 것으로 정했어요. 음수 칸 수는 아주 큰 수로 보기 때문이에요.
+
+- 왼쪽 시프트: 결과는 `0`
+- 오른쪽 시프트: 부호 비트로 가득 차서, 양수와 0은 `0`, 음수는 `-1`
+
+```python
+>>> sd.asarray([5]) << 64
+array([0], dtype=int64)
+>>> sd.asarray([-8, 8]) >> sd.asarray([64, 64])
+array([-1,  0], dtype=int64)
+>>> sd.asarray([5]) >> -1
+array([0], dtype=int64)
+>>> sd.asarray([-5]) >> -1
+array([-1], dtype=int64)
+```
+
+<Callout type="warn" title="Python의 시프트와 결과가 달라요">
+
+Python의 정수에는 크기 제한이 없어서 `1 << 64`가 `18446744073709551616`이고, 음수 칸 수는 `ValueError`예요. stardust는 int64 안에서 계산하므로 `sd.bitwise_left_shift(1, 64)`는 `0`이에요. 입력이 Python 숫자여도 그래요.
+
+</Callout>
+
+```python
+>>> 1 << 64
+18446744073709551616
+>>> sd.bitwise_left_shift(1, 64)
+0
+```
+
+## 입력과 결과의 종류
+
+### and, or, xor, invert는 bool과 int64를 받아요
+
+bool끼리 계산하면 결과도 bool이고, 이때는 [논리 연산](/api/array/logical/)과 같아요. bool과 정수를 섞으면 bool을 0과 1로 보고 int64로 계산해요.
+
+```python
+>>> t = sd.asarray([True, False])
+>>> sd.bitwise_and(t, sd.asarray([True, True]))
+array([ True, False], dtype=bool)
+>>> sd.bitwise_invert(t)
+array([False,  True], dtype=bool)
+>>> sd.bitwise_or(t, 2)
+array([3, 2], dtype=int64)
+```
+
+| 입력 | `&` `\|` `^` `~`의 결과 | 시프트의 결과 |
+|---|---|---|
+| bool, bool | bool | `TypeError` |
+| bool, int64 | int64 | `TypeError` |
+| int64, int64 | int64 | int64 |
+| float64, complex128 | `TypeError` | `TypeError` |
+
+### 시프트는 int64만 받아요
+
+시프트는 bool을 받지 않아요. 밀 대상뿐 아니라 칸 수도 마찬가지예요.
+
+```python
+>>> sd.bitwise_left_shift(t, 1)
+Traceback (most recent call last):
+    ...
+TypeError: bitwise_left_shift(): not supported for bool and int64
+>>> sd.bitwise_right_shift(sd.asarray([8]), True)
+Traceback (most recent call last):
+    ...
+TypeError: bitwise_right_shift(): not supported for int64 and bool
+```
+
+### 실수는 받지 않아요
+
+실수와 복소수에는 비트 연산이 없어요. 함수든 연산자든 `TypeError`예요.
+
+```python
+>>> f = sd.asarray([1.5])
+>>> sd.bitwise_invert(f)
+Traceback (most recent call last):
+    ...
+TypeError: bitwise_invert(): not supported for float64
+>>> f & 1
+Traceback (most recent call last):
+    ...
+TypeError: unsupported operand dtypes for &: float64 and int64
+```
+
+### 숫자 하나도 받아요
+
+입력이 모두 Python 숫자면 결과도 Python 숫자예요. 계산은 int64 규칙을 따라요.
+
+```python
+>>> sd.bitwise_and(6, 3)
+2
+>>> sd.bitwise_invert(5)
+-6
+>>> sd.bitwise_invert(True)
+False
+```
+
+int64에 담을 수 없는 큰 정수는 `OverflowError`예요.
+
+```python
+>>> sd.bitwise_and(a, 2**64)
+Traceback (most recent call last):
+    ...
+OverflowError: bitwise_and(): Python int too large to convert to int64
+```
+
+### 모양이 다르면
+
+두 입력의 모양이 다르면 [브로드캐스팅](/api/array/broadcasting/) 규칙으로 맞춰요. 맞출 수 없으면 `ValueError`예요.
+
+```python
+>>> sd.bitwise_and(sd.asarray([1, 2]), sd.asarray([1, 2, 3]))
+Traceback (most recent call last):
+    ...
+ValueError: bitwise_and(): shapes could not be broadcast together: (2,) (3,)
+```
+
+## `out`과 제자리 연산자
+
+`out=`에 배열을 주면 그 배열에 결과를 적어요. int64 결과는 실수 배열에 담을 수 있지만 bool 배열에는 담을 수 없어요.
+
+```python
+>>> sd.bitwise_and(perm, 1, out=sd.zeros(4))
+array([1.0, 1.0, 1.0, 0.0], dtype=float64)
+>>> sd.bitwise_and(perm, 1, out=sd.zeros(4, dtype=sd.bool))
+Traceback (most recent call last):
+    ...
+TypeError: bitwise_and(): cannot implicitly convert int64 to bool (that would lose information); convert explicitly with astype
+```
+
+`&=`, `|=`, `^=`, `<<=`, `>>=`도 있어요. 결과가 원래 배열의 dtype에 담길 수 있어야 해요. bool 배열에 `|= 2`를 하면 결과가 int64라서 `TypeError`예요.
+
+```python
+>>> m = sd.asarray([5])
+>>> m <<= 2
+>>> m
+array([20], dtype=int64)
+```
+
+## 조심할 점
+
+- **`~`는 논리 부정이 아니에요(정수에서).** bool 배열의 `~`는 참·거짓을 뒤집지만, 정수 배열의 `~`는 `-x - 1`이에요. 조건을 뒤집을 생각이라면 bool 배열인지 확인하세요.
+- **시프트는 넘쳐도 에러가 없어요.** `x << k`가 int64 범위를 넘으면 조용히 엉뚱한 값이 돼요.
+- **음수의 오른쪽 시프트는 아래로 내려요.** `-7 >> 1`은 `-4`예요. 0 쪽으로 자르는 나눗셈을 원했다면 다른 방법이 필요해요.
+- **비교와 섞을 때는 괄호를 쓰세요.** `perm == 3 | perm == 7`처럼 쓰면 Python이 `|`를 먼저 계산해서 생각과 전혀 다른 식이 돼요.
+
+## 비슷한 함수와의 차이
+
+| 함수 | 비트 연산과의 관계 |
+|---|---|
+| `logical_and`, `logical_or`, `logical_xor`, `logical_not` | bool끼리면 `&`, `\|`, `^`, `~`와 결과가 같아요. 하지만 bool만 받아서, 정수가 섞이면 에러를 내 줘요. |
+| `multiply`, `floor_divide` | `x << k`는 `x * 2**k`, `x >> k`는 `x // 2**k`와 같아요(넘치지 않을 때). 뜻이 곱셈·나눗셈이라면 이쪽이 읽기 쉬워요. |
+| `remainder` | `x & 1`과 `x % 2`는 같아요. 홀짝을 볼 때 어느 쪽이든 괜찮아요. |
+
+## numpy를 아는 분께
+
+- 이름이 Array API를 따라요: `invert`·`bitwise_not` 대신 `bitwise_invert`, `left_shift`·`right_shift` 대신 `bitwise_left_shift`·`bitwise_right_shift`. 별칭은 없어요.
+- 부호 없는 정수(uint) 타입이 없어요. 모든 정수는 int64예요.
+- 칸 수가 64 이상이거나 음수인 시프트의 결과가 정해져 있어요(왼쪽은 `0`, 오른쪽은 `0` 또는 `-1`). numpy에서는 플랫폼마다 다를 수 있어요.
+- 시프트는 bool을 받지 않아요(`TypeError`).
+- 입력이 모두 Python 숫자여도 int64로 계산해요. `sd.bitwise_left_shift(1, 64)`는 `0`이에요.
+- `out`은 keyword-only이고 `where=` 인자는 없어요.

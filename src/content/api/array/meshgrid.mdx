@@ -1,0 +1,248 @@
+---
+title: meshgrid
+names: [meshgrid]
+group: 배열 만들기
+order: 6
+signatures:
+  - "sd.meshgrid(*arrays, indexing='xy')"
+summary: 1차원 좌표 배열 여러 개로 격자(바둑판)를 만들어, 격자의 모든 점의 좌표를 축마다 하나씩 배열로 돌려줘요. 함수의 값을 평면 위의 모든 점에서 구할 때 써요.
+params:
+  - name: "*arrays"
+    type: 1차원 ndarray 여러 개
+    kind: positional
+    desc: 축마다의 좌표. 개수는 몇 개든 되고, 길이와 dtype이 서로 달라도 돼요.
+  - name: indexing
+    type: "'xy' 또는 'ij'"
+    kind: keyword-only
+    desc: "'xy'(기본값)는 첫 배열을 가로(열) 방향에, 'ij'는 첫 배열을 세로(행) 방향에 놓아요."
+returns:
+  type: ndarray의 tuple
+  desc: 입력과 같은 수의 배열. 모두 같은 모양이고, 각자 자기 입력의 dtype을 그대로 가져요. 인자가 없으면 빈 tuple이에요.
+raises:
+  - type: TypeError
+    desc: 인자 중에 stardust 배열이 아닌 것이 있을 때, indexing이 문자열이 아닐 때.
+  - type: ValueError
+    desc: 1차원이 아닌 배열을 넣었을 때, indexing이 'xy'나 'ij'가 아닐 때.
+seeAlso: [linspace, broadcasting, broadcast_to, arange]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+가로 좌표 `x = [1, 2, 3]`과 세로 좌표 `y = [10, 20]`이 있다고 해 볼게요. 이 둘로 만들 수 있는 점은 3 × 2 = 6개예요. `meshgrid`는 이 여섯 점의 좌표를 **같은 모양의 배열 두 개**로 돌려줘요. 하나에는 각 점의 x 좌표가, 다른 하나에는 y 좌표가 들어 있어요.
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([1, 2, 3])
+>>> y = sd.asarray([10, 20])
+>>> X, Y = sd.meshgrid(x, y)
+>>> X
+array([[1, 2, 3],
+       [1, 2, 3]], dtype=int64)
+>>> Y
+array([[10, 10, 10],
+       [20, 20, 20]], dtype=int64)
+```
+
+<Fig caption="X는 x를 아래로 되풀이하고, Y는 y를 옆으로 되풀이해요. 같은 자리의 두 값을 짝지으면 격자의 한 점 (x, y)이 돼요.">
+  <ArrayFig name="x" data={[1, 2, 3]} tones={['a', 'a', 'a']} note="가로 좌표" />
+  <ArrayFig name="y" data={[10, 20]} tones={['b', 'b']} note="세로 좌표" />
+  <Op note="meshgrid">→</Op>
+  <ArrayFig name="X" data={[[1, 2, 3], [1, 2, 3]]} tones={[['a', 'a', 'a'], ['a', 'a', 'a']]} axes note="shape (2, 3)" />
+  <ArrayFig name="Y" data={[[10, 10, 10], [20, 20, 20]]} tones={[['b', 'b', 'b'], ['b', 'b', 'b']]} axes note="shape (2, 3)" />
+</Fig>
+
+`X`와 `Y`의 같은 자리를 읽으면 점 하나의 좌표예요. 예를 들어 1행 2열에는 `X`에 `3`, `Y`에 `20`이 있으니 점 `(3, 20)`이에요.
+
+| | 0열 | 1열 | 2열 |
+|---|:---:|:---:|:---:|
+| **0행** | (1, 10) | (2, 10) | (3, 10) |
+| **1행** | (1, 20) | (2, 20) | (3, 20) |
+
+## 왜 필요한가요: 격자 위에서 함수 계산하기
+
+`meshgrid`를 쓰는 가장 흔한 이유는 **두 변수 함수 `f(x, y)`의 값을 격자의 모든 점에서 한꺼번에 구하기** 위해서예요. `X`와 `Y`는 모양이 같으니 원소별 연산을 그대로 쓰면 돼요.
+
+```python
+>>> X + Y
+array([[11, 12, 13],
+       [21, 22, 23]], dtype=int64)
+```
+
+결과의 각 칸은 그 자리의 점에서 계산한 `x + y`예요. 조금 더 실제적인 예로, -1부터 1까지의 평면에서 원점까지의 거리를 구해 볼게요. [`linspace`](/api/array/linspace/)로 축마다 점을 고르게 놓고 `meshgrid`로 엮어요.
+
+```python
+>>> gx = sd.linspace(-1, 1, 3)
+>>> gy = sd.linspace(-1, 1, 3)
+>>> GX, GY = sd.meshgrid(gx, gy)
+>>> sd.hypot(GX, GY)
+array([[1.4142135623730951,                1.0, 1.4142135623730951],
+       [               1.0,                0.0,                1.0],
+       [1.4142135623730951,                1.0, 1.4142135623730951]], dtype=float64)
+```
+
+가운데 칸이 원점 `(0, 0)`이라 거리 0, 네 모서리는 `(±1, ±1)`이라 √2예요. 점을 더 촘촘하게 하려면 `linspace`의 개수만 늘리면 돼요. 그래프나 등고선을 그릴 데이터, 2차원 영역에서의 수치 적분 등을 이렇게 만들어요.
+
+### 모든 점의 좌표 목록 만들기
+
+격자의 점들을 "한 줄에 점 하나"인 표로 늘어놓고 싶을 때도 있어요. `X`와 `Y`를 각각 한 줄로 편([`ravel`](/api/array/reshape/)) 다음 나란히 쌓으면([`stack`](/api/array/concat/)) 돼요.
+
+```python
+>>> sd.stack([sd.ravel(X), sd.ravel(Y)], axis=1)
+array([[ 1, 10],
+       [ 2, 10],
+       [ 3, 10],
+       [ 1, 20],
+       [ 2, 20],
+       [ 3, 20]], dtype=int64)
+```
+
+## indexing: 'xy'와 'ij'
+
+`meshgrid`에는 격자를 놓는 방식이 두 가지 있어요. 둘의 차이는 **첫 번째 배열을 어느 방향에 놓느냐**뿐이에요.
+
+- **`'xy'`(기본값)**: 그래프 좌표처럼 놓아요. 첫 배열(x)은 **가로**(열 방향, axis 1), 둘째 배열(y)은 **세로**(행 방향, axis 0)예요. 결과 모양은 `(len(y), len(x))`예요.
+- **`'ij'`**: 행렬의 행·열 번호처럼 놓아요. 첫 배열은 **세로**(axis 0), 둘째 배열은 **가로**(axis 1)예요. 결과 모양은 `(len(x), len(y))`예요.
+
+```python
+>>> Xi, Yi = sd.meshgrid(x, y, indexing='ij')
+>>> Xi
+array([[1, 1],
+       [2, 2],
+       [3, 3]], dtype=int64)
+>>> Yi
+array([[10, 20],
+       [10, 20],
+       [10, 20]], dtype=int64)
+```
+
+<Fig caption="indexing='xy' (기본값): x가 가로로 놓여요. 결과는 2행 3열이에요.">
+  <ArrayFig name="X ('xy')" data={[[1, 2, 3], [1, 2, 3]]} tones={[['a', 'a', 'a'], ['', '', '']]} axes note="x가 axis 1을 따라" />
+  <ArrayFig name="Y ('xy')" data={[[10, 10, 10], [20, 20, 20]]} tones={[['b', '', ''], ['b', '', '']]} axes note="y가 axis 0을 따라" />
+</Fig>
+
+<Fig caption="indexing='ij': x가 세로로 놓여요. 결과는 3행 2열이에요. 'xy'의 결과를 뒤집어 놓은(전치) 모양이에요.">
+  <ArrayFig name="X ('ij')" data={[[1, 1], [2, 2], [3, 3]]} tones={[['a', ''], ['a', ''], ['a', '']]} axes note="x가 axis 0을 따라" />
+  <ArrayFig name="Y ('ij')" data={[[10, 20], [10, 20], [10, 20]]} tones={[['b', 'b'], ['', ''], ['', '']]} axes note="y가 axis 1을 따라" />
+</Fig>
+
+두 방식의 결과는 같은 점들을 담고 있어요. 행과 열이 바뀌었을 뿐이에요.
+
+| | `'xy'` | `'ij'` |
+|---|---|---|
+| 첫 배열이 놓이는 방향 | 가로 (axis 1) | 세로 (axis 0) |
+| 결과 모양 (입력 길이 `nx`, `ny`) | `(ny, nx)` | `(nx, ny)` |
+| `X[i, j]`의 값 | `x[j]` | `x[i]` |
+| 잘 맞는 곳 | 그래프, 이미지처럼 x가 가로인 그림 | 행렬, 3차원 이상의 격자 |
+
+### 어느 쪽을 고를까요
+
+- 결과를 **그림으로 볼 때**(가로축 x, 세로축 y)는 `'xy'`가 자연스러워요. 화면에 출력한 배열의 모양이 그래프와 같은 방향이에요.
+- **인덱스로 생각할 때**는 `'ij'`가 편해요. `k`번째 입력이 언제나 `k`번째 축이라서, `X[i, j]`가 "x의 `i`번째, y의 `j`번째"로 곧바로 읽혀요.
+
+### 배열이 셋 이상이면
+
+배열을 몇 개든 넣을 수 있어요. 입력이 `n`개면 결과는 `n`차원 배열 `n`개예요. `'ij'`는 입력 순서대로 축이 놓이고, `'xy'`는 **처음 두 축만** 서로 바꿔요.
+
+```python
+>>> a, b, c = sd.zeros(2), sd.zeros(3), sd.zeros(4)
+>>> [r.shape for r in sd.meshgrid(a, b, c, indexing='ij')]
+[(2, 3, 4), (2, 3, 4), (2, 3, 4)]
+>>> [r.shape for r in sd.meshgrid(a, b, c)]
+[(3, 2, 4), (3, 2, 4), (3, 2, 4)]
+```
+
+차원이 셋 이상이면 `'xy'`의 "처음 두 축만 바꾼다"는 규칙이 헷갈리기 쉬워요. 그림으로 볼 2차원 격자가 아니라면 `'ij'`를 권해요.
+
+## 결과에 대해 알아 둘 것
+
+### dtype은 배열마다 따로예요
+
+결과 배열들은 각자 **자기 입력의 dtype**을 그대로 가져요. 하나로 맞추지 않아요.
+
+```python
+>>> P, Q = sd.meshgrid(sd.asarray([1, 2]), sd.asarray([0.5, 1.5]))
+>>> P
+array([[1, 2],
+       [1, 2]], dtype=int64)
+>>> Q
+array([[0.5, 0.5],
+       [1.5, 1.5]], dtype=float64)
+```
+
+### 결과는 언제나 tuple이에요
+
+배열을 하나만 넣어도 결과는 배열 하나가 든 tuple이에요. 인자가 없으면 빈 tuple이에요. `X, Y = ...`처럼 풀어서 받는 것이 보통이에요.
+
+```python
+>>> sd.meshgrid(sd.asarray([1, 2]))
+(array([1, 2], dtype=int64),)
+>>> sd.meshgrid()
+()
+```
+
+### 결과는 새 배열이에요
+
+결과 배열들은 입력과 메모리를 함께 쓰지 않는 새 배열이에요. 값을 고쳐도 입력은 바뀌지 않아요. 대신 격자의 칸 수만큼 메모리를 써요. 1000개짜리 좌표 둘로 만든 격자는 배열 하나에 백만 칸이에요.
+
+## 조심할 점
+
+### 입력은 1차원 stardust 배열
+
+리스트나 2차원 배열은 받지 않아요.
+
+```python
+>>> sd.meshgrid([1, 2], [3])
+Traceback (most recent call last):
+    ...
+TypeError: meshgrid(): every argument must be an sd.ndarray, not list
+>>> sd.meshgrid(sd.asarray([[1, 2]]), sd.asarray([3]))
+Traceback (most recent call last):
+    ...
+ValueError: meshgrid(): every array must be 1-D
+```
+
+### indexing의 값
+
+`'xy'`와 `'ij'` 말고는 받지 않아요. 문자열이 아니면 `TypeError`, 다른 문자열이면 `ValueError`예요.
+
+```python
+>>> sd.meshgrid(x, y, indexing='yx')
+Traceback (most recent call last):
+    ...
+ValueError: meshgrid(): 'indexing' must be 'xy' or 'ij', not 'yx'
+>>> sd.meshgrid(x, y, indexing=None)
+Traceback (most recent call last):
+    ...
+TypeError: meshgrid(): 'indexing' must be a str, not NoneType
+```
+
+## 비슷한 방법과의 차이
+
+### 브로드캐스팅으로 같은 계산하기
+
+격자 위에서 함수를 계산하는 것만이 목적이라면 `meshgrid` 없이 [브로드캐스팅](/api/array/broadcasting/)으로도 할 수 있어요. y를 세로 모양 `(2, 1)`로 세우면 `x`와 계산할 때 저절로 `(2, 3)` 격자로 늘어나요.
+
+```python
+>>> x + y[:, sd.newaxis]
+array([[11, 12, 13],
+       [21, 22, 23]], dtype=int64)
+```
+
+`X + Y`와 같은 결과예요. 이 방법은 `X`, `Y` 같은 큰 좌표 배열을 만들지 않아서 메모리를 덜 써요. 대신 축을 직접 맞춰야 해서 처음에는 덜 직관적이에요.
+
+| 방법 | 좌표 배열을 만드나요 | 읽기 쉬움 | 좋은 때 |
+|---|---|---|---|
+| `meshgrid` | 만들어요 (칸 수만큼 메모리) | 쉬워요 | 좌표 자체가 필요할 때, 격자가 작을 때 |
+| 브로드캐스팅 (`y[:, sd.newaxis]`) | 만들지 않아요 | 축을 따져야 해요 | 격자가 클 때, 결과 값만 필요할 때 |
+| [`broadcast_arrays`](/api/array/broadcast_to/) | 메모리 없이 늘린 모습만 | 중간 | 같은 모양의 배열이 필요하지만 고치지는 않을 때 (읽기 전용) |
+
+## numpy를 아는 분께
+
+- `sparse=`, `copy=` 인자는 없어요. 결과는 언제나 새로 만든 배열이에요. 메모리를 아끼려면 브로드캐스팅을 쓰세요.
+- 결과는 numpy 2처럼 tuple이에요.
+- 입력은 1차원 `sd.ndarray`만 받아요. numpy는 다차원 입력을 펴서 받지만 stardust는 `ValueError`예요.
+- 결과 배열들의 dtype을 하나로 맞추지 않고 각자 유지하는 점은 numpy와 같아요.

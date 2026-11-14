@@ -1,0 +1,378 @@
+---
+title: 지수와 로그
+names: [exp, expm1, log, log1p, log2, log10, logaddexp]
+group: 지수와 로그
+order: 1
+signatures:
+  - "sd.exp(x, /, *, out=None)"
+  - "sd.expm1(x, /, *, out=None)"
+  - "sd.log(x, /, *, out=None)"
+  - "sd.log1p(x, /, *, out=None)"
+  - "sd.log2(x, /, *, out=None)"
+  - "sd.log10(x, /, *, out=None)"
+  - "sd.logaddexp(x1, x2, /, *, out=None)"
+summary: 지수함수 exp와 로그 log(밑 e), log2, log10, 0 근처에서 정밀한 expm1·log1p, 로그로 나타낸 두 값을 더하는 logaddexp예요. 원소마다 따로 계산해요.
+params:
+  - name: x
+    type: ndarray 또는 Python 숫자
+    kind: positional-only
+    desc: 계산할 값.
+  - name: x1, x2
+    type: ndarray 또는 Python 숫자
+    kind: positional-only
+    desc: logaddexp의 두 인자(로그로 나타낸 값). 모양이 다르면 브로드캐스팅 규칙으로 맞춰요.
+  - name: out
+    type: ndarray 또는 None
+    kind: keyword-only
+    desc: 결과를 적어 넣을 배열. None이면 새 배열을 만들어요.
+returns:
+  type: ndarray 또는 Python 숫자
+  desc: 입력과 같은 모양의 결과. 실수 입력은 float64, 복소수 입력은 complex128이에요(logaddexp는 언제나 float64). 입력이 Python 숫자면 결과도 Python 숫자예요.
+raises:
+  - type: TypeError
+    desc: logaddexp에 복소수를 넣었을 때, 배열도 숫자도 아닌 것을 넣었을 때, out의 dtype이 결과를 담을 수 없을 때.
+  - type: ValueError
+    desc: logaddexp의 두 인자나 out의 모양이 브로드캐스팅으로 맞지 않을 때.
+  - type: OverflowError
+    desc: int64 범위를 벗어난 Python 정수를 그대로 넣었을 때.
+seeAlso: [pow, hyperbolic, constants, broadcasting, sum]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+## 한눈에 보기
+
+`exp(x)`는 자연상수 e(약 2.718)의 x제곱이고, `log(x)`는 그 반대로 "e를 몇 제곱하면 x가 되는가"예요. 둘은 서로를 되돌리는 짝이에요.
+
+```python
+>>> import stardust as sd
+>>> sd.exp(sd.asarray([0.0, 1.0, 2.0]))
+array([              1.0, 2.718281828459045,  7.38905609893065], dtype=float64)
+>>> sd.log(sd.asarray([1.0, sd.e, 10.0]))
+array([               0.0,                1.0, 2.3025850929940455], dtype=float64)
+>>> sd.log(sd.exp(sd.asarray([0.5, 3.0])))
+array([0.5, 3.0], dtype=float64)
+```
+
+<Fig caption="exp와 log는 대각선 y = x를 사이에 두고 서로 거울에 비친 모양이에요. log는 0보다 큰 곳에서만 값이 있어요.">
+  <Plot
+    curves={[
+      { f: Math.exp, label: 'exp(x)' },
+      { f: Math.log, label: 'log(x)' },
+      { f: (x) => x, label: 'y = x', dashed: true },
+    ]}
+    domain={[-3, 4]}
+    range={[-3, 4]}
+    xTicks={[
+      { v: -2, label: '-2' },
+      { v: 1, label: '1' },
+      { v: 2, label: '2' },
+      { v: 3, label: '3' },
+    ]}
+    yTicks={[
+      { v: -2, label: '-2' },
+      { v: 1, label: '1' },
+      { v: 2, label: '2' },
+      { v: 3, label: '3' },
+    ]}
+  />
+</Fig>
+
+일곱 함수를 정리하면 이래요.
+
+| 함수 | 계산 | 받는 범위(실수) |
+|---|:---:|---|
+| `exp(x)` | eˣ | 모든 실수 |
+| `expm1(x)` | eˣ - 1 | 모든 실수 |
+| `log(x)` | logₑ x | `x > 0` |
+| `log1p(x)` | logₑ (1 + x) | `x > -1` |
+| `log2(x)` | log₂ x | `x > 0` |
+| `log10(x)` | log₁₀ x | `x > 0` |
+| `logaddexp(x1, x2)` | log(eˣ¹ + eˣ²) | 모든 실수 |
+
+## exp: 지수함수
+
+`exp`는 값이 아주 빨리 커져요. x가 1 늘 때마다 약 2.7배가 돼요. 그래서 x가 약 709.78을 넘으면 결과가 float64의 한계(약 1.8 × 10³⁰⁸)를 넘어 **무한대**가 돼요. 반대로 x가 아주 작으면 결과가 0이 돼요. 어느 쪽도 에러는 나지 않아요.
+
+```python
+>>> sd.exp(sd.asarray([709.0, 710.0]))
+array([8.218407461554972e+307,                    inf], dtype=float64)
+>>> sd.exp(sd.asarray([-745.0, -746.0]))
+array([5e-324,    0.0], dtype=float64)
+>>> sd.exp(sd.asarray([sd.inf, -sd.inf, sd.nan]))
+array([inf, 0.0, nan], dtype=float64)
+```
+
+`sd.e ** x`도 같은 뜻이지만, `exp(x)`가 더 정확해요. `sd.e`가 e를 조금 반올림한 값이라서, 거듭제곱하면 그 오차가 커지기 때문이에요.
+
+```python
+>>> sd.exp(sd.asarray([10.0]))
+array([22026.465794806714], dtype=float64)
+>>> sd.e ** sd.asarray([10.0])
+array([22026.465794806703], dtype=float64)
+```
+
+## log, log2, log10: 세 가지 밑
+
+`log`는 밑이 e인 자연로그, `log2`는 밑이 2, `log10`은 밑이 10이에요. 2나 10의 거듭제곱은 정확한 정수로 나와요.
+
+```python
+>>> sd.log2(sd.asarray([1, 2, 8, 1024]))
+array([ 0.0,  1.0,  3.0, 10.0], dtype=float64)
+>>> sd.log10(sd.asarray([1, 10, 1000, 0.01]))
+array([ 0.0,  1.0,  3.0, -2.0], dtype=float64)
+```
+
+`log10`은 "몇 자리 수인가", `log2`는 "몇 비트가 필요한가", "몇 번 반으로 나눌 수 있나"를 셀 때 자주 써요.
+
+다른 밑의 로그는 따로 함수가 없어요. **`log(x) / log(밑)`** 으로 계산하세요.
+
+```python
+>>> sd.log(sd.asarray([81.0])) / sd.log(3.0)
+array([4.0], dtype=float64)
+```
+
+## 0과 음수의 로그
+
+로그는 0보다 큰 수에만 정의돼요. 범위를 벗어난 값을 넣어도 **에러는 나지 않고**, 0은 `-inf`(음의 무한대), 음수는 NaN(숫자가 아님)이 돼요. `log2`, `log10`도 같아요.
+
+```python
+>>> sd.log(sd.asarray([0.0, -1.0, -0.0]))
+array([-inf,  nan, -inf], dtype=float64)
+>>> sd.log10(sd.asarray([0.0, -5.0]))
+array([-inf,  nan], dtype=float64)
+>>> sd.log(0)
+-inf
+```
+
+<Callout type="warn" title="로그를 취하기 전에 0을 확인하세요">
+
+개수나 확률처럼 0이 될 수 있는 값에 로그를 취하면 `-inf`가 섞이고, 그 뒤의 합이나 평균도 모두 `-inf`나 NaN이 돼요. 0이 나올 수 있다면 `sd.clip(x, min=1e-12)`처럼 아주 작은 양수로 바꾸거나, `log1p`(아래)를 쓰는 방법을 생각해 보세요.
+
+</Callout>
+
+```python
+>>> sd.log(sd.clip(sd.asarray([2.0, 0.0, -1.0]), min=1e-12))
+array([ 0.6931471805599453, -27.631021115928547, -27.631021115928547], dtype=float64)
+```
+
+### 복소수로 계산하면
+
+복소수 배열을 넣으면 음수의 로그도 값이 나와요. 결과는 complex128이에요. 같은 `-1`이라도 실수 배열이면 NaN, 복소수 배열이면 `πj`예요.
+
+```python
+>>> sd.log(sd.asarray([-1.0]))
+array([nan], dtype=float64)
+>>> sd.log(sd.asarray([-1 + 0j]))
+array([3.141592653589793j], dtype=complex128)
+>>> sd.exp(sd.asarray([1j * sd.pi]))
+array([(-1+1.2246467991473532e-16j)], dtype=complex128)
+```
+
+마지막 예는 오일러 공식 e^(iπ) = -1이에요. 허수부가 정확히 0이 아닌 것은 `sd.pi`가 π를 반올림한 값이기 때문이에요.
+
+## expm1과 log1p: 0 근처를 정밀하게
+
+`expm1(x)`는 `exp(x) - 1`, `log1p(x)`는 `log(1 + x)`와 같은 값이에요. 그런데 왜 따로 있을까요? **x가 0에 아주 가까울 때** 그냥 계산하면 정밀도를 거의 다 잃기 때문이에요.
+
+```python
+>>> sd.exp(1e-10) - 1
+1.000000082740371e-10
+>>> sd.expm1(1e-10)
+1.00000000005e-10
+```
+
+정답은 `1.00000000005e-10`이에요. `exp(1e-10) - 1`은 여덟째 자리부터 틀렸어요. 이유는 이래요. `exp(1e-10)`은 `1.0000000001`인데, float64는 유효숫자가 16자리 정도뿐이라 `1` 뒤의 작은 부분이 대부분 반올림으로 잘려 나가요. 거기서 `1`을 빼면 잘리고 남은 부스러기만 남아요. `expm1`은 `1`을 더했다 빼는 과정 없이 바로 계산해서 이 손실이 없어요.
+
+x가 더 작으면 그냥 계산한 결과는 아예 `0`이 돼요.
+
+```python
+>>> sd.exp(1e-20) - 1
+0.0
+>>> sd.expm1(1e-20)
+1e-20
+>>> sd.log(1 + 1e-20)
+0.0
+>>> sd.log1p(1e-20)
+1e-20
+```
+
+| x | `exp(x) - 1` | `expm1(x)` |
+|:---:|:---:|:---:|
+| 1e-15 | 1.11e-15 (11% 틀림) | 1.0e-15 |
+| 1e-8 | 9.999999939e-09 | 1.000000005e-08 |
+| 0.5 | 0.6487212707 | 0.6487212707 |
+
+```python
+>>> x = sd.asarray([1e-15, 1e-8, 0.5])
+>>> sd.exp(x) - 1
+array([1.1102230246251565e-15,   9.99999993922529e-09,
+           0.6487212707001282], dtype=float64)
+>>> sd.expm1(x)
+array([1.0000000000000007e-15, 1.0000000050000001e-08,
+           0.6487212707001282], dtype=float64)
+```
+
+x가 크면 둘의 결과는 같아요. 그러니 "작은 x가 들어올 수 있다면 언제나 `expm1`, `log1p`"라고 기억하면 돼요.
+
+### 언제 쓰나요
+
+작은 비율을 다룰 때 자주 나와요. 이자율, 성장률, 아주 작은 확률 같은 것들이에요. 예를 들어 연 이율 `r`로 `n`년 복리 계산 `(1 + r) ** n`은 `exp(n * log1p(r))`로 쓰면 r이 아주 작아도 정확해요.
+
+```python
+>>> r = sd.asarray([1e-12])
+>>> (1 + r) ** 1e12
+array([2.7185234960372378], dtype=float64)
+>>> sd.exp(1e12 * sd.log1p(r))
+array([2.7182818284576857], dtype=float64)
+```
+
+수학적으로 이 값은 e(`2.718281828...`)에 아주 가까워야 해요. 첫째 방법은 넷째 자리부터 틀렸어요.
+
+### 범위
+
+`log1p(x)`는 `log(1 + x)`라서 `x > -1`에서만 값이 있어요. `-1`이면 `-inf`, 그보다 작으면 NaN이에요. `expm1`은 `-inf`에서 `-1`이에요.
+
+```python
+>>> sd.log1p(sd.asarray([-1.0, -2.0, 0.0]))
+array([-inf,  nan,  0.0], dtype=float64)
+>>> sd.expm1(-sd.inf)
+-1.0
+```
+
+## logaddexp: 로그로 나타낸 값 더하기
+
+`logaddexp(a, b)`는 `log(exp(a) + exp(b))`예요. **로그로 저장한 두 값을, 로그에서 꺼내지 않고 더하는** 함수예요.
+
+### 왜 로그로 저장하나요
+
+아주 작은 확률을 여러 번 곱하면 금방 float64가 나타낼 수 있는 가장 작은 수보다 작아져서 `0`이 돼요. 0.1을 400번 곱하면 10⁻⁴⁰⁰인데, 이 값은 담을 수 없어요.
+
+```python
+>>> p = sd.full(400, 0.1)
+>>> sd.prod(p)
+0.0
+>>> sd.sum(sd.log(p))
+-921.0340371976183
+```
+
+로그로 바꾸면 곱셈이 덧셈이 되고, 값도 `-921` 정도라 편하게 다룰 수 있어요. 그래서 확률 계산은 흔히 **로그 확률**로 해요.
+
+### 로그 확률을 더할 때
+
+곱셈은 로그를 더하면 되지만, 확률끼리 **더하는** 일("A이거나 B일 확률")은 어떻게 할까요? `exp`로 꺼내서 더하면 다시 0이 되어 버려요. 이때 `logaddexp`를 써요.
+
+```python
+>>> la = sd.asarray([-1000.0])
+>>> lb = sd.asarray([-1001.0])
+>>> sd.log(sd.exp(la) + sd.exp(lb))
+array([-inf], dtype=float64)
+>>> sd.logaddexp(la, lb)
+array([-999.6867383124818], dtype=float64)
+```
+
+평범한 크기의 값으로 확인해 보면 뜻이 잘 보여요. 확률 0.25와 0.5를 로그로 바꿔서 `logaddexp`로 더한 다음 다시 `exp`로 꺼내면 0.75예요.
+
+```python
+>>> sd.exp(sd.logaddexp(sd.log(0.25), sd.log(0.5)))
+0.75
+```
+
+아주 큰 값에서도 넘치지 않아요.
+
+```python
+>>> sd.log(sd.exp(1000.0) + sd.exp(1000.0))
+inf
+>>> sd.logaddexp(1000.0, 1000.0)
+1000.6931471805599
+```
+
+`logaddexp`는 두 배열을 원소별로 더해요. 배열 하나의 모든 원소를 이런 식으로 더하는 함수는 따로 없어요. 그럴 때는 가장 큰 값을 빼고 계산한 뒤 다시 더하는 방법을 써요.
+
+```python
+>>> lp = sd.asarray([-1000.0, -1001.0, -1002.0])
+>>> m = sd.max(lp)
+>>> m + sd.log(sd.sum(sd.exp(lp - m)))
+-999.5923940355556
+```
+
+### 특수값
+
+`-inf`는 "확률 0"의 로그라서, `logaddexp(-inf, a)`는 `a`예요. 같은 부호의 무한대끼리는 그 무한대예요. NaN이 있으면 NaN이에요.
+
+```python
+>>> sd.logaddexp(-sd.inf, 0.0)
+0.0
+>>> sd.logaddexp(-sd.inf, -sd.inf)
+-inf
+>>> sd.logaddexp(sd.nan, 0.0)
+nan
+```
+
+`logaddexp`는 복소수를 받지 않아요.
+
+```python
+>>> sd.logaddexp(sd.asarray([1 + 0j]), 1.0)
+Traceback (most recent call last):
+    ...
+TypeError: logaddexp(): not supported for complex128 and float64
+```
+
+## 입력과 결과의 종류
+
+결과는 실수 입력이면 **float64**, 복소수 입력이면 **complex128**이에요. 정수나 bool을 넣으면 실수로 바꿔서 계산해요. Python 숫자를 넣으면 결과도 Python 숫자예요.
+
+```python
+>>> sd.exp(sd.asarray([True, False]))
+array([2.718281828459045,               1.0], dtype=float64)
+>>> sd.log10(1000)
+3.0
+```
+
+리스트는 받지 않아요. 먼저 [`asarray`](/api/array/asarray/)로 바꾸세요.
+
+```python
+>>> sd.exp([1, 2])
+Traceback (most recent call last):
+    ...
+TypeError: exp(): 'x' must be an sd.ndarray or a bool, int, float or complex, not list
+```
+
+## `out`: 결과를 기존 배열에 쓰기
+
+`out=`에 배열을 주면 그 배열에 결과를 적고, 그 배열을 돌려줘요. 결과가 실수라서 정수 배열에는 담을 수 없어요.
+
+```python
+>>> buf = sd.zeros(2)
+>>> sd.log(sd.asarray([1.0, 100.0]), out=buf) is buf
+True
+>>> sd.exp(sd.asarray([0.0]), out=sd.zeros(1, dtype=sd.int64))
+Traceback (most recent call last):
+    ...
+TypeError: exp(): cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
+```
+
+## 조심할 점
+
+- **범위를 벗어나도 에러가 없어요.** `log(0)`은 `-inf`, `log(-1)`은 NaN, `exp(1000)`은 `inf`예요. 결과를 `sd.isfinite`로 확인하세요.
+- **0 근처에서는 `exp(x) - 1`, `log(1 + x)` 대신** `expm1`, `log1p`를 쓰세요. 단, 이 정밀도의 이점은 실수 입력에서만 확실해요.
+- **로그 공간에서 더할 때는** `logaddexp`를 쓰세요. `exp`로 꺼내서 더하면 넘치거나 0이 돼요.
+- `sd.e ** x`보다 **`exp(x)`가 정확해요.**
+
+## 비슷한 함수와의 차이
+
+| 헷갈리는 것 | 차이 |
+|---|---|
+| `exp(x)`와 [`pow`](/api/array/pow/)(`e ** x`) | 같은 뜻이지만 `exp`가 더 정확해요. 다른 밑은 `2.0 ** x`처럼 `pow`를 써요. |
+| `log`와 `log2`, `log10` | 밑만 달라요. 다른 밑은 `log(x) / log(밑)`이에요. |
+| `log1p(x)`와 `log(1 + x)` | 같은 값이지만 x가 0에 가까우면 `log1p`가 정확해요. |
+| `logaddexp(a, b)`와 `log(exp(a) + exp(b))` | 같은 값이지만 `logaddexp`는 넘치거나 0이 되지 않아요. |
+| `exp`와 [`sinh`, `cosh`](/api/array/hyperbolic/) | 쌍곡선함수는 `exp(x)`와 `exp(-x)`를 조합한 함수예요. |
+
+## numpy를 아는 분께
+
+- `exp2`, `logaddexp2` 함수는 없어요. `2.0 ** x`와 `logaddexp(a * log(2), b * log(2)) / log(2)`처럼 계산하세요.
+- 0이나 음수의 로그는 경고 없이 `-inf`나 NaN이에요. `errstate`도 없어요.
+- `exp`, `log`, `log2`, `log10`은 numpy와 마지막 몇 자리(8 ULP 이내)가 다를 수 있어요. 특수값(±0, ±inf, NaN)의 결과는 부호까지 같아요. `expm1`, `log1p`, `logaddexp`는 numpy와 비트까지 같아요.
+- `out`은 keyword-only이고 `where=` 인자는 없어요. Python 숫자를 넣으면 numpy 스칼라가 아니라 Python `float`·`complex`가 나와요.

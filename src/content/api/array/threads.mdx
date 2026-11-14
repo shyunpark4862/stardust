@@ -1,0 +1,215 @@
+---
+title: 스레드 수
+names: [set_num_threads, get_num_threads]
+group: 설정
+order: 1
+signatures:
+  - "sd.set_num_threads(n, /)"
+  - "sd.get_num_threads()"
+summary: stardust가 큰 계산을 나눠 맡길 스레드(동시에 일하는 작업 줄기)의 수를 정하고 확인해요. 스레드 수를 바꿔도 계산 결과는 마지막 한 자리까지 같아요.
+params:
+  - name: n
+    type: int
+    kind: positional-only
+    desc: set_num_threads에 줄 스레드 수. 1 이상 1024 이하예요. numpy 정수도 받아요.
+returns:
+  type: None 또는 int
+  desc: set_num_threads는 None, get_num_threads는 지금 설정된 스레드 수예요.
+raises:
+  - type: TypeError
+    desc: n이 int가 아닐 때(float, bool, None, 문자열 등).
+  - type: ValueError
+    desc: n이 1보다 작거나 1024보다 클 때. 아주 큰 정수도 OverflowError가 아니라 ValueError예요.
+seeAlso: [sum, sort, matmul, numerics]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 한눈에 보기
+
+요즘 컴퓨터의 CPU에는 동시에 일할 수 있는 코어가 여러 개 있어요. stardust는 원소가 많은 배열을 계산할 때 일을 여러 조각으로 나눠 **여러 코어가 동시에** 처리하게 해요. 이렇게 동시에 일하는 작업 줄기 하나를 **스레드**(thread)라고 불러요.
+
+`get_num_threads`는 지금 몇 개의 스레드를 쓰도록 설정돼 있는지 알려 주고, `set_num_threads`는 그 수를 바꿔요.
+
+```python
+>>> import stardust as sd
+>>> default = sd.get_num_threads()
+>>> sd.set_num_threads(4)
+>>> sd.get_num_threads()
+4
+```
+
+`set_num_threads`는 아무것도 돌려주지 않아요(`None`). 바꾼 값은 다시 바꿀 때까지 프로그램 전체에 그대로 적용돼요.
+
+기본값은 **이 컴퓨터의 고성능 코어 수**예요. 그래서 컴퓨터마다 달라요. 위 예제에서 처음 값을 `default`에 받아 둔 것은 나중에 되돌리기 위해서예요.
+
+## 결과는 스레드 수와 상관없이 같아요
+
+stardust가 약속하는 가장 중요한 점이에요. **스레드 수를 몇으로 정하든, 같은 데이터면 계산 결과가 비트 하나까지 똑같아요.** 실수의 합처럼 마지막 자리가 흔들리기 쉬운 계산도 그래요.
+
+```python
+>>> data = sd.sin(sd.arange(1_000_000) * 0.001)
+>>> results = []
+>>> for n in [1, 2, 4, 8]:
+...     sd.set_num_threads(n)
+...     results.append(sd.sum(data))
+>>> results
+[437.20744747064737, 437.20744747064737, 437.20744747064737, 437.20744747064737]
+```
+
+1스레드든 8스레드든 합의 마지막 자리까지 같아요. 평균, 분산, 정렬, 행렬곱 등 다른 계산도 마찬가지예요.
+
+```python
+>>> m = sd.reshape(data[:250_000], (500, 500))
+>>> sd.set_num_threads(1)
+>>> p1, s1 = m @ m, sd.std(data)
+>>> sd.set_num_threads(8)
+>>> p8, s8 = m @ m, sd.std(data)
+>>> sd.all(p1 == p8)
+True
+>>> s1 == s8
+True
+```
+
+### 왜 이것이 당연하지 않은가요
+
+실수의 덧셈은 **더하는 순서에 따라 결과가 아주 조금 달라질 수 있어요.** 실수는 자릿수가 한정돼 있어서, 더할 때마다 생기는 작은 반올림 오차가 순서에 따라 다르게 쌓이기 때문이에요.
+
+```python
+>>> (0.1 + 0.2) + 0.3
+0.6000000000000001
+>>> 0.1 + (0.2 + 0.3)
+0.6
+```
+
+같은 백만 개의 수라도 하나씩 차례로 더하면 끝자리가 달라져요. Python 내장 `sum`은 앞에서부터 하나씩 더해요.
+
+```python
+>>> sum(data.tolist())
+437.2074474706434
+>>> sd.sum(data)
+437.20744747064737
+```
+
+어느 쪽이 틀린 것이 아니라 더한 순서가 다를 뿐이에요. 여러 스레드로 나눠 더하면 보통은 "조각을 어떻게 나누는가"에 따라 순서가 바뀌고, 그래서 스레드 수에 따라 끝자리가 달라지기 쉬워요. stardust는 **스레드 수와 상관없이 언제나 같은 순서로** 더하도록 만들었어요.
+
+### 이 약속이 주는 것
+
+- **다시 실행해도 같은 결과**: 오늘 돌린 분석을 내일, 다른 설정으로 돌려도 숫자가 똑같아요.
+- **코어 수가 다른 컴퓨터에서도**: 기본 스레드 수가 컴퓨터마다 달라도, 스레드 수 때문에 결과가 달라지는 일은 없어요.
+- **테스트를 `==`로**: 계산 결과를 저장해 둔 값과 정확히 비교할 수 있어요. 스레드 수 때문에 테스트가 가끔 실패하는 일이 없어요.
+- **속도만 바뀌어요**: 스레드 수는 오직 빠르기에만 영향을 줘요. 결과를 걱정하지 않고 마음껏 바꿔도 돼요.
+
+<Callout title="에러도 같아요">
+
+결과뿐 아니라 에러가 나는지, 어떤 메시지가 나오는지도 스레드 수와 상관없이 같아요.
+
+</Callout>
+
+## 언제 바꾸나요
+
+대부분은 기본값 그대로 두면 돼요. 바꾸는 것이 좋은 경우는 이런 때예요.
+
+- **다른 일과 CPU를 나눠 써야 할 때**: 같은 컴퓨터에서 다른 무거운 프로그램이 돌고 있다면 스레드를 줄여서 양보할 수 있어요.
+- **Python 프로세스를 여러 개 동시에 돌릴 때**: 프로세스마다 코어 수만큼 스레드를 쓰면 코어보다 훨씬 많은 스레드가 서로 다투느라 오히려 느려져요. 프로세스 수 × 스레드 수가 코어 수 정도가 되도록 줄이세요. 각 프로세스에서 `sd.set_num_threads(1)`로 두는 것이 가장 간단해요.
+- **속도를 재 볼 때**: 1스레드와 여러 스레드의 속도를 비교해 보고 싶을 때요.
+
+코어 수보다 크게 정해도 에러는 나지 않지만 더 빨라지지는 않아요. 원소가 적은 작은 계산은 스레드 수를 바꿔도 차이를 느끼기 어려워요.
+
+### 설정은 라이브러리 전체에 하나예요
+
+`sd.set_num_threads`는 배열(`sd`)뿐 아니라 선형대수(`sd.linalg`), 데이터프레임(`sd.frame`)의 계산에도 똑같이 적용돼요. 영역마다 따로 정하는 함수는 없어요.
+
+```python
+>>> hasattr(sd.linalg, "set_num_threads")
+False
+```
+
+환경 변수로 정하는 방법도 없어요. 스레드 수를 바꾸려면 코드에서 `sd.set_num_threads`를 불러야 해요. 보통은 프로그램 맨 앞에서 한 번 불러요.
+
+### 잠깐만 바꾸고 되돌리기
+
+어떤 구간에서만 스레드 수를 바꾸고 싶다면, 원래 값을 받아 두었다가 끝나면 되돌려요. 중간에 에러가 나도 되돌아가도록 `try`/`finally`를 쓰면 안전해요.
+
+```python
+>>> before = sd.get_num_threads()
+>>> sd.set_num_threads(1)
+>>> try:
+...     total = sd.sum(data)
+... finally:
+...     sd.set_num_threads(before)
+>>> sd.get_num_threads() == before
+True
+```
+
+### 여러 Python 스레드에서 함께 쓸 때
+
+Python의 `threading`으로 여러 스레드를 만들어 각각 stardust를 불러도 돼요. 동시에 부른 계산들은 CPU를 나눠 쓰게 되어 각자의 속도는 달라질 수 있지만, **결과는 언제나 혼자 불렀을 때와 같아요.**
+
+## 조심할 점
+
+### 1 이상 1024 이하의 정수만
+
+범위를 벗어나면 `ValueError`예요. 0이나 음수로 "자동"을 뜻하게 하는 기능은 없어요.
+
+```python
+>>> sd.set_num_threads(0)
+Traceback (most recent call last):
+    ...
+ValueError: set_num_threads(): 'n' must be between 1 and 1024
+>>> sd.set_num_threads(1025)
+Traceback (most recent call last):
+    ...
+ValueError: set_num_threads(): 'n' must be between 1 and 1024
+```
+
+다른 함수에서는 int64 범위를 넘는 아주 큰 정수가 `OverflowError`를 내지만, `set_num_threads`는 크기와 상관없이 범위 밖이면 모두 `ValueError`예요.
+
+```python
+>>> sd.set_num_threads(2**70)
+Traceback (most recent call last):
+    ...
+ValueError: set_num_threads(): 'n' must be between 1 and 1024
+```
+
+정수가 아니면 `TypeError`예요. `2.0`처럼 값이 정수인 실수도, `True`도 받지 않아요. numpy 정수(`np.int64(2)` 등)는 받아요.
+
+```python
+>>> sd.set_num_threads(2.0)
+Traceback (most recent call last):
+    ...
+TypeError: set_num_threads(): 'n' must be an int, not float
+>>> sd.set_num_threads(True)
+Traceback (most recent call last):
+    ...
+TypeError: set_num_threads(): 'n' must be an int, not bool
+```
+
+`n`은 자리로만 넘겨요. `sd.set_num_threads(n=2)`처럼 이름을 붙이면 `TypeError`예요. `get_num_threads`는 인자를 받지 않아요.
+
+### 에러가 나면 설정은 그대로예요
+
+잘못된 값으로 부르면 에러만 나고, 이전 설정은 바뀌지 않아요.
+
+```python
+>>> sd.set_num_threads(2)
+>>> try:
+...     sd.set_num_threads(-1)
+... except ValueError:
+...     pass
+>>> sd.get_num_threads()
+2
+```
+
+마지막으로 처음 값으로 되돌려 둘게요.
+
+```python
+>>> sd.set_num_threads(default)
+>>> sd.get_num_threads() == default
+True
+```
+
+## numpy를 아는 분께
+
+- numpy에는 스레드 수를 정하는 함수가 없어요. 보통 `OMP_NUM_THREADS` 같은 환경 변수나 별도 패키지로 조절하지요. stardust는 반대로 **함수로만** 정하고, 환경 변수는 읽지 않아요.
+- 스레드 수와 상관없이 결과가 비트까지 같다는 것을 약속해요. numpy는 이런 보장을 하지 않아요.
+- 실수 합의 순서가 numpy와 같다고 보장하지는 않아서, numpy와는 마지막 자리가 다를 수 있어요. 다만 stardust 안에서는 언제나 같아요.

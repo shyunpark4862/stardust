@@ -1,0 +1,421 @@
+---
+title: NaN을 건너뛰는 집계
+names: [nansum, nanprod, nanmin, nanmax, nanmean, nanvar, nanstd, nanargmin, nanargmax, nancumulative_sum, nancumulative_prod]
+group: NaN을 건너뛰는 집계
+order: 1
+signatures:
+  - "sd.nansum(x, /, *, axis=None, dtype=None, keepdims=False)"
+  - "sd.nanprod(x, /, *, axis=None, dtype=None, keepdims=False)"
+  - "sd.nanmin(x, /, *, axis=None, keepdims=False)"
+  - "sd.nanmax(x, /, *, axis=None, keepdims=False)"
+  - "sd.nanmean(x, /, *, axis=None, keepdims=False)"
+  - "sd.nanvar(x, /, *, axis=None, correction=0, keepdims=False)"
+  - "sd.nanstd(x, /, *, axis=None, correction=0, keepdims=False)"
+  - "sd.nanargmin(x, /, *, axis=None, keepdims=False)"
+  - "sd.nanargmax(x, /, *, axis=None, keepdims=False)"
+  - "sd.nancumulative_sum(x, /, *, axis=None, dtype=None, include_initial=False)"
+  - "sd.nancumulative_prod(x, /, *, axis=None, dtype=None, include_initial=False)"
+summary: sum, mean, max 같은 집계 함수의 NaN(숫자가 아님)을 건너뛰는 판이에요. 빠진 값이 NaN으로 들어 있는 데이터에서 나머지 값만으로 계산해요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 집계할 배열. nanmin·nanmax·nanargmin·nanargmax는 복소수를 받지 않아요.
+  - name: axis
+    type: int, int의 tuple·list, 또는 None
+    kind: keyword-only
+    desc: 줄일 축. nanargmin·nanargmax·nancumulative_*는 int만 받아요. nancumulative_*는 2차원 이상에서 꼭 줘야 해요.
+  - name: dtype
+    type: dtype 또는 None
+    kind: keyword-only
+    desc: nansum·nanprod·nancumulative_*에만 있어요. 계산할 원소 종류.
+  - name: correction
+    type: int 또는 float
+    kind: keyword-only
+    desc: nanvar·nanstd에만 있어요. 분모를 (NaN이 아닌 원소 수 - correction)으로 해요. 기본값 0.
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 줄인 축을 길이 1로 남겨요.
+  - name: include_initial
+    type: bool
+    kind: keyword-only
+    desc: nancumulative_*에만 있어요. True면 맨 앞에 시작값(합은 0, 곱은 1)을 넣어요.
+returns:
+  type: ndarray 또는 Python 숫자
+  desc: NaN을 뺀 계산 결과. 결과의 모양과 dtype은 이름에서 nan을 뗀 함수와 같아요.
+raises:
+  - type: TypeError
+    desc: x가 배열이 아닐 때, 옵션의 타입이 틀렸을 때, nanmin·nanmax·nanargmin·nanargmax에 복소수를 넣었을 때.
+  - type: ValueError
+    desc: axis가 범위를 벗어났을 때, 빈 배열의 nanmin·nanmax·nanargmin·nanargmax, 모두 NaN인 줄의 nanargmin·nanargmax, 2차원 이상에서 nancumulative_*의 axis를 빠뜨렸을 때.
+seeAlso: [sum, mean, var, min-max, argmin, cumulative, isnan, quantile]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+NaN(Not a Number, 숫자가 아님)은 실수 배열에서 "값을 모른다"는 표시로 자주 쓰여요. 센서가 꺼져서 기록이 없는 날, 설문에 답하지 않은 칸 같은 것이에요.
+
+보통의 집계 함수는 NaN을 하나라도 만나면 결과 전체가 NaN이 돼요. 모르는 값이 섞인 합은 역시 모르는 값이기 때문이에요. 이 페이지의 함수들은 이름 앞에 `nan`이 붙어 있고, **NaN을 없는 것으로 치고 나머지 값만으로** 계산해요.
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([1.0, sd.nan, 3.0])
+>>> sd.sum(x)
+nan
+>>> sd.nansum(x)
+4.0
+>>> sd.mean(x)
+nan
+>>> sd.nanmean(x)
+2.0
+```
+
+<Fig caption="nanmean은 NaN 칸을 지운 것처럼 보고, 남은 두 값의 평균을 구해요.">
+  <ArrayFig name="x" data={[1.0, 'nan', 3.0]} tones={['a', 'g', 'a']} />
+  <Op note="NaN 빼기">→</Op>
+  <ArrayFig data={[1.0, 3.0]} tones={['a', 'a']} note="남은 값 2개" />
+  <Op note="평균">→</Op>
+  <ArrayFig data={[2.0]} tones={['b']} note="(1 + 3) / 2" />
+</Fig>
+
+`nanmean`의 분모가 3이 아니라 2라는 점을 보세요. NaN은 0으로 바꿔 넣는 것이 아니라, **처음부터 없던 원소**처럼 다뤄요.
+
+## 열한 함수와 짝
+
+`nan`을 뗀 이름의 함수와 하나씩 짝을 이뤄요. 시그니처, `axis`와 `keepdims` 규칙, 결과의 모양과 dtype은 짝과 똑같아요. 다른 것은 NaN을 어떻게 다루느냐뿐이에요.
+
+| NaN을 건너뛰는 함수 | 짝 | 하는 일 | NaN을 어떻게 보나 |
+|---|---|---|---|
+| `nansum` | [`sum`](/api/array/sum/) | 합 | 0을 더한 것과 같아요. |
+| `nanprod` | [`prod`](/api/array/prod/) | 곱 | 1을 곱한 것과 같아요. |
+| `nanmin`, `nanmax` | [`min`, `max`](/api/array/min-max/) | 최솟값, 최댓값 | 후보에서 빼요. |
+| `nanmean` | [`mean`](/api/array/mean/) | 평균 | 합에서도, 개수에서도 빼요. |
+| `nanvar`, `nanstd` | [`var`, `std`](/api/array/var/) | 분산, 표준편차 | 평균과 개수 모두에서 빼요. |
+| `nanargmin`, `nanargmax` | [`argmin`, `argmax`](/api/array/argmin/) | 최솟값·최댓값의 위치 | 후보에서 빼요. 위치는 원래 배열 기준이에요. |
+| `nancumulative_sum` | [`cumulative_sum`](/api/array/cumulative/) | 누적 합 | 그 자리에서 아무것도 더하지 않아요. |
+| `nancumulative_prod` | [`cumulative_prod`](/api/array/cumulative/) | 누적 곱 | 그 자리에서 아무것도 곱하지 않아요. |
+
+같은 배열로 열한 함수를 한 번씩 불러 볼게요.
+
+```python
+>>> sd.nanprod(x)
+3.0
+>>> sd.nanmin(x), sd.nanmax(x)
+(1.0, 3.0)
+>>> sd.nanvar(x), sd.nanstd(x)
+(1.0, 1.0)
+>>> sd.nanargmin(x), sd.nanargmax(x)
+(0, 2)
+>>> sd.nancumulative_sum(x)
+array([1.0, 1.0, 4.0], dtype=float64)
+>>> sd.nancumulative_prod(x)
+array([1.0, 1.0, 3.0], dtype=float64)
+```
+
+NaN이 하나도 없으면 결과는 짝 함수와 마지막 자리까지 같아요. 그래서 "혹시 NaN이 있을지도 모르는" 데이터라면 처음부터 `nan` 판을 써도 손해가 없어요.
+
+## 표 데이터에서 쓰기
+
+`axis`를 주면 짝 함수처럼 그 방향으로만 집계해요. 두 지점에서 하루 네 번 잰 기온이 있고, 빠진 기록은 NaN이라고 해 볼게요.
+
+```python
+>>> temps = sd.asarray([[21.5, 23.0, sd.nan, 22.0],
+...                     [18.0, sd.nan, sd.nan, 19.0]])
+>>> sd.mean(temps, axis=1)
+array([nan, nan], dtype=float64)
+>>> sd.nanmean(temps, axis=1)
+array([22.166666666666668,               18.5], dtype=float64)
+```
+
+`mean`은 두 지점 모두 NaN이 섞여 있어서 아무것도 알려 주지 않지만, `nanmean`은 지점마다 있는 기록만으로 평균을 내 줘요. 첫 지점은 세 값, 둘째 지점은 두 값의 평균이에요.
+
+평균을 몇 개의 값으로 냈는지도 함께 보고 싶으면 [`isnan`](/api/array/isnan/)으로 NaN이 아닌 칸을 세면 돼요.
+
+```python
+>>> sd.count_nonzero(~sd.isnan(temps), axis=1)
+array([3, 2], dtype=int64)
+```
+
+`keepdims`와 여러 축을 한꺼번에 주는 것도 짝 함수와 같아요. 자세한 것은 [`sum`](/api/array/sum/) 문서에 있어요.
+
+```python
+>>> sd.nanmean(temps)
+20.7
+>>> sd.nanstd(temps, axis=1, keepdims=True)
+array([[0.6236095644623235],
+       [               0.5]], dtype=float64)
+```
+
+## 모두 NaN이거나 비어 있으면
+
+어떤 줄의 값이 **전부 NaN**이면 건너뛰고 나서 남는 값이 하나도 없어요. 빈 배열과 같은 처지가 되는 것이에요. 이때 무엇을 돌려주는지는 함수마다 달라요.
+
+| 함수 | 모두 NaN일 때 | 빈 배열일 때 |
+|---|---|---|
+| `nansum` | `0.0` | `0.0` |
+| `nanprod` | `1.0` | `1.0` |
+| `nanmean`, `nanvar`, `nanstd` | NaN | NaN |
+| `nanmin`, `nanmax` | NaN | `ValueError` |
+| `nanargmin`, `nanargmax` | `ValueError` | `ValueError` |
+| `nancumulative_sum` | 모두 `0.0` | 빈 배열 |
+| `nancumulative_prod` | 모두 `1.0` | 빈 배열 |
+
+```python
+>>> a = sd.asarray([sd.nan, sd.nan])
+>>> sd.nansum(a), sd.nanprod(a)
+(0.0, 1.0)
+>>> sd.nanmean(a), sd.nanvar(a), sd.nanstd(a)
+(nan, nan, nan)
+>>> sd.nanmin(a), sd.nanmax(a)
+(nan, nan)
+>>> sd.nancumulative_sum(a)
+array([0.0, 0.0], dtype=float64)
+>>> sd.nancumulative_prod(a)
+array([1.0, 1.0], dtype=float64)
+```
+
+합과 곱은 "더할 것이 없으면 0, 곱할 것이 없으면 1"이라는 규칙을 따라요. 평균·분산·최솟값·최댓값은 정할 수 없으니 NaN이에요. 경고는 따로 나오지 않아요.
+
+<Callout type="warn" title="nansum의 0은 '모름'이 아니에요">
+
+  모두 NaN인 줄의 `nansum`은 `0.0`이에요. "그날 판매량이 0"인 것과 "그날 기록이 없음"이 결과에서 구별되지 않아요. 둘을 구별해야 한다면 앞에서 본 것처럼 NaN이 아닌 칸의 수를 따로 세어 두세요.
+
+</Callout>
+
+### nanargmin, nanargmax는 에러가 나요
+
+위치를 돌려주는 두 함수는 모두 NaN인 줄에서 돌려줄 자리가 없어요. NaN을 돌려줄 수도 없어요(결과는 정수 배열이에요). 그래서 `ValueError`예요.
+
+```python
+>>> sd.nanargmax(a)
+Traceback (most recent call last):
+    ...
+ValueError: nanargmax(): All-NaN slice encountered
+```
+
+여러 줄 중 **한 줄만** 모두 NaN이어도 에러예요. 앞의 `temps`에서 셋째 열은 두 값이 모두 NaN이에요.
+
+```python
+>>> sd.nanargmax(temps, axis=1)
+array([1, 3], dtype=int64)
+>>> sd.nanargmax(temps, axis=0)
+Traceback (most recent call last):
+    ...
+ValueError: nanargmax(): All-NaN slice encountered
+```
+
+같은 상황에서 `nanmax`는 에러 없이 그 칸만 NaN으로 채워요.
+
+```python
+>>> sd.nanmax(temps, axis=0)
+array([21.5, 23.0,  nan, 22.0], dtype=float64)
+```
+
+### 빈 배열
+
+원소가 하나도 없으면 최솟값·최댓값과 그 위치는 짝 함수처럼 `ValueError`예요.
+
+```python
+>>> e = sd.asarray([])
+>>> sd.nansum(e), sd.nanmean(e)
+(0.0, nan)
+>>> sd.nanmin(e)
+Traceback (most recent call last):
+    ...
+ValueError: nanmin(): undefined for an empty array (or along an empty axis)
+```
+
+## nanargmin, nanargmax: 위치는 원래 배열 기준
+
+`argmin`, `argmax`는 NaN이 있으면 **첫 NaN의 위치**를 돌려줘요. NaN을 건너뛰는 판은 NaN을 후보에서 빼고 진짜 최솟값·최댓값의 위치를 찾아요.
+
+```python
+>>> y = sd.asarray([3.0, sd.nan, 1.0])
+>>> sd.argmin(y)
+1
+>>> sd.nanargmin(y)
+2
+```
+
+돌려주는 위치는 NaN을 지운 배열에서의 위치가 아니라 **원래 배열에서의 위치**예요. 그래서 결과로 바로 원래 배열을 인덱싱할 수 있어요.
+
+```python
+>>> y[sd.nanargmin(y)]
+1.0
+```
+
+같은 값이 여러 번 있으면 짝 함수처럼 처음 나온 자리예요.
+
+```python
+>>> sd.nanargmax(sd.asarray([1.0, sd.nan, 5.0, 5.0]))
+2
+```
+
+## nanvar, nanstd: 개수는 NaN이 아닌 원소 수
+
+분산의 분모는 `N - correction`이에요. 여기서 `N`은 **NaN이 아닌 원소의 수**예요. 기본값 `correction=0`은 모분산, `correction=1`은 표본 분산이에요. 자세한 뜻은 [분산과 표준편차](/api/array/var/) 문서에 있어요.
+
+```python
+>>> sd.nanvar(sd.asarray([1.0, sd.nan, 3.0]))
+1.0
+>>> sd.nanvar(sd.asarray([1.0, sd.nan, 3.0]), correction=1)
+2.0
+```
+
+NaN을 빼고 나면 값이 너무 적어서 `N - correction`이 0 이하가 되면 결과는 NaN이에요.
+
+```python
+>>> sd.nanvar(sd.asarray([1.0, sd.nan]), correction=1)
+nan
+```
+
+## nancumulative_sum, nancumulative_prod
+
+누적 합은 앞에서부터 차례로 더한 중간 결과를 모두 담은 배열이에요. NaN을 건너뛰는 판에서는 **NaN 자리에 그때까지의 누적값이 그대로 들어가요.** 그 자리에서 아무것도 더하거나 곱하지 않은 셈이에요.
+
+```python
+>>> z = sd.asarray([2.0, sd.nan, 3.0, sd.nan])
+>>> sd.cumulative_sum(z)
+array([2.0, nan, nan, nan], dtype=float64)
+>>> sd.nancumulative_sum(z)
+array([2.0, 2.0, 5.0, 5.0], dtype=float64)
+>>> sd.nancumulative_prod(z)
+array([2.0, 2.0, 6.0, 6.0], dtype=float64)
+```
+
+<Fig caption="nancumulative_sum: NaN 칸은 바로 앞의 누적값을 그대로 이어받아요.">
+  <ArrayFig name="z" data={[2.0, 'nan', 3.0, 'nan']} tones={['', 'g', '', 'g']} />
+  <Op note="누적 합">→</Op>
+  <ArrayFig name="sd.nancumulative_sum(z)" data={[2.0, 2.0, 5.0, 5.0]} tones={['', 'a', '', 'a']} />
+</Fig>
+
+`cumulative_sum`은 NaN을 한 번 만나면 그 뒤가 전부 NaN이 되지만, NaN을 건너뛰는 판은 끝까지 계산을 이어 가요. 맨 앞이 NaN이면 시작값(합은 0, 곱은 1)이 들어가요.
+
+```python
+>>> sd.nancumulative_sum(sd.asarray([sd.nan, 1.0, sd.nan, 2.0]))
+array([0.0, 1.0, 1.0, 3.0], dtype=float64)
+```
+
+`include_initial=True`와 `axis` 규칙은 짝 함수와 같아요. 2차원 이상에서는 `axis`를 꼭 줘야 해요.
+
+```python
+>>> sd.nancumulative_sum(z, include_initial=True)
+array([0.0, 2.0, 2.0, 5.0, 5.0], dtype=float64)
+>>> sd.nancumulative_sum(temps, axis=1)
+array([[21.5, 44.5, 44.5, 66.5],
+       [18.0, 18.0, 18.0, 37.0]], dtype=float64)
+>>> sd.nancumulative_sum(temps)
+Traceback (most recent call last):
+    ...
+ValueError: nancumulative_sum(): 'axis' is required for arrays with more than one dimension
+```
+
+## 정수와 bool 배열에는 NaN이 없어요
+
+NaN은 실수(그리고 복소수)에만 있는 값이에요. 정수나 bool 배열에는 NaN이 들어갈 수 없으니, 이런 배열을 넣으면 짝 함수를 그대로 부른 것과 같아요. 결과의 dtype도 짝 함수를 따라요.
+
+```python
+>>> i = sd.asarray([1, 2, 4])
+>>> sd.nansum(i)
+7
+>>> sd.nanmean(i)
+2.3333333333333335
+>>> sd.nansum(sd.asarray([True, True, False]))
+2
+```
+
+복소수 배열에서는 **실수부나 허수부 중 하나라도 NaN인 원소**를 건너뛰어요.
+
+```python
+>>> sd.nansum(sd.asarray([1 + 1j, complex(1, sd.nan)]))
+(1+1j)
+```
+
+다만 복소수에는 크고 작음이 없어서 `nanmin`, `nanmax`, `nanargmin`, `nanargmax`는 복소수를 받지 않아요.
+
+```python
+>>> sd.nanmin(sd.asarray([1 + 1j]))
+Traceback (most recent call last):
+    ...
+TypeError: nanmin(): not supported for complex128
+```
+
+## 조심할 점
+
+### 계산 중에 새로 생긴 NaN은 막지 못해요
+
+건너뛰는 것은 **입력에 이미 들어 있던 NaN**이에요. 계산하다가 생기는 NaN(예: `inf + (-inf)`)은 건너뛸 수 없어서 결과가 NaN이 돼요.
+
+```python
+>>> sd.nansum(sd.asarray([sd.inf, -sd.inf, sd.nan]))
+nan
+```
+
+무한대는 NaN이 아니라서 건너뛰지 않아요. `nanmin`에 `-inf`가 있으면 그것이 최솟값이에요.
+
+```python
+>>> sd.nanmin(sd.asarray([sd.nan, -sd.inf, 2.0]))
+-inf
+```
+
+### 메서드는 없어요
+
+`x.sum()`처럼 짝 함수에는 메서드가 있지만, NaN을 건너뛰는 함수는 `sd.nansum(x)`처럼 모듈 함수로만 불러요.
+
+```python
+>>> x.nansum()
+Traceback (most recent call last):
+    ...
+AttributeError: 'stardust._core.ndarray' object has no attribute 'nansum'
+```
+
+### 옵션 규칙은 짝 함수와 같아요
+
+`nanargmin`, `nanargmax`의 `axis`는 int 하나만, `correction`에는 bool이 아닌 수만 받아요. 리스트는 먼저 [`asarray`](/api/array/asarray/)로 배열로 바꿔야 해요.
+
+```python
+>>> sd.nanargmin(x, axis=(0,))
+Traceback (most recent call last):
+    ...
+TypeError: nanargmin(): 'axis' must be an int, not tuple
+>>> sd.nanvar(x, correction=True)
+Traceback (most recent call last):
+    ...
+TypeError: nanvar(): 'correction' must be an int or a float, not bool
+>>> sd.nansum([1.0, 2.0])
+Traceback (most recent call last):
+    ...
+TypeError: nansum(): 'x' must be an sd.ndarray, not list
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | 이 페이지의 함수와 다른 점 |
+|---|---|---|
+| NaN이 있으면 결과도 NaN이 되게 | `sum`, `mean`, `max` … | NaN을 그대로 퍼뜨려요. "빠진 값이 있다"는 사실을 놓치지 않아요. |
+| NaN을 빼고 가운데 값·분위수 구하기 | `nanmedian`, `nanquantile` | [분위수와 중앙값](/api/array/quantile/) 문서에 있어요. |
+| NaN을 다른 값으로 바꾸기 | `where`와 `isnan` | `sd.where(sd.isnan(x), 0.0, x)`처럼 값을 직접 채워 넣어요. |
+| NaN이 몇 개인지, 어디 있는지 | `isnan` | 원소마다 NaN인지를 bool 배열로 돌려줘요. |
+
+NaN을 0으로 바꾼 뒤 `sum`을 하면 `nansum`과 같은 결과가 나와요. 하지만 `mean`은 달라요. 0으로 채운 칸도 개수에 들어가서 평균이 작아져요. 평균·분산은 꼭 `nanmean`, `nanvar`를 쓰세요.
+
+```python
+>>> sd.mean(sd.where(sd.isnan(x), 0.0, x))
+1.3333333333333333
+>>> sd.nanmean(x)
+2.0
+```
+
+## numpy를 아는 분께
+
+- 누적 함수의 이름이 `nancumsum`, `nancumprod`가 아니라 `nancumulative_sum`, `nancumulative_prod`예요. `include_initial=` 옵션이 있어요.
+- 모두 NaN이거나 빈 줄에서 numpy와 같은 값을 돌려주지만, `RuntimeWarning`은 내지 않아요.
+- 모든 옵션이 keyword-only이고, `nanvar`·`nanstd`의 자유도는 `ddof=`가 아니라 `correction=`이에요. 정수가 아닌 값도 받아요.
+- 2차원 이상 배열에서 `nancumulative_*`의 `axis`를 빠뜨리면 평탄화하지 않고 `ValueError`예요.
+- `out=`, `where=`, `initial=` 인자와 `nanpercentile`은 없어요. 분위수는 `nanquantile`을 쓰세요.
+- 결과가 숫자 하나면 numpy 스칼라가 아니라 Python `float`·`int`예요.

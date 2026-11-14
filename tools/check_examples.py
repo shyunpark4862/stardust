@@ -48,7 +48,15 @@ def check_page(path: Path) -> tuple[int, int]:
 def _dedent(block: str) -> str:
     lines = block.split("\n")
     indent = min((len(l) - len(l.lstrip()) for l in lines if l.strip()), default=0)
-    return "\n".join(l[indent:] for l in lines)
+    lines = [l[indent:] for l in lines]
+    # A blank line inside printed output (3-D arrays print one between their
+    # 2-D blocks) would end the expected output for doctest. Mark it instead,
+    # so the page can show the output exactly as Python prints it.
+    for i in range(1, len(lines) - 1):
+        nxt = lines[i + 1]
+        if not lines[i].strip() and lines[i - 1].strip() and nxt.strip() and not nxt.startswith(">>>"):
+            lines[i] = "<BLANKLINE>"
+    return "\n".join(lines)
 
 
 def names_of(path: Path) -> list[str]:

@@ -1,0 +1,296 @@
+---
+title: 수의 한계
+names: [finfo, iinfo]
+group: dtype 도구
+order: 3
+signatures:
+  - "sd.finfo(type, /)"
+  - "sd.iinfo(type, /)"
+summary: 실수(float64)와 정수(int64)가 나타낼 수 있는 수의 한계를 알려 줘요. 가장 큰 수, 가장 작은 수, 실수의 정밀도(eps) 같은 값이에요.
+params:
+  - name: type
+    type: dtype, 그 이름, 또는 ndarray
+    kind: positional-only
+    desc: finfo는 float64나 complex128, iinfo는 int64. 배열을 주면 그 배열의 dtype으로 봐요.
+returns:
+  type: FinfoResult 또는 IinfoResult
+  desc: 이름으로 꺼낼 수 있는 튜플(namedtuple). finfo는 bits, eps, max, min, smallest_normal, dtype, iinfo는 bits, max, min, dtype이에요.
+raises:
+  - type: TypeError
+    desc: finfo에 float64·complex128이 아닌 dtype(bool, int64)을, iinfo에 int64가 아닌 dtype을 넣었을 때. Python의 float, numpy dtype, "float32", Python 숫자, sd.string을 넣었을 때.
+seeAlso: [dtype-tools, nextafter, constants, numerics, astype]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+컴퓨터의 수는 정해진 칸(64비트)에 담기기 때문에 **나타낼 수 있는 범위와 정밀도에 한계**가 있어요. `finfo`는 실수(float64)의 한계를, `iinfo`는 정수(int64)의 한계를 알려 줘요.
+
+```python
+>>> import stardust as sd
+>>> sd.iinfo(sd.int64)
+IinfoResult(bits=64, max=9223372036854775807, min=-9223372036854775808, dtype=int64)
+>>> sd.finfo(sd.float64)
+FinfoResult(bits=64, eps=2.220446049250313e-16, max=1.7976931348623157e+308, min=-1.7976931348623157e+308, smallest_normal=2.2250738585072014e-308, dtype=float64)
+```
+
+결과는 이름으로 값을 꺼낼 수 있는 튜플이에요. 보통은 필요한 값 하나만 꺼내 써요.
+
+```python
+>>> sd.iinfo(sd.int64).max
+9223372036854775807
+>>> sd.finfo(sd.float64).eps
+2.220446049250313e-16
+```
+
+dtype 객체 대신 이름(`"float64"`)이나 배열을 줘도 돼요. 배열이면 그 배열의 dtype을 봐요.
+
+```python
+>>> x = sd.asarray([1.0, 2.0])
+>>> sd.finfo(x).eps
+2.220446049250313e-16
+>>> sd.iinfo("int64").min
+-9223372036854775808
+```
+
+## `iinfo`: 정수의 범위
+
+| 필드 | 뜻 | int64의 값 |
+|---|---|---|
+| `bits` | 수 하나에 쓰는 비트 수 | `64` |
+| `max` | 가장 큰 정수 | `9223372036854775807` (2⁶³ − 1, 약 9.2 × 10¹⁸) |
+| `min` | 가장 작은 정수 | `-9223372036854775808` (−2⁶³) |
+| `dtype` | 설명하는 dtype | `int64` |
+
+값은 모두 Python `int`예요.
+
+int64 배열의 계산이 이 범위를 넘으면 에러 없이 **반대쪽 끝으로 넘어가요**(wrap). `max`에 1을 더하면 `min`이 돼요.
+
+```python
+>>> big = sd.asarray([sd.iinfo(sd.int64).max])
+>>> big + 1
+array([-9223372036854775808], dtype=int64)
+```
+
+<Fig caption="int64의 범위는 원처럼 이어져 있어요. 가장 큰 수에서 한 칸 더 가면 가장 작은 수가 돼요.">
+  <ArrayFig name="int64" data={['min', '…', '-1', '0', '1', '…', 'max']} tones={['b', 'm', '', '', '', 'm', 'b']} note="max + 1 → min" />
+</Fig>
+
+그래서 큰 정수를 다룰 때는 `iinfo`로 범위를 미리 확인하는 것이 좋아요. 예를 들어 값마다 `10**9`를 곱하려 할 때, 곱한 결과가 범위 안에 드는지 미리 확인할 수 있어요.
+
+```python
+>>> limit = sd.iinfo(sd.int64).max
+>>> values = sd.asarray([10**9, 10**10])
+>>> values <= limit // 10**9
+array([ True, False], dtype=bool)
+```
+
+`10**10 × 10**9 = 10**19`는 `max`(약 9.2 × 10¹⁸)를 넘어요. 넘는 값이 있다면 실수(float64)로 바꿔서 계산하는 방법을 생각해 보세요.
+
+## `finfo`: 실수의 범위와 정밀도
+
+| 필드 | 뜻 | float64의 값 |
+|---|---|---|
+| `bits` | 수 하나에 쓰는 비트 수 | `64` |
+| `eps` | 1.0과 그다음 실수 사이의 간격 | 약 `2.2e-16` |
+| `max` | 가장 큰 유한한 실수 | 약 `1.8e+308` |
+| `min` | 가장 작은 유한한 실수 (`-max`) | 약 `-1.8e+308` |
+| `smallest_normal` | 정밀도를 온전히 지키는 가장 작은 양수 | 약 `2.2e-308` |
+| `dtype` | 설명하는 dtype | `float64` |
+
+`dtype` 말고는 모두 Python `int`나 `float`예요. 하나씩 볼게요.
+
+### `eps`: 실수의 정밀도
+
+실수는 자릿수가 한정돼 있어서, 수직선 위의 **띄엄띄엄한 점**만 나타낼 수 있어요. 그 점들 사이의 수는 가장 가까운 점으로 반올림돼요.
+
+`eps`(엡실론, epsilon)는 **1.0과 그 바로 다음 실수 사이의 간격**이에요. 1.0에 `eps`를 더하면 1.0과 다른 수가 되지만, 그 절반을 더하면 반올림돼서 다시 1.0이에요.
+
+```python
+>>> eps = sd.finfo(sd.float64).eps
+>>> 1.0 + eps
+1.0000000000000002
+>>> 1.0 + eps == 1.0
+False
+>>> 1.0 + eps / 2 == 1.0
+True
+```
+
+1.0 바로 다음의 실수를 직접 구해 보면 정말로 `eps`만큼 떨어져 있어요(`nextafter`는 [nextafter](/api/array/nextafter/) 문서에 있어요).
+
+```python
+>>> sd.nextafter(1.0, 2.0) - 1.0
+2.220446049250313e-16
+```
+
+<Fig caption="1.0 근처의 실수는 eps 간격으로 놓여 있어요. 그 사이의 값은 가장 가까운 점으로 반올림돼요.">
+  <ArrayFig data={['1 − eps/2', '1.0', '1 + eps/2', '1 + eps', '1 + 2·eps']} tones={['g', 'b', 'g', 'a', 'a']} note="점선 칸은 나타낼 수 없는 값" />
+</Fig>
+
+간격은 수의 크기에 **비례해서** 커져요. 1.0 근처에서는 약 2.2 × 10⁻¹⁶이지만, 10¹⁶ 근처에서는 2.0이에요. 그래서 `1e16`에 `1.0`을 더해도 그대로예요.
+
+```python
+>>> 1e16 + 1.0
+1e+16
+>>> sd.nextafter(1e16, 2e16) - 1e16
+2.0
+```
+
+그래서 `eps`는 **상대적인 정밀도**로 이해하면 돼요. float64는 어떤 크기의 수든 약 `eps`(10⁻¹⁶)의 비율, 즉 십진수로 15~16자리까지 정확해요.
+
+### 쓰임새: 실수를 비교할 때의 허용 오차
+
+실수 계산에는 작은 반올림 오차가 따라와서, 수학적으로 같아야 할 값이 `==`로 같지 않은 일이 흔해요.
+
+```python
+>>> 0.1 + 0.2 == 0.3
+False
+>>> 0.1 + 0.2
+0.30000000000000004
+```
+
+그래서 실수는 "차이가 충분히 작은가"로 비교해요. 이때 `1e-12` 같은 **고정된** 기준을 쓰면, 수의 크기에 따라 너무 엄격하거나 너무 느슨해져요.
+
+```python
+>>> a = sd.asarray([0.1 + 0.2, 1e-15, (0.1 + 0.2) * 1e8])
+>>> b = sd.asarray([0.3, 2e-15, 0.3e8])
+>>> sd.abs(a - b) <= 1e-12
+array([ True,  True, False], dtype=bool)
+```
+
+둘째 칸은 `1e-15`와 `2e-15`로 두 배나 다른데 "같다"고 했고, 셋째 칸은 마지막 자리만 다른 반올림 오차인데 "다르다"고 했어요. 기준을 **두 수의 크기에 `eps`를 곱한 값**으로 잡으면 두 경우 모두 맞게 판단해요.
+
+```python
+>>> tol = 4 * eps * sd.maximum(sd.abs(a), sd.abs(b))
+>>> sd.abs(a - b) <= tol
+array([ True, False,  True], dtype=bool)
+```
+
+`eps` 앞의 `4`는 허용할 반올림 횟수에 맞춰 정하는 여유예요. 계산을 여러 단계 거친 결과라면 오차가 쌓이므로 더 크게 잡아요.
+
+<Callout type="tip" title="eps는 1.0 근처의 간격이에요">
+
+`eps`를 그대로 허용 오차로 쓰면 1 근처의 수에만 맞아요. 큰 수나 작은 수를 비교할 때는 위처럼 **비교하는 수의 크기를 곱해서** 쓰세요.
+
+</Callout>
+
+### `max`, `min`: 넘으면 무한대
+
+`max`보다 큰 계산 결과는 나타낼 수 없어서 무한대(`inf`)가 돼요. 에러는 나지 않아요.
+
+```python
+>>> fmax = sd.finfo(sd.float64).max
+>>> sd.asarray([fmax]) * 2
+array([inf], dtype=float64)
+```
+
+`min`은 `-max`예요. "가장 작은 양수"가 아니라 **가장 작은(가장 음수인) 유한한 수**라는 점에 주의하세요. 0에 가장 가까운 양수가 궁금하다면 다음 절의 `smallest_normal`을 보세요.
+
+```python
+>>> sd.finfo(sd.float64).min == -fmax
+True
+```
+
+### `smallest_normal`: 아주 작은 양수의 경계
+
+`smallest_normal`(약 2.2 × 10⁻³⁰⁸)은 float64가 **정밀도를 온전히 지키면서** 나타낼 수 있는 가장 작은 양수예요. 이보다 작은 수도 0이 되지 않고 어느 정도까지 나타낼 수 있지만, 작아질수록 유효 자릿수가 줄어들어요. 약 5 × 10⁻³²⁴보다 작아지면 결국 0이 돼요.
+
+```python
+>>> tiny = sd.finfo(sd.float64).smallest_normal
+>>> tiny / 2
+1.1125369292536007e-308
+>>> 5e-324 / 2
+0.0
+```
+
+이렇게 작은 수를 다룰 일은 드물어요. 확률을 아주 많이 곱하는 계산처럼 값이 한없이 작아질 수 있는 곳에서 이 경계를 의식하면 돼요. 그런 계산은 로그를 취해 더하는 방식으로 바꾸는 것이 보통이에요.
+
+## 복소수의 `finfo`
+
+`finfo(sd.complex128)`도 쓸 수 있어요. 복소수의 실수부와 허수부는 각각 float64라서, 결과는 **그 float64에 대한 값**이에요. 그래서 `dtype` 필드가 `float64`예요.
+
+```python
+>>> sd.finfo(sd.complex128).dtype
+float64
+>>> sd.finfo(sd.complex128).eps == eps
+True
+```
+
+## 결과를 다루는 방법
+
+결과는 namedtuple(이름 붙은 튜플)이라서 이름으로도, 순서로도 꺼낼 수 있고, 여러 변수로 한꺼번에 풀 수도 있어요.
+
+```python
+>>> info = sd.iinfo(sd.int64)
+>>> info.bits
+64
+>>> info[1]
+9223372036854775807
+>>> bits, imax, imin, dt = info
+>>> dt
+int64
+>>> info._fields
+('bits', 'max', 'min', 'dtype')
+```
+
+## 조심할 점
+
+### 맞는 쪽 함수를 쓰세요
+
+`finfo`는 실수용, `iinfo`는 정수용이에요. 바꿔 쓰면 `TypeError`예요. bool에는 둘 다 쓸 수 없어요.
+
+```python
+>>> sd.finfo(sd.int64)
+Traceback (most recent call last):
+    ...
+TypeError: finfo(): 'type' must be float64 or complex128, not int64
+>>> sd.iinfo(sd.float64)
+Traceback (most recent call last):
+    ...
+TypeError: iinfo(): 'type' must be int64, not float64
+```
+
+어느 쪽인지 모를 배열을 받는다면 [`isdtype`](/api/array/dtype-tools/)으로 먼저 확인하세요.
+
+### 네 가지 dtype만 받아요
+
+Python의 `float`, 숫자 하나, `"float32"` 같은 다른 이름은 받지 않아요.
+
+```python
+>>> sd.finfo(float)
+Traceback (most recent call last):
+    ...
+TypeError: finfo(): 'type' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names) or an sd.ndarray, not <class 'float'>
+>>> sd.finfo(1.0)
+Traceback (most recent call last):
+    ...
+TypeError: finfo(): 'type' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names) or an sd.ndarray, not float
+```
+
+### 정수의 한계와 실수의 정밀도는 다른 이야기예요
+
+`iinfo(int64).max`는 약 9.2 × 10¹⁸이지만, float64는 2⁵³(약 9 × 10¹⁵)보다 큰 정수를 모두 정확히 담지는 못해요. int64 범위 안의 큰 정수라도 실수로 바꾸면 끝자리가 달라질 수 있어요.
+
+```python
+>>> sd.astype(sd.asarray([2**53 + 1]), sd.float64)
+array([9007199254740992.0], dtype=float64)
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 |
+|---|---|
+| 실수·정수의 한계 값 | `finfo`, `iinfo` |
+| 어떤 실수 바로 다음의 실수 | `nextafter` |
+| 무한대, NaN 값 자체 | `sd.inf`, `sd.nan` |
+| dtype의 부류 확인, 승격 결과 | `isdtype`, `result_type` |
+
+## numpy를 아는 분께
+
+- 필드가 적어요. `finfo`는 `bits`, `eps`, `max`, `min`, `smallest_normal`, `dtype`만 있어요. `tiny`, `resolution`, `precision`, `epsneg` 등은 없어요(`tiny`는 `smallest_normal`과 같은 값이에요).
+- 값은 numpy 스칼라가 아니라 Python `int`·`float`이고, 결과는 namedtuple이에요.
+- `finfo`는 float64와 complex128, `iinfo`는 int64만 받아요. `np.float32`, `float`, `"float32"`는 `TypeError`예요.
+- complex128의 `finfo`가 float64를 설명하는 것은 numpy와 같아요.

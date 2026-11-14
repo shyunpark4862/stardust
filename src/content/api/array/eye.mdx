@@ -1,0 +1,255 @@
+---
+title: eye
+names: [eye]
+group: 배열 만들기
+order: 5
+signatures:
+  - "sd.eye(n_rows, n_cols=None, /, *, k=0, dtype=None)"
+summary: 대각선 한 줄만 1이고 나머지는 모두 0인 2차원 배열을 만들어요. 정사각형이면 단위행렬이에요.
+params:
+  - name: n_rows
+    type: int
+    kind: positional-only
+    desc: 행의 수. 0 이상이에요.
+  - name: n_cols
+    type: int 또는 None
+    kind: positional-only
+    desc: 열의 수. None이면 n_rows와 같아서 정사각형이에요.
+  - name: k
+    type: int
+    kind: keyword-only
+    desc: 1을 놓을 대각선의 위치. 0은 가운데(주대각선), 양수는 위쪽, 음수는 아래쪽이에요.
+  - name: dtype
+    type: dtype 또는 None
+    kind: keyword-only
+    desc: 결과의 원소 종류. None이면 float64예요.
+returns:
+  type: ndarray
+  desc: shape (n_rows, n_cols)인 2차원 배열.
+raises:
+  - type: TypeError
+    desc: n_rows, n_cols, k가 정수가 아닐 때(실수, bool, tuple), dtype이 틀렸을 때, k를 이름 없이 셋째 자리에 넘겼을 때.
+  - type: ValueError
+    desc: n_rows나 n_cols가 음수일 때.
+  - type: OverflowError
+    desc: n_rows, n_cols, k가 int64 범위를 벗어날 때.
+seeAlso: [filled, tril-triu, matmul, indexing]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+`eye`는 왼쪽 위에서 오른쪽 아래로 이어지는 대각선만 1이고, 나머지는 모두 0인 행렬을 만들어요. 이런 정사각 행렬을 **단위행렬**이라고 해요. 이름 `eye`는 단위행렬을 흔히 부르는 기호 I(아이)와 발음이 같아서 붙었어요.
+
+```python
+>>> import stardust as sd
+>>> sd.eye(3)
+array([[1.0, 0.0, 0.0],
+       [0.0, 1.0, 0.0],
+       [0.0, 0.0, 1.0]], dtype=float64)
+```
+
+<Fig caption="sd.eye(3): 행 번호와 열 번호가 같은 칸(대각선)만 1이에요.">
+  <ArrayFig name="sd.eye(3)" data={[[1, 0, 0], [0, 1, 0], [0, 0, 1]]} tones={[['b', '', ''], ['', 'b', ''], ['', '', 'b']]} axes note="shape (3, 3)" />
+</Fig>
+
+단위행렬은 숫자의 `1`과 같은 역할을 해요. 어떤 행렬에 단위행렬을 행렬곱([`matmul`](/api/array/matmul/), `@`)하면 원래 행렬이 그대로 나와요.
+
+```python
+>>> m = sd.asarray([[1.0, 2.0], [3.0, 4.0]])
+>>> m @ sd.eye(2)
+array([[1.0, 2.0],
+       [3.0, 4.0]], dtype=float64)
+```
+
+## 직사각형 행렬: n_cols
+
+둘째 인자 `n_cols`로 열의 수를 따로 정할 수 있어요. 생략하면 `n_rows`와 같아서 정사각형이에요. 직사각형에서도 1은 `(0, 0)`, `(1, 1)`, … 처럼 행 번호와 열 번호가 같은 자리에 놓이고, 칸이 모자라면 거기서 멈춰요.
+
+```python
+>>> sd.eye(2, 4)
+array([[1.0, 0.0, 0.0, 0.0],
+       [0.0, 1.0, 0.0, 0.0]], dtype=float64)
+>>> sd.eye(4, 2)
+array([[1.0, 0.0],
+       [0.0, 1.0],
+       [0.0, 0.0],
+       [0.0, 0.0]], dtype=float64)
+```
+
+<Callout type="warn" title="모양은 tuple이 아니라 두 인자로">
+  `zeros((2, 4))`처럼 모양을 tuple로 주는 함수와 달리, `eye`는 행의 수와 열의 수를 **따로따로** 받아요. `sd.eye((2, 4))`는 `TypeError`예요. `sd.eye(2, 4)`로 쓰세요.
+</Callout>
+
+```python
+>>> sd.eye((2, 4))
+Traceback (most recent call last):
+    ...
+TypeError: eye(): 'n_rows' must be an int, not tuple
+```
+
+## k: 대각선을 옮기기
+
+`k`는 1을 놓을 대각선을 옆으로 옮겨요. `k=0`(기본값)은 가운데 대각선(주대각선)이에요. `k`가 양수면 그만큼 **오른쪽 위로**, 음수면 **왼쪽 아래로** 옮겨 가요.
+
+```python
+>>> sd.eye(3, k=1)
+array([[0.0, 1.0, 0.0],
+       [0.0, 0.0, 1.0],
+       [0.0, 0.0, 0.0]], dtype=float64)
+>>> sd.eye(3, k=-1)
+array([[0.0, 0.0, 0.0],
+       [1.0, 0.0, 0.0],
+       [0.0, 1.0, 0.0]], dtype=float64)
+```
+
+<Fig caption="k는 대각선의 위치예요. 1이 놓이는 칸은 '열 번호 - 행 번호 = k'인 칸이에요.">
+  <ArrayFig name="k=-1" data={[[0, 0, 0], [1, 0, 0], [0, 1, 0]]} tones={[['', '', ''], ['b', '', ''], ['', 'b', '']]} />
+  <ArrayFig name="k=0" data={[[1, 0, 0], [0, 1, 0], [0, 0, 1]]} tones={[['b', '', ''], ['', 'b', ''], ['', '', 'b']]} />
+  <ArrayFig name="k=1" data={[[0, 1, 0], [0, 0, 1], [0, 0, 0]]} tones={[['', 'b', ''], ['', '', 'b'], ['', '', '']]} />
+</Fig>
+
+정확히 말하면 `k`는 **"열 번호 - 행 번호"** 가 `k`인 칸에 1을 놓아요. 대각선이 옆으로 갈수록 짧아져서, `n×n` 행렬에서 `k`번 대각선의 1은 `n - |k|`개예요.
+
+```python
+>>> sd.eye(4, k=2)
+array([[0.0, 0.0, 1.0, 0.0],
+       [0.0, 0.0, 0.0, 1.0],
+       [0.0, 0.0, 0.0, 0.0],
+       [0.0, 0.0, 0.0, 0.0]], dtype=float64)
+```
+
+`k`가 행렬 밖으로 벗어나면 1을 놓을 칸이 없어서 **모두 0인 행렬**이에요. 에러가 아니에요.
+
+```python
+>>> sd.eye(3, k=3)
+array([[0.0, 0.0, 0.0],
+       [0.0, 0.0, 0.0],
+       [0.0, 0.0, 0.0]], dtype=float64)
+```
+
+직사각형 행렬에서도 `k`는 같은 뜻이에요.
+
+```python
+>>> sd.eye(2, 3, k=1)
+array([[0.0, 1.0, 0.0],
+       [0.0, 0.0, 1.0]], dtype=float64)
+```
+
+## 결과의 dtype
+
+기본은 실수(float64)예요. `dtype=`으로 바꿀 수 있어요.
+
+```python
+>>> sd.eye(3, dtype=sd.int64)
+array([[1, 0, 0],
+       [0, 1, 0],
+       [0, 0, 1]], dtype=int64)
+>>> sd.eye(3, dtype=sd.bool)
+array([[ True, False, False],
+       [False,  True, False],
+       [False, False,  True]], dtype=bool)
+```
+
+bool로 만든 `eye`는 "대각선 자리"를 표시하는 **마스크**(고를 자리를 `True`로 표시한 배열)로 쓸 수 있어요. 아래 절에서 써 볼게요.
+
+## 이럴 때 써요
+
+### 대각선을 꺼내거나 바꾸기
+
+bool `eye`로 [인덱싱](/api/array/indexing/)하면 대각선의 값만 골라 낼 수 있어요. 같은 방법으로 대각선에 값을 대입할 수도 있어요.
+
+```python
+>>> a = sd.asarray([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+>>> a[sd.eye(3, dtype=sd.bool)]
+array([1, 5, 9], dtype=int64)
+>>> a[sd.eye(3, dtype=sd.bool)] = 0
+>>> a
+array([[0, 2, 3],
+       [4, 0, 6],
+       [7, 8, 0]], dtype=int64)
+```
+
+대각선을 꺼내기만 할 거라면 `sd.linalg.diagonal(a)`가 더 짧아요.
+
+### 벡터로 대각행렬 만들기
+
+대각선에 원하는 값들이 놓인 행렬(대각행렬)은 `eye`에 그 값들을 곱하면 돼요. [브로드캐스팅](/api/array/broadcasting/) 덕분에 `j`번째 열에 `v[j]`가 곱해지고, 대각선이 아닌 칸은 0이라 그대로 0이에요.
+
+```python
+>>> v = sd.asarray([1.0, 2.0, 3.0])
+>>> sd.eye(3) * v
+array([[1.0, 0.0, 0.0],
+       [0.0, 2.0, 0.0],
+       [0.0, 0.0, 3.0]], dtype=float64)
+```
+
+### 대각선에 같은 수 더하고 빼기
+
+선형대수에서는 "행렬에서 대각선에만 어떤 수 λ를 빼는" `A - λI` 같은 계산이 자주 나와요. `eye`에 그 수를 곱해서 빼면 돼요.
+
+```python
+>>> A = sd.asarray([[2.0, 1.0], [1.0, 3.0]])
+>>> A - 2.0 * sd.eye(2)
+array([[0.0, 1.0],
+       [1.0, 1.0]], dtype=float64)
+```
+
+## 조심할 점
+
+### k는 이름을 붙여서
+
+셋째 자리에 숫자를 넣어 `sd.eye(3, 3, 1)`처럼 쓰면 `TypeError`예요. `k`는 언제나 `k=1`처럼 이름을 붙여요. 둘째 자리의 숫자는 `k`가 아니라 열의 수라는 점도 헷갈리지 마세요. `sd.eye(3, 1)`은 3행 1열 행렬이에요.
+
+```python
+>>> sd.eye(3, 1)
+array([[1.0],
+       [0.0],
+       [0.0]], dtype=float64)
+```
+
+### 크기와 k는 정수
+
+행·열의 수와 `k`에는 정수만 쓸 수 있어요. 실수나 `True`·`False`는 `TypeError`, 음수 크기는 `ValueError`예요.
+
+```python
+>>> sd.eye(3.0)
+Traceback (most recent call last):
+    ...
+TypeError: eye(): 'n_rows' must be an int, not float
+>>> sd.eye(3, k=1.0)
+Traceback (most recent call last):
+    ...
+TypeError: eye(): 'k' must be an int, not float
+>>> sd.eye(-1)
+Traceback (most recent call last):
+    ...
+ValueError: eye(): negative dimensions are not allowed
+```
+
+크기 0은 괜찮아요. 원소가 없는 빈 행렬이에요.
+
+```python
+>>> sd.eye(0, 3)
+array([], shape=(0, 3), dtype=float64)
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | `eye`와 다른 점 |
+|---|---|---|
+| 모두 0이나 1인 행렬 | [`zeros`, `ones`](/api/array/filled/) | 대각선이 따로 없어요. 모양은 tuple로 줘요. |
+| 대각선 위쪽이나 아래쪽 전체를 남기기 | [`tril`, `triu`](/api/array/tril-triu/) | 대각선 한 줄이 아니라 삼각형 영역이에요. 기존 배열을 받아요. |
+| 행렬의 대각선 값 꺼내기 | `sd.linalg.diagonal` | 행렬을 만드는 게 아니라 1차원 배열로 꺼내요. |
+
+`tril`과 `triu`도 `k`로 대각선을 옮기는데, 뜻이 `eye`와 같아요. `k`번 대각선은 언제나 "열 번호 - 행 번호 = `k`"인 칸들이에요.
+
+## numpy를 아는 분께
+
+- `n_cols`(numpy의 `M`)는 positional-only, `k`는 keyword-only예요. `np.eye(3, 3, 1)`처럼 `k`를 자리로 넘길 수 없어요.
+- 인자 이름이 `N`, `M`이 아니라 `n_rows`, `n_cols`예요(이름으로 넘길 수는 없어요).
+- `np.identity`는 없어요. `sd.eye(n)`을 쓰세요.
+- `order=`, `like=`, `device=` 인자는 없어요.

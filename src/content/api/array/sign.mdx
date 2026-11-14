@@ -1,0 +1,354 @@
+---
+title: 부호와 절댓값
+names: [negative, positive, abs, sign, copysign, signbit]
+group: 산술
+order: 4
+signatures:
+  - "sd.negative(x, /, *, out=None)"
+  - "sd.positive(x, /, *, out=None)"
+  - "sd.abs(x, /, *, out=None)"
+  - "sd.sign(x, /, *, out=None)"
+  - "sd.copysign(x1, x2, /, *, out=None)"
+  - "sd.signbit(x, /, *, out=None)"
+summary: 부호를 뒤집거나(negative), 절댓값을 구하거나(abs), 부호만 뽑거나(sign, signbit), 한 값의 크기에 다른 값의 부호를 붙여요(copysign). 원소마다 따로 계산해요.
+params:
+  - name: x
+    type: ndarray 또는 Python 숫자
+    kind: positional-only
+    desc: 계산할 값.
+  - name: x1, x2
+    type: ndarray 또는 Python 숫자
+    kind: positional-only
+    desc: copysign의 두 인자. 결과의 크기는 x1에서, 부호는 x2에서 가져와요. 모양이 다르면 브로드캐스팅 규칙으로 맞춰요.
+  - name: out
+    type: ndarray 또는 None
+    kind: keyword-only
+    desc: 결과를 적어 넣을 배열. None이면 새 배열을 만들어요.
+returns:
+  type: ndarray 또는 Python 숫자
+  desc: negative·positive·sign은 입력의 dtype(bool은 int64), abs는 입력의 dtype(bool은 int64, 복소수는 float64), copysign은 float64, signbit은 bool이에요. 입력이 Python 숫자면 결과도 Python 숫자예요.
+raises:
+  - type: TypeError
+    desc: copysign·signbit에 복소수를 넣었을 때, 배열도 숫자도 아닌 것을 넣었을 때, out의 dtype이 결과를 담을 수 없을 때.
+  - type: ValueError
+    desc: copysign의 두 인자나 out의 모양이 브로드캐스팅으로 맞지 않을 때.
+seeAlso: [arithmetic, pow, rounding, complex, maximum]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+## 한눈에 보기
+
+부호와 크기를 다루는 원소별 함수 여섯 개예요.
+
+| 함수 | 연산자 | 하는 일 | `-3`의 결과 |
+|---|:---:|---|:---:|
+| `negative(x)` | `-x` | 부호를 뒤집어요 | `3` |
+| `positive(x)` | `+x` | 값을 그대로 둬요(새 배열) | `-3` |
+| `abs(x)` | `abs(x)` | 절댓값(크기) | `3` |
+| `sign(x)` | | 부호를 `-1`, `0`, `1`로 | `-1` |
+| `copysign(x1, x2)` | | `x1`의 크기에 `x2`의 부호를 붙여요 | `copysign(-3, 1)`은 `3.0` |
+| `signbit(x)` | | 부호가 음인가요? (`True`/`False`) | `True` |
+
+```python
+>>> import stardust as sd
+>>> a = sd.asarray([-3, 0, 5])
+>>> -a
+array([ 3,  0, -5], dtype=int64)
+>>> abs(a)
+array([3, 0, 5], dtype=int64)
+>>> sd.sign(a)
+array([-1,  0,  1], dtype=int64)
+```
+
+<Fig caption="한 배열에서 abs는 크기만, sign은 방향만 남겨요. 둘을 곱하면 원래 값이 돼요.">
+  <ArrayFig name="a" data={[-3, 0, 5]} />
+  <Op note="abs">→</Op>
+  <ArrayFig name="sd.abs(a)" data={[3, 0, 5]} tones={['a', '', 'a']} />
+  <Op note="sign">→</Op>
+  <ArrayFig name="sd.sign(a)" data={[-1, 0, 1]} tones={['b', '', 'b']} />
+</Fig>
+
+## negative와 positive
+
+`sd.negative(x)`는 `-x`, `sd.positive(x)`는 `+x`와 같아요. `positive`는 값을 바꾸지 않지만 **새 배열**을 돌려줘요. 결과를 고쳐도 원래 배열은 그대로예요.
+
+```python
+>>> sd.negative(a)
+array([ 3,  0, -5], dtype=int64)
+>>> b = sd.positive(a)
+>>> b is a
+False
+>>> b[0] = 100
+>>> a
+array([-3,  0,  5], dtype=int64)
+```
+
+bool 배열에 쓰면 int64가 돼요. `True`를 1로 보고 부호를 뒤집기 때문이에요. 참·거짓을 뒤집고 싶었다면 `-`가 아니라 `~`나 `sd.logical_not`을 써야 해요.
+
+```python
+>>> -sd.asarray([True, False])
+array([-1,  0], dtype=int64)
+>>> ~sd.asarray([True, False])
+array([False,  True], dtype=bool)
+```
+
+## abs: 절댓값
+
+`sd.abs(x)`는 원소의 절댓값이에요. Python 내장 함수 `abs(x)`를 배열에 써도 같은 결과예요. 결과의 dtype은 입력과 같아요(bool은 int64).
+
+```python
+>>> f = sd.asarray([-2.5, -0.0, 0.0, 3.0, sd.nan])
+>>> sd.abs(f)
+array([2.5, 0.0, 0.0, 3.0, nan], dtype=float64)
+>>> sd.abs(-3)
+3
+```
+
+### 복소수의 abs는 크기예요
+
+복소수 `a + bj`의 절댓값은 복소평면에서 원점까지의 거리 `√(a² + b²)`예요. 그래서 결과는 복소수가 아니라 **실수(float64)** 예요.
+
+```python
+>>> sd.abs(sd.asarray([3 + 4j, -1j]))
+array([5.0, 1.0], dtype=float64)
+>>> sd.abs(3 + 4j)
+5.0
+```
+
+아주 큰 복소수도 중간 계산이 넘치지 않게 계산해요.
+
+```python
+>>> sd.abs(sd.asarray([1e200 + 1e200j]))
+array([1.414213562373095e+200], dtype=float64)
+```
+
+## sign: 부호만 뽑기
+
+양수는 `1`, 음수는 `-1`, 0은 `0`이에요. 결과의 dtype은 입력과 같아요. 정수를 넣으면 정수, 실수를 넣으면 실수가 나와요. NaN의 부호는 NaN이에요.
+
+```python
+>>> sd.sign(f)
+array([-1.0,  0.0,  0.0,  1.0,  nan], dtype=float64)
+>>> sd.sign(sd.asarray([-sd.inf, sd.inf]))
+array([-1.0,  1.0], dtype=float64)
+```
+
+<Fig caption="sign은 0을 기준으로 -1과 1로 나뉘는 계단이에요. 0에서만 값이 0이에요.">
+  <Plot
+    curves={[{ f: (x) => Math.sign(x), label: 'sign(x)' }]}
+    domain={[-3, 3]}
+    range={[-1.5, 1.5]}
+    xTicks={[
+      { v: -2, label: '-2' },
+      { v: 2, label: '2' },
+    ]}
+    yTicks={[
+      { v: -1, label: '-1' },
+      { v: 1, label: '1' },
+    ]}
+  />
+</Fig>
+
+`sign`과 `abs`를 곱하면 원래 값이 돼요.
+
+```python
+>>> v = sd.asarray([-3.2, 0.0, 7.1])
+>>> sd.sign(v) * sd.abs(v)
+array([-3.2,  0.0,  7.1], dtype=float64)
+```
+
+### 복소수의 sign
+
+복소수에는 양·음이 없어서, `sign`은 **같은 방향을 가리키는 크기 1인 복소수** `z / |z|`를 돌려줘요. 0은 0이에요.
+
+```python
+>>> sd.sign(sd.asarray([3 + 4j, 0j, -2 + 0j]))
+array([(0.6+0.8j),         0j,    (-1+0j)], dtype=complex128)
+```
+
+## 부호 있는 0
+
+실수에는 `0.0`과 `-0.0`이 따로 있어요. 음수에 0을 곱하거나, 음수를 0으로 반올림하면 `-0.0`이 생겨요.
+
+```python
+>>> sd.asarray([-1.0, 1.0]) * 0
+array([-0.0,  0.0], dtype=float64)
+>>> sd.round(sd.asarray([-0.4]))
+array([-0.0], dtype=float64)
+```
+
+둘은 `==`로 비교하면 같고, `x < 0`으로도 구별되지 않아요. 하지만 1을 나눠 보면 결과의 부호가 달라요.
+
+```python
+>>> sd.asarray([-0.0]) == 0.0
+array([True], dtype=bool)
+>>> 1 / sd.asarray([-0.0, 0.0])
+array([-inf,  inf], dtype=float64)
+```
+
+대부분은 신경 쓰지 않아도 되지만, 출력에 `-0.0`이 보여서 놀랄 때나, 0의 "어느 쪽에서 왔는지"가 의미 있을 때(나눗셈, `atan2`) 알아 두면 좋아요. 이 둘을 구별하는 함수가 `signbit`과 `copysign`이에요.
+
+이 페이지의 함수들은 `-0.0`을 이렇게 다뤄요.
+
+| 함수 | `-0.0`의 결과 |
+|---|:---:|
+| `negative(-0.0)` | `0.0` |
+| `abs(-0.0)` | `0.0` |
+| `sign(-0.0)` | `0.0` |
+| `signbit(-0.0)` | `True` |
+| `copysign(1.0, -0.0)` | `-1.0` |
+
+```python
+>>> sd.sign(-0.0)
+0.0
+>>> sd.signbit(-0.0)
+True
+>>> sd.copysign(1.0, -0.0)
+-1.0
+```
+
+## copysign: 크기에 다른 부호 붙이기
+
+`sd.copysign(x1, x2)`는 `x1`의 **크기**에 `x2`의 **부호**를 붙여요. `x1`의 원래 부호는 무시해요. 결과는 **언제나 float64**예요. 정수를 넣어도 실수가 나와요.
+
+```python
+>>> sd.copysign(sd.asarray([1.0, 2.0, 3.0]), sd.asarray([-1.0, 0.0, -0.0]))
+array([-1.0,  2.0, -3.0], dtype=float64)
+>>> sd.copysign(sd.asarray([-3, 3]), sd.asarray([1, -1]))
+array([ 3.0, -3.0], dtype=float64)
+```
+
+첫 예의 셋째 칸을 보세요. `x2`가 `-0.0`이어도 부호를 음으로 읽어요.
+
+### sign과 abs로 하면 안 되나요
+
+`sd.sign(x2) * sd.abs(x1)`도 비슷해 보이지만, `x2`가 0이면 `sign(x2)`가 0이라서 크기까지 사라져요. `copysign`은 0에서도 크기를 지켜요.
+
+```python
+>>> mag = sd.asarray([2.0, 2.0])
+>>> s = sd.asarray([0.0, -0.0])
+>>> sd.sign(s) * mag
+array([0.0, 0.0], dtype=float64)
+>>> sd.copysign(mag, s)
+array([ 2.0, -2.0], dtype=float64)
+```
+
+`x2`가 NaN일 때도 NaN이 가진 부호 비트를 읽어요. 보통 만든 `sd.nan`은 부호가 양이에요.
+
+```python
+>>> sd.copysign(sd.asarray([5.0, -5.0]), sd.nan)
+array([5.0, 5.0], dtype=float64)
+>>> sd.copysign(5.0, -sd.nan)
+-5.0
+```
+
+## signbit: 부호가 음인가요
+
+`sd.signbit(x)`는 원소마다 **부호가 음이면 `True`** 인 bool 배열을 돌려줘요. `x < 0`과 거의 같지만, `-0.0`과 부호가 음인 NaN에서도 `True`라는 점이 달라요.
+
+```python
+>>> f
+array([-2.5, -0.0,  0.0,  3.0,  nan], dtype=float64)
+>>> sd.signbit(f)
+array([ True,  True, False, False, False], dtype=bool)
+>>> f < 0
+array([ True, False, False, False, False], dtype=bool)
+```
+
+정수는 `x < 0`과 똑같고, bool은 언제나 `False`예요.
+
+```python
+>>> sd.signbit(a)
+array([ True, False, False], dtype=bool)
+>>> sd.signbit(sd.asarray([True, False]))
+array([False, False], dtype=bool)
+```
+
+## `out`: 결과를 기존 배열에 쓰기
+
+`out=`에 배열을 주면 그 배열에 결과를 적고, 그 배열을 돌려줘요. 결과가 `out`의 dtype에 손실 없이 들어가야 해요. 복소수의 `abs`는 실수 결과라서 실수 배열에는 담을 수 있지만 정수 배열에는 담을 수 없어요.
+
+```python
+>>> sd.abs(sd.asarray([3 + 4j]), out=sd.zeros(1))
+array([5.0], dtype=float64)
+>>> sd.abs(sd.asarray([3 + 4j]), out=sd.zeros(1, dtype=sd.int64))
+Traceback (most recent call last):
+    ...
+TypeError: abs(): cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
+```
+
+## 조심할 점
+
+### 가장 작은 정수의 절댓값
+
+int64가 담는 범위는 `-2**63`부터 `2**63 - 1`까지라서, 음수 쪽이 하나 더 많아요. 그래서 가장 작은 수 `-2**63`의 절댓값 `2**63`은 담을 수 없어요. 에러 없이 반대쪽으로 넘어가서 **그대로 `-2**63`**, 즉 음수예요. `negative`도 마찬가지예요.
+
+```python
+>>> sd.abs(sd.asarray([-2**63, -5]))
+array([-9223372036854775808,                    5], dtype=int64)
+>>> -sd.asarray([-2**63])
+array([-9223372036854775808], dtype=int64)
+```
+
+"절댓값은 언제나 0 이상"이라고 믿고 계산하면 이 한 값에서 틀려요. 이 범위까지 다룬다면 먼저 실수로 바꾸세요.
+
+```python
+>>> sd.abs(sd.asarray([-2**63]).astype(sd.float64))
+array([9.223372036854776e+18], dtype=float64)
+```
+
+### copysign과 signbit은 복소수를 받지 않아요
+
+복소수에는 "부호"가 하나로 정해지지 않기 때문이에요.
+
+```python
+>>> sd.copysign(sd.asarray([1 + 1j]), 1.0)
+Traceback (most recent call last):
+    ...
+TypeError: copysign(): not supported for complex128 and float64
+>>> sd.signbit(sd.asarray([1j]))
+Traceback (most recent call last):
+    ...
+TypeError: signbit(): not supported for complex128
+```
+
+### 리스트는 받지 않아요
+
+먼저 [`asarray`](/api/array/asarray/)로 배열로 바꾸세요.
+
+```python
+>>> sd.negative([1, 2])
+Traceback (most recent call last):
+    ...
+TypeError: negative(): 'x' must be an sd.ndarray or a bool, int, float or complex, not list
+```
+
+## 비슷한 함수와의 차이
+
+| 헷갈리는 것 | 차이 |
+|---|---|
+| `negative(x)`와 `subtract(0, x)` | 대부분 같지만 `0.0`에서 달라요. `-0.0`이 아니라 `0.0`이 나와요. |
+| `sign(x)`와 `signbit(x)` | `sign`은 같은 dtype의 `-1`/`0`/`1`, `signbit`은 bool이고 `-0.0`도 음으로 쳐요. |
+| `signbit(x)`와 `x < 0` | `-0.0`과 음의 NaN에서만 달라요. |
+| `copysign(x1, x2)`와 `sign(x2) * abs(x1)` | `x2`가 0이면 뒤쪽은 크기가 0이 돼요. `copysign`은 크기를 지켜요. |
+| `abs(z)`와 [`real`, `imag`](/api/array/complex/) | 복소수의 크기는 `abs`, 각 부분은 `real`, `imag`예요. |
+| `abs`와 [`maximum`](/api/array/maximum/) | `maximum(x, 0)`은 음수를 0으로 바꿀 뿐, 부호를 뒤집지 않아요. |
+
+```python
+>>> sd.subtract(0, sd.asarray([0.0]))
+array([0.0], dtype=float64)
+>>> sd.negative(sd.asarray([0.0]))
+array([-0.0], dtype=float64)
+```
+
+## numpy를 아는 분께
+
+- `absolute`, `fabs` 별칭은 없어요. `sd.abs`나 내장 `abs()`를 쓰세요.
+- bool 배열의 `negative`(`-x`), `positive`, `abs`, `sign`은 int64 결과예요. numpy는 bool의 `-x`와 `sign`을 에러로 처리하고, `abs`는 bool을 그대로 둬요.
+- `positive`는 언제나 새 배열을 돌려줘요.
+- 복소수의 `sign`은 numpy 2와 같이 `z / |z|`예요. `copysign`, `signbit`에 복소수를 넣으면 `TypeError`예요.
+- `copysign`, `signbit`은 numpy와 비트까지 같아요. 경고는 없어요.

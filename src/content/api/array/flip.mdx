@@ -1,0 +1,187 @@
+---
+title: flip
+names: [flip]
+group: 모양과 축
+order: 5
+signatures:
+  - "sd.flip(x, /, *, axis=None)"
+summary: 축을 따라 원소의 순서를 거꾸로 뒤집어요. 값을 복사하지 않고 원본을 거꾸로 보여 주는 배열을 돌려줘요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 뒤집을 배열.
+  - name: axis
+    type: int, int의 tuple·list, 또는 None
+    kind: keyword-only
+    desc: 뒤집을 축. None이면 모든 축을 뒤집어요.
+returns:
+  type: ndarray
+  desc: x와 모양과 dtype이 같고 순서만 거꾸로인 배열. x와 메모리를 함께 써요(뷰).
+raises:
+  - type: TypeError
+    desc: x가 배열이 아닐 때, axis가 int·tuple·list·None이 아닐 때, axis를 이름 없이 넘겼을 때.
+  - type: ValueError
+    desc: axis가 범위를 벗어나거나 같은 축을 두 번 썼을 때.
+seeAlso: [roll, permute_dims, sort, indexing, views]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+`flip`은 원소의 **놓인 순서를 거꾸로** 해요. 1차원 배열이면 맨 끝 원소가 맨 앞으로 와요.
+
+```python
+>>> import stardust as sd
+>>> v = sd.asarray([1, 2, 3, 4])
+>>> sd.flip(v)
+array([4, 3, 2, 1], dtype=int64)
+```
+
+<Fig caption="flip: 첫 원소와 마지막 원소가, 둘째와 끝에서 둘째가 자리를 바꿔요.">
+  <ArrayFig name="v" data={[1, 2, 3, 4]} tones={['b', 'a', '', '']} />
+  <Op note="flip">→</Op>
+  <ArrayFig name="sd.flip(v)" data={[4, 3, 2, 1]} tones={['', '', 'a', 'b']} />
+</Fig>
+
+값의 크기와는 상관이 없어요. 정렬하는 것이 아니라 지금 놓인 순서를 거꾸로 읽을 뿐이에요.
+
+## `axis`: 어느 방향으로 뒤집을까요
+
+2차원 이상에서는 `axis`로 뒤집을 방향을 골라요. 기본값 `axis=None`은 **모든 축**을 뒤집어요.
+
+```python
+>>> m = sd.asarray([[1, 2, 3], [4, 5, 6]])
+>>> sd.flip(m, axis=0)
+array([[4, 5, 6],
+       [1, 2, 3]], dtype=int64)
+>>> sd.flip(m, axis=1)
+array([[3, 2, 1],
+       [6, 5, 4]], dtype=int64)
+>>> sd.flip(m)
+array([[6, 5, 4],
+       [3, 2, 1]], dtype=int64)
+```
+
+<Fig caption="axis=0은 행의 순서를(위아래), axis=1은 각 행 안의 순서를(좌우) 뒤집어요. 둘 다 하면 180도 돌린 것과 같아요.">
+  <ArrayFig name="m" data={[[1, 2, 3], [4, 5, 6]]} tones={[['a', 'a', 'a'], ['', '', '']]} axes />
+  <Op note="axis=0">→</Op>
+  <ArrayFig data={[[4, 5, 6], [1, 2, 3]]} tones={[['', '', ''], ['a', 'a', 'a']]} />
+  <Op note="axis=1">→</Op>
+  <ArrayFig data={[[3, 2, 1], [6, 5, 4]]} tones={[['a', 'a', 'a'], ['', '', '']]} />
+  <Op note="None">→</Op>
+  <ArrayFig data={[[6, 5, 4], [3, 2, 1]]} tones={[['', '', ''], ['a', 'a', 'a']]} />
+</Fig>
+
+이미지로 생각하면 `axis=0`은 위아래 뒤집기, `axis=1`은 좌우 뒤집기(거울에 비친 모습)예요.
+
+축을 여러 개 tuple이나 list로 줄 수도 있고, 음수는 뒤에서부터 세요. `axis=(0, 1)`은 2차원에서 `axis=None`과 같아요.
+
+```python
+>>> sd.flip(m, axis=-1)
+array([[3, 2, 1],
+       [6, 5, 4]], dtype=int64)
+>>> sd.flip(m, axis=(0, 1))
+array([[6, 5, 4],
+       [3, 2, 1]], dtype=int64)
+```
+
+<Callout type="warn" title="기본값은 '모든 축'이에요">
+
+  2차원 배열에 `sd.flip(m)`을 쓰면 행 순서만 뒤집히는 것이 아니라 **위아래와 좌우가 모두** 뒤집혀요. 한 방향만 뒤집으려면 `axis`를 꼭 적으세요.
+
+</Callout>
+
+## 결과는 원본과 메모리를 함께 써요
+
+`flip`은 원소를 복사해서 거꾸로 옮겨 담지 않아요. 원본의 메모리를 **뒤에서부터 읽어 보여 주는 배열**(뷰)을 만들어요. 그래서 아주 큰 배열도 순식간에 뒤집혀요.
+
+대신 결과를 고치면 원본도 바뀌어요.
+
+```python
+>>> f = sd.flip(v)
+>>> f.base is v
+True
+>>> f[0] = 40
+>>> v
+array([ 1,  2,  3, 40], dtype=int64)
+```
+
+`f[0]`은 `v`의 마지막 칸과 같은 메모리예요. 독립된 결과가 필요하면 `sd.flip(v).copy()`처럼 복사하세요. 뷰에 대해서는 [뷰와 복사](/api/array/views/)에 더 있어요.
+
+```python
+>>> v[3] = 4
+```
+
+두 번 뒤집으면 원래 순서로 돌아와요.
+
+```python
+>>> sd.flip(sd.flip(v))
+array([1, 2, 3, 4], dtype=int64)
+```
+
+## 조심할 점
+
+### 슬라이싱으로도 같은 일을 할 수 있어요
+
+[인덱싱](/api/array/indexing/)의 `::-1`(끝에서부터 한 칸씩)도 같은 뷰를 만들어요. `v[::-1]`은 `sd.flip(v)`와, `m[:, ::-1]`은 `sd.flip(m, axis=1)`과 같아요.
+
+```python
+>>> v[::-1]
+array([4, 3, 2, 1], dtype=int64)
+>>> m[:, ::-1]
+array([[3, 2, 1],
+       [6, 5, 4]], dtype=int64)
+```
+
+축 번호를 변수로 다루거나 뒤집을 축이 여러 개면 `flip`이 읽기 쉬워요.
+
+### 내림차순 정렬과는 달라요
+
+이미 오름차순으로 정렬된 배열을 `flip`하면 내림차순이 되긴 해요. 하지만 같은 값이 여럿일 때 그들끼리의 순서까지 뒤집혀요. 같은 값의 원래 순서를 지키며 큰 값부터 늘어놓으려면 [`sort`](/api/array/sort/)의 `descending=True`를 쓰세요.
+
+### 옵션은 이름을 붙여서
+
+`axis`는 반드시 `axis=`로 써야 해요. 축 번호가 범위를 벗어나거나 같은 축을 두 번 쓰면 `ValueError`예요.
+
+```python
+>>> sd.flip(m, axis=2)
+Traceback (most recent call last):
+    ...
+ValueError: flip(): axis 2 is out of bounds for an array of dimension 2
+>>> sd.flip(m, axis=(0, 0))
+Traceback (most recent call last):
+    ...
+ValueError: flip(): repeated axis
+```
+
+빈 tuple `axis=()`는 아무 축도 뒤집지 않아요. 빈 배열도 에러 없이 그대로 돌려줘요.
+
+```python
+>>> sd.flip(m, axis=())
+array([[1, 2, 3],
+       [4, 5, 6]], dtype=int64)
+>>> sd.flip(sd.asarray([]))
+array([], dtype=float64)
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | `flip`과 다른 점 |
+|---|---|---|
+| 놓인 순서를 거꾸로 | `flip`, `x[::-1]` | (이 페이지) |
+| 원소를 한쪽으로 밀고 넘친 것을 반대편에 | `roll` | 순서는 그대로 두고 자리만 돌려요. 새 배열이에요. |
+| 크기순으로 늘어놓기 | `sort` | 값을 비교해서 순서를 정해요. |
+| 행과 열 맞바꾸기 | `.T`, `permute_dims` | 축 자체를 바꿔요. `flip`은 축 안의 순서만 바꿔요. |
+
+`flip`과 [전치](/api/array/permute_dims/)는 모두 "뒤집는다"고 말하지만 다른 일이에요. `(2, 3)` 배열을 `flip`해도 모양은 `(2, 3)` 그대로이고, `.T`를 하면 `(3, 2)`가 돼요.
+
+## numpy를 아는 분께
+
+- numpy의 `np.flip`과 같아요. 결과는 뷰예요.
+- `axis`는 keyword-only예요. `np.flip(m, 0)`처럼 자리로 넘길 수 없어요.
+- `axis`에 리스트도 받아요.
+- `np.flipud`, `np.fliplr`은 없어요. `sd.flip(m, axis=0)`, `sd.flip(m, axis=1)`로 쓰세요.

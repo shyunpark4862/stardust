@@ -1,0 +1,321 @@
+---
+title: 축 순서 바꾸기
+names: [permute_dims, matrix_transpose, moveaxis]
+group: 모양과 축
+order: 2
+signatures:
+  - "sd.permute_dims(x, axes, /)"
+  - "sd.matrix_transpose(x, /)"
+  - "sd.moveaxis(x, source, destination, /)"
+  - "x.T"
+  - "x.mT"
+summary: 배열의 축 순서를 바꿔요. 2차원이면 행과 열을 맞바꾸는 전치가 되고, 3차원 이상에서는 축을 원하는 순서로 늘어놓거나 한 축만 다른 자리로 옮길 수 있어요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 축 순서를 바꿀 배열.
+  - name: axes
+    type: int의 tuple 또는 list
+    kind: positional-only
+    desc: (permute_dims) 결과의 축이 될 원래 축 번호를 차례로 적은 것. 모든 축을 한 번씩 적어야 해요.
+  - name: source
+    type: int, 또는 int의 tuple·list
+    kind: positional-only
+    desc: (moveaxis) 옮길 축의 원래 번호.
+  - name: destination
+    type: int, 또는 int의 tuple·list
+    kind: positional-only
+    desc: (moveaxis) 옮긴 축이 결과에서 놓일 번호. source와 개수가 같아야 해요.
+returns:
+  type: ndarray
+  desc: 축 순서만 바뀐 배열. 값을 복사하지 않고 x와 메모리를 함께 써요(뷰).
+raises:
+  - type: TypeError
+    desc: x가 배열이 아닐 때, 축 번호에 int가 아닌 것을 줬을 때, 인자를 이름을 붙여 넘기거나 빠뜨렸을 때.
+  - type: ValueError
+    desc: axes가 모든 축을 한 번씩 담지 않았을 때, 축 번호가 범위를 벗어나거나 겹칠 때, source와 destination의 개수가 다를 때, matrix_transpose·.mT에 1차원 배열을, .T에 2차원이 아닌 배열을 줬을 때.
+seeAlso: [reshape, squeeze, matmul, views]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+2차원 배열의 행과 열을 맞바꾸는 일을 **전치**(transpose)라고 해요. 첫 행이 첫 열이 되고, 둘째 행이 둘째 열이 돼요. 가장 간단한 방법은 속성 `.T`예요.
+
+```python
+>>> import stardust as sd
+>>> m = sd.asarray([[1, 2, 3], [4, 5, 6]])
+>>> m.T
+array([[1, 4],
+       [2, 5],
+       [3, 6]], dtype=int64)
+```
+
+<Fig caption="전치: (i, j) 자리의 값이 (j, i) 자리로 가요. 첫 행 1, 2, 3이 첫 열이 돼요.">
+  <ArrayFig name="m" data={[[1, 2, 3], [4, 5, 6]]} tones={[['a', 'a', 'a'], ['', '', '']]} axes note="shape (2, 3)" />
+  <Op note=".T">→</Op>
+  <ArrayFig name="m.T" data={[[1, 4], [2, 5], [3, 6]]} tones={[['a', ''], ['a', ''], ['a', '']]} axes note="shape (3, 2)" />
+</Fig>
+
+이 페이지의 세 함수는 모두 "축의 순서"를 바꾸는 도구예요.
+
+| 쓸 것 | 하는 일 |
+|---|---|
+| `x.T` | 2차원 배열의 행과 열을 맞바꿔요. |
+| `sd.permute_dims(x, axes)` | 모든 축을 원하는 순서로 다시 늘어놓아요. |
+| `sd.matrix_transpose(x)`, `x.mT` | 마지막 두 축만 맞바꿔요. 행렬 여러 개를 한꺼번에 전치할 때 써요. |
+| `sd.moveaxis(x, source, destination)` | 축 하나(또는 몇 개)만 다른 자리로 옮기고 나머지 순서는 그대로 둬요. |
+
+모두 값을 복사하지 않아요. 같은 원소를 다른 방향으로 읽어 보여 줄 뿐이라 큰 배열에서도 비용이 거의 없어요.
+
+## `permute_dims`: 축을 원하는 순서로
+
+`axes`에는 **결과의 축이 될 원래 축 번호**를 차례로 적어요. 2차원에서 `(1, 0)`은 "결과의 0번 축은 원래의 1번 축, 결과의 1번 축은 원래의 0번 축"이라는 뜻이라 전치와 같아요.
+
+```python
+>>> sd.permute_dims(m, (1, 0))
+array([[1, 4],
+       [2, 5],
+       [3, 6]], dtype=int64)
+```
+
+3차원 이상에서 진가가 드러나요. 모양이 `(2, 3, 4)`인 배열을 생각해 볼게요.
+
+```python
+>>> t = sd.reshape(sd.arange(24), (2, 3, 4))
+>>> p = sd.permute_dims(t, (2, 0, 1))
+>>> p.shape
+(4, 2, 3)
+```
+
+결과 모양은 원래 모양에서 `axes`가 가리키는 길이를 차례로 꺼낸 것이에요. `t.shape`이 `(2, 3, 4)`이니 2번 축의 4, 0번 축의 2, 1번 축의 3을 꺼내 `(4, 2, 3)`이 돼요.
+
+원소의 자리도 같은 규칙으로 옮겨져요. 원래 `t[i, j, k]`에 있던 값은 결과에서 `p[k, i, j]`에 있어요.
+
+```python
+>>> t[1, 2, 3]
+23
+>>> p[3, 1, 2]
+23
+```
+
+<Fig caption="axes=(2, 0, 1): 결과의 각 자리에 원래의 몇 번 축을 놓을지 적어요. 축의 길이도 그 축을 따라 함께 옮겨가요.">
+  <ArrayFig name="t.shape" data={[2, 3, 4]} tones={['', '', 'b']} note="축 0, 1, 2" />
+  <Op note="(2, 0, 1)">→</Op>
+  <ArrayFig name="p.shape" data={[4, 2, 3]} tones={['b', '', '']} note="원래 축 2, 0, 1" />
+</Fig>
+
+자주 쓰는 예는 이미지예요. `(높이, 너비, 색)` 순서로 저장된 이미지를 `(색, 높이, 너비)` 순서를 원하는 도구에 넘길 때 `sd.permute_dims(img, (2, 0, 1))`을 써요.
+
+음수 축 번호도 쓸 수 있고, `axes`는 tuple과 list를 모두 받아요.
+
+```python
+>>> sd.permute_dims(t, [-1, 0, 1]).shape
+(4, 2, 3)
+```
+
+## `matrix_transpose`와 `.mT`: 마지막 두 축만
+
+3차원 배열을 "2행 3열짜리 행렬이 여러 개 쌓인 것"으로 다룰 때가 많아요. 이때 행렬 하나하나를 전치하려면 **마지막 두 축만** 바꾸면 돼요. 앞쪽 축(몇 번째 행렬인지)은 그대로예요.
+
+```python
+>>> s = sd.reshape(sd.arange(12), (2, 2, 3))
+>>> s[0]
+array([[0, 1, 2],
+       [3, 4, 5]], dtype=int64)
+>>> s[1]
+array([[ 6,  7,  8],
+       [ 9, 10, 11]], dtype=int64)
+>>> st = sd.matrix_transpose(s)
+>>> st.shape
+(2, 3, 2)
+>>> st[0]
+array([[0, 3],
+       [1, 4],
+       [2, 5]], dtype=int64)
+>>> st[1]
+array([[ 6,  9],
+       [ 7, 10],
+       [ 8, 11]], dtype=int64)
+```
+
+`s`는 2행 3열짜리 행렬 두 개이고, 결과는 3행 2열짜리 행렬 두 개예요. 행렬의 순서는 그대로이고 각 행렬만 전치됐어요.
+
+<Fig caption="matrix_transpose: 쌓인 행렬마다 따로 전치해요. 몇 번째 행렬인지를 나타내는 앞쪽 축은 건드리지 않아요.">
+  <ArrayFig name="s[0]" data={[[0, 1, 2], [3, 4, 5]]} tones={[['a', 'a', 'a'], ['', '', '']]} />
+  <ArrayFig name="s[1]" data={[[6, 7, 8], [9, 10, 11]]} tones={[['b', 'b', 'b'], ['', '', '']]} />
+  <Op note=".mT">→</Op>
+  <ArrayFig name="st[0]" data={[[0, 3], [1, 4], [2, 5]]} tones={[['a', ''], ['a', ''], ['a', '']]} />
+  <ArrayFig name="st[1]" data={[[6, 9], [7, 10], [8, 11]]} tones={[['b', ''], ['b', ''], ['b', '']]} />
+</Fig>
+
+속성 `x.mT`는 `sd.matrix_transpose(x)`와 같아요. 2차원 배열에서는 `.T`와 같은 결과예요.
+
+```python
+>>> s.mT.shape
+(2, 3, 2)
+>>> m.mT
+array([[1, 4],
+       [2, 5],
+       [3, 6]], dtype=int64)
+```
+
+### `.T`는 2차원 전용이에요
+
+`.T`는 2차원 배열에만 쓸 수 있어요. 3차원 이상에서 "전치"가 무엇을 뜻하는지는 상황마다 다르기 때문이에요. 마지막 두 축만 바꿀지(`.mT`), 모든 축을 뒤집을지(`permute_dims`)를 직접 고르도록 했어요.
+
+```python
+>>> s.T
+Traceback (most recent call last):
+    ...
+ValueError: .T: the array must have 2 dimensions, got 3; use permute_dims or matrix_transpose (.mT)
+```
+
+## `moveaxis`: 축 하나만 옮기기
+
+`permute_dims`는 모든 축의 순서를 다 적어야 해요. 축이 많을 때 "이 축 하나만 맨 앞으로" 같은 일을 하려면 번거로워요. `moveaxis`는 **옮길 축과 갈 자리만** 적으면 나머지 축은 원래 순서대로 채워 줘요.
+
+```python
+>>> t.shape
+(2, 3, 4)
+>>> sd.moveaxis(t, -1, 0).shape
+(4, 2, 3)
+>>> sd.moveaxis(t, 0, -1).shape
+(3, 4, 2)
+```
+
+첫째 줄은 "마지막 축을 맨 앞으로", 둘째 줄은 "맨 앞 축을 맨 뒤로"예요.
+
+<Fig caption="moveaxis(t, 0, -1): 0번 축(길이 2)만 맨 뒤로 가고, 나머지 축은 순서를 지킨 채 앞으로 당겨져요.">
+  <ArrayFig name="t.shape" data={[2, 3, 4]} tones={['b', '', '']} />
+  <Op note="0 → -1">→</Op>
+  <ArrayFig name="결과 shape" data={[3, 4, 2]} tones={['', '', 'b']} />
+</Fig>
+
+여러 축을 한꺼번에 옮길 수도 있어요. `source`와 `destination`에 같은 개수의 축 번호를 tuple로 주면, 같은 자리끼리 짝이 돼요.
+
+```python
+>>> sd.moveaxis(t, (0, 1), (2, 0)).shape
+(3, 4, 2)
+```
+
+0번 축은 2번 자리로, 1번 축은 0번 자리로 가요. 남은 2번 축(길이 4)이 빈 자리인 1번에 들어가요.
+
+## 결과는 원본과 메모리를 함께 써요
+
+세 함수와 `.T`, `.mT`의 결과는 모두 **뷰**예요. 값을 복사하지 않고 원본의 메모리를 다른 방향으로 보여 주는 것이라, 결과를 고치면 원본도 바뀌어요.
+
+```python
+>>> a = m.T
+>>> a.base is m
+True
+>>> a[0, 1] = 40
+>>> m
+array([[ 1,  2,  3],
+       [40,  5,  6]], dtype=int64)
+```
+
+`a[0, 1]`은 `m[1, 0]`과 같은 칸이에요. 독립된 결과가 필요하면 `m.T.copy()`처럼 복사하세요. 뷰에 대해서는 [뷰와 복사](/api/array/views/)에 더 있어요.
+
+```python
+>>> m[1, 0] = 4
+```
+
+## 조심할 점
+
+### `permute_dims`에는 모든 축을 적어야 해요
+
+`axes`는 0번부터 마지막 축까지를 **빠짐없이 한 번씩** 담은 순서여야 해요. 일부만 적거나, 같은 축을 두 번 적거나, 없는 축을 적으면 `ValueError`예요.
+
+```python
+>>> sd.permute_dims(t, (0, 1))
+Traceback (most recent call last):
+    ...
+ValueError: permute_dims(): 'axes' must list each of the 3 axes exactly once
+>>> sd.permute_dims(t, (0, 0, 1))
+Traceback (most recent call last):
+    ...
+ValueError: permute_dims(): repeated axis
+>>> sd.permute_dims(t, (0, 1, 3))
+Traceback (most recent call last):
+    ...
+ValueError: permute_dims(): axis 3 is out of bounds for an array of dimension 3
+```
+
+축 몇 개만 옮기고 싶다면 `moveaxis`를 쓰세요.
+
+### `axes`는 생략할 수 없어요
+
+`permute_dims(x)`처럼 `axes`를 빼고 "알아서 뒤집어 달라"고 할 수 없어요. `axes`는 이름을 붙여(`axes=...`) 넘길 수도 없어서, 언제나 두 번째 자리에 써요.
+
+```python
+>>> sd.permute_dims(m)
+Traceback (most recent call last):
+    ...
+TypeError: permute_dims(): incompatible function arguments. The following argument types are supported:
+    ...
+```
+
+모든 축을 거꾸로 늘어놓으려면 `sd.permute_dims(t, (2, 1, 0))`처럼 직접 적어요.
+
+### 1차원 배열은 전치할 수 없어요
+
+1차원 배열에는 행과 열의 구분이 없어서 "세로로 세우기"가 전치로 되지 않아요. `.T`와 `.mT`, `matrix_transpose` 모두 에러예요.
+
+```python
+>>> v = sd.asarray([1, 2, 3])
+>>> v.T
+Traceback (most recent call last):
+    ...
+ValueError: .T: the array must have 2 dimensions, got 1; use permute_dims or matrix_transpose (.mT)
+>>> sd.matrix_transpose(v)
+Traceback (most recent call last):
+    ...
+ValueError: matrix_transpose(): the array must have at least 2 dimensions, got 1
+```
+
+1차원 배열을 세로 모양 `(3, 1)`로 만들고 싶다면 길이 1인 축을 넣어요. [`expand_dims`](/api/array/squeeze/)나 `v[:, sd.newaxis]`를 쓰면 돼요.
+
+```python
+>>> sd.expand_dims(v, axis=1)
+array([[1],
+       [2],
+       [3]], dtype=int64)
+```
+
+### `moveaxis`의 짝은 개수가 같아야 해요
+
+`source`와 `destination`의 축 개수가 다르면 `ValueError`예요. 한쪽이 tuple이면 다른 쪽도 같은 길이의 tuple로 주세요.
+
+```python
+>>> sd.moveaxis(t, (0, 1), 2)
+Traceback (most recent call last):
+    ...
+ValueError: moveaxis(): 'source' and 'destination' must have the same number of axes
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | 차이 |
+|---|---|---|
+| 2차원의 행과 열 맞바꾸기 | `.T` | 가장 짧아요. 2차원 전용이에요. |
+| 행렬 여러 개를 한꺼번에 전치 | `.mT`, `matrix_transpose` | 마지막 두 축만 바꿔요. |
+| 모든 축의 순서를 정하기 | `permute_dims` | 모든 축을 적어야 해요. |
+| 축 하나만 다른 자리로 | `moveaxis` | 나머지 축의 순서를 지켜 줘요. |
+| 원소를 다른 모양으로 다시 끊기 | `reshape` | 축의 뜻이 아니라 모양만 바꿔요. 전치와 결과가 달라요. |
+| 길이 1인 축 넣기·빼기 | `expand_dims`, `squeeze` | 축 순서는 그대로 두고 축의 개수를 바꿔요. |
+| 축의 원소 순서 뒤집기 | `flip` | 축은 그대로고 한 축 안의 원소 순서를 거꾸로 해요. |
+
+`permute_dims`와 [`reshape`](/api/array/reshape/)는 결과 모양이 같아도 내용이 달라요. `(2, 3)` 배열에 `reshape(m, (3, 2))`를 하면 `1, 2, 3, 4, 5, 6`을 두 개씩 다시 끊고, `m.T`는 첫 행을 첫 열로 세워요. 행이 사람, 열이 과목인 표를 "과목이 행이 되게" 바꾸고 싶다면 언제나 전치가 맞아요.
+
+## numpy를 아는 분께
+
+- `permute_dims`는 numpy 2의 `np.permute_dims`(= `np.transpose`)와 같지만, **`axes`를 생략할 수 없어요.** `np.transpose(x)`처럼 축을 모두 뒤집으려면 순서를 직접 적어요.
+- **`.T`는 2차원 전용이에요.** numpy의 `.T`는 3차원 이상에서 모든 축을 뒤집고 1차원에서는 그대로 돌려주지만, stardust는 둘 다 `ValueError`예요.
+- `.mT`와 `matrix_transpose`는 numpy 2와 같아요.
+- 인자는 모두 positional-only라 `axes=`, `source=` 같은 이름으로 넘길 수 없어요.
+- `np.swapaxes`, `np.rollaxis`는 없어요. `moveaxis`나 `permute_dims`로 쓰세요.

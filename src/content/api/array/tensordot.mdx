@@ -1,0 +1,344 @@
+---
+title: tensordot
+names: [tensordot]
+group: 행렬곱
+order: 2
+signatures:
+  - "sd.tensordot(x1, x2, /, *, axes=2)"
+summary: 두 배열에서 고른 축들을 짝지어, 그 축을 따라 곱하고 더해요. 짝지은 축은 결과에서 사라지고 나머지 축이 모두 남아요.
+params:
+  - name: x1
+    type: ndarray
+    kind: positional-only
+    desc: 첫째 배열.
+  - name: x2
+    type: ndarray
+    kind: positional-only
+    desc: 둘째 배열.
+  - name: axes
+    type: int, 또는 int 목록 두 개의 쌍
+    kind: keyword-only
+    desc: 줄일 축. int n이면 x1의 마지막 n축과 x2의 처음 n축을 짝지어요. 쌍이면 첫 목록은 x1의 축, 둘째 목록은 x2의 축이에요.
+returns:
+  type: ndarray 또는 Python 숫자
+  desc: x1의 남은 축 다음에 x2의 남은 축이 오는 배열. 남는 축이 없으면 Python 숫자예요.
+raises:
+  - type: TypeError
+    desc: x1이나 x2가 배열이 아닐 때, axes가 int나 int 목록의 쌍이 아닐 때(bool, float, None, (1, 0)처럼 int 둘의 쌍 포함).
+  - type: ValueError
+    desc: 짝지은 축의 길이가 다를 때, 두 목록의 길이가 다를 때, 한 목록에 같은 축이 두 번 있을 때, 축 번호가 범위를 벗어날 때, int axes가 음수이거나 차원 수보다 클 때.
+seeAlso: [matmul, vecdot, sum, permute_dims]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+`tensordot`은 [행렬곱](/api/array/matmul/)을 더 일반화한 함수예요. 행렬곱은 "왼쪽의 마지막 축과 오른쪽의 끝에서 둘째 축"을 짝지어 곱하고 더하는데, `tensordot`은 **어느 축끼리 짝지을지를 직접 고를 수 있어요.** 짝지은 축은 곱하고 더하는 동안 사라지고, 나머지 축은 모두 결과에 남아요.
+
+기본값 `axes=2`는 "x1의 마지막 두 축과 x2의 처음 두 축"을 짝지어요. 2차원 배열 둘이라면 모든 축이 짝지어지므로, 같은 자리끼리 곱해서 전부 더한 숫자 하나가 나와요.
+
+```python
+>>> import stardust as sd
+>>> a = sd.asarray([[1, 2], [3, 4]])
+>>> b = sd.asarray([[5, 6], [7, 8]])
+>>> sd.tensordot(a, b)
+70
+>>> sd.sum(a * b)
+70
+```
+
+`axes=1`이면 x1의 마지막 축 하나와 x2의 첫 축 하나를 짝지어요. 2차원 배열에서는 이것이 바로 행렬곱이에요.
+
+```python
+>>> sd.tensordot(a, b, axes=1)
+array([[19, 22],
+       [43, 50]], dtype=int64)
+>>> a @ b
+array([[19, 22],
+       [43, 50]], dtype=int64)
+```
+
+## `axes`가 정수일 때
+
+`axes=n`은 **x1의 마지막 n개 축**과 **x2의 처음 n개 축**을 차례로 짝지어요. 짝지은 축들의 길이는 서로 같아야 해요.
+
+| `axes` | 짝짓는 축 | 2차원 둘이라면 |
+|:---:|---|---|
+| `0` | 없음 | 모든 원소 쌍의 곱 (4차원 결과) |
+| `1` | x1의 마지막 축 ↔ x2의 첫 축 | 행렬곱 `x1 @ x2` |
+| `2` (기본값) | x1의 마지막 두 축 ↔ x2의 처음 두 축 | 같은 자리 곱의 합 (숫자 하나) |
+
+결과의 모양은 **x1의 남은 축 다음에 x2의 남은 축**이에요.
+
+```python
+>>> x = sd.reshape(sd.arange(6), (2, 3))
+>>> y = sd.reshape(sd.arange(12), (3, 4))
+>>> sd.tensordot(x, y, axes=1)
+array([[20, 23, 26, 29],
+       [56, 68, 80, 92]], dtype=int64)
+```
+
+`x`의 모양 `(2, 3)`에서 마지막 축(3)을, `y`의 모양 `(3, 4)`에서 첫 축(3)을 짝지어 없앴어요. 남은 것은 `(2,)`와 `(4,)`라서 결과는 `(2, 4)`예요.
+
+<Fig caption="axes=1: x의 마지막 축과 y의 첫 축(길이 3)을 짝지어 없애고, 남은 2와 4가 결과의 모양이 돼요.">
+  <ArrayFig name="x.shape" data={[2, 3]} tones={['a', 'b']} />
+  <Op note="axes=1">·</Op>
+  <ArrayFig name="y.shape" data={[3, 4]} tones={['b', 'a']} />
+  <Op>→</Op>
+  <ArrayFig name="결과 shape" data={[2, 4]} tones={['a', 'a']} />
+</Fig>
+
+### `axes=0`: 모든 조합의 곱
+
+`axes=0`은 아무 축도 짝짓지 않아요. 더하는 일 없이 **x1의 모든 원소와 x2의 모든 원소를 하나씩 곱한** 결과가 나와요. 1차원 배열 둘이면 곱셈표가 만들어져요.
+
+```python
+>>> sd.tensordot(sd.asarray([1, 2]), sd.asarray([10, 20, 30]), axes=0)
+array([[10, 20, 30],
+       [20, 40, 60]], dtype=int64)
+```
+
+<Fig caption="axes=0: 결과의 (i, j) 자리는 왼쪽의 i번째 값과 오른쪽의 j번째 값의 곱이에요.">
+  <ArrayFig name="x1" data={[[1], [2]]} tones={[['b'], ['']]} note="shape (2,)" />
+  <Op note="axes=0">·</Op>
+  <ArrayFig name="x2" data={[10, 20, 30]} tones={['', 'b', '']} note="shape (3,)" />
+  <Op>=</Op>
+  <ArrayFig data={[[10, 20, 30], [20, 40, 60]]} tones={[['', 'b', ''], ['', '', '']]} note="shape (2, 3)" />
+</Fig>
+
+결과의 모양은 두 모양을 그대로 이어 붙인 것이에요. 2차원 둘이면 4차원이 돼요.
+
+```python
+>>> sd.tensordot(a, b, axes=0).shape
+(2, 2, 2, 2)
+```
+
+### 남는 축이 없으면 숫자 하나
+
+모든 축을 짝지어 없애면 결과는 배열이 아니라 Python 숫자예요. stardust에는 차원이 0인 배열이 없기 때문이에요.
+
+```python
+>>> sd.tensordot(sd.asarray([1, 2, 3]), sd.asarray([4, 5, 6]), axes=1)
+32
+>>> type(sd.tensordot(x, x))
+<class 'int'>
+```
+
+## `axes`가 축 목록의 쌍일 때
+
+짝지을 축이 "x1의 끝, x2의 앞"이 아니라면 축 번호를 직접 적어요. `axes=([x1의 축들], [x2의 축들])` 꼴로, **두 목록의 같은 자리에 있는 축끼리** 짝지어요.
+
+```python
+>>> sd.tensordot(x, y, axes=([1], [0]))
+array([[20, 23, 26, 29],
+       [56, 68, 80, 92]], dtype=int64)
+```
+
+`x`의 1번 축과 `y`의 0번 축을 짝지었어요. `axes=1`과 같은 뜻이에요.
+
+같은 배열끼리도 짝짓는 축에 따라 결과가 달라져요. `x`의 모양은 `(2, 3)`이에요.
+
+```python
+>>> sd.tensordot(x, x, axes=([1], [1]))
+array([[ 5, 14],
+       [14, 50]], dtype=int64)
+>>> sd.tensordot(x, x, axes=([0], [0]))
+array([[ 9, 12, 15],
+       [12, 17, 22],
+       [15, 22, 29]], dtype=int64)
+```
+
+- `([1], [1])`: 두 `x`의 **행끼리** 짝지어 곱하고 더해요. `x @ x.T`와 같아요. 결과는 `(2, 2)`예요.
+- `([0], [0])`: 두 `x`의 **열끼리** 짝지어요. `x.T @ x`와 같아요. 결과는 `(3, 3)`이에요.
+
+```python
+>>> x @ x.T
+array([[ 5, 14],
+       [14, 50]], dtype=int64)
+```
+
+음수 축 번호도 쓸 수 있어요. `-1`은 마지막 축이에요.
+
+```python
+>>> sd.tensordot(x, x, axes=([-1], [-1]))
+array([[ 5, 14],
+       [14, 50]], dtype=int64)
+```
+
+### 여러 축을 한꺼번에 짝짓기
+
+목록에 축을 여러 개 적으면 **적힌 순서대로** 하나씩 짝지어요. 축의 순서가 두 배열에서 다를 때 특히 쓸모가 있어요.
+
+```python
+>>> t = sd.reshape(sd.arange(24), (2, 3, 4))
+>>> s = sd.reshape(sd.arange(12), (4, 3))
+>>> sd.tensordot(t, s, axes=([1, 2], [1, 0]))
+array([ 440, 1232], dtype=int64)
+```
+
+`t`의 1번 축(길이 3)은 `s`의 1번 축(길이 3)과, `t`의 2번 축(길이 4)은 `s`의 0번 축(길이 4)과 짝지었어요. `t`에서는 0번 축(2)만, `s`에서는 아무 축도 남지 않아서 결과는 `(2,)`예요.
+
+목록은 tuple이어도 list여도 돼요. `axes=[[1], [0]]`도 같아요.
+
+## 실제로 써 보기
+
+가게 2곳, 요일 2일, 상품 3가지의 판매 개수가 3차원 배열에 있고, 요일마다 상품 가격이 다르다고 해 볼게요.
+
+```python
+>>> sales = sd.reshape(sd.arange(12), (2, 2, 3))
+>>> price = sd.asarray([[1, 2, 3],
+...                     [2, 2, 2]])
+>>> sd.tensordot(sales, price)
+array([ 32, 104], dtype=int64)
+```
+
+`sales`의 마지막 두 축(요일, 상품)과 `price`의 두 축(요일, 상품)을 짝지어 곱하고 더했어요. 남은 축은 가게 하나라서 결과는 "가게별 총매출"이에요. `sd.sum(sales * price, axis=(1, 2))`와 같은 값이지만, 곱한 중간 배열을 따로 만들 필요가 없어요.
+
+## `matmul`과는 어떻게 다른가요
+
+2차원 배열 둘에서 `tensordot(x1, x2, axes=1)`과 `x1 @ x2`는 같아요. 하지만 3차원 이상에서는 크게 달라요.
+
+- `@`는 앞쪽 축을 **"몇 번째 행렬인가"** 로 보고, 같은 번호의 행렬끼리만 곱해요(배치 축 브로드캐스팅).
+- `tensordot`은 짝지은 축 말고는 아무것도 맞추지 않아요. 남은 축은 **모든 조합**으로 결과에 들어가요.
+
+```python
+>>> s1 = sd.ones((3, 2, 4))
+>>> s2 = sd.ones((3, 4, 5))
+>>> (s1 @ s2).shape
+(3, 2, 5)
+>>> sd.tensordot(s1, s2, axes=([2], [1])).shape
+(3, 2, 3, 5)
+```
+
+`@`는 행렬 세 쌍을 곱해서 세 장을 돌려주지만, `tensordot`은 왼쪽 세 장과 오른쪽 세 장의 **아홉 가지 조합**을 모두 계산해요. 행렬을 여러 장 쌓아 두고 짝끼리 곱하려는 것이라면 `@`를 쓰세요.
+
+| | `x1 @ x2` | `sd.tensordot(x1, x2, axes=...)` |
+|---|---|---|
+| 짝짓는 축 | x1의 마지막 축 ↔ x2의 끝에서 둘째 축 (고정) | 마음대로 고를 수 있고 여러 개도 돼요 |
+| 앞쪽 축 | 배치 축으로 브로드캐스팅 | 모든 조합으로 남아요 |
+| 1차원 배열 | 행이나 열로 보고 계산 | 다른 배열과 똑같이 다뤄요 |
+
+## 결과의 dtype
+
+`matmul`과 같아요. 두 입력 중 넓은 쪽을 따르고, bool끼리는 int64예요. 복소수는 켤레를 취하지 않고 적힌 값 그대로 곱해요.
+
+```python
+>>> sd.tensordot(sd.asarray([True, True]), sd.asarray([True, False]), axes=1)
+1
+>>> sd.tensordot(sd.asarray([1j]), sd.asarray([1j]), axes=1)
+(-1+0j)
+```
+
+## 조심할 점
+
+### 짝지은 축의 길이가 같아야 해요
+
+짝지은 두 축의 길이가 다르면 `ValueError`예요. 메시지에 어느 축이 어긋났는지 나와요.
+
+```python
+>>> sd.tensordot(x, x, axes=([1], [0]))
+Traceback (most recent call last):
+    ...
+ValueError: tensordot(): shape mismatch: axis 1 of x1 has length 3, axis 0 of x2 has 2
+```
+
+기본값 `axes=2`는 "x1의 마지막 두 축과 x2의 처음 두 축"이라서, 모양이 `(2, 3)`과 `(3, 4)`인 배열에 옵션 없이 쓰면 에러가 나요. 2차원 배열의 행렬곱을 원했다면 `axes=1`이나 `@`를 쓰세요.
+
+```python
+>>> sd.tensordot(x, y)
+Traceback (most recent call last):
+    ...
+ValueError: tensordot(): shape mismatch: axis 0 of x1 has length 2, axis 0 of x2 has 3
+```
+
+### `axes=(1, 0)`은 안 돼요
+
+<Callout type="warn" title="축 번호는 목록으로 감싸요">
+
+축 하나씩을 짝지을 때 `axes=(1, 0)`이라고 쓰기 쉬워요. 하지만 쌍의 각 자리에는 **축의 목록**이 와야 해요. `axes=([1], [0])`으로 쓰세요.
+
+</Callout>
+
+```python
+>>> sd.tensordot(x, y, axes=(1, 0))
+Traceback (most recent call last):
+    ...
+TypeError: tensordot(): each entry of 'axes' must be a sequence of ints, not int
+```
+
+### 그 밖의 틀린 `axes`
+
+두 목록의 길이가 다르거나, 한 목록에 같은 축이 두 번 나오거나, 없는 축을 적으면 `ValueError`예요.
+
+```python
+>>> sd.tensordot(x, x, axes=([0], [0, 1]))
+Traceback (most recent call last):
+    ...
+ValueError: tensordot(): the two axis lists of 'axes' must have the same length
+>>> sd.tensordot(x, x, axes=([0, 0], [0, 1]))
+Traceback (most recent call last):
+    ...
+ValueError: tensordot(): 'axes' has a repeated axis
+>>> sd.tensordot(x, x, axes=([2], [0]))
+Traceback (most recent call last):
+    ...
+ValueError: tensordot(): axis 2 is out of bounds for an array of dimension 2
+```
+
+정수 `axes`는 0 이상이고, 두 배열의 차원 수를 넘을 수 없어요.
+
+```python
+>>> sd.tensordot(x, y, axes=3)
+Traceback (most recent call last):
+    ...
+ValueError: tensordot(): 'axes' is larger than an array's number of dimensions
+>>> sd.tensordot(x, y, axes=-1)
+Traceback (most recent call last):
+    ...
+ValueError: tensordot(): 'axes' must be non-negative
+```
+
+정수도 축 목록의 쌍도 아니면 `TypeError`예요. `True`나 `None`도 받지 않아요.
+
+```python
+>>> sd.tensordot(x, y, axes=None)
+Traceback (most recent call last):
+    ...
+TypeError: tensordot(): 'axes' must be an int or a pair of int sequences, not NoneType
+```
+
+### `axes`는 이름을 붙여서
+
+`axes`는 keyword-only예요. `sd.tensordot(x, y, 1)`처럼 셋째 자리에 넘기면 `TypeError`예요. 언제나 `axes=1`로 쓰세요.
+
+### 배열만 받아요
+
+리스트나 Python 숫자는 받지 않아요. 숫자를 곱하려면 `*`를 쓰세요.
+
+```python
+>>> sd.tensordot(x, 2)
+Traceback (most recent call last):
+    ...
+TypeError: tensordot(): 'x2' must be an sd.ndarray, not int
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 |
+|---|---|
+| 행렬곱, 행렬 여러 장을 짝끼리 곱하기 | `@` (`sd.matmul`) |
+| 같은 모양의 두 배열에서 축 하나를 따라 내적 | `sd.vecdot` |
+| 임의의 축들을 짝지어 곱하고 더하기, 모든 조합 만들기 | `sd.tensordot` |
+| 같은 자리끼리 곱한 뒤 특정 축만 더하기 | `sd.sum(x1 * x2, axis=...)` |
+
+`vecdot`은 두 배열을 브로드캐스팅으로 맞춘 뒤 같은 자리의 벡터끼리 내적하고, `tensordot`은 남은 축의 모든 조합을 만들어요. 자세한 것은 [vecdot](/api/array/vecdot/) 문서에 있어요.
+
+## numpy를 아는 분께
+
+- `axes`는 keyword-only예요. `np.tensordot(a, b, 1)`처럼 자리로 넘길 수 없어요.
+- `axes=(1, 0)`처럼 int 둘의 쌍은 받지 않아요(`TypeError`). `axes=([1], [0])`으로 쓰세요.
+- bool끼리의 결과는 int64예요. numpy는 bool이에요.
+- 모든 축을 줄인 결과는 0차원 배열이 아니라 Python 숫자예요.
