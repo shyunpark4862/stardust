@@ -44,6 +44,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <optional>
 #include <utility>
 
 namespace sd::special {
@@ -350,17 +351,36 @@ inline UV as109(double p, double q, double t) {
         if (std::isinf(e)) return {std::exp((std::log(t * p) + lbeta) / p), 1.0};
         return {p / (p + e), e / (p + e)};
     }
+    // The two end approximations: I ~ x^p / (p B) near x = 0, and
+    // 1 - I ~ (1 - x)^q / (q B) near x = 1. AS109 picks one by its own test,
+    // but for p, q < 1 (a U-shaped density) the pick can be the wrong end and
+    // give a value outside [0, 1) -- e.g. 1 - x = 5400 for p = 0.038,
+    // q = 0.0058, t = 0.088 -- which used to be read as an underflowing root
+    // (betaincinv returned 0 for 8% of a, b < 1; T1 review). A value outside
+    // [0, 1) falls back to the other end, then to the middle.
+    auto lower_end = [&] { return std::exp((std::log(t * p) + lbeta) / p); };              // x
+    auto upper_end = [&] { return std::exp((std::log1p(-t) + std::log(q) + lbeta) / q); };  // 1 - x
+    auto from_lower = [&](double x) -> std::optional<UV> {
+        if (x >= 0.0 && x < 1.0) return UV{x, 1.0 - x};
+        return std::nullopt;
+    };
+    auto from_upper = [&](double v) -> std::optional<UV> {
+        if (v > 0.0 && v <= 1.0) return UV{1.0 - v, v};
+        return std::nullopt;
+    };
     const double r = q + q;
     double u = 1.0 / (9.0 * q);
     u = r * std::pow(1.0 - u + z * std::sqrt(u), 3);
     if (u <= 0.0) {
-        const double v = std::exp((std::log1p(-t) + std::log(q) + lbeta) / q);
-        return {1.0 - v, v};
+        if (auto g = from_upper(upper_end())) return *g;
+        if (auto g = from_lower(lower_end())) return *g;
+        return {0.5, 0.5};
     }
     u = (4.0 * p + r - 2.0) / u;
     if (u <= 1.0) {
-        const double x = std::exp((std::log(t * p) + lbeta) / p);
-        return {x, 1.0 - x};
+        if (auto g = from_lower(lower_end())) return *g;
+        if (auto g = from_upper(upper_end())) return *g;
+        return {0.5, 0.5};
     }
     return {1.0 - 2.0 / (u + 1.0), 2.0 / (u + 1.0)};
 }

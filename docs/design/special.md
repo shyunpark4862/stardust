@@ -148,6 +148,10 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 | `airy`는 네 배열의 tuple | `AiryResult(ai, aip, bi, bip)` namedtuple | DESIGN §9.7 |
 | 경고(`SpecialFunctionWarning`) | 내지 않는다 | API.md §2 |
 | 별칭(`psi`, `jn`) | 없다 | Q12 |
+| `bdtr(k<0)` NaN, `bdtr(k>n)` NaN, `pdtr(k<0)` NaN, `nbdtr(k, 0, p)` NaN | 참값 0, 1, 0, 1 | 참값·극한, 사용자 결정 (T1, 2026-11-15) |
+| `bdtr`, `nbdtr`의 n을 내린다 | `bdtr`은 정수가 아니면 NaN, `nbdtr`은 실수 n | 사용자 결정 (T1) |
+| `fdtr`, `fdtri`의 무한 자유도가 NaN | 극한 분포(카이제곱, 1의 점질량) | 참값·극한 (T1) |
+| `stdtrit(3, 5e-324)`가 inf | −6.07e107(참값) | 참값 (T1) |
 
 ---
 
@@ -383,6 +387,20 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 - 내부 호출: `hyp2f1`과 `hyp1f1`의 우리 식이 부르는 `Gamma::f`, `Digamma::f`도 바뀐 구간에서는 Boost다. `betainc`와 `betaincc`의 합은 3 ULP까지 1에서 벗어난다(Boost가 둘을 따로 계산한다; 전에는 같은 BRATIO 호출이라 2 ULP 안).
 
 ---
+
+### 5.15 분포 함수 (`special/ops/distr.hpp`, T1)
+- 15개 모두 기존 함수의 조합이다. 조합에서 정확도를 잃지 않는 것이 일의 거의 전부였다.
+- **인자를 반올림하지 않는다.** `stdtr`의 x = df/(df + t²), y = t²/(df + t²)와 `fdtr`의 w, 1 − w를 입력에서 double-double로 만들고, 반올림하지 않은 채 불완전 베타의 핵심(`ibeta_detail::ibeta(a, b, x, y)`, §5.4)에 넘긴다. 매개변수가 크면 I_x는 x에 민감하다(조건수 ~ a·x). 그래서 x를 double로 반올림하면 꼬리에서 100–300 ULP를 잃었다(처음 측정: fdtr 290, fdtrc 363). dd로 넘긴 뒤 16–18 ULP다. 핵심은 I와 1 − I를 한 번에 주므로 보수도 같은 호출이다.
+- **작은 인자 급수**: 인자가 2⁻¹⁰⁰⁰ 아래(언더플로 근처)이면 I_x(a, b) ≈ x^a/(a B(a, b))를 직접 쓴다. 예: `stdtr(1, −1e200)` = 3.2e-201인데 x = 1e-400은 언더플로한다.
+- **역함수는 작은 쪽을 푼다.** `stdtrit`, `fdtri`는 x와 1 − x 중 작은 쪽을 betaincinv/betainccinv로 푼다. 어느 쪽이 작은지는 p를 I₁/₂(a, b)와 비교해서 정한다. 처음에는 p ≤ 1/2로 골라서, x가 아주 작은데 1 − x를 풀었다. 그 결과 `stdtrit` 4e-9, `fdtri`는 0을 냈다.
+- **역함수의 먼 꼬리**: 근이 2⁻⁶⁰ 아래이면 급수 p ≈ x^a/(aB)를 거꾸로 풀어 거듭제곱으로 얻는다. 지수 −log(paB)/a를 double로 계산하면, 반올림한 지수에 |log|(~450)이 곱해져 191 ULP를 잃었다. 그래서 dd로 계산하고 exp를 한 번만 반올림한다(`exp_dd`, `log_product`; 서브노멀 p는 2⁶⁴를 곱해 둔다). 그 뒤 `stdtrit` 6.9 ULP다.
+- **`ndtri_exp`**: y > log ½이면 −ndtri(−expm1(y)), y > −700이면 ndtri(exp(y))다. 그 아래는 점근식 x² = −2y − log 2π − 2 log(−x) + 2 log(1 − 1/x² + 3/x⁴)의 고정점이다. −1e8 위에서는 그 값에서 log_ndtr로 Newton을 한다. Newton의 기울기 φ/Φ는 크기 x²/2인 두 수의 차라서, |x| > 1e6부터 자릿수를 잃었다(y = −1e17에서 2e13 ULP). 그래서 −1e8 아래는 고정점만 쓴다(다음 항 15/x⁶이 마지막 비트보다 훨씬 작다).
+- **S4의 결함을 고쳤다.** T1을 재다가 `betaincinv`, `betainccinv`가 a, b < 1의 약 8%에서 0이나 1을 돌려주는 것을 찾았다. AS109의 처음 추정이 U자 밀도에서 엉뚱한 끝을 골라 (0, 1) 밖의 값(예: 1 − x = 5400)을 냈고, 코드는 그것을 "근이 언더플로한다"로 읽었다. 이제는 범위 밖이면 다른 끝의 근사를, 그것도 안 되면 0.5에서 출발한다(`as109`). 40만 개 표본에서 scipy와 모두 일치한다. 그 영역의 참값 파일도 다시 만들었다. 옛 참값은 출발점으로 쓴 우리 함수의 0을 그대로 받아 0이 들어 있었다.
+- **참값 생성의 함정** (tools/special_ref.py):
+  - mpmath의 betainc는 인자가 1에 가까우면 자릿수를 잃는다. 그래서 x와 1 − x 중 작은 쪽에서 계산한다(`_ibeta_pair`).
+  - 값이 2^-1074보다 훨씬 작으면 수렴을 포기한다. 이때는 선두 항이 e^-1000 아래인지 보고 0으로 둔다(`_safe_betainc`).
+  - `ndtri_exp`는 x < −1e6에서 log Φ의 점근 급수와 해석적 기울기 −x/S(x)를 쓴다. mpmath의 ncdf, npdf가 넘치기 때문이다.
+  - 역함수 `fdtri`는 w가 아니라 x에 대해 푼다. w는 x가 크면 1로 반올림되기 때문이다.
 
 ## 6. 정답지와 측정
 - **기준값**: `tools/special_ref.py`가 mpmath(50자리)로 기준값을 만들어 `tests/special/ref/*.npz`에 커밋한다. 테스트는 mpmath를 매번 부르지 않는다 (느리다). mpmath는 이 도구와 일부 테스트의 의존성이다 (`pyproject.toml`의 `test`).

@@ -363,3 +363,55 @@ loggamma(z, /, *, out=None)
   | **`lambertw(z, k)`, z가 무한대** | **inf + i(arg z + 2πk)** | scipy는 `infj` 등에서 NaN |
   | **`lambertw(-0.36787944117144233 ± 0j, k)`** | **참값 −1 ± 8.2e-9i** | scipy NaN. 실수 입력은 S7대로 −1 |
   | `lambertw(0j)`, `lambertw(0j, k ≠ 0)` | 0(부호 유지), −inf + 0i | scipy와 같다 |
+
+## §13. 분포 함수 (T1)
+```
+stdtr(df, t, /, *, out=None)
+stdtrit(df, p, /, *, out=None)
+chdtr(v, x, /, *, out=None)
+chdtrc(v, x, /, *, out=None)
+chdtri(v, p, /, *, out=None)
+fdtr(dfn, dfd, x, /, *, out=None)
+fdtrc(dfn, dfd, x, /, *, out=None)
+fdtri(dfn, dfd, p, /, *, out=None)
+pdtr(k, m, /, *, out=None)
+pdtrc(k, m, /, *, out=None)
+bdtr(k, n, p, /, *, out=None)
+bdtrc(k, n, p, /, *, out=None)
+nbdtr(k, n, p, /, *, out=None)
+nbdtrc(k, n, p, /, *, out=None)
+ndtri_exp(y, /, *, out=None)
+```
+- 누적분포 P(X ≤ x)와 그 보수(`*c`), 역함수다. 이름과 뜻은 scipy.special과 같다.
+  - `stdtr`: Student t. `stdtrit`은 `stdtr(df, t) = p`의 t다.
+  - `chdtr`: 카이제곱, `gammainc(v/2, x/2)`. `chdtri`는 **`chdtrc`의** 역함수다(scipy와 같다): `chdtrc(v, x) = p`의 x.
+  - `fdtr`: F 분포. `fdtri`는 `fdtr(dfn, dfd, x) = p`의 x다.
+  - `pdtr`: 포아송, `bdtr`: 이항, `nbdtr`: 음이항(n번째 성공 전의 실패 수, 성공 확률 p).
+  - `ndtri_exp(y)`: `ndtri(exp(y))`. `exp(y)`가 언더플로하는 y(−1e300까지)도 계산한다.
+- **계산**: betainc·gammainc 등의 조합이다(docs/design/special.md §5.15). 꼬리는 보수 함수로 직접 계산해서 1에서 빼지 않는다. 그래서 꼬리에서도 상대 정확도가 유지된다.
+- **정수 인자** (T1 결정): `pdtr bdtr nbdtr`의 k는 내림한다(P(X ≤ k)의 뜻). `bdtr`의 n은 음이 아닌 정수여야 한다(아니면 NaN). `nbdtr`의 n은 0 이상의 실수다. scipy는 n도 내림한다.
+- **특수값** (참값·극한, T1 결정). scipy와 다른 곳은 굵게 적었다.
+
+  | 입력 | 값 | 비고 |
+  |---|---|---|
+  | `stdtr(inf, t)` | `ndtr(t)` | 정규분포 |
+  | `stdtr(df, ±inf)`, `stdtr(df, 0)` | 1 / 0, 0.5 | df ≤ 0, NaN이면 NaN |
+  | `stdtrit(df, 0)`, `stdtrit(df, 1)` | −inf, inf | |
+  | `stdtrit(3, 5e-324)` | −6.07e107 | **scipy는 inf** |
+  | `chdtr(0, x)`, x > 0 | 1 | `chdtr(0, 0)`은 NaN(scipy와 같다) |
+  | **`fdtr(dfn, inf, x)`** | `gammainc(dfn/2, dfn·x/2)` | 극한(dfn·F → 카이제곱). **scipy는 NaN** |
+  | **`fdtr(inf, dfd, x)`** | `gammaincc(dfd/2, dfd/(2x))` | 극한(dfd/F → 카이제곱). **scipy는 NaN** |
+  | **`fdtr(inf, inf, x)`** | x < 1이면 0, x ≥ 1이면 1 | 1에 몰린 분포. **scipy는 NaN** |
+  | `fdtri`의 무한 자유도 | 위 극한의 역함수 | **scipy는 NaN** |
+  | **`pdtr(k < 0, m)`**, **`pdtrc(k < 0, m)`** | 0, 1 | **scipy는 NaN** |
+  | **`bdtr(k < 0, n, p)`** | 0 | **scipy는 NaN**(`bdtrc`는 scipy도 1) |
+  | **`bdtr(k ≥ n, n, p)`** | 1 (`bdtrc`는 0) | **scipy는 k > n에서 NaN** |
+  | **`bdtr(k, 5.5, p)`** | NaN | n이 정수가 아니다. **scipy는 n을 내린다** |
+  | **`nbdtr(k, 5.5, p)`** | `betainc(5.5, k+1, p)` | 실수 n. **scipy는 n을 내린다** |
+  | **`nbdtr(k, 0, p)`**, 0 < p ≤ 1 | 1 | 실패가 없다. **scipy는 NaN** |
+  | `nbdtr(k, inf, p)` | 0 | |
+  | `ndtri_exp(0)`, `ndtri_exp(-inf)`, y > 0 | inf, −inf, NaN | |
+- **정확도**: 목표는 다른 special 함수와 같은 1e-14(약 45 ULP)다. 보장 영역은 사용자 결정을 기다린다(T1 보고).
+  - **잰 값** (bench/special/t1/accuracy.md, 최대 ULP; 역함수는 ULP/max(1, κ)): `stdtr` 9.0, `stdtrit` 6.9, `chdtr` 6.1, `chdtrc` 9.7, `chdtri` 7.2, `fdtr` 16, `fdtrc` 18, `fdtri` 23, `pdtr` 4.5, `pdtrc` 13, `bdtr` 10, `bdtrc` 9.5, `nbdtr` 14, `nbdtrc` 19, `ndtri_exp` 6.5
+  - 같은 점에서 scipy: 최대 25 ULP(`chdtri`)부터 4.9e16 ULP(`fdtri`), inf(`stdtrit` 등)까지.
+  - 잰 범위: 자유도 1e-2–1e6(t), 1e-2–1e4(F), k·n 1e4까지, `ndtri_exp`의 y는 −1e300–0. 근이 double 범위 밖이면(`fdtri` → 0, `stdtrit` → −inf) 순방향 함수로 확인한다(tests/special/test_distributions.py).

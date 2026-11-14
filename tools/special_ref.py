@@ -715,7 +715,235 @@ def _hyp2f1_inputs(rng):
     return (a, b, c, z), g
 
 
-INVERSES = {"gammaincinv", "gammainccinv", "betaincinv", "betainccinv"}
+# T1: the distribution functions (docs/api/special.md §13). Measured over the whole domain
+# first (the guaranteed regions are chosen from these measurements, T1 decision). The
+# inverses store scale = max(1, kappa), kappa = |p / (x F'(x))|, as in S4.
+
+
+def _safe_betainc(a, b, x):
+    """I_x(a, b); when mpmath gives up (a value far below 2^-1074), 0 if the leading term
+    x^a (1 - x)^b / (a B(a, b)) is below e^-1000, else the error stands."""
+    try:
+        return mpmath.betainc(a, b, 0, x, regularized=True)
+    except (mpmath.libmp.NoConvergence, ValueError):
+        lead = a * mpmath.log(x) + b * mpmath.log1p(-x) - mpmath.log(a) - mpmath.log(mpmath.beta(a, b))
+        if lead < -1000:
+            return mpmath.mpf(0)
+        raise
+
+
+def _ibeta_pair(a, b, x, y):
+    """(I_x(a, b), 1 - I_x(a, b)) with y = 1 - x given exactly. Each is evaluated directly
+    (1 - I would cancel a tiny value), except where its own argument is within 1e-6 of 1:
+    there mpmath's betainc loses digits (docs/design/special.md §6), and the other side's
+    value is the small one anyway, so 1 minus it is exact enough."""
+    near_one = mpmath.mpf(10) ** -6
+    i = _safe_betainc(a, b, x) if y > near_one else 1 - _safe_betainc(b, a, y)
+    ic = _safe_betainc(b, a, y) if x > near_one else 1 - _safe_betainc(a, b, x)
+    return i, ic
+
+
+def _t_tail(df, t):  # P(T <= -|t|)
+    z = t * t
+    return _ibeta_pair(df / 2, mpmath.mpf(1) / 2, df / (df + z), z / (df + z))[0] / 2
+
+
+def _mp_stdtr(df, t):
+    if t == 0:
+        return mpmath.mpf(1) / 2
+    tail = _t_tail(df, t)
+    return tail if t < 0 else 1 - tail
+
+
+def _stdtr_inputs(rng):
+    m = 500
+    df = np.concatenate([loguniform(rng, 1e-2, 1e6, m), loguniform(rng, 1e-2, 10, m), loguniform(rng, 10, 1e6, m)])
+    t = np.concatenate([loguniform(rng, 1e-4, 1e4, m, signed=True), loguniform(rng, 1e-3, 1e8, m, signed=True),
+                        rng.normal(0, 1, m) * 6])
+    edf, et = np.array([1.0, 1.0, 3.0, 1e-2, 1e6, 0.5]), np.array([1e150, -1e200, 5e-324, 1e-300, 30.0, -1e10])
+    return (np.concatenate([df, edf]), np.concatenate([t, et])), np.ones(3 * m + edf.size, dtype=bool)
+
+
+def _t_pdf(df, t):
+    return mpmath.exp(mpmath.loggamma((df + 1) / 2) - mpmath.loggamma(df / 2) - mpmath.log(df * mpmath.pi) / 2
+                      - (df + 1) / 2 * mpmath.log1p(t * t / df))
+
+
+def _newton_root(F, dF, target, x0):
+    x = mpmath.mpf(x0)
+    for _ in range(200):
+        step = (F(x) - target) / dF(x)
+        x -= step
+        if abs(step) <= abs(x) * mpmath.mpf(10) ** -40:
+            return x
+    raise RuntimeError("no convergence")
+
+
+def _mp_stdtrit(df, p):
+    t0 = _start2("stdtrit", df, p)
+    if not np.isfinite(t0) or t0 == 0:
+        raise RuntimeError("no start")
+    d, pp = mpmath.mpf(df), mpmath.mpf(p)
+    # Newton on the log of the tail, which keeps far tails exact
+    lower = p < 0.5
+    tail_p = pp if lower else 1 - pp
+    G = lambda t: mpmath.log(_t_tail(d, t))  # increasing for t < 0, slope pdf / tail
+    s = -abs(mpmath.mpf(t0))
+    for _ in range(200):
+        step = (G(s) - mpmath.log(tail_p)) / (_t_pdf(d, s) / _t_tail(d, s))
+        s -= step
+        if abs(step) <= abs(s) * mpmath.mpf(10) ** -40:
+            break
+    t = s if lower else -s
+    return t, abs(pp / (t * _t_pdf(d, t)))
+
+
+def _stdtrit_inputs(rng):
+    m = 500
+    df = np.concatenate([loguniform(rng, 1e-2, 1e6, m), loguniform(rng, 1e-2, 10, m), loguniform(rng, 10, 1e6, m)])
+    p = np.concatenate([rng.uniform(0, 1, m), loguniform(rng, 1e-300, 0.5, m), 1 - loguniform(rng, 1e-16, 0.5, m)])
+    edf, ep = np.array([3.0, 0.06385, 1.0]), np.array([5e-324, 0.26009166350995649, 0.4999999])
+    df, p = np.concatenate([df, edf]), np.concatenate([p, ep])
+    keep = (p > 0) & (p < 1) & (p != 0.5)
+    return (df[keep], p[keep]), np.ones(keep.sum(), dtype=bool)
+
+
+def _chdtr_inputs(rng):
+    m = 600
+    v = np.concatenate([loguniform(rng, 1e-2, 1e5, m), loguniform(rng, 1e-2, 10, m)])
+    x = np.concatenate([v[:m] * loguniform(rng, 1e-2, 1e2, m), loguniform(rng, 1e-6, 50, m)])
+    return (v, x), np.ones(v.size, dtype=bool)
+
+
+def _mp_chdtri(v, p):
+    y, k = _gamma_inverse(True)(v / 2, p)
+    return 2 * y, k
+
+
+def _chdtri_inputs(rng):
+    m = 600
+    v = np.concatenate([loguniform(rng, 1e-2, 1e5, m), loguniform(rng, 1e-2, 10, m)])
+    p = np.concatenate([rng.uniform(0, 1, m), loguniform(rng, 1e-300, 0.999, m)])
+    keep = (p > 0) & (p < 1)
+    return (v[keep], p[keep]), np.ones(keep.sum(), dtype=bool)
+
+
+def _f_w(dfn, dfd, x):
+    return dfn * x / (dfn * x + dfd)
+
+
+def _f_pair(dfn, dfd, x):
+    s = dfn * x + dfd
+    return _ibeta_pair(dfn / 2, dfd / 2, dfn * x / s, dfd / s)
+
+
+def _mp_fdtr(dfn, dfd, x):
+    return _f_pair(dfn, dfd, x)[0]
+
+
+def _mp_fdtrc(dfn, dfd, x):
+    return _f_pair(dfn, dfd, x)[1]
+
+
+def _fdtr_inputs(rng):
+    m = 500
+    dfn = np.concatenate([loguniform(rng, 1e-2, 1e4, m), loguniform(rng, 1e-2, 10, m), loguniform(rng, 10, 1e4, m)])
+    dfd = np.concatenate([loguniform(rng, 1e-2, 1e4, m), loguniform(rng, 10, 1e4, m), loguniform(rng, 1e-2, 10, m)])
+    x = np.concatenate([loguniform(rng, 1e-4, 1e4, m), loguniform(rng, 1e-6, 1e6, m), rng.uniform(0.2, 3, m)])
+    return (dfn, dfd, x), np.ones(dfn.size, dtype=bool)
+
+
+def _mp_fdtri(dfn, dfd, p):
+    """The x with fdtr(dfn, dfd, x) = p, solved for x itself (not through w = dfn x / (dfn x + dfd),
+    which rounds to 1 for a huge x): Newton in log x on the log of the smaller tail."""
+    x0 = _start2("fdtri", dfn, dfd, p)
+    if not (np.isfinite(x0) and x0 > 0):
+        raise RuntimeError("no start")
+    a, b, pp = dfn / 2, dfd / 2, mpmath.mpf(p)
+    lb = mpmath.log(mpmath.beta(a, b))
+
+    def density(x):  # d fdtr / dx
+        s = dfn * x + dfd
+        lw, lv = mpmath.log(dfn * x / s), mpmath.log(dfd / s)
+        return mpmath.exp((a - 1) * lw + (b - 1) * lv - lb) * dfn * dfd / (s * s)
+
+    lower = p <= 0.5
+    tail = (lambda x: _mp_fdtr(dfn, dfd, x)) if lower else (lambda x: _mp_fdtrc(dfn, dfd, x))
+    target = pp if lower else 1 - pp
+    x = _solve_log(lambda x: mpmath.log(tail(x)) - mpmath.log(target),
+                   lambda x: (1 if lower else -1) * x * density(x) / tail(x), x0)
+    return x, abs(pp / (x * density(x)))
+
+
+def _fdtri_inputs(rng):
+    m = 400
+    dfn = np.concatenate([loguniform(rng, 1e-2, 1e4, m), loguniform(rng, 1e-2, 10, m), loguniform(rng, 10, 1e4, m)])
+    dfd = np.concatenate([loguniform(rng, 1e-2, 1e4, m), loguniform(rng, 10, 1e4, m), loguniform(rng, 1e-2, 10, m)])
+    p = np.concatenate([rng.uniform(0, 1, m), loguniform(rng, 1e-100, 0.999, m), rng.uniform(0, 1, m)])
+    keep = (p > 0) & (p < 1)
+    return (dfn[keep], dfd[keep], p[keep]), np.ones(keep.sum(), dtype=bool)
+
+
+def _pdtr_inputs(rng):
+    m = 700
+    k = np.concatenate([np.floor(loguniform(rng, 1, 1e4, m)) - 1, rng.integers(0, 30, m).astype(float)])
+    mu = np.concatenate([(k[:m] + 1) * loguniform(rng, 0.1, 10, m), loguniform(rng, 1e-3, 60, m)])
+    return (k, mu), np.ones(k.size, dtype=bool)
+
+
+def _binom_inputs(rng, real_n=False):
+    m = 600
+    n = np.concatenate([np.floor(loguniform(rng, 1, 1e4, m)), rng.integers(1, 40, m).astype(float)])
+    k = np.floor(rng.uniform(0, 1, 2 * m) * n)
+    if real_n:  # nbdtr: any real n > 0, k unbounded by n
+        n = np.concatenate([loguniform(rng, 1e-2, 1e4, m), loguniform(rng, 1e-2, 50, m)])
+        k = np.floor(loguniform(rng, 1, 1e4, 2 * m)) - 1
+    p = np.concatenate([rng.uniform(0, 1, m), loguniform(rng, 1e-8, 1, m)])
+    keep = (p > 0) & (p < 1) & (k >= 0) & ((k < n) | real_n)
+    return (k[keep], n[keep], p[keep]), np.ones(keep.sum(), dtype=bool)
+
+
+def _asymptotic_s(x):
+    """S(x) = sum_k (-1)^k (2k-1)!! / x^(2k), with ndtr(x) = npdf(x) S(x) / (-x) for x << 0."""
+    s, term = mpmath.mpf(1), mpmath.mpf(1)
+    for k in range(1, 12):
+        term *= -(2 * k - 1) / (x * x)
+        s += term
+    return s
+
+
+def _log_ncdf(x):
+    """log ndtr(x); for x < -1e6 from the asymptotic series (mpmath's ncdf overflows near x = -1e150)."""
+    if x > 0:  # ndtr(x) = 1 - ndtr(-x): log1p keeps the tiny difference (ndtr(37) = 1 - 1e-300)
+        return mpmath.log1p(-mpmath.ncdf(-x))
+    if x > -1e6:
+        return mpmath.log(mpmath.ncdf(x))
+    return -x * x / 2 - mpmath.log(-x) - mpmath.log(2 * mpmath.pi) / 2 + mpmath.log(_asymptotic_s(x))
+
+
+def _ncdf_slope(x):
+    """d/dx log ndtr(x) = npdf / ndtr; -x / S(x) for x < -1e6 (the difference of the two logs
+    would cancel numbers of size x^2 / 2)."""
+    if x > -1e6:
+        return mpmath.npdf(x) / mpmath.ncdf(x)
+    return -x / _asymptotic_s(x)
+
+
+def _mp_ndtri_exp(y):
+    x0 = _start2("ndtri_exp", y)
+    yy = mpmath.mpf(y)
+    x = _newton_root(_log_ncdf, _ncdf_slope, yy, x0)
+    return x, abs(yy / (x * _ncdf_slope(x)))
+
+
+def _ndtri_exp_inputs(rng):
+    m = 800
+    y = np.concatenate([-loguniform(rng, 1e-300, 1e300, m), -rng.uniform(0, 3, m), -loguniform(rng, 1, 1e4, m),
+                        -around([0.6931471805599453, 700.0, 1e17])])
+    return (y,), np.ones(y.size, dtype=bool)
+
+
+INVERSES = {"gammaincinv", "gammainccinv", "betaincinv", "betainccinv", "stdtrit", "chdtri", "fdtri", "ndtri_exp"}
 
 
 FUNCTIONS = {
@@ -758,6 +986,22 @@ FUNCTIONS = {
     "betaincc": (3, _mp_betaincc, _betainc_inputs),
     "betaincinv": (3, _beta_inverse(False), _betaincinv_inputs),
     "betainccinv": (3, _beta_inverse(True), _betaincinv_inputs),
+    # T1
+    "stdtr": (2, _mp_stdtr, _stdtr_inputs),
+    "stdtrit": (2, _mp_stdtrit, _stdtrit_inputs),
+    "chdtr": (2, lambda v, x: _mp_gammainc(v / 2, x / 2), _chdtr_inputs),
+    "chdtrc": (2, lambda v, x: _mp_gammaincc(v / 2, x / 2), _chdtr_inputs),
+    "chdtri": (2, _mp_chdtri, _chdtri_inputs),
+    "fdtr": (3, _mp_fdtr, _fdtr_inputs),
+    "fdtrc": (3, _mp_fdtrc, _fdtr_inputs),
+    "fdtri": (3, _mp_fdtri, _fdtri_inputs),
+    "pdtr": (2, lambda k, m: _mp_gammaincc(k + 1, m), _pdtr_inputs),
+    "pdtrc": (2, lambda k, m: _mp_gammainc(k + 1, m), _pdtr_inputs),
+    "bdtr": (3, lambda k, n, p: mpmath.betainc(n - k, k + 1, 0, 1 - p, regularized=True), _binom_inputs),
+    "bdtrc": (3, lambda k, n, p: mpmath.betainc(k + 1, n - k, 0, p, regularized=True), _binom_inputs),
+    "nbdtr": (3, lambda k, n, p: mpmath.betainc(n, k + 1, 0, p, regularized=True), lambda rng: _binom_inputs(rng, True)),
+    "nbdtrc": (3, lambda k, n, p: mpmath.betainc(k + 1, n, 0, 1 - p, regularized=True), lambda rng: _binom_inputs(rng, True)),
+    "ndtri_exp": (1, _mp_ndtri_exp, _ndtri_exp_inputs),
     # S5
     "expi": (1, mpmath.ei, _expi_inputs),
     "expn": (2, lambda n, x: mpmath.expint(int(n), x), _expn_inputs),

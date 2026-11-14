@@ -20,6 +20,7 @@
 #include "special/ops/gamma.hpp"
 #include "special/ops/hyper.hpp"
 #include "special/ops/lambertw.hpp"
+#include "special/ops/distr.hpp"
 #include "special/ops/incbeta.hpp"
 #include "special/ops/incgamma.hpp"
 #include "special/ops/loggamma.hpp"
@@ -149,6 +150,8 @@ void bind_special(nb::module_& core) {
     def_naries<Gamma, Rgamma, Gammaln, Digamma, Polygamma, Beta, Betaln, Binom>(m);  // S3, §3
     def_naries<Gammainc, Gammaincc, Gammaincinv, Gammainccinv>(m);  // S4, §3
     def_naries<Betainc, Betaincc, Betaincinv, Betainccinv>(m);  // S4, §3
+    def_naries<Stdtr, Stdtrit, Chdtr, Chdtrc, Chdtri, Fdtr, Fdtrc, Fdtri, Pdtr, Pdtrc, Bdtr, Bdtrc, Nbdtr, Nbdtrc,
+               NdtriExp>(m);  // T1, §13
     def_naries<Expi, Expn, Ellipk, Ellipe>(m);  // S5, §7, §10
     def_naries<EllipkAgm, EllipeCarlson>(m);  // S5 measurement variants (the design's methods)
     def_naries<I0, I0e, I1, I1e, K0, K0e, K1, K1e, J0, J1, Y0, Y1>(m);  // S6, §8.1
