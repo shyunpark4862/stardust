@@ -81,8 +81,10 @@ inline constexpr double kBetainccinv = 1625;
 // S5 (special/ops/expint.hpp, ellip.hpp), bench/special/s5/cost.md
 inline constexpr double kExpi = 25;
 inline constexpr double kExpn = 98;
-inline constexpr double kEllipk = 30;
-inline constexpr double kEllipe = 65;
+inline constexpr double kEllipk = 8.0;
+inline constexpr double kEllipe = 9.7;
+inline constexpr double kEllipkAgm = 30;   // the comparison variants
+inline constexpr double kEllipeCarlson = 65;
 }  // namespace cost
 
 }  // namespace sd::special

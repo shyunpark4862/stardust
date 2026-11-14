@@ -104,6 +104,7 @@ void bind_special(nb::module_& core) {
     def_naries<Gammainc, Gammaincc, Gammaincinv, Gammainccinv>(m);  // S4, §3
     def_naries<Betainc, Betaincc, Betaincinv, Betainccinv>(m);  // S4, §3
     def_naries<Expi, Expn, Ellipk, Ellipe>(m);  // S5, §7, §10
+    def_naries<EllipkAgm, EllipeCarlson>(m);  // S5 measurement variants (the design's methods)
     def_naries<GammaLanczos>(m);  // S3 measurement variant (gamma candidate A)
     // zeta(x, q=None, /, *, out=None): Riemann with one argument, Hurwitz with two (§7)
     m.def(

@@ -4,13 +4,20 @@
 //     ellipk(m) = K(m) = int_0^(pi/2) (1 - m sin^2 t)^(-1/2) dt
 //     ellipe(m) = E(m) = int_0^(pi/2) (1 - m sin^2 t)^(1/2) dt
 //
-// K: the arithmetic-geometric mean, K = pi / (2 AGM(1, sqrt(1 - m))). The
-// iteration converges quadratically (5-7 steps; ~10 from m = -1e300), and
-// 1 - m is exact from m = 1/2 up (Sterbenz), so the log singularity at m -> 1
-// needs no care of its own.
+// Public: Cephes' polynomials in y = 1 - m (coeffs/cephes_ellip.hpp),
+//     K = P(y) - log(y) Q(y),   E = P(y) - log(y) y Q(y),
+// with the log singularity at m = 1 factored out, so nothing cancels; 1 - m
+// is exact from m = 1/2 up (Sterbenz). For m < 0, y = 1/(1-m) formed
+// directly and K(m) = K(y) / sqrt(1-m), E(m) = E(y) sqrt(1-m) (scipy forms
+// 1 - 1/x and then 1 minus that again). Chosen after S5's measurement (user
+// decision 2026-11-14): as accurate as the two methods below (max 3.0 / 4.2
+// ULP against 2.3 / 4.0) and 4-8x faster.
 //
-// E: Carlson's symmetric form. The textbook one,
-//     E = R_F(0, y, 1) - (m/3) R_D(0, y, 1),   y = 1 - m,
+// Private, for comparison (the design's methods, docs/learn/S5-reduce-expint-ellip.md):
+// _ellipk_agm: the arithmetic-geometric mean, K = pi / (2 AGM(1, sqrt(1 - m))),
+// quadratic convergence in 5-7 steps.
+// _ellipe_carlson: Carlson's symmetric form. The textbook one,
+//     E = R_F(0, y, 1) - (m/3) R_D(0, y, 1),
 // is K - (K - E): near m = 1 both terms grow like log(1/y) while E -> 1, a
 // cancellation of ~20x at y = 1e-16. The form with two positive terms
 // (DLMF 19.25.1, checked with mpmath)
@@ -18,13 +25,11 @@
 // cancels nothing. For y < 2^-34 the expansion about m = 1,
 //     E = 1 + (y/4)(log(16/y) - 1) + (3y^2/32)(log(16/y) - 13/6),
 // is exact to rounding (and R_D's duplication would need log4(1/y) steps).
-// m < 0: E(m) = sqrt(1-m) E(m/(m-1)), with 1 - m/(m-1) = 1/(1-m) formed
-// directly.
-//
 // R_D by Carlson's duplication (Carlson 1995, Numer. Algorithms 10), iterated
 // until the remaining relative error is below 2^-56.
 #pragma once
 
+#include "special/coeffs/cephes_ellip.hpp"
 #include "special/common.hpp"
 #include "special/cost.hpp"
 #include "special/gamma_core.hpp"
@@ -89,7 +94,46 @@ inline double agm1(double b) {
     return 0.5 * (a + b);
 }
 
+// Cephes ellpk, ellpe at y = 1 - m, 0 < y <= 1.
+inline double ellpk(double y) {
+    if (y <= kEps) return cephes::kEllpkC1 - 0.5 * std::log(y);  // MACHEP
+    return horner(y, cephes::kEllpkP) - std::log(y) * horner(y, cephes::kEllpkQ);
+}
+inline double ellpe(double y) { return horner(y, cephes::kEllpeP) - std::log(y) * (y * horner(y, cephes::kEllpeQ)); }
+
 }  // namespace ellip_detail
+
+// K(m) by the AGM (private, for comparison).
+struct EllipkAgm : Real {
+    static constexpr const char* name = "_ellipk_agm";
+    static constexpr int nin = 1, nout = 1;
+    static constexpr std::array<const char*, 1> args{"m"};
+    static constexpr double cost_ns = cost::kEllipkAgm;
+    static double f(double m) {
+        if (std::isnan(m) || m > 1.0) return kNaN;
+        if (m == 1.0) return kInf;
+        if (m == -kInf) return 0.0;
+        // AGM(1, sqrt(y)) with y up to 1e300: sqrt(a b) of the first step stays in range
+        return kPi / (2.0 * ellip_detail::agm1(std::sqrt(1.0 - m)));
+    }
+};
+
+// E(m) by Carlson's positive form (private, for comparison).
+struct EllipeCarlson : Real {
+    static constexpr const char* name = "_ellipe_carlson";
+    static constexpr int nin = 1, nout = 1;
+    static constexpr std::array<const char*, 1> args{"m"};
+    static constexpr double cost_ns = cost::kEllipeCarlson;
+    static double f(double m) {
+        if (std::isnan(m) || m > 1.0) return kNaN;
+        if (m == 1.0) return 1.0;
+        if (m == 0.0) return 0.5 * kPi;  // exactly pi/2, as scipy (the duplication gives it to 2 ULP)
+        if (m == -kInf) return kInf;
+        if (m >= 0.0) return ellip_detail::ellipe_y(1.0 - m);
+        const double w = 1.0 - m;  // > 1
+        return std::sqrt(w) * ellip_detail::ellipe_y(1.0 / w);
+    }
+};
 
 // K(m). ellipk(1) = inf, ellipk(-inf) = 0, m > 1 is NaN (scipy).
 struct Ellipk : Real {
@@ -101,8 +145,9 @@ struct Ellipk : Real {
         if (std::isnan(m) || m > 1.0) return kNaN;
         if (m == 1.0) return kInf;
         if (m == -kInf) return 0.0;
-        // AGM(1, sqrt(y)) with y up to 1e300: sqrt(a b) of the first step stays in range
-        return kPi / (2.0 * ellip_detail::agm1(std::sqrt(1.0 - m)));
+        if (m >= 0.0) return ellip_detail::ellpk(1.0 - m);
+        const double w = 1.0 - m;  // > 1
+        return ellip_detail::ellpk(1.0 / w) / std::sqrt(w);
     }
 };
 
@@ -115,11 +160,10 @@ struct Ellipe : Real {
     static double f(double m) {
         if (std::isnan(m) || m > 1.0) return kNaN;
         if (m == 1.0) return 1.0;
-        if (m == 0.0) return 0.5 * kPi;  // exactly pi/2, as scipy (the duplication gives it to 2 ULP)
         if (m == -kInf) return kInf;
-        if (m >= 0.0) return ellip_detail::ellipe_y(1.0 - m);
-        const double w = 1.0 - m;  // > 1
-        return std::sqrt(w) * ellip_detail::ellipe_y(1.0 / w);
+        if (m >= 0.0) return ellip_detail::ellpe(1.0 - m);
+        const double w = 1.0 - m;
+        return std::sqrt(w) * ellip_detail::ellpe(1.0 / w);
     }
 };
 

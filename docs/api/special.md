@@ -268,7 +268,7 @@ ellipe(m, /, *, out=None)
 ```
 - 매개변수는 scipy와 같은 `m`(= k²)이다. `ellipk(1)`은 `inf`, `m > 1`은 NaN이다.
 - **보장 영역** (사용자 결정 2026-11-14): 둘 다 m ≤ 1 전체에서 상대오차 1e-14다.
-- **잰 정확도** (bench/special/s5/accuracy.md, 최대 ULP): `ellipk` 3.0, `ellipe` 4.2
+- **잰 정확도** (bench/special/s5/accuracy.md, 최대 ULP): `ellipk` 2.3, `ellipe` 2.0
 - **특수값**: scipy와 비트까지 같다. `ellipk(0) = ellipe(0) = π/2`, `ellipe(1) = 1`, `ellipk(-inf) = 0`, `ellipe(-inf) = inf`
 
 ## §11. 초기하 함수와 Lambert W
