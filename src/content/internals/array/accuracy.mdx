@@ -1,0 +1,348 @@
+---
+title: 정확도와 검증
+group: 성능과 정확도
+order: 3
+summary: 배열 영역의 결과가 numpy와 어디서 비트까지 같고 어디서 얼마나 다른지, 그리고 스레드 수와 상관없이 같은 비트가 나온다는 약속을 정리해요. 그 약속을 지키는 장치인 numpy 대조 테스트, 골든 출력 비교, 에러 메시지 테스트, 문서 참조 검사기도 설명해요.
+seeAlso: [performance, elementwise, reductions, statistics, matmul, conversion]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+stardust의 배열 영역은 두 가지 약속을 해요.
+
+1. **numpy와의 관계를 미리 정해 둬요.** 어떤 결과가 numpy와 비트까지 같고, 어떤 결과가 얼마까지 다를 수 있는지를 범주마다 정했어요. "대략 같다"로 두지 않고, 테스트가 그 구분을 그대로 고정해요.
+2. **결과는 결정적이에요.** 같은 데이터, 같은 레이아웃이면 스레드 수와 상관없이 같은 비트가 나와요. numpy와 비트가 다른 경로도 예외가 아니에요.
+
+| 범주 | numpy와의 관계 |
+|---|---|
+| 원소별 연산 (vForce 함수 제외) | 비트까지 같아요 |
+| vForce를 쓰는 float64 함수 16개 | 최대 8 ULP(계약). 측정한 최대는 4 ULP(`atanh`) |
+| 출력이 하나인 긴 합, 형변환 없음 (`sum(f)`) | 비트까지 같아요. 10스레드에서도 같아요 |
+| 순서와 무관한 리덕션 (정수 합·곱, max/min, any/all, argmax) | 같아요 |
+| 블록 리덕션, float/complex `prod`, 긴 float 누적 스캔, 형변환이 있는 리덕션 | 다를 수 있어요. 오차 한계는 numpy보다 작거나 같아요 |
+| 분위수, `median` | 비트까지 같아요(`-0.0`과 `+0.0`이 같은 순위에 섞인 경우만 예외) |
+| `arange`의 float 값 | 공식이 달라 몇 ULP 다를 수 있어요. stardust 쪽이 참값에 가까워요 |
+| float `matmul` | Accelerate가 정해요. 확인한 경우는 같았지만 보장하지 않아요 |
+| `repr` | 같을 필요가 없어요 |
+
+검증은 네 겹이에요.
+
+| 장치 | 무엇을 지키나 | 위치 |
+|---|---|---|
+| numpy 대조 테스트 | 위 표의 구분: 비트 일치, ULP 한계, 상대오차 | `tests/array/` (2,418개) |
+| 스레드 결정성 테스트 | 1, 2, 3, 7, 10스레드에서 같은 바이트 | `tests/array/test_threads.py` |
+| 골든 출력 비교 | 통합 전 패키지와 결과가 비트까지 같음(의도한 차이는 목록으로) | `bench/merge/golden/` (12,424개, 스레드 1·3·10) |
+| 에러 메시지·API 표면·문서 참조 | 메시지 형식, 공개 이름, 코드 주석이 가리키는 문서 절 | `tests/test_error_messages.py`, `test_api_surface.py`, `tools/check_refs.py` |
+
+(테스트 수는 이 문서를 쓰는 시점에 `pytest --collect-only`로 센 값이에요. 라이브러리 전체로는 4,026개예요.)
+
+## ULP: 차이를 재는 단위
+
+### 정의
+
+부동소수점 수 사이의 차이는 ULP(unit in the last place, 마지막 자리의 한 칸)로 재요. float64에서 정규수 $x$가 $2^e \le |x| < 2^{e+1}$이면
+
+$$
+\operatorname{ulp}(x) = 2^{e-52}
+$$
+
+이에요. 가수(significand)가 52비트이므로, 그 지수 구간 안에서 이웃한 두 float64의 간격이에요. 서브노멀 구간에서는 $2^{-1074}$로 일정해요. 상대 크기로 보면
+
+$$
+2^{-53} < \frac{\operatorname{ulp}(x)}{|x|} \le 2^{-52} \approx 2.2 \times 10^{-16}
+$$
+
+이라서 "8 ULP 차이"는 상대오차로 많아야 $8 \times 2^{-52} \approx 1.8 \times 10^{-15}$이에요. 올바르게 반올림한(correctly rounded) 결과는 참값에서 0.5 ULP 이내예요[1][6].
+
+### 테스트가 ULP 거리를 계산하는 방법
+
+두 수 사이에 float64가 몇 개 있는지를 세면 ULP 거리가 돼요. 테스트(`tests/array/conftest.py`의 `_ordered`)는 float64의 비트 패턴을 "크기 순서가 보존되는 정수"로 바꿔서 이것을 뺄셈 하나로 계산해요. $x$의 64비트 패턴을 부호 있는 정수로 읽은 값을 $b(x)$라 하면
+
+$$
+\kappa(x) =
+\begin{cases}
+b(x) & b(x) \ge 0 \\
+-2^{63} - b(x) & b(x) < 0
+\end{cases}
+\qquad
+d(x, y) = |\kappa(x) - \kappa(y)|
+$$
+
+예요. 양수는 비트 패턴의 정수 순서가 크기 순서와 같아요(지수가 위 비트, 가수가 아래 비트). 음수는 부호 비트가 켜져 있어 $b(x) = \operatorname{bits}(|x|) - 2^{63}$이므로 $\kappa(x) = -\operatorname{bits}(|x|)$가 되어, 결국 $\kappa(x) = \operatorname{sign}(x) \cdot \operatorname{bits}(|x|)$예요. 이웃한 두 float64는 $\kappa$가 정확히 1 차이 나고, 0을 가로질러도(음의 최소 서브노멀, ±0, 양의 최소 서브노멀) 거리가 이어져요.
+
+$\kappa(+0) = \kappa(-0) = 0$이라서 이 거리로는 0의 부호를 구별하지 못해요. 그래서 vForce 테스트는 특수값(±0, ±inf, NaN)을 따로 비트까지 비교해요. NaN은 거리 계산에서 빼고, 두 결과의 NaN 위치가 같은지 먼저 확인해요.
+
+## 원소별 연산: 비트까지 같게 만드는 방법
+
+원소별 연산은 vForce 함수 16개를 빼면 numpy와 비트까지 같아요. 같은 식을 같은 순서로 계산하면 IEEE 754의 각 연산(덧셈, 곱셈, 나눗셈, 제곱근, FMA)은 올바르게 반올림되므로 결과가 하나로 정해져요[2]. 문제는 "같은 식, 같은 순서"를 컴파일러와 라이브러리가 몰래 바꾸는 곳이에요. stardust는 그런 곳을 하나씩 막았어요([원소별 커널](/internals/array/elementwise/)).
+
+| 바뀔 수 있는 곳 | 막는 방법 |
+|---|---|
+| 컴파일러가 `a + b*c`를 FMA 하나로 합침(반올림이 한 번 줄어요) | `-ffp-contract=off`. FMA가 필요한 자리는 코드에 `std::fma`로 명시해요 |
+| numpy 바이너리는 FMA로 축약되어 빌드됨 | numpy가 FMA를 쓴 자리(complex 곱셈·나눗셈·제곱, `expm1`, complex `reciprocal`의 분모)에 같은 `std::fma`를 적어요. 무작위 곱 4000개로 패턴을 확인했어요. complex `reciprocal`은 FMA 없이 계산하면 원소의 9%가 1 ULP 달랐어요 |
+| 컴파일러가 같은 인자의 `sin`과 `cos`를 `__sincos_stret` 하나로 합침 | `-fno-builtin-sin -fno-builtin-cos`. 합치면 numpy(따로 호출)와 1 ULP 다를 수 있었어요 |
+| `-ffast-math`가 재배치하고 NaN·inf가 없다고 가정 | 쓰지 않아요. 재배치가 필요한 곳(리덕션)은 코드에서 명시적으로 해요 |
+| `std::complex`의 연산자가 C99 Annex G의 inf/nan 복구를 더함 | 쓰지 않고 numpy의 식(Smith 나눗셈 등)을 직접 적어요 |
+| libc++의 `std::exp(complex)`는 자체 구현 | C 라이브러리의 C99 함수(`cexp` 등)를 직접 선언해 불러요 |
+| `abs(z)`: libm `hypot`과 numpy의 SIMD 공식이 최대 1 ULP 다름 | numpy의 공식 `큰 쪽 × sqrt(1 + (작은 쪽/큰 쪽)²)`을 써요 |
+
+손으로 짠 NEON 커널(`maximum`, `clip`, complex 곱셈 등)은 스칼라 정의와 비트가 같아야 해요. 원소별 테스트는 dtype 쌍마다 세 레이아웃(연속, 스칼라 브로드캐스트, strided)을 모두 돌려요. 레이아웃에 따라 실행되는 커널이 달라지기 때문이에요(연속 fast path, 스칼라 fast path, 일반 strided 루프).
+
+float64 초월함수 가운데 vForce를 쓰지 않는 넷(`expm1`, `log1p`, `cos`, `tan`)과 `sqrt`는 numpy와 같은 libm 함수를 부르거나 같은 명령을 쓰므로 비트까지 같아요. 이 기계의 numpy float64 초월함수는 libm과 비트가 같고, `tanh`만 최대 1 ULP 달라요(설계 문서의 측정).
+
+## vForce 함수 16개: 8 ULP 계약
+
+### 무엇이 다른가
+
+`exp` `log` `log2` `log10` `sin` `asin` `acos` `atan` `sinh` `cosh` `tanh` `asinh` `acosh` `atanh`, 그리고 이항 `pow` `atan2`는 Apple Accelerate의 vForce(배열 단위 초월함수)로 계산해요. libm보다 대부분 2~10배 빠르지만(`sin` 7.6배, `atan2` 10배, `exp` 4.2배, 1스레드) 결과가 libm과, 따라서 numpy와 마지막 몇 비트가 달라요.
+
+**계약은 numpy와 최대 8 ULP이고, 특수값(±0, ±inf, NaN)은 부호까지 비트가 같아야 해요.** 테스트(`tests/array/test_vforce.py`)가 함수마다 원소 5만 개를 넓은 범위(로그 균등 분포 포함)에서 뽑아 이 계약을 확인해요.
+
+이 문서를 쓰며 테스트와 같은 범위에서 원소 20만 개로 numpy와의 거리를 다시 쟀어요.
+
+| 함수 | 입력 범위 | 최대 ULP | 99.9% 분위 | 비트까지 같은 비율 |
+|---|---|:---:|:---:|:---:|
+| `exp` | $[-745, 710]$ | 1 | 1 | 75% |
+| `log` | $[10^{-300}, 10^{300}]$, 로그 균등 | 2 | 1 | 83% |
+| `log2` | 같음 | 2 | 1 | 99.9% |
+| `log10` | 같음 | 2 | 1 | 74% |
+| `sin` | $[-10^5, 10^5]$ | 3 | 2 | 36% |
+| `asin` | $[-1, 1]$ | 2 | 2 | 76% |
+| `acos` | $[-1, 1]$ | 1 | 1 | 83% |
+| `atan` | $\pm[e^{-30}, 10^8]$ | 1 | 1 | 89% |
+| `sinh` | $[-710, 710]$ | 2 | 1 | 65% |
+| `cosh` | $[-710, 710]$ | 2 | 1 | 64% |
+| `tanh` | $[-30, 30]$ | 3 | 1 | 86% |
+| `asinh` | $\pm[e^{-30}, 10^{300}]$ | 3 | 1 | 83% |
+| `acosh` | $[1, 10^{300}]$, 로그 균등 | 2 | 1 | 83% |
+| `atanh` | $[-1, 1]$ | **4** | 3 | 53% |
+| `pow` | 밑 $[0, 100]$, 지수 $[-60, 60]$ | 1 | 1 | 74% |
+| `atan2` | 두 인자 $[-1000, 1000]$ | 1 | 1 | 74% |
+
+(Apple M4 Pro, numpy 2.5.4. 비교 대상은 numpy이고, numpy는 libm을 불러요. 참값 $x^*$와의 거리는 삼각부등식으로 $d(\mathrm{sd}, x^*) \le d(\mathrm{sd}, \mathrm{np}) + d(\mathrm{np}, x^*)$이에요.)
+
+최대는 4 ULP로 계약(8 ULP)의 절반이에요. 설계 문서의 독립 실험에서도 libm 대비 최대 1~6 ULP, numpy 대비 최대 4 ULP(`atanh`)였어요.
+
+### vForce를 써도 된다고 판단한 근거
+
+정확도만으로는 부족해요. 결정성과 특수값까지 지켜야 해서, 확장 모듈과 떨어진 작은 프로그램으로 따로 확인했어요.
+
+| 항목 | 결과 |
+|---|---|
+| 위치 독립성(인덱스, 배열 길이, 정렬) | 약 24만 회 검사에서 불일치 0. 그래서 `exp(x)[i] == exp(x[i])`이고, 스레드 청크가 결과를 바꾸지 않아요 |
+| 스레드 안전성 | 14개 스레드 동시 호출에서 불일치 0 |
+| 내부 스레드 | 쓰지 않아요(CPU 시간 / 경과 시간 = 1.00). stardust의 풀과 충돌하지 않아요 |
+| 특수값 | 16개 함수는 ±0, ±inf, NaN에서 부호까지 정확해요 |
+
+**위치 독립성이 가장 중요해요.** vForce는 SIMD로 여러 원소를 함께 계산하는데, 만약 배열의 시작이나 끝, 남는 원소를 다른 코드로 처리해서 결과가 달라진다면 "같은 값이 배열 어디에 있느냐"에 따라 다른 비트가 나와요. 그러면 스레드 수에 따라 청크 경계가 바뀌어 결과가 달라지고, 결정성이 깨져요. 테스트는 Python 스칼라(n = 1), 여러 오프셋, `[::3]`, 뒤집은 뷰, 전치(스택 버퍼로 모으는 경로)에서 비트가 같은지 확인해요. 스칼라 입력도 vForce를 n = 1로 부르는 것은 이 성질을 지키기 위해서예요.
+
+### libm에 남긴 넷
+
+`expm1`, `log1p`, `cos`, `tan`은 vForce가 IEEE 754 / C99 Annex F의 특수값 의미론을 어겨서 libm을 써요.
+
+- `cos(±0)`이 정확히 1이 아니었어요.
+- `expm1`, `log1p`, `tan`이 `-0`의 부호를 잃었어요.
+- `expm1`이 서브노멀 입력을 0으로 만들었어요.
+
+8 ULP 계약은 "보통 값"에 대한 것이고, 특수값에서는 비트가 같아야 한다는 것이 계약의 다른 절반이라서 이 넷은 계약을 지킬 수 없었어요.
+
+## 집계: 순서를 바꾼 곳과 그 대가
+
+### pairwise 합은 numpy와 같아요
+
+`sum`, `mean`, 그리고 형변환 없이 출력이 하나인 긴 합은 numpy의 `DOUBLE_pairwise_sum`/`CDOUBLE_pairwise_sum`(`numpy/_core/src/umath/loops_utils.h.src`)과 같은 알고리즘, 같은 순서예요[3]. 정의는 `base/pairwise.hpp` 한 벌이고 linalg와 frame도 같은 정의를 써요([집계](/internals/array/reductions/)).
+
+- $n < 8$이면 차례로 더해요.
+- $n \le 128$이면 누산기 8개가 8칸 간격으로 원소를 맡아 독립적으로 더하고, $((r_0+r_1)+(r_2+r_3))+((r_4+r_5)+(r_6+r_7))$로 합친 뒤 8의 배수를 넘는 나머지를 차례로 더해요.
+- 그보다 길면 반(8의 배수로 내림)으로 나눠 재귀해요.
+
+10스레드에서는 4096원소 이하의 부분 트리를 잎으로 삼아 병렬로 계산하고, 같은 트리를 따라 합쳐요. 덧셈 하나하나가 직렬 계산과 같은 순서이므로 **스레드 수와 상관없이 numpy와 비트가 같아요.** 테스트는 원소 300만 개(complex 200만 개)에서 1스레드와 10스레드 모두 `sd.sum(x) == np.sum(x)`를 확인해요.
+
+이 순서의 오차 한계는 합 트리의 깊이로 정해져요. 어떤 덧셈 트리든 원소 $x_i$가 거치는 덧셈이 $h_i$번이면 계산한 합 $\hat{s}$는
+
+$$
+|\hat{s} - s| \;\le\; \sum_i \gamma_{h_i} |x_i| \;\le\; \gamma_h \sum_i |x_i|,
+\qquad \gamma_h = \frac{h\,u}{1 - h\,u},\; u = 2^{-53}
+$$
+
+를 만족해요($h = \max_i h_i$)[1]. 차례로 더하면 $h = n - 1$이에요. numpy와 stardust의 pairwise 트리에서 가장 긴 경로를 이 문서를 쓰며 세어 보면 $n = 10^6$에서 $h = 31$이에요(잎 안에서 최대 24번, 재귀 13단계 중 일부). 그래서 한계가 $\gamma_{31} \approx 3.4 \times 10^{-15}$로, 차례로 더할 때의 $\gamma_{999999} \approx 1.1 \times 10^{-10}$보다 약 3만 배 작아요. 설계 문서의 측정에서 원소 $10^7$개의 상대오차는 차례로 더하면 $3.7 \times 10^{-14}$, pairwise로 0이었어요.
+
+### numpy와 비트가 달라지는 네 경우
+
+결정성(스레드 수와 무관)은 모든 경우에 지켜요. numpy와의 비트 일치는 아래 네 경우에서만 포기했어요. 이유는 모두 같아요. numpy의 순서를 지키면 병렬로 나눌 수 없거나, 덧셈 하나가 앞 덧셈을 기다리는 사슬 하나에 묶여 느려요.
+
+| 경우 | 바꾼 순서 | 얻은 것 |
+|---|---|---|
+| 줄이는 축이 메모리상 바깥인 리덕션(C 순서의 `sum`/`mean`/`var`/`prod(axis=0)` 등) | 줄이는 축을 고정 개수(최대 16)의 블록으로 나눠 블록마다 접고, 블록 결과를 차례로 합침 | 1000×1000 `sum(axis=0)` 10스레드 115µs → 32µs |
+| float/complex `prod` | 4096원소 조각 안에 누산기 8개 | 1스레드 7.8배 |
+| 8192원소 이상의 float/complex `cumulative_sum`/`cumulative_prod` | 4096원소 블록의 2단계 스캔 | 1스레드 1.4배, 10스레드 7배 |
+| 형변환이 필요한 리덕션(`mean(int64)`, `sum(x, dtype=float64)` 등) | 4096원소 버퍼 단위로 접고, 전체 리덕션은 고정 블록으로 | 메모리 왕복 감소, 병렬화 |
+
+블록 구조는 shape, 레이아웃, dtype만으로 정해요. **스레드가 하나여도 같은 블록 구조로 계산해요.** 그래서 이 경우들은 1스레드에서도 numpy와 비트가 다를 수 있고, 대신 몇 스레드에서든 같은 비트가 나와요.
+
+정수 결과(`sum(bool)`, 정수 합)는 순서와 무관하므로 이 경로에서도 numpy와 정확히 같아요. max/min, any/all도 같아요.
+
+### 달라지는 크기: 오차 한계는 오히려 작아요
+
+순서를 바꾸면 결과가 numpy와 달라지지만, 덧셈 사슬이 짧아지므로 **오차 한계는 numpy보다 작거나 같아요.**
+
+- **블록 리덕션:** 1000×1000 C 순서 행렬의 `sum(axis=0)`에서 numpy는 열마다 1000개를 차례로 더해요($h = 999$). stardust는 16개 블록(블록당 약 63행)으로 나눠 블록마다 차례로 더하고, 블록 결과 16개를 차례로 합쳐요($h \approx 62 + 16 = 78$). 이 문서를 쓰며 정규분포 1000×1000에서 비교하니 결과 원소의 94%가 numpy와 비트가 달랐고, 상대 차이는 최대 $3.3 \times 10^{-13}$이었어요(설계 문서의 측정은 $2.7 \times 10^{-13}$).
+- **누적 합:** numpy의 $j$번째 출력은 $j$번 차례로 더한 값이라 $h = j$예요. stardust는 블록 안에서 차례로(최대 4095번), 블록 끝값들로 carry를 차례로(블록 수만큼), 마지막으로 carry를 한 번 더해요. $j = 10^6$이면 $h \approx 4095 + 244 + 1 = 4340$으로 numpy의 약 230분의 1이에요. 이 문서를 쓰며 정규분포 10만 개로 확인하니 원소의 95%가 numpy와 비트가 달랐고, `math.fsum`으로 구한 정확한 누적 합과의 최대 차이는 stardust $6.8 \times 10^{-13}$, numpy $2.3 \times 10^{-12}$였어요.
+
+테스트는 이 경로들을 조각·블록 경계 근처의 길이(0, 1, 7~9, 15~17, 4095~4097, 8191~8193, 16384~16385, 49169, 4만, 10만)에서 numpy와 상대오차 $10^{-12}$ 이내로 비교해요. 경계에서 한 칸씩 어긋나는 실수(off-by-one)가 가장 흔하기 때문이에요.
+
+<Callout type="warn" title="prod는 마지막 비트에서 끝나지 않을 수 있어요">
+곱하는 순서가 바뀌면 오버플로와 언더플로가 일어나는 시점도 바뀌어요. 그래서 numpy가 유한한 값을 낼 때 stardust가 `inf`나 `nan`을 낼 수 있고, 그 반대도 있어요. 예를 들어 `[1e200, 1e-200]`을 8번 반복한 16개의 `prod`는 numpy가 1.0, stardust가 `nan`이에요. numpy는 왼쪽부터 곱해 중간값이 1과 $10^{200}$ 사이를 오가요. stardust에서는 누산기 0이 짝수 번째 둘을 맡아 $10^{200} \cdot 10^{200} = \infty$, 누산기 1이 홀수 번째 둘을 맡아 $10^{-200} \cdot 10^{-200} = 0$이 되고, 합칠 때 $\infty \cdot 0 = \text{nan}$이에요. 넘쳤을 때 왼쪽부터 다시 계산하는 대안은 택하지 않았어요. NaN 전파와 $\infty \cdot 0 = \text{nan}$ 규칙, 스레드 수와 무관한 결과는 그대로예요.
+</Callout>
+
+### 통계 함수
+
+- **분위수와 `median`:** numpy와 비트까지 같아요. 값은 순서 통계량만 쓰는데, 순서 통계량은 고르는 방법과 상관없이 같아요. 위치와 보간 공식은 numpy 2.x 소스를 그대로 옮겼어요(`_compute_virtual_index`, `_lerp`의 두 갈래, `np.around`의 짝수 반올림). 예외는 `-0.0`과 `+0.0`이 같은 순위에 섞인 경우예요. stardust는 전순서(`-0.0 < +0.0`)로 정하고, numpy의 introselect는 정해 두지 않아서 부호가 다를 수 있어요.
+- **NaN을 건너뛰는 리덕션:** NaN이 없으면 이름 앞의 `nan`을 뗀 함수와 비트가 같아요. NaN이 있으면 "NaN을 중립값으로 바꾼 복사본의 리덕션"과 비트가 같아요(numpy의 정의 그대로예요).
+- **`cov`, `corrcoef`:** 평균의 합 순서와 BLAS가 numpy와 달라서 비트는 같지 않아요. 테스트는 상대 $10^{-13}$으로 비교해요.
+- **`bincount`:** numpy와 비트가 같아요. 가중치 합을 원소 순서대로 직렬로 더해요.
+- **`histogram`:** 같은 너비 구간은 비트가 같아요(65536개 블록마다 0.0부터 더하는 numpy의 방식을 따라요). 경계 배열을 주고 가중치가 있으면, 같은 값에 다른 가중치가 붙은 경우 마지막 비트가 다를 수 있어요. 안정 정렬과 numpy의 quicksort가 같은 값들을 다른 순서로 두기 때문이에요.
+
+자세한 내용은 [통계 함수](/internals/array/statistics/)에 있어요.
+
+## 만들기: `arange`
+
+`arange`의 float 원소는 `start + i*step`으로 계산해요(`csrc/array/ops/creation.cpp`). numpy는 처음 두 원소를 구한 뒤 `step`을 `(start + step) - start`로 다시 계산하고, 나머지 원소를 `start + i*delta`로 채워요(numpy의 `@NAME@_fill`, `numpy/_core/src/multiarray/arraytypes.c.src`)[4]. 다시 계산한 `delta`가 `step`과 다르면 그 차이가 $i$배로 쌓여요.
+
+```python
+>>> import numpy as np
+>>> import stardust as sd
+>>> (-3.3 + 0.37) - (-3.3)          # numpy가 다시 구한 step
+0.3700000000000001
+>>> float(sd.arange(-3.3, 7.1, 0.37)[9])
+0.03000000000000025
+>>> float(np.arange(-3.3, 7.1, 0.37)[9])
+0.030000000000001137
+```
+
+참값은 $-3.3 + 9 \times 0.37 = 0.03$이에요. stardust의 오차는 $2.5 \times 10^{-16}$이에요. numpy는 다시 구한 step이 `0.37`의 float64보다 $1.1 \times 10^{-16}$ 크고, 이 차이가 9배로 쌓여 오차가 $1.1 \times 10^{-15}$예요. 결과가 0 근처라 ULP로 재면 256 ULP나 되지만, 절대 크기로는 step의 반올림 오차 몇 개 수준이에요. 다른 예로 `arange(0.1, 10, 0.3)`은 33개 중 30개가 최대 2 ULP, `arange(0, 1, 0.1)`은 10개 모두 같아요.
+
+stardust는 원소마다 `start + i*step`의 곱셈 하나와 덧셈 하나, 반올림 두 번뿐이에요. 다시 구한 step의 오차가 $i$배로 쌓이는 일이 없어요. 원소 수는 양쪽 모두 $\lceil (\text{stop} - \text{start}) / \text{step} \rceil$이라 같아요. 정수 인자만 있으면 `__int128`로 정확히 계산하므로 numpy와 같아요. `linspace`는 numpy와 같은 식(`i*step + start`, 마지막 원소는 `stop`으로 고정)이라 비트까지 같아요.
+
+## 행렬곱
+
+- **int64, bool:** 정수 곱셈-덧셈은 wrap까지 포함해 결과가 하나로 정해지고, numpy도 wrap해요. 테스트는 비트까지 비교해요.
+- **float64, complex128:** 합 순서는 Accelerate가 정해요. numpy 2.5.4도 같은 Accelerate를 쓰므로, 이 문서를 쓰며 확인한 경우(여러 크기, 전치, F 순서, 복사가 필요한 레이아웃, 행렬 × 벡터, 벡터 · 벡터)는 모두 비트까지 같았어요. 그래도 numpy가 어떤 레이아웃에 어떤 BLAS 인자를 쓰는지는 stardust가 통제하지 못하므로 보장하지 않고, 테스트는 상대·절대 $10^{-12}$로 비교해요. 내적 하나의 오차 한계는 순서와 상관없이 $\gamma_k \sum_p |a_{ip}||b_{pj}|$예요[1].
+
+자세한 내용은 [행렬곱](/internals/array/matmul/)에 있어요.
+
+## 결정성
+
+### 약속
+
+**같은 데이터, 같은 레이아웃이면 스레드 수와 상관없이 같은 비트가 나와요.** 이를 위해 지키는 규칙은 둘이에요.
+
+1. **나누는 방법은 데이터 크기와 레이아웃으로만 정해요.** 스레드 수를 보지 않아요. 블록 리덕션의 블록 수, pairwise 트리의 잎, 스캔 블록, 마스크 청크, 정렬 조각이 모두 길이와 shape에서 나와요.
+2. **부분 결과는 고정된 순서로 합쳐요.** 어느 스레드가 먼저 끝나든 합치는 순서는 같아요.
+
+"스레드가 있을 때만 다른 경로"는 결과가 같다고 보장되는 경우에만 써요. 예를 들어 안정 정렬은 조각으로 나눠 정렬하고 병합해도 직렬 안정 정렬과 비트까지 같으므로, 풀을 쓸 수 있을 때만 조각 경로를 타요. `stable=False`는 조각 경계에 따라 결과(±0이나 동점 인덱스의 순서)가 달라질 수 있으므로 스레드 수와 상관없이 언제나 조각으로 정렬해요. 연산 종류별 규칙은 [스레드풀과 결정성](/internals/core/threads/)에 있어요.
+
+### "같은 레이아웃"이 붙는 이유
+
+레이아웃은 결과를 바꿀 수 있어요. 같은 값을 담은 1000×1000 행렬이라도, C 순서이면 `sum(axis=0)`의 줄이는 축이 메모리상 바깥이라 블록 리덕션을 타고, F 순서이면 줄이는 축이 안쪽이라 열마다 pairwise 합을 타요. 이 문서를 쓰며 확인하니 두 결과는 원소의 84%가 비트가 달랐어요. F 순서 쪽은 numpy의 F 순서 결과와 비트까지 같았어요.
+
+레이아웃은 데이터의 일부로 봐요. 같은 레이아웃이면 몇 번을 다시 계산해도, 몇 스레드로 계산해도 같아요.
+
+<Fig caption="결정성의 범위. 레이아웃이 같으면 스레드 수와 무관하게 같은 비트가 나와요. 레이아웃이 다르면 다른 경로를 타서 비트가 다를 수 있어요.">
+  <ArrayFig name="C 순서, 1·3·10스레드" data={['같음', '같음', '같음']} tones={['a', 'a', 'a']} note="sum(m, axis=0)" />
+  <Op note="레이아웃만 바꾸면">≠</Op>
+  <ArrayFig name="F 순서, 1·3·10스레드" data={['같음', '같음', '같음']} tones={['b', 'b', 'b']} note="sum(m, axis=0)" />
+</Fig>
+
+### 테스트
+
+`tests/array/test_threads.py`는 결정성을 직접 확인해요.
+
+- **배터리:** 병렬 기준값을 넘는 크기의 연산 묶음 36개를 1, 2, 3, 7, 10스레드에서 돌려 결과 바이트(shape, dtype, 연속 바이트)가 모두 같은지 봐요. 원소별 연산, 버퍼 캐스트, 전체·축 리덕션(NaN 포함), 블록 리덕션, `prod`, 긴 스캔, 정렬과 긴 레인의 조각 정렬(`stable=False` 포함), gather, 마스크 압축과 대입, int64·float64 행렬곱, 작은 BLAS 배치, 형변환이 있는 전체 리덕션이 들어 있어요.
+- **여러 Python 스레드:** Python 스레드 6개가 동시에 같은 풀을 쓰는 동안 결과가 혼자 계산한 것과 같은지, 실행 중에 `set_num_threads`로 스레드 수를 바꿔도 결과가 맞는지 확인해요.
+- **pairwise 합은 numpy와도 같은지:** 1스레드와 10스레드에서 `sd.sum(x) == np.sum(x)`.
+
+## 검증 장치
+
+### 테스트 구조
+
+테스트는 모두 Python의 pytest와 hypothesis로 써요. C++ 단위 테스트는 없어요. 모든 기능을 사용자가 부르는 공개 함수로 시험하므로, 바인딩·인자 파싱·커널이 한꺼번에 검증돼요.
+
+| 파일 | 다루는 것 |
+|---|---|
+| `test_ufunc.py` | 모든 원소별 함수 × 모든 dtype 쌍, 세 레이아웃 |
+| `test_vforce.py` | vForce 16개의 ULP 계약, 특수값, 위치 독립성 |
+| `test_reduction.py` | 리덕션: 정수·bool·min/max/arg*는 정확히, float 합은 허용치로 |
+| `test_statistics.py` | 분위수(비트), nan 리덕션, `cov`/`corrcoef` |
+| `test_sort_unique.py` | 정렬, `argsort`, `unique_*` |
+| `test_indexing_basic.py`, `test_indexing_advanced.py` | 기본 인덱싱, gather/scatter, 마스크 |
+| `test_views.py`, `test_join.py` | shape 조작, 뷰의 메모리 공유, `concat`/`stack` |
+| `test_matmul.py` | shape 규칙, 레이아웃별 BLAS 경로, int64 wrap |
+| `test_asarray.py`, `test_buffer_protocol.py`, `test_creation.py` | 만들기, 버퍼 프로토콜 양방향, `arange`/`linspace` |
+| `test_astype_assignment.py` | 변환, 대입 엔진(겹침, 위로만 변환) |
+| `test_iter.py` | nd 이터레이터의 계획(브로드캐스트, 축 제거, 재정렬, 합치기) |
+| `test_threads.py` | 스레드 결정성 |
+| `test_api_surface.py` | 문서와 공개 이름의 일치 |
+| `test_array_api_additions.py` | Array API 2024에서 더한 함수들 |
+
+### numpy를 정답지로
+
+**numpy가 정답지(oracle)예요.** 무작위 shape, stride, dtype 조합을 만들어 numpy의 결과와 비교해요. numpy는 정답지 용도로만 설치해요. 비교 함수는 둘이에요(`tests/array/conftest.py`).
+
+- **`assert_same`:** shape, dtype, 비트까지 같아야 해요. NaN은 어떤 NaN과도 같다고 보지만(NaN의 페이로드 비트는 보지 않아요) `-0.0`과 `+0.0`은 달라요. complex는 실수부와 허수부를 따로 비교해요. 결과는 버퍼 프로토콜로 복사 없이 numpy로 가져와요.
+- **`assert_ulp`:** vForce 함수용이에요. 위의 $\kappa$로 ULP 거리를 재고, 허용치(8 ULP)를 넘으면 실패해요. NaN 위치는 같아야 해요.
+
+numpy와 의미론을 **일부러** 다르게 한 곳은 기대값을 따로 정의해요. 정수 `% 0`(numpy는 경고와 함께 0, stardust는 경고 없이 `a % 0 == a`라서 `a == (a // b) * b + a % b`가 b = 0에서도 성립), bool 산술(int64로 계산), 정수의 음수 지수, 0차원 배열이 없는 것 등이에요. 이런 곳은 numpy가 아니라 Python 산술로 기대값을 만들어요.
+
+**버그를 막는 테스트는 고치기 전 빌드에서 실패해야 해요.** 고친 뒤에 통과하는 것만으로는 그 테스트가 버그를 잡는다는 증거가 되지 않아요. 입력 패턴이 우연히 대칭이면(예: 길이 40000의 `[::3]`을 뒤집기) 고치기 전에도 통과할 수 있어서, 고치기 전 코드에서 한 번 돌려 실패하는 것을 확인해요.
+
+### hypothesis 속성 테스트
+
+hypothesis는 무작위 입력을 만들어 "어떤 입력에서도 성립해야 하는 성질"을 시험하고, 실패하면 입력을 가장 단순한 반례로 줄여 보여 주는 라이브러리예요[5]. 배열 영역에서는 아홉 파일이 쓰고, 성질은 대부분 "numpy와 같은 결과"예요.
+
+- **원소별:** 무작위 dtype 둘, 무작위 shape(최대 3차원, 축 길이 4 이하), 무작위 뷰(뒤집기, 건너뛰기, 전치)와 브로드캐스팅을 섞어 `add`, `multiply`, `subtract`, `equal`, `maximum`, `divide`를 numpy와 비교해요. 레이아웃이 섞이면 이터레이터의 축 재정렬·합치기 경로가 모두 열려요.
+- **리덕션:** 무작위 shape(최대 4차원, 길이 0 포함), 무작위 axis(None, 정수, 튜플), `keepdims`에서 정수 `sum`, `prod`, `any`, `all`, `max`를 정확히 비교해요.
+- **NEON 접기:** `0.0, -0.0, 1.0, 2.0, -3.0, inf, -inf, nan`에서 뽑은 길이 1~40의 리스트로 `argmax`, `argmin`, `max`, `min`을 비교해요. 동점, NaN, 부호 있는 0이 NEON 레인의 모든 자리에 떨어지게 하려는 거예요.
+- **정렬:** 작은 float64·int64 배열과 int64 전체 범위의 리스트로 정렬과 `unique`를 비교해요.
+- 그 밖에 기본·고급 인덱싱, 뷰, `asarray`(중첩 리스트), 버퍼 프로토콜, `astype`.
+
+### 골든 출력
+
+골든 출력(`bench/merge/golden/`)은 numpy가 아니라 **통합 전의 옛 패키지**(배열·linalg·frame이 따로 있던 세 프로젝트)를 기준으로 해요. 세 프로젝트를 한 라이브러리로 합치는 동안 "옮기기만 한 단계는 결과가 하나도 바뀌지 않았다"를 증명하는 안전망이에요.
+
+- **사례:** 세 영역에 모두 12,424개예요. 배열 7,746개(그중 1,826개는 에러가 나야 하는 사례), linalg 1,844개, frame 2,834개예요. 사례는 `cases_<영역>.py`에 `(이름, 계산)`으로 적혀 있고, 같은 파일이 옛 패키지와 stardust 양쪽에서 돌아요.
+- **기록:** 옛 패키지로 모든 사례를 스레드 1, 3, 10에서 돌려 저장해요. 배열 결과는 바이트의 SHA-256 앞 24자리와 dtype, shape, **strides**로 적어요. strides까지 적으므로 값이 같아도 결과 레이아웃이 바뀌면 불일치예요. float 스칼라는 16진 표기(`float.hex`)로, NaN은 비트 패턴으로 적어요. 에러는 예외 종류와 메시지로 적어요.
+- **스레드 수 검사:** 기록할 때 옛 패키지에서 스레드 수에 따라 결과가 달라진 사례를 따로 표시하게 했는데, 세 영역 모두 그런 사례가 0개였어요.
+- **비교:** stardust로 같은 사례를 스레드 1, 3, 10에서 돌려 비교해요. 옛 이름(`stardust_numpy` 등)을 새 이름으로 바꾼 뒤 메시지를 비교하고, 메시지만 다른 경우는 진짜 불일치와 따로 보고해요.
+- **의도한 차이:** 일관성을 맞추느라 결과를 일부러 바꾼 단계(예: NaN을 가장 큰 값으로 정렬, `==`와 리스트의 `TypeError`)는 `expected.py`에 (사례 이름의 정규식, 이유)로 적어요. 목록에 맞는 차이는 이유별로 묶어 보고하고, 그 밖의 차이는 실패예요. **아무 사례에도 맞지 않는 패턴은 "stale"로 보고해서** 목록이 실제 차이와 정확히 일치하게 유지해요. 메시지만 바꾼 변경은 `EXPECTED_MESSAGES`에 적고, 이 패턴은 메시지만 다른 차이만 받아들여요. 그래서 넓은 패턴을 써도 값의 불일치를 숨기지 못해요.
+
+### 에러 메시지 테스트
+
+`tests/test_error_messages.py`는 라이브러리 전체(배열, linalg, frame)의 에러 메시지 형식을 고정해요.
+
+- **공개 함수와 메서드는 자기 이름으로 시작해요:** `zeros(): negative dimensions are not allowed`. 같은 함수를 메서드로 불러도(`x.sum(axis=1.5)`) 같은 메시지예요.
+- **연산자와 인덱싱은 Python의 형식을 지켜요:** `unsupported operand dtypes for <: complex128 and int64`. `func(): `로 시작하면 안 돼요.
+- **같은 실수에는 영역과 상관없이 같은 메시지예요:** bool 옵션에 다른 값을 주면 `sort()`든 `cholesky()`든 Series의 `sum()`이든 `'stable' must be True or False, not int` 형식이에요.
+- **메시지에 문서 절 번호(`§`)나 문서 이름이 없어요.**
+- **퍼징:** 배열과 linalg의 C++로 바인딩된 모든 공개 함수에 대해, 인자 하나씩과 keyword 옵션 하나씩에 틀린 값 10가지(`None`, 1, True, "a", 1.5, `[1]`, numpy 정수, numpy bool, `object()`, $2^{70}$)를 넣어 봐요. 어떤 메시지에도 nanobind의 시그니처 덤프("incompatible function arguments"), 모듈 경로, 줄바꿈이 나오면 안 돼요. 모든 틀린 값이 인자 이름을 말하는 검사에 닿는다는 뜻이에요.
+
+### API 표면 테스트
+
+`tests/array/test_api_surface.py`는 API 문서를 계약으로 봐요. 문서의 시그니처 블록(언어 태그 없는 코드 블록)에서 이름을 읽어, 문서에 적힌 함수가 모두 있는지, 문서에 없는 이름을 `sd.__all__`로 내보내지 않는지 확인해요.
+
+### 문서 참조 검사기
+
+코드 주석은 설계 문서의 절을 번호로 가리켜요(예: "이 상수의 근거는 설계 문서의 어느 절"). 문서를 고치다 절 번호가 바뀌면 주석이 엉뚱한 절을 가리키게 돼요. `tools/check_refs.py`는 코드(`csrc`, `src`), 테스트, 도구, 설계·API 문서, 벤치 스크립트를 모두 훑어 `<문서> §N.M` 형식의 참조를 찾고, 그 문서에 그 번호의 제목이 실제로 있는지 확인해요. 짧은 이름(`array.md`)은 쓰인 위치에 따라 API 문서나 설계 문서로 해석해요. 이 문서를 쓰는 시점에 참조 1,362개를 검사했고 깨진 것은 0개였어요.
+
+## 참고 문헌
+
+1. N. J. Higham, *Accuracy and Stability of Numerical Algorithms*, 2nd ed., SIAM, 2002. (2장 부동소수점의 기초와 $\gamma_n$, 3장 내적과 행렬곱, 4장 합의 오차와 pairwise 합)
+2. IEEE Standard for Floating-Point Arithmetic, IEEE Std 754-2019. (기본 연산의 올바른 반올림, maximum/minimum)
+3. numpy 소스, `numpy/_core/src/umath/loops_utils.h.src`의 `DOUBLE_pairwise_sum`, `CDOUBLE_pairwise_sum`.
+4. numpy 소스, `numpy/_core/src/multiarray/arraytypes.c.src`의 `@NAME@_fill`(`arange`가 원소를 채우는 함수).
+5. D. R. MacIver, Z. Hatfield-Dodds 외, "Hypothesis: A new approach to property-based testing", *Journal of Open Source Software* 4(43), 1891, 2019.
+6. D. Goldberg, "What Every Computer Scientist Should Know About Floating-Point Arithmetic", *ACM Computing Surveys* 23(1), 1991. (ULP와 반올림 오차)

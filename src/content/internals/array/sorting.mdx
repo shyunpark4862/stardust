@@ -1,0 +1,695 @@
+---
+title: 정렬과 집합
+group: 인덱싱과 정렬
+order: 2
+summary: sort, argsort, unique_*가 NaN과 -0.0을 어떻게 다루고, dtype과 길이에 따라 NEON 정렬 네트워크, int64 기수 정렬, merge sort 중 무엇을 고르는지, 긴 레인 하나를 어떻게 여러 스레드로 나누는지 설명해요. searchsorted, nonzero, take도 함께 다뤄요.
+seeAlso: [indexing, engine, statistics, performance]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+import Bench from '../../../components/fig/Bench.astro';
+
+## 한눈에 보기
+
+`sort`와 `argsort`는 C++ 함수 `sort_impl`(`csrc/array/ops/sort.cpp`) 하나가 처리해요. 흐름은 이래요.
+
+1. **검사:** complex는 순서가 없으므로 TypeError예요. `axis`, `descending`, `stable`을 해석해요(기본값 `axis=-1`, `descending=False`, `stable=True`).
+2. **결과 할당:** 입력의 메모리 순서를 따르는 새 배열(`new_array_like`)이에요. `argsort`면 int64예요.
+3. **레인마다 정렬:** 정렬할 축을 따라 놓인 원소들(레인)이 서로 독립이므로, 레인 단위로 나눠 여러 스레드에서 돌려요(`run_lanes`, [연산 엔진](/internals/array/engine/)).
+4. **레인 하나:** 원소를 작업 버퍼로 읽어 오면서 NaN을 따로 모으고, 나머지를 dtype과 길이로 고른 알고리즘으로 정렬한 뒤, 결과에 다시 써요.
+
+알고리즘은 **dtype과 레인 길이만 보고** 골라요. 데이터 분포를 보고 고르지 않아요.
+
+| 경우 | 알고리즘 | 안정? |
+|---|---|:---:|
+| int64 값(`sort`, `unique_values`), 1024개 이상 | LSD 기수 정렬 | 예 |
+| int64 (값, 인덱스) 쌍(`argsort`, `unique_*`), 128개 이상 | LSD 기수 정렬 | 예 |
+| int64 값, 32–1023개 | NEON 정렬 네트워크 + bitonic 병합 | 아니요(구별 불가) |
+| float64 값, 32개 이상, `stable=False` 또는 `-0.0`과 `+0.0`이 섞여 있지 않음 | NEON 정렬 | 아니요(구별 불가) |
+| 그 밖, `stable=True` | 하향식 merge sort (16개 이하는 insertion sort) | 예 |
+| 그 밖, `stable=False` | introsort (quicksort + heapsort, 16개 이하는 insertion sort) | 아니요 |
+
+핵심 아이디어는 이래요.
+
+- **비교 함수에서 NaN을 없애요.** NaN을 미리 분리해 두면 나머지는 NaN 검사 없는 `a < b`로 정렬할 수 있어요.
+- **안정 정렬이 아닌 빠른 알고리즘도, 결과가 안정 정렬과 구별되지 않으면 써요.** int64에서 같은 값은 비트까지 같으니 순서가 바뀌어도 아무도 모르죠. NEON 정렬과 기수 정렬이 이렇게 들어와요.
+- **결과는 스레드 수와 무관해요.** 긴 레인을 조각으로 나눠 병렬로 정렬할 때도, 조각 경계는 길이로만 정하고 병합은 "동점이면 왼쪽 먼저"라서 직렬 안정 정렬과 비트까지 같아요.
+
+`unique_*`는 "평탄화 → 안정 정렬 → 이웃 비교"로 구현돼요. 해시 테이블을 쓰지 않아요.
+
+## 순서 규칙
+
+### NaN은 가장 큰 값이에요
+
+비교 순서는 하나예요. **NaN은 가장 큰 값이에요.** 오름차순이면 맨 끝, 내림차순이면 맨 앞이에요. frame의 정렬과 같은 규칙이에요.
+
+- `-0.0`과 `+0.0`은 같은 값으로 비교해요(IEEE 754의 `==`). 안정 정렬이면 둘은 입력 순서를 지켜요.
+- **`descending=True`에서도 동점 원소는 입력 순서를 지켜요.** 오름차순 결과를 뒤집는 것이 아니라 비교 함수를 뒤집기(`b < a`) 때문이에요. 오름차순 결과를 뒤집으면 동점 원소의 순서도 뒤집혀 안정성이 깨져요. 예외는 동점을 구별할 수 없는 NEON 정렬 경로로, 거기서는 결과를 뒤집어도 아무 차이가 없어요.
+- complex는 `sort`, `argsort`에서 TypeError예요. `unique_*`만 (실수부, 허수부) 사전순을 써요.
+
+```python
+>>> import stardust as sd
+>>> f = sd.asarray([3.0, float("nan"), -0.0, 1.0, 0.0, float("nan")])
+>>> sd.sort(f)
+array([-0.0,  0.0,  1.0,  3.0,  nan,  nan], dtype=float64)
+>>> sd.sort(f, descending=True)
+array([ nan,  nan,  3.0,  1.0, -0.0,  0.0], dtype=float64)
+>>> sd.argsort(sd.asarray([2, 1, 2, 1]), descending=True)
+array([0, 2, 1, 3], dtype=int64)
+```
+
+내림차순에서도 `-0.0`이 `0.0`보다 앞이에요. 입력에서 먼저 나왔기 때문이에요. 마지막 예에서 두 개의 2(위치 0, 2)와 두 개의 1(위치 1, 3)도 각각 입력 순서를 지켜요.
+
+### NaN 분리: `load_split_nans`
+
+NaN을 가장 큰 값으로 치는 비교 함수를 그대로 쓰면 이래요.
+
+$$
+\text{less}(a, b) = (a < b) \;\lor\; (\text{isnan}(b) \land \lnot\,\text{isnan}(a))
+$$
+
+비교할 때마다 NaN 검사가 두 번 들고 분기가 생겨요. 정렬은 비교를 $O(n \log n)$번 하니 이 비용이 계속 쌓여요.
+
+대신 레인을 작업 버퍼로 읽어 올 때 NaN과 나머지를 따로 채워요.
+
+```cpp
+// csrc/array/ops/sort.cpp, load_split_nans (줄인 발췌)
+std::int64_t nans = 0;
+for (std::int64_t i = 0; i < n; ++i) nans += is_nan(load_as<T>(x + i * stride));   // 1차: 세기
+std::int64_t rest = nans_first ? nans : 0, nan = nans_first ? 0 : n - nans;
+for (std::int64_t i = 0; i < n; ++i) {                                              // 2차: 나눠 담기
+    const T v = load_as<T>(x + i * stride);
+    buf[is_nan(v) ? nan++ : rest++] = make(i, v);   // make: 값 그대로, 또는 (값, 인덱스) 쌍
+}
+return nans;
+```
+
+<Fig caption="오름차순의 NaN 분리. NaN이 아닌 값은 앞쪽에, NaN은 뒤쪽에 각자 원래 순서로 담아요. 정렬할 구간은 앞쪽 4개뿐이에요. 내림차순이면 NaN을 앞에 두고 뒤쪽 구간을 정렬해요.">
+  <ArrayFig name="레인" data={[3.0, 'nan', -0.0, 1.0, 0.0, 'nan']} tones={['', 'a', '', '', '', 'a']} />
+  <Op>→</Op>
+  <ArrayFig name="buf" data={[3.0, -0.0, 1.0, 0.0, 'nan', 'nan']} tones={['', '', '', '', 'a', 'a']} note="정렬할 구간 [0, 4)" />
+</Fig>
+
+- 정렬할 구간에는 NaN이 없으니 평범한 `a < b`(또는 `b < a`)로 정렬해요. 비교마다 있던 분기가 사라져 1.22배 빨라졌어요(설계 당시 측정).
+- **NaN끼리는 언제나 원래 순서예요.** 그래서 오름차순의 맨 끝 NaN 묶음도, 내림차순의 맨 앞 NaN 묶음도 안정 정렬의 결과와 같아요. 내림차순으로 바꾸는 데 추가 비용이 없어요. 정렬할 구간의 시작이 NaN 개수만큼 밀릴 뿐이에요.
+- `argsort`는 `make`가 `(값, 원래 인덱스)` 쌍을 만들어 같은 함수로 처리해요. `if constexpr`로 int64, bool이면 NaN 세기를 컴파일 시점에 통째로 빼요.
+
+## 알고리즘 선택
+
+### 왜 dtype과 길이만 보나요
+
+데이터를 보고 알고리즘을 고르는 휴리스틱(예: "값의 범위가 좁으면 계수 정렬", "이미 정렬돼 있으면 건너뛰기")은 넣지 않는다는 것이 stardust 배열 영역의 원칙이에요. 이유는 두 가지예요.
+
+- 같은 크기의 배열이 데이터에 따라 몇 배씩 다른 시간이 걸리면 성능을 예측하기 어려워요.
+- 휴리스틱의 기준값이 특정 데이터에 맞춰지면 다른 데이터에서 오히려 느려질 수 있어요.
+
+dtype과 길이로 고르는 것(int64면 기수 정렬)은 휴리스틱이 아니에요. 같은 dtype, 같은 길이면 언제나 같은 알고리즘이에요.
+
+**예외가 하나 있어요.** float64 값을 `stable=True`로 정렬할 때 `-0.0`과 `+0.0`이 둘 다 있는지 한 번 훑어 봐요(`zeros_of_both_signs`). 이것은 속도가 아니라 **정확성** 때문이에요. NEON 정렬은 동점 순서를 지키지 않는데, float64에서 "같지만 비트가 다른" 값은 (NaN을 빼면) `-0.0`과 `+0.0`뿐이에요. 둘이 섞여 있으면 NEON 정렬이 그 순서를 바꿔 안정 정렬과 다른 결과가 나올 수 있으니 merge sort로 가요.
+
+<Callout type="warn" title="-0.0과 +0.0이 섞인 float 배열은 더 느려요">
+`stable=True`(기본값)에서 레인에 `-0.0`과 `+0.0`이 함께 있으면 NEON 정렬 대신 merge sort를 써요. 100만 개 float `sort`에서 NEON 정렬은 merge sort보다 4.9배 빨랐으니(설계 당시 측정), 그만큼의 이득을 잃어요. 0의 부호 순서가 상관없다면 `stable=False`로 부르면 언제나 NEON 정렬을 써요.
+</Callout>
+
+### argsort는 (값, 인덱스) 쌍을 정렬해요
+
+`argsort`를 구현하는 흔한 방법은 인덱스 배열 `idx = [0, 1, ..., n-1]`을 만들고, `a[idx[i]] < a[idx[j]]`로 비교하며 인덱스만 옮기는 간접 정렬이에요. 비교할 때마다 `a`의 무작위 위치를 읽어야 해서, 배열이 캐시보다 크면 비교마다 캐시 미스가 나요.
+
+stardust는 `Keyed<T>{value, index}` 쌍(16바이트)을 정렬해요. 비교에 필요한 값이 옮기는 원소 안에 같이 있으니, 메모리를 순서대로 지나가요. 원소가 두 배 크니 옮기는 바이트는 늘지만, 캐시 지역성이 그보다 더 중요해요.
+
+**argsort에는 NEON 정렬을 쓰지 않아요.** 인덱스가 결과로 나오니, 동점 원소의 순서가 그대로 드러나요. "구별할 수 없으니 안정 정렬이 아니어도 된다"는 논리가 성립하지 않아요.
+
+### merge sort (`stable=True`의 기본 경로)
+
+`csrc/array/kernels/sort.hpp`의 `merge_sort`는 하향식(top-down) merge sort예요.
+
+```cpp
+// csrc/array/kernels/sort.hpp, merge_sort (줄인 발췌)
+template <typename T, typename Less>
+void merge_sort(T* a, T* tmp, std::int64_t n, Less less) {
+    if (n <= kSmall) { insertion_sort(a, n, less); return; }   // kSmall = 16
+    const std::int64_t m = n / 2;
+    merge_sort(a, tmp, m, less);
+    merge_sort(a + m, tmp, n - m, less);
+    if (!less(a[m], a[m - 1])) return;          // 두 반이 이미 순서대로: 병합 생략
+    std::copy(a, a + m, tmp);                   // 왼쪽 반만 복사
+    std::int64_t i = 0, j = m, k = 0;
+    while (i < m && j < n) a[k++] = less(a[j], tmp[i]) ? a[j++] : tmp[i++];  // 오른쪽이 엄격히 작을 때만 오른쪽
+    while (i < m) a[k++] = tmp[i++];
+}
+```
+
+- **안정성:** 오른쪽 원소를 가져오는 조건이 `less(a[j], tmp[i])`, 즉 **엄격히 작을 때**예요. 같으면 왼쪽(원래 앞에 있던 것)이 먼저 나가요.
+- **작업 공간은 $n/2$예요.** 왼쪽 반만 `tmp`로 복사하고, 병합 결과를 `a`의 앞에서부터 써요. 쓰는 위치 $k$는 오른쪽 반의 읽는 위치 $j$를 앞지르지 않으므로($k = i + (j - m) \le j$), 오른쪽 반은 복사하지 않아도 돼요. 오른쪽 반이 남으면 이미 제자리에 있으니 마지막 루프도 필요 없어요.
+- **병합 생략:** 왼쪽 반의 마지막이 오른쪽 반의 처음보다 크지 않으면 이미 순서대로예요. 이미 정렬된 입력에서는 병합이 모두 생략되어 비교 $O(n)$번이면 끝나요. 데이터를 보고 경로를 고르는 것이 아니라, 알고리즘 안의 한 번의 비교예요.
+- **작은 구간은 insertion sort:** 16개 이하에서는 재귀와 병합의 고정 비용보다 insertion sort가 빨라요. insertion sort도 `less(v, a[j-1])`가 엄격해서 안정적이에요.
+
+시간 $O(n \log n)$, 추가 공간 $n/2$개, 재귀 깊이 $O(\log n)$이에요.
+
+### introsort (`stable=False`)
+
+`unstable_sort`는 Musser의 introsort[1]예요.
+
+- **quicksort 본체:** 처음, 가운데, 끝 세 원소의 중앙값을 피벗으로 고르고(정렬된 입력에서 최악이 되는 것을 막아요), Hoare 분할[2]을 해요. 양쪽 끝에서 안쪽으로 오며 피벗보다 큰 것과 작은 것을 맞바꾸는 방식으로, Lomuto 분할보다 교환이 적어요.
+- **작은 쪽만 재귀, 큰 쪽은 루프:** 분할 뒤 작은 쪽으로 재귀하고 큰 쪽은 `while` 루프로 계속해요. 재귀할 때마다 크기가 절반 이하로 줄어드니 스택 깊이는 $O(\log n)$이에요.
+- **heapsort 대피:** 재귀 깊이가 $2 \lfloor \log_2 n \rfloor$을 넘으면 그 구간은 `std::make_heap` + `std::sort_heap`으로 정렬해요. 운 나쁜 피벗이 계속 나와도 최악이 $O(n \log n)$이에요. 깊이 한도는 C++20의 `std::countl_zero`(앞쪽 0비트 수)로 $\lfloor \log_2 n \rfloor = 63 - \text{countl\_zero}(n)$을 계산해 정해요.
+- 16개 이하는 insertion sort예요.
+
+## NEON 정렬
+
+`csrc/array/kernels/simd_sort.hpp`는 float64와 int64 값을 NEON 레지스터 안에서 정렬해요. M4의 NEON 레지스터는 128비트라 float64나 int64를 **두 개** 담아요. 정렬은 두 단계예요.
+
+### 1단계: 16개 블록을 정렬 네트워크로
+
+**정렬 네트워크**는 "비교-교환"을 정해진 순서로 적용하는 정렬 방법이에요[3]. 비교-교환 $(i, j)$는 위치 $i$와 $j$의 값을 비교해 작은 것을 $i$에, 큰 것을 $j$에 두는 연산이에요. 순서가 데이터와 무관하게 고정돼 있어서 분기가 하나도 없어요.
+
+NEON에서는 비교-교환 하나가 명령어 두 개예요. 두 레지스터의 `min`과 `max`를 구하면 끝이에요. 그런데 레지스터 하나에 값이 두 개 있으니, **레지스터 단위로 네트워크를 적용하면 두 레인이 동시에 정렬돼요.** 이것을 "세로로" 적용한다고 해요.
+
+```cpp
+// csrc/array/kernels/simd_sort.hpp (줄인 발췌)
+struct F64 {
+    using V = float64x2_t;
+    static V min(V a, V b) { return vminq_f64(a, b); }
+    static V max(V a, V b) { return vmaxq_f64(a, b); }
+    // ...
+};
+template <typename Tr>
+inline void cmpx(typename Tr::V& a, typename Tr::V& b) {   // a <- min, b <- max
+    const typename Tr::V lo = Tr::min(a, b);
+    b = Tr::max(a, b);
+    a = lo;
+}
+```
+
+블록 하나는 16개 값이에요. 레지스터 8개(`v[0]`부터 `v[7]`까지)에 2개씩 싣고, 8입력 네트워크를 레지스터 단위로 적용해요. 쓰는 네트워크는 비교기 19개짜리예요. 8입력 정렬 네트워크의 최소 비교기 수가 19개로 알려져 있어요[3].
+
+| 층 | 비교-교환 |
+|:---:|---|
+| 1 | (0,2) (1,3) (4,6) (5,7) |
+| 2 | (0,4) (1,5) (2,6) (3,7) |
+| 3 | (0,1) (2,3) (4,5) (6,7) |
+| 4 | (2,4) (3,5) |
+| 5 | (1,4) (3,6) |
+| 6 | (1,2) (3,4) (5,6) |
+
+같은 층의 비교-교환은 서로 다른 레지스터를 건드리므로 CPU가 동시에 실행할 수 있어요. 깊이는 6층이에요.
+
+네트워크가 끝나면 `v[0..7]`의 레인 0이 정렬된 열 하나, 레인 1이 또 하나예요. 이것을 2×2 전치(`vzip1q`, `vzip2q`)로 꺼내 길이 8인 정렬된 런(run) 두 개로 메모리에 써요.
+
+<Fig caption="16개 값의 블록 정렬. 레지스터 v0~v7이 행, 레인 0과 1이 열이에요. 세로 네트워크가 두 열을 동시에 정렬하고(가운데), zip으로 전치해 정렬된 런 두 개로 써요.">
+  <ArrayFig name="불러온 직후" data={[[5, 12], [9, 1], [14, 3], [7, 16], [2, 10], [13, 6], [11, 4], [8, 15]]} note="v[i] = (p[2i], p[2i+1])" />
+  <Op>→</Op>
+  <ArrayFig name="네트워크 후" data={[[2, 1], [5, 3], [7, 4], [8, 6], [9, 10], [11, 12], [13, 15], [14, 16]]} tones={[['a', 'b'], ['a', 'b'], ['a', 'b'], ['a', 'b'], ['a', 'b'], ['a', 'b'], ['a', 'b'], ['a', 'b']]} note="열마다 정렬됨" />
+  <Op>→</Op>
+  <ArrayFig name="런 두 개" data={[[2, 5, 7, 8, 9, 11, 13, 14], [1, 3, 4, 6, 10, 12, 15, 16]]} tones={[['a', 'a', 'a', 'a', 'a', 'a', 'a', 'a'], ['b', 'b', 'b', 'b', 'b', 'b', 'b', 'b']]} note="p[0, 8)과 p[8, 16)" />
+</Fig>
+
+**네트워크가 옳은지는 0-1 원리로 확인했어요.** 0-1 원리는 "비교-교환 네트워크가 0과 1로만 된 모든 입력을 정렬하면 모든 입력을 정렬한다"는 정리예요[3]. 8입력이면 0/1 입력이 $2^8 = 256$가지뿐이라 전부 시험할 수 있어요.
+
+int64에는 문제가 하나 있어요. **NEON에는 64비트 정수 min/max 명령이 없어요.** 그래서 비교(`vcgtq_s64`) + 비트 선택(`vbslq_s64`)으로 대신해요.
+
+```cpp
+// csrc/array/kernels/simd_sort.hpp, I64 (줄인 발췌)
+static V min(V a, V b) { return vbslq_s64(vcgtq_s64(a, b), b, a); }  // a > b인 레인은 b, 아니면 a
+static V max(V a, V b) { return vbslq_s64(vcgtq_s64(a, b), a, b); }
+```
+
+`F64`, `I64`처럼 dtype마다 "두 레인 벡터 연산"을 묶은 traits 구조체를 템플릿 인자 `Tr`로 넘겨서, 네트워크와 병합 코드는 한 벌만 써요.
+
+### 2단계: bitonic 병합
+
+길이 8인 런들을 둘씩 병합해 16, 32, …로 키워요. 병합도 레지스터 안에서 해요. 핵심은 **정렬된 4개 + 정렬된 4개를 분기 없이 합치는** `merge4x4`예요. Batcher의 bitonic 병합[4]을 레지스터 두 개 크기로 쓴 것이에요.
+
+**bitonic 수열**은 증가하다가 감소하는(또는 그 회전인) 수열이에요. 정렬된 $a$ 뒤에 정렬된 $b$를 **뒤집어** 붙이면 bitonic이에요. bitonic 수열 $x_0, \dots, x_7$에 "반 정리기(half-cleaner)"
+
+$$
+\ell_i = \min(x_i, x_{i+4}), \quad u_i = \max(x_i, x_{i+4}) \qquad (i = 0, 1, 2, 3)
+$$
+
+를 적용하면, $\ell$의 모든 값이 $u$의 모든 값 이하이고, $\ell$과 $u$가 각각 다시 bitonic이 돼요[4]. 길이 4인 bitonic 수열은 거리 2, 거리 1의 비교-교환 두 번(`bitonic_clean4`)으로 정렬돼요.
+
+<Fig caption="a = (1, 4, 6, 9), b = (2, 3, 7, 8)의 merge4x4. b를 뒤집어 붙인 수열은 bitonic이에요. 반 정리기 한 번으로 아래 4개와 위 4개가 나뉘고, 각각을 거리 2, 1의 비교로 정리해요.">
+  <ArrayFig name="a, 뒤집은 b" data={[1, 4, 6, 9, 8, 7, 3, 2]} tones={['a', 'a', 'a', 'a', 'b', 'b', 'b', 'b']} />
+  <Op>→</Op>
+  <ArrayFig name="min / max" data={[1, 4, 3, 2, 8, 7, 6, 9]} tones={['a', 'a', 'a', 'a', 'b', 'b', 'b', 'b']} note="ℓ ≤ u, 각각 bitonic" />
+  <Op>→</Op>
+  <ArrayFig name="정리 후" data={[1, 2, 3, 4, 6, 7, 8, 9]} tones={['a', 'a', 'a', 'a', 'b', 'b', 'b', 'b']} note="아래 4개를 내보낸다" />
+</Fig>
+
+```cpp
+// csrc/array/kernels/simd_sort.hpp, merge4x4 (줄인 발췌). a = (a0, a1), b = (b0, b1)은 각각 정렬된 4개
+typename Tr::V r0 = Tr::swap(b1), r1 = Tr::swap(b0);           // b를 뒤집는다: (b3, b2), (b1, b0)
+const typename Tr::V l0 = Tr::min(a0, r0), l1 = Tr::min(a1, r1); // 반 정리기
+b0 = Tr::max(a0, r0); b1 = Tr::max(a1, r1);
+a0 = l0; a1 = l1;
+bitonic_clean4<Tr>(a0, a1);   // 아래 4개 정렬
+bitonic_clean4<Tr>(b0, b1);   // 위 4개 정렬
+```
+
+긴 런 두 개의 병합(`merge_runs`)은 이 블록을 반복해요.
+
+1. 두 런에서 4개씩 레지스터에 올려요.
+2. `merge4x4`로 합쳐 **아래 4개를 내보내고**, 위 4개는 레지스터에 남겨요.
+3. 두 런 중 **다음 원소(머리)가 작은 쪽**에서 4개를 더 올려, 남겨 둔 위 4개와 다시 `merge4x4`해요.
+4. 한쪽이 바닥나면 다른 쪽을 계속 올리고, 마지막에 남은 위 4개를 내보내요.
+
+이것이 맞는 이유는 이래요. 남겨 둔 4개는 모두 이미 읽은 부분에서 왔으니, 자기가 나온 런의 현재 머리보다 크지 않아요. 3단계에서 머리가 작은 쪽 런 X에서 읽으므로, 남겨 둔 4개는 다른 런 Y의 머리보다도 크지 않아요. 새로 올린 4개는 X의 나머지보다 크지 않아요. 그래서 합친 8개 중 아래 4개는 아직 읽지 않은 어떤 원소보다도 크지 않고, 다음으로 내보낼 4개가 정확히 그것이에요. 이 방식은 Inoue 등의 AA-sort[5]와 Chhugani 등의 SIMD 병합[6]에서 쓰인 레지스터 안 bitonic 병합과 같은 구조예요.
+
+**분기는 출력 4개당 하나예요**(3단계의 "어느 런에서 올릴까"). 스칼라 병합은 출력 원소마다 분기 하나라서, 무작위 데이터에서는 그 절반이 예측에 실패해요.
+
+### 전체 구조와 세부 사항
+
+```cpp
+// csrc/array/kernels/simd_sort.hpp, sort (줄인 발췌)
+const std::int64_t padded = (n + 15) / 16 * 16;          // 16의 배수로
+T stack[2 * 256];                                         // 작으면 스택
+std::unique_ptr<T[]> heap;
+if (padded > 256) heap = std::make_unique_for_overwrite<T[]>(2 * padded);
+T* src = heap ? heap.get() : stack;
+T* dst = src + padded;
+std::copy(data, data + n, src);
+std::fill(src + n, src + padded, Tr::kMax);               // 채움값은 맨 끝으로 간다
+for (i = 0; i < padded; i += 16) sort_block16<Tr>(src + i);
+for (width = 8; width < padded; width *= 2) {             // 병합 패스, 두 버퍼를 번갈아
+    for (i = 0; i < padded; i += 2 * width) merge_runs<Tr>(src + i, na, src + i + na, nb, dst + i);
+    std::swap(src, dst);
+}
+std::copy(src, src + n, data);
+```
+
+- **채움:** 길이를 16의 배수로 맞추려고 `+inf`(float64)나 `INT64_MAX`(int64)를 채워요. 이 값들은 정렬하면 맨 끝으로 가고, 마지막에 앞의 $n$개만 복사하니 사라져요. 입력에 원래 `+inf`가 있어도 같은 값끼리는 구별되지 않으니 상관없어요.
+- **병합 패스는 $\lceil \log_2(n/8) \rceil$번이에요.** 블록 정렬이 길이 8인 런을 만들고, 패스마다 두 배가 돼요. 두 버퍼(`src`, `dst`)를 번갈아 쓰는 ping-pong 방식이에요.
+- **작은 입력은 스택 버퍼:** 채운 길이가 256 이하면 스택의 `T stack[512]`(float64면 4KB)를 써요. 짧은 레인을 아주 많이 정렬할 때(예: shape (3e5, 10)인 배열의 `quantile`) 호출마다 힙 할당하는 비용이 전체의 절반을 차지했어요. 더 길면 힙에 `2 × padded`개를 할당해요. `std::make_unique_for_overwrite`(C++20)는 할당만 하고 0으로 채우지 않아요. 어차피 곧 덮어쓸 메모리예요.
+- **NaN이 있으면 안 돼요.** `vminq_f64`/`vmaxq_f64`(AArch64의 FMIN/FMAX)는 NaN을 전파해요. NaN 하나가 네트워크를 지나며 여러 칸으로 퍼질 수 있어요. 그래서 NaN은 반드시 먼저 분리해요(`load_split_nans`).
+- **32개 미만은 쓰지 않아요**(`kSimdMin`). 그보다 짧으면 insertion sort나 merge sort와 차이가 없어요.
+- `quantile`과 `median`도 정렬이 필요할 때 이 NEON 정렬을 써요. 그쪽은 $\pm 0$을 구별하는 전순서로 결과를 다듬는 과정이 더 있어요([통계 함수](/internals/array/statistics/)).
+
+### 언제 써도 되나요: 안정성
+
+NEON 정렬은 **안정 정렬이 아니에요.** 네트워크는 같은 값끼리도 교환하고, `merge_runs`의 "머리가 작은 쪽" 판단은 `a[ia] <= b[ib]`라서 같은 값이면 어느 쪽이든 먼저 나갈 수 있어요. 그래서 결과가 안정 정렬과 **구별되지 않을 때만** 써요.
+
+- **int64:** 같은 값은 비트까지 같아요. 순서가 바뀌어도 결과 배열은 똑같아요.
+- **float64:** 같은 값이 다른 비트일 수 있는 경우는 NaN(이미 분리)과 $\pm 0$뿐이에요. $\pm 0$이 섞여 있지 않으면 구별되지 않아요. `stable=False`면 $\pm 0$의 순서가 입력과 달라져도 되니 언제나 써요.
+- **내림차순:** 오름차순으로 정렬한 뒤 `std::reverse`로 뒤집어요. 동점을 구별할 수 없으니 뒤집어도 안정 정렬의 결과와 같아요.
+- **argsort:** 쓰지 않아요(위 참고).
+
+결과: float `sort` 100만 개는 1스레드 15.18ms, numpy 28.65ms예요(1.89배, 벤치마크). 설계 당시 측정에서 같은 일을 merge sort로 하면 NEON 정렬보다 4.9배 느렸어요.
+
+## int64 기수 정렬
+
+### LSD 기수 정렬
+
+int64 값이 1024개 이상이거나, int64 (값, 인덱스) 쌍이 128개 이상이면 **LSD(least significant digit) 기수 정렬**[7]을 써요. 64비트 키를 8비트씩 8자리로 보고, 가장 낮은 자리부터 자리마다 **계수 정렬**을 해요.
+
+자리 $d$의 계수 정렬은 세 단계예요.
+
+1. 각 키의 자리 값(0–255)의 개수를 세요. $c_v$ = 자리 값이 $v$인 키의 수.
+2. 누적합으로 각 자리 값의 시작 위치를 구해요. $\text{pos}_v = \sum_{v' < v} c_{v'}$.
+3. 입력을 앞에서부터 읽으며 `dst[pos[v]++] = src[i]`로 흩뿌려요.
+
+3단계가 입력 순서대로 진행하므로, 같은 자리 값끼리는 원래 순서를 지켜요(안정). 각 자리의 정렬이 안정이니, 낮은 자리부터 높은 자리까지 하면 **전체가 안정 정렬**이 돼요. 높은 자리에서 같은 키들은 낮은 자리로 정렬된 순서를 그대로 유지하니까요. 그래서 `sort`, `argsort`, `unique_*`가 같은 함수를 써요.
+
+시간은 $O(d \cdot (n + 256))$($d$는 실제로 정렬하는 자리 수), 추가 공간은 $n$개예요. 비교를 하지 않으니 $O(n \log n)$ 하한에 묶이지 않아요.
+
+### 키 만들기
+
+기수 정렬은 키를 **부호 없는 정수**로 보고 정렬해요. 부호 있는 int64의 순서를 부호 없는 순서로 바꾸려면 부호 비트를 뒤집으면 돼요.
+
+$$
+\text{key}(v) = v \oplus 2^{63}
+$$
+
+음수는 부호 비트가 1이라 뒤집으면 0으로 시작하고, 양수는 1로 시작해요. 그러면 $-2^{63} \mapsto 0$, $-1 \mapsto 2^{63} - 1$, $0 \mapsto 2^{63}$, $2^{63} - 1 \mapsto 2^{64} - 1$로 순서가 보존돼요.
+
+**내림차순은 키 전체를 비트 반전해요**(`~u`). 큰 값이 작은 키가 되어 앞으로 와요. 결과를 뒤집지 않으니 같은 값은 여전히 원래 순서예요.
+
+### 최솟값 기준과 자리 건너뛰기
+
+한 번 훑어 키의 최솟값 $\text{lo}$와 최댓값 $\text{hi}$를 구하고, $\text{key} - \text{lo}$를 정렬해요. 그러면 정렬할 자리 수는
+
+$$
+d = \min\{\, d' : (\text{hi} - \text{lo}) \gg 8d' = 0 \,\} = \left\lceil \log_{256}(\text{hi} - \text{lo} + 1) \right\rceil
+$$
+
+이에요. 모든 키가 같으면 $d = 0$이라 아무것도 안 해요(안정 정렬은 이미 그대로).
+
+최솟값을 빼는 것이 왜 중요한지는 음수와 양수가 섞인 경우에 드러나요. 값이 $[-1000, 1000)$이면 부호를 뒤집은 키에서 $-1$은 `0x7FFF…FF`, $+1$은 `0x8000…01`이에요. 맨 위 바이트는 `0x7F`와 `0x80`을, 나머지 바이트는 `0xFF`와 `0x00`을 오가니, **8자리 모두 값이 달라** 건너뛸 자리가 없어요. 최솟값을 빼면 범위가 1999라 두 자리로 끝나요. 이 차이로 100만 개 정렬이 10.5ms → 2.4ms가 됐어요(설계 당시 측정, 1스레드).
+
+또, 개수를 세어 보니 **모든 키가 그 자리에서 같은 바이트**면(`c[digit(a[0])] == n`) 그 자리는 옮길 것이 없으니 건너뛰어요.
+
+```cpp
+// csrc/array/ops/sort.cpp, radix_sort (줄인 발췌)
+// lo, hi: 한 번 훑어 구한 키의 최솟값·최댓값.  digits: (hi - lo)의 바이트 수
+std::array<std::array<std::int64_t, 256>, 8> count;
+for (std::int64_t i = 0; i < n; ++i) {                      // 모든 자리의 개수를 한 패스에
+    const std::uint64_t k = key(a[i]) - lo;
+    for (int d = 0; d < digits; ++d) ++count[d][(k >> (8 * d)) & 255];
+}
+for (int d = 0; d < digits; ++d) {
+    auto& c = count[d];
+    if (c[digit(a[0])] == n) continue;                       // 모두 같은 바이트: 건너뜀
+    std::int64_t sum = 0;
+    for (std::int64_t& v : c) sum += std::exchange(v, sum);  // 개수 → 시작 위치
+    for (std::int64_t i = 0; i < n; ++i) dst[c[digit(src[i])]++] = src[i];
+    std::swap(src, dst);
+}
+if (src != a) std::copy(src, src + n, a);                    // 홀수 번 옮겼으면 되돌려 놓기
+```
+
+- **개수는 한 패스에 모든 자리를 세요.** 자리별 개수는 키의 집합에만 달려 있고 순서와 무관하니, 흩뿌리기 전에 한꺼번에 셀 수 있어요. 자리마다 세기 패스를 따로 하면 읽기가 $2d$번이지만, 한 번에 세면 세기 1번 + 흩뿌리기 $d$번이에요(최소·최대를 구하는 패스는 따로).
+- `std::exchange(v, sum)`는 `v`에 `sum`을 넣고 옛 값을 돌려줘요. 한 줄로 "배타적 누적합"을 만드는 관용구예요.
+- `Key` 함수 객체를 템플릿 인자로 받아, 값 정렬(`int64_t`)과 쌍 정렬(`Keyed<int64_t>`)이 같은 코드를 써요. 람다가 인라인되니 추상화 비용이 없어요.
+
+### 기준값: 1024와 128
+
+기수 정렬에는 레인마다 고정 비용이 있어요. 카운터(최대 8 × 256개)를 비우고 누적합을 구하는 일이에요. 짧은 레인에서는 이 비용 때문에 져요. $2^{20}$개의 int64를 길이 $n$인 레인으로 나눠 1스레드로 잰 결과예요(설계 당시 측정).
+
+| $n$ | 값: NEON | 값: 기수 | 쌍: merge sort | 쌍: 기수 |
+|---:|---:|---:|---:|---:|
+| 64 | 3.2ms | 14.7ms | 13.2ms | 15.2ms |
+| 128 | 3.9ms | 10.1ms | 16.0ms | 10.6ms |
+| 512 | 5.9ms | 6.4ms | 21.6ms | 6.9ms |
+| 1024 | 6.8ms | 6.0ms | 24.3ms | 6.4ms |
+
+그래서 값은 1024개(`kRadixMinValues`), 쌍은 128개(`kRadixMinPairs`)부터 기수 정렬이에요. 쌍의 기준이 낮은 이유는 경쟁자가 다르기 때문이에요. 값의 경쟁자는 빠른 NEON 정렬이지만, 쌍은 NEON 정렬을 쓸 수 없어 merge sort와 겨뤄요.
+
+이 기준은 **넓은 범위**의 데이터로 정했어요. 좁은 범위에서는 자리 수가 줄어 기수 정렬이 더 일찍 이기지만, 그것을 보고 기준을 바꾸면 데이터 기반 휴리스틱이 돼요.
+
+결과(100만 개, 1스레드):
+
+| 연산 | stardust | numpy |
+|---|---:|---:|
+| `sort(j)`, 넓은 범위 $[-2^{62}, 2^{62})$ (벤치마크) | 6.71ms | 22.11ms |
+| `sort(i)`, $[-1000, 1000)$ (설계 당시) | 2.4ms | 8.8ms |
+| `argsort(i)` (설계 당시) | 6.8ms | 84.9ms |
+
+`argsort(i)`가 12배 넘게 빠른 것은 stardust가 (값, 인덱스) 쌍을 비교 없이 기수 정렬로 옮기기 때문이에요. 쌍 안에 값이 같이 있어 메모리를 순서대로 지나가요.
+
+## 긴 레인 하나의 병렬 정렬
+
+### 레인이 여럿이면 레인 단위로
+
+2차원 배열의 행마다 정렬하는 것처럼 레인이 여럿이면, 레인끼리 독립이니 레인 단위로 스레드에 나눠요. 이터레이터가 "레인 하나 = 원소 $n$개 분량의 일"로 보고 나눠요. `sort(s)`(2000행 × 1000열)는 1스레드 13.40ms, 10스레드 1.67ms, numpy 29.04ms예요(벤치마크). 설계 문서의 확장성 측정(같은 2000행 정렬)에서는 14스레드에서 1스레드의 9.7배였어요.
+
+### 레인 하나를 조각으로
+
+레인이 하나뿐이면(`sort(f)`, 1차원 100만 개) 레인 단위 분할로는 스레드를 쓸 수 없어요. 그래서 $2^{17}$개 이상인 레인은 레인 자체를 나눠요.
+
+- **조각 크기는 $2^{16}$개**(`kSortPiece`)로, **길이로만** 정해요. 스레드 수를 보지 않아요. $2^{15}$, $2^{16}$, $2^{17}$을 시험했는데 어느 것도 모든 경우에 이기지 않아 가운데를 골랐어요.
+- **비교 정렬(int64가 아닌 경우):** 조각마다 직렬 알고리즘(NEON 정렬, merge sort 등 위의 선택 그대로)으로 정렬해요(병렬). 그다음 이웃한 런을 둘씩 병합하는 단계를 런이 하나가 될 때까지 반복해요. 100만 개면 조각 16개, 병합 4단계예요.
+
+병합 단계도 병렬이어야 해요. 마지막 단계는 병합이 하나뿐이니, 병합 하나를 여러 스레드가 나눠 해야 해요. 그래서 **병합 하나를 출력 구간 $2^{15}$개**(`kMergeChunk`) 단위로 잘라 태스크로 만들어요. 문제는 출력 구간 $[k_0, k_1)$을 채우려면 두 런 $A$, $B$의 어디부터 읽어야 하는지 아는 것이에요. 이것을 **merge path**[8]의 이진 탐색으로 찾아요.
+
+출력의 첫 $k$개에 $A$에서 온 원소가 $i$개, $B$에서 온 원소가 $j = k - i$개라고 하면, $i$는 다음을 만족하는 값이에요(동점이면 $A$가 먼저).
+
+$$
+A[i-1] \le B[j] \quad \text{그리고} \quad B[j-1] < A[i]
+$$
+
+$i$에 대해 단조로운 조건이라 이진 탐색으로 $O(\log k)$에 찾아요.
+
+```cpp
+// csrc/array/ops/sort.cpp, co_rank (줄인 발췌)
+// merge(A, B)의 첫 k개 중 A에서 온 것의 수 (동점은 A 먼저)
+std::int64_t lo = std::max<std::int64_t>(0, k - nb), hi = std::min(k, na);
+while (lo < hi) {
+    const std::int64_t i = lo + (hi - lo) / 2, j = k - i;
+    if (j > 0 && i < na && !less(B[j - 1], A[i])) lo = i + 1;  // A[i]가 B[j-1]보다 먼저: A를 더 쓴다
+    else hi = i;
+}
+return lo;
+```
+
+태스크마다 구간의 시작 $k_0$과 끝 $k_1$에서 `co_rank`를 구해, 그 사이를 평범하게 병합해요. 모든 태스크가 서로 다른 출력 구간을 쓰니 동기화가 필요 없어요. 병합 루프는 분기 없이 썼어요.
+
+```cpp
+// csrc/array/ops/sort.cpp, sort_long의 병합 루프 (줄인 발췌)
+while (i < i1 && j < j1) {          // 분기 없음: 무작위 데이터에서는 절반이 예측 실패
+    const bool take_b = less(B[j], A[i]);
+    *out++ = take_b ? B[j] : A[i];
+    j += take_b;
+    i += !take_b;
+}
+```
+
+**동점이면 왼쪽 런이 먼저**예요(`less(B[j], A[i])`가 엄격). 왼쪽 런은 원래 배열에서 앞에 있던 원소들이니, 안정 정렬된 런을 이렇게 병합하면 **직렬 안정 정렬과 비트까지 같은 결과**가 나와요.
+
+### int64: 병합 없이 자리마다 병렬
+
+int64에 조각 + 병합을 쓰면 오히려 느려요. 기수 정렬이 이미 빨라서 병합 패스가 더 비싸요(2스레드 7.4ms 대 1스레드 6.0ms, 설계 당시). 그래서 기수 정렬의 **각 자리를 병렬로** 해요(`radix_sort_parallel`).
+
+1. **세기 (병렬):** 조각 $t$마다 자리 값 $v$의 개수 $c_{t,v}$를 세요.
+2. **시작 위치 (직렬):** "자리 값 순 → 조각 순"으로 누적해요.
+
+   $$
+   \text{pos}(t, v) = \sum_{v' < v} \sum_{t'} c_{t', v'} \;+\; \sum_{t' < t} c_{t', v}
+   $$
+
+3. **흩뿌리기 (병렬):** 조각마다 자기 시작 위치부터 써요.
+
+같은 자리 값끼리는 조각 순서(= 원래 순서)대로 놓이니, 직렬 계수 정렬과 똑같은 안정 순서예요. 직렬판과 다른 점은 자리마다 세기 패스를 따로 한다는 것이에요. 최솟값과 최댓값도 조각마다 구해 합쳐요.
+
+### 풀을 쓸 수 있을 때만 조각으로
+
+조각 + 병합은 직렬 정렬에 없는 **추가 패스**예요. 1스레드에서도 언제나 조각을 쓰면 `sort(i)` 5.8 → 13.6ms, `sort(f)` 13.1 → 23.6ms로 느려져요(설계 당시). 그래서 스레드풀을 실제로 쓸 수 있을 때(`parallel::available()`)만 조각을 써요.
+
+"스레드가 있을 때만 다른 경로"는 결정성 규칙상 보통 금지예요. 여기서는 허용되는데, **안정 정렬의 결과는 유일하기 때문**이에요. 조각을 쓰든 안 쓰든 같은 비트가 나와요.
+
+**예외: `stable=False`는 언제나 조각으로 정렬해요.** 안정이 아니면 결과가 유일하지 않아요. float `sort`의 NEON 정렬은 $\pm 0$의 순서가, int64가 아닌 `argsort`의 introsort는 동점 인덱스의 순서가 조각 경계에 따라 달라져요. 1스레드일 때 조각 없이 정렬하고 10스레드일 때 조각으로 정렬하면 결과가 달라지니, 언제나 조각을 써서 스레드 수와 무관하게 만들어요.
+
+| 연산 (100만 개) | 1스레드 | 10스레드 | numpy |
+|---|---:|---:|---:|
+| `sort(f)` | 15.18ms | 4.71ms | 28.65ms |
+| `sort(j)` int64 | 6.71ms | 2.75ms | 22.11ms |
+| `argsort(f)` | 82.71ms | 12.02ms | 73.74ms |
+
+(벤치마크.) 10스레드에서 1스레드 대비 2.4배(`sort(j)`)에서 6.9배(`argsort(f)`) 빨라져요. 비교 정렬은 조각 정렬 뒤에 직렬 정렬에 없는 병합 단계(100만 개면 4단계)가 붙고, 단계마다 레인 전체를 읽고 써요. int64 기수 정렬은 자리마다 세기와 흩뿌리기 사이에 직렬 누적합이 끼어요.
+
+## argsort가 1스레드에서 numpy보다 느린 이유
+
+벤치마크에서 `argsort(f)`는 1스레드 82.71ms로 numpy(73.74ms)보다 느려요(0.89배). 같은 float `sort`는 1.89배 빠른데 왜 그럴까요? 코드에서 확인할 수 있는 원인은 이래요.
+
+- **기본값이 다른 알고리즘이에요.** stardust의 `argsort`는 기본이 `stable=True`라 (값, 인덱스) 쌍을 **merge sort**로 정렬해요. numpy 2.5.4의 `np.argsort` 기본값은 `kind='quicksort'`(안정이 아닌 정렬)예요(numpy 문서 문자열에서 확인). 벤치마크는 양쪽 모두 기본 인자로 쟀어요.
+- **빠른 경로를 쓸 수 없어요.** float라서 기수 정렬이 아니고, 인덱스가 드러나니 NEON 정렬도 아니에요. `sort(f)`를 빠르게 만든 두 가지가 모두 빠져요.
+- **옮기는 데이터가 커요.** 원소 하나가 16바이트 쌍이고, merge sort는 단계마다 왼쪽 반을 복사하고 병합하니 단계당 약 $1.5n$번 옮겨요. 100만 개면 insertion sort 아래로 약 16단계예요.
+- **직렬 merge sort의 병합은 원소마다 데이터에 따라 갈리는 선택을 해요.** `a[k++] = less(a[j], tmp[i]) ? a[j++] : tmp[i++]`는 갈래마다 다른 인덱스를 늘려요. 무작위 데이터에서는 이 선택을 예측할 수 없어요. 반면 병렬 정렬의 병합 루프(`sort_long`)는 위에서 본 것처럼 분기 없이 쓰였어요.
+
+10스레드에서는 조각마다 merge sort + 분기 없는 병렬 병합이 되어 12.02ms(numpy의 6.1배)예요. 동점 인덱스의 순서가 상관없다면 `stable=False`로 introsort를 쓸 수 있어요.
+
+<Callout title="설계 문서의 수치와 차이">
+설계 문서에는 같은 `argsort(f)`가 1스레드 72.4ms(numpy 74.4ms)로 적혀 있어요. 이번 벤치마크는 82.7ms예요. 같은 알고리즘이므로 측정 시점의 차이로 보이지만, 원인은 확인하지 못했어요.
+</Callout>
+
+## unique_*
+
+### 정렬 기반: 평탄화 → 안정 정렬 → 이웃 비교
+
+`unique_counts`, `unique_inverse`, `unique_all`은 `unique_parts` 하나로 계산해요.
+
+1. **평탄화:** C 순서로 연속이면 x 그대로, 아니면 C 순서 복사본을 만들어요.
+2. **NaN 분리:** `load_split_nans`로 (값, 원래 위치) 쌍을 채우면서 NaN을 맨 뒤로 보내요(원래 순서대로).
+3. **안정 정렬:** NaN이 아닌 앞부분 $m$개를 `sort_keyed`로 안정 정렬해요. int64면 128개 이상에서 기수 정렬이에요.
+4. **묶음 찾기:** 정렬된 순서에서 이웃과 값이 다른 자리가 새 묶음의 시작이에요. NaN 구간 전체는 마지막 묶음 하나예요.
+5. **결과 만들기:** 묶음 $k$가 정렬 순서의 $[\text{begin}_k, \text{end}_k)$를 차지하면
+
+   $$
+   \text{values}[k] = \text{buf}[\text{begin}_k].\text{value}, \quad \text{indices}[k] = \text{order}[\text{begin}_k], \quad \text{counts}[k] = \text{end}_k - \text{begin}_k
+   $$
+
+   이고, 묶음 안의 모든 $i$에 대해 $\text{inverse}[\text{order}[i]] = k$예요.
+
+### 처음 나온 것이 대표
+
+**3단계가 안정 정렬이라는 점이 핵심이에요.** 같은 값의 묶음 안에서 원소들은 x에서의 순서대로 놓여요. 그러니 묶음의 첫 원소가 곧 x에서의 **첫 등장**이에요.
+
+- `indices`(첫 등장 위치)가 따로 계산 없이 나와요.
+- `-0.0`과 `+0.0`은 같은 값이라 한 묶음인데, 대표값은 **먼저 나온 쪽**이에요.
+- NaN 묶음의 대표값은 x에서 **처음 나온 NaN, 비트 그대로**예요. NaN끼리는 비교하지 않으니(4단계는 NaN이 아닌 부분에서만 비교해요), 페이로드가 다른 NaN도 같은 묶음이에요. 추가 비용도 없어요.
+- complex는 (실수부, 허수부) 사전순으로 정렬하고, 어느 한쪽이 NaN이면 NaN 묶음이에요.
+
+```python
+>>> import stardust as sd
+>>> sd.unique_values(sd.asarray([0.0, -0.0, 1.0]))
+array([0.0, 1.0], dtype=float64)
+>>> sd.unique_values(sd.asarray([-0.0, 0.0, 1.0]))
+array([-0.0,  1.0], dtype=float64)
+>>> sd.unique_all(sd.asarray([2.0, float("nan"), 0.0, float("nan"), -0.0]))
+UniqueAllResult(values=array([0.0, 2.0, nan], dtype=float64), indices=array([2, 0, 1], dtype=int64), inverse_indices=array([1, 2, 0, 2, 0], dtype=int64), counts=array([2, 1, 2], dtype=int64))
+```
+
+numpy 2.5.4의 `np.unique`는 정렬된 결과의 첫 원소를 보여 줘요. `np.unique([0.0, -0.0, 1.0])`과 `np.unique([-0.0, 0.0, 1.0])`이 둘 다 `[-0., 1.]`이었어요(확인). 정렬 알고리즘이 $\pm 0$을 어떻게 놓느냐에 달린 값이라 입력 순서로 예측할 수 없어요. stardust는 frame과 같이 "처음 나온 값"으로 정했어요.
+
+### unique_values는 값만 정렬
+
+`unique_values`는 위치도 개수도 필요 없어요. 그래서 쌍이 아니라 **값만** 안정 정렬하고, 제자리에서 압축해요.
+
+```cpp
+// csrc/array/ops/sort.cpp, unique_values (줄인 발췌)
+sort_values(buf, m, /*stable=*/true, /*descending=*/false);
+std::int64_t groups = 0;
+for (std::int64_t i = 0; i < m; ++i)                    // 같은 값의 런마다 첫 원소만 남긴다
+    if (i == 0 || !same(buf[groups - 1], buf[i])) buf[groups++] = buf[i];
+if (m < n) buf[groups++] = buf[m];                      // NaN: 하나의 값, x의 첫 NaN
+```
+
+옮길 데이터가 절반(8바이트 대 16바이트)이라 1.24배 빨라요(설계 당시). 값만 정렬하니 위에서 본 빠른 경로도 쓸 수 있어요. int64는 1024개 이상에서 기수 정렬, float64는 $\pm 0$이 섞이지 않았으면 NEON 정렬이에요. 둘 다 결과가 안정 정렬과 구별되지 않으니 "처음 나온 값" 규칙이 그대로 지켜져요.
+
+벤치마크의 `unique_values(u)`($[0, 1000)$의 int64 100만 개)는 1스레드 2.90ms, 10스레드 1.34ms, numpy 5.83ms예요. 범위가 1000이라 기수 정렬이 두 자리로 끝나요. 10스레드에서는 기수 정렬만 병렬이고 NaN 분리와 압축은 직렬이라 2.2배에 그쳐요.
+
+### 해시 기반 경로를 두지 않은 이유
+
+값의 종류를 세는 데는 해시 테이블이 흔히 쓰여요. stardust는 두지 않았어요.
+
+- int64는 기수 정렬로 이미 numpy보다 빨라요. `unique_counts`가 값 1000종일 때 3.9ms 대 8.4ms, 모두 다른 값일 때 9.3ms 대 20ms였어요(설계 당시, 원소 100만 개).
+- 해시는 값 종류가 적으면 더 빠를 수 있지만, 모두 다르면 테이블이 커져 캐시 미스로 느려질 수 있어요. 종류 수를 보고 경로를 고르면 데이터 기반 휴리스틱이 돼요.
+- 정렬 기반은 결과가 정렬된 순서로 나오고, "처음 나온 값" 규칙도 안정성에서 공짜로 나와요. 해시로 같은 결과를 내려면 결과를 다시 정렬해야 해요.
+
+복잡도는 int64면 $O(d \cdot n)$(기수 정렬), 그 밖은 $O(n \log n)$이고, 추가 공간은 쌍 버퍼 $n$개 + 위치 배열 $n$개 + inverse $n$개예요. 4, 5단계(묶음 찾기, inverse 쓰기)는 직렬이에요.
+
+## 작업 버퍼
+
+### 짧은 레인은 스레드별 scratch
+
+`(100000, 8)` 배열을 `sort(axis=1)`하면 길이 8인 레인을 10만 번 정렬해요. 레인마다 작업 버퍼를 `malloc`하면 할당 비용이 정렬 비용보다 커져요. 그래서 64KB(`kScratchBytes`) 이하의 레인은 **스레드별 scratch**를 써요.
+
+```cpp
+// csrc/array/ops/sort.cpp, LaneBuffer (줄인 발췌)
+template <typename T>
+class LaneBuffer {
+public:
+    LaneBuffer(std::int64_t n, int slot) {
+        if (n * sizeof(T) <= kScratchBytes) {
+            thread_local std::unique_ptr<std::byte[]> mem =
+                std::make_unique_for_overwrite<std::byte[]>(2 * kScratchBytes);
+            ptr_ = reinterpret_cast<T*>(mem.get() + slot * kScratchBytes);
+        } else {
+            heap_ = buffer<T>(n);     // 긴 레인은 할당
+            ptr_ = heap_.get();
+        }
+    }
+    // ...
+};
+```
+
+- **`thread_local` 정적 변수:** 함수 안의 `thread_local` 변수는 스레드마다 하나씩, 그 스레드가 처음 지나갈 때 한 번만 초기화돼요. 그래서 한 스레드는 128KB를 한 번 할당한 뒤 계속 재사용해요. 클래스 템플릿 안에 있으니 원소 타입 `T`마다 따로예요. 한 스레드가 들고 있는 것은 타입마다 최대 2 × 64KB예요.
+- **슬롯 두 개:** 슬롯 0은 레인 자체(`sort_lane`, `argsort_lane`), 슬롯 1은 merge sort의 왼쪽 반 복사본이나 기수 정렬의 임시 버퍼예요. 한 레인을 정렬하는 동안 두 버퍼가 동시에 필요하니 겹치지 않게 나눴어요.
+- **스레드풀 워커에서도 안전해요.** 레인 하나는 한 스레드가 처음부터 끝까지 처리하므로, 다른 스레드와 scratch를 공유할 일이 없어요.
+- `buffer<T>`는 `std::unique_ptr<T[]>`예요. `std::vector<bool>`은 비트로 압축된 특수화라 `data()` 포인터가 없어 `bool*`로 정렬할 수 없어요. 그래서 모든 dtype에 같은 형태의 버퍼를 써요.
+
+NEON 정렬은 자기 버퍼를 따로 가져요(채운 길이 256 이하면 스택, 위 참고). 긴 레인의 병렬 정렬은 병합용으로 $n$개짜리 버퍼를 하나 할당해요.
+
+## searchsorted, nonzero, take
+
+`csrc/array/ops/searching.cpp`에 있는, 정렬 순서와 인덱싱을 쓰는 함수들이에요.
+
+### searchsorted
+
+정렬된 `x1`에서 `x2`의 각 값이 들어갈 자리를 찾아요.
+
+- 두 쪽을 승격한 dtype의 **연속 복사본**을 만들어요. 서로 다른 dtype끼리 비교하는 경우를 루프 안에서 처리하지 않으려는 것이에요. `sorter`가 있으면 먼저 `x1[sorter]`로 모아요(인덱싱의 gather).
+- 찾기는 `std::lower_bound`(`side="left"`)와 `std::upper_bound`(`side="right"`)예요. 비교 함수는 `sort`의 순서와 같아요(NaN이 가장 커요).
+
+  $$
+  \text{before}(a, b) = (a < b) \;\lor\; (\text{isnan}(b) \land \lnot\,\text{isnan}(a))
+  $$
+
+  `left`는 $\lnot\,\text{before}(x_1[i], v)$인 첫 $i$, `right`는 $\text{before}(v, x_1[i])$인 첫 $i$예요. 그래서 NaN은 정렬된 배열 끝의 NaN 묶음 앞(`left`) 또는 뒤(`right`)를 찾아요.
+- **찾을 값이 많으면 병렬로 나눠요.** 일의 양을 $m \cdot \lfloor \log_2(n + 1) \rfloor$로 어림해 $2^{15}$ 이상이고 풀이 비어 있으면, 4096개씩(`kParallelTask`) 태스크로 나눠요. 결과가 정수 위치라 나누는 방법과 상관없이 같아요.
+
+복잡도는 복사 $O(n + m)$와 찾기 $O(m \log n)$예요. 이진 탐색 자체는 표준 라이브러리 그대로라, 분기 없는 이진 탐색 같은 기법은 쓰지 않았어요.
+
+### nonzero
+
+0이 아닌 원소의 위치를 축마다 int64 배열로 돌려줘요. 마스크 인덱싱과 같은 두 단계 구조예요.
+
+1. x가 C 순서로 연속이면 그대로, 아니면 자기 dtype으로 C 순서 복사본을 만들어요.
+2. C 순서를 $2^{16}$개(`kNonzeroChunk`) 조각으로 나눠 조각마다 참의 수를 세요(병렬).
+3. 누적합으로 조각마다 쓸 자리를 정하고, 조각마다 채워요(병렬).
+
+채우기는 분기가 없어요.
+
+```cpp
+// csrc/array/ops/searching.cpp, nonzero의 1차원 채우기 (줄인 발췌)
+std::int64_t k = start[t];
+const std::int64_t end_k = start[t + 1];
+for (std::int64_t i = b; i < e; ++i) {
+    if (k < end_k) o[k] = i;   // 거의 언제나 참: 예측이 잘 맞는다
+    k += truthy(p[i]);         // 참일 때만 k가 늘어난다
+}
+```
+
+- 모든 위치를 `o[k]`에 쓰고, 참일 때만 `k`를 늘려요. 마스크 압축과 같은 기법이에요. 무작위 마스크에서 "참이면 쓰기" 분기는 예측이 빗나가요. 1e7개에서 25ms → 3.8ms가 됐어요(설계 문서. 코드 주석에는 6ms로 적혀 있어요).
+- `k < end_k` 검사는 조각의 마지막 참 다음에 다음 조각의 자리를 쓰지 않게 막아요. 이 조건은 마지막 참 이후에만 거짓이 되니 거의 언제나 같은 쪽으로 가서 예측이 잘 맞아요. 마스크 압축이 작은 버퍼를 쓰는 것과 같은 문제를 다른 방법으로 푼 것이에요.
+- **다차원:** 원소마다 축 수만큼 위치를 쓰지 않아요. 마지막 축의 위치만 원소마다 쓰고, 앞 축의 위치는 한 행 안에서 같으니 행이 끝날 때 그 행의 출력 구간 전체를 `std::fill`로 한 번에 채워요. 20ms → 4.2ms였어요(설계 당시).
+- 조각 수는 크기로만 정하고, 원소 수가 $2^{15}$ 이상이고 조각이 둘 이상일 때 병렬로 돌아요(`for_pieces`). 위치는 정수라 결과가 나누는 방법과 무관해요.
+
+### take와 take_along_axis
+
+- **`take(x, indices, axis=k)`**는 키 `(:, …, :, indices)`(앞에 slice `k`개)를 만들어 인덱싱의 gather를 불러요([인덱싱](/internals/array/indexing/)). 1차원이면 `gather_one`, 아니면 `gather_take`로 가요. 인덱싱이 내는 IndexError를 C++ 예외로 바꿔 다시 던지는데(`gather_named`), 그래야 바인딩이 메시지 앞에 "take(): "를 붙여요.
+- **`take_along_axis`**는 결과를 메모리 순서대로 원소별로 돌아요. x를 **그 축의 stride를 0으로 둔 뷰**로 보면, 결과의 각 위치는 자기 레인의 첫 원소 `x[..., 0, ...]`를 가리켜요. 거기에 `index * stride`를 더해 원소를 읽어요.
+
+  ```cpp
+  // csrc/array/ops/searching.cpp, along_loop (줄인 발췌). args: x(축 stride 0), indices, out
+  std::int64_t k = *reinterpret_cast<const std::int64_t*>(args[1] + i * s[1]);
+  if (k < 0) k += c.n_x;
+  *reinterpret_cast<T*>(args[2] + i * s[2]) = *reinterpret_cast<const T*>(args[0] + i * s[0] + k * c.x_stride);
+  ```
+
+  어느 축을 따라 고르든 결과 메모리를 순서대로 지나고, 이터레이터가 병렬로 나눠요. 레인 단위로 돌면 C 순서 행렬의 `axis=0`에서 2.5배 느렸어요(코드 주석). 범위 검사는 먼저 한 번, 조각별로 분기 없이(`b |= q[i] < -n || q[i] >= n`) 병렬로 해요. 나쁜 것이 있을 때만 C 순서로 첫 번째를 찾아 메시지를 만들어요. 다차원 고급 인덱싱으로 하던 예전 구현보다 1스레드 3.5배, 10스레드 12배 빨라요(설계 당시).
+
+## 성능
+
+<Bench
+  rows={[
+    { label: 'sort(f)', times: [28.65e-3, 15.18e-3, 4.71e-3] },
+    { label: 'sort(j) int64', times: [22.11e-3, 6.71e-3, 2.75e-3] },
+    { label: 'argsort(f)', times: [73.74e-3, 82.71e-3, 12.02e-3] },
+    { label: 'sort(s) 2000행', times: [29.04e-3, 13.40e-3, 1.67e-3] },
+    { label: 'unique_values(u)', times: [5.83e-3, 2.90e-3, 1.34e-3] },
+  ]}
+  caption="원소 100만 개(sort(s)는 2000×1000), Apple M4 Pro, numpy 2.5.4, 기본 인자. f는 float64, j는 넓은 범위 int64, u는 [0, 1000)의 int64예요."
+/>
+
+| 연산 | 1스레드 대 numpy | 주된 원인 |
+|---|:---:|---|
+| `sort(f)` | 1.89× | NaN 분리 + NEON 정렬 네트워크와 bitonic 병합 |
+| `sort(j)` | 3.30× | 기수 정렬 8자리, 비교 없음 |
+| `argsort(f)` | 0.89× | 기본이 안정 정렬: (값, 인덱스) 쌍의 merge sort |
+| `sort(s)` 2000행 | 2.17× | 행마다 NEON 정렬(1000개), 짧은 레인 scratch |
+| `unique_values(u)` | 2.01× | 값만 기수 정렬(2자리) + 제자리 압축 |
+
+알고리즘별 복잡도예요. $n$은 레인 길이, $d$는 기수 정렬의 자리 수($d \le 8$), $m$은 찾을 값의 수예요.
+
+| 알고리즘 | 시간 | 추가 공간 | 안정 |
+|---|---|---|:---:|
+| NaN 분리 | $O(n)$, 두 번 읽기 | 레인 버퍼 $n$ | 예 |
+| NEON 정렬 | $O(n \log n)$, 병합 패스 $\lceil \log_2(n/8) \rceil$번 | $2n$ (256 이하는 스택) | 아니요 |
+| LSD 기수 정렬 | $O(d \cdot (n + 256))$ | $n$ | 예 |
+| merge sort | $O(n \log n)$ | $n/2$ | 예 |
+| introsort | 평균·최악 $O(n \log n)$ | 스택 $O(\log n)$ | 아니요 |
+| 긴 레인 병렬 정렬 | 조각 정렬 + 병합 $\lceil \log_2(n / 2^{16}) \rceil$단계, 각 $O(n)$ | $n$ | 조각 알고리즘을 따름 |
+| `unique_*` | 정렬 + $O(n)$ | $3n$ 정도 | — |
+| `searchsorted` | $O(n + m \log n)$ | 복사본 $n + m$ | — |
+| `nonzero` | $O(N)$ 두 번 | 결과 | — |
+
+## 정확도
+
+정렬은 계산 없이 값을 옮기기만 하므로 값은 비트 그대로 보존돼요.
+
+- **안정 정렬의 결과는 유일해요.** 그래서 `sort`와 `argsort`의 기본(`stable=True`) 결과는 numpy의 `kind='stable'` 결과와 같아야 해요. NaN, `-0.0`/`+0.0`, 반복값이 섞인 float64 배열과 반복값이 많은 int64 배열(길이 10부터 30만까지)로 numpy 2.5.4의 `np.sort(kind='stable')`, `np.argsort(kind='stable')`와 비교했을 때 `sort`는 바이트까지, `argsort`는 인덱스까지 모두 같았어요(이 문서를 쓰며 가볍게 확인).
+- `stable=False`의 결과는 동점 원소의 순서(float `sort`에서는 $\pm 0$의 순서)가 입력이나 numpy와 다를 수 있어요. 하지만 같은 입력이면 스레드 수와 무관하게 언제나 같은 결과예요(긴 레인은 언제나 조각으로 정렬).
+- 병렬 정렬의 결과는 직렬 정렬과 비트까지 같아요. 테스트가 1, 2, 3, 7, 10스레드에서 같은 바이트가 나오는지 확인해요([스레드풀과 결정성](/internals/core/threads/)).
+- `unique_*`의 대표값은 첫 등장 값이라 numpy와 다를 수 있어요(`-0.0`/`+0.0`, complex NaN). 값의 집합과 개수는 같아요.
+
+## 참고 문헌
+
+1. D. R. Musser, "Introspective Sorting and Selection Algorithms", *Software: Practice and Experience* 27(8), 1997. (introsort)
+2. C. A. R. Hoare, "Quicksort", *The Computer Journal* 5(1), 1962. (Hoare 분할)
+3. D. E. Knuth, *The Art of Computer Programming, Vol. 3: Sorting and Searching*, 2nd ed., Addison-Wesley, 1998. (5.3.4절 정렬 네트워크: 0-1 원리, 8입력 네트워크의 비교기 수)
+4. K. E. Batcher, "Sorting Networks and Their Applications", *AFIPS Spring Joint Computer Conference*, 1968. (bitonic 병합)
+5. H. Inoue, T. Moriyama, H. Komatsu, T. Nakatani, "AA-Sort: A New Parallel Sorting Algorithm for Multi-Core SIMD Processors", *PACT*, 2007. (레지스터 안 병합)
+6. J. Chhugani 외, "Efficient Implementation of Sorting on Multi-Core SIMD CPU Architecture", *Proceedings of the VLDB Endowment* 1(2), 2008. (SIMD bitonic 병합 네트워크)
+7. D. E. Knuth, *The Art of Computer Programming, Vol. 3*, 2nd ed., 1998. (5.2.5절 기수 정렬); T. H. Cormen 외, *Introduction to Algorithms*, 3rd ed., MIT Press, 2009. (8.2절 계수 정렬, 8.3절 기수 정렬)
+8. S. Odeh, O. Green, Z. Mwassi, O. Shmueli, Y. Birk, "Merge Path - Parallel Merging Made Simple", *IEEE IPDPS Workshops*, 2012. (출력 구간으로 병합 나누기)

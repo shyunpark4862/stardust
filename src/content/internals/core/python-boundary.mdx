@@ -1,0 +1,1010 @@
+---
+title: Python과 C++의 경계
+group: Python과의 경계
+order: 1
+summary: Python 객체와 C++ 객체가 만나는 곳을 설명해요. nanobind 바인딩, ndarray 타입, 인자 해석 규칙, 에러 메시지 체계, GIL, 버퍼 프로토콜과 DLPack, 그리고 메모리를 누가 붙잡고 있는지를 다뤄요.
+seeAlso: [overview, threads]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+import Bench from '../../../components/fig/Bench.astro';
+
+## 한눈에 보기
+
+stardust의 계산은 모두 C++에 있고, 사용자는 Python에서 불러요. 그 사이의 경계는 생각보다 많은 일을 해요.
+
+| 경계에서 하는 일 | 어디서 | 핵심 |
+|---|---|---|
+| 함수와 타입 노출 | nanobind, `csrc/bind/` | 확장 모듈 `stardust._core` 하나. 인자는 대부분 `nb::handle`(가공하지 않은 Python 객체)로 받아요 |
+| 배열 타입 | `bind/array_bind.cpp` | `sd.ndarray`는 C++ 구조체 `NDArray`를 담은 Python 타입이에요. 생성자가 없어요 |
+| 인자 해석 | `bind/pyutil.cpp` | 배열과 주 인자는 위치 전용, 옵션은 키워드 전용. int는 `operator.index` 규칙, bool 옵션은 `True`/`False`만 |
+| 에러 메시지 | `bind/errors.{hpp,cpp}` | 공개 함수가 낸 에러는 `name(): `로 시작해요. 헬퍼는 이름을 모르고, 바인딩이 붙여요 |
+| GIL | `parallel/pool.cpp` | 스레드풀로 나눠 돌 때 놓아요. 태스크 안에서는 Python 객체를 만지지 않아요 |
+| 버퍼 프로토콜 | `bind/array_bind.cpp`, `array/ops/asarray.cpp` | 내보낼 때는 복사 없이, 가져올 때는 타입이 정확히 같고 정렬되어 있으면 복사 없이 |
+| DLPack | `array/ops/dlpack.cpp` | 버전 있는 capsule과 옛 capsule을 모두 읽고 써요 |
+| 수명과 소유권 | `NDArray::buffer`, `NDArray::base` | 메모리는 `shared_ptr<Buffer>`가, Python 쪽 주인은 `base`가 붙잡아요 |
+
+이 원칙들은 배열만의 것이 아니에요. 선형대수(`sd.linalg`), 특수함수(`sd.special`)는 같은 인자 해석 도구와 같은 에러 이름 장치를 써요. 데이터프레임(`sd.frame`)은 Python 클래스라서 인자 검사를 Python 층(`frame/_errors.py`)이 하지만, 규칙과 메시지 형식은 C++ 쪽과 한 글자까지 같게 맞췄어요.
+
+`sd.sum(x, axis=0)` 한 번이 경계를 넘는 모습을 그리면 이래요.
+
+```text
+Python                                   C++ (stardust._core)
+──────                                   ─────────────────────
+sd.sum(x, axis=0)
+  │  nb_func vectorcall (약 10ns)
+  └───────────────────────────────────▶  named("sum", &sum) 래퍼  ── try {
+                                           sum(nb::handle x, nb::handle axis,
+                                               nb::handle dtype, nb::handle keepdims)
+                                             require_ndarray(x)  → NDArray& (복사 없음)
+                                             parse_axes(axis)    → std::vector<int>
+                                             parse_dtype(dtype)  → optional<DType>
+                                             parse_bool(keepdims)
+                                             ...커널 (필요하면 GIL을 놓고 풀에서)
+                                             wrap(NDArray) 또는 Python 스칼라
+                                         } catch → "sum(): " + 메시지, 같은 예외 종류
+  ◀───────────────────────────────────  nb::object
+```
+
+## nanobind
+
+### 왜 nanobind인가
+
+nanobind는 C++ 함수와 클래스를 Python 확장 모듈로 노출하는 라이브러리예요. pybind11을 만든 Wenzel Jakob이 pybind11의 후속으로 만들었고, 문서는 더 작은 바이너리, 더 빠른 컴파일, 더 낮은 호출 오버헤드를 내세워요 [1].
+
+stardust가 nanobind를 쓰는 것은 원래의 세 프로젝트(stardust-numpy, stardust-linalg, stardust-pandas)가 모두 C++20 + nanobind였고 통합판이 그것을 이어받았기 때문이에요. 설계 문서에는 다른 바인딩 도구(pybind11, Cython, 손으로 쓴 C API)와 비교해 고른 기록이 따로 없어요. 대신 실제로 잰 사실은 있어요. macOS `sample` 프로파일러로 작은 호출을 보면 **nanobind의 함수 호출 경로 자체는 약 10ns**이고, 작은 배열 연산의 나머지 비용은 대부분 stardust 쪽(할당, `NDArray` 복사, 이터레이터 준비)에 있었어요. 바인딩 도구가 병목이 아니니, 남은 비용은 C++ 안에서 줄일 수 있었어요.
+
+### 어떻게 쓰나: 거의 모든 인자를 `nb::handle`로
+
+nanobind는 C++ 함수의 시그니처를 보고 Python 인자를 자동으로 변환해 줘요. `bool keepdims`라고 적으면 Python의 `True`가 C++ `true`로 바뀌어 들어와요. 편하지만 stardust의 공개 함수는 이 기능을 거의 쓰지 않고, 인자를 `nb::handle`(참조 카운트를 건드리지 않는 Python 객체 포인터)로 받아 직접 해석해요.
+
+```cpp
+// csrc/bind/array_bind.cpp (발췌): sum을 메서드로 등록하기
+.def("sum", named("sum", &sum), nb::kw_only(),
+     nb::arg("axis").none() = nb::none(),
+     nb::arg("dtype").none() = nb::none(),
+     nb::arg("keepdims").none() = false)
+```
+
+이유는 세 가지예요.
+
+1. **에러 메시지를 우리가 정해요.** nanobind의 자동 변환이 실패하면 "incompatible function arguments. The following argument types are supported: …"라는 시그니처 목록이 나와요. 사용자는 무엇이 틀렸는지 알기 어려워요. `nb::handle`로 받으면 변환을 우리 코드가 하므로 `sum(): 'keepdims' must be True or False, not int`처럼 정해진 형식의 메시지를 낼 수 있어요.
+2. **규칙을 한곳에 둬요.** int 인자를 `operator.index` 규칙으로 읽는다든가, `numpy.bool_`을 bool로 치지 않는다든가 하는 규칙은 nanobind의 변환과 다르거나 그것이 모르는 것이에요. 해석 함수(`bind/pyutil.cpp`)가 한 벌이라 모든 공개 함수가 같은 규칙을 따라요.
+3. **참조 카운트를 아껴요.** `nb::handle`은 참조 카운트를 올리지 않아요. `nb::object`로 받으면 인자마다 참조가 하나 늘었다 줄어요.
+
+`.none()`은 그 인자 자리에 `None`이 들어와도 nanobind가 거절하지 않고 우리 코드까지 넘기라는 표시예요. nanobind는 기본으로 `None`을 거절하는데, 그러면 `keepdims=None` 같은 실수가 다시 시그니처 목록 메시지가 돼요. 모든 인자에 `.none()`을 붙여서 `None`도 같은 검사를 받게 해요.
+
+### 이름 없는 인자와 `kw_only`: 위치 전용과 키워드 전용
+
+nanobind에서 이름 없이 `nb::arg()`로 적은 인자는 **위치 전용**(positional-only)이에요. Python의 `/` 앞에 있는 인자처럼 키워드로 넘길 수 없어요. `nb::kw_only()` 뒤의 인자는 **키워드 전용**(keyword-only)이에요.
+
+```python
+>>> print(sd.sum.__doc__)
+sum(arg0: object | None, /, *, axis: object | None = None, dtype: object | None = None, keepdims: object | None = False) -> object
+```
+
+이 규칙은 Python Array API 관례예요 [2]. 배열 인자와 그 함수의 "본 인자"(`reshape`의 `shape`, `full`의 `fill_value`)는 위치 전용, 이름 붙은 옵션(`dtype`, `axis`, `keepdims`, `out`, `copy` …)은 키워드 전용이에요. 선형대수, 특수함수, 데이터프레임도 같은 규칙이에요. 데이터프레임은 Python 클래스라서 Python의 `/`와 `*`로 같은 모양을 만들어요(`Series(data=None, /, *, index=None, ...)`).
+
+nanobind 함수에는 Python의 `inspect.signature`가 `(*args, **kwargs)`만 보여요. 그래서 공개 API와 문서가 같은지 확인하는 테스트(`tests/<영역>/test_api_surface.py`)는 nanobind가 붙여 주는 `__nb_signature__`를 읽어서 위치 전용·키워드 전용 구분과 기본값을 비교해요.
+
+### 짧은 타입 이름
+
+nanobind는 바인딩한 타입의 C 수준 이름(`tp_name`)을 `"stardust._core.ndarray"`로 정해요. Python이 직접 만드는 메시지는 이 이름을 써서, 그대로 두면 `unsupported operand type(s) for +: 'stardust._core.ndarray' and 'list'`가 나와요. Python으로 쓴 클래스라면 `'ndarray'`만 나왔을 거예요.
+
+```cpp
+// csrc/bind/pyutil.cpp
+void use_short_type_name(nb::handle type) {
+    auto* t = reinterpret_cast<PyTypeObject*>(type.ptr());
+    // tp_name은 타입이 가진 전체 이름 문자열 안을 가리켜요(타입과 함께 해제됨).
+    // 마지막 점 다음을 가리키게 해도 소유 관계는 그대로예요.
+    if (const char* dot = std::strrchr(t->tp_name, '.')) t->tp_name = dot + 1;
+}
+```
+
+문자열을 새로 만들지 않고 포인터만 옮기는 것이 요점이에요. `__module__`과 `repr(type)`은 바뀌지 않아요(`<class 'stardust._core.ndarray'>`). `ndarray`, dtype 타입 `DType`, 배열 반복자 `_ArrayIterator`에 이렇게 해요. 결과로 Python 자신의 메시지가 모두 짧은 이름을 써요.
+
+```python
+>>> x = sd.asarray([1.0, 2.0, 3.0])
+>>> x + [1, 2, 3]
+Traceback (most recent call last):
+  ...
+TypeError: unsupported operand type(s) for +: 'ndarray' and 'list'
+>>> hash(x)
+Traceback (most recent call last):
+  ...
+TypeError: unhashable type: 'ndarray'
+```
+
+### nanobind의 `ndarray`를 쓰지 않는 이유
+
+nanobind에는 numpy, PyTorch 같은 배열을 C++에서 받는 `nb::ndarray`가 있어요. stardust는 이것을 쓰지 않아요. stardust의 배열은 **다른 라이브러리의 배열을 받는 장치가 아니라 그 자체가 배열 타입**이고, 메모리 소유(Buffer), 차원 수 상한(32), 연속성 플래그, `base` 규칙을 자기 방식으로 정해야 하기 때문이에요. 다른 배열과의 교환은 표준 프로토콜(버퍼 프로토콜, DLPack)을 직접 구현해서 해요.
+
+## ndarray 타입
+
+### Python 객체 안의 C++ 구조체
+
+`sd.ndarray`는 `nb::class_<NDArray>`로 바인딩한 타입이에요. Python 객체 하나가 `NDArray` 하나를 값으로 담아요. 결과를 돌려줄 때는 `wrap(NDArray&& a)`(= `nb::cast(std::move(a))`)가 새 Python 객체를 만들고 `NDArray`를 그 안으로 move해요. `shared_ptr` 대신 값으로 담는 이유는 데이터프레임 쪽 측정이 보여 줘요. nanobind에 `shared_ptr`을 돌려주면 Python 객체마다 `shared_ptr<void>` 복사본을 힙에 새로 만들고 전역 keep-alive 표에 등록해서, 원소 10개 Column `add`가 190ns였어요. 값 타입으로 바꾸니 89ns였어요.
+
+`NDArray`의 모양은 이래요. 자세한 내용은 [데이터 모델](/internals/array/data-model/)에 있어요.
+
+```cpp
+// csrc/array/ndarray.hpp (줄인 발췌)
+struct NDArray {
+    std::shared_ptr<Buffer> buffer;   // 메모리 소유
+    std::byte* data = nullptr;        // Buffer 안의 시작 위치
+    DType dtype = DType::Float64;
+    int ndim = 0;
+    Dims shape;                       // std::array<int64_t, 32>, 앞의 ndim칸만 의미
+    Dims strides;                     // 바이트 단위
+    bool c_contiguous = true, f_contiguous = true, writeable = true;
+    nb::object base;                  // Python의 .base
+};
+```
+
+C++ 쪽에서 Python 객체 안의 `NDArray`를 꺼내는 것은 포인터 계산 하나예요.
+
+```cpp
+// csrc/bind/pyutil.hpp
+inline bool is_ndarray(nb::handle o) { return nb::isinstance<NDArray>(o); }
+inline NDArray& as_ndarray(nb::handle o) { return *nb::inst_ptr<NDArray>(o); }
+```
+
+확장 모듈이 하나라 이 타입 등록도 하나예요. 그래서 linalg와 frame의 C++ 코드도 이 두 함수로 배열을 바로 받아요. 함수가 도는 동안에는 Python 인자 자체가 배열 객체를 살려 두므로, C++은 `const NDArray&`를 복사 없이 빌려 써요.
+
+### 생성자가 없어요
+
+```cpp
+// csrc/bind/array_bind.cpp (발췌)
+.def("__init__", [](NDArray*, nb::args, nb::kwargs) {
+    throw nb::type_error("ndarray(): there is no constructor; use asarray() or another creation function");
+})
+```
+
+`sd.ndarray`는 `isinstance(x, sd.ndarray)` 검사를 위해 이름만 공개해요. 배열은 `asarray`, `zeros`, `arange` 같은 생성 함수로만 만들어요. API 문서도 생성자가 없다고 정해 두었어요(함수 하나에 이름 하나라는 규칙과 같은 생각이에요). `__init__`을 아예 정의하지 않으면 nanobind가 "stardust._core.ndarray: no constructor defined!"라는 내부 이름이 섞인 메시지를 내서, 정해진 형식의 메시지를 내는 `__init__`을 일부러 넣었어요.
+
+### 속성
+
+| 속성 | 돌려주는 것 | 비고 |
+|:---:|---|---|
+| `dtype` | dtype 객체 (`sd.float64` 등) | 싱글턴이라 `x.dtype is sd.float64`가 성립해요 |
+| `shape` | int의 tuple | 고정 배열의 앞 ndim칸으로 만들어요 |
+| `strides` | int의 tuple, 바이트 단위 | numpy와 같은 단위 |
+| `ndim`, `size`, `itemsize`, `nbytes` | int | — |
+| `base` | 메모리를 실제로 가진 Python 객체 또는 `None` | 아래 "수명과 소유권" |
+| `T`, `mT` | 전치 뷰 | `.T`는 2차원만, `.mT`는 마지막 두 축 |
+
+모두 읽기 전용(`def_prop_ro`)이에요. 한 가지 손볼 곳이 있었어요. nanobind가 만든 `property`에는 이름이 없어서 `x.shape = (3,)`에 "property '' of 'ndarray' object has no setter"라는 빈 이름 메시지가 나왔어요. 바인딩 끝에서 각 property의 `__set_name__`을 직접 불러 이름을 넣어요.
+
+```cpp
+for (const char* name : {"dtype", "shape", "strides", "ndim", "size", "itemsize", "nbytes", "base", "T", "mT"})
+    cls.attr(name).attr("__set_name__")(cls, name);
+```
+
+```python
+>>> x.shape = (1, 3)
+Traceback (most recent call last):
+  ...
+AttributeError: property 'shape' of 'ndarray' object has no setter
+```
+
+연속성 플래그는 공개 속성이 아니에요. 테스트용 비공개 메서드 `_flags()`가 dict로 돌려줘요.
+
+```python
+>>> m = sd.asarray([[1.0, 2.0], [3.0, 4.0]])
+>>> m._flags()
+{'c_contiguous': True, 'f_contiguous': False, 'writeable': True}
+>>> m.T._flags()
+{'c_contiguous': False, 'f_contiguous': True, 'writeable': True}
+```
+
+### 메서드는 모듈 함수를 그대로 불러요
+
+`x.sum(axis=0)`과 `sd.sum(x, axis=0)`은 같은 C++ 함수예요. 메서드 등록이 모듈 함수의 포인터(`&sum`)를 그대로 쓰고, `x`가 첫 인자(self)가 돼요. 그래서 동작도 에러 메시지도 같아요. 메서드로도 제공하는 것은 정해진 목록(`reshape`, `astype`, `copy`, `tolist`, 리덕션 11개)뿐이에요.
+
+### 연산자
+
+연산자는 원소별 함수의 얇은 래퍼예요. `x + y`는 `sd.add(x, y)`와 같은 커널(`binary<ops::Add>`)을 불러요.
+
+```cpp
+// csrc/bind/array_bind.cpp (줄인 발췌)
+template <typename Op>
+void def_arith(nb::class_<NDArray>& cls, const char* fwd, const char* refl, const char* inplace,
+               const char* symbol, const char* inplace_symbol) {
+    cls.def(fwd, [symbol](nb::handle self, nb::handle other) {          // x + y
+        return is_operand(other) ? binary<Op>(self, other, nb::none(), symbol) : not_implemented();
+    }, nb::arg().none());
+    cls.def(refl, [symbol](nb::handle self, nb::handle other) {         // y + x (반사)
+        return is_operand(other) ? binary<Op>(other, self, nb::none(), symbol) : not_implemented();
+    }, nb::arg().none());
+    cls.def(inplace, [inplace_symbol](nb::handle self, nb::handle other) {  // x += y
+        return is_operand(other) ? binary<Op>(self, other, self, inplace_symbol) : not_implemented();
+    }, nb::arg().none());
+}
+```
+
+- **받는 피연산자**는 `sd.ndarray`와 Python 스칼라(`bool`, `int`, `float`, `complex`)와 numpy 스칼라예요(`is_operand`). 리스트, numpy 배열, `None`이면 `NotImplemented`를 돌려줘요. 그러면 Python이 반대쪽의 반사 메서드를 시도하고, 그쪽도 거절하면 Python 자신의 TypeError를 내요. 리스트나 다른 라이브러리의 배열을 몰래 배열로 바꾸지 않는 것이 설계 규칙이에요. 필요하면 `sd.asarray`로 먼저 바꿔요.
+- **in-place 연산자** `x op= y`는 `op(x, y, out=x)`예요. `out=`과 같은 규칙(승격 순서의 위로만 변환, 메모리 겹침 안전)이 적용되고 같은 객체를 돌려줘요.
+- **`@`**는 배열끼리만 받아요(스칼라 없음). `x @= y`는 결과의 shape이 `x`와 같아야 해요.
+- **연산자 기호를 커널에 넘겨요.** 마지막 인자 `symbol`(`"+"`, `"+="`)은 에러 메시지에 쓰여요. 아래 "에러 메시지 체계"에서 다뤄요.
+
+**`==`와 `!=`는 따로 다뤄요.** 다른 비교와 같은 방식이면 `x == [1, 2]`에서 양쪽이 모두 `NotImplemented`를 돌려주고, Python은 이때 TypeError 대신 **객체 동일성 비교로 물러나서** 조용히 `False`를 줘요 [3]. 다른 연산자는 모두 TypeError인데 `==`만 조용히 `False`이면 버그를 숨겨요. 그래서 받지 않는 피연산자이면, 반대쪽 타입의 비교 함수(`tp_richcompare`)를 직접 불러 보고 그쪽도 거절하면 TypeError를 직접 내요.
+
+```cpp
+// csrc/bind/array_bind.cpp (줄인 발췌)
+template <typename Op>
+nb::object op_equality(nb::handle self, nb::handle other) {
+    constexpr bool eq = std::is_same_v<Op, ops::Equal>;
+    if (is_operand(other)) return binary<Op>(self, other, nb::none(), eq ? "==" : "!=");
+    if (richcmpfunc cmp = Py_TYPE(other.ptr())->tp_richcompare) {   // 반대쪽에 먼저 물어봐요
+        nb::object r = nb::steal(cmp(other.ptr(), self.ptr(), eq ? Py_EQ : Py_NE));
+        if (!r.is_valid()) throw nb::python_error();
+        if (r.ptr() != Py_NotImplemented) return r;                 // sd.ndarray를 아는 타입이면 그 답
+    }
+    throw nb::type_error("'==' not supported between instances of 'ndarray' and '...'");
+}
+```
+
+`[1] == x`처럼 배열이 오른쪽에 있어도 Python이 리스트의 비교가 거절한 뒤 우리 `__eq__`를 부르므로 결과가 같아요. 데이터프레임의 `==`도 같은 규칙이에요.
+
+```python
+>>> x == [1, 2, 3]
+Traceback (most recent call last):
+  ...
+TypeError: '==' not supported between instances of 'ndarray' and 'list'
+```
+
+### Python 프로토콜 훅
+
+| 훅 | 동작 | 이유 |
+|:---:|---|---|
+| `__bool__`, `__int__`, `__float__`, `__complex__` | 모두 TypeError, 원소가 하나여도 | 배열은 크기와 상관없이 스칼라가 아니에요(0차원 배열이 없고, 스칼라 결과는 Python 숫자로 나와요). 넷 다 있어야 해요. `__int__`, `__float__`가 없으면 `int(x)`, `float(x)`가 버퍼 프로토콜로 넘어가 원시 바이트를 문자열로 해석하려 해요 |
+| `__index__` | TypeError | 배열을 인덱스로 쓰는 것을 막아요. 이 훅이 있으면 다른 코드가 "`__index__`가 있으니 int"로 오해할 수 있어서, int 인자 해석(`index_value`)은 배열을 따로 제외해요 |
+| `__hash__` | `None` | 가변 컨테이너라 해싱할 수 없어요(리스트와 같아요) |
+| `__contains__` | TypeError | 없으면 `v in x`가 조용히 반복(`__iter__`)으로 떨어져 첫 축의 원소와 `==`를 해요. `x == v`와 `any()`를 쓰게 해요 |
+| `__delitem__` | TypeError (`'ndarray' object doesn't support item deletion`) | 없으면 "AttributeError: __delitem__"이 나와요. tuple과 같은 메시지로 맞췄어요 |
+| `__len__` | `shape[0]` | 0차원이 없으니 언제나 있어요 |
+| `__iter__` | 첫 축을 따라 `x[0]`, `x[1]`, … | 1차원이면 Python 스칼라, 그 밖에는 뷰를 내요 |
+| `__getitem__` | `None`을 받아요 | `x[None]`은 `newaxis`예요. nanobind의 기본은 `None` 거절이라 `.none()`을 붙여요 |
+| `__repr__`, `__str__` | `stardust._format`의 Python 함수를 불러요 | 문자열 배치는 Python이 읽기 쉬워요 |
+
+### numpy 스칼라를 피연산자로
+
+`x + np.float64(1)`, `x + np.int32(1)`도 받아요. numpy 스칼라 판정(`array/convert.cpp`의 `scalar_dtype`)은 numpy를 import하지 않고 해요.
+
+1. `bool`, `int`, `float`, `complex`의 인스턴스면 바로 정해요. `numpy.float64`와 `numpy.complex128`은 Python `float`, `complex`의 하위 클래스라서 여기서 잡혀요.
+2. 타입 이름(`tp_name`)이 `"numpy."`으로 시작할 때만 numpy의 추상 타입(`numpy.bool`, `numpy.integer`, `numpy.floating`, `numpy.complexfloating`)과 `isinstance`로 대조해요.
+3. 추상 타입은 **이미 import된** numpy 모듈에서(`PyImport_GetModule`) 처음 한 번 가져와 프로세스 끝까지 쥐어 둬요. numpy 스칼라가 존재한다면 numpy는 이미 import되어 있으므로, stardust가 numpy를 import할 필요가 없어요.
+4. `numpy.timedelta64`는 `numpy.integer`의 하위 타입이지만 `__index__`가 없어서 받지 않아요.
+
+값은 Python 스칼라와 같은 변환 함수(`__index__`, `__float__`, `__complex__`)로 읽어요. 데이터프레임도 같은 규칙으로 numpy 스칼라를 받아요.
+
+### `__array_ufunc__ = None`
+
+```cpp
+cls.attr("__array_ufunc__") = nb::none();
+```
+
+numpy는 `np_array + sd_array`를 보면 오른쪽 피연산자를 numpy 배열로 바꿔 계산하려 해요. 우리 배열은 버퍼 프로토콜을 내보내므로 이 변환이 성공하고, 결과는 **numpy 배열**이 돼요. 사용자는 두 라이브러리를 섞었다는 것을 모른 채 numpy 결과를 받게 돼요.
+
+NEP 13은 타입이 `__array_ufunc__ = None`을 가지면 numpy ufunc가 그 피연산자에 대해 물러나도록 정해요 [4]. 그러면 `np_array + sd_array`에서 numpy의 `__add__`가 `NotImplemented`를 돌려주고, 우리 `__radd__`도 numpy 배열을 받지 않으니 TypeError가 나요. `np.add(np_array, sd_array)`처럼 ufunc를 직접 불러도 TypeError예요.
+
+```python
+>>> import numpy as np
+>>> np.add(np.ones(3), x)
+Traceback (most recent call last):
+  ...
+TypeError: operand 'ndarray' does not support ufuncs (__array_ufunc__=None)
+```
+
+<Callout type="tip" title="numpy와 섞을 때">
+  섞는 것은 막지만 주고받는 것은 쉬워요. `np.asarray(x)`는 stardust 배열을 복사 없이 numpy 배열로 보여 주고(버퍼 프로토콜), `sd.asarray(a)`는 float64 numpy 배열을 복사 없이 가져와요. 어느 라이브러리로 계산할지 한쪽을 골라 변환한 뒤 계산하면 돼요.
+</Callout>
+
+numpy 2.5.4에서 `np.ones(3) + x`(연산자 쪽)는 numpy의 다른 경로를 거쳐 "Concatenation operation is not implemented for NumPy arrays…"라는 numpy의 TypeError가 나와요. 예외 종류는 같지만 메시지는 numpy가 정해요.
+
+## 인자 해석
+
+모든 해석 함수는 `bind/pyutil.cpp`에 한 벌씩 있어요. 메시지에는 인자 이름(`'axis'`)만 넣고 함수 이름은 넣지 않아요. 함수 이름은 바인딩이 붙여요(다음 절).
+
+### 인자 종류별 규칙
+
+| 종류 | 함수 | 받는 것 | 틀리면 |
+|:---:|---|---|---|
+| 배열 | `require_ndarray` | `sd.ndarray`만 | TypeError `'x' must be an sd.ndarray, not list` |
+| int | `parse_int` | Python int, `__index__`가 있는 객체(numpy 정수) | 타입: TypeError `'k' must be an int, not float`. int64 밖: OverflowError `'k' is out of range` |
+| shape | `parse_shape` | int, 또는 int의 tuple | TypeError `'shape' must be an int or a tuple of ints, not list` |
+| axis | `parse_axes` | int, 또는 int의 tuple·list | 같은 축 두 번: ValueError `repeated axis`. 범위 밖: ValueError `axis 3 is out of bounds for an array of dimension 2` |
+| bool 옵션 | `parse_bool` | `True`, `False`만 | TypeError `'keepdims' must be True or False, not int` |
+| `copy` | `parse_copy` | `True`, `False`, `None` | TypeError `'copy' must be True, False or None, not int` |
+| 실수 | `real_value` | float, int 규칙의 int | 호출하는 쪽이 TypeError (`'correction' must be an int or a float, not NoneType`) |
+| 문자열 옵션 | `parse_choice` | 정해진 문자열 중 하나 | 문자열이 아니면 TypeError, 목록에 없으면 ValueError. 두 경우 모두 `'side' must be 'left' or 'right', not ...` |
+| dtype | `parse_dtype` | dtype 객체 넷이나 그 이름, `None` | TypeError `'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names), not <class 'float'>` |
+
+### int는 `operator.index` 규칙으로
+
+Python에서 "int처럼 쓸 수 있는 객체"의 표준은 `__index__` 메서드예요(PEP 357) [5]. 리스트 인덱싱이 `np.int64(3)`을 받는 것도 이 규칙 덕분이에요. stardust는 세 영역의 모든 int 인자(`shape`, `axis`, `k`, `n`, `num`, `head(n)`, `RangeIndex`, `set_num_threads` …)와 인덱싱에 이 규칙 하나를 써요.
+
+```cpp
+// csrc/bind/pyutil.cpp (줄인 발췌)
+IndexResult index_value(nb::handle o, std::int64_t& out) {
+    PyObject* p = o.ptr();
+    if (PyBool_Check(p)) return IndexResult::NotInt;   // bool은 int의 하위 클래스지만 int 인자가 아님
+    nb::object owned;
+    if (!PyLong_Check(p)) {
+        // sd.ndarray의 __index__는 거절용이라 미리 뺌
+        if (!PyIndex_Check(p) || is_ndarray(o)) return IndexResult::NotInt;
+        PyObject* r = PyNumber_Index(p);               // numpy.int64 → int, numpy.bool_은 거절
+        if (r == nullptr) {
+            if (!PyErr_ExceptionMatches(PyExc_TypeError)) throw nb::python_error();
+            PyErr_Clear();
+            return IndexResult::NotInt;
+        }
+        owned = nb::steal(r);
+        p = r;
+    }
+    int overflow = 0;
+    const long long v = PyLong_AsLongLongAndOverflow(p, &overflow);
+    if (overflow != 0) return IndexResult::Overflow;
+    if (v == -1 && PyErr_Occurred()) throw nb::python_error();
+    out = v;
+    return IndexResult::Ok;
+}
+```
+
+- **bool은 int가 아니에요.** Python의 `True`는 `int`의 하위 클래스라 그대로 두면 `sd.zeros(True)`가 길이 1 배열이 돼요. API 규칙은 bool을 int 인자로 받지 않는 것이라, 맨 먼저 `PyBool_Check`로 걸러요. `numpy.bool_`은 `__index__`가 TypeError를 내므로 저절로 걸러져요.
+- **Python int는 빠른 길로 가요.** `PyLong_Check`가 참이면 `PyNumber_Index`를 부르지 않고 바로 읽어요. 대부분의 호출이 이 길이에요.
+- **세 가지 결과를 돌려줘요.** `Ok`, `NotInt`, `Overflow`로 나눠 돌려주고, 메시지는 부른 쪽이 정해요. `axis`는 "an int or a tuple or list of ints", `shape`은 "an int or a tuple of ints"처럼 그 인자가 받는 것을 정확히 말해야 하기 때문이에요.
+- **int64 밖이면 OverflowError예요.** `PyLong_AsLongLongAndOverflow`는 예외를 만들지 않고 넘침만 알려 줘서, 정해진 메시지로 바꾸기 쉬워요. 예외가 `set_num_threads` 하나 있어요. 1~1024 밖이면 크기와 상관없이 `ValueError: 'n' must be between 1 and 1024`예요. `2**70`도 "범위 밖의 스레드 수"라는 같은 실수라서예요.
+
+```python
+>>> sd.zeros(np.int64(2)).shape
+(2,)
+>>> sd.zeros(True)
+Traceback (most recent call last):
+  ...
+TypeError: zeros(): 'shape' must be an int or a tuple of ints, not bool
+>>> sd.zeros(2**63)
+Traceback (most recent call last):
+  ...
+OverflowError: zeros(): 'shape' is out of range
+```
+
+**shape은 tuple만, axis는 list도** 받아요. `axis`가 list를 받는 것은 linalg의 `vector_norm(axis=[0, 1])`과 맞추려고 사용자가 정한 것이에요. `shape`은 Array API대로 int나 tuple이에요.
+
+### bool 옵션은 `True`와 `False`만
+
+```cpp
+bool parse_bool(nb::handle o, const char* what) {
+    if (o.ptr() == Py_True) return true;
+    if (o.ptr() == Py_False) return false;
+    throw nb::type_error(("'" + std::string(what) + "' must be True or False, not " + py_type_name(o)).c_str());
+}
+```
+
+`True`와 `False`는 싱글턴이라 포인터 비교 두 번이면 돼요. `0`, `1`, `None`, `numpy.bool_`은 모두 TypeError예요. "진릿값으로 읽기"(`bool(o)`)를 하면 `keepdims="no"`가 참이 되는 것 같은 실수가 조용히 통과해요.
+
+### `None`
+
+`None`이 뜻이 있는 인자에서만 `None`을 받아요.
+
+| `None`의 뜻이 있는 인자 | 뜻 |
+|---|---|
+| `axis=None` | 모든 축 |
+| `dtype=None` | 입력에서 정해요 |
+| `copy=None` | 필요할 때만 복사해요 |
+| `out=None` | 새 배열에 써요 |
+
+그 밖의 인자에 `None`을 주면 다른 틀린 값과 똑같은 검사를 거쳐요: `sort(): 'axis' must be an int, not NoneType`, `searchsorted(): 'side' must be 'left' or 'right', not NoneType`. `None`이라고 특별 취급해 기본값으로 바꾸지 않아요.
+
+### dtype 인자
+
+dtype 객체는 C++이 모듈을 만들 때 만든 다섯 개(`sd.bool`, `sd.int64`, `sd.float64`, `sd.complex128`, `sd.string`)뿐이에요. 해석은 포인터 비교 다섯 번, 아니면 문자열 비교예요.
+
+```cpp
+// csrc/bind/pyutil.cpp (줄인 발췌)
+std::optional<DType> parse_any_dtype(nb::handle o) {
+    if (o.is_none()) return std::nullopt;
+    for (int i = 0; i < kNumDTypes; ++i)
+        if (o.ptr() == g_dtype_objects[i]) return static_cast<DType>(i);   // 객체
+    if (PyUnicode_Check(o.ptr())) {
+        Py_ssize_t len = 0;
+        const char* s = PyUnicode_AsUTF8AndSize(o.ptr(), &len);
+        if (auto d = dtype_from_name(std::string_view(s, len))) return d;  // 이름 문자열
+    }
+    return std::nullopt;  // 부른 쪽이 받는 것을 말하며 에러를 내요
+}
+```
+
+`g_dtype_objects`는 빌린 포인터예요. 객체의 소유자는 모듈 속성(`sd.float64` 등)이고, `_core` 안의 어떤 코드도 모듈이 해제된 뒤에 돌지 않으니 안전해요. 거절한 값은 `describe_dtype_arg`가 무엇이었는지 보여 줘요: dtype 객체면 `sd.string`, 문자열이면 `'float32'`, 타입이면 `<class 'float'>`(numpy 타입도 모듈 경로 없이 `<class 'int64'>`), 그 밖에는 타입 이름이에요.
+
+### 데이터프레임의 같은 규칙
+
+데이터프레임의 공개 메서드는 Python이라, 같은 규칙을 Python으로 한 벌 더 갖고 있어요(`frame/_errors.py`).
+
+```python
+# src/stardust/frame/_errors.py (줄인 발췌)
+def as_index(value):
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return int(value)
+    try:
+        return operator.index(value)  # numpy.bool_과 sd.ndarray는 거절해요
+    except TypeError:
+        return None
+
+def check_int(value, what, func):
+    v = as_index(value)
+    if v is None:
+        raise TypeError(named(func, f"'{what}' must be an int, not {type_name(value)}"))
+    if not _INT64_MIN <= v <= _INT64_MAX:
+        raise OverflowError(named(func, f"'{what}' is out of range"))
+    return v
+```
+
+`check_bool`, `check_real`, `check_choice`도 C++의 `parse_bool`, `real_value`, `parse_choice`와 같은 메시지를 내요. 같은 실수는 어느 영역에서든 같은 예외, 같은 메시지예요(`head(): 'n' must be an int, not bool`).
+
+## 에러 메시지 체계
+
+### 형식
+
+- **공개 함수와 메서드가 낸 에러는 그 이름과 `(): `로 시작해요.** `vector_norm(): 'ord' must be ...`
+  - 메서드는 클래스 이름 없이 메서드 이름만 써요. `x.astype(...)`과 `sd.astype(x, ...)`은 둘 다 `astype(): `예요. 같은 이름은 어느 클래스, 어느 영역에서든 같은 일을 하기 때문이에요.
+  - 생성자는 클래스 이름이에요(`Series(): `, `ndarray(): `). 프로퍼티는 점을 붙여요(`.T: `).
+  - 사용자가 **부른** 함수의 이름이에요. 여러 함수가 함께 쓰는 검사는 이름을 넘겨받아요. `drop_duplicates(keep=...)`의 검사는 안에서 `duplicated`의 코드를 쓰더라도 `drop_duplicates(): `예요.
+- **인자는 작은따옴표**로 써요(`'axis'`). 받은 값은 짧은 타입 이름으로 보여요(`not list`, `not ndarray`, `not int64`).
+- **메시지에 문서의 절 번호를 넣지 않아요.** 문서의 번호는 바뀌어도, 사용자 코드가 메시지를 붙잡고 있을 수 있어요.
+- **Python 프로토콜은 Python의 형식**이고 이름을 붙이지 않아요: 연산자, 인덱싱과 그 대입, `len`, `in`, `bool`, `iter`, `repr`, 속성 대입.
+
+### 구현: 헬퍼는 이름을 모르고, 바인딩이 붙여요
+
+`parse_axes` 같은 헬퍼와 커널은 수십 개의 공개 함수가 함께 써요. 헬퍼가 "지금 어느 공개 함수 안에서 불렸는지"를 알려면 모든 호출에 이름을 넘겨야 해요. 대신 stardust는 **예외를 잡아 이름을 붙여 다시 던져요.**
+
+```cpp
+// csrc/bind/errors.hpp (줄인 발췌)
+template <class R, class... A>
+auto named(const char* func, R (*f)(A...)) {
+    return [func, f](A... args) -> R {
+        try {
+            return f(std::forward<A>(args)...);
+        } catch (...) {
+            rethrow_named(func);
+        }
+    };
+}
+
+template <class F>
+decltype(auto) call_named(const char* func, F&& f) {
+    try {
+        return std::forward<F>(f)();
+    } catch (...) {
+        rethrow_named(func);
+    }
+}
+```
+
+- `named("zeros", &zeros)`는 함수 포인터를 받아 **같은 시그니처의 람다**를 돌려줘요. 템플릿 인자 `R`, `A...`가 함수 포인터의 타입에서 추론되므로, nanobind는 람다를 원래 함수처럼 바인딩해요(인자 이름과 기본값은 `.def`에서 따로 정해요). 등록은 `m.def("zeros", named("zeros", &zeros), ...)` 한 줄이에요.
+- `call_named(func, [&] { ... })`는 이름이 실행 시점에 정해질 때 써요. 데이터프레임 커널은 Python 층이 넘긴 `func=` 인자로, `set_num_threads`는 람다 본문으로 써요.
+- **정상 경로의 비용은 없어요.** C++ 예외는 ARM64에서 표 기반으로 구현돼서, `try` 블록에 들어가고 나오는 데 명령이 들지 않아요. 비용은 예외가 실제로 던져질 때만 들어요.
+
+다시 던지는 쪽은 예외의 **종류를 지키고 메시지만** 바꿔요.
+
+```cpp
+// csrc/bind/errors.cpp (줄인 발췌)
+void rethrow_named(const char* func) {
+    try {
+        throw;                                   // 지금 처리 중인 예외를 다시 던져 종류를 가려요
+    } catch (const nb::builtin_exception& e) {
+        switch (e.type()) {
+            case nb::exception_type::type_error:
+            case nb::exception_type::value_error:
+            case nb::exception_type::index_error:
+            case nb::exception_type::key_error:
+            case nb::exception_type::buffer_error:
+                throw nb::builtin_exception(e.type(), with_name(func, e.what()).c_str());
+            default:
+                throw;                           // stop_iteration 등: 메시지가 아니라 흐름 제어
+        }
+    } catch (const linalg::LinAlgError& e) {
+        throw linalg::LinAlgError(with_name(func, e.what()));
+    } catch (const std::overflow_error& e) {
+        throw std::overflow_error(with_name(func, e.what()));
+    }
+    // 그 밖의 것(이미 설정된 Python 에러, std::bad_alloc …)은 catch에 걸리지 않고 그대로 나가요
+}
+
+std::string with_name(const char* func, const char* msg) {
+    if (func == nullptr || *func == '\0') return msg;
+    const std::string prefix = std::string(func) + (func[0] == '.' ? ": " : "(): ");
+    if (std::strncmp(msg, prefix.c_str(), prefix.size()) == 0) return msg;  // 이미 붙어 있으면 그대로
+    return prefix + msg;
+}
+```
+
+- `throw;`를 `try` 안에서 다시 던지는 것은 "지금 처리 중인 예외의 실제 타입으로 `catch`를 고르는" 관용구예요. `catch (...)`는 타입을 모르지만, 다시 던지면 아래 `catch`들이 타입별로 받아요.
+- `std::overflow_error`는 nanobind가 Python의 `OverflowError`로 바꿔요. 그래서 int64 범위 밖의 int는 C++ 표준 예외로 던지고, 이름을 붙일 때도 같은 종류로 다시 던져요.
+- **이미 이름이 붙은 메시지는 그대로 둬요.** linalg는 에러 메시지용으로 함수 이름을 직접 들고 다니는 곳(`Input`)이 있어서, 메시지가 이미 `inv(): `로 시작할 수 있어요. 두 번 붙지 않게 접두사를 확인해요.
+- **이미 설정된 Python 에러**(`nb::python_error`, 예를 들어 다른 객체의 `__index__`가 낸 에러)는 Python이 만든 예외라 건드리지 않아요.
+
+### 연산자는 기호를 넘겨요
+
+연산자는 `named` 없이 바인딩하고, 대신 커널에 기호를 넘겨요. 같은 커널이 함수로 불리면 기호 자리가 `nullptr`예요. 그래서 같은 실수가 부르는 길에 따라 Python의 형식과 함수의 형식으로 나뉘어요.
+
+```cpp
+// csrc/array/ops/ufunc.cpp (줄인 발췌): 루프가 없을 때의 메시지
+if (symbol == nullptr) throw nb::type_error(("not supported for " + names).c_str());
+throw nb::type_error(("unsupported operand dtypes for " + std::string(symbol) + ": " + names).c_str());
+```
+
+```python
+>>> c = sd.asarray([1j])
+>>> c < c
+Traceback (most recent call last):
+  ...
+TypeError: unsupported operand dtypes for <: complex128 and complex128
+>>> sd.less(c, c)
+Traceback (most recent call last):
+  ...
+TypeError: less(): not supported for complex128 and complex128
+```
+
+연산자 쪽 메시지는 Python 자신의 `unsupported operand type(s) for <: …`를 본떠 "type" 대신 "dtype"을 써요. 받지 않는 **타입**은 Python이 직접 내는 메시지이고, 받는 타입이지만 받지 않는 **dtype**은 우리가 같은 모양으로 내는 메시지예요.
+
+### 데이터프레임: Python이 이름을 알아요
+
+데이터프레임의 공개 메서드는 Python이라 자기 이름을 알아요. 여러 메서드가 함께 쓰는 헬퍼는 `func`를 인자로 받아 `_errors.named(func, msg)`로 메시지를 만들고, 사용자가 닿는 C++ 커널(`Column.from_list`, `astype`, `reduce`, `join_indices` 등)은 `func=` 인자를 받아 바인딩에서 `call_named`로 이름을 붙여요. 연산자와 인덱싱은 `func=None`으로 불러 Python의 형식을 남겨요.
+
+```cpp
+// csrc/bind/frame_bind.cpp (줄인 발췌)
+// func를 Python 객체 그대로 받아요. 호출마다 std::string으로 바꾸면 작은 리덕션(약 200ns)의
+// 약 15ns를 썼어요. str의 UTF-8 표현은 str 객체 안에 캐시돼요.
+using Func = nb::handle;
+
+const char* name_of(const Func& func) {
+    if (!func.is_valid() || func.is_none() || !PyUnicode_Check(func.ptr())) return nullptr;
+    return PyUnicode_AsUTF8(func.ptr());
+}
+```
+
+### `LinAlgError`
+
+선형대수의 수치적 실패(특이 행렬, 양정치가 아닌 행렬, 수렴 실패)는 C++에서 `struct LinAlgError : std::runtime_error`로 던지고, nanobind의 예외 변환기가 Python의 `sd.linalg.LinAlgError`로 바꿔요. 이 Python 클래스는 `stardust/linalg/_errors.py`에 `ValueError`의 하위 클래스로 정의되어 있어서, C++은 import될 때 `_core.linalg._setup(LinAlgError, ...)`로 클래스를 받아 쥐어 둬요. 받기 전이면 `ValueError`로 바꿔요. 이름 붙이기도 같은 장치를 거쳐요: `inv(): singular matrix`.
+
+### 일부러 남긴 것
+
+틀린 **호출 모양**(없는 키워드 이름, 인자 개수)은 nanobind의 "incompatible function arguments" 목록이 그대로 나와요. 인자의 값이 틀린 것이 아니라 호출 자체가 틀린 것이고, Python 함수라면 `got an unexpected keyword argument`가 나올 자리예요. 고치려면 모든 바인딩을 `*args, **kwargs`로 받아 직접 풀어야 해서 그대로 뒀어요. 인자의 **값**이 틀린 것은 언제나 위의 형식이에요.
+
+### 에러 종류
+
+| 예외 | 언제 |
+|:---:|---|
+| `TypeError` | 인자의 타입이 맞지 않아요. 배열 자리에 다른 객체, 그 dtype을 받지 않는 함수, 암묵적 하향 변환(`int_arr += 1.5`), bool 옵션에 `True`/`False`가 아닌 값, int 인자에 int가 아닌 값 |
+| `ValueError` | 타입은 맞지만 값이 맞지 않아요. shape 불일치, 범위 밖이거나 중복된 축, 음수 길이, 0차원 요청, `copy=False`인데 복사가 필요함, 쓰기 금지 배열에 쓰기, 빈 배열의 `min`/`argmax` |
+| `IndexError` | 인덱스가 범위 밖이거나 허용하지 않는 형태예요 |
+| `KeyError` | 데이터프레임의 `.loc`에서 없는 라벨 |
+| `BufferError` | 버퍼나 DLPack으로 데이터를 주고받을 수 없어요(CPU가 아닌 장치, 읽기 전용 배열을 옛 DLPack 형식으로, 버퍼 내보내기 실패) |
+| `OverflowError` | int64 밖의 Python int를 int64로 바꿔야 해요. float로 계산할 수 있으면 float로 바꿔요(`float_arr + 2**70`은 정상) |
+| `LinAlgError(ValueError)` | 선형대수의 수치적 실패 |
+
+경고는 어느 영역도 내지 않아요. 문제가 있으면 에러를 내요. 배열의 원소별 연산은 원소의 값 때문에 실패하지 않아요(정수 오버플로는 wrap, `a // 0`은 0).
+
+`tests/test_error_messages.py`가 세 영역의 메시지 형식을 함께 고정해요. 공개 함수가 자기 이름을 붙이는지, 연산자와 인덱싱이 Python 형식을 지키는지, 어떤 메시지도 문서 절을 인용하지 않는지를 봐요.
+
+## GIL
+
+### 규칙
+
+GIL(Global Interpreter Lock)은 CPython에서 한 번에 한 스레드만 Python 객체를 다루게 하는 잠금이에요. C++ 계산이 GIL을 쥔 채 오래 돌면 다른 Python 스레드가 그동안 멈춰요. 반대로 GIL을 놓은 동안에는 Python 객체(참조 카운트 포함)를 만지면 안 돼요.
+
+stardust의 규칙은 이래요.
+
+1. **스레드풀로 나눠 도는 구간에서는 GIL을 놓아요.** `parallel::parallel_for`가 시작할 때 놓고 끝날 때 다시 잡아요.
+2. **태스크 안에서는 Python 객체를 만지지 않아요.** `NDArray`를 복사하는 것조차 `base`(`nb::object`)의 참조 카운트를 바꾸므로, 필요한 `NDArray` 복사는 태스크 밖에서 미리 해요. 결과 배열과 namedtuple도 태스크가 끝난 뒤 GIL을 다시 쥐고 만들어요.
+3. **에러 위치도 GIL 밖에서 정하고, 메시지는 안에서 만들어요.** 여러 태스크가 검사하다 실패하면 `parallel::FirstRow`가 가장 앞의 위치를 atomic으로 골라요(데이터프레임의 검사가 써요). 메시지(Python 문자열)는 병렬 구간이 끝난 뒤 만들어요. 스레드 수와 무관하게 같은 위치를 보고해요.
+
+### 구현
+
+```cpp
+// csrc/parallel/pool.cpp (줄인 발췌)
+void parallel_for(std::int64_t ntasks, const std::function<void(std::int64_t)>& fn) {
+    if (ntasks <= 0) return;
+    GilRelease release;  // 태스크 안(GIL이 이미 없음)에서는 아무것도 안 해요
+    if (ntasks == 1 || !available()) {
+        for (std::int64_t t = 0; t < ntasks; ++t) fn(t);  // 중첩이거나 하나뿐: 그냥 루프
+        return;
+    }
+    pool().run(ntasks, fn);
+}
+
+GilRelease::GilRelease() {
+    if (PyGILState_Check()) state_ = PyEval_SaveThread();     // 이 스레드가 GIL을 쥐고 있을 때만
+}
+GilRelease::~GilRelease() {
+    if (state_) PyEval_RestoreThread(static_cast<PyThreadState*>(state_));
+}
+```
+
+`PyEval_SaveThread`는 GIL을 놓고 현재 스레드 상태를 돌려주고, `PyEval_RestoreThread`가 그 상태로 GIL을 다시 잡아요 [6]. RAII(객체의 수명에 자원을 묶는 C++ 관용구)라서 태스크가 예외를 던져도 소멸자가 GIL을 되찾아요. `PyGILState_Check`로 "지금 쥐고 있나"를 먼저 보는 덕분에 중첩된 호출(태스크 안의 `parallel_for`)에서도 안전해요.
+
+**`parallel_for`를 부를지는 호출하는 쪽이 정해요.** 배열 영역에서는 일이 기준값(`kParallelThreshold`, float64 원소 2¹⁵개) 이상이고 `parallel::available()`이 참일 때만 불러요. 그 밖의 작업(작은 일, 1스레드 설정, 중첩, 다른 Python 스레드가 풀을 쓰는 중)은 `parallel_for`를 부르지 않고 GIL을 쥔 채 돌아요. 그래서 배열 영역은 사실상 실제로 나눠 돌 때만 GIL을 놓아요.
+
+### 영역마다 다른 점
+
+| 영역 | GIL을 놓는 때 |
+|:---:|---|
+| array | 풀로 나눠 돌 때(`parallel_for`). `cov`의 BLAS 호출은 `nb::gil_scoped_release`로 따로 놓아요 |
+| linalg | 배치를 풀에 나눌 때(`run_tasks` → `parallel_for`) |
+| special | 배열의 이터레이터를 거치므로 배열과 같아요 |
+| frame | 일이 기준값(2¹⁷) 이상이면 **1스레드여도** 놓아요(`frame/parallel.hpp`의 `Unlocked`) |
+
+데이터프레임만 1스레드에서도 놓는 것은 API 문서에 적힌 차이예요. 큰 데이터프레임 작업을 하는 동안 다른 Python 스레드가 계속 돌게 하려는 거예요. 배열의 큰 float64 `matmul`은 Accelerate가 안에서 스레드를 쓰는 BLAS 호출 하나인데, 지금 코드는 이 호출 동안 GIL을 놓지 않아요.
+
+### 다른 스레드에서 GIL을 다시 잡는 곳
+
+마지막 참조가 어느 스레드에서 사라질지 모르는 객체는 소멸자에서 GIL을 직접 잡아요.
+
+- **가져온 버퍼**(`Buffer::adopt`)의 소멸자는 `PyBuffer_Release`를 부르기 전에 `PyGILState_Ensure`로 GIL을 잡아요. `PyBuffer_Release`가 내보낸 객체의 참조 카운트를 내리기 때문이에요.
+- **DLPack으로 내보낸 텐서**의 deleter는 소비자가 아무 스레드에서나 부를 수 있어서, 역시 GIL을 잡고 지워요.
+
+## 버퍼 프로토콜
+
+버퍼 프로토콜(PEP 3118)은 Python 객체가 자기 메모리를 다른 객체에게 복사 없이 보여 주는 C 수준의 표준이에요 [7]. 내보내는 쪽은 메모리 주소, 원소 형식(format 문자열), shape, strides를 담은 `Py_buffer` 구조체를 채워 주고, 받는 쪽은 다 쓰면 `PyBuffer_Release`로 돌려줘요. numpy, `memoryview`, `bytearray`가 이것을 써요.
+
+### 내보내기
+
+`bf_getbuffer` 슬롯(버퍼를 요청받았을 때 불리는 C 함수)을 직접 구현하고, nanobind의 `nb::type_slots`로 타입에 붙여요.
+
+```cpp
+// csrc/bind/array_bind.cpp (줄인 발췌)
+static_assert(sizeof(Py_ssize_t) == sizeof(std::int64_t), "shape/strides are handed out as Py_ssize_t*");
+const char* const kFormats[kNumArrayDTypes] = {"?", "q", "d", "Zd"};
+
+int getbuffer(PyObject* self, Py_buffer* view, int flags) {
+    const NDArray& a = *nb::inst_ptr<NDArray>(self);
+    if ((flags & PyBUF_WRITABLE) && !a.writeable) return fail("array is read-only");
+    if ((flags & PyBUF_C_CONTIGUOUS) == PyBUF_C_CONTIGUOUS && !a.c_contiguous) return fail("array is not C-contiguous");
+    // ... F_CONTIGUOUS, ANY_CONTIGUOUS도 같은 식
+    const bool with_strides = (flags & PyBUF_STRIDES) == PyBUF_STRIDES;
+    if (!with_strides && !a.c_contiguous) return fail("array is not C-contiguous; request strides");
+
+    view->buf = a.data;
+    view->obj = Py_NewRef(self);          // 내보낸 동안 배열(과 Buffer)을 살려 둬요
+    view->len = a.nbytes();
+    view->readonly = !a.writeable;
+    view->itemsize = a.itemsize();
+    view->format = (flags & PyBUF_FORMAT) ? const_cast<char*>(kFormats[int(a.dtype)]) : nullptr;
+    view->ndim = a.ndim;
+    view->shape = reinterpret_cast<Py_ssize_t*>(const_cast<std::int64_t*>(a.shape.data()));
+    view->strides = with_strides ? reinterpret_cast<Py_ssize_t*>(const_cast<std::int64_t*>(a.strides.data())) : nullptr;
+    return 0;
+}
+
+PyType_Slot ndarray_slots[] = {{Py_bf_getbuffer, reinterpret_cast<void*>(getbuffer)}, {0, nullptr}};
+auto cls = nb::class_<NDArray>(m, "ndarray", nb::type_slots(ndarray_slots));
+```
+
+- **format 문자열**: `?`(bool, 1바이트), `q`(int64, C의 `long long`), `d`(float64, `double`), `Zd`(complex128, `double` 두 개). PEP 3118의 `Z` 접두사가 복소수를 뜻해요.
+- **shape과 strides는 복사하지 않아요.** `NDArray` 안의 고정 배열(`std::array<int64_t, 32>`)을 그대로 가리켜요. `Py_ssize_t`가 64비트라는 것을 `static_assert`로 컴파일 시점에 확인해요. `NDArray`의 shape과 strides는 만든 뒤 바뀌지 않고(속성에 setter가 없어요), `view->obj`가 배열 객체를 붙잡고 있으니 이 포인터는 내보낸 동안 유효해요.
+- **요청 플래그를 지켜요.** 받는 쪽이 쓰기 가능을 요구했는데 읽기 전용이면, 연속을 요구했는데 아니면 `BufferError`로 거절해요. strides를 요청하지 않은 소비자는 C 연속 메모리를 가정하므로, 그때 C 연속이 아니면 거절해요.
+- **strides가 0이어도 내보내요.** `broadcast_to`의 결과처럼 같은 메모리를 여러 원소가 공유하는 배열은 stride가 0인 채로, 읽기 전용으로 나가요.
+
+```python
+>>> m = sd.asarray([[1.0, 2.0], [3.0, 4.0]])
+>>> v = memoryview(m)
+>>> v.format, v.shape, v.strides, v.readonly
+('d', (2, 2), (16, 8), False)
+>>> memoryview(m.T).strides
+(8, 16)
+>>> b = memoryview(sd.broadcast_to(sd.asarray([1.0, 2.0]), (3, 2)))
+>>> b.strides, b.readonly
+((0, 8), True)
+```
+
+numpy가 우리 메모리를 읽는 것도 이 길이에요. `np.asarray(x)`는 복사 없이 같은 메모리를 보는 numpy 배열을 만들어요. 테스트도 결과를 이 길로 numpy에 가져와 비트를 비교해요.
+
+### 가져오기
+
+`sd.asarray(obj)`는 입력의 종류를 이 순서로 봐요(`array/ops/asarray.cpp`).
+
+1. `sd.ndarray` → 그대로 돌려주거나, `dtype=`/`copy=True`면 변환·복사
+2. Python 스칼라 → ValueError (0차원 배열은 없어요)
+3. 중첩된 list/tuple → shape을 읽고 dtype을 추론해 복사
+4. `range` → int 리스트로 바꿔 3번 길로. `range`는 버퍼가 아니에요
+5. 버퍼 프로토콜을 지원하는 객체 → 아래
+
+버퍼는 `PyObject_GetBuffer(obj, &view, PyBUF_RECORDS_RO)`로 받아요. strides와 format을 요청하고, 읽기 전용 버퍼도 받겠다는 뜻이에요. 그다음 format 문자열을 해석해요.
+
+| format (`@`, `=`, `<` 접두사 무시) | 원소 | 자연스러운 dtype | 공유 가능 |
+|:---:|:---:|:---:|:---:|
+| `?` | bool | bool | ✓ |
+| `b h i l q n` (크기 1·2·4·8) | int8~int64 | int64 | int64만 |
+| `B H I L Q N` (크기 1·2·4) | uint8~uint32 | int64 | ✗ |
+| `B H I L Q N` (크기 8) | uint64 | TypeError | — |
+| `e f d` | float16, 32, 64 | float64 | float64만 |
+| `Zf`, `Zd` | complex64, 128 | complex128 | complex128만 |
+| `>` 또는 `!` 접두사 | big-endian | 위와 같음 | ✗ (바이트를 뒤집으며 복사) |
+
+복사 없이 공유하는 조건은 넷이에요.
+
+1. **format이 우리 저장 타입과 정확히 같아요.** int32 버퍼를 int64 배열로 "공유"할 수는 없어요.
+2. **native 바이트 순서예요.** 이 기계는 little-endian이라 `<`, `=`, `@`가 native예요.
+3. **원소가 자연 정렬되어 있어요.** 시작 주소와 모든 stride가 원소의 정렬 단위(bool 1, int64·float64 8, complex128 8)의 배수예요. 커널이 `alignof(T)` 정렬을 가정하므로, 정렬되지 않은 버퍼는 복사해요.
+4. **bool 버퍼의 모든 바이트가 0이나 1이에요.** 아래에서 설명해요.
+
+```cpp
+// csrc/array/ops/asarray.cpp (줄인 발췌): 공유하는 길
+if (shareable && aligned && valid && copy != true) {
+    foreign.data = static_cast<std::byte*>(view.buf);
+    foreign.writeable = !view.readonly;                 // 읽기 전용 버퍼 → 쓰기 금지 배열
+    foreign.base = nb::borrow(view.obj ? view.obj : obj.ptr());
+    foreign.update_flags();
+    guard.armed = false;                                // Py_buffer의 소유권을 Buffer로 넘겨요
+    foreign.buffer = Buffer::adopt(view);
+    return wrap(std::move(foreign));
+}
+```
+
+`ViewGuard`는 `Py_buffer`를 소멸자에서 놓아 주는 작은 RAII 객체예요. 중간에 예외가 나면 버퍼가 놓이고, 공유에 성공하면 `armed = false`로 소유권을 `Buffer::adopt`에 넘겨요. 그 뒤에는 Buffer가 마지막 참조와 함께 버퍼를 놓아요.
+
+공유할 수 없으면 복사하면서 변환해요. 정보 손실이 없는 확장(int8/16/32, uint8/16/32 → int64, float16/32 → float64, complex64 → complex128)만 해요. `copy=False`이면 복사가 필요한 순간 ValueError예요. 복사 결과는 원본의 메모리 축 순서를 따라요(`new_array_like`: F 순서 원본이면 F 순서 결과). big-endian은 원소마다 바이트를 뒤집는데, complex는 실수부와 허수부를 **따로** 뒤집어요(16바이트 통째로 뒤집으면 두 부분의 자리가 바뀌어요).
+
+```python
+>>> a = np.arange(6.0).reshape(2, 3)
+>>> y = sd.asarray(a)
+>>> y.base is a
+True
+>>> a[0, 0] = 100.0
+>>> y[0, 0]
+100.0
+>>> sd.asarray(np.arange(3, dtype=np.float32)).base is None
+True
+>>> sd.asarray(np.arange(3, dtype=np.float32), copy=False)
+Traceback (most recent call last):
+  ...
+ValueError: asarray(): copy=False, but this buffer can only be converted by copying
+```
+
+**uint64는 값을 보지 않고 거절해요.** uint64를 int64로 바꾸면 2⁶³ 이상의 값이 손실돼요. 값을 훑어서 범위 안이면 받는 방법도 있지만, 그러면 같은 코드가 데이터에 따라 성공하거나 실패해요. dtype만 보고 판단한다는 암묵적 변환 규칙과 같게, `dtype=`을 주어도 TypeError예요. 데이터프레임도 같아요.
+
+### bool 버퍼의 바이트 검사
+
+bool 커널 중에는 바이트를 정수로 더하는 것이 있어요. `sum`은 바이트를 더해 `True`를 세고, 마스크 인덱싱의 분기 없는 압축은 모든 원소를 작은 버퍼의 `buf[cnt]`에 쓰고 `cnt += 마스크 바이트`로 다음 자리를 정해요. 바이트가 0과 1뿐이면 맞지만, 바깥에서 온 버퍼에 `2`가 들어 있으면 `sum`은 틀린 개수를 내고, 압축은 미리 센 결과 크기와 쓰는 자리가 어긋나요.
+
+모든 bool 커널에 방어 코드를 넣는 대신 **입구 한 곳**에서 막아요. 공유하기 전에 모든 바이트의 OR을 계산해서 1 이하인지 봐요.
+
+$$
+\Bigl(\bigvee_{i} b_i\Bigr) \le 1 \iff \forall i,\ b_i \in \{0, 1\}
+$$
+
+분기 없는 OR 리덕션 하나라 컴파일러가 벡터화해요. 원소 100만 개에서 8.3µs이고, 원소마다 `b != 0 && b != 1`을 비교하는 방식은 235µs였어요. 0/1이 아닌 바이트가 있으면 0/1로 정규화해서 복사해요(`copy=False`이면 에러).
+
+<Callout type="warn" title="공유한 뒤 바깥에서 바꾸면">
+  검사는 가져오는 순간에만 해요. 공유한 numpy bool 배열에 나중에 numpy 쪽에서 `2` 같은 바이트를 써 넣는 것은 막지 않아요. 이것까지 막으려면 모든 bool 커널이 매번 검사해야 해요.
+</Callout>
+
+## DLPack
+
+DLPack은 배열 라이브러리 사이에서 텐서를 복사 없이 넘기는 C 구조체 규약이에요 [8]. 버퍼 프로토콜과 달리 장치(CPU, GPU …)와 정확한 dtype 코드를 담고, Python에서는 `PyCapsule`(C 포인터를 담는 Python 객체)에 넣어 주고받아요. Array API는 `x.__dlpack__()`, `x.__dlpack_device__()`, `from_dlpack(x)`를 표준으로 정해요 [2].
+
+stardust는 CPU와 배열 dtype 넷만 지원해요. DLPack 1.0의 구조체를 헤더를 들여오지 않고 직접 적었어요.
+
+```cpp
+// csrc/array/ops/dlpack.cpp (줄인 발췌): DLPack 1.0 ABI
+struct DLTensor {
+    void* data;
+    DLDevice device;           // {device_type, device_id}, CPU = (1, 0)
+    std::int32_t ndim;
+    DLDataType dtype;          // {code, bits, lanes}
+    std::int64_t* shape;
+    std::int64_t* strides;     // 원소 단위, null이면 C 연속
+    std::uint64_t byte_offset;
+};
+struct DLManagedTensorVersioned {          // capsule 이름 "dltensor_versioned"
+    DLPackVersion version;
+    void* manager_ctx;
+    void (*deleter)(DLManagedTensorVersioned*);
+    std::uint64_t flags;                   // 1: 읽기 전용, 2: 복사됨
+    DLTensor dl_tensor;
+};
+// 옛 형식 DLManagedTensor (capsule 이름 "dltensor")에는 version과 flags가 없어요
+```
+
+| 배열 dtype | DLPack `code`, `bits` |
+|:---:|:---:|
+| bool | `kDLBool`(6), 8 |
+| int64 | `kDLInt`(0), 64 |
+| float64 | `kDLFloat`(2), 64 |
+| complex128 | `kDLComplex`(5), 128 |
+
+### 내보내기 (`x.__dlpack__`)
+
+```cpp
+// 줄인 발췌
+struct Export {                      // capsule이 살려 두는 것
+    NDArray keep;                    // 배열의 뷰: buffer와 base를 붙잡아요
+    std::vector<std::int64_t> shape, strides;   // DLTensor가 가리키는 배열 (strides는 원소 단위)
+};
+```
+
+1. `stream`은 `None`이어야 하고, `dl_device`는 `None`이거나 `(1, 0)`이어야 해요(아니면 `BufferError`).
+2. `max_version`의 major가 1 이상이면 **버전 있는 형식**, `None`이면 옛 형식으로 내보내요. 소비자가 받을 수 있는 가장 새 형식을 알려 주는 것이 `max_version`이에요.
+3. `copy=True`면 복사본을 내보내고 "복사됨" 표시를 달아요. 아니면 `view_of`로 만든 뷰(같은 Buffer, 같은 base)를 `Export`에 담아요.
+4. **쓰기 금지 배열**은 버전 있는 형식의 읽기 전용 표시로 내보내요. 옛 형식에는 그 표시가 없어서 `BufferError`예요. numpy도 같아요.
+5. deleter는 GIL을 잡고 `Export`와 텐서 구조체를 지워요. 아무도 소비하지 않은 capsule은 capsule 소멸자가 deleter를 불러요. capsule 이름이 소비된 뒤의 `used_...`로 바뀌어 있으면 소멸자는 아무것도 하지 않아요(소비자가 책임져요).
+
+### 가져오기 (`sd.from_dlpack`)
+
+```cpp
+// csrc/array/ops/dlpack.cpp (줄인 발췌)
+nb::object cap;
+try {
+    cap = x.attr("__dlpack__")(nb::arg("max_version") = nb::make_tuple(1, 0), nb::arg("copy") = c);
+} catch (nb::python_error& err) {
+    if (!err.matches(PyExc_TypeError)) throw;
+    cap = x.attr("__dlpack__")();   // DLPack 1.0 전의 생산자는 키워드를 받지 않아요
+}
+
+// 검사보다 소유권을 먼저 가져와요. 아래의 어떤 에러에서도 텐서가 새지 않게.
+if (PyCapsule_IsValid(cap.ptr(), "dltensor_versioned")) {
+    auto* m = static_cast<DLManagedTensorVersioned*>(PyCapsule_GetPointer(cap.ptr(), "dltensor_versioned"));
+    PyCapsule_SetName(cap.ptr(), "used_dltensor_versioned");
+    PyObject* own = PyCapsule_New(m, "sd_dlpack_owner", &owner_versioned);  // 소멸 시 생산자의 deleter
+    if (!own) { m->deleter(m); throw nb::python_error(); }
+    owner = nb::steal(own);
+    if (m->version.major > 1) throw nb::buffer_error("DLPack version ... is newer than the supported 1.x");
+    // ...
+}
+```
+
+- **장치를 먼저 물어봐요.** `__dlpack_device__`가 있으면 CPU인지 확인하고, 아니면 `BufferError`예요.
+- **옛 생산자에게 물러나요.** `__dlpack__(max_version=..., copy=...)`가 TypeError를 내면 키워드 없이 다시 불러요. DLPack 1.0 전의 생산자는 키워드를 몰라요.
+- **소유권이 먼저예요.** capsule의 이름을 `used_...`로 바꾸는 순간 텐서의 해제 책임이 우리에게 와요. 그래서 바로 우리 소유자 capsule(`sd_dlpack_owner`)로 감싸고, 그 뒤에 장치, dtype, 0차원, 차원 수, 버전을 검사해요. 어느 검사에서 에러가 나도 소유자 capsule이 사라지면서 생산자의 deleter가 불려요. 소유자 capsule조차 만들지 못하면 deleter를 직접 부르고 에러를 내요.
+- **strides는 원소 단위예요.** DLPack의 strides는 원소 단위라 itemsize를 곱해 바이트로 바꾸고, `byte_offset`을 시작 주소에 더해요.
+- **정렬과 bool 규칙은 버퍼 프로토콜과 같아요.** 정렬되지 않았거나 bool 바이트가 0/1이 아니면 C 순서로 복사해요.
+- **`copy=True`의 두 번 복사를 피해요.** 생산자가 "복사됨" 표시를 달았으면 다시 복사하지 않아요. 표시가 없으면(옛 형식이거나 생산자가 무시함) 우리가 복사해요.
+
+```python
+>>> k = sd.from_dlpack(np.arange(4.0))
+>>> k.base
+<capsule object "sd_dlpack_owner" at 0x...>
+>>> k.tolist()
+[0.0, 1.0, 2.0, 3.0]
+>>> ro = sd.broadcast_to(sd.asarray([1.0, 2.0]), (3, 2))
+>>> ro.__dlpack__()
+Traceback (most recent call last):
+  ...
+BufferError: __dlpack__(): cannot export a read-only array with the legacy DLPack format; pass max_version=(1, 0)
+>>> ro.__dlpack__(max_version=(1, 0))
+<capsule object "dltensor_versioned" at 0x...>
+```
+
+DLPack으로 가져온 배열의 `buffer`(`shared_ptr<Buffer>`)는 비어 있어요. 메모리를 붙잡는 것은 `base`인 소유자 capsule이에요. 그래서 이 배열의 뷰도 `base`로 같은 capsule을 쥐어서 메모리를 지켜요.
+
+## 수명과 소유권
+
+### 두 개의 고리: `buffer`와 `base`
+
+배열이 가리키는 메모리가 살아 있게 하는 고리는 둘이에요.
+
+- **`buffer`** (`std::shared_ptr<Buffer>`): C++ 쪽 소유. 같은 메모리를 보는 모든 `NDArray`가 공유해요. 마지막 `shared_ptr`가 사라지면 Buffer가 메모리를 해제하거나(자기 메모리), 가져온 `Py_buffer`를 놓아요(외부 메모리).
+- **`base`** (`nb::object`): Python 쪽 주인. 사용자가 `.base`로 보는 객체예요. 배열이 메모리를 직접 가지면 비어 있고(`None`), 다른 Python 객체의 메모리를 보면 그 객체예요.
+
+| 배열을 만든 방법 | `buffer` | `base` (`.base`) | 메모리를 붙잡는 것 |
+|---|---|---|---|
+| 생성 함수, 연산 결과 | 새 Buffer | `None` | Buffer |
+| 뷰 (슬라이스, 전치, `reshape`) | 원본과 같은 Buffer | 원본의 `base`, 없으면 원본 배열 | Buffer (와 `base`) |
+| 버퍼 프로토콜로 가져옴 | `Buffer::adopt(Py_buffer)` | 내보낸 객체 (`view.obj`) | `Py_buffer`가 쥔 내보낸 객체 |
+| DLPack으로 가져옴 | 비어 있음 | 소유자 capsule | capsule의 소멸자가 생산자 deleter를 불러요 |
+| linalg 결과 (`new_array_strided`) | 새 Buffer | `None` | Buffer |
+| `Series.to_array()` (읽기 전용 뷰) | Column의 Buffer와 같은 것 | `None` | Buffer. `use_count()`가 늘어 frame의 쓰기가 먼저 복사해요 |
+
+### 뷰의 `base`는 최종 주인으로 접어요
+
+```cpp
+// csrc/bind/pyutil.cpp
+NDArray view_of(nb::handle x) {
+    const NDArray& a = as_ndarray(x);
+    NDArray v = a;                                         // buffer 공유, shape/strides 복사
+    v.base = a.base.is_valid() ? a.base : nb::borrow(x);   // 사슬을 만들지 않아요
+    return v;
+}
+```
+
+뷰의 뷰를 만들어도 `base`는 중간 뷰가 아니라 메모리의 최종 주인을 가리켜요. 그러지 않으면 `x[1:][1:][1:]…`가 중간 뷰들을 줄줄이 붙잡는 사슬이 되고, 중간 뷰가 쓸데없이 살아남아요. numpy 2.x도 같은 규칙이에요.
+
+```python
+>>> base = sd.asarray([[1.0, 2.0], [3.0, 4.0]])
+>>> row = base[0]
+>>> row[1:].base is base
+True
+>>> a = np.arange(4.0)
+>>> sd.asarray(a)[::2].base is a
+True
+```
+
+### 내보낸 쪽을 살려 두기
+
+- **버퍼 프로토콜로 내보낼 때**: `view->obj = Py_NewRef(self)`가 배열 객체의 참조를 하나 올려요. `memoryview`나 numpy 배열이 살아 있는 동안 우리 배열과 그 Buffer가 살아 있어요.
+- **버퍼 프로토콜로 가져올 때**: `Py_buffer` 안의 `obj`가 내보낸 객체의 참조를 쥐고, Buffer가 마지막 뷰와 함께 사라질 때 놓아요. 그동안 내보낸 쪽은 "내보낸 버퍼가 있다"는 상태라서, 예를 들어 `bytearray`는 크기를 바꾸지 못해요.
+
+```python
+>>> ba = bytearray(16)
+>>> arr = sd.asarray(memoryview(ba).cast("d"))
+>>> tail = arr[1:]
+>>> del arr
+>>> ba.extend(b"x" * 8)
+Traceback (most recent call last):
+  ...
+BufferError: Existing exports of data: object cannot be re-sized
+>>> del tail
+>>> ba.extend(b"x" * 8)
+>>> len(ba)
+24
+```
+
+`arr`를 지워도 뷰 `tail`이 같은 Buffer를 쥐고 있어서 버퍼는 아직 내보낸 상태예요. 마지막 뷰가 사라져야 `PyBuffer_Release`가 불려요.
+
+<Fig caption="numpy 배열을 가져온 뒤 슬라이스한 모습. 두 stardust 배열이 Buffer 하나를 공유하고, Buffer는 Py_buffer를 통해 numpy 배열을 붙잡아요. 둘의 base는 모두 numpy 배열이에요.">
+  <ArrayFig name="numpy a (메모리 주인)" data={[0, 1, 2, 3]} tones={['a', 'a', 'a', 'a']} note="Py_buffer.obj가 참조" />
+  <Op note="Buffer::adopt">→</Op>
+  <ArrayFig name="y = sd.asarray(a)" data={[0, 1, 2, 3]} tones={['', '', '', '']} note="base: a" />
+  <Op note="view_of">→</Op>
+  <ArrayFig name="y[::2]" data={[0, 1, 2, 3]} tones={['b', 'm', 'b', 'm']} note="같은 Buffer, base: a" />
+</Fig>
+
+- **DLPack으로 내보낼 때**: `Export::keep`(배열의 뷰)이 Buffer와 `base`를 붙잡아요. 소비자가 deleter를 부를 때 놓여요.
+- **데이터프레임이 numpy로 내보낼 때**(`to_numpy`): `shared_ptr<Buffer>`의 복사본을 든 capsule이 numpy 배열의 주인이 돼요. Series가 먼저 사라져도 numpy 배열은 유효해요.
+
+### 프로세스 끝까지 쥐는 참조
+
+C++ 정적 변수가 쥔 Python 객체는 일부러 놓지 않는 것이 있어요.
+
+| 무엇 | 어디 | 쥐는 방식 |
+|---|---|---|
+| dtype 객체 다섯 | `g_dtype_objects` | 빌린 포인터. 주인은 모듈 속성 |
+| numpy의 추상 스칼라 타입 넷 | `numpy_scalar_types()` | 처음 찾을 때 참조를 얻고 놓지 않아요 |
+| `LinAlgError`, linalg 결과 namedtuple 11개 | `linalg::refs()` | `_setup`에서 참조를 올리고 놓지 않아요 |
+| `AiryResult` | `special_bind.cpp`의 정적 변수 | 처음 한 번 찾고 놓지 않아요 |
+
+인터프리터가 끝나는 도중에 이 참조를 놓는 것은 순서를 보장할 수 없어 안전하지 않아요. 프로세스가 끝나면 OS가 회수해요. nanobind는 모듈이 내려갈 때 살아 있는 객체를 "누수"로 보고하는데, 사용자의 전역 변수가 `sd.float64`를 쥐고 끝나는 평범한 경우에도 뜨기 때문에 이 경고를 꺼요(`nb::set_leak_warnings(false)`). 대신 테스트가 참조 카운트를 직접 재요.
+
+## 성능
+
+경계를 넘는 비용을 모으면 이래요. 따로 적지 않으면 Apple M4 Pro, numpy 2.5.4와 같은 자리에서 잰 값이에요.
+
+<Bench
+  rows={[
+    { label: 'x[1, 2]', times: [35e-9, 25e-9, 25e-9] },
+    { label: 'a + b (원소 3개)', times: [158e-9, 181e-9, 190e-9] },
+    { label: 'sum(a) (원소 3개)', times: [581e-9, 92e-9, 98e-9] },
+    { label: 'asarray(원소 1000개 리스트)', times: [17e-6, 7e-6, 7e-6] },
+  ]}
+  caption="작은 입력의 호출 비용. 대부분 경계를 넘는 고정 비용이에요."
+/>
+
+| 항목 | 값 | 비고 |
+|---|---:|---|
+| nanobind 함수 호출 경로 | 약 10ns | `sample` 프로파일러 |
+| `NDArray` + Python 객체 만들기 | 약 75ns | linalg 결과 하나에 남는 비용 |
+| linalg 경계(버퍼 프로토콜 왕복 + `asarray` 감싸기) 제거 | 결과 하나에 약 −120ns | 확장 모듈 하나로 합친 효과 |
+| Column을 `shared_ptr` 대신 값 타입으로 | 원소 10개 `add` 190ns → 89ns | nanobind의 keep-alive 등록 비용 |
+| frame 커널의 `func`를 `str` 대신 `nb::handle`로 | 작은 리덕션 약 200ns 중 약 15ns 절약 | UTF-8 캐시 사용 |
+| bool 버퍼 바이트 검사 (원소 100만 개) | 8.3µs | 원소별 비교 235µs |
+| 에러 이름 붙이기 (`named`) | 정상 경로 0 | 예외가 날 때만 비용 |
+
+- `x[1, 2]`가 numpy보다 빠른 것은 앞쪽 축이 모두 Python int인 키에서 일반 키 해석을 건너뛰기 때문이에요.
+- 작은 연산의 남은 비용은 한곳에 몰려 있지 않아요. `x[1]`(뷰 하나를 돌려주는 인덱싱)을 프로파일러로 보면 nanobind 인스턴스 등록과 할당, `NDArray` 복사, 메서드 호출 경로에 고르게 퍼져 있었어요. 자세한 내용은 [작은 배열의 호출 비용](/internals/array/small-arrays/)에 있어요.
+- 큰 배열에서는 경계 비용이 측정 오차 안이에요. 버퍼 프로토콜과 DLPack으로 가져오기는 공유할 수 있으면 원소 수와 무관한 상수 시간이에요.
+
+## 참고 문헌
+
+1. W. Jakob, nanobind 문서. https://nanobind.readthedocs.io/ (pybind11과의 차이를 설명하는 절)
+2. Python Array API Standard (함수 시그니처의 위치 전용·키워드 전용 관례, `__dlpack__`, `from_dlpack`). https://data-apis.org/array-api/latest/
+3. Python 언어 참조, 데이터 모델의 rich comparison 메서드(`__eq__`가 `NotImplemented`일 때 동일성 비교로 물러남). https://docs.python.org/3/reference/datamodel.html
+4. NEP 13 — A mechanism for overriding Ufuncs (`__array_ufunc__ = None`). https://numpy.org/neps/nep-0013-ufunc-overrides.html
+5. T. Oliphant, PEP 357 — Allowing Any Object to be Used for Slicing (`__index__`), 2006. https://peps.python.org/pep-0357/
+6. Python/C API 설명서, "Initialization, Finalization, and Threads" (`PyEval_SaveThread`, `PyEval_RestoreThread`, `PyGILState_Ensure`). https://docs.python.org/3/c-api/init.html
+7. T. Oliphant, C. Banks, PEP 3118 — Revising the buffer protocol, 2006. https://peps.python.org/pep-3118/
+8. DLPack 문서와 `dlpack.h` (DLPack 1.0 ABI, Python 명세). https://dmlc.github.io/dlpack/latest/

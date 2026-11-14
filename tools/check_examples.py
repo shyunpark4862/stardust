@@ -23,7 +23,8 @@ from pathlib import Path
 
 import stardust as sd
 
-ROOT = Path(__file__).resolve().parent.parent / "src" / "content" / "api"
+CONTENT = Path(__file__).resolve().parent.parent / "src" / "content"
+ROOT = CONTENT / "api"
 FENCE = re.compile(r"^```python\n(.*?)^```", re.M | re.S)
 FLAGS = doctest.ELLIPSIS | doctest.NORMALIZE_WHITESPACE
 
@@ -86,21 +87,22 @@ def coverage(area: str) -> int:
     return 1 if (unknown or twice) else 0
 
 
-LINK = re.compile(r"/api/([a-z]+)/([a-z0-9_-]+)/")
+LINK = re.compile(r"/(api|internals)/([a-z]+)/([a-z0-9_-]+)/")
 
 
 def links() -> int:
-    pages = {(p.parent.name, p.stem) for p in ROOT.glob("*/*.mdx")}
+    pages = {(sec, p.parent.name, p.stem) for sec in ("api", "internals") for p in (CONTENT / sec).glob("*/*.mdx")}
     bad = 0
-    for path in sorted(ROOT.glob("*/*.mdx")):
-        text = path.read_text(encoding="utf-8")
-        targets = set(LINK.findall(text))
-        m = re.search(r"^seeAlso:\s*\[(.*?)\]", text.split("---")[1], re.M)
-        if m:
-            targets |= {(path.parent.name, s.strip()) for s in m.group(1).split(",") if s.strip()}
-        for area, slug in sorted(targets - pages):
-            print(f"  {path.parent.name}/{path.stem}: no page /api/{area}/{slug}/")
-            bad += 1
+    for sec in ("api", "internals"):
+        for path in sorted((CONTENT / sec).glob("*/*.mdx")):
+            text = path.read_text(encoding="utf-8")
+            targets = set(LINK.findall(text))
+            m = re.search(r"^seeAlso:\s*\[(.*?)\]", text.split("---")[1], re.M)
+            if m:
+                targets |= {(sec, path.parent.name, s.strip()) for s in m.group(1).split(",") if s.strip()}
+            for t in sorted(targets - pages):
+                print(f"  {sec}/{path.parent.name}/{path.stem}: no page /{t[0]}/{t[1]}/{t[2]}/")
+                bad += 1
     print(f"{bad} broken links")
     return 1 if bad else 0
 
@@ -113,7 +115,8 @@ def main(argv: list[str]) -> int:
     targets = argv or [p.name for p in sorted(ROOT.iterdir()) if p.is_dir()]
     paths: list[Path] = []
     for t in targets:
-        p = ROOT / t
+        # "internals/<area>[/<slug>]" checks the internals articles instead.
+        p = CONTENT / t if t.startswith("internals/") else ROOT / t
         paths += sorted(p.glob("*.mdx")) if p.is_dir() else [p.with_suffix(".mdx")]
     failed = tried = 0
     for path in paths:

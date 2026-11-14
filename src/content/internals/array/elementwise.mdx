@@ -1,0 +1,591 @@
+---
+title: 원소별 커널
+group: 연산 엔진
+order: 2
+summary: 덧셈, 비교, 초월함수 같은 원소별 연산이 원소 하나를 어떻게 계산하는지 설명해요. 컴파일러가 벡터화하는 연속 fast path, 손으로 짠 NEON 커널, numpy와 비트까지 같은 결과를 내는 방법, 초월함수를 맡는 Accelerate vForce와 그 정확도 계약을 다뤄요.
+seeAlso: [engine, conversion, accuracy, performance, reductions]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+import Bench from '../../../components/fig/Bench.astro';
+
+## 한눈에 보기
+
+[연산 엔진](/internals/array/engine/)은 N차원 문제를 1차원 구간으로 바꾸고 구간마다 **커널**을 불러요. 이 페이지는 그 커널 안, 곧 원소 $n$개를 실제로 계산하는 코드를 다뤄요.
+
+원소별 연산 하나의 의미는 `array/kernels/scalar_ops.hpp`의 구조체 하나에 **원소 하나짜리 함수**(`Op::f`)로 적혀 있어요. 커널은 이 함수를 원소 $n$개에 적용하는데, 연산과 dtype과 레이아웃에 따라 네 경로 중 하나를 타요.
+
+| 경로 | 언제 | 어디 | 결과 |
+|---|---|---|---|
+| vForce | float64 초월함수 16개 (`exp`, `log`, `sin`, `pow`, `atan2` …), 모든 레이아웃 | `array/kernels/vforce.hpp`, `accelerate/vforce.hpp` | numpy와 최대 8 ULP (계약), 잰 최대 4 ULP |
+| 손으로 짠 NEON | float64 `maximum`/`minimum`/`clip`, complex128 곱셈. 연속 또는 스칼라 브로드캐스트 | `array/kernels/neon.hpp` | numpy와 비트까지 같음 |
+| 인덱스 루프 (컴파일러가 벡터화) | 그 밖의 연산, 모두 연속이거나 한쪽이 스칼라(stride 0) | `array/kernels/elementwise.hpp` | 비트까지 같음 |
+| 일반 strided 루프 | 그 밖의 레이아웃 | `array/kernels/elementwise.hpp` | 비트까지 같음 |
+
+이항 연산의 커널(`binary_loop<Op, T>`)이 경로를 고르는 순서는 이래요.
+
+```text
+binary_loop<Op, T>(args, n, strides)
+  ├─ T가 float64이고 Op가 vForce 표에 있으면      → vForce (레이아웃 무관, 끝)
+  ├─ 출력이 연속이고
+  │    ├─ a, b 모두 연속                         → NEON 커널이 있으면 NEON, 없으면 o[i] = f(a[i], b[i])
+  │    ├─ a 연속, b 스칼라 (x + 1.0)             → NEON 스칼라판 또는 o[i] = f(a[i], bv)
+  │    └─ a 스칼라, b 연속 (1.0 - x)             → NEON 스칼라판 또는 o[i] = f(av, b[i])
+  └─ 그 밖                                       → 바이트 stride 루프
+```
+
+지키는 규칙은 셋이에요.
+
+1. **어느 경로든 같은 값.** NEON 커널과 인덱스 루프는 스칼라 정의 `Op::f`와 비트까지 같아야 해요. 테스트가 연속, 스칼라 브로드캐스트, strided 세 레이아웃을 모두 numpy와 비트로 비교해요. 그래서 경로가 갈려도 결과는 갈리지 않아요.
+2. **numpy와 비트까지 같게.** vForce를 쓰는 16개를 빼면 모든 원소별 연산이 numpy 2.5.4와 비트까지 같아요. numpy가 식을 적어 둔 연산은 같은 식을 같은 순서로 쓰고, 컴파일러가 식을 바꾸지 못하게 막아요.
+3. **vForce는 계약으로.** 초월함수는 속도를 위해 Apple의 vForce를 쓰고, numpy와 최대 8 ULP 차이를 계약으로 정했어요. 대신 특수값은 비트까지 같고, 결과가 원소의 위치·배열 길이·스레드 수에 의존하지 않아요.
+
+## 연속 fast path
+
+### 문제: 바이트 stride 루프는 벡터화되지 않아요
+
+커널의 시그니처는 바이트 stride를 받는 일반형이에요([연산 엔진](/internals/array/engine/)). 그대로 짜면 이래요.
+
+```cpp
+// 일반 strided 루프 (array/kernels/elementwise.hpp의 마지막 경로)
+const std::byte* a = args[0]; const std::byte* b = args[1]; std::byte* o = args[2];
+for (std::int64_t i = 0; i < n; ++i, a += s[0], b += s[1], o += s[2])
+    *reinterpret_cast<R*>(o) = Op::f(load_as<T>(a), load_as<T>(b));
+```
+
+이 루프는 어떤 최적화 수준에서도 벡터화되지 않아요. stride `s[k]`가 실행 중에야 정해지는 값이라, 컴파일러는 연속한 두 원소가 메모리에서 붙어 있는지 알 수 없어요. NEON의 `ld1`(연속 16바이트 load)을 쓸 수 없고, 원소마다 스칼라 load와 store를 해야 해요.
+
+### 접근: 흔한 레이아웃을 먼저 검사
+
+커널은 먼저 흔한 레이아웃을 검사하고, 맞으면 **원소 단위 인덱스로 접근하는 루프**를 써요.
+
+```cpp
+// binary_loop<Op, T> (array/kernels/elementwise.hpp, 줄이고 다듬은 발췌)
+if (s[2] == sizeof(R)) {                                   // 출력이 연속
+    const T* a = reinterpret_cast<const T*>(args[0]);
+    const T* b = reinterpret_cast<const T*>(args[1]);
+    R* o = reinterpret_cast<R*>(args[2]);
+    if (s[0] == sizeof(T) && s[1] == sizeof(T)) {          // 배열 op 배열
+        if constexpr (neon_binary<Op, T>::available) neon_binary<Op, T>::run(a, b, o, n);
+        else for (std::int64_t i = 0; i < n; ++i) o[i] = Op::f(a[i], b[i]);
+        return;
+    }
+    if (s[0] == sizeof(T) && s[1] == 0) {                  // 배열 op 스칼라 (x + 1.0)
+        const T bv = *b;                                   // 루프 밖에서 한 번 읽음
+        for (std::int64_t i = 0; i < n; ++i) o[i] = Op::f(a[i], bv);
+        return;
+    }
+    if (s[0] == 0 && s[1] == sizeof(T)) { /* 스칼라 op 배열 (1.0 - x), 대칭 */ }
+}
+// 그 밖: 일반 strided 루프
+```
+
+같은 `Op::f`예요. 달라진 것은 컴파일러가 보는 모양뿐이에요. `o[i] = f(a[i], b[i])`는 "연속한 원소를 연속한 자리에 쓴다"는 것이 코드에 드러나서, clang의 루프 벡터화기가 NEON 레지스터(128비트, float64 2개)로 묶어요. 출력이 입력과 메모리를 공유할 가능성은 벡터화기가 루프 앞에 넣는 실행 중 겹침 검사로 처리해요 [1].
+
+스칼라 경우에 `*b`를 루프 밖에서 한 번 읽는 것도 중요해요. 루프 안에서 `b[0]`을 읽으면 컴파일러는 `o`에 쓴 값이 `b[0]`을 바꿀 수 있다고 의심해야 해요(같은 메모리일 수 있으니까). 지역 변수 `bv`로 빼 두면 그 의심이 사라지고, 벡터 레지스터 하나에 `bv`를 두 번 복제(splat)해 두고 쓸 수 있어요.
+
+이항 연산이 아닌 커널도 같은 방식이에요. 단항 루프(`unary_loop`)는 "입력과 출력이 모두 연속"만 검사해요. n항 루프(`nary_loop`, `sd.special`용)도 "모두 연속"과 일반형 둘뿐이에요. 원소 하나에 수십–수백 ns가 드는 함수에서는 스칼라 브로드캐스트를 따로 다뤄도 이득이 없기 때문이에요. `where`의 루프는 fast path 없이 strided 루프 하나예요.
+
+### `-O3`가 필요해요
+
+이 fast path는 `-O3`에서만 제값을 해요. nanobind는 확장 모듈을 기본으로 `-Os`(크기 최적화)로 빌드하는데, `-Os`에서는 연속 루프도 거의 벡터화되지 않아요. 그래서 `CMakeLists.txt`의 `nanobind_add_module`에 `NOMINSIZE`를 주어 `-O3`를 유지해요. 같은 fast path 코드를 `-Os`로 빌드하면 `-O3`보다 약 2배 느렸어요.
+
+### 효과
+
+fast path를 넣자 대부분의 원소별 연산이 1.4–3배 빨라져 numpy와 같은 수준이 되었어요. bool `&`는 NEON 레지스터 하나에 bool 16개가 들어가서 17배였어요(설계 문서의 측정, 원소 100만 개, 1스레드).
+
+### 컴파일러에 맡기는 연산
+
+`sqrt`, `floor`/`ceil`/`trunc`/`round`, `abs`, `square`, `sign`은 손으로 짜지 않아요. 연속 인덱스 루프를 컴파일러가 NEON으로 벡터화해요. 빌드된 바이너리를 디스어셈블해서 `fsqrt.2d`(float64 두 개의 제곱근), `frintm.2d`(두 개의 floor) 같은 벡터 명령이 들어 있는 것을 확인했어요. 컴파일러가 잘하는 곳에 손으로 짠 코드를 더하면 유지할 코드만 늘어요.
+
+같은 dtype의 연속 복사(캐스트 표의 대각선 `cast_loop<T, T>`)는 `std::memcpy`예요. OS가 칩에 맞춰 튜닝한 함수라 직접 짠 루프보다 빨라요. `x.copy()`가 118µs에서 94µs가 되어 numpy와 같아졌어요. float64 → int64 변환은 ARM의 `FCVTZS`를 벡터로 써요(`vcvtq_s64_f64`, 자세한 것은 [변환과 승격](/internals/array/conversion/)).
+
+### 더 늘리지 않는 이유
+
+"두 입력 모두 stride 16" 같은 경우도 fast path로 만들 수 있지만 하지 않아요. 설계 원칙 중 하나가 "특수 케이스용 fast path를 남발하지 않는다"예요. 레이아웃은 이터레이터가 먼저 정리해 주므로(축 재정렬, 차원 합치기) 커널에 오는 구간은 이미 가능한 한 길고 촘촘해요.
+
+## 손으로 짠 NEON
+
+`array/kernels/neon.hpp`에는 커널 셋이 있어요. 원칙은 **컴파일러의 벡터화가 모자란 곳에만** 둔다는 것이에요. 그리고 모든 NEON 커널은 스칼라 정의와 비트가 같아야 해요.
+
+| 커널 | 왜 손으로 | 1스레드 효과 |
+|---|---|---|
+| float64 `maximum`/`minimum` | 명령 하나(`FMAX`/`FMIN`)가 정의 그대로인데 컴파일러는 분기 셋을 비교·선택으로 바꿔요 | 캐시 안 원소당 0.77 → 0.16ns |
+| float64 `clip` | `FMAX` 다음 `FMIN`을 한 패스로 | 143µs (numpy 230µs) |
+| complex128 곱셈 | numpy와 같은 FMA 순서를 `FCMLA` 두 번으로 | 캐시 안 0.47 → 0.33ns |
+
+### `maximum`/`minimum`: 명령 하나가 정의
+
+`maximum`의 의미는 IEEE 754-2019의 maximum이에요 [2]. NaN이 하나라도 있으면 NaN이고, $-0 < +0$으로 봐요(`maximum(-0.0, 0.0)`은 `0.0`). 스칼라 정의에는 분기가 셋 있어요.
+
+```cpp
+// array/kernels/scalar_ops.hpp
+inline double fmax_nan(double a, double b) {
+    if (a != a) return a;                          // a가 NaN
+    if (b != b) return b;                          // b가 NaN
+    if (a == b) return std::signbit(a) ? b : a;    // ±0: +0이 이김
+    return a > b ? a : b;
+}
+```
+
+컴파일러가 이것을 벡터화하면 분기마다 비교와 선택(bit select) 명령이 늘어서, 오히려 스칼라 루프보다 느렸어요(0.66배). 그런데 AArch64의 `FMAX`/`FMIN` 명령이 **정확히 이 의미**예요(NaN 전파, $-0 < +0$). 명령 하나로 바꾸자 3.9배 빨라졌고, 캐시 안 크기(4096개)에서 원소당 0.77ns가 0.16ns가 됐어요.
+
+```cpp
+// detail::fminmax (array/kernels/neon.hpp, 줄이고 다듬은 발췌)
+template <bool Max>
+void fminmax(const double* a, std::int64_t sa, const double* b, std::int64_t sb, double* o, std::int64_t n) {
+    auto op   = [](float64x2_t x, float64x2_t y) { return Max ? vmaxq_f64(x, y) : vminq_f64(x, y); };
+    // stride 0이면 "브로드캐스트된 스칼라": 같은 값을 두 레인에 복제해 읽어요
+    auto load = [](const double* p, std::int64_t s, std::int64_t i) { return s ? vld1q_f64(p + i) : vld1q_dup_f64(p); };
+    std::int64_t i = 0;
+    for (; i + 4 <= n; i += 4) {                    // 레지스터 두 개씩: load를 더 많이 띄워 둠
+        vst1q_f64(o + i,     op(load(a, sa, i),     load(b, sb, i)));
+        vst1q_f64(o + i + 2, op(load(a, sa, i + 2), load(b, sb, i + 2)));
+    }
+    for (; i < n; ++i)                              // 나머지: 스칼라 정의 그대로 (같은 비트)
+        o[i] = Max ? ops::fmax_nan(a[i * sa], b[i * sb]) : ops::fmin_nan(a[i * sa], b[i * sb]);
+}
+```
+
+- `vld1q_f64(p)`는 연속 double 두 개를 128비트 레지스터에 읽고, `vld1q_dup_f64(p)`는 double 하나를 두 레인에 복제해 읽어요. stride 인자(0 또는 1)로 고르므로 `maximum(x, 0.0)`(한쪽이 스칼라)도 같은 커널이에요.
+- `vmaxq_f64`가 `FMAX` 명령이에요(`vmaxnmq_f64`인 `FMAXNM`은 NaN을 무시하는 다른 명령이고, `nanmax` 리덕션이 그 의미를 써요).
+- 한 번에 레지스터 두 개(원소 4개)를 처리해서 독립된 load를 더 많이 띄워 둬요.
+- 끝의 나머지 원소(0–3개)는 스칼라 정의로 계산해요. 정의와 명령의 의미가 같으므로 경계에서 비트가 갈리지 않아요.
+
+### `clip`: 한 패스로
+
+`clip(x, lo, hi)`는 `minimum(maximum(x, lo), hi)`예요. 범용 루프로 두 번 돌리면 중간 결과를 메모리에 썼다가 다시 읽어야 해요. NEON 커널은 원소마다 `FMAX` 다음 `FMIN`을 해서 한 패스로 끝내요. 명령의 의미가 각각 `maximum`, `minimum`과 같으므로 결과도 정확히 같아요. 두 경계가 모두 스칼라인 흔한 경우는 splat을 루프 밖에서 한 번만 해요.
+
+```cpp
+// neon_clip의 흔한 경우 (array/kernels/neon.hpp, 발췌)
+const float64x2_t l = vld1q_dup_f64(lo), h = vld1q_dup_f64(hi);     // 루프 밖에서 한 번
+for (; i + 4 <= n; i += 4) {
+    vst1q_f64(o + i,     vminq_f64(vmaxq_f64(vld1q_f64(x + i),     l), h));
+    vst1q_f64(o + i + 2, vminq_f64(vmaxq_f64(vld1q_f64(x + i + 2), l), h));
+}
+```
+
+1스레드 143µs로 numpy(230µs)보다 빠르고, 처음의 범용 루프(910µs)보다 6배 넘게 빨라요.
+
+### complex 곱셈: `FCMLA` 두 번
+
+numpy의 complex 곱셈 결과를 비트로 분석하면 실수부와 허수부가 각각 FMA 하나예요(아래 "명시적 FMA").
+
+$$
+\text{re} = \operatorname{fma}(a_r, b_r, -(a_i b_i)), \qquad \text{im} = \operatorname{fma}(a_r, b_i, a_i b_r)
+$$
+
+$\operatorname{fma}(x, y, z)$는 $xy + z$를 반올림 한 번으로 계산해요. 곧 $a_i b_i$와 $a_i b_r$는 먼저 반올림되고, $a_r$ 쪽 곱은 반올림되지 않은 채 더해져요.
+
+이 Mac의 칩에는 FCMA 확장의 `FCMLA` 명령이 있어요. 레지스터 하나에 complex128 하나(실수부, 허수부)를 두고, 회전 각도(rot)에 따라 다른 곱을 누산기에 FMA로 더해요 [3].
+
+| 명령 | 실수부 레인 | 허수부 레인 |
+|---|---|---|
+| `vcmlaq_rot90_f64(acc, a, b)` | $\text{acc}_r + (-a_i b_i)$ | $\text{acc}_i + a_i b_r$ |
+| `vcmlaq_f64(acc, a, b)` (rot 0) | $\text{acc}_r + a_r b_r$ | $\text{acc}_i + a_r b_i$ |
+
+각 레인의 덧셈은 반올림 한 번인 FMA예요. **rot 90을 먼저** 하면 첫 단계의 결과가 반올림된 $-(a_i b_i)$와 $a_i b_r$이고, 그다음 rot 0이 $a_r$ 쪽 곱을 FMA로 더해서 위 식과 정확히 같은 순서가 돼요.
+
+남은 문제는 누산기의 처음 값이에요. $+0$에서 시작하면 첫 단계가 $+0 + (-(a_i b_i))$인데, 곱이 $-0$이면 $+0 + (-0) = +0$이 되어 부호를 잃어요. **$-0$에서 시작하면** $-0 + x = x$가 모든 $x$에서 성립해요($x = +0$이면 $+0$, $x = -0$이면 $-0$). 그래서 첫 단계의 결과가 반올림된 곱 그 자체가 돼요.
+
+```cpp
+// neon_binary<ops::Multiply, complex128>::run (array/kernels/neon.hpp, 발췌)
+const float64x2_t neg_zero = vdupq_n_f64(-0.0);
+for (std::int64_t i = 0; i < n; ++i) {
+    const float64x2_t x = vld1q_f64(pa + 2 * i), y = vld1q_f64(pb + 2 * i);  // (re, im) 하나씩
+    float64x2_t acc = vcmlaq_rot90_f64(neg_zero, x, y);   // re = -(xi*yi), im = xi*yr  (반올림)
+    acc = vcmlaq_f64(acc, x, y);                          // re = fma(xr, yr, re), im = fma(xr, yi, im)
+    vst1q_f64(po + 2 * i, acc);
+}
+```
+
+원소 100만 개에서는 메모리에 묶여 1.05배에 그치지만, 캐시 안(4096개)에서는 원소당 0.47ns가 0.33ns가 됐어요.
+
+### 다른 곳의 NEON
+
+이 파일 밖에도 손으로 짠 NEON이 있어요. float64 → int64 변환(`FCVTZS`, [변환과 승격](/internals/array/conversion/)), 리덕션의 max/min/argmax([집계](/internals/array/reductions/)), 정렬 네트워크([정렬과 집합](/internals/array/sorting/))예요.
+
+손으로 짠 커널은 하나 늘 때마다 스칼라 정의와 비트가 같다는 것을 세 레이아웃에서 검증해야 해요. 그래서 측정으로 컴파일러가 모자란 것이 드러난 곳에만 둬요. 대상 하드웨어는 이 Mac 하나라(`-mcpu=native`) 런타임 CPU 디스패치는 하지 않아요. 이 칩의 SME(행렬 확장)는 직접 쓰지 않아요. streaming 모드 전환 비용과 복잡도 때문이고, BLAS 안에서만 간접적으로 쓰여요.
+
+## numpy와 비트를 맞추는 방법
+
+### 원칙
+
+numpy가 식을 적어 둔 연산은 **같은 식을 같은 순서로** 써요. 부동소수점 연산은 결합법칙이 성립하지 않으므로, 수학적으로 같은 식이라도 순서가 다르면 마지막 비트가 달라질 수 있어요. 그리고 컴파일러가 식을 바꾸지 못하게 컴파일 옵션을 고정해요(`CMakeLists.txt`).
+
+| 옵션 | 막는 것 |
+|---|---|
+| `-ffp-contract=off` | clang이 `a + b*c`를 FMA 하나로 합치는 것(반올림이 한 번 줄어 결과가 달라짐). FMA가 필요한 곳은 코드에 `std::fma`로 적어요 [4] |
+| `-fno-builtin-sin -fno-builtin-cos` | clang이 같은 인자의 `sin`과 `cos`를 `__sincos_stret` 호출 하나로 합치는 것. 합친 함수는 따로 부른 결과(numpy)와 1 ULP 다를 수 있어요. complex `expm1`에서 발견했어요 |
+| `-ffast-math` 쓰지 않음 | NaN/inf가 없다는 가정, 컴파일러의 재배치. 재배치가 필요하면 코드에서 명시적으로 해요 |
+
+### 정수: 감싸기(wrap)와 0으로 나누기
+
+정수 연산은 값 때문에 실패하지 않아요. C++의 부호 있는 정수 오버플로는 정의되지 않은 동작이라, **부호 없는 정수로 계산한 뒤 되돌려요**. 부호 없는 오버플로는 $2^{64}$로 나눈 나머지로 정의되어 있고, 그것을 다시 부호 있는 수로 읽으면 2의 보수 wrap과 같아요.
+
+```cpp
+inline i64 wrap_add(i64 a, i64 b) { return static_cast<i64>(static_cast<u64>(a) + static_cast<u64>(b)); }
+```
+
+나눗셈과 나머지는 Python의 규칙(바닥 나눗셈, 나머지의 부호는 나누는 수를 따름)이고, 0과 -1을 따로 처리해요.
+
+```cpp
+// FloorDivide::f(i64), Remainder::f(i64) (array/kernels/scalar_ops.hpp, 발췌)
+if (b == 0) return 0;                       // a // 0 == 0
+if (b == -1) return wrap_sub(0, a);         // INT_MIN // -1 == INT_MIN (C++ 나눗셈은 여기서 trap)
+i64 q = a / b;                              // C++는 0 방향으로 자르므로
+if ((a % b != 0) && ((a < 0) != (b < 0))) --q;   // 부호가 다르고 나머지가 있으면 한 칸 내림
+
+if (b == 0) return a;                       // a % 0 == a
+if (b == -1) return 0;
+i64 r = a % b;                              // a의 부호
+if (r != 0 && ((r < 0) != (b < 0))) r += b; // b의 부호로
+```
+
+`a // 0 == 0`, `a % 0 == a`로 정한 덕분에 $a = (a \mathbin{//} b) \cdot b + a \bmod b$가 $b = 0$에서도 성립해요. 이 부분과 몇 가지는 numpy와 **일부러** 달라요(numpy 2.5.4에서 확인).
+
+| 식 | stardust | numpy 2.5.4 |
+|---|:---:|:---:|
+| `[7, -7] % 0` | `[7, -7]` | `[0, 0]` (경고) |
+| `[7, -7] // 0` | `[0, 0]` | `[0, 0]` (경고) |
+| `int_arr ** -1` | `0` (밑이 ±1이면 ±1) | `ValueError` |
+| `bool_arr + bool_arr` | int64 | bool |
+
+거듭제곱은 제곱을 반복하는 방식으로 wrap하며 계산해요($O(\log e)$번의 곱). 음수 지수는 정수 결과를 내요. 밑이 1이면 1, -1이면 $\pm 1$, 그 밖은 0이에요(0의 음수 거듭제곱은 0으로 나누기 규칙을 따라 0). 시프트 횟수는 부호 없는 값으로 읽어서, 64 이상(음수 포함)이면 모든 비트가 빠져요. C++에서 64 이상으로 시프트하는 것도 정의되지 않은 동작이라 검사해요.
+
+### float의 `floor_divide`와 `remainder`: `npy_divmod`
+
+float의 바닥 나눗셈은 단순히 `floor(a / b)`가 아니에요. $a/b$가 반올림되면서 정수 경계를 넘을 수 있어서, numpy는 `fmod`로 나머지를 먼저 구하고 몫을 보정해요. stardust는 numpy의 `npy_divmod`(`numpy/_core/src/npymath/npy_math_internal.h.src`)와 같은 단계를 같은 순서로 밟아요.
+
+1. $m = \operatorname{fmod}(a, b)$. `fmod`는 정확한 연산이에요(나머지는 언제나 표현 가능).
+2. $q = (a - m) / b$. $a - m$은 $b$의 정수배에 가까워요.
+3. $m \ne 0$이고 $m$과 $b$의 부호가 다르면 $m \mathrel{+}= b$, $q \mathrel{-}= 1$(나머지의 부호를 $b$에 맞춤). $m = 0$이면 $m = \operatorname{copysign}(0, b)$.
+4. $q \ne 0$이면 $\lfloor q \rfloor$를 구하고, $q - \lfloor q \rfloor > 0.5$이면 1을 더해요. 2단계의 나눗셈이 반올림으로 정수보다 조금 작아졌을 때 바닥이 한 칸 내려가는 것을 되돌리는 "가장 가까운 정수로 맞추기"예요. $q = 0$이면 $\operatorname{copysign}(0, a/b)$.
+
+예를 들어 $a = -7.5$, $b = 2$이면 $m = -1.5$, $q = -3$이고, 부호가 달라서 $m = 0.5$, $q = -4$가 돼요. Python의 `-7.5 // 2 == -4.0`, `-7.5 % 2 == 0.5`와 같아요. $b = 0$이면 `floor_divide`는 $a/b$(inf 또는 NaN), `remainder`는 $\operatorname{fmod}(a, 0) = $ NaN이에요.
+
+### complex 곱셈과 나눗셈: 식을 직접 적기
+
+`std::complex<double>`의 `*`, `/` 연산자는 쓰지 않아요. C++ 표준 라이브러리(libc++)의 연산자는 C99 Annex G의 inf/nan 복구(곱이 NaN이 되었을 때 무한대 입력을 찾아 결과를 무한대로 고치는 처리)를 더하는데 [5], numpy에는 없어요. 그래서 numpy의 식을 직접 적어요.
+
+나눗셈은 Smith의 방법이에요 [6]. 분모의 실수부와 허수부 중 큰 쪽으로 나눠서, $b_r^2 + b_i^2$를 직접 계산할 때의 오버플로·언더플로를 피해요. $\lvert b_r \rvert \ge \lvert b_i \rvert$이면
+
+$$
+r = \frac{b_i}{b_r}, \quad d = b_r + b_i r, \quad
+\frac{a}{b} = \left( \frac{a_r + a_i r}{d},\ \frac{a_i - a_r r}{d} \right)
+$$
+
+이고, 반대면 역할을 바꿔요($r = b_r / b_i$, $d = b_i + b_r r$, 결과 $((a_r r + a_i)/d,\ (a_i r - a_r)/d)$). 분모가 $0 + 0i$이면 $(a_r / \lvert b_r \rvert,\ a_i / \lvert b_i \rvert)$로 inf나 NaN을 내요.
+
+### 명시적 FMA
+
+numpy의 바이너리는 컴파일러 기본값인 FMA 축약(contraction)을 켠 채로 빌드되어 있어요. 그래서 numpy 소스의 `a*b - c*d`는 실제로는 `fma(a, b, -(c*d))`로 계산돼요. 반면 stardust는 `-ffp-contract=off`로 축약을 막았어요. 둘을 맞추려면 **numpy에서 축약이 일어나는 자리에 `std::fma`를 명시**해야 해요.
+
+```cpp
+// array/kernels/scalar_ops.hpp (발췌)
+inline c128 cmul(c128 a, c128 b) {
+    const double ar = a.real(), ai = a.imag(), br = b.real(), bi = b.imag();
+    return {std::fma(ar, br, -(ai * bi)), std::fma(ar, bi, ai * br)};
+}
+
+inline c128 cdiv(c128 a, c128 b) {   // |br| >= |bi| 쪽
+    const double rat = bi / br, scl = 1.0 / std::fma(bi, rat, br);
+    return {std::fma(ai, rat, ar) * scl, std::fma(-ar, rat, ai) * scl};
+}
+```
+
+어느 곱이 축약되는지는 무작위 곱 4000개로 numpy의 결과 패턴을 확인해서 정했고, 이 패턴으로 4000개가 모두 같았어요. `fma`를 명시한 곳은 complex 곱셈, 나눗셈, 제곱(`square`), `expm1`, `reciprocal`이에요. "어디서나 축약을 켜기"를 택하지 않은 것은, 축약이 어느 식에서 일어날지를 컴파일러가 정하게 되어 numpy와 같은 자리에서 일어난다는 보장이 없기 때문이에요. 명시하면 소스 코드가 곧 결과의 정의가 돼요.
+
+### `|z|`, complex 함수, `pow`
+
+- **`abs(z)`**: numpy의 SIMD `absolute` 루프와 같은 공식 $\max(\lvert a \rvert, \lvert b \rvert) \cdot \sqrt{1 + (\min/\max)^2}$를 써요. 제곱근 안은 `std::fma(ratio, ratio, 1.0)`이에요. 한 부분이 inf이면 다른 부분이 NaN이어도 inf예요. libm의 `hypot`과는 최대 1 ULP 달라서 쓰지 않아요.
+- **complex 초월함수**: C 라이브러리의 C99 함수(`cexp`, `clog`, `csin` …)를 스칼라로 불러요. numpy가 그 함수들을 부르기 때문이에요. libc++의 `std::exp(std::complex)`는 자체 구현이라 결과가 달라요. C++에는 `<complex.h>`가 없어서 직접 선언하고, `std::complex<double>`과 C의 `double _Complex`가 같은 메모리 배치(`double[2]`)라는 점을 이용해 `memcpy`로 오가요.
+
+```cpp
+// array/kernels/scalar_ops.hpp (발췌)
+__extension__ typedef double _Complex c99_t;          // C99 complex 타입 (clang 확장으로 허용)
+extern "C" { c99_t cexp(c99_t); c99_t clog(c99_t); c99_t cpow(c99_t, c99_t); /* … */ }
+inline c128 call(c99_t (*f)(c99_t), c128 z) { return from_c99(f(to_c99(z))); }   // memcpy 두 번
+```
+
+- **C99에 없는 complex 함수**는 numpy의 공식을 그대로 옮겨요. `expm1(z)`의 실수부는 $\operatorname{fma}(\operatorname{expm1}(x), \cos y, -2\sin^2(y/2))$, 허수부는 $e^x \sin y$예요. `-fno-builtin-sin/cos`가 필요해진 곳이 바로 여기예요(같은 $y$의 `sin`과 `cos`).
+- **complex `pow`**: numpy의 `nc_pow`(`numpy/_core/src/umath/funcs.inc.src`)처럼, 지수가 절댓값 100보다 작은 정수이면 반복 곱셈(이진 거듭제곱, 음수면 마지막에 $1/\text{acc}$)으로 하고 나머지는 `cpow`예요. 지수 2와 3은 곱하는 순서(`cmul(a, cmul(a, a))`)까지 numpy와 맞췄어요. FMA가 끼면 피연산자 순서가 결과를 바꿔요.
+
+### 부호, NaN, 반올림
+
+- **`sign(x)`** (float): $x > 0$이면 1, $x < 0$이면 $-1$, $x = 0$이면 $+0$($-0$도 $+0$), NaN이면 NaN 그대로예요. complex는 numpy 2의 정의 $z / \lvert z \rvert$이고, 0, 무한대, NaN 입력은 numpy와 같은 규칙으로 따로 처리해요.
+- **`maximum`/`minimum`**: 위의 `fmax_nan`/`fmin_nan`(NaN 전파, $-0 < +0$).
+- **`round`**: `std::rint`예요. 현재 반올림 모드(기본값: 가장 가까운 짝수)를 쓰므로 `round(0.5) == 0.0`, `round(2.5) == 2.0`, `round(-0.5) == -0.0`이에요.
+- **int와 float의 비교**: 승격 규칙대로 float64 루프에서 해요. int를 float64로 바꾼 뒤 비교해요(numpy와 같아요).
+
+### 확인한 결과
+
+이 문서를 쓰며 무작위 입력 20만 개(크기가 $e^{\pm 50}$에 걸치는 값)에 특수값(±0, ±inf, NaN, ±최소 서브노멀, 최대 유한값)의 모든 쌍을 더해 numpy 2.5.4와 비트로 비교했어요. complex 곱셈·나눗셈·제곱·`abs`·`sign`, float `floor_divide`·`remainder`·`maximum`, complex `pow(z, 3)`과 `expm1`, 그리고 아래의 Array API 2024 함수가 모두 비트까지 같았어요. 테스트 묶음(`tests/array/`)은 이것을 dtype 쌍과 세 레이아웃마다 고정해 둬요.
+
+## vForce: float64 초월함수
+
+### 무엇을 vForce로 보내나
+
+vForce는 Apple Accelerate 프레임워크의 배열 단위 초월함수 모음이에요 [7]. `vvexp(y, x, &n)`처럼 배열 하나를 통째로 받아, 이 칩에 맞춘 SIMD 코드로 계산해요. float64 초월함수는 함수마다 구현을 나눴어요.
+
+| 구현 | 함수 | 이유 |
+|---|---|---|
+| vForce (16개) | `exp` `log` `log2` `log10` `sin` `asin` `acos` `atan` `sinh` `cosh` `tanh` `asinh` `acosh` `atanh`, 이항 `pow` `atan2` | 아래 검증을 모두 통과 |
+| libm (4개) | `expm1` `log1p` `cos` `tan` | vForce가 IEEE / C99 Annex F의 특수값 의미론을 어겨요: `cos(±0) ≠ 1`, `expm1`·`log1p`·`tan`이 $-0$의 부호를 잃고, `expm1`이 서브노멀 입력을 0으로 만들어요 |
+| libm | 모든 complex 함수, `sqrt`(컴파일러가 `fsqrt.2d`로 벡터화) | numpy와 비트를 맞추기 위해 |
+
+어느 연산이 vForce로 가는지는 `array/kernels/vforce.hpp`의 표가 정해요. 변수 템플릿의 기본값을 `nullptr`로 두고, vForce로 가는 연산만 특수화해요.
+
+```cpp
+// array/kernels/vforce.hpp (발췌)
+template <typename Op> inline constexpr VUnary vforce_unary = nullptr;   // 기본: libm
+template <> inline constexpr VUnary vforce_unary<ops::Exp> = &vvexp;
+template <> inline constexpr VUnary vforce_unary<ops::Sin> = &vvsin;
+// … 14개
+template <typename Op> inline constexpr VBinary vforce_binary = nullptr;
+template <> inline constexpr VBinary vforce_binary<ops::Pow> = &vf_pow;
+template <> inline constexpr VBinary vforce_binary<ops::Atan2> = &vf_atan2;
+```
+
+커널은 `if constexpr`로 이 표를 봐요. vForce에 없는 연산과 complex에서는 그 가지가 아예 컴파일되지 않아요.
+
+```cpp
+// unary_loop<Op, T>의 첫 줄 (array/kernels/elementwise.hpp)
+if constexpr (ops::is_float<T> && vforce_unary<Op> != nullptr) {
+    vforce_unary_run(vforce_unary<Op>, args[0], s[0], args[1], s[1], n);   // 레이아웃 무관
+    return;
+}
+```
+
+`vvpow(z, y, x)`는 $x^y$를 계산해서 인자 순서가 `pow(a, b)`와 반대예요. `accelerate/vforce.hpp`의 `vf_pow`가 순서를 맞춰서, 이항 함수가 모두 `f(out, a, b, n)`이라는 한 모양을 갖게 해요. 층 구조상 `accelerate/`에는 연산과 무관한 부분(함수 타입, 인자 순서 래퍼, strided 실행기)만 있고, "어느 연산이 어느 함수로"라는 표는 배열의 연산 정의(`ops::Exp`)에 묶여 있어서 배열 영역에 둬요.
+
+### 왜 vForce인가
+
+**속도예요.** 설계 문서의 측정(1스레드, libm 대비)으로 대부분 2–10배이고, `sin` 7.6배, `atan2` 10배, `exp` 4.2배였어요. 배열 단위로 받으므로 원소마다 함수를 부르는 비용이 없고, 안에서는 이 칩에 맞춘 SIMD 코드가 여러 원소를 함께 계산해요.
+
+**직접 짠 SIMD 초월함수는 없어요.** ULP 단위로 튜닝한 SIMD 초월함수는 설계에서 "넣지 않는 최적화" 목록에 있고, 그 자리를 vForce가 맡아요.
+
+**`asinh`/`acosh`는 절충이에요.** 두 함수는 입력에 따라 승패가 갈렸어요. vForce는 입력과 상관없이 거의 일정하고, libm은 입력에 따라 크게 달라요. 작은 입력에서 vForce가 1.8–3.3배 빠르고, 큰 입력에서 libm이 10–20% 빨라요. 데이터를 보고 알고리즘을 고르지 않는다는 원칙에 따라 vForce를 써요.
+
+### vForce를 써도 되는 근거
+
+vForce로 바꾸기 전에, 확장 모듈과 떨어진 작은 프로그램으로 한 변수씩 바꾸는 독립 실험을 해서 아래를 확인했어요(설계 문서의 기록).
+
+| 항목 | 결과 | 왜 중요한가 |
+|---|---|---|
+| 위치 독립성 (인덱스, 배열 길이, 정렬) | 약 24만 회 검사에서 불일치 0 | `exp(x)[i] == exp(x[i])`. 스레드가 배열을 어떻게 자르든 결과가 같아요 |
+| 스레드 안전성 | 14개 스레드 동시 호출에서 불일치 0 | 스레드풀의 여러 워커가 동시에 불러요 |
+| 내부 스레드 | 쓰지 않음 (CPU 시간 / 경과 시간 = 1.00) | stardust의 풀과 겹쳐 과다 구독하지 않아요 |
+| 특수값 (±0, ±inf, NaN) | 16개 함수 모두 부호까지 정확 | 특수값은 비트까지 같아야 한다는 계약 |
+| 정확도 (libm 대비) | 최대 1–6 ULP | 계약 8 ULP 안 |
+
+위치 독립성이 가장 중요해요. SIMD 구현 중에는 배열의 앞뒤 나머지 원소를 다른 코드(스칼라 경로)로 계산하는 것도 있는데, 그러면 같은 값이 배열의 어디에 있느냐에 따라 다른 결과가 나올 수 있어요. 그런 함수라면 스레드 조각 경계가 결과를 바꾸고, "결과는 스레드 수와 무관하다"는 규칙([스레드풀과 결정성](/internals/core/threads/))이 깨져요. vForce 16개 함수는 그렇지 않다는 것을 확인했어요.
+
+### 결정성을 지키는 호출 방식
+
+vForce는 **연속 배열**만 받아요. `accelerate/vforce.hpp`의 실행기가 어떤 레이아웃이든 vForce 경로를 타게 해요.
+
+```cpp
+// vforce_unary_run (accelerate/vforce.hpp, 줄이고 다듬은 발췌)
+inline constexpr std::int64_t kChunk = 1024;        // 스택 버퍼, 원소 단위 (8KB)
+inline constexpr std::int64_t kMaxCall = 1 << 24;   // vForce의 개수 인자는 int
+
+if (sx == sizeof(double) && so == sizeof(double)) {             // 연속: 그대로 넘김
+    for (std::int64_t off = 0; off < n; off += kMaxCall) {
+        const int m = static_cast<int>(std::min(kMaxCall, n - off));
+        f(o + off, x + off, &m);
+    }
+    return;
+}
+double in[kChunk], out[kChunk];                                 // 그 밖: 모으고, 계산하고, 흩기
+for (std::int64_t off = 0; off < n; off += kChunk) {
+    const int m = static_cast<int>(std::min(kChunk, n - off));
+    const double* src = gather(x + off * sx, sx, m, in);        // 연속이면 그대로, stride 0이면 같은 값으로 채움
+    double* dst = so == sizeof(double) ? o + off : out;
+    f(dst, src, &m);
+    if (dst == out) scatter(out, o + off * so, so, m);
+}
+```
+
+- **연속 입력·출력**은 그대로 넘겨요. vForce의 개수 인자가 `int`라서 한 번에 $2^{24}$개까지 넘기고 나눠 불러요.
+- **비연속 입력, 스칼라(stride 0), 비연속 출력**은 커널 안에서 1024원소(8KB) 스택 버퍼에 모으고, 계산하고, 흩어요. 버퍼 캐스팅([연산 엔진](/internals/array/engine/))과 같은 생각을 커널 안에서 한 것이에요. 레이아웃이 무엇이든 같은 vForce 함수가 같은 값에 불리므로, 위치 독립성 덕분에 결과가 같아요.
+- **int/bool 입력**은 루프 선택에서 float64 루프로 가고, 버퍼 캐스팅이 float64로 바꿔 이 커널에 넘겨요.
+- **Python 스칼라 입력**(`sd.exp(1.0)`)도 같은 루프를 `n = 1`로 불러요. 곧 `vvexp`를 원소 하나로 불러요. 그래야 `sd.exp(x)[i] == sd.exp(x[i])`가 성립해요. 스칼라만 libm으로 계산했다면 배열의 원소와 몇 ULP 다른 값이 나올 수 있어요.
+
+테스트(`tests/array/test_vforce.py`)가 이것을 고정해요. 같은 입력을 Python 스칼라, 오프셋 5, stride 3, 뒤집기, 전치(strided gather 경로)로 넣어 비트가 모두 같은지, 1·3·10스레드에서 `sin`과 `pow`의 바이트가 같은지 확인해요.
+
+`sd.special`도 같은 규칙을 따라요. 특수함수 커널 안의 `exp`/`log`를 1024원소 버퍼로 모아 vForce를 한꺼번에 부르고, 스칼라 입력도 `n = 1`로 같은 경로를 타요.
+
+### 정확도: ULP로 재기
+
+ULP(unit in the last place)는 두 float 사이에 있는 표현 가능한 float의 개수로 잰 거리예요 [8]. float64의 비트 패턴을 부호 있는 정수 $b$로 읽고 순서를 보존하도록
+
+$$
+\operatorname{ord}(b) = \begin{cases} b & b \ge 0 \\ -2^{63} - b & b < 0 \end{cases}
+$$
+
+로 바꾸면, 두 값의 ULP 거리는 $\lvert \operatorname{ord}(b_1) - \operatorname{ord}(b_2) \rvert$예요. 테스트의 `assert_ulp`가 이 방법을 써요.
+
+**계약은 numpy와 최대 8 ULP**이고, 특수값(±0, ±inf, NaN)은 비트까지 같아야 해요. 이 Mac의 numpy float64 초월함수는 libm과 비트가 같으므로(`tanh`만 최대 1 ULP 차이) numpy와의 거리는 곧 libm과의 거리예요.
+
+아래는 이 문서를 쓰며 잰 값이에요. 원소 20만 개, `tests/array/test_vforce.py`와 같은 입력 분포(예: `sin`은 $[-10^5, 10^5]$ 균등, `log`는 $[10^{-300}, 10^{300}]$ 로그 균등)예요.
+
+| 함수 | 최대 ULP | 비트까지 같음 | 1 ULP 이내 |
+|---|:---:|:---:|:---:|
+| `exp` | 1 | 74.8% | 100% |
+| `log` | 2 | 83.4% | 99.9995% |
+| `log2` | 2 | 99.9% | 99.9995% |
+| `log10` | 2 | 74.5% | 99.9995% |
+| `sin` | 3 | 36.5% | 92.3% |
+| `asin` | 2 | 76.1% | 99.8% |
+| `acos` | 1 | 83.3% | 100% |
+| `atan` | 1 | 89.4% | 100% |
+| `sinh` | 2 | 64.5% | 99.97% |
+| `cosh` | 2 | 64.5% | 99.97% |
+| `tanh` | 3 | 86.5% | 99.95% |
+| `asinh` | 3 | 82.9% | 99.97% |
+| `acosh` | 2 | 83.1% | 99.999% |
+| `atanh` | 4 | 52.6% | 93.8% |
+| `pow` | 1 | 74.0% | 100% |
+| `atan2` | 1 | 74.1% | 100% |
+| `cos`, `tan`, `expm1`, `log1p` (libm) | 0 | 100% | 100% |
+
+가장 큰 차이는 `atanh`의 4 ULP로, 설계 문서의 측정 최대와 같아요. 상대오차로는 $4 \cdot 2^{-52} \approx 8.9 \times 10^{-16}$ 이하예요. 계약을 8로 둔 것은 측정 최대에 여유를 둔 값이에요.
+
+<Callout type="warn" title="numpy와 비트가 같다는 가정은 이 16개 함수에서 깨져요">
+  `sd.sin(x)`의 결과를 `np.sin(x)`와 `==`로 비교하면 원소의 3분의 2 가까이가 다를 수 있어요(위 표). 차이는 몇 ULP이고 결정적이지만, 비트 비교를 하는 코드라면 이 16개 함수에는 ULP나 상대오차 허용치를 써야 해요.
+</Callout>
+
+## Array API 2024의 원소별 함수
+
+`copysign`, `hypot`, `logaddexp`, `nextafter`, `reciprocal`, `signbit`은 Python Array API 표준 2024.12판의 함수를 모두 갖추면서 더한 원소별 함수예요 [9]. 모두 `scalar_ops.hpp`의 Op 구조체이고, 다른 ufunc와 같은 디스패처(타입 표, `out=`, 스칼라만 있는 경로)를 그대로 써요. 값은 numpy의 스칼라 공식과 같아요. 위의 확인에서 무작위 입력과 특수값 쌍 모두 numpy 2.5.4와 비트까지 같았어요.
+
+| 함수 | 루프 dtype | 계산 |
+|---|:---:|---|
+| `copysign(a, b)` | float64 | libm `std::copysign`: $a$의 크기에 $b$의 부호 |
+| `hypot(a, b)` | float64 | libm `std::hypot`: $\sqrt{a^2 + b^2}$를 중간 오버플로 없이 |
+| `logaddexp(x, y)` | float64 | numpy `npy_logaddexp`의 공식 (아래) |
+| `nextafter(a, b)` | float64 | 비트 패턴을 한 칸 옮겨 직접 계산 (아래) |
+| `reciprocal(x)` | float64, complex128 | float: $1/x$. complex: numpy의 Smith 공식에 FMA |
+| `signbit(x)` | float64 → bool | `std::signbit`: 부호 비트 (`-0.0`, `-nan`도 True) |
+
+정수 입력은 모두 float64 루프로 가요(정수 루프가 없으므로). `reciprocal(int_arr)`는 그래서 float64예요. numpy는 정수 `reciprocal`을 정수 나눗셈으로 해서 `reciprocal([2, 0, -4])`가 `[0, 9223372036854775807, 0]`인데, stardust는 `[0.5, inf, -0.25]`예요.
+
+### `logaddexp`
+
+$\log(e^x + e^y)$를 넘치지 않게 계산해요. numpy의 `npy_logaddexp`(`numpy/_core/src/npymath/npy_math_internal.h.src`)와 같은 분기예요.
+
+$$
+\operatorname{logaddexp}(x, y) =
+\begin{cases}
+x + \ln 2 & x = y \\
+x + \operatorname{log1p}(e^{-(x-y)}) & x - y > 0 \\
+y + \operatorname{log1p}(e^{x-y}) & x - y \le 0 \\
+x - y = \text{NaN} & \text{otherwise}
+\end{cases}
+$$
+
+- 큰 쪽을 밖으로 빼서 $e^{-\lvert x-y \rvert} \le 1$만 계산하므로 오버플로가 없어요.
+- $x = y$를 먼저 보는 것은 같은 부호의 무한대 때문이에요. $x = y = -\infty$이면 $x - y$가 NaN이 되는데, 첫 분기가 $-\infty + \ln 2 = -\infty$를 내요. `logaddexp(-inf, -inf) == -inf`.
+- 마지막 분기는 비교가 모두 거짓인 경우, 곧 NaN이 있을 때 NaN을 돌려줘요.
+- 여기서 `exp`와 `log1p`는 libm이에요(원소 함수 안의 스칼라 호출이라 vForce가 아니에요). 그래서 비트까지 numpy와 같아요.
+
+### `nextafter`
+
+$a$에서 $b$ 쪽으로 다음 float64를 돌려줘요. libm의 `nextafter`를 부르지 않고 **비트 패턴을 직접 한 칸 옮겨요.**
+
+IEEE 754 float64는 부호 비트를 빼면, 크기가 큰 값일수록 비트 패턴을 정수로 읽은 값도 커요(지수가 위, 가수가 아래에 있고 서브노멀까지 연속). 그래서 0이 아닌 유한한 $a$에서 **0에서 멀어지는** 다음 값은 비트 패턴 $+1$, **0에 가까워지는** 값은 $-1$이에요. 음수 $a$도 부호 비트를 그대로 둔 채 같은 규칙이 성립해요.
+
+```cpp
+// Nextafter::f (array/kernels/scalar_ops.hpp)
+if (a != a || b != b) return a + b;                         // NaN이 있으면 NaN
+if (a == b) return b;                                       // nextafter(0.0, -0.0) == -0.0
+if (a == 0) return std::copysign(denorm_min, b);            // 0에서는 b 쪽 최소 서브노멀
+std::int64_t bits = std::bit_cast<std::int64_t>(a);
+bits += ((a < b) == (a > 0)) ? 1 : -1;                      // 0에서 멀어지면 +1, 가까워지면 -1
+return std::bit_cast<double>(bits);
+```
+
+`(a < b) == (a > 0)`은 "$b$ 쪽이 0에서 멀어지는 방향인가"예요. $a > 0$이고 $b > a$이면 참, $a < 0$이고 $b < a$이면 둘 다 거짓이라 참이에요. 경계도 저절로 맞아요. 최대 유한값에서 $+1$하면 비트 패턴이 `inf`가 되고, 최소 서브노멀에서 $-1$하면 0이 돼요. `std::bit_cast`(C++20)는 비트를 그대로 다른 타입으로 읽는 정의된 방법이에요(포인터 캐스트는 strict aliasing 위반).
+
+결과는 libm의 `nextafter`와 같고(NaN, 같은 값, 0, inf 경계 포함), 분기 몇 개와 정수 덧셈뿐이라 libm보다 빨라요. 설계 문서의 측정으로 8배예요.
+
+### complex `reciprocal`
+
+$1/z$를 Smith의 방법으로 계산해요. numpy의 complex `reciprocal` 루프(`CDOUBLE_reciprocal`)와 같은 식이에요.
+
+$$
+\lvert z_i \rvert \le \lvert z_r \rvert:\ r = \frac{z_i}{z_r},\ d = z_r + z_i r,\ \frac{1}{z} = \left(\frac{1}{d}, -\frac{r}{d}\right); \qquad
+\lvert z_i \rvert > \lvert z_r \rvert:\ r = \frac{z_r}{z_i},\ d = z_i + z_r r,\ \frac{1}{z} = \left(\frac{r}{d}, -\frac{1}{d}\right)
+$$
+
+numpy의 arm64 빌드는 분모 $d = z_r + z_i r$를 FMA 하나로 묶어요. 그래서 `d = std::fma(im, r, re)`로 맞췄어요. 재어 보니 FMA 없이 계산하면 원소의 9%가 1 ULP 달랐고, FMA를 넣자 모두 같아졌어요.
+
+## 성능
+
+원소 100만 개, float64, Apple M4 Pro, numpy 2.5.4에서 잰 값이에요. 배율은 numpy 대비예요.
+
+<Bench
+  rows={[
+    { label: 'f + g', times: [218e-6, 164e-6, 50e-6] },
+    { label: 'maximum(f, g)', times: [212e-6, 166e-6, 47e-6] },
+    { label: 'sqrt(f)', times: [260e-6, 257e-6, 41e-6] },
+    { label: 'astype(f, int64)', times: [284e-6, 108e-6, 37e-6] },
+  ]}
+  caption="컴파일러가 벡터화하는 경로와 손으로 짠 NEON 경로."
+/>
+
+- **`f + g`**: 인덱스 루프를 컴파일러가 벡터화해요. 1스레드에서 1.33배로 나왔지만, 이 차이의 원인을 따로 분석한 자료는 없어요.
+- **`maximum(f, g)`**: `FMAX` 명령 하나짜리 NEON 커널이에요. 원소 100만 개에서는 메모리 대역폭이 시간을 정해서 `f + g`와 거의 같아요. 계산량의 차이(분기 셋 대 명령 하나)는 캐시 안 크기에서 보여요(원소당 0.77 → 0.16ns).
+- **`sqrt(f)`**: 1스레드에서 numpy와 같아요. stardust 쪽은 컴파일러가 만든 `fsqrt.2d` 루프예요. 계산 비중이 커서 10스레드에서는 6.3배까지 늘어나요.
+- **`astype(f, int64)`**: `FCVTZS` 벡터 명령 하나가 "0 방향 자르기, 범위 밖 포화, NaN은 0"이라는 규칙 전체예요. 같은 규칙을 분기 셋으로 적으면 벡터화되지 않아 464µs였어요(설계 문서). 지금 측정은 1스레드 108µs, numpy 284µs예요.
+
+<Bench
+  rows={[
+    { label: 'exp(f)', times: [1.56e-3, 1.10e-3, 137e-6] },
+    { label: 'sin(f)', times: [4.00e-3, 828e-6, 138e-6] },
+  ]}
+  caption="vForce 경로. numpy는 원소마다 libm을 불러요."
+/>
+
+- **`exp(f)`**: 1스레드 1.42배, 10스레드 11.4배예요.
+- **`sin(f)`**: 1스레드 4.84배, 10스레드 28.9배예요. 원소당으로 numpy는 약 4ns, stardust 1스레드는 약 0.83ns예요(호출 경로와 결과 배열 할당 포함).
+- 초월함수는 계산에 묶여서 스레드를 늘린 만큼 크게 빨라져요. 14스레드(E코어 포함)로 올리면 계산에 묶인 연산은 5–27% 더 빨라지지만(설계 문서의 측정, `sin`은 9.4배에서 10.9배로), 메모리에 묶인 연산은 3–12% 느려져요. 그래서 기본 스레드 수는 10이에요([스레드풀과 결정성](/internals/core/threads/)).
+
+설계 문서의 "libm 대비 `exp` 4.2배, `sin` 7.6배"와 위 표의 numpy 대비 배율은 측정 조건(입력 분포, 측정한 범위)이 달라서 서로 직접 비교하지 않아요.
+
+### 복잡도
+
+모든 원소별 커널은 원소 $n$개에 시간 $O(n)$이에요. 추가 메모리는 vForce의 strided 경로가 쓰는 스택 버퍼(입력 둘과 출력 하나, 각 8KB)와 버퍼 캐스팅의 스레드별 버퍼뿐이에요. 원소 하나의 비용이 상수가 아닌 함수는 정수 `pow`($O(\log e)$, $e$는 지수)와 complex `pow`의 반복 곱셈(지수 $\lvert n \rvert < 100$에서 곱 $O(\log \lvert n \rvert)$번)이에요.
+
+## 정확도
+
+| 범주 | numpy 2.5.4와의 관계 |
+|---|---|
+| 산술, 비교, 논리, 비트, 반올림, `abs`, `sign`, `sqrt`, `maximum`/`minimum`/`clip`, `where` | 비트까지 같아요 (의도적으로 다른 정수 규칙 제외: `% 0`, 음수 지수, bool 산술) |
+| complex 곱셈·나눗셈·제곱·`abs`·`pow`, complex 초월함수 | 비트까지 같아요 (같은 식, 같은 FMA 자리, 같은 C99 함수) |
+| float64 `expm1`, `log1p`, `cos`, `tan` | 비트까지 같아요 (libm) |
+| vForce 16개 | 최대 8 ULP (계약), 잰 최대 4 ULP (`atanh`). 특수값은 비트까지 같아요 |
+| Array API 2024 함수 6개 | 비트까지 같아요 (`reciprocal`의 정수 입력은 float64 결과로 의도적으로 달라요) |
+
+어느 경우든 결과는 **결정적**이에요. 같은 입력이면 레이아웃(연속, 브로드캐스트, strided, 뒤집기)과 스레드 수와 무관하게 같은 비트가 나와요. 테스트는 이것을 세 갈래로 고정해요.
+
+- `assert_same`: shape, dtype, 비트까지 같음. NaN은 어떤 NaN과도 같다고 보지만 `-0.0`과 `+0.0`은 달라요.
+- `assert_ulp`: vForce 함수용. 위의 순서 보존 정수 변환으로 ULP 거리를 재고, 허용치 8, 특수값은 비트까지 같아야 해요.
+- 세 레이아웃: 원소별 연산의 dtype 쌍 테스트는 연속, 스칼라 브로드캐스트, strided를 모두 돌아요. 레이아웃마다 커널 경로(NEON, 인덱스 루프, strided 루프)가 갈리기 때문이에요.
+
+검증 방법 전체는 [정확도와 검증](/internals/array/accuracy/)에 있어요.
+
+## 참고 문헌
+
+1. LLVM 공식 문서, *Auto-Vectorization in LLVM* (루프 벡터화기, "Runtime Checks of Pointers"). https://llvm.org/docs/Vectorizers.html
+2. *IEEE Standard for Floating-Point Arithmetic*, IEEE Std 754-2019. (9.6절 maximum, minimum)
+3. Arm, *Arm Architecture Reference Manual for A-profile architecture* (`FMAX`, `FMIN`, `FCMLA`, `FCVTZS` 명령), 그리고 Arm C Language Extensions의 NEON intrinsic (`vmaxq_f64`, `vld1q_dup_f64`, `vcmlaq_f64`, `vcmlaq_rot90_f64`). https://developer.arm.com/architectures/instruction-sets/intrinsics/
+4. Clang 공식 문서, *Clang Compiler User's Manual*, `-ffp-contract` 옵션. https://clang.llvm.org/docs/UsersManual.html
+5. ISO/IEC 9899:1999 (C99), Annex F (IEC 60559 부동소수점 산술), Annex G (IEC 60559 호환 complex 산술).
+6. R. L. Smith, "Algorithm 116: Complex division", *Communications of the ACM*, 5(8), 435, 1962.
+7. Apple Developer Documentation, *vForce* (Accelerate). https://developer.apple.com/documentation/accelerate/vforce
+8. D. Goldberg, "What Every Computer Scientist Should Know About Floating-Point Arithmetic", *ACM Computing Surveys*, 23(1), 5–48, 1991. (ULP와 상대오차)
+9. Python Array API Standard, 2024.12판, 원소별 함수. https://data-apis.org/array-api/2024.12/

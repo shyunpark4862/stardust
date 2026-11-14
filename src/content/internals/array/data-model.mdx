@@ -1,0 +1,720 @@
+---
+title: 데이터 모델
+group: 데이터
+order: 1
+summary: 배열이 메모리에서 어떻게 생겼는지 설명해요. 원소 종류(DType), 메모리 블록(Buffer), 그 메모리를 읽는 방법(NDArray)의 세 층과 뷰, 쓰기 금지, 메모리 겹침 처리를 다뤄요.
+seeAlso: [conversion, engine, indexing, small-arrays]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+import Bench from '../../../components/fig/Bench.astro';
+
+## 한눈에 보기
+
+stardust의 배열은 세 층으로 이루어져 있어요.
+
+| 층 | C++ 이름 | 파일 | 하는 일 |
+|---|---|---|---|
+| 원소 종류 | `DType` | `csrc/base/dtype.hpp` | 원소 하나가 무엇인지(bool, int64, float64, complex128)와 그 크기 |
+| 메모리 | `Buffer` | `csrc/base/buffer.hpp`, `buffer.cpp` | 바이트 덩어리 하나와 그 수명. 여러 배열이 나눠 가져요 |
+| 읽는 방법 | `NDArray` | `csrc/array/ndarray.hpp`, `ndarray.cpp` | 그 바이트를 N차원 배열로 읽는 **설명**: 시작 주소, shape, strides |
+
+가장 중요한 생각은 하나예요. **배열은 메모리 그 자체가 아니라, 메모리를 읽는 방법에 대한 설명이에요.** 원소 $(i_0, i_1, \dots, i_{k-1})$의 주소는 다음 식으로 정해져요.
+
+$$
+\operatorname{addr}(i_0, \dots, i_{k-1}) \;=\; \texttt{data} \;+\; \sum_{d=0}^{k-1} i_d \cdot \texttt{strides}[d]
+$$
+
+여기서 `data`는 첫 원소의 주소(`std::byte*`)이고, `strides[d]`는 축 `d`를 따라 한 칸 갈 때 건너뛰는 **바이트 수**예요. 전치, 슬라이스, 브로드캐스트, complex의 실수부 꺼내기는 모두 이 설명(`data`, `shape`, `strides`)만 바꾸고 메모리는 건드리지 않아요. 그래서 1GB 배열의 전치도 2×2 배열의 전치와 비용이 같아요.
+
+이 페이지에서 다루는 핵심은 다음과 같아요.
+
+- **DType**은 승격 순서 그대로 번호를 매긴 `enum`이에요. 런타임 dtype은 `visit_dtype`이 컴파일 시점 타입으로 바꿔서, 템플릿 함수 하나가 dtype마다 한 번씩 인스턴스화돼요.
+- **Buffer**는 128바이트(이 칩의 캐시 라인)에 맞춰 할당하고, 256바이트 이하의 작은 데이터는 Buffer 객체 안에 넣어요. `std::shared_ptr`로 여러 배열(뷰)이 함께 소유해요.
+- **NDArray**는 shape과 strides를 객체 안의 고정 배열(최대 32차원)로 가져서, 배열을 만들 때 shape용 힙 할당이 없어요. 연속성 플래그는 numpy의 relaxed strides 규칙으로 계산해요.
+- 뷰의 `base`는 언제나 **메모리의 최종 소유자**를 가리켜요. 뷰의 뷰를 만들어도 사슬이 생기지 않아요.
+- 입력과 출력이 메모리를 일부 공유하면(`a[1:] += a[:-1]`), 결과가 "모든 입력을 다 읽은 다음 출력을 쓴 것"과 같도록 겹치는 입력을 먼저 복사해요. 판정은 $O(\text{ndim})$짜리 보수적 검사예요.
+- 차원 수는 언제나 1 이상 32 이하예요. 0차원 배열이 없다는 규칙은 구현 전체가 기대는 불변식이기도 해요.
+
+<Fig caption="Python 객체 하나는 NDArray 하나를 품고, 여러 NDArray가 같은 Buffer를 가리킬 수 있어요. 아래는 3×4 float64 배열과 그 전치 뷰가 같은 96바이트를 다르게 읽는 모습이에요.">
+  <ArrayFig name="a" data={[[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]]} note="strides (32, 8)" />
+  <ArrayFig name="a.T" data={[[0, 4, 8], [1, 5, 9], [2, 6, 10], [3, 7, 11]]} note="strides (8, 32)" />
+  <Op>→</Op>
+  <ArrayFig name="Buffer (8바이트 칸 12개)" data={[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]} note="두 배열이 같은 메모리를 공유해요" />
+</Fig>
+
+## DType: 원소 종류
+
+### enum 하나, 순서가 곧 승격 순서
+
+```cpp
+// csrc/base/dtype.hpp (발췌)
+enum class DType : std::uint8_t { Bool, Int64, Float64, Complex128, String };
+
+inline constexpr int kNumArrayDTypes = 4;   // 배열은 앞의 넷만 쓴다
+constexpr bool is_array_dtype(DType d) { return static_cast<int>(d) < kNumArrayDTypes; }
+
+constexpr DType promote(DType a, DType b) { return a > b ? a : b; }
+```
+
+- 값의 순서를 **승격 순서**(`bool < int64 < float64 < complex128`)와 똑같이 매겼어요. 그래서 두 dtype의 승격은 `max` 한 번이에요. 승격 표를 따로 두지 않아요. 승격 규칙 자체는 [변환과 승격](/internals/array/conversion/)에서 자세히 다뤄요.
+- `String`은 `sd.frame`의 문자열 컬럼용이에요. 크기가 고정되지 않아서(`itemsize`가 0, 실제 바이트는 오프셋 배열과 UTF-8 데이터에 있어요) 승격에도 끼지 않아요. 배열 영역과 frame이 같은 enum을 쓰는 이유는 두 영역을 한 확장 모듈로 합치면서, 같은 이름(`sd::DType`)에 다른 값을 가진 정의가 두 개 있으면 ODR(One Definition Rule, 한 프로그램에서 같은 이름의 정의는 하나여야 한다는 C++ 규칙)을 어기기 때문이에요.
+- 밑바탕 타입이 `std::uint8_t`라서 `NDArray` 안에서 1바이트만 차지해요.
+
+dtype마다의 저장 타입과 크기는 이래요.
+
+| dtype | C++ 저장 타입 | `itemsize` | 정렬(`alignof`) |
+|:---:|:---:|:---:|:---:|
+| `bool` | `bool` | 1 | 1 |
+| `int64` | `std::int64_t` | 8 | 8 |
+| `float64` | `double` | 8 | 8 |
+| `complex128` | `std::complex<double>` | 16 | 8 |
+
+`itemsize`, `dtype_name`, `dtype_from_name`은 모두 `constexpr` 함수예요. 컴파일 시점에 값이 정해지는 곳(예: 커널 템플릿 안)에서는 상수로 접혀요.
+
+### 타입에서 dtype으로: `dtype_of`
+
+C++ 타입에서 dtype을 얻는 쪽은 변수 템플릿 하나로 해결해요.
+
+```cpp
+// csrc/base/dtype.hpp (발췌)
+template <typename T> inline constexpr DType dtype_of = [] {
+    if constexpr (std::is_same_v<T, bool>) return DType::Bool;
+    else if constexpr (std::is_same_v<T, std::int64_t>) return DType::Int64;
+    else if constexpr (std::is_same_v<T, double>) return DType::Float64;
+    else if constexpr (std::is_same_v<T, complex128>) return DType::Complex128;
+    else static_assert(!sizeof(T), "not a stardust storage type");
+}();
+```
+
+- 즉시 호출하는 `constexpr` 람다 안의 `if constexpr` 사슬이에요. 선택되지 않은 가지는 인스턴스화되지 않아요.
+- 마지막 `static_assert(!sizeof(T), ...)`는 "T에 의존하는 거짓"을 만드는 관용구예요. 그냥 `static_assert(false)`라고 쓰면 (C++20 기준) 템플릿이 정의되는 순간 컴파일 오류가 나요. `sizeof(T)`는 T가 정해져야 계산되므로, 지원하지 않는 타입으로 실제로 인스턴스화할 때만 오류가 나요.
+- 커널 표에서 "이 루프가 쓰는 출력 dtype"을 적을 때 이것을 써요(`dtype_of<binary_result_t<Op, T>>`, [원소별 커널](/internals/array/elementwise/)).
+
+### dtype에서 타입으로: `visit_dtype`
+
+반대 방향, 즉 **런타임에만 알 수 있는 dtype**을 **컴파일 시점 타입**으로 바꾸는 것이 `visit_dtype`이에요. 배열 코드 대부분이 이것으로 dtype마다 다른 코드를 골라요.
+
+```cpp
+// csrc/base/dtype.hpp (발췌)
+template <typename F>
+decltype(auto) visit_dtype(DType d, F&& f) {
+    switch (d) {
+        case DType::Bool:       return f(std::type_identity<bool>{});
+        case DType::Int64:      return f(std::type_identity<std::int64_t>{});
+        case DType::Float64:    return f(std::type_identity<double>{});
+        case DType::Complex128: return f(std::type_identity<complex128>{});
+        case DType::String:     break;  // 배열 dtype이 아니다
+    }
+    __builtin_unreachable();
+}
+```
+
+부르는 쪽은 C++20의 **템플릿 람다**(`[&]<typename T>(...)`)를 넘겨요. 예를 들어 원소 하나를 Python 객체로 꺼내는 `load_python`(`csrc/array/convert.cpp`)은 이렇게 생겼어요.
+
+```cpp
+nb::object load_python(DType d, const std::byte* p) {
+    return visit_dtype(d, [&]<typename T>(std::type_identity<T>) {
+        T v;
+        std::memcpy(&v, p, sizeof(T));   // 정렬되지 않은 주소에서도 안전하게 읽는다
+        return to_python(v);
+    });
+}
+```
+
+- `switch` 한 번으로 분기하고, 그 뒤의 코드는 타입이 정해진 채로 컴파일돼요. 원소 하나하나가 아니라 **호출 한 번에 한 번** 분기하므로, 안쪽 루프는 타입이 고정된 평범한 C++ 루프가 되고 컴파일러가 NEON으로 벡터화할 수 있어요.
+- `std::type_identity<T>`는 값이 없는 빈 태그예요. 람다가 `T`를 추론할 수 있게만 해 주고 실행 비용은 없어요.
+- `visit_dtype`은 **배열 dtype만** 받아요. `String`까지 받게 하면 이것을 쓰는 모든 커널이 문자열 타입으로도 인스턴스화되어야 해서, 일부러 막았어요. `String`을 넘기지 않는 것은 부르는 쪽의 몫이에요. frame은 자기 `switch`로 dtype을 골라요.
+- 두 dtype을 함께 봐야 하는 곳(캐스트, 버퍼 가져오기)은 `visit_dtype`을 겹쳐 써요. 4×4 = 16가지 조합이 컴파일 시점에 모두 만들어져요.
+
+### Python 쪽 dtype 객체
+
+Python의 `sd.bool`, `sd.int64`, `sd.float64`, `sd.complex128`, `sd.string`은 C++가 모듈을 초기화할 때 만든 **싱글턴 다섯 개**예요(`bind/pyutil.hpp`의 `PyDType`). 같은 dtype을 나타내는 객체가 둘 이상 생기지 않으므로 dtype 비교는 객체 동일성 비교(포인터 비교)로 충분해요. `a.dtype`은 새 객체를 만들지 않고 이 싱글턴의 참조를 돌려줘요.
+
+## Buffer: 메모리 블록
+
+`Buffer`는 참조 카운트로 수명을 관리하는 메모리 블록이에요. 배열 영역뿐 아니라 `sd.frame`의 컬럼과 `sd.linalg`의 결과도 같은 `Buffer`를 써요. 그래서 배열 뷰와 frame 컬럼이 같은 Buffer를 가리킬 수도 있어요(`Series.to_array`).
+
+### 객체의 배치
+
+```cpp
+// csrc/base/buffer.hpp (발췌)
+class Buffer {
+public:
+    static constexpr std::size_t kAlignment = 128;   // Apple M4의 캐시 라인
+    static constexpr std::size_t kInline = 256;      // 이하이면 객체 안에 둔다
+
+    static std::shared_ptr<Buffer> allocate(std::int64_t nbytes, bool zeroed);
+    static std::shared_ptr<Buffer> adopt(const Py_buffer& view);
+
+    std::byte* data() const { return data_; }
+    std::int64_t size() const { return size_; }
+    // ...
+private:
+    void* raw_ = nullptr;      // malloc/calloc이 돌려준 포인터 (자기 메모리일 때만)
+    std::byte* data_ = nullptr;
+    std::int64_t size_ = 0;
+    bool external_ = false;
+    Py_buffer view_{};         // 외부 메모리일 때 쥐고 있는 버퍼 프로토콜 뷰
+    alignas(kAlignment) std::byte inline_[kInline];
+};
+```
+
+이 Mac(arm64, CPython 헤더 기준)에서 잰 크기는 이래요.
+
+| 부분 | 바이트 | 비고 |
+|---|:---:|---|
+| `raw_`, `data_`, `size_`, `external_` | 25 | 정렬 때문에 32바이트 자리를 차지해요 |
+| `view_` (`Py_buffer`) | 80 | 외부 메모리일 때만 의미가 있어요 |
+| 채움(padding) | 16 | `inline_`을 128바이트 경계에 놓기 위해 |
+| `inline_` | 256 | 작은 데이터가 들어가는 곳 |
+| **합계** `sizeof(Buffer)` | **384** | `alignof(Buffer)`는 128 |
+
+`Buffer`는 복사할 수 없어요(복사 생성자와 대입을 `delete`). 메모리 블록은 하나뿐이고, 공유는 언제나 `shared_ptr`를 복사하는 방식으로 해요.
+
+### 할당과 128바이트 정렬
+
+새 메모리는 `Buffer::allocate`가 만들어요.
+
+```cpp
+// csrc/base/buffer.cpp (발췌)
+std::shared_ptr<Buffer> Buffer::allocate(std::int64_t nbytes, bool zeroed) {
+    auto buf = std::make_shared<Buffer>(Key{});   // Buffer와 참조 카운트를 한 번에
+    buf->size_ = nbytes;
+    if (static_cast<std::size_t>(nbytes) <= kInline) {   // 작은 배열: 객체 안
+        buf->data_ = buf->inline_;
+        if (zeroed) std::memset(buf->inline_, 0, static_cast<std::size_t>(nbytes));
+        return buf;
+    }
+    const std::size_t request = static_cast<std::size_t>(nbytes) + kAlignment;
+    void* raw = zeroed ? std::calloc(1, request) : std::malloc(request);
+    if (raw == nullptr) throw std::bad_alloc();
+    auto addr = reinterpret_cast<std::uintptr_t>(raw);
+    auto aligned = (addr + kAlignment - 1) & ~(std::uintptr_t{kAlignment} - 1);
+    buf->raw_ = raw;
+    buf->data_ = reinterpret_cast<std::byte*>(aligned);
+    return buf;
+}
+```
+
+**정렬을 128바이트로 하는 이유.** `sysctl`로 확인한 이 칩(Apple M4 Pro)의 캐시 라인이 128바이트예요. 데이터의 시작을 캐시 라인 경계에 두면 SIMD 루프의 첫 load가 두 캐시 라인에 걸치지 않고, 스레드풀이 배열을 조각으로 나눌 때도 경계를 예측하기 쉬워요. 이 Mac의 numpy 2.5.4에서는 `np.zeros(3)`의 데이터 주소가 16의 배수이지만 128의 배수가 아닌 것을 확인했어요. stardust는 원소 1개짜리부터 100만 개짜리까지 모두 128의 배수예요.
+
+**정렬하는 방법.** 시작 주소를 128의 배수로 올림하는 식은 $\lceil \text{addr} / 128 \rceil \cdot 128$이고, 128이 2의 거듭제곱이라 비트 연산 하나로 써요.
+
+$$
+\text{aligned} \;=\; (\text{addr} + 127) \;\&\; \lnot\,127
+$$
+
+올림하면 앞쪽이 최대 127바이트 비므로 **128바이트를 더 할당**해요. 원래 포인터(`raw_`)는 `free`할 때 쓰려고 따로 보관해요.
+
+**`aligned_alloc`을 쓰지 않는 이유.** C의 `aligned_alloc`과 POSIX의 `posix_memalign`에는 0으로 채워 주는 `calloc`판이 없어요. 정렬된 메모리를 받은 뒤 `memset`으로 0을 채우면, 아래에서 설명할 "0 페이지를 공짜로 받는" 효과를 잃어요. 그래서 `calloc`/`malloc`으로 조금 더 받고 직접 올림해요. 대가는 큰 배열 하나당 최대 128바이트의 낭비로, 무시할 만해요.
+
+### `zeros`가 거의 공짜인 이유: `calloc`
+
+`zeros`처럼 0으로 채운 배열은 `zeroed = true`로 `calloc`을 불러요. 큰 할당에서 macOS의 `calloc`은 운영체제에게 새 가상 메모리 페이지를 받아 오는데, 이 페이지는 **처음 접근할 때** 운영체제가 0으로 채워서 넘겨줘요. 그래서 `zeros((10000, 10000))`(800MB)은 할당 순간에는 거의 비용이 없고, 실제로 쓰는 페이지만큼만 나중에 비용이 들어요.
+
+<Callout type="warn" title="측정할 때의 함정">
+  이 칩의 페이지는 16KB예요. 새 메모리의 첫 쓰기마다 페이지 폴트가 나요. stardust의 연산은 결과를 항상 새 배열에 쓰므로 이 비용이 늘 포함돼요. 출력 버퍼를 재사용하며 재는 측정은 실제 사용보다 빠르게 나와요.
+</Callout>
+
+### 작은 배열은 Buffer 안에
+
+256바이트(`kInline`) 이하의 데이터는 `Buffer` 객체 안의 `inline_` 배열에 둬요. float64로는 원소 32개, complex128로는 16개까지예요.
+
+- `Buffer`는 `std::make_shared`로 만들어요. `make_shared`는 객체와 `shared_ptr`의 **제어 블록**(참조 카운트가 든 작은 구조체)을 한 번의 할당으로 붙여서 만들어요.
+- 그래서 작은 배열 하나를 만들 때의 할당이 **세 번(Buffer 객체, 데이터, 제어 블록)에서 한 번**으로 줄어요.
+- `inline_`은 `alignas(128)`이라 객체 안의 데이터도 128바이트 경계에 놓여요. `Buffer` 자체의 정렬이 128이므로, C++17부터의 정렬 지정 `operator new`가 Buffer를 128바이트 경계에 할당해요.
+- 대가로 **모든** Buffer 객체가 256바이트 커져요. 데이터가 바깥에 있는 큰 배열에서도 `inline_`은 비어 있는 채로 자리만 차지해요. 큰 배열에서는 데이터에 비해 무시할 만한 크기라 받아들였어요.
+
+이 최적화는 작은 배열의 호출 비용을 줄이는 작업의 일부예요. 프로파일러(`sample`)로 보면 작은 배열에서는 계산보다 `malloc` 세 번과 고정 크기 배열의 복사가 시간을 정했어요. 자세한 내용은 [작은 배열의 호출 비용](/internals/array/small-arrays/)에 있어요.
+
+<Callout type="note" title="작은 메모리 할당 캐시는 넣지 않았어요">
+  해제된 작은 Buffer를 모아 두었다가 재사용하는 캐시는 일부러 넣지 않았어요. 설계 원칙에서 "작은 메모리 할당 캐시, 특수 케이스용 fast path 남발"을 넣지 않을 최적화로 정해 두었어요. 할당 횟수 자체를 줄이는 쪽(위의 인라인 데이터)을 택했어요.
+</Callout>
+
+### 외부 메모리: `adopt`
+
+버퍼 프로토콜로 numpy 배열 같은 외부 객체의 메모리를 복사 없이 쓸 때는 `Buffer::adopt`가 그 `Py_buffer`를 받아 쥐고 있어요.
+
+```cpp
+// csrc/base/buffer.cpp (발췌)
+std::shared_ptr<Buffer> Buffer::adopt(const Py_buffer& view) {
+    auto buf = std::make_shared<Buffer>(Key{});
+    buf->external_ = true;
+    buf->view_ = view;                        // 소유권을 넘겨받는다
+    buf->data_ = static_cast<std::byte*>(view.buf);
+    buf->size_ = view.len;
+    return buf;
+}
+
+Buffer::~Buffer() {
+    if (external_) {
+        PyGILState_STATE gil = PyGILState_Ensure();   // GIL이 없는 곳에서 불릴 수 있다
+        PyBuffer_Release(&view_);
+        PyGILState_Release(gil);
+    } else {
+        std::free(raw_);   // 인라인 데이터면 raw_가 null이라 아무 일도 하지 않는다
+    }
+}
+```
+
+- `PyBuffer_Release`는 내보낸 Python 객체의 참조 카운트를 건드리므로 GIL(Global Interpreter Lock, CPython 객체를 만지려면 쥐어야 하는 잠금)이 필요해요.
+- 그런데 `shared_ptr`의 마지막 소유자는 **어디서든** 사라질 수 있어요. GIL을 놓고 도는 계산 도중이나 다른 스레드에서 마지막 참조가 사라져도 안전하도록, 소멸자가 직접 GIL을 잡아요(`PyGILState_Ensure`는 이미 GIL을 쥐고 있으면 그대로 통과해요).
+- 어떤 경우에 외부 메모리를 공유하고 어떤 경우에 복사하는지는 [변환과 승격](/internals/array/conversion/)의 버퍼 프로토콜 절에 있어요.
+
+### 공유 소유와 `shared_ptr`를 쓰는 이유
+
+`NDArray`는 `std::shared_ptr<Buffer>`로 메모리를 가리켜요. 뷰를 하나 만들 때마다 이 `shared_ptr`를 복사하므로, 참조 카운트가 원자적으로(atomic) 1 늘어요. 마지막 `shared_ptr`가 사라질 때 Buffer가 해제돼요.
+
+공유 소유를 Python 객체의 참조 카운트에만 맡기지 않고 C++ 쪽에 따로 둔 이유는 이래요.
+
+- **C++ 코드끼리도 메모리를 나눠 가져요.** frame의 `Column`, linalg의 결과, DLPack으로 내보낸 텐서가 Python 배열 객체 없이 Buffer를 직접 붙잡아요. Python 객체를 거쳐야만 수명을 늘릴 수 있다면, 이런 곳마다 GIL을 잡고 Python 참조를 다뤄야 해요.
+- **GIL 없이 안전해요.** `shared_ptr`의 참조 카운트는 원자적 연산이라, GIL을 놓은 스레드에서 복사하거나 버려도 안전해요. 위의 `adopt` 소멸자처럼 Python을 만져야 하는 경우만 따로 GIL을 잡아요.
+- **frame의 Copy-on-Write가 참조 카운트를 읽어요.** frame은 컬럼에 쓰기 전에 `use_count()`를 보고, 다른 누가 그 Buffer를 쥐고 있으면 먼저 복사해요(`csrc/frame/ops/selection.cpp`). 배열 영역의 읽기 전용 뷰가 같은 Buffer를 쥐고 있으면 카운트가 늘어 있으므로, frame이 쓰기 전에 알아서 복사해요.
+
+`shared_ptr`의 대가는 원자적 증감 한 번씩과, 제어 블록용 메모리예요. 제어 블록은 `make_shared` 덕분에 Buffer와 같은 할당에 들어가요.
+
+**`Key` 구조체.** `make_shared`는 생성자가 `public`이어야 부를 수 있어요. 그런데 아무나 `Buffer`를 만들게 두면 `allocate`/`adopt`를 거치지 않은, 데이터 포인터가 비어 있는 Buffer가 생길 수 있어요. 그래서 생성자가 `Key`라는 빈 구조체를 받게 하고, `Key`의 기본 생성자를 `explicit`으로 막았어요. 바깥 코드는 `Buffer(Key{})`를 쓸 수는 있지만, 공식 경로가 `allocate`/`adopt`라는 의도가 타입에 드러나요("passkey" 관용구).
+
+## NDArray: 메모리를 읽는 방법
+
+### 필드
+
+```cpp
+// csrc/array/ndarray.hpp (발췌)
+inline constexpr int kMaxNdim = 32;
+using Dims = std::array<std::int64_t, kMaxNdim>;
+
+struct NDArray {
+    std::shared_ptr<Buffer> buffer;   // 메모리 소유
+    std::byte* data = nullptr;        // 첫 원소의 주소 (Buffer 안 어딘가)
+    DType dtype = DType::Float64;
+    int ndim = 0;
+    Dims shape;                       // [0, ndim)만 의미가 있다
+    Dims strides;                     // 바이트 단위
+    bool c_contiguous = true;
+    bool f_contiguous = true;
+    bool writeable = true;
+    nb::object base;                  // Python의 .base: 메모리를 실제로 소유한 객체
+};
+```
+
+| 필드 | 바이트 | 설명 |
+|---|:---:|---|
+| `buffer` | 16 | `shared_ptr`는 객체 포인터와 제어 블록 포인터의 쌍이에요 |
+| `data` | 8 | 첫 원소의 주소 |
+| `dtype`, `ndim` | 8 | 1바이트 + 4바이트, 나머지는 채움 |
+| `shape`, `strides` | 512 | 각각 `int64` 32칸 |
+| 플래그 셋 | 8 | 3바이트 + 채움 |
+| `base` | 8 | Python 객체 포인터 |
+| **합계** | **560** | |
+
+### 별도의 offset 필드가 없어요
+
+`data`는 Buffer 시작이 아니라 **첫 원소**를 가리켜요. 슬라이스 `a[1:]`은 `data`를 한 행만큼 앞으로 옮길 뿐이에요. "Buffer 시작 + offset" 방식으로 저장하면 원소에 접근할 때마다 덧셈이 하나 더 들고, 커널에 포인터를 넘길 때마다 그 덧셈을 해야 해요. numpy의 `PyArrayObject`도 같은 방식(`data` 포인터 하나)이에요.
+
+offset이 필요하면 `data - buffer->data()`로 구할 수 있어요. DLPack 내보내기는 `byte_offset`을 0으로 두고 `data`를 그대로 넘겨요.
+
+### 몇 가지 레이아웃을 그림으로
+
+아래 그림들은 모두 `a = arange(12.0).reshape(3, 4)`(float64, C 순서)와 같은 96바이트 Buffer 위에서 그려요. 아래쪽 줄이 평탄한 메모리(8바이트 칸 12개)이고, 진하게 칠한 칸이 그 뷰가 읽는 원소예요.
+
+**C 순서(행 우선).** 마지막 축이 가장 빨리 변해요. strides는 `(4·8, 8) = (32, 8)`이에요.
+
+<Fig caption="C 순서: (i, j)는 data + 32i + 8j에 있어요.">
+  <ArrayFig name="a" data={[[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]]} note="shape (3, 4), strides (32, 8)" />
+  <Op>→</Op>
+  <ArrayFig name="메모리" data={[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]} tones={['a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a']} note="data = 시작 + 0" />
+</Fig>
+
+**슬라이스.** `a[1:, ::2]`는 1행부터, 열은 하나 건너 하나씩이에요. `data`가 32바이트(한 행) 앞으로 가고, 열 stride가 두 배가 돼요.
+
+<Fig caption="a[1:, ::2]: data = 시작 + 32, strides (32, 16). 복사 없이 원소 4, 6, 8, 10을 골라요.">
+  <ArrayFig name="a[1:, ::2]" data={[[4, 6], [8, 10]]} note="shape (2, 2), strides (32, 16)" />
+  <Op>→</Op>
+  <ArrayFig name="메모리" data={[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]} tones={['m', 'm', 'm', 'm', 'b', 'm', 'a', 'm', 'a', 'm', 'a', 'm']} note="진한 칸이 data가 가리키는 첫 원소" />
+</Fig>
+
+**전치.** `a.T`는 shape과 strides의 순서만 뒤집어요. strides `(8, 32)`라서 첫 축(행)이 메모리에서 이웃한 원소를 따라가요. 이것이 F 순서(열 우선)예요.
+
+<Fig caption="a.T: shape (4, 3), strides (8, 32). 메모리는 그대로이고 읽는 순서만 바뀌어요.">
+  <ArrayFig name="a.T" data={[[0, 4, 8], [1, 5, 9], [2, 6, 10], [3, 7, 11]]} note="strides (8, 32)" />
+  <Op>→</Op>
+  <ArrayFig name="메모리" data={[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]} tones={['b', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a']} note="같은 96바이트" />
+</Fig>
+
+**음수 stride.** `a[:, ::-1]`은 각 행을 거꾸로 읽어요. `data`는 0행의 마지막 원소(시작 + 24)를 가리키고, 열 stride가 `-8`이에요. 식이 그대로 성립하므로 커널은 음수 stride를 따로 처리하지 않아요.
+
+<Fig caption="a[:, ::-1]: data = 시작 + 24, strides (32, -8).">
+  <ArrayFig name="a[:, ::-1]" data={[[3, 2, 1, 0], [7, 6, 5, 4], [11, 10, 9, 8]]} note="strides (32, -8)" />
+  <Op>→</Op>
+  <ArrayFig name="메모리" data={[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]} tones={['a', 'a', 'a', 'b', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a']} note="진한 칸이 (0, 0)" />
+</Fig>
+
+**브로드캐스트.** `broadcast_to(row, (2, 3))`은 늘어난 축의 stride를 0으로 둬요. 원소 하나가 한 열 전체를 대신해요.
+
+<Fig caption="stride 0인 축은 몇 칸을 가든 같은 주소예요. 점선 칸은 저장되지 않은 값이에요.">
+  <ArrayFig name="broadcast_to(row, (2, 3))" data={[[10, 20, 30], [10, 20, 30]]} tones={[['a', 'a', 'a'], ['g', 'g', 'g']]} note="strides (0, 8)" />
+  <Op>→</Op>
+  <ArrayFig name="메모리" data={[10, 20, 30]} tones={['a', 'a', 'a']} note="24바이트뿐" />
+</Fig>
+
+**dtype이 바뀌는 뷰.** complex128 배열의 `real`/`imag`는 dtype을 float64로 바꾸고 `data`를 0 또는 8바이트 옮긴 뷰예요(`csrc/array/ops/shape.cpp`의 `complex_part`). stride는 16 그대로라서, itemsize(8)보다 stride가 큰 배열이 돼요.
+
+<Fig caption="z.real은 itemsize 8, stride 16인 float64 뷰예요. z.imag는 data만 8바이트 옮긴 같은 모양이에요.">
+  <ArrayFig name="z (complex128)" data={['1+2j', '3+4j', '5+6j']} />
+  <Op>→</Op>
+  <ArrayFig name="메모리 (8바이트 칸)" data={['re 1', 'im 2', 're 3', 'im 4', 're 5', 'im 6']} tones={['a', 'm', 'a', 'm', 'a', 'm']} note="z.real: data = 시작 + 0, stride 16" />
+</Fig>
+
+### 고정 크기 shape과 strides
+
+shape과 strides를 `std::vector`가 아니라 객체 안의 `std::array<int64_t, 32>`로 둬요.
+
+- **배열을 만들 때 shape용 힙 할당이 없어요.** `std::vector` 둘이면 배열 하나에 할당이 두 번 더 늘어요. 뷰를 만들고 결과를 돌려주는 작은 연산에서는 이것이 그대로 시간이 돼요.
+- **상한은 32차원이에요**(`kMaxNdim`). 넘으면 `ValueError`예요. 32차원 배열은 각 축의 길이가 2여도 원소가 $2^{32}$개라서, 실제로 이 상한에 닿는 일은 거의 없어요.
+- **복사와 이동은 앞의 ndim칸만 옮겨요.** 고정 배열 전체(512바이트)를 `memmove`하면 작은 연산의 비용이 눈에 띄게 늘어요. 그래서 복사 생성자와 대입 연산자를 직접 써서 `std::copy(o.shape.begin(), o.shape.begin() + o.ndim, ...)`로 살아 있는 칸만 옮겨요. 같은 이유로 `Dims`를 0으로 채우지 않아요. `ndim` 뒤의 칸은 쓰레기 값이고, 읽지 않아요.
+
+```cpp
+// csrc/array/ndarray.hpp (발췌): 기본 복사였다면 560바이트 전체를 옮긴다
+NDArray& operator=(const NDArray& o) {
+    if (this == &o) return *this;
+    buffer = o.buffer;      // 참조 카운트 +1 (원자적)
+    base = o.base;          // Python 참조 +1
+    copy_meta(o);           // data, dtype, ndim, shape[0, ndim), strides[0, ndim), 플래그
+    return *this;
+}
+```
+
+- `span`으로 살아 있는 부분만 보여 줘요: `shape_span()`, `strides_span()`은 `std::span<const std::int64_t>`(길이 ndim)를 돌려줘요. 함수 인자를 `std::span`으로 받으면 고정 배열, `std::vector`, C 배열 어느 것에서든 복사 없이 넘길 수 있어요.
+
+### 크기 검사: `checked_size`
+
+배열을 새로 만드는 모든 길(`new_array`, `reshape`, `broadcast_to`, 생성 함수)은 `checked_size`를 지나요.
+
+```cpp
+// csrc/array/ndarray.cpp (발췌)
+std::int64_t checked_size(std::span<const std::int64_t> shape, DType dtype) {
+    if (shape.empty()) throw nb::value_error("0-dimensional arrays are not supported ...");
+    if (shape.size() > kMaxNdim) throw nb::value_error("arrays may have at most 32 dimensions");
+    const std::int64_t limit = std::numeric_limits<std::int64_t>::max() / itemsize(dtype);
+    std::int64_t n = 1;
+    for (std::int64_t extent : shape) {
+        if (extent < 0) throw nb::value_error("negative dimensions are not allowed");
+        if (extent != 0 && n > limit / extent) throw nb::value_error("array is too big");
+        n *= extent;
+    }
+    return n;
+}
+```
+
+- 원소 수 $n = \prod_d \text{shape}[d]$에 itemsize를 곱한 **바이트 수**가 `int64`에 들어가야 해요. 한계를 $L = \lfloor (2^{63}-1) / \text{itemsize} \rfloor$로 두고, 곱하기 전에 $n > \lfloor L / e \rfloor$인지 보면 $n \cdot e \le L$이 보장돼요. 곱셈을 한 뒤에 넘쳤는지 보는 방식은 부호 있는 정수 오버플로라서 C++에서 정의되지 않은 동작이에요. 나눗셈으로 미리 막아요.
+- 축 하나라도 0이면 원소 수는 0이에요. `extent != 0` 조건 덕분에 0으로 나누지 않아요.
+- 0차원(`shape.empty()`)을 여기서 한곳에서 막아요. 아래의 "0차원 배열이 없는 이유" 절에서 다시 다뤄요.
+
+### 연속성 플래그와 relaxed strides
+
+`c_contiguous`는 "C 순서로 빈틈없이 놓였다", `f_contiguous`는 "F 순서로 빈틈없이 놓였다"는 뜻이에요. shape이나 strides가 바뀔 때마다 `update_flags()`가 다시 계산해요.
+
+```cpp
+// csrc/array/ndarray.cpp (발췌)
+void NDArray::update_flags() {
+    if (size() == 0) { c_contiguous = f_contiguous = true; return; }
+    std::int64_t expect = itemsize();
+    c_contiguous = true;
+    for (int d = ndim - 1; d >= 0; --d) {      // 안쪽 축부터
+        if (shape[d] == 1) continue;           // 길이 1인 축은 stride를 보지 않는다
+        if (strides[d] != expect) { c_contiguous = false; break; }
+        expect *= shape[d];
+    }
+    // f_contiguous: 같은 일을 d = 0부터
+}
+```
+
+C 연속의 정의는 "길이가 1이 아닌 모든 축 $d$에 대해 $\text{strides}[d] = \text{itemsize} \cdot \prod_{e > d} \text{shape}[e]$"이에요. 규칙 두 개가 numpy의 **relaxed strides** 규칙과 같아요 [1].
+
+1. **길이 1인 축의 stride는 보지 않아요.** 그 축은 인덱스가 언제나 0이라 stride에 아무것도 곱해지지 않아요. stride가 어떤 값이든 실제로 닿는 바이트는 같아요.
+2. **빈 배열은 양쪽 모두 연속이에요.** 닿는 바이트가 하나도 없으니까요.
+
+이렇게 하면 같은 메모리를 같은 순서로 읽는 배열이 stride의 "쓰레기 값" 때문에 비연속으로 분류되는 일이 없어요. 예를 들어 `broadcast_to(row, (2, 3))[0:1]`은 shape `(1, 3)`, strides `(0, 8)`인데, 첫 축의 stride 0은 무시되므로 C 연속이에요(numpy 2.5.4도 같아요).
+
+직접 확인한 예예요(비공개 메서드 `_flags()`로 읽었어요).
+
+| 배열 | shape | strides | C | F |
+|---|:---:|:---:|:---:|:---:|
+| `zeros((3, 4))` | (3, 4) | (32, 8) | ✓ | – |
+| `zeros((3, 4)).T` | (4, 3) | (8, 32) | – | ✓ |
+| `zeros((3, 4)).T[1:, ::2]` | (3, 2) | (8, 64) | – | – |
+| `zeros((4, 1, 3))[:, :, 1:2]` | (4, 1, 1) | (24, 24, 8) | – | – |
+| `broadcast_to(row, (2, 3))[0:1]` | (1, 3) | (0, 8) | ✓ | ✓ |
+| `zeros((0, 5))[:, ::2]` | (0, 3) | (40, 16) | ✓ | ✓ |
+| complex 배열의 `real` | (3,) | (16,) | – | – |
+
+넷째 줄을 보세요. 길이 1인 축 둘은 건너뛰지만, 남은 첫 축의 stride가 24인데 기대값은 8이에요. 원소가 24바이트 간격으로 떨어져 있어 연속이 아니에요.
+
+플래그는 계산 비용이 $O(\text{ndim})$이고, 여러 곳의 fast path가 읽어요: 버퍼 프로토콜로 내보낼 때의 연속성 요청(`PyBUF_C_CONTIGUOUS` 등), bool 버퍼 검사, 리덕션·정렬·검색의 연속 경로. 원소별 연산은 플래그 대신 이터레이터가 축을 합쳐서 연속 구간을 찾아요([연산 엔진](/internals/array/engine/)). 플래그는 공개 속성이 아니고, 테스트용 비공개 메서드 `_flags()`로만 볼 수 있어요.
+
+### 새 배열의 레이아웃
+
+새 배열을 만드는 함수는 셋이에요(`csrc/array/ndarray.cpp`).
+
+| 함수 | 레이아웃 | 쓰는 곳 |
+|---|---|---|
+| `new_array(dtype, shape)` | C 순서 | 생성 함수, 브로드캐스트된 결과 |
+| `new_array_like(proto, dtype)` | `proto`의 메모리 축 순서 (numpy의 `order='K'`) | `astype`, `copy`, `*_like`, 원소별 연산의 결과 |
+| `new_array_strided(dtype, shape, strides, nbytes)` | 부르는 쪽이 정한 strides | linalg의 열 우선(LAPACK) 결과 |
+
+앞의 둘은 내부의 `allocate`가 축 순서 `order`(느리게 변하는 축부터)를 받아 stride를 안쪽부터 쌓아요.
+
+$$
+\text{strides}[\text{order}[k]] \;=\; \text{itemsize} \cdot \prod_{m > k} \max(\text{shape}[\text{order}[m]],\, 1)
+$$
+
+`max(…, 1)` 때문에 길이 0인 축이 있어도 다른 축의 stride는 0이 되지 않아요. 예를 들어 `zeros((5, 0, 3))`의 strides는 `(24, 24, 8)`이에요. 빈 배열이라 닿는 바이트가 없으므로 값에는 영향이 없어요. numpy 2.5.4는 빈 배열의 strides를 모두 0으로 두는데(`np.zeros((5, 0, 3)).strides`가 `(0, 0, 0)`), 이 차이는 결과의 값이나 연속성 판정(빈 배열은 언제나 양쪽 연속)에 영향을 주지 않아요.
+
+`new_array_like`는 원본 strides의 **절댓값 내림차순**으로 축을 정렬해 `order`를 만들어요. F 순서 원본이면 F 순서 결과가, 전치된 배열이면 전치된 메모리 순서의 결과가 나와요. 그래서 F 순서 배열에 원소별 연산을 해도 결과가 F 순서라, 다음 연산에서도 이터레이터가 축을 하나로 합칠 수 있어요.
+
+축 정렬은 **insertion sort**예요. 축은 최대 32개라 $O(\text{ndim}^2)$도 작고, `std::stable_sort`는 호출할 때마다 임시 버퍼를 힙에 할당해요. 같은 stride는 원래 순서를 유지해야(안정 정렬) C 순서 원본이 C 순서 결과를 내요. insertion sort는 그 자체로 안정 정렬이에요.
+
+## 뷰와 base
+
+### 뷰를 만드는 방법: `view_of`
+
+뷰를 만드는 모든 함수(기본 인덱싱, `reshape`, `permute_dims`, `.T`, `.mT`, `broadcast_to`, `real`/`imag` …)는 `view_of`에서 시작해요.
+
+```cpp
+// csrc/bind/pyutil.cpp
+NDArray view_of(nb::handle x) {
+    const NDArray& a = as_ndarray(x);
+    NDArray v = a;                                             // Buffer 공유, 플래그도 복사
+    v.base = a.base.is_valid() ? a.base : nb::borrow(x);       // 최종 소유자로 접는다
+    return v;
+}
+```
+
+그다음 부르는 쪽이 `data`, `shape`, `strides`를 고치고 `update_flags()`를 불러요. 원본의 `writeable`도 그대로 복사되므로, **쓰기 금지 배열의 뷰는 쓰기 금지**예요.
+
+### base는 최종 소유자로 접혀요
+
+`base`는 Python의 `.base` 속성으로 보이는 값이에요. 규칙은 하나예요. **원본에 base가 있으면 그것을, 없으면 원본 자신을** 새 뷰의 base로 삼아요. 그래서 뷰의 뷰의 뷰를 만들어도 base는 늘 메모리를 실제로 가진 배열이에요.
+
+```python
+>>> a = sd.zeros((3, 4))
+>>> a.base is None
+True
+>>> v = a.T[1:, ::2]
+>>> v.strides
+(8, 64)
+>>> v.base is a
+True
+```
+
+`a.T`(중간 뷰)는 `v`의 base가 아니에요. 사슬을 만들지 않는 이유는 둘이에요.
+
+- **중간 뷰를 붙잡지 않아요.** 사슬이면 `v`가 살아 있는 동안 `a.T` 객체도 살아 있어야 해요. 루프에서 뷰를 거듭 만들면 쓸모없는 중간 객체가 줄줄이 남아요.
+- **소유자를 찾는 비용이 상수예요.** 사슬이면 소유자를 찾을 때 깊이만큼 따라가야 해요.
+
+numpy 2.x도 같은 방식으로 접어요(numpy 2.5.4에서 `a.T[1:, ::2].base is a`가 True인 것을 확인했어요).
+
+### base의 세 가지 경우
+
+| 배열이 어디서 왔나 | `buffer` | `base` (`.base`) |
+|---|---|---|
+| stardust가 직접 할당 | 자기 Buffer | `None` |
+| 그 배열의 뷰 | 같은 Buffer (공유) | 메모리를 할당한 배열 |
+| 버퍼 프로토콜로 공유 (`asarray(numpy_array)`) | `adopt`한 Buffer | 내보낸 객체 (예: numpy 배열) |
+| DLPack으로 공유 (`from_dlpack`) | **비어 있음** | 생산자의 텐서를 쥔 capsule |
+| frame 컬럼의 읽기 전용 뷰 (`Series.to_array`) | 컬럼과 같은 Buffer | `None` |
+
+- **`buffer`와 `base`는 하는 일이 달라요.** `buffer`는 C++ 쪽 수명(커널이 읽는 동안 메모리가 살아 있게)을, `base`는 Python 쪽 의미(`.base`)와 Python 객체가 가진 메모리의 수명을 맡아요. 직접 할당한 배열의 뷰는 둘 다로 메모리를 붙잡지만, 둘 다 참조 카운트 하나씩이라 비용은 작아요.
+- **DLPack 배열은 `buffer`가 비어 있어요.** DLPack 텐서의 메모리는 생산자의 deleter를 불러야 놓이는데, 그 일을 하는 capsule 객체(`sd_dlpack_owner`)가 `base`로 붙어 있어요. 그래서 이 경우 메모리 수명은 `base` 하나가 맡아요. `buffer`를 직접 읽는 코드는 이 경우를 고려해야 해요. 배열 영역의 커널은 `data`만 읽으므로 문제가 없어요.
+- frame 컬럼의 뷰는 Buffer를 공유하지만 base가 `None`이에요. 이 뷰는 쓰기 금지라, 메모리를 바꿀 수 있는 쪽은 frame뿐이고, frame은 위에서 본 Copy-on-Write로 쓰기 전에 복사해요.
+
+### 외부로 내보낼 때
+
+반대로 stardust 배열을 numpy나 `memoryview`가 읽을 때(버퍼 프로토콜 `bf_getbuffer`, `csrc/bind/array_bind.cpp`)는 `Py_buffer.obj`에 배열 객체 자신의 참조를 넣어요. 내보낸 동안 배열과 그 Buffer가 살아 있어요. `Py_buffer.shape`과 `.strides`는 `NDArray` 안의 고정 배열을 **그대로** 가리켜요. 배열의 shape과 strides는 만든 뒤 바뀌지 않고, 배열이 살아 있는 동안 주소도 그대로이므로 복사본이 필요 없어요(`static_assert(sizeof(Py_ssize_t) == sizeof(std::int64_t))`로 타입 크기를 확인해요). 자세한 것은 [Python과 C++의 경계](/internals/core/python-boundary/)에 있어요.
+
+## 쓰기 금지 배열
+
+`writeable`이 `false`인 배열에 쓰면 `ValueError`예요. 이 플래그가 꺼지는 곳은 정해져 있어요.
+
+| 어디서 | 이유 |
+|---|---|
+| `broadcast_to`, `broadcast_arrays`의 결과 | stride 0인 축 때문에 여러 인덱스가 같은 메모리를 가리켜요. 한 칸에 쓰면 여러 칸이 함께 바뀌어요 (numpy도 같아요) |
+| 실수 배열의 `imag` | 가리킬 허수부 메모리가 없어서 0으로 채운 새 배열을 줘요. 여기에 써도 원본에 닿지 않으니 막아요 (numpy와 같아요) |
+| 읽기 전용으로 가져온 외부 버퍼 | `Py_buffer.readonly`를 따라요 |
+| DLPack 읽기 전용 표시가 있는 텐서 | 버전 있는 DLPack의 `READ_ONLY` 플래그를 따라요 |
+| frame 컬럼의 뷰 (`Series.to_array`) | frame의 Copy-on-Write가 배열 쪽 쓰기를 추적할 수 없어서예요 |
+| 위 배열들의 뷰 | `view_of`가 플래그를 그대로 복사해요 |
+
+플래그를 다시 켜는 공개 API는 없어요. 고칠 수 있는 배열이 필요하면 `copy()`로 복사해요.
+
+검사하는 곳도 정해져 있어요: 인덱스 대입(`assign_checked`, `csrc/array/ops/copy.cpp`, 그리고 고급 인덱스 대입의 입구), 원소별 연산의 `out=`와 in-place 연산자(`"output array is read-only"`), 버퍼 프로토콜로 쓰기 가능한 뷰를 요청받을 때(`PyBUF_WRITABLE`), 옛 형식의 DLPack 내보내기(읽기 전용 표시를 담을 자리가 없어서 `BufferError`).
+
+## 메모리 겹침
+
+### 문제
+
+`a[1:] += a[:-1]`을 생각해 봐요. 출력 `a[1:]`과 입력 `a[:-1]`이 원소 n-1개를 공유해요. 앞에서부터 순서대로 계산하면 `a[1]`에 쓴 값을 바로 다음 단계에서 `a[:-1]`의 원소로 다시 읽어요. 결과는 누적 합이 돼 버려요.
+
+<Fig caption="a = [0, 1, 2, 3, 4, 5]에서 a[1:] += a[:-1]. 앞에서부터 순서대로 쓰면 바뀐 값을 다시 읽어 누적 합이 되고, 보장된 결과는 원래 값끼리 더한 것이에요.">
+  <ArrayFig name="입력 (원래 값)" data={[0, 1, 2, 3, 4, 5]} />
+  <Op>→</Op>
+  <ArrayFig name="순서대로 덮어쓰면" data={[0, 1, 3, 6, 10, 15]} tones={['m', 'g', 'g', 'g', 'g', 'g']} note="틀린 결과" />
+  <ArrayFig name="보장된 결과" data={[0, 1, 3, 5, 7, 9]} tones={['m', 'a', 'a', 'a', 'a', 'a']} note="a[i] = 원래 a[i] + 원래 a[i-1]" />
+</Fig>
+
+더 나쁜 점은, 순서대로 덮어쓴 결과조차 **정해져 있지 않다**는 거예요. 이터레이터는 축 순서를 바꾸고(stride가 큰 축을 바깥으로) 큰 배열은 여러 스레드가 조각으로 나눠 동시에 돌아요. 겹침을 처리하지 않으면 결과가 메모리 레이아웃과 스레드 수에 따라 달라져요. "같은 데이터, 같은 레이아웃이면 스레드 수와 무관하게 같은 비트"라는 결정성 규칙([스레드풀과 결정성](/internals/core/threads/))을 지킬 수 없어요.
+
+### 보장
+
+> 결과는 **모든 입력을 다 읽은 다음 출력을 쓴 것**과 같아요.
+
+numpy와 같은 의미론이에요. numpy는 1.13부터 ufunc의 입력과 출력이 겹칠 때 이 결과를 보장해요 [2].
+
+```python
+>>> x = sd.arange(10)
+>>> x[1:] += x[:-1]
+>>> x
+array([ 0,  1,  3,  5,  7,  9, 11, 13, 15, 17], dtype=int64)
+```
+
+### 판정: 바이트 범위가 겹치는가
+
+두 배열이 **닿을 수 있는** 바이트의 범위 $[\text{lo}, \text{hi})$를 구해서, 두 범위가 겹치는지만 봐요(`csrc/array/ops/copy.cpp`의 `may_share_memory`).
+
+$$
+\text{lo} = \texttt{data} + \sum_{d} \min\bigl(0,\ (n_d - 1)\, s_d\bigr), \qquad
+\text{hi} = \texttt{data} + \sum_{d} \max\bigl(0,\ (n_d - 1)\, s_d\bigr) + \text{itemsize}
+$$
+
+$n_d$는 축 $d$의 길이, $s_d$는 stride예요. 음수 stride는 lo를 아래로, 양수 stride는 hi를 위로 넓혀요. 두 배열 A, B가 겹칠 수 있는 조건은
+
+$$
+\text{lo}_A < \text{hi}_B \quad\text{and}\quad \text{lo}_B < \text{hi}_A
+$$
+
+이에요. 빈 배열은 닿는 바이트가 없으므로 겹치지 않는다고 봐요.
+
+```cpp
+// csrc/array/ops/copy.cpp (발췌)
+ByteRange byte_range(const NDArray& a) {
+    auto lo = reinterpret_cast<std::uintptr_t>(a.data), hi = lo;
+    for (int d = 0; d < a.ndim; ++d) {
+        const std::int64_t span = (a.shape[d] - 1) * a.strides[d];
+        if (span < 0) lo -= static_cast<std::uintptr_t>(-span);
+        else hi += static_cast<std::uintptr_t>(span);
+    }
+    return {lo, hi + static_cast<std::uintptr_t>(a.itemsize())};
+}
+
+bool may_share_memory(const NDArray& a, const NDArray& b) {
+    if (a.size() == 0 || b.size() == 0) return false;
+    const ByteRange ra = byte_range(a), rb = byte_range(b);
+    return ra.lo < rb.hi && rb.lo < ra.hi;
+}
+```
+
+**비용은 $O(\text{ndim})$**이에요. 배열 크기와 무관하고, 할당도 없어요. 원소별 연산 한 번에 입력마다 한 번씩 불러요.
+
+**보수적인 검사예요.** "겹칠 수 있다"고 답한 경우에 실제로는 겹치지 않을 수 있어요(거짓 양성). 반대로 실제로 겹치는데 "겹치지 않는다"고 답하는 일(거짓 음성)은 없어요. 예를 들어 `x[::2]`와 `x[1::2]`는 서로 엇갈려 있어서 공유하는 바이트가 하나도 없지만, 두 범위는 거의 전부 겹쳐요.
+
+<Fig caption="x[::2](연한 칸)와 x[1::2](진한 칸)는 공유하는 원소가 없지만, 바이트 범위는 겹쳐요. 검사는 '겹칠 수 있다'고 답하고, 불필요한 복사가 한 번 생겨요.">
+  <ArrayFig name="x의 메모리" data={[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]} tones={['a', 'b', 'a', 'b', 'a', 'b', 'a', 'b', 'a', 'b']} note="x[::2]의 범위 [0, 9), x[1::2]의 범위 [1, 10) (원소 단위)" />
+</Fig>
+
+**정확한 검사를 쓰지 않는 이유.** 두 strided 배열이 정말로 같은 바이트를 공유하는지는, 각 배열의 주소 식 두 개가 같은 값을 가질 수 있는지 묻는 **유계 선형 디오판토스 방정식** 문제예요. numpy는 이것을 푸는 `numpy.shares_memory`를 따로 제공하는데, 문서에 일반적으로 NP-완전이라 차원 수에 대해 지수 시간이 걸릴 수 있다고 적혀 있어요 [3]. 연산마다 부르는 검사로는 맞지 않아요. 보수적인 검사의 대가는 드물게 생기는 불필요한 복사 한 번이고, 그 복사는 결과의 값을 바꾸지 않아요. numpy의 `numpy.may_share_memory`도 기본으로 같은 범위 검사를 해요(numpy 2.5.4에서 `may_share_memory(x[::2], x[1::2])`가 True, `shares_memory`가 False인 것을 확인했어요).
+
+### 예외: 완전히 같은 뷰
+
+입력과 출력의 `data`, `dtype`, `ndim`, `shape`, `strides`가 모두 같으면(`same_view`) 복사하지 않아요. `a += a`나 `sd.exp(a, out=a)`가 이 경우예요.
+
+- 원소별 연산은 원소 i를 읽고 **같은 자리**에 결과를 써요. 출력 원소 i는 입력 원소 i에만 의존해요.
+- 이터레이터가 축 순서를 바꾸든, 스레드가 구간을 나누든, 각 원소의 "읽고 쓰기"가 같은 주소에서 일어나므로 다른 원소의 입력을 망가뜨리지 않아요.
+- 비교는 $O(\text{ndim})$이에요.
+
+dtype이 다르면 같은 주소에서 시작해도 `same_view`가 아니고, 겹치면 복사해요. 예외를 "완전히 같은 뷰" 하나로 좁혀 두어야 안전하다는 논증이 짧고 확실해요.
+
+### 겹칠 때 하는 일
+
+겹치는 **입력만** 새 배열로 복사한 뒤(`cast_copy(in, in.dtype)`, 원본의 메모리 축 순서를 따르는 새 배열), 그 복사본을 입력으로 연산해요. 시간과 메모리 모두 그 입력의 크기에 비례하는 $O(n)$이 더 들어요.
+
+```cpp
+// csrc/array/ops/ufunc.cpp의 launch (발췌): out=가 결과 dtype과 같을 때
+for (size_t k = 0; k < nin; ++k)
+    if (may_share_memory(ins[k], out) && !same_view(ins[k], out))
+        ins[k] = cast_copy(ins[k], ins[k].dtype);
+run_loop(inputs, in_types, std::span(&out, 1), out.shape_span(), loop, weight);
+```
+
+`out=`가 결과보다 넓은 dtype이면(예: int64 결과를 float64 `out`에) 결과 dtype의 새 배열에 먼저 계산하고 `assign`으로 `out`에 변환해 넣어요. 새 배열은 누구와도 겹치지 않으므로 모든 입력을 다 읽은 뒤 `out`에 쓰게 되고, 보장이 저절로 지켜져요.
+
+### 어디에 적용되나
+
+| 연산 | 겹침을 검사하는 대상 |
+|---|---|
+| 원소별 연산의 `out=` | 각 입력 vs `out` |
+| in-place 연산자 `x op= y` | `op(x, y, out=x)`와 같아요 |
+| 기본 인덱스 대입 `x[1:] = x[:-1]` | 값 vs 대상 (`assign`) |
+| 고급 인덱스 대입 `x[idx] = v`, `x[mask] = v` | 값, **인덱스 배열**, **마스크** vs `x` |
+
+고급 인덱스 대입에서 인덱스 배열과 마스크까지 검사하는 이유는 값뿐 아니라 **메모리 안전성** 때문이에요. `a[a] = 2`를 생각해 봐요(int 배열 `a`가 자기 자신의 인덱스). 인덱스는 먼저 범위 검사를 통과한 뒤 쓰기에 쓰이는데, 앞의 쓰기가 뒤에서 읽을 인덱스 값을 바꾸면, **범위 검사를 이미 통과한 인덱스가 범위 밖 값으로 바뀌어** 배열 밖의 메모리에 쓸 수 있어요. 그래서 `x`와 겹치는 인덱스 배열과 마스크는 쓰기 전에 복사해요(`csrc/array/ops/indexing.cpp`의 `scatter`). 자세한 것은 [인덱싱](/internals/array/indexing/)에 있어요.
+
+## 0차원 배열이 없는 이유 (구현 쪽)
+
+사용자 쪽 규칙은 이래요: 결과가 암묵적으로 0차원이 되면(`a[1, 2]`, `sum(a)`, 스칼라끼리의 ufunc) Python 스칼라를 돌려주고, 0차원을 명시적으로 요청하면(`asarray(5)`, `zeros(())`, `reshape(())`) `ValueError`예요. 여기서는 이 규칙이 구현에 주는 것을 적어요.
+
+**불변식: 모든 NDArray는 $1 \le \text{ndim} \le 32$예요.** 배열이 만들어지는 모든 입구가 이것을 지켜요.
+
+| 입구 | 검사 |
+|---|---|
+| `new_array`, `new_array_like`, `reshape`, `broadcast_to`, 생성 함수 | `checked_size`가 빈 shape을 거부 |
+| `asarray(스칼라)` | Python 스칼라면 바로 `ValueError` |
+| 버퍼 프로토콜 | `view.ndim == 0`이면 `ValueError` |
+| DLPack | `ndim == 0`이면 `ValueError` |
+
+이 불변식 덕분에 이런 것들이 단순해져요.
+
+- **"마지막 축"이 언제나 있어요.** 행 우선 순회(`for_each_element`, `csrc/array/ndarray.hpp`)는 `last = ndim - 1`로 가장 안쪽 축을 잡고 `shape[last]`를 읽어요. ndim이 0일 수 있다면 이 자리마다 따로 분기해야 해요. 이터레이터도 크기 1인 축을 다 지운 뒤 축이 하나도 남지 않으면 길이 1인 축 하나로 되돌려, 커널이 언제나 1차원 구간을 받게 해요.
+- **결과의 종류가 shape만으로 정해져요.** 함수마다 "결과가 0차원 배열인가 스칼라인가"를 따질 필요가 없어요. 원소 하나짜리 결과는 `load_python`(`visit_dtype`으로 꺼내 Python `bool`/`int`/`float`/`complex`를 만드는 함수)을 거쳐 바로 Python 스칼라가 돼요. numpy의 "배열 스칼라"(`numpy.float64` 같은 타입)에 해당하는 타입이 없어요.
+- **스칼라만으로 하는 계산은 배열을 만들지 않아요.** ufunc의 피연산자가 모두 Python 스칼라이고 `out=`이 없으면, 스택 위의 16바이트 칸에 값을 변환해 놓고 루프를 `n = 1`로 한 번 돌린 뒤 결과를 Python 스칼라로 꺼내요(`launch_scalars`, `csrc/array/ops/ufunc.cpp`). 배열 경로와 같은 루프, 같은 변환을 쓰므로 비트가 같고(`f(x)[i] == f(x[i])`), 코드 주석에 따르면 호출 한 번에 약 90ns가 줄어요.
+- **Python 스칼라 피연산자는 원소 1개짜리 1차원 배열이 돼요.** `x + 1.0`의 `1.0`은 루프 dtype으로 변환한 shape `(1,)` 배열이 되고, 이터레이터가 stride 0으로 브로드캐스트해요. 0차원 배열이라는 특수한 경우를 거치지 않아요.
+- 정수 계산은 int64 의미론(wrap)으로 한 다음 Python `int`가 되고, 그 뒤로는 Python 의미론이라 오버플로가 없어요.
+
+## 성능
+
+데이터 모델 자체의 비용은 대부분 "배열 하나를 만드는 고정 비용"이에요.
+
+| 항목 | 비용 |
+|---|---|
+| 뷰 만들기(전치, 슬라이스, 브로드캐스트) | $O(\text{ndim})$. 배열 크기와 무관해요. 메모리 할당은 Python 객체 하나뿐이에요 |
+| 새 배열 (256바이트 이하) | `malloc` 1번 (Buffer + 데이터 + 제어 블록 함께) |
+| 새 배열 (256바이트 초과) | `malloc` 2번 (Buffer + 제어 블록, 데이터) |
+| `update_flags`, `checked_size` | $O(\text{ndim})$ |
+| 겹침 검사 (`may_share_memory`, `same_view`) | 입력마다 $O(\text{ndim})$. 겹치면 그 입력의 복사 $O(n)$ |
+| 메모리 오버헤드 | `NDArray` 560바이트 + Buffer 384바이트 + 제어 블록 |
+
+작은 배열에서 잰 값이에요(원소 3개, Apple M4 Pro, numpy 2.5.4). 처음 세 줄은 이번에 새로 잰 벤치마크이고, `zeros(3)`은 설계 문서에 적힌 측정값이에요.
+
+<Bench
+  rows={[
+    { label: 'x[1, 2]', times: [35e-9, 25e-9] },
+    { label: 'a + b (원소 3개)', times: [158e-9, 181e-9] },
+    { label: 'sum(a) (원소 3개)', times: [581e-9, 92e-9] },
+    { label: 'zeros(3)', times: [61e-9, 99e-9] },
+  ]}
+  series={['numpy', 'stardust 1스레드']}
+  caption="작은 배열의 호출 비용. 큰 배열에서는 계산이 시간을 정하므로 데이터 모델의 고정 비용은 보이지 않아요."
+/>
+
+- `x[1, 2]`처럼 원소 하나를 꺼내는 경우는 numpy보다 빨라요. 결과는 `load_python`으로 만든 Python 스칼라이고, 앞쪽 축이 Python int인 키는 키 해석을 건너뛰는 fast path가 있어요([인덱싱](/internals/array/indexing/)).
+- 새 배열을 만드는 `zeros(3)`과 `a + b`는 아직 numpy보다 느려요. 남은 비용은 nanobind의 인스턴스 등록과 할당, `NDArray` 복사, 호출 경로에 고르게 퍼져 있어요. 자세한 분석과 시도했다가 넣지 않은 것들은 [작은 배열의 호출 비용](/internals/array/small-arrays/)에 있어요.
+- 큰 배열의 뷰 연산은 크기와 무관하게 상수 시간이에요. 1GB 배열의 전치도 2×2 배열의 전치와 비용이 같아요.
+
+## 참고 문헌
+
+1. NumPy 문서, "The N-dimensional array (ndarray)"의 "Internal memory layout of an ndarray" 절. strides로 원소 주소를 구하는 식과, 길이 1인 축·빈 배열에 대한 연속성 규칙(relaxed strides). https://numpy.org/doc/stable/reference/arrays.ndarray.html
+2. NumPy 1.13.0 릴리스 노트. ufunc의 입력과 출력이 메모리를 공유할 때의 결과를 정의한 변경.
+3. NumPy 문서, `numpy.shares_memory`와 `numpy.may_share_memory`. 정확한 겹침 판정의 계산 복잡도와 `max_work` 인자.

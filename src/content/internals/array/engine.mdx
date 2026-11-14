@@ -1,0 +1,816 @@
+---
+title: 연산 엔진
+group: 연산 엔진
+order: 1
+summary: 원소별 연산, 형변환, 복사, 축 방향 연산이 모두 같은 장치 위에서 돌아요. 1차원 커널 하나, N차원 문제를 긴 1차원 구간으로 바꾸는 이터레이터, 형변환을 작은 버퍼로 끼워 넣는 래퍼, 루프를 고르는 디스패처가 어떻게 생겼고 왜 그렇게 만들었는지 설명해요.
+seeAlso: [elementwise, conversion, reductions, data-model, small-arrays]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+import Plot from '../../../components/fig/Plot.astro';
+import Bench from '../../../components/fig/Bench.astro';
+
+## 한눈에 보기
+
+`x + y`, `sd.exp(x)`, `x.astype(sd.int64)`, `x.copy()`, `sd.sum(x, axis=0)`, `sd.sort(x, axis=1)`는 하는 일이 전부 다르지만, 안에서는 같은 뼈대를 써요. "같은 모양의 배열 여러 개를 나란히 걸어가며, 자리마다 작은 함수를 적용한다"는 뼈대예요. 이 페이지는 그 뼈대, 곧 **연산 엔진**을 다뤄요. 원소 하나하나를 어떻게 계산하는지(덧셈의 정의, NEON 커널, vForce)는 [원소별 커널](/internals/array/elementwise/)에서 다뤄요.
+
+엔진은 네 부품으로 되어 있어요.
+
+| 부품 | 파일 | 하는 일 |
+|---|---|---|
+| 커널(kernel) | `array/iter.hpp`의 `Loop` | 1차원 strided 구간 하나를 처리하는 함수 포인터. 모든 연산의 공통 형태예요 |
+| nd 이터레이터 | `array/iter.cpp`의 `NdIter` | N차원 문제를 되도록 적고, 길고, 메모리를 따라가는 1차원 구간으로 바꿔서 구간마다 커널을 불러요. 일이 크면 스레드에 나눠요 |
+| 버퍼 캐스팅 | `array/kernels/buffered.hpp`의 `BufferedLoop` | 입력 dtype이 루프 dtype과 다를 때, 4096원소씩 작은 버퍼로 변환하며 커널을 돌리는 래퍼. 그 자신도 커널 모양이라 이터레이터는 존재를 몰라요 |
+| ufunc 디스패처 | `array/ops/ufunc.cpp` | Python 피연산자를 받아 루프 dtype을 고르고, 출력(새 배열 또는 `out=`)을 정하고, 위 셋을 조립해요 |
+
+여기에 축 하나를 인덱스 순서로 봐야 하는 연산을 위한 **레인 처리**(`array/ops/lanes.hpp`)와, 이터레이터 밖에서 일을 손으로 나누는 **조각 나누기**(`array/ops/pieces.hpp`)가 붙어요.
+
+`x + y` 한 번이 지나가는 길은 이래요.
+
+```text
+Python: x + y
+  └─ ndarray.__add__  →  binary<ops::Add>(x, y, out=None, "+")          bind/array_bind.cpp
+       └─ run_binary: 피연산자 dtype → 승격 → 루프 dtype 선택             ops/ufunc.cpp
+            └─ launch: 스칼라만? out=? 새 결과 배열 할당(new_result)
+                 └─ run_loop: dtype이 다른 입력이 있으면 BufferedLoop로 감쌈
+                      └─ NdIter: 브로드캐스트 → 크기 1 축 제거 → 축 재정렬 → 차원 합치기
+                           └─ run: 일이 2^15 이상이면 조각으로 나눠 스레드풀에, 아니면 직렬
+                                └─ 가장 안쪽 구간마다 kernel(args, n, strides, ctx)
+                                     └─ binary_loop<Add, double>: 연속이면 인덱스 루프(NEON으로 벡터화)
+```
+
+핵심 아이디어는 네 가지예요.
+
+1. **커널은 1차원만 안다.** 차원 수, 브로드캐스팅, 메모리 배치, 스레드는 전부 이터레이터의 일이에요. 커널은 "시작 주소, 원소 수, 바이트 stride"만 받아요. 그래서 커널 하나가 모든 레이아웃에서 같은 코드로 돌고, 결과의 비트도 같아요.
+2. **N차원을 1차원으로 접는다.** 축을 메모리 순서로 다시 놓고, 이어진 축을 하나로 합쳐요. C 순서든 F 순서든 전치든, 메모리가 이어져 있으면 커널 호출 한 번으로 끝나요.
+3. **변환은 L1 캐시 안에서 한다.** `int64 + float64`에서 int64 입력 전체를 float64 임시 배열로 바꾸지 않고, 4096원소씩 바꾸면서 바로 계산해요. 메모리를 두 번 덜 지나가요.
+4. **나누는 방법은 데이터만 보고 정한다.** 어느 축을 몇 조각으로 자를지는 shape, 레이아웃, dtype으로만 정하고 스레드 수는 보지 않아요. 그래서 결과가 스레드 수와 무관하게 비트까지 같아요([스레드풀과 결정성](/internals/core/threads/)).
+
+이 엔진은 배열 영역만 쓰는 것이 아니에요. `sd.special`의 특수함수(`hyp2f1`, `airy` 등)도 같은 디스패처(`run_nary`)와 같은 이터레이터 위에서 돌아요. 피연산자 상한이 5인 것도 그 때문이에요(아래 "피연산자는 최대 5개").
+
+## 커널: 1차원 strided 루프 하나
+
+### 시그니처
+
+모든 커널은 이 함수 포인터 타입 하나예요(`array/iter.hpp`).
+
+```cpp
+using Loop = void (*)(std::byte* const* args, std::int64_t n,
+                      const std::int64_t* strides, void* ctx);
+```
+
+- `args[k]`: 피연산자 `k`의 첫 원소 주소예요. **입력이 앞, 출력이 뒤**예요. `add`라면 `args[0] = a`, `args[1] = b`, `args[2] = out`이에요.
+- `n`: 처리할 원소 수예요.
+- `strides[k]`: 피연산자 `k`에서 다음 원소까지의 거리(**바이트 단위**)예요. 0이면 같은 원소를 계속 읽는다는 뜻, 곧 브로드캐스트예요. 음수면 거꾸로 걸어가요.
+- `ctx`: 연산마다 필요한 상태를 넘기는 자리예요. 원소별 커널은 쓰지 않고(`nullptr`), 버퍼 캐스팅 래퍼(`BufferedLoop`)와 레인 처리(`LaneCtx`)가 써요.
+
+커널이 하는 일은 수식으로 이것뿐이에요. 피연산자 $k$의 $i$번째 원소는
+
+$$
+p_k(i) = \texttt{args}[k] + i \cdot \texttt{strides}[k], \qquad i = 0, 1, \dots, n-1
+$$
+
+에 있고, 커널은 각 $i$에서 $\text{out}(i) = f(\text{in}_0(i), \text{in}_1(i), \dots)$를 계산해요.
+
+### 왜 이 모양인가
+
+**numpy의 inner loop와 같은 모델이에요.** numpy의 ufunc 루프도 `void loop(char **args, npy_intp const *dimensions, npy_intp const *steps, void *data)` 모양의 1차원 strided 함수예요 [1]. 이 모델은 numpy가 오랫동안 써 온 검증된 경계예요. stardust는 일반화 ufunc(gufunc)의 "코어 차원"이 없으므로 `dimensions` 배열 대신 원소 수 `n` 하나만 넘겨요.
+
+**함수 포인터라서 표에 담을 수 있어요.** dtype은 실행 중에야 알지만(`DType` enum), 커널은 컴파일 시점에 타입이 정해진 템플릿(`binary_loop<ops::Add, double>`)이에요. 둘을 잇는 것이 "dtype 번호 → 함수 포인터" 표예요. 연산마다 `LoopTable` 하나(dtype 4칸)가 컴파일 시점에 채워지고, 실행 중에는 표에서 포인터 하나를 꺼내 부르면 끝이에요(아래 "ufunc 디스패치"). 캐스트도 같은 모양의 `cast[from][to]` 표(4×4 = 16칸, `array/kernels/cast.hpp`)예요.
+
+**바이트 stride라서 레이아웃을 가리지 않아요.** 연속 배열, 슬라이스(`x[::2]`), 전치, 브로드캐스트(stride 0), 뒤집기(음수 stride)가 모두 같은 시그니처로 표현돼요. 연속인 경우의 속도는 커널 안의 fast path가 챙겨요([원소별 커널](/internals/array/elementwise/)).
+
+**입력이 앞, 출력이 뒤라는 관례에 이터레이터가 기대요.** 이터레이터는 축 순서를 정할 때 **마지막 피연산자부터** 봐요(아래 "축 재정렬"). 마지막이 출력이라서 쓰기가 순차적이 돼요. 리덕션에서도 마지막 피연산자가 출력이라는 사실로 "어느 축을 잘라도 안전한가"를 판단해요.
+
+### 피연산자는 최대 5개
+
+`kMaxOperands = 5`예요. 이터레이터와 버퍼 래퍼는 피연산자별 정보를 고정 크기 배열(`std::array<..., kMaxOperands>`)에 담아서 호출마다 힙 할당을 하지 않아요. 배열 영역에서 피연산자가 가장 많은 것은 `where(cond, x1, x2) → out`의 4개예요. 5개는 `sd.special`의 `hyp2f1(a, b, c, z) → out`과 `airy(x) → (Ai, Ai', Bi, Bi')` 때문에 4에서 올렸어요. 올린 비용(고정 배열이 한 칸씩 커짐)은 짧은 원소별 호출에서 행마다 ±5% 안팎으로 흔들릴 뿐 일관된 회귀가 보이지 않았어요(설계 문서의 측정).
+
+### Python 스칼라는 원소 1개짜리 배열이 돼요
+
+`x + 1.0`의 `1.0`은 커널이 읽을 수 있도록 **루프 dtype의 원소 1개짜리 배열**로 바뀌어요(`prepare`). 이 배열은 shape이 `(1,)`이라 이터레이터가 브로드캐스트하면서 stride 0을 줘요. 그래서 커널에서 보면 `x + 1.0`은 "stride 0인 두 번째 입력"이에요. 미리 루프 dtype으로 바꿔 두므로 `int_arr + 1.5`에서 `1.5`를 원소마다 변환하는 일도 없어요. 원소 1개짜리 데이터(8–16바이트)는 Buffer 객체 안에 들어가므로 할당은 한 번이에요([데이터 모델](/internals/array/data-model/)).
+
+## nd 이터레이터
+
+### 무엇을 풀려는가
+
+배열의 원소 $(i_0, i_1, \dots, i_{d-1})$은 메모리의
+
+$$
+\text{addr}(i_0, \dots, i_{d-1}) = \texttt{data} + \sum_{j=0}^{d-1} i_j \cdot s_j
+$$
+
+에 있어요($s_j$는 축 $j$의 바이트 stride). 가장 쉬운 구현은 C 순서로 모든 인덱스 조합을 돌며 이 식을 계산하는 것이지만, 두 가지가 나빠요.
+
+- **원소마다 N차원 인덱스를 다루는 비용**이 계산 자체보다 커요. 덧셈 하나는 1사이클도 안 걸리는데, 인덱스를 올리고 주소를 다시 계산하는 데 여러 명령이 들어요.
+- **메모리를 띄엄띄엄 읽어요.** 전치된 배열을 인덱스 순서로 읽으면 매번 큰 stride로 건너뛰어요. 캐시 라인(이 Mac에서 128바이트) 하나를 가져와 8바이트만 쓰고 버리게 돼요.
+
+그래서 이터레이터는 문제를 **"바깥 축들을 도는 작은 루프 + 가장 안쪽의 긴 1차원 구간"** 으로 바꿔요. 커널은 안쪽 구간을 한 번에 처리하고, 이터레이터는 바깥 축만 세요. 안쪽 구간이 길수록 커널 호출 횟수가 줄고, 안쪽 구간이 연속일수록 커널이 벡터 명령을 쓸 수 있어요.
+
+이것은 numpy `nditer`(C에서는 `NpyIter`)의 축소판이에요 [2][3]. 생성자 하나(`NdIter::NdIter`)가 다섯 단계를 차례로 해요.
+
+### 1단계: 브로드캐스팅은 stride 0
+
+모든 피연산자를 공통 shape에 맞춰요. 규칙은 numpy와 같아요. 오른쪽 끝부터 맞추고, 각 축의 길이가 같거나 한쪽이 1이어야 해요([브로드캐스팅](/api/array/broadcasting/)).
+
+이터레이터는 늘어난 배열을 만들지 않아요. **늘어나는 축의 stride를 0으로** 둘 뿐이에요. stride가 0이면 그 축을 따라 걸어도 주소가 그대로라서, 같은 값을 계속 읽어요.
+
+```cpp
+// NdIter 생성자의 1단계 (array/iter.cpp, 줄이고 다듬은 발췌)
+for (int k = 0; k < nop_; ++k) {
+    const int offset = ndim - ops[k].shape.size();          // 오른쪽 정렬
+    for (int d = 0; d < ndim; ++d) {
+        const int od = d - offset;
+        if (od < 0 || ops[k].shape[od] == 1) strides_[k][d] = 0;               // 없는 축, 길이 1 축
+        else if (ops[k].shape[od] == shape[d]) strides_[k][d] = ops[k].strides[od];
+        else throw nb::value_error("operand of shape ... cannot be broadcast to ...");
+    }
+}
+```
+
+`(3, 4)` 배열 `m`에 `(4,)` 배열 `row`를 더하면 `row`의 stride는 `(0, 8)`이 되고, `(3, 1)` 배열 `col`을 더하면 `col`의 stride는 `(8, 0)`이 돼요.
+
+<Fig caption="row는 메모리에 값이 넷뿐이에요. 축 0의 stride를 0으로 두면 세 행이 모두 같은 네 값을 읽어요. 점선 칸은 메모리에 없는 값이에요.">
+  <ArrayFig name="row의 메모리" data={[10, 20, 30, 40]} tones={['a', 'a', 'a', 'a']} note="shape (4,), strides (8,)" />
+  <Op note="strides (0, 8)">→</Op>
+  <ArrayFig name="이터레이터가 보는 row" data={[[10, 20, 30, 40], [10, 20, 30, 40], [10, 20, 30, 40]]} tones={[['a', 'a', 'a', 'a'], ['g', 'g', 'g', 'g'], ['g', 'g', 'g', 'g']]} note="shape (3, 4)" />
+</Fig>
+
+공통 shape은 `broadcast_into`가 고정 크기 배열(`Dims = std::array<std::int64_t, 32>`)에 구해요. 피연산자가 몇 개든 `std::vector`를 만들지 않아요. 맞지 않으면 `ValueError: shapes could not be broadcast together: (2, 3) (2,)`처럼 모든 피연산자의 shape을 적어요.
+
+공통 shape에 0이 있으면(빈 배열) 여기서 `empty_`를 세우고 끝나요. `run`은 아무것도 하지 않아요.
+
+### 2단계: 크기 1인 축 제거
+
+길이 1인 축은 걸어갈 일이 없어요. 남겨 두면 다음 단계의 정렬과 합치기를 방해할 뿐이라 지워요. 모든 축이 길이 1이면(원소가 하나) 길이 1, stride 0인 축 하나를 남겨서 커널을 한 번 부르게 해요.
+
+### 3단계: 축 재정렬
+
+**stride 절댓값이 큰 축을 바깥에** 둬요. 그러면 가장 안쪽 축이 가장 작은 stride, 곧 메모리에서 가장 촘촘한 방향이 돼요. 전치된 배열도 메모리 순서로 읽혀요.
+
+비교 규칙은 이래요(`outer(a, b)`: 축 `a`가 축 `b`보다 바깥이어야 하는가).
+
+1. **마지막 피연산자(출력)부터** 두 축의 $\lvert s \rvert$를 비교해요. 다르면 큰 쪽이 바깥이에요.
+2. 어느 한쪽 stride가 0이면 그 피연산자는 **정보가 없다**고 보고 건너뛰어요. 브로드캐스트되는 축은 메모리 순서에 대해 아무것도 말해 주지 않기 때문이에요.
+3. 같으면 그 앞 피연산자를 봐요. 거꾸로 차례로 내려가요.
+4. 끝까지 정해지지 않으면 원래 순서를 유지해요.
+
+```cpp
+// NdIter 생성자의 3단계 (array/iter.cpp, 줄이고 다듬은 발췌)
+auto outer = [&](int a, int b) {
+    for (int k = nop_ - 1; k >= 0; --k) {                 // 출력부터
+        const std::int64_t sa = std::llabs(strides_[k][a]), sb = std::llabs(strides_[k][b]);
+        if (sa == 0 || sb == 0) continue;                  // 브로드캐스트: 정보 없음
+        if (sa != sb) return sa > sb;
+    }
+    return false;                                          // 같으면 원래 순서
+};
+for (int i = 1; i < ndim_; ++i)                            // insertion sort
+    for (int j = i; j > 0 && outer(perm[j], perm[j - 1]); --j) std::swap(perm[j], perm[j - 1]);
+```
+
+**왜 출력이 먼저인가.** 출력의 쓰기가 순차적이 되게 하려는 것이에요. 원소별 연산의 새 출력은 대개 입력의 레이아웃을 따라 만들어지므로(아래 "출력 레이아웃") 보통은 입력과 출력의 순서가 일치해요. 둘이 어긋나는 것은 `out=`로 레이아웃이 다른 배열을 주었을 때나, 레이아웃이 서로 다른 두 배열을 섞었을 때예요. 그때는 출력의 순서를 따르고 입력 쪽이 strided로 읽혀요.
+
+**왜 insertion sort인가.** 축은 많아야 32개예요. $O(d^2)$이지만 $d \le 32$이고 보통 $d \le 4$라서 몇십 번의 비교로 끝나요. 같은 키에서 원래 순서를 지키는 안정 정렬이라 C 연속 배열은 손대지 않은 채 그대로 나와요. `std::stable_sort`는 호출마다 임시 버퍼를 할당하는데, 작은 배열에서는 그 할당이 연산 전체보다 비싸요([작은 배열의 호출 비용](/internals/array/small-arrays/)). 정렬은 축 번호 배열 `perm`만 바꾸고, 마지막에 shape과 stride의 앞 `ndim`칸만 복사해 다시 놓아요.
+
+#### 예: 전치된 배열을 읽는 순서
+
+`f`가 `(2, 3)` C 순서 float64 배열이면 `f.T`는 shape `(3, 2)`, stride `(8, 24)`인 뷰예요. 메모리는 그대로예요. 인덱스 순서(C 순서)로 `f.T`를 읽으면 메모리 위치 0, 3, 1, 4, 2, 5를 차례로 방문해요. 재정렬하면 stride가 큰 축 1이 바깥으로 나가서 0, 1, 2, 3, 4, 5 순서가 돼요.
+
+<Fig caption="f.T의 메모리 여섯 칸에 방문 순서를 적었어요. 왼쪽은 인덱스 순서(재정렬 없음), 오른쪽은 재정렬 후예요. 오른쪽은 메모리를 처음부터 끝까지 한 번 훑어요.">
+  <ArrayFig name="인덱스 순서" data={[1, 3, 5, 2, 4, 6]} tones={['a', '', '', 'a', '', '']} note="메모리 위치 0…5의 방문 순서" />
+  <Op>→</Op>
+  <ArrayFig name="재정렬 후" data={[1, 2, 3, 4, 5, 6]} tones={['a', 'a', 'a', 'a', 'a', 'a']} note="메모리 순서 그대로" />
+</Fig>
+
+비공개 진단 함수 `sd._core._iter_plan`으로 각 단계의 결과를 볼 수 있어요. 피연산자는 `[f.T, 스칼라, 출력]`이고 출력은 `f.T`와 같은 F 순서예요.
+
+| 모드 | shape | stride (`f.T`, 스칼라, 출력) | 커널 호출 |
+|:---:|:---:|:---:|:---:|
+| `naive` | `(3, 2)` | `(8, 24)`, `(0, 0)`, `(8, 24)` | 3번, 길이 2, stride 24 |
+| `reorder` | `(2, 3)` | `(24, 8)`, `(0, 0)`, `(24, 8)` | 2번, 길이 3, stride 8 |
+| `full` | `(6,)` | `(8,)`, `(0,)`, `(8,)` | 1번, 길이 6, 연속 |
+
+#### 예: 레이아웃이 다른 두 배열
+
+`F`가 `(1000, 1000)` C 순서이고 `FT = F.T`일 때 `FT + F`의 계획이에요. 출력 레이아웃에 따라 안쪽 축이 바뀌어요.
+
+| 출력 | 재정렬 후 stride (`FT`, `F`, 출력) | 순차적으로 읽고 쓰는 것 |
+|:---:|:---:|:---:|
+| `FT`처럼 F 순서 (기본, 아래 `new_result`) | `(8000, 8)`, `(8, 8000)`, `(8000, 8)` | `FT`, 출력 |
+| C 순서 (`out=`으로 줌) | `(8, 8000)`, `(8000, 8)`, `(8000, 8)` | `F`, 출력 |
+
+어느 경우든 출력은 순차적으로 쓰여요. 입력 하나는 stride 8000바이트로 읽히는데, 이것은 어떤 순서로도 피할 수 없어요(두 입력의 메모리 순서가 정반대라서). numpy도 이런 경우는 한쪽을 strided로 읽어요.
+
+<Callout title="음수 stride는 뒤집지 않아요">
+  재정렬은 stride의 절댓값만 보고, 음수 stride를 양수로 뒤집지 않아요. `x[::-1] + 1.0`의 계획은 shape `(n,)`, stride `(-8, 0, 8)`이 돼요. 커널의 연속 fast path는 `stride == sizeof(T)`일 때만 타므로, 뒤집힌 입력은 일반 strided 루프로 가요. numpy의 `NpyIter`는 기본으로 음수 stride 축을 뒤집어 메모리를 앞으로 걷게 해요(`NPY_ITER_DONT_NEGATE_STRIDES`로 끌 수 있음) [3]. stardust에는 그런 단계가 없어요.
+</Callout>
+
+### 4단계: 차원 합치기 (coalescing)
+
+재정렬 뒤에 이웃한 두 축 $d$(바깥)와 $d+1$(안쪽)이 **모든 피연산자에서**
+
+$$
+s_k[d] = s_k[d+1] \cdot n_{d+1} \qquad (k = 0, \dots, \text{nop}-1)
+$$
+
+을 만족하면, 곧 "바깥 축으로 한 칸 = 안쪽 축으로 $n_{d+1}$칸"이면 두 축은 사실 하나의 긴 축이에요. 길이 $n_d \cdot n_{d+1}$, stride $s_k[d+1]$인 축 하나로 합쳐요.
+
+```cpp
+// NdIter 생성자의 4단계 (array/iter.cpp, 줄이고 다듬은 발췌)
+int out = 0;
+for (int d = 1; d < ndim_; ++d) {
+    bool mergeable = true;
+    for (int k = 0; k < nop_; ++k)
+        mergeable = mergeable && strides_[k][out] == strides_[k][d] * shape_[d];
+    if (mergeable) {                                   // 축 out과 d를 합침
+        shape_[out] *= shape_[d];
+        for (int k = 0; k < nop_; ++k) strides_[k][out] = strides_[k][d];
+    } else {                                           // 새 축 시작
+        ++out;
+        shape_[out] = shape_[d];
+        for (int k = 0; k < nop_; ++k) strides_[k][out] = strides_[k][d];
+    }
+}
+ndim_ = out + 1;
+```
+
+조건은 "연속"보다 넓어요. **띄엄띄엄이어도 간격이 일정하면** 합쳐져요. 아래는 `_iter_plan`으로 확인한 예예요.
+
+| 계산 | 합치기 전 stride | 합친 결과 | 이유 |
+|---|---|---|---|
+| `a + b`, 셋 다 `(3, 4, 5)` C 순서 | `(160, 40, 8)` × 3 | shape `(60,)`, stride `(8,)` × 3 | $160 = 40 \cdot 4$, $40 = 8 \cdot 5$ |
+| `s + t`, `s = zeros((4, 1, 6))[:, :, ::2]`, `t`는 `(4, 1, 3)` C 순서 | `s`: `(48, 16)`, `t`: `(24, 8)` (크기 1 축 제거 후) | shape `(12,)`, stride `(16,)`, `(8,)` | $48 = 16 \cdot 3$, $24 = 8 \cdot 3$. `s`는 연속이 아니지만 간격이 일정해요 |
+| `permute_dims(x, (2, 0, 1))`의 복사, `x`는 `(2, 3, 4)` | 입력 `(8, 96, 32)`, 출력 `(48, 24, 8)` | shape `(4, 6)`, 입력 `(8, 32)`, 출력 `(48, 8)` | 뒤의 두 축만 양쪽에서 조건을 만족해요 |
+| `m + row`, `m`은 `(3, 4)` | `m`: `(32, 8)`, `row`: `(0, 8)` | 합쳐지지 않음: shape `(3, 4)` | `row`에서 $0 \ne 8 \cdot 4$ |
+| `m + col`, `col`은 `(3, 1)` | `m`: `(32, 8)`, `col`: `(8, 0)` | 합쳐지지 않음: shape `(3, 4)` | `col`에서 $8 \ne 0 \cdot 4$ |
+
+<Fig caption="연속인 (2, 3) 배열은 바깥 축 stride 24가 안쪽 stride 8 × 길이 3과 같아서, 길이 6인 구간 하나로 합쳐져요. 커널은 한 번만 불려요.">
+  <ArrayFig name="a" data={[[0, 1, 2], [3, 4, 5]]} note="shape (2, 3), strides (24, 8)" axes />
+  <Op note="24 = 8 × 3">→</Op>
+  <ArrayFig name="합친 뒤" data={[0, 1, 2, 3, 4, 5]} tones={['a', 'a', 'a', 'a', 'a', 'a']} note="shape (6,), stride (8,)" />
+</Fig>
+
+`m + col`은 합쳐지지 않지만 손해가 크지 않아요. 안쪽 구간(길이 4)에서 `col`의 stride가 0이므로, 커널은 "배열 + 스칼라" fast path로 행마다 한 번씩 돌아요. 합치기가 실패하는 것은 대개 브로드캐스트가 끼거나 레이아웃이 섞인 경우이고, 그때도 안쪽 구간은 가능한 한 길고 촘촘해요.
+
+**효과.** 커널 호출 횟수는 바깥 축 길이의 곱 $\prod_{d < \text{last}} n_d$예요. C 연속 `(1000, 1000)`이면 합치기 전 1000번, 합친 뒤 1번이에요. 호출이 줄어드는 것도 있지만, 더 중요한 것은 **안쪽 구간이 길어져서** 커널의 벡터 루프가 오래 돌고 나머지(tail) 처리가 줄어드는 것이에요.
+
+### 5단계: 실행 (odometer)
+
+남은 축을 자동차의 주행 거리계처럼 돌아요. 가장 안쪽 축은 커널이 통째로 처리하고, 이터레이터는 바깥 축의 인덱스만 올려요.
+
+```cpp
+// NdIter::run_serial (array/iter.cpp, 줄이고 다듬은 발췌)
+std::array<std::byte*, kMaxOperands> p = data_;           // 피연산자별 현재 주소
+for (;;) {
+    kernel(p.data(), shape_[last], inner.data(), ctx);    // 안쪽 구간 하나
+    int d = last - 1;
+    for (; d >= 0; --d) {                                  // 바깥 축 올리기
+        for (int k = 0; k < nop_; ++k) p[k] += strides_[k][d];
+        if (++index[d] < shape_[d]) break;                 // 자리올림 없음
+        for (int k = 0; k < nop_; ++k) p[k] -= strides_[k][d] * shape_[d];  // 0으로 되돌림
+        index[d] = 0;
+    }
+    if (d < 0) return;                                     // 모든 축을 다 돎
+}
+```
+
+주소는 곱셈 없이 더하기와 빼기로만 움직여요. 원소 $N$개, 안쪽 길이 $n_{\text{in}}$이면 커널이 하는 일은 $O(N)$, 이터레이터가 하는 일은 $O(N / n_{\text{in}})$번의 자리올림이에요(자리올림 한 번은 축 하나당 피연산자 수만큼의 덧셈). 생성자의 준비 비용은 축 수 $d$에 대해 $O(\text{nop} \cdot d^2)$이지만 $d \le 32$인 상수예요.
+
+### 모드 셋: Naive, Reorder, Full
+
+`IterMode`는 셋이에요. `Naive`는 브로드캐스트만, `Reorder`는 크기 1 축 제거와 재정렬까지, `Full`은 합치기까지 해요. `Naive`와 `Reorder`는 각 단계의 효과를 따로 재려고 남겨 두었어요(`bench/array/m2_iterator.py`가 같은 복사 커널을 세 모드로 돌려요). 실제 연산은 모두 `Full`을 써요.
+
+예외가 하나 있어요. **인덱스 하나짜리 scatter**(`x[idx] = v`)는 `Naive`(C 순서, 1스레드)로 돌아요. 인덱스가 반복되면 "마지막 쓰기가 이긴다"는 규칙이 C 순서에 묶여 있어서, 메모리 순서로 바꾸거나 나누면 결과가 바뀌기 때문이에요([인덱싱](/internals/array/indexing/)).
+
+### 출력 레이아웃: `new_result`
+
+새 출력 배열은 **이미 전체 shape을 가진 첫 배열 피연산자의 레이아웃**을 따라 만들어요(`new_result` → `new_array_like`). `new_array_like`는 원본 stride의 절댓값 내림차순으로 축 순서를 정하는데, numpy의 `order='K'`와 같은 규칙이에요. 그런 피연산자가 없으면(예: `row + col`처럼 모두 브로드캐스트되는 경우) C 순서예요.
+
+이유는 합치기를 지키려는 것이에요. F 순서 입력에 C 순서 출력을 붙이면 위의 `FT + F`처럼 한쪽이 strided가 되고, 합치기가 실패해서 커널 호출이 1000번으로 늘어요. 입력을 따라가면 `ft + 1.0` 같은 전치 연산도 연속 구간 하나가 돼요. 벤치마크의 `ft + 1.0 (전치된 배열)`이 1스레드 97µs로, 같은 크기의 연속 `f + g`(164µs)보다 빠른 것은 입력이 하나뿐이고 전치 때문에 생기는 비용이 전혀 없기 때문이에요.
+
+### 고정 배열과 "필요한 만큼만 만지기"
+
+`NdIter`의 상태는 전부 고정 크기 배열이에요.
+
+```cpp
+// NdIter의 멤버 (array/iter.hpp)
+int nop_, ndim_;
+bool empty_;
+Dims shape_;                                     // std::array<int64_t, 32>
+std::array<Dims, kMaxOperands> strides_;         // 5 × 32 × 8 = 1280바이트
+std::array<std::byte*, kMaxOperands> data_{};
+```
+
+힙 할당이 한 번도 없어요. 대신 객체가 약 1.3KB예요. 이것을 생성할 때마다 0으로 채우면 작은 배열에서 눈에 띄는 비용이었어요. 그래서 `shape_`과 `strides_`는 **초기화하지 않고**, 앞의 `ndim_`칸과 `nop_`개 피연산자만 쓰고 읽어요. `NDArray`의 복사·이동이 앞의 `ndim`칸만 옮기는 것과 같은 원칙이에요([작은 배열의 호출 비용](/internals/array/small-arrays/)).
+
+## 버퍼 단위 캐스팅
+
+### 문제
+
+`i + f`(int64 + float64)는 float64 루프에서 계산해요(승격 규칙, [변환과 승격](/internals/array/conversion/)). 그런데 float64 커널은 `double`만 읽을 줄 알아요. int64 입력을 어떻게 넘길까요?
+
+가장 쉬운 방법은 `i` 전체를 float64 임시 배열로 바꾼 뒤 `임시 + f`를 하는 것이에요. 원소 $n$개라면 메모리 왕복이 이래요.
+
+| 방법 | 읽기 | 쓰기 | 합계 (float64·int64 모두 8바이트) |
+|---|---|---|---|
+| 임시 배열 | `i`, 임시, `f` | 임시, 출력 | $5 \cdot 8n$ 바이트 |
+| 버퍼 단위 | `i`, `f` | 출력 | $3 \cdot 8n$ 바이트 |
+
+변환이 필요한 입력 하나마다 $2 \cdot 8n$바이트(임시 배열을 쓰고 다시 읽기)를 더 지나가요. 원소별 연산은 대부분 메모리 대역폭에 묶이므로 이 차이가 거의 그대로 시간 차이가 돼요. 임시 배열 자체의 할당과, 새 메모리를 처음 쓸 때의 페이지 폴트도 따라와요.
+
+### 접근
+
+입력을 **4096원소(`kBufferElements`)씩** 작은 버퍼로 변환하고, 그 버퍼로 바로 커널을 돌려요. 버퍼는 L1 캐시에 머무르므로 버퍼에 쓰고 다시 읽는 것은 메모리를 건드리지 않아요. 메모리 왕복은 원래 입력과 출력의 것뿐이에요.
+
+<Fig caption="int64 입력 i를 4096원소씩 float64 버퍼로 바꾸고, 그 버퍼와 f로 float64 커널을 돌려요. 버퍼는 스레드마다 하나이고 L1 안에 머물러요.">
+  <ArrayFig name="i (int64)" data={['0…4095', '4096…8191', '…']} tones={['b', '', 'm']} />
+  <Op note="cast">→</Op>
+  <ArrayFig name="버퍼 (float64)" data={['4096개, 32KB']} tones={['a']} />
+  <Op>+</Op>
+  <ArrayFig name="f (float64)" data={['0…4095', '4096…8191', '…']} tones={['b', '', 'm']} />
+  <Op>=</Op>
+  <ArrayFig name="out (float64)" data={['0…4095', '4096…8191', '…']} tones={['b', '', 'm']} />
+</Fig>
+
+### 구현
+
+`BufferedLoop`는 "어느 입력을 어떤 캐스트 커널로 바꿀지"를 담은 구조체이고, `buffered_loop`는 그것을 `ctx`로 받는 **커널**이에요.
+
+```cpp
+// array/kernels/buffered.hpp (줄이고 다듬은 발췌)
+inline constexpr std::int64_t kBufferElements = 4096;
+
+struct BufferedLoop {
+    Loop inner;                                     // 진짜 커널 (예: binary_loop<Add, double>)
+    int nin, nop;                                   // 입력 수, 전체 피연산자 수
+    std::array<Loop, kMaxOperands> cast{};          // 입력 k → 루프 dtype, null이면 그대로
+    std::array<std::int64_t, kMaxOperands> item{};  // 루프 dtype의 원소 크기
+};
+
+inline void buffered_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, void* ctx) {
+    const BufferedLoop& b = *static_cast<const BufferedLoop*>(ctx);
+    for (std::int64_t off = 0; off < n; off += kBufferElements) {
+        const std::int64_t m = std::min(kBufferElements, n - off);
+        for (int k = 0; k < b.nop; ++k) {
+            if (k < b.nin && b.cast[k]) {                       // 변환할 입력: 버퍼로
+                std::byte* buf = scratch(k);
+                std::byte* io[] = {args[k] + off * s[k], buf};
+                const std::int64_t cs[] = {s[k], b.item[k]};
+                b.cast[k](io, m, cs, nullptr);                  // 캐스트도 커널이에요
+                p[k] = buf;  st[k] = b.item[k];                 // 버퍼는 연속
+            } else {                                            // 그대로 쓰는 피연산자
+                p[k] = args[k] + off * s[k];  st[k] = s[k];
+            }
+        }
+        b.inner(p.data(), m, st.data(), nullptr);
+    }
+}
+```
+
+설계에서 눈여겨볼 점이 넷이에요.
+
+**래퍼도 커널 모양이에요.** `buffered_loop`는 `Loop` 시그니처를 그대로 가졌어요. 디스패처는 변환이 필요하면 `it.run(&buffered_loop, &buffered, ...)`를, 아니면 `it.run(loop, nullptr, ...)`를 부를 뿐이에요. 이터레이터는 버퍼링이 있는지 몰라요. 브로드캐스트, 재정렬, 합치기, 스레드 분할이 버퍼링과 상관없이 그대로 동작해요. 캐스트 자체도 `cast[from][to]` 표의 커널이라 strided 입력(`s[k]`가 무엇이든)을 연속 버퍼로 모으는 일까지 캐스트 커널이 해요.
+
+**버퍼는 스레드마다 하나예요(`thread_local`).** `ctx`(`BufferedLoop`)는 루프를 도는 모든 스레드가 함께 읽어요. 버퍼를 `ctx`에 두면 스레드끼리 같은 버퍼에 쓰게 돼요. 그래서 버퍼는 `scratch(k)`가 스레드별로 한 번 할당해 둔 메모리예요.
+
+```cpp
+inline std::byte* scratch(int k) {
+    static constexpr std::int64_t kSlot = kBufferElements * 16;   // complex128 기준 64KB
+    thread_local std::unique_ptr<std::byte[]> mem =
+        std::make_unique_for_overwrite<std::byte[]>(kSlot * kMaxOperands);
+    return mem.get() + k * kSlot;
+}
+```
+
+칸 하나는 가장 넓은 dtype(complex128, 16바이트) 4096개분이고, 피연산자마다 한 칸씩 스레드당 320KB예요. 처음 쓸 때 한 번만 할당하고, C++20의 `std::make_unique_for_overwrite`로 0 채우기를 건너뛰어요(어차피 캐스트가 덮어써요).
+
+**출력은 버퍼링하지 않아요.** 출력 dtype은 언제나 루프가 쓰는 dtype이므로 버퍼가 필요 없어요. 유일한 예외는 `out=`이 결과보다 넓은 dtype일 때(`sd.add(int_a, int_b, out=float_arr)`)인데, 이때는 결과 dtype의 새 배열에 계산한 뒤 `assign`으로 `out`에 변환해 넣어요(아래 "ufunc 디스패치"). 출력 쪽 변환은 이 경로 하나에만 있어요.
+
+**안쪽 커널에는 `ctx`가 없어요.** `b.inner(..., nullptr)`로 부르므로, 자기 `ctx`가 필요한 커널은 버퍼 래퍼로 감쌀 수 없어요. 원소별 커널과 리덕션 커널은 `ctx`를 쓰지 않으므로 문제가 없어요.
+
+### 버퍼 크기 4096은 어떻게 정했나
+
+기준은 **P코어의 L1 데이터 캐시 128KB**예요(`sysctl`로 확인한 값). 원소별 연산의 흔한 경우는 피연산자 셋(입력 둘, 출력 하나)이고, float64 4096개는 32KB예요.
+
+$$
+3 \times 4096 \times 8\ \text{B} = 96\ \text{KB} \le 128\ \text{KB}
+$$
+
+버퍼에 쓴 값을 커널이 다시 읽기 전에 L1에서 밀려나지 않으려면 한 번에 다루는 데이터가 L1에 들어가야 해요. 너무 작으면 반대로 4096원소 구간마다 반복되는 고정 비용(캐스트 커널 호출, 안쪽 커널 호출, 벡터 루프의 앞뒤 처리)이 커져요.
+
+256부터 65536까지 바꿔 가며 쟀어요(`bench/array/m7_bufsize.py`, 크기마다 다시 빌드, 원소 100만 개, 1스레드; `i + f`, `mean(i)`, `sum(b)`, `f * i + g`).
+
+| 버퍼 크기 (원소) | 결과 |
+|:---:|:---:|
+| 1024 – 4096 | 가장 빠름 |
+| 16384 이상 | 10 – 25% 느림 (L1을 넘침) |
+
+가장 빠른 구간 안에서 위의 L1 기준식(피연산자 3개 × 32KB)에 맞는 4096을 써요. 참고로 numpy의 기본 버퍼 크기는 8192원소예요(numpy 2.5.4의 `np.getbufsize()`).
+
+### 효과
+
+버퍼 캐스팅을 넣기 전(입력 전체를 임시 배열로 변환)과 비교한 배율이에요(설계 문서의 측정, 원소 100만 개, 1스레드).
+
+| 연산 | 배율 |
+|:---:|:---:|
+| `i + f` | 1.37× |
+| `sum(b)` (bool) | 1.38× |
+| `mean(i)` (int64) | 1.21× |
+
+리덕션도 같은 래퍼로 입력을 변환해요(`ops/reduction.cpp`의 `run_fold`). 그래서 형변환이 있는 리덕션은 **4096원소 단위로** 접혀요. 이것이 합의 순서를 바꿔 numpy와 비트가 달라질 수 있는 이유 중 하나예요([집계](/internals/array/reductions/)). 원소별 연산에서는 원소마다 따로 계산하므로 버퍼 경계가 결과에 영향을 주지 않아요.
+
+## ufunc 디스패치
+
+### 연산 정의에서 루프 표까지 (컴파일 시점)
+
+원소별 연산 하나는 `array/kernels/scalar_ops.hpp`의 **구조체 하나**예요. 구조체는 두 가지를 말해요. 어느 저장 타입에 루프가 있는지(`ok<T>`), 원소 하나를 어떻게 계산하는지(`f`).
+
+```cpp
+// array/kernels/scalar_ops.hpp (발췌)
+struct Divide {
+    static constexpr const char* name = "divide";
+    template <typename T> static constexpr bool ok = is_float<T> || is_cplx<T>;  // 정수 루프 없음
+    static double f(double a, double b) { return a / b; }
+    static c128 f(c128 a, c128 b) { return cdiv(a, b); }
+};
+
+struct Abs {
+    static constexpr const char* name = "abs";
+    template <typename T> static constexpr bool ok = !is_bool<T>;
+    static i64 f(i64 a) { return a < 0 ? wrap_sub(0, a) : a; }
+    static double f(double a) { return std::fabs(a); }
+    static double f(c128 a) { return complex_abs(a); }   // complex → float64
+};
+```
+
+`ok<T>`는 C++14의 변수 템플릿(variable template)을 클래스 멤버로 둔 것이에요. `f`는 저장 타입마다 오버로드예요. **출력 dtype은 `f`의 반환 타입에서 저절로 나와요.** `Abs::f(c128)`이 `double`을 돌려주므로 complex의 `abs`는 float64를 내고, 비교 연산의 `f`는 `bool`을 돌려주므로 bool을 내요.
+
+`array/kernels/elementwise.hpp`가 이것을 루프와 표로 바꿔요.
+
+```cpp
+// array/kernels/elementwise.hpp (줄이고 다듬은 발췌)
+struct LoopEntry { Loop loop = nullptr; DType out = DType::Bool; };
+using LoopTable = std::array<LoopEntry, kNumArrayDTypes>;    // bool, int64, float64, complex128
+
+template <typename Op, typename T, int Arity>
+constexpr LoopEntry entry() {
+    if constexpr (!Op::template ok<T>) return {};                       // 루프 없음
+    else if constexpr (Arity == 1) return {&unary_loop<Op, T>, dtype_of<unary_result_t<Op, T>>};
+    else return {&binary_loop<Op, T>, dtype_of<binary_result_t<Op, T>>};
+}
+
+template <typename Op> inline constexpr LoopTable binary_table = {
+    entry<Op, bool, 2>(), entry<Op, std::int64_t, 2>(), entry<Op, double, 2>(), entry<Op, complex128, 2>()};
+```
+
+- `if constexpr`는 루프가 없는 타입에서 `binary_loop<Op, T>`를 **인스턴스화하지 않게** 해요. `Divide::f(i64, i64)`는 없으므로 인스턴스화하면 컴파일 에러인데, 그 가지가 아예 컴파일되지 않아요.
+- `binary_result_t<Op, T>`는 `decltype(Op::f(std::declval<T>(), std::declval<T>()))`예요. 오버로드 해석이 고른 `f`의 반환 타입이고, `dtype_of<R>`가 그것을 `DType`으로 바꿔요.
+- 표는 `inline constexpr` 변수 템플릿이라 실행 중에 만드는 비용이 없어요. 데이터 영역에 박힌 함수 포인터 넷이에요.
+
+이렇게 만든 표의 일부예요(✓는 루프가 있는 dtype).
+
+| 연산 | bool | int64 | float64 | complex128 | 비고 |
+|---|:---:|:---:|:---:|:---:|---|
+| `add`, `multiply`, `pow` | | ✓ | ✓ | ✓ | bool 산술은 int64 |
+| `divide`, `sqrt`, `exp`, `sin` … | | | ✓ | ✓ | 정수는 float64로 계산 |
+| `atan2`, `copysign`, `hypot`, `logaddexp` | | | ✓ | | |
+| `maximum`, `minimum`, `less` … | ✓ | ✓ | ✓ | | complex에는 순서가 없음 |
+| `equal`, `not_equal` | ✓ | ✓ | ✓ | ✓ | |
+| `logical_and` … | ✓ | | | | Array API: bool만 |
+| `bitwise_and` … | ✓ | ✓ | | | |
+| `floor`, `ceil`, `trunc` | ✓ | ✓ | ✓ | | 정수 루프는 항등 함수 |
+| `abs` | | ✓ | ✓ | ✓ (출력 float64) | |
+
+### 루프 선택 (실행 시점)
+
+`select`는 numpy와 같은 규칙이에요. **승격한 dtype부터 위로 올라가며 루프가 있는 첫 dtype**을 써요 [4].
+
+```cpp
+// array/ops/ufunc.cpp
+DType select(const LoopTable& table, DType d, std::span<const DType> inputs, const char* symbol) {
+    for (int k = static_cast<int>(d); k < kNumArrayDTypes; ++k)
+        if (table[k].loop) return static_cast<DType>(k);
+    no_loop(inputs, symbol);     // TypeError
+}
+```
+
+dtype은 넷뿐이고 승격 순서가 일직선(`bool < int64 < float64 < complex128`)이라, 최대 네 칸을 보는 반복문 하나로 끝나요. numpy의 일반적인 루프 목록 탐색("안전하게 캐스트할 수 있는 첫 루프")보다 훨씬 단순하지만, 이 dtype 집합에서는 결과가 같아요. 이 규칙에서 여러 의미론이 **따로 코드를 쓰지 않고** 나와요.
+
+| 호출 | 승격 | 선택된 루프 | 결과 |
+|---|:---:|:---:|---|
+| `bool_arr + bool_arr` | bool | int64 (`add`에 bool 루프 없음) | `[True, True] + True`는 `[2, 2]` |
+| `int_arr / 2` | int64 | float64 (`divide`에 int64 루프 없음) | float64 |
+| `sd.sqrt(int_arr)` | int64 | float64 | float64 |
+| `sd.floor(int_arr)` | int64 | int64 (항등 루프) | int64 유지 |
+| `int_arr < 1+2j` | complex128 | 없음 | `TypeError: unsupported operand dtypes for <: int64 and complex128` |
+| `sd.logical_and(int_arr, int_arr)` | int64 | 없음 (위로 올라가도 없음) | `TypeError: logical_and(): not supported for int64 and int64` |
+
+에러 메시지가 두 모양인 것은 `symbol` 인자 때문이에요. 연산자(`x < y`)는 기호를 넘겨 Python의 형식(`unsupported operand dtypes for <: ...`)을 쓰고, 함수(`sd.logical_and`)는 기호 없이 부르고 바인딩이 `logical_and(): `를 앞에 붙여요([Python과 C++의 경계](/internals/core/python-boundary/)).
+
+시프트처럼 bool 입력 자체를 막아야 하는 연산은 구조체에 `no_bool_inputs` 표시를 달아요. 디스패처는 C++20 requires 식으로 그 멤버가 있는지만 봐요.
+
+```cpp
+template <typename Op>
+nb::object binary(nb::handle a, nb::handle b, nb::handle out, const char* symbol = nullptr) {
+    constexpr bool no_bool = requires { Op::no_bool_inputs; };   // 멤버가 있으면 true
+    return run_binary(binary_table<Op>, no_bool, a, b, out, symbol);
+}
+```
+
+**Python int의 범위 검사는 승격한 피연산자 dtype으로 해요**(`check_int_scalars`). `int_arr + 2**70`은 int64로 바꿔야 하므로 `OverflowError`이고, `float_arr + 2**70`은 float로 바뀌어 정상이에요. 루프 dtype(예: `divide`의 float64)으로 판정하면 `divide(int_arr, 2**64)`만 정상이 되어 다른 이항 함수와 어긋나서, 승격한 dtype을 기준으로 해요.
+
+### 실행 경로 넷 (`launch`)
+
+루프를 고른 다음 `launch`가 출력을 정해요. 경로는 넷이에요.
+
+| 조건 | 경로 | 하는 일 |
+|---|---|---|
+| 피연산자가 모두 Python 스칼라, `out=` 없음 | `launch_scalars` | 스택 버퍼에 값을 놓고 같은 루프를 `n = 1`로 한 번 부름. 배열도 이터레이터도 없음. Python 스칼라를 돌려줌 |
+| `out=` 없음 | 새 결과 | `new_result`로 출력을 만들고 `run_loop` |
+| `out=`, dtype이 결과와 같음 | 직접 쓰기 | 겹침 검사 후 `out`에 바로 씀 |
+| `out=`, dtype이 결과보다 넓음 | 임시 후 변환 | 결과 dtype의 임시 배열에 계산하고 `assign(out, tmp)` |
+
+**스칼라만 있는 경로**는 `sd.exp(1.0)`, `sd.maximum(2, 3)` 같은 호출이에요. 배열 피연산자가 없으면 결과도 Python 스칼라예요(0차원 배열이 없으므로). 이 경로는 원소 1개짜리 배열 두세 개와 이터레이터를 만들지 않아 호출당 약 90ns를 아껴요. 중요한 것은 **배열 경로와 같은 루프를 같은 변환값으로 부른다**는 점이에요. 그래서 `sd.exp(x)[i]`와 `sd.exp(x[i])`가 비트까지 같아요. vForce를 쓰는 함수도 `n = 1`로 vForce를 불러요([원소별 커널](/internals/array/elementwise/)).
+
+**`out=`의 규칙.** 먼저 쓰기 가능한지(`writeable`), 결과 dtype이 `out`의 dtype으로 **위로만** 변환되는지(`check_assignable`) 봐요. `int_arr += 1.5`는 float64 결과를 int64에 넣어야 하므로 `TypeError`예요. in-place 연산자 `x op= y`는 `op(x, y, out=x)`와 똑같아요(`bind/array_bind.cpp`의 `def_arith`가 `binary<Op>(self, other, self, "+=")`를 불러요). 결과는 같은 객체예요.
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([1, 2, 3])
+>>> x += 1.5
+Traceback (most recent call last):
+    ...
+TypeError: cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
+>>> out = sd.zeros(3)
+>>> sd.add(x, x, out=out) is out
+True
+>>> out
+array([2.0, 4.0, 6.0], dtype=float64)
+```
+
+마지막 예는 넓은 `out=` 경로예요. 결과 dtype(int64)으로 임시 배열에 계산한 뒤 float64 `out`으로 변환했어요.
+
+### 메모리 겹침
+
+`a[1:] += a[:-1]`처럼 입력과 출력이 메모리를 일부 공유하면, 앞에서 쓴 값을 뒤에서 다시 읽게 될 수 있어요. 보장하는 의미론은 numpy와 같아요. **결과는 "모든 입력을 다 읽은 다음 출력을 쓴 것"과 같아요.**
+
+```python
+>>> a = sd.arange(5)
+>>> a[1:] += a[:-1]
+>>> a
+array([0, 1, 3, 5, 7], dtype=int64)
+```
+
+겹침을 무시하고 앞에서부터 계산하면 `a[2] = 2 + a[1]`에서 이미 바뀐 `a[1]`을 읽어 `[0, 1, 3, 6, 10]`이 나와요.
+
+판정은 보수적이에요(`may_share_memory`). 배열이 닿을 수 있는 바이트 범위를 구하고, 두 범위가 겹치는지만 봐요.
+
+$$
+\text{lo} = \texttt{data} + \sum_{d:\ s_d < 0} (n_d - 1)\, s_d, \qquad
+\text{hi} = \texttt{data} + \sum_{d:\ s_d > 0} (n_d - 1)\, s_d + \text{itemsize}
+$$
+
+$[\text{lo}_a, \text{hi}_a)$와 $[\text{lo}_b, \text{hi}_b)$가 겹치면 "겹칠 수 있다"고 보고 그 입력을 임시 배열로 복사한 뒤 계산해요. `x[::2]`와 `x[1::2]`처럼 범위는 겹치지만 실제로는 한 원소도 공유하지 않는 경우에도 복사해요. 정확한 판정(numpy의 `np.shares_memory`가 푸는 정수 계획 문제)보다 비용이 일정하고, 틀려도 손해는 복사 한 번이에요.
+
+**예외: 똑같은 뷰.** 입력과 출력의 `data`, dtype, shape, stride가 모두 같으면(`same_view`) 복사하지 않아요. 원소별 연산은 원소를 읽은 직후 같은 자리에 쓰므로 `a += a`, `sd.exp(a, out=a)`는 안전해요.
+
+### 할당 없는 호출 경로
+
+`launch`는 피연산자 목록과 shape 목록을 고정 크기 배열(`std::array<NDArray, 4>`, `std::array<std::span<...>, 4>`)로 받고, 공통 shape도 `Dims`에 구해요. 출력 배열 하나(와 스칼라 피연산자의 원소 1개짜리 배열) 말고는 할당이 없어요. Python 객체는 `nb::handle`로 받아 참조 횟수를 건드리지 않아요. 작은 배열의 `a + b`가 numpy와 비슷한 시간(181ns 대 158ns)인 것은 이 경로를 줄여 온 결과예요([작은 배열의 호출 비용](/internals/array/small-arrays/)).
+
+### `where`와 `clip`
+
+두 함수는 같은 `launch`를 쓰지만 루프 선택이 조금 달라요.
+
+- `where(cond, x1, x2)`: `cond`는 bool이어야 해요(정수를 주면 "`x != 0`처럼 명시적으로 비교하라"는 TypeError). 루프 dtype은 `x1`, `x2`의 승격이고, 피연산자 넷(`cond, x1, x2, out`)의 `where_loop<T>`를 돌려요.
+- `clip(x, min, max)`: 결과는 `x`의 dtype을 유지하고(Array API), `min`/`max`는 그 dtype으로 위로만 변환돼야 해요. 경계가 하나뿐이면 `maximum`이나 `minimum` 루프를, 둘 다 있으면 한 패스로 합친 `clip_loop`를, 둘 다 없으면 단순 복사(대각선 캐스트)를 돌려요. 배열 경계는 `x`의 shape으로 브로드캐스트되어야 해요(`x`가 경계에 맞춰 늘어나지는 않음).
+
+### n항 디스패처
+
+`run_nary`는 입력 1–4개, 출력 여러 개(모두 같은 dtype)의 일반형이에요. 배열 영역의 공개 함수는 쓰지 않고 `sd.special`이 써요. 함수마다 **작업량 가중치**(`weight`)를 넘기는데, 연속 float64 덧셈의 원소당 비용을 1로 잡은 값이에요. 원소 하나에 수백 ns가 드는 특수함수가 작은 배열에서도 병렬로 돌게 하려는 장치이고, 레인 처리와 같은 장치예요(아래).
+
+## 레인 처리 (`lanes.hpp`)
+
+### 문제
+
+이터레이터는 메모리 순서를 좋아해서, 필요하면 축 순서를 뒤바꿔요. 그런데 어떤 연산은 축 하나의 원소를 **인덱스 순서로**, 처음부터 끝까지 봐야 해요.
+
+- `argmin`/`argmax(axis=k)`: 동점이면 **첫** 위치를 돌려줘야 해요.
+- 누적 스캔(`cumulative_sum` 등): 원소 $i$의 결과가 원소 $i-1$의 결과에 의존해요.
+- 정렬: 축 하나를 통째로 받아야 해요.
+
+### 접근
+
+그 축(`axis`)을 **뺀** 나머지 축을 이터레이터로 돌고, 이터레이터가 방문한 원소 하나를 **레인(lane) 하나의 시작점**으로 써요. 레인 함수 `fn`이 그 시작점에서 `axis` 방향으로 0부터 `n-1`까지 처리해요.
+
+<Fig caption="sort(x, axis=1)의 레인이에요. 이터레이터는 축 1을 뺀 나머지(축 0)만 돌며 진한 칸(레인의 시작)을 방문하고, 레인 함수가 그 행을 인덱스 순서로 끝까지 처리해요.">
+  <ArrayFig name="x" data={[[5, 2, 8, 1], [3, 9, 4, 7], [6, 0, 2, 5]]} tones={[['b', 'a', 'a', 'a'], ['b', 'a', 'a', 'a'], ['b', 'a', 'a', 'a']]} note="shape (3, 4), axis=1" axes />
+</Fig>
+
+```cpp
+// array/ops/lanes.hpp (줄이고 다듬은 발췌)
+struct LaneCtx {
+    std::int64_t n, x_stride, o_stride;     // 레인 길이, axis 방향 stride (입력, 출력)
+    void (*fn)(const std::byte* x, std::byte* o, const LaneCtx& c);
+    void* user = nullptr;                   // 연산별 상태 (함수 포인터, 작업 버퍼)
+};
+
+inline void lane_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, void* ctx) {
+    const LaneCtx& c = *static_cast<const LaneCtx*>(ctx);
+    for (std::int64_t i = 0; i < n; ++i) c.fn(args[0] + i * s[0], args[1] + i * s[1], c);
+}
+
+inline void run_lanes(const NDArray& x, NDArray& out, int axis, LaneCtx& ctx) {
+    const Outer xo = drop_axis(x, axis), oo = drop_axis(out, axis);   // axis를 뺀 shape, stride
+    const IterOperand ops[] = {xo.op(x.data), oo.op(out.data)};
+    NdIter(ops[0].shape, ops).run(&lane_loop, &ctx, Split::Elementwise, std::max<std::int64_t>(ctx.n, 1));
+}
+```
+
+여기서도 커널 모양은 그대로예요. `lane_loop`는 "레인 시작점 `n`개"를 받는 커널이고, `ctx`로 `LaneCtx`를 받아요. 나머지 축은 평소대로 재정렬·합치기·분할을 거쳐요. 레인끼리는 독립이므로 레인 단위로는 어떤 순서로 나눠도 결과가 같아요(`Split::Elementwise`). 출력의 `axis` 길이는 입력과 달라도 돼요(`argmax`의 keepdims 출력은 1, 누적 스캔의 `include_initial=True`는 `n + 1`).
+
+`run_lanes`를 쓰는 곳은 `ops/reduction.cpp`(argmin/argmax의 축 버전, 누적 스캔)와 `ops/sort.cpp`(정렬, argsort)예요.
+
+### 왜 가중치가 필요한가
+
+이터레이터는 "몇 원소분의 일인가"로 병렬 여부를 정해요(아래 "일을 조각으로 나누기"). 레인 처리에서 이터레이터가 세는 원소는 **레인의 수**인데, 커널 호출 한 번은 레인 하나를 통째로 처리해요. 그래서 `run_lanes`는 레인 길이 `n`을 가중치로 넘겨요.
+
+원소 100만 개를 2000행 × 500열로 놓고 `sort(s, axis=1)`을 하는 경우를 계산해 보면 이래요.
+
+| | 이터레이터가 센 일 (바이트) | 기준값 $8 \cdot 2^{15} = 262144$ | 결과 |
+|---|:---:|:---:|:---:|
+| 가중치 없음 | $2000 \times 8 = 16000$ | 미만 | 1스레드 |
+| 가중치 500 | $500 \times 8 \times 2000 = 8{,}000{,}000$ | 이상 | 레인 8개씩 250조각 |
+
+가중치가 없으면 정렬처럼 무거운 연산도 행이 2000개뿐이라는 이유로 병렬로 돌지 않아요. 벤치마크의 `sort(s) 2000행`은 1스레드 13.4ms, 10스레드 1.67ms예요(numpy 29.0ms).
+
+## 일을 조각으로 나누기
+
+스레드풀 자체(상주 워커, atomic 카운터, spin 후 대기, GIL)는 [스레드풀과 결정성](/internals/core/threads/)에서 다뤄요. 여기서는 배열 영역이 **언제, 어떻게 자르는지**만 봐요. 자르는 장소는 둘이에요. 이터레이터 안(`NdIter::plan`)과, 이터레이터를 쓰지 않는 연산이 손으로 자르는 `for_pieces`예요.
+
+### 이터레이터 안: `NdIter::plan`
+
+`plan`은 합치기까지 끝난 축들을 보고 "축 `axis`를 `chunk`칸씩 `tasks`조각"으로 자를지 정해요. 상수는 `array/parallel_limits.hpp`에 있어요.
+
+| 상수 | 값 | 뜻 |
+|---|:---:|---|
+| `kParallelThreshold` | $2^{15}$ | 이보다 작은 일(float64 원소 기준)은 1스레드 |
+| `kParallelTask` | $2^{12}$ | 조각 하나의 일(float64 원소 기준) |
+| `kMinInnerPiece` | 1024 | 가장 안쪽 축을 자를 때의 최소 조각 |
+
+**1. 일을 바이트로 세요.** 가중치 $w$, 안쪽 축에서 피연산자들의 stride 절댓값 중 가장 큰 것을 8로 자른 값 $b$, 남은 축 길이 $n_d$로
+
+$$
+W = w \cdot b \cdot \prod_d n_d, \qquad b = \min\!\left(\max_k \lvert s_k[\text{last}] \rvert,\ 8\right)
+$$
+
+을 일로 봐요(안쪽 stride가 모두 0이면 $b = 8$). 그리고 $W \ge 8 \cdot 2^{15}$일 때만 나눠요. 8바이트 피연산자가 하나라도 있으면 원소 수로 센 것과 같아요. 바이트로 세는 이유는 bool 때문이에요. bool만 있는 루프는 원소당 메모리를 8분의 1만 옮기므로, 원소 수로 세면 조각 하나(4096원소 = 4KB)가 너무 작아요. atomic 카운터와 캐시 라인 주고받기 비용이 일보다 커서 `b & b`(1000만 개)가 10스레드에서 187µs로 1스레드(122µs)보다 느렸어요. 바이트로 세자 38µs가 됐어요.
+
+**2. 자를 축을 골라요**(`split_axis`). 길이가 16 이상인 가장 바깥 축, 없으면 가장 긴 축이에요. 바깥 축을 자르면 조각마다 안쪽 구간이 길게 남아요. 16은 스레드마다 여러 조각이 돌아가게 하려는 하한이에요.
+
+**3. 조각 크기를 정해요.**
+
+$$
+\text{per\_index} = \max\!\left(\left\lfloor W / n_{\text{axis}} \right\rfloor, 1\right), \quad
+\text{chunk} = \max\!\left(\left\lfloor \frac{8 \cdot 2^{12}}{\text{per\_index}} \right\rfloor, 1\right), \quad
+\text{tasks} = \left\lceil \frac{n_{\text{axis}}}{\text{chunk}} \right\rceil
+$$
+
+가장 안쪽 축을 자르는 경우(그리고 축이 둘 이상)에는 $\text{chunk} \ge 1024$로 올려요. 안쪽 축을 자르면 커널 호출마다 구간이 짧아지기 때문이에요. 3000×3000 `sum(axis=0)`을 10스레드로 돌린 측정에서 조각 10원소는 1스레드보다 2.7배 느렸고, 256은 1.50ms, **1024는 0.91ms**, 4096은 1.11ms였어요(1스레드 1.05ms).
+
+몇 가지 계획을 손으로 따라가 보면 이래요.
+
+| 연산 (원소 100만 개) | $W$ | 자를 축 | chunk | tasks |
+|---|:---:|:---:|:---:|:---:|
+| `f + g` (float64, 연속, 합친 뒤 축 하나) | $8 \times 10^6$ | 0 | 4096 | 245 |
+| `b & b` (bool, 연속) | $1 \times 10^6$ | 0 | 32768 | 31 |
+| `sort(s, axis=1)`, 2000 × 500 (레인, 가중치 500) | $8 \times 10^6$ | 0 (레인 축) | 8 | 250 |
+| 원소 1만 개 `f + g` | $8 \times 10^4$ | 기준값 미만 | — | 1 (직렬) |
+
+**4. 조각을 실행해요.** 조각마다 이터레이터를 복사하고, 자를 축의 길이와 시작 주소만 바꿔 직렬로 돌려요.
+
+```cpp
+// NdIter::run (array/iter.cpp, 줄이고 다듬은 발췌)
+if (split != Split::None && parallel::available()) {
+    const Plan p = plan(split, weight);
+    if (p.tasks > 1) {
+        parallel::parallel_for(p.tasks, [&](std::int64_t t) {
+            NdIter piece = *this;                                   // 고정 배열 복사, 할당 없음
+            const std::int64_t begin = t * p.chunk;
+            piece.shape_[p.axis] = std::min(extent, begin + p.chunk) - begin;
+            for (int k = 0; k < nop_; ++k) piece.data_[k] += begin * strides_[k][p.axis];
+            piece.run_serial(kernel, ctx);
+        });
+        return;
+    }
+}
+run_serial(kernel, ctx);
+```
+
+조각 번호는 워커들이 atomic 카운터에서 하나씩 가져가요. 빠른 스레드가 더 많이 가져갈 뿐 고정 배정이 없어서, E코어처럼 느린 스레드가 전체를 기다리게 하지 않아요.
+
+**`Split`의 세 종류.** `Elementwise`는 어느 축이든 잘라도 돼요(원소마다 따로 계산). `Reduction`은 마지막 피연산자(출력)의 stride가 0이 아닌 축만 잘라요. 출력 원소 하나에 입력이 접히는 순서가 직렬과 똑같이 한 스레드에서 지켜져요. `None`은 자르지 않아요.
+
+**계획은 스레드 수를 보지 않아요.** `plan`의 입력은 shape, stride, 가중치뿐이에요. 같은 배열이면 1스레드든 10스레드든 같은 조각이 나와요. 원소별 연산은 어차피 조각과 무관하게 같은 결과지만, 블록 리덕션처럼 **조각 구조가 결과 비트를 바꾸는** 연산은 이 성질에 기대어 `plan`의 결과로 경로를 정해요([집계](/internals/array/reductions/)).
+
+### 이터레이터 밖: `for_pieces`
+
+분위수, 공분산, 히스토그램, `repeat`/`tile`, `searchsorted`, `nonzero`처럼 이터레이터 모양에 맞지 않는 연산은 범위 `[0, n)`을 손으로 잘라요. 그 공통 도구가 `for_pieces`예요.
+
+```cpp
+// array/ops/pieces.hpp
+template <typename F>
+void for_pieces(std::int64_t n, std::int64_t per, std::int64_t work, F&& fn) {
+    per = std::max<std::int64_t>(per, 1);
+    const std::int64_t pieces = (n + per - 1) / per;
+    auto run = [&](std::int64_t t) { fn(t, t * per, std::min(n, (t + 1) * per)); };
+    if (work >= kParallelThreshold && pieces > 1 && parallel::available())
+        parallel::parallel_for(pieces, run);
+    else
+        for (std::int64_t t = 0; t < pieces; ++t) run(t);      // 같은 조각, 순서대로
+}
+```
+
+- `fn(t, begin, end)`는 조각 번호와 범위를 받아요. 조각 번호가 있어서 호출하는 쪽이 조각별 부분 결과를 배열의 `t`번 칸에 두고, 나중에 **조각 순서대로** 합칠 수 있어요.
+- 조각은 `n`과 `per`로만 정해져요. 직렬로 돌 때도 같은 조각을 같은 순서로 돌아요. 그래서 조각을 고정 순서로 합치는 호출자는 스레드 수와 무관하게 같은 비트를 얻어요.
+- `work`는 호출자가 어림한 원소 단위의 일이에요. 이터레이터처럼 바이트로 세지 않고, 호출자가 알맞게 넘겨요(예: 공분산은 출력 원소 수 $p^2$).
+- `parallel::available()`이 거짓이면(1스레드, 태스크 안에서의 중첩 호출, 다른 Python 스레드가 풀을 쓰는 중) 처음부터 직렬로 돌아요. 나눠 놓고 직렬로 도는 것보다 빠르고 결과는 같아요.
+
+## 성능
+
+원소 100만 개, float64, Apple M4 Pro, numpy 2.5.4에서 잰 값이에요. 배율은 numpy 대비예요.
+
+<Bench
+  rows={[
+    { label: 'f + g', times: [218e-6, 164e-6, 50e-6] },
+    { label: 'f * i + g (dtype 변환)', times: [683e-6, 444e-6, 167e-6] },
+    { label: 'ft + 1.0 (전치된 배열)', times: [142e-6, 97e-6, 39e-6] },
+    { label: 'maximum(f, g)', times: [212e-6, 166e-6, 47e-6] },
+    { label: 'astype(f, int64)', times: [284e-6, 108e-6, 37e-6] },
+  ]}
+  caption="원소별 연산의 엔진 경로. f, g는 float64, i는 int64, ft는 전치된 float64 배열이에요."
+/>
+
+- **`f + g`, `maximum(f, g)`**: 이터레이터가 연속 구간 하나로 합치고, 커널이 벡터 루프로 돌아요. 1스레드에서 numpy보다 1.3배 빠르게 나왔지만, 이 차이의 원인을 따로 분석한 자료는 없어요. 10스레드에서 4.4배에 그치는 것은 메모리 대역폭 때문이에요(아래 확장성).
+- **`f * i + g`**: `f * i`에서 `i`를 버퍼 캐스팅으로 바꾸고, 그 결과(새 float64 배열)에 `g`를 더해요. 임시 배열 없이 변환하는 덕분에 1스레드 1.54배예요. 버퍼 캐스팅 도입 당시 측정은 1스레드 397µs, numpy 635µs였어요(설계 문서).
+- **`ft + 1.0`**: 재정렬과 합치기 덕분에 전치가 비용을 만들지 않아요. 출력도 `ft`처럼 F 순서로 만들어져 연속 구간 하나예요.
+- **`astype(f, int64)`**: 캐스트 커널이 ARM의 `FCVTZS`(0 방향 자르기 + 포화 + NaN→0을 명령 하나로)를 벡터로 써요. 자세한 것은 [변환과 승격](/internals/array/conversion/)에 있어요.
+
+작은 배열에서는 엔진의 고정 비용이 보여요. 원소 3개짜리 `a + b`는 stardust 181ns, numpy 158ns예요. 스칼라만 있는 호출은 `launch_scalars`로 이터레이터를 건너뛰어요.
+
+### 확장성
+
+원소 400만 개에서 스레드 수에 따른 배율이에요(1스레드 대비, 설계 문서의 측정). 원소 100만 개(8MB)는 상당 부분이 캐시에 남아서, 메모리에 묶인 연산의 확장성은 더 큰 크기에서 따로 쟀어요.
+
+<Plot
+  curves={[
+    { label: 'f + g (메모리에 묶임)', f: (x) => { const xs = [1, 2, 4, 6, 8, 10, 12, 14], ys = [1, 1.0, 1.4, 1.6, 1.7, 1.7, 1.6, 1.5]; let i = 0; while (xs.length - 2 > i && x > xs[i + 1]) i++; return ys[i] + (x - xs[i]) / (xs[i + 1] - xs[i]) * (ys[i + 1] - ys[i]); } },
+    { label: 'i + f (버퍼 캐스팅)', f: (x) => { const xs = [1, 2, 4, 6, 8, 10, 12, 14], ys = [1, 1.1, 1.7, 2.0, 2.3, 2.4, 2.3, 2.2]; let i = 0; while (xs.length - 2 > i && x > xs[i + 1]) i++; return ys[i] + (x - xs[i]) / (xs[i + 1] - xs[i]) * (ys[i + 1] - ys[i]); }, dashed: true },
+    { label: 'sqrt', f: (x) => { const xs = [1, 2, 4, 6, 8, 10, 12, 14], ys = [1, 1.5, 2.7, 3.3, 3.7, 4.2, 4.1, 4.3]; let i = 0; while (xs.length - 2 > i && x > xs[i + 1]) i++; return ys[i] + (x - xs[i]) / (xs[i + 1] - xs[i]) * (ys[i + 1] - ys[i]); } },
+  ]}
+  domain={[1, 14]}
+  range={[0, 5]}
+  xTicks={[{ v: 1, label: '1' }, { v: 2, label: '2' }, { v: 4, label: '4' }, { v: 6, label: '6' }, { v: 8, label: '8' }, { v: 10, label: '10' }, { v: 12, label: '12' }, { v: 14, label: '14스레드' }]}
+  yTicks={[{ v: 1, label: '1×' }, { v: 2, label: '2×' }, { v: 3, label: '3×' }, { v: 4, label: '4×' }, { v: 5, label: '5×' }]}
+/>
+
+| 연산 | 1스레드 | 10스레드 배율 | numpy |
+|---|:---:|:---:|:---:|
+| `f + g` | 0.72ms | 1.7× | 0.73ms |
+| `i + f` | 1.00ms | 2.4× | 1.87ms |
+| `sqrt` | 0.95ms | 4.2× | 0.92ms |
+
+`f + g`는 96MB를 옮기는데, 1스레드가 이미 초당 약 130GB를 옮겨서 1.7배가 한계예요. 새 결과 배열의 첫 쓰기 페이지 폴트도 이 크기에서는 무시할 수 없어요. 변환 계산이 끼는 `i + f`는 2.4배, 계산 비중이 큰 `sqrt`는 4.2배까지 늘어나요. 초월함수처럼 계산에 묶인 연산은 코어 수에 더 가깝게 늘어나요(`exp`, `sin`은 [원소별 커널](/internals/array/elementwise/)).
+
+### 복잡도
+
+| 항목 | 비용 |
+|---|---|
+| 원소별 연산 전체 | 시간 $O(N)$, 추가 메모리는 출력 배열뿐 |
+| 이터레이터 준비 | $O(\text{nop} \cdot d^2)$, $d \le 32$인 상수. 할당 없음 |
+| 바깥 축 순회 | 커널 호출 $\prod_{d<\text{last}} n_d$번 |
+| 버퍼 캐스팅 | 스레드당 한 번 320KB 할당, 이후 0 |
+| 겹침 처리 | 겹칠 수 있으면 입력 하나당 $O(N)$ 복사 |
+| 병렬 분할 | 조각 수는 $W / (8 \cdot 2^{12})$ 정도, 조각당 이터레이터 복사 약 1.3KB |
+
+## 정확도
+
+엔진은 값을 바꾸지 않아요. 어떤 값이 나오는지는 커널의 원소 함수(`Op::f`)가 정하고, 엔진은 그 함수가 **어떤 레이아웃, 어떤 스레드 수에서도 같은 원소에 같은 입력으로** 불리도록 할 뿐이에요.
+
+- **레이아웃과 무관해요.** 연속, 스칼라 브로드캐스트, strided 경로가 모두 같은 `Op::f`(또는 그것과 비트가 같은 NEON 커널)를 써요. 테스트는 원소별 연산의 dtype 쌍을 세 레이아웃에서 모두 numpy와 비트로 비교해요.
+- **버퍼 캐스팅은 값을 바꾸지 않아요.** 버퍼에 쓰는 값은 `cast_value`의 결과이고, 임시 배열로 변환했을 때와 비트가 같아요. 원소별 연산에서 버퍼 경계는 아무 영향이 없어요.
+- **스칼라 경로도 같은 루프예요.** `f(x)[i] == f(x[i])`가 vForce 함수까지 포함해 성립해요.
+- **스레드 수와 무관해요.** 분할 계획이 shape, 레이아웃, dtype으로만 정해지고, 원소별 연산은 원소마다 독립이에요. 테스트(`tests/array/test_threads.py`)가 1, 2, 3, 7, 10스레드에서 같은 바이트를 확인해요.
+- **겹침 의미론이 numpy와 같아요.** `a[1:] += a[:-1]`이 numpy와 같은 값을 내요.
+
+예외는 리덕션이에요. 형변환이 있는 리덕션은 4096원소 버퍼 단위로 접혀서 numpy와 합의 순서가 달라질 수 있어요. 오차의 크기와 테스트 방법은 [집계](/internals/array/reductions/)와 [정확도와 검증](/internals/array/accuracy/)에 있어요.
+
+## 참고 문헌
+
+1. NumPy 공식 문서, *UFunc API*, `PyUFuncGenericFunction`(inner loop 시그니처). https://numpy.org/doc/stable/reference/c-api/ufunc.html
+2. NumPy 공식 문서, *Iterating over arrays* (`numpy.nditer`). https://numpy.org/doc/stable/reference/arrays.nditer.html
+3. NumPy 공식 문서, *Array iterator API* (`NpyIter`, 축 재정렬·합치기·버퍼링, `NPY_ITER_DONT_NEGATE_STRIDES`). https://numpy.org/doc/stable/reference/c-api/iterator.html
+4. NumPy 공식 문서, *Universal functions (ufunc)*, 루프 선택과 형변환 규칙. https://numpy.org/doc/stable/reference/ufuncs.html

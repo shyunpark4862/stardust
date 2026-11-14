@@ -1,0 +1,557 @@
+---
+title: 통계 함수
+group: 집계와 통계
+order: 2
+summary: quantile·median이 레인을 어떻게 모아 고르고 numpy와 비트까지 같은 위치·보간을 계산하는지, NaN을 건너뛰는 리덕션이 복사본 없이 numpy와 같은 값을 내는 방법, cov·corrcoef의 BLAS 선택과 대칭 처리, bincount·histogram의 구간 계산과 가중치 합을 설명해요.
+seeAlso: [reductions, sorting, matmul, accuracy]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+import Bench from '../../../components/fig/Bench.astro';
+
+## 한눈에 보기
+
+이 장의 함수들은 [집계](/internals/array/reductions/)의 부품(pairwise 합, 블록 리덕션, 이터레이터) 위에 올라가거나, 정렬([정렬과 집합](/internals/array/sorting/))과 BLAS([행렬곱](/internals/array/matmul/))를 빌려 써요. 공통 목표는 둘이에요.
+
+- **numpy의 계산을 단계마다 옮겨요.** 위치 계산식, 보간식, 블록 크기, 나누는 대신 곱하는 것까지 numpy 소스를 그대로 따라요. 그래서 대부분 numpy와 비트까지 같아요.
+- **병렬로 나눠도 결과가 바뀌지 않게 해요.** 레인끼리, 블록끼리 독립인 단위로만 나누고, 부분 결과는 정해진 순서로 합쳐요. 결과는 스레드 수와 상관없이 같아요.
+
+| 함수 | 알고리즘 | numpy 2.5.4와의 관계 | 병렬 단위 |
+|---|---|---|---|
+| `quantile`, `median` (nan판 포함) | 레인을 float64 행으로 모아 정렬 또는 선택, numpy의 위치·보간 | 비트까지 같음(±0 동점 제외) | 레인 묶음, 레인 하나면 병렬 정렬 |
+| `nansum`, `nanmean`, `nanvar` 등 | 읽을 때 NaN을 중립값으로, 개수는 따로 셈 | 비트까지 같음(같은 레이아웃·축이면) | 집계와 같음 |
+| `nanmin`, `nanmax`, `nanargmin`, `nanargmax` | NaN을 건너뛰는 FMAXNM, NaN을 ±inf로 읽기 | 같음 | 고정 조각 |
+| `cov`, `corrcoef` | 평균 → 중심화 → syrk 또는 gemm → 타일 대칭 복사 | 비트는 보장하지 않음(상대 1e-13 안) | BLAS 내부, 타일 블록 행 |
+| `bincount` | 최소·최대 한 패스, 개수는 구간별, 가중치는 순서대로 | 비트까지 같음 | 16개 구간 (개수만) |
+| `histogram` | numpy의 구간 공식과 두 번의 보정, 65536원소 블록 합 | 비트까지 같음(경계 배열 + 같은 값에 다른 가중치는 예외) | 블록, 16개 구간 |
+
+## 분위수와 중앙값
+
+### 레인 모으기
+
+분위수는 "출력 하나에 해당하는 원소들"(레인)을 정렬된 순서로 볼 수 있어야 해요. 레인은 여러 축에 걸칠 수도 있고(`axis=(0, 2)`), 메모리에서 흩어져 있을 수도 있어요. 그래서 먼저 모든 레인을 **C 순서 float64 행렬의 행**으로 복사해요.
+
+1. 남는 축을 앞에, 줄이는 축을 뒤에 둔 뷰를 만들어요. shape과 strides만 다시 배열한 것이라 비용이 없어요.
+2. 그 뷰를 새 C 순서 float64 배열에 `assign`으로 복사해요. 정수 입력은 이때 float64로 바뀌어요.
+3. 행 하나가 레인 하나예요. 레인은 **자기 행 안에서 제자리로** 정렬하거나 골라요.
+
+<Fig caption="x (2, 3, 4)의 quantile(axis=(0, 2)). 남는 축 1을 앞으로, 줄이는 축 0과 2를 뒤로 보낸 뷰를 C 순서로 복사하면 길이 8인 레인 3개가 행 3개가 돼요.">
+  <ArrayFig name="x의 뷰 (축 순서 1, 0, 2)" data={[['x[0,0,:]', 'x[1,0,:]'], ['x[0,1,:]', 'x[1,1,:]'], ['x[0,2,:]', 'x[1,2,:]']]} tones={[['a', 'a'], ['', ''], ['b', 'b']]} note="shape (3, 2, 4), strides는 흩어져 있음" />
+  <Op note="assign">→</Op>
+  <ArrayFig name="rows (C 순서 float64)" data={[['레인 0: 8개'], ['레인 1: 8개'], ['레인 2: 8개']]} tones={[['a'], [''], ['b']]} note="shape (3, 8), 행마다 연속" />
+</Fig>
+
+입력 전체를 한 번 복사하는 비용(원소당 8바이트 읽기와 쓰기)이 들지만, 얻는 것이 많아요. 선택 알고리즘이 연속 메모리에서 돌고, 원본을 건드리지 않고 제자리에서 섞을 수 있고, 레인마다 따로 할당할 필요가 없어요. numpy의 `median`도 원본을 보존하려고 `partition`으로 사본을 만들어요(`overwrite_input=False`가 기본).
+
+### NaN과 빈 레인
+
+- 일반 판: 행을 훑어(`std::any_of`) NaN이 하나라도 있으면 그 레인의 결과는 모두 NaN이에요(numpy와 같아요).
+- nan판(`nanquantile`, `nanmedian`): `std::remove_if`로 NaN이 아닌 값들을 앞으로 모으고 길이를 줄여요. 이후 단계는 줄어든 길이 $n$으로 계산해요.
+- 길이가 0이면 NaN이에요. numpy는 이 경우 `IndexError`를 내거나 경고와 함께 NaN을 내요. 결과 dtype을 언제나 float64로 두는 이유이기도 해요. numpy처럼 정수 입력의 결과를 정수로 두면 빈 레인의 NaN을 담을 수 없어요(사용자 결정).
+
+### 위치: numpy의 13가지 방법
+
+분위수 $q \in [0, 1]$을 정렬된 레인 $a_0 \le a_1 \le \dots \le a_{n-1}$에서 읽는 방법이 13가지예요. 대부분 Hyndman과 Fan [1]의 분류를 따르고, numpy 2.x의 `_QuantileMethods`(`numpy/lib/_function_base_impl.py` [2])에 정의돼 있어요. 보간하는 방법은 먼저 **가상 인덱스** $v$를 구해요. 일반형은 numpy의 `_compute_virtual_index`예요.
+
+$$
+v = n q + \big(\alpha + q (1 - \alpha - \beta)\big) - 1
+$$
+
+| 방법 | 계산 | 종류 |
+|---|---|:---:|
+| `inverted_cdf` | $nq - 1$을 경계로 올림 (`to_boundary`) | 이산 |
+| `averaged_inverted_cdf` | $v = nq - 1$, $\gamma = 0.5$ (소수부가 0일 때) 아니면 $1$ | 보간 |
+| `closest_observation` | $nq - 1 - 0.5$를 경계로, 동점이면 홀수 규칙 | 이산 |
+| `interpolated_inverted_cdf` | $(\alpha, \beta) = (0, 1)$ | 보간 |
+| `hazen` | $(\alpha, \beta) = (1/2, 1/2)$ | 보간 |
+| `weibull` | $(\alpha, \beta) = (0, 0)$ | 보간 |
+| `linear` (기본) | $v = (n-1) q$ (수학적으로 $(\alpha, \beta) = (1, 1)$) | 보간 |
+| `median_unbiased` | $(\alpha, \beta) = (1/3, 1/3)$ | 보간 |
+| `normal_unbiased` | $(\alpha, \beta) = (3/8, 3/8)$ | 보간 |
+| `lower` | $a_{\lfloor (n-1) q \rfloor}$ | 이산 |
+| `higher` | $a_{\lceil (n-1) q \rceil}$ | 이산 |
+| `nearest` | $a_{\mathrm{round}((n-1) q)}$, 반올림은 짝수 쪽 | 이산 |
+| `midpoint` | $v = \tfrac12\big(\lfloor (n-1)q \rfloor + \lceil (n-1)q \rceil\big)$, $\gamma = 0$ (정수) 아니면 $0.5$ | 보간 |
+
+보간하는 방법은 $v$에서 두 이웃과 가중치를 정하고 선형 보간해요.
+
+$$
+k = \lfloor v \rfloor, \qquad \gamma = v - k, \qquad Q(q) = \operatorname{lerp}(a_k,\ a_{k+1},\ \gamma)
+$$
+
+여기까지는 수식이고, 비트까지 같으려면 **numpy가 쓴 식을 numpy의 연산 순서 그대로** 써야 해요. 부동소수점에서는 수학적으로 같은 식도 반올림이 달라요. 예를 들어 `linear`를 $(\alpha, \beta) = (1, 1)$의 일반형으로 계산하면 $(n-1)q$와 마지막 비트가 다를 수 있고, 그러면 $\lfloor v \rfloor$가 한 칸 바뀌거나 $\gamma$가 달라져요. numpy도 이 이유로 `linear`만 따로 $(n-1)q$로 적어 두었어요(소스의 주석). stardust의 `pick` 함수는 이런 세부를 한 줄씩 옮겼어요.
+
+```cpp
+// array/ops/quantile.cpp (발췌)
+double virtual_index(double n, double q, double alpha, double beta) {
+    return n * q + (alpha + q * (1 - alpha - beta)) - 1;        // numpy의 괄호 그대로
+}
+
+double py_mod2(double v) { return v - 2 * std::floor(v / 2); }  // Python의 float % 2
+
+std::int64_t to_boundary(double index, bool odd_rule) {          // _discrete_interpolation_to_boundaries
+    const double previous = std::floor(index);
+    const double gamma = index - previous;
+    const bool take_previous = gamma == 0 && (!odd_rule || py_mod2(previous) == 1);
+    const auto r = static_cast<std::int64_t>(take_previous ? previous : previous + 1);
+    return r < 0 ? 0 : r;
+}
+
+Pick pick(Method m, std::int64_t count, double q) {
+    const double n = static_cast<double>(count);
+    switch (m) {
+        case Method::Nearest: return take(std::nearbyint((n - 1) * q));   // np.around: 짝수 쪽
+        case Method::Linear:  v = (n - 1) * q; break;
+        case Method::Hazen:   v = virtual_index(n, q, 0.5, 0.5); break;
+        // ... 나머지 방법
+    }
+    double previous = std::floor(v);                    // _get_indexes
+    if (v >= n - 1)  { previous = -1; p.lo = p.hi = count - 1; }   // 끝을 넘으면
+    else if (v < 0)  { previous = 0;  p.lo = p.hi = 0; }           // 앞을 넘으면
+    else             { p.lo = previous; p.hi = p.lo + 1; }
+    double gamma = v - previous;                        // _get_gamma
+    if (m == Method::AveragedInvertedCdf) gamma = gamma == 0 ? 0.5 : 1.0;
+    if (m == Method::Midpoint) gamma = std::floor(v) == v ? 0.0 : 0.5;
+    ...
+}
+```
+
+옮기면서 맞춘 세부가 넷이에요.
+
+- **`-ffp-contract=off`.** 이 빌드 옵션이 없으면 clang이 `n * q + (...)`를 FMA 하나로 합쳐요. 그러면 `n * q`가 반올림되지 않은 채 더해져 numpy(두 번 반올림)와 비트가 달라져요. 그래서 `_core` 타깃 전체를 이 옵션으로 빌드해요.
+- **`closest_observation`의 홀수 규칙.** numpy는 `np.floor(index) % 2`로 짝홀을 봐요. Python의 `%`는 결과의 부호가 나누는 수를 따르므로 음수 인덱스에서 C의 `fmod`와 달라요. `py_mod2`가 Python의 의미($v - 2\lfloor v/2 \rfloor$)를 그대로 계산해요.
+- **`nearest`의 반올림.** numpy의 `np.around`는 0.5를 짝수 쪽으로 보내요. `std::nearbyint`가 현재 반올림 모드(기본: 가장 가까운 짝수)로 같은 일을 해요. `std::round`(0에서 먼 쪽)를 쓰면 틀려요.
+- **끝을 넘는 인덱스.** numpy의 `_get_indexes`는 $v \ge n-1$이면 두 이웃을 모두 인덱스 $-1$(마지막 원소)로 놓아요. 그다음 `_get_gamma`가 $\gamma = v - \text{previous}$를 계산하는데, 이때 빼는 값이 $n-1$이 아니라 $-1$이라서 $\gamma = v + 1$이 돼요. 수학적으로는 이상해 보이지만 결과에 보이는 차이가 있어요. 두 이웃이 같으니 보통은 $\operatorname{lerp}(b, b, \gamma) = b$인데, $b$가 `inf`이면 $b - b$가 NaN이라 결과가 NaN이 돼요. stardust도 똑같이 따라요.
+
+```python
+>>> import stardust as sd
+>>> sd.quantile(sd.asarray([0.0, 1.0, 2.0, sd.inf]), 1.0)
+nan
+>>> sd.quantile(sd.asarray([0.0, 1.0, 2.0, sd.inf]), 0.5)
+1.5
+```
+
+numpy 2.5.4도 첫 호출에 `nan`을 돌려줘요(`invalid value encountered in scalar subtract` 경고와 함께).
+
+### 보간: numpy의 `_lerp`
+
+```cpp
+// array/ops/quantile.cpp
+double lerp(double a, double b, double t) {
+    const double diff = b - a;
+    return t >= 0.5 ? b - diff * (1 - t) : a + diff * t;
+}
+```
+
+$t$가 0.5 이상이면 $b$ 쪽에서 거꾸로 계산해요. 이유는 끝점에서의 정확성이에요. $t = 1$일 때 `a + diff * 1`은 `diff = b - a`가 이미 반올림되었으므로 $b$와 정확히 같다는 보장이 없어요. `b - diff * 0`은 정확히 $b$예요. $t$가 0에 가까울 때는 반대로 `a + diff * t`가 $a$에 가까운 값을 정확하게 줘요. numpy의 `_lerp`가 이 두 갈래를 쓰고(`add(...)`로 계산한 뒤 `where=t >= 0.5`로 `subtract(...)`를 덮어써요), stardust는 같은 결과를 분기 하나로 내요. 여기서도 `-ffp-contract=off`라서 `a + diff * t`가 FMA로 합쳐지지 않아요.
+
+### median은 quantile이 아니에요
+
+`median`은 `quantile(x, 0.5)`가 아니라 numpy의 `_median`을 따라요. numpy는 가운데 하나(홀수) 또는 둘(짝수)을 `partition`으로 제자리에 놓고 그 조각의 `mean`을 구해요. `mean`은 `+0.0`부터 더해서 개수로 나누는 것이니, stardust도 똑같이 계산해요.
+
+```cpp
+// array/ops/quantile.cpp의 run_lane (발췌)
+const std::int64_t h = n / 2;
+if (n % 2) out[0] = (0.0 + p[h]) / 1.0;                  // 가운데 하나
+else       out[0] = (0.0 + p[h - 1] + p[h]) / 2.0;       // 가운데 둘: (0 + a) + b
+```
+
+`0.0 +`가 하는 일이 있어요. 레인이 `[-0.0]`이면 `0.0 + -0.0 = +0.0`이라 결과가 `+0.0`이에요. numpy의 `mean`도 `+0.0`에서 시작하므로 같아요. `quantile`의 `linear`와 `median`은 대부분 같은 값이지만, 이런 경계에서 비트가 달라질 수 있어서 numpy가 둘을 따로 둔 것을 그대로 따랐어요.
+
+### 고르기: 길이에 따라 세 갈래
+
+위치 계산이 끝나면 필요한 순서 통계량(분위수마다 이웃 둘)의 인덱스를 모아 정렬하고 중복을 없애요. 그다음 레인 길이에 따라 세 길 중 하나로 그 위치들에 올바른 값을 놓아요(`order_statistics`).
+
+| 레인 길이 | 방법 | 근거 (원소당 시간) |
+|---|---|---|
+| 6개 미만 | 전순서의 삽입 정렬 | 길이 4인 레인 75만 개: NEON 정렬 29ms, 삽입 정렬 20ms |
+| 4096개 이하 | NEON 정렬로 레인 전체를 정렬 | 16 / 256 / 1000 / 4096개 정렬 2.4 / 4.1 / 5.6 / 7.3ns, `nth_element` 8.3 / 8.0 / 7.8 / 7.5ns |
+| 레인이 하나뿐이고 13만 개(`2 × 2^16`) 이상이고 풀이 비어 있음 | 조각으로 나눈 병렬 정렬 | 100만 개, 10스레드: 4.1ms, 고르기는 6.9ms |
+| 그 밖 | `std::nth_element`로 재귀 선택 | 100만 개에서 `nth_element` 6.9ns, 정렬 13.9ns |
+
+짧은 레인에서는 정렬이 선택보다 빨라요. `nth_element`는 분할 단계마다 분기 예측이 어려운 비교를 하지만, NEON 정렬은 16개 블록을 분기 없는 정렬 네트워크로 처리하고 병합해요([정렬과 집합](/internals/array/sorting/)). 길이 256 이하는 정렬 버퍼를 스택에 둬요. 레인마다 힙 할당을 하면 짧은 레인이 많을 때(shape (3e5, 10)의 quantile) numpy보다 2배 느렸어요.
+
+긴 레인의 선택은 위치가 여러 개일 때를 위해 재귀로 해요.
+
+```cpp
+// array/ops/quantile.cpp의 select (발췌)
+void select(double* p, std::int64_t lo, std::int64_t hi, const std::int64_t* ks, int count) {
+    if (count == 0) return;
+    if (count > 32) { sort_float64_total(p + lo, hi - lo, false); return; }  // 위치가 많으면 정렬
+    const int mid = count / 2;
+    const std::int64_t k = ks[mid];
+    if (k == lo)          std::iter_swap(p + k, std::min_element(p + lo, p + hi, TotalLess{}));
+    else if (k == hi - 1) std::iter_swap(p + k, std::max_element(p + lo, p + hi, TotalLess{}));
+    else                  std::nth_element(p + lo, p + k, p + hi, TotalLess{});
+    select(p, lo, k, ks, mid);                          // 왼쪽 위치들은 왼쪽 범위 안에서만
+    select(p, k + 1, hi, ks + mid + 1, count - mid - 1); // 오른쪽 위치들은 오른쪽 범위 안에서만
+}
+```
+
+- 가운데 위치를 먼저 고르면 배열이 그 위치를 기준으로 갈라져요. 왼쪽 위치들은 왼쪽 범위만, 오른쪽 위치들은 오른쪽 범위만 보면 돼요. 위치 $k$개를 왼쪽부터 하나씩 고르면 $O(nk)$이지만, 이렇게 하면 범위가 매번 반으로 줄어 약 $O(n \log k)$예요.
+- 범위의 첫 위치나 끝 위치는 그 범위의 최솟값·최댓값일 뿐이라 `min_element`/`max_element` 한 번의 훑기면 돼요. 짝수 길이 `median`의 두 번째 위치가 이 경우예요. 가운데 $h$를 `nth_element`로 고르면 $h-1$은 왼쪽 범위의 끝이라 최댓값 훑기 한 번이에요.
+- 위치가 32개를 넘으면 범위를 그냥 정렬해요.
+
+`std::nth_element`는 Hoare의 선택 알고리즘(quickselect) [3] 계열이고 평균 $O(n)$이에요. numpy의 `partition`은 introselect(Musser [4])를 써요.
+
+### 전순서와 ±0: 길이 바뀌어도 같은 비트
+
+세 갈래가 모두 **같은 전순서**로 비교해요. `-0.0 < +0.0`인 순서예요.
+
+```cpp
+// array/ops/sort.hpp
+struct TotalLess {
+    bool operator()(double a, double b) const { return a < b || (a == b && std::signbit(a) && !std::signbit(b)); }
+};
+```
+
+이것이 필요한 이유는 레인 하나짜리 경로가 **풀이 비어 있는지**에 따라 병렬 정렬과 `nth_element` 사이를 오가기 때문이에요. 보통의 `<`로는 `-0.0`과 `+0.0`이 같아서, 그 순위에 어느 쪽이 놓일지 알고리즘마다 달라요. 그러면 스레드 수에 따라 결과의 부호가 바뀌어요. 전순서를 쓰면 순서 통계량이 부호까지 하나로 정해지므로 어느 길을 타도 같은 비트예요.
+
+NEON 정렬은 병합할 때 같은 값을 어느 쪽에서든 가져와서 `-0.0`과 `+0.0`이 섞여 나와요. 그래서 `sort_float64_total`은 정렬한 뒤 0의 구간을 찾아 "음의 0 개수만큼 `-0.0`, 나머지는 `+0.0`"으로 다시 써요. 정렬된 결과에서 0들은 붙어 있으므로 `lower_bound`/`upper_bound`로 구간을 찾고 개수만 세면 돼요. 병렬 정렬의 조각 병합도 `TotalLess`로 비교해요.
+
+```cpp
+// array/ops/sort.cpp의 sort_float64_total (발췌)
+auto piece = [](double* p, std::int64_t m) {
+    simd_sort::sort<simd_sort::F64>(p, m);
+    double* z0 = std::lower_bound(p, p + m, 0.0);
+    double* z1 = std::upper_bound(z0, p + m, 0.0);
+    const std::int64_t negative = std::count_if(z0, z1, [](double v) { return std::signbit(v); });
+    std::fill(z0, z0 + negative, -0.0);
+    std::fill(z0 + negative, z1, 0.0);
+};
+```
+
+### numpy와 비트가 같은 이유, 같지 않은 단 하나
+
+- 값은 **순서 통계량**만 써요. 정렬된 배열의 $k$번째 값은 어떤 알고리즘으로 구하든 같아요.
+- 위치와 보간은 numpy 소스를 연산 순서까지 옮겼어요.
+- 정수 입력은 float64로 바꾼 뒤 골라요. numpy는 정수 그대로 `b - a`를 계산하지만, $|x| < 2^{53}$이면 float64 변환이 정확하므로 결과가 같아요.
+
+직접 확인한 범위예요. 정규분포 레인 길이 1, 2, 3, 5, 7, 100, 4097, 100001에서 13가지 방법 모두, $q$ 41개(0부터 1까지 0.025 간격)로 numpy 2.5.4와 비트가 같았어요. `median`도 같은 길이들과 (50, 3000)의 `axis=0`, `axis=1`에서 같았고, 원소 100만 개의 `median`은 1스레드(`nth_element` 경로)와 10스레드(병렬 정렬 경로) 모두 numpy와 같았어요. NaN을 섞은 `nanmedian`도 같았어요.
+
+**같지 않은 것**은 `-0.0`과 `+0.0`이 한 순위에 섞여 있는 경우뿐이에요. stardust는 전순서로 정하고, numpy의 introselect는 정해 두지 않아서 결과의 부호가 다를 수 있어요. 값으로는 같은 0이에요.
+
+### 병렬
+
+레인은 서로 독립이고 각자 자기 행에서 정렬·선택돼요. 그래서 레인을 묶어 나눠도 비트가 같아요. `for_pieces`가 레인을 작업당 원소 4096개 이상이 되게 묶어(`kParallelTask / n`개씩) 풀에 넘겨요. 레인이 하나뿐인 `axis=None`은 위의 병렬 정렬을 써요.
+
+### median이 numpy보다 느린 이유
+
+<Bench
+  rows={[{ label: 'median(f), 100만 개', times: [6.23e-3, 7.45e-3, 4.31e-3] }]}
+  caption="원소 100만 개, float64, numpy 2.5.4의 np.median과 비교해요."
+/>
+
+1스레드에서 stardust가 0.84배로 느려요. 이 경로가 하는 일은 이래요.
+
+1. 레인 모으기: 8MB를 읽어 새 배열에 써요(새 메모리라 첫 쓰기의 페이지 폴트 포함).
+2. NaN 검사: 한 번 훑어요.
+3. 가운데 위치 $h$를 `std::nth_element`로 골라요.
+4. $h-1$은 왼쪽 범위의 최댓값으로 한 번 훑어요.
+
+코드 주석에 적힌 측정으로 원소 100만 개의 `nth_element`는 원소당 약 6.9ns, 곧 약 6.9ms예요. 이것만으로 numpy의 `median` 전체(6.23ms)보다 길어요. numpy도 사본을 만들고 `partition` 호출 한 번으로 세 위치(가운데 둘과 NaN 검사용 마지막 원소, numpy 2.5.4의 `_median`이 `kth`에 `-1`을 더해요)를 놓으니, 차이는 거의 선택 커널 자체의 속도예요. 이 Mac에서는 libc++의 `std::nth_element`가 numpy의 introselect보다 느려요.
+
+10스레드에서는 레인 하나·13만 개 이상·풀이 비어 있다는 조건이 맞아서 선택 대신 **병렬 정렬**로 레인 전체를 정렬해요. 정렬은 $O(n \log n)$으로 선택보다 할 일이 많지만, 조각(2¹⁶개)마다 NEON 정렬을 병렬로 하고 병합하므로 4.31ms(1.44배)가 돼요. 선택 자체를 병렬로 하는 경로는 없어요.
+
+## NaN을 건너뛰는 리덕션
+
+### numpy의 방식과 stardust의 방식
+
+numpy의 nan 함수들은 대부분 NaN을 중립값으로 바꾼 **복사본**을 만들고(`_replace_nan`, `numpy/lib/_nanfunctions_impl.py` [5]), 이름 앞의 `nan`을 뗀 함수를 불러요. 합은 0, 곱은 1, argmin은 `+inf`, argmax는 `-inf`로 바꿔요.
+
+stardust는 복사본을 만들지 않고 **같은 값을 계산해요.** 커널이 원소를 읽는 순간 NaN을 중립값으로 봐요.
+
+```cpp
+// array/kernels/reduce.hpp
+template <typename T>
+inline T nan_as(T v, T fill) {
+    if constexpr (ops::is_cplx<T>) return (std::isnan(v.real()) || std::isnan(v.imag())) ? fill : v;
+    else if constexpr (ops::is_float<T>) return v != v ? fill : v;
+    else return v;
+}
+
+// reduce_loop<Op, T, SkipNan> 안의 값 읽기
+auto value = [&](T v) {
+    if constexpr (SkipNan) return nan_as(v, identity);   // 합은 0, 곱은 1
+    else return v;
+};
+```
+
+`reduce_loop<Op, T, true>`는 이터레이터, 블록 리덕션, pairwise 트리를 모두 원래 함수와 똑같이 지나요. 다른 점은 접근자가 NaN 자리에 0을 돌려준다는 것뿐이에요. 그러니 "NaN을 0으로 바꾼 복사본의 `sum`"과 같은 덧셈을 같은 순서로 해요. NaN이 없으면 원래 함수와 비트가 같고, NaN이 있으면 numpy의 nan 함수와 비트가 같아요(테스트가 레이아웃, 축, 스레드 수마다 대조해요). 직접 확인한 경우로 7번째마다 NaN을 넣은 정규분포 100만 개의 `nansum`, `nanmean`, `nanvar`가 numpy 2.5.4와 비트가 같았어요.
+
+복사본을 만들지 않는 데서 얻는 것은 메모리 왕복 두 번(사본 쓰기, 다시 읽기)과 입력 크기만 한 할당이에요.
+
+### 세부
+
+- **블록을 합치는 단계는 원래 연산이에요.** 블록 리덕션의 블록들은 NaN을 건너뛰며 접지만(`fold = reduce_loop<Op, T, true>`), 블록 결과를 합칠 때는 NaN을 건너뛰지 않는 연산을 써요(`combine = reduce_loop<Op, T, false>`). 부분합에 생긴 NaN(예: `inf + -inf`)은 입력의 NaN이 아니라 계산 결과라서 남아야 해요. numpy의 복사본 방식에서도 그 NaN은 남아요.
+- **연속 float64는 typed 포인터로 읽어요.** NaN 선택(`v != v ? 0 : v`)이 벡터화돼요. 1000만 개에서 2.6ms가 1.6ms가 됐어요(일반 `sum`은 1.25ms).
+- **`dtype=`이 다른 dtype으로 바꾸는 경우만 복사본을 만들어요**(`replace_nan`). NaN은 변환 전에 없애야 하기 때문이에요(예: complex를 float으로 바꾸기 전에).
+- **bool·int64는 NaN이 없으므로** 이름 앞의 `nan`을 뗀 함수로 바로 가요.
+
+### 개수
+
+`nanmean`과 `nanvar`의 $N$, 그리고 `count_nonzero`는 전용 커널 `count_loop<T, Kind>`가 세요. x를 직접 읽어 int64로 세므로 마스크 배열이 없어요. 정수 합이라 순서와 상관없고, 긴 레인은 조각으로 나눠 병렬로 세요. numpy의 `nanvar`는 `np.sum(~mask, ...)`로 세는데, 그러려면 bool 마스크 배열이 먼저 있어야 해요.
+
+`nanmean`은 NaN을 건너뛴 합 ÷ 개수예요. 레인이 모두 NaN이거나 비면 `0 / 0 = NaN`이에요.
+
+### nanvar: 분기가 아니라 선택
+
+`nanvar`의 두 번째 패스는 `sq_dev_loop<T, true>`가 NaN 자리에 `+0.0`을 더해요.
+
+```cpp
+// sq_dev_loop의 SkipNan 부분 (발췌)
+bool nan = v != v;                 // complex면 두 부분 중 하나라도
+return nan ? 0.0 : sq;             // 분기가 아니라 선택 (csel / 벡터 bsl)
+```
+
+- **선택인 이유.** NaN이 무작위로 흩어져 있으면 `if (nan) continue;` 같은 분기는 예측이 계속 틀려요. 삼항 연산자 하나는 분기 없는 선택 명령으로 컴파일될 수 있어요.
+- **`+0.0`을 더해도 되는 이유.** numpy의 `nanvar`도 같은 값을 더해요. numpy는 복사본에서 평균을 뺀 뒤 `_copyto(arr, 0, mask)`로 NaN 자리를 0으로 되돌리고 제곱해서, NaN 자리에 $0^2 = +0.0$이 들어간 배열을 더해요. 같은 자리에 같은 `+0.0`이 같은 트리로 더해지므로 비트가 같아요. 게다가 편차 제곱은 모두 `+0.0` 이상이라 부분합이 `-0.0`이 될 일이 없고, $s + (+0.0) = s$가 정확히 성립하므로 다른 부분합의 비트도 바뀌지 않아요.
+
+### nanmin, nanmax, nanargmin, nanargmax, nancumulative
+
+- **`nanmin`/`nanmax`:** 시작값을 NaN으로 두고 NaN을 건너뛰는 최소/최대(`ops::NanMinimum`/`NanMaximum`)로 접어요. 어떤 수든 NaN 시작값을 이기므로 첫 수가 들어오면 거기서부터 보통의 max가 돼요. 연속 float64는 NEON의 `FMINNM`/`FMAXNM`(`vminnmq_f64`/`vmaxnmq_f64`)이 바로 이 의미예요. 순서와 상관없는 접기라 긴 레인은 조각으로 병렬로 접어요. 모두 NaN이면 NaN이 남아요(numpy는 경고와 함께 NaN).
+- **`nanargmin`/`nanargmax`:** argmin 커널(`arg_extreme<T, Max, SkipNan>`, NEON 포함)이 NaN을 `+inf`(min)/`-inf`(max)로 읽어요. numpy가 복사본에서 바꾸는 값 그대로라 결과도 같아요. 같은 값의 첫 위치 규칙도 그대로예요. 그 전에 레인마다 NaN이 아닌 원소 수를 세어, 0인 레인이 있으면 `ValueError("All-NaN slice encountered")`를 내요. numpy와 같은 순서(빈 입력 에러보다 먼저)와 같은 메시지예요.
+- **`nancumulative_sum`/`nancumulative_prod`:** 스캔 커널(`scan_lane<Op, T, SkipNan>`)이 NaN을 중립값으로 읽어요. 블록 스캔을 포함해 구조는 일반 스캔과 같아요.
+
+## cov와 corrcoef
+
+### 단계: numpy의 순서 그대로
+
+numpy의 `cov`(`numpy/lib/_function_base_impl.py` [2])는 이렇게 해요: 변수마다 평균(`average`) → `X -= avg[:, None]` → `c = dot(X, X_T.conj())` → `c *= np.true_divide(1, fact)`. stardust도 같은 순서예요.
+
+1. **평균.** x 자체에서 관측 축 방향으로 `sd.mean`을 불러요(`rowvar=False`면 전치한 뷰에서). 결과는 (p, 1)이에요.
+2. **중심화.** `subtract(x, 평균, out=X)` 하나로 C 순서 (p, n) 행렬 X를 만들어요. 복사와 중심화가 한 패스예요. 처음에는 복사, 평균, 중심화가 각각 패스였어요.
+3. **곱.** BLAS로 $C = X X^{\mathsf H}$를 계산해요. 모양에 따라 `dsyrk`/`zherk` 또는 `gemm`을 골라요.
+4. **대칭 복사와 배율.** 위 삼각을 아래로 복사하면서 $1/\text{fact}$를 곱해요. 한 패스예요.
+
+$$
+C = \frac{1}{N - c}\,(X - \bar X)(X - \bar X)^{\mathsf H}
+$$
+
+$c$는 `correction`이고, $\text{fact} = N - c \le 0$이면 결과는 NaN이에요. `var`의 규칙과 같아요. numpy는 경고를 내고 0으로 나눠 inf나 NaN을 내요. 배율은 numpy처럼 $1/\text{fact}$를 먼저 구해 **곱해요**. `c / fact`와 `c * (1/fact)`는 마지막 비트가 다를 수 있어서, numpy가 곱하는 것을 그대로 따랐어요.
+
+### syrk와 gemm 고르기
+
+$X X^{\mathsf T}$는 대칭이라 위 삼각만 계산하면 돼요. BLAS의 `syrk`(복소면 `herk`)가 그 일을 해요 [6].
+
+| 루틴 | 계산 | 곱셈-덧셈 수 |
+|---|---|:---:|
+| `gemm(X, Xᵀ)` | 행렬 전체 | $p^2 n$ |
+| `syrk(X)` | 위 삼각 | $\tfrac12 p(p+1) n$ |
+
+이론상 `syrk`가 언제나 절반이지만, Accelerate의 `syrk`는 관측이 변수보다 훨씬 많으면 오히려 느렸어요. p = 20, n = 1e5에서 `syrk` 3.5ms, `gemm` 2.0ms였어요. C++에서 잰 표로 경계를 정했어요. p = 2000, n = 200에서는 `syrk`가 2.4배 빠르고, $n \ge 4p$부터는 `gemm`이 같거나 빨랐어요. 그래서 $n \le 4p$이면 `syrk`, 아니면 `gemm`이에요.
+
+```cpp
+// array/ops/covariance.cpp (발췌)
+{
+    nb::gil_scoped_release release;    // BLAS는 오래 걸릴 수 있고 Python 객체를 만지지 않는다
+    if (n <= 4 * p) blas::syrk_upper<T>(p, n, xp, n, cp, p);           // dsyrk / zherk, 위 삼각
+    else blas::gemm<T>(CblasNoTrans, ops::is_cplx<T> ? CblasConjTrans : CblasTrans,
+                       p, p, n, xp, n, xp, n, cp, p);                    // B = Xᴴ
+}
+```
+
+`syrk_upper`는 `cblas_dsyrk(CblasRowMajor, CblasUpper, CblasNoTrans, ...)`, 복소수면 `cblas_zherk`예요. `zherk`는 대각을 정확히 실수로 만들어요. BLAS를 부르는 동안에는 GIL을 놓아 다른 Python 스레드가 돌 수 있게 해요. BLAS 자체의 내부 스레드는 Accelerate가 정해요.
+
+### 타일 단위 대칭 복사
+
+`syrk`는 위 삼각만 채우고, `gemm`은 전체를 채우지만 반올림 때문에 $C_{ij}$와 $C_{ji}$가 정확히 같다는 보장이 없어요. 그래서 두 경우 모두 **위 삼각을 아래로 복사해서** 결과가 정확히 대칭(복소면 에르미트, 대각은 실수)이 되게 해요.
+
+단순하게 쓰면 `c[j * p + i] = c[i * p + j]`를 행 순서로 돌게 되는데, 쓰는 쪽이 stride $p$로 열을 따라 내려가요. 원소마다 다른 캐시 줄이라 거의 매번 캐시를 놓쳐요. p = 2000에서 이 복사만 1.7ms(전체 `cov` 2.7ms 중)였어요. 그래서 64×64 타일 단위로 해요. 타일 하나는 읽는 쪽과 쓰는 쪽 모두 64줄 × 64원소라 L1에 들어가요.
+
+```cpp
+// array/ops/covariance.cpp의 block_row (발췌)
+constexpr std::int64_t kTile = 64;
+auto block_row = [&](std::int64_t bi) {
+    const std::int64_t i0 = bi * kTile, i1 = std::min(p, i0 + kTile);
+    for (std::int64_t j0 = i0; j0 < p; j0 += kTile) {          // 위 삼각의 타일들
+        const std::int64_t j1 = std::min(p, j0 + kTile);
+        for (std::int64_t i = i0; i < i1; ++i) {
+            if constexpr (ops::is_cplx<T>)
+                if (j0 == i0) cp[i * p + i] = T(cp[i * p + i].real(), 0.0);   // 대각은 실수
+            for (std::int64_t j = std::max(j0, i); j < j1; ++j) {
+                const T val = cp[i * p + j] * scale;               // 1/fact를 곱하고
+                cp[i * p + j] = val;
+                cp[j * p + i] = is_cplx ? conj(val) : val;         // 거울 자리에 (복소면 켤레)
+            }
+        }
+    }
+};
+for_pieces(blocks, 1, p * p, [&](std::int64_t b, std::int64_t, std::int64_t) { block_row(b); });
+```
+
+태스크 하나가 위 삼각의 블록 행 하나(타일 $(b_i, b_j)$, $b_j \ge b_i$)와 그 거울 타일들 $(b_j, b_i)$을 맡아요. 다른 태스크는 이 타일들을 건드리지 않으므로 잠금 없이 병렬로 돌아요. 대각 타일에서는 `j`를 `max(j0, i)`부터 돌려 위 삼각 부분만 처리해요. 블록 행마다 일의 양이 다르지만(위쪽 블록 행일수록 타일이 많아요) 태스크를 블록 행 단위로 잘게 나눠 풀의 동적 분배가 균형을 맞춰요.
+
+### corrcoef
+
+$\text{fact}$는 상관계수에서 약분되므로 `correction = 0`으로 `cov`를 구한 뒤, 대각의 제곱근 $s_i = \sqrt{C_{ii}}$로 나눠요. numpy의 `corrcoef`는 `cov`의 기본값($N-1$로 나누기)을 쓰므로 수학적으로는 같고 마지막 비트는 다를 수 있어요.
+
+$$
+R_{ij} = \operatorname{clip}\!\Big(\frac{C_{ij}}{s_i} \Big/ s_j,\ -1,\ 1\Big)
+$$
+
+- 나누는 순서는 numpy의 `c / stddev[:, None] / stddev[None, :]`와 같아요. 행으로 먼저 나누고 열로 나눠요.
+- `[-1, 1]`로 자르는 것도 numpy와 같아요. 반올림 때문에 $|R_{ij}|$가 1을 아주 조금 넘을 수 있어요. NaN은 그대로 둬요.
+- 복소수는 실수부와 허수부를 따로 $s_i$, $s_j$로 나눠요. 분모가 실수인 복소 나눗셈이에요. numpy의 복소 나눗셈(Smith 알고리즘 [7])에 허수부 0인 분모를 넣으면 비율이 $0/s = 0$이 되어 결과가 정확히 $(a/s,\ b/s)$이므로, 유한한 값이면 같아요.
+- 행마다 병렬이에요(`for_pieces`).
+- 변수가 하나면 numpy처럼 `c / c`를 Python 스칼라로 돌려줘요. `cov`도 변수가 하나면 스칼라예요(numpy의 `squeeze`).
+
+### 정확도
+
+평균의 합 순서와 BLAS 호출이 numpy와 같다고 보장할 수 없어서 비트 동일성은 약속하지 않아요. 테스트는 상대 1e-13으로 비교해요.
+
+실제로는 꽤 자주 같아요. numpy 2.5.4가 이 Mac에서 Accelerate를 BLAS로 쓰기 때문이에요(`np.show_config()`로 확인). 직접 확인한 결과예요(정규분포, `rowvar=True`, numpy는 `ddof=0`).
+
+| shape (p, n) | 경로 | numpy와 비트 | 최대 상대 차이 |
+|---|---|:---:|:---:|
+| (20, 1000) | syrk, 평균은 행마다 pairwise | 같음 | 0 |
+| (300, 200) | syrk | 같음 | 0 |
+| (5, 100000) | gemm, 평균이 블록 리덕션 | 다름 | 1.7e-15 |
+| 같은 데이터, `rowvar=False` (전치 입력) | 평균이 바깥 축 합·블록 | 다름 | 최대 4e-12 |
+
+(5, 100000)은 출력 축이 5개뿐이라 평균이 [블록 리덕션](/internals/array/reductions/)으로 나뉘어 합 순서가 numpy와 달라져요. `rowvar=False`로 전치한 입력은 평균이 메모리상 바깥 축을 줄이는 합이 돼요. `corrcoef`는 확인한 세 모양 모두에서 numpy와 최대 2.2e-16 차이였어요.
+
+## bincount와 histogram
+
+### bincount
+
+`bincount(x, weights=None, minlength=0)`은 음이 아닌 정수 x의 값마다 개수(또는 가중치 합)를 세요.
+
+1. **입력.** 이미 연속 int64이면 복사하지 않아요(`c_order`). bool은 int64로 바꿔요.
+2. **최소·최대를 한 패스로.** `std::min`/`std::max`는 분기 없는 비교·선택으로 컴파일돼요. 길면 16개 구간으로 나눠 병렬로 구하고 구간 결과를 합쳐요. 음수가 있으면 `ValueError`예요. 결과 길이는 $\max(\text{최대} + 1,\ \text{minlength})$예요.
+3. **개수(가중치 없음).** 정수라서 순서와 상관없어요. 16개 구간(`kGroups`)으로 나눠 구간마다 자기 개수 배열에 세고, 마지막에 더해요. 이 방식은 구간마다 결과 길이만큼의 배열이 필요하므로, $n \ge 32768$이고 $16 \times \text{길이} \le n$일 때만 써요.
+4. **가중치 합.** numpy처럼 원소 순서대로 직렬로 더해요(`o[v[i]] += p[i]`). float 덧셈은 순서가 바뀌면 비트가 바뀌는데, 같은 칸에 더해지는 원소들의 순서는 원소 순서 그대로여야 numpy와 같아요. 그래서 이 부분은 병렬로 나누지 않아요.
+
+```cpp
+// array/ops/histogram.cpp의 count_into (발췌)
+template <typename BinOf>
+void count_into(std::int64_t* counts, std::int64_t bins, std::int64_t n, BinOf&& bin_of) {
+    if (!use_groups(n, bins)) {                       // 짧거나 결과가 너무 길면 직렬
+        for (std::int64_t i = 0; i < n; ++i)
+            if (const std::int64_t b = bin_of(i); b >= 0) ++counts[b];
+        return;
+    }
+    std::vector<std::int64_t> local(kGroups * bins, 0);   // 구간마다 자기 개수 배열
+    for_pieces(n, (n + kGroups - 1) / kGroups, n, [&](std::int64_t g, std::int64_t b0, std::int64_t e0) {
+        std::int64_t* c = local.data() + g * bins;
+        for (std::int64_t i = b0; i < e0; ++i)
+            if (const std::int64_t b = bin_of(i); b >= 0) ++c[b];
+    });
+    for (std::int64_t g = 0; g < kGroups; ++g)
+        for (std::int64_t b = 0; b < bins; ++b) counts[b] += local[g * bins + b];
+}
+```
+
+구간 수를 스레드 수가 아니라 고정 16으로 두었어요. 개수는 정수라 어떻게 나눠도 같지만, 구조를 스레드 수와 무관하게 두는 것이 stardust 전체의 규칙이에요. 같은 함수가 `histogram`의 개수에도 쓰여요. 직접 확인한 경우(0~999의 정수 100만 개, 가중치 있음)에서 numpy와 비트가 같았어요.
+
+### histogram: 같은 너비 구간
+
+numpy의 `_histograms_impl.histogram`(`numpy/lib/_histograms_impl.py` [8])을 단계마다 옮겼어요.
+
+**범위와 경계.** `range`가 없으면 데이터의 최솟값과 최댓값이 범위예요(16개 구간으로 병렬로 구하고, NaN이 하나라도 있으면 범위가 유한하지 않다고 보고 `ValueError`). 최솟값과 최댓값이 같으면 양쪽으로 0.5씩 넓혀요. 경계는 `linspace(first, last, bins + 1)`이에요. 경계가 엄격히 증가하지 않으면(구간이 너무 많아 너비가 0인 구간이 생기면) `ValueError`예요.
+
+**구간 번호.** 값 $v$의 구간은 이렇게 구해요.
+
+$$
+f = \frac{v - \text{first}}{\text{last} - \text{first}} \cdot \text{bins}, \qquad i = \lfloor f \rfloor
+$$
+
+이 식은 부동소수점이라 경계 근처에서 한 칸 틀릴 수 있어요. 경계는 `linspace`로 따로 계산한 값이고, $f$는 다른 반올림을 거친 값이기 때문이에요. numpy는 이것을 실제 경계와 비교해 두 번 고쳐요. stardust도 똑같이 해요.
+
+```cpp
+// array/ops/histogram.cpp의 UniformBins (발췌)
+std::int64_t operator()(double v) const {
+    if (!(v >= first && v <= last)) return -1;            // 범위 밖이거나 NaN
+    const double f = ((v - first) / (last - first)) * bins_d;
+    auto i = static_cast<std::int64_t>(f);
+    if (i == bins) --i;                                     // v == last: 마지막 구간은 오른쪽이 닫혀 있다
+    if (v < edge[i]) --i;                                   // 보정 1: 실제 경계보다 작으면 한 칸 아래
+    if (v >= edge[i + 1] && i != bins - 1) ++i;             // 보정 2: 다음 경계 이상이면 한 칸 위
+    return i;
+}
+```
+
+계산은 $O(1)$이고 이진 탐색이 없어요. 보정 덕분에 구간 번호는 언제나 반환하는 경계 배열과 맞아요.
+
+**가중치 합: numpy의 블록 순서.** numpy는 입력을 65536개(`BLOCK`) 블록으로 나눠, 블록마다 `np.bincount(indices, weights)`(구간마다 `0.0`부터 원소 순서대로 더하기)를 구하고 그것을 결과에 더해요. 그러니 구간 $k$의 결과는
+
+$$
+h_k = \Big(\big(0 + B_k^{(0)}\big) + B_k^{(1)}\Big) + \cdots, \qquad B_k^{(b)} = \sum_{\substack{i \in \text{블록 } b \\ \text{bin}(x_i) = k}} w_i \ \ (\text{0.0부터 원소 순서대로})
+$$
+
+예요. stardust도 이 덧셈 순서를 지켜서 비트가 같아요.
+
+- **블록 합은 서로 독립이에요.** 그래서 블록마다 자기 배열에 병렬로 구하고(블록 수 × 구간 수가 입력 크기의 2배 이하일 때, 곧 메모리가 허락할 때), 결과에는 블록 순서대로 더해요. 덧셈 순서가 직렬과 같으니 비트도 같아요.
+- **int 가중치**는 numpy처럼 블록 합을 double로 구한 뒤 int64로 바꿔 더해요(numpy의 `.astype(ntype)`).
+- **complex 가중치**는 numpy가 실수부와 허수부를 따로 `bincount`하므로, 두 부분을 따로 더해요.
+- **개수**(가중치 없음)는 `bincount`처럼 16개 구간으로 나눠 세요.
+- C 순서 float64 입력은 복사하지 않아요. 처음에는 배열로 한 번, `std::vector`로 한 번, 두 번 복사했어요.
+
+**레지스터 재적재 문제.** 처음 구현에서는 1스레드 가중치 히스토그램(100만 개)이 3.7ms였어요. 블록 합 배열(`double*`)에 쓸 때마다 컴파일러가 `first`, `last`, `bins_d` 같은 `double` 값들을 메모리에서 다시 읽었기 때문이에요. C++의 별칭 규칙에서 `double*`로 쓰는 메모리는 다른 `double` 객체(구조체의 멤버 포함)와 겹칠 수 있다고 봐야 해서, 컴파일러는 저장 후 그 값이 바뀌지 않았다고 가정할 수 없어요. 블록 함수 안에서 구조체를 지역 변수로 복사하면(`const UniformBins u = ub;`) 주소가 바깥에 알려지지 않은 지역 값이라 레지스터에 남아요. 2.2ms가 됐어요.
+
+### histogram: 경계 배열
+
+`bins`가 배열이면 경계를 그대로 써요(numpy처럼 받은 dtype 그대로 돌려줘요). 경계가 단조 증가가 아니면 `ValueError`예요.
+
+- **개수:** 값마다 경계에서 이진 탐색(`std::upper_bound`, $O(\log B)$)으로 구간을 찾아 직접 세요. 마지막 구간은 오른쪽이 닫혀 있어서, 마지막 경계와 같은 값은 마지막 구간이에요. numpy는 블록마다 정렬한 뒤 경계를 `searchsorted`로 찾아 누적 개수의 차를 내는데, 개수는 정수라 어느 방법이든 같아요.
+- **가중치:** numpy와 같은 방법이에요. 블록(65536개)마다 값으로 정렬하고, 정렬 순서로 가중치의 누적합을 만들고(`0`부터 순서대로), 경계마다 `searchsorted` 위치(안쪽 경계는 left, 마지막 경계는 right)의 누적합을 결과 누적에 더하고, 마지막에 이웃한 차를 내요.
+
+정렬은 NaN을 맨 뒤로 보내는 비교 함수를 쓴 `std::stable_sort`예요. numpy는 `np.argsort`(기본 quicksort, 안정 정렬이 아님)를 쓰므로 **같은 값의 순서가 다를 수 있어요.** 같은 값에 다른 가중치가 붙어 있으면 누적합의 덧셈 순서가 달라져 마지막 비트가 다를 수 있어요. 같은 값이 없는 경우(무작위 실수 100만 개, 경계 30개)는 직접 확인해 보니 비트가 같았어요.
+
+### density
+
+`density=True`면 numpy와 같은 순서로 `hist / 너비 / sum(hist)`를 계산해요. 합은 `sd.sum`이에요. 연속 float64 하나의 합은 numpy와 비트가 같으므로([집계](/internals/array/reductions/)의 pairwise 합) 결과도 같아요. 직접 확인한 경우에서 같은 너비 구간의 가중치 합, 개수, density가 모두 numpy와 비트가 같았어요.
+
+## 성능
+
+이번 벤치마크 표에 이 장의 함수는 `median`만 있어요(위의 막대). 설계 문서와 코드 주석에 적힌 측정은 이래요.
+
+| 항목 | 값 |
+|---|---|
+| quantile, 길이 4인 레인 75만 개 | 삽입 정렬 20ms (NEON 정렬이면 29ms) |
+| quantile, shape (3e5, 10) | 레인마다 힙 할당이면 numpy보다 2배 느림 → 스택 버퍼로 해결 |
+| median, 100만 개, 10스레드 | 병렬 정렬 3.8~4.1ms, 선택 6.6~6.9ms (측정 시점에 따라) |
+| `nansum` 1000만 개 | 2.6 → 1.6ms (typed 연속 읽기), `sum` 1.25ms |
+| cov, p = 20, n = 1e5 | `syrk` 3.5ms, `gemm` 2.0ms |
+| cov, p = 2000, n = 200 | `syrk`가 `gemm`의 2.4배 |
+| cov의 대칭 복사, p = 2000 | 열 방향 쓰기 1.7ms (전체 2.7ms) → 64×64 타일 |
+| 가중치 histogram, 100만 개, 1스레드 | 3.7 → 2.2ms (지역 값으로 재적재 제거) |
+
+### 복잡도
+
+| 함수 | 시간 | 추가 메모리 |
+|---|---|---|
+| `quantile`/`median`, 레인 길이 $n$ | 짧은 레인: $O(n \log n)$ 정렬. 긴 레인: 평균 $O(n \log k)$ ($k$: 필요한 위치 수) | 입력 전체의 float64 사본 |
+| nan 리덕션 | 원래 함수와 같음, 개수는 $O(N)$ 한 패스 더 | 개수 배열(출력 크기) |
+| `cov` | BLAS $\tfrac12 p^2 n$ (syrk) 또는 $p^2 n$ (gemm), 대칭 복사 $O(p^2)$ | 중심화한 $p \times n$ 행렬 |
+| `corrcoef` | `cov` + $O(p^2)$ | $O(p)$ |
+| `bincount` | $O(N + M)$ ($M$: 결과 길이) | 병렬 개수면 $16M$ |
+| `histogram`, 같은 너비 | $O(N)$ (구간 번호 $O(1)$) | 병렬 블록 합이면 블록 수 × 구간 수 ($\le 2N$) |
+| `histogram`, 경계 배열 | 개수 $O(N \log B)$, 가중치 $O(N \log 65536)$ 정렬 | 블록 크기만큼 |
+
+## 정확도
+
+| 함수 | numpy 2.5.4와의 관계 | 확인한 것 |
+|---|---|---|
+| `quantile` 13가지 방법, `median`, nan판 | 비트까지 같음. 한 순위에 `-0.0`과 `+0.0`이 섞이면 부호가 다를 수 있음 | 레인 길이 8가지 × 방법 13 × $q$ 41개(10스레드), 100만 개 `median`(1·10스레드) |
+| `nansum`, `nanmean`, `nanvar` | 같은 레이아웃·축이면 numpy의 nan 함수와 비트까지 같음 | NaN 섞인 100만 개 |
+| `nanmin`, `nanmax`, `nanargmin`, `nanargmax` | 같음 | NaN 10%인 (300, 500)의 `axis=0`, `axis=1`, `axis=None` |
+| `cov`, `corrcoef` | 보장하지 않음(상대 1e-13). syrk 경로이고 평균이 같으면 같게 나오는 경우가 많음 | 위의 표 |
+| `bincount` | 비트까지 같음 (가중치는 원소 순서대로) | 100만 개 |
+| `histogram`, 같은 너비 | 비트까지 같음 (개수, 가중치 합, density) | 100만 개, 구간 50개 |
+| `histogram`, 경계 배열 + 가중치 | 같은 값에 다른 가중치가 있으면 마지막 비트가 다를 수 있음 | 같은 값이 없는 100만 개에서 같음 |
+
+결정성은 모든 함수에서 지켜요. 분위수는 레인 단위, cov의 대칭 복사는 블록 행 단위, histogram은 블록 단위로 나누고, 부분 결과는 정해진 순서로 합쳐요. 검증 방법은 [정확도와 검증](/internals/array/accuracy/)에 있어요.
+
+## 참고 문헌
+
+1. R. J. Hyndman, Y. Fan, "Sample Quantiles in Statistical Packages", *The American Statistician*, 50(4), 1996. (numpy 소스의 `_compute_virtual_index` 주석이 인용하는 논문)
+2. numpy 소스 `numpy/lib/_function_base_impl.py`의 `_QuantileMethods`, `_compute_virtual_index`, `_get_indexes`, `_get_gamma`, `_lerp`, `_median`, `cov`. numpy 2.5.4에서 확인.
+3. C. A. R. Hoare, "Algorithm 65: Find", *Communications of the ACM*, 4(7), 1961.
+4. D. R. Musser, "Introspective Sorting and Selection Algorithms", *Software: Practice and Experience*, 27(8), 1997.
+5. numpy 소스 `numpy/lib/_nanfunctions_impl.py`의 `_replace_nan`, `nanvar`(`_copyto(arr, 0, mask)`). numpy 2.5.4에서 확인.
+6. J. J. Dongarra, J. Du Croz, S. Hammarling, I. S. Duff, "A Set of Level 3 Basic Linear Algebra Subprograms", *ACM Transactions on Mathematical Software*, 16(1), 1990. (`gemm`, `syrk`, `herk`)
+7. R. L. Smith, "Algorithm 116: Complex Division", *Communications of the ACM*, 5(8), 1962.
+8. numpy 소스 `numpy/lib/_histograms_impl.py`의 `histogram`(`BLOCK = 65536`, 구간 번호 보정, 블록별 `bincount`, 경계 배열의 `argsort`와 `cumsum`). numpy 2.5.4에서 확인.
