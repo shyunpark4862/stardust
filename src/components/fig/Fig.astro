@@ -16,6 +16,43 @@ const { caption, column = false } = Astro.props;
   {caption && <figcaption class="fig__caption">{caption}</figcaption>}
 </figure>
 
+<script>
+  // A figure is a chain: array, operator, array... When the chain does not
+  // fit on one line, wrapping would leave an operator dangling at the end or
+  // start of a line. Instead the whole chain is stacked vertically and its
+  // arrows turn to point down.
+  const chainsOf = (fig: Element) =>
+    [...fig.querySelectorAll<HTMLElement>('.fig__stage:not(.fig__stage--column), .fig-row')];
+  const wraps = (chain: HTMLElement) => {
+    const kids = [...chain.children] as HTMLElement[];
+    if (kids.length < 2) return false;
+    // Items on one line overlap vertically (they are centred on each other);
+    // an item that starts below everything before it began a new line.
+    let bottom = kids[0].getBoundingClientRect().bottom;
+    for (const k of kids.slice(1)) {
+      const r = k.getBoundingClientRect();
+      if (r.top >= bottom - 1) return true;
+      bottom = Math.max(bottom, r.bottom);
+    }
+    return false;
+  };
+  // All chains of one figure share a layout: if one has to stack, all do.
+  const layout = () =>
+    document.querySelectorAll('.fig').forEach((fig) => {
+      const chains = chainsOf(fig);
+      chains.forEach((c) => c.classList.remove('is-stacked'));
+      if (chains.some(wraps)) chains.forEach((c) => c.classList.add('is-stacked'));
+    });
+  layout();
+  document.fonts?.ready.then(layout);
+  let width = innerWidth;
+  addEventListener('resize', () => {
+    if (innerWidth === width) return;
+    width = innerWidth;
+    layout();
+  });
+</script>
+
 <style>
   .fig {
     border: 1px solid var(--line);
@@ -34,6 +71,24 @@ const { caption, column = false } = Astro.props;
   }
   .fig__stage--column {
     flex-direction: column;
+    gap: var(--space-8);
+  }
+  .fig__stage:global(.is-stacked),
+  :global(.fig-row.is-stacked) {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    gap: var(--space-3);
+  }
+  .fig :global(.is-stacked > .op--arrow .op__sym) {
+    transform: rotate(90deg);
+  }
+  /* Stacked, an operator's note goes beside it instead of under it. */
+  .fig :global(.is-stacked > .op) {
+    flex-direction: row;
+    gap: var(--space-2);
+  }
+  .fig :global(.is-stacked > .op .op__pad) {
+    display: none;
   }
   .fig__caption {
     padding: var(--space-3) var(--space-5);

@@ -38,6 +38,7 @@ import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
 import ArrayFig from '../../../components/fig/ArrayFig.astro';
 import Op from '../../../components/fig/Op.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
 import Plot from '../../../components/fig/Plot.astro';
 
 ## 한눈에 보기
@@ -64,12 +65,17 @@ array([3, 0, 5], dtype=int64)
 array([-1,  0,  1], dtype=int64)
 ```
 
-<Fig caption="한 배열에서 abs는 크기만, sign은 방향만 남겨요. 둘을 곱하면 원래 값이 돼요.">
-  <ArrayFig name="a" data={[-3, 0, 5]} />
-  <Op note="abs">→</Op>
-  <ArrayFig name="sd.abs(a)" data={[3, 0, 5]} tones={['a', '', 'a']} />
-  <Op note="sign">→</Op>
-  <ArrayFig name="sd.sign(a)" data={[-1, 0, 1]} tones={['b', '', 'b']} />
+<Fig column caption="한 배열에서 abs는 크기만, sign은 방향만 남겨요. 둘을 곱하면 원래 값이 돼요.">
+  <FigRow>
+    <ArrayFig name="a" data={[-3, 0, 5]} />
+    <Op note="abs">→</Op>
+    <ArrayFig name="sd.abs(a)" data={[3, 0, 5]} tones={['a', '', 'a']} />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="a" data={[-3, 0, 5]} />
+    <Op note="sign">→</Op>
+    <ArrayFig name="sd.sign(a)" data={[-1, 0, 1]} tones={['b', '', 'b']} />
+  </FigRow>
 </Fig>
 
 <Reference />

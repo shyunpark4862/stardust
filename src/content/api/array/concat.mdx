@@ -30,6 +30,7 @@ import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
 import ArrayFig from '../../../components/fig/ArrayFig.astro';
 import Op from '../../../components/fig/Op.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
 
 ## 한눈에 보기
 
@@ -51,13 +52,19 @@ array([[1, 2, 3],
        [4, 5, 6]], dtype=int64)
 ```
 
-<Fig caption="concat은 뒤에 이어서 길이 6인 1차원 배열을, stack은 위아래로 쌓아서 2행 3열짜리 2차원 배열을 만들어요.">
-  <ArrayFig name="p" data={[1, 2, 3]} tones={['a', 'a', 'a']} />
-  <ArrayFig name="q" data={[4, 5, 6]} tones={['b', 'b', 'b']} />
-  <Op note="concat">→</Op>
-  <ArrayFig data={[1, 2, 3, 4, 5, 6]} tones={['a', 'a', 'a', 'b', 'b', 'b']} note="shape (6,)" />
-  <Op note="stack">→</Op>
-  <ArrayFig data={[[1, 2, 3], [4, 5, 6]]} tones={[['a', 'a', 'a'], ['b', 'b', 'b']]} note="shape (2, 3)" />
+<Fig column caption="concat은 뒤에 이어서 길이 6인 1차원 배열을, stack은 위아래로 쌓아서 2행 3열짜리 2차원 배열을 만들어요.">
+  <FigRow>
+    <ArrayFig name="p" data={[1, 2, 3]} tones={['a', 'a', 'a']} />
+    <ArrayFig name="q" data={[4, 5, 6]} tones={['b', 'b', 'b']} />
+    <Op note="concat">→</Op>
+    <ArrayFig data={[1, 2, 3, 4, 5, 6]} tones={['a', 'a', 'a', 'b', 'b', 'b']} note="shape (6,)" />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="p" data={[1, 2, 3]} tones={['a', 'a', 'a']} />
+    <ArrayFig name="q" data={[4, 5, 6]} tones={['b', 'b', 'b']} />
+    <Op note="stack">→</Op>
+    <ArrayFig data={[[1, 2, 3], [4, 5, 6]]} tones={[['a', 'a', 'a'], ['b', 'b', 'b']]} note="shape (2, 3)" />
+  </FigRow>
 </Fig>
 
 두 함수 모두 배열들을 **list나 tuple 하나로 묶어서** 넘겨요. `sd.concat(p, q)`가 아니라 `sd.concat([p, q])`예요.

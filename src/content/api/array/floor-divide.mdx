@@ -32,6 +32,7 @@ import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
 import ArrayFig from '../../../components/fig/ArrayFig.astro';
 import Op from '../../../components/fig/Op.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
 
 ## 한눈에 보기
 
@@ -48,12 +49,17 @@ array([  2,  60, 122], dtype=int64)
 array([5, 0, 2], dtype=int64)
 ```
 
-<Fig caption="125초는 60초짜리 묶음 2개(몫)와 남은 5초(나머지)예요.">
-  <ArrayFig name="seconds" data={[125, 3600, 7322]} tones={['a', '', '']} />
-  <Op note="// 60">→</Op>
-  <ArrayFig name="분" data={[2, 60, 122]} tones={['b', '', '']} />
-  <Op note="% 60">→</Op>
-  <ArrayFig name="초" data={[5, 0, 2]} tones={['b', '', '']} />
+<Fig column caption="125초는 60초짜리 묶음 2개(몫)와 남은 5초(나머지)예요.">
+  <FigRow>
+    <ArrayFig name="seconds" data={[125, 3600, 7322]} tones={['a', '', '']} />
+    <Op note="// 60">→</Op>
+    <ArrayFig name="분" data={[2, 60, 122]} tones={['b', '', '']} />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="seconds" data={[125, 3600, 7322]} tones={['a', '', '']} />
+    <Op note="% 60">→</Op>
+    <ArrayFig name="초" data={[5, 0, 2]} tones={['b', '', '']} />
+  </FigRow>
 </Fig>
 
 함수 이름으로 써도 같아요.

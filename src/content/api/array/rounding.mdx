@@ -34,6 +34,7 @@ import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
 import ArrayFig from '../../../components/fig/ArrayFig.astro';
 import Op from '../../../components/fig/Op.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
 
 ## 한눈에 보기
 
@@ -61,12 +62,17 @@ array([-2.0, -1.0,  1.0,  2.0], dtype=float64)
 
 결과가 `2.0`처럼 **여전히 실수**라는 점을 눈여겨보세요. [결과의 dtype](#결과의-dtype)에서 자세히 설명해요.
 
-<Fig caption="같은 -1.7이라도 floor는 -2, ceil과 trunc는 -1로 가요. 음수에서는 '내림'과 '버림'이 달라요.">
-  <ArrayFig name="y" data={[-1.7, -1.2, 1.2, 1.7]} tones={['a', 'a', '', '']} />
-  <Op note="floor">→</Op>
-  <ArrayFig name="sd.floor(y)" data={[-2, -2, 1, 1]} tones={['b', 'b', '', '']} />
-  <Op note="trunc">→</Op>
-  <ArrayFig name="sd.trunc(y)" data={[-1, -1, 1, 1]} tones={['b', 'b', '', '']} />
+<Fig column caption="같은 -1.7이라도 floor는 -2, ceil과 trunc는 -1로 가요. 음수에서는 '내림'과 '버림'이 달라요.">
+  <FigRow>
+    <ArrayFig name="y" data={[-1.7, -1.2, 1.2, 1.7]} tones={['a', 'a', '', '']} />
+    <Op note="floor">→</Op>
+    <ArrayFig name="sd.floor(y)" data={[-2, -2, 1, 1]} tones={['b', 'b', '', '']} />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="y" data={[-1.7, -1.2, 1.2, 1.7]} tones={['a', 'a', '', '']} />
+    <Op note="trunc">→</Op>
+    <ArrayFig name="sd.trunc(y)" data={[-1, -1, 1, 1]} tones={['b', 'b', '', '']} />
+  </FigRow>
 </Fig>
 
 <Reference />

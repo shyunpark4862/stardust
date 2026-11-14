@@ -32,6 +32,7 @@ import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
 import ArrayFig from '../../../components/fig/ArrayFig.astro';
 import Op from '../../../components/fig/Op.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
 
 ## 한눈에 보기
 
@@ -50,12 +51,17 @@ array([[1, 2, 3],
        [0, 0, 9]], dtype=int64)
 ```
 
-<Fig caption="tril은 대각선과 그 아래를, triu는 대각선과 그 위를 남겨요. 흐린 칸은 0으로 바뀌는 칸이에요.">
-  <ArrayFig name="m" data={[[1, 2, 3], [4, 5, 6], [7, 8, 9]]} tones={[['b', '', ''], ['', 'b', ''], ['', '', 'b']]} axes note="대각선 (진한 칸)" />
-  <Op note="tril">→</Op>
-  <ArrayFig name="sd.tril(m)" data={[[1, 0, 0], [4, 5, 0], [7, 8, 9]]} tones={[['b', 'm', 'm'], ['a', 'b', 'm'], ['a', 'a', 'b']]} />
-  <Op note="triu">→</Op>
-  <ArrayFig name="sd.triu(m)" data={[[1, 2, 3], [0, 5, 6], [0, 0, 9]]} tones={[['b', 'a', 'a'], ['m', 'b', 'a'], ['m', 'm', 'b']]} />
+<Fig column caption="tril은 대각선과 그 아래를, triu는 대각선과 그 위를 남겨요. 흐린 칸은 0으로 바뀌는 칸이에요.">
+  <FigRow>
+    <ArrayFig name="m" data={[[1, 2, 3], [4, 5, 6], [7, 8, 9]]} tones={[['b', '', ''], ['', 'b', ''], ['', '', 'b']]} axes note="대각선 (진한 칸)" />
+    <Op note="tril">→</Op>
+    <ArrayFig name="sd.tril(m)" data={[[1, 0, 0], [4, 5, 0], [7, 8, 9]]} tones={[['b', 'm', 'm'], ['a', 'b', 'm'], ['a', 'a', 'b']]} />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="m" data={[[1, 2, 3], [4, 5, 6], [7, 8, 9]]} tones={[['b', '', ''], ['', 'b', ''], ['', '', 'b']]} axes note="대각선 (진한 칸)" />
+    <Op note="triu">→</Op>
+    <ArrayFig name="sd.triu(m)" data={[[1, 2, 3], [0, 5, 6], [0, 0, 9]]} tones={[['b', 'a', 'a'], ['m', 'b', 'a'], ['m', 'm', 'b']]} />
+  </FigRow>
 </Fig>
 
 이름의 끝 글자 `l`과 `u`가 lower(아래)와 upper(위)예요. 원래 배열 `m`은 바뀌지 않고, 결과는 언제나 새 배열이에요.

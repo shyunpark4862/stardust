@@ -241,12 +241,17 @@ array([False, False, False], dtype=bool)
 array([False,  True, False], dtype=bool)
 ```
 
-<Fig caption="== sd.nan은 NaN 자리에서도 False라서 아무것도 못 찾아요. isnan은 NaN 자리만 True예요.">
-  <ArrayFig name="clean" data={['3.0', 'nan', '8.0']} tones={['', 'b', '']} />
-  <Op note="== sd.nan">→</Op>
-  <ArrayFig data={[false, false, false]} tones={['m', 'm', 'm']} note="모두 False" />
-  <Op note="sd.isnan">→</Op>
-  <ArrayFig data={[false, true, false]} tones={['m', 'b', 'm']} note="NaN 자리만 True" />
+<Fig column caption="== sd.nan은 NaN 자리에서도 False라서 아무것도 못 찾아요. isnan은 NaN 자리만 True예요.">
+  <FigRow>
+    <ArrayFig name="clean" data={['3.0', 'nan', '8.0']} tones={['', 'b', '']} />
+    <Op note="== sd.nan">→</Op>
+    <ArrayFig data={[false, false, false]} tones={['m', 'm', 'm']} note="모두 False" />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="clean" data={['3.0', 'nan', '8.0']} tones={['', 'b', '']} />
+    <Op note="sd.isnan">→</Op>
+    <ArrayFig data={[false, true, false]} tones={['m', 'b', 'm']} note="NaN 자리만 True" />
+  </FigRow>
 </Fig>
 
 `isnan`의 결과를 마스크로 쓰면 NaN을 빼거나 다른 값으로 바꿀 수 있어요. NaN이 몇 개인지도 셀 수 있어요.

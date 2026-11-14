@@ -29,6 +29,7 @@ import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
 import ArrayFig from '../../../components/fig/ArrayFig.astro';
 import Op from '../../../components/fig/Op.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
 
 ## 한눈에 보기
 
@@ -68,14 +69,22 @@ array([[6, 5, 4],
        [3, 2, 1]], dtype=int64)
 ```
 
-<Fig caption="axis=0은 행의 순서를(위아래), axis=1은 각 행 안의 순서를(좌우) 뒤집어요. 둘 다 하면 180도 돌린 것과 같아요.">
-  <ArrayFig name="m" data={[[1, 2, 3], [4, 5, 6]]} tones={[['a', 'a', 'a'], ['', '', '']]} axes />
-  <Op note="axis=0">→</Op>
-  <ArrayFig data={[[4, 5, 6], [1, 2, 3]]} tones={[['', '', ''], ['a', 'a', 'a']]} />
-  <Op note="axis=1">→</Op>
-  <ArrayFig data={[[3, 2, 1], [6, 5, 4]]} tones={[['a', 'a', 'a'], ['', '', '']]} />
-  <Op note="None">→</Op>
-  <ArrayFig data={[[6, 5, 4], [3, 2, 1]]} tones={[['', '', ''], ['a', 'a', 'a']]} />
+<Fig column caption="axis=0은 행의 순서를(위아래), axis=1은 각 행 안의 순서를(좌우) 뒤집어요. 둘 다 하면 180도 돌린 것과 같아요.">
+  <FigRow>
+    <ArrayFig name="m" data={[[1, 2, 3], [4, 5, 6]]} tones={[['a', 'a', 'a'], ['', '', '']]} axes />
+    <Op note="axis=0">→</Op>
+    <ArrayFig data={[[4, 5, 6], [1, 2, 3]]} tones={[['', '', ''], ['a', 'a', 'a']]} />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="m" data={[[1, 2, 3], [4, 5, 6]]} tones={[['a', 'a', 'a'], ['', '', '']]} axes />
+    <Op note="axis=1">→</Op>
+    <ArrayFig data={[[3, 2, 1], [6, 5, 4]]} tones={[['a', 'a', 'a'], ['', '', '']]} />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="m" data={[[1, 2, 3], [4, 5, 6]]} tones={[['a', 'a', 'a'], ['', '', '']]} axes />
+    <Op note="None">→</Op>
+    <ArrayFig data={[[6, 5, 4], [3, 2, 1]]} tones={[['', '', ''], ['a', 'a', 'a']]} />
+  </FigRow>
 </Fig>
 
 이미지로 생각하면 `axis=0`은 위아래 뒤집기, `axis=1`은 좌우 뒤집기(거울에 비친 모습)예요.

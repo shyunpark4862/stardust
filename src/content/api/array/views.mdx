@@ -10,6 +10,7 @@ import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
 import ArrayFig from '../../../components/fig/ArrayFig.astro';
 import Op from '../../../components/fig/Op.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
 
 ## 한눈에 보기
 
@@ -176,12 +177,17 @@ array([0, 3, 1, 4, 2, 5], dtype=int64)
 True
 ```
 
-<Fig caption="m은 메모리 순서대로 읽으면 바로 한 줄이 돼요. m.T를 행 순서로 펴면 0, 3, 1, 4, 2, 5로 메모리를 건너뛰며 읽어야 해서 새 배열에 옮겨 담아요.">
-  <ArrayFig name="x의 메모리" data={[0, 1, 2, 3, 4, 5]} />
-  <Op note="ravel(m)">→</Op>
-  <ArrayFig name="뷰" data={[0, 1, 2, 3, 4, 5]} tones={['a', 'a', 'a', 'a', 'a', 'a']} />
-  <Op note="ravel(m.T)">→</Op>
-  <ArrayFig name="복사본" data={[0, 3, 1, 4, 2, 5]} tones={['b', 'b', 'b', 'b', 'b', 'b']} />
+<Fig column caption="m은 메모리 순서대로 읽으면 바로 한 줄이 돼요. m.T를 행 순서로 펴면 0, 3, 1, 4, 2, 5로 메모리를 건너뛰며 읽어야 해서 새 배열에 옮겨 담아요.">
+  <FigRow>
+    <ArrayFig name="m의 메모리" data={[0, 1, 2, 3, 4, 5]} />
+    <Op note="ravel(m)">→</Op>
+    <ArrayFig name="뷰" data={[0, 1, 2, 3, 4, 5]} tones={['a', 'a', 'a', 'a', 'a', 'a']} note="같은 메모리" />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="m의 메모리" data={[0, 1, 2, 3, 4, 5]} />
+    <Op note="ravel(m.T)">→</Op>
+    <ArrayFig name="복사본" data={[0, 3, 1, 4, 2, 5]} tones={['b', 'b', 'b', 'b', 'b', 'b']} note="새 메모리" />
+  </FigRow>
 </Fig>
 
 그래서 `reshape`나 `ravel`의 결과를 고칠 때는 원본이 바뀔 수도, 안 바뀔 수도 있어요. 결과를 고칠 생각이라면 어느 쪽인지에 기대지 말고, 아래의 `copy=` 인자로 분명히 정하세요.

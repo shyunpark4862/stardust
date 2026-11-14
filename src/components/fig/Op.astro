@@ -5,9 +5,12 @@ interface Props {
   note?: string;
 }
 const { note } = Astro.props;
+// Arrows turn to point down when their figure is stacked vertically.
+const symbol = await Astro.slots.render('default');
+const isArrow = /[→⇄⟶]/.test(symbol);
 ---
 
-<span class:list={['op', note && 'op--noted']}>
+<span class:list={['op', note && 'op--noted', isArrow && 'op--arrow']}>
   {note && <span class="op__pad" aria-hidden="true">{note}</span>}
   <span class="op__sym"><slot /></span>
   {note && <span class="op__note">{note}</span>}

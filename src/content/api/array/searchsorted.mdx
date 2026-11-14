@@ -39,6 +39,7 @@ import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
 import ArrayFig from '../../../components/fig/ArrayFig.astro';
 import Op from '../../../components/fig/Op.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
 
 ## 한눈에 보기
 
@@ -108,12 +109,17 @@ array([[0, 1],
 3
 ```
 
-<Fig caption="20이 이미 두 개 있어요. left는 그 앞의 틈 1, right는 그 뒤의 틈 3을 돌려줘요.">
-  <ArrayFig name="a" data={[10, 20, 20, 30]} tones={['', 'b', 'b', '']} />
-  <Op note="side='left'">→</Op>
-  <ArrayFig data={[1]} tones={['a']} />
-  <Op note="side='right'">→</Op>
-  <ArrayFig data={[3]} tones={['a']} />
+<Fig column caption="20이 이미 두 개 있어요. left는 그 앞의 틈 1, right는 그 뒤의 틈 3을 돌려줘요.">
+  <FigRow>
+    <ArrayFig name="a" data={[10, 20, 20, 30]} tones={['', 'b', 'b', '']} />
+    <Op note="side='left'">→</Op>
+    <ArrayFig data={[1]} tones={['a']} />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="a" data={[10, 20, 20, 30]} tones={['', 'b', 'b', '']} />
+    <Op note="side='right'">→</Op>
+    <ArrayFig data={[3]} tones={['a']} />
+  </FigRow>
 </Fig>
 
 같은 값이 없으면 두 쪽의 결과가 같아요. 두 결과의 차이는 **그 값이 배열에 몇 개 있는지**와 같아요.

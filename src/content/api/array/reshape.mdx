@@ -35,6 +35,7 @@ import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
 import ArrayFig from '../../../components/fig/ArrayFig.astro';
 import Op from '../../../components/fig/Op.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
 
 ## 한눈에 보기
 
@@ -174,12 +175,17 @@ array([[1, 4],
        [3, 6]], dtype=int64)
 ```
 
-<Fig caption="모양은 둘 다 (3, 2)지만 내용이 달라요. reshape는 순서를 유지한 채 다시 끊고, 전치는 첫 행을 첫 열로 세워요.">
-  <ArrayFig name="m" data={[[1, 2, 3], [4, 5, 6]]} tones={[['a', 'a', 'a'], ['', '', '']]} />
-  <Op note="reshape">→</Op>
-  <ArrayFig name="(3, 2)" data={[[1, 2], [3, 4], [5, 6]]} tones={[['a', 'a'], ['a', ''], ['', '']]} />
-  <Op note=".T">→</Op>
-  <ArrayFig name="m.T" data={[[1, 4], [2, 5], [3, 6]]} tones={[['a', ''], ['a', ''], ['a', '']]} />
+<Fig column caption="모양은 둘 다 (3, 2)지만 내용이 달라요. reshape는 순서를 유지한 채 다시 끊고, 전치는 첫 행을 첫 열로 세워요.">
+  <FigRow>
+    <ArrayFig name="m" data={[[1, 2, 3], [4, 5, 6]]} tones={[['a', 'a', 'a'], ['', '', '']]} />
+    <Op note="reshape">→</Op>
+    <ArrayFig name="(3, 2)" data={[[1, 2], [3, 4], [5, 6]]} tones={[['a', 'a'], ['a', ''], ['', '']]} />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="m" data={[[1, 2, 3], [4, 5, 6]]} tones={[['a', 'a', 'a'], ['', '', '']]} />
+    <Op note=".T">→</Op>
+    <ArrayFig name="m.T" data={[[1, 4], [2, 5], [3, 6]]} tones={[['a', ''], ['a', ''], ['a', '']]} />
+  </FigRow>
 </Fig>
 
 <Callout type="warn" title="모양이 맞는다고 뜻이 맞는 것은 아니에요">

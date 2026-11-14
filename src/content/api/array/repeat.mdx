@@ -40,6 +40,7 @@ import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
 import ArrayFig from '../../../components/fig/ArrayFig.astro';
 import Op from '../../../components/fig/Op.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
 
 ## 한눈에 보기
 
@@ -57,12 +58,17 @@ array([1, 1, 2, 2, 3, 3], dtype=int64)
 array([1, 2, 3, 1, 2, 3], dtype=int64)
 ```
 
-<Fig caption="repeat은 같은 원소가 붙어서 나오고, tile은 배열 전체가 한 덩어리로 반복돼요. 원소 수는 둘 다 6개예요.">
-  <ArrayFig name="v" data={[1, 2, 3]} tones={['a', 'b', '']} />
-  <Op note="repeat 2">→</Op>
-  <ArrayFig name="sd.repeat(v, 2)" data={[1, 1, 2, 2, 3, 3]} tones={['a', 'a', 'b', 'b', '', '']} />
-  <Op note="tile 2">→</Op>
-  <ArrayFig name="sd.tile(v, 2)" data={[1, 2, 3, 1, 2, 3]} tones={['a', 'b', '', 'a', 'b', '']} />
+<Fig column caption="repeat은 같은 원소가 붙어서 나오고, tile은 배열 전체가 한 덩어리로 반복돼요. 원소 수는 둘 다 6개예요.">
+  <FigRow>
+    <ArrayFig name="v" data={[1, 2, 3]} tones={['a', 'b', '']} />
+    <Op note="repeat 2">→</Op>
+    <ArrayFig name="sd.repeat(v, 2)" data={[1, 1, 2, 2, 3, 3]} tones={['a', 'a', 'b', 'b', '', '']} />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="v" data={[1, 2, 3]} tones={['a', 'b', '']} />
+    <Op note="tile 2">→</Op>
+    <ArrayFig name="sd.tile(v, 2)" data={[1, 2, 3, 1, 2, 3]} tones={['a', 'b', '', 'a', 'b', '']} />
+  </FigRow>
 </Fig>
 
 이름으로 기억하면 쉬워요. `repeat`은 말을 더듬듯 한 글자씩 되풀이하는 것이고, `tile`은 같은 무늬의 타일을 바닥에 줄지어 까는 것이에요.
@@ -219,12 +225,17 @@ array([[1, 2, 3, 1, 2, 3],
 
 같은 2차원 배열을 "아래로 두 배"로 늘리는 두 방법을 비교해 볼게요. 모양은 둘 다 `(4, 2)`지만 행의 순서가 달라요.
 
-<Fig caption="repeat(m, 2, axis=0)은 같은 행끼리 붙어 있고(1, 1, 2, 2번째 행), tile(m, (2, 1))은 배열 전체가 차례로 반복돼요(1, 2, 1, 2번째 행).">
-  <ArrayFig name="m" data={[[1, 2], [3, 4]]} tones={[['a', 'a'], ['b', 'b']]} />
-  <Op note="repeat axis=0">→</Op>
-  <ArrayFig data={[[1, 2], [1, 2], [3, 4], [3, 4]]} tones={[['a', 'a'], ['a', 'a'], ['b', 'b'], ['b', 'b']]} note="같은 행끼리" />
-  <Op note="tile (2, 1)">→</Op>
-  <ArrayFig data={[[1, 2], [3, 4], [1, 2], [3, 4]]} tones={[['a', 'a'], ['b', 'b'], ['a', 'a'], ['b', 'b']]} note="통째로" />
+<Fig column caption="repeat(m, 2, axis=0)은 같은 행끼리 붙어 있고(1, 1, 2, 2번째 행), tile(m, (2, 1))은 배열 전체가 차례로 반복돼요(1, 2, 1, 2번째 행).">
+  <FigRow>
+    <ArrayFig name="m" data={[[1, 2], [3, 4]]} tones={[['a', 'a'], ['b', 'b']]} />
+    <Op note="repeat axis=0">→</Op>
+    <ArrayFig data={[[1, 2], [1, 2], [3, 4], [3, 4]]} tones={[['a', 'a'], ['a', 'a'], ['b', 'b'], ['b', 'b']]} note="같은 행끼리" />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="m" data={[[1, 2], [3, 4]]} tones={[['a', 'a'], ['b', 'b']]} />
+    <Op note="tile (2, 1)">→</Op>
+    <ArrayFig data={[[1, 2], [3, 4], [1, 2], [3, 4]]} tones={[['a', 'a'], ['b', 'b'], ['a', 'a'], ['b', 'b']]} note="통째로" />
+  </FigRow>
 </Fig>
 
 | 구분 | `repeat` | `tile` |
