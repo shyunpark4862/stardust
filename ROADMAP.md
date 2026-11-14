@@ -139,7 +139,7 @@
 | S2 오차함수 | 완료 (2026-11-14), docs/learn/S2-erf.md |
 | S3 감마와 제타 | 완료 (2026-11-14), docs/learn/S3-gamma.md |
 | S4 불완전 함수 | 완료 (2026-11-14), docs/learn/S4-incomplete.md |
-| S5 리덕션, 지수적분, 타원 | 대기 |
+| S5 리덕션, 지수적분, 타원 | 완료 (2026-11-14), docs/learn/S5-reduce-expint-ellip.md |
 | S6 Bessel과 Airy | 대기 |
 | S7 초기하와 Lambert W | 대기 |
 | S8 복소수 | 대기 |

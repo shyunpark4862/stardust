@@ -194,6 +194,9 @@ log_softmax(x, /, *, axis=None)
 - `softmax`, `log_softmax`의 결과는 `x`와 shape이 같다. 그래서 `keepdims`가 없다.
 - 빈 배열: `logsumexp`는 `-inf`다 (빈 합 0의 log).
 - 모든 원소가 `-inf`이면 `logsumexp`는 `-inf`, `+inf`가 하나라도 있으면 `inf`, NaN은 전파한다.
+- 무한대의 규약은 scipy와 같다. `logsumexp`·`log_softmax`는 최댓값이 무한이면 0으로 바꿔 빼고(`log_softmax([inf, 1]) = [nan, -inf]`), `softmax`는 바꾸지 않는다(`softmax([inf, 1]) = [nan, nan]`, 모두 `-inf`이면 NaN).
+- **보장** (사용자 결정 2026-11-14): `logsumexp`·`log_softmax`는 |오차| ≤ 1e-14·max(1, |값|), `softmax`는 원소마다 상대오차 1e-14(서브노멀은 절대오차 규칙)다. 값이 0을 지날 수 있는 둘은 상대오차를 정의할 수 없어서 혼합 한계를 쓴다.
+- **잰 정확도** (tests/special/ref/reduce_cases.npz, 122개 배열, 2⁻⁵² 단위): `logsumexp` 0.69, `softmax` 2.1(scipy 257: xᵢ − max의 반올림), `log_softmax` 1.3
 
 ## §7. 제타와 지수적분
 ```
@@ -204,6 +207,18 @@ expn(n, x, /, *, out=None)
 - `zeta(x)`는 Riemann ζ, `zeta(x, q)`는 Hurwitz ζ(x, q)다. Riemann은 `x < 1`도 정의된다(함수방정식). Hurwitz의 `x < 1`은 NaN이다 (scipy와 같다).
 - `zeta`는 S3에서 구현했다(`expi`, `expn`은 S5). 보장 영역: Riemann은 정의역 전체, Hurwitz는 q > 0(그 밖은 |오차| ≤ 1e-14·max(1, |값|)). 잰 최대: Riemann 24 ULP(0 < x < 1, Euler–Maclaurin의 상쇄), Hurwitz 5.5 ULP. 특수값은 §3의 표에 있다.
 - `expi`는 지수적분 Ei, `expn(n, x)`는 일반화 지수적분 Eₙ(x)다. `n`은 int64나 float64이고, 0 이상의 정수 값만 정의된다. 정수가 아니거나 음수이면 NaN이다. **scipy는 `expn(1.5, 1.0)`에서 n을 1로 자른다. 우리는 NaN이다.**
+- **보장 영역** (사용자 결정 2026-11-14): `expi`, `expn`은 정의역 전체에서 상대오차 1e-14다. `expi`의 양의 0점 x₀ = 0.3725… 근처도 상대 정확도다. `expn`의 테스트는 n ≤ 1e5를 덮는다. 서브노멀 결과는 절대오차 규칙이다.
+- **잰 정확도** (bench/special/s5/accuracy.md, 최대 ULP): `expi` 13.6, `expn` 6.3
+- **특수값**: 아래 표의 굵은 줄 말고는 scipy와 비트까지 같다.
+
+  | 입력 | 값 | 비고 |
+  |---|---|---|
+  | `expi(±0)`, `expi(inf)`, `expi(-inf)` | −inf, inf, −0.0 | |
+  | `expi(x)`, 709.78 < x < 716.4 | 유한한 값 | **scipy는 inf** (`expi(710) = 3.15e305`) |
+  | `expn(0, 0)`, `expn(1, 0)`, `expn(n, 0)` | inf, inf, 1/(n−1) | x < 0은 NaN |
+  | `expn(n, x)`, x > 709.78 | 서브노멀 값 | **scipy는 0** (`expn(1, 712) = 8.5e-313`) |
+  | `expn(2**31, 1)` | 1.71e-10 | **scipy는 NaN** (n이 int32를 넘음) |
+  | `expn(1.5, x)`, `expn(inf, x)`, `expn(-1, x)` | NaN | **scipy는 n을 자른다** (`expn(inf, 1) = 1.7e-10`) |
 
 ## §8. Bessel 함수
 
@@ -252,6 +267,9 @@ ellipk(m, /, *, out=None)
 ellipe(m, /, *, out=None)
 ```
 - 매개변수는 scipy와 같은 `m`(= k²)이다. `ellipk(1)`은 `inf`, `m > 1`은 NaN이다.
+- **보장 영역** (사용자 결정 2026-11-14): 둘 다 m ≤ 1 전체에서 상대오차 1e-14다.
+- **잰 정확도** (bench/special/s5/accuracy.md, 최대 ULP): `ellipk` 3.0, `ellipe` 4.2
+- **특수값**: scipy와 비트까지 같다. `ellipk(0) = ellipe(0) = π/2`, `ellipe(1) = 1`, `ellipk(-inf) = 0`, `ellipe(-inf) = inf`
 
 ## §11. 초기하 함수와 Lambert W
 ```

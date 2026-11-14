@@ -132,6 +132,8 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 | `erfinv(-0.0)`이 0.0 | −0.0 | 홀함수의 부호, 사용자 결정 (S2) |
 | gamma·rgamma의 서브노멀 꼬리와 깊은 음수의 부호, `gammaln(±5e-324)`·`betaln(5e-324, 1)` = inf, `rgamma(-5e-324)` = −0.0, beta·betaln의 NaN 입력 → inf, `zeta(inf, q>1)` = NaN | 참값 | 사용자 결정 (S3, 2026-11-14). 같은 원칙으로 `beta(inf, 1e300)`, 거대한 k의 `binom` |
 | `binom(n, k)`가 음의 정수 n에서 NaN | 정수 k ≥ 0이면 n(n−1)…(n−k+1)/k! | 사용자 결정 (S3) |
+| `expi(x)`가 709.78 < x < 716.4에서 inf, `expn(n, x)`의 서브노멀 꼬리가 0, `expn`의 n이 int32를 넘으면 NaN | 참값 | 사용자 결정 (S5, 2026-11-14) |
+| `expn(inf, x)`가 1.7e-10 | NaN (Q17: 정수가 아니다) | 사용자 결정 (S5) |
 | `gammainc(1e-300, 5e-324)` > 1, `gammainc(5e-324, x)` = 0, `gammainc(1, 5e-324)` = 0, `betainc(2, 1e300, 5e-324)` = NaN, `gammaincinv(5e-324, 0.5)`·`betaincinv(2, 3, 5e-324)`·`betainccinv(2, 3, 5e-324)` = NaN, 근이 언더플로하는 `betaincinv`가 DBL_MIN | 참값 | 사용자 결정 (S4, 2026-11-14) |
 | `expit(x)`가 x < −709.78에서 0 | 참값 eˣ(서브노멀), x < −745.13에서 0 | 서브노멀 규칙(§2.3), 사용자 결정 (S1, 2026-11-13) |
 | `lambertw`는 언제나 complex를 돌려주고 `tol=`이 있다 | 실수 입력이면 float64. `tol=` 없음 | Q6, 결정성 (§5.11) |
@@ -271,6 +273,9 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 - `zeta(x, q)`: Hurwitz, Euler–Maclaurin (Cephes `zeta.c`: 앞 N항 직접 합 + Bernoulli 꼬리). Riemann(`q` 생략)의 `x < 1`은 함수방정식(변환). Hurwitz의 `x < 1`은 NaN (scipy와 같다)
 - `expn(n, x)`: `x ≤ 1` 거듭제곱급수, `x > 1` Lentz 연분수 (NR `expint`), 큰 n은 균등 점근. **3구간**
 - `expi(x)`: `x < 0`은 `-E₁(-x)` (변환), `0 < x < 40`은 거듭제곱급수(양의 항만이라 소거 없음), 큰 x는 점근급수. **2구간**. Cephes `ei.c`의 여섯 구간 유리식은 쓰지 않는다.
+- **S5에서 정하고 바꾼 것** (docs/learn/S5-reduce-expint-ellip.md)
+  - `expn`: 큰 n의 균등 점근은 넣지 않았다. 연분수의 b = x + n이 크면 곧바로 수렴하고, 급수는 x^k/k!로 줄어서 n = 1e5까지 6.3 ULP다. **2구간**
+  - `expi`: 양의 0점 x₀ = 0.3725… 둘레 [0.3, 0.45]에 Taylor 급수를 더했다(정확한 d = x − x₀, 계수는 `tools/gen_ei_taylor.py`). 거듭제곱급수는 거기서 γ + log x와 상쇄해 scipy가 5e15 ULP를 잃는다. **3구간**
 
 ### 5.7 Bessel 0·1차 (`i0 i1 k0 k1 j0 j1 y0 y1`와 e-스케일 판)
 - `i0 i1 k0 k1`: Cephes Chebyshev 전개, 함수마다 **2구간** (x ≤ 8 / x > 8 또는 x ≤ 2 / x > 2). e-스케일 판은 같은 전개에서 `exp`를 빼면 된다.
@@ -293,6 +298,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 ### 5.10 타원적분 (`ellipk(m)`, `ellipe(m)`; scipy와 같은 매개변수 m)
 - `ellipk`: AGM. `K = π / (2·AGM(1, √(1-m)))`, 이차 수렴(약 5회). `m < 0`은 변환. m → 1의 log 특이점은 `1-m`이 정확하므로(m ≥ 0.5에서 Sterbenz) AGM이 그대로 처리한다.
 - `ellipe`: AGM의 `E = K·(1 - Σ 2^{n-1} c_n²)`는 m → 1에서 `∞ × 0`의 소거가 생긴다. 그래서 Carlson 대칭형 `E = R_F(0, 1-m, 1) - (m/3)·R_D(0, 1-m, 1)`(복제 정리)를 쓴다. 두 방법의 대비가 해설의 주제다.
+- **S5에서 바꾼 것**: 위의 Carlson 식도 m → 1에서 K − (K − E)의 상쇄가 있다(y = 1e-16에서 약 20배). 그래서 두 항이 모두 양수인 `E = (y/3)(R_D(0, y, 1) + R_D(0, 1, y))`(y = 1 − m, DLMF 19.25.1)를 쓰고, y < 2⁻³⁴은 m = 1 둘레의 전개, m < 0은 `E(m) = √(1−m)·E(m/(m−1))`이다.
 
 ### 5.11 초기하와 Lambert W
 - `hyp1f1(a, b, x)`: 거듭제곱급수, `x < 0`은 Kummer 변환 `e^x M(b-a, b, -x)`, 큰 |x|는 점근전개. **3구간**. `b`가 0 이하의 정수이면 극점. 큰 |a|에서의 소거는 느슨한 영역으로 적는다.

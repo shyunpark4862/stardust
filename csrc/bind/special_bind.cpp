@@ -11,12 +11,15 @@
 #include "bind/pyutil.hpp"
 #include "special/cost.hpp"
 #include "special/kernels/chunked.hpp"
+#include "special/ops/ellip.hpp"
 #include "special/ops/erf.hpp"
+#include "special/ops/expint.hpp"
 #include "special/ops/gamma.hpp"
 #include "special/ops/incbeta.hpp"
 #include "special/ops/incgamma.hpp"
 #include "special/ops/logistic.hpp"
 #include "special/ops/testing.hpp"
+#include "special/reduce.hpp"
 
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/string.h>
@@ -100,6 +103,7 @@ void bind_special(nb::module_& core) {
     def_naries<Gamma, Rgamma, Gammaln, Digamma, Polygamma, Beta, Betaln, Binom>(m);  // S3, §3
     def_naries<Gammainc, Gammaincc, Gammaincinv, Gammainccinv>(m);  // S4, §3
     def_naries<Betainc, Betaincc, Betaincinv, Betainccinv>(m);  // S4, §3
+    def_naries<Expi, Expn, Ellipk, Ellipe>(m);  // S5, §7, §10
     def_naries<GammaLanczos>(m);  // S3 measurement variant (gamma candidate A)
     // zeta(x, q=None, /, *, out=None): Riemann with one argument, Hurwitz with two (§7)
     m.def(
@@ -115,6 +119,20 @@ void bind_special(nb::module_& core) {
             });
         },
         nb::arg().none(), nb::arg().none() = nb::none(), nb::kw_only(), nb::arg("out").none() = nb::none());
+    // S5 reductions (§6): the array's max and pairwise sum (special/reduce.cpp)
+    m.def(
+        "logsumexp",
+        [](nb::handle x, nb::handle axis, nb::handle keepdims) {
+            return call_named("logsumexp", [&] { return logsumexp(x, axis, keepdims); });
+        },
+        nb::arg().none(), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims").none() = false);
+    m.def(
+        "softmax", [](nb::handle x, nb::handle axis) { return call_named("softmax", [&] { return softmax(x, axis); }); },
+        nb::arg().none(), nb::kw_only(), nb::arg("axis").none() = nb::none());
+    m.def(
+        "log_softmax",
+        [](nb::handle x, nb::handle axis) { return call_named("log_softmax", [&] { return log_softmax(x, axis); }); },
+        nb::arg().none(), nb::kw_only(), nb::arg("axis").none() = nb::none());
     def_naries<Fma3, Sum4, Powers4, CfTan>(m);  // engine tests (special/ops/testing.hpp)
     m.def("_parallel_tasks", &parallel_tasks, nb::arg("n"), nb::arg("weight"));
     m.def("_weight", [](const std::string& name) -> std::int64_t {
@@ -124,7 +142,7 @@ void bind_special(nb::module_& core) {
             .template operator()<Expit, Logit, LogExpit, Xlogy, Xlog1py, Entr, RelEntr, Erf, Erfc, Erfcx, Erfinv,
                                  Erfcinv, Ndtr, LogNdtr, Ndtri, Gamma, Rgamma, Gammaln, Digamma, Polygamma,
                                  Beta, Betaln, Binom, Zeta, Gammainc, Gammaincc,
-                                 Gammaincinv, Gammainccinv, Betainc, Betaincc, Betaincinv, Betainccinv, Fma3, Sum4, Powers4, CfTan>();
+                                 Gammaincinv, Gammainccinv, Betainc, Betaincc, Betaincinv, Betainccinv, Expi, Expn, Ellipk, Ellipe, Fma3, Sum4, Powers4, CfTan>();
         if (name == "zeta_hurwitz") w = weight_of(Hurwitz::cost_ns);  // zeta's two-argument form
         if (w == 0) throw nb::key_error(name.c_str());
         return w;

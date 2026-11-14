@@ -34,9 +34,13 @@ def mixed_error(got, hi, lo):
     return np.where(finite, err, special)
 
 
+# Reference files that are not one function's points (tests/special/test_reduce_expint_ellip.py).
+CASE_FILES = {"reduce_cases"}
+
+
 def names():
     """The functions with a reference file."""
-    return sorted(p.stem for p in REF.glob("*.npz"))
+    return sorted(p.stem for p in REF.glob("*.npz") if p.stem not in CASE_FILES)
 
 
 def load(name):

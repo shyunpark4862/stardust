@@ -22,6 +22,8 @@ __all__ = [
     # S4: incomplete gamma and beta, and their inverses (§3)
     "gammainc", "gammaincc", "gammaincinv", "gammainccinv",
     "betainc", "betaincc", "betaincinv", "betainccinv",
+    # S5: reductions, exponential integrals, elliptic integrals (§6, §7, §10)
+    "logsumexp", "softmax", "log_softmax", "expi", "expn", "ellipk", "ellipe",
 ]
 
 globals().update({_name: getattr(_core, _name) for _name in __all__})

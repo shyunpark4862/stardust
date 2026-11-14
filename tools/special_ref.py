@@ -542,6 +542,35 @@ def _start2(name, *v):
     return float(getattr(sd.special, name)(*(float(t) for t in v)))
 
 
+# S5: exponential and elliptic integrals, guaranteed everywhere (S5 user decision; expn's
+# sets reach n = 1e5). The reductions have their own file (build_reduce).
+
+
+def _expi_inputs(rng):
+    m = 1000
+    x = np.concatenate([loguniform(rng, 1e-300, 716, m), 0.3725074107813666 + rng.uniform(-0.08, 0.08, m // 2),
+                        0.3725074107813666 + loguniform(rng, 1e-17, 1e-3, m // 4, signed=True), rng.uniform(0.45, 40, m // 2),
+                        -loguniform(rng, 1e-300, 745, m), around([0.3, 0.45, 40.0, 709.78, 716.0, -709.0, -738.0])])
+    return (x,), np.ones(x.size, dtype=bool)
+
+
+def _expn_inputs(rng):
+    m = 900
+    n = np.concatenate([rng.integers(0, 10, m), rng.integers(10, 100_000, m), rng.integers(1, 30, m),
+                        np.array([1, 5, 50, 2**31, 2**40])]).astype(float)
+    x = np.concatenate([loguniform(rng, 1e-10, 740, m), loguniform(rng, 1e-3, 740, m), rng.uniform(0.5, 2, m),
+                        np.array([712.0, 725.0, 725.0, 1.0, 1.0])])
+    return (n, x), np.ones(n.size, dtype=bool)
+
+
+def _ellip_inputs(rng):
+    m = 1000
+    x = np.concatenate([rng.uniform(0, 1, m), 1 - loguniform(rng, 1e-16, 1e-2, m), -loguniform(rng, 1e-300, 1e300, m),
+                        around([0.5, 1 - 2.0**-34, 0.0, -1.0])])
+    x = x[x < 1]
+    return (x,), np.ones(x.size, dtype=bool)
+
+
 INVERSES = {"gammaincinv", "gammainccinv", "betaincinv", "betainccinv"}
 
 
@@ -585,7 +614,47 @@ FUNCTIONS = {
     "betaincc": (3, _mp_betaincc, _betainc_inputs),
     "betaincinv": (3, _beta_inverse(False), _betaincinv_inputs),
     "betainccinv": (3, _beta_inverse(True), _betaincinv_inputs),
+    # S5
+    "expi": (1, mpmath.ei, _expi_inputs),
+    "expn": (2, lambda n, x: mpmath.expint(int(n), x), _expn_inputs),
+    "ellipk": (1, mpmath.ellipk, _ellip_inputs),
+    "ellipe": (1, mpmath.ellipe, _ellip_inputs),
 }
+
+
+def build_reduce():
+    """tests/special/ref/reduce_cases.npz: arrays for logsumexp, softmax and log_softmax with
+    their references (S5). Each case is a 1-d array; `start` holds the offsets into the
+    concatenation `x`. Per case: logsumexp (hi, lo); per element: softmax and log_softmax (hi, lo)."""
+    rng = np.random.default_rng(20261114)
+    cases = []
+    for k in range(120):
+        n = int(rng.choice([1, 2, 3, 10, 100, 1000, 5000]))
+        scale = float(rng.choice([1e-3, 1, 10, 300, 1e5]))
+        x = rng.normal(0, scale, n) + float(rng.choice([0.0, -700.0, 700.0, 1e10]))
+        cases.append(x)
+    cases.append(np.array([0.0, -745.0, -1e300]))  # subnormal and zero softmax values
+    cases.append(np.full(1000, 3.0))
+    start = np.cumsum([0] + [c.size for c in cases])
+    allx = np.concatenate(cases)
+    lse_hi, lse_lo = np.empty(len(cases)), np.empty(len(cases))
+    sm_hi, sm_lo = np.empty(allx.size), np.empty(allx.size)
+    ls_hi, ls_lo = np.empty(allx.size), np.empty(allx.size)
+    for c, x in enumerate(cases):
+        with mpmath.workdps(80):
+            xs = [mpmath.mpf(float(v)) for v in x]
+            m = max(xs)
+            s = mpmath.fsum(mpmath.exp(v - m) for v in xs)
+            lse = m + mpmath.log(s)
+            lse_hi[c], lse_lo[c] = double_double(lse)
+            for i, v in enumerate(xs):
+                sm_hi[start[c] + i], sm_lo[start[c] + i] = double_double(mpmath.exp(v - lse))
+                ls_hi[start[c] + i], ls_lo[start[c] + i] = double_double(v - lse)
+    OUT.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(OUT / "reduce_cases.npz", x=allx, start=start, lse_hi=lse_hi, lse_lo=lse_lo,
+                        softmax_hi=sm_hi, softmax_lo=sm_lo, log_softmax_hi=ls_hi, log_softmax_lo=ls_lo,
+                        mpmath=mpmath.__version__)
+    return len(cases)
 
 
 # ---------------------------------------------------------------- writing
@@ -701,8 +770,11 @@ def build(name):
 
 
 def main(argv):
-    names = argv or list(FUNCTIONS)
+    names = argv or list(FUNCTIONS) + ["reduce_cases"]
     for name in names:
+        if name == "reduce_cases":
+            print(f"reduce_cases: {build_reduce()} arrays -> tests/special/ref/reduce_cases.npz", flush=True)
+            continue
         n, dropped = build(name)
         note = f" ({dropped} dropped: over {POINT_SECONDS} s, or mpmath did not converge)" if dropped else ""
         print(f"{name}: {n} points -> {(OUT / name).with_suffix('.npz').relative_to(ROOT)}{note}", flush=True)

@@ -78,6 +78,11 @@ inline constexpr double kBetainc = 557;
 inline constexpr double kBetaincc = 553;
 inline constexpr double kBetaincinv = 1095;
 inline constexpr double kBetainccinv = 1625;
+// S5 (special/ops/expint.hpp, ellip.hpp), bench/special/s5/cost.md
+inline constexpr double kExpi = 25;
+inline constexpr double kExpn = 98;
+inline constexpr double kEllipk = 30;
+inline constexpr double kEllipe = 65;
 }  // namespace cost
 
 }  // namespace sd::special
