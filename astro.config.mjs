@@ -1,5 +1,6 @@
 import { defineConfig } from 'astro/config';
 import mdx from '@astrojs/mdx';
+import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 
@@ -43,8 +44,12 @@ const replTransformer = {
 export default defineConfig({
   integrations: [mdx()],
   markdown: {
+    // GFM is added by hand so a single tilde stays a tilde: Korean text writes
+    // ranges as "5~27%", and two of them in a line must not become strikethrough
+    // (~~text~~ still does).
+    gfm: false,
     // $...$ and $$...$$ render as math (KaTeX) in Markdown and MDX.
-    remarkPlugins: [remarkMath],
+    remarkPlugins: [[remarkGfm, { singleTilde: false }], remarkMath],
     rehypePlugins: [rehypeKatex],
     shikiConfig: { theme: 'github-light', wrap: false, transformers: [replTransformer] },
   },
