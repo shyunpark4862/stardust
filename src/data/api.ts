@@ -11,6 +11,28 @@ export function splitId(entry: ApiEntry): [area: string, slug: string] {
 
 /** The order of the group headings on each area's page. */
 const groupOrder: Record<string, string[]> = {
+  array: [
+    '기본 개념',
+    '배열 만들기',
+    '모양과 축',
+    '잇기와 되풀이',
+    '인덱싱 도구',
+    '산술',
+    '지수와 로그',
+    '삼각함수와 쌍곡선함수',
+    '반올림',
+    '비교, 논리, 비트',
+    '고르기와 판별',
+    '복소수',
+    '집계',
+    'NaN을 건너뛰는 집계',
+    '통계',
+    '정렬, 탐색, 집합',
+    '행렬곱',
+    'dtype 도구',
+    'ndarray 객체',
+    '설정',
+  ],
   linalg: ['선형 시스템', '분해'],
 };
 
@@ -23,10 +45,15 @@ export function hrefOf(entry: ApiEntry): string {
   return `/api/${area}/${slug}/`;
 }
 
-/** An area's functions, grouped in the order the groups first appear. */
+/** A page that documents exactly one function shows its name in the code font. */
+export function isSingle(entry: ApiEntry): boolean {
+  return entry.data.kind === 'function' && entry.data.names.length === 1;
+}
+
+/** An area's pages, grouped and ordered. */
 export async function groupsOf(area: string): Promise<{ title: string; entries: ApiEntry[] }[]> {
   const entries = (await getCollection('api', (e) => e.id.startsWith(`${area}/`))).sort(
-    (a, b) => a.data.order - b.data.order || a.data.name.localeCompare(b.data.name),
+    (a, b) => a.data.order - b.data.order || a.data.title.localeCompare(b.data.title),
   );
   const groups = new Map<string, ApiEntry[]>();
   for (const entry of entries) {
@@ -43,7 +70,7 @@ export async function groupsOf(area: string): Promise<{ title: string; entries: 
     .sort((a, b) => rank(a.title) - rank(b.title));
 }
 
-/** Areas that have at least one documented function. */
+/** Areas that have at least one page. */
 export async function documentedAreas(): Promise<string[]> {
   const entries = await getCollection('api');
   return [...new Set(entries.map((e) => splitId(e)[0]))];
@@ -62,7 +89,7 @@ export async function areaSidebar(area: string): Promise<NavGroup[]> {
     },
     ...groups.map((g) => ({
       title: g.title,
-      items: g.entries.map((e) => ({ label: e.data.name, href: hrefOf(e), mono: true })),
+      items: g.entries.map((e) => ({ label: e.data.title, href: hrefOf(e), mono: isSingle(e) })),
     })),
   ];
 }

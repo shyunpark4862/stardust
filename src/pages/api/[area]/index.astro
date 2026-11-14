@@ -1,7 +1,7 @@
 ---
 import Docs from '../../../layouts/Docs.astro';
 import Badge from '../../../components/Badge.astro';
-import { areaOf, areaSidebar, documentedAreas, groupsOf, hrefOf } from '../../../data/api';
+import { areaOf, areaSidebar, documentedAreas, groupsOf, hrefOf, isSingle } from '../../../data/api';
 
 export async function getStaticPaths() {
   return (await documentedAreas()).map((area) => ({ params: { area } }));
@@ -15,12 +15,11 @@ const headings = groups.map((g) => ({ depth: 2, slug: g.title, text: g.title }))
 
 <Docs
   title={info.name}
-  description={`${info.ns}의 함수 목록이에요. 이름을 누르면 그 함수의 페이지로 가요.`}
+  description={`${info.ns}의 문서 목록이에요. 이름을 누르면 그 페이지로 가요.`}
   section="api"
   eyebrow={info.ns}
   groups={await areaSidebar(area)}
   headings={headings}
-  sample
 >
   {
     groups.map((g) => (
@@ -30,8 +29,13 @@ const headings = groups.map((g) => ({ depth: 2, slug: g.title, text: g.title }))
           {g.entries.map((e) => (
             <li>
               <a class="fn" href={hrefOf(e)}>
-                <span class="fn__name">{e.data.name}</span>
-                <span class="fn__summary">{e.data.summary}</span>
+                <span class:list={['fn__name', !isSingle(e) && 'fn__name--text']}>{e.data.title}</span>
+                <span class="fn__summary">
+                  {e.data.summary}
+                  {!isSingle(e) && e.data.names.length > 0 && (
+                    <span class="fn__names">{e.data.names.join('  ')}</span>
+                  )}
+                </span>
                 {e.data.tag && <Badge tone="accent">{e.data.tag}</Badge>}
               </a>
             </li>
@@ -54,7 +58,7 @@ const headings = groups.map((g) => ({ depth: 2, slug: g.title, text: g.title }))
   .fn {
     display: grid;
     grid-template-columns: 200px 1fr auto;
-    align-items: center;
+    align-items: baseline;
     gap: var(--space-4);
     min-height: 52px;
     margin-inline: calc(var(--space-3) * -1);
@@ -71,6 +75,17 @@ const headings = groups.map((g) => ({ depth: 2, slug: g.title, text: g.title }))
     font-weight: 600;
     color: var(--accent);
   }
+  .fn__name--text {
+    font-family: var(--font-sans);
+  }
+  .fn__names {
+    display: block;
+    margin-top: var(--space-1);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--fg-subtle);
+    white-space: pre-wrap;
+  }
   .fn__summary {
     font-size: var(--text-base);
     line-height: var(--leading-snug);
@@ -81,7 +96,18 @@ const headings = groups.map((g) => ({ depth: 2, slug: g.title, text: g.title }))
       grid-template-columns: 1fr auto;
       gap: var(--space-1) var(--space-3);
     }
-    .fn__summary {
+    .fn__name--text {
+    font-family: var(--font-sans);
+  }
+  .fn__names {
+    display: block;
+    margin-top: var(--space-1);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--fg-subtle);
+    white-space: pre-wrap;
+  }
+  .fn__summary {
       grid-column: 1 / -1;
       grid-row: 2;
     }

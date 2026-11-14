@@ -2,6 +2,9 @@
 import Docs from '../../layouts/Docs.astro';
 import LinkCard from '../../components/LinkCard.astro';
 import { areas } from '../../data/nav';
+import { documentedAreas } from '../../data/api';
+
+const documented = await documentedAreas();
 ---
 
 <Docs
@@ -14,11 +17,11 @@ import { areas } from '../../data/nav';
     {
       areas.map((a) => (
         <LinkCard
-          href={a.key === 'linalg' ? '/api/linalg/' : undefined}
+          href={documented.includes(a.key) ? `/api/${a.key}/` : undefined}
           title={a.name}
           meta={a.ns}
-          badge={a.key === 'linalg' ? '샘플' : '준비 중'}
-          badgeTone={a.key === 'linalg' ? 'accent' : 'neutral'}
+          badge={documented.includes(a.key) ? (a.key === 'array' ? '작성 중' : '샘플') : '준비 중'}
+          badgeTone={documented.includes(a.key) ? 'accent' : 'neutral'}
         >
           {a.desc}
         </LinkCard>

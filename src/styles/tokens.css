@@ -53,7 +53,8 @@
   --ok: #0f7b5f;
   --ok-soft: #e9f7f2;
   --warn: #9a5b00;
-  --warn-soft: #fff6e5;
+  --warn-soft: #fff8e6;
+  --warn-line: #f2d590;
 
   /* ---- Typography ---- */
   --font-sans: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont,

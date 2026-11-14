@@ -1,0 +1,47 @@
+---
+/**
+ * A framed diagram inside a document. Lay ArrayFig, Op and Plot inside it;
+ * children sit in a centred row that wraps on narrow screens.
+ */
+interface Props {
+  caption?: string;
+  /** Stack children vertically instead of in a row. */
+  column?: boolean;
+}
+const { caption, column = false } = Astro.props;
+---
+
+<figure class="fig">
+  <div class:list={['fig__stage', column && 'fig__stage--column']}><slot /></div>
+  {caption && <figcaption class="fig__caption">{caption}</figcaption>}
+</figure>
+
+<style>
+  .fig {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--bg-subtle);
+    overflow: hidden;
+  }
+  .fig__stage {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-5) var(--space-4);
+    padding: var(--space-8) var(--space-5);
+    overflow-x: auto;
+  }
+  .fig__stage--column {
+    flex-direction: column;
+  }
+  .fig__caption {
+    padding: var(--space-3) var(--space-5);
+    border-top: 1px solid var(--line);
+    background: var(--bg);
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    color: var(--fg-muted);
+    text-align: center;
+  }
+</style>

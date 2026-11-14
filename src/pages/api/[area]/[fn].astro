@@ -3,7 +3,7 @@ import { getCollection, render } from 'astro:content';
 import Docs from '../../../layouts/Docs.astro';
 import Badge from '../../../components/Badge.astro';
 import ApiFields from '../../../components/ApiFields.astro';
-import { areaOf, areaSidebar, groupsOf, hrefOf, splitId } from '../../../data/api';
+import { areaOf, areaSidebar, groupsOf, hrefOf, isSingle, splitId } from '../../../data/api';
 
 export async function getStaticPaths() {
   const entries = await getCollection('api');
@@ -25,7 +25,7 @@ const at = ordered.findIndex((e) => e.id === entry.id);
 const prev = ordered[at - 1];
 const next = ordered[at + 1];
 const related = data.seeAlso
-  .map((name) => ordered.find((e) => e.data.name === name))
+  .map((slug) => ordered.find((e) => splitId(e)[1] === slug))
   .filter((e) => e !== undefined);
 
 const fixed = [
@@ -41,19 +41,23 @@ const headings = [
 ---
 
 <Docs
-  title={data.name}
+  title={data.title}
   description={data.summary}
   section="api"
   eyebrow={info.ns}
-  monoTitle
+  monoTitle={isSingle(entry)}
   groups={await areaSidebar(area)}
   headings={headings}
-  sample
+  sample={data.sample}
 >
-  <div class="sig">
-    <pre class="sig__code"><code>{data.signature}</code></pre>
-    {data.tag && <Badge tone="accent">{data.tag}</Badge>}
-  </div>
+  {
+    data.signatures.length > 0 && (
+      <div class="sig">
+        <pre class="sig__code"><code>{data.signatures.join('\n')}</code></pre>
+        {data.tag && <Badge tone="accent">{data.tag}</Badge>}
+      </div>
+    )
+  }
 
   {
     data.params.length > 0 && (
@@ -90,7 +94,7 @@ const headings = [
           {related.map((e) => (
             <li>
               <a class="related__link" href={hrefOf(e)}>
-                <span class="related__name">{e.data.name}</span>
+                <span class:list={['related__name', !isSingle(e) && 'related__name--text']}>{e.data.title}</span>
                 <span class="related__summary">{e.data.summary}</span>
               </a>
             </li>
@@ -105,7 +109,7 @@ const headings = [
       prev ? (
         <a class="pager__link" href={hrefOf(prev)}>
           <span class="pager__dir">이전</span>
-          <span class="pager__name">{prev.data.name}</span>
+          <span class:list={['pager__name', !isSingle(prev) && 'pager__name--text']}>{prev.data.title}</span>
         </a>
       ) : (
         <span />
@@ -115,7 +119,7 @@ const headings = [
       next && (
         <a class="pager__link pager__link--next" href={hrefOf(next)}>
           <span class="pager__dir">다음</span>
-          <span class="pager__name">{next.data.name}</span>
+          <span class:list={['pager__name', !isSingle(next) && 'pager__name--text']}>{next.data.title}</span>
         </a>
       )
     }
@@ -126,7 +130,7 @@ const headings = [
   /* ---- Signature ---- */
   .sig {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: var(--space-4);
     padding: var(--space-4) var(--space-5);
     border: 1px solid var(--line);
@@ -141,7 +145,7 @@ const headings = [
     border-radius: 0;
     background: none !important;
     font-size: var(--text-base);
-    line-height: 1.6;
+    line-height: 1.75;
     color: var(--blue-800);
     overflow-x: auto;
   }
@@ -178,6 +182,10 @@ const headings = [
     font-family: var(--font-mono);
     font-weight: 600;
     color: var(--accent);
+  }
+  .related__name--text,
+  .pager__name--text {
+    font-family: var(--font-sans);
   }
   .related__link:hover .related__name {
     text-decoration: underline;

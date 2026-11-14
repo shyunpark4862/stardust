@@ -1,8 +1,8 @@
 ---
 /*
- * An aside inside a document. All three types share one neutral box; only the
- * icon and the label carry the type's colour, so a page with several callouts
- * stays calm.
+ * An aside inside a document. The three types share one shape; the tint says
+ * how to read it: blue for something worth knowing, amber for something that
+ * can go wrong.
  */
 interface Props {
   type?: 'note' | 'tip' | 'warn';
@@ -48,16 +48,20 @@ const labels = { note: '참고', tip: '팁', warn: '주의' };
 <style>
   .callout {
     --c: var(--accent);
+    --c-bg: var(--blue-50);
+    --c-line: var(--blue-200);
     display: grid;
     grid-template-columns: 18px minmax(0, 1fr);
     gap: var(--space-3);
     padding: var(--space-4) var(--space-5);
-    border: 1px solid var(--line);
+    border: 1px solid var(--c-line);
     border-radius: var(--radius-md);
-    background: var(--bg-subtle);
+    background: var(--c-bg);
   }
   .callout--warn {
     --c: var(--warn);
+    --c-bg: var(--warn-soft);
+    --c-line: var(--warn-line);
   }
   .callout__icon {
     /* Optically centred on the title's first line. */
@@ -77,12 +81,16 @@ const labels = { note: '참고', tip: '팁', warn: '주의' };
     margin-top: var(--space-1);
     font-size: var(--text-base);
     line-height: 1.7;
-    color: var(--fg-muted);
+    color: var(--slate-700);
   }
   .callout__body :global(> * + *) {
     margin-top: var(--space-2);
   }
   .callout__body :global(:not(pre) > code) {
-    background: var(--bg);
+    border-color: var(--c-line);
+    background: rgb(255 255 255 / 0.7);
+  }
+  .callout--warn .callout__body :global(:not(pre) > code) {
+    color: var(--slate-800);
   }
 </style>

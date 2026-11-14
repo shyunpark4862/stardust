@@ -1,0 +1,122 @@
+"""Run every interactive example in the API pages and compare the output.
+
+    ../stardust/.venv/bin/python tools/check_examples.py [area[/slug] ...]
+    ../stardust/.venv/bin/python tools/check_examples.py --coverage array
+
+Examples are the ```python blocks that contain `>>> ` prompts. The blocks of
+one page run in order in one namespace, so a later block can use names an
+earlier one defined. `sd` (stardust) is always available.
+
+`--coverage <area>` lists the public names of that area that no page documents
+(the `names:` lists in the frontmatter) and names documented twice.
+
+`--links` checks every `/api/<area>/<slug>/` link and every `seeAlso:` slug
+points at an existing page.
+"""
+
+from __future__ import annotations
+
+import doctest
+import re
+import sys
+from pathlib import Path
+
+import stardust as sd
+
+ROOT = Path(__file__).resolve().parent.parent / "src" / "content" / "api"
+FENCE = re.compile(r"^```python\n(.*?)^```", re.M | re.S)
+FLAGS = doctest.ELLIPSIS | doctest.NORMALIZE_WHITESPACE
+
+NAMESPACES = {"array": sd, "linalg": sd.linalg, "frame": sd.frame, "special": sd.special}
+
+
+def check_page(path: Path) -> tuple[int, int]:
+    """Returns (failures, examples) for one page."""
+    text = path.read_text(encoding="utf-8")
+    blocks = [b for b in FENCE.findall(text) if ">>> " in b]
+    if not blocks:
+        return 0, 0
+    # MDX indents blocks inside components; doctest needs the prompts flush left.
+    source = "\n".join(_dedent(b) for b in blocks)
+    globs = {"sd": sd}
+    test = doctest.DocTestParser().get_doctest(source, globs, path.stem, str(path), 0)
+    runner = doctest.DocTestRunner(optionflags=FLAGS, verbose=False)
+    runner.run(test, clear_globs=False)
+    return runner.failures, runner.tries
+
+
+def _dedent(block: str) -> str:
+    lines = block.split("\n")
+    indent = min((len(l) - len(l.lstrip()) for l in lines if l.strip()), default=0)
+    return "\n".join(l[indent:] for l in lines)
+
+
+def names_of(path: Path) -> list[str]:
+    head = path.read_text(encoding="utf-8").split("---")[1]
+    m = re.search(r"^names:\s*\[(.*?)\]", head, re.M | re.S)
+    return [n.strip() for n in m.group(1).split(",") if n.strip()] if m else []
+
+
+def coverage(area: str) -> int:
+    public = set(NAMESPACES[area].__all__)
+    seen: dict[str, str] = {}
+    twice = []
+    for path in sorted((ROOT / area).glob("*.mdx")):
+        for name in names_of(path):
+            if name in seen:
+                twice.append(f"{name}: {seen[name]} and {path.stem}")
+            seen[name] = path.stem
+    missing = sorted(public - set(seen))
+    unknown = sorted(set(seen) - public)
+    print(f"{area}: {len(public) - len(missing)}/{len(public)} public names documented")
+    if missing:
+        print("  missing:", " ".join(missing))
+    if unknown:
+        print("  not public:", " ".join(unknown))
+    for line in twice:
+        print("  documented twice:", line)
+    return 1 if (unknown or twice) else 0
+
+
+LINK = re.compile(r"/api/([a-z]+)/([a-z0-9_-]+)/")
+
+
+def links() -> int:
+    pages = {(p.parent.name, p.stem) for p in ROOT.glob("*/*.mdx")}
+    bad = 0
+    for path in sorted(ROOT.glob("*/*.mdx")):
+        text = path.read_text(encoding="utf-8")
+        targets = set(LINK.findall(text))
+        m = re.search(r"^seeAlso:\s*\[(.*?)\]", text.split("---")[1], re.M)
+        if m:
+            targets |= {(path.parent.name, s.strip()) for s in m.group(1).split(",") if s.strip()}
+        for area, slug in sorted(targets - pages):
+            print(f"  {path.parent.name}/{path.stem}: no page /api/{area}/{slug}/")
+            bad += 1
+    print(f"{bad} broken links")
+    return 1 if bad else 0
+
+
+def main(argv: list[str]) -> int:
+    if argv and argv[0] == "--links":
+        return links()
+    if argv and argv[0] == "--coverage":
+        return max((coverage(a) for a in argv[1:] or ["array"]), default=0)
+    targets = argv or [p.name for p in sorted(ROOT.iterdir()) if p.is_dir()]
+    paths: list[Path] = []
+    for t in targets:
+        p = ROOT / t
+        paths += sorted(p.glob("*.mdx")) if p.is_dir() else [p.with_suffix(".mdx")]
+    failed = tried = 0
+    for path in paths:
+        f, n = check_page(path)
+        failed += f
+        tried += n
+        if n:
+            print(f"{'FAIL' if f else 'ok  '} {path.parent.name}/{path.stem}  ({n} examples)")
+    print(f"{tried - failed}/{tried} examples pass")
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

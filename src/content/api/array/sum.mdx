@@ -1,0 +1,354 @@
+---
+title: sum
+names: [sum]
+group: 집계
+order: 1
+signatures:
+  - "sd.sum(x, /, *, axis=None, dtype=None, keepdims=False)"
+  - "x.sum(*, axis=None, dtype=None, keepdims=False)"
+summary: 배열의 원소를 모두 더해요. 전체를 한꺼번에 더할 수도 있고, 행별·열별로 따로 더할 수도 있어요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 더할 배열. 어떤 dtype이든 받아요.
+  - name: axis
+    type: int, int의 tuple·list, 또는 None
+    kind: keyword-only
+    desc: 더해서 없앨 축. None이면 모든 원소를 더해요.
+  - name: dtype
+    type: dtype 또는 None
+    kind: keyword-only
+    desc: 합을 계산할 원소 종류. None이면 x의 dtype을 따라요(bool만 int64가 돼요).
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 더한 축을 없애지 않고 길이 1로 남겨요.
+returns:
+  type: ndarray 또는 Python 숫자
+  desc: 합. 모든 축을 더하면 Python 숫자, 일부 축만 더하면 배열이에요.
+raises:
+  - type: TypeError
+    desc: x가 배열이 아닐 때, axis·dtype·keepdims의 타입이 틀렸을 때, dtype=sd.bool일 때.
+  - type: ValueError
+    desc: axis가 배열의 차원 범위를 벗어나거나 같은 축을 두 번 썼을 때.
+seeAlso: [broadcasting, asarray]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+`sum`은 배열의 원소를 더해요. 아무 옵션 없이 부르면 **모든 원소의 합** 하나를 돌려줘요.
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[1, 2, 3], [4, 5, 6]])
+>>> sd.sum(x)
+21
+```
+
+`axis`를 주면 그 방향으로만 더해요. 2차원 배열에서 `axis=0`은 **열마다**, `axis=1`은 **행마다** 더한 결과예요.
+
+```python
+>>> sd.sum(x, axis=0)
+array([5, 7, 9], dtype=int64)
+>>> sd.sum(x, axis=1)
+array([ 6, 15], dtype=int64)
+```
+
+같은 일을 하는 메서드도 있어요. `sd.sum(x, axis=0)`과 `x.sum(axis=0)`은 완전히 같아요.
+
+```python
+>>> x.sum(axis=0)
+array([5, 7, 9], dtype=int64)
+```
+
+## `axis`: 어느 방향으로 더할까요
+
+`axis`는 "**더해서 없앨 축**"이에요. 처음에는 이 말이 헷갈리기 쉬워요. `axis=0`이라고 하면 "0번 축(행)에 대해 결과가 나온다"고 생각하기 쉬운데, 실제로는 그 반대예요. 0번 축을 **따라 내려가며** 더하고, 그 축이 결과에서 **사라져요.**
+
+<Fig caption="axis=0: 위에서 아래로 내려가며 더해요. 행 방향(axis 0)이 사라지고 열마다 값이 하나씩 남아요.">
+  <ArrayFig name="x" data={[[1, 2, 3], [4, 5, 6]]} tones={[['a', '', ''], ['a', '', '']]} axes note="shape (2, 3)" />
+  <Op note="axis=0">→</Op>
+  <ArrayFig name="sd.sum(x, axis=0)" data={[5, 7, 9]} tones={['b', '', '']} note="shape (3,)" />
+</Fig>
+
+<Fig caption="axis=1: 왼쪽에서 오른쪽으로 가며 더해요. 열 방향(axis 1)이 사라지고 행마다 값이 하나씩 남아요.">
+  <ArrayFig name="x" data={[[1, 2, 3], [4, 5, 6]]} tones={[['a', 'a', 'a'], ['', '', '']]} axes note="shape (2, 3)" />
+  <Op note="axis=1">→</Op>
+  <ArrayFig name="sd.sum(x, axis=1)" data={[[6], [15]]} tones={[['b'], ['']]} note="shape (2,)" />
+</Fig>
+
+모양으로 기억하면 쉬워요. **`x.shape`에서 `axis`번째 숫자를 지운 것**이 결과의 모양이에요.
+
+| 호출 | `x.shape` | 지우는 자리 | 결과 모양 |
+|---|---|---|---|
+| `sd.sum(x, axis=0)` | `(2, 3)` | 첫째 | `(3,)` |
+| `sd.sum(x, axis=1)` | `(2, 3)` | 둘째 | `(2,)` |
+| `sd.sum(x)` | `(2, 3)` | 전부 | 숫자 하나 |
+
+### 음수 축
+
+음수는 뒤에서부터 세요. `axis=-1`은 마지막 축이에요. 차원 수가 몇이든 "가장 안쪽 방향"을 가리킬 수 있어서 편해요.
+
+```python
+>>> sd.sum(x, axis=-1)
+array([ 6, 15], dtype=int64)
+```
+
+### 여러 축을 한꺼번에
+
+`axis`에 tuple이나 list를 주면 그 축들을 한꺼번에 더해요. 3차원 배열로 볼게요.
+
+```python
+>>> t = sd.reshape(sd.arange(24), (2, 3, 4))
+>>> sd.sum(t, axis=1).shape
+(2, 4)
+>>> sd.sum(t, axis=(0, 2))
+array([ 60,  92, 124], dtype=int64)
+```
+
+`t`의 모양 `(2, 3, 4)`에서 첫째와 셋째를 지우면 `(3,)`이 남아요. 가운데 축의 세 값 각각에 대해, 나머지 두 방향의 원소를 전부 더한 결과예요.
+
+모든 축을 다 적는 것은 `axis=None`과 같고, 빈 tuple `()`은 아무 축도 더하지 않아요(원래 배열과 같은 값이 나와요).
+
+```python
+>>> sd.sum(x, axis=(0, 1))
+21
+>>> sd.sum(x, axis=())
+array([[1, 2, 3],
+       [4, 5, 6]], dtype=int64)
+```
+
+## `keepdims`: 축을 남겨 두기
+
+보통은 더한 축이 결과에서 사라져요. `keepdims=True`를 주면 사라지는 대신 **길이 1인 축으로 남아요.**
+
+```python
+>>> sd.sum(x, axis=1)
+array([ 6, 15], dtype=int64)
+>>> sd.sum(x, axis=1, keepdims=True)
+array([[ 6],
+       [15]], dtype=int64)
+```
+
+값은 같고 모양만 `(2,)`와 `(2, 1)`로 달라요. 이 차이가 중요한 때는 **결과를 원래 배열과 다시 계산할 때**예요. 예를 들어 각 행을 그 행의 합으로 나눠서 비율을 구한다고 해 볼게요.
+
+```python
+>>> x / sd.sum(x, axis=1, keepdims=True)
+array([[0.16666666666666666,  0.3333333333333333,                 0.5],
+       [0.26666666666666666,  0.3333333333333333,                 0.4]], dtype=float64)
+```
+
+`keepdims=True`가 없으면 행별 합의 모양이 `(2,)`라서 `(2, 3)`인 `x`와 모양이 맞지 않아 에러가 나요. 왜 그런지는 [브로드캐스팅](/api/array/broadcasting/) 문서에 자세히 있어요.
+
+<Fig caption="keepdims=True면 합이 세로 모양 (2, 1)로 남아서, 원래 배열의 각 행과 짝이 맞아요.">
+  <ArrayFig name="x" data={[[1, 2, 3], [4, 5, 6]]} note="shape (2, 3)" />
+  <Op>/</Op>
+  <ArrayFig name="행별 합" data={[[6, 6, 6], [15, 15, 15]]} tones={[['a', 'g', 'g'], ['a', 'g', 'g']]} note="shape (2, 1)" />
+</Fig>
+
+`keepdims=True`일 때는 모든 축을 더해도 결과가 배열이에요.
+
+```python
+>>> sd.sum(x, keepdims=True)
+array([[21]], dtype=int64)
+```
+
+## 결과는 배열일까요, 숫자일까요
+
+stardust에는 "차원이 0인 배열"이 없어요. 그래서 더하고 나서 남는 축이 하나도 없으면 결과는 배열이 아니라 **평범한 Python 숫자**예요.
+
+```python
+>>> type(sd.sum(x))
+<class 'int'>
+>>> type(sd.sum(sd.asarray([1.5, 2.5])))
+<class 'float'>
+>>> sd.sum(sd.asarray([1, 2, 3]), axis=0)
+6
+```
+
+마지막 예처럼 1차원 배열은 `axis=0`을 줘도 남는 축이 없어서 숫자가 나와요. 숫자의 타입은 배열의 dtype에 따라 `bool`, `int`, `float`, `complex` 중 하나예요.
+
+## 결과의 dtype
+
+합은 기본적으로 **입력과 같은 dtype**으로 계산해요. 정수 배열의 합은 정수, 실수 배열의 합은 실수예요.
+
+| `x`의 dtype | 합의 dtype |
+|---|---|
+| bool | int64 |
+| int64 | int64 |
+| float64 | float64 |
+| complex128 | complex128 |
+
+bool만 예외예요. 참·거짓을 더한다는 것은 "`True`가 몇 개인가"를 세는 일이라, 결과가 정수예요.
+
+```python
+>>> sd.sum(sd.asarray([True, True, False]))
+2
+```
+
+### 조건에 맞는 원소 세기
+
+이 성질 덕분에 `sum`은 **개수를 세는 도구**로도 자주 쓰여요. 비교 연산의 결과가 bool 배열이기 때문이에요.
+
+```python
+>>> x > 2
+array([[False, False,  True],
+       [ True,  True,  True]], dtype=bool)
+>>> sd.sum(x > 2)
+4
+>>> sd.sum(x > 2, axis=1)
+array([1, 3], dtype=int64)
+```
+
+"2보다 큰 원소는 모두 4개, 첫 행에 1개, 둘째 행에 3개"라는 뜻이에요.
+
+### `dtype`으로 계산할 종류 정하기
+
+`dtype=`을 주면 원소를 **먼저 그 종류로 바꾼 다음** 더해요.
+
+```python
+>>> sd.sum(x, dtype=sd.float64)
+21.0
+>>> sd.sum(sd.asarray([1.5, 1.5]), dtype=sd.int64)
+2
+```
+
+둘째 예를 주의해서 보세요. 합 `3.0`을 정수로 바꾼 `3`이 아니라, `1.5`를 각각 `1`로 바꾼 뒤 더한 `2`예요. 바꾸는 것이 먼저, 더하는 것이 나중이에요.
+
+`dtype=sd.bool`은 쓸 수 없어요. 덧셈에는 참·거짓으로 하는 계산이 없기 때문이에요. "하나라도 참인가", "모두 참인가"가 궁금하면 `sd.any`와 `sd.all`을 쓰세요.
+
+```python
+>>> sd.sum(sd.asarray([True, False]), dtype=sd.bool)
+Traceback (most recent call last):
+    ...
+TypeError: sum(): cannot accumulate in bool; use any() or all()
+```
+
+## 조심할 점
+
+### 정수 합이 너무 커지면
+
+int64는 약 ±9.2 × 10¹⁸까지 담아요. 합이 이 범위를 넘으면 에러가 나지 않고, **반대쪽 끝으로 넘어가서** 엉뚱한 값이 돼요.
+
+```python
+>>> big = sd.asarray([2**62, 2**62])
+>>> sd.sum(big)
+-9223372036854775808
+```
+
+양수 둘을 더했는데 음수가 나왔어요. 큰 정수를 더할 때는 실수로 계산하게 하면 돼요. 정확한 정수는 아니지만 크기는 맞아요.
+
+```python
+>>> sd.sum(big, dtype=sd.float64)
+9.223372036854776e+18
+```
+
+### NaN이 하나라도 있으면
+
+NaN(숫자가 아님)은 "모르는 값"이에요. 모르는 값이 섞인 합은 역시 모르는 값이라서, **NaN이 하나라도 있으면 합 전체가 NaN**이 돼요.
+
+```python
+>>> y = sd.asarray([1.0, sd.nan, 2.0])
+>>> sd.sum(y)
+nan
+```
+
+NaN을 빼고 나머지만 더하고 싶으면 `sd.nansum`을 써요.
+
+```python
+>>> sd.nansum(y)
+3.0
+```
+
+### 빈 배열의 합은 0이에요
+
+더할 것이 하나도 없으면 합은 `0`이에요. 에러가 아니에요.
+
+```python
+>>> sd.sum(sd.asarray([]))
+0.0
+```
+
+### 실수의 합은 아주 조금 어긋날 수 있어요
+
+컴퓨터의 실수는 자릿수가 한정돼 있어서, 크기가 많이 다른 수를 더하면 작은 쪽이 묻혀 버려요.
+
+```python
+>>> sd.sum(sd.asarray([1e16, 1.0, -1e16]))
+0.0
+```
+
+수학적으로는 `1.0`이지만, `1e16`에 `1.0`을 더한 값을 실수로 정확히 나타낼 수 없기 때문이에요. stardust만의 문제가 아니라 실수 계산 전반의 성질이에요. 다만 stardust는 **같은 배열이면 언제나 같은 결과**를 내요. 계산에 쓰는 스레드 수를 바꿔도 마지막 한 자리까지 같아요.
+
+### Python의 `sum`과 헷갈리지 마세요
+
+Python에는 내장 함수 `sum`이 따로 있어요. 배열에 내장 `sum`을 쓰면 에러는 나지 않지만 뜻이 달라요. 배열을 첫 축을 따라 하나씩 꺼내서 더하기 때문에, 2차원 배열이면 `axis=0`의 합이 나와요. 게다가 훨씬 느려요.
+
+```python
+>>> sum(x)
+array([5, 7, 9], dtype=int64)
+>>> sd.sum(x)
+21
+```
+
+배열에는 언제나 `sd.sum(x)`나 `x.sum()`을 쓰세요.
+
+### 옵션은 이름을 붙여서
+
+`axis`, `dtype`, `keepdims`는 반드시 이름과 함께 써야 해요. `sd.sum(x, 0)`처럼 자리로 넘기면 에러예요. 숫자만 덜렁 있으면 그것이 축인지 다른 무엇인지 읽는 사람이 알기 어렵기 때문이에요.
+
+```python
+>>> sd.sum(x, axis=0)
+array([5, 7, 9], dtype=int64)
+```
+
+`keepdims`에는 `True`나 `False`만 쓸 수 있어요. `1`이나 `0`은 받지 않아요.
+
+```python
+>>> sd.sum(x, keepdims=1)
+Traceback (most recent call last):
+    ...
+TypeError: sum(): 'keepdims' must be True or False, not int
+```
+
+### 없는 축
+
+배열의 차원보다 큰 축 번호를 주거나 같은 축을 두 번 쓰면 `ValueError`예요.
+
+```python
+>>> sd.sum(x, axis=2)
+Traceback (most recent call last):
+    ...
+ValueError: sum(): axis 2 is out of bounds for an array of dimension 2
+>>> sd.sum(x, axis=(0, 0))
+Traceback (most recent call last):
+    ...
+ValueError: sum(): repeated axis
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | `sum`과 다른 점 |
+|---|---|---|
+| NaN을 빼고 더하기 | `nansum` | NaN을 0으로 보고 더해요. |
+| 평균 구하기 | `mean` | 합을 개수로 나눠요. 정수 배열도 결과는 실수예요. |
+| 처음부터 차례로 쌓인 합 | `cumulative_sum` | 값 하나가 아니라 중간 합들이 모두 담긴 배열을 돌려줘요. |
+| 0이 아닌 원소 세기 | `count_nonzero` | bool로 바꾸지 않아도 바로 세 줘요. |
+| 하나라도 참인지, 모두 참인지 | `any`, `all` | 결과가 참·거짓이에요. |
+| 원소를 모두 곱하기 | `prod` | 더하는 대신 곱해요. |
+| 두 배열을 원소끼리 더하기 | `add` 또는 `+` | 배열 하나를 줄이는 것이 아니라 두 배열을 합쳐요. |
+
+마지막 줄은 특히 헷갈리기 쉬워요. `sd.sum`은 **배열 하나의 원소들을** 더해서 더 작은 결과를 만들고, `sd.add(a, b)`는 **두 배열의 같은 자리끼리** 더해서 같은 크기의 배열을 만들어요.
+
+## numpy를 아는 분께
+
+- `axis`, `dtype`, `keepdims`는 keyword-only예요. `np.sum(x, 0)`처럼 자리로 넘길 수 없어요.
+- 모든 축을 더한 결과는 numpy 스칼라(`np.int64`)가 아니라 Python `int`·`float`예요.
+- `out=`, `where=`, `initial=` 인자는 없어요.
+- 실수 합의 덧셈 순서가 numpy와 같다고 보장하지 않아요. 그래서 마지막 자리가 다를 수 있어요.
+- bool 배열의 합은 numpy처럼 정수예요. `dtype=bool`은 에러예요.
