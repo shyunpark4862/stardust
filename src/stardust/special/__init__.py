@@ -34,6 +34,8 @@ __all__ = [
     # T1: distribution functions (§13)
     "stdtr", "stdtrit", "chdtr", "chdtrc", "chdtri", "fdtr", "fdtrc", "fdtri",
     "pdtr", "pdtrc", "bdtr", "bdtrc", "nbdtr", "nbdtrc", "ndtri_exp",
+    # T2: noncentral distributions (§14; x last, upper tails too)
+    "chndtr", "chndtrc", "chndtrix", "nctdtr", "nctdtrc", "nctdtrit", "ncfdtr", "ncfdtrc", "ncfdtri",
 ]
 
 globals().update({_name: getattr(_core, _name) for _name in __all__})

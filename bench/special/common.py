@@ -65,7 +65,23 @@ COUNTERPART = {
     "loggamma_complex": "scipy.special.loggamma",
     "lambertw_c0": "scipy.special.lambertw(k=0)", "lambertw_cm1": "scipy.special.lambertw(k=-1)",
     "lambertw_c1": "scipy.special.lambertw(k=1)", "lambertw_c4": "scipy.special.lambertw(k=4)",
+    # T2: scipy's chndtr takes x first; the upper tails exist only as scipy.stats sf
+    "chndtr": "scipy.special.chndtr(x, df, nc)", "chndtrix": "scipy.special.chndtrix(p, df, nc)",
+    "chndtrc": "scipy.stats.ncx2.sf", "nctdtrc": "scipy.stats.nct.sf", "ncfdtrc": "scipy.stats.ncf.sf",
 }
+
+
+def _t2_counterpart(name):
+    import scipy.special as sc
+    import scipy.stats as st
+
+    return {
+        "chndtr": lambda df, nc, x: sc.chndtr(x, df, nc),
+        "chndtrix": lambda df, nc, p: sc.chndtrix(p, df, nc),
+        "chndtrc": lambda df, nc, x: st.ncx2.sf(x, df, nc),
+        "nctdtrc": lambda df, nc, t: st.nct.sf(t, df, nc),
+        "ncfdtrc": lambda dfn, dfd, nc, f: st.ncf.sf(f, dfn, dfd, nc),
+    }.get(name)
 
 
 def counterpart(name):
@@ -93,6 +109,8 @@ def scipy_function(name):
 
         k = -1 if name == "lambertw_m1" else 0
         return lambda x: numpy.real(scipy.special.lambertw(x, k))
+    if _t2_counterpart(name) is not None:
+        return _t2_counterpart(name)
     path = counterpart(name)
     if path is None:
         return None

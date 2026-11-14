@@ -98,10 +98,13 @@ inline double bup(double a, double b, dd::DD x, dd::DD y, int n) {
 // it). z is a double-double: e^-z is the result's scale, and z reaches
 // 1e5. w is the part already summed (for the stopping test); returns w + I.
 inline double bgrat(double a, double b, dd::DD x, dd::DD y, double w) {
-    (void)y;
     const double bm1 = b - 1.0;
     const dd::DD nu = dd::two_sum(a, 0.5 * bm1);
-    const dd::DD lnx = dd::log(x);
+    // log x from the small one of the pair: x near 1 carries only the double-double's
+    // absolute accuracy (~1e-32) in its distance from 1, which is y's whole value when x
+    // came from a division (fdtr's w = 1 - 4e-26: z = -nu log x off by 2.5e-7, the result
+    // by 1.5e-9). log x = log(1 - y) = -(y + mu(-y)).
+    const dd::DD lnx = y.hi < 0.5 ? -(y + dd::log1pmx_neg(-y)) : dd::log(x);
     const dd::DD z = -(nu * lnx);
     if (!(z.hi > 0.0)) return w;
     // Q(b, z) and r at z = hi + lo, to first order in lo

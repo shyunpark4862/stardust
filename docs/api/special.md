@@ -415,3 +415,41 @@ ndtri_exp(y, /, *, out=None)
   - **잰 값** (bench/special/t1/accuracy.md, 최대 ULP; 역함수는 ULP/max(1, κ)): `stdtr` 9.0, `stdtrit` 6.9, `chdtr` 6.1, `chdtrc` 9.7, `chdtri` 7.2, `fdtr` 16, `fdtrc` 18, `fdtri` 23, `pdtr` 4.5, `pdtrc` 13, `bdtr` 10, `bdtrc` 9.5, `nbdtr` 14, `nbdtrc` 19, `ndtri_exp` 6.5
   - 같은 점에서 scipy: 최대 25 ULP(`chdtri`)부터 4.9e16 ULP(`fdtri`), inf(`stdtrit` 등)까지.
   - 잰 범위: 자유도 1e-2–1e6(t), 1e-2–1e4(F), k·n 1e4까지, `ndtri_exp`의 y는 −1e300–0. 근이 double 범위 밖이면(`fdtri` → 0, `stdtrit` → −inf) 순방향 함수로 확인한다(tests/special/test_distributions.py).
+
+## §14. 비중심 분포 함수 (T2)
+```
+chndtr(df, nc, x, /, *, out=None)
+chndtrc(df, nc, x, /, *, out=None)
+chndtrix(df, nc, p, /, *, out=None)
+nctdtr(df, nc, t, /, *, out=None)
+nctdtrc(df, nc, t, /, *, out=None)
+nctdtrit(df, nc, p, /, *, out=None)
+ncfdtr(dfn, dfd, nc, f, /, *, out=None)
+ncfdtrc(dfn, dfd, nc, f, /, *, out=None)
+ncfdtri(dfn, dfd, nc, p, /, *, out=None)
+```
+- 비중심 카이제곱·t·F의 누적분포 P(X ≤ x), 위꼬리 P(X > x)(`*c`), 아래꼬리의 역함수다. nc는 비중심 모수다(카이제곱·F는 λ ≥ 0, t는 δ, 부호가 있다).
+- **인자 순서** (T2 결정): 모든 함수에서 x(또는 p)가 맨 뒤다. **scipy의 `chndtr(x, df, nc)`, `chndtrix(p, df, nc)`와 순서가 다르다.** §13의 `chdtr(v, x)`와 다른 비중심 함수에 맞췄다.
+- **위꼬리** (T2 결정): `chndtrc nctdtrc ncfdtrc`는 scipy.special에 없는 이름이다. 1에서 빼지 않고 직접 더하므로 꼬리에서도 상대 정확도가 유지된다. 매개변수에 대한 역함수(scipy의 `chndtridf`, `nctdtrinc` 등)는 두지 않는다.
+- **계산**: 카이제곱·F는 포아송 혼합 Σ_j e^(−λ/2)(λ/2)^j/j! · G(j)이다. G는 불완전 감마·베타이고, 두 꼬리 모두 양의 항만 더한다. t는 같은 꼴의 두 급수다. 다만 δ와 반대쪽 꼬리는 그 두 급수가 상쇄하므로 T = (Z + δ)/√(V/df)의 적분으로 계산한다. 역함수는 작은 쪽 꼬리를 브래킷과 Brent법으로 푼다. 자세한 것은 docs/design/special.md §5.16에 있다.
+- **특수값** (참값·극한, T1·T2 결정). scipy와 다른 곳은 굵게 적었다.
+
+  | 입력 | 값 | 비고 |
+  |---|---|---|
+  | nc = 0 | 중심 함수(`chdtr`, `stdtr`, `fdtr`와 역함수)와 비트까지 같다 | |
+  | **`chndtr(0, nc, x)`**, x > 0 | 0에 e^(−nc/2)가 몰린 분포의 값 | **scipy는 NaN** |
+  | `chndtr(0, nc, 0)` | NaN | `chdtr(0, 0)`과 같다 |
+  | `chndtrix(0, nc, p)`, p ≤ e^(−nc/2) | 0 | 점질량 안 |
+  | **`chndtr(inf, nc, x)`**, **`chndtr(df, inf, x)`** | 0 (`chndtrc`는 1) | 분포가 무한대로 간다. **scipy는 NaN**. x도 inf이면 NaN |
+  | `nctdtr(inf, nc, t)` | `ndtr(t − nc)` | 정규분포. scipy와 같다 |
+  | **`nctdtr(df, ±inf, t)`** | 0 / 1 | **scipy는 NaN**. t도 같은 부호의 inf이면 NaN |
+  | `nctdtr(df, nc, 0)` | `ndtr(−nc)` | |
+  | **`ncfdtr(dfn, inf, nc, f)`** | `chndtr(dfn, nc, dfn·f)` | 극한. **scipy는 NaN** |
+  | **`ncfdtr(inf, dfd, nc, f)`** | `fdtr(inf, dfd, f)` | 분자 → 1. **scipy는 NaN** |
+  | **`ncfdtr(dfn, dfd, inf, f)`** | 0 (`ncfdtrc`는 1) | **scipy는 NaN**. f도 inf이면 NaN |
+  | 역함수의 p = 0, 1 | 정의역의 두 끝(0 또는 −inf, inf) | |
+- **보장 영역**: 사용자 결정을 기다린다(T2 보고). 목표는 다른 special 함수와 같은 1e-14(약 45 ULP)다.
+  - **잰 값** (bench/special/t2/accuracy.md, 최대 ULP; 역함수는 ULP/max(1, κ)): `chndtr` 6.8, `chndtrc` 9.5, `chndtrix` 4.5, `nctdtr` 7.8, `nctdtrc` 7.5, `nctdtrit` 8.8, `ncfdtr` 12, `ncfdtrc` 23, `ncfdtri` 9.9
+  - 같은 점에서 scipy(Boost): 최대 7e3 ULP(`ncfdtrc`)부터 8.8e15 ULP(0이나 엉뚱한 값), inf·NaN(역함수)까지.
+  - 잰 범위: 자유도 1e-2–1e4(카이제곱·F), 1e-1–1e5(t); nc 1e-3–1e4(카이제곱·F), |δ| ≤ 100(t); 확률은 1e-300까지. 근이 double 범위 밖이면 0이나 ±inf이고 순방향 함수로 확인한다(tests/special/test_noncentral.py).
+  - 그 밖(거대한 t·f에서 작은 인자가 2⁻¹⁰⁰⁰ 아래인 꼬리)은 첫 항 y^b로 계산한다. mpmath와 1e-16 수준으로 맞지만 보장하지 않는다.

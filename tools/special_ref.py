@@ -2,6 +2,7 @@
 
     .venv/bin/python tools/special_ref.py            # every function in FUNCTIONS
     .venv/bin/python tools/special_ref.py NAME ...   # only these
+    .venv/bin/python tools/special_ref.py --jobs=8 NAME ...   # points in 8 processes (same file)
 
 writes tests/special/ref/<name>.npz (format: tests/special/refdata.py). The files are
 committed; tests and bench/special/accuracy.py read them and never call mpmath.
@@ -943,7 +944,323 @@ def _ndtri_exp_inputs(rng):
     return (y,), np.ones(y.size, dtype=bool)
 
 
-INVERSES = {"gammaincinv", "gammainccinv", "betaincinv", "betainccinv", "stdtrit", "chdtri", "fdtri", "ndtri_exp"}
+# T2: the noncentral distributions. Each value is a Poisson mixture of incomplete gamma or
+# beta functions; both tails are summed directly as sums of positive terms (1 - the other
+# tail would lose a tiny value), each family of incomplete functions by its stable
+# recurrence: the lower functions (decreasing in the shape) backward from a start J past
+# the mode, the upper ones (increasing) forward from 0. J grows until the term at J and
+# the tail beyond are below 1e-45 of the sum.
+
+_TRUNC = mpmath.mpf(10) ** -45
+
+
+def _pois_weight(mu, j):
+    """e^-mu mu^j / j! (mu > 0)."""
+    return mpmath.exp(-mu + j * mpmath.log(mu) - mpmath.loggamma(j + 1))
+
+
+def _mix_lower(mu, start, term, ratio_down):
+    """sum_j w_j L_j, w_j = Poisson(mu) weights and L_j decreasing in j with
+    L_{j-1} = L_j + term(j-1); start(J) = L_J, term(j) direct, ratio_down(j) = term(j-1) / term(j)."""
+    if mu == 0:
+        return start(0)
+    width = 40
+    while True:
+        J = int(mu + width * mpmath.sqrt(mu + 1) + width)
+        L, t, w = start(J), term(J - 1) if J > 0 else 0, _pois_weight(mu, J)
+        S = w * L
+        last = S
+        for j in range(J, 0, -1):
+            L += t  # L_{j-1}
+            w *= j / mu  # w_{j-1}
+            if j - 1 > 0:
+                t *= ratio_down(j - 1)  # term(j-2)
+            S += w * L
+        # the term at J and the tail beyond (w_i L_i <= w_J L_J (mu / (J + 1))^(i - J))
+        if S == 0 or last * (1 + mu / (J + 1 - mu)) <= _TRUNC * S:
+            return S
+        width *= 2
+
+
+def _mix_upper(mu, first, term0, ratio_up):
+    """sum_j w_j U_j with U_j increasing in j, U_{j+1} = U_j + term(j) <= 1;
+    first = U_0, term0 = term(0), ratio_up(j) = term(j+1) / term(j)."""
+    if mu == 0:
+        return first
+    U, t, w = first, term0, mpmath.exp(-mu)
+    S = w * U
+    j = 0
+    while True:
+        U += t
+        t *= ratio_up(j)
+        j += 1
+        w *= mu / j
+        S += w * U
+        if j > mu and w * (1 + mu / (j + 1 - mu)) <= _TRUNC * S:
+            return S
+        if j > 10 * mu + 10000:
+            raise RuntimeError("no convergence")
+
+
+def _ncx2_pair(df, nc, x, upper):
+    """chndtr (lower) or chndtrc: sum_j Poisson(nc/2) P or Q(df/2 + j, x/2)."""
+    a, y, mu = df / 2, x / 2, nc / 2
+    T = lambda s: mpmath.exp(s * mpmath.log(y) - y - mpmath.loggamma(s + 1))  # P(s) - P(s+1)
+    if upper:
+        return _mix_upper(mu, mpmath.gammainc(a, y, mpmath.inf, regularized=True), T(a), lambda j: y / (a + j + 1))
+    return _mix_lower(mu, lambda J: mpmath.gammainc(a + J, 0, y, regularized=True), lambda j: T(a + j),
+                      lambda j: (a + j) / y)
+
+
+def _ncf_pair(dfn, dfd, nc, f, upper):
+    """ncfdtr (lower) or ncfdtrc: sum_j Poisson(nc/2) I_w(dfn/2 + j, dfd/2) or its complement."""
+    a, b, mu = dfn / 2, dfd / 2, nc / 2
+    s = dfn * f + dfd
+    w, v = dfn * f / s, dfd / s
+    lw, lv = mpmath.log(w), mpmath.log(v)
+    T = lambda c: mpmath.exp(c * lw + b * lv - mpmath.log(c) - mpmath.log(mpmath.beta(c, b)))  # I(c) - I(c+1)
+    if upper:
+        return _mix_upper(mu, _ibeta_pair(a, b, w, v)[1], T(a), lambda j: w * (a + j + b) / (a + j + 1))
+    return _mix_lower(mu, lambda J: _ibeta_pair(a + J, b, w, v)[0], lambda j: T(a + j),
+                      lambda j: (a + j) / ((a + j - 1 + b) * w))
+
+
+def _nct_opposite(df, a, t):
+    """P(T > t) for t > 0 and d = -a < 0, the tail away from the noncentrality, from the
+    definition T = (Z + d) / S, S = sqrt(V / df): int_0^inf Phi(-(a + t s)) f_S(s) ds, in
+    v = log s with breakpoints around the peak (the series' two families cancel here)."""
+    lc = mpmath.log(2) + (df / 2) * mpmath.log(df / 2) - mpmath.loggamma(df / 2)
+
+    def g(v):  # log of the integrand in v
+        s = mpmath.exp(v)
+        return _log_ncdf(-(a + t * s)) + lc + df * v - df * s * s / 2
+
+    # the stationary point of -z^2/2 - (df/2)(s^2 - 2 log s): (t^2 + df) s^2 + a t s - df = 0
+    s0 = 2 * df / (a * t + mpmath.sqrt(a * a * t * t + 4 * df * (t * t + df)))
+    v0 = mpmath.log(s0)
+    curv = (t * s0) ** 2 + (a + t * s0) * t * s0 + 2 * df * s0 * s0
+    sig = 1 / mpmath.sqrt(curv)
+    gmax = g(v0)
+
+    def end(sign):  # where the integrand is below e^-200 of the peak (it falls off monotonically)
+        step = sig
+        while g(v0 + sign * step) - gmax > -200:
+            step *= 2
+        return v0 + sign * step
+
+    lo, hi = end(-1), end(1)
+    pts = [lo] + [v0 + k * sig for k in (-20, -6, -2, 0, 2, 6, 20) if lo < v0 + k * sig < hi] + [hi]
+    return mpmath.exp(gmax) * mpmath.quad(lambda v: mpmath.exp(g(v) - gmax), pts)
+
+
+def _nct_upper_pos(df, d, t):
+    """P(T > t) for t > 0, any d: (1/2) sum_j [p_j I_y(df/2, j + 1/2) + q_j I_y(df/2, j + 1)],
+    y = df / (df + t^2), p_j Poisson(d^2/2), q_j = d e^(-d^2/2) (d^2/2)^j / (sqrt 2 Gamma(j + 3/2)).
+    For d < 0 the q family cancels the p family: the integral instead."""
+    if d < 0:
+        return _nct_opposite(df, -d, t)
+    b, z = df / 2, t * t
+    x, y = z / (df + z), df / (df + z)
+    mu = d * d / 2
+    lx, ly = mpmath.log(x), mpmath.log(y)
+    T = lambda c: mpmath.exp(c * lx + b * ly - mpmath.log(c) - mpmath.log(mpmath.beta(c, b)))  # I_x(c, b) - I_x(c+1, b)
+    up = lambda c: _ibeta_pair(c, b, x, y)[1]
+    half = mpmath.mpf(1) / 2
+    sp = _mix_upper(mu, up(half), T(half), lambda j: x * (j + half + b) / (j + half + 1)) if mu else up(half)
+    if mu == 0:
+        return sp / 2
+    # the q family: q_j = c_q * Poisson-like weights with Gamma(j + 3/2) in place of j!
+    # sum_j q_j U_j = d e^-mu / sqrt2 sum_j mu^j / Gamma(j + 3/2) U_j, U_j = I_y(b, j + 1)
+    U, tt = up(1), T(1)
+    lead = d * mpmath.exp(-mu) / mpmath.sqrt(2)
+    wq = 1 / mpmath.gamma(half * 3)
+    S, j = wq * U, 0
+    while True:
+        U += tt
+        tt *= x * (j + 1 + b) / (j + 2)
+        j += 1
+        wq *= mu / (j + half)
+        S += wq * U
+        if j > mu and wq * (1 + mu / (j + 1 - mu)) <= _TRUNC * abs(S):
+            break
+        if j > 10 * mu + 10000:
+            raise RuntimeError("no convergence")
+    return (sp + lead * S) / 2
+
+
+def _nct_lower_pos(df, d, t):
+    """P(T <= t) for t > 0: Phi(-d) + (1/2) sum_j [p_j I_x(j + 1/2, df/2) + q_j I_x(j + 1, df/2)]."""
+    b, z = df / 2, t * t
+    x, y = z / (df + z), df / (df + z)
+    mu = d * d / 2
+    lx, ly = mpmath.log(x), mpmath.log(y)
+    T = lambda c: mpmath.exp(c * lx + b * ly - mpmath.log(c) - mpmath.log(mpmath.beta(c, b)))
+    low = lambda c: _ibeta_pair(c, b, x, y)[0]
+    half = mpmath.mpf(1) / 2
+    phi = mpmath.ncdf(-d)
+    if mu == 0:
+        return phi + low(half) / 2
+    sp = _mix_lower(mu, lambda J: low(J + half), lambda j: T(j + half), lambda j: (j + half) / ((j + half - 1 + b) * x))
+    # q family: weights mu^j / Gamma(j + 3/2), backward from J (as _mix_lower)
+    width = 40
+    while True:
+        J = int(mu + width * mpmath.sqrt(mu + 1) + width)
+        L, tt = low(J + 1), T(J)
+        wq = mpmath.exp(J * mpmath.log(mu) - mpmath.loggamma(J + half * 3))
+        S = wq * L
+        last = abs(S)
+        for j in range(J, 0, -1):
+            L += tt  # I_x(j, b)
+            tt *= j / ((j - 1 + b) * x)  # T(j - 1)
+            wq *= (j + half) / mu
+            S += wq * L
+        if S == 0 or last * (1 + mu / (J + 1 - mu)) <= _TRUNC * abs(S):
+            break
+        width *= 2
+    return phi + (sp + d * mpmath.exp(-mu) / mpmath.sqrt(2) * S) / 2
+
+
+def _mp_nct(df, d, t, upper):
+    if t == 0:
+        return mpmath.ncdf(d) if upper else mpmath.ncdf(-d)
+    if t > 0:
+        return _nct_upper_pos(df, d, t) if upper else _nct_lower_pos(df, d, t)
+    return _nct_lower_pos(df, -d, -t) if upper else _nct_upper_pos(df, -d, -t)
+
+
+def _chndtr_inputs(rng):
+    m = 400
+    df = np.concatenate([loguniform(rng, 1e-2, 1e4, m), loguniform(rng, 1e-2, 10, m), loguniform(rng, 1e-2, 1e4, m)])
+    nc = np.concatenate([loguniform(rng, 1e-3, 1e4, m), loguniform(rng, 1e-3, 50, m), loguniform(rng, 1e-3, 1e4, m)])
+    mean, sdv = df + nc, np.sqrt(2 * (df + 2 * nc))
+    x = np.concatenate([mean[:m] * loguniform(rng, 1e-3, 1e2, m), loguniform(rng, 1e-4, 300, m),
+                        np.abs(mean[2 * m:] + rng.normal(0, 4, m) * sdv[2 * m:]) + 1e-3])
+    return (df, nc, x), np.ones(df.size, dtype=bool)
+
+
+def _nctdtr_inputs(rng):
+    m = 400
+    df = np.concatenate([loguniform(rng, 1e-1, 1e5, m), loguniform(rng, 1e-1, 10, m), loguniform(rng, 1, 1e5, m)])
+    d = np.concatenate([loguniform(rng, 1e-3, 100, m, signed=True), loguniform(rng, 1e-3, 10, m, signed=True),
+                        loguniform(rng, 1e-3, 100, m, signed=True)])
+    t = np.concatenate([loguniform(rng, 1e-3, 1e4, m, signed=True), loguniform(rng, 1e-3, 1e3, m, signed=True),
+                        d[2 * m:] + rng.normal(0, 4, m) * (1 + np.abs(d[2 * m:]) / np.sqrt(df[2 * m:]))])
+    return (df, d, t), np.ones(df.size, dtype=bool)
+
+
+def _ncfdtr_inputs(rng):
+    m = 400
+    dfn = np.concatenate([loguniform(rng, 1e-2, 1e4, m), loguniform(rng, 1e-2, 10, m), loguniform(rng, 1e-1, 1e4, m)])
+    dfd = np.concatenate([loguniform(rng, 1e-2, 1e4, m), loguniform(rng, 1e-2, 10, m), loguniform(rng, 3, 1e4, m)])
+    nc = np.concatenate([loguniform(rng, 1e-3, 1e4, m), loguniform(rng, 1e-3, 50, m), loguniform(rng, 1e-3, 1e4, m)])
+    mean = (dfn + nc) / dfn * np.where(dfd > 2.5, dfd / (dfd - 2), 1.0)
+    f = np.concatenate([mean[:m] * loguniform(rng, 1e-3, 1e2, m), loguniform(rng, 1e-4, 1e3, m),
+                        mean[2 * m:] * np.exp(rng.normal(0, 0.5, m))])
+    return (dfn, dfd, nc, f), np.ones(dfn.size, dtype=bool)
+
+
+def _ncx2_logpdf(df, nc, x):
+    """log of the noncentral chi-square density: e^(-(x+nc)/2) (x/nc)^(df/4-1/2) I_(df/2-1)(sqrt(nc x)) / 2."""
+    return (-mpmath.log(2) - (x + nc) / 2 + (df / 4 - mpmath.mpf(1) / 2) * mpmath.log(x / nc)
+            + mpmath.log(mpmath.besseli(df / 2 - 1, mpmath.sqrt(nc * x))))
+
+
+def _mp_chndtrix(df, nc, p):
+    x0 = _start2("chndtrix", df, nc, p)
+    if not (np.isfinite(x0) and x0 > 0):
+        raise RuntimeError("no start")
+    pp = mpmath.mpf(p)
+    lower = p <= 0.5
+    tail = (lambda x: _ncx2_pair(df, nc, x, False)) if lower else (lambda x: _ncx2_pair(df, nc, x, True))
+    target = pp if lower else 1 - pp
+    dens = lambda x: mpmath.exp(_ncx2_logpdf(df, nc, x))
+    x = _solve_log(lambda x: mpmath.log(tail(x)) - mpmath.log(target),
+                   lambda x: (1 if lower else -1) * x * dens(x) / tail(x), x0)
+    return x, abs(pp / (x * dens(x)))
+
+
+def _nct_pdf(df, d, t):
+    """d/dt nctdtr: (df / t) (F(df + 2, d; t sqrt(1 + 2/df)) - F(df, d; t)), from whichever tail is small."""
+    if t == 0:
+        return mpmath.exp(mpmath.loggamma((df + 1) / 2) - mpmath.loggamma(df / 2) - d * d / 2) / mpmath.sqrt(mpmath.pi * df)
+    t2 = t * mpmath.sqrt(1 + 2 / df)
+    lower_small = _mp_nct(df, d, t, False) <= mpmath.mpf(1) / 2
+    if lower_small:
+        return df / t * (_mp_nct(df + 2, d, t2, False) - _mp_nct(df, d, t, False))
+    return df / t * (_mp_nct(df, d, t, True) - _mp_nct(df + 2, d, t2, True))
+
+
+def _mp_nctdtrit(df, d, p):
+    t0 = _start2("nctdtrit", df, d, p)
+    if not np.isfinite(t0):
+        raise RuntimeError("no start")
+    pp = mpmath.mpf(p)
+    lower = p <= 0.5
+    target = pp if lower else 1 - pp
+    tail = lambda t: _mp_nct(df, d, t, not lower)
+    sgn = 1 if lower else -1
+    t = _newton_root(lambda t: mpmath.log(tail(t)), lambda t: sgn * _nct_pdf(df, d, t) / tail(t),
+                     mpmath.log(target), t0)
+    return t, abs(pp / (t * _nct_pdf(df, d, t))) if t != 0 else mpmath.mpf(1)
+
+
+def _ncf_logpdf(dfn, dfd, nc, x):
+    """log density: e^(-nc/2) (central F density) 1F1((dfn+dfd)/2; dfn/2; nc dfn x / (2 (dfn x + dfd)))."""
+    a, b = dfn / 2, dfd / 2
+    central = (a * mpmath.log(dfn / dfd) + (a - 1) * mpmath.log(x) - (a + b) * mpmath.log1p(dfn * x / dfd)
+               - mpmath.log(mpmath.beta(a, b)))
+    return -nc / 2 + central + mpmath.log(mpmath.hyp1f1(a + b, a, nc * dfn * x / (2 * (dfn * x + dfd))))
+
+
+def _mp_ncfdtri(dfn, dfd, nc, p):
+    x0 = _start2("ncfdtri", dfn, dfd, nc, p)
+    if not (np.isfinite(x0) and x0 > 0):
+        raise RuntimeError("no start")
+    pp = mpmath.mpf(p)
+    lower = p <= 0.5
+    tail = (lambda x: _ncf_pair(dfn, dfd, nc, x, False)) if lower else (lambda x: _ncf_pair(dfn, dfd, nc, x, True))
+    target = pp if lower else 1 - pp
+    dens = lambda x: mpmath.exp(_ncf_logpdf(dfn, dfd, nc, x))
+    x = _solve_log(lambda x: mpmath.log(tail(x)) - mpmath.log(target),
+                   lambda x: (1 if lower else -1) * x * dens(x) / tail(x), x0)
+    return x, abs(pp / (x * dens(x)))
+
+
+def _probs(rng, m):
+    return np.concatenate([rng.uniform(0, 1, m), loguniform(rng, 1e-300, 0.5, m), 1 - loguniform(rng, 1e-16, 0.5, m)])
+
+
+def _chndtrix_inputs(rng):
+    m = 400
+    df = np.concatenate([loguniform(rng, 1e-2, 1e4, m), loguniform(rng, 1e-2, 10, m), loguniform(rng, 1e-2, 1e4, m)])
+    nc = np.concatenate([loguniform(rng, 1e-3, 1e4, m), loguniform(rng, 1e-3, 50, m), loguniform(rng, 1e-3, 1e4, m)])
+    p = _probs(rng, m)
+    keep = (p > 0) & (p < 1)
+    return (df[keep], nc[keep], p[keep]), np.ones(keep.sum(), dtype=bool)
+
+
+def _nctdtrit_inputs(rng):
+    m = 400
+    df = np.concatenate([loguniform(rng, 1e-1, 1e5, m), loguniform(rng, 1e-1, 10, m), loguniform(rng, 1, 1e5, m)])
+    d = np.concatenate([loguniform(rng, 1e-3, 100, m, signed=True), loguniform(rng, 1e-3, 10, m, signed=True),
+                        loguniform(rng, 1e-3, 100, m, signed=True)])
+    p = _probs(rng, m)
+    keep = (p > 0) & (p < 1)
+    return (df[keep], d[keep], p[keep]), np.ones(keep.sum(), dtype=bool)
+
+
+def _ncfdtri_inputs(rng):
+    m = 400
+    dfn = np.concatenate([loguniform(rng, 1e-2, 1e4, m), loguniform(rng, 1e-2, 10, m), loguniform(rng, 1e-1, 1e4, m)])
+    dfd = np.concatenate([loguniform(rng, 1e-2, 1e4, m), loguniform(rng, 1e-2, 10, m), loguniform(rng, 3, 1e4, m)])
+    nc = np.concatenate([loguniform(rng, 1e-3, 1e4, m), loguniform(rng, 1e-3, 50, m), loguniform(rng, 1e-3, 1e4, m)])
+    p = _probs(rng, m)
+    keep = (p > 0) & (p < 1)
+    return (dfn[keep], dfd[keep], nc[keep], p[keep]), np.ones(keep.sum(), dtype=bool)
+
+
+INVERSES = {"gammaincinv", "gammainccinv", "betaincinv", "betainccinv", "stdtrit", "chdtri", "fdtri", "ndtri_exp",
+            "chndtrix", "nctdtrit", "ncfdtri"}
 
 
 FUNCTIONS = {
@@ -1002,6 +1319,16 @@ FUNCTIONS = {
     "nbdtr": (3, lambda k, n, p: mpmath.betainc(n, k + 1, 0, p, regularized=True), lambda rng: _binom_inputs(rng, True)),
     "nbdtrc": (3, lambda k, n, p: mpmath.betainc(k + 1, n, 0, 1 - p, regularized=True), lambda rng: _binom_inputs(rng, True)),
     "ndtri_exp": (1, _mp_ndtri_exp, _ndtri_exp_inputs),
+    # T2 (x last: chndtr(df, nc, x), T2 decision)
+    "chndtr": (3, lambda df, nc, x: _ncx2_pair(df, nc, x, False), _chndtr_inputs),
+    "chndtrc": (3, lambda df, nc, x: _ncx2_pair(df, nc, x, True), _chndtr_inputs),
+    "nctdtr": (3, lambda df, d, t: _mp_nct(df, d, t, False), _nctdtr_inputs),
+    "nctdtrc": (3, lambda df, d, t: _mp_nct(df, d, t, True), _nctdtr_inputs),
+    "ncfdtr": (4, lambda dfn, dfd, nc, f: _ncf_pair(dfn, dfd, nc, f, False), _ncfdtr_inputs),
+    "ncfdtrc": (4, lambda dfn, dfd, nc, f: _ncf_pair(dfn, dfd, nc, f, True), _ncfdtr_inputs),
+    "chndtrix": (3, _mp_chndtrix, _chndtrix_inputs),
+    "nctdtrit": (3, _mp_nctdtrit, _nctdtrit_inputs),
+    "ncfdtri": (4, _mp_ncfdtri, _ncfdtri_inputs),
     # S5
     "expi": (1, mpmath.ei, _expi_inputs),
     "expn": (2, lambda n, x: mpmath.expint(int(n), x), _expn_inputs),
@@ -1374,9 +1701,36 @@ def evaluate_inverse(f, args):
 POINT_SECONDS = 30
 
 
-def build(name):
+def _point(task):
+    """One reference point (in a worker): (index, hi, lo, scale) or (index, None) if dropped."""
     import signal
 
+    name, i, args = task
+    nin, f, _ = FUNCTIONS[name]
+    old = signal.signal(signal.SIGALRM, _alarm)
+    signal.alarm(POINT_SECONDS)
+    try:
+        sc = 1.0
+        if name in INVERSES:
+            v, k = evaluate_inverse(f, args)
+            sc = max(1.0, float(k))
+        else:
+            v = evaluate(f, args)
+            if name in SCALES and mpmath.isfinite(v):
+                with mpmath.workdps(40):
+                    sc = SCALES[name](args, v)
+    except (_Timeout, mpmath.libmp.NoConvergence, RuntimeError, ZeroDivisionError):
+        return i, None
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old)
+    if isinstance(v, mpmath.mpc):  # a real function outside its real domain
+        v = v.real if v.imag == 0 else mpmath.nan
+    hi, lo = double_double(v)
+    return i, (hi, lo, sc)
+
+
+def build(name, jobs=1):
     nin, f, inputs = FUNCTIONS[name]
     rng = np.random.default_rng(20261113)
     xs, guaranteed = inputs(rng)
@@ -1384,30 +1738,19 @@ def build(name):
     n = xs[0].size
     hi, lo, scale = np.empty(n), np.empty(n), np.ones(n)
     keep = np.ones(n, dtype=bool)
-    old = signal.signal(signal.SIGALRM, _alarm)
-    try:
-        for i in range(n):
-            args = tuple(float(x[i]) for x in xs)
-            signal.alarm(POINT_SECONDS)
-            try:
-                if name in INVERSES:
-                    v, k = evaluate_inverse(f, args)
-                    scale[i] = max(1.0, float(k))
-                else:
-                    v = evaluate(f, args)
-                    if name in SCALES and mpmath.isfinite(v):
-                        with mpmath.workdps(40):
-                            scale[i] = SCALES[name](args, v)
-            except (_Timeout, mpmath.libmp.NoConvergence, RuntimeError, ZeroDivisionError):
-                keep[i] = False
-                continue
-            finally:
-                signal.alarm(0)
-            if isinstance(v, mpmath.mpc):  # a real function outside its real domain
-                v = v.real if v.imag == 0 else mpmath.nan
-            hi[i], lo[i] = double_double(v)
-    finally:
-        signal.signal(signal.SIGALRM, old)
+    tasks = [(name, i, tuple(float(x[i]) for x in xs)) for i in range(n)]
+    if jobs > 1:
+        import multiprocessing
+
+        with multiprocessing.get_context("fork").Pool(jobs) as pool:
+            results = pool.map(_point, tasks, chunksize=1)
+    else:
+        results = map(_point, tasks)
+    for i, r in results:
+        if r is None:
+            keep[i] = False
+        else:
+            hi[i], lo[i], scale[i] = r
     xs = tuple(x[keep] for x in xs)
     OUT.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(OUT / f"{name}.npz", nin=nin, hi=hi[keep], lo=lo[keep], scale=scale[keep],
@@ -1417,6 +1760,9 @@ def build(name):
 
 
 def main(argv):
+    jobs = 1
+    if argv and argv[0].startswith("--jobs="):
+        jobs, argv = int(argv[0].split("=", 1)[1]), argv[1:]
     names = argv or list(FUNCTIONS) + list(COMPLEX) + ["reduce_cases"]
     for name in names:
         if name in COMPLEX:
@@ -1427,7 +1773,7 @@ def main(argv):
         if name == "reduce_cases":
             print(f"reduce_cases: {build_reduce()} arrays -> tests/special/ref/reduce_cases.npz", flush=True)
             continue
-        n, dropped = build(name)
+        n, dropped = build(name, jobs)
         note = f" ({dropped} dropped: over {POINT_SECONDS} s, or mpmath did not converge)" if dropped else ""
         print(f"{name}: {n} points -> {(OUT / name).with_suffix('.npz').relative_to(ROOT)}{note}", flush=True)
 

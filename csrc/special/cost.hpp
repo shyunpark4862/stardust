@@ -78,6 +78,10 @@ inline constexpr double kBetainc = 401;
 inline constexpr double kBetaincc = 399;
 inline constexpr double kBetaincinv = 1025;
 inline constexpr double kBetainccinv = 1172;
+// T2's noncentral distributions: the bench/special/t2/speed.py mix, one thread (all capped at kMaxWeight)
+inline constexpr double kChndtr = 940, kChndtrc = 870, kChndtrix = 6500;
+inline constexpr double kNctdtr = 3300, kNctdtrc = 3300, kNctdtrit = 21000;
+inline constexpr double kNcfdtr = 2600, kNcfdtrc = 1800, kNcfdtri = 16000;
 // S5 (special/ops/expint.hpp, ellip.hpp), bench/special/s5/cost.md
 inline constexpr double kExpi = 12;  // Boost for x >= -700
 inline constexpr double kExpn = 98;

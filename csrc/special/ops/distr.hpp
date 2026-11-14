@@ -194,13 +194,27 @@ struct Stdtrit : Real {
 // ---------------------------------------------------------------- chi-square
 
 // chdtr(v, x) = P(v/2, x/2); chdtrc its complement; chdtri inverts chdtrc
-// (scipy's convention). Halving is exact (but for subnormal x).
+// (scipy's convention). Halving is exact but for subnormal x, where x/2 may
+// round (or vanish: chdtr(0.18, 5e-324) was 0 for 8e-30, T2): there
+// P(a, y) = y^a / Gamma(a + 1) to the last bit (the series' next term is y), with
+// log y = log(x/2) in double-double.
+namespace distr_detail {
+inline bool chi2_subnormal(double v, double x) { return x > 0.0 && x < 0x1p-1021 && v > 0.0 && std::isfinite(v); }
+inline double chi2_tiny(double v, double x) {
+    const double a = 0.5 * v;
+    return exp_dd(log_product(x, 0.5) * a) * Rgamma::f(a + 1.0);
+}
+}  // namespace distr_detail
+
 struct Chdtr : Real {
     static constexpr const char* name = "chdtr";
     static constexpr int nin = 2, nout = 1;
     static constexpr std::array<const char*, 2> args{"v", "x"};
     static constexpr double cost_ns = cost::kGammainc;
-    static double f(double v, double x) { return Gammainc::f(0.5 * v, 0.5 * x); }
+    static double f(double v, double x) {
+        if (distr_detail::chi2_subnormal(v, x)) return distr_detail::chi2_tiny(v, x);
+        return Gammainc::f(0.5 * v, 0.5 * x);
+    }
 };
 
 struct Chdtrc : Real {
@@ -208,7 +222,10 @@ struct Chdtrc : Real {
     static constexpr int nin = 2, nout = 1;
     static constexpr std::array<const char*, 2> args{"v", "x"};
     static constexpr double cost_ns = cost::kGammaincc;
-    static double f(double v, double x) { return Gammaincc::f(0.5 * v, 0.5 * x); }
+    static double f(double v, double x) {
+        if (distr_detail::chi2_subnormal(v, x)) return 1.0 - distr_detail::chi2_tiny(v, x);
+        return Gammaincc::f(0.5 * v, 0.5 * x);
+    }
 };
 
 struct Chdtri : Real {

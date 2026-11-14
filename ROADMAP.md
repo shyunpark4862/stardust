@@ -212,7 +212,7 @@
 | T0 배열 추가 | 승인 (2026-11-15) |
 | T0b 배열: Array API 채우기 | 승인 (2026-11-15) |
 | T1 special 감싸기와 `ndtri_exp` | 완료·승인 (2026-11-15) |
-| T2 special 비중심 분포 함수 | 대기 |
+| T2 special 비중심 분포 함수 | 완료, 보장 영역 결정·승인 대기 (2026-11-15) |
 | T3 `sd.random` | 대기 |
 | T4 분포 엔진과 연속 기본 12 | 대기 |
 | T5 이산 10 | 대기 |
@@ -243,6 +243,8 @@
 
 ### T2. special 비중심 분포 함수
 - `chndtr chndtrix nctdtr nctdtrit ncfdtr ncfdtri`. 보장 영역은 재고 나서 묻는다.
+- 결정(2026-11-15 사용자): x(또는 p)를 맨 뒤로(`chndtr(df, nc, x)`; scipy와 다름). 위꼬리 `chndtrc nctdtrc ncfdtrc`도 공개(scipy에 없는 이름). 매개변수 역함수는 뺀다. 특수값은 T1처럼 참값·극한. Boost를 먼저 재고 깎이는 곳만 직접(재 보니 꼬리 전체가 깎여 Boost는 쓰지 않음).
+- 결과: docs/api/special.md §14, docs/design/special.md §5.16·§2.4; 측정 bench/special/t2/(accuracy.md, speed.md); 테스트 tests/special/test_noncentral.py와 참값 tests/special/ref/(9개). T1·S4 결함 둘을 함께 고쳤다(`fdtr`의 bgrat log 1 근처, `chdtr`의 서브노멀 x).
 
 ### T3. `sd.random`
 - 계수기형 생성기, `default_rng`, `random integers choice permutation shuffle`
