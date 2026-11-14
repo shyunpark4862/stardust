@@ -71,3 +71,32 @@ def test_lambertw_branch_argument():
     x = sd.asarray(np.array([-0.2, -0.1]))
     got = np.asarray(S.lambertw(x, k=-1))
     assert np.allclose(got, np.real(sp.lambertw(np.array([-0.2, -0.1]), -1)), rtol=1e-15)
+
+
+def test_review_fixes_hyper():
+    # code review (S10): the leading-coefficient sign at +-inf without a loop over the degree
+    # (hyp1f1(-1e12, 2, inf) never returned), and the old loop's results kept
+    import time
+
+    t = time.perf_counter()
+    assert S.hyp1f1(-1e12, 2.0, np.inf) == np.inf and S.hyp1f1(-3e9, 2.0, np.inf) == np.inf
+    assert time.perf_counter() - t < 0.1
+    for a, b, x in [(-3.0, 2.0, np.inf), (-3.0, 2.0, -np.inf), (-2.0, -4.5, np.inf), (-3.0, -1.5, -np.inf)]:
+        n = int(-a)
+        sign = np.prod([(a + k) / (b + k) for k in range(n)]) * np.sign(x) ** n
+        assert S.hyp1f1(a, b, x) == np.copysign(np.inf, sign), (a, b, x)
+    assert S.hyp2f1(-3.0, 1.5, 2.0, -np.inf) == np.copysign(np.inf, np.prod([(-3 + k) * (1.5 + k) / (2 + k) for k in range(3)]) * -1)
+    # hyp2f1 with c far beyond a and b near z = 1: the series (it was NaN)
+    assert abs(S.hyp2f1(1.0, 1.0, 1e20, 0.95) - 1.0) < 1e-15
+    assert abs(S.hyp2f1(0.5, 0.5, 1e8 + 0.5, 0.95) - (1 + 0.25 * 0.95 / (1e8 + 0.5))) < 1e-15
+    # hyp1f1 with a huge negative a (loose region): Tricomi's expansion where Boost gives no
+    # value (it was inf); the leading Bessel term is -3.46963168e-10
+    v = S.hyp1f1(-1e12, 2.0, 0.5)
+    assert np.isfinite(v) and abs(v / -3.46963168596720607e-10 - 1) < 1e-6
+
+
+def test_review_fixes_lambertw_k():
+    with pytest.raises(ValueError, match=r"'k' must be 0 or -1 for a real argument"):
+        S.lambertw(-0.2, k=-(2**70))
+    with pytest.raises(ValueError, match=r"'k' must be 0 or -1 for a real argument"):
+        S.lambertw(0.5, k=2**70)

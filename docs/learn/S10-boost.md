@@ -5,7 +5,7 @@
 ## 1. 결과
 | 항목 | 결과 |
 |---|---|
-| 테스트 | 3,597개 통과 (S9과 같은 수; 기준만 바꾼 것 하나: `betainc + betaincc`의 합 2 → 3 ULP). 골든 출력 세 영역 불일치 0. 컴파일 경고 없음 |
+| 테스트 | 3,600개 통과 (S9의 3,597 + 회귀 테스트 3; 기준만 바꾼 것 하나: `betainc + betaincc`의 합 2 → 3 ULP). 골든 출력 세 영역 불일치 0. 컴파일 경고 없음 |
 | Boost를 부르는 함수 | 20개(구간별): `zeta i0 i1 k0 k1 iv kv expi lambertw`(두 가지) `digamma gamma beta gammaincinv gammainccinv betainc betaincc betaincinv betainccinv hyp1f1` |
 | 속도 (1스레드, 전 → 후 ns) | `zeta` 95 → 18, `i0` 16 → 4.3, `k0` 24 → 11, `kv` 1625 → 873, `expi` 26 → 12, `lambertw` 21 → 11, 불완전 베타 553 → 403 등 (routing.md §2) |
 | 정확도 | 모두 계약 안. `hyp1f1` 느슨한 영역이 상대 3.9e-3에서 2.8e-13으로 좋아졌다. 최대 ULP가 늘어난 곳도 있다(`zeta` 24 → 45, `hyp1f1` 보장 영역 6.9 → 79) |
@@ -31,7 +31,23 @@
 
 ## 4. 확인 부탁
 - **최대 ULP가 늘어난 함수**: `zeta`(24 → 45), `gammaincinv`(6.7 → 50), `hyp1f1` 보장 영역(6.9 → 79), `beta`(9 → 53), `kv`·`iv`(8–16 → 22–39). 모두 계약(상대 1e-14) 안이고 대신 빨라졌다. 결정의 기준(계약과 속도)대로다.
-- **코드리뷰에서 나온 10건**은 이번에 고치지 않았다. Boost로 가는 구간과 겹치지 않아 그대로 남았다(`hyp1f1(-1e12, 2, 0.5)`는 Boost도 값을 못 내서 우리 식으로 돌아와 여전히 inf).
+- 코드리뷰 10건은 S10 안에서 고쳤다(§5).
 
-## 5. 승인
+## 5. 코드리뷰 10건 (같은 S10에서)
+| # | 무엇 | 고친 것 |
+|---|---|---|
+| 1 | `hyp1f1(a, b, ±inf)`, `hyp2f1(..., ±inf)`의 다항식 최고차항 부호를 차수만큼 도는 `int` 루프(`hyp1f1(-1e12, 2, inf)`가 끝나지 않았다) | 음수 인수의 개수를 닫힌 꼴로(`neg_count`, `is_odd`) |
+| 2 | 실수 `lambertw`에서 long을 넘는 k가 오류 값 −1로 읽혀 k = −1로 계산됐다 | `PyLong_AsLongAndOverflow`로 ValueError |
+| 3 | 큰 차수 `iv`·`kv`: O(ν) 점화식이 26초, 값도 0과 inf가 뒤바뀜 | ν ≥ 1e4는 Debye 균등 점근전개(지수를 double-double로). 처음에 두 가지 실수를 했다: log(ν + s)의 인자에 반올림 전 √ 값과 반올림 뒤 하위 부분을 섞었고(1.5e-12), e^{∓x}로 스케일한 값에 e^{±x}를 다시 곱하다 `exp_scaled`의 ±1e5 포화가 서로 지워졌다(`iv(1e6, …)`가 4배 틀림). 최종 지수를 한 번에 만들어 해결했다 |
+| 4 | `hyp2f1`에서 c가 a, b보다 훨씬 크고 0.9 < z < 1이면 Γ가 넘쳐 NaN, 정수 s의 int 변환은 미정의 동작 | c > 1e3·max(1, \|a\|, \|b\|)이면 급수 그대로. \|s\| > 1e5이면 급수(int 변환 전에) |
+| 5 | `hyp1f1(-1e12, 2, 0.5)`가 inf | Boost가 값을 못 내면 a < −1e3에서 Tricomi 전개 |
+| 6 | b 재귀의 `static_cast<int>(ceil(-b))` | int64, 1e6단계까지만(넘으면 더 나은 급수) |
+| 7 | 실수 `loggamma`가 복소수의 비용(111 ns)으로 16원소씩 잘렸다 | 실수 Op(`LoggammaReal`, gammaln의 비용)와 복소 Op를 나눴다. 참값 파일 이름은 `loggamma_complex` |
+| 8 | 복소 도우미 함수가 세 파일에 따로 | `special/cplx.hpp` 한 곳 |
+| 9 | `_weight`가 함수 목록을 따로 손으로 관리 | 함수를 정의할 때 이름으로 등록(`record`) |
+| 10 | `wofz` 연분수가 실수/복소수에 일반 복소 나눗셈 | `cx::rdiv`(실수 분자) |
+
+- 회귀 테스트: `test_review_fixes_hyper`, `test_review_fixes_lambertw_k`(tests/special/test_hyper_lambertw.py), `test_huge_order_debye`(test_bessel_airy.py).
+
+## 6. 승인
 - (대기)

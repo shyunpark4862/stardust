@@ -24,6 +24,7 @@
 #pragma once
 
 #include "special/coeffs/wofz_grid.hpp"
+#include "special/cplx.hpp"
 #include "special/common.hpp"
 #include "special/cost.hpp"
 #include "special/dd.hpp"
@@ -45,9 +46,9 @@ namespace wofz_detail {
 inline constexpr double kInvSqrtPi = 0.56418958354775628695;  // 1/sqrt(pi)
 inline constexpr double kTwoInvSqrtPi = 1.1283791670955125739;  // 2/sqrt(pi)
 
-inline cplx mul(cplx a, cplx b) { return ops::cmul(a, b); }
-inline cplx div(cplx a, cplx b) { return ops::cdiv(a, b); }
-inline double norm1(cplx a) { return std::fabs(a.real()) + std::fabs(a.imag()); }
+using cx::div;
+using cx::mul;
+using cx::norm1;
 
 // exp(-z^2) as m 2^e (|m| < 1); the phase is NaN once 2xy overflows.
 struct CScaled {
@@ -111,7 +112,7 @@ inline cplx w_cf(double x, double y) {
     if (x + y > 3e8) return div(iinvsqrtpi, z);  // the next term, 1/(2z^2), is below 2^-56 relative
     const int nu = static_cast<int>(3.9 + 11.398 / (0.08254 * x + 0.1421 * y + 0.2023)) + kWofzCfMargin;
     cplx t = z;
-    for (int k = nu - 1; k >= 1; --k) t = z - div(cplx{0.5 * k, 0.0}, t);
+    for (int k = nu - 1; k >= 1; --k) t = z - cx::rdiv(0.5 * k, t);
     return div(iinvsqrtpi, t);
 }
 

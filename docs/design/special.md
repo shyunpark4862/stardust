@@ -297,6 +297,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
   - CF1(Lentz)로 `J_{ν+1}/J_ν` 비, Y·K는 앞으로 점화, Wronskian으로 J·I를 맞춘다.
   - 큰 x(x > max(25, ν²)): Hankel 점근 (CF1의 반복이 x에 비례해 늘기 때문)
   - **3구간**. 큰 ν의 Debye 균등 점근은 넣지 않는다. 큰 ν는 맞지만 O(ν)로 느리다. 느슨한 영역에 시간도 적는다.
+  - S10에서 바꿈(코드리뷰): `iv kv ive kve`는 ν ≥ 1e4에서 Debye 균등 점근전개(DLMF 10.41.3–4, U₀–U₄)를 쓴다. O(ν) 점화식은 `iv(1e9, 1e9)`에 26초가 걸리고 CF1의 항 수 상한(5e7)에 걸려 0을 냈다(참값은 inf). 지수 νη(스케일 판은 νη ∓ x)는 ν와 s = √(ν² + x²)가 크게 상쇄하므로 double-double로 만들고 한 번만 지수를 취한다. ν = 1e4–4e4에서 점화식과 7e-16 안으로 일치한다. `jv yv`의 큰 차수는 그대로 O(ν)다.
 - 음의 ν는 반사 공식(변환). 음의 x는 정수 ν에서만 정의(scipy와 같다), 그 밖은 NaN
 
 ### 5.9 Airy (`airy`)
@@ -375,6 +376,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
   | `betaincinv`, `betainccinv` | a, b ≥ 10 / a, b ≥ 1 | 작은 a, b (Boost가 언더플로를 틀림) |
   | `hyp1f1` | 느슨한 영역 전부, 보장 영역의 x ≥ 0이고 b < 11 | 보장 영역의 나머지 (Boost 208 ULP) |
 - 그대로 둔 것: Airy(우리는 네 값을 한 번에 계산해 277 ns, Boost는 넷을 따로 불러 약 720 ns이고 \|x\| > 15에서 틀린다), `expit`, `logit`, `erf` 계열, `expn`, `polygamma`, 타원적분, `jv`·`yv`, 불완전 감마(Boost가 느리거나 틀린다). Boost에 없는 함수(복소수 전부, `erfcx`, 정규분포, e-스케일 Bessel, `hyp2f1`, Hurwitz 제타, 리덕션)도 우리 것이다.
+- `hyp1f1`의 느슨한 영역에서 Boost도 값을 내지 못하면(큰 음의 a), a < −1e3이면 Tricomi의 Bessel 함수 전개(A&S 13.3.7)를 쓴다. |a| ≥ 1e3의 mpmath 참값 46점에서 Boost와 같은 수준(상대 1e-12 안팎)이었다. `hyp1f1(-1e12, 2, 0.5)`가 inf에서 −3.47e-10이 됐다(코드리뷰).
 - 내부 호출: `hyp2f1`과 `hyp1f1`의 우리 식이 부르는 `Gamma::f`, `Digamma::f`도 바뀐 구간에서는 Boost다. `betainc`와 `betaincc`의 합은 3 ULP까지 1에서 벗어난다(Boost가 둘을 따로 계산한다; 전에는 같은 BRATIO 호출이라 2 ULP 안).
 
 ---

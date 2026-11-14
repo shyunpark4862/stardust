@@ -65,7 +65,7 @@
 | `lambertw_m1` | 2250 | guaranteed | 2.63 | 1.32 | `scipy.special.lambertw(k=-1).real` | 4.48e+11 | 4.27e+11 |
 | `log_expit` | 8082 | guaranteed | 1.24 | 0.938 | `scipy.special.log_expit` | 1.24 | 0.938 |
 | `log_ndtr` | 8064 | guaranteed | 6.97 | 4.45 | `scipy.special.log_ndtr` | 1.14e+13 | 7.25e+12 |
-| `loggamma` | 7363 | guaranteed | 8.21 | 5.86 | `scipy.special.loggamma` | 224 | 111 |
+| `loggamma_complex` | 7363 | guaranteed | 8.21 | 5.86 | `scipy.special.loggamma` | 224 | 111 |
 | `logit` | 7535 | guaranteed | 2.8 | 2.52 | `scipy.special.logit` | 1.22 | 1.13 |
 | `ndtr` | 8064 | guaranteed | 6.73 | 5.28 | `scipy.special.ndtr` | 1.09e+13 | 6.59e+12 |
 | `ndtri` | 7559 | guaranteed | 5.43 | 4.51 | `scipy.special.ndtri` | 2.81 | 2.42 |

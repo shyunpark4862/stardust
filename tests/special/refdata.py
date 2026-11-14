@@ -32,6 +32,7 @@ KW = {
     "lambertw_m1": ("lambertw", {"k": -1}),
     # S8: complex arguments (x0 is complex128; hi, lo hold both parts as double-doubles)
     "erf_complex": ("erf", {}), "erfc_complex": ("erfc", {}), "erfcx_complex": ("erfcx", {}),
+    "loggamma_complex": ("loggamma", {}),
     "lambertw_c0": ("lambertw", {"k": 0}), "lambertw_cm1": ("lambertw", {"k": -1}),
     "lambertw_c1": ("lambertw", {"k": 1}), "lambertw_c4": ("lambertw", {"k": 4}),
 }

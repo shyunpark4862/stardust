@@ -308,7 +308,7 @@ lambertw(x, /, *, k=0, out=None)
 - `hyp1f1`은 Kummer 함수 ₁F₁(a; b; x)다. `b`가 0 이하의 정수이면 극점이다.
 - `hyp2f1`은 Gauss 함수 ₂F₁(a, b; c; z)다. z < 1에서 정의된다.
   - z ≥ 1: 다항식(a나 b가 0 이하의 정수)이면 그 값, z = 1이고 `c-a-b > 0`이면 Gauss 공식의 값이다. 그 밖은 NaN이다. **scipy는 일부 경우에 `inf`를 낸다** (docs/design/special.md §2.2).
-- `lambertw(x, *, k=0)`: `k`는 0 또는 −1인 int다. 다른 값은 `ValueError`다.
+- `lambertw(x, *, k=0)`: `k`는 0 또는 −1인 int다. 다른 값은 `ValueError`다(long을 넘는 int도).
   - k = 0은 x ≥ −1/e, k = −1은 −1/e ≤ x < 0에서 정의된다. 그 밖은 NaN이다.
   - 결과는 float64다. scipy는 complex를 돌려주고 `tol=`을 받는다. 우리는 둘 다 다르다.
   - **−1/e에 가장 가까운 double(−0.36787944117144233)은 분기점으로 본다**: 두 가지 모두 −1이다 (사용자 결정 2026-11-14, Boost와 같다). 그 double은 참 −1/e보다 8e-18 바깥이라 scipy는 NaN이다. 그보다 작은 x는 NaN이다.

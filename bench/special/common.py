@@ -32,6 +32,7 @@ PART = {"airy_ai": ("airy", 0), "airy_aip": ("airy", 1), "airy_bi": ("airy", 2),
 KW = {
     "lambertw_m1": ("lambertw", {"k": -1}),
     "erf_complex": ("erf", {}), "erfc_complex": ("erfc", {}), "erfcx_complex": ("erfcx", {}),
+    "loggamma_complex": ("loggamma", {}),
     "lambertw_c0": ("lambertw", {"k": 0}), "lambertw_cm1": ("lambertw", {"k": -1}),
     "lambertw_c1": ("lambertw", {"k": 1}), "lambertw_c4": ("lambertw", {"k": 4}),
 }
@@ -61,6 +62,7 @@ COUNTERPART = {
     "lambertw_m1": "scipy.special.lambertw(k=-1).real", "lambertw": "scipy.special.lambertw.real",
     "zeta_hurwitz": "scipy.special.zeta",
     "erf_complex": "scipy.special.erf", "erfc_complex": "scipy.special.erfc", "erfcx_complex": "scipy.special.erfcx",
+    "loggamma_complex": "scipy.special.loggamma",
     "lambertw_c0": "scipy.special.lambertw(k=0)", "lambertw_cm1": "scipy.special.lambertw(k=-1)",
     "lambertw_c1": "scipy.special.lambertw(k=1)", "lambertw_c4": "scipy.special.lambertw(k=4)",
 }

@@ -23,6 +23,7 @@
 #pragma once
 
 #include "special/coeffs/loggamma_taylor.hpp"
+#include "special/cplx.hpp"
 #include "special/common.hpp"
 #include "special/cost.hpp"
 #include "special/gamma_core.hpp"
@@ -40,17 +41,11 @@ using cplx = std::complex<double>;
 
 inline constexpr double kHalfLog2Pi = 0.91893853320467274178;  // log(2 pi) / 2
 inline constexpr double kLogPi = 1.1447298858494001741;
-inline constexpr double kTwoPi = 6.283185307179586477;
-
-inline cplx mul(cplx a, cplx b) { return ops::cmul(a, b); }
-inline cplx div(cplx a, cplx b) { return ops::cdiv(a, b); }
-inline cplx clog(cplx z) { return {std::log(std::hypot(z.real(), z.imag())), std::atan2(z.imag(), z.real())}; }
-
-// log(1 + w) for small w: Re = log1p(2 Re w + |w|^2) / 2, Im = atan2(Im w, 1 + Re w).
-inline cplx clog1p(cplx w) {
-    const double a = w.real(), b = w.imag();
-    return {0.5 * std::log1p(std::fma(a, a + 2.0, b * b)), std::atan2(b, 1.0 + a)};
-}
+using cx::clog;
+using cx::clog1p;
+using cx::div;
+using cx::kTwoPi;
+using cx::mul;
 
 // Stirling: (z - 1/2) log z - z + log(2 pi)/2 + sum B_2k / (2k (2k-1) z^(2k-1)).
 inline constexpr std::array<double, 8> kStirling{
@@ -139,18 +134,26 @@ inline cplx loggamma(cplx z) {
 
 }  // namespace loggamma_detail
 
-struct Loggamma {
+// A real argument: gammaln for x > 0, inf at +-0, NaN for x < 0 (scipy). Its own Op so
+// that a float64 call runs with gammaln's weight, not the complex one's.
+struct LoggammaReal : Real {
     static constexpr const char* name = "loggamma";
     static constexpr int nin = 1, nout = 1;
     static constexpr std::array<const char*, 1> args{"z"};
-    static constexpr double cost_ns = cost::kLoggammaC;
-    template <typename T> static constexpr bool ok = ops::is_float<T> || ops::is_cplx<T>;
+    static constexpr double cost_ns = cost::kGammaln;
     static double f(double x) {
         if (std::isnan(x)) return x;
         if (x == 0.0) return kInf;  // both zeros (scipy)
         if (x < 0.0) return kNaN;
         return gamma_detail::lgamma_abs(x);
     }
+};
+struct Loggamma {
+    static constexpr const char* name = "loggamma";
+    static constexpr int nin = 1, nout = 1;
+    static constexpr std::array<const char*, 1> args{"z"};
+    static constexpr double cost_ns = cost::kLoggammaC;
+    template <typename T> static constexpr bool ok = ops::is_cplx<T>;
     static std::complex<double> f(std::complex<double> z) { return loggamma_detail::loggamma(z); }
 };
 

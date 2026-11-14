@@ -120,3 +120,23 @@ def test_airy_special_values():
     ai, aip, bi, bip = S.airy(105.0)  # scipy 0, 0, NaN, NaN
     assert 0 < ai < 1e-310 and aip < 0 and bi == np.inf and bip == np.inf
     assert all(np.isnan(v) for v in S.airy(np.nan))
+
+
+def test_huge_order_debye():
+    # code review (S10): nu >= 1e4 by Debye's expansion (was O(nu): iv(1e9, 1e9) took 26 s and
+    # gave 0, kv gave inf)
+    import time
+
+    t = time.perf_counter()
+    assert S.iv(1e9, 1e9) == np.inf and S.kv(1e9, 1e9) == 0.0
+    assert time.perf_counter() - t < 0.1
+    # nu eta = 0: I ~ 1/sqrt(2 pi s), K ~ sqrt(pi / (2 s)) up to the 1/nu corrections
+    nu, x = 1e6, 662743.4193491816
+    s = np.hypot(nu, x)
+    assert abs(S.iv(nu, x) * np.sqrt(2 * np.pi * s) - 1) < 1e-6
+    assert abs(S.kv(nu, x) / np.sqrt(np.pi / (2 * s)) - 1) < 1e-6
+    # continuity with the recurrences at the switch (nu = 1e4; e^-x I is in range from x ~ 7e4):
+    # measured within 7e-16
+    for x in [1e5, 3e5, 1e6]:
+        lo, hi = S.ive(np.nextafter(1e4, 0), x), S.ive(1e4, x)
+        assert abs(hi / lo - 1) < 1e-11, x

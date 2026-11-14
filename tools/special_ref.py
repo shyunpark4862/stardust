@@ -955,7 +955,7 @@ COMPLEX = {
     "erf_complex": (mpmath.erf, _erf_family_inputs(_erf_zeros), _erf_scale, None),
     "erfc_complex": (mpmath.erfc, _erf_family_inputs(_erfc_zeros), _erfc_scale, None),
     "erfcx_complex": (_erfcx_mp, _erf_family_inputs(lambda: [-z for z in _erfc_zeros()]), _erfcx_scale, None),
-    "loggamma": (mpmath.loggamma, _loggamma_inputs, _loggamma_scale, mpmath.loggamma),
+    "loggamma_complex": (mpmath.loggamma, _loggamma_inputs, _loggamma_scale, mpmath.loggamma),
     "lambertw_c0": (_lambertw_mp(0), _lambertw_c_inputs, None, _lambertw_mp(0)),
     "lambertw_cm1": (_lambertw_mp(-1), _lambertw_c_inputs, None, _lambertw_mp(1)),
     "lambertw_c1": (_lambertw_mp(1), _lambertw_c_inputs, None, _lambertw_mp(-1)),

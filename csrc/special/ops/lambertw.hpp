@@ -16,6 +16,7 @@
 
 #include "special/boost.hpp"
 #include "special/coeffs/lambertw_branch.hpp"
+#include "special/cplx.hpp"
 #include "special/common.hpp"
 #include "special/cost.hpp"
 
@@ -103,27 +104,17 @@ inline double wm1_routed(double x) {
 
 // ---- complex argument, any branch k (S8) ---------------------------------------
 using cplx = std::complex<double>;
-inline constexpr double kTwoPi = 6.283185307179586477;
+using cx::cexp;
+using cx::clog;
+using cx::csqrt;
+using cx::div;
+using cx::kTwoPi;
+using cx::mul;
+using cx::norm1;
 
-inline cplx cmul(cplx a, cplx b) { return ops::cmul(a, b); }
-inline cplx cdiv(cplx a, cplx b) { return ops::cdiv(a, b); }
-inline double norm1(cplx a) { return std::fabs(a.real()) + std::fabs(a.imag()); }
-inline cplx clog(cplx z) { return {std::log(std::hypot(z.real(), z.imag())), std::atan2(z.imag(), z.real())}; }
-inline cplx cexp(cplx z) {
-    const double m = std::exp(z.real());
-    return {m * std::cos(z.imag()), m * std::sin(z.imag())};
-}
-// The principal square root (Kahan): the sign of a zero imaginary part picks the side of the cut.
-inline cplx csqrt(cplx z) {
-    const double x = z.real(), y = z.imag();
-    if (x == 0.0 && y == 0.0) return {0.0, y};
-    const double t = std::sqrt(0.5 * (std::fabs(x) + std::hypot(x, y)));
-    if (x >= 0.0) return {t, y / (2.0 * t)};
-    return {std::fabs(y) / (2.0 * t), std::copysign(t, y)};
-}
 inline cplx chorner(cplx p) {
     cplx r = kLambertwBranch[0];
-    for (std::size_t i = 1; i < kLambertwBranch.size(); ++i) r = cmul(r, p) + kLambertwBranch[i];
+    for (std::size_t i = 1; i < kLambertwBranch.size(); ++i) r = mul(r, p) + kLambertwBranch[i];
     return r;
 }
 
@@ -131,10 +122,10 @@ inline cplx chorner(cplx p) {
 inline cplx challey(cplx w, cplx z) {
     for (int it = 0; it < 64; ++it) {
         const cplx ew = cexp(w);
-        const cplx f = cmul(w, ew) - z;
+        const cplx f = mul(w, ew) - z;
         const cplx wp1 = w + 1.0;
-        const cplx d = cmul(ew, wp1) - cdiv(cmul(w + 2.0, f), 2.0 * wp1);
-        const cplx wn = w - cdiv(f, d);
+        const cplx d = mul(ew, wp1) - div(mul(w + 2.0, f), 2.0 * wp1);
+        const cplx wn = w - div(f, d);
         if (norm1(wn - w) <= 0x1p-53 * norm1(wn) || !std::isfinite(wn.real()) || !std::isfinite(wn.imag())) return wn;
         w = wn;
     }
@@ -145,10 +136,10 @@ inline cplx challey(cplx w, cplx z) {
 // from where the logarithm's branch could differ).
 inline cplx challey_log(cplx w, cplx L) {
     for (int it = 0; it < 64; ++it) {
-        const cplx iw = cdiv(1.0, w);
+        const cplx iw = div(1.0, w);
         const cplx g = w + clog(w) - L;
-        const cplx g1 = 1.0 + iw, g2 = -cmul(iw, iw);
-        const cplx wn = w - cdiv(g, g1 - cdiv(cmul(g, g2), 2.0 * g1));
+        const cplx g1 = 1.0 + iw, g2 = -mul(iw, iw);
+        const cplx wn = w - div(g, g1 - div(mul(g, g2), 2.0 * g1));
         if (norm1(wn - w) <= 0x1p-53 * norm1(wn)) return wn;
         w = wn;
     }
@@ -169,10 +160,10 @@ inline cplx cw(cplx z, double k) {
     }
     const cplx L = clog(z) + cplx{0.0, kTwoPi * k};
     const double r = std::hypot(x, y);
-    if (k == 0.0 && r < 1e-9) return z - cmul(z, z);  // the cube is below 2^-53 relative
+    if (k == 0.0 && r < 1e-9) return z - mul(z, z);  // the cube is below 2^-53 relative
     if (r > 1e150 || (k != 0.0 && r < 1e-150)) {
         const cplx L2 = clog(L);
-        return challey_log(L - L2 + cdiv(L2, L), L);
+        return challey_log(L - L2 + div(L2, L), L);
     }
     // e z + 1 with e as a double-double: exact to rounding near -1/e
     const cplx ez1{std::fma(kEHi, x, 1.0) + kELo * x, kEHi * y + kELo * y};
@@ -188,7 +179,7 @@ inline cplx cw(cplx z, double k) {
         w = clog(1.0 + z);  // W(z) ~ log(1 + z) near 0
     } else {
         const cplx L2 = clog(L);
-        w = L - L2 + cdiv(L2, L);
+        w = L - L2 + div(L2, L);
     }
     return challey(w, z);
 }

@@ -30,6 +30,7 @@
 #include "special/cost.hpp"
 #include "special/dd.hpp"
 #include "special/gamma_core.hpp"
+#include "special/ops/bessel.hpp"
 #include "special/ops/gamma.hpp"
 
 #include <algorithm>
@@ -42,6 +43,12 @@ namespace sd::special {
 namespace hyper_detail {
 
 inline bool nonpos_int(double v) { return v <= 0.0 && v == std::floor(v); }
+
+// For the sign of a polynomial's leading coefficient without a loop over its degree:
+// how many of v, v+1, ..., v+n-1 are negative (n an integer-valued count), and whether an
+// integer-valued v is odd (every double from 2^53 is even).
+inline double neg_count(double v, double n) { return -v > 0.0 ? std::min(n, std::ceil(-v)) : 0.0; }
+inline bool is_odd(double v) { return std::fabs(v) < 0x1p53 && std::fmod(v, 2.0) != 0.0; }
 
 // ---- 1F1 ------------------------------------------------------------------------
 
@@ -141,22 +148,62 @@ inline bool m_negative_asymptotic(double a, double b, double x, double& out) {
 }
 
 inline double hyp1f1(double a, double b, double x);
+inline constexpr double kMaxRecurrence = 1e6;  // steps of the b recurrence at most
 
 // b < 0 (not an integer) with heavy cancellation in both forms: from b' = b + n
 // in (0, 1] and b' + 1, where the forms are clean, down in b by DLMF 13.3.2:
 //     b(b-1) M(a, b-1) + b(1-b-x) M(a, b) + x(b-a) M(a, b+1) = 0
 // (measured stable in this direction; the loose region).
 inline double m_b_recurrence(double a, double b, double x) {
-    const int n = static_cast<int>(std::ceil(-b));
+    // callers keep n = ceil(-b) at most kMaxRecurrence (beyond it, the better series instead)
+    const std::int64_t n = static_cast<std::int64_t>(std::ceil(-b));
     const double bp = b + n;  // (0, 1]: b + n is exact (b's bits below 1 survive)
     double cur = hyp1f1(a, bp, x), nxt = hyp1f1(a, bp + 1.0, x), bb = bp;
-    for (int k = 0; k < n; ++k) {
+    for (std::int64_t k = 0; k < n; ++k) {
         const double prev = -(bb * (1.0 - bb - x) * cur + x * (bb - a) * nxt) / (bb * (bb - 1.0));
         nxt = cur;
         cur = prev;
         bb -= 1.0;
     }
     return cur;
+}
+
+// Tricomi's expansion in Bessel functions for a -> -inf, b and x > 0 fixed (A&S 13.3.7):
+//     M(a, b, x) = Gamma(b) e^(x/2) (k x)^((1-b)/2) sum_n A_n r^n J_(b-1+n)(2 sqrt(k x)),
+//     k = b/2 - a, r = (x/2) / sqrt(k x), A_0 = 1, A_1 = 0, A_2 = b/2,
+//     (n+1) A_(n+1) = (n+b-1) A_(n-1) + (2a-b) A_(n-2).
+// A_n r^n falls like |a|^(-n/6): for the huge |a| of the loose region, where both our series
+// and Boost overflow (hyp1f1(-1e12, 2, 0.5) was inf; the value is ~1e-9). J by Jv, then upward
+// in order (stable: the order stays far below the argument).
+inline bool m_tricomi(double a, double b, double x, double& out) {
+    const double kappa = 0.5 * b - a;
+    if (!(kappa > 0.0) || !(b > 0.0) || b > 170.0 || !(x > 0.0)) return false;
+    const double kx = kappa * x, w = 2.0 * std::sqrt(kx), r = 0.5 * x / std::sqrt(kx);
+    if (!(w > 4.0 * (b + 60.0))) return false;  // the upward recurrence needs order << argument
+    double jm = Jv::f(b - 1.0, w), j = Jv::f(b, w);  // J_(b-1), J_b
+    double a2 = 0.0, a1 = 0.0, a0 = 1.0;  // A_(n-2), A_(n-1), A_n at n = 0
+    double rn = 1.0, sum = jm, big = std::fabs(jm);
+    for (int n = 1; n < 400; ++n) {
+        // A_n from A_(n-1), A_(n-2), A_(n-3)
+        double an;
+        if (n == 1) an = 0.0;
+        else if (n == 2) an = 0.5 * b;
+        else an = ((n - 1 + b - 1) * a1 + (2.0 * a - b) * a2) / n;  // (n) A_n = (n+b-2) A_(n-2) + (2a-b) A_(n-3)
+        a2 = a1;
+        a1 = a0;
+        a0 = an;
+        rn *= r;
+        const double t = an * rn * j;
+        sum += t;
+        big = std::max(big, std::fabs(t));
+        if (n > 4 && std::fabs(t) <= 0x1p-56 * std::fabs(sum) && std::fabs(an * rn) <= 0x1p-56 * big) break;
+        const double nu = b - 1.0 + n;  // J_(nu+1) = (2 nu / w) J_nu - J_(nu-1)
+        const double jn = 2.0 * nu / w * j - jm;
+        jm = j;
+        j = jn;
+    }
+    out = value(scaled(Gamma::f(b)) * exp_scaled(0.5 * x) * pow_scaled(kx, 0.5 * (1.0 - b)) * scaled(sum));
+    return std::isfinite(out);
 }
 
 inline double hyp1f1(double a, double b, double x) {
@@ -168,11 +215,11 @@ inline double hyp1f1(double a, double b, double x) {
         // x -> inf: Gamma(b)/Gamma(a) e^x x^(a-b) (a polynomial: its leading term);
         // x -> -inf: Gamma(b)/Gamma(b-a) |x|^-a. The sign of the coefficient, or 0.
         if (nonpos_int(a)) {
-            // degree n = -a: leading coefficient (a)_n / ((b)_n n!), times x^n
-            double sgn = 1.0;
-            for (int k = 0; k < -a; ++k) sgn *= ((a + k) / (b + k) < 0.0) ? -1.0 : 1.0;
-            if (x < 0.0 && static_cast<std::int64_t>(-a) % 2 == 1) sgn = -sgn;
-            return sgn * kInf;
+            // degree n = -a: leading coefficient (a)_n / ((b)_n n!), times x^n. All n factors
+            // a + k are negative; b + k is negative for the first neg_count(b, n).
+            const double n = -a;
+            const bool neg = is_odd(n + neg_count(b, n)) != (x < 0.0 && is_odd(n));
+            return neg ? -kInf : kInf;
         }
         if (x > 0.0) return (gamma_detail::gamma_sign(a) * gamma_detail::gamma_sign(b) > 0.0) ? kInf : -kInf;
         if (a > 0.0) return 0.0;
@@ -187,6 +234,8 @@ inline double hyp1f1(double a, double b, double x) {
         if (!guaranteed || (x >= 0.0 && b < 11.0)) {
             const double r = bst::hyp1f1(a, b, x);
             if (guaranteed ? bst::normal(r) : std::isfinite(r)) return r;
+            double t;  // Boost gave no value: for a large negative a, Tricomi's expansion
+            if (!guaranteed && a < -1e3 && m_tricomi(a, b, x, t)) return t;
         }
     }
     if (x > 0.0) {
@@ -196,7 +245,7 @@ inline double hyp1f1(double a, double b, double x) {
         const dd::DD bma = dd::two_sum(b, -a);
         const Series k = m_series(bma.hi, b, -x, bma.lo);
         const double best = std::min(k.cancel, direct.cancel);
-        if (b < 0.0 && best > 1e4) return m_b_recurrence(a, b, x);
+        if (b < 0.0 && b > -kMaxRecurrence && best > 1e4) return m_b_recurrence(a, b, x);
         return k.cancel < direct.cancel ? value(exp_scaled(x) * k.s) : value(direct.s);
     }
     // x < 0: Kummer, with b - a carried exactly
@@ -208,7 +257,7 @@ inline double hyp1f1(double a, double b, double x) {
     const Series kummer = m_nonneg(bma.hi, b, -x, bma.lo);
     if (b - a >= 0.0 || kummer.cancel < 4.0) return value(exp_scaled(x) * kummer.s);
     const Series direct = m_series(a, b, x);
-    if (b < 0.0 && std::min(direct.cancel, kummer.cancel) > 1e4) return m_b_recurrence(a, b, x);
+    if (b < 0.0 && b > -kMaxRecurrence && std::min(direct.cancel, kummer.cancel) > 1e4) return m_b_recurrence(a, b, x);
     return direct.cancel < kummer.cancel ? value(direct.s) : value(exp_scaled(x) * kummer.s);
 }
 
@@ -255,7 +304,10 @@ inline double f_one_minus(double a, double b, double c, double y) {
         const double t2 = std::pow(y, s) * gam(c) * gam(-s) * rgam(a) * rgam(b) * f_series(c - a, c - b, 1.0 + s, y);
         return t1 + t2;
     }
-    const int m = static_cast<int>(std::fabs(std::nearbyint(s)));  // s is m up to the rounding of a + b
+    // s is m up to the rounding of a + b; the degenerate forms sum m terms, so a huge m
+    // (only with |a + b| huge, the loose region) takes the series instead
+    if (std::fabs(s) > 1e5) return f_series(a, b, c, 1.0 - y);
+    const int m = static_cast<int>(std::fabs(std::nearbyint(s)));
     auto tail = [&](double a0, double b0, double pa, double pb) {
         // sum_n (a0)_n (b0)_n / (n! (n+m)!) y^n [ly - psi(n+1) - psi(n+m+1) + psi(pa+n) + psi(pb+n)]
         double sum = 0.0, t = 1.0;
@@ -312,6 +364,9 @@ inline double f_one_minus(double a, double b, double c, double y) {
 // (its error ~|s - m|).
 inline double f_unit(double a, double b, double c, double z) {
     if (z <= 0.9) return f_series(a, b, c, z);
+    // c far beyond a and b: the terms fall like (a b / c)(k / c)^k from the start, and the
+    // 1 - z transformation's Gammas would overflow (NaN) -- the series directly
+    if (c > 1e3 * std::max({1.0, std::fabs(a), std::fabs(b)})) return f_series(a, b, c, z);
     const double s = c - a - b, m = std::nearbyint(s), off = std::fabs(s - m);
     if (off != 0.0 && off < 1e-3) {
         if (1.0 - z >= 1e-3) return f_series(a, b, c, z);  // at most ~4e4 terms (rare)
@@ -335,11 +390,10 @@ inline double hyp2f1(double a, double b, double c, double z) {
     if (std::isinf(z)) {
         if (poly) {
             // the leading term (p)_N (q)_N / ((c)_N N!) z^N, N = -n: its sign times inf
-            double sgn = 1.0;
-            const double p = pa && n == a ? a : b, q = (p == a) ? b : a;
-            for (int k = 0; k < -n; ++k) sgn *= ((p + k) * (q + k) / (c + k) < 0.0) ? -1.0 : 1.0;
-            if (z < 0.0 && static_cast<std::int64_t>(-n) % 2 == 1) sgn = -sgn;
-            return sgn * kInf;
+            const double p = pa && n == a ? a : b, q = (p == a) ? b : a, N = -n;
+            // all N factors p + k are negative; q + k and c + k for the first neg_count of each
+            const bool neg = is_odd(N + neg_count(q, N) + neg_count(c, N)) != (z < 0.0 && is_odd(N));
+            return neg ? -kInf : kInf;
         }
         if (z > 0.0) return kNaN;
         // z -> -inf (S7 user decision: the limit)

@@ -32,6 +32,7 @@
 #include <nanobind/stl/string.h>
 
 #include <cstdint>
+#include <map>
 #include <string>
 #include <utility>
 
@@ -51,6 +52,17 @@ constexpr const LoopTable& table_of() {
     else return nary_table<Op>;
 }
 
+// The weight each function's loop runs with, by name, filled as the functions are
+// defined (the reference-file names of bench/special: a complex loop under
+// "<name>_complex", lambertw's under "lambertw_m1" and "lambertw_c", zeta's two-argument
+// form under "zeta_hurwitz"); _weight reads it.
+std::map<std::string, std::int64_t>& weights() {
+    static std::map<std::string, std::int64_t> w;
+    return w;
+}
+template <typename Op>
+void record(const std::string& name) { weights()[name] = special::weight_of(Op::cost_ns); }
+
 template <typename Op>
 nb::object call(std::span<const nb::handle> objs, nb::handle out) {
     return run_nary(table_of<Op>(), Op::nout, Op::args, objs, out, special::weight_of(Op::cost_ns));
@@ -60,6 +72,7 @@ nb::object call(std::span<const nb::handle> objs, nb::handle out) {
 // one result.
 template <typename Op>
 void def_nary(nb::module_& m) {
+    record<Op>(Op::name);
     [&]<std::size_t... I>(std::index_sequence<I...>) {
         if constexpr (Op::nout == 1) {
             m.def(
@@ -98,6 +111,8 @@ bool is_complex_operand(nb::handle o) {
 // A one-input function with a real Op and a complex Op of the same name (S8, §12).
 template <typename Real, typename Complex>
 void def_real_complex(nb::module_& m) {
+    record<Real>(Real::name);
+    record<Complex>(std::string(Real::name) + "_complex");
     m.def(
         Real::name,
         [](nb::handle x, nb::handle out) {
@@ -139,9 +154,13 @@ void bind_special(nb::module_& core) {
     def_naries<I0, I0e, I1, I1e, K0, K0e, K1, K1e, J0, J1, Y0, Y1>(m);  // S6, §8.1
     def_naries<Jv, Yv, Iv, Kv, Jve, Yve, Ive, Kve>(m);  // S6, §8.2
     def_naries<Hyp1f1, Hyp2f1>(m);  // S7, §11
-    def_naries<Wofz, Loggamma>(m);  // S8, §12
+    def_naries<Wofz>(m);  // S8, §12
+    def_real_complex<LoggammaReal, Loggamma>(m);
     // lambertw(x, /, *, k=0, out=None): k is an int; 0 or -1 for a real x (§11), any for a
     // complex one (§12)
+    record<Lambertw0>("lambertw");
+    record<LambertwM1>("lambertw_m1");
+    record<LambertwComplex>("lambertw_c");
     m.def(
         "lambertw",
         [](nb::handle x, nb::handle k, nb::handle out) {
@@ -154,15 +173,16 @@ void bind_special(nb::module_& core) {
                     const nb::handle objs[] = {x, kc};
                     return call<LambertwComplex>(objs, out);
                 }
-                const long kv = PyLong_AsLong(k.ptr());
-                if (kv == -1 && PyErr_Occurred()) PyErr_Clear();
-                if ((kv != 0 && kv != -1) || PyErr_Occurred()) throw nb::value_error("'k' must be 0 or -1 for a real argument");
+                int overflow = 0;  // a k beyond long is neither 0 nor -1 (not -1 by PyLong_AsLong's error value)
+                const long kv = PyLong_AsLongAndOverflow(k.ptr(), &overflow);
+                if (overflow != 0 || (kv != 0 && kv != -1)) throw nb::value_error("'k' must be 0 or -1 for a real argument");
                 const nb::handle objs[] = {x};
                 return kv == 0 ? call<Lambertw0>(objs, out) : call<LambertwM1>(objs, out);
             });
         },
         nb::arg().none(), nb::kw_only(), nb::arg("k").none() = 0, nb::arg("out").none() = nb::none());
     // airy(x, /) -> AiryResult(ai, aip, bi, bip) (§9; stardust._results)
+    record<Airy>("airy");
     m.def(
         "airy",
         [](nb::handle x) {
@@ -175,6 +195,8 @@ void bind_special(nb::module_& core) {
         nb::arg().none());
     def_naries<GammaLanczos>(m);  // S3 measurement variant (gamma candidate A)
     // zeta(x, q=None, /, *, out=None): Riemann with one argument, Hurwitz with two (§7)
+    record<Zeta>("zeta");
+    record<Hurwitz>("zeta_hurwitz");
     m.def(
         "zeta",
         [](nb::handle x, nb::handle q, nb::handle out) {
@@ -204,25 +226,15 @@ void bind_special(nb::module_& core) {
         nb::arg().none(), nb::kw_only(), nb::arg("axis").none() = nb::none());
     def_naries<Fma3, Sum4, Powers4, CfTan>(m);  // engine tests (special/ops/testing.hpp)
     m.def("_parallel_tasks", &parallel_tasks, nb::arg("n"), nb::arg("weight"));
-    m.def("_weight", [](const std::string& name) -> std::int64_t {
-        std::int64_t w = 0;
-        auto check = [&]<typename Op>() { if (name == Op::name) w = weight_of(Op::cost_ns); };
-        [&]<typename... Ops>() { (check.template operator()<Ops>(), ...); }
-            .template operator()<Expit, Logit, LogExpit, Xlogy, Xlog1py, Entr, RelEntr, Erf, Erfc, Erfcx, Erfinv,
-                                 Erfcinv, Ndtr, LogNdtr, Ndtri, Gamma, Rgamma, Gammaln, Digamma, Polygamma,
-                                 Beta, Betaln, Binom, Zeta, Gammainc, Gammaincc,
-                                 Gammaincinv, Gammainccinv, Betainc, Betaincc, Betaincinv, Betainccinv, Expi, Expn, Ellipk, Ellipe, I0, I0e, I1, I1e, K0, K0e, K1, K1e, J0, J1, Y0,
-                                 Y1, Jv, Yv, Iv, Kv, Jve, Yve, Ive, Kve, Airy, Lambertw0, Hyp1f1, Hyp2f1, Wofz, Loggamma, Fma3, Sum4, Powers4, CfTan>();
-        if (name == "zeta_hurwitz") w = weight_of(Hurwitz::cost_ns);  // zeta's two-argument form
-        if (name == "lambertw_m1") w = weight_of(LambertwM1::cost_ns);  // lambertw(k=-1)
-        // S8: the complex loops (reference-file names: erf_complex, lambertw_c1, ...)
-        if (name == "erf_complex") w = weight_of(ErfComplex::cost_ns);
-        if (name == "erfc_complex") w = weight_of(ErfcComplex::cost_ns);
-        if (name == "erfcx_complex") w = weight_of(ErfcxComplex::cost_ns);
-        if (name.rfind("lambertw_c", 0) == 0) w = weight_of(LambertwComplex::cost_ns);
-        if (w == 0) throw nb::key_error(name.c_str());
-        return w;
-    }, nb::arg("name"));
+    m.def(
+        "_weight",
+        [](const std::string& name) -> std::int64_t {
+            const auto& w = weights();
+            if (auto it = w.find(name); it != w.end()) return it->second;
+            if (name.rfind("lambertw_c", 0) == 0) return w.at("lambertw_c");  // lambertw_c0, lambertw_cm1, ...
+            throw nb::key_error(name.c_str());
+        },
+        nb::arg("name"));
 }
 
 }  // namespace sd
