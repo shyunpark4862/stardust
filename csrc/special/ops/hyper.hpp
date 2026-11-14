@@ -58,33 +58,73 @@ struct Series {
     Scaled s;
     double cancel;
 };
+// The float64 pass of a series is kept while sum (k+1)|t_k| <= kFastSeries |s|: at
+// most ~5 ULP from the products (measured in bench/special/opt3).
+inline constexpr double kFastSeries = 4.0;
 inline Series m_series(double a, double b, double y, double a_lo = 0.0) {
     // The terms in double-double: by successive products a float64 term k
     // carries ~k ULP (a + k, b + k rounded, then multiplied), and near x ~ 500
     // the sum is made of terms around k ~ x: 120-180 ULP, measured. a + k and
     // b + k are exact as two_sums.
-    dd::DD s{1.0, 0.0}, t{1.0, 0.0};
-    double abssum = 1.0;
+    if (a_lo == 0.0) {
+        // First in float64 with a bound on what the products cost: term k carries at
+        // most ~1.25 (k + 1) ULP, so the sum's error is at most 1.25 sum (k+1)|t_k| / |s|
+        // ULP. Where that is small (the terms fall from the start: most inputs) this is
+        // the answer, at a fifth of the double-double loop's time.
+        double fs = 1.0, fc = 0.0, ft = 1.0, fabs_sum = 1.0, weighted = 1.0;  // fs + fc: a compensated sum
+        bool done = false;
+        for (int k = 0; k < 2000; ++k) {
+            if (a + k == 0.0) {
+                done = true;
+                break;
+            }
+            ft *= (a + k) * y / ((b + k) * (k + 1.0));
+            const dd::DD two = dd::two_sum(fs, ft);
+            fs = two.hi;
+            fc += two.lo;
+            const double at = std::fabs(ft);
+            fabs_sum += at;
+            weighted += (k + 2.0) * at;
+            if (!(at < 0x1p600)) break;
+            if (ft == 0.0 || (k > std::fabs(y) && k > -b && at <= 0x1p-56 * std::fabs(fs))) {
+                done = true;
+                break;
+            }
+        }
+        fs += fc;
+        if (done && weighted <= kFastSeries * std::fabs(fs)) return {scaled(fs), fs == 0.0 ? kInf : fabs_sum / std::fabs(fs)};
+    }
+    // The long series, compensated (as f_series2 below: the roundings of the product
+    // and the quotient by fma, to first order; the term and the sum as hi + lo).
+    double th = 1.0, tl = 0.0, sh = 1.0, sl = 0.0, abssum = 1.0;
     std::int64_t e = 0;
     for (int k = 0; k < 1000000; ++k) {
         if (a + k == 0.0) break;  // a polynomial ends (before b + k = 0 can divide)
-        const dd::DD num = (dd::two_sum(a, k) + a_lo) * y, den = dd::two_sum(b, k) * (k + 1.0);
-        t = t * num / den;
-        s = s + t;
-        abssum += std::fabs(t.hi);
-        if (t.hi == 0.0) break;
-        if (std::fabs(s.hi) > 0x1p600 || std::fabs(t.hi) > 0x1p600) {
-            s = dd::ldexp(s, -600);
-            t = dd::ldexp(t, -600);
+        const dd::DD A = dd::two_sum(a, k), B = dd::two_sum(b, k);
+        const double kp = k + 1.0;
+        const double n = A.hi * y, e1 = std::fma(A.hi, y, -n) + (A.lo + a_lo) * y;
+        const double d = B.hi * kp, e2 = std::fma(B.hi, kp, -d) + B.lo * kp;
+        const double rd = 1.0 / d, q = n * rd;
+        const double ql = (std::fma(-q, d, n) + e1 - q * e2) * rd;  // the ratio is q + ql
+        const double tn = th * q;
+        tl = std::fma(th, q, -tn) + tl * q + th * ql;
+        th = tn;
+        const dd::DD two = dd::two_sum(sh, th);
+        sh = two.hi;
+        sl += two.lo + tl;
+        abssum += std::fabs(th);
+        if (th == 0.0) break;
+        if (std::fabs(sh) > 0x1p600 || std::fabs(th) > 0x1p600) {
+            sh *= 0x1p-600, sl *= 0x1p-600, th *= 0x1p-600, tl *= 0x1p-600;
             abssum *= 0x1p-600;
             e += 600;
         }
         // past the peak (k > |y|), and past b + k = 0 where a negative b makes the terms grow again
-        if (k > std::fabs(y) && k > -b && std::fabs(t.hi) <= 0x1p-56 * std::fabs(s.hi)) break;
+        if (k > std::fabs(y) && k > -b && std::fabs(th) <= 0x1p-56 * std::fabs(sh)) break;
     }
-    Scaled r = scaled(s.hi + s.lo);
+    Scaled r = scaled(sh + sl);
     r.e += e;
-    return {r, s.hi == 0.0 ? kInf : abssum / std::fabs(s.hi)};
+    return {r, sh == 0.0 ? kInf : abssum / std::fabs(sh)};
 }
 
 // Gamma(b) / Gamma(a) with its sign, as m 2^e (Cephes Gamma up to 170, else via log).
@@ -270,17 +310,56 @@ struct FSum {
     double s, cancel;
 };
 inline FSum f_series2(double a, double b, double c, double z) {
-    dd::DD s{1.0, 0.0}, t{1.0, 0.0};
-    double abssum = 1.0;
+    {  // the float64 pass (as m_series)
+        double fs = 1.0, fc = 0.0, ft = 1.0, fabs_sum = 1.0, weighted = 1.0;  // fs + fc: a compensated sum
+        bool done = false;
+        for (int k = 0; k < 2000; ++k) {
+            if (a + k == 0.0 || b + k == 0.0) {
+                done = true;
+                break;
+            }
+            ft *= (a + k) * (b + k) * z / ((c + k) * (k + 1.0));
+            const dd::DD two = dd::two_sum(fs, ft);
+            fs = two.hi;
+            fc += two.lo;
+            const double at = std::fabs(ft);
+            fabs_sum += at;
+            weighted += (k + 2.0) * at;
+            if (!(at < 0x1p600)) break;
+            if (ft == 0.0 || (k > 2 && k > -c && at <= 0x1p-56 * std::fabs(fs))) {
+                done = true;
+                break;
+            }
+        }
+        fs += fc;
+        if (done && weighted <= kFastSeries * std::fabs(fs)) return {fs, fs == 0.0 ? kInf : fabs_sum / std::fabs(fs)};
+    }
+    // The long series: each term from the last by one division, the roundings of the
+    // products and of the quotient recovered by fma and carried to first order (the
+    // term and the sum as hi + lo). What is left is second order, k eps^2: as accurate
+    // as the double-double loop this replaces (2.7 ULP at most over z in [0.5, 0.9],
+    // both, measured) at a third of its time.
+    double th = 1.0, tl = 0.0, sh = 1.0, sl = 0.0, abssum = 1.0;
     for (int k = 0; k < 10000000; ++k) {
         if (a + k == 0.0 || b + k == 0.0) break;  // a polynomial ends
-        t = t * ((dd::two_sum(a, k) * dd::two_sum(b, k)) * z) / (dd::two_sum(c, k) * (k + 1.0));
-        s = s + t;
-        abssum += std::fabs(t.hi);
-        if (t.hi == 0.0) break;
-        if (k > 2 && k > -c && std::fabs(t.hi) <= 0x1p-56 * std::fabs(s.hi)) break;  // past c + k = 0
+        const dd::DD A = dd::two_sum(a, k), B = dd::two_sum(b, k), C = dd::two_sum(c, k);
+        const double kp = k + 1.0;
+        const double n1 = A.hi * B.hi, e1 = std::fma(A.hi, B.hi, -n1) + A.hi * B.lo + A.lo * B.hi;
+        const double n2 = n1 * z, e2 = std::fma(n1, z, -n2) + e1 * z;
+        const double d1 = C.hi * kp, e3 = std::fma(C.hi, kp, -d1) + C.lo * kp;
+        const double rd = 1.0 / d1, q = n2 * rd;
+        const double ql = (std::fma(-q, d1, n2) + e2 - q * e3) * rd;  // the ratio is q + ql
+        const double tn = th * q;
+        tl = std::fma(th, q, -tn) + tl * q + th * ql;
+        th = tn;
+        const dd::DD two = dd::two_sum(sh, th);
+        sh = two.hi;
+        sl += two.lo + tl;
+        abssum += std::fabs(th);
+        if (th == 0.0) break;
+        if (k > 2 && k > -c && std::fabs(th) <= 0x1p-56 * std::fabs(sh)) break;  // past c + k = 0
     }
-    const double v = s.hi + s.lo;
+    const double v = sh + sl;
     return {v, v == 0.0 ? kInf : abssum / std::fabs(v)};
 }
 inline double f_series(double a, double b, double c, double z) { return f_series2(a, b, c, z).s; }
