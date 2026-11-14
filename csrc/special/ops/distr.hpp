@@ -254,9 +254,12 @@ struct Stdtrit : Real {
 // round (or vanish: chdtr(0.18, 5e-324) was 0 for 8e-30, T2): there
 // P(a, y) = y^a / Gamma(a + 1) to the last bit (the series' next term is y), with
 // log y = log(x/2) in double-double.
+// v = 0 is the point mass at 0: 1 for every x > 0, subnormal too (x/2 = 0 made it
+// gammainc(0, 0) = NaN).
 namespace distr_detail {
-inline bool chi2_subnormal(double v, double x) { return x > 0.0 && x < 0x1p-1021 && v > 0.0 && std::isfinite(v); }
+inline bool chi2_subnormal(double v, double x) { return x > 0.0 && x < 0x1p-1021 && v >= 0.0 && std::isfinite(v); }
 inline double chi2_tiny(double v, double x) {
+    if (v == 0.0) return 1.0;
     const double a = 0.5 * v;
     return exp_dd(log_product(x, 0.5) * a) * Rgamma::f(a + 1.0);
 }

@@ -192,17 +192,7 @@ struct BetaFamily {
     }
 };
 
-// Neumaier's compensated sum.
-struct Sum {
-    double s = 0.0, c = 0.0;
-    void add(double v) {
-        const double t = s + v;
-        c += std::fabs(s) >= std::fabs(v) ? (s - t) + v : (v - t) + s;
-        s = t;
-    }
-    double value() const { return s + c; }
-    void scale(int e) { s = std::ldexp(s, e), c = std::ldexp(c, e); }
-};
+using dd::Sum;  // the compensated sum (special/dd.hpp)
 
 // The sum. j* (the largest term, roughly) splits the terms into the side where
 // the recurrence for G adds T (stable) and the side where it would subtract. The
@@ -269,6 +259,9 @@ double mixture(double mu, double h, double s0, const Fam& f, double mu_lo = 0.0)
 
     const Scaled wJ = prefix_s(J + h, mu, mu_lo), gJ = f.G(shape(J));
     const Scaled tJ = f.T(shape(lower ? J - 1.0 : J));  // the T the first step adds
+    // G and T both exactly 0 (e^-E with E beyond 1e300): every term of the walk is 0, and
+    // nothing would ever fall to end it
+    if (gJ.m == 0.0 && tJ.m == 0.0) return 0.0;
     const std::int64_t k0 = -(wJ.e + (gJ.m != 0.0 ? gJ.e : tJ.e));
     auto frame = [](Scaled v, std::int64_t k) {
         return std::ldexp(v.m, static_cast<int>(std::clamp<std::int64_t>(v.e + k, -2200, 2200)));
@@ -282,40 +275,42 @@ double mixture(double mu, double h, double s0, const Fam& f, double mu_lo = 0.0)
     Sum g;
     g.add(frame(gJ, kg));
     Sum S;
-    double prev = w.hi * g.value(), j = J;
+    double prev = w.hi * g.total(), j = J;
     S.add(prev);
     const double dir = lower ? -1.0 : 1.0;
     auto shift = [](dd::DD v, int e) { return dd::DD{std::ldexp(v.hi, e), std::ldexp(v.lo, e)}; };
     for (long n = 1; n < 100000000; ++n) {
         if (lower && j == 0.0) break;
         const double jn = j + dir;
-        g.add(t.hi);
-        g.add(t.lo);
+        g.add(t);
         w = lower ? w * (j + h) * inv_mu : w * mud * recip(dd::DD{j + 1.0 + h, 0.0});
         j = jn;
-        double gv = g.value();
+        double gv = g.total();
         if (!(std::fabs(w.hi) <= 0x1p500 && std::fabs(w.hi) >= 0x1p-500) && w.hi != 0.0) {  // w back near 1, the term unchanged
             const int e = std::ilogb(w.hi);
             kw -= e, kg += e;
             w = shift(w, -e), t = shift(t, e);
             g.scale(e);
-            gv = g.value();
+            gv = g.total();
         }
         if (!(std::fabs(gv) <= 0x1p500 && std::fabs(gv) >= 0x1p-500) && gv != 0.0) {  // the frame follows the terms
             const int e = std::ilogb(gv);
             kg -= e, k -= e;
             t = shift(t, -e), prev = std::ldexp(prev, -e);
             g.scale(-e), S.scale(-e);
-            gv = g.value();
+            gv = g.total();
         }
         const double term = w.hi * gv + w.lo * gv;
         S.add(term);
         t = lower ? t * f.down_dd(shape(j - 1.0)) : t * f.up_dd(shape(j - 1.0));
-        // past j* and fading: the terms beyond fall at least geometrically (log-concave)
-        if ((lower ? j < jstar : j > jstar) && term < prev && term <= kTol * S.value() * (1.0 - term / prev)) break;
+        // past j* and fading: the terms beyond fall at least geometrically (log-concave);
+        // or past j* with the terms at 0 (all of them below the frame's range)
+        if ((lower ? j < jstar : j > jstar) &&
+            ((term < prev && term <= kTol * S.total() * (1.0 - term / prev)) || (term == 0.0 && prev == 0.0)))
+            break;
         prev = term;
     }
-    return std::min(1.0, value(Scaled{S.value(), -k}));  // a probability (rounding may pass 1 by an ULP)
+    return std::min(1.0, value(Scaled{S.total(), -k}));  // a probability (rounding may pass 1 by an ULP)
 }
 
 // The upper family's sum when its small argument y is below 2^-1000 (it may not
@@ -386,8 +381,9 @@ inline double em1mx(double u) {
 //     E(v) = -z^2/2 + log(df/pi)/2 - log Gamma*(df/2) - (df/2)(e^2v - 1 - 2v),
 // every factor positive. E is split at its stationary point v* (closed form) as
 // E* (double-double, so e^E* keeps its last bit whatever its size) plus a remainder
-// written without cancellation; the integral over v = v* + sigma sinh(u) is the
-// trapezoid rule in u (double-exponential decay on both sides).
+// written without cancellation; the integral is the trapezoid rule in u over
+// v - v* = c A sinh(u / A), c = min(sigma, 0.4), A = 8 (sigma = 1/sqrt(-E''(v*)); see
+// the loop for why the step is capped and the map is linear over the peak).
 inline double nct_opposite(double df, double a, double t) {
     const double root = std::hypot(t * std::sqrt(a * a + 4.0 * df), 2.0 * df);
     const double sstar = 2.0 * df / (a * t + root);  // (t^2 + df) s^2 + a t s - df = 0
@@ -420,10 +416,10 @@ inline double nct_opposite(double df, double a, double t) {
             const double u = dir * k * kStep / kA;
             const double v = integrand(c * kA * std::sinh(u)) * std::cosh(u);
             I.add(v);
-            if (v <= 0x1p-60 * I.value() && k > 8) break;
+            if (v <= 0x1p-60 * I.total() && k > 8) break;
         }
     }
-    const double integral = I.value() * kStep * c;
+    const double integral = I.total() * kStep * c;
     return value(exp_scaled(Estar.hi) * scaled((1.0 + Estar.lo) * integral));
 }
 
@@ -505,11 +501,16 @@ inline double zeroin(const G& g, double a, double fa, double b, double fb) {
         b += std::fabs(d) > tol ? d : (m > 0.0 ? tol : -tol);
         fb = g(b);
         // Converging superlinearly: after a step below 3e-9 |b| the secant through the last
-        // two points is exact to the last bit (its error ~ the product of the last two,
-        // < 1e-17), so it ends here instead of closing the bracket (two evaluations fewer).
+        // two points is exact to the last bit (its error ~ the product of the last two
+        // errors, < 1e-17), so it ends here instead of closing the bracket (two evaluations
+        // fewer). Taken only when it shows that regime: it lies in the bracket as it now
+        // stands ([b, c] or [a, b] by fb's sign) and corrects b by under 1% of the last
+        // step. Where g is flat or noisy at the root the secant moves by about a whole step,
+        // fails that test, and the bracket is closed as before.
         if (std::fabs(b - a) <= 3e-9 * std::fabs(b) && fb != fa && std::isfinite(fb)) {
             const double x = b - fb * (b - a) / (fb - fa);
-            if ((x - b) * (x - c) <= 0.0 || std::fabs(x - b) <= 1e-8 * std::fabs(b)) return x;
+            const double other = (fb > 0.0) == (fc > 0.0) ? a : c;  // the bracket's far end
+            if ((x - b) * (x - other) <= 0.0 && std::fabs(x - b) <= 0.01 * std::fabs(b - a)) return x;
         }
     }
     return b;

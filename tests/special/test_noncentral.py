@@ -164,3 +164,12 @@ def test_fdtr_with_x_near_one_from_a_division_regression():
 def test_x_last_and_python_scalars():
     assert S.chndtr(4.0, 3.0, 2.0) == float(sc.chndtr(2.0, 4.0, 3.0)) or abs(S.chndtr(4.0, 3.0, 2.0) / sc.chndtr(2.0, 4.0, 3.0) - 1) < 1e-13
     assert type(S.ncfdtr(2, 3, 1, 1)) is float
+
+
+def test_df_zero_at_subnormal_x_review_regression():
+    # x/2 underflowed to 0 and chdtr(0, x) became gammainc(0, 0) = NaN (review of T1/T2);
+    # chdtr(0, x > 0) is 1, and the noncentral one keeps its point mass e^(-nc/2).
+    assert S.chdtr(0.0, 5e-324) == 1.0 and S.chdtrc(0.0, 5e-324) == 0.0
+    assert abs(S.chndtr(0.0, 3.0, 5e-324) / math.exp(-1.5) - 1) < 1e-15
+    assert abs(S.chndtrc(0.0, 3.0, 5e-324) / (1 - math.exp(-1.5)) - 1) < 1e-15
+    assert S.chndtrix(0.0, 3.0, 0.3) > 0  # above the point mass: a positive root

@@ -178,16 +178,21 @@ inline void log1p_parts(DD r, DD& half_r2, DD& tail) {
     const double th = r3.hi * kThird.hi;
     tail = {th, std::fma(r3.hi, kThird.hi, -th) + r3.hi * kThird.lo + r3.lo * kThird.hi - (r2.hi * r2.hi) * q};
 }
-// A sum of hi + lo terms: the high parts by two_sum, every low part and error into one
-// double (they are 2^-53 of the terms: their own rounding is 2^-106).
-struct Acc {
+// The compensated sum used throughout special (Knuth's two_sum): the high parts summed,
+// every rounding error and low part gathered in one double (they are 2^-53 of the terms,
+// so their own rounding is 2^-106). value() is the sum as hi + lo, total() as a double.
+struct Sum {
     double hi = 0.0, lo = 0.0;
-    void add(double h, double l) {
+    explicit Sum(double first = 0.0) : hi(first) {}
+    void add(double h, double l = 0.0) {
         const DD s = two_sum(hi, h);
         hi = s.hi;
         lo += s.lo + l;
     }
+    void add(DD v) { add(v.hi, v.lo); }
     DD value() const { return quick_two_sum(hi, lo); }
+    double total() const { return hi + lo; }
+    void scale(int e) { hi = std::ldexp(hi, e), lo = std::ldexp(lo, e); }
 };
 
 // log(lambda) for lambda = hi + lo > 0.
@@ -197,7 +202,7 @@ inline DD log(DD lam) {
     DD half_r2, tail;
     log1p_parts(z.r, half_r2, tail);
     const DD kl = two_prod(kLn2.hi, z.k);
-    Acc s;
+    Sum s;
     s.add(kl.hi, kl.lo + kLn2.lo * z.k);
     s.add(z.logc.hi, z.logc.lo);
     s.add(z.r.hi, z.r.lo);
@@ -207,16 +212,26 @@ inline DD log(DD lam) {
 }
 inline DD log(double x) { return log(DD{x, 0.0}); }
 
-// mu(t) = t - log(1 + t) >= 0 for t = hi + lo > -1 (any size: the reduction is of 1 + t).
-// At c = 1, k = 0 (t small) r is t itself and t - r vanishes exactly, leaving
-// r^2/2 - r^3/3 + ... with its own relative accuracy.
+// mu(t) = t - log(1 + t) >= 0 for t = hi + lo > -1. Small t (|t| < 2^-8, where the
+// table point would be c = 1 anyway) goes straight to r^2/2 - r^3/3 + ... with r = t:
+// forming 1 + t as a double-double first would drop the low part of a tiny t (t =
+// 2^-60 + 2^-120: 200% off). Elsewhere the reduction of 1 + t, with t - r cancelling
+// exactly; 1 + t below 2^-1000 or above 2^1000 takes the series version (|t| <= 1 only).
 inline DD log1pmx_neg(DD t) {
+    if (std::fabs(t.hi) < 0x1p-8) {
+        DD half_r2, tail;
+        log1p_parts(t, half_r2, tail);
+        Sum s;
+        s.add(half_r2.hi, half_r2.lo);
+        s.add(-tail.hi, -tail.lo);
+        return s.value();
+    }
     Reduced z;
     if (!reduce(two_sum(1.0, t.hi) + t.lo, z)) return log1pmx_series(t);
     DD half_r2, tail;
     log1p_parts(z.r, half_r2, tail);
     const DD kl = two_prod(kLn2.hi, z.k);
-    Acc s;
+    Sum s;
     s.add(t.hi, t.lo);
     s.add(-kl.hi, -(kl.lo + kLn2.lo * z.k));
     s.add(-z.logc.hi, -z.logc.lo);
