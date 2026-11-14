@@ -152,7 +152,7 @@ ROADMAP.md의 "통계 영역"에 있다(T0–T11). 진행 원칙은 special과 �
 
 ## 11. 마일스톤을 시작하기 전에 물을 것
 - **매 마일스톤**: scipy와 다르게 할 특수값(참값·극한), 분포·함수마다의 보장 영역
-- **T0 배열 추가**: `quantile`의 방법(numpy의 13가지 중 무엇을 둘지), NaN 리덕션의 목록과 이름, `cov`·`corrcoef`의 인자(`rowvar` 등)
+- **T0 배열 추가**: `quantile`의 방법(numpy의 13가지 중 무엇을 둘지), NaN 리덕션의 목록과 이름, `cov`·`corrcoef`의 인자(`rowvar` 등) — 정했다(2026-11-15): ROADMAP T0, docs/api/array.md §7.9–§7.11
 - **T3 sd.random**: random.md §6
 - **T4 분포 엔진**: 분포마다의 매개변수 이름(docs/api/stats.md의 초안), log 메서드의 계약, 이산 분포의 `median`·`mode` 정의, 메서드 결과의 모양
 - **T7 표본**: 분포마다 직접 알고리즘인지 역함수 법인지(재서), `sample`에서 `rng`를 생략할 수 있는지

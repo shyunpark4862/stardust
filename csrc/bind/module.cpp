@@ -9,6 +9,8 @@
 #include "array/ops/copy.hpp"
 #include "array/ops/creation.hpp"
 #include "array/ops/matmul.hpp"
+#include "array/ops/covariance.hpp"
+#include "array/ops/quantile.hpp"
 #include "array/ops/reduction.hpp"
 #include "array/ops/shape.hpp"
 #include "array/ops/sort.hpp"
@@ -82,6 +84,8 @@ NB_MODULE(_core, m) {
     sd::bind_shape(m);
     sd::bind_ufuncs(m);
     sd::bind_reductions(m);
+    sd::bind_quantile(m);
+    sd::bind_covariance(m);
     sd::bind_sort(m);
     sd::bind_matmul(m);
     m.def("_build_info", &build_info, "Toolchain facts captured at compile time.");

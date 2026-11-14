@@ -433,6 +433,36 @@ numpy의 `DOUBLE_pairwise_sum`/`CDOUBLE_pairwise_sum`과 같은 알고리즘, �
 - 정수 결과(`sum(bool)` 등)는 순서와 무관하므로 그대로 정확하다.
 - 형변환이 없고 출력이 하나인 긴 합(`sum(f)`)은 numpy와 비트가 같다 (§6.2).
 
+### 6.10 분위수 (`array/ops/quantile.cpp`, T0)
+- **레인 모으기**: 남는 축을 앞에, 줄이는 축을 뒤에 둔 뷰를 C 순서 float64 행렬로 복사한다(`assign`). 한 행이 한 레인이다. 레인은 그 행 안에서 제자리로 고른다.
+- **고르기**: 필요한 위치들(분위수마다 이웃 둘)을 정렬·중복 제거한 뒤 가운데 위치부터 `nth_element`로 고르고, 양쪽 절반을 그 안에서만 다시 고른다(약 n·log(위치 수)). 범위의 첫 위치나 끝 위치는 `min_element`/`max_element` 한 번이다. 위치가 32개를 넘으면 범위를 정렬한다.
+- **numpy와 비트가 같은 이유**: 값은 순서 통계량만 쓴다. 순서 통계량은 고르는 방법과 상관없이 같다. 위치와 보간은 numpy 2.x 소스를 그대로 옮겼다.
+  - `_compute_virtual_index`의 `n*q + (alpha + q*(1 - alpha - beta)) - 1`, 메서드별 위치식, `np.around`의 짝수 반올림(`nearbyint`)
+  - `_get_indexes`: 범위를 넘으면 이웃이 둘 다 마지막 원소인데, `_get_gamma`가 빼는 위치는 −1이다. 그래서 gamma = v + 1이다. 이것도 그대로 따른다(마지막 원소가 inf이면 numpy처럼 `inf - inf`로 NaN).
+  - `_closest_observation`의 `floor(index) % 2`는 Python의 나머지(나누는 수의 부호)다.
+  - `_lerp`: `diff = b - a`, `t ≥ 0.5`이면 `b - diff*(1 - t)`, 아니면 `a + diff*t`. `-ffp-contract=off`(§1.3)라서 FMA로 합쳐지지 않는다.
+  - `median`은 quantile이 아니라 numpy의 `_median`이다: 가운데 하나나 둘을 +0.0부터 더해 개수로 나눈다.
+- **같지 않은 것**: -0.0과 +0.0이 한 순위에 섞여 있으면 어느 부호가 나올지는 고르는 알고리즘에 따른다. numpy의 introselect와 같다고 보장하지 않는다.
+- **결과 dtype**: 사용자 결정으로 언제나 float64다. numpy처럼 정수를 유지하면 빈 레인의 NaN을 담을 수 없기 때문이다. 정수는 float64로 바꾼 뒤 고른다. numpy는 정수로 `b - a`를 계산하는데, |x| < 2⁵³이면 결과가 같다.
+- **NaN과 빈 레인**: 행을 훑어 NaN이 있으면 그 레인은 NaN이다. nan판은 `remove_if`로 NaN을 앞으로 모아 길이를 줄인다. 길이가 0이면 NaN이다(numpy는 `IndexError`를 내거나 경고를 낸다).
+- **병렬**: 레인은 서로 독립이다. 그래서 행을 묶어(작업당 원소 4096개 이상) 나누어도 비트가 같다. 레인 하나짜리(`axis=None`)는 직렬이다.
+
+### 6.11 NaN을 건너뛰는 리덕션 (`array/ops/reduction.cpp`, T0)
+numpy의 nan 함수처럼 NaN을 중립값으로 바꾼 뒤 이름 앞의 `nan`을 뗀 리덕션을 부른다. 그래서 NaN이 없으면 비트가 같다.
+- `replace_nan`: 원소별 커널 하나로 복사본(x와 같은 메모리 순서)과, 필요하면 "NaN 아님" bool 배열을 함께 만든다. 같은 순서라서 리덕션의 접는 순서도 같다.
+- `nansum`·`nanprod`·`nancumulative_*`: 0이나 1로 바꾼 복사본을 이름 앞의 `nan`을 뗀 함수에 넘긴다.
+- `nanmean`: 복사본의 합을, bool 배열을 int64로 합한 개수로 나눈다.
+- `nanvar`: 평균은 `nanmean`과 같다. 두 번째 패스는 `sq_dev_loop<T, SkipNan>`이 NaN 자리에 +0.0을 더한다. 편차 제곱은 모두 +0.0 이상이라서, pairwise 트리에 +0.0을 더해도 다른 부분합의 비트는 바뀌지 않는다. 복사본이 필요 없다.
+- `nanmin`·`nanmax`: 복사 없이 접는다. 시작값을 NaN으로 두고 NaN을 건너뛰는 최소/최대(`ops::NanMinimum`/`NanMaximum`)로 접는다. NEON의 FMINNM/FMAXNM이 이 의미다. 순서와 무관한 접기(§6.4)라서 긴 레인은 조각으로 병렬로 접는다. 모두 NaN이면 NaN이 남는다.
+- `nanargmin`·`nanargmax`: ±inf로 바꾼 복사본에서 `argmin`/`argmax`를 부른다. 그 전에 "NaN 아님"의 any로 모두 NaN인 레인을 찾아 `ValueError`를 낸다(numpy와 같은 순서와 메시지).
+- bool·int64는 NaN이 없으므로 이름 앞의 `nan`을 뗀 함수로 바로 간다.
+
+### 6.12 cov, corrcoef (`array/ops/covariance.cpp`, T0)
+- numpy의 순서를 따른다: 변수를 행으로 둔 float64/complex128 복사본 → `sd.mean(axis=1)` → 행마다 빼기(행 묶음으로 병렬) → `X @ conj(X).T`(§9의 matmul) → `1/fact`를 곱한다(numpy처럼 나누지 않고 곱한다).
+- `fact = N - correction ≤ 0`이면 NaN이다. `var`의 규칙과 같다(§6.8). numpy는 경고를 내고 `fact = 0`으로 나누어 inf나 NaN을 낸다.
+- 평균의 합 순서와 BLAS가 numpy와 다르다. 그래서 비트는 같지 않고, 테스트는 상대 1e-13으로 비교한다.
+- `corrcoef`: 대각의 제곱근으로 행과 열을 차례로 나누고(`c / s[:, None] / s[None, :]`의 순서) [-1, 1]로 자른다. complex의 나눗셈은 실수부와 허수부를 따로 나눈다. 유한한 값이면 numpy의 복소 나눗셈(Smith)과 결과가 같다.
+
 ---
 
 ## 7. 인덱싱

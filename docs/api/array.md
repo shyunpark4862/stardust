@@ -569,6 +569,75 @@ cumulative_prod(x, /, *, axis=None, dtype=None, include_initial=False)
   - 예: `prod(asarray([1e200, 1e-200] * 8))`은 `nan`이다. numpy는 `1.0`이다.
   - 이 경우에도 결과는 스레드 수와 무관하다.
 
+### §7.9 NaN을 건너뛰는 리덕션
+```
+nansum(x, /, *, axis=None, dtype=None, keepdims=False)
+nanprod(x, /, *, axis=None, dtype=None, keepdims=False)
+nanmin(x, /, *, axis=None, keepdims=False)
+nanmax(x, /, *, axis=None, keepdims=False)
+nanmean(x, /, *, axis=None, keepdims=False)
+nanvar(x, /, *, axis=None, correction=0, keepdims=False)
+nanstd(x, /, *, axis=None, correction=0, keepdims=False)
+nanargmin(x, /, *, axis=None, keepdims=False)
+nanargmax(x, /, *, axis=None, keepdims=False)
+nancumulative_sum(x, /, *, axis=None, dtype=None, include_initial=False)
+nancumulative_prod(x, /, *, axis=None, dtype=None, include_initial=False)
+```
+- 이름 앞의 `nan`을 뗀 함수와 시그니처, 결과 dtype, axis 규칙이 같다. 메서드는 없다.
+- NaN(complex는 실수부나 허수부가 NaN)을 없는 것으로 본다.
+  - 합은 0, 곱은 1로 바꿔 넣은 것과 같다. `nanmean`의 분모와 `nanvar`의 `N`은 NaN이 아닌 원소 수다.
+  - NaN이 없으면 결과는 이름 앞의 `nan`을 뗀 함수와 비트가 같다.
+- bool과 int64에는 NaN이 없다. 이름 앞의 `nan`을 뗀 함수를 그대로 부른다.
+- **모두 NaN이거나 빈 레인**: numpy와 같은 값을 돌려주고 경고는 내지 않는다.
+  - `nanmean`, `nanvar`, `nanstd`, `nanmin`, `nanmax`: NaN. `nanvar`, `nanstd`는 `N - correction ≤ 0`이면 NaN이다(§7.4).
+  - `nansum`은 `0`, `nanprod`는 `1`이다.
+  - `nanargmin`, `nanargmax`: `ValueError("All-NaN slice encountered")`.
+  - 빈 배열의 `nanmin`, `nanmax`, `nanargmin`, `nanargmax`는 `ValueError`다(§7.4와 같다).
+- `nanmin`, `nanmax`, `nanargmin`, `nanargmax`는 complex를 받지 않는다(`TypeError`).
+- `nancumulative_*`의 NaN 자리에는 그때까지의 누적값이 들어간다(numpy의 `nancumsum`, `nancumprod`).
+
+### §7.10 분위수 (`quantile`, `median`, `nanquantile`, `nanmedian`)
+```
+quantile(x, q, /, *, axis=None, method='linear', keepdims=False)
+nanquantile(x, q, /, *, axis=None, method='linear', keepdims=False)
+median(x, /, *, axis=None, keepdims=False)
+nanmedian(x, /, *, axis=None, keepdims=False)
+```
+- `q`는 Python int·float이거나 1차원 실수 배열이다. 모든 값이 [0, 1] 안이어야 한다(밖이거나 NaN이면 `ValueError`).
+  - 리스트는 받지 않는다(`TypeError`). `sd.asarray([...])`로 넘긴다.
+- `method`는 numpy의 13가지다.
+  - `inverted_cdf`, `averaged_inverted_cdf`, `closest_observation`, `interpolated_inverted_cdf`
+  - `hazen`, `weibull`, `linear`(기본), `median_unbiased`, `normal_unbiased`
+  - `lower`, `higher`, `midpoint`, `nearest`
+- `axis`는 int 또는 tuple이다(§7.2). 여러 축이면 그 원소들을 한 레인으로 모은다.
+- **결과 shape**: `q`가 배열이면 `q`의 축이 맨 앞에 붙는다. 그 뒤는 리덕션과 같다(`keepdims` 포함). 결과가 0차원이면 Python `float`다.
+- **결과 dtype**: 언제나 float64다. bool·int64도 float64로 바꿔서 계산한다.
+  - numpy는 `lower`·`higher`·`nearest`·`inverted_cdf`·`closest_observation`에서 정수 dtype을 유지한다. 값은 같다(|x| < 2⁵³).
+- **값**: numpy와 비트가 같다. 정렬된 레인에서 같은 위치를 고르고, numpy의 보간식 `_lerp`를 같은 순서로 계산한다.
+  - `median`은 numpy처럼 가운데 하나나 둘의 평균이다(+0.0에서 시작하는 합을 개수로 나눈다). `quantile(x, 0.5)`와는 마지막 비트가 다를 수 있다.
+  - -0.0과 +0.0이 같은 순위에 함께 있으면 어느 쪽 부호가 나올지는 정하지 않는다(numpy도 같다).
+- **NaN**: `quantile`, `median`은 NaN이 있는 레인의 결과가 NaN이다. `nanquantile`, `nanmedian`은 NaN을 빼고 계산한다.
+- **빈 레인**(모두 NaN 포함): NaN이다. 경고는 없다. numpy의 `quantile`은 빈 레인에서 `IndexError`를 낸다.
+- complex는 `TypeError`다.
+
+### §7.11 공분산과 상관 (`cov`, `corrcoef`)
+```
+cov(x, /, *, rowvar=True, correction=0)
+corrcoef(x, /, *, rowvar=True)
+```
+- `x`는 1차원 또는 2차원이다(그 밖은 `ValueError`).
+  - `rowvar=True`이면 각 행이 변수, 열이 관측이다. `rowvar=False`이면 2차원 `x`를 전치해서 본다.
+  - 1차원 `x`는 변수 하나다.
+- **결과**: (변수 수, 변수 수) 행렬. bool·int64는 float64로 바꾸고, complex는 complex128이다(`X @ conj(X).T`).
+  - 변수가 하나면 Python 스칼라다(numpy의 squeeze). 변수가 없으면 shape `(0, 0)`이다.
+- **`correction`**: 분모는 `N - correction`이다. 기본값 0은 `var`와 같다(numpy `cov`의 기본값은 `ddof=1`이다).
+  - `N - correction ≤ 0`이면 모든 원소가 NaN이다(§7.4의 `var`와 같은 규칙).
+  - int 또는 float다. numpy와 달리 정수가 아닌 값도 받는다.
+- `corrcoef`: `cov`를 각 표준편차로 나누고, 실수부(complex는 허수부도)를 [-1, 1]로 자른다. `correction`은 약분되므로 없다.
+  - 변수가 하나면 `c / c`(1.0 또는 NaN)다.
+- 평균과 행렬곱은 stardust의 것이다. 그래서 값은 numpy와 마지막 몇 비트가 다를 수 있다(§7.8). 결과는 결정적이다.
+- numpy의 `y`, `bias`, `fweights`, `aweights`, `dtype` 인자는 없다.
+
 ---
 
 ## §8. 정렬과 집합

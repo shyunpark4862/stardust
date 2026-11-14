@@ -377,6 +377,27 @@ double parse_correction(nb::handle o) {
     throw nb::type_error(("'correction' must be an int or a float, not " + py_type_name(o)).c_str());
 }
 
+// Sum over `ax` of |xin - m|^2 (m: the mean, keepdims shape), float64.
+template <bool SkipNan>
+NDArray sq_dev_sum(const NDArray& xin, const NDArray& m, const Axes& ax) {
+    NDArray out = keepdims_result(xin, ax, DType::Float64, /*zeroed=*/true);
+    visit_dtype(m.dtype, [&]<typename T>(std::type_identity<T>) {
+        if constexpr (ops::is_float<T> || ops::is_cplx<T>) {
+            const IterOperand ops[] = {operand(xin), operand(m), operand(out)};
+            const NdIter it(xin.shape_span(), ops);
+            if (const Blocks b = plan_blocks(xin, out, it); b.count) {
+                reduce_blocked(xin, out, b, &reduce_loop<ops::Add, double>, [&](const NDArray& xb, NDArray& part) {
+                    const IterOperand block_ops[] = {operand(xb), operand(m), operand(part)};
+                    NdIter(xb.shape_span(), block_ops).run(&sq_dev_loop<T, SkipNan>, nullptr, Split::Reduction);
+                });
+            } else {
+                it.run(&sq_dev_loop<T, SkipNan>, nullptr, Split::Reduction);
+            }
+        }
+    });
+    return out;
+}
+
 // Two passes: the mean, then the sum of squared deviations from it, divided
 // by N - correction. That is NaN whenever N - correction <= 0 (Array API,
 // docs/design/array.md §6.8), which also covers empty input.
@@ -385,27 +406,145 @@ NDArray var_keepdims(nb::handle x_obj, nb::handle axis_obj, nb::handle correctio
     const double correction = parse_correction(correction_obj);
     ax = parse_reduce_axes(x, axis_obj);
     const NDArray m = mean_keepdims(x, ax);
-    const NDArray xin = as_dtype(x, m.dtype);
-    NDArray out = keepdims_result(x, ax, DType::Float64, /*zeroed=*/true);
-    visit_dtype(m.dtype, [&]<typename T>(std::type_identity<T>) {
-        if constexpr (ops::is_float<T> || ops::is_cplx<T>) {
-            const IterOperand ops[] = {operand(xin), operand(m), operand(out)};
-            const NdIter it(xin.shape_span(), ops);
-            if (const Blocks b = plan_blocks(xin, out, it); b.count) {
-                reduce_blocked(xin, out, b, &reduce_loop<ops::Add, double>, [&](const NDArray& xb, NDArray& part) {
-                    const IterOperand block_ops[] = {operand(xb), operand(m), operand(part)};
-                    NdIter(xb.shape_span(), block_ops).run(&sq_dev_loop<T>, nullptr, Split::Reduction);
-                });
-            } else {
-                it.run(&sq_dev_loop<T>, nullptr, Split::Reduction);
-            }
-        }
-    });
+    NDArray out = sq_dev_sum<false>(as_dtype(x, m.dtype), m, ax);
     const double dof = static_cast<double>(ax.per_output) - correction;
     double* p = reinterpret_cast<double*>(out.data);
     for (std::int64_t i = 0; i < out.size(); ++i)
         p[i] = dof > 0 ? p[i] / dof : std::numeric_limits<double>::quiet_NaN();
     return out;
+}
+
+// --------------------------------------------------------- NaN reductions
+//
+// numpy's nan* functions (docs/design/array.md §6.11). A NaN (complex: either
+// part) is replaced by a value that leaves the plain reduction unchanged --
+// 0 for sums, 1 for products, ±inf for argmin/argmax -- so an input without
+// NaN gives the plain function's bits. bool and int64 hold no NaN and go
+// straight to the plain function. nanmin/nanmax fold with NaN-skipping
+// minimum/maximum instead; nanvar skips NaN in its second pass.
+
+bool holds_nan(DType d) { return d == DType::Float64 || d == DType::Complex128; }
+
+struct NanFill {
+    double value;
+};
+
+template <typename T>
+bool nan_at(const T& v) {
+    if constexpr (ops::is_cplx<T>) return std::isnan(v.real()) || std::isnan(v.imag());
+    else return std::isnan(v);
+}
+
+// args: x, filled (x with NaN replaced) and, when Valid, valid (bool: not NaN).
+template <typename T, bool Valid>
+void nan_fill_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, void* ctx) {
+    const T fill = T(static_cast<const NanFill*>(ctx)->value);
+    for (std::int64_t i = 0; i < n; ++i) {
+        const T v = load_as<T>(args[0] + i * s[0]);
+        const bool nan = nan_at(v);
+        *reinterpret_cast<T*>(args[1] + i * s[1]) = nan ? fill : v;
+        if constexpr (Valid) *reinterpret_cast<bool*>(args[2] + i * s[2]) = !nan;
+    }
+}
+
+struct Filled {
+    NDArray x, valid;  // valid: only when asked for
+};
+
+// x (float64 or complex128) with every NaN set to `fill`, laid out like x.
+Filled replace_nan(const NDArray& x, double fill, bool want_valid) {
+    Filled f{new_array_like(x, x.dtype), {}};
+    if (want_valid) f.valid = new_array_like(x, DType::Bool);
+    NanFill ctx{fill};
+    visit_dtype(x.dtype, [&]<typename T>(std::type_identity<T>) {
+        if constexpr (ops::is_float<T> || ops::is_cplx<T>) {
+            if (want_valid) {
+                const IterOperand ops[] = {operand(x), operand(f.x), operand(f.valid)};
+                NdIter(x.shape_span(), ops).run(&nan_fill_loop<T, true>, &ctx);
+            } else {
+                const IterOperand ops[] = {operand(x), operand(f.x)};
+                NdIter(x.shape_span(), ops).run(&nan_fill_loop<T, false>, &ctx);
+            }
+        }
+    });
+    return f;
+}
+
+// The non-NaN count over `ax` (keepdims shape, int64).
+NDArray valid_count(const NDArray& x, const NDArray& valid, const Axes& ax) {
+    NDArray cnt = keepdims_result(x, ax, DType::Int64, /*zeroed=*/true);
+    run_reduce(valid, cnt, &reduce_loop<ops::Add, std::int64_t>);
+    return cnt;
+}
+
+// nanmean's mean: the sum of the NaN-free copy over the non-NaN count
+// (0/0 = NaN for an all-NaN or empty lane). Keepdims shape, x's dtype.
+NDArray nan_mean_keepdims(const NDArray& x, const Axes& ax, NDArray* count_out = nullptr) {
+    const Filled f = replace_nan(x, 0.0, true);
+    NDArray tot = keepdims_result(x, ax, x.dtype, /*zeroed=*/true);
+    const NDArray cnt = valid_count(x, f.valid, ax);
+    const std::int64_t* c = reinterpret_cast<const std::int64_t*>(cnt.data);
+    visit_dtype(x.dtype, [&]<typename T>(std::type_identity<T>) {
+        if constexpr (ops::is_float<T> || ops::is_cplx<T>) {
+            run_reduce(f.x, tot, &reduce_loop<ops::Add, T>);
+            T* p = reinterpret_cast<T*>(tot.data);
+            for (std::int64_t i = 0; i < tot.size(); ++i) p[i] = p[i] / static_cast<double>(c[i]);
+        }
+    });
+    if (count_out) *count_out = cnt;
+    return tot;
+}
+
+NDArray nan_var_keepdims(nb::handle x_obj, nb::handle axis_obj, nb::handle correction_obj, Axes& ax) {
+    const NDArray& x = require_ndarray(x_obj);
+    const double correction = parse_correction(correction_obj);
+    ax = parse_reduce_axes(x, axis_obj);
+    NDArray cnt;
+    const NDArray m = nan_mean_keepdims(x, ax, &cnt);
+    NDArray out = sq_dev_sum<true>(x, m, ax);
+    const std::int64_t* c = reinterpret_cast<const std::int64_t*>(cnt.data);
+    double* p = reinterpret_cast<double*>(out.data);
+    for (std::int64_t i = 0; i < out.size(); ++i) {
+        const double dof = static_cast<double>(c[i]) - correction;
+        p[i] = dof > 0 ? p[i] / dof : std::numeric_limits<double>::quiet_NaN();
+    }
+    return out;
+}
+
+template <bool Max>
+nb::object nan_arg_extreme(nb::handle x_obj, nb::handle axis_obj, nb::handle keepdims_obj) {
+    const NDArray& x = require_ndarray(x_obj);
+    if (x.dtype != DType::Float64) return arg_extreme_impl<Max>(x_obj, axis_obj, keepdims_obj);
+    parse_bool(keepdims_obj, "keepdims");
+    // numpy: a lane with nothing but NaN has no answer.
+    Axes ax;
+    if (axis_obj.is_none()) {
+        for (int d = 0; d < x.ndim; ++d) ax.reduced[d] = true;
+    } else {
+        ax.reduced[normalize_axis(parse_int(axis_obj, "axis"), x.ndim)] = true;
+    }
+    const double inf = std::numeric_limits<double>::infinity();
+    Filled f = replace_nan(x, Max ? -inf : inf, true);
+    if (x.size() > 0) {
+        NDArray any_valid = keepdims_result(x, ax, DType::Bool, /*zeroed=*/true);
+        run_reduce(f.valid, any_valid, &reduce_loop<ops::LogicalOr, bool>);
+        const bool* v = reinterpret_cast<const bool*>(any_valid.data);
+        if (!std::all_of(v, v + any_valid.size(), [](bool b) { return b; }))
+            throw nb::value_error("All-NaN slice encountered");
+    }
+    return arg_extreme_impl<Max>(wrap(std::move(f.x)), axis_obj, keepdims_obj);
+}
+
+template <typename Op>
+nb::object nan_extreme(nb::handle x_obj, nb::handle axis, nb::handle keepdims_obj, auto plain) {
+    const NDArray& x = require_ndarray(x_obj);
+    if (x.dtype != DType::Float64) return plain(x_obj, axis, keepdims_obj);
+    const bool keepdims = parse_bool(keepdims_obj, "keepdims");
+    const Axes ax = parse_reduce_axes(x, axis);
+    require_nonempty(x, ax);
+    // Starts from NaN, which any number replaces: an all-NaN lane stays NaN.
+    return fold<Op>(x, ax, DType::Float64, keepdims,
+                    []<typename T>(std::type_identity<T>) { return std::numeric_limits<double>::quiet_NaN(); });
 }
 
 }  // namespace
@@ -496,6 +635,63 @@ nb::object stddev(nb::handle x, nb::handle axis, nb::handle correction, nb::hand
 nb::object argmin(nb::handle x, nb::handle axis, nb::handle keepdims) { return arg_extreme_impl<false>(x, axis, keepdims); }
 nb::object argmax(nb::handle x, nb::handle axis, nb::handle keepdims) { return arg_extreme_impl<true>(x, axis, keepdims); }
 
+nb::object nansum(nb::handle x_obj, nb::handle axis, nb::handle dtype, nb::handle keepdims) {
+    const NDArray& x = require_ndarray(x_obj);
+    if (!holds_nan(x.dtype)) return sum(x_obj, axis, dtype, keepdims);
+    return sum(wrap(replace_nan(x, 0.0, false).x), axis, dtype, keepdims);
+}
+
+nb::object nanprod(nb::handle x_obj, nb::handle axis, nb::handle dtype, nb::handle keepdims) {
+    const NDArray& x = require_ndarray(x_obj);
+    if (!holds_nan(x.dtype)) return prod(x_obj, axis, dtype, keepdims);
+    return prod(wrap(replace_nan(x, 1.0, false).x), axis, dtype, keepdims);
+}
+
+nb::object nanmin(nb::handle x, nb::handle axis, nb::handle keepdims) {
+    return nan_extreme<ops::NanMinimum>(x, axis, keepdims, &min);
+}
+
+nb::object nanmax(nb::handle x, nb::handle axis, nb::handle keepdims) {
+    return nan_extreme<ops::NanMaximum>(x, axis, keepdims, &max);
+}
+
+nb::object nanmean(nb::handle x_obj, nb::handle axis, nb::handle keepdims_obj) {
+    const NDArray& x = require_ndarray(x_obj);
+    if (!holds_nan(x.dtype)) return mean(x_obj, axis, keepdims_obj);
+    const bool keepdims = parse_bool(keepdims_obj, "keepdims");
+    const Axes ax = parse_reduce_axes(x, axis);
+    return finish(nan_mean_keepdims(x, ax), ax, keepdims);
+}
+
+nb::object nanvar(nb::handle x, nb::handle axis, nb::handle correction, nb::handle keepdims_obj) {
+    if (!holds_nan(require_ndarray(x).dtype)) return var(x, axis, correction, keepdims_obj);
+    const bool keepdims = parse_bool(keepdims_obj, "keepdims");
+    Axes ax;
+    NDArray v = nan_var_keepdims(x, axis, correction, ax);
+    return finish(std::move(v), ax, keepdims);
+}
+
+nb::object nanstd(nb::handle x, nb::handle axis, nb::handle correction, nb::handle keepdims_obj) {
+    if (!holds_nan(require_ndarray(x).dtype)) return stddev(x, axis, correction, keepdims_obj);
+    const bool keepdims = parse_bool(keepdims_obj, "keepdims");
+    Axes ax;
+    NDArray v = nan_var_keepdims(x, axis, correction, ax);
+    double* p = reinterpret_cast<double*>(v.data);
+    for (std::int64_t i = 0; i < v.size(); ++i) p[i] = std::sqrt(p[i]);
+    return finish(std::move(v), ax, keepdims);
+}
+
+nb::object nanargmin(nb::handle x, nb::handle axis, nb::handle keepdims) { return nan_arg_extreme<false>(x, axis, keepdims); }
+nb::object nanargmax(nb::handle x, nb::handle axis, nb::handle keepdims) { return nan_arg_extreme<true>(x, axis, keepdims); }
+
+template <typename Op>
+nb::object nan_cumulative(nb::handle x_obj, nb::handle axis, nb::handle dtype, nb::handle include_initial) {
+    const NDArray& x = require_ndarray(x_obj);
+    if (!holds_nan(x.dtype)) return cumulative<Op>(x_obj, axis, dtype, include_initial);
+    const double fill = std::is_same_v<Op, ops::Add> ? 0.0 : 1.0;
+    return cumulative<Op>(wrap(replace_nan(x, fill, false).x), axis, dtype, include_initial);
+}
+
 void bind_reductions(nb::module_& m) {
     using nb::arg;
     // .none() on every argument: None reaches the checks, which name the argument (API.md §2.1).
@@ -518,6 +714,21 @@ void bind_reductions(nb::module_& m) {
           arg("include_initial").none() = false);
     m.def("cumulative_prod", named("cumulative_prod", &cumulative<ops::Multiply>), arg().none(), nb::kw_only(), axis, dtype,
           arg("include_initial").none() = false);
+
+    // NaN-skipping forms (docs/api/array.md §7.9): the same signatures.
+    m.def("nansum", named("nansum", &nansum), arg().none(), nb::kw_only(), axis, dtype, keepdims);
+    m.def("nanprod", named("nanprod", &nanprod), arg().none(), nb::kw_only(), axis, dtype, keepdims);
+    m.def("nanmin", named("nanmin", &nanmin), arg().none(), nb::kw_only(), axis, keepdims);
+    m.def("nanmax", named("nanmax", &nanmax), arg().none(), nb::kw_only(), axis, keepdims);
+    m.def("nanmean", named("nanmean", &nanmean), arg().none(), nb::kw_only(), axis, keepdims);
+    m.def("nanvar", named("nanvar", &nanvar), arg().none(), nb::kw_only(), axis, correction, keepdims);
+    m.def("nanstd", named("nanstd", &nanstd), arg().none(), nb::kw_only(), axis, correction, keepdims);
+    m.def("nanargmin", named("nanargmin", &nanargmin), arg().none(), nb::kw_only(), axis, keepdims);
+    m.def("nanargmax", named("nanargmax", &nanargmax), arg().none(), nb::kw_only(), axis, keepdims);
+    m.def("nancumulative_sum", named("nancumulative_sum", &nan_cumulative<ops::Add>), arg().none(), nb::kw_only(), axis,
+          dtype, arg("include_initial").none() = false);
+    m.def("nancumulative_prod", named("nancumulative_prod", &nan_cumulative<ops::Multiply>), arg().none(), nb::kw_only(),
+          axis, dtype, arg("include_initial").none() = false);
 }
 
 }  // namespace sd

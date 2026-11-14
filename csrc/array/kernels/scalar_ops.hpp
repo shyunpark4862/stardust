@@ -283,6 +283,21 @@ struct Minimum {
     static double f(double a, double b) { return fmin_nan(a, b); }
 };
 
+// NaN-skipping minimum/maximum, for nanmin/nanmax only (not public
+// ufuncs): a NaN loses to any number, two NaNs give NaN; ±0 ties as in
+// minimum/maximum. What the NEON FMINNM/FMAXNM instructions do.
+struct NanMinimum {
+    static constexpr const char* name = "nanmin";
+    template <typename T> static constexpr bool ok = is_float<T>;
+    static double f(double a, double b) { return a != a ? b : (b != b ? a : fmin_nan(a, b)); }
+};
+
+struct NanMaximum {
+    static constexpr const char* name = "nanmax";
+    template <typename T> static constexpr bool ok = is_float<T>;
+    static double f(double a, double b) { return a != a ? b : (b != b ? a : fmax_nan(a, b)); }
+};
+
 // ============================================================ binary: comparison
 // Every dtype keeps its own loop (bool included: comparing is not arithmetic).
 

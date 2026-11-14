@@ -134,14 +134,24 @@ T product_mt(std::int64_t n, const Get& get) {
 // piece results folded in order.
 template <typename Op, typename T>
 inline constexpr bool order_free = std::is_same_v<Op, ops::Maximum> || std::is_same_v<Op, ops::Minimum> ||
+                                   std::is_same_v<Op, ops::NanMaximum> || std::is_same_v<Op, ops::NanMinimum> ||
                                    std::is_same_v<Op, ops::LogicalOr> || std::is_same_v<Op, ops::LogicalAnd> ||
                                    ((std::is_same_v<Op, ops::Add> || std::is_same_v<Op, ops::Multiply>) &&
                                     (ops::is_int<T> || ops::is_bool<T>));
 
 // ---- max/min of a contiguous run with NEON ---------------------------------
 
-template <bool Max>
+template <bool Max, bool SkipNan = false>
 double neon_fold(const double* x, std::int64_t n, double acc) {
+    // FMAXNM/FMINNM skip a NaN operand (nanmax/nanmin); FMAX/FMIN propagate it.
+    auto pick = [](float64x2_t a, float64x2_t b) {
+        if constexpr (SkipNan) return Max ? vmaxnmq_f64(a, b) : vminnmq_f64(a, b);
+        else return Max ? vmaxq_f64(a, b) : vminq_f64(a, b);
+    };
+    auto one = [](double a, double b) {
+        if constexpr (SkipNan) return Max ? ops::NanMaximum::f(a, b) : ops::NanMinimum::f(a, b);
+        else return Max ? ops::fmax_nan(a, b) : ops::fmin_nan(a, b);
+    };
     std::int64_t i = 0;
     if (n >= 8) {
         // Four independent registers (8 lanes), like the 8 sum accumulators:
@@ -151,14 +161,15 @@ double neon_fold(const double* x, std::int64_t n, double acc) {
         for (i = 8; i + 8 <= n; i += 8)
             for (int j = 0; j < 4; ++j) {
                 const float64x2_t y = vld1q_f64(x + i + 2 * j);
-                v[j] = Max ? vmaxq_f64(v[j], y) : vminq_f64(v[j], y);
+                v[j] = pick(v[j], y);
             }
-        const float64x2_t m = Max ? vmaxq_f64(vmaxq_f64(v[0], v[1]), vmaxq_f64(v[2], v[3]))
-                                  : vminq_f64(vminq_f64(v[0], v[1]), vminq_f64(v[2], v[3]));
-        const double lanes = Max ? vmaxvq_f64(m) : vminvq_f64(m);  // across the two lanes
-        acc = Max ? ops::fmax_nan(acc, lanes) : ops::fmin_nan(acc, lanes);
+        const float64x2_t m = pick(pick(v[0], v[1]), pick(v[2], v[3]));
+        double lanes;  // across the two lanes
+        if constexpr (SkipNan) lanes = Max ? vmaxnmvq_f64(m) : vminnmvq_f64(m);
+        else lanes = Max ? vmaxvq_f64(m) : vminvq_f64(m);
+        acc = one(acc, lanes);
     }
-    for (; i < n; ++i) acc = Max ? ops::fmax_nan(acc, x[i]) : ops::fmin_nan(acc, x[i]);
+    for (; i < n; ++i) acc = one(acc, x[i]);
     return acc;
 }
 
@@ -256,6 +267,9 @@ void reduce_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, 
                              ops::is_float<T>) {
             if (s[0] == sizeof(T)) acc = neon_fold<std::is_same_v<Op, ops::Maximum>>(reinterpret_cast<const T*>(x), n, acc);
             else for (std::int64_t i = 0; i < n; ++i) acc = Op::f(acc, at(i));
+        } else if constexpr (std::is_same_v<Op, ops::NanMaximum> || std::is_same_v<Op, ops::NanMinimum>) {
+            if (s[0] == sizeof(T)) acc = neon_fold<std::is_same_v<Op, ops::NanMaximum>, true>(reinterpret_cast<const T*>(x), n, acc);
+            else for (std::int64_t i = 0; i < n; ++i) acc = Op::f(acc, at(i));
         } else if constexpr ((std::is_same_v<Op, ops::Maximum> || std::is_same_v<Op, ops::Minimum>) &&
                              ops::is_int<T>) {
             if (s[0] == sizeof(T)) {
@@ -284,14 +298,24 @@ void reduce_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, 
 }
 
 // Sum of squared deviations, the second pass of var: out += |x - m|^2.
+// With SkipNan (nanvar) a NaN element adds +0.0 instead, which leaves every
+// partial sum of the pairwise tree unchanged.
 // args: x, m (the mean, broadcast), out (float64)
-template <typename T>
+template <typename T, bool SkipNan = false>
 void sq_dev_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, void*) {
     const std::byte* x = args[0];
     const std::byte* m = args[1];
     std::byte* o = args[2];
     auto sq = [&](std::int64_t i) {
-        const T d = load_as<T>(x + i * s[0]) - load_as<T>(m + i * s[1]);
+        const T v = load_as<T>(x + i * s[0]);
+        if constexpr (SkipNan) {
+            if constexpr (ops::is_cplx<T>) {
+                if (std::isnan(v.real()) || std::isnan(v.imag())) return 0.0;
+            } else {
+                if (std::isnan(v)) return 0.0;
+            }
+        }
+        const T d = v - load_as<T>(m + i * s[1]);
         if constexpr (ops::is_cplx<T>) return d.real() * d.real() + d.imag() * d.imag();
         else return d * d;
     };

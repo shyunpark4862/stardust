@@ -209,7 +209,7 @@
 ## 진행 상태
 | 마일스톤 | 상태 |
 |---|---|
-| T0 배열 추가 | 대기 |
+| T0 배열 추가 | 완료, 승인 대기 (2026-11-15) |
 | T1 special 감싸기와 `ndtri_exp` | 대기 |
 | T2 special 비중심 분포 함수 | 대기 |
 | T3 `sd.random` | 대기 |
@@ -226,6 +226,8 @@
 
 ### T0. 배열 추가
 - `cov`, `corrcoef`, `quantile`, `median`, NaN을 건너뛰는 리덕션 (배열 영역, docs/design/array.md와 docs/api/array.md에 더한다)
+- 결정(2026-11-15 사용자): `quantile`은 numpy의 13가지 메서드 전부, 값은 numpy와 비트까지 같게, 결과는 언제나 float64. NaN 리덕션은 기본 세트와 `nancumulative_*`. `cov`는 `rowvar`와 `correction=0`만. 모두 NaN이거나 빈 레인은 numpy와 같은 값이고 경고가 없다(`nanargmin`·`nanargmax`는 `ValueError`).
+- 결과: docs/api/array.md §7.9–§7.11, docs/design/array.md §6.10–§6.12, 측정 [bench/array/t0_statistics.md](bench/array/t0_statistics.md), 테스트 `tests/array/test_statistics.py`.
 
 ### T1. special 감싸기와 `ndtri_exp`
 - `stdtr stdtrit chdtr chdtrc chdtri fdtr fdtrc fdtri pdtr pdtrc bdtr bdtrc nbdtr nbdtrc`(기존 함수의 조합), `ndtri_exp`

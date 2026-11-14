@@ -88,7 +88,7 @@ differential_entropy(x, /, *, axis, method)
 - 축의 기본값, NaN 처리, 편향 보정의 기본값은 T8 전에 정한다. 자유도 인자는 배열의 `var`처럼 `correction`이다(scipy의 `ddof`).
 
 ## §5. 배열과 special에 더하는 것
-- 배열(T0): `cov`, `corrcoef`, `quantile`, `median`, NaN 리덕션. docs/api/array.md에 그 마일스톤에서 더한다.
+- 배열(T0, 완료): `cov`, `corrcoef`, `quantile`, `median`, NaN 리덕션. docs/api/array.md §7.9–§7.11.
 - special(T1, T2): `stdtr stdtrit chdtr chdtrc chdtri fdtr fdtrc fdtri pdtr pdtrc bdtr bdtrc nbdtr nbdtrc`, `chndtr chndtrix nctdtr nctdtrit ncfdtr ncfdtri ndtri_exp`. docs/api/special.md에 더한다.
 
 ## §6. `sd.stats.tests` (나중)
