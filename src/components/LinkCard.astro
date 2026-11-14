@@ -1,0 +1,67 @@
+---
+import Badge from './Badge.astro';
+
+interface Props {
+  href?: string;
+  title: string;
+  meta?: string;
+  badge?: string;
+  badgeTone?: 'neutral' | 'accent' | 'ok' | 'warn';
+}
+const { href, title, meta, badge, badgeTone = 'neutral' } = Astro.props;
+const Tag = href ? 'a' : 'div';
+---
+
+<Tag class:list={['card', href && 'card--link']} href={href}>
+  <div class="card__top">
+    {meta && <span class="card__meta">{meta}</span>}
+    {badge && <Badge tone={badgeTone}>{badge}</Badge>}
+  </div>
+  <p class="card__title">{title}</p>
+  <p class="card__body"><slot /></p>
+</Tag>
+
+<style>
+  .card {
+    display: flex;
+    flex-direction: column;
+    padding: var(--space-6);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    background: var(--bg);
+    transition:
+      border-color var(--dur) var(--ease),
+      box-shadow var(--dur) var(--ease),
+      transform var(--dur) var(--ease);
+  }
+  .card--link:hover {
+    border-color: var(--accent-soft-line);
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+  }
+  .card__top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 22px;
+  }
+  .card__meta {
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    color: var(--accent);
+  }
+  .card__title {
+    margin-top: var(--space-4);
+    font-size: var(--text-lg);
+    font-weight: 650;
+    line-height: var(--leading-snug);
+    letter-spacing: var(--tracking-tight);
+    color: var(--fg);
+  }
+  .card__body {
+    margin-top: var(--space-2);
+    font-size: var(--text-base);
+    line-height: 1.65;
+    color: var(--fg-muted);
+  }
+</style>

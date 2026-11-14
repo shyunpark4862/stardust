@@ -1,0 +1,41 @@
+---
+import Docs from '../../layouts/Docs.astro';
+import LinkCard from '../../components/LinkCard.astro';
+import { areas } from '../../data/nav';
+---
+
+<Docs
+  title="API 개요"
+  description="영역별 API 문서의 들머리다. 영역을 고르면 그 영역의 함수 목록과 규칙으로 간다."
+  section="api"
+  sample
+>
+  <div class="grid">
+    {
+      areas.map((a) => (
+        <LinkCard
+          href={a.key === 'linalg' ? '/api/linalg/' : undefined}
+          title={a.name}
+          meta={a.ns}
+          badge={a.key === 'linalg' ? '샘플' : '준비 중'}
+          badgeTone={a.key === 'linalg' ? 'accent' : 'neutral'}
+        >
+          {a.desc}
+        </LinkCard>
+      ))
+    }
+  </div>
+</Docs>
+
+<style>
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-5);
+  }
+  @media (max-width: 640px) {
+    .grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+</style>

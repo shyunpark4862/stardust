@@ -1,0 +1,62 @@
+---
+layout: ../../layouts/Docs.astro
+title: 선형대수
+description: sd.linalg의 함수를 소개하는 페이지의 견본이다. 함수 하나가 카드 하나다.
+section: api
+sample: true
+---
+import ApiEntry from '../../components/ApiEntry.astro';
+import Callout from '../../components/Callout.astro';
+
+## 공통 규칙
+
+영역의 규칙을 먼저 짧게 적는 자리다. 배열 인자는 positional-only이고, 이름이 붙은 옵션은 모두 keyword-only다.
+
+<Callout type="warn">
+  `solve`는 언제나 일반 LU로 푼다. 행렬의 구조는 옵션이 아니라 함수 이름으로 고른다.
+</Callout>
+
+## 선형 시스템
+
+<ApiEntry
+  name="solve"
+  tag="Array API"
+  signature="sd.linalg.solve(a, b, /)"
+  params={[
+    { name: 'a', type: 'ndarray', kind: 'positional-only', desc: '계수 행렬. 모양은 (..., N, N).' },
+    { name: 'b', type: 'ndarray', kind: 'positional-only', desc: '우변. 모양은 (..., N) 또는 (..., N, K).' },
+  ]}
+  returns={{ type: 'ndarray', desc: 'b와 같은 모양의 해.' }}
+  raises={[{ type: 'LinAlgError', desc: '행렬이 특이할 때.' }]}
+>
+  선형 시스템 `a @ x = b`를 푼다. 함수 설명이 들어가는 자리다.
+
+  ```python
+  a = sd.asarray([[2.0, 1.0], [1.0, 3.0]])
+  sd.linalg.solve(a, sd.asarray([1.0, 2.0]))
+  ```
+</ApiEntry>
+
+<ApiEntry
+  name="solve_triangular"
+  signature="sd.linalg.solve_triangular(a, b, /, *, upper, unit_diagonal=False)"
+  params={[
+    { name: 'a', type: 'ndarray', kind: 'positional-only', desc: '삼각 행렬.' },
+    { name: 'b', type: 'ndarray', kind: 'positional-only', desc: '우변.' },
+    { name: 'upper', type: 'bool', kind: 'keyword-only, 필수', desc: '위 삼각이면 True.' },
+    { name: 'unit_diagonal', type: 'bool', kind: 'keyword-only', desc: '대각을 1로 보고 읽지 않는다.' },
+  ]}
+  returns={{ type: 'ndarray', desc: 'b와 같은 모양의 해.' }}
+>
+  삼각 시스템을 푼다. 옵션이 여럿인 함수가 어떻게 보이는지 확인하는 견본이다.
+</ApiEntry>
+
+## 분해
+
+### 옵션 이름
+
+| 이름 | 뜻 | 받는 값 |
+|---|---|---|
+| `upper` | 삼각 행렬이 위 삼각인가 | `True` / `False` |
+| `mode` | 결과의 크기 | `'reduced'` / `'complete'` |
+| `rtol` | 상대 허용오차 | `None` 또는 실수 |

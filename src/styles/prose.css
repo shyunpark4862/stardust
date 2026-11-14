@@ -1,0 +1,160 @@
+/*
+ * Long-form document typography. Applied to the <article class="prose"> that
+ * wraps MDX content, so authors write plain Markdown and get consistent rhythm.
+ */
+.prose {
+  font-size: var(--text-md);
+  line-height: var(--leading-body);
+  color: var(--slate-700);
+}
+
+.prose > * + * {
+  margin-top: var(--space-5);
+}
+
+.prose h2 {
+  margin-top: var(--space-16);
+  padding-top: var(--space-8);
+  border-top: 1px solid var(--line);
+  font-size: var(--text-2xl);
+  color: var(--fg);
+}
+
+.prose > :first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.prose h3 {
+  margin-top: var(--space-10);
+  font-size: var(--text-xl);
+  color: var(--fg);
+}
+
+.prose h4 {
+  margin-top: var(--space-8);
+  font-size: var(--text-md);
+  color: var(--fg);
+}
+
+.prose h2 + *,
+.prose h3 + *,
+.prose h4 + * {
+  margin-top: var(--space-4);
+}
+
+.prose :is(h2, h3, h4) a {
+  color: inherit;
+}
+
+.prose strong {
+  font-weight: 650;
+  color: var(--fg);
+}
+
+.prose a:not([class]) {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-color: var(--accent-soft-line);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--dur-fast) var(--ease);
+}
+
+.prose a:not([class]):hover {
+  text-decoration-color: currentColor;
+}
+
+.prose ul,
+.prose ol {
+  padding-left: var(--space-6);
+}
+
+.prose li + li {
+  margin-top: var(--space-2);
+}
+
+.prose li > ul,
+.prose li > ol {
+  margin-top: var(--space-2);
+}
+
+.prose li::marker {
+  color: var(--slate-400);
+}
+
+/* Inline code */
+.prose :not(pre) > code {
+  padding: 0.14em 0.4em;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-subtle);
+  font-size: 0.86em;
+  color: var(--blue-800);
+  white-space: nowrap;
+}
+
+/* Fenced code (Shiki output) */
+.prose pre {
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--bg-subtle) !important;
+  font-size: var(--text-sm);
+  line-height: 1.7;
+  overflow-x: auto;
+  tab-size: 4;
+}
+
+.prose pre code {
+  font-size: inherit;
+}
+
+/* Tables */
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-base);
+  line-height: var(--leading-snug);
+}
+
+.prose .table-wrap,
+.prose > table {
+  display: block;
+  overflow-x: auto;
+}
+
+.prose th {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--line-strong);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--fg-subtle);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.prose td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.prose th:first-child,
+.prose td:first-child {
+  padding-left: 0;
+}
+
+.prose blockquote {
+  margin-inline: 0;
+  padding-left: var(--space-5);
+  border-left: 2px solid var(--accent-soft-line);
+  color: var(--fg-muted);
+}
+
+.prose hr {
+  margin-block: var(--space-12);
+  border: 0;
+  border-top: 1px solid var(--line);
+}

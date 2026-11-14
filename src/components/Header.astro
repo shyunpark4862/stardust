@@ -1,0 +1,114 @@
+---
+import Logo from './Logo.astro';
+import { topNav } from '../data/nav';
+
+interface Props {
+  /** The page opens on a dark hero: start transparent with light text. */
+  overDark?: boolean;
+}
+const { overDark = false } = Astro.props;
+const path = Astro.url.pathname;
+---
+
+<header class="header" data-surface={overDark ? 'dark' : undefined} data-over-dark={overDark ? '' : undefined}>
+  <div class="container header__inner">
+    <Logo />
+    <nav class="header__nav" aria-label="주 메뉴">
+      {
+        topNav.map((item) => (
+          <a class="header__link" href={item.href} aria-current={path.startsWith(item.href) ? 'page' : undefined}>
+            {item.label}
+          </a>
+        ))
+      }
+    </nav>
+  </div>
+</header>
+
+<script>
+  // On pages that open with a dark hero the header starts transparent and
+  // switches to the light surface once the hero has scrolled out from under it.
+  const header = document.querySelector<HTMLElement>('.header[data-over-dark]');
+  const hero = document.querySelector<HTMLElement>('[data-hero]');
+  if (header && hero) {
+    const update = () => {
+      const past = hero.getBoundingClientRect().bottom <= header.offsetHeight;
+      if (past) header.removeAttribute('data-surface');
+      else header.setAttribute('data-surface', 'dark');
+      header.classList.toggle('is-scrolled', !past && scrollY > 8);
+    };
+    update();
+    addEventListener('scroll', update, { passive: true });
+    addEventListener('resize', update);
+  }
+</script>
+
+<style>
+  .header {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    height: var(--header-h);
+    border-bottom: 1px solid var(--line);
+    background: rgb(255 255 255 / 0.9);
+    backdrop-filter: saturate(1.6) blur(14px);
+    -webkit-backdrop-filter: saturate(1.6) blur(14px);
+    transition:
+      background-color var(--dur) var(--ease),
+      border-color var(--dur) var(--ease);
+  }
+  .header[data-over-dark] {
+    position: fixed;
+    inset: 0 0 auto;
+  }
+  .header[data-surface='dark'] {
+    border-bottom-color: transparent;
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  /* Over the hero, once content starts to pass underneath. */
+  .header[data-surface='dark'].is-scrolled {
+    border-bottom-color: var(--line);
+    background: rgb(4 8 22 / 0.72);
+    backdrop-filter: saturate(1.4) blur(14px);
+    -webkit-backdrop-filter: saturate(1.4) blur(14px);
+  }
+  .header__inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 100%;
+  }
+  .header__nav {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+  .header__link {
+    display: inline-flex;
+    align-items: center;
+    height: 36px;
+    padding-inline: var(--space-3);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-base);
+    font-weight: 500;
+    color: var(--fg-muted);
+    transition:
+      color var(--dur-fast) var(--ease),
+      background-color var(--dur-fast) var(--ease);
+  }
+  .header__link:hover {
+    color: var(--fg);
+    background: var(--bg-muted);
+  }
+  @media (max-width: 800px) {
+    .header__link {
+      height: 44px;
+    }
+  }
+  .header__link[aria-current='page'] {
+    color: var(--fg);
+    font-weight: 600;
+  }
+</style>

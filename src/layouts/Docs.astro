@@ -1,0 +1,312 @@
+---
+import Base from './Base.astro';
+import Badge from '../components/Badge.astro';
+import '../styles/prose.css';
+import { sidebars, topNav } from '../data/nav';
+
+interface Heading {
+  depth: number;
+  slug: string;
+  text: string;
+}
+interface Props {
+  frontmatter?: { title: string; description?: string; section: string; sample?: boolean };
+  headings?: Heading[];
+  title?: string;
+  description?: string;
+  section?: string;
+  sample?: boolean;
+}
+const fm = Astro.props.frontmatter ?? (Astro.props as Required<Props>['frontmatter']);
+const { title, description, section, sample = false } = fm;
+const groups = sidebars[section] ?? [];
+const toc = (Astro.props.headings ?? []).filter((h) => h.depth === 2 || h.depth === 3);
+const path = Astro.url.pathname;
+const sectionLabel = topNav.find((n) => n.href === `/${section}/`)?.label ?? '';
+---
+
+<Base title={title} description={description}>
+  <div class="container docs">
+    <aside class="docs__side">
+      <button class="side-toggle" type="button" aria-expanded="false" aria-controls="side-nav">
+        <span>메뉴</span>
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+          <path d="M3.5 5.25 7 8.75l3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+        </svg>
+      </button>
+      <nav class="side" id="side-nav" aria-label="문서 메뉴">
+        {
+          groups.map((g) => (
+            <div class="side__group">
+              <p class="side__title">{g.title}</p>
+              <ul class="side__list">
+                {g.items.map((item) => (
+                  <li>
+                    <a class="side__link" href={item.href} aria-current={path === item.href ? 'page' : undefined}>
+                      <span>{item.label}</span>
+                      {item.badge && <Badge>{item.badge}</Badge>}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))
+        }
+      </nav>
+    </aside>
+
+    <article class="docs__main">
+      <header class="page-head">
+        <p class="eyebrow">{sectionLabel}</p>
+        <h1 class="page-head__title">{title}</h1>
+        {description && <p class="page-head__lead">{description}</p>}
+        {
+          sample && (
+            <p class="page-head__sample">
+              <Badge tone="warn">샘플</Badge>
+              <span>레이아웃과 컴포넌트를 보여주기 위한 임시 페이지다. 내용은 나중에 다시 쓴다.</span>
+            </p>
+          )
+        }
+      </header>
+      <div class="prose"><slot /></div>
+    </article>
+
+    <aside class="docs__toc">
+      {
+        toc.length > 0 && (
+          <nav class="toc" aria-label="이 페이지의 목차">
+            <p class="toc__title">이 페이지</p>
+            <ul class="toc__list">
+              {toc.map((h) => (
+                <li>
+                  <a class:list={['toc__link', h.depth === 3 && 'toc__link--sub']} href={`#${h.slug}`}>
+                    {h.text}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        )
+      }
+    </aside>
+  </div>
+</Base>
+
+<script>
+  // Small screens: the sidebar folds behind a button.
+  const toggle = document.querySelector<HTMLButtonElement>('.side-toggle');
+  toggle?.addEventListener('click', () => {
+    const open = toggle.getAttribute('aria-expanded') !== 'true';
+    toggle.setAttribute('aria-expanded', String(open));
+  });
+</script>
+
+<script>
+  // Scroll spy: mark the table-of-contents entry of the section being read.
+  const links = [...document.querySelectorAll<HTMLAnchorElement>('.toc__link')];
+  const targets = links
+    .map((a) => document.getElementById(decodeURIComponent(a.hash.slice(1))))
+    .filter((el): el is HTMLElement => el !== null);
+  if (targets.length > 0) {
+    const update = () => {
+      const line = 120;
+      let current = 0;
+      targets.forEach((el, i) => {
+        if (el.getBoundingClientRect().top <= line) current = i;
+      });
+      links.forEach((a, i) => a.classList.toggle('is-active', i === current));
+    };
+    update();
+    addEventListener('scroll', update, { passive: true });
+  }
+</script>
+
+<style>
+  .docs {
+    display: grid;
+    grid-template-columns: var(--sidebar-w) minmax(0, 1fr) var(--toc-w);
+    gap: var(--space-12);
+    align-items: start;
+  }
+  .docs__side,
+  .docs__toc {
+    position: sticky;
+    top: var(--header-h);
+    max-height: calc(100vh - var(--header-h));
+    padding-block: var(--space-10);
+    overflow-y: auto;
+  }
+  /* Room for the link highlight to extend past the text edge without a
+     horizontal scrollbar. */
+  .docs__side {
+    margin-inline: calc(var(--space-3) * -1);
+    padding-inline: var(--space-3);
+  }
+  .docs__main {
+    min-width: 0;
+    max-width: var(--prose-w);
+    width: 100%;
+    margin-inline: auto;
+    padding-block: var(--space-10) var(--space-24);
+  }
+
+  /* Sidebar */
+  .side-toggle {
+    display: none;
+  }
+  .side__group + .side__group {
+    margin-top: var(--space-8);
+  }
+  .side__title,
+  .toc__title {
+    font-size: var(--text-xs);
+    font-weight: 650;
+    letter-spacing: 0.02em;
+    color: var(--fg-subtle);
+  }
+  .side__list,
+  .toc__list {
+    margin-top: var(--space-3);
+    padding: 0;
+    list-style: none;
+  }
+  .side__link {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    min-height: 34px;
+    margin-inline: calc(var(--space-3) * -1);
+    padding-inline: var(--space-3);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-base);
+    line-height: var(--leading-snug);
+    color: var(--fg-muted);
+    transition:
+      color var(--dur-fast) var(--ease),
+      background-color var(--dur-fast) var(--ease);
+  }
+  .side__link:hover {
+    color: var(--fg);
+    background: var(--bg-subtle);
+  }
+  .side__link[aria-current='page'] {
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  /* Page header */
+  .page-head {
+    padding-bottom: var(--space-8);
+    margin-bottom: var(--space-8);
+    border-bottom: 1px solid var(--line);
+  }
+  .page-head__title {
+    margin-top: var(--space-3);
+    font-size: var(--text-3xl);
+    letter-spacing: var(--tracking-display);
+  }
+  .page-head__lead {
+    margin-top: var(--space-4);
+    font-size: var(--text-lg);
+    line-height: 1.65;
+    color: var(--fg-muted);
+  }
+  .page-head__sample {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-top: var(--space-5);
+    font-size: var(--text-sm);
+    line-height: var(--leading-snug);
+    color: var(--fg-subtle);
+  }
+
+  /* Table of contents */
+  .toc__list {
+    border-left: 1px solid var(--line);
+  }
+  .toc__link {
+    display: block;
+    margin-left: -1px;
+    padding: var(--space-1) 0 var(--space-1) var(--space-4);
+    border-left: 1px solid transparent;
+    font-size: var(--text-sm);
+    line-height: var(--leading-snug);
+    color: var(--fg-subtle);
+    transition:
+      color var(--dur-fast) var(--ease),
+      border-color var(--dur-fast) var(--ease);
+  }
+  .toc__link--sub {
+    padding-left: var(--space-8);
+  }
+  .toc__link:hover {
+    color: var(--fg);
+  }
+  .toc__link.is-active {
+    border-left-color: var(--accent);
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  @media (max-width: 1120px) {
+    .docs {
+      grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+    }
+    .docs__toc {
+      display: none;
+    }
+  }
+  @media (max-width: 800px) {
+    .docs {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0;
+    }
+    .docs__side {
+      position: static;
+      margin-inline: 0;
+      padding-inline: 0;
+      max-height: none;
+      padding-block: var(--space-6);
+      border-bottom: 1px solid var(--line);
+    }
+    .docs__side {
+      padding-block: var(--space-3);
+    }
+    :global(.js) .side-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      height: 44px;
+      font-size: var(--text-base);
+      font-weight: 600;
+      color: var(--fg);
+    }
+    .side-toggle svg {
+      color: var(--fg-subtle);
+      transition: transform var(--dur) var(--ease);
+    }
+    .side-toggle[aria-expanded='true'] svg {
+      transform: rotate(180deg);
+    }
+    :global(.js) .side-toggle[aria-expanded='false'] + .side {
+      display: none;
+    }
+    .side {
+      padding-block: var(--space-3) var(--space-4);
+    }
+    .side__link {
+      min-height: 44px;
+    }
+    .docs__main {
+      padding-top: var(--space-8);
+    }
+    .page-head__title {
+      font-size: var(--text-2xl);
+    }
+  }
+</style>
