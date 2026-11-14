@@ -199,7 +199,8 @@ inline double basym(double a, double b, dd::DD E) {
     a0[1] = (2.0 / 3.0) * r1;
     c[1] = -0.5 * a0[1];
     d[1] = -c[1];
-    double j0 = (0.5 / e0) * Erfcx::f(z0);
+    const double lead = (0.5 / e0) * Erfcx::f(z0);  // the sum's leading term (for the stopping test)
+    double j0 = lead;
     double j1 = e1;
     double corr = d[1] * w0 * j1;  // the sum without its leading term j0
     double s = 1.0, h2 = h * h, hn = 1.0, w = w0, znm1 = z, zn = z2;
@@ -231,7 +232,7 @@ inline double basym(double a, double b, dd::DD E) {
         w *= w0;
         const double t1 = d[np1] * w * j1;
         corr += t0 + t1;
-        if (std::fabs(t0) + std::fabs(t1) <= 0x1p-56 * (0.5 / e0 * Erfcx::f(z0) + corr)) break;
+        if (std::fabs(t0) + std::fabs(t1) <= 0x1p-56 * (lead + corr)) break;
     }
     const double u = gamma_star(a + b) / (gamma_star(a) * gamma_star(b));
     return u * (half_erfc + e0 * t * corr);
@@ -240,9 +241,14 @@ inline double basym(double a, double b, dd::DD E) {
 // I and 1 - I for a, b > 0 finite, 0 < x < 1, y = 1 - x exactly: TOMS 708
 // BRATIO's choice. (a0, b0, x0, y0) is (a, b, x, y) or, `ind`, (b, a, y, x);
 // w = I_x0(a0, b0) and w1 = 1 - w, one computed and the other 1 minus it.
-inline IB ibeta(double a, double b, dd::DD x, dd::DD y) {
-    const Scaled pref = prefix_of(a, b, x, y);  // symmetric: the same for (b, a, y, x)
-    const double xderiv = value(pref) / y.hi;
+inline IB ibeta(double a, double b, dd::DD x, dd::DD y, bool deriv = false) {
+    // The prefix (symmetric: the same for (b, a, y, x)), made once and only by the
+    // branches that use it: bgrat and basym do not, and xderiv is the inverses' alone.
+    std::optional<Scaled> made;
+    auto prefix = [&] {
+        if (!made) made = prefix_of(a, b, x, y);
+        return *made;
+    };
     double a0 = a, b0 = b;
     dd::DD x0 = x, y0 = y;
     bool ind = false;
@@ -257,15 +263,15 @@ inline IB ibeta(double a, double b, dd::DD x, dd::DD y) {
     if (std::min(a, b) <= 1.0) {
         if (x.hi > 0.5) turn();
         if (std::max(a0, b0) <= 1.0) {
-            if (a0 >= std::min(0.2, b0) || std::pow(x0.hi, a0) <= 0.9) direct(bpser(a0, b0, x0, y0, pref));
-            else if (x0.hi >= 0.3) other(bpser(b0, a0, y0, x0, pref));
+            if (a0 >= std::min(0.2, b0) || std::pow(x0.hi, a0) <= 0.9) direct(bpser(a0, b0, x0, y0, prefix()));
+            else if (x0.hi >= 0.3) other(bpser(b0, a0, y0, x0, prefix()));
             else other(bgrat(b0 + 20.0, a0, y0, x0, bup(b0, a0, y0, x0, 20)));
         } else if (b0 <= 1.0) {
-            direct(bpser(a0, b0, x0, y0, pref));
+            direct(bpser(a0, b0, x0, y0, prefix()));
         } else if (x0.hi >= 0.3) {
-            other(bpser(b0, a0, y0, x0, pref));
+            other(bpser(b0, a0, y0, x0, prefix()));
         } else if (x0.hi < 0.1 && std::pow(x0.hi * b0, a0) <= 0.7) {
-            direct(bpser(a0, b0, x0, y0, pref));
+            direct(bpser(a0, b0, x0, y0, prefix()));
         } else if (b0 > 15.0) {
             other(bgrat(b0, a0, y0, x0, 0.0));
         } else {
@@ -278,35 +284,19 @@ inline IB ibeta(double a, double b, dd::DD x, dd::DD y) {
             lambda = -lambda;
         }
         if (b0 < 40.0 && b0 * x0.hi <= 0.7) {
-            direct(bpser(a0, b0, x0, y0, pref));
-        } else if (b0 < 40.0) {
-            // b0 = n + bb, bb in (0, 1]: I_x(a, b) = BUP(bb, a, y, x, n) + I_x(a, bb)
-            int n = static_cast<int>(b0);
-            double bb = b0 - n;
-            if (bb == 0.0) {
-                --n;
-                bb = 1.0;
-            }
-            double v = bup(bb, a0, y0, x0, n);
-            if (x0.hi <= 0.7) {
-                v += bpser(a0, bb, x0, y0, prefix_of(a0, bb, x0, y0));
-            } else if (a0 > 15.0) {
-                v = bgrat(a0, bb, x0, y0, v);
-            } else {
-                v += bup(a0, bb, x0, y0, 20);
-                v = bgrat(a0 + 20.0, bb, x0, y0, v);
-            }
-            direct(v);
+            direct(bpser(a0, b0, x0, y0, prefix()));
         } else if (std::min(a0, b0) > 100.0 && lambda <= 0.03 * std::min(a0, b0)) {
             direct(basym(a0, b0, beta_exponent(a0, b0, x0, y0)));
         } else {
-            direct(bfrac(a0, b0, x0, y0, pref));
+            direct(bfrac(a0, b0, x0, y0, prefix()));
         }
     }
     if (ind) std::swap(w, w1);
-    return {w, w1, xderiv};
+    return {w, w1, deriv ? value(prefix()) / y.hi : 0.0};
 }
-inline IB ibeta(double a, double b, double x) { return ibeta(a, b, dd::DD{x, 0.0}, dd::two_sum(1.0, -x)); }
+inline IB ibeta(double a, double b, double x, bool deriv = false) {
+    return ibeta(a, b, dd::DD{x, 0.0}, dd::two_sum(1.0, -x), deriv);
+}
 
 // scipy's conventions; returns true with `out` set on an edge.
 //   NaN: any NaN, a < 0, b < 0, x outside [0, 1], a = b = 0, a = b = inf
@@ -408,7 +398,7 @@ inline double ibeta_inverse(double a, double b, double t, bool upper) {
     const double w = halley(
         w0, t, inc,
         [&](double v) {
-            const IB r = ibeta(sa, sb, v);
+            const IB r = ibeta(sa, sb, v, true);
             const double h = (sa - 1.0) / v - (sb - 1.0) / (1.0 - v);
             return std::array<double, 3>{inc ? r.i : r.ic, inc ? r.xderiv : -r.xderiv, h};
         },

@@ -70,10 +70,32 @@ double cf_backward(double b0, Term&& term, int n) {
 }
 
 // lentz() for the count, cf_backward() over it and a few more terms for the value.
+// The forward pass keeps its first kKept terms, so the backward pass does not form
+// them again (a term of the beta fraction is three divisions: the second pass was a
+// third of bfrac's time).
 template <class Term>
 CfResult lentz_backward(double b0, Term&& term, int max_terms) {
-    const CfResult r = lentz(b0, term, max_terms);
-    return {cf_backward(b0, term, r.terms + 4), r.terms, r.converged};
+    constexpr int kKept = 64;
+    double as[kKept + 1], bs[kKept + 1];
+    const CfResult r = lentz(
+        b0,
+        [&](int n) {
+            const auto ab = term(n);
+            if (n <= kKept) as[n] = ab.first, bs[n] = ab.second;
+            return ab;
+        },
+        max_terms);
+    const int last = r.terms + 4;
+    double t = 0.0;
+    for (int k = last; k >= 1; --k) {
+        if (k <= kKept && k <= r.terms) {
+            t = as[k] / (bs[k] + t);
+        } else {
+            const auto [a, b] = term(k);
+            t = a / (b + t);
+        }
+    }
+    return {b0 + t, r.terms, r.converged};
 }
 
 }  // namespace sd::special

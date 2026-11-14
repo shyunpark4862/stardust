@@ -292,6 +292,12 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
   - 불완전 베타: NR `betacf` 대신 DiDonato–Morris의 BRATIO(TOMS 708) 구조를 따른다. BPSER(급수), BUP(유한합으로 a·b 옮기기), BGRAT(큰 a·작은 b, x ≈ 1), BFRAC(평균 아래 연분수), BASYM(a, b > 100의 평균 근처, Temme형 균등 점근전개)이다. BGRAT와 BASYM은 측정 뒤 사용자 결정으로 넣었다(2026-11-14). 근사 방식이 다섯이라 §1.1 Q8의 "2–3구간"을 넘는다.
   - 역함수: Halley는 F와 목표가 두 배 넘게 차이 나는 동안 log F에 대한 Newton 걸음을 쓴다(꼬리에서 선형 걸음은 한 번에 F/F′ ≈ 1씩만 움직인다). 감마의 초기값은 하한 둘(작은 x 근사, 큰 x 점근식)과 Wilson–Hilferty, 베타는 AS 109다.
 
+- **속도 (2026-11-15, 최적화 2단계)**:
+  - **1 < a, b이고 b0 < 40인 가지를 연분수(bfrac)로 바꿨다.** TOMS 708은 여기서 bup으로 b를 (0, 1]까지 내린 뒤 bpser나 bgrat을 쓴다. 이 길은 앞 인자를 세 번 만든다. 연분수는 한 번이면 되고 더 정확했다: a, b가 6–40에서 330 → 157 ns, `bdtr` 10.1 → 4.9 ULP, `nbdtrc` 19.4 → 8.8, `fdtrc` 18.1 → 10.7, `ncfdtrc` 22.6 → 15.2.
+  - **앞 인자는 쓰는 가지만 만든다.** 전에는 도함수(역함수만 쓴다) 때문에 언제나 만들었다. bgrat과 basym은 쓰지 않는다.
+  - **연분수의 뒤로 가는 계산**(cf.hpp)은 앞으로 갈 때 만든 항 64개를 다시 쓴다.
+  - 남은 것: a, b ≥ 100이고 평균 근처인 basym(계수 점화식이 O(n³), scipy의 0.5배)과 작은 a·큰 b의 bgrat(0.7배). 측정은 bench/special/opt2/.
+
 ### 5.6 제타와 지수적분
 - `zeta(x, q)`: Hurwitz, Euler–Maclaurin (Cephes `zeta.c`: 앞 N항 직접 합 + Bernoulli 꼬리). Riemann(`q` 생략)의 `x < 1`은 함수방정식(변환). Hurwitz의 `x < 1`은 NaN (scipy와 같다)
 - `expn(n, x)`: `x ≤ 1` 거듭제곱급수, `x > 1` Lentz 연분수 (NR `expint`), 큰 n은 균등 점근. **3구간**
