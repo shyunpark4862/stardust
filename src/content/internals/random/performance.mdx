@@ -1,0 +1,273 @@
+---
+title: 성능과 검증
+group: 성능과 검증
+order: 1
+summary: sd.random을 numpy의 Generator(PCG64, Philox)와 원소 10⁶개에서 잰 결과를 호출별로 정리하고, 1스레드에서 빠른 이유, 10스레드에서 8배 안팎으로 빨라지는 이유, 섞기와 작은 비복원 추출이 그렇지 않은 이유를 설명해요. 알려진 답, 계수기 배치, numpy와의 키 일치, 스레드 수 불변성, 통계 검사로 정확성을 어떻게 지키는지도 다뤄요.
+seeAlso: [generator, seeding, sampling]
+---
+import Callout from '../../../components/Callout.astro';
+import Bench from '../../../components/fig/Bench.astro';
+
+## 한눈에 보기
+
+원소 $10^6$개를 만드는 호출 여덟 가지를 numpy 2.5.4의 Generator 두 종류(기본인 PCG64와 Philox)와 비교했어요. 배율은 numpy PCG64 시간 ÷ stardust 시간이에요. 1보다 크면 stardust가 빨라요.
+
+| 호출 | 1스레드 배율 | 10스레드 배율 |
+|---|:---:|:---:|
+| `random(10^6)` | 2.38 | 18.7 |
+| `integers(0, 1000, shape=10^6)` | 1.11 | 8.7 |
+| `integers(-2^62, 2^62, shape=10^6)` | 3.65 | 25.8 |
+| `choice(1000, shape=10^6)` | 1.02 | 8.4 |
+| `choice(1000, shape=10^6, p=...)` | 2.93 | 23.3 |
+| `choice(10^6, shape=1000, replace=False)` | 0.36 | 0.4 |
+| `permutation(10^6)` | 1.60 | 1.6 |
+| `permutation(float64 array 10^6)` | 1.29 | 1.5 |
+
+결과를 원인별로 묶으면 넷이에요.
+
+1. **단어를 만드는 비용이 작아요.** stardust는 Philox 블록 넷을 함께 계산하고 함수 호출 없이 루프 안에 펼쳐요. numpy는 원소마다 함수 포인터로 비트 생성기를 불러요. `random`이 1스레드에서 2.4배 빠른 주된 이유예요.
+2. **나눗셈을 호출마다 한 번만 해요.** 범위가 $2^{63}$인 `integers`에서 numpy는 원소 절반이 64비트 나눗셈을 하고, stardust는 호출마다 한 번 해요(3.65배).
+3. **원소별 호출은 스레드 수만큼 빨라져요.** 원소마다 값이 독립이라 4096개씩 나눠 10스레드에서 7~8배 빨라지고, 결과 비트는 1스레드와 같아요.
+4. **순차인 일은 스레드로 빨라지지 않아요.** 섞기(Fisher–Yates)는 앞 걸음의 교환이 뒤 걸음에 영향을 주는 순차 알고리즘이라 10스레드에서도 1스레드와 같아요. 원소 1000개짜리 비복원 추출은 일 자체가 작아서 Python 쪽 준비와 해시 맵 비용이 시간을 정하고, numpy보다 약 20µs 느려요.
+
+정확성은 테스트 40개(`tests/random/test_random.py`)가 지켜요. 생성기의 비트를 알려진 답과 맞추고, 원소마다 쓰는 단어를 순수 Python 참조 구현과 맞추고, 키를 numpy의 `SeedSequence`와 맞추고, 스레드 수와 호출 나누기에 대한 불변성과 통계적 균등성을 검사해요.
+
+## 측정 방법
+
+| 항목 | 값 |
+|---|---|
+| 기계 | Apple M4 Pro (arm64 macOS, P코어 10 + E코어 4) |
+| 비교 대상 | numpy 2.5.4 `np.random.default_rng(1)`(PCG64), `np.random.Generator(np.random.Philox(1))` |
+| stardust | `sd.random.default_rng(1)`, `set_num_threads(1)`과 `set_num_threads(10)` |
+| 크기 | 원소 $10^6$개(비복원 추출만 $10^6$개에서 1000개) |
+| 시간 | 호출 한 번을 7번 재서 가장 빠른 값(`timeit.repeat(f, number=1, repeat=7)`의 최솟값) |
+| 스크립트와 결과 | `bench/random/t3_speed.py`, `bench/random/t3_speed.md` |
+
+- 가중치 `p`는 [0, 1)의 난수 1000개를 합으로 나눈 것이에요. 배열 `permutation`은 `arange(10^6, dtype=float64)`를 섞어요.
+- 호출 한 번씩 재므로 시간에는 Python 쪽 인자 검사, 결과 배열 할당, 새 메모리에 처음 쓸 때의 페이지 폴트가 들어 있어요. 실제로 한 번 부를 때의 비용이에요.
+- 같은 호출을 연달아 재므로 스레드풀의 워커가 깨어 있는 상태예요. 쉬다가 처음 부르는 병렬 호출은 워커를 깨우는 비용(macOS에서 수십 µs)을 더 내요([스레드풀과 결정성](/internals/core/threads/)).
+- stardust와 numpy는 같은 시드에서도 값이 달라요. 시간만 비교해요. 같은 분포를 내는지는 아래 "검증"의 통계 검사가 확인해요.
+
+## 균등 실수: random
+
+<Bench
+  rows={[
+    { label: 'random(10^6)', times: [2.72e-3, 2.37e-3, 1.14e-3, 0.15e-3] },
+  ]}
+  series={['numpy PCG64', 'numpy Philox', 'stardust 1스레드', 'stardust 10스레드']}
+  caption="원소 10⁶개, Apple M4 Pro, numpy 2.5.4. 배율은 numpy PCG64 대비예요."
+/>
+
+두 라이브러리 모두 단어 하나를 "위 53비트 × $2^{-53}$"으로 바꿔요([뽑기 알고리즘](/internals/random/sampling/)). 변환은 같으니 차이는 단어를 만드는 데서 나요.
+
+**numpy는 원소마다 함수 포인터를 거쳐요.** numpy의 비트 생성기는 함수 포인터 묶음(`bitgen_t`)으로 분포 코드와 연결돼요. `random`의 루프는 원소마다 `bitgen_state->next_double(bitgen_state->state)`를 불러요 [6]. 간접 호출이라 컴파일러가 생성기 코드를 루프 안에 펼치지 못하고, 이웃한 원소의 계산을 겹치지도 못해요.
+
+**PCG64는 한 줄로 이어진 상태예요.** PCG64는 128비트 상태 $s$를 $s \leftarrow a \cdot s + c \pmod{2^{128}}$로 진행하고, 그 상태를 비트 섞기로 64비트 출력으로 바꿔요 [6]. 다음 상태는 이전 상태의 곱셈이 끝나야 계산할 수 있어서, 원소마다 128비트 곱셈 한 번의 지연이 이어져요.
+
+**numpy의 Philox는 블록을 하나씩 계산해요.** 출력 네 개를 버퍼에 담아 두고, 다 쓰면 계수기를 하나 올려 다음 블록 하나를 계산해요 [6]. Philox 블록 하나는 곱셈 20번이 차례로 이어지는 의존 사슬이라 지연 시간에 묶여요.
+
+**stardust는 블록 넷을 엇갈려 계산해요.** 원소 16개 분량인 블록 넷의 라운드를 섞어서, 한 블록의 곱셈 결과를 기다리는 동안 다른 블록의 곱셈을 곱셈기에 넣어요(`philox4`, [계수기형 생성기](/internals/random/generator/)). 이 루프는 `Stream::first`와 `to_unit`이 모두 인라인 함수라 간접 호출이 없어요. 같은 조건에서 블록을 하나씩 계산하면 원소 $10^6$개에 2.98ms, 넷을 함께 계산하면 1.14ms예요. 블록을 하나씩 계산하는 stardust(2.98ms)는 numpy Philox(2.37ms)와 비슷한 수준이고, 넷을 함께 계산하는 것이 1스레드 차이의 대부분을 만들어요.
+
+## 정수: integers와 균등 choice
+
+<Bench
+  rows={[
+    { label: 'integers(0, 1000)', times: [1.57e-3, 1.81e-3, 1.42e-3, 0.18e-3] },
+    { label: 'choice(1000)', times: [1.50e-3, 1.86e-3, 1.48e-3, 0.18e-3] },
+    { label: 'integers(-2^62, 2^62)', times: [5.32e-3, 6.85e-3, 1.46e-3, 0.21e-3] },
+  ]}
+  series={['numpy PCG64', 'numpy Philox', 'stardust 1스레드', 'stardust 10스레드']}
+  caption="원소 10⁶개(shape=10^6), 같은 조건. choice(1000)은 안에서 integers(0, 1000)을 불러요(두 라이브러리 모두)."
+/>
+
+두 라이브러리 모두 Lemire의 방법(곱의 위 64비트, 아래 64비트로 기각) [2]을 써요. 범위의 크기에 따라 갈려요.
+
+**작은 범위(1000)에서는 거의 같아요(1.11배).** numpy는 범위가 $2^{32}$보다 작으면 32비트판 Lemire를 쓰고, 이때 비트 생성기의 64비트 출력 하나를 32비트 둘로 나눠 두 원소에 써요(`has_uint32` 버퍼) [6]. 생성기를 부르는 횟수가 절반이라 numpy의 `integers(0, 1000)`(1.57ms)은 자기의 `random`(2.72ms)보다 빨라요. stardust는 범위와 상관없이 원소마다 64비트 단어 하나를 써요. 원소 $e$의 단어가 계수기로 정해져 있기 때문이에요. 단어를 만드는 비용의 이점과 단어를 두 배 쓰는 비용이 거의 비겨요. `choice(1000)`도 같은 이유로 1.02배예요.
+
+**큰 범위($2^{63}$)에서는 3.65배예요.** 기각 판정에 필요한 $t = 2^{64} \bmod r$은 64비트 나눗셈이에요. numpy는 이것을 원소마다, 곱의 아래 64비트가 $r$보다 작을 때 계산해요 [6]. $r = 2^{63}$이면 원소 절반이 그래요(그러고 나서 $t = 0$이라 실제로 버리는 원소는 없어요). stardust는 범위가 모든 원소에 하나이면 $t$를 호출마다 한 번 계산해요. 같은 조건에서 stardust가 원소마다 필요할 때 나눗셈을 하면 5.7ms, 호출마다 한 번 하면 1.5ms예요. numpy의 5.32ms는 앞의 방식과 비슷한 수준이에요.
+
+## 가중치 복원 추출: choice(p=...)
+
+<Bench
+  rows={[
+    { label: 'choice(1000, p=...)', times: [47.58e-3, 46.57e-3, 16.23e-3, 2.04e-3] },
+  ]}
+  series={['numpy PCG64', 'numpy Philox', 'stardust 1스레드', 'stardust 10스레드']}
+  caption="후보 1000개에서 원소 10⁶개를 뽑아요. 같은 조건."
+/>
+
+두 라이브러리 모두 누적합을 마지막 값으로 나누고 `searchsorted(side='right')`로 균등 난수가 들어갈 구간을 찾아요 [6]. 누적합은 원소 1000개라 무시할 만하고, 균등 난수 $10^6$개는 위의 `random`과 같아요. 전체에서 `random` 시간을 빼면 numpy는 약 45ms, stardust는 약 15ms가 남아요. 차이는 이진 탐색 $10^6$번에서 나요.
+
+- 정렬된 배열(누적합)은 1000개, 8KB라 L1 캐시에 들어가요. 메모리가 아니라 비교와 분기의 비용이에요. 정렬된 배열이 $10^6$개(8MB)인 `searchsorted`에서는 두 라이브러리가 1.00배로 같아요([정렬과 집합](/internals/array/sorting/)).
+- 두 구현의 탐색 순서가 달라요. stardust의 `searchsorted`는 찾을 값마다 `std::upper_bound`로 이진 탐색을 끝까지 해요. numpy 2.5.4는 모든 찾을 값을 한 단계씩 함께 진행해요. 첫 단계에서 모든 값을 중앙값과 비교하고, 다음 단계에서 모두를 사분위수와 비교하는 식으로 단계마다 결과 배열 전체를 한 번씩 훑어요 [6].
+- 두 차이가 각각 얼마를 차지하는지는 아직 밝히지 못했어요.
+
+10스레드에서는 `random`과 `searchsorted`가 모두 병렬로 나뉘어 1스레드보다 8.0배 빨라요.
+
+## 섞기: permutation
+
+<Bench
+  rows={[
+    { label: 'permutation(10^6)', times: [5.17e-3, 7.33e-3, 3.23e-3, 3.17e-3] },
+    { label: 'permutation(float64 배열)', times: [5.13e-3, 7.14e-3, 3.99e-3, 3.41e-3] },
+  ]}
+  series={['numpy PCG64', 'numpy Philox', 'stardust 1스레드', 'stardust 10스레드']}
+  caption="원소 10⁶개, 같은 조건. 배열은 arange(10^6, dtype=float64)예요."
+/>
+
+두 라이브러리 모두 Fisher–Yates예요. 걸음마다 남은 칸 가운데 하나를 골라 바꾸는 순차 알고리즘이라 걸음을 나눌 수 없어요. 그래서 stardust도 10스레드에서 빨라지지 않아요(1.02배). 1스레드에서 차이 나는 점은 이래요.
+
+| | numpy 2.5.4 | stardust |
+|---|---|---|
+| 방향 | 끝에서 앞으로 | 앞에서 끝으로 |
+| 걸음의 정수 | 마스크 기각(`random_interval`): 범위를 덮는 $2^m - 1$로 자르고 범위 밖이면 다시. 시도 횟수 평균 1~2번 | Lemire: 곱셈 한 번, 기각은 $r / 2^{64}$ 이하의 확률 |
+| 단어 | 걸음마다 함수 포인터로 32비트 하나(기각되면 더) | 원소 16개분을 한꺼번에 계산해 둔 단어 |
+| 교환 | 버퍼를 거친 `memcpy` 세 번 | int64 `std::swap` |
+
+마스크 기각의 시도 횟수는 범위가 $i + 1$일 때 평균 $2^m / (i+1)$(1 이상 2 미만)이에요. 걸음마다 범위가 줄어드니 평균하면 걸음당 약 1.4번이에요. 이 차이들이 1.60배를 어떻게 나눠 갖는지는 재지 않았어요. 두 쪽 모두 배열(8MB)의 무작위 위치를 읽고 쓰는 것이 걸음의 주된 일이에요.
+
+**배열을 섞을 때.** stardust는 인덱스를 섞은 뒤 `take`로 원소를 새 배열에 모아요. 모으기는 병렬이라, 1스레드에서는 정수 섞기보다 0.76ms, 10스레드에서는 0.24ms 더 들어요. numpy는 배열을 복사하고 그 복사본의 원소를 직접 섞어요.
+
+**정렬로 섞으면 병렬이 되지만 더 느려요.** 무작위 64비트 키를 붙여 정렬하는 섞기는 병렬로 돌릴 수 있어요. 같은 조건에서 1스레드 8.6ms, 10스레드 3.8ms로, 순차 Fisher–Yates(3.0ms)보다 느려요. 그래서 섞기는 순차예요([뽑기 알고리즘](/internals/random/sampling/)).
+
+## 작은 비복원 표본: choice(replace=False)
+
+<Bench
+  rows={[
+    { label: 'choice(10^6, shape=1000, replace=False)', times: [0.01e-3, 0.01e-3, 0.03e-3, 0.03e-3] },
+  ]}
+  series={['numpy PCG64', 'numpy Philox', 'stardust 1스레드', 'stardust 10스레드']}
+  caption="원소 10⁶개에서 1000개를 비복원으로 뽑아요. 같은 조건. 결과 파일이 0.01ms 단위로 반올림돼 있어요."
+/>
+
+stardust가 numpy보다 약 20µs 느린 유일한 줄이에요. 두 쪽 모두 모집단 크기와 무관한 $O(k)$ 방법이고, 스레드를 쓰지 않아요.
+
+- **numpy**는 Floyd의 표본 추출 [7]을 써요. $j = n - k, \dots, n - 1$마다 $[0, j]$에서 하나를 뽑고, 이미 있으면 $j$를 대신 넣어요. 중복 확인은 칸 수가 $1.2k$보다 큰 2의 거듭제곱인 **평평한 배열**에 선형 탐사로 하는 해시 집합이에요. 마지막에 뽑은 $k$개를 한 번 섞어요 [6].
+- **stardust**는 Fisher–Yates의 앞 $k$걸음을 `std::unordered_map`(칸 번호 → 값)으로 해요. 이 맵은 항목마다 노드를 따로 할당하는 연결 리스트형 해시 테이블이라, 평평한 배열보다 넣기와 찾기가 비싸요. 그 밖에 Python 쪽에서 인자 검사, 위치 예약(잠금), 결과 `reshape` 같은 stardust 함수 호출이 여러 번 있고, 커널은 GIL을 놓았다가 다시 잡아요.
+
+전체가 수십 µs라서 고정 비용이 시간을 정하는 크기예요. 해시 맵을 쓰는 이유는 결과를 `permutation(n)`의 앞 $k$개와 같게 지키면서 메모리를 $O(k)$로 두는 것이고, 그래서 $10^9$개에서 1000개를 뽑아도 배열을 만들지 않아요.
+
+## 스레드 수에 따른 변화
+
+| 호출 | 1스레드 | 10스레드 | 10스레드 ÷ 1스레드 |
+|---|:---:|:---:|:---:|
+| `random(10^6)` | 1.14ms | 0.15ms | 7.6 |
+| `integers(0, 1000)` | 1.42ms | 0.18ms | 7.9 |
+| `integers(-2^62, 2^62)` | 1.46ms | 0.21ms | 7.0 |
+| `choice(1000)` | 1.48ms | 0.18ms | 8.2 |
+| `choice(1000, p=...)` | 16.23ms | 2.04ms | 8.0 |
+| `permutation(10^6)` | 3.23ms | 3.17ms | 1.02 |
+| `permutation(float64 배열)` | 3.99ms | 3.41ms | 1.17 |
+| `choice(10^6, shape=1000, replace=False)` | 0.03ms | 0.03ms | 1 |
+
+**원소별 커널은 조각으로 나눠요.** `uniform`, `integers`, `race_keys`는 결과를 원소 4096개(`kParallelTask`)씩 조각으로 나눠 스레드풀에서 돌려요(`for_pieces`). 원소 $10^6$개면 조각이 245개이고, 스레드는 공유 카운터에서 조각 번호를 하나씩 집어 가요. 조각마다 자기 `Stream`을 만들어 원소 16개씩 단어를 계산해요. 원소의 값이 (키, 원소 번호)만으로 정해지므로 어느 스레드가 어느 조각을 맡든 결과 비트가 같아요.
+
+- 조각 경계(4096의 배수)는 16의 배수이지만 원소 번호는 $e = \text{pos} + i$라서, `pos`가 16의 배수가 아니면 조각의 첫 무리가 앞 조각의 마지막 무리와 겹쳐요. 그 무리는 두 조각이 각자 계산해요. 조각마다 블록 넷 한 번이라 원소 $10^6$개에서 245번 더 계산하는 정도예요.
+- Philox 계산은 곱셈에 묶인 일이고 원소마다 쓰는 메모리는 결과 8바이트뿐이라, 스레드를 늘린 만큼 빨라지는 쪽에 가까워요(7.0~8.2배).
+- 원소가 4096개 이하이면 조각이 하나뿐이라 호출한 스레드에서 돌아요. 원소당 일의 양을 8(`kWordWork`)로 잡아서 원소별 연산의 기준값 $2^{15}$에 4096개에서 닿아요.
+
+**섞기와 비복원 추출은 순차예요.** `fisher_yates`는 스레드풀을 쓰지 않아요. 배열 `permutation`의 1.17배는 뒤의 `take`만 병렬로 나뉜 몫이에요. `choice(p=...)`의 비복원 경로는 키 만들기(`race_keys`)와 정렬이 모두 병렬이에요.
+
+## 검증
+
+테스트는 `tests/random/test_random.py`에 있고 40개예요. 무엇을 어떻게 지키는지 차례로 보면 이래요.
+
+### 생성기의 비트: 알려진 답
+
+`test_philox_known_answers`는 C++ 블록 함수 하나(`philox_block`)를 Random123 배포본의 philox4×64-10 알려진 답(KAT, known-answer test) 세 벡터와 비교해요. 계수기와 키가 모두 0인 것, 모두 $2^{64} - 1$인 것, 원주율의 16진 자릿수로 채운 것이에요. 64비트 넷이 모두 같아야 해요. 곱셈 상수나 Weyl 상수, 단어 섞는 순서, 라운드 수 가운데 하나만 틀려도 결과가 완전히 달라져요.
+
+알려진 답과 비트까지 같다는 것은 이 생성기가 Salmon 외 [1]가 정의하고 검증한 Philox4×64-10 그 자체라는 뜻이에요. 그래서 생성기의 통계적 품질은 그 검증에 기대요. Random123은 자기 생성기들이 TestU01 [4]의 SmallCrush, Crush, BigCrush를 모두 통과했다고 밝혀요 [3]. stardust의 테스트는 TestU01을 직접 돌리지 않아요.
+
+### 원소의 단어: 순수 Python 참조 구현
+
+`test_element_words_follow_the_counter_scheme`은 Philox를 Python 정수로 다시 쓴 몇 줄짜리 참조 함수(`ref_philox`)를 두고, 커널 `bits`가 내는 단어가 "원소 $e$의 첫 단어 = 계수기 $(\lfloor e/4 \rfloor, 0, 0, 0)$ 블록의 $e \bmod 4$번째"와 같은지 확인해요. 시작 위치와 개수를 (0, 64), (5, 40), (13, 3), ($2^{40} + 7$, 50)로 바꿔 가며 봐요.
+
+- 시작 위치 5와 13은 블록 넷(원소 16개) 무리의 가운데에서 시작해요. 무리를 계산해 두는 `Stream`의 캐시가 무리 경계를 잘못 다루면 여기서 드러나요.
+- $2^{40} + 7$은 계수기의 첫 단어가 32비트를 넘는 경우예요.
+
+### 키: numpy SeedSequence와 같아요
+
+- `test_keys_are_numpys_seedsequence`는 시드 9가지(0, 1, 12345, $2^{32}$, $2^{64} + 3$, $2^{200} + 7$, (1, 2, 3), (0,), ($2^{70}$, 5))에서 Python으로 옮긴 `_SeedSequence(seed).key()`가 numpy 2.5.4의 `SeedSequence(seed).generate_state(2, uint64)`와 같은지 봐요. 32비트 단어로 쪼개는 경계, 큰 정수, 시퀀스 시드를 덮어요.
+- `test_spawn_matches_numpy_and_is_independent`는 `spawn(3)`이 만든 세 생성기의 키가 numpy `SeedSequence(42).spawn(3)`의 키와 같은지, 다시 부른 `spawn(1)`의 키가 `spawn_key=(3,)`인 numpy 수열과 같은지(번호가 이어지는지) 봐요. 두 자식의 `random(10_000)` 사이 상관계수가 0.05 미만인지도 봐요. 독립이면 상관계수의 표준편차가 약 $1/\sqrt{10000} = 0.01$이라 0.05는 5배 거리예요.
+
+키 만들기의 이유와 구조는 [시드, spawn, 상태](/internals/random/seeding/)에 있어요.
+
+### 결정성: 스레드 수와 나눈 호출
+
+`test_the_same_on_any_thread_count_and_split_calls`는 스레드 1, 3, 10에서 같은 시드로 네 호출을 차례로 하고 결과의 바이트를 비교해요.
+
+| 호출 | 크기 | 고른 이유 |
+|---|---|---|
+| `random` | 300,001 | 4096의 배수도 16의 배수도 아니에요. 마지막 조각이 짧고, 다음 호출의 시작 위치가 무리 가운데예요 |
+| `integers(-10**18, 10**18)` | 200,003 | 큰 범위의 기각이 추가 단어를 써요 |
+| `permutation` | 50,000 | 순차 커널 |
+| `choice(1000)` | 100,000 | `integers`를 거치는 경로 |
+
+세 스레드 수의 바이트가 모두 같아야 해요. 이어서 `random(10_000)` 한 번과 `random(1)`, `random(3_333)`, `random(6_666)` 세 번의 결과가 바이트까지 같은지 봐요. 나눠 부를 때 각 호출의 시작 위치가 무리 가운데(1, 3334)에 놓여요.
+
+### 경계
+
+`test_bounds`는 범위의 끝을 봐요. `integers(-3, 4)` 10만 개의 최솟값·최댓값이 −3·3인지, `endpoint=True`면 4까지인지, int64 전체(`r = 2^64`, 커널에서 0으로 돌아 단어를 그대로 쓰는 경우) 1000개가 양쪽으로 넓게 퍼지는지(최솟값 $< -2^{61}$, 최댓값 $> 2^{61}$), 길이 1인 범위(`integers(5, 6)`, `integers(5, 5, endpoint=True)`)가 5인지 봐요. `random` $10^6$개는 모두 0 이상 1 미만이어야 해요.
+
+### 통계 검사
+
+`test_statistics`는 분포가 맞는지 봐요. 설계는 이래요.
+
+- **시드가 고정이라 결과가 늘 같아요.** 테스트가 가끔 실패하는 일은 없어요. 대신 p값의 기준이 "올바른 생성기가 이 시드에서 우연히 걸리지 않을 만큼" 낮아야 하고, "틀린 구현은 확실히 걸릴 만큼" 높아야 해요.
+- **기준은 p값 $10^{-4}$예요.** 올바른 구현이면 시드를 무작위로 골랐을 때 검사 하나가 걸릴 확률이 $10^{-4}$예요. 아래 표처럼, 이 검사들이 노리는 결함은 p값을 이보다 수십 자릿수 작게 만들어요.
+
+| 검사 | 표본 | 방법 | 이 기준에서 걸리는 크기 |
+|---|---|---|---|
+| `random` 균등 | 200,000 | Kolmogorov–Smirnov(경험 분포와 균등 분포의 최대 거리) | 거리 약 0.005 |
+| `integers(0, 7)` | 700,000 | 7칸 카이제곱 | 통계량 27.9 (자유도 6) |
+| `integers(0, 3·2^61)`을 $2^{61}$로 나눈 3칸 | 300,000 | 카이제곱 | 통계량 18.4 (자유도 2) |
+| `permutation(4)`의 24가지 순열 | 24,000번 | 24가지가 모두 나오는지 + 카이제곱 | 통계량 57.1 (자유도 23) |
+| `choice(4, p=[0.1, 0, 0.6, 0.3])` | 200,000 | 원소 1이 0번인지 + 나머지 3칸을 기댓값과 카이제곱 | 통계량 18.4 (자유도 2) |
+| 가중치 비복원 `choice(4, shape=2, p=[0.5, 0.25, 0.25, 0])` | 20,000번 | 원소 3이 안 나오는지, 두 원소가 다른지, 첫 원소가 0일 비율이 0.5 ± 0.02인지 | 비율의 표준편차 0.0035의 약 5.7배 |
+
+카이제곱 검사(칸마다 (관측 − 기대)² / 기대의 합)와 Kolmogorov–Smirnov 검사는 난수 검사의 기본 도구예요 [5].
+
+**각 검사가 잡는 것.**
+
+- **3칸 검사는 큰 범위의 기각을 봐요.** $r = 3 \cdot 2^{61}$이면 $t = 2^{64} \bmod r = 2^{62}$라 원소 넷 중 하나가 기각돼요. 기각 없이 나머지($w \bmod r$)를 쓰면 앞의 두 칸이 3/8, 뒤 칸이 2/8이 되어 통계량이 약 9400으로 기준의 500배예요. 단, 기각을 빼먹고 곱셈만 하는 경우의 치우침은 값마다 대응하는 $w$의 수가 2, 3, 3개로 되풀이되는 잔무늬라서 세 칸에 고르게 퍼져요. 이 검사로는 드러나지 않아요.
+- **순열 검사는 섞기의 균등성을 봐요.** 흔한 실수인 "자리마다 $[0, n)$에서 골라 바꾸기"는 $n = 4$에서 뽑기 256가지를 순열 24가지에 8~15개씩 나눠 줘요. 24,000번이면 통계량의 기댓값이 약 740으로 기준(57.1)을 크게 넘어요.
+- **가중치 검사는 확률 0과 비율을 함께 봐요.** 확률 0인 원소가 가운데(원소 1)에 있어서, 구간을 찾는 위치가 한 칸 어긋나면 원소 1이 나오거나 나머지 칸의 비율이 `p`에서 벗어나요.
+- **비복원 가중치 검사는 첫 도착자의 분포를 봐요.** 지수 경주의 첫 원소는 확률 $p_i$로 골라져야 해요([뽑기 알고리즘](/internals/random/sampling/)).
+
+### 비복원과 배열
+
+`test_without_replacement_and_permutations_of_arrays`는 두 Fisher–Yates 경로를 하나씩 지나가요.
+
+- $10^9$개에서 1000개($k \le n/16$, 해시 맵 경로): 1000개가 모두 다르고 $[0, 10^9)$ 안에 있는지 봐요.
+- 50개에서 50개(배열 경로, 곧 순열): 정렬하면 `0 … 49`인지 봐요.
+- 6×2 배열의 `permutation`: 행이 통째로 움직였는지(행의 집합이 같은지)와 입력이 바뀌지 않았는지 봐요.
+- 배열 후보에서 `choice`: 결과가 후보 원소 안에 있는지 봐요.
+
+### 상태, 피클, 복사
+
+`test_state_pickle_copy`는 `random(17)` 뒤의 `state`에서 위치가 17인지 보고, `pickle`, `copy.copy`, `copy.deepcopy`로 만든 셋과 원래 생성기가 다음 다섯 값을 똑같이 내는지 봐요. 다른 생성기에 그 `state`를 대입하면, 처음부터 18개를 뽑은 것의 마지막 값을 내야 해요. 위치 하나로 생성기의 진행이 완전히 표현된다는 검사예요. `default_rng(r) is r`(Generator를 주면 같은 객체)도 여기서 봐요.
+
+### 여러 Python 스레드가 한 생성기를 쓸 때
+
+`test_threads_share_a_generator_without_reusing_numbers`는 Python 스레드 넷이 한 Generator로 `integers(0, 2**62, shape=1000)`을 50번씩 부르게 해요. 끝나면
+
+- 위치가 정확히 200,000이어야 하고(예약이 빠지거나 겹치지 않았다),
+- 20만 개의 값이 모두 달라야 해요.
+
+두 번째 조건이 "같은 구간을 두 번 받지 않았다"는 검사가 되는 이유는 범위가 $2^{62}$로 넓어서예요. 올바른 구현에서 20만 개 가운데 우연히 같은 값이 나올 확률은 약 $n^2 / (2 \cdot 2^{62}) \approx 4 \times 10^{-9}$예요. 구간을 두 번 받았다면 1000개가 통째로 겹쳐요.
+
+### 에러와 허용치
+
+- `test_errors`는 잘못된 인자 18가지에서 예외의 종류와 메시지를 봐요. 음수·float·bool 시드, 음수·float `shape`, 빈 범위, int64 밖의 `high`, float 경계, float 배열 경계, int인 `endpoint`, 모집단보다 큰 비복원 표본, 음수 `p`, 합이 1이 아닌 `p`, 2차원 후보, 빈 후보, 음수·문자열 `permutation` 인자예요.
+- `test_choice_p_within_numpys_tolerance`는 합이 $1 + 10^{-9}$인 `p`(허용치 $\sqrt{\varepsilon} \approx 1.5 \times 10^{-8}$ 안)를 받아 정규화해 쓰는지 봐요.
+- `test_scalars_and_shapes`는 `shape=None`이면 Python `float`·`int`를 돌려주는지, 배열 경계의 브로드캐스트 모양이 맞는지 봐요.
+
+## 참고 문헌
+
+1. J. K. Salmon, M. A. Moraes, R. O. Dror, D. E. Shaw, "Parallel random numbers: as easy as 1, 2, 3", *Proceedings of the International Conference for High Performance Computing, Networking, Storage and Analysis (SC '11)*, ACM, 2011. doi:10.1145/2063384.2063405
+2. D. Lemire, "Fast Random Integer Generation in an Interval", *ACM Transactions on Modeling and Computer Simulation* 29(1), 2019. doi:10.1145/3230636
+3. D. E. Shaw Research, Random123 저장소의 README. https://github.com/DEShawResearch/random123 (TestU01 통과)
+4. P. L'Ecuyer, R. Simard, "TestU01: A C library for empirical testing of random number generators", *ACM Transactions on Mathematical Software* 33(4), 2007. doi:10.1145/1268776.1268777
+5. D. E. Knuth, *The Art of Computer Programming, Vol. 2: Seminumerical Algorithms*, 3rd ed., Addison-Wesley, 1997. (3.3.1절 General Test Procedures for Studying Random Data: 카이제곱 검사, Kolmogorov–Smirnov 검사)
+6. numpy 2.5.4 소스. `numpy/random/src/distributions/distributions.c`(`random_standard_uniform_fill`, `bounded_lemire_uint64`, `random_interval`), `numpy/random/src/pcg64/pcg64.h`, `numpy/random/src/philox/philox.h`, `numpy/random/_generator.pyx`(`choice`, `permutation`, `_shuffle_raw`), `numpy/_core/src/npysort/binsearch.cpp`. https://github.com/numpy/numpy/tree/v2.5.4
+7. J. Bentley, B. Floyd, "Programming pearls: a sample of brilliance", *Communications of the ACM* 30(9), 754–757, 1987. doi:10.1145/30401.315746

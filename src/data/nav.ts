@@ -74,5 +74,5 @@ export const internalsAreas = [
   { key: 'frame', name: '데이터프레임', ns: 'sd.frame', desc: '' },
   { key: 'special', name: '특수함수', ns: 'sd.special', desc: '' },
   { key: 'stats', name: '통계', ns: 'sd.stats', desc: '' },
-  { key: 'random', name: '난수', ns: 'sd.random', desc: '' },
+  { key: 'random', name: '난수', ns: 'sd.random', desc: '계수기형 생성기 Philox, 시드와 spawn, 정수·순열·가중치 추출의 알고리즘, 성능과 검증' },
 ] as const;

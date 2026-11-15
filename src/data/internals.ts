@@ -9,6 +9,7 @@ const groupOrder: Record<string, string[]> = {
   core: ['전체 구조', '병렬 처리', 'Python과의 경계'],
   array: ['데이터', '연산 엔진', '집계와 통계', '인덱싱과 정렬', '행렬곱', '성능과 정확도'],
   linalg: ['구조', '기본 연산', '선형 시스템과 분해', '고유값과 특이값', '특수 구조와 행렬 함수', '성능과 정확도'],
+  random: ['생성기', '뽑기', '성능과 검증'],
 };
 
 export const splitInternalsId = (entry: InternalsEntry) => splitEntryId(entry);
