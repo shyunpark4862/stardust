@@ -1,0 +1,348 @@
+---
+title: 엔트로피
+names: [entr, rel_entr]
+group: 로지스틱과 정보량
+order: 3
+signatures:
+  - "sd.special.entr(x, /, *, out=None)"
+  - "sd.special.rel_entr(x, y, /, *, out=None)"
+summary: entr는 엔트로피의 한 항 -x·log(x)를, rel_entr는 KL 발산의 한 항 x·log(x/y)를 원소마다 계산해요. 결과를 sum으로 더하면 확률 분포의 엔트로피와 두 분포 사이의 KL 발산이 돼요.
+params:
+  - name: x
+    type: ndarray 또는 Python 숫자
+    kind: positional-only
+    desc: 확률(또는 0 이상의 양). entr는 x ≥ 0, rel_entr는 x ≥ 0에서 뜻이 있어요.
+  - name: y
+    type: ndarray 또는 Python 숫자
+    kind: positional-only
+    desc: rel_entr 전용. 비교 대상 분포의 확률. x와 모양이 다르면 브로드캐스팅으로 맞춰요.
+  - name: out
+    type: ndarray 또는 None
+    kind: keyword-only
+    desc: 결과를 적어 넣을 배열. None이면 새 배열을 만들어요.
+returns:
+  type: ndarray 또는 Python 숫자
+  desc: 입력(rel_entr는 두 입력을 브로드캐스팅한)과 같은 모양의 float64 배열이에요. 입력이 모두 Python 숫자면 결과도 Python float예요.
+raises:
+  - type: TypeError
+    desc: 복소수 배열을 넣었을 때, 리스트처럼 배열도 숫자도 아닌 것을 넣었을 때, out의 dtype이 float64를 담을 수 없을 때.
+  - type: ValueError
+    desc: rel_entr의 두 입력이나 out의 모양이 브로드캐스팅으로 맞지 않을 때.
+  - type: OverflowError
+    desc: int64 범위를 벗어난 Python 정수를 넣었을 때.
+seeAlso: [xlogy, expit, softmax, logsumexp, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+## 한눈에 보기
+
+**엔트로피**는 확률 분포가 얼마나 "예측하기 어려운가"를 잰 수예요. 늘 앞면만 나오는 동전은 결과를 미리 알 수 있으니 엔트로피가 0이고, 앞뒤가 반반인 동전은 가장 예측하기 어려워서 엔트로피가 커요. 확률 분포 p의 엔트로피는 이렇게 정의해요.
+
+$$H(p) = -\sum_i p_i \log p_i$$
+
+`entr(x)`는 이 합의 **한 항** `-x·log(x)`를 원소마다 계산해요. 그래서 엔트로피는 `sd.sum(entr(p))`예요.
+
+```python
+>>> import stardust as sd
+>>> s = sd.special
+>>> p = sd.asarray([0.5, 0.25, 0.25])
+>>> sd.sum(s.entr(p))
+1.0397207708399179
+```
+
+**KL 발산**(Kullback–Leibler divergence, 상대 엔트로피)은 두 분포 p와 q가 얼마나 다른지 잰 수예요. 같으면 0이고, 다를수록 커요. `rel_entr(x, y)`는 그 합의 한 항 `x·log(x/y)`예요.
+
+$$D_{\mathrm{KL}}(p \,\|\, q) = \sum_i p_i \log\frac{p_i}{q_i}$$
+
+```python
+>>> q = sd.asarray([1/3, 1/3, 1/3])
+>>> sd.sum(s.rel_entr(p, q))
+0.05889151782819178
+>>> sd.sum(s.rel_entr(p, p))
+0.0
+```
+
+어디에 쓰나요?
+
+- **정보 이론**: 엔트로피는 결과 하나를 전하는 데 평균 몇 비트가 필요한지예요. 압축의 한계가 이 값이에요.
+- **머신러닝**: 분류 모델의 교차 엔트로피 손실, 결정 트리의 정보 이득(가지를 나눈 뒤 엔트로피가 얼마나 줄었나), 변분 오토인코더와 강화학습의 KL 정규화에 나와요.
+- **통계**: KL 발산으로 "모델 분포 q가 실제 분포 p를 얼마나 잘 흉내 내는가"를 재요. 모델 선택 기준(AIC 등)의 바탕이에요.
+- **생태학·사회과학**: 종이나 집단의 비율로 계산한 엔트로피를 다양성 지수(섀넌 지수)로 써요.
+
+정의는 이래요. 0과 음수에서 어떤 값을 정했는지가 중요해요(아래 특수값 표).
+
+$$
+\operatorname{entr}(x) =
+\begin{cases}
+-x \log x & x > 0 \\
+0 & x = 0 \\
+-\infty & x < 0
+\end{cases}
+\qquad
+\operatorname{rel\_entr}(x, y) =
+\begin{cases}
+x \log(x / y) & x > 0,\ y > 0 \\
+0 & x = 0,\ y \ge 0 \\
+\infty & \text{그 밖}
+\end{cases}
+$$
+
+<Fig caption="entr(x) = -x·log x는 0과 1에서 0이고, x = 1/e에서 가장 커요(값도 1/e). 1보다 큰 x에서는 음수예요.">
+  <Plot
+    curves={[
+      { f: (x) => (x === 0 ? 0 : -x * Math.log(x)), label: 'entr(x)' },
+    ]}
+    domain={[0, 1.6]}
+    range={[-0.6, 0.5]}
+    xTicks={[
+      { v: 0.3679, label: '1/e' },
+      { v: 1, label: '1' },
+      { v: 1.5, label: '1.5' },
+    ]}
+    yTicks={[
+      { v: 0.3679, label: '1/e' },
+      { v: -0.4, label: '-0.4' },
+    ]}
+  />
+</Fig>
+
+<Reference />
+
+## entr: 엔트로피 계산하기
+
+확률 분포를 배열로 만들고 `entr`를 적용한 뒤 더하면 엔트로피예요. 몇 가지 분포를 비교해 보면 뜻이 잘 보여요.
+
+```python
+>>> sd.sum(s.entr(sd.asarray([1.0, 0.0, 0.0])))
+0.0
+>>> sd.sum(s.entr(sd.full(4, 0.25)))
+1.3862943611198906
+>>> sd.log(4.0)
+1.3862943611198906
+```
+
+결과가 하나로 정해진 분포는 엔트로피가 0이에요. 확률이 0인 칸이 있어도 `entr(0) = 0`이라 NaN이 생기지 않아요. 네 가지가 똑같이 나오는 분포는 `log 4`이고, 가짓수가 n인 분포 가운데 엔트로피가 가장 큰 것은 언제나 고르게 나뉜 분포(값 `log n`)예요.
+
+### 단위: 나트와 비트
+
+`entr`는 자연로그를 써서 단위가 **나트**(nat)예요. 정보 이론에서 흔히 쓰는 **비트**로 바꾸려면 `log 2`로 나눠요.
+
+```python
+>>> sd.sum(s.entr(p)) / sd.log(2.0)
+1.5
+```
+
+확률 `[0.5, 0.25, 0.25]`의 결과 하나를 전하는 데 평균 1.5비트가 필요하다는 뜻이에요. 첫째는 1비트, 나머지 둘은 2비트로 적으면 평균이 0.5 × 1 + 0.25 × 2 + 0.25 × 2 = 1.5예요.
+
+### 여러 분포를 한꺼번에
+
+분포를 행마다 하나씩 담고 `axis=1`로 더하면 행마다 엔트로피가 나와요. 축의 뜻은 [sum](/api/array/sum/)에 있어요.
+
+```python
+>>> coin = sd.asarray([[0.5, 0.5], [0.9, 0.1], [1.0, 0.0]])
+>>> sd.sum(s.entr(coin), axis=1)
+array([0.6931471805599453, 0.3250829733914482,                0.0], dtype=float64)
+```
+
+공정한 동전, 한쪽으로 치우친 동전, 늘 앞면인 동전 순서로 엔트로피가 줄어요.
+
+<Fig caption="앞면 확률이 p인 동전의 엔트로피 entr(p) + entr(1 - p). p = 0.5에서 가장 크고(log 2 ≈ 0.693), 0이나 1에 가까울수록 0으로 떨어져요.">
+  <Plot
+    curves={[
+      { f: (p) => (p <= 0 || p >= 1 ? 0 : -p * Math.log(p) - (1 - p) * Math.log(1 - p)), label: 'entr(p) + entr(1 - p)' },
+      { f: () => Math.LN2, label: 'log 2', dashed: true },
+    ]}
+    domain={[0, 1]}
+    range={[0, 0.8]}
+    xTicks={[
+      { v: 0.25, label: '0.25' },
+      { v: 0.5, label: '0.5' },
+      { v: 0.75, label: '0.75' },
+      { v: 1, label: '1' },
+    ]}
+    yTicks={[
+      { v: 0.2, label: '0.2' },
+      { v: 0.4, label: '0.4' },
+      { v: 0.6, label: '0.6' },
+    ]}
+  />
+</Fig>
+
+### 개수에서 시작한다면
+
+`entr`는 입력이 확률인지 확인하지 않아요. 개수를 그대로 넣으면 엔트로피가 아닌 엉뚱한 수(음수일 수도 있어요)가 나와요. 먼저 합으로 나눠서 비율로 바꾸세요.
+
+```python
+>>> c = sd.asarray([3.0, 1.0, 0.0])
+>>> sd.sum(s.entr(c))
+-3.295836866004329
+>>> sd.sum(s.entr(c / sd.sum(c)))
+0.5623351446188083
+```
+
+## rel_entr: 두 분포의 KL 발산
+
+`rel_entr(p, q)`를 더하면 KL 발산 `D(p‖q)`예요. "실제 분포가 p인데 q라고 믿고 부호를 설계하면, 결과 하나에 평균 몇 나트를 더 쓰게 되나"로 읽을 수 있어요.
+
+KL 발산에는 알아 둘 성질이 셋 있어요.
+
+1. **언제나 0 이상이고, 두 분포가 같을 때만 0이에요.**
+2. **순서를 바꾸면 값이 달라요.** `D(p‖q)`와 `D(q‖p)`는 보통 다르기 때문에 "거리"라고 부르지 않고 "발산"이라고 불러요.
+3. **항 하나하나는 음수일 수 있어요.** 합만 0 이상이에요.
+
+```python
+>>> p2 = sd.asarray([0.9, 0.1])
+>>> q2 = sd.asarray([0.5, 0.5])
+>>> sd.sum(s.rel_entr(p2, q2)), sd.sum(s.rel_entr(q2, p2))
+(0.3680642071684971, 0.5108256237659906)
+>>> s.rel_entr(p2, q2)
+array([ 0.5290079984119072, -0.16094379124341004], dtype=float64)
+```
+
+<Fig caption="앞면 확률이 p인 동전과 공정한 동전 사이의 KL 발산 D(p‖0.5). p = 0.5에서 0이고, 멀어질수록 커지다가 끝에서 log 2에 닿아요.">
+  <Plot
+    curves={[
+      {
+        f: (p) => {
+          const t = (a) => (a <= 0 ? 0 : a * Math.log(a / 0.5));
+          return t(p) + t(1 - p);
+        },
+        label: 'D(p‖0.5)',
+      },
+      { f: () => Math.LN2, label: 'log 2', dashed: true },
+    ]}
+    domain={[0, 1]}
+    range={[0, 0.8]}
+    xTicks={[
+      { v: 0.25, label: '0.25' },
+      { v: 0.5, label: '0.5' },
+      { v: 0.75, label: '0.75' },
+      { v: 1, label: '1' },
+    ]}
+    yTicks={[
+      { v: 0.2, label: '0.2' },
+      { v: 0.4, label: '0.4' },
+      { v: 0.6, label: '0.6' },
+    ]}
+  />
+</Fig>
+
+### 0이 섞일 때
+
+확률 0이 어디에 있느냐에 따라 결과가 크게 달라요.
+
+- **p가 0인 칸**은 KL 발산에 아무것도 보태지 않아요(`rel_entr(0, y) = 0`). 일어나지 않는 일은 따질 필요가 없어요.
+- **p는 0이 아닌데 q가 0인 칸**이 있으면 KL 발산은 무한대예요(`rel_entr(x, 0) = inf`). q가 "절대 일어나지 않는다"고 한 일이 실제로는 일어나니, q는 p를 전혀 설명하지 못하는 셈이에요.
+
+```python
+>>> r = sd.asarray([0.5, 0.5, 0.0])
+>>> sd.sum(s.rel_entr(r, p))
+0.34657359027997264
+>>> sd.sum(s.rel_entr(p, r))
+inf
+```
+
+`p`에서 `r`로 가면 무한대가 되는 이유는, `r`이 확률 0을 준 셋째 칸에 `p`는 0.25를 주기 때문이에요.
+
+### 교차 엔트로피와의 관계
+
+분류 모델의 손실로 자주 쓰는 **교차 엔트로피** `-Σ p log q`는 엔트로피와 KL 발산의 합이에요.
+
+$$-\sum_i p_i \log q_i = H(p) + D_{\mathrm{KL}}(p \,\|\, q)$$
+
+정답 분포 p의 엔트로피 `H(p)`는 모델과 상관없는 상수라서, 교차 엔트로피를 줄이는 것은 KL 발산을 줄이는 것과 같아요. 교차 엔트로피는 [`xlogy`](/api/special/xlogy/)로 바로 계산할 수 있어요.
+
+```python
+>>> sd.sum(-s.xlogy(p, q))
+1.0986122886681098
+>>> sd.sum(s.entr(p)) + sd.sum(s.rel_entr(p, q))
+1.0986122886681096
+```
+
+## 특수값
+
+이 함수들은 값 때문에 에러를 내지 않아요. 확률로 뜻이 없는 입력(음수 등)에도 정해진 값을 돌려줘요. NaN이 들어가면 NaN이 나와요.
+
+| 입력 | 결과 | 뜻 |
+|---|:---:|---|
+| `entr(0)` | `0.0` | 확률 0인 항은 엔트로피에 보태지 않아요. |
+| `entr(1)` | `-0.0` | 확실한 사건. 음의 부호가 붙은 0이에요. |
+| `entr(inf)` | `-inf` | |
+| `entr(x)`, `x < 0` | `-inf` | NaN이 아니에요. |
+| `rel_entr(0, y)`, `y >= 0` | `0.0` | y가 0이나 inf여도 0이에요. |
+| `rel_entr(x, 0)`, `x > 0` | `inf` | q가 0인 곳에 p가 있어요. |
+| `rel_entr(x, y)`, x나 y가 음수 | `inf` | 확률이 아닌 입력이에요. |
+| `rel_entr(inf, y)`, `rel_entr(x, inf)` | `inf`, `-inf` | x, y는 양의 유한수 |
+| `rel_entr(inf, inf)` | NaN | |
+
+```python
+>>> s.entr(sd.asarray([0.0, 1.0, sd.inf, -0.5, sd.nan]))
+array([ 0.0, -0.0, -inf, -inf,  nan], dtype=float64)
+>>> s.rel_entr(sd.asarray([0.0, 0.0, 0.5, 0.5]), sd.asarray([0.0, 0.5, 0.0, 0.5]))
+array([0.0, 0.0, inf, 0.0], dtype=float64)
+>>> s.rel_entr(sd.asarray([-1.0, 1.0, 0.0]), sd.asarray([1.0, -1.0, -1.0]))
+array([inf, inf, inf], dtype=float64)
+>>> s.rel_entr(sd.asarray([sd.inf, 1.0, sd.inf]), sd.asarray([1.0, sd.inf, sd.inf]))
+array([ inf, -inf,  nan], dtype=float64)
+```
+
+## 입력과 결과
+
+배열과 Python 숫자를 받아요. 정수와 bool은 float64로 바꿔서 계산하고, 결과는 언제나 float64예요. 입력이 모두 Python 숫자면 결과도 Python `float`예요. `rel_entr`의 두 입력은 [브로드캐스팅](/api/array/broadcasting/)으로 모양을 맞춰서, 여러 분포를 한 기준 분포와 한꺼번에 비교할 수 있어요.
+
+```python
+>>> s.entr(2)
+-1.3862943611198906
+>>> sd.sum(s.rel_entr(sd.asarray([[0.5, 0.5], [0.9, 0.1]]), sd.asarray([0.5, 0.5])), axis=1)
+array([               0.0, 0.3680642071684971], dtype=float64)
+```
+
+`out=`의 규칙은 [사칙연산](/api/array/arithmetic/)의 `out`과 같아요.
+
+## 정확도
+
+두 함수 모두 **정의역 전체**에서 상대오차 1e-14 이하를 약속해요(`entr`는 `x >= 0`, `rel_entr`는 x와 y가 모두 양수). 앞에서부터 대략 14자리가 맞는다는 뜻이에요. 실제로 잰 최대 오차는 `entr` 1.3 ULP, `rel_entr` 2.1 ULP예요. ULP의 뜻은 [특수함수의 기본](/api/special/basics/)에 있어요.
+
+## 조심할 점
+
+- **확률인지 확인하지 않아요.** 합이 1이 아니거나 음수가 섞여 있어도 계산은 해요. 개수는 비율로 바꾼 다음 넣으세요.
+- **`entr`의 음수 입력은 NaN이 아니라 `-inf`예요.** 엔트로피 합에 음수가 섞이면 결과가 `-inf`가 되니, 입력이 확률인지 의심스러울 때 단서가 돼요.
+- **KL 발산은 순서가 중요해요.** `rel_entr(p, q)`는 "실제 분포 p, 모델 q"의 순서예요. 바꾸면 다른 값이 나와요.
+- **q에 0이 있으면 KL 발산이 inf가 되기 쉬워요.** 모델 분포 q가 어떤 결과에도 0을 주지 않게 아주 작은 값을 섞어 두는 일이 흔해요.
+- **결과는 나트 단위예요.** 비트가 필요하면 `log 2`로 나눠요.
+- **복소수는 받지 않아요.**
+
+```python
+>>> s.entr(sd.asarray([1 + 0j]))
+Traceback (most recent call last):
+    ...
+TypeError: entr(): not supported for complex128
+```
+
+## 비슷한 함수와의 차이
+
+| 쓸 것 | 계산 | 다른 점 |
+|---|:---:|---|
+| `entr(x)` | −x·log x | 엔트로피의 한 항. 음수 x는 `-inf`예요. |
+| [`xlogy(x, x)`](/api/special/xlogy/) | x·log x | `entr`와 부호가 반대예요. 음수 x는 NaN이에요. |
+| `-x * sd.log(x)` | −x·log x | x = 0에서 NaN이 나와요. |
+| `rel_entr(x, y)` | x·log(x/y) | KL 발산의 한 항. 정의역 밖은 `inf`예요. |
+| `xlogy(x, x) - xlogy(x, y)` | x·log x − x·log y | 수학적으로는 `rel_entr`와 같지만, 정의역 밖에서 NaN이 나오고 x와 y가 아주 가까우면 정밀도를 잃어요. |
+
+마지막 줄의 예를 볼게요. x와 y가 열두째 자리에서만 다르면, 거의 같은 두 수 `x·log x`와 `x·log y`를 빼는 동안 앞자리가 지워져서 넷째 자리부터 틀려요. `rel_entr`는 참값 `-3.0003777240479852e-13`과 끝자리까지 맞아요.
+
+```python
+>>> x, y = 0.3, 0.3 * (1 + 1e-12)
+>>> s.xlogy(x, x) - s.xlogy(x, y)
+-3.000932835561798e-13
+>>> s.rel_entr(x, y)
+-3.0003777240479856e-13
+```
+
+## scipy를 아는 분께
+
+- 정의와 특수값은 `scipy.special.entr`, `rel_entr`와 비트까지 같아요(`entr(x < 0) = -inf`, `rel_entr(inf, inf) = nan` 포함).
+- `kl_div`(x·log(x/y) − x + y)는 없어요. 필요하면 `rel_entr(x, y) - x + y`로 계산하세요. 두 입력이 모두 합이 1인 분포라면 `-x + y` 항의 합이 0이라 `rel_entr`의 합과 같아요.
+- 리스트와 numpy 배열은 받지 않아요. Python 숫자를 넣으면 numpy 스칼라가 아니라 Python `float`가 나와요. `out`은 keyword-only예요.

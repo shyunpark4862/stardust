@@ -3,11 +3,15 @@
  * A small function plot, drawn at build time.
  *
  *   curves  [{ f: (x) => y, label, dashed? }]   up to three
+ *           or [{ points: [[x, y], ...], label, dashed? }] for values computed
+ *           elsewhere (e.g. special functions JavaScript has no formula for);
+ *           the points are joined in order, a NaN or out-of-frame y lifts the pen
  *   domain  [x0, x1]        range  [y0, y1]
  *   xTicks / yTicks  [{ v, label }]  grid lines with labels
  */
 interface Curve {
-  f: (x: number) => number;
+  f?: (x: number) => number;
+  points?: [number, number][];
   label: string;
   dashed?: boolean;
 }
@@ -32,14 +36,17 @@ const sy = (y: number) => H - pad.b - ((y - range[0]) / (range[1] - range[0])) *
 
 // Sample each curve; start a new stroke wherever the value leaves the frame
 // (a pole of tan, the edge of acos's domain) so no line is drawn across the gap.
-function pathOf(f: (x: number) => number): string {
+function pathOf(c: Curve): string {
   const n = 480;
+  const pts: [number, number][] =
+    c.points ?? Array.from({ length: n + 1 }, (_, i) => {
+      const x = domain[0] + ((domain[1] - domain[0]) * i) / n;
+      return [x, c.f!(x)] as [number, number];
+    });
   const slack = (range[1] - range[0]) * 0.02;
   let d = '';
   let pen = false;
-  for (let i = 0; i <= n; i++) {
-    const x = domain[0] + ((domain[1] - domain[0]) * i) / n;
-    const y = f(x);
+  for (const [x, y] of pts) {
     const ok = Number.isFinite(y) && y >= range[0] - slack && y <= range[1] + slack;
     if (!ok) {
       pen = false;
@@ -62,7 +69,7 @@ const zeroY = range[0] <= 0 && range[1] >= 0;
     {zeroX && <line class="plot__axis" x1={sx(0)} x2={sx(0)} y1={pad.t} y2={H - pad.b} />}
     {xTicks.map((t) => <text class="plot__tick" x={sx(t.v)} y={H - 10} text-anchor="middle">{t.label}</text>)}
     {yTicks.map((t) => <text class="plot__tick" x={pad.l - 8} y={sy(t.v) + 4} text-anchor="end">{t.label}</text>)}
-    {curves.map((c, i) => <path class:list={['plot__curve', `plot__curve--${i}`, c.dashed && 'plot__curve--dashed']} d={pathOf(c.f)} />)}
+    {curves.map((c, i) => <path class:list={['plot__curve', `plot__curve--${i}`, c.dashed && 'plot__curve--dashed']} d={pathOf(c)} />)}
   </svg>
   <ul class="plot__legend">
     {
