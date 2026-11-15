@@ -28,7 +28,7 @@ raises:
     desc: x가 배열이 아닐 때, rowvar가 True/False가 아닐 때, correction이 수가 아니거나 bool일 때.
   - type: ValueError
     desc: x가 1차원도 2차원도 아닐 때.
-seeAlso: [var, mean, quantile, matmul]
+seeAlso: [var, mean, quantile, matmul, threads]
 ---
 import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
@@ -283,6 +283,10 @@ array([[0.9999999999999999, 0.9811049102515927],
 array([[0.22222222222222224, 0.11111111111111112],
        [0.11111111111111112, 0.22222222222222224]], dtype=float64)
 ```
+
+### 스레드 수 설정을 따르지 않아요
+
+`cov`와 `corrcoef`는 편차끼리 곱해 더하는 큰 계산을 운영체제가 제공하는 행렬 계산 라이브러리(BLAS, macOS에서는 Accelerate)에 맡겨요. 이 라이브러리는 쓸 스레드 수를 스스로 정해서, [`sd.set_num_threads`](/api/array/threads/)로 바꿀 수 없어요. `sd.set_num_threads(1)`로 두어도 여러 코어를 쓸 수 있고, 스레드 수를 늘린다고 빨라지지도 않아요. 결과는 설정과 상관없이 언제나 같아요.
 
 ### 옵션은 이름을 붙여서
 

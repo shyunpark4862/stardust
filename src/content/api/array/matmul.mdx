@@ -25,7 +25,7 @@ raises:
     desc: x1이나 x2가 배열이 아닐 때(리스트, Python 숫자 포함), @=의 결과를 x1의 dtype에 담을 수 없을 때.
   - type: ValueError
     desc: x1의 열 수와 x2의 행 수가 다를 때, 앞쪽 배치 축끼리 브로드캐스팅이 안 될 때, @=의 결과 모양이 x1과 다를 때.
-seeAlso: [vecdot, tensordot, arithmetic, broadcasting, permute_dims, sum]
+seeAlso: [vecdot, tensordot, arithmetic, broadcasting, permute_dims, sum, threads]
 ---
 import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
@@ -406,6 +406,12 @@ TypeError: matmul(): 'x1' must be an sd.ndarray, not list
 array([[0.0, 0.0, 0.0],
        [0.0, 0.0, 0.0]], dtype=float64)
 ```
+
+### 실수 행렬곱은 스레드 수 설정을 따르지 않아요
+
+실수(float64)와 복소수(complex128) 행렬의 곱은 운영체제가 제공하는 행렬 계산 라이브러리(BLAS, macOS에서는 Accelerate)로 계산해요. 이 라이브러리는 쓸 스레드 수를 스스로 정해서, [`sd.set_num_threads`](/api/array/threads/)로 바꿀 수 없어요. `sd.set_num_threads(1)`로 두어도 큰 행렬의 곱은 여러 코어를 쓸 수 있어요.
+
+결과는 설정과 상관없이 언제나 같아요. 작은 행렬을 여러 개 쌓아 한꺼번에 곱할 때와 정수·bool 행렬의 곱은 stardust가 스레드를 나눠 맡기므로 `sd.set_num_threads`를 따라요.
 
 ### `dot` 함수는 없어요
 
