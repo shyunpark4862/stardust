@@ -2,6 +2,13 @@ import { defineCollection } from 'astro:content';
 import { glob } from 'astro/loaders';
 import { z } from 'astro/zod';
 
+/**
+ * An entry's id is its path without the extension ("frame/index"), so the
+ * URL slug is always the file name. The default id would drop a file named
+ * index.mdx down to its folder ("frame") and lose the slug.
+ */
+const pathId = ({ entry }: { entry: string }) => entry.replace(/\.mdx$/, '');
+
 const field = z.object({
   /** Type as written in the docs, e.g. "ndarray". */
   type: z.string(),
@@ -16,7 +23,7 @@ const field = z.object({
  * frontmatter is the reference card; the body is the long-form text.
  */
 const api = defineCollection({
-  loader: glob({ pattern: '**/*.mdx', base: './src/content/api' }),
+  loader: glob({ pattern: '**/*.mdx', base: './src/content/api', generateId: pathId }),
   schema: z.object({
     kind: z.enum(['function', 'concept']).default('function'),
     /** Page heading: the function name, or a Korean title for families and concepts. */
@@ -47,7 +54,7 @@ const api = defineCollection({
  * places the page.
  */
 const internals = defineCollection({
-  loader: glob({ pattern: '**/*.mdx', base: './src/content/internals' }),
+  loader: glob({ pattern: '**/*.mdx', base: './src/content/internals', generateId: pathId }),
   schema: z.object({
     title: z.string(),
     group: z.string(),

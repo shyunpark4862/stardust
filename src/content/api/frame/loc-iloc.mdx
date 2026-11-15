@@ -1,0 +1,556 @@
+---
+title: loc과 iloc
+names: [Series.loc, Series.iloc, DataFrame.loc, DataFrame.iloc]
+group: 선택과 대입
+order: 2
+signatures:
+  - "Series.loc[rows]"
+  - "Series.iloc[rows]"
+  - "DataFrame.loc[rows]"
+  - "DataFrame.loc[rows, columns]"
+  - "DataFrame.iloc[rows]"
+  - "DataFrame.iloc[rows, columns]"
+summary: 행과 열을 골라요. `.loc`은 라벨(행 이름표와 컬럼 이름)로, `.iloc`은 위치(0부터 세는 번호)로 골라요. 대입의 왼쪽에 쓰면 고른 자리에 값을 써넣어요.
+params:
+  - name: rows
+    type: ".loc: 라벨, 라벨 리스트, 라벨 슬라이스, bool Series / .iloc: 정수, 정수 리스트, 슬라이스"
+    kind: 대괄호 안 첫째 자리
+    desc: 고를 행. 리스트 자리에는 1차원 numpy 배열과 stardust 배열도 돼요.
+  - name: columns
+    type: ".loc: 이름, 이름 리스트, 이름 슬라이스, : / .iloc: 정수, 정수 리스트, 슬라이스"
+    kind: 대괄호 안 둘째 자리 (DataFrame만)
+    desc: 고를 열. 생략하면 모든 열이에요.
+returns:
+  type: Python 값, Series, 또는 DataFrame
+  desc: Series에서 행 하나는 Python 값, 그 밖은 Series. DataFrame에서 행 하나·열 하나는 Python 값, 열 하나는 Series, 그 밖은 DataFrame(행 하나만 골라도 1행 DataFrame)이에요.
+raises:
+  - type: KeyError
+    desc: ".loc에 없는 라벨이나 컬럼 이름을 줬을 때, 여러 행에 있는 라벨 하나로 골랐을 때, 슬라이스 끝 라벨이 없거나 고유하지 않을 때."
+  - type: IndexError
+    desc: ".iloc의 위치가 범위를 벗어났을 때, 위치 자리에 정수·슬라이스·정수 리스트가 아닌 것(bool, float, str 등)을 줬을 때."
+  - type: TypeError
+    desc: ".loc의 라벨 타입이 라벨들의 dtype과 맞지 않을 때(정수 라벨에 2.0이나 True, 문자열 라벨에 숫자), tuple을 행 라벨로 줬을 때, 마스크가 bool Series가 아닐 때."
+  - type: ValueError
+    desc: "슬라이스의 step이 0일 때, 열 이름 슬라이스에 step을 줬을 때, 마스크의 라벨이 대상의 라벨과 다를 때."
+seeAlso: [selection, mask, assign, reindex, alignment, index, head-tail]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
+import FrameFig from '../../../components/fig/FrameFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+표의 행을 가리키는 방법은 두 가지예요.
+
+- **라벨(label)**: 행에 붙은 이름표예요. 아래 표에서는 `mon`, `tue` 같은 요일이에요. 행을 정렬하거나 거르더라도 이름표는 행을 따라다녀요.
+- **위치(position)**: 위에서부터 0, 1, 2…로 센 번호예요. 행의 순서가 바뀌면 같은 행의 위치도 바뀌어요.
+
+`.loc`은 라벨로, `.iloc`은 위치로 골라요(`i`는 integer, 정수 번호라는 뜻이에요). 대괄호 안에 쉼표를 두고 **행, 열** 순서로 적어요. 열을 생략하면 모든 열이에요.
+
+```python
+>>> import stardust as sd
+>>> df = sd.frame.DataFrame(
+...     {"city": ["Seoul", "Busan", "Jeju", "Daegu"],
+...      "temp": [3.5, 8.0, 10.2, 4.1],
+...      "rain": [0, 2, 5, 0]},
+...     index=["mon", "tue", "wed", "thu"],
+... )
+>>> df
+      city  temp  rain
+mon  Seoul   3.5     0
+tue  Busan   8.0     2
+wed   Jeju  10.2     5
+thu  Daegu   4.1     0
+>>> df.loc["tue", "temp"]
+8.0
+>>> df.iloc[1, 1]
+8.0
+```
+
+<Fig caption="같은 칸을 두 가지로 가리켜요. .loc은 행 이름표 tue와 컬럼 이름 temp로, .iloc은 1번 행과 1번 열로 찾아요.">
+  <FrameFig name='df.loc["tue", "temp"]' columns={['city', 'temp', 'rain']} index={['mon', 'tue', 'wed', 'thu']}
+    data={[['Seoul', 3.5, 0], ['Busan', 8.0, 2], ['Jeju', 10.2, 5], ['Daegu', 4.1, 0]]}
+    tones={[['m', 'm', 'm'], ['m', 'b', 'm'], ['m', 'm', 'm'], ['m', 'm', 'm']]} />
+  <FrameFig name="df.iloc[1, 1]" columns={['0', '1', '2']} index={[0, 1, 2, 3]}
+    data={[['Seoul', 3.5, 0], ['Busan', 8.0, 2], ['Jeju', 10.2, 5], ['Daegu', 4.1, 0]]}
+    tones={[['m', 'm', 'm'], ['m', 'b', 'm'], ['m', 'm', 'm'], ['m', 'm', 'm']]} />
+</Fig>
+
+라벨은 데이터의 뜻으로 고를 때("화요일 기온"), 위치는 데이터의 생김새로 고를 때("맨 위 두 행", "마지막 행") 손이 가요.
+
+```python
+>>> df.loc[["mon", "wed"], "city"]
+mon    Seoul
+wed     Jeju
+Name: city, dtype: string
+>>> df.iloc[-1]
+      city  temp  rain
+thu  Daegu   4.1     0
+```
+
+<Reference />
+
+## `.loc`: 라벨로 고르기
+
+`.loc`의 행 자리에는 네 가지를 쓸 수 있어요.
+
+| 행 자리 | 예 | 고르는 행 |
+|---|---|---|
+| 라벨 하나 | `df.loc["tue"]` | 그 라벨의 행 하나 |
+| 라벨 리스트 | `df.loc[["wed", "mon"]]` | 적은 순서대로 그 라벨들의 행 |
+| 라벨 슬라이스 | `df.loc["tue":"thu"]` | `tue`부터 `thu`까지, **양 끝 포함** |
+| bool Series | `df.loc[df["rain"] > 0]` | 값이 `True`인 행 ([조건으로 행 거르기](/api/frame/mask/)) |
+
+### 라벨 하나
+
+Series에서 라벨 하나로 고르면 Python 값이 나와요.
+
+```python
+>>> temp = df["temp"]
+>>> temp.loc["wed"]
+10.2
+```
+
+DataFrame에서 라벨 하나로 고르면 **1행짜리 DataFrame**이 나와요. 행과 열을 하나씩 함께 고르면 Python 값이에요.
+
+```python
+>>> df.loc["tue"]
+      city  temp  rain
+tue  Busan   8.0     2
+>>> df.loc["tue", "rain"]
+2
+```
+
+없는 라벨이면 `KeyError`예요.
+
+```python
+>>> df.loc["sun"]
+Traceback (most recent call last):
+    ...
+KeyError: 'sun'
+```
+
+### 라벨 리스트
+
+리스트에 적은 순서대로 행을 모아요. 같은 라벨을 두 번 적으면 그 행이 두 번 나와요. 하나라도 없는 라벨이 섞여 있으면 `KeyError`이고, 메시지에 없는 라벨을 모두 알려 줘요.
+
+```python
+>>> df.loc[["wed", "mon"]]
+      city  temp  rain
+wed   Jeju  10.2     5
+mon  Seoul   3.5     0
+>>> df.loc[["mon", "sun", "sat"]]
+Traceback (most recent call last):
+    ...
+KeyError: "labels not in the index: ['sun', 'sat']"
+```
+
+없는 라벨을 `NA` 행으로 채우고 싶다면 [`reindex`](/api/frame/reindex/)를 써요.
+
+### 라벨 슬라이스는 양 끝을 포함해요
+
+`"tue":"thu"`는 `tue` 행부터 `thu` 행까지 **표에 놓인 순서대로** 골라요. 끝 라벨 `thu`도 들어가요. 위치 슬라이스(`.iloc`)가 끝을 빼는 것과 달라요.
+
+```python
+>>> df.loc["tue":"thu"]
+      city  temp  rain
+tue  Busan   8.0     2
+wed   Jeju  10.2     5
+thu  Daegu   4.1     0
+>>> df.loc[:"tue"]
+      city  temp  rain
+mon  Seoul   3.5     0
+tue  Busan   8.0     2
+```
+
+슬라이스의 범위는 라벨 값의 크기가 아니라 **두 라벨이 표에서 놓인 자리**로 정해요. 그래서 양 끝 라벨은 꼭 표에 있어야 하고, 시작이 끝보다 뒤에 있으면 빈 결과예요. `step`도 쓸 수 있어요.
+
+```python
+>>> df.loc["tue":"sun"]
+Traceback (most recent call last):
+    ...
+KeyError: 'sun'
+>>> df.loc["thu":"mon"]
+Empty DataFrame
+Columns: [city, temp, rain]
+Index: []
+>>> df.loc["mon":"thu":2]
+      city  temp  rain
+mon  Seoul   3.5     0
+wed   Jeju  10.2     5
+>>> df.loc["thu":"tue":-1]
+      city  temp  rain
+thu  Daegu   4.1     0
+wed   Jeju  10.2     5
+tue  Busan   8.0     2
+```
+
+### 라벨의 타입이 맞아야 해요
+
+라벨이 정수인 표에는 정수 라벨만, 문자열인 표에는 문자열 라벨만 쓸 수 있어요. 값이 같아 보여도 `2.0`이나 `True`는 정수 라벨이 아니라서 `TypeError`예요. numpy 정수(`np.int64(2)`)는 정수라서 돼요.
+
+```python
+>>> score = sd.frame.Series([10, 20, 30, 40, 50], name="score")
+>>> score.loc[2]
+30
+>>> score.loc[2.0]
+Traceback (most recent call last):
+    ...
+TypeError: a label of an int64 index must be an int, not float
+>>> df.loc[0]
+Traceback (most recent call last):
+    ...
+TypeError: a label of a string index must be a str, not int
+```
+
+라벨은 행 하나에 하나의 값이에요. `df.loc["mon", "temp", "x"]`처럼 행 자리에 tuple이 오면 여러 단계의 라벨로 읽지 않고 `TypeError`예요.
+
+```python
+>>> df.loc["mon", "temp", "x"]
+Traceback (most recent call last):
+    ...
+TypeError: a tuple is not a row label (there is no MultiIndex)
+```
+
+## `.iloc`: 위치로 고르기
+
+`.iloc`의 행 자리에는 정수, 슬라이스, 정수 리스트를 써요. [배열의 인덱싱](/api/array/indexing/)과 같은 규칙이에요.
+
+| 행 자리 | 예 | 고르는 행 |
+|---|---|---|
+| 정수 | `df.iloc[0]`, `df.iloc[-1]` | 그 위치의 행 하나. 음수는 뒤에서부터 |
+| 슬라이스 | `df.iloc[1:3]` | 1번과 2번, **끝 미포함** |
+| 정수 리스트 | `df.iloc[[2, 0]]` | 적은 순서대로 그 위치의 행 |
+
+```python
+>>> df.iloc[1:3]
+      city  temp  rain
+tue  Busan   8.0     2
+wed   Jeju  10.2     5
+>>> df.iloc[[2, 0]]
+      city  temp  rain
+wed   Jeju  10.2     5
+mon  Seoul   3.5     0
+>>> temp.iloc[-1]
+4.1
+```
+
+결과의 행은 위치로 골랐어도 **원래 라벨을 그대로** 가지고 가요.
+
+슬라이스는 범위를 벗어나도 에러가 아니고 있는 데까지만 골라요. 정수 하나나 정수 리스트가 범위를 벗어나면 `IndexError`예요.
+
+```python
+>>> df.iloc[2:100]
+      city  temp  rain
+wed   Jeju  10.2     5
+thu  Daegu   4.1     0
+>>> df.iloc[9]
+Traceback (most recent call last):
+    ...
+IndexError: position 9 is out of range for 4 rows
+>>> temp.iloc[[0, -5]]
+Traceback (most recent call last):
+    ...
+IndexError: position -5 is out of range for 4 rows
+```
+
+### 위치 자리에는 정수만 와요
+
+위치 자리에 정수·슬라이스·정수 리스트가 아닌 것을 주면 `IndexError`예요. 배열에 틀린 인덱스를 줬을 때와 같은 예외예요. 값이 정수와 같아 보여도 `1.0`이나 `True`는 정수가 아니에요.
+
+```python
+>>> df.iloc[1.0]
+Traceback (most recent call last):
+    ...
+IndexError: cannot select rows by position with float; use an int, a slice or a list of ints
+>>> df.iloc["tue"]
+Traceback (most recent call last):
+    ...
+IndexError: cannot select rows by position with str; use an int, a slice or a list of ints
+>>> df.iloc[[1.0]]
+Traceback (most recent call last):
+    ...
+IndexError: positions must be ints, not float
+```
+
+슬라이스의 `step`이 0이면 `ValueError`예요. `.loc`의 라벨 슬라이스도 같아요.
+
+```python
+>>> df.iloc[::0]
+Traceback (most recent call last):
+    ...
+ValueError: slice step cannot be zero
+```
+
+## DataFrame: 행과 열을 함께 고르기
+
+DataFrame에서는 쉼표 뒤에 열을 적어요. `.loc`의 열 자리는 컬럼 이름으로, `.iloc`의 열 자리는 열 번호로 골라요.
+
+| 열 자리 | `.loc` | `.iloc` |
+|---|---|---|
+| 하나 | `"temp"` | `1` |
+| 리스트 | `["rain", "city"]` | `[2, 0]` |
+| 슬라이스 | `"temp":"rain"` (양 끝 포함) | `1:3` (끝 미포함) |
+| 모든 열 | `:` | `:` |
+
+```python
+>>> df.loc["tue":"wed", ["rain", "city"]]
+     rain   city
+tue     2  Busan
+wed     5   Jeju
+>>> df.loc[:, "temp":"rain"]
+     temp  rain
+mon   3.5     0
+tue   8.0     2
+wed  10.2     5
+thu   4.1     0
+>>> df.iloc[[0, 3], 1:]
+     temp  rain
+mon   3.5     0
+thu   4.1     0
+```
+
+<Fig caption="왼쪽은 tue~wed 행과 rain·city 열(적은 순서대로), 오른쪽은 0번·3번 행과 1번부터 끝까지의 열이에요.">
+  <FrameFig name='df.loc["tue":"wed", ["rain", "city"]]' columns={['city', 'temp', 'rain']} index={['mon', 'tue', 'wed', 'thu']}
+    data={[['Seoul', 3.5, 0], ['Busan', 8.0, 2], ['Jeju', 10.2, 5], ['Daegu', 4.1, 0]]}
+    tones={[['m', 'm', 'm'], ['a', 'm', 'a'], ['a', 'm', 'a'], ['m', 'm', 'm']]} />
+  <FrameFig name="df.iloc[[0, 3], 1:]" columns={['city', 'temp', 'rain']} index={['mon', 'tue', 'wed', 'thu']}
+    data={[['Seoul', 3.5, 0], ['Busan', 8.0, 2], ['Jeju', 10.2, 5], ['Daegu', 4.1, 0]]}
+    tones={[['m', 'a', 'a'], ['m', 'm', 'm'], ['m', 'm', 'm'], ['m', 'a', 'a']]} />
+</Fig>
+
+열 이름 슬라이스에는 `step`을 줄 수 없어요(`ValueError`). 열 순서를 바꾸려면 이름 리스트를 써요. `.iloc`의 열 슬라이스는 `step`도 돼요.
+
+```python
+>>> df.loc[:, ::-1]
+Traceback (most recent call last):
+    ...
+ValueError: a column slice cannot have a step
+>>> df.iloc[:, ::-1]
+     rain  temp   city
+mon     0   3.5  Seoul
+tue     2   8.0  Busan
+wed     5  10.2   Jeju
+thu     0   4.1  Daegu
+```
+
+없는 컬럼 이름은 `KeyError`, 범위를 벗어난 열 번호는 `IndexError`예요. 열 자리의 메시지는 "열(columns)"이라고 알려 줘요.
+
+```python
+>>> df.loc["tue", "wind"]
+Traceback (most recent call last):
+    ...
+KeyError: 'wind'
+>>> df.iloc[0, 9]
+Traceback (most recent call last):
+    ...
+IndexError: position 9 is out of range for 3 columns
+>>> df.iloc[0, 1.0]
+Traceback (most recent call last):
+    ...
+IndexError: cannot select columns by position with float; use an int, a slice or a list of ints
+```
+
+## 결과는 무엇이 나오나요
+
+결과의 종류는 **무엇으로 골랐는지**만으로 정해져요. 데이터의 내용이나 고른 행의 수에 따라 바뀌지 않아요.
+
+| | 열 하나 (`"temp"`, `1`) | 열 여러 개 (리스트, 슬라이스, `:`, 생략) |
+|---|---|---|
+| **행 하나** (라벨 하나, 정수) | Python 값 | 1행 DataFrame |
+| **행 여러 개** (리스트, 슬라이스, 마스크) | Series | DataFrame |
+
+Series는 열이 없으니 위 표의 "열 하나" 칸과 같아요. 행 하나는 Python 값, 그 밖은 Series예요.
+
+```python
+>>> df.loc[["tue"], "temp"]
+tue    8.0
+Name: temp, dtype: float64
+>>> df.loc["tue", ["temp"]]
+     temp
+tue   8.0
+```
+
+`["tue"]`처럼 리스트로 감싸면 결과가 한 행이어도 "여러 행을 고르는 방법"이라서 Series예요. 결과의 길이를 미리 몰라도 코드가 받는 종류는 언제나 같아요.
+
+### 행 하나를 고르면 1행 DataFrame이에요
+
+행 하나를 Series로 만들면 그 Series 하나에 `string`, `float64`, `int64` 값이 섞여야 해요. 컬럼마다 dtype이 하나인 규칙을 지킬 수 없으니, 행 하나도 DataFrame으로 돌려줘서 **컬럼별 dtype을 그대로** 지켜요.
+
+```python
+>>> df.loc["tue"].dtypes
+{'city': string, 'temp': float64, 'rain': int64}
+```
+
+행 하나의 값들을 Python 값으로 받고 싶다면 칸마다 꺼내거나, 한 컬럼씩 `tolist()`로 받아요.
+
+```python
+>>> row = df.loc["tue"]
+>>> {name: row[name].iloc[0] for name in row}
+{'city': 'Busan', 'temp': 8.0, 'rain': 2}
+```
+
+### 결과의 Index
+
+결과의 행 라벨이 어떤 종류의 Index인지도 고른 방법으로 정해져요.
+
+- 라벨이 `0, 1, 2…`인 표(RangeIndex)를 **슬라이스나 정수 하나**로 고르면 결과도 RangeIndex예요. 일정한 간격의 번호가 그대로 이어지기 때문이에요.
+- **리스트나 마스크**로 고르면 결과는 언제나 `Index`예요. 고른 라벨이 우연히 일정한 간격이어도 RangeIndex로 바꾸지 않아요.
+
+```python
+>>> score.iloc[1:3].index
+RangeIndex(start=1, stop=3, step=1)
+>>> score.loc[1:3].index
+RangeIndex(start=1, stop=4, step=1)
+>>> score.loc[[1, 2, 3]].index
+Index([1, 2, 3], dtype=int64)
+```
+
+Index의 종류는 [Index와 RangeIndex](/api/frame/index/)에 있어요.
+
+## 라벨이 여러 행에 있을 때
+
+라벨은 겹쳐도 돼요. 다만 라벨 **하나**로 고르는 `.loc["a"]`는 언제나 Python 값(또는 1행 DataFrame) 하나를 돌려주는 자리라서, 그 라벨이 여러 행에 있으면 `KeyError`예요. 그 행들을 모두 원하면 리스트로 감싸요.
+
+```python
+>>> dup = sd.frame.Series([10, 20, 30], index=["a", "b", "a"])
+>>> dup.loc["a"]
+Traceback (most recent call last):
+    ...
+KeyError: "label 'a' is not unique; select with a list (['a']) to get every row"
+>>> dup.loc[["a"]]
+a    10
+a    30
+dtype: int64
+>>> dup.loc["b"]
+20
+```
+
+라벨 슬라이스의 양 끝 라벨도 한 행에만 있어야 해요. 위치로 고르는 `.iloc`은 라벨이 겹쳐도 상관없어요.
+
+## 배열로 고르기
+
+리스트를 받는 자리(라벨 리스트, 정수 리스트, DataFrame의 열 자리)에는 1차원 numpy 배열이나 stardust 배열도 줄 수 있어요. 리스트를 준 것과 똑같아요.
+
+```python
+>>> import numpy as np
+>>> df.iloc[sd.asarray([0, 2])]
+      city  temp  rain
+mon  Seoul   3.5     0
+wed   Jeju  10.2     5
+>>> df.loc[:, np.array(["city", "rain"])]
+      city  rain
+mon  Seoul     0
+tue  Busan     2
+wed   Jeju     5
+thu  Daegu     0
+```
+
+bool 배열은 **마스크가 아니에요.** bool은 위치도, 정수 라벨도 아니라서 `.iloc`에서는 `IndexError`, `.loc`에서는 `TypeError`예요. 조건으로 거를 때는 bool Series를 써요.
+
+```python
+>>> df.iloc[np.array([True, False, True, False])]
+Traceback (most recent call last):
+    ...
+IndexError: positions must be ints, not bool
+```
+
+## 대입
+
+`.loc`, `.iloc`을 `=`의 왼쪽에 쓰면 고른 자리에 값을 써넣어요. 행은 고를 때와 같은 방법으로 고르고, DataFrame에서는 열을 **하나만** 골라요.
+
+```python
+>>> df.loc["wed", "rain"] = 6
+>>> df.iloc[0, 1] = 3.0
+>>> df.loc[df["temp"] > 5, "city"] = "warm"
+>>> df
+      city  temp  rain
+mon  Seoul   3.0     0
+tue   warm   8.0     2
+wed   warm  10.2     6
+thu  Daegu   4.1     0
+```
+
+없는 라벨에 대입해도 행이 늘어나지 않고 `KeyError`예요. 값의 dtype 규칙과 Copy-on-Write는 [대입과 복사](/api/frame/assign/)에 있어요.
+
+## 조심할 점
+
+### 라벨 슬라이스는 끝을 포함하고, 위치 슬라이스는 빼요
+
+같은 `1:3`이라도 `.loc`은 라벨 1, 2, **3**을, `.iloc`은 위치 1, 2를 골라요. 라벨이 `0, 1, 2…`인 표에서 특히 헷갈려요.
+
+```python
+>>> score.loc[1:3]
+1    20
+2    30
+3    40
+Name: score, dtype: int64
+>>> score.iloc[1:3]
+1    20
+2    30
+Name: score, dtype: int64
+```
+
+<Fig caption="라벨이 0부터 붙은 Series에서 .loc[1:3]은 세 행, .iloc[1:3]은 두 행이에요.">
+  <FrameFig name="score.loc[1:3]" data={[10, 20, 30, 40, 50]} rowTones={['m', 'a', 'a', 'a', 'm']} />
+  <FrameFig name="score.iloc[1:3]" data={[10, 20, 30, 40, 50]} rowTones={['m', 'a', 'a', 'm', 'm']} />
+</Fig>
+
+### 거르거나 정렬하면 라벨과 위치가 어긋나요
+
+처음에는 라벨 `0, 1, 2…`가 위치와 같아도, 행을 거르거나 정렬하면 라벨은 행을 따라가고 위치는 새로 매겨져요. 그때부터 `.loc[2]`와 `.iloc[2]`는 다른 행이에요.
+
+```python
+>>> high = score[score > 15]
+>>> high
+1    20
+2    30
+3    40
+4    50
+Name: score, dtype: int64
+>>> high.loc[2]
+30
+>>> high.iloc[2]
+40
+```
+
+"라벨이 2인 학생"을 원하면 `.loc`, "지금 세 번째 행"을 원하면 `.iloc`이에요.
+
+### `df.iloc[0]["temp"]`는 값이 아니에요
+
+`df.iloc[0]`이 1행 DataFrame이라서 거기서 컬럼을 꺼내면 길이 1인 Series예요. 칸 하나는 `df.iloc[0, 1]`이나 `df.loc["mon", "temp"]`처럼 한 번에 골라요.
+
+```python
+>>> df.iloc[0]["temp"]
+mon    3.0
+Name: temp, dtype: float64
+>>> df.loc["mon", "temp"]
+3.0
+```
+
+## 비슷한 기능과의 차이
+
+| 하고 싶은 일 | 쓰는 것 |
+|---|---|
+| 컬럼 하나·여러 개 | `df["a"]`, `df[["a", "b"]]` ([대괄호로 고르기](/api/frame/selection/)) |
+| 라벨로 행 고르기, 없으면 에러 | `.loc[labels]` |
+| 라벨로 행 고르기, 없으면 `NA` 행 | [`reindex`](/api/frame/reindex/) |
+| 위치로 행 고르기 | `.iloc[positions]` |
+| 조건으로 행 거르기 | `df[mask]`, `.loc[mask, cols]` ([조건으로 행 거르기](/api/frame/mask/)) |
+| 앞이나 뒤의 몇 행 | [`head`, `tail`](/api/frame/head-tail/) |
+
+- **배열의 인덱싱과의 관계**: `.iloc`은 [배열의 인덱싱](/api/array/indexing/)과 같은 규칙이에요. 음수는 뒤에서부터, 슬라이스는 끝 미포함이고 범위를 벗어나도 괜찮고, 정수가 범위를 벗어나거나 형태가 틀리면 `IndexError`예요. 다른 점은 두 가지예요. 첫째, 배열은 행과 열에 둘 다 정수 리스트를 주면 `(행, 열)` 짝을 골라 1차원 결과를 내지만, `.iloc[[0, 3], [1, 2]]`는 행 목록과 열 목록이 만나는 네모를 골라요. 둘째, 행 하나를 골라도 행의 축이 없어지지 않고 1행 DataFrame이에요.
+- 고른 결과는 원래 표와 값을 나누어 쓰지만, 어느 쪽을 고쳐도 다른 쪽은 바뀌지 않아요. 배열의 뷰와 다른 점이에요([대입과 복사](/api/frame/assign/)).
+
+## pandas를 아는 분께
+
+- **DataFrame에서 행 하나를 고르면 1행 DataFrame이에요.** pandas 3.1.1의 `df.loc["tue"]`는 Series이고, 컬럼 dtype이 섞이면 `object` dtype이 돼요.
+- **라벨 하나는 언제나 값 하나예요.** 라벨이 여러 행에 있으면 `KeyError`이고 리스트로 고르라고 알려 줘요. pandas는 이때 Series를 돌려줘서 데이터에 따라 결과 종류가 바뀌어요.
+- **라벨 슬라이스의 양 끝 라벨은 꼭 있어야 해요.** pandas는 라벨이 정렬돼 있으면 없는 라벨로도 잘라 줘요(`pd.Series([1, 2, 3], index=["b", "c", "d"]).loc["a":"c"]`는 두 행).
+- 라벨의 타입을 엄격하게 봐요. 정수 라벨에 `s.loc[2.0]`은 `TypeError`예요(pandas는 찾아 줘요).
+- `.iloc`에 틀린 형태의 키를 주면 `IndexError`예요(pandas는 `TypeError`). `s.iloc[[1.0]]`도 `IndexError`예요(pandas는 받아요).
+- 리스트나 마스크로 고른 결과의 Index는 언제나 `Index`예요. pandas는 고른 라벨이 일정한 간격이면 RangeIndex로 바꾸기도 해요(`s.loc[[1, 3]]`).
+- 없는 라벨에 대입하면 `KeyError`예요. pandas는 행이나 열을 새로 만들어요.
+- 칸 하나의 값은 numpy 스칼라가 아니라 Python 값이에요.

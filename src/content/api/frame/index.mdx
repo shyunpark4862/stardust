@@ -1,0 +1,459 @@
+---
+# Astro drops a trailing "/index" from entry ids; this keeps the page at /api/frame/index/.
+title: Index와 RangeIndex
+names: [Index, RangeIndex, Index.dtype, Index.name, Index.is_unique, Index.tolist, Index.equals, RangeIndex.dtype, RangeIndex.name, RangeIndex.is_unique, RangeIndex.start, RangeIndex.stop, RangeIndex.step, RangeIndex.tolist, RangeIndex.equals]
+group: 만들기
+order: 3
+signatures:
+  - "sd.frame.Index(data, /, *, name=None)"
+  - "sd.frame.RangeIndex(start, stop=None, step=1, /, *, name=None)"
+  - "Index.dtype"
+  - "Index.name"
+  - "Index.is_unique"
+  - "Index.tolist()"
+  - "Index.equals(other, /)"
+  - "RangeIndex.dtype"
+  - "RangeIndex.name"
+  - "RangeIndex.is_unique"
+  - "RangeIndex.start"
+  - "RangeIndex.stop"
+  - "RangeIndex.step"
+  - "RangeIndex.tolist()"
+  - "RangeIndex.equals(other, /)"
+summary: 행 라벨과 컬럼 이름을 담는 바뀌지 않는 목록이에요. Index는 int나 str 라벨을, RangeIndex는 0, 1, 2, … 같은 등간격 정수 라벨을 담아요.
+params:
+  - name: data
+    type: list, tuple, range, numpy 배열, sd.ndarray 또는 Index
+    kind: positional-only (Index)
+    desc: 라벨들. 모두 int이거나 모두 str이어야 하고, NA는 안 돼요.
+  - name: start
+    type: int
+    kind: positional-only (RangeIndex), 필수
+    desc: 첫 라벨. 인자를 하나만 주면 그것이 stop이 되고 start는 0이에요.
+  - name: stop
+    type: int 또는 None
+    kind: positional-only (RangeIndex)
+    desc: 끝. 이 값은 라벨에 들어가지 않아요.
+  - name: step
+    type: int
+    kind: positional-only (RangeIndex)
+    desc: 라벨 사이의 간격. 0이면 안 되고, 음수면 줄어드는 라벨이에요.
+  - name: name
+    type: str 또는 None
+    kind: keyword-only
+    desc: 라벨 목록의 이름. 출력에서 라벨 열 위에 보여요.
+returns:
+  type: Index 또는 RangeIndex
+  desc: 바뀌지 않는 라벨 목록. 속성 dtype(sd.int64 또는 sd.string), name, is_unique와 RangeIndex의 start, stop, step, 메서드 tolist(), equals()가 있어요.
+raises:
+  - type: TypeError
+    desc: 라벨이 float·bool이거나 int와 str이 섞였을 때, 받지 않는 data(제너레이터, Series 등), RangeIndex 인자가 int가 아닐 때, name이 str이 아닐 때, ==·bool()·hash()를 쓸 때.
+  - type: ValueError
+    desc: 라벨에 NA(None)가 있을 때, RangeIndex의 step이 0일 때.
+  - type: OverflowError
+    desc: 라벨이나 RangeIndex 인자가 int64 범위를 벗어날 때.
+seeAlso: [series, dataframe, alignment, attributes, loc-iloc, reindex, iteration]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import FrameFig from '../../../components/fig/FrameFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+Series와 DataFrame의 행에는 라벨(이름표)이 붙어 있어요. 그 **라벨들을 순서대로 모은 목록**이 `Index`예요. 엑셀에서 맨 왼쪽의 행 번호 열을 떠올리면 돼요. 다만 번호 대신 `"apple"`, `2024`처럼 의미 있는 값을 쓸 수 있어요.
+
+```python
+>>> import stardust as sd
+>>> s = sd.frame.Series([1200, 800, 1500], index=["apple", "banana", "cherry"])
+>>> s.index
+Index(['apple', 'banana', 'cherry'], dtype=string)
+```
+
+라벨을 주지 않으면 0부터 1씩 늘어나는 `RangeIndex`가 붙어요. RangeIndex는 라벨을 하나하나 저장하지 않고 시작·끝·간격 세 숫자만 기억해요. Python의 `range`처럼요.
+
+```python
+>>> sd.frame.Series([10, 20, 30]).index
+RangeIndex(start=0, stop=3, step=1)
+```
+
+<Fig caption="Series는 Index(라벨 목록)와 값 목록의 짝이에요. Index만 따로 떼어 볼 수 있어요.">
+  <FrameFig name="s.index" index={false} data={['apple', 'banana', 'cherry']} colTones={['a']} note="dtype=string" />
+  <Op>+</Op>
+  <FrameFig name="values" index={false} data={[1200, 800, 1500]} note="dtype: int64" />
+  <Op>=</Op>
+  <FrameFig name="s" index={['apple', 'banana', 'cherry']} data={[1200, 800, 1500]} />
+</Fig>
+
+Index는 직접 만들 일보다 `s.index`, `df.index`, `df.columns`로 **읽을 일이 더 많아요.** DataFrame의 컬럼 이름 목록도 str Index예요. 직접 만들 때는 주로 이름이 있는 라벨을 붙이고 싶을 때예요.
+
+```python
+>>> sd.frame.Index(["kim", "lee"], name="student")
+Index(['kim', 'lee'], dtype=string, name='student')
+```
+
+라벨이 왜 있고 연산에서 어떻게 쓰이는지는 [라벨과 정렬](/api/frame/alignment/)에 있어요.
+
+<Reference />
+
+## Index 만들기
+
+`Index(data)`의 `data`에는 리스트, 튜플, `range`, 1차원 numpy 배열, `sd.ndarray`, 다른 Index를 줄 수 있어요. 라벨은 **모두 int이거나 모두 str**이어서, dtype은 `int64`나 `string` 둘 중 하나예요.
+
+```python
+>>> sd.frame.Index([2023, 2024, 2025])
+Index([2023, 2024, 2025], dtype=int64)
+>>> sd.frame.Index(("north", "south")).dtype
+string
+>>> import numpy as np
+>>> sd.frame.Index(np.array([7, 8], dtype=np.int32))
+Index([7, 8], dtype=int64)
+```
+
+라벨이 하나도 없으면 int64예요. 빈 Series의 dtype(float64)과 다른데, float64는 라벨이 될 수 없기 때문이에요.
+
+```python
+>>> sd.frame.Index([])
+Index([], dtype=int64)
+```
+
+**실수와 bool은 라벨이 될 수 없어요.** **라벨에 `NA`(`None`)도 넣을 수 없어요.** 이런 값은 라벨 대신 컬럼에 두고 써요. 컬럼의 값으로 행을 고르는 법은 [조건으로 행 거르기](/api/frame/mask/)에 있어요.
+
+```python
+>>> sd.frame.Index([0.5, 1.5])
+Traceback (most recent call last):
+    ...
+TypeError: Index(): index labels must be int64 or string, not float64
+>>> sd.frame.Index([True, False])
+Traceback (most recent call last):
+    ...
+TypeError: Index(): index labels must be int64 or string, not bool
+>>> sd.frame.Index(["a", None])
+Traceback (most recent call last):
+    ...
+ValueError: Index(): an index cannot hold NA
+```
+
+int와 str을 섞거나, 제너레이터나 Series를 주는 것도 `TypeError`예요. Series의 값을 라벨로 쓰고 싶다면 `s.tolist()`를 넘겨요.
+
+```python
+>>> sd.frame.Index(["a", 1])
+Traceback (most recent call last):
+    ...
+TypeError: Index(): str values cannot be mixed with int values (there is no object dtype)
+>>> sd.frame.Index(sd.frame.Series([1, 2]))
+Traceback (most recent call last):
+    ...
+TypeError: Index(): labels must be a list, tuple, range, numpy array, sd.ndarray or Index, not Series
+```
+
+`range`를 `Index`에 넣으면 RangeIndex가 아니라 라벨을 모두 담은 Index가 돼요. RangeIndex가 필요하면 `RangeIndex`를 직접 만들어요. (Series와 DataFrame의 `index=`에 `range`를 주면 RangeIndex가 돼요.)
+
+```python
+>>> sd.frame.Index(range(3))
+Index([0, 1, 2], dtype=int64)
+```
+
+**같은 라벨이 여러 번 나와도 괜찮아요.** 한 학생의 시험 기록이 여러 줄인 것처럼 실제 데이터에는 흔해요. 다만 라벨로 두 Series를 맞추는 연산은 라벨이 고유해야 해요([라벨과 정렬](/api/frame/alignment/)). 고유한지는 `is_unique`로 봐요.
+
+```python
+>>> visits = sd.frame.Index(["kim", "lee", "kim"])
+>>> visits.is_unique
+False
+>>> sd.frame.Index([3, 1, 2]).is_unique
+True
+```
+
+## RangeIndex 만들기
+
+`RangeIndex`는 Python의 `range`, 배열의 [`arange`](/api/array/arange/)와 같은 방식으로 등간격 정수 라벨을 만들어요. `stop`은 라벨에 들어가지 않아요.
+
+```python
+>>> sd.frame.RangeIndex(4).tolist()
+[0, 1, 2, 3]
+>>> sd.frame.RangeIndex(1, 4).tolist()
+[1, 2, 3]
+>>> sd.frame.RangeIndex(10, 0, -3).tolist()
+[10, 7, 4, 1]
+```
+
+| 호출 | 라벨 |
+|---|---|
+| `RangeIndex(stop)` | `0, 1, …, stop-1` |
+| `RangeIndex(start, stop)` | `start, start+1, …` (stop 앞까지) |
+| `RangeIndex(start, stop, step)` | `start, start+step, …` (stop을 넘기 전까지) |
+
+세 인자는 **위치로만** 줘요. `arange`처럼 첫 인자가 꼭 필요하고, 키워드(`stop=3`)로는 줄 수 없어요.
+
+```python
+>>> sd.frame.RangeIndex(stop=3)
+Traceback (most recent call last):
+    ...
+TypeError: RangeIndex.__init__() got some positional-only arguments passed as keyword arguments: 'stop'
+```
+
+세 인자는 모두 **int**예요. Python int와 numpy 정수(`np.int64(3)`)를 받고, `True`나 `3.0`처럼 int가 아닌 값은 `TypeError`예요. `step=0`은 라벨이 끝나지 않으니 `ValueError`, int64 범위 밖은 `OverflowError`예요. 배열 영역의 다른 int 인자와 같은 규칙이에요.
+
+```python
+>>> sd.frame.RangeIndex(np.int64(3))
+RangeIndex(start=0, stop=3, step=1)
+>>> sd.frame.RangeIndex(3.0)
+Traceback (most recent call last):
+    ...
+TypeError: RangeIndex(): 'start' must be an int, not float
+>>> sd.frame.RangeIndex(0, 5, 0)
+Traceback (most recent call last):
+    ...
+ValueError: RangeIndex(): 'step' must not be zero
+>>> sd.frame.RangeIndex(2**63)
+Traceback (most recent call last):
+    ...
+OverflowError: RangeIndex(): 'start' is out of range
+```
+
+RangeIndex는 라벨이 몇 개든 세 숫자만 기억해요. 라벨을 주지 않은 Series와 DataFrame의 기본 라벨이 RangeIndex이고, `.iloc[1:3]`처럼 위치 슬라이스로 행을 잘라도 RangeIndex로 남아요. 라벨 목록이나 조건으로 행을 고르면 남은 라벨이 이어져 있더라도 Index가 돼요. 결과가 RangeIndex인지는 무엇으로 골랐는지로 정해지고, 값에 따라 달라지지 않아요([loc과 iloc](/api/frame/loc-iloc/)).
+
+```python
+>>> t = sd.frame.Series([10, 20, 30, 40])
+>>> t.iloc[1:3].index
+RangeIndex(start=1, stop=3, step=1)
+>>> t.loc[[0, 3]].index
+Index([0, 3], dtype=int64)
+```
+
+RangeIndex의 라벨은 int64 라벨로 쳐요. 그래서 같은 정수를 담은 Index와 똑같이 행동해요.
+
+## 속성: `dtype`, `name`, `is_unique`, `start`, `stop`, `step`
+
+| 속성 | Index | RangeIndex |
+|---|---|---|
+| `dtype` | `sd.int64` 또는 `sd.string` | 언제나 `sd.int64` |
+| `name` | 이름 (`str` 또는 `None`) | 같음 |
+| `is_unique` | 라벨이 모두 다르면 `True` | 언제나 `True` |
+| `start`, `stop`, `step` | 없음 | 만들 때 준 세 값 |
+
+```python
+>>> r = sd.frame.RangeIndex(2, 11, 3, name="row")
+>>> r
+RangeIndex(start=2, stop=11, step=3, name='row')
+>>> r.start, r.stop, r.step
+(2, 11, 3)
+>>> r.tolist()
+[2, 5, 8]
+>>> r.dtype, r.is_unique
+(int64, True)
+```
+
+`stop`은 만들 때 준 값 그대로예요. 위에서 마지막 라벨은 `8`이지만 `stop`은 `11`이에요. Python의 `range(2, 11, 3).stop`과 같아요. 마지막 라벨이 필요하면 `r.tolist()[-1]`을 써요.
+
+`dtype`은 배열의 dtype과 같은 객체라서 `is`로 비교할 수 있어요.
+
+```python
+>>> sd.frame.Index(["a", "b"]).dtype is sd.string
+True
+```
+
+## 라벨 꺼내기: `tolist()`, `len()`, 반복
+
+`tolist()`는 라벨을 Python의 int나 str로 담은 리스트로 돌려줘요. `len()`은 라벨 개수, `for`는 라벨을 하나씩 돌려줘요.
+
+```python
+>>> idx = sd.frame.Index(["apple", "banana", "cherry"], name="fruit")
+>>> idx.tolist()
+['apple', 'banana', 'cherry']
+>>> len(idx)
+3
+>>> [label.upper() for label in idx]
+['APPLE', 'BANANA', 'CHERRY']
+```
+
+Index에는 `idx[0]` 같은 인덱싱이 없어요. 라벨 하나가 필요하면 `idx.tolist()[0]`처럼 리스트로 꺼내서 써요.
+
+```python
+>>> idx[0]
+Traceback (most recent call last):
+    ...
+TypeError: 'Index' object is not subscriptable
+>>> idx.tolist()[0]
+'apple'
+```
+
+numpy 배열이 필요하면 `np.asarray(idx)`를 써요. int 라벨은 int64 배열, str 라벨은 Python str을 담은 object 배열이 돼요.
+
+```python
+>>> np.asarray(sd.frame.RangeIndex(3))
+array([0, 1, 2], dtype=int64)
+>>> np.asarray(idx)
+array(['apple', 'banana', 'cherry'], dtype=object)
+```
+
+## 라벨이 있는지: `in`
+
+`x in idx`는 라벨 가운데 `x`와 같은 것이 있는지 봐요. Series의 `in`과 같은 규칙이에요([반복과 in](/api/frame/iteration/)). 값이 라벨의 dtype으로 **손실 없이** 바뀔 수 있을 때만 찾아요. 그래서 `1.0`은 int 라벨 `1`을 찾지만, `1.5`나 `"1"`은 찾지 않아요. bool은 숫자 0, 1로 쳐요.
+
+```python
+>>> "banana" in idx
+True
+>>> "kiwi" in idx
+False
+>>> years = sd.frame.Index([2024, 2025])
+>>> 2024.0 in years, "2024" in years
+(True, False)
+>>> True in sd.frame.RangeIndex(3)
+True
+```
+
+`in`은 이렇게 너그럽지만, 라벨로 행을 **꺼내는** `.loc`은 이와 달리 라벨의 타입이 정확히 맞아야 해요. int 라벨에 `2024.0`을 쓰면 `TypeError`예요([loc과 iloc](/api/frame/loc-iloc/)).
+
+## 두 Index 비교: `equals()`
+
+`a.equals(b)`는 두 Index가 **같은 라벨을 같은 순서로** 가졌는지 봐요. 이름은 보지 않아요. Index와 RangeIndex도 라벨이 같으면 같아요.
+
+```python
+>>> a = sd.frame.Index(["x", "y"], name="left")
+>>> a.equals(sd.frame.Index(["x", "y"], name="right"))
+True
+>>> a.equals(sd.frame.Index(["y", "x"]))
+False
+>>> sd.frame.RangeIndex(3).equals(sd.frame.Index([0, 1, 2]))
+True
+>>> sd.frame.RangeIndex(0, 10, 3).equals(sd.frame.RangeIndex(0, 11, 3))
+True
+```
+
+마지막 예는 `stop`이 달라도 라벨이 `0, 3, 6, 9`로 같아서 `True`예요. Index가 아닌 것(리스트 등)과 비교하면 언제나 `False`예요.
+
+```python
+>>> a.equals(["x", "y"])
+False
+```
+
+**`==`와 `!=`는 쓸 수 없어요.** Index는 계산하는 값이 아니라 라벨 목록이라서 비교 연산자를 받지 않아요. 목록 전체는 `equals()`로, 라벨마다는 `a.tolist()`를 꺼내서 비교해요.
+
+```python
+>>> a == a
+Traceback (most recent call last):
+    ...
+TypeError: '==' not supported between instances of 'Index' and 'Index'; compare labels with equals()
+```
+
+## 이름: `name`
+
+`name=`으로 Index에 이름을 붙여요. 이름은 `str`이나 `None`이에요([Series의 `name`](/api/frame/series/)과 같은 규칙). 이름이 있는 Index를 단 Series와 DataFrame은 출력에서 라벨 열 위에 이름을 보여 줘요.
+
+```python
+>>> sd.frame.Series([90, 85], index=sd.frame.Index(["kim", "lee"], name="student"))
+student
+kim    90
+lee    85
+dtype: int64
+>>> sd.frame.Index([1], name=1)
+Traceback (most recent call last):
+    ...
+TypeError: Index(): 'name' must be a str or None, not int
+```
+
+두 Series를 연산하면 결과 Index의 이름은 양쪽 이름이 같을 때만 남고, 다르면 `None`이에요. Series 이름의 규칙과 같아요([산술 연산](/api/frame/arithmetic/)).
+
+## Index는 바뀌지 않아요
+
+Index는 만든 뒤에 바꿀 수 없어요(불변). 이름도, 라벨도 대입할 수 없어요. 다른 이름이 필요하면 `Index(idx, name=...)`로 새로 만들어요. `Index(idx)`는 라벨만 가져오고 이름은 새로 정해요.
+
+```python
+>>> idx.name = "item"
+Traceback (most recent call last):
+    ...
+AttributeError: property 'name' of 'Index' object has no setter
+>>> sd.frame.Index(idx, name="item")
+Index(['apple', 'banana', 'cherry'], dtype=string, name='item')
+```
+
+바뀌지 않기 때문에 여러 Series와 DataFrame이 같은 Index를 함께 써도 안전해요.
+
+그래도 Index는 **해싱할 수 없어서** dict의 키나 set에 넣을 수 없어요. Series와 같아요. 키가 필요하면 `tuple(idx.tolist())`를 써요.
+
+```python
+>>> hash(idx)
+Traceback (most recent call last):
+    ...
+TypeError: unhashable type: 'Index'
+```
+
+## 출력 읽기
+
+Index의 출력은 배열처럼 dtype을 따옴표 없이 써요. 이름이 있으면 뒤에 붙여요. 라벨이 100개를 넘으면 앞뒤 10개씩만 보여 주고 개수(`length=`)를 덧붙여요. RangeIndex는 세 숫자를 보여 줘요.
+
+```python
+>>> sd.frame.Index(list(range(150)))
+Index([  0,   1,   2,   3,   4,   5,   6,   7,   8,   9,
+       ...
+       140, 141, 142, 143, 144, 145, 146, 147, 148, 149],
+      dtype=int64, length=150)
+>>> sd.frame.RangeIndex(5, name="n")
+RangeIndex(start=0, stop=5, step=1, name='n')
+```
+
+## 조심할 점
+
+### `if idx:`는 쓸 수 없어요
+
+Series, DataFrame처럼 `bool(idx)`는 비어 있어도 `TypeError`예요. 비었는지는 `len(idx) == 0`으로 봐요.
+
+```python
+>>> bool(sd.frame.Index([]))
+Traceback (most recent call last):
+    ...
+TypeError: the truth value of an Index is ambiguous
+>>> len(sd.frame.Index([])) == 0
+True
+```
+
+### 큰 정수 라벨
+
+int 라벨은 int64에 들어가야 해요. 범위를 넘으면 `OverflowError`예요.
+
+```python
+>>> sd.frame.Index([2**63])
+Traceback (most recent call last):
+    ...
+OverflowError: Index(): Python int too large to convert to int64
+```
+
+### pickle로 저장할 수 있어요
+
+Index와 RangeIndex는 이름까지 함께 저장돼요.
+
+```python
+>>> import pickle
+>>> pickle.loads(pickle.dumps(r))
+RangeIndex(start=2, stop=11, step=3, name='row')
+```
+
+## 비슷한 것과의 차이
+
+| | `Index` | `RangeIndex` | `Series` |
+|---|---|---|---|
+| 담는 것 | int 또는 str 라벨 | 등간격 정수 라벨 | 값 (+ 라벨) |
+| 저장 | 라벨 전부 | 세 숫자 | 값 전부 |
+| NA | 안 됨 | 없음 | 됨 |
+| 바꾸기 | 불가 | 불가 | 대입 가능 |
+| `==` | `TypeError` (`equals()` 사용) | `TypeError` | 원소별 비교 |
+| `x in ...` | 라벨에 있는지 | 라벨에 있는지 | 값에 있는지 |
+
+`in`의 기준이 다른 점을 기억해 두세요. `x in s`는 Series의 **값**을, `x in s.index`는 **라벨**을 찾아요.
+
+```python
+>>> s = sd.frame.Series([1200, 800], index=["apple", "banana"])
+>>> "apple" in s, "apple" in s.index
+(False, True)
+```
+
+## pandas를 아는 분께
+
+- 라벨은 int64와 str뿐이에요. float, bool, NaN 라벨은 `TypeError`나 `ValueError`예요. 빈 `Index([])`는 object가 아니라 int64예요.
+- `==`, `!=`는 원소별 비교가 아니라 `TypeError`예요. `equals()`를 써요. `bool(idx)`는 pandas 3.1.1에서는 `ValueError`, 여기서는 `TypeError`예요.
+- `idx[0]` 같은 인덱싱, `values`, `to_list`, `is_monotonic_increasing` 같은 멤버는 없어요. 있는 것은 위에 적은 것뿐이에요.
+- `idx.name = ...`으로 이름을 바꿀 수 없어요. 이름은 `str`이나 `None`만 돼요(pandas는 `name=1`도 받아요).
+- `RangeIndex`의 인자는 위치로만 주고, int만 받아요. pandas는 `RangeIndex(stop=3)`과 `RangeIndex(1.0)`을 받아요.
+- `True in RangeIndex(3)`은 `True`예요(bool은 0, 1). pandas는 `False`예요.
+- 출력은 `dtype='int64'`가 아니라 `dtype=int64`예요.

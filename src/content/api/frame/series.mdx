@@ -1,0 +1,569 @@
+---
+title: Series
+names: [Series]
+group: 만들기
+order: 1
+signatures:
+  - "sd.frame.Series(data=None, /, *, index=None, dtype=None, name=None)"
+summary: 라벨이 붙은 값 한 줄, 곧 표의 컬럼 하나를 만들어요. 리스트, numpy 배열, stardust 배열, 다른 Series에서 만들 수 있어요.
+params:
+  - name: data
+    type: list, tuple, range, numpy 배열, sd.ndarray, Series 또는 None
+    kind: positional-only
+    desc: 담을 값. 1차원이어야 해요. 주지 않으면 빈 Series예요.
+  - name: index
+    type: 라벨 목록, Index, RangeIndex 또는 None
+    kind: keyword-only
+    desc: 행마다 붙일 라벨(int 또는 str). None이면 0, 1, 2, … 를 붙여요. data가 Series이면 이 라벨 순서로 다시 배열해요.
+  - name: dtype
+    type: dtype, dtype 이름 또는 None
+    kind: keyword-only
+    desc: 결과의 dtype. 주면 값을 그 dtype으로 명시적으로 바꿔요(손실이 있어도). None이면 값을 보고 정해요.
+  - name: name
+    type: str 또는 None
+    kind: keyword-only
+    desc: Series의 이름. DataFrame의 컬럼이 되면 컬럼 이름 자리에 해당해요.
+returns:
+  type: Series
+  desc: 값과 라벨을 담은 새 Series.
+raises:
+  - type: TypeError
+    desc: data가 dict, 숫자 하나, 문자열, 제너레이터처럼 받지 않는 것이거나, str이 다른 값과 섞였거나, dtype·name·라벨의 타입이 틀렸을 때.
+  - type: ValueError
+    desc: 값과 라벨의 개수가 다를 때, 2차원 배열을 줬을 때, 라벨에 NA가 있을 때, dtype=으로 문자열을 숫자로 읽을 수 없을 때.
+  - type: OverflowError
+    desc: int64에 담을 수 없는 큰 정수가 int64 컬럼이 되어야 할 때.
+seeAlso: [dataframe, index, read_csv, basics, na, alignment, astype, attributes]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import FrameFig from '../../../components/fig/FrameFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+`Series`는 **값 한 줄에 라벨을 붙인 것**이에요. 엑셀 시트에서 컬럼 하나를 떼어 낸 모습을 떠올리면 돼요. 왼쪽에는 행마다 이름표(라벨)가 있고, 오른쪽에 값이 있어요. 표 전체인 [DataFrame](/api/frame/dataframe/)은 이런 Series 여러 개를 나란히 붙인 것이에요.
+
+가게의 과일 가격처럼 "무엇의 값인지"가 중요한 데이터를 다룰 때 써요. 리스트만 있으면 `1200`이 사과 값인지 기억해야 하지만, Series는 그 값에 `apple`이라는 라벨을 붙여 둬요.
+
+```python
+>>> import stardust as sd
+>>> s = sd.frame.Series([1200, 800, 1500])
+>>> s
+0    1200
+1     800
+2    1500
+dtype: int64
+```
+
+라벨을 주지 않으면 0, 1, 2, … 가 붙어요. `index=`로 라벨을, `name=`으로 이 줄의 이름을 줄 수 있어요.
+
+```python
+>>> s = sd.frame.Series([1200, 800, 1500], index=["apple", "banana", "cherry"], name="price")
+>>> s
+apple     1200
+banana     800
+cherry    1500
+Name: price, dtype: int64
+```
+
+<Fig caption="Series는 라벨(왼쪽)과 값(오른쪽)의 짝이에요. 값은 모두 같은 dtype이에요.">
+  <FrameFig name="s" columns={['price']} dtypes={['int64']}
+    index={['apple', 'banana', 'cherry']} data={[1200, 800, 1500]} />
+</Fig>
+
+출력의 맨 아래 줄은 이름(`Name: price`)과 dtype(`dtype: int64`)이에요. dtype은 값의 종류예요. 출력을 읽는 법은 [데이터프레임의 기본](/api/frame/basics/)에 있어요.
+
+<Reference />
+
+## 무엇을 넣을 수 있나요
+
+`data`에는 값 여러 개를 1차원으로 담은 것을 넣어요.
+
+| 넣는 것 | 예 | 결과 |
+|---|---|---|
+| 리스트, 튜플 | `[1, 2]`, `(1, 2)` | 값을 담은 새 Series |
+| `range` | `range(3)` | `0, 1, 2` |
+| numpy 배열 (1차원) | `np.array([1.5, 2.5])` | 값을 **복사한** Series |
+| stardust 배열 (1차원) | `sd.asarray([1, 2])` | 값을 **복사한** Series |
+| Series | `sd.frame.Series(s)` | 같은 값·라벨·이름의 Series |
+| 아무것도 주지 않음 | `sd.frame.Series()` | 빈 Series (float64) |
+
+```python
+>>> sd.frame.Series((1, 2))
+0    1
+1    2
+dtype: int64
+>>> sd.frame.Series(range(3))
+0    0
+1    1
+2    2
+dtype: int64
+>>> sd.frame.Series()
+Series([], dtype: float64)
+```
+
+숫자 하나, 문자열 하나, dict, 제너레이터는 받지 않아요.
+
+```python
+>>> sd.frame.Series(5)
+Traceback (most recent call last):
+    ...
+TypeError: Series(): cannot make a column from int; expected a list, tuple, range, numpy array or sd.ndarray
+>>> sd.frame.Series({"apple": 1200, "banana": 800})
+Traceback (most recent call last):
+    ...
+TypeError: Series(): a Series from a dict is not supported; pass the labels as index=
+>>> sd.frame.Series(n * n for n in range(3))
+Traceback (most recent call last):
+    ...
+TypeError: Series(): cannot make a column from generator; expected a list, tuple, range, numpy array or sd.ndarray
+```
+
+- **숫자 하나, 문자열 하나**: 값 한 개짜리 Series를 원하면 `[5]`처럼 리스트로 감싸요. 문자열을 글자로 쪼개 주지도 않아요.
+- **dict**: 키를 라벨로, 값을 값으로 쓰고 싶다면 두 가지를 따로 줘요. `sd.frame.Series(list(d.values()), index=list(d))`처럼요. 라벨은 언제나 `index=`로 넣어요.
+- **제너레이터**: `list(...)`로 감싸서 넘겨요. 배열의 [`asarray`](/api/array/asarray/)와 같아요.
+
+## dtype은 어떻게 정해지나요
+
+Series의 값은 모두 같은 종류여야 해요. 데이터프레임이 쓰는 dtype은 넷이에요: 참·거짓 `sd.bool`, 정수 `sd.int64`, 실수 `sd.float64`, 문자열 `sd.string`. 처음 세 개는 배열 영역과 같은 객체이고, `sd.string`은 데이터프레임에만 있어요.
+
+`dtype=`을 주지 않으면 값을 모두 훑어보고 정해요. 숫자 사이에서는 **배열의 `sd.asarray`와 같은 규칙**으로 넓은 쪽으로 맞춰요: `bool < int64 < float64`.
+
+```python
+>>> sd.frame.Series([True, False]).dtype
+bool
+>>> sd.frame.Series([3, 5]).dtype
+int64
+>>> sd.frame.Series([1, 2.5])
+0    1.0
+1    2.5
+dtype: float64
+>>> sd.frame.Series([True, 1])
+0    1
+1    1
+dtype: int64
+>>> sd.frame.Series(["apple", "banana"]).dtype
+string
+```
+
+`True`와 `1`이 섞이면 `True`가 `1`이 돼요. 배열과 같은 규칙이라서 같은 리스트로 배열을 만들든 Series를 만들든 결과가 같아요([원소 종류(dtype)](/api/array/dtypes/) 참고). numpy의 스칼라(`np.int32(1)`, `np.float32(1.5)`, `np.str_("x")`)도 Python의 int, float, str처럼 읽어요.
+
+**문자열은 다른 종류와 섞을 수 없어요.** 데이터프레임에는 아무 객체나 담는 dtype이 없어서, 숫자와 문자열이 섞인 컬럼을 만들 수 없어요.
+
+```python
+>>> sd.frame.Series(["apple", 3])
+Traceback (most recent call last):
+    ...
+TypeError: Series(): str values cannot be mixed with int values (there is no object dtype)
+```
+
+숫자를 문자열로 다루고 싶다면 `["apple", "3"]`처럼 처음부터 문자열로 쓰거나, 숫자 컬럼을 [`astype`](/api/frame/astype/)으로 `string`으로 바꿔요.
+
+값이 하나도 없으면 종류를 짐작할 근거가 없어서 `float64`예요. 배열의 `sd.asarray([])`와 같아요.
+
+```python
+>>> sd.frame.Series([]).dtype
+float64
+```
+
+## 빠진 값: `None`, `NA`, NaN
+
+표 데이터에는 빠진 값(결측값)이 흔해요. 설문에 답하지 않은 칸, 아직 들어오지 않은 판매량 같은 것이에요. 데이터프레임은 빠진 값을 `NA` 하나로 나타내요. 리스트에서 만들 때는 **`None`과 `sd.frame.NA`가 모두 `NA`가 돼요.**
+
+```python
+>>> sd.frame.Series([3, None, 7])
+0       3
+1    <NA>
+2       7
+dtype: int64
+```
+
+`NA`가 있어도 **dtype은 바뀌지 않아요.** 위 Series는 여전히 int64예요. 정수 컬럼에 빈칸이 하나 생겼다고 실수 컬럼이 되지 않아요.
+
+반면 `float("nan")`(NaN)은 빠진 값이 아니라 **실수 값의 하나**예요. 0을 0으로 나눈 것처럼 "숫자가 아닌 결과"를 뜻해요. 출력에서도 `NaN`으로 따로 보여요.
+
+```python
+>>> import math
+>>> sd.frame.Series([1.5, None, math.nan])
+0    1.5
+1   <NA>
+2    NaN
+dtype: float64
+```
+
+값이 모두 `NA`이면 빈 리스트처럼 `float64`예요. 두 값의 차이와 각 함수가 둘을 어떻게 다루는지는 [NA와 NaN](/api/frame/na/)에 있어요.
+
+```python
+>>> sd.frame.Series([None, None]).dtype
+float64
+```
+
+## 아주 큰 정수
+
+int64는 약 ±9.2 × 10¹⁸까지 담아요. 그보다 큰 Python 정수는 **int64 컬럼이 되어야 할 때만** `OverflowError`예요. 배열의 `sd.asarray`와 같은 규칙이에요.
+
+```python
+>>> sd.frame.Series([2**70])
+Traceback (most recent call last):
+    ...
+OverflowError: Series(): Python int too large to convert to int64
+```
+
+리스트에 실수가 섞여 있으면 결과가 float64라서 큰 정수도 가장 가까운 실수로 바뀌어 들어가요. `dtype="float64"`를 주어도 int64를 거치지 않고 바로 실수로 읽어요.
+
+```python
+>>> sd.frame.Series([2**70, 0.5])
+0    1.180592e+21
+1    5.000000e-01
+dtype: float64
+>>> sd.frame.Series([2**70], dtype="float64")
+0    1.180592e+21
+dtype: float64
+```
+
+정수가 실수가 될 때는 반올림이 일어날 수 있어요. 실수는 2⁵³(약 9 × 10¹⁵)보다 큰 정수를 모두 정확히 담지 못해요. 그래서 `2**53 + 1`은 `2**53`이 돼요. float64로도 나타낼 수 없을 만큼 큰 정수(약 1.8 × 10³⁰⁸ 이상)는 `OverflowError`예요.
+
+```python
+>>> sd.frame.Series([2**53 + 1, 0.5]).tolist()
+[9007199254740992.0, 0.5]
+>>> sd.frame.Series([10**400, 0.5])
+Traceback (most recent call last):
+    ...
+OverflowError: int too large to convert to float
+```
+
+## `dtype=`으로 종류 정하기
+
+원하는 종류가 있으면 `dtype=`으로 정해요. dtype 객체(`sd.float64`)나 그 이름(`"float64"`)을 쓸 수 있어요.
+
+```python
+>>> sd.frame.Series([1, 2], dtype=sd.float64)
+0    1.0
+1    2.0
+dtype: float64
+>>> sd.frame.Series([1, 2], dtype="string")
+0    1
+1    2
+dtype: string
+```
+
+`dtype=`은 **"값이 달라져도 좋으니 이 종류로 바꿔 달라"는 명시적인 요청**이에요. 먼저 값에서 추론한 대로 만든 뒤 [`astype`](/api/frame/astype/)과 똑같이 바꿔요. 그래서 정보를 잃는 변환도 해요. 배열의 생성 함수에 주는 `dtype=`과 같은 뜻이에요.
+
+```python
+>>> sd.frame.Series([1.7, -1.7], dtype="int64")
+0    1
+1   -1
+dtype: int64
+>>> sd.frame.Series([math.nan, 1e20], dtype="int64")
+0                      0
+1    9223372036854775807
+dtype: int64
+>>> sd.frame.Series([0, 2, None], dtype="bool")
+0    False
+1     True
+2     <NA>
+dtype: bool
+```
+
+- **실수 → 정수**: 0 쪽으로 잘라요. NaN은 `0`, int64 범위를 넘는 값과 ±inf는 int64의 최댓값·최솟값이에요.
+- **숫자 → bool**: 0이면 `False`, 아니면 `True`예요.
+- **`NA`는 언제나 `NA`로 남아요.**
+
+문자열을 숫자로 바꿀 때는 엄격하게 읽어요. `"12"`, `"+7"`, `"1.5"`, `"1e3"`처럼 숫자 모양인 것만 받고, 공백이나 `_`가 섞이면 `ValueError`예요. 정수로 읽을 때는 소수점도 받지 않아요. bool로 읽을 때는 `"True"`와 `"False"`만 받아요.
+
+```python
+>>> sd.frame.Series(["12", "+7"], dtype="int64")
+0    12
+1     7
+dtype: int64
+>>> sd.frame.Series(["1.5"], dtype="int64")
+Traceback (most recent call last):
+    ...
+ValueError: Series(): cannot convert string '1.5' to int64
+```
+
+문법 전체는 [`astype`](/api/frame/astype/)에 있어요. `dtype`에는 넷만 쓸 수 있어요. Python의 `float`, `"float32"` 같은 이름, 데이터프레임에 없는 `sd.complex128`은 `TypeError`예요.
+
+```python
+>>> sd.frame.Series([1], dtype=float)
+Traceback (most recent call last):
+    ...
+TypeError: Series(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.string (or their names), not <class 'float'>
+```
+
+## numpy 배열과 stardust 배열에서 만들기
+
+numpy 배열이나 stardust 배열(`sd.ndarray`)을 넣으면 **언제나 값을 복사해요.** 그래서 만든 뒤에 원래 배열을 고쳐도 Series는 그대로예요.
+
+```python
+>>> import numpy as np
+>>> arr = np.array([3, 5, 7])
+>>> s = sd.frame.Series(arr)
+>>> arr[0] = 100
+>>> s
+0    3
+1    5
+2    7
+dtype: int64
+```
+
+Series는 고친 쪽만 바뀌는 규칙(Copy-on-Write, [대입과 복사](/api/frame/assign/) 참고)으로 값을 관리해요. 밖에 있는 배열과 메모리를 함께 쓰면 그 배열을 통한 수정을 Series가 알아챌 수 없어서 복사해요.
+
+numpy 배열의 dtype은 배열의 `sd.asarray`와 같은 규칙으로 넓혀요.
+
+| numpy의 종류 | 결과 |
+|---|---|
+| `bool`, `int64`, `float64` | 같은 dtype |
+| `int8`·`int16`·`int32`, `uint8`·`uint16`·`uint32` | `int64` |
+| `float16`·`float32` | `float64` |
+| 문자열(`<U…`) | `string` |
+| `object` (Python 객체를 담은 배열) | 리스트와 같은 규칙으로 추론 |
+| `uint64`, 복소수, 날짜 | `TypeError` |
+
+```python
+>>> sd.frame.Series(np.array([1.5, 2.5], dtype=np.float32))
+0    1.5
+1    2.5
+dtype: float64
+>>> sd.frame.Series(np.array([1, None], dtype=object))
+0       1
+1    <NA>
+dtype: int64
+>>> sd.frame.Series(np.array([1, 2], dtype=np.uint64))
+Traceback (most recent call last):
+    ...
+TypeError: Series(): uint64 buffers cannot be converted to int64 without loss
+```
+
+`uint64`는 들어 있는 값이 작아도 받지 않아요. int64가 담을 수 없는 값이 들어 있을 수 있는 종류라서, 값이 아니라 종류로 판단해요(배열과 같아요). numpy에서 `arr.astype(np.int64)`로 먼저 바꿔서 넘겨요.
+
+**`object` 배열**은 배열의 `sd.asarray`는 받지 않지만 Series는 받아요. 문자열과 `None`이 섞인 numpy 배열은 대개 `object` 배열인데, 문자열 dtype은 데이터프레임에만 있어서 여기서 받아 줘요.
+
+**numpy의 float 배열에는 `NA`가 없어요.** NaN은 NaN 값 그대로 들어와요. 빠진 값을 NaN으로 표시해 둔 데이터라면 만든 뒤에 직접 NA로 바꿔야 해요([NA와 NaN](/api/frame/na/) 참고).
+
+```python
+>>> sd.frame.Series(np.array([1.0, np.nan]))
+0    1.0
+1    NaN
+dtype: float64
+```
+
+stardust 배열은 bool, int64, float64를 받아요. complex128은 데이터프레임에 그 dtype이 없어서 `TypeError`예요. 두 종류의 배열 모두 1차원만 받아요.
+
+```python
+>>> sd.frame.Series(sd.asarray([0.5, 1.5]))
+0    0.5
+1    1.5
+dtype: float64
+>>> sd.frame.Series(sd.asarray([[1, 2], [3, 4]]))
+Traceback (most recent call last):
+    ...
+ValueError: Series(): expected a 1-D array, got 2 dimensions
+```
+
+반대로 Series를 배열로 꺼내는 방법은 [stardust 배열과 주고받기](/api/frame/to-array/)와 [리스트와 numpy 배열로](/api/frame/to-numpy/)에 있어요.
+
+## 라벨 붙이기: `index=`
+
+`index=`에는 행마다 붙일 라벨을 줘요. 라벨은 **int나 str**이에요. 값과 개수가 같아야 해요.
+
+```python
+>>> sd.frame.Series([90, 85], index=[2024, 2025])
+2024    90
+2025    85
+dtype: int64
+>>> sd.frame.Series([1, 2, 3], index=["a", "b"])
+Traceback (most recent call last):
+    ...
+ValueError: Series(): 3 values for an index of 2 labels
+```
+
+리스트, 튜플, `range`, numpy 배열, `sd.ndarray`, [Index](/api/frame/index/)를 줄 수 있어요. `range`를 주면 [RangeIndex](/api/frame/index/)가 되고, 이름이 있는 Index를 주면 그 이름도 함께 와요.
+
+```python
+>>> sd.frame.Series([1, 2], index=range(10, 12)).index
+RangeIndex(start=10, stop=12, step=1)
+>>> sd.frame.Series([90, 85], index=sd.frame.Index(["kim", "lee"], name="student"))
+student
+kim    90
+lee    85
+dtype: int64
+```
+
+라벨에는 규칙이 있어요. 실수와 bool은 라벨이 될 수 없고, 라벨에 `NA`를 넣을 수도 없어요. 같은 라벨이 여러 번 나오는 것은 괜찮아요.
+
+```python
+>>> sd.frame.Series([1, 2], index=[0.5, 1.5])
+Traceback (most recent call last):
+    ...
+TypeError: Series(): index labels must be int64 or string, not float64
+>>> sd.frame.Series([1, 2], index=["a", None])
+Traceback (most recent call last):
+    ...
+ValueError: Series(): an index cannot hold NA
+>>> sd.frame.Series([1, 2], index=["a", "a"])
+a    1
+a    2
+dtype: int64
+```
+
+라벨이 왜 있고 연산에서 어떻게 쓰이는지는 [라벨과 정렬](/api/frame/alignment/)에 있어요. 라벨 자체를 다루는 법은 [Index와 RangeIndex](/api/frame/index/)에 있어요.
+
+## Series에서 Series 만들기
+
+Series를 넣으면 같은 값, 같은 라벨, 같은 이름의 Series가 돼요. `name=`이나 `dtype=`을 함께 주면 그것만 바꿔요.
+
+```python
+>>> s = sd.frame.Series([1200, 800, 1500], index=["apple", "banana", "cherry"], name="price")
+>>> sd.frame.Series(s, dtype="float64", name="cost")
+apple     1200.0
+banana     800.0
+cherry    1500.0
+Name: cost, dtype: float64
+```
+
+이때 `index=`를 주면 라벨을 **바꿔 다는 것이 아니라, 그 라벨 순서로 행을 다시 배열해요.** 원래 없던 라벨의 행은 `NA`예요. [`reindex`](/api/frame/reindex/)와 같은 일이에요.
+
+```python
+>>> sd.frame.Series(s, index=["cherry", "apple", "kiwi"])
+cherry    1500
+apple     1200
+kiwi      <NA>
+Name: price, dtype: int64
+```
+
+<Fig caption="Series를 넣고 index=를 주면 라벨로 행을 찾아 다시 늘어놓아요. 없는 라벨(kiwi)은 NA예요.">
+  <FrameFig name="s" columns={['price']} index={['apple', 'banana', 'cherry']}
+    data={[1200, 800, 1500]} rowTones={['1', 'm', '2']} />
+  <Op note="index=['cherry', 'apple', 'kiwi']">→</Op>
+  <FrameFig columns={['price']} index={['cherry', 'apple', 'kiwi']}
+    data={[1500, 1200, null]} rowTones={['2', '1', 'g']} />
+</Fig>
+
+라벨만 새것으로 바꾸고 싶다면 값을 꺼내서 새로 만들어요. `dtype=s.dtype`을 주면 값이 모두 NA인 경우에도 dtype이 그대로 남아요.
+
+```python
+>>> sd.frame.Series(s.tolist(), index=["a", "b", "c"], dtype=s.dtype, name=s.name)
+a    1200
+b     800
+c    1500
+Name: price, dtype: int64
+```
+
+Series에서 만든 Series는 처음에는 원본과 값을 함께 쓰지만, 어느 한쪽을 고치면 고친 쪽만 바뀌어요. 그래서 원본이 바뀔 걱정은 하지 않아도 돼요.
+
+```python
+>>> t = sd.frame.Series(s)
+>>> t.loc["apple"] = 0
+>>> s.loc["apple"], t.loc["apple"]
+(1200, 0)
+```
+
+## 이름: `name=`
+
+`name`은 Series의 이름이에요. 출력의 `Name:` 줄에 보이고, DataFrame에서 꺼낸 Series는 컬럼 이름을 이름으로 가져요. 이름은 `str`이나 `None`만 쓸 수 있어요. 만든 뒤에 `s.name = ...`으로 바꿀 수도 있어요.
+
+```python
+>>> s.name = "unit_price"
+>>> s.name
+'unit_price'
+>>> sd.frame.Series([1], name=2024)
+Traceback (most recent call last):
+    ...
+TypeError: Series(): 'name' must be a str or None, not int
+```
+
+DataFrame의 컬럼 이름도 str만 쓸 수 있어요. 연산 결과의 이름이 어떻게 정해지는지는 [산술 연산](/api/frame/arithmetic/)에 있어요.
+
+## 조심할 점
+
+### 주 인자 말고는 키워드로 줘요
+
+`data`는 위치로만, 나머지는 이름을 붙여서만 줘요. `sd.frame.Series([1], "int64")`처럼 dtype을 두 번째 자리에 쓰면 에러예요. 반대로 `data=`라고 이름을 붙여도 에러예요.
+
+```python
+>>> sd.frame.Series([1], "int64")
+Traceback (most recent call last):
+    ...
+TypeError: Series.__init__() takes from 1 to 2 positional arguments but 3 were given
+>>> sd.frame.Series([1], dtype="int64")
+0    1
+dtype: int64
+```
+
+### `if s:`는 쓸 수 없어요
+
+Series를 참·거짓으로 쓰면 `TypeError`예요. "값이 있는가", "모두 참인가", "하나라도 참인가" 가운데 무엇을 묻는지 알 수 없기 때문이에요. 배열과 같아요. 비었는지는 `len(s) == 0`으로 봐요.
+
+```python
+>>> bool(sd.frame.Series([]))
+Traceback (most recent call last):
+    ...
+TypeError: the truth value of a Series is ambiguous
+>>> len(sd.frame.Series([])) == 0
+True
+```
+
+### 라벨은 만든 뒤에 바꿀 수 없어요
+
+`s.index = [...]`처럼 라벨을 통째로 바꾸는 대입은 없어요. 위의 "라벨만 새것으로 바꾸기"처럼 새로 만들어요.
+
+```python
+>>> s.index = ["a", "b", "c"]
+Traceback (most recent call last):
+    ...
+AttributeError: property 'index' of 'Series' object has no setter
+```
+
+### pickle로 저장할 수 있어요
+
+Series는 `pickle`로 저장하고 되살릴 수 있어요. 값은 비트까지 그대로예요(`-0.0`, NaN도). 일부를 잘라 낸 Series는 자기 행만 저장해요. 배열(`sd.ndarray`)은 pickle할 수 없으니, 배열로 꺼낸 값을 저장하려면 Series로 담아 두거나 `tolist()`로 바꿔요.
+
+```python
+>>> import pickle
+>>> pickle.loads(pickle.dumps(s))
+apple     1200
+banana     800
+cherry    1500
+Name: unit_price, dtype: int64
+```
+
+## 비슷한 것과의 차이
+
+| 하고 싶은 일 | 쓸 것 |
+|---|---|
+| 라벨이 붙은 값 한 줄 | `Series` |
+| 여러 컬럼이 있는 표 | [`DataFrame`](/api/frame/dataframe/) |
+| 라벨만 따로 | [`Index`, `RangeIndex`](/api/frame/index/) |
+| 라벨 없이 숫자 계산만 | 배열 [`sd.asarray`](/api/array/asarray/) |
+| CSV 파일에서 읽기 | [`read_csv`](/api/frame/read_csv/) |
+| 이미 있는 Series의 dtype만 바꾸기 | [`astype`](/api/frame/astype/) |
+
+배열과 Series는 비슷해 보이지만 하는 일이 달라요.
+
+| | `sd.asarray` | `sd.frame.Series` |
+|---|---|---|
+| 라벨 | 없음 (위치만) | 행마다 라벨 |
+| 빠진 값 | 없음 | `NA` |
+| 문자열 | 없음 | `sd.string` |
+| 차원 | 몇 차원이든 | 1차원 |
+| numpy 배열 | 될 수 있으면 메모리를 함께 씀 | 언제나 복사 |
+| `object` 배열 | `TypeError` | 리스트처럼 추론 |
+| dtype 추론 (`bool < int64 < float64`) | 같음 | 같음 |
+| `dtype=`의 뜻 (명시적 변환) | 같음 | 같음 |
+
+## pandas를 아는 분께
+
+- `True`와 `1`이 섞이면 int64, `True`와 `1.5`가 섞이면 float64예요. pandas는 둘 다 object예요.
+- 문자열과 숫자를 섞으면 `TypeError`예요. object dtype이 없어요.
+- `[1, None]`은 `NA`가 든 **int64**예요. pandas는 `float64`에 NaN이에요. `pd.Series([])`는 object지만 여기서는 float64예요.
+- numpy float 배열의 NaN은 결측이 아니라 NaN 값이에요. pandas는 `isna()`가 NaN을 결측으로 봐요.
+- `dtype=`은 손실이 있어도 바꿔요. `pd.Series([1.5], dtype="int64")`와 `pd.Series([np.nan], dtype="int64")`는 `ValueError`지만 여기서는 `1`과 `0`이에요.
+- `2**70`은 `OverflowError`예요. pandas는 object Series를 만들어요. `2**63`처럼 int64를 조금 넘는 값을 pandas는 uint64로 담지만, 여기에는 uint64가 없어요.
+- dict(`pd.Series({"a": 1})`)와 스칼라(`pd.Series(5)`), 문자열 하나는 받지 않아요.
+- numpy 배열의 `int32`, `float32`는 int64, float64로 넓혀요. pandas는 그 dtype을 그대로 지켜요. `uint64`와 복소수 배열은 `TypeError`예요.
+- 라벨은 int와 str뿐이에요. float, bool, NaN 라벨은 안 돼요.
+- `name`은 str이나 `None`만 돼요. pandas는 `name=0`도 받아요.
+- `bool(s)`는 `ValueError`가 아니라 `TypeError`예요.
+- `copy=` 인자는 없어요. numpy 배열은 언제나 복사하고, Series에서 만든 Series는 고친 쪽만 바뀌어요.

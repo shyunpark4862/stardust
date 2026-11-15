@@ -1,0 +1,268 @@
+---
+title: 결측값 찾기
+names: [Series.isna, Series.notna, Series.isnan, DataFrame.isna, DataFrame.notna, DataFrame.isnan]
+group: 결측값
+order: 1
+signatures:
+  - "Series.isna()"
+  - "Series.notna()"
+  - "Series.isnan()"
+  - "DataFrame.isna()"
+  - "DataFrame.notna()"
+  - "DataFrame.isnan()"
+summary: 값이 비어 있는(NA) 칸을 isna로, 채워진 칸을 notna로, 실수 값 NaN인 칸을 isnan으로 찾아서 같은 모양의 bool Series나 DataFrame으로 돌려줘요.
+returns:
+  type: Series 또는 DataFrame (bool)
+  desc: 호출한 객체와 같은 라벨, 같은 이름(컬럼 이름)의 bool 결과. isna와 notna의 결과에는 NA가 없고, isnan의 결과는 NA 행이 NA예요.
+raises:
+  - type: TypeError
+    desc: 인자를 주었을 때. 세 메서드 모두 인자를 받지 않아요.
+seeAlso: [na, fillna, dropna, comparison, mask, sum-mean]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
+import FrameFig from '../../../components/fig/FrameFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+실제 데이터에는 빈칸이 흔해요. 설문에 답하지 않은 문항, 고장 난 센서의 측정값, 아직 집계되지 않은 판매량 같은 것들이에요. 데이터프레임은 이런 빈칸을 **결측값 `NA`**로 표시해요. 분석을 시작하기 전에 빈칸이 어디에 몇 개 있는지부터 확인하는 경우가 많아요.
+
+`isna()`는 칸마다 "비어 있나요?"를 물어서 답을 bool로 돌려줘요. `notna()`는 그 반대예요.
+
+```python
+>>> import stardust as sd
+>>> df = sd.frame.DataFrame({
+...     "name": ["ann", "bob", None],
+...     "math": [90, None, 70],
+...     "eng": [85.0, 70.0, None],
+... })
+>>> df
+   name  math   eng
+0   ann    90  85.0
+1   bob  <NA>  70.0
+2  <NA>    70  <NA>
+>>> df.isna()
+    name   math    eng
+0  False  False  False
+1  False   True  False
+2   True  False   True
+```
+
+<Fig caption="NA인 칸만 True가 돼요. 결과는 원래와 같은 라벨, 같은 컬럼 이름의 bool DataFrame이에요.">
+  <FrameFig name="df" columns={['name', 'math', 'eng']} data={[['ann', 90, '85.0'], ['bob', null, '70.0'], [null, 70, null]]}
+    tones={[['', '', ''], ['', 'a', ''], ['a', '', 'a']]} />
+  <Op note="isna()">→</Op>
+  <FrameFig columns={['name', 'math', 'eng']} data={[[false, false, false], [false, true, false], [true, false, true]]}
+    tones={[['', '', ''], ['', 'a', ''], ['a', '', 'a']]} />
+</Fig>
+
+bool은 더하면 `True`의 개수예요. 그래서 `isna()` 뒤에 `sum()`을 붙이면 컬럼마다 빈칸이 몇 개인지 나와요. DataFrame의 `sum()`은 행 하나짜리 DataFrame을 돌려줘요([합, 평균, 개수](/api/frame/sum-mean/)).
+
+```python
+>>> df.isna().sum()
+     name  math  eng
+sum     1     1    1
+>>> df["math"].isna().sum()
+1
+```
+
+<Reference />
+
+## `NA`와 NaN은 따로 찾아요
+
+데이터프레임에는 "값이 없음"처럼 보이는 것이 둘 있어요.
+
+- **`NA`**는 결측값이에요. 값이 없다는 표시이고, 모든 dtype에 있을 수 있어요. 출력에서는 `<NA>`예요.
+- **NaN**("숫자가 아님")은 float64의 **평범한 값**이에요. `0 / 0`처럼 답이 정해지지 않은 실수 계산에서 생겨요. 출력에서는 `NaN`이에요.
+
+둘은 뜻이 다르므로 찾는 방법도 달라요. `isna()`는 `NA`만 찾고, NaN은 `isnan()`으로 찾아요.
+
+```python
+>>> v = sd.frame.Series([1.0, float("nan"), None, float("inf")], name="v")
+>>> v
+0    1.0
+1    NaN
+2   <NA>
+3    inf
+Name: v, dtype: float64
+>>> v.isna()
+0    False
+1    False
+2     True
+3    False
+Name: v, dtype: bool
+>>> v.isnan()
+0    False
+1     True
+2     <NA>
+3    False
+Name: v, dtype: bool
+```
+
+<Fig column caption="같은 Series에서 isna는 NA인 행을, isnan은 NaN인 행을 찾아요. isnan은 NA인 행에서 답을 모르므로 NA예요.">
+  <FigRow>
+    <FrameFig name="v" data={['1.0', 'NaN', null, 'inf']} rowTones={['', 'a', 'b', '']} note="dtype: float64" />
+    <Op note="isna()">→</Op>
+    <FrameFig data={[false, false, true, false]} rowTones={['', '', 'b', '']} note="dtype: bool" />
+  </FigRow>
+  <FigRow>
+    <FrameFig name="v" data={['1.0', 'NaN', null, 'inf']} rowTones={['', 'a', 'b', '']} note="dtype: float64" />
+    <Op note="isnan()">→</Op>
+    <FrameFig data={[false, true, null, false]} rowTones={['', 'a', '', '']} note="dtype: bool" />
+  </FigRow>
+</Fig>
+
+| | `NA` 행 | NaN 행 | 다른 값 |
+|---|:---:|:---:|:---:|
+| `isna()` | `True` | `False` | `False` |
+| `notna()` | `False` | `True` | `True` |
+| `isnan()` | `NA` | `True` | `False` |
+
+NaN은 값이 없다는 표시가 아니라 `0 / 0`처럼 답이 정해지지 않은 계산이 내놓은 float **값**이에요. 그래서 `isna()`가 찾지 않고, 합이나 평균 같은 리덕션에서도 건너뛰지 않고 결과로 퍼져요. 두 값의 차이 전체는 [NA와 NaN](/api/frame/na/)에 있어요.
+
+## `notna`로 채워진 행만 남기기
+
+`notna()`는 `isna()`를 뒤집은 것이에요. 마스크로 쓰면 값이 있는 행만 남아요. NaN은 값이므로 남아요.
+
+```python
+>>> v[v.notna()]
+0    1.0
+1    NaN
+3    inf
+Name: v, dtype: float64
+```
+
+결측값이 있는 행을 지우는 일은 [`dropna`](/api/frame/dropna/)가 더 간단해요. DataFrame에서 여러 컬럼을 한꺼번에 볼 수도 있어요.
+
+## `isnan`의 결과에는 `NA`가 있어요
+
+`isna()`와 `notna()`는 언제나 `True`나 `False`로 답해요. 빈칸인지 아닌지는 언제나 알 수 있기 때문이에요.
+
+`isnan()`은 다르게, **`NA`인 행의 답이 `NA`**예요. 값을 모르니 그 값이 NaN인지도 모르기 때문이에요. [비교 연산](/api/frame/comparison/)에서 `NA`와 비교한 행이 `NA`인 것과 같아요. 마스크로 쓰면 `NA`인 행은 버려지므로, `v[v.isnan()]`은 NaN인 행만 골라요.
+
+```python
+>>> v[v.isnan()]
+1   NaN
+Name: v, dtype: float64
+```
+
+이 성질을 이용하면 NaN과 `NA`를 한 번에 거를 수 있어요. `~v.isnan()`은 NaN인 행이 `False`, `NA`인 행이 `NA`라서 둘 다 버려져요.
+
+```python
+>>> v[~v.isnan()]
+0    1.0
+3    inf
+Name: v, dtype: float64
+```
+
+### 숫자가 아닌 컬럼
+
+NaN은 float64에만 있는 값이에요. int64, bool, string 컬럼의 `isnan()`은 모두 `False`이고, `NA`인 행만 `NA`예요. 배열의 [`sd.isnan`](/api/array/isnan/)이 정수 배열에 모두 `False`인 것과 같아요. 문자열 `"nan"`도 NaN이 아니에요.
+
+```python
+>>> sd.frame.Series([1, None, 3]).isnan()
+0    False
+1     <NA>
+2    False
+dtype: bool
+>>> sd.frame.Series(["nan", None]).isnan()
+0    False
+1     <NA>
+dtype: bool
+```
+
+## DataFrame
+
+DataFrame의 세 메서드는 컬럼마다 같은 규칙을 적용해요. 결과는 같은 컬럼 이름, 같은 행 라벨의 bool DataFrame이에요.
+
+```python
+>>> df.isnan()
+    name   math    eng
+0  False  False  False
+1  False   <NA>  False
+2   <NA>  False   <NA>
+>>> df.notna()
+    name   math    eng
+0   True   True   True
+1   True  False   True
+2  False   True  False
+```
+
+어느 한 컬럼이라도 비어 있는 행을 찾으려면 컬럼별 결과를 `|`로 묶어요([논리와 비트 연산](/api/frame/logical/)).
+
+```python
+>>> df[df["math"].isna() | df["eng"].isna()]
+   name  math   eng
+1   bob  <NA>  70.0
+2  <NA>    70  <NA>
+```
+
+## 조심할 점
+
+### `== NA`로는 찾을 수 없어요
+
+`NA`와의 비교는 언제나 `NA`라서, `s == sd.frame.NA`는 모든 행이 `NA`예요. 결측값은 반드시 `isna()`로 찾아요. `None`과는 비교 자체가 `TypeError`예요.
+
+```python
+>>> df["math"] == sd.frame.NA
+0    <NA>
+1    <NA>
+2    <NA>
+Name: math, dtype: bool
+>>> df["math"] == None
+Traceback (most recent call last):
+    ...
+TypeError: '==' not supported between instances of 'Series' and 'NoneType'
+```
+
+값 하나가 `NA`인지 볼 때는 `x is sd.frame.NA`를 써요.
+
+```python
+>>> df["math"].tolist()[1] is sd.frame.NA
+True
+```
+
+### NaN도 `==`로는 찾을 수 없어요
+
+NaN은 자기 자신과도 같지 않아서(`NaN == NaN`이 `False`), `v == float("nan")`은 NaN 행에서도 `False`예요. 반드시 `isnan()`을 써요.
+
+```python
+>>> v == float("nan")
+0    False
+1    False
+2     <NA>
+3    False
+Name: v, dtype: bool
+```
+
+### 이름이 하나씩만 있어요
+
+`isnull`, `notnull` 같은 다른 이름은 없어요. 같은 일을 하는 이름을 여럿 두지 않아요.
+
+```python
+>>> v.isnull()
+Traceback (most recent call last):
+    ...
+AttributeError: 'Series' object has no attribute 'isnull'
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 것 | 쓸 것 |
+|---|---|
+| 빈칸(`NA`)인지 칸마다 | `s.isna()`, `df.isna()` |
+| 값이 있는지 칸마다 | `s.notna()`, `df.notna()` |
+| NaN인지 칸마다 | `s.isnan()`, `df.isnan()` |
+| 값 하나가 `NA`인지 | `x is sd.frame.NA` |
+| 빈칸의 개수 | `s.isna().sum()`. 값이 있는 칸의 개수는 `s.count()` |
+| 빈칸이 있는 행 지우기 | [`dropna`](/api/frame/dropna/) |
+| 빈칸을 다른 값으로 채우기 | [`fillna`](/api/frame/fillna/) |
+| 배열에서 NaN 찾기 | [`sd.isnan`](/api/array/isnan/) (배열에는 `NA`가 없어요) |
+
+## pandas를 아는 분께
+
+- `isna()`는 NaN을 결측으로 보지 않아요. pandas의 `isna()`는 NaN도 `True`예요.
+- `isnan()` 메서드가 있어요. pandas의 Series에는 없어요. `NA`인 행의 결과는 `NA`예요.
+- `isnull()`, `notnull()` 별칭이 없어요.
+- 결측값이 있어도 dtype이 바뀌지 않으므로, int64나 string 컬럼에서도 `isna()`가 같은 방식으로 동작해요.

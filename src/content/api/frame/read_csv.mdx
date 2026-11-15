@@ -1,0 +1,565 @@
+---
+title: read_csv
+names: [read_csv]
+group: 만들기
+order: 4
+signatures:
+  - "sd.frame.read_csv(path, /, *, sep=\",\", header=True, names=None, usecols=None, dtype=None, na_values=None, nrows=None, index_col=None)"
+summary: CSV 파일을 읽어서 DataFrame을 만들어요. 컬럼마다 dtype을 알아서 정하고, 빈칸은 NA로 읽어요.
+params:
+  - name: path
+    type: str, bytes 또는 경로 객체
+    kind: positional-only
+    desc: 읽을 파일의 경로. UTF-8 파일이어야 해요.
+  - name: sep
+    type: str
+    kind: keyword-only
+    desc: 필드를 나누는 문자 하나. 기본값은 쉼표예요. 따옴표와 줄바꿈 문자는 안 돼요.
+  - name: header
+    type: bool
+    kind: keyword-only
+    desc: True면 첫 줄이 컬럼 이름이에요. False면 names=가 꼭 필요해요.
+  - name: names
+    type: str의 list 또는 None
+    kind: keyword-only
+    desc: 컬럼 이름. header=True와 함께 주면 파일의 이름을 이것으로 바꿔요.
+  - name: usecols
+    type: str의 list 또는 None
+    kind: keyword-only
+    desc: 읽을 컬럼의 이름. 결과는 이 리스트의 순서를 따라요.
+  - name: dtype
+    type: dtype, dtype 이름, dict 또는 None
+    kind: keyword-only
+    desc: 모든 컬럼의 dtype 하나, 또는 {컬럼 이름 → dtype}. 준 컬럼은 추론하지 않고 그 dtype으로 엄격하게 읽어요.
+  - name: na_values
+    type: str의 list 또는 None
+    kind: keyword-only
+    desc: 빈 필드 말고도 NA로 읽을 문자열들.
+  - name: nrows
+    type: int 또는 None
+    kind: keyword-only
+    desc: 읽을 데이터 행의 최대 개수. None이면 끝까지 읽어요.
+  - name: index_col
+    type: str 또는 None
+    kind: keyword-only
+    desc: 행 라벨로 쓸 컬럼의 이름. 그 컬럼은 컬럼 목록에서 빠지고 Index가 돼요.
+returns:
+  type: DataFrame
+  desc: 파일의 내용을 담은 DataFrame. index_col이 없으면 행 라벨은 0, 1, 2, … 예요.
+raises:
+  - type: TypeError
+    desc: 인자의 타입이 틀렸을 때 (path가 경로가 아님, sep이 str이 아님, header가 True/False가 아님, list 인자가 str의 list가 아님, index_col이 str이 아님 등).
+  - type: ValueError
+    desc: 파일 형식이 틀렸을 때(필드 개수, 따옴표, UTF-8, 겹치는 컬럼 이름, 빈 파일), dtype=으로 읽을 수 없는 값, sep의 값이 틀렸을 때, nrows가 음수일 때, index_col 컬럼이 라벨이 될 수 없을 때. 파일 내용 때문이면 줄 번호를 알려 줘요.
+  - type: KeyError
+    desc: usecols, dtype, index_col이 파일에 없는(또는 읽지 않는) 컬럼을 가리킬 때.
+  - type: OverflowError
+    desc: nrows가 int64 범위를 벗어날 때.
+  - type: FileNotFoundError
+    desc: 파일이 없을 때.
+seeAlso: [dataframe, series, index, na, astype, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import FrameFig from '../../../components/fig/FrameFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+CSV(comma-separated values)는 표를 글자로 적은 파일이에요. 한 줄이 한 행이고, 칸(필드)은 쉼표로 나눠요. 보통 첫 줄에는 컬럼 이름이 있어요. 엑셀이나 구글 시트에서 "CSV로 내보내기"를 하면 이런 파일이 나와요.
+
+```text
+fruit,price,qty
+apple,1200,3
+banana,800,
+cherry,1500,7
+```
+
+`read_csv`는 이런 파일을 읽어서 [DataFrame](/api/frame/dataframe/)을 만들어요. 컬럼마다 값을 보고 dtype을 정하고, 비어 있는 칸은 `NA`로 읽어요. 데이터 분석은 대개 이 함수로 시작해요.
+
+아래 예제들은 임시 폴더에 작은 CSV 파일을 써 놓고 읽어요.
+
+```python
+>>> import stardust as sd
+>>> import os, tempfile
+>>> path = os.path.join(tempfile.mkdtemp(), "sales.csv")
+>>> with open(path, "w") as f:
+...     _ = f.write("fruit,price,qty\napple,1200,3\nbanana,800,\ncherry,1500,7\n")
+>>> df = sd.frame.read_csv(path)
+>>> df
+    fruit  price   qty
+0   apple   1200     3
+1  banana    800  <NA>
+2  cherry   1500     7
+>>> df.dtypes
+{'fruit': string, 'price': int64, 'qty': int64}
+```
+
+<Fig caption="첫 줄이 컬럼 이름, 나머지 줄이 행이 돼요. 비어 있던 칸은 NA이고, qty는 여전히 int64예요.">
+  <FrameFig name="sales.csv" index={false} data={[['fruit,price,qty'], ['apple,1200,3'], ['banana,800,'], ['cherry,1500,7']]}
+    rowTones={['a', '', '', '']} />
+  <Op note="read_csv">→</Op>
+  <FrameFig columns={['fruit', 'price', 'qty']} dtypes={['string', 'int64', 'int64']}
+    data={[['apple', 1200, 3], ['banana', 800, null], ['cherry', 1500, 7]]} colTones={['a', 'a', 'a']} />
+</Fig>
+
+이 페이지의 나머지 예제는 파일을 쓰는 부분을 짧게 줄이려고 작은 함수를 하나 만들어 써요. `newline=""`은 `\r\n` 같은 줄바꿈을 적은 그대로 파일에 쓰게 해요.
+
+```python
+>>> folder = tempfile.mkdtemp()
+>>> def write(name, text):
+...     path = os.path.join(folder, name)
+...     with open(path, "w", newline="") as f:
+...         _ = f.write(text)
+...     return path
+```
+
+<Reference />
+
+## 컬럼 이름: `header`와 `names`
+
+기본값 `header=True`는 첫 줄을 컬럼 이름으로 읽어요. 첫 줄부터 데이터인 파일은 `header=False`로 읽고, 이때는 컬럼 이름을 `names=`로 꼭 줘야 해요. 리스트의 리스트로 DataFrame을 만들 때 `columns=`가 필요한 것과 같아요.
+
+```python
+>>> raw = write("raw.csv", "kim,90\nlee,85\n")
+>>> sd.frame.read_csv(raw, header=False, names=["name", "score"])
+  name  score
+0  kim     90
+1  lee     85
+>>> sd.frame.read_csv(raw, header=False)
+Traceback (most recent call last):
+    ...
+ValueError: read_csv(): 'names' is required when header=False
+```
+
+`header=True`인 채로 `names=`를 주면 파일의 컬럼 이름을 **바꿔서** 읽어요. 첫 줄은 여전히 이름 줄이라 데이터가 되지 않아요. 이름의 개수는 파일의 컬럼 수와 같아야 해요.
+
+```python
+>>> scores = write("scores.csv", "Student Name,Math Score\nkim,90\nlee,85\n")
+>>> sd.frame.read_csv(scores, names=["name", "math"])
+  name  math
+0  kim    90
+1  lee    85
+>>> sd.frame.read_csv(scores, names=["name"])
+Traceback (most recent call last):
+    ...
+ValueError: read_csv(): line 1: 1 names for a header of 2 fields
+```
+
+컬럼 이름은 DataFrame에서처럼 겹치면 안 돼요. 파일의 첫 줄에 같은 이름이 두 번 있으면 `ValueError`예요. 그럴 때는 `names=`로 다른 이름을 줘서 읽어요.
+
+```python
+>>> twice = write("twice.csv", "score,score\n90,85\n")
+>>> sd.frame.read_csv(twice)
+Traceback (most recent call last):
+    ...
+ValueError: read_csv(): column name 'score' repeats
+>>> sd.frame.read_csv(twice, names=["math", "art"])
+   math  art
+0    90   85
+```
+
+## 일부만 읽기: `usecols`와 `nrows`
+
+`usecols=`에는 읽을 컬럼의 이름을 리스트로 줘요. 결과의 컬럼은 **이 리스트의 순서**를 따라요. 컬럼 이름 하나도 `["price"]`처럼 리스트로 감싸요.
+
+```python
+>>> sd.frame.read_csv(path, usecols=["qty", "fruit"])
+    qty   fruit
+0     3   apple
+1  <NA>  banana
+2     7  cherry
+>>> sd.frame.read_csv(path, usecols=["weight"])
+Traceback (most recent call last):
+    ...
+KeyError: "read_csv(): 'usecols' names a column that is not in the file: 'weight'"
+```
+
+`nrows=`는 데이터 행을 앞에서부터 그 개수까지만 읽어요(이름 줄은 세지 않아요). 큰 파일의 앞부분만 살펴볼 때 편해요. 읽지 않은 뒤쪽은 검사하지 않아서, 거기에 형식 오류가 있어도 에러가 나지 않아요.
+
+```python
+>>> sd.frame.read_csv(path, nrows=2)
+    fruit  price   qty
+0   apple   1200     3
+1  banana    800  <NA>
+```
+
+`nrows`는 int여야 하고 음수면 안 돼요. `nrows=0`은 컬럼만 있고 행은 없는 표예요.
+
+```python
+>>> sd.frame.read_csv(path, nrows=-1)
+Traceback (most recent call last):
+    ...
+ValueError: read_csv(): 'nrows' must be >= 0, not -1
+```
+
+## 구분 문자: `sep`
+
+쉼표 말고 다른 문자로 칸을 나눈 파일도 있어요. 소수점에 쉼표를 쓰는 나라에서는 세미콜론(`;`)을, 탭으로 나눈 TSV 파일은 탭(`"\t"`)을 써요. `sep=`에 그 문자 하나를 줘요.
+
+```python
+>>> tsv = write("cities.tsv", "city\ttemp\nSeoul\t12.5\nBusan\t15.0\n")
+>>> sd.frame.read_csv(tsv, sep="\t")
+    city  temp
+0  Seoul  12.5
+1  Busan  15.0
+```
+
+구분 문자는 딱 한 글자예요. 따옴표(`"`)와 줄바꿈 문자는 이미 다른 뜻이 있어서 쓸 수 없어요. 구분 문자를 잘못 주면 에러는 나지 않지만 한 줄 전체가 필드 하나로 읽혀요. 결과의 컬럼이 하나뿐이라면 `sep`을 의심해 보세요.
+
+```python
+>>> sd.frame.read_csv(tsv, sep="::")
+Traceback (most recent call last):
+    ...
+ValueError: read_csv(): 'sep' must be one character other than a quote or a line break, not '::'
+>>> sd.frame.read_csv(tsv).columns
+Index(['city\ttemp'], dtype=string)
+```
+
+## 타입 추론: 컬럼의 dtype은 어떻게 정해지나요
+
+`dtype=`을 주지 않은 컬럼은 **NA가 아닌 모든 필드**를 보고 dtype을 정해요. 다음 순서로 처음 맞는 것을 골라요.
+
+| 순서 | 모든 필드가 이런 모양이면 | dtype | 예 |
+|:---:|---|:---:|---|
+| 1 | 정수, int64 범위 안 | `int64` | `7`, `-3`, `+12`, `007` |
+| 2 | 실수 (정수도 실수 모양으로 쳐요) | `float64` | `1.5`, `.5`, `1.`, `1e3`, `nan`, `-inf` |
+| 3 | `True` 또는 `False` | `bool` | `True`, `False` |
+| 4 | 그 밖 | `string` | `apple`, `true`, ` 1` |
+
+```python
+>>> mixed = write("mixed.csv", "i,f,b,s\n1,1.5,True,x\n-2,.5,False,y\n+3,1e3,True,z\n")
+>>> sd.frame.read_csv(mixed)
+   i       f      b  s
+0  1     1.5   True  x
+1 -2     0.5  False  y
+2  3  1000.0   True  z
+>>> sd.frame.read_csv(mixed).dtypes
+{'i': int64, 'f': float64, 'b': bool, 's': string}
+```
+
+숫자 모양은 엄격하게 봐요. [`astype`](/api/frame/astype/)으로 문자열을 숫자로 바꿀 때와 같은 문법이에요.
+
+- **공백이 들어간 필드는 숫자가 아니에요.** `" 1"`이 하나라도 있으면 그 컬럼은 string이에요. `1_000`, `0x1F`, `1,000`(따옴표 안)도 숫자가 아니에요.
+- **bool은 `True`와 `False`만이에요.** 대소문자도 정확해야 해서 `true`, `TRUE`, `yes`, `1`은 bool이 아니에요.
+- **`nan`, `inf`, `infinity`**(대소문자 무관, 부호 가능)는 실수 모양이에요. 그래서 float 컬럼에서 NaN 값과 무한대 값으로 읽혀요. `NA`가 아니에요.
+- **따옴표는 칸의 경계일 뿐이에요.** `"12"`도 `12`와 같이 정수로 읽어요.
+- **값이 모두 NA인 컬럼**은 float64예요. 리스트에서 Series를 만들 때와 같아요.
+
+```python
+>>> spaces = write("spaces.csv", 'a,b,c\n 1,true,"12"\n2,TRUE,3\n')
+>>> sd.frame.read_csv(spaces).dtypes
+{'a': string, 'b': string, 'c': int64}
+```
+
+정수와 실수가 섞인 컬럼은 float64가 되고, 정수는 실수로 반올림돼요. int64 범위를 넘는 정수도 실수 모양으로 읽혀서 float64 컬럼이 돼요. 리스트로 Series를 만들 때 `[2**70]`이 `OverflowError`인 것과 달리, 추론은 에러를 내지 않고 다음 순서로 넘어가기 때문이에요.
+
+```python
+>>> big = write("big.csv", "id\n9223372036854775808\n1\n")
+>>> sd.frame.read_csv(big)
+             id
+0  9.223372e+18
+1  1.000000e+00
+```
+
+<Callout type="warn" title="앞자리 0과 긴 숫자 코드">
+  우편번호 `007`이나 상품 코드처럼 숫자로 보이지만 숫자가 아닌 값은 정수로 읽혀서 앞자리 0이 사라지고(`7`), 아주 긴 번호는 실수로 바뀌어 끝자리가 달라질 수 있어요. 이런 컬럼은 `dtype={"zip": "string"}`처럼 문자열로 읽으세요.
+</Callout>
+
+```python
+>>> zips = write("zips.csv", "zip,city\n007,Seoul\n120,Busan\n")
+>>> sd.frame.read_csv(zips)["zip"].tolist()
+[7, 120]
+>>> sd.frame.read_csv(zips, dtype={"zip": "string"})["zip"].tolist()
+['007', '120']
+```
+
+## `dtype=`으로 정하기
+
+`dtype=`에는 모든 컬럼에 쓸 dtype 하나, 또는 `{컬럼 이름: dtype}` dict를 줘요. 지정한 컬럼은 추론하지 않고 그 dtype으로 읽어요. 읽는 문법은 [`astype`](/api/frame/astype/)이 문자열을 바꿀 때와 같아서, 읽을 수 없는 값이 있으면 **줄 번호와 컬럼 이름**을 알려 주는 `ValueError`예요.
+
+```python
+>>> sd.frame.read_csv(path, dtype={"price": "float64"}).dtypes
+{'fruit': string, 'price': float64, 'qty': int64}
+>>> sd.frame.read_csv(path, dtype="string")
+    fruit price   qty
+0   apple  1200     3
+1  banana   800  <NA>
+2  cherry  1500     7
+>>> sd.frame.read_csv(path, dtype={"fruit": "int64"})
+Traceback (most recent call last):
+    ...
+ValueError: read_csv(): line 2: column 'fruit': cannot read 'apple' as int64
+```
+
+`dtype="string"`이어도 빈 필드는 `NA`예요. dict에 파일에 없는 컬럼이나 `usecols`로 읽지 않는 컬럼을 적으면 `KeyError`예요. dtype의 표기는 다른 곳과 같아서 `sd.int64`나 `"int64"`를 쓰고, Python의 `int`는 받지 않아요.
+
+```python
+>>> sd.frame.read_csv(path, dtype={"weight": "float64"})
+Traceback (most recent call last):
+    ...
+KeyError: "read_csv(): 'dtype' names columns that are not read: ['weight']"
+```
+
+## 빠진 값: 무엇이 NA가 되나요
+
+`NA`가 되는 필드는 딱 두 가지예요.
+
+1. **따옴표 없는 빈 필드**: `a,,c`의 가운데, 줄 끝의 `a,b,`
+2. **`na_values`에 적은 문자열과 똑같은 필드**
+
+그 밖은 모두 값이에요. 특히 **따옴표로 감싼 빈 필드 `""`는 빈 문자열**이에요. 그래서 "값이 없음"과 "빈 문자열"을 파일에서 구별할 수 있어요.
+
+```python
+>>> notes = write("notes.csv", 'name,note\nkim,"good"\nlee,""\npark,\n')
+>>> sd.frame.read_csv(notes)["note"].tolist()
+['good', '', <NA>]
+```
+
+`NA`, `null`, `None`, `N/A` 같은 글자는 저절로 NA가 되지 않아요. 그 글자 그대로 값이에요. `NaN`, `nan`은 float 컬럼에서 NaN **값**이에요(빠진 값이 아니라 실수의 한 값, [NA와 NaN](/api/frame/na/) 참고).
+
+```python
+>>> codes = write("codes.csv", "temp,status\n12.5,ok\nNaN,NA\n,null\n")
+>>> sd.frame.read_csv(codes)
+   temp status
+0  12.5     ok
+1   NaN     NA
+2  <NA>   null
+```
+
+이런 표시를 빠진 값으로 읽으려면 `na_values=`에 적어요. 적은 문자열과 정확히 같은 필드(따옴표로 감쌌어도)가 모든 컬럼에서 NA가 돼요. 측정값이 없을 때 `-999` 같은 숫자를 적어 두는 데이터에도 써요.
+
+```python
+>>> sd.frame.read_csv(codes, na_values=["NA", "null"])
+   temp status
+0  12.5     ok
+1   NaN   <NA>
+2  <NA>   <NA>
+>>> sensor = write("sensor.csv", "reading\n17\n-999\n21\n")
+>>> sd.frame.read_csv(sensor, na_values=["-999"])
+   reading
+0       17
+1     <NA>
+2       21
+```
+
+`na_values`의 값은 문자열로 적어요(`["-999"]`). 숫자 `-999`를 넣으면 `TypeError`예요. NA가 생겨도 컬럼의 dtype은 바뀌지 않아요. 위의 `reading`은 int64예요.
+
+## 행 라벨: `index_col`
+
+`index_col=`에 컬럼 이름을 주면 그 컬럼을 행 라벨로 써요. 그 컬럼은 컬럼 목록에서 빠지고, 컬럼 이름이 Index의 이름이 돼요.
+
+```python
+>>> stock = write("stock.csv", "code,item,qty\nA1,apple,3\nB2,pear,5\n")
+>>> inv = sd.frame.read_csv(stock, index_col="code")
+>>> inv
+       item  qty
+code            
+A1    apple    3
+B2     pear    5
+>>> inv.index
+Index(['A1', 'B2'], dtype=string, name='code')
+```
+
+라벨의 규칙([Index와 RangeIndex](/api/frame/index/))을 따라야 해서, 그 컬럼은 int64나 string이고 NA가 없어야 해요. 컬럼 이름은 str로 줘요. 위치(`index_col=0`)는 받지 않아요.
+
+```python
+>>> sd.frame.read_csv(codes, index_col="temp")
+Traceback (most recent call last):
+    ...
+ValueError: read_csv(): the 'index_col' column 'temp' must be int64 or string without NA, got float64
+>>> sd.frame.read_csv(stock, index_col=0)
+Traceback (most recent call last):
+    ...
+TypeError: read_csv(): 'index_col' must be a column name (str) or None, not int
+```
+
+`usecols`를 함께 쓸 때는 `index_col`의 컬럼도 `usecols`에 넣어야 해요. 읽지 않은 컬럼은 라벨이 될 수 없어요.
+
+## 파일 형식
+
+`read_csv`는 널리 쓰이는 CSV 규칙(RFC 4180)을 따라요. 대부분의 프로그램이 내보내는 파일은 그대로 읽혀요. 규칙에 맞지 않는 곳이 있으면 짐작해서 고치지 않고, 줄 번호를 알려 주는 `ValueError`를 내요.
+
+### 글자: UTF-8
+
+파일은 UTF-8이어야 해요. 맨 앞의 BOM(엑셀이 UTF-8 파일 앞에 붙이는 표시)은 건너뛰어요. 다른 인코딩(EUC-KR, CP949 등)의 파일은 먼저 UTF-8로 바꿔서 읽어요. `encoding=` 같은 인자는 없어요.
+
+```python
+>>> latin = os.path.join(folder, "latin.csv")
+>>> with open(latin, "wb") as f:
+...     _ = f.write(b"city\nCaf\xe9\n")
+>>> sd.frame.read_csv(latin)
+Traceback (most recent call last):
+    ...
+ValueError: read_csv(): line 2: column 'city' is not valid UTF-8
+```
+
+### 줄바꿈
+
+줄바꿈은 `\n`(macOS, Linux)과 `\r\n`(Windows) 둘 다 돼요. 마지막 줄 끝에 줄바꿈이 있어도 없어도 같아요.
+
+```python
+>>> crlf = write("crlf.csv", "a,b\r\n1,2\r\n3,4")
+>>> sd.frame.read_csv(crlf)
+   a  b
+0  1  2
+1  3  4
+```
+
+`\n` 바로 앞이 아닌 `\r`은 줄바꿈이 아니라 값의 일부예요.
+
+### 따옴표
+
+쉼표나 줄바꿈이 든 값은 큰따옴표로 감싸요. 감싼 안에서는 구분 문자와 줄바꿈도 값이고, 따옴표 자신은 `""`처럼 두 번 써요.
+
+```python
+>>> quoted = write("quoted.csv", 'name,note\napple,"red, sweet"\nbanana,"he said ""ripe"""\ncherry,"two\nlines"\n')
+>>> sd.frame.read_csv(quoted)["note"].tolist()
+['red, sweet', 'he said "ripe"', 'two\nlines']
+```
+
+따옴표를 규칙에 어긋나게 쓰면 에러예요.
+
+| 경우 | 예 | 메시지 |
+|---|---|---|
+| 감싸지 않은 필드 안의 `"` | `5"7` | `a quote inside an unquoted field` |
+| 닫는 따옴표 뒤에 다른 글자 | `"x"y` | `a closing quote must be followed by the separator or the end of the line` |
+| 끝까지 닫지 않은 따옴표 | `"never` | `a quoted field is never closed` |
+
+```python
+>>> inch = write("inch.csv", 'item,size\nscreen,5"7\n')
+>>> sd.frame.read_csv(inch)
+Traceback (most recent call last):
+    ...
+ValueError: read_csv(): line 2: a quote inside an unquoted field
+>>> sd.frame.read_csv(write("open.csv", 'a,b\n1,"never\n2,3\n'))
+Traceback (most recent call last):
+    ...
+ValueError: read_csv(): line 2: a quoted field is never closed
+```
+
+### 모든 행의 필드 개수가 같아야 해요
+
+행마다 필드 개수가 컬럼 수와 같아야 해요. 모자라거나 남으면 칸을 채우거나 버리지 않고 에러를 내요. 그래서 칸이 하나 밀린 행의 값이 조용히 엉뚱한 컬럼에 들어가는 일이 없어요.
+
+```python
+>>> short = write("short.csv", "fruit,price\napple,1200\nbanana\n")
+>>> sd.frame.read_csv(short)
+Traceback (most recent call last):
+    ...
+ValueError: read_csv(): line 3: expected 2 fields, got 1
+```
+
+줄 번호는 파일의 실제 줄 번호예요. 이름 줄이 1번이고, 따옴표 안의 줄바꿈도 한 줄로 세요.
+
+### 빈 줄은 빈 필드 하나짜리 행이에요
+
+완전히 빈 줄은 건너뛰지 않고 **빈 필드 하나로 된 행**으로 읽어요. 그래서 컬럼이 하나인 파일에서는 NA 행이 되고, 컬럼이 여럿인 파일에서는 필드 개수 에러예요. 빈 줄이 실수로 끼어든 것인지, 정말 값이 없는 행인지를 대신 판단하지 않아요.
+
+```python
+>>> one = write("one.csv", "score\n90\n\n85\n")
+>>> sd.frame.read_csv(one)
+   score
+0     90
+1   <NA>
+2     85
+>>> sd.frame.read_csv(write("two.csv", "a,b\n1,2\n\n3,4\n"))
+Traceback (most recent call last):
+    ...
+ValueError: read_csv(): line 3: expected 2 fields, got 1
+```
+
+### 이름 줄만 있는 파일, 빈 파일
+
+이름 줄만 있으면 행이 없는 표예요(컬럼은 모두 float64). 완전히 빈 파일은 `header=True`일 때 이름을 읽을 수 없어서 에러예요.
+
+```python
+>>> sd.frame.read_csv(write("head.csv", "a,b\n")).shape
+(0, 2)
+>>> sd.frame.read_csv(write("empty.csv", ""))
+Traceback (most recent call last):
+    ...
+ValueError: read_csv(): line 1: the file is empty but header=True
+```
+
+## 조심할 점
+
+### 경로와 인자
+
+`path`는 str, bytes, `pathlib.Path` 같은 경로 객체예요. 열린 파일 객체나 문자열 내용 자체는 받지 않아요. 파일이 없으면 Python의 `FileNotFoundError`예요.
+
+```python
+>>> import pathlib
+>>> sd.frame.read_csv(pathlib.Path(path)).shape
+(3, 3)
+>>> sd.frame.read_csv(123)
+Traceback (most recent call last):
+    ...
+TypeError: read_csv(): 'path' must be a str or a path-like object, not int
+>>> sd.frame.read_csv("no_such_file.csv")
+Traceback (most recent call last):
+    ...
+FileNotFoundError: [Errno 2] No such file or directory: 'no_such_file.csv'
+```
+
+`path`만 위치로 주고 나머지는 이름을 붙여요. 인자의 타입 규칙은 데이터프레임 전체와 같아요([데이터프레임의 기본](/api/frame/basics/)): `header`는 `True`/`False`만, `nrows`는 int만, 리스트 인자(`names`, `usecols`, `na_values`)는 str의 리스트나 튜플만 받아요. 컬럼 이름 하나도 리스트로 감싸요.
+
+```python
+>>> sd.frame.read_csv(path, ";")
+Traceback (most recent call last):
+    ...
+TypeError: read_csv() takes 1 positional argument but 2 were given
+>>> sd.frame.read_csv(path, header=1)
+Traceback (most recent call last):
+    ...
+TypeError: read_csv(): 'header' must be True or False, not int
+>>> sd.frame.read_csv(path, usecols="fruit")
+Traceback (most recent call last):
+    ...
+TypeError: read_csv(): 'usecols' must be a list of str, not str
+```
+
+### 없는 옵션
+
+`encoding`, `skiprows`, `comment`, `quotechar`, `thousands`, `decimal`, `parse_dates`, `converters` 같은 옵션은 없어요. 날짜는 문자열로 읽히고, `1,000` 같은 천 단위 구분이나 `3,14` 같은 소수점 쉼표는 숫자로 읽히지 않아요. 이런 파일은 먼저 Python으로 다듬거나, 문자열로 읽은 뒤 바꿔요.
+
+### 같은 데이터, 다른 결과: 리스트와 CSV
+
+같은 값이라도 리스트에서 만들 때와 CSV에서 읽을 때 차이가 하나 있어요. 리스트의 `2**70`은 Python int라서 int64 컬럼이 되려다 `OverflowError`가 나지만, CSV의 `1180591620717411303424`는 글자라서 int64에 맞지 않으면 다음 후보인 float64로 읽혀요. 그 밖의 dtype 규칙(int와 float가 섞이면 float64, 모두 NA면 float64, NA가 있어도 int64 유지)은 같아요.
+
+## 비슷한 것과의 차이
+
+| 하고 싶은 일 | 쓸 것 |
+|---|---|
+| CSV 파일을 표로 | `read_csv` |
+| Python 리스트·dict를 표로 | [`DataFrame`](/api/frame/dataframe/) |
+| 읽은 뒤 컬럼의 dtype 바꾸기 | [`astype`](/api/frame/astype/) |
+| 읽은 뒤 NA 채우기 | [`fillna`](/api/frame/fillna/) |
+| 읽은 뒤 NA 행 지우기 | [`dropna`](/api/frame/dropna/) |
+
+| 필드 | 결과 |
+|---|---|
+| (따옴표 없는 빈 칸) | `NA` |
+| `""` | 빈 문자열 `''` |
+| `NA`, `null`, `None` | 그 글자 그대로 (`na_values`에 적으면 `NA`) |
+| `NaN`, `nan` (숫자 컬럼) | NaN 값 |
+| `inf`, `-Infinity` (숫자 컬럼) | 무한대 값 |
+| `007` | 정수 `7` (`dtype="string"`이면 `'007'`) |
+| ` 1`, `1_000` | 문자열 |
+| `True`, `False` | bool (`true`, `TRUE`는 문자열) |
+
+## pandas를 아는 분께
+
+- 빈 칸(따옴표 없는)과 `na_values`만 NA예요. pandas처럼 `NA`, `null`, `NaN`, `N/A` 등을 기본으로 결측 처리하지 않아요. `NaN`은 NaN 값이고, `""`는 빈 문자열이에요(pandas는 둘 다 NaN).
+- NA가 있는 정수 컬럼도 int64예요. pandas는 float64가 돼요.
+- 행의 필드 개수가 다르면 에러예요. pandas는 모자란 칸을 NaN으로 채워요. 남는 칸은 pandas도 에러지만, 모든 데이터 행이 한 칸씩 많으면 첫 컬럼을 행 라벨로 써 버려요.
+- 빈 줄을 건너뛰지 않아요(`skip_blank_lines`가 없어요). 컬럼이 하나면 NA 행, 여럿이면 에러예요.
+- 겹치는 컬럼 이름은 `a.1`로 바꾸지 않고 에러예요.
+- `header=False`예요. pandas는 `header=None`을 쓰고 `header=False`는 `TypeError`예요.
+- `names=`만 주면 첫 줄을 이름 줄로 보고 이름을 바꿔요. pandas는 `names=`를 주면 첫 줄을 **데이터**로 읽어요.
+- `usecols`의 순서가 결과의 컬럼 순서예요. pandas는 파일의 순서를 따라요. `usecols`, `index_col`은 이름으로만 줘요(위치 없음).
+- `" 1"`은 문자열, `true`/`TRUE`는 문자열이에요. pandas는 숫자와 bool로 읽어요.
+- int64를 넘는 정수는 float64예요. pandas는 `2**63` 근처를 uint64로 읽어요.
+- `\n` 앞이 아닌 `\r`은 값의 일부예요. pandas는 줄바꿈으로 읽어요.
+- `index_col` 컬럼에 NA가 있으면 에러예요(라벨에는 NA가 없어요).
+- `encoding`, `skiprows`, `parse_dates`, `thousands` 같은 옵션은 없어요. 파일은 UTF-8만 읽어요.

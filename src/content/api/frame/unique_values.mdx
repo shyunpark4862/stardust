@@ -1,0 +1,266 @@
+---
+title: 고유값
+names: [Series.unique_values, Series.nunique, DataFrame.nunique]
+group: 중복과 고유값
+order: 1
+signatures:
+  - "Series.unique_values()"
+  - "Series.nunique(*, dropna=True)"
+  - "DataFrame.nunique(*, dropna=True)"
+summary: 컬럼에 나오는 서로 다른 값을 크기순으로 한 번씩 모으고(unique_values), 그 종류가 몇 개인지 세요(nunique). NaN도 하나의 값으로 쳐요.
+params:
+  - name: dropna
+    type: bool
+    kind: keyword-only
+    desc: nunique 전용. True(기본값)면 NA를 세지 않아요. False면 NA도 한 종류로 세요. NaN은 언제나 세요.
+returns:
+  type: Series, int, 또는 int64 Series
+  desc: unique_values는 고유값을 정렬한 Series(이름과 dtype 유지, RangeIndex), Series.nunique는 Python int, DataFrame.nunique는 컬럼 이름을 라벨로 하는 int64 Series예요.
+raises:
+  - type: TypeError
+    desc: dropna가 True·False가 아닐 때, 옵션을 이름 없이 넘겼을 때.
+seeAlso: [duplicated, value_counts, sort_values, na, sum-mean]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
+import FrameFig from '../../../components/fig/FrameFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+과일 가게의 판매 기록에서 "어떤 과일이 팔렸나"를 알고 싶다면, 같은 과일이 몇 번 나오든 한 번씩만 모으면 돼요. `unique_values()`가 그 일을 해요. 서로 다른 값을 **크기순(문자열은 사전순)으로 한 번씩** 모아 Series로 돌려줘요. `nunique()`는 그 종류가 몇 개인지 세요.
+
+```python
+>>> import stardust as sd
+>>> fruit = sd.frame.Series(["pear", "apple", "pear", "kiwi", "apple", "pear"], name="fruit")
+>>> fruit.unique_values()
+0    apple
+1     kiwi
+2     pear
+Name: fruit, dtype: string
+>>> fruit.nunique()
+3
+```
+
+컬럼에 어떤 값들이 들어 있는지 훑어볼 때, 오타나 예상 밖의 값을 찾을 때, 범주가 몇 개인지 셀 때 써요.
+
+<Reference />
+
+## 정렬한 순서로 돌려줘요
+
+`unique_values()`의 결과는 **값을 정렬한 순서**예요. 데이터에 처음 나타난 순서가 아니에요. 배열의 [`sd.unique_values`](/api/array/unique/)와 이름도 순서도 같아요.
+
+```python
+>>> sd.frame.Series([3, 1, 3, 2]).unique_values()
+0    1
+1    2
+2    3
+dtype: int64
+>>> sd.unique_values(sd.asarray([3, 1, 3, 2]))
+array([1, 2, 3], dtype=int64)
+```
+
+정렬 순서는 dtype마다 이렇게 정해져 있어요. [`sort_values`](/api/frame/sort_values/)의 오름차순과 같아요.
+
+| dtype | 순서 |
+|:---:|---|
+| int64, float64 | 수의 크기. `-inf`가 맨 앞, `inf` 뒤에 NaN |
+| string | 문자의 코드포인트(유니코드 번호) 순서. 대문자가 소문자보다 앞이에요 |
+| bool | `False`, `True` |
+| 모든 dtype | `NA`는 맨 뒤 |
+
+```python
+>>> sd.frame.Series(["b", "B", "a", None, "b"]).unique_values()
+0       B
+1       a
+2       b
+3    <NA>
+dtype: string
+>>> sd.frame.Series([True, None, False, True]).unique_values()
+0    False
+1     True
+2     <NA>
+dtype: bool
+```
+
+### 처음 나타난 순서가 필요하면 `drop_duplicates`
+
+데이터에 처음 나온 순서를 지키고 싶다면 [`drop_duplicates()`](/api/frame/duplicated/)를 써요. 같은 값 가운데 첫 행만 남기고 나머지 행을 지워요. 남은 행은 원래 라벨도 그대로예요.
+
+```python
+>>> fruit.drop_duplicates()
+0     pear
+1    apple
+3     kiwi
+Name: fruit, dtype: string
+```
+
+<Fig column caption="같은 데이터에서 unique_values는 값을 정렬해서 새 라벨 0, 1, 2를 붙이고, drop_duplicates는 처음 나온 행(진한 칸)을 원래 순서와 라벨 그대로 남겨요.">
+  <FigRow>
+    <FrameFig name="fruit" data={['pear', 'apple', 'pear', 'kiwi', 'apple', 'pear']} rowTones={['b', 'b', 'm', 'b', 'm', 'm']} />
+    <Op note="unique_values()">→</Op>
+    <FrameFig data={['apple', 'kiwi', 'pear']} note="정렬한 순서, 새 라벨" />
+  </FigRow>
+  <FigRow>
+    <FrameFig name="fruit" data={['pear', 'apple', 'pear', 'kiwi', 'apple', 'pear']} rowTones={['b', 'b', 'm', 'b', 'm', 'm']} />
+    <Op note="drop_duplicates()">→</Op>
+    <FrameFig data={['pear', 'apple', 'kiwi']} index={[0, 1, 3]} note="처음 나온 순서, 원래 라벨" />
+  </FigRow>
+</Fig>
+
+| | `unique_values()` | `drop_duplicates()` |
+|---|---|---|
+| 순서 | 정렬한 순서 | 처음 나온 순서 |
+| 라벨 | 새로 0, 1, 2, … | 남은 행의 원래 라벨 |
+| 남는 값 | 같은 값 가운데 처음 나온 값 | 같은 값 가운데 처음 나온 행(`keep`으로 바꿀 수 있어요) |
+
+## 같은 값으로 치는 규칙
+
+"같은 값인가"를 정하는 규칙이 `==`와 조금 달라요. 같은 값끼리 하나로 묶는 일이 목적이라서, 따로 세면 쓸모가 없는 경우를 하나로 묶어요.
+
+- **NaN끼리는 같은 값이에요.** `nan == nan`은 `False`지만, NaN을 하나하나 다른 값으로 세면 NaN이 있는 만큼 줄이 늘어나요. 그래서 모든 NaN을 하나로 묶어요.
+- **`-0.0`과 `0.0`은 같은 값이에요.** `==`로도 같아요. 결과에는 **먼저 나온 쪽**이 보여요.
+- **`NA`끼리도 같은 값이에요.** 결과의 맨 뒤에 `NA` 하나가 와요.
+
+```python
+>>> f = sd.frame.Series([2.5, None, float("nan"), -0.0, 0.0, float("nan"), float("inf"), None])
+>>> f.unique_values()
+0   -0.0
+1    2.5
+2    inf
+3    NaN
+4   <NA>
+dtype: float64
+```
+
+NaN 두 개는 하나로, `-0.0`과 `0.0`은 먼저 나온 `-0.0` 하나로, `NA` 두 개는 맨 뒤의 하나로 묶였어요. 같은 값으로 묶인 것 가운데 무엇이 보일지는 언제나 "먼저 나온 값"이에요.
+
+```python
+>>> sd.frame.Series([0.0, -0.0]).unique_values()
+0    0.0
+dtype: float64
+>>> sd.frame.Series([-0.0, 0.0]).unique_values()
+0   -0.0
+dtype: float64
+```
+
+이 규칙은 값을 묶는 모든 기능이 함께 써요. [`duplicated`, `drop_duplicates`](/api/frame/duplicated/), [`value_counts`](/api/frame/value_counts/), [`groupby`](/api/frame/groupby/), Series의 `in`이 같은 규칙이에요. 배열의 `sd.unique_values`도 NaN을 하나로, `-0.0`과 `0.0`을 하나로 묶고 먼저 나온 값을 보여 줘요. [`merge`](/api/frame/merge/)만 예외로, `NA` 키는 어떤 키와도 짝지어지지 않아요.
+
+## `nunique`: 몇 종류인지 세기
+
+`nunique()`는 `unique_values()`의 길이와 같은데, 기본값 `dropna=True`에서는 `NA`를 세지 않아요. `dropna=False`를 주면 `NA`도 한 종류로 세요.
+
+**NaN은 언제나 세요.** NaN은 결측값이 아니라 float 값이라서 `dropna`가 건드리지 않아요([NA와 NaN](/api/frame/na/)).
+
+```python
+>>> f.nunique()
+4
+>>> f.nunique(dropna=False)
+5
+```
+
+`-0.0`, `2.5`, `inf`, NaN이 네 종류이고, `dropna=False`이면 `NA`까지 다섯이에요.
+
+### DataFrame의 `nunique`
+
+DataFrame에 쓰면 컬럼마다 종류를 세서, **컬럼 이름을 라벨로 하는 int64 Series**로 돌려줘요. 어느 컬럼이 범주처럼 값이 몇 개뿐이고, 어느 컬럼이 행마다 다른지(이름, 번호 같은) 한눈에 볼 때 좋아요.
+
+```python
+>>> grades = sd.frame.DataFrame({
+...     "name": ["Ann", "Ben", "Cal", "Dan"],
+...     "class": ["A", "B", "A", "A"],
+...     "score": [90, 85, None, 90],
+... })
+>>> grades.nunique()
+name     4
+class    2
+score    2
+dtype: int64
+>>> grades.nunique(dropna=False)
+name     4
+class    2
+score    3
+dtype: int64
+```
+
+`sum()` 같은 리덕션은 1행짜리 DataFrame을 돌려주지만, `nunique()`는 컬럼 이름이 라벨인 int64 Series를 돌려줘요. 모양이 다르니 결과를 다룰 때 조심하세요.
+
+DataFrame에는 `unique_values()`가 없어요. 컬럼 하나를 골라서 `grades["class"].unique_values()`처럼 써요. 여러 컬럼의 값 조합에서 서로 다른 것을 찾으려면 [`drop_duplicates`](/api/frame/duplicated/)나 [`value_counts`](/api/frame/value_counts/)를 써요.
+
+## 결과 Series의 모양
+
+`unique_values()`의 결과는 원래 Series의 **이름과 dtype을 그대로** 지키고, 라벨은 0부터 시작하는 새 라벨(RangeIndex)이에요. 값을 정렬해서 원래 행과의 짝이 사라졌기 때문이에요.
+
+```python
+>>> u = fruit.unique_values()
+>>> u.name
+'fruit'
+>>> u.index
+RangeIndex(start=0, stop=3, step=1)
+>>> u.tolist()
+['apple', 'kiwi', 'pear']
+```
+
+값이 모두 `NA`이면 `NA` 하나가 든 Series이고, 빈 Series이면 빈 Series예요.
+
+```python
+>>> sd.frame.Series([None, None], dtype="int64").unique_values()
+0    <NA>
+dtype: int64
+>>> sd.frame.Series([], dtype="string").unique_values()
+Series([], dtype: string)
+```
+
+## 조심할 점
+
+### `unique`라는 메서드는 없어요
+
+이름은 배열의 `sd.unique_values`와 같은 `unique_values` 하나이고, 별칭은 없어요.
+
+```python
+>>> fruit.unique()
+Traceback (most recent call last):
+    ...
+AttributeError: 'Series' object has no attribute 'unique'. Did you mean '.nunique' instead of '.unique'?
+```
+
+Python이 이름이 비슷한 `nunique`를 권하지만, 그것은 개수를 세는 메서드예요. 값을 모으려면 `unique_values()`를 쓰세요.
+
+### `dropna`는 이름을 붙이고, `True`나 `False`로
+
+```python
+>>> fruit.nunique(dropna=1)
+Traceback (most recent call last):
+    ...
+TypeError: nunique(): 'dropna' must be True or False, not int
+```
+
+### 어떤 값이 있는지만 볼 때는 `in`
+
+값 하나가 들어 있는지만 궁금하면 `in`이 더 간단해요. Series의 `in`은 라벨이 아니라 **값**을 찾고, 같은 값의 규칙도 위와 같아요. NaN과 `NA`도 찾을 수 있어요.
+
+```python
+>>> "apple" in fruit
+True
+>>> float("nan") in f
+True
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | 다른 점 |
+|---|---|---|
+| 서로 다른 값을 크기순으로 | `unique_values()` | 값만 돌려줘요. |
+| 서로 다른 값을 처음 나온 순서로 | [`drop_duplicates()`](/api/frame/duplicated/) | 원래 행을 라벨과 함께 남겨요. DataFrame도 받아요. |
+| 값마다 몇 번 나왔는지 | [`value_counts()`](/api/frame/value_counts/) | 값과 개수를 DataFrame으로 줘요. 기본은 많이 나온 순서예요. |
+| 종류가 몇 개인지 | `nunique()` | 숫자 하나. `NA`는 기본으로 빼요. |
+| `NA`가 아닌 값이 몇 개인지 | [`count()`](/api/frame/sum-mean/) | 같은 값도 따로 세요. |
+| 배열에서 | [`sd.unique_values`](/api/array/unique/) | 순서와 같은 값의 규칙이 같아요. `sd.unique_counts`처럼 개수와 위치도 함께 얻을 수 있어요. |
+
+## pandas를 아는 분께
+
+- 이름이 `unique_values()`예요. `unique()`는 없어요.
+- **결과가 정렬한 순서예요.** pandas의 `unique()`는 처음 나타난 순서이고, 결과도 Series가 아니라 배열이에요. 처음 나타난 순서는 `drop_duplicates()`로 얻어요.
+- **NaN을 값으로 세요.** pandas는 NaN을 결측으로 봐서 `nunique()`가 NaN을 빼요. 위의 `f`에서 pandas의 `nunique()`는 3, `nunique(dropna=False)`는 4예요(`None`과 NaN을 같은 것으로 봐요). stardust는 4와 5예요.
+- `-0.0`과 `0.0`을 하나로 묶고 먼저 나온 값을 보여 주는 것은 pandas와 같아요.
+- `nunique`의 `axis` 인자는 없어요.

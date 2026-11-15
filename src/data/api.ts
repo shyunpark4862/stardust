@@ -42,6 +42,19 @@ const groupOrder: Record<string, string[]> = {
     '설정',
   ],
   linalg: ['기본 개념', '곱과 거듭제곱', '노름과 지표', '선형 시스템', '특수 구조', '분해', '행렬 함수'],
+  frame: [
+    '기본 개념',
+    '만들기',
+    '속성과 변환',
+    '선택과 대입',
+    '원소별 연산',
+    '결측값',
+    '리덕션',
+    '중복과 고유값',
+    '정렬',
+    'groupby',
+    '합치기',
+  ],
   random: ['기본 개념', '생성기', '난수 뽑기'],
   special: [
     '기본 개념',
@@ -70,12 +83,15 @@ export function hrefOf(entry: ApiEntry): string {
 /**
  * A page that documents exactly one function shows its name in the code font.
  * A method page (e.g. rng.random) lists no public names of its own but is
- * titled by the method name, so it counts too.
+ * titled by the method name, so it counts too, and so does a page for one
+ * method that several classes share (astype: Series.astype, DataFrame.astype).
  */
 export function isSingle(entry: ApiEntry): boolean {
   const { kind, names, title } = entry.data;
   if (kind !== 'function') return false;
-  return names.length === 1 || (names.length === 0 && /^[A-Za-z_][\w.]*$/.test(title));
+  if (names.length === 1) return true;
+  if (!/^[A-Za-z_][\w.]*$/.test(title)) return false;
+  return names.every((n) => n === title || n.endsWith(`.${title}`));
 }
 
 /** An area's pages, grouped and ordered. */

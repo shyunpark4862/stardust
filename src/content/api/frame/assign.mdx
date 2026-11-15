@@ -1,0 +1,437 @@
+---
+kind: concept
+title: 대입과 복사
+group: 선택과 대입
+order: 4
+summary: 컬럼을 새로 만들거나 바꾸고, 고른 행에 값을 써넣는 규칙이에요. 행에 넣는 값은 컬럼의 dtype으로 위로만 바뀌고, 없는 라벨은 에러예요. 고친 객체만 바뀌고 그 값을 나누어 쓰던 다른 객체는 바뀌지 않아요(Copy-on-Write).
+seeAlso: [selection, loc-iloc, mask, fillna, astype, alignment, to-array, to-numpy, na]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
+import FrameFig from '../../../components/fig/FrameFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+대괄호를 `=`의 왼쪽에 쓰면 값을 써넣어요. 표에 값을 써넣는 방법은 두 갈래예요.
+
+- **컬럼 통째로**: `df["c"] = 값`. 컬럼 하나를 새로 만들거나, 있던 컬럼을 새 값으로 바꿔요. 엑셀에서 열을 하나 추가하는 것과 같아요.
+- **고른 행에만**: `s.loc[...] = 값`, `s.iloc[...] = 값`, `s[...] = 값`, `df.loc[행, "c"] = 값`, `df.iloc[행, j] = 값`. 이미 있는 칸의 값을 고쳐요. 엑셀에서 셀 몇 개를 고쳐 쓰는 것과 같아요.
+
+```python
+>>> import stardust as sd
+>>> df = sd.frame.DataFrame({
+...     "fruit": ["apple", "banana", "cherry"],
+...     "price": [1200, 800, 3000],
+...     "qty": [3, 12, 1],
+... })
+>>> df["total"] = df["price"] * df["qty"]
+>>> df.loc[1, "price"] = 900
+>>> df
+    fruit  price  qty  total
+0   apple   1200    3   3600
+1  banana    900   12   9600
+2  cherry   3000    1   3000
+```
+
+<Fig caption='df["total"] = …은 컬럼 하나를 통째로 새로 붙이고, df.loc[1, "price"] = 900은 칸 하나만 고쳐요.'>
+  <FrameFig name='df["total"] = ...' columns={['fruit', 'price', 'qty', 'total']}
+    data={[['apple', 1200, 3, 3600], ['banana', 800, 12, 9600], ['cherry', 3000, 1, 3000]]}
+    colTones={['m', 'm', 'm', 'a']} />
+  <FrameFig name='df.loc[1, "price"] = 900' columns={['fruit', 'price', 'qty', 'total']}
+    data={[['apple', 1200, 3, 3600], ['banana', 900, 12, 9600], ['cherry', 3000, 1, 3000]]}
+    tones={[['m', 'm', 'm', 'm'], ['m', 'b', 'm', 'm'], ['m', 'm', 'm', 'm']]} />
+</Fig>
+
+두 갈래는 규칙이 달라요.
+
+| | 컬럼 통째로 `df["c"] = 값` | 고른 행에 `….loc[…] = 값` |
+|---|---|---|
+| dtype | 값에서 새로 정해요. 바뀌어도 돼요 | 컬럼의 dtype을 지켜요. 위로만 바꿔 넣어요 |
+| 없는 이름·라벨 | 새 컬럼으로 끝에 붙어요 | `KeyError` (행을 늘리지 않아요) |
+| 값의 길이 | 표의 행 수 | 고른 행 수 |
+
+그리고 어느 쪽이든 **고친 객체만 바뀌어요.** 같은 값을 나누어 쓰던 다른 Series나 DataFrame은 그대로예요. 이 성질을 Copy-on-Write라고 해요. 이 페이지의 마지막 부분에서 자세히 다뤄요.
+
+## 컬럼 통째로 넣기: `df["c"] = 값`
+
+### 넣을 수 있는 값
+
+| 값 | 결과 |
+|---|---|
+| 스칼라 (`"A"`, `0`, `sd.frame.NA` …) | 모든 행에 같은 값 |
+| list, tuple, 1차원 numpy·stardust 배열 | 행 순서대로. 길이가 행 수와 같아야 해요 |
+| Series | **라벨로** 맞춰서 넣어요. 표에 있고 Series에 없는 라벨은 `NA` |
+
+```python
+>>> df["shop"] = "A"
+>>> df["grade"] = ["B", "A", "S"]
+>>> df
+    fruit  price  qty  total shop grade
+0   apple   1200    3   3600    A     B
+1  banana    900   12   9600    A     A
+2  cherry   3000    1   3000    A     S
+```
+
+새 컬럼은 맨 끝에 붙어요. 이미 있는 이름이면 그 자리에서 컬럼을 통째로 바꿔요. 이때 **dtype이 달라져도 돼요.** 컬럼을 새로 만드는 일이라서 값에서 dtype을 다시 정해요([Series](/api/frame/series/)의 리스트 규칙과 같아요).
+
+```python
+>>> df["price"] = df["price"] / 1000
+>>> df.dtypes
+{'fruit': string, 'price': float64, 'qty': int64, 'total': int64, 'shop': string, 'grade': string}
+```
+
+리스트의 길이가 행 수와 다르면 `ValueError`예요.
+
+```python
+>>> df["rank"] = [1, 2]
+Traceback (most recent call last):
+    ...
+ValueError: 2 values for 3 rows
+```
+
+### Series를 넣으면 라벨로 맞춰요
+
+Series를 넣으면 위치가 아니라 **라벨로** 짝을 지어요. 표의 라벨 순서대로 같은 라벨의 값을 가져오고, Series에 없는 라벨의 행은 `NA`가 돼요. Series에만 있는 라벨은 쓰이지 않아요.
+
+```python
+>>> df["rank"] = sd.frame.Series([1, 3, 9], index=[2, 0, 7])
+>>> df[["fruit", "rank"]]
+    fruit  rank
+0   apple     3
+1  banana  <NA>
+2  cherry     1
+```
+
+<Fig caption="rank는 라벨 2, 0, 7의 순서로 들어 있지만 표의 라벨 0, 1, 2에 맞춰 들어가요. 라벨 1은 없어서 NA, 라벨 7은 표에 없어서 버려져요.">
+  <FrameFig name="Series" index={[2, 0, 7]} data={[1, 3, 9]} tones={[['2'], ['1'], ['m']]} />
+  <Op note='df["rank"] = …'>→</Op>
+  <FrameFig columns={['fruit', 'rank']} data={[['apple', 3], ['banana', null], ['cherry', 1]]} tones={[['', '1'], ['', ''], ['', '2']]} />
+</Fig>
+
+계산 결과를 넣는 `df["total"] = df["price"] * df["qty"]`도 Series를 넣는 일이에요. 같은 표에서 나온 Series라서 라벨이 같고, 행 순서대로 그대로 들어가요. 라벨로 맞추는 규칙은 [라벨과 정렬](/api/frame/alignment/)과 같아서, 라벨이 겹치면 두 라벨이 순서까지 똑같을 때만 들어가고, 정수 라벨과 문자열 라벨은 맞출 수 없어요.
+
+```python
+>>> df["rank"] = sd.frame.Series([1, 2, 3], index=["a", "b", "c"])
+Traceback (most recent call last):
+    ...
+TypeError: cannot use int64 labels with a string index
+```
+
+### `df[...] = 값`으로 할 수 없는 것
+
+DataFrame의 대괄호 대입은 컬럼 이름 하나만 받아요. 여러 컬럼에 한꺼번에 넣거나(`df[["a", "b"]] = …`), 마스크로 고른 행에 넣는(`df[mask] = …`) 것은 `TypeError`예요. 행을 골라 넣을 때는 `df.loc[행, "c"]`로 컬럼을 하나씩 정해요.
+
+```python
+>>> df[df["qty"] > 2] = 0
+Traceback (most recent call last):
+    ...
+TypeError: column names must be str, not Series
+```
+
+## 고른 행에 넣기
+
+### 넣을 수 있는 형태
+
+행은 [loc과 iloc](/api/frame/loc-iloc/)에서 고르는 방법을 그대로 써요. DataFrame에서는 **열을 하나만** 골라요.
+
+```python
+>>> s = sd.frame.Series([10, 20, 30, 40], index=["a", "b", "c", "d"], name="qty")
+>>> s.loc["b"] = 25
+>>> s["c"] = 35
+>>> s.iloc[-1] = sd.frame.NA
+>>> s
+a      10
+b      25
+c      35
+d    <NA>
+Name: qty, dtype: int64
+```
+
+DataFrame에서 열을 여러 개 고르거나 열을 생략하면 `TypeError`예요. 메시지가 알려 주듯 컬럼을 하나씩 골라 넣어요.
+
+```python
+>>> df.loc[0, ["price", "qty"]] = 1
+Traceback (most recent call last):
+    ...
+TypeError: assign to one column at a time: df.loc[rows, 'c'] = value
+```
+
+### 넣을 수 있는 값
+
+| 값 | 뜻 |
+|---|---|
+| 스칼라 (`sd.frame.NA` 포함) | 고른 행 모두에 같은 값 |
+| list, tuple, 1차원 numpy·stardust 배열 | 고른 행 순서대로. 길이가 고른 행 수와 같아야 해요 |
+| Series | 고른 행의 **라벨**에 맞춰 넣어요. 없는 라벨은 `NA` |
+
+```python
+>>> s.loc[["a", "c"]] = [1, 3]
+>>> s.loc["b":"c"] = 0
+>>> s
+a       1
+b       0
+c       0
+d    <NA>
+Name: qty, dtype: int64
+>>> s.loc[["d", "a"]] = sd.frame.Series([7, 8], index=["a", "d"])
+>>> s
+a    7
+b    0
+c    0
+d    8
+Name: qty, dtype: int64
+```
+
+마지막 대입은 고른 순서(`d`, `a`)가 아니라 **라벨**로 짝을 지었어요. `a`에는 Series의 `a` 값 7이, `d`에는 8이 들어갔어요.
+
+길이가 맞지 않으면 `ValueError`예요. 행을 **하나만** 고른 자리에는 스칼라만 넣어요.
+
+```python
+>>> s.iloc[0:2] = [1, 2, 3]
+Traceback (most recent call last):
+    ...
+ValueError: 3 values for 2 rows
+>>> s.loc["a"] = [1]
+Traceback (most recent call last):
+    ...
+TypeError: assign a scalar to a single row
+```
+
+마스크로 고른 행에만 넣을 수도 있어요. 마스크가 `NA`인 행은 고르지 않은 것이라 그대로 남아요([조건으로 행 거르기](/api/frame/mask/)).
+
+```python
+>>> score = sd.frame.Series([90, None, 60, 85])
+>>> score[score < 70] = 70
+>>> score.tolist()
+[90, <NA>, 70, 85]
+```
+
+위치 리스트에 같은 자리가 두 번 나오면 **나중 값이 남아요.** [배열의 대입](/api/array/indexing/)과 같아요.
+
+```python
+>>> t = sd.frame.Series([1, 2, 3])
+>>> t.iloc[[0, 0]] = [5, 6]
+>>> t.tolist()
+[6, 2, 3]
+```
+
+### 없는 라벨은 에러예요
+
+없는 라벨에 넣으면 행을 새로 만들지 않고 `KeyError`예요. 범위를 벗어난 위치는 `IndexError`예요. 그래서 라벨을 잘못 적어도 조용히 새 행이 생기지 않아요. 행을 늘리려면 [`concat`](/api/frame/concat/)으로 표를 이어 붙여요.
+
+```python
+>>> s.loc["zz"] = 1
+Traceback (most recent call last):
+    ...
+KeyError: 'zz'
+>>> s.iloc[9] = 1
+Traceback (most recent call last):
+    ...
+IndexError: position 9 is out of range for 4 rows
+>>> df.loc[0, "color"] = "red"
+Traceback (most recent call last):
+    ...
+KeyError: 'color'
+```
+
+새 컬럼은 `df["color"] = …`로 먼저 만든 뒤 행을 골라 고쳐요.
+
+## 행에 넣는 값의 dtype
+
+행에 넣는 값은 컬럼의 dtype을 **바꾸지 않아요.** 값은 컬럼의 dtype으로 바뀌어 들어가는데, 정보를 잃지 않는 방향(**위로만**)일 때만 돼요.
+
+$$\texttt{bool} \;\rightarrow\; \texttt{int64} \;\rightarrow\; \texttt{float64}$$
+
+| 컬럼 \ 값 | bool | int | float | str | `NA` |
+|:---:|:---:|:---:|:---:|:---:|:---:|
+| bool | 그대로 | `TypeError` | `TypeError` | `TypeError` | 돼요 |
+| int64 | `1`/`0`로 | 그대로 | `TypeError` | `TypeError` | 돼요 |
+| float64 | `1.0`/`0.0`로 | float로 | 그대로 | `TypeError` | 돼요 |
+| string | `TypeError` | `TypeError` | `TypeError` | 그대로 | 돼요 |
+
+```python
+>>> price = sd.frame.Series([1.5, 2.5, 3.5])
+>>> price.iloc[0] = 1
+>>> price.iloc[1] = True
+>>> price
+0    1.0
+1    1.0
+2    3.5
+dtype: float64
+>>> qty = sd.frame.Series([3, 12, 1])
+>>> qty.iloc[0] = 1.5
+Traceback (most recent call last):
+    ...
+TypeError: cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
+```
+
+**값이 아니라 dtype으로** 판단해요. `2.0`은 정수와 같은 값이지만 float라서 int 컬럼에 넣을 수 없어요. 그래서 넣는 값에 따라 될 때와 안 될 때가 갈리지 않아요.
+
+```python
+>>> qty.iloc[0] = 2.0
+Traceback (most recent call last):
+    ...
+TypeError: cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
+>>> qty.iloc[0] = "3"
+Traceback (most recent call last):
+    ...
+TypeError: cannot store string values in a column of dtype int64
+```
+
+`NA`는 어느 dtype의 컬럼에나 넣을 수 있고, 넣어도 **dtype은 그대로**예요. 정수 컬럼에 빈 칸이 생겨도 float가 되지 않아요([NA와 NaN](/api/frame/na/) 참고).
+
+```python
+>>> qty.iloc[1] = sd.frame.NA
+>>> qty
+0       3
+1    <NA>
+2       1
+dtype: int64
+```
+
+list는 먼저 [리스트의 규칙](/api/frame/series/)대로 dtype을 정한 다음 같은 규칙으로 넣어요. `[1, 2.5]`는 float64 리스트라서 int 컬럼에 넣을 수 없어요. 넣을 Series도 그 Series의 dtype으로 판단해요.
+
+```python
+>>> qty.iloc[[0, 2]] = [1, 2.5]
+Traceback (most recent call last):
+    ...
+TypeError: cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
+```
+
+정보를 잃더라도 바꾸고 싶다면 컬럼을 먼저 [`astype`](/api/frame/astype/)으로 바꾸거나, 컬럼을 통째로 다시 넣어요.
+
+```python
+>>> qty = qty.astype("float64")
+>>> qty.iloc[0] = 1.5
+>>> qty
+0     1.5
+1    <NA>
+2     1.0
+dtype: float64
+```
+
+이 규칙은 [`fillna`](/api/frame/fillna/)가 빈 칸을 채울 때, [배열의 대입](/api/array/indexing/)이 값을 넣을 때와 같아요. 배열도 int 배열에 `1.5`를 넣으면 `TypeError`예요. 반대로 `astype`과 생성자의 `dtype=`은 "이 dtype으로 바꿔 달라"는 명시적인 요청이라서 정보를 잃어도 바꿔요.
+
+## 고친 객체만 바뀌어요: Copy-on-Write
+
+`df["temp"]`로 컬럼을 꺼내거나 `df.iloc[0:2]`로 일부를 고르면, 결과는 원래 표와 **값을 나누어 써요.** 값을 복사하지 않으니 빠르고 메모리도 아껴요. 그런데 결과를 고치면 어떻게 될까요?
+
+stardust의 답은 단순해요. **고친 객체만 바뀌어요.** 값을 나누어 쓰던 객체에 쓰려고 하면, 쓰기 직전에 그 객체가 자기 몫을 복사해 두고 거기에 써요. 그래서 다른 객체는 처음 값 그대로예요. 쓸 때 복사한다고 해서 이것을 **Copy-on-Write**라고 불러요.
+
+```python
+>>> w = sd.frame.DataFrame({"city": ["Seoul", "Busan", "Jeju"], "temp": [3.5, 8.0, 10.2]})
+>>> temp = w["temp"]
+>>> temp.iloc[0] = -1.0
+>>> temp
+0    -1.0
+1     8.0
+2    10.2
+Name: temp, dtype: float64
+>>> w
+    city  temp
+0  Seoul   3.5
+1  Busan   8.0
+2   Jeju  10.2
+```
+
+<Fig caption="temp는 w의 temp 컬럼과 값을 나누어 쓰다가, 고치는 순간 자기 몫을 복사해요. w는 그대로예요.">
+  <FrameFig name='w["temp"]' columns={['temp']} data={[[3.5], [8.0], [10.2]]} />
+  <Op note="temp.iloc[0] = -1.0">→</Op>
+  <FrameFig name="temp" columns={['temp']} data={[[-1.0], [8.0], [10.2]]} tones={[['b'], [''], ['']]} />
+  <FrameFig name='w["temp"]' columns={['temp']} data={[[3.5], [8.0], [10.2]]} />
+</Fig>
+
+반대 방향도 같아요. 원래 표를 고쳐도, 그 전에 꺼내 둔 Series나 부분 표는 바뀌지 않아요. 컬럼을 통째로 바꿀 때도 마찬가지예요.
+
+```python
+>>> part = w.iloc[0:2]
+>>> w.loc[0, "temp"] = 0.0
+>>> w["temp"] = w["temp"] + 100
+>>> part
+    city  temp
+0  Seoul   3.5
+1  Busan   8.0
+>>> temp.tolist()
+[-1.0, 8.0, 10.2]
+```
+
+`head`, `tail`, `.loc`·`.iloc`의 슬라이스, `Series(s)`, `DataFrame(df)`처럼 값을 나누어 쓰는 결과는 모두 이렇게 움직여요. 그래서 어떤 결과가 "원본을 들여다보는 창"인지 "복사본"인지 따질 필요가 없어요. **누구를 고치든 고친 것만 바뀌어요.** 나누어 쓰는 다른 객체가 없으면 복사 없이 바로 써요.
+
+<Callout type="warn" title="두 단계로 대입하면 원래 표가 바뀌지 않아요">
+
+`w["temp"].iloc[0] = 5.0`은 `w["temp"]`로 **새 Series**를 꺼낸 다음 그 Series를 고쳐요. 그 Series는 고치는 순간 자기 몫을 복사하므로, `w`는 바뀌지 않아요. 에러나 경고도 없어요. 표를 고치려면 행과 열을 한 번에 골라요.
+
+```python
+>>> w["temp"].iloc[0] = 5.0
+>>> w.loc[0, "temp"]
+100.0
+>>> w.loc[0, "temp"] = 5.0
+>>> w.loc[0, "temp"]
+5.0
+```
+
+</Callout>
+
+### `to_numpy`, `to_array`의 뷰
+
+[`to_numpy`](/api/frame/to-numpy/)와 [`to_array`](/api/frame/to-array/)는 복사할 필요가 없으면(`NA`가 없고 dtype을 바꾸지 않으면) 컬럼의 값을 그대로 보여 주는 배열을 돌려줘요. 이 배열은 **읽기 전용**이에요. 배열 쪽에서 값을 고치면 컬럼이 몰래 바뀌기 때문이에요.
+
+```python
+>>> q = sd.frame.Series([1, 2, 3, 4])
+>>> a = q.to_array()
+>>> a[0] = 100
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+```
+
+Series 쪽을 고치는 것은 돼요. Series가 먼저 자기 몫을 복사하고 거기에 쓰므로, 앞서 받은 배열의 값은 그대로예요.
+
+```python
+>>> q.iloc[1] = 50
+>>> a
+array([1, 2, 3, 4], dtype=int64)
+>>> q.tolist()
+[1, 50, 3, 4]
+```
+
+고칠 수 있는 배열이 필요하면 `copy=True`로 받아요. 이 배열은 Series와 상관없는 새 배열이에요.
+
+```python
+>>> b = q.to_array(copy=True)
+>>> b[0] = 9
+>>> b
+array([ 9, 50,  3,  4], dtype=int64)
+>>> q.tolist()
+[1, 50, 3, 4]
+```
+
+## 조심할 점
+
+- **두 단계 대입은 원래 표를 바꾸지 않아요.** `df["a"].iloc[0] = v` 대신 `df.loc[라벨, "a"] = v`, `df.iloc[위치, j] = v`로 한 번에 써요.
+- **행에 넣는 값은 dtype을 바꾸지 않아요.** int 컬럼에 `2.0`, bool 컬럼에 `1`은 `TypeError`예요. 컬럼 전체를 바꾸는 `df["c"] = …`는 dtype이 바뀌어도 돼요.
+- **없는 라벨은 `KeyError`예요.** 행이 늘어나지 않아요. 새 컬럼은 `df["c"] = …`로만 만들어요.
+- **Series를 넣으면 라벨로 맞춰요.** 위치대로 넣고 싶으면 `.tolist()`로 바꿔서 넣어요.
+
+## 비슷한 기능과의 차이
+
+| 하고 싶은 일 | 쓰는 것 | dtype |
+|---|---|---|
+| 컬럼 추가·교체 | `df["c"] = 값` | 값에서 새로 정해요 |
+| 몇 칸 고치기 | `.loc`·`.iloc`·`s[...]` 대입 | 위로만 (`bool → int64 → float64`) |
+| 빈 칸 채우기 | [`fillna`](/api/frame/fillna/) | 위로만 (대입과 같아요) |
+| dtype 바꾸기 | [`astype`](/api/frame/astype/) | 정보를 잃어도 바꿔요 |
+
+- **배열의 뷰와 다른 점**: [배열의 뷰](/api/array/views/)는 원본과 메모리를 함께 써서, 뷰를 고치면 원본도 바뀌어요. 데이터프레임은 값을 나누어 쓰더라도 고칠 때 먼저 복사하므로 다른 객체가 바뀌는 일이 없어요. 배열은 뷰를 고쳐서 원본의 일부를 바꾸는 쓰임새가 있어요. 데이터프레임은 언제나 고친 것만 바뀌어서, 어떤 결과가 값을 나누어 쓰는지 따지지 않아도 돼요.
+- `sd.ndarray`로 Series나 DataFrame을 만들면 언제나 복사해요. 배열은 다른 뷰를 통해 바뀔 수 있어서, 나누어 쓰면 "고친 것만 바뀐다"는 약속을 지킬 수 없기 때문이에요.
+
+## pandas를 아는 분께
+
+- **없는 라벨에 대입하면 `KeyError`예요.** pandas 3.1.1의 `s.loc["new"] = 1`, `df.loc["x", "new"] = 1`은 행이나 열을 새로 만들어요.
+- **dtype으로 판단해요.** pandas는 값으로 판단해서 int 컬럼에 `2.0`을 넣으면 `2`로 넣어 주지만(`1.5`는 `TypeError`), stardust는 `2.0`도 `TypeError`예요.
+- **`NA`를 넣어도 dtype이 그대로예요.** pandas는 int64 컬럼에 `None`을 넣으면 컬럼 전체가 float64가 되고 빈 칸은 NaN이 돼요.
+- Series를 넣을 때 라벨로 맞추는 것은 같지만, 빠진 라벨이 pandas처럼 NaN이 되어 dtype이 float로 바뀌지 않고 `NA`로 들어가요.
+- Copy-on-Write는 pandas 3과 같은 동작이에요. 두 단계 대입이 원래 표를 바꾸지 않는 것도 같아요. 다만 pandas는 이때 `ChainedAssignmentError` 경고를 내고, stardust는 경고를 내지 않아요.
+- `df.loc[행] = 값`, `df.loc[행, ["a", "b"]] = 값`처럼 여러 컬럼에 한꺼번에 넣을 수 없어요. 컬럼을 하나씩 골라요.

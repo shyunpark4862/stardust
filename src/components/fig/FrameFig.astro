@@ -1,0 +1,219 @@
+---
+/**
+ * A Series or DataFrame drawn as a small table: row labels on the left,
+ * column names on top, one cell per value.
+ *
+ *   data     rows of values: data[row][column]. `null` is drawn as <NA>.
+ *            A Series is one value per row: [[1], [2], [3]] or [1, 2, 3].
+ *   columns  column names (a DataFrame). Leave out for a Series without a name.
+ *   index    row labels. Default 0, 1, 2, ...  Pass `false` to hide them.
+ *   dtypes   one dtype name per column, drawn small under the column names.
+ *   tones    same shape as data; one code per cell:
+ *              ''  plain     'a' highlighted     'b' strongly highlighted
+ *              'g' ghost     'm' muted
+ *              '1' '2' '3'   group colours (blue, green, amber): rows that
+ *                            belong together, e.g. one groupby group or one
+ *                            merge key
+ *   rowTones one code per row, applied to the row label and every cell of the
+ *            row (a cell tone wins over it)
+ *   colTones one code per column, applied to the column name and every cell
+ *   name     label above (e.g. "df"), in the code font
+ *   note     label below (e.g. "dtype: int64")
+ */
+type Cell = string | number | boolean | null;
+interface Props {
+  data: Cell[] | Cell[][];
+  columns?: string[];
+  index?: (string | number)[] | false;
+  dtypes?: string[];
+  tones?: string[][];
+  rowTones?: string[];
+  colTones?: string[];
+  name?: string;
+  note?: string;
+}
+const { data, columns, index, dtypes, tones = [], rowTones = [], colTones = [], name, note } = Astro.props;
+const rows = (data.length && !Array.isArray(data[0]) ? (data as Cell[]).map((v) => [v]) : data) as Cell[][];
+const ncols = Math.max(columns?.length ?? 0, ...rows.map((r) => r.length), 1);
+const labels = index === false ? null : (index ?? rows.map((_, i) => i));
+const show = (v: Cell) => (v === null ? '<NA>' : typeof v === 'boolean' ? (v ? 'True' : 'False') : String(v));
+const isNum = (v: Cell) => typeof v === 'number' || (typeof v === 'string' && /^[-+]?(\d|\.\d|inf|nan|NaN)/.test(v));
+const toneOf = (r: number, c: number) => tones[r]?.[c] || rowTones[r] || colTones[c] || '';
+const template = `${labels ? 'auto ' : ''}repeat(${ncols}, minmax(var(--cell-w, 44px), auto))`;
+---
+
+<div class="frm">
+  <span class="frm__name" aria-hidden={name ? undefined : 'true'}>{name}</span>
+  <div class="frm__grid" style={`grid-template-columns:${template}`}>
+    {
+      columns && (
+        <>
+          {labels && <span class="frm__corner" />}
+          {columns.map((col, c) => (
+            <span class:list={['frm__head', colTones[c] && `frm__tone--${colTones[c]}`]}>
+              {col}
+              {dtypes?.[c] && <small>{dtypes[c]}</small>}
+            </span>
+          ))}
+        </>
+      )
+    }
+    {
+      rows.map((row, r) => (
+        <>
+          {labels && <span class:list={['frm__label', rowTones[r] && `frm__tone--${rowTones[r]}`]}>{labels[r]}</span>}
+          {Array.from({ length: ncols }, (_, c) => {
+            const v = row[c] === undefined ? '' : row[c];
+            const t = toneOf(r, c);
+            return (
+              <span class:list={['frm__cell', isNum(v) && 'frm__cell--num', v === null && 'frm__cell--na', t && `frm__tone--${t}`]}>
+                {show(v)}
+              </span>
+            );
+          })}
+        </>
+      ))
+    }
+  </div>
+  <span class="frm__note" aria-hidden={note ? undefined : 'true'}>{note}</span>
+</div>
+
+<style>
+  .frm {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .frm__name,
+  .frm__note {
+    height: 18px;
+    font-family: var(--font-mono);
+    line-height: 18px;
+    white-space: nowrap;
+  }
+  .frm__name {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--fg);
+  }
+  .frm__note {
+    font-size: var(--text-xs);
+    color: var(--fg-subtle);
+  }
+  .frm__grid {
+    display: grid;
+    gap: var(--cell-gap, 3px);
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    line-height: 1;
+  }
+  .frm__head,
+  .frm__label,
+  .frm__cell {
+    display: flex;
+    align-items: center;
+    height: var(--cell-h, 34px);
+    padding-inline: var(--cell-pad, var(--space-2));
+    border-radius: 5px;
+    white-space: nowrap;
+  }
+  .frm__head {
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    font-weight: 600;
+    color: var(--fg);
+    border-bottom: 2px solid var(--line-strong);
+    border-radius: 5px 5px 0 0;
+  }
+  .frm__head small {
+    font-size: 0.625rem;
+    font-weight: 400;
+    color: var(--fg-subtle);
+  }
+  .frm__label {
+    justify-content: flex-end;
+    color: var(--fg-subtle);
+  }
+  .frm__cell {
+    justify-content: flex-start;
+    border: 1px solid var(--line-strong);
+    background: var(--bg);
+    color: var(--fg);
+  }
+  .frm__cell--num {
+    justify-content: flex-end;
+  }
+  .frm__cell--na {
+    justify-content: center;
+    font-style: italic;
+    color: var(--slate-400);
+    background: var(--slate-50);
+    border-style: dashed;
+  }
+  .frm__head.frm__tone--a,
+  .frm__label.frm__tone--a,
+  .frm__head.frm__tone--b,
+  .frm__label.frm__tone--b {
+    color: var(--blue-700);
+  }
+  .frm__cell.frm__tone--a {
+    border-color: var(--blue-300);
+    background: var(--blue-100);
+    color: var(--blue-900);
+  }
+  .frm__cell.frm__tone--b {
+    border-color: var(--blue-600);
+    background: var(--blue-600);
+    color: #fff;
+  }
+  .frm__cell.frm__tone--g {
+    border-style: dashed;
+    border-color: var(--slate-300);
+    background: transparent;
+    color: var(--slate-400);
+  }
+  .frm__tone--m {
+    color: var(--slate-400);
+  }
+  .frm__cell.frm__tone--m {
+    border-color: var(--line);
+    background: transparent;
+  }
+  .frm__cell.frm__tone--1 {
+    border-color: var(--blue-200);
+    background: var(--blue-50);
+  }
+  .frm__cell.frm__tone--2 {
+    border-color: var(--ok-line);
+    background: var(--ok-soft);
+  }
+  .frm__cell.frm__tone--3 {
+    border-color: var(--warn-line);
+    background: var(--warn-soft);
+  }
+  .frm__label.frm__tone--1,
+  .frm__head.frm__tone--1 {
+    color: var(--blue-700);
+  }
+  .frm__label.frm__tone--2,
+  .frm__head.frm__tone--2 {
+    color: var(--ok);
+  }
+  .frm__label.frm__tone--3,
+  .frm__head.frm__tone--3 {
+    color: var(--warn);
+  }
+  @media (max-width: 640px) {
+    .frm {
+      --cell-w: 30px;
+      --cell-h: 30px;
+      --cell-gap: 2px;
+      --cell-pad: 5px;
+    }
+    .frm__grid {
+      font-size: var(--text-xs);
+    }
+  }
+</style>

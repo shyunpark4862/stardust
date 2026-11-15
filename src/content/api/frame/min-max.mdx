@@ -1,0 +1,254 @@
+---
+title: 최솟값과 최댓값
+names: [Series.min, Series.max, DataFrame.min, DataFrame.max]
+group: 리덕션
+order: 2
+signatures:
+  - "Series.min(*, skipna=True)"
+  - "Series.max(*, skipna=True)"
+  - "DataFrame.min(*, skipna=True)"
+  - "DataFrame.max(*, skipna=True)"
+summary: 컬럼에서 가장 작은 값(min)과 가장 큰 값(max)을 찾아요. 숫자, bool, 문자열 컬럼 모두 되고, 결과는 컬럼과 같은 종류의 값이에요.
+params:
+  - name: skipna
+    type: bool
+    kind: keyword-only
+    desc: True(기본값)면 NA를 빼고 찾아요. False면 NA가 하나라도 있을 때 결과가 NA예요. NaN에는 영향이 없어요.
+returns:
+  type: Python 값 또는 NA (Series), 1행짜리 DataFrame (DataFrame)
+  desc: Series는 컬럼 dtype에 맞는 int·float·bool·str 하나나 NA를 돌려줘요. DataFrame은 행 라벨이 "min"·"max"인 1행짜리 DataFrame이고, 컬럼마다 자기 dtype을 지켜요.
+raises:
+  - type: TypeError
+    desc: skipna가 True·False가 아닐 때, skipna를 이름 없이 넘겼을 때.
+seeAlso: [sum-mean, std-var, na, sort_values, unique_values]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import FrameFig from '../../../components/fig/FrameFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+`min()`은 컬럼에서 **가장 작은 값**을, `max()`는 **가장 큰 값**을 찾아요. 스프레드시트의 `MIN`, `MAX`와 같아요. "이번 주 가장 추웠던 날은 몇 도였나", "가장 비싼 상품의 가격은" 같은 질문에 답할 때 써요.
+
+닷새 동안의 최저 기온을 적었는데 하루는 기록이 빠졌다고 해 볼게요.
+
+```python
+>>> import stardust as sd
+>>> low = sd.frame.Series([-3.5, 1.0, None, -7.25, 2.5], name="low")
+>>> low.min()
+-7.25
+>>> low.max()
+2.5
+```
+
+빠진 기록(`NA`)은 건너뛰고 나머지 네 값 가운데에서 찾았어요.
+
+DataFrame(여러 컬럼을 가진 표)에 쓰면 컬럼마다 따로 찾아서 **1행짜리 DataFrame**으로 돌려줘요. 숫자 컬럼뿐 아니라 문자열과 bool 컬럼도 돼요.
+
+```python
+>>> weather = sd.frame.DataFrame({
+...     "city": ["Seoul", "Busan", "Incheon", "Daegu"],
+...     "low": [-3.5, 1.0, None, -2.0],
+...     "rain": [0, 12, 3, 0],
+...     "snow": [True, False, True, False],
+... })
+>>> weather.min()
+      city  low  rain   snow
+min  Busan -3.5     0  False
+>>> weather.max()
+      city  low  rain  snow
+max  Seoul  1.0    12  True
+```
+
+<Reference />
+
+## 결과는 컬럼과 같은 종류예요
+
+`min`과 `max`는 값을 계산하지 않고 **있는 값 가운데 하나를 고르기만** 해요. 그래서 결과의 dtype은 컬럼의 dtype 그대로예요. Series에서는 Python 값으로 나와요.
+
+| 컬럼 dtype | 결과 | 비교 순서 |
+|:---:|:---:|---|
+| int64 | `int` | 수의 크기 |
+| float64 | `float` | 수의 크기(`-inf`가 가장 작고 `inf`가 가장 커요) |
+| bool | `bool` | `False < True` |
+| string | `str` | 문자의 코드포인트(유니코드 번호) 순서 |
+
+```python
+>>> sd.frame.Series([3, 7, 1]).max(), sd.frame.Series([True, False]).min()
+(7, False)
+>>> type(sd.frame.Series([3, 7, 1]).max())
+<class 'int'>
+```
+
+bool 컬럼의 `max()`는 "하나라도 참인가", `min()`은 "모두 참인가"와 같은 답이에요.
+
+### 문자열은 코드포인트 순서예요
+
+문자열은 사전처럼 첫 글자부터 비교하는데, 글자끼리는 **유니코드 번호의 크기**로 비교해요. Python의 `<`로 문자열을 비교하는 것과 같아요. 이 순서에서는 대문자(`A`–`Z`)가 소문자(`a`–`z`)보다 모두 앞이에요. 그래서 `Kiwi`가 `apple`보다 작아요.
+
+```python
+>>> names = sd.frame.Series(["pear", "apple", "Kiwi", "banana"])
+>>> names.min(), names.max()
+('Kiwi', 'pear')
+>>> "K" < "a"
+True
+```
+
+알파벳 순서처럼 대소문자를 가리지 않고 비교하고 싶다면 미리 대소문자를 맞춘 컬럼을 만들어야 해요.
+
+## `NA`는 건너뛰어요: `skipna`
+
+기본값 `skipna=True`에서는 결측값 `NA`를 빼고 찾아요. `skipna=False`를 주면 `NA`가 하나라도 있을 때 결과가 `NA`예요. "모르는 값이 있으니 가장 작은 값도 모른다"는 뜻이에요.
+
+```python
+>>> low.min(skipna=False)
+<NA>
+```
+
+값이 모두 `NA`이거나 행이 하나도 없으면 결과는 `NA`예요. 고를 값이 없기 때문이에요.
+
+```python
+>>> sd.frame.Series([None, None], dtype="float64").max()
+<NA>
+>>> sd.frame.Series([], dtype="int64").min()
+<NA>
+```
+
+배열의 [`sd.max`](/api/array/min-max/)는 빈 배열에서 `ValueError`를 내요. 배열에는 "값이 없음"을 나타낼 방법이 없어서, 틀린 숫자를 돌려주는 대신 에러로 알려요. 데이터프레임에는 그 뜻의 `NA`가 있어서 에러 대신 `NA`를 돌려줘요. DataFrame에서 한 컬럼만 비어 있어도 나머지 컬럼의 결과를 얻을 수 있어요.
+
+```python
+>>> sd.max(sd.asarray([]))
+Traceback (most recent call last):
+    ...
+ValueError: max(): undefined for an empty array (or along an empty axis)
+>>> sd.frame.DataFrame({"a": [None, None], "b": [1.0, 2.0]}).max()
+       a    b
+max <NA>  2.0
+```
+
+## NaN은 결과로 퍼져요
+
+NaN(Not a Number, 숫자가 아님)은 결측값이 아니라 평범한 float 값이에요. 그래서 `skipna`가 건너뛰지 않아요. NaN은 다른 수와 크기를 비교할 수 없어서, NaN이 하나라도 있으면 `min`과 `max`의 결과가 NaN이에요. 배열의 `sd.max`와 같아요.
+
+```python
+>>> x = sd.frame.Series([1.0, float("nan"), 3.0, None])
+>>> x.max()
+nan
+>>> x.min()
+nan
+```
+
+무한대는 NaN이 아니라 가장 큰(작은) 수라서 그대로 답이 돼요.
+
+```python
+>>> sd.frame.Series([float("inf"), 1.0]).max()
+inf
+```
+
+NaN을 빼고 찾고 싶다면 [`isnan()`](/api/frame/isna/)으로 NaN이 아닌 행만 남겨요. `NA` 행도 함께 빠져요.
+
+```python
+>>> x[~x.isnan()].max()
+3.0
+```
+
+`NA`와 NaN이 어떻게 다른지는 [NA와 NaN](/api/frame/na/)에 있어요.
+
+## `-0.0`과 `0.0`
+
+실수에는 `0.0`과 부호가 붙은 `-0.0`이 따로 있어요. 둘은 `==`로 비교하면 같지만, `min`과 `max`는 **`-0.0`을 `0.0`보다 작다고** 봐요. 그래서 둘이 함께 있으면 어떤 순서로 있든 `min`은 `-0.0`, `max`는 `0.0`이에요.
+
+```python
+>>> z = sd.frame.Series([0.0, -0.0])
+>>> z.min(), z.max()
+(-0.0, 0.0)
+>>> sd.frame.Series([-0.0, 0.0]).min(), sd.frame.Series([-0.0, 0.0]).max()
+(-0.0, 0.0)
+```
+
+실수 계산의 국제 표준(IEEE 754-2019)의 minimum, maximum이 정한 규칙이에요. 배열의 `sd.min`, `sd.max`와 같아요.
+
+같은 값을 하나로 묶는 [`unique_values`](/api/frame/unique_values/)는 이와 달라요. 거기서는 `-0.0`과 `0.0`이 같은 값이라서 하나로 묶이고, **먼저 나온 쪽**을 보여 줘요.
+
+```python
+>>> z.unique_values()
+0    0.0
+dtype: float64
+```
+
+## DataFrame은 1행짜리 DataFrame을 돌려줘요
+
+DataFrame의 `min()`, `max()`는 컬럼마다 값 하나씩을 골라서, 행 라벨이 `min`이나 `max`인 1행짜리 표로 돌려줘요. 각 컬럼은 자기 dtype을 그대로 지켜요.
+
+<Fig caption="컬럼마다 가장 큰 값(진한 칸)을 골라 행 라벨이 max인 1행짜리 표로 모아요. NA 칸(점선)은 건너뛰어요.">
+  <FrameFig name="weather" columns={['city', 'low', 'rain', 'snow']} dtypes={['string', 'float64', 'int64', 'bool']}
+    data={[['Seoul', '-3.5', 0, true], ['Busan', '1.0', 12, false], ['Incheon', null, 3, true], ['Daegu', '-2.0', 0, false]]}
+    tones={[['b', '', '', 'b'], ['', 'b', 'b', ''], ['', 'g', '', 'b'], ['', '', '', '']]} />
+  <Op note="max()">→</Op>
+  <FrameFig columns={['city', 'low', 'rain', 'snow']} dtypes={['string', 'float64', 'int64', 'bool']}
+    data={[['Seoul', '1.0', 12, true]]} index={['max']} rowTones={['b']} />
+</Fig>
+
+```python
+>>> weather.max().dtypes
+{'city': string, 'low': float64, 'rain': int64, 'snow': bool}
+>>> weather.max().loc["max", "city"]
+'Seoul'
+```
+
+결과를 Series 하나로 모으면 `'Seoul'`과 `12`처럼 종류가 다른 값을 한 dtype에 담아야 해서, 1행짜리 DataFrame으로 돌려줘요. 이유는 [합, 평균, 개수](/api/frame/sum-mean/)에서 더 자세히 설명해요.
+
+`sum`, `mean`과 달리 `min`, `max`는 모든 dtype을 받으니, string 컬럼이 섞여 있어도 에러가 나지 않아요.
+
+<Callout type="warn" title="컬럼마다 다른 행에서 나온 값이에요">
+
+`weather.max()`의 `Seoul`, `1.0`, `12`, `True`는 한 도시의 기록이 아니에요. 각 컬럼에서 따로 고른 값이라 서로 다른 행에서 왔어요. "가장 비가 많이 온 도시"처럼 한 행 전체가 궁금하면 [`sort_values`](/api/frame/sort_values/)로 정렬한 뒤 맨 앞 행을 보세요.
+
+</Callout>
+
+## 조심할 점
+
+### 옵션은 이름을 붙이고, `True`나 `False`로
+
+`skipna`는 이름을 붙여서 줘야 해요. 값은 `True`나 `False`만 받아요.
+
+```python
+>>> low.max(skipna=None)
+Traceback (most recent call last):
+    ...
+TypeError: max(): 'skipna' must be True or False, not NoneType
+```
+
+### Python의 `max`, `min`과 헷갈리지 마세요
+
+Series는 값을 하나씩 꺼낼 수 있어서 Python 내장 `max(s)`도 `NA`가 없으면 동작해요. 하지만 `NA`가 섞이면 에러가 나요. 내장 `max`는 값끼리 `>`로 비교한 결과를 참·거짓으로 쓰는데, `NA`와 비교한 결과는 `NA`라서 참인지 거짓인지 정할 수 없기 때문이에요.
+
+```python
+>>> max(sd.frame.Series([1, 5, 3]))
+5
+>>> max(sd.frame.Series([1, None, 3]))
+Traceback (most recent call last):
+    ...
+TypeError: the truth value of NA is ambiguous
+```
+
+언제나 `s.max()`를 쓰세요. `NA`를 건너뛰고, 값을 하나씩 꺼내지 않아서 훨씬 빨라요.
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | 다른 점 |
+|---|---|---|
+| 가장 작은·큰 값이 있는 **행** | [`sort_values`](/api/frame/sort_values/) | 행 전체를 정렬해요. NaN과 `NA`의 위치를 정하는 규칙이 따로 있어요. |
+| 그룹마다 최솟값·최댓값 | [`groupby(...).min()`](/api/frame/groupby-agg/) | 키 값이 같은 행끼리 따로 찾아요. 규칙은 이 페이지와 같아요. |
+| 서로 다른 값을 크기순으로 | [`unique_values`](/api/frame/unique_values/) | 맨 앞과 맨 뒤가 최솟값과 최댓값이에요. 다만 NaN은 결과로 퍼지지 않고 하나의 값으로 맨 뒤(`NA` 앞)에 와요. |
+| 배열에서 찾기 | [`sd.min`, `sd.max`](/api/array/min-max/) | 빈 배열은 `ValueError`예요. `axis`를 골라 행별·열별로 찾을 수 있어요. |
+
+## pandas를 아는 분께
+
+- **NaN을 건너뛰지 않아요.** pandas의 `skipna`는 NaN도 건너뛰어서 `pd.Series([1.0, nan, 3.0]).max()`가 `3.0`이지만, stardust는 `nan`이에요. `skipna`는 `NA`만 건너뛰어요.
+- **DataFrame의 결과가 1행짜리 DataFrame이에요.** pandas는 Series를 돌려주고, string과 숫자 컬럼이 섞이면 object Series가 돼요.
+- 결과는 numpy 스칼라(`np.int64`, `np.bool`)가 아니라 Python `int`, `bool` 등이에요.
+- 비어 있거나 모두 `NA`인 컬럼은 dtype과 상관없이 `NA`예요. pandas는 기본 dtype에서 `nan`이고, nullable dtype(`Int64` 등)에서만 `<NA>`예요.
+- `-0.0`과 `0.0`의 결과는 pandas(numpy)와 같아요.
+- `axis`, `numeric_only` 인자는 없어요. `skipna`는 keyword-only예요.

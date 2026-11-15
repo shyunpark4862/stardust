@@ -1,0 +1,372 @@
+---
+kind: concept
+title: 대괄호로 고르기
+group: 선택과 대입
+order: 1
+summary: 대괄호 `df[...]`, `s[...]`로 컬럼이나 행을 골라요. DataFrame의 대괄호는 컬럼 이름과 조건 마스크를, Series의 대괄호는 행 라벨을 받아요. 위치로 고를 때는 `.iloc`을 써요.
+seeAlso: [loc-iloc, mask, assign, iteration, basics, alignment, dataframe, series]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
+import FrameFig from '../../../components/fig/FrameFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+표에서 필요한 부분만 꺼내는 가장 짧은 방법은 이름 뒤에 대괄호를 붙이는 거예요. 엑셀에서 열 머리글을 눌러 그 열을 고르는 것과 비슷해요.
+
+DataFrame에 **컬럼 이름 하나**를 주면 그 컬럼이 Series로 나오고, **이름의 리스트**를 주면 그 컬럼들만 담은 DataFrame이 나와요.
+
+```python
+>>> import stardust as sd
+>>> df = sd.frame.DataFrame({
+...     "fruit": ["apple", "banana", "cherry", "grape"],
+...     "price": [1200, 800, 3000, 2500],
+...     "qty": [3, 12, 1, 4],
+... })
+>>> df["price"]
+0    1200
+1     800
+2    3000
+3    2500
+Name: price, dtype: int64
+>>> df[["fruit", "qty"]]
+    fruit  qty
+0   apple    3
+1  banana   12
+2  cherry    1
+3   grape    4
+```
+
+<Fig caption="문자열 하나를 주면 컬럼 하나(Series), 리스트를 주면 고른 컬럼들(DataFrame)이 나와요. 행은 모두 그대로예요.">
+  <FrameFig name='df["price"]' columns={['fruit', 'price', 'qty']} dtypes={['string', 'int64', 'int64']}
+    data={[['apple', 1200, 3], ['banana', 800, 12], ['cherry', 3000, 1], ['grape', 2500, 4]]}
+    colTones={['m', 'a', 'm']} />
+  <FrameFig name='df[["fruit", "qty"]]' columns={['fruit', 'price', 'qty']} dtypes={['string', 'int64', 'int64']}
+    data={[['apple', 1200, 3], ['banana', 800, 12], ['cherry', 3000, 1], ['grape', 2500, 4]]}
+    colTones={['a', 'm', 'a']} />
+</Fig>
+
+DataFrame의 대괄호에는 하나를 더 줄 수 있어요. 행마다 `True`/`False`가 든 **bool Series**를 주면 `True`인 행만 남겨요. "가격이 1000 넘는 과일만"처럼 조건으로 행을 거를 때 써요.
+
+```python
+>>> df[df["price"] > 1000]
+    fruit  price  qty
+0   apple   1200    3
+2  cherry   3000    1
+3   grape   2500    4
+```
+
+Series의 대괄호는 **행 라벨**을 받아요. 라벨(label)은 출력 왼쪽에 보이는 행 이름표예요([데이터프레임의 기본](/api/frame/basics/) 참고).
+
+```python
+>>> s = sd.frame.Series([3, 5, 7], index=["x", "y", "z"], name="v")
+>>> s["y"]
+5
+```
+
+정리하면 대괄호에 쓸 수 있는 것은 이게 전부예요.
+
+| 대상 | 대괄호 안 | 결과 |
+|---|---|---|
+| DataFrame | 컬럼 이름 `"a"` | 그 컬럼의 Series |
+| DataFrame | 컬럼 이름 리스트 `["a", "b"]` | 그 컬럼들의 DataFrame (적은 순서대로) |
+| DataFrame | bool Series (마스크) | 조건에 맞는 행만 담은 DataFrame |
+| Series | 라벨, 라벨 리스트, 라벨 슬라이스, bool Series | `s.loc[...]`와 같아요 |
+
+행을 **위치(몇 번째 행)**로 고르는 일은 대괄호가 하지 않아요. 그건 [`.iloc`](/api/frame/loc-iloc/)의 일이에요.
+
+## DataFrame: 컬럼 하나 고르기
+
+`df["price"]`는 컬럼 하나를 Series로 꺼내요. Series의 이름(`name`)은 컬럼 이름이 되고, 행 라벨은 DataFrame의 라벨을 그대로 가져와요.
+
+```python
+>>> price = df["price"]
+>>> price.name
+'price'
+>>> price.index
+RangeIndex(start=0, stop=4, step=1)
+```
+
+꺼낸 Series로 계산을 이어 가는 것이 가장 흔한 쓰임새예요.
+
+```python
+>>> df["price"].mean()
+1875.0
+>>> df["price"] * df["qty"]
+0    3600
+1    9600
+2    3000
+3    10000
+dtype: int64
+```
+
+없는 이름이면 `KeyError`예요. 컬럼 이름은 언제나 `str`이라서, 숫자 같은 다른 타입을 주면 `TypeError`예요.
+
+```python
+>>> df["nope"]
+Traceback (most recent call last):
+    ...
+KeyError: 'nope'
+>>> df[0]
+Traceback (most recent call last):
+    ...
+TypeError: column names must be str, not int
+```
+
+컬럼 이름이 DataFrame에 있는지는 `in`으로 미리 확인할 수 있어요([반복과 in](/api/frame/iteration/) 참고).
+
+```python
+>>> "price" in df
+True
+```
+
+## DataFrame: 컬럼 여러 개 고르기
+
+이름의 **리스트**를 주면 그 컬럼들만 담은 새 DataFrame이 나와요. 컬럼은 리스트에 적은 순서대로 놓이므로, 순서를 바꾸는 데도 써요.
+
+```python
+>>> df[["qty", "fruit"]]
+   qty   fruit
+0    3   apple
+1   12  banana
+2    1  cherry
+3    4   grape
+```
+
+이름이 하나뿐이어도 리스트로 주면 결과는 DataFrame이에요. 대괄호 안이 문자열인지 리스트인지로 결과의 종류가 정해져요.
+
+```python
+>>> df[["price"]]
+   price
+0   1200
+1    800
+2   3000
+3   2500
+```
+
+빈 리스트는 컬럼이 없는 DataFrame이에요. 행 라벨은 남아요.
+
+```python
+>>> df[[]]
+Empty DataFrame
+Columns: []
+Index: [0, 1, 2, 3]
+```
+
+리스트에 없는 이름이 하나라도 있으면 `KeyError`, 같은 이름이 두 번 나오면 `ValueError`예요. DataFrame의 컬럼 이름은 서로 달라야 하기 때문이에요.
+
+```python
+>>> df[["fruit", "nope"]]
+Traceback (most recent call last):
+    ...
+KeyError: 'nope'
+>>> df[["fruit", "fruit"]]
+Traceback (most recent call last):
+    ...
+ValueError: column names must be unique
+```
+
+<Callout type="warn" title="tuple이 아니라 리스트로 주세요">
+
+`df["fruit", "qty"]`처럼 대괄호 안에 쉼표로 이름을 늘어놓으면 Python은 이것을 tuple 하나로 넘겨요. 대괄호는 tuple을 컬럼 목록으로 읽지 않아요. 꼭 대괄호를 한 겹 더 써서 `df[["fruit", "qty"]]`로 써요.
+
+```python
+>>> df["fruit", "qty"]
+Traceback (most recent call last):
+    ...
+TypeError: column names must be str, not tuple
+```
+
+</Callout>
+
+numpy 배열이나 stardust 배열에 담긴 컬럼 이름도 대괄호에는 줄 수 없어요(`TypeError`). 배열로 컬럼을 고르려면 [`.loc`](/api/frame/loc-iloc/)의 열 자리에 줘요: `df.loc[:, names]`.
+
+## DataFrame: 조건으로 행 거르기
+
+bool Series를 주면 값이 `True`인 행만 남겨요. 비교 연산(`>`, `==` 등)의 결과가 바로 bool Series라서 조건을 그대로 쓸 수 있어요.
+
+```python
+>>> df["qty"] >= 4
+0    False
+1     True
+2    False
+3     True
+Name: qty, dtype: bool
+>>> df[df["qty"] >= 4]
+    fruit  price  qty
+1  banana    800   12
+3   grape   2500    4
+```
+
+<Fig caption="마스크가 True인 1번과 3번 행만 남아요. 남은 행은 원래 라벨을 그대로 가져가요.">
+  <FrameFig name='df["qty"] >= 4' data={[false, true, false, true]} rowTones={['m', 'a', 'm', 'a']} />
+  <Op note="df[mask]">→</Op>
+  <FrameFig columns={['fruit', 'price', 'qty']} index={[1, 3]} data={[['banana', 800, 12], ['grape', 2500, 4]]} rowTones={['a', 'a']} />
+</Fig>
+
+마스크는 위치가 아니라 **라벨로** 행과 짝을 지어요. 그래서 마스크와 DataFrame의 라벨이 같아야 하고, 마스크 값이 `NA`인 행은 버려요. 조건을 여러 개 합치는 법까지 [조건으로 행 거르기](/api/frame/mask/)에 자세히 있어요.
+
+## DataFrame의 대괄호로는 행을 자를 수 없어요
+
+`df[1:3]`처럼 대괄호에 슬라이스나 정수를 주면 `TypeError`예요. DataFrame의 대괄호는 컬럼 이름(과 그 리스트), 그리고 bool Series 마스크만 받아요.
+
+```python
+>>> df[1:3]
+Traceback (most recent call last):
+    ...
+TypeError: column names must be str, not slice
+```
+
+행을 위치로 자르려면 `.iloc`, 라벨로 자르려면 `.loc`을 써요.
+
+```python
+>>> df.iloc[1:3]
+    fruit  price  qty
+1  banana    800   12
+2  cherry   3000    1
+```
+
+bool 리스트나 bool 배열도 마스크로 받지 않아요. 마스크는 라벨이 붙은 bool Series만 돼요.
+
+```python
+>>> df[[True, False, True, False]]
+Traceback (most recent call last):
+    ...
+TypeError: column names must be str, not bool
+```
+
+## Series: 대괄호는 라벨로 골라요
+
+Series에서 `s[x]`는 `s.loc[x]`와 똑같아요. 라벨 하나, 라벨 리스트, 라벨 슬라이스, bool Series를 받아요.
+
+```python
+>>> s
+x    3
+y    5
+z    7
+Name: v, dtype: int64
+>>> s["y"]
+5
+>>> s[["z", "x"]]
+z    7
+x    3
+Name: v, dtype: int64
+>>> s["x":"y"]
+x    3
+y    5
+Name: v, dtype: int64
+>>> s[s > 4]
+y    5
+z    7
+Name: v, dtype: int64
+```
+
+라벨 하나로 고르면 Series가 아니라 **Python 값**이 나와요. 라벨 슬라이스 `"x":"y"`는 끝 라벨 `"y"`도 **포함해요.** 자세한 규칙은 [loc과 iloc](/api/frame/loc-iloc/)에 있어요.
+
+```python
+>>> type(s["y"])
+<class 'int'>
+```
+
+<Callout type="warn" title="라벨이 0, 1, 2…여도 s[...]는 위치가 아니에요">
+
+라벨을 따로 주지 않은 Series는 라벨이 `0, 1, 2, …`라서 위치와 똑같아 보여요. 그래도 `s[...]`는 언제나 **라벨**로 골라요. 그래서 `s[1:3]`은 라벨 1, 2, 3을 고르고(끝 포함), `s[-1]`은 "라벨이 -1인 행"을 찾다가 `KeyError`가 나요.
+
+```python
+>>> price = df["price"]
+>>> price[1:3]
+1     800
+2    3000
+3    2500
+Name: price, dtype: int64
+>>> price[-1]
+Traceback (most recent call last):
+    ...
+KeyError: -1
+```
+
+"두 번째부터 세 개", "마지막 행"처럼 위치로 고르려면 `price.iloc[1:4]`, `price.iloc[-1]`을 써요.
+
+</Callout>
+
+라벨의 타입은 라벨들의 dtype과 맞아야 해요. 문자열 라벨에 정수를 주거나, 정수 라벨에 문자열을 주면 `TypeError`예요.
+
+```python
+>>> s[0]
+Traceback (most recent call last):
+    ...
+TypeError: a label of a string index must be a str, not int
+>>> price["a"]
+Traceback (most recent call last):
+    ...
+TypeError: a label of an int64 index must be an int, not str
+```
+
+## 대괄호는 대입에도 써요
+
+같은 대괄호를 `=`의 왼쪽에 쓰면 값을 써넣어요. `df["c"] = 값`은 컬럼 하나를 통째로 새로 만들거나 바꾸고, `s[라벨] = 값`은 Series의 행을 고쳐요.
+
+```python
+>>> df["total"] = df["price"] * df["qty"]
+>>> df
+    fruit  price  qty  total
+0   apple   1200    3   3600
+1  banana    800   12   9600
+2  cherry   3000    1   3000
+3   grape   2500    4  10000
+```
+
+어떤 값을 넣을 수 있는지, dtype이 어떻게 되는지, 고친 객체와 다른 객체가 어떻게 되는지는 [대입과 복사](/api/frame/assign/)에 있어요.
+
+## 조심할 점
+
+### 고른 결과를 고쳐도 원래 표는 바뀌지 않아요
+
+`df["price"]`로 꺼낸 Series를 고쳐도 `df`는 그대로예요. 그래서 `df["price"].iloc[0] = 0`처럼 두 단계로 대입하면 **아무 에러 없이** `df`가 바뀌지 않아요. `df`를 고치려면 한 번에 `df.loc[0, "price"] = 0`으로 써요.
+
+```python
+>>> df["price"].iloc[0] = 0
+>>> df["price"].iloc[0]
+1200
+>>> df.loc[0, "price"] = 0
+>>> df["price"].iloc[0]
+0
+```
+
+이유는 [대입과 복사](/api/frame/assign/)의 Copy-on-Write에 있어요.
+
+### 행 하나를 골라도 DataFrame이에요
+
+`df.iloc[0]`, `df.loc[0]`은 행 하나짜리 **DataFrame**이에요. 컬럼마다 dtype이 다를 수 있어서 한 행을 Series 하나로 만들지 않아요. 그래서 그 결과에 다시 `["price"]`를 붙이면 값이 아니라 길이 1인 Series가 나와요. 칸 하나의 값은 `df.loc[행, 열]`로 한 번에 꺼내요.
+
+```python
+>>> df.iloc[1]["price"]
+1    800
+Name: price, dtype: int64
+>>> df.loc[1, "price"]
+800
+```
+
+## 비슷한 기능과의 차이
+
+| 쓰는 것 | 고르는 기준 | 행 | 열 |
+|---|---|---|---|
+| `df[...]` | 컬럼 이름, 마스크 | 마스크로만 | 이름 하나·리스트 |
+| `s[...]` | 라벨 | 라벨, 리스트, 슬라이스(끝 포함), 마스크 | (없음) |
+| `.loc[...]` | 라벨 | 라벨, 리스트, 슬라이스(끝 포함), 마스크 | 이름, 리스트, 슬라이스(끝 포함) |
+| `.iloc[...]` | 위치 | 정수, 리스트, 슬라이스(끝 미포함) | 정수, 리스트, 슬라이스(끝 미포함) |
+
+- **배열의 `x[...]`와는 기준이 달라요.** [배열의 인덱싱](/api/array/indexing/)은 언제나 위치로 골라서 `x[1:3]`이 1번과 2번이에요. Series의 대괄호는 라벨의 종류와 상관없이 언제나 라벨을 봐요. 배열처럼 위치로 고르고 싶으면 `.iloc`을 써요.
+- 배열의 bool 마스크는 같은 모양의 bool **배열**이고 위치로 짝을 지어요. 데이터프레임의 마스크는 bool **Series**이고 라벨로 짝을 지어요([조건으로 행 거르기](/api/frame/mask/)).
+- Series의 `s[x]`와 `s.loc[x]`는 완전히 같아요. 어느 쪽을 써도 돼요. DataFrame에서 행과 열을 함께 고를 때는 `.loc`, `.iloc`이 필요해요.
+
+## pandas를 아는 분께
+
+- **`df[1:3]`은 `TypeError`예요.** pandas는 DataFrame의 대괄호에 슬라이스를 주면 행을 위치로 잘라요. `df.iloc[1:3]`을 써요.
+- **Series의 `s[1:3]`은 라벨 슬라이스예요(끝 포함).** pandas 3.1.1은 `s[1:3]`을 정수 라벨이어도 위치로 자르므로(`pd.Series([10, 20, 30, 40])[1:3]`은 두 행), 같은 코드가 다른 행을 골라요.
+- `df[[True, False, ...]]`처럼 bool 리스트나 bool numpy 배열로 행을 거를 수 없어요. 라벨이 붙은 bool Series만 받아요. 컬럼 이름이 든 numpy 배열도 `df[...]`에는 줄 수 없고 `df.loc[:, arr]`로 줘요.
+- `df[["a", "a"]]`처럼 같은 컬럼을 두 번 고르면 `ValueError`예요. pandas는 같은 이름의 컬럼 두 개를 만들어요.
+- 칸 하나를 꺼내면 numpy 스칼라(`np.int64(800)`)가 아니라 Python `int`예요.
+- 두 단계 대입(`df["a"].iloc[0] = 0`)은 pandas 3처럼 원래 표를 바꾸지 않지만, pandas와 달리 경고도 내지 않아요.

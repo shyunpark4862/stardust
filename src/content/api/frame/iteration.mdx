@@ -1,0 +1,260 @@
+---
+kind: concept
+title: 반복과 in
+group: 선택과 대입
+order: 6
+summary: for 문으로 무엇을 돌고 in이 무엇을 찾는지 정리해요. Series는 값을, DataFrame은 컬럼 이름을, Index는 라벨을 돌고 찾아요.
+seeAlso: [selection, loc-iloc, index, to-numpy, unique_values, na, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import FrameFig from '../../../components/fig/FrameFig.astro';
+
+## 한눈에 보기
+
+Series, DataFrame, Index는 Python의 `for` 문으로 돌 수 있고, `x in ...`으로 무엇이 들어 있는지 물어볼 수 있어요. 무엇을 도는지는 객체마다 달라요. 같은 객체에서는 **`for`가 도는 것과 `in`이 찾는 것이 언제나 같아요.**
+
+| 객체 | `for`가 도는 것 / `in`이 찾는 것 | `len()` |
+|---|---|---|
+| Series | 값 | 행 수 |
+| DataFrame | 컬럼 이름 | 행 수 |
+| Index, RangeIndex | 라벨 | 라벨 수 |
+
+```python
+>>> import stardust as sd
+>>> price = sd.frame.Series([1200, 800, None], index=["apple", "banana", "cherry"], name="price")
+>>> list(price)
+[1200, 800, <NA>]
+>>> 800 in price
+True
+>>> df = sd.frame.DataFrame({"fruit": ["apple", "banana"], "price": [1200, 800]})
+>>> list(df)
+['fruit', 'price']
+>>> "price" in df
+True
+>>> list(price.index)
+['apple', 'banana', 'cherry']
+>>> "apple" in price.index
+True
+```
+
+<Fig caption="Series는 값을, DataFrame은 컬럼 이름을, Index는 라벨을 돌아요. 강조한 칸이 for가 차례로 꺼내는 것이에요.">
+  <FrameFig name="price (값)" index={['apple', 'banana', 'cherry']} data={[1200, 800, null]} tones={[['a'], ['a'], ['a']]} />
+  <FrameFig name="df (컬럼 이름)" columns={['fruit', 'price']} data={[['apple', 1200], ['banana', 800]]} colTones={['a', 'a']} tones={[['m', 'm'], ['m', 'm']]} />
+  <FrameFig name="price.index (라벨)" index={['apple', 'banana', 'cherry']} data={[1200, 800, null]} rowTones={['a', 'a', 'a']} tones={[['m'], ['m'], ['m']]} />
+</Fig>
+
+## Series: 값을 돌고 값을 찾아요
+
+`for v in s`는 값을 위에서부터 하나씩 꺼내요. 값은 Python 값(`int`, `float`, `bool`, `str`)이고, 빈 칸은 `sd.frame.NA`예요.
+
+```python
+>>> for v in price:
+...     print(v, type(v).__name__)
+1200 int
+800 int
+<NA> NAType
+```
+
+라벨과 값을 함께 돌고 싶으면 `zip`으로 Index와 Series를 나란히 돌아요.
+
+```python
+>>> for label, v in zip(price.index, price):
+...     print(label, v)
+apple 1200
+banana 800
+cherry <NA>
+```
+
+`x in s`는 **값 중에** `x`가 있는지 찾아요. 라벨이 있는지는 `x in s.index`로 물어요.
+
+```python
+>>> "apple" in price
+False
+>>> "apple" in price.index
+True
+```
+
+### `in`이 같은 값으로 보는 것
+
+`in`은 [고유값](/api/frame/unique_values/)이나 groupby가 "같은 값"을 가르는 규칙과 같은 규칙으로 찾아요. `==`와 다른 점이 있어요.
+
+- **NaN은 NaN을 찾아요.** `==`로는 NaN이 자기 자신과도 같지 않지만, `in`은 NaN끼리 같은 값으로 봐요.
+- **`NA`는 `NA`를 찾아요.** `None`도 `NA`로 읽어요. 값을 알 수 없다는 뜻의 `NA`도, "빈 칸이 있느냐"는 질문에는 답할 수 있어요.
+- **`-0.0`과 `0.0`은 같은 값이에요.**
+
+```python
+>>> nan = float("nan")
+>>> temps = sd.frame.Series([1.0, nan, -0.0])
+>>> nan in temps
+True
+>>> 0.0 in temps
+True
+>>> sd.frame.NA in temps
+False
+>>> sd.frame.NA in price
+True
+>>> None in price
+True
+```
+
+### 숫자는 정확히 같은 값만 찾아요
+
+bool, int, float는 모두 숫자라서 서로 찾을 수 있어요. 다만 `x`를 컬럼의 dtype으로 **정확히** 바꿀 수 있을 때만 찾아요. float 컬럼에서 `2`는 `2.0`을 찾고, int 컬럼에서 `800.0`은 `800`을 찾지만, `1.5`는 int 컬럼에 있을 수 없는 값이라 찾지 않아요.
+
+```python
+>>> 800.0 in price
+True
+>>> 2 in sd.frame.Series([2.0, 3.0])
+True
+>>> 1.5 in sd.frame.Series([1, 2])
+False
+```
+
+bool도 숫자예요. `True`는 `1`, `False`는 `0`이에요.
+
+```python
+>>> flags = sd.frame.Series([True, False])
+>>> 1 in flags
+True
+>>> 0.0 in flags
+True
+>>> 2 in flags
+False
+```
+
+반올림이 끼어들면 `==`와 결과가 달라질 수 있어요. float는 2⁵³보다 큰 정수를 모두 나타내지 못해서 `2**53 + 1`을 float로 바꾸면 `2**53`이 돼요. `==`는 이렇게 반올림한 다음 비교해서 `True`이지만, `in`은 정확히 같은 값만 찾으므로 `False`예요.
+
+```python
+>>> big = sd.frame.Series([2.0**53])
+>>> (big == 2**53 + 1).tolist()
+[True]
+>>> 2**53 + 1 in big
+False
+```
+
+타입이 아예 맞지 않는 값(숫자 컬럼에서 문자열, 문자열 컬럼에서 숫자)은 에러 없이 `False`예요.
+
+```python
+>>> "1200" in price
+False
+>>> 1 in sd.frame.Series(["1"])
+False
+```
+
+## DataFrame: 컬럼 이름을 돌아요
+
+`for c in df`는 컬럼 이름을 왼쪽부터 꺼내요. 그래서 `df[c]`로 컬럼을 하나씩 꺼내 다룰 수 있어요. `x in df`도 컬럼 이름 중에 `x`가 있는지 물어요.
+
+```python
+>>> for c in df:
+...     print(c, df[c].dtype)
+fruit string
+price int64
+>>> "apple" in df
+False
+```
+
+`len(df)`는 컬럼 수가 아니라 **행 수**예요. 행 수와 컬럼 수를 함께 보려면 `df.shape`를 써요([모양, 이름, dtype](/api/frame/attributes/)).
+
+```python
+>>> len(df), df.shape
+(2, (2, 2))
+```
+
+### 행을 하나씩 돌려면
+
+DataFrame에는 행을 하나씩 꺼내는 메서드가 없어요. 행 하나를 꺼내면 [1행 DataFrame](/api/frame/loc-iloc/)이에요. 행 단위로 돌아야 할 때는 필요한 컬럼들을 `zip`으로 나란히 돌아요.
+
+```python
+>>> for fruit, p in zip(df["fruit"], df["price"]):
+...     print(f"{fruit}: {p} won")
+apple: 1200 won
+banana: 800 won
+>>> dict(zip(df["fruit"], df["price"]))
+{'apple': 1200, 'banana': 800}
+```
+
+<Callout type="tip" title="반복문보다 컬럼 연산">
+
+행을 하나씩 돌며 계산하기보다 컬럼 전체를 한 번에 계산하는 편이 훨씬 빠르고 짧아요. `[p * 2 for p in df["price"]]` 대신 `df["price"] * 2`, 조건으로 거르는 반복문 대신 `df[df["price"] > 1000]`([조건으로 행 거르기](/api/frame/mask/))를 써요. 반복문은 행마다 Python 값을 하나씩 만들기 때문에 행이 많으면 느려요.
+
+</Callout>
+
+## Index: 라벨을 돌고 라벨을 찾아요
+
+Index와 RangeIndex는 라벨을 돌고, `in`도 라벨을 찾아요. 찾는 규칙은 Series의 `in`과 같아서, 정수 라벨 중에서 `1.0`이나 `True`도 찾아요.
+
+```python
+>>> idx = sd.frame.Index([1, 2])
+>>> list(idx)
+[1, 2]
+>>> 1.0 in idx
+True
+>>> True in sd.frame.RangeIndex(3)
+True
+>>> "1" in idx
+False
+```
+
+`in`은 숫자끼리 너그럽게 찾지만, 라벨로 **행을 고르는** `.loc`은 라벨의 타입이 맞아야 해요. `1.0 in s.index`가 `True`여도 `s.loc[1.0]`은 `TypeError`예요. 라벨 타입의 규칙은 [loc과 iloc](/api/frame/loc-iloc/)에 있어요.
+
+```python
+>>> s = sd.frame.Series([10, 20], index=[1, 2])
+>>> 1.0 in s.index
+True
+>>> s.loc[1.0]
+Traceback (most recent call last):
+    ...
+TypeError: a label of an int64 index must be an int, not float
+```
+
+## 조심할 점
+
+### `if s:`는 쓸 수 없어요
+
+Series, DataFrame, Index는 참·거짓 값이 없어서 `if s:`, `bool(df)`는 `TypeError`예요. "비어 있나"는 `len(s) == 0`, "빈 칸이 있나"는 `sd.frame.NA in s`처럼 원하는 질문을 직접 써요([데이터프레임의 기본](/api/frame/basics/)).
+
+```python
+>>> if price:
+...     pass
+Traceback (most recent call last):
+    ...
+TypeError: the truth value of a Series is ambiguous
+>>> len(price) == 0
+False
+```
+
+### `NA`를 리스트에서 찾기
+
+`NA`는 어떤 값과 비교해도 결과가 `NA`라서, 보통의 Python 리스트에서 `NA`를 찾을 때는 조심해야 해요. `NA in [NA]`는 같은 객체라서 `True`이지만, `NA in [1, 2]`는 `NA == 1`을 참·거짓으로 바꾸려다 `TypeError`예요. Series의 `in`은 이런 문제가 없어요([NA와 NaN](/api/frame/na/)).
+
+```python
+>>> sd.frame.NA in [sd.frame.NA]
+True
+>>> sd.frame.NA in [1, 2]
+Traceback (most recent call last):
+    ...
+TypeError: the truth value of NA is ambiguous
+```
+
+## 비슷한 기능과의 차이
+
+| 하고 싶은 일 | 쓰는 것 |
+|---|---|
+| 값이 하나라도 있나 | `x in s` |
+| 행마다 같은 값인가 | `s == x` ([비교 연산](/api/frame/comparison/)) |
+| 라벨이 있나 | `x in s.index` |
+| 컬럼이 있나 | `"c" in df` |
+| 값을 모두 리스트로 | `s.tolist()` ([리스트와 numpy 배열로](/api/frame/to-numpy/)) |
+| 서로 다른 값 목록 | `s.unique_values()` ([고유값](/api/frame/unique_values/)) |
+
+- **배열과 비교**: [stardust 배열](/api/array/ndarray/)을 `for`로 돌면 첫 축을 따라 돌아요(1차원이면 원소, 2차원이면 행). Series도 1차원이라 값을 돌지만, DataFrame은 행이 아니라 컬럼 이름을 돌아요. dict를 `for`로 돌면 키가 나오는 것과 같은 모양이에요.
+- `list(s)`와 `s.tolist()`는 같은 리스트예요.
+
+## pandas를 아는 분께
+
+- **Series의 `in`은 값을 찾아요.** pandas 3.1.1의 `x in s`는 라벨을 찾고(`"apple" in s`가 `True`), `for`는 값을 돌아서 둘이 달라요. stardust는 둘 다 값이에요. 라벨은 `x in s.index`로 찾아요.
+- `iterrows`, `itertuples`, `items`, `keys`가 없어요. 컬럼은 `for c in df`, 행은 `zip(df["a"], df["b"])`로 돌아요.
+- 빈 칸은 `NA`로 나와요. pandas는 int 컬럼에 빈 칸이 있으면 float로 바뀌어서 `list(s)`가 `[1200.0, 800.0, nan]`이에요.
+- `bool(s)`는 `TypeError`예요(pandas는 `ValueError`).

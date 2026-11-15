@@ -1,0 +1,225 @@
+---
+title: sort_index
+names: [Series.sort_index, DataFrame.sort_index]
+group: 정렬
+order: 2
+signatures:
+  - "Series.sort_index(*, descending=False, stable=True, ignore_index=False)"
+  - "DataFrame.sort_index(*, descending=False, stable=True, ignore_index=False)"
+summary: 값이 아니라 행 라벨의 순서로 행을 다시 늘어놓아요. sort_values로 섞은 표를 원래 순서로 되돌릴 때도 써요.
+params:
+  - name: descending
+    type: bool
+    kind: keyword-only
+    desc: True면 큰 라벨부터 늘어놓아요.
+  - name: stable
+    type: bool
+    kind: keyword-only
+    desc: 받기만 해요. 정렬은 언제나 안정 정렬이라 False여도 결과가 같아요.
+  - name: ignore_index
+    type: bool
+    kind: keyword-only
+    desc: True면 정렬한 뒤 라벨을 버리고 0, 1, 2, … 라벨을 새로 붙여요.
+returns:
+  type: Series 또는 DataFrame
+  desc: 행을 라벨 순서로 정렬한 새 객체. 원래 객체는 바뀌지 않아요. 컬럼의 순서는 그대로예요.
+raises:
+  - type: TypeError
+    desc: descending·stable·ignore_index가 True/False가 아닐 때, 없는 인자(na_position, level, ascending 등)를 줬을 때, 옵션을 이름 없이 줬을 때.
+seeAlso: [sort_values, index, reindex, loc-iloc, alignment]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import FrameFig from '../../../components/fig/FrameFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+Series와 DataFrame의 행에는 왼쪽에 **라벨**(행의 이름표)이 붙어 있어요. `sort_index`는 값이 아니라 **이 라벨의 순서로** 행을 다시 늘어놓아요. 라벨이 도시 이름이면 도시 이름순, 연도면 연도순이 돼요. ([라벨과 정렬](/api/frame/alignment/))
+
+이럴 때 써요.
+
+- 라벨이 이름이나 연도일 때 그 순서로 표를 보고 싶을 때
+- `sort_values`로 순서를 바꾼 표를 원래 순서로 되돌릴 때
+- 여러 곳에서 모은 표를 라벨 순서로 가지런히 할 때
+
+```python
+>>> import stardust as sd
+>>> temp = sd.frame.Series([18.5, 25.1, 9.8, 12.0],
+...                        index=["seoul", "busan", "daegu", "incheon"], name="temp")
+>>> temp.sort_index()
+busan      25.1
+daegu       9.8
+incheon    12.0
+seoul      18.5
+Name: temp, dtype: float64
+```
+
+<Fig caption="값(기온)은 보지 않고 왼쪽의 라벨(도시 이름)을 이름순으로 늘어놓아요. 값은 자기 라벨을 따라가요.">
+  <FrameFig name="temp" index={['seoul', 'busan', 'daegu', 'incheon']} data={[18.5, 25.1, 9.8, 12.0]}
+    rowTones={['3', '1', '2', '']} note="dtype: float64" />
+  <Op note="sort_index()">→</Op>
+  <FrameFig index={['busan', 'daegu', 'incheon', 'seoul']} data={[25.1, 9.8, 12.0, 18.5]}
+    rowTones={['1', '2', '', '3']} note="dtype: float64" />
+</Fig>
+
+라벨이 정수면 수의 순서예요. DataFrame도 똑같이 행을 라벨 순서로 늘어놓아요.
+
+```python
+>>> yearly = sd.frame.DataFrame({"sales": [120, 95, 130, 80]}, index=[2025, 2023, 2026, 2024])
+>>> yearly.sort_index()
+      sales
+2023     95
+2024     80
+2025    120
+2026    130
+```
+
+<Reference />
+
+## `descending`: 큰 라벨부터
+
+`descending=True`면 큰 라벨부터(내림차순) 늘어놓아요. [`sort_values`](/api/frame/sort_values/), 배열의 [`sd.sort`](/api/array/sort/)와 같은 이름이에요.
+
+```python
+>>> yearly.sort_index(descending=True)
+      sales
+2026    130
+2025    120
+2024     80
+2023     95
+```
+
+라벨은 하나의 키라서 `descending`에 리스트를 줄 일은 없어요. 키 수와 맞는 한 칸짜리 리스트(`[True]`)는 받지만, 두 칸이면 `ValueError`예요.
+
+## 순서의 규칙
+
+- **정수 라벨**은 수의 순서예요.
+- **문자열 라벨**은 글자의 코드 순서(코드포인트 순서)예요. 영어 소문자끼리는 사전순과 같지만, **대문자는 모든 소문자보다 앞**이에요.
+
+```python
+>>> sd.frame.Series([1, 2, 3, 4], index=["b", "B", "a", "A"]).sort_index()
+A    4
+B    2
+a    3
+b    1
+dtype: int64
+```
+
+- **라벨이 겹치면** 그 행들은 원래 순서를 지켜요(안정 정렬). 내림차순에서도 같아요.
+
+```python
+>>> dup = sd.frame.DataFrame({"v": [1, 2, 3, 4]}, index=["b", "a", "b", "a"])
+>>> dup.sort_index()
+   v
+a  2
+a  4
+b  1
+b  3
+>>> dup.sort_index(descending=True)
+   v
+b  1
+b  3
+a  2
+a  4
+```
+
+`a`인 두 행이 `2, 4` 순서(원래 순서)로 나와요. 내림차순에서도 `b`의 두 행은 `1, 3` 순서예요.
+
+- **라벨에는 `NA`가 없어요.** Index에는 NA를 넣을 수 없기 때문이에요. 그래서 `sort_values`와 달리 `na_position`이 없어요. 라벨로 쓸 수 있는 것은 정수와 문자열뿐이라 NaN도 없어요. ([Index와 RangeIndex](/api/frame/index/))
+
+`stable=False`도 받지만 결과는 같아요. 이 영역의 정렬은 언제나 안정 정렬이에요.
+
+## 원래 순서로 되돌리기
+
+`sort_values`는 행과 함께 라벨도 옮겨요. 그래서 처음 만든 표처럼 라벨이 `0, 1, 2, …`였다면, 정렬한 뒤 `sort_index`를 하면 **원래 순서**로 돌아와요.
+
+```python
+>>> df = sd.frame.DataFrame({"fruit": ["pear", "apple", "kiwi", "apple", "pear"],
+...                          "price": [800, 1200, 500, 1000, 800]})
+>>> by_price = df.sort_values("price")
+>>> by_price
+   fruit  price
+2   kiwi    500
+0   pear    800
+4   pear    800
+3  apple   1000
+1  apple   1200
+>>> by_price.sort_index()
+   fruit  price
+0   pear    800
+1  apple   1200
+2   kiwi    500
+3  apple   1000
+4   pear    800
+```
+
+값과 순서는 원래 `df`와 같지만, 라벨의 종류는 달라요. 원래 `df`의 라벨은 RangeIndex(`0`부터 차례로 세는 라벨)였는데, 정렬을 거친 라벨은 정수를 늘어놓은 보통 Index예요. 같은 종류로 돌아오려면 `ignore_index=True`를 줘요.
+
+```python
+>>> by_price.sort_index().index
+Index([0, 1, 2, 3, 4], dtype=int64)
+>>> by_price.sort_index(ignore_index=True).index
+RangeIndex(start=0, stop=5, step=1)
+```
+
+## 조심할 점
+
+### 컬럼의 순서는 바꾸지 않아요
+
+`sort_index`는 **행**만 정렬해요. 컬럼을 이름순으로 늘어놓는 옵션은 없어요. 컬럼 순서를 바꾸려면 원하는 순서의 이름 리스트로 골라요. ([대괄호로 고르기](/api/frame/selection/))
+
+```python
+>>> df[sorted(df.columns.tolist())]
+   fruit  price
+0   pear    800
+1  apple   1200
+2   kiwi    500
+3  apple   1000
+4   pear    800
+>>> df[["price", "fruit"]]
+   price  fruit
+0    800   pear
+1   1200  apple
+2    500   kiwi
+3   1000  apple
+4    800   pear
+```
+
+### 없는 옵션
+
+라벨에는 NA가 없어서 `na_position`이 없고, 여러 층의 라벨이 없어서 `level`도 없어요.
+
+```python
+>>> temp.sort_index(na_position="first")
+Traceback (most recent call last):
+    ...
+TypeError: Series.sort_index() got an unexpected keyword argument 'na_position'
+```
+
+### 옵션의 타입
+
+`descending`, `stable`, `ignore_index`에는 `True`나 `False`만 써요. 옵션은 이름을 붙여서 줘요.
+
+```python
+>>> temp.sort_index(descending=1)
+Traceback (most recent call last):
+    ...
+TypeError: sort_index(): 'descending' must be True or False, not int
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | 다른 점 |
+|---|---|---|
+| 라벨 순서로 행 정렬 | `sort_index` | 라벨만 봐요. NA가 없어서 `na_position`이 없어요. |
+| 값 순서로 행 정렬 | [`sort_values`](/api/frame/sort_values/) | 기준 컬럼의 값을 봐요. NA 자리를 `na_position`으로 정해요. |
+| 내가 정한 라벨 순서로 | [`reindex`](/api/frame/reindex/) | 주어진 라벨 목록의 순서대로 늘어놓아요. 없는 라벨은 NA 행이 돼요. |
+| 앞의 몇 행만 | [`head`](/api/frame/head-tail/) | 정렬하지 않고 놓인 순서대로 잘라요. |
+
+## pandas를 아는 분께
+
+- 방향은 `ascending=True` 대신 `descending=False`예요.
+- 언제나 안정 정렬이에요. `kind`는 없고 `stable`을 받아요.
+- `na_position`(Index에 NA가 없어요), `level`, `sort_remaining`(MultiIndex가 없어요), `key`, `inplace`는 없어요.
+- `axis`가 없어서 컬럼을 이름순으로 정렬하는 `df.sort_index(axis=1)`이 없어요. `df[sorted(df.columns.tolist())]`로 써요.

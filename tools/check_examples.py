@@ -8,7 +8,8 @@ one page run in order in one namespace, so a later block can use names an
 earlier one defined. `sd` (stardust) is always available.
 
 `--coverage <area>` lists the public names of that area that no page documents
-(the `names:` lists in the frontmatter) and names documented twice.
+(the `names:` lists in the frontmatter) and names documented twice. For the
+classes in MEMBERS, every public member counts as a name too (`Series.head`).
 
 `--links` checks that every `/api/<area>/<slug>/` and `/internals/...` link and
 every `seeAlso:` slug points at an existing page. If the site has been built
@@ -82,8 +83,17 @@ def names_of(path: Path) -> list[str]:
     return [n.strip() for n in m.group(1).split(",") if n.strip()] if m else []
 
 
+# Classes whose public members are documented by name too, as `Class.member`.
+MEMBERS = {
+    "frame": ("Series", "DataFrame", "Index", "RangeIndex"),
+}
+
+
 def coverage(area: str) -> int:
-    public = set(NAMESPACES[area].__all__)
+    ns = NAMESPACES[area]
+    public = set(ns.__all__)
+    for cls in MEMBERS.get(area, ()):
+        public |= {f"{cls}.{m}" for m in dir(getattr(ns, cls)) if not m.startswith("_")}
     seen: dict[str, str] = {}
     twice = []
     for path in sorted((ROOT / area).glob("*.mdx")):
