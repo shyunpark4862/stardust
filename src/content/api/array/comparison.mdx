@@ -102,7 +102,7 @@ array([ True, False,  True, False], dtype=bool)
 array([ True,  True, False], dtype=bool)
 ```
 
-모양이 다르면 [브로드캐스팅](/api/array/broadcasting/) 규칙으로 맞춰요. 예를 들어 세로 배열과 가로 배열을 비교하면 모든 짝을 비교한 표가 나와요.
+두 입력의 모양이 다르면 [브로드캐스팅](/api/array/broadcasting/) 규칙으로 맞춰요. 예를 들어 세로 배열과 가로 배열을 비교하면 모든 짝을 비교한 표가 나와요.
 
 ```python
 >>> sd.asarray([1, 2]) == sd.asarray([[1], [2]])
@@ -110,7 +110,7 @@ array([[ True, False],
        [False,  True]], dtype=bool)
 ```
 
-모양을 맞출 수 없으면 `ValueError`예요.
+맞출 수 없는 모양이면 `ValueError`예요.
 
 ```python
 >>> sd.equal(a, sd.asarray([1, 2]))
@@ -175,7 +175,7 @@ array([0, 5, 0, 8], dtype=int64)
 
 ### 결과는 언제나 bool이에요
 
-무엇을 비교하든 결과의 dtype은 bool이에요. 두 입력이 모두 Python 숫자면 결과도 Python `bool`이에요.
+무엇을 비교하든 결과의 dtype은 bool이에요. 두 입력이 모두 Python 숫자면 결과도 배열이 아니라 Python `bool`이에요.
 
 ```python
 >>> sd.equal(3, 3.0)
@@ -244,9 +244,9 @@ TypeError: less(): not supported for complex128 and int64
 array([ True, False], dtype=bool)
 ```
 
-### `out`: 결과를 기존 배열에 쓰기
+## `out`: 결과를 기존 배열에 쓰기
 
-`out=`에 배열을 주면 그 배열에 결과를 적고 그 배열을 돌려줘요. bool 결과는 정수나 실수 배열에도 담을 수 있어요. 이때 `True`는 `1`, `False`는 `0`이 돼요.
+`out=`에 배열을 주면 새 배열을 만들지 않고 그 배열에 결과를 적은 다음, 그 배열을 돌려줘요. `out`의 dtype은 결과를 손실 없이 담을 수 있어야 해요. bool 결과는 어느 dtype에나 담을 수 있어서, 정수나 실수 배열을 줘도 돼요. 이때 `True`는 `1`, `False`는 `0`이 돼요. 그 밖의 규칙은 [사칙연산의 `out`](/api/array/arithmetic/#out-결과를-기존-배열에-쓰기)과 같아요.
 
 ```python
 >>> sd.greater(x, 3, out=sd.zeros(4, dtype=sd.int64))
@@ -310,7 +310,7 @@ array([True], dtype=bool)
 
 ### 리스트와는 비교할 수 없어요
 
-비교 상대는 배열이나 Python 숫자여야 해요. 리스트를 넣으면 함수든 연산자든 `TypeError`예요. 먼저 [`asarray`](/api/array/asarray/)로 배열로 바꾸세요.
+리스트나 numpy 배열은 받지 않아요. 함수든 연산자든 `TypeError`예요. 먼저 [`asarray`](/api/array/asarray/)로 배열로 바꾸세요. 이유는 [배열의 기본](/api/array/basics/)에 있어요.
 
 ```python
 >>> x == [1, 5, 3, 8]
@@ -321,7 +321,7 @@ TypeError: '==' not supported between instances of 'ndarray' and 'list'
 array([True, True, True, True], dtype=bool)
 ```
 
-`==`가 에러를 내는 것이 낯설 수 있어요. Python에서는 보통 종류가 다른 두 객체를 `==`로 비교하면 조용히 `False`가 나오거든요. stardust가 이것을 막은 이유는, 조용히 `False`가 나오면 "값이 다르다"는 뜻인지 "비교 자체가 안 됐다"는 뜻인지 구별할 수 없기 때문이에요. 문자열이나 `None`도 마찬가지예요. 변수가 `None`인지 확인할 때는 `x is None`을 써요.
+`==`가 에러를 내는 것이 낯설 수 있어요. Python에서는 보통 종류가 다른 두 객체를 `==`로 비교하면 조용히 `False`가 나오거든요. 여기서 에러를 내는 이유는, 조용히 `False`가 나오면 "값이 다르다"는 뜻인지 "비교 자체가 안 됐다"는 뜻인지 구별할 수 없기 때문이에요. 문자열이나 `None`도 마찬가지예요. 변수가 `None`인지 확인할 때는 `x is None`을 써요.
 
 ```python
 >>> x == None
@@ -377,9 +377,9 @@ array([False,  True,  True, False], dtype=bool)
 | 하고 싶은 일 | 쓸 것 | 비교 함수와 다른 점 |
 |---|---|---|
 | 두 배열이 통째로 같은지 | `sd.all(a == b)` | 원소별 답을 하나로 줄여요. |
-| NaN인 자리 찾기 | `isnan` | `x == sd.nan`은 언제나 거짓이에요. |
-| 두 값 중 큰 값 고르기 | `maximum` | 참·거짓이 아니라 더 큰 **값**을 돌려줘요. |
-| 조건을 여러 개 묶기 | `&`, `\|`, `logical_and` | bool 배열끼리 묶어요. |
+| NaN인 자리 찾기 | [`isnan`](/api/array/isnan/) | `x == sd.nan`은 언제나 거짓이에요. |
+| 두 값 중 큰 값 고르기 | [`maximum`](/api/array/maximum/) | 참·거짓이 아니라 더 큰 **값**을 돌려줘요. |
+| 조건을 여러 개 묶기 | [`&`, `\|`, `logical_and`](/api/array/logical/) | bool 배열끼리 묶어요. |
 | 같은 객체인지 | `is` | 값이 아니라 객체가 하나인지를 봐요. 배열에서는 `None` 확인에만 써요. |
 
 ## numpy를 아는 분께

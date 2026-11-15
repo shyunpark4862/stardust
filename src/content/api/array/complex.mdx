@@ -69,7 +69,7 @@ array([(3-4j), (1+2j),    -5j], dtype=complex128)
   </FigRow>
 </Fig>
 
-복소수에는 `.real`, `.imag` 같은 속성이 없어요. 언제나 함수로 꺼내요.
+배열에는 `.real`, `.imag` 같은 속성이 없어요. 언제나 함수로 꺼내요.
 
 ```python
 >>> z.real
@@ -117,7 +117,7 @@ array([  (2+1j), (0.5-1j)], dtype=complex128)
 
 ### 복소수를 실수로 바꾸기
 
-복소수 배열을 `astype`으로 실수로 바꾸면 `TypeError`예요. 허수부를 조용히 버리면 실수를 알아채기 어렵기 때문이에요. 실수부만 필요하다면 `real`로 **분명히** 꺼내세요.
+복소수 배열을 `astype`으로 실수 배열로 바꾸려 하면 `TypeError`예요. 허수부를 조용히 버리면 잘못 쓴 코드를 알아채기 어렵기 때문이에요. 실수부만 필요하다면 `real`로 **분명히** 꺼내세요.
 
 ```python
 >>> sd.asarray([1 + 2j]).astype(sd.float64)
@@ -249,7 +249,7 @@ array([1, 2], dtype=int64)
 
 ## 숫자 하나도 받아요
 
-Python 숫자를 넣으면 결과도 Python 숫자예요. 결과의 타입은 위 표의 dtype을 따라요.
+Python 숫자를 넣으면 결과도 배열이 아니라 Python 숫자예요. 결과의 타입은 위 표의 dtype을 따라요.
 
 ```python
 >>> sd.real(3 - 4j)
@@ -266,7 +266,7 @@ True
 
 `sd.imag(3)`이 `0.0`이 아니라 `0`인 것은 입력이 정수라서 결과도 정수이기 때문이에요.
 
-리스트는 받지 않아요. 먼저 [`asarray`](/api/array/asarray/)로 배열로 바꾸세요.
+리스트나 numpy 배열은 받지 않아요. 먼저 [`asarray`](/api/array/asarray/)로 배열로 바꾸세요. 이유는 [배열의 기본](/api/array/basics/)에 있어요.
 
 ```python
 >>> sd.real([1j])
@@ -277,7 +277,7 @@ TypeError: real(): 'x' must be an sd.ndarray or a bool, int, float or complex, n
 
 ## `out`: 결과를 기존 배열에 쓰기
 
-`out=`에 배열을 주면 뷰를 만드는 대신 그 배열에 값을 **복사해** 적고, 그 배열을 돌려줘요. 원본과 상관없는 결과가 필요할 때 쓸 수 있어요.
+`out=`에 배열을 주면 그 배열에 결과를 적은 다음, 그 배열을 돌려줘요. `real`과 `imag`도 이때는 뷰를 만들지 않고 값을 **복사해** 적어요. 그래서 원본과 메모리를 함께 쓰지 않는 결과가 필요할 때 쓸 수 있어요.
 
 ```python
 >>> buf = sd.zeros(3)
@@ -287,7 +287,7 @@ True
 array([3.0, 1.0, 0.0], dtype=float64)
 ```
 
-결과의 dtype이 `out`의 dtype으로 손실 없이 바뀔 수 있어야 해요. `conj`의 결과(복소수)는 실수 배열에 담을 수 없어요.
+`out`의 dtype은 결과를 손실 없이 담을 수 있어야 해요. `conj`의 결과는 복소수라서 실수 배열에는 담을 수 없어요. 그 밖의 규칙은 [사칙연산의 `out`](/api/array/arithmetic/#out-결과를-기존-배열에-쓰기)과 같아요.
 
 ```python
 >>> sd.conj(z, out=sd.zeros(3))
@@ -304,6 +304,8 @@ TypeError: conj(): cannot implicitly convert complex128 to float64 (that would l
 | 복소수의 각도 | `atan2(imag(z), real(z))` | 따로 각도 함수는 없어요. 두 부분을 꺼내서 `atan2`에 넣어요. |
 | 복소수를 실수 배열로 | `real` | `astype(sd.float64)`는 `TypeError`예요. |
 | 부호 뒤집기 | `negative` (`-z`) | 실수부와 허수부의 부호를 **모두** 뒤집어요. `conj`는 허수부만 뒤집어요. |
+
+마지막 줄의 차이를 `3+4j`로 확인해 볼게요.
 
 ```python
 >>> -u

@@ -38,7 +38,7 @@ import Op from '../../../components/fig/Op.astro';
 array([1, 2, 3], dtype=int64)
 ```
 
-값만이 아니라 다른 정보도 필요할 때가 많아요. 그래서 네 가지 함수가 있고, 필요한 만큼 골라 쓰면 돼요.
+값뿐 아니라 값마다 나온 횟수나 자리가 필요할 때도 많아요. 그래서 함수가 넷이고, 필요한 정보에 맞춰 골라 쓰면 돼요.
 
 | 함수 | 돌려주는 것 |
 |---|---|
@@ -47,7 +47,7 @@ array([1, 2, 3], dtype=int64)
 | `unique_inverse` | `values`, `inverse_indices` |
 | `unique_all` | `values`, `indices`, `inverse_indices`, `counts` |
 
-네 함수의 `values`는 언제나 같아요. 넷째 함수 `unique_all`이 모든 정보를 한꺼번에 줘요.
+네 함수의 `values`는 언제나 같아요. `unique_all`은 모든 정보를 한꺼번에 줘요.
 
 ```python
 >>> sd.unique_all(x)
@@ -58,7 +58,7 @@ UniqueAllResult(values=array([1, 2, 3], dtype=int64), indices=array([1, 3, 0], d
 
 ## 네 가지 정보
 
-같은 `x`로 각 필드가 무엇인지 볼게요.
+같은 `x`로 네 필드가 각각 무엇인지 볼게요.
 
 <Fig caption="x = [3, 1, 3, 2, 1, 3]에서 얻는 네 가지 정보. 진한 칸은 값 3과 관련된 자리예요.">
   <ArrayFig name="x" data={[3, 1, 3, 2, 1, 3]} tones={['b', '', 'b', '', '', 'b']} note="자리 0 ~ 5" />
@@ -80,7 +80,7 @@ UniqueAllResult(values=array([1, 2, 3], dtype=int64), indices=array([1, 3, 0], d
 
 ### 값마다 개수 세기: `unique_counts`
 
-가장 자주 쓰는 함수예요. 어떤 값이 몇 번 나왔는지 표로 만들 때 써요.
+어떤 값이 몇 번 나왔는지 표로 만들 때 써요. 넷 가운데 가장 자주 쓰는 함수예요.
 
 ```python
 >>> sd.unique_counts(x)
@@ -186,7 +186,7 @@ array([[2, 1],
 
 ## NaN은 하나의 값으로 쳐요
 
-NaN(숫자가 아님)은 원래 자기 자신과도 같지 않은 값이에요(`nan == nan`은 `False`). 그래도 고유한 값을 셀 때 NaN마다 따로 세면 결과가 쓸모없어지기 때문에, stardust는 **모든 NaN을 하나의 값**으로 묶어요. 정렬할 때처럼 NaN은 가장 큰 값으로 쳐서 맨 끝에 와요.
+NaN(숫자가 아님)은 원래 자기 자신과도 같지 않은 값이에요(`nan == nan`은 `False`). 하지만 NaN을 하나하나 다른 값으로 세면 결과가 쓸모없어지기 때문에, **모든 NaN을 하나의 값**으로 묶어요. 정렬할 때처럼 NaN은 가장 큰 값으로 쳐서 맨 끝에 와요.
 
 ```python
 >>> f = sd.asarray([2.0, sd.nan, 1.0, sd.nan])
@@ -220,7 +220,7 @@ UniqueCountsResult(values=array([0.0], dtype=float64), counts=array([3], dtype=i
 
 ## bool과 복소수
 
-어떤 dtype이든 받아요. bool은 `False`, `True` 순서예요. 복소수는 크고 작음이 없지만, 결과를 늘어놓기 위해 **실수부를 먼저, 같으면 허수부를** 비교한 순서로 정렬해요.
+어떤 dtype이든 받아요. bool은 `False`, `True` 순서예요. 복소수에는 크고 작음이 없지만, 결과를 늘어놓을 순서가 필요하므로 **실수부를 먼저, 같으면 허수부를** 비교해서 정렬해요.
 
 ```python
 >>> sd.unique_values(sd.asarray([True, False, True]))
@@ -237,9 +237,9 @@ array([    0j, (1-1j), (1+1j)], dtype=complex128)
 
 `values`의 길이는 실제로 나온 값의 수예요. 나오지 않은 값의 칸은 없어요. 0부터 일정한 범위의 정수를 언제나 같은 길이로 세고 싶다면 [`bincount`](/api/array/bincount/)의 `minlength`가 맞아요.
 
-### 옵션이 없어요
+### 옵션이 없고 배열만 받아요
 
-네 함수는 배열 하나만 받아요. `axis`처럼 방향을 고르는 옵션이나, NaN을 따로 셀지 고르는 옵션은 없어요.
+네 함수는 배열 하나만 받아요. `axis`처럼 방향을 고르는 옵션이나, NaN을 따로 셀지 고르는 옵션은 없어요. 리스트도 받지 않으니 먼저 `sd.asarray`로 바꾸세요.
 
 ```python
 >>> sd.unique_values([1, 2, 2])
@@ -266,7 +266,7 @@ UniqueCountsResult(values=array([], dtype=int64), counts=array([], dtype=int64))
 | 구간별 개수 | `histogram` | 값이 아니라 구간으로 묶어 세요. |
 | 값이 정렬된 목록의 몇 번째인지 | `searchsorted` | `values`가 이미 있을 때 다른 값들의 자리를 찾아요. |
 
-`sort`와 비교하면 차이가 분명해요.
+`sort`와 나란히 놓으면 차이가 보여요. `sort`는 겹치는 값을 모두 남기고, `unique_values`는 하나씩만 남겨요.
 
 ```python
 >>> sd.sort(x)

@@ -32,7 +32,7 @@ raises:
     desc: x가 배열이 아닐 때, axis·dtype·keepdims의 타입이 틀렸을 때, dtype=sd.bool일 때.
   - type: ValueError
     desc: axis가 배열의 차원 범위를 벗어나거나 같은 축을 두 번 썼을 때.
-seeAlso: [broadcasting, asarray]
+seeAlso: [prod, mean, cumulative, count_nonzero, any-all, nan-reductions, arithmetic, broadcasting]
 ---
 import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
@@ -59,7 +59,7 @@ array([5, 7, 9], dtype=int64)
 array([ 6, 15], dtype=int64)
 ```
 
-같은 일을 하는 메서드도 있어요. `sd.sum(x, axis=0)`과 `x.sum(axis=0)`은 완전히 같아요.
+같은 일을 하는 메서드도 있어요. `sd.sum(x, axis=0)`과 `x.sum(axis=0)`은 결과가 같아요.
 
 ```python
 >>> x.sum(axis=0)
@@ -70,7 +70,9 @@ array([5, 7, 9], dtype=int64)
 
 ## `axis`: 어느 방향으로 더할까요
 
-`axis`는 "**더해서 없앨 축**"이에요. 처음에는 이 말이 헷갈리기 쉬워요. `axis=0`이라고 하면 "0번 축(행)에 대해 결과가 나온다"고 생각하기 쉬운데, 실제로는 그 반대예요. 0번 축을 **따라 내려가며** 더하고, 그 축이 결과에서 **사라져요.**
+`axis`는 "**더해서 없앨 축**"이에요. `axis=0`이라고 하면 "행마다 결과가 나온다"고 생각하기 쉬운데, 그 반대예요. 0번 축(행이 늘어선 방향)을 **따라 내려가며** 더하고, 그 축이 결과에서 **사라져요.**
+
+`axis`와 아래의 `keepdims`는 `mean`, `max`, `any`처럼 배열을 줄이는 다른 집계 함수에서도 뜻이 똑같아요. 여기서 익혀 두면 그대로 쓸 수 있어요.
 
 <Fig caption="axis=0: 위에서 아래로 내려가며 더해요. 행 방향(axis 0)이 사라지고 열마다 값이 하나씩 남아요.">
   <ArrayFig name="x" data={[[1, 2, 3], [4, 5, 6]]} tones={[['a', '', ''], ['a', '', '']]} axes note="shape (2, 3)" />
@@ -145,9 +147,9 @@ array([[0.16666666666666666,  0.3333333333333333,                 0.5],
        [0.26666666666666666,  0.3333333333333333,                 0.4]], dtype=float64)
 ```
 
-`keepdims=True`가 없으면 행별 합의 모양이 `(2,)`라서 `(2, 3)`인 `x`와 모양이 맞지 않아 에러가 나요. 왜 그런지는 [브로드캐스팅](/api/array/broadcasting/) 문서에 자세히 있어요.
+`keepdims=True`가 없으면 행별 합의 모양이 `(2,)`가 돼요. `(2, 3)`인 `x`와 모양이 맞지 않아서 에러가 나요. 모양을 맞추는 규칙은 [브로드캐스팅](/api/array/broadcasting/) 문서에 있어요.
 
-<Fig caption="keepdims=True면 합이 세로 모양 (2, 1)로 남아서, 원래 배열의 각 행과 짝이 맞아요.">
+<Fig caption="keepdims=True면 합이 세로 모양 (2, 1)로 남아서, 원래 배열의 각 행과 짝이 맞아요. 점선 칸은 계산할 때 늘어난 것처럼 다뤄지는 값이에요.">
   <ArrayFig name="x" data={[[1, 2, 3], [4, 5, 6]]} note="shape (2, 3)" />
   <Op>/</Op>
   <ArrayFig name="행별 합" data={[[6, 6, 6], [15, 15, 15]]} tones={[['a', 'g', 'g'], ['a', 'g', 'g']]} note="shape (2, 1)" />
@@ -173,11 +175,11 @@ stardust에는 "차원이 0인 배열"이 없어요. 그래서 더하고 나서 
 6
 ```
 
-마지막 예처럼 1차원 배열은 `axis=0`을 줘도 남는 축이 없어서 숫자가 나와요. 숫자의 타입은 배열의 dtype에 따라 `bool`, `int`, `float`, `complex` 중 하나예요.
+마지막 예처럼 1차원 배열은 `axis=0`을 줘도 남는 축이 없어서 숫자가 나와요. 숫자의 타입은 합의 dtype에 따라 `int`, `float`, `complex` 중 하나예요.
 
 ## 결과의 dtype
 
-합은 기본적으로 **입력과 같은 dtype**으로 계산해요. 정수 배열의 합은 정수, 실수 배열의 합은 실수예요.
+합은 **입력과 같은 dtype**으로 계산해요. 정수 배열의 합은 정수, 실수 배열의 합은 실수예요.
 
 | `x`의 dtype | 합의 dtype |
 |---|---|
@@ -222,7 +224,7 @@ array([1, 3], dtype=int64)
 
 둘째 예를 주의해서 보세요. 합 `3.0`을 정수로 바꾼 `3`이 아니라, `1.5`를 각각 `1`로 바꾼 뒤 더한 `2`예요. 바꾸는 것이 먼저, 더하는 것이 나중이에요.
 
-`dtype=sd.bool`은 쓸 수 없어요. 덧셈에는 참·거짓으로 하는 계산이 없기 때문이에요. "하나라도 참인가", "모두 참인가"가 궁금하면 `sd.any`와 `sd.all`을 쓰세요.
+`dtype=sd.bool`은 쓸 수 없어요. 덧셈에는 참·거짓으로 하는 계산이 없기 때문이에요. "하나라도 참인가", "모두 참인가"가 궁금하면 [`sd.any`와 `sd.all`](/api/array/any-all/)을 쓰세요.
 
 ```python
 >>> sd.sum(sd.asarray([True, False]), dtype=sd.bool)
@@ -260,7 +262,7 @@ NaN(숫자가 아님)은 "모르는 값"이에요. 모르는 값이 섞인 합�
 nan
 ```
 
-NaN을 빼고 나머지만 더하고 싶으면 `sd.nansum`을 써요.
+NaN을 빼고 나머지만 더하고 싶으면 [`sd.nansum`](/api/array/nan-reductions/)을 써요.
 
 ```python
 >>> sd.nansum(y)
@@ -302,7 +304,7 @@ array([5, 7, 9], dtype=int64)
 
 ### 옵션은 이름을 붙여서
 
-`axis`, `dtype`, `keepdims`는 반드시 이름과 함께 써야 해요. `sd.sum(x, 0)`처럼 자리로 넘기면 에러예요. 숫자만 덜렁 있으면 그것이 축인지 다른 무엇인지 읽는 사람이 알기 어렵기 때문이에요.
+`axis`, `dtype`, `keepdims`는 반드시 이름과 함께 써야 해요. `sd.sum(x, 0)`처럼 자리로 넘기면 `TypeError`예요. 숫자만 덜렁 있으면 그것이 축인지 다른 무엇인지 읽는 사람이 알기 어렵기 때문이에요.
 
 ```python
 >>> sd.sum(x, axis=0)

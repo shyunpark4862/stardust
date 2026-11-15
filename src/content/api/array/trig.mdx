@@ -69,7 +69,7 @@ array([                  1.0, 6.123233995736766e-17,                  -1.0], dty
 |---|:---:|:---:|:---:|:---:|:---:|
 | 라디안 | 0 | π/6 | π/2 | π | 2π |
 
-π의 값은 `sd.pi`에 있어요. 도 단위의 각도를 가지고 있다면 `π / 180`을 곱해서 라디안으로 바꾼 다음 넣어야 해요.
+π의 값은 `sd.pi`에 있어요. 각도가 도 단위라면 `π / 180`을 곱해서 라디안으로 바꾼 다음 넣어야 해요.
 
 ```python
 >>> deg = sd.asarray([0.0, 30.0, 90.0])
@@ -247,7 +247,7 @@ array([  45.0,  135.0, -135.0,  -45.0], dtype=float64)
 1.5707963267948966
 ```
 
-`atan2`는 인자가 둘이라서, 두 배열의 모양이 다르면 [브로드캐스팅](/api/array/broadcasting/) 규칙으로 맞춰요.
+`atan2`는 입력이 둘이에요. 두 입력의 모양이 다르면 [브로드캐스팅](/api/array/broadcasting/) 규칙으로 맞춰요.
 
 ```python
 >>> ys = sd.asarray([[1.0], [2.0]])
@@ -273,7 +273,7 @@ array([               0.0, 0.8414709848078965, 0.9092974268256816], dtype=float6
 
 ### 숫자 하나도 받아요
 
-배열 대신 Python 숫자를 넣으면 결과도 Python 숫자예요.
+Python 숫자를 넣으면 결과도 배열이 아니라 Python 숫자예요.
 
 ```python
 >>> sd.cos(0)
@@ -284,7 +284,7 @@ array([               0.0, 0.8414709848078965, 0.9092974268256816], dtype=float6
 
 ### 리스트는 받지 않아요
 
-리스트를 계산하려면 먼저 [`asarray`](/api/array/asarray/)로 배열로 바꿔야 해요.
+리스트나 numpy 배열은 받지 않아요. 먼저 [`asarray`](/api/array/asarray/)로 배열로 바꾸세요. 이유는 [배열의 기본](/api/array/basics/)에 있어요.
 
 ```python
 >>> sd.sin([0.0, 1.0])
@@ -317,28 +317,14 @@ TypeError: atan2(): not supported for complex128 and float64
 
 ## `out`: 결과를 기존 배열에 쓰기
 
-`out=`에 배열을 주면 새 배열을 만들지 않고 그 배열에 결과를 적어요. 같은 크기의 계산을 여러 번 되풀이할 때 메모리를 아낄 수 있어요. 돌려주는 값은 `out`으로 준 바로 그 배열이에요.
+`out=`에 배열을 주면 새 배열을 만들지 않고 그 배열에 결과를 적은 다음, 그 배열을 돌려줘요. `out`의 dtype은 결과를 손실 없이 담을 수 있어야 해요. 삼각함수의 결과는 실수라서 정수 배열에는 담을 수 없어요. 그 밖의 규칙은 [사칙연산의 `out`](/api/array/arithmetic/#out-결과를-기존-배열에-쓰기)과 같아요.
 
 ```python
 >>> buf = sd.zeros(3)
->>> result = sd.sin(sd.asarray([0.0, 1.0, 2.0]), out=buf)
->>> result is buf
+>>> sd.sin(sd.asarray([0.0, 1.0, 2.0]), out=buf) is buf
 True
 >>> buf
 array([               0.0, 0.8414709848078965, 0.9092974268256816], dtype=float64)
-```
-
-입력과 같은 배열을 `out`으로 줘도 돼요. 그러면 원래 값이 결과로 덮어써져요.
-
-```python
->>> v = sd.asarray([0.0, 1.0])
->>> v is sd.sin(v, out=v)
-True
-```
-
-`out`은 결과를 손실 없이 담을 수 있어야 해요. 삼각함수의 결과는 실수라서 정수 배열에는 담을 수 없어요.
-
-```python
 >>> sd.sin(sd.asarray([0.0, 1.0]), out=sd.zeros(2, dtype=sd.int64))
 Traceback (most recent call last):
     ...
@@ -358,7 +344,7 @@ TypeError: sin(): cannot implicitly convert float64 to int64 (that would lose in
 6.123233995736766e-17
 ```
 
-함수가 틀린 것이 아니에요. π는 끝없이 이어지는 수라서 `sd.pi`는 π에 아주 가깝지만 정확히 π는 아니에요. 그 미세한 차이만큼 결과도 0에서 벗어나요. 그래서 삼각함수의 결과를 `== 0`으로 비교하면 안 돼요. "충분히 작은가"로 판단하세요.
+함수가 틀린 것이 아니에요. π는 소수점 아래가 끝없이 이어지는 수라서, `sd.pi`는 π에 아주 가깝지만 정확히 π는 아니에요. 그 차이만큼 결과도 0에서 벗어나요. 그래서 삼각함수의 결과를 `== 0`으로 비교하면 안 돼요. "충분히 작은가"로 판단하세요.
 
 ```python
 >>> abs(sd.sin(sd.pi)) < 1e-12
@@ -381,19 +367,15 @@ True
 array([nan, nan], dtype=float64)
 ```
 
-결과에 NaN이 섞였는지 확인하려면 `sd.isnan`을 써요.
-
-### `out`은 이름을 붙여서
-
-`out`은 반드시 `out=`으로 써야 해요. `sd.sin(x, buf)`처럼 둘째 자리에 넣으면 에러예요.
+결과에 NaN이 섞였는지 확인하려면 [`sd.isnan`](/api/array/isnan/)을 써요.
 
 ## 비슷한 함수와의 차이
 
 | 함수 | 관계 |
 |---|---|
-| `sinh`, `cosh`, `tanh` | 이름은 비슷하지만 다른 함수예요. 쌍곡선함수로, 지수함수로 정의되고 주기가 없어요. |
-| `asinh`, `acosh`, `atanh` | 쌍곡선함수의 역함수예요. |
-| `hypot(x, y)` | 점 `(x, y)`까지의 **거리**예요. `atan2(y, x)`가 주는 방향과 짝을 이뤄요. |
+| [`sinh`, `cosh`, `tanh`](/api/array/hyperbolic/) | 이름은 비슷하지만 다른 함수예요. 쌍곡선함수로, 지수함수로 정의되고 주기가 없어요. |
+| [`asinh`, `acosh`, `atanh`](/api/array/hyperbolic/) | 쌍곡선함수의 역함수예요. |
+| [`hypot(x, y)`](/api/array/pow/) | 점 `(x, y)`까지의 **거리**예요. `atan2(y, x)`가 주는 방향과 짝을 이뤄요. |
 
 좌표 `(x, y)`를 거리와 방향으로 바꾸려면 `sd.hypot(x, y)`와 `sd.atan2(y, x)`를 함께 쓰면 돼요.
 

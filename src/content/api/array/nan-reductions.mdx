@@ -15,7 +15,7 @@ signatures:
   - "sd.nanargmax(x, /, *, axis=None, keepdims=False)"
   - "sd.nancumulative_sum(x, /, *, axis=None, dtype=None, include_initial=False)"
   - "sd.nancumulative_prod(x, /, *, axis=None, dtype=None, include_initial=False)"
-summary: sum, mean, max 같은 집계 함수의 NaN(숫자가 아님)을 건너뛰는 판이에요. 빠진 값이 NaN으로 들어 있는 데이터에서 나머지 값만으로 계산해요.
+summary: sum, mean, max 같은 집계 함수와 하는 일은 같지만 NaN(숫자가 아님)을 건너뛰어요. 빠진 값이 NaN으로 들어 있는 데이터에서 나머지 값만으로 계산해요.
 params:
   - name: x
     type: ndarray
@@ -102,7 +102,7 @@ nan
 | `nancumulative_sum` | [`cumulative_sum`](/api/array/cumulative/) | 누적 합 | 그 자리에서 아무것도 더하지 않아요. |
 | `nancumulative_prod` | [`cumulative_prod`](/api/array/cumulative/) | 누적 곱 | 그 자리에서 아무것도 곱하지 않아요. |
 
-같은 배열로 열한 함수를 한 번씩 불러 볼게요.
+앞에서 본 `nansum`, `nanmean`을 뺀 나머지 함수도 같은 배열로 불러 볼게요.
 
 ```python
 >>> sd.nanprod(x)
@@ -143,7 +143,7 @@ array([22.166666666666668,               18.5], dtype=float64)
 array([3, 2], dtype=int64)
 ```
 
-`keepdims`와 여러 축을 한꺼번에 주는 것도 짝 함수와 같아요. 자세한 것은 [`sum`](/api/array/sum/) 문서에 있어요.
+`keepdims`와 여러 축을 한꺼번에 주는 것도 짝 함수와 같아요. 자세한 설명과 그림은 [`sum`](/api/array/sum/) 문서에 있어요.
 
 ```python
 >>> sd.nanmean(temps)
@@ -155,7 +155,7 @@ array([[0.6236095644623235],
 
 ## 모두 NaN이거나 비어 있으면
 
-어떤 줄의 값이 **전부 NaN**이면 건너뛰고 나서 남는 값이 하나도 없어요. 빈 배열과 같은 처지가 되는 것이에요. 이때 무엇을 돌려주는지는 함수마다 달라요.
+어떤 줄의 값이 **전부 NaN**이면 건너뛰고 나서 남는 값이 하나도 없어요. 빈 배열과 같은 처지가 돼요. 이때 무엇을 돌려주는지는 함수마다 달라요.
 
 | 함수 | 모두 NaN일 때 | 빈 배열일 때 |
 |---|---|---|

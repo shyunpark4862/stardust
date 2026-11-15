@@ -106,7 +106,7 @@ array([False,  True], dtype=bool)
 
 ## abs: 절댓값
 
-`sd.abs(x)`는 원소의 절댓값이에요. Python 내장 함수 `abs(x)`를 배열에 써도 같은 결과예요. 결과의 dtype은 입력과 같아요(bool은 int64).
+`sd.abs(x)`는 원소의 절댓값이에요. Python 내장 함수 `abs(x)`를 배열에 써도 같은 결과예요. 결과의 dtype은 입력과 같아요(bool은 int64). 이 페이지의 함수는 모두 Python 숫자를 넣으면 결과도 배열이 아니라 Python 숫자예요.
 
 ```python
 >>> f = sd.asarray([-2.5, -0.0, 0.0, 3.0, sd.nan])
@@ -198,7 +198,7 @@ array([True], dtype=bool)
 array([-inf,  inf], dtype=float64)
 ```
 
-대부분은 신경 쓰지 않아도 되지만, 출력에 `-0.0`이 보여서 놀랄 때나, 0의 "어느 쪽에서 왔는지"가 의미 있을 때(나눗셈, `atan2`) 알아 두면 좋아요. 이 둘을 구별하는 함수가 `signbit`과 `copysign`이에요.
+대부분은 신경 쓰지 않아도 돼요. 출력에 `-0.0`이 보일 때나, 0이 "어느 쪽에서 왔는지"가 뜻이 있을 때(나눗셈, `atan2`) 떠올리면 충분해요. 이 둘을 구별하는 함수가 `signbit`과 `copysign`이에요.
 
 이 페이지의 함수들은 `-0.0`을 이렇게 다뤄요.
 
@@ -221,7 +221,7 @@ True
 
 ## copysign: 크기에 다른 부호 붙이기
 
-`sd.copysign(x1, x2)`는 `x1`의 **크기**에 `x2`의 **부호**를 붙여요. `x1`의 원래 부호는 무시해요. 결과는 **언제나 float64**예요. 정수를 넣어도 실수가 나와요.
+`sd.copysign(x1, x2)`는 `x1`의 **크기**에 `x2`의 **부호**를 붙여요. `x1`의 원래 부호는 무시해요. 결과는 **언제나 float64**예요. 정수를 넣어도 실수가 나와요. 두 입력의 모양이 다르면 [브로드캐스팅](/api/array/broadcasting/) 규칙으로 맞춰요.
 
 ```python
 >>> sd.copysign(sd.asarray([1.0, 2.0, 3.0]), sd.asarray([-1.0, 0.0, -0.0]))
@@ -278,7 +278,7 @@ array([False, False], dtype=bool)
 
 ## `out`: 결과를 기존 배열에 쓰기
 
-`out=`에 배열을 주면 그 배열에 결과를 적고, 그 배열을 돌려줘요. 결과가 `out`의 dtype에 손실 없이 들어가야 해요. 복소수의 `abs`는 실수 결과라서 실수 배열에는 담을 수 있지만 정수 배열에는 담을 수 없어요.
+`out=`에 배열을 주면 새 배열을 만들지 않고 그 배열에 결과를 적은 다음, 그 배열을 돌려줘요. `out`의 dtype은 결과를 손실 없이 담을 수 있어야 해요. 복소수의 `abs`는 결과가 실수라서 실수 배열에는 담을 수 있지만 정수 배열에는 담을 수 없어요. 그 밖의 규칙은 [사칙연산의 `out`](/api/array/arithmetic/#out-결과를-기존-배열에-쓰기)과 같아요.
 
 ```python
 >>> sd.abs(sd.asarray([3 + 4j]), out=sd.zeros(1))
@@ -326,7 +326,7 @@ TypeError: signbit(): not supported for complex128
 
 ### 리스트는 받지 않아요
 
-먼저 [`asarray`](/api/array/asarray/)로 배열로 바꾸세요.
+리스트나 numpy 배열은 받지 않아요. 먼저 [`asarray`](/api/array/asarray/)로 배열로 바꾸세요. 이유는 [배열의 기본](/api/array/basics/)에 있어요.
 
 ```python
 >>> sd.negative([1, 2])
@@ -339,12 +339,14 @@ TypeError: negative(): 'x' must be an sd.ndarray or a bool, int, float or comple
 
 | 헷갈리는 것 | 차이 |
 |---|---|
-| `negative(x)`와 `subtract(0, x)` | 대부분 같지만 `0.0`에서 달라요. `-0.0`이 아니라 `0.0`이 나와요. |
+| `negative(x)`와 `subtract(0, x)` | 대부분 같지만 `0.0`에서 달라요. `negative(0.0)`은 `-0.0`, `subtract(0, 0.0)`은 `0.0`이에요. |
 | `sign(x)`와 `signbit(x)` | `sign`은 같은 dtype의 `-1`/`0`/`1`, `signbit`은 bool이고 `-0.0`도 음으로 쳐요. |
 | `signbit(x)`와 `x < 0` | `-0.0`과 음의 NaN에서만 달라요. |
 | `copysign(x1, x2)`와 `sign(x2) * abs(x1)` | `x2`가 0이면 뒤쪽은 크기가 0이 돼요. `copysign`은 크기를 지켜요. |
 | `abs(z)`와 [`real`, `imag`](/api/array/complex/) | 복소수의 크기는 `abs`, 각 부분은 `real`, `imag`예요. |
 | `abs`와 [`maximum`](/api/array/maximum/) | `maximum(x, 0)`은 음수를 0으로 바꿀 뿐, 부호를 뒤집지 않아요. |
+
+표의 첫 줄을 직접 확인해 볼게요.
 
 ```python
 >>> sd.subtract(0, sd.asarray([0.0]))

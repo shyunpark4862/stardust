@@ -60,7 +60,7 @@ array([2, 1], dtype=int64)
   <ArrayFig name="sd.count_nonzero(x, axis=1)" data={[[2], [1]]} tones={[['b'], ['b']]} note="shape (2,)" />
 </Fig>
 
-`axis`와 `keepdims`의 뜻은 [`sum`](/api/array/sum/)과 똑같아요. tuple이나 list로 여러 축을 한꺼번에 셀 수 있고, `keepdims=True`면 센 축이 길이 1로 남아요. 자세한 것은 [배열의 기본](/api/array/basics/)에 있어요.
+`axis`와 `keepdims`의 뜻은 [`sum`](/api/array/sum/)과 똑같아요. tuple이나 list로 여러 축을 한꺼번에 셀 수 있고, `keepdims=True`면 센 축이 길이 1로 남아요. 자세한 설명과 그림은 `sum` 문서에 있어요.
 
 ```python
 >>> sd.count_nonzero(x, axis=1, keepdims=True)
@@ -74,7 +74,7 @@ array([[2],
 
 ## 조건에 맞는 원소 세기
 
-가장 많이 쓰는 곳은 **조건을 만족하는 원소의 개수**를 셀 때예요. 비교 연산의 결과는 bool 배열이고, bool 배열에서는 `True`가 "0이 아닌 값"이에요. 그래서 `count_nonzero(조건)`은 조건이 참인 원소의 개수예요.
+`count_nonzero`는 **조건을 만족하는 원소의 개수**를 셀 때 가장 많이 써요. 비교 연산의 결과는 bool 배열이고, bool 배열에서는 `True`가 "0이 아닌 값"이에요. 그래서 `count_nonzero(조건)`은 조건이 참인 원소의 개수예요.
 
 ```python
 >>> scores = sd.asarray([[72, 58, 91], [45, 66, 80]])
@@ -163,7 +163,7 @@ array([0, 0], dtype=int64)
 
 ### 메서드는 없어요
 
-`sum`, `any` 같은 리덕션과 달리 `count_nonzero`에는 같은 이름의 메서드가 없어요. 언제나 `sd.count_nonzero(x)`로 써요.
+`sum`, `any` 같은 집계 함수와 달리 `count_nonzero`에는 같은 이름의 메서드가 없어요. 언제나 `sd.count_nonzero(x)`로 써요.
 
 ```python
 >>> x.count_nonzero()

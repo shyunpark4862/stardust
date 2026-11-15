@@ -27,7 +27,7 @@ stardust의 계산은 모두 C++에 있고, 사용자는 Python에서 불러요.
 | DLPack | `array/ops/dlpack.cpp` | 버전 있는 capsule과 옛 capsule을 모두 읽고 써요 |
 | 수명과 소유권 | `NDArray::buffer`, `NDArray::base` | 메모리는 `shared_ptr<Buffer>`가, Python 쪽 주인은 `base`가 붙잡아요 |
 
-이 원칙들은 배열만의 것이 아니에요. 선형대수(`sd.linalg`), 특수함수(`sd.special`)는 같은 인자 해석 도구와 같은 에러 이름 장치를 써요. 데이터프레임(`sd.frame`)은 Python 클래스라서 인자 검사를 Python 층(`frame/_errors.py`)이 하지만, 규칙과 메시지 형식은 C++ 쪽과 한 글자까지 같게 맞췄어요.
+이 원칙들은 배열만의 것이 아니에요. 선형대수(`sd.linalg`), 특수함수(`sd.special`)는 같은 인자 해석 도구와 같은 에러 이름 장치를 써요. 데이터프레임(`sd.frame`)은 Python 클래스라서 인자 검사를 Python 층(`frame/_errors.py`)이 하지만, 규칙과 메시지 형식은 C++ 쪽과 한 글자까지 같아요.
 
 `sd.sum(x, axis=0)` 한 번이 경계를 넘는 모습을 그리면 이래요.
 
@@ -165,7 +165,7 @@ inline NDArray& as_ndarray(nb::handle o) { return *nb::inst_ptr<NDArray>(o); }
 })
 ```
 
-`sd.ndarray`는 `isinstance(x, sd.ndarray)` 검사를 위해 이름만 공개해요. 배열은 `asarray`, `zeros`, `arange` 같은 생성 함수로만 만들어요. 생성자까지 두면 같은 일을 하는 길이 둘이 되기 때문이에요. `__init__`을 아예 정의하지 않으면 nanobind가 "stardust._core.ndarray: no constructor defined!"라는 내부 이름이 섞인 메시지를 내서, 정해진 형식의 메시지를 내는 `__init__`을 일부러 넣었어요.
+`sd.ndarray`는 `isinstance(x, sd.ndarray)` 검사를 위해 이름만 공개해요. 배열은 `asarray`, `zeros`, `arange` 같은 생성 함수로만 만들어요. 생성자까지 두면 같은 일을 하는 길이 둘이 되기 때문이에요. `__init__`을 아예 정의하지 않으면 nanobind가 "stardust._core.ndarray: no constructor defined!"라는 내부 이름이 섞인 메시지를 내서, 정해진 형식의 메시지를 내는 `__init__`을 일부러 넣어요.
 
 ### 속성
 
@@ -180,7 +180,7 @@ inline NDArray& as_ndarray(nb::handle o) { return *nb::inst_ptr<NDArray>(o); }
 
 모두 읽기 전용이에요. 등록하는 방법은 두 가지예요.
 
-**단순한 속성은 타입 슬롯으로 직접 등록해요.** `shape`, `strides`, `ndim`, `size`, `dtype`, `itemsize`, `nbytes`, `base`는 CPython의 `PyGetSetDef` 표(`tp_getset` 슬롯)에, `len()`은 `sq_length`/`mp_length` 슬롯에 C 함수로 넣어요. nanobind의 `def_prop_ro`로 등록하면 속성을 읽을 때마다 nanobind의 함수 호출 경로(인자 변환, 오버로드 확인, 결과 변환)를 지나요. 속성 하나는 일이 거의 없어서 이 경로가 시간의 대부분이었어요. 슬롯으로 바꾸면 `x.shape`이 34ns에서 19ns(numpy 18ns), `len(x)`가 17ns에서 7ns(numpy 7ns)가 돼요. 이 함수들은 메모리 부족 말고는 실패하지 않으므로 nanobind의 예외 변환이 없어도 돼요.
+**단순한 속성은 타입 슬롯으로 직접 등록해요.** `shape`, `strides`, `ndim`, `size`, `dtype`, `itemsize`, `nbytes`, `base`는 CPython의 `PyGetSetDef` 표(`tp_getset` 슬롯)에, `len()`은 `sq_length`/`mp_length` 슬롯에 C 함수로 넣어요. nanobind의 `def_prop_ro`로 등록하면 속성을 읽을 때마다 nanobind의 함수 호출 경로(인자 변환, 오버로드 확인, 결과 변환)를 지나요. 속성 하나는 일이 거의 없어서 이 경로가 시간의 대부분이에요. `def_prop_ro`로 등록하면 `x.shape`이 34ns, `len(x)`가 17ns이고, 슬롯으로 등록하면 19ns(numpy 18ns), 7ns(numpy 7ns)예요. 이 함수들은 메모리 부족 말고는 실패하지 않으므로 nanobind의 예외 변환이 없어도 돼요.
 
 ```cpp
 // csrc/bind/array_bind.cpp (줄인 발췌)
@@ -254,7 +254,7 @@ void def_arith(nb::class_<NDArray>& cls, const char* fwd, const char* refl, cons
 ```
 
 - **받는 피연산자**는 `sd.ndarray`와 Python 스칼라(`bool`, `int`, `float`, `complex`)와 numpy 스칼라예요(`is_operand`). 리스트, numpy 배열, `None`이면 `NotImplemented`를 돌려줘요. 그러면 Python이 반대쪽의 반사 메서드를 시도하고, 그쪽도 거절하면 Python 자신의 TypeError를 내요. 리스트나 다른 라이브러리의 배열을 몰래 배열로 바꾸면 어떤 변환과 복사가 일어났는지 코드에 드러나지 않아서, 바꾸지 않아요. 필요하면 `sd.asarray`로 먼저 바꿔요.
-- **in-place 연산자** `x op= y`는 `op(x, y, out=x)`예요. `out=`과 같은 규칙(승격 순서의 위로만 변환, 메모리 겹침 안전)이 적용되고 같은 객체를 돌려줘요.
+- **제자리 연산자** `x op= y`는 `op(x, y, out=x)`예요. `out=`과 같은 규칙(승격 순서의 위로만 변환, 메모리 겹침 안전)이 적용되고 같은 객체를 돌려줘요.
 - **`@`**는 배열끼리만 받아요(스칼라 없음). `x @= y`는 결과의 shape이 `x`와 같아야 해요.
 - **연산자 기호를 커널에 넘겨요.** 마지막 인자 `symbol`(`"+"`, `"+="`)은 에러 메시지에 쓰여요. 아래 "에러 메시지 체계"에서 다뤄요.
 
@@ -292,7 +292,7 @@ TypeError: '==' not supported between instances of 'ndarray' and 'list'
 | `__index__` | TypeError | 배열을 인덱스로 쓰는 것을 막아요. 이 훅이 있으면 다른 코드가 "`__index__`가 있으니 int"로 오해할 수 있어서, int 인자 해석(`index_value`)은 배열을 따로 제외해요 |
 | `__hash__` | `None` | 가변 컨테이너라 해싱할 수 없어요(리스트와 같아요) |
 | `__contains__` | TypeError | 없으면 `v in x`가 조용히 반복(`__iter__`)으로 떨어져 첫 축의 원소와 `==`를 해요. `x == v`와 `any()`를 쓰게 해요 |
-| `__delitem__` | TypeError (`'ndarray' object doesn't support item deletion`) | 없으면 "AttributeError: __delitem__"이 나와요. tuple과 같은 메시지로 맞췄어요 |
+| `__delitem__` | TypeError (`'ndarray' object doesn't support item deletion`) | 없으면 "AttributeError: __delitem__"이 나와요. tuple과 같은 메시지를 내요 |
 | `__len__` | `shape[0]` | 0차원이 없으니 언제나 있어요. 위의 슬롯(`sq_length`, `mp_length`)으로 등록해요 |
 | `__iter__` | 첫 축을 따라 `x[0]`, `x[1]`, … | 1차원이면 Python 스칼라, 그 밖에는 뷰를 내요 |
 | `__getitem__` | `None`을 받아요 | `x[None]`은 `newaxis`예요. nanobind의 기본은 `None` 거절이라 `.none()`을 붙여요 |
@@ -353,7 +353,7 @@ numpy 2.5.4에서 `np.ones(3) + x`(연산자 쪽)는 numpy의 다른 경로를 �
 
 ### int는 `operator.index` 규칙으로
 
-Python에서 "int처럼 쓸 수 있는 객체"의 표준은 `__index__` 메서드예요(PEP 357) [5]. 리스트 인덱싱이 `np.int64(3)`을 받는 것도 이 규칙 덕분이에요. stardust는 세 영역의 모든 int 인자(`shape`, `axis`, `k`, `n`, `num`, `head(n)`, `RangeIndex`, `set_num_threads` …)와 인덱싱에 이 규칙 하나를 써요.
+Python에서 "int처럼 쓸 수 있는 객체"의 표준은 `__index__` 메서드예요(PEP 357) [5]. 리스트 인덱싱이 `np.int64(3)`을 받는 것도 이 규칙 덕분이에요. stardust는 모든 영역의 int 인자(`shape`, `axis`, `k`, `n`, `num`, `head(n)`, `RangeIndex`, `set_num_threads` …)와 인덱싱에 이 규칙 하나를 써요.
 
 ```cpp
 // csrc/bind/pyutil.cpp (줄인 발췌)
@@ -587,8 +587,8 @@ TypeError: less(): not supported for complex128 and complex128
 
 ```cpp
 // csrc/bind/frame_bind.cpp (줄인 발췌)
-// func를 Python 객체 그대로 받아요. 호출마다 std::string으로 바꾸면 작은 리덕션(약 200ns)의
-// 약 15ns를 썼어요. str의 UTF-8 표현은 str 객체 안에 캐시돼요.
+// func를 Python 객체 그대로 받아요. 호출마다 std::string으로 바꾸면 작은 리덕션(약 200ns)에서
+// 약 15ns를 써요. str의 UTF-8 표현은 str 객체 안에 캐시돼요.
 using Func = nb::handle;
 
 const char* name_of(const Func& func) {
@@ -603,7 +603,7 @@ const char* name_of(const Func& func) {
 
 ### 일부러 남긴 것
 
-틀린 **호출 모양**(없는 키워드 이름, 인자 개수)은 nanobind의 "incompatible function arguments" 목록이 그대로 나와요. 인자의 값이 틀린 것이 아니라 호출 자체가 틀린 것이고, Python 함수라면 `got an unexpected keyword argument`가 나올 자리예요. 고치려면 모든 바인딩을 `*args, **kwargs`로 받아 직접 풀어야 해서 그대로 뒀어요. 인자의 **값**이 틀린 것은 언제나 위의 형식이에요.
+틀린 **호출 모양**(없는 키워드 이름, 인자 개수)은 nanobind의 "incompatible function arguments" 목록이 그대로 나와요. 인자의 값이 틀린 것이 아니라 호출 자체가 틀린 것이고, Python 함수라면 `got an unexpected keyword argument`가 나올 자리예요. 바꾸려면 모든 바인딩을 `*args, **kwargs`로 받아 직접 풀어야 해서 그대로 둬요. 인자의 **값**이 틀린 것은 언제나 위의 형식이에요.
 
 ### 에러 종류
 
@@ -672,7 +672,7 @@ GilRelease::~GilRelease() {
 | special | 배열의 이터레이터를 거치므로 배열과 같아요 |
 | frame | 일이 기준값(2¹⁷) 이상이면 **1스레드여도** 놓아요(`frame/parallel.hpp`의 `Unlocked`) |
 
-데이터프레임만 1스레드에서도 놓는 것은 큰 데이터프레임 작업을 하는 동안 다른 Python 스레드가 계속 돌게 하려는 거예요. 배열은 작은 연산이 많아 GIL을 놓고 잡는 비용을 피하는 쪽을 택했고, 1스레드에서도 오래 걸리는 BLAS 호출만 따로 놓아요.
+데이터프레임만 1스레드에서도 놓는 것은 큰 데이터프레임 작업을 하는 동안 다른 Python 스레드가 계속 돌게 하려는 거예요. 배열은 작은 연산이 많아 GIL을 놓고 잡는 비용을 피하고, 1스레드에서도 오래 걸리는 BLAS 호출만 따로 놓아요.
 
 ### 다른 스레드에서 GIL을 다시 잡는 곳
 
@@ -687,7 +687,7 @@ GilRelease::~GilRelease() {
 
 ### 내보내기
 
-`bf_getbuffer` 슬롯(버퍼를 요청받았을 때 불리는 C 함수)을 직접 구현하고, nanobind의 `nb::type_slots`로 타입에 붙여요.
+`bf_getbuffer` 슬롯(버퍼를 요청받았을 때 불리는 C 함수)을 직접 구현하고, 속성 슬롯과 같은 표에 넣어 nanobind의 `nb::type_slots`로 타입에 붙여요.
 
 ```cpp
 // csrc/bind/array_bind.cpp (줄인 발췌)
@@ -714,7 +714,7 @@ int getbuffer(PyObject* self, Py_buffer* view, int flags) {
     return 0;
 }
 
-PyType_Slot ndarray_slots[] = {{Py_bf_getbuffer, reinterpret_cast<void*>(getbuffer)}, {0, nullptr}};
+// getbuffer는 위 "속성"에서 본 ndarray_slots 표에 Py_bf_getbuffer로 들어가요.
 auto cls = nb::class_<NDArray>(m, "ndarray", nb::type_slots(ndarray_slots));
 ```
 
@@ -811,7 +811,7 @@ $$
 \Bigl(\bigvee_{i} b_i\Bigr) \le 1 \iff \forall i,\ b_i \in \{0, 1\}
 $$
 
-분기 없는 OR 리덕션 하나라 컴파일러가 벡터화해요. 원소 100만 개에서 8.3µs이고, 원소마다 `b != 0 && b != 1`을 비교하는 방식은 235µs였어요. 0/1이 아닌 바이트가 있으면 0/1로 정규화해서 복사해요(`copy=False`이면 에러).
+분기 없는 OR 리덕션 하나라 컴파일러가 벡터화해요. 원소 100만 개에서 8.3µs예요. 원소마다 `b != 0 && b != 1`을 비교하는 방식은 235µs예요. 0/1이 아닌 바이트가 있으면 0/1로 정규화해서 복사해요(`copy=False`이면 에러).
 
 <Callout type="warn" title="공유한 뒤 바깥에서 바꾸면">
   검사는 가져오는 순간에만 해요. 공유한 numpy bool 배열에 나중에 numpy 쪽에서 `2` 같은 바이트를 써 넣는 것은 막지 않아요. 이것까지 막으려면 모든 bool 커널이 매번 검사해야 해요.
@@ -821,7 +821,7 @@ $$
 
 DLPack은 배열 라이브러리 사이에서 텐서를 복사 없이 넘기는 C 구조체 규약이에요 [8]. 버퍼 프로토콜과 달리 장치(CPU, GPU …)와 정확한 dtype 코드를 담고, Python에서는 `PyCapsule`(C 포인터를 담는 Python 객체)에 넣어 주고받아요. Array API는 `x.__dlpack__()`, `x.__dlpack_device__()`, `from_dlpack(x)`를 표준으로 정해요 [2].
 
-stardust는 CPU와 배열 dtype 넷만 지원해요. DLPack 1.0의 구조체를 헤더를 들여오지 않고 직접 적었어요.
+stardust는 CPU와 배열 dtype 넷만 지원해요. DLPack 1.0의 구조체는 헤더를 들여오지 않고 직접 적어요.
 
 ```cpp
 // csrc/array/ops/dlpack.cpp (줄인 발췌): DLPack 1.0 ABI
@@ -1036,9 +1036,9 @@ C++ 정적 변수가 쥔 Python 객체는 일부러 놓지 않는 것이 있어�
 |---|---:|---|
 | nanobind 함수 호출 경로 | 약 10ns | `sample` 프로파일러 |
 | `NDArray` + Python 객체 만들기 | 약 75ns | linalg 결과 하나에 남는 비용 |
-| linalg 경계(버퍼 프로토콜 왕복 + `asarray` 감싸기) 제거 | 결과 하나에 약 −120ns | 확장 모듈이 하나라서 얻는 효과 |
-| Column을 `shared_ptr` 대신 값 타입으로 | 원소 10개 `add` 190ns → 89ns | nanobind의 keep-alive 등록 비용 |
-| frame 커널의 `func`를 `str` 대신 `nb::handle`로 | 작은 리덕션 약 200ns 중 약 15ns 절약 | UTF-8 캐시 사용 |
+| linalg 경계(버퍼 프로토콜 왕복 + `asarray` 감싸기) | 결과 하나에 약 120ns | 확장 모듈이 하나라서 들지 않는 비용 |
+| Column을 `shared_ptr` 대신 값 타입으로 | 원소 10개 `add` 89ns (`shared_ptr`이면 190ns) | nanobind의 keep-alive 등록 비용 |
+| frame 커널의 `func`를 `std::string` 대신 `nb::handle`로 | 작은 리덕션 약 200ns에서 약 15ns | UTF-8 캐시 사용 |
 | bool 버퍼 바이트 검사 (원소 100만 개) | 8.3µs | 원소별 비교 235µs |
 | 에러 이름 붙이기 (`named`) | 정상 경로 0 | 예외가 날 때만 비용 |
 
@@ -1069,7 +1069,7 @@ C++ 정적 변수가 쥔 Python 객체는 일부러 놓지 않는 것이 있어�
 4. capsule 이름 바꾸기, 소유자 capsule(`sd_dlpack_owner`) 만들기, `NDArray` 채우기, `wrap`으로 Python 객체 만들기.
 5. (측정에 포함) 결과가 버려질 때 소유자 capsule의 소멸자가 numpy의 `deleter`를 불러요.
 
-1~3단계를 일반 속성 조회와 키워드 호출로 하면 가져오기 한 번이 252ns였고, 조회를 한 번씩으로 줄이고 vectorcall을 쓰니 229ns가 됐어요. numpy의 `np.from_dlpack`도 3단계는 해야 해요. 남은 차이의 대부분은 4단계에서 결과 배열 객체를 만드는 비용이에요. 이 객체는 크기 때문에 시스템 `malloc`으로 할당되고, 해제할 때 macOS의 `malloc`이 메모리를 0으로 채워요([작은 배열의 호출 비용](/internals/array/small-arrays/)). 어느 쪽이든 한 번에 수백 ns인 비용이라, 큰 배열을 주고받을 때는 문제가 되지 않아요.
+1~3단계를 일반 속성 조회와 키워드 호출로 하면 가져오기 한 번에 약 23ns가 더 들어요. 조회를 한 번씩만 하고 vectorcall을 쓰는 이유예요. numpy의 `np.from_dlpack`도 3단계는 해야 해요. 남은 차이의 대부분은 4단계에서 결과 배열 객체를 만드는 비용이에요. 이 객체는 크기 때문에 시스템 `malloc`으로 할당되고, 해제할 때 macOS의 `malloc`이 메모리를 0으로 채워요([작은 배열의 호출 비용](/internals/array/small-arrays/)). 어느 쪽이든 한 번에 수백 ns인 비용이라, 큰 배열을 주고받을 때는 문제가 되지 않아요.
 
 `sd.asarray(numpy 배열)` 139ns의 내역은 [변환과 승격](/internals/array/conversion/)의 "복사 없이 공유하는 비용"에 있어요. 30~40ns는 numpy가 버퍼를 내주는 비용이고, 나머지 약 110ns가 새 배열 객체를 만들고 해제하는 비용이에요. numpy 배열은 타입 이름만 보고 스칼라 검사(`PyObject_IsInstance` 네 번)를 건너뛰어요.
 

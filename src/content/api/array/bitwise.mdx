@@ -91,7 +91,7 @@ array([6], dtype=int64)
 
 ## and, or, xor: 플래그 다루기
 
-비트 연산이 가장 흔히 쓰이는 곳은 **여러 개의 예·아니오를 정수 하나에 담는** 경우예요. 이런 비트 하나하나를 플래그(flag, 깃발)라고 불러요. 예를 들어 파일 권한을 "읽기 1, 쓰기 2, 실행 4"로 정하면, 정수 하나로 세 가지 권한을 함께 나타낼 수 있어요.
+비트 연산은 **여러 개의 예·아니오를 정수 하나에 담을 때** 가장 많이 써요. 이런 비트 하나하나를 플래그(flag, 깃발)라고 불러요. 예를 들어 파일 권한을 "읽기 1, 쓰기 2, 실행 4"로 정하면, 정수 하나로 세 가지 권한을 함께 나타낼 수 있어요.
 
 ```python
 >>> READ, WRITE, EXEC = 1, 2, 4
@@ -142,7 +142,7 @@ array([12], dtype=int64)
 
 ## bitwise_invert: 모든 비트 뒤집기
 
-`~x`는 x의 모든 비트를 0은 1로, 1은 0으로 뒤집어요. int64에서 이 결과는 언제나 **`-x - 1`**과 같아요. 음수를 저장하는 방식(2의 보수) 때문이에요.
+`~x`는 x의 모든 비트를 0은 1로, 1은 0으로 뒤집어요. int64에서 이 결과는 언제나 **`-x - 1`** 과 같아요. 음수를 저장하는 방식(2의 보수) 때문이에요.
 
 ```python
 >>> n = sd.asarray([-7, -1, 0, 5, 7])
@@ -189,7 +189,7 @@ array([1, 2, 4], dtype=int64)
 
 ### 밀려 나간 비트는 사라져요
 
-int64는 비트가 64개뿐이라, 왼쪽으로 밀어서 넘친 비트는 그냥 사라져요. 에러는 나지 않아요. 맨 왼쪽 비트는 부호를 나타내므로, 1이 그 자리에 들어가면 음수가 돼요.
+int64는 비트가 64개뿐이라, 왼쪽으로 밀어서 넘친 비트는 사라져요. 에러는 나지 않아요. 맨 왼쪽 비트는 부호를 나타내므로, 1이 그 자리에 들어가면 음수가 돼요.
 
 ```python
 >>> sd.asarray([1]) << sd.asarray([62, 63, 64])
@@ -202,7 +202,7 @@ array([-9223372036854775808], dtype=int64)
 
 ### 64칸 이상이나 음수만큼 밀면
 
-stardust는 밀 칸 수가 **64 이상이거나 음수이면** 모든 비트가 밀려 나간 것으로 정했어요. 음수 칸 수는 아주 큰 수로 보기 때문이에요.
+밀 칸 수가 **64 이상이거나 음수이면** 모든 비트가 밀려 나간 것으로 계산해요. 음수 칸 수는 아주 큰 칸 수로 봐요.
 
 - 왼쪽 시프트: 결과는 `0`
 - 오른쪽 시프트: 부호 비트로 가득 차서, 양수와 0은 `0`, 음수는 `-1`
@@ -287,7 +287,7 @@ TypeError: unsupported operand dtypes for &: float64 and int64
 
 ### 숫자 하나도 받아요
 
-입력이 모두 Python 숫자면 결과도 Python 숫자예요. 계산은 int64 규칙을 따라요.
+입력이 모두 Python 숫자면 결과도 배열이 아니라 Python 숫자예요. 계산은 int64 규칙을 따라요.
 
 ```python
 >>> sd.bitwise_and(6, 3)
@@ -309,7 +309,7 @@ OverflowError: bitwise_and(): Python int too large to convert to int64
 
 ### 모양이 다르면
 
-두 입력의 모양이 다르면 [브로드캐스팅](/api/array/broadcasting/) 규칙으로 맞춰요. 맞출 수 없으면 `ValueError`예요.
+두 입력의 모양이 다르면 [브로드캐스팅](/api/array/broadcasting/) 규칙으로 맞춰요. 맞출 수 없는 모양이면 `ValueError`예요.
 
 ```python
 >>> sd.bitwise_and(sd.asarray([1, 2]), sd.asarray([1, 2, 3]))
@@ -320,7 +320,7 @@ ValueError: bitwise_and(): shapes could not be broadcast together: (2,) (3,)
 
 ## `out`과 제자리 연산자
 
-`out=`에 배열을 주면 그 배열에 결과를 적어요. int64 결과는 실수 배열에 담을 수 있지만 bool 배열에는 담을 수 없어요.
+`out=`에 배열을 주면 새 배열을 만들지 않고 그 배열에 결과를 적은 다음, 그 배열을 돌려줘요. `out`의 dtype은 결과를 손실 없이 담을 수 있어야 해요. int64 결과는 실수 배열에 담을 수 있지만 bool 배열에는 담을 수 없어요. 그 밖의 규칙은 [사칙연산의 `out`](/api/array/arithmetic/#out-결과를-기존-배열에-쓰기)과 같아요.
 
 ```python
 >>> sd.bitwise_and(perm, 1, out=sd.zeros(4))
@@ -331,7 +331,7 @@ Traceback (most recent call last):
 TypeError: bitwise_and(): cannot implicitly convert int64 to bool (that would lose information); convert explicitly with astype
 ```
 
-`&=`, `|=`, `^=`, `<<=`, `>>=`도 있어요. 결과가 원래 배열의 dtype에 담길 수 있어야 해요. bool 배열에 `|= 2`를 하면 결과가 int64라서 `TypeError`예요.
+제자리 연산자 `&=`, `|=`, `^=`, `<<=`, `>>=`도 결과를 `x`에 직접 써요. 이때는 `x`의 dtype이 결과를 담을 수 있어야 해요. bool 배열에 `|= 2`를 하면 결과가 int64라서 `TypeError`예요.
 
 ```python
 >>> m = sd.asarray([5])
@@ -344,15 +344,16 @@ array([20], dtype=int64)
 
 - **`~`는 논리 부정이 아니에요(정수에서).** bool 배열의 `~`는 참·거짓을 뒤집지만, 정수 배열의 `~`는 `-x - 1`이에요. 조건을 뒤집을 생각이라면 bool 배열인지 확인하세요.
 - **시프트는 넘쳐도 에러가 없어요.** `x << k`가 int64 범위를 넘으면 조용히 엉뚱한 값이 돼요.
-- **음수의 오른쪽 시프트는 아래로 내려요.** `-7 >> 1`은 `-4`예요. 0 쪽으로 자르는 나눗셈을 원했다면 다른 방법이 필요해요.
-- **비교와 섞을 때는 괄호를 쓰세요.** `perm == 3 | perm == 7`처럼 쓰면 Python이 `|`를 먼저 계산해서 생각과 전혀 다른 식이 돼요.
+- **음수의 오른쪽 시프트는 아래로 내려요.** `-7 >> 1`은 `-4`예요. 0 쪽으로 버리는 몫을 구하는 방법은 [몫과 나머지](/api/array/floor-divide/)에 있어요.
+- **비교와 섞을 때는 괄호를 쓰세요.** `perm == 3 | perm == 7`처럼 쓰면 Python이 `|`를 먼저 계산해서 생각과 다른 식이 돼요.
+- **리스트나 numpy 배열은 받지 않아요.** 먼저 [`asarray`](/api/array/asarray/)로 배열로 바꾸세요. 이유는 [배열의 기본](/api/array/basics/)에 있어요.
 
 ## 비슷한 함수와의 차이
 
 | 함수 | 비트 연산과의 관계 |
 |---|---|
-| `logical_and`, `logical_or`, `logical_xor`, `logical_not` | bool끼리면 `&`, `\|`, `^`, `~`와 결과가 같아요. 하지만 bool만 받아서, 정수가 섞이면 에러를 내 줘요. |
-| `multiply`, `floor_divide` | `x << k`는 `x * 2**k`, `x >> k`는 `x // 2**k`와 같아요(넘치지 않을 때). 뜻이 곱셈·나눗셈이라면 이쪽이 읽기 쉬워요. |
+| [`logical_and`, `logical_or`, `logical_xor`, `logical_not`](/api/array/logical/) | bool끼리면 `&`, `\|`, `^`, `~`와 결과가 같아요. 하지만 bool만 받아서, 정수가 섞이면 에러를 내 줘요. |
+| [`multiply`](/api/array/arithmetic/), [`floor_divide`](/api/array/floor-divide/) | `x << k`는 `x * 2**k`, `x >> k`는 `x // 2**k`와 같아요(넘치지 않을 때). 뜻이 곱셈·나눗셈이라면 이쪽이 읽기 쉬워요. |
 | `remainder` | `x & 1`과 `x % 2`는 같아요. 홀짝을 볼 때 어느 쪽이든 괜찮아요. |
 
 ## numpy를 아는 분께

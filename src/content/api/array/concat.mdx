@@ -18,7 +18,7 @@ params:
     desc: concat은 이어 붙일 축(None이면 모두 한 줄로 펴서 이어요), stack은 결과에서 새 축이 놓일 자리.
 returns:
   type: ndarray
-  desc: 합친 새 배열. dtype은 입력 중 가장 넓은 종류예요.
+  desc: 합친 새 배열. dtype은 입력 가운데 가장 넓은 dtype이에요.
 raises:
   - type: TypeError
     desc: arrays가 list나 tuple이 아닐 때, 배열이 아닌 원소가 섞였을 때, axis가 int가 아닐 때(stack에서는 None도), axis를 이름 없이 넘겼을 때.
@@ -156,7 +156,7 @@ array([[1, 4],
   <ArrayFig name="stack(axis=1)" data={[[1, 4], [2, 5], [3, 6]]} tones={[['a', 'b'], ['a', 'b'], ['a', 'b']]} note="shape (3, 2)" />
 </Fig>
 
-`axis=1`은 실제로 자주 써요. x 좌표와 y 좌표가 따로 있을 때 `(점 개수, 2)` 모양의 점 목록으로 묶을 수 있어요.
+`axis=1`은 여러 배열을 표의 열로 묶을 때 써요. x 좌표와 y 좌표가 따로 있을 때 `(점 개수, 2)` 모양의 점 목록으로 묶을 수 있어요.
 
 ```python
 >>> xs = sd.asarray([0.0, 1.0, 2.0])
@@ -178,7 +178,7 @@ array([[0.0, 5.0],
 
 ### 모양 규칙
 
-`stack`은 `concat`보다 엄격해요. **모든 배열의 모양이 완전히 같아야** 해요. 쌓는다는 것은 같은 크기의 판을 겹쳐 놓는 일이라, 한 장이라도 크기가 다르면 안 돼요.
+`stack`은 `concat`보다 조건이 엄격해요. **모든 배열의 모양이 완전히 같아야** 해요. 같은 크기의 판을 겹쳐 놓는 일이라, 한 장이라도 크기가 다르면 쌓을 수 없어요.
 
 ```python
 >>> sd.stack([p, sd.asarray([4, 5])])
@@ -207,9 +207,9 @@ ValueError: stack(): axis 2 is out of bounds for an array of dimension 2
 | `(3,)` 두 개 | `(6,)` | `(2, 3)` |
 | `(2, 2)` 두 개 | `(4, 2)` | `(2, 2, 2)` |
 
-헷갈릴 때는 이렇게 생각하면 쉬워요. **같은 종류의 데이터를 뒤에 더 붙이는** 일이면 `concat`이에요(1월 기록 뒤에 2월 기록 잇기). **따로 있던 것들을 묶어 한 덩어리로 만드는** 일이면 `stack`이에요(키 배열과 몸무게 배열을 한 표의 두 열로 묶기).
+헷갈리면 하려는 일이 어느 쪽인지 생각해 보세요. **같은 종류의 데이터를 뒤에 더 붙이는** 일이면 `concat`이에요(1월 기록 뒤에 2월 기록 잇기). **따로 있던 것들을 묶어 한 덩어리로 만드는** 일이면 `stack`이에요(키 배열과 몸무게 배열을 한 표의 두 열로 묶기).
 
-사실 `stack`은 "각 배열에 길이 1인 축을 넣은 다음 `concat`"과 같아요.
+`stack`은 "각 배열에 길이 1인 축을 넣은 다음 `concat`"한 것과 같아요.
 
 ```python
 >>> sd.concat([sd.expand_dims(p, axis=0), sd.expand_dims(q, axis=0)])
@@ -219,13 +219,13 @@ array([[1, 2, 3],
 
 <Callout type="tip" title="여러 줄을 하나씩 모을 때">
 
-  반복문 안에서 결과를 하나씩 만들어 모을 때는, 매번 `concat`으로 붙이지 말고 Python 리스트에 담아 두었다가 마지막에 한 번만 `sd.stack(rows)`나 `sd.concat(rows)`를 부르세요. 매번 붙이면 그때마다 전체를 새로 복사해서 아주 느려져요.
+  반복문 안에서 결과를 하나씩 만들어 모을 때는, 매번 `concat`으로 붙이지 말고 Python 리스트에 담아 두었다가 마지막에 한 번만 `sd.stack(rows)`나 `sd.concat(rows)`를 부르세요. 매번 붙이면 그때마다 전체를 새로 복사해서 느려져요.
 
 </Callout>
 
 ## 결과의 dtype
 
-원소 종류가 다른 배열을 합치면 **가장 넓은 종류**로 맞춰요. 넓이의 순서는 `bool < int64 < float64 < complex128`이에요.
+dtype이 다른 배열을 합치면 **가장 넓은 dtype**으로 맞춰요([승격](/api/array/numerics/)). 넓은 순서는 `bool < int64 < float64 < complex128`이에요.
 
 ```python
 >>> sd.concat([p, sd.asarray([0.5])])
@@ -234,7 +234,7 @@ array([1.0, 2.0, 3.0, 0.5], dtype=float64)
 array([1, 2, 3, 1, 0], dtype=int64)
 ```
 
-정수 배열에 실수가 하나만 섞여도 결과 전체가 실수예요. 특히 원소가 없는 `sd.asarray([])`는 float64라서, 정수 배열과 이으면 결과가 실수가 돼요.
+정수 배열에 실수 배열이 하나만 섞여도 결과 전체가 실수예요. 원소가 없는 `sd.asarray([])`도 float64라서, 정수 배열과 이으면 결과가 실수가 돼요.
 
 ```python
 >>> sd.concat([p, sd.asarray([])])
@@ -285,7 +285,7 @@ TypeError: concat(): 'arrays' must hold sd.ndarray only, not list
 array([1, 2, 3, 4, 5], dtype=int64)
 ```
 
-빈 목록은 합칠 것이 없어서 `ValueError`예요. 결과의 모양과 dtype을 정할 수 없기 때문이에요.
+빈 목록은 `ValueError`예요. 합칠 것이 없으면 결과의 모양과 dtype을 정할 수 없기 때문이에요.
 
 ```python
 >>> sd.stack([])

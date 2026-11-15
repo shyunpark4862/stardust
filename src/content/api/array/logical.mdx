@@ -129,7 +129,7 @@ array([False,  True,  True, False], dtype=bool)
 
 ### 모양이 다르면
 
-두 입력의 모양이 다르면 [브로드캐스팅](/api/array/broadcasting/) 규칙으로 맞춰요. 숫자 하나 대신 Python `True`나 `False`를 줘도 돼요.
+두 입력의 모양이 다르면 [브로드캐스팅](/api/array/broadcasting/) 규칙으로 맞춰요. 한쪽에 배열 대신 Python `True`나 `False`를 줘도 돼요.
 
 ```python
 >>> sd.logical_and(p, sd.asarray([[True], [False]]))
@@ -155,7 +155,7 @@ Traceback (most recent call last):
 TypeError: logical_and(): not supported for bool and int64
 ```
 
-"0이 아닌 수는 참으로 쳐 주면 되지 않나" 싶을 수 있어요. 하지만 그런 규칙이 있으면, 비교를 빠뜨린 실수(예: `x > 0`을 써야 할 자리에 `x`를 쓴 것)가 에러 없이 지나가요. 그래서 숫자를 조건으로 쓰려면 **무엇을 참으로 볼지 비교로 직접 적어야** 해요.
+"0이 아닌 수는 참으로 쳐 주면 되지 않나" 싶을 수 있어요. 하지만 그렇게 하면, 비교를 빠뜨린 코드(예: `x > 0`을 써야 할 자리에 `x`를 쓴 것)가 에러 없이 지나가요. 그래서 숫자를 조건으로 쓰려면 **무엇을 참으로 볼지 비교로 직접 적어야** 해요.
 
 ```python
 >>> counts != 0
@@ -164,7 +164,7 @@ array([ True, False,  True], dtype=bool)
 array([False,  True, False], dtype=bool)
 ```
 
-두 입력이 모두 Python `bool`이면 결과도 Python `bool`이에요.
+입력이 모두 Python `bool`이면 결과도 배열이 아니라 Python `bool`이에요.
 
 ```python
 >>> sd.logical_and(True, False)
@@ -188,7 +188,7 @@ Traceback (most recent call last):
 TypeError: the truth value of an array is ambiguous; use any() or all()
 ```
 
-`and`, `or`, `not`은 양쪽을 먼저 **참·거짓 하나**로 바꾼 다음 계산하는 Python 문법이에요. 원소별로 계산하도록 바꿀 방법이 없어요. 그래서 배열을 참·거짓 하나로 바꾸는 순간 stardust가 에러를 내요. 원소가 여럿인 배열이 "참"인지는 "모두 참이면 참"인지 "하나라도 참이면 참"인지 정할 수 없기 때문이에요. 원소가 하나뿐이어도 마찬가지예요.
+`and`, `or`, `not`은 양쪽을 먼저 **참·거짓 하나**로 바꾼 다음 계산하는 Python 문법이에요. 원소별로 계산하도록 바꿀 방법이 없어요. 그런데 배열은 참·거짓 하나로 바꿀 수 없어서 에러가 나요. 원소가 여럿인 배열이 "참"이라는 것이 "모두 참"이라는 뜻인지 "하나라도 참"이라는 뜻인지 정할 수 없기 때문이에요. 원소가 하나뿐이어도 마찬가지예요.
 
 ```python
 >>> bool(sd.asarray([True]))
@@ -215,7 +215,7 @@ TypeError: the truth value of an array is ambiguous; use any() or all()
 
 ## 연산자 우선순위: 괄호를 꼭 쓰세요
 
-`&`, `|`, `^`는 원래 비트 연산자라서, Python에서 **비교 연산자보다 먼저 계산돼요.** 그래서 괄호를 빼먹으면 생각과 전혀 다른 식이 돼요.
+`&`, `|`, `^`는 Python에서 비트 연산자라서 **비교 연산자보다 먼저 계산돼요.** 그래서 괄호를 빼먹으면 생각과 다른 식이 돼요.
 
 ```python
 >>> x > 2 & x < 8
@@ -268,7 +268,7 @@ array([ True, False,  True, False], dtype=bool)
 
 ### 정수 배열에 `&`, `|`, `~`를 쓰면
 
-연산자 `&`, `|`, `^`, `~`는 bool 배열에서만 논리 연산이에요. 정수가 끼면 **비트 연산**이 돼요. 에러가 나지 않으니 특히 조심하세요.
+연산자 `&`, `|`, `^`, `~`는 bool 배열에서만 논리 연산이에요. 정수가 끼면 [**비트 연산**](/api/array/bitwise/)이 돼요. 에러가 나지 않으니 조심하세요.
 
 ```python
 >>> ~counts
@@ -277,7 +277,7 @@ array([-2, -1, -4], dtype=int64)
 array([1, 1, 0, 0], dtype=int64)
 ```
 
-`~counts`는 "0인 자리가 참"이 아니라 각 수의 비트를 뒤집은 값이에요. `p & 1`도 bool 배열이 아니라 int64 배열이 나와요. `logical_*` 함수는 이런 경우에 에러를 내 주므로, 입력의 dtype이 확실하지 않을 때는 함수 쪽이 안전해요.
+`~counts`는 "0인 자리가 참"이 아니라 각 수의 비트를 뒤집은 값이에요. `p & 1`도 bool 배열이 아니라 int64 배열이 나와요. `logical_*` 함수는 이럴 때 에러를 내 주므로, 입력의 dtype이 확실하지 않을 때는 함수 쪽이 안전해요.
 
 | 식 | bool 배열일 때 | 정수 배열일 때 |
 |---|---|---|
@@ -288,7 +288,7 @@ array([1, 1, 0, 0], dtype=int64)
 
 ## `out`: 결과를 기존 배열에 쓰기
 
-`out=`에 배열을 주면 그 배열에 결과를 적고 그 배열을 돌려줘요. bool 결과는 정수나 실수 배열에도 담을 수 있어요(`True`는 `1`, `False`는 `0`).
+`out=`에 배열을 주면 새 배열을 만들지 않고 그 배열에 결과를 적은 다음, 그 배열을 돌려줘요. `out`의 dtype은 결과를 손실 없이 담을 수 있어야 해요. bool 결과는 어느 dtype에나 담을 수 있어서, 정수나 실수 배열을 줘도 돼요. 이때 `True`는 `1`, `False`는 `0`이 돼요. 그 밖의 규칙은 [사칙연산의 `out`](/api/array/arithmetic/#out-결과를-기존-배열에-쓰기)과 같아요.
 
 ```python
 >>> buf = sd.zeros(4, dtype=sd.bool)

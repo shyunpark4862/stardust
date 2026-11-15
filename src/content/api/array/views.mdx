@@ -147,7 +147,7 @@ True
 
 `m.T[0]`은 `x` → `m` → `m.T` → `m.T[0]`의 세 단계를 거친 뷰지만, `base`는 곧바로 `x`예요.
 
-numpy 배열을 [asarray](/api/array/asarray/)로 복사 없이 가져온 배열은 그 numpy 배열이 주인이에요.
+numpy 배열을 [`asarray`](/api/array/asarray/)로 복사 없이 가져온 배열은 그 numpy 배열이 주인이에요.
 
 ```python
 >>> import numpy as np
@@ -239,9 +239,9 @@ TypeError: reshape(): 'copy' must be True, False or None, not int
 
 어떤 배열은 읽을 수만 있고 쓸 수는 없어요. 대표적인 것은 셋이에요.
 
-- **`broadcast_to`, `broadcast_arrays`의 결과.** 같은 값을 여러 자리에서 보여 주는 뷰라서, 한 칸을 고치면 여러 칸이 한꺼번에 바뀌는 사고가 나요. 그래서 막혀 있어요.
+- **`broadcast_to`, `broadcast_arrays`의 결과.** 같은 값을 여러 자리에서 보여 주는 뷰라서, 한 칸을 고치면 여러 칸이 한꺼번에 바뀌어요. 그런 사고가 나지 않도록 쓰기를 막아요.
 - **읽기 전용 메모리를 가져온 배열.** 읽기 전용 numpy 배열을 `asarray`로 복사 없이 가져오면 stardust 배열도 읽기 전용이에요.
-- **복소수가 아닌 배열의 `imag`.** 허수부가 없으니 0으로 채운 새 배열이고, 고칠 대상이 없어서 막혀 있어요.
+- **복소수가 아닌 배열의 `imag`.** 허수부가 없으니 0으로 채운 새 배열이고, 고칠 대상이 없어서 쓰기를 막아요.
 
 ```python
 >>> row = sd.asarray([1, 2, 3])
@@ -261,7 +261,7 @@ ValueError: assignment destination is read-only
   <ArrayFig name="b" data={[[1, 2, 3], [1, 2, 3]]} tones={[['b', '', ''], ['g', 'g', 'g']]} note="읽기 전용" />
 </Fig>
 
-읽기 전용 배열에는 대입뿐 아니라 `+=` 같은 in-place 연산자도, 원소별 함수의 `out=`도 쓸 수 없어요. 모두 `ValueError`예요.
+읽기 전용 배열에는 대입뿐 아니라 `+=` 같은 제자리(in-place) 연산자도, 원소별 함수의 `out=`도 쓸 수 없어요. 모두 `ValueError`예요.
 
 ```python
 >>> b += 1
@@ -306,7 +306,7 @@ array([[10,  2,  3],
 
 뷰가 있으면 같은 배열의 두 부분이 한 식에 함께 나올 수 있어요. 예를 들어 `s[1:] = s[:-1]`은 값을 오른쪽으로 한 칸씩 미는 코드인데, 읽는 곳과 쓰는 곳이 겹쳐요. 앞에서부터 차례로 쓰면 이미 덮어쓴 값을 다시 읽게 되어 `[0, 0, 0, 0, 0]` 같은 엉뚱한 결과가 나올 수 있어요.
 
-stardust는 이런 걱정을 하지 않아도 되게 했어요. 대입, in-place 연산자, `out=`은 **입력을 모두 읽은 다음에 결과를 쓴 것**과 언제나 같은 결과를 내요.
+stardust에서는 이런 걱정을 하지 않아도 돼요. 대입, 제자리 연산자, `out=`은 **입력을 모두 읽은 다음에 결과를 쓴 것**과 언제나 같은 결과를 내요.
 
 ```python
 >>> s = sd.arange(5)
@@ -339,7 +339,7 @@ array([4, 3, 2, 1, 0], dtype=int64)
 
 ## 독립된 복사본 만들기
 
-원본과 완전히 떨어진 배열이 필요하면 둘 중 하나를 써요.
+원본과 완전히 떨어진 배열이 필요하면 `x.copy()`나 `sd.asarray(x, copy=True)`를 써요.
 
 ```python
 >>> x = sd.arange(4)
@@ -403,7 +403,7 @@ True
 
 ### numpy와도 메모리를 함께 써요
 
-`sd.asarray(numpy 배열)`과 `np.asarray(stardust 배열)`은 가능하면 복사 없이 메모리를 함께 써요. 한쪽을 고치면 다른 쪽에도 보여요.
+`sd.asarray(numpy 배열)`과 `np.asarray(stardust 배열)`은 가능하면 복사 없이 메모리를 함께 써요. 한쪽을 고치면 다른 쪽에도 보여요. numpy와 주고받는 방법은 [ndarray](/api/array/ndarray/)에 있어요.
 
 ```python
 >>> x = sd.arange(3)
@@ -433,4 +433,4 @@ array([7, 1, 2], dtype=int64)
 - 복소수가 아닌 배열의 `imag`는 읽기 전용인 0 배열이에요.
 - `copy=` 인자의 뜻(`True`/`False`/`None`)은 numpy 2와 같아요. `copy=False`에서 복사가 필요하면 `ValueError`예요.
 - `np.array(x)`·`np.copy`에 해당하는 함수는 없어요. `x.copy()`나 `sd.asarray(x, copy=True)`를 쓰세요. `copy.copy(x)`는 `TypeError`예요.
-- 메모리가 겹치는 대입과 in-place 연산은 언제나 "입력을 다 읽은 뒤 쓴 것"과 같아요.
+- 메모리가 겹치는 대입과 제자리 연산자는 언제나 "입력을 다 읽은 뒤 쓴 것"과 같아요.

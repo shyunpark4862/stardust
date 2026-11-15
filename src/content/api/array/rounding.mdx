@@ -8,7 +8,7 @@ signatures:
   - "sd.ceil(x, /, *, out=None)"
   - "sd.trunc(x, /, *, out=None)"
   - "sd.round(x, /, *, out=None)"
-summary: 실수를 정수 값으로 맞춰요. 내림(floor), 올림(ceil), 0 쪽으로 버림(trunc), 가장 가까운 정수로 반올림(round)이 있고, round는 딱 중간이면 짝수 쪽으로 가요. 원소마다 따로 계산해요.
+summary: 실수를 원소마다 정수 값으로 맞춰요. 내림(floor), 올림(ceil), 0 쪽으로 버림(trunc), 가장 가까운 정수로 반올림(round)이 있고, round는 딱 중간이면 짝수 쪽으로 가요.
 params:
   - name: x
     type: ndarray 또는 Python 숫자
@@ -83,7 +83,7 @@ array([-2.0, -1.0,  1.0,  2.0], dtype=float64)
 
 - **`floor`**(바닥): 왼쪽으로 가서 만나는 첫 정수. 언제나 원래 값 이하예요.
 - **`ceil`**(천장): 오른쪽으로 가서 만나는 첫 정수. 언제나 원래 값 이상이에요.
-- **`trunc`**(잘라 내기): 소수점 아래를 그냥 버려요. 양수에서는 `floor`, 음수에서는 `ceil`과 같아요.
+- **`trunc`**(잘라 내기): 소수점 아래를 버려요. 양수에서는 `floor`, 음수에서는 `ceil`과 같아요.
 
 양수만 다룬다면 `floor`와 `trunc`는 같아요. **음수가 섞이면 달라지니** 어느 쪽이 필요한지 생각해서 고르세요.
 
@@ -102,7 +102,7 @@ array([3.0, 3.0, 4.0], dtype=float64)
 
 ## round: 가장 가까운 정수로
 
-`round`는 가장 가까운 정수로 맞춰요. 그런데 `0.5`, `1.5`, `2.5`처럼 **두 정수의 딱 중간**이면 어떻게 될까요? stardust는 **짝수 쪽**으로 보내요. 이것을 "짝수 반올림"(half-to-even, 은행원 반올림)이라고 해요.
+`round`는 가장 가까운 정수로 맞춰요. `0.5`, `1.5`, `2.5`처럼 **두 정수의 딱 중간**이면 **짝수 쪽**으로 보내요. 이것을 "짝수 반올림"(half-to-even, 은행원 반올림)이라고 해요.
 
 ```python
 >>> sd.round(sd.asarray([0.5, 1.5, 2.5, 3.5, 4.5]))
@@ -116,7 +116,7 @@ array([-2.0, -2.0, -0.0,  0.0,  2.0,  2.0], dtype=float64)
 | `round(x)` | 0 | 2 | 2 | 4 | 4 | -0 | -2 | -2 |
 | 학교에서 배운 반올림 | 1 | 2 | 3 | 4 | 5 | -1 | -2 | -3 |
 
-중간이 아니면 그냥 가까운 쪽이에요. `2.5`는 `2`가 되지만 `2.5000001`은 `3`이 돼요.
+중간이 아니면 가까운 쪽으로 가요. `2.5`는 `2`가 되지만 `2.5000001`은 `3`이 돼요.
 
 <Callout type="warn" title="2.5는 3이 아니라 2예요">
 
@@ -222,7 +222,7 @@ array([ 7, -7], dtype=int64)
 
 ### 정수와 bool은 그대로예요
 
-정수는 이미 정수 값이라 바뀌지 않고, dtype도 int64 그대로예요. bool도 bool 그대로예요.
+정수는 이미 정수 값이라 바뀌지 않고, dtype도 int64 그대로예요. bool도 bool 그대로예요. Python 숫자를 넣으면 결과도 배열이 아니라 Python 숫자예요.
 
 ```python
 >>> sd.floor(sd.asarray([1, -2, 3]))
@@ -248,7 +248,7 @@ TypeError: floor(): not supported for complex128
 
 ## `out`: 결과를 기존 배열에 쓰기
 
-`out=`에 배열을 주면 그 배열에 결과를 적고, 그 배열을 돌려줘요. 결과의 dtype이 `out`에 손실 없이 들어가야 해요. 실수 결과는 값이 정수여도 정수 배열에 담을 수 없어요(값이 아니라 dtype으로 판단하기 때문이에요).
+`out=`에 배열을 주면 새 배열을 만들지 않고 그 배열에 결과를 적은 다음, 그 배열을 돌려줘요. `out`의 dtype은 결과를 손실 없이 담을 수 있어야 해요. 실수 결과는 값이 정수여도 정수 배열에 담을 수 없어요. 값이 아니라 dtype으로 판단하기 때문이에요. 그 밖의 규칙은 [사칙연산의 `out`](/api/array/arithmetic/#out-결과를-기존-배열에-쓰기)과 같아요.
 
 ```python
 >>> sd.floor(sd.asarray([2, 3]), out=sd.zeros(2))
@@ -287,7 +287,7 @@ array([-0.0], dtype=float64)
 
 ### 리스트는 받지 않아요
 
-먼저 [`asarray`](/api/array/asarray/)로 배열로 바꾸세요.
+리스트나 numpy 배열은 받지 않아요. 먼저 [`asarray`](/api/array/asarray/)로 배열로 바꾸세요. 이유는 [배열의 기본](/api/array/basics/)에 있어요.
 
 ```python
 >>> sd.round([1.5])
@@ -304,6 +304,8 @@ TypeError: round(): 'x' must be an sd.ndarray or a bool, int, float or complex, 
 | `trunc(x)`와 [`x.astype(sd.int64)`](/api/array/astype/) | 둘 다 0 쪽으로 버려요. `trunc`는 실수 dtype 그대로, `astype`은 int64로 바꿔요. NaN은 `astype`에서 0, 범위 밖은 끝값이 돼요. |
 | `sd.round(x)`와 Python `round(x)` | 둘 다 짝수 반올림이에요. Python은 `int`를 돌려주고 자릿수 인자가 있어요. |
 | `round`와 [`clip`](/api/array/clip/) | `clip`은 정수로 맞추지 않고 범위 밖의 값만 잘라요. |
+
+첫 줄의 차이를 직접 보면 이래요. 값은 같고 dtype만 달라요.
 
 ```python
 >>> sd.asarray([7]) // 2

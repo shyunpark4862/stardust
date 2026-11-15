@@ -82,7 +82,7 @@ array([ 0,  0,  5, 10], dtype=int64)
   />
 </Fig>
 
-실제로 자주 쓰는 경우는 이런 것들이에요.
+`clip`은 계산 오차로 범위를 조금 벗어난 값을 되돌릴 때 자주 써요.
 
 ```python
 >>> prob = sd.asarray([-0.1, 0.4, 1.2])
@@ -90,7 +90,7 @@ array([ 0,  0,  5, 10], dtype=int64)
 array([0.0, 0.4, 1.0], dtype=float64)
 ```
 
-계산 오차로 확률이 0보다 조금 작거나 1보다 조금 커졌을 때 0과 1 사이로 되돌려요. 비슷하게, 계산 오차로 `1.0000000000000002`가 된 값을 `acos`에 넣으면 NaN(숫자가 아님)이 나오는데, 먼저 `clip`하면 막을 수 있어요.
+확률이 0보다 조금 작거나 1보다 조금 커졌을 때 0과 1 사이로 되돌린 예예요. 비슷하게, `1.0000000000000002`가 된 값을 `acos`에 넣으면 NaN(숫자가 아님)이 나오는데, 먼저 `clip`하면 막을 수 있어요.
 
 ```python
 >>> c = sd.asarray([1.0000000000000002, 0.5])
@@ -115,7 +115,7 @@ array([ 0,  0,  5, 12], dtype=int64)
 array([-3,  0,  5, 10], dtype=int64)
 ```
 
-둘 다 생략해도 에러가 아니에요. 아무것도 자르지 않은 **새 배열**(사본)이 나와요.
+둘 다 생략해도 에러가 아니에요. 아무것도 자르지 않은 **새 배열**(복사본)이 나와요.
 
 ```python
 >>> sd.clip(x)
@@ -148,7 +148,7 @@ array([[2, 6, 4],
 
 첫 행은 2 이상, 둘째 행은 3 이상이 되고, 동시에 열마다 5, 6, 7 이하가 됐어요.
 
-<Callout type="info" title="결과는 언제나 x와 같은 모양이에요">
+<Callout title="결과는 언제나 x와 같은 모양이에요">
 
 한계 배열을 `x`의 모양으로 넓힐 뿐, 거꾸로 `x`를 넓히지는 않아요. 그래서 결과의 모양은 언제나 `x`의 모양이에요. 한계 배열이 `x`보다 커서 `x`의 모양으로 맞출 수 없으면 `ValueError`예요. 예를 들어 `(4,)`인 `x`에 `(2, 1)`인 `min`은 줄 수 없어요.
 
@@ -229,6 +229,27 @@ array([0.0, 0.4, 1.0], dtype=float64)
 1.0
 ```
 
+## `out`: 결과를 기존 배열에 쓰기
+
+`out=`에 배열을 주면 그 배열에 결과를 적어요. `x` 자신을 주면 제자리에서 잘라요.
+
+```python
+>>> v = sd.asarray([-3, 0, 5, 12])
+>>> sd.clip(v, min=0, max=10, out=v)
+array([ 0,  0,  5, 10], dtype=int64)
+>>> v
+array([ 0,  0,  5, 10], dtype=int64)
+```
+
+`out`의 dtype은 결과(`x`의 dtype)를 손실 없이 담을 수 있어야 해요. 정수 결과를 실수 배열에 담는 것은 되지만, 실수 결과를 정수 배열에 담을 수는 없어요.
+
+```python
+>>> sd.clip(prob, min=0, out=sd.zeros(3, dtype=sd.int64))
+Traceback (most recent call last):
+    ...
+TypeError: clip(): cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
+```
+
 ## 조심할 점
 
 ### `min`이 `max`보다 크면
@@ -280,27 +301,6 @@ TypeError: clip(): not supported for complex128
 Traceback (most recent call last):
     ...
 TypeError: clip(): 'min' must be an sd.ndarray or a bool, int, float or complex, not list
-```
-
-## `out`: 결과를 기존 배열에 쓰기
-
-`out=`에 배열을 주면 그 배열에 결과를 적어요. `x` 자신을 주면 제자리에서 잘라요.
-
-```python
->>> v = sd.asarray([-3, 0, 5, 12])
->>> sd.clip(v, min=0, max=10, out=v)
-array([ 0,  0,  5, 10], dtype=int64)
->>> v
-array([ 0,  0,  5, 10], dtype=int64)
-```
-
-`out`의 dtype은 결과(`x`의 dtype)를 손실 없이 담을 수 있어야 해요. 정수 결과를 실수 배열에 담는 것은 되지만, 실수 결과를 정수 배열에 담을 수는 없어요.
-
-```python
->>> sd.clip(prob, min=0, out=sd.zeros(3, dtype=sd.int64))
-Traceback (most recent call last):
-    ...
-TypeError: clip(): cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
 ```
 
 ## 비슷한 함수와의 차이

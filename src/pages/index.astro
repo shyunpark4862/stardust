@@ -25,7 +25,7 @@ const strengths = [
   {
     glyph: 'reference',
     title: '정답지와의 대조',
-    body: 'numpy, scipy, pandas를 정답지로 삼아 검증해요. 일부러 다르게 만든 곳은 이유와 함께 문서에 적었어요.',
+    body: 'numpy, scipy, pandas를 정답지로 삼아 결과를 맞춰 봐요. 일부러 다르게 만든 곳은 이유와 함께 문서에 적었어요.',
   },
   {
     glyph: 'hardware',
@@ -49,12 +49,12 @@ df = sd.frame.DataFrame({
     "y":  [1.0, 3.0, 3.0, 5.0],
 })
 
-# 컬럼을 복사 없이 배열로 꺼내 선형대수에 넘긴다
-y = df["y"].to_array()
+# 컬럼을 배열로 꺼내 선형대수에 넘겨요
+y = df["y"].to_array()             # 복사 없는 읽기 전용 뷰
 X = df[["x1", "x2"]].to_array()
 
 beta = sd.linalg.lstsq(X, y).solution
-beta.tolist()            # [1.0, 1.0]`;
+[round(b, 12) for b in beta.tolist()]   # [1.0, 1.0]`;
 ---
 
 <Base overDark>
@@ -64,7 +64,7 @@ beta.tolist()            # [1.0, 1.0]`;
     id="strengths"
     eyebrow="Why stardust"
     title="다시 만들었기에 지킬 수 있는 것들"
-    lead="처음부터 직접 만들면 모든 층의 결정을 스스로 내릴 수 있어요. stardust가 그 자유로 고른 네 가지예요."
+    lead="처음부터 직접 만들면 모든 층을 원하는 대로 정할 수 있어요. stardust는 그 자유로 네 가지를 골랐어요."
   >
     <ol class="strengths">
       {
@@ -87,7 +87,7 @@ beta.tolist()            # [1.0, 1.0]`;
     tone="subtle"
     eyebrow="Composition"
     title="여섯 영역, 하나의 라이브러리"
-    lead="import stardust as sd 한 줄로 배열부터 통계까지 이어져요. 영역은 이름공간으로 나뉘고 규칙은 함께 써요."
+    lead="import stardust as sd 한 줄이면 돼요. 영역은 이름공간으로 나뉘지만 규칙은 함께 써요. 통계는 연속 분포부터 구현하고 있어요."
   >
     <div class="areas">
       {
@@ -97,7 +97,7 @@ beta.tolist()            # [1.0, 1.0]`;
               href={documented.includes(a.key) ? `/api/${a.key}/` : undefined}
               title={a.name}
               meta={a.ns}
-              badge={a.status === 'done' ? '구현 완료' : '설계 중'}
+              badge={a.status === 'done' ? '구현 완료' : '구현 중'}
               badgeTone={a.status === 'done' ? 'ok' : 'neutral'}
             >
               {a.desc}
@@ -135,7 +135,7 @@ beta.tolist()            # [1.0, 1.0]`;
     split
     eyebrow="Across areas"
     title="영역을 넘어, 복사 없이"
-    lead="데이터프레임의 숫자 컬럼은 읽기 전용 배열 뷰가 되고, 그 배열은 선형대수가 바로 읽어요."
+    lead="NA가 없는 숫자 컬럼은 복사 없이 읽기 전용 배열 뷰가 돼요. 그 배열을 선형대수 함수에 바로 넘길 수 있어요."
   >
     <figure class="code-card" data-reveal>
       <figcaption class="code-card__bar">
@@ -149,7 +149,7 @@ beta.tolist()            # [1.0, 1.0]`;
   <section class="cta">
     <div class="container cta__inner" data-reveal>
       <h2 class="cta__title">문서에서 더 자세히</h2>
-      <p class="cta__lead">각 영역의 API와, 그것이 어떻게 만들어졌는지를 문서에 담았어요.</p>
+      <p class="cta__lead">영역별 API와 내부 구현을 문서에 담았어요.</p>
       <div class="cta__actions">
         <Button href="/api/" size="lg" arrow>API 레퍼런스</Button>
         <Button href="/internals/" size="lg" variant="secondary">구현 살펴보기</Button>

@@ -2,7 +2,7 @@
 title: 작은 배열의 호출 비용
 group: 성능과 정확도
 order: 1
-summary: 원소가 3개뿐인 배열에서는 계산이 아니라 호출 경로의 고정 비용이 시간을 정해요. 그 비용이 어디서 나오는지, 어떻게 줄였는지, 무엇을 일부러 남겼는지, numpy보다 빠르거나 느린 이유를 설명해요.
+summary: 원소가 3개뿐인 배열에서는 계산이 아니라 호출 경로의 고정 비용이 시간을 정해요. 그 비용이 어디서 나오는지, 어떻게 줄이는지, 무엇을 일부러 남기는지, 어떤 호출이 왜 numpy보다 빠르거나 느린지 설명해요.
 seeAlso: [data-model, engine, indexing, performance]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -67,7 +67,7 @@ stardust가 Python 층을 얇게 두고 shape 계산, 브로드캐스팅, 인덱
 | 단계 | 하는 일 | 할당 |
 |---|---|:---:|
 | 1. Python → C++ | 인터프리터가 `a`의 타입에서 `__add__`(nanobind 함수 객체)를 찾아 불러요. nanobind가 인자 두 개를 `nb::handle`(빌린 참조)로 넘겨요 | 없음 |
-| 2. 피연산자 확인 | `is_operand(b)`: 배열이거나 Python bool/int/float/complex인지 봐요. 아니면 `NotImplemented` | 없음 |
+| 2. 피연산자 확인 | `is_operand(b)`: 배열이거나 스칼라(Python bool/int/float/complex, numpy 스칼라)인지 봐요. 아니면 `NotImplemented` | 없음 |
 | 3. 루프 고르기 | 두 dtype을 승격하고(`promote`), 루프 표에서 그 dtype 이상인 첫 루프를 골라요(`select`) | 없음 |
 | 4. 입력 준비 | 배열 피연산자의 `NDArray`를 복사해 와요(`prepare`). shape를 고정 배열에 브로드캐스트해요(`broadcast_into`) | 없음 |
 | 5. 결과 할당 | 첫 입력의 레이아웃을 따라 결과 배열을 만들어요(`new_result` → `new_array_like`) | **1번** |
@@ -81,9 +81,9 @@ C++ 쪽에서 메모리를 할당하는 곳은 5단계 **한 곳, 한 번**뿐�
 
 ```cpp
 nb::object launch(std::span<const nb::handle> objs, std::span<const DType> in_types,
-                  DType result, Loop loop, nb::handle out_obj) {
+                  DType result, Loop loop, nb::handle out_obj, int nout = 1) {
     if (out_obj.is_none() && std::ranges::none_of(objs, is_ndarray))
-        return launch_scalars(objs, in_types, result, loop);      // 모두 스칼라 (아래)
+        return launch_scalars(objs, in_types, result, loop, nout); // 모두 스칼라 (아래)
 
     std::array<NDArray, kMaxInputs> ins;                          // 고정 배열: 할당 없음
     std::array<std::span<const int64_t>, kMaxInputs> shapes;
@@ -103,7 +103,7 @@ nb::object launch(std::span<const nb::handle> objs, std::span<const DType> in_ty
 ```
 
 <Callout title="한 번의 호출에 할당은 몇 번인가">
-`a + b` 하나는 C++ 할당 1번(결과 Buffer)과 Python 객체 할당 1번(nanobind 인스턴스)이에요. 결과는 새 객체여야 하므로, 이보다 줄이려면 해제한 메모리를 모아 두었다가 다시 쓰는 캐시가 필요해요. 그것은 넣지 않기로 한 최적화예요(아래 "할당은 한 번"의 주의). Python 객체 쪽 할당이 왜 비싼지는 "남은 비용: 배열 객체의 할당"에서 다뤄요.
+`a + b` 하나는 C++ 할당 1번(결과 Buffer)과 Python 객체 할당 1번(nanobind 인스턴스)이에요. 결과는 새 객체여야 하므로, 이보다 줄이려면 해제한 메모리를 모아 두었다가 다시 쓰는 캐시가 필요해요. 그런 캐시는 넣지 않아요(아래 "할당은 한 번"의 참고). Python 객체 쪽 할당이 왜 비싼지는 "남은 비용: 배열 객체의 할당"에서 다뤄요.
 </Callout>
 
 ## 프로파일러가 보여 주는 비용
@@ -183,7 +183,7 @@ class NdIter {
 };
 ```
 
-축을 재배열할 때 쓰는 임시 사본도 살아 있는 칸만 복사해요.
+축을 재배열할 때 쓰는 임시 복사본도 살아 있는 칸만 복사해요.
 
 ```cpp
 Dims shape_p;                                // 초기화하지 않음
@@ -208,7 +208,7 @@ for (int k = 0; k < nop_; ++k)
 
 ```cpp
 class Buffer {
-    static constexpr std::size_t kAlignment = 128;   // M4의 캐시 줄
+    static constexpr std::size_t kAlignment = 128;   // M4의 캐시 라인
     static constexpr std::size_t kInline = 256;
     ...
     void* raw_ = nullptr;          // malloc한 포인터 (내장 데이터면 null)
@@ -241,11 +241,11 @@ std::shared_ptr<Buffer> Buffer::allocate(std::int64_t nbytes, bool zeroed) {
 
 - **256바이트인 이유:** float64 원소 32개, complex128 16개까지예요. 좌표, 작은 행렬(4×4 = 16개), 짧은 벡터가 모두 들어가요.
 - **대가:** 모든 Buffer 객체가 256바이트 커져요. 128바이트 정렬 때문에 Buffer 객체 하나가 384바이트예요. 큰 배열은 데이터를 따로 할당하므로 내장 영역이 그냥 남는데, 수 MB짜리 데이터 옆에서 384바이트는 무시할 만해요.
-- **정렬:** 내장 영역도 128바이트(캐시 줄)에 맞춰서, 큰 배열과 마찬가지로 SIMD 루프의 첫 load가 캐시 줄 두 개에 걸치지 않아요.
+- **정렬:** 내장 영역도 128바이트(캐시 라인)에 맞춰서, 큰 배열과 마찬가지로 SIMD 루프의 첫 load가 캐시 라인 두 개에 걸치지 않아요.
 - 데이터프레임(`sd.frame`)의 컬럼도 같은 `Buffer`를 써서, 256바이트 이하의 컬럼 버퍼도 Buffer 안에 놓여요.
 
-<Callout type="warn" title="작은 메모리 할당 캐시는 넣지 않았어요">
-"작은 Buffer를 해제하지 말고 모아 두었다가 다시 쓰기" 같은 할당 캐시는 넣지 않았어요. numpy 소스에는 이런 캐시가 있어요(`numpy/_core/src/multiarray/alloc.c`의 `npy_alloc_cache` 계열). stardust는 할당 **횟수**를 줄이는 쪽을 택했고, 캐시가 가져오는 복잡도(여러 스레드에서의 해제, 메모리를 OS에 돌려주는 시점)는 들이지 않았어요.
+<Callout title="작은 메모리 할당 캐시는 두지 않아요">
+작은 Buffer를 해제하지 않고 모아 두었다가 다시 쓰는 할당 캐시는 두지 않아요. numpy 소스에는 이런 캐시가 있어요(`numpy/_core/src/multiarray/alloc.c`의 `npy_alloc_cache` 계열)[4]. stardust는 할당 **횟수**를 줄이는 쪽을 택해요. 캐시는 여러 스레드에서의 해제와 메모리를 OS에 돌려주는 시점까지 다뤄야 해서, 얻는 것에 비해 복잡해요.
 </Callout>
 
 ## 할당하는 표준 알고리즘 피하기
@@ -267,7 +267,7 @@ for (int i = 1; i < proto.ndim; ++i)              // 안정 insertion sort, 할�
 
 **인덱스 키 항목은 고정 용량 저장소에.** `x[1, ::2, None]` 같은 키를 해석할 때 항목들을 `std::vector`에 차례로 넣지 않고, 객체 안의 고정 용량 저장소(`Items`: 축을 쓰는 항목 32 + `newaxis` 32 + `...` 1)에 넣어요. vector가 커지면서 다시 할당하는 비용은 `x[1, 2]` 같은 호출에서 시간의 대부분이 될 만큼 커요.
 
-**생성 함수의 shape도 스택에.** `zeros`, `ones`, `empty`, `full`은 `shape` 인자를 `parse_shape_arg`로 읽어요. int 하나나 32개 이하의 int tuple이면 객체 안의 `std::array`에 담고, 그 밖의 입력(에러 포함)만 일반 해석기 `parse_shape`로 넘겨 `std::vector`를 만들어요. 그래서 에러 메시지는 한 곳에서만 만들어지고, 흔한 호출에는 vector 할당이 없어요. vector를 만들면 `zeros(3)`가 99ns, 지금은 91ns예요.
+**생성 함수의 shape도 스택에.** `zeros`, `ones`, `empty`, `full`은 `shape` 인자를 `parse_shape_arg`로 읽어요. int 하나나 32개 이하의 int tuple이면 객체 안의 `std::array`에 담고, 그 밖의 입력(에러 포함)만 일반 해석기 `parse_shape`로 넘겨 `std::vector`를 만들어요. 그래서 에러 메시지는 한 곳에서만 만들어지고, 흔한 호출에는 vector 할당이 없어요. `zeros(3)`는 vector를 만들면 99ns, 스택에 담으면 91ns예요.
 
 ```cpp
 // csrc/bind/pyutil.hpp (발췌)
@@ -332,7 +332,7 @@ nb::object getitem(nb::handle x, nb::handle key) {
   <ArrayFig name="평탄한 메모리" data={[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]} tones={['m', 'm', 'm', 'm', 'm', 'm', 'b', 'm', 'm', 'm', 'm', 'm']} note="48바이트 = 원소 6칸" />
 </Fig>
 
-여기서 주의한 점들이에요.
+이 경로가 지키는 점은 이래요.
 
 - **조금이라도 특이하면 일반 경로로 넘겨요.** `PyLong_CheckExact`는 int의 하위 클래스를 받지 않으므로 `True`(bool은 int의 하위 클래스)는 일반 경로로 가서 평소대로 IndexError가 나요(stardust는 Python bool을 인덱스로 받지 않아요). `numpy.int64(1)` 같은 정수형 객체도 일반 경로에서 `__index__`로 처리돼요. 범위 밖 인덱스는 빠른 경로가 에러를 내지 않고 일반 경로로 넘겨서, 에러 메시지가 한 곳에서만 만들어져요.
 - **결과는 일반 경로와 같아요.** 모든 축이 정수면 Python 스칼라(`float`, `int`, `bool`, `complex`), 아니면 남은 축의 뷰예요. `view_of`는 뷰의 `.base`를 메모리의 최종 소유자로 접는 일반 경로의 규칙을 그대로 써요.
@@ -376,40 +376,43 @@ nb::object launch_scalars(std::span<const nb::handle> objs, std::span<const DTyp
 
 그래서 `shape`, `strides`, `ndim`, `size`, `dtype`, `itemsize`, `nbytes`, `base`는 CPython의 `tp_getset` 슬롯에, `len()`은 `sq_length`/`mp_length` 슬롯에 C 함수로 직접 등록해요(`bind/array_bind.cpp`). 인터프리터가 이 함수를 바로 불러서 `x.shape` 19ns, `len(x)` 7ns로 numpy와 같아져요. 이 함수들은 메모리 부족 말고는 실패하지 않아서 nanobind의 예외 변환이 필요 없어요. 등록 방법은 [Python과 C++의 경계](/internals/core/python-boundary/)의 "속성"에 있어요.
 
-**`finfo`, `iinfo`는 결과를 한 번만 만들어요.** 결과는 바뀌지 않는 namedtuple이라, 처음 부를 때 만들어 정적 변수에 두고 같은 객체를 돌려줘요. 부를 때마다 결과 모듈에서 클래스를 찾아 만들면 377ns가 들어요. 지금은 20ns이고 numpy(110ns, numpy도 객체를 캐시해요)보다 빨라요.
+**`finfo`, `iinfo`는 결과를 한 번만 만들어요.** 결과는 바뀌지 않는 namedtuple이라, 처음 부를 때 만들어 정적 변수에 두고 같은 객체를 돌려줘요. 부를 때마다 결과 모듈에서 클래스를 찾아 만들면 377ns가 드는데, 한 번만 만들면 20ns예요. numpy(110ns, numpy도 객체를 캐시해요)보다 빨라요.
 
 ## 남은 비용: 배열 객체의 할당
 
 위의 방법을 모두 써도, **새 배열 객체를 돌려주는 호출**은 numpy보다 20~50ns 느려요. 가장 큰 몫은 결과를 담는 Python 객체의 할당이에요.
 
-- **pymalloc을 쓰지 못해요.** CPython은 512바이트 이하의 작은 요청을 전용 할당기(pymalloc)로 처리해요 [5]. 크기별로 나뉜 풀에서 블록을 꺼내는 일이라 매우 싸요. `NDArray`가 560바이트이고 nanobind 인스턴스가 객체 머리를 더하므로, 배열 객체 하나는 이 경계를 넘어 시스템 `malloc`으로 가요.
+- **pymalloc을 쓰지 못해요.** CPython은 512바이트 이하의 작은 요청을 전용 할당기(pymalloc)로 처리해요 [5]. 크기별로 나뉜 풀에서 블록을 꺼내는 일이라 싸요. `NDArray`가 560바이트이고 nanobind 인스턴스가 객체 머리를 더하므로, 배열 객체 하나는 이 경계를 넘어 시스템 `malloc`으로 가요.
 - **macOS의 `free`는 메모리를 0으로 채워요.** `sample`로 보면 작은 배열 연산에서 가장 뜨거운 곳이 `_xzm_free`와 `__bzero`예요. 해제하는 블록을 0으로 지우는 일이에요.
-- **크기:** 호출당 15~20ns예요. 최대 차원을 24로 줄여 `NDArray`를 작게 만들면 객체가 512바이트 밑으로 내려가요. 그렇게 재면 `zeros(3)`가 92ns에서 73ns, `x[::2]`가 88ns에서 74ns가 돼요.
+- **크기:** 호출당 15~20ns예요. 최대 차원을 24로 줄이면 `NDArray`가 작아져 객체가 512바이트 밑으로 내려가요. 두 판을 같은 자리에서 재면 `zeros(3)`가 92ns 대 73ns, `x[::2]`가 88ns 대 74ns예요.
 
 <Callout title="최대 차원을 32로 두는 이유">
-15~20ns를 얻으려고 최대 차원을 24로 낮추면, 32차원까지 받는 numpy 1.x보다도 상한이 낮아져요(numpy 2.x는 64). 길이 1인 축을 많이 끼워 브로드캐스팅하는 코드처럼 차원이 많은 배열을 쓰는 코드가 stardust에서만 실패하게 돼요. 작은 차원만 객체 안에 두고 넘치면 힙에 두는 구조도 검토했지만, shape과 strides를 읽는 모든 곳이 두 저장소를 구별해야 하고 복사와 이동이 힙 소유권까지 다뤄야 해서 넣지 않았어요. 그래서 32차원과 이 비용을 함께 받아들여요.
+15~20ns를 얻으려고 최대 차원을 24로 낮추면, 32차원까지 받는 numpy 1.x보다도 상한이 낮아져요(numpy 2.x는 64). 길이 1인 축을 많이 끼워 브로드캐스팅하는 코드처럼 차원이 많은 배열을 쓰는 코드가 stardust에서만 실패하게 돼요. 작은 차원만 객체 안에 두고 넘치면 힙에 두는 구조도 맞지 않아요. shape과 strides를 읽는 모든 곳이 두 저장소를 구별해야 하고, 복사와 이동이 힙 소유권까지 다뤄야 해요. 그래서 32차원과 이 비용을 함께 받아들여요.
 </Callout>
 
 이 비용은 결과로 배열 객체를 만드는 모든 작은 호출에 똑같이 붙어요. 결과가 Python 스칼라인 호출(`x[10, 20]`, `sum(a)`)이나 객체를 만들지 않는 호출(`x.shape`, `len`)에는 없어요. 그래서 numpy보다 느린 작은 호출이 모두 "새 배열을 돌려주는 호출"이에요.
 
-## 시도하고 넣지 않은 것
+## 넣지 않은 것
 
-| 시도 | 결과 | 판단 |
+호출 비용을 더 줄일 방법이 남아 있지만, 아래 다섯은 얻는 것보다 잃는 것이 커서 넣지 않아요.
+
+| 방법 | 효과 | 넣지 않는 이유 |
 |---|---|---|
-| 최대 차원을 24로 줄여 배열 객체를 512바이트 밑으로 | 호출당 15~20ns (`zeros(3)` 92 → 73ns) | 차원 상한을 지키려고 넣지 않았어요(위 Callout) |
-| ndarray 타입을 캐시하고 nanobind의 저수준 API(`inst_alloc`, `inst_mark_ready`)로 인스턴스를 직접 만들기 | `x[1]` 83 → 80ns | 잡음 수준이라 넣지 않았어요 |
-| `__getitem__`을 C 슬롯 `mp_subscript`로 직접 등록하기 | 예상 이득 약 7ns | 하지 않았어요. nanobind가 해 주는 C++ 예외 → Python 예외 변환을 직접 처리해야 해요 |
-| 작은 메모리 할당 캐시 | — | 캐시가 가져오는 복잡도 때문에 넣지 않아요(위 Callout) |
-| 임시 배열 재사용(temporary elision) | — | 안전하게 만들 수 없어서 넣지 않았어요(아래) |
+| 최대 차원을 24로 줄여 배열 객체를 512바이트 밑으로 | 호출당 15~20ns (`zeros(3)` 92ns 대 73ns) | 32차원 상한을 지켜요(위 Callout) |
+| ndarray 타입을 캐시하고 nanobind의 저수준 API(`inst_alloc`, `inst_mark_ready`)로 인스턴스를 직접 만들기 | `x[1]`에서 약 3ns | 잡음 수준이에요 |
+| `__getitem__`을 C 슬롯 `mp_subscript`로 직접 등록하기 | 약 7ns | nanobind가 해 주는 C++ 예외 → Python 예외 변환을 직접 처리해야 해요 |
+| 작은 메모리 할당 캐시 | — | 캐시가 가져오는 복잡도가 커요(위 Callout) |
+| 임시 배열 재사용(temporary elision) | 연산자 사슬에서 할당 하나 | 안전하게 판정할 수 없어요(아래) |
 
-속성은 타입 슬롯으로 등록하면서 `__getitem__`은 그러지 않는 이유가 있어요. 속성 함수는 실패하지 않지만, `__getitem__`은 IndexError, TypeError 등 여러 C++ 예외를 Python 예외로 바꿔야 하고 에러 메시지에 공개 이름도 붙여야 해요. 그 일을 nanobind에 맡기는 값이 7ns보다 크다고 봤어요.
+속성은 타입 슬롯으로 등록하면서 `__getitem__`은 그러지 않는 이유가 있어요. 속성 함수는 실패하지 않지만, `__getitem__`은 IndexError, TypeError 등 여러 C++ 예외를 Python 예외로 바꿔야 하고 에러 메시지에 공개 이름도 붙여야 해요. 그 일을 nanobind에 맡기는 값이 7ns보다 커요.
 
-**임시 배열 재사용.** `a + b + c`에서 `a + b`의 결과는 다음 덧셈 뒤 바로 버려지는 임시 배열이에요. numpy는 이런 임시 배열을 알아보고 그 버퍼에 다음 결과를 써서 할당을 아껴요.
+**임시 배열 재사용.** `a + b + c`에서 `a + b`의 결과는 다음 덧셈 뒤 바로 버려지는 임시 배열이에요. numpy는 이런 임시 배열을 알아보고 그 버퍼에 다음 결과를 써서 할당을 아껴요. stardust는 이것을 넣지 않아요. 임시 객체인지를 안전하게 판정할 수 없기 때문이에요.
 
-- CPython의 `PyUnstable_Object_IsUniqueReferencedTemporary`는 Python 코드 안에서는 임시 객체를 정확히 판정해요(인자를 `nb::handle`로 받을 때. `nb::object`로 받으면 참조가 하나 늘어서 한 번도 임시로 판정되지 않아요).
-- 그런데 다른 C 확장(예: Cython 코드)이 빌린 참조로 받은 `x`로 `x + y`를 계산한 뒤 `x`를 다시 읽으면, 이 API는 `x`를 임시 객체로 판정해요. 버퍼를 재사용하면 다시 읽은 `x`는 이미 덮어써져 있어요.
-- 이것을 막으려면 numpy처럼 실행 중인 C 콜스택을 들여다봐야 해요. 플랫폼과 인터프리터의 내부 구현에 기대는 방법이라 넣지 않았어요. 현재 프레임의 바이트코드가 `BINARY_OP`인지 보는 방법도 인터프리터 내부에 기대고, 반사 연산(`__radd__`) 경로에 구멍이 남아서 택하지 않았어요.
-- 그래서 연산자는 항상 새 출력 배열을 할당해요. 작은 배열에서는 그 할당이 위의 "5단계" 한 번이에요.
+- CPython의 `PyUnstable_Object_IsUniqueReferencedTemporary`[1]는 Python 코드 안의 임시 객체는 정확히 판정해요.
+- 그런데 다른 C 확장(예: Cython 코드)이 빌린 참조로 들고 있는 `x`로 `x + y`를 계산한 뒤 `x`를 다시 읽으면, 이 API는 `x`도 임시 객체로 판정해요. 버퍼를 재사용하면 다시 읽은 `x`는 이미 덮어써져 있어요.
+- 이것을 막으려면 numpy처럼 실행 중인 C 콜스택을 들여다보거나 현재 프레임의 바이트코드를 봐야 하는데, 둘 다 인터프리터의 내부 구현에 기대는 방법이에요.
+
+그래서 연산자는 항상 새 출력 배열을 할당해요. 작은 배열에서는 그 할당이 위의 5단계 한 번이에요. 판정 방법별로 무엇이 어긋나는지는 [전체 구조](/internals/core/overview/)의 "임시 배열 재사용"에 있어요.
 
 ## numpy와의 차이, 호출별로
 
@@ -430,7 +433,7 @@ numpy가 약 28ns 빨라요. 할당 횟수는 numpy와 비슷하므로(결과 �
 
 1차원 배열의 `a[1]`은 원소 하나라서 `x[10, 20]`과 같은 빠른 경로를 타고 Python `float`을 돌려줘요(23ns, numpy 28ns).
 
-2차원 배열의 `m[1]`은 원소가 아니라 남은 축의 **뷰**(새 배열 객체)를 돌려줘요. 빠른 경로가 키 해석은 건너뛰지만, 뷰 객체를 만드는 비용은 남아요. 객체 할당(15~20ns) 말고는 nanobind 인스턴스의 등록, `NDArray` 복사(`view_of`에서 `NDArray`를 하나 복사하고 `.base` 참조를 올림), 메서드 호출 경로에 고르게 퍼져 있어서 한 군데를 고쳐 크게 줄일 곳이 없어요. 위 표의 `inst_alloc` 실험에서 인스턴스를 만드는 길을 바꿔도 3ns만 줄어든 것이 그 예예요. `m.T`(68ns 대 38ns)도 같은 구성이에요.
+2차원 배열의 `m[1]`은 원소가 아니라 남은 축의 **뷰**(새 배열 객체)를 돌려줘요. 빠른 경로가 키 해석은 건너뛰지만, 뷰 객체를 만드는 비용은 남아요. 객체 할당(15~20ns) 말고는 nanobind 인스턴스의 등록, `NDArray` 복사(`view_of`에서 `NDArray`를 하나 복사하고 `.base` 참조를 올림), 메서드 호출 경로에 고르게 퍼져 있어서 한 군데를 고쳐 크게 줄일 곳이 없어요. 인스턴스를 만드는 길만 `inst_alloc`으로 바꿔도 약 3ns만 줄어드는 것이 그 예예요. `m.T`(68ns 대 38ns)도 같은 구성이에요.
 
 `m[1:, ::2]`(102ns 대 51ns), `f[::2]`(89ns 대 43ns)처럼 slice가 있는 키는 여기에 일반 키 해석이 더해져요.
 
@@ -445,7 +448,7 @@ shape는 `parse_shape_arg`로 할당 없이 읽어요. 남은 차이는 배열 �
 
 ### `sum(a)`: 90ns 대 548ns — 6배 차이의 정체
 
-이 차이는 C++과 C의 속도 차이가 아니라 **호출 경로에 Python 코드가 있느냐**의 차이예요. numpy 2.5.4의 `np.sum`을 따라가 보면(`numpy/_core/fromnumeric.py`) 이래요.
+이 차이는 C++과 C의 속도 차이가 아니라 **호출 경로에 Python 코드가 있느냐**의 차이예요. numpy 2.5.4의 `np.sum`을 따라가 보면(`numpy/_core/fromnumeric.py`) 이래요[2].
 
 1. `np.sum`은 `numpy._ArrayFunctionDispatcher` 객체예요. `__array_function__` 프로토콜(다른 배열 라이브러리가 numpy 함수를 가로챌 수 있게 하는 장치)을 위해 인자를 먼저 살펴요.
 2. 그다음 Python으로 짠 함수 `sum`이 돌아요. 제너레이터 검사 뒤 `_wrapreduction(a, np.add, 'sum', axis, dtype, out, keepdims=…, initial=…, where=…)`을 불러요.
@@ -476,7 +479,7 @@ numpy의 `a.sum()`은 `np.sum`의 래퍼 층을 건너뛰지만, C로 바로 가
 - 할당: 결과 배열당 C++ 1번(256바이트 이하면 Buffer와 데이터가 한 덩어리) + Python 객체 1번(시스템 `malloc`)
 - 계산: $O(n)$, 원소 3개면 몇 ns
 
-원소가 많아지면 계산이 빠르게 고정 비용을 넘어서요. 원소 1000개의 `a + b`는 이미 numpy와 같고(287ns 대 285ns), 원소 100만 개 `f + g`는 1스레드 151µs로 고정 비용(약 0.2µs)은 0.1% 남짓이에요. 그 위로 원소 2¹⁵개(256KB)를 넘으면 스레드풀이 끼어들어요([스레드풀과 결정성](/internals/core/threads/)).
+원소가 많아지면 계산이 빠르게 고정 비용을 넘어서요. 원소 1000개의 `a + b`는 이미 numpy와 같고(287ns 대 285ns), 원소 100만 개 `f + g`는 1스레드 151µs로 고정 비용(약 0.2µs)은 0.1% 남짓이에요. 일이 원소 2¹⁵개(256KB) 분량 이상이면 스레드풀이 끼어들어요([스레드풀과 결정성](/internals/core/threads/)).
 
 ### 정리
 

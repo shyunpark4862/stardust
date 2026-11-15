@@ -4,7 +4,7 @@ title: 원소 종류(dtype)
 names: [bool, int64, float64, complex128, string]
 group: 기본 개념
 order: 2
-summary: 배열의 원소가 어떤 종류의 값인지 나타내는 dtype의 네 가지 종류와, 종류가 섞였을 때 결과의 종류가 정해지는 규칙, 종류를 바꾸는 규칙을 설명해요.
+summary: dtype은 배열의 원소가 어떤 종류의 값인지를 나타내요. 네 가지 dtype과, 종류가 섞였을 때 결과가 정해지는 규칙(승격), 종류를 바꾸는 규칙을 설명해요.
 seeAlso: [basics, numerics, astype, dtype-tools, finfo, asarray]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -105,7 +105,7 @@ int32나 float32처럼 더 작은 종류는 없어요. 정수는 언제나 64비
 
 ### `sd.string`
 
-stardust에는 dtype이 하나 더 있어요. 문자열을 나타내는 `sd.string`이에요. 이것은 **데이터프레임(`sd.frame`)의 열**에서 쓰는 종류이고, 배열에는 쓸 수 없어요.
+stardust에는 dtype이 하나 더 있어요. 문자열을 나타내는 `sd.string`이에요. **데이터프레임(`sd.frame`)의 열**에서만 쓰고, 배열에는 쓸 수 없어요.
 
 ```python
 >>> sd.string
@@ -116,17 +116,17 @@ Traceback (most recent call last):
 TypeError: zeros(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names), not sd.string
 ```
 
-dtype 객체를 데이터프레임과 함께 쓰기 때문에, 배열의 `x.dtype`과 데이터프레임 열의 dtype을 같은 객체로 비교할 수 있어요.
+배열과 데이터프레임이 같은 dtype 객체를 쓰기 때문에, 배열의 `x.dtype`과 데이터프레임 열의 dtype을 그대로 비교할 수 있어요.
 
 ## 승격: 섞으면 넓은 쪽으로
 
-dtype이 다른 두 배열을 더하거나 곱하면 결과의 dtype은 무엇일까요? stardust는 네 종류를 한 줄로 세워 두고, **둘 중 더 높은 쪽**을 결과로 써요. 이것을 승격(promotion)이라고 해요.
+dtype이 다른 두 배열을 더하거나 곱하면 결과의 dtype은 무엇일까요? stardust는 네 종류를 한 줄로 세워 두고, **둘 중 더 넓은 쪽**을 결과로 써요. 이것을 승격(promotion)이라고 해요.
 
 <Fig caption="승격의 순서는 한 줄이에요. 섞이면 오른쪽(더 넓은 쪽)으로 맞춰요.">
   <ArrayFig data={['bool', 'int64', 'float64', 'complex128']} tones={['', '', '', '']} note="bool < int64 < float64 < complex128" />
 </Fig>
 
-오른쪽으로 갈수록 담을 수 있는 값이 넓어져요. 참·거짓은 정수 0과 1로, 정수는 실수로, 실수는 허수부가 0인 복소수로 나타낼 수 있으니까요.
+오른쪽으로 갈수록 담을 수 있는 값이 넓어져요. 참·거짓은 정수 0과 1로, 정수는 실수로, 실수는 허수부가 0인 복소수로 나타낼 수 있으니까요. 아래에서는 넓은 쪽을 "위", 좁은 쪽을 "아래"라고 부를게요.
 
 ```python
 >>> b = sd.asarray([True, False, True])
@@ -158,7 +158,7 @@ array([2, 2, 4], dtype=int64)
 | **float64** | float64 | float64 | float64 | complex128 |
 | **complex128** | complex128 | complex128 | complex128 | complex128 |
 
-이 표는 "두 입력을 합칠 때 쓰는 종류"예요. 실제 결과는 함수에 따라 이 종류에서 한 번 더 바뀔 수 있어요(아래 두 절). 승격한 종류를 직접 알고 싶으면 `sd.result_type`을 써요([dtype 확인과 승격](/api/array/dtype-tools/)).
+이 표는 "두 입력을 합칠 때 쓰는 종류"예요. 실제 결과는 함수에 따라 이 종류에서 한 번 더 바뀔 수 있어요. 아래의 bool 산술과 결과가 언제나 실수인 함수가 그런 경우예요. 승격한 종류를 직접 알고 싶으면 `sd.result_type`을 써요([dtype 확인과 승격](/api/array/dtype-tools/)).
 
 ```python
 >>> sd.result_type(sd.int64, sd.float64)
@@ -169,9 +169,9 @@ complex128
 
 ### Python 숫자와 섞을 때
 
-배열에 Python 숫자를 더해도 같은 규칙이에요. Python 숫자는 타입에 따라 하나의 dtype으로 봐요.
+배열에 Python 숫자를 더해도 같은 규칙이에요. Python 숫자는 타입에 따라 dtype이 하나로 정해져요.
 
-| Python 숫자 | 보는 dtype |
+| Python 숫자 | dtype |
 |---|---|
 | `True`, `False` | bool |
 | `int` (`1`, `-7`) | int64 |
@@ -237,10 +237,10 @@ array([2.0, 3.0], dtype=float64)
 
 ## 암묵적 변환: 위로만 돼요
 
-결과를 **이미 있는 배열에 써 넣는** 경우가 있어요. 이때는 계산 결과를 그 배열의 dtype으로 바꿔야 하는데, 사용자가 따로 바꾸라고 말하지 않았으므로 이것을 암묵적 변환이라고 해요. 이런 곳들이에요.
+값을 **이미 있는 배열에 써넣을** 때는 그 값을 배열의 dtype으로 바꿔야 해요. 바꾸라고 따로 말하지 않았는데 일어나는 변환이라서 암묵적 변환이라고 해요. 아래 자리에서 일어나요.
 
 - 인덱스 대입: `x[0] = 값`, `x[...] = 배열`
-- 제자리 연산자: `x += 1`, `x /= 2`
+- 제자리(in-place) 연산자: `x += 1`, `x /= 2`
 - 원소별 함수의 `out=`: `sd.add(a, b, out=x)`
 - `clip`의 `min`, `max`, 그리고 `dtype=` 없이 쓴 `full_like`의 채울 값
 
@@ -260,7 +260,7 @@ array([1, 2, 3], dtype=int64)
   <ArrayFig name="float64 값 → int64 배열" data={['bool', 'int64', 'float64', 'complex128']} tones={['m', 'b', 'a', 'm']} note="왼쪽으로: TypeError" />
 </Fig>
 
-아래쪽으로 가는 변환은 `TypeError`예요. **값이 아니라 dtype만 보고** 판단해요. `2.0`은 소수점 아래가 없어서 정수로 바꿔도 값을 잃지 않지만, float이라는 사실만으로 에러예요.
+아래쪽으로 가는 변환은 `TypeError`예요. **값이 아니라 dtype만 보고** 판단해요. `2.0`은 소수점 아래가 없어서 정수로 바꿔도 값을 잃지 않지만, dtype이 float64라서 에러예요.
 
 ```python
 >>> i[0] = 2.0
@@ -273,7 +273,7 @@ TypeError: cannot implicitly convert float64 to int64 (that would lose informati
 
 ### 제자리 연산자에서 자주 만나요
 
-제자리 연산자는 **계산 결과의 dtype**을 원래 배열의 dtype으로 바꿔야 해요. 그래서 계산 자체는 되는데 결과를 담지 못해서 에러가 나는 경우가 있어요.
+제자리 연산자는 계산 결과를 원래 배열에 다시 써넣어요. 그래서 계산은 되는데 **결과의 dtype**을 원래 배열에 담지 못해서 에러가 나는 경우가 있어요.
 
 ```python
 >>> i /= 2
@@ -306,13 +306,13 @@ TypeError: clip(): cannot implicitly convert float64 to int64 (that would lose i
 
 ## 명시적 변환: 바꾸라고 말하면 바꿔요
 
-dtype을 직접 지정하면 "값이 달라져도 좋으니 이 종류로 바꿔 달라"는 뜻으로 받아요. 이것을 명시적 변환이라고 해요. 이런 곳들이에요.
+dtype을 직접 지정하면 "값이 달라져도 좋으니 이 종류로 바꿔 달라"는 뜻으로 받아요. 이것을 명시적 변환이라고 해요. 아래 자리가 그래요.
 
 - [`astype`](/api/array/astype/): `x.astype(sd.int64)`, `sd.astype(x, "float64")`
 - 배열을 만드는 함수의 `dtype=`: `sd.asarray(..., dtype=...)`, `sd.full(..., dtype=...)` 등
 - `sum`, `prod`, `cumulative_sum`, `cumulative_prod`의 `dtype=`
 
-명시적 변환은 **아래쪽으로도** 해요. 정보를 잃는 변환도 그대로 해요.
+명시적 변환은 **아래쪽으로도** 돼요. 값이 달라지더라도 그대로 바꿔요.
 
 ```python
 >>> sd.asarray([1.7, -1.7]).astype(sd.int64)
@@ -322,6 +322,8 @@ array([1, 1, 1], dtype=int64)
 ```
 
 ### 실수를 정수로 바꾸는 규칙
+
+float64를 int64로 바꾸면 값에 따라 이렇게 돼요.
 
 | 실수 값 | 정수로 바꾼 값 | 규칙 |
 |---|---|---|
@@ -370,7 +372,7 @@ array([9007199254740992.0], dtype=float64)
 
 ### 복소수를 실수나 정수로는 바꿔 주지 않아요
 
-명시적 변환이라도 **복소수를 실수나 정수로 바꾸는 것만은** `TypeError`예요. 허수부가 통째로 사라지는 변환이라, 실수로 이렇게 쓰는 것을 막았어요.
+명시적 변환이라도 **복소수를 실수나 정수로 바꾸는 것만은** `TypeError`예요. 허수부가 통째로 사라지는 변환이라, 모르고 쓰는 일이 없도록 막아요.
 
 ```python
 >>> c.astype(sd.float64)
@@ -390,6 +392,8 @@ array([1, 3], dtype=int64)
 ```
 
 ### 변환 규칙 한눈에
+
+지금까지의 규칙을 표 하나로 모으면 이래요.
 
 | 바꾸는 방향 | 암묵적 (대입, `+=`, `out=`) | 명시적 (`astype`, `dtype=`) |
 |---|---|---|
@@ -449,6 +453,8 @@ OverflowError: sqrt(): Python int too large to convert to int64
 | 섞었을 때의 결과 종류 알아보기 | `result_type` | 계산하지 않고 승격 결과만 알려 줘요. |
 | 암묵적 변환이 되는지 알아보기 | `can_cast` | 위의 "위로만" 규칙을 확인해요. |
 | 종류의 범위와 정밀도 | `iinfo`, `finfo` | int64의 최댓값, float64의 가장 작은 간격 등. |
+
+`can_cast`와 `iinfo`는 이렇게 써요. 자세한 것은 [dtype 확인과 승격](/api/array/dtype-tools/)과 [수의 한계](/api/array/finfo/)에 있어요.
 
 ```python
 >>> sd.can_cast(sd.int64, sd.float64)

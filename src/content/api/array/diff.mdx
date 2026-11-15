@@ -192,7 +192,7 @@ array([ 3,  5,  7,  9, 11], dtype=int64)
 array([3, 4, 5, 0, 8], dtype=int64)
 ```
 
-길이가 그대로라서 날짜와 짝이 맞아요. 이것은 [누적 합](/api/array/cumulative/)의 정확한 반대 계산이에요. 결과를 다시 누적하면 원래 값이 돌아와요.
+길이가 그대로라서 날짜와 짝이 맞아요. 이 계산은 [누적 합](/api/array/cumulative/)을 정확히 되돌려요. 그래서 결과를 다시 누적하면 원래 값이 돌아와요.
 
 ```python
 >>> sd.cumulative_sum(sd.diff(total, prepend=0))
