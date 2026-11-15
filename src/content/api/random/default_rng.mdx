@@ -1,0 +1,246 @@
+---
+title: default_rng
+names: [default_rng]
+group: 생성기
+order: 1
+signatures:
+  - "sd.random.default_rng(seed=None, /)"
+summary: 시드를 받아 난수 생성기(Generator)를 만들어요. sd.random의 모든 난수는 이 함수로 만든 생성기에서 받아요.
+params:
+  - name: seed
+    type: int, int의 시퀀스, None 또는 Generator
+    kind: positional-only
+    desc: 수열의 출발점을 정하는 수. 0 이상의 정수(크기 제한 없음)나 그런 정수의 리스트·튜플이에요. None이면 실행할 때마다 다른 출발점을 써요. Generator를 주면 그 생성기를 그대로 돌려줘요.
+returns:
+  type: Generator
+  desc: 새 생성기. seed가 Generator였다면 새로 만들지 않고 그 객체 자신이에요.
+raises:
+  - type: TypeError
+    desc: seed가 float, bool, 문자열, bytes 같은 정수가 아닌 값이거나 정수가 아닌 원소가 든 시퀀스일 때, seed=42처럼 이름을 붙여 넘겼을 때, 인자를 두 개 이상 넘겼을 때.
+  - type: ValueError
+    desc: seed나 시퀀스의 원소가 음수일 때.
+seeAlso: [basics, generator, spawn-state, random, integers]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 한눈에 보기
+
+`default_rng`는 **난수 생성기**를 만들어요. 생성기는 난수를 차례로 꺼내 주는 객체([Generator](/api/random/generator/))예요. `sd.random`에서 난수를 받으려면 언제나 이 함수로 생성기부터 만들어요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(42)
+>>> rng
+Generator(Philox4x64-10)
+>>> rng.random(3)
+array([0.4513007976393718, 0.5280337747949365, 0.794826025358168], dtype=float64)
+>>> rng.integers(1, 7, shape=5)
+array([5, 1, 1, 2, 6], dtype=int64)
+```
+
+인자 `42`는 **시드**(seed, 씨앗)예요. 생성기는 정해진 규칙으로 "난수처럼 보이는" 긴 수열을 만드는데, 시드는 그 수열의 출발점을 정해요. 그래서 **같은 시드로 만든 생성기는 언제나 같은 수열**을 내요. 컴퓨터나 날짜가 바뀌어도, [스레드 수](/api/array/threads/)를 바꿔도 마찬가지예요.
+
+```python
+>>> sd.random.default_rng(42).random(3)
+array([0.4513007976393718, 0.5280337747949365, 0.794826025358168], dtype=float64)
+```
+
+시드가 왜 필요하고 어떤 성질이 있는지는 [난수의 기본](/api/random/basics/)에서 처음부터 설명해요. 이 페이지는 `default_rng`에 무엇을 넣을 수 있고, 무엇이 돌아오는지를 다뤄요.
+
+<Reference />
+
+## 시드로 줄 수 있는 것
+
+| `seed` | 결과 |
+|---|---|
+| 0 이상의 정수 | 그 시드의 생성기. 정수의 크기에는 제한이 없어요 |
+| 0 이상의 정수가 든 리스트·튜플 | 그 정수들을 함께 시드로 쓴 생성기 |
+| `None` 또는 생략 | 실행할 때마다 다른 수열을 내는 생성기 |
+| Generator | 그 생성기 자신(새로 만들지 않아요) |
+
+### 정수
+
+가장 흔한 방법이에요. 0 이상이면 아무리 큰 정수도 돼요. 64비트를 넘는 정수도 모든 자리를 시드로 써요.
+
+```python
+>>> sd.random.default_rng(0).random()
+0.6861121579458175
+>>> sd.random.default_rng(2**100).random()
+0.8838181160602953
+```
+
+이웃한 시드(0, 1, 2, …)도 서로 아무 관계가 없는 수열을 내요. 시드를 그대로 출발점으로 쓰지 않고 먼저 고루 뒤섞기 때문이에요. 실험을 여러 번 반복할 때 시드를 하나씩 늘려 가며 써도 괜찮아요.
+
+```python
+>>> [round(sd.random.default_rng(s).random(), 4) for s in range(4)]
+[0.6861, 0.0955, 0.8188, 0.2565]
+```
+
+### 정수의 시퀀스
+
+정수 여러 개를 리스트나 튜플로 묶어 시드로 줄 수도 있어요. 실험 번호와 반복 번호처럼 **두 가지 이상을 함께 시드로 삼고 싶을 때** 편해요. 리스트와 튜플은 같은 결과를 내고, 순서가 다르면 다른 수열이에요.
+
+```python
+>>> sd.random.default_rng([2024, 1]).random()
+0.5971004311331384
+>>> sd.random.default_rng((2024, 1)).random()
+0.5971004311331384
+>>> sd.random.default_rng([1, 2024]).random()
+0.32154971301776036
+```
+
+정수 하나를 리스트로 감싼 `[42]`는 `42`와 같은 생성기예요.
+
+```python
+>>> sd.random.default_rng([42]).random() == sd.random.default_rng(42).random()
+True
+```
+
+### `None`: 실행할 때마다 다른 수열
+
+시드를 생략하거나 `None`을 주면, 운영체제가 모아 둔 예측할 수 없는 값(하드웨어의 잡음 등에서 얻은 값)으로 출발점을 정해요. 그래서 **만들 때마다 다른 수열**이 나와요.
+
+```python
+>>> sd.random.default_rng().random() == sd.random.default_rng().random()
+False
+```
+
+결과를 다시 만들 필요가 없는 일(게임의 무작위 이벤트, 화면에 보여 줄 예시 데이터)에는 이걸로 충분해요. 하지만 시드를 모르면 그 수열을 다시 얻을 방법이 없어요.
+
+**무작위로 고른 시드를 기록해 두는 요령**이 있어요. 시드를 먼저 무작위로 만들어서 기록하고, 그 시드로 생성기를 만들어요. 매번 다른 결과를 얻으면서도, 나중에 기록한 시드로 똑같이 다시 만들 수 있어요.
+
+```python
+>>> import secrets
+>>> seed = secrets.randbits(64)
+>>> rng = sd.random.default_rng(seed)
+>>> first = rng.random()
+>>> sd.random.default_rng(seed).random() == first
+True
+```
+
+실제 코드에서는 `seed`를 로그나 결과 파일에 함께 적어 두면 돼요.
+
+### Generator: 그대로 돌려줘요
+
+생성기를 넣으면 **새로 만들지 않고 그 객체를 그대로** 돌려줘요. 복사본이 아니라 같은 객체예요.
+
+```python
+>>> rng = sd.random.default_rng(42)
+>>> sd.random.default_rng(rng) is rng
+True
+```
+
+이 성질은 아래처럼 함수를 만들 때 쓰여요.
+
+## 함수가 시드도 생성기도 받게 만들기
+
+난수를 쓰는 함수를 만들 때, 인자를 받자마자 `default_rng`에 통과시키면 **시드를 줘도, 생성기를 줘도, 아무것도 안 줘도** 동작하는 함수가 돼요.
+
+```python
+>>> def simulate(n, rng=None):
+...     rng = sd.random.default_rng(rng)
+...     return rng.integers(1, 7, shape=n)
+```
+
+- `simulate(5, 42)`: 시드를 주면 언제나 같은 결과예요.
+- `simulate(5, rng)`: 생성기를 주면 그 생성기의 수열을 **이어서** 써요. 여러 함수가 생성기 하나를 차례로 나눠 쓸 수 있어요.
+- `simulate(5)`: 아무것도 안 주면 매번 다른 결과예요.
+
+```python
+>>> simulate(5, 42)
+array([3, 4, 5, 5, 1], dtype=int64)
+>>> simulate(5, 42)
+array([3, 4, 5, 5, 1], dtype=int64)
+>>> rng = sd.random.default_rng(42)
+>>> simulate(5, rng)
+array([3, 4, 5, 5, 1], dtype=int64)
+>>> simulate(5, rng)
+array([1, 2, 6, 2, 4], dtype=int64)
+```
+
+시드 42를 두 번 주면 두 번 다 같은 다섯 개예요. 생성기를 주면 두 번째 호출이 첫 번째에 이어서 다음 다섯 개를 받아요. `default_rng(rng)`가 복사본을 만들었다면 두 번째 호출도 첫 번째와 같은 값을 냈을 거예요.
+
+## 조심할 점
+
+### 끝에 붙은 0은 구별되지 않아요
+
+시퀀스 시드의 **끝에 붙은 0은 없는 것과 같아요.** `[2024, 0]`은 `2024`와 같은 생성기이고, `[]`·`[0]`은 `0`과 같은 생성기예요.
+
+```python
+>>> sd.random.default_rng([2024, 0]).random() == sd.random.default_rng(2024).random()
+True
+>>> sd.random.default_rng([2024, 1]).random() == sd.random.default_rng(2024).random()
+False
+```
+
+`[기본 시드, 실험 번호]`처럼 시드를 묶을 때 실험 번호를 0부터 매기면, 0번 실험은 기본 시드만 쓴 생성기와 같은 수열을 내요. 기본 시드만으로 만든 생성기를 다른 곳에서도 쓴다면 두 곳의 난수가 겹치니, 번호를 1부터 매기거나 [spawn](/api/random/spawn-state/)으로 나누세요.
+
+### 같은 시드를 두 곳에서 쓰면 같은 난수예요
+
+같은 시드로 생성기를 두 번 만들면 두 생성기는 똑같은 수열을 내요. "훈련 데이터"와 "검증 데이터"를 각각 `default_rng(42)`로 만들면 두 데이터가 같은 난수로 만들어져요. 한 시드에서 서로 독립된 생성기 여러 개가 필요하면 [`spawn`](/api/random/spawn-state/)을 쓰세요.
+
+```python
+>>> train_rng, valid_rng = sd.random.default_rng(42).spawn(2)
+>>> train_rng.random() == valid_rng.random()
+False
+```
+
+### 시드는 0 이상의 정수만
+
+음수는 `ValueError`, 정수가 아닌 값은 `TypeError`예요. `True`·`False`도 정수로 받지 않고, 실수는 `42.0`처럼 값이 정수여도 받지 않아요.
+
+```python
+>>> sd.random.default_rng(-1)
+Traceback (most recent call last):
+    ...
+ValueError: default_rng(): 'seed' must be non-negative
+>>> sd.random.default_rng(42.0)
+Traceback (most recent call last):
+    ...
+TypeError: default_rng(): 'seed' must be an int, a sequence of ints or None, not float
+>>> sd.random.default_rng(True)
+Traceback (most recent call last):
+    ...
+TypeError: default_rng(): 'seed' must be an int, a sequence of ints or None, not bool
+>>> sd.random.default_rng("42")
+Traceback (most recent call last):
+    ...
+TypeError: default_rng(): 'seed' must be an int, a sequence of ints or None, not str
+>>> sd.random.default_rng([1, 2.5])
+Traceback (most recent call last):
+    ...
+TypeError: default_rng(): 'seed' must be an int, a sequence of ints or None, not a sequence of float
+```
+
+### 시드는 자리로 넘겨요
+
+`seed`는 이름을 붙여 넘길 수 없어요. `default_rng(42)`처럼 자리로 넘겨요.
+
+```python
+>>> sd.random.default_rng(seed=42)
+Traceback (most recent call last):
+    ...
+TypeError: default_rng() got some positional-only arguments passed as keyword arguments: 'seed'
+```
+
+## 비슷한 기능과의 차이
+
+생성기를 "하나 더" 얻는 방법은 여러 가지이고, 결과가 서로 달라요.
+
+| 방법 | 돌려주는 것 | 원래 생성기와의 관계 |
+|---|---|---|
+| `default_rng(시드)` | 새 생성기 | 시드가 같으면 같은 수열, 다르면 서로 무관한 수열 |
+| `default_rng(rng)` | `rng` 자신 | 같은 객체예요. 수열을 함께 써요 |
+| [`rng.spawn(n)`](/api/random/spawn-state/) | 새 생성기 `n`개 | 서로도, 원래 생성기와도 겹치지 않는 독립된 수열 |
+| `copy.copy(rng)` | 새 생성기 | 원래 생성기와 **같은 위치에서 같은 수열**을 이어 가요 |
+
+- 서로 다른 난수가 필요하면 `spawn`이나 서로 다른 시드를 써요. `spawn`은 시드 하나만 기록하면 되고, 시드끼리 우연히 겹칠 걱정이 없어요.
+- `copy.copy`는 "지금 이 순간의 생성기를 저장해 두었다가 같은 난수를 다시 얻고 싶을 때" 써요. 독립된 생성기가 필요한 자리에 쓰면 같은 난수가 두 번 나와요.
+
+## numpy를 아는 분께
+
+- 시드를 해석하는 방식은 numpy의 `default_rng`와 같아요. 정수와 정수의 시퀀스를 받고, 이웃한 시드도 무관한 수열을 내며, 끝에 붙은 0이 구별되지 않는 것도 같아요.
+- **그래도 값은 numpy와 달라요.** 생성기의 종류가 달라서 `sd.random.default_rng(42).random()`은 `0.4513007976393718`, `np.random.default_rng(42).random()`은 `0.7739560485559633`이에요.
+- numpy의 `SeedSequence`, `BitGenerator`, numpy `Generator`는 시드로 받지 않아요. stardust의 Generator만 그대로 돌려줘요.
+- `seed`는 자리로만 넘겨요. numpy처럼 `default_rng(seed=42)`라고 쓸 수 없어요.
+- `np.random.seed`처럼 전역 시드를 정하는 함수는 없어요. 시드는 언제나 생성기마다 따로예요.

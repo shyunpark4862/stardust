@@ -42,6 +42,7 @@ const groupOrder: Record<string, string[]> = {
     '설정',
   ],
   linalg: ['기본 개념', '곱과 거듭제곱', '노름과 지표', '선형 시스템', '특수 구조', '분해', '행렬 함수'],
+  random: ['기본 개념', '생성기', '난수 뽑기'],
 };
 
 export function areaOf(key: string) {
@@ -52,9 +53,15 @@ export function hrefOf(entry: ApiEntry): string {
   return entryHref('api', entry);
 }
 
-/** A page that documents exactly one function shows its name in the code font. */
+/**
+ * A page that documents exactly one function shows its name in the code font.
+ * A method page (e.g. rng.random) lists no public names of its own but is
+ * titled by the method name, so it counts too.
+ */
 export function isSingle(entry: ApiEntry): boolean {
-  return entry.data.kind === 'function' && entry.data.names.length === 1;
+  const { kind, names, title } = entry.data;
+  if (kind !== 'function') return false;
+  return names.length === 1 || (names.length === 0 && /^[A-Za-z_][\w.]*$/.test(title));
 }
 
 /** An area's pages, grouped and ordered. */

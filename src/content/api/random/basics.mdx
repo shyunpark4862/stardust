@@ -1,0 +1,333 @@
+---
+kind: concept
+title: 난수의 기본
+group: 기본 개념
+order: 1
+summary: 컴퓨터가 만드는 난수가 무엇인지, 시드가 왜 필요한지, sd.random이 난수를 어떤 방식으로 나눠 주는지 설명해요. 결과의 모양과 종류처럼 난수 기능이 모두 함께 따르는 약속도 여기에 있어요.
+seeAlso: [default_rng, generator, spawn-state, random, integers, choice, permutation]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+
+## 한눈에 보기
+
+`sd.random`은 **난수(무작위로 고른 수)**를 만드는 곳이에요. 주사위를 던지거나, 제비를 뽑거나, 데이터를 무작위로 섞거나, 시뮬레이션에 쓸 값을 마구 고르고 싶을 때 써요.
+
+쓰는 방법은 언제나 같아요. 먼저 [`default_rng`](/api/random/default_rng/)로 **생성기**(난수를 만들어 주는 객체)를 하나 만들고, 그 생성기의 메서드로 난수를 받아요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(42)
+>>> rng.random()
+0.4513007976393718
+>>> rng.integers(1, 7, shape=10)
+array([4, 5, 5, 1, 1, 2, 6, 2, 4, 2], dtype=int64)
+>>> rng.choice(sd.asarray([10, 20, 30]))
+30
+```
+
+- `rng.random()`은 0 이상 1 미만의 실수를 하나 줘요.
+- `rng.integers(1, 7, shape=10)`은 1 이상 7 미만의 정수를 10개 줘요. 주사위를 열 번 던진 것과 같아요.
+- `rng.choice(...)`는 배열의 원소 가운데 하나를 골라요.
+
+`default_rng(42)`의 `42`는 **시드**예요. 시드가 무엇이고 왜 넣는지가 이 페이지의 첫 번째 주제예요. 그다음에는 `sd.random`의 기능이 **모두 함께 따르는 약속**을 설명해요. 각 기능의 문서는 이 약속을 짧게만 언급해요.
+
+## 의사난수와 시드
+
+### 컴퓨터의 난수는 계산으로 만들어요
+
+컴퓨터는 정해진 계산만 해요. 동전을 던지듯 정말로 예측할 수 없는 일을 스스로 만들어 내지는 못해요. 그래서 프로그램이 쓰는 난수는 **정해진 규칙으로 계산하지만, 결과를 보면 아무 규칙도 없어 보이는 수**예요. 이런 수를 **의사난수**(pseudo-random number, "난수처럼 보이는 수")라고 불러요.
+
+의사난수는 긴 수열로 생각하면 쉬워요. 규칙은 출발점 하나를 받아서 그 뒤로 끝없이 이어지는 수열을 만들어요. 수열 안의 수들은 서로 아무 관계가 없어 보이고, 고르게 퍼져 있어요. 생성기는 이 수열의 앞에서부터 차례로 수를 꺼내 줘요.
+
+이 출발점을 정하는 수가 **시드**(seed, 씨앗)예요. 같은 씨앗을 심으면 같은 나무가 자라듯, **같은 시드로 만든 생성기는 언제나 같은 수열을 내요.**
+
+```python
+>>> sd.random.default_rng(42).random(3)
+array([0.4513007976393718, 0.5280337747949365, 0.794826025358168], dtype=float64)
+>>> sd.random.default_rng(42).random(3)
+array([0.4513007976393718, 0.5280337747949365, 0.794826025358168], dtype=float64)
+>>> sd.random.default_rng(7).random(3)
+array([ 0.604379713042429, 0.3483805860073663, 0.9766458690164233], dtype=float64)
+```
+
+시드가 42인 생성기는 두 번 만들어도 같은 세 수를 내요. 시드를 7로 바꾸면 전혀 다른 수가 나와요. 오늘 실행해도, 내일 다른 컴퓨터에서 실행해도 시드 42의 첫 수는 `0.4513007976393718`이에요.
+
+시드를 주지 않으면 운영체제가 모아 둔 예측할 수 없는 값(키보드·네트워크 같은 하드웨어의 잡음에서 얻은 값)으로 출발점을 정해요. 그래서 **실행할 때마다 다른 수열**이 나와요.
+
+```python
+>>> a = sd.random.default_rng().random()
+>>> b = sd.random.default_rng().random()
+>>> a == b
+False
+```
+
+### 재현성이 왜 중요한가요
+
+같은 코드를 다시 돌렸을 때 같은 결과가 나오는 성질을 **재현성**이라고 해요. 난수를 쓰는 코드에서 재현성은 시드로 얻어요.
+
+- **버그를 다시 볼 수 있어요.** 무작위 데이터에서만 가끔 나는 버그는, 그때의 시드를 알면 몇 번이고 똑같이 다시 만들 수 있어요.
+- **실험을 비교할 수 있어요.** 방법 A와 B를 같은 시드의 데이터로 돌리면, 결과의 차이가 데이터의 우연이 아니라 방법의 차이라고 말할 수 있어요.
+- **남이 확인할 수 있어요.** 시드를 함께 적어 두면 다른 사람이 같은 숫자를 얻어서 결과를 검증할 수 있어요.
+- **테스트를 `==`로 쓸 수 있어요.** 시드를 고정하면 난수를 쓰는 함수도 언제나 같은 값을 돌려주니까, 저장해 둔 값과 정확히 비교할 수 있어요.
+
+그래서 결과를 남기거나 남에게 보여 줄 코드에는 시드를 넣어 두는 것이 좋아요. 이 사이트의 예제도 모두 시드를 넣어서, 여러분이 실행해도 같은 출력이 나와요.
+
+## 난수는 언제나 생성기에서 받아요
+
+`sd.random`에는 난수를 바로 돌려주는 모듈 함수가 없어요. `sd.random.random(3)`처럼 부를 수 없고, 프로그램 전체가 함께 쓰는 숨은 생성기(전역 상태)도 없어요. 난수는 **언제나 직접 만든 생성기에서** 받아요.
+
+```python
+>>> sd.random.random(3)
+Traceback (most recent call last):
+    ...
+AttributeError: module 'stardust.random' has no attribute 'random'. Did you mean '.Generator.random' instead of '.random'?
+```
+
+모듈 안에 있는 것은 생성기를 만드는 [`default_rng`](/api/random/default_rng/)와 생성기의 타입 [`Generator`](/api/random/generator/) 두 가지뿐이에요. 이렇게 한 이유는 이래요.
+
+- **난수가 어디서 오는지 코드에 보여요.** 함수가 난수를 쓰려면 생성기를 인자로 받아야 해요. 함수의 인자만 봐도 "이 함수는 난수를 쓴다"는 것이 드러나요.
+- **남의 코드가 내 수열을 흐트러뜨리지 않아요.** 프로그램 전체가 생성기 하나를 함께 쓰면, 내가 부른 라이브러리가 중간에 난수를 몇 개 가져가는 것만으로 내 결과가 달라져요. 생성기를 각자 가지면 그런 일이 없어요.
+- **시드가 한곳에 모여요.** 생성기를 만드는 줄 하나만 보면 이 계산의 시드를 알 수 있어요.
+
+난수를 쓰는 함수는 생성기를 인자로 받게 만들면 돼요.
+
+```python
+>>> def roll_dice(rng, n):
+...     return rng.integers(1, 7, shape=n)
+>>> rng = sd.random.default_rng(42)
+>>> roll_dice(rng, 5)
+array([3, 4, 5, 5, 1], dtype=int64)
+>>> roll_dice(rng, 5)
+array([1, 2, 6, 2, 4], dtype=int64)
+```
+
+두 번째 호출은 첫 번째와 다른 다섯 개를 줘요. 생성기가 수열에서 어디까지 꺼냈는지 기억하기 때문이에요. 함수가 시드도 받고 생성기도 받게 만드는 요령은 [default_rng](/api/random/default_rng/)에 있어요.
+
+## 생성기는 수열 위의 위치를 기억해요
+
+생성기는 자기 수열에서 **지금 어디까지 꺼냈는지**를 기억해요. 메서드를 부를 때마다 그 위치부터 필요한 만큼 꺼내고, 위치를 그만큼 옮겨요. 어느 메서드를 부르든 같은 수열을 이어서 써요.
+
+그래서 **한 번에 다섯 개를 뽑든, 두 개와 세 개로 나눠 뽑든 같은 값**이 나와요.
+
+```python
+>>> sd.random.default_rng(42).random(5)
+array([ 0.4513007976393718,  0.5280337747949365,   0.794826025358168,
+        0.7675771890620597, 0.08607763073528474], dtype=float64)
+>>> rng = sd.random.default_rng(42)
+>>> rng.random(2)
+array([0.4513007976393718, 0.5280337747949365], dtype=float64)
+>>> rng.random(3)
+array([  0.794826025358168,  0.7675771890620597, 0.08607763073528474], dtype=float64)
+```
+
+<Fig column caption="시드 42의 수열(소수 둘째 자리까지)이에요. 한 번에 다섯 개를 꺼내든, 두 개를 꺼낸 다음 세 개를 이어서 꺼내든 같은 자리의 값을 받아요.">
+  <FigRow>
+    <ArrayFig name="수열의 위치" data={[0, 1, 2, 3, 4, 5, 6, 7]} tones={['m', 'm', 'm', 'm', 'm', 'm', 'm', 'm']} />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="random(5)" data={['0.45', '0.53', '0.79', '0.77', '0.09', '0.14', '0.27', '0.87']} tones={['a', 'a', 'a', 'a', 'a', 'g', 'g', 'g']} note="한 번에 다섯 개" />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="random(2) 다음 random(3)" data={['0.45', '0.53', '0.79', '0.77', '0.09', '0.14', '0.27', '0.87']} tones={['a', 'a', 'b', 'b', 'b', 'g', 'g', 'g']} note="두 개, 이어서 세 개" />
+  </FigRow>
+</Fig>
+
+이 성질 덕분에 큰 표본을 여러 조각으로 나눠 만들어도 결과가 같아요. 메모리가 모자라서 백만 개를 십만 개씩 열 번 뽑아도, 한 번에 백만 개를 뽑은 것과 같은 값이에요.
+
+위치를 알아내거나, 저장해 두었다가 되돌리거나, 독립된 생성기 여러 개로 나누는 방법은 [생성기 나누기와 상태](/api/random/spawn-state/)에서 다뤄요.
+
+## 스레드 수와 상관없이 같아요
+
+stardust는 원소가 많은 난수 배열을 만들 때 일을 나눠 여러 코어가 동시에 계산해요. 그래도 **같은 시드면 [스레드 수](/api/array/threads/)를 몇으로 정하든 비트 하나까지 같은 값**이 나와요.
+
+```python
+>>> default = sd.get_num_threads()
+>>> results = []
+>>> for n in [1, 2, 8]:
+...     sd.set_num_threads(n)
+...     results.append(sd.random.default_rng(42).random(1_000_000))
+>>> sd.set_num_threads(default)
+>>> sd.all(results[0] == results[1]), sd.all(results[0] == results[2])
+(True, True)
+```
+
+코어 수가 다른 컴퓨터에서 실행해도, 나중에 스레드 수를 바꿔도 같은 시드는 같은 결과를 줘요. 스레드 수는 빠르기만 바꿔요.
+
+여러 Python 스레드가 생성기 **하나를 함께** 쓰는 경우는 이야기가 달라요. 값이 깨지지는 않지만 어느 스레드가 어느 값을 받는지는 실행 순서에 따라 달라져요. [Generator](/api/random/generator/)에서 자세히 설명해요.
+
+## 비슷한 시드도 서로 무관한 수열을 내요
+
+시드 0, 1, 2처럼 이웃한 시드로 만든 생성기도 **서로 아무 관계가 없는 수열**을 내요. 시드를 그대로 출발점으로 쓰지 않고, 먼저 고루 뒤섞어서 출발점을 만들기 때문이에요. 시드가 1만 달라도 출발점은 완전히 다른 곳이 돼요.
+
+```python
+>>> sd.random.default_rng(0).random(3)
+array([ 0.6861121579458175,  0.5625922809380222, 0.43239533440406797], dtype=float64)
+>>> sd.random.default_rng(1).random(3)
+array([0.09551019029449048, 0.28028699622055075, 0.37536262264203024], dtype=float64)
+>>> sd.random.default_rng(2).random(3)
+array([ 0.8187970536556359, 0.49867513587084544,  0.5976133527813063], dtype=float64)
+```
+
+그래서 실험을 여러 번 돌릴 때 시드를 0, 1, 2, …로 바꿔 가며 써도 괜찮아요. 하나의 시드에서 독립된 생성기를 여러 개 얻고 싶다면 [spawn](/api/random/spawn-state/)을 쓰는 방법도 있어요.
+
+## 결과의 모양: `shape`
+
+난수를 여러 개 받을 때는 `shape`으로 결과 배열의 [모양](/api/array/basics/)을 정해요. `shape`을 받는 메서드(`random`, `integers`, `choice`)는 모두 같은 규칙을 따라요.
+
+| `shape` | 결과 |
+|:---:|---|
+| `None`(생략) | 배열이 아니라 **Python 숫자 하나**(`float` 또는 `int`) |
+| 정수 `n` | 길이 `n`인 1차원 배열 |
+| 정수의 튜플 `(2, 3)` | 그 모양의 배열 |
+
+```python
+>>> rng = sd.random.default_rng(42)
+>>> rng.random()
+0.4513007976393718
+>>> type(rng.integers(10))
+<class 'int'>
+>>> rng.random(3)
+array([ 0.794826025358168, 0.7675771890620597, 0.08607763073528474], dtype=float64)
+>>> rng.integers(10, shape=(2, 3))
+array([[1, 2, 8],
+       [1, 5, 3]], dtype=int64)
+```
+
+몇 가지를 기억해 두세요.
+
+- `shape=1`은 숫자가 아니라 **원소가 하나인 배열**이에요. 숫자 하나가 필요하면 `shape`을 생략해요.
+- 길이가 0인 축도 돼요. 결과는 빈 배열이에요.
+- 모양은 정수나 정수의 **튜플**로만 줘요. 리스트는 받지 않아요.
+- stardust에는 [0차원 배열이 없어서](/api/array/basics/) `shape=()`는 에러예요.
+
+```python
+>>> rng.random(1)
+array([0.8362997087202262], dtype=float64)
+>>> rng.random(0)
+array([], dtype=float64)
+>>> rng.random([2, 3])
+Traceback (most recent call last):
+    ...
+TypeError: random(): 'shape' must be an int or a tuple of ints, not list
+>>> rng.random(())
+Traceback (most recent call last):
+    ...
+ValueError: 0-dimensional arrays are not supported (stardust has no 0-d arrays)
+```
+
+`random`은 `shape`을 자리로 넘기고(`rng.random(3)`), `integers`와 `choice`는 이름을 붙여 넘겨요(`shape=3`). `integers`와 `choice`는 앞자리에 범위나 고를 대상을 받기 때문이에요. [`integers`](/api/random/integers/)에서 범위를 배열로 주면 `shape`을 생략해도 그 배열의 모양으로 결과가 나와요.
+
+## 결과의 종류(dtype)
+
+결과 배열의 원소 종류는 메서드마다 정해져 있어요. 실수는 [float64](/api/array/dtypes/), 정수는 int64예요.
+
+| 메서드 | 결과의 종류 | `shape`을 생략하면 |
+|---|:---:|:---:|
+| [`random`](/api/random/random/) | float64 | `float` |
+| [`integers`](/api/random/integers/) | int64 | `int` |
+| [`choice`](/api/random/choice/)`(n)` (정수에서 고르기) | int64 | `int` |
+| [`choice`](/api/random/choice/)`(a)` (배열에서 고르기) | `a`와 같은 종류 | `a`의 원소와 같은 종류의 Python 숫자 |
+| [`permutation`](/api/random/permutation/)`(n)` | int64 | (언제나 배열) |
+| [`permutation`](/api/random/permutation/)`(x)` | `x`와 같은 종류 | (언제나 배열) |
+
+```python
+>>> rng = sd.random.default_rng(42)
+>>> rng.random(2).dtype
+float64
+>>> rng.integers(5, shape=2).dtype
+int64
+>>> rng.choice(sd.asarray([1.5, 2.5, 3.5]))
+1.5
+```
+
+## 균등분포와 치우침
+
+### 모든 값이 똑같이 나올 수 있어요
+
+`random`과 `integers`가 주는 난수는 **균등분포**를 따라요. 정해진 범위 안의 모든 값이 **똑같은 가능성으로** 나온다는 뜻이에요. 주사위의 여섯 면이 모두 1/6의 확률로 나오는 것과 같아요.
+
+하나하나는 예측할 수 없지만, 많이 모으면 고르게 퍼진 모양이 드러나요. 0 이상 1 미만의 수를 백만 개 뽑아 평균을 내면 가운데인 0.5에 가까워요.
+
+```python
+>>> x = sd.random.default_rng(42).random(1_000_000)
+>>> round(float(sd.mean(x)), 2)
+0.5
+>>> float(sd.min(x)) >= 0.0, float(sd.max(x)) < 1.0
+(True, True)
+```
+
+주사위를 6만 번 던지면 면마다 대략 1만 번씩 나와요. 아래는 0부터 5까지의 정수를 6만 개 뽑아 [`bincount`](/api/array/bincount/)로 센 결과예요.
+
+```python
+>>> dice = sd.random.default_rng(42).integers(0, 6, shape=60_000)
+>>> sd.bincount(dice)
+array([10100, 10075,  9864, 10002,  9963,  9996], dtype=int64)
+```
+
+정확히 1만 번씩은 아니지만, 그 차이는 우연에서 오는 흔들림이에요. 던지는 횟수를 늘릴수록 비율은 1/6에 더 가까워져요.
+
+### 치우침이 없어요
+
+어떤 값이 다른 값보다 조금이라도 더 자주 나오는 것을 **치우침**(bias)이라고 해요. 직접 난수를 다루다 보면 의외로 쉽게 치우침이 생겨요. 예를 들어 0부터 9까지 고르게 나오는 수를 3으로 나눈 나머지로 0, 1, 2를 만들면, 0은 0·3·6·9의 네 경우에서 나오고 1과 2는 세 경우에서만 나와서 0이 더 자주 나와요.
+
+`integers`와 `choice`는 이런 치우침이 없도록 만들어져 있어요. 범위가 아무리 크거나 어중간해도 각 값이 나올 가능성은 정확히 같아요. 정수 난수가 필요하면 `random`의 결과를 곱하고 자르기보다 [`integers`](/api/random/integers/)를 쓰세요.
+
+### 다른 모양의 분포
+
+정규분포처럼 가운데가 높고 양쪽으로 갈수록 드물어지는 분포의 난수는 `sd.random`이 아니라 `sd.stats`에 있는 각 분포가 만들어요. 그때도 생성기를 넘겨서 난수를 받아요. `sd.random`은 균등한 난수와 고르기·섞기만 맡아요.
+
+## 무엇이 들어 있나요
+
+| 하고 싶은 일 | 쓰는 것 | 예 |
+|---|---|---|
+| 생성기를 만들어요 | [`default_rng`](/api/random/default_rng/) | `rng = sd.random.default_rng(42)` |
+| 생성기 객체에 대해 알고 싶어요 | [`Generator`](/api/random/generator/) | 메서드 목록, 복사, 여러 스레드에서 쓰기 |
+| 독립된 생성기로 나누거나 상태를 저장해요 | [생성기 나누기와 상태](/api/random/spawn-state/) | `rng.spawn(4)`, `rng.state` |
+| 0 이상 1 미만의 실수 | [`random`](/api/random/random/) | `rng.random(5)` |
+| 범위 안의 정수 | [`integers`](/api/random/integers/) | `rng.integers(1, 7, shape=10)` |
+| 배열의 원소 가운데 몇 개를 골라요 | [`choice`](/api/random/choice/) | `rng.choice(names, shape=3, replace=False)` |
+| 순서를 무작위로 섞어요 | [`permutation`](/api/random/permutation/) | `rng.permutation(x)` |
+
+`random`, `integers`, `choice`는 비슷해 보이지만 고르는 대상이 달라요.
+
+| 메서드 | 무엇에서 고르나요 | 이럴 때 써요 |
+|---|---|---|
+| `random` | 0 이상 1 미만의 실수 전체 | 확률(`rng.random() < 0.3`이면 30%), 실수 값이 필요한 시뮬레이션 |
+| `integers` | 두 정수 사이의 정수 | 주사위, 무작위 인덱스, 정수 범위의 값 |
+| `choice` | 내가 준 배열의 원소 | 목록에서 뽑기, 확률이 서로 다른 선택, 겹치지 않게 뽑기 |
+
+## 조심할 점
+
+### 시드 없는 생성기의 결과는 다시 만들 수 없어요
+
+`default_rng()`처럼 시드를 주지 않으면 그때의 수열을 나중에 다시 얻을 방법이 없어요. 결과를 남겨야 하는 계산이라면 처음부터 시드를 정해 두세요. 시드를 무작위로 고르고 싶다면 그 시드를 먼저 만들어 기록한 다음 생성기에 넣으면 돼요. 방법은 [default_rng](/api/random/default_rng/)에 있어요.
+
+### 같은 시드로 만든 생성기는 같은 난수를 내요
+
+같은 시드로 생성기를 두 개 만들면 둘은 **똑같은 수열**을 내요. "서로 다른 무작위 데이터 두 벌"이 필요한 자리에서 이렇게 하면 두 벌이 똑같아져요.
+
+```python
+>>> a = sd.random.default_rng(42)
+>>> b = sd.random.default_rng(42)
+>>> a.random(3) == b.random(3)
+array([True, True, True], dtype=bool)
+```
+
+서로 독립된 생성기가 필요하면 생성기 하나에서 [`spawn`](/api/random/spawn-state/)으로 나누세요. 생성기를 `copy.copy`로 복사해도 같은 함정에 빠져요. 복사본은 원본과 같은 위치에서 같은 수열을 이어 가요.
+
+<Callout type="warn" title="비밀번호나 인증 토큰에는 쓰지 마세요">
+
+`sd.random`의 난수는 시뮬레이션과 데이터 분석을 위한 것이에요. 수열이 규칙으로 정해지므로, 남이 값을 추측하면 안 되는 비밀번호·인증 토큰·암호 키에는 Python 표준 라이브러리의 `secrets` 모듈을 쓰세요.
+
+</Callout>
+
+## numpy를 아는 분께
+
+- **전역 함수와 전역 상태가 없어요.** `np.random.rand`, `np.random.seed`, `np.random.randint` 같은 모듈 함수에 해당하는 것이 없고, 언제나 `default_rng`로 만든 Generator에서 받아요.
+- **같은 시드라도 numpy와 값이 달라요.** 시드를 해석하는 방식은 numpy의 `default_rng`와 같지만 생성기의 종류가 달라서, `sd.random.default_rng(42).random()`과 `np.random.default_rng(42).random()`은 다른 수예요. numpy로 만든 결과를 stardust로 그대로 다시 만들 수는 없어요.
+- **numpy가 보장하지 않는 것을 보장해요.** 결과가 스레드 수와 상관없고, 한 호출을 둘로 나눠 불러도 앞의 값이 같아요.
+- `size=` 대신 **`shape`**이에요. `random`에서는 자리로만(`rng.random(3)`), `integers`·`choice`에서는 이름으로만(`shape=3`) 넘겨요. 생략하면 numpy 스칼라(`np.float64`)가 아니라 Python `float`·`int`를 돌려줘요.
+- 메서드는 `random`, `integers`, `choice`, `permutation`, `spawn`과 속성 `state`뿐이에요. `normal`, `uniform`, `exponential` 같은 분포 메서드는 없고, 분포의 난수는 `sd.stats`의 분포가 맡아요. 제자리에서 섞는 `shuffle`도 없어요([permutation](/api/random/permutation/) 참고).
