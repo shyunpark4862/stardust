@@ -1,6 +1,6 @@
 # 난수 영역 설계 (sd.random)
 
-> 상태: **T3 구현 중** (2026-11-15). 결정은 §1(R1–R10).
+> 상태: **T3 완료·승인** (2026-11-15). 결정은 §1(R1–R11).
 
 `sd.random`은 난수의 바탕이다. 분포별 표본은 여기가 아니라 `sd.stats`의 각 분포(`X.sample(shape, rng=rng)`, [stats.md](stats.md) §4)에 있다.
 
@@ -22,6 +22,7 @@
 | R8 공유 | 한 Generator를 여러 Python 스레드가 함께 쓰면 호출마다 자기 구간을 원자적으로 예약한다. 깨지지 않고 같은 난수를 두 번 쓰지 않지만, 어느 스레드가 어느 구간을 받는지는 실행 순서에 따른다. 재현하려면 스레드마다 `spawn` |
 | R9 섞기 | `shuffle` 없이 `permutation`만. stardust에는 인자를 제자리에서 바꾸는 함수가 없다(값을 바꾸는 것은 `out=`, `+=`, 인덱스 대입). 제자리가 필요하면 `x[...] = rng.permutation(x)`. 방법은 재서 정하고, 결과는 스레드 수와 무관하다 |
 | R10 인자 | `integers`의 `low`·`high`는 int 또는 int64 배열이고 `shape`와 함께 브로드캐스트한다(numpy와 같은 규칙). `choice`의 `p`는 음수·NaN이 없고 합이 1에서 sqrt(eps) 안이어야 하며(numpy와 같다), 합으로 나눠 쓴다 |
+| R11 기본값 (T3 승인, 2026-11-15) | `integers`의 `shape=None`은 `low`·`high`를 브로드캐스트한 모양이다(둘 다 스칼라면 Python `int`). `default_rng`에 Generator를 주면 같은 객체를 그대로 돌려준다: 시드든 Generator든 `rng = sd.random.default_rng(rng)` 한 줄로 받고, 넘긴 생성기의 상태가 그대로 이어진다(복사본을 주면 같은 난수가 반복된다) |
 
 ## 2. 생성기 (`csrc/random/philox.hpp`)
 - **Philox4×64-10** (Salmon et al., "Parallel random numbers: as easy as 1, 2, 3", SC 2011; Random123). 키(128비트)와 계수기(256비트)에서 64비트 넷을 만드는 함수다. 상태가 없어서 어느 계수기 값이든 바로 계산된다.

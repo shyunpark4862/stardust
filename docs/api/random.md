@@ -1,6 +1,6 @@
 # sd.random API
 
-> 상태: **T3 구현** (2026-11-15). 결정과 내부 구조는 [docs/design/random.md](../design/random.md) (R1–R10).
+> 상태: **T3 완료·승인** (2026-11-15). 결정과 내부 구조는 [docs/design/random.md](../design/random.md) (R1–R11).
 
 ## §1. Generator
 ```
