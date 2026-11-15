@@ -3,6 +3,7 @@ import mdx from '@astrojs/mdx';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
+import { rehypeHeadingIds } from '@astrojs/markdown-remark';
 
 /** Removes the first `count` characters of a highlighted line. */
 function stripPrefix(line, count) {
@@ -41,6 +42,40 @@ const replTransformer = {
   },
 };
 
+/**
+ * Headings that contain math: records, per heading id, the heading as a list
+ * of text and TeX pieces (frontmatter `headingParts`), so the table of
+ * contents can draw the formula instead of its source. It runs after the
+ * heading ids exist and before KaTeX replaces the math nodes; from then on a
+ * heading's plain text would hold every formula three times (MathML, TeX
+ * annotation, HTML).
+ */
+function rehypeHeadingMath() {
+  const isMath = (n) => n.type === 'element' && (n.properties?.className ?? []).includes('language-math');
+  const textOf = (n) => (n.type === 'text' ? n.value : (n.children ?? []).map(textOf).join(''));
+  const partsOf = (n, out) => {
+    for (const c of n.children ?? []) {
+      if (isMath(c)) out.push({ tex: textOf(c) });
+      else if (c.type === 'text') out.push({ text: c.value });
+      else partsOf(c, out);
+    }
+    return out;
+  };
+  const walk = (n, found) => {
+    if (n.type === 'element' && /^h[2-4]$/.test(n.tagName) && n.properties?.id) {
+      const parts = partsOf(n, []);
+      if (parts.some((p) => p.tex !== undefined)) found[n.properties.id] = parts;
+      return;
+    }
+    for (const c of n.children ?? []) walk(c, found);
+  };
+  return (tree, file) => {
+    const found = {};
+    walk(tree, found);
+    if (Object.keys(found).length > 0) file.data.astro.frontmatter.headingParts = found;
+  };
+}
+
 export default defineConfig({
   integrations: [mdx()],
   markdown: {
@@ -50,7 +85,9 @@ export default defineConfig({
     gfm: false,
     // $...$ and $$...$$ render as math (KaTeX) in Markdown and MDX.
     remarkPlugins: [[remarkGfm, { singleTilde: false }], remarkMath],
-    rehypePlugins: [rehypeKatex],
+    // Ids first, so a heading's id and text come from its TeX source, not
+    // from KaTeX's output.
+    rehypePlugins: [rehypeHeadingIds, rehypeHeadingMath, rehypeKatex],
     shikiConfig: { theme: 'github-light', wrap: false, transformers: [replTransformer] },
   },
 });

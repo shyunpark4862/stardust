@@ -230,16 +230,43 @@
   }
 }
 
-/* Math (KaTeX): display formulas scroll on their own instead of the page. */
+/* Math (KaTeX). */
 .prose .katex {
   font-size: 1.05em;
 }
-
+/* Korean inside a formula (\text{...}) is set in the body font, not in the
+   serif fallback of the math font. */
+.katex .hangul_fallback {
+  font-family: var(--font-sans);
+  font-size: 0.92em;
+  letter-spacing: var(--tracking-tight);
+}
+/* A display formula that is wider than the column is first scaled down to
+   fit (--math-fit, set by the script in Docs.astro); one that would get too
+   small keeps a readable size and scrolls on its own instead of the page. */
 .prose .katex-display {
   margin-block: var(--space-6);
   padding-block: var(--space-2);
   overflow-x: auto;
   overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+.prose .katex-display > .katex {
+  font-size: calc(1.1em * var(--math-fit, 1));
+}
+.prose .katex-display.is-scrolling {
+  /* Left-aligned, so the start of the formula is what shows. */
+  text-align: left;
+  padding-bottom: var(--space-3);
+}
+.prose .katex-display.is-scrolling > .katex {
+  text-align: left;
+}
+/* Formulas inside a table cell or a list stay closer to the text. */
+.prose li > .katex-display,
+.prose td .katex-display {
+  margin-block: var(--space-4);
 }
 
 /* Cells that list several lines (<br />) need room for inline code chips. */

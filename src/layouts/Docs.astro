@@ -1,6 +1,7 @@
 ---
 import Base from './Base.astro';
 import Badge from '../components/Badge.astro';
+import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import '../styles/prose.css';
 import { inlineHtml, plainText } from '../data/inline';
@@ -10,7 +11,15 @@ interface Heading {
   depth: number;
   slug: string;
   text: string;
+  /** A heading with math, as text and TeX pieces (see rehypeHeadingMath). */
+  parts?: { text?: string; tex?: string }[];
 }
+/** A heading's label in the table of contents, with its formulas drawn. */
+const escapeHtml = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const tocLabel = (h: Heading) =>
+  (h.parts ?? [])
+    .map((p) => (p.tex === undefined ? escapeHtml(p.text ?? '') : katex.renderToString(p.tex, { output: 'html', throwOnError: false })))
+    .join('');
 interface Props {
   frontmatter?: { title: string; description?: string; section: string; sample?: boolean };
   headings?: Heading[];
@@ -183,12 +192,12 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
             <ul class="toc__list">
               {toc.map(({ h, sub }) => (
                 <li class="toc__item">
-                  <a class="toc__link" href={`#${h.slug}`}>{h.text}</a>
+                  {h.parts ? <a class="toc__link" href={`#${h.slug}`} set:html={tocLabel(h)} /> : <a class="toc__link" href={`#${h.slug}`}>{h.text}</a>}
                   {sub.length > 0 && (
                     <ul class="toc__sub">
                       {sub.map((c) => (
                         <li>
-                          <a class="toc__link toc__link--sub" href={`#${c.slug}`}>{c.text}</a>
+                          {c.parts ? <a class="toc__link toc__link--sub" href={`#${c.slug}`} set:html={tocLabel(c)} /> : <a class="toc__link toc__link--sub" href={`#${c.slug}`}>{c.text}</a>}
                         </li>
                       ))}
                     </ul>
@@ -213,6 +222,32 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
     </svg>
   </a>
 </Base>
+
+<script>
+  // Display formulas wider than the text column: scale each one down until
+  // it fits, but never below MIN (smaller than that is hard to read); those
+  // keep MIN and scroll sideways.
+  const MIN = 0.72;
+  const fitMath = () =>
+    document.querySelectorAll<HTMLElement>('.prose .katex-display').forEach((box) => {
+      box.style.removeProperty('--math-fit');
+      box.classList.remove('is-scrolling');
+      const room = box.clientWidth;
+      const need = box.scrollWidth;
+      if (need <= room + 1) return;
+      const fit = Math.max(MIN, Math.floor((room / need) * 985) / 1000);
+      box.style.setProperty('--math-fit', String(fit));
+      if (box.scrollWidth > box.clientWidth + 1) box.classList.add('is-scrolling');
+    });
+  fitMath();
+  document.fonts?.ready.then(fitMath);
+  let mathWidth = innerWidth;
+  addEventListener('resize', () => {
+    if (innerWidth === mathWidth) return;
+    mathWidth = innerWidth;
+    fitMath();
+  });
+</script>
 
 <script>
   // Back to top: the floating button appears once the reader is well into

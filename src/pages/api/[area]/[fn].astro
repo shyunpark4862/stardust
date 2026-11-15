@@ -18,7 +18,10 @@ export async function getStaticPaths() {
 const { entry } = Astro.props;
 const { area } = Astro.params;
 const { data } = entry;
-const { Content, headings: bodyHeadings } = await render(entry);
+const { Content, headings: rawHeadings, remarkPluginFrontmatter } = await render(entry);
+// Headings with math carry their text and TeX pieces for the table of contents.
+const headingParts = remarkPluginFrontmatter.headingParts ?? {};
+const bodyHeadings = rawHeadings.map((h) => ({ ...h, parts: headingParts[h.slug] }));
 
 // Neighbours inside the area, in sidebar order.
 const ordered = (await groupsOf(area)).flatMap((g) => g.entries);
