@@ -1,8 +1,7 @@
 ---
 import Base from './Base.astro';
 import Badge from '../components/Badge.astro';
-import katex from 'katex';
-import 'katex/dist/katex.min.css';
+import { mathCss, renderTex } from '../lib/mathjax.mjs';
 import '../styles/prose.css';
 import { inlineHtml, plainText } from '../data/inline';
 import { sidebars, topNav, type AreaNav, type Crumb, type NavGroup } from '../data/nav';
@@ -16,10 +15,8 @@ interface Heading {
 }
 /** A heading's label in the table of contents, with its formulas drawn. */
 const escapeHtml = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-const tocLabel = (h: Heading) =>
-  (h.parts ?? [])
-    .map((p) => (p.tex === undefined ? escapeHtml(p.text ?? '') : katex.renderToString(p.tex, { output: 'html', throwOnError: false })))
-    .join('');
+const tocLabel = async (h: Heading) =>
+  (await Promise.all((h.parts ?? []).map((p) => (p.tex === undefined ? escapeHtml(p.text ?? '') : renderTex(p.tex))))).join('');
 interface Props {
   frontmatter?: { title: string; description?: string; section: string; sample?: boolean };
   headings?: Heading[];
@@ -41,6 +38,8 @@ const { title, description, section, sample = false } = fm;
 const groups = Astro.props.groups ?? sidebars[section] ?? [];
 const { area, monoTitle = false } = Astro.props;
 // Table of contents as a tree: each h2 with the h3s under it.
+const labels = new Map<string, string>();
+for (const h of Astro.props.headings ?? []) if (h.parts) labels.set(h.slug, await tocLabel(h));
 const toc: { h: Heading; sub: Heading[] }[] = [];
 for (const h of Astro.props.headings ?? []) {
   if (h.depth === 2) toc.push({ h, sub: [] });
@@ -53,6 +52,7 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
 ---
 
 <Base title={title} description={description && plainText(description)}>
+  <Fragment set:html={`<style>${mathCss()}</style>`} />
   <div class:list={['container', 'docs', toc.length === 0 && 'docs--wide']}>
     <aside class="docs__side">
       <button class="side-toggle" type="button" aria-expanded="false" aria-controls="side-nav">
@@ -192,12 +192,12 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
             <ul class="toc__list">
               {toc.map(({ h, sub }) => (
                 <li class="toc__item">
-                  {h.parts ? <a class="toc__link" href={`#${h.slug}`} set:html={tocLabel(h)} /> : <a class="toc__link" href={`#${h.slug}`}>{h.text}</a>}
+                  {h.parts ? <a class="toc__link" href={`#${h.slug}`} set:html={labels.get(h.slug)} /> : <a class="toc__link" href={`#${h.slug}`}>{h.text}</a>}
                   {sub.length > 0 && (
                     <ul class="toc__sub">
                       {sub.map((c) => (
                         <li>
-                          {c.parts ? <a class="toc__link toc__link--sub" href={`#${c.slug}`} set:html={tocLabel(c)} /> : <a class="toc__link toc__link--sub" href={`#${c.slug}`}>{c.text}</a>}
+                          {c.parts ? <a class="toc__link toc__link--sub" href={`#${c.slug}`} set:html={labels.get(c.slug)} /> : <a class="toc__link toc__link--sub" href={`#${c.slug}`}>{c.text}</a>}
                         </li>
                       ))}
                     </ul>
@@ -229,7 +229,7 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
   // keep MIN and scroll sideways.
   const MIN = 0.72;
   const fitMath = () =>
-    document.querySelectorAll<HTMLElement>('.prose .katex-display').forEach((box) => {
+    document.querySelectorAll<HTMLElement>('.prose .math-display').forEach((box) => {
       box.style.removeProperty('--math-fit');
       box.classList.remove('is-scrolling');
       const room = box.clientWidth;

@@ -313,7 +313,7 @@ $$
 - Kummer 변환의 $b - a$를 반올림하면 급수의 모든 항이 그 오차를 물려받아요. 그래서 $b - a$를 $\mathrm{hi} + \mathrm{lo}$로 만들고 급수의 첫 인자에 $\mathrm{lo}$까지 넣어요(보정 루프의 `a_lo`).
 - 음의 큰 $x$의 점근전개는 $e^{x}$와 $e^{\lvert x\rvert}$를 해석적으로 지운 꼴이에요. 여기서 $1/\Gamma(b - a)$는 $b - a = \mathrm{hi} + \mathrm{lo}$를 1차로 보정해 $\frac{1}{\Gamma(\mathrm{hi})}(1 - \psi(\mathrm{hi})\,\mathrm{lo})$로 써요. 감마의 인자를 반올림하면 $\psi(z)z/2$ ULP를 잃기 때문이에요.
 - 느슨한 영역에서 $a < 0$이고 두 꼴이 모두 크게 상쇄하면(합 대비 항의 절댓값 합이 $10^4$을 넘으면) $b' = b + n \in (0, 1]$과 $b' + 1$에서 시작해 $b$로 내려가는 점화식(DLMF 13.3.2) $b(b-1)M(a, b-1) + b(1-b-x)M(a, b) + x(b-a)M(a, b+1) = 0$을 써요. 이 방향이 안정했어요.
-- **Tricomi 전개**(A&S 13.3.7 [3])는 $a \to -\infty$의 극한 꼴이에요. $\kappa = b/2 - a$로 두면 $M(a, b, x) = \Gamma(b)e^{x/2}(\kappa x)^{(1-b)/2}\sum_n A_n r^n J_{b-1+n}(2\sqrt{\kappa x})$, $r = \frac{x/2}{\sqrt{\kappa x}}$이고 $A_n r^n$이 $\lvert a\rvert^{-n/6}$처럼 줄어요. `hyp1f1(-1e12, 2, 0.5)`처럼 Boost도 우리 급수도 넘치는 곳에서 $-3.47 \times 10^{-10}$을 내요.
+- **Tricomi 전개**(A&S 13.3.7 [3])는 $a \to -\infty$의 극한 꼴이에요. $\kappa = b/2 - a$로 두면 $M(a, b, x) = \Gamma(b)e^{x/2}\allowbreak(\kappa x)^{(1-b)/2}\allowbreak\sum_n A_n r^n J_{b-1+n}(2\sqrt{\kappa x})$, $r = \frac{x/2}{\sqrt{\kappa x}}$이고 $A_n r^n$이 $\lvert a\rvert^{-n/6}$처럼 줄어요. `hyp1f1(-1e12, 2, 0.5)`처럼 Boost도 우리 급수도 넘치는 곳에서 $-3.47 \times 10^{-10}$을 내요.
 
 ### ₁F₁: Boost가 하는 일
 
