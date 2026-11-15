@@ -1,0 +1,656 @@
+---
+title: 특이값 분해
+group: 고유값과 특이값
+order: 2
+summary: svd와 특이값만 쓰는 함수들(svdvals, matrix_rank, cond, matrix_norm의 2·−2·nuc, pinv)이 안에서 하는 일을 설명해요. 특이값의 기하학적 뜻, 이중대각화, 분할 정복(gesdd)과 값 전용 경로(gesvd)가 어떤 알고리즘으로 도는지, 왜 그 둘을 골랐는지, numpy와 비트가 같은 곳과 다른 곳을 다뤄요.
+seeAlso: [eigen, qr, lu, batch, packing, performance]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+import Plot from '../../../components/fig/Plot.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+특이값 분해(SVD, singular value decomposition)는 어떤 모양의 행렬이든 "돌리기 × 축마다 늘이기 × 돌리기"로 나누는 분해예요. 이 글은 SVD를 계산하는 함수 `svd`와, 특이값만 있으면 되는 함수 다섯 개(`svdvals`, `matrix_rank`, `cond`의 `ord=±2`, `matrix_norm`의 `ord=2, -2, 'nuc'`, 그리고 벡터까지 쓰는 `pinv`)를 다뤄요. 코드는 `csrc/linalg/ops/spectral.cpp`와 `csrc/linalg/ops/svals.hpp`, LAPACK 래퍼는 `csrc/linalg/lapack.hpp`에 있어요.
+
+뼈대는 네 가지예요.
+
+1. **루틴은 둘이에요.** 특이벡터가 필요한 `svd`와 `pinv`는 LAPACK의 `gesdd`(분할 정복)를, 특이값만 필요한 함수는 `gesvd`의 값 전용 모드(`jobu = jobvt = 'N'`)를 불러요. 둘 다 같은 Apple M4 Pro에서 속도를 재서 골랐어요.
+2. **두 루틴 모두 먼저 행렬을 이중대각 행렬로 줄여요**(Golub–Kahan 이중대각화, `gebrd`). 유한 번의 직교 변환으로 끝나는 단계이고, 특이값을 바꾸지 않아요. 그다음 이중대각 행렬의 특이값을 반복법으로 구하는데, 여기서 두 루틴의 길이 갈라져요.
+3. **특이값만 쓰는 함수는 모두 같은 헬퍼 하나(`singular_values`)를 거쳐요.** 그래서 `matrix_norm(x, ord=2)`, `cond(x)`, `matrix_rank(x)`가 `svdvals(x)`와 비트까지 같은 특이값을 봐요.
+4. **비트 관계가 정해져 있어요.** `svd`의 특이값은 numpy와 같지만 $U$, $V^H$는 다를 수 있어요(`gesdd`의 workspace 크기 때문이에요). 값 전용 모드의 특이값은 `svd`가 주는 특이값과 $10^{-15}$ 수준에서 달라요.
+
+| 함수 | 루틴 | 루틴 뒤에 하는 일 |
+|---|---|---|
+| `svd` | `gesdd` (`'S'` 또는 `'A'`) | 없음. $U$, $V^H$를 결과 자리에 바로 써요 |
+| `svdvals` | `gesvd` (값만) | 없음 |
+| `matrix_rank` | `gesvd` (값만) | $\sigma_j > \text{rtol}\cdot\sigma_1$인 개수를 세요 |
+| `cond` (`ord=2`, `-2`) | `gesvd` (값만) | $\sigma_1/\sigma_k$ 또는 그 역수 |
+| `matrix_norm` (`ord=2`, `-2`, `'nuc'`) | `gesvd` (값만) | $\sigma_1$, $\sigma_k$, 또는 pairwise 합 $\sum\sigma_j$ |
+| `pinv` | `gesdd` (`'S'`) + `gemm` | $V\Sigma^{+}U^H$를 곱해요 |
+
+여기서 $k = \min(m, n)$이고, 특이값은 큰 것부터 $\sigma_1 \ge \sigma_2 \ge \dots \ge \sigma_k \ge 0$이에요. 최소제곱의 `lstsq`도 안에서 SVD를 쓰지만 루틴이 `gelsd`라서 [QR 분해와 최소제곱](/internals/linalg/qr/)에서 다뤄요.
+
+<Callout>
+stardust는 Apple Accelerate의 LAPACK을 불러요. Accelerate의 내부 구현은 공개돼 있지 않아요. 이 글의 알고리즘 설명은 LAPACK 참조 구현(netlib, `Reference-LAPACK/lapack`)의 소스와 루틴 문서가 정의하는 알고리즘을 기준으로 해요 [7]. Accelerate는 같은 인터페이스와 같은 수학적 결과를 주지만, 블록 크기나 커널, 경로를 나누는 기준은 다를 수 있어요.
+</Callout>
+
+## 특이값이란
+
+### 직관: 원을 타원으로
+
+행렬 $A$를 벡터에 곱하면 벡터가 돌아가고 늘어나요. 얼마나 늘어나는지는 방향에 따라 달라요. 길이 1인 벡터를 모든 방향으로 모아 놓으면 원(3차원이면 구)이 되는데, 여기에 $A$를 곱하면 그 원이 **타원**이 돼요. 타원의 반지름 가운데 가장 긴 것이 $\sigma_1$, 가장 짧은 것이 $\sigma_k$예요. 특이값은 "이 행렬이 공간을 축마다 몇 배로 늘이는가"의 목록이에요.
+
+예를 들어 $A = \begin{bmatrix} 8 & -3 \\ 6 & 4 \end{bmatrix}$는 $(1, 0)$을 길이 10인 $(8, 6)$으로, $(0, 1)$을 길이 5인 $(-3, 4)$로 보내요. 두 결과가 서로 수직이므로, 이 두 방향이 타원의 긴 축과 짧은 축이에요. 특이값은 10과 5예요.
+
+### 기하학: 돌리기, 늘이기, 돌리기
+
+어떤 행렬이든 다음 세 단계로 쓸 수 있어요.
+
+1. $V^H$: 입력 공간을 돌려서(또는 뒤집어서) "늘어날 축"을 좌표축에 맞춰요.
+2. $\Sigma$: 축마다 $\sigma_j$배로 늘여요. 모양이 다르면 축을 버리거나 0인 축을 더해요.
+3. $U$: 출력 공간에서 다시 돌려요.
+
+### 정의
+
+$m \times n$ 행렬 $A$의 SVD는
+
+$$
+A = U \Sigma V^H, \qquad U^H U = I_m,\quad V^H V = I_n,\quad \Sigma = \operatorname{diag}(\sigma_1, \dots, \sigma_k) \in \mathbb{R}^{m\times n}
+$$
+
+이에요. $U$의 열은 왼쪽 특이벡터, $V$의 열은 오른쪽 특이벡터예요. $A v_j = \sigma_j u_j$이고 $A^H u_j = \sigma_j v_j$예요. 위의 예에서는
+
+$$
+\begin{bmatrix} 8 & -3 \\ 6 & 4 \end{bmatrix}
+= \begin{bmatrix} 0.8 & -0.6 \\ 0.6 & 0.8 \end{bmatrix}
+\begin{bmatrix} 10 & 0 \\ 0 & 5 \end{bmatrix}
+\begin{bmatrix} 1 & 0 \\ 0 & 1 \end{bmatrix}
+$$
+
+이에요. 특이벡터는 부호(복소수면 위상)를 함께 바꿔도 맞는 답이에요. $u_j$와 $v_j$에 $-1$을 같이 곱해도 $\sigma_j u_j v_j^H$가 그대로이기 때문이에요. 실제로 stardust는 이 행렬에서 $U$의 첫 열과 $V^H$의 첫 행을 음수로 돌려줘요. 그래서 특이벡터는 numpy와 값을 바로 비교하지 않고 $A - U\Sigma V^H$와 $U^H U - I$로 확인해요.
+
+`mode='reduced'`(기본값)는 $U$의 앞 $k$열과 $V^H$의 앞 $k$행만 돌려줘요. 나머지는 $\Sigma$의 0인 행·열과 곱해져서 $A$를 만드는 데 쓰이지 않기 때문이에요. `mode='complete'`는 $U$, $V^H$를 정사각으로 채워요.
+
+<Fig column caption="5×3 행렬의 두 모드. 'reduced'는 U (5×3), S (3), Vh (3×3)이고, 'complete'는 U가 5×5로 커지며 늘어난 열(흐린 칸)은 Σ의 0인 행과 곱해져요.">
+  <FigRow>
+    <ArrayFig name="A" data={[['×','×','×'],['×','×','×'],['×','×','×'],['×','×','×'],['×','×','×']]} note="5×3" />
+    <Op>=</Op>
+    <ArrayFig name="U" data={[['×','×','×'],['×','×','×'],['×','×','×'],['×','×','×'],['×','×','×']]} tones={[['a','a','a'],['a','a','a'],['a','a','a'],['a','a','a'],['a','a','a']]} note="reduced: 5×3" />
+    <ArrayFig name="S" data={['σ₁','σ₂','σ₃']} tones={['b','b','b']} note="(3,)" />
+    <ArrayFig name="Vh" data={[['×','×','×'],['×','×','×'],['×','×','×']]} tones={[['a','a','a'],['a','a','a'],['a','a','a']]} note="3×3" />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="U (complete)" data={[['×','×','×','×','×'],['×','×','×','×','×'],['×','×','×','×','×'],['×','×','×','×','×'],['×','×','×','×','×']]} tones={[['a','a','a','m','m'],['a','a','a','m','m'],['a','a','a','m','m'],['a','a','a','m','m'],['a','a','a','m','m']]} note="5×5" />
+    <ArrayFig name="Σ" data={[['σ₁','0','0'],['0','σ₂','0'],['0','0','σ₃'],['0','0','0'],['0','0','0']]} tones={[['b','',''],['','b',''],['','','b'],['m','m','m'],['m','m','m']]} note="5×3 (돌려주지 않아요)" />
+  </FigRow>
+</Fig>
+
+### 특이값이 알려 주는 것
+
+특이값 몇 개로 행렬의 성질 여러 가지를 바로 읽을 수 있어요. 이 영역의 함수 다섯 개가 바로 이것이에요.
+
+| 양 | 특이값으로 | 함수 |
+|---|---|---|
+| 2-노름(가장 많이 늘이는 배율) | $\lVert A\rVert_2 = \sigma_1$ | `matrix_norm(x, ord=2)` |
+| 가장 적게 늘이는 배율 | $\sigma_k$ | `matrix_norm(x, ord=-2)` |
+| 핵 노름(nuclear norm) | $\lVert A\rVert_* = \sum_j \sigma_j$ | `matrix_norm(x, ord='nuc')` |
+| 2-노름 조건수 | $\kappa_2(A) = \sigma_1 / \sigma_k$ | `cond(x)` |
+| 랭크 | 0이 아닌 $\sigma_j$의 개수 | `matrix_rank(x)` |
+| 유사역행렬 | $A^{+} = V \Sigma^{+} U^H$ | `pinv(x)` |
+
+조건수는 "입력의 상대 오차가 답에서 몇 배까지 커질 수 있는가"를 재는 양이에요. 타원이 납작할수록($\sigma_1 \gg \sigma_k$) 짧은 축 방향의 작은 변화가 역문제에서 크게 부풀어요. 또 $A$를 랭크 $r$인 행렬로 가장 가깝게 근사하는 방법은 SVD에서 앞의 $r$항 $\sum_{j\le r}\sigma_j u_j v_j^H$만 남기는 것이고, 그 오차의 2-노름은 정확히 $\sigma_{r+1}$이에요(Eckart–Young 정리) [2]. 랭크를 "0이 아닌 특이값의 개수"로 세는 이유가 여기에 있어요. 반올림 오차 크기의 특이값은 "그만큼만 바꾸면 랭크가 줄어드는 방향"이라는 뜻이에요.
+
+### $A^H A$의 고유값과의 관계, 그리고 그렇게 계산하지 않는 이유
+
+$A = U\Sigma V^H$이면
+
+$$
+A^H A = V \,\Sigma^T \Sigma\, V^H = V \operatorname{diag}(\sigma_1^2, \dots, \sigma_n^2) V^H
+$$
+
+이에요. 즉 **특이값의 제곱은 $A^H A$의 고유값이고, $V$는 그 고유벡터**예요. 그렇다면 $A^H A$를 만들어 `eigh`로 풀면 될 것 같지만, 이 방법은 작은 특이값을 잃어요.
+
+이유는 제곱이에요. $A^H A$의 고유값은 $\sigma_j^2$이므로, $\sigma_k / \sigma_1$이 $10^{-8}$이면 $\sigma_k^2/\sigma_1^2$는 $10^{-16}$이에요. float64의 단위 반올림 $u = 2^{-53} \approx 1.1\times10^{-16}$보다 작으므로, $A^H A$를 만드는 순간 그 정보가 반올림에 묻혀요. 조건수가 제곱이 되는 셈이에요 [2, 9]. 고전적인 예(Läuchli 행렬)로 확인할 수 있어요.
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[1.0, 1.0], [1e-8, 0.0], [0.0, 1e-8]])
+>>> sd.linalg.svdvals(x)
+array([   1.4142135623730954, 9.999999999999999e-09], dtype=float64)
+>>> sd.linalg.eigvalsh(sd.matrix_transpose(x) @ x)
+array([0.0, 2.0], dtype=float64)
+```
+
+정확한 특이값은 $\sqrt{2+\varepsilon^2}$와 $\varepsilon = 10^{-8}$이에요. `svdvals`는 둘 다 맞혔어요. $x^T x = \begin{bmatrix}1+\varepsilon^2 & 1\\ 1 & 1+\varepsilon^2\end{bmatrix}$에서는 $1 + 10^{-16}$이 1로 반올림되어 행렬이 정확히 특이해지고, 작은 특이값이 0이 됐어요. 그래서 SVD 루틴은 $A^H A$를 만들지 않고 $A$에 직교 변환만 가해요. 직교 변환은 노름을 보존하므로($\lVert Qx\rVert_2 = \lVert x\rVert_2$) 오차를 키우지 않아요.
+
+## 1단계: 이중대각화 (Golub–Kahan, `gebrd`)
+
+### 왜 두 단계인가
+
+특이값은 $A^H A$의 고유값의 제곱근이고, 고유값은 특성다항식의 근이에요. 5차 이상 다항식의 근은 사칙연산과 거듭제곱근을 유한 번 써서 구하는 공식이 없으므로(Abel–Ruffini), **SVD도 유한 번의 연산으로 정확히 구할 수 없어요.** 반복법이 꼭 필요해요.
+
+반복법의 한 걸음은 행렬 전체를 건드리므로 꽉 찬 $n\times n$ 행렬에서는 한 걸음에 $O(n^3)$이 들어요. 그래서 LAPACK은 두 단계로 나눠요.
+
+1. **유한 단계**: 직교 변환으로 $A$를 이중대각(bidiagonal, 대각과 바로 위 대각만 0이 아닌) 행렬 $B$로 줄여요. $O(mn^2)$이고 한 번만 해요.
+2. **반복 단계**: $B$의 특이값을 반복법으로 구해요. $B$는 $2k-1$개의 수로 정해지므로 반복 한 걸음이 $O(k)$예요.
+
+### Householder 반사
+
+0을 만드는 도구는 Householder 반사예요. 벡터 $x$를 "거울"에 비춰 첫 좌표축 위로 보내는 변환이에요. 거울은 $x$와 $\lVert x\rVert e_1$ 사이를 수직으로 가르는 평면이고, 행렬로는
+
+$$
+H = I - \tau v v^H, \qquad H x = \beta e_1,\quad |\beta| = \lVert x\rVert_2
+$$
+
+이에요. $H$는 직교(유니터리) 행렬이에요. $v$ 하나와 스칼라 $\tau$만 저장하면 되고, 행렬에 곱할 때도 $H M = M - \tau v (v^H M)$로 행렬-벡터 곱 하나와 rank-1 갱신 하나면 돼요. 반사가 QR 분해에서 어떻게 쓰이고 compact WY 표현으로 어떻게 블록화되는지는 [QR 분해와 최소제곱](/internals/linalg/qr/)에서 자세히 다뤄요.
+
+### 왼쪽과 오른쪽을 번갈아
+
+QR 분해는 왼쪽에서만 반사를 곱해 위 삼각을 만들어요. 이중대각화는 **왼쪽과 오른쪽을 번갈아** 곱해요 [1].
+
+- 왼쪽 반사 $H_j$는 $j$번째 열의 대각 아래를 0으로 만들어요(행을 섞어요).
+- 오른쪽 반사 $G_j$는 $j$번째 행의 **위 대각 오른쪽**을 0으로 만들어요(열을 섞어요).
+
+오른쪽 반사가 대각 바로 오른쪽 칸 하나를 남기는 데는 이유가 있어요. $G_j$가 $j$번째 열까지 섞으면 방금 $H_j$가 만든 열의 0이 다시 채워져요. $j+1$번째 열부터만 섞으면 그 열은 그대로이고, 대신 위 대각 한 줄이 남아요. 이 한 줄이 "대각화가 아니라 이중대각화"인 까닭이에요.
+
+<Fig caption="5×4 행렬의 Golub–Kahan 이중대각화. 진한 칸은 그 단계에서 새로 0이 된 칸, 강조한 칸은 값이 바뀐 칸, 흐린 칸은 이미 0인 칸이에요. 결과의 0이 아닌 칸은 대각(d)과 위 대각(e)뿐이에요.">
+  <ArrayFig name="A" data={[['×','×','×','×'],['×','×','×','×'],['×','×','×','×'],['×','×','×','×'],['×','×','×','×']]} />
+  <Op note="H₁ 왼쪽">→</Op>
+  <ArrayFig data={[['×','×','×','×'],['0','×','×','×'],['0','×','×','×'],['0','×','×','×'],['0','×','×','×']]} tones={[['a','a','a','a'],['b','a','a','a'],['b','a','a','a'],['b','a','a','a'],['b','a','a','a']]} />
+  <Op note="G₁ 오른쪽">→</Op>
+  <ArrayFig data={[['×','×','0','0'],['0','×','×','×'],['0','×','×','×'],['0','×','×','×'],['0','×','×','×']]} tones={[['','a','b','b'],['m','a','a','a'],['m','a','a','a'],['m','a','a','a'],['m','a','a','a']]} />
+  <Op note="H₂, G₂">→</Op>
+  <ArrayFig data={[['×','×','0','0'],['0','×','×','0'],['0','0','×','×'],['0','0','×','×'],['0','0','×','×']]} tones={[['','','m','m'],['m','a','a','b'],['m','b','a','a'],['m','b','a','a'],['m','b','a','a']]} />
+  <Op note="H₃, H₄">→</Op>
+  <ArrayFig name="B" data={[['d','e','0','0'],['0','d','e','0'],['0','0','d','e'],['0','0','0','d'],['0','0','0','0']]} tones={[['','','m','m'],['m','','','m'],['m','m','a','a'],['m','m','b','a'],['m','m','b','b']]} />
+</Fig>
+
+결과는
+
+$$
+A = Q B P^H, \qquad Q = H_1 H_2 \cdots H_n,\quad P = G_1 G_2 \cdots G_{n-2}
+$$
+
+이에요($m \ge n$일 때). $Q$, $P$가 직교이므로 $B$와 $A$는 특이값이 같고, $B = U_B \Sigma V_B^H$이면 $A = (Q U_B)\,\Sigma\,(P V_B)^H$예요. 실수 행렬이면 $B$도 실수이고, 복소수 행렬도 반사의 위상을 골라 $B$를 **실수** 이중대각으로 만들 수 있어요. 그래서 `zgesdd`, `zgesvd`도 2단계는 실수 루틴(`dbdsdc`, `zbdsqr`의 실수 $d$, $e$)으로 풀어요 [7].
+
+`gebrd`는 결과를 입력 자리에 압축해서 써요. 대각과 위 대각에 $d$, $e$를, 대각 아래에 왼쪽 반사의 $v$를, 위 대각 오른쪽에 오른쪽 반사의 $u$를 두고, 스칼라 $\tau$는 따로 둬요. 6×5 행렬이면 이렇게 돼요(`dgebrd.f`의 문서).
+
+<Fig caption="dgebrd가 6×5 행렬을 덮어쓴 모습. vᵢ는 i번째 왼쪽 반사, uᵢ는 i번째 오른쪽 반사의 벡터예요. Q와 P를 만들지 않고 이 형태로 두었다가, 필요할 때 ormbr로 곱해요.">
+  <ArrayFig data={[['d','e','u₁','u₁','u₁'],['v₁','d','e','u₂','u₂'],['v₁','v₂','d','e','u₃'],['v₁','v₂','v₃','d','e'],['v₁','v₂','v₃','v₄','d'],['v₁','v₂','v₃','v₄','v₅']]} tones={[['b','b','a','a','a'],['','b','b','a','a'],['','','b','b','a'],['','','','b','b'],['','','','','b'],['','','','','']]} />
+</Fig>
+
+### 블록화와 그 한계
+
+참조 구현의 `dgebrd`는 `nb`개 열(과 행)을 한 패널로 묶어요(참조 구현의 `ilaenv` 값은 `nb = 32`, 블록 경로로 들어가는 크기 기준 `nx = 128`). 패널 안의 반사는 `dlabrd`가 하나씩 만들면서, 그 반사들이 남은 행렬에 줄 영향을 두 행렬 $X$, $Y$에 모아 둬요. 패널이 끝나면 남은 부분을 한꺼번에
+
+$$
+A_{22} \leftarrow A_{22} - V Y^T - X U^T
+$$
+
+로 갱신해요. 두 번의 `gemm`(BLAS-3, 행렬-행렬 곱)이에요. 그런데 패널 안에서 다음 반사를 만들려면 방금 갱신된 열이 필요하고, 그 열을 얻으려면 남은 행렬 전체와 행렬-벡터 곱(`gemv`, BLAS-2)을 해야 해요. 그래서 블록화해도 **연산의 절반가량이 BLAS-2로 남아요** [6]. BLAS-2는 원소 하나를 읽어 곱셈-덧셈 한 번만 하므로 메모리 대역폭에 묶여요. 큰 행렬에서 SVD가 같은 크기의 LU나 QR보다 훨씬 느린 주된 이유가 이 단계예요.
+
+작업 공간이 모자라면 `dgebrd`는 블록 크기를 줄여요. `lwork`가 $(m+n)\cdot nb$보다 작으면 $nb = \text{lwork}/(m+n)$로 줄이고, $(m+n)\cdot nb_{\min}$보다도 작으면 블록 없이 한 열씩 처리해요 [7]. 블록 크기가 바뀌면 덧셈 순서가 바뀌어 반올림이 달라져요. 뒤에서 `svd`의 비트를 이야기할 때 이 점이 다시 나와요.
+
+### 비용과 "QR 먼저"
+
+$m \ge n$일 때 이중대각화는 $4mn^2 - \tfrac{4}{3}n^3$ flop이에요(정사각이면 $\tfrac{8}{3}n^3$) [2]. 행이 열보다 훨씬 많으면 먼저 QR 분해 $A = QR$을 하고 $n\times n$인 $R$을 이중대각화하는 편이 싸요(R-bidiagonalization). QR이 $2mn^2 - \tfrac{2}{3}n^3$, $R$의 이중대각화가 $\tfrac{8}{3}n^3$이라 합이 $2mn^2 + 2n^3$이고, 이것이 $4mn^2 - \tfrac{4}{3}n^3$보다 작아지는 곳은 $m > \tfrac{5}{3}n$이에요. 참조 구현의 기준값이 바로 이 근처예요.
+
+| 루틴 | "QR 먼저"로 가는 기준 |
+|---|---|
+| `dgesvd` | $m \ge 1.6\,n$ (`ilaenv`의 `ispec = 6`) |
+| `dgesdd` | $m \ge \lfloor 11n/6 \rfloor$ |
+| `zgesdd` | $m \ge \lfloor 17n/9 \rfloor$이면 QR 먼저, $\lfloor 5n/3 \rfloor \le m \lt \lfloor 17n/9 \rfloor$이면 중간 경로 |
+
+$m < n$이면 같은 일을 전치해서 해요(LQ 먼저, 아래 이중대각).
+
+### 안정성
+
+Householder 변환은 역방향 안정이에요. 계산된 $\hat B$는 어떤 $E$에 대해 $A + E$의 정확한 이중대각화이고, $\lVert E\rVert_2 \le p(m,n)\,u\,\lVert A\rVert_2$예요($p$는 차원의 낮은 차수 다항식) [2]. 특이값은 섭동에 대해 안정적이라(Weyl의 부등식 $|\sigma_j(A+E) - \sigma_j(A)| \le \lVert E\rVert_2$) 이 단계가 특이값에 남기는 오차는 **절대 오차로** $p(m,n)\,u\,\sigma_1$ 정도예요. 이 한계는 2단계를 아무리 정확하게 해도 줄지 않아요. 그래서 꽉 찬 일반 행렬의 아주 작은 특이값은 상대 정확도가 아니라 $\sigma_1$ 기준의 절대 정확도만 보장돼요.
+
+## 2단계: 이중대각 행렬의 특이값
+
+$B$의 특이값을 구하는 방법은 참조 구현에 세 가지가 있어요. 어느 것이 쓰이는지는 드라이버와 "벡터가 필요한가"로 정해져요.
+
+| 알고리즘 | 루틴 | 쓰는 곳 |
+|---|---|---|
+| 암시적 QR 반복 (zero-shift 포함) | `bdsqr` | `gesvd`가 부르는 루틴. 벡터가 있을 때, 그리고 `gesdd`의 작은 부분 문제 |
+| dqds (차분 qd) | `lasq1` → `lasq2` | 벡터 없이 `bdsqr`를 부르면 이리로 넘겨요 |
+| 분할 정복 | `bdsdc` → `lasd0` … `lasd4` | `gesdd`의 벡터 계산 |
+
+### Givens 회전
+
+2단계의 도구는 Givens 회전이에요. 두 좌표가 이루는 평면 하나에서만 벡터를 돌려, 한 좌표를 0으로 만드는 변환이에요.
+
+$$
+\begin{bmatrix} c & s \\ -s & c \end{bmatrix}\begin{bmatrix} a \\ b \end{bmatrix} = \begin{bmatrix} r \\ 0 \end{bmatrix},\qquad c = \frac{a}{r},\; s = \frac{b}{r},\; r = \sqrt{a^2+b^2}
+$$
+
+Householder 반사가 한 번에 여러 칸을 0으로 만든다면, Givens 회전은 한 칸만 골라 0으로 만들어요. 이중대각처럼 0이 아닌 칸이 거의 없는 행렬에서는 이쪽이 맞아요.
+
+### `bdsqr`: 암시적 QR과 zero shift (Demmel–Kahan)
+
+**아이디어.** 대칭 행렬 $T = B^T B$에 shift $\mu$를 둔 QR 반복을 하면 $T$가 대각으로 수렴하고, 대각이 고유값 $\sigma_j^2$가 돼요. 하지만 $B^T B$를 만들면 앞에서 본 것처럼 작은 특이값을 잃어요. Golub–Kahan의 SVD 단계는 $B^T B$를 만들지 않고 **$B$ 위에서 같은 변환을 암시적으로** 해요 [1, 2].
+
+1. shift $\mu$로 첫 번째 Givens 회전을 정해요. $(B^TB - \mu I)$의 첫 열을 0으로 만드는 회전이에요.
+2. 그 회전을 $B$의 오른쪽(열 1, 2)에 곱하면 대각 아래 $(2, 1)$에 0이 아닌 칸("bulge", 혹)이 생겨요.
+3. 왼쪽 회전으로 그 칸을 지우면 $(1, 3)$에 혹이 생기고, 오른쪽 회전으로 지우면 $(3, 2)$에 생기고… 이렇게 혹을 대각을 따라 아래로 쫓아 내보내요(bulge chasing).
+4. 끝에 닿으면 다시 이중대각이고, 이 한 바퀴가 $B^T B$에 QR 한 걸음을 한 것과 같아요(implicit Q 정리).
+
+<Fig caption="4×4 이중대각 행렬에서 혹을 쫓는 한 바퀴. 진한 칸이 혹(+)이에요. 오른쪽 회전과 왼쪽 회전을 번갈아 곱할 때마다 혹이 한 칸씩 내려가고, 마지막 회전 뒤에는 다시 이중대각이에요.">
+  <ArrayFig name="B" data={[['d','e','0','0'],['0','d','e','0'],['0','0','d','e'],['0','0','0','d']]} tones={[['','','m','m'],['m','','','m'],['m','m','',''],['m','m','m','']]} />
+  <Op note="오른쪽 (1,2)">→</Op>
+  <ArrayFig data={[['d','e','0','0'],['+','d','e','0'],['0','0','d','e'],['0','0','0','d']]} tones={[['a','a','m','m'],['b','a','','m'],['m','m','',''],['m','m','m','']]} />
+  <Op note="왼쪽 (1,2)">→</Op>
+  <ArrayFig data={[['d','e','+','0'],['0','d','e','0'],['0','0','d','e'],['0','0','0','d']]} tones={[['a','a','b','m'],['m','a','a','m'],['m','m','',''],['m','m','m','']]} />
+  <Op note="오른쪽 (2,3)">→</Op>
+  <ArrayFig data={[['d','e','0','0'],['0','d','e','0'],['0','+','d','e'],['0','0','0','d']]} tones={[['','a','m','m'],['m','a','a','m'],['m','b','a',''],['m','m','m','']]} />
+  <Op note="… (3,4)">→</Op>
+  <ArrayFig name="B′" data={[['d','e','0','0'],['0','d','e','0'],['0','0','d','e'],['0','0','0','d']]} tones={[['a','a','m','m'],['m','a','a','m'],['m','m','a','a'],['m','m','m','a']]} />
+</Fig>
+
+반복하면 $e$(위 대각)의 끝 원소가 0으로 다가가요. 충분히 작아지면 그 자리에서 행렬을 둘로 나누고(deflation) 작은 쪽부터 다시 해요. shift는 혹이 빠져나가는 쪽 끝의 2×2 블록의 특이값으로 정해요(`dlas2`). 그 끝의 특이값에 가까운 shift라서 끝 원소가 빠르게 수렴해요.
+
+**zero shift가 정확한 이유.** shift가 있으면 첫 회전을 정할 때 $d_1^2 - \mu$ 같은 뺄셈이 들어가고, 큰 수끼리 빼면 상대 정확도를 잃어요. Demmel과 Kahan은 $\mu = 0$으로 두면 혹 쫓기의 모든 연산이 곱셈, 나눗셈, 제곱근, 그리고 같은 부호끼리의 덧셈만으로 이루어지도록 정리할 수 있음을 보였어요 [3]. 그러면 바퀴마다 $B$의 각 원소가 **상대 오차 몇 ulp 이내로** 계산돼요. 여기에 다음 사실이 겹쳐요.
+
+$$
+\text{이중대각 행렬의 원소를 각각 상대 오차 } \eta \text{ 이내로 바꾸면, 모든 특이값이 상대 오차 약 } (2k-1)\eta \text{ 이내로 바뀐다}
+$$
+
+일반 행렬에서는 원소의 작은 섭동이 작은 특이값을 통째로 바꿀 수 있지만, 이중대각에서는 그렇지 않아요 [3]. 그래서 zero-shift QR은 $B$의 **아주 작은 특이값까지 상대 정확도로** 구해요. 대신 shift가 없으면 수렴이 느려요(선형 수렴). `dbdsqr`는 둘을 섞어요.
+
+- 반복할 때마다 $n \cdot \text{tol}\cdot(\sigma_{\min}/\sigma_{\max}) \le \max(\varepsilon, 0.01\,\text{tol})$인지 봐요. 참이면 shift를 써 봐야 얻는 정보가 상대 정확도에 비해 작은 상황이므로 zero shift로, 아니면 보통 shift로 한 바퀴를 돌아요(`tol`은 $\text{tolmul}\cdot\varepsilon$).
+- 새 부분 행렬을 시작할 때 $|d_{\text{위}}| \ge |d_{\text{아래}}|$이면 혹을 위에서 아래로, 아니면 아래에서 위로 쫓아요. 큰 쪽에서 작은 쪽으로 쫓아야 작은 특이값이 마지막에, 정확하게 갈라져 나와요.
+- 반복 횟수의 상한은 `maxitr = 6`으로 정해요(전체 약 $6n^2$번의 내부 반복). 넘기면 수렴 실패(`info > 0`)를 보고해요.
+
+벡터가 필요하면 회전 하나하나를 $U$, $V$의 두 열(행)에 곱해 쌓아야 해요. 회전 하나가 길이 $n$인 벡터 두 개를 갱신하는 BLAS-1 수준의 연산이고, 전체로 $O(n^3)$의 메모리 접근이 많은 연산이에요. `gesvd`가 벡터를 구할 때 느린 이유예요.
+
+### 벡터가 없으면: dqds (`lasq1`)
+
+`bdsqr`는 벡터를 하나도 요구받지 않으면(`ncvt = nru = ncc = 0`) QR 반복을 하지 않고 바로 `dlasq1`에 넘겨요. `dlasq1`이 실패하면 그때 QR 반복으로 돌아와요 [7]. `dlasq1`은 Fernando–Parlett의 dqds(differential quotient-difference with shifts) 알고리즘이에요 [4].
+
+1. $d$, $e$를 최대 크기 기준으로 재조정한 뒤 **제곱**해서 $q_i = d_i^2$, $e_i^2$의 배열을 만들어요. 제곱하는 순간 어차피 반올림이 생기므로, 재조정 배율을 2의 거듭제곱으로 맞추지 않아요.
+2. `dlasq2`가 이 배열에 dqds 변환을 반복해요. 한 걸음은 $B^TB - \tau I$의 Cholesky 분해를 뒤집어 곱하는 일(LR 변환)과 같은데, 다음처럼 **차분 형태**로 계산해요.
+
+$$
+d \leftarrow q_1 - \tau;\quad \text{for } i = 1..n-1:\;\; \hat q_i = d + e_i,\;\; t = q_{i+1}/\hat q_i,\;\; \hat e_i = e_i\, t,\;\; d \leftarrow d\, t - \tau;\quad \hat q_n = d
+$$
+
+shift $\tau$는 $\sigma_{\min}^2$보다 작게 골라서 모든 $q$, $e$가 양수로 남아요. 양수끼리의 덧셈과 곱셈·나눗셈에는 상쇄가 없으므로, zero-shift QR처럼 모든 특이값이 높은 상대 정확도로 나와요("비정규 수, 언더플로, 오버플로가 없으면"이라는 조건이 `dlasq1`의 문서에 붙어 있어요). 그러면서 shift로 빠르게 수렴하고, 회전 대신 나눗셈과 곱셈 몇 개만 쓰므로 값만 구할 때는 QR 반복보다 빨라요.
+3. 끝나면 제곱근을 취하고 재조정을 되돌려요.
+
+정리하면 참조 구현에서 `gesvd`의 값 전용 경로는 이래요.
+
+<Fig column caption="gesvd(jobu = jobvt = 'N')의 경로 (LAPACK 참조 구현 기준, m ≥ n).">
+  <Steps
+    steps={[
+      { label: 'dlange, dlascl', note: '최대 원소가 √(최소 정규수)/ε 아래거나 그 역수 위이면 행렬을 재조정해요. 끝에 특이값을 되돌려요.' },
+      { label: 'dgeqrf', note: 'm ≥ 1.6n일 때만: QR 분해 후 R만 남겨요.' },
+      { label: 'dgebrd', note: 'A(또는 R)를 위 이중대각 B로 줄여요. 4mn² − 4n³/3 flop.' },
+      { label: 'dbdsqr', note: 'ncvt = nru = 0이라 회전을 쌓을 벡터가 없어요.' },
+      { label: 'dlasq1 → dlasq2', depth: 1, note: 'dqds로 모든 특이값을 높은 상대 정확도로 구해요. 실패하면 bdsqr의 QR 반복으로 돌아가요.' },
+    ]}
+  />
+</Fig>
+
+### `bdsdc`: 분할 정복 (Gu–Eisenstat), `gesdd`가 쓰는 것
+
+벡터까지 구할 때 `gesdd`는 `dbdsdc`를 불러요. $B$를 반으로 잘라 각각 풀고, 두 답을 합쳐 전체 답을 만드는 분할 정복이에요 [5, 7].
+
+**작으면 바로 풀어요.** 크기가 `smlsiz`(참조 구현의 `ilaenv`에서 25) 이하면 `dlasdq`가 풀어요. `dlasdq`는 `dbdsqr`를 그대로 불러요. 즉 **작은 행렬의 `svd`는 사실상 QR 반복**이에요. 큰 행렬도 분할 트리(`dlasdt`)의 맨 아래 잎은 이 방법으로 풀어요(`dlasd0`).
+
+**나누기.** 크기 $n$의 위 이중대각 $B$에서 가운데 행 하나를 떼면 위쪽 $B_1$(크기 $n_l$)과 아래쪽 $B_2$(크기 $n_r$)가 남아요. 떼어 낸 행에는 대각 원소 $\alpha$와 위 대각 원소 $\beta$가 있어요.
+
+$$
+B = \begin{bmatrix} B_1 & 0 \\ \alpha\, e_{n_l+1}^T & \beta\, e_1^T \\ 0 & B_2 \end{bmatrix}
+$$
+
+**합치기.** $B_1$, $B_2$의 SVD를 끼워 넣으면 가운데 행렬은 "대각 + 꽉 찬 행 하나"가 돼요(`dlasd1`).
+
+$$
+B = U \begin{bmatrix} z_1 & z_2 & \cdots & z_n \\ & d_2 & & \\ & & \ddots & \\ & & & d_n \end{bmatrix} V^T = U\, M\, V^T,\qquad M = D + e_1 z^T,\; d_1 = 0
+$$
+
+$d_1 = 0$이므로 $M^T M = D^2 + z z^T$, 즉 **대각 행렬에 rank-1을 더한 것**이에요. 그 고유값 $\sigma^2$는 세큘러 방정식(secular equation)
+
+$$
+f(\sigma) = 1 + \sum_{j=1}^{n} \frac{z_j^2}{d_j^2 - \sigma^2} = 0
+$$
+
+의 근이에요. $f$는 $d_j$마다 극(pole)이 있고 극 사이에서 단조이므로, 근은 극 사이에 하나씩 끼어 있어요($0 = d_1 < \sigma_1 < d_2 < \sigma_2 < \dots$, 정렬 순서는 작은 것부터). 그래서 근마다 자기 구간 안에서 따로 찾으면 돼요. `dlasd4`가 $f$를 간단한 유리함수로 근사해 그 근을 구하는 반복으로 푸는데(근 하나에 반복 최대 400번), 보통 몇 번이면 끝나요.
+
+<Fig caption="d = (0, 1, 2), z = (0.6, 0.5, 0.6)일 때의 f(σ). 극 σ = 0, 1, 2 사이와 마지막 극 너머에 근이 하나씩 있어요. 이 세 근이 합친 행렬 M의 특이값이에요.">
+  <Plot
+    curves={[
+      { f: (x) => 1 - 0.36 / (x * x) + 0.25 / (1 - x * x) + 0.36 / (4 - x * x), label: 'f(σ)' },
+      { f: (x) => 0, label: '0', dashed: true },
+    ]}
+    domain={[0.05, 3.2]}
+    range={[-6, 6]}
+    xTicks={[{ v: 1, label: '1' }, { v: 2, label: '2' }, { v: 3, label: '3' }]}
+    yTicks={[{ v: -5, label: '−5' }, { v: 0, label: '0' }, { v: 5, label: '5' }]}
+  />
+</Fig>
+
+**deflation.** 합치기 전에 문제를 줄여요(`dlasd2`). $z_j$가 허용오차($64\,\varepsilon\max(|d_n|, |\alpha|, |\beta|)$)보다 작으면 $d_j$가 그대로 특이값이므로 세큘러 방정식에서 빼요. 두 $d$가 아주 가까우면 Givens 회전으로 둘 중 하나의 $z$를 0으로 만들어 빼요. 실제 행렬에서는 deflation이 자주 일어나서 분할 정복이 이론보다 빠른 경우가 많아요.
+
+**벡터와 Gu–Eisenstat의 방법.** $M$의 특이벡터는 $(D^2 - \sigma_i^2 I)^{-1} z$에 비례하는 꼴이에요. 그런데 $\sigma_i$가 $d_j$에 아주 가까우면 $d_j^2 - \sigma_i^2$의 작은 오차가 벡터를 크게 흔들어 벡터끼리의 직교성이 깨져요. Gu와 Eisenstat는 계산된 $\hat\sigma_i$들을 **정확한** 특이값으로 갖는 가까운 행렬 $\hat M = D + e_1\hat z^T$의 $\hat z$를 $\hat\sigma$와 $d$의 곱의 비로 다시 계산하고, 그 $\hat z$로 벡터를 만들면 직교성이 보장됨을 보였어요 [5]. `dlasd3`가 "Compute updated Z" 단계에서 이 계산을 해요. 마지막으로 부분 문제의 벡터와 $M$의 벡터를 **행렬곱(`gemm`)으로** 곱해 합친 문제의 벡터를 만들어요.
+
+**왜 빠른가.** QR 반복은 벡터를 회전 하나씩(BLAS-1) 쌓지만, 분할 정복은 벡터 갱신이 행렬곱이라 BLAS-3의 속도를 써요. 세큘러 방정식은 근 하나에 $O(n)$, 합치기 한 번에 $O(n^2)$이라 행렬곱에 비하면 작아요.
+
+**정확도의 차이.** `dbdsdc`는 시작할 때 $B$를 최대 크기 1로 재조정하고, 그 뒤 $|d_i| \lt \varepsilon$인 대각을 $\pm\varepsilon$으로 올리고 $|e_i| \lt \varepsilon$인 곳에서 문제를 나눠요 [7]. 이 처리는 $\lVert B\rVert$ 기준의 **절대** 오차 $\varepsilon\lVert B\rVert$를 들여요. 그래서 분할 정복은 dqds나 zero-shift QR과 달리 $B$의 작은 특이값을 상대 정확도로 보장하지 않아요. 다만 1단계(이중대각화)가 이미 같은 크기의 절대 오차를 들였으므로, 꽉 찬 일반 행렬에서는 최종 정확도의 한계가 같아요.
+
+<Fig column caption="gesdd(jobz = 'S' 또는 'A')의 경로 (LAPACK 참조 구현 기준, m ≥ n).">
+  <Steps
+    steps={[
+      { label: 'dlange, dlascl', note: 'gesvd와 같은 재조정. NaN이나 inf가 있으면 info = −4로 끝나지만, stardust는 패킹 때 이미 걸러요.' },
+      { label: 'dgeqrf, dorgqr', note: 'm ≥ ⌊11n/6⌋일 때만: QR 먼저. R을 이중대각화하고, 끝에 Q를 곱해요.' },
+      { label: 'dgebrd', note: 'A(또는 R)를 위 이중대각 B로 줄여요.' },
+      { label: 'dbdsdc (compq = I)', note: 'B = U_B Σ V_Bᵀ를 실수로 구해요.' },
+      { label: 'n ≤ 25: dlasdq → dbdsqr', depth: 1, note: '작으면 QR 반복으로 바로 풀어요.' },
+      { label: 'dlasd0 → dlasd1 → dlasd2, dlasd3, dlasd4', depth: 1, note: '크면 분할 트리를 만들고, 잎은 dlasdq로, 합치기는 deflation · 세큘러 방정식 · 행렬곱으로 해요.' },
+      { label: 'dormbr', note: 'gebrd가 압축해 둔 Q, P를 U_B, V_B에 곱해 A의 특이벡터를 만들어요.' },
+      { label: 'dgemm', note: 'QR 먼저 경로였다면 Q를 마저 곱해요.' },
+    ]}
+  />
+</Fig>
+
+## 어느 드라이버를 쓰는가
+
+LAPACK에는 SVD 드라이버가 둘 있어요. 둘 다 1단계는 같고 2단계가 달라요.
+
+| | `gesvd` | `gesdd` |
+|---|---|---|
+| 2단계 (벡터 있음) | `bdsqr`: QR 반복, 회전을 쌓아 벡터 | `bdsdc`: 분할 정복, 행렬곱으로 벡터 |
+| 2단계 (값만) | `bdsqr` → dqds | `bdsdc` → `dlasdq` → `bdsqr` → dqds |
+| 추가 메모리 | 적음 | 정수 workspace $8k$, 실수 workspace가 더 큼 |
+| stardust에서 | 값 전용 함수 | `svd`, `pinv` |
+
+stardust는 함수마다 루틴을 하나로 정하고, 입력 값이나 크기를 보고 바꾸지 않아요. 같은 함수의 결과 비트가 늘 같은 계산에서 나오게 하려는 것이에요. 대신 "값만 구하는 함수"와 "벡터까지 구하는 함수"는 서로 다른 함수이므로 각자에게 맞는 루틴을 따로 골랐어요. 고른 근거는 Apple M4 Pro, float64에서 잰 드라이버끼리의 비교예요.
+
+| 용도 | 고른 것 | 근거 (n = 1000 정사각) |
+|---|---|---|
+| 벡터까지 (`svd`, `pinv`) | `gesdd` | 64ms. `gesvd`는 681ms |
+| 값만 (`svdvals` 등) | `gesvd` `'N'` | `gesdd` `'N'`보다 작은 크기에서 약 25%, 큰 크기에서 약 5% 빨라요 |
+
+벡터가 있을 때 10배 차이가 나는 이유는 앞에서 본 대로예요. `gesvd`는 회전을 하나씩 $U$, $V$에 쌓고, `gesdd`는 행렬곱으로 합쳐요. numpy도 SVD에는 `gesdd`를 써요 [8].
+
+값만 구할 때는 참조 구현 기준으로 두 드라이버 모두 결국 dqds에 닿아요. `gesdd` `'N'`은 `bdsdc`의 재조정·분할과 `dlasdq`를 한 겹 더 거치고, "QR 먼저"로 가는 기준($1.6n$ 대 $11n/6$)도 달라요. 이 차이가 Accelerate 안에서 시간 차이로 어떻게 나타나는지는 공개된 코드가 없어 밝히지 못했어요. 결정은 잰 시간으로 했어요.
+
+## stardust의 `svd`
+
+### 호출 흐름
+
+<Fig column caption="sd.linalg.svd(x) 한 번의 흐름.">
+  <Steps
+    steps={[
+      { label: 'svd(x, mode=)', where: 'spectral.cpp', note: 'x가 sd.ndarray인지, 2차원 이상인지 보고 mode를 해석해요(parse_mode). k = min(m, n), U의 열 수와 Vh의 행 수를 정해요.' },
+      { label: 'Batch, alloc_matrices, alloc_vectors', where: 'batch.hpp · outblock.cpp', note: '배치 축을 브로드캐스트하고 U (…, m, ucols), S (…, k), Vh (…, vrows, n)를 할당해요. 행렬은 열 우선이에요.' },
+      { label: 'run_batch(cost(kSVD, m·n))', where: 'batch.hpp', note: '원소 하나의 추정 비용 1000 + 80·m·n ns로 배치를 스레드에 나눌지 정해요.' },
+      { label: 'pack(x)', depth: 1, where: 'pack.hpp', note: 'scratch 슬롯 0에 열 우선으로 복사하며 float64/complex128로 바꾸고 NaN·inf를 찾아요. gesdd가 입력을 덮어쓰므로 사본이 필요해요.' },
+      { label: 'LapackSlot × 3', depth: 1, where: 'ops/common.hpp', note: 'U, Vh, S의 결과 자리가 16바이트 정렬이면 그대로, 아니면 scratch 대역을 줘요.' },
+      { label: 'gesdd(S 또는 A)', depth: 1, where: 'lapack.hpp', note: 'U와 Vh를 결과 자리에 바로 써요(ldu = m, ldvt = vrows). info > 0이면 kNoConvergence.' },
+      { label: 'raise 또는 SVDResult(U, S, Vh)', where: 'ops/common.hpp', note: '실패가 있으면 가장 작은 배치 인덱스로 LinAlgError("SVD did not converge"), 아니면 이름 있는 튜플을 돌려줘요.' },
+    ]}
+  />
+</Fig>
+
+```cpp
+// spectral.cpp의 svd()에서 배치 몸체, 줄임
+const Failure f = run_batch(b, cost(kSVD, double(m) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+    T* a = s.get<T>(lda * n);                                    // gesdd가 덮어쓸 사본
+    if (!pack(x.dtype(), x.data() + off[0], m, n, x.stride(-2), x.stride(-1), a, lda, true))
+        return kNonFinite;
+    LapackSlot<T> us(uo.as<T>() + i * m * ucols, m * ucols, s, Scratch::kAlign0);
+    LapackSlot<T> vs(vo.as<T>() + i * vrows * n, vrows * n, s, Scratch::kAlign1);
+    LapackSlot<double> ss(so.as<double>() + i * k, k, s, Scratch::kAlign2);
+    if (k == 0) {                                                // 특이값이 없음
+        if (complete) { set_identity(us.get(), m); set_identity(vs.get(), n); }
+        return 0;
+    }
+    return lapack::gesdd(complete ? 'A' : 'S', m, n, a, lda, ss.get(), us.get(), m, vs.get(), vrows, s) > 0
+               ? kNoConvergence : 0;
+});
+```
+
+몇 가지를 짚어 둘게요.
+
+- **결과 자리에 바로 써요.** 결과 배열은 행렬마다 열 우선이라 LAPACK이 원하는 배치와 같아요. 그래서 `gesdd`의 출력 인자로 결과 배열의 그 자리를 넘기고, 끝난 뒤 옮기지 않아요. 결과 레이아웃과 패킹의 자세한 이야기는 [패킹과 결과 레이아웃](/internals/linalg/packing/)에 있어요.
+- **16바이트 정렬.** Accelerate는 배열이 16바이트 경계에 있는지에 따라 반올림을 다르게 해요. float64 배치에서 행렬 크기가 홀수면(3×3이면 72바이트 간격) 홀수 번째 행렬의 자리가 8바이트 어긋나요. 정렬을 맞추지 않으면 같은 행렬이 배치 안의 위치에 따라 다른 비트를 받는데, n = 3, 5, 7, 9의 무작위 120개 중 `svd`에서 3–17개가 그랬어요. `LapackSlot`은 자리가 어긋나면 정렬된 scratch를 대신 주고, 소멸할 때 결과 자리로 복사해요.
+- **빈 행렬.** $k = 0$이면 특이값이 없어요. `'complete'`면 $U$, $V^H$를 단위행렬로 채우고, `'reduced'`면 $(m, 0)$, $(0, n)$ 모양의 빈 배열이에요. LAPACK을 부르지 않아요.
+- **유한성 검사.** LAPACK은 NaN이나 inf가 든 입력에서 결과를 보장하지 않아요. 반복 알고리즘은 쓰레기 값을 내거나 수렴 실패를 보고할 수 있어요. 그래서 패킹하는 한 패스에서 검사하고 `ValueError`를 내요. 비용은 $O(mn)$이라 $O(mn^2)$ 계산에 비해 작아요.
+
+### workspace 크기와 $U$, $V^H$의 비트
+
+LAPACK 루틴은 작업 공간(workspace) 크기 `lwork`를 인자로 받아요. `lwork = -1`로 부르면 계산 없이 최적 크기만 알려 줘요(workspace query). stardust의 래퍼는 이 질의를 `Scratch`마다 한 번만 해요.
+
+```cpp
+// lapack.hpp의 gesdd 래퍼, 줄임
+lint lwork = s.sizes({kGesdd, m, n, lda, jobz, esize<T>()}, [&] {   // 키: 루틴, 크기 인자, 원소 크기
+    lint q_lwork = -1;
+    T q{};
+    dgesdd_(&jobz, &m, &n, a, &lda, sv, u, &ldu, vt, &ldvt, &q, &q_lwork, iw, &info);  // 크기만 묻기
+    return WorkSizes{work_size(q)};
+}).work;
+T* wk = s.get<T>(lwork, Scratch::kWork);
+dgesdd_(&jobz, &m, &n, a, &lda, sv, u, &ldu, vt, &ldvt, wk, &lwork, iw, &info);
+```
+
+배치 안의 행렬은 모두 크기가 같으므로 첫 행렬만 묻고 나머지는 기억해 둔 값을 써요. 여기서 지키는 성질은 **"행렬마다 물었을 때와 똑같은 `lwork`"**예요. `lwork`가 결과 비트를 바꾸기 때문이에요.
+
+- 참조 구현의 `dgesdd`에서 `jobz = 'O'` 경로는 `lwork`가 충분한지에 따라 빠른 경로와 느린 경로를 갈라요. `'S'`, `'A'` 경로에는 그런 분기가 없지만, 남은 workspace를 블록 루틴(`dgebrd`, `dormbr`, `dgeqrf` 등)에 넘겨요 [7]. 앞에서 본 대로 `dgebrd`는 workspace가 모자라면 블록 크기를 줄이고, 블록 크기가 바뀌면 덧셈 순서가 바뀌어요.
+- Accelerate가 정확히 어디서 `lwork`를 보는지는 알 수 없지만, 같은 행렬에 다른 `lwork`를 주면 $U$, $V^H$의 마지막 비트가 달라지는 것은 관찰돼요.
+
+numpy와 scipy는 각자 다른 방법으로 `lwork`를 정해요. 그래서 같은 `gesdd`를 불러도 결과가 다를 수 있어요.
+
+| 비교 (무작위 300개) | 특이값 | $U$, $V^H$ |
+|---|:---:|:---:|
+| stardust 대 numpy 2.5.4, float64 | 모두 같음 | 8개 다름 |
+| stardust 대 numpy 2.5.4, complex128 | 모두 같음 | 22개 다름 |
+| stardust 대 scipy 1.18.1, complex128 | 모두 같음 | 모두 같음 |
+
+다른 경우도 차이는 반올림 수준이고, 둘 다 맞는 답이에요. 테스트는 그래서 특이값만 numpy와 직접 비교하고, 벡터는 $A = U\Sigma V^H$의 재구성 잔차와 $U^HU = I$, $V^HV = I$로 확인해요.
+
+complex판 `zgesdd`는 실수 workspace(`rwork`)의 크기를 질의로 알려 주지 않아요. 래퍼는 LAPACK 3.6.0의 문서에 적힌 크기($\max(1, 7k)$ 또는 $k\cdot\max(5k+7,\, 2\max(m,n)+2k+1)$)를 직접 계산해 줘요. 지금 문서가 요구하는 최소 크기($5k$ 또는 $\max(5k^2+5k,\, 2\max(m,n)k+2k^2+k)$)보다 크거나 같아요.
+
+## 값 전용 경로: `svals.hpp`
+
+### 헬퍼 하나
+
+특이값만 쓰는 함수는 모두 `singular_values` 하나를 거쳐요.
+
+```cpp
+// svals.hpp
+template <class T>
+int singular_values(const Input& x, std::int64_t off, lint m, lint n, Scratch& s, double* out) {
+    const lint lda = std::max<lint>(m, 1);
+    T* a = s.get<T>(lda * n, 3);                       // gesvd가 덮어쓸 사본 (슬롯 3)
+    if (!pack(x.dtype(), x.data() + off, m, n, x.stride(-2), x.stride(-1), a, lda, true)) return kNonFinite;
+    if (m == 0 || n == 0) return 0;
+    return lapack::gesvd_values(m, n, a, lda, out, s) > 0 ? kNoConvergence : 0;
+}
+```
+
+`gesvd_values`는 `gesvd`를 `jobu = jobvt = 'N'`으로 부르는 래퍼예요. 벡터를 받을 자리에는 크기 1짜리 더미를 넘기고, complex면 실수 workspace $5k$개를 줘요. `lwork`는 `gesdd`와 같은 방법으로 `Scratch`마다 한 번 물어요.
+
+이 헬퍼를 쓰는 곳은 다음과 같아요. 모두 같은 크기 인자로 같은 루틴을 부르므로 같은 입력에서 같은 비트를 얻어요.
+
+| 함수 | 특이값으로 하는 일 | 파일 |
+|---|---|---|
+| `svdvals` | 그대로 결과 자리에 (`LapackSlot`으로 정렬) | `spectral.cpp` |
+| `matrix_rank` | $\sigma_j > \text{rtol}\cdot\sigma_1$인 개수 | `spectral.cpp` |
+| `cond` (`ord=2`) | $\sigma_k = 0$이면 inf, 아니면 $\sigma_1/\sigma_k$ | `spectral.cpp` |
+| `cond` (`ord=-2`) | $\sigma_k = 0$이면 0, 아니면 $\sigma_k/\sigma_1$ | `spectral.cpp` |
+| `matrix_norm` (`ord=2`, `-2`) | $\sigma_1$, $\sigma_k$ | `norms.cpp` |
+| `matrix_norm` (`ord='nuc'`) | pairwise 합 $\sum_j \sigma_j$ | `norms.cpp` |
+
+`cond(x, ord='nuc')`은 정의가 $\lVert x\rVert_*\,\lVert x^{-1}\rVert_*$라서 역행렬이 필요해요. 이 경로는 `square_norm`에서 패킹한 사본에 `gesvd_values`를 바로 불러요(헬퍼는 원래 배열을 패킹하는 데서 시작하므로, 이미 만든 역행렬에는 쓸 수 없어요). 루틴과 인자는 같아요.
+
+그래서 다음이 늘 비트까지 성립해요.
+
+$$
+\texttt{matrix\_norm(x, ord=2)} = \texttt{svdvals(x)[0]},\quad \texttt{cond(x)} = \texttt{svdvals(x)[0]} / \texttt{svdvals(x)[-1]}
+$$
+
+### 값 전용 모드의 특이값은 `svd`의 특이값과 달라요
+
+같은 입력이라도 `svdvals(x)`와 `svd(x).S`는 $10^{-15}$ 수준에서 달라요. `gesvd` `'N'`과 `gesdd` `'S'`는 2단계 알고리즘이 다르고(dqds 대 분할 정복), 같은 드라이버라도 벡터를 구하느냐에 따라 경로가 달라지기 때문이에요. 잰 모든 드라이버에서 `jobz = 'N'`과 `'V'`의 비트가 달랐어요. 20×20 무작위 행렬 100개에서는 100개 모두 마지막 몇 비트가 달랐어요. numpy도 같은 성질이 있어요(`svdvals`와 `svd`의 `S`가 다른 호출이에요).
+
+numpy 2.5.4의 `svdvals`, `matrix_rank`, `cond`, `matrix_norm(ord=2)`는 `gesdd`의 값 전용 모드를 쓰므로 stardust와도 반올림 수준에서 다를 수 있어요. 모양 2–39의 무작위 행렬 100개에서 `svdvals`가 23개, `matrix_norm(ord=2)`가 15개, `cond`가 20개 달랐어요. 이 차이는 구조적이에요. stardust 안에서 "특이값만 쓰는 함수끼리 같은 값"을 지키는 것을 numpy와의 비트 일치보다 앞에 두었어요.
+
+<Callout type="warn">
+`svdvals(x)`와 `svd(x).S`를 비트까지 같다고 가정하고 비교하면 안 돼요. 둘 다 정확한 특이값과 $p(m,n)\,u\,\sigma_1$ 이내로 가깝지만, 서로 다른 계산이에요. 특이값만 필요하면 `svdvals`가 빠르고(값 전용 모드는 벡터를 구할 때보다 1.6–2배 빨라요), `svd`의 결과와 맞춰 써야 하면 `svd(x).S`를 쓰세요.
+</Callout>
+
+## 랭크와 허용오차
+
+### `rtol`의 정의
+
+`matrix_rank`, `pinv`, `lstsq`는 허용오차를 `rtol` 하나로 받아요. **가장 큰 특이값의 `rtol`배 이하인 특이값은 0으로 봐요.**
+
+$$
+\operatorname{rank}(A) = \#\{\, j : \sigma_j > \text{rtol}\cdot\sigma_1 \,\}, \qquad \text{rtol}_{\text{기본}} = \max(m, n)\cdot\varepsilon
+$$
+
+여기서 $\varepsilon = 2^{-52}$(float64의 기계 엡실론)예요. 기본값의 근거는 앞의 안정성이에요. 계산된 특이값에는 $p(m,n)\,u\,\sigma_1$ 크기의 절대 오차가 있으므로, 그보다 작은 특이값은 "정확히 0인데 반올림으로 생긴 값"과 구별되지 않아요. $\max(m,n)\varepsilon\sigma_1$은 그 잡음의 크기를 대표하는 값이에요. numpy 2.5.4 `matrix_rank`의 기본 허용오차($\sigma_{\max}\cdot\max(M,N)\cdot\varepsilon$)와 같은 정의라서, 테스트에서 랭크를 numpy와 직접 비교해요.
+
+`rtol`은 유한한 0 이상의 실수 스칼라만 받아요(`args.cpp`의 `parse_rtol`). 음수, NaN, inf는 `ValueError`, bool과 문자열은 `TypeError`예요. $\text{rtol} \ge 1$이면 모든 특이값이 $\sigma_1$ 이하이므로 랭크는 0이에요. LAPACK의 `gelsd`는 `rcond ≥ 1`을 $\varepsilon$으로 바꿔 랭크를 최대로 만들지만, stardust는 정의를 그대로 따라요.
+
+```python
+>>> y = sd.asarray([[1.0, 2.0], [2.0, 4.0]])
+>>> sd.linalg.svdvals(y)
+array([                   5.0, 1.8144368136220992e-16], dtype=float64)
+>>> sd.linalg.matrix_rank(y)
+1
+>>> sd.linalg.cond(y)
+2.7556760105735884e+16
+>>> sd.linalg.cond(y, ord=1)
+inf
+```
+
+이 행렬은 정확히 랭크 1이지만, 계산된 작은 특이값은 0이 아니라 $1.8\times10^{-16}$이에요. 허용오차 $2\varepsilon\cdot 5 \approx 2.2\times10^{-15}$보다 작으므로 랭크는 1이에요. `cond`는 특이 행렬에서 inf를 돌려주는데, "특이"를 판정하는 기준은 경로마다 그 경로의 **정확한 0**이에요. `ord=2`는 가장 작은 특이값이 정확히 0일 때만 inf라서 여기서는 큰 유한값이 나와요. `ord=1`은 LU 분해(`getrf`)의 정확한 0 피벗을 기준으로 해서 inf예요([LU 분해와 선형 시스템](/internals/linalg/lu/)). 조건수를 보고 "거의 특이"를 판정하는 문턱값을 두지 않는 것은 그 문턱값을 정할 객관적인 기준이 없기 때문이에요.
+
+### 경계 근처의 특이값
+
+`matrix_rank`의 특이값은 `gesvd` `'N'`에서, `lstsq`의 랭크는 `gelsd` 안의 SVD에서, `pinv`가 버릴 특이값은 `gesdd`에서 나와요. 세 계산은 반올림 수준에서 다르므로, 어떤 특이값이 $\text{rtol}\cdot\sigma_1$에 **아주 가까우면** 셋의 랭크가 이론상 다를 수 있어요. 무작위 입력의 테스트에서는 늘 같았어요. 셋을 같은 루틴으로 맞추려면 `pinv`나 `lstsq`가 특이값을 한 번 더 구해야 해서 그 비용을 들이지 않았어요.
+
+## `pinv`: 유사역행렬
+
+유사역행렬(Moore–Penrose pseudo-inverse) $A^{+}$는 정사각이 아니거나 특이한 행렬에도 정의되는 "역행렬"이에요. $Ax = b$의 최소제곱해 가운데 노름이 가장 작은 것이 $x = A^{+}b$예요. SVD로 쓰면
+
+$$
+A^{+} = V \Sigma^{+} U^H, \qquad \Sigma^{+} = \operatorname{diag}(1/\sigma_1, \dots, 1/\sigma_r, 0, \dots, 0)
+$$
+
+이고, $r$은 위의 `rtol` 규칙으로 센 랭크예요. 0으로 보는 특이값을 뒤집지 않는 것이 핵심이에요. $1/\sigma$를 반올림 잡음 크기의 $\sigma$에 그대로 적용하면 잡음이 $10^{16}$배로 부풀어요.
+
+```cpp
+// spectral.cpp의 pinv() 배치 몸체, 줄임
+if (lapack::gesdd('S', m, n, a, lda, sv, u, m, vh, k, s) > 0) return kNoConvergence;
+const double tol = rtol * sv[0];
+T* w = a;                                          // W = Vh^H S^+ (n×k), a의 자리를 다시 써요
+for (lint j = 0; j < k; ++j) {
+    const double inv = sv[j] > tol ? 1.0 / sv[j] : 0.0;
+    for (lint r = 0; r < n; ++r) w[j * n + r] = conj_if_complex(vh[r * k + j]) * inv;
+}
+lapack::gemm<T>('N', is_complex ? 'C' : 'T', n, m, k, w, n, u, m, out, n);   // out = W U^H
+```
+
+1. `gesdd` `'S'`로 $U$ ($m\times k$), $\sigma$, $V^H$ ($k\times n$)를 scratch에 구해요. 벡터가 필요하므로 값 전용 모드가 아니라 `svd`와 같은 루틴이에요.
+2. $W = V\Sigma^{+}$를 만들어요. $V^H$를 켤레 전치하면서 $j$번째 열에 $1/\sigma_j$(또는 0)를 곱하는 $O(nk)$ 루프예요. 이미 쓸모없어진 입력 사본 `a`의 자리를 다시 써서 메모리를 더 잡지 않아요.
+3. `gemm` 한 번으로 $A^{+} = W U^H$ ($n\times m$)를 결과 자리에 바로 써요. $2mnk$ flop(complex면 그 네 배)이에요.
+
+numpy 2.5.4의 `pinv`도 SVD로 계산하지만 기본 허용오차가 `rcond=1e-15`로 고정이고, SVD 뒤의 계산 과정도 달라서 결과가 비트까지 같지는 않아요(모양 2–39의 무작위 100개 모두 달랐고, 가장 큰 차이는 $1.4\times10^{-17}$이었어요). 테스트는 numpy와 상대 $10^{-8}$로 비교하고, Moore–Penrose 조건 $A A^{+} A = A$를 확인해요.
+
+## 배치
+
+모든 함수가 `(..., M, N)` 모양의 행렬 묶음을 받아요. SVD 계열은 비용 모델의 같은 계열(`kSVD`)을 써요. 원소 하나의 직렬 비용을 $1000 + 80\cdot mn$ ns로 추정하고, 배치 전체가 10µs를 넘으면 태스크당 약 5µs씩 스레드풀에 나눠요. Accelerate의 `gesdd`는 n = 1024까지 사실상 1스레드로 돌기 때문에, 큰 행렬의 배치도 크기 기준 없이 나눠요. 행렬끼리는 독립이고 정렬과 `lwork`가 위치와 무관하므로, 나누는 방법이나 스레드 수가 결과 비트를 바꾸지 않아요. 비용 모델과 분할 규칙은 [배치와 병렬화](/internals/linalg/batch/)에 있어요.
+
+## 성능
+
+같은 Accelerate LAPACK을 부르므로, 큰 행렬 하나에서는 stardust와 numpy의 시간이 비슷해요. 차이는 작은 행렬 하나(호출 경로와 패킹의 고정비), 배치(numpy는 배치를 한 코어로 차례로 돌고, stardust는 스레드풀에 나눠요), 그리고 값 전용 함수(루틴이 달라요)에서 나와요.
+
+아래 표는 numpy 2.5.4 시간을 stardust 시간으로 나눈 값이에요(1보다 크면 stardust가 빨라요). 각 칸은 기본 10스레드 / 1스레드예요.
+
+| 모양 | `svd` | `svdvals` | `pinv` |
+|---|:---:|:---:|:---:|
+| (3, 3) | ⟦BENCH svd (3,3) t10⟧ / ⟦BENCH svd (3,3) t1⟧ | ⟦BENCH svdvals (3,3) t10⟧ / ⟦BENCH svdvals (3,3) t1⟧ | ⟦BENCH pinv (3,3) t10⟧ / ⟦BENCH pinv (3,3) t1⟧ |
+| (32, 32) | ⟦BENCH svd (32,32) t10⟧ / ⟦BENCH svd (32,32) t1⟧ | ⟦BENCH svdvals (32,32) t10⟧ / ⟦BENCH svdvals (32,32) t1⟧ | ⟦BENCH pinv (32,32) t10⟧ / ⟦BENCH pinv (32,32) t1⟧ |
+| (300, 300) | ⟦BENCH svd (300,300) t10⟧ / ⟦BENCH svd (300,300) t1⟧ | ⟦BENCH svdvals (300,300) t10⟧ / ⟦BENCH svdvals (300,300) t1⟧ | ⟦BENCH pinv (300,300) t10⟧ / ⟦BENCH pinv (300,300) t1⟧ |
+| (1000, 1000) | ⟦BENCH svd (1000,1000) t10⟧ / ⟦BENCH svd (1000,1000) t1⟧ | ⟦BENCH svdvals (1000,1000) t10⟧ / ⟦BENCH svdvals (1000,1000) t1⟧ | ⟦BENCH pinv (1000,1000) t10⟧ / ⟦BENCH pinv (1000,1000) t1⟧ |
+| (1000, 3, 3) | ⟦BENCH svd (1000,3,3) t10⟧ / ⟦BENCH svd (1000,3,3) t1⟧ | ⟦BENCH svdvals (1000,3,3) t10⟧ / ⟦BENCH svdvals (1000,3,3) t1⟧ | ⟦BENCH pinv (1000,3,3) t10⟧ / ⟦BENCH pinv (1000,3,3) t1⟧ |
+| (100, 32, 32) | ⟦BENCH svd (100,32,32) t10⟧ / ⟦BENCH svd (100,32,32) t1⟧ | ⟦BENCH svdvals (100,32,32) t10⟧ / ⟦BENCH svdvals (100,32,32) t1⟧ | ⟦BENCH pinv (100,32,32) t10⟧ / ⟦BENCH pinv (100,32,32) t1⟧ |
+
+| 모양 | `matrix_rank` | `cond` | `matrix_norm` (`ord=2`) |
+|---|:---:|:---:|:---:|
+| (3, 3) | ⟦BENCH matrix_rank (3,3) t10⟧ / ⟦BENCH matrix_rank (3,3) t1⟧ | ⟦BENCH cond (3,3) t10⟧ / ⟦BENCH cond (3,3) t1⟧ | ⟦BENCH matrix_norm 2 (3,3) t10⟧ / ⟦BENCH matrix_norm 2 (3,3) t1⟧ |
+| (32, 32) | ⟦BENCH matrix_rank (32,32) t10⟧ / ⟦BENCH matrix_rank (32,32) t1⟧ | ⟦BENCH cond (32,32) t10⟧ / ⟦BENCH cond (32,32) t1⟧ | ⟦BENCH matrix_norm 2 (32,32) t10⟧ / ⟦BENCH matrix_norm 2 (32,32) t1⟧ |
+| (300, 300) | ⟦BENCH matrix_rank (300,300) t10⟧ / ⟦BENCH matrix_rank (300,300) t1⟧ | ⟦BENCH cond (300,300) t10⟧ / ⟦BENCH cond (300,300) t1⟧ | ⟦BENCH matrix_norm 2 (300,300) t10⟧ / ⟦BENCH matrix_norm 2 (300,300) t1⟧ |
+| (1000, 1000) | ⟦BENCH matrix_rank (1000,1000) t10⟧ / ⟦BENCH matrix_rank (1000,1000) t1⟧ | ⟦BENCH cond (1000,1000) t10⟧ / ⟦BENCH cond (1000,1000) t1⟧ | ⟦BENCH matrix_norm 2 (1000,1000) t10⟧ / ⟦BENCH matrix_norm 2 (1000,1000) t1⟧ |
+| (1000, 3, 3) | ⟦BENCH matrix_rank (1000,3,3) t10⟧ / ⟦BENCH matrix_rank (1000,3,3) t1⟧ | ⟦BENCH cond (1000,3,3) t10⟧ / ⟦BENCH cond (1000,3,3) t1⟧ | ⟦BENCH matrix_norm 2 (1000,3,3) t10⟧ / ⟦BENCH matrix_norm 2 (1000,3,3) t1⟧ |
+| (100, 32, 32) | ⟦BENCH matrix_rank (100,32,32) t10⟧ / ⟦BENCH matrix_rank (100,32,32) t1⟧ | ⟦BENCH cond (100,32,32) t10⟧ / ⟦BENCH cond (100,32,32) t1⟧ | ⟦BENCH matrix_norm 2 (100,32,32) t10⟧ / ⟦BENCH matrix_norm 2 (100,32,32) t1⟧ |
+
+{/* BENCH-FIG: svd (3,3) t10, svd (1000,3,3) t10, svd (100,32,32) t10, svd (1000,1000) t10, svdvals (3,3) t10, svdvals (1000,3,3) t10, svdvals (1000,1000) t10 (계열: numpy, stardust 1스레드, stardust 10스레드) | 캡션: Apple M4 Pro, numpy 2.5.4. 작은 행렬 하나는 호출 경로에서, 배치는 스레드풀에서 차이가 나요. 큰 행렬 하나는 같은 Accelerate gesdd라 비슷하고, svdvals는 루틴이 달라요(stardust gesvd, numpy gesdd). */}
+
+해석할 때 알아 둘 점이에요.
+
+- **값 전용 함수는 루틴부터 달라요.** numpy의 `svdvals`, `matrix_rank`, `cond`, `matrix_norm(ord=2)`는 `gesdd` `'N'`, stardust는 `gesvd` `'N'`이에요. 큰 행렬 하나에서 나는 차이는 대부분 이 루틴의 차이예요.
+- **`cond`의 기본 `ord`는 2라서** 이 표의 `cond`도 특이값 경로예요.
+- **`pinv`는 SVD 뒤에 `gemm` 한 번**이라 `svd`와 비슷하게 움직여요.
+
+복잡도는 이래요($m \ge n$, $k = n$).
+
+| 부분 | 비용 |
+|---|---|
+| 패킹과 유한성 검사 | $O(mn)$ |
+| 이중대각화 (`gebrd`) | $4mn^2 - \tfrac{4}{3}n^3$ flop, 약 절반이 BLAS-2 |
+| 값만: dqds | 반복 한 걸음 $O(n)$, 전체 $O(n^2)$ |
+| 벡터: 분할 정복 | $O(n^3)$, 대부분 `gemm` |
+| 벡터: $Q$, $P$ 적용 (`ormbr`) | $O(mn^2)$, 블록 반사(BLAS-3) |
+| `pinv`의 마지막 곱 | $2mn^2$ flop |
+
+값만 구할 때는 이중대각화가 거의 전부예요. n = 1000이면 약 $2.7\times10^{9}$ flop인데, 그 절반이 메모리 대역폭에 묶인 행렬-벡터 곱이라 같은 flop의 행렬곱보다 훨씬 오래 걸려요. 벡터까지 구하면 $Q$, $P$를 곱하는 비용과 분할 정복의 행렬곱이 더해져요.
+
+## 정확도
+
+**역방향 안정성.** 계산된 특이값 $\hat\sigma_j$는 $A + E$의 정확한 특이값이고 $\lVert E\rVert_2 \le p(m,n)\,u\,\lVert A\rVert_2$예요. 따라서
+
+$$
+|\hat\sigma_j - \sigma_j| \le p(m, n)\, u\, \sigma_1
+$$
+
+이에요. 큰 특이값은 상대 정확도로, 작은 특이값은 $\sigma_1$ 기준의 절대 정확도로 나와요. 2단계의 dqds는 이중대각 $B$의 특이값을 상대 정확도로 구하지만, 1단계가 들인 오차까지 없애지는 못해요. 계산된 특이벡터는 직교성 $\lVert \hat U^H \hat U - I\rVert$가 $O(u)$이고, 서로 가까운 특이값에 속한 벡터는 그 간격에 반비례해 흔들려요(그 부분 공간은 안정적이에요) [2].
+
+**테스트가 보는 것.**
+
+- `svd`: 재구성 잔차 $\lVert U\Sigma V^H - A\rVert \le 20\max(m,n)\,\varepsilon\,\max|a_{ij}|$, $\lVert U^HU - I\rVert$, $\lVert V^HV - I\rVert \le 20\max(m,n)\,\varepsilon$, 특이값의 내림차순과 음이 아님, numpy 특이값과의 비교, `svdvals`와 `svd(x).S`의 근접.
+- `matrix_rank`: 랭크를 정해 만든 행렬에서 numpy와 같은 랭크, `lstsq`의 랭크와 같음. `rtol`의 경계(같으면 0으로 봄)와 $\text{rtol} \ge 1$.
+- `pinv`: numpy와의 근접, $A A^{+} A = A$.
+- 모든 함수: 입력 레이아웃(C, F, 비연속, 음수 stride, 브로드캐스트 배치), 배치 안의 위치(n = 3, 5, 7, 40), 스레드 수(1, 3, 10)에 대해 결과 바이트가 같음.
+
+**비트 관계를 정리하면 이래요.**
+
+| 비교 | 관계 | 이유 |
+|---|---|---|
+| `svd(x).S` 대 numpy `svd` | 같음 | 같은 `gesdd` |
+| `svd(x).U`, `.Vh` 대 numpy | 다를 수 있음 | `lwork`가 달라 블록 크기와 경로가 달라요 |
+| `svdvals(x)` 대 `svd(x).S` | $10^{-15}$ 수준에서 다름 | 값 전용 모드는 다른 계산 |
+| `svdvals(x)` 대 numpy `svdvals` | 다를 수 있음 | `gesvd` `'N'` 대 `gesdd` `'N'` |
+| `matrix_norm(x, 2)`, `cond(x)`, `matrix_rank(x)` 대 `svdvals(x)` | 같음 | 같은 헬퍼, 같은 루틴 |
+| 레이아웃, 배치 위치, 스레드 수 | 같음 | 패킹, 16바이트 정렬, 같은 `lwork` |
+
+## 참고 문헌
+
+1. G. H. Golub, W. Kahan, "Calculating the Singular Values and Pseudo-Inverse of a Matrix", *Journal of the Society for Industrial and Applied Mathematics, Series B: Numerical Analysis*, 2(2), 205–224, 1965. (이중대각화와 이중대각 행렬의 SVD)
+2. G. H. Golub, C. F. Van Loan, *Matrix Computations*, 4th ed., Johns Hopkins University Press, 2013. (SVD: 이중대각화와 flop 수, Golub–Kahan SVD 단계, R-bidiagonalization, Weyl의 부등식, Eckart–Young 정리, 특이 부분 공간의 섭동)
+3. J. Demmel, W. Kahan, "Accurate Singular Values of Bidiagonal Matrices", *SIAM Journal on Scientific and Statistical Computing*, 11(5), 873–912, 1990. (zero-shift QR, 이중대각 행렬의 상대 섭동 이론. `dbdsqr.f`가 인용하는 논문)
+4. K. V. Fernando, B. N. Parlett, "Accurate Singular Values and Differential qd Algorithms", *Numerische Mathematik*, 67(2), 191–229, 1994. (dqds. `dlasq1.f`가 인용하는 논문)
+5. M. Gu, S. C. Eisenstat, "A Divide-and-Conquer Algorithm for the Bidiagonal SVD", *SIAM Journal on Matrix Analysis and Applications*, 16(1), 79–92, 1995. (세큘러 방정식, deflation, 직교성을 지키는 벡터 계산)
+6. E. Anderson et al., *LAPACK Users' Guide*, 3rd ed., SIAM, 1999. (SVD 드라이버 `xGESVD`·`xGESDD`, 축약형으로의 블록 변환과 BLAS-2 비중, 오차 한계)
+7. LAPACK 참조 구현 소스, `https://github.com/Reference-LAPACK/lapack` 의 `SRC/` 아래: `dgesdd.f`, `zgesdd.f`, `dgesvd.f`, `dgebrd.f`, `dbdsqr.f`, `zbdsqr.f`, `dlasq1.f`, `dbdsdc.f`, `dlasdq.f`, `dlasd0.f`, `dlasd1.f`, `dlasd2.f`, `dlasd3.f`, `dlasd4.f`, `ilaenv.f`. (경로를 나누는 기준, 블록 크기, `smlsiz`, 허용오차, workspace 처리)
+8. numpy 2.5.4 소스, `numpy/linalg/umath_linalg.cpp`와 `numpy/linalg/_linalg.py`. (`svd`, `svdvals`가 부르는 `gesdd`, `matrix_rank`의 기본 허용오차, `pinv`의 기본 `rcond=1e-15`)
+9. L. N. Trefethen, D. Bau, *Numerical Linear Algebra*, SIAM, 1997. (SVD의 기하학적 의미, $A^HA$로 계산할 때의 불안정성)

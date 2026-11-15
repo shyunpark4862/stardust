@@ -1,0 +1,783 @@
+---
+title: LAPACK 없이 계산하는 함수
+group: 기본 연산
+order: 1
+summary: vecdot, outer, kron, cross, trace, diagonal, matrix_power, vector_norm, matrix_norm처럼 LAPACK을 부르지 않고 직접 루프로 계산하는 함수를 설명해요. 노름·크로네커 곱·외적의 수학, numpy와 비트까지 같은 FMA 복소수 곱, 이진 거듭제곱, 넘치지 않게 다시 스케일하는 노름을 다뤄요.
+seeAlso: [batch, overview, svd, lu, packing]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+import Plot from '../../../components/fig/Plot.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+`sd.linalg`의 함수 대부분은 LAPACK을 감싸지만, 몇 개는 LAPACK이 필요 없어요. 원소를 곱하고, 더하고, 옮기는 것이 전부인 함수들이에요. 이 함수들은 `csrc/linalg/ops/basic.cpp`(기본 연산)와 `ops/norms.cpp`, `ops/vnorm.hpp`(노름)에 직접 짠 루프로 있어요.
+
+| 함수 | 계산하는 것 | 구현 | numpy와의 관계 |
+|---|---|---|---|
+| `vecdot` | $\sum_i \overline{x_i}\, y_i$ | 곱을 pairwise 합 | `np.sum(np.conj(x) * y, axis)`와 비트까지 같음 |
+| `outer` | $x_i y_j$ | 원소 곱 | `x[..., :, None] * y[..., None, :]`와 같음 |
+| `kron` | $a_{ij} B$ 블록 | 원소 곱 | `np.kron`(2차원)과 같음 |
+| `cross` | $u \times v$ | 곱 두 개의 차 | `np.cross`와 같음 |
+| `trace` | $\sum_i a_{ii}$ | 대각을 pairwise 합 | `np.trace`와 같음 |
+| `diagonal` | $a_{i,i+k}$ | 복사 | 같음 (dtype 유지) |
+| `matrix_power` | $A^e$ | 이진 거듭제곱, `gemm` | $\lvert e\rvert \le 4$에서 같음 |
+| `vector_norm` | $\lVert x\rVert_p$ | pairwise 합, 필요할 때만 다시 스케일 | 넘치지 않는 범위에서 같음 |
+| `matrix_norm` (fro, ±1, ±inf) | 행렬 노름 | 줄마다 pairwise 합 | fro는 같음, ±1·±inf는 레이아웃에 따라 다를 수 있음 |
+
+핵심 아이디어는 다섯 가지예요.
+
+1. **원소 곱은 numpy와 같은 식이에요.** complex 곱셈을 numpy처럼 FMA로 계산해요. 그래서 `outer`, `kron`, `cross`가 numpy와 비트까지 같아요.
+2. **부동소수점 합은 모두 numpy의 pairwise 합이에요.** 항을 논리적 C 순서로 넣으므로 결과가 메모리 레이아웃과 상관없어요([배치와 병렬화](/internals/linalg/batch/)).
+3. **NaN을 그대로 전파해요.** LAPACK을 부르는 함수는 입력에 NaN이나 inf가 있으면 `ValueError`를 내지만, 이 함수들은 계산이 잘 정의되므로 검사하지 않아요. 예외는 음수 지수의 `matrix_power`(역행렬을 LAPACK으로 구해요)와 SVD로 계산하는 `matrix_norm`의 2, −2, nuc예요.
+4. **노름은 빠른 한 번의 패스가 기본이고, 넘쳤을 때만 다시 스케일해요.** 그래서 보통 입력에서는 numpy와 비트가 같고, numpy가 inf나 0을 내는 극단값에서도 올바른 값을 내요.
+5. **배치 드라이버를 그대로 써요.** 비용 계열 `kStream`(합)과 `kCopy`(복사)로 나눌지를 정해요.
+
+## 원소 곱: numpy와 같은 FMA 식
+
+### complex 곱셈의 두 가지 계산
+
+복소수 $a = a_r + i a_i$와 $b = b_r + i b_i$의 곱은
+
+$$
+ab = (a_r b_r - a_i b_i) + i\,(a_r b_i + a_i b_r)
+$$
+
+예요. 부동소수점에서는 이 식을 계산하는 방법이 둘이에요.
+
+- **곱마다 반올림:** $a_r b_r$를 반올림하고, $a_i b_i$를 반올림하고, 그 차를 반올림해요. 반올림이 세 번이에요.
+- **FMA:** FMA(fused multiply-add)는 $x \cdot y + z$를 **한 번만** 반올림하는 명령이에요(IEEE 754-2008부터 있는 연산 [5]). 실수부를 $\operatorname{fma}(a_r, b_r, -(a_i b_i))$로 계산하면 $a_i b_i$만 반올림하고, $a_r b_r$는 정확한 값 그대로 빼서 마지막에 한 번 반올림해요. 반올림이 두 번이에요.
+
+두 방법은 마지막 비트가 자주 달라요. numpy 바이너리는 컴파일러의 FMA 축약(`a*b - c*d`를 FMA로 바꾸기)이 켜진 채 빌드돼 있어서 complex 곱셈이 두 번째 방법으로 계산돼요. 반면 C++의 `std::complex`의 `operator*`는 축약하지 않아요. 그리고 stardust는 컴파일러가 몰래 FMA를 만들지 않도록 `-ffp-contract=off`로 빌드해요(같은 식이 컴파일러 판단에 따라 다른 비트를 내지 않게 하려는 것이에요). 그래서 numpy와 같은 비트가 필요한 자리에는 FMA를 코드에 직접 적어요.
+
+```cpp
+// linalg/types.hpp
+inline double mul(double a, double b) { return a * b; }
+inline cplx mul(cplx a, cplx b) {
+    const double ar = a.real(), ai = a.imag(), br = b.real(), bi = b.imag();
+    return {std::fma(ar, br, -(ai * bi)), std::fma(ar, bi, ai * br)};
+}
+```
+
+배열 영역의 complex 곱셈(`array/kernels/scalar_ops.hpp`의 `cmul`)과 같은 식이에요([원소별 커널](/internals/array/elementwise/)). 무작위 복소수 2000쌍을 곱해 보면 곱마다 반올림한 값과 numpy 2.5.4의 값이 852쌍(43%)에서 마지막 비트가 달라요. 한 예를 보면 이래요.
+
+```python
+>>> import math
+>>> import numpy as np
+>>> a = complex(-0.29829145782149374, 0.9464980014362936)
+>>> b = complex(0.051829038691168366, -0.549596157288264)
+>>> a.real * b.imag + a.imag * b.real          # 허수부, 곱마다 반올림
+0.21299592050816246
+>>> math.fma(a.real, b.imag, a.imag * b.real)  # 허수부, FMA
+0.21299592050816243
+>>> (np.array([a]) * np.array([b]))[0].imag    # numpy
+np.float64(0.21299592050816243)
+>>> sd.linalg.outer(sd.asarray([a]), sd.asarray([b]))
+array([[(0.5047315049617336+0.21299592050816243j)]], dtype=complex128)
+```
+
+`mul`을 쓰는 곳은 `vecdot`, `outer`, `kron`, `cross`예요. 실수 곱은 반올림이 한 번뿐이라 어느 방법이든 같아요.
+
+### 곱의 순서도 비트를 정해요
+
+FMA 식은 두 피연산자에 대칭이 아니에요. $\operatorname{fma}(a_r, b_i, a_i b_r)$에서 $a_i b_r$는 반올림하고 $a_r b_i$는 반올림하지 않으므로, $a \cdot b$와 $b \cdot a$의 허수부가 다를 수 있어요. 그래서 `kron`은 numpy처럼 **왼쪽 인자의 원소를 왼쪽에** 두고 곱해요(`mul(a[i, j], b[k, l])`).
+
+## vecdot
+
+### 수학
+
+두 벡터의 내적(dot product)은 짝지은 원소의 곱을 모두 더한 값이에요.
+
+$$
+\langle x, y \rangle = \sum_{i=1}^{n} \overline{x_i}\, y_i
+$$
+
+실수 벡터에서는 $\langle x, y\rangle = \lVert x\rVert_2 \lVert y\rVert_2 \cos\theta$예요. $\theta$는 두 벡터 사이의 각이고, 내적은 "$y$를 $x$ 방향에 비춘 그림자의 길이 × $x$의 길이"예요. 0이면 두 벡터가 수직이에요.
+
+complex에서는 첫 인자에 켤레를 취해요. 그래야 $\langle x, x\rangle = \sum |x_i|^2$가 음이 아닌 실수(길이의 제곱)가 돼요. 켤레가 없으면 $x = (i)$일 때 $x \cdot x = -1$이 되어 길이로 쓸 수 없어요. Array API 표준도 첫 인자에 켤레를 취해요.
+
+### 축 규칙
+
+`vecdot(x1, x2, axis=-1)`은 두 인자를 브로드캐스트한 모양에서 `axis`를 따라 내적해요. `axis`는 **브로드캐스트된 모양 기준**으로 세고, 그 축 자체는 브로드캐스트하지 않아요. 두 인자의 그 축 길이가 같아야 하고, 다르면 `ValueError`예요(Array API 규칙). 구현은 두 인자를 왼쪽에 길이 1인 축을 붙여 같은 차원으로 맞춘 뒤(`Padded`), 내적하는 축을 떼어 낸 나머지를 `Batch`로 브로드캐스트해요. 배치 원소 하나가 출력 하나예요.
+
+### 구현
+
+내적은 곱 $\overline{x_i} y_i$를 항으로 하는 pairwise 합이에요. 항을 만드는 `fill`이 입력을 계산 타입(float64 또는 complex128)으로 바꾸고, 켤레를 취하고, `mul`로 곱해요.
+
+```cpp
+// linalg/ops/basic.cpp의 vecdot (발췌)
+auto fill = [&](std::int64_t b0, std::int64_t k, T* out) {
+    for (std::int64_t i = 0; i < k; ++i)
+        out[i] = mul(conj_if_complex(convert<T>(load<SX>(p + (b0 + i) * sx))),
+                     convert<T>(load<SY>(q + (b0 + i) * sy)));
+};
+if (/* T, SX, SY가 모두 double이고 */ sx == 8 && sy == 8 && len < kSumParallelMin) {
+    // 연속 float64: 잎 안에서 곱을 바로 더해요. 같은 항, 같은 순서라 같은 비트.
+    return 0. + pairwise::tree(0, len, [&](std::int64_t b0, std::int64_t m) {
+        return pairwise::leaf(m, [&](std::int64_t i) { return a[b0 + i] * c[b0 + i]; });
+    });
+}
+return pairwise_sum_mt<T>(len, fill);   // 길면 트리의 잎을 풀에서
+```
+
+- `SX`, `SY`는 두 입력이 메모리에 저장된 타입이에요(bool, int64, float64, complex128). 템플릿 람다 두 겹(`visit_storage`)으로 조합마다 루프를 만들어서, 원소마다 dtype을 묻지 않아요. 입력 dtype이 다르면(예: int64와 float64) 변환을 곱과 같은 루프에서 해요. 입력 전체를 먼저 바꾼 복사본을 만들지 않아요.
+- 연속 float64는 잎 버퍼도 거치지 않아요. 빌드에서 FMA 축약을 꺼 두었으므로 `a[i] * c[i]`를 더할 때 곱과 덧셈이 FMA 하나로 합쳐지지 않아요. 그래서 버퍼에 곱을 써 두었다가 더하는 것과 비트가 같아요.
+- 길이가 2¹⁵ 이상이면 합 하나를 트리의 잎 단위로 풀에서 나눠요([배치와 병렬화](/internals/linalg/batch/)).
+
+결과는 `sd.sum(sd.conj(x1) * x2, axis=-1)`, `np.sum(np.conj(x1) * x2, axis=-1)`과 비트까지 같아요. 같은 곱을 같은 pairwise 트리로 더하기 때문이에요. numpy 2.5.4의 `np.vecdot`은 다른 값을 낼 수 있어요. `np.vecdot(x, y)`는 `np.dot(x, y)`(BLAS 내적)와 같은 값을 내고, pairwise 합과는 마지막 비트가 달라요.
+
+비용은 곱 $n$번, 덧셈 $n$번이고, 원소 하나를 한 번 읽고 끝나므로 긴 벡터에서는 메모리 대역폭이 시간을 정해요.
+
+## outer
+
+### 수학
+
+외적(outer product) $xy^{T}$는 $x$의 원소마다 $y$ 전체를 곱해 행 하나를 만든 행렬이에요. $(xy^{T})_{ij} = x_i y_j$이고, 모양은 $m \times n$이에요.
+
+<Fig caption="outer([1, 2, 3], [4, 5]). 행 i는 y에 x_i를 곱한 것이고, 열 j는 x에 y_j를 곱한 것이에요. 모든 행이 y의 배수라서 랭크가 1이에요.">
+  <ArrayFig name="x" data={[[1], [2], [3]]} />
+  <ArrayFig name="y" data={[4, 5]} />
+  <Op>→</Op>
+  <ArrayFig name="outer(x, y)" data={[[4, 5], [8, 10], [12, 15]]} tones={[['a', 'a'], ['', ''], ['', '']]} note="(3, 2)" />
+</Fig>
+
+모든 행이 같은 벡터 $y$의 배수이므로 랭크가 1인 행렬이에요(0 벡터가 아니면). 거꾸로 랭크 1인 행렬은 모두 외적 하나로 쓸 수 있어요. SVD는 행렬을 이런 랭크 1 행렬들의 합 $\sum_k \sigma_k u_k v_k^{H}$로 나타내요([특이값 분해](/internals/linalg/svd/)).
+
+### 구현
+
+`outer(x1, x2)`는 `(..., M)`과 `(..., N)`을 받아 `(..., M, N)`을 돌려줘요. 배치 축은 브로드캐스트해요. 결과는 다른 행렬 함수처럼 열 우선이라서 열 하나씩 채워요.
+
+```cpp
+// linalg/ops/basic.cpp의 outer (발췌)
+T* xv = s.get<T>(m);                                   // x1을 한 번만 계산 타입으로
+for (std::int64_t r = 0; r < m; ++r) xv[r] = convert<T>(load<SX>(x.data() + off[0] + r * sx));
+T* o = res + i * m * n;
+for (std::int64_t c = 0; c < n; ++c) {
+    const T yc = convert<T>(load<SY>(y.data() + off[1] + c * sy));
+    for (std::int64_t r = 0; r < m; ++r) o[c * m + r] = mul(xv[r], yc);   // 연속 쓰기
+}
+```
+
+`x1`은 열마다 다시 읽으므로 `Scratch`에 한 번 변환해 두고, `x2`의 원소는 열마다 하나만 읽어요. 안쪽 루프는 연속한 메모리에 쓰는 곱셈이라 벡터화돼요. 결과는 `x[..., :, None] * x2[..., None, :]`와 비트까지 같아요(같은 `mul`, `x1`이 왼쪽).
+
+## kron
+
+### 수학
+
+크로네커 곱(Kronecker product) $A \otimes B$는 $A$의 원소 하나하나를 "$B$ 전체에 그 원소를 곱한 블록"으로 바꾼 행렬이에요 [4][6].
+
+$$
+A \otimes B = \begin{bmatrix} a_{11}B & a_{12}B & \cdots & a_{1n}B \\ \vdots & & \ddots & \vdots \\ a_{m1}B & a_{m2}B & \cdots & a_{mn}B \end{bmatrix}
+$$
+
+$A$가 $m \times n$, $B$가 $p \times q$이면 결과는 $mp \times nq$예요. 원소로 쓰면 $(A \otimes B)_{(i-1)p + k,\ (j-1)q + l} = a_{ij} b_{kl}$이에요.
+
+<Fig caption="kron([[1, 2], [3, 4]], [[0, 1], [1, 0]]). A의 원소 하나가 B 크기의 블록 하나가 돼요. 강조한 블록은 a₀₀·B와 a₁₁·B예요.">
+  <ArrayFig name="A" data={[[1, 2], [3, 4]]} tones={[['a', ''], ['', 'a']]} />
+  <Op>⊗</Op>
+  <ArrayFig name="B" data={[[0, 1], [1, 0]]} />
+  <Op>=</Op>
+  <ArrayFig name="A ⊗ B" data={[[0, 1, 0, 2], [1, 0, 2, 0], [0, 3, 0, 4], [3, 0, 4, 0]]} tones={[['a', 'a', '', ''], ['a', 'a', '', ''], ['', '', 'a', 'a'], ['', '', 'a', 'a']]} note="(4, 4)" />
+</Fig>
+
+```python
+>>> sd.linalg.kron(sd.asarray([[1, 2], [3, 4]]), sd.asarray([[0, 1], [1, 0]]))
+array([[0.0, 1.0, 0.0, 2.0],
+       [1.0, 0.0, 2.0, 0.0],
+       [0.0, 3.0, 0.0, 4.0],
+       [3.0, 0.0, 4.0, 0.0]], dtype=float64)
+```
+
+크로네커 곱이 쓸모 있는 이유는 행렬 방정식을 보통의 연립방정식으로 바꿔 주기 때문이에요. 행렬 $X$의 열을 차례로 쌓은 벡터를 $\operatorname{vec}(X)$라고 하면
+
+$$
+\operatorname{vec}(AXB) = (B^{T} \otimes A)\,\operatorname{vec}(X)
+$$
+
+예요 [4]. 예를 들어 Sylvester 방정식 $AX + XB = C$는 $(I \otimes A + B^{T} \otimes I)\operatorname{vec}(X) = \operatorname{vec}(C)$가 돼요. 또 $(A \otimes B)(C \otimes D) = AC \otimes BD$(혼합곱 성질)가 성립해서, 큰 크로네커 곱을 실제로 만들지 않고 작은 인자들로 계산하는 알고리즘의 바탕이 돼요.
+
+### 배치 규칙
+
+`kron`은 다른 행렬 함수처럼 **행렬 묶음**을 받아요: `(..., M, N) ⊗ (..., P, Q) → (..., M·P, N·Q)`. 앞의 배치 축은 브로드캐스트해요. `np.kron`은 다르게, 모든 축에 크로네커 곱을 해요. `(2, 2, 3)`과 `(2, 4, 5)`를 넣으면 numpy 2.5.4는 `(4, 8, 15)`, stardust는 `(2, 8, 15)`를 돌려줘요. 2차원 입력에서는 둘이 같아요. 입력은 2차원 이상이어야 해요.
+
+정수 입력은 float64로 계산해요(`np.kron`은 정수를 유지해요). 계산하는 linalg 함수의 공통 규칙이에요.
+
+### 구현
+
+두 인자를 `Scratch`에 열 우선으로 패킹한 뒤, 결과를 메모리 순서대로 채워요.
+
+```cpp
+// linalg/ops/basic.cpp의 kron (발췌)
+pack(x.dtype(), x.data() + off[0], m, n, x.stride(-2), x.stride(-1), a, m, false);   // A: m×n
+pack(y.dtype(), y.data() + off[1], p, q, y.stride(-2), y.stride(-1), c, p, false);   // B: p×q
+T* o = res + i * block;                                   // 결과: (m·p)×(n·q), 열 우선
+for (std::int64_t j = 0; j < n; ++j)                      // A의 열
+    for (std::int64_t l = 0; l < q; ++l) {                // B의 열 → 결과의 열 j·q + l
+        T* col = o + (j * q + l) * rows;
+        const T* cl = c + l * p;
+        for (std::int64_t r = 0; r < m; ++r) {            // A의 행 → 결과 열 안의 블록
+            const T arj = a[j * m + r];
+            T* dst = col + r * p;
+            for (std::int64_t k = 0; k < p; ++k) dst[k] = mul(arj, cl[k]);   // a가 왼쪽
+        }
+    }
+```
+
+- 루프 순서는 결과의 열 우선 순서와 같아요. 결과의 열 $jq + l$은 $a_{\cdot j} \otimes b_{\cdot l}$이고, 그 안에서 $A$의 행 $r$마다 길이 $p$짜리 조각 $a_{rj} \cdot b_{\cdot l}$을 연속으로 써요. 결과 전체를 한 번, 순서대로 써요.
+- 패킹의 마지막 인자 `false`는 유한성 검사를 끈다는 뜻이에요. NaN은 그대로 결과로 가요.
+- 곱셈은 결과 원소 수 $mnpq$번이고, 결과를 쓰는 것이 시간의 대부분이에요. 그래서 비용 계열은 `kCopy`이고 $w$는 결과 원소 수예요.
+
+결과는 `np.kron`(2차원)과 비트까지 같아요. 배치 입력은 numpy의 브로드캐스트 곱을 모양만 바꾼 `(a[..., :, None, :, None] * b[..., None, :, None, :]).reshape(...)`와 같아요.
+
+## cross
+
+### 수학
+
+3차원 벡터 $u$, $v$의 외적(cross product, 벡터곱) $u \times v$는 세 가지 성질로 정해지는 벡터예요.
+
+- **방향:** $u$와 $v$에 모두 수직이에요. 오른손의 검지를 $u$, 중지를 $v$ 쪽으로 펴면 엄지가 $u \times v$ 방향이에요(오른손 법칙).
+- **길이:** $\lVert u \times v\rVert = \lVert u\rVert \lVert v\rVert \sin\theta$, 곧 $u$와 $v$가 만드는 평행사변형의 넓이예요. 평행하면 0이에요.
+- **순서:** $v \times u = -(u \times v)$예요.
+
+성분으로 쓰면
+
+$$
+u \times v = \begin{bmatrix} u_1 v_2 - u_2 v_1 \\ u_2 v_0 - u_0 v_2 \\ u_0 v_1 - u_1 v_0 \end{bmatrix}
+$$
+
+이에요(성분 번호 0, 1, 2). 성분 $k$는 $u$와 $v$에서 $k$번째 성분을 지운 2×2 행렬식이에요(부호는 순환 순서를 따라요).
+
+<Fig column caption="cross의 세 성분이 쓰는 원소. 각 줄에서 강조한 두 성분으로 2×2 행렬식을 만들어요. w₀ = u₁v₂ − u₂v₁처럼 자기 번호를 뺀 나머지 두 성분을 순환 순서로 써요.">
+  <FigRow>
+    <ArrayFig name="u" data={['u₀', 'u₁', 'u₂']} tones={['m', 'a', 'a']} />
+    <ArrayFig name="v" data={['v₀', 'v₁', 'v₂']} tones={['m', 'a', 'a']} />
+    <Op>→</Op>
+    <ArrayFig name="w₀" data={['u₁v₂ − u₂v₁']} tones={['b']} />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="u" data={['u₀', 'u₁', 'u₂']} tones={['a', 'm', 'a']} />
+    <ArrayFig name="v" data={['v₀', 'v₁', 'v₂']} tones={['a', 'm', 'a']} />
+    <Op>→</Op>
+    <ArrayFig name="w₁" data={['u₂v₀ − u₀v₂']} tones={['b']} />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="u" data={['u₀', 'u₁', 'u₂']} tones={['a', 'a', 'm']} />
+    <ArrayFig name="v" data={['v₀', 'v₁', 'v₂']} tones={['a', 'a', 'm']} />
+    <Op>→</Op>
+    <ArrayFig name="w₂" data={['u₀v₁ − u₁v₀']} tones={['b']} />
+  </FigRow>
+</Fig>
+
+작은 예로, $x$축 단위벡터와 $y$축 단위벡터의 외적은 $z$축 단위벡터예요.
+
+```python
+>>> sd.linalg.cross(sd.asarray([1.0, 0.0, 0.0]), sd.asarray([0.0, 1.0, 0.0]))
+array([0.0, 0.0, 1.0], dtype=float64)
+```
+
+### 축과 결과 배치
+
+`cross(x1, x2, axis=-1)`의 `axis` 규칙은 `vecdot`과 같아요. 브로드캐스트된 모양에서 세고, 그 축은 브로드캐스트하지 않으며, 두 인자 모두 그 축의 길이가 3이어야 해요(2차원 외적은 받지 않아요).
+
+결과는 브로드캐스트된 모양에 길이 3인 축을 원래 자리에 넣은 C 순서 배열이에요. 그래서 결과 벡터 하나의 세 성분이 메모리에서 `inner` 간격으로 떨어져 있어요. `inner`는 그 축 뒤에 오는 축들의 길이 곱이에요.
+
+```cpp
+// linalg/ops/basic.cpp의 cross (발췌)
+std::int64_t inner = 1;                    // 결과 벡터 하나의 두 성분 사이 원소 수
+for (std::size_t d = ax; d < b.ndim(); ++d) inner *= b.shape()[d];
+// 배치 원소 i의 결과 자리: 앞쪽 인덱스 (i / inner), 뒤쪽 인덱스 (i % inner)
+T* o = res + (i / inner) * 3 * inner + i % inner;
+o[0]         = mul(u[1], v[2]) - mul(u[2], v[1]);   // numpy처럼 곱마다 반올림한 뒤 빼요
+o[inner]     = mul(u[2], v[0]) - mul(u[0], v[2]);
+o[2 * inner] = mul(u[0], v[1]) - mul(u[1], v[0]);
+```
+
+`(1000, 3)`에 `axis=-1`이면 `inner = 1`이라 결과 벡터가 연속이고, `(3, 1000)`에 `axis=0`이면 `inner = 1000`이라 성분 $k$가 행 $k$에 놓여요.
+
+numpy의 `np.cross`는 Python 수준에서 `multiply`로 곱을 만들고 `-=`로 빼요. 곱 하나하나가 따로 반올림된 배열이 된 뒤에 빼는 거예요. stardust도 FMA 축약이 꺼진 빌드에서 `mul(...) - mul(...)`로 같은 순서를 지켜요. 그래서 `np.cross`와 비트까지 같아요. 정수 입력은 float64로 계산해요(`np.cross`는 정수를 유지해요).
+
+<Callout type="warn" title="거의 평행한 벡터">
+$u_1 v_2 - u_2 v_1$은 거의 같은 두 수의 차가 될 수 있어요. 두 벡터가 거의 평행하면 결과가 작아지면서 상대 오차가 커져요(소거). 곱마다 반올림하므로 오차 한계는 $|u_1 v_2| + |u_2 v_1|$에 대해 몇 $u$예요. numpy와 같은 식을 쓰므로 같은 오차를 내요.
+</Callout>
+
+## trace와 diagonal
+
+### 대각선 고르기
+
+$m \times n$ 행렬의 $k$번째 대각선은 원소 $a_{i, i+k}$들이에요. $k = 0$이 주대각, $k > 0$은 위쪽, $k < 0$은 아래쪽이에요. 시작 위치와 길이를 `Diag`가 계산해요.
+
+```cpp
+// linalg/ops/basic.cpp
+struct Diag {
+    std::int64_t len, r0, c0;
+    Diag(std::int64_t m, std::int64_t n, std::int64_t k) {
+        if (k >= n || k <= -m) { len = r0 = c0 = 0; return; }   // 행렬 밖: 빈 대각선
+        r0 = k >= 0 ? 0 : -k;
+        c0 = k >= 0 ? k : 0;
+        len = std::max<std::int64_t>(0, std::min(m - r0, n - c0));
+    }
+};
+```
+
+행렬 밖을 가리키는 오프셋을 먼저 걸러 내는 이유는 정수 오버플로예요. $k = -2^{63}$이면 `-k`가 int64로 표현되지 않고, 아주 큰 $|k|$에서는 `r0 * stride`가 넘쳐요. C++에서 부호 있는 정수의 오버플로는 정의되지 않은 동작이라, 계산하기 전에 빈 대각선으로 돌려보내요. 대각선을 걷는 간격은 `stride(-2) + stride(-1)`(한 행 아래, 한 열 오른쪽)이에요.
+
+### trace
+
+`trace`는 대각선의 pairwise 합이에요. 그래서 `sum(diagonal(x))`, `np.trace(x)`와 비트까지 같아요(numpy도 대각선을 numpy의 합으로 더해요).
+
+- 계산 dtype은 float64(complex 입력이면 complex128)예요. 정수 행렬의 대각합도 float64예요.
+- `dtype=`은 `sd.sum(dtype=)`과 같은 명시적 변환이에요. 각 원소를 그 dtype으로 바꾼 뒤 누적해요. `dtype=sd.int64`이면 정수로 누적하고, 넘치면 wrap해요(부호 없는 정수로 더한 뒤 되돌려요). float → int는 0 방향으로 자르고 int64 범위로 포화시켜요.
+- complex → 실수는 허수부를 버리게 되므로 `TypeError`예요. 실수부의 대각합은 `trace(sd.real(x))`로 구해요. `dtype=bool`도 `TypeError`예요.
+
+### diagonal
+
+`diagonal`은 계산하지 않고 원소를 꺼내기만 하므로 **입력 dtype을 유지해요**(int64 행렬의 대각선은 int64예요). 결과는 뷰가 아니라 복사본이에요. 다른 linalg 함수처럼 결과가 언제나 새 배열이에요. 복사는 저장 타입을 아는 루프로 해요(원소마다 `memcpy`를 부르지 않아요).
+
+## matrix_power: 이진 거듭제곱
+
+### 알고리즘
+
+$A^{13}$을 구할 때 $A$를 12번 곱할 필요는 없어요. $13 = 1101_2$이므로 $A^{13} = A^8 A^4 A$이고, $A^2, A^4, A^8$은 제곱을 거듭해서 얻어요. 이것이 이진 거듭제곱(binary powering, square-and-multiply)이에요 [3].
+
+stardust는 **최상위 비트부터** 해요. $r = A$로 시작해서 그다음 비트마다 $r \leftarrow r^2$을 하고, 그 비트가 1이면 $r \leftarrow rA$를 해요.
+
+<Fig column caption="A¹³ (13 = 1101₂)을 최상위 비트부터. 제곱 3번과 곱 2번, gemm 5번이에요. 강조한 줄이 비트가 1이라 A를 곱하는 단계예요.">
+  <Steps
+    steps={[
+      { label: 'r = A', note: '최상위 비트(1). 지수 1' },
+      { label: 'r = r · r', note: '다음 비트 1 → 제곱. 지수 2' },
+      { label: 'r = r · A', depth: 1, note: '비트가 1이라 A를 곱해요. 지수 3' },
+      { label: 'r = r · r', note: '다음 비트 0 → 제곱만. 지수 6' },
+      { label: 'r = r · r', note: '마지막 비트 1 → 제곱. 지수 12' },
+      { label: 'r = r · A', depth: 1, note: '비트가 1이라 A를 곱해요. 지수 13, 결과 자리에 바로 써요' },
+    ]}
+  />
+</Fig>
+
+지수 $e$에서 제곱은 $\lfloor \log_2 e \rfloor$번, 곱은 $\operatorname{popcount}(e) - 1$번이에요($\operatorname{popcount}$는 1인 비트의 수). 행렬 곱 하나가 $2m^3$ flop이므로 전체는
+
+$$
+\bigl(\lfloor \log_2 e \rfloor + \operatorname{popcount}(e) - 1\bigr) \cdot 2m^3 \ \text{flop}
+$$
+
+이고, $e - 1$번 곱하는 단순한 방법의 $(e-1) \cdot 2m^3$보다 훨씬 적어요. $e = 2^{63} - 1$이어도 곱은 124번이에요.
+
+### 구현
+
+```cpp
+// linalg/ops/basic.cpp의 matrix_power (발췌)
+// |n|: INT64_MIN에서도 넘치지 않게 부호 없는 정수로
+const std::uint64_t e = n < 0 ? std::uint64_t(0) - static_cast<std::uint64_t>(n) : static_cast<std::uint64_t>(n);
+// ... 몸체 안에서
+if (e == 0) { /* 단위행렬. x의 값은 보지 않아요 */ }
+T* base = s.get<T>(mm, 1);
+if (n < 0) {   // x^-e = (x^-1)^e. 역행렬은 inv와 같은 경로
+    if (const int code = lu_factor<T>(x, off[0], m, s, lu, ipiv)) return code;   // 패킹·유한성 검사 + getrf
+    lu_inverse(lu, ipiv, m, base);                                                 // getrs(I)
+} else {
+    pack(x.dtype(), x.data() + off[0], m, m, x.stride(-2), x.stride(-1), base, m, false);
+}
+int top = 63;
+while (!((e >> top) & 1)) --top;                       // 최상위 비트
+if (top == 0) { std::copy(base, base + mm, o); return 0; }   // x^1, x^-1
+const int total = top + std::popcount(e) - 1;          // gemm 수
+LapackSlot<T> os(o, mm, s, Scratch::kAlign0);          // 결과 자리(정렬이 아니면 대역)
+T* buf[2] = {s.get<T>(mm, 2), s.get<T>(mm, 3)};
+const T* r = base;
+int done = 0, next = 0;
+auto product = [&](const T* lhs, const T* rhs) {
+    T* dst = ++done == total ? os.get() : buf[next];   // 마지막 곱은 결과 자리에 바로
+    lapack::gemm_square(m, lhs, rhs, dst);             // cblas_dgemm / cblas_zgemm
+    next ^= 1;
+    r = dst;
+};
+for (int bit = top - 1; bit >= 0; --bit) {
+    product(r, r);
+    if ((e >> bit) & 1) product(r, base);
+}
+```
+
+- **곱의 결과는 버퍼 두 개를 번갈아 써요.** `gemm`은 결과를 입력과 같은 메모리에 쓸 수 없으므로($C = AB$에서 $C$가 $A$를 덮으면 안 돼요) 최소 두 개가 필요해요. 최상위 비트부터 하면 곱의 한쪽은 언제나 직전 결과 $r$ 아니면 처음 행렬 `base`라서 두 개로 충분해요. `std::popcount`(C++20 `<bit>`)로 곱의 총수를 미리 알기 때문에 **마지막 곱을 결과 자리에 바로** 쓰고, 마지막에 복사하지 않아요.
+- **행렬 곱은 `cblas_dgemm`/`cblas_zgemm`을 직접 불러요.** 작업 버퍼가 이미 C++ 안에 열 우선으로 있으므로 `sd.matmul`을 거칠 이유가 없어요. 넘기는 배열은 모두 16바이트 정렬이에요(`LapackSlot`).
+- **음수 지수는 `inv`와 같은 경로로 역행렬을 구해요.** `getrf`로 분해하고 단위행렬을 우변으로 `getrs`를 불러요. 그래서 `matrix_power(x, -1)`은 `inv(x)`와 비트까지 같고, 특이 행렬이면 같은 `LinAlgError`, NaN 입력이면 같은 `ValueError`예요. 이 경로에만 [태스크 수 상한](/internals/linalg/batch/)을 둬요.
+- **$e = 0$은 $x$의 값과 상관없이 단위행렬이에요.** NaN이 든 행렬의 0제곱도 단위행렬이에요(numpy도 같아요).
+- 비용 계열은 `kLU`예요.
+
+### numpy와 비트
+
+numpy 2.5.4의 `matrix_power`는 $e \le 3$을 따로 처리하고($A$, $AA$, $(AA)A$), 그보다 크면 **최하위 비트부터** 이진 거듭제곱을 해요. 제곱한 $z$를 결과 쪽에 오른쪽에서 곱해요(`result = result @ z`). 두 방법은 곱의 수가 같지만 곱하는 순서가 달라요. $e = 5$에서 stardust는 $A^4 \cdot A$, numpy는 $A \cdot A^4$를 계산해요. 행렬 곱은 결합법칙은 성립해도 부동소수점에서는 순서에 따라 반올림이 달라요. 그래서 $e = 2, 3, 4$는 numpy와 비트까지 같고(같은 순서), $e \ge 5$는 마지막 비트들이 다를 수 있어요. 무작위 3×3, 8×8, 32×32, 100×100에서 확인하면 $e = 2, 3, 4$는 모두 같고 $e = 5, 6, 7, 13$은 모두 달랐어요.
+
+## 노름
+
+### 벡터 노름: 길이를 재는 방법들
+
+노름(norm)은 벡터의 "크기"를 재는 함수예요. 가장 익숙한 것은 유클리드 길이 $\sqrt{x_1^2 + \cdots + x_n^2}$이지만, 다른 잣대도 쓸모가 있어요. 예를 들어 도시의 바둑판 길에서는 직선 거리보다 가로·세로로 걸은 거리 $|x_1| + |x_2|$가 실제 거리예요.
+
+$p$-노름은 이것들을 하나로 묶어요.
+
+$$
+\lVert x\rVert_p = \Bigl(\sum_{i} |x_i|^p\Bigr)^{1/p}, \qquad \lVert x\rVert_\infty = \max_i |x_i|
+$$
+
+$p = 2$가 유클리드 길이, $p = 1$이 바둑판 거리, $p \to \infty$이면 가장 큰 성분만 남아요. "노름이 1 이하인 점들의 모임"(단위 공)을 그리면 잣대마다 모양이 달라요.
+
+<Plot
+  curves={[
+    { f: (x) => 1 - x, label: 'p = 1 (마름모)' },
+    { f: (x) => Math.sqrt(Math.max(0, 1 - x * x)), label: 'p = 2 (원)' },
+    { f: (x) => (x <= 1 ? 1 : NaN), label: 'p = ∞ (정사각형)', dashed: true },
+  ]}
+  domain={[0, 1.05]}
+  range={[0, 1.15]}
+  xTicks={[{ v: 0, label: '0' }, { v: 0.5, label: '0.5' }, { v: 1, label: 'x₁ = 1' }]}
+  yTicks={[{ v: 0, label: '0' }, { v: 0.5, label: '0.5' }, { v: 1, label: 'x₂ = 1' }]}
+/>
+
+위 그림은 2차원 단위 공의 경계를 1사분면만 그린 거예요(나머지는 대칭). $p$가 커질수록 경계가 바깥으로 부풀어 정사각형에 가까워져요. 모든 $x$에 대해 $\lVert x\rVert_\infty \le \lVert x\rVert_2 \le \lVert x\rVert_1$이에요.
+
+`vector_norm(x, ord=...)`이 받는 `ord`는 이래요.
+
+| `ord` | 값 | 비고 |
+|:---:|---|---|
+| `2` (기본) | $\sqrt{\sum \lvert x_i\rvert^2}$ | 넘치면 다시 스케일 |
+| `1` | $\sum \lvert x_i\rvert$ | |
+| `inf` | $\max \lvert x_i\rvert$ | |
+| `-inf` | $\min \lvert x_i\rvert$ | 노름이 아니에요 |
+| `0` | 0이 아닌 원소의 수 | 노름이 아니에요. NaN도 세요 |
+| 그 밖의 $p > 0$ | $(\sum \lvert x_i\rvert^p)^{1/p}$ | 넘치면 다시 스케일 |
+| $p < 0$ | $(\sum \lvert x_i\rvert^p)^{1/p}$ | 노름이 아니에요. 다시 스케일하지 않아요 |
+
+노름이라고 부르려면 세 성질이 필요해요. $\lVert x\rVert \ge 0$이고 $x = 0$일 때만 0, $\lVert \alpha x\rVert = |\alpha| \lVert x\rVert$, 삼각부등식 $\lVert x + y\rVert \le \lVert x\rVert + \lVert y\rVert$. $p \ge 1$이면 성립하고, $p < 1$이나 `0`, `-inf`는 Array API와 numpy가 같은 이름으로 정의하는 값이라 받아요.
+
+`axis`는 정수 하나, 튜플, 또는 `None`(전체)이에요. 여러 축을 한꺼번에 줄이면 그 축들의 원소를 하나의 벡터로 봐요.
+
+### 행렬 노름
+
+행렬의 크기를 재는 방법은 두 갈래예요.
+
+**원소를 한 줄로 펴서 재기.** 프로베니우스 노름은 행렬의 원소를 모두 한 벡터로 보고 2-노름을 잰 것이에요.
+
+$$
+\lVert A\rVert_F = \sqrt{\sum_{i,j} |a_{ij}|^2}
+$$
+
+**행렬이 벡터를 얼마나 늘리는지 재기.** 행렬 $A$는 벡터 $x$를 $Ax$로 보내요. 그때 길이가 가장 많이 늘어나는 비율을 행렬의 노름으로 삼아요(유도된 노름, induced norm).
+
+$$
+\lVert A\rVert_p = \max_{x \ne 0} \frac{\lVert Ax\rVert_p}{\lVert x\rVert_p}
+$$
+
+$p = 1$이면 이 최댓값이 **열의 절댓값 합 중 가장 큰 것**이 돼요. $\lVert Ax\rVert_1 = \sum_i \bigl|\sum_j a_{ij} x_j\bigr| \le \sum_j |x_j| \sum_i |a_{ij}| \le \bigl(\max_j \sum_i |a_{ij}|\bigr) \lVert x\rVert_1$이고, 가장 큰 열 $j$의 단위벡터 $e_j$를 넣으면 등호가 돼요. 같은 방법으로 $p = \infty$이면 **행의 절댓값 합 중 가장 큰 것**이에요 [4].
+
+<Fig caption="A = [[1, −2], [3, 4]]의 1-노름과 ∞-노름. 열의 절댓값 합은 4와 6이라 ‖A‖₁ = 6(강조한 열), 행의 절댓값 합은 3과 7이라 ‖A‖∞ = 7(강조한 행)이에요. 프로베니우스 노름은 √30 ≈ 5.48이에요.">
+  <ArrayFig name="열 합 → ‖A‖₁" data={[[1, -2], [3, 4], ['4', '6']]} tones={[['', 'a'], ['', 'a'], ['m', 'b']]} />
+  <ArrayFig name="행 합 → ‖A‖∞" data={[[1, -2, '3'], [3, 4, '7']]} tones={[['', '', 'm'], ['a', 'a', 'b']]} />
+</Fig>
+
+$p = 2$이면 가장 큰 특이값 $\sigma_1$이에요. `matrix_norm`의 `ord`는 이래요.
+
+| `ord` | 값 | 계산 |
+|:---:|---|---|
+| `'fro'` (기본) | $\sqrt{\sum \lvert a_{ij}\rvert^2}$ | 원소의 2-노름, 이 글의 루프 |
+| `1`, `-1` | 열 절댓값 합의 최대, 최소 | 이 글의 루프 |
+| `inf`, `-inf` | 행 절댓값 합의 최대, 최소 | 이 글의 루프 |
+| `2`, `-2` | 가장 큰, 가장 작은 특이값 | SVD (`gesdd`) |
+| `'nuc'` | 특이값의 합 | SVD (`gesdd`) |
+
+`2`, `−2`, `nuc`는 특이값이 필요하므로 LAPACK을 불러요. 그래서 NaN·inf 입력에 `ValueError`를 내고, 나머지 `ord`는 NaN을 전파해요. SVD 쪽은 [특이값 분해](/internals/linalg/svd/)에서 다뤄요. `-1`, `-2`, `-inf`는 노름의 성질을 만족하지 않지만 numpy와 같은 이름으로 정의된 값이라 받아요.
+
+### 구현: 논리적 C 순서로 걷기
+
+노름은 원소를 **논리적 C 순서**(마지막 축이 가장 빨리 변하는 순서)로 걸어 pairwise 합에 넣어요. 메모리 레이아웃과 상관없는 순서라서 같은 행렬을 C 순서, F 순서, 뒤집은 뷰로 넣어도 결과가 비트까지 같아요. 걷는 일은 `vnorm.hpp`의 `Walk`가 해요.
+
+```cpp
+// linalg/ops/vnorm.hpp의 Walk (발췌)
+inline constexpr int kMaxWalkDims = 33;   // 배열의 최대 32축 + complex 분할 1축
+
+template <class S, class Mag>
+class Walk {
+public:
+    // fill: 평평한 위치 begin … begin+len-1의 |x|를 out에
+    void operator()(std::int64_t begin, std::int64_t len, double* out) const {
+        std::int64_t idx[kMaxWalkDims];
+        const std::byte* p = base_;
+        std::int64_t rem = begin;                       // begin을 다차원 인덱스로
+        for (int d = nd_; d-- > 0;) { idx[d] = rem % shape_[d]; rem /= shape_[d]; p += idx[d] * strides_[d]; }
+        const int last = nd_ - 1;
+        std::int64_t k = 0;
+        while (true) {
+            const std::int64_t run = std::min(len - k, shape_[last] - idx[last]);   // 마지막 축의 한 줄
+            for (std::int64_t t = 0; t < run; ++t) out[k + t] = mag_(load<S>(p + t * strides_[last]));
+            k += run;
+            if (k == len) return;
+            /* 마지막 축 끝: 바깥 축으로 올림(carry) */
+        }
+    }
+private:
+    const std::byte* base_;
+    int nd_;
+    std::int64_t shape_[kMaxWalkDims], strides_[kMaxWalkDims];   // 힙 할당 없음
+    Mag mag_;
+};
+```
+
+- 마지막 축을 따라 한 줄씩(`run`) 연속으로 처리하고, 줄 끝에서만 바깥 축 인덱스를 올려요. 원소마다 다차원 인덱스를 계산하지 않아요.
+- 모양과 strides를 고정 크기 배열에 둬요. 노름 하나마다(배치면 출력마다) `Walk`를 하나 만들기 때문에, 힙 할당이 있으면 짧은 노름이 많은 배치에서 할당이 시간을 차지해요.
+- `Mag`는 원소 하나를 크기(`double`)로 바꾸는 람다예요. bool은 0/1, int64와 float64는 `fabs`, complex는 `std::abs`(`hypot`로 넘치지 않게 계산한 절댓값)예요. 람다 타입을 템플릿 인자로 받아 인라인돼요.
+- **complex의 2-노름(과 프로베니우스 노름)은 실수부와 허수부를 따로 항으로 넣어요.** $|z|^2 = \operatorname{re}^2 + \operatorname{im}^2$이므로 절댓값을 계산할 필요가 없어요. 걷는 축 맨 안쪽에 "길이 2, stride 8바이트"인 축을 하나 더 붙여 complex 하나를 double 두 개로 걸어요. 그래서 축이 하나 늘어 최대 33축이에요. 항의 순서는 $\operatorname{re}_0^2, \operatorname{im}_0^2, \operatorname{re}_1^2, \dots$예요.
+
+`vnorm(ord, count, fill)`이 `ord`에 따라 합, 최대, 최소, 개수를 골라요. 1-노름은 `|x|`의 pairwise 합, 2-노름과 $p$-노름은 `|x|^p`의 pairwise 합에 이어 아래의 마무리(`finish_pnorm`)예요. 최댓값은 레인 4개로 구해요. 비교 사슬 하나면 루프가 비교의 지연에 묶이기 때문이에요. max는 정확한 연산이라 레인 순서가 결과를 바꾸지 않아요.
+
+```cpp
+// linalg/ops/vnorm.hpp의 vnorm_serial, ord = 2와 p (발췌)
+double amax = 0;
+bool nan = false;
+auto powers = [&](std::int64_t b, std::int64_t len, double* out) {
+    fill(b, len, out);                         // |x|
+    max_and_nan(out, len, amax, nan);          // 최댓값과 NaN을 같은 패스에서
+    if (two) for (std::int64_t k = 0; k < len; ++k) out[k] = out[k] * out[k];
+    else     for (std::int64_t k = 0; k < len; ++k) out[k] = std::pow(out[k], p);
+};
+const double s = pairwise_sum<double>(count, powers);
+return finish_pnorm(two, p, s, amax, nan, count, fill);
+```
+
+### 넘침과 언더플로: 제곱이 문제예요
+
+2-노름의 정의를 그대로 계산하면 **결과는 표현할 수 있는데 중간값이 표현 범위를 벗어나는** 일이 생겨요. float64의 가장 큰 값은 약 $1.8 \times 10^{308}$이에요. $x = (10^{200}, 10^{200})$의 2-노름은 $\sqrt{2} \times 10^{200}$으로 충분히 표현되지만, 중간의 $x_i^2 = 10^{400}$이 넘쳐서 inf가 돼요. $|x_i| > \sqrt{1.8 \times 10^{308}} \approx 1.34 \times 10^{154}$이면 제곱이 넘쳐요.
+
+반대쪽도 마찬가지예요. $x = (3 \times 10^{-200}, 4 \times 10^{-200})$의 2-노름은 $5 \times 10^{-200}$인데, 제곱 $9 \times 10^{-400}$은 표현할 수 있는 가장 작은 수(약 $4.9 \times 10^{-324}$)보다 작아서 0이 돼요. $|x_i| < 2^{-511} \approx 1.49 \times 10^{-154}$이면 제곱이 정규수 범위 아래(subnormal)로 내려가 유효 숫자를 잃기 시작하고, 약 $1.6 \times 10^{-162}$ 아래에서는 0이 돼요.
+
+<Plot
+  curves={[
+    { f: (x) => (x > 153.977 || x < -161.8 ? NaN : x + 0.1505), label: '정의 그대로: √(a² + a²)' },
+    { f: (x) => x + 0.1505, label: '다시 스케일: a·√((a/a)² + (a/a)²)', dashed: true },
+  ]}
+  domain={[-320, 320]}
+  range={[-330, 330]}
+  xTicks={[{ v: -300, label: 'a = 1e-300' }, { v: -154, label: '1e-154' }, { v: 0, label: '1' }, { v: 154, label: '1e154' }, { v: 300, label: '1e300' }]}
+  yTicks={[{ v: -300, label: '1e-300' }, { v: 0, label: '1' }, { v: 300, label: '1e300' }]}
+/>
+
+위 그래프는 벡터 $(a, a)$의 2-노름을 로그 눈금으로 그린 것이에요. 정답은 $\sqrt{2}\,a$라서 모든 $a$에서 직선이어야 해요. 정의 그대로 계산하면 제곱 둘의 합 $2a^2$이 넘치는 $a > 9.5 \times 10^{153}$(앞의 $1.34 \times 10^{154}$를 $\sqrt 2$로 나눈 값)에서 inf로, $a < 1.6 \times 10^{-162}$에서 0으로 끊겨요(그 사이 $10^{-162}$–$10^{-154}$에서는 끊기지는 않지만 유효 숫자를 잃어요). 사용할 수 있는 범위가 float64 전체 지수 범위의 절반 정도로 줄어드는 셈이에요.
+
+### 다시 스케일하기
+
+해결책은 가장 큰 크기 $M = \max_i |x_i|$로 나눈 뒤 계산하고 다시 곱하는 거예요.
+
+$$
+\lVert x\rVert_p = M \cdot \Bigl(\sum_i \Bigl(\frac{|x_i|}{M}\Bigr)^p\Bigr)^{1/p}
+$$
+
+이 식은 노름의 동차성($\lVert \alpha x\rVert = |\alpha| \lVert x\rVert$)에서 바로 나와요. 나눈 뒤의 항은 모두 1 이하이고, 가장 큰 항이 정확히 1이에요. 그래서 합은 1 이상 $n$ 이하라 넘치지 않아요. 아주 작은 항이 0으로 언더플로해도, 그 항은 1보다 $2^{-1074}$배 이상 작으니 합에 영향을 주지 않아요. 마지막의 $M$ 곱셈은 결과가 표현 범위 안이면 넘치지 않아요.
+
+다만 나눗셈은 항마다 반올림을 하나 더 하고, 패스를 한 번 더 돌아요. 그래서 stardust는 **필요할 때만** 다시 스케일해요.
+
+1. 먼저 스케일 없이 한 번 계산해요. 이 패스에서 `|x|^p`의 합과 함께 최댓값 $M$과 NaN 여부를 구해요.
+2. 다음 둘 중 하나일 때만 $M$으로 나눈 두 번째 패스를 돌아요.
+   - 합이 inf로 넘쳤어요.
+   - $M^p$가 $2^{-969}$(`kTiny`) 미만이에요.
+
+```cpp
+// linalg/ops/vnorm.hpp
+inline constexpr double kTiny = 0x1p-969;    // DBL_MIN · 2^53
+
+template <class Fill>
+inline double finish_pnorm(bool two, double p, double s, double amax, bool nan, std::int64_t count, Fill& fill) {
+    if (nan) return kNaN;
+    if (p > 0) {
+        if (amax == kInf) return kInf;
+        const double top = two ? amax * amax : std::pow(amax, p);
+        if (std::isinf(s) || (amax > 0 && top < kTiny)) {
+            auto scaled = [&](std::int64_t b, std::int64_t len, double* out) {
+                fill(b, len, out);
+                for (std::int64_t k = 0; k < len; ++k) {
+                    const double r = out[k] / amax;           // 모든 항이 1 이하
+                    out[k] = two ? r * r : std::pow(r, p);
+                }
+            };
+            const double t = pairwise_sum_mt<double>(count, scaled);
+            return amax * (two ? std::sqrt(t) : std::pow(t, 1 / p));
+        }
+    }
+    return two ? std::sqrt(s) : std::pow(s, 1 / p);
+}
+```
+
+$2^{-969}$의 뜻은 이래요. 정규수의 가장 작은 값 `DBL_MIN`은 $2^{-1022}$이고, 그보다 작은 수(subnormal)는 유효 숫자 53비트를 다 갖지 못해요. 항들의 합에서 결과의 마지막 비트에 영향을 줄 수 있는 항은 대략 가장 큰 항의 $2^{-53}$배까지예요. 가장 큰 항 $M^p$가 $2^{-1022} \cdot 2^{53} = 2^{-969}$ 이상이면 그런 항들이 모두 정규수라서 비트를 잃지 않아요. 그보다 작으면 의미 있는 항 일부가 subnormal이 되어 정밀도를 잃으므로 다시 스케일해요. 2-노름에서는 $M < 2^{-484.5} \approx 1.4 \times 10^{-146}$일 때예요.
+
+```python
+>>> sd.linalg.vector_norm(sd.asarray([1e200, 1e200]))
+1.414213562373095e+200
+>>> sd.linalg.vector_norm(sd.asarray([3e-200, 4e-200]))
+5e-200
+```
+
+numpy 2.5.4의 `np.linalg.vector_norm`은 이 처리를 하지 않아서 같은 입력에 inf(넘침 경고와 함께)와 0.0을 내요.
+
+### 왜 늘 스케일하지 않나
+
+LAPACK·BLAS 쪽에는 한 패스로 넘침을 피하는 방법이 있어요. 참조 BLAS의 `dnrm2`는 Blue의 방법 [1]을 따라 원소를 크기에 따라 세 누산기(아주 큰 것은 줄여서, 아주 작은 것은 키워서, 나머지는 그대로)에 나눠 더해요 [2]. 이렇게 하면 늘 안전하지만 덧셈의 순서와 항이 numpy의 `sqrt(sum(x*x))`와 달라서 보통 입력에서도 비트가 달라요.
+
+stardust의 방법은 보통 입력(넘치지도, 아주 작지도 않은 값)에서 numpy와 **같은 항을 같은 pairwise 트리로** 더해요. 그래서 비트가 같고, 패스도 한 번이에요. 두 번째 패스는 numpy가 inf나 0을 내는 입력에서만 돌아요. 그 경우 결과는 numpy와 다르지만, numpy 쪽이 틀린 답이에요.
+
+$p < 0$은 다시 스케일하지 않아요. 음수 거듭제곱에서는 작은 원소가 큰 항을 만들어서 위의 분석이 그대로 적용되지 않고, 이 값은 노름이 아니라 쓰임이 드물어요.
+
+### 특수값
+
+| 입력 | 결과 |
+|---|---|
+| 빈 집합 (원소 0개) | 모든 `ord`에서 0 |
+| NaN이 있음 | `ord=0`은 개수(NaN도 0이 아니므로 세요), 나머지는 NaN |
+| NaN 없이 inf가 있음 | $p > 0$과 `inf`는 inf |
+
+```python
+>>> sd.linalg.vector_norm(sd.asarray([1.0, float('nan'), float('inf')]))
+nan
+>>> sd.linalg.vector_norm(sd.asarray([0.0, float('nan'), 2.0]), ord=0)
+2.0
+```
+
+빈 행렬의 노름을 0으로 두는 것은 "원소가 없으면 합은 0, 최댓값은 0(크기는 음수가 아니므로)"이라는 정의에서 나와요. `-inf`(최솟값)도 빈 집합에서는 0이에요.
+
+### `matrix_norm`의 1과 inf
+
+1-노름은 열마다 `|a_ij|`의 pairwise 합을 구하고, 그 최댓값(−1이면 최솟값)을 골라요. inf는 행마다 같은 것을 해요. 줄의 합 하나는 `pairwise_sum`(잎 하나면 트리를 부르지 않는 경로)이고, NaN이 나온 줄이 있으면 결과는 NaN이에요.
+
+```cpp
+// linalg/ops/norms.cpp의 matrix_norm (발췌)
+const bool cols = ord == MatOrd::One || ord == MatOrd::NegOne;
+const std::int64_t lines = cols ? n : m, len = cols ? m : n;
+const std::int64_t line_step = cols ? cs : rs, elem_step = cols ? rs : cs;
+auto line_sum = [&](std::int64_t l) {
+    const std::byte* line = base + l * line_step;
+    return pairwise_sum<double>(len, [&](std::int64_t b0, std::int64_t k, double* out) {
+        for (std::int64_t t = 0; t < k; ++t) out[t] = magnitude(load<S>(line + (b0 + t) * elem_step));
+    });
+};
+if (lines * len >= kSumParallelMin && lines > 1 && detail::begin_parallel()) {
+    // 큰 행렬 하나: 줄들을 태스크로. 줄 하나의 합은 직렬과 같고, max/min은 순서 무관
+    ...
+}
+```
+
+줄의 합은 그 줄의 원소를 줄 방향으로, 논리적 순서대로 더해요. 메모리에서 연속이든 아니든 같은 순서예요. 그래서 결과가 레이아웃과 상관없어요.
+
+프로베니우스 노름은 행렬 전체를 2차원 `Walk`로 걸어 2-노름을 계산해요. 넘치면 다시 스케일하는 것까지 `vector_norm`과 같아요.
+
+```python
+>>> sd.linalg.matrix_norm(sd.asarray([[1.0, -2.0], [3.0, 4.0]]), ord=1)
+6.0
+>>> sd.linalg.matrix_norm(sd.asarray([[1e200, 1e200], [1e200, 1e200]]))
+2e+200
+```
+
+## 배치와 병렬
+
+이 함수들은 모두 배치 드라이버(`run_batch`)를 거쳐요. 비용 계열은 둘이에요([배치와 병렬화](/internals/linalg/batch/)).
+
+| 계열 | $a$, $c$ (ns) | 함수 | $w$ |
+|---|:---:|---|---|
+| `kStream` | 12, 0.3 | `vecdot`, `trace`, `vector_norm`, `matrix_norm`(fro, ±1, ±inf) | 출력 하나에 더하는 원소 수 |
+| `kCopy` | 2, 0.5 | `diagonal`, `outer`, `kron`, `cross` | 출력 하나가 쓰는 원소 수 (`cross`는 6) |
+| `kLU` | 70, 3 | `matrix_power` | $m^2$ |
+
+원소 하나의 일이 아주 작아서, 배치가 커야 나눠요. 예를 들어 (1000, 3, 3)의 `diagonal`은 원소 하나가 3.5ns로 추정되어 배치 전체가 3.5µs라 직렬로 돌아요. `vecdot`의 행(3000개, 원소 하나 12.9ns)은 태스크 8개로 나눠요.
+
+배치를 나누는 것과 별개로, **출력 하나의 합이 2¹⁵항 이상**이면 그 합을 pairwise 트리의 잎 단위로 나눠요(`vecdot`, `trace`, `vector_norm`의 모든 `ord`, 프로베니우스 노름). 노름은 합과 함께 최댓값, NaN, 0이 아닌 개수를 잎마다 **자기 칸**에 기록하고 마지막에 합쳐요. 공유 변수 하나에 여러 스레드가 쓰면 경쟁이 생기기 때문이에요. 최댓값·개수는 순서와 상관없고 합은 같은 트리 순서로 합치므로, 결과가 직렬과 비트까지 같아요. 다시 스케일하는 두 번째 패스도 같은 방식으로 나눠요.
+
+## 성능
+
+numpy 시간 ÷ stardust 시간이에요(10스레드). 1보다 크면 stardust가 빨라요.
+
+| 함수 | (3,3) | (32,32) | (300,300) | (1000,1000) | (1000,3,3) | (100,32,32) |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| `vecdot` (행) | ⟦BENCH vecdot rows (3,3) t10⟧ | ⟦BENCH vecdot rows (32,32) t10⟧ | ⟦BENCH vecdot rows (300,300) t10⟧ | ⟦BENCH vecdot rows (1000,1000) t10⟧ | ⟦BENCH vecdot rows (1000,3,3) t10⟧ | ⟦BENCH vecdot rows (100,32,32) t10⟧ |
+| `outer` | ⟦BENCH outer (3,3) t10⟧ | ⟦BENCH outer (32,32) t10⟧ | ⟦BENCH outer (300,300) t10⟧ | ⟦BENCH outer (1000,1000) t10⟧ | ⟦BENCH outer (1000,3,3) t10⟧ | ⟦BENCH outer (100,32,32) t10⟧ |
+| `trace` | ⟦BENCH trace (3,3) t10⟧ | ⟦BENCH trace (32,32) t10⟧ | ⟦BENCH trace (300,300) t10⟧ | ⟦BENCH trace (1000,1000) t10⟧ | ⟦BENCH trace (1000,3,3) t10⟧ | ⟦BENCH trace (100,32,32) t10⟧ |
+| `diagonal` | ⟦BENCH diagonal (3,3) t10⟧ | ⟦BENCH diagonal (32,32) t10⟧ | ⟦BENCH diagonal (300,300) t10⟧ | ⟦BENCH diagonal (1000,1000) t10⟧ | ⟦BENCH diagonal (1000,3,3) t10⟧ | ⟦BENCH diagonal (100,32,32) t10⟧ |
+| `matrix_power` 3 | ⟦BENCH matrix_power 3 (3,3) t10⟧ | ⟦BENCH matrix_power 3 (32,32) t10⟧ | ⟦BENCH matrix_power 3 (300,300) t10⟧ | ⟦BENCH matrix_power 3 (1000,1000) t10⟧ | ⟦BENCH matrix_power 3 (1000,3,3) t10⟧ | ⟦BENCH matrix_power 3 (100,32,32) t10⟧ |
+| `vector_norm` (행) | ⟦BENCH vector_norm rows (3,3) t10⟧ | ⟦BENCH vector_norm rows (32,32) t10⟧ | ⟦BENCH vector_norm rows (300,300) t10⟧ | ⟦BENCH vector_norm rows (1000,1000) t10⟧ | ⟦BENCH vector_norm rows (1000,3,3) t10⟧ | ⟦BENCH vector_norm rows (100,32,32) t10⟧ |
+| `matrix_norm` fro | ⟦BENCH matrix_norm fro (3,3) t10⟧ | ⟦BENCH matrix_norm fro (32,32) t10⟧ | ⟦BENCH matrix_norm fro (300,300) t10⟧ | ⟦BENCH matrix_norm fro (1000,1000) t10⟧ | ⟦BENCH matrix_norm fro (1000,3,3) t10⟧ | ⟦BENCH matrix_norm fro (100,32,32) t10⟧ |
+| `matrix_norm` 1 | ⟦BENCH matrix_norm 1 (3,3) t10⟧ | ⟦BENCH matrix_norm 1 (32,32) t10⟧ | ⟦BENCH matrix_norm 1 (300,300) t10⟧ | ⟦BENCH matrix_norm 1 (1000,1000) t10⟧ | ⟦BENCH matrix_norm 1 (1000,3,3) t10⟧ | ⟦BENCH matrix_norm 1 (100,32,32) t10⟧ |
+| `kron` (3×3과) | ⟦BENCH kron with 3x3 (3,3) t10⟧ | ⟦BENCH kron with 3x3 (32,32) t10⟧ | ⟦BENCH kron with 3x3 (300,300) t10⟧ | ⟦BENCH kron with 3x3 (1000,1000) t10⟧ | ⟦BENCH kron with 3x3 (1000,3,3) t10⟧ | ⟦BENCH kron with 3x3 (100,32,32) t10⟧ |
+| `cross` (행) | ⟦BENCH cross rows (3,3) t10⟧ | ⟦BENCH cross rows (32,32) t10⟧ | ⟦BENCH cross rows (300,300) t10⟧ | ⟦BENCH cross rows (1000,1000) t10⟧ | ⟦BENCH cross rows (1000,3,3) t10⟧ | ⟦BENCH cross rows (100,32,32) t10⟧ |
+
+`outer`의 모양은 그 행렬의 첫 행을 두 인자로 쓴다는 뜻이에요(`(1000, 1000)`이면 길이 1000짜리 벡터 두 개). `cross`는 행마다 앞의 세 원소를 써요. `kron`은 3×3 행렬과의 곱이라 결과가 가로세로 3배예요.
+
+긴 벡터는 이래요.
+
+| 호출 | 10스레드 | 1스레드 |
+|---|:---:|:---:|
+| `vecdot` (1000000,) | ⟦BENCH vecdot (1000000,) t10⟧ | ⟦BENCH vecdot (1000000,) t1⟧ |
+| `vector_norm` (1000000,) | ⟦BENCH vector_norm (1000000,) t10⟧ | ⟦BENCH vector_norm (1000000,) t1⟧ |
+| `vector_norm` inf (1000000,) | ⟦BENCH vector_norm inf (1000000,) t10⟧ | ⟦BENCH vector_norm inf (1000000,) t1⟧ |
+| `cross` (1000000, 3) | ⟦BENCH cross (1000000,3) t10⟧ | ⟦BENCH cross (1000000,3) t1⟧ |
+
+{/* BENCH-FIG: vecdot (1000000,) t10, vecdot (1000000,) t1, vector_norm (1000000,) t10, vector_norm (1000000,) t1, trace (3,3) t10, diagonal (1000,3,3) t10, matrix_norm fro (1000,3,3) t10, cross (1000000,3) t10 | 캡션: LAPACK 없이 계산하는 함수의 시간. 작은 호출은 고정비가, 긴 합은 메모리 대역폭과 코어 수가 시간을 정해요. 1스레드의 긴 합은 잎 버퍼를 거치는 두 단계 때문에 numpy보다 느릴 수 있어요. */}
+
+수치를 읽는 데 필요한 사실은 이래요.
+
+- **작은 호출은 고정비가 정해요.** 3×3의 `trace`, `diagonal`은 계산이 몇 ns라서 인자 해석과 결과 배열을 만드는 비용이 시간의 대부분이에요. stardust는 Python 래퍼 없이 C++에서 바로 바인딩되고 배열을 직접 읽어요([선형대수 영역의 구조](/internals/linalg/overview/)).
+- **짧은 합이 많은 배치**(`(1000, 3, 3)`의 `matrix_norm`, `vecdot`의 행)는 합 하나마다 `Walk`나 `fill`을 준비하는 고정비가 붙어요. numpy는 이런 경우 배열 전체를 한 번에 처리하는 ufunc(`x*x` 뒤 `sum(axis=...)`)를 쓰므로 원소당 비용이 작을 수 있어요.
+- **`diagonal` (1000, 3, 3)**은 numpy가 뷰에 `.copy()` 한 번을 하는 것과 달리 배치 드라이버를 거쳐요.
+- **`matrix_power`의 큰 행렬**은 입력을 작업 버퍼에 패킹한 뒤 `gemm`에 넘겨요. numpy는 입력을 그대로 `gemm`에 넘기므로 패킹만큼의 차이가 있어요. 열 우선 입력을 패킹 없이 넘기면 이 차이가 없어지지만(결과는 같아요) 아직 하지 않았어요.
+- **긴 합의 1스레드**는 잎 버퍼에 항을 채우고 다시 읽는 두 단계라서 numpy보다 느릴 수 있어요. 10스레드에서는 트리의 잎을 나눠 돌아요.
+
+복잡도를 정리하면 이래요.
+
+| 함수 | flop | 메모리 |
+|---|---|---|
+| `vecdot` | $2n$ | 입력 $2n$ 읽기 |
+| `outer` | $mn$ | 출력 $mn$ 쓰기 |
+| `kron` | $mnpq$ | 출력 $mnpq$ 쓰기 |
+| `cross` | 9 (곱 6, 뺄셈 3) | 6 읽기, 3 쓰기 |
+| `trace`, `diagonal` | $\min(m, n)$ | 대각선 읽기 |
+| `matrix_power` | $(\lfloor \log_2 e\rfloor + \operatorname{popcount}(e) - 1)\cdot 2m^3$ | 작업 버퍼 $3m^2$ |
+| `vector_norm`, `matrix_norm` fro | $2n$ (넘치면 원소마다 나눗셈을 포함한 한 패스 더) | 입력 1회(넘치면 2회) |
+| `matrix_norm` ±1, ±inf | $mn$ | 입력 1회 |
+
+## 정확도
+
+### numpy와의 비트 관계
+
+numpy 2.5.4와 비교한 결과예요. "같음"은 결과 바이트가 같다는 뜻이에요.
+
+| 함수 | numpy와 | 이유 |
+|---|---|---|
+| `outer` | `x[..., :, None] * y[..., None, :]`와 같음 | 같은 FMA 곱 |
+| `kron` | `np.kron`(2차원)과 같음 | 같은 FMA 곱, 왼쪽 인자가 왼쪽 |
+| `cross` | `np.cross`와 같음 | 곱마다 반올림한 뒤 빼기 |
+| `vecdot` | `np.sum(np.conj(x) * y, axis)`와 같음, `np.vecdot`과는 다를 수 있음 | 같은 곱, 같은 pairwise 트리. `np.vecdot`은 BLAS 내적 |
+| `trace` | `np.trace`와 같음 | 대각선의 pairwise 합 |
+| `vector_norm` (1, 2, $p$) | 넘치지 않으면 같음 | `sqrt(sum(x*x))` 등과 같은 항, 같은 트리 |
+| `matrix_norm` fro | 넘치지 않으면 같음 | 원소의 2-노름 |
+| `matrix_norm` ±inf | C 순서 입력에서 같음 | numpy는 행을 pairwise로 더해요 |
+| `matrix_norm` ±1 | F 순서 입력에서 같음 | numpy는 열 합을 축 0 리덕션으로 구해요 |
+| `matrix_power` | $e = 0$–4에서 같음, 5 이상은 다를 수 있음 | 이진 거듭제곱의 방향이 반대 |
+
+`matrix_norm`의 ±1, ±inf는 설명이 필요해요. numpy는 열 합을 `sum(abs(x), axis=-2)`로 구해요. C 순서 행렬에서 축 −2는 메모리상 바깥 축이라, numpy는 행을 위에서부터 차례로 더해요(행을 행에 더하는 리덕션). stardust는 줄마다 pairwise 합이에요. 그래서 C 순서 입력의 1-노름은 마지막 비트가 다를 수 있어요(500×500 무작위 행렬 20개 중 19개가 달랐어요). F 순서 입력에서는 열이 연속이라 numpy도 pairwise로 더하고, 결과가 같아요(20개 모두 같았어요). inf-노름은 그 반대예요. **numpy의 결과가 레이아웃에 따라 바뀌는 것이고, stardust는 레이아웃과 상관없이 같은 값이에요.** 차이는 반올림 수준이에요(pairwise 쪽의 오차 한계가 더 작아요).
+
+complex의 2-노름은 실수부와 허수부를 따로 항으로 넣어요(`re0², im0², re1², …`). 1-노름과 inf-노름의 complex 크기는 `std::abs`라서 `np.abs`와 마지막 비트가 다를 수 있어요. 합과는 무관한 차이예요.
+
+### 오차 한계
+
+- **곱(`outer`, `kron`):** 실수는 반올림 한 번이라 상대 오차 $u = 2^{-53}$ 이하예요. complex 곱은 FMA 덕분에 성분마다 반올림이 두 번이에요.
+- **합(`vecdot`, `trace`, 노름):** pairwise 트리라서 $|\hat s - s| \le \gamma_h \sum |x_i|$, $h \approx 24 + \lceil \log_2(n/128)\rceil$이에요 [7]. 원소 100만 개면 $h \le 37$ 정도예요. 내적은 항 자체에 곱의 반올림이 하나 더 있으므로 $\gamma_{h+1} \sum |x_i y_i|$예요. 이것은 $\sum |x_i y_i|$에 대한 한계라서, 결과가 소거로 작아지면 상대 오차는 커질 수 있어요.
+- **노름:** 2-노름은 제곱의 합이라 모든 항이 음이 아니고, 소거가 없어요. 그래서 상대 오차가 작아요. 제곱의 반올림과 합의 $\gamma_h$, 제곱근이 오차를 절반으로 줄이는 것과 제곱근 자체의 반올림을 합치면 대략 $(h/2 + 2)u$ 이하예요. 다시 스케일할 때는 나눗셈 하나의 반올림이 더해져요.
+- **`cross`:** 성분 하나가 곱 두 개의 차라서 소거가 생길 수 있어요(위의 주의).
+- **`matrix_power`:** `gemm`의 오차가 곱마다 쌓여요. 곱은 $O(\log e)$번이지만 $\lVert A\rVert > 1$이면 값이 지수적으로 커지므로 절대 오차도 함께 커져요. 넘치면 inf가 되고, 경고는 내지 않아요.
+
+## 참고 문헌
+
+1. J. L. Blue, "A Portable Fortran Program to Find the Euclidean Norm of a Vector," *ACM Transactions on Mathematical Software* 4(1), 15–23, 1978.
+2. E. Anderson, "Algorithm 978: Safe Scaling in the Level 1 BLAS," *ACM Transactions on Mathematical Software* 44(1), 2017. 참조 구현: Reference-LAPACK의 `BLAS/SRC/dnrm2.f90`. https://github.com/Reference-LAPACK/lapack
+3. D. E. Knuth, *The Art of Computer Programming*, Vol. 2: *Seminumerical Algorithms*, 3rd ed., Addison-Wesley, 1997. (4.6.3 거듭제곱의 계산)
+4. G. H. Golub, C. F. Van Loan, *Matrix Computations*, 4th ed., Johns Hopkins University Press, 2013. (행렬 노름, 크로네커 곱)
+5. IEEE Standard for Floating-Point Arithmetic, IEEE Std 754-2019.
+6. C. F. Van Loan, "The ubiquitous Kronecker product," *Journal of Computational and Applied Mathematics* 123(1–2), 85–100, 2000.
+7. N. J. Higham, *Accuracy and Stability of Numerical Algorithms*, 2nd ed., SIAM, 2002. (2장 부동소수점 연산의 모델, 3장 $\gamma_n$ 표기, 4장 합)

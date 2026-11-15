@@ -70,7 +70,7 @@ export const areas = [
 export const internalsAreas = [
   { key: 'core', name: '공통 기반', ns: 'stardust', desc: '층 구조와 빌드, 스레드풀과 결정성, Python과 C++의 경계' },
   { key: 'array', name: '배열', ns: 'sd', desc: '데이터 모델, 연산 엔진, 커널, 집계, 인덱싱, 정렬, 행렬곱, 성능과 정확도' },
-  { key: 'linalg', name: '선형대수', ns: 'sd.linalg', desc: '' },
+  { key: 'linalg', name: '선형대수', ns: 'sd.linalg', desc: 'LAPACK을 감싸는 구조, 패킹과 배치, LU·QR·고유값·SVD의 알고리즘, 행렬 지수, 성능과 정확도' },
   { key: 'frame', name: '데이터프레임', ns: 'sd.frame', desc: '' },
   { key: 'special', name: '특수함수', ns: 'sd.special', desc: '' },
   { key: 'stats', name: '통계', ns: 'sd.stats', desc: '' },
