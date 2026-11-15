@@ -1,0 +1,380 @@
+---
+title: 일반 행렬의 고유값
+names: [eig, eigvals]
+group: 분해
+order: 6
+signatures:
+  - "sd.linalg.eig(x, /)"
+  - "sd.linalg.eigvals(x, /)"
+summary: 대칭이 아니어도 되는 정사각 행렬의 고유값과 고유벡터를 구해요. eig는 둘 다, eigvals는 고유값만 돌려주고, 결과는 언제나 복소수예요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 정사각 행렬. 모양은 (..., N, N).
+returns:
+  type: EigResult(eigenvalues, eigenvectors) 또는 ndarray
+  desc: eig는 고유값 (..., N)과 고유벡터 (..., N, N)의 이름 있는 튜플, eigvals는 고유값 (..., N)만. 입력이 실수여도 모두 complex128이고, 고유값은 실수부가 작은 것부터(같으면 허수부가 작은 것부터) 놓여요.
+raises:
+  - type: TypeError
+    desc: x가 sd.ndarray가 아닐 때(리스트, numpy 배열 등).
+  - type: ValueError
+    desc: 2차원 미만이거나 정사각이 아닐 때, NaN이나 inf가 들어 있을 때.
+  - type: LinAlgError
+    desc: 계산이 수렴하지 않았을 때.
+seeAlso: [eigh, schur, svd, basics, errors]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+## 한눈에 보기
+
+행렬을 곱해도 **방향이 바뀌지 않고 길이만 몇 배가 되는** 벡터가 그 행렬의 **고유벡터**(eigenvector)이고, 그 배율이 **고유값**(eigenvalue)이에요.
+
+$$A v = \lambda v$$
+
+`eig`와 `eigvals`는 **어떤 정사각 행렬에서든** 이 고유값과 고유벡터를 구해요. 행렬이 대칭이라면 더 빠르고 결과도 다루기 쉬운 [eigh](/api/linalg/eigh/)가 따로 있어요. 고유값의 뜻을 처음 본다면 그 페이지의 설명부터 읽어도 좋아요.
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[4.0, 1.0], [2.0, 3.0]])
+>>> x @ sd.asarray([1.0, 1.0])
+array([5.0, 5.0], dtype=float64)
+>>> x @ sd.asarray([1.0, -2.0])
+array([ 2.0, -4.0], dtype=float64)
+```
+
+`(1, 1)`은 5배가, `(1, -2)`는 2배가 됐어요. 이 행렬의 고유값은 5와 2예요.
+
+```python
+>>> sd.linalg.eigvals(x)
+array([(2+0j), (5+0j)], dtype=complex128)
+>>> w, v = sd.linalg.eig(x)
+>>> w
+array([(2+0j), (5+0j)], dtype=complex128)
+>>> v.shape
+(2, 2)
+```
+
+결과가 `2.0`이 아니라 `(2+0j)`, 곧 **복소수**로 나온 점이 눈에 띄어요. 이유는 바로 아래에서 설명해요.
+
+<Fig caption="고유벡터 (1, 1)에 x를 곱하면 5를 곱한 것과 같아요.">
+  <ArrayFig name="x" data={[[4, 1], [2, 3]]} />
+  <Op>×</Op>
+  <ArrayFig name="v" data={[[1], [1]]} tones={[['a'], ['a']]} note="고유벡터" />
+  <Op>=</Op>
+  <ArrayFig data={[[5], [5]]} tones={[['a'], ['a']]} />
+  <Op>=</Op>
+  <ArrayFig name="λ" data={[5]} tones={['b']} note="고유값" />
+  <Op>×</Op>
+  <ArrayFig name="v" data={[[1], [1]]} tones={[['a'], ['a']]} />
+</Fig>
+
+<Reference />
+
+## 결과가 언제나 복소수인 이유
+
+실수 행렬인데도 고유값이 실수가 아닐 수 있어요. 평면의 모든 벡터를 90° 돌리는 회전 행렬을 생각해 보세요. 어떤 벡터를 넣어도 방향이 바뀌니, "방향이 그대로인 벡터"가 실수 범위에는 없어요.
+
+아래 그래프는 길이 1인 벡터를 0°부터 180°까지 돌려 가며 행렬을 곱했을 때 방향이 몇 도 틀어지는지를 그린 거예요. `x`의 곡선은 0을 두 번 지나요. 그 두 방향(45°와 약 117°)이 `x`의 고유벡터예요. 회전 행렬의 선은 언제나 90°에 머물러 0에 닿지 않아요.
+
+<Fig caption="행렬을 곱했을 때 벡터가 틀어지는 각도. 0을 지나는 곳이 실수 고유벡터의 방향이에요. 90° 회전 행렬에는 그런 방향이 없어요.">
+  <Plot
+    curves={[
+      {
+        f: (t) => {
+          const c = Math.cos((t * Math.PI) / 180);
+          const s = Math.sin((t * Math.PI) / 180);
+          return (Math.atan2(2 * c * c - c * s - s * s, 4 * c * c + 3 * c * s + 3 * s * s) * 180) / Math.PI;
+        },
+        label: 'x = [[4, 1], [2, 3]]',
+      },
+      { f: (t) => 90, label: '90° 회전 [[0, -1], [1, 0]]', dashed: true },
+    ]}
+    domain={[0, 180]}
+    range={[-40, 110]}
+    xTicks={[
+      { v: 0, label: '0°' },
+      { v: 45, label: '45°' },
+      { v: 90, label: '90°' },
+      { v: 135, label: '135°' },
+      { v: 180, label: '180°' },
+    ]}
+    yTicks={[
+      { v: 0, label: '0°' },
+      { v: 45, label: '45°' },
+      { v: 90, label: '90°' },
+    ]}
+  />
+</Fig>
+
+이런 행렬도 복소수까지 범위를 넓히면 고유값과 고유벡터가 있어요. 회전 행렬의 고유값은 허수 $\pm i$예요.
+
+```python
+>>> rot = sd.asarray([[0.0, -1.0], [1.0, 0.0]])
+>>> sd.linalg.eigvals(rot)
+array([-1j,  1j], dtype=complex128)
+```
+
+고유값이 실수일지 복소수일지는 **계산해 보기 전에는 알 수 없어요.** 그래서 `eig`와 `eigvals`는 값에 따라 결과의 dtype이 달라지지 않도록, 입력이 실수든 정수든 **언제나 complex128**을 돌려줘요. 고유벡터도 마찬가지예요.
+
+고유값이 모두 실수라는 것을 확인했다면 `sd.real`로 실수부만 꺼내 쓰면 돼요.
+
+```python
+>>> bool(sd.all(sd.imag(w) == 0))
+True
+>>> sd.real(w)
+array([2.0, 5.0], dtype=float64)
+```
+
+실수 행렬의 복소수 고유값은 언제나 **켤레쌍**(허수부의 부호만 반대인 두 수)으로 나와요. 복소수 고유값은 "그 행렬이 회전을 품고 있다"는 신호로 읽을 수 있어요.
+
+## 결과 읽기
+
+`eig`의 결과는 `eigenvalues`와 `eigenvectors` 두 필드가 있는 이름 있는 튜플이에요. 필드 이름으로 꺼내도 되고, 두 변수로 풀어 받아도 돼요.
+
+```python
+>>> r = sd.linalg.eig(x)
+>>> r.eigenvalues
+array([(2+0j), (5+0j)], dtype=complex128)
+>>> w, v = sd.linalg.eig(x)
+```
+
+### 고유벡터는 열이에요
+
+`eigenvectors`의 **각 열**이 고유벡터 하나예요. `i`번째 고유값 `w[i]`의 짝은 `i`번째 열 `v[:, i]`예요. 행 `v[i]`가 아니에요.
+
+정의 $A v = \lambda v$를 그대로 계산해서 확인해 볼게요. `v * w`는 `v`의 각 열에 그 열의 고유값을 곱해요.
+
+```python
+>>> float(sd.max(sd.abs(x @ v - v * w))) < 1e-12
+True
+```
+
+각 고유벡터는 길이(2-노름)가 1이 되도록 맞춰져 있어요.
+
+```python
+>>> float(sd.max(sd.abs(sd.linalg.vector_norm(v, axis=0) - 1))) < 1e-12
+True
+```
+
+### 고유벡터끼리 수직이 아니에요
+
+대칭 행렬의 고유벡터는 서로 수직이지만, 일반 행렬에서는 그렇지 않아요. 위 그래프에서도 `x`의 두 고유벡터 방향은 45°와 약 117°로, 직각이 아니에요. 그래서 $V^H V = I$가 성립하지 않아요.
+
+```python
+>>> float(sd.max(sd.abs(sd.conj(v).mT @ v - sd.eye(2)))) < 1e-12
+False
+```
+
+원래 행렬로 되돌릴 때도 전치가 아니라 **역행렬**이 필요해요.
+
+$$A = V \,\mathrm{diag}(\lambda)\, V^{-1}$$
+
+```python
+>>> sd.real((v * w) @ sd.linalg.inv(v))
+array([[4.0, 1.0],
+       [2.0, 3.0]], dtype=float64)
+```
+
+## 고유값이 놓이는 순서
+
+복소수에는 크고 작음이 없지만, 결과가 실행할 때마다 다른 순서로 나오면 쓰기 어려워요. 그래서 고유값은 **실수부가 작은 것부터**, 실수부가 같으면 **허수부가 작은 것부터** 놓아요. 고유벡터의 열도 같은 순서로 놓여요.
+
+```python
+>>> y = sd.asarray([[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 0.5]])
+>>> sd.linalg.eigvals(y)
+array([     -1j,       1j, (0.5+0j)], dtype=complex128)
+```
+
+실수부가 0인 두 값이 먼저 오고(그 안에서는 허수부가 음수인 `-1j`가 먼저), 실수부가 0.5인 값이 마지막이에요. 고유값이 모두 실수라면 그냥 오름차순이에요.
+
+| 함수 | 순서 |
+|---|---|
+| `eig`, `eigvals` | 실수부 오름차순, 같으면 허수부 오름차순 |
+| `eigh`, `eigvalsh` | 오름차순 (고유값이 실수) |
+| `svd`, `svdvals` | 내림차순 (특이값) |
+
+<Callout type="warn" title="크기순이 아니에요">
+  절댓값이 가장 큰 고유값이 맨 뒤에 온다는 보장은 없어요. 예를 들어 고유값이 -3과 1이면 `[-3, 1]`로 놓여요. 크기가 가장 큰 고유값이 필요하면 `sd.max(sd.abs(w))`처럼 절댓값을 따로 구하세요. 또 수학적으로는 실수부가 같은 두 고유값이라도 반올림 오차로 실수부의 마지막 자리가 달라지면 그 차이로 순서가 정해져요.
+</Callout>
+
+## 고유벡터의 부호와 위상은 정해져 있지 않아요
+
+`v`가 고유벡터면 `-v`도, 더 넓게는 `v`에 0이 아닌 어떤 수를 곱한 것도 고유벡터예요. `eig`는 길이를 1로 맞추지만, 길이 1인 것들 가운데 어느 것을 돌려줄지는 약속하지 않아요. 실수 벡터라면 부호가, 복소수 벡터라면 곱해진 크기 1인 복소수(위상)가 정해져 있지 않아요.
+
+그래서 고유벡터의 값을 기대값과 원소끼리 비교하지 말고, 위에서 한 것처럼 `x @ v - v * w`가 0에 가까운지 같은 **성질**을 확인하세요. 부호와 상관없는 값을 보고 싶다면 절댓값을 봐도 돼요.
+
+```python
+>>> sd.abs(v)
+array([[0.4472135954999579, 0.7071067811865475],
+       [0.8944271909999159, 0.7071067811865475]], dtype=float64)
+```
+
+첫 열은 `(1, -2)`를, 둘째 열은 `(1, 1)`을 길이 1로 줄인 것이에요.
+
+## `eigh`와 `eig` 가운데 무엇을 고를까요
+
+**행렬이 대칭(복소수면 에르미트)이면 `eigh`, 아니면 `eig`예요.**
+
+| | `eigh` | `eig` |
+|---|---|---|
+| 받는 행렬 | 대칭·에르미트 | 정사각 행렬 아무거나 |
+| 고유값의 dtype | float64 | 언제나 complex128 |
+| 고유값의 순서 | 오름차순 | 실수부 → 허수부 순 |
+| 고유벡터끼리 | 서로 수직 | 수직이 아닐 수 있음 |
+| 고유벡터의 개수 | 언제나 N개 | 모자랄 수 있음 |
+| 속도와 정확도 | 더 빠르고 정확 | 더 느림 |
+
+대칭 행렬을 `eig`에 넣어도 답은 맞아요. 다만 결과가 복소수 dtype이 되고 더 느려요.
+
+```python
+>>> sym = sd.asarray([[2.0, 1.0], [1.0, 2.0]])
+>>> sd.linalg.eigvals(sym)
+array([(1+0j), (3+0j)], dtype=complex128)
+>>> sd.linalg.eigvalsh(sym)
+array([1.0, 3.0], dtype=float64)
+```
+
+반대로 **대칭이 아닌 행렬을 `eigh`에 넣으면 에러 없이 틀린 답**이 나와요. `eigh`는 아래 삼각만 읽고 대칭이라고 여기기 때문이에요.
+
+```python
+>>> sd.linalg.eigvalsh(x)
+array([1.4384471871911697,  5.561552812808831], dtype=float64)
+```
+
+`x`의 진짜 고유값은 2와 5인데 전혀 다른 값이 나왔어요. 대칭인지 확실하지 않으면 `eig`를 쓰세요.
+
+## 고유값만 필요하면 `eigvals`
+
+고유벡터가 필요 없다면 `eigvals`가 더 빨라요. 고유벡터를 만들지 않으니까요. 다만 `eigvals`의 값과 `eig`의 `eigenvalues`는 **마지막 한두 자리가 다를 수 있어요.** 값만 구할 때는 벡터까지 구할 때와 계산 순서가 달라서 반올림이 쌓이는 방식이 달라지기 때문이에요. 두 함수의 결과를 `==`로 비교하지 말고 차이가 충분히 작은지를 보세요.
+
+## 어디에 쓰나요
+
+### 되풀이해서 곱하면 커질까, 줄어들까
+
+같은 행렬을 벡터에 계속 곱해 나갈 때, 고유값 가운데 **절댓값이 가장 큰 것**이 1보다 작으면 결과는 점점 0으로 줄어들고, 1보다 크면 끝없이 커져요. 되먹임이 있는 시스템이 안정한지 볼 때 쓰는 기준이에요.
+
+```python
+>>> g = sd.asarray([[0.5, 1.0], [0.125, 0.25]])
+>>> sd.max(sd.abs(sd.linalg.eigvals(g)))
+0.75
+```
+
+0.75는 1보다 작으니 `g`를 거듭 곱하면 줄어들어요.
+
+### 다항식의 근
+
+다항식 $t^2 - 3t + 2$의 근은, 계수를 첫 행에 부호를 바꿔 적고 그 아래에 1을 비스듬히 놓은 행렬의 고유값과 같아요.
+
+```python
+>>> sd.linalg.eigvals(sd.asarray([[3.0, -2.0], [1.0, 0.0]]))
+array([(1+0j), (2+0j)], dtype=complex128)
+```
+
+$t^2 - 3t + 2 = (t - 1)(t - 2)$이니 근은 1과 2가 맞아요.
+
+## 여러 행렬을 한 번에
+
+마지막 두 축이 행렬이고 그 앞의 축은 배치(여러 행렬의 묶음)예요. 행렬마다 따로 계산하고 따로 정렬해요.
+
+```python
+>>> sd.linalg.eigvals(sd.stack([x, rot]))
+array([[(2+0j), (5+0j)],
+       [   -1j,     1j]], dtype=complex128)
+```
+
+## 조심할 점
+
+### 고유벡터가 모자란 행렬
+
+어떤 행렬은 서로 다른 방향의 고유벡터가 N개에 못 미쳐요. 아래 행렬은 고유값 1이 두 번 겹치는데, 고유벡터의 방향은 `(1, 0)` 하나뿐이에요.
+
+```python
+>>> d = sd.asarray([[1.0, 1.0], [0.0, 1.0]])
+>>> dw, dv = sd.linalg.eig(d)
+>>> dw
+array([(1+0j), (1+0j)], dtype=complex128)
+>>> sd.real(dv)
+array([[                  1.0,                  -1.0],
+       [                  0.0, 2.220446049250313e-16]], dtype=float64)
+```
+
+`eig`는 에러를 내지 않아요. 대신 두 열이 **사실상 같은 직선 위에 있는**(부호만 반대인) 고유벡터 행렬을 돌려줘요. 이런 `v`는 역행렬을 믿을 수 없어서 $V \,\mathrm{diag}(\lambda)\, V^{-1}$로 되돌리는 계산에 쓸 수 없어요. `v`의 [조건수](/api/linalg/cond/)가 아주 크면 이 경우예요.
+
+```python
+>>> sd.linalg.cond(dv) > 1e15
+True
+```
+
+<Callout type="tip" title="고유벡터가 미덥지 않을 때는 schur">
+  고유벡터가 모자라거나 거의 겹치는 행렬에서도 [schur](/api/linalg/schur/) 분해는 언제나 안정적으로 구할 수 있어요. 고유값은 Schur 분해의 대각선에서 그대로 읽을 수 있어요.
+</Callout>
+
+### NaN과 inf
+
+행렬에 NaN이나 무한대가 있으면 `ValueError`예요.
+
+```python
+>>> sd.linalg.eigvals(sd.asarray([[1.0, sd.nan], [2.0, 1.0]]))
+Traceback (most recent call last):
+    ...
+ValueError: eigvals(): 'x' contains NaN or infinity
+```
+
+### 모양과 타입
+
+정사각 행렬만 받아요. 리스트는 받지 않으니 먼저 `sd.asarray`로 배열을 만드세요.
+
+```python
+>>> sd.linalg.eigvals(sd.zeros((2, 3)))
+Traceback (most recent call last):
+    ...
+ValueError: eigvals(): 'x' must be square in its last two dimensions, got 2x3
+>>> sd.linalg.eig([[4.0, 1.0], [2.0, 3.0]])
+Traceback (most recent call last):
+    ...
+TypeError: eig(): 'x' must be an sd.ndarray, not list
+```
+
+배치 가운데 하나라도 실패하면 전체가 실패하고, 메시지 끝에 몇 번째 행렬인지가 붙어요. 에러의 종류와 메시지는 [실패와 에러](/api/linalg/errors/)에 정리돼 있어요.
+
+### 정수 행렬과 빈 행렬
+
+정수나 bool 행렬도 받아요. 결과는 똑같이 complex128이에요.
+
+```python
+>>> sd.linalg.eigvals(sd.asarray([[2, 0], [0, 3]]))
+array([(2+0j), (3+0j)], dtype=complex128)
+```
+
+0×0 행렬은 에러가 아니에요. 빈 결과를 돌려줘요.
+
+```python
+>>> sd.linalg.eigvals(sd.zeros((0, 0)))
+array([], dtype=complex128)
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | `eig`와 다른 점 |
+|---|---|---|
+| 대칭·에르미트 행렬의 고유값 | [`eigh`, `eigvalsh`](/api/linalg/eigh/) | 고유값이 float64이고 오름차순이에요. 더 빠르고 고유벡터가 서로 수직이에요. |
+| 고유벡터 없이 안정적으로 삼각 꼴 만들기 | [`schur`](/api/linalg/schur/) | 고유벡터 대신 서로 수직인 열로 된 행렬을 줘요. 고유벡터가 모자란 행렬에서도 믿을 수 있어요. |
+| 정사각이 아닌 행렬 분석하기 | [`svd`, `svdvals`](/api/linalg/svd/) | 어떤 모양이든 받고, 특이값은 0 이상의 실수예요. |
+| 행렬의 거듭제곱 | [`matrix_power`](/api/linalg/matrix_power/) | 고유값을 구하지 않고 거듭제곱을 바로 돌려줘요. |
+
+고유값과 [특이값](/api/linalg/svd/)은 다른 값이에요. 고유값은 "방향이 그대로인 벡터의 배율"이라 음수나 복소수일 수 있고 정사각 행렬에만 있어요. 특이값은 "가장 많이 늘어나는 방향의 배율"이라 언제나 0 이상의 실수이고 어떤 모양의 행렬에도 있어요.
+
+## numpy·scipy를 아는 분께
+
+- 결과가 언제나 complex128인 것은 `np.linalg.eig`, `scipy.linalg.eig`와 같아요. 고유값이 모두 실수여도 그래요.
+- **고유값이 정렬돼 있어요.** 실수부 → 허수부 순이에요. numpy와 scipy는 순서를 약속하지 않아요. 그래서 같은 행렬이라도 numpy와 순서가 다를 수 있어요.
+- 결과는 numpy 2와 같은 이름(`eigenvalues`, `eigenvectors`)의 이름 있는 튜플이에요.
+- `scipy.linalg.eig`의 `b=`(일반화 문제), `left=`·`right=`(왼쪽 고유벡터), `homogeneous_eigvals=`는 없어요. 대칭 행렬의 일반화 문제는 [`eigh(a, b)`](/api/linalg/eigh/)로 풀어요.
+- NaN·inf가 있으면 언제나 `ValueError`예요.
+- 리스트와 numpy 배열은 받지 않아요(`TypeError`). `sd.asarray`로 먼저 바꾸세요.
+- 고유벡터의 부호·위상과 고유값의 마지막 자리는 numpy·scipy와 다를 수 있어요.

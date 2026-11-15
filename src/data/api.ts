@@ -41,7 +41,7 @@ const groupOrder: Record<string, string[]> = {
     'ndarray 객체',
     '설정',
   ],
-  linalg: ['선형 시스템', '분해'],
+  linalg: ['기본 개념', '곱과 거듭제곱', '노름과 지표', '선형 시스템', '특수 구조', '분해', '행렬 함수'],
 };
 
 export function areaOf(key: string) {

@@ -1,0 +1,472 @@
+---
+title: ldl
+names: [ldl]
+group: 분해
+order: 4
+signatures:
+  - "sd.linalg.ldl(x, /)"
+summary: 대칭 행렬을 아래 삼각 L, 블록 대각 D, L의 전치의 곱으로 나눠요. cholesky와 달리 양정치가 아닌 대칭 행렬도 분해해요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 대칭(복소수면 에르미트) 행렬. 모양은 (..., N, N). 아래 삼각만 읽어요.
+returns:
+  type: LDLResult(L, D, perm)
+  desc: "이름 있는 튜플. L은 대각이 1인 아래 삼각 (..., N, N), D는 1×1과 2×2 블록으로 된 블록 대각 (..., N, N), perm은 행과 열의 순서를 담은 int64 배열 (..., N)이에요. x[perm][:, perm]이 L @ D @ L.T와 같아요."
+raises:
+  - type: TypeError
+    desc: x가 배열이 아닐 때(리스트, Python 숫자 포함).
+  - type: ValueError
+    desc: x가 2차원보다 작거나 정사각이 아닐 때, 읽는 삼각에 NaN이나 inf가 있을 때.
+seeAlso: [cholesky, lu, eigh, solve, solve_triangular, det, basics, errors]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+`ldl`은 **대칭 행렬**을 세 행렬의 곱으로 나눠요.
+
+$$A = LDL^{\mathsf T}$$
+
+- `L`은 대각선이 모두 1인 **아래 삼각** 행렬이에요.
+- `D`는 **대각 행렬**이에요(대각선에만 값이 있어요). 경우에 따라 2×2 덩어리가 섞일 수 있는데, 아래에서 설명해요.
+- 맨 오른쪽은 `L`의 전치예요. `L`과 같은 값을 담고 있어서 따로 돌려주지 않아요.
+
+[cholesky](/api/linalg/cholesky/)도 대칭 행렬을 분해하지만 **양정치**인 행렬만 받아요. `ldl`은 그 조건이 없어요. 고유값에 음수나 0이 섞인 대칭 행렬도 분해해요. 양정치가 아닌 만큼의 "음수"는 `D`가 떠안아요.
+
+```python
+>>> import stardust as sd
+>>> a = sd.asarray([[4.0, 2.0, -2.0],
+...                 [2.0, -1.0, 1.0],
+...                 [-2.0, 1.0, 3.0]])
+>>> r = sd.linalg.ldl(a)
+>>> r.L
+array([[ 1.0,  0.0,  0.0],
+       [ 0.5,  1.0,  0.0],
+       [-0.5, -1.0,  1.0]], dtype=float64)
+>>> r.D
+array([[ 4.0,  0.0,  0.0],
+       [ 0.0, -2.0,  0.0],
+       [ 0.0,  0.0,  4.0]], dtype=float64)
+>>> r.perm
+array([0, 1, 2], dtype=int64)
+```
+
+`D`의 대각에 음수 `-2.0`이 있어요. 이 행렬은 양정치가 아니라서 `cholesky`로는 분해할 수 없어요.
+
+```python
+>>> sd.linalg.cholesky(a)
+Traceback (most recent call last):
+    ...
+stardust.linalg._errors.LinAlgError: cholesky(): matrix is not positive definite
+```
+
+세 인자를 곱하면 `a`가 다시 나와요.
+
+```python
+>>> r.L @ r.D @ r.L.T
+array([[ 4.0,  2.0, -2.0],
+       [ 2.0, -1.0,  1.0],
+       [-2.0,  1.0,  3.0]], dtype=float64)
+```
+
+<Fig caption="대칭 행렬 a = L × D × L.T. 흐린 칸은 정확히 0이에요. D의 대각에 음수가 있다는 것이 a가 양정치가 아니라는 표시예요.">
+  <ArrayFig name="a" data={[[4, 2, -2], [2, -1, 1], [-2, 1, 3]]} note="대칭" />
+  <Op>=</Op>
+  <ArrayFig name="L" data={[[1, 0, 0], [0.5, 1, 0], [-0.5, -1, 1]]} tones={[['a', 'm', 'm'], ['a', 'a', 'm'], ['a', 'a', 'a']]} note="아래 삼각, 대각은 1" />
+  <Op>×</Op>
+  <ArrayFig name="D" data={[[4, 0, 0], [0, -2, 0], [0, 0, 4]]} tones={[['a', 'm', 'm'], ['m', 'b', 'm'], ['m', 'm', 'a']]} note="대각" />
+  <Op>×</Op>
+  <ArrayFig name="L.T" data={[[1, 0.5, -0.5], [0, 1, -1], [0, 0, 1]]} tones={[['a', 'a', 'a'], ['m', 'a', 'a'], ['m', 'm', 'a']]} note="L의 전치" />
+</Fig>
+
+이 예에서는 `perm`이 `[0, 1, 2]`로 제자리 순서라서 `a` 그대로가 분해됐어요. 일반적으로는 `a`의 **행과 열을 `perm` 순서로 다시 늘어놓은 행렬**이 `L @ D @ L.T`예요. 아래 [perm 절](#perm-행과-열을-함께-바꿔요)에서 설명해요.
+
+<Reference />
+
+## 결과를 꺼내는 두 가지 방법
+
+결과는 필드가 셋인 이름 있는 튜플이에요. `r.L`, `r.D`, `r.perm`으로 꺼내도 되고 변수 셋에 풀어 담아도 돼요. 순서는 언제나 `L`, `D`, `perm`이에요.
+
+```python
+>>> L, D, perm = sd.linalg.ldl(a)
+>>> D
+array([[ 4.0,  0.0,  0.0],
+       [ 0.0, -2.0,  0.0],
+       [ 0.0,  0.0,  4.0]], dtype=float64)
+```
+
+| 필드 | 무엇인가요 | 모양 | dtype |
+|:---:|---|:---:|:---:|
+| `L` | 아래 삼각 행렬. 대각선은 모두 1, 대각선 위는 정확히 0 | `(..., N, N)` | float64 또는 complex128 |
+| `D` | 블록 대각 행렬. 꽉 찬 정사각 행렬로 줘요 | `(..., N, N)` | float64 또는 complex128 |
+| `perm` | 행과 열의 순서. `0`부터 `N-1`까지가 한 번씩 들어 있어요 | `(..., N)` | int64 |
+
+`D`는 대각 원소만 담은 1차원 배열이 아니라 **`N×N` 행렬**이에요. 그래서 `L @ D @ L.T`처럼 그대로 곱할 수 있어요. 대각 원소만 필요하면 [`sd.linalg.diagonal(D)`](/api/linalg/trace-diagonal/)로 꺼내요.
+
+## cholesky와의 관계
+
+양정치 행렬을 `ldl`에 넣으면 `D`의 대각이 **모두 양수**로 나와요. 이때 `D`의 대각에 제곱근을 씌워 `L`에 곱하면 `cholesky`의 결과와 같아져요. $A = LDL^{\mathsf T} = (L\sqrt{D})(L\sqrt{D})^{\mathsf T}$이기 때문이에요.
+
+```python
+>>> pd = sd.asarray([[4.0, 2.0],
+...                  [2.0, 10.0]])
+>>> f = sd.linalg.ldl(pd)
+>>> f.L
+array([[1.0, 0.0],
+       [0.5, 1.0]], dtype=float64)
+>>> f.D
+array([[4.0, 0.0],
+       [0.0, 9.0]], dtype=float64)
+>>> f.L @ sd.sqrt(f.D)
+array([[2.0, 0.0],
+       [1.0, 3.0]], dtype=float64)
+>>> sd.linalg.cholesky(pd)
+array([[2.0, 0.0],
+       [1.0, 3.0]], dtype=float64)
+```
+
+`cholesky`는 `D`를 `L` 안에 제곱근으로 녹여 넣은 것이라고 볼 수 있어요. `D`에 음수가 있으면 제곱근을 씌울 수 없으니, 양정치가 아닌 행렬에 Cholesky 분해가 없는 것이에요. `ldl`은 제곱근을 씌우지 않고 `D`를 따로 남겨 두기 때문에 음수가 있어도 괜찮아요.
+
+## `perm`: 행과 열을 함께 바꿔요
+
+`ldl`도 [lu](/api/linalg/lu/)처럼 계산이 안정적이도록 큰 값을 앞으로 가져와요. 다만 행만 바꾸면 대칭이 깨지기 때문에, **행과 열을 같은 순서로 함께** 바꿔요. 그 순서가 `perm`이에요.
+
+$$PAP^{\mathsf T} = LDL^{\mathsf T}$$
+
+코드로는 `x[perm][:, perm]`이 `L @ D @ L.T`와 같아요. 먼저 행을 `perm` 순서로 가져오고(`x[perm]`), 그 결과에서 열을 같은 순서로 가져와요(`[:, perm]`).
+
+```python
+>>> x = sd.asarray([[2.0, 4.0, 0.0],
+...                 [4.0, 16.0, 4.0],
+...                 [0.0, 4.0, -2.0]])
+>>> L, D, perm = sd.linalg.ldl(x)
+>>> perm
+array([1, 0, 2], dtype=int64)
+>>> x[perm][:, perm]
+array([[16.0,  4.0,  4.0],
+       [ 4.0,  2.0,  0.0],
+       [ 4.0,  0.0, -2.0]], dtype=float64)
+>>> L @ D @ L.T
+array([[16.0,  4.0,  4.0],
+       [ 4.0,  2.0,  0.0],
+       [ 4.0,  0.0, -2.0]], dtype=float64)
+```
+
+`perm = [1, 0, 2]`는 0번과 1번을 맞바꿨다는 뜻이에요. 대각에서 가장 큰 `16`이 왼쪽 위로 왔어요. 행과 열을 함께 바꾸면 대각 원소는 대각에 남고, 행렬은 여전히 대칭이에요.
+
+<Fig caption="행과 열을 같은 순서 perm = [1, 0, 2]로 바꿔요. 대각에 있던 16은 자리만 옮겨 여전히 대각에 있어요.">
+  <ArrayFig name="x" data={[[2, 4, 0], [4, 16, 4], [0, 4, -2]]} tones={[['a', '', ''], ['', 'b', ''], ['', '', 'a']]} note="행·열 0, 1, 2" />
+  <Op note="x[perm][:, perm]">→</Op>
+  <ArrayFig name="x[perm][:, perm]" data={[[16, 4, 4], [4, 2, 0], [4, 0, -2]]} tones={[['b', '', ''], ['', 'a', ''], ['', '', 'a']]} note="행·열 1, 0, 2" />
+</Fig>
+
+이 예의 `L`과 `D`는 이래요.
+
+```python
+>>> L
+array([[ 1.0,  0.0,  0.0],
+       [0.25,  1.0,  0.0],
+       [0.25, -1.0,  1.0]], dtype=float64)
+>>> D
+array([[16.0,  0.0,  0.0],
+       [ 0.0,  1.0,  0.0],
+       [ 0.0,  0.0, -4.0]], dtype=float64)
+```
+
+<Callout type="warn" title="x[perm, perm]이 아니에요">
+
+`x[perm, perm]`처럼 한 번에 쓰면 전혀 다른 뜻이 돼요. 두 인덱스 배열을 짝지어 `x[1, 1]`, `x[0, 0]`, `x[2, 2]`를 꺼낸 1차원 배열, 곧 대각 원소 셋이 나와요. 행과 열을 함께 바꾸려면 `x[perm][:, perm]`처럼 두 번에 나눠 써야 해요.
+
+</Callout>
+
+`L @ D @ L.T`에서 `x`를 되찾으려면 거꾸로 가는 순서 [`sd.argsort(perm)`](/api/array/sort/)을 행과 열에 똑같이 적용해요.
+
+```python
+>>> inv_perm = sd.argsort(perm)
+>>> (L @ D @ L.T)[inv_perm][:, inv_perm]
+array([[ 2.0,  4.0,  0.0],
+       [ 4.0, 16.0,  4.0],
+       [ 0.0,  4.0, -2.0]], dtype=float64)
+```
+
+## `D`의 2×2 블록
+
+대각 원소가 0이거나 주변 값에 비해 너무 작으면, 그 값 하나를 기준으로 삼아서는 계산을 안정적으로 이어 갈 수 없어요. 대각 원소끼리 자리를 바꿔도 마땅한 값이 없을 때가 있어요. 대각이 모두 0인 이 행렬이 가장 간단한 예예요.
+
+```python
+>>> k = sd.asarray([[0.0, 2.0],
+...                 [2.0, 0.0]])
+>>> sd.linalg.ldl(k).D
+array([[0.0, 2.0],
+       [2.0, 0.0]], dtype=float64)
+```
+
+이럴 때 `ldl`은 **대각의 2×2 덩어리를 통째로** 기준으로 써요. 그 덩어리가 `D`에 그대로 남아요. 그래서 `D`는 엄밀히는 대각 행렬이 아니라, 대각선을 따라 1×1 블록과 2×2 블록이 늘어선 **블록 대각 행렬**이에요. 대각선 바로 아래와 바로 위 칸에 0이 아닌 값이 있을 수 있어요.
+
+```python
+>>> s = sd.asarray([[0.0, 2.0, 2.0],
+...                 [2.0, 0.0, 4.0],
+...                 [2.0, 4.0, 1.0]])
+>>> L, D, perm = sd.linalg.ldl(s)
+>>> D
+array([[ 0.0,  2.0,  0.0],
+       [ 2.0,  0.0,  0.0],
+       [ 0.0,  0.0, -7.0]], dtype=float64)
+>>> L
+array([[1.0, 0.0, 0.0],
+       [0.0, 1.0, 0.0],
+       [2.0, 1.0, 1.0]], dtype=float64)
+>>> perm
+array([0, 1, 2], dtype=int64)
+```
+
+<Fig caption="D의 왼쪽 위 2×2가 블록 하나(진한 칸), 오른쪽 아래의 -7이 1×1 블록이에요. 2×2 블록에 해당하는 L의 자리(가운데 줄 첫 칸)는 0이에요.">
+  <ArrayFig name="s" data={[[0, 2, 2], [2, 0, 4], [2, 4, 1]]} note="대각에 0" />
+  <Op>=</Op>
+  <ArrayFig name="L" data={[[1, 0, 0], [0, 1, 0], [2, 1, 1]]} tones={[['a', 'm', 'm'], ['m', 'a', 'm'], ['a', 'a', 'a']]} />
+  <Op>×</Op>
+  <ArrayFig name="D" data={[[0, 2, 0], [2, 0, 0], [0, 0, -7]]} tones={[['b', 'b', 'm'], ['b', 'b', 'm'], ['m', 'm', 'a']]} note="2×2 블록 + 1×1 블록" />
+  <Op>×</Op>
+  <ArrayFig name="L.T" data={[[1, 0, 2], [0, 1, 1], [0, 0, 1]]} tones={[['a', 'm', 'a'], ['m', 'a', 'a'], ['m', 'm', 'a']]} />
+</Fig>
+
+```python
+>>> L @ D @ L.T
+array([[0.0, 2.0, 2.0],
+       [2.0, 0.0, 4.0],
+       [2.0, 4.0, 1.0]], dtype=float64)
+```
+
+블록이 어디에 몇 개 생기는지는 행렬의 값에 따라 달라요. `D`를 쓰는 코드는 `D`가 정확한 대각 행렬이라고 가정하면 안 돼요. 예를 들어 `D`로 나누는 계산은 대각 원소로 나누는 대신 [solve](/api/linalg/solve/)에 `D`를 넘겨서 해요(다음 절에 예가 있어요).
+
+## 어디에 쓰나요
+
+### 대칭 행렬의 방정식 풀기
+
+$Ax = b$에서 $A$가 대칭이지만 양정치는 아닐 때, `ldl`의 결과로 세 단계에 걸쳐 풀 수 있어요. $LDL^{\mathsf T}$의 세 인자를 왼쪽부터 하나씩 벗겨 내요.
+
+1. $Lz = b$를 풀어요 (아래 삼각)
+2. $Dw = z$를 풀어요 (블록 대각)
+3. $L^{\mathsf T}y = w$를 풀어요 (위 삼각)
+
+`perm`이 제자리 순서가 아니면 앞뒤에 순서 바꾸기가 붙어요. 처음에 우변을 `b[perm]`으로 바꾸고, 마지막에 해를 `y[sd.argsort(perm)]`으로 되돌려요.
+
+위의 `s`로 풀어 볼게요. 우변은 해가 `[1, 1, 1]`이 되도록 골랐어요.
+
+```python
+>>> b = sd.asarray([4.0, 6.0, 7.0])
+>>> z = sd.linalg.solve_triangular(L, b[perm], upper=False, unit_diagonal=True)
+>>> w = sd.linalg.solve(D, z)
+>>> y = sd.linalg.solve_triangular(L.T, w, upper=True, unit_diagonal=True)
+>>> y[sd.argsort(perm)]
+array([1.0, 1.0, 1.0], dtype=float64)
+```
+
+한 번만 풀 거라면 [solve](/api/linalg/solve/)가 훨씬 간단해요. `solve`는 대칭을 쓰지 않지만 같은 답을 내요.
+
+```python
+>>> sd.linalg.solve(s, b)
+array([1.0, 1.0, 1.0], dtype=float64)
+```
+
+### 음수 고유값이 몇 개인지 세기
+
+대칭 행렬의 고유값 가운데 양수, 음수, 0이 각각 몇 개인지를 **관성**(inertia)이라고 해요. 최적화에서 어떤 점이 최소인지(모두 양수), 안장점인지(양수와 음수가 섞임) 가리는 데 쓰는 정보예요.
+
+$A$와 $D$는 고유값의 크기는 달라도 **양수·음수·0의 개수가 같아요.** `D`는 작은 블록들로 이루어져 있어서 부호를 세기가 훨씬 쉬워요. 블록이 모두 1×1이면 대각의 부호만 세면 돼요. 맨 처음의 `a`로 볼게요.
+
+```python
+>>> sd.linalg.diagonal(r.D)
+array([ 4.0, -2.0,  4.0], dtype=float64)
+>>> sd.linalg.eigvalsh(a)
+array([-2.229815082953511,  2.508203376730105,  5.721611706223408], dtype=float64)
+```
+
+`D`의 대각에 음수가 하나, `a`의 고유값에도 음수가 하나예요. 2×2 블록이 있을 때는 대각만 봐서는 안 되고 `D`의 고유값을 봐야 해요. 2×2 블록 하나는 언제나 양수 하나와 음수 하나를 내요.
+
+```python
+>>> sd.linalg.eigvalsh(D)
+array([-7.0, -2.0,  2.0], dtype=float64)
+>>> sd.count_nonzero(sd.linalg.eigvalsh(s) < 0)
+2
+```
+
+### 행렬식
+
+`L`의 행렬식은 1이고 행과 열을 함께 바꾸는 것은 행렬식을 바꾸지 않으므로, `x`의 행렬식은 **`D`의 행렬식**과 같아요.
+
+```python
+>>> sd.linalg.det(D)
+28.0
+>>> sd.linalg.det(s)
+28.0
+```
+
+## 특이 행렬도 분해해요
+
+역행렬이 없는 대칭 행렬도 에러 없이 분해해요. 그 흔적은 `D`에 `0`으로 남아요.
+
+```python
+>>> g = sd.linalg.ldl(sd.asarray([[4.0, 2.0],
+...                               [2.0, 1.0]]))
+>>> g.D
+array([[4.0, 0.0],
+       [0.0, 0.0]], dtype=float64)
+>>> g.L
+array([[1.0, 0.0],
+       [0.5, 1.0]], dtype=float64)
+```
+
+이런 `D`로 방정식을 풀려고 하면 그 단계에서 `LinAlgError`가 나요. 반올림 때문에 정확한 0 대신 아주 작은 값이 남을 수도 있으니, 특이한지 확인하려면 [cond](/api/linalg/cond/)나 [matrix_rank](/api/linalg/matrix_rank/)를 쓰세요.
+
+## 아래 삼각만 읽어요
+
+대칭 행렬은 대각선 아래쪽만 알면 전부 알 수 있어요. `ldl`은 **입력의 대각선과 그 아래만 읽고**, 위쪽은 보지 않아요. 대칭인지 검사하지도 않아요.
+
+```python
+>>> u = sd.linalg.ldl(sd.asarray([[2.0, 99.0],
+...                               [1.0, -1.0]]))
+>>> u.L
+array([[1.0, 0.0],
+       [0.5, 1.0]], dtype=float64)
+>>> u.D
+array([[ 2.0,  0.0],
+       [ 0.0, -1.5]], dtype=float64)
+```
+
+오른쪽 위의 `99.0`은 결과에 영향이 없어요. `[[2, 1], [1, -1]]`을 넣은 것과 같아요. 대칭이 아닌 행렬을 실수로 넣으면 에러 없이 다른 행렬의 분해가 나오니 조심하세요.
+
+## 복소수 행렬
+
+복소수 행렬은 언제나 **에르미트** 행렬(`x[i, j]`가 `x[j, i]`의 켤레 복소수인 행렬)로 봐요. 분해는 전치 대신 켤레 전치를 써서 $A = LDL^{\mathsf H}$가 돼요.
+
+```python
+>>> h = sd.asarray([[2.0, 1j],
+...                 [-1j, -1.0]])
+>>> rh = sd.linalg.ldl(h)
+>>> rh.L @ rh.D @ sd.conj(rh.L).T
+array([[ (2+0j),      1j],
+       [    -1j, (-1+0j)]], dtype=complex128)
+```
+
+켤레 없이 `x[i, j]`와 `x[j, i]`가 같은 복소 대칭 행렬은 지원하지 않아요.
+
+## 행렬 여러 개를 한꺼번에
+
+3차원 이상의 배열은 마지막 두 축이 행렬이고 앞쪽 축은 배치예요. 행렬마다 따로 분해해요.
+
+```python
+>>> stack = sd.asarray([[[4.0, 2.0], [2.0, 10.0]],
+...                     [[1.0, 4.0], [4.0, 8.0]]])
+>>> rb = sd.linalg.ldl(stack)
+>>> rb.perm
+array([[0, 1],
+       [1, 0]], dtype=int64)
+>>> rb.D
+array([[[ 4.0,  0.0],
+        [ 0.0,  9.0]],
+
+       [[ 8.0,  0.0],
+        [ 0.0, -1.0]]], dtype=float64)
+```
+
+행렬마다 `perm`이 다르므로, 배치에서 행과 열을 바꿀 때는 [`sd.take_along_axis`](/api/array/take/)를 행 축과 열 축에 한 번씩 써요. 전치는 마지막 두 축만 바꾸는 `.mT`를 써요.
+
+```python
+>>> rows = sd.take_along_axis(stack, rb.perm[..., None], axis=-2)
+>>> moved = sd.take_along_axis(rows, rb.perm[..., None, :], axis=-1)
+>>> float(sd.max(sd.abs(moved - rb.L @ rb.D @ rb.L.mT)))
+0.0
+```
+
+## 조심할 점
+
+### `D`가 대각 행렬이라고 가정하지 마세요
+
+2×2 블록이 생기면 대각선 바로 옆에도 값이 있어요. `sd.linalg.diagonal(D)`만 꺼내 쓰면 그 값을 놓쳐요. 양정치 행렬에서는 블록이 언제나 1×1이지만, 그런 행렬이라면 [cholesky](/api/linalg/cholesky/)가 더 알맞아요.
+
+### `perm`을 빼먹지 마세요
+
+`perm`이 제자리 순서로 나오는 행렬이 많아서, `perm`을 무시한 코드도 시험에서는 통과하기 쉬워요. `L @ D @ L.T`는 `x`가 아니라 `x[perm][:, perm]`이에요.
+
+### 정수 행렬을 넣어도 결과는 실수예요
+
+정수나 bool 행렬은 float64로 바꿔서 계산해요. `L`과 `D`는 float64(복소수 입력이면 complex128)이고, `perm`만 int64예요.
+
+```python
+>>> sd.linalg.ldl(sd.asarray([[2, 1], [1, -1]])).D
+array([[ 2.0,  0.0],
+       [ 0.0, -1.5]], dtype=float64)
+```
+
+### NaN과 inf: 읽는 쪽만 검사해요
+
+읽는 삼각(대각선과 그 아래)에 NaN이나 무한대가 있으면 `ValueError`예요. 읽지 않는 위쪽에 있는 것은 상관없어요.
+
+```python
+>>> sd.linalg.ldl(sd.asarray([[2.0, 1.0],
+...                           [sd.nan, -1.0]]))
+Traceback (most recent call last):
+    ...
+ValueError: ldl(): 'x' contains NaN or infinity
+>>> sd.linalg.ldl(sd.asarray([[2.0, sd.nan],
+...                           [1.0, -1.0]])).D
+array([[ 2.0,  0.0],
+       [ 0.0, -1.5]], dtype=float64)
+```
+
+### 모양과 타입이 틀렸을 때
+
+정사각 행렬만 받고, 리스트는 받지 않아요.
+
+```python
+>>> sd.linalg.ldl(sd.asarray([[2.0, 1.0, 0.0],
+...                           [1.0, -1.0, 0.0]]))
+Traceback (most recent call last):
+    ...
+ValueError: ldl(): 'x' must be square in its last two dimensions, got 2x3
+>>> sd.linalg.ldl([[2.0, 1.0], [1.0, -1.0]])
+Traceback (most recent call last):
+    ...
+TypeError: ldl(): 'x' must be an sd.ndarray, not list
+```
+
+### 빈 행렬
+
+0×0 행렬은 에러 없이 빈 결과를 돌려줘요.
+
+```python
+>>> e = sd.linalg.ldl(sd.zeros((0, 0)))
+>>> e.L.shape, e.D.shape, e.perm.shape
+((0, 0), (0, 0), (0,))
+```
+
+에러의 종류와 메시지 전체는 [실패와 에러](/api/linalg/errors/)에, 배치와 결과 dtype의 공통 규칙은 [선형대수의 기본](/api/linalg/basics/)에 있어요.
+
+## 비슷한 함수와의 차이
+
+| 함수 | 받는 행렬 | 관계 | `perm`이 바꾸는 것 | 실패하는 경우 |
+|---|---|---|:---:|---|
+| [cholesky](/api/linalg/cholesky/) | 대칭 양정치 | `x = L @ L.T` | 없음 | 양정치가 아니면 `LinAlgError` |
+| `ldl` | 대칭이면 무엇이든 | `x[perm][:, perm] = L @ D @ L.T` | 행과 열 | 실패하지 않아요 |
+| [lu](/api/linalg/lu/) | 무엇이든 | `x[perm] = L @ U` | 행 | 실패하지 않아요 |
+| [qr_pivoted](/api/linalg/qr/) | 무엇이든 | `x[:, perm] = Q @ R` | 열 | 실패하지 않아요 |
+
+- 양정치라는 것을 안다면 `cholesky`가 더 빠르고 결과도 단순해요. 풀이 함수 [cholesky_solve](/api/linalg/cholesky_solve/)도 있어요.
+- 대칭이지만 양정치가 아니거나 모를 때 `ldl`을 써요. `lu`도 대칭 행렬을 분해할 수 있지만, 대칭을 쓰지 않아서 일이 두 배쯤이고 `D`가 주는 부호 정보도 없어요.
+- 고유값의 부호 개수가 아니라 고유값 자체가 필요하면 [eigh](/api/linalg/eigh/)를 써요. `ldl`보다 훨씬 느려요.
+- `ldl`의 결과를 바로 받는 풀이 함수는 없어요. 방정식만 풀 거라면 [solve](/api/linalg/solve/)를 쓰세요.
+
+## numpy·scipy를 아는 분께
+
+- numpy에는 없는 함수예요. `scipy.linalg.ldl`에 해당하고, `D`와 `perm`은 scipy의 결과와 같아요.
+- **`L`이 달라요.** scipy의 첫 결과 `lu`는 행의 순서가 섞인 행렬이라 `lu[perm]`을 해야 삼각 행렬이 돼요(`a = lu @ d @ lu.T`). stardust의 `L`은 처음부터 삼각 행렬, 곧 scipy의 `lu[perm]`이에요. 그 대신 관계식에 `perm`이 들어가요: `x[perm][:, perm] = L @ D @ L.T`.
+- `lower=` 옵션은 없어요. 언제나 아래 삼각을 읽고 아래 삼각 `L`을 줘요.
+- `hermitian=` 옵션은 없어요. 복소수 입력은 언제나 에르미트로 봐요.
+- `overwrite_a=`, `check_finite=` 옵션은 없어요. NaN·inf 검사는 끌 수 없어요.
+- 리스트와 numpy 배열은 받지 않아요(`TypeError`).

@@ -1,0 +1,365 @@
+---
+title: lu_solve
+names: [lu_solve]
+group: 선형 시스템
+order: 4
+signatures:
+  - "sd.linalg.lu_solve(l, u, perm, b, /)"
+summary: lu가 만든 분해 결과 셋을 받아서 원래 행렬의 연립일차방정식 a @ x = b를 풀어요. 같은 행렬로 우변만 바꿔 여러 번 풀 때 써요.
+params:
+  - name: l
+    type: ndarray
+    kind: positional-only
+    desc: lu의 결과 L. 모양은 (..., N, N)이고, 대각선 아래만 읽어요(대각선은 1로 봐요).
+  - name: u
+    type: ndarray
+    kind: positional-only
+    desc: lu의 결과 U. 모양은 (..., N, N)이고, 대각선과 그 위만 읽어요.
+  - name: perm
+    type: ndarray (int64)
+    kind: positional-only
+    desc: lu의 결과 perm. 행을 어떤 순서로 바꿨는지 적은 인덱스 벡터. 모양은 (..., N).
+  - name: b
+    type: ndarray
+    kind: positional-only
+    desc: 우변. 1차원이면 길이 N인 벡터 하나, 2차원 이상이면 (..., N, K)로 우변 K개를 열로 나란히 놓은 것이에요.
+returns:
+  type: ndarray
+  desc: 해 x. b가 1차원이면 (..., N), 2차원 이상이면 (..., N, K). 정수 입력이어도 float64이고, 복소수가 섞이면 complex128이에요.
+raises:
+  - type: TypeError
+    desc: 네 인자 가운데 배열이 아닌 것이 있을 때, perm이 int64 배열이 아닐 때, 인자 개수가 틀렸거나 키워드로 넘겼을 때.
+  - type: ValueError
+    desc: l이나 u가 정사각이 아니거나 크기가 서로 다를 때, perm의 길이나 b의 행 수가 맞지 않을 때, perm이 0부터 N-1까지의 순열이 아닐 때, 배치 축끼리 브로드캐스팅이 안 될 때, 읽는 원소나 b에 NaN·inf가 있을 때.
+  - type: LinAlgError
+    desc: u의 대각선에 정확한 0이 있을 때(원래 행렬이 특이 행렬일 때).
+seeAlso: [lu, solve, solve_triangular, cholesky_solve, inv, basics, errors]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+`lu_solve`는 연립일차방정식 $Ax = b$를 **두 단계로 나눠 풀 때의 둘째 단계**예요.
+
+1. [lu](/api/linalg/lu/)로 행렬 `a`를 분해해서 `L`, `U`, `perm` 세 가지를 얻어요. 시간이 드는 일은 여기서 다 해요.
+2. `lu_solve`에 그 셋과 우변 `b`를 넘겨서 해를 구해요. 이 단계는 가벼워요.
+
+```python
+>>> import stardust as sd
+>>> a = sd.asarray([[1.0, 3.0], [2.0, 2.0]])
+>>> b = sd.asarray([7.0, 6.0])
+>>> L, U, perm = sd.linalg.lu(a)
+>>> sd.linalg.lu_solve(L, U, perm, b)
+array([1.0, 2.0], dtype=float64)
+```
+
+[solve](/api/linalg/solve/)로 한 번에 푼 것과 답이 같아요.
+
+```python
+>>> sd.linalg.solve(a, b)
+array([1.0, 2.0], dtype=float64)
+```
+
+한 번만 풀 거라면 `solve`가 더 간단해요. `lu_solve`는 **같은 `a`로 우변만 바꿔 가며 여러 번** 풀어야 할 때, 분해를 한 번만 하려고 써요.
+
+<Reference />
+
+## `lu`의 결과 셋은 무엇인가요
+
+LU 분해는 행렬을 **두 삼각 행렬의 곱**으로 나누는 일이에요. 삼각 행렬은 한 줄씩 대입만 하면 풀리기 때문에([solve_triangular](/api/linalg/solve_triangular/)), 한번 나눠 두면 그 뒤의 풀이가 아주 쉬워져요.
+
+- `L`: 대각선이 모두 1인 **아래 삼각**(lower) 행렬
+- `U`: **위 삼각**(upper) 행렬
+- `perm`: 분해하기 전에 `a`의 **행을 어떤 순서로 바꿨는지** 적은 정수 벡터
+
+```python
+>>> L
+array([[1.0, 0.0],
+       [0.5, 1.0]], dtype=float64)
+>>> U
+array([[2.0, 2.0],
+       [0.0, 2.0]], dtype=float64)
+>>> perm
+array([1, 0], dtype=int64)
+```
+
+행 순서를 바꾸는 까닭은 계산 도중 0이나 아주 작은 수로 나누는 일을 피해서 정확도를 지키기 위해서예요. 그래서 `L @ U`는 `a` 그대로가 아니라 **`a`의 행을 `perm` 순서로 다시 늘어놓은 것**과 같아요. `perm`이 `[1, 0]`이면 "1번 행을 먼저, 0번 행을 그다음에" 놓았다는 뜻이에요.
+
+<Fig caption="a의 행을 perm = [1, 0] 순서로 바꾼 행렬이 L × U와 같아요.">
+  <ArrayFig name="a[perm]" data={[[2, 2], [1, 3]]} note="a의 1번 행, 0번 행" />
+  <Op>=</Op>
+  <ArrayFig name="L" data={[[1, 0], [0.5, 1]]} tones={[['a', 'm'], ['a', 'a']]} note="아래 삼각, 대각선 1" />
+  <Op>×</Op>
+  <ArrayFig name="U" data={[[2, 2], [0, 2]]} tones={[['b', 'b'], ['m', 'b']]} note="위 삼각" />
+</Fig>
+
+```python
+>>> a[perm]
+array([[2.0, 2.0],
+       [1.0, 3.0]], dtype=float64)
+>>> L @ U
+array([[2.0, 2.0],
+       [1.0, 3.0]], dtype=float64)
+```
+
+### `lu_solve`가 하는 일
+
+행을 바꾼 식 $LUx = b_{\text{perm}}$을 세 걸음으로 풀어요.
+
+1. `b`의 원소를 `perm` 순서로 다시 늘어놓아요. 식의 순서를 바꿨으니 우변도 같이 바꿔야 해요.
+2. `L`이 계수인 문제를 대입으로 풀어요.
+3. 그 결과를 우변으로 삼아 `U`가 계수인 문제를 대입으로 풀어요.
+
+같은 일을 손으로 하면 이래요.
+
+```python
+>>> b[perm]
+array([6.0, 7.0], dtype=float64)
+>>> y = sd.linalg.solve_triangular(L, b[perm], upper=False, unit_diagonal=True)
+>>> y
+array([6.0, 4.0], dtype=float64)
+>>> sd.linalg.solve_triangular(U, y, upper=True)
+array([1.0, 2.0], dtype=float64)
+```
+
+`lu_solve`는 이 세 걸음을 한 번에 해 줘요. `perm`을 빠뜨리거나 순서를 헷갈릴 일이 없어서 더 안전해요.
+
+## 결과를 넘기는 세 가지 방법
+
+`lu`의 결과는 필드 이름이 있는 튜플이에요. 세 가지 방법 모두 같은 일을 해요.
+
+```python
+>>> f = sd.linalg.lu(a)
+>>> sd.linalg.lu_solve(f.L, f.U, f.perm, b)
+array([1.0, 2.0], dtype=float64)
+>>> L, U, perm = sd.linalg.lu(a)
+>>> sd.linalg.lu_solve(L, U, perm, b)
+array([1.0, 2.0], dtype=float64)
+>>> sd.linalg.lu_solve(*f, b)
+array([1.0, 2.0], dtype=float64)
+```
+
+마지막 줄의 `*f`는 튜플을 풀어서 인자 세 개로 넘기는 Python 문법이에요. `lu`가 돌려주는 순서(`L`, `U`, `perm`)와 `lu_solve`가 받는 순서가 같아서 이렇게 쓸 수 있어요.
+
+튜플을 풀지 않고 통째로 넘기면 인자 개수가 맞지 않아 `TypeError`예요.
+
+```python
+>>> sd.linalg.lu_solve(f, b)
+Traceback (most recent call last):
+    ...
+TypeError: lu_solve(): incompatible function arguments. ...
+```
+
+## 분해 한 번, 풀이 여러 번
+
+우변이 **하나씩 차례로 생기는** 경우가 이 함수의 대표적인 쓰임이에요. 흔한 예는 앞에서 구한 해가 다음 번 우변이 되는 반복 계산이에요. 다음 우변을 미리 알 수 없으니 한꺼번에 넘길 수가 없어요.
+
+```python
+>>> f = sd.linalg.lu(a)
+>>> x = sd.asarray([8.0, 8.0])
+>>> for step in range(3):
+...     x = sd.linalg.lu_solve(*f, x)
+...     print(x)
+[2.0 2.0]
+[0.5 0.5]
+[0.125 0.125]
+```
+
+루프 안에서 `solve(a, x)`를 불러도 결과는 같아요. 하지만 그러면 돌 때마다 `a`를 다시 분해해요. 분해는 풀이 전체 시간의 대부분을 차지하고 행렬이 클수록 그 비중이 커지기 때문에, 반복 횟수가 많을수록 `lu_solve`의 이득이 커요.
+
+| 상황 | 쓸 것 |
+|---|---|
+| 우변이 하나 | `solve(a, b)` |
+| 우변이 여러 개이고 **처음부터 다 있어요** | 열로 묶어서 `solve(a, bs)` 한 번 |
+| 우변이 **나중에 하나씩** 생겨요 | `lu(a)` 한 번, `lu_solve` 여러 번 |
+| 분해 결과 `L`, `U`를 다른 계산에도 써요 | `lu(a)`와 `lu_solve` |
+
+### 우변 여러 개와 배치
+
+`b`를 읽는 방법은 `solve`와 똑같아요. 1차원이면 벡터 하나, 2차원 이상이면 **열마다 우변 하나**예요.
+
+```python
+>>> bs = sd.asarray([[7.0, 4.0],
+...                  [6.0, 4.0]])
+>>> sd.linalg.lu_solve(*f, bs)
+array([[1.0, 1.0],
+       [2.0, 1.0]], dtype=float64)
+```
+
+[lu](/api/linalg/lu/)에 3차원 이상의 배열을 넣으면 행렬마다 따로 분해해서 `L`, `U`, `perm`이 모두 배치 축을 가져요. 그대로 `lu_solve`에 넘기면 행렬마다 풀어요.
+
+```python
+>>> stack = sd.asarray([[[1.0, 3.0], [2.0, 2.0]],
+...                     [[2.0, 0.0], [0.0, 4.0]]])
+>>> fs = sd.linalg.lu(stack)
+>>> fs.perm
+array([[1, 0],
+       [0, 1]], dtype=int64)
+>>> sd.linalg.lu_solve(*fs, b)
+array([[1.0, 2.0],
+       [3.5, 1.5]], dtype=float64)
+```
+
+1차원 `b`는 모든 행렬에 똑같이 써요. 네 인자의 배치 축은 [브로드캐스팅](/api/array/broadcasting/)으로 맞춰요. 행렬마다 다른 우변 벡터를 짝지으려면 `b[..., None]`으로 끝에 길이 1인 축을 붙여요(이유는 [solve](/api/linalg/solve/) 문서에 있어요).
+
+## `solve`와 마지막 자리까지 같아요
+
+`solve(a, b)`가 속에서 하는 일이 바로 "분해하고, 그것으로 풀기"예요. `lu`와 `lu_solve`는 그 두 단계를 따로 꺼낸 것이라서, 결과가 비슷한 정도가 아니라 **마지막 자리까지 똑같아요.** 반올림 오차에 민감한 행렬에서도 그래요.
+
+```python
+>>> h = sd.asarray([[1.0, 1/2, 1/3], [1/2, 1/3, 1/4], [1/3, 1/4, 1/5]])
+>>> hb = sd.asarray([1.0, 2.0, 3.0])
+>>> sd.all(sd.linalg.lu_solve(*sd.linalg.lu(h), hb) == sd.linalg.solve(h, hb))
+True
+```
+
+그래서 `solve`를 쓰던 코드를 `lu`와 `lu_solve`로 바꿔도 결과가 달라지지 않아요. 마음 놓고 바꿀 수 있어요.
+
+## 조심할 점
+
+### 특이 행렬은 `lu`가 아니라 `lu_solve`에서 에러가 나요
+
+[lu](/api/linalg/lu/)는 특이 행렬도 에러 없이 분해해요. 그 대신 `U`의 대각선에 0이 나타나요. 그 결과로 풀려고 하면 0으로 나눠야 하므로 `lu_solve`가 `LinAlgError`를 내요.
+
+```python
+>>> g = sd.linalg.lu(sd.asarray([[1.0, 2.0], [2.0, 4.0]]))
+>>> g.U
+array([[2.0, 4.0],
+       [0.0, 0.0]], dtype=float64)
+>>> sd.linalg.lu_solve(*g, sd.asarray([1.0, 2.0]))
+Traceback (most recent call last):
+    ...
+stardust.linalg._errors.LinAlgError: lu_solve(): singular matrix
+```
+
+판정은 `U`의 대각선이 **정확히 0**일 때만이에요. 거의 특이한 행렬은 에러 없이 아주 큰 값을 돌려줘요. `solve`와 같은 함정이고, [cond](/api/linalg/cond/)로 미리 확인할 수 있어요. `LinAlgError`는 `ValueError`의 한 종류예요. 자세한 것은 [실패와 에러](/api/linalg/errors/)에 있어요.
+
+### `perm`을 바꿔 넣으면 에러 없이 틀린 답이 나와요
+
+<Callout type="warn" title="L, U, perm은 같은 lu 호출에서 나온 한 묶음이에요">
+
+`lu_solve`는 받은 `l`, `u`, `perm`이 정말 한 행렬의 분해 결과인지 알 수 없어요. 다른 행렬의 `perm`을 섞어 넘기거나 "행을 안 바꿨겠지" 하고 `[0, 1, ...]`을 넣으면, 순열이기만 하면 그대로 계산해서 **다른 문제의 답**을 돌려줘요.
+
+</Callout>
+
+```python
+>>> sd.linalg.lu_solve(L, U, sd.asarray([0, 1]), b)
+array([2.25, 1.25], dtype=float64)
+```
+
+정답은 `[1, 2]`예요. 셋을 따로 다루지 말고 `lu`의 결과를 변수 하나에 담아 `*f`로 넘기면 이런 실수가 생기지 않아요.
+
+### `perm`은 int64 배열이고 순열이어야 해요
+
+`perm`은 정수(int64) 배열만 받아요. 실수 배열이나 리스트는 `TypeError`예요.
+
+```python
+>>> sd.linalg.lu_solve(L, U, sd.asarray([1.0, 0.0]), b)
+Traceback (most recent call last):
+    ...
+TypeError: lu_solve(): 'perm' must be an int64 array
+>>> sd.linalg.lu_solve(L, U, [1, 0], b)
+Traceback (most recent call last):
+    ...
+TypeError: lu_solve(): 'perm' must be an sd.ndarray, not list
+```
+
+값은 0부터 `N-1`까지를 **한 번씩만** 쓴 순열이어야 해요. 같은 수가 두 번 나오거나 범위를 벗어나면 `ValueError`예요. 길이가 `N`이 아니어도 `ValueError`예요.
+
+```python
+>>> sd.linalg.lu_solve(L, U, sd.asarray([1, 1]), b)
+Traceback (most recent call last):
+    ...
+ValueError: lu_solve(): 'perm' is not a permutation of 0..n-1
+>>> sd.linalg.lu_solve(L, U, sd.asarray([0, 1, 2]), b)
+Traceback (most recent call last):
+    ...
+ValueError: lu_solve(): 'perm' must have length 2, got 3
+```
+
+### `l`과 `u`는 필요한 쪽 삼각만 읽어요
+
+`l`에서는 **대각선 아래**만, `u`에서는 **대각선과 그 위**만 읽어요. `l`의 대각선은 읽지 않고 1로 봐요. 그 밖의 자리에 무엇이 있든 결과에 영향이 없어요.
+
+```python
+>>> messy_l = sd.asarray([[7.0, 7.0],
+...                       [0.5, 7.0]])
+>>> messy_u = sd.asarray([[2.0, 2.0],
+...                       [7.0, 2.0]])
+>>> sd.linalg.lu_solve(messy_l, messy_u, perm, b)
+array([1.0, 2.0], dtype=float64)
+```
+
+`7`이 들어 있는 자리는 모두 읽지 않는 자리라서 답이 그대로예요. `lu`의 결과를 그대로 넘길 때는 신경 쓸 일이 없지만, `l`의 대각선이 1이 아니어도 에러가 나지 않는다는 점은 알아 두세요.
+
+### 정사각 행렬의 분해만 받아요
+
+`lu`는 정사각이 아닌 행렬도 분해하지만, 그런 행렬의 연립방정식은 해가 하나로 정해지지 않아요. `lu_solve`는 정사각 행렬의 분해만 받아요.
+
+```python
+>>> tall = sd.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 7.0]])
+>>> sd.linalg.lu_solve(*sd.linalg.lu(tall), sd.asarray([4.0, 10.0, 1.0]))
+Traceback (most recent call last):
+    ...
+ValueError: lu_solve(): 'l' must be square in its last two dimensions, got 3x2
+```
+
+식과 미지수의 개수가 다른 문제는 [lstsq](/api/linalg/lstsq/)로 풀어요.
+
+### 모양이 맞지 않을 때
+
+`b`의 행 수는 행렬의 크기와 같아야 해요.
+
+```python
+>>> sd.linalg.lu_solve(L, U, perm, sd.asarray([7.0, 6.0, 5.0]))
+Traceback (most recent call last):
+    ...
+ValueError: lu_solve(): 'l' is 2x2 but 'b' has 3 rows
+```
+
+### NaN·inf가 있으면 에러
+
+`l`과 `u`의 읽는 자리, 그리고 `b`에 NaN이나 무한대가 있으면 계산하지 않고 `ValueError`를 내요.
+
+```python
+>>> sd.linalg.lu_solve(L, U, perm, sd.asarray([7.0, sd.nan]))
+Traceback (most recent call last):
+    ...
+ValueError: lu_solve(): 'b' contains NaN or infinity
+```
+
+### 결과의 dtype
+
+정수 행렬을 분해해도 `L`과 `U`는 float64이고, 해도 float64예요. 네 인자 가운데 하나라도 복소수면 결과는 complex128이에요.
+
+```python
+>>> sd.linalg.lu_solve(*sd.linalg.lu(sd.asarray([[1, 3], [2, 2]])), sd.asarray([7, 6]))
+array([1.0, 2.0], dtype=float64)
+>>> sd.linalg.lu_solve(L, U, perm, sd.asarray([7 + 7j, 6 + 6j]))
+array([(1+1j), (2+2j)], dtype=complex128)
+```
+
+## 비슷한 함수와의 차이
+
+| 함수 | 받는 것 | 어떤 행렬에 | 다른 점 |
+|---|---|---|---|
+| `lu_solve(l, u, perm, b)` | `lu(a)`의 결과 셋 | 정사각 행렬 아무것이나 | 분해를 다시 쓸 수 있어요. |
+| [`solve(a, b)`](/api/linalg/solve/) | 원래 행렬 `a` | 정사각 행렬 아무것이나 | 분해와 풀이를 한 번에 해요. 결과는 `lu_solve`와 마지막 자리까지 같아요. |
+| [`cholesky_solve(l, b)`](/api/linalg/cholesky_solve/) | `cholesky(a)`의 결과 | 대칭(에르미트) 양정치 | 같은 "분해 한 번, 풀이 여러 번" 방식이에요. 쓸 수 있는 행렬에서는 이쪽이 더 빨라요. |
+| [`solve_triangular(a, b, upper=...)`](/api/linalg/solve_triangular/) | 삼각 행렬 하나 | 삼각 행렬 | `lu_solve` 속의 한 걸음이에요. 행 순서 바꾸기는 해 주지 않아요. |
+| [`inv(x)`](/api/linalg/inv/) | 원래 행렬 | 정사각 행렬 | 역행렬을 구해 두고 곱하는 방법도 "한 번 준비, 여러 번 풀이"지만 더 느리고 덜 정확해요. |
+
+마지막 줄이 흔한 오해예요. 같은 행렬로 여러 번 풀 거라서 역행렬을 미리 구해 둔다는 생각은 자연스럽지만, 그 목적에는 `lu`와 `lu_solve`가 맞는 도구예요. 준비도 더 빠르고, 풀 때마다 나오는 답도 더 정확해요.
+
+## numpy·scipy를 아는 분께
+
+- `scipy.linalg.lu_solve`에 해당해요. numpy에는 이 함수가 없어요.
+- **인자의 꼴이 달라요.** scipy는 `lu_factor`가 돌려준 튜플 `(lu, piv)`를 통째로 받아요. `lu`는 `L`과 `U`를 겹쳐 담은 배열 하나예요. 여기서는 `L`, `U`, `perm`을 **따로따로** 넘겨요. `lu_factor`에 해당하는 함수는 없고 `sd.linalg.lu`의 결과를 써요.
+- **`perm`은 `piv`와 뜻이 달라요.** scipy의 `piv`는 "i번째 행을 `piv[i]`번째 행과 맞바꾼다"를 차례로 적은 것이고, 여기의 `perm`은 최종 행 순서를 적은 **순열**이에요(`a[perm] == L @ U`). 둘을 서로 바꿔 쓸 수 없어요.
+- `scipy.linalg.lu`의 기본 결과는 `a == P @ L @ U`가 되는 순열 **행렬** `P`예요. `sd.linalg.lu`는 행렬이 아니라 인덱스 벡터를 주고, 관계식도 `a[perm] == L @ U`예요.
+- `trans=` 옵션이 없어요. 전치된 시스템은 `a.T`를 분해해서 푸세요.
+- `check_finite=`, `overwrite_b=`가 없어요. 언제나 검사하고, NaN·inf가 있으면 `ValueError`예요.
+- `b`의 규칙은 `sd.linalg.solve`와 같고(1차원일 때만 벡터), 배치를 받아요.

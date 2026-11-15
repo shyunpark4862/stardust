@@ -1,0 +1,456 @@
+---
+title: lstsq
+names: [lstsq]
+group: 선형 시스템
+order: 5
+signatures:
+  - "sd.linalg.lstsq(a, b, /, *, rtol=None)"
+summary: 딱 맞는 해가 없는 연립방정식에서 오차가 가장 작은 해를 구해요. 데이터에 직선이나 곡선을 맞출 때 쓰는 최소제곱 풀이예요.
+params:
+  - name: a
+    type: ndarray
+    kind: positional-only
+    desc: 계수 행렬. 모양은 (..., M, N). 정사각 행렬이 아니어도 돼요.
+  - name: b
+    type: ndarray
+    kind: positional-only
+    desc: 우변. 1차원이면 길이 M인 벡터 하나, 2차원 이상이면 (..., M, K)로 열마다 우변 하나예요.
+  - name: rtol
+    type: None 또는 실수
+    kind: keyword-only
+    desc: 가장 큰 특이값에 이 값을 곱한 것 이하인 특이값을 0으로 쳐요. None이면 max(M, N)에 약 2.2e-16을 곱한 값이에요.
+returns:
+  type: LstsqResult(solution, rank, singular_values)
+  desc: solution은 해((..., N) 또는 (..., N, K)), rank는 a의 랭크(행렬 하나면 int), singular_values는 a의 특이값(큰 것부터).
+raises:
+  - type: TypeError
+    desc: a나 b가 배열이 아닐 때, rtol이 None·int·float이 아닐 때(bool 포함), rtol을 이름 없이 넘겼을 때.
+  - type: ValueError
+    desc: a가 2차원 미만일 때, a와 b의 행 수가 다를 때, 배치 축이 브로드캐스팅되지 않을 때, a나 b에 NaN·inf가 있을 때, rtol이 음수이거나 NaN·inf일 때.
+  - type: LinAlgError
+    desc: 특이값 계산이 수렴하지 않았을 때. 아주 드물어요.
+seeAlso: [solve, inv, matrix_rank, svd, qr, cond, basics, errors]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+`lstsq`는 **딱 맞는 해가 없는 연립방정식**에서 "가장 덜 틀리는" 해를 구해요. 이름은 최소제곱(least squares)을 줄인 말이에요.
+
+방정식이 미지수보다 많으면 보통 모든 방정식을 동시에 만족하는 해가 없어요. 점 네 개를 모두 지나는 직선이 대개 없는 것과 같아요. 이럴 때 `lstsq`는 `a @ x`와 `b`의 차이를 제곱해서 모두 더한 값이 가장 작아지는 `x`를 찾아요.
+
+$$\text{최소화: } \|a x - b\|_2^2 = \sum_i \big((a x)_i - b_i\big)^2$$
+
+가장 흔한 쓰임은 **데이터에 직선 맞추기**예요. 공부한 시간과 시험 점수를 네 명에게서 모았다고 해 볼게요.
+
+| 공부 시간 `x` | 0 | 1 | 2 | 3 |
+|---|:---:|:---:|:---:|:---:|
+| 점수 `y` | 50 | 60 | 64 | 67 |
+
+이 점들에 가장 가까운 직선 `y = c + m × x`의 절편 `c`와 기울기 `m`을 구하려면, 미지수 `c`, `m`에 대한 방정식 네 개를 행렬로 써요. 행렬의 첫 열은 `c`에 곱해지는 1, 둘째 열은 `m`에 곱해지는 `x`예요.
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([0.0, 1.0, 2.0, 3.0])
+>>> y = sd.asarray([50.0, 60.0, 64.0, 67.0])
+>>> A = sd.stack([sd.ones(4), x], axis=1)
+>>> A
+array([[1.0, 0.0],
+       [1.0, 1.0],
+       [1.0, 2.0],
+       [1.0, 3.0]], dtype=float64)
+>>> result = sd.linalg.lstsq(A, y)
+>>> result.solution
+array([52.0,  5.5], dtype=float64)
+```
+
+답은 `c = 52`, `m = 5.5`예요. 가장 잘 맞는 직선은 `점수 = 52 + 5.5 × 시간`이에요.
+
+<Fig caption="방정식 네 개, 미지수 두 개. 네 줄을 모두 정확히 맞출 수는 없어서, 양쪽의 차이가 가장 작아지는 c와 m을 찾아요.">
+  <ArrayFig name="A" data={[[1, 0], [1, 1], [1, 2], [1, 3]]} tones={[['', 'a'], ['', 'a'], ['', 'a'], ['', 'a']]} note="1과 x" />
+  <Op>@</Op>
+  <ArrayFig name="solution" data={[['c'], ['m']]} tones={[['b'], ['b']]} note="구할 값" />
+  <Op>≈</Op>
+  <ArrayFig name="y" data={[[50], [60], [64], [67]]} note="점수" />
+</Fig>
+
+<Reference />
+
+## 결과는 세 가지가 묶여서 나와요
+
+`lstsq`는 값 세 개를 이름 있는 튜플로 돌려줘요.
+
+| 필드 | 무엇인가요 | 모양 |
+|---|---|---|
+| `solution` | 최소제곱해 `x` | `b`가 1차원이면 `(..., N)`, 아니면 `(..., N, K)` |
+| `rank` | `a`의 랭크. 서로 독립인 열의 개수예요. | 행렬 하나면 Python `int`, 배치면 int64 배열 |
+| `singular_values` | `a`의 특이값. 큰 것부터 나와요. | `(..., min(M, N))` |
+
+필드 이름으로 꺼내도 되고, 순서대로 풀어 받아도 돼요.
+
+```python
+>>> result.rank
+2
+>>> result.singular_values
+array([  4.10003044816824, 1.0907567666961069], dtype=float64)
+>>> solution, rank, singular_values = sd.linalg.lstsq(A, y)
+>>> solution
+array([52.0,  5.5], dtype=float64)
+```
+
+해만 필요할 때가 많아요. 그럴 때는 `sd.linalg.lstsq(A, y).solution`처럼 바로 꺼내 쓰면 돼요.
+
+`rank`와 `singular_values`는 **해를 얼마나 믿을 수 있는지** 알려 줘요. `rank`가 열의 수 `N`과 같으면 해가 하나로 정해진 것이고, 작으면 열 가운데 겹치는 것이 있다는 뜻이에요(아래 "열이 겹칠 때" 절에서 다뤄요). 특이값은 [svdvals](/api/linalg/svd/)가 주는 값과 같은 것이에요. 가장 큰 값과 가장 작은 값의 비가 아주 크면 데이터가 조금만 바뀌어도 해가 크게 흔들려요.
+
+## 얼마나 잘 맞았는지 확인하기
+
+맞춘 직선이 예측하는 값은 `A @ solution`이에요. 실제 값과의 차이를 **잔차**(residual)라고 해요.
+
+```python
+>>> fitted = A @ result.solution
+>>> fitted
+array([52.0, 57.5, 63.0, 68.5], dtype=float64)
+>>> y - fitted
+array([-2.0,  2.5,  1.0, -1.5], dtype=float64)
+```
+
+| 공부 시간 | 실제 점수 | 직선의 예측 | 잔차 |
+|:---:|:---:|:---:|:---:|
+| 0 | 50 | 52.0 | -2.0 |
+| 1 | 60 | 57.5 | 2.5 |
+| 2 | 64 | 63.0 | 1.0 |
+| 3 | 67 | 68.5 | -1.5 |
+
+`lstsq`가 가장 작게 만드는 값은 이 잔차들을 제곱해서 더한 값이에요. `lstsq`는 잔차를 따로 돌려주지 않으니 필요하면 이렇게 직접 계산해요. 잔차의 크기는 [vector_norm](/api/linalg/norms/)으로 한 숫자로 줄일 수 있어요.
+
+```python
+>>> sd.sum((y - fitted) ** 2)
+13.5
+>>> sd.linalg.vector_norm(y - fitted) ** 2
+13.5
+```
+
+다른 어떤 `c`, `m`을 골라도 이 값(13.5)보다 작아지지 않아요. 예를 들어 처음과 끝 점을 잇는 직선 `c = 50`, `m = 17/3`은 두 점은 정확히 지나지만 제곱합은 더 커요.
+
+```python
+>>> other = sd.asarray([50.0, 17.0 / 3.0])
+>>> float(sd.sum((y - A @ other) ** 2)) > 13.5
+True
+```
+
+## 직선 말고 다른 모양도 맞출 수 있어요
+
+`lstsq`가 푸는 것은 "열들을 얼마씩 섞으면 `b`에 가장 가까워지나"예요. 그래서 행렬의 열을 바꾸면 다른 모양의 식도 맞출 수 있어요. 열에 `x²`을 더하면 포물선 `y = c + m x + q x²`을 맞춰요.
+
+```python
+>>> t = sd.asarray([-2.0, -1.0, 0.0, 1.0, 2.0])
+>>> h = sd.asarray([9.0, 3.0, 1.0, 3.0, 9.0])
+>>> P = sd.stack([sd.ones(5), t, t * t], axis=1)
+>>> curve = sd.linalg.lstsq(P, h).solution
+>>> [round(v, 10) for v in curve.tolist()]
+[1.0, 0.0, 2.0]
+```
+
+다섯 점이 모두 포물선 `1 + 2 t²` 위에 있어서 계수 `1, 0, 2`가 나왔어요. `round`로 정리한 것은 마지막 자리의 반올림 오차 때문이에요. 정리하지 않으면 이렇게 보여요.
+
+```python
+>>> curve
+array([   0.9999999999999984, 6.661338147750939e-16,    1.9999999999999993], dtype=float64)
+```
+
+딱 맞는 해가 있는 문제에서도 `lstsq`의 결과는 마지막 자리가 조금 다를 수 있어요. 값을 비교할 때는 `==` 대신 차이가 충분히 작은지를 보세요.
+
+열이 여러 변수여도 같아요. 집의 넓이와 방 수로 가격을 설명하는 식, 여러 재료의 양으로 맛 점수를 설명하는 식처럼, **미지수에 대해 곱하고 더하는 꼴**이기만 하면 돼요.
+
+## 우변이 여러 개일 때
+
+같은 행렬로 우변만 바꿔 여러 번 풀어야 하면 우변들을 **열로 나란히** 놓은 2차원 배열을 넘겨요. 결과의 열마다 해 하나가 들어 있어요.
+
+```python
+>>> scores = sd.asarray([[50.0, 40.0],
+...                      [60.0, 42.0],
+...                      [64.0, 44.0],
+...                      [67.0, 46.0]])
+>>> both = sd.linalg.lstsq(A, scores).solution
+>>> both.shape
+(2, 2)
+>>> [[round(v, 10) for v in row] for row in both.tolist()]
+[[52.0, 40.0], [5.5, 2.0]]
+```
+
+첫 열은 앞의 점수에 맞춘 `c = 52, m = 5.5`이고, 둘째 열은 다른 과목 점수 `40, 42, 44, 46`에 맞춘 `c = 40, m = 2`예요. 둘째 과목은 점들이 정확히 한 직선 위에 있어요.
+
+`b`가 1차원이면 벡터 하나, 2차원 이상이면 열 묶음으로 보는 규칙은 [solve](/api/linalg/solve/)를 비롯한 풀이 함수가 모두 같아요. 자세한 것은 [선형대수의 기본](/api/linalg/basics/)에 있어요.
+
+`a`가 3차원 이상이면 행렬 여러 개를 한 번에 풀어요. 이때 `rank`는 행렬마다 하나씩 든 배열이에요.
+
+```python
+>>> stacked = sd.stack([A, A * 2.0])
+>>> stacked.shape
+(2, 4, 2)
+>>> many = sd.linalg.lstsq(stacked, y)
+>>> many.solution
+array([[52.0,  5.5],
+       [26.0, 2.75]], dtype=float64)
+>>> many.rank
+array([2, 2], dtype=int64)
+```
+
+## 열이 겹칠 때: 해가 여럿이면 가장 작은 것
+
+행렬의 열 가운데 **다른 열로 만들 수 있는 열**이 있으면 최소제곱해가 하나로 정해지지 않아요. 예를 들어 같은 값을 두 번 넣은 경우예요.
+
+```python
+>>> D = sd.asarray([[1.0, 1.0],
+...                 [2.0, 2.0],
+...                 [3.0, 3.0]])
+>>> target = sd.asarray([2.0, 4.0, 6.0])
+>>> dup = sd.linalg.lstsq(D, target)
+>>> dup.solution
+array([1.0, 1.0], dtype=float64)
+>>> dup.rank
+1
+```
+
+두 열이 똑같아서 `target = 2 × 첫 열`도 되고, `2 × 둘째 열`도 되고, `1 × 첫 열 + 1 × 둘째 열`도 돼요. 두 계수의 합이 2이기만 하면 모두 정확한 해예요. 이렇게 해가 여럿일 때 `lstsq`는 그 가운데 **크기(계수들의 제곱합)가 가장 작은 해**를 골라요. 여기서는 `[1, 1]`이에요.
+
+| 해 | `D @ 해` | 계수의 제곱합 |
+|:---:|:---:|:---:|
+| `[2, 0]` | `[2, 4, 6]` | 4 |
+| `[0, 2]` | `[2, 4, 6]` | 4 |
+| `[3, -1]` | `[2, 4, 6]` | 10 |
+| **`[1, 1]`** | `[2, 4, 6]` | **2** |
+
+`rank`가 `1`로 나온 것이 신호예요. 열은 둘인데 랭크가 1이면 "쓸모 있는 열은 사실 하나"라는 뜻이에요. 특이값을 보면 둘째 값이 사실상 0이에요.
+
+```python
+>>> float(dup.singular_values[1]) < 1e-12
+True
+```
+
+<Callout type="warn" title="rank가 열의 수보다 작으면 계수 하나하나를 해석하지 마세요">
+
+해가 여럿인 문제에서 `lstsq`가 준 계수는 "가장 작은 것을 고른다"는 약속으로 정해진 값이에요. `a @ solution`(예측값)은 믿을 수 있지만, "첫 변수의 영향이 1이다" 같은 해석은 할 수 없어요. `result.rank`가 `a.shape[-1]`과 같은지 확인하고, 다르면 겹치는 열을 빼세요.
+
+</Callout>
+
+### 방정식이 미지수보다 적을 때
+
+행이 열보다 적은 행렬(미지수가 더 많은 문제)도 받아요. 이때는 방정식을 정확히 만족하는 해가 끝없이 많고, `lstsq`는 역시 가장 작은 해를 줘요. 두 수의 합이 4라는 조건 하나만 있다면 답은 둘을 똑같이 나눈 `2, 2`예요.
+
+```python
+>>> wide = sd.linalg.lstsq(sd.asarray([[1.0, 1.0]]), sd.asarray([4.0]))
+>>> [round(v, 12) for v in wide.solution.tolist()]
+[2.0, 2.0]
+>>> wide.rank
+1
+```
+
+## `rtol`: 얼마나 작은 특이값을 0으로 볼까
+
+컴퓨터의 실수 계산에는 반올림 오차가 있어서, 수학적으로는 완전히 겹치는 열도 계산해 보면 특이값이 정확한 0이 아니라 `1e-16` 같은 아주 작은 수로 나와요. 그래서 `lstsq`는 **가장 큰 특이값에 `rtol`을 곱한 값 이하인 특이값을 0으로 쳐요.** 0으로 친 특이값의 방향은 해에서 빼고, 남은 특이값의 개수가 `rank`예요.
+
+$$\sigma_k \le \text{rtol} \times \sigma_{\max} \;\Rightarrow\; \sigma_k \text{를 0으로 봐요}$$
+
+`rtol=None`(기본값)이면 `max(M, N)`에 float64의 반올림 단위(약 2.2 × 10⁻¹⁶)를 곱한 값을 써요. 반올림 오차로 생긴 특이값만 걸러내는 기준이에요.
+
+기본값은 "반올림 오차 수준"만 걸러요. 데이터 자체가 부정확해서 **거의 겹치는 열**이 있다면 `rtol`을 직접 키워야 해요. 둘째 열이 거의 0인 행렬을 볼게요.
+
+```python
+>>> weak = sd.asarray([[1.0, 0.0],
+...                    [0.0, 1e-12],
+...                    [0.0, 0.0]])
+>>> rhs = sd.asarray([1.0, 1.0, 0.0])
+>>> sd.linalg.lstsq(weak, rhs)
+LstsqResult(solution=array([            1.0, 1000000000000.0], dtype=float64), rank=2, singular_values=array([  1.0, 1e-12], dtype=float64))
+```
+
+둘째 열의 크기가 `1e-12`밖에 안 되는데 우변의 둘째 값 `1`을 맞추려다 보니 계수가 `1e12`(1조)가 됐어요. 식으로는 맞지만, 둘째 열의 `1e-12`가 측정 잡음이었다면 아무 뜻 없는 숫자예요. `rtol`을 키워서 이 방향을 버리면 이렇게 돼요.
+
+```python
+>>> sd.linalg.lstsq(weak, rhs, rtol=1e-6)
+LstsqResult(solution=array([1.0, 0.0], dtype=float64), rank=1, singular_values=array([  1.0, 1e-12], dtype=float64))
+```
+
+`rank`가 2에서 1로 줄었고, 둘째 계수는 0이 됐어요. `singular_values`는 `rtol`과 상관없이 언제나 계산한 그대로 나와요. `rtol`은 그 값들 가운데 어디까지 쓸지만 정해요.
+
+실제 데이터에서는 두 열이 "거의 같은" 꼴로 나타나요. 같은 양을 두 기계로 잰 값처럼요.
+
+```python
+>>> near = sd.asarray([[1.0, 1.0],
+...                    [1.0, 1.0 + 1e-10],
+...                    [1.0, 1.0]])
+>>> obs = sd.asarray([2.0, 3.0, 2.0])
+>>> strict = sd.linalg.lstsq(near, obs)
+>>> strict.rank
+2
+>>> float(sd.max(sd.abs(strict.solution))) > 1e9
+True
+>>> loose = sd.linalg.lstsq(near, obs, rtol=1e-6)
+>>> loose.rank
+1
+>>> [round(v, 4) for v in loose.solution.tolist()]
+[1.1667, 1.1667]
+```
+
+기본값에서는 두 열의 아주 작은 차이(`1e-10`)를 이용해 우변을 맞추려고 계수가 ±100억까지 커져요. `rtol=1e-6`에서는 두 열을 같은 것으로 보고, 평균 `7/3`을 둘이 똑같이 나눈 `7/6 ≈ 1.1667`을 줘요.
+
+| `rtol` | 뜻 |
+|:---:|---|
+| `None` | 반올림 오차로 생긴 특이값만 0으로 쳐요. 대부분은 이것으로 충분해요. |
+| `1e-6`처럼 키운 값 | 데이터의 정밀도보다 작은 특이값을 버려요. 잡음에 덜 흔들리는 해가 나와요. |
+| `1` 이상 | 모든 특이값이 0이 돼요. `rank`는 0, `solution`은 모두 0이에요. |
+
+```python
+>>> sd.linalg.lstsq(A, y, rtol=1.0).solution
+array([0.0, 0.0], dtype=float64)
+```
+
+`rtol`은 [matrix_rank](/api/linalg/matrix_rank/)와 [pinv](/api/linalg/inv/)의 `rtol`과 같은 뜻이에요.
+
+## 조심할 점
+
+### 직선을 맞출 때 1의 열을 빠뜨리지 마세요
+
+`lstsq`는 넘겨받은 열만 써요. 절편을 구하려면 **1로 채운 열**을 직접 넣어야 해요. `x` 열만 넣으면 원점을 지나는 직선 `y = m × x`를 맞춰요.
+
+```python
+>>> only_x = sd.stack([x], axis=1)
+>>> only_x.shape
+(4, 1)
+>>> sd.linalg.lstsq(only_x, y).solution
+array([27.78571428571429], dtype=float64)
+```
+
+기울기가 5.5가 아니라 약 27.8로 나왔어요. 절편 없이 50~67점을 설명하려다 생긴 값이에요.
+
+### 행렬은 2차원이어야 해요
+
+1차원 배열을 `a`로 넘기면 에러예요. 변수가 하나뿐이어도 위처럼 `(M, 1)` 모양의 행렬로 만들어야 해요.
+
+```python
+>>> sd.linalg.lstsq(x, y)
+Traceback (most recent call last):
+    ...
+ValueError: lstsq(): 'a' must have at least 2 dimensions, got 1
+```
+
+`a`의 행 수와 `b`의 길이(2차원이면 행 수)가 다르면 에러예요. 방정식 하나에 우변이 하나씩 있어야 하기 때문이에요.
+
+```python
+>>> sd.linalg.lstsq(A, sd.asarray([50.0, 60.0, 64.0]))
+Traceback (most recent call last):
+    ...
+ValueError: lstsq(): 'a' has 4 rows but 'b' has 3 rows
+```
+
+### 정수를 넣어도 결과는 실수예요
+
+`sd.linalg`의 함수는 정수와 bool 입력을 실수로 바꿔서 계산해요. 결과는 언제나 float64이고, 복소수가 섞이면 complex128이에요. `singular_values`는 복소수 입력에서도 float64예요.
+
+```python
+>>> sd.linalg.lstsq(sd.asarray([[1, 0], [0, 1], [0, 0]]), sd.asarray([3, 4, 5])).solution
+array([3.0, 4.0], dtype=float64)
+```
+
+### 리스트는 받지 않아요
+
+`a`와 `b`는 배열이어야 해요. 리스트는 먼저 [asarray](/api/array/asarray/)로 바꾸세요.
+
+```python
+>>> sd.linalg.lstsq(A, [50.0, 60.0, 64.0, 67.0])
+Traceback (most recent call last):
+    ...
+TypeError: lstsq(): 'b' must be an sd.ndarray, not list
+```
+
+### NaN과 inf가 있으면 에러예요
+
+입력에 NaN이나 inf가 하나라도 있으면 계산하지 않고 `ValueError`를 내요. 빠진 값이 있는 데이터는 그 행을 먼저 빼고 넘기세요.
+
+```python
+>>> sd.linalg.lstsq(A, sd.asarray([50.0, float("nan"), 64.0, 67.0]))
+Traceback (most recent call last):
+    ...
+ValueError: lstsq(): 'b' contains NaN or infinity
+```
+
+### `rtol`에 줄 수 없는 값
+
+`rtol`은 이름을 붙여서만 넘길 수 있고, 0 이상의 유한한 숫자여야 해요.
+
+```python
+>>> sd.linalg.lstsq(A, y, rtol=-1.0)
+Traceback (most recent call last):
+    ...
+ValueError: lstsq(): 'rtol' must be a finite number >= 0
+>>> sd.linalg.lstsq(A, y, rtol="auto")
+Traceback (most recent call last):
+    ...
+TypeError: lstsq(): 'rtol' must be None, an int or a float, not str
+```
+
+### 특이 행렬에서도 에러가 나지 않아요
+
+[solve](/api/linalg/solve/)는 해가 하나로 정해지지 않는 특이 행렬에서 `LinAlgError`를 내지만, `lstsq`는 가장 작은 해를 돌려줘요. 에러가 없다고 문제가 잘 정의된 것은 아니니 `rank`를 확인하세요.
+
+```python
+>>> S = sd.asarray([[1.0, 2.0], [2.0, 4.0]])
+>>> sd.linalg.solve(S, sd.asarray([1.0, 2.0]))
+Traceback (most recent call last):
+    ...
+stardust.linalg._errors.LinAlgError: solve(): singular matrix
+>>> sd.linalg.lstsq(S, sd.asarray([1.0, 2.0])).rank
+1
+```
+
+### 빈 행렬
+
+행이나 열이 0개인 행렬도 받아요. `rank`는 0이고, 해는 모두 0(열이 0개면 빈 배열)이에요.
+
+```python
+>>> sd.linalg.lstsq(sd.zeros((0, 2)), sd.zeros((0,)))
+LstsqResult(solution=array([0.0, 0.0], dtype=float64), rank=0, singular_values=array([], dtype=float64))
+```
+
+## 비슷한 함수와의 차이
+
+| 상황 | 쓸 것 | 이유 |
+|---|---|---|
+| 정사각이고 해가 하나인 연립방정식 | [solve](/api/linalg/solve/) | 더 빠르고, 해가 없거나 여럿이면 에러로 알려 줘요. |
+| 방정식이 미지수보다 많아요(데이터 맞추기) | `lstsq` | 오차가 가장 작은 해를 줘요. |
+| 방정식이 미지수보다 적거나 열이 겹쳐요 | `lstsq` | 여러 해 가운데 가장 작은 것을 줘요. |
+| 같은 행렬로 우변을 계속 바꿔 가며 풀어요 | [pinv](/api/linalg/inv/) | `pinv(a) @ b`가 `lstsq`의 해와 같아요. 유사역행렬을 한 번 구해 두고 곱하기만 하면 돼요. |
+| 랭크만 알고 싶어요 | [matrix_rank](/api/linalg/matrix_rank/) | 해는 구하지 않아요. |
+| 특이값만 알고 싶어요 | [svdvals](/api/linalg/svd/) | `singular_values`와 같은 값이에요. |
+
+정사각이고 특이하지 않은 행렬에서는 `lstsq`와 `solve`가 (반올림 오차를 빼면) 같은 답을 줘요. 그래도 그런 문제에는 `solve`를 쓰세요. `lstsq`는 특이값을 모두 구하느라 일이 더 많아요.
+
+```python
+>>> sq = sd.asarray([[3.0, 1.0], [1.0, 2.0]])
+>>> sd.linalg.solve(sq, sd.asarray([9.0, 8.0]))
+array([2.0, 3.0], dtype=float64)
+>>> diff = sd.linalg.lstsq(sq, sd.asarray([9.0, 8.0])).solution - sd.asarray([2.0, 3.0])
+>>> float(sd.max(sd.abs(diff))) < 1e-12
+True
+```
+
+`pinv`와의 관계도 확인해 볼게요.
+
+```python
+>>> via_pinv = sd.linalg.pinv(A) @ y
+>>> float(sd.max(sd.abs(via_pinv - result.solution))) < 1e-12
+True
+```
+
+## numpy·scipy를 아는 분께
+
+- 결과는 `(solution, rank, singular_values)` **세 개**예요. `np.linalg.lstsq`와 `scipy.linalg.lstsq`가 주는 잔차 제곱합(`residuals`)은 없어요. 필요하면 `b - a @ solution`으로 계산하세요.
+- 허용오차 옵션의 이름은 `rcond`나 `cond`가 아니라 `rtol`이고, 이름을 붙여서만 넘겨요. 기본값은 `max(M, N) × eps`예요.
+- `rtol`이 1 이상이면 랭크 0, 해 0이에요. numpy는 이 경우 허용오차로 `eps`를 써서 풀어요.
+- `rank`는 행렬 하나면 Python `int`예요. `a`가 3차원 이상이면 행렬 여러 개를 한 번에 풀어요(numpy의 `lstsq`는 2차원만 받아요).
+- NaN·inf 검사를 끄는 `check_finite=`, 풀이 방법을 고르는 `lapack_driver=`, `overwrite_a=` 같은 옵션은 없어요.
+- 리스트와 numpy 배열은 받지 않아요. `sd.asarray`로 먼저 바꾸세요.

@@ -1,0 +1,330 @@
+---
+title: Schur와 Hessenberg 분해
+names: [schur, hessenberg]
+group: 분해
+order: 7
+signatures:
+  - "sd.linalg.schur(x, /)"
+  - "sd.linalg.hessenberg(x, /)"
+summary: 정사각 행렬을 '수직인 열로 된 행렬 × 삼각에 가까운 행렬 × 그 켤레 전치'로 나눠요. schur는 위 삼각(대각선이 고유값)까지, hessenberg는 대각선 한 줄 아래까지만 남기는 데서 멈춰요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 정사각 행렬. 모양은 (..., N, N).
+returns:
+  type: SchurResult(T, Z) 또는 HessenbergResult(H, Q)
+  desc: 모두 x와 같은 모양 (..., N, N)의 행렬 둘. 실수 입력이면 float64, 복소수 입력이면 complex128이에요.
+raises:
+  - type: TypeError
+    desc: x가 sd.ndarray가 아닐 때(리스트, numpy 배열 등).
+  - type: ValueError
+    desc: 2차원 미만이거나 정사각이 아닐 때, NaN이나 inf가 들어 있을 때.
+  - type: LinAlgError
+    desc: schur의 계산이 수렴하지 않았을 때.
+seeAlso: [eig, eigh, qr, expm, solve_sylvester, basics, errors]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+두 함수 모두 정사각 행렬 `x`를 **더 다루기 쉬운 꼴의 행렬**로 바꿔요. 바꿀 때 쓰는 도구는 **열끼리 서로 수직이고 길이가 1인 행렬**(직교 행렬, 복소수면 유니터리 행렬)이에요. 이런 행렬을 곱하는 것은 좌표축을 돌려 놓는 것과 같아서, 길이와 각도를 바꾸지 않고 반올림 오차도 키우지 않아요. 고유값도 그대로 남아요.
+
+**Schur 분해**는 `x`를 **위 삼각 행렬** `T`로 바꿔요.
+
+$$x = Z \, T \, Z^H$$
+
+$Z^H$는 `Z`의 켤레 전치예요(실수 행렬이면 그냥 전치). 삼각 행렬의 고유값은 대각선에 그대로 적혀 있으니, **`T`의 대각선이 곧 `x`의 고유값**이에요.
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[4.0, 1.0], [2.0, 3.0]])
+>>> T, Z = sd.linalg.schur(x)
+>>> T
+array([[ 5.0, -1.0],
+       [ 0.0,  2.0]], dtype=float64)
+```
+
+`T`는 대각선 아래가 0인 위 삼각 행렬이고, 대각선의 5와 2가 `x`의 고유값이에요.
+
+**Hessenberg 분해**는 같은 방식으로 하되 덜 나아가요. 삼각보다 한 줄 넉넉한, **대각선 바로 아래 한 줄까지는 남아 있는** 꼴 `H`에서 멈춰요.
+
+$$x = Q \, H \, Q^H$$
+
+<Fig column caption="두 분해가 만드는 꼴. 흐린 칸은 정확히 0이에요. Schur는 대각선 아래를 모두 0으로, Hessenberg는 대각선에서 두 줄 이상 떨어진 곳만 0으로 만들어요.">
+  <FigRow>
+    <ArrayFig name="x" data={[['·', '·', '·', '·'], ['·', '·', '·', '·'], ['·', '·', '·', '·'], ['·', '·', '·', '·']]} />
+    <Op>=</Op>
+    <ArrayFig name="Z" data={[['·', '·', '·', '·'], ['·', '·', '·', '·'], ['·', '·', '·', '·'], ['·', '·', '·', '·']]} note="열끼리 수직" />
+    <Op>×</Op>
+    <ArrayFig name="T" data={[['λ', '·', '·', '·'], ['0', 'λ', '·', '·'], ['0', '0', 'λ', '·'], ['0', '0', '0', 'λ']]} tones={[['b', 'a', 'a', 'a'], ['m', 'b', 'a', 'a'], ['m', 'm', 'b', 'a'], ['m', 'm', 'm', 'b']]} note="위 삼각, 대각선이 고유값" />
+    <Op>×</Op>
+    <ArrayFig name="Zᴴ" data={[['·', '·', '·', '·'], ['·', '·', '·', '·'], ['·', '·', '·', '·'], ['·', '·', '·', '·']]} />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="x" data={[['·', '·', '·', '·'], ['·', '·', '·', '·'], ['·', '·', '·', '·'], ['·', '·', '·', '·']]} />
+    <Op>=</Op>
+    <ArrayFig name="Q" data={[['·', '·', '·', '·'], ['·', '·', '·', '·'], ['·', '·', '·', '·'], ['·', '·', '·', '·']]} note="열끼리 수직" />
+    <Op>×</Op>
+    <ArrayFig name="H" data={[['·', '·', '·', '·'], ['·', '·', '·', '·'], ['0', '·', '·', '·'], ['0', '0', '·', '·']]} tones={[['a', 'a', 'a', 'a'], ['b', 'a', 'a', 'a'], ['m', 'b', 'a', 'a'], ['m', 'm', 'b', 'a']]} note="대각선 아래 한 줄까지" />
+    <Op>×</Op>
+    <ArrayFig name="Qᴴ" data={[['·', '·', '·', '·'], ['·', '·', '·', '·'], ['·', '·', '·', '·'], ['·', '·', '·', '·']]} />
+  </FigRow>
+</Fig>
+
+<Reference />
+
+## 언제 쓰나요
+
+고유값과 고유벡터만 필요하다면 [eig](/api/linalg/eig/)나 [eigh](/api/linalg/eigh/)면 충분해요. `schur`와 `hessenberg`는 그보다 한 단계 아래의 재료가 필요할 때 써요.
+
+- **고유벡터를 믿기 어려운 행렬을 다룰 때.** 고유벡터가 모자라거나 거의 겹치는 행렬에서는 `eig`의 고유벡터 행렬로 하는 계산이 크게 틀어질 수 있어요. Schur 분해는 **어떤 정사각 행렬에서든** 있고, `Z`의 열이 언제나 서로 수직이라 안정적이에요.
+- **행렬에 대한 함수나 방정식을 풀 때.** 행렬 지수 함수([expm](/api/linalg/expm/)) 같은 행렬 함수나 실베스터 방정식([solve_sylvester](/api/linalg/solve_sylvester/)) 같은 문제는 삼각 꼴로 바꾸면 한 줄씩 차례로 풀 수 있어요.
+- **같은 행렬로 비슷한 계산을 여러 번 할 때.** Hessenberg 꼴은 몇 번의 정해진 걸음만으로 만들 수 있고, 한번 만들어 두면 그 뒤의 계산(고유값 구하기, 대각선에 값을 더한 연립방정식을 여러 번 풀기)이 훨씬 가벼워져요.
+
+## `schur`의 결과 읽기
+
+결과는 `T`와 `Z` 두 필드가 있는 이름 있는 튜플이에요. 필드 이름으로 꺼내도 되고, 두 변수로 풀어 받아도 돼요.
+
+```python
+>>> r = sd.linalg.schur(x)
+>>> r.T
+array([[ 5.0, -1.0],
+       [ 0.0,  2.0]], dtype=float64)
+>>> T, Z = sd.linalg.schur(x)
+```
+
+`Z`는 열끼리 서로 수직이고 길이가 1인 행렬이에요. $Z^T Z = I$(단위행렬)로 확인할 수 있어요.
+
+```python
+>>> float(sd.max(sd.abs(Z.mT @ Z - sd.eye(2)))) < 1e-12
+True
+```
+
+`Z`, `T`, `Z`의 전치를 차례로 곱하면 `x`로 돌아와요.
+
+```python
+>>> float(sd.max(sd.abs(Z @ T @ Z.mT - x))) < 1e-12
+True
+```
+
+`Z`의 성분은 대개 $1/\sqrt{2}$처럼 딱 떨어지지 않는 수라서, 값 그대로가 아니라 "차이가 충분히 작은가"로 확인했어요.
+
+### 대각선은 정렬돼 있지 않아요
+
+`T`의 대각선에 고유값이 놓이는 순서는 정해져 있지 않아요. 위에서는 5, 2 순서로 나왔지만 [eigvals](/api/linalg/eig/)는 같은 값을 작은 것부터 돌려줘요.
+
+```python
+>>> sd.linalg.diagonal(T)
+array([5.0, 2.0], dtype=float64)
+>>> sd.linalg.eigvals(x)
+array([(2+0j), (5+0j)], dtype=complex128)
+```
+
+정렬된 고유값이 필요하면 `eigvals`를 쓰거나 대각선을 꺼내 [`sd.sort`](/api/array/sort/)로 정렬하세요.
+
+### 답이 하나로 정해지지 않아요
+
+같은 행렬의 Schur 분해는 여러 가지예요. 대각선에 고유값을 놓는 순서를 바꿔도 되고, `Z`의 열 하나와 그에 맞는 `T`의 행·열의 부호를 함께 뒤집어도 여전히 $x = Z T Z^H$가 성립해요. `schur`는 그 가운데 어느 것을 돌려줄지 약속하지 않아요. 그래서 `T`와 `Z`의 값을 기대값과 원소끼리 비교하지 말고, 위처럼 **성질**(`Z`의 열이 수직인지, 곱하면 `x`로 돌아오는지, `T`가 삼각인지)을 확인하세요.
+
+## 실수 행렬의 `T`에는 2×2 덩어리가 있을 수 있어요
+
+실수 행렬이라도 고유값은 복소수일 수 있어요(회전을 품은 행렬이 그래요). 그런데 실수 행렬을 넣으면 `T`와 `Z`도 실수로 나와요. 실수만으로는 복소수 고유값을 대각선에 적을 수 없으니, 그 자리에는 **2×2 덩어리**가 놓여요. 켤레쌍인 복소수 고유값 한 쌍이 덩어리 하나에 들어 있어요.
+
+```python
+>>> y = sd.asarray([[5.0, 0.0, 0.0], [3.0, 1.0, -2.0], [4.0, 2.0, 1.0]])
+>>> T, Z = sd.linalg.schur(y)
+>>> T
+array([[ 1.0,  2.0,  4.0],
+       [-2.0,  1.0,  3.0],
+       [ 0.0,  0.0,  5.0]], dtype=float64)
+```
+
+왼쪽 위의 2×2 덩어리 `[[1, 2], [-2, 1]]` 때문에 대각선 바로 아래에 0이 아닌 값 `-2.0`이 하나 남았어요. 이 덩어리의 고유값이 $1 \pm 2i$이고, 나머지 대각 원소 5가 실수 고유값이에요.
+
+<Fig caption="실수 행렬의 T. 복소수 고유값 한 쌍은 2×2 덩어리로, 실수 고유값은 대각 원소 하나로 나타나요.">
+  <ArrayFig name="T" data={[[1, 2, 4], [-2, 1, 3], [0, 0, 5]]} tones={[['b', 'b', ''], ['b', 'b', ''], ['m', 'm', 'a']]} note="덩어리의 고유값 1 ± 2i, 그리고 5" />
+</Fig>
+
+<Callout type="warn" title="실수 입력의 T는 완전한 삼각이 아닐 수 있어요">
+  `T`가 위 삼각이라고 가정하는 코드(대각선을 고유값으로 읽거나, 뒤에서부터 한 줄씩 푸는 계산)는 2×2 덩어리가 있으면 틀려요. 위 `T`의 대각선은 1, 1, 5지만 고유값은 $1 + 2i$, $1 - 2i$, 5예요. 고유값이 모두 실수인 행렬(예: 대칭 행렬)이라면 덩어리가 생기지 않아요.
+</Callout>
+
+**완전한 삼각 꼴이 필요하면 행렬을 복소수로 바꿔서 넣으세요.** 복소수 입력의 `T`는 언제나 대각선 아래가 정확히 0이고, 대각선에 복소수 고유값이 그대로 놓여요.
+
+```python
+>>> Tc, Zc = sd.linalg.schur(sd.astype(y, sd.complex128))
+>>> Tc.dtype
+complex128
+>>> float(sd.max(sd.abs(sd.tril(Tc, k=-1))))
+0.0
+>>> float(sd.max(sd.abs(Zc @ Tc @ sd.conj(Zc).mT - y))) < 1e-12
+True
+```
+
+복소수에서는 전치 대신 켤레 전치 `sd.conj(Zc).mT`를 써야 `y`로 돌아와요.
+
+## 대칭 행렬이면 `T`가 대각 행렬이에요
+
+대칭 행렬의 Schur 분해에서는 `T`의 대각선 위쪽도 0이 돼요. 대각선에는 고유값이, `Z`의 열에는 고유벡터가 놓여서 고유값 분해와 같은 것이 돼요.
+
+```python
+>>> sym = sd.asarray([[2.0, 1.0], [1.0, 2.0]])
+>>> sd.linalg.schur(sym).T
+array([[3.0, 0.0],
+       [0.0, 1.0]], dtype=float64)
+```
+
+대칭이라는 것을 안다면 [eigh](/api/linalg/eigh/)가 더 빠르고, 고유값을 오름차순으로 돌려줘요.
+
+## `hessenberg`의 결과 읽기
+
+결과는 `H`와 `Q` 두 필드가 있는 이름 있는 튜플이에요.
+
+```python
+>>> g = sd.asarray([[1.0, 2.0, 3.0, 4.0],
+...                 [2.0, 1.0, 2.0, 3.0],
+...                 [2.0, 2.0, 1.0, 2.0],
+...                 [1.0, 3.0, 2.0, 1.0]])
+>>> r = sd.linalg.hessenberg(g)
+>>> r.H.shape
+(4, 4)
+>>> H, Q = sd.linalg.hessenberg(g)
+```
+
+`H`의 어느 자리가 0이 아닌지 볼게요.
+
+```python
+>>> H != 0
+array([[ True,  True,  True,  True],
+       [ True,  True,  True,  True],
+       [False,  True,  True,  True],
+       [False, False,  True,  True]], dtype=bool)
+```
+
+왼쪽 아래 세 칸이 `False`예요. 대각선에서 두 줄 이상 아래에 있는 원소는 **정확히 0**이에요. 대각선 바로 아래 한 줄은 남아 있어요.
+
+`Q`는 `schur`의 `Z`처럼 열끼리 수직이고 길이가 1인 행렬이고, 곱하면 `g`로 돌아와요.
+
+```python
+>>> float(sd.max(sd.abs(Q.mT @ Q - sd.eye(4)))) < 1e-12
+True
+>>> float(sd.max(sd.abs(Q @ H @ Q.mT - g))) < 1e-12
+True
+```
+
+`H`의 고유값은 `g`의 고유값과 같아요. 고유값을 구하는 계산은 Hessenberg 꼴에서 출발하면 훨씬 가벼워요.
+
+```python
+>>> float(sd.max(sd.abs(sd.linalg.eigvals(H) - sd.linalg.eigvals(g)))) < 1e-12
+True
+```
+
+### 작은 행렬과 대칭 행렬
+
+2×2 이하의 행렬은 이미 Hessenberg 꼴이에요(대각선에서 두 줄 아래가 없으니까요). 그래서 `H`는 입력 그대로, `Q`는 단위행렬이에요.
+
+```python
+>>> sd.linalg.hessenberg(x)
+HessenbergResult(H=array([[4.0, 1.0],
+       [2.0, 3.0]], dtype=float64), Q=array([[1.0, 0.0],
+       [0.0, 1.0]], dtype=float64))
+```
+
+대칭 행렬의 `H`는 대각선과 그 위아래 한 줄씩만 남은 **삼중대각 행렬**이 돼요. 아래쪽을 0으로 만들면 대칭이라 위쪽도 함께 0에 가까워지기 때문이에요. 다만 아래쪽은 정확히 0이고, 위쪽은 반올림 오차만큼의 아주 작은 값이 남을 수 있어요.
+
+## 두 번째 결과는 언제나 함께 나와요
+
+`schur`는 언제나 `Z`를, `hessenberg`는 언제나 `Q`를 함께 계산해서 돌려줘요. "`T`만" 또는 "`H`만" 달라고 하는 옵션은 없어요. `sd.linalg`의 함수는 옵션에 따라 결과의 개수가 달라지지 않게 돼 있어서, 결과를 받는 코드가 언제나 같은 모양이에요. 한쪽만 필요하면 필드 이름으로 꺼내 쓰세요.
+
+```python
+>>> H = sd.linalg.hessenberg(g).H
+```
+
+## 여러 행렬을 한 번에
+
+마지막 두 축이 행렬이고 그 앞의 축은 배치(여러 행렬의 묶음)예요. 행렬마다 따로 분해해서 같은 배치 모양으로 돌려줘요.
+
+```python
+>>> batch = sd.stack([x, sym])
+>>> T, Z = sd.linalg.schur(batch)
+>>> T.shape, Z.shape
+((2, 2, 2), (2, 2, 2))
+```
+
+## 조심할 점
+
+### NaN과 inf
+
+행렬에 NaN이나 무한대가 있으면 `ValueError`예요.
+
+```python
+>>> sd.linalg.schur(sd.asarray([[1.0, sd.nan], [2.0, 1.0]]))
+Traceback (most recent call last):
+    ...
+ValueError: schur(): 'x' contains NaN or infinity
+```
+
+### 모양과 타입
+
+정사각 행렬만 받아요. 리스트는 받지 않으니 먼저 `sd.asarray`로 배열을 만드세요.
+
+```python
+>>> sd.linalg.hessenberg(sd.zeros((2, 3)))
+Traceback (most recent call last):
+    ...
+ValueError: hessenberg(): 'x' must be square in its last two dimensions, got 2x3
+>>> sd.linalg.schur([[4.0, 1.0], [2.0, 3.0]])
+Traceback (most recent call last):
+    ...
+TypeError: schur(): 'x' must be an sd.ndarray, not list
+```
+
+배치 가운데 하나라도 실패하면 전체가 실패하고, 메시지 끝에 몇 번째 행렬인지가 붙어요. 에러의 종류와 메시지는 [실패와 에러](/api/linalg/errors/)에 정리돼 있어요.
+
+### 정수 행렬과 빈 행렬
+
+정수나 bool 행렬은 float64로 바꿔서 계산해요. 결과도 float64예요.
+
+```python
+>>> sd.linalg.schur(sd.asarray([[2, 1], [0, 3]])).T
+array([[2.0, 1.0],
+       [0.0, 3.0]], dtype=float64)
+```
+
+이미 위 삼각인 행렬은 그대로 `T`가 됐어요. 0×0 행렬은 에러가 아니고, 빈 행렬 둘을 돌려줘요.
+
+```python
+>>> sd.linalg.schur(sd.zeros((0, 0))).T.shape
+(0, 0)
+```
+
+## 비슷한 함수와의 차이
+
+| 함수 | 식 | 가운데 행렬의 꼴 | 바깥 행렬 |
+|---|---|---|---|
+| `schur` | $x = Z T Z^H$ | 위 삼각 (실수 입력이면 2×2 덩어리 가능) | 열끼리 수직 |
+| `hessenberg` | $x = Q H Q^H$ | 대각선 아래 한 줄까지 | 열끼리 수직 |
+| [`eig`](/api/linalg/eig/) | $x = V \,\mathrm{diag}(\lambda)\, V^{-1}$ | 대각 | 고유벡터. 수직이 아닐 수 있고, 모자랄 수도 있음 |
+| [`eigh`](/api/linalg/eigh/) | $a = V \,\mathrm{diag}(\lambda)\, V^H$ | 대각 | 고유벡터. 열끼리 수직 (대칭 행렬 전용) |
+| [`qr`](/api/linalg/qr/) | $x = Q R$ | 위 삼각 | 열끼리 수직. 한쪽에만 곱함 |
+
+- **`schur`와 `eig`**: `eig`는 가운데를 완전한 대각 행렬로 만들지만, 그 대가로 바깥 행렬(고유벡터)이 수직이 아니게 되고 어떤 행렬에서는 쓸 수 없을 만큼 나빠져요. `schur`는 가운데를 삼각까지만 만드는 대신 바깥 행렬을 언제나 수직으로 지켜요.
+- **`schur`와 `qr`**: 둘 다 위 삼각 행렬이 나오지만 다른 분해예요. `qr`은 `Q`를 한쪽에만 곱해서 고유값이 보존되지 않아요. `R`의 대각선은 고유값이 아니에요. `qr`은 정사각이 아닌 행렬도 받아요.
+- **`schur`와 `hessenberg`**: `hessenberg`는 정해진 걸음 수로 끝나는 가벼운 계산이고, `schur`는 거기서 더 나아가 삼각 꼴이 될 때까지 되풀이하는 계산이에요. 고유값이 드러나는 것은 `schur` 쪽이에요.
+
+## numpy·scipy를 아는 분께
+
+numpy에는 없고 `scipy.linalg.schur`와 `scipy.linalg.hessenberg`에 해당해요.
+
+- **`schur`에 `output=` 옵션이 없어요.** 실수 입력이면 scipy의 `output='real'`과 같은 꼴(2×2 덩어리 가능)이고, 복소 Schur 꼴이 필요하면 입력을 complex128로 바꿔서 넣어요.
+- **`schur`에 `sort=` 옵션이 없어요.** 대각선의 고유값을 원하는 순서로 모으는 기능은 없고, 결과도 `(T, Z)` 둘뿐이에요.
+- **`hessenberg`는 언제나 `(H, Q)`를 돌려줘요.** scipy는 `calc_q=False`가 기본이라 `H`만 돌려줘요.
+- 결과는 `T`·`Z`, `H`·`Q` 필드가 있는 이름 있는 튜플이에요.
+- NaN·inf가 있으면 언제나 `ValueError`예요(scipy의 `check_finite=True`와 같아요). `overwrite_a=`, `lwork=`는 없어요.
+- 리스트와 numpy 배열은 받지 않아요(`TypeError`). `sd.asarray`로 먼저 바꾸세요.
+- `T`의 대각선 순서, `Z`·`Q`의 부호, 값의 마지막 자리는 scipy와 다를 수 있어요.

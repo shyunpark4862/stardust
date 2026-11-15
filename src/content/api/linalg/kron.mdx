@@ -1,0 +1,371 @@
+---
+title: kron
+names: [kron]
+group: 곱과 거듭제곱
+order: 3
+signatures:
+  - "sd.linalg.kron(x1, x2, /)"
+summary: 두 행렬의 크로네커 곱을 계산해요. 첫째 행렬의 원소 하나하나를 둘째 행렬 전체에 곱한 블록으로 바꿔서 더 큰 행렬을 만들어요.
+params:
+  - name: x1
+    type: ndarray
+    kind: positional-only
+    desc: 첫째 행렬. 모양은 (..., M, N). 2차원 이상이어야 해요. 원소 하나가 결과의 블록 하나가 돼요.
+  - name: x2
+    type: ndarray
+    kind: positional-only
+    desc: 둘째 행렬. 모양은 (..., P, Q). 2차원 이상이어야 해요. 블록마다 되풀이되는 무늬예요.
+returns:
+  type: ndarray
+  desc: 모양이 (..., M*P, N*Q)인 행렬. 실수 입력(bool, int64 포함)은 float64, 복소수가 섞이면 complex128이에요.
+raises:
+  - type: TypeError
+    desc: x1이나 x2가 배열이 아닐 때(리스트, Python 숫자 포함).
+  - type: ValueError
+    desc: x1이나 x2가 1차원일 때, 앞쪽 배치 축끼리 브로드캐스팅이 안 될 때.
+seeAlso: [outer, matrix_power, solve_sylvester, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+**크로네커 곱**(Kronecker product)은 행렬 두 개로 더 큰 행렬 하나를 만드는 계산이에요. 첫째 행렬 `A`의 **원소 하나하나를, 그 원소를 곱한 둘째 행렬 `B` 전체**로 바꿔 놓아요.
+
+```python
+>>> import stardust as sd
+>>> A = sd.asarray([[1.0, 2.0], [3.0, 4.0]])
+>>> B = sd.asarray([[0.0, 1.0], [1.0, 0.0]])
+>>> sd.linalg.kron(A, B)
+array([[0.0, 1.0, 0.0, 2.0],
+       [1.0, 0.0, 2.0, 0.0],
+       [0.0, 3.0, 0.0, 4.0],
+       [3.0, 0.0, 4.0, 0.0]], dtype=float64)
+```
+
+결과를 2×2 크기의 블록 네 개로 나눠 보면, 왼쪽 위 블록은 `1 × B`, 오른쪽 위는 `2 × B`, 왼쪽 아래는 `3 × B`, 오른쪽 아래는 `4 × B`예요. `A`의 원소가 놓인 자리에 그대로 블록이 놓여요.
+
+<Fig caption="A의 원소마다 블록 하나예요. 오른쪽 위의 강조한 블록은 A의 0행 1열 원소 2에 B를 곱한 2 × B예요.">
+  <ArrayFig name="A" data={[[1, 2], [3, 4]]} tones={[['', 'b'], ['', '']]} note="shape (2, 2)" />
+  <Op note="kron">⊗</Op>
+  <ArrayFig name="B" data={[[0, 1], [1, 0]]} tones={[['a', 'a'], ['a', 'a']]} note="shape (2, 2)" />
+  <Op>=</Op>
+  <ArrayFig name="kron(A, B)" data={[[0, 1, 0, 2], [1, 0, 2, 0], [0, 3, 0, 4], [3, 0, 4, 0]]} tones={[['', '', 'b', 'b'], ['', '', 'b', 'b'], ['m', 'm', '', ''], ['m', 'm', '', '']]} note="shape (4, 4)" />
+</Fig>
+
+수식으로는 블록 행렬로 써요.
+
+$$
+A \otimes B =
+\begin{bmatrix}
+a_{11} B & a_{12} B \\
+a_{21} B & a_{22} B
+\end{bmatrix}
+$$
+
+<Reference />
+
+## 모양과 원소의 자리
+
+`A`가 `M`행 `N`열, `B`가 `P`행 `Q`열이면 결과는 **`M×P`행 `N×Q`열**이에요. 행 수는 행 수끼리, 열 수는 열 수끼리 곱해요. 두 행렬의 모양은 아무 관계가 없어도 돼요. 정사각 행렬일 필요도 없어요.
+
+```python
+>>> sd.linalg.kron(sd.ones((2, 3)), sd.ones((4, 5))).shape
+(8, 15)
+```
+
+| `x1` | `x2` | 결과 |
+|:---:|:---:|:---:|
+| `(2, 2)` | `(2, 2)` | `(4, 4)` |
+| `(2, 3)` | `(4, 5)` | `(8, 15)` |
+| `(1, 3)` | `(1, 2)` | `(1, 6)` |
+| `(3, 1)` | `(1, 2)` | `(3, 2)` |
+| `(2, 2)` | `(1, 1)` | `(2, 2)` |
+
+결과의 원소 하나는 `A`의 원소 하나와 `B`의 원소 하나의 곱이에요. 모든 쌍이 정확히 한 번씩 나와요. 자리는 이렇게 정해져요.
+
+$$
+(A \otimes B)_{\,iP + k,\; jQ + l} = a_{ij}\, b_{kl}
+$$
+
+말로 풀면, `A`의 `i`행 `j`열이 **몇 번째 블록인지**를 정하고, `B`의 `k`행 `l`열이 **블록 안의 어느 칸인지**를 정해요. 위 예에서 결과의 2행 1열(`3.0`)은 아래 왼쪽 블록(`A[1, 0] = 3`)의 0행 1열 칸(`B[0, 1] = 1`)이라서 `3 × 1`이에요.
+
+```python
+>>> K = sd.linalg.kron(A, B)
+>>> K[2, 1]
+3.0
+>>> A[1, 0] * B[0, 1]
+3.0
+```
+
+## 순서를 바꾸면 결과가 달라요
+
+`kron(A, B)`와 `kron(B, A)`는 모양은 같지만 값의 배치가 달라요. **첫째 인자**가 블록의 배치(큰 구조)를, **둘째 인자**가 블록 안의 무늬(작은 구조)를 정해요.
+
+```python
+>>> sd.linalg.kron(B, A)
+array([[0.0, 0.0, 1.0, 2.0],
+       [0.0, 0.0, 3.0, 4.0],
+       [1.0, 2.0, 0.0, 0.0],
+       [3.0, 4.0, 0.0, 0.0]], dtype=float64)
+```
+
+단위행렬(대각선이 1이고 나머지가 0인 행렬)과 곱해 보면 차이가 잘 보여요. 단위행렬이 앞에 있으면 `A`가 대각선 블록에 통째로 놓이고, 뒤에 있으면 `A`의 원소가 하나씩 벌어져서 놓여요.
+
+```python
+>>> I = sd.eye(2)
+>>> sd.linalg.kron(I, A)
+array([[1.0, 2.0, 0.0, 0.0],
+       [3.0, 4.0, 0.0, 0.0],
+       [0.0, 0.0, 1.0, 2.0],
+       [0.0, 0.0, 3.0, 4.0]], dtype=float64)
+>>> sd.linalg.kron(A, I)
+array([[1.0, 0.0, 2.0, 0.0],
+       [0.0, 1.0, 0.0, 2.0],
+       [3.0, 0.0, 4.0, 0.0],
+       [0.0, 3.0, 0.0, 4.0]], dtype=float64)
+```
+
+## 어디에 쓰나요
+
+### 같은 블록을 대각선에 늘어놓기
+
+`kron(sd.eye(n), A)`는 `A`를 대각선에 `n`번 늘어놓은 블록 대각 행렬이에요. 서로 영향을 주지 않는 같은 시스템 `n`개를 한 행렬로 묶을 때 써요. 위의 `kron(I, A)`가 그 예예요.
+
+### 무늬를 되풀이하기
+
+1로 채운 행렬을 앞에 두면 둘째 행렬을 타일처럼 되풀이해요.
+
+```python
+>>> sd.linalg.kron(sd.ones((1, 2)), A)
+array([[1.0, 2.0, 1.0, 2.0],
+       [3.0, 4.0, 3.0, 4.0]], dtype=float64)
+>>> sd.linalg.kron(sd.ones((2, 1)), A)
+array([[1.0, 2.0],
+       [3.0, 4.0],
+       [1.0, 2.0],
+       [3.0, 4.0]], dtype=float64)
+```
+
+### 칸을 키우기
+
+반대로 1로 채운 행렬을 뒤에 두면 원소 하나하나가 그 크기의 블록으로 커져요. 작은 그림의 점 하나를 2×2 점으로 늘려서 두 배로 확대하는 것과 같아요.
+
+```python
+>>> sd.linalg.kron(A, sd.ones((2, 2)))
+array([[1.0, 1.0, 2.0, 2.0],
+       [1.0, 1.0, 2.0, 2.0],
+       [3.0, 3.0, 4.0, 4.0],
+       [3.0, 3.0, 4.0, 4.0]], dtype=float64)
+```
+
+### 두 시스템을 합친 시스템
+
+크로네커 곱이 선형대수에서 중요한 까닭은 행렬곱과 잘 어울리기 때문이에요. 크로네커 곱끼리의 행렬곱은 **각각 행렬곱한 것의 크로네커 곱**과 같아요.
+
+$$
+(A \otimes B)(C \otimes D) = (AC) \otimes (BD)
+$$
+
+```python
+>>> C = sd.asarray([[1.0, 1.0], [0.0, 1.0]])
+>>> D = sd.asarray([[2.0, 0.0], [0.0, 3.0]])
+>>> sd.linalg.kron(A, B) @ sd.linalg.kron(C, D)
+array([[ 0.0,  3.0,  0.0,  9.0],
+       [ 2.0,  0.0,  6.0,  0.0],
+       [ 0.0,  9.0,  0.0, 21.0],
+       [ 6.0,  0.0, 14.0,  0.0]], dtype=float64)
+>>> sd.linalg.kron(A @ C, B @ D)
+array([[ 0.0,  3.0,  0.0,  9.0],
+       [ 2.0,  0.0,  6.0,  0.0],
+       [ 0.0,  9.0,  0.0, 21.0],
+       [ 6.0,  0.0, 14.0,  0.0]], dtype=float64)
+```
+
+그래서 서로 독립인 두 시스템(두 좌표축, 두 입자, 행 방향과 열 방향의 변환)을 하나로 합쳐 다룰 때 크로네커 곱을 써요. 큰 행렬 `kron(A, B)`를 실제로 만들지 않고 작은 행렬 `A`, `B`로 따로 계산할 수 있다는 뜻이기도 해요.
+
+행렬 방정식 $AX + XB = C$를 보통의 연립방정식으로 바꿔 쓸 때도 크로네커 곱이 나와요. 다만 그렇게 만든 행렬은 아주 커지기 때문에, 이 방정식은 [`solve_sylvester`](/api/linalg/solve_sylvester/)로 바로 푸는 편이 좋아요.
+
+## 벡터는 2차원으로 바꿔서 넣어요
+
+`kron`은 행렬끼리의 계산이라서 입력이 둘 다 **2차원 이상**이어야 해요. 1차원 배열을 넣으면 `ValueError`예요.
+
+```python
+>>> v = sd.asarray([1.0, 2.0, 3.0])
+>>> w = sd.asarray([1.0, 10.0])
+>>> sd.linalg.kron(v, w)
+Traceback (most recent call last):
+    ...
+ValueError: kron(): 'x1' must have at least 2 dimensions, got 1
+```
+
+1차원 배열을 가로로 볼지 세로로 볼지에 따라 결과가 달라지기 때문이에요. 어느 쪽인지 [`reshape`](/api/array/reshape/)로 직접 정해서 넣어요. 둘 다 가로 한 줄 `(1, N)`로 놓으면 벡터의 크로네커 곱이 한 줄로 나와요.
+
+```python
+>>> sd.linalg.kron(sd.reshape(v, (1, 3)), sd.reshape(w, (1, 2)))
+array([[ 1.0, 10.0,  2.0, 20.0,  3.0, 30.0]], dtype=float64)
+```
+
+첫째를 세로 한 줄 `(M, 1)`, 둘째를 가로 한 줄 `(1, N)`로 놓으면 [`outer`](/api/linalg/outer/)와 같은 표가 돼요.
+
+```python
+>>> sd.linalg.kron(sd.reshape(v, (3, 1)), sd.reshape(w, (1, 2)))
+array([[ 1.0, 10.0],
+       [ 2.0, 20.0],
+       [ 3.0, 30.0]], dtype=float64)
+>>> sd.linalg.outer(v, w)
+array([[ 1.0, 10.0],
+       [ 2.0, 20.0],
+       [ 3.0, 30.0]], dtype=float64)
+```
+
+## 3차원 이상: 행렬 여러 쌍을 한꺼번에
+
+3차원 이상의 배열은 **행렬을 여러 장 쌓아 둔 것**으로 봐요. 마지막 두 축이 행렬이고 그 앞의 축은 "몇 번째 행렬인가"를 나타내는 배치 축이에요. `kron`은 같은 자리의 행렬끼리 크로네커 곱을 구해서 쌓아 돌려줘요.
+
+```python
+>>> As = sd.asarray([[[1.0, 2.0], [3.0, 4.0]],
+...                  [[1.0, 0.0], [0.0, 1.0]]])
+>>> r = sd.linalg.kron(As, B)
+>>> r.shape
+(2, 4, 4)
+>>> r[1]
+array([[0.0, 1.0, 0.0, 0.0],
+       [1.0, 0.0, 0.0, 0.0],
+       [0.0, 0.0, 0.0, 1.0],
+       [0.0, 0.0, 1.0, 0.0]], dtype=float64)
+```
+
+`r[i]`는 `kron(As[i], B)`예요. 배치 축은 [브로드캐스팅](/api/array/broadcasting/)으로 맞춰요. 곱해지는 것은 **마지막 두 축뿐**이고, 배치 축의 길이는 곱해지지 않아요.
+
+```python
+>>> sd.linalg.kron(sd.ones((7, 2, 3)), sd.ones((7, 4, 5))).shape
+(7, 8, 15)
+>>> sd.linalg.kron(sd.ones((7, 1, 2, 3)), sd.ones((6, 4, 5))).shape
+(7, 6, 8, 15)
+```
+
+| `x1` | `x2` | 배치 축 맞추기 | 행렬 부분 | 결과 |
+|:---:|:---:|---|:---:|:---:|
+| `(2, 2, 2)` | `(2, 2)` | `(2,)`와 `()` → `(2,)` | `(2×2, 2×2)` | `(2, 4, 4)` |
+| `(7, 2, 3)` | `(7, 4, 5)` | `(7,)`과 `(7,)` → `(7,)` | `(2×4, 3×5)` | `(7, 8, 15)` |
+| `(7, 1, 2, 3)` | `(6, 4, 5)` | `(7, 1)`과 `(6,)` → `(7, 6)` | `(2×4, 3×5)` | `(7, 6, 8, 15)` |
+| `(7, 2, 3)` | `(6, 4, 5)` | `(7,)`과 `(6,)` → 안 맞음 | | 에러 |
+
+```python
+>>> sd.linalg.kron(sd.ones((7, 2, 3)), sd.ones((6, 4, 5)))
+Traceback (most recent call last):
+    ...
+ValueError: kron(): batch shapes do not broadcast: (7,) (6,)
+```
+
+## 결과의 dtype: 정수를 넣어도 float64
+
+`sd.linalg`의 함수는 언제나 실수(float64)나 복소수(complex128)로 계산해요. 정수나 bool 행렬을 넣어도 결과는 float64예요.
+
+```python
+>>> sd.linalg.kron(sd.asarray([[1, 2], [3, 4]]), sd.asarray([[1, 10]]))
+array([[ 1.0, 10.0,  2.0, 20.0],
+       [ 3.0, 30.0,  4.0, 40.0]], dtype=float64)
+>>> sd.linalg.kron(sd.asarray([[True, False]]), sd.asarray([[True], [True]]))
+array([[1.0, 0.0],
+       [1.0, 0.0]], dtype=float64)
+```
+
+정수 결과가 필요하면 결과를 `astype(sd.int64)`로 바꾸거나, 아래 [비슷한 함수와의 차이](#비슷한-함수와의-차이)의 `tensordot` 방법을 쓰세요. 공통 규칙은 [선형대수의 기본](/api/linalg/basics/)에 있어요.
+
+복소수 행렬은 **적힌 값 그대로** 곱해요. 켤레 복소수(허수부의 부호를 바꾼 수)로 바꾸지 않아요.
+
+```python
+>>> sd.linalg.kron(sd.asarray([[1j, 1]]), sd.asarray([[1j], [2]]))
+array([[(-1+0j),      1j],
+       [     2j,  (2+0j)]], dtype=complex128)
+```
+
+`1j × 1j = -1`이 그대로 나왔어요.
+
+## 조심할 점
+
+### 결과가 아주 빨리 커져요
+
+<Callout type="warn" title="원소 수가 곱으로 늘어요">
+
+결과의 원소 수는 두 행렬의 원소 수를 **곱한** 것이에요. 100×100 행렬 두 개의 크로네커 곱은 10,000×10,000 행렬로, 원소가 1억 개(800MB)예요. 1,000×1,000 행렬 두 개면 8TB라서 만들 수 없어요.
+
+</Callout>
+
+큰 크로네커 곱을 만들어서 다시 곱하거나 푸는 계산은, 위의 $(A \otimes B)(C \otimes D) = (AC) \otimes (BD)$ 같은 성질을 써서 작은 행렬끼리 계산하도록 바꿀 수 있는 경우가 많아요.
+
+### NaN과 inf는 검사하지 않고 그대로 계산해요
+
+`kron`은 곱하기만 하는 함수라서 입력에 NaN(숫자가 아님)이나 inf(무한대)가 있어도 에러를 내지 않아요. 그 원소가 들어간 칸이 NaN이나 inf가 되고, 0과 inf를 곱한 칸은 NaN이에요.
+
+```python
+>>> sd.linalg.kron(sd.asarray([[sd.nan, 0.0]]), sd.asarray([[0.0, sd.inf]]))
+array([[nan, nan, 0.0, nan]], dtype=float64)
+```
+
+### 빈 행렬
+
+행이나 열이 0개인 행렬을 넣으면 그 방향의 크기가 0인 빈 행렬이 나와요. 에러가 아니에요.
+
+```python
+>>> sd.linalg.kron(sd.zeros((0, 2)), A).shape
+(0, 4)
+>>> sd.linalg.kron(A, sd.zeros((2, 0))).shape
+(4, 0)
+```
+
+### 배열만 받아요
+
+리스트나 Python 숫자는 받지 않아요. 리스트는 먼저 [`asarray`](/api/array/asarray/)로 바꾸세요. 행렬의 모든 원소에 숫자를 곱하려는 것이라면 `A * 2.0`이면 돼요.
+
+```python
+>>> sd.linalg.kron(A, [[1.0, 0.0]])
+Traceback (most recent call last):
+    ...
+TypeError: kron(): 'x2' must be an sd.ndarray, not list
+>>> sd.linalg.kron(A, 2.0)
+Traceback (most recent call last):
+    ...
+TypeError: kron(): 'x2' must be an sd.ndarray, not float
+```
+
+## 비슷한 함수와의 차이
+
+2×2 행렬 `A`, `B`를 넣었을 때를 기준으로 정리하면 이래요.
+
+| 계산 | 하는 일 | 결과 모양 | 정수 입력 |
+|---|---|:---:|:---:|
+| `sd.linalg.kron(A, B)` | `A`의 원소마다 `B` 전체를 곱해 블록으로 붙이기 | `(4, 4)` | float64 |
+| [`A @ B`](/api/array/matmul/) | 행과 열을 짝지어 곱하고 더하기 | `(2, 2)` | int64 유지 |
+| [`A * B`](/api/array/arithmetic/) | 같은 자리끼리 곱하기 | `(2, 2)` | int64 유지 |
+| [`sd.linalg.outer(x, y)`](/api/linalg/outer/) | 벡터 둘의 모든 쌍의 곱을 표로 | `(M, N)` | float64 |
+| [`sd.tensordot(A, B, axes=0)`](/api/array/tensordot/) | 모든 쌍의 곱을 4차원 배열로 | `(2, 2, 2, 2)` | int64 유지 |
+
+- `@`와 `*`는 결과가 커지지 않아요. `@`는 안쪽 길이가 맞아야 하고 `*`는 모양이 같거나 브로드캐스팅돼야 하지만, `kron`은 두 행렬의 모양이 무엇이든 계산해요.
+- `outer`는 벡터에 대한 같은 생각이에요. 벡터 둘의 모든 쌍의 곱이 `outer`, 행렬 둘의 모든 쌍의 곱을 블록으로 놓은 것이 `kron`이에요.
+- `tensordot(axes=0)`은 `kron`과 **같은 값들**을 만들지만 블록으로 엮지 않고 4차원 배열 `(M, N, P, Q)`로 돌려줘요. 축 순서를 바꿔서 다시 모양을 잡으면 `kron`과 같은 행렬이 되고, 이때 정수는 정수로 남아요.
+
+```python
+>>> Ai = sd.asarray([[1, 2], [3, 4]])
+>>> Bi = sd.asarray([[0, 1], [1, 0]])
+>>> t = sd.tensordot(Ai, Bi, axes=0)
+>>> t.shape
+(2, 2, 2, 2)
+>>> sd.reshape(sd.permute_dims(t, (0, 2, 1, 3)), (4, 4))
+array([[0, 1, 0, 2],
+       [1, 0, 2, 0],
+       [0, 3, 0, 4],
+       [3, 0, 4, 0]], dtype=int64)
+```
+
+## numpy·scipy를 아는 분께
+
+- 2차원 입력에서는 `np.kron`과 결과가 같아요.
+- **3차원 이상에서는 달라요.** `np.kron`은 모든 축의 길이를 곱해요(`(2, 3, 3)`과 `(2, 2, 2)`에서 `(4, 6, 6)`). `sd.linalg.kron`은 마지막 두 축만 곱하고 앞쪽 축은 배치로 브로드캐스팅해요(같은 입력에서 `(2, 6, 6)`).
+- **1차원 입력을 받지 않아요.** `np.kron`은 1차원 배열과 스칼라도 받지만, 여기서는 `(1, N)`이나 `(N, 1)`로 바꿔서 넣어야 해요.
+- **정수와 bool 입력의 결과가 float64예요.** numpy는 정수를 유지해요.
+- 리스트와 numpy 배열은 받지 않아요(`TypeError`).

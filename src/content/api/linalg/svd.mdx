@@ -1,0 +1,419 @@
+---
+title: 특이값 분해
+names: [svd, svdvals]
+group: 분해
+order: 8
+signatures:
+  - "sd.linalg.svd(x, /, *, mode='reduced')"
+  - "sd.linalg.svdvals(x, /)"
+summary: 어떤 모양의 행렬이든 '돌리기 × 축마다 늘이기 × 돌리기'로 나눠요. svd는 세 조각 U, S, Vh를 모두, svdvals는 늘이는 배율인 특이값 S만 돌려줘요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 행렬. 모양은 (..., M, N). 정사각이 아니어도 돼요.
+  - name: mode
+    type: str
+    kind: keyword-only
+    desc: "svd에만 있어요. 'reduced'(기본값)는 꼭 필요한 만큼만, 'complete'는 U와 Vh를 정사각 행렬로 돌려줘요."
+returns:
+  type: SVDResult(U, S, Vh) 또는 ndarray
+  desc: "K = min(M, N)일 때, svd는 U (..., M, K), S (..., K), Vh (..., K, N)의 이름 있는 튜플이에요('complete'면 U가 (..., M, M), Vh가 (..., N, N)). svdvals는 S (..., K)만. 특이값은 언제나 float64이고 큰 값부터 놓여요."
+raises:
+  - type: TypeError
+    desc: x가 sd.ndarray가 아닐 때(리스트, numpy 배열 등), mode가 문자열이 아닐 때, mode를 이름 없이 넘겼을 때.
+  - type: ValueError
+    desc: "2차원 미만일 때, NaN이나 inf가 들어 있을 때, mode가 'reduced'도 'complete'도 아닐 때."
+  - type: LinAlgError
+    desc: 계산이 수렴하지 않았을 때.
+seeAlso: [eigh, eig, qr, matrix_rank, cond, norms, inv, lstsq, basics, errors]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+## 한눈에 보기
+
+행렬에 벡터를 곱하면 벡터가 늘어나거나 줄어들어요. 얼마나 늘어나는지는 **벡터의 방향에 따라** 달라요. 어느 방향은 많이 늘어나고 어느 방향은 조금만 늘어나요. **특이값**(singular value)은 그 배율 가운데 가장 큰 것부터 차례로 뽑은 값이에요. 가장 큰 특이값은 "이 행렬이 벡터를 가장 많이 늘일 때 몇 배인가", 가장 작은 특이값은 "가장 적게 늘일 때 몇 배인가"예요.
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[8.0, -3.0], [6.0, 4.0]])
+>>> x @ sd.asarray([1.0, 0.0])
+array([8.0, 6.0], dtype=float64)
+>>> x @ sd.asarray([0.0, 1.0])
+array([-3.0,  4.0], dtype=float64)
+```
+
+길이 1인 `(1, 0)`은 길이 10인 `(8, 6)`이 됐고, 길이 1인 `(0, 1)`은 길이 5인 `(-3, 4)`가 됐어요. 이 행렬에서는 이 두 방향이 각각 가장 많이, 가장 적게 늘어나는 방향이에요.
+
+```python
+>>> sd.linalg.svdvals(x)
+array([10.0,  5.0], dtype=float64)
+```
+
+아래 그래프는 길이 1인 벡터를 0°부터 180°까지 돌려 가며 `x`를 곱했을 때 **길이가 몇 배가 되는지**를 그린 거예요. 가장 높은 곳의 값 10과 가장 낮은 곳의 값 5가 특이값이에요. 그리고 그 두 방향(0°와 90°)은 언제나 서로 수직이에요.
+
+<Fig caption="x = [[8, -3], [6, 4]]가 방향마다 벡터를 늘이는 배율. 최댓값 10과 최솟값 5가 특이값이에요.">
+  <Plot
+    curves={[
+      {
+        f: (t) => Math.sqrt(100 * Math.cos((t * Math.PI) / 180) ** 2 + 25 * Math.sin((t * Math.PI) / 180) ** 2),
+        label: '늘어나는 배율',
+      },
+    ]}
+    domain={[0, 180]}
+    range={[0, 12]}
+    xTicks={[
+      { v: 0, label: '0°' },
+      { v: 45, label: '45°' },
+      { v: 90, label: '90°' },
+      { v: 135, label: '135°' },
+      { v: 180, label: '180°' },
+    ]}
+    yTicks={[
+      { v: 5, label: '5' },
+      { v: 10, label: '10' },
+    ]}
+  />
+</Fig>
+
+**특이값 분해**(SVD, singular value decomposition)는 여기서 한 걸음 더 나아가, 행렬 전체를 세 조각의 곱으로 나눠요.
+
+$$x = U \,\mathrm{diag}(S)\, V^H$$
+
+- $V^H$(`Vh`): 입력 쪽에서 **서로 수직인 방향들**을 골라요. 각 행이 방향 하나예요.
+- $S$: 그 방향마다 **몇 배로 늘이는지**예요. 이것이 특이값이에요.
+- $U$: 늘어난 결과가 출력 쪽에서 **어느 방향을 향하는지**예요. 각 열이 방향 하나이고, 역시 서로 수직이에요.
+
+어떤 행렬이든, 정사각이 아니어도, 이렇게 "방향 고르기 → 축마다 늘이기 → 새 방향으로 놓기"로 나눌 수 있어요.
+
+<Fig caption="x의 특이값 분해. 가운데의 대각 행렬이 특이값이고, svd는 그 대각선만 벡터 S로 돌려줘요.">
+  <ArrayFig name="x" data={[[8, -3], [6, 4]]} />
+  <Op>=</Op>
+  <ArrayFig name="U" data={[[0.8, -0.6], [0.6, 0.8]]} note="출력 쪽 방향 (열)" />
+  <Op>×</Op>
+  <ArrayFig name="diag(S)" data={[[10, 0], [0, 5]]} tones={[['b', 'm'], ['m', 'b']]} note="늘이는 배율" />
+  <Op>×</Op>
+  <ArrayFig name="Vh" data={[[1, 0], [0, 1]]} note="입력 쪽 방향 (행)" />
+</Fig>
+
+```python
+>>> U, S, Vh = sd.linalg.svd(x)
+>>> S
+array([10.0,  5.0], dtype=float64)
+>>> U.shape, Vh.shape
+((2, 2), (2, 2))
+```
+
+<Reference />
+
+## 결과 읽기
+
+`svd`의 결과는 `U`, `S`, `Vh` 세 필드가 있는 이름 있는 튜플이에요. 필드 이름으로 꺼내도 되고, 세 변수로 풀어 받아도 돼요.
+
+```python
+>>> r = sd.linalg.svd(x)
+>>> r.S
+array([10.0,  5.0], dtype=float64)
+>>> U, S, Vh = sd.linalg.svd(x)
+```
+
+### `S`는 행렬이 아니라 벡터예요
+
+식에서는 가운데가 대각 행렬 $\mathrm{diag}(S)$지만, 대각선 말고는 모두 0이라서 `svd`는 **대각선의 값만 1차원으로** 돌려줘요. 그래서 `U @ S @ Vh`라고 쓰면 원래 행렬이 나오지 않아요. 원래 행렬로 되돌리려면 `U`의 각 열에 그 열의 특이값을 곱한 다음(`U * S`) `Vh`를 곱해요.
+
+```python
+>>> (U * S) @ Vh
+array([[ 8.0, -3.0],
+       [ 6.0,  4.0]], dtype=float64)
+```
+
+### 특이값은 큰 것부터, 언제나 0 이상
+
+특이값은 **내림차순**이에요. `S[0]`이 가장 크고 `S[-1]`이 가장 작아요. "늘이는 배율"이니 음수가 없고, 입력이 복소수여도 특이값은 언제나 float64 실수예요.
+
+### `Vh`는 이미 전치된 것이에요
+
+이름의 `h`는 켤레 전치(Hermitian transpose)를 뜻해요. `Vh`는 식의 $V$가 아니라 $V^H$ 그 자체예요. 그래서 입력 쪽 방향은 **`Vh`의 행**에, 출력 쪽 방향은 **`U`의 열**에 있어요. `i`번째 특이값 `S[i]`의 짝은 `Vh[i]`와 `U[:, i]`예요.
+
+<Callout type="warn" title="U는 열, Vh는 행">
+  `Vh[:, i]`(열)를 방향으로 쓰면 틀려요. $V$가 필요하면 `Vh.mT`(복소수면 `sd.conj(Vh).mT`)로 되돌리세요. "`x`에 `i`번째 입력 방향을 곱하면 `i`번째 출력 방향의 `S[i]`배가 된다"는 관계는 `x @ Vh[i]`와 `S[i] * U[:, i]`가 같다는 뜻이에요.
+</Callout>
+
+이 관계를 모든 방향에 대해 한꺼번에 확인해 볼게요.
+
+```python
+>>> float(sd.max(sd.abs(x @ Vh.mT - U * S))) < 1e-12
+True
+```
+
+`U`의 열끼리, `Vh`의 행끼리는 서로 수직이고 길이가 1이에요.
+
+```python
+>>> float(sd.max(sd.abs(U.mT @ U - sd.eye(2)))) < 1e-12
+True
+>>> float(sd.max(sd.abs(Vh @ Vh.mT - sd.eye(2)))) < 1e-12
+True
+```
+
+## 특이벡터의 부호는 정해져 있지 않아요
+
+`U`의 열 하나와 그 짝인 `Vh`의 행 하나의 부호를 **함께** 뒤집어도 곱은 그대로예요. 그래서 분해는 하나로 정해지지 않고, `svd`는 그 가운데 어느 것을 돌려줄지 약속하지 않아요. 특이값 `S`는 하나로 정해져요.
+
+위 그림에는 `U`의 첫 열을 `(0.8, 0.6)`으로 그렸지만 실제 결과는 부호가 반대일 수 있어요. 부호와 상관없는 값을 보려면 절댓값을 보면 돼요.
+
+```python
+>>> sd.abs(U)
+array([[0.8, 0.6],
+       [0.6, 0.8]], dtype=float64)
+```
+
+`U`와 `Vh`의 값을 기대값과 원소끼리 비교하지 말고, 위에서 한 것처럼 `(U * S) @ Vh`가 `x`로 돌아오는지, 열끼리 수직인지 같은 **성질**을 확인하세요. 특이값이 같은 것이 여럿이면 그 짝인 방향들은 부호뿐 아니라 방향도 한 가지로 정해지지 않아요. 복소수 행렬에서는 부호 대신 크기 1인 복소수만큼의 자유가 있어요.
+
+## `mode`: 정사각이 아닌 행렬에서 `U`와 `Vh`의 크기
+
+`M`×`N` 행렬의 특이값은 `K = min(M, N)`개예요. 3×2 행렬이라면 2개뿐이에요.
+
+기본값 `mode='reduced'`는 **특이값의 개수만큼만** 방향을 돌려줘요. 원래 행렬을 되돌리는 데 꼭 필요한 만큼이에요.
+
+```python
+>>> tall = sd.asarray([[3.0, 0.0], [0.0, 2.0], [0.0, 0.0]])
+>>> r = sd.linalg.svd(tall)
+>>> r.U.shape, r.S.shape, r.Vh.shape
+((3, 2), (2,), (2, 2))
+>>> float(sd.max(sd.abs((r.U * r.S) @ r.Vh - tall))) < 1e-12
+True
+```
+
+`mode='complete'`는 `U`와 `Vh`를 **정사각 행렬로 채워서** 돌려줘요. 3차원 공간에는 서로 수직인 방향이 3개 있는데 특이값의 짝은 2개뿐이니, 나머지 한 방향(이 행렬이 닿지 못하는 방향)을 `U`의 마지막 열로 덧붙여요. `S`는 그대로예요.
+
+```python
+>>> c = sd.linalg.svd(tall, mode='complete')
+>>> c.U.shape, c.S.shape, c.Vh.shape
+((3, 3), (2,), (2, 2))
+```
+
+| `mode` | `U` | `S` | `Vh` | 3×2 행렬이면 |
+|:---:|:---:|:---:|:---:|:---:|
+| `'reduced'` (기본값) | `(M, K)` | `(K,)` | `(K, N)` | `(3, 2)`, `(2,)`, `(2, 2)` |
+| `'complete'` | `(M, M)` | `(K,)` | `(N, N)` | `(3, 3)`, `(2,)`, `(2, 2)` |
+
+`'complete'`의 결과는 `(U * S) @ Vh`로 바로 되돌릴 수 없어요. `U`의 열이 `S`보다 많으니까요. 앞의 `K`개 열만 잘라서 써야 해요.
+
+```python
+>>> float(sd.max(sd.abs((c.U[:, :2] * c.S) @ c.Vh - tall))) < 1e-12
+True
+```
+
+대부분은 기본값으로 충분해요. `'complete'`는 "행렬이 닿지 못하는 방향"이나 "행렬이 0으로 보내는 방향" 전체가 필요할 때 써요. 정사각 행렬에서는 두 `mode`의 결과가 같아요.
+
+`mode`는 [qr](/api/linalg/qr/)의 `mode`와 이름도 기본값도 같아요.
+
+## 특이값만 필요하면 `svdvals`
+
+`U`와 `Vh`가 필요 없다면 `svdvals`를 쓰세요. 방향을 만들지 않아서 더 빠르고 메모리도 덜 써요.
+
+```python
+>>> sd.linalg.svdvals(tall)
+array([2.9999999999999996, 2.0000000000000004], dtype=float64)
+>>> sd.linalg.svd(tall).S
+array([3.0, 2.0], dtype=float64)
+```
+
+같은 행렬인데 **마지막 자리가 달라요.** 값만 구할 때는 방향까지 구할 때와 계산 순서가 달라서, 수학적으로는 같은 값이지만 반올림이 쌓이는 방식이 달라지기 때문이에요. 어느 쪽이 틀린 것이 아니라 둘 다 참값에서 반올림 오차만큼 떨어져 있을 뿐이에요. 두 함수의 결과를 `==`로 비교하지 말고 차이가 충분히 작은지를 보세요.
+
+[matrix_rank](/api/linalg/matrix_rank/), [cond](/api/linalg/cond/)의 기본 계산, [matrix_norm](/api/linalg/norms/)의 `ord=2`·`-2`·`'nuc'`은 `svdvals`와 같은 특이값을 써요. 그래서 그 함수들의 결과는 `svdvals`로 직접 계산한 것과 맞아떨어져요.
+
+## 특이값과 고유값은 달라요
+
+둘 다 "행렬이 벡터를 몇 배로 만드는가"에 관한 값이지만 묻는 것이 달라요.
+
+| | 고유값 | 특이값 |
+|---|---|---|
+| 묻는 것 | 방향이 **그대로인** 벡터는 몇 배가 되나 | 가장 **많이(적게) 늘어나는** 방향에서 몇 배가 되나 |
+| 받는 행렬 | 정사각 행렬만 | 어떤 모양이든 |
+| 값의 종류 | 음수·복소수일 수 있음 | 언제나 0 이상의 실수 |
+| 순서 | `eigh`는 오름차순 | 내림차순 |
+| 함수 | [`eigh`](/api/linalg/eigh/), [`eig`](/api/linalg/eig/) | `svd`, `svdvals` |
+
+```python
+>>> d = sd.asarray([[3.0, 0.0], [0.0, -4.0]])
+>>> sd.linalg.eigvalsh(d)
+array([-4.0,  3.0], dtype=float64)
+>>> sd.linalg.svdvals(d)
+array([4.0, 3.0], dtype=float64)
+```
+
+대칭 행렬에서는 특이값이 고유값의 절댓값이에요. 일반 행렬에서는 그런 관계도 없어요. 대신 어떤 행렬이든 특이값은 $x^H x$의 고유값의 제곱근과 같아요.
+
+```python
+>>> sd.sqrt(sd.linalg.eigvalsh(x.mT @ x))
+array([ 5.0, 10.0], dtype=float64)
+```
+
+## 어디에 쓰나요
+
+### 행렬이 실제로 몇 차원을 쓰는지: 랭크
+
+0인 특이값은 "그 방향으로는 전혀 늘이지 않는다", 곧 그 방향의 정보가 사라진다는 뜻이에요. **0이 아닌 특이값의 개수**가 행렬의 랭크예요. 아래 행렬은 둘째 열이 첫 열의 2배라서 랭크가 1이에요.
+
+```python
+>>> one = sd.asarray([[1.0, 2.0], [2.0, 4.0], [3.0, 6.0]])
+>>> sd.linalg.svdvals(one)
+array([    8.366600265340756, 4.774488599422642e-16], dtype=float64)
+```
+
+둘째 특이값이 정확한 0이 아니라 `4.8e-16`쯤의 아주 작은 수로 나왔어요. 반올림 오차 때문이에요. 그래서 "0이 아닌 것"을 `S != 0`으로 세면 틀려요. 얼마나 작으면 0으로 볼지 기준을 정해서 세어 주는 [matrix_rank](/api/linalg/matrix_rank/)를 쓰세요.
+
+```python
+>>> sd.linalg.matrix_rank(one)
+1
+```
+
+### 계산이 얼마나 민감한지: 조건수
+
+가장 큰 특이값을 가장 작은 특이값으로 나눈 값이 [조건수](/api/linalg/cond/)예요. 이 값이 크면 행렬이 어떤 방향은 크게 늘이고 어떤 방향은 거의 눌러 버린다는 뜻이고, 그런 행렬로 연립방정식을 풀면 입력의 작은 오차가 크게 불어나요.
+
+```python
+>>> S[0] / S[1]
+2.0
+>>> sd.linalg.cond(x)
+2.0
+```
+
+가장 큰 특이값 자체는 행렬의 2-노름이에요([matrix_norm](/api/linalg/norms/)의 `ord=2`).
+
+### 중요한 부분만 남기기: 낮은 랭크 근사
+
+특이값이 큰 방향 몇 개만 남기고 나머지를 버리면, 같은 크기의 행렬 가운데 원래 행렬에 가장 가까운 "단순한" 행렬이 돼요. 데이터 압축, 잡음 제거, 주성분 분석이 이 원리예요. 가장 큰 특이값 하나만 남겨 볼게요.
+
+```python
+>>> x1 = S[0] * sd.linalg.outer(U[:, 0], Vh[0])
+>>> x1
+array([[8.0, 0.0],
+       [6.0, 0.0]], dtype=float64)
+>>> sd.linalg.matrix_norm(x - x1, ord=2)
+5.0
+```
+
+버린 만큼의 오차는 버린 특이값 가운데 가장 큰 것(여기서는 5)과 같아요. 버린 특이값이 작을수록 손실이 작아요.
+
+### 역행렬이 없는 행렬 다루기
+
+특이값 분해에서 0이 아닌 특이값만 뒤집으면 정사각이 아니거나 특이한 행렬에도 쓸 수 있는 유사역행렬이 돼요. 직접 만들 필요 없이 [pinv](/api/linalg/inv/)와 [lstsq](/api/linalg/lstsq/)가 그 일을 해요.
+
+## 여러 행렬을 한 번에
+
+마지막 두 축이 행렬이고 그 앞의 축은 배치(여러 행렬의 묶음)예요. 행렬마다 따로 분해해서 같은 배치 모양으로 돌려줘요.
+
+```python
+>>> batch = sd.stack([x, d])
+>>> sd.linalg.svdvals(batch)
+array([[10.0,  5.0],
+       [ 4.0,  3.0]], dtype=float64)
+>>> r = sd.linalg.svd(batch)
+>>> r.U.shape, r.S.shape, r.Vh.shape
+((2, 2, 2), (2, 2), (2, 2, 2))
+```
+
+배치에서도 `(r.U * r.S[..., None, :]) @ r.Vh`로 되돌릴 수 있어요. `S`에 축을 하나 끼워 넣어 `U`의 열과 짝이 맞게 해요.
+
+## 조심할 점
+
+### `mode`는 이름을 붙여서, 정해진 두 값만
+
+`mode`에는 `'reduced'`와 `'complete'`만 쓸 수 있어요. 다른 문자열은 `ValueError`, 문자열이 아니면 `TypeError`예요.
+
+```python
+>>> sd.linalg.svd(x, mode='full')
+Traceback (most recent call last):
+    ...
+ValueError: svd(): 'mode' must be 'reduced' or 'complete', not 'full'
+>>> sd.linalg.svd(x, mode=None)
+Traceback (most recent call last):
+    ...
+TypeError: svd(): 'mode' must be 'reduced' or 'complete', not NoneType
+```
+
+`svd(x, 'complete')`처럼 이름 없이 넘겨도 `TypeError`예요. `svdvals`에는 `mode`가 없어요.
+
+### NaN과 inf
+
+행렬에 NaN이나 무한대가 있으면 `ValueError`예요.
+
+```python
+>>> sd.linalg.svdvals(sd.asarray([[1.0, sd.nan], [2.0, 1.0]]))
+Traceback (most recent call last):
+    ...
+ValueError: svdvals(): 'x' contains NaN or infinity
+```
+
+### 모양과 타입
+
+정사각이 아니어도 되지만 2차원 이상이어야 해요. 벡터 하나의 길이는 [vector_norm](/api/linalg/norms/)으로 구해요. 리스트는 받지 않으니 먼저 `sd.asarray`로 배열을 만드세요.
+
+```python
+>>> sd.linalg.svd(sd.asarray([1.0, 2.0]))
+Traceback (most recent call last):
+    ...
+ValueError: svd(): 'x' must have at least 2 dimensions, got 1
+>>> sd.linalg.svdvals([[3.0, 4.0]])
+Traceback (most recent call last):
+    ...
+TypeError: svdvals(): 'x' must be an sd.ndarray, not list
+```
+
+배치 가운데 하나라도 실패하면 전체가 실패하고, 메시지 끝에 몇 번째 행렬인지가 붙어요. 에러의 종류와 메시지는 [실패와 에러](/api/linalg/errors/)에 정리돼 있어요.
+
+### 특이 행렬은 에러가 아니에요
+
+역행렬이 없는 행렬도, 모든 원소가 0인 행렬도 분해할 수 있어요. 그만큼의 특이값이 0(또는 0에 아주 가까운 값)으로 나올 뿐이에요.
+
+```python
+>>> sd.linalg.svdvals(sd.zeros((2, 2)))
+array([0.0, 0.0], dtype=float64)
+```
+
+### 정수 행렬과 빈 행렬
+
+정수나 bool 행렬은 float64로 바꿔서 계산해요. 결과도 float64예요.
+
+```python
+>>> sd.linalg.svdvals(sd.asarray([[3, 0], [0, -4]]))
+array([4.0, 3.0], dtype=float64)
+```
+
+행이나 열이 0개인 행렬은 에러가 아니에요. 특이값이 하나도 없는 빈 결과를 돌려줘요.
+
+```python
+>>> sd.linalg.svdvals(sd.zeros((0, 3)))
+array([], dtype=float64)
+```
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | `svd`와 다른 점 |
+|---|---|---|
+| 특이값만 구하기 | `svdvals` | `U`와 `Vh`를 만들지 않아 더 빨라요. 값의 마지막 자리가 `svd`의 `S`와 다를 수 있어요. |
+| 대칭 행렬의 고유값·고유벡터 | [`eigh`](/api/linalg/eigh/) | 고유값은 음수일 수 있고 오름차순이에요. 정사각 대칭 행렬만 받아요. |
+| 일반 정사각 행렬의 고유값 | [`eig`](/api/linalg/eig/) | 결과가 복소수예요. 고유벡터는 서로 수직이 아닐 수 있어요. |
+| 수직인 열과 삼각 행렬로 나누기 | [`qr`](/api/linalg/qr/) | 더 가벼운 분해예요. 늘이는 배율(특이값)은 알려 주지 않아요. |
+| 랭크 구하기 | [`matrix_rank`](/api/linalg/matrix_rank/) | 특이값을 구해서 기준보다 큰 것을 세어 줘요. |
+| 조건수 구하기 | [`cond`](/api/linalg/cond/) | 가장 큰 특이값과 가장 작은 특이값의 비를 숫자 하나로 줘요. |
+| 유사역행렬, 최소제곱 해 | [`pinv`](/api/linalg/inv/), [`lstsq`](/api/linalg/lstsq/) | 특이값 분해로 할 수 있는 일을 바로 해 줘요. |
+
+`svd`는 행렬에 대해 가장 많은 것을 알려 주는 분해지만 그만큼 계산이 무거워요. 연립방정식을 푸는 것이 목적이라면 [solve](/api/linalg/solve/)나 [lstsq](/api/linalg/lstsq/)를, 숫자 하나(랭크, 조건수, 노름)만 필요하다면 그 함수를 바로 쓰세요.
+
+## numpy·scipy를 아는 분께
+
+- **기본이 줄인 꼴이에요.** `np.linalg.svd`와 `scipy.linalg.svd`의 기본은 `full_matrices=True`(여기의 `mode='complete'`)지만, `sd.linalg.svd`의 기본은 `mode='reduced'`(`full_matrices=False`)예요. 정사각이 아닌 행렬에서 `U`나 `Vh`의 모양이 numpy의 기본 결과와 달라요.
+- `full_matrices=` 대신 `mode=`를 써요. `qr`의 `mode`와 같은 이름, 같은 값이에요.
+- **`compute_uv=False`는 없어요.** 특이값만 필요하면 `svdvals`를 써요. 옵션에 따라 결과의 개수가 달라지지 않아요.
+- 결과는 numpy 2와 같은 이름(`U`, `S`, `Vh`)의 이름 있는 튜플이에요.
+- `hermitian=`(numpy), `lapack_driver=`·`overwrite_a=`(scipy)는 없어요.
+- NaN·inf가 있으면 언제나 `ValueError`예요. numpy는 `LinAlgError`("SVD did not converge")를 내요.
+- 리스트와 numpy 배열은 받지 않아요(`TypeError`). `sd.asarray`로 먼저 바꾸세요.
+- `U`·`Vh`의 부호와 특이값의 마지막 자리는 numpy·scipy와 다를 수 있어요.

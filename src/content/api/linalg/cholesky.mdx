@@ -2,32 +2,404 @@
 title: cholesky
 names: [cholesky]
 group: 분해
-order: 1
+order: 2
 signatures:
   - "sd.linalg.cholesky(x, /, *, upper=False)"
-sample: true
-summary: 양정치 행렬의 Cholesky 분해를 구해요.
-tag: Array API
+summary: 대칭이고 양정치인 행렬을 삼각 행렬 하나와 그 전치의 곱으로 나눠요. 이런 행렬의 방정식을 가장 빠르게 푸는 길이고, 행렬이 양정치인지 확인하는 방법이기도 해요.
 params:
   - name: x
     type: ndarray
     kind: positional-only
-    desc: 대칭 양정치 행렬. 모양은 (..., N, N).
+    desc: 대칭(복소수면 에르미트) 양정치 행렬. 모양은 (..., N, N). 아래 삼각만 읽어요.
   - name: upper
     type: bool
     kind: keyword-only
-    desc: True면 위 삼각 인자를 돌려줘요.
+    desc: False(기본값)면 아래 삼각 L을, True면 위 삼각 U를 돌려줘요.
 returns:
   type: ndarray
-  desc: 삼각 인자. 모양은 x와 같아요.
+  desc: x와 같은 모양의 삼각 행렬. 반대쪽 삼각은 정확히 0이에요. float64이고, 복소수 입력이면 complex128이에요.
 raises:
   - type: LinAlgError
     desc: 행렬이 양정치가 아닐 때.
-seeAlso: [cholesky_solve]
+  - type: TypeError
+    desc: x가 배열이 아닐 때, upper가 True/False가 아닐 때.
+  - type: ValueError
+    desc: x가 2차원보다 작거나 정사각이 아닐 때, 읽는 삼각에 NaN이나 inf가 있을 때.
+seeAlso: [cholesky_solve, lu, ldl, solve, eigh, det, basics, errors]
 ---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
 
-## 설명
+## 한눈에 보기
 
-자리 채움이에요.
+`cholesky`는 행렬 하나를 **아래 삼각 행렬 `L`과 그 전치 `L.T`의 곱**으로 나눠요. 이것을 Cholesky(숄레스키) 분해라고 해요.
+
+$$A = LL^{\mathsf T}$$
+
+양수 `9`를 `3 × 3`으로 쓰는 것과 닮았어요. 그래서 `L`을 "행렬의 제곱근"이라고 부르기도 해요. 양수에만 제곱근이 있듯이, 이 분해도 **대칭이면서 양정치인 행렬**에만 있어요(양정치가 무엇인지는 아래에서 설명해요).
+
+```python
+>>> import stardust as sd
+>>> a = sd.asarray([[4.0, 2.0, 2.0],
+...                 [2.0, 10.0, 4.0],
+...                 [2.0, 4.0, 6.0]])
+>>> L = sd.linalg.cholesky(a)
+>>> L
+array([[2.0, 0.0, 0.0],
+       [1.0, 3.0, 0.0],
+       [1.0, 1.0, 2.0]], dtype=float64)
+```
+
+`L`에 `L`의 전치(행과 열을 맞바꾼 행렬)를 곱하면 `a`가 다시 나와요.
+
+```python
+>>> L @ L.T
+array([[ 4.0,  2.0,  2.0],
+       [ 2.0, 10.0,  4.0],
+       [ 2.0,  4.0,  6.0]], dtype=float64)
+```
+
+<Fig caption="대칭 양정치 행렬 a는 아래 삼각 L과 그 전치의 곱이에요. 흐린 칸은 정확히 0이에요. 두 인자가 같은 값을 담고 있어서 L 하나만 돌려줘요.">
+  <ArrayFig name="a" data={[[4, 2, 2], [2, 10, 4], [2, 4, 6]]} note="대칭, 양정치" />
+  <Op>=</Op>
+  <ArrayFig name="L" data={[[2, 0, 0], [1, 3, 0], [1, 1, 2]]} tones={[['a', 'm', 'm'], ['a', 'a', 'm'], ['a', 'a', 'a']]} note="아래 삼각" />
+  <Op>×</Op>
+  <ArrayFig name="L.T" data={[[2, 1, 1], [0, 3, 1], [0, 0, 2]]} tones={[['a', 'a', 'a'], ['m', 'a', 'a'], ['m', 'm', 'a']]} note="L의 전치" />
+</Fig>
+
+[lu](/api/linalg/lu/)가 아무 행렬이나 `L`과 `U` 둘로 나누는 데 비해, `cholesky`는 대칭이라는 성질을 써서 **삼각 행렬 하나**만 구해요. 계산량이 절반쯤이고, 행의 순서를 바꿀 필요도 없어서 `perm`이 없어요.
 
 <Reference />
+
+## 양정치 행렬이란
+
+`cholesky`에 넣을 수 있는 행렬은 두 조건을 모두 만족해야 해요.
+
+1. **대칭**이에요. `a[i, j]`와 `a[j, i]`가 같아요. 대각선을 기준으로 접으면 겹쳐요.
+2. **양정치**(positive definite)예요. 0이 아닌 어떤 벡터 $x$를 넣어도 $x^{\mathsf T} A x$가 양수예요.
+
+둘째 조건이 낯설다면 이렇게 생각해도 돼요.
+
+- 숫자 하나로 치면 "양수"에 해당하는 성질이에요. $x^{\mathsf T} A x$는 숫자의 $a x^2$에 해당하고, $a$가 양수이면 $x$가 0이 아닌 한 언제나 양수예요.
+- 대칭 행렬에서는 **고유값이 모두 양수**라는 것과 같은 말이에요.
+- 분해가 있다는 것 자체가 이유를 보여 줘요. $A = LL^{\mathsf T}$이면 $x^{\mathsf T} A x = (L^{\mathsf T}x)^{\mathsf T}(L^{\mathsf T}x)$로, 벡터 $L^{\mathsf T}x$의 원소를 제곱해서 더한 값이에요. 제곱의 합은 음수가 될 수 없어요.
+
+실제로 만나는 양정치 행렬은 대개 이런 데서 와요.
+
+| 어디서 오나요 | 설명 |
+|---|---|
+| 공분산 행렬 | 여러 변수의 분산과 공분산을 모은 행렬. 변수들 사이에 완전한 선형 관계가 없으면 양정치예요. |
+| `X.T @ X` | 열들이 서로 독립인 행렬 `X`로 만든 행렬. 최소제곱 문제의 정규방정식에 나와요. |
+| 거리·유사도를 담은 커널 행렬 | 가우시안 커널 같은 것으로 만든 행렬 |
+| 대각이 충분히 큰 대칭 행렬 | 대각 원소가 모두 양수이고, 각 행에서 나머지 원소의 절댓값 합보다 크면 양정치예요. |
+
+2×2 대칭 행렬 세 개로 비교해 볼게요. 고유값은 [eigvalsh](/api/linalg/eigh/)로 구했어요.
+
+| 행렬 | 고유값 | 양정치인가요 | `cholesky` |
+|:---:|:---:|:---:|:---:|
+| `[[2, 1], [1, 2]]` | 1, 3 | 예 | 성공 |
+| `[[1, 2], [2, 4]]` | 0, 5 | 아니요 (0이 있어요) | `LinAlgError` |
+| `[[1, 2], [2, 1]]` | -1, 3 | 아니요 (음수가 있어요) | `LinAlgError` |
+
+```python
+>>> sd.linalg.cholesky(sd.asarray([[1.0, 2.0], [2.0, 1.0]]))
+Traceback (most recent call last):
+    ...
+stardust.linalg._errors.LinAlgError: cholesky(): matrix is not positive definite
+```
+
+## `upper`: 위 삼각으로 받기
+
+같은 분해를 위 삼각 행렬 `U`로 쓸 수도 있어요. `upper=True`를 주면 $A = U^{\mathsf T} U$인 `U`를 돌려줘요. `U`는 `L`의 전치와 같은 행렬이에요.
+
+```python
+>>> U = sd.linalg.cholesky(a, upper=True)
+>>> U
+array([[2.0, 1.0, 1.0],
+       [0.0, 3.0, 1.0],
+       [0.0, 0.0, 2.0]], dtype=float64)
+>>> U.T @ U
+array([[ 4.0,  2.0,  2.0],
+       [ 2.0, 10.0,  4.0],
+       [ 2.0,  4.0,  6.0]], dtype=float64)
+```
+
+<Fig column caption="두 결과는 서로의 전치예요. 곱하는 순서가 달라요: 아래 삼각은 L × L.T, 위 삼각은 U.T × U.">
+  <FigRow>
+    <ArrayFig name="cholesky(a)" data={[[2, 0, 0], [1, 3, 0], [1, 1, 2]]} tones={[['a', 'm', 'm'], ['a', 'a', 'm'], ['a', 'a', 'a']]} note="a = L @ L.T" />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="cholesky(a, upper=True)" data={[[2, 1, 1], [0, 3, 1], [0, 0, 2]]} tones={[['a', 'a', 'a'], ['m', 'a', 'a'], ['m', 'm', 'a']]} note="a = U.T @ U" />
+  </FigRow>
+</Fig>
+
+| | `upper=False` (기본값) | `upper=True` |
+|---|:---:|:---:|
+| 결과 | 아래 삼각 `L` | 위 삼각 `U` |
+| 관계 | `x = L @ L.T` | `x = U.T @ U` |
+| 정확히 0인 곳 | 대각선 위 | 대각선 아래 |
+
+`upper`는 **결과의 모양**만 바꿔요. 입력에서 읽는 쪽은 `upper`와 상관없이 언제나 아래 삼각이에요.
+
+어느 쪽으로 받았는지는 나중에 그 결과를 쓰는 함수에도 똑같이 알려 줘야 해요. [cholesky_solve](/api/linalg/cholesky_solve/)의 `upper`가 그 자리예요.
+
+## 어디에 쓰나요
+
+### 양정치 행렬의 방정식 풀기
+
+$Ax = b$에서 $A$가 대칭 양정치라면 Cholesky 분해로 푸는 것이 가장 빨라요. 분해 결과와 우변을 [cholesky_solve](/api/linalg/cholesky_solve/)에 넘겨요. 분해는 한 번만 하고, 우변이 바뀔 때마다 풀이만 다시 하면 돼요.
+
+```python
+>>> sd.linalg.cholesky_solve(L, sd.asarray([8.0, 16.0, 12.0]))
+array([1.0, 1.0, 1.0], dtype=float64)
+>>> sd.linalg.cholesky_solve(L, sd.asarray([4.0, 2.0, 2.0]))
+array([1.0, 0.0, 0.0], dtype=float64)
+```
+
+[solve](/api/linalg/solve/)도 같은 답을 내지만, `solve`는 행렬이 대칭인지 살피지 않고 언제나 일반적인 방법으로 풀어요. 양정치라는 것을 알고 있을 때 그 성질을 쓰려면 직접 `cholesky`와 `cholesky_solve`를 골라야 해요.
+
+### 행렬식과 그 로그
+
+삼각 행렬의 행렬식은 대각 원소의 곱이에요. $A = LL^{\mathsf T}$이므로 `a`의 행렬식은 **`L`의 대각 곱의 제곱**이에요.
+
+```python
+>>> sd.prod(sd.linalg.diagonal(L)) ** 2
+144.0
+>>> sd.linalg.det(a)
+144.0
+```
+
+통계에서는 큰 공분산 행렬의 행렬식에 로그를 취한 값이 자주 필요해요(정규분포의 로그 가능도). 행렬식 자체는 너무 크거나 작아서 float64에 담기지 않을 수 있지만, 로그는 `L`의 대각에 로그를 취해 더하면 안전하게 구해져요.
+
+```python
+>>> 2 * sd.sum(sd.log(sd.linalg.diagonal(L)))
+4.969813299576001
+>>> sd.linalg.slogdet(a).logabsdet
+4.969813299576001
+```
+
+### 서로 얽힌 값 만들기
+
+서로 독립인 값들에 `L`을 곱하면 공분산이 `L @ L.T`인 값들이 돼요. 원하는 공분산 행렬 `c`를 분해해서 얻은 `L`을 독립인 표본에 곱하는 것이, 상관관계가 있는 난수를 만드는 표준적인 방법이에요. 표본이 행으로 놓여 있다면 오른쪽에 `L.T`를 곱해요.
+
+```python
+>>> c = sd.asarray([[4.0, 2.0],
+...                 [2.0, 2.0]])
+>>> Lc = sd.linalg.cholesky(c)
+>>> Lc
+array([[2.0, 0.0],
+       [1.0, 1.0]], dtype=float64)
+>>> z = sd.asarray([[1.0, 0.0],
+...                 [0.5, -1.0],
+...                 [2.0, 1.0]])
+>>> z @ Lc.T
+array([[ 2.0,  1.0],
+       [ 1.0, -0.5],
+       [ 4.0,  3.0]], dtype=float64)
+```
+
+### 양정치인지 확인하기
+
+행렬이 양정치인지 알아보는 가장 빠른 방법은 **일단 분해해 보는 것**이에요. 성공하면 양정치이고, `LinAlgError`가 나면 아니에요. 고유값을 모두 구해서 부호를 보는 것보다 훨씬 가벼워요.
+
+```python
+>>> def is_positive_definite(m):
+...     try:
+...         sd.linalg.cholesky(m)
+...     except sd.linalg.LinAlgError:
+...         return False
+...     return True
+>>> is_positive_definite(a)
+True
+>>> is_positive_definite(sd.asarray([[1.0, 2.0], [2.0, 1.0]]))
+False
+```
+
+`cholesky`는 대칭인지는 검사하지 않으므로, 이 확인은 행렬이 대칭이라는 것을 이미 알고 있을 때만 뜻이 있어요.
+
+## 아래 삼각만 읽어요
+
+대칭 행렬은 대각선 아래쪽만 알면 위쪽도 알 수 있어요. 그래서 `cholesky`는 **입력의 대각선과 그 아래만 읽고, 위쪽은 쳐다보지 않아요.** 대칭인지 검사하지도 않아요.
+
+```python
+>>> sd.linalg.cholesky(sd.asarray([[4.0, 99.0],
+...                                [2.0, 10.0]]))
+array([[2.0, 0.0],
+       [1.0, 3.0]], dtype=float64)
+```
+
+오른쪽 위의 `99.0`은 결과에 아무 영향이 없어요. `[[4, 2], [2, 10]]`을 넣은 것과 같아요.
+
+<Fig caption="읽는 것은 대각선과 그 아래(강조한 칸)뿐이에요. 점선 칸의 값은 무엇이든 결과가 같아요.">
+  <ArrayFig name="x" data={[[4, 99], [2, 10]]} tones={[['a', 'g'], ['a', 'a']]} note="위쪽은 읽지 않음" />
+  <Op note="cholesky">→</Op>
+  <ArrayFig name="L" data={[[2, 0], [1, 3]]} tones={[['a', 'm'], ['a', 'a']]} note="[[4, 2], [2, 10]]의 분해" />
+</Fig>
+
+<Callout type="warn" title="대칭이 아닌 행렬을 넣어도 에러가 나지 않을 수 있어요">
+
+대칭이 아닌 행렬을 실수로 넣으면, 아래 삼각을 위로 접어 만든 **다른 대칭 행렬**의 분해가 조용히 나와요. 그러면 `L @ L.T`가 넣은 행렬과 달라요. 행렬이 대칭인지 확실하지 않다면 `float(sd.max(sd.abs(x - x.T)))`가 0(또는 아주 작은 값)인지 먼저 확인하세요.
+
+</Callout>
+
+이 규칙 덕분에 편한 점도 있어요. 아래 삼각만 채워 둔 행렬을 그대로 넣어도 되고, 반올림 때문에 위아래가 마지막 자리에서 어긋난 행렬도 문제없이 받아요.
+
+## 복소수 행렬
+
+복소수 행렬에서는 "대칭" 대신 **에르미트**(Hermitian) 행렬을 받아요. `a[i, j]`가 `a[j, i]`의 켤레 복소수(허수부의 부호를 바꾼 수)인 행렬이에요. 분해도 전치 대신 **켤레 전치**를 써서 $A = LL^{\mathsf H}$가 돼요.
+
+```python
+>>> h = sd.asarray([[4.0, 2j],
+...                 [-2j, 5.0]])
+>>> Lh = sd.linalg.cholesky(h)
+>>> Lh
+array([[(2+0j),     0j],
+       [   -1j, (2+0j)]], dtype=complex128)
+>>> Lh @ sd.conj(Lh).T
+array([[(4+0j),     2j],
+       [   -2j, (5+0j)]], dtype=complex128)
+```
+
+에르미트 행렬의 대각은 실수여야 해요. 대각에 허수부가 있어도 읽지 않고 실수부만 써요.
+
+## 행렬 여러 개를 한꺼번에
+
+3차원 이상의 배열은 마지막 두 축이 행렬이고 앞쪽 축은 배치예요. 행렬마다 따로 분해해서 같은 모양으로 돌려줘요.
+
+```python
+>>> stack = sd.asarray([[[4.0, 2.0], [2.0, 10.0]],
+...                     [[9.0, 3.0], [3.0, 5.0]]])
+>>> sd.linalg.cholesky(stack)
+array([[[2.0, 0.0],
+        [1.0, 3.0]],
+
+       [[3.0, 0.0],
+        [1.0, 2.0]]], dtype=float64)
+```
+
+행렬 가운데 하나라도 양정치가 아니면 호출 전체가 실패해요. 일부만 계산한 결과는 주지 않고, 몇 번째 행렬이 문제인지 메시지 끝에 알려 줘요.
+
+```python
+>>> sd.linalg.cholesky(sd.asarray([[[4.0, 2.0], [2.0, 10.0]],
+...                                [[1.0, 2.0], [2.0, 1.0]]]))
+Traceback (most recent call last):
+    ...
+stardust.linalg._errors.LinAlgError: cholesky(): matrix is not positive definite (at batch index (1,))
+```
+
+## 조심할 점
+
+### 양정치가 아니면 `LinAlgError`예요
+
+고유값에 음수가 있는 행렬뿐 아니라, **고유값에 0이 있는 행렬(특이 행렬)도** 에러예요. 양정치는 "0보다 크다"이지 "0 이상"이 아니에요.
+
+```python
+>>> sd.linalg.cholesky(sd.asarray([[1.0, 2.0], [2.0, 4.0]]))
+Traceback (most recent call last):
+    ...
+stardust.linalg._errors.LinAlgError: cholesky(): matrix is not positive definite
+```
+
+이런 일은 공분산 행렬에서 흔해요. 변수 하나가 다른 변수들의 합이거나, 표본 수가 변수 수보다 적으면 공분산 행렬이 특이해져요. 그럴 때의 선택지는 이래요.
+
+- 대칭이지만 양정치가 아닌 행렬을 분해하려면 [ldl](/api/linalg/ldl/)을 써요.
+- 방정식을 풀려는 것이라면 [solve](/api/linalg/solve/)나, 특이 행렬도 받는 [lstsq](/api/linalg/lstsq/)를 써요.
+- 대각에 작은 양수를 더해(`x + 1e-8 * sd.eye(N)`) 양정치로 만드는 방법도 널리 써요. 다만 문제를 조금 바꾸는 것이라는 점은 알고 써야 해요.
+
+`LinAlgError`는 `ValueError`의 한 종류라서 `except ValueError`로도 잡혀요. 자세한 것은 [실패와 에러](/api/linalg/errors/)에 있어요.
+
+### 가까스로 양정치인 행렬
+
+수학적으로는 특이한 행렬이 반올림 때문에 아슬아슬하게 양정치로 판정되거나, 반대로 양정치인 행렬이 에러가 나는 일이 있어요. 아래 행렬은 두 행이 거의 같아서 사실상 특이하지만 분해는 성공하고, `L`의 마지막 대각에 아주 작은 값이 남아요.
+
+```python
+>>> sd.linalg.cholesky(sd.asarray([[1.0, 1.0],
+...                                [1.0, 1.0 + 1e-15]]))
+array([[                  1.0,                   0.0],
+       [                  1.0, 3.332000937312528e-08]], dtype=float64)
+```
+
+`L`의 대각에 다른 값보다 훨씬 작은 값이 보이면, 그 결과로 푼 방정식의 해는 믿기 어려워요. [cond](/api/linalg/cond/)로 행렬의 상태를 확인해 보세요.
+
+### 정수 행렬을 넣어도 결과는 실수예요
+
+제곱근과 나눗셈이 들어가는 계산이라서, 정수나 bool 행렬은 float64로 바꿔서 계산해요.
+
+```python
+>>> sd.linalg.cholesky(sd.asarray([[4, 2], [2, 10]]))
+array([[2.0, 0.0],
+       [1.0, 3.0]], dtype=float64)
+```
+
+### NaN과 inf: 읽는 쪽만 검사해요
+
+읽는 삼각(대각선과 그 아래)에 NaN이나 무한대가 있으면 `ValueError`예요. 읽지 않는 위쪽에 있는 것은 상관없어요.
+
+```python
+>>> sd.linalg.cholesky(sd.asarray([[4.0, 2.0],
+...                                [sd.nan, 10.0]]))
+Traceback (most recent call last):
+    ...
+ValueError: cholesky(): 'x' contains NaN or infinity
+>>> sd.linalg.cholesky(sd.asarray([[4.0, sd.nan],
+...                                [2.0, 10.0]]))
+array([[2.0, 0.0],
+       [1.0, 3.0]], dtype=float64)
+```
+
+### 모양과 타입이 틀렸을 때
+
+정사각 행렬만 받아요. 리스트는 받지 않고, `upper`는 `True`나 `False`만 받아요(`1`, `0`도 안 돼요). `upper`는 이름을 붙여서만 넘길 수 있어요.
+
+```python
+>>> sd.linalg.cholesky(sd.asarray([[4.0, 2.0, 1.0],
+...                                [2.0, 10.0, 1.0]]))
+Traceback (most recent call last):
+    ...
+ValueError: cholesky(): 'x' must be square in its last two dimensions, got 2x3
+>>> sd.linalg.cholesky([[4.0, 2.0], [2.0, 10.0]])
+Traceback (most recent call last):
+    ...
+TypeError: cholesky(): 'x' must be an sd.ndarray, not list
+>>> sd.linalg.cholesky(a, upper=1)
+Traceback (most recent call last):
+    ...
+TypeError: cholesky(): 'upper' must be True or False, not int
+```
+
+### 빈 행렬
+
+0×0 행렬은 에러 없이 0×0 결과를 돌려줘요.
+
+```python
+>>> sd.linalg.cholesky(sd.zeros((0, 0))).shape
+(0, 0)
+```
+
+## 비슷한 함수와의 차이
+
+| 함수 | 받는 행렬 | 결과 | 실패하는 경우 |
+|---|---|---|---|
+| `cholesky` | 대칭(에르미트) 양정치 | 삼각 행렬 하나 | 양정치가 아니면 `LinAlgError` |
+| [ldl](/api/linalg/ldl/) | 대칭(에르미트)이면 무엇이든 | `L`, `D`, `perm` | 실패하지 않아요 |
+| [lu](/api/linalg/lu/) | 무엇이든 (정사각이 아니어도) | `L`, `U`, `perm` | 실패하지 않아요 |
+| [eigh](/api/linalg/eigh/) | 대칭(에르미트) | 고유값과 고유벡터 | 실패하지 않아요 |
+
+- 양정치라는 것을 안다면 `cholesky`가 가장 빠르고 결과도 가장 단순해요.
+- 대칭이지만 양정치인지 모르거나 아니라면 `ldl`이에요. 음수 고유값이 몇 개인지도 `D`에서 읽을 수 있어요.
+- 대칭이 아니라면 `lu`예요.
+- 고유값 자체가 필요하거나 "얼마나 양정치에서 먼지"를 알고 싶으면 `eigh`·`eigvalsh`예요.
+
+방정식을 푸는 함수는 분해에 맞춰 골라요. `cholesky`의 결과는 [cholesky_solve](/api/linalg/cholesky_solve/)에, `lu`의 결과는 [lu_solve](/api/linalg/lu_solve/)에 넘겨요. `L` 하나만으로 $Ly = b$를 풀고 싶다면 [solve_triangular](/api/linalg/solve_triangular/)를 써요.
+
+## numpy·scipy를 아는 분께
+
+- 기본 결과는 `np.linalg.cholesky`와 같은 **아래 삼각**이에요. `scipy.linalg.cholesky`는 기본이 위 삼각(`lower=False`)이라서 반대예요. 옵션 이름은 `lower`가 아니라 `upper`예요.
+- 입력은 언제나 아래 삼각만 읽어요. `upper=True`를 줘도 읽는 쪽은 바뀌지 않아요. scipy는 `lower` 옵션에 따라 읽는 삼각도 바뀌어요.
+- 결과의 반대쪽 삼각은 정확히 0이에요.
+- 양정치가 아닐 때의 예외는 `sd.linalg.LinAlgError`예요. `ValueError`의 하위 클래스이고, numpy의 `LinAlgError`와는 다른 클래스예요.
+- `overwrite_a=`, `check_finite=` 옵션은 없어요. NaN·inf 검사는 끌 수 없어요.
+- 리스트와 numpy 배열은 받지 않아요(`TypeError`).

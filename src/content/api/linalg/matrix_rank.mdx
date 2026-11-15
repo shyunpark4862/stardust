@@ -1,0 +1,328 @@
+---
+title: matrix_rank
+names: [matrix_rank]
+group: 노름과 지표
+order: 4
+signatures:
+  - "sd.linalg.matrix_rank(x, /, *, rtol=None)"
+summary: 행렬의 랭크를 구해요. 랭크는 서로 독립인 행(또는 열)의 개수로, 행렬에 겹치지 않는 정보가 실제로 몇 개 들어 있는지를 말해 줘요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 행렬. 모양은 (..., M, N). 정사각이 아니어도 돼요. 3차원 이상이면 행렬 여러 개를 쌓은 것으로 봐요.
+  - name: rtol
+    type: None, int 또는 float
+    kind: keyword-only
+    desc: 가장 큰 특이값에 견준 허용오차. 가장 큰 특이값의 rtol배 이하인 특이값은 0으로 쳐요. None이면 max(M, N) × eps(float64의 정밀도, 약 2.2e-16)예요.
+returns:
+  type: ndarray 또는 Python int
+  desc: 랭크. 0 이상 min(M, N) 이하의 정수예요. 행렬 하나면 Python int, 여러 개면 모양이 (...)인 int64 배열이에요.
+raises:
+  - type: TypeError
+    desc: x가 배열이 아닐 때, rtol이 None·int·float가 아닐 때(bool, 배열, 문자열), rtol을 이름 없이 자리로 넘겼을 때.
+  - type: ValueError
+    desc: x가 2차원 미만일 때, x에 NaN이나 inf가 있을 때, rtol이 음수·NaN·inf일 때.
+  - type: OverflowError
+    desc: rtol에 float로 바꿀 수 없을 만큼 큰 정수를 줬을 때.
+seeAlso: [svd, cond, det, lstsq, inv, norms, errors]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+**랭크**(rank, 계수)는 행렬의 행들 가운데 **서로 독립인 것이 몇 개인지**를 센 수예요. 어떤 행이 다른 행들을 몇 배씩 해서 더한 것과 같다면, 그 행은 새로운 정보를 주지 않아요. 랭크는 그런 중복을 빼고 남는 개수예요.
+
+```python
+>>> import stardust as sd
+>>> sd.linalg.matrix_rank(sd.eye(3))
+3
+>>> sd.linalg.matrix_rank(sd.asarray([[1.0, 2.0], [2.0, 4.0]]))
+1
+```
+
+단위행렬은 세 행이 모두 독립이라 랭크가 3이에요. 둘째 행렬은 둘째 행 `[2, 4]`가 첫째 행 `[1, 2]`의 2배라서, 행은 둘이지만 랭크는 1이에요.
+
+중복이 눈에 잘 띄지 않을 때도 있어요.
+
+```python
+>>> a = sd.asarray([[1.0, 2.0, 3.0],
+...                 [4.0, 5.0, 6.0],
+...                 [7.0, 8.0, 9.0]])
+>>> sd.linalg.matrix_rank(a)
+2
+```
+
+<Fig caption="셋째 행은 둘째 행의 2배에서 첫째 행을 뺀 것과 같아요. 행은 셋이지만 독립인 행은 둘뿐이라 랭크가 2예요.">
+  <ArrayFig name="2 × 둘째 행" data={[8, 10, 12]} tones={['a', 'a', 'a']} />
+  <Op>−</Op>
+  <ArrayFig name="첫째 행" data={[1, 2, 3]} tones={['a', 'a', 'a']} />
+  <Op>=</Op>
+  <ArrayFig name="셋째 행" data={[7, 8, 9]} tones={['b', 'b', 'b']} />
+</Fig>
+
+<Reference />
+
+## 랭크는 무엇을 말해 주나요
+
+같은 수를 세 가지로 읽을 수 있어요.
+
+- **식의 개수로 보면**, 연립방정식에서 정말로 서로 다른 식이 몇 개인지예요. 위의 `a`는 식이 셋처럼 보이지만 셋째 식은 앞의 둘에서 따라 나오는 식이에요. 미지수는 셋인데 식은 사실상 둘이라, 해가 하나로 정해지지 않아요.
+- **변환으로 보면**, 행렬을 곱한 결과가 차지하는 공간의 차원이에요. 랭크가 2인 3×3 행렬은 3차원 공간의 모든 점을 한 평면 위로 눌러요. 랭크가 1이면 한 직선 위로 눌러요.
+- **데이터로 보면**, 열(변수)들 가운데 겹치지 않는 것이 몇 개인지예요. 키를 센티미터로 적은 열과 미터로 적은 열이 함께 있으면 열은 둘이지만 정보는 하나예요.
+
+```python
+>>> data = sd.asarray([[170.0, 1.70, 65.0],
+...                    [160.0, 1.60, 50.0],
+...                    [180.0, 1.80, 80.0],
+...                    [175.0, 1.75, 70.0]])
+>>> data.shape
+(4, 3)
+>>> sd.linalg.matrix_rank(data)
+2
+```
+
+열은 셋(키 cm, 키 m, 몸무게)이지만 랭크는 2예요. 이런 데이터로 회귀식을 세우면 계수가 하나로 정해지지 않아요.
+
+알아 둘 사실들이에요. 행렬의 모양을 M×N이라고 할게요.
+
+| 사실 | 설명 |
+|---|---|
+| 랭크는 `min(M, N)`을 넘지 않아요 | 2×5 행렬의 랭크는 많아야 2예요. |
+| 행으로 세든 열로 세든 같아요 | 독립인 행의 개수와 독립인 열의 개수는 언제나 같아요. |
+| 랭크가 `min(M, N)`이면 **완전 랭크**(full rank) | 중복이 하나도 없다는 뜻이에요. |
+| 정사각 행렬이 완전 랭크 | 역행렬이 있어요. [행렬식](/api/linalg/det/)이 0이 아니에요. `a @ x = b`의 해가 정확히 하나예요. |
+| 정사각 행렬의 랭크가 N보다 작음 | 특이 행렬이에요. 역행렬이 없어요. |
+| 영행렬의 랭크는 0 | 독립인 행이 하나도 없어요. |
+
+정사각 행렬이 특이한지는 랭크가 행 수와 같은지로 확인해요.
+
+```python
+>>> sd.linalg.matrix_rank(a) == a.shape[-1]
+False
+```
+
+정사각이 아닌 행렬도 받아요.
+
+```python
+>>> sd.linalg.matrix_rank(sd.asarray([[1.0, 0.0, 2.0], [0.0, 1.0, 3.0]]))
+2
+>>> sd.linalg.matrix_rank(sd.asarray([[1.0, 2.0, 3.0], [2.0, 4.0, 6.0]]))
+1
+```
+
+## 랭크를 어떻게 세나요: 특이값과 허용오차
+
+수학에서는 랭크가 딱 떨어지는 정수예요. 컴퓨터에서는 그렇지 않아요. 실수 계산에는 반올림 오차가 있어서, 수학적으로는 정확히 겹치는 행도 계산 속에서는 아주 조금 어긋나 보여요.
+
+`matrix_rank`는 행렬의 **특이값**을 구해서 세요. 특이값은 행렬이 벡터를 방향마다 몇 배로 늘이는지를 큰 것부터 늘어놓은 수들이에요([특이값 분해](/api/linalg/svd/) 문서에 설명이 있어요). 수학적으로 랭크는 **0이 아닌 특이값의 개수**와 같아요. 위의 `a`의 특이값을 볼게요.
+
+```python
+>>> sd.linalg.svdvals(a)
+array([    16.84810335261421,    1.0683695145547094, 3.358907901991618e-16], dtype=float64)
+```
+
+셋째 특이값은 수학적으로 정확히 0이어야 하는데 `3.4e-16`이 나왔어요. 반올림 오차예요. 이것을 "0이 아니다"라고 세면 랭크가 3이 돼서 틀려요. 그래서 **충분히 작은 특이값은 0으로 쳐요.** 그 기준이 허용오차예요.
+
+<Fig caption="가장 큰 특이값의 rtol배보다 큰 특이값만 세요. 셋째 특이값은 기준(약 1.1e-14)보다 작아서 0으로 쳐요.">
+  <ArrayFig name="svdvals(a)" data={['16.8', '1.07', '3.4e-16']} tones={['a', 'a', 'm']} note="기준보다 큰 것이 2개" />
+  <Op>→</Op>
+  <ArrayFig name="matrix_rank(a)" data={[2]} tones={['b']} />
+</Fig>
+
+정확한 정의는 이래요. 특이값을 $\sigma_1 \ge \sigma_2 \ge \cdots$ 라고 하면,
+
+$$\text{rank} = \bigl|\{\, i : \sigma_i > \text{rtol} \times \sigma_1 \,\}\bigr|$$
+
+곧 **가장 큰 특이값의 `rtol`배보다 큰 특이값의 개수**예요. 딱 기준과 같은 특이값은 세지 않아요.
+
+기준이 절대적인 크기가 아니라 **가장 큰 특이값에 견준 비율**이라는 점이 중요해요. 덕분에 행렬 전체에 아주 작은 수를 곱해도 랭크가 달라지지 않아요.
+
+```python
+>>> sd.linalg.matrix_rank(sd.eye(2) * 1e-20)
+2
+>>> sd.linalg.matrix_rank(sd.asarray([[1.0, 0.0], [0.0, 1e-20]]))
+1
+```
+
+첫째 행렬은 두 특이값이 모두 `1e-20`이라 서로 견주면 같은 크기예요. 둘째 행렬은 `1`에 견주어 `1e-20`이 터무니없이 작으니 0으로 쳐요.
+
+## `rtol`: 얼마나 작으면 0으로 칠까요
+
+`rtol`을 주지 않으면 기준은 `max(M, N) × eps`예요. `eps`는 float64가 구별할 수 있는 가장 작은 상대 차이로 약 `2.2e-16`이에요. "반올림 오차로 생길 수 있는 크기까지만 0으로 친다"는 뜻이에요. 정확한 값으로 만든 행렬에는 이 기본값이 알맞아요.
+
+**측정 오차가 섞인 데이터**라면 이야기가 달라요. 아래 행렬은 둘째 행이 첫째 행의 2배가 되어야 하는데, 측정 오차 때문에 마지막 값이 `4.001`이 됐어요.
+
+```python
+>>> noisy = sd.asarray([[1.0, 2.0], [2.0, 4.001]])
+>>> sd.linalg.svdvals(noisy)
+array([     5.00080003199616, 0.0001999680038401039], dtype=float64)
+>>> sd.linalg.matrix_rank(noisy)
+2
+```
+
+둘째 특이값 `0.0002`는 반올림 오차보다는 훨씬 커서, 기본 기준으로는 랭크가 2예요. 하지만 데이터의 오차가 천분의 일쯤이라는 것을 안다면 이 정도는 0으로 치는 것이 맞아요. `rtol`로 기준을 올려요.
+
+```python
+>>> sd.linalg.matrix_rank(noisy, rtol=1e-3)
+1
+```
+
+`rtol`은 "가장 큰 특이값의 몇 배 이하를 잡음으로 볼 것인가"예요. 데이터의 상대 오차 수준에 맞추면 돼요. 기준을 올릴수록 랭크는 같거나 작아져요.
+
+```python
+>>> d = sd.asarray([[100.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.001]])
+>>> sd.linalg.matrix_rank(d)
+3
+>>> sd.linalg.matrix_rank(d, rtol=1e-4)
+2
+>>> sd.linalg.matrix_rank(d, rtol=0.05)
+1
+```
+
+| `rtol` | 기준 (`rtol × 100`) | 기준보다 큰 특이값 | 랭크 |
+|:---:|:---:|:---:|:---:|
+| `None` | 약 `6.7e-14` | 100, 1, 0.001 | 3 |
+| `1e-4` | 0.01 | 100, 1 | 2 |
+| `0.05` | 5 | 100 | 1 |
+
+<Callout type="warn" title="rtol=0은 '정확하게'가 아니에요">
+  `rtol=0`은 정확히 0이 아닌 특이값을 모두 세요. 반올림 오차로 생긴 `1e-16` 같은 값도 세기 때문에, 특이 행렬의 랭크가 완전 랭크로 나와요. 더 엄밀한 답을 바라고 `rtol=0`을 주면 오히려 틀린 답을 얻어요.
+</Callout>
+
+```python
+>>> s = sd.asarray([[1.0, 2.0], [2.0, 4.0]])
+>>> sd.linalg.matrix_rank(s)
+1
+>>> sd.linalg.matrix_rank(s, rtol=0)
+2
+```
+
+반대쪽 끝도 있어요. `rtol`이 1 이상이면 가장 큰 특이값조차 기준을 넘지 못해서 랭크가 언제나 0이에요.
+
+```python
+>>> sd.linalg.matrix_rank(sd.eye(3), rtol=1)
+0
+```
+
+같은 이름과 뜻의 `rtol`이 [`pinv`](/api/linalg/inv/)와 [`lstsq`](/api/linalg/lstsq/)에도 있어요. 세 함수에 같은 `rtol`을 주면 같은 특이값을 0으로 쳐요.
+
+## 여러 행렬을 한 번에
+
+3차원 이상의 배열은 행렬 여러 개를 쌓은 것으로 보고, 행렬마다 랭크를 하나씩 돌려줘요. 결과는 int64 배열이에요.
+
+```python
+>>> stack = sd.asarray([[[1.0, 0.0], [0.0, 1.0]],
+...                     [[1.0, 2.0], [2.0, 4.0]],
+...                     [[0.0, 0.0], [0.0, 0.0]]])
+>>> sd.linalg.matrix_rank(stack)
+array([2, 1, 0], dtype=int64)
+```
+
+`rtol`은 숫자 하나만 받아요. 모든 행렬에 같은 `rtol`을 쓰고, 기준은 행렬마다 **그 행렬의** 가장 큰 특이값으로 정해요. 행렬마다 다른 `rtol`을 배열로 줄 수는 없어요.
+
+행렬 하나의 결과는 Python `int`예요.
+
+```python
+>>> type(sd.linalg.matrix_rank(a))
+<class 'int'>
+```
+
+## 조심할 점
+
+### 랭크는 계산이 아니라 판단이에요
+
+컴퓨터가 구한 랭크는 "이 기준으로 보면 독립인 방향이 몇 개"라는 판단이에요. 기준(`rtol`)을 바꾸면 답이 달라질 수 있어요. 랭크가 기준에 따라 흔들린다면, 그 행렬에는 "있다고 하기에도 없다고 하기에도 애매한" 방향이 있는 것이에요. 그럴 때는 `svdvals`로 특이값을 직접 보거나 [`cond`](/api/linalg/cond/)로 얼마나 나쁜지 확인하세요.
+
+### 행렬식보다 믿을 만해요
+
+특이 행렬인지 알아보려고 [`det`](/api/linalg/det/)이 0인지 비교하면 반올림 오차 때문에 틀리기 쉬워요. `a`의 행렬식은 0이어야 하지만 0이 아닌 값이 나와요. 랭크는 허용오차를 두고 판단하니 바르게 2를 돌려줘요.
+
+```python
+>>> sd.linalg.det(a)
+-9.516197353929915e-16
+>>> sd.linalg.det(a) == 0
+False
+>>> sd.linalg.matrix_rank(a)
+2
+```
+
+### 벡터는 받지 않아요
+
+1차원 배열은 행렬이 아니라서 `ValueError`예요. 벡터 하나를 행이 하나인 행렬로 보고 싶으면 [`sd.reshape`](/api/array/reshape/)로 모양을 바꿔서 넣으세요.
+
+```python
+>>> v = sd.asarray([1.0, 2.0, 3.0])
+>>> sd.linalg.matrix_rank(v)
+Traceback (most recent call last):
+    ...
+ValueError: matrix_rank(): 'x' must have at least 2 dimensions, got 1
+>>> sd.linalg.matrix_rank(sd.reshape(v, (1, 3)))
+1
+```
+
+### NaN과 inf는 에러예요
+
+```python
+>>> sd.linalg.matrix_rank(sd.asarray([[1.0, sd.nan], [0.0, 1.0]]))
+Traceback (most recent call last):
+    ...
+ValueError: matrix_rank(): 'x' contains NaN or infinity
+```
+
+### 빈 행렬의 랭크는 0이에요
+
+행이나 열이 0개이면 독립인 행이 있을 수 없으니 랭크는 0이에요. 에러가 아니에요.
+
+```python
+>>> sd.linalg.matrix_rank(sd.zeros((0, 3)))
+0
+```
+
+### `rtol`에 쓸 수 있는 값
+
+`rtol`은 0 이상의 유한한 수여야 하고, 반드시 이름과 함께 써야 해요. 음수, NaN, inf는 `ValueError`, `True`나 배열은 `TypeError`예요.
+
+```python
+>>> sd.linalg.matrix_rank(a, rtol=-1)
+Traceback (most recent call last):
+    ...
+ValueError: matrix_rank(): 'rtol' must be a finite number >= 0
+>>> sd.linalg.matrix_rank(a, rtol=True)
+Traceback (most recent call last):
+    ...
+TypeError: matrix_rank(): 'rtol' must be None, an int or a float, not bool
+```
+
+### 정수 행렬도 받아요
+
+정수나 bool 행렬은 실수로 바꿔서 계산해요. 결과는 언제나 정수예요.
+
+```python
+>>> sd.linalg.matrix_rank(sd.asarray([[2, 4], [1, 2]]))
+1
+```
+
+## 비슷한 함수와의 차이
+
+| 알고 싶은 것 | 쓸 것 | `matrix_rank`와 다른 점 |
+|---|---|---|
+| 독립인 행·열이 몇 개인가 | `matrix_rank` | |
+| 특이값 자체 | [`svdvals`](/api/linalg/svd/) | 세기 전의 값들을 그대로 돌려줘요. 기준을 직접 정하고 싶을 때 봐요. |
+| 특이에 얼마나 가까운가 | [`cond`](/api/linalg/cond/) | 개수가 아니라 정도를 실수로 답해요. 허용오차로 자르지 않아요. |
+| 넓이·부피가 몇 배가 되는가 | [`det`](/api/linalg/det/) | 정사각 행렬만 받아요. 0인지 비교하는 방법은 반올림 오차에 약해요. |
+| 랭크가 모자란 연립방정식의 해 | [`lstsq`](/api/linalg/lstsq/) | 풀면서 구한 랭크를 결과의 `rank` 필드로 함께 돌려줘요. |
+| 랭크가 모자란 행렬의 역행렬 구실을 하는 것 | [`pinv`](/api/linalg/inv/) | 같은 `rtol`로 작은 특이값을 버리고 유사역행렬을 만들어요. |
+
+## numpy·scipy를 아는 분께
+
+- 허용오차는 상대값 `rtol` 하나뿐이고 keyword-only예요. 절대 허용오차 `tol`과 `hermitian` 인자는 없어요.
+- `rtol`의 기본값(`max(M, N) × eps`)과 "기준보다 큰 특이값의 개수"라는 정의는 numpy와 같아요.
+- 1차원 배열은 `ValueError`예요. numpy는 0이 아닌 원소가 있으면 1을 돌려줘요.
+- `rtol`에 배열을 줄 수 없어요.
+- NaN이나 inf가 있으면 `ValueError`예요. numpy는 `LinAlgError`("SVD did not converge")를 내요.
+- 행렬 하나의 결과는 numpy 정수가 아니라 Python `int`예요.
+- 리스트와 numpy 배열은 받지 않아요. `sd.asarray`로 먼저 바꾸세요.

@@ -5,48 +5,496 @@ group: 선형 시스템
 order: 1
 signatures:
   - "sd.linalg.solve(a, b, /)"
-sample: true
-summary: 선형 시스템 a @ x = b를 일반 LU 분해로 풀어요.
-tag: Array API
+summary: 연립일차방정식 a @ x = b를 풀어서 x를 돌려줘요. 정사각 행렬이면 무엇이든 받는, 선형 시스템 풀이의 기본 함수예요.
 params:
   - name: a
     type: ndarray
     kind: positional-only
-    desc: 계수 행렬. 모양은 (..., N, N).
+    desc: 계수 행렬. 정사각이어야 해요. 모양은 (..., N, N)이고 앞쪽 축은 배치예요.
   - name: b
     type: ndarray
     kind: positional-only
-    desc: 우변. 모양은 (..., N) 또는 (..., N, K).
+    desc: 우변. 1차원이면 길이 N인 벡터 하나, 2차원 이상이면 (..., N, K)로 우변 K개를 열로 나란히 놓은 것이에요.
 returns:
   type: ndarray
-  desc: b와 같은 모양의 해.
+  desc: 해 x. b가 1차원이면 (..., N), 2차원 이상이면 (..., N, K). 정수 입력이어도 float64이고, 복소수가 섞이면 complex128이에요.
 raises:
+  - type: TypeError
+    desc: a나 b가 배열이 아닐 때(리스트, Python 숫자 포함), 인자를 키워드로 넘겼을 때.
+  - type: ValueError
+    desc: a가 2차원 미만이거나 정사각이 아닐 때, a의 크기와 b의 행 수가 다를 때, 배치 축끼리 브로드캐스팅이 안 될 때, a나 b에 NaN·inf가 있을 때.
   - type: LinAlgError
-    desc: 행렬이 특이할 때.
-seeAlso: [solve_triangular, cholesky_solve]
+    desc: a가 특이 행렬일 때(해가 하나로 정해지지 않을 때).
+seeAlso: [basics, errors, solve_triangular, cholesky_solve, lu_solve, lstsq, inv, banded, cond, lu]
 ---
 import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+import Plot from '../../../components/fig/Plot.astro';
 
-## 설명
+## 한눈에 보기
 
-함수의 동작을 길게 풀어 쓰는 자리예요. 이 글은 자리 채움이고, 실제 설명은 나중에 써요.
+`solve`는 **연립일차방정식**을 풀어요. 미지수가 여러 개이고, 그 미지수들에 숫자를 곱해 더한 식이 여러 개 있을 때, 모든 식을 한꺼번에 만족하는 값을 찾는 문제예요.
 
-<Callout type="warn">
-  `solve`는 언제나 일반 LU로 풀어요. 행렬의 구조는 옵션이 아니라 함수 이름으로 골라요.
-</Callout>
+예를 들어 미지수 $x_0$, $x_1$에 대한 식 두 개가 있다고 해 볼게요.
+
+$$
+\begin{aligned}
+3x_0 + 1x_1 &= 9 \\
+1x_0 + 2x_1 &= 8
+\end{aligned}
+$$
+
+미지수 앞에 붙은 숫자(계수)만 모으면 행렬 `a`가 되고, 등호 오른쪽의 숫자를 모으면 벡터 `b`가 돼요. 이 둘을 `solve`에 넣으면 답이 나와요.
+
+```python
+>>> import stardust as sd
+>>> a = sd.asarray([[3.0, 1.0], [1.0, 2.0]])
+>>> b = sd.asarray([9.0, 8.0])
+>>> x = sd.linalg.solve(a, b)
+>>> x
+array([2.0, 3.0], dtype=float64)
+```
+
+$x_0 = 2$, $x_1 = 3$이에요. 원래 식에 넣어 보면 `3×2 + 1×3 = 9`, `1×2 + 2×3 = 8`로 둘 다 맞아요. 코드로는 `a @ x`가 `b`와 같은지 보면 돼요.
+
+```python
+>>> a @ x
+array([9.0, 8.0], dtype=float64)
+```
+
+<Fig caption="solve(a, b)는 a @ x = b가 되는 x를 찾아요. a의 한 행이 식 하나, b의 한 칸이 그 식의 우변이에요.">
+  <ArrayFig name="a" data={[[3, 1], [1, 2]]} note="계수" />
+  <Op>@</Op>
+  <ArrayFig name="x" data={[['x₀'], ['x₁']]} tones={[['b'], ['b']]} note="찾는 값" />
+  <Op>=</Op>
+  <ArrayFig name="b" data={[[9], [8]]} note="우변" />
+</Fig>
 
 <Reference />
 
-## 예제
+## 선형 시스템이란
+
+식들을 행렬로 묶어 쓴 $Ax = b$를 **선형 시스템**(linear system)이라고 불러요. $A$는 계수 행렬, $x$는 미지수를 세로로 늘어놓은 벡터, $b$는 우변이에요. [행렬곱](/api/array/matmul/)의 규칙대로 $A$의 각 행과 $x$를 짝지어 곱하고 더하면 식 하나의 좌변이 되기 때문에, 식 $N$개를 $Ax = b$ 한 줄로 쓸 수 있어요.
+
+$$
+\begin{bmatrix} 3 & 1 \\ 1 & 2 \end{bmatrix}
+\begin{bmatrix} x_0 \\ x_1 \end{bmatrix}
+=
+\begin{bmatrix} 9 \\ 8 \end{bmatrix}
+$$
+
+미지수가 둘이면 그림으로 볼 수 있어요. 식 하나는 평면 위의 직선 하나이고, 두 식을 모두 만족하는 점은 **두 직선이 만나는 점**이에요.
+
+<Fig caption="두 식은 두 직선이에요. 만나는 점 (2, 3)이 solve가 돌려주는 해예요.">
+  <Plot
+    curves={[
+      { f: (t) => 9 - 3 * t, label: '3x₀ + x₁ = 9' },
+      { f: (t) => (8 - t) / 2, label: 'x₀ + 2x₁ = 8' },
+    ]}
+    domain={[0, 4]}
+    range={[0, 6]}
+    xTicks={[
+      { v: 2, label: 'x₀ = 2' },
+    ]}
+    yTicks={[
+      { v: 3, label: '3' },
+    ]}
+  />
+</Fig>
+
+미지수가 셋이면 평면 세 장이 만나는 점, 넷 이상이면 그림으로 그릴 수는 없지만 같은 문제예요. `solve`는 미지수가 몇 개든 같은 방식으로 풀어요.
 
 ```python
-import stardust as sd
-
-a = sd.asarray([[2.0, 1.0], [1.0, 3.0]])
-b = sd.asarray([1.0, 2.0])
-sd.linalg.solve(a, b).tolist()   # [0.19999999999999996, 0.6000000000000001]
+>>> a3 = sd.asarray([[1.0, 1.0, 1.0],
+...                  [0.0, 2.0, 5.0],
+...                  [2.0, 5.0, -1.0]])
+>>> b3 = sd.asarray([6.0, -4.0, 27.0])
+>>> sd.linalg.solve(a3, b3)
+array([ 5.0,  3.0, -2.0], dtype=float64)
 ```
 
-## 참고
+이런 문제는 아주 흔해요. 여러 재료를 섞어 원하는 성분비를 맞출 때, 회로의 각 지점 전압을 구할 때, 데이터에 곡선을 맞출 때, 미분방정식을 격자 위에서 풀 때처럼, "여러 조건을 한꺼번에 만족하는 값"을 찾는 계산의 대부분이 마지막에는 $Ax = b$가 돼요.
 
-구현에 대한 짧은 메모나 다른 라이브러리와 다른 점을 적는 자리예요.
+### 해가 하나로 정해지려면
+
+`solve`는 **식의 개수와 미지수의 개수가 같은** 경우, 곧 `a`가 정사각 행렬인 경우를 풀어요. 그리고 해가 **딱 하나**여야 해요.
+
+두 직선이 평행하면 만나는 점이 없고, 두 직선이 완전히 겹치면 만나는 점이 끝없이 많아요. 어느 쪽이든 해가 하나로 정해지지 않아요. 이런 계수 행렬을 **특이 행렬**(singular matrix)이라고 해요. 한 식의 좌변이 다른 식들의 좌변을 몇 배 해서 더한 것과 같을 때 생겨요.
+
+```python
+>>> s = sd.asarray([[1.0, 2.0], [2.0, 4.0]])
+>>> sd.linalg.solve(s, b)
+Traceback (most recent call last):
+    ...
+stardust.linalg._errors.LinAlgError: solve(): singular matrix
+```
+
+둘째 행 `[2, 4]`가 첫째 행 `[1, 2]`의 두 배라서, 두 식의 직선은 평행해요. `solve`는 이럴 때 `LinAlgError`를 내요. 이 에러를 다루는 방법과 "거의 특이한" 행렬의 함정은 이 페이지 아래쪽의 "조심할 점"에서 다뤄요.
+
+## `b`의 모양: 벡터 하나 또는 열 여러 개
+
+우변 `b`는 두 가지로 줄 수 있어요. **`b`가 몇 차원인지**에 따라 뜻이 정해져요.
+
+| `b`의 차원 | 뜻 | `a`가 `(N, N)`일 때 `b`의 모양 | 결과의 모양 |
+|:---:|---|:---:|:---:|
+| 1차원 | 우변 벡터 하나 | `(N,)` | `(N,)` |
+| 2차원 이상 | 우변 여러 개를 **열로** 나란히 놓은 행렬 | `(N, K)` | `(N, K)` |
+
+1차원 `b`는 위에서 본 그대로예요. 결과도 1차원이에요.
+
+2차원 `b`는 **같은 계수 행렬로 우변만 바꿔 여러 번 푸는** 경우예요. 우변 벡터를 열마다 하나씩 놓으면, 결과의 같은 열에 그 해가 들어가요.
+
+```python
+>>> bs = sd.asarray([[9.0, 5.0],
+...                  [8.0, 5.0]])
+>>> sd.linalg.solve(a, bs)
+array([[2.0, 1.0],
+       [3.0, 2.0]], dtype=float64)
+```
+
+<Fig caption="b의 열 하나가 우변 하나예요. 결과의 같은 열이 그 해예요: 첫 열 [9, 8]의 해는 [2, 3], 둘째 열 [5, 5]의 해는 [1, 2].">
+  <ArrayFig name="a" data={[[3, 1], [1, 2]]} note="shape (2, 2)" />
+  <Op>@</Op>
+  <ArrayFig name="x" data={[[2, 1], [3, 2]]} tones={[['a', 'b'], ['a', 'b']]} note="shape (2, 2)" />
+  <Op>=</Op>
+  <ArrayFig name="b" data={[[9, 5], [8, 5]]} tones={[['a', 'b'], ['a', 'b']]} note="shape (2, 2)" />
+</Fig>
+
+우변을 하나씩 따로 푸는 것보다 이렇게 한 번에 넘기는 쪽이 훨씬 빨라요. 시간이 많이 드는 준비 작업(`a`를 풀기 쉬운 꼴로 바꾸는 일)을 한 번만 하기 때문이에요.
+
+열이 하나뿐인 `(N, 1)`도 2차원이니까 결과도 `(N, 1)`이에요. `(N,)`으로 줄어들지 않아요.
+
+```python
+>>> sd.linalg.solve(a, sd.asarray([[9.0], [8.0]]))
+array([[2.0],
+       [3.0]], dtype=float64)
+```
+
+<Callout type="warn" title="우변 벡터를 행으로 쌓으면 안 돼요">
+
+우변 여러 개를 `[[9, 8], [5, 5]]`처럼 **행마다** 하나씩 쌓기 쉬워요. 하지만 2차원 `b`에서 우변 하나는 **열**이에요. `a`가 2×2이고 우변도 2개이면 모양이 우연히 맞아서 에러 없이 다른 문제의 답이 나와요. 행으로 쌓아 둔 우변은 `.T`로 뒤집어 넣고, 결과도 다시 `.T`로 뒤집어 읽으세요.
+
+</Callout>
+
+이 규칙은 `b`를 받는 다른 풀이 함수([solve_triangular](/api/linalg/solve_triangular/), [cholesky_solve](/api/linalg/cholesky_solve/), [lu_solve](/api/linalg/lu_solve/), [lstsq](/api/linalg/lstsq/), [띠 행렬 풀기](/api/linalg/banded/))에서도 똑같아요. 전체 설명은 [선형대수의 기본](/api/linalg/basics/)에 있어요.
+
+## 여러 시스템을 한꺼번에: 배치
+
+`a`가 3차원 이상이면 **행렬을 여러 장 쌓은 것**으로 봐요. 마지막 두 축이 행렬 한 장이고, 그 앞의 축은 "몇 번째 행렬인가"를 나타내는 **배치** 축이에요. `solve`는 행렬마다 따로 풀어서 결과를 같은 순서로 쌓아 줘요.
+
+```python
+>>> stack = sd.asarray([[[3.0, 1.0], [1.0, 2.0]],
+...                     [[1.0, 0.0], [0.0, 2.0]]])
+>>> stack.shape
+(2, 2, 2)
+```
+
+### 행렬 여러 장에 우변 하나
+
+`b`가 1차원이면 그 벡터 하나를 **모든 행렬에 똑같이** 써요.
+
+```python
+>>> sd.linalg.solve(stack, b)
+array([[2.0, 3.0],
+       [9.0, 4.0]], dtype=float64)
+```
+
+결과의 0번째 행 `[2, 3]`은 `stack[0]`으로 푼 해, 1번째 행 `[9, 4]`는 `stack[1]`로 푼 해예요. 우변은 둘 다 `[9, 8]`이에요.
+
+### 행렬마다 우변이 다를 때
+
+행렬마다 다른 우변 벡터를 주려면 조심해야 해요. 우변 벡터 두 개를 `(2, 2)` 배열로 쌓아서 넘기면, `b`가 2차원이므로 "벡터 두 개"가 아니라 **"열이 두 개인 우변 행렬 하나"** 로 읽어요.
+
+```python
+>>> each = sd.asarray([[9.0, 8.0],
+...                    [4.0, 6.0]])
+>>> sd.linalg.solve(stack, each).shape
+(2, 2, 2)
+```
+
+원하는 것은 "`stack[0]`에는 `[9, 8]`, `stack[1]`에는 `[4, 6]`"이었는데, 결과는 행렬마다 우변 두 개씩을 푼 `(2, 2, 2)`가 됐어요. 벡터를 행렬마다 하나씩 짝지으려면 **끝에 길이 1인 축을 붙여서** `(2, 2, 1)`로 만들어요. "행렬마다 열이 하나인 우변"이라는 뜻이 돼요. 결과에서 그 축을 다시 떼면 벡터의 묶음이에요.
+
+```python
+>>> each[..., None].shape
+(2, 2, 1)
+>>> r = sd.linalg.solve(stack, each[..., None])
+>>> r.shape
+(2, 2, 1)
+>>> r[..., 0]
+array([[2.0, 3.0],
+       [4.0, 3.0]], dtype=float64)
+```
+
+### 배치 축은 브로드캐스팅돼요
+
+`a`의 배치 축과 `b`의 배치 축은 [브로드캐스팅](/api/array/broadcasting/) 규칙으로 맞춰요. 행렬 부분(마지막 두 축)은 그대로 두고 **앞쪽 축들만** 맞춰요.
+
+| `a`의 모양 | `b`의 모양 | `b`를 읽는 방법 | 결과의 모양 |
+|:---:|:---:|---|:---:|
+| `(3, 3)` | `(3,)` | 벡터 하나 | `(3,)` |
+| `(3, 3)` | `(3, 2)` | 우변 2개 | `(3, 2)` |
+| `(5, 3, 3)` | `(3,)` | 벡터 하나를 행렬 5장에 | `(5, 3)` |
+| `(5, 3, 3)` | `(3, 2)` | 우변 2개를 행렬 5장에 | `(5, 3, 2)` |
+| `(5, 3, 3)` | `(5, 3, 1)` | 행렬마다 우변 하나씩 | `(5, 3, 1)` |
+| `(3, 3)` | `(4, 3, 1)` | 행렬 하나에 우변 묶음 4개 | `(4, 3, 1)` |
+| `(2, 1, 3, 3)` | `(4, 3, 2)` | 배치 `(2, 1)`과 `(4,)`를 맞춰요 | `(2, 4, 3, 2)` |
+
+```python
+>>> A = sd.asarray([[[[2.0, 0.0], [0.0, 2.0]]], [[[4.0, 0.0], [0.0, 4.0]]]])
+>>> A.shape
+(2, 1, 2, 2)
+>>> sd.linalg.solve(A, sd.ones((3, 2, 5))).shape
+(2, 3, 2, 5)
+```
+
+배치 축이 맞지 않으면 `ValueError`예요.
+
+```python
+>>> sd.linalg.solve(stack, sd.ones((3, 2, 1)))
+Traceback (most recent call last):
+    ...
+ValueError: solve(): batch shapes do not broadcast: (2,) (3,)
+```
+
+배치로 푼 결과는 행렬을 하나씩 꺼내 따로 푼 결과와 마지막 자리까지 같아요.
+
+## 결과의 dtype
+
+결과는 언제나 실수(float64)나 복소수(complex128)예요. **정수 행렬을 넣어도 결과는 float64**예요. 해가 정수로 떨어지는 문제는 드물기 때문이에요.
+
+```python
+>>> sd.linalg.solve(sd.asarray([[3, 1], [1, 2]]), sd.asarray([9, 8]))
+array([2.0, 3.0], dtype=float64)
+```
+
+`a`와 `b` 가운데 하나라도 복소수면 결과는 complex128이에요.
+
+```python
+>>> sd.linalg.solve(a, sd.asarray([9 + 5j, 8 + 5j]))
+array([(2+1j), (3+2j)], dtype=complex128)
+```
+
+결과는 언제나 새 배열이에요. `a`와 `b`는 바뀌지 않아요.
+
+## 어떤 풀이 함수를 골라야 하나요
+
+`sd.linalg`에는 $Ax = b$를 푸는 함수가 여럿 있어요. **`solve`는 정사각 행렬이면 무엇이든 푸는 기본 함수**이고, 나머지는 행렬에 특별한 성질이 있을 때 그 성질을 이용해 더 빠르게, 또는 `solve`가 못 푸는 문제를 푸는 함수예요.
+
+중요한 점이 하나 있어요. `solve`는 `a`가 삼각 행렬인지, 대칭인지 **살펴보지 않아요.** 어떤 행렬이 와도 같은 일반적인 방법으로 풀어요. 행렬의 성질을 이용하고 싶으면 **그 성질에 맞는 함수를 직접 골라 부르는** 방식이에요. 같은 코드가 값에 따라 다른 방법으로 풀리는 일이 없어서 결과와 속도를 예측할 수 있어요.
+
+| 상황 | 쓸 함수 | 왜 |
+|---|---|---|
+| 정사각 행렬. 특별한 성질을 모르거나 없어요 | **`solve`** | 어떤 정사각 행렬이든 풀어요. 잘 모르겠으면 이것부터 쓰세요. |
+| `a`가 위 삼각이나 아래 삼각 행렬 | [solve_triangular](/api/linalg/solve_triangular/) | 삼각 행렬은 한 줄씩 차례로 대입만 하면 풀려서 훨씬 빨라요. |
+| `a`가 대칭(에르미트)이고 양정치 | [cholesky](/api/linalg/cholesky/) 한 번 + [cholesky_solve](/api/linalg/cholesky_solve/) | 대칭을 이용해 `solve`의 절반쯤 되는 계산으로 풀어요. 분해를 다시 쓸 수도 있어요. |
+| 같은 `a`로 여러 번 푸는데 우변이 **나중에 하나씩** 생겨요 | [lu](/api/linalg/lu/) 한 번 + [lu_solve](/api/linalg/lu_solve/) 여러 번 | 시간이 드는 분해는 한 번만 하고, 우변마다 가벼운 대입만 해요. |
+| 식이 미지수보다 많거나 적어요. 또는 `a`가 특이할 수 있어요 | [lstsq](/api/linalg/lstsq/) | 정확한 해가 없으면 가장 가까운 해를, 해가 많으면 가장 작은 해를 줘요. 에러를 내지 않아요. |
+| `a`가 대각선 근처에만 값이 있어요(띠 행렬, 삼중대각 행렬) | [`solve_banded`, `solve_tridiagonal`](/api/linalg/banded/) | 0인 부분을 건너뛰어서 크기가 큰 문제도 빠르게 풀어요. |
+| 역행렬을 구해서 `inv(a) @ b` | 쓰지 마세요. `solve(a, b)`를 쓰세요 | 더 느리고 덜 정확해요. 바로 아래에서 설명해요. |
+
+우변이 **처음부터 다 있으면** `lu`와 `lu_solve`로 나눌 필요가 없어요. 우변들을 열로 묶어 `solve(a, bs)`를 한 번 부르면 같은 일을 해요.
+
+같은 문제를 여러 함수로 풀어 보면 답은 같아요. 아래 행렬은 대칭이고 양정치라서 세 방법을 모두 쓸 수 있어요.
+
+```python
+>>> p = sd.asarray([[4.0, 2.0], [2.0, 5.0]])
+>>> q = sd.asarray([8.0, 12.0])
+>>> sd.linalg.solve(p, q)
+array([1.0, 2.0], dtype=float64)
+>>> sd.linalg.cholesky_solve(sd.linalg.cholesky(p), q)
+array([1.0, 2.0], dtype=float64)
+>>> sd.linalg.lu_solve(*sd.linalg.lu(p), q)
+array([1.0, 2.0], dtype=float64)
+```
+
+작은 행렬에서는 어느 것을 써도 차이를 느끼기 어려워요. 행렬이 크거나(수백 행 이상) 같은 풀이를 아주 많이 되풀이할 때 맞는 함수를 고르는 보람이 있어요.
+
+### `inv(a) @ b`로 풀지 마세요
+
+수식으로는 $x = A^{-1}b$라고 쓰니까, 코드에서도 [역행렬](/api/linalg/inv/)을 구해서 곱하고 싶어져요. 답은 거의 같게 나오지만 `solve`가 두 가지로 더 나아요.
+
+**첫째, 덜 정확해요.** 역행렬을 구하는 과정에서 반올림 오차가 한 번 생기고, 그것을 `b`에 곱할 때 또 생겨요. `solve`는 역행렬을 거치지 않고 해를 바로 구해요. 맨 처음 예제로 비교해 볼게요.
+
+```python
+>>> sd.linalg.solve(a, b)
+array([2.0, 3.0], dtype=float64)
+>>> sd.linalg.inv(a) @ b
+array([1.9999999999999998,                3.0], dtype=float64)
+```
+
+이 차이는 풀기 까다로운 행렬일수록 커져요. 아래 `h`는 반올림 오차에 민감한 것으로 유명한 행렬이에요. 정답이 `[1, 1, 1]`이 되도록 우변을 만들고, 구한 해를 다시 넣어 `h @ x - hb`가 0에서 얼마나 벗어나는지 볼게요.
+
+```python
+>>> h = sd.asarray([[1.0, 1/2, 1/3], [1/2, 1/3, 1/4], [1/3, 1/4, 1/5]])
+>>> hb = h @ sd.asarray([1.0, 1.0, 1.0])
+>>> float(sd.max(sd.abs(h @ sd.linalg.solve(h, hb) - hb)))
+2.220446049250313e-16
+>>> float(sd.max(sd.abs(h @ (sd.linalg.inv(h) @ hb) - hb)))
+6.439293542825908e-15
+```
+
+`inv`를 거친 쪽이 약 30배 더 벗어났어요.
+
+**둘째, 더 느려요.** 역행렬을 구하는 일은 우변이 `N`개인 시스템을 푸는 것과 같아요. 우변 하나만 풀면 되는데 `N`개를 풀고, 거기에 행렬곱까지 한 번 더 하는 셈이에요.
+
+역행렬 자체가 필요한 경우(역행렬의 원소를 직접 들여다봐야 하는 경우)는 생각보다 드물어요. $A^{-1}b$, $A^{-1}B$처럼 **역행렬을 무언가에 곱하는 식은 모두 `solve`로** 쓸 수 있어요.
+
+| 수식 | 이렇게 쓰지 말고 | 이렇게 쓰세요 |
+|:---:|---|---|
+| $A^{-1}b$ | `inv(a) @ b` | `solve(a, b)` |
+| $A^{-1}B$ | `inv(a) @ B` | `solve(a, B)` |
+| $BA^{-1}$ | `B @ inv(a)` | `solve(a.T, B.T).T` |
+
+## 조심할 점
+
+### 특이 행렬은 `LinAlgError`
+
+해가 하나로 정해지지 않는 행렬은 `LinAlgError`를 내요. `LinAlgError`는 `ValueError`의 한 종류라서 둘 중 어느 이름으로도 잡을 수 있어요.
+
+```python
+>>> try:
+...     sd.linalg.solve(s, b)
+... except sd.linalg.LinAlgError as e:
+...     print("풀 수 없어요:", e)
+풀 수 없어요: solve(): singular matrix
+```
+
+특이한 행렬이 들어올 수 있고 그래도 "가장 그럴듯한 해"가 필요하다면 [lstsq](/api/linalg/lstsq/)를 쓰세요. 에러 없이 가장 가까운 해를 줘요.
+
+```python
+>>> sd.linalg.lstsq(s, sd.asarray([5.0, 10.0])).solution
+array([1.0, 2.0], dtype=float64)
+```
+
+### 거의 특이한 행렬은 에러 없이 엉뚱한 답을 내요
+
+<Callout type="warn" title="에러가 안 났다고 답이 믿을 만한 것은 아니에요">
+
+`solve`가 특이하다고 판단하는 것은 계산 도중 **정확히 0**으로 나눠야 할 때뿐이에요. 수학적으로는 특이한 행렬이라도 실수의 반올림 때문에 그 값이 0이 아니라 아주 작은 수가 되면, 에러 없이 터무니없이 큰 값을 돌려줘요. 경고도 없어요.
+
+</Callout>
+
+아래 행렬은 둘째 행이 첫째 행의 정확히 3배라서 수학적으로는 특이해요. 하지만 `0.1`, `0.3` 같은 수는 컴퓨터 안에서 아주 조금 어긋나 있어서 에러가 나지 않아요.
+
+```python
+>>> near = sd.asarray([[0.1, 0.2], [0.3, 0.6]])
+>>> sd.linalg.solve(near, b)
+array([ 3.4227357168015775e+18, -1.7113678584007887e+18], dtype=float64)
+```
+
+결과가 $10^{18}$ 크기예요. 이런 답은 쓸 수 없어요. 행렬이 풀기에 얼마나 위험한지는 **조건수**([cond](/api/linalg/cond/))로 미리 알 수 있어요. 조건수는 "입력이 조금 흔들릴 때 해가 몇 배나 흔들릴 수 있는가"를 나타내는 값이에요. 1에 가까우면 안전하고, $10^{16}$ 근처이면 결과에 믿을 수 있는 자리가 하나도 없어요.
+
+```python
+>>> sd.linalg.cond(near)
+1.797568610089646e+16
+>>> sd.linalg.cond(a)
+2.6180339887498953
+```
+
+자세한 것은 [실패와 에러](/api/linalg/errors/)에 있어요.
+
+### 모양이 맞지 않을 때
+
+`a`는 정사각이어야 하고, `b`의 행 수는 `a`의 크기와 같아야 해요.
+
+```python
+>>> sd.linalg.solve(sd.ones((2, 3)), b)
+Traceback (most recent call last):
+    ...
+ValueError: solve(): 'a' must be square in its last two dimensions, got 2x3
+>>> sd.linalg.solve(a, sd.ones(3))
+Traceback (most recent call last):
+    ...
+ValueError: solve(): 'a' is 2x2 but 'b' has 3 rows
+```
+
+식과 미지수의 개수가 다른 문제는 [lstsq](/api/linalg/lstsq/)로 풀어요.
+
+행렬 여러 장에 우변 벡터를 하나씩 짝지으려다가 `(5, 3, 3)`과 `(5, 3)`을 넘기면 아래와 같은 에러를 만나요. `(5, 3)`은 2차원이라 "행이 5개인 우변 행렬"로 읽기 때문이에요. 위에서 본 대로 `b[..., None]`으로 넘기세요.
+
+```python
+>>> sd.linalg.solve(sd.ones((5, 3, 3)), sd.ones((5, 3)))
+Traceback (most recent call last):
+    ...
+ValueError: solve(): 'a' is 3x3 but 'b' has 5 rows
+```
+
+### 리스트와 숫자는 받지 않아요
+
+`a`와 `b`는 배열이어야 해요. 리스트는 먼저 [`asarray`](/api/array/asarray/)로 바꾸세요.
+
+```python
+>>> sd.linalg.solve([[3.0, 1.0], [1.0, 2.0]], b)
+Traceback (most recent call last):
+    ...
+TypeError: solve(): 'a' must be an sd.ndarray, not list
+>>> sd.linalg.solve(a, [9.0, 8.0])
+Traceback (most recent call last):
+    ...
+TypeError: solve(): 'b' must be an sd.ndarray, not list
+```
+
+### NaN과 inf가 있으면 에러
+
+`a`나 `b`에 NaN이나 무한대가 하나라도 있으면 계산하지 않고 `ValueError`를 내요. 이런 값이 섞인 채로 풀면 결과 전체가 뜻 없는 값이 되기 때문에, 조용히 넘어가지 않고 알려 주는 거예요. 이 검사는 끌 수 없어요.
+
+```python
+>>> sd.linalg.solve(sd.asarray([[sd.nan, 1.0], [1.0, 2.0]]), b)
+Traceback (most recent call last):
+    ...
+ValueError: solve(): 'a' contains NaN or infinity
+>>> sd.linalg.solve(a, sd.asarray([sd.inf, 1.0]))
+Traceback (most recent call last):
+    ...
+ValueError: solve(): 'b' contains NaN or infinity
+```
+
+### 배치 중 하나만 실패해도 전체가 실패해요
+
+여러 행렬을 한꺼번에 풀다가 하나라도 특이하면 호출 전체가 에러예요. 일부만 푼 결과는 돌려주지 않아요. 메시지 끝에 **몇 번째 행렬**에서 실패했는지 나와요.
+
+```python
+>>> bad = sd.asarray([[[3.0, 1.0], [1.0, 2.0]],
+...                   [[1.0, 2.0], [2.0, 4.0]]])
+>>> sd.linalg.solve(bad, b)
+Traceback (most recent call last):
+    ...
+stardust.linalg._errors.LinAlgError: solve(): singular matrix (at batch index (1,))
+```
+
+### 빈 입력
+
+크기가 0인 시스템이나 우변이 0개인 경우도 에러 없이 그 모양의 빈 배열을 돌려줘요.
+
+```python
+>>> sd.linalg.solve(sd.zeros((0, 0)), sd.zeros((0,)))
+array([], dtype=float64)
+>>> sd.linalg.solve(a, sd.zeros((2, 0)))
+array([], shape=(2, 0), dtype=float64)
+```
+
+## 비슷한 함수와의 차이
+
+| 함수 | 받는 행렬 | 무엇이 다른가요 |
+|---|---|---|
+| `solve(a, b)` | 정사각 행렬 아무것이나 | 기본 풀이. 행렬의 성질을 살펴보지 않아요. |
+| [`solve_triangular(a, b, upper=...)`](/api/linalg/solve_triangular/) | 삼각 행렬 | 고른 쪽 삼각만 읽어서 대입으로 풀어요. `upper`를 꼭 줘야 해요. |
+| [`cholesky_solve(l, b)`](/api/linalg/cholesky_solve/) | `cholesky`가 만든 삼각 행렬 | 원래 행렬이 아니라 **분해한 결과**를 받아요. 대칭 양정치 행렬 전용이에요. |
+| [`lu_solve(l, u, perm, b)`](/api/linalg/lu_solve/) | `lu`가 만든 세 결과 | 원래 행렬이 아니라 **분해한 결과**를 받아요. `solve`와 답이 마지막 자리까지 같아요. |
+| [`lstsq(a, b)`](/api/linalg/lstsq/) | 모양이 아무래도 되는 행렬 | 정사각이 아니어도, 특이해도 돼요. 해와 함께 랭크와 특이값도 돌려줘요. |
+| [`inv(x)`](/api/linalg/inv/) | 정사각 행렬 | 해가 아니라 역행렬을 돌려줘요. 풀이에는 `solve`가 나아요. |
+| [`solve_tridiagonal`, `solve_banded`](/api/linalg/banded/) | 대각선 근처만 저장한 띠 행렬 | 행렬 전체가 아니라 띠 부분만 넘겨요. |
+
+`solve`와 `lu_solve`의 관계는 간단해요. `solve`는 속에서 `a`를 풀기 쉬운 꼴로 나눈 다음 그것으로 푸는데, [lu](/api/linalg/lu/)와 `lu_solve`는 그 두 단계를 따로 꺼내 쓸 수 있게 한 것이에요.
+
+## numpy·scipy를 아는 분께
+
+- `b`의 규칙은 `np.linalg.solve`(numpy 2 이상)와 같아요: 1차원일 때만 벡터이고, 그 밖에는 열 묶음이에요.
+- **`solve`는 행렬의 구조를 판별하지 않아요.** `scipy.linalg.solve`의 `assume_a=`, `lower=`, `transposed=` 같은 옵션이 없어요. 삼각이면 `solve_triangular`, 양정치면 `cholesky_solve`, 띠면 `solve_banded`를 직접 부르세요.
+- **조건이 나쁘다는 경고가 없어요.** scipy의 `LinAlgWarning`(ill-conditioned)에 해당하는 것이 없으니 필요하면 `cond`로 직접 확인하세요.
+- NaN·inf 검사를 끄는 `check_finite=`가 없어요. 언제나 검사하고, 걸리면 `ValueError`예요. numpy는 검사 없이 NaN을 흘려보내요.
+- 리스트와 numpy 배열은 받지 않아요(`TypeError`). `overwrite_a=`, `overwrite_b=`도 없어요.
+- 특이 행렬의 에러는 `sd.linalg.LinAlgError`예요. `ValueError`의 하위 클래스이고, `np.linalg.LinAlgError`와는 다른 클래스예요.
+- 정수 입력의 결과가 float64인 것은 numpy와 같아요.

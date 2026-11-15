@@ -1,0 +1,423 @@
+---
+title: lu
+names: [lu]
+group: 분해
+order: 1
+signatures:
+  - "sd.linalg.lu(x, /)"
+summary: 행렬을 아래 삼각 행렬 L과 위 삼각 행렬 U의 곱으로 나눠요. 계산 중에 행의 순서를 바꾸는데, 그 순서는 perm에 담겨 나와요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 분해할 행렬. 모양은 (..., M, N)이고 정사각이 아니어도 돼요. 앞쪽 축이 있으면 행렬 여러 개로 봐요.
+returns:
+  type: LUResult(L, U, perm)
+  desc: "이름 있는 튜플. K = min(M, N)일 때 L은 대각이 1인 아래 삼각 (..., M, K), U는 위 삼각 (..., K, N), perm은 행의 순서를 담은 int64 배열 (..., M)이에요. x[perm]이 L @ U와 같아요."
+raises:
+  - type: TypeError
+    desc: x가 배열이 아닐 때(리스트, Python 숫자 포함).
+  - type: ValueError
+    desc: x가 2차원보다 작을 때, x에 NaN이나 inf가 있을 때.
+seeAlso: [lu_solve, solve, det, cholesky, ldl, qr, basics, errors]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+`lu`는 행렬 하나를 **두 삼각 행렬의 곱**으로 나눠요. 이것을 LU 분해라고 해요.
+
+- `L`은 **아래 삼각**(lower) 행렬이에요. 대각선 위쪽이 모두 0이고, 대각선은 모두 1이에요.
+- `U`는 **위 삼각**(upper) 행렬이에요. 대각선 아래쪽이 모두 0이에요.
+
+굳이 나누는 이유는 **삼각 행렬로 된 연립방정식은 아주 쉽게 풀리기** 때문이에요. 한 줄에 미지수가 하나씩만 새로 나타나서, 위에서부터(또는 아래에서부터) 차례로 값을 구하면 끝나요. 그래서 행렬을 한 번 분해해 두면 같은 행렬로 된 방정식을 여러 번 빠르게 풀 수 있고, 행렬식도 바로 나와요.
+
+```python
+>>> import stardust as sd
+>>> a = sd.asarray([[1.0, 2.0, 6.0],
+...                 [4.0, 4.0, 8.0],
+...                 [2.0, 4.0, 6.0]])
+>>> r = sd.linalg.lu(a)
+>>> r.L
+array([[ 1.0,  0.0,  0.0],
+       [ 0.5,  1.0,  0.0],
+       [0.25,  0.5,  1.0]], dtype=float64)
+>>> r.U
+array([[4.0, 4.0, 8.0],
+       [0.0, 2.0, 2.0],
+       [0.0, 0.0, 3.0]], dtype=float64)
+>>> r.perm
+array([1, 2, 0], dtype=int64)
+```
+
+결과는 세 개예요. `L`과 `U`를 곱하면 `a`가 그대로 나오는 것이 아니라, **`a`의 행을 `perm`의 순서로 다시 늘어놓은 행렬**이 나와요.
+
+```python
+>>> r.L @ r.U
+array([[4.0, 4.0, 8.0],
+       [2.0, 4.0, 6.0],
+       [1.0, 2.0, 6.0]], dtype=float64)
+>>> a[r.perm]
+array([[4.0, 4.0, 8.0],
+       [2.0, 4.0, 6.0],
+       [1.0, 2.0, 6.0]], dtype=float64)
+```
+
+<Fig caption="a의 행을 perm = [1, 2, 0] 순서로 늘어놓은 행렬이 L × U예요. 흐린 칸은 정확히 0인 반대쪽 삼각이에요.">
+  <ArrayFig name="a[perm]" data={[[4, 4, 8], [2, 4, 6], [1, 2, 6]]} note="행을 바꾼 a" />
+  <Op>=</Op>
+  <ArrayFig name="L" data={[[1, 0, 0], [0.5, 1, 0], [0.25, 0.5, 1]]} tones={[['a', 'm', 'm'], ['a', 'a', 'm'], ['a', 'a', 'a']]} note="아래 삼각, 대각은 1" />
+  <Op>×</Op>
+  <ArrayFig name="U" data={[[4, 4, 8], [0, 2, 2], [0, 0, 3]]} tones={[['a', 'a', 'a'], ['m', 'a', 'a'], ['m', 'm', 'a']]} note="위 삼각" />
+</Fig>
+
+수식으로 쓰면, 행의 순서를 바꾸는 행렬을 $P$라고 할 때
+
+$$PA = LU$$
+
+예요. stardust는 $P$를 행렬로 주지 않고, 같은 정보를 인덱스 배열 `perm`으로 줘요.
+
+<Reference />
+
+## 결과를 꺼내는 두 가지 방법
+
+`lu`의 결과는 필드가 셋인 **이름 있는 튜플**이에요. 위에서처럼 `r.L`, `r.U`, `r.perm`으로 꺼내도 되고, 변수 셋에 한 번에 풀어 담아도 돼요. 순서는 언제나 `L`, `U`, `perm`이에요.
+
+```python
+>>> L, U, perm = sd.linalg.lu(a)
+>>> perm
+array([1, 2, 0], dtype=int64)
+>>> L is r.L
+False
+>>> r[0] is r.L
+True
+```
+
+| 필드 | 무엇인가요 | 모양 | dtype |
+|:---:|---|:---:|:---:|
+| `L` | 아래 삼각 행렬. 대각선은 모두 1, 대각선 위는 정확히 0 | `(..., M, K)` | float64 또는 complex128 |
+| `U` | 위 삼각 행렬. 대각선 아래는 정확히 0 | `(..., K, N)` | float64 또는 complex128 |
+| `perm` | 행의 순서. `0`부터 `M-1`까지가 한 번씩 들어 있어요 | `(..., M)` | int64 |
+
+`K`는 행 수 `M`과 열 수 `N` 가운데 작은 쪽이에요. 정사각 행렬이면 셋 다 `N`이라서 `L`과 `U`가 모두 `(N, N)`이에요.
+
+## `perm`: 행을 어떤 순서로 늘어놓았나
+
+### 읽는 법
+
+`perm[i]`는 **"늘어놓은 행렬의 i번째 행은 원래 행렬의 몇 번째 행인가"** 예요. 위 예의 `perm = [1, 2, 0]`은 "첫 줄에 원래의 1번 행, 둘째 줄에 2번 행, 셋째 줄에 0번 행"이라는 뜻이에요. 배열을 정수 배열로 인덱싱하면 바로 그렇게 늘어놓은 행렬이 나와요.
+
+<Fig caption="a[perm]은 perm에 적힌 차례대로 a의 행을 가져와요. 원래 1번 행이었던 [4, 4, 8]이 맨 위로 왔어요.">
+  <ArrayFig name="a" data={[[1, 2, 6], [4, 4, 8], [2, 4, 6]]} tones={[['', '', ''], ['b', 'b', 'b'], ['', '', '']]} note="행 0, 1, 2" />
+  <Op note="a[perm]">→</Op>
+  <ArrayFig name="a[perm]" data={[[4, 4, 8], [2, 4, 6], [1, 2, 6]]} tones={[['b', 'b', 'b'], ['', '', ''], ['', '', '']]} note="원래의 행 1, 2, 0" />
+</Fig>
+
+그래서 분해가 맞는지는 `a[perm]`과 `L @ U`를 비교해서 확인해요.
+
+```python
+>>> float(sd.max(sd.abs(a[perm] - L @ U)))
+0.0
+```
+
+이 예는 값이 깔끔해서 차이가 정확히 0이에요. 보통의 행렬에서는 반올림 때문에 `1e-15` 근처의 아주 작은 차이가 남아요.
+
+### 왜 행을 바꾸나요
+
+LU 분해는 맨 위 행을 써서 그 아래 행들의 첫 열을 0으로 만들고, 다음 행으로 내려가 같은 일을 되풀이하는 계산이에요. 이때 기준이 되는 대각 원소(**피벗**)로 나누기를 해요. 피벗이 0이면 나눌 수 없고, 0은 아니어도 아주 작으면 반올림 오차가 크게 불어나요.
+
+그래서 단계마다 **그 열에서 절댓값이 가장 큰 값이 있는 행을 위로 올려서** 피벗으로 써요. `a`의 첫 열은 `[1, 4, 2]`라서 `4`가 있는 1번 행이 맨 위로 올라갔어요.
+
+행을 바꾸지 않으면 아예 분해할 수 없는 행렬도 있어요. 왼쪽 위가 0인 행렬이 그래요.
+
+```python
+>>> z = sd.linalg.lu(sd.asarray([[0.0, 1.0],
+...                              [1.0, 1.0]]))
+>>> z.perm
+array([1, 0], dtype=int64)
+>>> z.U
+array([[1.0, 1.0],
+       [0.0, 1.0]], dtype=float64)
+```
+
+가장 큰 값을 피벗으로 쓰기 때문에, **`L`의 대각선 아래 값은 절댓값이 언제나 1 이하**예요.
+
+### 원래 순서로 되돌리기
+
+`L @ U`에서 `a`를 되찾으려면 순서를 거꾸로 돌려야 해요. `perm`으로 한 번 더 인덱싱하면 **안 돼요.** 거꾸로 가는 순서는 [`sd.argsort(perm)`](/api/array/sort/)이에요.
+
+```python
+>>> (L @ U)[sd.argsort(perm)]
+array([[1.0, 2.0, 6.0],
+       [4.0, 4.0, 8.0],
+       [2.0, 4.0, 6.0]], dtype=float64)
+>>> (L @ U)[perm]
+array([[2.0, 4.0, 6.0],
+       [1.0, 2.0, 6.0],
+       [4.0, 4.0, 8.0]], dtype=float64)
+```
+
+행 두 개만 맞바꾼 `perm`(예: `[1, 0, 2]`)은 두 번 적용하면 제자리로 돌아오기 때문에 이 실수가 드러나지 않아요. 위처럼 세 행이 돌아가며 바뀐 경우에 비로소 틀린 결과가 보여요.
+
+순열을 행렬 $P$로 갖고 싶다면 단위행렬의 행을 같은 순서로 늘어놓으면 돼요. 그러면 `P @ a`가 `a[perm]`과 같아요.
+
+```python
+>>> P = sd.eye(3)[perm]
+>>> P
+array([[0.0, 1.0, 0.0],
+       [0.0, 0.0, 1.0],
+       [1.0, 0.0, 0.0]], dtype=float64)
+>>> P @ a
+array([[4.0, 4.0, 8.0],
+       [2.0, 4.0, 6.0],
+       [1.0, 2.0, 6.0]], dtype=float64)
+```
+
+## 어디에 쓰나요
+
+### 같은 행렬로 방정식을 여러 번 풀기
+
+연립방정식 $Ax = b$를 푸는 일의 대부분은 $A$를 분해하는 데 들어요. 분해해 두면 우변 $b$가 바뀔 때마다 삼각 행렬 두 개만 차례로 풀면 돼요. 그 일을 해 주는 함수가 [lu_solve](/api/linalg/lu_solve/)예요. `lu`의 결과 셋과 우변을 차례로 넘겨요.
+
+```python
+>>> sd.linalg.lu_solve(L, U, perm, sd.asarray([23.0, 36.0, 28.0]))
+array([1.0, 2.0, 3.0], dtype=float64)
+>>> sd.linalg.lu_solve(L, U, perm, sd.asarray([9.0, 16.0, 12.0]))
+array([1.0, 1.0, 1.0], dtype=float64)
+```
+
+결과 튜플을 `*`로 풀어서 `sd.linalg.lu_solve(*r, b)`라고 써도 같아요. 한 번만 풀 거라면 분해를 따로 할 것 없이 [solve](/api/linalg/solve/)를 쓰세요. `solve(a, b)`와 `lu_solve(*lu(a), b)`의 결과는 같아요.
+
+`lu_solve`가 하는 일을 손으로 풀어 쓰면 이래요. $PA = LU$이므로 $Ax = b$는 $LUx = Pb$와 같고, 이것을 두 단계로 나눠요.
+
+1. 우변의 순서를 `perm`대로 바꿔요: `b[perm]`
+2. $Ly = Pb$를 풀어요 (아래 삼각, 위에서부터 차례로)
+3. $Ux = y$를 풀어요 (위 삼각, 아래에서부터 차례로)
+
+```python
+>>> b = sd.asarray([23.0, 36.0, 28.0])
+>>> y = sd.linalg.solve_triangular(L, b[perm], upper=False)
+>>> y
+array([36.0, 10.0,  9.0], dtype=float64)
+>>> sd.linalg.solve_triangular(U, y, upper=True)
+array([1.0, 2.0, 3.0], dtype=float64)
+```
+
+### 행렬식
+
+삼각 행렬의 행렬식은 대각 원소의 곱이에요. `L`의 대각은 모두 1이므로 `L @ U`의 행렬식은 **`U`의 대각 원소를 모두 곱한 값**이에요.
+
+```python
+>>> sd.prod(sd.linalg.diagonal(U))
+24.0
+>>> sd.linalg.det(a)
+24.0
+```
+
+다만 행을 한 번 맞바꿀 때마다 행렬식의 부호가 뒤집혀요. `U`의 대각 곱은 `a[perm]`의 행렬식이라서, **맞바꾼 횟수가 홀수이면 `a`의 행렬식과 부호가 반대**예요. 아래 행렬은 위 `a`에서 0번 행과 2번 행의 자리만 다른데, `U`는 같고 행렬식의 부호만 달라요.
+
+```python
+>>> a2 = sd.asarray([[2.0, 4.0, 6.0],
+...                  [4.0, 4.0, 8.0],
+...                  [1.0, 2.0, 6.0]])
+>>> r2 = sd.linalg.lu(a2)
+>>> r2.perm
+array([1, 0, 2], dtype=int64)
+>>> sd.prod(sd.linalg.diagonal(r2.U))
+24.0
+>>> sd.linalg.det(a2)
+-24.0
+```
+
+행렬식만 필요하면 부호까지 챙겨 주는 [det](/api/linalg/det/)를 쓰세요.
+
+## 정사각이 아닌 행렬
+
+`lu`는 행과 열의 수가 달라도 돼요. `M`행 `N`열 행렬에서 `K = min(M, N)`이라고 하면 `L`은 `(M, K)`, `U`는 `(K, N)`이에요. 둘 중 하나만 정사각이 되고, 다른 하나는 직사각 모양의 "사다리꼴"이에요.
+
+| `x`의 모양 | `L` | `U` | `perm` |
+|:---:|:---:|:---:|:---:|
+| `(3, 3)` | `(3, 3)` | `(3, 3)` | `(3,)` |
+| `(2, 3)` 가로로 긴 | `(2, 2)` | `(2, 3)` | `(2,)` |
+| `(3, 2)` 세로로 긴 | `(3, 2)` | `(2, 2)` | `(3,)` |
+
+```python
+>>> wide = sd.linalg.lu(sd.asarray([[4.0, 4.0, 8.0],
+...                                 [2.0, 4.0, 6.0]]))
+>>> wide.L
+array([[1.0, 0.0],
+       [0.5, 1.0]], dtype=float64)
+>>> wide.U
+array([[4.0, 4.0, 8.0],
+       [0.0, 2.0, 2.0]], dtype=float64)
+>>> tall = sd.linalg.lu(sd.asarray([[4.0, 2.0],
+...                                 [2.0, 3.0],
+...                                 [1.0, 1.0]]))
+>>> tall.L
+array([[ 1.0,  0.0],
+       [ 0.5,  1.0],
+       [0.25, 0.25]], dtype=float64)
+>>> tall.U
+array([[4.0, 2.0],
+       [0.0, 2.0]], dtype=float64)
+```
+
+`perm`의 길이는 언제나 행 수 `M`이에요. 정사각이 아닌 분해는 [lu_solve](/api/linalg/lu_solve/)에 넘길 수 없어요. 방정식의 수와 미지수의 수가 다른 문제는 [lstsq](/api/linalg/lstsq/)로 풀어요.
+
+## 특이 행렬도 분해해요
+
+역행렬이 없는 행렬을 **특이 행렬**이라고 해요. 어떤 행이 다른 행들의 배수나 합으로 만들어지는 행렬이 그래요. `lu`는 특이 행렬도 **에러 없이** 분해해요. 그 흔적은 `U`의 대각에 `0`으로 남아요.
+
+```python
+>>> s = sd.linalg.lu(sd.asarray([[1.0, 2.0],
+...                              [2.0, 4.0]]))
+>>> s.U
+array([[2.0, 4.0],
+       [0.0, 0.0]], dtype=float64)
+>>> s.L
+array([[1.0, 0.0],
+       [0.5, 1.0]], dtype=float64)
+```
+
+분해 자체는 여전히 맞아요(`x[perm]`이 `L @ U`와 같아요). 문제는 이 결과로 방정식을 풀 때 생겨요. `U`의 대각에 0이 있으면 나눌 수 없으므로 `lu_solve`가 `LinAlgError`를 내요.
+
+```python
+>>> sd.linalg.lu_solve(*s, sd.asarray([1.0, 2.0]))
+Traceback (most recent call last):
+    ...
+stardust.linalg._errors.LinAlgError: lu_solve(): singular matrix
+```
+
+<Callout type="warn" title="U의 대각에 0이 없다고 안심할 수는 없어요">
+
+계산은 반올림을 하면서 진행되기 때문에, 수학적으로는 특이한 행렬인데도 `U`의 대각에 정확한 0 대신 `1e-17` 같은 아주 작은 값이 남는 일이 흔해요. 그러면 에러 없이 터무니없이 큰 해가 나와요. 행렬이 특이한지, 특이에 가까운지는 [cond](/api/linalg/cond/)나 [matrix_rank](/api/linalg/matrix_rank/)로 확인하세요.
+
+</Callout>
+
+## 행렬 여러 개를 한꺼번에
+
+3차원 이상의 배열은 마지막 두 축이 행렬이고, 그 앞의 축은 "몇 번째 행렬인가"를 나타내는 **배치** 축이에요. `lu`는 행렬마다 따로 분해해서 같은 배치 모양으로 돌려줘요.
+
+```python
+>>> stack = sd.asarray([[[1.0, 2.0], [4.0, 6.0]],
+...                     [[4.0, 2.0], [2.0, 3.0]]])
+>>> rb = sd.linalg.lu(stack)
+>>> rb.L.shape, rb.U.shape, rb.perm.shape
+((2, 2, 2), (2, 2, 2), (2, 2))
+>>> rb.perm
+array([[1, 0],
+       [0, 1]], dtype=int64)
+```
+
+`perm`의 행 하나가 행렬 하나의 순서예요. 첫 행렬은 두 행을 맞바꿨고, 둘째 행렬은 그대로 뒀어요.
+
+배치에서는 행렬마다 순서가 달라서 `stack[rb.perm]`처럼 쓸 수 없어요. 행 축(`axis=-2`)을 따라 행렬마다 다른 순서로 가져오려면 [`sd.take_along_axis`](/api/array/take/)를 써요.
+
+```python
+>>> moved = sd.take_along_axis(stack, rb.perm[..., None], axis=-2)
+>>> moved
+array([[[4.0, 6.0],
+        [1.0, 2.0]],
+
+       [[4.0, 2.0],
+        [2.0, 3.0]]], dtype=float64)
+>>> float(sd.max(sd.abs(moved - rb.L @ rb.U)))
+0.0
+```
+
+`lu_solve`는 배치의 `perm`을 그대로 받으므로, 방정식을 풀기만 한다면 이 일을 직접 할 필요는 없어요.
+
+## 조심할 점
+
+### `L @ U`는 `x`가 아니라 `x[perm]`이에요
+
+<Callout type="warn" title="perm을 빼먹지 마세요">
+
+`perm`이 `[0, 1, 2, ...]`처럼 제자리 순서로 나오는 행렬도 많아요. 그런 행렬로만 시험해 보면 `L @ U == x`처럼 보여서 `perm`을 무시한 코드가 그대로 통과해요. 행이 한 번이라도 바뀌는 행렬을 만나면 조용히 틀린 결과가 나와요. `L`과 `U`를 직접 쓸 때는 언제나 `perm`을 함께 적용하세요.
+
+</Callout>
+
+### 정수 행렬을 넣어도 결과는 실수예요
+
+분해에는 나눗셈이 들어가므로 정수나 bool 행렬은 float64로 바꿔서 계산해요. `L`과 `U`는 언제나 float64(복소수 입력이면 complex128)이고, `perm`만 int64예요.
+
+```python
+>>> ri = sd.linalg.lu(sd.asarray([[2, 1], [4, 5]]))
+>>> ri.L
+array([[1.0, 0.0],
+       [0.5, 1.0]], dtype=float64)
+>>> ri.U
+array([[ 4.0,  5.0],
+       [ 0.0, -1.5]], dtype=float64)
+```
+
+### NaN과 inf는 받지 않아요
+
+행렬에 NaN이나 무한대가 하나라도 있으면 계산하기 전에 `ValueError`를 내요. 배치라면 몇 번째 행렬인지가 메시지 끝에 붙어요.
+
+```python
+>>> sd.linalg.lu(sd.asarray([[1.0, sd.nan], [3.0, 4.0]]))
+Traceback (most recent call last):
+    ...
+ValueError: lu(): 'x' contains NaN or infinity
+>>> sd.linalg.lu(sd.asarray([[[4.0, 2.0], [2.0, 3.0]],
+...                          [[1.0, sd.inf], [3.0, 4.0]]]))
+Traceback (most recent call last):
+    ...
+ValueError: lu(): 'x' contains NaN or infinity (at batch index (1,))
+```
+
+### 배열만 받아요
+
+리스트는 먼저 [`sd.asarray`](/api/array/asarray/)로 배열로 바꾸세요. 1차원 배열은 행렬이 아니라서 `ValueError`예요.
+
+```python
+>>> sd.linalg.lu([[1.0, 2.0], [3.0, 4.0]])
+Traceback (most recent call last):
+    ...
+TypeError: lu(): 'x' must be an sd.ndarray, not list
+>>> sd.linalg.lu(sd.asarray([1.0, 2.0]))
+Traceback (most recent call last):
+    ...
+ValueError: lu(): 'x' must have at least 2 dimensions, got 1
+```
+
+### 빈 행렬
+
+행이나 열이 0개인 행렬은 에러 없이 그 모양의 빈 결과를 돌려줘요.
+
+```python
+>>> e = sd.linalg.lu(sd.zeros((0, 3)))
+>>> e.L.shape, e.U.shape, e.perm.shape
+((0, 0), (0, 3), (0,))
+```
+
+### 결과는 새 배열이에요
+
+`L`, `U`, `perm`은 모두 새로 만든 배열이에요. 입력 `x`는 바뀌지 않고, 결과를 고쳐도 `x`에 영향이 없어요. 에러의 종류와 메시지 전체는 [실패와 에러](/api/linalg/errors/)에, 배치와 결과 dtype의 공통 규칙은 [선형대수의 기본](/api/linalg/basics/)에 있어요.
+
+## 비슷한 함수와의 차이
+
+| 하고 싶은 일 | 쓸 것 | `lu`와 다른 점 |
+|---|---|---|
+| 방정식을 한 번 풀기 | [solve](/api/linalg/solve/) | 분해와 풀이를 한 번에 해요. 분해 결과는 남지 않아요. |
+| 분해해 둔 결과로 방정식 풀기 | [lu_solve](/api/linalg/lu_solve/) | `lu`의 결과 셋을 받아요. 특이 행렬이면 여기서 에러가 나요. |
+| 행렬식 | [det](/api/linalg/det/) | `perm`에서 오는 부호까지 맞춰서 숫자 하나를 줘요. |
+| 대칭이고 양정치인 행렬 분해 | [cholesky](/api/linalg/cholesky/) | 삼각 행렬 하나로 끝나고 `perm`이 없어요. 더 빠르지만 양정치가 아니면 에러예요. |
+| 대칭이지만 양정치가 아닌 행렬 분해 | [ldl](/api/linalg/ldl/) | 대칭을 살려서 `L`, `D`로 나눠요. |
+| 최소제곱, 직교 기저 | [QR 분해](/api/linalg/qr/) | 한쪽 인자가 삼각이 아니라 직교 행렬이에요. |
+| 랭크 구하기 | [matrix_rank](/api/linalg/matrix_rank/) | `U`의 대각에서 0을 세는 것보다 믿을 수 있어요. |
+
+`lu`는 아무 조건 없이 어떤 행렬이든 분해해요. 행렬이 대칭이면서 양정치라는 것을 알고 있다면 `cholesky`가 일도 절반이고 결과도 단순해요.
+
+## numpy·scipy를 아는 분께
+
+- numpy에는 LU 분해 함수가 없어요. scipy의 `scipy.linalg.lu`에 해당해요.
+- **순열을 주는 방식이 달라요.** `scipy.linalg.lu(a)`는 `a = P @ L @ U`인 순열 행렬 `P`를 돌려줘요. stardust는 `a[perm] = L @ U`인 인덱스 벡터 `perm`을 주고, 결과의 순서도 `(L, U, perm)`으로 순열이 맨 뒤예요. scipy의 `P`와 같은 행렬은 `sd.eye(M)[perm].T`예요.
+- `scipy.linalg.lu_factor`처럼 `L`과 `U`를 한 행렬에 겹쳐 담은 결과는 없어요. [lu_solve](/api/linalg/lu_solve/)도 `L`, `U`, `perm`을 따로 받아요.
+- `permute_l=`, `p_indices=`, `overwrite_a=`, `check_finite=` 옵션은 없어요. NaN·inf 검사는 끌 수 없어요.
+- 리스트와 numpy 배열은 받지 않아요(`TypeError`).
+- 정수 입력의 결과는 float64예요. 복소수가 아니면 float32 같은 다른 실수 dtype은 없어요.

@@ -46,7 +46,7 @@ export const sidebars: Record<string, NavGroup[]> = {
     },
     {
       title: '영역',
-      items: [{ label: '선형대수', href: '/api/linalg/', badge: '샘플' }],
+      items: [{ label: '선형대수', href: '/api/linalg/' }],
     },
   ],
   internals: [
