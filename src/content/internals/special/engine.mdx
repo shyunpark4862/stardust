@@ -1,0 +1,554 @@
+---
+title: 원소별 엔진과 병렬화
+group: 구조
+order: 2
+summary: 특수함수가 배열 영역의 원소별 엔진 위에서 어떻게 돌아가는지 설명해요. 입력이 넷까지인 n항 디스패처, 함수 하나를 적는 Op 구조체, 원소당 비용으로 정하는 병렬 기준, NEON 레인과 vForce를 섞는 청크 커널과 분기를 남긴 이유, Horner와 Estrin, logsumexp·softmax·log_softmax의 구조, 결과가 레이아웃과 스레드 수에 상관없이 비트까지 같은 이유를 다뤄요.
+seeAlso: [overview, techniques, erf-gamma, more-functions, accuracy-performance]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+import Tree from '../../../components/fig/Tree.astro';
+
+## 한눈에 보기
+
+특수함수는 대부분 원소별 함수예요. `betainc(a, b, x)`는 세 입력을 브로드캐스트하고 원소마다 $I_x(a, b)$를 계산해요. 브로드캐스팅, `out=`, dtype 변환, 메모리 겹침, 스레드 분할은 `sd.add` 같은 배열의 원소별 함수와 똑같은 일이에요. 그래서 특수함수 영역은 엔진을 따로 만들지 않고 배열 영역의 원소별 엔진([연산 엔진](/internals/array/engine/), [원소별 커널](/internals/array/elementwise/))을 그대로 써요.
+
+다만 배열의 원소별 연산은 입력이 하나나 둘이고, 병렬 기준은 원소 하나에 1ns도 걸리지 않는 연산에 맞춰져 있어요. 특수함수에는 세 가지가 더 필요해요.
+
+| 필요한 것 | 왜 | 어디 |
+|---|---|---|
+| 입력이 넷까지, 출력이 넷까지인 디스패처 | `hyp2f1(a, b, c, z)`는 입력 넷, `airy(x)`는 출력 넷이에요 | `array/kernels/elementwise.hpp`의 `nary_loop`, `array/ops/ufunc.cpp`의 `run_nary` |
+| 함수마다 다른 원소당 비용 | 원소 하나의 비용 상수가 1.3ns(`expit`)부터 2200ns(`hyp2f1`)까지 천 배 넘게 달라요. 병렬을 시작할 크기와 작업 하나의 크기가 함수마다 달라야 해요 | `special/cost.hpp` |
+| NEON과 vForce를 섞는 커널 | 가장 자주 쓰는 오차함수와 로지스틱 함수는 원소 안의 `exp`/`log`를 배열 단위로 묶어 부르면 빨라져요 | `special/kernels/chunked.hpp`, `special/kernels/simd.hpp` |
+
+함수 하나는 Op 구조체 하나예요. 바인딩이 그 구조체의 모양을 보고 루프를 골라요.
+
+<Fig column caption="Op 하나가 어느 루프로 가는지. 바인딩(bind/nary_bind.hpp의 table_of)이 컴파일할 때 정해요.">
+  <Tree
+    root={{
+      label: 'nary_bind::table_of<Op>()',
+      children: [
+        { label: 'Op에 chunk(x, out, n)가 있음', note: '→ chunked_loop<Op>: 1024원소 버퍼마다 NEON + vForce (erf, erfc, ndtr, log_ndtr, ndtri, erfinv, erfcinv, expit, logit)', tone: 'a' },
+        { label: 'Op에 f(...)가 있음', note: '→ nary_loop<Op, double>: 원소마다 Op::f (그 밖의 모든 함수)' },
+      ],
+    }}
+  />
+</Fig>
+
+어느 루프든 실행은 배열의 반복자(`NdIter`)가 맡고, 일이 충분히 크면 스레드풀에 나눠요. 이 글은 위의 세 가지와 리덕션 `logsumexp`·`softmax`·`log_softmax`, 그리고 이 모든 경로가 같은 비트를 내는 이유를 다뤄요.
+
+## n항 디스패처
+
+### 피연산자 다섯 개
+
+배열의 원소별 연산은 `unary<Op>`와 `binary<Op>` 경로를 쓰고, `where`(입력 셋)와 `clip`은 자기 루프를 따로 가져요. 특수함수는 입력이 넷까지(`hyp2f1`)이고 출력이 넷까지(`airy`)예요. 그래서 배열 영역에는 입력 $n$개, 출력 $m$개를 받는 일반 루프 `nary_loop<Op, T>`와 그 디스패처 `run_nary`가 따로 있어요. 특수함수의 이름이나 분기는 없는 일반 장치예요.
+
+반복자가 한 번에 다루는 피연산자(입력 + 출력)의 최대 개수는 `kMaxOperands = 5`예요(`array/iter.hpp`). `hyp2f1`의 입력 넷과 출력 하나, `airy`의 입력 하나와 출력 넷이 모두 다섯이에요. 반복자는 피연산자마다 stride 배열과 데이터 포인터를 **고정 크기 배열**(`std::array<Dims, kMaxOperands>`)에 둬요. 호출마다 힙에 할당하지 않기 위해서예요. 그래서 최대 개수를 하나 늘리면 반복자 하나가 스택에서 수십 바이트 커지고, 피연산자를 도는 루프가 한 번 더 돌 수 있어요. 최대 개수가 4인 빌드와 5인 빌드를 짧은 원소별 호출(원소 1–1000개)과 원소 $10^6$개 덧셈으로 견주면 차이가 줄마다 −4%에서 +10% 사이였고, 가장 크게 벌어진 원소 16개 덧셈(+10%)은 다시 재면 +5.5%로 줄었어요(`bench/special/s0/operands.md`). 측정의 흔들림 수준이에요. 배열의 원소별 함수는 이 값과 상관없이 `unary`·`binary` 경로를 타요.
+
+### 네 단계
+
+`run_nary`는 배열의 원소별 함수와 같은 네 단계를 밟아요([연산 엔진](/internals/array/engine/)). 특수함수에서 달라지는 점만 적으면 이래요.
+
+<Fig column caption="run_nary의 네 단계 (array/ops/ufunc.cpp). 특수함수와 배열의 원소별 함수가 같은 코드예요.">
+  <Steps
+    steps={[
+      { label: '1. 피연산자', where: 'operand_dtype', note: '피연산자마다 sd.ndarray인지, bool·int·float·complex Python 숫자인지 확인하고 dtype을 읽어요. 아니면 TypeError에 인자 이름을 넣어요("\'b\' must be an sd.ndarray or a bool, int, float or complex, not list").' },
+      { label: '2. 루프 고르기', where: 'select', note: 'dtype들을 승격한 뒤, 그 dtype 이상에서 루프가 있는 첫 dtype을 골라요. 특수함수의 표에는 float64 루프만 있어서 bool·int64는 float64 루프로, complex128은 루프가 없어 TypeError예요.' },
+      { label: '3. 변환', where: 'prepare · BufferedLoop', note: 'Python 숫자는 원소 하나짜리 float64 배열로 만들어 브로드캐스트해요. bool·int64 배열은 통째로 바꾸지 않고, 루프가 도는 동안 작은 버퍼에서 조각씩 float64로 바꿔요(버퍼 캐스팅).' },
+      { label: '4. 실행', where: 'launch · run_loop', note: '결과 배열을 할당하고(F 순서 입력이 있으면 F 순서), NdIter가 축을 정리한 뒤 원소당 비용 가중치로 병렬 여부를 정해 루프를 불러요.' },
+    ]}
+  />
+</Fig>
+
+```cpp
+// run_nary (array/ops/ufunc.cpp, 줄인 발췌)
+nb::object run_nary(const LoopTable& table, int nout, std::span<const char* const> names,
+                    std::span<const nb::handle> objs, nb::handle out, std::int64_t weight) {
+    std::array<DType, kMaxInputs> dtypes;                      // 고정 배열: 할당 없음
+    for (size_t k = 0; k < nin; ++k) dtypes[k] = operand_dtype(objs[k], names[k]);
+    DType promoted = dtypes[0];
+    for (size_t k = 1; k < nin; ++k) promoted = promote(promoted, dtypes[k]);
+    const DType loop = select(table, promoted, std::span(dtypes.data(), nin), nullptr);
+    check_int_scalars(objs, promoted);                         // 아래 참고
+    std::array<DType, kMaxInputs> types;
+    types.fill(loop);                                          // 모든 입력을 루프 dtype으로
+    const LoopEntry& e = table[static_cast<int>(loop)];
+    return launch(objs, std::span(types.data(), nin), e.out, e.loop, out, nout, weight);
+}
+```
+
+- **루프가 없는 dtype의 메시지**는 입력 dtype을 모두 적어요. `betainc(1, 2j, 0.5)`는 `betainc(): not supported for int64, complex128 and float64`예요. 셋 이상이면 쉼표로 잇고 마지막만 "and"로 이어요.
+- **Python int의 범위**: 승격한 dtype이 bool이나 int64이면 Python int가 int64에 들어가는지 먼저 확인해요(`check_int_scalars`). 루프는 float64인데도 확인하는 것은 `sd.sqrt(2**64)` 같은 다른 원소별 함수와 같은 규칙을 지키기 위해서예요. float 피연산자가 하나라도 있으면 int는 float가 되어 이 확인이 없어요.
+- **모두 Python 숫자이고 `out=`이 없으면** 배열도 반복자도 만들지 않아요(`launch_scalars`). 스택 버퍼에 값을 바꿔 넣고 같은 루프를 원소 하나(`n = 1`)로 불러요. 배열 경로와 **같은 루프를 같은 값에** 부르므로 결과가 비트까지 같고, 호출 하나에 약 90ns가 줄어요. `sd.special.erf(0.5)`가 Python `float`를 돌려주는 경로예요.
+- **`out=`의 규칙**은 원소별 함수와 같아요. 결과 dtype보다 넓은 `out`(complex128)은 계산 뒤 변환해서 넣고, 좁은 `out`(int64)은 `TypeError`예요. `out`이 입력과 **같은 뷰**이면 그대로 써요. 원소마다 그 자리를 읽은 직후에 같은 자리에 쓰기 때문이에요. 입력과 **어긋나게 겹치면**(`out=x[1:]`, 입력 `x[:-1]`) 입력을 먼저 복사해요.
+
+### 루프의 모양
+
+`nary_loop`은 레이아웃을 두 가지만 구분해요. **모두 연속**이면 원소 인덱스로 접근하고, 그 밖에는 바이트 stride를 따라가요.
+
+```cpp
+// nary_loop<Op, T> (array/kernels/elementwise.hpp, 줄이고 다듬은 발췌)
+template <typename Op, typename T>
+void nary_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, void*) {
+    constexpr int nin = Op::nin;
+    using Ret = nary_result_t<Op, T>;                    // double 또는 std::array<double, nout>
+    constexpr int nout = detail::NaryOut<Ret>::n;
+    static_assert(nin + nout <= kMaxOperands);
+    bool contiguous = /* 모든 s[k]가 원소 크기 */;
+    if (contiguous) {
+        [&]<std::size_t... I>(std::index_sequence<I...>) {          // I = 0, 1, ..., nin-1
+            const T* const x[] = {reinterpret_cast<const T*>(args[I])...};
+            for (std::int64_t i = 0; i < n; ++i)
+                store(i, Op::f(x[I][i]...));                         // f(x0[i], x1[i], ...)
+        }(std::make_index_sequence<nin>{});
+        return;
+    }
+    // 그 밖: 포인터 nin + nout개를 원소마다 s[k]씩 옮기며 Op::f(load_as<T>(p[I])...)
+}
+```
+
+- **입력 개수는 컴파일할 때 정해져요.** `std::make_index_sequence<nin>`이 0부터 `nin - 1`까지의 정수 묶음을 만들고, C++20의 템플릿 람다가 그 묶음을 `I...`로 받아 `x[I][i]...`처럼 펼쳐요. `nin = 3`이면 `Op::f(x[0][i], x[1][i], x[2][i])`가 돼요. 입력 수만큼 루프를 따로 짜지 않아도 되고, 원소마다 입력 수를 도는 실행 중 루프도 없어요.
+- **출력이 여럿이면** `Op::f`가 `std::array<double, nout>`을 돌려주고, `store`가 출력마다 써요. 출력 개수도 `f`의 반환 타입에서 컴파일할 때 알아내고, `Op::nout`과 다르면 `static_assert`가 막아요.
+- **스칼라 브로드캐스트를 따로 다루지 않아요.** 배열의 이항 루프는 "배열 + 스칼라" 같은 레이아웃을 따로 벡터화해요. `nary_loop`은 그러지 않아요. `betainc(a, b, x)`에서 `a`, `b`가 Python 숫자이면 stride가 0이라 일반 strided 루프로 가는데, 원소 하나에 수십–수백 ns가 드는 함수 옆에서 stride 0 load 두 개의 비용은 보이지 않아요. 경로를 늘리면 테스트해야 할 조합만 늘어요.
+
+### 출력이 여럿인 함수
+
+`airy`는 Ai, Ai′, Bi, Bi′을 한 번에 계산해요. 넷이 같은 중간값(위상, 척도 인자, Bessel 함수 값)을 나눠 쓰기 때문에, 함수 넷으로 나누면 같은 계산을 네 번 하게 돼요. 출력이 여럿인 원소별 함수의 규칙은 이래요.
+
+- 결과는 배열의 튜플이에요. 입력이 모두 Python 숫자이면 float의 튜플이에요.
+- `out=`이 없어요.
+- `airy`는 바인딩이 그 튜플을 `stardust._results.AiryResult`로 감싸서 `r.ai`, `r.bip`처럼 이름으로 꺼낼 수 있어요.
+
+### 실수와 복소수를 둘 다 받는 함수
+
+`erf`, `erfc`, `erfcx`, `loggamma`, `lambertw`는 실수와 복소수를 모두 받아요. 이 함수들은 실수 Op와 복소수 Op가 따로 있고, 바인딩(`def_real_complex`)이 **입력의 dtype**을 보고 둘 중 하나를 불러요. 실수 입력은 실수 Op로 가서 float64 결과를 내고, complex128 배열이나 Python complex는 복소수 Op로 가서 complex128 결과를 내요. 두 Op는 알고리즘이 전혀 달라서(복소수 `erf`는 Faddeeva 함수 $w(z)$를 거쳐요) 구조체를 나누는 편이 각각을 단순하게 둬요.
+
+## Op 구조체
+
+함수 하나의 정의는 구조체 하나예요. 배열의 원소별 연산(`array/kernels/scalar_ops.hpp`)과 같은 형태에 필드가 몇 개 더 있어요.
+
+```cpp
+// special/common.hpp의 설명을 따라 적은 모양
+struct Erf : Real {                                          // Real::ok<T>: T가 double일 때만 참
+    static constexpr const char* name = "erf";               // Python 이름, 에러 메시지 앞머리
+    static constexpr int nin = 1, nout = 1;                  // 입력 수, 출력 수
+    static constexpr std::array<const char*, 1> args{"x"};   // 메시지에 쓰는 인자 이름
+    static constexpr double cost_ns = cost::kErf;            // 원소당 비용 (special/cost.hpp)
+    static double f(double x);                               // 원소 하나, 또는
+    static void chunk(const double* x, double* out, int n);  // 원소 n개 (NEON 함수만)
+};
+```
+
+| 필드 | 쓰는 곳 |
+|---|---|
+| `ok<T>` | 루프 표를 만들 때(`nary_table<Op>`) dtype마다 루프를 둘지 정해요. `Real`은 float64에만 참이라 표에 float64 칸 하나만 차요 |
+| `name` | `m.def(Op::name, ...)`의 이름, 그리고 에러 메시지 앞의 `erf(): ` |
+| `nin`, `nout` | 바인딩이 위치 인자 수를 만들고(`std::make_index_sequence<Op::nin>`), `nout == 1`일 때만 `out=`을 둬요 |
+| `args` | 피연산자가 틀렸을 때 메시지에 넣는 이름 (`'b' must be an sd.ndarray ...`) |
+| `cost_ns` | 병렬 가중치 (아래 절) |
+| `f` 또는 `chunk` | 원소의 계산 |
+
+`f`는 **순수 함수**예요. 전역 상태를 읽거나 쓰지 않고, `errno`를 보지 않고, 같은 인자에는 언제나 같은 값을 내요. 여러 스레드가 동시에 불러도 안전하고, 어느 스레드가 어느 원소를 계산해도 결과가 같은 바탕이에요.
+
+`f`와 `chunk` 중 무엇이 있느냐는 C++20의 `requires` 식으로 컴파일할 때 봐요.
+
+```cpp
+// bind/nary_bind.hpp (발췌)
+template <typename Op>
+constexpr const LoopTable& table_of() {
+    if constexpr (requires { &Op::chunk; }) return special::chunked_table<Op>;   // NEON 청크 커널
+    else return nary_table<Op>;                                                   // 원소마다 f
+}
+
+template <typename Op>
+nb::object call(std::span<const nb::handle> objs, nb::handle out) {
+    return run_nary(table_of<Op>(), Op::nout, Op::args, objs, out, special::weight_of(Op::cost_ns));
+}
+```
+
+함수 이름, 인자 수, 루프, 가중치가 모두 컴파일할 때 정해지는 상수라서, 호출 경로에 실행 중 분기가 거의 없어요. `nary_loop<Op, double>`은 함수마다 따로 인스턴스화되고 그 안에서 `Op::f`가 인라인돼요.
+
+## 원소당 비용과 병렬 기준
+
+### 문제: 배열의 기준이 맞지 않아요
+
+배열의 원소별 함수는 일의 양이 원소 $2^{15}$개(`kParallelThreshold`)에 이르면 스레드풀에 나누고, 작업 하나에 원소 $2^{12}$개(`kParallelTask`)씩 줘요(`array/parallel_limits.hpp`). 이 값은 덧셈 같은 연산을 기준으로 잰 것이에요. 원소 하나에 0.2ns 남짓이면 원소 $2^{15}$개는 약 6µs이고, 스레드풀에 일을 맡기는 고정 비용(약 1.5µs)을 감당할 만한 크기예요([스레드풀과 결정성](/internals/core/threads/)).
+
+특수함수는 원소 하나의 비용이 함수마다 천 배 넘게 달라요. 아래 표의 가운데 열은 `special/cost.hpp`에 적힌 비용 상수(엔진이 실제로 쓰는 값)이고, 오른쪽 열은 지금 빌드로 잰 원소당 비용(1스레드, 연속 원소 $10^6$개)이에요.
+
+| 함수 | `cost.hpp`의 `cost_ns` | 덧셈 대비 | 잰 비용 |
+|---|---:|---:|---:|
+| `expit` | 1.3ns | 7배 | ⟦COST expit⟧ns |
+| `xlogy` | 3.5ns | 18배 | ⟦COST xlogy⟧ns |
+| `erf` | 5.4ns | 28배 | ⟦COST erf⟧ns |
+| `gamma` | 18ns | 95배 | ⟦COST gamma⟧ns |
+| `gammainc` | 146ns | 768배 | ⟦COST gammainc⟧ns |
+| `betaincinv` | 1025ns | 5400배 | ⟦COST betaincinv⟧ns |
+| `hyp2f1` | 2200ns | 11600배 | ⟦COST hyp2f1⟧ns |
+
+배열의 기준을 그대로 쓰면 `hyp2f1` 원소 $10^4$개(비용 상수로 약 22ms인 일)를 한 스레드가 혼자 계산해요. 원소 수가 $2^{15}$개보다 적기 때문이에요. 반대로 작업 하나에 원소 4096개를 주면 `hyp2f1`은 작업 하나가 9ms라 스레드 사이의 부하 균형이 나빠요.
+
+### 접근: 일의 양을 비용으로 세기
+
+배열의 반복자는 원래 "원소 하나가 덧셈 몇 번 분량인가"를 뜻하는 **가중치** `weight`를 받아요. 레인 하나를 통째로 처리하는 커널(정렬, 누적 합)이 쓰는 장치예요. 특수함수도 이 장치를 써요. 함수마다 원소당 비용 `cost_ns`를 두고, 덧셈 한 번의 비용 `kAddNs = 0.19ns`로 나눈 값을 가중치로 넘겨요.
+
+```cpp
+// special/cost.hpp (발췌)
+inline constexpr double kAddNs = 0.19;                 // 연속 float64 add, 원소당 (bench/special/cost.py)
+inline constexpr std::int64_t kMaxWeight = 256;
+constexpr std::int64_t weight_of(double ns) {
+    const double w = ns / kAddNs;
+    return w < 1.0 ? 1 : std::min<std::int64_t>(static_cast<std::int64_t>(w + 0.5), kMaxWeight);
+}
+```
+
+반복자의 계획(`NdIter::plan`, `array/iter.cpp`)은 일의 양을 바이트로 세요. float64 피연산자의 한 걸음은 8바이트이고, 여기에 가중치와 원소 수를 곱해요.
+
+$$
+\text{work} = w \cdot 8 \cdot n, \qquad \text{병렬} \iff \text{work} \ge 8 \cdot 2^{15} \iff n \ge \frac{2^{15}}{w}, \qquad \text{작업 하나} = \left\lfloor \frac{2^{12}}{w} \right\rfloor \text{원소}
+$$
+
+곧 가중치 $w$인 함수는 원소 $2^{15}/w$개부터 병렬이 되고, 작업 하나는 원소 $2^{12}/w$개예요. 어느 함수든 "작업 하나 ≈ 덧셈 4096번 분량 ≈ 0.8µs"가 되도록 원소 수를 맞추는 셈이에요.
+
+| 함수 | 가중치 $w$ | 병렬이 되는 원소 수 | 작업 하나의 원소 | 원소 $10^6$개의 작업 수 |
+|---|---:|---:|---:|---:|
+| (배열의 `add`) | 1 | 32768 | 4096 | 245 |
+| `expit` | 7 | 4682 | 585 | 1710 |
+| `xlogy` | 18 | 1821 | 227 | 4406 |
+| `erf` | 28 | 1171 | 146 | 6850 |
+| `gammaln` | 58 | 565 | 70 | 14286 |
+| `gamma` | 95 | 345 | 43 | 23256 |
+| `gammainc`, `betainc`, `hyp2f1` | 256 (상한) | 128 | 16 | 62500 |
+
+이 숫자는 비공개 함수 `sd.special._core._parallel_tasks(n, weight)`로 확인할 수 있어요. 반복자가 실제로 쓰는 계획을 그대로 돌려줘요. 계획은 모양, 레이아웃, dtype, 가중치로만 정해지고 **스레드 수에는 의존하지 않아요**.
+
+### 가중치의 상한 256
+
+불완전 감마·베타와 그 역함수의 가중치는 상한이 없으면 800–8500이에요. 그러면 $2^{12}/w$가 1보다 작아져서 작업 하나가 원소 하나가 돼요. 원소 $10^6$개면 작업이 백만 개이고, 스레드 10개가 작업마다 스레드풀의 공유 카운터 하나를 원자적으로 증가시키며 다퉈요. 상한을 정할 때 `betainc`와 `gammainc`의 원소 $10^6$개로 견준 비교(`bench/special/s4/threads.md`)에서, 상한이 없으면 10스레드가 1스레드의 4.8–6.9배에 그쳤고 상한 256(작업 하나에 원소 16개)에서는 8.5–8.7배였어요. 64로 낮춰도 거의 같아서, 병렬 시작을 원소 128개로 유지하는 256을 써요. 이 비교는 두 함수의 지금 코드보다 느린 판에서 잰 것이라 절대 시간은 지금과 달라요. 지금 빌드의 값은 `gammainc`가 1스레드 ⟦SPEED gammainc t1⟧ms, 10스레드 ⟦SPEED gammainc t10⟧ms, `betainc`가 ⟦SPEED betainc t1⟧ms, ⟦SPEED betainc t10⟧ms예요.
+
+### 원소마다 다른 반복 횟수
+
+연분수와 Halley 반복은 원소마다 반복 횟수가 달라요. 불완전 베타는 $a$, $b$, $x$에 따라 고르는 방법도, 연분수의 항 수도 달라져서 원소마다 걸리는 시간이 크게 달라요. 배열을 스레드 수만큼 똑같이 나누는 정적 분할이면, 비싼 원소가 몰린 조각을 맡은 스레드가 늦게 끝나고 나머지는 기다려요.
+
+스레드풀은 **동적 분할**이에요. 작업에 번호를 매겨 두고, 손이 빈 스레드가 공유 카운터에서 다음 번호를 가져가요(`parallel/pool.cpp`의 `next_.fetch_add(1)`). 작업이 작고 많으면(원소 $10^6$개에 62500개) 비싼 구간도 여러 스레드에 흩어져요. 위의 비교에서 입력을 정렬해 비싼 원소를 한곳에 몰아도 섞은 입력과 2% 안으로 같았어요.
+
+### 비용이 틀리면
+
+`cost_ns`는 이 Mac(Apple M4 Pro)에서 1스레드로 잰 값이에요. 입력은 각 함수의 참값 파일 점(보장 영역에 고르게 퍼진 점)이에요(`bench/special/cost.py`). 비용이 두 배쯤 틀려도 바뀌는 것은 병렬을 시작하는 크기와 작업 하나의 크기뿐이고, **결과는 바뀌지 않아요**. 원소마다 같은 `Op::f`가 같은 값을 계산하므로 어느 스레드가 어느 원소를 맡든 같은 비트예요. 그래서 비용 표는 결과의 정의가 아니라 속도를 위한 힌트예요.
+
+<Callout title="비용 표는 구간 선택과 함께 움직여요">
+  같은 함수라도 Boost.Math에 맡기는 구간이 바뀌면 원소당 비용이 바뀌어요. 예를 들어 Boost 구간을 고를 때 구간 안의 점 $2 \times 10^5$개로 잰 1스레드 값(`bench/special/boost/routing.md`)은 `i0`의 Cephes 경로가 원소당 15.1ns, Boost가 7.6ns였어요. `cost.hpp`의 상수는 Boost 구간을 쓰는 지금의 선택에 맞춘 값이고, 주석에 어느 구간 선택의 값인지 적어 둬요.
+</Callout>
+
+### 스레드를 늘린 효과
+
+원소 $10^6$개, 1스레드와 10스레드, scipy 1.18.1 대비예요. scipy.special의 원소별 함수는 1스레드로만 돌아요.
+
+{/* BENCH-FIG: expit, xlogy, erf, ndtri, gammainc, betainc의 scipy / stardust t1 / stardust t10 (원소 10⁶개) | 캡션: 가벼운 함수와 무거운 함수의 원소 10⁶개. expit, erf, ndtri는 exp·log를 vForce로 묶어 부르는 청크 커널이고, xlogy는 원소마다 libm을 불러요. */}
+
+| 함수 | 커널 | 1스레드 | 10스레드 | scipy 대비 (1스레드) | scipy 대비 (10스레드) |
+|---|---|---:|---:|---:|---:|
+| `expit` | 청크 (NEON + vForce) | ⟦SPEED expit t1⟧ms | ⟦SPEED expit t10⟧ms | ⟦SPEED expit ratio1⟧ | ⟦SPEED expit ratio10⟧ |
+| `erf` | 청크 (NEON + vForce) | ⟦SPEED erf t1⟧ms | ⟦SPEED erf t10⟧ms | ⟦SPEED erf ratio1⟧ | ⟦SPEED erf ratio10⟧ |
+| `ndtri` | 청크 (NEON + vForce) | ⟦SPEED ndtri t1⟧ms | ⟦SPEED ndtri t10⟧ms | ⟦SPEED ndtri ratio1⟧ | ⟦SPEED ndtri ratio10⟧ |
+| `xlogy` | 원소마다 `f` | ⟦SPEED xlogy t1⟧ms | ⟦SPEED xlogy t10⟧ms | ⟦SPEED xlogy ratio1⟧ | ⟦SPEED xlogy ratio10⟧ |
+| `gammainc` | 원소마다 `f` | ⟦SPEED gammainc t1⟧ms | ⟦SPEED gammainc t10⟧ms | ⟦SPEED gammainc ratio1⟧ | ⟦SPEED gammainc ratio10⟧ |
+| `betainc` | 원소마다 `f` | ⟦SPEED betainc t1⟧ms | ⟦SPEED betainc t10⟧ms | ⟦SPEED betainc ratio1⟧ | ⟦SPEED betainc ratio10⟧ |
+
+`expit`과 `erf`는 원소 안의 `exp`를 1024개씩 vForce로 한 번에 부르고(아래 절), scipy는 원소마다 libm `exp`를 불러요. `xlogy`는 두 쪽 모두 원소마다 libm `log`를 부르는 함수예요.
+
+## NEON 청크 커널
+
+### 대상과 모양
+
+손으로 짠 NEON 커널은 아홉 함수뿐이에요: `erf`, `erfc`, `ndtr`, `log_ndtr`, `ndtri`, `erfinv`, `erfcinv`, `expit`, `logit`. 통계와 머신러닝에서 원소 수백만 개에 자주 불리는 함수이고, 분기가 적어서 레인 두 개가 대체로 같은 길을 가요. 나머지 함수는 손으로 짜지 않고 연속 루프와 스레드만 써요.
+
+이 함수들의 Op는 `f` 대신 `chunk(x, out, n)`을 가져요. 원소 하나가 아니라 **원소 $n \le 1024$개 한 묶음**을 계산하는 함수예요. 커널은 묶음 하나를 세 패스로 처리해요.
+
+1. **NEON 패스**: `exp`나 `log`에 넣을 인자를 묶음 전체에 대해 만들어 스택 버퍼에 써요. 예: `erf`는 $-x^2$.
+2. **vForce 호출 한 번**: Apple Accelerate의 `vvexp`, `vvlog`를 버퍼 전체에 한 번 불러요 [1].
+3. **원소 패스**: 결과와 원래 입력으로 원소마다 남은 계산(유리식, 부호, 고르기)을 해요.
+
+`exp`/`log`를 원소마다 libm으로 부르지 않고 묶는 이유는 속도예요. vForce는 배열 하나를 통째로 받아 이 칩에 맞춘 SIMD 코드로 계산해서, 원소마다 libm을 부르는 것보다 여러 배 빨라요([원소별 커널](/internals/array/elementwise/)의 vForce 절). 정확도는 libm 대비 몇 ULP 안이라 특수함수의 계약(약 45 ULP)에 넉넉히 들어가요.
+
+```cpp
+// chunked_loop<Op> (special/kernels/chunked.hpp, 줄인 발췌)
+inline constexpr int kChunk = 1024;   // 스택 버퍼, 원소 단위 (8KB)
+
+template <typename Op>
+void chunked_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, void*) {
+    double in[kChunk], out[kChunk];
+    for (std::int64_t off = 0; off < n; off += kChunk) {
+        const int m = static_cast<int>(std::min<std::int64_t>(kChunk, n - off));
+        const double* src = gather(args[0] + off * s[0], s[0], m, in);   // 연속이면 그대로, 아니면 모으기
+        const bool direct = s[1] == sizeof(double);
+        double* dst = direct ? reinterpret_cast<double*>(args[1] + off * s[1]) : out;
+        Op::chunk(src, dst, m);
+        if (!direct) scatter(out, args[1] + off * s[1], s[1], m);       // 연속이 아니면 흩기
+    }
+}
+```
+
+**모든 레이아웃이 이 길을 가요.** 연속 입력은 그대로, strided 입력과 stride 0 스칼라는 버퍼에 모은 뒤, 연속이 아닌 출력은 버퍼에서 흩어요. Python 숫자 하나도 `n = 1`인 묶음이에요. 그래서 이 함수들에는 **따로 맞춰야 할 스칼라 정의가 없어요**. vForce의 원소 하나의 결과는 그 원소의 위치나 호출 길이에 의존하지 않고(배열 영역에서 검증한 성질이에요), NEON 패스와 원소 패스는 원소마다 독립이라 `f(x)[i] == f(x[i])`가 저절로 성립해요.
+
+`out`이 입력과 같은 메모리(`erf(x, out=x)`)일 수 있으므로 `chunk`에는 약속이 하나 있어요. **`out[i]`는 `x[i]`를 마지막으로 읽은 뒤에만 써요.** 세 패스 구조에서는 1·2패스가 입력을 읽어 별도 버퍼에만 쓰고, 3패스가 원소마다 `x[i]`를 읽은 다음 `out[i]`를 써서 이 약속이 지켜져요. 버퍼는 커널마다 두세 개(묶음당 8KB씩)라 작업 스레드의 스택에 넉넉히 들어가요.
+
+### `erf`의 커널
+
+```cpp
+// Erf::chunk (special/ops/erf.hpp, 줄인 발췌)
+static void chunk(const double* x, double* o, int n) {
+    alignas(16) double lo[kChunk], e[kChunk], arg[kChunk];
+    for_lanes(n, [&]<class V>(int i) {                 // 1. 두 원소씩 NEON, 홀수 끝은 double
+        const V v = simd::load(x + i, V{});
+        const V hi = v * v;                            //    x² = hi + lo (lo는 정확)
+        simd::store(arg + i, -hi);
+        simd::store(lo + i, simd::fma(v, v, -hi));
+    });
+    vvexp(e, arg, &n);                                 // 2. e = exp(-hi), vForce 한 번
+    for (int i = 0; i < n; ++i) {                      // 3. 원소마다 자기 구간만
+        const double a = std::fabs(x[i]);
+        if (a < 1.0) {
+            o[i] = erf_small(x[i]);                    //    x T(x²) / U(x²)
+        } else {
+            const double v = 1.0 - erfc_tail(a, e[i], lo[i]);   // e (P - P lo) / Q
+            o[i] = x[i] < 0.0 ? -v : v;
+        }
+    }
+}
+```
+
+1패스의 `lo = fma(v, v, -hi)`는 $x^2$을 `hi`로 반올림할 때 버린 부분이에요. FMA는 $v \cdot v - \text{hi}$를 반올림 한 번으로 계산하는데, 이 값은 float64로 정확히 표현되므로 오차가 없어요. 3패스에서 $e^{-x^2} = e^{-\text{hi}}(1 - \text{lo})$로 보정해요. 이 기법과 이유는 [오차함수와 감마](/internals/special/erf-gamma/)에서 자세히 다뤄요.
+
+### 레인과 스칼라가 같은 비트를 내는 방법
+
+NEON 레지스터 하나에는 float64가 두 개 들어가요. 묶음의 원소 수가 홀수이면 마지막 하나는 레지스터로 처리할 수 없어서 스칼라로 계산해요. 이때 **레인의 결과와 스칼라의 결과가 비트까지 같아야** 해요. 그렇지 않으면 같은 값이 묶음의 어디에 놓이느냐(짝수 번째인지, 끝인지)에 따라 다른 결과가 나와요.
+
+`special/kernels/simd.hpp`는 이것을 **코드 하나**로 해결해요. 커널 단계를 타입 `V`에 대한 템플릿으로 한 번만 적고, `V = double`(원소 하나)과 `V = F2`(NEON 레인 둘)로 두 번 인스턴스화해요.
+
+```cpp
+// special/kernels/simd.hpp (발췌)
+struct F2 { float64x2_t v; };                    // NEON 레지스터 하나 = float64 둘
+struct M2 { uint64x2_t m; };                     // 비교 결과 마스크
+
+inline F2 operator+(F2 a, F2 b) { return {vaddq_f64(a.v, b.v)}; }
+inline F2 operator*(F2 a, F2 b) { return {vmulq_f64(a.v, b.v)}; }
+inline F2 operator/(F2 a, F2 b) { return {vdivq_f64(a.v, b.v)}; }
+inline M2 operator<(F2 a, F2 b) { return {vcltq_f64(a.v, b.v)}; }
+inline double fma(double a, double b, double c) { return std::fma(a, b, c); }   // 반올림 한 번
+inline F2 fma(F2 a, F2 b, F2 c) { return {vfmaq_f64(c.v, a.v, b.v)}; }          // 같은 반올림
+inline double select(bool m, double a, double b) { return m ? a : b; }
+inline F2 select(M2 m, F2 a, F2 b) { return {vbslq_f64(m.m, a.v, b.v)}; }      // 비트 선택
+```
+
+NEON의 덧셈, 곱셈, 나눗셈, 제곱근, FMA는 레인마다 IEEE 754 연산 그대로라서, 스칼라 연산과 반올림이 같아요. 그래서 같은 식을 `double`과 `F2`로 적으면 같은 비트가 나와요. 남은 조건은 **컴파일러가 식을 바꾸지 않는 것**이에요. 전체 빌드가 `-ffp-contract=off`라서, 스칼라 쪽 `r * x + c`가 몰래 FMA 하나로 합쳐지지 않아요(합쳐지면 반올림이 한 번 줄어 레인과 달라져요). FMA는 두 판 모두 `fma(...)`로 적은 곳에서만 생겨요.
+
+`for_lanes`는 묶음을 앞에서부터 두 원소씩 `F2`로, 홀수 끝 하나를 `double`로 처리해요.
+
+```cpp
+// special/ops/erf.hpp (발췌)
+template <class F>
+void for_lanes(int n, F&& f) {
+    int i = 0;
+    for (; i + 2 <= n; i += 2) f.template operator()<F2>(i);      // 레인 둘
+    for (; i < n; ++i) f.template operator()<double>(i);          // 끝 하나
+}
+```
+
+### 분기를 남긴 이유
+
+NEON의 레인 둘은 같은 명령을 함께 실행해요. 두 원소가 서로 다른 구간(예: 하나는 $\lvert x \rvert < 1$, 하나는 $\ge 8$)에 있으면 레인마다 다른 식을 쓸 수 없어요. 분기 없는 SIMD의 표준 방법은 **모든 구간을 다 계산하고 고르는 것**이에요. 레인마다 구간 판정 마스크를 만들고 `vbslq`(비트 선택)로 맞는 결과를 골라요.
+
+`erfc`의 3패스를 두 방식으로 짜서 쟀어요. 구간은 셋이고 각 구간의 유리식은 5–8차예요. 1스레드, 원소 $10^6$개, 원소당 ns예요(`bench/special/s2/variants.md`).
+
+| 입력 | 원소마다 분기 (쓰는 쪽) | NEON, 모든 구간 계산 후 선택 | 같은 방식, Estrin |
+|---|---:|---:|---:|
+| $\lvert x \rvert < 1$만 | 2.29 | 4.15 | 4.03 |
+| $1 \le x < 8$만 | 3.83 | 4.17 | 4.14 |
+| $x \ge 8$만 | 3.26 | 4.17 | 4.07 |
+| 섞임, 정렬됨 | 3.51 | 4.16 | 4.02 |
+| 섞임, 무작위 | 4.72 | 4.20 | 4.06 |
+
+- **선택 방식은 입력과 상관없이 일정해요.** 언제나 세 구간을 다 계산하므로 원소당 약 4.2ns예요.
+- **분기 방식은 자기 구간만 계산해요.** 구간이 길게 이어지는 입력에서는 분기 예측기가 거의 틀리지 않아서 2.3–3.8ns예요. 남의 구간 두 개를 계산하는 비용과 고르기용 상수·마스크 비용이 레인 두 개로 얻는 이득보다 커요.
+- **구간이 원소마다 무작위로 바뀌면** 분기 예측이 자주 빗나가서 분기 방식이 4.72ns로 느려져요. 선택 방식이 이기는 것은 이 경우뿐이에요.
+
+실제 배열은 대개 값이 이어져 있어서(정렬된 격자, 매끈한 신호, 한 분포의 표본은 대부분 중심 구간) 분기 방식을 써요. **결과의 비트는 두 방식이 같아요.** 원소마다 하는 산술이 똑같기 때문이에요. 테스트(`test_select_variant_gives_the_same_bits`)가 무작위 입력 2만 개와 경계값에서 이것을 확인하고, 비교용 판은 비공개 함수 `_erfc_select`, `_erfc_estrin`으로 남아 있어요.
+
+그래서 오차함수 계열은 **1패스만 NEON, 2패스는 vForce, 3패스는 스칼라 분기**예요. NEON 고르기를 실제로 쓰는 곳은 고를 것이 작은 `expit`과 `logit`이에요.
+
+- **`expit`**: $e = \exp(-\lvert x \rvert)$로 만들면 두 구간의 식 $1/(1+e)$와 $e/(1+e)$가 분모를 나눠 써요. 고르는 것은 분자뿐이라 `vbslq` 하나예요. NaN은 $x \ge 0$이 거짓이라 분자 $e$(NaN)를 골라 NaN이 돼요.
+- **`logit`**: 중심 $[0.25, 0.75]$의 $2\operatorname{atanh}(2p - 1)$과 바깥의 $\log(p/(1-p))$를 묶음 전체에 대해 둘 다 vForce로 계산하고(`vvatanh`, `vvlog`) 원소마다 골라요.
+
+`expit`은 원소 $10^6$개 1스레드에서 ⟦SPEED expit t1⟧ms, scipy(원소마다 libm `exp`) 대비 ⟦SPEED expit ratio1⟧배예요.
+
+`gammaln`은 구간이 넷(작은 $x$, 2 둘레의 Taylor, 점화식, Stirling)이고 위의 측정으로 보아 레인 두 개의 이득이 없어서 NEON으로 짜지 않았어요. 원소마다 libm을 부르는 스칼라 정의예요.
+
+## Horner와 Estrin
+
+### Horner: 곱셈-덧셈 사슬
+
+다항식 $p(x) = c_0 x^7 + c_1 x^6 + \cdots + c_7$을 값으로 계산하는 가장 흔한 방법은 **Horner 방법**이에요. 괄호를 안쪽부터 묶어요.
+
+$$
+p(x) = \Big(\big((c_0 x + c_1) x + c_2\big) x + \cdots \Big) x + c_7
+$$
+
+곱셈 7번, 덧셈 7번이고, 거듭제곱 $x^k$를 따로 만들지 않아요. 계산량으로는 최소예요. 문제는 **모든 단계가 앞 단계의 결과를 기다린다**는 것이에요. 곱셈과 덧셈의 지연(latency)이 각각 몇 사이클이면, 차수 $n$인 다항식 하나는 적어도 $n \times$(곱셈 + 덧셈 지연)이 걸려요. CPU가 한 사이클에 연산을 여럿 시작할 수 있어도 이 사슬 안에서는 놀아요.
+
+```cpp
+// special/common.hpp (발췌): Cephes polevl과 같은 계수 순서
+template <std::size_t N>
+constexpr double horner(double x, const std::array<double, N>& c) {
+    double r = c[0];
+    for (std::size_t i = 1; i < N; ++i) r = r * x + c[i];   // 곱셈과 덧셈 각각 반올림 (FMA 아님)
+    return r;
+}
+```
+
+`horner1`은 최고차 계수 1을 저장하지 않는 판이에요(Cephes `p1evl`). Cephes의 분모 다항식이 이 꼴이에요.
+
+### Estrin: 트리로 묶기
+
+**Estrin 방법** [2]은 이웃한 계수를 짝지어 사슬을 트리로 바꿔요.
+
+$$
+p(x) = \big[(c_7 + c_6 x) + (c_5 + c_4 x)\,x^2\big] + \big[(c_3 + c_2 x) + (c_1 + c_0 x)\,x^2\big]\,x^4
+$$
+
+맨 안쪽의 네 쌍 $(c_7 + c_6 x)$, …는 서로 독립이라 동시에 계산할 수 있어요. 그다음 단계는 $x^2$로, 그다음은 $x^4$로 묶어요. 사슬의 깊이가 $n$에서 $\log_2 n$으로 줄어요. 대신 $x^2$, $x^4$를 만드는 곱셈이 더 들고, 반올림이 일어나는 자리가 달라서 **Horner와 비트가 같지 않아요**.
+
+stardust의 `simd::estrin`은 이 트리를 템플릿 재귀로 컴파일할 때 펼쳐요. 한 단계마다 항 배열을 반으로 줄이는 `estrin_level<V, N>`이 `N == 1`이 될 때까지 자기를 부르고, 각 단계 안의 짝 묶기는 `std::index_sequence`의 팩 확장으로 펼쳐져서 실행 중 루프가 남지 않아요.
+
+### 속도는 같고 오차는 조금 커요
+
+위 `erfc` 측정의 마지막 열이 Estrin이에요. 같은 선택 방식에서 Horner와 속도가 같고(4.02–4.14 대 4.15–4.20ns), 최대 오차는 조금 커요.
+
+| `erfc`의 참값 파일에서 | 최대 ULP | 99.9% ULP |
+|---|---:|---:|
+| 분기 + Horner (쓰는 쪽) | 7.77 | 4.70 |
+| 선택 + Horner | 7.77 | 4.70 |
+| 선택 + Estrin | 9.13 | 4.19 |
+
+Estrin이 빨라지지 않는 것은 원소별 루프의 구조로 설명할 수 있어요. 원소들은 서로 독립이라, 비순차 실행(out-of-order) 코어는 한 원소의 Horner 사슬이 지연을 기다리는 동안 다음 원소의 사슬을 시작할 수 있어요. 유리식 $P(x)/Q(x)$의 $P$와 $Q$도 서로 독립인 두 사슬이에요. 사슬 하나의 깊이를 줄이는 Estrin의 장점은 **한 번에 하나만 계산할 때** 드러나는데, 원소 수백만 개를 도는 루프에서는 다른 원소가 그 빈자리를 채울 수 있어요. 위의 측정은 이 설명과 맞아요. 속도 이득은 보이지 않고, 남는 것은 Estrin이 더하는 곱셈과 다른 반올림이에요. 그래서 모든 다항식은 Horner예요. Horner의 반올림 오차는 계수와 $x$의 크기로 간단한 한계를 줄 수 있다는 점도 장점이에요 [3].
+
+## 리덕션: `logsumexp`, `softmax`, `log_softmax`
+
+### 문제: 그대로 계산하면 넘쳐요
+
+$\operatorname{logsumexp}(x) = \log \sum_i e^{x_i}$는 로그 공간에 저장된 확률을 더할 때 쓰는 함수예요. 식대로 계산하면 $x_i = 1000$에서 $e^{1000}$이 넘쳐 inf가 되고, $x_i = -1000$에서는 $e^{-1000}$이 0이 되어 $\log 0 = -\infty$가 돼요. 참값은 각각 $1000 + \log 2$, $-1000 + \log 2$처럼 멀쩡한 수예요.
+
+**최댓값을 빼면** 해결돼요. $m = \max_i x_i$로 두면
+
+$$
+\operatorname{logsumexp}(x) = m + \log \sum_i e^{x_i - m}
+$$
+
+이고, 모든 $x_i - m \le 0$이라 $e^{x_i - m} \le 1$이고, 적어도 한 항은 $e^0 = 1$이라 합이 1 이상이에요. 넘침도 0의 로그도 없어요. `softmax`는 $e^{x_i} / \sum_j e^{x_j}$, `log_softmax`는 그 로그이고, 같은 방법으로 $m$을 빼서 계산해요.
+
+### 구조: 배열의 리덕션과 원소별 Op의 조합
+
+세 함수는 새 루프를 짜지 않고 **배열의 `max`, `sum`과 원소별 Op 몇 개**를 이어요(`special/reduce.cpp`). 원소별 Op는 위의 n항 디스패처로 브로드캐스팅과 함께 돌아요. `keepdims=True`로 줄인 `m`과 합이 `x`와 브로드캐스트되는 모양을 유지해요. `axis=`로 축을 고르는 것도 배열의 리덕션이 그대로 처리해요.
+
+<Fig column caption="logsumexp(x, axis)의 단계. 각 단계는 배열 영역의 리덕션이거나 n항 디스패처로 도는 원소별 Op예요.">
+  <Steps
+    steps={[
+      { label: 'm = max(x, axis, keepdims=True)', where: '배열 리덕션', note: 'NaN이 있으면 NaN이에요.' },
+      { label: 'FiniteOrZero(m)', where: '원소별 Op', note: 'm이 ±inf이면 0으로 바꿔요(scipy의 규약). inf − inf = NaN을 막아요.' },
+      { label: 'e = ExpDiff(x, m)', where: '원소별 Op', note: 'x − m을 hi + lo로 정확히 만들고 exp(hi)(1 + lo)를 계산해요.' },
+      { label: 's = sum(e, axis)', where: '배열 리덕션', note: 'pairwise 합. 블록 분할이 모양으로만 정해져 스레드 수와 무관해요.' },
+      { label: "m' = FiniteOrZero(max(x, axis))", where: '배열 리덕션 + Op', note: '결과 모양의 m을 다시 구해요. exp 패스 옆에서 max 패스는 싸요.' },
+      { label: "LseCombine(m', s) = m' + log s", where: '원소별 Op', note: '' },
+    ]}
+  />
+</Fig>
+
+`softmax`는 `m = max(x)`, `e = ExpDiff(x, m)`, `e / sum(e)`의 셋이고, `log_softmax`는 `(x − m) − log(sum(ExpDiff(x, m)))`이에요. 빈 배열은 `logsumexp`가 $\log 0 = -\infty$이고, `softmax`·`log_softmax`는 빈 float64 배열이에요.
+
+### $x - m$의 반올림
+
+$x_i - m$은 두 float64의 차라서 반올림돼요. 이 오차는 작아 보이지만 `exp`가 키워요. $d = x_i - m$의 상대 반올림 오차 $\delta \le 2^{-53}$은 $e^d$의 상대오차 $\lvert d \rvert \delta$가 돼요(지수의 절대오차가 결과의 상대오차가 되기 때문이에요). $d = -700$이면 $700 \cdot 2^{-53} \approx 7.8 \times 10^{-14}$로, 계약 $10^{-14}$의 여덟 배예요.
+
+그래서 차를 **TwoSum**으로 정확히 만들어요. TwoSum은 $a + b$를 $s + e$로 나누는 알고리즘이에요. $s$는 반올림한 합이고, $e$는 반올림으로 버린 부분을 정확히 담은 float64예요 [3].
+
+```cpp
+// ExpDiff::f (special/reduce.cpp)
+static double f(double x, double m) {
+    const TwoSum d = two_sum(x, -m);                     // x - m = d.s + d.err, 정확
+    const double e = std::exp(d.s);
+    if (!std::isfinite(d.s) || e == 0.0) return e;       // inf - inf = NaN, exp(-inf) = 0: 보정 없음
+    return e + e * d.err;                                // exp(s + err) ≈ exp(s)(1 + err)
+}
+```
+
+$\lvert \text{err} \rvert \le \operatorname{ulp}(s)/2$라서 $e^{\text{err}} = 1 + \text{err} + O(\text{err}^2)$의 2차 항은 마지막 비트보다 훨씬 작아요. `log_softmax`도 같은 이유로 $(x - m) - \log s$를 $(\text{hi} - \log s) + \text{lo}$로 계산해요. 이 `exp`는 원소별 Op 안의 libm 호출이라, vForce가 아니라 원소마다 libm `exp`예요.
+
+### `softmax`는 나눗셈으로
+
+`softmax`는 $\exp(x_i - \operatorname{logsumexp}(x))$로도 쓸 수 있어요. 나눗셈이 없고 `logsumexp` 하나만 있으면 돼요. 하지만 이 식은 $x_i - \operatorname{logsumexp}(x)$를 만들 때 큰 두 수의 차가 반올림되고, 그 오차가 다시 `exp`에서 $\lvert x_i - \operatorname{lse} \rvert$배로 커져요. $e^{x_i - m} / \sum_j e^{x_j - m}$은 나눗셈 한 번(반올림 한 번)이라 더 정확해요. Blanchard, Higham, Higham의 반올림 오차 분석도 나눗셈을 쓰는 이동한 식이 나눗셈 없는 판보다 대체로 정확하다고 결론 내려요 [4].
+
+정확도 계약은 `logsumexp`와 `log_softmax`가 $\lvert \text{오차} \rvert \le 10^{-14} \max(1, \lvert \text{값} \rvert)$(값이 0을 지날 수 있어서), `softmax`가 원소마다 상대오차 $10^{-14}$예요. 테스트는 참값 배열 122개(`tests/special/ref/reduce_cases.npz`)에서 이 계약을 확인해요. scipy의 `softmax`는 `np.exp(x - x_max)`처럼 $x_i - m$을 반올림한 채 `exp`에 넣어서, 위에서 본 $\lvert d \rvert \cdot 2^{-53}$의 오차를 그대로 가져요.
+
+### 무한대의 규약
+
+scipy 1.18.1과 같아요.
+
+- `logsumexp`와 `log_softmax`는 최댓값이 무한이면 0으로 바꿔 빼요. 그래서 `logsumexp([inf, 1])`은 inf, 모든 원소가 $-\infty$이면 $-\infty$, `log_softmax([inf, 1])`은 `[nan, -inf]`예요.
+- `softmax`는 바꾸지 않아요. `softmax([inf, 1])`은 `[nan, nan]`, 모든 원소가 $-\infty$이면 NaN이에요.
+- NaN은 어디서나 전파해요.
+
+### 한 패스 방식을 쓰지 않는 이유
+
+최댓값을 미리 모르고 한 번에 계산하는 **온라인 방식**도 있어요 [5]. 원소를 차례로 보면서 지금까지의 최댓값 $m$과 합 $s = \sum e^{x_j - m}$을 들고 가다가, 더 큰 원소 $x_k$가 나오면 $s \leftarrow s \cdot e^{m - x_k} + 1$, $m \leftarrow x_k$로 다시 척도를 맞춰요. 메모리를 한 번 덜 읽어요.
+
+stardust는 두 패스를 써요.
+
+- **반올림이 늘어요.** 최댓값이 바뀔 때마다 누적 합에 $e^{m - x_k}$를 곱하는 반올림이 더해지고, 그 곱셈의 지수 자체도 반올림된 차예요.
+- **결정성을 지키기 어려워요.** 여러 스레드가 배열을 나눠 각자 $(m, s)$를 만들고 합치면, 합치는 방식이 나눈 방식에 따라 반올림을 바꿔요. 두 패스 방식은 `max`가 순서와 무관하고, 합은 배열 영역의 pairwise 합이 모양으로만 정한 블록 구조를 따라 스레드 수와 무관하게 같은 비트를 내요([집계](/internals/array/reductions/)).
+
+### 속도
+
+{/* BENCH-FIG: logsumexp (10⁶,), logsumexp (1000, 1000) axis=1, softmax (10⁶,), log_softmax (10⁶,), log_softmax (1000, 1000) axis=1의 scipy / stardust t1 / stardust t10 | 캡션: 리덕션 셋, 입력은 정규분포(표준편차 10)의 float64. */}
+
+| 함수 (원소 $10^6$개) | 1스레드 | 10스레드 | scipy 대비 (1스레드) | scipy 대비 (10스레드) |
+|---|---:|---:|---:|---:|
+| `logsumexp` | ⟦SPEED logsumexp t1⟧ms | ⟦SPEED logsumexp t10⟧ms | ⟦SPEED logsumexp ratio1⟧ | ⟦SPEED logsumexp ratio10⟧ |
+| `softmax` | ⟦SPEED softmax t1⟧ms | ⟦SPEED softmax t10⟧ms | ⟦SPEED softmax ratio1⟧ | ⟦SPEED softmax ratio10⟧ |
+| `log_softmax` | ⟦SPEED log_softmax t1⟧ms | ⟦SPEED log_softmax t10⟧ms | ⟦SPEED log_softmax ratio1⟧ | ⟦SPEED log_softmax ratio10⟧ |
+
+비교할 때 알아 둘 구조의 차이가 있어요. scipy 1.18.1의 `logsumexp`는 가중치 `b`, `return_sign` 같은 선택지까지 처리하는 Python 함수로 numpy 연산 여러 개를 잇고, `softmax`는 `max`, 빼기, `exp`, `sum`, 나누기의 numpy 연산 다섯 개예요. stardust의 `ExpDiff`는 빼기와 `exp`를 한 패스로 합친 대신 TwoSum과 보정 곱셈이 더 들어요.
+
+## 비트 결정성
+
+이 영역의 모든 함수는 같은 입력에 같은 비트를 내요. 세 층에서 이것을 지켜요.
+
+| 층 | 성질 | 왜 성립하나 |
+|---|---|---|
+| NEON 레인과 스칼라 | 레인의 결과 = 스칼라의 결과 | 같은 템플릿 코드를 `double`과 `F2`로 인스턴스화하고, 두 타입의 연산이 IEEE 754 반올림까지 같아요. `-ffp-contract=off`로 컴파일러가 식을 바꾸지 못해요 |
+| 레이아웃 | `f(x)[i] == f(x[i])`, 연속·strided·브로드캐스트·제자리 모두 | 경로를 원소의 값으로만 고르고, 청크 커널은 모든 레이아웃이 같은 버퍼 경로를 타요. vForce의 결과는 위치와 호출 길이에 의존하지 않아요 |
+| 스레드 | 1·3·10스레드의 결과가 같음 | 원소별 함수는 원소마다 독립이라 누가 계산해도 같아요. 리덕션은 모양으로만 정한 블록 구조를 따라요 |
+
+테스트가 이것을 고정해요.
+
+- `tests/special/test_engine.py`: 엔진 시험용 비공개 함수 넷(`_fma3` 입력 셋, `_sum4` 입력 넷으로 피연산자 다섯, `_powers4` 출력 넷, `_cf_tan` 무거운 연분수)으로 브로드캐스팅, dtype 섞기, `out=`, 출력 여럿, 1·3·10스레드의 비트, 이웃 원소와의 독립성, 가중치에 따른 작업 수를 확인해요.
+- `tests/special/test_erf.py`, `test_logistic.py`: 청크 커널마다 원소 수 1, 2, 3, 1023, 1025, 2049(묶음 경계와 홀수 끝)에서 연속·strided 입력·strided 출력·Python 숫자 하나씩의 결과가 비트까지 같은지, 제자리 호출이 같은지, 선택 판이 분기 판과 같은지 봐요.
+- 함수 묶음마다 1·3·10스레드의 비트를 비교하는 테스트가 있어요(`test_same_bits_for_any_thread_count`).
+
+```python
+>>> x = sd.asarray([0.25, -1.5, 3.0, 9.0, -27.0])
+>>> a = sd.special.erfc(x)
+>>> b = sd.special.erfc(x[::2])
+>>> [sd.special.erfc(float(v)) for v in [0.25, 3.0, -27.0]] == [a[0], a[2], a[4]] == [b[0], b[1], b[2]]
+True
+```
+
+결정적이라는 것은 **scipy와 같다**는 뜻이 아니에요. 알고리즘이 다르므로 scipy와는 몇 ULP씩 다르고, scipy가 틀리는 곳에서는 크게 달라요. 비트가 같다는 약속은 stardust 안에서, 같은 빌드와 같은 기계에서의 약속이에요.
+
+## 참고 문헌
+
+1. Apple Developer Documentation, *vForce* (Accelerate). https://developer.apple.com/documentation/accelerate/vforce
+2. G. Estrin, "Organization of computer systems: the fixed plus variable structure computer", *Proceedings of the Western Joint IRE-AIEE-ACM Computer Conference*, 33–40, 1960.
+3. J.-M. Muller 외, *Handbook of Floating-Point Arithmetic*, 2nd ed., Birkhäuser, 2018. (TwoSum, FMA로 곱의 오차 구하기, Horner 방법의 오차)
+4. P. Blanchard, D. J. Higham, N. J. Higham, "Accurately computing the log-sum-exp and softmax functions", *IMA Journal of Numerical Analysis*, 41(4), 2311–2330, 2021.
+5. M. Milakov, N. Gimelshein, "Online normalizer calculation for softmax", arXiv:1805.02867, 2018.

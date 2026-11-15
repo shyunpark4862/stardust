@@ -1,0 +1,469 @@
+---
+title: 정확도와 성능
+group: 정확도와 성능
+order: 1
+summary: 특수함수의 정확도를 무엇에 대고 어떤 단위로 재는지(mpmath 50자리 기준값, ULP, 포락선, 조건수), 함수 묶음마다 잰 최대 오차와 scipy 1.18.1의 같은 값, scipy보다 나쁜 줄과 그 원인을 정리해요. Boost.Math와 견주어 구간을 고른 근거와 그 구간에서 Boost가 쓰는 방법, 속도와 원소당 비용을 재는 방법, 결과가 스레드 수·레이아웃과 상관없이 같은 비트라는 것을 확인하는 테스트도 다뤄요.
+seeAlso: [overview, engine, techniques, distributions, incomplete]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+`sd.special`의 정확도는 약속(계약)으로 정해져 있어요.
+
+| 무엇 | 약속 |
+|---|---|
+| 보장 영역의 원소별 함수 | 고정밀 값 대비 상대오차 $\le 10^{-14}$ |
+| 진동 함수(`j0 j1 y0 y1 jv yv`, 음의 $x$의 `airy`) | $\lvert\text{오차}\rvert \le 10^{-14} \times$ 포락선 |
+| 역함수(불완전 감마·베타, 분포 함수) | $\lvert\Delta x/x\rvert \le 10^{-14}\max(1, \kappa)$, $\kappa$는 근의 조건수 |
+| 결과가 서브노멀 | 절대오차 $\le 45 \cdot 2^{-1074}$ |
+| 보장 영역 밖(정의역 안) | 값을 계산하고, 잰 최대 오차를 API 문서에 적어요 |
+| 같은 입력 | 위치·stride·스레드 수와 상관없이 같은 비트 |
+
+이 약속을 지키는지는 mpmath로 만든 기준값으로 재요. 기준값 파일 97개(복소수와 분포 함수, 엔진의 시험 함수 하나 포함)의 보장 영역 모든 점에서 지금 빌드는 약속 안이에요(`tests/special/test_reference.py`). 결과를 요약하면 이래요.
+
+- **대부분의 함수가 몇 ULP 안이에요.** 보장 영역의 행 95개 중 64개가 최대 10 ULP 이하예요. 큰 줄은 `hyp1f1` 78.6, `betaincinv` 59, `airy` 34.8–57.3, `beta` 52.8, `gammaincinv` 50.1, `y1` 46.4 ULP인데, 모두 계약 안이에요(1 ULP의 상대 크기가 $1.1$–$2.2 \times 10^{-16}$이라 $10^{-14}$는 45–90 ULP예요).
+- **scipy 1.18.1은 같은 점에서 자주 크게 틀려요.** 서브노멀 꼬리의 0, 반올림한 인자, $1 - F$의 소거, 분기점·극점 근처의 상쇄 때문이에요. 참값이 유한한 점에서 inf나 NaN을 내는 함수도 많아요.
+- **scipy보다 나쁜 줄은 몇 개뿐이고 차이는 많아야 3.3 ULP예요**(`erfinv`, `ndtri`, `logit`, `y0`, 그리고 1 ULP 안쪽의 몇 줄). 원인은 아래에 있어요.
+- **속도와 원소당 비용**은 지금 코드로 다시 재는 중이라 표에 자리 표시를 두었어요.
+
+## 기준값: mpmath 50자리
+
+### 만드는 방법
+
+`tools/special_ref.py`가 함수마다 입력 집합을 만들고 mpmath(1.4.1) [7]로 50자리 값을 계산해요. 결과는 `tests/special/ref/<name>.npz`에 저장해서 테스트와 측정 도구는 mpmath를 부르지 않아요(느리니까요).
+
+<Fig column caption="기준값 파일이 만들어지고 쓰이는 길. 입력 집합과 참값은 한 번 만들어 저장소에 넣고, 테스트·정확도 표·Boost 비교가 모두 같은 파일을 읽어요.">
+  <Steps steps={[
+    { label: 'tools/special_ref.py', note: '입력 집합(격자, 로그 균등 무작위, 경계)을 시드로 만들고 mpmath 50자리로 계산', where: 'tools/' },
+    { label: 'ref/<name>.npz', note: 'x0, x1, …, 참값 hi + lo(double-double), guaranteed, scale', where: 'tests/special/ref/' },
+    { label: 'test_reference.py', note: '계약 확인 + f(x)[i] == f(x[i]) 비트 확인', where: 'tests/special/', depth: 1 },
+    { label: 'bench/special/accuracy.py', note: '최대·99.9% ULP 표, scipy의 같은 값', depth: 1 },
+    { label: 'bench/special/boost/', note: 'Boost.Math와 구간별 비교', depth: 1 },
+  ]} />
+</Fig>
+
+- **입력 집합.** 보장 영역 위의 격자, 크기가 고르게 퍼지도록 로그 균등으로 뽑은 무작위 점(정의역에 음수가 있으면 두 부호 모두, 보장 영역 안과 그 둘레의 느슨한 영역), 그리고 경계 점이에요. 경계 점은 구간 경계마다 앞뒤 몇 ULP(`around`가 이웃 double 4개씩), 극점과 영점, 0, 정의역의 끝이에요. 구현이 갈래를 바꾸는 곳이 가장 틀리기 쉬우므로 일부러 넣어요. 시드가 고정이라 다시 만들어도 같은 파일이에요.
+- **참값의 저장.** 50자리 값을 double-double($hi + lo$, $\lvert lo\rvert \le \tfrac12 \operatorname{ulp}(hi)$)로 저장해요. 그래서 오차를 ULP의 몇 분의 1까지 잴 수 있어요. double 하나로 저장하면 참값 자체에 0.5 ULP의 반올림이 들어가요.
+- **`guaranteed`와 `scale`.** 점마다 보장 영역인지와 계약의 배율을 함께 저장해요. 역함수는 $\max(1, \kappa)$, 진동 함수는 $\max(1, M/\lvert f\rvert)$($M$은 포락선), 나머지는 1이에요.
+
+### 기준값을 만들 때의 함정
+
+mpmath도 아무 데서나 50자리를 주지는 않아요. 도구에는 이런 우회가 들어 있어요.
+
+- **불완전 베타의 인자가 1에 가까우면** mpmath의 `betainc`가 자리를 잃어서 $x$와 $1 - x$ 중 작은 쪽으로 계산해요(`_ibeta_pair`).
+- **값이 $2^{-1074}$보다 훨씬 작으면** mpmath가 수렴을 포기해요. 선두 항이 $e^{-1000}$ 아래인지 보고 0으로 둬요(`_safe_betainc`).
+- **`ndtri_exp`의 $x < -10^6$**에서는 mpmath의 `ncdf`, `npdf`가 넘쳐서 $\log\Phi$의 점근 급수와 해석적 기울기를 써요.
+- **`fdtri`는 $x$에 대해 풀어요.** 중간 변수 $w$는 $x$가 크면 1로 반올림되기 때문이에요.
+- **비중심 분포**는 두 꼬리 모두 양의 항의 합으로 더하고(끝의 항과 꼬리가 합의 $10^{-45}$ 아래일 때까지), 비중심 t의 반대쪽 꼬리는 mpmath의 `quad`로 정의 그대로 적분해요. 상쇄가 없는 곳에서 급수와 30자리까지 맞는 것을 확인했어요.
+
+## 오차를 재는 단위
+
+### ULP와 상대오차
+
+float64에서 $2^e \le \lvert x\rvert < 2^{e+1}$인 수의 간격은 $\operatorname{ulp}(x) = 2^{e-52}$이에요 [3, 5]. 오차를 ULP로 재면 "마지막 자리에서 몇 칸 틀렸나"가 돼요. 측정 도구는
+
+$$
+\text{ULP 오차} = \frac{\lvert \text{결과} - (hi + lo)\rvert}{\operatorname{ulp}(hi)}
+$$
+
+를 써요(`refdata.ulp_error`, `np.spacing`). 올바르게 반올림한 결과는 0.5 ULP 이하예요. 계약은 상대오차 $10^{-14}$로 적혀 있어요. 둘의 관계는 값이 이진 자릿수 구간의 어디에 있는지에 따라 달라요. $hi$가 $2^e$ 바로 위이면 1 ULP가 상대 $2.2 \times 10^{-16}$이고, $2^{e+1}$ 바로 아래이면 $1.1 \times 10^{-16}$이에요. 그래서 $10^{-14}$는 45–90 ULP예요. 표의 45 ULP 넘는 줄(`hyp1f1` 78.6 등)이 계약 안인 이유예요. 테스트는 ULP가 아니라 상대오차를 직접 확인해요.
+
+### 포락선: 진동 함수의 영점
+
+$J_0(x)$처럼 진동하는 함수는 영점이 무한히 많아요. 영점 근처에서 참값이 0으로 가니 상대오차는 정의되지 않고, 인자의 마지막 비트만 바뀌어도 상대오차가 무한히 커질 수 있어요. 그래서 진동 함수의 계약은 포락선(진폭) 대비예요. Bessel 함수는 $M = \sqrt{J_\nu^2 + Y_\nu^2}$(DLMF 10.18의 모듈러스 [8]), Airy는 $\sqrt{\mathrm{Ai}^2 + \mathrm{Bi}^2}$(도함수는 도함수끼리)이에요. 측정은 ULP 오차를 $\max(1, M/\lvert f\rvert)$로 나눈 값이에요. 첫 영점의 0.99배보다 작은 $x$와 Airy의 $x \ge 0$은 진동하지 않으므로 배율 1(보통의 상대오차)이에요.
+
+### 조건수: 역함수
+
+역함수 $x = F^{-1}(p)$에서 $p$는 이미 반올림된 입력이에요. $p$의 마지막 비트가 근을 얼마나 움직이는지는 조건수
+
+$$
+\kappa = \left\lvert \frac{F(x)}{x\,F'(x)} \right\rvert
+$$
+
+가 정해요. 예를 들어 $a$가 작은 `gammaincinv`는 $x \approx (p\,\Gamma(a+1))^{1/a}$라서 $\kappa \approx 1/a$이고, $a = 0.01$이면 $p$의 1 ULP가 근을 100 ULP 움직여요. 그 오차는 어떤 알고리즘으로도 줄일 수 없으므로 계약은 $10^{-14}\max(1, \kappa)$이고, 측정은 ULP 오차를 $\max(1, \kappa)$로 나눈 값이에요.
+
+### 혼합 오차: 느슨한 영역의 감마 계열
+
+`gammaln digamma polygamma beta betaln binom`과 Hurwitz `zeta`는 보장 영역 밖(예: 음의 인자, 극점 근처)에서 $\lvert\text{오차}\rvert \le 10^{-14}\max(1, \lvert\text{값}\rvert)$를 지켜요. 값이 0을 지나가는 곳에서는 절대오차, 큰 곳에서는 상대오차예요. 표의 "혼합" 줄은 이 양을 $2^{-52}$ 단위로 적은 것이라 45가 계약의 한계예요.
+
+### 서브노멀 결과
+
+참값이 $2^{-1022}$ 아래이면 상대오차 대신 절대오차 $45 \cdot 2^{-1074}$를 봐요. 서브노멀에서는 유효숫자 자체가 줄어서 상대오차 $10^{-14}$를 요구할 수 없기 때문이에요. 45는 정상 범위 바닥에서 상대 $10^{-14}$와 이어지는 값이에요. scipy는 서브노멀 꼬리를 0으로 내는 함수가 많아요(`erfc`, `ndtr`, `expit`, `gamma` 등). stardust는 참값을 내요.
+
+## 정확도 표
+
+아래 표는 `bench/special/accuracy.py`를 지금 빌드에서 돌린 값이에요(기준값 `tests/special/ref`, mpmath 50자리). 열은 점의 수, stardust의 최대와 99.9번째 백분위 ULP, 같은 입력에서 scipy 1.18.1의 같은 값이에요. "보장"은 보장 영역, "느슨"은 그 밖(ULP), "혼합"은 위의 혼합 오차예요. 진동 함수·역함수는 각각 포락선·$\kappa$ 배율로 나눈 값이에요. scipy 열의 inf는 참값이 유한한 점에서 scipy가 inf나 NaN을 냈다는 뜻이고, $10^{15}$–$10^{16}$은 대개 참값이 있는 곳에서 0을 낸 경우예요.
+
+### 오차함수와 정규분포
+
+| 함수 | 영역 | 점 | 최대 | 99.9% | scipy 최대 | scipy 99.9% |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| `erf` | 보장 | 7564 | 2.29 | 1.82 | 2.29 | 1.73 |
+| `erfc` | 보장 | 8073 | 7.77 | 4.70 | 2.3e13 | 1.9e13 |
+| `erfcx` | 보장 | 7555 | 6.05 | 3.78 | 500 | 426 |
+| `erfinv` | 보장 | 7563 | 4.64 | 3.90 | 1.95 | 1.72 |
+| `erfcinv` | 보장 | 7550 | 4.51 | 3.82 | inf | 1.7e11 |
+| `ndtr` | 보장 | 8064 | 6.73 | 5.28 | 1.1e13 | 6.6e12 |
+| `log_ndtr` | 보장 | 8064 | 6.97 | 4.45 | 1.1e13 | 7.3e12 |
+| `ndtri` | 보장 | 7559 | 5.43 | 4.51 | 2.81 | 2.42 |
+| `ndtri_exp` | 보장 | 2427 | 6.53 | 4.60 | 5.3e3 | 2.5e3 |
+
+scipy가 크게 틀리는 점은 서브노멀 꼬리(`erfc`, `ndtr`, `log_ndtr`: scipy는 0)와 값이 $10^{228}$을 넘는 음의 $x$(`erfcx`의 $x \approx -23$)예요. 방법은 [오차함수와 감마](/internals/special/erf-gamma/)에 있어요.
+
+### 감마와 베타
+
+| 함수 | 영역 | 점 | 최대 | 99.9% | scipy 최대 | scipy 99.9% |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| `gamma` | 보장 | 7019 | 10.2 | 7.35 | 8.0e15 | 7.1e15 |
+| `rgamma` | 보장 | 7719 | 5.11 | 4.01 | inf | nan |
+| `gammaln` | 보장 | 4937 | 5.53 | 2.43 | inf | nan |
+| `gammaln` | 혼합 | 1732 | 2.09 | 1.83 | 1.34 | 1.31 |
+| `digamma` | 보장 | 4136 | 2.11 | 1.65 | 2.11 | 1.56 |
+| `digamma` | 혼합 | 1695 | 14.9 | 8.63 | 2.6e13 | 1.4e13 |
+| `polygamma` | 보장 | 3918 | 17.3 | 8.03 | 9.0e15 | 8.7e15 |
+| `polygamma` | 혼합 | 974 | 3.13 | 2.68 | 3.13 | 2.93 |
+| `beta` | 보장 | 4752 | 52.8 | 33.3 | 3.1e8 | 1.8e8 |
+| `beta` | 혼합 | 748 | 6.78 | 5.01 | 839 | 572 |
+| `betaln` | 혼합 | 4500 | 27.3 | 12.9 | inf | nan |
+| `binom` | 보장 | 5480 | 9.26 | 8.38 | 2.8e4 | 1.2e4 |
+| `binom` | 혼합 | 1120 | 7.98 | 6.91 | inf | nan |
+
+`beta`의 52.8 ULP는 $a = 5.5 \times 10^{-4}$, $b = 27.7$처럼 한 인자가 아주 작은 점이에요(상대 $6.6 \times 10^{-15}$). 이 구간($a, b > 0$, $a + b < 40$)은 Boost.Math의 `beta`(Lanczos)를 불러요. scipy가 크게 틀리는 점은 결과가 서브노멀인 깊은 음수(`gamma`의 $x \approx -172$), 음의 극점 근처(`digamma`의 혼합 영역), 결과가 $10^{-180}$처럼 작은 거대한 인자(`beta`의 $a \approx 10^7$), 결과가 $10^{60}$–$10^{170}$인 큰 인자(`binom`)예요.
+
+### 불완전 감마와 베타
+
+| 함수 | 영역 | 점 | 최대 | 99.9% | scipy 최대 | scipy 99.9% |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| `gammainc` | 보장 | 2406 | 8.87 | 5.63 | 4.5e15 | 6.6e9 |
+| `gammaincc` | 보장 | 2361 | 13.4 | 7.98 | 2.4e10 | 6.1e3 |
+| `gammaincinv` | 보장 | 2004 | 50.1 | 42.7 | inf | 498 |
+| `gammainccinv` | 보장 | 1903 | 37.5 | 26.0 | inf | 31.3 |
+| `betainc` | 보장 | 1979 | 16.7 | 13.7 | inf | 1.1e4 |
+| `betaincc` | 보장 | 1973 | 18.6 | 17.5 | inf | 1.1e11 |
+| `betaincinv` | 보장 | 1440 | 59.0 | 8.67 | inf | nan |
+| `betainccinv` | 보장 | 1254 | 19.8 | 15.9 | inf | nan |
+
+(역함수는 ULP / $\max(1, \kappa)$.) `gammaincinv`의 50.1은 $a \approx 6 \times 10^5$처럼 큰 $a$의 점이에요(상대 $9.3 \times 10^{-15}$). 이 구간은 Boost.Math의 `gamma_p_inv`가 풀어요(DiDonato–Morris의 초기값에서 Halley, 걸음이 $x$의 약 $2^{-25}$배 아래가 되면 멈춤). `betaincinv`의 59는 $p = 5 \times 10^{-324}$(최소 서브노멀)처럼 입력 자체가 몇 비트뿐인 점이에요. scipy의 큰 값은 앞 인자 $x^a e^{-x}/\Gamma(a)$를 `a log x - x - lgamma(a)`로 float64에서 만드는 데서 꼬리마다 수천 ULP를 잃는 것과, 서브노멀 꼬리의 0이에요. 방법은 [불완전 감마와 베타](/internals/special/incomplete/)에 있어요.
+
+### 로지스틱과 정보량
+
+| 함수 | 영역 | 점 | 최대 | 99.9% | scipy 최대 | scipy 99.9% |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| `expit` | 보장 | 8082 | 2.06 | 1.73 | 1.1e15 | 8.6e14 |
+| `logit` | 보장 | 7535 | 2.80 | 2.52 | 1.22 | 1.13 |
+| `log_expit` | 보장 | 8082 | 1.24 | 0.94 | 1.24 | 0.94 |
+| `xlogy` | 보장 | 4000 | 1.19 | 1.09 | 1.19 | 1.09 |
+| `xlog1py` | 보장 | 4000 | 1.24 | 1.12 | 1.24 | 1.12 |
+| `entr` | 보장 | 5024 | 1.25 | 0.79 | 1.25 | 0.79 |
+| `rel_entr` | 보장 | 5000 | 2.07 | 1.62 | 2.07 | 1.62 |
+
+`expit`의 scipy 값은 $x < -709.78$에서 참값 $e^x$(서브노멀) 대신 0을 내는 것이에요. 나머지 다섯은 scipy와 최대·99.9%가 같아요(같은 식을 쓰는 곳).
+
+### 제타와 지수적분
+
+| 함수 | 영역 | 점 | 최대 | 99.9% | scipy 최대 | scipy 99.9% |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| `zeta` (Riemann) | 보장 | 6112 | 44.7 | 18.2 | 5.5e15 | 2.0e14 |
+| `zeta` (Hurwitz) | 보장 | 3500 | 5.51 | 2.97 | 44.5 | 16.7 |
+| `zeta` (Hurwitz) | 혼합 | 800 | 6.23 | 4.00 | 6.23 | 4.00 |
+| `expi` | 보장 | 3313 | 4.69 | 3.83 | inf | nan |
+| `expn` | 보장 | 2705 | 6.28 | 4.96 | 3.4e18 | 1.2e9 |
+
+Riemann `zeta`의 44.7은 $x \approx -31$의 음수 점이에요(상대 $7.2 \times 10^{-15}$). $x > -60$은 Boost.Math, $x \le -60$은 stardust의 함수방정식이에요(아래 [Boost 구간](#boostmath와-견주어-구간을-고른-근거)). `expn`에서 scipy가 크게 틀리는 점은 결과가 서브노멀인 꼬리($x \approx 712$)와 거대한 차수($n \approx 10^{12}$)예요. 방법은 [제타, 지수적분, 타원적분, 초기하, Lambert W, Faddeeva](/internals/special/more-functions/)에 있어요.
+
+### Bessel과 Airy
+
+| 함수 | 점 | 최대 | 99.9% | scipy 최대 | scipy 99.9% | 함수 | 점 | 최대 | 99.9% | scipy 최대 | scipy 99.9% |
+|---|:---:|:---:|:---:|:---:|:---:|---|:---:|:---:|:---:|:---:|:---:|
+| `i0` | 2400 | 3.50 | 2.96 | inf | nan | `j0` | 2100 | 10.9 | 7.42 | 11.9 | 7.72 |
+| `i0e` | 2400 | 1.79 | 1.63 | 5.39 | 4.21 | `j1` | 2100 | 9.32 | 3.40 | 11.3 | 3.51 |
+| `i1` | 2400 | 3.47 | 3.02 | inf | nan | `y0` | 2100 | 21.1 | 17.5 | 17.8 | 14.4 |
+| `i1e` | 2400 | 1.65 | 1.57 | 3.73 | 2.91 | `y1` | 2100 | 46.4 | 12.1 | 1.6e16 | 1.6e16 |
+| `k0` | 2400 | 2.30 | 1.93 | 6.84 | 5.68 | `jv` | 1924 | 23.2 | 15.1 | inf | nan |
+| `k0e` | 2400 | 1.83 | 1.69 | 4.33 | 4.10 | `yv` | 1927 | 13.8 | 12.4 | 2.3e5 | 1.2e5 |
+| `k1` | 2400 | 2.13 | 1.95 | 4.37 | 2.91 | `airy` Ai | 2975 | 57.3 | 27.4 | inf | nan |
+| `k1e` | 2400 | 2.05 | 1.95 | 2.30 | 2.03 | `airy` Ai′ | 2975 | 34.8 | 29.6 | inf | nan |
+| `iv` | 2000 | 38.8 | 30.9 | inf | 1.4e3 | `airy` Bi | 2975 | 43.5 | 25.4 | inf | nan |
+| `ive` | 2000 | 44.6 | 31.6 | 5.2e15 | 1.3e3 | `airy` Bi′ | 2975 | 50.3 | 22.5 | inf | nan |
+| `kv` | 2000 | 22.2 | 15.2 | inf | nan | | | | | | |
+| `kve` | 2000 | 16.0 | 11.9 | inf | 1.6e3 | | | | | | |
+
+(모두 보장 영역. 진동 함수는 포락선 배율로 나눈 값.) `airy` Ai의 57.3은 $x \approx -8.5 \times 10^{11}$이에요. 위상 $\zeta = \tfrac23\lvert x\rvert^{3/2} \approx 5 \times 10^{17}$을 double-double로 만들어도 그 절대 오차가 위상을 조금 흐리는 영역이에요(포락선 대비 $9 \times 10^{-15}$). `iv`, `ive`의 큰 값은 $\nu \approx 16$, $x \approx 0.02$처럼 결과가 아주 작은 점이에요. scipy가 크게 틀리는 점은 넘침 근처(`i0`, `i1`의 inf), 거대한 $x$(`y1`의 $x > 10^{150}$), 음의 큰 차수(`yv`의 $\nu \approx -400 \ldots -900$)예요. 방법은 [Bessel과 Airy](/internals/special/bessel-airy/)에 있어요.
+
+### 타원적분, 초기하, Lambert W
+
+| 함수 | 영역 | 점 | 최대 | 99.9% | scipy 최대 | scipy 99.9% |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| `ellipk` | 보장 | 3036 | 2.30 | 1.91 | 2.25 | 1.54 |
+| `ellipe` | 보장 | 3036 | 2.04 | 1.36 | 3.96 | 2.07 |
+| `hyp1f1` | 보장 | 1600 | 78.6 | 71.6 | 248 | 194 |
+| `hyp1f1` | 느슨 | 400 | 2.2e3 | 1.9e3 | 2.3e3 | 2.2e3 |
+| `hyp2f1` | 보장 | 509 | 11.0 | 10.8 | 208 | 129 |
+| `hyp2f1` | 느슨 | 991 | 3.1e3 | 605 | 1.8e12 | 3.5e11 |
+| `lambertw` ($k = 0$) | 보장 | 3000 | 1.89 | 1.10 | 4.2e7 | 4.2e7 |
+| `lambertw` ($k = -1$) | 보장 | 2250 | 2.63 | 1.32 | 4.5e11 | 4.3e11 |
+
+`hyp1f1`의 보장 영역 78.6 ULP(상대 $9.1 \times 10^{-15}$)는 $a = 35.7$, $b = 7.0$, $x = 205$처럼 $x \ge 0$, $b < 11$인 점이에요. 이 구간과 느슨한 영역 전부는 Boost.Math의 `hypergeometric_1F1`이 계산해요. 느슨한 영역(큰 $\lvert a\rvert$의 상쇄 등)은 상대 $10^{-12}$를 약속해요(잰 값 $2.8 \times 10^{-13}$). scipy의 `lambertw`는 분기점 $-1/e$ 근처에서 $e x + 1$의 상쇄로 $10^7$–$10^{11}$ ULP를 잃어요.
+
+### 복소수
+
+| 함수 | 점 | 최대 | 99.9% | scipy 최대 | scipy 99.9% |
+|---|:---:|:---:|:---:|:---:|:---:|
+| `erf` (complex) | 5498 | 3.44 | 2.39 | inf | nan |
+| `erfc` (complex) | 5402 | 3.44 | 2.59 | inf | nan |
+| `erfcx` (complex) | 5402 | 1.94 | 1.71 | inf | nan |
+| `wofz` | 7401 | 2.01 | 1.84 | 255 | 108 |
+| `loggamma` | 7363 | 8.21 | 5.86 | 224 | 111 |
+| `lambertw` ($k = 0$) | 5138 | 1.86 | 1.36 | inf | 6.5e7 |
+| `lambertw` ($k = -1$) | 5138 | 1.75 | 1.00 | inf | 7.0e7 |
+| `lambertw` ($k = 1$) | 5138 | 1.76 | 0.95 | 1.0e8 | 4.3e7 |
+| `lambertw` ($k = 4$) | 5138 | 0.95 | 0.70 | 0.70 | 0.56 |
+
+복소수의 오차는 $\lvert\text{오차}\rvert$(복소수 차의 크기)를 $\lvert\text{값}\rvert$의 ULP로 잰 값이고, 영점 근처는 포락선 배율로 나눠요.
+
+### 분포 함수
+
+24개의 표는 [분포 함수](/internals/special/distributions/)에 있어요. 보장 영역 최대는 `fdtri` 23 ULP/κ, `ncfdtrc` 15.2, `pdtrc` 13.1, `fdtr` 12.4이고 나머지는 10 ULP 안팎 이하예요. scipy는 같은 점에서 꼬리의 0이나 인자 반올림 때문에 수백 ULP에서 $10^{16}$까지 틀려요.
+
+## scipy보다 나쁜 줄과 원인
+
+최대 ULP로 scipy보다 나쁜 줄은 일곱 개예요(아래 표의 여섯 줄). 차이는 많아야 3.3 ULP이고, 계약($10^{-14}$, 45–90 ULP) 안이에요.
+
+| 함수 | stardust | scipy | 원인 |
+|---|:---:|:---:|---|
+| `erfinv` | 4.64 | 1.95 | AS241 유리식의 double 계산(아래) |
+| `ndtri` | 5.43 | 2.81 | 같음 |
+| `logit` | 2.80 | 1.22 | vForce `vvatanh`의 오차 |
+| `y0` | 21.1 | 17.8 | scipy와 같은 Cephes 식이고, 최대가 나온 점도 같아요($x = 4.67$) |
+| `gammaln` (혼합) | 2.09 | 1.34 | 1 ULP 안쪽의 차이 |
+| `ellipk`, `lambertw` ($k = 4$) | 2.30, 0.95 | 2.25, 0.70 | 1 ULP 안쪽의 차이 |
+
+**`erfinv`, `ndtri`.** 두 함수는 Wichura의 AS241 [4] 유리식이에요. $s = \sqrt{-\log p}$로 두고 $s \le 5$이면 $C(s - 1.6)/D(s - 1.6)$, $s > 5$이면 $E(s - 5)/F(s - 5)$이고, 분자·분모가 모두 7차예요. `ndtri`의 최악 점 여섯은 모두 $s > 5$이고, `erfinv`의 최악 점은 대부분 $s \le 5$ 쪽이에요. `ndtri`의 최악 점 여섯에서 유리식을 mpmath로 계수 그대로 계산하면 근사 자체의 오차는 0.5 ULP 아래예요. 같은 식을 Python의 double로 계산하면(`np.log`와 Horner) 그중 셋에서 stardust와 비트까지 같은 값이 나오고, 나머지 셋도 $s$를 1 ULP 옮기면 같은 값이 나와요. 그러니 남는 4–5 ULP는 근사식이 아니라 double 계산(로그와 두 7차 다항식의 Horner)의 반올림이에요. scipy의 `erfinv`(Boost.Math `erf_inv`)는 구간마다 큰 상수 $Y$에 작은 보정 $R$을 더하는 꼴이에요. 꼬리에서는 $x = \sqrt{-\log q}$로 두고 $Y x + R(x - b)\,x$를 계산하고, $R$은 $\lvert Y\rvert$에 비해 절대오차가 작도록 맞춘 것이라 반올림이 주로 보정항에 걸려요 [6]. stardust가 Boost의 `erf_inv`로 바꾸지 않은 것은 구간 비교에서 우리 커널이 더 빨랐기 때문이에요(아래 표). 오차함수 계열은 NEON + vForce 덩어리 커널이라 원소마다 Boost를 부르면 그 이점이 사라져요.
+
+**`logit`.** 중심 구간 $p \in [0.25, 0.75]$는 $2\operatorname{atanh}(2p - 1)$이에요($2p - 1$은 Sterbenz 보조정리로 정확). 최악 점 넷에서 $\operatorname{atanh}$를 올바르게 반올림한 값으로 계산하면 오차가 0.2–0.43 ULP예요. Accelerate의 `vvatanh`를 같은 인자로 불러 두 배 하면 최악 점 여섯 모두에서 stardust와 비트까지 같은 값이 나와요. 곧 2.8 ULP는 1024원소 덩어리로 부르는 vForce `vvatanh`의 오차예요(이 점들에서 올바른 반올림보다 2–3 ULP 벗어나요). 이 크기는 계약에 비하면 작고, 덩어리 호출이 원소마다 libm을 부르는 것보다 빠른 대가로 받아들인 것이에요([원소별 엔진과 병렬화](/internals/special/engine/)).
+
+## Boost.Math와 견주어 구간을 고른 근거
+
+### 규칙
+
+일부 구간은 Boost.Math를 직접 불러요(`csrc/special/boost.hpp`, 헤더는 `third_party/boost_math/`, boostorg/math develop의 커밋 4682f44, Boost Software License 1.0). 바꾸는 규칙은 하나예요.
+
+> 구간마다, Boost가 기준값 파일의 **모든** 점에서 계약($10^{-14}$, 특수값은 stardust의 규칙)을 지키고 1스레드에서 **느리지 않을 때**(10% 안은 같다고 봐요)만 Boost로 바꿔요. 더 정확해도 느리면 stardust의 것을 둬요. 일부 점만 틀리면 구간을 잘게 나눠 지키는 구간만 바꿔요.
+
+특수값(NaN, ±inf, 0, 극점)은 Boost를 부르기 전에 stardust가 정하고, Boost의 결과가 정상 범위(서브노멀·0·inf·NaN이 아님)가 아니면 그 값을 버리고 stardust의 코드로 다시 계산해요(`bst::normal`). Boost의 오류 정책은 모두 "값을 돌려준다"이고, double 연산을 long double로 올리지 않게(`promote_double<false>`) 해서 결과가 기계에 따라 달라지지 않아요.
+
+구간을 고르는 측정은 `bench/special/boost/`에 있어요. `compare.md`는 함수 전체의 비교, `regions.md`는 구간별 비교, `rules.py`는 후보 규칙마다 합친 결과의 계약 위반 수, `routing.md`는 고른 규칙이에요. 정확도는 위와 같은 기준값 파일로, 속도는 그 구간 안 점 $2 \times 10^5$개에서 1스레드로 쟀어요(Boost는 같은 입력의 C++ 루프). 아래 표의 "고를 때의 비"는 그때의 Boost / stardust 시간이에요. stardust 쪽 일부(불완전 함수, 초기하)는 그 뒤 빨라져서 지금의 비는 다를 수 있어요.
+
+### Boost를 부르는 구간과 그 안의 방법
+
+| 함수 | Boost 구간 | Boost가 쓰는 방법 (double) | 고를 때의 근거 | stardust 구간 |
+|---|---|---|---|---|
+| `zeta` | $x > -60$(자명한 영점 제외) | $s < 1$: $1-s$의 유리식에 극 $1/(s-1)$을 붙인 꼴. $(1,2]$, $(2,4]$, $(4,7]$, $(7,15)$: 구간별 minimax 유리식. $[15,36)$: $1 + e^{R(s-15)}$. $s \ge 36$: $1 + 2^{-s}$. $s < 0$: 함수방정식 $\zeta(s) = 2\sin(\tfrac{\pi s}{2})(2\pi)^{s-1}\Gamma(1-s)\zeta(1-s)$ | $x > 1$에서 1.14 대 3.31 ULP, 비 0.14 | $x \le -60$: Boost 1.7e3 ULP |
+| `i0`, `i1` | 전부 | $x < 7.75$: $1 + aP(a)$, $a = x^2/4$(`i1`도 같은 꼴). 그 위: $e^x P(1/x)/\sqrt{x}$, 큰 $x$는 $e^{x/2}$를 두 번 곱해 넘침을 피함 | 2.2–3.5 ULP, 비 0.50 | 결과가 정상 범위 밖(713 근처의 참값) |
+| `k0`, `k1` | 전부 | $x \le 1$: $x^2$의 유리식 $- \log x \cdot (I_0$류 급수$)$. $x > 1$: $(Y + R(1/x))\,e^{-x}/\sqrt{x}$ | `k0`의 $x < 2$에서 1.67 대 17.3 ULP, 비 0.29–0.30 | `k1(5e-324)` 등 결과가 정상 범위 밖 |
+| `iv`, `kv` | $\lvert\nu\rvert < 30$, $\lvert\nu\rvert < 400$($x > 0$) | Temme의 방법 [9]: $\nu = n + \mu$, $\lvert\mu\rvert \le \tfrac12$. $x \le 2$는 Temme 급수, $x > 2$는 CF2(Steed의 방법, Boost 소스가 인용하는 Thompson–Barnett [10])로 $K_\mu, K_{\mu+1}$, CF1(수정 Lentz)로 $I$의 비, Wronskian으로 $I$, 앞으로 점화해 $K_\nu$. $x$가 $\nu$에 비해 작으면 거듭제곱급수, 아주 크면 점근전개 | 구간 안 위반 0, 비 0.42(`iv`), 0.14(`kv`) | 그 밖. $\nu \ge 30$은 Debye 균등 점근전개 |
+| `ive`, `kve`, `i0e` 등 | 위 구간, $0 < x < 700$ | Boost의 값 $\times e^{\mp x}$ | 같음 | 그 밖 |
+| `betaln` | $a, b > 0$, $a + b < 40$ | $\log$(Boost의 `beta`) | 위반 0 | 그 밖 |
+| `expi` | $x \ge -700$ | $x < 0$: $-E_1(-x)$. $0 < x \le 6$: $(x - r)R(x/3 - 1) + \log(x/r)$, $r = 0.3725\ldots$(양의 영점, 두 조각으로 저장해 정확히 빼기). 그 위: 구간별 $\tfrac{e^x}{x}(Y + R(1/x))$ | ≤ 4.7 ULP, 비 0.47 | $x < -700$: Boost는 서브노멀 꼬리를 0으로 |
+| `lambertw` | $\lvert x + 1/e\rvert \ge 0.05$ | $z$(큰 $z$는 $\log z$)의 구간별 minimax 유리식, 분기점 근처는 $\sqrt{2(ez+1)}$의 급수 | ≤ 1.1 ULP, 비 0.31 | 분기점 근처: Boost 2e7 ULP |
+| `digamma` | $x > 0$ | $x \ge 10$: Bernoulli 수의 점근전개. $[1, 2]$: $(x - x_0)(Y + R(x-1))$, $x_0$는 양의 근. 그 사이는 점화식 | 2.11 대 2.11 ULP, 비 0.95 | $x < 0$: 극점 근처에서 Boost가 틀림 |
+| `gamma` | $x > -170$, 극점 제외 | Lanczos 근사(`lanczos13m53`, $g \approx 6.02$), 작은 정수는 계승 표, 작은·음의 $x$는 점화식, $x < -20$은 반사식($x\sin\pi x$를 정확히 줄여서) | 위반 0, 비 1.09(10% 안) | 서브노멀 꼬리 |
+| `beta` | $a, b > 0$, $a + b < 40$ | 세 감마를 Lanczos 꼴로 한 식에 모음 | 위반 0, 비 0.98 | 큰 인자: Boost 1.8e3 ULP |
+| `gammaincinv`, `gammainccinv` | $p \ge 10^{-300}$, 근 $\ge 10^{-300}$ / 근이 정상 범위 | DiDonato–Morris(1986) [2]의 초기값 + Halley(자세한 것은 [분포 함수](/internals/special/distributions/)) | 위반 0, 비 0.82, 0.49 | 서브노멀 근 |
+| `betainc`, `betaincc` | $a, b \le 6$ | TOMS 708 [1]의 구조: 닫힌 꼴, 거듭제곱급수, 옆걸음 + BGRAT, 정수 매개변수의 이항 유한합, 꼬리부터 다시 계산하는 연분수 | 위반 0, 비 0.26 | 큰 $a, b$ |
+| `betaincinv`, `betainccinv` | $a, b \ge 10$ / $a, b \ge 1$ | Temme의 세 균등 점근 역전개 [11]로 초기값 + Halley | 위반 0, 비 0.73, 0.35 | 작은 $a, b$: Boost가 언더플로를 틀림 |
+| `hyp1f1` | 느슨한 영역 전부, 보장 영역의 $x \ge 0$이고 $b < 11$ | 검사하는 급수, Kummer 변환, A&S 13.3.6, Tricomi의 Bessel 전개(13.3.7), 큰 $a \approx b$의 감마 전개, 큰 $z$의 점근전개, Luke의 유리 근사, $a$·$b$의 점화식 중 입력에 맞는 것 [6] | 보장 영역의 나머지에서 Boost 208 ULP. 느슨한 영역은 stardust가 $2.3 \times 10^{13}$ ULP, Boost가 상대 $3 \times 10^{-12}$ | 보장 영역의 나머지 |
+
+`betainc`와 `betaincc`의 구간을 같게($a, b \le 6$) 둔 이유가 있어요. 둘이 다르면 한쪽만 Boost인 점에서 `betainc + betaincc`가 1에서 3 ULP 넘게 벗어났어요. Boost는 두 함수를 따로 계산하므로 같은 구간에서도 합은 3 ULP까지 1에서 벗어나요.
+
+### Boost로 바꾸지 않은 함수
+
+| 함수 | 이유 (`bench/special/boost/compare.md`, 구간을 고를 때 잰 1스레드 비교) |
+|---|---|
+| `erf erfc erfinv erfcinv` | Boost가 더 정확하지만(1.4–3.0 ULP) 1스레드에서 우리 덩어리 커널보다 느렸어요(2.0–2.9배) |
+| `gammaln` | Boost 2.42 대 5.53 ULP이지만 1.28배 느렸어요 |
+| `j0 j1 y0 y1` | Boost가 비슷하거나 더 정확하지만 1.2–1.5배 느렸어요 |
+| `expit` | Boost가 $x \approx -709 \ldots -740$의 서브노멀 꼬리를 0으로 내요(2.4e15 ULP) |
+| `polygamma` | Boost 556 ULP($n = 170$), 4.9배 느렸어요 |
+| `expn` | Boost 1.7e11 ULP, 큰 $n$이 섞인 표본에서 93배 느렸어요 |
+| `jv`, `yv` | Boost 2.5e4 ULP($x \approx 5 \times 10^4$, $\nu \approx 900$), 2.4배 느렸어요 |
+| `gammainc`, `gammaincc` | Boost 5e5 ULP($a \approx 10^6$) |
+| `airy` | Boost는 $x \approx -10^{11}$에서 1.5e16 ULP(위상), 넷을 따로 불러야 해요. stardust는 넷을 한 번에 계산해요 |
+| `ellipk`, `ellipe` | Boost는 모듈러스 $k$를 받아요. $m$을 $\sqrt{m}$으로 바꾸는 반올림이 $m \to 1$의 로그 특이점에서 커져서 같은 조건의 비교가 안 되고, $m < 0$은 Boost의 정의역 밖이에요 |
+
+Boost.Math에 없는 함수(복소수 전부, `erfcx`, 정규분포 함수, e-스케일 Bessel의 일부 구간, `hyp2f1`, Hurwitz 제타, 리덕션)는 처음부터 stardust의 것이에요.
+
+## 속도와 원소당 비용
+
+### 재는 방법
+
+<Fig column caption="특수함수의 속도·비용 측정 도구. 셋 다 입력을 기준값 파일의 보장 영역 점에서 뽑아요.">
+  <Steps steps={[
+    { label: 'bench/special/speed.py', note: '원소 10⁶개를 1스레드·10스레드로, 스칼라 한 번 호출, scipy와 같은 자리에서 번갈아 3라운드, 가장 빠른 값' },
+    { label: 'bench/special/cost.py', note: '1스레드 원소당 ns와 그것을 add 한 번의 비용으로 나눈 가중치' },
+    { label: 'csrc/special/cost.hpp', note: '함수마다 원소당 비용(ns)을 상수로: 병렬 기준과 태스크 크기를 정해요', where: 'C++' },
+  ]} />
+</Fig>
+
+- **입력.** `speed.py`와 `cost.py`는 기준값 파일의 보장 영역 입력에서 $10^6$개를 복원 추출해요. 기준값 파일은 경계와 어려운 점을 일부러 많이 넣은 집합이라, 이 표본은 "보통의" 입력보다 비싼 쪽으로 치우쳐요. 분포 함수는 매개변수를 로그 균등으로 뽑은 따로 만든 표본을 써요(`bench/special/t1/speed.py`, `t2/speed.py`).
+- **같은 자리에서 번갈아.** stardust와 scipy를 함수마다 번갈아 재고, 라운드를 돌며 가장 빠른 값을 남겨요. 기계의 상태가 바뀌어도 두 쪽이 같이 영향을 받게 하려는 거예요.
+- **스칼라 호출.** Python `float` 하나를 넣는 호출 시간이에요. 계산보다 Python 경계를 넘는 비용이 커요([Python 경계](/internals/core/python-boundary/)).
+- **원소당 비용과 가중치.** 배열의 원소별 연산은 일의 양이 원소 $2^{15}$개를 넘으면 여러 스레드로 나눠요. 특수함수는 원소 하나의 비용이 add 하나의 수 배에서 수천 배라서 같은 기준을 쓰면 비싼 함수는 너무 늦게 나눠요. 그래서 `cost.hpp`에 함수마다 원소당 비용(ns)을 두고, 그것을 add의 비용(`kAddNs = 0.19` ns)으로 나눈 **가중치** $w$로 일을 세요. 가중치 $w$인 함수는 원소 $2^{15}/w$개부터 병렬이고, 태스크 하나는 원소 약 $2^{12}/w$개예요. 가중치는 256에서 잘라요(`kMaxWeight`). 자르지 않으면 불완전 함수(가중치 800–8500)는 태스크 하나가 원소 하나가 되어 스레드들이 풀의 계수기를 두고 다투고, 10스레드가 1스레드의 4.8–7.8배에 그쳤어요. 256에서는 8.1–8.9배였어요(`bench/special/s4/threads.md`, 불완전 함수, 원소 $10^6$개). 가중치는 병렬로 나눌 위치만 바꾸고 결과의 비트는 바꾸지 않아요.
+
+### 표
+
+| 묶음 | 함수 | 1스레드 (ms) | 10스레드 (ms) | scipy / sd (1) | scipy / sd (10) | 스칼라 (µs) | 원소당 비용 (ns) |
+|---|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| 오차함수와 정규분포 | `erf` | ⟦SPEED erf t1⟧ | ⟦SPEED erf t10⟧ | ⟦SPEED erf ratio1⟧ | ⟦SPEED erf ratio10⟧ | ⟦SPEED erf scalar⟧ | ⟦COST erf⟧ |
+|  | `erfc` | ⟦SPEED erfc t1⟧ | ⟦SPEED erfc t10⟧ | ⟦SPEED erfc ratio1⟧ | ⟦SPEED erfc ratio10⟧ | ⟦SPEED erfc scalar⟧ | ⟦COST erfc⟧ |
+|  | `erfcx` | ⟦SPEED erfcx t1⟧ | ⟦SPEED erfcx t10⟧ | ⟦SPEED erfcx ratio1⟧ | ⟦SPEED erfcx ratio10⟧ | ⟦SPEED erfcx scalar⟧ | ⟦COST erfcx⟧ |
+|  | `erfinv` | ⟦SPEED erfinv t1⟧ | ⟦SPEED erfinv t10⟧ | ⟦SPEED erfinv ratio1⟧ | ⟦SPEED erfinv ratio10⟧ | ⟦SPEED erfinv scalar⟧ | ⟦COST erfinv⟧ |
+|  | `erfcinv` | ⟦SPEED erfcinv t1⟧ | ⟦SPEED erfcinv t10⟧ | ⟦SPEED erfcinv ratio1⟧ | ⟦SPEED erfcinv ratio10⟧ | ⟦SPEED erfcinv scalar⟧ | ⟦COST erfcinv⟧ |
+|  | `ndtr` | ⟦SPEED ndtr t1⟧ | ⟦SPEED ndtr t10⟧ | ⟦SPEED ndtr ratio1⟧ | ⟦SPEED ndtr ratio10⟧ | ⟦SPEED ndtr scalar⟧ | ⟦COST ndtr⟧ |
+|  | `log_ndtr` | ⟦SPEED log_ndtr t1⟧ | ⟦SPEED log_ndtr t10⟧ | ⟦SPEED log_ndtr ratio1⟧ | ⟦SPEED log_ndtr ratio10⟧ | ⟦SPEED log_ndtr scalar⟧ | ⟦COST log_ndtr⟧ |
+|  | `ndtri` | ⟦SPEED ndtri t1⟧ | ⟦SPEED ndtri t10⟧ | ⟦SPEED ndtri ratio1⟧ | ⟦SPEED ndtri ratio10⟧ | ⟦SPEED ndtri scalar⟧ | ⟦COST ndtri⟧ |
+|  | `ndtri_exp` | ⟦SPEED ndtri_exp t1⟧ | ⟦SPEED ndtri_exp t10⟧ | ⟦SPEED ndtri_exp ratio1⟧ | ⟦SPEED ndtri_exp ratio10⟧ | ⟦SPEED ndtri_exp scalar⟧ | ⟦COST ndtri_exp⟧ |
+| 감마와 베타 | `gamma` | ⟦SPEED gamma t1⟧ | ⟦SPEED gamma t10⟧ | ⟦SPEED gamma ratio1⟧ | ⟦SPEED gamma ratio10⟧ | ⟦SPEED gamma scalar⟧ | ⟦COST gamma⟧ |
+|  | `rgamma` | ⟦SPEED rgamma t1⟧ | ⟦SPEED rgamma t10⟧ | ⟦SPEED rgamma ratio1⟧ | ⟦SPEED rgamma ratio10⟧ | ⟦SPEED rgamma scalar⟧ | ⟦COST rgamma⟧ |
+|  | `gammaln` | ⟦SPEED gammaln t1⟧ | ⟦SPEED gammaln t10⟧ | ⟦SPEED gammaln ratio1⟧ | ⟦SPEED gammaln ratio10⟧ | ⟦SPEED gammaln scalar⟧ | ⟦COST gammaln⟧ |
+|  | `digamma` | ⟦SPEED digamma t1⟧ | ⟦SPEED digamma t10⟧ | ⟦SPEED digamma ratio1⟧ | ⟦SPEED digamma ratio10⟧ | ⟦SPEED digamma scalar⟧ | ⟦COST digamma⟧ |
+|  | `polygamma` | ⟦SPEED polygamma t1⟧ | ⟦SPEED polygamma t10⟧ | ⟦SPEED polygamma ratio1⟧ | ⟦SPEED polygamma ratio10⟧ | ⟦SPEED polygamma scalar⟧ | ⟦COST polygamma⟧ |
+|  | `beta` | ⟦SPEED beta t1⟧ | ⟦SPEED beta t10⟧ | ⟦SPEED beta ratio1⟧ | ⟦SPEED beta ratio10⟧ | ⟦SPEED beta scalar⟧ | ⟦COST beta⟧ |
+|  | `betaln` | ⟦SPEED betaln t1⟧ | ⟦SPEED betaln t10⟧ | ⟦SPEED betaln ratio1⟧ | ⟦SPEED betaln ratio10⟧ | ⟦SPEED betaln scalar⟧ | ⟦COST betaln⟧ |
+|  | `binom` | ⟦SPEED binom t1⟧ | ⟦SPEED binom t10⟧ | ⟦SPEED binom ratio1⟧ | ⟦SPEED binom ratio10⟧ | ⟦SPEED binom scalar⟧ | ⟦COST binom⟧ |
+| 불완전 감마와 베타 | `gammainc` | ⟦SPEED gammainc t1⟧ | ⟦SPEED gammainc t10⟧ | ⟦SPEED gammainc ratio1⟧ | ⟦SPEED gammainc ratio10⟧ | ⟦SPEED gammainc scalar⟧ | ⟦COST gammainc⟧ |
+|  | `gammaincc` | ⟦SPEED gammaincc t1⟧ | ⟦SPEED gammaincc t10⟧ | ⟦SPEED gammaincc ratio1⟧ | ⟦SPEED gammaincc ratio10⟧ | ⟦SPEED gammaincc scalar⟧ | ⟦COST gammaincc⟧ |
+|  | `gammaincinv` | ⟦SPEED gammaincinv t1⟧ | ⟦SPEED gammaincinv t10⟧ | ⟦SPEED gammaincinv ratio1⟧ | ⟦SPEED gammaincinv ratio10⟧ | ⟦SPEED gammaincinv scalar⟧ | ⟦COST gammaincinv⟧ |
+|  | `gammainccinv` | ⟦SPEED gammainccinv t1⟧ | ⟦SPEED gammainccinv t10⟧ | ⟦SPEED gammainccinv ratio1⟧ | ⟦SPEED gammainccinv ratio10⟧ | ⟦SPEED gammainccinv scalar⟧ | ⟦COST gammainccinv⟧ |
+|  | `betainc` | ⟦SPEED betainc t1⟧ | ⟦SPEED betainc t10⟧ | ⟦SPEED betainc ratio1⟧ | ⟦SPEED betainc ratio10⟧ | ⟦SPEED betainc scalar⟧ | ⟦COST betainc⟧ |
+|  | `betaincc` | ⟦SPEED betaincc t1⟧ | ⟦SPEED betaincc t10⟧ | ⟦SPEED betaincc ratio1⟧ | ⟦SPEED betaincc ratio10⟧ | ⟦SPEED betaincc scalar⟧ | ⟦COST betaincc⟧ |
+|  | `betaincinv` | ⟦SPEED betaincinv t1⟧ | ⟦SPEED betaincinv t10⟧ | ⟦SPEED betaincinv ratio1⟧ | ⟦SPEED betaincinv ratio10⟧ | ⟦SPEED betaincinv scalar⟧ | ⟦COST betaincinv⟧ |
+|  | `betainccinv` | ⟦SPEED betainccinv t1⟧ | ⟦SPEED betainccinv t10⟧ | ⟦SPEED betainccinv ratio1⟧ | ⟦SPEED betainccinv ratio10⟧ | ⟦SPEED betainccinv scalar⟧ | ⟦COST betainccinv⟧ |
+| 로지스틱과 정보량 | `expit` | ⟦SPEED expit t1⟧ | ⟦SPEED expit t10⟧ | ⟦SPEED expit ratio1⟧ | ⟦SPEED expit ratio10⟧ | ⟦SPEED expit scalar⟧ | ⟦COST expit⟧ |
+|  | `logit` | ⟦SPEED logit t1⟧ | ⟦SPEED logit t10⟧ | ⟦SPEED logit ratio1⟧ | ⟦SPEED logit ratio10⟧ | ⟦SPEED logit scalar⟧ | ⟦COST logit⟧ |
+|  | `log_expit` | ⟦SPEED log_expit t1⟧ | ⟦SPEED log_expit t10⟧ | ⟦SPEED log_expit ratio1⟧ | ⟦SPEED log_expit ratio10⟧ | ⟦SPEED log_expit scalar⟧ | ⟦COST log_expit⟧ |
+|  | `xlogy` | ⟦SPEED xlogy t1⟧ | ⟦SPEED xlogy t10⟧ | ⟦SPEED xlogy ratio1⟧ | ⟦SPEED xlogy ratio10⟧ | ⟦SPEED xlogy scalar⟧ | ⟦COST xlogy⟧ |
+|  | `xlog1py` | ⟦SPEED xlog1py t1⟧ | ⟦SPEED xlog1py t10⟧ | ⟦SPEED xlog1py ratio1⟧ | ⟦SPEED xlog1py ratio10⟧ | ⟦SPEED xlog1py scalar⟧ | ⟦COST xlog1py⟧ |
+|  | `entr` | ⟦SPEED entr t1⟧ | ⟦SPEED entr t10⟧ | ⟦SPEED entr ratio1⟧ | ⟦SPEED entr ratio10⟧ | ⟦SPEED entr scalar⟧ | ⟦COST entr⟧ |
+|  | `rel_entr` | ⟦SPEED rel_entr t1⟧ | ⟦SPEED rel_entr t10⟧ | ⟦SPEED rel_entr ratio1⟧ | ⟦SPEED rel_entr ratio10⟧ | ⟦SPEED rel_entr scalar⟧ | ⟦COST rel_entr⟧ |
+| 제타와 지수적분 | `zeta (Riemann)` | ⟦SPEED zeta t1⟧ | ⟦SPEED zeta t10⟧ | ⟦SPEED zeta ratio1⟧ | ⟦SPEED zeta ratio10⟧ | ⟦SPEED zeta scalar⟧ | ⟦COST zeta⟧ |
+|  | `zeta (Hurwitz)` | ⟦SPEED zeta_hurwitz t1⟧ | ⟦SPEED zeta_hurwitz t10⟧ | ⟦SPEED zeta_hurwitz ratio1⟧ | ⟦SPEED zeta_hurwitz ratio10⟧ | ⟦SPEED zeta_hurwitz scalar⟧ | ⟦COST zeta_hurwitz⟧ |
+|  | `expi` | ⟦SPEED expi t1⟧ | ⟦SPEED expi t10⟧ | ⟦SPEED expi ratio1⟧ | ⟦SPEED expi ratio10⟧ | ⟦SPEED expi scalar⟧ | ⟦COST expi⟧ |
+|  | `expn` | ⟦SPEED expn t1⟧ | ⟦SPEED expn t10⟧ | ⟦SPEED expn ratio1⟧ | ⟦SPEED expn ratio10⟧ | ⟦SPEED expn scalar⟧ | ⟦COST expn⟧ |
+| Bessel과 Airy | `i0` | ⟦SPEED i0 t1⟧ | ⟦SPEED i0 t10⟧ | ⟦SPEED i0 ratio1⟧ | ⟦SPEED i0 ratio10⟧ | ⟦SPEED i0 scalar⟧ | ⟦COST i0⟧ |
+|  | `i0e` | ⟦SPEED i0e t1⟧ | ⟦SPEED i0e t10⟧ | ⟦SPEED i0e ratio1⟧ | ⟦SPEED i0e ratio10⟧ | ⟦SPEED i0e scalar⟧ | ⟦COST i0e⟧ |
+|  | `i1` | ⟦SPEED i1 t1⟧ | ⟦SPEED i1 t10⟧ | ⟦SPEED i1 ratio1⟧ | ⟦SPEED i1 ratio10⟧ | ⟦SPEED i1 scalar⟧ | ⟦COST i1⟧ |
+|  | `i1e` | ⟦SPEED i1e t1⟧ | ⟦SPEED i1e t10⟧ | ⟦SPEED i1e ratio1⟧ | ⟦SPEED i1e ratio10⟧ | ⟦SPEED i1e scalar⟧ | ⟦COST i1e⟧ |
+|  | `k0` | ⟦SPEED k0 t1⟧ | ⟦SPEED k0 t10⟧ | ⟦SPEED k0 ratio1⟧ | ⟦SPEED k0 ratio10⟧ | ⟦SPEED k0 scalar⟧ | ⟦COST k0⟧ |
+|  | `k0e` | ⟦SPEED k0e t1⟧ | ⟦SPEED k0e t10⟧ | ⟦SPEED k0e ratio1⟧ | ⟦SPEED k0e ratio10⟧ | ⟦SPEED k0e scalar⟧ | ⟦COST k0e⟧ |
+|  | `k1` | ⟦SPEED k1 t1⟧ | ⟦SPEED k1 t10⟧ | ⟦SPEED k1 ratio1⟧ | ⟦SPEED k1 ratio10⟧ | ⟦SPEED k1 scalar⟧ | ⟦COST k1⟧ |
+|  | `k1e` | ⟦SPEED k1e t1⟧ | ⟦SPEED k1e t10⟧ | ⟦SPEED k1e ratio1⟧ | ⟦SPEED k1e ratio10⟧ | ⟦SPEED k1e scalar⟧ | ⟦COST k1e⟧ |
+|  | `j0` | ⟦SPEED j0 t1⟧ | ⟦SPEED j0 t10⟧ | ⟦SPEED j0 ratio1⟧ | ⟦SPEED j0 ratio10⟧ | ⟦SPEED j0 scalar⟧ | ⟦COST j0⟧ |
+|  | `j1` | ⟦SPEED j1 t1⟧ | ⟦SPEED j1 t10⟧ | ⟦SPEED j1 ratio1⟧ | ⟦SPEED j1 ratio10⟧ | ⟦SPEED j1 scalar⟧ | ⟦COST j1⟧ |
+|  | `y0` | ⟦SPEED y0 t1⟧ | ⟦SPEED y0 t10⟧ | ⟦SPEED y0 ratio1⟧ | ⟦SPEED y0 ratio10⟧ | ⟦SPEED y0 scalar⟧ | ⟦COST y0⟧ |
+|  | `y1` | ⟦SPEED y1 t1⟧ | ⟦SPEED y1 t10⟧ | ⟦SPEED y1 ratio1⟧ | ⟦SPEED y1 ratio10⟧ | ⟦SPEED y1 scalar⟧ | ⟦COST y1⟧ |
+|  | `iv` | ⟦SPEED iv t1⟧ | ⟦SPEED iv t10⟧ | ⟦SPEED iv ratio1⟧ | ⟦SPEED iv ratio10⟧ | ⟦SPEED iv scalar⟧ | ⟦COST iv⟧ |
+|  | `ive` | ⟦SPEED ive t1⟧ | ⟦SPEED ive t10⟧ | ⟦SPEED ive ratio1⟧ | ⟦SPEED ive ratio10⟧ | ⟦SPEED ive scalar⟧ | ⟦COST ive⟧ |
+|  | `kv` | ⟦SPEED kv t1⟧ | ⟦SPEED kv t10⟧ | ⟦SPEED kv ratio1⟧ | ⟦SPEED kv ratio10⟧ | ⟦SPEED kv scalar⟧ | ⟦COST kv⟧ |
+|  | `kve` | ⟦SPEED kve t1⟧ | ⟦SPEED kve t10⟧ | ⟦SPEED kve ratio1⟧ | ⟦SPEED kve ratio10⟧ | ⟦SPEED kve scalar⟧ | ⟦COST kve⟧ |
+|  | `jv` | ⟦SPEED jv t1⟧ | ⟦SPEED jv t10⟧ | ⟦SPEED jv ratio1⟧ | ⟦SPEED jv ratio10⟧ | ⟦SPEED jv scalar⟧ | ⟦COST jv⟧ |
+|  | `yv` | ⟦SPEED yv t1⟧ | ⟦SPEED yv t10⟧ | ⟦SPEED yv ratio1⟧ | ⟦SPEED yv ratio10⟧ | ⟦SPEED yv scalar⟧ | ⟦COST yv⟧ |
+|  | `airy` | ⟦SPEED airy t1⟧ | ⟦SPEED airy t10⟧ | ⟦SPEED airy ratio1⟧ | ⟦SPEED airy ratio10⟧ | ⟦SPEED airy scalar⟧ | ⟦COST airy⟧ |
+| 타원적분, 초기하, Lambert W | `ellipk` | ⟦SPEED ellipk t1⟧ | ⟦SPEED ellipk t10⟧ | ⟦SPEED ellipk ratio1⟧ | ⟦SPEED ellipk ratio10⟧ | ⟦SPEED ellipk scalar⟧ | ⟦COST ellipk⟧ |
+|  | `ellipe` | ⟦SPEED ellipe t1⟧ | ⟦SPEED ellipe t10⟧ | ⟦SPEED ellipe ratio1⟧ | ⟦SPEED ellipe ratio10⟧ | ⟦SPEED ellipe scalar⟧ | ⟦COST ellipe⟧ |
+|  | `hyp1f1` | ⟦SPEED hyp1f1 t1⟧ | ⟦SPEED hyp1f1 t10⟧ | ⟦SPEED hyp1f1 ratio1⟧ | ⟦SPEED hyp1f1 ratio10⟧ | ⟦SPEED hyp1f1 scalar⟧ | ⟦COST hyp1f1⟧ |
+|  | `hyp2f1` | ⟦SPEED hyp2f1 t1⟧ | ⟦SPEED hyp2f1 t10⟧ | ⟦SPEED hyp2f1 ratio1⟧ | ⟦SPEED hyp2f1 ratio10⟧ | ⟦SPEED hyp2f1 scalar⟧ | ⟦COST hyp2f1⟧ |
+|  | `lambertw (k = 0)` | ⟦SPEED lambertw t1⟧ | ⟦SPEED lambertw t10⟧ | ⟦SPEED lambertw ratio1⟧ | ⟦SPEED lambertw ratio10⟧ | ⟦SPEED lambertw scalar⟧ | ⟦COST lambertw⟧ |
+|  | `lambertw (k = −1)` | ⟦SPEED lambertw_m1 t1⟧ | ⟦SPEED lambertw_m1 t10⟧ | ⟦SPEED lambertw_m1 ratio1⟧ | ⟦SPEED lambertw_m1 ratio10⟧ | ⟦SPEED lambertw_m1 scalar⟧ | ⟦COST lambertw_m1⟧ |
+| 복소수 | `erf (complex)` | ⟦SPEED erf_complex t1⟧ | ⟦SPEED erf_complex t10⟧ | ⟦SPEED erf_complex ratio1⟧ | ⟦SPEED erf_complex ratio10⟧ | ⟦SPEED erf_complex scalar⟧ | ⟦COST erf_complex⟧ |
+|  | `erfc (complex)` | ⟦SPEED erfc_complex t1⟧ | ⟦SPEED erfc_complex t10⟧ | ⟦SPEED erfc_complex ratio1⟧ | ⟦SPEED erfc_complex ratio10⟧ | ⟦SPEED erfc_complex scalar⟧ | ⟦COST erfc_complex⟧ |
+|  | `erfcx (complex)` | ⟦SPEED erfcx_complex t1⟧ | ⟦SPEED erfcx_complex t10⟧ | ⟦SPEED erfcx_complex ratio1⟧ | ⟦SPEED erfcx_complex ratio10⟧ | ⟦SPEED erfcx_complex scalar⟧ | ⟦COST erfcx_complex⟧ |
+|  | `wofz` | ⟦SPEED wofz t1⟧ | ⟦SPEED wofz t10⟧ | ⟦SPEED wofz ratio1⟧ | ⟦SPEED wofz ratio10⟧ | ⟦SPEED wofz scalar⟧ | ⟦COST wofz⟧ |
+|  | `loggamma` | ⟦SPEED loggamma_complex t1⟧ | ⟦SPEED loggamma_complex t10⟧ | ⟦SPEED loggamma_complex ratio1⟧ | ⟦SPEED loggamma_complex ratio10⟧ | ⟦SPEED loggamma_complex scalar⟧ | ⟦COST loggamma_complex⟧ |
+|  | `lambertw complex (k = 0)` | ⟦SPEED lambertw_c0 t1⟧ | ⟦SPEED lambertw_c0 t10⟧ | ⟦SPEED lambertw_c0 ratio1⟧ | ⟦SPEED lambertw_c0 ratio10⟧ | ⟦SPEED lambertw_c0 scalar⟧ | ⟦COST lambertw_c0⟧ |
+|  | `lambertw complex (k = −1)` | ⟦SPEED lambertw_cm1 t1⟧ | ⟦SPEED lambertw_cm1 t10⟧ | ⟦SPEED lambertw_cm1 ratio1⟧ | ⟦SPEED lambertw_cm1 ratio10⟧ | ⟦SPEED lambertw_cm1 scalar⟧ | ⟦COST lambertw_cm1⟧ |
+|  | `lambertw complex (k = 1)` | ⟦SPEED lambertw_c1 t1⟧ | ⟦SPEED lambertw_c1 t10⟧ | ⟦SPEED lambertw_c1 ratio1⟧ | ⟦SPEED lambertw_c1 ratio10⟧ | ⟦SPEED lambertw_c1 scalar⟧ | ⟦COST lambertw_c1⟧ |
+|  | `lambertw complex (k = 4)` | ⟦SPEED lambertw_c4 t1⟧ | ⟦SPEED lambertw_c4 t10⟧ | ⟦SPEED lambertw_c4 ratio1⟧ | ⟦SPEED lambertw_c4 ratio10⟧ | ⟦SPEED lambertw_c4 scalar⟧ | ⟦COST lambertw_c4⟧ |
+| 분포 함수 | `stdtr` | ⟦SPEED stdtr t1⟧ | ⟦SPEED stdtr t10⟧ | ⟦SPEED stdtr ratio1⟧ | ⟦SPEED stdtr ratio10⟧ | ⟦SPEED stdtr scalar⟧ | ⟦COST stdtr⟧ |
+|  | `stdtrit` | ⟦SPEED stdtrit t1⟧ | ⟦SPEED stdtrit t10⟧ | ⟦SPEED stdtrit ratio1⟧ | ⟦SPEED stdtrit ratio10⟧ | ⟦SPEED stdtrit scalar⟧ | ⟦COST stdtrit⟧ |
+|  | `chdtr` | ⟦SPEED chdtr t1⟧ | ⟦SPEED chdtr t10⟧ | ⟦SPEED chdtr ratio1⟧ | ⟦SPEED chdtr ratio10⟧ | ⟦SPEED chdtr scalar⟧ | ⟦COST chdtr⟧ |
+|  | `chdtrc` | ⟦SPEED chdtrc t1⟧ | ⟦SPEED chdtrc t10⟧ | ⟦SPEED chdtrc ratio1⟧ | ⟦SPEED chdtrc ratio10⟧ | ⟦SPEED chdtrc scalar⟧ | ⟦COST chdtrc⟧ |
+|  | `chdtri` | ⟦SPEED chdtri t1⟧ | ⟦SPEED chdtri t10⟧ | ⟦SPEED chdtri ratio1⟧ | ⟦SPEED chdtri ratio10⟧ | ⟦SPEED chdtri scalar⟧ | ⟦COST chdtri⟧ |
+|  | `fdtr` | ⟦SPEED fdtr t1⟧ | ⟦SPEED fdtr t10⟧ | ⟦SPEED fdtr ratio1⟧ | ⟦SPEED fdtr ratio10⟧ | ⟦SPEED fdtr scalar⟧ | ⟦COST fdtr⟧ |
+|  | `fdtrc` | ⟦SPEED fdtrc t1⟧ | ⟦SPEED fdtrc t10⟧ | ⟦SPEED fdtrc ratio1⟧ | ⟦SPEED fdtrc ratio10⟧ | ⟦SPEED fdtrc scalar⟧ | ⟦COST fdtrc⟧ |
+|  | `fdtri` | ⟦SPEED fdtri t1⟧ | ⟦SPEED fdtri t10⟧ | ⟦SPEED fdtri ratio1⟧ | ⟦SPEED fdtri ratio10⟧ | ⟦SPEED fdtri scalar⟧ | ⟦COST fdtri⟧ |
+|  | `pdtr` | ⟦SPEED pdtr t1⟧ | ⟦SPEED pdtr t10⟧ | ⟦SPEED pdtr ratio1⟧ | ⟦SPEED pdtr ratio10⟧ | ⟦SPEED pdtr scalar⟧ | ⟦COST pdtr⟧ |
+|  | `pdtrc` | ⟦SPEED pdtrc t1⟧ | ⟦SPEED pdtrc t10⟧ | ⟦SPEED pdtrc ratio1⟧ | ⟦SPEED pdtrc ratio10⟧ | ⟦SPEED pdtrc scalar⟧ | ⟦COST pdtrc⟧ |
+|  | `bdtr` | ⟦SPEED bdtr t1⟧ | ⟦SPEED bdtr t10⟧ | ⟦SPEED bdtr ratio1⟧ | ⟦SPEED bdtr ratio10⟧ | ⟦SPEED bdtr scalar⟧ | ⟦COST bdtr⟧ |
+|  | `bdtrc` | ⟦SPEED bdtrc t1⟧ | ⟦SPEED bdtrc t10⟧ | ⟦SPEED bdtrc ratio1⟧ | ⟦SPEED bdtrc ratio10⟧ | ⟦SPEED bdtrc scalar⟧ | ⟦COST bdtrc⟧ |
+|  | `nbdtr` | ⟦SPEED nbdtr t1⟧ | ⟦SPEED nbdtr t10⟧ | ⟦SPEED nbdtr ratio1⟧ | ⟦SPEED nbdtr ratio10⟧ | ⟦SPEED nbdtr scalar⟧ | ⟦COST nbdtr⟧ |
+|  | `nbdtrc` | ⟦SPEED nbdtrc t1⟧ | ⟦SPEED nbdtrc t10⟧ | ⟦SPEED nbdtrc ratio1⟧ | ⟦SPEED nbdtrc ratio10⟧ | ⟦SPEED nbdtrc scalar⟧ | ⟦COST nbdtrc⟧ |
+|  | `chndtr` | ⟦SPEED chndtr t1⟧ | ⟦SPEED chndtr t10⟧ | ⟦SPEED chndtr ratio1⟧ | ⟦SPEED chndtr ratio10⟧ | ⟦SPEED chndtr scalar⟧ | ⟦COST chndtr⟧ |
+|  | `chndtrc` | ⟦SPEED chndtrc t1⟧ | ⟦SPEED chndtrc t10⟧ | ⟦SPEED chndtrc ratio1⟧ | ⟦SPEED chndtrc ratio10⟧ | ⟦SPEED chndtrc scalar⟧ | ⟦COST chndtrc⟧ |
+|  | `chndtrix` | ⟦SPEED chndtrix t1⟧ | ⟦SPEED chndtrix t10⟧ | ⟦SPEED chndtrix ratio1⟧ | ⟦SPEED chndtrix ratio10⟧ | ⟦SPEED chndtrix scalar⟧ | ⟦COST chndtrix⟧ |
+|  | `nctdtr` | ⟦SPEED nctdtr t1⟧ | ⟦SPEED nctdtr t10⟧ | ⟦SPEED nctdtr ratio1⟧ | ⟦SPEED nctdtr ratio10⟧ | ⟦SPEED nctdtr scalar⟧ | ⟦COST nctdtr⟧ |
+|  | `nctdtrc` | ⟦SPEED nctdtrc t1⟧ | ⟦SPEED nctdtrc t10⟧ | ⟦SPEED nctdtrc ratio1⟧ | ⟦SPEED nctdtrc ratio10⟧ | ⟦SPEED nctdtrc scalar⟧ | ⟦COST nctdtrc⟧ |
+|  | `nctdtrit` | ⟦SPEED nctdtrit t1⟧ | ⟦SPEED nctdtrit t10⟧ | ⟦SPEED nctdtrit ratio1⟧ | ⟦SPEED nctdtrit ratio10⟧ | ⟦SPEED nctdtrit scalar⟧ | ⟦COST nctdtrit⟧ |
+|  | `ncfdtr` | ⟦SPEED ncfdtr t1⟧ | ⟦SPEED ncfdtr t10⟧ | ⟦SPEED ncfdtr ratio1⟧ | ⟦SPEED ncfdtr ratio10⟧ | ⟦SPEED ncfdtr scalar⟧ | ⟦COST ncfdtr⟧ |
+|  | `ncfdtrc` | ⟦SPEED ncfdtrc t1⟧ | ⟦SPEED ncfdtrc t10⟧ | ⟦SPEED ncfdtrc ratio1⟧ | ⟦SPEED ncfdtrc ratio10⟧ | ⟦SPEED ncfdtrc scalar⟧ | ⟦COST ncfdtrc⟧ |
+|  | `ncfdtri` | ⟦SPEED ncfdtri t1⟧ | ⟦SPEED ncfdtri t10⟧ | ⟦SPEED ncfdtri ratio1⟧ | ⟦SPEED ncfdtri ratio10⟧ | ⟦SPEED ncfdtri scalar⟧ | ⟦COST ncfdtri⟧ |
+
+(원소 $10^6$개, Apple M4 Pro, scipy 1.18.1. 1스레드·10스레드는 ms, 스칼라는 µs, 원소당 비용은 1스레드 ns. 배율은 scipy / stardust라서 1보다 크면 stardust가 빨라요. 복소수 줄은 complex 입력, `airy`는 네 값을 한 번에 계산하는 호출이에요.)
+
+{/* BENCH-FIG: erf, gamma, gammainc, betainc, betaincinv, iv, jv, hyp1f1, hyp2f1, zeta, wofz, loggamma의 scipy, sd 1스레드, sd 10스레드 | 캡션: 특수함수의 원소 10⁶개 시간 */}
+
+### 비용이 어디서 오는가
+
+측정값과 별개로, 원소 하나의 비용이 큰 함수들은 구조에서 이유가 보여요.
+
+- **긴 급수를 오차를 보정하며 더하는 함수.** `hyp1f1`, `hyp2f1`은 항이 천천히 줄어드는 입력에서 항마다 곱과 몫의 반올림 오차를 fma로 꺼내 들고 가요. 먼저 float64로 더하면서 오차 상한을 재고, 상한이 크면 보정 루프로 다시 더해요([제타, 지수적분, 타원적분, 초기하, Lambert W, Faddeeva](/internals/special/more-functions/)).
+- **차수에 비례하는 점화식.** `jv`, `yv`의 큰 차수는 점화식을 $O(\nu)$번 돌고, 다섯 재귀 모두 double-double이에요. `iv`, `kv`는 $\nu \ge 30$에서 Debye 전개로 바꿔 차수와 상관없는 비용이에요.
+- **앞 인자의 double-double 지수.** 불완전 감마·베타와 그 위의 분포 함수는 $x^a e^{-x}/\Gamma(a)$, $x^a y^b/B(a, b)$의 지수를 double-double로 만들어요. 꼬리의 상대 정확도를 지키는 비용이에요.
+- **역함수.** 순방향 함수를 여러 번 불러요(Halley 몇 번, 비중심 분포는 브래킷과 Brent법).
+- **복소수.** 실수부·허수부를 함께 계산하고, 위상의 인자 축소와 double-double 지수를 써요.
+
+반대로 `erf`, `erfc`, `ndtr`, `ndtri`, `erfinv`, `erfcinv`, `expit`, `logit` 등은 1024원소 덩어리 커널이에요. NEON으로 `exp`·`log`의 인자를 만들고, vForce를 덩어리에 한 번 부르고, 유리식은 원소마다 자기 구간만 계산해요. 스칼라 입력과 비연속 배열도 같은 덩어리 경로를 타서 결과의 비트가 같아요([원소별 엔진과 병렬화](/internals/special/engine/)).
+
+{/* SPEED-TODO: 1스레드에서 scipy보다 느린 함수 목록과 각 원인은 새 측정으로 배율을 채운 뒤 이 자리에 정리해요. */}
+
+## 비트 테스트와 결정성
+
+계약의 마지막 줄 "같은 입력이면 같은 비트"는 이렇게 확인해요.
+
+| 테스트 | 무엇을 | 대상 |
+|---|---|---|
+| `test_reference.py::test_scalar_path_gives_the_same_bits` | 배열로 계산한 $f(x)[i]$와 Python 스칼라로 계산한 $f(x_i)$의 비트가 같은지 (점 200개) | 기준값 파일이 있는 모든 함수 |
+| `test_erf.py`, `test_logistic.py`의 덩어리 커널 테스트 | 연속, stride 2, `out=`의 stride, 제자리 계산이 스칼라와 같은 비트인지. 길이 1, 2, 3, 1023, 1025, 2049(덩어리 1024의 앞뒤) | NEON + vForce 덩어리 커널 |
+| `test_erf.py::test_select_variant_gives_the_same_bits` | 모든 구간을 계산해 고르는 NEON 판과 원소마다 분기하는 판이 같은 비트인지 | `erfc` |
+| `test_same_bits_for_any_thread_count` | 1, 3, 10스레드의 결과가 같은 비트인지 | 엔진의 시험 함수, 오차함수 8개, 감마 계열 10개, 로지스틱·정보량 7개 |
+| `test_engine.py::test_element_does_not_depend_on_its_neighbours` | 원소 하나의 값이 위치·stride에 따라 바뀌지 않는지 | 엔진 |
+
+이것이 성립하는 이유는 구조에 있어요.
+
+- **경로는 원소의 값으로만 정해요.** 급수·연분수·점근전개·Boost 중 무엇을 쓸지는 그 원소의 인자 값이 정해요. 배열의 크기, 위치, 정렬, 스레드 수로 고르지 않아요. 그래서 원소를 어떻게 나눠 계산해도 원소마다 같은 연산을 해요.
+- **원소 함수는 순수 함수예요.** 전역 상태도 `errno`도 보지 않아요. Boost 호출도 같은 입력에 같은 값을 내는 순수 함수이고, 오류 정책이 값을 돌려주므로 예외의 경로도 없어요.
+- **덩어리 커널의 스칼라 정의.** NEON 경로의 연산 순서와 식은 스칼라 정의와 같아요. FMA는 코드에 적은 곳에서만 생겨요(`-ffp-contract=off`). 스칼라 하나도 길이 1인 덩어리로 같은 vForce 호출을 타요.
+- **리덕션**(`logsumexp`, `softmax`, `log_softmax`)은 최댓값과 지수 합의 두 패스이고, 합은 배열 영역의 고정된 블록 분할과 pairwise 합이라 스레드 수와 무관해요.
+
+스레드 비트 테스트가 모든 함수에 있지는 않아요. 나머지 함수(불완전 함수, Bessel, 분포 함수 등)는 같은 엔진과 순수 원소 함수라는 위 구조로 같은 성질을 가져요.
+
+<Callout>
+정확도 표의 숫자는 기준값 파일의 점에서 잰 최댓값이에요. 그 집합은 경계와 어려운 점을 일부러 많이 넣은 것이라 보통 입력의 오차보다 크게 나오는 쪽이고, 그래도 집합 밖의 점에서 더 큰 오차가 없다는 증명은 아니에요. 함수별 보장 영역과 느슨한 영역의 범위는 각 API 문서에 있어요.
+</Callout>
+
+## 참고 문헌
+
+1. A. R. DiDonato, A. H. Morris, "Algorithm 708: Significant digit computation of the incomplete beta function ratios", *ACM Transactions on Mathematical Software* 18(3), 360–373, 1992. doi:10.1145/131766.131776
+2. A. R. DiDonato, A. H. Morris, "Computation of the incomplete gamma function ratios and their inverse", *ACM Transactions on Mathematical Software* 12(4), 377–393, 1986. doi:10.1145/22721.23109
+3. D. Goldberg, "What every computer scientist should know about floating-point arithmetic", *ACM Computing Surveys* 23(1), 5–48, 1991. doi:10.1145/103162.103163 (ULP, 상대오차, 소거)
+4. M. J. Wichura, "Algorithm AS 241: The percentage points of the normal distribution", *Applied Statistics* 37(3), 477, 1988. doi:10.2307/2347330
+5. J.-M. Muller, N. Brunie, F. de Dinechin, C.-P. Jeannerod, M. Joldes, V. Lefèvre, G. Melquiond, N. Revol, S. Torres, *Handbook of Floating-Point Arithmetic*, 2nd ed., Birkhäuser, 2018. doi:10.1007/978-3-319-76526-6 (ULP의 정의, Sterbenz 보조정리, double-double)
+6. Boost.Math 문서와 소스(boostorg/math, Boost Software License 1.0): 함수별 "Implementation" 절(https://www.boost.org/doc/libs/release/libs/math/doc/html/), stardust가 부르는 헤더 `include/boost/math/special_functions/`의 `zeta.hpp`, `detail/bessel_i0.hpp`, `detail/bessel_k0.hpp`, `detail/bessel_ik.hpp`, `expint.hpp`, `lambert_w.hpp`, `digamma.hpp`, `gamma.hpp`, `beta.hpp`, `detail/igamma_inverse.hpp`, `detail/ibeta_inverse.hpp`, `hypergeometric_1F1.hpp`, `detail/erf_inv.hpp`(커밋 4682f44). https://github.com/boostorg/math
+7. The mpmath development team, *mpmath: a Python library for arbitrary-precision floating-point arithmetic*, version 1.4.1. https://mpmath.org/
+8. NIST Digital Library of Mathematical Functions, https://dlmf.nist.gov/ (함수별 정의와 점근 형태)
+9. N. M. Temme, "On the numerical evaluation of the modified Bessel function of the third kind", *Journal of Computational Physics* 19(3), 324–337, 1975. doi:10.1016/0021-9991(75)90082-0
+10. I. J. Thompson, A. R. Barnett, "Coulomb and Bessel functions of complex arguments and order", *Journal of Computational Physics* 64(2), 490–509, 1986. doi:10.1016/0021-9991(86)90046-X
+11. N. M. Temme, "Asymptotic inversion of the incomplete beta function", *Journal of Computational and Applied Mathematics* 41(1–2), 145–157, 1992. doi:10.1016/0377-0427(92)90244-R
