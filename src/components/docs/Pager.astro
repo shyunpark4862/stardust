@@ -1,0 +1,80 @@
+---
+/** Previous and next page at the end of a reference page or an article. */
+interface Link {
+  href: string;
+  title: string;
+  /** Show the title in the code font (a single function's page). */
+  mono?: boolean;
+}
+interface Props {
+  prev?: Link;
+  next?: Link;
+  /** Accessible name of the navigation, e.g. "이전·다음 함수". */
+  label: string;
+}
+const { prev, next, label } = Astro.props;
+---
+
+<nav class="pager" aria-label={label}>
+  {
+    prev ? (
+      <a class="pager__link" href={prev.href}>
+        <span class="pager__dir">이전</span>
+        <span class:list={['pager__name', prev.mono && 'pager__name--mono']}>{prev.title}</span>
+      </a>
+    ) : (
+      <span />
+    )
+  }
+  {
+    next && (
+      <a class="pager__link pager__link--next" href={next.href}>
+        <span class="pager__dir">다음</span>
+        <span class:list={['pager__name', next.mono && 'pager__name--mono']}>{next.title}</span>
+      </a>
+    )
+  }
+</nav>
+
+<style>
+  .pager {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-4);
+    margin-top: var(--space-16);
+  }
+  .pager__link {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-4) var(--space-5);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    transition:
+      border-color var(--dur-fast) var(--ease),
+      background-color var(--dur-fast) var(--ease);
+  }
+  .pager__link:hover {
+    border-color: var(--accent-soft-line);
+    background: var(--accent-soft);
+  }
+  .pager__link--next {
+    align-items: flex-end;
+    text-align: right;
+  }
+  .pager__dir {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    line-height: var(--leading-snug);
+    color: var(--fg-subtle);
+  }
+  .pager__name {
+    font-size: var(--text-base);
+    font-weight: 600;
+    line-height: var(--leading-snug);
+    color: var(--fg);
+  }
+  .pager__name--mono {
+    font-family: var(--font-mono);
+  }
+</style>

@@ -233,7 +233,12 @@ export function mountStardust(canvas: HTMLCanvasElement, host: HTMLElement): voi
 
   const INTRO_MS = 3200;
   const start = performance.now();
-  let visible = true;
+  // Draw only while the hero is on screen and the tab is showing. The two
+  // are tracked apart: coming back to the tab must not restart the loop
+  // when the hero has been scrolled away.
+  let onScreen = true;
+  let pageShown = !document.hidden;
+  const visible = () => onScreen && pageShown;
   let frame = 0;
 
   const draw = (now: number) => {
@@ -253,7 +258,7 @@ export function mountStardust(canvas: HTMLCanvasElement, host: HTMLElement): voi
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.drawArrays(gl.POINTS, 0, count);
 
-    if (!reduced && visible) frame = requestAnimationFrame(draw);
+    if (!reduced && visible()) frame = requestAnimationFrame(draw);
   };
   const kick = () => {
     if (!frame) frame = requestAnimationFrame(draw);
@@ -262,12 +267,12 @@ export function mountStardust(canvas: HTMLCanvasElement, host: HTMLElement): voi
   resize();
   new ResizeObserver(() => { resize(); kick(); }).observe(host);
   new IntersectionObserver(([entry]) => {
-    visible = entry.isIntersecting;
-    if (visible) kick();
+    onScreen = entry.isIntersecting;
+    if (visible()) kick();
   }).observe(host);
   document.addEventListener('visibilitychange', () => {
-    visible = !document.hidden;
-    if (visible) kick();
+    pageShown = !document.hidden;
+    if (visible()) kick();
   });
   kick();
   canvas.classList.add('is-ready');

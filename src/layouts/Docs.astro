@@ -265,7 +265,9 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
       apply();
       input.blur();
     }
-    if (e.key === 'Enter') {
+    // Enter opens the first match, but only once something has been typed:
+    // on an empty filter every page "matches".
+    if (e.key === 'Enter' && input.value.trim()) {
       const first = document.querySelector<HTMLAnchorElement>('.side__group--fold:not([hidden]) li:not([hidden]) .side__link');
       if (first) location.href = first.href;
     }
@@ -291,24 +293,44 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
 
 <script>
   // Scroll spy: mark the table-of-contents entry of the section being read.
-  const links = [...document.querySelectorAll<HTMLAnchorElement>('.toc__link')];
-  const targets = links
-    .map((a) => document.getElementById(decodeURIComponent(a.hash.slice(1))))
-    .filter((el): el is HTMLElement => el !== null);
-  if (targets.length > 0) {
+  // Each entry is paired with its heading, so an entry whose heading is
+  // missing cannot shift the ones after it.
+  const entries = [...document.querySelectorAll<HTMLAnchorElement>('.toc__link')]
+    .map((link) => ({ link, target: document.getElementById(decodeURIComponent(link.hash.slice(1))) }))
+    .filter((e): e is { link: HTMLAnchorElement; target: HTMLElement } => e.target !== null);
+  if (entries.length > 0) {
+    const items = [...document.querySelectorAll<HTMLElement>('.toc__item')];
+    // A heading counts as reached a little below where an anchor jump puts it
+    // (scroll-padding-top), so following a TOC link marks that very entry.
+    const line = parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) + 8 || 96;
+    let shown = -1;
+    let queued = false;
     const update = () => {
-      const line = 120;
+      queued = false;
       let current = 0;
-      targets.forEach((el, i) => {
-        if (el.getBoundingClientRect().top <= line) current = i;
-      });
-      links.forEach((a, i) => a.classList.toggle('is-active', i === current));
+      // Headings are in document order: stop at the first one still below the line.
+      for (let i = 0; i < entries.length; i++) {
+        if (entries[i].target.getBoundingClientRect().top > line) break;
+        current = i;
+      }
+      if (current === shown) return;
+      shown = current;
+      entries.forEach((e, i) => e.link.classList.toggle('is-active', i === current));
       // Only the section being read shows its sub-headings.
-      const open = links[current]?.closest('.toc__item');
-      document.querySelectorAll('.toc__item').forEach((li) => li.classList.toggle('is-open', li === open));
+      const open = entries[current].link.closest('.toc__item');
+      items.forEach((li) => li.classList.toggle('is-open', li === open));
     };
     update();
-    addEventListener('scroll', update, { passive: true });
+    addEventListener(
+      'scroll',
+      () => {
+        if (!queued) {
+          queued = true;
+          requestAnimationFrame(update);
+        }
+      },
+      { passive: true },
+    );
   }
 </script>
 

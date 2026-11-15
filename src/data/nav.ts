@@ -73,4 +73,6 @@ export const internalsAreas = [
   { key: 'linalg', name: '선형대수', ns: 'sd.linalg', desc: '' },
   { key: 'frame', name: '데이터프레임', ns: 'sd.frame', desc: '' },
   { key: 'special', name: '특수함수', ns: 'sd.special', desc: '' },
+  { key: 'stats', name: '통계', ns: 'sd.stats', desc: '' },
+  { key: 'random', name: '난수', ns: 'sd.random', desc: '' },
 ] as const;

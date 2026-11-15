@@ -1,13 +1,21 @@
-import { getCollection, type CollectionEntry } from 'astro:content';
+import type { CollectionEntry } from 'astro:content';
 import { areas, type AreaNav, type Crumb, type NavGroup } from './nav';
+import {
+  areasWithPages,
+  entryHref,
+  groupEntries,
+  groupId,
+  sectionAreaNav,
+  sectionCrumbs,
+  splitEntryId,
+} from './sections';
+
+export { groupId };
 
 export type ApiEntry = CollectionEntry<'api'>;
 
 /** "linalg/solve" -> ["linalg", "solve"] */
-export function splitId(entry: ApiEntry): [area: string, slug: string] {
-  const [area, slug] = entry.id.split('/');
-  return [area, slug];
-}
+export const splitId = (entry: ApiEntry) => splitEntryId(entry);
 
 /** The order of the group headings on each area's page. */
 const groupOrder: Record<string, string[]> = {
@@ -41,8 +49,7 @@ export function areaOf(key: string) {
 }
 
 export function hrefOf(entry: ApiEntry): string {
-  const [area, slug] = splitId(entry);
-  return `/api/${area}/${slug}/`;
+  return entryHref('api', entry);
 }
 
 /** A page that documents exactly one function shows its name in the code font. */
@@ -51,29 +58,13 @@ export function isSingle(entry: ApiEntry): boolean {
 }
 
 /** An area's pages, grouped and ordered. */
-export async function groupsOf(area: string): Promise<{ title: string; entries: ApiEntry[] }[]> {
-  const entries = (await getCollection('api', (e) => e.id.startsWith(`${area}/`))).sort(
-    (a, b) => a.data.order - b.data.order || a.data.title.localeCompare(b.data.title),
-  );
-  const groups = new Map<string, ApiEntry[]>();
-  for (const entry of entries) {
-    const list = groups.get(entry.data.group) ?? [];
-    list.push(entry);
-    groups.set(entry.data.group, list);
-  }
-  const rank = (title: string) => {
-    const i = (groupOrder[area] ?? []).indexOf(title);
-    return i === -1 ? Number.MAX_SAFE_INTEGER : i;
-  };
-  return [...groups]
-    .map(([title, list]) => ({ title, entries: list }))
-    .sort((a, b) => rank(a.title) - rank(b.title));
+export function groupsOf(area: string): Promise<{ title: string; entries: ApiEntry[] }[]> {
+  return groupEntries('api', area, groupOrder[area]);
 }
 
 /** Areas that have at least one page. */
-export async function documentedAreas(): Promise<string[]> {
-  const entries = await getCollection('api');
-  return [...new Set(entries.map((e) => splitId(e)[0]))];
+export function documentedAreas(): Promise<string[]> {
+  return areasWithPages('api');
 }
 
 /** Sidebar groups for every page under /api/<area>/. */
@@ -91,31 +82,11 @@ export async function areaSidebar(area: string): Promise<NavGroup[]> {
 }
 
 /** The area header of the sidebar: this area, and a way to the others. */
-export async function areaNav(area: string): Promise<AreaNav> {
-  const documented = await documentedAreas();
-  const info = areaOf(area);
-  return {
-    current: { key: info.key, name: info.name, ns: info.ns, href: `/api/${area}/` },
-    all: areas.map((a) => ({
-      key: a.key,
-      name: a.name,
-      ns: a.ns,
-      href: documented.includes(a.key) ? `/api/${a.key}/` : undefined,
-    })),
-  };
-}
-
-/** Anchor of a group heading on its area page: "비교, 논리, 비트" -> "비교-논리-비트". */
-export function groupId(title: string): string {
-  return title.replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '');
+export function areaNav(area: string): Promise<AreaNav> {
+  return sectionAreaNav('api', areas, area);
 }
 
 /** API › area › group, for pages under /api/<area>/. */
 export function areaCrumbs(area: string, group?: string): Crumb[] {
-  const crumbs: Crumb[] = [
-    { label: 'API', href: '/api/' },
-    { label: areaOf(area).name, href: `/api/${area}/` },
-  ];
-  if (group) crumbs.push({ label: group, href: `/api/${area}/#${groupId(group)}` });
-  return crumbs;
+  return sectionCrumbs('api', 'API', areaOf(area).name, area, group);
 }

@@ -10,25 +10,41 @@ earlier one defined. `sd` (stardust) is always available.
 `--coverage <area>` lists the public names of that area that no page documents
 (the `names:` lists in the frontmatter) and names documented twice.
 
-`--links` checks every `/api/<area>/<slug>/` link and every `seeAlso:` slug
-points at an existing page.
+`--links` checks that every `/api/<area>/<slug>/` and `/internals/...` link and
+every `seeAlso:` slug points at an existing page. If the site has been built
+(`pnpm build`), it also checks every in-site link of the built pages, `#anchor`
+included, against the ids those pages really have.
+
+With no arguments every API area and every internals area is checked. A
+target that names no page is an error.
 """
 
 from __future__ import annotations
 
 import doctest
+import html
 import re
 import sys
 from pathlib import Path
+from urllib.parse import unquote
 
 import stardust as sd
 
-CONTENT = Path(__file__).resolve().parent.parent / "src" / "content"
+SITE = Path(__file__).resolve().parent.parent
+CONTENT = SITE / "src" / "content"
+DIST = SITE / "dist"
 ROOT = CONTENT / "api"
 FENCE = re.compile(r"^```python\n(.*?)^```", re.M | re.S)
 FLAGS = doctest.ELLIPSIS | doctest.NORMALIZE_WHITESPACE
 
-NAMESPACES = {"array": sd, "linalg": sd.linalg, "frame": sd.frame, "special": sd.special}
+NAMESPACES = {
+    "array": sd,
+    "linalg": sd.linalg,
+    "frame": sd.frame,
+    "special": sd.special,
+    "stats": sd.stats,
+    "random": sd.random,
+}
 
 
 def check_page(path: Path) -> tuple[int, int]:
@@ -103,21 +119,75 @@ def links() -> int:
             for t in sorted(targets - pages):
                 print(f"  {sec}/{path.parent.name}/{path.stem}: no page /{t[0]}/{t[1]}/{t[2]}/")
                 bad += 1
+    bad += anchors()
     print(f"{bad} broken links")
     return 1 if bad else 0
+
+
+HREF = re.compile(r'href="(/[^"]*)"')
+ID = re.compile(r'\bid="([^"]+)"')
+
+
+def anchors() -> int:
+    """Checks the built pages: every in-site link must reach a page, and its
+    #anchor an id on that page. Headings get their ids at build time, so this
+    is the only place a renamed heading shows up as a broken link."""
+    index = DIST / "index.html"
+    if not index.exists():
+        print("  (anchors not checked: run `pnpm build` first)")
+        return 0
+    built = index.stat().st_mtime
+    sources = [p for d in ("src", "public") for p in (SITE / d).rglob("*") if p.is_file()]
+    if any(p.stat().st_mtime > built for p in sources):
+        print("  (warning: dist/ is older than the sources; run `pnpm build` for current anchors)")
+    pages: dict[str, tuple[set[str], str]] = {}
+    for f in DIST.rglob("index.html"):
+        rel = f.parent.relative_to(DIST).as_posix()
+        text = f.read_text(encoding="utf-8")
+        pages["/" if rel == "." else f"/{rel}/"] = ({html.unescape(i) for i in ID.findall(text)}, text)
+    bad = 0
+    for page, (_, text) in sorted(pages.items()):
+        for href in sorted(set(HREF.findall(text))):
+            path, _, frag = html.unescape(href).partition("#")
+            if path.startswith("//") or "." in path.rsplit("/", 1)[-1]:
+                continue  # another host, or a file such as /favicon.svg
+            target = unquote(path or page)
+            if target not in pages:
+                print(f"  {page}: no page {target}")
+                bad += 1
+            elif frag and unquote(frag) not in pages[target][0]:
+                print(f"  {page}: no #{unquote(frag)} on {target}")
+                bad += 1
+    return bad
 
 
 def main(argv: list[str]) -> int:
     if argv and argv[0] == "--links":
         return links()
     if argv and argv[0] == "--coverage":
+        unknown = [a for a in argv[1:] if a not in NAMESPACES]
+        if unknown:
+            print(f"unknown area: {' '.join(unknown)} (one of {', '.join(NAMESPACES)})", file=sys.stderr)
+            return 2
         return max((coverage(a) for a in argv[1:] or ["array"]), default=0)
-    targets = argv or [p.name for p in sorted(ROOT.iterdir()) if p.is_dir()]
+    targets = argv or [
+        f"{sec}/{p.name}" if sec == "internals" else p.name
+        for sec in ("api", "internals")
+        for p in sorted((CONTENT / sec).iterdir())
+        if p.is_dir()
+    ]
     paths: list[Path] = []
     for t in targets:
-        # "internals/<area>[/<slug>]" checks the internals articles instead.
-        p = CONTENT / t if t.startswith("internals/") else ROOT / t
-        paths += sorted(p.glob("*.mdx")) if p.is_dir() else [p.with_suffix(".mdx")]
+        # "internals[/<area>[/<slug>]]" checks the internals articles instead.
+        t = t.strip("/")
+        p = CONTENT / t if t == "internals" or t.startswith("internals/") else ROOT / t
+        if p.is_dir():
+            paths += sorted(p.rglob("*.mdx"))
+        elif p.with_suffix(".mdx").is_file():
+            paths.append(p.with_suffix(".mdx"))
+        else:
+            print(f"no page or area: {t}", file=sys.stderr)
+            return 2
     failed = tried = 0
     for path in paths:
         f, n = check_page(path)
