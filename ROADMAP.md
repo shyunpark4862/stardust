@@ -215,7 +215,7 @@
 | T2 special 비중심 분포 함수 | 완료·승인 (2026-11-15) |
 | T3 `sd.random` | 완료·승인 (2026-11-15) |
 | T4 분포 엔진과 연속 기본 12 | 완료, 승인 대기 (2026-11-15) |
-| T5 이산 10 | 대기 |
+| T5 이산 10 | 완료, 승인 대기 (2026-11-16) |
 | T6 극값·수명 6과 비중심 3 | 대기 |
 | T7 표본 (`sample`) | 대기 |
 | T8 기술통계 | 대기 |
@@ -260,6 +260,8 @@
 
 ### T5. 이산 10
 - 이항, 포아송, 기하, 음이항, 초기하, 베르누이, 이산 균등, 베타이항, 로그 급수, Zipf
+- 결정(사용자): docs/design/stats.md T25(2026-11-15: mode 동점 NaN, 기하는 시행 횟수 k ≥ 1, 이산 균등 [low, high), 초기하 `Hypergeometric(total, successes, draws)`, median = icdf(1/2)). 2026-11-16: 분위수 계약은 후방 오차(목표를 상대 1e-14 안에서 움직인 정확한 분위수 중 하나, `ilog…`는 t에 대해), 보장 영역은 잰 매개변수 범위.
+- 결과: csrc/stats/discrete.hpp, csrc/stats/dist/(discrete_basic.hpp, discrete_more.hpp), src/stardust/stats/_discrete.py; docs/api/stats.md §2·§2.3, docs/design/stats.md §3.2; 측정 bench/stats/t5/(accuracy.md, speed.md); 테스트 tests/stats/test_discrete.py와 참값 tests/stats/ref/(이산 분위수 파일에 kmin·kmax).
 
 ### T6. 극값·수명 6과 비중심 3
 - 로지스틱, Gumbel, GEV, 파레토, 레일리, 역감마, 비중심 카이제곱·t·F

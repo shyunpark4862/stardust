@@ -8,6 +8,8 @@
 #include "bind/nary_bind.hpp"
 #include "stats/dist/beta.hpp"
 #include "stats/dist/cauchy.hpp"
+#include "stats/dist/discrete_basic.hpp"
+#include "stats/dist/discrete_more.hpp"
 #include "stats/dist/exponential.hpp"
 #include "stats/dist/gamma.hpp"
 #include "stats/dist/laplace.hpp"
@@ -39,6 +41,14 @@ void def_continuous(nb::module_& m) {
                 StandardDeviation, Skewness, Kurtosis, Median, Mode, Entropy, SupportLo, SupportHi>(m);
 }
 
+// Every method of a discrete distribution: pmf and logpmf in place of pdf and logpdf (T25).
+template <class D>
+void def_discrete(nb::module_& m) {
+    using namespace stats::method;
+    def_methods<D, Pmf, Logpmf, Cdf, Logcdf, Ccdf, Logccdf, Icdf, Iccdf, Ilogcdf, Ilogccdf, Mean, Variance,
+                StandardDeviation, Skewness, Kurtosis, Median, Mode, Entropy, SupportLo, SupportHi>(m);
+}
+
 }  // namespace
 
 void bind_stats(nb::module_& core) {
@@ -56,6 +66,17 @@ void bind_stats(nb::module_& core) {
     def_continuous<stats::Cauchy>(m);
     def_continuous<stats::LogNormal>(m);
     def_continuous<stats::Weibull>(m);
+    // T5: the discrete 10 (docs/api/stats.md §2.1)
+    def_discrete<stats::Binomial>(m);
+    def_discrete<stats::Poisson>(m);
+    def_discrete<stats::Geometric>(m);
+    def_discrete<stats::NegativeBinomial>(m);
+    def_discrete<stats::Hypergeometric>(m);
+    def_discrete<stats::Bernoulli>(m);
+    def_discrete<stats::DiscreteUniform>(m);
+    def_discrete<stats::BetaBinomial>(m);
+    def_discrete<stats::LogSeries>(m);
+    def_discrete<stats::Zipf>(m);
 }
 
 }  // namespace sd

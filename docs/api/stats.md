@@ -1,6 +1,6 @@
 # sd.stats API
 
-> 상태: **T4 구현** (2026-11-15): 연속 분포 12개(§2.1의 앞 12줄). 나머지는 초안이다. 결정과 내부 구조는 [docs/design/stats.md](../design/stats.md) (T1–T23).
+> 상태: **T5 구현** (2026-11-16): 연속 분포 12개(T4)와 이산 분포 10개(T5). §2.1의 나머지는 초안이다. 결정과 내부 구조는 [docs/design/stats.md](../design/stats.md) (T1–T23).
 
 ## §1. 공통 규칙
 - 입력은 위치로만(`/` 앞), 옵션은 키워드로만(`*` 뒤). 별칭은 없다.
@@ -34,9 +34,11 @@ X.sample(shape=(), /, *, rng)
 - 모멘트가 정의되지 않으면 NaN, 무한이면 inf다. 평균이 +∞로 발산하면(X ≥ 0인 F의 dfd ≤ 2) inf다. 분산 이상은 분산이 유한하고 그 모멘트가 발산하면 inf, 분산이 유한하지 않으면 NaN이다(t의 df ≤ 1 평균, 코시의 모든 모멘트는 NaN).
 - `entropy()`는 미분 엔트로피이고 단위는 nat다.
 - 정확도(T20): 보장 영역에서 상대 1e-14. 단 `logpdf`와 `entropy`는 |오차| ≤ 1e-14·max(1, |값|)이다(값이 0을 지난다). 역함수 넷은 special의 역함수처럼 |Δx/x| ≤ 1e-14·max(1, κ)이고, κ는 그 메서드의 입력에 대한 상대 조건수다(`icdf(p)`는 |p / (x f(x))|, `ilogcdf(logp)`는 |logp·p / (x f(x))|).
+- **이산 분포**(T25): `pdf`·`logpdf` 대신 `pmf`·`logpmf`이고 나머지 메서드는 같다. 정수가 아닌 k에서 `pmf`는 0, `cdf`·`ccdf`와 그 log는 floor(k)에서의 값이다. `icdf(p)`는 cdf(k) ≥ p인 가장 작은 k, `iccdf(p)`는 ccdf(k) ≤ p인 가장 작은 k이다(scipy의 ppf, isf와 같다). 결과는 float64 정수이고, double 범위를 넘으면 inf다. 정확도는 후방 오차다. 목표를 상대 1e-14 안에서 움직였을 때의 정확한 분위수 중 하나를 낸다(`icdf`·`iccdf`는 p와 1 − p 중 작은 쪽, `ilogcdf`·`ilogccdf`는 입력 t에 대해). 목표가 계단 바로 옆이면 이웃 정수도 맞고, 분위수가 아주 커서 계단이 cdf의 분해능보다 촘촘하면(Zipf a ≈ 1) 그 폭만큼 허용된다. `logpmf`는 상대 1e-14, `entropy`는 연속과 같은 혼합 기준이다. `median()`은 `icdf(1/2)`, `mode()`는 최빈값이 둘 이상이면 NaN이다(T21). 매개변수 하나가 점질량을 만들면(이항 p = 0·1, 포아송 μ = 0 등) 분산은 0, 왜도·첨도는 NaN이다.
+- 정수여야 하는 매개변수(이항·베타이항의 n, 초기하의 셋, 이산 균등의 두 끝)는 정수가 아니면 NaN이다. 음이항의 n은 양의 실수다(special의 `bdtr`, `nbdtr`과 같다).
 - `sample`의 `rng`는 `sd.random.default_rng(...)`의 Generator다. 생략할 수 있는지는 T7 전에 정한다.
 
-### §2.1 분포 목록 (T4의 12개는 확정, 나머지는 초안)
+### §2.1 분포 목록 (T4·T5의 22개는 확정, 나머지는 초안)
 | 분포 | 클래스 | scipy |
 |---|---|---|
 | 정규 | `Normal(*, mu=0, sigma=1)` | `norm`, `Normal` |
@@ -60,16 +62,16 @@ X.sample(shape=(), /, *, rng)
 | 비중심 카이제곱 | `NoncentralChiSquared(df, nc)` | `ncx2` |
 | 비중심 t | `NoncentralT(df, nc)` | `nct` |
 | 비중심 F | `NoncentralF(dfn, dfd, nc)` | `ncf` |
-| 이항 | `Binomial(n, p)` | `binom` |
-| 포아송 | `Poisson(mu)` | `poisson` |
-| 기하 | `Geometric(p)` | `geom` |
-| 음이항 | `NegativeBinomial(n, p)` | `nbinom` |
-| 초기하 | `Hypergeometric(M, n, N)` | `hypergeom` |
-| 베르누이 | `Bernoulli(p)` | `bernoulli` |
-| 이산 균등 | `DiscreteUniform(low, high)` | `randint` |
-| 베타이항 | `BetaBinomial(n, a, b)` | `betabinom` |
-| 로그 급수 | `LogSeries(p)` | `logser` |
-| Zipf | `Zipf(a)` | `zipf` |
+| 이항 | `Binomial(*, n, p)` | `binom` |
+| 포아송 | `Poisson(*, mu)` | `poisson` |
+| 기하 | `Geometric(*, p)`: 시행 횟수, k ≥ 1 | `geom` |
+| 음이항 | `NegativeBinomial(*, n, p)`: 실패 횟수, k ≥ 0 | `nbinom` |
+| 초기하 | `Hypergeometric(*, total, successes, draws)` | `hypergeom(M, n, N)` |
+| 베르누이 | `Bernoulli(*, p)` | `bernoulli` |
+| 이산 균등 | `DiscreteUniform(*, low, high)`: [low, high) | `randint` |
+| 베타이항 | `BetaBinomial(*, n, a, b)` | `betabinom` |
+| 로그 급수 | `LogSeries(*, p)` | `logser` |
+| Zipf | `Zipf(*, a)` | `zipf` |
 
 ### §2.2 T4의 보장 영역과 잰 정확도
 - **보장 영역** (사용자 결정 2026-11-15, T24): 닫힌 꼴 7개(`Normal Exponential Uniform Laplace Cauchy LogNormal Weibull`)는 매개변수와 입력의 정의역 전체다. special 기반 5개는 special이 보장하는 범위다: `Gamma` a ≤ 1e6, `ChiSquared` df ≤ 2e6, `Beta` a, b ≤ 1e5, `StudentT` df ≤ 1e6, `F` dfn, dfd ≤ 1e5. 그 밖도 값을 계산하지만 보장하지 않는다.
@@ -77,6 +79,11 @@ X.sample(shape=(), /, *, rng)
 - **잰 정확도** (bench/stats/t4/accuracy.md, mpmath 대비, 계약 단위): 보장 영역 안 최대 9.2e-15. 같은 점에서 scipy(고전형)는 꼬리에서 상대오차 1에 이르거나 inf를 낸다(예: `Beta.pdf`, `StudentT.cdf`의 깊은 꼬리, `LogNormal.pdf`).
 - **속도** (bench/stats/t4/speed.md, 원소 10⁵개): 1스레드는 scipy의 0.3–4.6배(중앙값 0.94), 10스레드는 1.7–39배(중앙값 5.4). Python float 하나는 scipy보다 38–81배 빠르다(호출당 0.16–0.36 µs).
 - scipy와 다르게 동작하는 곳은 docs/design/stats.md §2.4에 있다.
+
+### §2.3 T5의 보장 영역과 잰 정확도
+- **보장 영역** (사용자 결정 2026-11-16): 잰 매개변수 범위다. 이항 n ≤ 1e6, 포아송 μ ≤ 1e6, 기하 p ≥ 1e-9, 음이항 n ∈ [0.1, 1e4]·p ≥ 1e-4, 초기하 total ≤ 3000, 베타이항 n ≤ 2000·a, b ∈ [0.1, 100], 로그 급수 p ≥ 1e-8, Zipf a ≤ 60. `Bernoulli`와 `DiscreteUniform`은 닫힌 꼴이라 정의역 전체다. 그 밖도 값을 계산하지만 보장하지 않는다.
+- **잰 정확도** (bench/stats/t5/accuracy.md, mpmath 대비, 계약 단위): 61만 점 전부 계약 안이다. 값 메서드의 최대는 6.5e-15이고, 분위수는 모든 점이 허용 구간 안이다. 같은 점에서 scipy는 꼬리에서 상대오차 1이나 inf를 낸다(이항·음이항·초기하의 cdf, 초기하·로그 급수의 logpmf). 분위수에서는 scipy의 답이 허용 구간 안에 드는 비율이 64–100%다(기하 `isf` 64%, 포아송 `isf` 64%, 이항 `isf` 92%).
+- **속도** (bench/stats/t5/speed.md, 원소 10⁵개): 1스레드는 scipy의 0.22–232배(중앙값 1.5), 10스레드는 2.5–1432배(중앙값 7.7)다. Python float 하나는 scipy보다 11–114배 빠르다(호출당 0.17–2.1 µs). 1스레드에서 scipy보다 느린 것은 이항(0.2–0.4배)과 음이항·베타이항의 pmf(0.3배)다. 깊은 꼬리까지 상대 정확도를 지키는 double-double 접두의 비용이다.
 
 ## §3. 다변량 분포 (초안)
 ```

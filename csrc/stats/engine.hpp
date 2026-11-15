@@ -63,6 +63,8 @@ namespace method {
 
 SD_STATS_INPUT_METHOD(Pdf, pdf, "x")
 SD_STATS_INPUT_METHOD(Logpdf, logpdf, "x")
+SD_STATS_INPUT_METHOD(Pmf, pmf, "k")  // discrete distributions (T9, T25)
+SD_STATS_INPUT_METHOD(Logpmf, logpmf, "k")
 SD_STATS_INPUT_METHOD(Cdf, cdf, "x")
 SD_STATS_INPUT_METHOD(Logcdf, logcdf, "x")
 SD_STATS_INPUT_METHOD(Ccdf, ccdf, "x")

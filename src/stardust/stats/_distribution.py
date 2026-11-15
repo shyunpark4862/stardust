@@ -11,8 +11,8 @@ from .. import _core as _sd_core
 
 _k = _sd_core.stats
 
-# Methods with an input (and out=), and the parameter-only ones (T9, T22).
-_INPUT_METHODS = ("pdf", "logpdf", "cdf", "logcdf", "ccdf", "logccdf", "icdf", "iccdf", "ilogcdf", "ilogccdf")
+# Methods with an input (and out=) besides the density, and the parameter-only ones (T9, T22).
+_INPUT_METHODS = ("cdf", "logcdf", "ccdf", "logccdf", "icdf", "iccdf", "ilogcdf", "ilogccdf")
 _PARAM_METHODS = ("mean", "variance", "standard_deviation", "skewness", "kurtosis", "median", "mode", "entropy",
                   "support_lo", "support_hi")
 
@@ -35,18 +35,21 @@ def _parameter(i, name):
     return property(get, doc=f"The parameter {name}, as given (read-only).")
 
 
-class ContinuousDistribution:
-    """Base of the continuous distributions. Subclasses set _name (the native prefix) and
-    _params (the parameter names in native order) and define __init__ with keyword-only
-    parameters that calls _set."""
+class _Distribution:
+    """What the continuous and discrete distributions share. A distribution class sets _name
+    (the native prefix) and _params (the parameter names in native order) and defines
+    __init__ with keyword-only parameters that calls _set."""
 
     __slots__ = ("_p",)
     _name = ""
     _params = ()
+    _density = ()  # the density's two methods: pdf, logpdf or pmf, logpmf
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
-        ops = {m: getattr(_k, f"{cls._name}_{m}") for m in _INPUT_METHODS + _PARAM_METHODS}
+        if not cls._name:  # the bases ContinuousDistribution and DiscreteDistribution
+            return
+        ops = {m: getattr(_k, f"{cls._name}_{m}") for m in cls._density + _INPUT_METHODS + _PARAM_METHODS}
         cls._ops = ops
         for i, p in enumerate(cls._params):  # read-only attributes (T19)
             setattr(cls, p, _parameter(i, p))
@@ -66,14 +69,6 @@ class ContinuousDistribution:
         return f"{type(self).__name__}({args})"
 
     # ---- methods with an input: elementwise, broadcast with the parameters, out= (T22)
-
-    def pdf(self, x, /, *, out=None):
-        """The probability density at x."""
-        return self._ops["pdf"](*self._p, x, out=out)
-
-    def logpdf(self, x, /, *, out=None):
-        """log pdf(x), without underflow."""
-        return self._ops["logpdf"](*self._p, x, out=out)
 
     def cdf(self, x, /, *, out=None):
         """P(X <= x)."""
@@ -145,3 +140,35 @@ class ContinuousDistribution:
     def support(self):
         """(lo, hi): the ends of the support."""
         return self._ops["support_lo"](*self._p), self._ops["support_hi"](*self._p)
+
+
+class ContinuousDistribution(_Distribution):
+    """Base of the continuous distributions."""
+
+    __slots__ = ()
+    _density = ("pdf", "logpdf")
+
+    def pdf(self, x, /, *, out=None):
+        """The probability density at x."""
+        return self._ops["pdf"](*self._p, x, out=out)
+
+    def logpdf(self, x, /, *, out=None):
+        """log pdf(x), without underflow."""
+        return self._ops["logpdf"](*self._p, x, out=out)
+
+
+class DiscreteDistribution(_Distribution):
+    """Base of the discrete distributions (T25): pmf and logpmf in place of the density; the
+    cdfs at a non-integer x are those at floor(x); icdf(p) is the smallest k with
+    cdf(k) >= p, iccdf(p) the smallest k with ccdf(k) <= p."""
+
+    __slots__ = ()
+    _density = ("pmf", "logpmf")
+
+    def pmf(self, k, /, *, out=None):
+        """P(X = k): 0 where k is not an integer of the support."""
+        return self._ops["pmf"](*self._p, k, out=out)
+
+    def logpmf(self, k, /, *, out=None):
+        """log pmf(k), without underflow."""
+        return self._ops["logpmf"](*self._p, k, out=out)

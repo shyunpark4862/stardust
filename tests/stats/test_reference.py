@@ -1,7 +1,8 @@
 """Every distribution method with a reference file (tests/stats/ref, made by
 tools/stats_ref.py) meets its accuracy contract (docs/design/stats.md §2.3, T20):
 relative error at most 1e-14 in the guaranteed region (times max(1, kappa) for the
-inverses; |error| <= 1e-14 max(1, |value|) for logpdf and entropy); outside it, at most
+inverses; |error| <= 1e-14 max(1, |value|) for logpdf and entropy; for the discrete
+inverses an exact quantile of a target within relative 1e-14, T25); outside it, at most
 the documented loose bound."""
 
 import numpy as np
@@ -26,7 +27,7 @@ LOOSE: dict[str, float] = {
 def test_accuracy(name):
     xs, hi, lo, guaranteed, scale = refdata.load(name)
     got = refdata.call(name, xs)
-    err = refdata.contract_error(name, got, hi, lo, scale)
+    err = refdata.contract_error(name, got, hi, lo, scale, refdata.interval(name))
     if guaranteed.any():
         e = err[guaranteed]
         i = int(np.argmax(np.where(np.isnan(e), np.inf, e)))

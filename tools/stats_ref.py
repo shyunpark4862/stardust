@@ -5,13 +5,15 @@
     .venv/bin/python tools/stats_ref.py --jobs=8 normal     # 8 processes instead of all cores
     .venv/bin/python tools/stats_ref.py normal:cdf,icdf     # only these methods
     .venv/bin/python tools/stats_ref.py --masks-only gamma  # rewrite the guaranteed masks only
+    .venv/bin/python tools/stats_ref.py --intervals zipf    # add the discrete inverses' [kmin, kmax]
 
 writes tests/stats/ref/<distribution>_<method>.npz in tests/special/refdata.py's format:
 x0..x{n-1} are the native function's inputs (params..., then the method's input, if any),
 hi + lo the reference as a double-double, `guaranteed` the guaranteed region, `scale` the
 bound's multiplier (max(1, kappa) for the inverses, whose contract is
 |dx / x| <= 1e-14 max(1, kappa); the T20 mixed bound for logpdf and entropy is applied by
-the test, not stored). The generator is seeded: running the tool again gives the same file.
+the test, not stored); for the discrete inverses `kmin`, `kmax` the answers the backward
+error contract allows (BACKWARD). The generator is seeded: running the tool again gives the same file.
 
 The mpmath definitions are written from the textbook formulas, never from our code; the
 inverses solve log F(x) = log p by Newton from our own value (a start only: the reference
@@ -669,9 +671,573 @@ class F(Distribution):
             np.ones(m.size + edges.size, dtype=bool)
 
 
+# ---------------------------------------------------------------- discrete (T5)
+#
+# A discrete class sets `discrete = True`, defines pmf, cdf and ccdf at integers (the
+# cdfs at floor(x)), the moments and `support(params...)` -> (lo, hi). The inverses'
+# references are exact integers found by search on the mpmath cdf (stats_ref's
+# discrete_inverse), the mode by scanning the pmf (a tie -> NaN, T25).
+
+
+def _floor(x):
+    return mpmath.floor(x)
+
+
+def _is_int(k):
+    return mpmath.isfinite(k) and mpmath.floor(k) == k
+
+
+def _quantile_ints(rng, n, ppf, isf, extra):
+    """Integers spread over a discrete distribution (scipy's ppf/isf as a sampler), a few
+    non-integers (k + 1/2: the cdfs at floor(x)), and extra points."""
+    import warnings
+    k = n // 5
+    p = np.concatenate([rng.uniform(0.01, 0.99, k), loguniform(rng, 1e-300, 0.01, k)])
+    q = loguniform(rng, 1e-300, 0.01, k)
+    with warnings.catch_warnings(), np.errstate(all="ignore"):
+        warnings.simplefilter("ignore")
+        lo = ppf(p, np.arange(p.size))
+        hi = isf(q, np.arange(p.size, p.size + q.size))
+    x = np.concatenate([lo, hi, extra(rng, n - lo.size - hi.size)])
+    bad = ~np.isfinite(x)
+    x[bad] = extra(rng, int(bad.sum()))
+    half = rng.random(x.size) < 0.05
+    x[half] += 0.5
+    return x
+
+
+def _entropy_sum(D, p, lo, hi, centre, spread, ratio=None):
+    """-sum pmf log pmf over the integers within `spread` of `centre` (the rest negligible);
+    with `ratio` (pmf(k + 1) / pmf(k)) the pmf by that recurrence from the first point."""
+    a = max(lo, mpmath.floor(centre - spread))
+    b = min(hi, mpmath.ceil(centre + spread))
+    h = mpf(0)
+    k = a
+    v = D.pmf(k, *p)
+    while k <= b:
+        if ratio is None:
+            v = D.pmf(k, *p)
+        if v > 0:
+            h -= v * mpmath.log(v)
+        if ratio is not None:
+            v *= ratio(k)
+        k += 1
+    return h
+
+
+def _mp_mode(D, p, lo, hi, guess):
+    """The argmax of the pmf near `guess` (a unimodal pmf), NaN for a tie."""
+    k = min(max(lo, mpmath.floor(guess)), hi)
+    while k > lo and D.pmf(k - 1, *p) > D.pmf(k, *p):
+        k -= 1
+    while k < hi and D.pmf(k + 1, *p) > D.pmf(k, *p):
+        k += 1
+    v = D.pmf(k, *p)
+    tol = v * mpf(10) ** -35
+    for j in (k - 1, k + 1):
+        if lo <= j <= hi and abs(D.pmf(j, *p) - v) <= tol:
+            return mpmath.nan
+    return k
+
+
+class Discrete(Distribution):
+    discrete = True
+
+    @classmethod
+    def x_sets(cls, rng):
+        ps = cls._params(rng, 6000)
+        x = cls._x(rng, ps)
+        return (*ps, x), np.isfinite(x)
+
+
+class Binomial(Discrete):
+    params = ("n", "p")
+
+    @staticmethod
+    def support(n, p):
+        return mpf(0), n
+
+    @staticmethod
+    def pmf(k, n, p):
+        if not _is_int(k) or k < 0 or k > n:
+            return mpf(0)
+        return mpmath.binomial(n, k) * p**k * (1 - p) ** (n - k)
+
+    @staticmethod
+    def cdf(x, n, p):
+        k = _floor(x)
+        if k < 0:
+            return mpf(0)
+        if k >= n:
+            return mpf(1)
+        return mpmath.betainc(n - k, k + 1, 0, 1 - p, regularized=True)
+
+    @staticmethod
+    def ccdf(x, n, p):
+        k = _floor(x)
+        if k < 0:
+            return mpf(1)
+        if k >= n:
+            return mpf(0)
+        return mpmath.betainc(k + 1, n - k, 0, p, regularized=True)
+
+    mean = staticmethod(lambda n, p: n * p)
+    variance = staticmethod(lambda n, p: n * p * (1 - p))
+    standard_deviation = staticmethod(lambda n, p: mpmath.sqrt(n * p * (1 - p)))
+    skewness = staticmethod(lambda n, p: (1 - 2 * p) / mpmath.sqrt(n * p * (1 - p)))
+    kurtosis = staticmethod(lambda n, p: (1 - 6 * p * (1 - p)) / (n * p * (1 - p)))
+    mode = staticmethod(lambda n, p: _mp_mode(Binomial, (n, p), 0, n, (n + 1) * p))
+    entropy = staticmethod(lambda n, p: _entropy_sum(Binomial, (n, p), 0, n, n * p, 40 * mpmath.sqrt(n * p * (1 - p)) + 60))
+
+    @staticmethod
+    def _params(rng, n):
+        q = n // 4
+        nn = np.concatenate([np.floor(loguniform(rng, 1, 1e4, n - q)), np.floor(loguniform(rng, 1e4, 1e6, q))])
+        p = np.concatenate([rng.uniform(0, 1, n // 2), loguniform(rng, 1e-8, 0.5, n // 4), 1 - loguniform(rng, 1e-8, 0.5, n - n // 2 - n // 4)])
+        rng.shuffle(nn)
+        return nn, p
+
+    @staticmethod
+    def _x(rng, ps):
+        import scipy.stats as st
+        nn, p = ps
+        return _quantile_ints(rng, nn.size, lambda q, i: st.binom.ppf(q, nn[i], p[i]), lambda q, i: st.binom.isf(q, nn[i], p[i]),
+                              lambda rng, k: np.floor(rng.uniform(0, 1, k) * nn[:k]))
+
+    @classmethod
+    def param_sets(cls, rng):
+        nn, p = cls._params(rng, 800)
+        p = np.concatenate([p, [0.5, 0.25, 0.2113248654051871, 0.7886751345948129, 0.0, 1.0]])
+        nn = np.concatenate([nn, [9.0, 7.0, 30.0, 30.0, 10.0, 10.0]])
+        return (nn, p), np.ones(nn.size, dtype=bool)
+
+
+class Bernoulli(Discrete):
+    params = ("p",)
+    support = staticmethod(lambda p: (mpf(0), mpf(1)))
+    # 1 - p exactly (a p of 1e-300 vanishes in 1 - p at any working precision)
+    pmf = staticmethod(lambda k, p: (mpmath.fsub(1, p, exact=True) if k == 0 else (p if k == 1 else mpf(0))))
+    cdf = staticmethod(lambda x, p: mpf(0) if x < 0 else (mpmath.fsub(1, p, exact=True) if x < 1 else mpf(1)))
+    ccdf = staticmethod(lambda x, p: mpf(1) if x < 0 else (p if x < 1 else mpf(0)))
+    mean = staticmethod(lambda p: p)
+    variance = staticmethod(lambda p: p * (1 - p))
+    standard_deviation = staticmethod(lambda p: mpmath.sqrt(p * (1 - p)))
+    skewness = staticmethod(lambda p: (1 - 2 * p) / mpmath.sqrt(p * (1 - p)))
+    kurtosis = staticmethod(lambda p: (1 - 6 * p * (1 - p)) / (p * (1 - p)))
+    mode = staticmethod(lambda p: mpf(0) if p < mpf(1) / 2 else (mpf(1) if p > mpf(1) / 2 else mpmath.nan))
+    entropy = staticmethod(lambda p: -(p * mpmath.log(p) + (1 - p) * mpmath.log1p(-p)) if 0 < p < 1 else mpf(0))
+
+    @staticmethod
+    def _params(rng, n):
+        return (np.concatenate([rng.uniform(0, 1, n // 2), loguniform(rng, 1e-300, 0.5, n // 4),
+                                1 - loguniform(rng, 2**-53, 0.5, n - n // 2 - n // 4)]),)
+
+    @staticmethod
+    def _x(rng, ps):
+        return rng.choice([-1.0, 0.0, 0.5, 1.0, 2.0], ps[0].size)
+
+
+class Poisson(Discrete):
+    params = ("mu",)
+    support = staticmethod(lambda mu: (mpf(0), mpmath.inf))
+
+    @staticmethod
+    def pmf(k, mu):
+        if not _is_int(k) or k < 0:
+            return mpf(0)
+        return mpmath.exp(k * mpmath.log(mu) - mu - mpmath.loggamma(k + 1))
+
+    cdf = staticmethod(lambda x, mu: mpf(0) if x < 0 else mpmath.gammainc(_floor(x) + 1, mu, mpmath.inf, regularized=True))
+    ccdf = staticmethod(lambda x, mu: mpf(1) if x < 0 else mpmath.gammainc(_floor(x) + 1, 0, mu, regularized=True))
+    mean = variance = staticmethod(lambda mu: mu)
+    standard_deviation = staticmethod(lambda mu: mpmath.sqrt(mu))
+    skewness = staticmethod(lambda mu: 1 / mpmath.sqrt(mu))
+    kurtosis = staticmethod(lambda mu: 1 / mu)
+    mode = staticmethod(lambda mu: _mp_mode(Poisson, (mu,), 0, mpmath.inf, mu))
+    entropy = staticmethod(lambda mu: _entropy_sum(Poisson, (mu,), 0, mpmath.inf, mu, 40 * mpmath.sqrt(mu) + 60))
+
+    @staticmethod
+    def _params(rng, n):
+        return (np.concatenate([loguniform(rng, 1e-3, 1e4, n - n // 8), loguniform(rng, 1e4, 1e6, n // 8)]),)
+
+    @staticmethod
+    def _x(rng, ps):
+        import scipy.stats as st
+        (mu,) = ps
+        return _quantile_ints(rng, mu.size, lambda q, i: st.poisson.ppf(q, mu[i]), lambda q, i: st.poisson.isf(q, mu[i]),
+                              lambda rng, k: np.floor(loguniform(rng, 1, 1e6, k)))
+
+    @classmethod
+    def param_sets(cls, rng):
+        (mu,) = cls._params(rng, 600)
+        return (np.concatenate([mu, [1.0, 2.0, 3.0, 10.0, 0.5]]),), np.ones(mu.size + 5, dtype=bool)
+
+
+class Geometric(Discrete):
+    params = ("p",)
+    support = staticmethod(lambda p: (mpf(1), mpmath.inf))
+    pmf = staticmethod(lambda k, p: (1 - p) ** (k - 1) * p if _is_int(k) and k >= 1 else mpf(0))
+    cdf = staticmethod(lambda x, p: mpf(0) if x < 1 else -mpmath.expm1(_floor(x) * mpmath.log1p(-p)))
+    ccdf = staticmethod(lambda x, p: mpf(1) if x < 1 else mpmath.exp(_floor(x) * mpmath.log1p(-p)))
+    mean = staticmethod(lambda p: 1 / p)
+    variance = staticmethod(lambda p: (1 - p) / p**2)
+    standard_deviation = staticmethod(lambda p: mpmath.sqrt(1 - p) / p)
+    skewness = staticmethod(lambda p: (2 - p) / mpmath.sqrt(1 - p))
+    kurtosis = staticmethod(lambda p: 6 + p**2 / (1 - p))
+    mode = staticmethod(lambda p: mpf(1))
+    entropy = staticmethod(lambda p: -((1 - p) * mpmath.log(1 - p) + p * mpmath.log(p)) / p)
+
+    @staticmethod
+    def _params(rng, n):
+        return (np.concatenate([rng.uniform(0.001, 0.999, n // 2), loguniform(rng, 1e-9, 0.5, n // 4),
+                                1 - loguniform(rng, 1e-9, 0.5, n - n // 2 - n // 4)]),)
+
+    @staticmethod
+    def _x(rng, ps):
+        import scipy.stats as st
+        (p,) = ps
+        return _quantile_ints(rng, p.size, lambda q, i: st.geom.ppf(q, p[i]), lambda q, i: st.geom.isf(q, p[i]),
+                              lambda rng, k: np.floor(loguniform(rng, 1, 1e12, k)))
+
+
+class NegativeBinomial(Discrete):
+    params = ("n", "p")
+    support = staticmethod(lambda n, p: (mpf(0), mpmath.inf))
+
+    @staticmethod
+    def pmf(k, n, p):
+        if not _is_int(k) or k < 0:
+            return mpf(0)
+        return mpmath.exp(mpmath.loggamma(k + n) - mpmath.loggamma(n) - mpmath.loggamma(k + 1) + n * mpmath.log(p)
+                          + k * mpmath.log1p(-p))
+
+    cdf = staticmethod(lambda x, n, p: mpf(0) if x < 0 else mpmath.betainc(n, _floor(x) + 1, 0, p, regularized=True))
+    ccdf = staticmethod(lambda x, n, p: mpf(1) if x < 0 else mpmath.betainc(_floor(x) + 1, n, 0, 1 - p, regularized=True))
+    mean = staticmethod(lambda n, p: n * (1 - p) / p)
+    variance = staticmethod(lambda n, p: n * (1 - p) / p**2)
+    standard_deviation = staticmethod(lambda n, p: mpmath.sqrt(n * (1 - p)) / p)
+    skewness = staticmethod(lambda n, p: (2 - p) / mpmath.sqrt(n * (1 - p)))
+    kurtosis = staticmethod(lambda n, p: 6 / n + p**2 / (n * (1 - p)))
+    mode = staticmethod(lambda n, p: _mp_mode(NegativeBinomial, (n, p), 0, mpmath.inf, (n - 1) * (1 - p) / p if n > 1 else 0))
+    # the range: 40 sd and, for a small n (mode 0, the pmf ~ (1 - p)^k), 60 / p more for
+    # the exponential tail
+    entropy = staticmethod(lambda n, p: _entropy_sum(NegativeBinomial, (n, p), 0, mpmath.inf, n * (1 - p) / p,
+                                                     (40 * mpmath.sqrt(n * (1 - p)) + 60) / p + 60,
+                                                     lambda k: (k + n) * (1 - p) / (k + 1)))
+
+    @staticmethod
+    def _params(rng, n):
+        nn = np.concatenate([loguniform(rng, 0.1, 1e4, n - n // 8), np.floor(loguniform(rng, 1, 100, n // 8))])
+        p = np.concatenate([rng.uniform(0.01, 0.99, n // 2), loguniform(rng, 1e-4, 0.5, n // 4), 1 - loguniform(rng, 1e-6, 0.5, n - n // 2 - n // 4)])
+        rng.shuffle(nn)
+        return nn, p
+
+    @staticmethod
+    def _x(rng, ps):
+        import scipy.stats as st
+        nn, p = ps
+        return _quantile_ints(rng, nn.size, lambda q, i: st.nbinom.ppf(q, nn[i], p[i]), lambda q, i: st.nbinom.isf(q, nn[i], p[i]),
+                              lambda rng, k: np.floor(loguniform(rng, 1, 1e8, k)))
+
+    @classmethod
+    def param_sets(cls, rng):
+        nn, p = cls._params(rng, 600)
+        return (np.concatenate([nn, [3.0, 5.0]]), np.concatenate([p, [0.5, 0.2]])), np.ones(nn.size + 2, dtype=bool)
+
+
+class Hypergeometric(Discrete):
+    params = ("total", "successes", "draws")
+
+    @staticmethod
+    def support(N, K, n):
+        return max(mpf(0), n - (N - K)), min(n, K)
+
+    @staticmethod
+    def pmf(k, N, K, n):
+        lo, hi = Hypergeometric.support(N, K, n)
+        if not _is_int(k) or k < lo or k > hi:
+            return mpf(0)
+        return mpmath.binomial(K, k) * mpmath.binomial(N - K, n - k) / mpmath.binomial(N, n)
+
+    @staticmethod
+    def cdf(x, N, K, n):
+        lo, hi = Hypergeometric.support(N, K, n)
+        k = _floor(x)
+        if k < lo:
+            return mpf(0)
+        if k >= hi:
+            return mpf(1)
+        return mpmath.fsum(Hypergeometric.pmf(j, N, K, n) for j in mpmath.arange(lo, k + 1))
+
+    @staticmethod
+    def ccdf(x, N, K, n):
+        lo, hi = Hypergeometric.support(N, K, n)
+        k = _floor(x)
+        if k < lo:
+            return mpf(1)
+        if k >= hi:
+            return mpf(0)
+        return mpmath.fsum(Hypergeometric.pmf(j, N, K, n) for j in mpmath.arange(k + 1, hi + 1))
+
+    @staticmethod
+    def _central(N, K, n, m):
+        lo, hi = Hypergeometric.support(N, K, n)
+        mu = n * K / N
+        return mpmath.fsum((j - mu) ** m * Hypergeometric.pmf(j, N, K, n) for j in mpmath.arange(lo, hi + 1))
+
+    mean = staticmethod(lambda N, K, n: n * K / N)
+    variance = staticmethod(lambda N, K, n: Hypergeometric._central(N, K, n, 2))
+    standard_deviation = staticmethod(lambda N, K, n: mpmath.sqrt(Hypergeometric._central(N, K, n, 2)))
+    skewness = staticmethod(lambda N, K, n: Hypergeometric._central(N, K, n, 3) / Hypergeometric._central(N, K, n, 2) ** mpf(1.5))
+    kurtosis = staticmethod(lambda N, K, n: Hypergeometric._central(N, K, n, 4) / Hypergeometric._central(N, K, n, 2) ** 2 - 3)
+    mode = staticmethod(lambda N, K, n: _mp_mode(Hypergeometric, (N, K, n), *Hypergeometric.support(N, K, n), n * K / N))
+
+    @staticmethod
+    def entropy(N, K, n):
+        lo, hi = Hypergeometric.support(N, K, n)
+        return _entropy_sum(Hypergeometric, (N, K, n), lo, hi, (lo + hi) / 2, (hi - lo) / 2 + 1)
+
+    @staticmethod
+    def _params(rng, n):
+        N = np.floor(loguniform(rng, 2, 3000, n))
+        K = np.floor(rng.uniform(0, 1, n) * (N + 1))
+        d = np.floor(rng.uniform(0, 1, n) * (N + 1))
+        return N, K, d
+
+    @staticmethod
+    def _x(rng, ps):
+        N, K, d = ps
+        lo, hi = np.maximum(0, d - (N - K)), np.minimum(d, K)
+        x = np.floor(lo + rng.uniform(-0.05, 1.05, N.size) * (hi - lo + 1))
+        half = rng.random(x.size) < 0.05
+        return x + 0.5 * half
+
+    @classmethod
+    def param_sets(cls, rng):
+        N, K, d = cls._params(rng, 500)
+        return (N, K, d), np.ones(N.size, dtype=bool)
+
+
+class DiscreteUniform(Discrete):
+    params = ("low", "high")
+    support = staticmethod(lambda lo, hi: (lo, hi - 1))
+    pmf = staticmethod(lambda k, lo, hi: 1 / (hi - lo) if _is_int(k) and lo <= k < hi else mpf(0))
+    cdf = staticmethod(lambda x, lo, hi: mpf(0) if _floor(x) < lo else (mpf(1) if _floor(x) >= hi - 1 else (_floor(x) - lo + 1) / (hi - lo)))
+    ccdf = staticmethod(lambda x, lo, hi: mpf(1) if _floor(x) < lo else (mpf(0) if _floor(x) >= hi - 1 else (hi - 1 - _floor(x)) / (hi - lo)))
+    mean = staticmethod(lambda lo, hi: (lo + hi - 1) / 2)
+    variance = staticmethod(lambda lo, hi: ((hi - lo) ** 2 - 1) / 12)
+    standard_deviation = staticmethod(lambda lo, hi: mpmath.sqrt(((hi - lo) ** 2 - 1) / 12))
+    skewness = staticmethod(lambda lo, hi: mpf(0))
+    kurtosis = staticmethod(lambda lo, hi: -6 * ((hi - lo) ** 2 + 1) / (5 * ((hi - lo) ** 2 - 1)))
+    mode = staticmethod(lambda lo, hi: mpmath.nan)
+    entropy = staticmethod(lambda lo, hi: mpmath.log(hi - lo))
+
+    @staticmethod
+    def _params(rng, n):
+        lo = np.floor(np.concatenate([rng.uniform(-100, 100, n // 2), loguniform(rng, 1, 1e12, n - n // 2, signed=True)]))
+        w = np.floor(loguniform(rng, 2, 1e9, n))
+        return lo, lo + w
+
+    @staticmethod
+    def _x(rng, ps):
+        lo, hi = ps
+        x = np.floor(lo + rng.uniform(-0.05, 1.05, lo.size) * (hi - lo))
+        return x + 0.5 * (rng.random(x.size) < 0.05)
+
+
+class BetaBinomial(Discrete):
+    params = ("n", "a", "b")
+    support = staticmethod(lambda n, a, b: (mpf(0), n))
+
+    @staticmethod
+    def pmf(k, n, a, b):
+        if not _is_int(k) or k < 0 or k > n:
+            return mpf(0)
+        return mpmath.binomial(n, k) * mpmath.beta(k + a, n - k + b) / mpmath.beta(a, b)
+
+    cdf = staticmethod(lambda x, n, a, b: mpf(0) if _floor(x) < 0 else (mpf(1) if _floor(x) >= n else
+                       mpmath.fsum(BetaBinomial.pmf(j, n, a, b) for j in mpmath.arange(0, _floor(x) + 1))))
+    ccdf = staticmethod(lambda x, n, a, b: mpf(1) if _floor(x) < 0 else (mpf(0) if _floor(x) >= n else
+                        mpmath.fsum(BetaBinomial.pmf(j, n, a, b) for j in mpmath.arange(_floor(x) + 1, n + 1))))
+
+    @staticmethod
+    def _central(n, a, b, m):
+        mu = n * a / (a + b)
+        return mpmath.fsum((j - mu) ** m * BetaBinomial.pmf(j, n, a, b) for j in mpmath.arange(0, n + 1))
+
+    mean = staticmethod(lambda n, a, b: n * a / (a + b))
+    variance = staticmethod(lambda n, a, b: n * a * b * (a + b + n) / ((a + b) ** 2 * (a + b + 1)))
+    standard_deviation = staticmethod(lambda n, a, b: mpmath.sqrt(n * a * b * (a + b + n) / ((a + b) ** 2 * (a + b + 1))))
+    skewness = staticmethod(lambda n, a, b: BetaBinomial._central(n, a, b, 3) / BetaBinomial._central(n, a, b, 2) ** mpf(1.5))
+    kurtosis = staticmethod(lambda n, a, b: BetaBinomial._central(n, a, b, 4) / BetaBinomial._central(n, a, b, 2) ** 2 - 3)
+
+    @staticmethod
+    def mode(n, a, b):
+        vals = [BetaBinomial.pmf(j, n, a, b) for j in mpmath.arange(0, n + 1)]
+        m = max(vals)
+        idx = [i for i, v in enumerate(vals) if abs(v - m) <= m * mpf(10) ** -35]
+        return mpf(idx[0]) if len(idx) == 1 else mpmath.nan
+
+    entropy = staticmethod(lambda n, a, b: _entropy_sum(BetaBinomial, (n, a, b), 0, n, n / 2, n / 2 + 1))
+
+    @staticmethod
+    def _params(rng, n):
+        nn = np.floor(loguniform(rng, 1, 2000, n))
+        a = loguniform(rng, 0.1, 100, n)
+        b = loguniform(rng, 0.1, 100, n)
+        return nn, a, b
+
+    @staticmethod
+    def _x(rng, ps):
+        nn, a, b = ps
+        x = np.floor(rng.uniform(-0.05, 1.05, nn.size) * (nn + 1))
+        return x + 0.5 * (rng.random(x.size) < 0.05)
+
+    @classmethod
+    def param_sets(cls, rng):
+        nn, a, b = cls._params(rng, 400)
+        return (np.concatenate([nn, [10.0, 10.0, 5.0]]), np.concatenate([a, [1.0, 0.5, 2.0]]),
+                np.concatenate([b, [1.0, 0.5, 3.0]])), np.ones(nn.size + 3, dtype=bool)
+
+
+def _logser_l(p):
+    return -mpmath.log1p(-p)
+
+
+class LogSeries(Discrete):
+    params = ("p",)
+    support = staticmethod(lambda p: (mpf(1), mpmath.inf))
+    pmf = staticmethod(lambda k, p: p**k / (k * _logser_l(p)) if _is_int(k) and k >= 1 else mpf(0))
+
+    @staticmethod
+    def ccdf(x, p):
+        k = _floor(x)
+        if k < 1:
+            return mpf(1)
+        return p ** (k + 1) * mpmath.lerchphi(p, 1, k + 1) / _logser_l(p)
+
+    @staticmethod
+    def cdf(x, p):
+        k = _floor(x)
+        if k < 1:
+            return mpf(0)
+        if k <= 2000:
+            return mpmath.fsum(p**j / j for j in mpmath.arange(1, k + 1)) / _logser_l(p)
+        return 1 - LogSeries.ccdf(x, p)
+
+    @staticmethod
+    def _raw(p, r):
+        L, w = _logser_l(p), 1 - p
+        A = [mpf(1), mpf(1), 1 + p, 1 + 4 * p + p * p][r - 1]
+        return p * A / (L * w**r)
+
+    mean = staticmethod(lambda p: LogSeries._raw(p, 1))
+    variance = staticmethod(lambda p: LogSeries._raw(p, 2) - LogSeries._raw(p, 1) ** 2)
+    standard_deviation = staticmethod(lambda p: mpmath.sqrt(LogSeries._raw(p, 2) - LogSeries._raw(p, 1) ** 2))
+
+    @staticmethod
+    def _central(p, m):
+        e = [LogSeries._raw(p, r) for r in (1, 2, 3, 4)]
+        mu = e[0]
+        if m == 2:
+            return e[1] - mu**2
+        if m == 3:
+            return e[2] - 3 * mu * e[1] + 2 * mu**3
+        return e[3] - 4 * mu * e[2] + 6 * mu**2 * e[1] - 3 * mu**4
+
+    skewness = staticmethod(lambda p: LogSeries._central(p, 3) / LogSeries._central(p, 2) ** mpf(1.5))
+    kurtosis = staticmethod(lambda p: LogSeries._central(p, 4) / LogSeries._central(p, 2) ** 2 - 3)
+    mode = staticmethod(lambda p: mpf(1))
+
+    @staticmethod
+    def entropy(p):
+        L = _logser_l(p)
+        return mpmath.log(L) - mpmath.log(p) * LogSeries._raw(p, 1) + mpmath.nsum(lambda k: p**k * mpmath.log(k) / (k * L), [2, mpmath.inf])
+
+    @staticmethod
+    def _params(rng, n):
+        return (np.concatenate([rng.uniform(0.001, 0.999, n // 2), loguniform(rng, 1e-8, 0.5, n // 4),
+                                1 - loguniform(rng, 1e-6, 0.5, n - n // 2 - n // 4)]),)
+
+    @staticmethod
+    def _x(rng, ps):
+        import scipy.stats as st
+        (p,) = ps
+        import stardust as sd  # scipy's logser.ppf is slow in the far tail: our own icdf as the sampler
+
+        return _quantile_ints(rng, p.size, lambda q, i: np.asarray(sd.stats.LogSeries(p=sd.asarray(p[i])).icdf(sd.asarray(q))),
+                              lambda q, i: np.asarray(sd.stats.LogSeries(p=sd.asarray(p[i])).iccdf(sd.asarray(q))),
+                              lambda rng, k: np.floor(loguniform(rng, 1, 1e7, k)))
+
+    @classmethod
+    def param_sets(cls, rng):
+        (p,) = cls._params(rng, 600)
+        return (p,), np.ones(p.size, dtype=bool)
+
+
+class Zipf(Discrete):
+    params = ("a",)
+    support = staticmethod(lambda a: (mpf(1), mpmath.inf))
+    pmf = staticmethod(lambda k, a: k ** (-a) / mpmath.zeta(a) if _is_int(k) and k >= 1 else mpf(0))
+    ccdf = staticmethod(lambda x, a: mpf(1) if _floor(x) < 1 else mpmath.zeta(a, _floor(x) + 1) / mpmath.zeta(a))
+
+    @staticmethod
+    def cdf(x, a):
+        k = _floor(x)
+        if k < 1:
+            return mpf(0)
+        return (mpmath.zeta(a) - mpmath.zeta(a, k + 1)) / mpmath.zeta(a)
+
+    @staticmethod
+    def _raw(a, r):
+        return mpmath.zeta(a - r) / mpmath.zeta(a)
+
+    mean = staticmethod(lambda a: Zipf._raw(a, 1) if a > 2 else mpmath.inf)
+
+    @staticmethod
+    def _central(a, m):
+        e = [Zipf._raw(a, r) for r in (1, 2, 3, 4)[:m]]
+        mu = e[0]
+        if m == 2:
+            return e[1] - mu**2
+        if m == 3:
+            return e[2] - 3 * mu * e[1] + 2 * mu**3
+        return e[3] - 4 * mu * e[2] + 6 * mu**2 * e[1] - 3 * mu**4
+
+    variance = staticmethod(lambda a: Zipf._central(a, 2) if a > 3 else (mpmath.inf if a > 2 else mpmath.nan))
+    standard_deviation = staticmethod(lambda a: mpmath.sqrt(Zipf._central(a, 2)) if a > 3 else (mpmath.inf if a > 2 else mpmath.nan))
+    skewness = staticmethod(lambda a: Zipf._central(a, 3) / Zipf._central(a, 2) ** mpf(1.5) if a > 4 else (mpmath.inf if a > 3 else mpmath.nan))
+    kurtosis = staticmethod(lambda a: Zipf._central(a, 4) / Zipf._central(a, 2) ** 2 - 3 if a > 5 else (mpmath.inf if a > 3 else mpmath.nan))
+    mode = staticmethod(lambda a: mpf(1))
+    entropy = staticmethod(lambda a: mpmath.log(mpmath.zeta(a)) - a * mpmath.zeta(a, 1, 1) / mpmath.zeta(a))
+
+    @staticmethod
+    def _params(rng, n):
+        return (np.concatenate([1 + loguniform(rng, 1e-3, 1, n // 2), loguniform(rng, 2, 60, n - n // 2)]),)
+
+    @staticmethod
+    def _x(rng, ps):
+        import scipy.stats as st
+        (a,) = ps
+        import stardust as sd  # scipy's zipf.ppf runs out of memory for a near 1 and a tiny q
+
+        return _quantile_ints(rng, a.size, lambda q, i: np.asarray(sd.stats.Zipf(a=sd.asarray(a[i])).icdf(sd.asarray(q))),
+                              lambda q, i: np.asarray(sd.stats.Zipf(a=sd.asarray(a[i])).iccdf(sd.asarray(q))),
+                              lambda rng, k: np.floor(loguniform(rng, 1, 1e12, k)))
+
+    @classmethod
+    def param_sets(cls, rng):
+        (a,) = cls._params(rng, 600)
+        return (a,), np.ones(a.size, dtype=bool)
+
+
 DISTRIBUTIONS = {"normal": Normal, "exponential": Exponential, "uniform": Uniform, "laplace": Laplace,
                  "cauchy": Cauchy, "lognormal": LogNormal, "weibull": Weibull, "gamma": Gamma,
-                 "chisquared": ChiSquared, "beta": Beta, "studentt": StudentT, "f": F}
+                 "chisquared": ChiSquared, "beta": Beta, "studentt": StudentT, "f": F,
+                 "binomial": Binomial, "bernoulli": Bernoulli, "poisson": Poisson, "geometric": Geometric,
+                 "negativebinomial": NegativeBinomial, "hypergeometric": Hypergeometric,
+                 "discreteuniform": DiscreteUniform, "betabinomial": BetaBinomial, "logseries": LogSeries, "zipf": Zipf}
+DISCRETE_INPUT_METHODS = ("pmf", "logpmf") + INPUT_METHODS[2:]
 
 
 # ---------------------------------------------------------------- method definitions
@@ -691,8 +1257,11 @@ def method_value(D, m, args):
     if m in PARAM_METHODS:
         return getattr(D, m)(*args)
     *p, x = args
-    if m == "pdf":
-        return D.pdf(x, *p)
+    if m in ("pdf", "pmf"):
+        return D.pmf(x, *p) if m == "pmf" else D.pdf(x, *p)
+    if m == "logpmf":
+        v = D.pmf(x, *p)
+        return mpmath.log(v) if v > 0 else -mpmath.inf
     if m == "logpdf":
         return D.logpdf(x, *p) if hasattr(D, "logpdf") else mpmath.log(D.pdf(x, *p))
     if m == "cdf":
@@ -818,6 +1387,146 @@ def inverse_value(D, m, args, x0):
     return x, abs(t) * mpmath.exp(t) / (f * abs(x))
 
 
+def _smallest_int(lo, hi, k0, pred):
+    """The smallest integer k in [lo, hi] with pred(k) (pred monotone, true at hi)."""
+    k = k0 if (k0 is not None and mpmath.isfinite(k0)) else lo
+    k = min(max(lo, mpmath.floor(k)), hi)
+    if pred(k):
+        if k == lo or not pred(k - 1):
+            return k
+        b, step = k, mpf(1)
+        while True:
+            c = max(lo, b - step)
+            if not pred(c):
+                a = c
+                break
+            b = c
+            if c == lo:
+                return lo
+            step *= 2
+    else:
+        a, step = k, mpf(1)
+        while True:
+            c = a + step
+            if c >= hi:
+                b = hi
+                break
+            if c > mpf(2) ** 1024:  # beyond float64: the reference is inf (our search stops there too)
+                return mpmath.inf
+            if pred(c):
+                b = c
+                break
+            a = c
+            step *= 2
+    while b - a > 1:
+        mid = mpmath.floor((a + b) / 2)
+        if pred(mid):
+            b = mid
+        else:
+            a = mid
+    return b
+
+
+def discrete_inverse(D, m, p, t, k0):
+    """The exact quantile of a discrete distribution (T25): icdf = smallest k with
+    cdf(k) >= t, iccdf = smallest k with ccdf(k) <= t, the log forms with t = log p; each
+    compared on the side whose probability is small (its complement exact in mpmath)."""
+    lo, hi = D.support(*p)
+    half = mpf(1) / 2
+    if m == "icdf":
+        pred = (lambda k: D.ccdf(k, *p) <= 1 - t) if t > half else (lambda k: D.cdf(k, *p) >= t)
+    elif m == "iccdf":
+        pred = (lambda k: D.cdf(k, *p) >= 1 - t) if t > half else (lambda k: D.ccdf(k, *p) <= t)
+    elif m == "ilogcdf":
+        q = -mpmath.expm1(t)
+        pred = (lambda k: D.ccdf(k, *p) <= q) if t > -mpmath.log(2) else (lambda k: D.cdf(k, *p) >= mpmath.exp(t))
+    else:
+        q = -mpmath.expm1(t)
+        pred = (lambda k: D.cdf(k, *p) >= q) if t > -mpmath.log(2) else (lambda k: D.ccdf(k, *p) <= mpmath.exp(t))
+    return _smallest_int(lo, hi, None if k0 is None else mpf(k0), pred)
+
+
+# The discrete inverses' contract is a backward error (user decision 2026-11-16): the
+# answer is right when it is the exact quantile of some target within relative 1e-14 of the
+# given one: for icdf and iccdf on the small side (p or 1 - p, whichever is below 1/2), for
+# the log forms relative in t itself (as the continuous inverses' kappa; t = -1e5 has an ULP
+# of 1.5e-11, so no bound finer than relative is meaningful there). That covers a target within the cdf's last bits of a step (the
+# neighbour is as good) and a quantile so large that the steps are finer than the cdf's
+# resolution (Zipf near a = 1). Each point stores the interval [kmin, kmax] of such answers.
+BACKWARD = mpf(10) ** -14
+
+
+def _perturbed(m, t):
+    """The two ends of the targets within BACKWARD of t (method m's own input)."""
+    d = BACKWARD
+    if m in ("icdf", "iccdf"):
+        if t <= mpf(1) / 2:
+            return t * (1 - d), t * (1 + d)
+        q = 1 - t
+        return 1 - q * (1 + d), 1 - q * (1 - d)
+    return t * (1 + d), t * (1 - d)  # t < 0: relative in t, the input's own resolution
+
+
+def discrete_interval(D, m, p, t, k):
+    """[kmin, kmax]: the exact quantiles at the ends of the perturbed targets (each method is
+    monotone in its input, so the answers in between lie between)."""
+    ends = [discrete_inverse(D, m, p, u, None if not mpmath.isfinite(k) else k) for u in _perturbed(m, t)]
+    return min(ends), max(ends)
+
+
+def _interval_point(task):
+    dist, m, i, args, k = task
+    D = DISTRIBUTIONS[dist]
+    old = signal.signal(signal.SIGALRM, sr._alarm)
+    signal.alarm(POINT_SECONDS)
+    try:
+        mm, a = ("icdf", list(args) + [0.5]) if m == "median" else (m, list(args))
+        dps = 2 * sr.DPS + 20
+        lo_, hi_ = _at(dps, lambda: discrete_interval(D, mm, [mpf(v) for v in a[:-1]], mpf(a[-1]), mpf(k)))
+        return task, (float(lo_), float(hi_))
+    except Exception:
+        return task, None
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old)
+
+
+def add_intervals(targets, jobs):
+    """Add kmin and kmax to existing discrete inverse files (the exact k is kept); a point
+    whose interval cannot be settled is dropped from the file."""
+    import time
+
+    tasks, files = [], {}
+    for dist, m in targets:
+        if not (getattr(DISTRIBUTIONS[dist], "discrete", False) and (m in INVERSE or m == "median")):
+            continue
+        path = OUT / f"{dist}_{m}.npz"
+        with np.load(path) as f:
+            data = dict(f)
+        xs = [data[f"x{k}"] for k in range(int(data["nin"]))]
+        files[(dist, m)] = (path, data, {})
+        tasks += [(dist, m, i, tuple(float(x[i]) for x in xs), float(data["hi"][i])) for i in range(xs[0].size)]
+    start = time.monotonic()
+    with multiprocessing.get_context("fork").Pool(jobs) as pool:
+        for n, (task, r) in enumerate(pool.imap_unordered(_interval_point, tasks, chunksize=16), 1):
+            files[(task[0], task[1])][2][task[2]] = r
+            if n % max(1, len(tasks) // 20) == 0:
+                print(f"  intervals {n}/{len(tasks)}, {(time.monotonic() - start) / 60:.1f} min", flush=True)
+    for (dist, m), (path, data, res) in files.items():
+        n = data["hi"].size
+        kmin, kmax, keep = np.empty(n), np.empty(n), np.zeros(n, dtype=bool)
+        for i, r in res.items():
+            if r is not None:
+                kmin[i], kmax[i] = r
+                keep[i] = True
+        for key in ("hi", "lo", "scale", "guaranteed") + tuple(f"x{k}" for k in range(int(data["nin"]))):
+            data[key] = data[key][keep]
+        data["kmin"], data["kmax"] = kmin[keep], kmax[keep]
+        np.savez_compressed(path, **data)
+        print(f"{dist}_{m}: {int(keep.sum())} intervals" + (f", {n - int(keep.sum())} dropped" if n > keep.sum() else ""),
+              flush=True)
+
+
 # ---------------------------------------------------------------- building
 
 
@@ -853,6 +1562,19 @@ def _point(task):
     signal.alarm(POINT_SECONDS)
     try:
         sc = 1.0
+        if getattr(D, "discrete", False) and (m in INVERSE or m == "median"):
+            x0 = _our(dist, m, args)
+            mm, a = ("icdf", list(args) + [0.5]) if m == "median" else (m, list(args))
+            vals = []
+            for dps in (sr.DPS + 10, 2 * sr.DPS + 20):
+                vals.append(_at(dps, lambda: discrete_inverse(D, mm, [mpf(v) for v in a[:-1]], mpf(a[-1]),
+                                                              x0 if np.isfinite(x0) else None)))
+            if vals[0] != vals[1]:
+                return i, None
+            hi_, lo_ = sr.double_double(vals[1])
+            kmin, kmax = _at(2 * sr.DPS + 20, lambda: discrete_interval(D, mm, [mpf(v) for v in a[:-1]], mpf(a[-1]),
+                                                                        vals[1]))
+            return i, (hi_, lo_, 1.0, float(kmin), float(kmax))
         if m == "median" and not hasattr(D, "median"):
             x0 = _our(dist, m, args)
             dps = sr.DPS + 10
@@ -885,7 +1607,9 @@ def _point(task):
 
 # The guaranteed region in the parameters: the ranges over which sd.special's functions
 # underneath are measured and guaranteed (docs/api/special.md §3, §13). Points outside
-# stay in the files and are held to the documented loose bound.
+# stay in the files and are held to the documented loose bound. The discrete distributions
+# are guaranteed over the parameter ranges their sets sample (user decision 2026-11-16;
+# docs/api/stats.md §2.3), so every point of theirs is in the region.
 PARAM_RANGE = {
     "gamma": lambda a, s: a <= 1e6,
     "chisquared": lambda df: df <= 2e6,
@@ -921,14 +1645,24 @@ def region(dist, D, xs, guaranteed, m=None):
     return g
 
 
+_INPUT_CACHE = {}
+
+
 def inputs(D, m, rng):
+    """The input set of method m (the same set for every method of a kind, made once: the
+    generator is reseeded per file, so the sets are identical anyway)."""
     if m in PARAM_METHODS:
-        return D.param_sets(rng)
-    if m in ("icdf", "iccdf"):
-        return D.p_sets(rng)
-    if m in ("ilogcdf", "ilogccdf"):
-        return D.logp_sets(rng)
-    return D.x_sets(rng)
+        kind, make = "param", D.param_sets
+    elif m in ("icdf", "iccdf"):
+        kind, make = "p", D.p_sets
+    elif m in ("ilogcdf", "ilogccdf"):
+        kind, make = "logp", D.logp_sets
+    else:
+        kind, make = "x", D.x_sets
+    key = (D, kind)
+    if key not in _INPUT_CACHE:
+        _INPUT_CACHE[key] = make(rng)
+    return _INPUT_CACHE[key]
 
 
 def _tasks(dist, m):
@@ -944,15 +1678,21 @@ def _tasks(dist, m):
 def _save(dist, m, xs, guaranteed, results):
     n = xs[0].size
     hi, lo, scale = np.empty(n), np.empty(n), np.ones(n)
+    kmin, kmax = np.empty(n), np.empty(n)  # the discrete inverses' intervals (BACKWARD)
     keep = np.zeros(n, dtype=bool)
+    interval = False
     for i, r in results.items():
         if r is not None:
-            hi[i], lo[i], scale[i] = r
+            hi[i], lo[i], scale[i] = r[:3]
+            if len(r) == 5:
+                kmin[i], kmax[i] = r[3:]
+                interval = True
             keep[i] = True
+    extra = {"kmin": kmin[keep], "kmax": kmax[keep]} if interval else {}
     OUT.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(OUT / f"{dist}_{m}.npz", nin=len(xs), hi=hi[keep], lo=lo[keep], scale=scale[keep],
                         guaranteed=np.asarray(guaranteed, dtype=bool)[keep],
-                        **{f"x{k}": x[keep] for k, x in enumerate(xs)}, mpmath=mpmath.__version__, dps=sr.DPS)
+                        **{f"x{k}": x[keep] for k, x in enumerate(xs)}, **extra, mpmath=mpmath.__version__, dps=sr.DPS)
     return int(keep.sum()), int(n - keep.sum())
 
 
@@ -1037,16 +1777,20 @@ def main(argv):
 
     jobs = os.cpu_count() or 1  # all cores by default (M4 Pro: 10 performance + 4 efficiency)
     masks_only = "--masks-only" in argv
-    argv = [a for a in argv if a != "--masks-only"]
+    intervals = "--intervals" in argv
+    argv = [a for a in argv if a not in ("--masks-only", "--intervals")]
     if argv and argv[0].startswith("--jobs="):
         jobs, argv = int(argv[0].split("=", 1)[1]), argv[1:]
     targets = []
     for a in argv or list(DISTRIBUTIONS):
         dist, _, ms = a.partition(":")
-        methods = ms.split(",") if ms else list(INPUT_METHODS + PARAM_METHODS)
+        base = DISCRETE_INPUT_METHODS if getattr(DISTRIBUTIONS[dist], "discrete", False) else INPUT_METHODS
+        methods = ms.split(",") if ms else list(base + PARAM_METHODS)
         targets += [(dist, m) for m in methods]
     if masks_only:
         remask(targets)
+    elif intervals:
+        add_intervals(targets, jobs)
     else:
         build_all(targets, jobs)
 
