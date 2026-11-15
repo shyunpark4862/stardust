@@ -5,11 +5,13 @@
 #pragma once
 
 #include "array/ndarray.hpp"
+#include "bind/errors.hpp"  // py_type_name
 
 #include <nanobind/nanobind.h>
 
 #include <initializer_list>
 #include <optional>
+#include <array>
 #include <span>
 #include <string>
 #include <vector>
@@ -35,11 +37,6 @@ std::optional<DType> parse_any_dtype(nb::handle o);
 // name (sd.string), a string or a type as itself ('float32', <class 'float'>),
 // anything else by its type's name.
 std::string describe_dtype_arg(nb::handle o);
-
-// The short name of `o`'s type, for "..., not list" in messages: the type's
-// __name__, without a module path ("ndarray", "int64", not
-// "stardust._core.ndarray" or "numpy.int64"; API.md §2.1).
-std::string py_type_name(nb::handle o);
 
 // Gives a bound class the short type name Python's own messages use
 // ("unsupported operand type(s) for +: 'ndarray' and 'list'", "unhashable
@@ -82,6 +79,17 @@ std::optional<bool> parse_copy(nb::handle o);
 
 // `shape` argument: an int or a tuple of ints (docs/design/array.md §2.8).
 std::vector<std::int64_t> parse_shape(nb::handle o);
+
+// The same, without a heap allocation for up to kMaxNdim axes (zeros(3) and the
+// other creation functions: the vector was a fifth of a tiny call). A longer
+// tuple is parsed by parse_shape, so its errors are the same.
+struct ShapeArg {
+    std::array<std::int64_t, kMaxNdim> small;
+    std::vector<std::int64_t> big;
+    std::size_t n = 0;
+    std::span<const std::int64_t> span() const { return big.empty() && n <= small.size() ? std::span<const std::int64_t>(small.data(), n) : std::span<const std::int64_t>(big); }
+};
+ShapeArg parse_shape_arg(nb::handle o);
 
 // An int argument (index_value), e.g. `num` or `k`. TypeError for anything
 // else, OverflowError outside int64 (API.md §2).

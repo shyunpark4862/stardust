@@ -14,6 +14,8 @@ EXPECTED = {
         (r"dtype (numpy|python type|python) err$", "§9.2: the dtype message names the accepted names (message)"),
         (r"^(arg)?sort (n|f special) axis=-?\d desc=True |^(arg)?sort large n desc$",
          "§9.1 #9: NaN is the largest value: first when descending"),
+        (r"^(arg)?sort (large [nt] unstable|n axis=-?\d desc=False stable=False)$",
+         "docs/design/array.md §8.2: stable=False takes the stable algorithms (radix, float NEON path): ties and ±0 in the stable order"),
         (r"^unique_(values|counts|inverse|all) (n|nans|f special|c|large n)$",
          "§9.1 #10: all NaNs are one value, sorted last"),
         (r"^op (eq|ne) (list|numpy|None)", "§9.1 #13: == and != with an operand the other operators reject is a TypeError"),

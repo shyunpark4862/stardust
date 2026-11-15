@@ -196,6 +196,33 @@ int NdIter::split_axis(Split split) const {
 
 void NdIter::run_serial(Loop kernel, void* ctx) const {
     const int last = ndim_ - 1;
+    if (tiles_ok_ && ndim_ == 2) {
+        // An operand whose inner step is longer than its outer one (a transposed
+        // array next to C-ordered ones) would touch a new cache line at every
+        // element. In tiles of kTileRows rows by kTileCols columns, the rows of a
+        // tile reuse those lines: kTileRows x 8 bytes fill a 128-byte line, and
+        // kTileCols lines (16 KB) stay in L1. (Row by row: 1000 x 1000 x.T + y
+        // 552 us, numpy 480.)
+        bool across = false;
+        for (int k = 0; k < nop_; ++k) across |= std::llabs(strides_[k][1]) > std::llabs(strides_[k][0]) && strides_[k][0] != 0;
+        constexpr std::int64_t kTileRows = 16, kTileCols = 128;
+        if (across && shape_[0] >= kTileRows && shape_[1] >= 2 * kTileCols) {
+            std::array<std::byte*, kMaxOperands> p;
+            std::array<std::int64_t, kMaxOperands> inner{};
+            for (int k = 0; k < nop_; ++k) inner[k] = strides_[k][1];
+            for (std::int64_t i0 = 0; i0 < shape_[0]; i0 += kTileRows) {
+                const std::int64_t i1 = std::min(shape_[0], i0 + kTileRows);
+                for (std::int64_t j0 = 0; j0 < shape_[1]; j0 += kTileCols) {
+                    const std::int64_t len = std::min(kTileCols, shape_[1] - j0);
+                    for (std::int64_t i = i0; i < i1; ++i) {
+                        for (int k = 0; k < nop_; ++k) p[k] = data_[k] + i * strides_[k][0] + j0 * strides_[k][1];
+                        kernel(p.data(), len, inner.data(), ctx);
+                    }
+                }
+            }
+            return;
+        }
+    }
     std::array<std::byte*, kMaxOperands> p = data_;
     std::array<std::int64_t, kMaxOperands> inner{};
     for (int k = 0; k < nop_; ++k) inner[k] = strides_[k][last];

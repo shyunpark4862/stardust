@@ -160,7 +160,9 @@ nb::object repeat(nb::handle x, nb::handle repeats_obj, nb::handle axis_obj) {
     const IndexResult one_kind = index_value(repeats_obj, one);
     if (one_kind == IndexResult::Overflow) throw std::overflow_error("'repeats' is out of range");  // API.md §2
     if (one_kind == IndexResult::Ok) {
-        counts.assign(n, one);
+        // One count for all: no per-element counts (two arrays of n written
+        // and read serially -- most of repeat(x, 2)'s time before).
+        if (one < 0) throw nb::value_error("'repeats' must be non-negative");
     } else if (is_ndarray(repeats_obj)) {
         const NDArray& r = as_ndarray(repeats_obj);
         if (r.dtype != DType::Int64)
@@ -180,6 +182,7 @@ nb::object repeat(nb::handle x, nb::handle repeats_obj, nb::handle axis_obj) {
         throw nb::type_error(("'repeats' must be an int or an int64 array, not " + py_type_name(repeats_obj)).c_str());
     }
     std::int64_t total = 0;
+    if (one_kind == IndexResult::Ok && __builtin_mul_overflow(n, one, &total)) throw nb::value_error("array is too big");
     for (std::int64_t c : counts) {
         if (c < 0) throw nb::value_error("'repeats' must be non-negative");
         if (__builtin_add_overflow(total, c, &total)) throw nb::value_error("array is too big");  // (as new_array says)
@@ -200,21 +203,41 @@ nb::object repeat(nb::handle x, nb::handle repeats_obj, nb::handle axis_obj) {
     for (int d = 0; d < axis; ++d) outer *= s.shape[d];
     for (int d = axis + 1; d < s.ndim; ++d) inner *= s.shape[d];
     const std::int64_t item = s.itemsize(), block = inner * item;
-    std::vector<std::int64_t> start(n + 1, 0);  // where element i's copies begin along the axis
-    for (std::int64_t i = 0; i < n; ++i) start[i + 1] = start[i] + counts[i];
+    const std::int64_t uniform = one_kind == IndexResult::Ok ? one : -1;  // the one count, if one was given
+    std::vector<std::int64_t> start;  // where element i's copies begin along the axis (per-element counts)
+    if (uniform < 0) {
+        start.assign(n + 1, 0);
+        for (std::int64_t i = 0; i < n; ++i) start[i + 1] = start[i] + counts[i];
+    }
+    auto start_of = [&](std::int64_t i) { return uniform >= 0 ? i * uniform : start[i]; };
+    auto count_of = [&](std::int64_t i) { return uniform >= 0 ? uniform : counts[i]; };
     visit_dtype(s.dtype, [&]<typename T>(std::type_identity<T>) {
         // Rows [o0, o1) of the leading axes, elements [i0, i1) of the axis:
         // each piece writes its own part of the output.
         auto piece = [&](std::int64_t o0, std::int64_t o1, std::int64_t i0, std::int64_t i1) {
             for (std::int64_t o = o0; o < o1; ++o) {
                 const std::byte* from = src_c.data + (o * n + i0) * block;
-                std::byte* to = out.data + (o * total + start[i0]) * block;
+                std::byte* to = out.data + (o * total + start_of(i0)) * block;
+                if (uniform >= 0 && inner == 1) {
+                    // One count for all, single elements (repeat(x, 2), the usual
+                    // call): a fixed-count store loop, no call per element
+                    // (fill_n per element: 10^6 x 2 took 1.21 ms against numpy's 0.50).
+                    const T* f = reinterpret_cast<const T*>(from);
+                    T* t = reinterpret_cast<T*>(to);
+                    if (uniform == 2) {
+                        for (std::int64_t i = 0; i < i1 - i0; ++i) t[2 * i] = f[i], t[2 * i + 1] = f[i];
+                    } else {
+                        for (std::int64_t i = 0; i < i1 - i0; ++i)
+                            for (std::int64_t c = 0; c < uniform; ++c) t[i * uniform + c] = f[i];
+                    }
+                    continue;
+                }
                 for (std::int64_t i = i0; i < i1; ++i, from += block) {
                     if (inner == 1) {
-                        std::fill_n(reinterpret_cast<T*>(to), counts[i], *reinterpret_cast<const T*>(from));
-                        to += counts[i] * item;
+                        std::fill_n(reinterpret_cast<T*>(to), count_of(i), *reinterpret_cast<const T*>(from));
+                        to += count_of(i) * item;
                     } else {
-                        for (std::int64_t c = 0; c < counts[i]; ++c, to += block)
+                        for (std::int64_t c = 0, k = count_of(i); c < k; ++c, to += block)
                             std::memcpy(to, from, static_cast<size_t>(block));
                     }
                 }

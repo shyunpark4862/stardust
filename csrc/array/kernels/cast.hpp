@@ -10,6 +10,7 @@
 
 #include <arm_neon.h>
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <type_traits>
@@ -38,6 +39,21 @@ void cast_loop(std::byte* const* args, std::int64_t n, const std::int64_t* strid
             }
         }
         for (; i < n; ++i) dst[i] = cast_value<To>(src[i]);
+        return;
+    }
+    if (strides[0] == 0) {
+        // A broadcast scalar (x[...] = 1.0, full, the fill of zeros_like and so on):
+        // convert once, then a plain store loop. Reading the source in every step
+        // kept the loop scalar -- the store may alias it (10^6 elements 248 us
+        // against numpy's 63).
+        const To v = cast_value<To>(*reinterpret_cast<const From*>(args[0]));
+        if (strides[1] == sizeof(To)) {
+            To* dst = reinterpret_cast<To*>(args[1]);
+            std::fill(dst, dst + n, v);
+        } else {
+            std::byte* dst = args[1];
+            for (std::int64_t i = 0; i < n; ++i, dst += strides[1]) std::memcpy(dst, &v, sizeof(To));
+        }
         return;
     }
     const std::byte* src = args[0];

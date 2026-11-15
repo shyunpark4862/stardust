@@ -83,6 +83,19 @@ nb::object vecdot(nb::handle x1o, nb::handle x2o, nb::handle axis_o) {
                                     out[i] = mul(conj_if_complex(convert<T>(load<SX>(pp + i * sx))), convert<T>(load<SY>(qq + i * sy)));
                             }
                         };
+                        if constexpr (std::is_same_v<T, double> && std::is_same_v<SX, double> && std::is_same_v<SY, double>) {
+                            if (sx == 8 && sy == 8 && len < kSumParallelMin) {
+                                // Contiguous float64: the products computed inside the leaf,
+                                // no buffer in between -- the same terms in the same order,
+                                // so the same bits (FMA contraction is off). (Through the
+                                // buffer: (1000, 1000) rows 200 us against numpy's 132.)
+                                const double* a = reinterpret_cast<const double*>(p);
+                                const double* c = reinterpret_cast<const double*>(q);
+                                return 0. + pairwise::tree(0, len, [&](std::int64_t b0, std::int64_t m) {
+                                    return pairwise::leaf(m, [&](std::int64_t i) { return a[b0 + i] * c[b0 + i]; });
+                                });
+                            }
+                        }
                         return pairwise_sum_mt<T>(len, fill);  // on the pool when long (docs/design/linalg.md §8.3)
                     };
                     if (b.ndim() == 0) {

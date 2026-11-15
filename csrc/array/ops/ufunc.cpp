@@ -6,9 +6,11 @@
 #include "array/kernels/buffered.hpp"
 #include "array/kernels/cast.hpp"
 #include "array/ops/copy.hpp"
+#include "parallel/pool.hpp"
 
 #include <algorithm>
 #include <array>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -103,7 +105,8 @@ void run_loop(std::span<const NDArray> ins, std::span<const DType> in_types, std
             buffered.add_cast(static_cast<int>(k), cast_kernel(ins[k].dtype, in_types[k]), itemsize(in_types[k]));
     }
     for (size_t j = 0; j < outs.size(); ++j) ops[ins.size() + j] = operand(outs[j]);
-    const NdIter it(shape, std::span(ops.data(), ins.size() + outs.size()));
+    NdIter it(shape, std::span(ops.data(), ins.size() + outs.size()));
+    it.allow_tiles();  // ufunc kernels treat every element on its own
     if (buffered.needed()) it.run(&buffered_loop, &buffered, Split::Elementwise, weight);
     else it.run(loop, nullptr, Split::Elementwise, weight);
 }
@@ -137,6 +140,65 @@ nb::object launch_scalars(std::span<const nb::handle> objs, std::span<const DTyp
     return nb::tuple(results);
 }
 
+// x[1:] += x[:-1] and the like on one thread: 1-D operands of one length and
+// stride, the overlapping inputs in out's dtype. Rather than copying each
+// overlapping input whole, chunks of kOverlapChunk elements go in the order
+// that reads every input chunk before any write reaches it (from the end when
+// the inputs start at or before out, else from the start), each overlapping
+// input's chunk copied to a stack buffer first. The same result as the whole
+// copy (numpy's semantics) without its pass over memory (10^6: 300 us against
+// numpy's 238; chunked: see docs/design/array.md §3.5). False: not this case.
+// On several threads the whole copy runs on the pool instead (same result).
+inline constexpr std::int64_t kOverlapChunk = 1024;  // 16 KB per buffered input (complex)
+
+bool overlap_in_chunks(std::span<const NDArray> ins, std::span<const DType> in_types, const std::array<bool, kMaxInputs>& overlaps,
+                       NDArray& out, Loop loop) {
+    if (out.ndim != 1 || parallel::available()) return false;
+    const std::int64_t n = out.shape[0], st = out.strides[0], w = out.itemsize();
+    if (st == 0 || n < 2 * kOverlapChunk) return false;
+    int dir = 0;  // +1: chunks from the start, -1: from the end
+    for (size_t k = 0; k < ins.size(); ++k) {
+        const NDArray& a = ins[k];
+        if (a.ndim != 1 || a.shape[0] != n || a.dtype != in_types[k]) return false;
+        if (!overlaps[k]) continue;
+        if (a.strides[0] != st || a.dtype != out.dtype) return false;
+        const bool before = st > 0 ? a.data <= out.data : a.data >= out.data;
+        const int d = before ? -1 : +1;
+        if (dir != 0 && dir != d) return false;
+        dir = d;
+    }
+    alignas(64) std::byte buf[kMaxInputs][kOverlapChunk * 16];
+    std::array<std::byte*, kMaxOperands> args;
+    std::array<std::int64_t, kMaxOperands> strides;
+    const std::int64_t chunks = (n + kOverlapChunk - 1) / kOverlapChunk;
+    for (std::int64_t c = 0; c < chunks; ++c) {
+        const std::int64_t q = dir > 0 ? c : chunks - 1 - c;
+        const std::int64_t i0 = q * kOverlapChunk, len = std::min(kOverlapChunk, n - i0);
+        for (size_t k = 0; k < ins.size(); ++k) {
+            const std::byte* src = ins[k].data + i0 * ins[k].strides[0];
+            if (overlaps[k]) {
+                if (st == w) {
+                    std::memcpy(buf[k], src, static_cast<size_t>(len * w));
+                } else {
+                    visit_dtype(out.dtype, [&]<typename T>(std::type_identity<T>) {
+                        T* d = reinterpret_cast<T*>(buf[k]);
+                        for (std::int64_t i = 0; i < len; ++i) d[i] = *reinterpret_cast<const T*>(src + i * st);
+                    });
+                }
+                args[k] = buf[k];
+                strides[k] = w;
+            } else {
+                args[k] = const_cast<std::byte*>(src);
+                strides[k] = ins[k].strides[0];
+            }
+        }
+        args[ins.size()] = out.data + i0 * st;
+        strides[ins.size()] = st;
+        loop(args.data(), len, strides.data(), nullptr);
+    }
+    return true;
+}
+
 // Steps 3 and 4 (see ufunc.hpp): convert, then run into out= or a new array.
 // With nout > 1 the loop writes nout results of dtype `result`, returned as
 // a tuple; there is no out= then (the caller passes None).
@@ -168,8 +230,15 @@ nb::object launch(std::span<const nb::handle> objs, std::span<const DType> in_ty
             // copied first (docs/design/array.md §3.5); one that is the very same
             // view is safe, since each element is read just before the same
             // place is written.
+            std::array<bool, kMaxInputs> overlaps{};
+            bool any_overlap = false;
+            for (size_t k = 0; k < nin; ++k) {
+                overlaps[k] = may_share_memory(ins[k], out) && !same_view(ins[k], out);
+                any_overlap |= overlaps[k];
+            }
+            if (any_overlap && overlap_in_chunks(inputs, in_types, overlaps, out, loop)) return nb::borrow(out_obj);
             for (size_t k = 0; k < nin; ++k)
-                if (may_share_memory(ins[k], out) && !same_view(ins[k], out)) ins[k] = cast_copy(ins[k], ins[k].dtype);
+                if (overlaps[k]) ins[k] = cast_copy(ins[k], ins[k].dtype);
             run_loop(inputs, in_types, std::span(&out, 1), out.shape_span(), loop, weight);
         } else {
             // out is a wider dtype: compute, then convert into it.

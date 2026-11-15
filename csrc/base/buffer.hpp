@@ -40,7 +40,10 @@ public:
     // (docs/design/array.md §3.2).
     static constexpr std::size_t kInline = 256;
 
-    struct Key {  // lets make_shared call the constructor; nobody else can
+    // The constructor's tag: public because make_shared must name it, so it
+    // only marks the intent -- Buffers are made by the factories above, which
+    // set the memory up; Buffer(Key{}) alone is an empty buffer.
+    struct Key {
         explicit Key() = default;
     };
     explicit Buffer(Key) {}

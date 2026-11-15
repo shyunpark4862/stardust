@@ -146,6 +146,13 @@ inline std::uint64_t radix_key(std::int64_t v, bool descending) {
     const std::uint64_t u = static_cast<std::uint64_t>(v) ^ (std::uint64_t{1} << 63);
     return descending ? ~u : u;
 }
+// float64 (NaNs already split off): the bits ordered as the values, sign bit
+// set flipping the rest, and -0.0 taken as +0.0 so the zeros tie as they compare.
+inline std::uint64_t radix_key(double v, bool descending) {
+    const std::uint64_t b = std::bit_cast<std::uint64_t>(v == 0.0 ? 0.0 : v);
+    const std::uint64_t u = (b >> 63) ? ~b : b | (std::uint64_t{1} << 63);
+    return descending ? ~u : u;
+}
 
 // A long lane is cut into pieces of kSortPiece elements for the pool (Tier
 // 3 item 13, below); only when the pool can run them, unless the pieces
@@ -320,7 +327,11 @@ void sort_values_serial(T* a, std::int64_t n, bool stable, bool descending) {
 // (value, index) pairs: argsort and unique_parts.
 template <typename T>
 void sort_keyed_serial(Keyed<T>* a, std::int64_t n, bool stable, bool descending) {
-    if constexpr (ops::is_int<T>) {
+    // int64 and float64 alike (float64 pairs, 2^20 in lanes of n, one thread: radix
+    // vs merge sort n = 64: 22.7 vs 17.8 ms, n = 128: 16.6 vs 21.6, one lane of
+    // 2^20: 10.9 vs 77.3). The radix sort is stable, so stable=False gets the
+    // same order -- independent of the thread count without the pieces.
+    if constexpr (ops::is_int<T> || ops::is_float<T>) {
         if (n >= kRadixMinPairs)
             return radix_sort(a, n, [descending](const Keyed<T>& e) { return radix_key(e.value, descending); });
     }
@@ -340,11 +351,12 @@ void sort_keyed_serial(Keyed<T>* a, std::int64_t n, bool stable, bool descending
 //
 // The merges cost passes a one-thread sort does not make (sort(i) of 1M:
 // 5.8 ms radix, 13.6 ms in pieces on one thread), so pieces are used only
-// when the pool can run them -- the result is the same either way. Except
-// with stable=False: the NEON sort's order of -0.0 and +0.0 (sort) and
-// introsort's order of equal values (argsort) depend on the pieces, so
-// those always take them, keeping the result independent of the thread
-// count (docs/design/array.md §10.5).
+// when the pool can run them -- the result is the same either way. Only an
+// unstable sort could tell the pieces (introsort's order of equal values), so
+// stable=False takes them always; but int64 and float64, the dtypes that sort,
+// take stable algorithms whatever the flag (radix sorts; float values the
+// stable NEON path), so their result never depends on the thread count
+// (docs/design/array.md §8.5, §10.5).
 
 inline constexpr std::int64_t kMergeChunk = 1 << 15;
 
@@ -438,6 +450,11 @@ namespace {
 
 template <typename T>
 void sort_values(T* a, std::int64_t n, bool stable, bool descending) {
+    // Values alone: the stable order is also a valid unstable one, and the
+    // stable float sort is the faster (NEON sort plus the zeros' sign bits,
+    // 14.8 ms for 10^6 values against 25.2 ms for the unstable sort, which must
+    // always take pieces). Its result does not depend on the thread count either.
+    if constexpr (ops::is_float<T>) stable = true;
     // int64 takes the radix sort, parallel by itself
     if (ops::is_int<T> || !use_pieces(n, ops::is_float<T> && !stable))
         return sort_values_serial(a, n, stable, descending);
@@ -446,9 +463,11 @@ void sort_values(T* a, std::int64_t n, bool stable, bool descending) {
 
 template <typename T>
 void sort_keyed(Keyed<T>* a, std::int64_t n, bool stable, bool descending) {
-    // stable=False sorts pieces and whole lanes with introsort, whose order
-    // of equal values depends on the pieces: then they are always taken.
-    if (ops::is_int<T> || !use_pieces(n, !stable)) return sort_keyed_serial(a, n, stable, descending);
+    // The radix sorts (int64, float64 lanes from kRadixMinPairs) are parallel by
+    // themselves. Otherwise stable=False would sort with introsort, whose order of
+    // equal values depends on the pieces: then they are always taken.
+    if (ops::is_int<T> || (ops::is_float<T> && n >= kRadixMinPairs) || !use_pieces(n, !stable))
+        return sort_keyed_serial(a, n, stable, descending);
     const Order<T> order{descending};
     sort_long(a, n, [&](Keyed<T>* p, std::int64_t m) { sort_keyed_serial(p, m, stable, descending); },
               [order](const Keyed<T>& x, const Keyed<T>& y) { return order(x.value, y.value); });

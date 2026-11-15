@@ -316,7 +316,8 @@ struct Logaddexp {
 // The next double after a toward b, by stepping the bit pattern: the same
 // results as libm's nextafter (NaN in, NaN out; a == b gives b, so
 // nextafter(0.0, -0.0) is -0.0; from 0 the smallest subnormal with b's sign;
-// stepping past the largest finite value gives inf), about 25x faster.
+// stepping past the largest finite value gives inf), about 8x faster than
+// numpy, which calls libm (10^6 elements, one thread).
 struct Nextafter {
     static constexpr const char* name = "nextafter";
     template <typename T> static constexpr bool ok = is_float<T>;
@@ -507,7 +508,10 @@ struct Square {
 struct Sign {
     static constexpr const char* name = "sign";
     template <typename T> static constexpr bool ok = !is_bool<T>;
-    static i64 f(i64 a) { return (a > 0) - (a < 0); }
+    // -1 from the sign bit, OR 1 when -a (in unsigned arithmetic) has its top bit
+    // set, i.e. a > 0 (INT_MIN: -1 | 1 = -1). Branch-free. (Contiguous int64
+    // takes a NEON loop in elementwise.hpp instead.)
+    static i64 f(i64 a) { return (a >> 63) | static_cast<i64>((0 - static_cast<u64>(a)) >> 63); }
     static double f(double a) { return a > 0 ? 1. : (a < 0 ? -1. : (a == 0 ? 0. : a)); }  // nan stays nan
     // z / |z|, with numpy's handling of zero, infinite and nan inputs.
     static c128 f(c128 z) {
@@ -611,15 +615,18 @@ struct IsNan {
 struct IsInf {
     static constexpr const char* name = "isinf";
     template <typename T> static constexpr bool ok = true;
-    static bool f(double x) { return std::isinf(x); }
-    static bool f(c128 z) { return std::isinf(z.real()) || std::isinf(z.imag()); }
+    // On the bits, the sign shifted out: exactly the exponent all ones and a zero
+    // mantissa. An integer compare the loop vectorizes like isnan's (std::isinf
+    // and |x| == inf both took 87-94 us for 10^6, isnan 70, numpy 72).
+    static bool f(double x) { return (std::bit_cast<u64>(x) << 1) == 0xFFE0000000000000ULL; }
+    static bool f(c128 z) { return f(z.real()) || f(z.imag()); }
     template <typename T> static bool f(T) { return false; }
 };
 struct IsFinite {
     static constexpr const char* name = "isfinite";
     template <typename T> static constexpr bool ok = true;
-    static bool f(double x) { return std::isfinite(x); }
-    static bool f(c128 z) { return std::isfinite(z.real()) && std::isfinite(z.imag()); }
+    static bool f(double x) { return (std::bit_cast<u64>(x) << 1) < 0xFFE0000000000000ULL; }  // inf, NaN: false
+    static bool f(c128 z) { return f(z.real()) && f(z.imag()); }
     template <typename T> static bool f(T) { return true; }
 };
 

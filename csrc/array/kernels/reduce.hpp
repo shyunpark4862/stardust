@@ -343,6 +343,26 @@ void count_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, v
     };
     auto run = [&](std::int64_t b, std::int64_t e) {
         std::int64_t acc = 0;
+        if constexpr (std::is_same_v<T, bool> && Kind == 1) {
+            if (s[0] == 1) {
+                // Bytes: sixteen at a time into byte counters (a nonzero byte's test
+                // mask is -1), widened every 255 steps before they can wrap. (Each byte
+                // added into an int64: 10^6 took 47 us against numpy's 23.)
+                const auto* p = reinterpret_cast<const std::uint8_t*>(x);
+                std::int64_t i = b;
+                while (i + 16 <= e) {
+                    uint8x16_t c = vdupq_n_u8(0);
+                    const std::int64_t stop = std::min(e - 15, i + 255 * 16);
+                    for (; i < stop; i += 16) {
+                        const uint8x16_t v = vld1q_u8(p + i);
+                        c = vsubq_u8(c, vtstq_u8(v, v));
+                    }
+                    acc += vaddlvq_u8(c);
+                }
+                for (; i < e; ++i) acc += p[i] != 0;
+                return acc;
+            }
+        }
         if (s[0] == sizeof(T)) {  // typed and contiguous: vectorizes
             const T* xp = reinterpret_cast<const T*>(x);
             for (std::int64_t i = b; i < e; ++i) {
@@ -465,10 +485,45 @@ std::int64_t neon_arg_extreme(const double* x, std::int64_t n) {
     return a;
 }
 
+// int64, contiguous: two passes over the data -- the extreme value with four
+// independent compare-select chains, then the first index holding it, four
+// compares at a time (stopping there; ties keep the first index by
+// construction). The one-pass index tracking was a chain of three dependent
+// selects per vector (10^6 elements: scalar 493 us, one pass 222, numpy 125).
+template <bool Max>
+std::int64_t neon_arg_extreme_i64(const std::int64_t* x, std::int64_t n) {
+    auto pick = [](int64x2_t a, int64x2_t b) { return vbslq_s64(Max ? vcgtq_s64(a, b) : vcltq_s64(a, b), a, b); };
+    int64x2_t m0 = vld1q_s64(x), m1 = vld1q_s64(x + 2), m2 = m0, m3 = m1;
+    std::int64_t i = 4;
+    for (; i + 8 <= n; i += 8) {
+        m0 = pick(vld1q_s64(x + i), m0);
+        m1 = pick(vld1q_s64(x + i + 2), m1);
+        m2 = pick(vld1q_s64(x + i + 4), m2);
+        m3 = pick(vld1q_s64(x + i + 6), m3);
+    }
+    const int64x2_t m = pick(pick(m0, m1), pick(m2, m3));
+    std::int64_t best = vgetq_lane_s64(m, 0);
+    const std::int64_t b1 = vgetq_lane_s64(m, 1);
+    if (Max ? b1 > best : b1 < best) best = b1;
+    for (; i < n; ++i)
+        if (Max ? x[i] > best : x[i] < best) best = x[i];
+    const int64x2_t bv = vdupq_n_s64(best);
+    std::int64_t k = 0;
+    for (; k + 4 <= n; k += 4) {
+        const uint64x2_t e = vorrq_u64(vceqq_s64(vld1q_s64(x + k), bv), vceqq_s64(vld1q_s64(x + k + 2), bv));
+        if (vmaxvq_u32(vreinterpretq_u32_u64(e))) break;
+    }
+    for (;; ++k)
+        if (x[k] == best) return k;
+}
+
 template <typename T, bool Max, bool SkipNan = false>
 std::int64_t arg_extreme(const std::byte* p, std::int64_t n, std::int64_t stride) {
     if constexpr (ops::is_float<T>) {
         if (stride == sizeof(double) && n >= 2) return neon_arg_extreme<Max, SkipNan>(reinterpret_cast<const double*>(p), n);
+    }
+    if constexpr (std::is_same_v<T, std::int64_t>) {
+        if (stride == sizeof(std::int64_t) && n >= 8) return neon_arg_extreme_i64<Max>(reinterpret_cast<const std::int64_t*>(p), n);
     }
     [[maybe_unused]] const double far = Max ? -std::numeric_limits<double>::infinity() : std::numeric_limits<double>::infinity();
     auto load = [&](const std::byte* q) {

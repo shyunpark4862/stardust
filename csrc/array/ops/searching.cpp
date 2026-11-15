@@ -209,7 +209,7 @@ nb::tuple nonzero(nb::handle x) {
         for_pieces(size, kNonzeroChunk, size, [&](std::int64_t t, std::int64_t b, std::int64_t e) {
             // Branch-free: every position is written at k, and k moves on only
             // past a nonzero one (a random mask defeats branch prediction:
-            // 25 ms -> 6 ms for 1e7 elements). `k < end` keeps the writes inside
+            // 25 ms -> 3.2 ms for 1e7 elements, one thread). `k < end` keeps the writes inside
             // this chunk's part; it is almost always true, so it predicts well.
             std::int64_t k = start[t];
             const std::int64_t end_k = start[t + 1];

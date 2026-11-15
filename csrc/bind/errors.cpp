@@ -7,6 +7,13 @@
 
 namespace sd {
 
+std::string py_type_name(nb::handle o) {
+    // tp_name is "module.Name" for static types (numpy.int64), "Name" for heap types.
+    const char* name = Py_TYPE(o.ptr())->tp_name;
+    const char* dot = std::strrchr(name, '.');
+    return dot ? dot + 1 : name;
+}
+
 std::string with_name(const char* func, const char* msg) {
     if (func == nullptr || *func == '\0') return msg;
     const std::string prefix = std::string(func) + (func[0] == '.' ? ": " : "(): ");

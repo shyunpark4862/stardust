@@ -132,7 +132,7 @@ nb::dict iter_plan(nb::list arrays, const std::string& mode) {
         shapes.push_back(a.shape_span());
     }
     if (ops.empty() || ops.size() > static_cast<size_t>(kMaxOperands))
-        throw nb::value_error("between 1 and 4 operands");
+        throw nb::value_error(("between 1 and " + std::to_string(kMaxOperands) + " operands").c_str());
     const std::vector<std::int64_t> shape = broadcast_shapes(shapes);
     const NdIter it(shape, ops, parse_mode(mode));
     nb::list ext, strides;

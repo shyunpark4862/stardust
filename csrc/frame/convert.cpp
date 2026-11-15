@@ -1,6 +1,6 @@
 #include "frame/convert.hpp"
 
-#include "bind/pyutil.hpp"
+#include "bind/errors.hpp"  // py_type_name
 #include "frame/ops/cast.hpp"
 
 #include <cstring>

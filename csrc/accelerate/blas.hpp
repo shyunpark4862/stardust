@@ -1,6 +1,6 @@
 // The BLAS routines the array area calls (docs/design/array.md §9.2): thin,
 // type-generic wrappers over Accelerate's CBLAS, one template per routine for
-// float64 and complex128 (the LAPACK side is accelerate/lapack.hpp).
+// float64 and complex128 (the LAPACK side, bound to linalg's types, is linalg/lapack.hpp).
 //
 // All are row-major with alpha = 1 and beta = 0, and unconjugated (matmul
 // never conjugates) -- except syrk_upper, cov's A A^H. Integers are Accelerate's 64-bit __LAPACK_int (ILP64, set

@@ -31,6 +31,12 @@ std::string with_name(const char* func, const char* msg);
 // flow -- is rethrown as it is.
 [[noreturn]] void rethrow_named(const char* func);
 
+// The short name of `o`'s type, for "..., not list" in messages: the type's
+// __name__, without a module path ("ndarray", "int64", not
+// "stardust._core.ndarray" or "numpy.int64"; API.md §2.1). Here rather than in
+// pyutil.hpp so the frame area can use it without the array headers.
+std::string py_type_name(nb::handle o);
+
 template <class F>
 decltype(auto) call_named(const char* func, F&& f) {
     try {

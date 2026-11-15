@@ -32,7 +32,7 @@ using random::Stream;
 // Work per element, for the pool's threshold: a Philox block is ~10 ns and serves four.
 inline constexpr std::int64_t kWordWork = 8;
 
-NDArray result_array(DType dtype, nb::handle shape_obj) { return new_array(dtype, parse_shape(shape_obj)); }
+NDArray result_array(DType dtype, nb::handle shape_obj) { return new_array(dtype, parse_shape_arg(shape_obj).span()); }
 
 nb::object uniform(std::uint64_t k0, std::uint64_t k1, std::uint64_t pos, nb::handle shape_obj) {
     NDArray out = result_array(DType::Float64, shape_obj);

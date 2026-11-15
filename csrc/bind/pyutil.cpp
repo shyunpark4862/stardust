@@ -61,13 +61,6 @@ void use_short_type_name(nb::handle type) {
     if (const char* dot = std::strrchr(t->tp_name, '.')) t->tp_name = dot + 1;
 }
 
-std::string py_type_name(nb::handle o) {
-    // tp_name is "module.Name" for static types (numpy.int64), "Name" for heap types.
-    const char* name = Py_TYPE(o.ptr())->tp_name;
-    const char* dot = std::strrchr(name, '.');
-    return dot ? dot + 1 : name;
-}
-
 bool parse_bool(nb::handle o, const char* what) {
     if (o.ptr() == Py_True) return true;
     if (o.ptr() == Py_False) return false;
@@ -206,6 +199,31 @@ NDArray view_of(nb::handle x) {
     NDArray v = a;
     v.base = a.base.is_valid() ? a.base : nb::borrow(x);
     return v;
+}
+
+ShapeArg parse_shape_arg(nb::handle o) {
+    ShapeArg s;
+    std::int64_t v = 0;
+    if (!PyTuple_Check(o.ptr())) {
+        if (index_value(o, v) == IndexResult::Ok) {
+            s.small[0] = v, s.n = 1;
+            return s;
+        }
+    } else if (PyTuple_GET_SIZE(o.ptr()) <= kMaxNdim) {
+        const Py_ssize_t m = PyTuple_GET_SIZE(o.ptr());
+        bool ok = true;
+        for (Py_ssize_t i = 0; i < m && ok; ++i) {
+            ok = index_value(PyTuple_GET_ITEM(o.ptr(), i), v) == IndexResult::Ok;
+            s.small[static_cast<std::size_t>(i)] = v;
+        }
+        if (ok) {
+            s.n = static_cast<std::size_t>(m);
+            return s;
+        }
+    }
+    s.big = parse_shape(o);  // anything unusual, errors included: the general parser
+    s.n = s.big.size();
+    return s;
 }
 
 std::vector<std::int64_t> parse_shape(nb::handle o) {

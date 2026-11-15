@@ -7,7 +7,7 @@
 #include "linalg/outblock.hpp"
 #include "linalg/pack.hpp"
 #include "linalg/types.hpp"
-#include "accelerate/lapack.hpp"
+#include "linalg/lapack.hpp"
 #include "bind/pyutil.hpp"
 
 #include <nanobind/nanobind.h>

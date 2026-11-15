@@ -88,6 +88,11 @@ public:
     // element's worth per call position (a lane kernel processes a whole lane).
     void run(Loop kernel, void* ctx = nullptr, Split split = Split::Elementwise, std::int64_t weight = 1) const;
 
+    // Allows run() to walk a 2-D iteration in tiles when an operand runs across
+    // the inner axis (x.T + y): only for kernels that treat every element on its
+    // own (ufuncs), since the inner runs get shorter and come in tile order.
+    void allow_tiles() { tiles_ok_ = true; }
+
     // How run() cuts the work: `tasks` pieces of `chunk` indices along
     // `axis` (tasks == 1: not split), and the work in bytes it counted.
     // Depends on the shape, layout and dtypes only, never on the thread
@@ -111,6 +116,7 @@ private:
     Dims shape_;
     std::array<Dims, kMaxOperands> strides_;
     std::array<std::byte*, kMaxOperands> data_{};
+    bool tiles_ok_ = false;
 };
 
 }  // namespace sd

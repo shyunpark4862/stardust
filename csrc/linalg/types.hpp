@@ -1,7 +1,7 @@
 // Basic types shared by the whole core.
 #pragma once
 
-#include "array/convert.hpp"  // saturate_to_int64: float -> int64 as the array area converts
+#include "base/saturate.hpp"  // saturate_to_int64: float -> int64, the rule of every area
 #include "base/dtype.hpp"
 
 #include <Accelerate/Accelerate.h>  // ILP64 + new LAPACK via compile definitions (docs/design/linalg.md §1.2)
@@ -59,7 +59,7 @@ template <class T, class S>
 inline T convert(S v) {
     if constexpr (std::is_same_v<S, std::uint8_t>) return T(v != 0 ? 1 : 0);
     else if constexpr (std::is_same_v<T, std::int64_t>) {
-        if constexpr (std::is_same_v<S, double>) return saturate_to_int64(v);  // the array area's rule (array/convert.hpp)
+        if constexpr (std::is_same_v<S, double>) return saturate_to_int64(v);  // the rule of every area (base/saturate.hpp)
         else return static_cast<std::int64_t>(v);
     } else if constexpr (std::is_same_v<S, std::int64_t>) return T(static_cast<double>(v));
     else return T(v);  // double -> double/complex, complex -> complex

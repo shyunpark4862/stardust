@@ -345,17 +345,29 @@ nb::object from_buffer(nb::handle obj, std::optional<DType> dtype, std::optional
                 });
                 return;
             }
-            // Anything else (strided, byte-swapped): the logical C-order index cut into
-            // pieces on the pool, each walked by an odometer whose innermost axis is a plain
-            // strided loop (the element-by-element walk took 420 us for 10^6 swapped
-            // float64 on one thread, whatever the thread count).
+            // Anything else (strided, byte-swapped): the elements in the result's memory
+            // order (the axes sorted by its strides; it keeps the source's order, so the
+            // source is walked along its own layout too), that index cut into pieces on
+            // the pool, each walked by an odometer whose innermost axis is one loop --
+            // indexed and vectorized when both sides are contiguous there. (Walking the
+            // logical C order made a transposed buffer jump every element: f32 m.T 870 us
+            // against numpy's 137; the byte-strided inner loop kept contiguous rows
+            // scalar: f32 m[:, 1:1001] 260 us against 142.)
             auto run = [&](auto&& load_one) {
                 const int nd = dst.ndim;
                 const std::int64_t n = dst.size();
                 if (n == 0) return;
-                const std::int64_t* shp = dst.shape.data();
-                const std::int64_t* ss = foreign.strides.data();
-                const std::int64_t* ds = dst.strides.data();
+                int perm[kMaxNdim];
+                for (int d = 0; d < nd; ++d) perm[d] = d;
+                std::stable_sort(perm, perm + nd, [&](int x, int y) {
+                    return std::abs(dst.strides[x]) > std::abs(dst.strides[y]);
+                });
+                std::int64_t shp_[kMaxNdim], ss_[kMaxNdim], ds_[kMaxNdim];
+                for (int d = 0; d < nd; ++d)
+                    shp_[d] = dst.shape[perm[d]], ss_[d] = foreign.strides[perm[d]], ds_[d] = dst.strides[perm[d]];
+                const std::int64_t* shp = shp_;
+                const std::int64_t* ss = ss_;
+                const std::int64_t* ds = ds_;
                 const auto* sbase = static_cast<const std::byte*>(view.buf);
                 std::byte* dbase = dst.data;
                 for_pieces(n, kParallelTask, n, [&](std::int64_t, std::int64_t i0, std::int64_t i1) {
@@ -368,12 +380,18 @@ nb::object from_buffer(nb::handle obj, std::optional<DType> dtype, std::optional
                         dof += idx[d] * ds[d];
                     }
                     const std::int64_t inner = shp[nd - 1], si = ss[nd - 1], di = ds[nd - 1];
+                    const bool dense = si == static_cast<std::int64_t>(sizeof(S)) && di == static_cast<std::int64_t>(sizeof(T));
                     for (std::int64_t i = i0; i < i1;) {
                         const std::int64_t len = std::min(inner - idx[nd - 1], i1 - i);
                         const std::byte* ps = sbase + so;
                         std::byte* pd = dbase + dof;
-                        for (std::int64_t k = 0; k < len; ++k, ps += si, pd += di)
-                            store(pd, cast_value<T>(widen(load_one(ps))));
+                        if (dense) {
+                            T* dp = reinterpret_cast<T*>(pd);
+                            for (std::int64_t k = 0; k < len; ++k) dp[k] = cast_value<T>(widen(load_one(ps + k * static_cast<std::int64_t>(sizeof(S)))));
+                        } else {
+                            for (std::int64_t k = 0; k < len; ++k, ps += si, pd += di)
+                                store(pd, cast_value<T>(widen(load_one(ps))));
+                        }
                         i += len, so += len * si, dof += len * di, idx[nd - 1] += len;
                         for (int d = nd - 1; d > 0 && idx[d] == shp[d]; --d) {  // carry
                             so += ss[d - 1] - shp[d] * ss[d];

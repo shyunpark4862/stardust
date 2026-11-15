@@ -197,19 +197,37 @@ void owner_legacy(PyObject* cap) {
 nb::object from_dlpack(nb::handle x, nb::handle device, nb::handle copy_obj) {
     const std::optional<bool> copy = parse_copy(copy_obj);
     if (!device.is_none() && !cpu_device(device)) throw nb::value_error("'device' must be None or the CPU device (1, 0)");
-    if (!nb::hasattr(x, "__dlpack__"))
-        throw nb::type_error(("'x' must support the DLPack protocol (__dlpack__), not " + py_type_name(x)).c_str());
-    if (nb::hasattr(x, "__dlpack_device__")) {
-        const nb::object dev = x.attr("__dlpack_device__")();
-        if (!cpu_device(dev)) throw nb::buffer_error("only CPU arrays can be imported");
+    // Each attribute looked up once, the names, the keyword names and the version
+    // tuple made once, and the call a vectorcall (the generic attribute and keyword
+    // path: 252 ns per import of a numpy array, numpy's own from_dlpack 114).
+    static PyObject* const s_dlpack = PyUnicode_InternFromString("__dlpack__");
+    static PyObject* const s_device = PyUnicode_InternFromString("__dlpack_device__");
+    static PyObject* const s_kwnames = Py_BuildValue("(ss)", "max_version", "copy");
+    static PyObject* const s_version = Py_BuildValue("(ii)", kMajor, kMinor);
+    PyObject* raw = nullptr;
+    if (PyObject_GetOptionalAttr(x.ptr(), s_dlpack, &raw) < 0) throw nb::python_error();
+    if (!raw) throw nb::type_error(("'x' must support the DLPack protocol (__dlpack__), not " + py_type_name(x)).c_str());
+    const nb::object method = nb::steal(raw);
+    if (PyObject_GetOptionalAttr(x.ptr(), s_device, &raw) < 0) throw nb::python_error();
+    if (raw) {
+        const nb::object dev_method = nb::steal(raw);
+        PyObject* dev = PyObject_CallNoArgs(dev_method.ptr());
+        if (!dev) throw nb::python_error();
+        if (!cpu_device(nb::steal(dev))) throw nb::buffer_error("only CPU arrays can be imported");
     }
     nb::object cap;
-    try {
-        nb::object c = copy ? nb::object(nb::bool_(*copy)) : nb::object(nb::none());
-        cap = x.attr("__dlpack__")(nb::arg("max_version") = nb::make_tuple(kMajor, kMinor), nb::arg("copy") = c);
-    } catch (nb::python_error& err) {
-        if (!err.matches(PyExc_TypeError)) throw;
-        cap = x.attr("__dlpack__")();  // a producer from before DLPack 1.0 takes no keywords
+    {
+        PyObject* args[] = {s_version, copy ? (*copy ? Py_True : Py_False) : Py_None};
+        PyObject* c = PyObject_Vectorcall(method.ptr(), args, 0, s_kwnames);
+        if (c) {
+            cap = nb::steal(c);
+        } else {
+            if (!PyErr_ExceptionMatches(PyExc_TypeError)) throw nb::python_error();
+            PyErr_Clear();
+            PyObject* c0 = PyObject_CallNoArgs(method.ptr());  // a producer from before DLPack 1.0 takes no keywords
+            if (!c0) throw nb::python_error();
+            cap = nb::steal(c0);
+        }
     }
 
     // Take ownership first, so every error below still frees the tensor.

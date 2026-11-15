@@ -57,7 +57,77 @@ int getbuffer(PyObject* self, Py_buffer* view, int flags) {
     return 0;
 }
 
-PyType_Slot ndarray_slots[] = {{Py_bf_getbuffer, reinterpret_cast<void*>(getbuffer)}, {0, nullptr}};
+// The plain attributes and len() as type slots, without nanobind's
+// function dispatch in between (x.shape 34 ns against numpy's 18, len(x) 17
+// against 7). They cannot fail except for memory.
+const NDArray& self_array(PyObject* self) { return *nb::inst_ptr<NDArray>(nb::handle(self)); }
+
+PyObject* get_shape(PyObject* self, void*) {
+    const NDArray& a = self_array(self);
+    PyObject* t = PyTuple_New(a.ndim);
+    if (!t) return nullptr;
+    for (int d = 0; d < a.ndim; ++d) {
+        PyObject* v = PyLong_FromLongLong(a.shape[d]);
+        if (!v) {
+            Py_DECREF(t);
+            return nullptr;
+        }
+        PyTuple_SET_ITEM(t, d, v);
+    }
+    return t;
+}
+PyObject* get_strides(PyObject* self, void*) {
+    const NDArray& a = self_array(self);
+    PyObject* t = PyTuple_New(a.ndim);
+    if (!t) return nullptr;
+    for (int d = 0; d < a.ndim; ++d) {
+        PyObject* v = PyLong_FromLongLong(a.strides[d]);
+        if (!v) {
+            Py_DECREF(t);
+            return nullptr;
+        }
+        PyTuple_SET_ITEM(t, d, v);
+    }
+    return t;
+}
+PyObject* get_itemsize(PyObject* self, void*) { return PyLong_FromLongLong(self_array(self).itemsize()); }
+PyObject* get_nbytes(PyObject* self, void*) { return PyLong_FromLongLong(self_array(self).nbytes()); }
+PyObject* get_base(PyObject* self, void*) {
+    const NDArray& a = self_array(self);
+    return Py_NewRef(a.base.is_valid() ? a.base.ptr() : Py_None);
+}
+PyObject* get_ndim(PyObject* self, void*) { return PyLong_FromLong(self_array(self).ndim); }
+PyObject* get_size(PyObject* self, void*) { return PyLong_FromLongLong(self_array(self).size()); }
+PyObject* get_dtype(PyObject* self, void*) { return Py_NewRef(dtype_object(self_array(self).dtype).ptr()); }
+Py_ssize_t array_len(PyObject* self) { return static_cast<Py_ssize_t>(self_array(self).shape[0]); }  // never 0-d
+
+// Read-only, with the message of the other attributes (Python properties).
+int read_only(PyObject*, PyObject* value, void* name) {
+    PyErr_Format(PyExc_AttributeError, value ? "property '%s' of 'ndarray' object has no setter"
+                                             : "property '%s' of 'ndarray' object has no deleter",
+                 static_cast<const char*>(name));
+    return -1;
+}
+
+PyGetSetDef ndarray_getset[] = {
+    {"shape", get_shape, read_only, nullptr, const_cast<char*>("shape")},
+    {"ndim", get_ndim, read_only, nullptr, const_cast<char*>("ndim")},
+    {"size", get_size, read_only, nullptr, const_cast<char*>("size")},
+    {"dtype", get_dtype, read_only, nullptr, const_cast<char*>("dtype")},
+    {"strides", get_strides, read_only, nullptr, const_cast<char*>("strides")},
+    {"itemsize", get_itemsize, read_only, nullptr, const_cast<char*>("itemsize")},
+    {"nbytes", get_nbytes, read_only, nullptr, const_cast<char*>("nbytes")},
+    {"base", get_base, read_only, nullptr, const_cast<char*>("base")},
+    {nullptr, nullptr, nullptr, nullptr, nullptr},
+};
+
+PyType_Slot ndarray_slots[] = {
+    {Py_bf_getbuffer, reinterpret_cast<void*>(getbuffer)},
+    {Py_tp_getset, reinterpret_cast<void*>(ndarray_getset)},
+    {Py_sq_length, reinterpret_cast<void*>(array_len)},
+    {Py_mp_length, reinterpret_cast<void*>(array_len)},
+    {0, nullptr},
+};
 
 nb::object tolist(const NDArray& a, int depth, const std::byte* p) {
     if (depth == a.ndim) return load_python(a.dtype, p);
@@ -82,12 +152,6 @@ nb::object summary(const NDArray& a, int depth, const std::byte* p, std::int64_t
         for (std::int64_t i = 0; i < n; ++i) add(i);
     }
     return out;
-}
-
-nb::tuple to_tuple(std::span<const std::int64_t> v) {
-    nb::list l;
-    for (std::int64_t x : v) l.append(x);
-    return nb::tuple(l);
 }
 
 // What iter(x) returns: walks axis 0, yielding x[0], x[1], ...
@@ -157,14 +221,6 @@ nb::object format_call(const char* fn, nb::handle self) {
 
 void bind_ndarray(nb::module_& m) {
     auto cls = nb::class_<NDArray>(m, "ndarray", nb::type_slots(ndarray_slots))
-        .def_prop_ro("dtype", [](const NDArray& a) { return nb::borrow(dtype_object(a.dtype)); })
-        .def_prop_ro("shape", [](const NDArray& a) { return to_tuple(a.shape_span()); })
-        .def_prop_ro("strides", [](const NDArray& a) { return to_tuple(a.strides_span()); })
-        .def_prop_ro("ndim", [](const NDArray& a) { return a.ndim; })
-        .def_prop_ro("size", [](const NDArray& a) { return a.size(); })
-        .def_prop_ro("itemsize", [](const NDArray& a) { return a.itemsize(); })
-        .def_prop_ro("nbytes", [](const NDArray& a) { return a.nbytes(); })
-        .def_prop_ro("base", [](const NDArray& a) { return a.base.is_valid() ? a.base : nb::none(); })
         .def_prop_ro("T", named(".T", &transpose_2d))
         .def_prop_ro("mT", named(".mT", &matrix_transpose))
         .def("tolist", [](const NDArray& a) { return tolist(a, 0, a.data); })
@@ -202,7 +258,6 @@ void bind_ndarray(nb::module_& m) {
         .def("__delitem__", [](const NDArray&, nb::handle) {
             throw nb::type_error("'ndarray' object doesn't support item deletion");
         }, nb::arg().none())
-        .def("__len__", [](const NDArray& a) { return a.shape[0]; })
         .def("__iter__", [](nb::handle self) { return ArrayIterator{nb::borrow(self), 0, as_ndarray(self).shape[0]}; })
         // Without this, `v in x` would quietly fall back to iterating x.
         .def("__contains__", [](const NDArray&, nb::handle) -> bool {
@@ -286,7 +341,7 @@ void bind_ndarray(nb::module_& m) {
 
     // nanobind's properties have no name, so assigning one said "property ''
     // of 'ndarray' object has no setter". __set_name__ gives each its name.
-    for (const char* name : {"dtype", "shape", "strides", "ndim", "size", "itemsize", "nbytes", "base", "T", "mT"})
+    for (const char* name : {"T", "mT"})
         cls.attr(name).attr("__set_name__")(cls, name);
 
     bind_dlpack(m, cls);  // from_dlpack, __dlpack__, __dlpack_device__

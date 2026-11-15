@@ -33,8 +33,9 @@ void spin_until(Done done) {
     }
 }
 
-// The performance cores: E-cores would finish their tasks later and make
-// everyone wait at the end of a job (docs/design/array.md §10.3).
+// The performance cores. Not for waiting on slow E-cores -- tasks are handed out
+// dynamically, so an E-core just takes fewer -- but because more threads slowed
+// the memory-bound operations by 3-12% (14 threads; docs/design/array.md §10.3).
 int performance_cores() {
     int n = 0;
     size_t len = sizeof n;
@@ -215,11 +216,14 @@ bool available() { return !t_in_task && pool().threads() > 1 && !pool().busy(); 
 
 void parallel_for(std::int64_t ntasks, const std::function<void(std::int64_t)>& fn) {
     if (ntasks <= 0) return;
-    GilRelease release;  // a no-op inside a task, where the GIL is already released
-    if (ntasks == 1 || !available()) {
-        for (std::int64_t t = 0; t < ntasks; ++t) fn(t);  // nested or single: plain loop
+    // One task, one thread or a nested call: a plain loop on this thread, the
+    // GIL kept (docs/design/array.md §10.2 -- releasing and retaking it would cost
+    // a small call more than it saves; a nested call holds no GIL anyway).
+    if (ntasks == 1 || t_in_task || pool().threads() <= 1) {
+        for (std::int64_t t = 0; t < ntasks; ++t) fn(t);
         return;
     }
+    GilRelease release;  // spread on the pool (or serial if another thread's job holds it)
     pool().run(ntasks, fn);
 }
 

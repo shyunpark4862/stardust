@@ -201,7 +201,7 @@ void select(double* p, std::int64_t lo, std::int64_t hi, const std::int64_t* ks,
 
 // The order statistics at ks: a short lane is sorted; a long lane that is
 // the only one is sorted in parallel pieces when the pool is free (10
-// threads, 1e6 values: 4.1 ms against 6.9 ms selecting); otherwise selected.
+// threads, 1e6 values: 3.5 ms against 6.4 ms selecting); otherwise selected.
 void order_statistics(double* p, std::int64_t n, bool only_lane, const std::int64_t* ks, int count) {
     if (n <= kSortSelect) sort_float64_total(p, n, false);
     else if (only_lane && n >= 2 * (1 << 16) && parallel::available()) sort_float64_total(p, n, true);

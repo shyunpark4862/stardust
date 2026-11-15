@@ -93,31 +93,40 @@ nb::object results(const char* name) { return nb::module_::import_("stardust._re
 // finfo and iinfo take some of the array dtypes only; one message names
 // exactly those, whatever was wrong (not a dtype at all, or another dtype).
 DType info_arg(nb::handle o, std::initializer_list<DType> accepted, const char* accepted_names) {
-    std::optional<DType> d;
-    std::string got;
+    const std::optional<DType> d = is_ndarray(o) ? std::optional<DType>(as_ndarray(o).dtype) : parse_any_dtype(o);
+    if (d && std::find(accepted.begin(), accepted.end(), *d) != accepted.end()) return *d;
+    std::string got;  // the description only for the message
     if (is_ndarray(o)) {
-        d = as_ndarray(o).dtype;
         const std::string name = dtype_name(*d);
         got = (name[0] == 'i' ? "an " : "a ") + name + " array";  // an int64 array, a bool array
     } else {
-        d = parse_any_dtype(o);
         got = describe_dtype_arg(o);
     }
-    if (!d || std::find(accepted.begin(), accepted.end(), *d) == accepted.end())
-        throw nb::type_error((std::string("'type' must be ") + accepted_names + ", not " + got).c_str());
-    return *d;
+    throw nb::type_error((std::string("'type' must be ") + accepted_names + ", not " + got).c_str());
+}
+
+// finfo and iinfo results are fixed and immutable (namedtuples): built once and
+// shared, as numpy's finfo caches its objects (building one per call, with the
+// module lookup: 377 ns against numpy's 111). Never freed, like the dtype objects.
+nb::handle cached(PyObject*& slot, auto&& make) {
+    if (!slot) slot = make().release().ptr();
+    return slot;
 }
 
 // finfo of float64; complex128 describes its float64 parts (Array API).
 nb::object finfo(nb::handle type) {
     info_arg(type, {DType::Float64, DType::Complex128},
              "sd.float64 or sd.complex128 (or their names) or an sd.ndarray of those dtypes");
-    return results("FinfoResult")(64, DBL_EPSILON, DBL_MAX, -DBL_MAX, DBL_MIN, dtype_object(DType::Float64));
+    static PyObject* obj = nullptr;
+    return nb::borrow(cached(obj, [] {
+        return results("FinfoResult")(64, DBL_EPSILON, DBL_MAX, -DBL_MAX, DBL_MIN, dtype_object(DType::Float64));
+    }));
 }
 
 nb::object iinfo(nb::handle type) {
     info_arg(type, {DType::Int64}, "sd.int64 (or its name) or an sd.ndarray of int64");
-    return results("IinfoResult")(64, INT64_MAX, INT64_MIN, dtype_object(DType::Int64));
+    static PyObject* obj = nullptr;
+    return nb::borrow(cached(obj, [] { return results("IinfoResult")(64, INT64_MAX, INT64_MIN, dtype_object(DType::Int64)); }));
 }
 
 // ------------------------------------------------------------- tensordot

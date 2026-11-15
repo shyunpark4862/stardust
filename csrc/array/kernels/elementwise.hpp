@@ -13,7 +13,10 @@
 #include "array/kernels/scalar_ops.hpp"
 #include "array/kernels/vforce.hpp"
 
+#include <algorithm>
 #include <array>
+#include <cstdint>
+#include <limits>
 #include <type_traits>
 #include <utility>
 
@@ -65,6 +68,61 @@ void unary_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, v
                 return;
             }
         }
+        if constexpr ((std::is_same_v<Op, ops::IsInf> || std::is_same_v<Op, ops::IsFinite>) && std::is_same_v<T, double>) {
+            // One absolute compare per vector (FACGE |x| >= inf, FACGT inf > |x|; NaN
+            // false either way), narrowed to bytes. The loop is bound by its
+            // instruction count, not memory: masking the sign first cost a second
+            // instruction per vector (10^6: 88 us, isnan's one-compare loop 70).
+            const float64x2_t inf = vdupq_n_f64(std::numeric_limits<double>::infinity());
+            auto test = [&](const double* p) {
+                const float64x2_t v = vld1q_f64(p);
+                if constexpr (std::is_same_v<Op, ops::IsInf>) return vcageq_f64(v, inf);
+                else return vcagtq_f64(inf, v);
+            };
+            auto* ob = reinterpret_cast<std::uint8_t*>(o);
+            std::int64_t i = 0;
+            for (; i + 16 <= n; i += 16) {
+                uint32x4_t w[4];
+                for (int k = 0; k < 4; ++k)
+                    w[k] = vuzp1q_u32(vreinterpretq_u32_u64(test(x + i + 4 * k)), vreinterpretq_u32_u64(test(x + i + 4 * k + 2)));
+                const uint16x8_t h0 = vuzp1q_u16(vreinterpretq_u16_u32(w[0]), vreinterpretq_u16_u32(w[1]));
+                const uint16x8_t h1 = vuzp1q_u16(vreinterpretq_u16_u32(w[2]), vreinterpretq_u16_u32(w[3]));
+                const uint8x16_t b8 = vuzp1q_u8(vreinterpretq_u8_u16(h0), vreinterpretq_u8_u16(h1));
+                vst1q_u8(ob + i, vandq_u8(b8, vdupq_n_u8(1)));
+            }
+            for (; i < n; ++i) o[i] = Op::f(x[i]);
+            return;
+        }
+        if constexpr (std::is_same_v<Op, ops::Sign> && std::is_same_v<T, std::int64_t>) {
+            // (a < 0 mask) - (a > 0 mask): three instructions per vector. With the
+            // data in cache this loop is bound by its instruction count (the
+            // shift-and-OR form: 125 us against numpy's 97 in the full scan).
+            std::int64_t i = 0;
+            for (; i + 4 <= n; i += 4) {
+                const int64x2_t v0 = vld1q_s64(x + i), v1 = vld1q_s64(x + i + 2);
+                vst1q_s64(o + i, vsubq_s64(vreinterpretq_s64_u64(vcltzq_s64(v0)), vreinterpretq_s64_u64(vcgtzq_s64(v0))));
+                vst1q_s64(o + i + 2, vsubq_s64(vreinterpretq_s64_u64(vcltzq_s64(v1)), vreinterpretq_s64_u64(vcgtzq_s64(v1))));
+            }
+            for (; i < n; ++i) o[i] = Op::f(x[i]);
+            return;
+        }
+        if constexpr (std::is_same_v<Op, ops::Square> && std::is_same_v<T, complex128>) {
+            // Two complex values at a time, real and imaginary parts split by the
+            // load: the same fused operations as Square::f, so the same bits (the
+            // complex loop did not vectorize: 10^6 311 us against numpy's 266).
+            const double* xp = reinterpret_cast<const double*>(x);
+            double* op = reinterpret_cast<double*>(o);
+            std::int64_t i = 0;
+            for (; i + 2 <= n; i += 2) {
+                const float64x2x2_t v = vld2q_f64(xp + 2 * i);
+                float64x2x2_t w;
+                w.val[0] = vfmaq_f64(vnegq_f64(vmulq_f64(v.val[1], v.val[1])), v.val[0], v.val[0]);
+                w.val[1] = vfmaq_f64(vmulq_f64(v.val[1], v.val[0]), v.val[0], v.val[1]);
+                vst2q_f64(op + 2 * i, w);
+            }
+            for (; i < n; ++i) o[i] = Op::f(x[i]);
+            return;
+        }
         for (std::int64_t i = 0; i < n; ++i) o[i] = Op::f(x[i]);
         return;
     }
@@ -72,6 +130,36 @@ void unary_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, v
     std::byte* o = args[1];
     for (std::int64_t i = 0; i < n; ++i, x += s[0], o += s[1])
         *reinterpret_cast<R*>(o) = Op::f(load_as<T>(x));
+}
+
+// x ** e for int64 x and one exponent e >= 0 (x ** 2, the usual call): the
+// squaring steps of int_pow taken for a block of elements at a time, so the
+// loop over the exponent's bits is shared and the per-element work has no
+// branches (int_pow per element: 10^6 x ** 2 686 us against numpy's 261). The
+// products wrap exactly as int_pow's. A negative e goes element by element.
+inline void int_pow_scalar(const std::int64_t* a, std::int64_t e, std::int64_t* o, std::int64_t n) {
+    if (e < 0) {
+        for (std::int64_t i = 0; i < n; ++i) o[i] = ops::int_pow(a[i], e);
+        return;
+    }
+    if (e == 2) {
+        for (std::int64_t i = 0; i < n; ++i) o[i] = ops::wrap_mul(a[i], a[i]);
+        return;
+    }
+    constexpr std::int64_t kBlock = 256;
+    for (std::int64_t i0 = 0; i0 < n; i0 += kBlock) {
+        const std::int64_t m = std::min(kBlock, n - i0);
+        std::int64_t base[kBlock], res[kBlock];
+        for (std::int64_t k = 0; k < m; ++k) base[k] = a[i0 + k], res[k] = 1;
+        for (std::int64_t x = e; x; ) {
+            if (x & 1)
+                for (std::int64_t k = 0; k < m; ++k) res[k] = ops::wrap_mul(res[k], base[k]);
+            x >>= 1;
+            if (x)
+                for (std::int64_t k = 0; k < m; ++k) base[k] = ops::wrap_mul(base[k], base[k]);
+        }
+        std::copy(res, res + m, o + i0);
+    }
 }
 
 // args: a, b, out
@@ -102,6 +190,8 @@ void binary_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, 
         if (s[0] == sizeof(T) && s[1] == 0) {  // array op scalar (x + 1.0)
             if constexpr (requires { neon_binary<Op, T>::run_scalar_b; }) {
                 neon_binary<Op, T>::run_scalar_b(a, b, o, n);
+            } else if constexpr (std::is_same_v<Op, ops::Pow> && std::is_same_v<T, std::int64_t>) {
+                int_pow_scalar(a, *b, o, n);
             } else {
                 const T bv = *b;
                 if constexpr (std::is_same_v<R, T>) {
@@ -134,6 +224,30 @@ void binary_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, 
 // args: condition (bool), x1, x2, out
 template <typename T>
 void where_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, void*) {
+    constexpr std::int64_t t = sizeof(T);
+    if constexpr (t == 8) {
+        if (s[0] == 1 && s[3] == t && (s[1] == 0 || s[1] == t) && (s[2] == 0 || s[2] == t)) {
+            // Contiguous condition and output, each value contiguous or a scalar: a
+            // select on the raw words through a mask, branch-free and vectorized (a
+            // random condition defeats branch prediction; the byte-strided loop took
+            // 290 us for 10^6 where(b, f, g), numpy 276).
+            const auto* cp = reinterpret_cast<const std::uint8_t*>(args[0]);
+            const auto* ap = reinterpret_cast<const std::uint64_t*>(args[1]);
+            const auto* bp = reinterpret_cast<const std::uint64_t*>(args[2]);
+            auto* op = reinterpret_cast<std::uint64_t*>(args[3]);
+            const std::int64_t sa = s[1] / t, sb = s[2] / t;  // 1 or 0 (a scalar)
+            auto sel = [](std::uint8_t c, std::uint64_t x, std::uint64_t y) {
+                const std::uint64_t m = 0 - static_cast<std::uint64_t>(c);
+                return (x & m) | (y & ~m);
+            };
+            const std::uint64_t x0 = ap[0], y0 = bp[0];
+            if (sa && sb) for (std::int64_t i = 0; i < n; ++i) op[i] = sel(cp[i], ap[i], bp[i]);
+            else if (sa) for (std::int64_t i = 0; i < n; ++i) op[i] = sel(cp[i], ap[i], y0);
+            else if (sb) for (std::int64_t i = 0; i < n; ++i) op[i] = sel(cp[i], x0, bp[i]);
+            else for (std::int64_t i = 0; i < n; ++i) op[i] = sel(cp[i], x0, y0);
+            return;
+        }
+    }
     const std::byte* c = args[0];
     const std::byte* a = args[1];
     const std::byte* b = args[2];
@@ -157,7 +271,25 @@ void clip_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, vo
             neon_clip(xp, lo, s[1] / t, hi, s[2] / t, op, n);  // FMAX then FMIN: the same rules
         } else {
             const std::int64_t sl = s[1] / t, sh = s[2] / t;
-            for (std::int64_t i = 0; i < n; ++i) op[i] = ops::Minimum::f(ops::Maximum::f(xp[i], lo[i * sl]), hi[i * sh]);
+            std::int64_t i = 0;
+            if constexpr (std::is_same_v<T, std::int64_t>) {
+                if (sl == 0 && sh == 0) {
+                    // Scalar bounds (the usual call): compare-selects, two lanes at a
+                    // time (NEON has no 64-bit integer min/max; the indexed scalar
+                    // loop took 376 us for 10^6 against numpy's 135).
+                    const int64x2_t l = vdupq_n_s64(*lo), h = vdupq_n_s64(*hi);
+                    for (; i + 4 <= n; i += 4) {
+                        int64x2_t v0 = vld1q_s64(xp + i), v1 = vld1q_s64(xp + i + 2);
+                        v0 = vbslq_s64(vcltq_s64(v0, l), l, v0);
+                        v1 = vbslq_s64(vcltq_s64(v1, l), l, v1);
+                        v0 = vbslq_s64(vcgtq_s64(v0, h), h, v0);
+                        v1 = vbslq_s64(vcgtq_s64(v1, h), h, v1);
+                        vst1q_s64(op + i, v0);
+                        vst1q_s64(op + i + 2, v1);
+                    }
+                }
+            }
+            for (; i < n; ++i) op[i] = ops::Minimum::f(ops::Maximum::f(xp[i], lo[i * sl]), hi[i * sh]);
         }
         return;
     }

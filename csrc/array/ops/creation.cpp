@@ -53,24 +53,24 @@ bool fits_int64(nb::handle o) {
 }  // namespace
 
 nb::object zeros(nb::handle shape, nb::handle dtype) {
-    return wrap(new_array(parse_dtype(dtype).value_or(DType::Float64), parse_shape(shape), /*zeroed=*/true));
+    return wrap(new_array(parse_dtype(dtype).value_or(DType::Float64), parse_shape_arg(shape).span(), /*zeroed=*/true));
 }
 
 nb::object ones(nb::handle shape, nb::handle dtype) {
-    NDArray a = new_array(parse_dtype(dtype).value_or(DType::Float64), parse_shape(shape));
+    NDArray a = new_array(parse_dtype(dtype).value_or(DType::Float64), parse_shape_arg(shape).span());
     fill_one(a);
     return wrap(std::move(a));
 }
 
 nb::object empty(nb::handle shape, nb::handle dtype) {
-    return wrap(new_array(parse_dtype(dtype).value_or(DType::Float64), parse_shape(shape)));
+    return wrap(new_array(parse_dtype(dtype).value_or(DType::Float64), parse_shape_arg(shape).span()));
 }
 
 nb::object full(nb::handle shape, nb::handle fill_value, nb::handle dtype) {
     const DType kind = require_scalar(fill_value, "fill_value");
     const DType target = parse_dtype(dtype).value_or(kind);
     check_castable(kind, target);
-    NDArray a = new_array(target, parse_shape(shape));
+    NDArray a = new_array(target, parse_shape_arg(shape).span());
     fill_scalar(a, fill_value, kind);
     return wrap(std::move(a));
 }
