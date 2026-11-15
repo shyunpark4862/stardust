@@ -31,7 +31,12 @@ const fm = Astro.props.frontmatter ?? (Astro.props as Required<Props>['frontmatt
 const { title, description, section, sample = false } = fm;
 const groups = Astro.props.groups ?? sidebars[section] ?? [];
 const { area, monoTitle = false } = Astro.props;
-const toc = (Astro.props.headings ?? []).filter((h) => h.depth === 2 || h.depth === 3);
+// Table of contents as a tree: each h2 with the h3s under it.
+const toc: { h: Heading; sub: Heading[] }[] = [];
+for (const h of Astro.props.headings ?? []) {
+  if (h.depth === 2) toc.push({ h, sub: [] });
+  else if (h.depth === 3 && toc.length > 0) toc[toc.length - 1].sub.push(h);
+}
 const path = Astro.url.pathname;
 const sectionNav = topNav.find((n) => n.href === `/${section}/`);
 const crumbs: Crumb[] = Astro.props.crumbs ?? (sectionNav ? [{ label: sectionNav.label, href: sectionNav.href }] : []);
@@ -39,7 +44,7 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
 ---
 
 <Base title={title} description={description && plainText(description)}>
-  <div class="container docs">
+  <div class:list={['container', 'docs', toc.length === 0 && 'docs--wide']}>
     <aside class="docs__side">
       <button class="side-toggle" type="button" aria-expanded="false" aria-controls="side-nav">
         <span>메뉴</span>
@@ -176,11 +181,18 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
           <nav class="toc" aria-label="이 페이지의 목차">
             <p class="toc__title">이 페이지</p>
             <ul class="toc__list">
-              {toc.map((h) => (
-                <li>
-                  <a class:list={['toc__link', h.depth === 3 && 'toc__link--sub']} href={`#${h.slug}`}>
-                    {h.text}
-                  </a>
+              {toc.map(({ h, sub }) => (
+                <li class="toc__item">
+                  <a class="toc__link" href={`#${h.slug}`}>{h.text}</a>
+                  {sub.length > 0 && (
+                    <ul class="toc__sub">
+                      {sub.map((c) => (
+                        <li>
+                          <a class="toc__link toc__link--sub" href={`#${c.slug}`}>{c.text}</a>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </li>
               ))}
             </ul>
@@ -291,6 +303,9 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
         if (el.getBoundingClientRect().top <= line) current = i;
       });
       links.forEach((a, i) => a.classList.toggle('is-active', i === current));
+      // Only the section being read shows its sub-headings.
+      const open = links[current]?.closest('.toc__item');
+      document.querySelectorAll('.toc__item').forEach((li) => li.classList.toggle('is-open', li === open));
     };
     update();
     addEventListener('scroll', update, { passive: true });
@@ -517,6 +532,18 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
     color: var(--fg-subtle);
   }
 
+  /* Pages without a table of contents (section indexes) use that column. */
+  .docs--wide {
+    grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  }
+  .docs--wide .docs__toc {
+    display: none;
+  }
+  .docs--wide .docs__main {
+    max-width: 920px;
+    margin-inline: 0;
+  }
+
   /* Sidebar */
   .side-toggle {
     display: none;
@@ -717,6 +744,13 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
     border-color: var(--accent-soft-line);
     color: var(--accent);
   }
+  /* Wide screens have "맨 위로" under the table of contents; the floating
+     button is for layouts where that column is hidden. */
+  @media (min-width: 1121px) {
+    .to-top {
+      display: none;
+    }
+  }
 
   /* Page header */
   .page-head {
@@ -766,6 +800,17 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
     transition:
       color var(--dur-fast) var(--ease),
       border-color var(--dur-fast) var(--ease);
+  }
+  .toc__sub {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  :global(.js) .toc__sub {
+    display: none;
+  }
+  :global(.js) .toc__item:global(.is-open) .toc__sub {
+    display: block;
   }
   .toc__link--sub {
     padding-left: var(--space-8);

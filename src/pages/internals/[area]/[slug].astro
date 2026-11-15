@@ -99,7 +99,7 @@ const headings = [
   }
   .related__link {
     display: grid;
-    grid-template-columns: 200px 1fr;
+    grid-template-columns: 200px minmax(0, 1fr);
     gap: var(--space-4);
     padding-block: var(--space-3);
     border-bottom: 1px solid var(--line);
@@ -152,7 +152,7 @@ const headings = [
   }
   @media (max-width: 640px) {
     .related__link {
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1fr);
       gap: var(--space-1);
     }
   }

@@ -108,7 +108,21 @@ const path = Astro.url.pathname;
     }
   }
   .header__link[aria-current='page'] {
+    position: relative;
     color: var(--fg);
     font-weight: 600;
+  }
+  .header__link[aria-current='page']::after {
+    content: '';
+    position: absolute;
+    inset: auto var(--space-3) -14px;
+    height: 2px;
+    border-radius: 1px;
+    background: var(--accent);
+  }
+  @media (max-width: 800px) {
+    .header__link[aria-current='page']::after {
+      bottom: -10px;
+    }
   }
 </style>

@@ -32,13 +32,19 @@ const related = data.seeAlso
 // body with <Reference />, right after its first section; RefCard reads the
 // data from here.
 Astro.locals.apiEntry = data;
-const fixed = [
-  data.params.length > 0 && '인자',
-  data.returns && '반환',
-  data.raises.length > 0 && '에러',
-]
-  .filter((t): t is string => Boolean(t))
-  .map((text) => ({ depth: 2, slug: text, text }));
+const hasCard = data.params.length > 0 || data.returns !== undefined || data.raises.length > 0;
+const fixed = hasCard
+  ? [
+      { depth: 2, slug: 'reference', text: '인자와 반환값' },
+      ...[
+        data.params.length > 0 && '인자',
+        data.returns && '반환',
+        data.raises.length > 0 && '에러',
+      ]
+        .filter((t): t is string => Boolean(t))
+        .map((text) => ({ depth: 3, slug: text, text })),
+    ]
+  : [];
 const [first, ...rest] = bodyHeadings.filter((h) => h.depth <= 3);
 const firstH2 = rest.findIndex((h) => h.depth === 2);
 const headings = [
@@ -150,7 +156,7 @@ const headings = [
   }
   .related__link {
     display: grid;
-    grid-template-columns: 200px 1fr;
+    grid-template-columns: 200px minmax(0, 1fr);
     gap: var(--space-4);
     padding-block: var(--space-3);
     border-bottom: 1px solid var(--line);
@@ -223,7 +229,7 @@ const headings = [
       width: 100%;
     }
     .related__link {
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1fr);
       gap: var(--space-1);
     }
   }

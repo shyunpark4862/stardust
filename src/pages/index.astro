@@ -7,6 +7,9 @@ import LinkCard from '../components/LinkCard.astro';
 import Button from '../components/Button.astro';
 import Glyph from '../components/Glyph.astro';
 import { areas } from '../data/nav';
+import { documentedAreas } from '../data/api';
+
+const documented = await documentedAreas();
 
 const strengths = [
   {
@@ -91,6 +94,7 @@ beta.tolist()            # [1.0, 1.0]`;
         areas.map((a, i) => (
           <div data-reveal style={`--reveal-i:${i % 3}`}>
             <LinkCard
+              href={documented.includes(a.key) ? `/api/${a.key}/` : undefined}
               title={a.name}
               meta={a.ns}
               badge={a.status === 'done' ? '구현 완료' : '설계 중'}

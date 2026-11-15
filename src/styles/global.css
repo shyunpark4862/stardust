@@ -158,9 +158,8 @@ samp {
 .card__summary code,
 .related__summary code {
   padding: 0.1em 0.35em;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--bg-subtle);
+  border-radius: 5px;
+  background: var(--slate-100);
   font-size: 0.86em;
   color: var(--blue-800);
 }

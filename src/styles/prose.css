@@ -87,11 +87,12 @@
 }
 
 /* Inline code */
+/* Inline code: a soft tint without a frame, so a sentence with several
+   names in it still reads as a sentence. */
 .prose :not(pre) > code {
-  padding: 0.14em 0.4em;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--bg-subtle);
+  padding: 0.12em 0.36em;
+  border-radius: 5px;
+  background: var(--slate-100);
   font-size: 0.86em;
   color: var(--blue-800);
   white-space: nowrap;
@@ -121,9 +122,10 @@
   line-height: var(--leading-snug);
 }
 
-.prose .table-wrap,
-.prose > table {
+/* Wide tables scroll on their own, wherever they sit (also inside lists). */
+.prose table {
   display: block;
+  max-width: 100%;
   overflow-x: auto;
 }
 
