@@ -58,7 +58,7 @@ stardust는 numpy, 선형대수(scipy.linalg 계열), 데이터프레임(pandas 
         note: 'csrc/',
         items: [
           { name: 'array/' },
-          { name: 'linalg/', uses: 'array' },
+          { name: 'linalg/', uses: 'array', note: 'LAPACK 래퍼 포함' },
           { name: 'frame/', uses: 'array (interop.cpp만)' },
           { name: 'special/', uses: 'array' },
         ],
@@ -67,7 +67,7 @@ stardust는 numpy, 선형대수(scipy.linalg 계열), 데이터프레임(pandas 
         title: '공통 기반',
         tone: 'dark',
         items: [
-          { name: 'accelerate/', note: 'BLAS · LAPACK · vForce' },
+          { name: 'accelerate/', note: 'BLAS · vForce' },
           { name: 'parallel/', note: '스레드풀 하나' },
           { name: 'base/', note: 'dtype, Buffer, pairwise 합, 포화 변환' },
         ],
@@ -87,7 +87,7 @@ Python에서 `sd.add(x, y)`를 부르면 이런 길을 지나요.
       { label: 'binary<Add>(x, y, out)', where: 'array/ops/ufunc', note: '피연산자 dtype에서 루프 dtype을 골라요.' },
       { label: 'NdIter', where: 'array/iter', note: '브로드캐스팅, 축 합치기, 병렬 분할 계획.' },
       { label: '커널 (NEON, 버퍼 캐스팅)', where: 'array/kernels', note: '순수 C++이고 Python을 몰라요.' },
-      { label: 'parallel_for', where: 'parallel/', note: '크기가 기준값 이상이면 GIL을 놓고 나눠 실행해요.' },
+      { label: 'parallel_for', where: 'parallel/', note: '일이 기준값 이상이고 스레드가 여럿이면 GIL을 놓고 나눠 실행해요.' },
       { label: 'wrap(NDArray)', where: 'bind/', note: '결과 NDArray를 Python 객체로 감싸 돌려줘요.' },
     ]}
   />
@@ -122,7 +122,7 @@ Python 코드는 전부 합쳐 약 3,300줄이에요. 그중 대부분(약 2,900
 | `module.cpp` | `NB_MODULE(_core, m)`. 모듈 하나를 정의하고 영역별 등록 함수를 차례로 불러요 |
 | `array_bind.cpp` | `ndarray` 타입: 속성, 연산자, 버퍼 프로토콜 내보내기, 스칼라 변환 금지 |
 | `pyutil.{hpp,cpp}` | dtype 객체 다섯, 인자 해석(`parse_int`, `parse_axes`, `parse_bool` …), `is_ndarray`/`as_ndarray`, `view_of` |
-| `errors.{hpp,cpp}` | 공개 함수 이름을 에러 메시지 앞에 붙이는 `named`, `call_named` |
+| `errors.{hpp,cpp}` | 공개 함수 이름을 에러 메시지 앞에 붙이는 `named`, `call_named`, 메시지에 넣을 짧은 타입 이름 `py_type_name` |
 | `linalg_bind.cpp`, `frame_bind.cpp`, `special_bind.cpp` | 하위 모듈 `_core.linalg`, `_core.frame`, `_core.special` |
 
 `module.cpp`의 등록 순서에는 이유가 있어요.
@@ -163,7 +163,7 @@ NB_MODULE(_core, m) {
 |:---:|---:|---|:---:|
 | `base/` | 약 360 | `dtype.hpp`(DType enum), `buffer.{hpp,cpp}`(참조 카운트 메모리 블록), `pairwise.hpp`(numpy식 pairwise 합의 정의), `saturate.hpp`(float64 → int64 포화 변환) | 넷 모두 |
 | `parallel/` | 약 310 | `pool.{hpp,cpp}`: 스레드풀 하나, `GilRelease`, `FirstRow` | 넷 모두 |
-| `accelerate/` | 약 660 | `blas.hpp`(dot, gemv, gemm, syrk), `lapack.hpp`(LAPACK 루틴 래퍼), `vforce.hpp`(vForce 래퍼) | array, linalg, special |
+| `accelerate/` | 약 150 | `blas.hpp`(dot, gemv, gemm, syrk), `vforce.hpp`(vForce 래퍼) | array, special |
 
 ## 디렉터리 지도
 
@@ -176,13 +176,13 @@ stardust/
   csrc/
     base/                   dtype.hpp  buffer.*  pairwise.hpp  saturate.hpp
     parallel/               pool.*
-    accelerate/             blas.hpp  lapack.hpp  vforce.hpp
+    accelerate/             blas.hpp  vforce.hpp
     array/                  ndarray.*  iter.*  convert.*  parallel_limits.hpp
       kernels/              elementwise buffered cast scalar_ops neon vforce reduce sort simd_sort
       ops/                  asarray copy creation dlpack dtype_info histogram indexing manipulation
                             matmul quantile covariance reduction searching shape sort ufunc
                             lanes.hpp pieces.hpp
-    linalg/                 args batch pack cost errors input outblock pyrefs types pairwise
+    linalg/                 args batch pack cost errors input outblock pyrefs types pairwise lapack
       ops/                  lu basic norms vnorm factor qr spectral svals nonsym special expm
     frame/                  column bitmap convert interop parallel.hpp
       ops/                  cast elementwise groupby hash join reduce selection sort radix parse pow5_table
@@ -281,10 +281,10 @@ True
 
 <Bench
   rows={[
-    { label: 'a + b (원소 3개)', times: [158e-9, 181e-9, 190e-9] },
-    { label: 'x[1, 2]', times: [35e-9, 25e-9, 25e-9] },
-    { label: 'sum(a) (원소 3개)', times: [581e-9, 92e-9, 98e-9] },
-    { label: 'asarray(원소 1000개 리스트)', times: [17e-6, 7e-6, 7e-6] },
+    { label: 'a + b (원소 3개)', times: [151e-9, 179e-9, 183e-9] },
+    { label: 'x[10, 20]', times: [33e-9, 25e-9, 25e-9] },
+    { label: 'sum(a) (원소 3개)', times: [548e-9, 90e-9, 92e-9] },
+    { label: 'asarray(원소 1만 개 리스트)', times: [137.5e-6, 62.3e-6, 62.3e-6] },
   ]}
   caption="작은 입력의 호출 비용. Apple M4 Pro, numpy 2.5.4. 작은 입력은 스레드를 쓰지 않으므로 1스레드와 10스레드가 같아요."
 />
@@ -341,18 +341,19 @@ True
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | base | · | | | | | | | |
 | parallel | | · | | | | | | |
-| accelerate | | | · | | 2 | | | |
-| array | 6 | 11 | 3 | · | | | | 30 |
-| linalg | 2 | 1 | 1 | 3 | · | | | 15 |
+| accelerate | | | · | | | | | |
+| array | 6 | 12 | 3 | · | | | | 30 |
+| linalg | 3 | 1 | | 2 | · | | | 15 |
 | frame | 4 | 1 | | 2 | | · | | 2 |
 | special | | | 1 | 6 | | | · | 1 |
 | bind | | 1 | | 24 | 16 | 12 | 20 | · |
 
-읽을 때 알아 둘 점이 셋 있어요.
+읽을 때 알아 둘 점이 넷 있어요.
 
 - `array`, `linalg`, `special`이 `bind/`를 include하는 것은 연산의 입구(`ops/*.cpp`)가 인자 해석 도구(`bind/pyutil.hpp`)와 에러 이름(`bind/errors.hpp`)을 쓰기 때문이에요. `array/kernels/`에는 `bind/` include가 하나도 없어요.
-- `accelerate/lapack.hpp`의 2줄은 `linalg/types.hpp`(LAPACK 정수 타입 `lint` 등)와 `linalg/batch.hpp`를 가리켜요. LAPACK 래퍼가 `sd::linalg::lapack` 이름공간에 있고 linalg 전용이라, 위치만 `accelerate/`에 모아 둔 셈이에요. 다른 영역은 이 헤더를 쓰지 않아요.
-- frame의 2줄 중 `array/` 헤더는 `interop.cpp`에만 있어요. 다만 `frame/convert.cpp`도 짧은 타입 이름을 얻으려고 `bind/pyutil.hpp`(`py_type_name`)를 include하는데, 이 헤더가 `array/ndarray.hpp`를 끌어와요. 배열의 함수는 부르지 않아요.
+- `accelerate/`는 위의 어느 디렉터리도 include하지 않아요. LAPACK 래퍼는 linalg의 타입(LAPACK 정수 타입 `lint`, 배치 구조 `linalg/batch.hpp`)에 묶여 있고 linalg만 쓰므로 `linalg/lapack.hpp`에 둬요. 바닥에 두면 바닥이 영역의 헤더를 include하게 돼요. linalg는 Accelerate 프레임워크 헤더를 직접 include하므로 `accelerate/` 헤더가 필요 없어요.
+- linalg의 `array/` 2줄은 `NDArray`를 받고 돌려주는 `linalg/input.hpp`, `linalg/outblock.hpp`예요. float64 → int64 변환 규칙은 `linalg/types.hpp`가 `base/saturate.hpp`에서 직접 가져와요. 배열의 변환 헤더를 거치지 않으므로 linalg의 타입 정의가 배열 내부에 기대지 않아요.
+- frame의 `array/` 2줄과 `bind/pyutil.hpp` 1줄은 모두 `interop.cpp`에 있어요. `frame/convert.cpp`는 에러 메시지의 짧은 타입 이름(`py_type_name`)만 필요해서 `bind/errors.hpp`를 include해요. 이 헤더는 nanobind 말고는 아무것도 끌어오지 않으므로, 배열 헤더가 frame에 들어오는 곳은 `interop.cpp` 하나로 남아요.
 
 ## 공통 부품
 
@@ -458,7 +459,7 @@ float64 → int64의 명시적 변환 규칙은 라이브러리에 하나예요:
 inline std::int64_t saturate_to_int64(double x) { return vcvtd_s64_f64(x); }
 ```
 
-C++의 평범한 `static_cast<int64_t>(x)`는 NaN, inf, 범위 밖 값에서 정의되지 않은 동작(undefined behavior)이에요. 규칙을 분기 세 개로 적으면 정의는 되지만 루프가 벡터화되지 않아요. 이 함수를 쓰면 컴파일러가 루프를 벡터 `FCVTZS`로 바꿔요. 같은 자리에서 재면 분기 세 개 판이 464µs, `FCVTZS` 판이 89µs로 약 5배 차이가 나요. 원소 100만 개 `astype(f, int64)`는 numpy 284µs, stardust 1스레드 108µs예요. 배열의 `astype`, linalg의 int 결과, frame의 `astype`이 모두 이 함수를 써서 세 영역의 결과가 같아요.
+C++의 평범한 `static_cast<int64_t>(x)`는 NaN, inf, 범위 밖 값에서 정의되지 않은 동작(undefined behavior)이에요. 규칙을 분기 세 개로 적으면 정의는 되지만 루프가 벡터화되지 않아요. 이 함수를 쓰면 컴파일러가 루프를 벡터 `FCVTZS`로 바꿔요. 같은 자리에서 재면 분기 세 개 판이 464µs, `FCVTZS` 판이 89µs로 약 5배 차이가 나요. 원소 100만 개 `astype(f, int64)`는 numpy 264µs, stardust 1스레드 126µs예요. 배열의 `astype`, linalg의 int 결과, frame의 `astype`이 모두 이 함수를 써서 세 영역의 결과가 같아요.
 
 ### 스레드풀 (`parallel/pool.hpp`)
 
@@ -481,14 +482,14 @@ namedtuple을 C++에서 만들 방법은 두 가지가 섞여 있어요.
 
 linalg는 매 호출에 쓰는 Python 객체를 처음 한 번만 받아 둬요(`linalg/pyrefs`). 쥐고 있는 것은 결과 namedtuple과 `LinAlgError`예요. 배열은 C++ 객체로 직접 주고받으므로 배열 쪽 Python 함수는 들고 있지 않아요. `PyRefs`의 참조는 일부러 놓지 않아요. 인터프리터가 끝나는 도중에 놓는 것이 안전하지 않고, 프로세스가 끝나면 OS가 회수하기 때문이에요.
 
-### Accelerate 래퍼 (`accelerate/`)
+### Accelerate 래퍼 (`accelerate/`, `linalg/lapack.hpp`)
 
 Apple의 Accelerate 프레임워크는 BLAS, LAPACK, vForce(배열 단위 초월함수)를 제공해요 [3].
 
 | 파일 | 감싸는 것 | 쓰는 곳 |
 |---|---|---|
 | `blas.hpp` | `dot`, `gemv`, `gemm`, `syrk`/`herk` (실수판 `d`, 복소수판 `z`) | 배열의 `matmul`, `cov` |
-| `lapack.hpp` | `getrf`, `getrs` 등 LAPACK 루틴. 템플릿 하나가 d(실수)/z(복소수) 판을 골라요 | linalg |
+| `linalg/lapack.hpp` | `getrf`, `getrs` 등 LAPACK 루틴. 템플릿 하나가 d(실수)/z(복소수) 판을 골라요. linalg의 타입에 묶여 있어 linalg 안에 둬요 | linalg |
 | `vforce.hpp` | `vvexp`, `vvsin` 등 함수 포인터 타입, 인자 순서 래퍼, strided 실행기 | 배열의 초월함수, special |
 
 컴파일 정의 `ACCELERATE_NEW_LAPACK`, `ACCELERATE_LAPACK_ILP64`를 모듈 전체에 걸어서, 새 LAPACK 인터페이스와 64비트 정수 인자를 써요. 행렬의 차원이 2³¹을 넘어도 정수가 넘치지 않아요.
@@ -697,10 +698,10 @@ stardust는 이것을 넣지 않았어요. 판정을 안전하게 할 수 없기
 | 구조 결정 | 영향 |
 |---|---|
 | 확장 모듈 하나, `NDArray` 직접 전달 | linalg 결과 배열 하나에 약 120ns 절약 (작은 행렬 호출의 약 30%) |
-| 타입까지 C++ | 작은 `sum(a)` 92ns (numpy 581ns), `x[1, 2]` 25ns (numpy 35ns), 작은 `a + b` 181ns (numpy 158ns) |
+| 타입까지 C++ | 작은 `sum(a)` 90ns (numpy 548ns), `x[10, 20]` 25ns (numpy 33ns), 작은 `a + b` 179ns (numpy 151ns) |
 | `NOMINSIZE`(`-O3`) | 연속 fast path가 `-Os` 빌드보다 약 2배 빨라요 |
-| `FCVTZS` 직접 호출 | 분기 세 개 판보다 약 5배 빨라요(464µs → 89µs). `astype(f, int64)` 108µs, numpy 284µs |
-| 풀 하나, 영역별 기준값 | 병렬 호출 고정 비용 약 1.5µs. 원소 100만 개 `sin` 10스레드 138µs (numpy 4.00ms), 다시 재면 102µs (측정마다 흔들림이 커요) |
+| `FCVTZS` 직접 호출 | 분기 세 개 판보다 약 5배 빨라요(464µs → 89µs). `astype(f, int64)` 126µs, numpy 264µs |
+| 풀 하나, 영역별 기준값 | 병렬 호출 고정 비용 약 1.5µs. 원소 100만 개 `sin` 10스레드 94µs (numpy 3.81ms) |
 
 연산별 수치와 그 원인은 [성능 종합](/internals/array/performance/)에 있어요.
 
