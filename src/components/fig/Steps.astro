@@ -47,6 +47,12 @@ const { steps } = Astro.props;
     padding: 0;
     list-style: none;
   }
+  /* Geometry. Every dot is centred on the rail (x = 6px) and on the first
+     line of its box: border 1px + padding 8px + half of a 20.8px line. */
+  .steps {
+    --rail-x: 6px;
+    --dot-y: 19px;
+  }
   .step {
     position: relative;
     display: grid;
@@ -58,21 +64,37 @@ const { steps } = Astro.props;
   .step:last-child {
     padding-bottom: 0;
   }
-  /* The rail: one unbroken line down the left, from this dot to the next.
+  /* The rail: each step draws its own stretch, edge to edge, so the pieces
+     meet without gaps; the first starts and the last ends at a dot's centre.
+     The dots sit on top and hide the line where it passes through them.
      Sub-steps stay on the same rail; only their box is indented. */
-  .step:not(:last-child)::before {
+  .step::before {
     content: '';
     position: absolute;
-    top: 22px;
-    bottom: -10px;
-    left: 5.5px;
-    width: 1px;
+    top: 0;
+    bottom: 0;
+    left: calc(var(--rail-x) - 1px);
+    width: 2px;
+    border-radius: 1px;
     background: var(--blue-200);
   }
+  .step:first-child::before {
+    top: var(--dot-y);
+  }
+  .step:last-child::before {
+    bottom: auto;
+    height: var(--dot-y);
+  }
+  .step:only-child::before {
+    display: none;
+  }
   .step__dot {
+    position: relative;
+    z-index: 1;
+    justify-self: center;
     width: 12px;
     height: 12px;
-    margin-top: 12px;
+    margin-top: calc(var(--dot-y) - 6px);
     border: 2px solid var(--blue-500);
     border-radius: 50%;
     background: var(--bg);
@@ -80,8 +102,9 @@ const { steps } = Astro.props;
   .step--sub .step__dot {
     width: 8px;
     height: 8px;
-    margin: 14px 2px 0;
-    border-color: var(--blue-300);
+    margin-top: calc(var(--dot-y) - 4px);
+    border-width: 1.5px;
+    border-color: var(--blue-400);
   }
   .step__body {
     margin-left: calc(var(--depth) * var(--space-6));
