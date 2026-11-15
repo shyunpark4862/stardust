@@ -1,0 +1,563 @@
+---
+title: 데이터프레임 영역의 구조
+group: 구조
+order: 1
+summary: sd.frame 전체의 지도예요. 무엇이 들어 있고 무엇을 일부러 넣지 않았는지, 내부 구조를 정한 원칙과 의미 규칙, Python과 C++가 일을 나누는 방식, 연산 하나가 거치는 단계, 기능마다 맡은 파일과 커널을 설명하고, pandas·Polars와 구조를 비교한 뒤 나머지 글로 안내해요.
+seeAlso: [columns, labels, elementwise, hashing, groupby-sort, merge-concat, csv, parallel, performance]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import FrameFig from '../../../components/fig/FrameFig.astro';
+import Op from '../../../components/fig/Op.astro';
+import Steps from '../../../components/fig/Steps.astro';
+import Layers from '../../../components/fig/Layers.astro';
+
+## 한눈에 보기
+
+`sd.frame`은 표 형태의 데이터를 다루는 영역이에요. 공개 이름은 여덟 개예요: `Series`(라벨이 붙은 1차원 컬럼), `DataFrame`(이름 붙은 컬럼들의 묶음), `Index`와 `RangeIndex`(행 라벨), `NA`(결측 값), `read_csv`, `merge`, `concat`. 그 위에 선택(`[]`, `.loc`, `.iloc`), 원소별 연산, 리덕션, 중복 제거, 정렬, `groupby`, 결합이 메서드로 붙어 있어요.
+
+데이터는 C++ 코어 `csrc/frame/`에 있고, 모든 계산도 거기서 해요. Python 쪽 `src/stardust/frame/`에는 사용자가 만지는 클래스와 인자 검사, 여러 커널을 차례로 부르는 조립 코드만 있어요.
+
+이 영역의 뼈대는 여섯 가지예요.
+
+1. **컬럼마다 `Column` 하나예요.** 컬럼은 타입이 하나인 1차원 배열이고, 값 버퍼, 결측을 표시하는 비트맵(validity bitmap), 문자열이면 위치 배열(offsets)을 들어요. 같은 dtype 컬럼을 2차원 블록으로 합치는 pandas의 BlockManager 같은 구조는 없어요. `DataFrame`은 "컬럼 이름 → `Column`"의 순서 있는 사전과 행 라벨 하나예요.
+2. **결측은 `NA` 하나이고, 모든 dtype이 같은 방법(비트맵)으로 결측을 가져요.** int 컬럼에 결측이 생겨도 int로 남아요. NaN은 결측이 아니라 평범한 float 값이에요.
+3. **결과의 dtype과 모양은 데이터가 아니라 입력의 dtype과 모양으로 정해요.** 같은 코드가 값에 따라 다른 타입의 결과를 내거나, 데이터를 훑어 보고 몰래 다른 경로로 가는 일이 없어요.
+4. **같은 결과는 같은 코드에서 나와요.** "무엇이 같은 키인가"는 factorize 한 곳, "값의 순서"는 정렬 키 변환 한 곳, float 합은 pairwise 합 한 벌에만 있어요. `unique`, `groupby`, `merge`, 정렬, Index 조회가 모두 그 위에 올라가요.
+5. **결과는 스레드 수와 무관하게 비트까지 같아요.** float 합의 마지막 비트, 행 순서, 그룹 번호, 에러 메시지까지요.
+6. **커널은 행 루프 안에서 분기하지 않아요.** dtype, 스칼라인지, 결측이 있는지, 연산 종류는 루프에 들어가기 전에 C++ 템플릿 인자로 골라요.
+
+연산 하나가 어떤 길을 지나는지 `s + 1`(int64 Series에 정수 더하기)로 먼저 보면 이래요.
+
+<Fig column caption="s + 1 한 번의 흐름. Python 층은 인자를 Column으로 바꾸고 커널 하나를 부를 뿐이에요. 계산, 결측 처리, 병렬화는 모두 C++에서 일어나요.">
+  <Steps
+    steps={[
+      { label: 's + 1', where: 'Python', note: 'Series.__add__는 _ops.py가 만들어 붙인 메서드예요. 오른쪽이 스칼라인지 Series인지만 봐요.' },
+      { label: 'scalar_column(1, "int64")', where: '_ops.py', note: '스칼라 1을 1행짜리 Column으로 바꿔요. 스칼라를 위한 커널을 따로 두지 않으려는 것이에요.' },
+      { label: 'Column.from_list([1], ...)', depth: 1, where: 'convert.cpp', note: 'Python 값을 C++ Column으로 읽어요.' },
+      { label: '_core.frame.binary_op("add", a, b, 2)', where: 'frame_bind.cpp', note: '마지막 인자 2는 "두 번째가 스칼라"라는 뜻이에요.' },
+      { label: 'dtype 조합으로 고르기', depth: 1, where: 'ops/elementwise.cpp', note: 'int64 + int64 → int_arith. bool이면 int64로 바꿔 다시 부르고, int와 float가 만나면 float 커널로 가요.' },
+      { label: 'and_validity', depth: 1, where: 'column.cpp', note: '두 입력의 결측 비트맵을 AND해요. 결측이 없는 쪽은 비트맵이 아예 없어서 건너뛰어요.' },
+      { label: 'for_chunks', depth: 1, where: 'parallel.hpp', note: '16,384행 청크로 나눠요. 행이 2¹⁷개보다 적으면 호출 스레드에서 차례로, 많고 스레드가 2개 이상이면 스레드풀에서 GIL을 놓고 돌아요.' },
+      { label: 'out[i] = x[i] + y[0]', depth: 2, where: 'ops/elementwise.cpp', note: '스칼라 쪽은 템플릿 인자라서 루프 안에 분기가 없어요. 컴파일러가 NEON으로 벡터화해요.' },
+      { label: 'finish_fixed', depth: 1, where: 'column.cpp', note: '결측 수를 세고, 0이면 비트맵을 버리고, 결측 행의 값을 0으로 지워요.' },
+      { label: 'Series._new(col, index, name)', where: '_series.py', note: '결과 Column을 원래 Index와 이름으로 감싸요. 행 라벨은 복사하지 않고 그대로 공유해요.' },
+    ]}
+  />
+</Fig>
+
+Series끼리 더하면(`s + t`) 커널을 부르기 전에 두 Index를 맞추는 단계(정렬, alignment)가 하나 더 있어요. 라벨이 다르면 양쪽 컬럼을 라벨 합집합의 순서로 `take`한 뒤 같은 `binary_op`를 불러요.
+
+이 글은 위 구조가 왜 이렇게 되었는지를 영역 전체의 높이에서 설명하고, 자세한 내용이 있는 글로 안내해요.
+
+| 알고 싶은 것 | 글 |
+|---|---|
+| `Column`의 메모리 배치, 결측 비트맵, 문자열 저장, Copy-on-Write, numpy·`sd.ndarray`와 주고받기 | [컬럼과 메모리](/internals/frame/columns/) |
+| `RangeIndex`와 `Index`, 라벨 조회 엔진, 정렬(alignment), `.loc`/`.iloc`, 마스크 필터, `take`, 대입 | [라벨, 조회, 선택](/internals/frame/labels/) |
+| 산술, 비교, Kleene 논리, 리덕션, `astype`과 문자열 문법 | [원소별 연산과 리덕션](/internals/frame/elementwise/) |
+| factorize, Swiss table, 해시 함수, 병렬 factorize | [해시 테이블과 factorize](/internals/frame/hashing/) |
+| `groupby`, 그룹 순서, 기수 정렬, 문자열 정렬, counting sort | [groupby와 정렬](/internals/frame/groupby-sort/) |
+| `merge`의 해시 조인과 행 순서, `concat` | [merge와 concat](/internals/frame/merge-concat/) |
+| `read_csv`의 토크나이저, 숫자 파싱, 타입 추론, 병렬 읽기 | [read_csv](/internals/frame/csv/) |
+| 스레드를 쓰는 기준, 청크, GIL, 결정성 규칙 | [병렬화와 결정성](/internals/frame/parallel/) |
+| 작은 데이터의 호출 비용, 테스트의 정답, pandas·Polars와 비교한 수치 전체 | [성능과 검증](/internals/frame/performance/) |
+
+## 무엇이 들어 있고 무엇이 없나
+
+### 들어 있는 것
+
+| 묶음 | 내용 |
+|---|---|
+| 객체 | `Series`, `DataFrame`, `Index`, `RangeIndex`, `NA` |
+| 만들기와 꺼내기 | dict, list, numpy 배열, `sd.ndarray`에서 만들기. `to_numpy`, `to_array`, `tolist` |
+| 선택 | `[]`, `.loc`, `.iloc`(스칼라, 슬라이스, 리스트, bool 마스크), 라벨 정렬(alignment), `reindex`, 대입 |
+| 원소별 연산 | 산술, 비교, Kleene 논리(`&`, `|`, `^`), int64 비트 연산, `astype`, `isna`/`notna`, `isnan`, `fillna`, `dropna` |
+| 리덕션 | `sum`, `mean`, `min`, `max`, `count`, `std`, `var` |
+| 중복 | `unique_values`, `nunique`, `value_counts`, `duplicated`, `drop_duplicates` |
+| 정렬 | `sort_values`(여러 키, 키마다 방향과 결측 위치), `sort_index` |
+| 묶기와 결합 | `groupby` + 집계 10가지와 `agg`, `merge`(inner, left, right, outer, 여러 키), 행 방향 `concat` |
+| 입출력 | `read_csv`(옵션 8개), `repr`, `head`, `tail` |
+
+사용법은 API 문서([데이터프레임의 기본](/api/frame/basics/)부터)에 있어요. 이 글들은 그 안쪽을 다뤄요.
+
+### 일부러 넣지 않은 것
+
+넣지 않은 기능은 대부분 "pandas에는 있지만 내부 구조를 두 갈래로 만드는 것"이에요. 하나씩 이유를 보면 이래요.
+
+- **MultiIndex가 없어요.** `groupby`의 키는 결과의 일반 컬럼이 되고, 결과의 행 라벨은 `RangeIndex`예요. 키가 하나든 여럿이든, float든 문자열이든 결과 모양이 하나예요. float와 bool은 `Index`가 될 수 없어서, 키를 Index로 올리는 방식이면 키의 dtype에 따라 결과 모양이 달라져야 하거든요.
+- **object dtype이 없어요.** dtype은 `bool`, `int64`, `float64`, `string` 넷뿐이에요. 문자열과 숫자를 한 컬럼에 섞으면 에러예요. object dtype이 있으면 모든 커널이 "Python 객체 배열" 경로를 하나 더 가져야 하고, 그 경로에서는 GIL을 놓을 수도 없어요.
+- **`inplace=`와 chained assignment가 없어요.** 모든 연산은 새 객체를 돌려주고, 대입은 Copy-on-Write로 다른 객체에 보이지 않아요([컬럼과 메모리](/internals/frame/columns/)). pandas 3도 Copy-on-Write가 유일한 모드이고, chained assignment는 동작하지 않아요 [2].
+- **`datetime64`, `categorical`, 시간대, Period, Interval, Sparse, ExtensionArray가 없어요.** 문자열 접근자 `.str`, 날짜 접근자 `.dt`, `rolling`, `pivot_table`, `transform`, `apply`, `resample`, `eval`/`query`, CSV 밖의 입출력, plotting, Styler도 없어요. 코드가 아예 없어요.
+- **데이터를 보고 경로를 고르는 휴리스틱이 없어요.** 아래 원칙 절에서 자세히 설명해요.
+- **lazy 평가, 쿼리 최적화기, JIT, 표현식 융합이 없어요.** pandas처럼 부르는 즉시 실행해요(eager). 연산 하나가 커널 하나로 끝나고, 커널 사이에서 결과는 언제나 실제 컬럼으로 존재해요.
+- **문자열 인터닝, 작은 할당 캐시, 손으로 짠 어셈블리, 실행 중 CPU 판별(runtime dispatch)이 없어요.** 대상 기계가 Apple M4 Pro 하나라서 컴파일할 때 `-mcpu=native`로 그 CPU에 맞춰요([전체 구조](/internals/core/overview/)). SIMD가 필요한 곳(해시 테이블의 제어 바이트 비교, CSV의 따옴표 마스크)은 NEON intrinsic으로 써요.
+
+## 원칙
+
+### 결과의 dtype과 모양은 입력으로 정해요
+
+결과가 어떤 dtype인지, `RangeIndex`인지 `Index`인지, 원본과 메모리를 공유하는지 복사본인지는 **입력의 dtype과 키의 모양**만 보고 정해요. 값은 보지 않아요.
+
+```python
+>>> s = sd.frame.Series([10, 20, 30, 40])
+>>> type(s.iloc[0:3].index).__name__
+'RangeIndex'
+>>> type(s.iloc[[0, 1, 2]].index).__name__
+'Index'
+```
+
+두 번째 줄의 라벨 0, 1, 2는 우연히 등차수열이지만 결과는 `Index`예요. 키가 리스트(take)이기 때문이에요. 슬라이스는 라벨이 `RangeIndex`로 남고 값 버퍼도 원본과 공유하지만, 마스크가 우연히 연속된 행을 골라도 결과는 복사본이에요.
+
+이렇게 하는 이유는 **같은 코드가 데이터에 따라 다르게 행동하지 않게** 하려는 것이에요. "라벨이 등차수열이면 `RangeIndex`로 줄인다"는 규칙을 두면, 어떤 데이터에서는 다음 연산이 산술로 빠르고 어떤 데이터에서는 해시 조회로 느려요. 실패도 마찬가지예요. 예를 들어 `to_numpy(na_value=...)`의 값이 결과 dtype에 맞는지는 결측이 하나도 없어도 검사해요.
+
+```python
+>>> sd.frame.Series([1, 2]).to_numpy(na_value=1.5)
+Traceback (most recent call last):
+    ...
+TypeError: to_numpy(): na_value=1.5 does not fit an array of dtype int64; pass dtype= as well
+```
+
+결측이 없을 때만 통과하는 코드는 테스트에서 통과하고 실제 데이터에서 터져요. 결측이 있든 없든 같은 결과가 나와야 그런 일이 없어요.
+
+결과 dtype도 같은 원칙이에요. 결측 스칼라와의 연산은 반대쪽 dtype의 연산이 되고(`s_int + NA`는 int64), 값이 모두 결측인 list나 CSV 열은 float64예요.
+
+### 같은 결과는 같은 코드에서
+
+데이터프레임에는 "두 값이 같은가"와 "어느 값이 앞인가"를 묻는 기능이 많아요. 이 질문의 답을 기능마다 따로 구현하면, 예를 들어 `unique`는 `-0.0`과 `0.0`을 다르게 보는데 `groupby`는 같게 보는 식의 어긋남이 생기기 쉬워요. 그래서 답을 한 곳에만 둬요.
+
+| 질문 | 답하는 곳 | 그 위에 올라가는 것 |
+|---|---|---|
+| 같은 키인가 | factorize (`ops/hash.cpp`): 값 → 처음 나타난 순서의 정수 코드 | `unique_values`, `nunique`, `duplicated`, `value_counts`, `groupby`의 그룹, `merge`의 짝, `Index`의 라벨 조회 |
+| 어느 값이 앞인가 | 정렬 키 변환 (`ops/radix.hpp`): 값 → 대소가 보존되는 부호 없는 정수 | `sort_values`, `sort_index`, `groupby`의 그룹 순서, `unique_values`의 순서 |
+| float 합 | pairwise 합 (`base/pairwise.hpp`, 모든 영역이 함께 씀) | `sum`, `mean`, `var`, `std`, 그룹마다의 합 |
+
+두 정규화(같은 키, 정렬 키)도 같은 함수 `float_key`에서 시작해요. 그래서 factorize에서 같은 키인 두 값은 정렬에서도 같은 값이에요. 자세한 것은 [해시 테이블과 factorize](/internals/frame/hashing/)와 [groupby와 정렬](/internals/frame/groupby-sort/)에 있어요.
+
+### 결과는 스레드 수와 무관해요
+
+`sd.set_num_threads(1)`이든 10이든, 결과는 비트까지 같아요. 기본 규칙은 "일을 나누는 방식은 데이터 길이로만 정하고, 부분 결과는 정해진 순서로 합친다"예요. float 합은 numpy와 같은 pairwise 트리 위에서 나누므로 나눈 위치와 무관하게 같은 덧셈 순서가 되고, factorize는 해시로 나눠 계산한 코드를 마지막에 처음 나타난 순서로 다시 매겨서 직렬과 같은 코드를 내요. 에러도 "가장 앞 행의 에러"가 이기도록 모아서, 어느 스레드가 먼저 실패했는지에 따라 메시지가 달라지지 않아요. 자세한 것은 [병렬화와 결정성](/internals/frame/parallel/)에 있어요.
+
+### 커널은 행 루프 안에서 분기하지 않아요
+
+데이터프레임 커널이 행마다 물어볼 수 있는 질문은 많아요. 이 컬럼은 int64인가 float64인가, 이쪽은 스칼라인가, 이 행은 결측인가, 연산은 `+`인가 `*`인가. 이 질문을 행 루프 안에 두면 코드는 짧지만, 행마다 분기가 생기고 컴파일러가 루프를 벡터화하지 못해요.
+
+그래서 이런 질문은 **루프에 들어가기 전에 한 번** 답하고, 그 답을 C++ 템플릿 인자로 넘겨 질문마다 따로 컴파일된 루프를 골라요. 스칼라 피연산자가 좋은 예예요.
+
+```cpp
+// csrc/frame/ops/elementwise.cpp (발췌)
+template <class T, bool Scalar>
+struct In {                       // 커널의 입력 하나: 컬럼이거나, 모든 행에서 읽는 1행 스칼라
+    const T* p;
+    T operator[](std::int64_t i) const {
+        if constexpr (Scalar) return p[0];   // 컴파일 시점에 결정돼요
+        else return p[i];
+    }
+};
+
+// scalar_side에 따라 세 가지 루프 중 하나를 고른다 (루프 밖의 분기 한 번)
+if (scalar_side == 1)      f(In<A, true>{pa},  In<B, false>{pb});
+else if (scalar_side == 2) f(In<A, false>{pa}, In<B, true>{pb});
+else                       f(In<A, false>{pa}, In<B, false>{pb});
+```
+
+`if constexpr`는 컴파일할 때 한쪽 가지만 남기므로, 만들어진 세 루프 어디에도 "스칼라인가"를 묻는 분기가 없어요. 컬럼⊕컬럼, 컬럼⊕스칼라, 스칼라⊕컬럼이 각각 따로 벡터화돼요.
+
+같은 방식을 적용한 곳과 측정값이에요(1M 행, 1스레드, Apple M4 Pro).
+
+| 커널 | 행마다 고르는 설계 | 루프 밖에서 고르는 설계 |
+|---|---:|---:|
+| Kleene `&` (bool, 결측 포함) | 5.09 ms | 1.07 ms |
+| float `min` (이긴 행의 위치를 들고 행마다 dtype `switch`와 결측 확인 vs 값을 들고 NEON으로 접기) | 848 µs | 73 µs |
+| `merge` 1M 행의 조회 단계 (행마다 dtype·결측·문자열 확인) | 전체 시간의 48% | 호출마다 한 번 |
+
+결측이 있는지 없는지도 같은 방식으로 골라요. 결측이 없는 컬럼은 비트맵 자체가 없어서(null 포인터), 커널은 "비트맵이 있는가"를 한 번 보고 결측 검사가 없는 루프로 가요.
+
+### 데이터를 보는 휴리스틱을 쓰지 않아요
+
+많은 데이터프레임 라이브러리는 데이터를 훑어보고 빠른 길을 골라요. 예를 들어 Index가 정렬되어 있으면(monotonic) 라벨 조회에 이진 탐색을 쓰고, 기수 정렬에서 모든 키가 같은 바이트를 가진 자리는 건너뛰어요. stardust는 이런 선택을 하지 않아요.
+
+- **결과 타입이나 동작이 데이터에 따라 몰래 바뀌어요.** 정렬된 Index에서 이진 탐색을 쓰면 "없는 라벨로 슬라이스하기"가 정렬된 Index에서는 되고 섞인 Index에서는 안 되는 차이가 생겨요. 그래서 라벨 슬라이스는 정렬된 Index에서도 양 끝 라벨이 실제로 있어야 해요([라벨, 조회, 선택](/internals/frame/labels/)).
+- **성능이 데이터에 따라 몰래 바뀌어요.** 같은 크기의 입력인데 어떤 날은 빠르고 어떤 날은 느리면 원인을 찾기 어려워요.
+
+휴리스틱이 아닌 것과의 경계는 분명해요. **컬럼의 속성**(dtype이 무엇인가, 결측이 있는가)과 **길이**로 고르는 것은 해요. "결측이 없으면 비트맵 검사를 건너뛴다", "8바이트 키와 문자열 키는 해시 테이블을 미리 잡는 크기가 다르다", "행이 2¹⁷개 이상이면 스레드를 쓴다"가 그래요. 이것들은 값을 보지 않고 정해지는 사실이에요.
+
+## 의미 규칙이 정한 내부 구조
+
+사용자가 보는 규칙의 전체 목록은 API 문서([데이터프레임의 기본](/api/frame/basics/), [결측 값 NA](/api/frame/na/))에 있어요. 여기서는 그중 내부 구조를 결정한 규칙만 봐요.
+
+### dtype 넷
+
+`bool`, `int64`, `float64`, `string`(UTF-8)이에요. C++에서는 모든 영역이 함께 쓰는 열거형 `sd::DType`의 `Bool`, `Int64`, `Float64`, `String`이에요(`Complex128`은 배열 영역에만 있어요). Python 쪽 `.dtype`은 라이브러리의 dtype 객체(`sd.int64` 등)이고, 안에서는 `"int64"` 같은 이름 문자열로 주고받아요. Column도, 바인딩도 이름을 써요. 공개 속성에서만 객체로 바꿔요(`_dtypes.obj`).
+
+dtype이 넷뿐이라 모든 커널이 고를 경우가 작아요. 문자열은 숫자와 섞이지 않고, 숫자 셋은 `bool < int64 < float64`로 승격해요. 승격 규칙은 배열 영역의 `sd::promote`를 그대로 부르는 `promote_columns`(`column.hpp`) 한 곳에 있어요. list에서 dtype을 추론할 때, `concat`의 공통 dtype, `DataFrame.to_numpy`의 공통 dtype이 모두 이 함수를 써요.
+
+```python
+>>> sd.frame.Series([True, 1]).dtype
+int64
+>>> sd.frame.Series([1, 2.5]).dtype
+float64
+>>> sd.frame.Series(["a", 1])
+Traceback (most recent call last):
+    ...
+TypeError: Series(): str values cannot be mixed with int values (there is no object dtype)
+```
+
+### NA와 NaN
+
+결측은 `NA` 하나예요. 모든 dtype이 **validity 비트맵**(행마다 1비트, 1이면 값이 있음)으로 결측을 표시해요. 그래서 int 컬럼에 결측이 생겨도 int로 남아요. pandas의 기본 dtype은 int 컬럼에 결측이 생기면 float64로 바뀌어요(결측을 NaN으로 나타내기 때문이에요).
+
+NaN은 결측이 아니라 IEEE 754의 평범한 float 값이에요. `isna`는 NA만 세고, NaN은 `skipna`와 상관없이 리덕션에 전파돼요.
+
+```python
+>>> s = sd.frame.Series([1.0, float("nan"), None])
+>>> s.isna().tolist()
+[False, False, True]
+>>> s.sum()
+nan
+>>> sd.frame.Series([1, None, 3]).dtype
+int64
+```
+
+이 규칙의 내부 결과는 "NA를 NaN으로 몰래 바꾸는 경로가 없다"는 것이에요. numpy로 내보낼 때도 결측이 있으면 `na_value=`를 꼭 받아요. 결측과 NaN을 같은 비트(NaN 패턴)로 나타내면 둘을 구별할 수 없게 되기 때문이에요. 비트맵의 구체적인 배치와 커널이 그것을 읽는 방법은 [컬럼과 메모리](/internals/frame/columns/)에 있어요.
+
+### 같은 키와 순서
+
+- **같은 키**(`unique`, `groupby`, `merge`, Index 조회): NaN끼리 같아요(페이로드와 부호 무관). `-0.0`과 `0.0`이 같아요. `groupby`와 `unique`에서는 NA끼리 같고, `merge`에서는 NA 키가 아무것과도 맞지 않아요. 같은 키로 묶인 값 중에서는 **먼저 나온 값**이 대표예요.
+- **순서**(정렬, `groupby`의 그룹 순서): NaN은 +inf보다 큰 값이에요. 문자열은 코드포인트 순서(= UTF-8 바이트 순서), `False < True`예요. 내림차순은 오름차순의 정확한 거울이라서 NaN이 맨 앞이에요. 정렬은 언제나 안정 정렬이에요. NA는 값의 순서에 들어가지 않고 `na_position`으로 앞이나 뒤에 붙어요.
+
+이 규칙 덕분에 해시 테이블은 "정규화한 비트가 같으면 같은 키"라는 가장 단순한 비교로 돌아가요. 해시하기 전에 NaN을 하나의 NaN 비트로, `-0.0`을 `+0.0`의 비트로 바꿔 두면 되거든요.
+
+### 변환의 세 갈래
+
+값을 다른 dtype으로 바꾸는 일은 세 종류로 나뉘고, 어느 것도 값을 보고 에러를 고르지 않아요. 배열 영역과 같은 나눔이에요([변환과 승격](/internals/array/conversion/)).
+
+| 갈래 | 쓰는 곳 | 규칙 |
+|---|---|---|
+| 명시적 | 생성자의 `dtype=`, `astype`, `to_numpy(dtype=)`, `to_array(dtype=)` | 손실이 있어도 바꿔요. float → int64는 0 쪽으로 자르고 범위 밖은 포화, NaN은 0 |
+| 암묵적 | 행 대입, `fillna` | dtype만 보고 위로만(`bool → int64 → float64`). 아래로는 값과 상관없이 TypeError(int 컬럼에 `2.0`도) |
+| 정확한 값 | 조회 `x in s` | 컬럼 dtype에 `x`와 정확히 같은 값이 있을 때만 찾아요. 없으면 False |
+
+조회만 손실 없는 변환을 쓰는 이유는 `x in s`가 "이 컬럼에 `x`와 같은 값이 있나"를 묻는 질문이기 때문이에요. 컬럼 dtype으로 `x`를 정확히 나타낼 수 없으면 답은 False예요. `==`는 배열처럼 int를 float64로 반올림해 비교하므로 결과가 달라요.
+
+```python
+>>> (2**53 + 1) in sd.frame.Series([2.0**53])
+False
+>>> (sd.frame.Series([2.0**53]) == 2**53 + 1).tolist()
+[True]
+```
+
+### numpy·pandas와 비트를 맞추는 곳
+
+결과를 다른 라이브러리와 **비트까지** 맞추는 연산이 있어요. 맞추는 방법이 곧 구현을 정했어요.
+
+| 연산 | 맞추는 방법 | 자세히 |
+|---|---|---|
+| float `sum`, `mean`, `var`, `std` | numpy의 pairwise 합을 같은 트리 모양으로, `0.0 +`에서 시작. 그룹 합도 같아요 | [원소별 연산과 리덕션](/internals/frame/elementwise/) |
+| float `//`, `%` | numpy의 `npy_divmod`를 그대로 옮겨요 | 같은 글 |
+| float `min`/`max` | IEEE 754-2019 minimum/maximum = AArch64 `FMIN`/`FMAX` 명령 | 같은 글 |
+| int64 산술 | wrap, 바닥 나눗셈 (numpy, Python과 같음) | 같은 글 |
+| float → string | Python `str(float)` | 같은 글 |
+| string → float, CSV의 float | Python `float(text)` | [read_csv](/internals/frame/csv/) |
+| int64 `mean` | 배열 영역의 `sd.sum(x, dtype=sd.float64)`을 그대로 불러요. 배열의 `sd.mean`과 비트가 같아요 | [컬럼과 메모리](/internals/frame/columns/) |
+
+pandas의 `groupby` 합은 Kahan 보정 합이라서 우리 그룹 합과 비트가 다를 수 있어요. 우리 그룹 합은 그 그룹의 행만 골라 만든 Series의 `sum()`과 비트가 같아요. "그룹 합 = 그 그룹만의 Series 합"이 테스트의 정답이에요.
+
+### 배열 영역과 다른 곳
+
+값 규칙은 배열 영역과 같아요: bool 산술은 int64 산술, int와 float는 float64로 바꿔 비교, float → int64는 포화와 NaN → 0, `std`/`var`의 기본 `correction=0`, `unique`에서 NaN은 하나. 남은 차이는 **결측이 있어서** 생기는 것뿐이에요.
+
+```python
+>>> sd.frame.Series([1, 2]) // 0
+0    <NA>
+1    <NA>
+dtype: int64
+>>> sd.arange(2) // 0
+array([0, 0], dtype=int64)
+```
+
+배열에는 결측이 없어서 int를 0으로 나누면 0을 내야 하지만(numpy와 같아요), 데이터프레임은 "값이 없다"고 답할 수 있어요. `int % 0`, `int ** 음수`도 결측이고, 값이 모자란 리덕션(빈 컬럼의 `mean`, `n - correction ≤ 0`인 `var`)도 NaN이나 에러 대신 결측이에요.
+
+## Python과 C++의 분담
+
+<Fig column caption="데이터프레임 영역이 서 있는 층. 계산은 모두 C++ Column과 커널이 하고, Python 층은 객체와 조립을 맡아요. 배열 영역과 만나는 곳은 interop 한 파일이에요.">
+  <Layers
+    layers={[
+      {
+        title: 'Python',
+        note: 'src/stardust/frame/',
+        items: [
+          { name: '_series · _frame · _index', note: 'Series, DataFrame, Index, RangeIndex 클래스' },
+          { name: '_select · _ops · _reduce', note: '정렬(alignment), 선택, 연산자, 리덕션 조립' },
+          { name: '_groupby · _merge · _sort · _unique', note: '여러 커널을 차례로 부르는 기능' },
+          { name: '_column · _dtypes · _errors', note: '변환 규칙, dtype 인자, 인자 검사' },
+          { name: '_format · _io · _na', note: 'repr, read_csv 인자, NA 싱글턴' },
+        ],
+      },
+      {
+        title: '바인딩',
+        note: 'csrc/bind/frame_bind.cpp',
+        items: [{ name: 'stardust._core.frame', note: 'Column 클래스와 커널 함수들. 확장 모듈은 _core 하나' }],
+      },
+      {
+        title: '커널',
+        note: 'csrc/frame/ops/, io/',
+        items: [
+          { name: 'elementwise · cast · reduce', note: '원소별, astype, 리덕션' },
+          { name: 'selection', note: 'take, filter, 대입, concat' },
+          { name: 'hash', note: 'factorize, 해시 테이블, 라벨 조회' },
+          { name: 'groupby · sort · radix · join', note: '묶기, 정렬, 결합' },
+          { name: 'io/csv', note: 'read_csv' },
+        ],
+      },
+      {
+        title: '데이터',
+        note: 'csrc/frame/',
+        items: [
+          { name: 'column · bitmap', note: 'Column, 결측 비트맵' },
+          { name: 'convert', note: 'Python list·numpy ↔ Column' },
+          { name: 'interop', note: 'Column ↔ sd.ndarray', uses: 'array' },
+          { name: 'parallel.hpp', note: '병렬화 정책' },
+        ],
+      },
+      {
+        title: '바닥',
+        tone: 'dark',
+        items: [
+          { name: 'Buffer · DType', note: 'csrc/base/' },
+          { name: 'pairwise 합 · 포화 변환', note: 'csrc/base/' },
+          { name: '스레드풀', note: 'csrc/parallel/' },
+        ],
+      },
+    ]}
+  />
+</Fig>
+
+### 얇은 Python, 두꺼운 Column과 커널
+
+C++가 맡는 것은 메모리(Buffer, 비트맵, Column), 해시 테이블과 라벨 조회 엔진, 그리고 모든 커널(원소별, take, filter, factorize, 리덕션, 정렬, groupby, join, CSV)이에요. Python이 맡는 것은 `Series`, `DataFrame`, `Index`, `GroupBy` 클래스, 인자 검증, 정렬(alignment) 절차의 조립, `repr`이에요.
+
+배열 영역은 반대로 `ndarray`까지 C++로 만들었어요. 배열은 작은 연산 하나가 수십 ns 단위라서, Python 함수 하나를 거치는 비용(수백 ns)이 그대로 몇 배의 차이로 보이기 때문이에요([전체 구조](/internals/core/overview/)). 데이터프레임은 사정이 달라요.
+
+- **비교 대상의 고정비가 커요.** pandas 연산 하나의 고정비는 수 µs예요. Python 층이 수백 ns를 더해도 그보다 훨씬 작아요.
+- **데이터가 크면 커널 시간이 전부예요.**
+- **옵션이 많은 API를 C++로 파싱하면 읽기 어려워요.** `merge`는 `on`, `left_on`, `right_on`, `how`, `suffixes`를 받고, `groupby`의 `agg`는 문자열, dict, 이름 붙은 튜플을 받아요. 이 분기를 C++로 쓰면 코드가 길어지고 에러 메시지의 일관성을 지키기도 어려워요.
+
+같은 C++ Column과 커널 위에 세 가지 모양을 만들어 원소 10개짜리 연산을 잰 값이에요(Apple M4 Pro, 1스레드, 호출당 최솟값).
+
+| 연산 (10행) | 커널만 | C++ Series | **Python Series** |
+|---|---:|---:|---:|
+| `s + s` | 152 ns | 92 ns | **256 ns** |
+| `s.sum()` | 52 ns | 30 ns | **66 ns** |
+| `df["a"]` | 22 ns | 64 ns | **91 ns** |
+| `df[df["a"] > 0]` | 695 ns | 400 ns | **1.10 µs** |
+
+Python 층이 더하는 비용은 연산 하나에 30~200 ns, 컬럼 3개짜리 필터에서 0.7 µs예요. 원소 100만 개에서는 세 모양의 차이가 측정 오차 안이에요. stardust는 Python Series를 써요.
+
+지금 빌드의 10행 호출 비용을 pandas·Polars와 비교하면 이래요. 위 표보다 늘어난 몫은 결측 전파, 이름 규칙, dtype 검사예요.
+
+| 연산 (10행) | stardust | pandas 3.1.1 | Polars 2.1.0 |
+|---|---:|---:|---:|
+| `s + s` | ⟦FBENCH "s + s" 10 sd@1⟧ | ⟦FBENCH "s + s" 10 pandas⟧ | ⟦FBENCH "s + s" 10 polars@1⟧ |
+| `s.sum()` | ⟦FBENCH "s.sum()" 10 sd@1⟧ | ⟦FBENCH "s.sum()" 10 pandas⟧ | ⟦FBENCH "s.sum()" 10 polars@1⟧ |
+| `df["a"]` | ⟦FBENCH 'df["a"]' 10 sd@1⟧ | ⟦FBENCH 'df["a"]' 10 pandas⟧ | ⟦FBENCH 'df["a"]' 10 polars@1⟧ |
+| `df[df["a"] > 0]` | ⟦FBENCH 'df[df["a"] > 0]' 10 sd@1⟧ | ⟦FBENCH 'df[df["a"] > 0]' 10 pandas⟧ | ⟦FBENCH 'df[df["a"] > 0]' 10 polars@1⟧ |
+
+{/* BENCH-FIG: "s + s" 10, "s.sum()" 10, 'df["a"]' 10, 'df[df["a"] > 0]' 10 — pandas, polars@1, sd@1 | 캡션: 원소 10개짜리 연산 하나의 시간. 작은 데이터에서는 계산보다 호출 경로가 시간을 정해요. */}
+
+작은 데이터의 호출 비용이 어디서 나오는지는 [성능과 검증](/internals/frame/performance/)에 있어요.
+
+### Column은 값 타입으로 Python에 넘어가요
+
+`_core.frame.Column`은 nanobind로 묶은 C++ 구조체예요. 안에는 정수 넷과 `std::shared_ptr<Buffer>` 셋(값, 비트맵, 문자열 위치)이 있어요. Column을 복사해도 데이터는 복사되지 않고 `shared_ptr` 셋만 복사돼요.
+
+이 Column을 **값 타입**(value type)으로 바인딩해요. Python 객체 안에 Column 구조체가 그대로 들어 있고, 커널이 돌려준 Column은 그 자리로 move돼요. 다른 방법은 `std::shared_ptr<Column>`을 holder로 쓰는 것인데, 원소 10개 `add`가 shared_ptr holder로는 190 ns, 값 타입으로는 89 ns예요(Apple M4 Pro, 1스레드). 차이는 nanobind가 `shared_ptr`를 돌려받을 때 하는 일에서 나와요. nanobind의 `stl/shared_ptr.h`[8]는 C++에서 온 `shared_ptr`마다 `shared_ptr<void>` 복사본을 힙에 새로 만들어 Python 객체의 keep-alive 목록에 등록하고, 객체가 사라질 때 둘 다 되돌려요. 값 타입은 Python 객체 안에 미리 잡힌 자리로 move만 해요.
+
+값 타입이라서 "Column 객체를 새로 만들되 Buffer는 공유한다"가 `share()` 한 줄이에요. Copy-on-Write가 이것을 써요. 자세한 것은 [컬럼과 메모리](/internals/frame/columns/)에 있어요.
+
+### 에러 메시지의 함수 이름
+
+에러 메시지는 `to_numpy(): ...`처럼 사용자가 부른 공개 함수의 이름으로 시작해요. 공개 메서드의 Python 코드는 자기 이름을 알지만, 여러 메서드가 함께 쓰는 커널은 누가 불렀는지 몰라요. 그래서 사용자가 닿는 커널(`Column.from_list`, `astype`, `reduce`, `Groups.reduce`, `join_indices` 등)은 선택 인자 `func=`를 받고, 바인딩이 그 이름을 C++ 예외 메시지 앞에 붙여요(`bind/errors.hpp`의 `call_named`). 연산자와 인덱싱은 `func=None`으로 불러 Python 자체의 메시지 형식을 남겨요.
+
+`func`는 Python 문자열 객체 그대로 받아요. 호출마다 `std::string`으로 바꾸면 약 200 ns짜리 작은 리덕션에서 15 ns쯤을 차지해서, str 객체가 캐시해 둔 UTF-8 표현의 포인터(`PyUnicode_AsUTF8`)만 꺼내 넘기고 문자열은 복사하지 않아요.
+
+### 모듈 이름은 모두 밑줄로 시작해요
+
+`src/stardust/frame/`의 모든 구현 모듈은 `_series.py`, `_index.py`처럼 밑줄 이름이에요. 공개 이름은 `__init__.py`의 `__all__`이 전부예요. 구현 모듈을 `index.py`라고 두면 `sd.frame.index`가 `Index` 클래스가 아니라 모듈이 되어 버려요(Python은 하위 모듈을 import하면 부모 패키지의 같은 이름 속성으로 등록하거든요).
+
+### 파일 지도
+
+C++은 `csrc/frame/`, 이름공간 `sd::frame`이에요. `frame/`은 공통 바닥(`base/`, `parallel/`)만 쓰고 배열 영역(`array/`)을 몰라요. 예외는 `frame/interop.cpp` 한 파일이에요.
+
+| 파일 | 내용 |
+|---|---|
+| `frame/column.{hpp,cpp}` | `Column`, 슬라이스, 결과 마무리(`finish_fixed`), 결측 비트맵 합치기, 손실 없는 int64 ↔ float64 변환(`x in s`용), dtype 승격 |
+| `frame/bitmap.hpp` | validity 비트맵: 비트 읽기·쓰기, popcount, 비트 옮기기, 바이트로 펼치기 |
+| `frame/convert.{hpp,cpp}` | Python list·numpy 배열 → Column, Column → list·numpy 뷰 |
+| `frame/interop.{hpp,cpp}` | Column ↔ `sd.ndarray`, int64 평균에 쓰는 배열의 float64 합. `array/`를 아는 유일한 파일 |
+| `frame/parallel.hpp` | 기준값 2¹⁷, 청크 16,384행, `for_chunks`, GIL을 놓는 `Unlocked` |
+| `frame/ops/elementwise`, `cast`, `selection`, `reduce` | 원소별 연산(int64 비트 연산 포함), `astype`, take·filter·대입·`isnan`·concat, 리덕션 |
+| `frame/ops/hash` | Swiss table, 해시 함수, factorize, 라벨 조회 엔진 `LabelTable` |
+| `frame/ops/groupby`, `sort`, `radix`, `join` | `groupby`, 정렬, 기수 정렬과 counting sort, `merge` |
+| `frame/ops/pairwise.hpp` | float 합(공통 `base/pairwise.hpp`를 부름), IEEE min/max |
+| `frame/ops/parse.hpp`, `pow5_table.hpp` | 엄격한 숫자 문법, Eisel–Lemire 파서와 5의 거듭제곱 표 |
+| `frame/io/csv.{hpp,cpp}` | `read_csv` |
+| `bind/frame_bind.cpp` | 하위 모듈 `stardust._core.frame` |
+
+아래 층에서 쓰는 것은 `base/buffer.hpp`(참조 카운트 메모리 블록), `base/dtype.hpp`(DType 열거형과 승격), `base/pairwise.hpp`(pairwise 합의 정의), `base/saturate.hpp`(float → int64 포화 변환), `parallel/pool.hpp`(스레드풀)예요. 데이터프레임은 Accelerate를 쓰지 않아요.
+
+컴파일 플래그는 확장 모듈 전체의 것이에요. 이 영역에 특히 중요한 것은 둘이에요. `-ffp-contract=off`는 곱셈과 덧셈을 FMA 한 명령으로 합치지 못하게 해요. 합치면 반올림이 한 번 줄어서 pandas·numpy와 마지막 비트가 달라져요. `-ffast-math`를 쓰지 않는 것은 NaN을 평범한 값으로 다루기 위해서예요. fast-math 아래에서는 컴파일러가 "NaN은 없다"고 가정하고 `x != x` 같은 검사를 지워 버려요.
+
+## 기능에서 커널까지
+
+공개 기능이 어떤 Python 모듈을 거쳐 어떤 C++ 커널에 닿는지 표로 모으면 이래요.
+
+| 기능 | Python | C++ 커널 | 글 |
+|---|---|---|---|
+| 만들기 (list, numpy, `sd.ndarray`) | `_column.column_from` | `from_list`, `from_numpy`(`convert.cpp`), `from_array`(`interop.cpp`) | [컬럼과 메모리](/internals/frame/columns/) |
+| `to_numpy`, `to_array`, `tolist` | `_column.to_numpy`, `to_array` | `to_numpy_view`, `to_array_view`, `columns_to_array`, `to_list` | [컬럼과 메모리](/internals/frame/columns/) |
+| `head`, `tail`, `.iloc[a:b]` | `_slice` | `Column::slice` (복사 없음) | [컬럼과 메모리](/internals/frame/columns/) |
+| `.loc`, `.iloc`, `[]`, `reindex`, 정렬(alignment) | `_select.py`, `_index.py` | `take`, `filter`, `nonzero`, `LabelTable` | [라벨, 조회, 선택](/internals/frame/labels/) |
+| 행 대입 | `_series._assign` | `set_rows` (Copy-on-Write) | [컬럼과 메모리](/internals/frame/columns/), [라벨, 조회, 선택](/internals/frame/labels/) |
+| 산술, 비교, `&` `|` `^`, `~` | `_ops.py` | `binary_op`, `unary_op` (`elementwise.cpp`) | [원소별 연산과 리덕션](/internals/frame/elementwise/) |
+| `isna`, `fillna`, `dropna`, `isnan` | `_series.py`, `_na.py` | `isna`, `fill_na`, `isnan` | [원소별 연산과 리덕션](/internals/frame/elementwise/) |
+| `astype` | `_series.astype` | `astype` (`cast.cpp`, `parse.hpp`) | [원소별 연산과 리덕션](/internals/frame/elementwise/) |
+| `sum`, `mean`, `min`, `max`, `count`, `std`, `var` | `_reduce.py` | `reduce` (`reduce.cpp`, `pairwise.hpp`) | [원소별 연산과 리덕션](/internals/frame/elementwise/) |
+| `unique_values`, `nunique`, `duplicated`, `value_counts` | `_unique.py` | `factorize_rows`, `group_counts`, `stable_order` | [해시 테이블과 factorize](/internals/frame/hashing/) |
+| `groupby` + 집계 | `_groupby.py` | `factorize_rows`, `Groups`, `sort_groups` | [groupby와 정렬](/internals/frame/groupby-sort/) |
+| `sort_values`, `sort_index` | `_sort.py` | `argsort` (`sort.cpp`, `radix.hpp`) | [groupby와 정렬](/internals/frame/groupby-sort/) |
+| `merge` | `_merge.py` | `join_indices` (`join.cpp`) | [merge와 concat](/internals/frame/merge-concat/) |
+| `concat` | `_merge.py` | `concat` (`selection.cpp`) | [merge와 concat](/internals/frame/merge-concat/) |
+| `read_csv` | `_io.py` | `read_csv` (`io/csv.cpp`) | [read_csv](/internals/frame/csv/) |
+| `repr` | `_format.py` | `to_list` (보여 줄 행만) | — |
+
+표에서 보이듯 C++ 커널 수는 기능 수보다 훨씬 적어요. 몇 개의 기본 연산이 여러 기능을 받치고 있기 때문이에요.
+
+- **`take(positions)`**: 위치 배열대로 행을 모아요(gather). 위치 -1은 결측 행이에요. `reindex`, 정렬(alignment), `merge`, 정렬, `groupby`의 `min`/`max`/`first`/`last`가 모두 "위치를 계산한 뒤 `take`"라서, 이 기능들은 dtype마다 따로 코드를 쓰지 않아요.
+- **factorize**: 값을 처음 나타난 순서의 정수 코드로 바꿔요. 중복 기능 다섯, `groupby`, `merge`, 라벨 조회가 이 위에 있어요.
+- **`argsort`**: 행의 순서를 돌려줘요. `sort_values`, `sort_index`가 이 위치로 `take`해요.
+
+### 예: `groupby` 한 번
+
+조금 더 큰 기능 하나를 따라가 보면, Python 층이 기본 연산을 조립하는 모양이 보여요.
+
+<Fig caption="df.groupby('k')['v'].sum()의 입력과 결과. 키 b의 행(0, 2)이 한 그룹, a의 행(1)이 한 그룹이에요. 결측 키 행은 dropna=True라서 빠져요.">
+  <FrameFig name="df" columns={['k', 'v']} dtypes={['string', 'float64']} data={[['b', 1.0], ['a', 2.0], ['b', 3.0], [null, 4.0]]} rowTones={['1', '2', '1', 'm']} />
+  <Op>→</Op>
+  <FrameFig name="결과" columns={['k', 'v']} dtypes={['string', 'float64']} data={[['a', 2.0], ['b', 4.0]]} rowTones={['2', '1']} />
+</Fig>
+
+<Fig column caption="df.groupby('k')['v'].sum()의 흐름. Python의 _Grouping이 키 코드와 그룹 순서를 한 번 계산해 두고, 값 컬럼마다 C++ Groups.reduce를 불러요.">
+  <Steps
+    steps={[
+      { label: 'df.groupby("k")', where: '_groupby.py', note: '인자를 검사하고 지금의 컬럼 사전을 복사해 둬요(데이터는 복사하지 않아요). 아직 계산하지 않아요.' },
+      { label: '["v"].sum()', where: '_groupby.py', note: '처음 집계할 때 _Grouping을 만들어요.' },
+      { label: 'factorize_rows([k])', depth: 1, where: 'ops/hash.cpp', note: '키 → 그룹 코드 [0, 1, 0, 2]와 그룹마다 처음 나온 행 [0, 1, 3]' },
+      { label: 'Groups(codes, 3)', depth: 1, where: 'ops/groupby.cpp', note: '안정 counting sort로 행을 그룹별로 모아요: 그룹 0 = 행 0, 2 / 그룹 1 = 행 1 / 그룹 2 = 행 3' },
+      { label: 'sort_groups(k.take(first))', depth: 1, where: 'ops/sort.cpp', note: '그룹마다 대표 키 [b, a, NA]를 정렬해 그룹 순서 [1, 0, 2]를 얻고, 결측 키 그룹은 빼요.' },
+      { label: 'Groups.reduce("sum", v)', depth: 1, where: 'ops/groupby.cpp', note: '그룹마다 행을 원래 순서대로 pairwise로 더해요: [4.0, 2.0, 4.0]' },
+      { label: 'take(order)', depth: 1, where: 'ops/selection.cpp', note: '그룹 순서대로 키와 합을 모아 결과 DataFrame을 만들어요.' },
+    ]}
+  />
+</Fig>
+
+`groupby`는 첫 집계에서 키 코드와 그룹 순서를 계산해 캐시하므로, 같은 `groupby` 객체로 `sum`과 `mean`을 차례로 부르면 factorize는 한 번만 돌아요. 그동안 다른 코드가 `df["k"] = ...`로 컬럼을 바꿔도 옛 키와 새 값이 섞이지 않도록 부른 순간의 컬럼 사전을 복사해 둬요. Column이 값 타입이라 이 복사는 `shared_ptr` 몇 개의 복사예요.
+
+## pandas·Polars와 구조 비교
+
+같은 문제를 세 라이브러리가 다르게 풀어요. pandas와 Polars의 동작은 pandas 3.1.1, Polars 2.1.0 기준이에요.
+
+### 컬럼을 담는 그릇
+
+**pandas: BlockManager.** pandas의 DataFrame 안에는 `BlockManager`가 있어요. 소스의 설명대로 "여러 dtype의 라벨 붙은 2D ndarray 묶음"을 관리하는 구조예요 [1]. 같은 dtype의 컬럼은 2차원 numpy 배열 하나(Block)로 합쳐지고, 매니저는 "컬럼 j가 어느 블록의 몇 번째 줄인가"를 표(`blknos`, `blklocs`)로 들고 있어요.
+
+<Fig caption="pandas 3.1.1에서 pd.DataFrame({'a': [1, 2, 3], 'b': [1.0, 2.0, 3.0], 'c': [4, 5, 6], 's': ['x', 'y', 'z']})의 블록. int64 컬럼 a와 c는 (2, 3) 배열 하나로 합쳐져요. 블록은 컬럼이 행인 모양이라, 컬럼 하나는 메모리에서 연속이에요.">
+  <ArrayFig name="int64 블록 (a, c)" data={[[1, 2, 3], [4, 5, 6]]} tones={[['a', 'a', 'a'], ['', '', '']]} note="shape (2, 3), strides (24, 8)" />
+  <ArrayFig name="float64 블록 (b)" data={[[1.0, 2.0, 3.0]]} note="shape (1, 3)" />
+  <ArrayFig name="str 블록 (s)" data={[['x', 'y', 'z']]} tones={[['m', 'm', 'm']]} note="ExtensionBlock" />
+</Fig>
+
+블록으로 합치면 같은 dtype 컬럼 여러 개에 같은 연산을 할 때(`df * 2`, `df.sum()`) numpy 호출 한 번으로 끝나고, 같은 dtype만 있는 DataFrame의 `to_numpy`는 복사 없이 블록을 내줄 수 있어요. 대가는 구조가 두 겹이 된다는 것이에요. 컬럼을 추가하면 새 블록이 생기고 어떤 연산에서는 블록을 다시 합쳐요(consolidation). pandas 3.1.1에서 위 DataFrame에 `df["d"] = ...`로 int 컬럼을 더하면 int64 블록이 2개(블록 전체는 4개)가 되고, `_consolidate_inplace()` 뒤에는 int64 블록이 다시 1개가 돼요. 컬럼 하나를 꺼낼 때도 "몇 번째 블록의 몇 번째 줄"을 찾아 뷰를 만들어야 해요.
+
+**stardust: 컬럼마다 Column 하나.** 블록이 없어요. 컬럼마다 dtype을 따로 지키고, `df["a"]`는 사전에서 Column 하나를 꺼내 `Series`로 감싸는 일이에요. 같은 dtype 컬럼 여러 개에 대한 연산은 컬럼마다 커널을 한 번씩 불러요. 커널 하나가 수십~수백 ns이고 큰 데이터에서는 커널 시간이 지배하므로, 블록으로 합쳐 아끼는 몫보다 구조가 하나인 이점이 커요. 행 하나를 고르면 1행 DataFrame이에요. object dtype이 없어서 행 하나를 Series로 만들 공통 dtype이 없기 때문이에요.
+
+**Polars: Arrow 배열의 묶음.** Polars는 Apache Arrow 컬럼 형식을 따라요 [3, 4]. Series는 Rust의 `ChunkedArray`이고, 이것은 Arrow 배열 여러 개(청크)의 목록이에요. 공식 문서의 설명대로 데이터를 덧붙일 수 있게 청크로 새 메모리를 붙여 가고, 여러 번 붙인 뒤에는 `rechunk`로 하나로 합치기를 권해요 [5]. Polars 2.1.0에서 `pl.concat([a, b], rechunk=False)`의 결과는 청크가 2개예요.
+
+stardust의 Column은 언제나 버퍼 하나예요. 커널이 청크 경계를 신경 쓸 필요가 없고, 슬라이스의 시작 위치는 정수 하나(`offset`)예요. 대가로 `concat`은 언제나 새 버퍼로 복사해요.
+
+### 결측 표현
+
+| | 표현 | 결측 자리의 값 |
+|---|---|---|
+| pandas 기본 dtype | int에 결측이 생기면 float64로 바꾸고 NaN으로 표시. 문자열은 NaN | NaN |
+| pandas nullable dtype (`Int64`, `Float64`, `boolean`) | 값 배열 `_data` + 행마다 1바이트 bool 배열 `_mask` (True = 결측) [1] | 정해져 있지 않아요 |
+| Polars (Arrow) | validity 비트맵 (행마다 1비트, LSB 우선, 1 = 값 있음). 결측이 없으면 비트맵을 생략할 수 있어요 [3] | Arrow 명세상 아무 값이나 될 수 있어요 [3] |
+| stardust | validity 비트맵 (Arrow와 같은 비트 순서). 결측이 없으면 **반드시** 없어요 | **언제나 0** (문자열은 길이 0) |
+
+pandas 3.1.1에서 `pd.array([1, None, 3], dtype="Int64")`의 `_data`는 `[1, 1, 3]`이에요. 결측 자리에 앞 값이 남아 있어요. Arrow 명세도 결측 칸의 값을 정하지 않아요 [3]. stardust는 결측 자리를 언제나 0으로 지워요. 그러면 해시와 비교에 쓰레기 값이 섞이지 않고, float 합이 결측 행(0.0)을 분기 없이 그냥 더할 수 있어요. 비트맵과 바이트 마스크의 득실, 0으로 지우는 방법은 [컬럼과 메모리](/internals/frame/columns/)에 있어요.
+
+### 문자열
+
+| | 저장 방식 |
+|---|---|
+| pandas 3.1.1 기본 `str` dtype | pyarrow가 설치되어 있으면 Arrow 문자열 배열, 없으면 Python str 객체의 object 배열 [2] |
+| Polars | Arrow의 문자열 view 레이아웃. 행마다 16바이트 view에 길이, 12바이트 이하의 문자열은 그 안에 통째로, 긴 문자열은 앞 4바이트(prefix)와 버퍼 위치 [3, 6] |
+| stardust | offsets(int64, 행 수 + 1개) + 이어 붙인 UTF-8 바이트. Arrow `large_string`과 같은 레이아웃 |
+
+pyarrow가 없는 환경(이 사이트의 비교 측정 환경이 그래요)의 pandas는 문자열마다 Python 객체를 가지고 있어서, 해시하거나 비교할 때 객체를 하나씩 따라가요. stardust와 Polars는 바이트를 바로 읽어요. Polars의 view 레이아웃은 `filter`와 `take`가 문자열 길이와 무관하게 16바이트 view만 옮기는 대신, 행마다 16바이트를 쓰고 걸러진 뒤에도 남은 긴 문자열 버퍼를 언제 정리할지 정해야 해요 [6]. stardust의 offsets 레이아웃은 행마다 8바이트이고 문자열 바이트가 행 순서로 붙어 있어서, 해시·정렬·이어 붙이기가 메모리를 앞에서부터 차례로 읽어요. `filter`와 `take`는 바이트를 복사하므로 문자열 길이에 비례해요. 자세한 것은 [컬럼과 메모리](/internals/frame/columns/)에 있어요.
+
+### 실행 모델
+
+pandas와 stardust는 eager예요. 메서드를 부르면 곧바로 계산하고 결과를 돌려줘요. Polars는 eager API와 함께 lazy API(`LazyFrame`)가 있어요. lazy 쿼리는 실행을 요청하기 전까지 계산하지 않고, 쿼리 최적화기가 전체 계획을 보고 고쳐 써요(예: 파일에서 필요한 부분만 읽기) [7].
+
+stardust에는 lazy 엔진이 없어요. 연산 하나는 부르는 즉시 커널 하나(또는 정해진 몇 개)로 끝나고, 연산 사이의 최적화(두 원소별 연산을 한 루프로 합치기, 쓰지 않을 컬럼을 읽지 않기)는 하지 않아요. 그래서 어떤 연산이 어떤 커널로 계산되는지가 호출 그대로 보이고, 이 글들이 설명하는 커널이 실행되는 전부예요. 대신 lazy 엔진이 얻는 이득, 예를 들어 `(s + 1) * 2`에서 중간 결과 컬럼을 메모리에 쓰지 않는 것은 얻지 못해요.
+
+### Copy-on-Write
+
+세 라이브러리 모두 "다른 객체에서 파생된 객체를 고쳐도 원본이 바뀌지 않는다"는 의미를 지켜요. 방법이 달라요.
+
+- **pandas 3**: Copy-on-Write가 유일한 모드예요 [2]. 블록마다 `BlockValuesRefs`가 같은 값을 공유하는 블록들을 약한 참조(weakref) 목록으로 들고, 쓰기 직전에 `has_reference()`로 다른 주인이 살아 있는지 보고 있으면 복사해요 [1].
+- **Polars**: Arrow 메모리는 불변이라 여러 (부분) 뷰가 복사 없이 같은 메모리를 공유해요 [5]. Polars 2.1.0에서 `s = df["a"]; s[0] = 99`를 하면 `s`만 바뀌고 `df`는 그대로예요.
+- **stardust**: Buffer를 가리키는 `shared_ptr`의 참조 수(`use_count()`)를 봐요. 1이면 그 자리에서 쓰고, 2 이상이면 먼저 복사해요. 쓰는 쪽은 그 전에 자기만의 Column 객체를 가져요(`share()`).
+
+세 라이브러리 모두 numpy로 내보내는 배열은 **읽기 전용**이에요. 쓸 수 있으면 사용자가 그 배열을 고쳐 원본 Series를 바꿀 수 있어서, Copy-on-Write의 약속이 깨지기 때문이에요. pandas 3.1.1과 Polars 2.1.0에서도 `to_numpy()`의 결과는 `flags.writeable`이 False예요. 들어오는 쪽은 달라요. Polars 2.1.0은 numpy 배열의 메모리를 공유하고(`np.shares_memory`가 True), stardust는 언제나 복사해요. 그 이유는 [컬럼과 메모리](/internals/frame/columns/)에 있어요.
+
+### 요약
+
+| | pandas 3.1.1 | Polars 2.1.0 | stardust |
+|---|---|---|---|
+| 컬럼 그릇 | 같은 dtype을 합친 2D 블록 (BlockManager) | 청크 목록 (`ChunkedArray`) | 컬럼마다 연속 버퍼 하나 |
+| 결측 | 기본 dtype은 NaN, nullable은 1바이트 마스크 | Arrow 비트맵 | Arrow와 같은 비트맵, 결측 자리 0 |
+| int + 결측 | float64로 바뀜 (기본 dtype) | int로 남음 | int로 남음 |
+| 문자열 | Arrow 또는 Python 객체 | 16바이트 view | offsets + 바이트 |
+| 실행 | eager | eager + lazy | eager |
+| 쓰기 | Copy-on-Write (약한 참조 추적) | 불변 메모리 공유 | Copy-on-Write (`use_count`) |
+| 병렬화 | 대부분 1스레드 | 기본 14스레드 (E코어 포함) | 행 2¹⁷개 이상일 때 P코어 10개 |
+
+## 성능의 위치
+
+큰 데이터(1M 행)에서 시간을 정하는 것은 커널이고, 작은 데이터(10~1천 행)에서는 호출 경로예요. 대표적인 줄을 보면 이래요.
+
+| 1M 행 | stardust 1스레드 | stardust 10스레드 | pandas | Polars 14스레드 |
+|---|---:|---:|---:|---:|
+| `float + float` | ⟦FBENCH "float + float" 1M sd@1⟧ | ⟦FBENCH "float + float" 1M sd@10⟧ | ⟦FBENCH "float + float" 1M pandas⟧ | ⟦FBENCH "float + float" 1M polars@14⟧ |
+| `groupby string sum` | ⟦FBENCH "groupby string sum" 1M sd@1⟧ | ⟦FBENCH "groupby string sum" 1M sd@10⟧ | ⟦FBENCH "groupby string sum" 1M pandas⟧ | ⟦FBENCH "groupby string sum" 1M polars@14⟧ |
+| `sort int64` | ⟦FBENCH "sort int64" 1M sd@1⟧ | ⟦FBENCH "sort int64" 1M sd@10⟧ | ⟦FBENCH "sort int64" 1M pandas⟧ | ⟦FBENCH "sort int64" 1M polars@14⟧ |
+| `merge n x n/10 inner` | ⟦FBENCH "merge n x n/10 inner" 1M sd@1⟧ | ⟦FBENCH "merge n x n/10 inner" 1M sd@10⟧ | ⟦FBENCH "merge n x n/10 inner" 1M pandas⟧ | ⟦FBENCH "merge n x n/10 inner" 1M polars@14⟧ |
+| `read_csv mixed` | ⟦FBENCH "read_csv mixed" 1M sd@1⟧ | ⟦FBENCH "read_csv mixed" 1M sd@10⟧ | ⟦FBENCH "read_csv mixed" 1M pandas⟧ | ⟦FBENCH "read_csv mixed" 1M polars@14⟧ |
+
+{/* BENCH-FIG: "float + float" 1M, "groupby string sum" 1M, "sort int64" 1M, "merge n x n/10 inner" 1M, "read_csv mixed" 1M — pandas, sd@1, sd@10, polars@14 | 캡션: 1M 행에서의 대표 연산. 원소별 연산은 메모리 대역폭에, 해시 연산은 캐시 미스에 묶여요. */}
+
+정성적으로 말하면 이래요. 10행과 1천 행은 호출 비용이 시간을 정하고, pandas는 연산 하나의 고정비가 수 µs라서 이 크기에서 차이가 가장 커요. 10만 행은 스레드를 쓰는 기준값(2¹⁷ = 131,072행) 바로 아래라서 대부분의 연산이 1스레드로 돌아요. 1M 행에서는 원소별 연산과 리덕션이 메모리 대역폭에 가깝고, 키가 많은 해시 연산(`nunique`, `groupby`, `merge`)은 캐시 미스가 시간을 정해요. 수치 전체와 원인은 [성능과 검증](/internals/frame/performance/)에 있어요.
+
+## 참고 문헌
+
+1. pandas 3.1.1 소스. `pandas/core/internals/managers.py`(`BaseBlockManager`, 블록 합치기), `pandas/core/internals/blocks.py`(`Block._maybe_copy`), `pandas/_libs/internals.pyi`(`BlockValuesRefs`), `pandas/core/arrays/masked.py`(`BaseMaskedArray`의 `_data`와 `_mask`). https://github.com/pandas-dev/pandas
+2. pandas 3.1.1 문서, "Migration guide": Copy-on-Write(유일한 모드, 읽기 전용 numpy 배열, chained assignment), 새 기본 문자열 dtype(pyarrow가 있으면 Arrow, 없으면 object 배열). https://pandas.pydata.org/docs/user_guide/migration.html
+3. Apache Arrow, "Arrow Columnar Format": validity 비트맵(LSB 번호, 1 = 값 있음, 결측 0개면 생략 가능), 결측 칸의 값, 64바이트 정렬 권장, 가변 길이 binary의 offsets(32비트와 64비트), boolean의 비트 패킹, Binary View 레이아웃. https://arrow.apache.org/docs/format/Columnar.html
+4. Polars User Guide, "Data types and structures". https://docs.pola.rs/user-guide/concepts/data-types-and-structures/
+5. Polars Rust API 문서, `ChunkedArray`의 "Memory layout"(청크, Arrow 백엔드, 불변 메모리의 복사 없는 뷰, `rechunk`). https://docs.rs/polars/latest/polars/chunked_array/struct.ChunkedArray.html
+6. R. Vink, "Why we have rewritten the string data type", Polars blog, 2024-01-30. https://pola.rs/posts/polars-string-type/
+7. Polars User Guide, "Lazy API — Usage". https://docs.pola.rs/user-guide/lazy/using/
+8. nanobind 소스, `include/nanobind/stl/shared_ptr.h`(`shared_from_cpp`가 만드는 `shared_ptr<void>` 복사본과 keep-alive 등록). https://github.com/wjakob/nanobind

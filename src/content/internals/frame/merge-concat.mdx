@@ -1,0 +1,525 @@
+---
+title: merge와 concat
+group: 연산
+order: 4
+summary: merge가 쓰는 해시 조인(오른쪽 키로 테이블을 만들고 왼쪽 키로 조회), 결과 행 순서 규칙을 정렬 없이 지키는 방법, NA 키와 다중 키, outer의 남은 오른쪽 행, right 조인을 left 조인의 거울로 푸는 방법, 결과 컬럼 조립을 설명해요. concat의 dtype 승격과 버퍼 이어 붙이기, pandas·Polars와의 비교도 다뤄요.
+seeAlso: [hashing, groupby-sort, labels, parallel, performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import FrameFig from '../../../components/fig/FrameFig.astro';
+import Op from '../../../components/fig/Op.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+`merge`는 두 표에서 키 컬럼의 값이 같은 행끼리 짝지어 옆으로 이어 붙이는 조인이에요. `concat`은 표들을 아래로 이어 붙여요. 둘 다 결과를 새로 계산하는 연산이 아니라 **행을 옮기는** 연산이라서, 핵심은 "어느 행이 결과의 어디에 가는가"를 빨리, 그리고 규칙대로 정하는 데 있어요.
+
+merge는 C++ 함수 `join_indices`(`csrc/frame/ops/join.cpp`) 하나가 **(왼쪽 위치, 오른쪽 위치) 두 배열**을 만들고, Python 층(`src/stardust/frame/_merge.py`)이 그 위치로 모든 컬럼을 `take`해서 결과를 조립해요.
+
+<Fig column caption='sd.frame.merge(left, right, on="k") 한 번의 흐름. 키를 정수 코드로 바꾸는 데까지가 해시 테이블의 일이고, 나머지는 정수 배열 위의 counting sort와 두 번 훑기예요.'>
+  <Steps
+    steps={[
+      { label: 'merge(left, right, on="k")', where: '_merge.py', note: '옵션 검사(how, on 또는 left_on/right_on, sort, suffixes), 키 컬럼 꺼내기' },
+      { label: 'join_indices(lcols, rcols, how)', where: 'ops/join.cpp', note: '키 dtype이 양쪽에서 같은지 검사. 다르면 TypeError' },
+      { label: 'ValueCodes(right[j])', where: 'ops/hash.cpp', note: 'build: 오른쪽 키만 테이블에 넣어 행마다 코드(처음 나타난 순서). NA 행은 -1', depth: 1 },
+      { label: 'lookup(left[j])', where: 'ops/hash.cpp', note: 'probe: 왼쪽 키를 같은 테이블에서 조회만. 없거나 NA면 -1', depth: 1 },
+      { label: '다중 키: 혼합 기수로 합치기', where: 'ops/join.cpp', note: 'code = code × n_j + code_j. 2⁶²를 넘을 것 같으면 오른쪽 튜플 코드로 좁히기', depth: 1 },
+      { label: 'right 조인: 양쪽 바꾸기', where: 'ops/join.cpp', note: '왼쪽 코드를 처음 나타난 순서로 다시 번호 매겨 build 쪽으로', depth: 1 },
+      { label: 'counting_sort(build 코드)', where: 'ops/radix.hpp', note: 'build 행을 코드별로 모은 CSR. 한 코드 안에서는 원래 행 순서', depth: 1 },
+      { label: '쌍 세기 → 누적합 → 채우기', where: 'ops/join.cpp', note: 'probe 행을 차례로: 짝마다 (p, b), 짝이 없으면 (p, -1) 또는 건너뜀', depth: 1 },
+      { label: 'outer: 남은 build 행', where: 'ops/join.cpp', note: '한 번도 짝지어지지 않은 build 행을 (-1, b)로 뒤에', depth: 1 },
+      { label: '컬럼 조립', where: '_merge.py', note: '컬럼마다 take(lpos) / take(rpos). on 키 합치기, suffixes, sort=True면 안정 정렬' },
+    ]}
+  />
+</Fig>
+
+설계의 뼈대는 네 가지예요.
+
+- **결과 행 순서가 반복문의 순서예요.** 왼쪽 행을 차례로 훑고, 한 왼쪽 행 안에서는 짝인 오른쪽 행을 오른쪽 순서로 내보내요. outer는 짝이 없던 오른쪽 행을 오른쪽 순서로 뒤에 붙여요. 이 순서가 저절로 나오도록 테이블을 오른쪽에 만들고 왼쪽으로 조회해요. 결과를 다시 정렬하는 단계가 없어요.
+- **"같은 키"는 factorize가 정해요.** NaN끼리, `0.0`과 `-0.0`이 같은 키인 규칙이 unique·groupby와 같은 코드에서 나와요. 다른 점은 하나, **NA 키는 아무것과도 맞지 않는다**예요.
+- **merge는 위치 두 배열만 만들어요.** 컬럼 값은 `take`가 옮기고, 위치 -1은 NA가 돼요. 그래서 merge에는 dtype별 코드가 키 해시 말고는 없어요.
+- **결과는 스레드 수와 무관해요.** 테이블의 코드, CSR, 출력 배치가 모두 직렬로 계산한 것과 정확히 같아요.
+
+concat은 Python에서 컬럼 집합과 공통 dtype을 정하고, C++의 `concat` 커널(`ops/selection.cpp`)이 같은 dtype의 컬럼들을 한 Buffer로 복사해 이어 붙여요.
+
+이 글의 수치는 따로 적지 않으면 Apple M4 Pro 한 대에서 1스레드로 잰 호출당 최솟값이에요. pandas·Polars 이야기는 pandas 3.1.1, Polars 2.1.0 기준이에요.
+
+## 행 순서 규칙
+
+### 규칙
+
+```python
+>>> L = sd.frame.DataFrame({"k": ["b", "a", "b", "c"], "lv": [1, 2, 3, 4]})
+>>> R = sd.frame.DataFrame({"k": ["a", "b", "d", "b"], "rv": [10, 20, 30, 40]})
+>>> sd.frame.merge(L, R, on="k")
+   k  lv  rv
+0  b   1  20
+1  b   1  40
+2  a   2  10
+3  b   3  20
+4  b   3  40
+>>> sd.frame.merge(L, R, on="k", how="outer")
+   k    lv    rv
+0  b     1    20
+1  b     1    40
+2  a     2    10
+3  b     3    20
+4  b     3    40
+5  c     4  <NA>
+6  d  <NA>    30
+```
+
+<Fig column caption='같은 색은 같은 키예요. inner는 왼쪽 행 순서(b, a, b)를 따르고, 한 왼쪽 행의 짝(b의 짝 20, 40)은 오른쪽 순서로 와요. outer는 짝 없는 왼쪽 행(c)을 그 자리에 두고, 짝 없는 오른쪽 행(d)을 맨 뒤에 붙여요.'>
+  <FigRow>
+    <FrameFig name="L" columns={['k', 'lv']} data={[['b', 1], ['a', 2], ['b', 3], ['c', 4]]} rowTones={['1', '2', '1', 'm']} />
+    <FrameFig name="R" columns={['k', 'rv']} data={[['a', 10], ['b', 20], ['d', 30], ['b', 40]]} rowTones={['2', '1', 'm', '1']} />
+  </FigRow>
+  <FigRow>
+    <FrameFig name='how="inner"' columns={['k', 'lv', 'rv']} data={[['b', 1, 20], ['b', 1, 40], ['a', 2, 10], ['b', 3, 20], ['b', 3, 40]]} rowTones={['1', '1', '2', '1', '1']} />
+    <FrameFig name='how="outer"' columns={['k', 'lv', 'rv']} data={[['b', 1, 20], ['b', 1, 40], ['a', 2, 10], ['b', 3, 20], ['b', 3, 40], ['c', 4, null], ['d', null, 30]]} rowTones={['1', '1', '2', '1', '1', 'm', 'm']} />
+  </FigRow>
+</Fig>
+
+| `how` | 결과 행 순서 |
+|:---:|---|
+| `inner` | 왼쪽 행 순서. 한 왼쪽 행 안에서는 짝인 오른쪽 행이 오른쪽 순서로. 짝 없는 행은 빠져요 |
+| `left` | inner와 같고, 짝 없는 왼쪽 행이 제자리에 (오른쪽 값은 NA) |
+| `outer` | left와 같고, 짝 없던 오른쪽 행이 오른쪽 순서로 맨 뒤에 |
+| `right` | left의 좌우 대칭: 오른쪽 행 순서, 한 오른쪽 행 안에서는 짝인 왼쪽 행이 왼쪽 순서로 |
+
+이 규칙은 이중 반복문으로 그대로 쓸 수 있어요. 테스트의 정답이 바로 이 반복문이에요(`tests/frame/test_merge.py`의 `oracle`).
+
+```python
+# tests/frame/test_merge.py, oracle (줄인 발췌): 규칙을 그대로 옮긴 O(n·m) 참조 구현
+def one_sided(probe, build, keep_probe, keep_build):
+    out, hit = [], set()
+    for p, pk in enumerate(probe):
+        found = [b for b, bk in enumerate(build) if matches(pk, bk)]   # 오른쪽 순서
+        hit.update(found)
+        out += [(p, b) for b in found] or ([(p, None)] if keep_probe else [])
+    if keep_build:
+        out += [(None, b) for b in range(len(build)) if b not in hit]  # 남은 오른쪽 행
+    return out
+# right: 양쪽을 바꾼 one_sided를 부르고 쌍을 뒤집는다
+```
+
+hypothesis가 키 dtype(int64, float64, string, bool), NA, NaN, `-0.0`, 키 개수(1–2), 행 수(0–12), `how`를 섞어 만든 입력에서 merge 결과의 행 쌍이 이 반복문과 정확히 같은지 봐요. 각 쪽에 행 번호 컬럼을 달아 두어서 어떤 행끼리 어떤 순서로 짝지어졌는지까지 비교해요.
+
+### 왜 이 규칙인가
+
+- **결과가 해시 함수, 테이블 크기, 스레드 수와 무관해요.** "테이블에서 나온 순서"를 결과 순서로 쓰면 해시 함수나 파티션 수가 바뀔 때마다 행 순서가 바뀌어요. 위의 규칙은 입력 순서만으로 정해져요.
+- **왼쪽 표를 기준으로 오른쪽 정보를 붙이는 흔한 쓰임과 맞아요.** 주문 기록(왼쪽)에 상품 가격(오른쪽)을 붙이면 결과가 주문 순서로 남아요. left 조인이면 결과의 처음 몇 행이 왼쪽 표의 처음 몇 행과 같아요(오른쪽 키가 고유할 때는 결과가 왼쪽과 한 행씩 대응해요).
+- **pandas와 겹치는 부분이 커요.** pandas 3.1.1의 inner·left 조인(`sort=False`)은 같은 순서를 내요(아래 비교). outer만 다르게 정렬해요.
+
+## 해시 조인의 다섯 단계
+
+### 1. build: 오른쪽 키를 코드로 (`ValueCodes`)
+
+조인의 가장 단순한 방법은 위의 이중 반복문이에요. 왼쪽 $n$행, 오른쪽 $m$행이면 비교가 $nm$번이라 1M × 10만이면 $10^{11}$번이에요. **해시 조인**은 한쪽 키로 해시 테이블을 만들고(build) 다른 쪽 키로 그 테이블을 찾아서(probe) $O(n + m)$에 짝을 찾아요. 메모리가 큰 시스템에서 해시 기반 질의 처리가 유리하다는 것은 DeWitt 등이 정리했어요[1].
+
+stardust는 오른쪽 키로 `ValueCodes`(`ops/hash.hpp`)를 만들어요. 오른쪽 키 컬럼을 factorize해서 행마다 "처음 나타난 순서의 정수 코드"를 주는 것이에요.
+
+```cpp
+// csrc/frame/ops/hash.cpp, ValueCodes::ValueCodes (줄인 발췌)
+ValueCodes::ValueCodes(const Column& build) : build_(build) {
+    auto valid = [this](std::int64_t i) { return build_.is_valid(i); };
+    if (build.dtype == DType::String) {          // 문자열: 바이트를 해시(HashBytes)
+        strings_ = std::make_unique<Partitioned<std::string_view, HashBytes>>();
+        strings_->build(n, [this](std::int64_t i) { return build_.string_at(i); }, valid, codes_.data());
+    } else {                                     // 8바이트 키: int64, float_key(float64), bool
+        words_ = std::make_unique<Partitioned<std::uint64_t, Fmix64>>();
+        words_->build(n, [this](std::int64_t i) { return word_key(build_, i); }, valid, codes_.data());
+    }
+    if (build.null_count > 0) {                  // NA 행은 아무것과도 맞지 않는다: -1
+        const std::int64_t na = /* NA 행이 받은 공통 코드 */;
+        for (auto& c : codes_) c = c == na ? -1 : c > na ? c - 1 : c;   // 뒤 코드는 하나씩 당긴다
+        --ngroups_;  na_code_ = na;
+    }
+}
+```
+
+- `Partitioned::build`는 factorize 그 자체예요. 행이 2¹⁷개 이상이고 풀을 쓸 수 있으면 해시의 위쪽 8비트로 256개 파티션에 나눠 병렬로 만들고, 코드는 직렬 factorize와 정확히 같아요. Swiss table, 해시 함수(fmix64, wyhash의 mum), 파티션은 [해시 테이블과 factorize](/internals/frame/hashing/)에 있어요.
+- float64 키는 `float_key`로 정규화한 비트를 키로 써요. 모든 NaN이 하나의 NaN 비트로, `-0.0`이 `0.0`의 비트로 바뀌어서 "비트가 같으면 같은 키"가 돼요.
+- **NA 처리**: factorize는 NA 행을 테이블에 넣지 않고, 모든 NA 행에 처음 NA 행 순서의 공통 코드 하나를 줘요(groupby에서는 NA끼리 한 그룹이에요). merge에서는 NA가 짝을 갖지 않으므로 그 코드를 -1로 바꾸고, 그보다 큰 코드를 하나씩 당겨 코드가 `0 .. ngroups-1`로 빈틈없게 해요.
+
+<Fig caption="오른쪽 키 [3, NA, 5, 3]의 build. factorize의 코드에서 NA 코드(1)를 -1로 바꾸고, 그 뒤 코드(2)를 하나 당겨요. 서로 다른 키는 2개예요.">
+  <ArrayFig name="right.k" data={[3, 'NA', 5, 3]} tones={['', 'g', '', '']} />
+  <Op note="factorize">→</Op>
+  <ArrayFig name="코드" data={[0, 1, 2, 0]} tones={['', 'g', 'a', '']} note="NA 코드 = 1" />
+  <Op note="NA 빼기">→</Op>
+  <ArrayFig name="rc" data={[0, -1, 1, 0]} tones={['', 'g', 'a', '']} note="ngroups = 2" />
+</Fig>
+
+### 2. probe: 왼쪽 키를 조회만
+
+왼쪽 키는 테이블에 넣지 않고 찾기만 해요(`ValueCodes::lookup`). 결과는 왼쪽 행마다 오른쪽 코드, 없거나 NA면 -1이에요.
+
+```cpp
+// csrc/frame/ops/hash.cpp, find_rows (줄인 발췌): dtype과 NA 유무는 호출마다 한 번만 고른다
+template <class Key, class Hash, class KeyOf>
+void find_rows(const Partitioned<Key, Hash>& table, const Column& probe, KeyOf key_of,
+               std::int64_t skip, std::int64_t* out) {
+    const bool nulls = probe.null_count > 0;
+    for_chunks(probe.length, [&](std::int64_t lo, std::int64_t hi) {
+        const auto& t = table;  const KeyOf key = key_of;  const std::int64_t s = skip;  std::int64_t* o = out;
+        if (!nulls) {
+            for (std::int64_t i = lo; i < hi; ++i) { const std::int64_t c = t.find(key(i)); o[i] = c - (c > s); }
+        } else {
+            for (std::int64_t i = lo; i < hi; ++i) {
+                if (!bitmap::get(bits, off + i)) { o[i] = -1; continue; }
+                const std::int64_t c = t.find(key(i)); o[i] = c - (c > s);
+            }
+        }
+    }, 8);
+}
+```
+
+- **NA 코드 보정**: build 쪽에서 NA 코드 뒤의 코드를 하나씩 당겼으므로, 테이블이 돌려주는 코드도 같은 방식으로 당겨야 해요. `c - (c > skip)`이 그 일을 분기 없이 해요(`skip`은 build의 NA 코드). build에 NA가 없으면 `skip`이 int64 최댓값이라 아무것도 바뀌지 않아요. 찾지 못한 키는 -1이고, -1은 `skip`보다 크지 않으니 그대로 -1이에요.
+- **dtype과 NA 유무를 호출마다 한 번 골라요.** 키를 읽는 람다(`key_of`)는 dtype별로 따로 만들어 템플릿 인자로 넘기므로, 행 루프에는 "찾고 쓰기"만 남아요. 행마다 "NA인가, 문자열인가, 어느 dtype인가"를 묻는 구현에서는 1스레드 1M 행 merge 시간의 48%가 조회였어요. 1M × 10만 행 int 키 inner 조인에서 행마다 묻는 구현은 14.4ms(10스레드 3.30ms), 호출마다 한 번 고르는 구현은 12.6ms(10스레드 2.37ms)예요.
+- 루프가 읽는 포인터와 값(`t`, `key`, `s`, `o`)은 태스크 안의 지역 변수예요. int64 저장(`o[i] = …`)이 클로저 멤버나 Column의 포인터를 바꿨을 수 있다고 컴파일러가 보면 매 반복 다시 읽기 때문이에요.
+- 비용 가중치 8로 `for_chunks`를 부르므로, 왼쪽 행이 16,384개 이상이면 16,384행 청크로 나눠 병렬로 찾아요. 행마다 자기 칸에만 쓰니 결과는 스레드 수와 무관해요.
+
+위의 예 `L`, `R`(문자열 키)에 적용하면 이래요.
+
+<Fig caption='R의 키로 build하면 a는 0, b는 1, d는 2예요. L의 키를 같은 테이블에서 찾으면 b는 1, a는 0, c는 없음(-1)이에요.'>
+  <ArrayFig name="R.k" data={['a', 'b', 'd', 'b']} />
+  <ArrayFig name="rc" data={[0, 1, 2, 1]} tones={['', 'a', '', 'a']} />
+  <ArrayFig name="L.k" data={['b', 'a', 'b', 'c']} />
+  <ArrayFig name="lc" data={[1, 0, 1, -1]} tones={['a', '', 'a', 'g']} />
+</Fig>
+
+### 3. 오른쪽 행을 코드별로 모으기 (CSR)
+
+이제 "코드 $g$인 오른쪽 행들"을 빨리 꺼낼 수 있어야 해요. 오른쪽 행을 코드로 **안정 counting sort**해서 CSR을 만들어요[2]. CSR은 코드 $g$의 행들을 `rows[start[g] : start[g+1]]`에 모아 두는 배치예요.
+
+```cpp
+// csrc/frame/ops/join.cpp, join_indices (CSR 부분, 줄인 발췌)
+std::vector<std::int64_t> key(nb_);
+for_chunks(nb_, [&](lo, hi) { for (i = lo; i < hi; ++i) key[i] = bcode[i] < 0 ? G : bcode[i]; });
+counting_sort(key.data(), nb_, G + 1, start, rows);   // 코드 없는 행(-1)은 마지막 칸 G로: 쓰지 않는다
+```
+
+- 짝이 될 수 없는 오른쪽 행(NA 키)은 코드가 -1이에요. 이 행들을 버리지 않고 여분의 칸 `G`에 넣어 두면 counting sort 하나로 처리되고, 그 칸은 조회에 쓰이지 않아요.
+- counting sort는 **안정**이라서 한 코드 안의 오른쪽 행이 원래 순서로 남아요. 이것이 "한 왼쪽 행 안에서는 오른쪽 순서"를 보장해요.
+- `counting_sort`(`ops/radix.hpp`)는 1스레드이거나 행이 2¹⁷개 미만이면 직렬(개수 → 누적합 → 채우기)이고, 아니면 키의 위쪽 비트로 256개 버킷에 나눈 뒤 버킷마다 지역 counting sort를 하는 두 단계 병렬이에요. 결과는 같아요. 자세한 것은 [groupby와 정렬](/internals/frame/groupby-sort/)에 있어요.
+
+<Fig caption="rc = [0, 1, 2, 1]의 CSR(G = 3, 여분 칸 3은 비어 있음). 코드 1(b)의 오른쪽 행은 rows[start[1] : start[2]] = rows[1:3] = [1, 3], 오른쪽 순서 그대로예요.">
+  <ArrayFig name="key" data={[0, 1, 2, 1]} />
+  <Op note="counting sort">→</Op>
+  <ArrayFig name="start" data={[0, 1, 3, 4, 4]} tones={['', 'a', 'a', '', 'm']} />
+  <ArrayFig name="rows" data={[0, 1, 3, 2]} tones={['', 'a', 'a', '']} />
+</Fig>
+
+### 4. 출력 쌍 만들기: 세고, 자리 잡고, 채우기
+
+결과의 길이는 왼쪽 행마다 "짝의 개수(없으면 left·outer에서 1, inner에서 0)"를 더한 것이에요. 병렬로 채우려면 각 왼쪽 행의 출력이 어디서 시작하는지 알아야 해요. 그래서 두 번 훑어요.
+
+```cpp
+// csrc/frame/ops/join.cpp, join_indices (출력 부분, 줄인 발췌)
+auto matches = [&](std::int64_t p) { return pcode[p] < 0 ? 0 : start[pcode[p] + 1] - start[pcode[p]]; };
+// (1) probe 청크마다 출력 행 수
+for_chunks(np, [&](std::int64_t lo, std::int64_t hi) {
+    std::int64_t t = 0;
+    for (std::int64_t p = lo; p < hi; ++p) {
+        const std::int64_t m = matches(p);
+        if (keep_build && pcode[p] >= 0)                       // outer: 이 코드는 짝지어졌다
+            std::atomic_ref<std::uint8_t>(probed[pcode[p]]).store(1, std::memory_order_relaxed);
+        t += m > 0 ? m : (keep_probe ? 1 : 0);
+    }
+    pstart[lo / kChunkRows + 1] = t;
+});
+for (c = 0; c < CP; ++c) pstart[c + 1] += pstart[c];          // 청크 순서의 누적합 = 청크의 시작 자리
+// (2) 청크마다 자기 자리부터 채우기
+for_chunks(np, [&](std::int64_t lo, std::int64_t hi) {
+    std::int64_t k = pstart[lo / kChunkRows];
+    for (std::int64_t p = lo; p < hi; ++p) {
+        if (/* 짝이 있다 */) for (j = start[pcode[p]]; j < start[pcode[p] + 1]; ++j, ++k) { po[k] = p; bo[k] = rows[j]; }
+        else if (keep_probe) { po[k] = p; bo[k] = -1; ++k; }
+    }
+});
+```
+
+- 청크는 probe 행 수로만 정하고(16,384행), 누적합은 청크 순서로 내므로, 출력의 배치는 직렬로 차례로 쓴 것과 정확히 같아요.
+- **`probed` 플래그**: outer에서는 "한 번이라도 짝지어진 오른쪽 코드"를 알아야 해요. 여러 청크의 왼쪽 행이 같은 코드를 동시에 가리킬 수 있으므로 같은 바이트를 여러 스레드가 쓸 수 있어요. 쓰는 값이 언제나 1이고 0에서 1로만 바뀌므로 순서와 상관없이 결과가 같아요. 그래도 C++ 메모리 모델에서 동시에 같은 객체에 쓰는 것은 데이터 경쟁(정의되지 않은 동작)이라, `std::atomic_ref`로 감싼 relaxed 저장을 써요. AArch64에서 relaxed 저장은 평범한 바이트 저장 명령 하나예요. 읽기는 병렬 구간이 끝난 뒤에만 해요.
+
+<Fig caption="위 예의 outer 조인 결과. 왼쪽 행 0(b)의 짝은 오른쪽 1, 3이고, 왼쪽 행 3(c)은 짝이 없어 -1, 마지막 줄은 짝 없던 오른쪽 행 2(d)예요.">
+  <ArrayFig name="lpos" data={[0, 0, 1, 2, 2, 3, -1]} tones={['', '', '', '', '', '', 'g']} />
+  <ArrayFig name="rpos" data={[1, 3, 0, 1, 3, -1, 2]} tones={['', '', '', '', '', 'g', '']} />
+</Fig>
+
+### 5. outer: 남은 오른쪽 행
+
+outer는 probe 쌍 뒤에 "한 번도 짝지어지지 않은 오른쪽 행"을 오른쪽 순서로 붙여요. 오른쪽 행 $i$가 남은 행인지는 `bcode[i] < 0 || !probed[bcode[i]]`예요. NA 키 행(코드 -1)은 언제나 남은 행이에요. 같은 "세고 → 누적합 → 채우기"를 오른쪽 행 청크로 한 번 더 하는데, 시작 자리는 probe 쌍의 총수 뒤예요.
+
+### right 조인은 left 조인의 거울
+
+right 조인의 규칙은 left 조인의 좌우 대칭이에요. 그래서 **왼쪽을 build 쪽, 오른쪽을 probe 쪽으로 바꾸고** 같은 코드를 돌린 뒤 결과 두 배열을 바꿔 돌려줘요.
+
+다만 1–2단계의 코드는 오른쪽에 만든 테이블의 번호예요. 왼쪽 행을 build 쪽 CSR로 모으려면 왼쪽이 가진 키에 대한 코드가 필요해요. 그래서 왼쪽 코드를 **왼쪽에서 처음 나타난 순서로 다시 번호 매기고**(`remap`), 오른쪽 코드도 같은 표로 바꿔요. 왼쪽에 없는 키를 가진 오른쪽 행은 -1이 돼요. 이 번호 매기기는 직렬 한 번이에요(행이 2¹⁷개 이상이면 GIL을 놓아요).
+
+<Fig caption="right 조인의 다시 번호 매기기. lc = [1, 0, 1, -1]을 처음 나타난 순서로 바꾸면 1→0, 0→1이에요. rc도 같은 표로 바꾸고, 왼쪽에 없는 d(코드 2)는 -1이 돼요. 이제 오른쪽이 probe, 왼쪽이 build예요.">
+  <ArrayFig name="lc" data={[1, 0, 1, -1]} />
+  <ArrayFig name="rc" data={[0, 1, 2, 1]} />
+  <Op note="remap">→</Op>
+  <ArrayFig name="build (왼쪽)" data={[0, 1, 0, -1]} tones={['a', '', 'a', 'g']} />
+  <ArrayFig name="probe (오른쪽)" data={[1, 0, -1, 0]} tones={['', 'a', 'g', 'a']} />
+</Fig>
+
+```python
+>>> sd.frame.merge(L, R, on="k", how="right")
+   k    lv  rv
+0  a     2  10
+1  b     1  20
+2  b     3  20
+3  d  <NA>  30
+4  b     1  40
+5  b     3  40
+```
+
+### 어느 쪽에 테이블을 만드나
+
+build 쪽은 `how`로 정해져요: inner, left, outer는 오른쪽, right는 왼쪽이에요. 크기를 보고 고르지 않아요. 이유는 행 순서 규칙이에요. 출력 순서는 probe 반복문의 순서이고, 그 순서를 정하는 쪽(inner·left·outer에서는 왼쪽)이 probe 쪽이어야 결과를 다시 정렬하지 않고 규칙이 지켜져요. 작은 쪽에 테이블을 만들면 테이블은 작아지지만, 큰 쪽의 순서로 결과를 다시 늘어놓는 정렬(또는 그에 해당하는 일)이 필요해요.
+
+### 대안: 양쪽을 이어 붙여 함께 factorize
+
+또 하나의 방법은 양쪽 키를 이어 붙인 한 컬럼을 factorize해서 양쪽 코드를 한꺼번에 얻는 것이에요. 다중 키, NaN, `-0.0`을 factorize가 그대로 처리해 주니 코드가 단순해 보여요. 대신 양쪽 키를 복사해 이어 붙이고, 큰 쪽(보통 왼쪽)의 키까지 모두 테이블에 넣어요.
+
+두 방법을 1M × 10만 행 int 키로 재면 함께 factorize가 11.7ms, build/probe가 12.2ms로 차이가 측정 오차 안이에요. Swiss table에서는 넣기와 찾기의 비용이 거의 같아서(둘 다 그룹 하나의 제어 바이트를 읽고 태그를 비교해요), 왼쪽 1M 키를 넣지 않아도 1M 키를 찾는 비용은 남기 때문이에요. 속도가 같다면 build/probe가 메모리를 덜 쓰고(왼쪽 키를 복사하지도, 테이블에 넣지도 않아요) 코드가 단순해서 build/probe를 써요.
+
+## 같은 키, NA 키, 다중 키
+
+### 같은 키와 NA
+
+```python
+>>> x = sd.frame.DataFrame({"k": [1.0, float("nan"), None, -0.0], "x": [1, 2, 3, 4]})
+>>> y = sd.frame.DataFrame({"k": [float("nan"), 0.0, None, 1.0], "y": [10, 20, 30, 40]})
+>>> sd.frame.merge(x, y, on="k")
+     k  x   y
+0  1.0  1  40
+1  NaN  2  10
+2 -0.0  4  20
+```
+
+- **NaN은 NaN과 맞아요.** NaN은 결측이 아니라 float 값이고, `float_key`가 모든 NaN을 같은 비트로 바꿔요.
+- **`-0.0`은 `0.0`과 맞아요.** 결과의 합친 키 컬럼에는 왼쪽 값(`-0.0`)이 그대로 나와요.
+- **NA 키는 아무것과도 맞지 않아요.** 양쪽에 NA가 있어도 짝이 생기지 않아요(SQL, Polars의 기본과 같아요). groupby(`dropna=False`)에서는 NA끼리 한 그룹이라는 점이 다른데, 그 차이는 build 쪽에서 NA 코드를 -1로 바꾸는 줄 하나에서 나와요. "같은 키" 규칙의 나머지는 groupby와 같은 코드예요.
+- **키 dtype은 양쪽이 같아야 해요.** int64와 float64도 TypeError예요. dtype마다 해시 규칙이 하나씩 있는데, int와 float를 섞으면 "어느 값끼리 같은가"를 정하는 변환 규칙이 하나 더 필요해요(2⁵³ + 1과 2⁵³은 int로는 다르고 float로는 같아요). 섞어야 하면 먼저 `astype`으로 한쪽을 바꿔요.
+
+### 다중 키: 혼합 기수로 튜플을 정수 하나로
+
+키가 여럿이면 행의 키는 튜플이에요. 튜플을 그대로 해시하는 대신 **컬럼마다 코드를 구해 정수 하나로 합쳐요.**
+
+1. 컬럼 $j$마다 오른쪽에 `ValueCodes`를 만들고 왼쪽을 조회해요. 서로 다른 키가 $n_j$개면 코드는 $0 .. n_j - 1$이에요.
+2. 튜플 코드를 혼합 기수로 쌓아요: $\text{code} \leftarrow \text{code} \times n_j + \text{code}_j$. 시계의 "시 × 60 + 분"처럼, 자릿수마다 밑이 다른 수를 만드는 거예요. 서로 다른 튜플은 서로 다른 정수가 돼요.
+3. 어느 컬럼에서든 -1(NA이거나 오른쪽에 없음)이면 그 행의 튜플 코드는 -1이에요. 그 행은 맞지 않아요.
+4. **넘침 방지**: 지금까지의 코드 범위 $G$에 $n_j$를 곱하면 2⁶²를 넘을 것 같으면(`G > 2^62 / n_j`), 먼저 지금까지의 튜플 코드를 **오른쪽에 build한 테이블로 좁혀요**(`compact`). 오른쪽 튜플 코드로 `ValueCodes`를 만들면 실제로 나온 조합의 수만큼만 코드가 남고, 왼쪽 튜플 코드는 같은 테이블로 조회해요. 오른쪽에 없는 조합은 -1이 돼요.
+5. 키가 둘 이상이면 마지막에 한 번 더 좁혀서 코드를 `0 .. G-1`로 빈틈없게 해요. 3단계의 CSR이 코드 범위만큼의 칸을 쓰기 때문이에요.
+
+<Fig caption='키 (k1, k2)의 튜플 코드. 오른쪽 k1의 코드는 1→0, 2→1(n₁ = 2), k2는 y→0, x→1(n₂ = 2)이에요. 튜플 코드 = k1 코드 × 2 + k2 코드. 마지막 좁히기로 오른쪽 [0, 2, 1]은 처음 나타난 순서의 [0, 1, 2]가 되고, 왼쪽 [1, 2, 0]은 같은 표로 [2, 1, 0]이 돼요.'>
+  <FrameFig name="right" columns={['k1', 'k2']} data={[[1, 'y'], [2, 'y'], [1, 'x']]} rowTones={['1', '2', '3']} />
+  <FrameFig name="left" columns={['k1', 'k2']} data={[[1, 'x'], [2, 'y'], [1, 'y']]} rowTones={['3', '2', '1']} />
+  <Op>→</Op>
+  <ArrayFig name="rc" data={[0, 2, 1]} />
+  <ArrayFig name="lc" data={[1, 2, 0]} />
+  <Op note="좁히기">→</Op>
+  <ArrayFig name="rc" data={[0, 1, 2]} />
+  <ArrayFig name="lc" data={[2, 1, 0]} />
+</Fig>
+
+혼합 기수의 장점은 튜플 비교가 정수 비교 하나가 된다는 것이에요. 컬럼마다의 테이블은 그 컬럼의 dtype 규칙(NaN, `-0.0`, 문자열 바이트)을 그대로 쓰고, 튜플 단계는 dtype을 몰라요. groupby의 다중 키도 같은 방식이고, 넘침 방지 테스트는 각각 2,999종(소수)인 컬럼 7개로 $2999^7 > 2^{62}$가 되게 만들어요([해시 테이블과 factorize](/internals/frame/hashing/)).
+
+## 결과 컬럼 조립
+
+`join_indices`가 돌려준 `lpos`, `rpos`(int64, 짝 없는 쪽은 -1)로 Python 층이 결과를 만들어요.
+
+```python
+# src/stardust/frame/_merge.py, merge (조립 부분, 줄인 발췌)
+lpos, rpos = _core.join_indices(lcols, rcols, how, func="merge")
+merged = set(lkeys) if on is not None else set()        # on=이면 키 컬럼을 하나로 합친다
+overlap = (set(left._cols) & set(right._cols)) - merged  # 이름이 겹치는 컬럼에는 접미사
+no_left = (lpos == -1).nonzero()                         # 오른쪽에만 있는 결과 행
+for k, c in left._cols.items():
+    col = c.take(lpos)
+    if k in merged and len(no_left):                     # 그 행의 키는 오른쪽 값으로 채운다
+        col = col.share()
+        col.set_rows(no_left, right._cols[k].take(rpos).take(no_left))
+    put(k + suffixes[0] if k in overlap else k, col)
+for k, c in right._cols.items():
+    if k not in merged:
+        put(k + suffixes[1] if k in overlap else k, c.take(rpos))
+result = DataFrame._new(out, RangeIndex(len(lpos)))
+```
+
+- **모든 컬럼이 `take`예요.** 위치 -1은 NA 행이라서, 짝 없는 쪽의 값이 NA가 되는 일이 따로 없어요. dtype도 그대로예요(int 컬럼이 NA 때문에 float로 바뀌지 않아요). `take`는 [라벨, 조회, 선택](/internals/frame/labels/)에 있어요.
+- **`on`으로 합친 키 컬럼**은 왼쪽 키를 `take`한 뒤, 왼쪽 행이 없는 줄(outer의 뒤쪽, right 조인의 짝 없는 행)만 오른쪽 키 값으로 채워요. `share()`로 자기 Column 객체를 가진 뒤 `set_rows`로 쓰므로 Copy-on-Write 규칙 그대로예요. 방금 `take`로 만든 Buffer라 다른 주인이 없어서 제자리에서 써요(문자열 키는 `set_rows`가 언제나 새 Buffer를 만들어요).
+- `left_on`/`right_on`이면 양쪽 키 컬럼이 모두 남아요. 이름이 겹치는 컬럼에는 `suffixes`(기본 `_x`, `_y`)를 붙이고, 붙인 뒤에도 겹치면 ValueError예요(`put`이 검사해요).
+- 결과 라벨은 언제나 RangeIndex예요.
+- **`sort=True`**면 키로 안정 정렬해요(오름차순, NA는 맨 뒤). `on`이면 합친 키로, `left_on`/`right_on`이면 왼쪽 키(왼쪽 행이 없으면 오른쪽 키 값으로 채운 것)로 정렬해요. 정렬은 `sort_values`와 같은 LSD 기수 정렬이고, 안정 정렬이라 같은 키 안에서는 위의 행 순서 규칙이 그대로 남아요([groupby와 정렬](/internals/frame/groupby-sort/)).
+
+```python
+>>> A = sd.frame.DataFrame({"k": [1, 2], "v": ["a", "b"]})
+>>> B = sd.frame.DataFrame({"key": [2, 3], "v": ["c", "d"]})
+>>> sd.frame.merge(A, B, left_on="k", right_on="key", how="outer")
+      k   v_x   key   v_y
+0     1     a  <NA>  <NA>
+1     2     b     2     c
+2  <NA>  <NA>     3     d
+```
+
+## 병렬화와 결정성
+
+merge의 모든 단계는 스레드 수와 무관하게 같은 결과를 내요.
+
+| 단계 | 나누는 방법 | 결과가 같은 이유 |
+|---|---|---|
+| build (`ValueCodes`) | 해시 위쪽 8비트로 256 파티션, 또는 직렬 | 코드를 처음 나타난 순서로 다시 매겨 직렬 factorize와 같아요 |
+| probe (`find_rows`) | 왼쪽 행 16,384행 청크 | 행마다 자기 칸에만 써요 |
+| 다중 키 합치기 | 행 청크 | 행마다 독립 |
+| right 조인의 번호 매기기 | 나누지 않음 | 직렬 |
+| CSR (`counting_sort`) | 256 버킷 두 단계, 또는 직렬 | 원소가 놓이는 자리가 직렬과 정확히 같아요 |
+| 출력 쌍, 남은 build 행 | probe(또는 build) 행 청크 | 청크 순서의 누적합이 청크의 자리 |
+
+- build, CSR처럼 "나누면 패스가 늘어나는" 단계는 1스레드이거나 풀을 쓸 수 없으면 직렬 알고리즘을 그대로 써요. 결과가 나누는 방식과 무관하게 정확히 정해지는 연산이라서 나누는 방식이 스레드 수를 따라도 돼요. 반대로 출력 배치처럼 청크 구조가 곧 계산 구조인 단계는 행 수로만 청크를 정해요. 자세한 규칙은 [병렬화와 결정성](/internals/frame/parallel/)에 있어요.
+- `parallel_for`는 부르면 GIL을 놓고, 직렬 구간(직렬 factorize, 직렬 counting sort, right 조인의 번호 매기기)은 일이 2¹⁷ 이상이면 `Unlocked`로 GIL을 놓아요. 그래서 큰 merge 중에도 다른 Python 스레드가 돌아요.
+- 테스트(`tests/frame/test_threads.py`)는 inner, outer, 두 키 left, right merge를 1, 3, 기본 스레드 수로 돌려 결과가 같은지 비교해요.
+
+## 성능
+
+### 복잡도와 메모리
+
+왼쪽 $n$행, 오른쪽 $m$행, 결과 $r$행이면 기대 시간은 $O(n + m + r)$예요(해시 조회가 기대 $O(1)$일 때). 비교 정렬이 없어요.
+
+| 쓰는 메모리 | 크기 |
+|---|---|
+| 오른쪽 코드, 왼쪽 코드 | $8m + 8n$ B |
+| build 테이블 | 8바이트 키: 오른쪽 행 수의 8/7배 이상인 2의 거듭제곱만큼 칸(16B)과 제어 바이트(1B). 실제로 키가 들어간 페이지만 메모리를 차지해요 |
+| CSR | $8(m + G + 2)$ B |
+| `probed` (outer) | $G$ B |
+| 결과 위치 두 배열 | $16r$ B |
+| 결과 컬럼 | 컬럼마다 `take` 한 번 |
+
+### 측정
+
+벤치마크의 merge 줄은 왼쪽 $n$행, 오른쪽 $n/10$행의 int 키 inner 조인이에요. 오른쪽 키는 $0 .. n/10 - 1$의 무작위 순열(고유), 왼쪽 키는 $0 .. n/10 + n/90$ 범위의 무작위 정수라서 왼쪽 행의 약 10%는 짝이 없어요. pandas는 기본 옵션, Polars는 같은 행 순서를 내도록 `maintain_order="left"`로 불러요.
+
+| `merge n x n/10 inner` | 1천 행 | 10만 행 | 1M 행 |
+|---|---:|---:|---:|
+| stardust 1스레드 | ⟦FBENCH "merge n x n/10 inner" 1k sd@1⟧ | ⟦FBENCH "merge n x n/10 inner" 100k sd@1⟧ | ⟦FBENCH "merge n x n/10 inner" 1M sd@1⟧ |
+| stardust 10스레드 | ⟦FBENCH "merge n x n/10 inner" 1k sd@10⟧ | ⟦FBENCH "merge n x n/10 inner" 100k sd@10⟧ | ⟦FBENCH "merge n x n/10 inner" 1M sd@10⟧ |
+| pandas 3.1.1 | ⟦FBENCH "merge n x n/10 inner" 1k pandas⟧ | ⟦FBENCH "merge n x n/10 inner" 100k pandas⟧ | ⟦FBENCH "merge n x n/10 inner" 1M pandas⟧ |
+| Polars 2.1.0, 1스레드 | ⟦FBENCH "merge n x n/10 inner" 1k polars@1⟧ | ⟦FBENCH "merge n x n/10 inner" 100k polars@1⟧ | ⟦FBENCH "merge n x n/10 inner" 1M polars@1⟧ |
+| Polars 2.1.0, 14스레드 | ⟦FBENCH "merge n x n/10 inner" 1k polars@14⟧ | ⟦FBENCH "merge n x n/10 inner" 100k polars@14⟧ | ⟦FBENCH "merge n x n/10 inner" 1M polars@14⟧ |
+
+{/* BENCH-FIG: "merge n x n/10 inner" 1M pandas, sd@1, sd@10, polars@14; "merge n x n/10 inner" 100k pandas, sd@1, sd@10, polars@14 | 캡션: 왼쪽 n행 × 오른쪽 n/10행(고유 키) int inner merge. pandas는 오른쪽 키가 고유한 int inner 조인에서 해시 조회 한 번으로 가는 빠른 길을 타요. */}
+
+1M 행에서 pandas 대비 배율은 1스레드 ⟦FBENCH "merge n x n/10 inner" 1M pandas/sd@1⟧배, 10스레드 ⟦FBENCH "merge n x n/10 inner" 1M pandas/sd@10⟧배이고, Polars 14스레드 대비 10스레드는 ⟦FBENCH "merge n x n/10 inner" 1M polars@14/sd@10⟧배예요.
+
+이 줄을 읽을 때 알아 둘 것이 있어요.
+
+- **pandas가 빠른 길을 타는 입력이에요.** pandas 3.1.1의 `_factorize_keys`는 `how`가 inner나 left이고, `sort=False`이고, 키가 숫자·bool이면 오른쪽 키를 먼저 factorize하고, 오른쪽 키가 모두 고유하면 왼쪽 키를 그 테이블에서 조회만 하고 끝내요(아래 비교). 이 벤치마크의 오른쪽 키는 순열이라 고유해요.
+- **결과 조립이 시간의 일부예요.** 결과 약 0.9n행에 대해 키, 왼쪽 값, 오른쪽 값 세 컬럼을 `take`해요. 오른쪽 값의 `take`는 무작위 읽기예요.
+- 키가 많은 해시 연산(`nunique`, groupby, merge)에서 stardust가 Polars보다 느린 경우가 있어요. 코드를 처음 나타난 순서로 다시 매기는 단계(스레드 수와 무관한 결과를 위한 것)가 그 일부예요. Polars는 파티션별 테이블의 결과를 그대로 쓰고, 순서가 필요할 때만 결과 쌍을 정렬해요.
+
+## pandas와 Polars의 조인
+
+### pandas 3.1.1
+
+- **양쪽을 한 테이블로 factorize해요.** `pandas/core/reshape/merge.py`의 `_factorize_keys`[3]는 factorizer 하나(`klass(max(len(lk), len(rk)))`)로 왼쪽 키와 오른쪽 키를 차례로 factorize해서, 코드가 "왼쪽 먼저, 처음 나타난 순서"예요. 위에서 말한 "함께 factorize" 방식이에요.
+- **빠른 길이 여럿 있어요.** (1) 위의 해시 조인 빠른 길(inner·left, `sort=False`, 숫자 키, 오른쪽 키가 고유). (2) 양쪽 키가 모두 단조 증가이고 한쪽이 고유하면 `Index.join`의 단조 경로(`left_join_indexer_unique` 등, 정렬된 두 배열의 병합)로 가요. (3) left·right 조인에서 반대쪽 키가 RangeIndex로 바뀔 수 있으면 `get_indexer`로 바로 가요. 어느 길로 갈지는 키 데이터의 성질(고유한가, 정렬되어 있는가)로 정해져요.
+- **나머지는 counting sort 두 번이에요.** `pandas/_libs/join.pyx`의 `inner_join`, `left_outer_join`, `full_outer_join`[3]은 양쪽 코드를 `groupsort_indexer`(counting sort)로 모아 짝을 만들어요. `sort=False`인 inner·left는 "왼쪽 원래 순서로 바로 출력해 사후 재정렬을 피한다"는 분기가 있어서 stardust와 같은 순서를 내요.
+- **outer는 언제나 정렬해요.** `_MergeOperation`이 `self.sort = sort or how == "outer"`로 정렬을 강제해서, 위의 예의 outer 결과가 키 순서(a, b, b, b, b, c, d)예요. 독스트링도 outer를 "키를 사전식으로 정렬한다"고 적어요. right는 오른쪽 행 순서를 따르는데, 한 오른쪽 행 안의 왼쪽 짝 순서까지 stardust와 같아요.
+- **NA 키끼리 맞아요.** `_factorize_keys`가 NA 코드를 여분의 그룹 하나에 몰아넣으므로 NaN과 None이 서로 짝지어져요. 독스트링에도 "보통의 SQL 조인과 다르다"는 경고가 있어요.
+
+### Polars 2.1.0
+
+- **행 순서는 기본으로 정하지 않아요.** `DataFrame.join`의 `maintain_order` 기본값은 `"none"`이고[5], 독스트링은 "순서는 Polars 버전이나 실행마다 다를 수 있으니, 이 인자를 정하지 않고 관찰한 순서에 기대지 말라"고 적어요. `"left"`, `"right"`, `"left_right"`, `"right_left"`를 주면 결과 (왼쪽, 오른쪽) 위치 쌍을 그 기준으로 안정 정렬해요(`crates/polars-ops/src/frame/join/mod.rs`)[4]. 위의 예에 `maintain_order="left"`를 주면 inner·left·full의 순서가 stardust와 같아요.
+- **build 쪽은 크기로 골라요.** 기본값 `build_side="auto"`에서[5] `polars-ops`의 해시 조인은 inner와 full(outer)에서 "짧은 쪽으로 해시 테이블을 만든다"(`det_hash_prone_order!`)고, left에서는 언제나 오른쪽으로 만들어요(`single_keys_dispatch.rs`의 주석과 문자열 키 경로). 순서를 결과 쌍의 정렬로 맞추므로 build 쪽을 순서와 무관하게 고를 수 있어요.
+- **파티션별 테이블을 병렬로 만들어요.** `build_tables`(`hash_join/single_keys.rs`)[4]는 키를 해시로 파티션에 흩뿌린 뒤 파티션마다 `PlHashMap<키, 행 목록>`을 병렬로 만들어요. probe는 키의 해시로 파티션을 골라 찾아요. stardust의 `Partitioned`와 같은 생각이지만, 테이블이 "키 → 행 목록"이라 CSR 단계가 따로 없고, 코드를 처음 나타난 순서로 다시 매기는 단계도 없어요.
+- **null 키는 기본으로 맞지 않고 NaN은 NaN과 맞아요.** `nulls_equal=False`가 기본이고[5], 키를 해시할 때 전순서 비교(`TotalEq`)를 써서 NaN끼리 같아요. stardust의 규칙과 같아요.
+
+## concat
+
+### 컬럼 집합과 dtype 승격 (Python)
+
+`concat(objs, join="outer", ignore_index=False)`은 행 방향으로만 이어요.
+
+1. **종류 검사**: `objs`는 DataFrame들이나 Series들의 list나 tuple이에요. 섞이면 TypeError예요.
+2. **컬럼 집합**: `join="outer"`면 처음 나타난 순서로 모든 컬럼, `"inner"`면 모두에 있는 컬럼만 첫 DataFrame의 순서로 둬요.
+3. **컬럼마다 공통 dtype**: `_dtypes.common` → `_core.promote_types` → C++의 `promote_columns`로, 배열 영역과 같은 승격(`bool < int64 < float64`)을 해요. string은 string하고만 만나요. 다른 dtype의 조각은 `astype`으로 공통 dtype이 돼요(int → float는 반올림).
+4. **없는 컬럼**: 어떤 DataFrame에 그 컬럼이 없으면 그 행 수만큼 승격한 dtype의 NA 컬럼(`full_na`)을 끼워요.
+5. **이어 붙이기**: C++ `concat` 커널.
+
+```python
+>>> sd.frame.concat([sd.frame.DataFrame({"a": [1, 2]}), sd.frame.DataFrame({"a": [1.5], "b": [True]})])
+     a     b
+0  1.0  <NA>
+1  2.0  <NA>
+0  1.5  True
+>>> sd.frame.concat([sd.frame.Series(["a"]), sd.frame.Series([1])])
+Traceback (most recent call last):
+    ...
+TypeError: concat(): Series of dtypes ['int64', 'string'] cannot be joined; a string column joins only string columns
+```
+
+결과 dtype은 조각들의 **dtype**으로만 정해요. 값을 보지 않아요. int64와 float64가 만나면 int에 2⁵³을 넘는 값이 있든 없든 float64예요. 승격 규칙이 merge 키에는 없는 이유는 쓰임이 달라서예요. concat은 값을 한 컬럼에 늘어놓을 뿐이라 배열 영역의 `concat`과 같은 승격이 자연스럽고, merge 키는 "같은가"를 묻는 데 쓰여서 변환이 끼면 같음의 규칙이 흐려져요.
+
+pandas 3.1.1은 같은 입력에서 경로에 따라 dtype이 달라요. DataFrame의 int64와 bool은 int64로 합치지만(`True`가 1), Series의 int64와 bool은 object(`[1, True]`)예요. int64와 str은 object예요. stardust에는 object dtype이 없으므로 string과 숫자는 TypeError예요.
+
+### 버퍼 이어 붙이기 (C++)
+
+```cpp
+// csrc/frame/ops/selection.cpp, concat (줄인 발췌)
+Column concat(const std::vector<Column>& cols) {   // 모두 한 dtype
+    Unlocked unlocked(n);                          // 일이 크면 GIL을 놓고 직렬로 복사
+    if (dt == DType::String) {
+        offs[0] = 0;                               // 1. offsets를 0부터 다시: 이전 끝 + 이 행의 길이
+        for (c : cols) for (i < c.length) offs[row + 1] = offs[row] + c.string_at(i).size();
+        for (c : cols) for (i < c.length) memcpy(bytes + offs[row], c.string_at(i).data(), ...);  // 2. 바이트
+    } else {
+        for (c : cols) { memcpy(out + row * size, c.values + c.offset * size, c.length * size); row += c.length; }
+    }
+    if (nulls) for (c : cols) for (i < c.length) if (!c.is_valid(i)) bitmap::clear(bits, row);  // 3. 비트맵
+}
+```
+
+- **고정폭 dtype**은 조각마다 `memcpy` 한 번이에요. 조각이 슬라이스면 `offset`만큼 민 자리부터 복사해요.
+- **문자열**은 offsets를 다시 계산해요. 조각의 offsets는 그 조각의 바이트 Buffer 안의 절대 위치라서(슬라이스면 0에서 시작하지도 않아요) 그대로 쓸 수 없어요. 행마다 길이를 더해 새 offsets를 만들고, 바이트를 그 자리에 복사해요.
+- **비트맵**은 조각 중 하나라도 NA가 있을 때만 만들어요. 모두 1로 채운 뒤 NA 행의 비트만 내려요. NA 개수는 조각들의 `null_count` 합이에요.
+- 나누지 않고 한 스레드로 복사하되, 일이 2¹⁷ 이상이면 GIL을 놓아요. 1M 행 두 개를 이어 붙이는 데 0.39ms예요.
+
+<Fig caption='문자열 조각 둘의 concat. 두 번째 조각은 슬라이스라서 offsets가 4에서 시작해요. 결과 offsets는 0부터 다시 쌓아요: 앞 조각의 끝(5) 뒤에 dog(3바이트)가 와서 8이에요.'>
+  <ArrayFig name="조각 1 offsets" data={[0, 2, 5]} note="hi, cat" />
+  <ArrayFig name="조각 2 offsets" data={[4, 7]} note="dog (슬라이스)" />
+  <Op note="concat">→</Op>
+  <ArrayFig name="offsets" data={[0, 2, 5, 8]} />
+  <ArrayFig name="bytes" data={['h', 'i', 'c', 'a', 't', 'd', 'o', 'g']} tones={['', '', '', '', '', 'a', 'a', 'a']} />
+</Fig>
+
+### 라벨
+
+- 라벨을 이어 붙여요(`_concat_labels`). 중복이 생겨도 돼요. 기본 RangeIndex 둘을 이으면 `[0, 1, 0]`처럼 Index가 돼요. 이어 붙인 라벨이 우연히 `0, 1, 2, …`여도 Index예요. 결과 타입은 키의 모양으로 정한다는 규칙 그대로예요.
+- int 라벨과 string 라벨은 섞을 수 없어요(RangeIndex는 int64로 쳐요). Index 이름과 Series 이름은 모두 같으면 유지하고 아니면 `None`이에요.
+- `ignore_index=True`면 라벨을 만들지 않고 RangeIndex예요.
+
+```python
+>>> sd.frame.concat([sd.frame.Series([1, 2]), sd.frame.Series([3])]).index
+Index([0, 1, 0], dtype=int64)
+>>> sd.frame.concat([sd.frame.Series([1, 2]), sd.frame.Series([3])], ignore_index=True).index
+RangeIndex(start=0, stop=3, step=1)
+```
+
+### Polars와의 차이: 청크를 붙일까, 복사할까
+
+Polars 2.1.0의 `pl.concat`은 기본이 `rechunk=False`라서[5] 데이터를 복사하지 않고 **청크 목록을 이어 붙여요.** 두 DataFrame을 이으면 결과의 `n_chunks()`가 2예요. Polars의 컬럼은 Arrow 배열 여러 개(청크)의 목록일 수 있기 때문이에요. `how="vertical"`은 스키마가 같아야 하고(int64와 float64는 에러), `"vertical_relaxed"`가 공통 상위 타입으로 바꿔요.
+
+stardust의 Column은 언제나 연속된 Buffer 하나예요(슬라이스도 Buffer 하나 위의 `offset`과 `length`예요). 그래서 concat은 항상 복사해요. 대신 모든 커널이 "청크 여러 개"를 다룰 필요가 없어요. 원소별 연산, 해시, 정렬, `take`가 포인터 하나와 길이 하나로 돌고, 청크 경계에서 루프를 끊거나 위치를 청크 번호와 청크 안 위치로 나눠 찾는 일이 없어요. 그 대가가 concat의 복사(1M 행 두 개에 0.39ms)예요.
+
+## 참고 문헌
+
+1. D. J. DeWitt, R. H. Katz, F. Olken, L. D. Shapiro, M. R. Stonebraker, D. Wood, "Implementation Techniques for Main Memory Database Systems", *Proceedings of the 1984 ACM SIGMOD International Conference on Management of Data*, 1984. doi:10.1145/602259.602261 (메모리가 클 때 해시 기반 질의 처리, 해시 조인)
+2. T. H. Cormen, C. E. Leiserson, R. L. Rivest, C. Stein, *Introduction to Algorithms*, 3rd ed., MIT Press, 2009. (8.2절 계수 정렬)
+3. pandas 소스, 태그 `v3.1.1`: `pandas/core/reshape/merge.py`(`_factorize_keys`, `get_join_indexers`, `get_join_indexers_non_unique`, `_MergeOperation`), `pandas/_libs/join.pyx`(`inner_join`, `left_outer_join`, `full_outer_join`), `pandas/_libs/algos.pyx`(`groupsort_indexer`)
+4. Polars 소스, 태그 `py-2.1.0`: `crates/polars-ops/src/frame/join/mod.rs`, `crates/polars-ops/src/frame/join/hash_join/`(`single_keys.rs`의 `build_tables`, `single_keys_dispatch.rs`, `det_hash_prone_order!`)
+5. Polars API 문서, `DataFrame.join`(`maintain_order`, `nulls_equal`), `polars.concat`(`rechunk`, `how`)
