@@ -223,3 +223,4 @@ from .linalg import vecdot  # noqa: E402  (Array API: the same function at the t
 from . import frame  # noqa: E402  (sd.frame)
 from . import special  # noqa: E402  (sd.special)
 from . import random  # noqa: E402  (sd.random)
+from . import stats  # noqa: E402  (sd.stats)

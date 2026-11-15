@@ -6,8 +6,8 @@
 #include "bind/special_bind.hpp"
 
 #include "array/iter.hpp"
-#include "array/ops/ufunc.hpp"
 #include "bind/errors.hpp"
+#include "bind/nary_bind.hpp"
 #include "bind/pyutil.hpp"
 #include "special/cost.hpp"
 #include "special/kernels/chunked.hpp"
@@ -44,15 +44,7 @@ namespace sd {
 
 namespace {
 
-template <std::size_t> using handle_t = nb::handle;
-
-// An Op is either a scalar definition f (the n-ary loop) or a chunk kernel
-// (NEON + vForce, special/kernels/chunked.hpp).
-template <typename Op>
-constexpr const LoopTable& table_of() {
-    if constexpr (requires { &Op::chunk; }) return special::chunked_table<Op>;
-    else return nary_table<Op>;
-}
+using nary_bind::call;
 
 // The weight each function's loop runs with, by name, filled as the functions are
 // defined (the reference-file names of bench/special: a complex loop under
@@ -65,39 +57,11 @@ std::map<std::string, std::int64_t>& weights() {
 template <typename Op>
 void record(const std::string& name) { weights()[name] = special::weight_of(Op::cost_ns); }
 
-template <typename Op>
-nb::object call(std::span<const nb::handle> objs, nb::handle out) {
-    return run_nary(table_of<Op>(), Op::nout, Op::args, objs, out, special::weight_of(Op::cost_ns));
-}
-
-// One elementwise function: Op::nin positional inputs, then out= when it has
-// one result.
+// One elementwise function (bind/nary_bind.hpp), its weight recorded.
 template <typename Op>
 void def_nary(nb::module_& m) {
     record<Op>(Op::name);
-    [&]<std::size_t... I>(std::index_sequence<I...>) {
-        if constexpr (Op::nout == 1) {
-            m.def(
-                Op::name,
-                [](handle_t<I>... xs, nb::handle out) {
-                    return call_named(Op::name, [&] {
-                        const nb::handle objs[] = {xs...};
-                        return call<Op>(objs, out);
-                    });
-                },
-                ((void)I, nb::arg().none())..., nb::kw_only(), nb::arg("out").none() = nb::none());
-        } else {
-            m.def(
-                Op::name,
-                [](handle_t<I>... xs) {
-                    return call_named(Op::name, [&] {
-                        const nb::handle objs[] = {xs...};
-                        return call<Op>(objs, nb::none());
-                    });
-                },
-                ((void)I, nb::arg().none())...);
-        }
-    }(std::make_index_sequence<Op::nin>{});
+    nary_bind::def<Op>(m);
 }
 
 template <typename... Ops>

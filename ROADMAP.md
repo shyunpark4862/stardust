@@ -214,7 +214,7 @@
 | T1 special 감싸기와 `ndtri_exp` | 완료·승인 (2026-11-15) |
 | T2 special 비중심 분포 함수 | 완료·승인 (2026-11-15) |
 | T3 `sd.random` | 완료·승인 (2026-11-15) |
-| T4 분포 엔진과 연속 기본 12 | 대기 |
+| T4 분포 엔진과 연속 기본 12 | 완료, 승인 대기 (2026-11-15) |
 | T5 이산 10 | 대기 |
 | T6 극값·수명 6과 비중심 3 | 대기 |
 | T7 표본 (`sample`) | 대기 |
@@ -255,6 +255,8 @@
 ### T4. 분포 엔진과 연속 기본 12
 - 분포 구조체와 (분포, 메서드) Op, 신형 API의 Python 클래스, 참값 도구(`tools/stats_ref.py`)
 - 정규, t, 카이제곱, F, 감마, 베타, 지수, 로그정규, 균등, 코시, 라플라스, 베이불
+- 결정(2026-11-15 사용자): docs/design/stats.md T18–T24 (매개변수 이름, 키워드 생성자와 기본값, 읽기 전용 속성, log 계약, mode, out=, 초과 첨도, 보장 영역과 특수값).
+- 결과: csrc/stats/(engine.hpp, numeric.hpp, dist/), csrc/bind/stats_bind.cpp, src/stardust/stats/; docs/api/stats.md §2, docs/design/stats.md §2–§3; 측정 bench/stats/t4/(accuracy.md, speed.md); 테스트 tests/stats/(test_distributions.py, test_reference.py)와 참값 tests/stats/ref/(216개).
 
 ### T5. 이산 10
 - 이항, 포아송, 기하, 음이항, 초기하, 베르누이, 이산 균등, 베타이항, 로그 급수, Zipf

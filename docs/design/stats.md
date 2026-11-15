@@ -1,6 +1,6 @@
 # 통계 영역 설계 (sd.stats, sd.stats.tests)
 
-> 상태: **초안** (2026-11-15). 큰 결정은 사용자가 정했다(§1.1). 마일스톤마다 시작 전에 물을 것은 §11에 있다.
+> 상태: **T4 구현** (2026-11-15). 큰 결정은 사용자가 정했다(§1.1). 마일스톤마다 시작 전에 물을 것은 §11에 있다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -34,6 +34,13 @@
 | T15 special 추가 | 감싸기(`stdtr stdtrit chdtr chdtrc chdtri fdtr fdtrc fdtri pdtr pdtrc bdtr bdtrc nbdtr nbdtrc`)와 새 계산법(`chndtr chndtrix nctdtr nctdtrit ncfdtr ncfdtri ndtri_exp`)을 scipy 이름으로 `sd.special`에 공개, 같은 계약 (§8.2) |
 | T16 다변량 cdf | 다변량 정규·t의 cdf는 느슨한 계약으로 넣는다: Genz 방법을 고정 시드로 결정적으로, 오차 추정을 함께 돌려주고 잰 정확도를 문서화한다. 2·3차원은 정확한 공식을 쓸 수 있다 (§6.2) |
 | T17 난수 | 별도 모듈 `sd.random` (random.md) |
+| T18 매개변수 이름 (T4, 2026-11-15) | 위치가 있는 분포는 정규처럼 `mu`·`sigma`(코시·라플라스의 `sigma`는 표준편차가 아니라 척도), 로그정규는 밑 정규의 `mu`·`sigma`. [0, ∞) 분포는 모양 + `scale`(감마·지수·베이불; rate가 아니다). 모양 매개변수는 scipy 이름(`a b c df dfn dfd`) |
+| T19 생성자 | 매개변수는 키워드로만(`Gamma(a=2, scale=3)`; 위치 인자는 TypeError). 기본값은 위치 0·척도 1(`mu=0, sigma=1, scale=1`)에만 있고, 모양 매개변수와 `Uniform(a, b)`는 필수다. 매개변수는 읽기 전용 속성(`X.mu`, 준 값 그대로) |
+| T20 log 계약 | `logcdf`·`logccdf`는 상대 1e-14(`log_ndtr`처럼; 값이 0을 지나지 않는다). `logpdf`는 \|오차\| ≤ 1e-14·max(1, \|값\|)(pdf = 1에서 0을 지난다) |
+| T21 mode | 최댓값이 한 점이면 그 점(경계여도, 밀도가 발산해도: 감마 a < 1 → 0). 하나로 정해지지 않으면 NaN(균등, 베타 a ≤ 1·b ≤ 1) |
+| T22 out= | 입력을 받는 원소별 메서드(`pdf`…`ilogccdf`)는 special처럼 `out=`을 받는다. 매개변수만의 메서드(모멘트, `support` 등)에는 없다 |
+| T23 첨도 | `kurtosis()`는 초과 첨도(정규 = 0), 옵션 없음. T8의 기술통계 `kurtosis`의 기본값도 이에 맞춘다 |
+| T24 T4 보장 영역 (2026-11-15) | 닫힌 꼴 7개(정규·지수·균등·라플라스·코시·로그정규·베이불)는 정의역 전체. special 기반은 special의 보장 범위에 맞춘다: 감마 a ≤ 1e6(카이제곱 df ≤ 2e6), 베타 a, b ≤ 1e5, t df ≤ 1e6, F 자유도 ≤ 1e5. 그 밖은 잰 값을 문서화한다. t의 역함수에서 df ≥ 1e5이고 확률이 2^-1000 아래인 구석은 느슨한 영역(1.4e-14, 베타 쪽 BGRAT에 log 꼴이 없다). `entropy`는 `logpdf`처럼 \|오차\| ≤ 1e-14·max(1, \|값\|), 베이불의 왜도·첨도(0을 지난다)도 같다. 모멘트의 특수값은 수학적 규칙(§2.3)을 따르고 scipy와 다른 곳은 §2.4에 둔다 |
 
 ### 1.2 범위
 - **단변량 연속 (21)**
@@ -81,17 +88,31 @@
 - 보장 영역에서 참값 대비 상대 1e-14다. 서브노멀 결과는 절대 45·2⁻¹⁰⁷⁴다(special과 같다).
 - `ccdf`, `logccdf`는 꼬리에서도 상대 정확도다(1 − cdf로 만들지 않는다). `logcdf`는 작은 cdf에서 log를 직접 계산한다.
 - `icdf`·`iccdf`는 special의 역함수와 같은 기준: |Δx/x| ≤ 1e-14·max(1, κ).
-- log 메서드의 계약(상대인지 |오차| ≤ 1e-14·max(1, |값|)인지), 분포마다의 보장 영역은 마일스톤 전에 묻는다(§11).
+- log 메서드의 계약은 T20이다. 분포마다의 보장 영역은 재고 나서 묻는다(§11).
 - 모멘트·엔트로피도 같은 계약이다. 정의되지 않으면(코시의 평균 등) NaN, 무한이면 inf.
 
 ### 2.4 scipy와 다르게 동작하는 곳
-- (마일스톤마다 채운다)
+- 모멘트(T24, 규칙은 docs/api/stats.md §2): t의 df ≤ 1 평균은 NaN(scipy inf), F의 dfd ≤ 2 분산은 NaN(scipy inf), F의 4 < dfd ≤ 6 왜도와 6 < dfd ≤ 8 첨도는 inf(scipy NaN).
+- `mode`(T21): 균등과 a, b ≤ 1인 베타(a = 1, b < 1 같은 한쪽 끝 하나는 빼고)는 NaN. scipy는 수치 최적화의 임의의 점(균등 0.5, 베타(1, 1) 0.62)을 낸다.
+- `kurtosis`는 초과 첨도(T23). scipy 신형의 기본은 그냥 첨도다.
+- 꼬리에서 scipy가 0, 1, inf를 내는 곳에서 참값을 낸다(예: `F(dfn=3, dfd=7).iccdf(1e-30)` = 1.1e9, scipy inf; `Beta(a=2.5, b=0.7).logcdf(1e-200)` = −1151.9, scipy −inf). 같은 점의 비교는 bench/stats/t4/accuracy.md.
 
 ## 3. 엔진
-- 원소 함수는 분포 구조체의 정적 함수다: `Normal::cdf(x, mu, sigma)`. Op는 (분포, 메서드)마다 템플릿으로 만든다: `DistOp<Normal, Cdf>`(nin = 1 + 매개변수 수, nout = 1). 분포 31개 × 메서드 약 13개라 손으로 쓰지 않는다.
-- 디스패처, 비용 가중치, 스레드풀은 special과 같다(docs/design/special.md의 3장). 피연산자는 입력과 출력을 합쳐 최대 5개(`kMaxOperands`)라 매개변수는 셋까지 된다. 가장 많은 것은 셋(비중심 F, 초기하, 베타이항, GEV)이다.
-- 대부분의 cdf·icdf는 special 함수의 조합이다: t → `stdtr`, 감마 → `gammainc`, 이항 → `bdtr` 등. 조합이 계약을 지키는지는 참값으로 잰다.
-- 모멘트·엔트로피·median·mode·support는 매개변수만의 함수다(Op의 nin = 매개변수 수).
+- 원소 함수는 분포 구조체의 정적 함수다: `Normal::cdf(x, mu, sigma)`. Op는 (분포, 메서드)마다 템플릿 `DistOp<D, M>`이 만든다(`csrc/stats/engine.hpp`). 이름은 `<분포>_<메서드>`, 입력은 (매개변수..., x) 또는 (매개변수...)이고, `stardust._core.stats`에 special과 같은 n항 디스패처로 묶는다(`csrc/bind/nary_bind.hpp`를 special과 함께 쓴다). 분포 12개 × 메서드 20개(지지집합의 두 끝 포함)를 손으로 쓰지 않는다.
+- `DistOp`이 먼저 매개변수의 정의역(`D::valid`)과 NaN 입력을 걸러 NaN을 돌려준다(T8). 그래서 분포의 함수는 유효한 매개변수와 NaN이 아닌 입력만 받는다. `standard_deviation`은 분산의 제곱근, `median`은 `icdf(1/2)`가 기본이고, 닫힌 꼴이 있는 분포는 직접 둔다.
+- 비용 가중치(병렬 분할), 스레드풀, `f(x)[i] == f(x[i])`, 스레드 수와 무관한 비트는 special과 같다(docs/design/special.md의 3장).
+- Python 쪽(`src/stardust/stats/_distribution.py`)은 매개변수를 들고 네이티브 함수를 부르는 얇은 층이다. 매개변수의 형과 브로드캐스트 가능 여부만 만들 때 검사한다.
+
+### 3.1 수치 기법 (`csrc/stats/numeric.hpp`, `csrc/stats/dist/`)
+분포를 special 함수의 조합으로 만들면 조합하는 자리에서 자릿수를 잃는다. 반복해서 쓴 해결:
+- **표준화 변수를 double-double로**: z = (x − μ)/σ를 float64로 반올림하면 exp(−z²/2)가 그 오차를 z²배로 키운다(z = 30에서 900 ULP). z는 정확한 입력에서 double-double로 만들고, 지수 z²/2 + log(σ√2π)를 double-double로 한 번에 지수화한다. cdf는 반올림한 z.hi에서 계산하고 f(z.hi)·z.lo로 1차 보정한다(2차 항은 z.lo² 크기). 감마의 y = x/scale, 베이불의 c·log(x/scale), 로그정규의 log x도 같다.
+- **역함수의 뉴턴 한 단계**: ndtri의 z는 몇 ULP 오차가 있고, μ + σz가 상쇄되면 |σz/x|배, exp(μ + σz)(로그정규)는 |σz|배로 커진다. 꼬리에서 p에 대한 조건수는 1/|z| 정도뿐이다. 그래서 작은 쪽 확률 q의 로그에서 뉴턴 한 단계를 더한다. dz = (log q − log ndtr(z))/(φ/Φ)(z)이고, log ndtr(z)는 −z²/2를 정확하게 둔 double-double이다. 결과 오차는 ULP/|z| 정도다.
+- **작은 쪽 꼬리를 직접**: `ccdf`는 1 − cdf가 아니다. 두 쪽 중 작은 쪽을 계산하고 큰 쪽은 1 − 작은 쪽, log는 `log1p(−작은 쪽)`이다.
+- **깊은 log 꼬리**: 꼬리가 float64의 정규수 아래로 내려가면 log를 값에서 얻을 수 없다. 정규분포는 `log_ndtr`, 감마는 불완전 감마의 접두(지수가 double-double)와 급수·연분수(`igam_detail::log_tail`), 베타·t·F는 접두의 로그와 BPSER·BFRAC가 곱하는 인수의 로그다(TOMS 708의 함수에 단위 접두를 주어 비율만 얻는다). t의 x = df/(df + t²)마저 1e-270 아래면 주항 x^a/(aB)를 쓴다.
+- **깊은 역함수**: 확률이 2^-1000 아래거나 근이 작으면(주항으로 어림한 근이 1e-17 아래) 확률의 로그를 double-double로 두고 log 쪽에서 푼다. 근이 1e-9 아래면 급수 I = x^a/(aB)(1 + cx + …)에서 log x를 닫힌 꼴로 얻는다(1차 보정까지, 감마도 같다). 그보다 크면 log x에서 뉴턴을 돌린다. 척도는 지수에 넣는다(근이 서브노멀이어도 척도를 곱한 결과는 정규수일 수 있다). t와 F는 1 − x를 −expm1(log x)로 만든다(x ≈ 1에서 1 − x는 자릿수를 잃는다).
+- **엔트로피와 모멘트의 상쇄**: 감마·베타·t·F의 엔트로피는 크기 z log z인 log Γ와 (z − k)ψ(z) 항들의 합이고 값은 O(log z)다. 그래서 큰 항을 손으로 지운 묶음 G(z), Gc(z)(Stirling 급수)와 로그들의 double-double 합으로 바꿨다. 베이불의 중심 모멘트는 c가 크면 크기 1인 항들이 O(1/c²)로 상쇄된다. 그래서 D_k = log Γ(1 + k/c) − k log Γ(1 + 1/c)를 ζ 급수(선형 항이 정확히 지워진다)나 Stirling 꼴(double-double)로 만들고, 중심 모멘트 비를 E_k = e^{D_k} − 1의 double-double 조합으로 얻는다. 로그정규의 첨도는 t = e^{σ²} − 1의 양항 다항식이다. 베타의 첨도 분자는 double-double이다.
+- **정확하지 않은 a − 1**: a < 1/2이면 a − 1.0이 반올림된다. (a − 1)·log y(log y는 745까지)는 a·log y − log y로 쓴다(39 ULP였다).
+- special의 `dd::log`는 지수에 맞춘 함수라 정확도가 약 2^-64(측정 최악 1e-23)다. 그래서 큰 인자의 log Γ를 double-double로 직접 빼는 데(t의 log B(a, 1/2), df = 1e14에서 1e-12)에는 쓰지 않고, 큰 항을 손으로 지운 꼴(L(a) = log Γ(a + 1/2) − log Γ(a) − log(a)/2)을 쓴다.
 
 ## 4. 표본 (`sample`)
 - `X.sample(shape, rng=rng)`: `rng`는 `sd.random`의 Generator다. 원소마다 생성기의 독립 부분 수열을 받아(random.md §3) 스레드 수와 무관하게 같은 값이 나온다.
@@ -154,7 +175,7 @@ ROADMAP.md의 "통계 영역"에 있다(T0–T11). 진행 원칙은 special과 �
 - **매 마일스톤**: scipy와 다르게 할 특수값(참값·극한), 분포·함수마다의 보장 영역
 - **T0 배열 추가**: `quantile`의 방법(numpy의 13가지 중 무엇을 둘지), NaN 리덕션의 목록과 이름, `cov`·`corrcoef`의 인자(`rowvar` 등) — 정했다(2026-11-15): ROADMAP T0, docs/api/array.md §7.9–§7.11
 - **T3 sd.random**: random.md §6
-- **T4 분포 엔진**: 분포마다의 매개변수 이름(docs/api/stats.md의 초안), log 메서드의 계약, 이산 분포의 `median`·`mode` 정의, 메서드 결과의 모양
+- **T4 분포 엔진**: 분포마다의 매개변수 이름, log 메서드의 계약, `mode`, `out=`, 생성자, 첨도 — 정했다(2026-11-15): §1.1 T18–T23. 보장 영역과 특수값은 T24. 이산 분포의 `median`·`mode`는 T5 전에 묻는다
 - **T7 표본**: 분포마다 직접 알고리즘인지 역함수 법인지(재서), `sample`에서 `rng`를 생략할 수 있는지
 - **T8 기술통계**: 축 인자의 기본값, NaN 처리, 편향 보정의 기본값, 결과 객체
 - **T9–T10 다변량**: 특이 공분산, Genz의 기본 정확도, 행렬 분포의 매개변수 규칙
