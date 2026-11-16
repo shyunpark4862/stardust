@@ -1,4 +1,4 @@
-"""T5: accuracy of the 10 discrete distributions against the mpmath references
+"""T5: accuracy of the 10 discrete distributions against the Arb references
 (tests/stats/ref), and scipy's error at the same points.
 
 Errors are in the contract's units (docs/design/stats.md §2.3): relative error (absolute
@@ -42,6 +42,9 @@ METHOD = {"pmf": "pmf", "logpmf": "logpmf", "cdf": "cdf", "logcdf": "logcdf", "c
           "icdf": "ppf", "iccdf": "isf"}
 # scipy's ppf for these runs out of memory or time far in the tail (it steps k up one by one)
 NO_SCIPY_INVERSE = {"zipf", "logseries"}
+# scipy's zipf cdf and sf sum the pmf over 1..k (an array of k terms): past this k scipy is
+# not called (NaN in its column; the k reach 3e307, and the run held 8 GB at the first one)
+ZIPF_SCIPY_KMAX = 1e6
 
 
 def fmt(v):
@@ -56,6 +59,13 @@ def share(e, mask):
 
 def scipy_values(dist, method, xs):
     nparams = len(xs) - 1
+    if dist == "zipf" and method in ("cdf", "logcdf", "ccdf", "logccdf"):
+        keep = xs[-1] <= ZIPF_SCIPY_KMAX
+        v = np.full(xs[-1].size, np.nan)
+        if keep.any():
+            v[keep] = scipy_values("zipf_small", method, tuple(x[keep] for x in xs))
+        return v
+    dist = "zipf" if dist == "zipf_small" else dist
     with np.errstate(all="ignore"):
         try:
             return np.asarray(getattr(SCIPY[dist](*xs[:nparams]), METHOD[method])(xs[-1]), dtype=np.float64)

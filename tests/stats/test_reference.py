@@ -14,11 +14,8 @@ from . import refdata
 # (docs/api/stats.md §2.2). Points outside the parameter ranges that still measure within
 # 1e-14 are held to 1e-14; the files listed here measured more.
 LOOSE: dict[str, float] = {
-    # gamma a > 1e6 (sd.special's gammaincinv/gammainccinv beyond their measured range):
-    # 1.1e-14, 2.4e-14 and 2.5e-14 measured
-    "gamma_icdf": 2e-14, "gamma_ilogcdf": 3e-14, "gamma_ilogccdf": 3e-14,
-    # t, df >= 1e5 with p below the normal range (no log form of the beta side's BGRAT
-    # branch; user decision 2026-11-15): 1.4e-14 measured
+    # t, df >= 1e5 with p below the normal range (the deep inverse;
+    # user decision 2026-11-15): 1.4e-14 measured
     "studentt_icdf": 2e-14, "studentt_iccdf": 2e-14,
 }
 

@@ -97,36 +97,35 @@ inline double bup(double a, double b, dd::DD x, dd::DD y, int n) {
 // (TOMS 708 bgrat; J_n here carries the factor r, so nothing divides by
 // it). z is a double-double: e^-z is the result's scale, and z reaches
 // 1e5. w is the part already summed (for the stopping test); returns w + I.
-inline double bgrat(double a, double b, dd::DD x, dd::DD y, double w) {
-    const double bm1 = b - 1.0;
-    const dd::DD nu = dd::two_sum(a, 0.5 * bm1);
-    // log x from the small one of the pair: x near 1 carries only the double-double's
-    // absolute accuracy (~1e-32) in its distance from 1, which is y's whole value when x
-    // came from a division (fdtr's w = 1 - 4e-26: z = -nu log x off by 2.5e-7, the result
-    // by 1.5e-9). log x = log(1 - y) = -(y + mu(-y)).
+// BGRAT's pieces: nu, log x (from the small one of the pair: x near 1 carries only
+// the double-double's absolute accuracy (~1e-32) in its distance from 1, which is y's
+// whole value when x came from a division (fdtr's w = 1 - 4e-26: z = -nu log x off by
+// 2.5e-7, the result by 1.5e-9); log x = log(1 - y) = -(y + mu(-y))) and z = -nu log x.
+struct BgratArgs {
+    dd::DD nu, lnx, z;
+};
+inline BgratArgs bgrat_args(double a, double b, dd::DD x, dd::DD y) {
+    const dd::DD nu = dd::two_sum(a, 0.5 * (b - 1.0));
     const dd::DD lnx = y.hi < 0.5 ? -(y + dd::log1pmx_neg(-y)) : dd::log(x);
-    const dd::DD z = -(nu * lnx);
-    if (!(z.hi > 0.0)) return w;
-    // Q(b, z) and r at z = hi + lo, to first order in lo
-    const igam_detail::PQ q = igam_detail::igam(b, z.hi);
-    const double Q = q.q - z.lo * (q.xderiv / z.hi);
-    dd::DD Ez = gamma_exponent(b, z.hi);
-    Ez = Ez + (1.0 - b / z.hi) * z.lo;
-    const double r = b * value(gamma_prefix(b, Ez));
-    if (Q == 0.0 && r == 0.0) return w;
-    // G = sqrt(a/c) Gamma*(c) / Gamma*(a) e^(-a mu(b/a) + b log1p((b+1) / (2 nu))), c = a + b
+    return {nu, lnx, -(nu * lnx)};
+}
+// G = sqrt(a/c) Gamma*(c) / Gamma*(a) e^(-a mu(b/a) + b log1p((b+1) / (2 nu))), c = a + b
+inline double bgrat_g(double a, double b, double nu) {
     const double c = a + b;
     const double mu = dd::log1pmx_neg(dd::DD{b / a, 0.0}).hi;
-    const double G = std::sqrt(a / c) * gamma_star(c) / gamma_star(a) *
-                     std::exp(-a * mu + b * std::log1p((b + 1.0) / (2.0 * nu.hi)));
-    const double v = 0.25 / (nu.hi * nu.hi);
-    const double t2 = 0.25 * lnx.hi * lnx.hi;
+    return std::sqrt(a / c) * gamma_star(c) / gamma_star(a) * std::exp(-a * mu + b * std::log1p((b + 1.0) / (2.0 * nu)));
+}
+// Q + sum_n d_n J_n from Q and r (both in any one scale; linear in the pair), tail the
+// part already summed over G in that scale (for the stopping test).
+inline double bgrat_series(double b, const BgratArgs& g, double Q, double r, double tail) {
+    const double bm1 = b - 1.0;
+    const double v = 0.25 / (g.nu.hi * g.nu.hi);
+    const double t2 = 0.25 * g.lnx.hi * g.lnx.hi;
     double cs[31], ds[31];
     double sum = Q, K = Q, t = r, cn = 1.0, n2 = 0.0;
-    const double tail = w / G;
     for (int n = 1; n <= 30; ++n) {
         const double bp2n = b + n2;
-        K = (bp2n * (bp2n + 1.0) * K + (z.hi + bp2n + 1.0) * t) * v;
+        K = (bp2n * (bp2n + 1.0) * K + (g.z.hi + bp2n + 1.0) * t) * v;
         n2 += 2.0;
         t *= t2;
         cn /= n2 * (n2 + 1.0);
@@ -141,7 +140,34 @@ inline double bgrat(double a, double b, dd::DD x, dd::DD y, double w) {
         sum += dj;
         if (sum <= 0.0 || std::fabs(dj) <= 0x1p-56 * (sum + tail)) break;
     }
-    return w + G * sum;
+    return sum;
+}
+inline double bgrat(double a, double b, dd::DD x, dd::DD y, double w) {
+    const BgratArgs g = bgrat_args(a, b, x, y);
+    const dd::DD z = g.z;
+    if (!(z.hi > 0.0)) return w;
+    // Q(b, z) and r at z = hi + lo, to first order in lo
+    const igam_detail::PQ q = igam_detail::igam(b, z.hi);
+    const double Q = q.q - z.lo * (q.xderiv / z.hi);
+    dd::DD Ez = gamma_exponent(b, z.hi);
+    Ez = Ez + (1.0 - b / z.hi) * z.lo;
+    const double r = b * value(gamma_prefix(b, Ez));
+    if (Q == 0.0 && r == 0.0) return w;
+    const double G = bgrat_g(a, b, g.nu.hi);
+    return w + G * bgrat_series(b, g, Q, r, w / G);
+}
+// log I_x(a, b) by BGRAT where I underflows (z large): Q and r from their logs
+// (incgamma.hpp's log_tail for log Q), both scaled by 1 / Q.
+inline double log_bgrat(double a, double b, dd::DD x, dd::DD y) {
+    const BgratArgs g = bgrat_args(a, b, x, y);
+    const dd::DD z = g.z;
+    if (!(z.hi > 0.0)) return -kInf;
+    const auto [lq0, dlq] = igam_detail::log_tail(b, z.hi, false, dd::DD{0.0, 0.0});
+    const double lq = lq0 + z.lo * dlq;
+    const dd::DD Ez = gamma_exponent(b, z.hi) + (1.0 - b / z.hi) * z.lo;
+    const double lr = std::log(b) - Ez.hi - (Ez.lo + std::log(std::sqrt(2.0 * kPi * b) * gamma_star(b)));
+    const double sum = bgrat_series(b, g, 1.0, std::exp(lr - lq), 0.0);
+    return lq + (std::log(bgrat_g(a, b, g.nu.hi)) + std::log(sum));
 }
 
 // BFRAC (TOMS 708 bfrac; Boost's ibeta_fraction2), x at most the mean:

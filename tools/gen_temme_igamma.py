@@ -9,8 +9,9 @@ Temme's uniform expansion (DLMF 8.12.8-8.12.10):
 
 g_k are Stirling's coefficients, Gamma(z) ~ sqrt(2 pi / z) (z/e)^z sum g_k z^-k
 (DLMF 5.11.3). Every c_k is analytic at eta = 0, so its Taylor series is a
-plain power series. These are the series' own values (not fitted), computed
-with mpmath and written to csrc/special/coeffs/temme_igamma.hpp.
+plain power series. These are the series' own values (not fitted): exact rationals
+(flint's fmpq; g_k from the Bernoulli numbers), rounded at the end and written to
+csrc/special/coeffs/temme_igamma.hpp.
 
 Run: uv run python tools/gen_temme_igamma.py
 """
@@ -18,20 +19,27 @@ Run: uv run python tools/gen_temme_igamma.py
 from __future__ import annotations
 
 import pathlib
+from fractions import Fraction
 
-import mpmath as mp
+import arbref
+from flint import fmpq
 
-mp.mp.dps = 80
 N = 60  # series length in eta (powers 0..N-1)
 K = 14  # c_0 .. c_{K-1}
 ETA_MAX = 0.6  # |eta| covered: sigma = |x - a| / a < 0.4 gives |eta| <= 0.47
-TOL = mp.mpf(2) ** -60
+TOL = fmpq(1, 2**60)
 
 OUT = pathlib.Path(__file__).resolve().parent.parent / "csrc/special/coeffs/temme_igamma.hpp"
 
 
+def q(x):
+    """A float as the exact fmpq it is."""
+    f = Fraction(x)
+    return fmpq(f.numerator, f.denominator)
+
+
 def mul(a, b):
-    r = [mp.mpf(0)] * N
+    r = [fmpq(0)] * N
     for i, ai in enumerate(a):
         if ai == 0:
             continue
@@ -41,23 +49,23 @@ def mul(a, b):
 
 
 def inv(a):  # 1 / a, a[0] != 0
-    r = [mp.mpf(0)] * N
+    r = [fmpq(0)] * N
     r[0] = 1 / a[0]
     for n in range(1, N):
-        r[n] = -sum(a[k] * r[n - k] for k in range(1, n + 1)) / a[0]
+        r[n] = -sum((a[k] * r[n - k] for k in range(1, n + 1)), fmpq(0)) / a[0]
     return r
 
 
 def sqrt1(a):  # sqrt(a), a[0] = 1
-    r = [mp.mpf(0)] * N
-    r[0] = mp.mpf(1)
+    r = [fmpq(0)] * N
+    r[0] = fmpq(1)
     for n in range(1, N):
-        r[n] = (a[n] - sum(r[k] * r[n - k] for k in range(1, n))) / 2
+        r[n] = (a[n] - sum((r[k] * r[n - k] for k in range(1, n)), fmpq(0))) / 2
     return r
 
 
 def power(a, n):
-    r = [mp.mpf(1)] + [mp.mpf(0)] * (N - 1)
+    r = [fmpq(1)] + [fmpq(0)] * (N - 1)
     for _ in range(n):
         r = mul(r, a)
     return r
@@ -65,12 +73,12 @@ def power(a, n):
 
 def stirling_g(kmax):
     # sum g_k w^k = exp(sum_j B_2j / (2j (2j-1)) w^(2j-1))
-    s = [mp.mpf(0)] * N
+    s = [fmpq(0)] * N
     for j in range(1, N // 2):
         if 2 * j - 1 < N:
-            s[2 * j - 1] = mp.bernoulli(2 * j) / (2 * j * (2 * j - 1))
-    e = [mp.mpf(1)] + [mp.mpf(0)] * (N - 1)
-    term = [mp.mpf(1)] + [mp.mpf(0)] * (N - 1)
+            s[2 * j - 1] = fmpq.bernoulli(2 * j) / (2 * j * (2 * j - 1))
+    e = [fmpq(1)] + [fmpq(0)] * (N - 1)
+    term = [fmpq(1)] + [fmpq(0)] * (N - 1)
     for n in range(1, N):
         term = [t / n for t in mul(term, s)]
         e = [x + y for x, y in zip(e, term)]
@@ -79,10 +87,10 @@ def stirling_g(kmax):
 
 def main():
     # eta = mu S(mu), S = sqrt(2 (mu - log(1 + mu)) / mu^2), (mu - log(1+mu))/mu^2 = sum (-1)^k mu^k / (k+2)
-    S = sqrt1([2 * mp.mpf(-1) ** k / (k + 2) for k in range(N)])
+    S = sqrt1([fmpq(2 * (-1) ** k, k + 2) for k in range(N)])
     phi = inv(S)  # mu = eta phi(mu): Lagrange inversion [eta^n] mu = [mu^(n-1)] phi^n / n
-    m = [mp.mpf(0)] * N  # m(eta) = mu / eta
-    pw = [mp.mpf(1)] + [mp.mpf(0)] * (N - 1)
+    m = [fmpq(0)] * N  # m(eta) = mu / eta
+    pw = [fmpq(1)] + [fmpq(0)] * (N - 1)
     for n in range(1, N + 1):
         pw = mul(pw, phi)
         m[n - 1] = pw[n - 1] / n
@@ -90,31 +98,31 @@ def main():
     g = stirling_g(K + 1)
 
     cs = []
-    c = [rm[i + 1] for i in range(N - 1)] + [mp.mpf(0)]  # (eta/mu - 1) / eta
+    c = [rm[i + 1] for i in range(N - 1)] + [fmpq(0)]  # (eta/mu - 1) / eta
     cs.append(c)
     for k in range(1, K):
-        d = [(i + 1) * c[i + 1] for i in range(N - 1)] + [mp.mpf(0)]  # c'
+        d = [(i + 1) * c[i + 1] for i in range(N - 1)] + [fmpq(0)]  # c'
         t = [d[i] + (-1) ** k * g[k] * rm[i] for i in range(N)]
-        assert abs(t[0]) < mp.mpf(10) ** -60, (k, t[0])
-        c = [t[i + 1] for i in range(N - 1)] + [mp.mpf(0)]
+        assert t[0] == 0, (k, t[0])  # exact
+        c = [t[i + 1] for i in range(N - 1)] + [fmpq(0)]
         cs.append(c)
 
     lines = []
     for k, c in enumerate(cs):
         # keep terms while they matter on |eta| <= ETA_MAX (relative to the largest)
         valid = N - 2 * k - 2  # each step loses two powers of accuracy at the tail
-        scale = max(abs(c[i]) * ETA_MAX**i for i in range(valid))
-        last = max(i for i in range(valid) if abs(c[i]) * ETA_MAX**i > TOL * scale)
-        coefs = [mp.nstr(c[i], 22, strip_zeros=False) for i in range(last, -1, -1)]
+        scale = max(abs(c[i]) * q(ETA_MAX**i) for i in range(valid))
+        last = max(i for i in range(valid) if abs(c[i]) * q(ETA_MAX**i) > TOL * scale)
+        coefs = [arbref.nstr(c[i], 22) for i in range(last, -1, -1)]
         body = ",\n    ".join(", ".join(coefs[j : j + 3]) for j in range(0, len(coefs), 3))
         lines.append(f"inline constexpr std::array<double, {last + 1}> kTemmeC{k} = {{\n    {body}}};")
-    print(f"c_k(0): {[mp.nstr(c[0], 6) for c in cs]}")
+    print(f"c_k(0): {[arbref.nstr(c[0], 6) for c in cs]}")
 
     OUT.write_text(
         "// Taylor coefficients of Temme's c_k(eta) for the incomplete gamma\n"
         "// (DLMF 8.12.8-8.12.10). Not fitted: the\n"
-        "// series' own values, generated by tools/gen_temme_igamma.py (mpmath, 80\n"
-        "// digits) and rounded. Each array is highest power first for horner();\n"
+        "// series' own values, generated by tools/gen_temme_igamma.py (exact\n"
+        "// rationals) and rounded. Each array is highest power first for horner();\n"
         f"// terms below 2^-60 of the largest on |eta| <= {ETA_MAX} are dropped.\n"
         "#pragma once\n\n#include <array>\n\nnamespace sd::special::temme {\n\n"
         + "\n\n".join(lines)

@@ -1,7 +1,7 @@
 """Reference values for sd.special and the error measures (docs/design/special.md §6).
 
-tools/special_ref.py computes each function at 50 significant digits with mpmath and
-stores, in tests/special/ref/<name>.npz,
+tools/special_ref.py computes each function with Arb (python-flint), as a ball that contains
+the true value and is settled to 2^-110 of it, and stores, in tests/special/ref/<name>.npz,
 
     x0, x1, ...   the inputs (float64)
     hi, lo        the reference as a double-double: value ~= hi + lo, |lo| <= ulp(hi) / 2
@@ -10,7 +10,7 @@ stores, in tests/special/ref/<name>.npz,
                   whose contract is |dx / x| <= 1e-14 max(1, kappa); 1 elsewhere (absent in
                   older files)
 
-so an error can be measured to a fraction of an ULP without mpmath at test time.
+so an error can be measured to a fraction of an ULP without Arb at test time.
 """
 
 import pathlib

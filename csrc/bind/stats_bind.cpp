@@ -11,9 +11,12 @@
 #include "stats/dist/discrete_basic.hpp"
 #include "stats/dist/discrete_more.hpp"
 #include "stats/dist/exponential.hpp"
+#include "stats/dist/extreme.hpp"
 #include "stats/dist/gamma.hpp"
 #include "stats/dist/laplace.hpp"
+#include "stats/dist/lifetime.hpp"
 #include "stats/dist/lognormal.hpp"
+#include "stats/dist/noncentral.hpp"
 #include "stats/dist/normal.hpp"
 #include "stats/dist/t_f.hpp"
 #include "stats/dist/uniform.hpp"
@@ -66,6 +69,17 @@ void bind_stats(nb::module_& core) {
     def_continuous<stats::Cauchy>(m);
     def_continuous<stats::LogNormal>(m);
     def_continuous<stats::Weibull>(m);
+    // T6: extreme value and lifetime 6 (docs/api/stats.md §2.1)
+    def_continuous<stats::Logistic>(m);
+    def_continuous<stats::Gumbel>(m);
+    def_continuous<stats::GEV>(m);
+    def_continuous<stats::Pareto>(m);
+    def_continuous<stats::Rayleigh>(m);
+    def_continuous<stats::InverseGamma>(m);
+    // T6: noncentral 3
+    def_continuous<stats::NoncentralChiSquared>(m);
+    def_continuous<stats::NoncentralT>(m);
+    def_continuous<stats::NoncentralF>(m);
     // T5: the discrete 10 (docs/api/stats.md §2.1)
     def_discrete<stats::Binomial>(m);
     def_discrete<stats::Poisson>(m);

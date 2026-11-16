@@ -6,8 +6,9 @@ docs/design/stats.md §1.1. Every method is elementwise and accurate to 1e-14 re
 in each distribution's guaranteed region, like sd.special.
 """
 
-from ._continuous import (Beta, Cauchy, ChiSquared, Exponential, F, Gamma, Laplace, LogNormal, Normal, StudentT,
-                          Uniform, Weibull)
+from ._continuous import (GEV, Beta, Cauchy, ChiSquared, Exponential, F, Gamma, Gumbel, InverseGamma, Laplace,
+                          Logistic, LogNormal, NoncentralChiSquared, NoncentralF, NoncentralT, Normal, Pareto, Rayleigh,
+                          StudentT, Uniform, Weibull)
 from ._discrete import (Bernoulli, BetaBinomial, Binomial, DiscreteUniform, Geometric, Hypergeometric, LogSeries,
                         NegativeBinomial, Poisson, Zipf)
 from ._distribution import ContinuousDistribution, DiscreteDistribution
@@ -17,6 +18,9 @@ __all__ = [
     # T4: continuous (docs/api/stats.md §2.1)
     "Normal", "StudentT", "ChiSquared", "F", "Gamma", "Beta", "Exponential", "LogNormal", "Uniform", "Cauchy",
     "Laplace", "Weibull",
+    # T6: extreme value and lifetime
+    "Logistic", "Gumbel", "GEV", "Pareto", "Rayleigh", "InverseGamma",
+    "NoncentralChiSquared", "NoncentralT", "NoncentralF",
     # T5: discrete
     "Binomial", "Poisson", "Geometric", "NegativeBinomial", "Hypergeometric", "Bernoulli", "DiscreteUniform",
     "BetaBinomial", "LogSeries", "Zipf",

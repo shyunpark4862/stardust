@@ -300,6 +300,24 @@ inline double igam_inverse(double a, double p, bool upper) {
     });
 }
 
+// One Halley step from x (Boost's inverse, which stops its iteration at half
+// the digits and leaves up to ~100 ULP at large a) on the smaller of p, 1 - p:
+// from a relative error e the step leaves ~e^3, below rounding. Skipped in the
+// deep tail, where F rounded to float64 is too coarse (igam_inverse's log path).
+inline double igam_polish(double a, double p, bool upper, double x) {
+    const bool lower = upper ? p > 0.5 : p <= 0.5;
+    const double t = (upper == lower) ? 1.0 - p : p;
+    if (t < 0x1p-1000) return x;
+    const PQ r = igam(a, x);
+    const double F = lower ? r.p : r.q;
+    const double xfp = lower ? r.xderiv : -r.xderiv;
+    if (!(F > 0.0) || xfp == 0.0 || !std::isfinite(xfp)) return x;
+    const double u = x * ((F - t) / xfp);
+    const double den = 1.0 - 0.5 * u * ((a - 1.0) / x - 1.0);
+    const double xn = x - (den > 0.5 && den < 2.0 ? u / den : u);
+    return xn > 0.0 && std::isfinite(xn) ? xn : x;
+}
+
 }  // namespace igam_detail
 
 // P(a, x). gammainc(0, x > 0) = 1, gammainc(inf, x < inf) = 0 (scipy).
@@ -357,7 +375,7 @@ struct Gammaincinv : Real {
         if (igam_inverse_edge(a, p, false, out)) return out;
         if (p >= 1e-300 && std::isfinite(a)) {  // Boost (special/boost.hpp); subnormal roots are ours
             const double r = bst::gamma_p_inv(a, p);
-            if (bst::normal(r) && r >= 1e-300) return r;
+            if (bst::normal(r) && r >= 1e-300) return igam_detail::igam_polish(a, p, false, r);
         }
         return igam_detail::igam_inverse(a, p, false);
     }
@@ -373,7 +391,7 @@ struct Gammainccinv : Real {
         if (igam_inverse_edge(a, q, true, out)) return out;
         if (std::isfinite(a)) {  // Boost (special/boost.hpp)
             const double r = bst::gamma_q_inv(a, q);
-            if (bst::normal(r)) return r;
+            if (bst::normal(r)) return igam_detail::igam_polish(a, q, true, r);
         }
         return igam_detail::igam_inverse(a, q, true);
     }

@@ -102,7 +102,8 @@ namespace disc_sum {
 using num::DD;
 
 // The central moments m2, m3, m4 (sum (k - mu)^j pmf(k)) by summing outwards from the mode
-// until the terms are negligible.
+// until the rest is negligible: past a term t of m4 with ratio r < 1 to the one before, the
+// rest is about t r / (1 - r) (disc::entropy_sum's rule).
 struct Central {
     double m2, m3, m4;
 };
@@ -117,12 +118,24 @@ Central central(double mu, double mode, double lo, double hi, LogPmf&& logpmf) {
         c.m4 += w * d2 * d2;
         return w * d2 * d2;
     };
+    auto done = [&](double t, double prev) {
+        const double r = prev > 0.0 ? t / prev : 0.0;
+        return r < 1.0 && t * r <= (1.0 - r) * c.m4 * 0x1p-60;
+    };
     const double m = std::clamp(std::floor(mode), lo, hi);
-    add(m);
-    for (double k = m + 1.0; k <= hi; k += 1.0)
-        if (add(k) <= c.m4 * 0x1p-60 && k > mode + 1.0) break;
-    for (double k = m - 1.0; k >= lo; k -= 1.0)
-        if (add(k) <= c.m4 * 0x1p-60 && k < mode - 1.0) break;
+    const double tm = add(m);
+    double prev = tm;
+    for (double k = m + 1.0; k <= hi; k += 1.0) {
+        const double t = add(k);
+        if (k > mode + 1.0 && done(t, prev)) break;
+        prev = t;
+    }
+    prev = tm;
+    for (double k = m - 1.0; k >= lo; k -= 1.0) {
+        const double t = add(k);
+        if (k < mode - 1.0 && done(t, prev)) break;
+        prev = t;
+    }
     return c;
 }
 

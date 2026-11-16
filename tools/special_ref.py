@@ -1,11 +1,19 @@
-"""Reference values for sd.special from mpmath (docs/design/special.md §6).
+"""Reference values for sd.special from Arb (python-flint; docs/design/special.md §6).
 
-    .venv/bin/python tools/special_ref.py            # every function in FUNCTIONS
+    .venv/bin/python tools/special_ref.py            # every function in FUNCTIONS and COMPLEX
     .venv/bin/python tools/special_ref.py NAME ...   # only these
-    .venv/bin/python tools/special_ref.py --jobs=8 NAME ...   # points in 8 processes (same file)
+    .venv/bin/python tools/special_ref.py --jobs=8 NAME ...   # points in 8 processes (default 10)
 
 writes tests/special/ref/<name>.npz (format: tests/special/refdata.py). The files are
-committed; tests and bench/special/accuracy.py read them and never call mpmath.
+committed; tests and bench/special/accuracy.py read them and never call Arb.
+
+Each reference is an Arb ball [mid +- rad] that contains the true value, evaluated at
+doubling precision until rad is below 2^-110 of the value (or 2^-1132 absolutely, below the
+normal doubles), so hi + lo is the value rounded (tools/arbref.py). Arb's functions bound
+their own errors; the sums written here (the incomplete gamma and beta series, the
+noncentral Poisson mixtures) add a bound on their truncated tail (arbref.add_error); the
+inverses are certified by the sign change of F(x) - p across x (1 -+ 2^-110). A point that
+does not settle by 8192 bits, or within POINT_SECONDS, is dropped.
 
 Each function's input set (docs/design/special.md §6) is
   - a grid over its guaranteed region,
@@ -16,26 +24,81 @@ Each function's input set (docs/design/special.md §6) is
 The generator is seeded: running the tool again gives the same file.
 """
 
+import math
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
-import mpmath
+import arbref
+import flint
 import numpy as np
+from arbref import (
+    NotSettled,
+    add_error,
+    geometric_tail,
+    precision,
+    rigorous,
+    solve_log_settled,
+    solve_settled,
+    to_dd,
+)
+from flint import acb, arb
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "tests" / "special" / "ref"
-DPS = 50  # significant decimal digits: far beyond float64's 16, so hi + lo is exact to rounding
+DPS = 50  # the mpmath tools' digits; kept because tools/stats_ref.py may still read it (Arb: arbref.TARGET_BITS)
+FLOOR = arbref.DOUBLE_TINY  # values below the normal doubles need only an absolute 2^-1132
+MODULUS_BITS = arbref.TARGET_BITS + 10  # a complex part far below |f| need only 2^-120 |f| (S8: |error| / |f|)
+TRUNC_BITS = arbref.TARGET_BITS + 12  # the series here stop when their tail bound is below 2^-max(122, prec) of the sum
+MAX_TERMS = 4_000_000  # a series that has not converged by then gives up (NotSettled)
+
+
+def _trunc():
+    """Where the series written here stop: their tail bound below 2^-max(122, prec) of the sum. It
+    follows the precision, so a value that 1 - (a sum) cancels settles as the precision doubles."""
+    return arb(2) ** -max(TRUNC_BITS, arbref.ctx.prec)
+
+
+def _sqrt_pi():
+    return arb.const_sqrt_pi()
+
+
+def _f(v):
+    """A float of an arb or acb modulus (scales and starts; not references)."""
+    return float(abs(v).mid())
+
+
+def _exact(fn):
+    """fn() at a precision where its arb operations (a negation, x2, 1 - y: each rounds to the
+    current precision in python-flint) are exact."""
+    with precision(4 * arbref.MAX_PREC):
+        return fn()
+
+
+def _kappa(fn):
+    """kappa = |p / (x F'(x))| of an inverse: fn() known to 2^-24 (a float; NaN if it never settles)."""
+    try:
+        return _f(rigorous(fn, target=24))
+    except NotSettled:
+        return float("nan")
+
+
+def _scale_of(fn):
+    """max(1, fn()) for a bound's multiplier (scale): fn() (an arb) known to 2^-24 (an inf
+    where it overflows a double)."""
+    return max(1.0, _f(rigorous(fn, target=24)))
 
 
 # ---------------------------------------------------------------- input sets
 
 
 def grid(lo, hi, n):
+    """n evenly spaced float64 points in [lo, hi] (inputs: numpy in, numpy out)."""
     return np.linspace(lo, hi, n)
 
 
 def loguniform(rng, lo, hi, n, signed=False):
-    """n points with log|x| uniform in [log lo, log hi] (lo > 0); random signs when signed."""
+    """n float64 points with log|x| uniform in [log lo, log hi] (lo > 0); random signs when signed."""
     x = np.exp(rng.uniform(np.log(lo), np.log(hi), n))
     if signed:
         x *= rng.choice([-1.0, 1.0], n)
@@ -43,7 +106,7 @@ def loguniform(rng, lo, hi, n, signed=False):
 
 
 def around(points, k=4):
-    """Each point and the k float64 neighbours on either side."""
+    """Each point and the k float64 neighbours on either side (a float64 array)."""
     out = []
     for p in points:
         v = float(p)
@@ -57,7 +120,8 @@ def around(points, k=4):
 
 # ---------------------------------------------------------------- the functions
 #
-# name: (nin, mpmath function of mpf inputs, input-set builder rng -> (inputs, guaranteed))
+# name: (nin, function of arb inputs -> arb (at the current precision; a float for an exact
+# special value), input-set builder rng -> (inputs, guaranteed))
 
 
 def _cf_tan_inputs(rng):
@@ -189,76 +253,68 @@ def _erfcinv_inputs(rng):
     return (z,), np.ones(z.size, dtype=bool)
 
 
-def _mp_erfc(x):
-    return mpmath.mpf(0) if x > 1e10 else (mpmath.mpf(2) if x < -1e10 else mpmath.erfc(x))
+def _a(v):
+    return v if isinstance(v, (arb, acb)) else arb(v)
 
 
-def _mp_erfcx(x):
-    if x > 1e8:  # asymptotic series; mpmath's erfc overflows a float internally for huge x
-        return (1 / (x * mpmath.sqrt(mpmath.pi))) * (1 - 1 / (2 * x * x) + 3 / (4 * x**4) - 15 / (8 * x**6))
-    return mpmath.exp(x * x) * mpmath.erfc(x)
-
-
-def _mp_ndtr(x):
-    return mpmath.mpf(0) if x < -1e10 else (mpmath.mpf(1) if x > 1e10 else mpmath.ncdf(x))
-
-
-def _mp_log_ndtr(x):
+def _expit(x):
     if x >= 0:
-        return mpmath.log1p(-_mp_ndtr(-x))
-    if x < -1e10:  # log(phi(x) / |x|) + log(1 - 1/x^2 + ...)
-        return -x * x / 2 - mpmath.log(-x) - mpmath.log(2 * mpmath.pi) / 2 + mpmath.log1p(-1 / (x * x))
-    return mpmath.log(mpmath.ncdf(x))
+        return 1 / (1 + (-x).exp())
+    e = x.exp()
+    return e / (1 + e)
 
 
-def _newton_log(g, dg, x0):
-    """Solve g(x) = 0 by Newton's method from x0 (g a log-space residual, so deep tails converge)."""
-    x = mpmath.mpf(x0)
-    for _ in range(100):
-        dx = g(x) / dg(x)
-        x -= dx
-        if abs(dx) <= abs(x) * mpmath.mpf(10) ** -45 or dx == 0:
-            return x
-    raise RuntimeError("no convergence")
+def _log_expit(x):
+    if x >= 0:
+        return -(-x).exp().log1p()
+    return x - x.exp().log1p()
 
 
-def _start(name, v):
-    import stardust as sd  # our own value is a good start; Newton makes the reference independent of it
-    return getattr(sd.special, name)(float(v))
+def _ref_erfcx(x):
+    if x > 1:  # erfcx(x) = U(1/2, 1/2, x^2) / sqrt(pi): no exp(x^2) to cancel for a huge x
+        return (x * x).hypgeom_u(0.5, 0.5) / _sqrt_pi()
+    return (x * x).exp() * x.erfc()
 
 
-def _mp_ndtri(p):
-    x0 = _start("ndtri", p)
-    if p > 0.5:  # solve on the upper tail, where 1 - p is exact
-        q = 1 - p
-        return -_newton_log(lambda x: mpmath.log(mpmath.ncdf(x)) - mpmath.log(q),
-                            lambda x: mpmath.npdf(x) / mpmath.ncdf(x), -x0)
-    return _newton_log(lambda x: mpmath.log(mpmath.ncdf(x)) - mpmath.log(p), lambda x: mpmath.npdf(x) / mpmath.ncdf(x), x0)
+def _ndtr(x):
+    """Phi(x) (arb in, arb out)."""
+    x = _a(x)
+    return (-x / arb(2).sqrt()).erfc() / 2
 
 
-def _derfc(x):
-    return -2 / mpmath.sqrt(mpmath.pi) * mpmath.exp(-x * x)
+def _npdf(x):
+    return (-x * x / 2).exp() / (2 * arb.pi()).sqrt()
 
 
-def _mp_erfinv(y):
-    if y == 0:
-        return mpmath.mpf(0)
-    s, a = (1, y) if y > 0 else (-1, -y)
-    x0 = abs(_start("erfinv", a))
-    if a < 0.5:
-        r = _newton_log(lambda x: mpmath.log(mpmath.erf(x)) - mpmath.log(a), lambda x: -_derfc(x) / mpmath.erf(x), x0)
-    else:
-        c = 1 - a
-        r = _newton_log(lambda x: mpmath.log(mpmath.erfc(x)) - mpmath.log(c), lambda x: _derfc(x) / mpmath.erfc(x), x0)
-    return s * r
+def _log_ncdf(x):
+    """log Phi(x) (arb in, arb out). x > 0: log1p(-Phi(-x)) keeps a Phi of 1 - 1e-300; x < -2:
+    -x^2/2 + log U(1/2, 1/2, x^2/2) - log(2 sqrt(pi)), since Phi(x) = e^(-x^2/2) U(1/2, 1/2, x^2/2) /
+    (2 sqrt pi) for x < 0 (no e^(-x^2/2) to underflow or to lose its digits at x = -1e150).
+    The branch is chosen on the midpoint; each formula holds on its whole side with margin."""
+    x = _a(x)
+    m = x.mid()
+    if m > 0:
+        return (-_ndtr(-x)).log1p()
+    if m > -2:
+        return _ndtr(x).log()
+    h = x * x / 2
+    return -h + h.hypgeom_u(0.5, 0.5).log() - (2 * _sqrt_pi()).log()
 
 
-def _mp_erfcinv(z):
-    if z == 1:
-        return mpmath.mpf(0)
-    s, c = (1, z) if z < 1 else (-1, 2 - z)
-    x0 = abs(_start("erfcinv", c))
-    return s * _newton_log(lambda x: mpmath.log(mpmath.erfc(x)) - mpmath.log(c), lambda x: _derfc(x) / mpmath.erfc(x), x0)
+def _ncdf_slope(x):
+    """d/dx log Phi(x) = phi / Phi; sqrt(2) / U(1/2, 1/2, x^2/2) for x < -2 (the same identity)."""
+    x = _a(x)
+    if x.mid() < -2:
+        return arb(2).sqrt() / (x * x / 2).hypgeom_u(0.5, 0.5)
+    return _npdf(x) / _ndtr(x)
+
+
+def _ref_log_ndtr(x):
+    return _log_ncdf(x)
+
+
+def _ref_ndtri(p):
+    return -arb(2).sqrt() * (2 * p).erfcinv()  # Arb's erfcinv is a rigorous ball (no root to certify)
 
 
 # ---- S3: gamma, beta and zeta (docs/api/special.md §3, §7). Guaranteed (relative 1e-14,
@@ -360,29 +416,48 @@ def _hurwitz_inputs(rng):
     return (x[:k], q[:k]), q[:k] > 0
 
 
-def _mp_polygamma(n, x):
-    return mpmath.psi(int(n), x)
+def _ref_gammaln(x):
+    if x > 0:
+        return x.lgamma()
+    return arb.pi().log() - abs(x.sin_pi()).log() - (1 - x).lgamma()  # Gamma(x) Gamma(1-x) = pi / sin(pi x)
 
 
-def _mp_binom(n, k):
-    if k == mpmath.floor(k) and k >= 0:  # the falling factorial (S3 user decision)
-        r = mpmath.mpf(1)
-        for i in range(1, int(k) + 1):
+def _ref_polygamma(n, x):
+    return acb(x).polygamma(acb(int(float(n)))).real
+
+
+def _ref_binom(n, k):
+    if k == k.floor() and k >= 0:  # the falling factorial (S3 user decision)
+        r = arb(1)
+        for i in range(1, int(float(k)) + 1):
             r *= (n - k + i) / i
         return r
-    return mpmath.binomial(n, k)
+    return (n + 1).gamma() * (k + 1).rgamma() * (n - k + 1).rgamma()
 
 
-def _mp_beta(a, b):
-    return mpmath.beta(a, b)
+def _ref_beta(a, b):
+    return a.gamma() * b.gamma() * (a + b).rgamma()
 
 
-def _mp_zeta(x):
-    return mpmath.zeta(x)
+def _lbeta(a, b):
+    """log B(a, b) for a, b > 0."""
+    return a.lgamma() + b.lgamma() - (a + b).lgamma()
+
+
+def _ref_betaln(a, b):
+    if a > 0 and b > 0:
+        return _lbeta(a, b)
+    return abs(_ref_beta(a, b)).log()
+
+
+def _ref_zeta_hurwitz(x, q):
+    if q > 0:
+        return x.zeta(q)
+    return acb(x).zeta(acb(q)).real  # q < 0 (the set pairs it with integer x): real, beyond arb's zeta
 
 
 def _zero_at_zero(f):
-    return lambda *a: mpmath.mpf(0) if a[0] == 0 else f(*a)
+    return lambda *a: 0.0 if a[0] == 0 else f(*a)
 
 
 # S4: the incomplete gamma and beta functions and their inverses. Guaranteed everywhere
@@ -405,19 +480,76 @@ def _gammainc_inputs(rng):
     return (np.concatenate([a, ea]), np.concatenate([x, ex])), np.ones(a.size + ea.size, dtype=bool)
 
 
-def _mp_gammainc(a, x):
-    try:
-        return mpmath.gammainc(a, 0, x, regularized=True)
-    except mpmath.libmp.NoConvergence:  # large a: P = x^a e^-x / Gamma(a+1) 1F1(1; a+1; x), more terms
-        return mpmath.exp(a * mpmath.log(x) - x - mpmath.loggamma(a + 1)) * mpmath.hyp1f1(1, a + 1, x, maxterms=10**7)
+def _gamma_p_series(a, x):
+    """P(a, x) = x^a e^-x / Gamma(a+1) sum_k t_k, t_k = x^k / ((a+1)...(a+k)) (a, x > 0). Past
+    k = x - a the ratio x / (a+k+1) of the terms only falls, so the tail after t_k is at most
+    t_k r / (1 - r), r = x / (a+k+1)."""
+    tol = _trunc()
+    t = s = arb(1)
+    k = 0
+    while True:
+        k += 1
+        t = t * x / (a + k)
+        s += t
+        if k % 8 == 0:
+            r = x / (a + k + 1)
+            if r < 1:
+                tail = geometric_tail(t, r)
+                if tail <= tol * s:
+                    break
+        if k > MAX_TERMS:
+            raise NotSettled("P series")
+    return (a * x.log() - x - (a + 1).lgamma()).exp() * add_error(s, tail)
 
 
-def _mp_gammaincc(a, x):
-    try:
-        return mpmath.gammainc(a, x, mpmath.inf, regularized=True)
-    except mpmath.libmp.NoConvergence:
-        with mpmath.workdps(2 * mpmath.mp.dps):
-            return 1 - _mp_gammainc(a, x)
+def _gamma_q_series(a, x):
+    """Q(a, x) for x > a: integrating by parts k times,
+        Gamma(a, x) = x^(a-1) e^-x (sum_{j<k} c_j + c_k R_k),  c_j = (a-1)...(a-j) / x^j,
+    with 0 <= R_k = Gamma(a-k, x) / (x^(a-k-1) e^-x) <= max(1, x / (x - a + k + 1)) (Gamma(s, x)
+    <= x^(s-1) e^-x x / (x - s + 1) for s >= 1, <= x^(s-1) e^-x for s < 1). The terms fall while
+    |a - k - 1| < x; NotSettled if they turn before the remainder is small enough (x too
+    small for the expansion: the caller takes 1 - P)."""
+    tol = _trunc()
+    s, c, k = arb(0), arb(1), 0
+    while True:
+        rem = abs(c) * (1 + x / (x - a + k + 1))  # >= |c_k| max(1, x / (x - a + k + 1))
+        if k > 0 and rem <= tol * abs(s):
+            break
+        if abs(a - k - 1) >= x:
+            raise NotSettled("Q expansion turns")
+        s += c
+        k += 1
+        c = c * (a - k) / x
+        if k > MAX_TERMS:
+            raise NotSettled("Q expansion")
+    return ((a - 1) * x.log() - x - a.lgamma()).exp() * add_error(s, rem)
+
+
+def _gammainc(a, x, upper=False):
+    """P(a, x), or Q(a, x) when upper (a > 0, x >= 0; arb in, arb out). Q from its expansion
+    above the mean (x > a + 3 sqrt(a) + 1) where that converges, else P from its series; the
+    other one as 1 minus it (a cancellation widens the ball, and the precision doubles past it).
+    Arb's own gamma_lower does not settle for a >~ 1000 (its radius stops shrinking)."""
+    a, x = _a(a), _a(x)
+    if x == 0:
+        return arb(1) if upper else arb(0)
+    am, xm = float(a.mid()), float(x.mid())
+    if xm > am + 3 * math.sqrt(am) + 1:
+        try:
+            q = _gamma_q_series(a, x)
+            return q if upper else 1 - q
+        except NotSettled:
+            pass
+    p = _gamma_p_series(a, x)
+    return 1 - p if upper else p
+
+
+def _ref_gammainc(a, x):
+    return _gammainc(a, x, False)
+
+
+def _ref_gammaincc(a, x):
+    return _gammainc(a, x, True)
 
 
 def _beta_sets(rng, m):
@@ -443,12 +575,62 @@ def _betainc_inputs(rng):
     return (a[keep], b[keep], x[keep]), np.ones(keep.sum(), dtype=bool)
 
 
-def _mp_betainc(a, b, x):
-    return mpmath.betainc(a, b, 0, x, regularized=True)
+def _beta_series(a, b, x, y):
+    """I_x(a, b) = x^a y^b / (a B(a, b)) sum_k t_k, t_{k+1} = t_k x (a+b+k) / (a+1+k), y = 1 - x
+    (2F1(a+b, 1; a+1; x)). Beyond term k the ratios are at most r = x (a+b+k) / (a+1+k) when
+    b >= 1 (they fall toward x), r = x when b < 1 (they rise toward it); the tail is at most
+    t_k r / (1 - r)."""
+    tol = _trunc()
+    t = s = arb(1)
+    k = 0
+    while True:
+        t = t * x * (a + b + k) / (a + 1 + k)
+        k += 1
+        s += t
+        if k % 8 == 0:
+            r = x * (a + b + k) / (a + 1 + k) if b >= 1 else x
+            if r < 1:
+                tail = geometric_tail(t, r)
+                if tail <= tol * s:
+                    break
+        if k > MAX_TERMS:
+            raise NotSettled("beta series")
+    return (a * x.log() + b * y.log() - a.log() - _lbeta(a, b)).exp() * add_error(s, tail)
 
 
-def _mp_betaincc(a, b, x):
-    return mpmath.betainc(b, a, 0, 1 - x, regularized=True)  # 1 - x is exact in mpmath
+def _beta_cost(a, b, x):
+    """About how many terms _beta_series(a, b, x) takes: up to its largest term, then ~85 / (1 - x)."""
+    if x >= 1:
+        return math.inf
+    return max(0.0, (x * (a + b) - a - 1) / (1 - x)) + 85 / (1 - x)
+
+
+def _ibeta(a, b, x, y):
+    """I_x(a, b), y = 1 - x given (arb in, arb out; a, b > 0): from its own series, or as
+    1 - I_y(b, a) when that series is much shorter (by _beta_cost; a cancellation there widens
+    the ball and the precision doubles past it). (Arb's beta_lower does not settle for
+    a, b ~ 1e4 near the mean.)"""
+    a, b, x, y = _a(a), _a(b), _a(x), _a(y)
+    if x == 0 or y == 0:
+        return arb(0) if x == 0 else arb(1)
+    af, bf, xf, yf = (float(v.mid()) for v in (a, b, x, y))
+    if _beta_cost(af, bf, xf) <= 4 * _beta_cost(bf, af, yf) + 200:
+        return _beta_series(a, b, x, y)
+    return 1 - _beta_series(b, a, y, x)
+
+
+def _ibeta_pair(a, b, x, y):
+    """(I_x(a, b), 1 - I_x(a, b)) with y = 1 - x given (arb in, arb out; a, b > 0): each
+    evaluated as _ibeta (1 minus the other would lose a tiny value)."""
+    return _ibeta(a, b, x, y), _ibeta(b, a, y, x)
+
+
+def _ref_betainc(a, b, x):
+    return _ibeta(a, b, x, 1 - x)  # 1 - x is exact at the doubled precisions; a ball before
+
+
+def _ref_betaincc(a, b, x):
+    return _ibeta(b, a, 1 - x, x)
 
 
 def _gammaincinv_inputs(rng):
@@ -473,78 +655,94 @@ def _betaincinv_inputs(rng):
     return (a[keep], b[keep], p[keep]), np.ones(keep.sum(), dtype=bool)
 
 
-def _solve_log(logF, dlogF, x0, hi=None):
-    """The root of log F(x) = 0 by Newton's method in s = log x, from x0 > 0 (our own value: the
-    reference does not depend on it beyond the start), kept below `hi`. dlogF(x) = x F'(x) / F(x)."""
-    x = mpmath.mpf(x0)
-    for _ in range(200):
-        xn = x * mpmath.exp(-logF(x) / dlogF(x))
-        if hi is not None and xn >= hi:
-            xn = (x + hi) / 2
-        if abs(xn - x) <= abs(xn) * mpmath.mpf(10) ** -40:
-            return xn
-        x = xn
-    raise RuntimeError("no convergence")
+def _sign(fn):
+    """The sign of fn() (an arb), at doubling precision until it is certain."""
+    p = arbref.START_PREC
+    while p <= arbref.MAX_PREC:
+        with precision(p):
+            v = fn()
+        if v > 0:
+            return 1
+        if v < 0:
+            return -1
+        if v == 0:
+            return 0
+        p *= 2
+    raise NotSettled("sign")
+
+
+
+
+def _TINY():
+    return arb(2) ** -1075  # a root below it rounds to 0
 
 
 def _gamma_inverse(upper):
-    """gammaincinv (P(a, x) = p) or gammainccinv (Q(a, x) = p): solves the smaller of p, 1 - p
-    against its own function. Returns (x, kappa), kappa = |p / (x F'(x))|."""
+    """gammaincinv (P(a, x) = p) or gammainccinv (Q(a, x) = p): the root of log F(x) = log t, F
+    the one of P, Q whose value there is <= 1/2 (t = p or 1 - p, exact), certified by a sign
+    change (arbref.solve_log_settled). Returns (x, kappa), kappa = |p / (x F'(x))|."""
     name = "gammainccinv" if upper else "gammaincinv"
 
     def f(a, p):
         x0 = _start2(name, a, p)
-        lg = mpmath.loggamma(a)
-        dP = lambda x: mpmath.exp((a - 1) * mpmath.log(x) - x - lg)
-        P = lambda x: mpmath.gammainc(a, 0, x, regularized=True)
-        Q = lambda x: mpmath.gammainc(a, x, mpmath.inf, regularized=True)
         use_p = (p <= 0.5) != upper  # the function whose value at the root is <= 1/2
-        t = p if p <= 0.5 else 1 - p
-        F = P if use_p else Q
-        tiny = mpmath.mpf(2) ** -1075
+        t = p if p <= 0.5 else 1 - p  # exact (Sterbenz)
+        F = lambda x: _gammainc(a, x, not use_p)
+        dP = lambda x: ((a - 1) * x.log() - x - a.lgamma()).exp()
         if x0 == 0:  # ours underflowed: the reference is 0 if the root is below 2^-1075
-            if (P(tiny) >= t) if use_p else (Q(tiny) <= t):
-                return mpmath.mpf(0), 1.0
+            if _sign(lambda: (F(_TINY()) - t) * (1 if use_p else -1)) >= 0:
+                return 0.0, 1.0
             x0 = 2.0**-1074
-        x = _solve_log(lambda x: mpmath.log(F(x)) - mpmath.log(t),
-                       lambda x: (1 if use_p else -1) * x * dP(x) / F(x), x0)
-        return x, abs(p / (x * dP(x)))
+        x = solve_log_settled(lambda x: F(x).log() - t.log(), lambda x: (1 if use_p else -1) * x * dP(x) / F(x),
+                              x0, increasing=use_p)
+        return x, _kappa(lambda: p / (x * dP(x)))
     return f
 
 
 def _beta_inverse(upper):
-    """betaincinv (I_x(a, b) = p) or betainccinv (1 - I = p). At mpmath's precision 1 - p is
-    exact, so the function solved is the one mpmath evaluates accurately at the root: I_x(a, b)
-    in x when the root is below 1/2, I_y(b, a) = 1 - I in y = 1 - x above (mpmath's betainc
-    near an argument of 1 - 1e-28 loses digits). Returns (x, kappa), kappa = |p / (x F'(x))|."""
+    """betaincinv (I_x(a, b) = p) or betainccinv (1 - I = p). The unknown is x below 1/2 and
+    y = 1 - x above (each exact near its own end), and the equation is the one of I = ti,
+    1 - I = tc whose value is <= 1/2 (I_x(a, b) or I_y(b, a), each from its own series), so
+    log F - log t keeps a far tail; the root is certified by a sign change. Ours at 0 or 1 is
+    checked: the reference is 0 (1) only if the root is below 2^-1075 (above 1 - 2^-54).
+    Returns (x, kappa), kappa = |p / (x I'(x))|."""
     name = "betainccinv" if upper else "betaincinv"
 
     def f(a, b, p):
         x0 = _start2(name, a, b, p)
-        if x0 == 0 or x0 == 1:
-            return mpmath.mpf(x0), 1.0
-        lb = mpmath.log(mpmath.beta(a, b))
-        dI = lambda x: mpmath.exp((a - 1) * mpmath.log(x) + (b - 1) * mpmath.log1p(-x) - lb)
-        target_i = 1 - p if upper else p
-        if x0 <= 0.5:
-            F = lambda x: mpmath.betainc(a, b, 0, x, regularized=True)
-            x = _solve_log(lambda x: mpmath.log(F(x)) - mpmath.log(target_i), lambda x: x * dI(x) / F(x), x0, 1)
-        else:
-            G = lambda y: mpmath.betainc(b, a, 0, y, regularized=True)
-            y = _solve_log(lambda y: mpmath.log(G(y)) - mpmath.log(1 - target_i), lambda y: y * dI(1 - y) / G(y),
-                           1 - mpmath.mpf(x0), 1)
-            x = 1 - y
-        return x, abs(p / (x * dI(x)))
+        _no_start(x0)
+        ti, tc = (1 - p, p) if upper else (p, 1 - p)  # I and 1 - I at the root, exact
+        dens = lambda x, y: ((a - 1) * x.log() + (b - 1) * y.log() - _lbeta(a, b)).exp()  # dI/dx
+        if x0 == 0:
+            if _sign(lambda: _ibeta(a, b, _TINY(), 1 - _TINY()) - ti) >= 0:
+                return 0.0, 1.0
+            x0 = 2.0**-1074
+        if x0 == 1:
+            e = arb(2.0**-54)
+            if _sign(lambda: _ibeta(b, a, e, 1 - e) - tc) > 0:  # I(1 - 2^-54) < ti: the root rounds to 1
+                return 1.0, 1.0
+            x0 = 1 - 2.0**-53
+        use_i = ti <= 0.5  # solve I = ti (else 1 - I = tc)
+        t = ti if use_i else tc
+        if x0 <= 0.5:  # in x: I increases
+            F = (lambda x: _ibeta(a, b, x, 1 - x)) if use_i else (lambda x: _ibeta(b, a, 1 - x, x))
+            sgn = 1 if use_i else -1
+            x = solve_log_settled(lambda x: F(x).log() - t.log(), lambda x: sgn * x * dens(x, 1 - x) / F(x), x0,
+                                  increasing=use_i, hi=arb(1))
+        else:  # in y = 1 - x: 1 - I increases
+            G = (lambda y: _ibeta(a, b, 1 - y, y)) if use_i else (lambda y: _ibeta(b, a, y, 1 - y))
+            sgn = -1 if use_i else 1
+            y = solve_log_settled(lambda y: G(y).log() - t.log(), lambda y: sgn * y * dens(1 - y, y) / G(y), 1 - x0,
+                                  increasing=not use_i, hi=arb(1))
+            x = _exact(lambda: 1 - y)
+        return x, _kappa(lambda: p / (x * dens(x, 1 - x)))
     return f
 
 
 def _start2(name, *v):
+    """Our own value (a float) at float inputs (arbs are converted): the inverses' Newton start."""
     import stardust as sd
     return float(getattr(sd.special, name)(*(float(t) for t in v)))
-
-
-# S5: exponential and elliptic integrals, guaranteed everywhere (S5 user decision; expn's
-# sets reach n = 1e5). The reductions have their own file (build_reduce).
 
 
 def _expi_inputs(rng):
@@ -595,29 +793,51 @@ def _jy01_inputs(rng):
     return (x,), np.ones(x.size, dtype=bool)
 
 
+def _first_zero(kind, nu):
+    """The first positive zero of J_nu (kind 'j') or Y_nu ('y'), nu >= 0, to ~1e-13 (it only
+    places the scale's boundary x = 0.99 z1). Both functions keep one sign on (0, z1), and
+    z1 > nu: scanned from nu in steps of 0.1 (below the gap between the first zeros of J and
+    Y, which interlace), then bisected; each sign certain (_sign: a large order needs more
+    than 80 bits)."""
+    f = (lambda x: arb(x).bessel_j(nu)) if kind == "j" else (lambda x: arb(x).bessel_y(nu))
+    s0 = 1 if kind == "j" else -1  # the sign on (0, z1)
+    inside = lambda x: _sign(lambda: f(x)) == s0
+    lo = max(float(nu), 0.01)
+    hi = lo + 0.1
+    while inside(hi):
+        lo, hi = hi, hi + 0.1
+    for _ in range(50):
+        mid = (lo + hi) / 2
+        if inside(mid):
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) / 2
+
+
 def _envelope_scale(kind, n):
     """scale(args, value) for J (kind 'j') or Y ('y') of order n (None: the first argument)."""
     def scale(args, v):
-        nu = mpmath.mpf(args[0]) if n is None else mpmath.mpf(n)
-        x = mpmath.mpf(args[-1])
+        nu = float(args[0]) if n is None else float(n)
+        x = float(args[-1])
         if x <= 0:
             return 1.0
-        M = mpmath.sqrt(mpmath.besselj(nu, x) ** 2 + mpmath.bessely(nu, x) ** 2)
-        if nu >= 0:
-            z1 = mpmath.besseljzero(nu, 1) if kind == "j" else mpmath.besselyzero(nu, 1)
-            if x < mpmath.mpf("0.99") * z1:
-                return 1.0
-        return max(1.0, float(M / abs(v))) if v != 0 else float("inf")
+        if nu >= 0 and (x < 0.99 * nu or x < 0.99 * _first_zero(kind, nu)):  # z1 > nu
+            return 1.0
+        if v == 0:
+            return float("inf")
+        return _scale_of(lambda: (arb(x).bessel_j(nu) ** 2 + arb(x).bessel_y(nu) ** 2).sqrt() / abs(v))
     return scale
 
 
 def _iv_scale(args, v):
-    nu, x = mpmath.mpf(args[0]), mpmath.mpf(args[1])
-    if nu >= 0 or nu == mpmath.floor(nu) or x <= 0:
+    nu, x = float(args[0]), float(args[1])
+    if nu >= 0 or nu == math.floor(nu) or x <= 0:
         return 1.0
+    if v == 0:
+        return float("inf")
     a = -nu
-    size = abs(mpmath.besseli(a, x)) + abs(2 / mpmath.pi * mpmath.sin(a * mpmath.pi) * mpmath.besselk(a, x))
-    return max(1.0, float(size / abs(v))) if v != 0 else float("inf")
+    return _scale_of(lambda: (abs(arb(x).bessel_i(a)) + abs(2 / arb.pi() * arb(a).sin_pi() * arb(x).bessel_k(a))) / abs(v))
 
 
 def _order_inputs(lo_x, hi_x, negative=True):
@@ -630,18 +850,6 @@ def _order_inputs(lo_x, hi_x, negative=True):
     return f
 
 
-def _wide(f):
-    """f(v, x) with 0.9 |v| + 20 more digits for |v| > 20: mpmath forms K_v, Y_v (and J_v for
-    v < 0) through the reflection (I_-v - I_v) / sin(v pi), cancelling ~0.43 |v| digits, and
-    returns a wrong value at its default precision without noticing (besselk(806.7, 626.3) =
-    -4.3e66; the value is 2.2e-70). Checked against 2x the digits."""
-    def g(v, x):
-        extra = int(0.9 * abs(v)) + 20 if abs(v) > 20 else 0
-        with mpmath.workdps(mpmath.mp.dps + extra):
-            return +f(v, x)
-    return g
-
-
 def _airy_inputs(rng):
     m = 700
     x = np.concatenate([rng.uniform(-2, 1, m), loguniform(rng, 1, 110, m), -rng.uniform(2, 9.7, m),
@@ -650,20 +858,21 @@ def _airy_inputs(rng):
 
 
 def _airy_part(i):
-    fs = [mpmath.airyai, lambda x: mpmath.airyai(x, 1), mpmath.airybi, lambda x: mpmath.airybi(x, 1)]
-    return fs[i]
+    return lambda x: x.airy()[i]
 
 
 def _airy_scale(i):
     def scale(args, v):
-        x = mpmath.mpf(args[0])
+        x = float(args[0])
         if x >= 0:
             return 1.0
-        if i % 2 == 0:
-            env = mpmath.sqrt(mpmath.airyai(x) ** 2 + mpmath.airybi(x) ** 2)
-        else:
-            env = mpmath.sqrt(mpmath.airyai(x, 1) ** 2 + mpmath.airybi(x, 1) ** 2)
-        return max(1.0, float(env / abs(v))) if v != 0 else float("inf")
+        if v == 0:
+            return float("inf")
+
+        def ratio():
+            ai, aip, bi, bip = arb(x).airy()
+            return ((ai * ai + bi * bi).sqrt() if i % 2 == 0 else (aip * aip + bip * bip).sqrt()) / abs(v)
+        return _scale_of(ratio)
     return scale
 
 
@@ -721,37 +930,14 @@ def _hyp2f1_inputs(rng):
 # inverses store scale = max(1, kappa), kappa = |p / (x F'(x))|, as in S4.
 
 
-def _safe_betainc(a, b, x):
-    """I_x(a, b); when mpmath gives up (a value far below 2^-1074), 0 if the leading term
-    x^a (1 - x)^b / (a B(a, b)) is below e^-1000, else the error stands."""
-    try:
-        return mpmath.betainc(a, b, 0, x, regularized=True)
-    except (mpmath.libmp.NoConvergence, ValueError):
-        lead = a * mpmath.log(x) + b * mpmath.log1p(-x) - mpmath.log(a) - mpmath.log(mpmath.beta(a, b))
-        if lead < -1000:
-            return mpmath.mpf(0)
-        raise
-
-
-def _ibeta_pair(a, b, x, y):
-    """(I_x(a, b), 1 - I_x(a, b)) with y = 1 - x given exactly. Each is evaluated directly
-    (1 - I would cancel a tiny value), except where its own argument is within 1e-6 of 1:
-    there mpmath's betainc loses digits (docs/design/special.md §6), and the other side's
-    value is the small one anyway, so 1 minus it is exact enough."""
-    near_one = mpmath.mpf(10) ** -6
-    i = _safe_betainc(a, b, x) if y > near_one else 1 - _safe_betainc(b, a, y)
-    ic = _safe_betainc(b, a, y) if x > near_one else 1 - _safe_betainc(a, b, x)
-    return i, ic
-
-
 def _t_tail(df, t):  # P(T <= -|t|)
     z = t * t
-    return _ibeta_pair(df / 2, mpmath.mpf(1) / 2, df / (df + z), z / (df + z))[0] / 2
+    return _ibeta(df / 2, arb(0.5), df / (df + z), z / (df + z)) / 2
 
 
-def _mp_stdtr(df, t):
+def _ref_stdtr(df, t):
     if t == 0:
-        return mpmath.mpf(1) / 2
+        return arb(0.5)
     tail = _t_tail(df, t)
     return tail if t < 0 else 1 - tail
 
@@ -766,37 +952,26 @@ def _stdtr_inputs(rng):
 
 
 def _t_pdf(df, t):
-    return mpmath.exp(mpmath.loggamma((df + 1) / 2) - mpmath.loggamma(df / 2) - mpmath.log(df * mpmath.pi) / 2
-                      - (df + 1) / 2 * mpmath.log1p(t * t / df))
+    return ((df + 1) / 2).lgamma().exp() * (df / 2).rgamma() / (df * arb.pi()).sqrt() * (-(df + 1) / 2 * (t * t / df).log1p()).exp()
 
 
-def _newton_root(F, dF, target, x0):
-    x = mpmath.mpf(x0)
-    for _ in range(200):
-        step = (F(x) - target) / dF(x)
-        x -= step
-        if abs(step) <= abs(x) * mpmath.mpf(10) ** -40:
-            return x
-    raise RuntimeError("no convergence")
+def _no_start(x0, positive=False):
+    if not np.isfinite(x0) or (positive and not x0 > 0):
+        raise NotSettled("no start")
 
 
-def _mp_stdtrit(df, p):
+def _ref_stdtrit(df, p):
+    """Newton in log u, u = |t|, on the log of the tail P(T <= -u) (exact in far tails)."""
     t0 = _start2("stdtrit", df, p)
-    if not np.isfinite(t0) or t0 == 0:
-        raise RuntimeError("no start")
-    d, pp = mpmath.mpf(df), mpmath.mpf(p)
-    # Newton on the log of the tail, which keeps far tails exact
+    _no_start(t0)
+    if t0 == 0:
+        raise NotSettled("no start")
     lower = p < 0.5
-    tail_p = pp if lower else 1 - pp
-    G = lambda t: mpmath.log(_t_tail(d, t))  # increasing for t < 0, slope pdf / tail
-    s = -abs(mpmath.mpf(t0))
-    for _ in range(200):
-        step = (G(s) - mpmath.log(tail_p)) / (_t_pdf(d, s) / _t_tail(d, s))
-        s -= step
-        if abs(step) <= abs(s) * mpmath.mpf(10) ** -40:
-            break
-    t = s if lower else -s
-    return t, abs(pp / (t * _t_pdf(d, t)))
+    tail_p = p if lower else 1 - p
+    u = solve_log_settled(lambda u: _t_tail(df, u).log() - tail_p.log(), lambda u: -u * _t_pdf(df, u) / _t_tail(df, u),
+                          abs(t0), increasing=False)
+    t = _exact(lambda: -u) if lower else u
+    return t, _kappa(lambda: p / (t * _t_pdf(df, t)))
 
 
 def _stdtrit_inputs(rng):
@@ -816,9 +991,9 @@ def _chdtr_inputs(rng):
     return (v, x), np.ones(v.size, dtype=bool)
 
 
-def _mp_chdtri(v, p):
+def _ref_chdtri(v, p):
     y, k = _gamma_inverse(True)(v / 2, p)
-    return 2 * y, k
+    return (_exact(lambda: 2 * y) if isinstance(y, arb) else 2 * y), k
 
 
 def _chdtri_inputs(rng):
@@ -829,21 +1004,14 @@ def _chdtri_inputs(rng):
     return (v[keep], p[keep]), np.ones(keep.sum(), dtype=bool)
 
 
-def _f_w(dfn, dfd, x):
-    return dfn * x / (dfn * x + dfd)
-
-
-def _f_pair(dfn, dfd, x):
+def _ref_fdtr(dfn, dfd, x):
     s = dfn * x + dfd
-    return _ibeta_pair(dfn / 2, dfd / 2, dfn * x / s, dfd / s)
+    return _ibeta(dfn / 2, dfd / 2, dfn * x / s, dfd / s)
 
 
-def _mp_fdtr(dfn, dfd, x):
-    return _f_pair(dfn, dfd, x)[0]
-
-
-def _mp_fdtrc(dfn, dfd, x):
-    return _f_pair(dfn, dfd, x)[1]
+def _ref_fdtrc(dfn, dfd, x):
+    s = dfn * x + dfd
+    return _ibeta(dfd / 2, dfn / 2, dfd / s, dfn * x / s)
 
 
 def _fdtr_inputs(rng):
@@ -854,26 +1022,23 @@ def _fdtr_inputs(rng):
     return (dfn, dfd, x), np.ones(dfn.size, dtype=bool)
 
 
-def _mp_fdtri(dfn, dfd, p):
+def _ref_fdtri(dfn, dfd, p):
     """The x with fdtr(dfn, dfd, x) = p, solved for x itself (not through w = dfn x / (dfn x + dfd),
     which rounds to 1 for a huge x): Newton in log x on the log of the smaller tail."""
     x0 = _start2("fdtri", dfn, dfd, p)
-    if not (np.isfinite(x0) and x0 > 0):
-        raise RuntimeError("no start")
-    a, b, pp = dfn / 2, dfd / 2, mpmath.mpf(p)
-    lb = mpmath.log(mpmath.beta(a, b))
+    _no_start(x0, True)
+    a, b = dfn / 2, dfd / 2
 
     def density(x):  # d fdtr / dx
         s = dfn * x + dfd
-        lw, lv = mpmath.log(dfn * x / s), mpmath.log(dfd / s)
-        return mpmath.exp((a - 1) * lw + (b - 1) * lv - lb) * dfn * dfd / (s * s)
+        return ((a - 1) * (dfn * x / s).log() + (b - 1) * (dfd / s).log() - _lbeta(a, b)).exp() * dfn * dfd / (s * s)
 
     lower = p <= 0.5
-    tail = (lambda x: _mp_fdtr(dfn, dfd, x)) if lower else (lambda x: _mp_fdtrc(dfn, dfd, x))
-    target = pp if lower else 1 - pp
-    x = _solve_log(lambda x: mpmath.log(tail(x)) - mpmath.log(target),
-                   lambda x: (1 if lower else -1) * x * density(x) / tail(x), x0)
-    return x, abs(pp / (x * density(x)))
+    tail = (lambda x: _ref_fdtr(dfn, dfd, x)) if lower else (lambda x: _ref_fdtrc(dfn, dfd, x))
+    target = p if lower else 1 - p
+    x = solve_log_settled(lambda x: tail(x).log() - target.log(), lambda x: (1 if lower else -1) * x * density(x) / tail(x),
+                          x0, increasing=lower)
+    return x, _kappa(lambda: p / (x * density(x)))
 
 
 def _fdtri_inputs(rng):
@@ -892,7 +1057,8 @@ def _pdtr_inputs(rng):
     return (k, mu), np.ones(k.size, dtype=bool)
 
 
-def _binom_inputs(rng, real_n=False):
+def _bdtr_inputs(rng, real_n=False):
+    # (named _binom_inputs until 2026-11-16, which shadowed S3's binom set: binom.npz is that set)
     m = 600
     n = np.concatenate([np.floor(loguniform(rng, 1, 1e4, m)), rng.integers(1, 40, m).astype(float)])
     k = np.floor(rng.uniform(0, 1, 2 * m) * n)
@@ -904,37 +1070,11 @@ def _binom_inputs(rng, real_n=False):
     return (k[keep], n[keep], p[keep]), np.ones(keep.sum(), dtype=bool)
 
 
-def _asymptotic_s(x):
-    """S(x) = sum_k (-1)^k (2k-1)!! / x^(2k), with ndtr(x) = npdf(x) S(x) / (-x) for x << 0."""
-    s, term = mpmath.mpf(1), mpmath.mpf(1)
-    for k in range(1, 12):
-        term *= -(2 * k - 1) / (x * x)
-        s += term
-    return s
-
-
-def _log_ncdf(x):
-    """log ndtr(x); for x < -1e6 from the asymptotic series (mpmath's ncdf overflows near x = -1e150)."""
-    if x > 0:  # ndtr(x) = 1 - ndtr(-x): log1p keeps the tiny difference (ndtr(37) = 1 - 1e-300)
-        return mpmath.log1p(-mpmath.ncdf(-x))
-    if x > -1e6:
-        return mpmath.log(mpmath.ncdf(x))
-    return -x * x / 2 - mpmath.log(-x) - mpmath.log(2 * mpmath.pi) / 2 + mpmath.log(_asymptotic_s(x))
-
-
-def _ncdf_slope(x):
-    """d/dx log ndtr(x) = npdf / ndtr; -x / S(x) for x < -1e6 (the difference of the two logs
-    would cancel numbers of size x^2 / 2)."""
-    if x > -1e6:
-        return mpmath.npdf(x) / mpmath.ncdf(x)
-    return -x / _asymptotic_s(x)
-
-
-def _mp_ndtri_exp(y):
+def _ref_ndtri_exp(y):
     x0 = _start2("ndtri_exp", y)
-    yy = mpmath.mpf(y)
-    x = _newton_root(_log_ncdf, _ncdf_slope, yy, x0)
-    return x, abs(yy / (x * _ncdf_slope(x)))
+    _no_start(x0)
+    x = solve_settled(lambda x: _log_ncdf(x) - y, _ncdf_slope, x0, increasing=True)
+    return x, _kappa(lambda: y / (x * _ncdf_slope(x)))
 
 
 def _ndtri_exp_inputs(rng):
@@ -948,26 +1088,29 @@ def _ndtri_exp_inputs(rng):
 # beta functions; both tails are summed directly as sums of positive terms (1 - the other
 # tail would lose a tiny value), each family of incomplete functions by its stable
 # recurrence: the lower functions (decreasing in the shape) backward from a start J past
-# the mode, the upper ones (increasing) forward from 0. J grows until the term at J and
-# the tail beyond are below 1e-45 of the sum.
+# the mode, the upper ones (increasing) forward from 0. J grows until the bound on the
+# terms beyond (geometric: the Poisson weights fall by mu / (J + 1) or faster, the lower
+# functions fall, the upper ones are <= 1) is below 2^-max(122, prec) of the sum; the bound is added
+# to the ball (arbref.add_error). All take and return arbs.
 
-_TRUNC = mpmath.mpf(10) ** -45
+_MIX_WIDTH_MAX = 2560
 
 
 def _pois_weight(mu, j):
     """e^-mu mu^j / j! (mu > 0)."""
-    return mpmath.exp(-mu + j * mpmath.log(mu) - mpmath.loggamma(j + 1))
+    return (-mu + j * mu.log() - arb(j + 1).lgamma()).exp()
 
 
 def _mix_lower(mu, start, term, ratio_down):
     """sum_j w_j L_j, w_j = Poisson(mu) weights and L_j decreasing in j with
-    L_{j-1} = L_j + term(j-1); start(J) = L_J, term(j) direct, ratio_down(j) = term(j-1) / term(j)."""
+    L_{j-1} = L_j + term(j-1); start(J) = L_J, term(j) direct, ratio_down(j) = term(j-1) / term(j).
+    Beyond J: w_i L_i <= w_J L_J (mu / (J+1))^(i-J)."""
     if mu == 0:
         return start(0)
-    width = 40
+    tol, muf, width = _trunc(), float(mu.mid()), 40
     while True:
-        J = int(mu + width * mpmath.sqrt(mu + 1) + width)
-        L, t, w = start(J), term(J - 1) if J > 0 else 0, _pois_weight(mu, J)
+        J = int(muf + width * math.sqrt(muf + 1) + width)
+        L, t, w = start(J), term(J - 1) if J > 0 else arb(0), _pois_weight(mu, J)
         S = w * L
         last = S
         for j in range(J, 0, -1):
@@ -976,18 +1119,24 @@ def _mix_lower(mu, start, term, ratio_down):
             if j - 1 > 0:
                 t *= ratio_down(j - 1)  # term(j-2)
             S += w * L
-        # the term at J and the tail beyond (w_i L_i <= w_J L_J (mu / (J + 1))^(i - J))
-        if S == 0 or last * (1 + mu / (J + 1 - mu)) <= _TRUNC * S:
-            return S
+        r = mu / (J + 1)
+        if r < 1:
+            tail = geometric_tail(last, r)
+            if tail <= tol * S:
+                return add_error(S, tail)
         width *= 2
+        if width > _MIX_WIDTH_MAX:
+            raise NotSettled("mixture (lower)")
 
 
 def _mix_upper(mu, first, term0, ratio_up):
     """sum_j w_j U_j with U_j increasing in j, U_{j+1} = U_j + term(j) <= 1;
-    first = U_0, term0 = term(0), ratio_up(j) = term(j+1) / term(j)."""
+    first = U_0, term0 = term(0), ratio_up(j) = term(j+1) / term(j). Beyond j > mu:
+    sum_{i>j} w_i U_i <= sum_{i>j} w_i <= w_j r / (1 - r), r = mu / (j+1)."""
     if mu == 0:
         return first
-    U, t, w = first, term0, mpmath.exp(-mu)
+    tol, muf = _trunc(), float(mu.mid())
+    U, t, w = first, term0, (-mu).exp()
     S = w * U
     j = 0
     while True:
@@ -996,84 +1145,148 @@ def _mix_upper(mu, first, term0, ratio_up):
         j += 1
         w *= mu / j
         S += w * U
-        if j > mu and w * (1 + mu / (j + 1 - mu)) <= _TRUNC * S:
-            return S
-        if j > 10 * mu + 10000:
-            raise RuntimeError("no convergence")
+        if j > muf:
+            tail = geometric_tail(w, mu / (j + 1))
+            if tail <= tol * S:
+                return add_error(S, tail)
+        if j > 10 * muf + 10000:
+            raise NotSettled("mixture (upper)")
 
 
 def _ncx2_pair(df, nc, x, upper):
-    """chndtr (lower) or chndtrc: sum_j Poisson(nc/2) P or Q(df/2 + j, x/2)."""
+    """chndtr (upper False) or chndtrc: sum_j Poisson(nc/2) P or Q(df/2 + j, x/2) (arb in, arb out)."""
+    df, nc, x = _a(df), _a(nc), _a(x)
     a, y, mu = df / 2, x / 2, nc / 2
-    T = lambda s: mpmath.exp(s * mpmath.log(y) - y - mpmath.loggamma(s + 1))  # P(s) - P(s+1)
+    T = lambda s: (s * y.log() - y - (s + 1).lgamma()).exp()  # P(s) - P(s+1)
     if upper:
-        return _mix_upper(mu, mpmath.gammainc(a, y, mpmath.inf, regularized=True), T(a), lambda j: y / (a + j + 1))
-    return _mix_lower(mu, lambda J: mpmath.gammainc(a + J, 0, y, regularized=True), lambda j: T(a + j),
-                      lambda j: (a + j) / y)
+        return _mix_upper(mu, _gammainc(a, y, True), T(a), lambda j: y / (a + j + 1))
+    return _mix_lower(mu, lambda J: _gammainc(a + J, y), lambda j: T(a + j), lambda j: (a + j) / y)
 
 
 def _ncf_pair(dfn, dfd, nc, f, upper):
-    """ncfdtr (lower) or ncfdtrc: sum_j Poisson(nc/2) I_w(dfn/2 + j, dfd/2) or its complement."""
+    """ncfdtr (upper False) or ncfdtrc: sum_j Poisson(nc/2) I_w(dfn/2 + j, dfd/2) or its complement
+    (arb in, arb out)."""
+    dfn, dfd, nc, f = _a(dfn), _a(dfd), _a(nc), _a(f)
     a, b, mu = dfn / 2, dfd / 2, nc / 2
     s = dfn * f + dfd
     w, v = dfn * f / s, dfd / s
-    lw, lv = mpmath.log(w), mpmath.log(v)
-    T = lambda c: mpmath.exp(c * lw + b * lv - mpmath.log(c) - mpmath.log(mpmath.beta(c, b)))  # I(c) - I(c+1)
+    lw, lv = w.log(), v.log()
+    T = lambda c: (c * lw + b * lv - c.log() - _lbeta(c, b)).exp()  # I(c) - I(c+1)
     if upper:
-        return _mix_upper(mu, _ibeta_pair(a, b, w, v)[1], T(a), lambda j: w * (a + j + b) / (a + j + 1))
-    return _mix_lower(mu, lambda J: _ibeta_pair(a + J, b, w, v)[0], lambda j: T(a + j),
-                      lambda j: (a + j) / ((a + j - 1 + b) * w))
+        return _mix_upper(mu, _ibeta(b, a, v, w), T(a), lambda j: w * (a + j + b) / (a + j + 1))
+    return _mix_lower(mu, lambda J: _ibeta(a + J, b, w, v), lambda j: T(a + j), lambda j: (a + j) / ((a + j - 1 + b) * w))
+
+
+@contextmanager
+def _alarm_deferred():
+    """SIGALRM held while Arb calls back into Python (acb.integral): an exception raised inside
+    the callback does not stop the integration, so the handler only records the alarm (the
+    integrand then returns NaN and the integration ends at once); the original handler runs after."""
+    import signal
+
+    fired = []
+    old = signal.signal(signal.SIGALRM, lambda *a: fired.append(a))
+    try:
+        yield fired
+    finally:
+        signal.signal(signal.SIGALRM, old)
+        if fired and callable(old):
+            old(*fired[0])
 
 
 def _nct_opposite(df, a, t):
     """P(T > t) for t > 0 and d = -a < 0, the tail away from the noncentrality, from the
     definition T = (Z + d) / S, S = sqrt(V / df): int_0^inf Phi(-(a + t s)) f_S(s) ds, in
-    v = log s with breakpoints around the peak (the series' two families cancel here)."""
-    lc = mpmath.log(2) + (df / 2) * mpmath.log(df / 2) - mpmath.loggamma(df / 2)
+    v = log s (the series' two families cancel here). The integrand
+        e^(lc + df v - df e^(2v) / 2) Phi(-(a + t e^v))
+    is entire in v; acb.integral bounds its error, with breakpoints around the peak, between
+    ends where the parts outside are below e^-200 of the estimated value: those parts are at
+    most Phi(-a) P(S < s_lo) and Phi(-(a + t s_hi)) P(S > s_hi) (df S^2 is chi-square(df),
+    Phi(-(a + t s)) falls in s), added to the ball."""
+    lc = arb(2).log() + (df / 2) * (df / 2).log() - (df / 2).lgamma()
+    af, tf, dff, lcf = (float(v.mid()) for v in (a, t, df, lc))
 
-    def g(v):  # log of the integrand in v
-        s = mpmath.exp(v)
-        return _log_ncdf(-(a + t * s)) + lc + df * v - df * s * s / 2
+    def gf(v):  # log of the integrand (a float: it only places the pieces)
+        with precision(64):
+            s = arb(v).exp()
+            return float((_log_ncdf(-(arb(af) + arb(tf) * s)) + lcf + dff * v - dff * s * s / 2).mid())
 
     # the stationary point of -z^2/2 - (df/2)(s^2 - 2 log s): (t^2 + df) s^2 + a t s - df = 0
-    s0 = 2 * df / (a * t + mpmath.sqrt(a * a * t * t + 4 * df * (t * t + df)))
-    v0 = mpmath.log(s0)
-    curv = (t * s0) ** 2 + (a + t * s0) * t * s0 + 2 * df * s0 * s0
-    sig = 1 / mpmath.sqrt(curv)
-    gmax = g(v0)
+    # (divided through by t, so a t of 1e177 does not overflow)
+    s0 = 2 * dff / tf / (af + math.sqrt(af * af + 4 * dff * (1 + dff / tf / tf)))
+    v0 = math.log(s0)
+    u0 = tf * s0
+    sig = 1 / math.sqrt(u0 * u0 + (af + u0) * u0 + 2 * dff * s0 * s0)
+    gmax = gf(v0)
+    est = gmax + math.log(sig * 2.5066)  # log of the value, roughly (Laplace)
 
-    def end(sign):  # where the integrand is below e^-200 of the peak (it falls off monotonically)
+    def left(v):  # log of the bound on the part below v
+        with precision(64):
+            return float((_log_ncdf(-arb(af)) + _gammainc(arb(dff) / 2, arb(dff) * arb(2 * v).exp() / 2).log()).mid())
+
+    def right(v):  # log of the bound on the part above v
+        with precision(64):
+            s = arb(v).exp()
+            return float((_log_ncdf(-(arb(af) + arb(tf) * s)) + _gammainc(arb(dff) / 2, arb(dff) * s * s / 2, True).log()).mid())
+
+    def end(sign, bound):  # the integrand falls off monotonically either side
         step = sig
-        while g(v0 + sign * step) - gmax > -200:
+        while gf(v0 + sign * step) - gmax > -400 or bound(v0 + sign * step) > est - 200:
             step *= 2
         return v0 + sign * step
 
-    lo, hi = end(-1), end(1)
+    lo, hi = end(-1, left), end(1, right)
     pts = [lo] + [v0 + k * sig for k in (-20, -6, -2, 0, 2, 6, 20) if lo < v0 + k * sig < hi] + [hi]
-    return mpmath.exp(gmax) * mpmath.quad(lambda v: mpmath.exp(g(v) - gmax), pts)
+    G, r2 = arb(gmax), arb(2).sqrt()
+
+    with _alarm_deferred() as fired:
+        def integrand(v, _analytic):
+            if fired:
+                return acb(float("nan"))
+            s = v.exp()
+            return ((a + t * s) / r2).erfc() / 2 * (lc - G + df * v - df * s * s / 2).exp()
+
+        total = sum((acb.integral(integrand, arb(pts[i]), arb(pts[i + 1])) for i in range(len(pts) - 1)), acb(0))
+    body = total.real * G.exp()
+    s_lo, s_hi = arb(lo).exp(), arb(hi).exp()
+    outside = (_ndtr(-a) * _gammainc(df / 2, df * s_lo * s_lo / 2)
+               + _ndtr(-(a + t * s_hi)) * _gammainc(df / 2, df * s_hi * s_hi / 2, True))
+    return add_error(body + outside / 2, outside / 2)
 
 
 def _nct_upper_pos(df, d, t):
-    """P(T > t) for t > 0, any d: (1/2) sum_j [p_j I_y(df/2, j + 1/2) + q_j I_y(df/2, j + 1)],
-    y = df / (df + t^2), p_j Poisson(d^2/2), q_j = d e^(-d^2/2) (d^2/2)^j / (sqrt 2 Gamma(j + 3/2)).
-    For d < 0 the q family cancels the p family: the integral instead."""
+    """P(T > t) for t > 0, any d. For d < 0 the series' q family cancels its p family: the
+    series where the ball still settles (a small |d| or t), else the integral."""
     if d < 0:
+        try:
+            v = _nct_upper_series(df, d, t)
+            if v.rel_accuracy_bits() >= arbref.TARGET_BITS + 4:
+                return v
+        except NotSettled:
+            pass
         return _nct_opposite(df, -d, t)
+    return _nct_upper_series(df, d, t)
+
+
+def _nct_upper_series(df, d, t):
+    """P(T > t) for t > 0: (1/2) sum_j [p_j I_y(df/2, j + 1/2) + q_j I_y(df/2, j + 1)],
+    y = df / (df + t^2), p_j Poisson(d^2/2), q_j = d e^(-d^2/2) (d^2/2)^j / (sqrt 2 Gamma(j + 3/2))."""
     b, z = df / 2, t * t
     x, y = z / (df + z), df / (df + z)
     mu = d * d / 2
-    lx, ly = mpmath.log(x), mpmath.log(y)
-    T = lambda c: mpmath.exp(c * lx + b * ly - mpmath.log(c) - mpmath.log(mpmath.beta(c, b)))  # I_x(c, b) - I_x(c+1, b)
-    up = lambda c: _ibeta_pair(c, b, x, y)[1]
-    half = mpmath.mpf(1) / 2
-    sp = _mix_upper(mu, up(half), T(half), lambda j: x * (j + half + b) / (j + half + 1)) if mu else up(half)
+    lx, ly = x.log(), y.log()
+    T = lambda c: (c * lx + b * ly - c.log() - _lbeta(c, b)).exp()  # I_x(c, b) - I_x(c+1, b)
+    up = lambda c: _ibeta(b, c, y, x)
+    half = arb(0.5)
+    sp = _mix_upper(mu, up(half), T(half), lambda j: x * (j + half + b) / (j + half + 1)) if mu != 0 else up(half)
     if mu == 0:
         return sp / 2
-    # the q family: q_j = c_q * Poisson-like weights with Gamma(j + 3/2) in place of j!
-    # sum_j q_j U_j = d e^-mu / sqrt2 sum_j mu^j / Gamma(j + 3/2) U_j, U_j = I_y(b, j + 1)
-    U, tt = up(1), T(1)
-    lead = d * mpmath.exp(-mu) / mpmath.sqrt(2)
-    wq = 1 / mpmath.gamma(half * 3)
+    # the q family: sum_j q_j U_j = d e^-mu / sqrt2 sum_j wq_j U_j, wq_j = mu^j / Gamma(j + 3/2),
+    # U_j = I_y(b, j + 1) <= 1; beyond j > mu the weights fall by mu / (j + 3/2) or faster
+    tol, muf = _trunc(), float(mu.mid())
+    U, tt = up(arb(1)), T(arb(1))
+    lead = d * (-mu).exp() / arb(2).sqrt()
+    wq = arb(1.5).rgamma()
     S, j = wq * U, 0
     while True:
         U += tt
@@ -1081,11 +1294,13 @@ def _nct_upper_pos(df, d, t):
         j += 1
         wq *= mu / (j + half)
         S += wq * U
-        if j > mu and wq * (1 + mu / (j + 1 - mu)) <= _TRUNC * abs(S):
-            break
-        if j > 10 * mu + 10000:
-            raise RuntimeError("no convergence")
-    return (sp + lead * S) / 2
+        if j > muf:
+            tail = geometric_tail(wq, mu / (j + 1.5))
+            if tail <= tol * S:
+                break
+        if j > 10 * muf + 10000:
+            raise NotSettled("nct q family")
+    return (sp + lead * add_error(S, tail)) / 2
 
 
 def _nct_lower_pos(df, d, t):
@@ -1093,39 +1308,50 @@ def _nct_lower_pos(df, d, t):
     b, z = df / 2, t * t
     x, y = z / (df + z), df / (df + z)
     mu = d * d / 2
-    lx, ly = mpmath.log(x), mpmath.log(y)
-    T = lambda c: mpmath.exp(c * lx + b * ly - mpmath.log(c) - mpmath.log(mpmath.beta(c, b)))
-    low = lambda c: _ibeta_pair(c, b, x, y)[0]
-    half = mpmath.mpf(1) / 2
-    phi = mpmath.ncdf(-d)
+    lx, ly = x.log(), y.log()
+    T = lambda c: (c * lx + b * ly - c.log() - _lbeta(c, b)).exp()
+    low = lambda c: _ibeta(c, b, x, y)
+    half = arb(0.5)
+    phi = _ndtr(-d)
     if mu == 0:
         return phi + low(half) / 2
     sp = _mix_lower(mu, lambda J: low(J + half), lambda j: T(j + half), lambda j: (j + half) / ((j + half - 1 + b) * x))
-    # q family: weights mu^j / Gamma(j + 3/2), backward from J (as _mix_lower)
-    width = 40
+    # q family: weights mu^j / Gamma(j + 3/2), backward from J (as _mix_lower); beyond J
+    # wq_i L_i <= wq_J L_J (mu / (J + 3/2))^(i - J)
+    tol, muf, width = _trunc(), float(mu.mid()), 40
     while True:
-        J = int(mu + width * mpmath.sqrt(mu + 1) + width)
-        L, tt = low(J + 1), T(J)
-        wq = mpmath.exp(J * mpmath.log(mu) - mpmath.loggamma(J + half * 3))
+        J = int(muf + width * math.sqrt(muf + 1) + width)
+        L, tt = low(arb(J + 1)), T(arb(J))
+        wq = (J * mu.log() - arb(J + 1.5).lgamma()).exp()
         S = wq * L
-        last = abs(S)
+        last = S
         for j in range(J, 0, -1):
             L += tt  # I_x(j, b)
             tt *= j / ((j - 1 + b) * x)  # T(j - 1)
             wq *= (j + half) / mu
             S += wq * L
-        if S == 0 or last * (1 + mu / (J + 1 - mu)) <= _TRUNC * abs(S):
-            break
+        r = mu / (J + 1.5)
+        if r < 1:
+            tail = geometric_tail(last, r)
+            if tail <= tol * S:
+                break
         width *= 2
-    return phi + (sp + d * mpmath.exp(-mu) / mpmath.sqrt(2) * S) / 2
+        if width > _MIX_WIDTH_MAX:
+            raise NotSettled("nct q family (lower)")
+    return phi + (sp + d * (-mu).exp() / arb(2).sqrt() * add_error(S, tail)) / 2
 
 
-def _mp_nct(df, d, t, upper):
+def _ref_nct(df, d, t, upper):
+    """nctdtr (upper False) or nctdtrc (arb in, arb out)."""
+    df, d, t = _a(df), _a(d), _a(t)
     if t == 0:
-        return mpmath.ncdf(d) if upper else mpmath.ncdf(-d)
-    if t > 0:
+        return _ndtr(d) if upper else _ndtr(-d)
+    if t.mid() > 0:
         return _nct_upper_pos(df, d, t) if upper else _nct_lower_pos(df, d, t)
     return _nct_lower_pos(df, -d, -t) if upper else _nct_upper_pos(df, -d, -t)
+
+
+_mp_nct = _ref_nct  # the mpmath tool's name (tools/stats_ref.py)
 
 
 def _chndtr_inputs(rng):
@@ -1160,70 +1386,91 @@ def _ncfdtr_inputs(rng):
 
 
 def _ncx2_logpdf(df, nc, x):
-    """log of the noncentral chi-square density: e^(-(x+nc)/2) (x/nc)^(df/4-1/2) I_(df/2-1)(sqrt(nc x)) / 2."""
-    return (-mpmath.log(2) - (x + nc) / 2 + (df / 4 - mpmath.mpf(1) / 2) * mpmath.log(x / nc)
-            + mpmath.log(mpmath.besseli(df / 2 - 1, mpmath.sqrt(nc * x))))
+    """log of the noncentral chi-square density, e^(-(x+nc)/2) (x/nc)^(df/4-1/2) I_(df/2-1)(sqrt(nc x)) / 2
+    (arb in, arb out; I scaled by e^-z, so no huge exponential)."""
+    df, nc, x = _a(df), _a(nc), _a(x)
+    z = (nc * x).sqrt()
+    return -arb(2).log() - (x + nc) / 2 + (df / 4 - arb(0.5)) * (x / nc).log() + z.bessel_i(df / 2 - 1, scaled=True).log() + z
 
 
-def _mp_chndtrix(df, nc, p):
+def _ref_chndtrix(df, nc, p):
     x0 = _start2("chndtrix", df, nc, p)
-    if not (np.isfinite(x0) and x0 > 0):
-        raise RuntimeError("no start")
-    pp = mpmath.mpf(p)
+    _no_start(x0, True)
     lower = p <= 0.5
-    tail = (lambda x: _ncx2_pair(df, nc, x, False)) if lower else (lambda x: _ncx2_pair(df, nc, x, True))
-    target = pp if lower else 1 - pp
-    dens = lambda x: mpmath.exp(_ncx2_logpdf(df, nc, x))
-    x = _solve_log(lambda x: mpmath.log(tail(x)) - mpmath.log(target),
-                   lambda x: (1 if lower else -1) * x * dens(x) / tail(x), x0)
-    return x, abs(pp / (x * dens(x)))
+    tail = lambda x: _ncx2_pair(df, nc, x, not lower)
+    target = p if lower else 1 - p
+    dens = lambda x: _ncx2_logpdf(df, nc, x).exp()
+    x = solve_log_settled(lambda x: tail(x).log() - target.log(), lambda x: (1 if lower else -1) * x * dens(x) / tail(x),
+                          x0, increasing=lower)
+    return x, _kappa(lambda: p / (x * dens(x)))
 
 
 def _nct_pdf(df, d, t):
-    """d/dt nctdtr: (df / t) (F(df + 2, d; t sqrt(1 + 2/df)) - F(df, d; t)), from whichever tail is small."""
+    """d/dt nctdtr (arb in, arb out): (df / t) (F(df + 2, d; t sqrt(1 + 2/df)) - F(df, d; t)), from
+    whichever tail is small."""
+    df, d, t = _a(df), _a(d), _a(t)
     if t == 0:
-        return mpmath.exp(mpmath.loggamma((df + 1) / 2) - mpmath.loggamma(df / 2) - d * d / 2) / mpmath.sqrt(mpmath.pi * df)
-    t2 = t * mpmath.sqrt(1 + 2 / df)
-    lower_small = _mp_nct(df, d, t, False) <= mpmath.mpf(1) / 2
-    if lower_small:
-        return df / t * (_mp_nct(df + 2, d, t2, False) - _mp_nct(df, d, t, False))
-    return df / t * (_mp_nct(df, d, t, True) - _mp_nct(df + 2, d, t2, True))
+        return (((df + 1) / 2).lgamma() - (df / 2).lgamma() - d * d / 2).exp() / (arb.pi() * df).sqrt()
+    t2 = t * (1 + 2 / df).sqrt()
+    if _ref_nct(df, d, t, False).mid() <= 0.5:
+        return df / t * (_ref_nct(df + 2, d, t2, False) - _ref_nct(df, d, t, False))
+    return df / t * (_ref_nct(df, d, t, True) - _ref_nct(df + 2, d, t2, True))
 
 
-def _mp_nctdtrit(df, d, p):
+def _ref_nctdtrit(df, d, p):
     t0 = _start2("nctdtrit", df, d, p)
-    if not np.isfinite(t0):
-        raise RuntimeError("no start")
-    pp = mpmath.mpf(p)
+    _no_start(t0)
     lower = p <= 0.5
-    target = pp if lower else 1 - pp
-    tail = lambda t: _mp_nct(df, d, t, not lower)
+    target = p if lower else 1 - p
+    tail = lambda t: _ref_nct(df, d, t, not lower)
     sgn = 1 if lower else -1
-    t = _newton_root(lambda t: mpmath.log(tail(t)), lambda t: sgn * _nct_pdf(df, d, t) / tail(t),
-                     mpmath.log(target), t0)
-    return t, abs(pp / (t * _nct_pdf(df, d, t))) if t != 0 else mpmath.mpf(1)
+    t = solve_settled(lambda t: tail(t).log() - target.log(), lambda t: sgn * _nct_pdf(df, d, t) / tail(t), t0,
+                      increasing=lower)
+    return t, (_kappa(lambda: p / (t * _nct_pdf(df, d, t))) if t != 0 else 1.0)
 
 
 def _ncf_logpdf(dfn, dfd, nc, x):
-    """log density: e^(-nc/2) (central F density) 1F1((dfn+dfd)/2; dfn/2; nc dfn x / (2 (dfn x + dfd)))."""
+    """log density (arb in, arb out): e^(-nc/2) (central F density) 1F1((dfn+dfd)/2; dfn/2; nc dfn x / (2 (dfn x + dfd)))."""
+    dfn, dfd, nc, x = _a(dfn), _a(dfd), _a(nc), _a(x)
     a, b = dfn / 2, dfd / 2
-    central = (a * mpmath.log(dfn / dfd) + (a - 1) * mpmath.log(x) - (a + b) * mpmath.log1p(dfn * x / dfd)
-               - mpmath.log(mpmath.beta(a, b)))
-    return -nc / 2 + central + mpmath.log(mpmath.hyp1f1(a + b, a, nc * dfn * x / (2 * (dfn * x + dfd))))
+    central = a * (dfn / dfd).log() + (a - 1) * x.log() - (a + b) * (dfn * x / dfd).log1p() - _lbeta(a, b)
+    return -nc / 2 + central + _hyp1f1_series(a + b, a, nc * dfn * x / (2 * (dfn * x + dfd))).log()
 
 
-def _mp_ncfdtri(dfn, dfd, nc, p):
+def _hyp1f1_series(a, b, z):
+    """1F1(a; b; z) for a, b > 0, z >= 0, all terms positive (Arb's hypgeom_1f1 returns NaN for
+    a, b ~ 1e3, z ~ 2e3). The ratio of the terms after term k, (a+k) z / ((b+k)(k+1)), is at most
+    r = z / (k+1) max(1, (a+k) / (b+k)) from there on (both factors fall when a >= b; the first
+    stays below 1 when a < b)."""
+    if z == 0:
+        return arb(1)
+    tol = _trunc()
+    t = s = arb(1)
+    k = 0
+    while True:
+        t = t * (a + k) * z / ((b + k) * (k + 1))
+        k += 1
+        s += t
+        if k % 8 == 0:
+            r = z / (k + 1) * ((a + k) / (b + k) if a >= b else 1)
+            if r < 1:
+                tail = geometric_tail(t, r)
+                if tail <= tol * s:
+                    return add_error(s, tail)
+        if k > MAX_TERMS:
+            raise NotSettled("1F1 series")
+
+
+def _ref_ncfdtri(dfn, dfd, nc, p):
     x0 = _start2("ncfdtri", dfn, dfd, nc, p)
-    if not (np.isfinite(x0) and x0 > 0):
-        raise RuntimeError("no start")
-    pp = mpmath.mpf(p)
+    _no_start(x0, True)
     lower = p <= 0.5
-    tail = (lambda x: _ncf_pair(dfn, dfd, nc, x, False)) if lower else (lambda x: _ncf_pair(dfn, dfd, nc, x, True))
-    target = pp if lower else 1 - pp
-    dens = lambda x: mpmath.exp(_ncf_logpdf(dfn, dfd, nc, x))
-    x = _solve_log(lambda x: mpmath.log(tail(x)) - mpmath.log(target),
-                   lambda x: (1 if lower else -1) * x * dens(x) / tail(x), x0)
-    return x, abs(pp / (x * dens(x)))
+    tail = lambda x: _ncf_pair(dfn, dfd, nc, x, not lower)
+    target = p if lower else 1 - p
+    dens = lambda x: _ncf_logpdf(dfn, dfd, nc, x).exp()
+    x = solve_log_settled(lambda x: tail(x).log() - target.log(), lambda x: (1 if lower else -1) * x * dens(x) / tail(x),
+                          x0, increasing=lower)
+    return x, _kappa(lambda: p / (x * dens(x)))
 
 
 def _probs(rng, m):
@@ -1265,103 +1512,103 @@ INVERSES = {"gammaincinv", "gammainccinv", "betaincinv", "betainccinv", "stdtrit
 
 FUNCTIONS = {
     # the engine's test function (csrc/special/ops/testing.hpp): checks the pipeline end to end
-    "_cf_tan": (1, mpmath.tan, _cf_tan_inputs),
+    "_cf_tan": (1, lambda x: x.tan(), _cf_tan_inputs),
     # S1
-    "expit": (1, lambda x: 1 / (1 + mpmath.exp(-x)), _expit_inputs),
-    "logit": (1, lambda p: mpmath.log(p / (1 - p)), _logit_inputs),
-    "log_expit": (1, lambda x: -mpmath.log1p(mpmath.exp(-x)), _expit_inputs),
-    "xlogy": (2, _zero_at_zero(lambda x, y: x * mpmath.log(y)), _xlogy_inputs),
-    "xlog1py": (2, _zero_at_zero(lambda x, y: x * mpmath.log1p(y)), _xlog1py_inputs),
-    "entr": (1, _zero_at_zero(lambda x: -x * mpmath.log(x)), _entr_inputs),
-    "rel_entr": (2, _zero_at_zero(lambda x, y: x * mpmath.log(x / y)), _rel_entr_inputs),
+    "expit": (1, _expit, _expit_inputs),
+    "logit": (1, lambda p: (p / (1 - p)).log(), _logit_inputs),
+    "log_expit": (1, _log_expit, _expit_inputs),
+    "xlogy": (2, _zero_at_zero(lambda x, y: x * y.log()), _xlogy_inputs),
+    "xlog1py": (2, _zero_at_zero(lambda x, y: x * y.log1p()), _xlog1py_inputs),
+    "entr": (1, _zero_at_zero(lambda x: -x * x.log()), _entr_inputs),
+    "rel_entr": (2, _zero_at_zero(lambda x, y: x * (x / y).log()), _rel_entr_inputs),
     # S2
-    "erf": (1, lambda x: mpmath.erf(x), _erf_inputs),
-    "erfc": (1, _mp_erfc, _erfc_inputs),
-    "erfcx": (1, _mp_erfcx, _erfcx_inputs),
-    "ndtr": (1, _mp_ndtr, _ndtr_inputs),
-    "log_ndtr": (1, _mp_log_ndtr, _log_ndtr_inputs),
-    "ndtri": (1, _mp_ndtri, _ndtri_inputs),
-    "erfinv": (1, _mp_erfinv, _erfinv_inputs),
-    "erfcinv": (1, _mp_erfcinv, _erfcinv_inputs),
+    "erf": (1, lambda x: x.erf(), _erf_inputs),
+    "erfc": (1, lambda x: x.erfc(), _erfc_inputs),
+    "erfcx": (1, _ref_erfcx, _erfcx_inputs),
+    "ndtr": (1, _ndtr, _ndtr_inputs),
+    "log_ndtr": (1, _ref_log_ndtr, _log_ndtr_inputs),
+    "ndtri": (1, _ref_ndtri, _ndtri_inputs),
+    "erfinv": (1, lambda y: y.erfinv(), _erfinv_inputs),
+    "erfcinv": (1, lambda z: z.erfcinv(), _erfcinv_inputs),
     # S3
-    "gamma": (1, mpmath.gamma, _gamma_inputs),
-    "rgamma": (1, mpmath.rgamma, _rgamma_inputs),
-    "gammaln": (1, lambda x: mpmath.log(abs(mpmath.gamma(x))), _gammaln_inputs),
-    "digamma": (1, mpmath.digamma, _digamma_inputs),
-    "polygamma": (2, _mp_polygamma, _polygamma_inputs),
-    "beta": (2, _mp_beta, _beta_inputs),
-    "betaln": (2, lambda a, b: mpmath.log(abs(mpmath.beta(a, b))), _betaln_inputs),
-    "binom": (2, _mp_binom, _binom_inputs),
-    "zeta": (1, _mp_zeta, _zeta_inputs),
-    "zeta_hurwitz": (2, lambda x, q: mpmath.zeta(x, q), _hurwitz_inputs),
+    "gamma": (1, lambda x: x.gamma(), _gamma_inputs),
+    "rgamma": (1, lambda x: x.rgamma(), _rgamma_inputs),
+    "gammaln": (1, _ref_gammaln, _gammaln_inputs),
+    "digamma": (1, lambda x: x.digamma(), _digamma_inputs),
+    "polygamma": (2, _ref_polygamma, _polygamma_inputs),
+    "beta": (2, _ref_beta, _beta_inputs),
+    "betaln": (2, _ref_betaln, _betaln_inputs),
+    "binom": (2, _ref_binom, _binom_inputs),
+    "zeta": (1, lambda x: x.zeta(), _zeta_inputs),
+    "zeta_hurwitz": (2, _ref_zeta_hurwitz, _hurwitz_inputs),
     # S4
-    "gammainc": (2, _mp_gammainc, _gammainc_inputs),
-    "gammaincc": (2, _mp_gammaincc, _gammainc_inputs),
+    "gammainc": (2, _ref_gammainc, _gammainc_inputs),
+    "gammaincc": (2, _ref_gammaincc, _gammainc_inputs),
     "gammaincinv": (2, _gamma_inverse(False), _gammaincinv_inputs),
     "gammainccinv": (2, _gamma_inverse(True), _gammaincinv_inputs),
-    "betainc": (3, _mp_betainc, _betainc_inputs),
-    "betaincc": (3, _mp_betaincc, _betainc_inputs),
+    "betainc": (3, _ref_betainc, _betainc_inputs),
+    "betaincc": (3, _ref_betaincc, _betainc_inputs),
     "betaincinv": (3, _beta_inverse(False), _betaincinv_inputs),
     "betainccinv": (3, _beta_inverse(True), _betaincinv_inputs),
     # T1
-    "stdtr": (2, _mp_stdtr, _stdtr_inputs),
-    "stdtrit": (2, _mp_stdtrit, _stdtrit_inputs),
-    "chdtr": (2, lambda v, x: _mp_gammainc(v / 2, x / 2), _chdtr_inputs),
-    "chdtrc": (2, lambda v, x: _mp_gammaincc(v / 2, x / 2), _chdtr_inputs),
-    "chdtri": (2, _mp_chdtri, _chdtri_inputs),
-    "fdtr": (3, _mp_fdtr, _fdtr_inputs),
-    "fdtrc": (3, _mp_fdtrc, _fdtr_inputs),
-    "fdtri": (3, _mp_fdtri, _fdtri_inputs),
-    "pdtr": (2, lambda k, m: _mp_gammaincc(k + 1, m), _pdtr_inputs),
-    "pdtrc": (2, lambda k, m: _mp_gammainc(k + 1, m), _pdtr_inputs),
-    "bdtr": (3, lambda k, n, p: mpmath.betainc(n - k, k + 1, 0, 1 - p, regularized=True), _binom_inputs),
-    "bdtrc": (3, lambda k, n, p: mpmath.betainc(k + 1, n - k, 0, p, regularized=True), _binom_inputs),
-    "nbdtr": (3, lambda k, n, p: mpmath.betainc(n, k + 1, 0, p, regularized=True), lambda rng: _binom_inputs(rng, True)),
-    "nbdtrc": (3, lambda k, n, p: mpmath.betainc(k + 1, n, 0, 1 - p, regularized=True), lambda rng: _binom_inputs(rng, True)),
-    "ndtri_exp": (1, _mp_ndtri_exp, _ndtri_exp_inputs),
+    "stdtr": (2, _ref_stdtr, _stdtr_inputs),
+    "stdtrit": (2, _ref_stdtrit, _stdtrit_inputs),
+    "chdtr": (2, lambda v, x: _gammainc(v / 2, x / 2), _chdtr_inputs),
+    "chdtrc": (2, lambda v, x: _gammainc(v / 2, x / 2, True), _chdtr_inputs),
+    "chdtri": (2, _ref_chdtri, _chdtri_inputs),
+    "fdtr": (3, _ref_fdtr, _fdtr_inputs),
+    "fdtrc": (3, _ref_fdtrc, _fdtr_inputs),
+    "fdtri": (3, _ref_fdtri, _fdtri_inputs),
+    "pdtr": (2, lambda k, m: _gammainc(k + 1, m, True), _pdtr_inputs),
+    "pdtrc": (2, lambda k, m: _gammainc(k + 1, m), _pdtr_inputs),
+    "bdtr": (3, lambda k, n, p: _ibeta(n - k, k + 1, 1 - p, p), _bdtr_inputs),
+    "bdtrc": (3, lambda k, n, p: _ibeta(k + 1, n - k, p, 1 - p), _bdtr_inputs),
+    "nbdtr": (3, lambda k, n, p: _ibeta(n, k + 1, p, 1 - p), lambda rng: _bdtr_inputs(rng, True)),
+    "nbdtrc": (3, lambda k, n, p: _ibeta(k + 1, n, 1 - p, p), lambda rng: _bdtr_inputs(rng, True)),
+    "ndtri_exp": (1, _ref_ndtri_exp, _ndtri_exp_inputs),
     # T2 (x last: chndtr(df, nc, x), T2 decision)
     "chndtr": (3, lambda df, nc, x: _ncx2_pair(df, nc, x, False), _chndtr_inputs),
     "chndtrc": (3, lambda df, nc, x: _ncx2_pair(df, nc, x, True), _chndtr_inputs),
-    "nctdtr": (3, lambda df, d, t: _mp_nct(df, d, t, False), _nctdtr_inputs),
-    "nctdtrc": (3, lambda df, d, t: _mp_nct(df, d, t, True), _nctdtr_inputs),
+    "nctdtr": (3, lambda df, d, t: _ref_nct(df, d, t, False), _nctdtr_inputs),
+    "nctdtrc": (3, lambda df, d, t: _ref_nct(df, d, t, True), _nctdtr_inputs),
     "ncfdtr": (4, lambda dfn, dfd, nc, f: _ncf_pair(dfn, dfd, nc, f, False), _ncfdtr_inputs),
     "ncfdtrc": (4, lambda dfn, dfd, nc, f: _ncf_pair(dfn, dfd, nc, f, True), _ncfdtr_inputs),
-    "chndtrix": (3, _mp_chndtrix, _chndtrix_inputs),
-    "nctdtrit": (3, _mp_nctdtrit, _nctdtrit_inputs),
-    "ncfdtri": (4, _mp_ncfdtri, _ncfdtri_inputs),
+    "chndtrix": (3, _ref_chndtrix, _chndtrix_inputs),
+    "nctdtrit": (3, _ref_nctdtrit, _nctdtrit_inputs),
+    "ncfdtri": (4, _ref_ncfdtri, _ncfdtri_inputs),
     # S5
-    "expi": (1, mpmath.ei, _expi_inputs),
-    "expn": (2, lambda n, x: mpmath.expint(int(n), x), _expn_inputs),
-    "ellipk": (1, mpmath.ellipk, _ellip_inputs),
-    "ellipe": (1, mpmath.ellipe, _ellip_inputs),
-    # S6
-    "i0": (1, lambda x: mpmath.besseli(0, x), _bessel01_inputs(1e-3, 713.9, True)),
-    "i1": (1, lambda x: mpmath.besseli(1, x), _bessel01_inputs(1e-3, 713.9, True)),
-    "i0e": (1, lambda x: mpmath.besseli(0, x) * mpmath.exp(-abs(x)), _bessel01_inputs(1e-3, 1e300, True)),
-    "i1e": (1, lambda x: mpmath.besseli(1, x) * mpmath.exp(-abs(x)), _bessel01_inputs(1e-3, 1e300, True)),
-    "k0": (1, lambda x: mpmath.besselk(0, x), _bessel01_inputs(1e-3, 745)),
-    "k1": (1, lambda x: mpmath.besselk(1, x), _bessel01_inputs(1e-3, 745)),
-    "k0e": (1, lambda x: mpmath.besselk(0, x) * mpmath.exp(x), _bessel01_inputs(1e-3, 1e300)),
-    "k1e": (1, lambda x: mpmath.besselk(1, x) * mpmath.exp(x), _bessel01_inputs(1e-3, 1e300)),
-    "j0": (1, lambda x: mpmath.besselj(0, x), _jy01_inputs),
-    "j1": (1, lambda x: mpmath.besselj(1, x), _jy01_inputs),
-    "y0": (1, lambda x: mpmath.bessely(0, x), _jy01_inputs),
-    "y1": (1, lambda x: mpmath.bessely(1, x), _jy01_inputs),
-    "jv": (2, _wide(mpmath.besselj), _order_inputs(1e-3, 1e5)),
-    "yv": (2, _wide(mpmath.bessely), _order_inputs(1e-3, 1e5)),
-    "iv": (2, mpmath.besseli, _order_inputs(1e-3, 700)),
-    "kv": (2, _wide(mpmath.besselk), _order_inputs(1e-3, 700)),
-    "ive": (2, lambda v, x: mpmath.besseli(v, x) * mpmath.exp(-x), _order_inputs(1e-3, 1e5, False)),
-    "kve": (2, _wide(lambda v, x: mpmath.besselk(v, x) * mpmath.exp(x)), _order_inputs(1e-3, 1e5)),
+    "expi": (1, lambda x: x.ei(), _expi_inputs),
+    "expn": (2, lambda n, x: x.expint(n), _expn_inputs),
+    "ellipk": (1, lambda m: acb(m).elliptic_k().real, _ellip_inputs),
+    "ellipe": (1, lambda m: acb(m).elliptic_e().real, _ellip_inputs),
+    # S6 (I_n(-x) = (-1)^n I_n(x); Arb's scaled I is e^-z I(z), so the scaled ones are taken at |x|)
+    "i0": (1, lambda x: abs(x).bessel_i(0), _bessel01_inputs(1e-3, 713.9, True)),
+    "i1": (1, lambda x: x.sgn() * abs(x).bessel_i(1), _bessel01_inputs(1e-3, 713.9, True)),
+    "i0e": (1, lambda x: abs(x).bessel_i(0, scaled=True), _bessel01_inputs(1e-3, 1e300, True)),
+    "i1e": (1, lambda x: x.sgn() * abs(x).bessel_i(1, scaled=True), _bessel01_inputs(1e-3, 1e300, True)),
+    "k0": (1, lambda x: x.bessel_k(0), _bessel01_inputs(1e-3, 745)),
+    "k1": (1, lambda x: x.bessel_k(1), _bessel01_inputs(1e-3, 745)),
+    "k0e": (1, lambda x: x.bessel_k(0, scaled=True), _bessel01_inputs(1e-3, 1e300)),
+    "k1e": (1, lambda x: x.bessel_k(1, scaled=True), _bessel01_inputs(1e-3, 1e300)),
+    "j0": (1, lambda x: x.bessel_j(0), _jy01_inputs),
+    "j1": (1, lambda x: x.bessel_j(1), _jy01_inputs),
+    "y0": (1, lambda x: x.bessel_y(0), _jy01_inputs),
+    "y1": (1, lambda x: x.bessel_y(1), _jy01_inputs),
+    "jv": (2, lambda v, x: x.bessel_j(v), _order_inputs(1e-3, 1e5)),
+    "yv": (2, lambda v, x: x.bessel_y(v), _order_inputs(1e-3, 1e5)),
+    "iv": (2, lambda v, x: x.bessel_i(v), _order_inputs(1e-3, 700)),
+    "kv": (2, lambda v, x: x.bessel_k(v), _order_inputs(1e-3, 700)),
+    "ive": (2, lambda v, x: x.bessel_i(v, scaled=True), _order_inputs(1e-3, 1e5, False)),
+    "kve": (2, lambda v, x: x.bessel_k(v, scaled=True), _order_inputs(1e-3, 1e5)),
     "airy_ai": (1, _airy_part(0), _airy_inputs),
     "airy_aip": (1, _airy_part(1), _airy_inputs),
     "airy_bi": (1, _airy_part(2), _airy_inputs),
     "airy_bip": (1, _airy_part(3), _airy_inputs),
     # S7
-    "lambertw": (1, lambda x: mpmath.lambertw(x, 0), _lambertw_inputs(0)),
-    "lambertw_m1": (1, lambda x: mpmath.lambertw(x, -1), _lambertw_inputs(-1)),
-    "hyp1f1": (3, mpmath.hyp1f1, _hyp1f1_inputs),
-    "hyp2f1": (4, mpmath.hyp2f1, _hyp2f1_inputs),
+    "lambertw": (1, lambda x: x.lambertw(0), _lambertw_inputs(0)),
+    "lambertw_m1": (1, lambda x: x.lambertw(-1), _lambertw_inputs(-1)),
+    "hyp1f1": (3, lambda a, b, x: x.hypgeom_1f1(a, b), _hyp1f1_inputs),
+    "hyp2f1": (4, lambda a, b, c, z: z.hypgeom_2f1(a, b, c), _hyp2f1_inputs),
 }
 
 
@@ -1372,16 +1619,25 @@ FUNCTIONS = {
 #   erf   |z| >= 2:  (1 + |erfc(+-z)|) / |erf(z)|  (the sign making Re >= 0)
 #   erfcx Re z < 0:  (2 |exp(z^2)| + |erfcx(-z)|) / |erfcx(z)|
 #   loggamma Re z <= 0: max(1, 1/|f|)  (|error| <= 1e-14 max(1, |f|))
-# mpmath has no signed zeros: on a branch cut, Im z = -0 is the limit from below, taken
-# as conj(f(conj z)) (loggamma) or conj(W_{-k}(conj z)) (lambertw).
+# On a branch cut (the negative real axis), Im z = -0 is the limit from below, taken as
+# conj(f(conj z)) (loggamma) or conj(W_{-k}(conj z)) (lambertw); Arb's value on the cut is
+# the limit from above, as mpmath's was.
 
 
-def _w_mp(z):
-    return mpmath.exp(-z * z) * mpmath.erfc(-1j * z)
+def _w_ref(z):
+    """Faddeeva w(z) = e^(-z^2) erfc(-iz); for Im z > 0 and |z| > 8, U(1/2, 1/2, -z^2) / sqrt(pi)
+    (erfc(c) = e^(-c^2) U(1/2, 1/2, c^2) / sqrt(pi) for Re c > 0, c = -iz): no e^(-z^2) whose
+    phase at |z| = 1e150 would need 1000 bits."""
+    if z.imag > 0 and abs(z) > 8:
+        return (-(z * z)).hypgeom_u(0.5, 0.5) / _sqrt_pi()
+    return (-(z * z)).exp() * (acb(0, -1) * z).erfc()
 
 
-def _erfcx_mp(z):
-    return mpmath.exp(z * z) * mpmath.erfc(z)
+def _erfcx_ref(z):
+    """e^(z^2) erfc(z); for Re z > 0 and |z| > 8, U(1/2, 1/2, z^2) / sqrt(pi) (as _w_ref)."""
+    if z.real > 0 and abs(z) > 8:
+        return (z * z).hypgeom_u(0.5, 0.5) / _sqrt_pi()
+    return (z * z).exp() * z.erfc()
 
 
 def _cpoints(rng, n, lo, hi, arg_lo=-np.pi, arg_hi=np.pi):
@@ -1410,22 +1666,29 @@ _ERFC_ZEROS = [-1.3548 + 1.9915j, -2.1769 + 2.6911j, -2.7756 + 3.2382j]
 _ERF_ZEROS = [1.4506 + 1.8806j, 2.2447 + 2.6165j, 2.8340 + 3.1756j]
 
 
-def _refine(f, guesses):
+def _refine(f, df, guesses):
+    """Newton from each guess on f (acb), at 128 bits; each zero rounded to complex128."""
     out = []
-    for g in guesses:
-        with mpmath.workdps(30):
-            z = complex(mpmath.findroot(f, mpmath.mpc(g.real, g.imag)))
-        out.append(z)
+    with precision(128):
+        for g in guesses:
+            z = acb(g.real, g.imag)
+            for _ in range(30):
+                z = (z - f(z) / df(z)).mid()
+            out.append(complex(float(z.real.mid()), float(z.imag.mid())))
     return out
 
 
+def _derf(z):
+    return 2 / _sqrt_pi() * (-(z * z)).exp()
+
+
 def _erfc_zeros():
-    zs = _refine(mpmath.erfc, _ERFC_ZEROS)
+    zs = _refine(lambda z: z.erfc(), lambda z: -_derf(z), _ERFC_ZEROS)
     return zs + [z.conjugate() for z in zs]
 
 
 def _erf_zeros():
-    zs = _refine(mpmath.erf, _ERF_ZEROS)
+    zs = _refine(lambda z: z.erf(), _derf, _ERF_ZEROS)
     return zs + [z.conjugate() for z in zs] + [-z for z in zs] + [-z.conjugate() for z in zs]
 
 
@@ -1446,7 +1709,7 @@ def _wofz_inputs(rng):
 def _wofz_scale(z, v):
     if z.imag >= 0:
         return 1.0
-    return max(1.0, float((2 * abs(mpmath.exp(-z * z)) + abs(_w_mp(-z))) / abs(v)))
+    return _scale_of(lambda: (2 * abs((-(z * z)).exp()) + abs(_w_ref(-z))) / abs(v))
 
 
 def _erf_family_inputs(zeros):
@@ -1463,22 +1726,22 @@ def _erf_family_inputs(zeros):
 
 
 def _erf_scale(z, v):
-    if abs(z) < 2:
+    if _f(z) < 2:
         return 1.0
     zp = z if z.real >= 0 else -z
-    return max(1.0, float((1 + abs(mpmath.erfc(zp))) / abs(v)))
+    return _scale_of(lambda: (1 + abs(zp.erfc())) / abs(v))
 
 
 def _erfc_scale(z, v):
     if z.real >= 0:
         return 1.0
-    return max(1.0, float((2 + abs(mpmath.erfc(-z))) / abs(v)))
+    return _scale_of(lambda: (2 + abs((-z).erfc())) / abs(v))
 
 
 def _erfcx_scale(z, v):
     if z.real >= 0:
         return 1.0
-    return max(1.0, float((2 * abs(mpmath.exp(z * z)) + abs(_erfcx_mp(-z))) / abs(v)))
+    return _scale_of(lambda: (2 * abs((z * z).exp()) + abs(_erfcx_ref(-z))) / abs(v))
 
 
 def _loggamma_inputs(rng):
@@ -1499,11 +1762,11 @@ def _loggamma_inputs(rng):
 def _loggamma_scale(z, v):
     if z.real > 0:
         return 1.0
-    return max(1.0, float(1 / abs(v)))
+    return _scale_of(lambda: 1 / abs(v))
 
 
-def _lambertw_mp(k):
-    return lambda z: mpmath.lambertw(z, k)
+def _lambertw_ref(k):
+    return lambda z: z.lambertw(k)
 
 
 def _lambertw_c_inputs(rng):
@@ -1519,84 +1782,26 @@ def _lambertw_c_inputs(rng):
     return (z,), np.isfinite(z)
 
 
-# name: (mpmath function of mpc z, input builder, scale or None, cut): on the negative real
+# name: (function of acb z -> acb, input builder, scale or None, cut): on the negative real
 # axis with Im z = -0 the value is conj(cut(x)) (None: no cut there)
 COMPLEX = {
-    "wofz": (_w_mp, _wofz_inputs, _wofz_scale, None),
-    "erf_complex": (mpmath.erf, _erf_family_inputs(_erf_zeros), _erf_scale, None),
-    "erfc_complex": (mpmath.erfc, _erf_family_inputs(_erfc_zeros), _erfc_scale, None),
-    "erfcx_complex": (_erfcx_mp, _erf_family_inputs(lambda: [-z for z in _erfc_zeros()]), _erfcx_scale, None),
-    "loggamma_complex": (mpmath.loggamma, _loggamma_inputs, _loggamma_scale, mpmath.loggamma),
-    "lambertw_c0": (_lambertw_mp(0), _lambertw_c_inputs, None, _lambertw_mp(0)),
-    "lambertw_cm1": (_lambertw_mp(-1), _lambertw_c_inputs, None, _lambertw_mp(1)),
-    "lambertw_c1": (_lambertw_mp(1), _lambertw_c_inputs, None, _lambertw_mp(-1)),
-    "lambertw_c4": (_lambertw_mp(4), _lambertw_c_inputs, None, _lambertw_mp(-4)),
+    "wofz": (_w_ref, _wofz_inputs, _wofz_scale, None),
+    "erf_complex": (lambda z: z.erf(), _erf_family_inputs(_erf_zeros), _erf_scale, None),
+    "erfc_complex": (lambda z: z.erfc(), _erf_family_inputs(_erfc_zeros), _erfc_scale, None),
+    "erfcx_complex": (_erfcx_ref, _erf_family_inputs(lambda: [-z for z in _erfc_zeros()]), _erfcx_scale, None),
+    "loggamma_complex": (lambda z: z.lgamma(), _loggamma_inputs, _loggamma_scale, lambda z: z.lgamma()),
+    "lambertw_c0": (_lambertw_ref(0), _lambertw_c_inputs, None, _lambertw_ref(0)),
+    "lambertw_cm1": (_lambertw_ref(-1), _lambertw_c_inputs, None, _lambertw_ref(1)),
+    "lambertw_c1": (_lambertw_ref(1), _lambertw_c_inputs, None, _lambertw_ref(-1)),
+    "lambertw_c4": (_lambertw_ref(4), _lambertw_c_inputs, None, _lambertw_ref(-4)),
 }
-
-
-def evaluate_complex(f, z):
-    """f(z) at enough digits for exp(-z^2)'s phase (2 log10|z| more), checked against twice the
-    digits until both parts agree to 30 digits."""
-    big = max(1.0, abs(z))
-    dps = DPS + 2 * int(np.log10(big)) + 10
-    def at(d):
-        with mpmath.workdps(d):
-            return +f(mpmath.mpc(z.real, z.imag))
-    v = at(dps)
-    while dps < 2000:
-        w = at(2 * dps)
-        tol = abs(w) * mpmath.mpf(10) ** -30
-        if not (mpmath.isfinite(w.real) and mpmath.isfinite(w.imag)) or abs(v - w) <= tol:
-            return w
-        dps *= 2
-        v = w
-    return v
-
-
-def build_complex(name):
-    import signal
-
-    f, inputs, scale_of, cut = COMPLEX[name]
-    rng = np.random.default_rng(20261114)
-    (z,), guaranteed = inputs(rng)
-    z = np.asarray(z, dtype=np.complex128)
-    n = z.size
-    hi, lo, scale = np.empty(n, dtype=np.complex128), np.empty(n, dtype=np.complex128), np.ones(n)
-    keep = np.ones(n, dtype=bool)
-    old = signal.signal(signal.SIGALRM, _alarm)
-    try:
-        for i in range(n):
-            signal.alarm(POINT_SECONDS)
-            try:
-                zi = complex(z[i])
-                if cut is not None and zi.imag == 0 and np.signbit(zi.imag) and zi.real < 0:
-                    v = mpmath.conj(evaluate_complex(cut, zi))  # the limit from below
-                else:
-                    v = evaluate_complex(f, zi)
-                if scale_of is not None and mpmath.isfinite(v.real) and mpmath.isfinite(v.imag) and v != 0:
-                    with mpmath.workdps(40):
-                        scale[i] = scale_of(mpmath.mpc(z[i].real, z[i].imag), v)
-            except (_Timeout, mpmath.libmp.NoConvergence, RuntimeError, ZeroDivisionError, ValueError):
-                keep[i] = False
-                continue
-            finally:
-                signal.alarm(0)
-            rh, rl = double_double(mpmath.re(v))
-            ih, il = double_double(mpmath.im(v))
-            hi[i], lo[i] = complex(rh, ih), complex(rl, il)
-    finally:
-        signal.signal(signal.SIGALRM, old)
-    OUT.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(OUT / f"{name}.npz", nin=1, hi=hi[keep], lo=lo[keep], scale=scale[keep],
-                        guaranteed=np.asarray(guaranteed, dtype=bool)[keep], x0=z[keep],
-                        mpmath=mpmath.__version__, dps=DPS)
-    return int(keep.sum()), int((~keep).sum())
 
 
 def build_reduce():
     """tests/special/ref/reduce_cases.npz: arrays for logsumexp, softmax and log_softmax with
     their references (S5). Each case is a 1-d array; `start` holds the offsets into the
-    concatenation `x`. Per case: logsumexp (hi, lo); per element: softmax and log_softmax (hi, lo)."""
+    concatenation `x`. Per case: logsumexp (hi, lo); per element: softmax and log_softmax (hi, lo).
+    Each case's values are settled together (rigorous over the whole list)."""
     rng = np.random.default_rng(20261114)
     cases = []
     for k in range(120):
@@ -1612,65 +1817,57 @@ def build_reduce():
     sm_hi, sm_lo = np.empty(allx.size), np.empty(allx.size)
     ls_hi, ls_lo = np.empty(allx.size), np.empty(allx.size)
     for c, x in enumerate(cases):
-        with mpmath.workdps(80):
-            xs = [mpmath.mpf(float(v)) for v in x]
-            m = max(xs)
-            s = mpmath.fsum(mpmath.exp(v - m) for v in xs)
-            lse = m + mpmath.log(s)
-            lse_hi[c], lse_lo[c] = double_double(lse)
-            for i, v in enumerate(xs):
-                sm_hi[start[c] + i], sm_lo[start[c] + i] = double_double(mpmath.exp(v - lse))
-                ls_hi[start[c] + i], ls_lo[start[c] + i] = double_double(v - lse)
+        xs = [float(v) for v in x]
+        m = max(xs)
+
+        def values(prec, xs=xs, m=m):
+            with precision(prec):
+                s_ = arb(0)
+                for v in xs:
+                    s_ += (arb(v) - m).exp()
+                lse = m + s_.log()
+                return [lse] + [(arb(v) - lse).exp() for v in xs] + [arb(v) - lse for v in xs]
+
+        p = arbref.START_PREC
+        while True:
+            vals = values(p)
+            if all(arbref.settled(v, floor=FLOOR) for v in vals):
+                break
+            p *= 2
+            if p > arbref.MAX_PREC:
+                raise NotSettled("reduce case")
+        n = len(xs)
+        lse_hi[c], lse_lo[c] = to_dd(vals[0])
+        for i in range(n):
+            sm_hi[start[c] + i], sm_lo[start[c] + i] = to_dd(vals[1 + i])
+            ls_hi[start[c] + i], ls_lo[start[c] + i] = to_dd(vals[1 + n + i])
     OUT.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(OUT / "reduce_cases.npz", x=allx, start=start, lse_hi=lse_hi, lse_lo=lse_lo,
                         softmax_hi=sm_hi, softmax_lo=sm_lo, log_softmax_hi=ls_hi, log_softmax_lo=ls_lo,
-                        mpmath=mpmath.__version__)
+                        **_PROVENANCE)
     return len(cases)
 
 
 # ---------------------------------------------------------------- writing
 
+_PROVENANCE = {"arb": f"python-flint {flint.__version__}", "bits": arbref.TARGET_BITS}
+
 
 def double_double(v):
-    """(hi, lo) with hi + lo ~= v, hi = v rounded to float64."""
-    if mpmath.isnan(v):
-        return np.nan, 0.0
-    if mpmath.isinf(v):
-        return (np.inf if v > 0 else -np.inf), 0.0
-    hi = float(v)
-    if np.isinf(hi):  # beyond float64: the reference overflows
-        return hi, 0.0
-    return hi, float(v - mpmath.mpf(hi))
-
-
-def _at(f, args, dps):
-    with mpmath.workdps(dps):
-        try:
-            return +f(*(mpmath.mpf(a) for a in args))
-        except (ValueError, ZeroDivisionError):
-            return mpmath.nan
+    """(hi, lo) of a settled arb (or a float): arbref.to_dd, hi the double nearest the value."""
+    return to_dd(v)
 
 
 def evaluate(f, args):
-    """f(args) at DPS digits, checked against twice the digits and doubled until the two agree
-    to 30 digits: mpmath loses digits silently in places (a + b with a/b = 1e290 in beta,
-    Hurwitz zeta at large q), and the reference must not."""
-    # start above the largest argument's decimal exponent: a sum a + b with a = 1e281 needs
-    # 281 more digits to keep b, and two precisions that both drop it would agree
-    big = max([abs(a) for a in args if np.isfinite(a)] + [1.0])
-    dps = DPS + int(np.log10(big)) + 10
-    v = _at(f, args, dps)
-    while dps < 4000:
-        w = _at(f, args, 2 * dps)
-        if isinstance(v, mpmath.mpc) or isinstance(w, mpmath.mpc):
-            v = w
-            break
-        if mpmath.isnan(v) or mpmath.isnan(w) or mpmath.isinf(w) or v == w or abs(v - w) <= abs(w) * mpmath.mpf(10) ** -30:
-            v = w
-            break
-        dps *= 2
-        v = w
-    return v
+    """f(*args) (args floats, passed as exact arbs) as a settled ball (arbref.rigorous with the
+    double-double floor): raises NotSettled if it never settles."""
+    return rigorous(lambda: f(*(arb(a) for a in args)), floor=FLOOR)
+
+
+def evaluate_complex(f, z):
+    """f(z) (z a Python complex) as a settled acb: each part to 2^-110 of itself, or of |f(z)|
+    times 2^-10 (S8 measures |error| / |f|), or 2^-1132 absolutely."""
+    return rigorous(lambda: f(acb(z.real, z.imag)), floor=FLOOR, modulus_bits=MODULUS_BITS)
 
 
 class _Timeout(Exception):
@@ -1678,56 +1875,95 @@ class _Timeout(Exception):
 
 
 def _alarm(*_):
+    """SIGALRM handler: raises _Timeout (between Arb calls; a point over POINT_SECONDS is dropped)."""
     raise _Timeout
 
 
 def evaluate_inverse(f, args):
-    """(x, kappa) of an inverse, at two precisions doubled until x agrees to 30 digits."""
-    dps = DPS + 10
-    with mpmath.workdps(dps):
-        v, k = f(*(mpmath.mpf(a) for a in args))
-    while dps < 1000:
-        with mpmath.workdps(2 * dps):
-            w, k = f(*(mpmath.mpf(a) for a in args))
-        if v == w or abs(v - w) <= abs(w) * mpmath.mpf(10) ** -30:
-            return w, k
-        dps *= 2
-        v = w
-    return v, k
+    """(x, kappa) of an inverse: f certifies its own root (arbref.solve_settled / solve_log_settled)."""
+    with precision(arbref.START_PREC):
+        return f(*(arb(a) for a in args))
 
 
-# mpmath's betainc near the mean of a, b ~ 1e5 can take minutes per point: a point that
-# takes longer than this is dropped (and counted).
+# A point that takes longer than this is dropped (and counted). The alarm fires between Arb
+# calls; each call at the largest precision returns within seconds.
 POINT_SECONDS = 30
+_DROPS = (_Timeout, ArithmeticError, ValueError, RuntimeError)  # NotSettled is an ArithmeticError
 
 
 def _point(task):
-    """One reference point (in a worker): (index, hi, lo, scale) or (index, None) if dropped."""
+    """One reference point (in a worker): (index, hi, lo, scale) or (index, None) if dropped.
+    Complex functions: hi and lo are complex (the parts' double-doubles)."""
     import signal
 
     name, i, args = task
-    nin, f, _ = FUNCTIONS[name]
     old = signal.signal(signal.SIGALRM, _alarm)
     signal.alarm(POINT_SECONDS)
     try:
         sc = 1.0
+        if name in COMPLEX:
+            f, _, scale_of, cut = COMPLEX[name]
+            zi = args[0]
+            if cut is not None and zi.imag == 0 and math.copysign(1.0, zi.imag) < 0 and zi.real < 0:
+                w = evaluate_complex(cut, complex(zi.real, 0.0))
+                v = _exact(w.conjugate)  # the limit from below
+            else:
+                v = evaluate_complex(f, zi)
+            if scale_of is not None and v.is_finite() and v != 0:
+                with precision(arbref.START_PREC):
+                    sc = scale_of(acb(zi.real, zi.imag), v)
+            rh, rl = to_dd(v.real)
+            ih, il = to_dd(v.imag)
+            return i, (complex(rh, ih), complex(rl, il), sc)
+        _, f, _ = FUNCTIONS[name]
         if name in INVERSES:
             v, k = evaluate_inverse(f, args)
-            sc = max(1.0, float(k))
+            if math.isnan(k):
+                raise NotSettled("kappa")
+            sc = max(1.0, float(k)) if to_dd(v)[0] != 0 else 1.0  # a root that rounds to 0: no kappa
         else:
             v = evaluate(f, args)
-            if name in SCALES and mpmath.isfinite(v):
-                with mpmath.workdps(40):
-                    sc = SCALES[name](args, v)
-    except (_Timeout, mpmath.libmp.NoConvergence, RuntimeError, ZeroDivisionError):
+            if name in SCALES and (isinstance(v, float) or v.is_finite()):
+                sc = SCALES[name](args, arb(v) if isinstance(v, float) else v)
+        return i, (*to_dd(v), sc)
+    except _DROPS:
         return i, None
     finally:
         signal.alarm(0)
         signal.signal(signal.SIGALRM, old)
-    if isinstance(v, mpmath.mpc):  # a real function outside its real domain
-        v = v.real if v.imag == 0 else mpmath.nan
-    hi, lo = double_double(v)
-    return i, (hi, lo, sc)
+
+
+MAX_TASKS_PER_CHILD = 500  # workers are replaced after this many points (memory stays bounded)
+
+
+def _run(tasks, jobs):
+    import stardust  # noqa: F401  (the inverses' start; loaded once here, not in every worker)
+
+    if jobs > 1:
+        import multiprocessing
+
+        with multiprocessing.get_context("fork").Pool(jobs, maxtasksperchild=MAX_TASKS_PER_CHILD) as pool:
+            return list(pool.imap_unordered(_point, tasks, chunksize=1))
+    return list(map(_point, tasks))
+
+
+def build_complex(name, jobs=1):
+    _, inputs, _, _ = COMPLEX[name]
+    rng = np.random.default_rng(20261114)
+    (z,), guaranteed = inputs(rng)
+    z = np.asarray(z, dtype=np.complex128)
+    n = z.size
+    hi, lo, scale = np.empty(n, dtype=np.complex128), np.empty(n, dtype=np.complex128), np.ones(n)
+    keep = np.ones(n, dtype=bool)
+    for i, r in _run([(name, i, (complex(z[i]),)) for i in range(n)], jobs):
+        if r is None:
+            keep[i] = False
+        else:
+            hi[i], lo[i], scale[i] = r
+    OUT.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(OUT / f"{name}.npz", nin=1, hi=hi[keep], lo=lo[keep], scale=scale[keep],
+                        guaranteed=np.asarray(guaranteed, dtype=bool)[keep], x0=z[keep], **_PROVENANCE)
+    return int(keep.sum()), int((~keep).sum())
 
 
 def build(name, jobs=1):
@@ -1739,14 +1975,7 @@ def build(name, jobs=1):
     hi, lo, scale = np.empty(n), np.empty(n), np.ones(n)
     keep = np.ones(n, dtype=bool)
     tasks = [(name, i, tuple(float(x[i]) for x in xs)) for i in range(n)]
-    if jobs > 1:
-        import multiprocessing
-
-        with multiprocessing.get_context("fork").Pool(jobs) as pool:
-            results = pool.map(_point, tasks, chunksize=1)
-    else:
-        results = map(_point, tasks)
-    for i, r in results:
+    for i, r in _run(tasks, jobs):
         if r is None:
             keep[i] = False
         else:
@@ -1755,26 +1984,21 @@ def build(name, jobs=1):
     OUT.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(OUT / f"{name}.npz", nin=nin, hi=hi[keep], lo=lo[keep], scale=scale[keep],
                         guaranteed=np.asarray(guaranteed, dtype=bool)[keep],
-                        **{f"x{k}": x for k, x in enumerate(xs)}, mpmath=mpmath.__version__, dps=DPS)
+                        **{f"x{k}": x for k, x in enumerate(xs)}, **_PROVENANCE)
     return int(keep.sum()), int((~keep).sum())
 
 
 def main(argv):
-    jobs = 1
+    jobs = 10
     if argv and argv[0].startswith("--jobs="):
         jobs, argv = int(argv[0].split("=", 1)[1]), argv[1:]
     names = argv or list(FUNCTIONS) + list(COMPLEX) + ["reduce_cases"]
     for name in names:
-        if name in COMPLEX:
-            n, dropped = build_complex(name)
-            note = f" ({dropped} dropped)" if dropped else ""
-            print(f"{name}: {n} points -> tests/special/ref/{name}.npz{note}", flush=True)
-            continue
         if name == "reduce_cases":
             print(f"reduce_cases: {build_reduce()} arrays -> tests/special/ref/reduce_cases.npz", flush=True)
             continue
-        n, dropped = build(name, jobs)
-        note = f" ({dropped} dropped: over {POINT_SECONDS} s, or mpmath did not converge)" if dropped else ""
+        n, dropped = build_complex(name, jobs) if name in COMPLEX else build(name, jobs)
+        note = f" ({dropped} dropped: not settled, or over {POINT_SECONDS} s)" if dropped else ""
         print(f"{name}: {n} points -> {(OUT / name).with_suffix('.npz').relative_to(ROOT)}{note}", flush=True)
 
 

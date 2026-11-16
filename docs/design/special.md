@@ -27,7 +27,7 @@
 | Q7 복소수 | 실수를 모두 끝낸 뒤 마지막 마일스톤에서 erf/wofz, loggamma, lambertw만 복소수를 받는다. 복소수 Bessel(AMOS급)은 하지 않는다 |
 | Q8 구간 한도 | 근사 방식을 바꾸는 갈래는 함수마다 2–3개. 정의역을 옮기는 변환(반사, 점화식, 선형 변환, 대칭)은 세지 않는다. 퇴화 경우는 일반 극한 공식 하나로 처리한다 (§4.2) |
 | Q9 보장 영역 밖 | 값은 계산하고, 정확도가 느슨하다는 것을 문서에 적는다. NaN은 수학적 정의역 밖에서만 나온다 |
-| Q10 정답지 | mpmath를 테스트 의존성으로 더한다. 정확도는 고정밀 값 대비 ULP로 잰다. scipy는 차이와 성능을 비교하는 데 쓴다 (§6) |
+| Q10 정답지 | 엄밀한 구간 산술 Arb(python-flint)를 테스트 의존성으로 더한다(처음에는 mpmath, 2026-11-16 Arb로 바꿨다, §6). 정확도는 고정밀 값 대비 ULP로 잰다. scipy는 차이와 성능을 비교하는 데 쓴다 (§6) |
 | Q11 n항 디스패처 | 배열 영역에 일반 n항 원소별 디스패처를 더하고 `kMaxOperands`를 5로 올린다. 별도 마일스톤(S0)이고, 기존 함수의 결과는 비트까지 같다 (§3.1) |
 | Q12 이름 | scipy 이름을 쓴다. 입력은 모두 `/` 앞, `out=`은 `*` 뒤. sd에 이미 있는 함수는 다시 두지 않는다 |
 | Q13 리덕션 옵션 | `logsumexp`, `softmax`, `log_softmax`는 `axis=None`(과 `logsumexp`의 `keepdims=False`)만 둔다 |
@@ -113,7 +113,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 - 함수별 특수값 표는 docs/api/special.md의 각 절에 둔다.
 
 ### 2.3 정확도 계약
-- **보장 영역**: 함수마다 docs/api/special.md에 적는다. 그 안에서 mpmath(50자리) 값 대비 상대오차 ≤ 1e-14다.
+- **보장 영역**: 함수마다 docs/api/special.md에 적는다. 그 안에서 참값(Arb, §6) 대비 상대오차 ≤ 1e-14다.
   - 1e-14는 float64로 약 45 ULP다. 실제 목표는 그보다 작고, 잰 최대 ULP를 표로 남긴다.
   - **진동 함수**(`j0 j1 y0 y1 jv yv jve yve`, x < 0의 `airy`, Q18): 영점 근처에서는 상대오차를 정의할 수 없다. 그래서 `|오차| ≤ 1e-14 × A(x)`를 보장한다. `A(x)`는 포락선(진폭)이다. 예: Hankel 점근의 진폭 `√(2/(πx))`, Airy는 `π^{-1/2}|x|^{-1/4}`. 포락선의 정확한 식은 함수마다 docs/api/special.md에 적는다.
 - **느슨한 영역**: 보장 영역 밖이지만 정의역 안이다. 값을 계산하고, 잰 최대 오차를 문서에 적는다 (Q9).
@@ -287,7 +287,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 - 역함수(`gammaincinv`, `gammainccinv`, `betaincinv`, `betainccinv`): 초기값 2–3가지(감마: Wilson–Hilferty, 작은 p의 거듭제곱 근사; 베타: 정규 근사, 작은 x의 거듭제곱 근사) + Halley 반복. 반복은 상대 변화가 ε 아래가 되거나 상한(예: 20회)에서 멈춘다. DiDonato–Morris의 초기값 열 가지 남짓은 가져오지 않는다.
 - **S4에서 정하고 바꾼 것**
   - 앞 인자: Lanczos 대신 Stirling 정규화 `Γ(z) = √(2π/z)(z/e)^z Γ*(z)`로 큰 부분을 지수 하나 E = a·μ(x/a − 1)(μ(t) = t − log(1+t))에 모았다. E는 정확한 입력에서 double-double로 만든다(`special/dd.hpp`). scipy(Cephes)는 a log x − x − lgamma(a)를 float64로 만들어 꼬리에서 수천 ULP를 잃는다.
-  - 불완전 감마: 네 갈래다. x < 1.1의 작은 a는 Boost의 `tgamma_small_upper_part`(Γ(1+a) − 1과 x^a − 1을 expm1로), 급수 P, 연분수 Q, a > 20이고 |x − a| < 0.4a이면 Temme. Temme의 c_k(η) 계수는 DLMF 8.12의 정의식을 mpmath로 전개해 만들었다(`tools/gen_temme_igamma.py`, 맞춘 값이 아니다).
+  - 불완전 감마: 네 갈래다. x < 1.1의 작은 a는 Boost의 `tgamma_small_upper_part`(Γ(1+a) − 1과 x^a − 1을 expm1로), 급수 P, 연분수 Q, a > 20이고 |x − a| < 0.4a이면 Temme. Temme의 c_k(η) 계수는 DLMF 8.12의 정의식을 정확한 유리수로 전개해 만들었다(`tools/gen_temme_igamma.py`, 맞춘 값이 아니다).
   - 연분수는 Lentz로 항 수만 찾고 값은 꼬리부터 거꾸로 계산한다(`cf.hpp` `lentz_backward`). Lentz 그대로는 60항에서 17 ULP를 잃었다.
   - 불완전 베타: NR `betacf` 대신 DiDonato–Morris의 BRATIO(TOMS 708) 구조를 따른다. BPSER(급수), BUP(유한합으로 a·b 옮기기), BGRAT(큰 a·작은 b, x ≈ 1), BFRAC(평균 아래 연분수), BASYM(a, b > 100의 평균 근처, Temme형 균등 점근전개)이다. BGRAT와 BASYM은 측정 뒤 사용자 결정으로 넣었다(2026-11-14). 근사 방식이 다섯이라 §1.1 Q8의 "2–3구간"을 넘는다.
   - 역함수: Halley는 F와 목표가 두 배 넘게 차이 나는 동안 log F에 대한 Newton 걸음을 쓴다(꼬리에서 선형 걸음은 한 번에 F/F′ ≈ 1씩만 움직인다). 감마의 초기값은 하한 둘(작은 x 근사, 큰 x 점근식)과 Wilson–Hilferty, 베타는 AS 109다.
@@ -420,7 +420,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 - **`ndtri_exp`**: y > log ½이면 −ndtri(−expm1(y)), y > −700이면 ndtri(exp(y))다. 그 아래는 점근식 x² = −2y − log 2π − 2 log(−x) + 2 log(1 − 1/x² + 3/x⁴)의 고정점이다. −1e8 위에서는 그 값에서 log_ndtr로 Newton을 한다. Newton의 기울기 φ/Φ는 크기 x²/2인 두 수의 차라서, |x| > 1e6부터 자릿수를 잃었다(y = −1e17에서 2e13 ULP). 그래서 −1e8 아래는 고정점만 쓴다(다음 항 15/x⁶이 마지막 비트보다 훨씬 작다).
 - **`stdtrit`의 속도 (2026-11-15, 최적화 4단계)**: betaincinv로 풀면 꼬리 평가가 네댓 번이다(1100 ns, scipy의 0.21배). df ≥ 1이고 양쪽 꼬리 확률이 1e-12보다 크면 Hill의 근사(CACM 396, 6자리)에서 출발해 꼬리 함수에 Halley 걸음을 한다. 걸음이 4e-6|t| 아래이면 남는 오차가 1e-17이라, 대부분 평가 한 번으로 끝난다(440 ns, 0.54배). 참값 최대 7.4 ULP, 무작위 4천 점(df 1–1.6e5) 최대 4 ULP. 더 깊은 꼬리와 df < 1은 전처럼 betaincinv다.
 - **S4의 결함을 고쳤다.** T1을 재다가 `betaincinv`, `betainccinv`가 a, b < 1의 약 8%에서 0이나 1을 돌려주는 것을 찾았다. AS109의 처음 추정이 U자 밀도에서 엉뚱한 끝을 골라 (0, 1) 밖의 값(예: 1 − x = 5400)을 냈고, 코드는 그것을 "근이 언더플로한다"로 읽었다. 이제는 범위 밖이면 다른 끝의 근사를, 그것도 안 되면 0.5에서 출발한다(`as109`). 40만 개 표본에서 scipy와 모두 일치한다. 그 영역의 참값 파일도 다시 만들었다. 옛 참값은 출발점으로 쓴 우리 함수의 0을 그대로 받아 0이 들어 있었다.
-- **참값 생성의 함정** (tools/special_ref.py):
+- **참값 생성의 함정** (tools/special_ref.py, mpmath 시절. Arb로 바꾼 뒤에는 공이 자릿수 손실을 그대로 드러낸다, §6):
   - mpmath의 betainc는 인자가 1에 가까우면 자릿수를 잃는다. 그래서 x와 1 − x 중 작은 쪽에서 계산한다(`_ibeta_pair`).
   - 값이 2^-1074보다 훨씬 작으면 수렴을 포기한다. 이때는 선두 항이 e^-1000 아래인지 보고 0으로 둔다(`_safe_betainc`).
   - `ndtri_exp`는 x < −1e6에서 log Φ의 점근 급수와 해석적 기울기 −x/S(x)를 쓴다. mpmath의 ncdf, npdf가 넘치기 때문이다.
@@ -453,10 +453,15 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 - **T1·S4의 결함을 고쳤다** (T2의 넓은 입력이 찾았다):
   - **`fdtr`**: dfd가 아주 작고 dfn·x가 거대하면(`fdtr(3218.14, 0.0129, 1e20)`) 1.5e-9가 틀렸다. w = 1 − 4e-26을 나눗셈으로 만든 double-double은 1에서의 거리를 절대 1e-32까지만 갖는다. 그런데 `bgrat`이 log w를 그 w에서 계산했다. 이제 x > ½이면 log x = log(1 − y)를 작은 쪽 y에서 계산한다. S4·T1 참값의 정확도는 그대로다.
   - **`chdtr`**: x가 서브노멀이면 x/2가 반올림되거나 0이 되었다(`chdtr(0.18, 5e-324)` = 0, 참값 7.9e-30). 이제 x < 2⁻¹⁰²¹에서는 (x/2)^a/Γ(a+1)을 double-double 지수로 계산한다.
-- **참값** (tools/special_ref.py): 두 꼬리 모두 양의 항의 합으로 계산한다. 아래 족은 먼 끝에서 거꾸로, 위 족은 0에서 앞으로 더하고, 끝의 항과 꼬리가 합의 1e-45 아래가 될 때까지 늘린다. t의 반대쪽 꼬리는 mpmath quad로 정의 그대로 적분한다(상쇄가 없는 곳에서 급수와 30자리까지 일치). 역함수의 밀도는 카이제곱이 Bessel 식, t가 두 CDF의 차, F가 ₁F₁ 식이다.
+- **참값** (tools/special_ref.py): 두 꼬리 모두 양의 항의 합으로 계산한다. 아래 족은 먼 끝에서 거꾸로, 위 족은 0에서 앞으로 더하고, 끝의 항과 꼬리가 합의 1e-45 아래가 될 때까지 늘린다. t의 반대쪽 꼬리는 Arb의 엄밀한 적분(`acb.integral`)으로 정의 그대로 적분하고, 적분 구간 밖의 상한을 공에 더한다. 역함수의 밀도는 카이제곱이 Bessel 식, t가 두 CDF의 차, F가 ₁F₁ 식이다.
 
 ## 6. 정답지와 측정
-- **기준값**: `tools/special_ref.py`가 mpmath(50자리)로 기준값을 만들어 `tests/special/ref/*.npz`에 커밋한다. 테스트는 mpmath를 매번 부르지 않는다 (느리다). mpmath는 이 도구와 일부 테스트의 의존성이다 (`pyproject.toml`의 `test`).
+- **기준값**: `tools/special_ref.py`가 Arb(python-flint)로 기준값을 만들어 `tests/special/ref/*.npz`에 커밋한다. 테스트는 Arb를 매번 부르지 않는다. python-flint는 이 도구와 일부 테스트의 의존성이다 (`pyproject.toml`의 `test`).
+  - **엄밀한 공**: 값은 참값을 반드시 품는 공 [중심 ± 반지름]이다. 반지름이 크기의 2⁻¹¹⁰ 아래가 될 때까지 정밀도를 두 배씩 올린다(`tools/arbref.py` `rigorous`, 최대 8192비트). 그러면 hi + lo는 참값을 반올림한 것이다. 정착하지 않으면 그 점을 뺀다. 2⁻¹⁰²² 아래 값은 절대 2⁻¹¹³²까지만 정착시킨다(서브노멀의 반올림을 정하기에 충분하다). 복소수는 작은 쪽 부분을 2⁻¹²⁰|f|까지만 정착시킨다(계약이 |오차|/|f|이므로).
+  - **우리가 정하는 자르기**: Arb가 스스로 보증하지 못하는 것은 우리가 정한 급수의 자르기다. 그 꼬리의 상한(기하급수 상한, 부분적분의 나머지 등)을 공의 반지름에 더한다(`add_error`, `geometric_tail`). Arb의 `gamma_lower`, `beta_lower`, `hypgeom_1f1`이 큰 매개변수(a ≳ 1000, a, b ~ 1e4)에서 반지름을 줄이지 못하는 곳은 꼬리 상한을 붙인 급수로 직접 썼다.
+  - **역함수**: 근 x는 x(1 ± 2⁻¹¹⁰)에서 부호가 바뀌는 것으로 인증한다(`certify_root`). Newton은 공의 중심에서 하고, 인증이 안 되면 정밀도를 올린다.
+  - **mpmath에서 바꾼 이유** (2026-11-16): mpmath의 규칙("두 정밀도가 30자리까지 일치")은 두 정밀도가 함께 틀린 값을 받아들였다. 바꾸면서 찾은 옛 참값의 오류: `betaincinv` 41점·`betainccinv` 119점은 mpmath가 조용히 실패해 우리 함수의 출발값이 참값으로 들어가 있었다(I_x/p − 1 = 1.7e-12). `zeta_hurwitz` 14점(7.3e-28, mpmath는 300자리에서야 맞음), `lambertw` 4점(허수부 lo), 리덕션 17점(1 + e⁻²⁰⁵를 잃음), 오래된 `wofz` 입력 64점. 계수 표 `zeta_minus_one`의 j = 94–110 lo(1e-28 상대, ζ(j) − 1의 상쇄)도 고쳤다. 다른 계수 표 7개는 바이트까지 같았다. 또 mpmath가 버렸던 점 약 900개를 이제 얻는다(`betainccinv` +248, `nctdtrit` +150 등). 메모리도 일정하다: mpmath의 quad는 구간 끝점마다 노드를 캐시해 140GB까지 쌓였다.
+  - **새 참값이 드러낸 라이브러리 오차**: `gammainccinv`(a = 9.5e5, q = 3.3e-33)가 1.21e-14였다. Boost의 `gamma_q_inv`는 Halley 반복을 자릿수의 절반에서 멈추므로 큰 a에서 100 ULP까지 남는다. 이제 Boost의 근에서 우리 P, Q로 Halley 한 걸음을 더 한다(`igam_polish`, 오차 e가 e³이 된다). 참값 최대가 `gammaincinv` 9.3e-15 → 7.3e-16, `gammainccinv` 1.2e-14 → 2.4e-15가 됐다. 1백만 원소 비용은 10 ms 안팎 그대로다.
   - 입력 집합: 함수마다 보장 영역의 격자 + 로그 균등 무작위 + 경계(구간 경계의 앞뒤 ULP, 극점, 0, 정의역 끝)
 - **정확도 보고**: `bench/special/accuracy.py`가 함수마다 보장 영역·느슨한 영역의 최대·99.9% ULP를 표로 낸다. scipy의 같은 값도 함께 낸다(scipy보다 나쁜 줄은 원인을 적는다).
 - **성능**: scipy와 같은 자리에서 번갈아 잰다 (통합 때의 `sameseat` 방식). 1스레드와 10스레드, 원소 10⁶개와 스칼라 1개.

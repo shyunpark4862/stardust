@@ -1,6 +1,7 @@
 """References for hyp1f1 with a large negative a (beyond the reference file's |a| <= 50),
 for bench/special/boost/regions.py: a = -10^u (u in [1, 12]), b in [0.5, 10], x in [0.1, 300].
-mpmath with tools/special_ref.py's precision rule; 30 s per point, each printed at once.
+Arb (python-flint) with tools/special_ref.py's rule (a ball settled to 2^-110); 30 s per point,
+each printed at once.
 
     .venv/bin/python bench/special/boost/extra_refs.py <dir>   ->  <dir>/hyp1f1_bigneg.npz
 """
@@ -10,7 +11,6 @@ import signal
 import sys
 import time
 
-import mpmath
 import numpy as np
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -29,11 +29,11 @@ for i in range(n):
     t = time.time()
     signal.alarm(30)
     try:
-        v = R.evaluate(mpmath.hyp1f1, (float(a[i]), float(b[i]), float(x[i])))
+        v = R.evaluate(lambda a_, b_, x_: x_.hypgeom_1f1(a_, b_), (float(a[i]), float(b[i]), float(x[i])))
         h, l = R.double_double(v)
         keep.append(i); hi.append(h); lo.append(l)
         print(f"{i}: a={a[i]:.4g} b={b[i]:.3g} x={x[i]:.4g} -> {h:.6g} ({time.time() - t:.1f} s)", flush=True)
-    except (R._Timeout, mpmath.libmp.NoConvergence, ValueError) as e:
+    except R._DROPS as e:
         print(f"{i}: a={a[i]:.4g} dropped ({type(e).__name__})", flush=True)
     finally:
         signal.alarm(0)

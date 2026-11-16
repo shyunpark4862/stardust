@@ -1,6 +1,6 @@
 # sd.stats API
 
-> 상태: **T5 구현** (2026-11-16): 연속 분포 12개(T4)와 이산 분포 10개(T5). §2.1의 나머지는 초안이다. 결정과 내부 구조는 [docs/design/stats.md](../design/stats.md) (T1–T23).
+> 상태: **T6 구현** (2026-11-16): 연속 분포 12개(T4), 이산 분포 10개(T5), 극값·수명 6개와 비중심 3개(T6). §2.1의 나머지는 초안이다. 결정과 내부 구조는 [docs/design/stats.md](../design/stats.md) (T1–T23).
 
 ## §1. 공통 규칙
 - 입력은 위치로만(`/` 앞), 옵션은 키워드로만(`*` 뒤). 별칭은 없다.
@@ -38,7 +38,7 @@ X.sample(shape=(), /, *, rng)
 - 정수여야 하는 매개변수(이항·베타이항의 n, 초기하의 셋, 이산 균등의 두 끝)는 정수가 아니면 NaN이다. 음이항의 n은 양의 실수다(special의 `bdtr`, `nbdtr`과 같다).
 - `sample`의 `rng`는 `sd.random.default_rng(...)`의 Generator다. 생략할 수 있는지는 T7 전에 정한다.
 
-### §2.1 분포 목록 (T4·T5의 22개는 확정, 나머지는 초안)
+### §2.1 분포 목록 (T4–T6의 31개는 확정, 나머지는 초안)
 | 분포 | 클래스 | scipy |
 |---|---|---|
 | 정규 | `Normal(*, mu=0, sigma=1)` | `norm`, `Normal` |
@@ -53,15 +53,15 @@ X.sample(shape=(), /, *, rng)
 | 코시 | `Cauchy(*, mu=0, sigma=1)` | `cauchy` |
 | 라플라스 | `Laplace(*, mu=0, sigma=1)` | `laplace` |
 | 베이불 | `Weibull(*, c, scale=1)` | `weibull_min` |
-| 로지스틱 | `Logistic(mu, sigma)` | `logistic` |
-| Gumbel | `Gumbel(mu, sigma)` | `gumbel_r` |
-| 일반화 극값 | `GEV(c, mu, sigma)` | `genextreme` |
-| 파레토 | `Pareto(b, scale)` | `pareto` |
-| 레일리 | `Rayleigh(sigma)` | `rayleigh` |
-| 역감마 | `InverseGamma(a, scale)` | `invgamma` |
-| 비중심 카이제곱 | `NoncentralChiSquared(df, nc)` | `ncx2` |
-| 비중심 t | `NoncentralT(df, nc)` | `nct` |
-| 비중심 F | `NoncentralF(dfn, dfd, nc)` | `ncf` |
+| 로지스틱 | `Logistic(*, mu=0, sigma=1)` | `logistic` |
+| Gumbel | `Gumbel(*, mu=0, sigma=1)` (최댓값형) | `gumbel_r` |
+| 일반화 극값 | `GEV(*, c, mu=0, sigma=1)` (c = −ξ, scipy와 같다) | `genextreme` |
+| 파레토 | `Pareto(*, b, scale=1)` (x ≥ scale) | `pareto` |
+| 레일리 | `Rayleigh(*, scale=1)` | `rayleigh` |
+| 역감마 | `InverseGamma(*, a, scale=1)` | `invgamma` |
+| 비중심 카이제곱 | `NoncentralChiSquared(*, df, nc)` (nc ≥ 0) | `ncx2` |
+| 비중심 t | `NoncentralT(*, df, nc)` | `nct` |
+| 비중심 F | `NoncentralF(*, dfn, dfd, nc)` (nc ≥ 0) | `ncf` |
 | 이항 | `Binomial(*, n, p)` | `binom` |
 | 포아송 | `Poisson(*, mu)` | `poisson` |
 | 기하 | `Geometric(*, p)`: 시행 횟수, k ≥ 1 | `geom` |
@@ -75,15 +75,26 @@ X.sample(shape=(), /, *, rng)
 
 ### §2.2 T4의 보장 영역과 잰 정확도
 - **보장 영역** (사용자 결정 2026-11-15, T24): 닫힌 꼴 7개(`Normal Exponential Uniform Laplace Cauchy LogNormal Weibull`)는 매개변수와 입력의 정의역 전체다. special 기반 5개는 special이 보장하는 범위다: `Gamma` a ≤ 1e6, `ChiSquared` df ≤ 2e6, `Beta` a, b ≤ 1e5, `StudentT` df ≤ 1e6, `F` dfn, dfd ≤ 1e5. 그 밖도 값을 계산하지만 보장하지 않는다.
-- **느슨한 영역** (잰 최대): `Gamma` a > 1e6의 `icdf` 1.1e-14, `ilogcdf`·`ilogccdf` 2.5e-14. `StudentT`의 `icdf`·`iccdf`(`ilog…`도)에서 df ≥ 1e5이고 확률이 2^-1000(약 9.3e-302) 아래인 구석은 1.4e-14다. 나머지 범위 밖 점은 모두 1e-14 안이었다.
-- **잰 정확도** (bench/stats/t4/accuracy.md, mpmath 대비, 계약 단위): 보장 영역 안 최대 9.2e-15. 같은 점에서 scipy(고전형)는 꼬리에서 상대오차 1에 이르거나 inf를 낸다(예: `Beta.pdf`, `StudentT.cdf`의 깊은 꼬리, `LogNormal.pdf`).
+- **느슨한 영역** (잰 최대): `StudentT`의 `icdf`·`iccdf`에서 df ≥ 1e5이고 확률이 2^-1000(약 9.3e-302) 아래인 구석은 1.4e-14다(`ilog…`는 9.8e-15). 나머지 범위 밖 점은 모두 1e-14 안이었다. `Gamma` a > 1e6의 역함수는 전에 2.5e-14였는데, special의 `gammaincinv`를 고친 뒤 1.7e-16이 됐다(2026-11-16; 보장 영역은 그대로다).
+- **잰 정확도** (bench/stats/t4/accuracy.md, Arb 참값 대비, 계약 단위): 보장 영역 안 최대 9.2e-15(87만 점). 같은 점에서 scipy(고전형)는 꼬리에서 상대오차 1에 이르거나 inf를 낸다(예: `Beta.pdf`, `StudentT.cdf`의 깊은 꼬리, `LogNormal.pdf`).
 - **속도** (bench/stats/t4/speed.md, 원소 10⁵개): 1스레드는 scipy의 0.3–4.6배(중앙값 0.94), 10스레드는 1.7–39배(중앙값 5.4). Python float 하나는 scipy보다 38–81배 빠르다(호출당 0.16–0.36 µs).
 - scipy와 다르게 동작하는 곳은 docs/design/stats.md §2.4에 있다.
 
 ### §2.3 T5의 보장 영역과 잰 정확도
 - **보장 영역** (사용자 결정 2026-11-16): 잰 매개변수 범위다. 이항 n ≤ 1e6, 포아송 μ ≤ 1e6, 기하 p ≥ 1e-9, 음이항 n ∈ [0.1, 1e4]·p ≥ 1e-4, 초기하 total ≤ 3000, 베타이항 n ≤ 2000·a, b ∈ [0.1, 100], 로그 급수 p ≥ 1e-8, Zipf a ≤ 60. `Bernoulli`와 `DiscreteUniform`은 닫힌 꼴이라 정의역 전체다. 그 밖도 값을 계산하지만 보장하지 않는다.
-- **잰 정확도** (bench/stats/t5/accuracy.md, mpmath 대비, 계약 단위): 61만 점 전부 계약 안이다. 값 메서드의 최대는 6.5e-15이고, 분위수는 모든 점이 허용 구간 안이다. 같은 점에서 scipy는 꼬리에서 상대오차 1이나 inf를 낸다(이항·음이항·초기하의 cdf, 초기하·로그 급수의 logpmf). 분위수에서는 scipy의 답이 허용 구간 안에 드는 비율이 64–100%다(기하 `isf` 64%, 포아송 `isf` 64%, 이항 `isf` 92%).
+- **잰 정확도** (bench/stats/t5/accuracy.md, Arb 참값 대비, 계약 단위): 61만 점 전부 계약 안이다. 값 메서드의 최대는 6.5e-15이고, 분위수는 모든 점이 허용 구간 안이다. 같은 점에서 scipy는 꼬리에서 상대오차 1이나 inf를 낸다(이항·음이항·초기하의 cdf, 초기하·로그 급수의 logpmf). 분위수에서는 scipy의 답이 허용 구간 안에 드는 비율이 64–100%다(기하 `isf` 64%, 포아송 `isf` 64%, 이항 `isf` 88%).
 - **속도** (bench/stats/t5/speed.md, 원소 10⁵개): 1스레드는 scipy의 0.22–232배(중앙값 1.5), 10스레드는 2.5–1432배(중앙값 7.7)다. Python float 하나는 scipy보다 11–114배 빠르다(호출당 0.17–2.1 µs). 1스레드에서 scipy보다 느린 것은 이항(0.2–0.4배)과 음이항·베타이항의 pmf(0.3배)다. 깊은 꼬리까지 상대 정확도를 지키는 double-double 접두의 비용이다.
+
+### §2.4 T6의 보장 영역과 잰 정확도
+- **보장 영역** (사용자 결정 2026-11-16, T26):
+  - 닫힌 꼴 5개(`Logistic Gumbel GEV Pareto Rayleigh`)는 매개변수와 입력의 정의역 전체다. `InverseGamma`는 감마처럼 a ≤ 1e6이다.
+  - 비중심 셋은 special의 비중심 함수가 잰 범위다(docs/api/special.md §14): `NoncentralChiSquared` df ∈ [1e-2, 1e4]·nc ≤ 1e4, `NoncentralT` df ∈ [0.1, 1e5]·|nc| ≤ 100, `NoncentralF` dfn, dfd ∈ [1e-2, 1e4]·nc ≤ 1e4. 확률은 1e-300까지 보장한다(작은 쪽 꼬리가 그 아래인 x와, 그 아래 확률의 역함수는 보장 밖). 모멘트와 `mode`도 1e-14다.
+  - 비중심 셋의 `entropy`는 적응 구적이고 보장하지 않는다. 참값은 아직 만들지 않았다(10코어로 약 12시간; 나중에 잰다).
+- **잰 정확도** (bench/stats/t6/accuracy.md, Arb 참값 대비, 계약 단위): 60만 점에서 보장 영역 안 최대 5.5e-15이고, 밖도 1.2e-15 안이다. 같은 점에서 scipy는 꼬리에서 틀린다. 예: `NoncentralF.cdf` 상대오차 2.3e95, `NoncentralT.cdf`·`GEV.ccdf`·`Pareto.logcdf` inf, `InverseGamma.icdf` 2.4e-5.
+- **속도** (bench/stats/t6/speed.md, 원소 10⁵개): 1스레드는 scipy의 0.09–2.8배(중앙값 0.56), 10스레드는 0.8–23배(중앙값 4.2)다. Python float 하나는 scipy보다 13–98배 빠르다(호출당 0.17–0.98 µs). 1스레드에서 느린 것은 다음과 같다.
+  - 비중심 t의 `pdf`(0.09배): 양의 적분이라, 급수가 상쇄하는 쪽 꼬리까지 상대 정확도를 지킨다.
+  - 비중심 F의 `pdf`(0.14배): double-double 포아송 혼합이다.
+  - `Pareto`의 `pdf`·`cdf`(0.22–0.25배)와 `InverseGamma.pdf`(0.27배): double-double 지수다.
 
 ## §3. 다변량 분포 (초안)
 ```

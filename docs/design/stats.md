@@ -26,7 +26,7 @@
 | T7 매개변수화 | 분포마다 하나(교과서 표준). 이름은 scipy 신형을 따른다 |
 | T8 잘못된 매개변수 | 정의역 밖이면 원소별 NaN. 에러 없음 (special의 "값 때문에 실패하지 않는다"와 같다) |
 | T9 메서드 | 핵심 + 모멘트: `pdf logpdf`(이산은 `pmf logpmf`), `cdf logcdf`, `ccdf logccdf`, `icdf iccdf`, `ilogcdf ilogccdf`, `support`, `mean variance standard_deviation skewness kurtosis`, `median`, `mode`, `entropy`, `sample`. 변환(산술, truncate), `Mixture`, `order_statistic`은 없다 |
-| T10 정확도 | special과 같은 계약: 보장 영역에서 상대 1e-14, 밖은 잰 값을 문서화. 참값은 mpmath. `ccdf`는 1 − cdf가 아니라 직접 계산해 꼬리도 상대 정확도 (§2.3) |
+| T10 정확도 | special과 같은 계약: 보장 영역에서 상대 1e-14, 밖은 잰 값을 문서화. 참값은 Arb(엄밀한 구간 산술, 2026-11-16 mpmath에서 바꿈). `ccdf`는 1 − cdf가 아니라 직접 계산해 꼬리도 상대 정확도 (§2.3) |
 | T11 구현 위치 | C++ `_core`의 원소별 Op(special과 같은 n항 디스패처·스레드풀). 분포 객체, 검정·기술통계의 조립은 Python (§3) |
 | T12 표본 | 분포별 표본은 `sd.random`이 아니라 각 분포의 `X.sample(shape, rng=rng)`. 분포마다 직접 알고리즘 또는 역함수 법 (§4) |
 | T13 기술통계 | `describe skew kurtosis moment zscore rankdata sem iqr mode entropy differential_entropy` (§5) |
@@ -42,6 +42,7 @@
 | T23 첨도 | `kurtosis()`는 초과 첨도(정규 = 0), 옵션 없음. T8의 기술통계 `kurtosis`의 기본값도 이에 맞춘다 |
 | T24 T4 보장 영역 (2026-11-15) | 닫힌 꼴 7개(정규·지수·균등·라플라스·코시·로그정규·베이불)는 정의역 전체. special 기반은 special의 보장 범위에 맞춘다: 감마 a ≤ 1e6(카이제곱 df ≤ 2e6), 베타 a, b ≤ 1e5, t df ≤ 1e6, F 자유도 ≤ 1e5. 그 밖은 잰 값을 문서화한다. t의 역함수에서 df ≥ 1e5이고 확률이 2^-1000 아래인 구석은 느슨한 영역(1.4e-14, 베타 쪽 BGRAT에 log 꼴이 없다). `entropy`는 `logpdf`처럼 \|오차\| ≤ 1e-14·max(1, \|값\|), 베이불의 왜도·첨도(0을 지난다)도 같다. 모멘트의 특수값은 수학적 규칙(§2.3)을 따르고 scipy와 다른 곳은 §2.4에 둔다 |
 | T25 이산 분포 (T5, 2026-11-15) | 메서드는 `pmf`·`logpmf`(T9), 나머지는 연속과 같다. 정수가 아닌 x에서 `pmf`는 0, `cdf`는 floor(x)에서의 값. `icdf(p)`는 cdf(k) ≥ p인 가장 작은 k, `iccdf(p)`는 ccdf(k) ≤ p인 가장 작은 k(scipy의 ppf·isf), `median`은 `icdf(1/2)`. `mode`는 T21을 따른다: 최빈값이 둘 이상이면 NaN(이항의 (n+1)p, 포아송의 μ가 정수일 때, 이산 균등). `Geometric`은 첫 성공까지의 시행 횟수(k ≥ 1, scipy), `NegativeBinomial`은 n번째 성공 전의 실패 횟수(k ≥ 0). `DiscreteUniform(low, high)`는 [low, high)(scipy randint, `sd.random.integers`와 같다). `Hypergeometric(total, successes, draws)`(scipy의 M, n, N). 분위수의 정확도는 후방 오차(2026-11-16): 목표를 상대 1e-14 안에서 움직였을 때의 정확한 분위수 중 하나(`icdf`·`iccdf`는 p와 1 − p 중 작은 쪽, `ilog…`는 t에 대해; §3.2) |
+| T26 극값·수명·비중심 (T6, 2026-11-16) | `GEV`의 모양은 scipy의 c(= −ξ, c > 0이면 위가 막힌 Weibull형). `Rayleigh(*, scale=1)`(T18의 양수형 규칙). `Gumbel`은 최댓값형(gumbel_r)만. 비중심의 nc ≥ 0(nc = 0이면 중심 분포). 비중심 셋의 `mode`는 pdf′ = 0의 근으로 1e-14 계약, `entropy`는 적응 구적이고 잰 정확도를 느슨한 한계로 문서화. 비중심의 보장 영역은 special(§14)의 잰 범위(확률 1e-300까지; 더 깊은 log 꼬리는 보장하지 않는다), 비중심 t의 모멘트는 큰 df에서 1/df 급수로 1e-14(2026-11-16). GEV의 왜도·첨도는 베이불과 같은 혼합 기준(T24; W = Y^c가 베이불이다) |
 
 ### 1.2 범위
 - **단변량 연속 (21)**
@@ -71,7 +72,7 @@
 | `csrc/stats/` | 분포마다 C++ 구조체(매개변수 검사, pdf·cdf·…의 원소 함수), 메서드마다 Op(§3) |
 | `csrc/bind/stats_bind.cpp` | `stardust._core.stats` 하위 모듈 |
 | `src/stardust/stats/` | 분포 클래스(매개변수를 들고 `_core`를 부른다), 기술통계, `tests/` 하위 패키지 |
-| `tests/stats/`, `tools/stats_ref.py`, `bench/stats/` | 테스트, mpmath 참값, 측정(special과 같은 구조) |
+| `tests/stats/`, `tools/stats_ref.py`, `bench/stats/` | 테스트, Arb 참값, 측정(special과 같은 구조) |
 
 ## 2. 분포의 의미론
 
@@ -124,6 +125,24 @@
 - **Zipf**: log ζ(a)는 ζ(a) − 1 = ζ(a, 2) < 1/2이면 log1p다(a = 53의 log pmf(1) = −8e-17). k > 1000의 cdf는 1000항의 합에 Hurwitz 차 ζ(a, 1001) − ζ(a, k + 1)를 더한다. 차는 Euler–Maclaurin 꼴의 주항 M^{1−a}(1 − (K/M)^{1−a})/(a − 1)을 expm1로 계산해 a ≈ 1의 상쇄가 없다. 1 − cdf가 1/2을 넘는 logccdf는 log1p(−cdf)다. k^-a는 exp(−a log k)가 아니라 pow다(a = 9에서 a log k의 반올림이 6e-15였다).
 - **엔트로피**: 최빈값에서 바깥으로 −pmf·log pmf를 Neumaier 보정 합으로 더한다. 음이항 p = 1.6e-4는 항이 10⁶개라 보정이 없으면 2e-13이었다.
 - **참값 쪽 버그**(tools/stats_ref.py): 베르누이의 1 − p는 mpmath의 작업 정밀도에서 p = 1e-123을 잃어 log pmf 참값이 0이었다. 정확한 뺄셈(`fsub(..., exact=True)`)으로 고쳤다. 음이항 엔트로피의 합 범위 40σ는 n < 1에서 (1 − p)^k 꼬리를 잘랐다. 60/p를 더하고 pmf를 점화식으로 계산한다.
+- **Arb 참값이 드러낸 것** (2026-11-16, 옛 mpmath 도구가 시간 초과로 버리던 점들):
+  - **엔트로피와 중심 적률의 합이 일찍 끝났다.** 전에는 "항이 합의 2⁻⁶⁰ 아래"에서 멈췄다. 그런데 표준편차가 큰 분포에서는 남은 꼬리가 그 항의 수만 배다. 음이항(n = 544, p = 1e-4, σ = 2.3e5)은 8.6σ에서 멈춰 엔트로피가 5e-13 틀렸다. 이제는 이번 항과 앞 항의 비 r로 남은 꼬리를 t·r/(1 − r)로 어림하고, 그것이 합의 2⁻⁶⁰ 아래일 때 멈춘다(`entropy_sum`, `disc_sum::central`). LogSeries 엔트로피(p = 0.9999988, 6.9e-13)도 같은 원인이었다.
+  - **음이항 logccdf의 깊은 꼬리**: k = 3.4e7, p = 1.2e-4에서 7e-10이 틀렸다. log I_x(a, b)를 BPSER로 구했는데, x = 1 − p에서 그 급수는 약 40/p항이 필요해 상한 10만 항에서 잘렸다. 이제 a > 15, b ≤ 1이고 1 − x < 1e-3이면 TOMS 708처럼 BGRAT를 쓴다. 값이 언더플로하는 곳이라, 급수 항을 Q로 나눈 배율에서 더하고 log Q를 따로 더하는 로그판이다(`ibeta_detail::log_bgrat`). 1 − x ≥ 1e-3에서는 BPSER를 그대로 둔다. t의 깊은 꼬리(1 − x ~ 2e-3)에서 BPSER가 2e-16, BGRAT가 4e-16이었다.
+  - **Zipf 분위수**: 위로 탐색할 때 2¹⁰²³를 넘으면 inf를 돌려줬다. 그래서 참 분위수가 4.9e307이나 1.64e308처럼 그 위의 유한한 double일 때 틀렸다. 이제는 가장 큰 double에서 한 번 시험하고, 거기서도 조건이 거짓일 때만 inf다.
+
+### 3.3 극값·수명·비중심의 수치 기법 (`csrc/stats/dist/extreme.hpp`, `lifetime.hpp`, `noncentral.hpp`)
+- **Gumbel과 GEV**: cdf = e^(−t), t = e^E이다. Gumbel은 E = −z이고, GEV(scipy의 c)는 E = log(1 − cz)/c이다. 이 E를 −z − μ(u)/c(u = −cz, μ(u) = u − log(1 + u))로 쓰면 O(cz²)라서 c = 0을 지나며 연속이다. 단 |u| ≥ 1/2에서는 log(1 + u)를 직접 계산한다(u − μ(u)는 u가 크면 상쇄한다. |z| = 1e89에서 틀린 값이 났다). t는 베이불처럼 exp의 반올림을 접어 넣는다. 역함수는 lt = log t에서 z = −expm1(c·lt)/c로 간다. c·lt > 700이면 σz가 유한해도 expm1이 넘치므로 log로 계산한다. expm1(c·lt)는 libm의 expm1에 double-double log(1 + m)로 Newton 한 걸음을 밟아 얻는다(2⁻⁷⁷; 2⁻²⁰ 아래는 6차 테일러). 처음의 double-double 테일러 급수는 원소당 240 ns라 scipy의 0.06배였다. GEV의 왜도·첨도는 W = Y^c(Y ~ Exp(1))가 모양 1/c인 베이불이라서 베이불의 D_k 계산을 x = c로 쓴다(weibull_detail::skewness_x, kurtosis_x). 첨도의 분자는 c² 항이 정확히 지워져 O(c⁴)만 남는다. 그래서 |c| < 1e-4에서는 c = 0 둘레의 테일러 급수(mpmath의 120자리 taylor에서 얻은 계수, 수렴 반지름 1/4)를 쓴다.
+- **로지스틱**: 작은 쪽 e^w/(1 + e^w), w = −|z|이다. 역함수 z = log(p/(1 − p))는 p ≤ 1/4에서 log p − log1p(−p), 그 위에서 −log1p((1 − 2p)/p)이다(1 − 2p는 정확하다).
+- **파레토·레일리**: 지수 L = b·log(x/s)와 t = y²/2를 double-double로 둔다. log(x/s)는 x ≤ 2s에서 log1p((x − s)/s)이다(x − s는 정확하다). 역함수 x = s·exp(L/b)에서 L은 double-double이다(exp가 L의 오차를 L/b배로 키운다). 레일리의 아주 작은 log p는 x = s·exp((log p + log 2)/2)이다.
+- **역감마**: X = s/Y, Y ~ 감마(a)이다. cdf는 Q(a, s/x)이고, 밀도·역함수·엔트로피는 감마의 조각을 쓴다(엔트로피 = 감마의 것 + log s − 2ψ(a)). 감마의 역함수가 내는 y가 double 범위 밖이면 1/s를 지수에 접어 x = 1/((1/s)·y)이다.
+- **비중심 cdf와 역함수**: special의 chndtr·nctdtr·ncfdtr와 그 위꼬리 함수(두 꼬리를 직접 더한다)를 쓴다. 역함수는 special의 브래킷·Brent(nc_detail::solve)로 주어진 쪽의 확률을 그대로 푼다. iccdf에서 1 − q를 만들지 않는다. nc = 0이면 중심 분포의 함수를 그대로 부른다(비트까지 같다).
+  - **넓은 지수의 꼬리** (2026-11-16, Arb 참값이 드러냄): log 메서드는 e^lp를 만들어서 lp < −745에서 0이나 inf를 냈다. 서브노멀 확률은 절대 정확도만 있어서, 역함수의 log(F/목표)가 거칠었다(1e-7–7e-5). 그래서 special의 혼합 합이 값을 m·2^e(64비트 지수)로도 돌려준다(`nc_detail::chndtr_tail`·`ncfdtr_tail`·`nctdtr_tail`). 여기에 필요한 것은 셋이다. 1e5에서 자르지 않는 exp, 앞 인자의 넓은 판, y ≈ 1e-307에서 T의 비 (s+1)/y가 넘치지 않게 프레임을 옮기는 것. stats의 log 메서드와 역함수는 이 값으로 log(꼬리/목표)를 푼다. special의 double 함수는 같은 합을 감싸서 결과가 그대로다(`nctdtrit`만 21.5 → 9.8 ULP로 좋아졌다).
+  - **`tiny_upper`** (작은 인자가 2⁻¹⁰⁰⁰ 아래인 꼬리): 전에는 double lgamma 둘의 차(크기 ~1e4)를 썼고, 결과의 1e-12가 틀렸다(t ≈ −1e264에서 5.1e-12). 이제 가장 큰 항에서 log Γ 비를 double-double로 한 번 구하고, 나머지 항은 double-double 비로 걷는다.
+- **비중심 카이제곱·F의 밀도**: 감마·베타 밀도의 포아송 혼합이라 모든 항이 양수다. 가장 큰 항(점화식 비의 이차식 근에서 시작해 비로 맞춘다)에서 바깥으로 더하고, 8항마다 double-double log 항에서 다시 맞춘다. 같은 합에서 E[j]도 얻는다. 최빈값은 각 항의 log 도함수가 j에 대해 선형이라는 데서 나온다. 카이제곱은 y = A(y) − 1, F는 x = (A − 1)·dfd/(dfn(1 + dfd/2))이다(A = E[shape]). 이 고정점을 special의 브래킷으로 푼다. df/2 − 1을 먼저 더해야 df = 2에서 E[j] ≈ 1e-300이 1에 흡수되지 않는다.
+- **비중심 t의 밀도**: f(t) = E[S·φ(tS − δ)], S = √(V/df)의 적분이다. 피적분 함수가 어디서나 양수다(급수는 δ와 반대쪽 꼬리에서 두 계열이 상쇄한다). special의 nct_opposite처럼 정류점에서 F*(double-double)와 상쇄 없는 나머지로 나누고 sinh 사상 위의 사다리꼴로 적분한다. 같은 함수가 M_k = ∫s^k φ f_S를 주고, 최빈값은 M_2 무게 아래 E[t·S − δ] = 0의 근을 같은 격자에서 푼다(t·M_3/M_2 = δ로 풀면 δ·eps를 잃었고, 최빈값에서 기울기가 1e-3이라 5e-13이 남았다). |t| > 1e154에서는 t²이 넘치므로 정류점을 w = |t|·s로 푼다.
+- **비중심 모멘트**: F = (X/dfn)(dfd/V)와 T = (Z + δ)R, R = √(df/V)로 독립인 두 인자의 곱으로 쓴다. 중심 모멘트를 전개하면 양의 항만 남는다(F의 3·4차는 다항식 전개로 계산한다). t는 Var = δ²y₂ + df/(df − 2), μ₃ = δ(δ²y₃ + 3y₃ + 6r·y₂), μ₄ − 3Var² = δ⁴κ₄(R) + 6δ²(2r·y₃ + y₄ − y₂²) + 3·Var(R²)이다. R의 모멘트비 D_k = log E[R^k] − k·log E[R]는 log Γ 비의 베르누이 다항식 급수(1/x, x = df/2 ≥ 32. 처음의 x ≥ 8에서는 자르기 오차가 2e-13이었다)로 계산해 선형 항을 정확히 지운다(계수는 tools/gen_nct_moments.py가 유리수로 만든다). 그 아래는 double-double log Γ이다.
+- **비중심 밀도의 서브노멀 x**: x/2와 dfn·x가 서브노멀에서 반올림돼 1e-5까지 틀렸다. x < 2⁻¹⁰²⁰에서는 항을 log에서 바로 만든다. 모양 a + j도 double로 반올림하면 df ≈ 7e3의 카이제곱 밀도에서 2.4e-13이 틀려서, double-double과 1차 보정으로 둔다. F의 첨도는 m4/m2² − 3이 상쇄하므로, 초과분을 17개 항이 모두 양수인 큐뮬런트 전개로 더한다.
+- **비중심 엔트로피**: −∫f·log f를 사다리꼴로 계산하고, 두 추정이 2^-50까지 맞을 때까지 간격을 반으로 줄인다(카이제곱·F는 x = m·e^u, t는 t = mode + s·sinh u). 보장하지 않는 느슨한 계약이고 잰 값을 문서화한다(T26).
 
 ## 4. 표본 (`sample`)
 - `X.sample(shape, rng=rng)`: `rng`는 `sd.random`의 Generator다. 원소마다 생성기의 독립 부분 수열을 받아(random.md §3) 스레드 수와 무관하게 같은 값이 나온다.
@@ -176,7 +195,7 @@
 - 설계와 API는 docs/design/special.md와 docs/api/special.md에 더한다.
 
 ## 9. 정답지와 측정
-- special과 같다: `tools/stats_ref.py`가 mpmath로 참값을 만들어 `tests/stats/ref/`에 둔다. 점마다 시간 제한, 결과는 바로 출력한다.
+- special과 같다: `tools/stats_ref.py`가 Arb(python-flint, `tools/arbref.py`)로 참값을 만들어 `tests/stats/ref/`에 둔다. 공의 반지름이 2⁻¹¹⁰ 아래로 정착한 값만 쓰고, 우리가 자른 급수·적분은 꼬리 상한을 공에 더한다(docs/design/special.md §6). 점마다 시간 제한, 결과는 바로 출력한다. 병렬은 10프로세스, 워커는 500점마다 교체한다. 입력점은 고정한다(사용자 2026-11-16). 파일이 이미 있으면 그 x 배열을 다시 쓰고 참값만 계산한다. 새로 뽑으려면 `--resample`을 준다. 표본을 우리 라이브러리의 icdf(zipf, 로그 급수, 비중심)나 scipy(t)로 뽑는 파일도 있어서, 고정하지 않으면 라이브러리를 고칠 때마다 입력이 바뀌었다.
 - 정확도표(보장·느슨한 영역의 최대와 99.9%)와 scipy의 같은 값, 속도(1·10스레드, 스칼라)를 scipy의 고전형과 신형 둘과 비교한다.
 
 ## 10. 마일스톤

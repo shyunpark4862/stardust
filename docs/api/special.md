@@ -56,7 +56,7 @@ ndtri(p, /, *, out=None)
 - `ndtr`는 표준정규분포의 cdf, `ndtri`는 그 역함수다. `ndtri(0)`은 `-inf`, `ndtri(1)`은 `inf`, [0, 1] 밖은 NaN
 - `erfinv`는 [−1, 1], `erfcinv`는 [0, 2]에서 정의된다.
 - **보장 영역**: 여덟 함수 모두 정의역 전체다 (사용자 결정 2026-11-13). `erf erfc erfcx ndtr log_ndtr`는 유한한 모든 x, `erfinv`는 −1 < y < 1, `erfcinv`는 0 < z < 2, `ndtri`는 0 < p < 1(서브노멀 포함)이다. 결과가 서브노멀이면 docs/design/special.md §2.3의 절대오차 규칙을 따른다.
-- **잰 정확도** (mpmath 대비 최대 ULP, bench/special/s2/accuracy.md): `erf` 2.3, `erfc` 7.8, `erfcx` 6.1, `ndtr` 6.7, `log_ndtr` 7.0, `ndtri` 5.4, `erfinv` 4.6, `erfcinv` 4.5
+- **잰 정확도** (Arb 참값 대비 최대 ULP, bench/special/arb/accuracy.md): `erf` 2.3, `erfc` 7.8, `erfcx` 6.0, `ndtr` 6.7, `log_ndtr` 7.0, `ndtri` 5.4, `erfinv` 4.6, `erfcinv` 4.5
 - **특수값**: ±0, ±inf, NaN, 경계값에서 scipy와 비트까지 같다. 다른 곳은 아래 표의 굵은 줄이다 (docs/design/special.md §2.4).
 
   | 입력 | 값 | 비고 |
@@ -91,7 +91,7 @@ binom(n, k, /, *, out=None)
 - `polygamma(n, x)`의 `n`은 int64나 float64다. 0 이상의 정수 값만 정의되고, 정수가 아니거나 음수이면 NaN이다. `n = 0`은 `digamma`와 같다.
 - `binom(n, k)`는 실수 n, k의 일반화 이항계수다.
 - **보장 영역** (사용자 결정 2026-11-14): 상대오차 1e-14는 `gamma`, `rgamma`의 정의역 전체, `gammaln`, `digamma`, `polygamma`의 x > 0, `beta`의 a, b > 0, `binom`의 n ≥ 0이다. 그 밖(음수 쪽)과 `betaln` 전체는 |오차| ≤ 1e-14·max(1, |값|)이다. log|Γ|, ψ, log B에는 음수 쪽이나 B = 1인 곡선 위에 0이 무한히 많아 상대오차를 보장할 수 없기 때문이다.
-- **잰 정확도** (bench/special/s3/accuracy.md, 보장 영역 최대 ULP): `gamma` 6.2, `rgamma` 5.1, `gammaln` 5.5, `digamma` 2.1, `polygamma` 17, `beta` 9.0, `binom` 9.3. 혼합 한계 영역(오차/max(1,|값|), 2⁻⁵² 단위): `gammaln` 2.1, `digamma` 15, `polygamma` 3.1, `beta` 6.8, `betaln` 7.6, `binom` 8.0
+- **잰 정확도** (bench/special/arb/accuracy.md, Arb 참값 대비, 보장 영역 최대 ULP): `gamma` 10, `rgamma` 5.1, `gammaln` 5.5, `digamma` 2.1, `polygamma` 17, `beta` 53, `binom` 9.3. 혼합 한계 영역(오차/max(1,|값|), 2⁻⁵² 단위): `gammaln` 2.1, `digamma` 15, `polygamma` 3.1, `beta` 6.8, `betaln` 27, `binom` 8.0
 - **특수값**: 극점과 ±inf의 규약은 scipy와 비트까지 같다. 다른 곳(docs/design/special.md §2.4)은 아래 표의 굵은 줄이다.
 
   | 입력 | 값 | 비고 |
@@ -128,7 +128,7 @@ betainccinv(a, b, q, /, *, out=None)
 - 보수(`*cc`)는 1에서 빼서 계산하지 않는다. 꼬리에서도 상대 정확도가 유지된다.
 - 역함수는 `gammainc(a, x) = p`, `gammaincc(a, x) = q`, `betainc(a, b, x) = p`, `betaincc(a, b, x) = q`의 x를 돌려준다.
 - **보장 영역** (사용자 결정 2026-11-14): 네 순방향 함수는 정의역 전체(a, b > 0, x의 정의역 안)에서 상대오차 1e-14다. 결과가 서브노멀이면 docs/design/special.md §2.3의 절대오차 규칙을 따른다. 네 역함수는 `|Δx/x| ≤ 1e-14·max(1, κ)`다. κ = |F/(x·F′)|는 p(또는 q)에 대한 x의 조건수다. 입력의 마지막 비트가 허용하는 만큼 정확하다는 뜻이다. 예를 들어 a가 작으면 x ≈ (p·Γ(a+1))^(1/a)라서 p의 1 ULP가 x를 1/a ULP 움직인다. 테스트는 감마 a ≤ 1e6, 베타 a, b ≤ 1e5를 덮는다.
-- **잰 정확도** (bench/special/s4/accuracy.md, 최대 ULP): `gammainc` 8.9, `gammaincc` 13, `betainc` 33, `betaincc` 19. 역함수(ULP / max(1, κ)): `gammaincinv` 6.7, `gammainccinv` 8.8, `betaincinv` 59 ULP(상대오차로 기준 안), `betainccinv` 20
+- **잰 정확도** (bench/special/arb/accuracy.md, Arb 참값 대비, 최대 ULP): `gammainc` 8.9, `gammaincc` 13, `betainc` 22, `betaincc` 19. 역함수(ULP / max(1, κ)): `gammaincinv` 5.3, `gammainccinv` 16, `betaincinv` 59 ULP(상대오차로 기준 안), `betainccinv` 20
 - **특수값**: 끝점과 ±inf, NaN의 규약은 scipy와 비트까지 같다. 다른 곳(docs/design/special.md §2.4)은 아래 표의 굵은 줄이다.
 
   | 입력 | 값 | 비고 |
@@ -163,7 +163,7 @@ rel_entr(x, y, /, *, out=None)
 - `entr(x) = -x·log(x)`. `entr(0)`은 0, 음수는 `-inf`다.
 - `rel_entr(x, y) = x·log(x/y)`. 규약은 scipy와 같다: `x = 0, y ≥ 0`이면 0, 그 밖의 음수는 `inf`다.
 - **보장 영역**: 일곱 함수 모두 정의역 전체다 (사용자 결정 2026-11-13). `expit`, `log_expit`는 유한한 모든 x, `logit`은 0 < p < 1, `xlogy`는 y > 0, `xlog1py`는 y > −1, `entr`는 x ≥ 0, `rel_entr`는 x, y > 0이다. 결과가 넘치거나 서브노멀이면 §1.3과 docs/design/special.md §2.3을 따른다.
-- **잰 정확도** (mpmath 대비 최대 ULP, bench/special/s1/accuracy.md): `expit` 2.1, `logit` 2.8, `log_expit` 1.2, `xlogy` 1.2, `xlog1py` 1.2, `entr` 1.3, `rel_entr` 2.1
+- **잰 정확도** (Arb 참값 대비 최대 ULP, bench/special/arb/accuracy.md): `expit` 2.1, `logit` 2.8, `log_expit` 1.2, `xlogy` 1.2, `xlog1py` 1.2, `entr` 1.2, `rel_entr` 2.1
 - **특수값**: scipy와 비트까지 같다. 예외는 `expit`의 서브노멀 꼬리 하나다(아래 표). 시험 입력은 ±0, ±inf, NaN, 서브노멀, 경계값을 서로 조합한 것이다.
 
   | 입력 | 값 | 비고 |
@@ -209,7 +209,7 @@ expn(n, x, /, *, out=None)
 - `zeta`는 S3에서 구현했다(`expi`, `expn`은 S5). 보장 영역: Riemann은 정의역 전체, Hurwitz는 q > 0(그 밖은 |오차| ≤ 1e-14·max(1, |값|)). 잰 최대: Riemann 24 ULP(0 < x < 1, Euler–Maclaurin의 상쇄), Hurwitz 5.5 ULP. 특수값은 §3의 표에 있다.
 - `expi`는 지수적분 Ei, `expn(n, x)`는 일반화 지수적분 Eₙ(x)다. `n`은 int64나 float64이고, 0 이상의 정수 값만 정의된다. 정수가 아니거나 음수이면 NaN이다. **scipy는 `expn(1.5, 1.0)`에서 n을 1로 자른다. 우리는 NaN이다.**
 - **보장 영역** (사용자 결정 2026-11-14): `expi`, `expn`은 정의역 전체에서 상대오차 1e-14다. `expi`의 양의 0점 x₀ = 0.3725… 근처도 상대 정확도다. `expn`의 테스트는 n ≤ 1e5를 덮는다. 서브노멀 결과는 절대오차 규칙이다.
-- **잰 정확도** (bench/special/s5/accuracy.md, 최대 ULP): `expi` 13.6, `expn` 6.3
+- **잰 정확도** (bench/special/arb/accuracy.md, Arb 참값 대비, 최대 ULP): `expi` 4.7, `expn` 6.3
 - **특수값**: 아래 표의 굵은 줄 말고는 scipy와 비트까지 같다.
 
   | 입력 | 값 | 비고 |
@@ -296,7 +296,7 @@ ellipe(m, /, *, out=None)
 ```
 - 매개변수는 scipy와 같은 `m`(= k²)이다. `ellipk(1)`은 `inf`, `m > 1`은 NaN이다.
 - **보장 영역** (사용자 결정 2026-11-14): 둘 다 m ≤ 1 전체에서 상대오차 1e-14다.
-- **잰 정확도** (bench/special/s5/accuracy.md, 최대 ULP): `ellipk` 2.3, `ellipe` 2.0
+- **잰 정확도** (bench/special/arb/accuracy.md, Arb 참값 대비, 최대 ULP): `ellipk` 2.3, `ellipe` 2.0
 - **특수값**: scipy와 비트까지 같다. `ellipk(0) = ellipe(0) = π/2`, `ellipe(1) = 1`, `ellipk(-inf) = 0`, `ellipe(-inf) = inf`
 
 ## §11. 초기하 함수와 Lambert W
@@ -412,7 +412,7 @@ ndtri_exp(y, /, *, out=None)
   | `nbdtr(k, inf, p)` | 0 | |
   | `ndtri_exp(0)`, `ndtri_exp(-inf)`, y > 0 | inf, −inf, NaN | |
 - **보장 영역** (사용자 결정 2026-11-15): 잰 범위 전체다. 순방향 11개와 `ndtri_exp`는 상대오차 1e-14(약 45 ULP), 역함수 `stdtrit chdtri fdtri`는 §4처럼 `|Δx/x| ≤ 1e-14·max(1, κ)`다. 결과가 서브노멀이면 docs/design/special.md §2.3의 절대오차 규칙을 따른다. 범위는 아래 '잰 범위'이고, 그 밖(더 큰 자유도·k·n)도 값을 계산하지만 보장하지 않는다. 경계값 `fdtr(inf, inf, x)`, `nbdtr(k, 0, p)`, `chdtri(inf, p)` = NaN도 같은 날 확정했다.
-  - **잰 값** (bench/special/t1/accuracy.md, 최대 ULP; 역함수는 ULP/max(1, κ)): `stdtr` 9.0, `stdtrit` 6.9, `chdtr` 6.1, `chdtrc` 9.7, `chdtri` 7.2, `fdtr` 16, `fdtrc` 18, `fdtri` 23, `pdtr` 4.5, `pdtrc` 13, `bdtr` 10, `bdtrc` 9.5, `nbdtr` 14, `nbdtrc` 19, `ndtri_exp` 6.5
+  - **잰 값** (bench/special/arb/accuracy.md, Arb 참값 대비, 최대 ULP; 역함수는 ULP/max(1, κ)): `stdtr` 8.9, `stdtrit` 7.3, `chdtr` 5.3, `chdtrc` 9.7, `chdtri` 5.4, `fdtr` 12, `fdtrc` 11, `fdtri` 23, `pdtr` 4.3, `pdtrc` 13, `bdtr` 4.9, `bdtrc` 7.4, `nbdtr` 7.2, `nbdtrc` 8.8, `ndtri_exp` 6.5
   - 같은 점에서 scipy: 최대 25 ULP(`chdtri`)부터 4.9e16 ULP(`fdtri`), inf(`stdtrit` 등)까지.
   - 잰 범위: 자유도 1e-2–1e6(t), 1e-2–1e4(F), k·n 1e4까지, `ndtri_exp`의 y는 −1e300–0. 근이 double 범위 밖이면(`fdtri` → 0, `stdtrit` → −inf) 순방향 함수로 확인한다(tests/special/test_distributions.py).
 
@@ -449,7 +449,7 @@ ncfdtri(dfn, dfd, nc, p, /, *, out=None)
   | **`ncfdtr(dfn, dfd, inf, f)`** | 0 (`ncfdtrc`는 1) | **scipy는 NaN**. f도 inf이면 NaN |
   | 역함수의 p = 0, 1 | 정의역의 두 끝(0 또는 −inf, inf) | |
 - **보장 영역** (사용자 결정 2026-11-15): 아래 '잰 범위' 전체다. 순방향 6개는 상대오차 1e-14(약 45 ULP), 역함수 `chndtrix nctdtrit ncfdtri`는 §4처럼 `|Δx/x| ≤ 1e-14·max(1, κ)`다. 결과가 서브노멀이면 docs/design/special.md §2.3의 절대오차 규칙을 따른다. `chndtr(0, nc, 0)` = NaN(`chdtr(0, 0)`과 일관)도 같은 날 확정했다.
-  - **잰 값** (bench/special/t2/accuracy.md, 최대 ULP; 역함수는 ULP/max(1, κ)): `chndtr` 6.8, `chndtrc` 9.5, `chndtrix` 4.5, `nctdtr` 7.8, `nctdtrc` 7.5, `nctdtrit` 8.8, `ncfdtr` 12, `ncfdtrc` 23, `ncfdtri` 9.9
+  - **잰 값** (bench/special/arb/accuracy.md, Arb 참값 대비, 최대 ULP; 역함수는 ULP/max(1, κ)): `chndtr` 6.8, `chndtrc` 9.5, `chndtrix` 3.5, `nctdtr` 7.8, `nctdtrc` 7.5, `nctdtrit` 22, `ncfdtr` 9.0, `ncfdtrc` 15, `ncfdtri` 9.9
   - 같은 점에서 scipy(Boost): 최대 7e3 ULP(`ncfdtrc`)부터 8.8e15 ULP(0이나 엉뚱한 값), inf·NaN(역함수)까지.
   - 잰 범위: 자유도 1e-2–1e4(카이제곱·F), 1e-1–1e5(t); nc 1e-3–1e4(카이제곱·F), |δ| ≤ 100(t); 확률은 1e-300까지. 근이 double 범위 밖이면 0이나 ±inf이고 순방향 함수로 확인한다(tests/special/test_noncentral.py).
   - 그 밖(거대한 t·f에서 작은 인자가 2⁻¹⁰⁰⁰ 아래인 꼬리)은 첫 항 y^b로 계산한다. mpmath와 1e-16 수준으로 맞지만 보장하지 않는다.

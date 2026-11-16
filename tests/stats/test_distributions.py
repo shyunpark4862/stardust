@@ -27,7 +27,18 @@ CASES = [
     (S.Cauchy, {"mu": 0.5, "sigma": 2.0}, st.cauchy(0.5, 2.0), (-math.inf, math.inf)),
     (S.Laplace, {"mu": 0.5, "sigma": 2.0}, st.laplace(0.5, 2.0), (-math.inf, math.inf)),
     (S.Weibull, {"c": 1.7, "scale": 2.0}, st.weibull_min(1.7, scale=2.0), (0.0, math.inf)),
+    # T6
+    (S.Logistic, {"mu": 0.5, "sigma": 2.0}, st.logistic(0.5, 2.0), (-math.inf, math.inf)),
+    (S.Gumbel, {"mu": 0.5, "sigma": 2.0}, st.gumbel_r(0.5, 2.0), (-math.inf, math.inf)),
+    (S.GEV, {"c": 0.25, "mu": 1.0, "sigma": 2.0}, st.genextreme(0.25, 1.0, 2.0), (-math.inf, 9.0)),
+    (S.Pareto, {"b": 5.5, "scale": 1.5}, st.pareto(5.5, scale=1.5), (1.5, math.inf)),
+    (S.Rayleigh, {"scale": 2.0}, st.rayleigh(scale=2.0), (0.0, math.inf)),
+    (S.InverseGamma, {"a": 5.5, "scale": 2.0}, st.invgamma(5.5, scale=2.0), (0.0, math.inf)),
+    (S.NoncentralChiSquared, {"df": 3.5, "nc": 2.0}, st.ncx2(3.5, 2.0), (0.0, math.inf)),
+    (S.NoncentralT, {"df": 9.0, "nc": 1.5}, st.nct(9.0, 1.5), (-math.inf, math.inf)),
+    (S.NoncentralF, {"dfn": 4.0, "dfd": 13.0, "nc": 3.0}, st.ncf(4.0, 13.0, 3.0), (0.0, math.inf)),
 ]
+NONCENTRAL = (S.NoncentralChiSquared, S.NoncentralT, S.NoncentralF)
 IDS = [c[0].__name__ for c in CASES]
 
 INPUT_METHODS = ["pdf", "logpdf", "cdf", "logcdf", "ccdf", "logccdf", "icdf", "iccdf", "ilogcdf", "ilogccdf"]
@@ -36,7 +47,8 @@ PARAM_METHODS = ["mean", "variance", "standard_deviation", "skewness", "kurtosis
 
 def test_exports():
     names = {"Normal", "StudentT", "ChiSquared", "F", "Gamma", "Beta", "Exponential", "LogNormal", "Uniform", "Cauchy",
-             "Laplace", "Weibull"}
+             "Laplace", "Weibull", "Logistic", "Gumbel", "GEV", "Pareto", "Rayleigh", "InverseGamma",
+             "NoncentralChiSquared", "NoncentralT", "NoncentralF"}
     assert names <= set(S.__all__)
     for n in names:
         assert issubclass(getattr(S, n), S.ContinuousDistribution)
@@ -128,7 +140,7 @@ def test_out():
 @pytest.mark.parametrize("cls, params, _, __", CASES, ids=IDS)
 def test_parameters_outside_the_domain_give_nan(cls, params, _, __):
     bad = dict(params)
-    key = next(k for k in cls._params if k not in ("mu", "a") or cls is S.Uniform)
+    key = "sigma" if cls is S.GEV else next(k for k in cls._params if k not in ("mu", "a") or cls is S.Uniform)
     bad[key] = -1.0 if cls is not S.Uniform else bad["a"] - 10.0  # Uniform: b < a
     if cls is S.Uniform:
         bad = {"a": 3.0, "b": -1.0}
@@ -225,7 +237,42 @@ def test_body_agrees_with_scipy(cls, params, ref, support):
         np.testing.assert_allclose([X.mean(), X.variance(), X.skewness(), X.kurtosis()], [m, v, s, k], rtol=1e-12)
         assert math.isclose(X.standard_deviation(), math.sqrt(v), rel_tol=1e-12)
     assert math.isclose(X.median(), ref.median(), rel_tol=1e-12, abs_tol=1e-300)
-    assert math.isclose(X.entropy(), ref.entropy(), rel_tol=1e-12)
+    if cls not in NONCENTRAL:  # scipy integrates those numerically (1e-10 off; ours: Arb, test_reference)
+        assert math.isclose(X.entropy(), ref.entropy(), rel_tol=1e-12)
+
+
+def test_t6_conventions():
+    # moments by the rule of docs/api/stats.md §2 (T26)
+    assert S.Pareto(b=1.0).mean() == math.inf and math.isnan(S.Pareto(b=1.0).variance())
+    assert S.Pareto(b=1.5).variance() == math.inf and S.Pareto(b=2.5).skewness() == math.inf
+    assert S.Pareto(b=3.5).kurtosis() == math.inf and math.isnan(S.Pareto(b=2.0).kurtosis())
+    assert S.InverseGamma(a=1.0).mean() == math.inf and S.InverseGamma(a=1.5).variance() == math.inf
+    assert S.GEV(c=-1.0).mean() == math.inf and S.GEV(c=-0.6).variance() == math.inf
+    assert math.isnan(S.GEV(c=-1.2).variance()) and S.GEV(c=-0.4).skewness() == math.inf
+    assert S.GEV(c=-0.3).kurtosis() == math.inf and S.GEV(c=0.0).kurtosis() == 2.4
+    assert math.isnan(S.NoncentralT(df=1.0, nc=1.0).mean()) and S.NoncentralT(df=2.0, nc=1.0).variance() == math.inf
+    assert math.isnan(S.NoncentralT(df=3.0, nc=1.0).skewness()) and S.NoncentralT(df=4.0, nc=1.0).kurtosis() == math.inf
+    assert S.NoncentralF(dfn=3.0, dfd=2.0, nc=1.0).mean() == math.inf
+    assert S.NoncentralF(dfn=3.0, dfd=8.0, nc=1.0).kurtosis() == math.inf
+    # GEV at c = 0 is the Gumbel; nc = 0 the central distributions, to the bit
+    x = sd.asarray([-3.0, 0.2, 5.0])
+    for m in ("pdf", "cdf", "logccdf"):
+        assert np.asarray(getattr(S.GEV(c=0.0, mu=1.0, sigma=2.0), m)(x)).tolist() == \
+            np.asarray(getattr(S.Gumbel(mu=1.0, sigma=2.0), m)(x)).tolist()
+    for nc_cls, cen, kw in ((S.NoncentralChiSquared, S.ChiSquared(df=3.0), {"df": 3.0}),
+                            (S.NoncentralT, S.StudentT(df=3.0), {"df": 3.0}),
+                            (S.NoncentralF, S.F(dfn=3.0, dfd=7.0), {"dfn": 3.0, "dfd": 7.0})):
+        X = nc_cls(**kw, nc=0.0)
+        y = sd.asarray([0.3, 1.7, 9.0])
+        for m in ("pdf", "logcdf", "ccdf", "icdf"):
+            arg = sd.asarray([0.1, 0.5, 0.9]) if m == "icdf" else y
+            assert np.asarray(getattr(X, m)(arg)).tolist() == np.asarray(getattr(cen, m)(arg)).tolist(), (nc_cls, m)
+    # modes at the ends (T21) and densities there
+    assert S.GEV(c=1.5).mode() == S.GEV(c=1.5).support()[1] and S.GEV(c=0.0, mu=2.0).mode() == 2.0
+    assert S.NoncentralChiSquared(df=1.5, nc=3.0).mode() == 0.0 and S.NoncentralF(dfn=1.5, dfd=9.0, nc=3.0).mode() == 0.0
+    assert S.NoncentralChiSquared(df=2.0, nc=1.0).mode() == 0.0 and S.NoncentralChiSquared(df=2.0, nc=5.0).mode() > 0.0
+    assert (S.GEV(c=0.5).pdf(2.0), S.GEV(c=1.0).pdf(1.0), S.GEV(c=2.0).pdf(0.5)) == (0.0, 1.0, math.inf)
+    assert S.Pareto(b=3.0, scale=2.0).pdf(2.0) == 1.5 and S.Rayleigh().pdf(0.0) == 0.0
 
 
 # ---- determinism (docs/api/stats.md §1)

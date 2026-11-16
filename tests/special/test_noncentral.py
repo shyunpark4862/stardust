@@ -1,6 +1,6 @@
 """T2: the noncentral distributions (docs/api/special.md §14).
 
-Accuracy against mpmath is test_reference.py's job (tests/special/ref/*.npz);
+Accuracy against the Arb references is test_reference.py's job (tests/special/ref/*.npz);
 here: the special values (true values and limits, T1/T2 decision), the central
 functions at nc = 0, agreement with scipy where scipy is right, the inverses'
 round trips and their roots beyond the double range, and regressions found while
@@ -70,7 +70,7 @@ def test_special_values(call, want):
 
 
 def test_df_zero_is_a_point_mass_plus_the_rest():
-    # chi-square(0, nc): mass e^(-nc/2) at 0; chndtr(0, 3, 2) from mpmath
+    # chi-square(0, nc): mass e^(-nc/2) at 0; chndtr(0, 3, 2) from Arb (tools/special_ref.py)
     assert abs(S.chndtr(0.0, 3.0, 2.0) / 0.51205431668379600 - 1) < 1e-15
     assert S.chndtr(0.0, 3.0, 1e-300) > math.exp(-1.5) * (1 - 1e-15)
 
@@ -148,7 +148,7 @@ def test_inverses_beyond_the_double_range():
 
 def test_the_tail_away_from_the_noncentrality():
     # P(T > t) with nc < 0 < t: the series' two families cancel there (scipy: 1.6e-33 for
-    # 1.4e-76, 0 below); an integral instead. Values from mpmath (both methods agree).
+    # 1.4e-76, 0 below); an integral instead. Values from Arb (tools/special_ref.py).
     assert abs(S.nctdtrc(0.1, -5.0, 100.0) / 1.2882566998160138e-07 - 1) < 1e-15
     assert abs(S.nctdtrc(12.35, -16.86, 4.509) / 1.4425759625117107e-76 - 1) < 1e-15
     assert abs(S.nctdtr(5.0, 3.0, -2.0) / 7.7996360918320379e-06 - 1) < 1e-15  # the mirror: T(nc) = -T(-nc)
@@ -156,7 +156,7 @@ def test_the_tail_away_from_the_noncentrality():
 
 def test_fdtr_with_x_near_one_from_a_division_regression():
     # T2 found fdtr(3218.14, 0.0129237, 1e20) off by 1.5e-9: w = 1 - 4e-26 from a division
-    # carries only 1e-32 absolutely, and bgrat took log w from it (now from 1 - w). mpmath:
+    # carries only 1e-32 absolutely, and bgrat took log w from it (now from 1 - w). Arb:
     assert abs(S.fdtr(3218.14, 0.0129237, 1e20) / 0.27853048221645325 - 1) < 1e-15
     assert abs(S.ncfdtr(3218.14, 0.0129237, 10.4689, 1e20) / 0.27851534065985444 - 1) < 1e-15
 

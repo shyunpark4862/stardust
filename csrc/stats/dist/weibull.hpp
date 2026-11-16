@@ -57,13 +57,46 @@ inline DD lgamma_diff(int k, DD x) {
 
 inline constexpr double kSeriesMax = 0.85;  // the largest k x for the series
 
-// D_k = log Gamma(1 + k/c) - k log Gamma(1 + 1/c): the series while k/c is small,
-// else the Stirling forms in double-double (no cancellation left that matters:
-// D_k is then of the size of its terms).
-inline DD lgamma_ratio(int k, double c) {
-    const DD x = num::div(DD{1.0, 0.0}, c);
-    if (k * x.hi <= kSeriesMax) return lgamma_diff(k, x);
+// D_k = log Gamma(1 + k x) - k log Gamma(1 + x): the series while |k x| is small, else
+// the Stirling forms in double-double (no cancellation left that matters: D_k is then of
+// the size of its terms). x may be negative (GEV's c; 1 + k x > 0 is the caller's).
+inline DD lgamma_ratio_x(int k, DD x) {
+    if (std::fabs(k * x.hi) <= kSeriesMax) return lgamma_diff(k, x);
     return num::log_gamma(x * static_cast<double>(k) + 1.0) - num::log_gamma(x + 1.0) * static_cast<double>(k);
+}
+// The Weibull's D_k, x = 1/c.
+inline DD lgamma_ratio(int k, double c) { return lgamma_ratio_x(k, num::div(DD{1.0, 0.0}, c)); }
+
+// The skewness of W with E[W^k] = Gamma(1 + k x): (E_3 - 3 E_2) / E_2^(3/2); past
+// D_3 = 600 scaled by e^-D_3 (the E's overflow).
+inline double skewness_x(DD x) {
+    const DD d2 = lgamma_ratio_x(2, x), d3 = lgamma_ratio_x(3, x);
+    if (d3.hi > 600.0) {
+        const double a = d2.hi, b = d3.hi;
+        const double n = -std::expm1(-b) - 3.0 * (std::exp(a - b) - std::exp(-b));
+        const double den = std::pow(-std::expm1(-a), 1.5);
+        return std::exp(b - 1.5 * a) * n / den;
+    }
+    const DD e2 = num::expm1_full(d2), e3 = num::expm1_full(d3);
+    const DD n = e3 - e2 * 3.0;
+    return (n / (e2 * std::sqrt(e2.hi))).hi * (1.0 - 0.5 * e2.lo / e2.hi);
+}
+// Its excess kurtosis: (E_4 - 4 E_3 + 6 E_2) / E_2^2 - 3; past D_4 = 600 scaled by e^-D_4.
+inline double kurtosis_x(DD x) {
+    const DD d2 = lgamma_ratio_x(2, x), d3 = lgamma_ratio_x(3, x), d4 = lgamma_ratio_x(4, x);
+    if (d4.hi > 600.0) {
+        const double a = d2.hi, b = d3.hi, e = d4.hi;
+        const double em = std::exp(-e);
+        const double n = (1.0 - em) - 4.0 * (std::exp(b - e) - em) + 6.0 * (std::exp(a - e) - em) -
+                         3.0 * std::exp(2.0 * a - e) * std::pow(-std::expm1(-a), 2.0);
+        const double den = std::exp(2.0 * a - e) * std::pow(-std::expm1(-a), 2.0);
+        return n / den - 3.0;
+    }
+    const DD e2 = num::expm1_full(d2), e3 = num::expm1_full(d3), e4 = num::expm1_full(d4);
+    const DD den = e2 * e2;
+    const DD n = e4 - e3 * 4.0 + e2 * 6.0 - den * 3.0;
+    const DD r = n / den;
+    return r.hi + r.lo;
 }
 
 }  // namespace weibull_detail
@@ -220,40 +253,8 @@ struct Weibull {
         const num::DD l = num::log_gamma(num::div(num::DD{2.0, 0.0}, c) + 1.0) + num::log_dd(s) * 2.0;
         return num::exp_dd((l + std::log1p(-std::exp(-d2.hi))) * 0.5);
     }
-    // (E_3 - 3 E_2) / E_2^(3/2); past D_3 = 600 scaled by e^-D_3 (the E's overflow).
-    static double skewness(double c, double) {
-        using namespace weibull_detail;
-        const num::DD d2 = lgamma_ratio(2, c), d3 = lgamma_ratio(3, c);
-        if (d3.hi > 600.0) {
-            const double a = d2.hi, b = d3.hi;
-            const double n = -std::expm1(-b) - 3.0 * (std::exp(a - b) - std::exp(-b));
-            const double den = std::pow(-std::expm1(-a), 1.5);
-            return std::exp(b - 1.5 * a) * n / den;
-        }
-        const num::DD e2 = num::expm1_full(d2), e3 = num::expm1_full(d3);
-        const num::DD n = e3 - e2 * 3.0;
-        return (n / (e2 * std::sqrt(e2.hi))).hi * (1.0 - 0.5 * e2.lo / e2.hi);
-    }
-    // (E_4 - 4 E_3 + 6 E_2) / E_2^2 - 3; past D_4 = 600 scaled by e^-D_4.
-    static double kurtosis(double c, double) {
-        using namespace weibull_detail;
-        const num::DD d2 = lgamma_ratio(2, c), d3 = lgamma_ratio(3, c), d4 = lgamma_ratio(4, c);
-        if (d4.hi > 600.0) {
-            const double a = d2.hi, b = d3.hi, e = d4.hi;
-            const double em = std::exp(-e);
-            const double e2 = std::expm1(a);
-            const double n = (1.0 - em) - 4.0 * (std::exp(b - e) - em) + 6.0 * (std::exp(a - e) - em) -
-                             3.0 * std::exp(2.0 * a - e) * std::pow(-std::expm1(-a), 2.0);
-            const double den = std::exp(2.0 * a - e) * std::pow(-std::expm1(-a), 2.0);
-            (void)e2;
-            return n / den - 3.0;
-        }
-        const num::DD e2 = num::expm1_full(d2), e3 = num::expm1_full(d3), e4 = num::expm1_full(d4);
-        const num::DD den = e2 * e2;
-        const num::DD n = e4 - e3 * 4.0 + e2 * 6.0 - den * 3.0;
-        const num::DD r = n / den;
-        return r.hi + r.lo;
-    }
+    static double skewness(double c, double) { return weibull_detail::skewness_x(num::div(num::DD{1.0, 0.0}, c)); }
+    static double kurtosis(double c, double) { return weibull_detail::kurtosis_x(num::div(num::DD{1.0, 0.0}, c)); }
     static double median(double c, double s) {  // s (log 2)^(1/c)
         constexpr num::DD kLogLn2 = {-0.36651292058166435, 2.0606571710351486e-17};
         return s * num::exp_dd(num::div(kLogLn2, c));

@@ -23,14 +23,17 @@ SUBNORMAL_ABS = 45 * 2.0**-1074
 # (T20) and entropy (T24), log quantities that cross 0, and the Weibull skewness and
 # kurtosis, which cross 0 (near c = 3.60 and c = 2.25, 5.77; T24).
 MIXED = {"logpdf", "entropy"}
-MIXED_FILES = {"weibull_skewness", "weibull_kurtosis"}
+MIXED_FILES = {"weibull_skewness", "weibull_kurtosis", "gev_skewness", "gev_kurtosis"}  # GEV's W = Y^c is a Weibull
 
 CLASSES = {"binomial": "Binomial", "bernoulli": "Bernoulli", "poisson": "Poisson", "geometric": "Geometric",
            "negativebinomial": "NegativeBinomial", "hypergeometric": "Hypergeometric", "discreteuniform": "DiscreteUniform",
            "betabinomial": "BetaBinomial", "logseries": "LogSeries", "zipf": "Zipf",
            "normal": "Normal", "exponential": "Exponential", "uniform": "Uniform", "laplace": "Laplace",
            "cauchy": "Cauchy", "lognormal": "LogNormal", "weibull": "Weibull", "studentt": "StudentT",
-           "chisquared": "ChiSquared", "f": "F", "gamma": "Gamma", "beta": "Beta"}
+           "chisquared": "ChiSquared", "f": "F", "gamma": "Gamma", "beta": "Beta",
+           "logistic": "Logistic", "gumbel": "Gumbel", "gev": "GEV", "pareto": "Pareto", "rayleigh": "Rayleigh",
+           "inversegamma": "InverseGamma", "noncentralchisquared": "NoncentralChiSquared",
+           "noncentralt": "NoncentralT", "noncentralf": "NoncentralF"}
 
 
 def names():

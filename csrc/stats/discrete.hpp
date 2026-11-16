@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace sd::stats::disc {
 
@@ -49,7 +50,14 @@ double smallest(double lo, double hi, double guess, P&& pred) {
         for (double step = 1.0;; step *= 2.0) {
             const double c = a + step;
             if (c >= hi) break;
-            if (!(c < 0x1p1023)) return kInf;  // the quantile is beyond float64 (an infinite support)
+            if (!(c < 0x1p1023)) {
+                // The last doubling would pass 2^1023: the largest double decides whether the
+                // quantile is still finite (Zipf a = 2.00008 at q = 1.2e-308: 4.9e307).
+                const double top = std::numeric_limits<double>::max();
+                if (!pred(top)) return kInf;  // the quantile is beyond float64 (an infinite support)
+                b = top;
+                break;
+            }
             if (pred(c)) {
                 b = c;
                 break;
@@ -157,9 +165,12 @@ struct KahanSum {
     double value() const { return s + c; }
 };
 
-// The entropy -sum pmf log pmf, from the mode outwards until the terms are negligible
-// (relative 2^-60 of the sum so far, with the pmf past its peak on that side), each term
-// from the double-double log pmf, the sum compensated.
+// The entropy -sum pmf log pmf, from the mode outwards until the rest is negligible, each
+// term from the double-double log pmf, the sum compensated. The rest past a term t whose
+// ratio to the one before is r < 1 is about t r / (1 - r) (the ratios keep falling past
+// the peak); the walk stops when that is below 2^-60 of the sum. A stop at t below 2^-60
+// of the sum alone left 5e-13 of a negative binomial with sd 2.3e5 (8.6 sd out, the rest
+// ~3e4 terms of that size).
 template <class LogPmf>
 double entropy_sum(double mode, double lo, double hi, LogPmf&& logpmf) {
     KahanSum h;
@@ -168,17 +179,26 @@ double entropy_sum(double mode, double lo, double hi, LogPmf&& logpmf) {
         const double lv = l.hi + l.lo;
         return lv == -kInf ? 0.0 : -num::exp_dd(l) * lv;
     };
+    auto done = [&](double t, double prev) {
+        const double r = std::fabs(prev) > 0.0 ? std::fabs(t) / std::fabs(prev) : 0.0;
+        return r < 1.0 && std::fabs(t) * r <= (1.0 - r) * std::fabs(h.s) * 0x1p-60;
+    };
     double m = std::clamp(std::floor(mode), lo, hi);
-    h.add(term(m));
+    const double tm = term(m);
+    h.add(tm);
+    double prev = tm;
     for (double k = m + 1.0; k <= hi; k += 1.0) {
         const double t = term(k);
         h.add(t);
-        if (std::fabs(t) <= std::fabs(h.s) * 0x1p-60 && k > mode + 1.0) break;
+        if (k > mode + 1.0 && done(t, prev)) break;
+        prev = t;
     }
+    prev = tm;
     for (double k = m - 1.0; k >= lo; k -= 1.0) {
         const double t = term(k);
         h.add(t);
-        if (std::fabs(t) <= std::fabs(h.s) * 0x1p-60 && k < mode - 1.0) break;
+        if (k < mode - 1.0 && done(t, prev)) break;
+        prev = t;
     }
     return h.value();
 }

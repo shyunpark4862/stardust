@@ -126,7 +126,7 @@
 - 통합 로드맵의 원칙을 따른다: 마일스톤마다 커밋하고, 결과를 전달하고, 사용자가 승인하면 다음으로 간다. 해설과 안내서는 쓰지 않는다(2026-11-15 사용자 결정: 나중에 한 번에 쓴다. 그때까지 쓴 `docs/learn/`, `docs/guide/`는 지웠다).
 - **배열 영역을 고치는 일은 S0에만 있다.** 기존 함수의 결과는 비트까지 같아야 한다 (골든 출력, 스레드 수 1, 3, 10).
 - 마일스톤마다 확인하는 것
-  - 정확도: mpmath 기준값 대비 최대·99.9% ULP를 보장 영역과 느슨한 영역으로 나눠 표로 낸다 (docs/design/special.md §6).
+  - 정확도: 기준값(처음 mpmath, 2026-11-16부터 Arb) 대비 최대·99.9% ULP를 보장 영역과 느슨한 영역으로 나눠 표로 낸다 (docs/design/special.md §6).
   - 비트: NEON 경로 = 스칼라 정의, 스레드 1·3·10, `f(x)[i] == f(x[i])`
   - 성능: scipy와 같은 자리에서 번갈아 잰다. 1스레드와 10스레드, 원소 10⁶개와 스칼라 1개.
 - 마일스톤을 시작하기 전에 물을 것은 docs/design/special.md §10에 있다.
@@ -156,7 +156,7 @@
   - 이터레이터에 원소당 비용(작업량 가중치)을 넘기는 길
   - 골든 출력으로 배열·linalg·frame의 결과가 비트까지 같은지 확인한다.
 - **special 뼈대**: `csrc/special/`(`common.hpp`, `cf.hpp`, `cost.hpp`), `bind/special_bind.cpp`, `src/stardust/special/`, `tests/special/`(`test_api_surface.py`가 docs/api/special.md를 읽는다), `bench/special/`
-- **도구**: mpmath 기준값 생성 `tools/special_ref.py`와 `tests/special/ref/`, 정확도 표 `bench/special/accuracy.py`, scipy와의 같은 자리 비교, 원소당 비용 측정. `pyproject.toml`의 `test`에 mpmath를 더한다.
+- **도구**: 기준값 생성 `tools/special_ref.py`(2026-11-16부터 Arb, `tools/arbref.py`)와 `tests/special/ref/`, 정확도 표 `bench/special/accuracy.py`, scipy와의 같은 자리 비교, 원소당 비용 측정. `pyproject.toml`의 `test`에 mpmath를 더한다(이제 python-flint).
 
 ### S1. 로지스틱과 정보량
 - `expit logit log_expit xlogy xlog1py entr rel_entr`
@@ -216,7 +216,7 @@
 | T3 `sd.random` | 완료·승인 (2026-11-15) |
 | T4 분포 엔진과 연속 기본 12 | 완료, 승인 대기 (2026-11-15) |
 | T5 이산 10 | 완료, 승인 대기 (2026-11-16) |
-| T6 극값·수명 6과 비중심 3 | 대기 |
+| T6 극값·수명 6과 비중심 3 | 완료, 승인 대기 (2026-11-16) |
 | T7 표본 (`sample`) | 대기 |
 | T8 기술통계 | 대기 |
 | T9 다변량: 정규, t, 다항, 디리클레 | 대기 |
@@ -265,6 +265,9 @@
 
 ### T6. 극값·수명 6과 비중심 3
 - 로지스틱, Gumbel, GEV, 파레토, 레일리, 역감마, 비중심 카이제곱·t·F
+- 결정(사용자, 2026-11-16): docs/design/stats.md T26 (GEV는 scipy의 c, `Rayleigh(*, scale=1)`, Gumbel은 최댓값형만, 비중심 nc ≥ 0, mode는 1e-14, entropy는 느슨한 한계, 비중심의 보장 영역은 special의 잰 범위, 비중심 t 모멘트는 1/df 급수로 1e-14).
+- **참값을 Arb로 바꿨다** (사용자, 2026-11-16): special과 stats의 참값 도구 전부를 python-flint(Arb)로 바꾸고 참값을 다시 만들었다(`tools/arbref.py`, docs/design/special.md §6). 입력점은 고정하고(`--resample`로만 새로 뽑는다), 병렬은 10코어다. 옛 mpmath 참값의 오류와 새 참값이 드러낸 라이브러리 오차(`gammaincinv`, 이산 엔트로피의 자르기, 음이항 깊은 꼬리, Zipf 분위수, 비중심의 넓은 꼬리)를 고쳤다. 비중심 엔트로피 셋의 참값(10코어로 약 12시간)은 나중에 만든다.
+- 결과: csrc/stats/dist/(extreme.hpp, lifetime.hpp, noncentral.hpp), csrc/stats/coeffs/nct_moments.hpp(tools/gen_nct_moments.py), csrc/special/ops/noncentral.hpp의 넓은 지수 꼬리; docs/api/stats.md §2.4, docs/design/stats.md §3.3; 측정 bench/stats/t6/(accuracy.md, speed.md), 현재의 special 정확도표 bench/special/arb/accuracy.md; 참값 tests/stats/ref/(555개).
 
 ### T7. 표본
 - 모든 분포의 `sample` (직접 알고리즘 또는 역함수 법)

@@ -1,6 +1,6 @@
 """T1: the distribution functions (docs/api/special.md §13).
 
-Accuracy against mpmath is test_reference.py's job (tests/special/ref/*.npz);
+Accuracy against the Arb references is test_reference.py's job (tests/special/ref/*.npz);
 here: the special values (true values and limits, T1 decision), agreement
 with scipy where scipy is right, and regressions found while building T1.
 """

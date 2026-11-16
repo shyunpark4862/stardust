@@ -6,7 +6,7 @@
 
 Timed alternately round by round on one thread, 10^6 elements, for inputs that stay in
 one region and inputs that mix them; plus the accuracy of the Estrin variant against the
-mpmath reference (tests/special/ref/erfc.npz).
+Arb reference (tests/special/ref/erfc.npz).
 
     .venv/bin/python bench/special/s2_variants.py [--rounds R] [--out FILE.md]
 """

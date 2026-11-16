@@ -78,7 +78,7 @@ def test_scipy_errors_get_true_values():
     assert S.gammainc(5e-324, 0.5) == 1.0  # scipy 0
     assert S.gammainc(5e-324, 1e-300) == 1.0
     assert S.gammainc(1.0, 5e-324) == 5e-324  # scipy 0
-    # scipy NaN (and mpmath 1.2e-647): x^2 b (b+1) / 2 (1 - 2 b x / 3 + ...), b x = 5e-24
+    # scipy NaN (and mpmath 1.2e-647; Arb gives the value below): x^2 b (b+1) / 2 (1 - 2 b x / 3 + ...), b x = 5e-24
     assert abs(S.betainc(2.0, 1e300, 5e-324) / 1.2205043120026404e-47 - 1) <= 1e-15
     assert S.gammaincinv(5e-324, 0.5) == 0.0  # scipy NaN: 0.5^(1/a) underflows
     x = S.betaincinv(2.0, 3.0, 5e-324)  # scipy NaN

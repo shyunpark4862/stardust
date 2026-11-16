@@ -43,11 +43,66 @@ namespace nc_detail {
 
 inline constexpr double kTol = 0x1p-56;
 
+// ---- wide m 2^e values (the tails as Scaled, for sd.stats' log forms and inverses: their
+// targets reach e^-1e10, where exp_scaled, which clamps at |x| = 1e5, would not reach)
+
+// e^x as m 2^e for any finite x: 2^n e^r, n an int64, r = x - n log 2 (fma, log 2 in two parts).
+inline Scaled exp_wide(double x) {
+    if (std::fabs(x) <= 1e5) return exp_scaled(x);
+    if (!(x == x)) return {kNaN, 0};
+    if (std::isinf(x)) return x > 0.0 ? Scaled{kInf, 0} : Scaled{0.0, 0};
+    const double n = std::nearbyint(x / kLn2Hi);
+    double r = std::fma(-n, kLn2Hi, x);
+    r = std::fma(-n, kLn2Lo, r);
+    Scaled s = scaled(std::exp(r));
+    s.e += static_cast<std::int64_t>(n);
+    return s;
+}
+inline Scaled exp_wide(dd::DD x) { return exp_wide(x.hi) * scaled(1.0 + x.lo); }
+
+// gamma_prefix and beta_prefix past their exponent's clamp (|E| > 1e5)
+inline Scaled gamma_prefix_w(double a, dd::DD E) {
+    if (std::fabs(E.hi) < 9e4 || !(E.hi < 1e300)) return gamma_prefix(a, E);
+    return exp_wide(-E.hi) * scaled(1.0 - E.lo) / scaled(std::sqrt(2.0 * kPi * a) * gamma_star(a));
+}
+inline Scaled beta_prefix_w(double a, double b, dd::DD E) {
+    if (std::fabs(E.hi) < 9e4 || !(E.hi < 1e300)) return beta_prefix(a, b, E);
+    return exp_wide(-E.hi) * scaled((1.0 - E.lo) * beta_factor(a, b));
+}
+
+// a + b for a, b >= 0 (or of opposite signs with |a + b| not far below them), as m 2^e
+inline Scaled add_s(Scaled a, Scaled b) {
+    if (a.m == 0.0) return b;
+    if (b.m == 0.0) return a;
+    const std::int64_t e = std::max(a.e, b.e);
+    auto at = [&](Scaled v) { return std::ldexp(v.m, static_cast<int>(std::max<std::int64_t>(v.e - e, -2200))); };
+    Scaled r = scaled(at(a) + at(b));
+    r.e += e;
+    return r;
+}
+inline Scaled times(Scaled a, double c) { return a * scaled(c); }
+// a probability: rounding may pass 1 (or, after a difference, 0) by an ULP
+inline Scaled clamp01(Scaled s) {
+    if (!(s.m > 0.0)) return s.m < 0.0 ? scaled(0.0) : s;
+    return (s.e > 1 || (s.e == 1 && s.m > 0.5)) ? scaled(1.0) : s;
+}
+// 1 - s for 0 <= s <= 1
+inline Scaled one_minus(Scaled s) { return scaled(1.0 - value(s)); }
+
+// log Gamma(z), z > 0, as a double-double: Stirling's form (z - 1/2) log z - z + log sqrt(2 pi)
+// + log Gamma*(z), Gamma* by gamma_star (relative 1 ULP, so its log is exact to ~1e-16
+// absolute, while the large terms keep double-double accuracy: no cancellation between
+// two log Gammas of 1e5 rounds the difference).
+inline dd::DD lgamma_dd(dd::DD z) {
+    constexpr dd::DD kLogSqrt2Pi{0.9189385332046728, -3.8782941580672414e-17};
+    return (z - 0.5) * dd::log(z) - z + kLogSqrt2Pi + std::log(gamma_star(z.hi));
+}
+
 // D(a, mu) as m 2^e; D(0, mu) = e^-mu. mu = hi + lo (the t's nc^2 / 2 is not a
 // double; rounding it moved its tails by nc^2 eps |d log F / d mu|, 89 ULP at nc = 17):
 // d log D / d mu = a / mu - 1.
 inline Scaled prefix_s(double a, double mu, double mu_lo = 0.0) {
-    const Scaled d = a == 0.0 ? exp_scaled(-mu) : gamma_prefix(a, gamma_exponent(a, mu));
+    const Scaled d = a == 0.0 ? exp_wide(-mu) : gamma_prefix_w(a, gamma_exponent(a, mu));
     return mu_lo == 0.0 ? d : d * scaled(1.0 + mu_lo * (a / mu - 1.0));
 }
 
@@ -93,6 +148,7 @@ inline dd::DD recip(dd::DD d) {
     return dd::quick_two_sum(r, r * e);
 }
 
+
 // P(s, y) or Q(s, y) along s; T(s) = D(s, y).
 struct GammaFamily {
     double y;
@@ -103,7 +159,7 @@ struct GammaFamily {
         const igam_detail::PQ r = igam_detail::igam(s, y);
         const double g = upper ? r.q : r.p;
         if (g >= kTinyG) return scaled(g);
-        const Scaled d = gamma_prefix(s, gamma_exponent(s, y));
+        const Scaled d = gamma_prefix_w(s, gamma_exponent(s, y));
         if (!upper) return d * ratio_series([&](int k) { return y / (s + k + 1.0); });  // P = D sum_k y^k / (s+1)_k
         const double tail = lentz_backward(  // Q = D s / tail (igam_detail::log_tail's fraction)
                                 y + 1.0 - s,
@@ -126,6 +182,16 @@ struct GammaFamily {
     }
     dd::DD up_dd(dd::DD s) const { return recip(s + 1.0) * y; }  // T(s+1) / T(s)
     dd::DD down_dd(dd::DD s) const { return (s + 1.0) * inv_y; }  // T(s) / T(s+1)
+    // T(s) / T(s+1) as r 2^e: at y below 2^-900, (s+1)/y would overflow (y scaled by 2^-ilogb(y), exactly)
+    dd::DD down_dd_e(dd::DD s, int& e) const {
+        if (!(y < 0x1p-900)) {
+            e = 0;
+            return down_dd(s);
+        }
+        const int ey = std::ilogb(y);
+        e = -ey;
+        return (s + 1.0) * recip(dd::DD{std::ldexp(y, -ey), 0.0});
+    }
     double gbound(dd::DD s) const { return std::min(1.0, ratio(s)); }  // >= P(s+1) / P(s)
     // log of a bound on G(s): P(s) <= T(s) / (1 - y/(s+1)) (the series' ratios are at most
     // y/(s+1)); Q(s) <= T(s-1) y / (y - s + 1) (below); else 1
@@ -151,16 +217,16 @@ struct BetaFamily {
         const double g = upper ? r.ic : r.i;
         if (g >= kTinyG) return scaled(g);
         if (!upper) {  // I_x(s, b) = sum_k T(s + k)
-            const Scaled t = beta_prefix(s, b, beta_exponent(s, b, x, y)) / scaled(s);
+            const Scaled t = beta_prefix_w(s, b, beta_exponent(s, b, x, y)) / scaled(s);
             return t * ratio_series([&](int k) { return x.hi * (s + k + b) / (s + k + 1.0); });
         }
         // 1 - I_x(s, b) = I_y(b, s) = sum_k y^c x^s / (c B(c, s)), c = b + k
-        const Scaled t = beta_prefix(b, s, beta_exponent(b, s, y, x)) / scaled(b);
+        const Scaled t = beta_prefix_w(b, s, beta_exponent(b, s, y, x)) / scaled(b);
         return t * ratio_series([&](int k) { return y.hi * (b + k + s) / (b + k + 1.0); });
     }
     Scaled G(dd::DD s) const { return at_shape([&](double v) { return G0(v); }, s); }
     Scaled T(dd::DD s) const {
-        const Scaled t = beta_prefix(s.hi, b, beta_exponent(s.hi, b, x, y)) / scaled(s.hi);
+        const Scaled t = beta_prefix_w(s.hi, b, beta_exponent(s.hi, b, x, y)) / scaled(s.hi);
         if (s.lo == 0.0) return t;
         return t * scaled(1.0 + s.lo * (std::log(x.hi) - 1.0 / s.hi - Digamma::f(s.hi) + Digamma::f(s.hi + b)));
     }
@@ -170,6 +236,10 @@ struct BetaFamily {
     }
     dd::DD up_dd(dd::DD s) const { return x * (s + b) * recip(s + 1.0); }  // T(s+1) / T(s)
     dd::DD down_dd(dd::DD s) const { return (s + 1.0) * recip(s + b) * inv_x; }  // T(s) / T(s+1)
+    dd::DD down_dd_e(dd::DD s, int& e) const {  // x is at least 2^-1000 here (smaller: the tiny paths)
+        e = 0;
+        return down_dd(s);
+    }
     double gbound(dd::DD s) const {  // >= I(s+1) / I(s): the T ratio, times e^((1-b)/(s+b)) for b < 1
         const double r = ratio(s) * (b < 1.0 ? std::exp((1.0 - b) / (s.hi + b)) : 1.0);
         return std::min(1.0, r);
@@ -202,8 +272,10 @@ using dd::Sum;  // the compensated sum (special/dd.hpp)
 // one direct evaluation of w, G and T, at J. The terms are summed in the frame 2^k0
 // of the first term, w kept in [2^-500, 2^500] by moving powers of two between w
 // and G (their product unchanged), so terms far below the double range keep their bits.
+// As m 2^e: `wide` (sd.stats' log forms) also sums the tails below e^-2000 that the
+// probability (mixture below) rounds to 0.
 template <class Fam>
-double mixture(double mu, double h, double s0, const Fam& f, double mu_lo = 0.0) {
+Scaled mixture_s(double mu, double h, double s0, const Fam& f, double mu_lo = 0.0, bool wide = false) {
     const bool lower = !f.upper;
     auto shape = [&](double j) { return dd::two_sum(s0, j); };  // s0 + j exactly
     auto term_ratio = [&](double j) {  // (term j+1) / (term j), with G's ratio taken as T's (deep tails)
@@ -235,8 +307,10 @@ double mixture(double mu, double h, double s0, const Fam& f, double mu_lo = 0.0)
     const double a = jstar + h;
     // Only where it can happen: j* off the mode, or an argument 2^20 away from the shape.
     if ((jstar != jmode || f.deep(jstar + s0)) &&
-        (a > 0.0 ? a * std::log(mu) - mu - std::lgamma(a + 1.0) : -mu) + f.log_gbound(jstar + s0) < -2000.0)
-        return 0.0;
+        (a > 0.0 ? a * std::log(mu) - mu - std::lgamma(a + 1.0) : -mu) + f.log_gbound(jstar + s0) < -2000.0) {
+        if (!wide) return scaled(0.0);
+        if (jstar > 1e8) return {kNaN, 0};  // a walk of 1e8 terms (a tail at x ~ 1e100): not taken
+    }
 
     // J: past j* on the unstable side (up for a lower family, down for an upper one)
     // until the bound times the bounded tail beyond, prod / (1 - r), is below kTol.
@@ -261,8 +335,12 @@ double mixture(double mu, double h, double s0, const Fam& f, double mu_lo = 0.0)
     const Scaled tJ = f.T(shape(lower ? J - 1.0 : J));  // the T the first step adds
     // G and T both exactly 0 (e^-E with E beyond 1e300): every term of the walk is 0, and
     // nothing would ever fall to end it
-    if (gJ.m == 0.0 && tJ.m == 0.0) return 0.0;
-    const std::int64_t k0 = -(wJ.e + (gJ.m != 0.0 ? gJ.e : tJ.e));
+    if (gJ.m == 0.0 && tJ.m == 0.0) return scaled(0.0);
+    std::int64_t ef = gJ.m != 0.0 ? gJ.e : tJ.e;
+    // T past G by 2^900 (a lower family at y ~ 1e-307, wide): T sets the frame, else it
+    // would overflow in G's (G is then nothing beside it)
+    if (tJ.m != 0.0 && tJ.e - ef > 900) ef = tJ.e;
+    const std::int64_t k0 = -(wJ.e + ef);
     auto frame = [](Scaled v, std::int64_t k) {
         return std::ldexp(v.m, static_cast<int>(std::clamp<std::int64_t>(v.e + k, -2200, 2200)));
     };
@@ -302,7 +380,14 @@ double mixture(double mu, double h, double s0, const Fam& f, double mu_lo = 0.0)
         }
         const double term = w.hi * gv + w.lo * gv;
         S.add(term);
-        t = lower ? t * f.down_dd(shape(j - 1.0)) : t * f.up_dd(shape(j - 1.0));
+        int er = 0;  // T's step as rt 2^er: (s+1)/y passes the double range at y ~ 1e-308
+        const dd::DD rt = lower ? f.down_dd_e(shape(j - 1.0), er) : f.up_dd(shape(j - 1.0));
+        if (er != 0) {  // the frame moves by 2^er first (stored t' = t rt then)
+            kg -= er, k -= er;
+            prev = std::ldexp(prev, -er);
+            g.scale(-er), S.scale(-er);
+        }
+        t = t * rt;
         // past j* and fading: the terms beyond fall at least geometrically (log-concave);
         // or past j* with the terms at 0 (all of them below the frame's range)
         if ((lower ? j < jstar : j > jstar) &&
@@ -310,56 +395,87 @@ double mixture(double mu, double h, double s0, const Fam& f, double mu_lo = 0.0)
             break;
         prev = term;
     }
-    return std::min(1.0, value(Scaled{S.total(), -k}));  // a probability (rounding may pass 1 by an ULP)
+    Scaled r = scaled(S.total());
+    r.e -= k;
+    return r;
+}
+template <class Fam>
+double mixture(double mu, double h, double s0, const Fam& f, double mu_lo = 0.0) {
+    return std::min(1.0, value(mixture_s(mu, h, s0, f, mu_lo)));  // a probability (rounding may pass 1 by an ULP)
 }
 
 // The upper family's sum when its small argument y is below 2^-1000 (it may not
 // even be a double: t ~ 1e250, f ~ 1e300), from I_y(b, s) = y^b Gamma(b+s) /
 // (Gamma(b+1) Gamma(s)) (1 + O(y)):
-//     sum_j D(j + h, mu) I_y(b, s0 + j) = y^b / Gamma(b+1) sum_j D(j + h, mu) Gamma(b + s0 + j) / Gamma(s0 + j),
-// the terms by lgamma in logs (the tails of the heavy-tailed laws at astronomic x:
-// outside the measured range).
-inline double tiny_upper(double mu, double h, double s0, double b, dd::DD logy) {
-    auto lterm = [&](double j) {
-        const double a = j + h;
-        const double ld = a > 0.0 ? a * std::log(mu) - mu - std::lgamma(a + 1.0) : -mu;
-        return ld + std::lgamma(b + s0 + j) - std::lgamma(s0 + j);
+//     sum_j D(j + h, mu) I_y(b, s0 + j) = y^b sum_j t_j,  t_j = D(j + h, mu) Gamma(b + s_j) / (Gamma(b+1) Gamma(s_j)),
+// s_j = s0 + j. The terms by their ratio t_(j+1) / t_j = mu (s_j + b) / ((j + 1 + h) s_j)
+// (falling in j) in double-double, out from the largest t_j*, which alone is direct: D by
+// prefix_s, the log Gamma ratio by lgamma_dd. (lgamma differences in double cancel: at
+// s ~ 5e3 they kept 1e-12 of the result.) As m 2^e: y^b reaches e^-1e10.
+inline Scaled tiny_upper_s(double mu, double h, double s0, double b, dd::DD logy, double mu_lo = 0.0) {
+    const dd::DD mud{mu, mu_lo};
+    auto ratio = [&](double j) {  // t_(j+1) / t_j
+        const dd::DD sj = dd::two_sum(s0, j);
+        return mud * (sj + b) * recip(sj * (j + 1.0 + h));
     };
-    double peak = -kInf, sum = 0.0;  // sum of e^(lterm - peak), peak rescaled as it rises
-    for (double j = 0.0; j < 1e8; j += 1.0) {
-        const double l = lterm(j);
-        if (l > peak) {
-            sum = sum * std::exp(peak - l) + 1.0;
-            peak = l;
-        } else {
-            sum += std::exp(l - peak);
-            if (j > mu && l < peak - 45.0) break;  // past the weights' mode and the peak: e^-45
-        }
-        if (mu == 0.0 && h == 0.0) break;  // only j = 0
+    // j*: the first j with ratio(j) <= 1 (the ratio falls in j)
+    double lo = -1.0, hi = std::max(1.0, std::floor(mu - h));
+    while (ratio(hi).hi > 1.0 && hi < 0x1p52) lo = hi, hi *= 2.0;
+    while (hi - lo > 1.0) {
+        const double mid = std::floor(0.5 * (lo + hi));
+        (ratio(mid).hi > 1.0 ? lo : hi) = mid;
     }
-    // b log y in double-double: it reaches -1e3, whose rounding alone was 4e-14 of the result
-    return distr_detail::exp_dd(logy * b + (peak - std::lgamma(b + 1.0))) * sum;
+    const double jstar = std::max(0.0, hi);
+    const dd::DD ss = dd::two_sum(s0, jstar);
+    const dd::DD lratio = lgamma_dd(ss + b) - lgamma_dd(ss) - lgamma_dd(dd::DD{b, 0.0} + 1.0);
+    const Scaled top = prefix_s(jstar + h, mu, mu_lo) * exp_wide(logy * b + lratio);
+    Sum S;
+    S.add(1.0);
+    dd::DD u{1.0, 0.0};
+    for (double j = jstar; j < jstar + 1e8; j += 1.0) {  // up
+        u = u * ratio(j);
+        S.add(u.hi, u.lo);
+        if (u.hi <= 0x1p-60 * S.total()) break;
+    }
+    u = dd::DD{1.0, 0.0};
+    for (double j = jstar - 1.0; j >= 0.0; j -= 1.0) {  // down: t_j = t_(j+1) / ratio(j)
+        u = u * recip(ratio(j));
+        S.add(u.hi, u.lo);
+        if (u.hi <= 0x1p-60 * S.total()) break;
+    }
+    return top * scaled(S.total());
 }
 
-// chndtr (upper: chndtrc) for 0 < df, nc, x finite (df = 0 too).
-inline double ncx2(double df, double nc, double x, bool upper) {
-    return mixture(0.5 * nc, 0.0, 0.5 * df, GammaFamily{0.5 * x, upper});
+// chndtr (upper: chndtrc) for 0 < df, nc, x finite (df = 0 too), as m 2^e (wide: see mixture_s).
+inline Scaled ncx2_s(double df, double nc, double x, bool upper, bool wide = false) {
+    return mixture_s(0.5 * nc, 0.0, 0.5 * df, GammaFamily{0.5 * x, upper}, 0.0, wide);
 }
+inline double ncx2(double df, double nc, double x, bool upper) { return std::min(1.0, value(ncx2_s(df, nc, x, upper))); }
 
-// ncfdtr (upper: ncfdtrc) for finite positive dfn, dfd, nc and 0 < x < inf.
-inline double ncf(double dfn, double dfd, double nc, double x, bool upper) {
+// ncfdtr (upper: ncfdtrc) for finite positive dfn, dfd, nc and 0 < x < inf, as m 2^e.
+inline Scaled ncf_s(double dfn, double dfd, double nc, double x, bool upper, bool wide = false) {
     const distr_detail::Arg g = distr_detail::f_arg(dfn, dfd, x);
     if (g.y.hi < distr_detail::kTinyArg) {  // v = dfd / (dfn x + dfd) below 2^-1000: the upper tail from v^b
         const dd::DD logv = dd::log(dfd) - dd::log(dfn) - dd::log(x);
-        const double up = std::min(1.0, tiny_upper(0.5 * nc, 0.0, 0.5 * dfn, 0.5 * dfd, logv));
-        return upper ? up : 1.0 - up;
+        const Scaled up = clamp01(tiny_upper_s(0.5 * nc, 0.0, 0.5 * dfn, 0.5 * dfd, logv));
+        return upper ? up : one_minus(up);
     }
     if (g.x.hi < distr_detail::kTinyArg) {
-        // w below 2^-1000: only the j = 0 term counts (the next carries a factor w), fdtr's own series
-        const double lower = std::exp(-0.5 * nc) * Fdtr::f(dfn, dfd, x);
-        return upper ? 1.0 - lower : lower;
+        // w below 2^-1000: only the j = 0 term counts (the next carries a factor w), fdtr's own series;
+        // wide, from I_w(a, b) = w^a / (a B(a, b)) (1 + O(w)) in logs (fdtr's value may underflow)
+        Scaled lower = scaled(std::exp(-0.5 * nc) * Fdtr::f(dfn, dfd, x));
+        if (wide && !(value(lower) >= 0x1p-1000)) {
+            const double a = 0.5 * dfn, b = 0.5 * dfd;
+            const dd::DD logw = dd::log(dfn) + dd::log(x) - dd::log(dfd);  // dfn x / dfd below 2^-1000 of 1
+            const dd::DD lbeta = lgamma_dd(dd::DD{a, 0.0}) + lgamma_dd(dd::DD{b, 0.0}) - lgamma_dd(dd::two_sum(a, b));
+            lower = exp_wide(logw * a - dd::log(a) - lbeta - 0.5 * nc);
+        }
+        return upper ? one_minus(lower) : lower;
     }
-    return mixture(0.5 * nc, 0.0, 0.5 * dfn, BetaFamily{0.5 * dfd, g.x, g.y, upper});
+    return mixture_s(0.5 * nc, 0.0, 0.5 * dfn, BetaFamily{0.5 * dfd, g.x, g.y, upper}, 0.0, wide);
+}
+inline double ncf(double dfn, double dfd, double nc, double x, bool upper) {
+    return std::min(1.0, value(ncf_s(dfn, dfd, nc, x, upper)));
 }
 
 // e^u - 1 - u, accurate for small u.
@@ -384,7 +500,7 @@ inline double em1mx(double u) {
 // written without cancellation; the integral is the trapezoid rule in u over
 // v - v* = c A sinh(u / A), c = min(sigma, 0.4), A = 8 (sigma = 1/sqrt(-E''(v*)); see
 // the loop for why the step is capped and the map is linear over the peak).
-inline double nct_opposite(double df, double a, double t) {
+inline Scaled nct_opposite_s(double df, double a, double t) {
     const double root = std::hypot(t * std::sqrt(a * a + 4.0 * df), 2.0 * df);
     const double sstar = 2.0 * df / (a * t + root);  // (t^2 + df) s^2 + a t s - df = 0
     const double p = t * sstar;
@@ -420,38 +536,47 @@ inline double nct_opposite(double df, double a, double t) {
         }
     }
     const double integral = I.total() * kStep * c;
-    return value(exp_scaled(Estar.hi) * scaled((1.0 + Estar.lo) * integral));
+    return exp_wide(Estar.hi) * scaled((1.0 + Estar.lo) * integral);
+}
+inline double nct_opposite(double df, double a, double t) { return value(nct_opposite_s(df, a, t)); }
+
+// Phi(-z) as m 2^e (wide: Phi(-100) ~ e^-5000): erfcx(z / sqrt 2) / 2 e^(-z^2/2), z^2 exact.
+inline Scaled ndtr_neg_s(double z) {
+    const double v = distr_detail::one<Ndtr>(-z);
+    if (v >= 0x1p-1000 || !(z > 0.0)) return scaled(v);
+    return scaled(0.5 * Erfcx::f(z * 0.70710678118654752440)) * exp_wide(dd::two_prod(z, z) * -0.5);
 }
 
-// P(T <= t) (upper: P(T > t)) for finite df > 0, nc != 0, t finite.
-inline double nct(double df, double nc, double t, bool upper) {
-    if (t < 0.0) return nct(df, -nc, -t, !upper);  // T(nc) = -T(-nc)
-    if (t == 0.0) return distr_detail::one<Ndtr>(upper ? nc : -nc);
-    if (upper && nc < 0.0) return nct_opposite(df, -nc, t);
+// P(T <= t) (upper: P(T > t)) for finite df > 0, nc != 0, t finite, as m 2^e.
+inline Scaled nct_s(double df, double nc, double t, bool upper, bool wide = false) {
+    if (t < 0.0) return nct_s(df, -nc, -t, !upper, wide);  // T(nc) = -T(-nc)
+    if (t == 0.0) return upper ? ndtr_neg_s(-nc) : ndtr_neg_s(nc);
+    if (upper && nc < 0.0) return nct_opposite_s(df, -nc, t);
     // The series (t > 0), x = t^2 / (df + t^2), b = df/2, mu = nc^2/2:
     //   lower = Phi(-nc) + (1/2) sum_j [D(j, mu) I_x(j + 1/2, b) + sign(nc) D(j + 1/2, mu) I_x(j + 1, b)]
     //   upper = (1/2) sum_j [D(j, mu) (1 - I_x(j + 1/2, b)) + D(j + 1/2, mu) (1 - I_x(j + 1, b))]   (nc > 0)
     // (lower with nc < 0 is >= Phi(-nc) >= 1/2: its cancellation costs nothing relative.)
     const distr_detail::Arg g = distr_detail::t_arg(df, t);  // g.x = df / (df + t^2), g.y = t^2 / (df + t^2)
+    const dd::DD mu = dd::two_prod(nc, nc) * 0.5;
     if (g.x.hi < distr_detail::kTinyArg && nc > 0.0) {
         // df / (df + t^2) below 2^-1000: the far tail on the noncentrality's side from y^b
         const dd::DD logy = dd::log(df) - dd::log(t) * 2.0;
-        const double mu = 0.5 * nc * nc;
-        const double up = std::min(1.0, 0.5 * (tiny_upper(mu, 0.0, 0.5, 0.5 * df, logy) + tiny_upper(mu, 0.5, 1.0, 0.5 * df, logy)));
-        return upper ? up : 1.0 - up;
+        const Scaled up = clamp01(times(
+            add_s(tiny_upper_s(mu.hi, 0.0, 0.5, 0.5 * df, logy, mu.lo), tiny_upper_s(mu.hi, 0.5, 1.0, 0.5 * df, logy, mu.lo)),
+            0.5));
+        return upper ? up : one_minus(up);
     }
-    if (g.x.hi < distr_detail::kTinyArg) return upper ? nct_opposite(df, -nc, t) : 1.0 - nct_opposite(df, -nc, t);
+    if (g.x.hi < distr_detail::kTinyArg) return upper ? nct_opposite_s(df, -nc, t) : one_minus(nct_opposite_s(df, -nc, t));
     // t^2 / (df + t^2) below 2^-1000: the step at t = 0 is all (the rest is O(t), t < 1e-150)
-    if (g.y.hi < distr_detail::kTinyArg) return distr_detail::one<Ndtr>(upper ? nc : -nc);
-    const dd::DD mu = dd::two_prod(nc, nc) * 0.5;
+    if (g.y.hi < distr_detail::kTinyArg) return upper ? ndtr_neg_s(-nc) : ndtr_neg_s(nc);
     const double b = 0.5 * df;
     const BetaFamily fam{b, g.y, g.x, upper};
-    const double sp = mixture(mu.hi, 0.0, 0.5, fam, mu.lo);
-    const double sq = mixture(mu.hi, 0.5, 1.0, fam, mu.lo);
-    if (upper) return std::min(1.0, 0.5 * (sp + sq));
-    return std::clamp(distr_detail::one<Ndtr>(-nc) + 0.5 * (sp + std::copysign(sq, nc)), 0.0, 1.0);
+    const Scaled sp = mixture_s(mu.hi, 0.0, 0.5, fam, mu.lo, wide);
+    const Scaled sq = mixture_s(mu.hi, 0.5, 1.0, fam, mu.lo, wide);
+    if (upper) return clamp01(times(add_s(sp, sq), 0.5));
+    return clamp01(add_s(ndtr_neg_s(nc), times(add_s(sp, times(sq, std::copysign(1.0, nc))), 0.5)));
 }
-
+inline double nct(double df, double nc, double t, bool upper) { return value(nct_s(df, nc, t, upper)); }
 
 // ---- inverses
 //
@@ -814,5 +939,36 @@ struct Ncfdtri : Real {
                                           [&](double x) { return Ncfdtrc::f(dfn, dfd, nc, x); }, p, x0);
     }
 };
+
+namespace nc_detail {
+
+// ---- the tails as m 2^e over the whole domain (sd.stats' log forms and inverses, whose
+// values and targets reach far below the double range): the probability's own edges, then
+// the wide sums.
+
+inline Scaled chndtr_tail(double df, double nc, double x, bool upper) {
+    if (df > 0.0 && std::isfinite(df) && nc > 0.0 && std::isfinite(nc) && x > 0.0 && x < 0x1p-1021) {
+        // x/2 below the normals (x/2 itself would round): the j = 0 term, P(a, y) = y^a / Gamma(a + 1) (1 + O(y)),
+        // e^(-nc/2) times that in logs
+        const double a = 0.5 * df;
+        const Scaled lower = exp_wide((dd::log(x) - dd::kLn2) * a - lgamma_dd(dd::DD{a, 0.0} + 1.0) - 0.5 * nc);
+        return upper ? one_minus(lower) : lower;
+    }
+    double out;
+    if (ncx2_edge(df, nc, x, upper, out)) return scaled(out);
+    return clamp01(ncx2_s(df, nc, x, upper, true));
+}
+inline Scaled nctdtr_tail(double df, double nc, double t, bool upper) {
+    double out;
+    if (nct_edge(df, nc, t, upper, out)) return scaled(out);
+    return nct_s(df, nc, t, upper, true);
+}
+inline Scaled ncfdtr_tail(double dfn, double dfd, double nc, double x, bool upper) {
+    double out;
+    if (ncf_edge(dfn, dfd, nc, x, upper, out)) return scaled(out);
+    return clamp01(ncf_s(dfn, dfd, nc, x, upper, true));
+}
+
+}  // namespace nc_detail
 
 }  // namespace sd::special

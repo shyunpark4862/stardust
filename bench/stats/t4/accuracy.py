@@ -1,4 +1,4 @@
-"""T4: accuracy of the 12 continuous distributions against the mpmath references
+"""T4: accuracy of the 12 continuous distributions against the Arb references
 (tests/stats/ref), and scipy's error at the same points.
 
 Errors are in the contract's units (docs/design/stats.md §2.3): relative error (absolute
@@ -51,6 +51,8 @@ def main():
     print("|---|---:|---:|---:|---:|")
     for name in refdata.names():
         dist, method = refdata.split(name)
+        if dist not in SCIPY:  # T4's twelve only (the T5 and T6 files have their own benches)
+            continue
         xs, hi, lo, g, sc = refdata.load(name)
         got = refdata.call(name, xs)
         e = refdata.contract_error(name, got, hi, lo, sc)

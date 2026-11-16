@@ -34,8 +34,13 @@ inline DD log_prefix(double a, double b, DD x, DD y) {
 
 // log I_x(a, b) for a deep lower tail (x well below the mean): the log prefix plus
 // log(I / prefix), the factor by BFRAC when a, b > 1 (TOMS 708's choice away from the
-// mean) and by BPSER otherwise, both given a unit prefix.
+// mean) and by BPSER otherwise, both given a unit prefix; BGRAT (in logs) for a > 15,
+// b <= 1 and x within 1e-3 of 1, where BPSER's series in x needs ~40 / (1 - x) terms and
+// stops at its cap (the negative binomial's ccdf at k = 3.4e7, p = 1.2e-4 was 7e-10 off).
+// Above that BPSER stays: measured on the t's deep tails (y ~ 2e-3), it is 2e-16 to
+// BGRAT's 4e-16.
 inline double log_lower_deep(double a, double b, DD x, DD y) {
+    if (b <= 1.0 && a > 15.0 && y.hi < 1e-3) return special::ibeta_detail::log_bgrat(a, b, x, y);
     const special::Scaled unit = special::scaled(1.0);
     const double ratio = (a > 1.0 && b > 1.0) ? special::ibeta_detail::bfrac(a, b, x, y, unit)
                                               : special::ibeta_detail::bpser(a, b, x, y, unit);

@@ -139,3 +139,113 @@ class Weibull(ContinuousDistribution):
 
     def __init__(self, *, c, scale=1.0):
         self._set(c, scale)
+
+
+class Logistic(ContinuousDistribution):
+    """The logistic distribution with location mu and scale sigma > 0:
+    P(X <= x) = 1 / (1 + exp(-(x - mu) / sigma))."""
+
+    __slots__ = ()
+    _name = "logistic"
+    _params = ("mu", "sigma")
+
+    def __init__(self, *, mu=0.0, sigma=1.0):
+        self._set(mu, sigma)
+
+
+class Gumbel(ContinuousDistribution):
+    """The Gumbel distribution of maxima with location mu and scale sigma > 0:
+    P(X <= x) = exp(-exp(-(x - mu) / sigma)) (scipy's gumbel_r; T26)."""
+
+    __slots__ = ()
+    _name = "gumbel"
+    _params = ("mu", "sigma")
+
+    def __init__(self, *, mu=0.0, sigma=1.0):
+        self._set(mu, sigma)
+
+
+class GEV(ContinuousDistribution):
+    """The generalized extreme value distribution with shape c, location mu and scale
+    sigma > 0: P(X <= x) = exp(-(1 - c z)^(1/c)), z = (x - mu) / sigma; the Gumbel at c = 0.
+    c is scipy's (genextreme), the negative of the usual xi: c > 0 bounds X above at
+    mu + sigma / c, c < 0 below (T26)."""
+
+    __slots__ = ()
+    _name = "gev"
+    _params = ("c", "mu", "sigma")
+
+    def __init__(self, *, c, mu=0.0, sigma=1.0):
+        self._set(c, mu, sigma)
+
+
+class Pareto(ContinuousDistribution):
+    """The Pareto distribution with shape b > 0 and scale > 0: P(X > x) = (scale / x)^b for
+    x >= scale."""
+
+    __slots__ = ()
+    _name = "pareto"
+    _params = ("b", "scale")
+
+    def __init__(self, *, b, scale=1.0):
+        self._set(b, scale)
+
+
+class Rayleigh(ContinuousDistribution):
+    """The Rayleigh distribution with scale > 0: P(X > x) = exp(-x^2 / (2 scale^2)) for x >= 0
+    (T26: scale, as for the other distributions on [0, inf))."""
+
+    __slots__ = ()
+    _name = "rayleigh"
+    _params = ("scale",)
+
+    def __init__(self, *, scale=1.0):
+        self._set(scale)
+
+
+class InverseGamma(ContinuousDistribution):
+    """The inverse gamma distribution with shape a > 0 and scale > 0: X = scale / Y with
+    Y ~ Gamma(a) (density scale^a x^(-a-1) exp(-scale / x) / Gamma(a))."""
+
+    __slots__ = ()
+    _name = "inversegamma"
+    _params = ("a", "scale")
+
+    def __init__(self, *, a, scale=1.0):
+        self._set(a, scale)
+
+
+class NoncentralChiSquared(ContinuousDistribution):
+    """The noncentral chi-square distribution with df > 0 degrees of freedom and
+    noncentrality nc >= 0 (nc = 0: the chi-square; T26)."""
+
+    __slots__ = ()
+    _name = "noncentralchisquared"
+    _params = ("df", "nc")
+
+    def __init__(self, *, df, nc):
+        self._set(df, nc)
+
+
+class NoncentralT(ContinuousDistribution):
+    """The noncentral t distribution with df > 0 degrees of freedom and noncentrality nc:
+    (Z + nc) / sqrt(V / df), Z standard normal, V chi-square(df)."""
+
+    __slots__ = ()
+    _name = "noncentralt"
+    _params = ("df", "nc")
+
+    def __init__(self, *, df, nc):
+        self._set(df, nc)
+
+
+class NoncentralF(ContinuousDistribution):
+    """The noncentral F distribution with dfn > 0 and dfd > 0 degrees of freedom and
+    noncentrality nc >= 0 (nc = 0: the F distribution)."""
+
+    __slots__ = ()
+    _name = "noncentralf"
+    _params = ("dfn", "dfd", "nc")
+
+    def __init__(self, *, dfn, dfd, nc):
+        self._set(dfn, dfd, nc)
