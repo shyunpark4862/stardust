@@ -44,6 +44,7 @@
 | T25 이산 분포 (T5, 2026-11-15) | 메서드는 `pmf`·`logpmf`(T9), 나머지는 연속과 같다. 정수가 아닌 x에서 `pmf`는 0, `cdf`는 floor(x)에서의 값. `icdf(p)`는 cdf(k) ≥ p인 가장 작은 k, `iccdf(p)`는 ccdf(k) ≤ p인 가장 작은 k(scipy의 ppf·isf), `median`은 `icdf(1/2)`. `mode`는 T21을 따른다: 최빈값이 둘 이상이면 NaN(이항의 (n+1)p, 포아송의 μ가 정수일 때, 이산 균등). `Geometric`은 첫 성공까지의 시행 횟수(k ≥ 1, scipy), `NegativeBinomial`은 n번째 성공 전의 실패 횟수(k ≥ 0). `DiscreteUniform(low, high)`는 [low, high)(scipy randint, `sd.random.integers`와 같다). `Hypergeometric(total, successes, draws)`(scipy의 M, n, N). 분위수의 정확도는 후방 오차(2026-11-16): 목표를 상대 1e-14 안에서 움직였을 때의 정확한 분위수 중 하나(`icdf`·`iccdf`는 p와 1 − p 중 작은 쪽, `ilog…`는 t에 대해; §3.2) |
 | T26 극값·수명·비중심 (T6, 2026-11-16) | `GEV`의 모양은 scipy의 c(= −ξ, c > 0이면 위가 막힌 Weibull형). `Rayleigh(*, scale=1)`(T18의 양수형 규칙). `Gumbel`은 최댓값형(gumbel_r)만. 비중심의 nc ≥ 0(nc = 0이면 중심 분포). 비중심 셋의 `mode`는 pdf′ = 0의 근으로 1e-14 계약, `entropy`는 적응 구적이고 잰 정확도를 느슨한 한계로 문서화. 비중심의 보장 영역은 special(§14)의 잰 범위(확률 1e-300까지; 더 깊은 log 꼬리는 보장하지 않는다), 비중심 t의 모멘트는 큰 df에서 1/df 급수로 1e-14(2026-11-16). GEV의 왜도·첨도는 베이불과 같은 혼합 기준(T24; W = Y^c가 베이불이다) |
 | T27 표본 (T7, 2026-11-16) | `X.sample(shape=(), /, *, rng)`의 `rng`는 꼭 준다(sd.random의 R3: 전역 상태가 없다). 결과 모양은 `shape` + 매개변수의 브로드캐스트 모양이다(scipy 신형과 같다). 이산 분포의 표본도 float64다(icdf와 같다: T25; int64를 넘는 Zipf·로그 급수의 값과 inf). 방법은 분포마다 역함수 법과 전용 방법을 재서 골랐다(§4) |
+| T28 기술통계 (T8, 2026-11-16) | `axis=None`(전체)이 기본이다(sd.mean·sd.var와 같다; scipy는 0). NaN은 scipy의 `nan_policy`('propagate', 'omit', 'raise')로 받는다. 편향 보정은 scipy의 기본값을 따른다(skew·kurtosis는 `bias=True`, kurtosis는 `fisher=True`, describe·sem은 `correction=1`, zscore는 `correction=0`; 이름은 sd.var의 `correction`). describe·mode는 scipy와 같은 namedtuple(`DescribeResult`, `ModeResult`)이다. iqr은 `q=(0.25, 0.75)`(비율)와 `method`다(sd.quantile과 같다. scipy의 `rng`는 sd.random의 생성기와 이름이 겹친다). moment의 `order`는 꼭 주고, `center`도 둔다. rankdata는 다섯 방법 모두이고 scipy 1.18처럼 모두 float64다(질문의 설명에 적힌 'average만 float64'는 옛 scipy의 동작이었다. scipy와 같게로 정했다). differential_entropy는 scipy의 다섯 방법 모두(vasicek, van es, ebrahimi, correa, auto)다 |
 
 ### 1.2 범위
 - **단변량 연속 (21)**
@@ -169,20 +170,24 @@
 - **속도 기법**: 추가 단어를 쓰는 방법은 이웃한 원소 넷의 첫 추가 블록을 함께 계산한다(블록 하나는 지연 시간 12 ns, 넷을 섞으면 원소당 4.5 ns). 매개변수가 스칼라인 호출은 검사와 준비(감마의 d, c, PTRS의 상수)를 한 번만 한다. Python float 하나는 배열 없이 바로 돌려준다(1.9 → 0.28 µs).
 - **잰 값**: bench/stats/t7/(speed.md, quality.md). 요약은 docs/api/stats.md §2.5.
 
-## 5. 기술통계
+## 5. 기술통계 (`src/stardust/stats/_descriptive.py`, `csrc/bind/stats_desc.cpp`, T8)
 | 함수 | 내용 |
 |---|---|
-| `describe` | 개수, 최소·최대, 평균, 분산, 왜도, 첨도 (결과 namedtuple) |
-| `skew`, `kurtosis` | 표본 왜도·첨도 (편향 보정 옵션) |
-| `moment` | 중심 적률 |
-| `zscore` | 표준화 |
-| `rankdata` | 순위 (동점: 평균·최소·최대·조밀·순서) |
-| `sem` | 평균의 표준오차 |
-| `iqr` | 사분위 범위 (배열의 `quantile`을 쓴다) |
-| `mode` | 최빈값과 그 개수 |
-| `entropy` | 확률 벡터의 엔트로피, 두 벡터면 KL 발산 (`sd.special.entr`, `rel_entr`) |
-| `differential_entropy` | 표본에서 미분 엔트로피 추정 |
-- 축 인자의 기본값(scipy는 `axis=0`, 배열 영역은 `axis=None`), NaN 처리(scipy의 `nan_policy`), 결과 객체는 마일스톤 전에 묻는다(§11).
+| `describe` | 개수, (최소, 최대), 평균, 분산(`correction`), 왜도, 첨도(초과) — `DescribeResult` |
+| `skew`, `kurtosis` | m3/m2^(3/2), m4/m2² (− 3); `bias=False`면 수정 계수(n > 2, n > 3) |
+| `moment` | (x − center)^order의 평균, center = None이면 평균(중심 적률) |
+| `zscore` | (x − 평균)/표준편차 |
+| `rankdata` | 순위(average, min, max, dense, ordinal) |
+| `sem` | std(correction)/√n |
+| `iqr` | 분위수 q[1] − q[0](sd.quantile), `scale`로 나눔('normal'이면 1.349…) |
+| `mode` | 최빈값(동점은 가장 작은 값)과 개수 — `ModeResult` |
+| `entropy` | 정규화한 pk의 −Σp log p, qk가 있으면 Σp log(p/q) (`sd.special.entr`, `rel_entr`) |
+| `differential_entropy` | 표본 간격에서 미분 엔트로피 추정(scipy의 네 방법) |
+- **결정**: T28. scipy의 값과 경계를 따른다. 상수 표본의 skew·kurtosis·zscore는 NaN이고, 원소가 하나인 sem은 NaN이다. propagate에서 mode는 NaN을 하나의 값으로 센다. 빈 표본의 mode는 (NaN, 0)이고, 빈 describe는 `ValueError`다. 2m ≥ n인 differential_entropy는 NaN이다.
+- **줄(lane)**: 줄여야 할 축을 끝으로 옮겨 (줄 수, n) float64 행렬로 만들고(Python), 커널이 줄마다 계산한다(`desc_moments`, `desc_moment`, `desc_rank`, `desc_mode`, `desc_diffent`). omit은 줄마다 자기 개수로 계산한다. scipy의 omit은 마스크 배열이라 느리다(10⁶개 axis 0에서 50 ms, 우리 2.3 ms).
+- **적률의 정확도**: 평균을 hi + lo(보상 합 / n과 잔차의 평균)로 든다. 평균을 double로 반올림하면 평균 1e8에서 최대 7e-9가 틀리고, 그것이 m3에 3·오차·m2로 들어간다(퍼짐 1인 데이터에서 왜도가 1e-8 틀렸다). d = x − hi의 S_k = mean(d^k)를 한 번 훑어 구하고, lo = S1로 m2 = S2 − lo², m3 = S3 − 3 lo S2 + 2 lo³, m4 = S4 − 4 lo S3 + 6 lo² S2 − 3 lo⁴로 바꾼다(세 번째로 훑지 않는다). 합은 모두 Knuth의 TwoSum 보상 합이다(분기가 없어 벡터화된다). zscore도 (x − hi) − lo를 쓴다. 평균 1e8·퍼짐 1의 데이터 2000개에서 유리수로 계산한 정확한 값과 비교하면 skew 3.2e-16, kurtosis·m2 0이다. scipy는 skew 1.2e-8, kurtosis 1.1e-8이다. 테스트는 1e-14로 확인한다.
+- **병렬**: 적률은 줄마다 8192개씩 고정된 블록으로 나눠 (줄, 블록)을 풀에서 계산하고, 블록 순서대로 합친다. 블록이 스레드 수와 무관하므로 비트도 무관하고, axis=None의 줄 하나도 병렬이다. 보상 합 여덟 개를 나란히 둬서 의존 사슬을 끊는다. 정렬하는 함수(rankdata, mode, differential_entropy)는 줄 단위로만 병렬이다.
+- **잰 값**: bench/stats/t8/speed.md. 요약은 docs/api/stats.md §4.
 
 ## 6. 다변량 분포
 

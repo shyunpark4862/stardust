@@ -218,7 +218,7 @@
 | T5 이산 10 | 완료, 승인 대기 (2026-11-16) |
 | T6 극값·수명 6과 비중심 3 | 완료, 승인 대기 (2026-11-16) |
 | T7 표본 (`sample`) | 완료, 승인 대기 (2026-11-16) |
-| T8 기술통계 | 대기 |
+| T8 기술통계 | 완료, 승인 대기 (2026-11-16) |
 | T9 다변량: 정규, t, 다항, 디리클레 | 대기 |
 | T10 행렬 분포: Wishart, 역Wishart, 행렬 정규 | 대기 |
 | T11 `sd.stats.tests` (설계 질문부터) | 대기 |
@@ -276,6 +276,8 @@
 
 ### T8. 기술통계
 - `describe skew kurtosis moment zscore rankdata sem iqr mode entropy differential_entropy`
+- 결정(사용자, 2026-11-16): docs/design/stats.md T28 (axis=None 기본, nan_policy, scipy의 보정 기본값과 namedtuple, iqr의 q·method, moment의 order는 꼭, rankdata·differential_entropy는 scipy의 방법 전부).
+- 결과: src/stardust/stats/_descriptive.py, csrc/bind/stats_desc.cpp; docs/api/stats.md §4, docs/design/stats.md §5; 측정 bench/stats/t8/speed.md; 테스트 tests/stats/test_descriptive.py.
 
 ### T9. 다변량: 정규, t, 다항, 디리클레
 - `pdf logpdf sample mean covariance entropy`, 다변량 정규·t의 `cdf`(Genz, 느슨한 계약)

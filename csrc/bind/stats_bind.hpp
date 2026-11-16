@@ -11,4 +11,7 @@ void bind_stats(nanobind::module_& core);
 // The samples, <distribution>_sample (bind/stats_sample.cpp); bind_stats calls it.
 void bind_stats_sample(nanobind::module_& stats);
 
+// The descriptive statistics' lane kernels, desc_* (bind/stats_desc.cpp).
+void bind_stats_desc(nanobind::module_& stats);
+
 }  // namespace sd

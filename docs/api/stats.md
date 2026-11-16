@@ -1,6 +1,6 @@
 # sd.stats API
 
-> 상태: **T7 구현** (2026-11-16): 연속 분포 12개(T4), 이산 분포 10개(T5), 극값·수명 6개와 비중심 3개(T6), 모든 분포의 `sample`(T7). §2.1의 나머지는 초안이다. 결정과 내부 구조는 [docs/design/stats.md](../design/stats.md) (T1–T23).
+> 상태: **T8 구현** (2026-11-16): 연속 분포 12개(T4), 이산 분포 10개(T5), 극값·수명 6개와 비중심 3개(T6), 모든 분포의 `sample`(T7), 기술통계(T8). §2.1의 나머지와 §3, §6은 초안이다. 결정과 내부 구조는 [docs/design/stats.md](../design/stats.md) (T1–T28).
 
 ## §1. 공통 규칙
 - 입력은 위치로만(`/` 앞), 옵션은 키워드로만(`*` 뒤). 별칭은 없다.
@@ -124,21 +124,27 @@ MatrixNormal(mean, rowcov, colcov)
 - 메서드: `pdf logpdf`(다항은 `pmf logpmf`), `sample`, `mean`, `covariance`, `entropy`.
 - `MultivariateNormal`과 `MultivariateT`의 `cdf`는 1e-14 계약 밖이다. Genz 방법을 고정 시드로 결정적으로 계산하고, 값과 오차 추정을 함께 돌려준다(docs/design/stats.md §6.2).
 
-## §4. 기술통계 (초안)
+## §4. 기술통계 (T8)
 ```
-describe(x, /, *, axis, correction, bias)
-skew(x, /, *, axis, bias)
-kurtosis(x, /, *, axis, fisher, bias)
-moment(x, /, *, order, axis)
-zscore(x, /, *, axis, correction)
-rankdata(x, /, *, method, axis)
-sem(x, /, *, axis, correction)
-iqr(x, /, *, axis)
-mode(x, /, *, axis)
-entropy(pk, qk=None, /, *, base, axis)
-differential_entropy(x, /, *, axis, method)
+describe(x, /, *, axis=None, correction=1, bias=True, nan_policy='propagate')
+skew(x, /, *, axis=None, bias=True, nan_policy='propagate', keepdims=False)
+kurtosis(x, /, *, axis=None, fisher=True, bias=True, nan_policy='propagate', keepdims=False)
+moment(x, /, *, order, center=None, axis=None, nan_policy='propagate', keepdims=False)
+zscore(x, /, *, axis=None, correction=0, nan_policy='propagate')
+rankdata(x, /, *, method='average', axis=None, nan_policy='propagate')
+sem(x, /, *, axis=None, correction=1, nan_policy='propagate', keepdims=False)
+iqr(x, /, *, axis=None, q=(0.25, 0.75), scale=1.0, method='linear', nan_policy='propagate', keepdims=False)
+mode(x, /, *, axis=None, nan_policy='propagate', keepdims=False)
+entropy(pk, qk=None, /, *, base=None, axis=None, nan_policy='propagate', keepdims=False)
+differential_entropy(x, /, *, window_length=None, base=None, axis=None, method='auto',
+                     nan_policy='propagate', keepdims=False)
 ```
-- 축의 기본값, NaN 처리, 편향 보정의 기본값은 T8 전에 정한다. 자유도 인자는 배열의 `var`처럼 `correction`이다(scipy의 `ddof`).
+- **공통**: 입력은 위치로, 옵션은 키워드로만 준다. `axis`는 None(전체, sd.mean·sd.var와 같다; scipy는 0), int, int의 tuple이다. 입력은 `sd.ndarray`, 실수의 시퀀스, Python 실수이고 float64로 계산한다(complex는 `TypeError`). 결과는 float64이고, 축이 남지 않으면 Python float이다. 결정은 docs/design/stats.md T28.
+- **`nan_policy`**(scipy와 같다): 'propagate'면 NaN이 있는 줄의 결과가 NaN이다(mode는 NaN을 하나의 값으로 센다). 'omit'이면 줄마다 NaN을 빼고 계산하고, 'raise'면 NaN이 있을 때 `ValueError`다.
+- **scipy와의 차이** (이름과 기본값만이고 값은 같다): 축의 기본값(None), 자유도 인자 이름(`ddof` → `correction`), iqr의 `rng=(25, 75)`·`interpolation` → `q=(0.25, 0.75)`·`method`(sd.quantile과 같다), moment의 `order`는 꼭 준다.
+- **결과 객체**: `describe`는 `DescribeResult(nobs, minmax, mean, variance, skewness, kurtosis)`, `mode`는 `ModeResult(mode, count)`다(scipy와 같은 namedtuple). nobs는 propagate면 int이고, omit이면 줄마다의 개수다.
+- **정확도**: 적률은 평균을 두 부분(hi + lo)으로 들고 보상 합으로 계산한다. 평균 1e8·퍼짐 1의 데이터(2000개)에서 정확한 값(유리수 계산)과 비교한 상대오차는 skew 3.2e-16이고 kurtosis·m2는 0이다. scipy는 같은 데이터에서 skew 1.2e-8, kurtosis 1.1e-8이다(평균을 double로 반올림한 채 빼기 때문이다; m2는 0). 그 밖의 값은 scipy와 1e-13 안에서 같다(tests/stats/test_descriptive.py).
+- **속도** (bench/stats/t8/speed.md, 10⁶개, scipy 대비): 1스레드에서 skew·kurtosis·moment 3.0–3.9배, describe 3.9–4.9배, rankdata 1.3배, mode 1.1–2.7배, iqr 1.3–1.9배, differential_entropy 1.9–3.3배, omit이 있으면 4–22배다. 10스레드에서는 대부분 10–30배다. 1스레드에서 느린 것은 sem(0.3–0.46배)과 zscore(0.67–0.92배)다. 두 번 훑고 보상 합을 쓰는 비용이다(scipy의 std는 보상하지 않는다). 10스레드에서는 1.8–4.6배로 빠르다.
 
 ## §5. 배열과 special에 더하는 것
 - 배열(T0, 완료): `cov`, `corrcoef`, `quantile`, `median`, NaN 리덕션. docs/api/array.md §7.9–§7.11.

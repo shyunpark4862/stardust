@@ -1,0 +1,429 @@
+"""Descriptive statistics (T8, docs/api/stats.md §4, docs/design/stats.md §5; decisions T28).
+
+scipy.stats' functions with stardust's conventions: the input is positional and the options
+keyword-only; axis=None (the whole array) by default as sd.mean and sd.var; the degrees of
+freedom are `correction` (sd.var's name for numpy's ddof); nan_policy is scipy's three
+('propagate' a NaN to its lane's result, 'omit' it, 'raise' ValueError). Results are float64
+(Python floats where the result has no axes); describe and mode return scipy's namedtuples.
+
+The reductions move the reduced axes last and run lane by lane in the native kernels
+stardust._core.stats.desc_* (compensated sums, two-pass moments).
+"""
+
+import math
+import operator
+from collections import namedtuple
+
+from .. import _core as _sd_core
+
+_k = _sd_core.stats
+
+DescribeResult = namedtuple("DescribeResult", ("nobs", "minmax", "mean", "variance", "skewness", "kurtosis"))
+ModeResult = namedtuple("ModeResult", ("mode", "count"))
+
+_POLICIES = ("propagate", "omit", "raise")
+_EPS = 2.0**-52
+
+
+def _type_name(v):
+    return type(v).__name__
+
+
+def _as_array(x, name, arg="x"):
+    """x as a float64 sd.ndarray (Python numbers and sequences through sd.asarray)."""
+    sd = _sd_core
+    if isinstance(x, sd.ndarray):
+        a = x
+    elif isinstance(x, (bool, int, float)):
+        a = sd.asarray([float(x)])
+    else:
+        try:
+            a = sd.asarray(x)
+        except (TypeError, ValueError) as e:
+            raise TypeError(f"{name}(): '{arg}' must be an sd.ndarray or a sequence of numbers, not {_type_name(x)}") from e
+    if a.dtype == sd.complex128:
+        raise TypeError(f"{name}(): '{arg}' must be real, not a complex128 array")
+    return a if a.dtype == sd.float64 else a.astype(sd.float64)
+
+
+def _policy(nan_policy, name):
+    if nan_policy not in _POLICIES:
+        raise ValueError(f"{name}(): 'nan_policy' must be one of 'propagate', 'omit', 'raise', not {nan_policy!r}")
+    return nan_policy
+
+
+def _check_nan(a, nan_policy, name):
+    if nan_policy == "raise" and a.size and bool(_sd_core.any(_sd_core.isnan(a))):
+        raise ValueError(f"{name}(): the input contains NaN (nan_policy='raise')")
+
+
+def _bool(v, name, arg):
+    if v is not True and v is not False:
+        raise TypeError(f"{name}(): '{arg}' must be True or False, not {_type_name(v)}")
+    return v
+
+
+def _axes(axis, ndim, name):
+    """The reduced axes, sorted (None: all)."""
+    if axis is None:
+        return tuple(range(ndim))
+    items = axis if isinstance(axis, tuple) else (axis,)
+    out = []
+    for ax in items:
+        if isinstance(ax, bool):
+            raise TypeError(f"{name}(): 'axis' must be an int, a tuple of ints or None, not bool")
+        try:
+            i = operator.index(ax)
+        except TypeError:
+            raise TypeError(f"{name}(): 'axis' must be an int, a tuple of ints or None, not {_type_name(ax)}") from None
+        if not -ndim <= i < ndim:
+            raise ValueError(f"{name}(): axis {i} is out of bounds for an array of dimension {ndim}")
+        out.append(i % ndim)
+    if len(set(out)) != len(out):
+        raise ValueError(f"{name}(): repeated axis in 'axis'")
+    return tuple(sorted(out))
+
+
+class _Lanes:
+    """a with the reduced axes moved last, as a (lanes, n) float64 array, and the shapes to put
+    a per-lane result back."""
+
+    def __init__(self, a, axis, name):
+        sd = _sd_core
+        red = _axes(axis, a.ndim, name)
+        kept = tuple(d for d in range(a.ndim) if d not in red)
+        self.ndim = a.ndim
+        self.red = red
+        self.perm = kept + red
+        self.kept_shape = tuple(a.shape[d] for d in kept)
+        self.n = math.prod(a.shape[d] for d in red)
+        lanes = math.prod(self.kept_shape)
+        t = sd.permute_dims(a, self.perm) if self.perm != tuple(range(a.ndim)) else a
+        self.moved_shape = tuple(t.shape)
+        self.rows = sd.reshape(t, (lanes, self.n))
+        self.keep_shape = tuple(1 if d in red else a.shape[d] for d in range(a.ndim))
+
+    def out(self, v, keepdims=False):
+        """A per-lane vector in the result's shape (a Python number for no axes)."""
+        shape = self.keep_shape if keepdims else self.kept_shape
+        if not shape:
+            x = v[0]
+            return int(x) if isinstance(x, int) else float(x)
+        return _sd_core.reshape(v, shape)
+
+    def back(self, rows):
+        """A (lanes, n) result in the input's shape (the axes moved back)."""
+        sd = _sd_core
+        t = sd.reshape(rows, self.moved_shape)
+        if self.perm == tuple(range(self.ndim)):
+            return t
+        inv = [0] * self.ndim
+        for i, d in enumerate(self.perm):
+            inv[d] = i
+        return sd.permute_dims(t, tuple(inv))
+
+
+def _float(v):
+    return v.astype(_sd_core.float64)
+
+
+def _moments(a, axis, nan_policy, name, kmax=4, minmax=False):
+    lanes = _Lanes(a, axis, name)
+    _check_nan(a, nan_policy, name)
+    res = _k.desc_moments(lanes.rows, nan_policy == "omit", kmax, minmax)
+    return lanes, res
+
+
+def _skew_of(n, mean, m2, m3, bias):
+    sd = _sd_core
+    with_nan = sd.where(m2 <= (_EPS * mean) * (_EPS * mean), float("nan"), m3 / (m2 * sd.sqrt(m2)))
+    if bias:
+        return with_nan
+    nf = _float(n)
+    corr = sd.sqrt((nf - 1.0) * nf) / (nf - 2.0) * with_nan
+    return sd.where(nf > 2.0, corr, with_nan)
+
+
+def _kurt_of(n, mean, m2, m4, fisher, bias):
+    sd = _sd_core
+    vals = sd.where(m2 <= (_EPS * mean) * (_EPS * mean), float("nan"), m4 / (m2 * m2))
+    if not bias:
+        nf = _float(n)
+        corr = 1.0 / (nf - 2.0) / (nf - 3.0) * ((nf * nf - 1.0) * vals - 3.0 * (nf - 1.0) * (nf - 1.0)) + 3.0
+        vals = sd.where(nf > 3.0, corr, vals)
+    return vals - 3.0 if fisher else vals
+
+
+def _var_of(n, m2, correction):
+    sd = _sd_core
+    nf = _float(n)
+    den = nf - correction
+    return sd.where(den > 0.0, m2 * nf / den, float("nan"))
+
+
+def _correction(v, name):
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        raise TypeError(f"{name}(): 'correction' must be an int or a float, not {_type_name(v)}")
+    return float(v)
+
+
+# ---- the functions ------------------------------------------------------------------------
+
+
+def skew(x, /, *, axis=None, bias=True, nan_policy="propagate", keepdims=False):
+    """The sample skewness m3 / m2^(3/2) (bias=False: the adjusted Fisher-Pearson coefficient,
+    for n > 2); NaN where the sample is constant."""
+    name = "skew"
+    _policy(nan_policy, name), _bool(bias, name, "bias"), _bool(keepdims, name, "keepdims")
+    lanes, (n, mean, m2, m3, _, _, _, _) = _moments(_as_array(x, name), axis, nan_policy, name, 3)
+    return lanes.out(_skew_of(n, mean, m2, m3, bias), keepdims)
+
+
+def kurtosis(x, /, *, axis=None, fisher=True, bias=True, nan_policy="propagate", keepdims=False):
+    """The sample kurtosis m4 / m2^2, minus 3 with fisher=True (the excess kurtosis, as
+    X.kurtosis(): T23); bias=False corrects it (n > 3). NaN where the sample is constant."""
+    name = "kurtosis"
+    _policy(nan_policy, name), _bool(fisher, name, "fisher"), _bool(bias, name, "bias")
+    _bool(keepdims, name, "keepdims")
+    lanes, (n, mean, m2, _, m4, _, _, _) = _moments(_as_array(x, name), axis, nan_policy, name)
+    return lanes.out(_kurt_of(n, mean, m2, m4, fisher, bias), keepdims)
+
+
+def describe(x, /, *, axis=None, correction=1, bias=True, nan_policy="propagate"):
+    """DescribeResult(nobs, minmax, mean, variance, skewness, kurtosis): the count, (min, max),
+    the mean, the variance with `correction` (1: the sample variance), skew and kurtosis
+    (excess) with `bias`. An empty input is a ValueError (scipy)."""
+    name = "describe"
+    _policy(nan_policy, name), _bool(bias, name, "bias")
+    corr = _correction(correction, name)
+    a = _as_array(x, name)
+    if a.size == 0:
+        raise ValueError("describe(): the input must not be empty")
+    lanes, (n, mean, m2, m3, m4, lo, hi, _) = _moments(a, axis, nan_policy, name, 4, True)
+    if nan_policy == "omit":
+        nobs = lanes.out(n)
+    else:
+        nobs = lanes.n
+    return DescribeResult(nobs, (lanes.out(lo), lanes.out(hi)), lanes.out(mean), lanes.out(_var_of(n, m2, corr)),
+                          lanes.out(_skew_of(n, mean, m2, m3, bias)),
+                          lanes.out(_kurt_of(n, mean, m2, m4, True, bias)))
+
+
+def _orders(order, name):
+    if order is None:
+        raise TypeError(f"{name}(): missing the keyword argument 'order'")
+    scalar = isinstance(order, (bool, int, float))
+    items = [order] if scalar else list(order.tolist() if isinstance(order, _sd_core.ndarray) else order)
+    out = []
+    for o in items:
+        if isinstance(o, bool) or not isinstance(o, (int, float)):
+            raise TypeError(f"{name}(): 'order' must be an int or a sequence of ints, not {_type_name(o)}")
+        if o != math.floor(o):
+            raise ValueError(f"{name}(): every 'order' must be integral")
+        out.append(float(o))
+    return out, scalar
+
+
+def moment(x, /, *, order, center=None, axis=None, nan_policy="propagate", keepdims=False):
+    """The `order`-th moment about `center`, mean((x - center)^order); center=None is the
+    mean (the central moment: order 1 gives 0). `order` an int or a sequence of them (the
+    results stacked on a new first axis); `center` a number or an array of the result's shape."""
+    name = "moment"
+    sd = _sd_core
+    _policy(nan_policy, name), _bool(keepdims, name, "keepdims")
+    orders, scalar = _orders(order, name)
+    a = _as_array(x, name)
+    lanes = _Lanes(a, axis, name)
+    _check_nan(a, nan_policy, name)
+    centers = None
+    if center is not None:
+        c = _as_array(center, name, "center") if not isinstance(center, (int, float)) else None
+        lanes_count = lanes.rows.shape[0]
+        if c is None:
+            centers = sd.full((lanes_count,), float(center))
+        else:
+            try:
+                centers = sd.reshape(sd.broadcast_to(c, lanes.kept_shape), (lanes_count,)) if lanes.kept_shape \
+                    else sd.reshape(c, (1,))
+            except ValueError:
+                raise ValueError(f"{name}(): 'center' cannot be broadcast to the result's shape {lanes.kept_shape}") \
+                    from None
+    omit = nan_policy == "omit"
+    central = None
+    if centers is None and any(o in (2.0, 3.0, 4.0) for o in orders):  # the moments kernel (parallel blocks)
+        central = _k.desc_moments(lanes.rows, omit, int(max(o for o in orders if o <= 4.0)), False)
+
+    def one(o):
+        if central is not None and o in (2.0, 3.0, 4.0):
+            return central[int(o)]
+        return _k.desc_moment(lanes.rows, o, centers, omit)
+
+    res = [lanes.out(one(o), keepdims) for o in orders]
+    if scalar:
+        return res[0]
+    if isinstance(res[0], float):
+        return sd.asarray(res)
+    return sd.stack(res)
+
+
+def sem(x, /, *, axis=None, correction=1, nan_policy="propagate", keepdims=False):
+    """The standard error of the mean, std(correction) / sqrt(n)."""
+    name = "sem"
+    _policy(nan_policy, name), _bool(keepdims, name, "keepdims")
+    corr = _correction(correction, name)
+    lanes, (n, _, m2, _, _, _, _, _) = _moments(_as_array(x, name), axis, nan_policy, name, 2)
+    return lanes.out(_sd_core.sqrt(_var_of(n, m2, corr) / _float(n)), keepdims)
+
+
+def zscore(x, /, *, axis=None, correction=0, nan_policy="propagate"):
+    """(x - mean) / std along the axes (`correction` for the std; omit: the NaNs stay NaN and
+    are left out of the mean and std). NaN where the lane is constant."""
+    name = "zscore"
+    sd = _sd_core
+    _policy(nan_policy, name)
+    corr = _correction(correction, name)
+    a = _as_array(x, name)
+    lanes, (n, mean, m2, _, _, _, _, mean_lo) = _moments(a, axis, nan_policy, name, 2)
+    std = sd.sqrt(_var_of(n, m2, corr))
+    std = sd.where(std <= sd.abs(_EPS * mean), float("nan"), std)
+    shape = lanes.keep_shape
+    # (x - mean) - mean_lo: the mean's rounding would shift every z by it / std
+    return ((a - sd.reshape(mean, shape)) - sd.reshape(mean_lo, shape)) / sd.reshape(std, shape)
+
+
+_RANK_METHODS = {"average": 0, "min": 1, "max": 2, "dense": 3, "ordinal": 4}
+
+
+def rankdata(x, /, *, method="average", axis=None, nan_policy="propagate"):
+    """Ranks from 1 along the axis (axis=None: of the flattened array, a 1-D result as scipy).
+    method: 'average' (ties share their mean rank), 'min', 'max', 'dense' (consecutive) or
+    'ordinal' (ties by position). float64. A lane with a NaN is all NaN; with omit its NaNs
+    are NaN and the rest ranked among themselves."""
+    name = "rankdata"
+    sd = _sd_core
+    _policy(nan_policy, name)
+    if method not in _RANK_METHODS:
+        raise ValueError(f"rankdata(): 'method' must be one of {', '.join(map(repr, _RANK_METHODS))}, not {method!r}")
+    a = _as_array(x, name)
+    if axis is None:
+        a = sd.reshape(a, (a.size,))
+        axis = 0
+    elif isinstance(axis, tuple):
+        raise TypeError("rankdata(): 'axis' must be an int or None, not tuple")
+    _check_nan(a, nan_policy, name)
+    lanes = _Lanes(a, axis, name)
+    return lanes.back(_k.desc_rank(lanes.rows, _RANK_METHODS[method], nan_policy == "omit"))
+
+
+def mode(x, /, *, axis=None, nan_policy="propagate", keepdims=False):
+    """ModeResult(mode, count): the most frequent value (the smallest of ties) and its count.
+    With propagate NaN counts as a value (scipy); an empty lane is (NaN, 0)."""
+    name = "mode"
+    _policy(nan_policy, name), _bool(keepdims, name, "keepdims")
+    a = _as_array(x, name)
+    lanes = _Lanes(a, axis, name)
+    _check_nan(a, nan_policy, name)
+    m, c = _k.desc_mode(lanes.rows, nan_policy == "omit")
+    return ModeResult(lanes.out(m, keepdims), lanes.out(c, keepdims))
+
+
+_NORMAL_IQR = 1.3489795003921634  # 2 sqrt(2) erfinv(1/2): the standard normal's IQR
+
+
+def iqr(x, /, *, axis=None, q=(0.25, 0.75), scale=1.0, method="linear", nan_policy="propagate", keepdims=False):
+    """quantile(x, q[1]) - quantile(x, q[0]) divided by `scale` (a number, or 'normal' for the
+    standard normal's IQR, 1.349...: a consistent estimate of sigma). q as fractions and
+    `method` as sd.quantile's."""
+    name = "iqr"
+    sd = _sd_core
+    _policy(nan_policy, name), _bool(keepdims, name, "keepdims")
+    try:
+        q0, q1 = (float(v) for v in q)
+    except (TypeError, ValueError):
+        raise TypeError("iqr(): 'q' must be a pair of numbers in [0, 1]") from None
+    if not (0.0 <= q0 <= 1.0 and 0.0 <= q1 <= 1.0):
+        raise ValueError("iqr(): 'q' must be a pair of numbers in [0, 1]")
+    if isinstance(scale, str):
+        if scale != "normal":
+            raise ValueError(f"iqr(): 'scale' must be a number or 'normal', not {scale!r}")
+        scale = _NORMAL_IQR
+    elif isinstance(scale, bool) or not isinstance(scale, (int, float)):
+        raise TypeError(f"iqr(): 'scale' must be a number or 'normal', not {_type_name(scale)}")
+    a = _as_array(x, name)
+    _check_nan(a, nan_policy, name)
+    f = sd.nanquantile if nan_policy == "omit" else sd.quantile
+    lo = f(a, q0, axis=axis, method=method, keepdims=keepdims)
+    hi = f(a, q1, axis=axis, method=method, keepdims=keepdims)
+    return (hi - lo) / float(scale)
+
+
+def entropy(pk, qk=None, /, *, base=None, axis=None, nan_policy="propagate", keepdims=False):
+    """The Shannon entropy -sum p log p of pk normalized along the axes, or with qk the relative
+    entropy (Kullback-Leibler divergence) sum p log(p / q); in nats, or in `base`. omit drops
+    the NaN positions (of either)."""
+    name = "entropy"
+    sd = _sd_core
+    _policy(nan_policy, name), _bool(keepdims, name, "keepdims")
+    if base is not None and (isinstance(base, bool) or not isinstance(base, (int, float)) or not base > 0):
+        raise ValueError("entropy(): 'base' must be a positive number or None")
+    p = _as_array(pk, name, "pk")
+    q = _as_array(qk, name, "qk") if qk is not None else None
+    if q is not None:
+        try:
+            p, q = sd.broadcast_arrays(p, q)
+        except ValueError:
+            raise ValueError("entropy(): 'pk' and 'qk' could not be broadcast together") from None
+    red = _axes(axis, p.ndim, name)
+    for v in (p, q):
+        if v is not None:
+            _check_nan(v, nan_policy, name)
+    if nan_policy == "omit":
+        bad = sd.isnan(p) if q is None else (sd.isnan(p) | sd.isnan(q))
+        p = sd.where(bad, 0.0, p)
+        if q is not None:
+            q = sd.where(bad, 0.0, q)
+    p = p / sd.sum(p, axis=red, keepdims=True)
+    if q is None:
+        vec = sd.special.entr(p)
+    else:
+        q = q / sd.sum(q, axis=red, keepdims=True)
+        vec = sd.special.rel_entr(p, q)
+    s = sd.sum(vec, axis=red, keepdims=keepdims)
+    return s / math.log(base) if base is not None else s
+
+
+_DE_METHODS = {"vasicek": 0, "van es": 1, "ebrahimi": 2, "correa": 3, "auto": -1}
+
+
+def differential_entropy(x, /, *, window_length=None, base=None, axis=None, method="auto", nan_policy="propagate",
+                         keepdims=False):
+    """An estimate of the differential entropy of the distribution x is a sample of, from its
+    spacings (scipy's methods: 'vasicek', 'van es', 'ebrahimi', 'correa'; 'auto' picks van Es
+    for n <= 10, Ebrahimi for n <= 1000, else Vasicek). window_length m: default
+    floor(sqrt(n) + 1/2); a lane with 2m >= n (or m < 1) gives NaN."""
+    name = "differential_entropy"
+    _policy(nan_policy, name), _bool(keepdims, name, "keepdims")
+    if not isinstance(method, str) or method.lower() not in _DE_METHODS:
+        raise ValueError(f"differential_entropy(): 'method' must be one of {', '.join(map(repr, _DE_METHODS))}, "
+                         f"not {method!r}")
+    if window_length is None:
+        m = 0
+    else:
+        if isinstance(window_length, bool):
+            raise TypeError("differential_entropy(): 'window_length' must be an int or None, not bool")
+        try:
+            m = operator.index(window_length)
+        except TypeError:
+            raise TypeError(f"differential_entropy(): 'window_length' must be an int or None, not "
+                            f"{_type_name(window_length)}") from None
+        if m < 1:
+            raise ValueError("differential_entropy(): 'window_length' must be positive")
+    if base is not None and (isinstance(base, bool) or not isinstance(base, (int, float)) or not base > 0):
+        raise ValueError("differential_entropy(): 'base' must be a positive number or None")
+    a = _as_array(x, name)
+    lanes = _Lanes(a, axis, name)
+    _check_nan(a, nan_policy, name)
+    v = _k.desc_diffent(lanes.rows, m, _DE_METHODS[method.lower()], nan_policy == "omit")
+    if base is not None:
+        v = v / math.log(base)
+    return lanes.out(v, keepdims)

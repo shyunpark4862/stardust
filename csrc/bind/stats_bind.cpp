@@ -92,6 +92,7 @@ void bind_stats(nb::module_& core) {
     def_discrete<stats::LogSeries>(m);
     def_discrete<stats::Zipf>(m);
     bind_stats_sample(m);  // T7
+    bind_stats_desc(m);    // T8
 }
 
 }  // namespace sd

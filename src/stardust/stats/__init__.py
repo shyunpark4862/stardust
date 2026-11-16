@@ -1,7 +1,7 @@
 """stardust.stats: probability distributions (scipy.stats' new-style API, a subset).
 
 Usage: ``import stardust as sd`` then ``X = sd.stats.Normal(mu=0.0, sigma=2.0)`` and
-``X.cdf(x)``. The public API is docs/api/stats.md; the decisions are
+``X.cdf(x)``; descriptive statistics as ``sd.stats.skew(x)``. The public API is docs/api/stats.md; the decisions are
 docs/design/stats.md §1.1. Every method is elementwise and accurate to 1e-14 relative
 in each distribution's guaranteed region, like sd.special.
 """
@@ -11,6 +11,8 @@ from ._continuous import (GEV, Beta, Cauchy, ChiSquared, Exponential, F, Gamma, 
                           StudentT, Uniform, Weibull)
 from ._discrete import (Bernoulli, BetaBinomial, Binomial, DiscreteUniform, Geometric, Hypergeometric, LogSeries,
                         NegativeBinomial, Poisson, Zipf)
+from ._descriptive import (DescribeResult, ModeResult, describe, differential_entropy, entropy, iqr, kurtosis, mode,
+                           moment, rankdata, sem, skew, zscore)
 from ._distribution import ContinuousDistribution, DiscreteDistribution
 
 __all__ = [
@@ -24,4 +26,7 @@ __all__ = [
     # T5: discrete
     "Binomial", "Poisson", "Geometric", "NegativeBinomial", "Hypergeometric", "Bernoulli", "DiscreteUniform",
     "BetaBinomial", "LogSeries", "Zipf",
+    # T8: descriptive statistics (docs/api/stats.md §4)
+    "describe", "skew", "kurtosis", "moment", "zscore", "rankdata", "sem", "iqr", "mode", "entropy",
+    "differential_entropy", "DescribeResult", "ModeResult",
 ]
