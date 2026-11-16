@@ -1,6 +1,6 @@
 # sd.stats API
 
-> 상태: **T8 구현** (2026-11-16): 연속 분포 12개(T4), 이산 분포 10개(T5), 극값·수명 6개와 비중심 3개(T6), 모든 분포의 `sample`(T7), 기술통계(T8). §2.1의 나머지와 §3, §6은 초안이다. 결정과 내부 구조는 [docs/design/stats.md](../design/stats.md) (T1–T28).
+> 상태: **T9 구현** (2026-11-16): 연속 분포 12개(T4), 이산 분포 10개(T5), 극값·수명 6개와 비중심 3개(T6), 모든 분포의 `sample`(T7), 기술통계(T8), 다변량 4개(T9). 행렬 분포(T10)와 §6은 초안이다. 결정과 내부 구조는 [docs/design/stats.md](../design/stats.md) (T1–T29).
 
 ## §1. 공통 규칙
 - 입력은 위치로만(`/` 앞), 옵션은 키워드로만(`*` 뒤). 별칭은 없다.
@@ -114,15 +114,33 @@ X.sample(shape=(), /, *, rng)
 
   Python float 하나는 호출당 0.24–0.5 µs다(numpy의 0.4–2배).
 
-## §3. 다변량 분포 (초안)
+## §3. 다변량 분포 (T9)
 ```
-MultivariateNormal(mu, cov)        MultivariateT(mu, shape, df)
-Multinomial(n, p)                  Dirichlet(alpha)
-Wishart(df, scale)                 InverseWishart(df, scale)
-MatrixNormal(mean, rowcov, colcov)
+MultivariateNormal(*, mu, cov)        MultivariateT(*, mu, shape, df)
+Multinomial(*, n, p)                  Dirichlet(*, alpha)
+
+X.pdf(x, /)  X.logpdf(x, /)           # Multinomial: pmf, logpmf
+X.cdf(x, /, *, atol=1e-6, return_error=False, max_points=None)    # MultivariateNormal, MultivariateT
+X.mean()  X.covariance()  X.entropy()
+X.sample(shape=(), /, *, rng)
+Wishart(df, scale)  InverseWishart(df, scale)  MatrixNormal(mean, rowcov, colcov)   # T10 (초안)
 ```
-- 메서드: `pdf logpdf`(다항은 `pmf logpmf`), `sample`, `mean`, `covariance`, `entropy`.
-- `MultivariateNormal`과 `MultivariateT`의 `cdf`는 1e-14 계약 밖이다. Genz 방법을 고정 시드로 결정적으로 계산하고, 값과 오차 추정을 함께 돌려준다(docs/design/stats.md §6.2).
+- **매개변수** (키워드만, T19): `mu` (..., d), `cov`·`shape` (..., d, d), `df` (...), `n` (...), `p` (..., K), `alpha` (..., K). 앞 축끼리 브로드캐스트한다(배치, T29). 공분산은 아래 삼각만 읽는다(sd.linalg.cholesky와 같다). 매개변수는 읽기 전용 속성이고 `repr`은 단변량과 같은 꼴이다.
+- **입력** x는 (..., d)이고, 앞 축이 배치와 브로드캐스트한다. 결과는 브로드캐스트한 모양이고, 축이 없으면 Python float이다. `mean()`은 배치 + (d,), `covariance()`는 배치 + (d, d), `entropy()`는 배치 모양이다.
+- **정의역** (T29, T8): 양의 정부호가 아닌 공분산(allow_singular는 없다), NaN이나 inf인 mu, df ≤ 0, 정수가 아닌 n, 음수가 있거나 합이 1에서 sqrt(eps) 밖인 p, 0 이하인 alpha는 모두 NaN이다. 그 배치 원소의 모든 메서드가 NaN이다. p는 합으로 나눠 쓴다(sd.random.choice의 p와 같다).
+- **지지집합**: Multinomial의 x가 합이 n인 음이 아닌 정수가 아니면 pmf는 0이다. Dirichlet의 x는 K개 성분이다. 음수가 있거나 합이 1에서 sqrt(eps)·K 밖이면 pdf는 0이다. 0인 성분에서는 극한값이다(alpha < 1이면 inf, = 1이면 그 항이 1, > 1이면 0). 정규·t에서 inf인 성분이 있으면 pdf는 0이다.
+- **MultivariateT**: df = inf는 MultivariateNormal(mu, shape)이다. mean은 df > 1, covariance는 df > 2에서 shape·df/(df − 2)이다. 1 < df ≤ 2이면 발산하고(shape의 부호로 ±inf, 0인 성분은 0), df ≤ 1이면 NaN이다(StudentT의 분산과 같다).
+- **정확도** (T29): 보장 영역 κ(cov) ≤ 1e9, d ≤ 100에서 logpdf·entropy는 |오차| ≤ 1e-14·max(1, |값|), pdf는 상대 1e-14다. 촐레스키 분해, 삼각 풀이, 이차 형식이 모두 double-double이다. 잰 값(bench/stats/t9/accuracy.md, 50자리 참값 대비)은 κ = 1e9, d = 100, df = 1e9까지 반올림 수준(2.7e-16 이하)이다. 같은 점에서 scipy는 κ에 비례해 1e-13–1e-9이고, df = 1e9인 t의 logpdf는 1e-7까지 틀린다. Multinomial의 logpmf·entropy와 Dirichlet의 logpdf·entropy도 double-double이다. n = 1e5인 다항 엔트로피(log n!과 기댓값이 1e6에서 12.6으로 상쇄)와 alpha = 1e6인 디리클레 엔트로피가 50자리 참값과 1e-14 안이다(scipy는 각각 1e-9, 3e-9가 틀린다).
+- **cdf** (MultivariateNormal, MultivariateT): P(X ≤ x)다. 정규의 d ≤ 3과 t의 d ≤ 3은 정확한 공식(1-D 적분)이고, 오차 출력은 0이다. d ≥ 4는 Genz의 준몬테카를로(고정 시드, 결정적)로 계산하고 `atol`(기본 1e-6)까지 점을 늘린다. `max_points`는 평가 수의 상한이다(기본 10⁶ × 변수 수). `return_error=True`이면 (값, 오차 추정)이고, 오차 추정은 표준오차의 3배다(통계적이라 일부 점에서 넘을 수 있다: 잰 값으로 최대 1.9배). +inf인 좌표는 빼고, −inf가 있으면 0, NaN이면 NaN이다.
+  - **보장 영역** (상대 1e-14): 정규 d = 2는 P ≥ 1e-15이면 모든 ρ이고, d = 3은 음의 상관이 하나 이하이고 P ≥ 1e-15이거나 P ≥ 1e-10이고 문제의 조건수 ≤ 100일 때다. t의 d = 2, 3은 P ≥ 7e-13이다(잰 최대 1.9e-15).
+  - **그 밖** (bench/stats/t9/cdf_accuracy.md): d = 2는 약 6·eps·|ln P|이고(1e-300 근처에서 2.7e-13), d = 3은 3.4u × 조건수 안이다(특이에 가까운 행렬에서 최악 4.3e-10).
+  - **속도** (bench/stats/t9/cdf_speed.md, 1스레드, 점 하나): 정규 d = 2는 0.4 µs(scipy의 18배), d = 3은 1.0 µs(1700배), t d = 2, 3은 162–516 µs(1.6–3.5배)다. QMC는 같은 atol = 1e-5에서 정규 d = 5가 0.73 ms(2.3배), d = 10이 25.6 ms(1.3배)다. 기본 atol = 1e-6은 scipy의 기본값(1e-5, t는 실제 오차 약 5e-5)보다 엄격해서, 기본값끼리 비교하면 0.2–0.3배다. d ≥ 4인 t는 atol = 1e-4에서 1.9–2.1배다.
+- **표본**: 벡터 하나가 생성기 스트림의 원소 하나다. 정규·t는 mu + L z(·sqrt(df/V)), 다항은 조건부 이항, 디리클레는 감마를 정규화한다(아주 작은 alpha는 log로). 스레드 수와 무관하게 같은 값이다.
+- **속도** (bench/stats/t9/speed.md, 10⁵개, scipy 대비, 1스레드 / 10스레드):
+  - 표본: 0.73–1.45배 / 5.5–11배.
+  - 다항 logpmf: 3.2배 / 26배.
+  - 디리클레 logpdf: 0.56배 / 4.6배.
+  - 정규·t의 logpdf: d = 3에서 0.35–0.61배 / 2.6–2.8배, d = 10에서 0.14배 / 1배, d = 50에서 0.05배 / 0.4배다. double-double 삼각 풀이의 비용이다. scipy는 점을 모아 BLAS로 푼다.
 
 ## §4. 기술통계 (T8)
 ```

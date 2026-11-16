@@ -14,4 +14,10 @@ void bind_stats_sample(nanobind::module_& stats);
 // The descriptive statistics' lane kernels, desc_* (bind/stats_desc.cpp).
 void bind_stats_desc(nanobind::module_& stats);
 
+// The multivariate distributions' kernels, mv_*, multinomial_*, dirichlet_* (bind/stats_mv.cpp).
+void bind_stats_mv(nanobind::module_& stats);
+
+// The multivariate normal and t cdfs, mv_cdf (bind/stats_mvcdf.cpp).
+void bind_stats_mvcdf(nanobind::module_& stats);
+
 }  // namespace sd

@@ -219,7 +219,7 @@
 | T6 극값·수명 6과 비중심 3 | 완료, 승인 대기 (2026-11-16) |
 | T7 표본 (`sample`) | 완료, 승인 대기 (2026-11-16) |
 | T8 기술통계 | 완료, 승인 대기 (2026-11-16) |
-| T9 다변량: 정규, t, 다항, 디리클레 | 대기 |
+| T9 다변량: 정규, t, 다항, 디리클레 | 완료, 승인 대기 (2026-11-16) |
 | T10 행렬 분포: Wishart, 역Wishart, 행렬 정규 | 대기 |
 | T11 `sd.stats.tests` (설계 질문부터) | 대기 |
 
@@ -281,6 +281,9 @@
 
 ### T9. 다변량: 정규, t, 다항, 디리클레
 - `pdf logpdf sample mean covariance entropy`, 다변량 정규·t의 `cdf`(Genz, 느슨한 계약)
+- 결정(사용자, 2026-11-16): docs/design/stats.md T29 (배치, 특이 공분산은 NaN, cdf는 값과 return_error, 정규 d ≤ 3과 t d ≤ 3은 정확한 공식, 보장 영역 κ ≤ 1e9·d ≤ 100, 다항 p는 허용치 안에서 나눔, 디리클레의 단체 밖은 0, t의 df = inf는 정규).
+- 결과: src/stardust/stats/_multivariate.py, csrc/bind/(stats_mv.cpp, stats_mvcdf.cpp), csrc/stats/mvcdf.hpp; docs/api/stats.md §3, docs/design/stats.md §6; 측정 bench/stats/t9/(accuracy.md, speed.md, cdf_accuracy.md, cdf_speed.md); 테스트 tests/stats/(test_multivariate.py, test_mvcdf.py)와 참값 tests/stats/ref_mvcdf/(tools/mvcdf_ref.py).
+- 미룬 것(사용자): 정규·t logpdf의 d ≥ 10 속도(SIMD로 여러 점을 함께 풀기).
 
 ### T10. 행렬 분포
 - Wishart, 역Wishart, 행렬 정규

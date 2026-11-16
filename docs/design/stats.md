@@ -45,6 +45,7 @@
 | T26 극값·수명·비중심 (T6, 2026-11-16) | `GEV`의 모양은 scipy의 c(= −ξ, c > 0이면 위가 막힌 Weibull형). `Rayleigh(*, scale=1)`(T18의 양수형 규칙). `Gumbel`은 최댓값형(gumbel_r)만. 비중심의 nc ≥ 0(nc = 0이면 중심 분포). 비중심 셋의 `mode`는 pdf′ = 0의 근으로 1e-14 계약, `entropy`는 적응 구적이고 잰 정확도를 느슨한 한계로 문서화. 비중심의 보장 영역은 special(§14)의 잰 범위(확률 1e-300까지; 더 깊은 log 꼬리는 보장하지 않는다), 비중심 t의 모멘트는 큰 df에서 1/df 급수로 1e-14(2026-11-16). GEV의 왜도·첨도는 베이불과 같은 혼합 기준(T24; W = Y^c가 베이불이다) |
 | T27 표본 (T7, 2026-11-16) | `X.sample(shape=(), /, *, rng)`의 `rng`는 꼭 준다(sd.random의 R3: 전역 상태가 없다). 결과 모양은 `shape` + 매개변수의 브로드캐스트 모양이다(scipy 신형과 같다). 이산 분포의 표본도 float64다(icdf와 같다: T25; int64를 넘는 Zipf·로그 급수의 값과 inf). 방법은 분포마다 역함수 법과 전용 방법을 재서 골랐다(§4) |
 | T28 기술통계 (T8, 2026-11-16) | `axis=None`(전체)이 기본이다(sd.mean·sd.var와 같다; scipy는 0). NaN은 scipy의 `nan_policy`('propagate', 'omit', 'raise')로 받는다. 편향 보정은 scipy의 기본값을 따른다(skew·kurtosis는 `bias=True`, kurtosis는 `fisher=True`, describe·sem은 `correction=1`, zscore는 `correction=0`; 이름은 sd.var의 `correction`). describe·mode는 scipy와 같은 namedtuple(`DescribeResult`, `ModeResult`)이다. iqr은 `q=(0.25, 0.75)`(비율)와 `method`다(sd.quantile과 같다. scipy의 `rng`는 sd.random의 생성기와 이름이 겹친다). moment의 `order`는 꼭 주고, `center`도 둔다. rankdata는 다섯 방법 모두이고 scipy 1.18처럼 모두 float64다(질문의 설명에 적힌 'average만 float64'는 옛 scipy의 동작이었다. scipy와 같게로 정했다). differential_entropy는 scipy의 다섯 방법 모두(vasicek, van es, ebrahimi, correa, auto)다 |
+| T29 다변량 (T9, 2026-11-16) | 매개변수는 배치로 받는다(앞 축끼리 브로드캐스트; mu (..., d), cov (..., d, d); x (..., d)). 양의 정부호가 아닌 공분산은 NaN이다(allow_singular 없음, T8). cdf는 값을 돌려주고 `return_error=True`면 (값, 오차 추정)이다. 목표 정확도는 `atol=1e-6`이고 고정 시드라 결정적이다. 다변량 정규의 d ≤ 3은 정확한 공식(이변량·삼변량, 1e-14급)이고, d ≥ 4와 다변량 t는 Genz의 준몬테카를로다. pdf·logpdf·entropy는 κ(cov) ≤ 1e6, d ≤ 100에서 1e-14다(logpdf·entropy는 혼합 기준). 범위는 재고 나서 다시 묻는다. Multinomial의 p는 합이 1에서 sqrt(eps) 안이면 합으로 나누고(sd.random.choice의 R10과 같다), 그 밖이거나 음수·NaN이면 NaN이다. Dirichlet의 x는 K개 성분이고, 음수가 있거나 합이 1에서 sqrt(eps)·K 밖이면 지지집합 밖이다(pdf 0). MultivariateT의 df = inf는 정규의 극한이다. 추가 결정(2026-11-16, 구현 중 측정 뒤): 다변량 t의 d = 2, 3은 QMC 대신 1-D 적분 P = ∫f_χ(r)Φ_d(r·h; R)dr이다(안은 정확한 이변량·삼변량 정규, 바깥은 적응 Gauss–Kronrod). QMC는 카이 변수의 끝점 특이성 때문에 오차가 N⁻¹로만 줄어 점 하나에 280 ms였다. d ≥ 4인 t의 QMC는 역 카이를 점마다 Chebyshev 보간으로 계산한다. 사후에 1e-14로 확인하고, 1e-13 아래의 치우침이 남는다(잰 값 8.3e-17). 보장 영역(2026-11-16, 측정 뒤): pdf·logpdf·entropy는 κ(cov) ≤ 1e9, d ≤ 100(1e6에서 넓혔다: 50자리 참값 대비 κ = 1e9, d = 100, df = 1e9까지 2.7e-16 이하). 정규 cdf의 d = 2는 P ≥ 1e-15이면 모든 ρ, d = 3은 음의 상관이 하나 이하이고 P ≥ 1e-15이거나, P ≥ 1e-10이고 문제 조건수 ≤ 100이다. t cdf의 d = 2, 3은 P ≥ 7e-13(참값이 있는 범위)이다. 기본 atol은 1e-6 그대로다(scipy는 1e-5) |
 
 ### 1.2 범위
 - **단변량 연속 (21)**
@@ -191,14 +192,43 @@
 
 ## 6. 다변량 분포
 
-### 6.1 공통
-- `MultivariateNormal(mu=..., cov=...)`처럼 단변량과 같은 꼴이다(T6). 메서드는 `pdf logpdf`(다항은 `pmf logpmf`), `sample`, `mean`, `covariance`, `entropy`와 정규·t의 `cdf`.
-- 공분산은 `sd.linalg.cholesky`로 분해해 들고 있는다. 양의 정부호가 아니면 NaN(T8). 반정부호(특이) 공분산을 받을지는 마일스톤 전에 묻는다.
-- 행렬 분포(Wishart, 역Wishart, 행렬 정규)의 매개변수 규칙은 그 마일스톤에서 정한다.
+### 6.1 공통 (`src/stardust/stats/_multivariate.py`, `csrc/bind/stats_mv.cpp`, T9)
+- `MultivariateNormal(mu=..., cov=...)`처럼 단변량과 같은 꼴이다(T6). 메서드는 `pdf logpdf`(다항은 `pmf logpmf`), `sample`, `mean`, `covariance`, `entropy`와 정규·t의 `cdf`다. 결정은 T29.
+- **배치**: 매개변수의 앞 축을 브로드캐스트해 B개의 배치로 펼치고, 커널은 (B, ...) 매개변수와 (M, d) 점에 점마다의 배치 번호를 받는다. 표본의 결과 모양은 shape + 배치 + (d,)이고, 행 i의 배치는 i mod B다.
+- **분해**: 공분산은 double-double 촐레스키(`mv_chol`)로 한 번 분해해 들고 있는다. 거기서 L의 hi·lo, log det = 2Σlog L_jj, 1/L_jj를 얻는다. 피벗이 양수가 아니면 그 배치 원소가 NaN이다(T8). double로 분해하면 L이 A + E(|E| ~ d·eps·|A|)의 인수라서, 이차 형식이 κ·eps만큼 움직인다(scipy의 오차가 κ에 비례하는 이유다).
+- **이차 형식**: 앞으로 대입해 z = L⁻¹(x − μ)와 Q = |z|²를 double-double로 구한다. 내적은 Ogita–Rump–Oishi의 Dot2로 한다. fma로 곱을 정확히 구하고 합의 오차를 double 하나에 모으는 방식이라, 이 합에서 double-double 산술만큼 정확하면서 비용은 그 1/3이다. 피벗은 역수를 곱한다. x − μ는 two_sum으로 정확히 뺀다.
+- **log 밀도**: 정규는 −Q/2 + c, t는 c − (ν+d)/2·log1p(Q/ν)다. 상수 c(log det, log Γ 차)는 배치마다 한 번 구한다. 처음에는 점마다 log Γ를 두 번 계산해서 d = 3인 t가 7배 느렸다. log Γ((ν+d)/2) − log Γ(ν/2)는 ν/2 ≥ 12에서 Stirling 차로 구한다: (a − ½)log1p(h/a) + h log(a+h) − h + S(a+h) − S(a). log1p(Q/ν)는 Q/ν < 2⁻¹⁰이면 급수로 계산한다(1 + Q/ν가 Q/ν의 아래 비트를 잃는다). pdf는 double-double log에서 exp를 한 번만 한다.
+- **엔트로피**: 정규는 (d/2)(1 + log 2π) + log det/2다. t는 ν/2 ≥ 12에서 정규의 값 + [(a+h)Δψ − (a+h−½)log1p(h/a) − ΔS]다(크기 a log a인 항이 없어진다). Δψ는 `digamma_diff_asym`이다. 다항은 −log n! − nΣp log p + Σ E[log X_i!]다. 기댓값은 최빈값에서 바깥으로 double-double로 더하고, 각 pmf는 double-double log Γ에서 exp_full로 구한다. 이항의 log pmf는 앞 인자의 log를 double로 반올림해서, n = 1e5에서 4e-11이 틀렸다. 디리클레는 베타 엔트로피의 G·Gc 묶음을 K개로 넓혔다: ΣG(a_i) + Gc(a0) + Σlog(a_i)/2 + (K−1)log(2π)/2 + (2−K)ψ(a0) − 3 log(a0)/2. Σa_i와 a0이 정확히 지워진다.
+- **다항 logpmf**: log n! − Σlog x_i! + Σx_i log p_i − n log(Σp)를 double-double로 계산한다. p를 합으로 나누지 않고 log의 차로 쓴다(나누면 log p_i마다 1 ULP, 전체로 n·eps가 틀린다). log k!은 4096까지 double-double 표(log의 누적합)에서 찾고, 그 위는 log_gamma다.
+- **표본**: 벡터 하나가 스트림 원소 하나다(표본 커널의 Words, §4). 정규는 ziggurat d개, t는 거기에 감마(log) 하나를 더한다. 다항은 조건부 이항(BTRS·역함수, §4)이고, 남은 질량은 끝에서부터 더한다. 디리클레는 log 감마를 정규화한다.
+- **잰 값**: bench/stats/t9/(accuracy.md, speed.md).
+- 행렬 분포(Wishart, 역Wishart, 행렬 정규)의 매개변수 규칙은 T10에서 정한다.
 
-### 6.2 다변량 정규·t의 cdf (T16)
-- Genz의 방법(변수 바꿈과 격자 준몬테카를로)을 고정 시드로 돌린다. 같은 입력이면 같은 값이고, 오차 추정을 함께 돌려준다.
-- 1e-14 계약 밖이다. 기본 정확도와 잰 오차를 문서화한다. 2차원(Owen의 T, Drezner–Wesolowsky)·3차원은 정확한 공식을 쓸 수 있다(그 마일스톤에서 정한다).
+### 6.2 다변량 정규·t의 cdf (T16, T29; `csrc/stats/mvcdf.hpp`, `csrc/bind/stats_mvcdf.cpp`)
+- **꼴**: P(X ≤ x)(모든 좌표의 아래 끝은 −inf)다. 커널 `mv_cdf(cov, x − mu, batch, df, atol, max_points) → (값, 오차)`다. 판정 순서는 다음과 같다.
+  1. 행렬이 잘못됐거나 df가 0 이하·NaN이면 NaN이다.
+  2. x에 NaN이 있으면 NaN이다(−inf보다 먼저다).
+  3. −inf가 있으면 0이다.
+  4. +inf인 좌표는 뺀다(주변 분포; t는 같은 df).
+  5. 남는 것이 없으면 1이다.
+  행렬은 아래 삼각만 읽는다. 오차 출력은 정확한 공식(정규와 t의 남은 좌표 ≤ 3)이면 0이고, 그 밖은 표준오차의 3배다.
+- **d = 1**: `special::Ndtr`, t는 `special::Stdtr`.
+- **정규 d = 2**: Plackett의 항등식을 각도로 적분한다(Drezner–Wesolowsky; Genz 2004).
+  - TVPACK의 고정 규칙은 절대 1e-15까지만 가서, 대신 적응 Gauss–Kronrod 10/21을 쓴다.
+  - 적분이 시작값에 더해지는 꼴을 고른다(r ≥ 0이면 0에서, r < 0이면 −1에서). 지수는 음이 아닌 항의 합이다.
+  - 극점의 계단은 첫 구간을 기하적으로 잘게 나눠 잡는다. 그렇지 않으면 h ≈ −k에서 2e-8을 잃었다.
+- **정규 d = 3**: Plackett/Genz의 경로 적분이고, 상쇄하지 않는 쌍을 고른다. 음의 상관이 둘 이상이면 변수 하나를 뒤집어 본다. 그래도 상쇄하면 조건부 ∫φ(z)Φ₂(·)dz로 바꾸는데, 이 꼴은 상쇄가 전혀 없다. 어디서나 3.4u × 조건수 안이다(u = 2⁻⁵³; 조건수는 입력에 대한 Σ|d log P / d log x|).
+- **t d = 2, 3**: 척도 혼합 E[Φ_d(R h)]를 v = log(x/a)에서 적응 구적 하나로 계산한다. 안쪽은 위의 정확한 정규 cdf다. 무게는 Stirling 급수와 상쇄 없는 e^v − 1 − v로 써서, 큰 df에서 잃지 않는다(그대로 쓰면 df = 1e6에서 7e-10이 틀렸다). 왼쪽 꼬리는 직교 확률로 닫는다. 처음 정한 QMC는 카이 변수의 끝점 특이성 때문에 오차가 N⁻¹로만 줄어 점 하나에 280 ms였고, 이 방법은 162–516 µs다.
+- **d ≥ 4 (정규, t)**: Genz의 준몬테카를로다.
+  - 점마다 Genz–Bretz 재배열을 하고, 변수 분리 적분에 텐트 변환을 쓴다.
+  - 점 집합은 fast-CBC rank-1 격자다(Nuyens & Cools 2006; 곱 무게 0.8^j, scipy와 같은 생성 벡터). 처음의 Richtmyer 규칙보다 같은 오차에서 평가가 3–3.5배 적다.
+  - 이동은 Philox 키 {0x5eed, n}에서 12개를 받는다. 소수 크기의 단계를 약 1.5배씩 늘리고, 단계들은 분산의 역수로 합친다(Genz의 DKBVRC).
+  - 생성 벡터 캐시는 잠금 아래 있고, 512개까지만 둔다.
+  - atol에 닿거나 평가 수가 max_points(기본 10⁶ × 적분 변수 수)에 닿으면 멈춘다.
+  - 오차 추정은 통계적이다. 잰 값으로 0–7%의 점이 추정을 넘었고, 넘은 폭은 최대 1.9배였다.
+- **t의 역 카이** (d ≥ 4의 QMC): df마다 조각별 Chebyshev 표를 쓴다(w ≤ Φ(−2)는 log w, 그 위는 z = Φ⁻¹(w)에서). 조각마다 33점을 1e-14로 확인했고, 촘촘한 표본 512k개에서 최악 1.4e-14다. 호출당 260 ns가 15 ns가 됐다. 같은 격자에서 정확한 역함수와의 치우침은 8.3e-17 이하다. df < 1이면 정확한 gammaincinv를 쓴다.
+- **결정성**: 스레드 1·3·10에서, 그리고 점을 혼자 계산하든 묶어 계산하든 같은 비트다.
+- **잰 값**: bench/stats/t9/(cdf_accuracy.md, cdf_speed.md). 참값은 tests/stats/ref_mvcdf/(tools/mvcdf_ref.py, Arb)이다.
 
 ## 7. `sd.stats.tests` (나중)
 - 위치와 경계만 정했다(T2, T3). 검정 목록, 결과 객체(`statistic`, `pvalue`, 자유도, 신뢰구간), 대립가설, 정확 검정과 점근 근사, 순열·부트스트랩은 분포·기술통계를 구현한 뒤에 묻는다.
