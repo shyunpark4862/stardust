@@ -220,7 +220,7 @@
 | T7 표본 (`sample`) | 완료, 승인 대기 (2026-11-16) |
 | T8 기술통계 | 완료, 승인 대기 (2026-11-16) |
 | T9 다변량: 정규, t, 다항, 디리클레 | 완료, 승인 대기 (2026-11-16) |
-| T10 행렬 분포: Wishart, 역Wishart, 행렬 정규 | 대기 |
+| T10 행렬 분포: Wishart, 역Wishart, 행렬 정규 | 완료, 승인 대기 (2026-11-16) |
 | T11 `sd.stats.tests` (설계 질문부터) | 대기 |
 
 ## 마일스톤
@@ -287,6 +287,8 @@
 
 ### T10. 행렬 분포
 - Wishart, 역Wishart, 행렬 정규
+- 결정(사용자, 2026-11-16): docs/design/stats.md T30 (scipy의 이름과 메서드: mean·mode·var, 행렬 정규의 평균은 mu, x는 아래 삼각을 읽고 양의 정부호가 아니면 0, 배치와 정확도는 T9와 같다, df > p − 1 실수).
+- 결과: src/stardust/stats/_matrix.py, csrc/bind/stats_matrix.cpp, csrc/stats/dd_linalg.hpp; docs/api/stats.md §3.1, docs/design/stats.md §6.3; 측정 bench/stats/t10/(accuracy.md, speed.md); 테스트 tests/stats/test_matrix.py.
 
 ### T11. `sd.stats.tests`
 - 검정과 상관. 설계 질문부터 시작한다.

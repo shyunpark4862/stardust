@@ -1,6 +1,6 @@
 # sd.stats API
 
-> 상태: **T9 구현** (2026-11-16): 연속 분포 12개(T4), 이산 분포 10개(T5), 극값·수명 6개와 비중심 3개(T6), 모든 분포의 `sample`(T7), 기술통계(T8), 다변량 4개(T9). 행렬 분포(T10)와 §6은 초안이다. 결정과 내부 구조는 [docs/design/stats.md](../design/stats.md) (T1–T29).
+> 상태: **T10 구현** (2026-11-16): 연속 분포 12개(T4), 이산 분포 10개(T5), 극값·수명 6개와 비중심 3개(T6), 모든 분포의 `sample`(T7), 기술통계(T8), 다변량 4개(T9), 행렬 분포 3개(T10). §6(검정)은 초안이다. 결정과 내부 구조는 [docs/design/stats.md](../design/stats.md) (T1–T30).
 
 ## §1. 공통 규칙
 - 입력은 위치로만(`/` 앞), 옵션은 키워드로만(`*` 뒤). 별칭은 없다.
@@ -123,7 +123,6 @@ X.pdf(x, /)  X.logpdf(x, /)           # Multinomial: pmf, logpmf
 X.cdf(x, /, *, atol=1e-6, return_error=False, max_points=None)    # MultivariateNormal, MultivariateT
 X.mean()  X.covariance()  X.entropy()
 X.sample(shape=(), /, *, rng)
-Wishart(df, scale)  InverseWishart(df, scale)  MatrixNormal(mean, rowcov, colcov)   # T10 (초안)
 ```
 - **매개변수** (키워드만, T19): `mu` (..., d), `cov`·`shape` (..., d, d), `df` (...), `n` (...), `p` (..., K), `alpha` (..., K). 앞 축끼리 브로드캐스트한다(배치, T29). 공분산은 아래 삼각만 읽는다(sd.linalg.cholesky와 같다). 매개변수는 읽기 전용 속성이고 `repr`은 단변량과 같은 꼴이다.
 - **입력** x는 (..., d)이고, 앞 축이 배치와 브로드캐스트한다. 결과는 브로드캐스트한 모양이고, 축이 없으면 Python float이다. `mean()`은 배치 + (d,), `covariance()`는 배치 + (d, d), `entropy()`는 배치 모양이다.
@@ -141,6 +140,24 @@ Wishart(df, scale)  InverseWishart(df, scale)  MatrixNormal(mean, rowcov, colcov
   - 다항 logpmf: 3.2배 / 26배.
   - 디리클레 logpdf: 0.56배 / 4.6배.
   - 정규·t의 logpdf: d = 3에서 0.35–0.61배 / 2.6–2.8배, d = 10에서 0.14배 / 1배, d = 50에서 0.05배 / 0.4배다. double-double 삼각 풀이의 비용이다. scipy는 점을 모아 BLAS로 푼다.
+
+### §3.1 행렬 분포 (T10)
+```
+Wishart(*, df, scale)        InverseWishart(*, df, scale)        MatrixNormal(*, mu, rowcov, colcov)
+
+X.pdf(x, /)  X.logpdf(x, /)
+X.mean()  X.mode()  X.var()  X.entropy()        # MatrixNormal: mean, entropy
+X.sample(shape=(), /, *, rng)
+```
+- **매개변수** (T30, scipy의 이름): `df` (...)는 실수이고 df > p − 1이어야 한다. `scale`·`rowcov`·`colcov` (..., p, p)는 대칭 양의 정부호이고 아래 삼각만 읽는다. 행렬 정규의 평균은 `mu` (..., n, p)다(scipy의 `mean`은 `mean()` 메서드와 이름이 겹친다; T18의 위치 이름). 배치는 다변량과 같다(T29).
+- **입력** x는 (..., p, p)(행렬 정규는 (..., n, p))이고, 아래 삼각만 읽는다. 양의 정부호가 아니면 지지집합 밖이다(pdf 0, logpdf −inf).
+- **메서드**: scipy처럼 `mean`, `mode`, `var`(원소별 분산)다. (p, p, p, p) 공분산 텐서는 없다. 행렬 정규는 `mean`과 `entropy`만 있다.
+  - Wishart의 mode는 df ≥ p + 1일 때 (df − p − 1)·scale이고, 그 밖은 NaN이다.
+  - 역Wishart의 mean은 df > p + 1이면 scale/(df − p − 1)이고, 그 밖은 발산한다(성분의 부호로 ±inf, 0인 성분은 0). var는 df > p + 3이면 유한하고, p + 1 < df ≤ p + 3이면 inf, df ≤ p + 1이면 NaN이다. p = 1이면 InverseGamma(df/2, scale/2)와 같다.
+- **정의역**: df ≤ p − 1(특이 Wishart), 양의 정부호가 아닌 scale, NaN인 mu는 NaN이다(T8).
+- **정확도** (bench/stats/t10/accuracy.md, 50자리 참값 대비): logpdf·entropy는 촐레스키 분해, V⁻¹, 삼각 풀이를 double-double로 계산한다. 엔트로피의 크기 n log n인 항은 다시 묶어서 지운다. 잰 값은 κ(scale) = 1e8, p = 12, df = 1e8까지 반올림 수준이다(entropy 5.3e-16 이하, logpdf 0). 같은 점에서 scipy의 logpdf는 최대 6.5e-8, Wishart 엔트로피는 df = 1e8에서 6.5e-9가 틀린다. scipy 1.18의 `invwishart.entropy()`는 공식이 틀려서 상대오차가 2.9까지 간다(몬테카를로로도 확인; tests/stats/test_matrix.py). 보장 영역(사용자 2026-11-16)은 T9와 같이 κ(scale), κ(rowcov), κ(colcov) ≤ 1e9, p ≤ 100에서 logpdf·entropy 1e-14 혼합 기준이다. 측정은 κ = 1e9, p = 30(행렬 정규 20×15), df = 1e8까지이고, 모두 2e-16 이하였다.
+- **표본**: Wishart는 Bartlett 분해로 뽑는다. 대각은 √χ²(df − j)이고 실수 df도 된다. 역Wishart는 (L A⁻ᵀ)(L A⁻ᵀ)ᵀ, 행렬 정규는 μ + L_U Z L_Vᵀ다. 행렬 하나가 스트림 원소 하나다.
+- **속도** (bench/stats/t10/speed.md, 10⁴개, scipy 대비, 1스레드 / 10스레드): Wishart·역Wishart의 logpdf는 1.8–84배 / 15–510배이고, 표본은 2.2–14배 / 17–99배다. 행렬 정규는 logpdf가 0.24–0.70배 / 2.0–4.5배(double-double 삼각 풀이), 표본이 1.4–2.0배 / 11–13배다.
 
 ## §4. 기술통계 (T8)
 ```

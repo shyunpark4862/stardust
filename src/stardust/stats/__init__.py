@@ -14,6 +14,7 @@ from ._discrete import (Bernoulli, BetaBinomial, Binomial, DiscreteUniform, Geom
 from ._descriptive import (DescribeResult, ModeResult, describe, differential_entropy, entropy, iqr, kurtosis, mode,
                            moment, rankdata, sem, skew, zscore)
 from ._distribution import ContinuousDistribution, DiscreteDistribution
+from ._matrix import InverseWishart, MatrixNormal, Wishart
 from ._multivariate import Dirichlet, Multinomial, MultivariateNormal, MultivariateT
 
 __all__ = [
@@ -29,6 +30,8 @@ __all__ = [
     "BetaBinomial", "LogSeries", "Zipf",
     # T9: multivariate (docs/api/stats.md §3)
     "MultivariateNormal", "MultivariateT", "Multinomial", "Dirichlet",
+    # T10: matrix distributions (docs/api/stats.md §3.1)
+    "Wishart", "InverseWishart", "MatrixNormal",
     # T8: descriptive statistics (docs/api/stats.md §4)
     "describe", "skew", "kurtosis", "moment", "zscore", "rankdata", "sem", "iqr", "mode", "entropy",
     "differential_entropy", "DescribeResult", "ModeResult",

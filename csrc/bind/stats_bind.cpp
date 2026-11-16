@@ -95,6 +95,7 @@ void bind_stats(nb::module_& core) {
     bind_stats_desc(m);    // T8
     bind_stats_mv(m);      // T9
     bind_stats_mvcdf(m);   // T9
+    bind_stats_matrix(m);  // T10
 }
 
 }  // namespace sd

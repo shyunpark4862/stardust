@@ -20,4 +20,7 @@ void bind_stats_mv(nanobind::module_& stats);
 // The multivariate normal and t cdfs, mv_cdf (bind/stats_mvcdf.cpp).
 void bind_stats_mvcdf(nanobind::module_& stats);
 
+// The matrix distributions' kernels, wishart_*, matnorm_* (bind/stats_matrix.cpp).
+void bind_stats_matrix(nanobind::module_& stats);
+
 }  // namespace sd

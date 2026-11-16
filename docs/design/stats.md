@@ -46,6 +46,7 @@
 | T27 표본 (T7, 2026-11-16) | `X.sample(shape=(), /, *, rng)`의 `rng`는 꼭 준다(sd.random의 R3: 전역 상태가 없다). 결과 모양은 `shape` + 매개변수의 브로드캐스트 모양이다(scipy 신형과 같다). 이산 분포의 표본도 float64다(icdf와 같다: T25; int64를 넘는 Zipf·로그 급수의 값과 inf). 방법은 분포마다 역함수 법과 전용 방법을 재서 골랐다(§4) |
 | T28 기술통계 (T8, 2026-11-16) | `axis=None`(전체)이 기본이다(sd.mean·sd.var와 같다; scipy는 0). NaN은 scipy의 `nan_policy`('propagate', 'omit', 'raise')로 받는다. 편향 보정은 scipy의 기본값을 따른다(skew·kurtosis는 `bias=True`, kurtosis는 `fisher=True`, describe·sem은 `correction=1`, zscore는 `correction=0`; 이름은 sd.var의 `correction`). describe·mode는 scipy와 같은 namedtuple(`DescribeResult`, `ModeResult`)이다. iqr은 `q=(0.25, 0.75)`(비율)와 `method`다(sd.quantile과 같다. scipy의 `rng`는 sd.random의 생성기와 이름이 겹친다). moment의 `order`는 꼭 주고, `center`도 둔다. rankdata는 다섯 방법 모두이고 scipy 1.18처럼 모두 float64다(질문의 설명에 적힌 'average만 float64'는 옛 scipy의 동작이었다. scipy와 같게로 정했다). differential_entropy는 scipy의 다섯 방법 모두(vasicek, van es, ebrahimi, correa, auto)다 |
 | T29 다변량 (T9, 2026-11-16) | 매개변수는 배치로 받는다(앞 축끼리 브로드캐스트; mu (..., d), cov (..., d, d); x (..., d)). 양의 정부호가 아닌 공분산은 NaN이다(allow_singular 없음, T8). cdf는 값을 돌려주고 `return_error=True`면 (값, 오차 추정)이다. 목표 정확도는 `atol=1e-6`이고 고정 시드라 결정적이다. 다변량 정규의 d ≤ 3은 정확한 공식(이변량·삼변량, 1e-14급)이고, d ≥ 4와 다변량 t는 Genz의 준몬테카를로다. pdf·logpdf·entropy는 κ(cov) ≤ 1e6, d ≤ 100에서 1e-14다(logpdf·entropy는 혼합 기준). 범위는 재고 나서 다시 묻는다. Multinomial의 p는 합이 1에서 sqrt(eps) 안이면 합으로 나누고(sd.random.choice의 R10과 같다), 그 밖이거나 음수·NaN이면 NaN이다. Dirichlet의 x는 K개 성분이고, 음수가 있거나 합이 1에서 sqrt(eps)·K 밖이면 지지집합 밖이다(pdf 0). MultivariateT의 df = inf는 정규의 극한이다. 추가 결정(2026-11-16, 구현 중 측정 뒤): 다변량 t의 d = 2, 3은 QMC 대신 1-D 적분 P = ∫f_χ(r)Φ_d(r·h; R)dr이다(안은 정확한 이변량·삼변량 정규, 바깥은 적응 Gauss–Kronrod). QMC는 카이 변수의 끝점 특이성 때문에 오차가 N⁻¹로만 줄어 점 하나에 280 ms였다. d ≥ 4인 t의 QMC는 역 카이를 점마다 Chebyshev 보간으로 계산한다. 사후에 1e-14로 확인하고, 1e-13 아래의 치우침이 남는다(잰 값 8.3e-17). 보장 영역(2026-11-16, 측정 뒤): pdf·logpdf·entropy는 κ(cov) ≤ 1e9, d ≤ 100(1e6에서 넓혔다: 50자리 참값 대비 κ = 1e9, d = 100, df = 1e9까지 2.7e-16 이하). 정규 cdf의 d = 2는 P ≥ 1e-15이면 모든 ρ, d = 3은 음의 상관이 하나 이하이고 P ≥ 1e-15이거나, P ≥ 1e-10이고 문제 조건수 ≤ 100이다. t cdf의 d = 2, 3은 P ≥ 7e-13(참값이 있는 범위)이다. 기본 atol은 1e-6 그대로다(scipy는 1e-5) |
+| T30 행렬 분포 (T10, 2026-11-16) | `Wishart(*, df, scale)`, `InverseWishart(*, df, scale)`, `MatrixNormal(*, mu, rowcov, colcov)`(scipy의 이름. 행렬 정규의 평균만 `mu`다: 매개변수가 같은 이름의 속성이라(T19) `mean()` 메서드와 겹치고, 위치는 mu라는 T18과도 맞는다; 사용자 2026-11-16). 메서드는 scipy처럼 pdf, logpdf, sample, mean, mode, var(원소별 분산), entropy다(행렬 정규는 mode·var 없이 mean과 entropy). (…, p, p, p, p) 공분산 텐서는 두지 않는다. 입력 행렬 x는 아래 삼각만 읽고, 양의 정부호가 아니면 지지집합 밖이다(pdf 0). 배치와 정확도는 T9와 같다(앞 축 브로드캐스트, logpdf·entropy는 double-double로 1e-14 혼합 기준, 범위는 재고 묻는다). df는 실수이고 df > p − 1이어야 한다(특이 Wishart는 NaN). 보장 영역(2026-11-16, 측정 뒤): T9와 같이 κ ≤ 1e9, p ≤ 100(잰 범위는 κ = 1e9, p = 30, df = 1e8에서 2e-16 이하) |
 
 ### 1.2 범위
 - **단변량 연속 (21)**
@@ -202,7 +203,7 @@
 - **다항 logpmf**: log n! − Σlog x_i! + Σx_i log p_i − n log(Σp)를 double-double로 계산한다. p를 합으로 나누지 않고 log의 차로 쓴다(나누면 log p_i마다 1 ULP, 전체로 n·eps가 틀린다). log k!은 4096까지 double-double 표(log의 누적합)에서 찾고, 그 위는 log_gamma다.
 - **표본**: 벡터 하나가 스트림 원소 하나다(표본 커널의 Words, §4). 정규는 ziggurat d개, t는 거기에 감마(log) 하나를 더한다. 다항은 조건부 이항(BTRS·역함수, §4)이고, 남은 질량은 끝에서부터 더한다. 디리클레는 log 감마를 정규화한다.
 - **잰 값**: bench/stats/t9/(accuracy.md, speed.md).
-- 행렬 분포(Wishart, 역Wishart, 행렬 정규)의 매개변수 규칙은 T10에서 정한다.
+- 행렬 분포는 §6.3(T10).
 
 ### 6.2 다변량 정규·t의 cdf (T16, T29; `csrc/stats/mvcdf.hpp`, `csrc/bind/stats_mvcdf.cpp`)
 - **꼴**: P(X ≤ x)(모든 좌표의 아래 끝은 −inf)다. 커널 `mv_cdf(cov, x − mu, batch, df, atol, max_points) → (값, 오차)`다. 판정 순서는 다음과 같다.
@@ -229,6 +230,19 @@
 - **t의 역 카이** (d ≥ 4의 QMC): df마다 조각별 Chebyshev 표를 쓴다(w ≤ Φ(−2)는 log w, 그 위는 z = Φ⁻¹(w)에서). 조각마다 33점을 1e-14로 확인했고, 촘촘한 표본 512k개에서 최악 1.4e-14다. 호출당 260 ns가 15 ns가 됐다. 같은 격자에서 정확한 역함수와의 치우침은 8.3e-17 이하다. df < 1이면 정확한 gammaincinv를 쓴다.
 - **결정성**: 스레드 1·3·10에서, 그리고 점을 혼자 계산하든 묶어 계산하든 같은 비트다.
 - **잰 값**: bench/stats/t9/(cdf_accuracy.md, cdf_speed.md). 참값은 tests/stats/ref_mvcdf/(tools/mvcdf_ref.py, Arb)이다.
+
+### 6.3 행렬 분포 (T10; `src/stardust/stats/_matrix.py`, `csrc/bind/stats_matrix.cpp`, `csrc/stats/dd_linalg.hpp`)
+- **결정**: T30. 배치와 매개변수의 촐레스키 분해(`mv_chol`)는 T9와 같다. double-double 선형대수(제곱근, log1p, 촐레스키, 앞으로 대입, L에서 역행렬, log Γ_p)는 `stats/dd_linalg.hpp`에 모아 T9 커널과 함께 쓴다.
+- **Wishart** W_p(n, V): log W(X) = (n−p−1)/2 log|X| − tr(V⁻¹X)/2 − (np/2) log 2 − (n/2) log|V| − log Γ_p(n/2)다. 점마다 X의 아래 삼각을 double-double로 분해한다. 이 분해가 양의 정부호 검사이고, 실패하면 지지집합 밖이다. V⁻¹은 배치마다 한 번 L⁻ᵀL⁻¹로 구한다. tr(V⁻¹X)는 아래 삼각의 내적이다.
+- **역Wishart** IW_p(n, Ψ): log IW(X) = (n/2) log|Ψ| − (np/2) log 2 − log Γ_p(n/2) − (n+p+1)/2 log|X| − tr(ΨX⁻¹)/2다. tr(ΨX⁻¹) = ‖L_X⁻¹L_Ψ‖²_F를 열마다 앞으로 대입해서 구한다.
+- **엔트로피**: a_j = n/2 + (1 − j)/2, G(a) = log Γ(a) − (a − 1)ψ(a) + a − log(a)/2 − log(2π)/2 = O(1)로 다시 묶는다(디리클레와 같은 방식). 그러면 −Σa_j + np/2 = p(p−1)/4가 정확히 남는다.
+  - W: (p+1)/2 log|V| + p(p+1)/2 log 2 + p(p−1)/4 (1 + log π) + Σ_j[G(a_j) + log(a_j)/2 + log(2π)/2 + (p−j)/2 ψ(a_j)]
+  - IW: (p+1)/2 log|Ψ| − p(p+1)/2 log 2 + p(p−1)/4 (1 + log π) + Σ_j[G(a_j) + log(a_j)/2 + log(2π)/2 − (1 + (p+j)/2) ψ(a_j)]
+
+  IW의 식은 X = Y⁻¹, Y ~ W(n, Ψ⁻¹)로 변수를 바꿔 얻는다(야코비안 |Y|^−(p+1), E log|Y| = ψ_p(n/2) + p log 2 − log|Ψ|). scipy 1.18의 invwishart.entropy는 이 값과 다르고, 몬테카를로(−E log pdf)는 우리 값과 맞는다.
+- **행렬 정규** MN(M, U, V): A = L_U⁻¹(X − M)L_V⁻ᵀ다. X − M은 two_sum으로 정확히 빼고, 열마다 L_U, 행마다 L_V로 앞으로 대입한다. log pdf = −(np/2) log 2π − (p/2) log|U| − (n/2) log|V| − ‖A‖²/2다.
+- **표본**: Wishart는 Bartlett 분해다. A는 아래 삼각이고, A_jj = √(2 G((n − j)/2))(j = 0..p−1, 실수 n), 그 아래는 N(0, 1)이다. 결과는 (LA)(LA)ᵀ다. 역Wishart는 X⁻¹ ~ W(n, Ψ⁻¹)이고 W(n, I)가 직교 불변이라 Ψ⁻¹의 아무 제곱근을 써도 되므로, X = (L_Ψ A⁻ᵀ)(L_Ψ A⁻ᵀ)ᵀ다. 행렬 정규는 M + L_U Z L_Vᵀ다. 결과는 정확히 대칭으로 쓴다.
+- **잰 값**: bench/stats/t10/(accuracy.md, speed.md). 참값에서 x는 아래 삼각에서 대칭으로 만든다. scipy의 표본은 반올림만큼 비대칭이라, 특이에 가까운 X에서는 그 차이가 X⁻¹를 움직였다(처음 측정에서 3e-8로 보였다).
 
 ## 7. `sd.stats.tests` (나중)
 - 위치와 경계만 정했다(T2, T3). 검정 목록, 결과 객체(`statistic`, `pvalue`, 자유도, 신뢰구간), 대립가설, 정확 검정과 점근 근사, 순열·부트스트랩은 분포·기술통계를 구현한 뒤에 묻는다.

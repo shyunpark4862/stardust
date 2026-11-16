@@ -16,6 +16,7 @@
 #include "bind/pyutil.hpp"
 #include "random/philox.hpp"
 #include "special/ops/gamma.hpp"
+#include "stats/dd_linalg.hpp"
 #include "stats/numeric.hpp"
 #include "stats/sample.hpp"
 #include "stats/sample_dist.hpp"
@@ -70,29 +71,7 @@ NDArray out_vec(std::int64_t n) {
     return new_array(DType::Float64, s);
 }
 
-// sqrt of a positive double-double: s = sqrt(hi), then one Newton correction (a - s^2) / 2s.
-DD dd_sqrt(DD a) {
-    const double s = std::sqrt(a.hi);
-    const DD s2 = dd::two_prod(s, s);
-    const double corr = ((a.hi - s2.hi) - s2.lo + a.lo) / (2.0 * s);
-    return dd::two_sum(s, corr);
-}
-
-// log1p(u) for a double-double u > -1: the series for |u| < 2^-10 (1 + u would drop u's
-// low bits), else log of 1 + u.
-DD dd_log1p(DD u) {
-    if (std::fabs(u.hi) < 0x1p-10) {  // sum (-1)^(k+1) u^k / k
-        DD sum = u, pw = u;
-        for (int k = 2; k < 40; ++k) {
-            pw = pw * u;
-            const DD t = pw / static_cast<double>(k);
-            sum = (k % 2 == 0) ? sum - t : sum + t;
-            if (std::fabs(t.hi) <= 0x1p-110 * std::fabs(sum.hi)) break;
-        }
-        return sum;
-    }
-    return dd::log(u + 1.0);
-}
+constexpr auto dd_log1p = [](DD u) { return stats::ddla::log1p(u); };
 
 // ---- the Cholesky factor in double-double ---------------------------------------------------
 
@@ -117,26 +96,11 @@ nb::tuple chol(nb::handle cov_obj) {
         nb::gil_scoped_release release;
         for_pieces(B, std::max<std::int64_t>(1, 4096 / std::max<std::int64_t>(1, d * d * d)), B * d * d * d,
                    [&](std::int64_t, std::int64_t b0, std::int64_t b1) {
-                       std::vector<DD> L(static_cast<std::size_t>(d * d));
+                       std::vector<DD> L;
                        for (std::int64_t b = b0; b < b1; ++b) {
-                           bool good = true;
-                           DD logdet{0.0, 0.0};
-                           for (std::int64_t j = 0; j < d && good; ++j) {
-                               DD s{el(c, b, j, j), 0.0};
-                               for (std::int64_t k = 0; k < j; ++k) s = s - L[j * d + k] * L[j * d + k];
-                               if (!(s.hi > 0.0) || !std::isfinite(s.hi)) {
-                                   good = false;
-                                   break;
-                               }
-                               const DD ljj = dd_sqrt(s);
-                               L[j * d + j] = ljj;
-                               logdet = logdet + dd::log(ljj) * 2.0;
-                               for (std::int64_t i = j + 1; i < d; ++i) {
-                                   DD t{el(c, b, i, j), 0.0};
-                                   for (std::int64_t k = 0; k < j; ++k) t = t - L[i * d + k] * L[j * d + k];
-                                   L[i * d + j] = t / ljj;
-                               }
-                           }
+                           DD logdet;
+                           const bool good =
+                               stats::ddla::cholesky(d, [&](std::int64_t i, std::int64_t j) { return el(c, b, i, j); }, L, logdet);
                            pok[b] = good ? 1.0 : 0.0;
                            pdh[b] = good ? logdet.hi : kNaN;
                            pdl[b] = good ? logdet.lo : kNaN;
