@@ -1,6 +1,6 @@
 # sd.stats API
 
-> 상태: **T6 구현** (2026-11-16): 연속 분포 12개(T4), 이산 분포 10개(T5), 극값·수명 6개와 비중심 3개(T6). §2.1의 나머지는 초안이다. 결정과 내부 구조는 [docs/design/stats.md](../design/stats.md) (T1–T23).
+> 상태: **T7 구현** (2026-11-16): 연속 분포 12개(T4), 이산 분포 10개(T5), 극값·수명 6개와 비중심 3개(T6), 모든 분포의 `sample`(T7). §2.1의 나머지는 초안이다. 결정과 내부 구조는 [docs/design/stats.md](../design/stats.md) (T1–T23).
 
 ## §1. 공통 규칙
 - 입력은 위치로만(`/` 앞), 옵션은 키워드로만(`*` 뒤). 별칭은 없다.
@@ -36,7 +36,7 @@ X.sample(shape=(), /, *, rng)
 - 정확도(T20): 보장 영역에서 상대 1e-14. 단 `logpdf`와 `entropy`는 |오차| ≤ 1e-14·max(1, |값|)이다(값이 0을 지난다). 역함수 넷은 special의 역함수처럼 |Δx/x| ≤ 1e-14·max(1, κ)이고, κ는 그 메서드의 입력에 대한 상대 조건수다(`icdf(p)`는 |p / (x f(x))|, `ilogcdf(logp)`는 |logp·p / (x f(x))|).
 - **이산 분포**(T25): `pdf`·`logpdf` 대신 `pmf`·`logpmf`이고 나머지 메서드는 같다. 정수가 아닌 k에서 `pmf`는 0, `cdf`·`ccdf`와 그 log는 floor(k)에서의 값이다. `icdf(p)`는 cdf(k) ≥ p인 가장 작은 k, `iccdf(p)`는 ccdf(k) ≤ p인 가장 작은 k이다(scipy의 ppf, isf와 같다). 결과는 float64 정수이고, double 범위를 넘으면 inf다. 정확도는 후방 오차다. 목표를 상대 1e-14 안에서 움직였을 때의 정확한 분위수 중 하나를 낸다(`icdf`·`iccdf`는 p와 1 − p 중 작은 쪽, `ilogcdf`·`ilogccdf`는 입력 t에 대해). 목표가 계단 바로 옆이면 이웃 정수도 맞고, 분위수가 아주 커서 계단이 cdf의 분해능보다 촘촘하면(Zipf a ≈ 1) 그 폭만큼 허용된다. `logpmf`는 상대 1e-14, `entropy`는 연속과 같은 혼합 기준이다. `median()`은 `icdf(1/2)`, `mode()`는 최빈값이 둘 이상이면 NaN이다(T21). 매개변수 하나가 점질량을 만들면(이항 p = 0·1, 포아송 μ = 0 등) 분산은 0, 왜도·첨도는 NaN이다.
 - 정수여야 하는 매개변수(이항·베타이항의 n, 초기하의 셋, 이산 균등의 두 끝)는 정수가 아니면 NaN이다. 음이항의 n은 양의 실수다(special의 `bdtr`, `nbdtr`과 같다).
-- `sample`의 `rng`는 `sd.random.default_rng(...)`의 Generator다. 생략할 수 있는지는 T7 전에 정한다.
+- `sample`의 `rng`는 `sd.random.default_rng(...)`의 Generator이고 꼭 줘야 한다(T27; §2.5).
 
 ### §2.1 분포 목록 (T4–T6의 31개는 확정, 나머지는 초안)
 | 분포 | 클래스 | scipy |
@@ -95,6 +95,24 @@ X.sample(shape=(), /, *, rng)
   - 비중심 t의 `pdf`(0.09배): 양의 적분이라, 급수가 상쇄하는 쪽 꼬리까지 상대 정확도를 지킨다.
   - 비중심 F의 `pdf`(0.14배): double-double 포아송 혼합이다.
   - `Pareto`의 `pdf`·`cdf`(0.22–0.25배)와 `InverseGamma.pdf`(0.27배): double-double 지수다.
+
+### §2.5 표본 (T7)
+```
+X.sample(shape=(), /, *, rng)
+```
+- `rng`: `sd.random.default_rng(seed)`의 Generator이고, 꼭 줘야 한다(T27). 다른 것은 `TypeError`다. 표본은 생성기의 스트림에서 차례로 받으므로, 호출하면 `rng.state["position"]`이 원소 수만큼 나아간다.
+- **모양**: `shape`(int 또는 int의 tuple) + 매개변수의 브로드캐스트 모양이다(scipy 신형과 같다). 매개변수가 (3,)이고 `shape=(1000,)`이면 결과는 (1000, 3)이라 분포마다 1000개씩이다. 둘 다 비면 Python float이다.
+- **값**: float64다. 이산 분포도 정수인 float64다(icdf와 같다; Zipf가 double을 넘으면 inf). 매개변수가 정의역 밖이거나 NaN인 원소는 NaN이다.
+- **재현**: 같은 시드와 같은 호출 순서면 같은 값이다. 스레드 수와 무관하고, 한 호출을 둘로 나누어 불러도 같다. numpy·scipy와 값은 다르다(생성기와 방법이 다르다).
+- **방법**: 분포마다 정확한 방법(기각이나 조합, 근사 없음)이다. 정규는 ziggurat, 감마는 Marsaglia–Tsang, 이항은 BTRS, 포아송은 PTRS 등이고 표는 docs/design/stats.md §4에 있다.
+- **분포 검사** (bench/stats/t7/quality.md): 62개 경우에서 표본 10⁶개의 KS·카이제곱 p값이 모두 0.03 이상이다(가장 작은 값 0.034). 아주 작은 모양도 포함한다(감마 a = 1e-3은 질량의 47.5%가 5e-324 아래라 그 표본은 0이다).
+- **속도** (bench/stats/t7/speed.md, 표본 10⁶개, numpy Generator(PCG64) 대비): 1스레드 0.42–2.7배(중앙값 0.84), 10스레드 3.6–23배(중앙값 7.4). 1스레드에서 느린 것은 다음과 같다.
+  - 큰 n의 이항(0.42배)
+  - 비중심 F(0.48배)
+  - 모양이 둘 다 1보다 작은 베타(0.51배)
+  - 정규(0.55배): Philox는 단어당 1.1 ns이고, PCG64가 더 싸다.
+
+  Python float 하나는 호출당 0.24–0.5 µs다(numpy의 0.4–2배).
 
 ## §3. 다변량 분포 (초안)
 ```

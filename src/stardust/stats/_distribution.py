@@ -7,6 +7,7 @@ Parameters outside their domain give NaN (T8), never an error.
 """
 
 from .. import _core as _sd_core
+from .. import random as _random
 
 
 _k = _sd_core.stats
@@ -40,7 +41,7 @@ class _Distribution:
     (the native prefix) and _params (the parameter names in native order) and defines
     __init__ with keyword-only parameters that calls _set."""
 
-    __slots__ = ("_p",)
+    __slots__ = ("_p", "_scalar")
     _name = ""
     _params = ()
     _density = ()  # the density's two methods: pdf, logpdf or pmf, logpmf
@@ -50,6 +51,8 @@ class _Distribution:
         if not cls._name:  # the bases ContinuousDistribution and DiscreteDistribution
             return
         ops = {m: getattr(_k, f"{cls._name}_{m}") for m in cls._density + _INPUT_METHODS + _PARAM_METHODS}
+        ops["sample"] = getattr(_k, f"{cls._name}_sample")
+        ops["sample1"] = getattr(_k, f"{cls._name}_sample1")
         cls._ops = ops
         for i, p in enumerate(cls._params):  # read-only attributes (T19)
             setattr(cls, p, _parameter(i, p))
@@ -63,6 +66,7 @@ class _Distribution:
         if len(arrays) > 1:
             _sd_core.broadcast_arrays(*arrays)  # parameters that cannot broadcast fail here (views only)
         self._p = values
+        self._scalar = None if arrays else tuple(float(v) for v in values)  # for one-sample calls
 
     def __repr__(self):
         args = ", ".join(f"{n}={v!r}" for n, v in zip(self._params, self._p))
@@ -140,6 +144,35 @@ class _Distribution:
     def support(self):
         """(lo, hi): the ends of the support."""
         return self._ops["support_lo"](*self._p), self._ops["support_hi"](*self._p)
+
+    # ---- samples (T7)
+
+    def sample(self, shape=(), /, *, rng):
+        """Random samples, an array of shape `shape` + the parameters' broadcast shape (a float
+        when both are empty). `rng` is an sd.random.Generator (sd.random.default_rng(seed)); the
+        values depend on its state only, not on the thread count (docs/api/stats.md §2.5)."""
+        if not isinstance(rng, _random.Generator):
+            raise TypeError(f"sample(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), "
+                            f"not {type(rng).__name__}")
+        if shape == () and self._scalar is not None:  # one float: no arrays on the way
+            pos = rng._reserve(1)
+            return self._ops["sample1"](rng._key[0], rng._key[1], pos, *self._scalar)
+        shp = _random._shape(shape, "sample")
+        arrays = [v for v in self._p if isinstance(v, _sd_core.ndarray)]
+        pshape = tuple(_sd_core.broadcast_arrays(*arrays)[0].shape) if arrays else ()
+        out_shape = shp + pshape
+        n = _random._size(out_shape)
+        ps = []
+        for v in self._p:
+            if isinstance(v, _sd_core.ndarray):
+                if v.dtype != _sd_core.float64:
+                    v = v.astype(_sd_core.float64)
+                ps.append(_sd_core.broadcast_to(v, pshape))
+            else:
+                ps.append(_sd_core.asarray([float(v)]))
+        pos = rng._reserve(n)
+        out = self._ops["sample"](rng._key[0], rng._key[1], pos, out_shape if out_shape else (1,), *ps)
+        return float(out[0]) if not out_shape else out
 
 
 class ContinuousDistribution(_Distribution):

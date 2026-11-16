@@ -46,12 +46,13 @@ inline Block philox(Block c, Key key) {
 
 // Four blocks at once, the rounds interleaved: one block is a chain of 20 dependent
 // multiplies (latency-bound, ~12 ns); four independent chains fill the multiplier
-// (measured: 10^6 uniforms 2.98 -> 1.19 ms). Same bits as philox() on each.
-inline void philox4(const std::uint64_t* c0, Key key, std::array<std::uint64_t, 16>& out) {
+// (measured: 10^6 uniforms 2.98 -> 1.19 ms). Same bits as philox() on each. The counters
+// are (c0[q], c1, 0, 0).
+inline void philox4(const std::uint64_t* c0, Key key, std::array<std::uint64_t, 16>& out, std::uint64_t c1 = 0) {
     constexpr std::uint64_t kM0 = 0xD2E7470EE14C6C93ULL, kM1 = 0xCA5A826395121157ULL;
     constexpr std::uint64_t kW0 = 0x9E3779B97F4A7C15ULL, kW1 = 0xBB67AE8584CAA73BULL;
     std::uint64_t a[4], b[4], c[4], d[4];  // the four counter words of each block (b, c, d start at 0)
-    for (int q = 0; q < 4; ++q) a[q] = c0[q], b[q] = 0, c[q] = 0, d[q] = 0;
+    for (int q = 0; q < 4; ++q) a[q] = c0[q], b[q] = c1, c[q] = 0, d[q] = 0;
     std::uint64_t k0 = key.k0, k1 = key.k1;
     for (int r = 0; r < 10; ++r) {
         if (r > 0) k0 += kW0, k1 += kW1;
@@ -85,6 +86,7 @@ public:
     std::uint64_t extra(std::uint64_t e, std::uint64_t k) const {
         return philox({e, 1 + (k >> 2), 0, 0}, key_)[k & 3];
     }
+    Key key() const { return key_; }
 
 private:
     Key key_;

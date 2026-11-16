@@ -217,7 +217,7 @@
 | T4 분포 엔진과 연속 기본 12 | 완료, 승인 대기 (2026-11-15) |
 | T5 이산 10 | 완료, 승인 대기 (2026-11-16) |
 | T6 극값·수명 6과 비중심 3 | 완료, 승인 대기 (2026-11-16) |
-| T7 표본 (`sample`) | 대기 |
+| T7 표본 (`sample`) | 완료, 승인 대기 (2026-11-16) |
 | T8 기술통계 | 대기 |
 | T9 다변량: 정규, t, 다항, 디리클레 | 대기 |
 | T10 행렬 분포: Wishart, 역Wishart, 행렬 정규 | 대기 |
@@ -271,6 +271,8 @@
 
 ### T7. 표본
 - 모든 분포의 `sample` (직접 알고리즘 또는 역함수 법)
+- 결정(사용자, 2026-11-16): docs/design/stats.md T27 (`rng`는 꼭 준다, 결과 모양은 shape + 매개변수 모양, 이산도 float64, 방법은 분포마다 재서 고른다).
+- 결과: csrc/stats/(sample.hpp, sample_dist.hpp), csrc/bind/stats_sample.cpp, src/stardust/stats/_distribution.py의 `sample`; docs/api/stats.md §2.5, docs/design/stats.md §4; 측정 bench/stats/t7/(speed.md, quality.md); 테스트 tests/stats/test_sample.py.
 
 ### T8. 기술통계
 - `describe skew kurtosis moment zscore rankdata sem iqr mode entropy differential_entropy`

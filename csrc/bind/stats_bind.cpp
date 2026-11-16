@@ -36,7 +36,7 @@ void def_methods(nb::module_& m) {
     (nary_bind::def<stats::DistOp<D, M>>(m), ...);
 }
 
-// Every method of a continuous distribution (T9; sample is T7).
+// Every method of a continuous distribution (T9; sample, T7, is bound in bind/stats_sample.cpp).
 template <class D>
 void def_continuous(nb::module_& m) {
     using namespace stats::method;
@@ -91,6 +91,7 @@ void bind_stats(nb::module_& core) {
     def_discrete<stats::BetaBinomial>(m);
     def_discrete<stats::LogSeries>(m);
     def_discrete<stats::Zipf>(m);
+    bind_stats_sample(m);  // T7
 }
 
 }  // namespace sd
