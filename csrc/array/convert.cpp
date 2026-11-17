@@ -84,8 +84,12 @@ std::int64_t py_to_int64(PyObject* p) {
 }
 
 double py_to_double(PyObject* p) {
-    double v = PyFloat_AsDouble(p);  // works for int too; raises OverflowError for huge ints
-    if (v == -1.0 && PyErr_Occurred()) throw nb::python_error();
+    double v = PyFloat_AsDouble(p);  // works for int too
+    if (v == -1.0 && PyErr_Occurred()) {
+        if (!PyErr_ExceptionMatches(PyExc_OverflowError)) throw nb::python_error();
+        PyErr_Clear();  // an int beyond the double range: ours, so that the function's name is added
+        throw std::overflow_error("Python int too large to convert to float64");
+    }
     return v;
 }
 

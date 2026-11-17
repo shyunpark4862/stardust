@@ -50,6 +50,8 @@ bool  int64  float64  complex128  string
 - **`BufferError`**: 버퍼나 DLPack으로 데이터를 주고받을 수 없다. Array API와 DLPack이 정한 예외다. CPU가 아닌 장치의 배열을 `from_dlpack`으로 가져올 때, 읽기 전용 배열을 옛 DLPack 형식으로 내보낼 때가 그렇다 (docs/api/array.md §3.5, §10.5). 버퍼 프로토콜의 내보내기 실패도 Python의 규칙대로 `BufferError`다.
 - **`OverflowError`**: int64 범위를 벗어난 Python int를 int64로 바꿔야 한다 (docs/api/array.md §1.5, docs/api/frame.md §2.2). float로 계산할 수 있으면 float로 바꾼다.
   - int 인자(`shape`, `axis`, `k`, `n`, `num` 등)도 int64 범위 밖이면 `OverflowError`다. 배열과 linalg가 같다 (docs/api/array.md §1.3, docs/api/linalg.md §1.1). 예외는 `set_num_threads`의 `n`이다: 범위 밖은 크기와 상관없이 `ValueError`다 (§3).
+  - double 범위를 넘는 int(예: `10**400`)를 실수로 바꿔야 할 때도 `OverflowError`다(사용자 결정 2026-11-18: 예외는 그대로, 메시지에 함수 이름을 붙인다). 실수 인자는 `var(): 'correction' is out of range`, `matrix_rank(): 'rtol' is out of range`처럼 인자 이름을 쓰고, 데이터는 `asarray(): Python int too large to convert to float64`다(`Series():`, `full():` 등 같은 꼴). 연산자(`x * 10**400`)는 함수 이름이 없다. `sd.stats` 분포의 매개변수는 `'mu' is out of range`다.
+- **`MemoryError`**: 배열 하나의 요청이 이 컴퓨터의 물리 메모리보다 크면 할당하기 전에 낸다(사용자 결정 2026-11-18). 메시지는 `zeros(): cannot allocate 8796093022208 bytes: more than this machine's physical memory`다. 전에는 운영체제가 주소 공간만 내주고, 쓰는 도중에 프로세스를 강제 종료했다(`rng.permutation(2**40)`). 물리 메모리보다 작지만 남은 메모리보다 큰 요청은 운영체제에 맡긴다.
 - **영역 고유의 예외**는 위 내장 예외의 하위 클래스다. 지금은 `sd.linalg.LinAlgError(ValueError)` 하나다: 특이 행렬, 양정치가 아닌 행렬, 수렴 실패 (docs/api/linalg.md).
 - 배열의 원소별 연산은 원소의 값 때문에 실패하지 않는다 (docs/api/array.md §1.6).
 - 어느 영역도 경고를 내지 않는다. 문제가 있으면 에러를 낸다.
@@ -63,7 +65,7 @@ bool  int64  float64  complex128  string
   - `LinAlgError`도 같다: `inv(): singular matrix`
 - **인자는 작은따옴표 안에 이름을 쓴다**: `'axis'`, `'dtype'`. 인자와 값을 함께 보일 때는 호출 모양 그대로 쓴다: `copy=False`, `header=False`
   - 인자가 아닌 낱말에는 따옴표가 없다. 예: `axis 3 is out of bounds for an array of dimension 2`의 axis는 배열의 축이다.
-  - 받은 값은 타입 이름으로 보인다(`not list`). 문자열과 타입은 그 자체로 보인다(`not 'float32'`, `not <class 'float'>`).
+  - 받은 값은 타입 이름으로 보인다(`not list`). 문자열은 그 자체로 보인다(`not 'float32'`). 타입은 모듈을 붙인 이름으로 보인다(`not numpy.int64`; 내장 타입은 `not float`). `sd.int64`와 헷갈리지 않게 하려는 것이다(사용자 결정 2026-11-18, 전에는 `<class 'int64'>`).
   - **타입 이름은 모듈 경로 없는 짧은 이름이다**: `not ndarray`, `not int64`, `not Int64DType`, `not <class 'int64'>`. `stardust._core.ndarray`, `numpy.int64`, `numpy.dtypes.Int64DType`처럼 쓰지 않는다.
     - Python이 직접 내는 메시지도 같다. C++로 묶은 타입도 Python으로 쓴 클래스처럼 짧은 이름을 갖는다: `unsupported operand type(s) for +: 'ndarray' and 'list'`, `unhashable type: 'ndarray'`, `cannot pickle 'ndarray' object`, `'ndarray' object has no attribute 'foo'`
 - **같은 실수에는 어느 영역에서든 같은 메시지다** (DESIGN.md §10.3). 옵션의 종류마다 검사가 하나라서 형식이 하나다.
@@ -92,5 +94,15 @@ get_num_threads()
 - **결과는 스레드 수와 무관하게 비트까지 같다.** 리덕션과 정렬도 결정적이다.
   - 같은 데이터와 같은 메모리 레이아웃이면 언제나 같은 비트가 나온다.
 - `n`이 1이면 스레드풀을 쓰지 않는다. 환경 변수는 두지 않는다.
-- 여러 스레드로 계산할 때는 GIL을 놓는다. 데이터프레임 영역은 큰 작업이면 1스레드여도 GIL을 놓는다 (docs/api/frame.md §12).
+- **GIL**: 작업량이 영역의 병렬 기준값 이상이면 스레드 수와 상관없이 GIL을 놓고 계산한다. 그래서 `set_num_threads(1)`이어도 큰 계산이 도는 동안 다른 Python 스레드가 돈다. 기준값보다 작은 작업은 GIL을 쥔 채 계산한다.
+  - 기준값은 스레드풀로 나누기 시작하는 작업량이고, 모든 영역에 같은 규칙을 쓴다.
+    - 배열, special, stats의 분포 함수, random: float64 덧셈 32,768개 분량이다. 원소 하나의 계산이 무거운 함수(`exp`, `special.erf`, 분포의 `cdf` 등)는 그만큼 적은 원소부터, 원소가 1바이트인 `bool` 배열의 원소별 연산과 리덕션은 262,144 원소부터다.
+    - linalg: 호출 하나의 추정 계산 시간이 10µs 이상일 때다. 행렬 하나만 넘겨도 같다.
+    - 데이터프레임: 131,072 원소다 (docs/api/frame.md §12).
+  - 기준값과 상관없이 GIL을 놓는 계산: `cov`, `corrcoef`의 행렬 곱, stats의 여러 기술통계 함수와 다변량 분포, 분포의 `sample`, random의 `permutation`.
+  - 기준값 이상이어도 GIL을 쥔 채 도는 계산:
+    - Python 객체를 읽거나 만드는 변환: 리스트를 받는 `asarray`, `tolist`.
+    - 인덱스 배열 하나로 하는 대입 `x[idx] = v`. 같은 인덱스가 여러 번 나오면 마지막 값이 남아야 해서 순서대로 쓴다.
+    - `unique_all`, `unique_counts`, `unique_inverse`에서 정렬 뒤에 묶음을 세는 부분.
+    - 새 메모리를 받기만 하는 `zeros`, `eye`.
 - 다른 Python 스레드가 이미 스레드풀을 쓰고 있으면, 새 호출은 1스레드로 계산한다. 결과는 같다.

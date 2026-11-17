@@ -324,6 +324,7 @@ nb::object searchsorted(nb::handle x1, nb::handle x2, nb::handle side_obj, nb::h
                     run(t * kParallelTask, std::min(m, (t + 1) * kParallelTask));
                 });
             } else {
+                const parallel::Unlocked unlocked(work >= kParallelThreshold);
                 run(0, m);
             }
         }

@@ -4,6 +4,8 @@
 #include "bind/pyutil.hpp"
 #include "array/convert.hpp"
 #include "array/ops/copy.hpp"
+#include "array/parallel_limits.hpp"
+#include "parallel/pool.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -15,11 +17,15 @@ namespace sd {
 namespace {
 
 // New arrays are contiguous, so filling them is a flat loop over memory
-// regardless of their axis order.
+// regardless of their axis order. The fills of this file are serial loops
+// over plain memory: from kParallelThreshold elements they run without the
+// GIL (docs/design/array.md §10.2).
 template <typename T>
 void fill_flat(NDArray& a, T value) {
     T* p = reinterpret_cast<T*>(a.data);
-    std::fill(p, p + a.size(), value);
+    const std::int64_t n = a.size();
+    const parallel::Unlocked unlocked(n >= kParallelThreshold);
+    std::fill(p, p + n, value);
 }
 
 void fill_one(NDArray& a) {
@@ -141,6 +147,7 @@ nb::object arange(nb::handle start_obj, nb::handle stop_obj, nb::handle step_obj
         NDArray out = new_array(dtype.value_or(DType::Int64), std::vector<std::int64_t>{n});
         visit_dtype(out.dtype, [&]<typename T>(std::type_identity<T>) {
             T* p = reinterpret_cast<T*>(out.data);
+            const parallel::Unlocked unlocked(n >= kParallelThreshold);
             for (std::int64_t i = 0; i < n; ++i) p[i] = cast_value<T>(static_cast<std::int64_t>(a + static_cast<__int128>(i) * s));
         });
         return wrap(std::move(out));
@@ -158,6 +165,7 @@ nb::object arange(nb::handle start_obj, nb::handle stop_obj, nb::handle step_obj
     NDArray out = new_array(dtype.value_or(DType::Float64), std::vector<std::int64_t>{n});
     visit_dtype(out.dtype, [&]<typename T>(std::type_identity<T>) {
         T* p = reinterpret_cast<T*>(out.data);
+        const parallel::Unlocked unlocked(n >= kParallelThreshold);
         for (std::int64_t i = 0; i < n; ++i) p[i] = cast_value<T>(a + static_cast<double>(i) * s);
     });
     return wrap(std::move(out));
@@ -185,6 +193,7 @@ nb::object linspace(nb::handle start, nb::handle stop, nb::handle num_obj, nb::h
         const C step = div > 0 ? delta / static_cast<double>(div) : C(0);
         visit_dtype(target, [&]<typename T>(std::type_identity<T>) {
             T* p = reinterpret_cast<T*>(out.data);
+            const parallel::Unlocked unlocked(num >= kParallelThreshold);
             for (std::int64_t i = 0; i < num; ++i) {
                 const double fi = static_cast<double>(i);
                 C y;

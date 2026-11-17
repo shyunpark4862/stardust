@@ -70,7 +70,7 @@ NDArray cov_matrix(nb::handle x_obj, bool rowvar, double correction) {
             T* cp = reinterpret_cast<T*>(c.data);
             const T* xp = reinterpret_cast<const T*>(xc.data);
             if (n > 0) {
-                nb::gil_scoped_release release;  // BLAS may take a while; it touches no Python objects
+                const parallel::Unlocked unlocked(true);  // BLAS may take a while; it touches no Python objects
                 // syrk does half of gemm's multiply-adds, but Accelerate's syrk
                 // is slower when there are many more observations than
                 // variables (p = 20, n = 1e5: 3.5 ms against 2.0 ms). Measured:

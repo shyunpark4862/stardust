@@ -271,8 +271,7 @@ nb::object matmul(nb::handle x1, nb::handle x2) {
             // On the calling thread (Accelerate may thread inside): a call of real
             // size lets other Python threads run meanwhile, as cov's BLAS call does.
             // BLAS and the packing touch no Python objects.
-            std::optional<nb::gil_scoped_release> release;
-            if (count * work >= kBlasTaskWork) release.emplace();
+            const parallel::Unlocked unlocked(count * work >= kBlasTaskWork);
             for (std::int64_t t = 0; t < count; ++t) one_batch(t);
         }
     }

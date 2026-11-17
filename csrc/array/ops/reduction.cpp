@@ -22,7 +22,7 @@
 namespace sd {
 
 double parse_correction(nb::handle o) {
-    if (const std::optional<double> c = real_value(o)) return *c;  // numpy integers too (API.md §2)
+    if (const std::optional<double> c = real_value(o, "correction")) return *c;  // numpy integers too (API.md §2)
     throw nb::type_error(("'correction' must be an int or a float, not " + py_type_name(o)).c_str());
 }
 
@@ -253,7 +253,10 @@ void arg_lane(const std::byte* x, std::byte* o, const LaneCtx& c) {
 // skip_nan (nanargmin/nanargmax): a NaN compares as -inf/+inf instead of winning.
 std::int64_t arg_whole(const std::byte* p, std::int64_t n, std::int64_t item, DType dtype, ArgFn lane, bool max,
                        bool skip_nan = false) {
-    if (n < kParallelThreshold || !parallel::available()) return lane(p, n, item);
+    if (n < kParallelThreshold || !parallel::available()) {
+        const parallel::Unlocked unlocked(n >= kParallelThreshold);
+        return lane(p, n, item);
+    }
     const std::int64_t pieces = (n + kParallelTask - 1) / kParallelTask;
     std::vector<std::int64_t> at(pieces);
     parallel::parallel_for(pieces, [&](std::int64_t t) {

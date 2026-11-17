@@ -6,6 +6,7 @@
 #include "array/kernels/buffered.hpp"
 #include "array/kernels/cast.hpp"
 #include "array/ops/copy.hpp"
+#include "array/parallel_limits.hpp"
 #include "parallel/pool.hpp"
 
 #include <algorithm>
@@ -149,10 +150,12 @@ nb::object launch_scalars(std::span<const nb::handle> objs, std::span<const DTyp
 // copy (numpy's semantics) without its pass over memory (10^6: 300 us against
 // numpy's 238; chunked: see docs/design/array.md §3.5). False: not this case.
 // On several threads the whole copy runs on the pool instead (same result).
+// The chunks run without the GIL from the work at which that iterator run
+// would (NdIter::plan: weight x bytes x elements, docs/design/array.md §10.2).
 inline constexpr std::int64_t kOverlapChunk = 1024;  // 16 KB per buffered input (complex)
 
 bool overlap_in_chunks(std::span<const NDArray> ins, std::span<const DType> in_types, const std::array<bool, kMaxInputs>& overlaps,
-                       NDArray& out, Loop loop) {
+                       NDArray& out, Loop loop, std::int64_t weight) {
     if (out.ndim != 1 || parallel::available()) return false;
     const std::int64_t n = out.shape[0], st = out.strides[0], w = out.itemsize();
     if (st == 0 || n < 2 * kOverlapChunk) return false;
@@ -171,6 +174,7 @@ bool overlap_in_chunks(std::span<const NDArray> ins, std::span<const DType> in_t
     std::array<std::byte*, kMaxOperands> args;
     std::array<std::int64_t, kMaxOperands> strides;
     const std::int64_t chunks = (n + kOverlapChunk - 1) / kOverlapChunk;
+    const parallel::Unlocked unlocked(weight * std::min<std::int64_t>(w, 8) * n >= 8 * kParallelThreshold);
     for (std::int64_t c = 0; c < chunks; ++c) {
         const std::int64_t q = dir > 0 ? c : chunks - 1 - c;
         const std::int64_t i0 = q * kOverlapChunk, len = std::min(kOverlapChunk, n - i0);
@@ -236,7 +240,7 @@ nb::object launch(std::span<const nb::handle> objs, std::span<const DType> in_ty
                 overlaps[k] = may_share_memory(ins[k], out) && !same_view(ins[k], out);
                 any_overlap |= overlaps[k];
             }
-            if (any_overlap && overlap_in_chunks(inputs, in_types, overlaps, out, loop)) return nb::borrow(out_obj);
+            if (any_overlap && overlap_in_chunks(inputs, in_types, overlaps, out, loop, weight)) return nb::borrow(out_obj);
             for (size_t k = 0; k < nin; ++k)
                 if (overlaps[k]) ins[k] = cast_copy(ins[k], ins[k].dtype);
             run_loop(inputs, in_types, std::span(&out, 1), out.shape_span(), loop, weight);

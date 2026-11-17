@@ -46,10 +46,10 @@ std::string describe_dtype_arg(nb::handle o) {
     if (const std::optional<DType> d = parse_any_dtype(o); d && !PyUnicode_Check(o.ptr()))
         return std::string("sd.") + dtype_name(*d);  // a dtype the area does not have: sd.string
     if (PyUnicode_Check(o.ptr())) return nb::repr(o).c_str();
-    if (PyType_Check(o.ptr())) {  // a type by its short name: <class 'int64'>, not <class 'numpy.int64'>
-        const char* name = reinterpret_cast<PyTypeObject*>(o.ptr())->tp_name;
-        const char* dot = std::strrchr(name, '.');
-        return std::string("<class '") + (dot ? dot + 1 : name) + "'>";
+    if (PyType_Check(o.ptr())) {  // a type by its full name (numpy.int64: not to be read as sd.int64); builtins bare
+        const std::string module = nb::cast<std::string>(nb::str(nb::getattr(o, "__module__", nb::str("builtins"))));
+        const std::string name = nb::cast<std::string>(nb::str(nb::getattr(o, "__qualname__")));
+        return module == "builtins" ? name : module + "." + name;
     }
     return py_type_name(o);
 }
@@ -91,22 +91,34 @@ IndexResult index_value(nb::handle o, std::int64_t& out) {
     return IndexResult::Ok;
 }
 
-std::optional<double> real_value(nb::handle o) {
-    PyObject* p = o.ptr();
-    if (PyFloat_Check(p) || (PyLong_Check(p) && !PyBool_Check(p))) {
-        const double v = PyFloat_AsDouble(p);  // OverflowError for an int beyond the double range
-        if (v == -1.0 && PyErr_Occurred()) throw nb::python_error();
-        return v;
+namespace {
+
+// PyFloat_AsDouble, with Python's bare OverflowError for an int beyond the double range
+// turned into ours: "'what' is out of range" as for any other argument out of range (the
+// caller's wrapper adds "func(): ").
+double as_double(PyObject* p, const char* what) {
+    const double v = PyFloat_AsDouble(p);
+    if (v == -1.0 && PyErr_Occurred()) {
+        if (!PyErr_ExceptionMatches(PyExc_OverflowError)) throw nb::python_error();
+        PyErr_Clear();
+        if (what == nullptr) throw std::overflow_error("Python int too large to convert to float64");
+        throw std::overflow_error(std::string("'") + what + "' is out of range");
     }
+    return v;
+}
+
+}  // namespace
+
+std::optional<double> real_value(nb::handle o, const char* what) {
+    PyObject* p = o.ptr();
+    if (PyFloat_Check(p) || (PyLong_Check(p) && !PyBool_Check(p))) return as_double(p, what);
     std::int64_t i = 0;
     switch (index_value(o, i)) {
         case IndexResult::Ok: return static_cast<double>(i);
         case IndexResult::Overflow: {  // a numpy uint64 beyond int64: still a number
             nb::object r = nb::steal(PyNumber_Index(p));
             if (!r.is_valid()) throw nb::python_error();
-            const double v = PyFloat_AsDouble(r.ptr());
-            if (v == -1.0 && PyErr_Occurred()) throw nb::python_error();
-            return v;
+            return as_double(r.ptr(), what);
         }
         case IndexResult::NotInt: return std::nullopt;
     }

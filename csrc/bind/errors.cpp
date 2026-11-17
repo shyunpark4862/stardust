@@ -3,6 +3,7 @@
 #include "linalg/errors.hpp"
 
 #include <cstring>
+#include <new>
 #include <stdexcept>
 
 namespace sd {
@@ -39,6 +40,10 @@ void rethrow_named(const char* func) {
         throw linalg::LinAlgError(with_name(func, e.what()));
     } catch (const std::overflow_error& e) {
         throw std::overflow_error(with_name(func, e.what()));
+    } catch (const std::bad_alloc& e) {  // MemoryError; Buffer::allocate's says why
+        const bool plain = std::strcmp(e.what(), "std::bad_alloc") == 0;
+        PyErr_SetString(PyExc_MemoryError, with_name(func, plain ? "out of memory" : e.what()).c_str());
+        throw nb::python_error();
     }
 }
 

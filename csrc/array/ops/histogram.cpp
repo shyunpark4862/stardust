@@ -63,6 +63,7 @@ bool use_groups(std::int64_t n, std::int64_t bins) {
 template <typename BinOf>
 void count_into(std::int64_t* counts, std::int64_t bins, std::int64_t n, BinOf&& bin_of) {
     if (!use_groups(n, bins)) {
+        const parallel::Unlocked unlocked(n >= kParallelThreshold);
         for (std::int64_t i = 0; i < n; ++i)
             if (const std::int64_t b = bin_of(i); b >= 0) ++counts[b];
         return;
@@ -119,7 +120,10 @@ nb::object bincount(nb::handle x_obj, nb::handle weights_obj, nb::handle minleng
     const double* p = reinterpret_cast<const double*>(wf.data);
     NDArray out = new_array(DType::Float64, shape, /*zeroed=*/true);
     double* o = reinterpret_cast<double*>(out.data);
-    for (std::int64_t i = 0; i < n; ++i) o[v[i]] += p[i];  // in order, as numpy
+    {
+        const parallel::Unlocked unlocked(n >= kParallelThreshold);  // serial by its order; a long one without the GIL
+        for (std::int64_t i = 0; i < n; ++i) o[v[i]] += p[i];  // in order, as numpy
+    }
     return wrap(std::move(out));
 }
 
@@ -137,7 +141,7 @@ std::pair<double, double> outer_edges(const double* a, std::int64_t n, nb::handl
     if (!range.is_none()) {
         if (!(PyTuple_Check(range.ptr()) || PyList_Check(range.ptr())) || nb::len(range) != 2)
             throw nb::type_error(("'range' must be None or a (min, max) pair, not " + py_type_name(range)).c_str());
-        const std::optional<double> lo = real_value(range[0]), hi = real_value(range[1]);
+        const std::optional<double> lo = real_value(range[0], "range"), hi = real_value(range[1], "range");
         for (int k = 0; k < 2; ++k)
             if (!(k ? hi : lo))
                 throw nb::type_error(("'range' must hold two ints or floats, not " + py_type_name(range[k])).c_str());
@@ -308,6 +312,7 @@ nb::object histogram(nb::handle x_obj, nb::handle bins_obj, nb::handle range_obj
                         parallel::parallel_for(nblk, [&](std::int64_t b) { block_sums(b, all.data() + b * bins); });
                         for (std::int64_t b = 0; b < nblk; ++b) add_block(all.data() + b * bins);
                     } else {
+                        const parallel::Unlocked unlocked(nblk > 1);  // as the split above: no GIL from two blocks on
                         std::vector<Acc> blk(bins);
                         for (std::int64_t b = 0; b < nblk; ++b) {
                             block_sums(b, blk.data());

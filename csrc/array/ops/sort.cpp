@@ -9,6 +9,7 @@
 #include "array/kernels/sort.hpp"
 #include "array/ops/copy.hpp"
 #include "array/ops/lanes.hpp"
+#include "array/parallel_limits.hpp"
 #include "parallel/pool.hpp"
 
 #include <algorithm>
@@ -549,7 +550,11 @@ UniqueParts unique_parts(const NDArray& x) {
         auto buf = buffer<Keyed<T>>(n);
         const std::int64_t m = n - load_split_nans<T>(flat.data, flat.itemsize(), n, buf.get(), /*nans_first=*/false,
                                                       [](std::int64_t i, T v) { return Keyed<T>{v, i}; });
-        sort_keyed(buf.get(), m, /*stable=*/true, /*descending=*/false);
+        {
+            // A long sort runs without the GIL, as the lanes of sort() do (docs/design/array.md §10.2).
+            const parallel::Unlocked unlocked(m >= kParallelThreshold);
+            sort_keyed(buf.get(), m, /*stable=*/true, /*descending=*/false);
+        }
         for (std::int64_t i = 0; i < n; ++i) {
             order[i] = buf[i].index;
             if (i == 0 || (i < m && !same(buf[i - 1].value, buf[i].value)) || i == m) starts.push_back(i);
@@ -593,7 +598,10 @@ nb::object unique_values(nb::handle x_obj) {
         auto buf = buffer<T>(n);
         const std::int64_t m = n - load_split_nans<T>(flat.data, flat.itemsize(), n, buf.get(), /*nans_first=*/false,
                                                       [](std::int64_t, T v) { return v; });
-        sort_values(buf.get(), m, /*stable=*/true, /*descending=*/false);
+        {
+            const parallel::Unlocked unlocked(m >= kParallelThreshold);  // as in unique_parts
+            sort_values(buf.get(), m, /*stable=*/true, /*descending=*/false);
+        }
         std::int64_t groups = 0;  // compact in place: keep the first of every run of equal values
         for (std::int64_t i = 0; i < m; ++i)
             if (i == 0 || !same(buf[groups - 1], buf[i])) buf[groups++] = buf[i];

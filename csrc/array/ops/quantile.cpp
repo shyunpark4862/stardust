@@ -273,7 +273,7 @@ std::vector<double> parse_q(nb::handle o, bool& scalar) {
         assign(d, a);
         const double* v = reinterpret_cast<const double*>(d.data);
         qs.assign(v, v + d.size());
-    } else if (const std::optional<double> v = real_value(o)) {
+    } else if (const std::optional<double> v = real_value(o, "q")) {
         scalar = true;
         qs.push_back(*v);
     } else {

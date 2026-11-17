@@ -4,8 +4,37 @@
 #include <cstdlib>
 #include <cstring>
 #include <new>
+#include <string>
+
+#include <sys/sysctl.h>
 
 namespace sd {
+
+namespace {
+
+// Bytes of physical memory (hw.memsize), read once; no limit if it cannot be read.
+std::uint64_t physical_memory() {
+    static const std::uint64_t bytes = [] {
+        std::uint64_t v = 0;
+        std::size_t len = sizeof v;
+        if (sysctlbyname("hw.memsize", &v, &len, nullptr, 0) != 0 || v == 0) return ~std::uint64_t{0};
+        return v;
+    }();
+    return bytes;
+}
+
+// std::bad_alloc (MemoryError in Python) that says why.
+class TooLarge : public std::bad_alloc {
+public:
+    explicit TooLarge(std::int64_t nbytes)
+        : msg_("cannot allocate " + std::to_string(nbytes) + " bytes: more than this machine's physical memory") {}
+    const char* what() const noexcept override { return msg_.c_str(); }
+
+private:
+    std::string msg_;
+};
+
+}  // namespace
 
 std::shared_ptr<Buffer> Buffer::allocate(std::int64_t nbytes, bool zeroed) {
     auto buf = std::make_shared<Buffer>(Key{});  // the Buffer and its reference count, together
@@ -15,6 +44,11 @@ std::shared_ptr<Buffer> Buffer::allocate(std::int64_t nbytes, bool zeroed) {
         if (zeroed) std::memset(buf->inline_, 0, static_cast<std::size_t>(nbytes));
         return buf;
     }
+    // A request larger than the machine's physical memory can never be filled: the
+    // system would grant it (address space only) and kill the process while it is written
+    // (rng.permutation(2**40)). MemoryError instead (user decision 2026-11-18). A request
+    // that is smaller but exceeds what is free is left to the system.
+    if (static_cast<std::uint64_t>(nbytes) > physical_memory()) throw TooLarge(nbytes);
     // Over-allocate by one alignment unit and round the start up, so the
     // calloc fast path above still applies (aligned_alloc has no calloc twin).
     const std::size_t request = static_cast<std::size_t>(nbytes) + kAlignment;

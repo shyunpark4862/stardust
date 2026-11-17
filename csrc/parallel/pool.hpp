@@ -16,6 +16,7 @@
 #include <climits>
 #include <cstdint>
 #include <functional>
+#include <optional>
 
 namespace sd::parallel {
 
@@ -35,15 +36,18 @@ bool available();
 
 // Runs fn(t) for t in [0, ntasks). In parallel when available() and the
 // pool is not busy with another Python thread's job (then this call runs on
-// the calling thread alone). The GIL is released for the duration, whatever
-// the thread count, so other Python threads keep running; the caller decides
-// that the work is worth it. An exception from a task is rethrown here. Tasks
-// must not touch Python objects.
+// the calling thread alone). With two tasks or more the GIL is released for
+// the duration, whatever the thread count -- with one thread the tasks run in
+// order on the calling thread, still without the GIL -- so other Python
+// threads keep running; the caller decides that the work is worth splitting.
+// One task is a plain call that leaves the GIL as it is; so does a call from
+// inside a task, which holds none (docs/design/array.md §10.2). An exception
+// from a task is rethrown here. Tasks must not touch Python objects.
 void parallel_for(std::int64_t ntasks, const std::function<void(std::int64_t)>& fn);
 
-// Releases the GIL (if this thread holds it) for the lifetime of the object.
-// parallel_for uses it; work that runs on the calling thread alone keeps the
-// GIL.
+// Releases the GIL for the lifetime of the object, if this thread holds it:
+// inside a task, or under another GilRelease, it does nothing, so releases
+// may nest.
 class GilRelease {
 public:
     GilRelease();
@@ -53,6 +57,25 @@ public:
 
 private:
     void* state_ = nullptr;
+};
+
+// The GIL rule every area follows (API.md §3): work at or above the area's
+// parallel threshold runs without the GIL whatever the thread count; work
+// below it keeps the GIL, so a small call pays nothing. parallel_for covers
+// the calls that split. A call that is large enough but runs on the calling
+// thread -- one thread, a busy pool, nothing to split along, or a serial
+// algorithm chosen because no pool is available -- holds an Unlocked for
+// that stretch: `Unlocked u(n >= kParallelThreshold);`. Like a task, the
+// stretch must not touch Python objects (this includes copying or destroying
+// an NDArray, whose `base` is a Python reference).
+class Unlocked {
+public:
+    explicit Unlocked(bool release) {
+        if (release) release_.emplace();
+    }
+
+private:
+    std::optional<GilRelease> release_;
 };
 
 // The first index (a row, an element) where a check failed, found by tasks

@@ -164,20 +164,30 @@ NdIter::Plan NdIter::plan(Split split, std::int64_t weight) const {
 
 void NdIter::run(Loop kernel, void* ctx, Split split, std::int64_t weight) const {
     if (empty_) return;
-    if (split != Split::None && parallel::available()) {
-        const Plan p = plan(split, weight);
-        if (p.tasks > 1) {
-            const std::int64_t extent = shape_[p.axis];
-            parallel::parallel_for(p.tasks, [&](std::int64_t t) {
-                NdIter piece = *this;
-                const std::int64_t begin = t * p.chunk;
-                piece.shape_[p.axis] = std::min(extent, begin + p.chunk) - begin;
-                for (int k = 0; k < nop_; ++k) piece.data_[k] += begin * strides_[k][p.axis];
-                piece.run_serial(kernel, ctx);
-            });
-            return;
-        }
+    if (split == Split::None) {  // the kernel may not leave the calling thread or the GIL
+        run_serial(kernel, ctx);
+        return;
     }
+    const Plan p = plan(split, weight);
+    if (p.work < 8 * kParallelThreshold) {  // small: on the calling thread, the GIL kept
+        run_serial(kernel, ctx);
+        return;
+    }
+    if (p.tasks > 1 && parallel::available()) {
+        const std::int64_t extent = shape_[p.axis];
+        parallel::parallel_for(p.tasks, [&](std::int64_t t) {
+            NdIter piece = *this;
+            const std::int64_t begin = t * p.chunk;
+            piece.shape_[p.axis] = std::min(extent, begin + p.chunk) - begin;
+            for (int k = 0; k < nop_; ++k) piece.data_[k] += begin * strides_[k][p.axis];
+            piece.run_serial(kernel, ctx);
+        });
+        return;
+    }
+    // On the calling thread: one thread, a busy pool, or no axis to cut.
+    // Work at or above the threshold still runs without the GIL
+    // (docs/design/array.md §10.2); the kernel is the one the tasks run.
+    const parallel::Unlocked unlocked(true);
     run_serial(kernel, ctx);
 }
 

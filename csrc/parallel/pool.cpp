@@ -216,19 +216,26 @@ bool available() { return !t_in_task && pool().threads() > 1 && !pool().busy(); 
 
 void parallel_for(std::int64_t ntasks, const std::function<void(std::int64_t)>& fn) {
     if (ntasks <= 0) return;
-    // One task, one thread or a nested call: a plain loop on this thread, the
-    // GIL kept (docs/design/array.md §10.2 -- releasing and retaking it would cost
-    // a small call more than it saves; a nested call holds no GIL anyway).
-    if (ntasks == 1 || t_in_task || pool().threads() <= 1) {
+    // One task or a nested call: a plain loop on this thread, the GIL left as
+    // it is (docs/design/array.md §10.2 -- one task is the caller's own size
+    // decision, and releasing and retaking the GIL would cost a small call
+    // more than it saves; a nested call holds no GIL anyway).
+    if (ntasks == 1 || t_in_task) {
         for (std::int64_t t = 0; t < ntasks; ++t) fn(t);
         return;
     }
-    GilRelease release;  // spread on the pool (or serial if another thread's job holds it)
-    pool().run(ntasks, fn);
+    GilRelease release;
+    if (pool().threads() <= 1) {  // one thread: the tasks in order, without the GIL
+        for (std::int64_t t = 0; t < ntasks; ++t) fn(t);
+        return;
+    }
+    pool().run(ntasks, fn);  // spread on the pool (or serial if another thread's job holds it)
 }
 
 GilRelease::GilRelease() {
-    if (PyGILState_Check()) state_ = PyEval_SaveThread();
+    // A task holds no GIL: the workers never had it, and the calling thread
+    // released it before it took its first task.
+    if (!t_in_task && PyGILState_Check()) state_ = PyEval_SaveThread();
 }
 
 GilRelease::~GilRelease() {

@@ -57,9 +57,9 @@ enum class IndexResult { Ok, NotInt, Overflow };
 IndexResult index_value(nb::handle o, std::int64_t& out);
 
 // A real-number argument (correction=, ord=, rtol=): a Python float (numpy.float64
-// is one), or an int by the rule above. nullopt for anything else; OverflowError
-// is left to the double conversion (an int beyond the double range).
-std::optional<double> real_value(nb::handle o);
+// is one), or an int by the rule above. nullopt for anything else; an int beyond the
+// double range is OverflowError "'what' is out of range" (what: the argument's name).
+std::optional<double> real_value(nb::handle o, const char* what = nullptr);
 
 // An array `dtype=` argument: None -> nullopt; otherwise one of the four
 // array dtypes, as an object or a name (API.md §1). TypeError otherwise,
