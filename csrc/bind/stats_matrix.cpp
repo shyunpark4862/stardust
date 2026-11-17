@@ -87,6 +87,10 @@ void load_L(const NDArray& h, const NDArray& l, std::int64_t b, std::int64_t d, 
 
 // ---- Wishart and inverse Wishart --------------------------------------------------------------
 
+// The scaling of arguments far out (Wishart's X, the matrix normal's X - M): 2^-600 brings
+// 2^1024 to 2^424, whose products and squares stay in range.
+constexpr int kFar = 600;
+
 // The terms of a Wishart log density (the constant's and log|X|'s) below which their
 // cancellation needs no check: wishart_logpdf.
 constexpr double kPlainTerms = 1e15;
@@ -134,15 +138,26 @@ nb::object wishart_logpdf(nb::handle x_obj, nb::handle batch_obj, nb::handle df_
                            const std::int64_t b = eli(bi, m);
                            const double n = el(dfa, b);
                            bool nan = el(ok, b) == 0.0;
+                           double big = 0.0;
                            for (std::int64_t i = 0; i < p && !nan; ++i)
-                               for (std::int64_t j = 0; j <= i && !nan; ++j) nan = std::isnan(el(x, m, i, j));
+                               for (std::int64_t j = 0; j <= i && !nan; ++j) {
+                                   nan = std::isnan(el(x, m, i, j));
+                                   big = std::max(big, std::fabs(el(x, m, i, j)));
+                               }
                            if (nan) {
                                po[m] = kNaN;
                                continue;
                            }
+                           if (std::isinf(big)) {  // an infinite entry: the density is 0 (both kinds)
+                               po[m] = as_pdf ? 0.0 : -kInf;
+                               continue;
+                           }
+                           // X far out (> 2^500) is factored as 2^-kFar X, so that the Cholesky
+                           // products stay in range; log|X| and the trace are put back below.
+                           const int shift = big > 0x1p500 ? kFar : 0;
                            DD ldx;
-                           const bool pdx =
-                               la::cholesky(p, [&](std::int64_t i, std::int64_t j) { return el(x, m, i, j); }, LX, ldx);
+                           const bool pdx = la::cholesky(
+                               p, [&](std::int64_t i, std::int64_t j) { return std::ldexp(el(x, m, i, j), -shift); }, LX, ldx);
                            if (!pdx) {  // off the support
                                po[m] = as_pdf ? 0.0 : -kInf;
                                continue;
@@ -151,8 +166,9 @@ nb::object wishart_logpdf(nb::handle x_obj, nb::handle batch_obj, nb::handle df_
                            DD tr{0.0, 0.0};
                            if (!inverse) {  // tr(V^-1 X) over X's lower triangle
                                for (std::int64_t i = 0; i < p; ++i) {
-                                   tr = tr + A[i * p + i] * el(x, m, i, i);
-                                   for (std::int64_t j = 0; j < i; ++j) tr = tr + A[i * p + j] * (2.0 * el(x, m, i, j));
+                                   tr = tr + A[i * p + i] * std::ldexp(el(x, m, i, i), -shift);
+                                   for (std::int64_t j = 0; j < i; ++j)
+                                       tr = tr + A[i * p + j] * (2.0 * std::ldexp(el(x, m, i, j), -shift));
                                }
                            } else {  // |L_X^-1 L_Psi|_F^2, column by column
                                for (std::int64_t c = 0; c < p; ++c) {
@@ -161,11 +177,20 @@ nb::object wishart_logpdf(nb::handle x_obj, nb::handle batch_obj, nb::handle df_
                                    for (std::int64_t i = 0; i < p; ++i) tr = tr + col[i] * col[i];
                                }
                            }
+                           DD htr = tr * 0.5;  // the trace's half: what the density takes (exact)
+                           if (shift != 0) {  // log|X| = log|2^-s X| + p s log 2; the trace scales by 2^(+-s)
+                               ldx = ldx + dd::kLn2 * (pd * shift);
+                               htr = dd::ldexp(htr, inverse ? -shift : shift);
+                               if (!std::isfinite(htr.hi)) {  // tr / 2 beyond the doubles: the density is 0
+                                   po[m] = as_pdf ? 0.0 : -kInf;
+                                   continue;
+                               }
+                           }
                            // n -+ (p + 1) kept exactly: its rounding (2^-54 of the coefficient)
                            // times log|X| would reach the density
                            const DD coef = inverse ? dd::two_sum(n, pd + 1.0) * -0.5 : dd::two_sum(n, -(pd + 1.0)) * 0.5;
                            const DD lx = ldx * coef;
-                           const DD l = cst[b] + lx - tr * 0.5;
+                           const DD l = cst[b] + lx - htr;
                            // the terms are of size df p log df and cancel to O(p^2 log df): each
                            // is good to ~2^-100 of its size, so from df ~ 1e17 on the
                            // double-double sum no longer holds the value (measured: 1e-12 at
@@ -174,7 +199,7 @@ nb::object wishart_logpdf(nb::handle x_obj, nb::handle batch_obj, nb::handle df_
                            // fail: the trace alone would have to be 1e17 times l, which it is
                            // part of. One comparison for the usual df.)
                            if (!(cmag[b] + std::fabs(lx.hi) <= kPlainTerms)) [[unlikely]] {
-                               const double mag = cmag[b] + std::fabs(lx.hi) + 0.5 * std::fabs(tr.hi);
+                               const double mag = cmag[b] + std::fabs(lx.hi) + std::fabs(htr.hi);
                                if (!(0x1p-100 * mag <= 1e-13 * std::max(1.0, std::fabs(l.hi)))) {
                                    po[m] = kNaN;
                                    continue;
@@ -389,15 +414,35 @@ nb::object matnorm_logpdf(nb::handle x_obj, nb::handle batch_obj, nb::handle mea
                                    }
                                }
                            }
+                           // X - M far out (|.| > 2^400) is scaled by 2^-kFar before the solves, so
+                           // that neither they nor the squares overflow; Q comes back by ldexp, and
+                           // a log density below the doubles is -inf (it was NaN from inf - inf).
+                           double big = 0.0;
                            for (std::int64_t i = 0; i < n; ++i)
-                               for (std::int64_t j = 0; j < p; ++j) Y[i * p + j] = dd::two_sum(el(x, m, i, j), -el(mean, b, i, j));
+                               for (std::int64_t j = 0; j < p; ++j) {
+                                   Y[i * p + j] = dd::two_sum(el(x, m, i, j), -el(mean, b, i, j));
+                                   big = std::max(big, std::fabs(Y[i * p + j].hi));
+                               }
+                           const int shift = (big > 0x1p400 || !std::isfinite(big)) ? kFar : 0;
+                           if (shift != 0)
+                               for (std::int64_t i = 0; i < n; ++i)
+                                   for (std::int64_t j = 0; j < p; ++j)
+                                       Y[i * p + j] = dd::two_sum(std::ldexp(el(x, m, i, j), -shift), -std::ldexp(el(mean, b, i, j), -shift));
                            for (std::int64_t j = 0; j < p; ++j) la::solve_lower(LU[b], n, Y.data() + j, p);  // L_U^-1 (X - M)
                            DD q{0.0, 0.0};
                            for (std::int64_t i = 0; i < n; ++i) {  // rows of Y L_V^-T: L_V z = row
                                la::solve_lower(LV[b], p, Y.data() + i * p);
                                for (std::int64_t j = 0; j < p; ++j) q = q + Y[i * p + j] * Y[i * p + j];
                            }
-                           const DD l = cst[b] - q * 0.5;
+                           DD hq = q * 0.5;  // Q / 2, what the density takes (exact)
+                           if (shift != 0) {
+                               hq = dd::ldexp(hq, 2 * shift);
+                               if (!std::isfinite(hq.hi)) {  // Q / 2 beyond the doubles: the density is 0
+                                   po[m] = as_pdf ? 0.0 : -kInf;
+                                   continue;
+                               }
+                           }
+                           const DD l = cst[b] - hq;
                            po[m] = as_pdf ? num::exp_dd(l) : l.hi + l.lo;
                        }
                    });

@@ -197,7 +197,7 @@
 
 # 통계 영역 (sd.stats, sd.random)
 
-> 상태: **설계 초안** (2026-11-15). 설계는 [docs/design/stats.md](docs/design/stats.md), [docs/design/random.md](docs/design/random.md), API는 [docs/api/stats.md](docs/api/stats.md), [docs/api/random.md](docs/api/random.md).
+> 상태: **T0–T10 구현·승인 완료** (2026-11-18, T4–T10과 최적화 승인). 검정은 이 영역에서 뺐다(사용자 결정 2026-11-18: 나중에 따로 한다). 설계는 [docs/design/stats.md](docs/design/stats.md), [docs/design/random.md](docs/design/random.md), API는 [docs/api/stats.md](docs/api/stats.md), [docs/api/random.md](docs/api/random.md).
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -214,15 +214,15 @@
 | T1 special 감싸기와 `ndtri_exp` | 완료·승인 (2026-11-15) |
 | T2 special 비중심 분포 함수 | 완료·승인 (2026-11-15) |
 | T3 `sd.random` | 완료·승인 (2026-11-15) |
-| T4 분포 엔진과 연속 기본 12 | 완료, 승인 대기 (2026-11-15) |
-| T5 이산 10 | 완료, 승인 대기 (2026-11-16) |
-| T6 극값·수명 6과 비중심 3 | 완료, 승인 대기 (2026-11-16) |
-| T7 표본 (`sample`) | 완료, 승인 대기 (2026-11-16) |
-| T8 기술통계 | 완료, 승인 대기 (2026-11-16) |
-| T9 다변량: 정규, t, 다항, 디리클레 | 완료, 승인 대기 (2026-11-16) |
-| T10 행렬 분포: Wishart, 역Wishart, 행렬 정규 | 완료, 승인 대기 (2026-11-16) |
-| stats 최적화: chunk 커널, 이산 메모, 비중심 합, 다변량 빠른 경로 (docs/design/stats.md §3.4) | 완료, 승인 대기 (2026-11-17) |
-| T11 `sd.stats.tests` (설계 질문부터) | 대기 |
+| T4 분포 엔진과 연속 기본 12 | 완료·승인 (2026-11-15, 승인 2026-11-18) |
+| T5 이산 10 | 완료·승인 (2026-11-16, 승인 2026-11-18) |
+| T6 극값·수명 6과 비중심 3 | 완료·승인 (2026-11-16, 승인 2026-11-18) |
+| T7 표본 (`sample`) | 완료·승인 (2026-11-16, 승인 2026-11-18) |
+| T8 기술통계 | 완료·승인 (2026-11-16, 승인 2026-11-18) |
+| T9 다변량: 정규, t, 다항, 디리클레 | 완료·승인 (2026-11-16, 승인 2026-11-18) |
+| T10 행렬 분포: Wishart, 역Wishart, 행렬 정규 | 완료·승인 (2026-11-16, 승인 2026-11-18) |
+| stats 최적화: chunk 커널, 이산 메모, 비중심 합, 다변량 빠른 경로 (docs/design/stats.md §3.4) | 완료·승인 (2026-11-17, 승인 2026-11-18) |
+| ~~T11 `sd.stats.tests`~~ | 이 영역에서 뺌 (2026-11-18, 나중에 따로) |
 
 ## 마일스톤
 
@@ -291,6 +291,6 @@
 - 결정(사용자, 2026-11-16): docs/design/stats.md T30 (scipy의 이름과 메서드: mean·mode·var, 행렬 정규의 평균은 mu, x는 아래 삼각을 읽고 양의 정부호가 아니면 0, 배치와 정확도는 T9와 같다, df > p − 1 실수).
 - 결과: src/stardust/stats/_matrix.py, csrc/bind/stats_matrix.cpp, csrc/stats/dd_linalg.hpp; docs/api/stats.md §3.1, docs/design/stats.md §6.3; 측정 bench/stats/t10/(accuracy.md, speed.md); 테스트 tests/stats/test_matrix.py.
 
-### T11. `sd.stats.tests`
-- 검정과 상관. 설계 질문부터 시작한다.
+### T11. `sd.stats.tests` (뺌)
+- 검정은 이 영역에서 뺐다(사용자 결정 2026-11-18: 나중에 따로 한다). 위치(`sd.stats.tests`, 상관도 그곳)만 정해 둔 상태다(docs/design/stats.md §7).
 

@@ -307,3 +307,12 @@ def test_moments_of_extreme_data():
     # a constant lane stays NaN at any scale
     for v in (5e-324, 1e-300, 1e300):
         assert math.isnan(S.skew(sd.asarray([v, v, v]))) and np.isnan(np.asarray(S.zscore(sd.asarray([v, v, v])))).all()
+
+
+@pytest.mark.parametrize("method", ["vasicek", "van es", "ebrahimi", "auto"])
+def test_differential_entropy_of_tied_values_is_minus_inf(method):
+    # a zero spacing is log 0 (scipy: -inf); the compensated sum made it NaN
+    for x in ([1.0] * 10, [1.0] * 20 + list(range(30)), [0.0] * 100 + list(np.linspace(-3, 3, 1900))):
+        assert float(sd.stats.differential_entropy(sd.asarray(x), method=method)) == -math.inf
+    # Correa divides 0 by 0 on a constant window: NaN, as in scipy
+    assert math.isnan(float(sd.stats.differential_entropy(sd.ones((10,)), method="correa")))

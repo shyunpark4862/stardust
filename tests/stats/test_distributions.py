@@ -1084,3 +1084,24 @@ def test_probabilities_and_densities_are_never_negative_zero():
             for x in xs:
                 y = float(getattr(X, m)(float(x)))
                 assert not (y == 0 and math.copysign(1.0, y) < 0), (type(X).__name__, m, x)
+
+
+def test_errors_name_the_method_not_the_kernel():
+    n = sd.stats.Normal()
+    with pytest.raises(TypeError, match=r"^cdf\(\): 'x' must be an sd.ndarray or a real number, not str$"):
+        n.cdf("a")
+    with pytest.raises(TypeError, match=r"^icdf\(\): 'p' must be"):
+        n.icdf("a")
+    with pytest.raises(TypeError, match=r"^pdf\(\): 'x' must be real, not a complex128 array$"):
+        n.pdf(sd.asarray([1j]))
+    with pytest.raises(TypeError, match=r"^pmf\(\): 'k' must be"):
+        sd.stats.Binomial(n=5, p=0.3).pmf("a")
+    with pytest.raises(OverflowError, match=r"^cdf\(\): "):
+        n.cdf(10**400)
+    with pytest.raises(ValueError, match=r"^cdf\(\): shapes could not be broadcast together"):
+        sd.stats.Normal(mu=sd.ones((2,))).cdf(sd.ones((3,)))
+    mvn = sd.stats.MultivariateNormal(mu=sd.zeros((2,)), cov=sd.eye(2))
+    with pytest.raises(ValueError, match=r"^cdf\(\): 'x' must have 2 components"):
+        mvn.cdf(sd.ones((3,)))
+    with pytest.raises(ValueError, match=r"^logpdf\(\): 'x' must be \(2, 2\)"):
+        sd.stats.Wishart(df=3.0, scale=sd.eye(2)).logpdf(sd.ones((3, 3)))

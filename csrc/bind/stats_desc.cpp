@@ -661,25 +661,34 @@ double diffent_lane(std::vector<double>& v, std::int64_t mw, int method) {
     };
     const double nd = static_cast<double>(n), md = static_cast<double>(m);
     Neumaier s;
+    // A zero spacing (tied values, a constant lane) is a term log 0 = -inf, and so is the
+    // estimate, as in scipy. The compensated sum would turn -inf into NaN (inf - inf in its
+    // correction), so such a term is counted aside.
+    bool zero = false;
+    auto add_log = [&](double t) {
+        if (t == 0.0) zero = true;
+        else s.add(std::log(t));
+    };
+    auto result = [&](double value) { return zero ? (std::isnan(value) || value == kInf ? kNaN : -kInf) : value; };
     switch (method) {
         case 0:  // Vasicek: mean log(n / (2m) (X[i+m] - X[i-m]))
-            for (std::int64_t i = 0; i < n; ++i) s.add(std::log(nd / (2.0 * md) * (X(i + m) - X(i - m))));
-            return s.value() / nd;
+            for (std::int64_t i = 0; i < n; ++i) add_log(nd / (2.0 * md) * (X(i + m) - X(i - m)));
+            return result(s.value() / nd);
         case 1: {  // van Es
-            for (std::int64_t i = 0; i + m < n; ++i) s.add(std::log((nd + 1.0) / md * (v[i + m] - v[i])));
+            for (std::int64_t i = 0; i + m < n; ++i) add_log((nd + 1.0) / md * (v[i + m] - v[i]));
             Neumaier h;
             for (std::int64_t k = m; k <= n; ++k) h.add(1.0 / static_cast<double>(k));
-            return s.value() / (nd - md) + h.value() + std::log(md) - std::log(nd + 1.0);
+            return result(s.value() / (nd - md) + h.value() + std::log(md) - std::log(nd + 1.0));
         }
         case 2:  // Ebrahimi
             for (std::int64_t i = 1; i <= n; ++i) {
                 double ci = 2.0;
                 if (i <= m) ci = 1.0 + static_cast<double>(i - 1) / md;
                 if (i >= n - m + 1) ci = 1.0 + static_cast<double>(n - i) / md;
-                s.add(std::log(nd * (X(i - 1 + m) - X(i - 1 - m)) / (ci * md)));
+                add_log(nd * (X(i - 1 + m) - X(i - 1 - m)) / (ci * md));
             }
-            return s.value() / nd;
-        default: {  // Correa
+            return result(s.value() / nd);
+        default: {  // Correa (a constant window is 0 / 0: NaN, as in scipy)
             for (std::int64_t i = 1; i <= n; ++i) {
                 Neumaier mb;
                 for (std::int64_t d = -m; d <= m; ++d) mb.add(X(i + d - 1));

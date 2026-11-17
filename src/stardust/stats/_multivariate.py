@@ -108,10 +108,10 @@ class _Batched:
         """x (..., d) against the batch: (x rows (M, d), batch index (M,), the result's shape)."""
         sd = _sd_core
         cls = type(self).__name__
-        a = _array(x, f"{cls}.{name}()", "x", 1)
+        a = _array(x, f"{name}()", "x", 1)
         if a.shape[-1] != self._d:
-            raise ValueError(f"{cls}.{name}(): 'x' must have {self._d} components on its last axis, not {a.shape[-1]}")
-        out = _broadcast(tuple(a.shape[:-1]), self._batch, what=f"{cls}.{name}(): 'x' and the parameters")
+            raise ValueError(f"{name}(): 'x' must have {self._d} components on its last axis, not {a.shape[-1]}")
+        out = _broadcast(tuple(a.shape[:-1]), self._batch, what=f"{name}(): 'x' and the parameters")
         M = math.prod(out)
         rows = sd.reshape(sd.broadcast_to(a, out + (self._d,)), (max(M, 0), self._d))
         if self._batch:

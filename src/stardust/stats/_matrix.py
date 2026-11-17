@@ -28,10 +28,10 @@ class _MatrixBase:
     def _points(self, x, name):
         sd = _sd_core
         cls = type(self).__name__
-        a = _array(x, f"{cls}.{name}()", "x", 2)
+        a = _array(x, f"{name}()", "x", 2)
         if tuple(a.shape[-2:]) != self._shape:
-            raise ValueError(f"{cls}.{name}(): 'x' must be {self._shape} on its last two axes, not {tuple(a.shape[-2:])}")
-        out = _broadcast(tuple(a.shape[:-2]), self._batch, what=f"{cls}.{name}(): 'x' and the parameters")
+            raise ValueError(f"{name}(): 'x' must be {self._shape} on its last two axes, not {tuple(a.shape[-2:])}")
+        out = _broadcast(tuple(a.shape[:-2]), self._batch, what=f"{name}(): 'x' and the parameters")
         M = math.prod(out)
         rows = sd.reshape(sd.broadcast_to(a, out + self._shape), (M,) + self._shape)
         if self._batch:

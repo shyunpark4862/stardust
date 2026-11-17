@@ -1,14 +1,15 @@
 # sd.stats API
 
-> 상태: **T10 구현** (2026-11-16): 연속 분포 12개(T4), 이산 분포 10개(T5), 극값·수명 6개와 비중심 3개(T6), 모든 분포의 `sample`(T7), 기술통계(T8), 다변량 4개(T9), 행렬 분포 3개(T10). §6(검정)은 초안이다. 결정과 내부 구조는 [docs/design/stats.md](../design/stats.md) (T1–T30).
+> 상태: **T10 구현** (2026-11-16): 연속 분포 12개(T4), 이산 분포 10개(T5), 극값·수명 6개와 비중심 3개(T6), 모든 분포의 `sample`(T7), 기술통계(T8), 다변량 4개(T9), 행렬 분포 3개(T10). §6(검정)은 이 영역에서 뺐다(2026-11-18). 결정과 내부 구조는 [docs/design/stats.md](../design/stats.md) (T1–T30).
 
 ## §1. 공통 규칙
 - 입력은 위치로만(`/` 앞), 옵션은 키워드로만(`*` 뒤). 별칭은 없다.
 - 피연산자는 `sd.ndarray`와 Python 스칼라. float64로 계산하고(bool·int64는 바꿔서), complex는 `TypeError`다. 모두 Python 스칼라면 결과도 Python `float`다.
 - 분포의 매개변수가 정의역 밖이면 그 원소의 결과는 NaN이다. 에러는 없다.
+- 메서드의 에러는 메서드 이름으로 시작한다: `cdf(): 'x' must be an sd.ndarray or a real number, not str`, `pdf(): 'x' must be real, not a complex128 array`. 다변량·행렬 분포도 같다(`cdf(): 'x' must have 2 components on its last axis, not 3`) (사용자 결정 2026-11-18).
 - 같은 입력이면 스레드 수와 상관없이 같은 비트다. 표본도 같은 `rng` 상태에서는 같다(docs/api/random.md).
 - 정확도: 보장 영역에서 참값 대비 상대 1e-14(special과 같은 계약). 분포마다 보장 영역과 잰 값은 해당 절에 적는다.
-- 검정과 상관은 `sd.stats.tests`에 있다(§6).
+- 검정과 상관은 아직 없다. 나중에 `sd.stats.tests`에 둔다(§6).
 
 ## §2. 단변량 분포
 ```
@@ -179,6 +180,7 @@ X.sample(shape=(), /, *, rng)
   - 역Wishart의 mean은 df > p + 1이면 scale/(df − p − 1)이고, 그 밖은 발산한다(성분의 부호로 ±inf, 0인 성분은 0). var는 df > p + 3이면 유한하고, p + 1 < df ≤ p + 3이면 inf, df ≤ p + 1이면 NaN이다. p = 1이면 InverseGamma(df/2, scale/2)와 같다.
 - **정의역**: df ≤ p − 1(특이 Wishart), 양의 정부호가 아닌 scale, NaN인 mu는 NaN이다(T8).
 - **보장 영역 밖** (사용자 결정 2026-11-17): Wishart·역Wishart의 logpdf는 df가 약 1e17을 넘고 항들이 서로 상쇄하는 곳(밀도가 큰 곳 근처)에서 NaN이다. 1e15까지는 1e-13 안이다.
+- **아주 큰 인자** (2026-11-18): 행렬 정규·Wishart·역Wishart의 logpdf는 원소가 아무리 커도(double 최댓값, inf 포함) 값이나 −inf이고 NaN이 아니다(pdf는 0). 예: `MatrixNormal`(1×1 표준)의 x = 1.5e154에서 −1.125e308, 1.9e154부터 −inf.
 - **정확도** (bench/stats/t10/accuracy.md, Arb 참값 대비): logpdf·entropy는 촐레스키 분해, V⁻¹, 삼각 풀이를 double-double로 계산한다. 엔트로피의 크기 n log n인 항은 다시 묶어서 지운다. 잰 값은 κ(scale) = 1e8, p = 12, df = 1e8까지 반올림 수준이다(entropy 5.3e-16 이하, logpdf 0). 같은 점에서 scipy의 logpdf는 최대 6.5e-8, Wishart 엔트로피는 df = 1e8에서 6.5e-9가 틀린다. scipy 1.18의 `invwishart.entropy()`는 공식이 틀려서 상대오차가 2.9까지 간다(몬테카를로로도 확인; tests/stats/test_matrix.py). 보장 영역(사용자 2026-11-16)은 T9와 같이 κ(scale), κ(rowcov), κ(colcov) ≤ 1e9, p ≤ 100에서 logpdf·entropy 1e-14 혼합 기준이다. 측정은 κ = 1e9, p = 30(행렬 정규 20×15), df = 1e8까지이고, 모두 2e-16 이하였다.
 - **표본**: Wishart는 Bartlett 분해로 뽑는다. 대각은 √χ²(df − j)이고 실수 df도 된다. 역Wishart는 (L A⁻ᵀ)(L A⁻ᵀ)ᵀ, 행렬 정규는 μ + L_U Z L_Vᵀ다. 행렬 하나가 스트림 원소 하나다.
 - **속도** (bench/stats/t10/speed.md, 10⁴개, scipy 대비, 1스레드 / 10스레드): Wishart·역Wishart의 logpdf는 1.8–87배 / 15–650배이고, 표본은 2.4–18배 / 20–75배다. 행렬 정규는 logpdf가 0.87–1.25배 / 5.6–10배, 표본이 1.9–2.6배 / 16배다.
@@ -201,6 +203,7 @@ differential_entropy(x, /, *, window_length=None, base=None, axis=None, method='
 - **공통**: 입력은 위치로, 옵션은 키워드로만 준다. `axis`는 None(전체, sd.mean·sd.var와 같다; scipy는 0), int, int의 tuple이다. 입력은 `sd.ndarray`, 실수의 시퀀스, Python 실수이고 float64로 계산한다(complex는 `TypeError`). 결과는 float64이고, 축이 남지 않으면 Python float이다. 결정은 docs/design/stats.md T28.
 - **`nan_policy`**(scipy와 같다): 'propagate'면 NaN이 있는 줄의 결과가 NaN이다(mode는 NaN을 하나의 값으로 센다). 'omit'이면 줄마다 NaN을 빼고 계산하고, 'raise'면 NaN이 있을 때 `ValueError`다.
 - **scipy와의 차이** (이름과 기본값만이고 값은 같다): 축의 기본값(None), 자유도 인자 이름(`ddof` → `correction`), iqr의 `rng=(25, 75)`·`interpolation` → `q=(0.25, 0.75)`·`method`(sd.quantile과 같다), moment의 `order`는 꼭 준다.
+- **`differential_entropy`의 동점**: 같은 값이 있어 간격이 0이면 −inf다(scipy와 같다. 상수 데이터 포함). `method='correa'`는 상수인 창에서 0/0이라 NaN이다(scipy와 같다).
 - **결과 객체**: `describe`는 `DescribeResult(nobs, minmax, mean, variance, skewness, kurtosis)`, `mode`는 `ModeResult(mode, count)`다(scipy와 같은 namedtuple). nobs는 propagate면 int이고, omit이면 줄마다의 개수다.
 - **정확도**: 적률은 평균을 두 부분(hi + lo)으로 들고 보상 합으로 계산한다. 평균 1e8·퍼짐 1의 데이터(2000개)에서 정확한 값(유리수 계산)과 비교한 상대오차는 skew 3.2e-16이고 kurtosis·m2는 0이다. scipy는 같은 데이터에서 skew 1.2e-8, kurtosis 1.1e-8이다(평균을 double로 반올림한 채 빼기 때문이다; m2는 0). 그 밖의 값은 scipy와 1e-13 안에서 같다(tests/stats/test_descriptive.py).
 - **속도** (bench/stats/t8/speed.md, 10⁶개, scipy 대비; 2026-11-17 최적화 뒤): 1스레드에서 skew·kurtosis·moment 6.0–7.5배, describe 4.9–6.0배, zscore 1.3배, rankdata 1.25–1.7배, mode 1.0–2.7배, iqr 1.3–2.1배, differential_entropy 2.0–3.1배, omit이 있으면 9–40배다. 10스레드에서는 대부분 10–45배다. 1스레드에서 scipy보다 느린 것은 sem(0.63–0.87배)뿐이다. 보상 합 셋을 쓰는 비용이다(scipy의 std는 보상하지 않는다). 10스레드에서는 3.8–4.0배로 빠르다.
@@ -209,6 +212,7 @@ differential_entropy(x, /, *, window_length=None, base=None, axis=None, method='
 - 배열(T0, 완료): `cov`, `corrcoef`, `quantile`, `median`, NaN 리덕션. docs/api/array.md §7.9–§7.11.
 - special(T1, T2): `stdtr stdtrit chdtr chdtrc chdtri fdtr fdtrc fdtri pdtr pdtrc bdtr bdtrc nbdtr nbdtrc`, `chndtr chndtrix nctdtr nctdtrit ncfdtr ncfdtri ndtri_exp`. docs/api/special.md에 더한다.
 
-## §6. `sd.stats.tests` (나중)
+## §6. `sd.stats.tests` (나중, 이 영역에서 뺌)
+- 검정은 이 영역에서 뺐다(사용자 결정 2026-11-18: 나중에 따로 한다). 아래는 그때를 위해 정해 둔 위치다.
 - 검정, 상관(Pearson·Spearman·Kendall의 계수와 p값). 목록과 결과 객체는 분포·기술통계를 구현한 뒤에 정한다.
 - scipy 이름 → 위치의 대응표를 그때 이 절에 둔다(예: `scipy.stats.ttest_ind` → `sd.stats.tests.ttest_ind`, `scipy.stats.pearsonr` → `sd.stats.tests.pearsonr`).

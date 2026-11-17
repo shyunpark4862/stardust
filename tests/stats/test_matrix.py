@@ -323,3 +323,18 @@ def test_logpdf_at_huge_df_is_right_or_nan():
             assert math.isnan(got) or abs(got - ref) <= 1e-13 * max(1.0, abs(ref)), (p, df, got, ref)
             if df <= 1e15:
                 assert not math.isnan(got)
+
+
+def test_log_density_far_out_is_a_value_or_minus_inf():
+    # X (or X - M) beyond 2^400: scaled before the factor and the solves; it was NaN (inf - inf)
+    mn = sd.stats.MatrixNormal(mu=sd.zeros((1, 1)), rowcov=sd.eye(1), colcov=sd.eye(1))
+    c = -0.5 * math.log(2 * math.pi)
+    assert float(mn.logpdf(sd.asarray([[1.5e154]]))) == pytest.approx(-(0.5 * 1.5e154) * 1.5e154 + c, rel=1e-15)
+    for v in (1.9e154, 1e200, 1.7e308, float("inf")):
+        assert float(mn.logpdf(sd.asarray([[v]]))) == -math.inf
+        assert float(mn.pdf(sd.asarray([[v]]))) == 0.0
+    w = sd.stats.Wishart(df=5.0, scale=sd.eye(2))
+    assert float(w.logpdf(1.7e308 * sd.eye(2))) == pytest.approx(-1.7e308, rel=1e-15)
+    assert float(w.logpdf(sd.asarray([[math.inf, 0.0], [0.0, 1.0]]))) == -math.inf
+    iw = sd.stats.InverseWishart(df=5.0, scale=sd.eye(2))
+    assert math.isfinite(float(iw.logpdf(1.7e308 * sd.eye(2))))
