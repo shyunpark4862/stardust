@@ -93,7 +93,7 @@ Python에서 `sd.add(x, y)`를 부르면 이런 길을 지나요.
       { label: 'binary<Add>(x, y, out)', where: 'array/ops/ufunc', note: '피연산자 dtype에서 루프 dtype을 골라요.' },
       { label: 'NdIter', where: 'array/iter', note: '브로드캐스팅, 축 합치기, 병렬 분할 계획.' },
       { label: '커널 (NEON, 버퍼 캐스팅)', where: 'array/kernels', note: '순수 C++이고 Python을 몰라요.' },
-      { label: 'parallel_for', where: 'parallel/', note: '일이 기준값 이상이고 스레드가 여럿이면 GIL을 놓고 나눠 실행해요.' },
+      { label: 'parallel_for', where: 'parallel/', note: '일이 기준값 이상이면 GIL을 놓고, 스레드가 여럿이면 나눠 실행해요.' },
       { label: 'wrap(NDArray)', where: 'bind/', note: '결과 NDArray를 Python 객체로 감싸 돌려줘요.' },
     ]}
   />
@@ -113,7 +113,7 @@ Python 코드는 전부 합쳐 약 4,100줄이에요. 그중 약 2,900줄이 데
 | `_format.py` | 배열의 `repr`/`str` (76줄). C++이 넘긴 요약 값을 문자열로 배치해요 |
 | `_results.py` | 모든 영역의 결과 namedtuple 전부 (`UniqueAllResult`, `SVDResult`, `AiryResult` …) |
 | `linalg/__init__.py` | `_core.linalg`의 함수를 `globals().update(...)`로 옮겨 오고, `LinAlgError`와 결과 namedtuple을 C++에 한 번 넘겨요(`_core._setup`) |
-| `linalg/_errors.py` | `class LinAlgError(ValueError)` 한 줄짜리 정의 |
+| `linalg/_errors.py` | `class LinAlgError(ValueError)` 정의. `__module__`을 `"stardust.linalg"`로 바꿔 traceback에 공개 경로가 보이게 해요 |
 | `special/__init__.py` | `_core.special`의 함수를 재노출만 해요 |
 | `stats/*.py` | 분포 클래스. 매개변수를 받은 그대로 들고 있다가, 메서드가 불리면 `_core.stats`의 원소별 함수(`normal_cdf` 같은 `<분포>_<메서드>`)에 넘겨요 |
 | `random/__init__.py` | `Generator` 클래스와 `default_rng`. 시드에서 키 만들기, 스트림 위치 관리, 인자 검증, `choice`와 `permutation`의 조합 절차 |

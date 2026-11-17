@@ -528,7 +528,8 @@ array([nan], dtype=float64)
 | `TypeError` | 인자의 **타입**이 틀렸어요. 배열 자리에 리스트, 받지 않는 dtype, 정보를 잃는 암묵적 변환, 참·거짓 옵션에 `1` 등. | `sd.sum([1, 2])` |
 | `ValueError` | 타입은 맞지만 **값**이 틀렸어요. 모양이 맞지 않음, 범위 밖의 축, 0차원 요청, 쓰기 금지 배열에 쓰기 등. | `sd.sum(x, axis=2)` |
 | `IndexError` | 인덱스가 범위 밖이거나 허용하지 않는 형태예요. | `x[5, 0]` |
-| `OverflowError` | int64에 담을 수 없는 큰 Python 정수를 int64로 바꿔야 해요. | `sd.asarray([2**70])` |
+| `OverflowError` | int64에 담을 수 없는 큰 Python 정수를 int64로 바꿔야 하거나, float64에도 담을 수 없는 정수를 실수로 바꿔야 해요. | `sd.asarray([2**70])` |
+| `MemoryError` | 만들 배열 하나가 이 컴퓨터의 물리 메모리보다 커요. 아무것도 만들기 전에 나요. | `sd.zeros(2**40)` |
 
 ```python
 >>> x[5, 0]

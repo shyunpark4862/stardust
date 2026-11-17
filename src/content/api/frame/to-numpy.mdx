@@ -151,10 +151,21 @@ array([ 3., nan,  5.])
 
 | 결과 배열 | 넣을 수 있는 `na_value` | 넣을 수 없는 것 |
 |---|---|---|
-| int64 | Python `int` (int64 범위 안) | `1.5`, `2.0`, `nan`, `True`, `None`, 문자열 |
-| float64 | Python `int`, `float` (`nan`, `inf` 포함) | `True`, `None`, 문자열 |
+| int64 | 정수 `int` (int64 범위 안) | `1.5`, `2.0`, `nan`, `True`, `None`, 문자열 |
+| float64 | 정수 `int`, 실수 `float` (`nan`, `inf` 포함) | `True`, `None`, 문자열 |
 | bool | `True`, `False` | `0`, `1`, `None` |
 | object (string) | `str`, `None` | 숫자 |
+
+numpy의 스칼라(`np.int64(-1)`, `np.float64(0.5)`, `np.bool_(False)`)는 같은 종류의 Python 값(`int`, `float`, `bool`)으로 보고 같은 표를 따라요. numpy 배열에서 꺼낸 값을 그대로 줘도 돼요.
+
+```python
+>>> df["qty"].to_numpy(na_value=np.int64(-1))
+array([ 3, -1,  5], dtype=int64)
+>>> df["qty"].to_numpy(na_value=np.float64(-1.0))
+Traceback (most recent call last):
+    ...
+TypeError: to_numpy(): na_value=np.float64(-1.0) does not fit an array of dtype int64; pass dtype= as well
+```
 
 bool 값은 정수 배열에도 넣을 수 없어요. string 컬럼은 `None`을 넣을 수 있어서, 결측을 Python의 `None`으로 바꿀 수 있어요.
 
@@ -202,7 +213,7 @@ array(['1200', '800', '3000'], dtype=object)
 >>> df["price"].to_numpy(dtype=np.float64)
 Traceback (most recent call last):
     ...
-TypeError: to_numpy(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.string (or their names), not <class 'float64'>
+TypeError: to_numpy(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.string (or their names), not numpy.float64
 ```
 
 ## `copy`: 복사할까, 빌려 줄까
@@ -252,14 +263,16 @@ array([   0,  800, 3000], dtype=int64)
 [1200, 800, 3000]
 ```
 
-`NA`를 채우면 값을 새로 써야 하므로 언제나 복사본이 나오고, 이 배열은 고칠 수 있어요. 그런데 **NA 없이 `dtype`만 바꾼 배열은 새로 만든 것인데도 읽기 전용이에요.** 고칠 배열이 필요하면 경우를 따지지 말고 `copy=True`를 주는 것이 가장 확실해요.
+`NA`를 채우거나 `dtype`을 바꾸면 값을 새로 써야 하므로 언제나 새 배열이 나오고, 이 배열은 고칠 수 있어요. Series와 나눠 쓰는 메모리가 없으니 고쳐도 표는 그대로예요. 다만 컬럼과 같은 종류를 `dtype`으로 주면 바꿀 것이 없어서 기본값처럼 읽기 전용 배열이에요. 고칠 배열이 필요하면 경우를 따지지 말고 `copy=True`를 주는 것이 가장 확실해요.
 
 ```python
 >>> df["qty"].to_numpy(na_value=0).flags.writeable
 True
 >>> df["price"].to_numpy(dtype="float64").flags.writeable
+True
+>>> df["price"].to_numpy(dtype="int64").flags.writeable
 False
->>> df["price"].to_numpy(dtype="float64", copy=True).flags.writeable
+>>> df["price"].to_numpy(dtype="int64", copy=True).flags.writeable
 True
 ```
 
@@ -383,19 +396,6 @@ True
 
 `to_numpy()`의 결과는 꺼낸 순간의 값이에요. 나중에 표에 값을 대입해도 배열은 바뀌지 않아요. 바뀐 값이 필요하면 다시 꺼내요.
 
-### `na_value`는 Python 값으로 줘요
-
-`na_value`에 numpy 스칼라를 주면 결과 배열과 종류가 같아도 받지 않는 경우가 있어요. `np.int64(-1)`은 int64 배열에도 `TypeError`예요. `int(...)`, `float(...)`로 Python 값으로 바꿔서 주세요.
-
-```python
->>> df["qty"].to_numpy(na_value=np.int64(-1))
-Traceback (most recent call last):
-    ...
-TypeError: to_numpy(): na_value=np.int64(-1) does not fit an array of dtype int64; pass dtype= as well
->>> df["qty"].to_numpy(na_value=-1)
-array([ 3, -1,  5], dtype=int64)
-```
-
 ### string 컬럼은 object 배열이에요
 
 string 컬럼은 numpy의 문자열 배열(`<U5` 같은 종류)이 아니라, Python `str`을 담은 object 배열로 나와요. 문자열 길이에 상관없이 값이 그대로 담겨요.
@@ -420,5 +420,5 @@ string 컬럼은 numpy의 문자열 배열(`<U5` 같은 종류)이 아니라, Py
 - **DataFrame의 공통 종류를 승격으로 정해요.** bool 컬럼이 숫자 컬럼과 섞이면 pandas는 object 배열이지만, stardust는 숫자 배열이에요(int64와 bool이면 int64). string이 섞이면 pandas는 object 배열이고 stardust는 `TypeError`예요.
 - `na_value`가 결과 종류에 맞지 않으면 `NA`가 없어도 `TypeError`예요. pandas는 `NA`가 없으면 검사하지 않아요.
 - `tolist()`의 결측은 `NA`예요. pandas는 float 컬럼과 str 컬럼의 결측을 `nan`으로 돌려줘요.
-- 기본값의 결과가 읽기 전용인 점은 pandas 3과 같아요. 단, pandas는 `dtype=`으로 바꾼 배열을 고칠 수 있게 돌려줘요.
+- 기본값의 결과가 읽기 전용이고 `dtype=`으로 바꾼 배열은 고칠 수 있는 점은 pandas 3과 같아요.
 - `to_list`는 없고 `tolist`만 있어요.

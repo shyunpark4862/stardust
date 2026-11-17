@@ -14,7 +14,7 @@ params:
   - name: sep
     type: str
     kind: keyword-only
-    desc: 필드를 나누는 문자 하나. 기본값은 쉼표예요. 따옴표와 줄바꿈 문자는 안 돼요.
+    desc: 필드를 나누는 ASCII 문자 하나. 기본값은 쉼표예요. 따옴표와 줄바꿈 문자는 안 돼요.
   - name: header
     type: bool
     kind: keyword-only
@@ -205,13 +205,17 @@ ValueError: read_csv(): 'nrows' must be >= 0, not -1
 1  Busan  15.0
 ```
 
-구분 문자는 딱 한 글자예요. 따옴표(`"`)와 줄바꿈 문자는 이미 다른 뜻이 있어서 쓸 수 없어요. 구분 문자를 잘못 주면 에러는 나지 않지만 한 줄 전체가 필드 하나로 읽혀요. 결과의 컬럼이 하나뿐이라면 `sep`을 의심해 보세요.
+구분 문자는 딱 한 글자이고, ASCII 문자(영문 자판으로 치는 글자와 탭 같은 제어 문자)여야 해요. `·`이나 한글처럼 UTF-8로 여러 바이트인 글자는 쓸 수 없어요. 따옴표(`"`)와 줄바꿈 문자는 이미 다른 뜻이 있어서 쓸 수 없어요. 구분 문자를 잘못 주면 에러는 나지 않지만 한 줄 전체가 필드 하나로 읽혀요. 결과의 컬럼이 하나뿐이라면 `sep`을 의심해 보세요.
 
 ```python
 >>> sd.frame.read_csv(tsv, sep="::")
 Traceback (most recent call last):
     ...
 ValueError: read_csv(): 'sep' must be one character other than a quote or a line break, not '::'
+>>> sd.frame.read_csv(tsv, sep="·")
+Traceback (most recent call last):
+    ...
+ValueError: read_csv(): 'sep' must be a single ASCII character, not '·'
 >>> sd.frame.read_csv(tsv).columns
 Index(['city\ttemp'], dtype=string)
 ```

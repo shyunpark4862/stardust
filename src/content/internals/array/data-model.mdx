@@ -188,6 +188,8 @@ std::shared_ptr<Buffer> Buffer::allocate(std::int64_t nbytes, bool zeroed) {
         if (zeroed) std::memset(buf->inline_, 0, static_cast<std::size_t>(nbytes));
         return buf;
     }
+    // 물리 메모리보다 큰 요청은 채울 수 없어요: MemoryError (TooLarge는 std::bad_alloc)
+    if (static_cast<std::uint64_t>(nbytes) > physical_memory()) throw TooLarge(nbytes);
     const std::size_t request = static_cast<std::size_t>(nbytes) + kAlignment;
     void* raw = zeroed ? std::calloc(1, request) : std::malloc(request);
     if (raw == nullptr) throw std::bad_alloc();
@@ -198,6 +200,8 @@ std::shared_ptr<Buffer> Buffer::allocate(std::int64_t nbytes, bool zeroed) {
     return buf;
 }
 ```
+
+**물리 메모리보다 큰 요청은 할당하기 전에 거절해요.** macOS는 `malloc`에 실제 메모리보다 큰 주소 공간도 내줘요. 메모리는 쓰는 순간에야 페이지 단위로 채워지므로, 채울 수 없는 크기의 배열도 만들어지고 나중에 값을 쓰는 도중에 운영체제가 프로세스를 강제로 끝내요. 그래서 `nbytes`가 물리 메모리 크기(`sysctlbyname("hw.memsize")`, 처음 한 번 읽어 둬요)보다 크면 `std::bad_alloc`의 하위 클래스 `TooLarge`를 던지고, 바인딩이 이것을 `MemoryError: zeros(): cannot allocate 8796093022208 bytes: more than this machine's physical memory`로 바꿔요. 물리 메모리보다는 작지만 지금 남은 메모리보다 큰 요청은 운영체제에 맡겨요. 남은 양은 다른 프로세스 때문에 계속 바뀌어서 미리 판단할 수 없기 때문이에요. `hw.memsize`를 읽지 못하면 제한을 두지 않아요.
 
 **정렬을 128바이트로 하는 이유.** Apple M4 Pro의 캐시 라인이 128바이트예요. 데이터의 시작을 캐시 라인 경계에 두면 SIMD 루프의 첫 load가 두 캐시 라인에 걸치지 않고, 스레드풀이 배열을 조각으로 나눌 때도 경계를 예측하기 쉬워요. numpy 2.5.4에서 `np.zeros(3)`의 데이터 주소는 16의 배수이지만 128의 배수는 아니에요. stardust는 원소 1개짜리부터 100만 개짜리까지 모두 128의 배수예요.
 

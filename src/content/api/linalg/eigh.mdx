@@ -361,7 +361,7 @@ array([-1.0,  3.0], dtype=float64)
 >>> sd.linalg.eigvalsh(a, sd.asarray([[1.0, 2.0], [2.0, 1.0]]))
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: eigvalsh(): matrix is not positive definite
+stardust.linalg.LinAlgError: eigvalsh(): matrix is not positive definite
 ```
 
 `a`와 `b`의 크기가 다르면 `ValueError`예요.

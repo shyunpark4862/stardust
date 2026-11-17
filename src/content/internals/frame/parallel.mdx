@@ -21,7 +21,7 @@ import Tree from '../../../components/fig/Tree.astro';
 | 층 | 하는 일 | 어디에 |
 |---|---|---|
 | 풀 | 태스크 번호 `0 … ntasks-1`을 여러 스레드에 나눠 돌려요. 언제 나눌지는 모르고, 나누라는 대로 나눠요 | `parallel/pool.hpp`, `pool.cpp` |
-| frame의 정책 | 기준값 2¹⁷(131,072), 청크 2¹⁴(16,384)행, `for_chunks`, `Unlocked` | `frame/parallel.hpp` |
+| frame의 정책 | 기준값 2¹⁷(131,072), 청크 2¹⁴(16,384)행, `for_chunks`, `run_unlocked`, `Unlocked` | `frame/parallel.hpp` |
 | 각 커널 | 청크마다 무엇을 계산하고, 청크의 부분 결과를 어떤 순서로 합칠지 | `frame/ops/*.cpp`, `frame/io/csv.cpp` |
 
 핵심은 다섯 가지예요.
@@ -30,17 +30,17 @@ import Tree from '../../../components/fig/Tree.astro';
 2. **자르는 위치는 행 수로만 정해요.** 청크는 언제나 16,384행씩이고 마지막 청크만 짧아요. 스레드가 몇 개든 청크의 경계는 같아요.
 3. **부분 결과는 고정된 순서로 합쳐요.** 청크 순서, 또는 numpy의 pairwise 합과 같은 트리 순서예요. 그래서 float 합, 행 순서, factorize 코드, 에러 메시지가 스레드 수와 상관없이 비트까지 같아요.
 4. **결과가 나누는 방식과 무관하게 정확히 정해지는 연산은 예외예요.** factorize, 기수 정렬, counting sort, CSV 읽기는 1스레드일 때 나누지 않는 직렬 알고리즘을 써요. 어떻게 나눠도 답이 하나뿐이라서 결과가 같고, 1스레드가 쓸데없는 패스를 내지 않아요.
-5. **일이 크면 계산하는 동안 GIL을 놓아요.** 풀로 나눠 돌 때는 언제나, 직렬 구간이라도 `Unlocked`로 표시한 곳은 1스레드에서도 놓아요. 그동안 다른 Python 스레드가 돌아요.
+5. **일이 기준값 이상이면 계산하는 동안 GIL을 놓아요.** 스레드 수와 상관없어요. 풀로 나눠 돌든, 1스레드라서 호출 스레드가 청크를 차례로 돌든, 나누지 않는 직렬 구간이든 놓아요. 그동안 다른 Python 스레드가 돌아요. 기준값 아래의 작은 호출은 GIL을 쥔 채 돌아서 놓고 다시 잡는 비용을 내지 않아요.
 
 <Fig column caption="커널 하나가 for_chunks를 부를 때 갈리는 길. 기준값과 스레드 수에 따라 길이 갈려도 청크의 경계와 합치는 순서는 같아요.">
   <Steps
     steps={[
       { label: 'for_chunks(n, f, cost)', note: 'n × cost가 2¹⁷보다 작은가?', where: 'frame/parallel.hpp' },
       { label: '작다', note: '청크 0, 1, 2, …를 호출 스레드에서 차례로. GIL을 쥔 채예요', depth: 1 },
-      { label: '크다 → parallel_for(⌈n / 16384⌉, task)', note: '청크 하나가 태스크 하나', where: 'parallel/pool.cpp', depth: 1 },
-      { label: '스레드 1개, 또는 이미 태스크 안', note: '그 자리에서 평범한 루프. GIL을 쥔 채예요', depth: 2 },
-      { label: '풀이 다른 Python 스레드의 일로 바쁨', note: 'GIL을 놓고 이 스레드 혼자 직렬로', depth: 2 },
-      { label: '그 밖', note: 'GIL을 놓고, 워커들과 호출 스레드가 atomic 카운터에서 청크 번호를 집어 가요', depth: 2 },
+      { label: '크다 → run_unlocked(⌈n / 16384⌉, task)', note: '먼저 GIL을 놓고 parallel_for를 불러요. 청크 하나가 태스크 하나', where: 'frame/parallel.hpp', depth: 1 },
+      { label: '스레드 1개, 또는 이미 태스크 안', note: '그 자리에서 평범한 루프. GIL은 이미 놓았어요', where: 'parallel/pool.cpp', depth: 2 },
+      { label: '풀이 다른 Python 스레드의 일로 바쁨', note: '이 스레드 혼자 직렬로. GIL 없이', depth: 2 },
+      { label: '그 밖', note: '워커들과 호출 스레드가 atomic 카운터에서 청크 번호를 집어 가요', depth: 2 },
     ]}
   />
 </Fig>
@@ -75,6 +75,13 @@ inline constexpr std::int64_t kChunkRows         = 1 << 14;   // 16,384, 64의 �
 
 inline std::int64_t num_chunks(std::int64_t n) { return (n + kChunkRows - 1) / kChunkRows; }
 
+// 기준값 이상의 일: 태스크 수, 스레드 수와 상관없이 GIL을 놓고 parallel_for를 부른다.
+template <class F>
+void run_unlocked(std::int64_t ntasks, F&& fn) {
+    const parallel::Unlocked unlocked(true);
+    parallel::parallel_for(ntasks, fn);
+}
+
 // f(lo, hi)를 청크 [lo, hi)마다. 청크는 n으로만 정해진다.
 template <class F>
 void for_chunks(std::int64_t n, F&& f, std::int64_t cost = 1) {
@@ -85,15 +92,13 @@ void for_chunks(std::int64_t n, F&& f, std::int64_t cost = 1) {
         for (std::int64_t t = 0; t < ntasks; ++t) task(t);
         return;
     }
-    parallel::parallel_for(ntasks, task);             // 큰 일: 풀로
+    run_unlocked(ntasks, task);                       // 큰 일: GIL을 놓고 풀로
 }
 
 // 직렬 구간에서 GIL을 놓는다. work가 기준값 아래면 아무것도 하지 않는다.
-class Unlocked {
+class Unlocked : public parallel::Unlocked {
 public:
-    explicit Unlocked(std::int64_t work) { if (work >= kParallelThreshold) release_.emplace(); }
-private:
-    std::optional<parallel::GilRelease> release_;
+    explicit Unlocked(std::int64_t work) : parallel::Unlocked(work >= kParallelThreshold) {}
 };
 
 }  // namespace sd::frame
@@ -104,8 +109,9 @@ private:
 | `kParallelThreshold` | 2¹⁷ = 131,072 | 이보다 작은 일은 호출 스레드에서 돌아요 |
 | `kChunkRows` | 2¹⁴ = 16,384행 | `for_chunks`의 청크 하나 |
 | `num_chunks(n)` | ⌈n / 16384⌉ | 청크별 부분 결과를 담을 배열의 길이 |
-| `for_chunks(n, f, cost)` | | `f(lo, hi)`를 청크마다. `n × cost`가 기준값 아래면 차례로, 아니면 `parallel_for` |
-| `Unlocked(work)` | | `work`가 기준값 이상이면 그 객체가 사는 동안 GIL을 놓아요 |
+| `for_chunks(n, f, cost)` | | `f(lo, hi)`를 청크마다. `n × cost`가 기준값 아래면 차례로, 아니면 `run_unlocked` |
+| `run_unlocked(ntasks, fn)` | | GIL을 놓은 채로 `parallel_for(ntasks, fn)`을 불러요. 기준값 이상인지는 부르는 쪽이 이미 따진 뒤예요 |
+| `Unlocked(work)` | | `work`가 기준값 이상이면 그 객체가 사는 동안 GIL을 놓아요. 공용 `parallel::Unlocked`에 frame의 기준값을 붙인 것이에요 |
 
 몇 가지를 짚어 둘게요.
 
@@ -246,55 +252,86 @@ void Groups::for_groups(F f) const {
         if (g > cuts.back()) cuts.push_back(g);
     }
     if (ngroups_ > cuts.back()) cuts.push_back(ngroups_);
-    parallel::parallel_for(cuts.size() - 1, [&](std::int64_t t) { f(cuts[t], cuts[t + 1]); });
+    run_unlocked(cuts.size() - 1, [&](std::int64_t t) { f(cuts[t], cuts[t + 1]); });
 }
 ```
 
 - 그룹마다 집계는 독립이에요. 그룹 하나의 합은 언제나 그 그룹의 행을 원래 순서로 pairwise 합한 값이라, 자르는 위치가 어디든 결과가 같아요.
 - 아주 큰 그룹이 하나뿐이면 묶음도 하나(태스크 하나)예요. `parallel_for`는 태스크가 하나면 풀을 쓰지 않고 그 자리에서 돌며 "태스크 안" 표시도 하지 않아요. 그래서 그 그룹의 float 합은 다음 절의 pairwise 잎 병렬을 그대로 써요. 큰 그룹이 둘 이상이면 각 그룹은 태스크 안에서 직렬 트리로 합해요. 트리가 같으므로 비트도 같아요.
+- 태스크가 하나여도 GIL은 놓아요. `parallel_for`는 태스크가 하나면 GIL을 건드리지 않으므로(아래 "GIL"), `for_groups`는 `run_unlocked`로 감싸서 불러요. 이 경로는 행이 기준값 이상일 때만 오므로 기준값 규칙과 맞아요.
 
 ## GIL
 
 CPython의 GIL(Global Interpreter Lock)은 한 순간에 한 스레드만 Python 객체를 만지게 하는 잠금이에요. C++ 커널이 GIL을 쥔 채 오래 돌면 그동안 다른 Python 스레드가 모두 멈춰요. 반대로 GIL을 놓은 코드는 Python 객체(참조 수, `repr`, 예외 객체)를 만지면 안 돼요.
 
-### 언제 놓나
+### 규칙: 기준값 이상이면 스레드 수와 상관없이 놓아요
 
-GIL을 놓는 방법은 두 가지예요. 놓고 다시 잡는 것은 `parallel::GilRelease`(생성자에서 `PyEval_SaveThread`, 소멸자에서 `PyEval_RestoreThread`)가 해요 [6].
+규칙은 하나예요. **일이 기준값(2¹⁷) 이상이면 GIL을 놓고 계산하고, 아래면 쥔 채 계산해요.** 스레드 수는 보지 않아요. 그래서 `sd.set_num_threads(1)`이어도 큰 계산이 도는 동안 다른 Python 스레드(예: 웹 서버의 다른 요청)가 돌아요. 기준값 아래의 작은 호출은 GIL을 놓았다 다시 잡는 비용을 내지 않아요. 이 규칙은 배열, 선형대수, 특수함수 등 모든 영역이 같이 쓰고, 기준값만 영역마다 달라요([스레드풀과 결정성](/internals/core/threads/)).
+
+GIL을 놓고 다시 잡는 일은 공용 풀의 `parallel::GilRelease`(생성자에서 `PyEval_SaveThread`, 소멸자에서 `PyEval_RestoreThread`)가 해요 [6]. frame은 이것을 두 길로 써요. 나누는 일은 `run_unlocked`로, 나누지 않는 직렬 구간은 `Unlocked(work)`로 감싸요.
 
 | 경우 | GIL |
 |---|---|
-| `for_chunks`의 일이 기준값 아래 | 쥔 채 돌아요. 작은 호출에 놓고 다시 잡는 비용을 더하지 않아요 |
-| `for_chunks`가 풀로 나눠 돎 (스레드 2개 이상) | 놓아요(`parallel_for`) |
+| `for_chunks`의 일이 기준값 아래 | 쥔 채 돌아요 |
+| `for_chunks`의 일이 기준값 이상 | 놓아요(`run_unlocked`). 풀로 나누든, 1스레드라서 청크를 차례로 돌든 같아요 |
+| float 합의 잎 병렬(`pairwise_sum_parallel`), groupby의 그룹 묶음(`for_groups`) | 기준값 이상에서만 나누고, 나눌 때는 `run_unlocked`라서 놓아요 |
 | 풀이 다른 Python 스레드의 일로 바빠서 혼자 직렬로 돎 | 놓아요. 바쁜 쪽이 일을 끝내고 결과를 Python 객체로 돌려주려면 GIL이 필요해요 |
-| `Unlocked(work)`로 감싼 직렬 구간, `work`가 기준값 이상 | 스레드 수와 상관없이 놓아요 |
-| `for_chunks`의 일이 기준값 이상인데 스레드가 1개 | **쥔 채 돌아요.** `parallel_for`가 스레드 1개면 그 자리 루프로 돌기 때문이에요 |
+| `Unlocked(work)`로 감싼 직렬 구간, `work`가 기준값 이상 | 놓아요 |
 
-`Unlocked`로 감싼 직렬 구간은 다음과 같아요.
+공용 풀의 `parallel_for` 자체는 GIL을 이렇게 다뤄요.
+
+```cpp
+// csrc/parallel/pool.cpp (발췌)
+void parallel_for(std::int64_t ntasks, const std::function<void(std::int64_t)>& fn) {
+    if (ntasks <= 0) return;
+    if (ntasks == 1 || t_in_task) {                  // 태스크 하나, 또는 태스크 안: GIL은 있는 그대로
+        for (std::int64_t t = 0; t < ntasks; ++t) fn(t);
+        return;
+    }
+    GilRelease release;                              // 태스크가 둘 이상: 스레드 수와 상관없이 놓는다
+    if (pool().threads() <= 1) {                     // 1스레드: 호출 스레드가 차례로, GIL 없이
+        for (std::int64_t t = 0; t < ntasks; ++t) fn(t);
+        return;
+    }
+    pool().run(ntasks, fn);                          // 풀로 (풀이 바쁘면 이 스레드 혼자)
+}
+
+GilRelease::GilRelease() {
+    // 태스크는 GIL을 쥐고 있지 않다: 워커는 가진 적이 없고, 호출 스레드는 이미 놓았다.
+    if (!t_in_task && PyGILState_Check()) state_ = PyEval_SaveThread();
+}
+```
+
+- **태스크가 둘 이상이면 `parallel_for`가 직접 놓아요.** 스레드가 1개여도 놓고, 태스크를 호출 스레드에서 차례로 돌려요.
+- **태스크가 하나면 GIL을 건드리지 않아요.** 태스크를 하나로 정한 것은 부르는 쪽이 일의 크기를 보고 정한 것이라서, 풀은 그 자리에서 함수 한 번을 부를 뿐이에요. 그래서 일의 크기는 기준값 이상인데 태스크가 하나일 수 있는 곳은 부르는 쪽이 GIL을 놓아야 해요. frame에서는 그룹이 하나뿐인 groupby(`for_groups`)가 그래요. `run_unlocked`가 이 일을 맡아요: 먼저 `Unlocked`로 GIL을 놓고 `parallel_for`를 불러요. `for_chunks`는 기준값 이상이면 청크가 언제나 8개 이상이지만, 같은 함수를 써서 GIL 규칙이 태스크 수에 기대지 않게 해요.
+- **겹쳐도 안전해요.** `GilRelease`는 이 스레드가 지금 GIL을 쥐고 있을 때만 놓아요. 태스크 안이거나 이미 다른 `GilRelease`(`Unlocked`, `run_unlocked`) 아래이면 아무 일도 하지 않아요. 그래서 `for_groups`의 태스크 하나가 다시 `pairwise_sum_parallel`을 불러도, `read_csv`가 `Unlocked` 아래에서 청크를 나눠 돌려도 GIL을 두 번 놓지 않아요. 이미 놓은 곳 안의 `parallel_for`(병렬 factorize와 counting sort의 파티션 단계, CSV의 청크)는 그대로 불러요.
+
+나누지 않는 직렬 구간은 `Unlocked(work)`로 감싸요. 다음 구간이에요.
 
 - 직렬 factorize(`Partitioned::build`의 P = 1 경로)와 그룹별 개수(`group_counts`), `value_counts`의 정렬(`stable_order`)
 - 직렬 기수 정렬(`radix_sort_serial`, `Unlocked(n * 2)`)과 직렬 counting sort
+- 라벨 여러 개로 모든 위치를 찾는 조회(`LabelTable::all_positions`)의 조회 부분
 - merge에서 오른쪽 조인을 위해 처음 나타난 순서로 번호를 다시 매기는 구간
 - `concat`의 버퍼 이어 붙이기
 - `read_csv` 전체(토큰화, 추론, 값 만들기)
 
-그래서 1스레드(`sd.set_num_threads(1)`)에서 결과는 이렇게 갈려요. 해시(`unique`, `nunique`, groupby의 키 정리), 정렬, CSV처럼 큰 직렬 구간은 GIL을 놓아서 다른 Python 스레드가 함께 돌아요. 원소별 연산, 필터, 합처럼 `for_chunks`만 쓰는 커널은 GIL을 쥔 채 돌아요. 예를 들어 1스레드에서 1,600만 행 `s + s`를 부르면 그 계산이 끝날 때까지 다른 Python 스레드가 멈춰요. 이런 커널은 메모리 대역폭에 묶여 한 번의 호출이 짧으므로, 연달아 부르는 사이사이에 다른 스레드가 GIL을 얻어요.
+그래서 1스레드에서도 큰 호출은 모두 GIL을 놓아요. `sd.set_num_threads(1)`에서 1,600만 행 float64 Series의 `s + s`(약 11ms), `s.sum()`(약 8ms), `s[s > 0]`(약 50ms)을 부르는 동안, 옆의 Python 스레드가 `while` 루프로 카운터를 각각 약 43만 번, 28만 번, 190만 번 올렸어요(Apple M4 Pro). GIL을 쥔 채였다면 0번이에요.
 
-int64 `mean`(과 그 평균을 쓰는 `var`, `std`)은 배열 영역의 `sd::sum`을 불러 합을 구해요(배열의 합과 비트를 맞추기 위해서예요). 그 합은 배열 영역의 규칙을 따라, 1스레드면 GIL을 쥔 채 돌아요.
+1스레드에서 더 드는 비용은 기준값 이상인 호출마다 GIL을 한 번 놓고 다시 잡는 것이에요. 호출 하나에 0.1µs 안팎이고, 기준값 크기의 호출도 계산에 수 µs가 걸려서 보이지 않아요. 131,072행부터 1M 행까지 여덟 연산(`f + f`, `sum`, `min`, 필터, groupby `sum` 등)을 GIL을 쥐는 빌드와 번갈아 쟀을 때 기하평균 차이가 +0.6%였고, 경우별 차이(대부분 ±3% 안)는 실행마다 부호가 바뀌는 잡음이었어요. 다른 Python 스레드가 Python 코드를 돌리고 있으면, 계산을 마친 호출이 GIL을 돌려받을 때까지 기다리는 시간은 따로 있어요(최대 `sys.getswitchinterval()`, 기본 5ms). 이것은 GIL을 놓는 모든 확장 모듈이 같아요.
+
+int64 `mean`(과 그 평균을 쓰는 `var`, `std`)은 배열 영역의 `sd::sum`을 불러 합을 구해요(배열의 합과 비트를 맞추기 위해서예요). 그 합은 배열 영역의 기준값(float64 덧셈 32,768개 분량)부터 GIL을 놓아요. 배열을 만들어 넘기는 앞뒤 부분은 Python 객체를 다루므로 GIL을 쥐어요([컬럼과 메모리](/internals/frame/columns/)).
 
 ### 태스크는 Python 객체를 만지지 않아요
 
 - **에러 메시지는 나중에 만들어요.** 메시지에는 값의 `repr`이 들어가고 그것은 Python 호출이에요. 태스크는 실패한 행 번호만 남기고(아래 `FirstRow`), 메시지는 병렬 구간이 끝나 GIL을 다시 잡은 뒤 만들어요.
 - **Column 객체는 C++ 값이에요.** 태스크가 읽는 Column은 C++의 `shared_ptr<Buffer>` 셋을 든 값이고, Python 객체를 가리키지 않아요. 태스크가 Column을 복사해도 Python 참조 수가 바뀌지 않아요.
-- 태스크 안에서 던진 C++ 예외는 풀이 잡아 `parallel_for`가 돌아온 뒤 호출 스레드에서 다시 던져요. 그때는 GIL을 다시 잡은 뒤라서, 바인딩이 Python 예외로 바꿀 수 있어요.
+- 태스크 안에서 던진 C++ 예외는 풀이 잡아 `parallel_for`가 돌아온 뒤 호출 스레드에서 다시 던져요. 예외가 `Unlocked`나 `run_unlocked`의 범위를 빠져나가면서 소멸자가 GIL을 다시 잡으므로, 바인딩이 Python 예외로 바꿀 때는 GIL이 있어요.
+- `Unlocked` 구간도 같은 규칙을 따라요. 1스레드에서 태스크를 차례로 돌 때도 GIL이 없으니, 스레드 수와 상관없이 같은 코드가 Python 객체 없이 돌아요.
 
 ### GIL을 일부러 쥐는 곳
 
 - **행 대입 `set_rows`.** `s.iloc[k] = v`는 크기와 상관없이 GIL을 쥔 채 돌아요. 대입은 Buffer를 아무도 공유하지 않으면 그 자리에서 고치는데(Copy-on-Write), 그동안 다른 Python 스레드의 커널이 같은 Buffer를 읽기 시작하면 반쯤 쓴 값을 보게 돼요. GIL을 쥐고 있으면 다른 스레드의 호출은 대입 전이나 후에만 시작할 수 있어요. 이미 돌고 있는 연산은 인자로 받은 Column 객체를 쥐고 있어서 Buffer의 참조 수가 2 이상이고, 대입은 복사본에 써요. 그래서 연산은 언제나 **호출한 순간의 값**을 봐요([컬럼과 메모리](/internals/frame/columns/)).
-- **Index 조회 엔진의 캐시.** `Index`는 처음 라벨을 조회할 때 해시 테이블(`LabelTable`)을 만들어 캐시해요. 테이블을 만드는 factorize는 일이 크면 GIL을 놓으므로, 두 Python 스레드가 동시에 처음 조회하면 테이블을 두 번 만들 수 있어요. 각자 자기 객체를 만들고 내용이 같으므로 어느 쪽이 캐시에 남아도 결과는 같아요. Index는 불변이라 만든 뒤에는 읽기만 해요.
-
-### 배열 영역과 다른 점
-
-배열 영역은 1스레드면 어떤 경로든 GIL을 쥔 채 돌아요(큰 BLAS 호출만 예외). frame은 큰 직렬 구간에 `Unlocked`를 둬서 1스레드에서도 놓아요. 데이터프레임 작업에서는 수십~수백 ms 걸리는 직렬 구간(큰 파일 읽기, 키가 많은 factorize)이 흔하고, 그동안 다른 Python 스레드(예: 웹 서버의 다른 요청)가 멈추는 것이 더 눈에 띄기 때문이에요.
+- **Index 조회 엔진의 CSR.** 라벨의 모든 위치를 묻는 조회(`.loc["a"]`, 라벨 리스트, 라벨 슬라이스의 양 끝)는 코드별 행 목록(CSR)을 처음 쓸 때 만들어 캐시해요. 이 CSR은 GIL을 쥔 채 직렬로 만들어서, 두 Python 스레드가 같은 캐시 칸을 동시에 채우지 않아요. 그 앞의 해시 테이블(`LabelTable`)은 라벨이 기준값 이상이면 만드는 factorize가 GIL을 놓으므로, 두 Python 스레드가 동시에 처음 조회하면 테이블을 두 번 만들 수 있어요. 각자 자기 객체를 만들고 내용이 같으므로 어느 쪽이 캐시에 남아도 결과는 같아요. Index는 불변이라 만든 뒤에는 읽기만 해요([라벨, 조회, 선택](/internals/frame/labels/)).
 
 ## 결정성
 
@@ -381,7 +418,7 @@ double pairwise_sum_parallel(std::int64_t n, const Get& get, std::int64_t cost =
     if (n <= kPairwiseLeaf || n * cost < kParallelThreshold) return pairwise_sum(0, n, get);  // 직렬 트리
     const pairwise::Leaves leaves = pairwise::plan(n, kPairwiseLeaf, /*complex=*/false);
     std::vector<double> part(leaves.size());
-    parallel::parallel_for(part.size(), [&](std::int64_t t) {
+    run_unlocked(part.size(), [&](std::int64_t t) {
         part[t] = pairwise_sum(leaves[t].first, leaves[t].second, get);
     });
     return pairwise::combine(n, kPairwiseLeaf, part);   // 같은 트리 모양으로 합치기
@@ -573,7 +610,7 @@ True
 - **에러 위치**: string 컬럼의 행 90,000과 180,000에 숫자가 아닌 값을 넣고 `astype("int64")`의 메시지가 모든 스레드 수에서 행 90,000의 값(`'x2'`)을 말하는지 봐요.
 - **CSV**: 512KB 청크 여럿에 걸친 파일(따옴표 안 줄바꿈, `""`, CRLF, 한글, 빈 문자열)을 직렬 정답(`test_csv.py`의 참조 구현)과 비교해요. 따옴표 필드 하나가 1.5MB로 세 청크에 걸치는 파일, 앞뒤에 에러가 둘 있는 파일(파일 순서로 앞의 것을 알려야 해요)도 있어요.
 - **스냅샷**: 한 스레드가 `s.iloc[k] = 1`을 k = 0, 1, 2, …로 쓰는 동안 다른 스레드가 `s + 0`을 되풀이해요. 모든 결과가 "앞의 k개만 1"인 꼴이어야 해요.
-- **GIL**: `set_num_threads(1)`에서 300만 행 `sort_values`를 부르는 동안 다른 Python 스레드가 카운터를 1,000번 넘게 올리는지 봐요(직렬 기수 정렬이 `Unlocked`로 GIL을 놓아요).
+- **GIL**: `set_num_threads(1)`에서 큰 호출을 부르는 동안 다른 Python 스레드가 카운터를 1,000번 넘게 올리는지 봐요. 300만 행 `sort_values`(직렬 기수 정렬의 `Unlocked`)와, 1,600만 행의 `s + s`, `sum`, `min`, `var`, 필터, groupby `sum`(청크와 잎, 그룹 묶음의 `run_unlocked`)이 대상이에요. 영역 공통의 `tests/test_gil_release.py`는 옆 스레드가 가장 오래 멈춘 시간을 재서, GIL을 쥔 호출이면 그 시간이 호출 시간만큼 길어지는 것으로 가려요.
 
 ## 확장성
 

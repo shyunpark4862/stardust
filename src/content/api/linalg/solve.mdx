@@ -128,7 +128,7 @@ array([ 5.0,  3.0, -2.0], dtype=float64)
 >>> sd.linalg.solve(s, b)
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: solve(): singular matrix
+stardust.linalg.LinAlgError: solve(): singular matrix
 ```
 
 둘째 행 `[2, 4]`가 첫째 행 `[1, 2]`의 두 배라서, 두 식의 직선은 평행해요. `solve`는 이럴 때 `LinAlgError`를 내요. 이 에러를 다루는 방법과 "거의 특이한" 행렬의 함정은 이 페이지 아래쪽의 "조심할 점"에서 다뤄요.
@@ -461,7 +461,7 @@ ValueError: solve(): 'b' contains NaN or infinity
 >>> sd.linalg.solve(bad, b)
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: solve(): singular matrix (at batch index (1,))
+stardust.linalg.LinAlgError: solve(): singular matrix (at batch index (1,))
 ```
 
 ### 빈 입력

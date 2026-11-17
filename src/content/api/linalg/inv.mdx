@@ -112,7 +112,7 @@ array([1.0, 2.0], dtype=float64)
 >>> sd.linalg.inv(s)
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: inv(): singular matrix
+stardust.linalg.LinAlgError: inv(): singular matrix
 >>> sd.linalg.inv(sd.ones((2, 3)))
 Traceback (most recent call last):
     ...
@@ -449,7 +449,7 @@ array([[ 2.9999999999999987, -1.9999999999999991],
 ...                           [[1.0, 2.0], [2.0, 4.0]]]))
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: inv(): singular matrix (at batch index (1,))
+stardust.linalg.LinAlgError: inv(): singular matrix (at batch index (1,))
 ```
 
 `LinAlgError`는 `ValueError`의 한 종류라서 둘 중 어느 이름으로도 잡을 수 있어요.

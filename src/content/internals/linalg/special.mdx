@@ -335,7 +335,7 @@ scipy 1.18.1은 `info = 1`을 무시하고 그 해를 돌려줘요. $a = \mathrm
 >>> sd.linalg.solve_sylvester(a, b, sd.ones((2, 2)))
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: solve_sylvester(): a and -b have a common or close eigenvalue
+stardust.linalg.LinAlgError: solve_sylvester(): a and -b have a common or close eigenvalue
 >>> sd.linalg.solve_sylvester(sd.asarray([[2.0]]), sd.asarray([[3.0]]), sd.asarray([[10.0]]))
 array([[2.0]], dtype=float64)
 ```

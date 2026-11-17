@@ -112,7 +112,7 @@ dtype: float64
 >>> sd.frame.concat([city, sd.frame.Series([12.0])])
 Traceback (most recent call last):
     ...
-TypeError: concat(): cannot join int labels with string labels
+TypeError: concat(): cannot join int64 labels with string labels
 ```
 
 이때도 `ignore_index=True`면 라벨을 버리므로 이을 수 있어요.

@@ -23,7 +23,7 @@ export const envNegPts = [[0.25, -1.355], [0.5, -1.038], [0.75, -0.8751], [1, -0
 
 1. **엔진은 배열 영역의 것을 그대로 써요.** 86개는 원소별 함수예요. 브로드캐스팅, `out=`, dtype 변환, 스레드 분할을 배열 영역의 원소별 엔진이 맡고, 특수함수 쪽은 "원소 하나를 어떻게 계산하는가"만 적어요. 엔진에 더한 것은 입력이 넷까지인 n항 디스패처, 함수마다 다른 원소당 비용, 그리고 NEON과 vForce를 섞는 청크 커널이에요([원소별 엔진과 병렬화](/internals/special/engine/)).
 2. **함수마다 알고리즘이 정해져 있고, 구간은 원소의 값으로만 골라요.** 급수를 쓸지, 연분수를 쓸지, 점근전개를 쓸지는 그 원소의 인자 값이 정해요. 배열의 크기, 위치, 스레드 수는 경로를 바꾸지 않아요. 그래서 `f(x)[i]`는 언제나 `f(x[i])`와 비트까지 같아요.
-3. **정확도는 계약으로 약속해요.** 함수마다 정한 보장 영역 안에서 mpmath로 50자리까지 계산한 참값과의 상대오차가 $10^{-14}$ 이하예요. 테스트는 이 계약을 저장해 둔 참값 파일의 모든 점에서 확인해요.
+3. **정확도는 계약으로 약속해요.** 함수마다 정한 보장 영역 안에서 구간 산술(Arb)로 가둔 참값과의 상대오차가 $10^{-14}$ 이하예요. 테스트는 이 계약을 저장해 둔 참값 파일의 모든 점에서 확인해요.
 4. **특수값은 scipy를 따르되, scipy가 틀린 값을 내는 곳은 참값을 내요.** 서브노멀 꼬리를 0으로 버리는 곳, 정수가 아닌 차수를 잘라 쓰는 곳, 복소수가 참값인데 inf를 내는 곳 등이에요.
 5. **외부 코드는 검증된 곳에만 써요.** 유리 근사의 계수는 Cephes와 논문에서 원본의 십진 표기 그대로 가져오고, Boost.Math는 "바꿔도 정확도와 속도에서 손해가 없는" 구간에서만 직접 불러요. 나머지는 이 저장소의 코드예요.
 
@@ -38,7 +38,7 @@ export const envNegPts = [[0.25, -1.355], [0.5, -1.038], [0.75, -0.8751], [1, -0
       { label: 'launch', where: 'array/ops/ufunc.cpp', note: 'Python 숫자를 원소 하나짜리 배열로 만들고, 세 모양을 브로드캐스트해 결과 배열을 할당해요. 피연산자가 모두 Python 숫자이면 배열 없이 스택 버퍼로 바로 계산해요.' },
       { label: 'NdIter::run(weight = 256)', where: 'array/iter.cpp', note: '축을 정리하고, 일의 양(원소 수 × 원소당 비용)을 보고 스레드풀에 나눌지 정해요. betainc는 원소 128개부터 나눠요.' },
       { label: 'nary_loop<Betainc, double>', depth: 1, where: 'array/kernels/elementwise.hpp', note: '조각 하나의 원소마다 Betainc::f(a, b, x)를 불러요. a와 b는 stride 0인 피연산자예요.' },
-      { label: 'Betainc::f', depth: 2, where: 'special/ops/incbeta.hpp', note: '특수값을 먼저 정하고, a, b ≤ 6이면 Boost.Math의 ibeta, 그 밖에는 이 저장소의 BRATIO 구현으로 계산해요.' },
+      { label: 'Betainc::f', depth: 2, where: 'special/ops/incbeta.hpp', note: '특수값을 먼저 정하고, a, b ≤ 6이면(서브노멀 x 같은 몇 곳 제외) Boost.Math의 ibeta, 그 밖에는 이 저장소의 BRATIO 구현으로 계산해요.' },
       { label: 'sd.ndarray', where: 'Python', note: 'x와 같은 모양의 float64 배열이 돌아와요.' },
     ]}
   />
@@ -221,18 +221,19 @@ $$
 
 가장 잘 반올림한 결과도 0.5 ULP까지는 틀려요. 참값이 두 float 사이에 있기 때문이에요. 두 척도의 관계는 $y$가 간격 구간의 어디에 있느냐에 따라 달라요. $y$가 $[2^e, 2^{e+1})$에 있으면 $\operatorname{ulp}(y) = 2^{e-52}$이므로, 1 ULP는 상대오차 $2^{-53}$(구간 끝)에서 $2^{-52}$(구간 시작) 사이예요.
 
-stardust의 계약은 **상대오차 $10^{-14}$**예요. ULP로 바꾸면 $10^{-14} / 2^{-52} \approx 45$에서 $10^{-14}/2^{-53} \approx 90$ ULP 사이예요. 그래서 측정표에서 최대 ULP가 45를 넘는 줄도 계약 안일 수 있어요. 예를 들어 `beta`는 최대 52.8 ULP, `hyp1f1`의 보장 영역은 78.6 ULP인데 상대오차로는 둘 다 $10^{-14}$ 안이에요. 실제 목표는 이보다 훨씬 작아서, 보장 영역 96줄 가운데 65줄이 최대 10 ULP 아래예요.
+stardust의 계약은 **상대오차 $10^{-14}$**예요. ULP로 바꾸면 $10^{-14} / 2^{-52} \approx 45$에서 $10^{-14}/2^{-53} \approx 90$ ULP 사이예요. 그래서 측정표에서 최대 ULP가 45를 넘는 줄도 계약 안일 수 있어요. 예를 들어 `beta`는 최대 52.8 ULP인데 상대오차로는 $6.6 \times 10^{-15}$이라 $10^{-14}$ 안이에요. 실제 목표는 이보다 훨씬 작아서, 보장 영역 96줄 가운데 70줄이 최대 10 ULP 아래예요.
 
 ### 무엇과 비교하나
 
-참값은 mpmath [3]로 유효숫자 50자리까지 계산하고, float64 두 개의 합 $\text{hi} + \text{lo}$로 저장해요(`tests/special/ref/*.npz`). float64 하나로 저장하면 참값 자체가 0.5 ULP 틀리므로, 1 ULP 안팎의 오차를 잴 수 없어요. 합으로 저장하면 약 106비트라 ULP의 작은 분수까지 잴 수 있어요. 오차는 $\lvert (\hat y - \text{hi}) - \text{lo} \rvert / \operatorname{ulp}(\text{hi})$로 계산해요(`tests/special/refdata.py`).
+참값은 구간 산술 라이브러리 Arb [3]로 계산해요. Arb의 값은 참값을 품는다고 보장된 공 $[m \pm r]$이고, 반지름이 값의 $2^{-110}$배 아래가 될 때까지 정밀도를 두 배씩 올려요. 그러면 공의 중심을 float64 두 개의 합 $\text{hi} + \text{lo}$로 반올림한 값이 참값을 반올림한 값이에요. 이것을 저장해요(`tests/special/ref/*.npz`). float64 하나로 저장하면 참값 자체가 0.5 ULP 틀리므로, 1 ULP 안팎의 오차를 잴 수 없어요. 합으로 저장하면 약 106비트라 ULP의 작은 분수까지 잴 수 있어요. 오차는 $\lvert (\hat y - \text{hi}) - \text{lo} \rvert / \operatorname{ulp}(\text{hi})$로 계산해요(`tests/special/refdata.py`).
 
 scipy는 정답지가 아니에요. scipy와의 차이는 허용치가 아니라 보고 대상이에요. scipy도 같은 참값으로 재서 나란히 적어요. scipy가 틀리는 곳이 적지 않아서예요. 예를 들어 `erfc`는 scipy 1.18.1이 $x \approx 26.7$부터 0을 내는 꼬리(참값은 서브노멀)에서 $2.3 \times 10^{13}$ ULP까지 벌어지고, stardust의 `erfc`는 같은 참값 파일 전체에서 최대 7.77 ULP예요.
 
 ### 보장 영역과 느슨한 영역
 
 - **보장 영역**: 함수마다 [API 문서](/api/special/basics/)에 적힌 입력 범위예요. 여기서 상대오차 $10^{-14}$ 이하예요. 오차함수 계열, 로지스틱, 0·1차 변형 Bessel처럼 정의역 전체가 보장 영역인 함수가 많아요.
-- **느슨한 영역**: 정의역 안이지만 보장 영역 밖이에요. 값을 계산하고, 잰 최대 오차를 문서에 적어요. 예를 들어 `hyp1f1`, `hyp2f1`은 모든 항이 양수인 형태가 있는 곳만 보장하고, 그 밖은 측정한 한계 $10^{-12}$를 적어요. NaN은 수학적 정의역 밖에서만 나와요.
+- **느슨한 영역**: 정의역 안이지만 보장 영역 밖이에요. 값을 계산하고, 잰 최대 오차를 문서에 적어요. 예를 들어 `hyp1f1`, `hyp2f1`은 모든 항이 양수인 형태가 있는 곳만 보장하고, 그 밖은 잰 최대 상대오차($10^{-11}$ 아래)를 적어요.
+- **정해진 시간과 NaN**: 모든 호출은 정해진 시간 안에 끝나요. 급수·연분수·점화식·근 찾기에는 횟수의 상한이 있고, 상한에 닿거나 잃는 자릿수를 아는 방법이 없으면 부분합이나 마지막 반복값 대신 NaN을 내요. 보장 영역 안에서는 상한에 닿지 않아요. 그래서 NaN은 수학적 정의역 밖과, 느슨한 영역에서 값을 믿을 수 없는 곳(`hyp1f1`·`hyp2f1`의 일부, 차수의 크기가 $10^7$을 넘는 `jv`·`yv`의 일부, $x < -10^{20}$의 `airy`, $p$가 서브노멀인 비중심 역함수 등)에서 나와요. Boost가 반복 상한에 닿아 내는 평가 오류도 NaN으로 바꿔요.
 - **서브노멀 결과**: 결과가 $2^{-1022}$보다 작으면 상대오차 대신 절대오차 $45 \times 2^{-1074}$를 봐요. 서브노멀은 유효 비트가 줄어든 수라서 상대오차가 의미를 잃기 때문이에요. 정상 범위의 바닥에서 상대오차 $10^{-14}$와 같은 크기예요.
 - **오버플로·언더플로**: 참값이 float64 범위를 넘으면 ±inf, 서브노멀보다 작으면 0이에요.
 
@@ -317,7 +318,7 @@ nan
 
 특수함수의 구간 근사는 대부분 **유리 근사** $R(x) = P(x)/Q(x)$예요. 다항식 $P$, $Q$의 계수는 구간 위의 최대 상대오차를 가장 작게 만들도록(minimax) Remez 알고리즘으로 맞춘 값이에요. 이런 계수를 새로 만들려면 고정밀 산술로 수십 번 반복하고, 경계와 반올림 효과까지 검증해야 해요. stardust는 계수를 직접 만들지 않고, **출처가 분명한 공개 계수를 원본의 십진 표기 그대로** 옮겨요. 각 계수 파일의 머리에 출처, 판, 라이선스, 원 논문이 적혀 있어요. minimax와 Remez 교대 정리 자체는 [공통 수치 기법](/internals/special/techniques/)에서 설명해요.
 
-예외는 맞춘(fitted) 값이 아니라 **수학적으로 정해진 급수의 계수**예요. Taylor 계수, 점근전개의 계수, 격자점의 함숫값은 정의에서 mpmath로 직접 계산해 반올림한 것이라, 생성 스크립트(`tools/gen_*.py`)와 함께 저장소에 있어요.
+예외는 맞춘(fitted) 값이 아니라 **수학적으로 정해진 급수의 계수**예요. Taylor 계수, 점근전개의 계수, 격자점의 함숫값은 정의에서 Arb(256비트 이상)나 정확한 유리수 산술로 직접 계산해 반올림한 것이라, 생성 스크립트(`tools/gen_*.py`)와 함께 저장소에 있어요.
 
 | 파일 (`csrc/special/coeffs/`) | 무엇의 근사인가 | 쓰는 형태 | 출처, 라이선스 |
 |---|---|---|---|
@@ -327,7 +328,8 @@ nan
 | `cephes_bessel.hpp` | $I_0, I_1, K_0, K_1$의 지수 척도 판, $J_0, J_1, Y_0, Y_1$ | Chebyshev 급수(`chbevl`)와 유리식, Hankel 진폭·위상 유리식 | Cephes `i0.c` … `j1.c`, SciPy 판 |
 | `cephes_ellip.hpp` | $K(m)$, $E(m)$ | $P(y) - \log(y)\,Q(y)$, $P(y) - \log(y)\,y\,Q(y)$, $y = 1 - m$ | Cephes `ellpk.c`, `ellpe.c`, SciPy 판 |
 | `lanczos13m53.hpp` | $\Gamma(z)$ (Lanczos 근사) | $\Gamma(z) = L(z)\,(z+g-\tfrac12)^{z-1/2} e^{-(z+g-1/2)}$, $L$은 13항 유리식 | Boost.Math `lanczos.hpp` [6], BSL-1.0 |
-| `lgamma_taylor2.hpp`, `rgamma_taylor.hpp`, `loggamma_taylor.hpp` | $\log\Gamma(2+e)$, $1/\Gamma(1+z)$, 복소 $\log\Gamma(1+w)$의 나머지 | Taylor 급수 ($\zeta(k)$로 정해진 계수) | 생성 (mpmath) |
+| `lgamma_taylor2.hpp`, `rgamma_taylor.hpp`, `loggamma_taylor.hpp` | $\log\Gamma(2+e)$, $1/\Gamma(1+z)$, 복소 $\log\Gamma(1+w)$의 나머지 | Taylor 급수 ($\zeta(k)$로 정해진 계수) | 생성 (`lgamma_taylor2`는 40자리 고정밀, 나머지는 Arb) |
+| `zeta_even.hpp` | $\zeta(2), \zeta(4), \ldots, \zeta(52)$ | 올바르게 반올림한 값의 표 | 생성 (Arb, 공을 $2^{-200}$까지) |
 | `temme_igamma.hpp`, `debye_u.hpp` | 불완전 감마의 Temme 계수 $c_k(\eta)$, Debye 다항식 $U_k(p)$ | 균등 점근전개 | 생성, DLMF 8.12, 10.41의 정의식 [7] |
 | `ei_taylor.hpp`, `lambertw_branch.hpp` | Ei의 양의 영점 둘레, W의 분기점 둘레 | Taylor 급수 | 생성 |
 | `wofz_grid.hpp` | $w(z_0)$, $z_0$는 0.1 격자 | double-double 값 | 생성 |
@@ -375,33 +377,33 @@ static double f(double x) {
 | `gamma` | $x > -170$, 극점 제외 | $-20 < z < 0$은 $\Gamma(z) = \Gamma(z+1)/z$로 양수까지 올리고 $z \le -20$은 반사 공식, 정수는 팩토리얼 표, $z < \sqrt{\varepsilon}$는 $1/z - \gamma$, 그 밖은 Lanczos 근사 `lanczos13m53` [8]. 넘칠 만하면 거듭제곱을 반으로 나눠 곱해요 | 서브노멀 꼬리와 깊은 음수 |
 | `digamma` | $x > 0$ | $x \ge 10$은 $\log(x-1) + \tfrac{1}{2(x-1)} - \sum$(Bernoulli 계수) 점근급수, 그 아래는 점화식으로 $[1, 2]$로 옮긴 뒤 $(x - x_0)(Y + R(x-1))$ 유리식($x_0$는 양의 영점을 세 조각으로 저장) | $x < 0$ (Boost는 극점 근처에서 틀려요) |
 | `beta`, `betaln` | $a, b > 0$, $a + b < 40$ | Lanczos 합의 비 $L(a)L(b)/L(c)$에 $(a_g/c_g)^{a-1/2-b}$, $(a_g b_g / c_g^2)^b$를 곱하는 한 식. 밑이 1에 가까우면 `log1p`로 | 큰 인자 (Boost 1.8e3 ULP) |
-| `zeta` (Riemann) | $x > -60$, 자명한 영점 제외 | 양의 짝수는 Bernoulli 수의 닫힌식, 홀수 정수는 표, 그 밖은 $(0,1), [1,2], (2,4], (4,7], (7,15), [15,36)$ 구간마다 minimax 유리식(일부는 $1 + e^{R}$ 꼴), $s \ge 36$은 $1 + 2^{-s}$. 음수는 함수방정식 | $x \le -60$ (Boost 1.7e3 ULP) |
+| `zeta` (Riemann) | $x \ge -1$(짝수 2–52 제외), 음의 홀수 $-3 \ldots -59$ | 짝수 52 초과는 Bernoulli 수의 닫힌식, 정수는 표, 그 밖은 $(0,1), [1,2], (2,4], (4,7], (7,15), [15,36)$ 구간마다 minimax 유리식(일부는 $1 + e^{R}$ 꼴), $s \ge 36$은 $1 + 2^{-s}$. $-1 \le s < 0$은 함수방정식 | 짝수 2–52는 올바르게 반올림한 표(Boost의 닫힌식은 9 ULP). 그 밖의 $x < -1$은 함수방정식(Boost는 $(-32, -31)$에서 65 ULP, $x \le -60$에서 1.7e3 ULP) |
 | `expi` | $x \ge -700$ | $x < 0$은 $-E_1(-x)$의 유리식($\lvert x \rvert \le 1$과 그 위 두 갈래), $x > 0$은 $(0,6], (6,10], (10,20], (20,40], (40,\infty)$ 구간마다 유리식. $(0,6]$은 양의 영점을 인수로 빼 둔 꼴 | 서브노멀 꼬리, 넘침 근처 |
 | `i0 i1 k0 k1` | 전부 (결과가 정상 범위일 때) | $I$: $x < 7.75$는 $x^2/4$의 다항식, $x < 500$은 $e^x P(1/x)/\sqrt{x}$, 그 위는 $e^{x/2}$를 두 번 곱해 넘침을 늦춰요. $K$: $x \le 1$은 다항식과 $\log x$ 항, $x > 1$은 $e^{-x}(Y + R(1/x))/\sqrt{x}$. 모두 minimax 근사 | 넘치거나 서브노멀인 결과 |
 | `i0e i1e k0e k1e` | $0 < x < 700$ | 위 값에 $e^{\mp x}$를 곱해요(반올림 한 번 더) | 그 밖 |
 | `iv`, `ive` | $\lvert \nu \rvert < 30$, $x > 0$ | $\nu = 0, 1$은 위 유리식, $x/\nu < 1/4$는 거듭제곱급수, 그 밖은 Temme 방법 [9]: $\nu = n + \mu$로 나눠 $x \le 2$는 Temme 급수, $x > 2$는 Steed 방법 [10]으로 $K_\mu, K_{\mu+1}$, CF1로 $I_{\nu+1}/I_\nu$, Wronskian으로 $I$를 맞춰요. 큰 $x$는 점근전개 | 큰 차수 (Debye 균등 점근전개) |
 | `kv`, `kve` | $\lvert \nu \rvert < 400$, $x > 0$ | 정수 차수는 $K_0, K_1$에서 앞으로 가는 점화식, 그 밖은 위와 같은 Temme·Steed 방법 | 그 밖 |
-| `gammaincinv`, `gammainccinv` | $p \ge 10^{-300}$이고 근 $\ge 10^{-300}$ / 결과가 정상 범위 전부 | DiDonato–Morris [11]의 초기값(영역마다 다른 근사식 여러 개) 뒤에 Halley 반복으로 남은 비트를 정리해요 | 서브노멀 근 |
-| `betainc`, `betaincc` | $a, b \le 6$ | DiDonato–Morris의 구조 [1]: 거듭제곱급수, $a$를 정수 칸만큼 옮기는 유한합, 큰 $a$·작은 $b$의 BGRAT, 연분수. 작은 정수 매개변수는 이항 합 | 큰 $a$, $b$ (Boost 911 ULP) |
-| `betaincinv` / `betainccinv` | $a, b \ge 10$ / $a, b \ge 1$ | $a + b$가 크면 Temme의 세 균등 근사 중 하나($a$, $b$가 비슷하면 erfc형 두 가지, 크게 다르면 불완전 감마를 거꾸로 푸는 것), 그 밖은 밀도의 변곡점 어느 쪽에 근이 있는지 보고 꼬리의 거듭제곱 근사로 초기값을 잡은 뒤 Halley 반복 | 작은 $a$, $b$ (Boost가 언더플로를 틀려요) |
+| `gammaincinv`, `gammainccinv` | $p \ge 10^{-300}$, $a < 10^{10}$이고 근 $\ge 10^{-300}$ / 결과가 정상 범위 | DiDonato–Morris [11]의 초기값(영역마다 다른 근사식 여러 개) 뒤에 Halley 반복으로 남은 비트를 정리해요. 그 근에서 stardust의 순방향 함수로 Halley 한 걸음을 더해요 | 서브노멀 근, $a \ge 10^{10}$ |
+| `betainc`, `betaincc` | $a, b \le 6$ | DiDonato–Morris의 구조 [1]: 거듭제곱급수, $a$를 정수 칸만큼 옮기는 유한합, 큰 $a$·작은 $b$의 BGRAT, 연분수. 작은 정수 매개변수는 이항 합 | 큰 $a$, $b$ (Boost 911 ULP). $a, b \le 6$ 안에서도 서브노멀 $x$, 결과가 $2^{-960}$ 아래, Boost가 1에서 빼서 보수를 만드는 쪽 |
+| `betaincinv` / `betainccinv` | $10 \le a, b \le 10^6$ / $1 \le a, b \le 10^6$ | $a + b$가 크면 Temme의 세 균등 근사 중 하나($a$, $b$가 비슷하면 erfc형 두 가지, 크게 다르면 불완전 감마를 거꾸로 푸는 것), 그 밖은 밀도의 변곡점 어느 쪽에 근이 있는지 보고 꼬리의 거듭제곱 근사로 초기값을 잡은 뒤 Halley 반복 | 작은 $a$, $b$ (Boost가 언더플로를 틀려요), $10^6$보다 큰 모양(Boost가 다른 확률의 근을 내요) |
 | `lambertw` (실수, $k = 0$) | $\lvert x + 1/e \rvert \ge 0.05$ | $x \ge 0.05$는 $[0.05, 0.5), [0.5, 2), [2, 6), [6, 18)$의 minimax 유리식, 그 위는 $\log x$의 유리식. $\lvert x \rvert < 0.05$는 Taylor 급수, 음수는 구간별 유리식. 반복 없이 끝나요 | 분기점 근처 (Boost 2e7 ULP) |
 | `lambertw` ($k = -1$) | $\lvert x + 1/e \rvert \ge 0.05$ | Fukushima의 방법 [12]: $W$의 정수 부분을 표에서 찾고, 지수 함수 없이 이분법으로 소수 부분을 8–11번 좁힌 뒤, 5차 Schröder 갱신 한 번. $\lvert x \rvert$가 아주 작으면 $L_1 - L_2 + L_2/L_1$에서 Halley 반복 | 분기점 근처 |
-| `hyp1f1` | 보장 영역의 $x \ge 0$이고 $b < 11$, 느슨한 영역 전부 | 매개변수 영역마다 거듭제곱급수(넘침을 지수로 따로 세는 판), Kummer 변환, 큰 인자의 점근전개, Bessel 함수 전개, $a$·$b$에 대한 점화식과 함수 비율 중 하나를 골라요 | 보장 영역의 나머지 (Boost 208 ULP). Boost도 값을 못 내는 큰 음의 $a$는 Tricomi 전개 |
+| `hyp1f1` | 보장 영역의 $0 \le x < 16$, $b < 11$, $a \le 100$. 느슨한 영역에서는 stardust의 급수·점화식·점근전개가 안 될 때 $\lvert a\rvert, \lvert b\rvert \le 100$ | 매개변수 영역마다 거듭제곱급수(넘침을 지수로 따로 세는 판), Kummer 변환, 큰 인자의 점근전개, Bessel 함수 전개, $a$·$b$에 대한 점화식과 함수 비율 중 하나를 골라요 | 보장 영역의 나머지 (Boost는 $x \ge 18$부터 45 ULP를 넘는 점이 생기고 $x \approx 500$에서 297 ULP). 느슨한 영역의 나머지는 상쇄를 아는 급수, $a$의 점화식, 점근전개, 큰 음의 $a$의 Tricomi 전개 순이고, 모두 안 되면 NaN |
 
 Boost를 쓰지 않는 함수도 이유가 있어요. `erf` 계열, `gammaln`, `j0 j1 y0 y1`은 Boost가 더 정확해도 느려서 이 저장소의 코드예요. `airy`는 stardust가 값 넷을 한 번에 계산하고 Boost는 넷을 따로 불러야 해서, 1스레드 원소당 시간이 stardust는 넷을 합쳐 약 277ns, Boost는 값 하나에 143–218ns였어요. Boost는 게다가 $x \approx -10^{11}$ 같은 큰 음수에서 위상을 잃어 $10^{16}$ ULP까지 틀려요. 불완전 감마, `expn`, `polygamma`, 타원적분, `jv`·`yv`도 Boost가 느리거나 틀려요. 비중심 분포는 scipy 1.18이 쓰는 Boost 구현이 깊은 꼬리에서 0을 내거나 수천 ULP가 틀려서 직접 계산해요. Boost에 없는 함수(복소수 전부, `erfcx`, 정규분포 함수, `hyp2f1`, Hurwitz 제타, 리덕션)도 이 저장소의 코드예요. 구간을 고른 측정은 `bench/special/boost/routing.md`에 있고 [정확도와 성능](/internals/special/accuracy-performance/)에서 정리해요.
 
 <Callout type="warn" title="Boost 구간은 betainc와 betaincc가 같아야 해요">
-  `betainc`와 `betaincc`는 더하면 1이에요. 한쪽만 Boost이고 다른 쪽이 BRATIO인 점이 있으면, 두 구현의 오차가 따로 놀아서 합이 1에서 3 ULP 넘게 벗어나요. 그래서 두 함수의 Boost 구간을 $a, b \le 6$으로 맞춰 두었어요. BRATIO 구간에서는 한 호출이 $I$와 $1 - I$를 함께 내므로 합이 2 ULP 안이에요.
+  `betainc`와 `betaincc`는 더하면 1이에요. 한쪽만 Boost이고 다른 쪽이 BRATIO인 점이 넓게 생기면 두 구현의 오차가 따로 놀아요. 그래서 두 함수의 Boost 구간을 $a, b \le 6$으로 맞춰 두었어요. 그래도 이 구간에서는 Boost가 두 값을 따로 계산하고, 서브노멀 $x$나 Boost가 1에서 빼서 만드는 쪽처럼 한쪽만 BRATIO로 가는 점도 있어서 합이 1에서 최대 4.5 ULP 벗어나요. BRATIO 구간에서는 한 호출이 $I$와 $1 - I$를 함께 내므로 합이 2 ULP 안이에요.
 </Callout>
 
-## 정답지: mpmath 참값 파일
+## 정답지: Arb 참값 파일
 
 정확도 측정과 테스트는 모두 `tools/special_ref.py`가 만든 참값 파일을 써요.
 
 - **입력 집합**: 함수마다 보장 영역의 격자, 로그 균등 무작위 점(정의역에 부호가 둘이면 양쪽), 보장 영역 둘레의 느슨한 영역 점, 그리고 **경계 점**이에요. 경계 점은 구간 경계, 극점, 영점, 0, 정의역 끝마다 그 값과 양옆의 float64 이웃 네 개씩이에요(`around()`). 구간 경계의 앞뒤 ULP에서 두 방법이 이어지는지 보는 점이에요.
-- **계산**: mpmath로 유효숫자 50자리. 결과를 $\text{hi} + \text{lo}$로 저장하고, 보장 영역에 속하는지, 역함수면 조건수 배율 $\max(1, \kappa)$도 함께 저장해요.
-- **재현성**: 난수 시드가 고정이라 다시 돌리면 같은 파일이 나와요. 파일은 저장소에 커밋돼 있고, 테스트는 mpmath를 부르지 않아요(느리기 때문이에요).
-- **참값 계산의 함정**: mpmath도 모든 곳에서 정확하지는 않아요. 예를 들어 mpmath의 불완전 베타는 인자가 1에 가까우면 자릿수를 잃어서 $x$와 $1-x$ 중 작은 쪽에서 계산하고, 값이 $2^{-1074}$보다 훨씬 작으면 수렴을 포기해서 선두 항으로 0인지 판단해요. 비중심 분포의 반대쪽 꼬리는 급수가 상쇄하므로 mpmath의 수치 적분으로 정의 그대로 계산해요.
+- **계산**: Arb의 공을 정밀도를 두 배씩 올리며 반지름이 값의 $2^{-110}$배 아래가 될 때까지 좁혀요. 결과를 $\text{hi} + \text{lo}$로 저장하고, 보장 영역에 속하는지, 역함수면 조건수 배율 $\max(1, \kappa)$도 함께 저장해요.
+- **재현성**: 난수 시드가 고정이라 다시 돌리면 같은 파일이 나와요. 파일은 저장소에 커밋돼 있고, 테스트는 Arb를 부르지 않아요.
+- **도구가 직접 적은 계산**: Arb의 함수는 자기 오차를 공에 넣지만, 도구가 직접 더하는 합은 따로 챙겨요. 불완전 감마·베타의 급수와 비중심 분포의 포아송 혼합은 잘라 낸 꼬리의 상한을 공에 더해요. 역함수는 $F(x) - p$의 부호가 근 양옆에서 바뀌는 것으로 확인해요. 비중심 t의 반대쪽 꼬리는 급수가 상쇄하므로 Arb의 적분(오차 상한이 붙어요)으로 정의 그대로 계산해요. 8192비트까지 올려도 공이 줄지 않거나 한 점에 30초가 넘게 걸리는 점은 파일에 넣지 않아요.
 
 이 파일을 쓰는 곳은 셋이에요.
 
@@ -429,31 +431,31 @@ Boost를 쓰지 않는 함수도 이유가 있어요. `erf` 계열, `gammaln`, `
 | `beta`, `betaln`, `binom` | Boost($a + b < 40$), 그 밖은 Γ 셋의 곱, 지수 분리 값, 큰 인자의 Stirling 비. `binom`은 정수 $k$면 곱 | 같은 글 |
 | `loggamma` (복소수) | Stirling 8항, 1–2 둘레의 상쇄 없는 꼴, 반사(분기 $2\pi i k$), 점화식 | 같은 글 |
 | `gammainc`, `gammaincc` | 작은 $a$의 $\Gamma(1+a) - 1$ 꼴, 거듭제곱급수 $P$, Lentz 연분수 $Q$, $a > 20$이고 $\lvert x - a \rvert < 0.4a$는 Temme 균등 점근전개. 앞 인자는 double-double 지수 | [불완전 감마와 베타](/internals/special/incomplete/) |
-| `betainc`, `betaincc` | Boost($a, b \le 6$), 그 밖은 BRATIO 구조(BPSER, BUP, BGRAT, BFRAC, BASYM) | 같은 글 |
-| `gammaincinv`, `gammainccinv` | Boost, 그 밖은 초기값(작은 $x$ 근사, 큰 $x$ 점근, Wilson–Hilferty) + Halley | 같은 글 |
-| `betaincinv`, `betainccinv` | Boost($a, b \ge 10$ / $\ge 1$), 그 밖은 AS 109 [13] 초기값 + Halley | 같은 글 |
+| `betainc`, `betaincc` | Boost($a, b \le 6$, 서브노멀 $x$와 Boost가 빼서 만드는 쪽 제외), 그 밖은 BRATIO 구조(BPSER, BUP, BGRAT, BFRAC, BASYM), 아주 작은 $x$의 로그 꼴, 거대한 모양의 감마 극한 | 같은 글 |
+| `gammaincinv`, `gammainccinv` | Boost + 우리 순방향 함수로 Halley 한 걸음, 그 밖은 초기값(작은 $x$ 근사, 큰 $x$ 점근, Wilson–Hilferty) + Halley | 같은 글 |
+| `betaincinv`, `betainccinv` | Boost(모양 $10$–$10^6$ / $1$–$10^6$), 그 밖은 AS 109 [13] 초기값 + Halley | 같은 글 |
 | `i0 i1 k0 k1` (와 e-스케일 판) | Boost, 결과가 정상 범위 밖이면 Cephes Chebyshev 전개 두 구간 | [Bessel과 Airy](/internals/special/bessel-airy/) |
 | `j0 j1 y0 y1` | Cephes: $x \le 5$는 유리식, $x > 5$는 Hankel 진폭·위상 유리식(위상은 반올림하지 않음) | 같은 글 |
 | `jv yv jve yve` | 거듭제곱급수, Temme 급수와 Steed CF2 + CF1과 Wronskian, 위로 가는 점화식, Hankel 점근의 네 구간. 음의 차수는 반사 | 같은 글 |
 | `iv kv ive kve` | Boost(작은 차수), 그 밖은 Temme·Steed, $\nu \ge 30$은 Debye 균등 점근전개 | 같은 글 |
 | `airy` | $-2 \le x \le 1$은 Maclaurin 급수, $x > 1$은 $K_{1/3}, I_{1/3}$, $-9.7 < x < -2$는 $J_{1/3}, Y_{1/3}$, $x \le -9.7$은 진동 점근전개. 위상은 double-double | 같은 글 |
-| `zeta` | Riemann은 Boost($x > -60$), 그 밖은 함수방정식. Hurwitz는 Euler–Maclaurin(Cephes `zeta.c`) | [제타, 지수적분, …](/internals/special/more-functions/) |
+| `zeta` | Riemann은 짝수 2–52의 표, Boost($x \ge -1$과 음의 홀수), 그 밖은 함수방정식. Hurwitz는 Euler–Maclaurin(Cephes `zeta.c`) | [제타, 지수적분, …](/internals/special/more-functions/) |
 | `expi`, `expn` | `expi`는 Boost, 그 밖은 영점 둘레 Taylor, 양의 항 급수, 점근급수. `expn`은 $x \le 1$ 급수, $x > 1$ Lentz 연분수 | 같은 글 |
 | `ellipk`, `ellipe` | Cephes $P(y) - \log(y)\,Q(y)$, $y = 1 - m$ | 같은 글 |
-| `hyp1f1` | Boost(일부), 그 밖은 Maclaurin 급수(float64 첫 패스 + 오차 보정), Kummer 변환, 점근전개 | 같은 글 |
-| `hyp2f1` | $0 \le z \le 0.9$ 급수, 음의 $z$는 Pfaff 변환, $z > 0.9$는 $1 - z$ 변환과 정수 $c - a - b$의 극한식 | 같은 글 |
+| `hyp1f1` | Boost(일부), 그 밖은 Maclaurin 급수(float64 첫 패스 + 오차 보정), Kummer 변환, 점근전개, $a$의 점화식, Tricomi 전개. 손실을 아는 방법이 없으면 NaN | 같은 글 |
+| `hyp2f1` | $0 \le z \le 0.9$ 급수, 음의 $z$는 Pfaff 변환, $z > 0.9$는 $1 - z$ 변환과 정수 $c - a - b$의 극한식. 상쇄가 정해진 한도를 넘으면 NaN | 같은 글 |
 | `lambertw` | Boost(분기점에서 먼 곳), 분기점 근처는 $p = \pm\sqrt{2(ex+1)}$의 급수, 복소수는 Halley 반복 | 같은 글 |
 | `expit`, `logit`, 로지스틱·정보 | 부호에 따라 고르는 두 식, 중심의 $2\operatorname{atanh}(2p-1)$, `log1p`와 정확한 빼기 | 같은 글 |
 | `wofz`, 복소 `erf erfc erfcx` | 0.1 격자 둘레 Taylor 급수, 그 밖은 Laplace 연분수, 대칭으로 옮기기 | 같은 글 |
 | `logsumexp`, `softmax`, `log_softmax` | 최댓값으로 옮긴 두 패스(`max`, pairwise 합), $x - m$은 TwoSum | [원소별 엔진과 병렬화](/internals/special/engine/) |
 | `stdtr` … `nbdtrc`, `ndtri_exp` | 불완전 감마·베타의 조합, 인자는 double-double, 작은 쪽 꼬리를 직접, 역함수는 작은 쪽을 풀기 | [분포 함수](/internals/special/distributions/) |
-| 비중심 분포 9개 | 포아송 혼합을 먼 끝에서 한 번 걷기, t의 반대쪽 꼬리는 적분, 역함수는 브래킷과 Brent | 같은 글 |
+| 비중심 분포 9개 | 포아송 혼합을 먼 끝에서 한 번 걷기(분포의 가운데는 $j = 0$부터 더하기), t의 반대쪽 꼬리는 적분, 역함수는 브래킷과 Brent | 같은 글 |
 
 ## 참고 문헌
 
 1. A. R. DiDonato, A. H. Morris, "Algorithm 708: Significant digit computation of the incomplete beta function ratios", *ACM Transactions on Mathematical Software*, 18(3), 360–373, 1992.
 2. D. Goldberg, "What Every Computer Scientist Should Know About Floating-Point Arithmetic", *ACM Computing Surveys*, 23(1), 5–48, 1991.
-3. F. Johansson 외, *mpmath: a Python library for arbitrary-precision floating-point arithmetic* (이 측정은 1.4.1판). https://mpmath.org/
+3. F. Johansson, "Arb: efficient arbitrary-precision midpoint-radius interval arithmetic", *IEEE Transactions on Computers*, 66(8), 1281–1292, 2017. 파이썬 바인딩 python-flint. https://flintlib.org/
 4. S. L. Moshier, *Methods and Programs for Mathematical Functions*, Ellis Horwood, 1989. (Cephes Math Library의 바탕)
 5. M. J. Wichura, "Algorithm AS 241: The Percentage Points of the Normal Distribution", *Applied Statistics*, 37(3), 477–484, 1988.
 6. Boost.Math 문서와 소스. https://www.boost.org/doc/libs/release/libs/math/doc/html/index.html , https://github.com/boostorg/math

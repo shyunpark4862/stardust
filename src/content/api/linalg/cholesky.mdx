@@ -108,7 +108,7 @@ array([[ 4.0,  2.0,  2.0],
 >>> sd.linalg.cholesky(sd.asarray([[1.0, 2.0], [2.0, 1.0]]))
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: cholesky(): matrix is not positive definite
+stardust.linalg.LinAlgError: cholesky(): matrix is not positive definite
 ```
 
 ## `upper`: 위 삼각으로 받기
@@ -287,7 +287,7 @@ array([[[2.0, 0.0],
 ...                                [[1.0, 2.0], [2.0, 1.0]]]))
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: cholesky(): matrix is not positive definite (at batch index (1,))
+stardust.linalg.LinAlgError: cholesky(): matrix is not positive definite (at batch index (1,))
 ```
 
 ## 조심할 점
@@ -300,7 +300,7 @@ stardust.linalg._errors.LinAlgError: cholesky(): matrix is not positive definite
 >>> sd.linalg.cholesky(sd.asarray([[1.0, 2.0], [2.0, 4.0]]))
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: cholesky(): matrix is not positive definite
+stardust.linalg.LinAlgError: cholesky(): matrix is not positive definite
 ```
 
 이런 일은 공분산 행렬에서 흔해요. 변수 하나가 다른 변수들의 합이거나, 표본 수가 변수 수보다 적으면 공분산 행렬이 특이해져요. 그럴 때의 선택지는 이래요.

@@ -463,7 +463,7 @@ array([-9.5,  7.0,  2.5], dtype=float64)
 >>> sd.linalg.solve_banded(ab, rhs, lower_bandwidth=2, upper_bandwidth=1)
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: solve_banded(): singular matrix
+stardust.linalg.LinAlgError: solve_banded(): singular matrix
 ```
 
 새로 만든 `ab`는 작은 크기에서 행렬 전체로 푼 답(`solve`)과 한 번 비교해 보는 것이 안전해요. 풀어 낸 `x`를 원래 식에 넣어 확인하는 방법도 있어요.
@@ -544,7 +544,7 @@ TypeError: solve_banded(): 'lower_bandwidth' must be an int, not float
 >>> sd.linalg.solve_tridiagonal(sd.asarray([1.0, 0.0]), sd.ones(3), sd.ones(2), b)
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: solve_tridiagonal(): singular matrix
+stardust.linalg.LinAlgError: solve_tridiagonal(): singular matrix
 ```
 
 대각선에 0이 있다고 해서 꼭 특이 행렬인 것은 아니에요. 두 함수는 필요하면 방정식의 순서를 바꿔 가며 풀기 때문에, 풀 수 있는 행렬이면 대각선에 0이 있어도 답이 나와요.

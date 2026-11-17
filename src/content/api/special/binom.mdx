@@ -227,14 +227,19 @@ array([nan, nan, nan], dtype=float64)
 | n이 음의 정수, k가 음수이거나 정수가 아님 | NaN |
 | `binom(inf, k)`, k가 자연수 | `inf` |
 | n이 ±inf이고 k가 정수가 아님 | NaN |
-| k가 ±inf | NaN |
+| `binom(n, -inf)`, n이 −1보다 큰 유한한 수 | 0 |
+| 그 밖에 k가 ±inf | NaN |
 | NaN이 하나라도 있으면 | NaN |
+
+n이 −1보다 크면 k가 음수 쪽으로 멀어질수록 이항계수의 크기가 |k|^−(n+1)처럼 줄어들어요. 부호는 오락가락하지만 크기가 0으로 가므로 `binom(n, -inf)`는 0이에요. n이 −1 이하이면 크기가 줄지 않아서 극한이 없고, NaN이에요.
 
 k가 아주 클 때도 참값을 내요. 예를 들어 `binom(-0.5, 1e300)`은 약 5.6 × 10⁻¹⁵¹이고, `binom(0, 1e300)`은 정확히 0이에요(k가 1e300이면 정수이고 n = 0보다 크니까요).
 
 ```python
 >>> sd.special.binom(sd.asarray([sd.nan, sd.inf, 2.0]), sd.asarray([1.0, 2.0, sd.inf]))
 array([nan, inf, nan], dtype=float64)
+>>> sd.special.binom(sd.asarray([5.0, -0.5, -2.0]), -sd.inf)
+array([0.0, 0.0, nan], dtype=float64)
 >>> sd.special.binom(-0.5, 1e300)
 5.641895835477563e-151
 ```
@@ -291,5 +296,5 @@ TypeError: binom(): cannot implicitly convert float64 to int64 (that would lose 
 - 이름과 인자 순서는 `scipy.special.binom`과 같아요. `comb`(정수 조합, `exact=` 옵션)는 없어요. 정확한 정수는 `math.comb`를 쓰세요.
 - **n이 음의 정수이고 k가 0 이상의 정수이면 값을 내요.** `binom(-5, 2)`는 15예요. scipy 1.18.1은 NaN이에요.
 - k가 아주 크면 참값을 내요. `binom(-0.5, 1e300)`은 5.6e-151(scipy는 −5.1e-151), `binom(0, 1e300)`은 0(scipy는 −2.9e-301)이에요.
-- 무한대 인자에서 scipy와 다른 곳이 있어요. `binom(-inf, 2.0)`이 여기서는 `inf`, scipy는 NaN이고, `binom(5.0, -inf)`가 여기서는 NaN, scipy는 0.0이에요.
+- 무한대 인자에서 scipy와 다른 곳이 있어요. `binom(-inf, 2.0)`이 여기서는 `inf`, scipy는 NaN이고, `binom(inf, -inf)`가 여기서는 NaN, scipy는 0.0이에요.
 - 복소수, 리스트, numpy 배열은 받지 않고, `out`은 keyword-only예요.

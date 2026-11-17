@@ -113,7 +113,7 @@ void Batch::offsets(std::int64_t idx, std::int64_t* out) const {
 - `scratch`: 작업 메모리. 직렬이면 배치 전체가 하나를, 나누면 태스크마다 하나를 써요.
 - 돌려주는 값: 성공이면 0, 실패면 양수 코드(`kSingular`, `kNonFinite` 등, `ops/common.hpp`). 몸체는 첫 실패에서 바로 돌아와요.
 
-몸체는 Python 객체를 만지지 않아요. 나눈 배치에서는 GIL 없이 워커 스레드에서 돌기 때문이에요. 결과 배열과 namedtuple은 `run_batch` 앞뒤에서 만들어요.
+몸체는 Python 객체를 만지지 않아요. 배치의 추정 시간(원소 하나의 추정 시간 × 원소 수)이 `kParallelMinNs`(10µs) 이상이면 몸체는 GIL 없이 돌기 때문이에요. 나눈 배치는 워커 스레드에서 `parallel_for`가 GIL을 놓은 채로, 나누지 않은 배치(행렬 하나, 1스레드, 바쁜 풀)는 호출 스레드에서 `parallel::Unlocked`로 GIL을 놓은 채로 돌아요. 원소 하나의 추정 시간이 0인 함수(나누지 않기로 한 것)는 GIL을 쥔 채 돌아요. 결과 배열과 namedtuple은 `run_batch` 앞뒤에서 만들어요.
 
 `solve`의 몸체는 이렇게 생겼어요.
 
@@ -494,7 +494,7 @@ return lapack::syevd(jobz, n, vs.get(), n, ws.get(), s) > 0 ? kNoConvergenceEig 
 >>> sd.linalg.inv(x)
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: inv(): singular matrix (at batch index (1,))
+stardust.linalg.LinAlgError: inv(): singular matrix (at batch index (1,))
 ```
 
 ### 직렬

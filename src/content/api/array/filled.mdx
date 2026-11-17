@@ -39,7 +39,9 @@ raises:
   - type: ValueError
     desc: 길이가 음수일 때, shape이 ()일 때(0차원), 차원이 32개를 넘거나 전체 크기가 너무 클 때.
   - type: OverflowError
-    desc: shape의 길이가 int64 범위를 벗어날 때, 정수 배열을 만드는데 fill_value가 int64에 담기지 않을 만큼 클 때.
+    desc: shape의 길이가 int64 범위를 벗어날 때, 정수 배열을 만드는데 fill_value가 int64에 담기지 않을 만큼 클 때, fill_value가 float64에도 담기지 않을 만큼 큰 정수일 때.
+  - type: MemoryError
+    desc: 만들 배열이 이 컴퓨터의 물리 메모리보다 클 때.
 seeAlso: [asarray, arange, eye, broadcast_to, dtypes]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -161,7 +163,7 @@ dtype은 `sd.bool`, `sd.int64`, `sd.float64`, `sd.complex128` 넷만 받아요. 
 >>> sd.zeros(3, dtype=float)
 Traceback (most recent call last):
     ...
-TypeError: zeros(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names), not <class 'float'>
+TypeError: zeros(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names), not float
 ```
 
 ## full: 원하는 값으로 채우기
@@ -395,13 +397,17 @@ TypeError: zeros(): 'shape' must be an int or a tuple of ints, not float
 array([0.0, 0.0, 0.0], dtype=float64)
 ```
 
-메모리에 담을 수 없을 만큼 큰 배열이나 차원이 32개를 넘는 배열도 에러예요.
+전체 바이트 수를 셀 수조차 없을 만큼 큰 배열이나 차원이 32개를 넘는 배열은 `ValueError`예요. 셀 수는 있지만 이 컴퓨터의 물리 메모리보다 큰 배열은 `MemoryError`예요. 어느 쪽이든 메모리를 잡기 전에 에러가 나요.
 
 ```python
 >>> sd.zeros((2**40, 2**40))
 Traceback (most recent call last):
     ...
 ValueError: zeros(): array is too big
+>>> sd.zeros(2**40)
+Traceback (most recent call last):
+    ...
+MemoryError: zeros(): cannot allocate 8796093022208 bytes: more than this machine's physical memory
 ```
 
 ### 기본이 실수라서 생기는 일

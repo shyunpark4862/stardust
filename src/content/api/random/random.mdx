@@ -253,7 +253,7 @@ stardust에는 차원이 0인 배열이 없어서 `shape=()`는 에러예요. �
 >>> rng.random(())
 Traceback (most recent call last):
     ...
-ValueError: 0-dimensional arrays are not supported (stardust has no 0-d arrays)
+ValueError: random(): 'shape' must not be () (stardust has no 0-d arrays; None gives a scalar)
 ```
 
 ## 비슷한 함수와의 차이

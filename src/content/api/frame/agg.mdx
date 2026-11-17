@@ -202,9 +202,13 @@ Traceback (most recent call last):
 TypeError: agg(): a list of functions is not supported (no MultiIndex); use named aggregations
 ```
 
-Python 함수(`sum`, `lambda s: ...`)도 받지 않고 `TypeError`예요. 집계는 위 표의 이름으로만 골라요. 모르는 이름은 `ValueError`이고, 메시지에 쓸 수 있는 이름이 나와요.
+Python 함수(`sum`, `lambda s: ...`)도 받지 않고 `TypeError`예요. 메시지가 받는 형태 셋(이름, dict, 이름 붙인 집계)을 알려 줘요. 집계는 위 표의 이름으로만 골라요. 모르는 이름은 `ValueError`이고, 메시지에 쓸 수 있는 이름이 나와요.
 
 ```python
+>>> g.agg(sum)
+Traceback (most recent call last):
+    ...
+TypeError: agg(): a callable is not supported; pass a function name (a str such as 'sum'), a dict of {column: function name}, or named aggregations (name=(column, function name))
 >>> g.agg("median")
 Traceback (most recent call last):
     ...

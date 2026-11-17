@@ -74,9 +74,9 @@ Generator는 키 두 단어와 위치 `pos`(지금까지 쓴 원소 수)를 들�
 # src/stardust/random/__init__.py, Generator._reserve
 def _reserve(self, n):
     with self._lock:                       # threading.Lock
-        p = self._pos
+        key, p = self._key, self._pos      # 키와 위치를 함께 읽어요(state 대입과 섞이지 않게)
         self._pos = (p + n) & _MASK64      # 위치는 2^64를 법으로 돌아요
-    return p
+    return key, p
 ```
 
 C++ 커널은 키 두 단어와 예약한 시작 위치 `pos`를 인자로 받아요. 원소별 커널(`uniform`, `integers`, `race_keys`)은 결과를 4096개(`kParallelTask`)씩 조각으로 나눠 스레드풀에서 돌리고(`for_pieces`), 조각마다 `Stream` 객체 하나를 만들어 원소 16개(블록 넷)씩 단어를 계산해요. 조각 경계가 어디든 원소의 값은 (키, $e$)로만 정해지므로 결과 비트는 스레드 수와 무관해요. 스레드풀 자체는 [스레드풀과 결정성](/internals/core/threads/)에 있어요.
@@ -282,7 +282,7 @@ for_pieces(n, kParallelTask, n * kWordWork, [&](int64_t, int64_t i0, int64_t i1)
 커널을 부르기 전에 Python이 인자를 정리해요(`Generator.integers`).
 
 - `low`, `high`는 int(또는 numpy 정수)이면 int64 범위인지, 배열이면 dtype이 int64인지 봐요. 범위 밖이면 `OverflowError`, 그 밖은 `TypeError`예요.
-- `low < high`(`endpoint=True`면 `low <= high`)인지는 **받은 그대로의** `low`, `high`로 검사해요. 결과 모양으로 브로드캐스트한 것으로 검사하면 원소 $10^6$개짜리 비교를 한 번 더 하게 돼요.
+- `low < high`(`endpoint=True`면 `low <= high`)인지는 **받은 그대로의** `low`, `high`로 검사해요. `integers(n)`처럼 인자가 하나뿐이면 사용자가 준 것은 `high`뿐이므로, 메시지도 그 인자를 `high`로 불러요(`integers(): 'high' must be positive`, `endpoint=True`면 `non-negative`). 결과 모양으로 브로드캐스트한 것으로 검사하면 원소 $10^6$개짜리 비교를 한 번 더 하게 돼요.
 - `shape`가 없으면 `low`, `high`를 브로드캐스트한 모양이 결과 모양이에요. 둘 다 스칼라면 원소 하나를 계산해 Python `int`로 돌려줘요.
 
 ## permutation: Fisher–Yates
@@ -352,7 +352,8 @@ std::copy(a.begin(), a.begin() + k, o);          // permutation은 k = n
 
 - **결과는 (키, pos, n)만으로 정해져요.** 걸음마다 기각이 몇 번 일어나든 다음 걸음의 단어는 바뀌지 않아요. 그래서 `permutation(n)`은 언제나 위치를 정확히 $n$개 예약해요.
 - **스레드 수와 무관해요.** 이 루프는 순차라서 스레드를 쓰지 않아요. 앞 걸음의 교환이 뒤 걸음이 읽을 칸을 바꾸므로 걸음을 나눠 병렬로 할 수 없어요. 단어는 미리 정해져 있지만 교환의 순서가 결과를 정해요.
-- **GIL을 놓아요.** 원소 $10^6$개면 수 ms 걸리므로, 그동안 다른 Python 스레드가 돌 수 있게 해요. 결과 배열 객체를 만드는 `wrap()`은 GIL이 필요해서 루프 밖에서 해요.
+- **GIL을 놓아요.** 원소 $10^6$개면 수 ms 걸리므로, 그동안 다른 Python 스레드가 돌 수 있게 해요. 크기와 상관없이 놓아요. 결과 배열 객체를 만드는 `wrap()`은 GIL이 필요해서 루프 밖에서 해요.
+- **결과 배열을 먼저 할당해요.** 할당은 루프 전에, GIL을 쥔 채 해요. `permutation(2**40)`(8TB)처럼 이 컴퓨터의 물리 메모리보다 큰 요청은 여기서 `MemoryError`가 되고, 위치도 이미 예약된 채로 끝나요. 그보다 앞서 Python 쪽이 $n \ge 2^{63}$을 `OverflowError`(`permutation(): 'x' is out of range`)로 걸러요. `choice`의 `a`도 같아요.
 
 다음 걸음의 $j$는 배열 내용과 상관없이 단어만으로 정해져요. 그래서 CPU는 앞 걸음의 교환이 끝나기를 기다리지 않고 다음 걸음의 단어 계산과 메모리 읽기를 미리 시작할 수 있어요. 배열의 무작위 위치를 읽고 쓰는 것이 이 루프에서 가장 비싼 일이라, 여러 걸음의 메모리 접근이 겹치는 것이 중요해요.
 
@@ -515,12 +516,24 @@ $$
 // csrc/random/random.cpp, race_keys (줄인 발췌)
 for (int64_t i = i0; i < i1; ++i) {
     const double u = (double((s.first(pos + uint64_t(i)) >> 11)) + 1.0) * 0x1p-53;  // (0, 1]
-    o[i] = pp[i] > 0.0 ? -std::log(u) / pp[i] : HUGE_VAL;                          // E / p
+    o[i] = pp[i] > 0.0 ? std::min(-std::log(u) / pp[i], std::numeric_limits<double>::max())  // E / p
+                       : HUGE_VAL;
 }
 ```
 
 - **$u$는 (0, 1]이에요.** `random`의 격자에 $2^{-53}$을 더한 것이라 0이 나오지 않고, $-\log u$는 언제나 유한해요(0 이상 약 36.7 이하).
-- **확률 0의 키는 inf예요.** 영원히 도착하지 않는 원소예요. Python이 미리 "$k$가 0이 아닌 확률의 수 이하"인지 검사하므로, 유한한 키가 언제나 $k$개 이상 있어요. 다만 양수 확률이 약 $2 \times 10^{-307}$보다 작으면 $E/p$가 넘쳐 inf가 되어 확률 0인 원소와 구별되지 않아요.
+- **확률 0의 키는 inf예요.** 영원히 도착하지 않는 원소예요. Python이 미리 "$k$가 0이 아닌 확률의 수 이하"인지 검사하므로, 유한한 키가 언제나 $k$개 이상 있어요.
+- **양수 확률의 키는 double의 최댓값에서 잘라요.** $-\log u$는 많아야 $53 \ln 2 \approx 36.74$라서, $p$가 $36.74 / (1.80 \times 10^{308}) \approx 2.04 \times 10^{-307}$보다 작으면 $E/p$가 넘쳐 inf가 될 수 있어요. 그러면 확률 0인 원소와 키가 같아지고, 안정 정렬이 인덱스가 작은 쪽을 먼저 두므로 앞에 놓인 확률 0인 원소가 뽑혀요. 그래서 넘친 키를 `std::numeric_limits<double>::max()`($\approx 1.80 \times 10^{308}$)로 자르고, 확률 0인 원소만 inf로 남겨요. 양수 확률은 아무리 작아도 확률 0인 원소보다 먼저 도착해요. 잘린 원소끼리는 키가 모두 같아서 인덱스 순서로 놓여요. 정확한 모델이라면 그들 사이에서도 확률에 비례해 골라야 하므로, 이 차이는 그런 원소를 둘 이상 뽑아야 할 때(곧 $k$가 확률이 그보다 큰 원소의 수보다 클 때) 드러나요.
+
+```python
+>>> sd.random.default_rng(42).choice(3, shape=2, replace=False, p=sd.asarray([0.0, 1e-310, 1.0]))
+array([2, 1], dtype=int64)
+>>> sd.random.default_rng(42).choice(3, shape=3, replace=False, p=sd.asarray([1.0, 1e-320, 1e-310]))
+array([0, 1, 2], dtype=int64)
+```
+
+첫 줄에서 1번(확률 `1e-310`)은 확률 0인 0번보다 먼저 뽑혀요. 둘째 줄의 정확한 모델이라면 2번(`1e-310`)이 1번(`1e-320`)보다 거의 언제나 먼저지만, 둘 다 잘린 키라 인덱스 순서예요.
+
 - **위치는 $n$개예요.** 원소마다 키 하나가 필요하므로 표본 크기 $k$가 아니라 모집단 크기 $n$만큼 예약해요.
 - **고르기는 `argsort(keys)[:k]`예요.** 키 배열 전체를 안정 정렬(float64 (값, 인덱스) 쌍의 기수 정렬, [정렬과 집합](/internals/array/sorting/))하고 앞 $k$개의 인덱스를 써요. 키가 같으면 인덱스가 작은 쪽이 먼저예요. 비용은 키 만들기 $O(n)$(병렬)과 정렬이에요.
 
@@ -529,7 +542,7 @@ for (int64_t i = i0; i < i1; ++i) {
 `p`가 있으면 인덱스를 뽑기 전에 Python이 검사해요.
 
 1. `p`는 배열이어야 하고(아니면 `TypeError`), 1차원이고 길이가 원소 수 $n$이어야 해요.
-2. float64로 바꿔요. 정수나 bool 배열도 받아요.
+2. float64로 바꿔요. 정수나 bool 배열도 받아요. complex128 배열은 확률이 될 수 없어서 바꾸기 전에 `TypeError`예요(`choice(): 'p' must be a real array, not an array of complex128`).
 3. NaN이나 음수가 하나라도 있으면 `ValueError`예요.
 4. 합이 1에서 $\sqrt{\varepsilon} \approx 1.49 \times 10^{-8}$($\varepsilon$은 float64의 기계 엡실론 $2^{-52}$) 넘게 벗어나면 `ValueError`예요. numpy와 같은 허용치예요. `1/3`을 세 번 더한 것처럼 반올림으로 생긴 작은 차이는 받아 주고, 손으로 반올림한 `[0.333, 0.333, 0.333]`처럼 큰 차이는 받지 않아요. 합은 `sd.sum`(pairwise 합)으로 구하고 numpy는 Kahan 합을 쓰므로, 허용치 경계에 아주 가까운 `p`에서는 두 라이브러리의 판정이 갈릴 수 있어요.
 5. 비복원이면 $k$가 0이 아닌 확률의 수(`count_nonzero(p)`) 이하인지 봐요.

@@ -223,7 +223,7 @@ array([[1.0, 2.0],
 >>> sd.linalg.solve_sylvester(da, -da, dc)
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: solve_sylvester(): a and -b have a common or close eigenvalue
+stardust.linalg.LinAlgError: solve_sylvester(): a and -b have a common or close eigenvalue
 ```
 
 `da`의 고유값은 1과 2이고 `-da`의 고유값은 -1과 -2라서, 1 + (-1) = 0인 쌍이 있어요. 대각 행렬의 나눗셈 공식으로 보면 0으로 나누게 되는 자리예요.
@@ -354,7 +354,7 @@ ValueError: solve_sylvester(): 'c' contains NaN or infinity
 >>> sd.linalg.solve_sylvester(sd.stack([da, -db]), db, dc)
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: solve_sylvester(): a and -b have a common or close eigenvalue (at batch index (1,))
+stardust.linalg.LinAlgError: solve_sylvester(): a and -b have a common or close eigenvalue (at batch index (1,))
 ```
 
 에러가 나는 경우 전체는 [실패와 에러](/api/linalg/errors/)에 정리돼 있어요.

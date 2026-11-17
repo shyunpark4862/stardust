@@ -247,7 +247,7 @@ array([1.0, 2.0], dtype=float64)
 >>> sd.linalg.cholesky(sd.asarray([[1.0, 2.0], [2.0, 1.0]]))
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: cholesky(): matrix is not positive definite
+stardust.linalg.LinAlgError: cholesky(): matrix is not positive definite
 ```
 
 대칭이지만 양정치는 아닌 행렬은 [solve](/api/linalg/solve/)로 풀어요. 양정치일 수도 아닐 수도 있는 행렬이라면 먼저 Cholesky를 해 보고, 실패하면 `solve`로 넘어가게 쓸 수 있어요.
@@ -282,7 +282,7 @@ array([[2.0, 0.0],
 >>> sd.linalg.cholesky_solve(sd.asarray([[2.0, 0.0], [1.0, 0.0]]), b)
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: cholesky_solve(): singular matrix
+stardust.linalg.LinAlgError: cholesky_solve(): singular matrix
 ```
 
 `LinAlgError`는 `ValueError`의 한 종류예요. 자세한 것은 [실패와 에러](/api/linalg/errors/)에 있어요.

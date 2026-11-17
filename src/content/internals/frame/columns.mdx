@@ -47,6 +47,7 @@ import Steps from '../../../components/fig/Steps.astro';
 - **작은 데이터는 Buffer 객체 안에.** 256바이트(`kInline`) 이하의 데이터는 Buffer 객체 안의 배열에 두고, Buffer와 참조 수 블록을 `make_shared`로 한 번에 할당해요. 컬럼으로 따지면 int64·float64 값은 32행까지, 비트맵은 2,048행까지, 문자열 offsets는 31행까지가 할당 한 번이에요. 10행짜리 컬럼은 값 버퍼 하나에 할당 한 번이고, 결측이 없으면 그게 전부예요.
 - **`calloc`의 0 페이지.** 0으로 채운 Buffer를 큰 크기로 요청하면 운영체제가 처음 접근할 때 0으로 채우는 페이지를 받아요. 해시 테이블이 이것을 이용해요([해시 테이블과 factorize](/internals/frame/hashing/)).
 - **참조 수.** `shared_ptr<Buffer>`의 복사본 개수가 곧 그 Buffer의 주인 수예요. Copy-on-Write가 이 수를 봐요.
+- **물리 메모리보다 큰 요청은 할당 전에 거절해요.** `Buffer::allocate`는 요청한 바이트 수를 이 기계의 물리 메모리(`sysctlbyname("hw.memsize")`, 한 번만 읽어요)와 비교해서, 넘으면 `std::bad_alloc`의 하위 클래스를 던져요. Python에서는 `MemoryError`이고, 메시지에 `cannot allocate N bytes: more than this machine's physical memory`가 들어가요. macOS는 큰 요청에도 주소 공간부터 내주고 실제 페이지는 쓸 때 채우므로, 검사하지 않으면 할당은 성공하고 쓰는 도중에 프로세스가 강제 종료될 수 있어요. 물리 메모리보다 작지만 남은 메모리보다 큰 요청은 운영체제에 맡겨요.
 
 Buffer에는 외부 메모리를 빌려 쓰는 `Buffer::adopt`(버퍼 프로토콜)도 있지만, 데이터프레임은 쓰지 않아요. 이유는 아래 "numpy에서 들어올 때"에서 설명해요.
 
@@ -124,11 +125,14 @@ Column을 만들고 고치는 모든 코드가 다음 넷을 지켜요. 커널�
 
 ```python
 # src/stardust/frame/_series.py (발췌)
+@own_reductions
 class Series(Reductions):
     __slots__ = ("_col", "_index", "_name")
 ```
 
 `__slots__`를 쓰면 인스턴스마다 `__dict__`가 없어서 객체가 작고 속성 접근이 빨라요. 연산 결과는 `Series._new(col, index, name)`으로 만드는데, `__init__`을 거치지 않고 세 칸을 바로 채워서 인자 검사를 다시 하지 않아요.
+
+`Reductions`는 `sum`, `mean`, `min`, `max`, `std`, `var`, `count`의 인자 검사를 Series, DataFrame, GroupBy가 함께 쓰는 믹스인 클래스예요(`_reduce.py`). 그런데 함수는 정의된 클래스의 이름을 `__qualname__`과 코드 객체의 `co_qualname`에 들고 있고, 인자가 틀린 호출에 Python이 내는 메시지는 그 이름을 써요. 그대로 두면 `s.sum(axis=0)`의 메시지가 사용자가 모르는 `Reductions.sum()`으로 시작해요. 클래스 데코레이터 `own_reductions`는 일곱 메서드를 클래스마다 새 함수 객체로 복사하면서(`types.FunctionType`, `code.replace(co_qualname=...)`) 이름을 그 클래스의 것으로 바꿔요. 그래서 메시지가 `Series.sum() got an unexpected keyword argument 'axis'`처럼 다른 메서드와 같은 꼴이 돼요. 함수 본문(코드)은 공유하고 이름표만 다르므로 실행 비용은 같아요.
 
 ## validity 비트맵
 
@@ -482,6 +486,7 @@ step이 1이 아닌 슬라이스(`.iloc[::2]`), 위치 리스트, 마스크는 �
 
 ```python
 # src/stardust/frame/_frame.py (발췌)
+@own_reductions
 class DataFrame(Reductions):
     __slots__ = ("_cols", "_index")          # _cols: dict[str, Column]
 ```
@@ -682,7 +687,7 @@ ValueError: to_numpy(): cannot convert an int64 column with NA to numpy; pass na
 array([ 1, -1,  3], dtype=int64)
 ```
 
-`copy=`는 배열 영역의 `asarray`와 같은 세 값이에요. `None`은 꼭 필요할 때만 복사(dtype 변환이나 결측 채우기), `True`는 언제나 복사, `False`는 복사가 필요하면 ValueError예요. 문자열 컬럼은 numpy에 맞는 고정 크기 표현이 없어서 object 배열을 만들고 원소마다 str을 넣어요. numpy가 str을 다른 dtype으로 해석하지 않도록 `np.empty(n, dtype=object)`에 채워 넣어요. `DataFrame.to_numpy()`는 컬럼마다 배열을 만들어 `np.stack(..., axis=1)`으로 쌓은 새 C 순서 2차원 배열이에요. 컬럼이 따로 떨어진 Buffer라서 공유할 2차원 메모리가 없거든요.
+`copy=`는 배열 영역의 `asarray`와 같은 세 값이에요. `None`은 꼭 필요할 때만 복사(dtype 변환이나 결측 채우기), `True`는 언제나 복사, `False`는 복사가 필요하면 ValueError예요. `dtype=`으로 바꾸면 `astype`이 이미 새 Column을 만들었으므로 한 번 더 복사하지 않아요. 그 Column의 Buffer는 이 호출 말고는 아무도 들고 있지 않아서, 그 위에 **쓸 수 있는** 배열을 만들어 내줘요(`_column.to_numpy`의 `fresh` 표시, 아래 `to_array`와 같은 규칙). 결측을 채운 배열도 복사본이라 쓸 수 있어요. 읽기 전용은 컬럼의 Buffer를 그대로 보여 주는 뷰뿐이에요. 문자열 컬럼은 numpy에 맞는 고정 크기 표현이 없어서 object 배열을 만들고 원소마다 str을 넣어요. numpy가 str을 다른 dtype으로 해석하지 않도록 `np.empty(n, dtype=object)`에 채워 넣어요. `DataFrame.to_numpy()`는 컬럼마다 배열을 만들어 `np.stack(..., axis=1)`으로 쌓은 새 C 순서 2차원 배열이에요. 컬럼이 따로 떨어진 Buffer라서 공유할 2차원 메모리가 없거든요.
 
 ### numpy에서 들어올 때: 언제나 복사
 
@@ -713,7 +718,7 @@ array([ 1, -1,  3], dtype=int64)
 
 - **bool을 int보다 먼저 확인해요.** Python의 `True`는 `int`의 하위 타입이라, int 검사를 먼저 하면 bool이 int로 분류돼요.
 - **numpy 스칼라는 따로 읽어요.** `numpy.float64`는 Python `float`의 하위 타입이라 float로 잡히지만, `numpy.int32`나 `numpy.bool`은 `int`나 `bool`의 하위 타입이 아니에요. 타입 이름이 `numpy.`로 시작하면 `numpy.bool`은 bool로, `__index__`가 있으면 정수로, `__float__`가 있으면 실수로 분류해요.
-- **int64 범위 밖의 int는 표시만 해 둬요.** 1단계에서 double로 읽어 두고, 2단계에서 float64 컬럼이 되면 그 double을 쓰고 int64 컬럼이 되면 OverflowError를 내요. 배열 영역과 같은 규칙이에요.
+- **int64 범위 밖의 int는 표시만 해 둬요.** 1단계에서 double로 읽어 두고, 2단계에서 float64 컬럼이 되면 그 double을 쓰고 int64 컬럼이 되면 OverflowError를 내요. 배열 영역과 같은 규칙이에요. double로도 읽을 수 없을 만큼 크면(`10**400`) `PyLong_AsDouble`이 Python의 OverflowError를 걸어 두는데, `int_value`가 그것을 지우고 C++ 예외(`std::overflow_error`)로 다시 던져요. 바인딩이 C++ 예외에만 함수 이름을 붙이므로, 이렇게 해야 메시지가 다른 에러처럼 `Series(): Python int too large to convert to float64`로 시작해요.
 - **`dtype=`은 명시적 변환이에요.** 추론한 컬럼에 `astype`을 한 번 더 해요. 예외는 int만 있는 list를 float64로 요청할 때인데, 처음부터 float64로 채워요. 그래야 범위 밖의 int도 float로 받을 수 있어요.
 - **결측 자리는 2단계에서 0으로 써요.** 비트맵을 만든 뒤 그 행의 비트만 지워요.
 
@@ -811,7 +816,7 @@ int64 컬럼의 `mean()`은 frame 안에서 계산하지 않고, 컬럼 위의 �
 
 대가는 둘이에요.
 
-- **이 호출에는 GIL이 필요해요.** Python 객체(읽기 전용 뷰)를 하나 만들고 배열의 공개 함수를 거치기 때문이에요(`interop.hpp`에 "Needs the GIL"로 적혀 있어요). 그 합은 배열 영역의 GIL 규칙을 따라서, 1스레드면 GIL을 쥔 채 돌아요.
+- **이 호출에는 GIL이 필요해요.** Python 객체(읽기 전용 뷰)를 하나 만들고 배열의 공개 함수를 거치기 때문이에요(`interop.hpp`에 "Needs the GIL"로 적혀 있어요). 합 자체는 배열 영역의 규칙대로 원소가 배열의 기준값(float64 덧셈 32,768개 분량) 이상이면 스레드 수와 상관없이 GIL을 놓고 돌아요. 뷰를 만들고 결과를 받는 앞뒤만 GIL을 쥐어요.
 - **frame의 float 합과 순서가 달라요.** frame의 float 합은 pairwise 트리이고, int64 평균은 배열의 버퍼 단위 순서예요. 그래서 int64 그룹 평균(그룹의 행을 float64로 바꿔 frame의 pairwise 합으로 더해요)이 Series의 `mean()`과 비트까지 같은 것은 그룹이 4,096행 이하일 때예요.
 
 ### 테스트

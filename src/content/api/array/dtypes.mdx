@@ -94,7 +94,7 @@ True
 >>> sd.zeros(3, dtype=float)
 Traceback (most recent call last):
     ...
-TypeError: zeros(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names), not <class 'float'>
+TypeError: zeros(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names), not float
 >>> sd.zeros(3, dtype="float32")
 Traceback (most recent call last):
     ...
@@ -426,6 +426,19 @@ array([1.1805916207174113e+21, 1.1805916207174113e+21], dtype=float64)
 Traceback (most recent call last):
     ...
 OverflowError: Python int too large to convert to int64
+```
+
+float64로 바뀌는 자리라도 float64의 범위(약 $1.8 \times 10^{308}$)를 넘는 정수는 담을 수 없어서 `OverflowError`예요. 함수로 부르면 메시지가 함수 이름으로 시작하고, `*` 같은 연산자로 계산하면 이름이 없어요.
+
+```python
+>>> sd.asarray([10**400, 0.5])
+Traceback (most recent call last):
+    ...
+OverflowError: asarray(): Python int too large to convert to float64
+>>> sd.asarray([1.0, 2.0]) * 10**400
+Traceback (most recent call last):
+    ...
+OverflowError: Python int too large to convert to float64
 ```
 
 원소별 함수에서는 **승격한 입력의 dtype**이 기준이에요. 정수 배열과 Python 정수를 넣으면 그 정수는 int64가 되어야 하므로, 결과가 실수인 함수(`sqrt`, `/` 등)라도 에러예요. 결과가 아니라 입력이 기준이에요.

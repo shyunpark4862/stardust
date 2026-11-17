@@ -28,7 +28,7 @@ raises:
   - type: ValueError
     desc: 줄마다 길이가 다른 리스트, 숫자 하나만 넣은 경우, copy=False인데 복사가 필요한 경우.
   - type: OverflowError
-    desc: int64에 담을 수 없을 만큼 큰 정수를 정수 배열에 넣으려 할 때.
+    desc: int64에 담을 수 없을 만큼 큰 정수를 정수 배열에 넣으려 할 때, float64에도 담을 수 없을 만큼 큰 정수를 넣을 때.
 seeAlso: [broadcasting, sum]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -185,7 +185,7 @@ TypeError: asarray(): cannot convert complex128 to float64: the imaginary part w
 >>> sd.asarray([1, 2], dtype=float)
 Traceback (most recent call last):
     ...
-TypeError: asarray(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names), not <class 'float'>
+TypeError: asarray(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names), not float
 ```
 
 ## 복사할까요, 함께 쓸까요
@@ -351,6 +351,15 @@ OverflowError: asarray(): Python int too large to convert to int64
 ```python
 >>> sd.asarray([2**70, 0.5])
 array([1.1805916207174113e+21,                    0.5], dtype=float64)
+```
+
+실수로도 담을 수 없을 만큼 큰 정수(약 $1.8 \times 10^{308}$ 이상)는 float64 배열에도 넣을 수 없어서 `OverflowError`예요.
+
+```python
+>>> sd.asarray([10**400, 0.5])
+Traceback (most recent call last):
+    ...
+OverflowError: asarray(): Python int too large to convert to float64
 ```
 
 ### 함수에 리스트를 바로 넘길 수는 없어요

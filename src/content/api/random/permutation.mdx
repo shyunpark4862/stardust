@@ -19,6 +19,10 @@ raises:
     desc: x가 정수나 배열이 아닐 때(리스트, float, bool), 인자를 이름 붙여(x=...) 넘겼을 때.
   - type: ValueError
     desc: x가 음수일 때.
+  - type: OverflowError
+    desc: x가 int64 범위를 넘는 정수(2**63 이상)일 때.
+  - type: MemoryError
+    desc: 결과 배열이 이 컴퓨터의 물리 메모리보다 클 때(예 permutation(2**40)).
 seeAlso: [choice, integers, generator, basics]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -282,7 +286,7 @@ array([], dtype=int64)
 
 ### 큰 배열은 그만큼 메모리를 더 써요
 
-결과가 언제나 새 배열이라서, 큰 배열을 섞으면 같은 크기의 배열이 하나 더 생겨요. `x[...] = rng.permutation(x)`도 잠깐은 두 배열이 함께 있어요. 행이 아주 많은 표라면 섞인 위치(`rng.permutation(len(x))`)만 만들어 두고 필요한 부분만 인덱싱하는 방법도 있어요.
+결과가 언제나 새 배열이라서, 큰 배열을 섞으면 같은 크기의 배열이 하나 더 생겨요. 정수 `n`을 넘겨도 길이 `n`인 int64 배열(원소당 8바이트)을 만들어요. 그 크기가 이 컴퓨터의 물리 메모리보다 크면(`rng.permutation(2**40)`은 8TB예요) 아무것도 만들기 전에 `MemoryError`예요. `x[...] = rng.permutation(x)`도 잠깐은 두 배열이 함께 있어요. 행이 아주 많은 표라면 섞인 위치(`rng.permutation(len(x))`)만 만들어 두고 필요한 부분만 인덱싱하는 방법도 있어요.
 
 ### Python의 `random.shuffle`과 섞어 쓰지 마세요
 

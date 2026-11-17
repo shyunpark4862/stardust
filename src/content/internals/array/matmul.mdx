@@ -280,7 +280,7 @@ void gemm(Trans ta, Trans tb, Int m, Int n, Int k, const T* a, Int lda,
 - `syrk_upper`는 matmul이 아니라 `cov`가 써요([통계 함수](/internals/array/statistics/)).
 
 <Callout title="큰 BLAS 호출 동안 GIL">
-int64 경로와 작은 배치 경로는 `parallel_for`를 거치므로, 풀로 나눠 도는 동안 GIL을 놓아요(1스레드면 쥔 채 돌아요). 행렬 하나이거나 큰 행렬의 배치를 차례로 도는 BLAS 경로는 `parallel_for`를 거치지 않는 대신, 곱셈-덧셈이 모두 합쳐 $2^{15}$개(`kBlasTaskWork`) 이상이면 그 루프 동안 `nb::gil_scoped_release`로 GIL을 놓아요. 이 호출은 Accelerate가 스레드를 정하므로 `sd.set_num_threads(1)`이어도 오래 걸리고 여러 코어를 쓸 수 있어요. 그동안 다른 Python 스레드가 돌 수 있게 하는 거예요. BLAS와 행렬을 연속으로 모으는 복사는 Python 객체를 만지지 않아요. 그보다 작은 호출은 GIL을 놓고 잡는 비용이 더 커서 쥔 채 돌아요. 같은 BLAS를 부르는 `cov`도 호출 동안 GIL을 놓아요.
+int64 경로와 작은 배치 경로는 `parallel_for`를 거치므로, 태스크가 둘 이상이면 1스레드여도 GIL을 놓아요. 행렬 하나이거나 큰 행렬의 배치를 차례로 도는 BLAS 경로는 `parallel_for`를 거치지 않는 대신, 곱셈-덧셈이 모두 합쳐 $2^{15}$개(`kBlasTaskWork`) 이상이면 그 루프 동안 `nb::gil_scoped_release`로 GIL을 놓아요. 이 호출은 Accelerate가 스레드를 정하므로 `sd.set_num_threads(1)`이어도 오래 걸리고 여러 코어를 쓸 수 있어요. 그동안 다른 Python 스레드가 돌 수 있게 하는 거예요. BLAS와 행렬을 연속으로 모으는 복사는 Python 객체를 만지지 않아요. 그보다 작은 호출은 GIL을 놓고 잡는 비용이 더 커서 쥔 채 돌아요. 같은 BLAS를 부르는 `cov`도 호출 동안 GIL을 놓아요.
 </Callout>
 
 ### float64 1000³이 numpy와 같은 이유

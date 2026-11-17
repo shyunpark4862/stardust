@@ -302,11 +302,25 @@ True
 |:---:|---|
 | `None` | 반올림 오차로 생긴 특이값만 0으로 쳐요. 대부분은 이것으로 충분해요. |
 | `1e-6`처럼 키운 값 | 데이터의 정밀도보다 작은 특이값을 버려요. 잡음에 덜 흔들리는 해가 나와요. |
+| `0` | 정확히 0인 특이값만 0으로 쳐요. 반올림 오차로 생긴 특이값까지 써요. |
 | `1` 이상 | 모든 특이값이 0이 돼요. `rank`는 0, `solution`은 모두 0이에요. |
 
 ```python
 >>> sd.linalg.lstsq(A, y, rtol=1.0).solution
 array([0.0, 0.0], dtype=float64)
+```
+
+`rtol=0`은 "더 정확하게"가 아니에요. 둘째 열이 첫째 열의 정확히 두 배인 특이 행렬도 반올림 오차 때문에 둘째 특이값이 `0`이 아니라 `1.8e-16`쯤으로 나오는데, `rtol=0`이면 이 값을 진짜 방향으로 써서 랭크 2로 보고 풀어요. 그래서 기본값과 다른 해가 나와요.
+
+```python
+>>> s = sd.asarray([[1.0, 2.0], [2.0, 4.0]])
+>>> sd.linalg.lstsq(s, sd.asarray([1.0, 2.0])).solution
+array([0.2, 0.4], dtype=float64)
+>>> r0 = sd.linalg.lstsq(s, sd.asarray([1.0, 2.0]), rtol=0)
+>>> r0.rank
+2
+>>> r0.solution
+array([4.965068306494546e-17,                   0.5], dtype=float64)
 ```
 
 `rtol`은 [matrix_rank](/api/linalg/matrix_rank/)와 [pinv](/api/linalg/inv/)의 `rtol`과 같은 뜻이에요.
@@ -402,7 +416,7 @@ TypeError: lstsq(): 'rtol' must be None, an int or a float, not str
 >>> sd.linalg.solve(S, sd.asarray([1.0, 2.0]))
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: solve(): singular matrix
+stardust.linalg.LinAlgError: solve(): singular matrix
 >>> sd.linalg.lstsq(S, sd.asarray([1.0, 2.0])).rank
 1
 ```
@@ -451,6 +465,7 @@ True
 - 결과는 `(solution, rank, singular_values)` **세 개**예요. `np.linalg.lstsq`와 `scipy.linalg.lstsq`가 주는 잔차 제곱합(`residuals`)은 없어요. 필요하면 `b - a @ solution`으로 계산하세요.
 - 허용오차 옵션의 이름은 `rcond`나 `cond`가 아니라 `rtol`이고, 이름을 붙여서만 넘겨요. 기본값은 `max(M, N) × eps`예요.
 - `rtol`이 1 이상이면 랭크 0, 해 0이에요. numpy는 이 경우 허용오차로 `eps`를 써서 풀어요.
+- `rtol=0`이면 정확히 0인 특이값만 버려요(`matrix_rank(rtol=0)`과 같은 랭크). numpy의 `rcond=0`은 `eps`를 써서, 위의 `s`에서 `rank`가 1이고 해는 기본값과 같은 `[0.2, 0.4]`예요.
 - `rank`는 행렬 하나면 Python `int`예요. `a`가 3차원 이상이면 행렬 여러 개를 한 번에 풀어요(numpy의 `lstsq`는 2차원만 받아요).
 - NaN·inf 검사를 끄는 `check_finite=`, 풀이 방법을 고르는 `lapack_driver=`, `overwrite_a=` 같은 옵션은 없어요.
 - 리스트와 numpy 배열은 받지 않아요. `sd.asarray`로 먼저 바꾸세요.

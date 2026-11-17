@@ -29,10 +29,10 @@ array([[ 1.0, -1.0],
 >>> sd.linalg.inv(sing)
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: inv(): singular matrix
+stardust.linalg.LinAlgError: inv(): singular matrix
 ```
 
-`sing`은 둘째 행이 첫째 행의 2배라서 역행렬이 없어요. 에러 줄 맨 앞의 긴 이름 `stardust.linalg._errors.LinAlgError`는 `sd.linalg.LinAlgError`와 같은 클래스예요. 코드에서는 `sd.linalg.LinAlgError`로 써요.
+`sing`은 둘째 행이 첫째 행의 2배라서 역행렬이 없어요. 에러 줄 맨 앞의 긴 이름 `stardust.linalg.LinAlgError`는 `sd.linalg.LinAlgError`와 같은 클래스예요. 코드에서는 `sd.linalg.LinAlgError`로 써요.
 
 에러 메시지는 `inv(): `처럼 **부른 함수의 이름**으로 시작해요. 긴 코드에서 어느 호출이 문제인지 바로 찾을 수 있어요.
 
@@ -155,6 +155,10 @@ ValueError: matrix_rank(): 'rtol' must be a finite number >= 0
 Traceback (most recent call last):
     ...
 OverflowError: matrix_power(): 'n' is out of range
+>>> sd.linalg.matrix_rank(a, rtol=10**400)
+Traceback (most recent call last):
+    ...
+OverflowError: matrix_rank(): 'rtol' is out of range
 ```
 
 계산 **결과**가 너무 커지는 것은 에러가 아니에요. 그 자리에 무한대(`inf`)가 들어가요.
@@ -230,15 +234,15 @@ LinAlgError
 >>> sd.linalg.cholesky(sd.asarray([[1.0, 2.0], [2.0, 1.0]]))
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: cholesky(): matrix is not positive definite
+stardust.linalg.LinAlgError: cholesky(): matrix is not positive definite
 >>> sd.linalg.solve_triangular(sd.asarray([[1.0, 2.0], [0.0, 0.0]]), sd.asarray([1.0, 2.0]), upper=True)
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: solve_triangular(): singular matrix
+stardust.linalg.LinAlgError: solve_triangular(): singular matrix
 >>> sd.linalg.solve_sylvester(sd.asarray([[1.0]]), sd.asarray([[-1.0]]), sd.asarray([[1.0]]))
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: solve_sylvester(): a and -b have a common or close eigenvalue
+stardust.linalg.LinAlgError: solve_sylvester(): a and -b have a common or close eigenvalue
 ```
 
 "끝나지 않았어요"라는 두 메시지는 고유값과 특이값을 조금씩 다듬어 가며 구하는 계산이 정해진 횟수 안에 마무리되지 않았다는 뜻이에요. 보통의 행렬에서는 볼 일이 거의 없어요.
@@ -260,7 +264,7 @@ array([[  1.0,   0.0],
 >>> sd.linalg.inv(zero)
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: inv(): singular matrix
+stardust.linalg.LinAlgError: inv(): singular matrix
 ```
 
 <Fig column caption="대각선의 값이 아무리 작아도 0이 아니면 계산해요. 정확히 0일 때만 에러예요.">
@@ -465,7 +469,7 @@ array([1.0, 3.0], dtype=float64)
 >>> sd.linalg.inv(batch)
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: inv(): singular matrix (at batch index (1,))
+stardust.linalg.LinAlgError: inv(): singular matrix (at batch index (1,))
 ```
 
 <Fig column caption="셋 가운데 batch[1]만 특이하지만 호출 전체가 에러예요. 메시지가 (1,)이라고 자리를 알려 줘요.">
@@ -483,7 +487,7 @@ stardust.linalg._errors.LinAlgError: inv(): singular matrix (at batch index (1,)
 >>> sd.linalg.inv(grid)
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: inv(): singular matrix (at batch index (1, 1))
+stardust.linalg.LinAlgError: inv(): singular matrix (at batch index (1, 1))
 ```
 
 NaN 검사의 `ValueError`에도 같은 방식으로 붙어요.
@@ -503,7 +507,7 @@ ValueError: inv(): 'x' contains NaN or infinity (at batch index (1,))
 >>> sd.linalg.inv(sd.stack([a, sing, bad]))
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: inv(): singular matrix (at batch index (1,))
+stardust.linalg.LinAlgError: inv(): singular matrix (at batch index (1,))
 >>> sd.linalg.inv(sd.stack([a, bad, sing]))
 Traceback (most recent call last):
     ...
@@ -516,7 +520,7 @@ ValueError: inv(): 'x' contains NaN or infinity (at batch index (1,))
 >>> sd.linalg.solve(sing, sd.asarray([1.0, nan]))
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: solve(): singular matrix
+stardust.linalg.LinAlgError: solve(): singular matrix
 ```
 
 어떤 에러가 나는지는 [스레드 수](/api/array/threads/)와 상관없이 언제나 같아요.

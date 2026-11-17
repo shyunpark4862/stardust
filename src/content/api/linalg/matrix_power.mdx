@@ -264,7 +264,7 @@ float64는 약 2⁵³(9 × 10¹⁵)을 넘는 정수를 모두 정확히 담지�
 >>> sd.linalg.matrix_power(S, -1)
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: matrix_power(): singular matrix
+stardust.linalg.LinAlgError: matrix_power(): singular matrix
 ```
 
 `n`이 0 이상이면 역행렬이 필요 없으니 특이 행렬이어도 괜찮아요.
@@ -283,7 +283,7 @@ array([[ 5.0, 10.0],
 >>> sd.linalg.matrix_power(two, -1)
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: matrix_power(): singular matrix (at batch index (1,))
+stardust.linalg.LinAlgError: matrix_power(): singular matrix (at batch index (1,))
 ```
 
 `LinAlgError`는 `sd.linalg.LinAlgError`이고 `ValueError`의 한 종류예요. 잡는 방법은 [실패와 에러](/api/linalg/errors/)에 있어요.

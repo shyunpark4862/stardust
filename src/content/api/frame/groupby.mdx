@@ -408,6 +408,6 @@ GroupBy로는 위 표의 집계만 할 수 있어요. 그룹을 하나씩 꺼내
 - **키는 결과의 보통 컬럼이 되고, 라벨은 RangeIndex예요.** pandas의 `as_index=False`와 비슷한 모양이 언제나 나와요. `as_index` 인자는 없어요. 키가 float나 bool이어도 같은 모양이에요.
 - **`dropna=True`는 NA만 버려요.** pandas는 NaN도 결측으로 보고 버리고, `dropna=False`면 NaN과 `None`을 한 그룹으로 합쳐요. 여기서는 NaN 그룹과 NA 그룹이 따로 있어요.
 - `by`는 컬럼 이름이나 그 리스트만 받아요. Series, 함수, `level`로 묶기와 `Series.groupby`는 없어요. `by`는 위치로만 받아요.
-- 그룹 반복(`for key, part in g`), `apply`, `transform`, `filter`, `head`, `median`, `nunique` 같은 메서드는 없어요.
+- 그룹을 하나씩 꺼내는 반복(`for key, part in g`)은 없어요. `for`나 `list(g)`는 `TypeError: 'GroupBy' object is not iterable`이에요. `apply`, `transform`, `filter`, `head`, `median`, `nunique` 같은 메서드도 없어요.
 - 문자열 컬럼의 `sum`은 `TypeError`예요. pandas는 문자열을 이어 붙여요.
 - `observed`, `group_keys`는 없어요.

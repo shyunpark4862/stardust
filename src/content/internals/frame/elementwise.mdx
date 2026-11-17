@@ -569,7 +569,7 @@ double pairwise_sum_parallel(std::int64_t n, const Get& get, std::int64_t cost =
     if (n <= kPairwiseLeaf || n * cost < kParallelThreshold) return pairwise_sum(0, n, get);
     const pairwise::Leaves leaves = pairwise::plan(n, kPairwiseLeaf, /*complex=*/false);
     std::vector<double> part(leaves.size());
-    parallel::parallel_for(part.size(), [&](std::int64_t t) {
+    run_unlocked(part.size(), [&](std::int64_t t) {          // GIL을 놓고 parallel_for
         part[t] = pairwise_sum(leaves[t].first, leaves[t].second, get);
     });
     return pairwise::combine(n, kPairwiseLeaf, part);

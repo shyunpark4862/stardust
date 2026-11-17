@@ -382,7 +382,7 @@ merge의 모든 단계는 스레드 수와 무관하게 같은 결과를 내요.
 | 출력 쌍, 남은 build 행 | probe(또는 build) 행 청크 | 청크 순서의 누적합이 청크의 자리 |
 
 - build, CSR처럼 "나누면 패스가 늘어나는" 단계는 1스레드이거나 풀을 쓸 수 없으면 직렬 알고리즘을 그대로 써요. 결과가 나누는 방식과 무관하게 정확히 정해지는 연산이라서 나누는 방식이 스레드 수를 따라도 돼요. 반대로 출력 배치처럼 청크 구조가 곧 계산 구조인 단계는 행 수로만 청크를 정해요. 자세한 규칙은 [병렬화와 결정성](/internals/frame/parallel/)에 있어요.
-- `parallel_for`는 부르면 GIL을 놓고, 직렬 구간(직렬 factorize, 직렬 counting sort, right 조인의 번호 매기기)은 일이 2¹⁷ 이상이면 `Unlocked`로 GIL을 놓아요. 그래서 큰 merge 중에도 다른 Python 스레드가 돌아요.
+- 일이 2¹⁷ 이상이면 스레드 수와 상관없이 GIL을 놓아요. 청크 단계는 `for_chunks`가 `run_unlocked`로, 나누는 경로의 파티션·버킷 단계는 태스크가 둘 이상인 `parallel_for`가 놓고, 직렬 구간(직렬 factorize, 직렬 counting sort, right 조인의 번호 매기기)은 `Unlocked`로 놓아요. 그래서 1스레드에서도 큰 merge 중에 다른 Python 스레드가 돌아요.
 - 테스트(`tests/frame/test_threads.py`)는 inner, outer, 두 키 left, right merge를 1, 3, 기본 스레드 수로 돌려 결과가 같은지 비교해요.
 
 ## 성능

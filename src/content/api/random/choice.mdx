@@ -30,7 +30,9 @@ raises:
   - type: TypeError
     desc: a가 정수나 배열이 아닐 때(리스트, float, bool), p가 배열이 아니거나 복소수 배열일 때, replace가 True/False가 아닐 때, shape가 정수나 정수 tuple이 아닐 때, shape·replace·p를 이름 없이 넘겼을 때.
   - type: ValueError
-    desc: a가 1차원이 아닌 배열이거나 음수일 때, 빈 대상에서 하나 이상 고를 때, shape에 음수가 있을 때, p의 모양이 틀렸거나 음수·NaN이 있거나 합이 1이 아닐 때, replace=False인데 고를 개수가 원소 수(p가 있으면 확률이 0이 아닌 원소 수)보다 많을 때.
+    desc: a가 1차원이 아닌 배열이거나 음수일 때, shape가 ()일 때, 빈 대상에서 하나 이상 고를 때, shape에 음수가 있을 때, p의 모양이 틀렸거나 음수·NaN이 있거나 합이 1이 아닐 때, replace=False인데 고를 개수가 원소 수(p가 있으면 확률이 0이 아닌 원소 수)보다 많을 때.
+  - type: OverflowError
+    desc: a가 int64 범위를 넘는 정수(2**63 이상)일 때.
 seeAlso: [integers, random, permutation, generator, basics]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -275,6 +277,13 @@ Traceback (most recent call last):
 ValueError: choice(): fewer non-zero probabilities in 'p' than the sample size
 ```
 
+반대로 확률이 0보다 크면 **아무리 작아도** 확률이 0인 원소보다 먼저 뽑혀요. 아래에서 1번의 확률 `1e-310`은 0에 아주 가까운 값이지만, 2번을 고른 뒤 남은 0번(확률 0)과 1번 가운데서는 언제나 1번이 뽑혀요.
+
+```python
+>>> sd.random.default_rng(42).choice(3, shape=2, replace=False, p=sd.asarray([0.0, 1e-310, 1.0]))
+array([2, 1], dtype=int64)
+```
+
 ## 같은 시드면 같은 결과
 
 시드가 같고 부르는 순서가 같으면 `choice`의 결과는 언제나 같아요. 컴퓨터가 바뀌어도, 스레드 수를 바꿔도 같아요. 실험을 다시 돌리거나 다른 사람이 결과를 확인할 수 있는 것은 이 성질 덕분이에요.
@@ -333,6 +342,15 @@ Traceback (most recent call last):
 ValueError: choice(): 'a' must be 1-dimensional, not 2-dimensional
 ```
 
+정수 `a`는 int64로 담을 수 있는 수까지예요. $2^{63}$ 이상은 `OverflowError`예요.
+
+```python
+>>> rng.choice(2**63)
+Traceback (most recent call last):
+    ...
+OverflowError: choice(): 'a' is out of range
+```
+
 `p`도 배열만 받아요. 리스트로 적었다면 `sd.asarray`로 감싸세요.
 
 ```python
@@ -340,6 +358,15 @@ ValueError: choice(): 'a' must be 1-dimensional, not 2-dimensional
 Traceback (most recent call last):
     ...
 TypeError: choice(): 'p' must be an array, not list
+```
+
+확률은 실수라서 복소수 배열도 `TypeError`예요. 정수·bool 배열은 받아요.
+
+```python
+>>> rng.choice(3, p=sd.asarray([0.5 + 0j, 0.5, 0.0]))
+Traceback (most recent call last):
+    ...
+TypeError: choice(): 'p' must be a real array, not an array of complex128
 ```
 
 ### `p`의 길이, 음수, NaN

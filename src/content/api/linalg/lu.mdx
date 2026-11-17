@@ -288,7 +288,7 @@ array([[1.0, 0.0],
 >>> sd.linalg.lu_solve(*s, sd.asarray([1.0, 2.0]))
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: lu_solve(): singular matrix
+stardust.linalg.LinAlgError: lu_solve(): singular matrix
 ```
 
 <Callout type="warn" title="U의 대각에 0이 없다고 안심할 수는 없어요">

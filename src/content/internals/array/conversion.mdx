@@ -762,6 +762,8 @@ Python int는 크기 제한이 없지만 int64는 $[-2^{63}, 2^{63}-1]$이에요
 | `sqrt(2**64)` | `OverflowError` | 같은 이유 |
 | `asarray([2**70, 0.5])` | float64 | 종류가 float64로 승격 |
 | `asarray([2**70])` | `OverflowError` | int64로 저장해야 해요 |
+| `asarray([10**400, 0.5])` | `OverflowError` | float64로도 담을 수 없어요 |
+| `float_arr * 10**400` | `OverflowError` | 같은 이유(연산자라 메시지에 함수 이름이 없어요) |
 
 ufunc에서는 **루프 dtype이 아니라 승격한 피연산자 dtype**으로 판정해요(`check_int_scalars`). 루프 dtype으로 판정하면 `divide`의 루프가 float64라서 `divide(int_arr, 2**64)`만 정상이 되고, 다른 이항 함수(`add`, `multiply` …)와 어긋나요. 그래서 승격한 dtype이 bool이나 int64이면 어느 루프로 계산하든 int를 int64로 봐요. frame도 같은 규칙이에요.
 
@@ -789,7 +791,20 @@ std::int64_t py_to_int64(PyObject* p) {
 ```
 
 - CPython의 `PyLong_AsLongLongAndOverflow` [10]는 범위를 벗어나면 **예외를 설정하지 않고** `overflow` 플래그만 ±1로 돌려줘요. 정상 경로에서 예외 객체를 만들었다 지우는 비용이 없고, 범위 밖일 때 stardust의 메시지로 된 `OverflowError`를 바로 던질 수 있어요. `std::overflow_error`는 nanobind가 Python의 `OverflowError`로 바꿔요.
-- float로 읽을 때는 `PyFloat_AsDouble`(int에도 동작)을 써요. float64로도 표현할 수 없을 만큼 큰 int(약 $1.8 \times 10^{308}$ 이상)는 CPython이 `OverflowError: int too large to convert to float`를 내요.
+- float로 읽을 때는 `PyFloat_AsDouble`(int에도 동작)을 써요. float64로도 표현할 수 없을 만큼 큰 int(약 $1.8 \times 10^{308}$ 이상)이면 CPython이 이름 없는 `OverflowError`를 설정하는데, `py_to_double`이 그것을 지우고 `std::overflow_error("Python int too large to convert to float64")`를 던져요. int64 쪽과 같은 꼴이라 바인딩이 함수 이름을 붙여요(`asarray(): Python int too large to convert to float64`).
+
+```cpp
+// csrc/array/convert.cpp (발췌)
+double py_to_double(PyObject* p) {
+    double v = PyFloat_AsDouble(p);  // int에도 동작
+    if (v == -1.0 && PyErr_Occurred()) {
+        if (!PyErr_ExceptionMatches(PyExc_OverflowError)) throw nb::python_error();
+        PyErr_Clear();  // double 범위 밖의 int: 함수 이름이 붙도록 우리 예외로
+        throw std::overflow_error("Python int too large to convert to float64");
+    }
+    return v;
+}
+```
 
 이름 붙은 int 인자(`shape`, `axis`, `k`, `num`)도 범위 밖이면 `OverflowError`예요. 이쪽은 `operator.index` 규칙으로 읽는 `index_value`/`parse_int`가 맡아요([Python과 C++의 경계](/internals/core/python-boundary/)).
 

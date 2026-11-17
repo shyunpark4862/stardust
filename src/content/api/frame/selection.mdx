@@ -181,7 +181,17 @@ TypeError: column names must be str, not tuple
 
 </Callout>
 
-numpy 배열이나 stardust 배열에 담긴 컬럼 이름도 대괄호에는 줄 수 없어요(`TypeError`). 배열로 컬럼을 고르려면 [`.loc`](/api/frame/loc-iloc/)의 열 자리에 줘요: `df.loc[:, names]`.
+컬럼 이름을 담은 1차원 numpy 배열은 리스트와 똑같이 받아요. 다른 계산에서 이름을 배열로 얻었을 때 그대로 줄 수 있어요.
+
+```python
+>>> import numpy as np
+>>> df[np.array(["qty", "fruit"])]
+   qty   fruit
+0    3   apple
+1   12  banana
+2    1  cherry
+3    4   grape
+```
 
 ## DataFrame: 조건으로 행 거르기
 
@@ -366,7 +376,7 @@ Name: price, dtype: int64
 
 - **`df[1:3]`은 `TypeError`예요.** pandas는 DataFrame의 대괄호에 슬라이스를 주면 행을 위치로 잘라요. `df.iloc[1:3]`을 써요.
 - **Series의 `s[1:3]`은 라벨 슬라이스예요(끝 포함).** pandas 3.1.1은 `s[1:3]`을 정수 라벨이어도 위치로 자르므로(`pd.Series([10, 20, 30, 40])[1:3]`은 두 행), 같은 코드가 다른 행을 골라요.
-- `df[[True, False, ...]]`처럼 bool 리스트나 bool numpy 배열로 행을 거를 수 없어요. 라벨이 붙은 bool Series만 받아요. 컬럼 이름이 든 numpy 배열도 `df[...]`에는 줄 수 없고 `df.loc[:, arr]`로 줘요.
+- `df[[True, False, ...]]`처럼 bool 리스트나 bool numpy 배열로 행을 거를 수 없어요. 라벨이 붙은 bool Series만 받아요.
 - `df[["a", "a"]]`처럼 같은 컬럼을 두 번 고르면 `ValueError`예요. pandas는 같은 이름의 컬럼 두 개를 만들어요.
 - 칸 하나를 꺼내면 numpy 스칼라(`np.int64(800)`)가 아니라 Python `int`예요.
 - 두 단계 대입(`df["a"].iloc[0] = 0`)은 pandas 3처럼 원래 표를 바꾸지 않지만, pandas와 달리 경고도 내지 않아요.

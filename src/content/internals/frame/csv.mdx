@@ -21,7 +21,7 @@ import Steps from '../../../components/fig/Steps.astro';
 <Fig column caption="read_csv 한 번이 지나는 단계. 들여쓴 줄은 청크마다 병렬로 도는 일이에요.">
   <Steps
     steps={[
-      { label: 'read_csv(path, ...)', where: '_io.py', note: '인자 검사(sep은 따옴표·줄바꿈이 아닌 한 글자, nrows ≥ 0 등). open(path, "rb").read()로 파일 전체를 bytes 하나로 읽어요.' },
+      { label: 'read_csv(path, ...)', where: '_io.py', note: '인자 검사(sep은 따옴표·줄바꿈이 아닌 ASCII 한 글자, nrows ≥ 0 등). open(path, "rb").read()로 파일 전체를 bytes 하나로 읽어요.' },
       { label: '_core.read_csv(data, ...)', where: 'bind/frame_bind.cpp', note: 'bytes의 포인터와 길이를 복사 없이 C++에 넘겨요.' },
       { label: 'Unlocked(size)', where: 'frame/parallel.hpp', note: '입력이 2¹⁷바이트 이상이면 GIL을 놓아요. 이 아래는 Python 객체를 만지지 않아요.' },
       { label: '헤더 토큰화', where: 'io/csv.cpp', note: '첫 레코드에서 컬럼 이름을 얻고(BOM은 건너뛰어요), usecols를 파일 컬럼 번호로 바꿔요.' },
@@ -140,6 +140,7 @@ const std::uint64_t in = prefix_xor(q) ^ (inside_ ? ~0ull : 0);     // 따옴표
 inside_ = (in >> 63) & 1;                                           // 다음 블록으로 넘기는 상태
 quotes_.push_back(q);                                               // 필드 검사에 다시 써요
 bits_ = (mask64(v, sep_) | mask64(v, '\n')) & ~in;                  // 따옴표 밖의 구분 문자와 줄바꿈
+if (base + 64 > n_) bits_ &= (std::uint64_t{1} << (n_ - base)) - 1; // 마지막 블록: 입력 끝 뒤의 비트를 지워요
 ```
 
 차례로 보면 이래요.
@@ -203,7 +204,9 @@ return at;
 
 꺼낸 위치는 바로 필드 하나가 되어 소비자(뒤의 sink)에게 가요. 위치 배열을 따로 쓰고 다시 읽는 메모리 왕복이 없고, 레코드 단위로 멈출 수 있어서 `nrows`나 청크 끝에서 토큰화를 바로 끝낼 수 있어요. 분기는 필드 끝마다 한 번(루프의 반복)과 64바이트마다 한 번(`bits_ == 0`)이에요.
 
-마지막 블록이 64바이트보다 짧으면 스택의 64바이트 버퍼에 복사하고 나머지를 0으로 채워 읽어요. 입력 버퍼 끝을 넘어 읽지 않기 위해서예요. 0 바이트는 따옴표도 줄바꿈도 아니에요.
+마지막 블록이 64바이트보다 짧으면 스택의 64바이트 버퍼에 복사하고 나머지를 0으로 채워 읽어요. 입력 버퍼 끝을 넘어 읽지 않기 위해서예요. 채운 0 바이트는 따옴표도 줄바꿈도 아니지만, 구분 문자가 NUL(`sep="\0"`)이면 구분 문자로 잡혀서 입력에 없는 필드 끝이 생겨요. 그래서 마지막 블록에서는 필드 끝 마스크를 입력 길이만큼만 남겨요(위 발췌의 마지막 줄). `base`는 이 블록의 시작 위치이고, 비트 `n_ - base`부터 위를 지우는 AND 한 번이에요. 이 AND는 마지막 블록에서만 실행돼요.
+
+구분 문자는 이렇게 **한 바이트**로 비교해요(`mask64(v, sep_)`). 그래서 `sep`은 ASCII 문자여야 해요. `·`(U+00B7)처럼 UTF-8로 두 바이트 이상인 글자는 바이트 하나와 비교할 수 없어서, Python 층(`_io.py`)이 `sep.isascii()`로 미리 거절해요: `read_csv(): 'sep' must be a single ASCII character, not '·'`.
 
 **따옴표 규칙은 필드 단위로 검사해요.** 마스크만으로는 "따옴표가 필드의 처음과 끝에만 있는가"를 알 수 없어요. `x"y`나 `"ab"c` 같은 틀린 필드도 마스크는 그럴듯하게 만들어지거든요. 그래서 필드를 만들 때(`Tokenizer::field`) 검사하는데, 따옴표가 있는 필드만 검사해요. 블록마다 따옴표 마스크를 `quotes_`에 남겨 두고, 필드 범위에 따옴표 비트가 하나라도 있는지(`any_quote`)를 마스크 한두 워드로 확인해요. 따옴표가 없는 필드(대부분)는 여기서 끝나요. 따옴표가 있으면 다음을 차례로 봐요.
 

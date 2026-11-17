@@ -294,7 +294,7 @@ Python의 `float`, numpy의 dtype, `"float32"` 같은 이름은 받지 않아요
 >>> sd.can_cast(float, sd.int64)
 Traceback (most recent call last):
     ...
-TypeError: can_cast(): 'from_' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names) or an sd.ndarray, not <class 'float'>
+TypeError: can_cast(): 'from_' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names) or an sd.ndarray, not float
 ```
 
 `can_cast`는 Python 숫자를 받지 않아요(`result_type`만 받아요). 숫자의 종류를 확인하려면 `sd.result_type(숫자)`로 먼저 dtype을 얻으세요.

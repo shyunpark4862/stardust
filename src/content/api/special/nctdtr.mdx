@@ -69,11 +69,11 @@ t 검정을 떠올려 볼게요. 표본 평균이 기준값에서 얼마나 떨�
 ```python
 >>> import stardust as sd
 >>> sd.special.nctdtr(10, 2, 1)
-0.15851505953771175
+0.1585150595377117
 >>> sd.special.nctdtrc(10, 2, 1)
-0.8414849404622884
+0.8414849404622883
 >>> sd.special.nctdtrit(10, 2, 0.5)
-2.05369115111849
+2.053691151118489
 ```
 
 자유도 10, $\delta = 2$인 분포에서 값이 1 이하일 확률은 약 16%예요. 분포가 오른쪽(2 근처)으로 밀려 있어서 1 이하는 드물어요. 확률 0.5를 주면 중앙값 2.05가 나와요.
@@ -161,7 +161,7 @@ $$\texttt{nctdtrc}(\nu, \delta, t) = \texttt{nctdtr}(\nu, -\delta, -t)$$
 >>> t975
 4.957835626374016
 >>> sd.special.nctdtr(10, 2, t975)
-0.9750000000000001
+0.975
 ```
 
 "자유도 10, $\delta = 2$인 분포에서 값의 97.5%가 약 4.96 아래에 있다"는 뜻이에요.
@@ -286,10 +286,10 @@ $$\text{검정력} = \texttt{nctdtrc}(\nu, \delta, c) + \texttt{nctdtr}(\nu, \de
 >>> sd.special.nctdtrc(10, 2, 100)
 3.179712046646591e-14
 >>> 1 - sd.special.nctdtr(10, 2, 100)
-3.186340080674199e-14
+3.175237850427948e-14
 ```
 
-참값은 3.179712046646591e-14예요. 빼기로 구한 값은 셋째 자리부터 틀렸어요. 확률이 더 작아지면 아예 0이 돼요. $\delta$와 반대쪽 꼬리(여기서는 아주 작은 $t$)도 `nctdtr`가 직접 계산하므로 정확해요.
+참값은 3.179712046646591e-14예요. 빼기로 구한 값은 넷째 자리부터 틀렸어요. 확률이 더 작아지면 아예 0이 돼요. $\delta$와 반대쪽 꼬리(여기서는 아주 작은 $t$)도 `nctdtr`가 직접 계산하므로 정확해요.
 
 ```python
 >>> sd.special.nctdtr(10, 2, -40)
@@ -302,7 +302,7 @@ $$\text{검정력} = \texttt{nctdtrc}(\nu, \delta, c) + \texttt{nctdtr}(\nu, \de
 
 ```python
 >>> sd.special.nctdtrc(10, 2, sd.asarray([1, 2, 3]))
-array([ 0.8414849404622884,  0.5190268471820928, 0.22082800102979122], dtype=float64)
+array([ 0.8414849404622883,  0.5190268471820927, 0.22082800102979125], dtype=float64)
 ```
 
 `out=`에 float64 배열을 주면 그 배열에 결과를 써요. 규칙은 원소별 함수의 `out=`과 같아요([산술 연산](/api/array/arithmetic/) 참고).
@@ -326,6 +326,7 @@ True
 | `t = inf`, `t = -inf` | `nctdtr` 1, 0 | |
 | `nc = inf`, `nc = -inf` | `nctdtr` 0, 1 | 분포가 한쪽 끝으로 밀려나요. `t`도 같은 부호의 inf이면 NaN |
 | `nctdtrit`의 `p = 0`, `p = 1` | -inf, inf | 정의역의 두 끝 |
+| `nctdtrit`의 `p`가 0보다 크고 2.2e-308보다 작음(서브노멀), `nc ≠ 0` | NaN | 이렇게 작은 확률에서는 근을 믿을 만하게 구할 수 없어요 |
 | `df ≤ 0` | NaN | 정의역 밖 |
 | `p < 0` 또는 `p > 1` | NaN | 확률이 아니에요 |
 | 인자에 NaN | NaN | |
@@ -350,7 +351,7 @@ nan
 - `nctdtr`, `nctdtrc`: 참값 대비 **상대오차 1e-14 이하**. 결과의 앞자리 14자리 정도가 맞는다는 뜻이에요. 작은 꼬리 확률도 상대오차로 재므로 앞자리가 그만큼 맞아요.
 - `nctdtrit`: 결과 $t$의 상대오차가 $10^{-14} \times \max(1, \kappa)$ 이하예요. $\kappa$는 "확률 $p$가 아주 조금 바뀔 때 $t$가 몇 배나 크게 바뀌는가"를 나타내는 수(조건수)예요. 입력 $p$ 자체가 마지막 자리에 반올림 오차를 품고 있으니 $\kappa$가 큰 곳에서는 그만큼은 어쩔 수 없어요.
 
-잰 최대 오차는 `nctdtr` 7.8 ULP, `nctdtrc` 7.5 ULP, `nctdtrit` 9.8 ULP(조건수로 나눈 값)예요. ULP는 실수 한 칸의 간격으로, 1e-14는 대략 45 ULP예요. 자세한 뜻은 [특수함수의 기본](/api/special/basics/)에 있어요. 보장 영역 밖도 값을 계산하지만 이 정확도를 약속하지는 않아요.
+잰 최대 오차는 `nctdtr` 4.8 ULP, `nctdtrc` 6.7 ULP, `nctdtrit` 9.8 ULP(조건수로 나눈 값)예요. ULP는 실수 한 칸의 간격으로, 1e-14는 대략 45 ULP예요. 자세한 뜻은 [특수함수의 기본](/api/special/basics/)에 있어요. 보장 영역 밖도 값을 계산하지만 이 정확도를 약속하지는 않아요.
 
 ## 조심할 점
 
@@ -397,15 +398,17 @@ TypeError: nctdtr(): not supported for int64, complex128 and int64
 >>> c = sd.special.stdtrit(19, 0.975)
 >>> d = 0.5 * 20 ** 0.5
 >>> sd.special.nctdtrc(19, d, c) + sd.special.nctdtr(19, d, -c)
-0.5645044184390207
+0.5645044184390205
 >>> sd.special.ncfdtrc(1, 19, d * d, c * c)
 0.5645044184390207
 ```
 
+두 값은 마지막 자리만 달라요. 계산 경로가 달라서 생기는 반올림 차이예요.
+
 ## scipy를 아는 분께
 
 - **인자 순서는 scipy와 같아요.** `nctdtr(df, nc, t)`, `nctdtrit(df, nc, p)`예요. 비중심 카이제곱만 scipy가 `chndtr(x, df, nc)`이고 stardust는 `chndtr(df, nc, x)`라서 달라요.
-- `nctdtrc`는 scipy.special에 없는 함수예요. scipy에서 `1 - nctdtr(...)`로 쓰던 계산을 이것으로 바꾸면 작은 꼬리가 정확해져요(`1 - scipy.special.nctdtr(10, 2, 100)`은 3.175e-14로, 참값 3.1797e-14와 셋째 자리부터 달라요).
+- `nctdtrc`는 scipy.special에 없는 함수예요. scipy에서 `1 - nctdtr(...)`로 쓰던 계산을 이것으로 바꾸면 작은 꼬리가 정확해져요(`1 - scipy.special.nctdtr(10, 2, 100)`은 3.175e-14로, 참값 3.1797e-14와 넷째 자리부터 달라요).
 - 모수를 푸는 `nctdtridf`, `nctdtrinc`는 없어요.
 - `nc = ±inf`에서 scipy는 NaN을, stardust는 0 또는 1을 돌려줘요. `df = inf`(정규분포)는 둘이 같아요.
 - `where=`, `dtype=` 같은 ufunc 인자는 없고 `out=`만 있어요. 인자는 모두 positional-only예요.

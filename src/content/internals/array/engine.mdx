@@ -697,7 +697,7 @@ inline void run_lanes(const NDArray& x, NDArray& out, int axis, LaneCtx& ctx) {
 
 | 상수 | 값 | 뜻 |
 |---|:---:|---|
-| `kParallelThreshold` | $2^{15}$ | 이보다 작은 일(float64 원소 기준)은 1스레드 |
+| `kParallelThreshold` | $2^{15}$ | 이보다 작은 일(float64 원소 기준)은 1스레드, GIL을 쥔 채 |
 | `kParallelTask` | $2^{12}$ | 조각 하나의 일(float64 원소 기준) |
 | `kMinInnerPiece` | 1024 | 가장 안쪽 축을 자를 때의 최소 조각 |
 
@@ -734,21 +734,30 @@ $$
 
 ```cpp
 // NdIter::run (array/iter.cpp, 줄이고 다듬은 발췌)
-if (split != Split::None && parallel::available()) {
-    const Plan p = plan(split, weight);
-    if (p.tasks > 1) {
-        parallel::parallel_for(p.tasks, [&](std::int64_t t) {
-            NdIter piece = *this;                                   // 고정 배열 복사, 할당 없음
-            const std::int64_t begin = t * p.chunk;
-            piece.shape_[p.axis] = std::min(extent, begin + p.chunk) - begin;
-            for (int k = 0; k < nop_; ++k) piece.data_[k] += begin * strides_[k][p.axis];
-            piece.run_serial(kernel, ctx);
-        });
-        return;
-    }
+if (split == Split::None) {                     // 커널이 호출 스레드와 GIL을 떠날 수 없어요
+    run_serial(kernel, ctx);
+    return;
 }
+const Plan p = plan(split, weight);
+if (p.work < 8 * kParallelThreshold) {          // 작은 일: 호출 스레드에서, GIL을 쥔 채
+    run_serial(kernel, ctx);
+    return;
+}
+if (p.tasks > 1 && parallel::available()) {
+    parallel::parallel_for(p.tasks, [&](std::int64_t t) {
+        NdIter piece = *this;                                       // 고정 배열 복사, 할당 없음
+        const std::int64_t begin = t * p.chunk;
+        piece.shape_[p.axis] = std::min(extent, begin + p.chunk) - begin;
+        for (int k = 0; k < nop_; ++k) piece.data_[k] += begin * strides_[k][p.axis];
+        piece.run_serial(kernel, ctx);
+    });
+    return;
+}
+const parallel::Unlocked unlocked(true);         // 1스레드, 바쁜 풀, 자를 축 없음: 크니까 GIL 없이
 run_serial(kernel, ctx);
 ```
+
+일이 기준값 이상이면 어느 길로 가든 GIL 없이 돌아요. 풀로 나누면 `parallel_for`가 놓고, 나누지 못하면 `Unlocked`가 놓아요. 그래서 GIL을 놓는지는 일의 양만으로 정해지고 스레드 수와 무관해요([스레드풀과 결정성](/internals/core/threads/#gil)). `Split::None`으로 부르는 커널(인덱스 배열 대입처럼 순서가 중요한 것)은 크기와 상관없이 GIL을 쥔 채 돌아요.
 
 조각 번호는 워커들이 atomic 카운터에서 하나씩 가져가요. 빠른 스레드가 더 많이 가져갈 뿐 고정 배정이 없어서, E코어처럼 느린 스레드가 전체를 기다리게 하지 않아요.
 
@@ -767,10 +776,16 @@ void for_pieces(std::int64_t n, std::int64_t per, std::int64_t work, F&& fn) {
     per = std::max<std::int64_t>(per, 1);
     const std::int64_t pieces = (n + per - 1) / per;
     auto run = [&](std::int64_t t) { fn(t, t * per, std::min(n, (t + 1) * per)); };
-    if (work >= kParallelThreshold && pieces > 1 && parallel::available())
+    if (work < kParallelThreshold) {
+        for (std::int64_t t = 0; t < pieces; ++t) run(t);      // 작은 일: GIL을 쥔 채
+        return;
+    }
+    const parallel::Unlocked unlocked(true);                   // 큰 일: 어디서 돌든 GIL 없이
+    if (pieces > 1 && parallel::available()) {
         parallel::parallel_for(pieces, run);
-    else
+    } else {
         for (std::int64_t t = 0; t < pieces; ++t) run(t);      // 같은 조각, 순서대로
+    }
 }
 ```
 
@@ -778,6 +793,7 @@ void for_pieces(std::int64_t n, std::int64_t per, std::int64_t work, F&& fn) {
 - 조각은 `n`과 `per`로만 정해져요. 직렬로 돌 때도 같은 조각을 같은 순서로 돌아요. 그래서 조각을 고정 순서로 합치는 호출자는 스레드 수와 무관하게 같은 비트를 얻어요.
 - `work`는 호출자가 어림한 원소 단위의 일이에요. 이터레이터처럼 바이트로 세지 않고, 호출자가 알맞게 넘겨요(예: 공분산은 출력 원소 수 $p^2$).
 - `parallel::available()`이 거짓이면(1스레드, 태스크 안에서의 중첩 호출, 다른 Python 스레드가 풀을 쓰는 중) 처음부터 직렬로 돌아요. 나눠 놓고 직렬로 도는 것보다 빠르고 결과는 같아요.
+- `work`가 기준값 이상이면 조각이 하나여도, 풀을 쓰지 못해도 GIL을 놓아요. 그래서 `fn`은 Python 객체를 만지면 안 돼요.
 
 ## 성능
 

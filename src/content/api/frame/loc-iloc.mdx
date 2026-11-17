@@ -336,13 +336,21 @@ wed     5  10.2   Jeju
 thu     0   4.1  Daegu
 ```
 
-없는 컬럼 이름은 `KeyError`, 범위를 벗어난 열 번호는 `IndexError`예요. 열 자리의 메시지는 "열(columns)"이라고 알려 줘요.
+없는 컬럼 이름은 `KeyError`, 범위를 벗어난 열 번호는 `IndexError`예요. 이름 슬라이스의 끝 이름이 없을 때도 `KeyError`예요. `.loc`의 열 자리에 번호를 주면 `TypeError`예요. 번호로 열을 고르는 것은 `.iloc`의 일이에요. 열 자리의 메시지는 "열(columns)"이라고 알려 줘요.
 
 ```python
 >>> df.loc["tue", "wind"]
 Traceback (most recent call last):
     ...
 KeyError: 'wind'
+>>> df.loc[:, "temp":"wind"]
+Traceback (most recent call last):
+    ...
+KeyError: 'wind'
+>>> df.loc[:, 0]
+Traceback (most recent call last):
+    ...
+TypeError: column names must be str (or a list or slice of str), not int
 >>> df.iloc[0, 9]
 Traceback (most recent call last):
     ...
@@ -404,6 +412,8 @@ tue   8.0
 RangeIndex(start=1, stop=3, step=1)
 >>> score.loc[1:3].index
 RangeIndex(start=1, stop=4, step=1)
+>>> score.iloc[::-1].index
+RangeIndex(start=4, stop=-1, step=-1)
 >>> score.loc[[1, 2, 3]].index
 Index([1, 2, 3], dtype=int64)
 ```

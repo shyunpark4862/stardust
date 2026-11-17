@@ -313,7 +313,7 @@ array([1.0, 2.0], dtype=float64)
 >>> sd.linalg.solve_triangular(z, sd.asarray([1.0, 5.0]), upper=False)
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: solve_triangular(): singular matrix
+stardust.linalg.LinAlgError: solve_triangular(): singular matrix
 ```
 
 판정은 정확한 0일 때만이에요. 0은 아니지만 아주 작은 값이면 에러 없이 아주 큰 결과가 나와요.
@@ -335,7 +335,7 @@ array([                    1.0, 2.9999999999999996e+300], dtype=float64)
 >>> sd.linalg.solve_triangular(two, sd.asarray([1.0, 5.0]), upper=False)
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: solve_triangular(): singular matrix (at batch index (1,))
+stardust.linalg.LinAlgError: solve_triangular(): singular matrix (at batch index (1,))
 ```
 
 ### 삼각 행렬이 아닌 행렬을 넣어도 에러가 나지 않아요

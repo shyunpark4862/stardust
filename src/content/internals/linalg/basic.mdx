@@ -27,7 +27,7 @@ import Steps from '../../../components/fig/Steps.astro';
 | `diagonal` | $a_{i,i+k}$ | 복사 | 같음 (dtype 유지) |
 | `matrix_power` | $A^e$ | 이진 거듭제곱, `gemm` | $\lvert e\rvert \le 4$에서 같음 |
 | `vector_norm` | $\lVert x\rVert_p$ | pairwise 합, 필요할 때만 다시 스케일 | 넘치지 않는 범위에서 같음 |
-| `matrix_norm` (fro, ±1, ±inf) | 행렬 노름 | 줄마다 pairwise 합 | fro는 같음, ±1·±inf는 레이아웃에 따라 다를 수 있음 |
+| `matrix_norm` (fro, ±1, ±inf) | 행렬 노름 | 줄마다 pairwise 합 | 레이아웃에 따라 끝 비트가 다를 수 있음 |
 
 핵심 아이디어는 다섯 가지예요.
 
@@ -662,6 +662,9 @@ auto line_sum = [&](std::int64_t l) {
 if (lines * len >= kSumParallelMin && lines > 1 && detail::begin_parallel()) {
     // 큰 행렬 하나: 줄들을 태스크로. 줄 하나의 합은 직렬과 같고, max/min은 순서 무관
     ...
+} else {
+    const parallel::Unlocked unlocked(lines * len >= kSumParallelMin);  // 나누지 않아도 크면 GIL 없이
+    for (std::int64_t l = 0; l < lines; ++l) take(line_sum(l));
 }
 ```
 
@@ -755,12 +758,14 @@ numpy 2.5.4와 비교한 결과예요. "같음"은 결과 바이트가 같다는
 | `vecdot` | `np.sum(np.conj(x) * y, axis)`와 같음, `np.vecdot`과는 다를 수 있음 | 같은 곱, 같은 pairwise 트리. `np.vecdot`은 BLAS 내적 |
 | `trace` | `np.trace`와 같음 | 대각선의 pairwise 합 |
 | `vector_norm` (1, 2, $p$) | 넘치지 않으면 같음 | `sqrt(sum(x*x))` 등과 같은 항, 같은 트리 |
-| `matrix_norm` fro | 넘치지 않으면 같음 | 원소의 2-노름 |
+| `matrix_norm` fro | 넘치지 않고 C 순서 입력이면 같음 | numpy는 `x*x`를 메모리 순서로 더해요 |
 | `matrix_norm` ±inf | C 순서 입력에서 같음 | numpy는 행을 pairwise로 더해요 |
 | `matrix_norm` ±1 | F 순서 입력에서 같음 | numpy는 열 합을 축 0 리덕션으로 구해요 |
 | `matrix_power` | $e = 0$–4에서 같음, 5 이상은 다를 수 있음 | 이진 거듭제곱의 방향이 반대 |
 
-`matrix_norm`의 ±1, ±inf는 설명이 필요해요. numpy는 열 합을 `sum(abs(x), axis=-2)`로 구해요. C 순서 행렬에서 축 −2는 메모리상 바깥 축이라, numpy는 행을 위에서부터 차례로 더해요(행을 행에 더하는 리덕션). stardust는 줄마다 pairwise 합이에요. 그래서 C 순서 입력의 1-노름은 마지막 비트가 다를 수 있어요(500×500 무작위 행렬 20개 중 19개가 달랐어요). F 순서 입력에서는 열이 연속이라 numpy도 pairwise로 더하고, 결과가 같아요(20개 모두 같았어요). inf-노름은 그 반대예요. **numpy의 결과가 레이아웃에 따라 바뀌는 것이고, stardust는 레이아웃과 상관없이 같은 값이에요.** 차이는 반올림 수준이에요(pairwise 쪽의 오차 한계가 더 작아요).
+`matrix_norm`의 ±1, ±inf는 설명이 필요해요. numpy는 열 합을 `sum(abs(x), axis=-2)`로 구해요. C 순서 행렬에서 축 −2는 메모리상 바깥 축이라, numpy는 행을 위에서부터 차례로 더해요(행을 행에 더하는 리덕션). stardust는 줄마다 pairwise 합이에요. 그래서 C 순서 입력의 1-노름은 마지막 비트가 다를 수 있어요(500×500 무작위 행렬 20개 중 19개가 달랐어요). F 순서 입력에서는 열이 연속이라 numpy도 pairwise로 더하고, 결과가 같아요(20개 모두 같았어요). inf-노름은 그 반대예요. **numpy의 결과가 레이아웃에 따라 바뀌는 것이고, stardust는 레이아웃과 상관없이 같은 값이에요.** 차이는 반올림 수준이에요(pairwise 쪽의 오차 한계가 더 작아요). stardust의 값은 그 줄을 연속 벡터로 꺼내 numpy로 더한 값과 비트까지 같고, 테스트가 이것을 C·F 순서 모두에서 고정해요.
+
+fro도 같은 이유로 갈려요. stardust는 원소를 논리적 C 순서로 걸어 `sqrt(sum(x * x))`와 비트까지 같은 값을 내요(C·F 순서 모두). numpy의 `matrix_norm`은 `x * x`를 만든 뒤 두 축을 함께 줄이는데, F 순서 배열에서는 이 리덕션이 메모리 순서(열 우선)로 더해서 항의 순서가 달라져요. 500×500 무작위 행렬 20개에서 C 순서는 20개 모두, F 순서는 18개가 numpy와 비트까지 같았어요.
 
 complex의 2-노름은 실수부와 허수부를 따로 항으로 넣어요(`re0², im0², re1², …`). 1-노름과 inf-노름의 complex 크기는 `std::abs`라서 `np.abs`와 마지막 비트가 다를 수 있어요. 합과는 무관한 차이예요.
 

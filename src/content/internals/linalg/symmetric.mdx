@@ -145,7 +145,7 @@ array([[2.0, 0.0, 0.0],
 >>> sd.linalg.cholesky(sd.asarray([[1.0, 2.0], [2.0, 1.0]]))
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: cholesky(): matrix is not positive definite
+stardust.linalg.LinAlgError: cholesky(): matrix is not positive definite
 ```
 
 **비용.** $k$번째 단계의 갱신은 $(n-k) \times (n-k)$ 대칭 행렬의 아래 삼각, 약 $(n-k)^2/2$칸에 곱셈과 뺄셈 하나씩이에요. 모두 더하면

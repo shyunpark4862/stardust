@@ -34,7 +34,7 @@ import Steps from '../../../components/fig/Steps.astro';
   <Steps
     steps={[
       { label: 'rng.random(shape)', where: 'random/__init__.py', note: 'shape을 검사하고 원소 수 n을 구해요. 검사가 실패하면 위치는 움직이지 않아요.' },
-      { label: '_reserve(n)', where: 'random/__init__.py', note: 'threading.Lock 안에서 pos를 읽고 pos += n (mod 2⁶⁴). 이 호출의 구간은 [pos, pos + n)이에요.' },
+      { label: '_reserve(n)', where: 'random/__init__.py', note: 'threading.Lock 안에서 키와 pos를 함께 읽고 pos += n (mod 2⁶⁴). 이 호출의 구간은 [pos, pos + n)이에요.' },
       { label: '_core.random.uniform(k0, k1, pos, shape)', where: 'random.cpp', note: '결과 배열을 만들고 원소 범위를 4096개씩 조각으로 나눠요.' },
       { label: 'for_pieces', depth: 1, where: 'array/ops/pieces.hpp', note: '원소가 4096개보다 많으면 스레드풀에서, 아니면 호출한 스레드에서 조각을 돌려요.' },
       { label: 'Stream::first(e)', depth: 2, where: 'philox.hpp', note: '원소 e가 든 16원소 묶음의 블록 넷을 philox4로 한꺼번에 계산해 두고 꺼내요.' },
@@ -393,12 +393,14 @@ std::uint64_t first(std::uint64_t e) {
 # src/stardust/random/__init__.py, Generator._reserve
 def _reserve(self, n):
     with self._lock:                     # threading.Lock
-        p = self._pos
+        key, p = self._key, self._pos    # 키와 위치를 함께 읽어요
         self._pos = (p + n) & _MASK64    # 2^64에서 0으로
-    return p
+    return key, p
 ```
 
-메서드는 인자를 검사한 뒤 `_reserve(n)`으로 구간 `[p, p + n)`을 받아 커널에 `p`를 넘겨요. 잠금 안에서 하는 일은 정수 읽기와 쓰기뿐이에요. 원소 계산은 잠금을 풀고 나서 해요.
+메서드는 인자를 검사한 뒤 `_reserve(n)`으로 키와 구간 `[p, p + n)`을 받아 커널에 넘겨요(`_k.uniform(key[0], key[1], pos, …)`). 잠금 안에서 하는 일은 읽기 셋과 쓰기 하나뿐이에요. 원소 계산은 잠금을 풀고 나서 해요.
+
+키도 잠금 안에서 함께 읽는 것은 다른 스레드의 `state` 대입 때문이에요. `state` 대입은 키와 위치를 한 잠금 안에서 함께 바꿔요([시드, spawn, 상태](/internals/random/seeding/)). 메서드가 위치만 잠금 안에서 읽고 키는 `self._key`로 따로 읽으면, 그 사이에 대입이 끼어들어 옛 키와 새 위치(또는 그 반대)로 계산할 수 있어요. 둘을 한 번에 읽으면 대입 전 상태든 대입 후 상태든 온전한 한쪽만 봐요.
 
 잠금이 필요한 이유는 "읽고 더해서 쓰기"가 한 동작이 아니기 때문이에요. GIL이 있어도 CPython은 바이트코드 사이에서 스레드를 바꿀 수 있어요. 두 스레드가 같은 `p`를 읽고 각자 `p + n`을 쓰면 두 호출이 같은 구간을 받아 **같은 난수를 두 번** 써요. 잠금 안에서 읽고 쓰면 구간들이 겹치지 않고 빈틈 없이 이어져요.
 
@@ -438,9 +440,9 @@ for_pieces(n, kParallelTask, n * kWordWork, [&](int64_t, int64_t i0, int64_t i1)
 - **조각:** `kParallelTask` = 2¹² = 4096원소씩이에요. 조각의 경계는 n과 4096만으로 정해지고, 스레드 수와 무관해요.
 - **나눌지:** 일의 양을 "단순 원소별 연산 원소 몇 개 분량"으로 세어 배열 영역의 기준값 `kParallelThreshold` = 2¹⁵와 비교해요. 난수 원소 하나는 Philox 블록의 4분의 1이라 단순 연산보다 훨씬 무거워서 8로 쳐요. 그래서 원소가 4096개를 넘으면(조각이 둘 이상이면) 풀에서 돌아요.
 - **조각마다 `Stream`:** 묶음 캐시가 조각 안에만 있으니 스레드끼리 공유하는 상태가 없어요. 조각이 순서 없이 아무 스레드에서 돌아도 돼요.
-- **GIL:** 풀에서 돌 때는 `parallel_for`가 GIL을 놓아요. 그동안 다른 Python 스레드가 같은 생성기에서 다음 구간을 예약하고 자기 계산을 할 수 있어요. 풀이 이미 다른 호출로 바쁘면 그 호출은 자기 스레드에서 혼자 계산하고, 결과는 같아요([스레드풀과 결정성](/internals/core/threads/)).
+- **GIL:** 일(`n * kWordWork`)이 기준값 이상이면, 곧 원소가 4096개 이상이면 `for_pieces`가 스레드 수와 상관없이 GIL을 놓아요. 풀에서 돌든, 1스레드라 호출 스레드에서 차례로 돌든 같아요. 그동안 다른 Python 스레드가 같은 생성기에서 다음 구간을 예약하고 자기 계산을 할 수 있어요. 풀이 이미 다른 호출로 바쁘면 그 호출은 자기 스레드에서 혼자 계산하고, 결과는 같아요([스레드풀과 결정성](/internals/core/threads/#gil)).
 
-`integers`, `race_keys`, `bits`도 같은 모양이에요. `fisher_yates`(섞기와 비복원 추출)만 순차 알고리즘이라 풀을 쓰지 않고, 루프 동안 GIL만 놓아요. 그래도 걸음 i가 원소 `pos + i`의 단어를 쓰니 결과는 (키, `pos`, n, k)로만 정해져요.
+`integers`, `race_keys`, `bits`도 같은 모양이에요. `fisher_yates`(섞기와 비복원 추출)만 순차 알고리즘이라 풀을 쓰지 않고, 크기와 상관없이 루프 동안 GIL만 놓아요. 그래도 걸음 i가 원소 `pos + i`의 단어를 쓰니 결과는 (키, `pos`, n, k)로만 정해져요.
 
 같은 조건(원소 10⁶개, Apple M4 Pro, numpy 2.5.4)에서 `random(10**6)`은 stardust 1스레드 1.14ms, 10스레드 0.15ms이고, numpy의 `Generator`는 PCG64로 2.72ms, Philox로 2.37ms예요. 1스레드에서도 numpy보다 빠른 이유와 다른 메서드의 수치는 [성능과 검증](/internals/random/performance/)에서 다뤄요.
 

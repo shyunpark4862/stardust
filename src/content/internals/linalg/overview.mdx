@@ -137,7 +137,7 @@ C++가 호출 하나의 전부를 맡아요. 인자 검사(배열인지, dtype, 
 Python 쪽에 남는 것은 세 가지예요.
 
 - `src/stardust/linalg/__init__.py`: 확장 모듈의 하위 모듈 `stardust._core.linalg`에 있는 함수를 `sd.linalg`의 이름으로 그대로 다시 내보내요. 그리고 import할 때 한 번 `_core.linalg._setup(LinAlgError, _results.LINALG)`를 불러 Python에서 정의한 타입을 C++에 넘겨요.
-- `src/stardust/linalg/_errors.py`: `class LinAlgError(ValueError)` 하나예요.
+- `src/stardust/linalg/_errors.py`: `class LinAlgError(ValueError)` 하나예요. 정의한 뒤 `LinAlgError.__module__ = "stardust.linalg"`로 바꿔요. 클래스가 실제로 사는 모듈(`stardust.linalg._errors`)이 아니라 사용자가 쓰는 공개 경로가 traceback과 `repr`에 보이게 하려는 거예요.
 - `src/stardust/_results.py`: 결과 namedtuple 타입들이에요. 배열 영역(`unique_all`, `histogram` 등)과 특수함수 영역(`airy`)의 결과 타입과 한 파일에 있어요. 라이브러리 전체의 결과 타입이 한 모듈에 모여 있어서 이름 규칙(`함수이름Result`)과 필드 이름 규칙이 한 곳에서 보여요.
 
 ```python
@@ -318,7 +318,7 @@ nb::object solve(nb::handle ao, nb::handle bo) {
 - `pack(b → x)`: 우변을 **결과 자리에 바로** 복사해요. `getrs`가 우변을 해로 덮어쓰므로, 따로 옮길 것이 없어요.
 - `raise`: 실패 코드와 배치 인덱스로 예외를 만들어요.
 
-몸체 안에서는 Python 객체를 만지지 않아요. 몸체는 스레드풀의 워커에서 GIL 없이 돌 수 있기 때문이에요([스레드풀과 결정성](/internals/core/threads/)). 결과 배열과 namedtuple은 모두 `run_batch` 밖에서 만들어요.
+몸체 안에서는 Python 객체를 만지지 않아요. 배치의 추정 시간이 10µs 이상이면 몸체는 스레드 수와 상관없이 GIL 없이 돌기 때문이에요. 나눌 때는 스레드풀의 워커에서, 나누지 않을 때는 호출 스레드에서 돌아요([스레드풀과 결정성](/internals/core/threads/#gil)). 결과 배열과 namedtuple은 모두 `run_batch` 밖에서 만들어요.
 
 ## LAPACK을 감싸는 방법
 
@@ -575,16 +575,18 @@ Accelerate의 내부는 공개돼 있지 않아요. 그래서 설계가 기대�
 | 입력에 NaN이나 inf | `ValueError` | 배치 원소를 패킹할 때 |
 | 수치적 실패 (특이, 양정치 아님, 수렴 실패) | `LinAlgError` | LAPACK이 양수 `info`를 돌려줄 때, 또는 stardust의 대각 검사 |
 
-`LinAlgError`는 `ValueError`의 하위 클래스예요. "값이 이 계산에 맞지 않는다"는 점에서 `ValueError`이고, `except ValueError`로도 잡혀요.
+`LinAlgError`는 `ValueError`의 하위 클래스예요. "값이 이 계산에 맞지 않는다"는 점에서 `ValueError`이고, `except ValueError`로도 잡혀요. traceback의 마지막 줄은 클래스의 `__module__`과 이름으로 만들어지므로, `_errors.py`가 `__module__`을 공개 경로로 바꿔 둔 덕분에 `stardust.linalg.LinAlgError`로 보여요.
 
 ```python
 >>> x = sd.asarray([[1.0, 2.0], [2.0, 4.0]])
 >>> sd.linalg.inv(x)
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: inv(): singular matrix
+stardust.linalg.LinAlgError: inv(): singular matrix
 >>> issubclass(sd.linalg.LinAlgError, ValueError)
 True
+>>> sd.linalg.LinAlgError.__module__
+'stardust.linalg'
 ```
 
 메시지는 다섯 가지예요: `singular matrix`, `matrix is not positive definite`, `eigenvalue algorithm did not converge`, `SVD did not converge`, 그리고 `solve_sylvester`의 `a and -b have a common or close eigenvalue`예요.
@@ -651,7 +653,7 @@ array([[               2.0,                0.0],
 >>> sd.linalg.inv(sd.asarray([good, bad, bad]))
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: inv(): singular matrix (at batch index (1,))
+stardust.linalg.LinAlgError: inv(): singular matrix (at batch index (1,))
 ```
 
 순서를 고정하는 이유는 결정성이에요. 배치가 스레드에 나뉘어 돌면 어느 원소의 실패가 먼저 발견될지는 그때그때 달라요. "먼저 발견된 것"을 보고하면 같은 입력에 실행마다 다른 메시지가 나와요. "가장 작은 인덱스"는 스레드 수와 무관하게 하나로 정해져요.

@@ -2,7 +2,7 @@
 title: 정확도와 성능
 group: 정확도와 성능
 order: 1
-summary: 특수함수의 정확도를 무엇에 대고 어떤 단위로 재는지(mpmath 50자리 기준값, ULP, 포락선, 조건수), 함수 묶음마다 잰 최대 오차와 scipy 1.18.1의 같은 값, scipy보다 나쁜 줄과 그 원인을 정리해요. Boost.Math와 견주어 구간을 고른 근거와 그 구간에서 Boost가 쓰는 방법, 속도와 원소당 비용을 재는 방법, 결과가 스레드 수·레이아웃과 상관없이 같은 비트라는 것을 확인하는 테스트도 다뤄요.
+summary: 특수함수의 정확도를 무엇에 대고 어떤 단위로 재는지(Arb로 구한 기준값, ULP, 포락선, 조건수), 함수 묶음마다 잰 최대 오차와 scipy 1.18.1의 같은 값, scipy보다 나쁜 줄과 그 원인을 정리해요. Boost.Math와 견주어 구간을 고른 근거와 그 구간에서 Boost가 쓰는 방법, 속도와 원소당 비용을 재는 방법, 결과가 스레드 수·레이아웃과 상관없이 같은 비트라는 것을 확인하는 테스트도 다뤄요.
 seeAlso: [overview, engine, techniques, distributions, incomplete]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -22,23 +22,23 @@ import Steps from '../../../components/fig/Steps.astro';
 | 보장 영역 밖(정의역 안) | 값을 계산하고, 잰 최대 오차를 API 문서에 적어요 |
 | 같은 입력 | 위치·stride·스레드 수와 상관없이 같은 비트 |
 
-이 약속을 지키는지는 mpmath로 만든 기준값으로 재요. 기준값 파일 97개(복소수와 분포 함수, 엔진의 시험 함수 하나 포함)의 보장 영역 모든 점에서 지금 빌드는 약속 안이에요(`tests/special/test_reference.py`). 결과를 요약하면 이래요.
+이 약속을 지키는지는 구간 산술 라이브러리 Arb로 만든 기준값으로 재요. 기준값 파일 98개(복소수와 분포 함수, 엔진의 시험 함수 하나 포함)의 보장 영역 모든 점에서 지금 빌드는 약속 안이에요(`tests/special/test_reference.py`). 결과를 요약하면 이래요.
 
-- **대부분의 함수가 몇 ULP 안이에요.** 보장 영역의 행 95개 중 64개가 최대 10 ULP 이하예요. 큰 줄은 `hyp1f1` 78.6, `betaincinv` 59, `airy` 34.8–57.3, `beta` 52.8, `gammaincinv` 50.1, `y1` 46.4 ULP인데, 모두 계약 안이에요(1 ULP의 상대 크기가 $1.1$–$2.2 \times 10^{-16}$이라 $10^{-14}$는 45–90 ULP예요).
+- **대부분의 함수가 몇 ULP 안이에요.** 보장 영역의 행 95개 중 69개가 최대 10 ULP 이하예요. 큰 줄은 `airy` 34.8–57.3, `beta` 52.8, `y1` 46.4, `ive` 44.6, `iv` 38.8 ULP인데, 모두 계약 안이에요(1 ULP의 상대 크기가 $1.1$–$2.2 \times 10^{-16}$이라 $10^{-14}$는 45–90 ULP예요).
 - **scipy 1.18.1은 같은 점에서 자주 크게 틀려요.** 서브노멀 꼬리의 0, 반올림한 인자, $1 - F$의 소거, 분기점·극점 근처의 상쇄 때문이에요. 참값이 유한한 점에서 inf나 NaN을 내는 함수도 많아요.
 - **scipy보다 나쁜 줄은 몇 개뿐이고 차이는 많아야 3.3 ULP예요**(`erfinv`, `ndtri`, `logit`, `y0`, 그리고 1 ULP 안쪽의 몇 줄). 원인은 아래에 있어요.
 - **속도와 원소당 비용**은 지금 코드로 다시 재는 중이라 표에 자리 표시를 두었어요.
 
-## 기준값: mpmath 50자리
+## 기준값: Arb의 구간 산술
 
 ### 만드는 방법
 
-`tools/special_ref.py`가 함수마다 입력 집합을 만들고 mpmath(1.4.1) [7]로 50자리 값을 계산해요. 결과는 `tests/special/ref/<name>.npz`에 저장해서 테스트와 측정 도구는 mpmath를 부르지 않아요(느리니까요).
+`tools/special_ref.py`가 함수마다 입력 집합을 만들고 Arb(python-flint) [7]로 참값을 계산해요. 결과는 `tests/special/ref/<name>.npz`에 저장해서 테스트와 측정 도구는 Arb를 부르지 않아요.
 
 <Fig column caption="기준값 파일이 만들어지고 쓰이는 길. 입력 집합과 참값은 한 번 만들어 저장소에 넣고, 테스트·정확도 표·Boost 비교가 모두 같은 파일을 읽어요.">
   <Steps steps={[
-    { label: 'tools/special_ref.py', note: '입력 집합(격자, 로그 균등 무작위, 경계)을 시드로 만들고 mpmath 50자리로 계산', where: 'tools/' },
-    { label: 'ref/<name>.npz', note: 'x0, x1, …, 참값 hi + lo(double-double), guaranteed, scale', where: 'tests/special/ref/' },
+    { label: 'tools/special_ref.py', note: '입력 집합(격자, 로그 균등 무작위, 경계)을 시드로 만들고 Arb의 공으로 참값을 가둠(tools/arbref.py)', where: 'tools/' },
+    { label: 'ref/<name>.npz', note: 'x0, x1, …, 참값 hi + lo(double-double), guaranteed, scale', where: 'tests/special/' },
     { label: 'test_reference.py', note: '계약 확인 + f(x)[i] == f(x[i]) 비트 확인', where: 'tests/special/', depth: 1 },
     { label: 'bench/special/accuracy.py', note: '최대·99.9% ULP 표, scipy의 같은 값', depth: 1 },
     { label: 'bench/special/boost/', note: 'Boost.Math와 구간별 비교', depth: 1 },
@@ -46,18 +46,19 @@ import Steps from '../../../components/fig/Steps.astro';
 </Fig>
 
 - **입력 집합.** 보장 영역 위의 격자, 크기가 고르게 퍼지도록 로그 균등으로 뽑은 무작위 점(정의역에 음수가 있으면 두 부호 모두, 보장 영역 안과 그 둘레의 느슨한 영역), 그리고 경계 점이에요. 경계 점은 구간 경계마다 앞뒤 몇 ULP(`around`가 이웃 double 4개씩), 극점과 영점, 0, 정의역의 끝이에요. 구현이 갈래를 바꾸는 곳이 가장 틀리기 쉬우므로 일부러 넣어요. 시드가 고정이라 다시 만들어도 같은 파일이에요.
-- **참값의 저장.** 50자리 값을 double-double($hi + lo$, $\lvert lo\rvert \le \tfrac12 \operatorname{ulp}(hi)$)로 저장해요. 그래서 오차를 ULP의 몇 분의 1까지 잴 수 있어요. double 하나로 저장하면 참값 자체에 0.5 ULP의 반올림이 들어가요.
+- **참값은 공으로 가둬요.** Arb의 값은 중심과 반지름을 가진 공 $[m \pm r]$이고, 참값이 그 안에 있다는 것을 Arb가 보장해요. 도구는 128비트에서 시작해 정밀도를 두 배씩 올리며 다시 계산하고, 반지름이 값의 $2^{-110}$배 아래가 되면 멈춰요(값이 정상 범위 아래이면 절대 $2^{-1132}$). 이렇게 되면 $hi$는 참값에 가장 가까운 double이고 $lo$는 그 나머지예요(`arbref.rigorous`, `to_dd`). "두 정밀도가 30자리까지 같으면 맞다" 같은 규칙과 달리, 두 정밀도에서 똑같이 틀리는 값(예: $1 - p$에서 $p = 3 \times 10^{-123}$을 잃는 계산)을 받아들이지 않아요.
+- **참값의 저장.** 값을 double-double($hi + lo$, $\lvert lo\rvert \le \tfrac12 \operatorname{ulp}(hi)$)로 저장해요. 그래서 오차를 ULP의 몇 분의 1까지 잴 수 있어요. double 하나로 저장하면 참값 자체에 0.5 ULP의 반올림이 들어가요.
 - **`guaranteed`와 `scale`.** 점마다 보장 영역인지와 계약의 배율을 함께 저장해요. 역함수는 $\max(1, \kappa)$, 진동 함수는 $\max(1, M/\lvert f\rvert)$($M$은 포락선), 나머지는 1이에요.
 
-### 기준값을 만들 때의 함정
+### 공으로 가두기 어려운 곳
 
-mpmath도 아무 데서나 50자리를 주지는 않아요. 도구에는 이런 우회가 들어 있어요.
+Arb의 함수는 자기 오차를 스스로 반지름에 넣어요. 도구가 직접 적은 계산만 따로 챙기면 돼요.
 
-- **불완전 베타의 인자가 1에 가까우면** mpmath의 `betainc`가 자리를 잃어서 $x$와 $1 - x$ 중 작은 쪽으로 계산해요(`_ibeta_pair`).
-- **값이 $2^{-1074}$보다 훨씬 작으면** mpmath가 수렴을 포기해요. 선두 항이 $e^{-1000}$ 아래인지 보고 0으로 둬요(`_safe_betainc`).
-- **`ndtri_exp`의 $x < -10^6$**에서는 mpmath의 `ncdf`, `npdf`가 넘쳐서 $\log\Phi$의 점근 급수와 해석적 기울기를 써요.
-- **`fdtri`는 $x$에 대해 풀어요.** 중간 변수 $w$는 $x$가 크면 1로 반올림되기 때문이에요.
-- **비중심 분포**는 두 꼬리 모두 양의 항의 합으로 더하고(끝의 항과 꼬리가 합의 $10^{-45}$ 아래일 때까지), 비중심 t의 반대쪽 꼬리는 mpmath의 `quad`로 정의 그대로 적분해요. 상쇄가 없는 곳에서 급수와 30자리까지 맞는 것을 확인했어요.
+- **잘라 낸 급수는 꼬리의 상한을 반지름에 더해요.** 불완전 감마·베타의 급수와 비중심 분포의 포아송 혼합은 도구가 직접 더하는 합이에요. 항을 어디서 멈추든 남은 꼬리의 상한을 공에 더해서(`arbref.add_error`), 공이 여전히 참값을 품게 해요.
+- **불완전 베타는 짧은 쪽 급수로 더해요.** 평균 근처의 큰 $a, b$에서는 Arb의 `beta_lower`가 정해지지 않아서, $I_x(a, b)$의 급수와 $1 - I_{1-x}(b, a)$ 중 항이 적은 쪽을 골라요(`_ibeta`). 빼기로 생긴 상쇄는 공을 넓히고, 그러면 정밀도가 그만큼 더 올라가요.
+- **역함수는 부호가 바뀌는 것으로 확인해요.** $F(x) - p$의 부호가 $x(1 \mp 2^{-110})$의 양쪽에서 다르면 근이 그 사이에 있다는 증명이에요. 근이 double 범위 밖이면 그 끝값(0 등)이 참값이에요.
+- **비중심 t의 반대쪽 꼬리**는 급수의 두 묶음이 서로 지워져서, 정의 그대로 적분해요(`acb.integral`, 적분 오차의 상한을 Arb가 내요). 적분 구간 밖의 부분은 상한을 공에 더해요.
+- **정해지지 않는 점은 버려요.** 8192비트까지 올려도 공이 줄지 않거나, 한 점에 30초가 넘게 걸리면 그 점은 파일에 넣지 않아요. 참값을 정하지 못한 점을 어림값으로 채우지 않으려는 거예요.
 
 ## 오차를 재는 단위
 
@@ -69,7 +70,7 @@ $$
 \text{ULP 오차} = \frac{\lvert \text{결과} - (hi + lo)\rvert}{\operatorname{ulp}(hi)}
 $$
 
-를 써요(`refdata.ulp_error`, `np.spacing`). 올바르게 반올림한 결과는 0.5 ULP 이하예요. 계약은 상대오차 $10^{-14}$로 적혀 있어요. 둘의 관계는 값이 이진 자릿수 구간의 어디에 있는지에 따라 달라요. $hi$가 $2^e$ 바로 위이면 1 ULP가 상대 $2.2 \times 10^{-16}$이고, $2^{e+1}$ 바로 아래이면 $1.1 \times 10^{-16}$이에요. 그래서 $10^{-14}$는 45–90 ULP예요. 표의 45 ULP 넘는 줄(`hyp1f1` 78.6 등)이 계약 안인 이유예요. 테스트는 ULP가 아니라 상대오차를 직접 확인해요.
+를 써요(`refdata.ulp_error`, `np.spacing`). 올바르게 반올림한 결과는 0.5 ULP 이하예요. 계약은 상대오차 $10^{-14}$로 적혀 있어요. 둘의 관계는 값이 이진 자릿수 구간의 어디에 있는지에 따라 달라요. $hi$가 $2^e$ 바로 위이면 1 ULP가 상대 $2.2 \times 10^{-16}$이고, $2^{e+1}$ 바로 아래이면 $1.1 \times 10^{-16}$이에요. 그래서 $10^{-14}$는 45–90 ULP예요. 표의 45 ULP 넘는 줄(`airy` Ai 57.3, `beta` 52.8 등)이 계약 안인 이유예요. 테스트는 ULP가 아니라 상대오차를 직접 확인해요.
 
 ### 포락선: 진동 함수의 영점
 
@@ -95,7 +96,7 @@ $$
 
 ## 정확도 표
 
-아래 표는 `bench/special/accuracy.py`를 지금 빌드에서 돌린 값이에요(기준값 `tests/special/ref`, mpmath 50자리). 열은 점의 수, stardust의 최대와 99.9번째 백분위 ULP, 같은 입력에서 scipy 1.18.1의 같은 값이에요. "보장"은 보장 영역, "느슨"은 그 밖(ULP), "혼합"은 위의 혼합 오차예요. 진동 함수·역함수는 각각 포락선·$\kappa$ 배율로 나눈 값이에요. scipy 열의 inf는 참값이 유한한 점에서 scipy가 inf나 NaN을 냈다는 뜻이고, $10^{15}$–$10^{16}$은 대개 참값이 있는 곳에서 0을 낸 경우예요.
+아래 표는 `bench/special/accuracy.py`를 지금 빌드에서 돌린 값이에요(기준값 `tests/special/ref`, Arb). 열은 점의 수, stardust의 최대와 99.9번째 백분위 ULP, 같은 입력에서 scipy 1.18.1의 같은 값이에요. "보장"은 보장 영역, "느슨"은 그 밖(ULP), "혼합"은 위의 혼합 오차예요. 진동 함수·역함수는 각각 포락선·$\kappa$ 배율로 나눈 값이에요. scipy 열의 inf는 참값이 유한한 점에서 scipy가 inf나 NaN을 냈다는 뜻이고, $10^{15}$–$10^{16}$은 대개 참값이 있는 곳에서 0을 낸 경우예요.
 
 ### 오차함수와 정규분포
 
@@ -107,7 +108,7 @@ $$
 | `erfinv` | 보장 | 7563 | 4.64 | 3.90 | 1.95 | 1.72 |
 | `erfcinv` | 보장 | 7550 | 4.51 | 3.82 | inf | 1.7e11 |
 | `ndtr` | 보장 | 8064 | 6.73 | 5.28 | 1.1e13 | 6.6e12 |
-| `log_ndtr` | 보장 | 8064 | 6.97 | 4.45 | 1.1e13 | 7.3e12 |
+| `log_ndtr` | 보장 | 8064 | 6.97 | 4.45 | 1.1e13 | 7.2e12 |
 | `ndtri` | 보장 | 7559 | 5.43 | 4.51 | 2.81 | 2.42 |
 | `ndtri_exp` | 보장 | 2427 | 6.53 | 4.60 | 5.3e3 | 2.5e3 |
 
@@ -117,7 +118,7 @@ scipy가 크게 틀리는 점은 서브노멀 꼬리(`erfc`, `ndtr`, `log_ndtr`:
 
 | 함수 | 영역 | 점 | 최대 | 99.9% | scipy 최대 | scipy 99.9% |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
-| `gamma` | 보장 | 7019 | 10.2 | 7.35 | 8.0e15 | 7.1e15 |
+| `gamma` | 보장 | 7019 | 10.2 | 7.35 | 8.0e15 | 7.0e15 |
 | `rgamma` | 보장 | 7719 | 5.11 | 4.01 | inf | nan |
 | `gammaln` | 보장 | 4937 | 5.53 | 2.43 | inf | nan |
 | `gammaln` | 혼합 | 1732 | 2.09 | 1.83 | 1.34 | 1.31 |
@@ -137,16 +138,16 @@ scipy가 크게 틀리는 점은 서브노멀 꼬리(`erfc`, `ndtr`, `log_ndtr`:
 
 | 함수 | 영역 | 점 | 최대 | 99.9% | scipy 최대 | scipy 99.9% |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
-| `gammainc` | 보장 | 2406 | 8.87 | 5.63 | 4.5e15 | 6.6e9 |
-| `gammaincc` | 보장 | 2361 | 13.4 | 7.98 | 2.4e10 | 6.1e3 |
-| `gammaincinv` | 보장 | 2004 | 50.1 | 42.7 | inf | 498 |
-| `gammainccinv` | 보장 | 1903 | 37.5 | 26.0 | inf | 31.3 |
-| `betainc` | 보장 | 1979 | 16.7 | 13.7 | inf | 1.1e4 |
-| `betaincc` | 보장 | 1973 | 18.6 | 17.5 | inf | 1.1e11 |
-| `betaincinv` | 보장 | 1440 | 59.0 | 8.67 | inf | nan |
-| `betainccinv` | 보장 | 1254 | 19.8 | 15.9 | inf | nan |
+| `gammainc` | 보장 | 2413 | 8.87 | 5.63 | 4.5e15 | 6.5e9 |
+| `gammaincc` | 보장 | 2413 | 13.4 | 7.97 | 2.4e10 | 5.7e3 |
+| `gammaincinv` | 보장 | 2004 | 5.32 | 3.91 | inf | 498 |
+| `gammainccinv` | 보장 | 2004 | 5.33 | 4.79 | inf | 19.9 |
+| `betainc` | 보장 | 2004 | 21.8 | 14.2 | inf | 1.0e4 |
+| `betaincc` | 보장 | 2004 | 18.6 | 17.4 | inf | 7.7e10 |
+| `betaincinv` | 보장 | 1502 | 9.20 | 7.55 | inf | nan |
+| `betainccinv` | 보장 | 1502 | 9.55 | 7.13 | inf | nan |
 
-(역함수는 ULP / $\max(1, \kappa)$.) `gammaincinv`의 50.1은 $a \approx 6 \times 10^5$처럼 큰 $a$의 점이에요(상대 $9.3 \times 10^{-15}$). 이 구간은 Boost.Math의 `gamma_p_inv`가 풀어요(DiDonato–Morris의 초기값에서 Halley, 걸음이 $x$의 약 $2^{-25}$배 아래가 되면 멈춤). `betaincinv`의 59는 $p = 5 \times 10^{-324}$(최소 서브노멀)처럼 입력 자체가 몇 비트뿐인 점이에요. scipy의 큰 값은 앞 인자 $x^a e^{-x}/\Gamma(a)$를 `a log x - x - lgamma(a)`로 float64에서 만드는 데서 꼬리마다 수천 ULP를 잃는 것과, 서브노멀 꼬리의 0이에요. 방법은 [불완전 감마와 베타](/internals/special/incomplete/)에 있어요.
+(역함수는 ULP / $\max(1, \kappa)$.) 네 역함수의 최대는 모두 10 ULP 아래예요. 감마 역함수는 대부분의 구간에서 Boost.Math의 `gamma_p_inv`, `gamma_q_inv`가 근을 찾지만(DiDonato–Morris의 초기값에서 Halley, 걸음이 $x$의 약 $2^{-25}$배 아래가 되면 멈춤), 그 근에서 stardust의 순방향 함수로 Halley 걸음을 한 번 더 해서 마지막 몇 비트를 채워요. `betainc`의 21.8은 $a = 3383$, $b = 38059$, $x = 0.079$처럼 두 모양이 큰 점이에요(상대 $2.5 \times 10^{-15}$). scipy의 큰 값은 앞 인자 $x^a e^{-x}/\Gamma(a)$를 `a log x - x - lgamma(a)`로 float64에서 만드는 데서 꼬리마다 수천 ULP를 잃는 것과, 서브노멀 꼬리의 0이에요. 방법은 [불완전 감마와 베타](/internals/special/incomplete/)에 있어요.
 
 ### 로지스틱과 정보량
 
@@ -166,13 +167,13 @@ scipy가 크게 틀리는 점은 서브노멀 꼬리(`erfc`, `ndtr`, `log_ndtr`:
 
 | 함수 | 영역 | 점 | 최대 | 99.9% | scipy 최대 | scipy 99.9% |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
-| `zeta` (Riemann) | 보장 | 6112 | 44.7 | 18.2 | 5.5e15 | 2.0e14 |
+| `zeta` (Riemann) | 보장 | 6112 | 9.42 | 7.97 | 5.5e15 | 2.0e14 |
 | `zeta` (Hurwitz) | 보장 | 3500 | 5.51 | 2.97 | 44.5 | 16.7 |
 | `zeta` (Hurwitz) | 혼합 | 800 | 6.23 | 4.00 | 6.23 | 4.00 |
 | `expi` | 보장 | 3313 | 4.69 | 3.83 | inf | nan |
 | `expn` | 보장 | 2705 | 6.28 | 4.96 | 3.4e18 | 1.2e9 |
 
-Riemann `zeta`의 44.7은 $x \approx -31$의 음수 점이에요(상대 $7.2 \times 10^{-15}$). $x > -60$은 Boost.Math, $x \le -60$은 stardust의 함수방정식이에요(아래 [Boost 구간](#boostmath와-견주어-구간을-고른-근거)). `expn`에서 scipy가 크게 틀리는 점은 결과가 서브노멀인 꼬리($x \approx 712$)와 거대한 차수($n \approx 10^{12}$)예요. 방법은 [제타, 지수적분, 타원적분, 초기하, Lambert W, Faddeeva](/internals/special/more-functions/)에 있어요.
+Riemann `zeta`의 9.42는 $x \approx -3.3 \times 10^{-4}$의 점이에요(상대 $1.1 \times 10^{-15}$). $x \ge -1$과 음의 홀수는 Boost.Math, 짝수 2–52는 올바르게 반올림한 표, 그 밖의 음수는 stardust의 함수방정식이에요(아래 [Boost 구간](#boostmath와-견주어-구간을-고른-근거)). `expn`에서 scipy가 크게 틀리는 점은 결과가 서브노멀인 꼬리($x \approx 712$)와 거대한 차수($n \approx 10^{12}$)예요. 방법은 [제타, 지수적분, 타원적분, 초기하, Lambert W, Faddeeva](/internals/special/more-functions/)에 있어요.
 
 ### Bessel과 Airy
 
@@ -182,8 +183,8 @@ Riemann `zeta`의 44.7은 $x \approx -31$의 음수 점이에요(상대 $7.2 \ti
 | `i0e` | 2400 | 1.79 | 1.63 | 5.39 | 4.21 | `j1` | 2100 | 9.32 | 3.40 | 11.3 | 3.51 |
 | `i1` | 2400 | 3.47 | 3.02 | inf | nan | `y0` | 2100 | 21.1 | 17.5 | 17.8 | 14.4 |
 | `i1e` | 2400 | 1.65 | 1.57 | 3.73 | 2.91 | `y1` | 2100 | 46.4 | 12.1 | 1.6e16 | 1.6e16 |
-| `k0` | 2400 | 2.30 | 1.93 | 6.84 | 5.68 | `jv` | 1924 | 23.2 | 15.1 | inf | nan |
-| `k0e` | 2400 | 1.83 | 1.69 | 4.33 | 4.10 | `yv` | 1927 | 13.8 | 12.4 | 2.3e5 | 1.2e5 |
+| `k0` | 2400 | 2.30 | 1.93 | 6.84 | 5.68 | `jv` | 2000 | 23.2 | 14.5 | inf | nan |
+| `k0e` | 2400 | 1.83 | 1.69 | 4.33 | 4.10 | `yv` | 2000 | 13.8 | 12.3 | inf | 1.8e5 |
 | `k1` | 2400 | 2.13 | 1.95 | 4.37 | 2.91 | `airy` Ai | 2975 | 57.3 | 27.4 | inf | nan |
 | `k1e` | 2400 | 2.05 | 1.95 | 2.30 | 2.03 | `airy` Ai′ | 2975 | 34.8 | 29.6 | inf | nan |
 | `iv` | 2000 | 38.8 | 30.9 | inf | 1.4e3 | `airy` Bi | 2975 | 43.5 | 25.4 | inf | nan |
@@ -199,14 +200,14 @@ Riemann `zeta`의 44.7은 $x \approx -31$의 음수 점이에요(상대 $7.2 \ti
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
 | `ellipk` | 보장 | 3036 | 2.30 | 1.91 | 2.25 | 1.54 |
 | `ellipe` | 보장 | 3036 | 2.04 | 1.36 | 3.96 | 2.07 |
-| `hyp1f1` | 보장 | 1600 | 78.6 | 71.6 | 248 | 194 |
-| `hyp1f1` | 느슨 | 400 | 2.2e3 | 1.9e3 | 2.3e3 | 2.2e3 |
+| `hyp1f1` | 보장 | 1600 | 15.9 | 9.23 | 248 | 194 |
+| `hyp1f1` | 느슨 | 400 | 1.2e3 | 992 | 2.3e3 | 2.2e3 |
 | `hyp2f1` | 보장 | 509 | 11.0 | 10.8 | 208 | 129 |
-| `hyp2f1` | 느슨 | 991 | 3.1e3 | 605 | 1.8e12 | 3.5e11 |
+| `hyp2f1` | 느슨 | 991 | 2.7e3 | 324 | 1.8e12 | 3.5e11 |
 | `lambertw` ($k = 0$) | 보장 | 3000 | 1.89 | 1.10 | 4.2e7 | 4.2e7 |
 | `lambertw` ($k = -1$) | 보장 | 2250 | 2.63 | 1.32 | 4.5e11 | 4.3e11 |
 
-`hyp1f1`의 보장 영역 78.6 ULP(상대 $9.1 \times 10^{-15}$)는 $a = 35.7$, $b = 7.0$, $x = 205$처럼 $x \ge 0$, $b < 11$인 점이에요. 이 구간과 느슨한 영역 전부는 Boost.Math의 `hypergeometric_1F1`이 계산해요. 느슨한 영역(큰 $\lvert a\rvert$의 상쇄 등)은 상대 $10^{-12}$를 약속해요(잰 값 $2.8 \times 10^{-13}$). scipy의 `lambertw`는 분기점 $-1/e$ 근처에서 $e x + 1$의 상쇄로 $10^7$–$10^{11}$ ULP를 잃어요.
+`hyp1f1`의 보장 영역 15.9 ULP(상대 $1.8 \times 10^{-15}$)는 $a = 4.21$, $b = 4.37$, $x = 4.24$의 점이에요. 느슨한 영역의 1170 ULP는 상대 $2.6 \times 10^{-13}$이에요. 느슨한 영역은 값을 보장하지 않고, 오차를 아는 방법이 없으면 NaN을 내요. 인자 크기 $10^6$까지의 무작위 1만 1천 점에서 잰 최대는 `hyp1f1` 상대 $9 \times 10^{-12}$, `hyp2f1` $1.7 \times 10^{-12}$였어요. scipy의 `lambertw`는 분기점 $-1/e$ 근처에서 $e x + 1$의 상쇄로 $10^7$–$10^{11}$ ULP를 잃어요.
 
 ### 복소수
 
@@ -226,7 +227,7 @@ Riemann `zeta`의 44.7은 $x \approx -31$의 음수 점이에요(상대 $7.2 \ti
 
 ### 분포 함수
 
-24개의 표는 [분포 함수](/internals/special/distributions/)에 있어요. 보장 영역 최대는 `fdtri` 23 ULP/κ, `ncfdtrc` 15.2, `pdtrc` 13.1, `fdtr` 12.4이고 나머지는 10 ULP 안팎 이하예요. scipy는 같은 점에서 꼬리의 0이나 인자 반올림 때문에 수백 ULP에서 $10^{16}$까지 틀려요.
+24개의 표는 [분포 함수](/internals/special/distributions/)에 있어요. 보장 영역 최대는 `fdtri` 23 ULP/κ, `ncfdtrc` 15.0, `pdtrc` 13.1, `fdtr` 12.4이고 나머지는 10 ULP 안팎 이하예요. scipy는 같은 점에서 꼬리의 0이나 인자 반올림 때문에 수백 ULP에서 $10^{16}$까지 틀려요.
 
 ## scipy보다 나쁜 줄과 원인
 
@@ -241,7 +242,7 @@ Riemann `zeta`의 44.7은 $x \approx -31$의 음수 점이에요(상대 $7.2 \ti
 | `gammaln` (혼합) | 2.09 | 1.34 | 1 ULP 안쪽의 차이 |
 | `ellipk`, `lambertw` ($k = 4$) | 2.30, 0.95 | 2.25, 0.70 | 1 ULP 안쪽의 차이 |
 
-**`erfinv`, `ndtri`.** 두 함수는 Wichura의 AS241 [4] 유리식이에요. $s = \sqrt{-\log p}$로 두고 $s \le 5$이면 $C(s - 1.6)/D(s - 1.6)$, $s > 5$이면 $E(s - 5)/F(s - 5)$이고, 분자·분모가 모두 7차예요. `ndtri`의 최악 점 여섯은 모두 $s > 5$이고, `erfinv`의 최악 점은 대부분 $s \le 5$ 쪽이에요. `ndtri`의 최악 점 여섯에서 유리식을 mpmath로 계수 그대로 계산하면 근사 자체의 오차는 0.5 ULP 아래예요. 같은 식을 Python의 double로 계산하면(`np.log`와 Horner) 그중 셋에서 stardust와 비트까지 같은 값이 나오고, 나머지 셋도 $s$를 1 ULP 옮기면 같은 값이 나와요. 그러니 남는 4–5 ULP는 근사식이 아니라 double 계산(로그와 두 7차 다항식의 Horner)의 반올림이에요. scipy의 `erfinv`(Boost.Math `erf_inv`)는 구간마다 큰 상수 $Y$에 작은 보정 $R$을 더하는 꼴이에요. 꼬리에서는 $x = \sqrt{-\log q}$로 두고 $Y x + R(x - b)\,x$를 계산하고, $R$은 $\lvert Y\rvert$에 비해 절대오차가 작도록 맞춘 것이라 반올림이 주로 보정항에 걸려요 [6]. stardust가 Boost의 `erf_inv`로 바꾸지 않은 것은 구간 비교에서 우리 커널이 더 빨랐기 때문이에요(아래 표). 오차함수 계열은 NEON + vForce 덩어리 커널이라 원소마다 Boost를 부르면 그 이점이 사라져요.
+**`erfinv`, `ndtri`.** 두 함수는 Wichura의 AS241 [4] 유리식이에요. $s = \sqrt{-\log p}$로 두고 $s \le 5$이면 $C(s - 1.6)/D(s - 1.6)$, $s > 5$이면 $E(s - 5)/F(s - 5)$이고, 분자·분모가 모두 7차예요. `ndtri`의 최악 점 여섯은 모두 $s > 5$이고, `erfinv`의 최악 점은 대부분 $s \le 5$ 쪽이에요. `ndtri`의 최악 점 여섯에서 유리식을 고정밀로 계수 그대로 계산하면 근사 자체의 오차는 0.5 ULP 아래예요. 같은 식을 Python의 double로 계산하면(`np.log`와 Horner) 그중 셋에서 stardust와 비트까지 같은 값이 나오고, 나머지 셋도 $s$를 1 ULP 옮기면 같은 값이 나와요. 그러니 남는 4–5 ULP는 근사식이 아니라 double 계산(로그와 두 7차 다항식의 Horner)의 반올림이에요. scipy의 `erfinv`(Boost.Math `erf_inv`)는 구간마다 큰 상수 $Y$에 작은 보정 $R$을 더하는 꼴이에요. 꼬리에서는 $x = \sqrt{-\log q}$로 두고 $Y x + R(x - b)\,x$를 계산하고, $R$은 $\lvert Y\rvert$에 비해 절대오차가 작도록 맞춘 것이라 반올림이 주로 보정항에 걸려요 [6]. stardust가 Boost의 `erf_inv`로 바꾸지 않은 것은 구간 비교에서 우리 커널이 더 빨랐기 때문이에요(아래 표). 오차함수 계열은 NEON + vForce 덩어리 커널이라 원소마다 Boost를 부르면 그 이점이 사라져요.
 
 **`logit`.** 중심 구간 $p \in [0.25, 0.75]$는 $2\operatorname{atanh}(2p - 1)$이에요($2p - 1$은 Sterbenz 보조정리로 정확). 최악 점 넷에서 $\operatorname{atanh}$를 올바르게 반올림한 값으로 계산하면 오차가 0.2–0.43 ULP예요. Accelerate의 `vvatanh`를 같은 인자로 불러 두 배 하면 최악 점 여섯 모두에서 stardust와 비트까지 같은 값이 나와요. 곧 2.8 ULP는 1024원소 덩어리로 부르는 vForce `vvatanh`의 오차예요(이 점들에서 올바른 반올림보다 2–3 ULP 벗어나요). 이 크기는 계약에 비하면 작고, 덩어리 호출이 원소마다 libm을 부르는 것보다 빠른 대가로 받아들인 것이에요([원소별 엔진과 병렬화](/internals/special/engine/)).
 
@@ -261,7 +262,7 @@ Riemann `zeta`의 44.7은 $x \approx -31$의 음수 점이에요(상대 $7.2 \ti
 
 | 함수 | Boost 구간 | Boost가 쓰는 방법 (double) | 고를 때의 근거 | stardust 구간 |
 |---|---|---|---|---|
-| `zeta` | $x > -60$(자명한 영점 제외) | $s < 1$: $1-s$의 유리식에 극 $1/(s-1)$을 붙인 꼴. $(1,2]$, $(2,4]$, $(4,7]$, $(7,15)$: 구간별 minimax 유리식. $[15,36)$: $1 + e^{R(s-15)}$. $s \ge 36$: $1 + 2^{-s}$. $s < 0$: 함수방정식 $\zeta(s) = 2\sin(\tfrac{\pi s}{2})(2\pi)^{s-1}\Gamma(1-s)\zeta(1-s)$ | $x > 1$에서 1.14 대 3.31 ULP, 비 0.14 | $x \le -60$: Boost 1.7e3 ULP |
+| `zeta` | $x \ge -1$(짝수 2–52 제외), 음의 홀수 $-3 \ldots -59$ | $s < 1$: $1-s$의 유리식에 극 $1/(s-1)$을 붙인 꼴. $(1,2]$, $(2,4]$, $(4,7]$, $(7,15)$: 구간별 minimax 유리식. $[15,36)$: $1 + e^{R(s-15)}$. $s \ge 36$: $1 + 2^{-s}$. 짝수는 닫힌 꼴 $2^{s-1}\pi^s\lvert B_s\rvert/s!$, 음의 정수는 Bernoulli 수의 표. $-1 \le s < 0$: 함수방정식 $\zeta(s) = 2\sin(\tfrac{\pi s}{2})(2\pi)^{s-1}\Gamma(1-s)\zeta(1-s)$ | $x > 1$에서 1.14 대 3.31 ULP, 비 0.14 | 짝수 2–52: 표(Boost의 닫힌 꼴은 9 ULP). 그 밖의 $x < -1$: 함수방정식(Boost는 $(-32, -31)$에서 65 ULP, $x \le -60$에서 1.7e3 ULP) |
 | `i0`, `i1` | 전부 | $x < 7.75$: $1 + aP(a)$, $a = x^2/4$(`i1`도 같은 꼴). 그 위: $e^x P(1/x)/\sqrt{x}$, 큰 $x$는 $e^{x/2}$를 두 번 곱해 넘침을 피함 | 2.2–3.5 ULP, 비 0.50 | 결과가 정상 범위 밖(713 근처의 참값) |
 | `k0`, `k1` | 전부 | $x \le 1$: $x^2$의 유리식 $- \log x \cdot (I_0$류 급수$)$. $x > 1$: $(Y + R(1/x))\,e^{-x}/\sqrt{x}$ | `k0`의 $x < 2$에서 1.67 대 17.3 ULP, 비 0.29–0.30 | `k1(5e-324)` 등 결과가 정상 범위 밖 |
 | `iv`, `kv` | $\lvert\nu\rvert < 30$, $\lvert\nu\rvert < 400$($x > 0$) | Temme의 방법 [9]: $\nu = n + \mu$, $\lvert\mu\rvert \le \tfrac12$. $x \le 2$는 Temme 급수, $x > 2$는 CF2(Steed의 방법, Boost 소스가 인용하는 Thompson–Barnett [10])로 $K_\mu, K_{\mu+1}$, CF1(수정 Lentz)로 $I$의 비, Wronskian으로 $I$, 앞으로 점화해 $K_\nu$. $x$가 $\nu$에 비해 작으면 거듭제곱급수, 아주 크면 점근전개 | 구간 안 위반 0, 비 0.42(`iv`), 0.14(`kv`) | 그 밖. $\nu \ge 30$은 Debye 균등 점근전개 |
@@ -272,12 +273,12 @@ Riemann `zeta`의 44.7은 $x \approx -31$의 음수 점이에요(상대 $7.2 \ti
 | `digamma` | $x > 0$ | $x \ge 10$: Bernoulli 수의 점근전개. $[1, 2]$: $(x - x_0)(Y + R(x-1))$, $x_0$는 양의 근. 그 사이는 점화식 | 2.11 대 2.11 ULP, 비 0.95 | $x < 0$: 극점 근처에서 Boost가 틀림 |
 | `gamma` | $x > -170$, 극점 제외 | Lanczos 근사(`lanczos13m53`, $g \approx 6.02$), 작은 정수는 계승 표, 작은·음의 $x$는 점화식, $x < -20$은 반사식($x\sin\pi x$를 정확히 줄여서) | 위반 0, 비 1.09(10% 안) | 서브노멀 꼬리 |
 | `beta` | $a, b > 0$, $a + b < 40$ | 세 감마를 Lanczos 꼴로 한 식에 모음 | 위반 0, 비 0.98 | 큰 인자: Boost 1.8e3 ULP |
-| `gammaincinv`, `gammainccinv` | $p \ge 10^{-300}$, 근 $\ge 10^{-300}$ / 근이 정상 범위 | DiDonato–Morris(1986) [2]의 초기값 + Halley(자세한 것은 [분포 함수](/internals/special/distributions/)) | 위반 0, 비 0.82, 0.49 | 서브노멀 근 |
-| `betainc`, `betaincc` | $a, b \le 6$ | TOMS 708 [1]의 구조: 닫힌 꼴, 거듭제곱급수, 옆걸음 + BGRAT, 정수 매개변수의 이항 유한합, 꼬리부터 다시 계산하는 연분수 | 위반 0, 비 0.26 | 큰 $a, b$ |
-| `betaincinv`, `betainccinv` | $a, b \ge 10$ / $a, b \ge 1$ | Temme의 세 균등 점근 역전개 [11]로 초기값 + Halley | 위반 0, 비 0.73, 0.35 | 작은 $a, b$: Boost가 언더플로를 틀림 |
-| `hyp1f1` | 느슨한 영역 전부, 보장 영역의 $x \ge 0$이고 $b < 11$ | 검사하는 급수, Kummer 변환, A&S 13.3.6, Tricomi의 Bessel 전개(13.3.7), 큰 $a \approx b$의 감마 전개, 큰 $z$의 점근전개, Luke의 유리 근사, $a$·$b$의 점화식 중 입력에 맞는 것 [6] | 보장 영역의 나머지에서 Boost 208 ULP. 느슨한 영역은 stardust가 $2.3 \times 10^{13}$ ULP, Boost가 상대 $3 \times 10^{-12}$ | 보장 영역의 나머지 |
+| `gammaincinv`, `gammainccinv` | $p \ge 10^{-300}$, 근 $\ge 10^{-300}$ / 근이 정상 범위 | DiDonato–Morris(1986) [2]의 초기값 + Halley. 그 근에서 stardust의 순방향 함수로 Halley 한 걸음(자세한 것은 [불완전 감마와 베타](/internals/special/incomplete/)) | 위반 0, 비 0.82, 0.49 | 서브노멀 근, $a \ge 10^{10}$ |
+| `betainc`, `betaincc` | $a, b \le 6$ | TOMS 708 [1]의 구조: 닫힌 꼴, 거듭제곱급수, 옆걸음 + BGRAT, 정수 매개변수의 이항 유한합, 꼬리부터 다시 계산하는 연분수 | 위반 0, 비 0.26 | 큰 $a, b$. $a, b \le 6$ 안에서도 서브노멀 $x$, 결과가 $2^{-960}$ 아래, Boost가 1에서 빼서 보수를 만드는 쪽 |
+| `betaincinv`, `betainccinv` | $10 \le a, b \le 10^6$ / $1 \le a, b \le 10^6$ | Temme의 세 균등 점근 역전개 [11]로 초기값 + Halley | 위반 0, 비 0.73, 0.35 | 작은 $a, b$: Boost가 언더플로를 틀림. $10^6$보다 큰 모양: Boost가 다른 확률의 근을 냄 |
+| `hyp1f1` | 보장 영역의 $0 \le x < 16$, $b < 11$, $a \le 100$. 느슨한 영역에서는 stardust의 앞선 세 방법이 안 될 때만 $\lvert a\rvert, \lvert b\rvert \le 100$ | 검사하는 급수, Kummer 변환, A&S 13.3.6, Tricomi의 Bessel 전개(13.3.7), 큰 $a \approx b$의 감마 전개, 큰 $z$의 점근전개, Luke의 유리 근사, $a$·$b$의 점화식 중 입력에 맞는 것 [6] | 보장 영역에서 $x \ge 18$부터 점의 4%가 45 ULP를 넘고 $x \approx 500$에서 297 ULP(무작위 4만 점)라 구간을 $x < 16$으로 좁힘. 느슨한 영역의 $\lvert a\rvert, \lvert b\rvert \le 100$에서 상대 $1.2 \times 10^{-12}$ | 보장 영역의 나머지. 느슨한 영역: 상쇄를 아는 급수, $a$의 점화식, 점근전개, Tricomi 전개, 모두 안 되면 NaN |
 
-`betainc`와 `betaincc`의 구간을 같게($a, b \le 6$) 둔 이유가 있어요. 둘이 다르면 한쪽만 Boost인 점에서 `betainc + betaincc`가 1에서 3 ULP 넘게 벗어났어요. Boost는 두 함수를 따로 계산하므로 같은 구간에서도 합은 3 ULP까지 1에서 벗어나요.
+`betainc`와 `betaincc`의 구간을 같게($a, b \le 6$) 둔 이유가 있어요. 둘이 다르면 한쪽만 Boost인 점이 넓게 생겨서 두 구현의 오차가 따로 놀아요. 그래도 Boost는 두 함수를 따로 계산하고, 위의 예외로 한쪽만 stardust인 점도 있어서 합 `betainc + betaincc`는 1에서 최대 4.5 ULP 벗어나요(모양 $10^{-5}$–6의 34만 점).
 
 ### Boost로 바꾸지 않은 함수
 
@@ -462,7 +463,7 @@ Boost.Math에 없는 함수(복소수 전부, `erfcx`, 정규분포 함수, e-�
 4. M. J. Wichura, "Algorithm AS 241: The percentage points of the normal distribution", *Applied Statistics* 37(3), 477, 1988. doi:10.2307/2347330
 5. J.-M. Muller, N. Brunie, F. de Dinechin, C.-P. Jeannerod, M. Joldes, V. Lefèvre, G. Melquiond, N. Revol, S. Torres, *Handbook of Floating-Point Arithmetic*, 2nd ed., Birkhäuser, 2018. doi:10.1007/978-3-319-76526-6 (ULP의 정의, Sterbenz 보조정리, double-double)
 6. Boost.Math 문서와 소스(boostorg/math, Boost Software License 1.0): 함수별 "Implementation" 절(https://www.boost.org/doc/libs/release/libs/math/doc/html/), stardust가 부르는 헤더 `include/boost/math/special_functions/`의 `zeta.hpp`, `detail/bessel_i0.hpp`, `detail/bessel_k0.hpp`, `detail/bessel_ik.hpp`, `expint.hpp`, `lambert_w.hpp`, `digamma.hpp`, `gamma.hpp`, `beta.hpp`, `detail/igamma_inverse.hpp`, `detail/ibeta_inverse.hpp`, `hypergeometric_1F1.hpp`, `detail/erf_inv.hpp`(커밋 4682f44). https://github.com/boostorg/math
-7. The mpmath development team, *mpmath: a Python library for arbitrary-precision floating-point arithmetic*, version 1.4.1. https://mpmath.org/
+7. F. Johansson, "Arb: efficient arbitrary-precision midpoint-radius interval arithmetic", *IEEE Transactions on Computers* 66(8), 1281–1292, 2017. doi:10.1109/TC.2017.2690633. 파이썬 바인딩 python-flint. https://flintlib.org/
 8. NIST Digital Library of Mathematical Functions, https://dlmf.nist.gov/ (함수별 정의와 점근 형태)
 9. N. M. Temme, "On the numerical evaluation of the modified Bessel function of the third kind", *Journal of Computational Physics* 19(3), 324–337, 1975. doi:10.1016/0021-9991(75)90082-0
 10. I. J. Thompson, A. R. Barnett, "Coulomb and Bessel functions of complex arguments and order", *Journal of Computational Physics* 64(2), 490–509, 1986. doi:10.1016/0021-9991(86)90046-X

@@ -27,7 +27,7 @@ Bessel 함수는 원통이나 원형 막처럼 둥근 대칭이 있는 곳에서
 | `iv` | $\lvert\nu\rvert < 30$ | Boost의 Temme 방법 | Boost.Math | `ops/bessel.hpp` |
 | `kv` | $\lvert\nu\rvert < 400$ | Boost의 Temme 방법(정수 차수는 점화식) | Boost.Math | `ops/bessel.hpp` |
 | `iv` `kv` (나머지), `ive` `kve` | $\nu \ge 30$은 Debye, 그 밖은 우리 Temme | Debye 균등 점근, NR `bessik` 구조 | 계수는 생성 | `ops/bessel.hpp` |
-| `airy` | $-2 \le x \le 1$, $x > 1$, $-9.7 < x < -2$, $x \le -9.7$ | Maclaurin 급수, K·I 관계식, J·Y 관계식, 진동 점근전개 | DLMF 9장 | `ops/airy.hpp` |
+| `airy` | $-2 \le x \le 1$, $1 < x < 200$, $-9.7 < x < -2$, $-10^{20} \le x \le -9.7$ | Maclaurin 급수, K·I 관계식, J·Y 관계식, 진동 점근전개 (그 밖은 극한값이나 NaN) | DLMF 9장 | `ops/airy.hpp` |
 
 이 글의 핵심은 다섯 가지예요.
 
@@ -41,9 +41,10 @@ Bessel 함수는 원통이나 원형 막처럼 둥근 대칭이 있는 곳에서
   <Steps
     steps={[
       { label: '특수값', where: 'ops/bessel.hpp', note: 'NaN, 음의 x(정수 차수만), x = 0, ±inf, 차수가 x보다 터무니없이 커서 J = 0·Y = −inf가 확실한 곳(order_saturates)을 먼저 정해요.' },
+      { label: '아주 작은 x', where: 'tiny_argument', note: 'x < 2⁻²⁰⁰이면 급수의 첫 항이 곧 값이에요(다음 항은 그 x²/4배).' },
       { label: 'Hankel 점근', depth: 1, where: 'jy_hankel', note: 'x ≥ 30이고 점근급수가 2⁻⁵⁶까지 줄어들면 그 값을 써요.' },
-      { label: '위로 점화', depth: 1, where: 'jy_upward', note: 'x ≥ 30, ν < x인데 ν에서 Hankel이 수렴하지 않으면, 작은 차수 μ와 μ+1의 Hankel 값에서 ν까지 double-double로 올라가요.' },
-      { label: 'Temme 방법', depth: 1, where: 'jy_temme', note: '그 밖의 모든 곳. CF1 → 아래로 점화 → (x < 2 Temme 급수 | x ≥ 2 Steed CF2) → Wronskian → Y를 위로 점화.' },
+      { label: '위로 점화', depth: 1, where: 'jy_upward', note: 'x ≥ 30, ν < x인데 ν에서 Hankel이 수렴하지 않으면, 작은 차수 μ와 μ+1의 Hankel 값에서 ν까지 double-double로 올라가요. ν가 10⁷을 넘으면 NaN이에요.' },
+      { label: 'Temme 방법', depth: 1, where: 'jy_temme', note: '그 밖의 모든 곳. CF1 → 아래로 점화 → (x < 2 Temme 급수 | x ≥ 2 Steed CF2) → Wronskian → Y를 위로 점화. 점화가 10⁷걸음을 넘거나 연분수가 상한 안에 수렴하지 않으면 NaN이에요.' },
       { label: '거듭제곱급수', depth: 2, where: 'power_series', note: 'x² < ν + 1이면 J만 급수로 바꿔 넣어요. 아래로 ν걸음 점화하는 오차를 피해요.' },
       { label: '음의 차수 반사', where: 'jv_or_yv', note: 'J₋ₐ = cos(aπ)Jₐ − sin(aπ)Yₐ, Y₋ₐ = sin(aπ)Jₐ + cos(aπ)Yₐ. sinpi·cospi로 정수·반정수에서 정확한 0을 내요.' },
     ]}
@@ -195,7 +196,7 @@ scipy 1.18.1과 비교하면 차이가 분명해요(진폭 대비 ULP).
 -0.009393115484571949
 ```
 
-참값은 $-0.0093931154845719490\ldots$이에요(mpmath). scipy 1.18.1의 `j0`·`j1`·`y0`은 큰 $x$에서도 정확하지만(무작위 300점, $10^3 \le x \le 10^6$에서 최대 3.2), `y1`은 같은 점들에서 중앙값 $1.6 \times 10^3$, 최대 $2.2 \times 10^5$ ULP예요. stardust는 넷 모두 최대 3.9예요.
+참값은 $-0.0093931154845719490\ldots$이에요(Arb). scipy 1.18.1의 `j0`·`j1`·`y0`은 큰 $x$에서도 정확하지만(무작위 300점, $10^3 \le x \le 10^6$에서 최대 3.2), `y1`은 같은 점들에서 중앙값 $1.6 \times 10^3$, 최대 $2.2 \times 10^5$ ULP예요. stardust는 넷 모두 최대 3.9예요.
 
 ## 0·1차 I와 K
 
@@ -321,19 +322,23 @@ $$
 
 연분수 $b_0 + \frac{a_1}{b_1 + \frac{a_2}{b_2 + \cdots}}$는 뒤에서부터 계산하면 쉽지만 몇 항이 필요한지 미리 모르는 것이 문제예요. **Lentz 방법** [8]은 앞에서부터 근사 분수 $A_n/B_n$의 비 $C_n = A_n/A_{n-1}$, $D_n = B_{n-1}/B_n$만 들고 가서 $f_n = f_{n-1} C_n D_n$로 갱신하고, $C_n D_n$이 1에 충분히 가까우면 멈춰요. 분모가 0이 되는 곳은 아주 작은 수로 바꿔 계속하는 것이 수정 Lentz 방법이에요(Thompson–Barnett [6]). stardust는 Lentz로 **항 수만** 정하고, 값은 그 항 수에 4를 더해 꼬리부터 거꾸로 다시 계산해요(`cf.hpp`의 `cf_backward`). 앞으로 가는 비는 항마다 반올림을 곱해 쌓지만, 뒤에서 오는 계산은 다음 나눗셈이 앞 반올림을 줄여 주기 때문이에요. 불완전 감마의 연분수에서 Lentz 그대로는 60항에 17 ULP, 뒤로 가는 계산은 2 ULP 아래였어요([공통 수치 기법](/internals/special/techniques/)).
 
-이 연분수의 항 $2(\nu+k)/x$는 $k$가 $x$를 넘어서야 1보다 커져요. 그래서 CF1은 $x < \nu$이면 몇 항에 끝나고, $x \gg \nu$이면 약 $x$항이 필요해요. Lentz의 앞으로 가는 걸음에서 $D_n$의 부호 바뀜을 세어 $J_\nu$의 부호도 함께 얻어요.
+이 연분수의 항 $2(\nu+k)/x$는 $k$가 $x$를 넘어서야 1보다 커져요. 그래서 CF1은 $x < \nu$이면 몇 항에 끝나고, $x \gg \nu$이면 약 $x$항이 필요해요. Lentz의 앞으로 가는 걸음은 많아야 $10^7$항까지 돌고, 그 안에 수렴하지 않으면 그 원소는 NaN이에요(아래 [계산 시간의 상한](#계산-시간의-상한)).
 
-**2. 아래로 점화: $\nu$에서 $\mu$로.** $J_\nu$의 값은 몰라도 비를 알므로, $J_\nu = 1$(부호만 맞게), $J_\nu' = f_\nu$로 두고 차수를 $n$걸음 내려가요. $J$에게 안정한 방향이에요. 정규화되지 않은 $J_\mu$와 $J_\mu'$가 나오고, 그 비 $f_\mu = J_\mu'/J_\mu$는 정확해요. 걸음마다 크기가 $2^{500}$을 넘으면 $2^{-500}$을 곱하고 지수를 따로 세서 넘치지 않게 해요.
+뒤로 가는 계산의 분모에는 뜻이 있어요. $d_k = \tfrac{2(\nu+k)}{x} - \tfrac{1}{d_{k+1}}$로 두면 점화식에서 $d_k = J_{\nu+k-1}/J_{\nu+k}$예요. 차수가 충분히 크면 $J$는 양수이므로, 꼬리에서 $\nu+1$까지 내려오는 동안 음수인 $d_k$의 개수가 $J_{\nu+1}$의 부호를 정해요. 그래서 stardust는 부호를 앞으로 가는 걸음이 아니라 값을 계산하는 이 뒤로 가는 걸음에서 세요. 두 걸음은 반올림이 달라서, $x$가 $J_\nu$의 영점 바로 옆이면 앞으로 가는 걸음이 영점의 반대편에 있다고 판단할 수 있고, 그 부호를 쓰면 $J_\nu'$와 $Y_\nu$의 부호까지 뒤집혀요. $\nu + k \ge x + 2$인 동안에는 모든 $d_k$가 1보다 크므로(무한대에서 시작해 $d_k > 2 - 1/d_{k+1}$) 그 아래의 걸음만 세요.
+
+**비 대신 두 값을 들고 가요.** $f_\nu = J_\nu'/J_\nu$는 $J_\nu$의 영점에서 무한대예요. 영점에 가장 가까운 float64를 넣으면 $d_1$이 정확히 0이 되어 비가 무한대가 되고, 그 비를 곱하는 모든 계산이 NaN이 될 수 있어요. 그래서 비 대신, 공통의 양수 배율만 모르는 쌍 $(J_\nu, J_\nu')$을 만들어요. $d_1 = J_\nu/J_{\nu+1}$이 보통 크기이면 $\lvert J_{\nu+1}\rvert$를 단위로 $J_\nu = s_1 d_1$, $J_\nu' = \tfrac{\nu}{x}J_\nu - s_1$($s_1$은 $J_{\nu+1}$의 부호)이고, $d_1$이 $2^{500}$을 넘으면($J_{\nu+1}$이 0이거나 거의 0) $\lvert J_\nu\rvert$를 단위로 $J_\nu = \pm 1$, $J_\nu' = (\tfrac{\nu}{x} - 1/d_1) J_\nu$예요. 어느 쪽도 0으로 나누지 않아요.
+
+**2. 아래로 점화: $\nu$에서 $\mu$로.** $J_\nu$의 크기는 몰라도 위의 쌍을 알므로, 그 쌍에서 시작해 차수를 $n$걸음 내려가요. $J$에게 안정한 방향이에요. 정규화되지 않은 $J_\mu$와 $J_\mu'$가 나와요. 걸음마다 크기가 $2^{500}$을 넘으면 $2^{-500}$을 곱하고 지수를 따로 세서 넘치지 않게 해요. 마지막에 둘 중 큰 쪽의 크기가 1이 되게 나눈 $(j_a, j_b) = (J_\mu, J_\mu')/c$로 넘겨요($c > 0$은 아직 모르는 배율).
 
 **3. $Y_\mu$, $Y_{\mu+1}$.** $\lvert\mu\rvert \le \tfrac12$로 작은 차수에서 $Y$를 직접 계산해요. 방법은 $x$에 따라 둘이에요(아래).
 
-**4. Wronskian으로 정규화.** $J$와 $Y$는 $W = J_\mu Y_\mu' - J_\mu' Y_\mu = \tfrac{2}{\pi x}$라는 관계(**Wronskian**)를 만족해요. $J_\mu' = f_\mu J_\mu$를 넣으면
+**4. Wronskian으로 정규화.** $J$와 $Y$는 $W = J_\mu Y_\mu' - J_\mu' Y_\mu = \tfrac{2}{\pi x}$라는 관계(**Wronskian**)를 만족해요. $J_\mu = c\,j_a$, $J_\mu' = c\,j_b$를 넣으면
 
 $$
-J_\mu = \frac{W}{Y_\mu' - f_\mu Y_\mu}
+c = \frac{W}{j_a Y_\mu' - j_b Y_\mu}
 $$
 
-이고, 이것으로 2단계의 정규화되지 않은 값을 모두 맞춰 $J_\nu$를 얻어요. $Y$는 $\mu$에서 $\nu$까지 위로 점화해요. $Y$에게 안정한 방향이에요.
+이고, 이 $c$로 2단계의 정규화되지 않은 값을 모두 맞춰 $J_\nu$를 얻어요. $J_\mu$로 나누는 곳이 없어서 $J_\mu = 0$이어도 괜찮아요($\mu = -\tfrac12$이면 $x = \pi/2$가 영점이에요). $Y$는 $\mu$에서 $\nu$까지 위로 점화해요. $Y$에게 안정한 방향이에요.
 
 ### 작은 x(2 미만): Temme 급수
 
@@ -368,7 +373,7 @@ $$
 \Gamma_2(\mu) = \frac12\left[\frac{1}{\Gamma(1-\mu)} + \frac{1}{\Gamma(1+\mu)}\right]
 $$
 
-도 $\mu = 0$에서 0/0이에요. NR은 이 둘을 Chebyshev 전개로 맞춘 계수로 계산해요. stardust는 $1/\Gamma(1+z) = \sum c_n z^n$의 **Taylor 계수 자체**를 mpmath로 50자리까지 구해 반올림해 두고(`coeffs/rgamma_taylor.hpp`, `tools/gen_rgamma_taylor.py`), 홀수 차·짝수 차 계수로 나눠
+도 $\mu = 0$에서 0/0이에요. NR은 이 둘을 Chebyshev 전개로 맞춘 계수로 계산해요. stardust는 $1/\Gamma(1+z) = \sum c_n z^n$의 **Taylor 계수 자체**를 Arb로 256비트까지 구해 반올림해 두고(`coeffs/rgamma_taylor.hpp`, `tools/gen_rgamma_taylor.py`), 홀수 차·짝수 차 계수로 나눠
 
 $$
 \Gamma_1(\mu) = -\sum_{n\ \text{홀수}} c_n \mu^{n-1}, \qquad \Gamma_2(\mu) = \sum_{n\ \text{짝수}} c_n \mu^n
@@ -384,17 +389,17 @@ $$
 p + iq = \frac{J_\mu' + iY_\mu'}{J_\mu + iY_\mu} = -\frac{1}{2x} + i + \frac{i}{x}\,\cfrac{(1/2)^2 - \mu^2}{2(x + i) + \cfrac{(3/2)^2 - \mu^2}{2(x + 2i) + \cdots}}
 $$
 
-$J + iY$는 Hankel 함수 $H^{(1)}$이고 큰 $x$에서 $e^{ix}$처럼 움직여서, 이 비는 $x$가 크면 빠르게 수렴해요(대략 $x$가 클수록 항이 적어요). $f_\mu$(CF1과 아래로 점화에서 얻은 $J_\mu'/J_\mu$)와 합치면
+$J + iY$는 Hankel 함수 $H^{(1)}$이고 큰 $x$에서 $e^{ix}$처럼 움직여서, 이 비는 $x$가 크면 빠르게 수렴해요(대략 $x$가 클수록 항이 적어요. $x \ge 2$에서 많아야 수백 항이라 상한은 $10^5$항이에요). 실수부와 허수부를 나눠 쓰면 $J' = pJ - qY$, $Y' = qJ + pY$이고, 이것을 Wronskian에 넣으면 $W = q\,(J^2 + Y^2)$예요. 아래로 점화에서 얻은 쌍 $(j_a, j_b)$와 합치면
 
 $$
-\gamma = \frac{p - f_\mu}{q}, \qquad J_\mu = \pm\sqrt{\frac{W}{q + \gamma(p - f_\mu)}}, \qquad Y_\mu = \gamma J_\mu, \qquad Y_\mu' = Y_\mu\left(p + \frac{q}{\gamma}\right)
+y_r = \frac{p\,j_a - j_b}{q}, \qquad c = \sqrt{\frac{W}{q\,(j_a^2 + y_r^2)}}, \qquad J_\mu = c\,j_a, \qquad Y_\mu = c\,y_r, \qquad Y_\mu' = q\,J_\mu + p\,Y_\mu
 $$
 
-로 네 값이 모두 나와요. 부호는 아래로 점화한 $J_\mu$의 부호를 따라요.
+로 네 값이 모두 나와요. $c$는 양수이고 부호는 $j_a$, $j_b$가 들고 있어요. 여기에도 $J_\mu$로 나누는 곳이 없어요.
 
 $x \ge 2$에서는 $\mu$를 $\lvert\mu\rvert \le \tfrac12$로 두지 않아요. 내려가는 걸음 수를 $n = \max(0, \lfloor \nu - x + 1.5\rfloor)$로 정해서 $\mu$가 대략 $x$ 근처에 오게 해요(NR과 같아요). CF2는 $\mu \lesssim x$이면 빠르게 수렴하고 CF1은 $\nu$가 $x$보다 크면 빠르게 수렴하니, 두 연분수가 모두 빨리 끝나는 차수에서 만나게 하는 거예요.
 
-### 정확도를 위한 세 가지
+### 정확도를 위한 처리
 
 NR의 구조를 그대로 옮기면 float64에서 정확도가 몇 곳에서 무너져요. 그래서 이런 처리를 더했어요.
 
@@ -408,7 +413,9 @@ $$
 
 $x^2/4 < (\nu+1)/4$라 첫 항부터 항의 비가 $\lvert x^2/(4(k)(\nu+k))\rvert < \tfrac14$ 아래로 줄어서 상쇄가 거의 없어요. 앞 인자 $(x/2)^\nu/\Gamma(\nu+1)$은 지수가 수천이 될 수 있어서 `pow_scaled`와 가수·지수로 나눈 $\Gamma$로 만들고, $\Gamma(\nu+1)$은 $\nu+1$을 반올림하지 않으려고 $\nu\,\Gamma(\nu)$로 써요(감마의 인자를 반올림하면 $\psi(\nu)\nu/2$ ULP를 잃어요). 도함수는 $\nu+1$차 급수에서 $J_\nu' = \tfrac{\nu}{x}J_\nu - J_{\nu+1}$로 얻어요. $Y$는 그대로 Temme 경로의 값이에요(위로 점화는 $Y$에 안정해요).
 
-**차수가 터무니없이 크면 바로 답.** $\nu > 50$, $x < \nu/2$이고 $\log\bigl((x/2)^\nu/\Gamma(\nu+1)\bigr) + x < -760 - \log(2\nu)$이면 $J$는 0으로 언더플로하고 $J Y \approx -1/(\pi\nu)$에서 $Y$는 넘쳐요. 이때 $O(\nu)$ 루프를 돌지 않고 $J = 0$, $Y = -\infty$를 돌려줘요(`order_saturates`).
+**차수가 터무니없이 크면 바로 답.** $\nu > 50$, $x < \nu/2$이고 $\log\bigl((x/2)^\nu/\Gamma(\nu+1)\bigr) + x < -760 - \log(2\nu)$이면 $J$는 0으로 언더플로하고 $J Y \approx -1/(\pi\nu)$에서 $Y$는 넘쳐요. 이때 $O(\nu)$ 루프를 돌지 않고 $J = 0$, $Y = -\infty$를 돌려줘요(`order_saturates`). $\nu > 10^8$이면 $\log\Gamma(\nu+1)$ 대신 Stirling 꼴 $\nu\bigl(\log\tfrac{x}{2} - \log\nu + 1\bigr) - \tfrac12\log(2\pi\nu)$로 크기를 재요. 두 로그의 차를 먼저 만들고 $\nu$를 곱하므로 중간값이 넘치지 않아요.
+
+**$x < 2^{-200}$이면 첫 항.** 이렇게 작은 $x$에서는 모든 급수의 다음 항이 첫 항의 $x^2/4 < 2^{-400}$배라서 첫 항이 곧 값이에요(`tiny_argument`). $J_a = (x/2)^a/\Gamma(a+1)$이고, $Y_a$는 다른 해의 몫 $(x/2)^{2a}$가 $2^{-70}$ 아래이면 $-\Gamma(a)(2/x)^a/\pi$ 하나, 그렇지 않으면($a$가 0에 가까우면) Temme 급수의 첫 항이에요. Temme 급수의 첫 항은 $x^{\pm a}$ 두 거듭제곱을 함께 들어서 $a \to 0$에서 $Y_0 \sim \tfrac{2}{\pi}\log x$로 매끄럽게 이어져요. 이 경로가 따로 있는 이유는 둘이에요. 점화식의 $1/x$는 서브노멀 $x$에서 넘치고, Temme 급수의 $\cosh e$, $\sinh e$($e = a\log(2/x)$)는 $e$ ULP를 실어 $a = 0.49$, $x = 10^{-300}$에서 170 ULP를 잃었어요. `iv`, `kv`도 같은 경로를 써요($K_a = \Gamma(a)(2/x)^a/2$).
 
 ### x ≥ 30: Hankel 점근과 위로 점화
 
@@ -420,7 +427,25 @@ $x$가 크면 CF1에 약 $x$항이 들어서 느리고, 진동 영역의 중립�
 
 위상은 0·1차와 같은 생각으로 반올림하지 않아요. $\chi = x - \pi\nu/2 - \pi/4$에서 $\cos x$, $\sin x$는 libm으로, $\cos(\pi\nu/2)$, $\sin(\pi\nu/2)$는 `cospi`·`sinpi`(인자를 $\bmod 2$로 정확히 줄이는 함수)로 구해 덧셈정리로 묶어요. 도함수는 $\nu+1$차의 Hankel 값에서 얻어요.
 
-Hankel이 거절되는 것은 $\nu^2$이 대략 $16x$를 넘을 때예요. $\nu < x$이면(진동 영역) 작은 차수 $\mu = \nu - \lfloor\nu\rfloor$와 $\mu + 1$에서 Hankel로 $J$, $Y$를 구하고, 같은 점화식으로 $\nu$까지 **위로** 올라가요(`jy_upward`). 진동 영역에서는 점화식이 양쪽 방향으로 중립이라 $J$도 위로 올라가도 괜찮고, double-double이라 걸음당 오차가 $2^{-106}$ 수준이에요. $\nu \ge x$이면 Temme로 내려가요.
+Hankel이 거절되는 것은 $\nu^2$이 대략 $16x$를 넘을 때예요. $\nu < x$이면(진동 영역) 작은 차수 $\mu = \nu - \lfloor\nu\rfloor$와 $\mu + 1$에서 Hankel로 $J$, $Y$를 구하고, 같은 점화식으로 $\nu$까지 **위로** 올라가요(`jy_upward`). 진동 영역에서는 점화식이 양쪽 방향으로 중립이라 $J$도 위로 올라가도 괜찮고, double-double이라 걸음당 오차가 $2^{-106}$ 수준이에요. $\nu \ge x$이면 Temme로 내려가요. $\nu < x$인데 위로 점화도 할 수 없으면($\nu > 10^7$) Temme로 넘기지 않고 NaN이에요. 그곳의 CF1은 약 $x$항이 들고 진동 영역의 중립성 때문에 약 $0.3x$ ULP를 잃기 때문이에요.
+
+### 계산 시간의 상한
+
+원소 하나의 계산은 정해진 시간 안에 끝나야 해요. 그래서 반복마다 상한을 상수로 두고, 상한에 닿으면 부분합이나 마지막 반복값 대신 NaN을 내요. 보장 영역(테스트는 $\lvert\nu\rvert \le 1000$, $x \le 10^5$) 안에서는 어떤 상한에도 닿지 않아요.
+
+| 반복 | 상한 | 닿는 곳 |
+|---|---|---|
+| 차수에 대한 점화(`jy_temme`의 아래로·위로, `jy_upward`, `ik_temme`) | $10^7$걸음 (`kMaxOrderSteps`) | $J$, $Y$에서 $\nu - x > 10^7$(또는 $x < 2$이고 $\nu > 10^7$), $\nu < x$이면 $\nu > 10^7$ |
+| CF1 (Lentz) | $10^7$항 (`kMaxCfTerms`) | $\nu \ge x$이고 둘 다 아주 클 때(`jv(1e100, 1e100)`) |
+| Steed CF2 | $10^5$항 (`kMaxCf2Terms`) | 보장 영역에서는 닿지 않아요($x \ge 2$에서 보통 수백 항) |
+| Temme 급수, 거듭제곱급수 | 1000항, 500항 | 닿지 않아요(항이 $1/k!$이나 매 항 4배 이상 줄어요) |
+
+한 상한은 원소당 대략 0.1초예요. $J$, $Y$에는 차수와 상관없는 균등 전개가 없으므로, 결과적으로 $\lvert\nu\rvert \le 10^7$에서는 언제나 값을 내고, $\lvert\nu\rvert > 10^7$에서는 $x$에 따라 이렇게 갈려요.
+
+- $x$가 $\nu$보다 한참 작으면 `order_saturates`가 $J = 0$, $Y = -\infty$를 바로 내요.
+- $x \le \nu$이고 $\nu - x \le 10^7$이면 Temme 경로가 계산해요. 예를 들어 `jv(2e7, 2e7)`은 0.0016479예요. 전이 영역의 점근식 $J_\nu(\nu) \approx 0.4473\,\nu^{-1/3}$과 맞아요. 걸음 수가 많으면 시간이 들어서 `jv(2e7, 1e7)`과 `yv(2e7, 1e7)`을 함께 부르는 데 약 0.5초가 걸려요(값은 0과 −inf). $x = \nu$에서는 `jv(1e12, 1e12)`까지 값을 내고, $10^{14}$쯤부터는 연분수가 상한 안에 수렴하지 않아 NaN이에요.
+- $x > \nu$이면 Hankel이 거절되는 한 NaN이에요(`jv(2e7, 2e7 + 10)`, `jv(2e7, 3e7)`). 위로 점화는 걸음 수 상한에, Temme의 CF1은 위에서 말한 정확도 문제에 걸려요.
+- $x$가 $\nu^2$보다 훨씬 커서 Hankel 급수가 수렴하면 다시 값을 내요.
 
 ### 음의 차수와 음의 x
 
@@ -438,7 +463,7 @@ $$
 
 ### 구간과 Boost
 
-`iv`는 $\lvert\nu\rvert < 30$, `kv`는 $\lvert\nu\rvert < 400$이고 $x > 0$이 유한하면 Boost.Math를 불러요. 결과가 정상 범위가 아니면 우리 코드로 다시 계산해요. `ive`, `kve`는 같은 차수 구간과 $0 < x < 700$에서 Boost의 값에 $e^{\mp x}$를 곱해요. 경계는 측정으로 정했어요. Boost는 $\nu \ge 30$의 $I$에서 결과가 작은 곳에 30배까지 틀렸고, `kv`의 $30 \le \nu < 400$은 Boost와 우리 Debye 경로가 모두 계약 안인데 Boost가 5% 빨랐어요(1스레드, `bench/special/boost/routing.md`의 구간 표본).
+`iv`는 $\lvert\nu\rvert < 30$, `kv`는 $\lvert\nu\rvert < 400$이고 $2^{-200} \le x < 10^4$이면 Boost.Math를 불러요. $10^4$ 위에서 $I$는 어차피 넘치고, $2^{-200}$ 아래는 위의 첫 항 경로가 값을 내요. 결과가 정상 범위가 아니면 우리 코드로 다시 계산해요. `ive`, `kve`는 같은 차수 구간과 $2^{-200} \le x < 700$에서 Boost의 값에 $e^{\mp x}$를 곱해요. 경계는 측정으로 정했어요. Boost는 $\nu \ge 30$의 $I$에서 결과가 작은 곳에 30배까지 틀렸고, `kv`의 $30 \le \nu < 400$은 Boost와 우리 Debye 경로가 모두 계약 안인데 Boost가 5% 빨랐어요(1스레드, `bench/special/boost/routing.md`의 구간 표본).
 
 ### Boost의 `bessel_ik`
 
@@ -461,11 +486,12 @@ Boost 구간 밖(그리고 $\nu < 30$의 e-스케일 판에서 $x \ge 700$)은 N
 - Wronskian $I_\mu K_\mu' - I_\mu' K_\mu = -1/x$에서 $I_\mu = \dfrac{1/x}{f_\mu K_\mu - K_\mu'}$이고, 스케일된 $K$를 넣으면 $e^{-x}I_\mu$가 바로 나와요.
 - $x \ge 30$이면 큰 인자 점근전개(DLMF 10.40.1–2)를 먼저 시도해요. $e^{-x}I_\nu \sim \frac{1}{\sqrt{2\pi x}}\sum(-1)^k a_k(\nu)/x^k$, $e^{x}K_\nu \sim \sqrt{\frac{\pi}{2x}}\sum a_k(\nu)/x^k$이고, 받아들이는 조건은 Hankel과 같아요.
 - $x^2 < \nu + 1$이면 $I$를 거듭제곱급수로 바꿔 넣어요(부호만 다른 같은 급수).
-- 음의 비정수 차수의 $I$는 $I_{-a} = I_a + \tfrac{2}{\pi}\sin(a\pi)K_a$예요. 스케일된 꼴에서는 $K$ 항에 $e^{-2x}$가 붙어요. 두 항이 상쇄할 수 있어서 이 경우만 $\lvert\text{오차}\rvert \le 10^{-14}(\lvert I_a\rvert + \lvert\tfrac{2}{\pi}\sin(a\pi)K_a\rvert)$를 보장해요.
+- 음의 비정수 차수의 $I$는 $I_{-a} = I_a + \tfrac{2}{\pi}\sin(a\pi)K_a$예요. 스케일된 꼴에서는 $K$ 항에 $e^{-2x}$가 붙어요. 두 항이 상쇄할 수 있어서 이 경우만 $\lvert\text{오차}\rvert \le 10^{-14}(\lvert I_a\rvert + \lvert\tfrac{2}{\pi}\sin(a\pi)K_a\rvert)$를 보장해요(`ive`는 두 항에 $e^{-x}$를 곱한 크기).
+- 점화는 $10^7$걸음, CF1은 $10^7$항, CF2는 $10^5$항이 상한이고 넘으면 NaN이에요. 공개 함수는 $\nu < 30$에서만 이 경로를 부르므로 실제로는 닿지 않아요.
 
 ### 큰 차수: Debye의 균등 점근전개
 
-Temme 경로는 차수를 $\nu$걸음 점화하므로 시간이 $O(\nu)$예요. $\nu = 100$–$10^4$이면 원소당 14–121 µs가 들고, `iv(1e9, 1e9)` 한 원소에는 26초가 들 뿐 아니라 CF1의 항 수 상한($5 \times 10^7$)에 걸려 0을 내요(참값은 inf). 그래서 `iv`, `kv`, `ive`, `kve`는 $\nu \ge 30$에서 **Debye의 균등 점근전개**를 써요(DLMF 10.41.3–4).
+Temme 경로는 차수를 $\nu$걸음 점화하므로 시간이 $O(\nu)$예요. $\nu = 100$–$10^4$이면 원소당 14–121 µs가 들고, `iv(1e9, 1e9)`처럼 차수가 $10^7$을 넘으면 걸음 수 상한에 걸려 값을 낼 수조차 없어요. 그래서 `iv`, `kv`, `ive`, `kve`는 $\nu \ge 30$에서 **Debye의 균등 점근전개**를 써요(DLMF 10.41.3–4).
 
 $$
 I_\nu(x) \sim \frac{e^{\nu\eta}}{\sqrt{2\pi s}} \sum_{k \ge 0} \frac{U_k(p)}{\nu^k}, \qquad
@@ -482,17 +508,28 @@ $$
 
 ```cpp
 // ops/bessel.hpp, debye_value: 지수를 double-double로, exp는 한 번만
-const dd::DD s2 = dd::two_prod(nu, nu) + dd::two_prod(x, x);   // ν² + x², 정확
+const dd::DD s2 = dd::two_prod(nu, nu) + dd::two_prod(x, x);  // ν² + x², 정확
 const double sh = std::sqrt(s2.hi);
-const dd::DD s  = dd::DD{sh, 0.0} + ((s2 - dd::two_prod(sh, sh)) / (2.0 * sh)).hi;  // Newton 한 걸음
-const dd::DD lg = dd::log(s + nu) - dd::log(x);                 // log((ν + s)/x)
-const dd::DD nueta = s - lg * nu;                               // νη
-// e^(hi + lo) = e^hi (1 + lo): exp_scaled(hi)의 가수에 fma로 lo를 반영
+const dd::DD sh2 = dd::two_prod(sh, sh);
+const dd::DD s = dd::DD{sh, 0.0} + ((s2 - sh2) / (2.0 * sh)).hi;  // one Newton step
+const dd::DD lg = dd::log(s + nu) - dd::log(x);  // log((nu + s) / x)
+const dd::DD nueta = s - lg * nu;
+// ...
+auto expo = [](dd::DD e) {  // e^(hi + lo); beyond exp_scaled's range the result is 0 or inf anyway
+    Scaled r = exp_scaled(e.hi);
+    if (std::isfinite(r.m)) r.m = std::fma(r.m, e.lo, r.m);  // e^lo = 1 + lo where the result is in range
+    return r;
+};
 ```
 
 스케일된 판의 지수 $\nu\eta \mp x$도 double-double로 만든 뒤 한 번만 지수를 취해요. $e^{\mp x}$와 스케일하지 않은 값을 따로 곱하지 않는 이유는, $x \approx 10^9$이면 두 인수가 모두 지수 범위를 넘어 포화된 지수끼리 상쇄되기 때문이에요. Debye 경로는 차수와 상관없이 원소당 약 0.15 µs이고(같은 차수 범위에서 잰 값), $\nu = 10^4$–$4 \times 10^4$에서 double-double 점화식의 값과 $7 \times 10^{-16}$ 안으로 맞아요.
 
-$J$, $Y$에는 Debye 전개를 쓰지 않아요. $J$, $Y$의 균등 전개는 전이 영역에서 Airy 함수가 들어가는 다른 꼴이라 따로 구현이 필요해요. 그래서 큰 차수의 `jv`·`yv`는 맞는 값을 내지만 시간이 $\nu$에 비례해요.
+이 식이 그대로 통하지 않는 두 끝이 있어요.
+
+- **$x \gg \nu$ ($z = x/\nu > 2^{30}$).** $s - x$와 로그가 둘 다 $\nu^2/x$ 크기인데 $s \approx x$ 안에 묻혀 사라지고, $x > 10^{154}$이면 $x^2$이 넘쳐요. $q = 1/(z + \sqrt{1+z^2}) = \sqrt{1+z^2} - z$로 두면 $\tfrac{\nu+s}{x} = 1 + \tfrac{1+q}{z}$라서 스케일된 지수가 $\nu\eta - x = \nu\bigl(q - \operatorname{log1p}\tfrac{1+q}{z}\bigr) = -\tfrac{\nu^2}{2x}\bigl(1 + O(z^{-2})\bigr)$가 되고, 큰 수끼리 빼는 곳 없이 float64로 계산돼요. 이 영역에서 스케일하지 않은 $I$는 inf, $K$는 0이에요($x > 3 \times 10^{10}$).
+- **$\nu$나 $x$가 $2^{500}$을 넘을 때.** 제곱이 넘치므로 지수 $\nu\eta$, $\eta(z) = \sqrt{1+z^2} + \log\frac{z}{1+\sqrt{1+z^2}}$의 부호만 봐요. 지수가 모든 범위를 넘으므로 값은 부호에 따라 0이나 inf예요. 다만 $\eta$는 $z = 0.6627$에서 0을 지나서, 그 근처($\lvert\eta\rvert\nu \le 10^4$)는 부호를 믿을 수 없어 NaN이에요. 스케일된 판은 $\nu(\eta - z) < 0$이 늘 성립해서 $e^{-x}I$는 0, $e^{x}K$는 inf예요.
+
+$J$, $Y$에는 Debye 전개를 쓰지 않아요. $J$, $Y$의 균등 전개는 전이 영역에서 Airy 함수가 들어가는 다른 꼴이라 따로 구현이 필요해요. 그래서 큰 차수의 `jv`·`yv`는 맞는 값을 내지만 시간이 $\nu$에 비례하고, 차수가 $10^7$을 넘으면 [계산 시간의 상한](#계산-시간의-상한)에 걸려요.
 
 ## Airy 함수
 
@@ -527,9 +564,11 @@ $x > 0$에서는 $y'' = (\text{양수})\,y$라 지수처럼 커지거나 줄고,
 | 구간 | 방법 | 이유 |
 |---|---|---|
 | $-2 \le x \le 1$ | Maclaurin 급수 | 항이 $x^3/(9k^2)$ 비율로 줄어 상쇄가 없어요 |
-| $x > 1$ | $K_{1/3}$, $K_{2/3}$, $I_{1/3}$, $I_{2/3}$의 관계식 | 모든 항이 양수, $e^{\mp\zeta}$를 따로 들 수 있어요 |
+| $1 < x < 200$ | $K_{1/3}$, $K_{2/3}$, $I_{1/3}$, $I_{2/3}$의 관계식 | 모든 항이 양수, $e^{\mp\zeta}$를 따로 들 수 있어요 |
 | $-9.7 < x < -2$ | $J_{\pm1/3}$, $Y$의 관계식 | 진동이 시작되지만 점근전개는 아직 부족해요 |
-| $x \le -9.7$ | 진동 점근전개 | $\zeta \ge 20$이면 가장 작은 항이 $e^{-2\zeta}$ 수준이에요 |
+| $-10^{20} \le x \le -9.7$ | 진동 점근전개 | $\zeta \ge 20$이면 가장 작은 항이 $e^{-2\zeta}$ 수준이에요 |
+| $x \ge 200$ | (0, −0, inf, inf) | $\zeta > 1885$라 Ai, Ai′는 float64보다 한참 작고 Bi, Bi′는 한참 커요 |
+| $x < -10^{20}$ | NaN 네 개 | 위상 오차가 $10^{-3}$ 라디안을 넘어요(아래) |
 
 **Maclaurin 급수.** $\mathrm{Ai}(x) = c_1 f(x) - c_2 g(x)$, $\mathrm{Bi}(x) = \sqrt3\,(c_1 f(x) + c_2 g(x))$이고
 
@@ -584,7 +623,7 @@ inline dd::DD zeta_of(double z) {
 
 진동 점근전개에서는 $\sin$, $\cos$를 $\zeta_{\mathrm{hi}}$에 libm으로(정확한 인자 축소), 나머지 $\zeta_{\mathrm{lo}} - \pi/4$에 직접 적용한 뒤 덧셈정리로 묶어요. Bessel 관계식 구간에서는 $J$, $Y$, $I$, $K$를 $\zeta_{\mathrm{hi}}$에서 구하고 도함수로 1차 보정해요. $f(\zeta_{\mathrm{hi}} + \zeta_{\mathrm{lo}}) \approx f(\zeta_{\mathrm{hi}}) + \zeta_{\mathrm{lo}} f'(\zeta_{\mathrm{hi}})$이고, 스케일된 $e^{\zeta}K$의 도함수는 $e^{\zeta}(K' + K)$예요.
 
-scipy 1.18.1과 비교하면 $x = -10^4$의 $\mathrm{Ai}$가 진폭 대비 $2.8 \times 10^5$ ULP(scipy)와 0.40 ULP(stardust)예요. double-double의 남은 오차는 $\zeta \cdot 2^{-106}$이라, $\lvert x\rvert \approx 10^{12}$를 넘으면 그것도 위상을 흐려요. 그래서 보장 영역은 $x \ge -10^{12}$이고, 그 밖은 느슨한 영역으로 잰 오차를 적어 두었어요($-10^{14}$에서 포락선 대비 $6 \times 10^3$ 단위). 거기서는 입력의 마지막 비트 하나가 위상을 $\lvert x\rvert^{1.5} \cdot 2^{-52}$만큼 움직이는, 조건이 나쁜 영역이에요.
+scipy 1.18.1과 비교하면 $x = -10^4$의 $\mathrm{Ai}$가 진폭 대비 $2.8 \times 10^5$ ULP(scipy)와 0.40 ULP(stardust)예요. double-double의 남은 오차는 $\zeta \cdot 2^{-106}$이라, $\lvert x\rvert \approx 10^{12}$를 넘으면 그것도 위상을 흐려요. 그래서 보장 영역은 $x \ge -10^{12}$이고, 그 밖은 느슨한 영역으로 잰 오차를 적어 두었어요(포락선 대비 $2^{-52}$ 단위로 $-10^{14}$에서 $6 \times 10^3$, $-10^{20}$에서 $8 \times 10^{12}$). 거기서는 입력의 마지막 비트 하나가 위상을 $\lvert x\rvert^{1.5} \cdot 2^{-52}$만큼 움직이는, 조건이 나쁜 영역이에요. $x < -10^{20}$이면 위상 $\zeta \cdot 2^{-106}$의 오차가 $10^{-3}$ 라디안을 넘고, $x \approx -2.4 \times 10^{21}$부터는 바퀴 단위로 틀려요. 포락선 말고는 아는 것이 없으므로 네 값 모두 NaN을 내요.
 
 Boost.Math에도 Airy 함수가 있지만 쓰지 않아요. Boost는 네 값을 따로 불러야 해서 원소당 약 720 ns가 들고(함께 계산하는 우리 경로는 ⟦COST airy⟧ ns), 위상을 반올림해서 $\lvert x\rvert > 15$부터 포락선 기준을 넘었어요(참값 파일의 $x \approx -10^{11}$에서 $1.5 \times 10^{16}$ ULP).
 
@@ -624,7 +663,7 @@ Boost.Math에도 Airy 함수가 있지만 쓰지 않아요. Boost는 네 값을 
 
 ## 정확도
 
-mpmath 50자리 참값 대비, 각 함수의 보장 영역 참값 파일(`tests/special/ref/*.npz`)에서 잰 최대 오차예요(커밋 4b7b622의 빌드, `bench/special/accuracy.py`). 진동 함수와 Airy는 포락선 기준으로 나눈 ULP예요. scipy 1.18.1의 같은 입력도 함께 적었어요. inf는 scipy가 넘침·NaN 등으로 값이 아닌 곳이 있다는 뜻이에요.
+각 함수의 보장 영역 참값 파일(`tests/special/ref/*.npz`)에서 잰 최대 오차예요(`bench/special/accuracy.py`). 참값은 Arb(python-flint의 구간 산술)로 구해요. 참값을 품은 공의 반지름이 값의 $2^{-110}$ 아래가 될 때까지 정밀도를 올리므로, 저장한 $\mathrm{hi} + \mathrm{lo}$가 참값을 반올림한 값이에요. 진동 함수와 Airy는 포락선 기준으로 나눈 ULP예요. scipy 1.18.1의 같은 입력도 함께 적었어요. inf는 scipy가 넘침·NaN 등으로 값이 아닌 곳이 있다는 뜻이에요.
 
 | 함수 | stardust 최대 | scipy 최대 | 최댓값이 나온 곳 |
 |---|:---:|:---:|---|
@@ -635,7 +674,7 @@ mpmath 50자리 참값 대비, 각 함수의 보장 영역 참값 파일(`tests/
 | `j0` / `j1` | 10.9 / 9.32 | 11.9 / 11.3 | `j0`: $x = 2.35$ (첫 영점 앞) |
 | `y0` / `y1` | 21.1 / 46.4 | 17.8 / 1.6e16 | $x = 4.67$, $2.17$ (두 항의 부분 상쇄) |
 | `jv` | 23.2 | inf | $\nu = -3.7$, $x = 27.6$ (반사) |
-| `yv` | 13.8 | 2.3e5 | |
+| `yv` | 13.8 | inf | $\nu = -19.6$, $x = 29.3$ (반사) |
 | `iv` / `ive` | 38.8 / 44.6 | inf / 5.2e15 | $\nu = 15.6$, $x = 0.042$ (Boost의 거듭제곱급수) |
 | `kv` / `kve` | 22.2 / 16 | inf / inf | `kv`: $\nu = 332$, $x = 112$ (Boost 구간) |
 | `airy` Ai / Ai′ / Bi / Bi′ | 57.3 / 34.8 / 43.5 / 50.3 | inf | $x \approx -8.5 \times 10^{11}$ (보장 영역의 끝) |
@@ -647,7 +686,7 @@ scipy가 크게 틀리는 곳은 대부분 위에서 설명한 것들이에요. 
 비트 수준의 성질도 지켜요. 경로를 원소의 값으로만 고르고 병렬 분할이 결과에 닿지 않으므로, 1·3·10스레드의 결과가 비트까지 같고 `f(x)[i] == f(x[i])`예요. 테스트(`tests/special/test_bessel_airy.py`)가 세 레이아웃(연속, 스칼라 브로드캐스트, strided)을 비트로 비교해요.
 
 <Callout type="warn">
-큰 차수(대략 $\lvert\nu\rvert \gg x$이고 $\nu$가 수천 이상)의 `jv`·`yv`는 값은 맞지만 원소마다 차수에 비례하는 시간이 들어요. 같은 범위의 `iv`·`kv`는 Debye 전개로 차수와 상관없이 0.15 µs 안팎이에요.
+큰 차수(대략 $\lvert\nu\rvert \gg x$이고 $\nu$가 수천 이상)의 `jv`·`yv`는 값은 맞지만 원소마다 차수에 비례하는 시간이 들어요. 차수가 $10^7$을 넘고 $x$가 차수보다 크면 NaN이에요. 같은 범위의 `iv`·`kv`는 Debye 전개로 차수와 상관없이 0.15 µs 안팎이에요.
 </Callout>
 
 ## 참고 문헌

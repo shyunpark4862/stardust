@@ -62,7 +62,7 @@ array([0, 1, 2], dtype=int64)
 >>> sd.linalg.cholesky(a)
 Traceback (most recent call last):
     ...
-stardust.linalg._errors.LinAlgError: cholesky(): matrix is not positive definite
+stardust.linalg.LinAlgError: cholesky(): matrix is not positive definite
 ```
 
 세 인자를 곱하면 `a`가 다시 나와요.

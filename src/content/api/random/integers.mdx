@@ -317,13 +317,17 @@ Traceback (most recent call last):
 ValueError: integers(): 'low' must be less than or equal to 'high'
 ```
 
-인자를 하나만 줄 때도 같아요. `rng.integers(0)`은 범위 `[0, 0)`이 비어서 에러예요. 이때 메시지에는 `low`와 `high`가 나오는데, 인자 하나가 위 끝(`high`)이고 아래 끝(`low`)이 0이라는 뜻이에요.
+인자를 하나만 줄 때도 같아요. 그 인자는 위 끝(`high`)이고 아래 끝은 0이라서, `rng.integers(0)`은 범위 `[0, 0)`이 비어 에러예요. 이때 메시지는 하나뿐인 인자를 `high`로 불러서, 양수여야 한다고 알려 줘요. `endpoint=True`이면 0도 되니 음수만 에러예요.
 
 ```python
 >>> rng.integers(0)
 Traceback (most recent call last):
     ...
-ValueError: integers(): 'low' must be less than 'high'
+ValueError: integers(): 'high' must be positive
+>>> rng.integers(-1, endpoint=True)
+Traceback (most recent call last):
+    ...
+ValueError: integers(): 'high' must be non-negative
 ```
 
 배열 범위는 **모든 원소**에서 이 조건을 검사해요. 하나라도 어긋나면 전체가 에러예요.

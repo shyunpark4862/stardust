@@ -116,7 +116,7 @@ Series를 넣으면 위치가 아니라 **라벨로** 짝을 지어요. 표의 �
 >>> df["rank"] = sd.frame.Series([1, 2, 3], index=["a", "b", "c"])
 Traceback (most recent call last):
     ...
-TypeError: cannot use int64 labels with a string index
+TypeError: cannot align string labels with int64 labels
 ```
 
 ### `df[...] = 값`으로 할 수 없는 것
@@ -298,6 +298,15 @@ list는 먼저 [리스트의 규칙](/api/frame/series/)대로 dtype을 정한 �
 Traceback (most recent call last):
     ...
 TypeError: cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
+```
+
+행에 넣는 list에는 bool과 수(int, float)를 섞을 수 없어요. 새 Series를 만들 때는 `[True, 2]`가 int64 `[1, 2]`가 되지만, 행에 넣을 때 `True`를 슬쩍 `1`로 읽으면 실수를 숨기기 쉬워서 `TypeError`로 알려 줘요. bool만 있는 list(`[True, False]`)는 위 표대로 int 컬럼에 `1`과 `0`으로 들어가요. 컬럼을 통째로 새로 만드는 `df["c"] = [True, 2]`는 행에 넣는 것이 아니라서 int64 컬럼이 돼요.
+
+```python
+>>> qty.iloc[[0, 2]] = [True, 2]
+Traceback (most recent call last):
+    ...
+TypeError: cannot assign a list that mixes bool values with int or float values
 ```
 
 정보를 잃더라도 바꾸고 싶다면 컬럼을 먼저 [`astype`](/api/frame/astype/)으로 바꾸거나, 컬럼을 통째로 다시 넣어요.
