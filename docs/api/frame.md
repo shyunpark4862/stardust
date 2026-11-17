@@ -172,7 +172,7 @@ DataFrame(data=None, /, *, index=None, columns=None, dtype=None)
   - Series를 주면 `index`에 맞춰 다시 배열한다(reindex). 없는 라벨은 NA다.
 - `name`은 §2.6에 있다.
 - **pickle**: Series, DataFrame, Index, RangeIndex는 pickle할 수 있다. 값은 비트까지 그대로이고(NaN의 비트, `-0.0`), 슬라이스는 자기 행만 저장한다. **[배열과 다름]** `sd.ndarray`는 아직 pickle할 수 없다.
-- **`bool(x)`**: Series, DataFrame, Index 모두 TypeError다. 배열과 같다. 비었는지는 `len(x) == 0`으로 본다. **[pandas와 다름]** pandas는 ValueError이고, Index는 진릿값이 있다.
+- **`bool(x)`**: Series, DataFrame, Index 모두 TypeError다. 배열과 같다. 비었는지는 `len(x) == 0`으로 본다. **[pandas와 다름]** pandas는 셋 모두 ValueError다.
 
 ### §2.2 list에서 dtype 추론
 - `None`과 `NA`는 NA다.
@@ -215,6 +215,9 @@ DataFrame(data=None, /, *, index=None, columns=None, dtype=None)
 - `{이름: list | 1D numpy 배열 | Series}` 형태의 dict
   - 길이가 다르면 에러다.
   - Series는 라벨로 정렬(alignment)한다 (§5.6).
+  - 값은 tuple, range, 1차원 `sd.ndarray`도 받는다. list와 같은 뜻이고, `sd.ndarray`는 언제나 복사한다 (§2.8).
+  - 값이 스칼라(`None`, `NA` 포함)이면 모든 행을 그 값으로 채운다. 예: `DataFrame({"a": [1, 2], "b": 7})`
+    - 스칼라만 있으면 행 수를 알 수 없어서 ValueError다. `index=`를 주면 그 길이로 채운다.
 - 행의 list
   - dict의 list: 키가 없는 칸은 NA다. 컬럼 순서는 키가 처음 나타난 순서다.
   - list의 list: `columns=`가 꼭 필요하다.
@@ -251,7 +254,7 @@ DataFrame.to_numpy(*, dtype=None, copy=None, na_value=<없음>)
 - **`tolist()`**: 값을 Python 스칼라의 list로 돌려준다. NA 행은 `NA`다. `Index.tolist()`도 있다 (§5.1).
 - **`to_numpy`**
   - **`copy`는 배열의 `asarray(copy=)`와 같은 뜻이다** (array.md §1.8, §3.2).
-    - `None`(기본값): 필요할 때만 복사한다. NA가 없고 dtype 변환이 없으면 복사 없이 읽기 전용 뷰를 돌려준다.
+    - `None`(기본값): 필요할 때만 복사한다. NA가 없고 dtype 변환이 없으면 복사 없이 읽기 전용 뷰를 돌려준다. NA를 채우거나 dtype을 바꿔서 새로 만든 배열은 쓸 수 있다 (`to_array`와 같다, §2.8).
     - `True`: 언제나 쓰기 가능한 복사본을 돌려준다.
     - `False`: 복사하지 않는다. 복사가 필요하면 ValueError다. 복사가 필요한 경우는 NA 행을 채울 때, dtype을 바꿀 때, string 컬럼(object 배열을 새로 만든다)이다.
     - 그 밖의 값은 TypeError다.
@@ -259,6 +262,7 @@ DataFrame.to_numpy(*, dtype=None, copy=None, na_value=<없음>)
   - NA가 있으면 `na_value`가 필요하다. 없으면 에러다.
   - `na_value`가 그 dtype에 들어가지 않으면 `TypeError`다. NA가 없어도 검사한다.
     - 예: int 컬럼에 `na_value=np.nan`. 이때는 `dtype="float64"`도 함께 준다.
+    - numpy 스칼라는 같은 종류의 Python 스칼라로 읽는다. `fillna`와 같다 (§3.6). 예: int 컬럼에 `na_value=np.int64(-1)`, bool 컬럼에 `na_value=np.bool_(False)`
     - int64 배열에 int64 범위 밖의 int(`na_value=2**70`)는 `OverflowError`다. int가 int64가 되어야 하는 곳의 규칙이다 (API.md §2). `dtype="float64"`와 함께면 float로 바뀐다.
   - **`dtype=`은 명시적 변환이다** (§2.3). 컬럼을 먼저 `astype`(§3.5)으로 바꾼 뒤 위 규칙을 적용한다. 예: float 컬럼의 `to_numpy(dtype="int64")`는 0 쪽으로 자르고 포화시킨다.
   - `string`은 Python str을 담은 object 배열로 돌려준다.
@@ -495,12 +499,13 @@ DataFrame.reindex(labels, /)        # 행만
 ```
 - 주어진 라벨 순서로 행을 다시 배열한다. 없는 라벨은 NA다.
 - 원래 라벨은 고유해야 한다.
+- 빈 list나 tuple(`reindex([])`)은 행이 없는 결과다. Index의 dtype은 원래 Index의 것이다 (`.loc[[]]`와 같다).
 - `method`, `fill_value` 등은 없다.
 
 ### §5.3 `[]`
 - **DataFrame**
   - `df["a"]`: 컬럼 하나 (Series)
-  - `df[["a", "b"]]`: 컬럼 여러 개 (DataFrame)
+  - `df[["a", "b"]]`: 컬럼 여러 개 (DataFrame). 이름의 1차원 numpy 배열도 list와 같다 (§5.4의 배열 키).
   - `df[bool Series]`: 행 필터 (§5.5)
   - `df[1:3]`처럼 `[]`로 행을 자르는 것은 지원하지 않는다. `.iloc`을 쓴다. **[pandas와 다름]**
 - **Series**
@@ -559,6 +564,7 @@ DataFrame.iloc
 - 다르면 양쪽 라벨이 모두 고유해야 한다 (§1.7).
   - 합집합의 순서는 왼쪽 라벨 순서, 그 다음 오른쪽에만 있는 라벨을 오른쪽 순서대로 붙인 것이다 (§1.7).
   - 한쪽에 없는 라벨의 행은 NA다.
+  - 한쪽의 라벨 순서로 맞추기만 하는 곳은 값을 주는 쪽만 고유하면 된다: `df["c"] = Series`와 행 대입의 Series(§5.7), `reindex`(§5.2), 생성자의 `index=`(§2.1). 받는 쪽(`df`의 Index, 고른 행)의 라벨은 중복이어도 되고, 같은 라벨의 행은 같은 값을 받는다. 값을 주는 Series의 라벨이 중복이면 ValueError다.
 - **int 라벨과 string 라벨은 정렬할 수 없다(에러).** RangeIndex는 int64 라벨로 친다. **[pandas와 다름]**
 - DataFrame끼리 연산할 때 한쪽에만 있는 컬럼은, 다른 쪽을 같은 dtype의 NA 컬럼으로 보고 계산한다.
 
@@ -568,12 +574,14 @@ Copy-on-Write를 따른다.
   - 행은 선택과 같은 방법으로 고른다 (§5.4).
 - **넣을 수 있는 값**
   - 스칼라 (`NA` 포함)
-  - list: 길이가 고른 행 수와 같아야 한다.
-  - Series: 고른 행의 라벨에 맞춰 정렬한다 (§5.6).
+  - list: 길이가 고른 행 수와 같아야 한다. tuple, range, 1차원 numpy 배열, 1차원 `sd.ndarray`도 list와 같다. `sd.ndarray`는 언제나 복사한다 (§2.8). 예: `df["c"] = sd.asarray([1.5, 2.5])`
+  - Series: 고른 행의 라벨에 맞춰 정렬한다 (§5.6). Series의 라벨만 고유하면 된다. `df`에 없는 라벨의 값은 버리고, Series에 없는 라벨의 행은 NA다.
 - `df["c"] = 값`은 컬럼 전체를 새로 만든다. 새 컬럼이면 끝에 붙는다. dtype은 값에서 추론한다 (§2.2). 기존 컬럼의 dtype과 달라도 된다.
 - 행에 대입하는 값은 컬럼 dtype으로 **암묵적으로** 바뀐다. 규칙은 `fillna`와 같다 (§3.6): dtype만 보고 위로만(`bool → int64 → float64`), 배열의 인덱스 대입과 같다 (array.md §1.5).
   - 예: int 컬럼의 행에 `2.0`은 `TypeError`, float 컬럼의 행에 `1`은 `1.0`이다.
   - list는 먼저 dtype을 추론한 뒤(§2.2) 같은 규칙으로 바꾼다. 예: int 컬럼에 `[1, 2.5]`는 float64 list라서 `TypeError`, `[True, 2]`는 추론에서 `TypeError`다.
+    - 행에 대입하는 list(와 tuple)는 bool과 int, float를 섞을 수 없다. 생성(§2.2)처럼 `[1, 2]`로 승격하지 않는다. `[True, False]`처럼 bool만 있으면 위의 규칙대로 int 컬럼에 0과 1로 들어간다.
+    - `df["c"] = [True, 2]`는 행 대입이 아니라 컬럼을 새로 만드는 것이라서 §2.2대로 int64 컬럼이다.
   - Series는 라벨로 맞춘 뒤 그 dtype으로 같은 규칙을 적용한다.
 - **없는 라벨에 대입하면 KeyError다.** 행을 늘리지 않는다. **[pandas와 다름]**
 - 쓰기 전에 버퍼를 다른 객체(다른 Series, DataFrame, 슬라이스, `to_numpy` 뷰, `to_array` 뷰)와 공유하고 있으면 먼저 복사한다.
@@ -684,6 +692,7 @@ GroupBy.last(*, skipna=True)
 - `by`는 컬럼 이름 하나 또는 리스트다. Series 키와 `Series.groupby`는 없다.
 - 키가 아닌 컬럼이 모두 값 컬럼이 된다.
 - `g["c"]`, `g[["c", "d"]]`로 값 컬럼을 고른다. 키 컬럼은 값 컬럼으로 고를 수 없다.
+- `GroupBy`는 반복할 수 없다. `for x in g`, `list(g)`는 TypeError다: `'GroupBy' object is not iterable` **[pandas와 다름]**
 
 ### §7.2 결과와 그룹 순서
 - **결과는 DataFrame이다.**
@@ -721,6 +730,7 @@ GroupBy.last(*, skipna=True)
   - `g.agg({"f": "sum", "i": "max"})`: 컬럼마다 함수 하나다.
   - `g.agg(total=("f", "sum"), n=("i", "count"))`: 결과 컬럼 이름을 직접 정한다. 같은 컬럼에 함수 여러 개를 적용할 때 쓴다.
 - 함수 리스트는 에러다 (MultiIndex가 없다). **[pandas와 다름]**
+- 함수 객체(`sum`, `lambda`)도 TypeError다. 메시지가 받는 형태(이름, dict, 이름 붙인 집계)를 알려 준다. **[pandas와 다름]**
 - 결과 컬럼 이름이 키 컬럼과 겹치면 에러다.
 
 ### §7.5 계산 순서
@@ -799,6 +809,7 @@ DataFrame.merge(right, /, *, how="inner", on=None, left_on=None, right_on=None, 
     - 값은 왼쪽 행이 있으면 왼쪽 값, 없으면(오른쪽에만 있는 행) 오른쪽 값이다.
   - `left_on`/`right_on`으로 조인하면 양쪽 키 컬럼이 모두 남는다.
   - 이름이 겹치는 컬럼(합친 키는 제외)에는 `suffixes`를 붙인다. 기본값은 `_x`, `_y`다.
+    - `suffixes`는 str 둘의 tuple이다. list나 길이가 다른 tuple, str이 아닌 원소는 TypeError다: `merge(): 'suffixes' must be a tuple of two str`. 빈 문자열은 그쪽 이름을 그대로 둔다.
     - 접미사를 붙인 뒤에도 이름이 겹치면 에러다.
   - 매칭되지 않은 쪽의 값은 NA다. dtype은 그대로다.
 - **결과 행 순서** **[pandas와 다름]**
@@ -839,6 +850,7 @@ read_csv(path, /, *, sep=",", header=True, names=None, usecols=None, dtype=None,
 
 ### §10.1 인자
 - `sep`: 구분 문자 하나다. 따옴표나 줄바꿈 문자는 쓸 수 없다. str이 아니면 TypeError다 (§1.1).
+  - ASCII 문자여야 한다. 파서가 1바이트로 나누기 때문이다. 아니면 ValueError다: `read_csv(): 'sep' must be a single ASCII character, not '·'`
 - `header`
   - `True`: 첫 레코드가 컬럼 이름이다.
   - `False`: `names=`가 꼭 필요하다 (list의 list에 `columns=`를 요구하는 것과 같다, §2.5).
@@ -874,6 +886,7 @@ read_csv(path, /, *, sep=",", header=True, names=None, usecols=None, dtype=None,
 **[pandas와 다름]**
 - 따옴표 없는 빈 필드와 `na_values`에 있는 문자열만 NA다.
 - 따옴표로 감싼 빈 필드(`""`)는 빈 문자열이다. 그래서 `""`와 NA를 구분할 수 있다.
+- `na_values`는 따옴표로 감싼 필드에도 적용한다. 따옴표는 필드의 경계일 뿐이라서(§10.4) `na_values=["NA"]`이면 `NA`도 `"NA"`도 NA다. `na_values=[""]`이면 `""`도 NA다.
 - 텍스트 `NaN`, `nan`, `inf`는 float 컬럼에서 NaN 값과 inf 값이다. NA가 아니다 (§1.3).
 - pandas는 `NA`, `null`, `NaN` 같은 목록을 모두 결측으로 읽는다.
 
@@ -924,7 +937,8 @@ read_csv(path, /, *, sep=",", header=True, names=None, usecols=None, dtype=None,
 - **결과는 스레드 수와 무관하게 비트까지 같다** (API.md §3). 이 영역에서는 float 합, 행 순서, factorize 코드(처음 나타난 순서), 에러 메시지까지 같다.
 - **에러**도 스레드 수와 상관없다. 잘못된 값이 여러 개면 항상 첫 번째(행 순서, CSV는 파일 순서)를 알린다.
 - **GIL**: 작업량이 임계값(131,072 원소) 이상이면 스레드 수와 상관없이 커널을 실행하는 동안 GIL을 놓는다. 그래서 `sd.set_num_threads(1)`이어도 다른 Python 스레드가 함께 돈다.
-  - 예외: int64의 `mean`(과 `std`, `var` 안의 평균)은 배열 영역의 합을 쓰므로(§6.5) 그 부분은 배열의 규칙을 따른다. 배열은 여러 스레드로 계산할 때만 GIL을 놓는다 (API.md §3).
+  - 모든 영역이 같은 규칙을 쓰고, 기준값만 영역마다 다르다 (API.md §3).
+  - int64의 `mean`(과 `std`, `var` 안의 평균)은 배열 영역의 합을 쓰므로(§6.5) 그 부분은 배열의 기준값(32,768 원소)부터 GIL을 놓는다.
 - **동시 대입**: 연산은 호출한 시점의 값을 본다(스냅샷).
   - 대입(`s[i] = v`, `s.iloc[...] = ...`)은 GIL을 쥔 채로 실행한다. 그래서 다른 연산은 대입 전이나 후의 값만 본다.
   - 대입은 먼저 자기만의 Column 객체를 만들고 거기에 쓴다. 진행 중인 연산은 옛 Column 객체를 잡고 있어서 버퍼가 공유 상태이므로, 대입이 Copy-on-Write 규칙(§5.7)에 따라 버퍼를 복사한다.

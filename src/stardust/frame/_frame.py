@@ -4,9 +4,9 @@ from . import _column, _core, _dtypes, _format, _ops, _select, _sort, _unique
 from ._column import _NO_VALUE
 from ._errors import check_bool, check_choice, check_int, name_list, named, type_name
 from ._dtypes import resolve
-from ._reduce import Reductions
+from ._reduce import Reductions, own_reductions
 from ._na import NA
-from ._index import Index, RangeIndex, ensure_index
+from ._index import Index, RangeIndex, _IndexBase, ensure_index
 from ._series import Series, assignment_values, fill_column
 
 Column = _core.Column
@@ -23,11 +23,14 @@ def _check_columns(columns, func=None):
     for c in columns:
         if not isinstance(c, str):
             raise TypeError(named(func, f"column names must be str, not {type_name(c)}"))  # docs/api/frame.md §1.7
+    if any(type(c) is not str for c in columns):  # numpy.str_ (from an array of names): plain str
+        columns = [str(c) for c in columns]
     if len(set(columns)) != len(columns):
         raise ValueError(named(func, "column names must be unique"))
     return columns
 
 
+@own_reductions
 class DataFrame(Reductions):
     __slots__ = ("_cols", "_index")
 
@@ -134,7 +137,7 @@ class DataFrame(Reductions):
             sel = ("mask", _select.aligned_mask(key, self._index))
             return DataFrame._new({k: _select.select_column(c, sel) for k, c in self._cols.items()},
                                   _select.select_index(self._index, sel))
-        if isinstance(key, list):
+        if isinstance(key, list) or _column.is_ndarray(key):  # an array of names as a list (docs/api/frame.md §5.4)
             names = _check_columns(key)
             return DataFrame._new({k: self._column(k) for k in names}, self._index)
         return Series._new(self._column(key), self._index, key)
@@ -170,7 +173,7 @@ class DataFrame(Reductions):
 
     def reindex(self, labels, /):
         """The rows at `labels`, in that order; absent labels are NA (docs/api/frame.md §5.2)."""
-        target = ensure_index(labels, "reindex")
+        target = ensure_index(labels, "reindex", self._index)
         cols = {k: _select.reindexed(c, self._index, target, "reindex") for k, c in self._cols.items()}
         return DataFrame._new(cols, target)
 
@@ -352,7 +355,7 @@ class DataFrame(Reductions):
             valid = self._cols[k].notna()
             keep = valid if keep is None else _core.binary_op(combine, keep, valid, 0)
         if keep is None:  # no columns to look at: every row stays
-            keep = _core.Column.from_list([True] * len(self), None, None)
+            keep = _core.Column.from_list([True] * len(self), None, "bool")  # "bool": an empty list infers float64
         return self._take(keep.nonzero(), ignore_index)
 
     def to_numpy(self, *, dtype=None, copy=None, na_value=_NO_VALUE):
@@ -514,9 +517,14 @@ class _FrameIndexer:
             if isinstance(key, slice):
                 if key.step not in (None, 1):
                     raise ValueError("a column slice cannot have a step")
+                for end in (key.start, key.stop):  # a missing name is a KeyError, as for one name
+                    if end is not None:
+                        self._df._column(end)
                 start = names.index(key.start) if key.start is not None else 0
                 stop = names.index(key.stop) + 1 if key.stop is not None else len(names)  # both ends included
                 return names[start:stop]
+            if not isinstance(key, (list, tuple, dict, type({}.keys()), _IndexBase)) and not _column.is_ndarray(key):
+                raise TypeError(f"column names must be str (or a list or slice of str), not {type_name(key)}")
             names_key = _check_columns(key)
             for k in names_key:
                 self._df._column(k)

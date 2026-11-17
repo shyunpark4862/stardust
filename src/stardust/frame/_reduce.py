@@ -7,6 +7,7 @@ _reduce(op, skipna, correction); the methods here only check arguments and
 name the operation.
 """
 
+import types
 
 from ._errors import check_bool, check_real
 
@@ -50,3 +51,17 @@ class Reductions:
     def count(self):
         """How many values are not NA."""
         return self._reduce("count", True, 0)
+
+
+def own_reductions(cls):
+    """A class decorator: `cls` (a subclass of Reductions) gets its own copies
+    of the methods above. Python's messages for a wrong call then name the
+    public class, as they do for every other method (`Series.sum() got an
+    unexpected keyword argument 'axis'`), not this mixin."""
+    for name in ("sum", "mean", "min", "max", "std", "var", "count"):
+        f = getattr(Reductions, name)
+        qualname = f"{cls.__qualname__}.{name}"
+        g = types.FunctionType(f.__code__.replace(co_qualname=qualname), f.__globals__, name, f.__defaults__, f.__closure__)
+        g.__kwdefaults__, g.__doc__, g.__qualname__, g.__module__ = f.__kwdefaults__, f.__doc__, qualname, cls.__module__
+        setattr(cls, name, g)
+    return cls

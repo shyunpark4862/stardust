@@ -9,7 +9,7 @@ first appearance, with NA-key groups dropped (dropna=True) or last.
 
 from . import _core, _unique
 from ._errors import check_bool, name_list, type_name
-from ._reduce import Reductions
+from ._reduce import Reductions, own_reductions
 from ._index import RangeIndex
 
 AGG_FUNCS = ("sum", "mean", "min", "max", "count", "std", "var", "first", "last", "size")
@@ -39,6 +39,7 @@ class _Grouping:
         self.keys = {k: rep.take(order) for k, rep in zip(by, reps)}
 
 
+@own_reductions
 class GroupBy(Reductions):
     __slots__ = ("_df", "_by", "_values", "_grouping", "_sort", "_dropna")
 
@@ -87,6 +88,10 @@ class GroupBy(Reductions):
             raise ValueError("value columns must be unique")
         return GroupBy(self._df, self._by, sort=self._sort, dropna=self._dropna, values=names,
                        grouping=self._grouping)
+
+    # No iteration over groups (docs/api/frame.md §7): without this, Python
+    # would iterate through __getitem__ with 0, 1, ...
+    __iter__ = None
 
     def _result(self, columns, func):
         """The keys, then `columns` ({name: per-group Column in code order})."""
@@ -137,8 +142,12 @@ class GroupBy(Reductions):
                 if not isinstance(f, str):
                     raise TypeError(f"agg(): one function name per column; for several, use named aggregations (got {f!r})")
                 plan[col] = (col, f)
-        elif func is not None:
+        elif isinstance(func, (list, tuple)):
             raise TypeError("agg(): a list of functions is not supported (no MultiIndex); use named aggregations")
+        elif func is not None:
+            what = "a callable is not supported" if callable(func) else f"{type_name(func)} is not supported"
+            raise TypeError(f"agg(): {what}; pass a function name (a str such as 'sum'), a dict of "
+                            "{column: function name}, or named aggregations (name=(column, function name))")
         else:
             plan = {}
             for out, spec in named.items():

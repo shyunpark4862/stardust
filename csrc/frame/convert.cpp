@@ -49,7 +49,13 @@ std::int64_t int_value(PyObject* o, bool& big, double& as_double) {
     if (overflow != 0) {
         big = true;
         as_double = PyLong_AsDouble(index.ptr());  // OverflowError past the float range, as in Python
-        if (as_double == -1.0 && PyErr_Occurred()) throw nb::python_error();
+        if (as_double == -1.0 && PyErr_Occurred()) {
+            if (!PyErr_ExceptionMatches(PyExc_OverflowError)) throw nb::python_error();
+            // Python's own message, rethrown as a C++ exception so the public
+            // function's name goes in front of it (bind/errors.hpp).
+            PyErr_Clear();
+            throw std::overflow_error("Python int too large to convert to float64");
+        }
         return 0;
     }
     if (v == -1 && PyErr_Occurred()) throw nb::python_error();

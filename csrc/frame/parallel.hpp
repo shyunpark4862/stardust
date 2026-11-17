@@ -13,7 +13,6 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <optional>
 
 namespace sd::frame {
 
@@ -34,11 +33,24 @@ inline constexpr std::int64_t kChunkRows = 1 << 14;
 // Number of for_chunks chunks of n rows (for per-chunk partial results).
 inline std::int64_t num_chunks(std::int64_t n) { return (n + kChunkRows - 1) / kChunkRows; }
 
+// parallel_for for work at or above kParallelThreshold, with the GIL released
+// whatever the thread count and the task count (docs/api/frame.md §12):
+// parallel_for releases it from two tasks on, and a single task is the
+// caller's to cover (parallel/pool.hpp). Inside a task, or under an Unlocked,
+// the GIL is not held and this is parallel_for alone. Tasks must not touch
+// Python objects.
+template <class F>
+void run_unlocked(std::int64_t ntasks, F&& fn) {
+    const parallel::Unlocked unlocked(true);
+    parallel::parallel_for(ntasks, fn);
+}
+
 // f(lo, hi) for every chunk [lo, hi) of [0, n): kChunkRows rows each, the
 // last one shorter. The chunks depend on n alone, so a kernel that combines
 // per-chunk results in chunk order gets the same bits for any thread count
 // (docs/design/frame.md §11.3). Below kParallelThreshold the chunks run in order on the
-// calling thread, which keeps the GIL. `cost` scales n for kernels that do
+// calling thread, which keeps the GIL; at or above it the GIL is released,
+// with one thread too (run_unlocked). `cost` scales n for kernels that do
 // several times the work of one add per row; it moves the threshold, never
 // the chunks.
 template <class F>
@@ -50,20 +62,16 @@ void for_chunks(std::int64_t n, F&& f, std::int64_t cost = 1) {
         for (std::int64_t t = 0; t < ntasks; ++t) task(t);
         return;
     }
-    parallel::parallel_for(ntasks, task);
+    run_unlocked(ntasks, task);
 }
 
 // Releases the GIL for a serial stretch of `work` (elements, roughly) at or
 // above kParallelThreshold: other Python threads run meanwhile even with one
-// thread (docs/api/frame.md §12). Below the threshold it does nothing.
-class Unlocked {
+// thread (docs/api/frame.md §12). Below the threshold it does nothing. The
+// shared parallel::Unlocked with this area's threshold.
+class Unlocked : public parallel::Unlocked {
 public:
-    explicit Unlocked(std::int64_t work) {
-        if (work >= kParallelThreshold) release_.emplace();
-    }
-
-private:
-    std::optional<parallel::GilRelease> release_;
+    explicit Unlocked(std::int64_t work) : parallel::Unlocked(work >= kParallelThreshold) {}
 };
 
 }  // namespace sd::frame

@@ -121,10 +121,24 @@ def article(word):
     return f"an {word}" if word[:1] in "aeiou" else f"a {word}"
 
 
+def _plain(value):
+    """A numpy scalar as the Python scalar of its kind (numpy.bool_ -> bool,
+    numpy integers -> int, numpy floats -> float), as fillna reads them;
+    anything else unchanged."""
+    np = sys.modules.get("numpy")
+    if np is not None and isinstance(value, np.generic):
+        for kind, plain in ((np.bool_, bool), (np.integer, int), (np.floating, float)):
+            if isinstance(value, kind):
+                return plain(value)
+    return value
+
+
 def _check_na_value(na_value, dtype, func):
     """Raises unless `na_value` can stand in an array of `dtype` (docs/api/frame.md §2.7).
-    An int outside int64 for an int64 array is an OverflowError, as when
-    any int must become an int64 (API.md §2)."""
+    A numpy scalar counts as the Python scalar of its kind. An int outside
+    int64 for an int64 array is an OverflowError, as when any int must become
+    an int64 (API.md §2)."""
+    shown, na_value = na_value, _plain(na_value)
     if dtype == "int64" and isinstance(na_value, int) and not isinstance(na_value, bool) \
             and not -(2**63) <= na_value < 2**63:
         raise OverflowError(named(func, "'na_value' is out of range for int64"))
@@ -135,7 +149,7 @@ def _check_na_value(na_value, dtype, func):
         "string": na_value is None or isinstance(na_value, str),
     }[dtype]
     if not ok:
-        raise TypeError(named(func, f"na_value={na_value!r} does not fit an array of dtype {dtype}; pass dtype= as well"))
+        raise TypeError(named(func, f"na_value={shown!r} does not fit an array of dtype {dtype}; pass dtype= as well"))
 
 
 def common_dtype(cols, func, what):
@@ -164,10 +178,11 @@ def to_numpy(col, dtype, copy, na_value, func):
     import numpy as np
 
     check_copy(copy, func)
+    fresh = False  # whether `col` was just made here (nobody else holds its Buffer)
     if dtype is not None and dtype != col.dtype:
         if copy is False:
             raise ValueError(named(func, "copy=False, but a dtype conversion requires a copy"))
-        col = col.astype(dtype, func=func)  # dtype= is explicit (docs/api/frame.md §2.7)
+        col, fresh = col.astype(dtype, func=func), True  # dtype= is explicit (docs/api/frame.md §2.7)
     if na_value is not _NO_VALUE:
         _check_na_value(na_value, col.dtype, func)
     elif col.null_count > 0:
@@ -180,6 +195,9 @@ def to_numpy(col, dtype, copy, na_value, func):
         arr = np.empty(len(col), dtype=object)  # filled element-wise so numpy cannot reinterpret the strs
         arr[:] = col.to_list(None if na_value is _NO_VALUE else na_value)
         return arr
+    if fresh and col.null_count == 0:
+        # The converted column is the new array: writable, as to_array's (docs/api/frame.md §2.8).
+        return np.asarray(col.to_array_view(True))
     view = col.to_numpy_view()
     if col.null_count == 0:
         return view.copy() if copy else view

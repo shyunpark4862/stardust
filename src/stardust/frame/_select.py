@@ -14,7 +14,7 @@ import sys
 
 from . import _core
 from ._errors import named
-from ._index import Index, _IndexBase
+from ._index import Index, _IndexBase, mixed_labels
 
 Column = _core.Column
 
@@ -175,7 +175,7 @@ def align(a, b, func=None):
     if same_index(a, b):
         return a._with_name(name), None, None
     if a._dtype != b._dtype:
-        raise TypeError(named(func, f"cannot align {a._dtype} labels with {b._dtype} labels"))
+        raise TypeError(named(func, mixed_labels(a._dtype, b._dtype)))
     if not a.is_unique or not b.is_unique:
         raise ValueError(named(func, "cannot align indexes with duplicate labels"))
     a_labels, b_labels = a._column(), b._column()

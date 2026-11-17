@@ -260,3 +260,39 @@ def test_numbers_match_pandas(tmp_path):
     with open(path, "w") as f:
         f.write("i\n" + "\n".join(map(str, ints.tolist())) + "\n")
     assert sd.frame.read_csv(path)["i"].tolist() == pd.read_csv(path)["i"].tolist()
+
+
+def test_sep_must_be_ascii(tmp_path):  # docs/api/frame.md §10.1: the parser splits on one byte
+    p = tmp_path / "t.csv"
+    p.write_text("a·b\n1·2\n", encoding="utf-8")
+    for sep in ("·", "é", "→", "\x80"):
+        with pytest.raises(ValueError, match=r"^read_csv\(\): 'sep' must be a single ASCII character, not "):
+            sd.frame.read_csv(p, sep=sep)
+    with pytest.raises(ValueError, match=r"^read_csv\(\): 'sep' must be one character other than"):
+        sd.frame.read_csv(p, sep="··")
+    q = tmp_path / "u.csv"
+    q.write_bytes(b"a\x7fb\n1\x7f2\n")
+    assert sd.frame.read_csv(q, sep="\x7f")["b"].tolist() == [2]
+
+
+@pytest.mark.parametrize("tail", [b"", b"\n", b"\r\n"])
+@pytest.mark.parametrize("nrows", [1, 2, 9, 31, 32, 33, 200])
+def test_nul_separator_does_not_split_the_padding_of_the_last_block(tmp_path, tail, nrows):
+    # The tokenizer reads 64-byte blocks and pads the last one with zero
+    # bytes; with sep="\0" the padding must not count as separators.
+    p = tmp_path / "t.csv"
+    p.write_bytes(b"a\0b\n" + b"\n".join(b"%d\0%d" % (i, i * 2) for i in range(nrows)) + tail)
+    df = sd.frame.read_csv(p, sep="\0")
+    assert df["a"].tolist() == list(range(nrows)) and df["b"].tolist() == [i * 2 for i in range(nrows)]
+    one = tmp_path / "one.csv"
+    one.write_bytes(b"a\n" + b"\n".join(b"%d" % i for i in range(nrows)) + tail)
+    assert sd.frame.read_csv(one, sep="\0")["a"].tolist() == list(range(nrows))
+
+
+def test_na_values_apply_to_quoted_fields(tmp_path):  # docs/api/frame.md §10.3
+    p = tmp_path / "t.csv"
+    p.write_text('a,b,c\n"NA",x,"1"\nNA,"NA",2\n"",y,"-"\n')
+    df = sd.frame.read_csv(p, na_values=["NA", "-"])
+    assert df["a"].tolist() == [NA, NA, ""] and df["b"].tolist() == ["x", NA, "y"] and df["c"].tolist() == [1, 2, NA]
+    df = sd.frame.read_csv(p, na_values=[""])
+    assert df["a"].tolist() == ["NA", "NA", NA]  # the quoted empty field too

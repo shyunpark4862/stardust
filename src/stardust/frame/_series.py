@@ -1,7 +1,7 @@
 """Series: one Column plus its row labels (docs/design/frame.md §3.1)."""
 
 from . import _column, _core, _dtypes, _format, _ops, _select, _sort, _unique
-from ._reduce import Reductions
+from ._reduce import Reductions, own_reductions
 from ._column import _NO_VALUE
 from ._dtypes import resolve
 from ._errors import check_bool, check_int
@@ -11,6 +11,7 @@ from ._index import RangeIndex, check_name, ensure_index
 Column = _core.Column
 
 
+@own_reductions
 class Series(Reductions):
     __slots__ = ("_col", "_index", "_name")
 
@@ -302,7 +303,7 @@ class Series(Reductions):
 
     def reindex(self, labels, /):
         """The values at `labels`, in that order; absent labels are NA (docs/api/frame.md §5.2)."""
-        target = ensure_index(labels, "reindex")
+        target = ensure_index(labels, "reindex", self._index)
         return Series._new(_select.reindexed(self._col, self._index, target, "reindex"), target, self._name)
 
 
@@ -337,10 +338,26 @@ def assignment_values(value, dtype, labels):
         return _column.implicit_scalar(value, dtype)
     if labels is None:
         raise TypeError("assign a scalar to a single row")
+    if isinstance(value, (list, tuple)):
+        _check_no_bool_mix(value)
     col = _column.implicit(_column.column_from(value), dtype)
     if len(col) != len(labels):
         raise ValueError(f"{len(col)} values for {len(labels)} rows")
     return col
+
+
+def _check_no_bool_mix(values):
+    """A list assigned to rows holds bools or numbers, not both (docs/api/frame.md §5.7):
+    [True, 2] does not quietly become the ints [1, 2] in an int column."""
+    import sys
+
+    np = sys.modules.get("numpy")
+    bools, numbers = (bool,), (int, float)
+    if np is not None:
+        bools, numbers = (bool, np.bool_), (int, float, np.integer, np.floating)
+    kinds = set(map(type, values))  # the types, not the values: one pass in C
+    if any(issubclass(k, bools) for k in kinds) and any(issubclass(k, numbers) and not issubclass(k, bools) for k in kinds):
+        raise TypeError("cannot assign a list that mixes bool values with int or float values")
 
 
 def fill_column(col, value, func):

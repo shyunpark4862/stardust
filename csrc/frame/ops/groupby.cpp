@@ -40,8 +40,8 @@ void Groups::for_groups(F f) const {
         if (g > cuts.back()) cuts.push_back(g);
     }
     if (ngroups_ > cuts.back()) cuts.push_back(ngroups_);
-    parallel::parallel_for(static_cast<std::int64_t>(cuts.size()) - 1,
-                           [&](std::int64_t t) { f(cuts[static_cast<std::size_t>(t)], cuts[static_cast<std::size_t>(t) + 1]); });
+    run_unlocked(static_cast<std::int64_t>(cuts.size()) - 1,
+                 [&](std::int64_t t) { f(cuts[static_cast<std::size_t>(t)], cuts[static_cast<std::size_t>(t) + 1]); });
 }
 
 Column Groups::sizes() const {

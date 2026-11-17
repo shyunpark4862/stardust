@@ -142,6 +142,6 @@ def concat(objs, /, *, join="outer", ignore_index=False):
 def _concat_labels(indexes):
     dtypes = {i._dtype for i in indexes}
     if len(dtypes) != 1:
-        raise TypeError("concat(): cannot join int labels with string labels")
+        raise TypeError("concat(): cannot join int64 labels with string labels")
     names = {i.name for i in indexes}
     return Index._new(_core.concat([i._column() for i in indexes]), names.pop() if len(names) == 1 else None)

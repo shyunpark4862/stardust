@@ -181,3 +181,20 @@ def test_frame_reductions_are_one_row():
     with pytest.raises(TypeError):
         mixed.sum()
     assert repr(df[["a", "b"]].sum()) == "     a    b\nsum  3  4.5"
+
+
+@pytest.mark.parametrize("op", ["sum", "mean", "min", "max", "std", "var", "count"])
+def test_unexpected_arguments_name_the_public_class(op):
+    # Python's own message, as for every other method: the class is the
+    # public one, not the mixin the reductions are written in.
+    s = sd.frame.Series([1.0, 2.0])
+    df = sd.frame.DataFrame({"k": [1, 1], "v": [1.0, 2.0]})
+    for obj, cls in ((s, "Series"), (df, "DataFrame"), (df.groupby("k"), "GroupBy")):
+        for bad in ("axis", "ddof", "numeric_only"):
+            with pytest.raises(TypeError, match=rf"^{cls}\.{op}\(\) got an unexpected keyword argument '{bad}'$"):
+                getattr(obj, op)(**{bad: 1})
+        with pytest.raises(TypeError, match=rf"^{cls}\.{op}\(\) takes 1 positional argument but 2 were given$"):
+            getattr(obj, op)(True)
+        method = getattr(type(obj), op)
+        assert method.__qualname__ == f"{cls}.{op}" and method.__name__ == op
+    assert sd.frame.Series.sum is not sd.frame.DataFrame.sum

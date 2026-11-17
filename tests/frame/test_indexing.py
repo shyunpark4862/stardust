@@ -427,3 +427,159 @@ def test_label_type_messages_use_not():
         s.loc[1.5]
     with pytest.raises(TypeError, match=r"^a label of a string index must be a str, not int$"):
         sd.frame.Series([1], index=["a"]).loc[0]
+
+
+# --- backward slices, column keys, empty label lists ---------------------------
+
+
+@pytest.mark.parametrize("key", [slice(None, None, -1), slice(4, None, -1), slice(None, None, -2), slice(3, 0, -1),
+                                 slice(1, None, -1), slice(None, None, 2), slice(0, None, -1), slice(2, 2, -1)])
+@pytest.mark.parametrize("index", [None, sd.frame.RangeIndex(10, 0, -2), sd.frame.RangeIndex(3, 18, 3)])
+def test_range_index_slices_backwards_down_to_position_zero(key, index):
+    values = [10, 20, 30, 40, 50]
+    s = sd.frame.Series(values, index=index)
+    labels = list(range(5)) if index is None else index.tolist()
+    got = s.iloc[key]
+    assert got.tolist() == values[key] and got.index.tolist() == labels[key]
+    assert isinstance(got.index, sd.frame.RangeIndex)  # a slice of a RangeIndex stays one (docs/api/frame.md §5.4)
+    repr(got)
+    df = sd.frame.DataFrame({"a": values}, index=index)
+    assert df.iloc[key]["a"].tolist() == values[key] and df.iloc[key].index.tolist() == labels[key]
+
+
+def test_label_slices_backwards():
+    s = sd.frame.Series([1, 2, 3, 4, 5])
+    assert s.loc[::-1].tolist() == [5, 4, 3, 2, 1] and s.loc[::-1].index.tolist() == [4, 3, 2, 1, 0]
+    assert repr(s.loc[::-1].index) == "RangeIndex(start=4, stop=-1, step=-1)"
+    assert s.loc[3:1:-1].tolist() == [4, 3, 2]
+    assert s.loc[2::-1].index.tolist() == [2, 1, 0]
+
+
+def test_column_slice_with_a_missing_name_is_a_key_error():
+    df = sd.frame.DataFrame({"a": [1], "price": [1.0], "q": ["x"]})
+    for key in (slice("price", "zz"), slice("zz", "q"), slice("zz", None)):
+        with pytest.raises(KeyError, match="^'zz'$"):  # as df.loc[:, "zz"]
+            df.loc[:, key]
+    assert list(df.loc[:, "price":"q"].columns) == ["price", "q"]
+
+
+def test_column_key_of_the_wrong_type_says_what_a_column_key_is():
+    df = sd.frame.DataFrame({"a": [1], "b": [2]})
+    for bad, name in ((0, "int"), (1.5, "float"), (None, "NoneType")):
+        with pytest.raises(TypeError, match=rf"^column names must be str \(or a list or slice of str\), not {name}$"):
+            df.loc[:, bad]
+    with pytest.raises(TypeError, match="^column names must be str, not int$"):
+        df.loc[:, [0]]
+
+
+def test_frame_getitem_takes_an_array_of_names():  # as df.loc[:, array] (docs/api/frame.md §5.3, §5.4)
+    df = sd.frame.DataFrame({"a": [1, 2], "b": [3, 4], "q": ["x", "y"]})
+    for key in (np.array(["q", "a"]), np.array(["q", "a"], dtype=object)):
+        got = df[key]
+        assert list(got.columns) == ["q", "a"] and got["a"].tolist() == [1, 2]
+        assert list(df.loc[:, key].columns) == ["q", "a"]
+    assert df[np.array([], dtype=str)].shape == (2, 0)
+    with pytest.raises(KeyError, match="^'zz'$"):
+        df[np.array(["a", "zz"])]
+    with pytest.raises(TypeError, match="^column names must be str, not int64$"):
+        df[np.array([0])]
+    with pytest.raises(ValueError, match="^column names must be unique$"):
+        df[np.array(["a", "a"])]
+
+
+def test_reindex_with_no_labels():
+    s = sd.frame.Series([1, 2], index=["a", "b"], name="n")
+    for empty in ([], ()):
+        got = s.reindex(empty)
+        assert got.tolist() == [] and str(got.dtype) == "int64" and got.name == "n"
+        assert str(got.index.dtype) == "string"  # as s.loc[[]]
+        assert str(s.loc[[]].index.dtype) == "string"
+    df = sd.frame.DataFrame({"a": [1.5]}, index=["x"])
+    got = df.reindex([])
+    assert got.shape == (0, 1) and str(got.index.dtype) == "string" and str(got["a"].dtype) == "float64"
+    assert str(sd.frame.Series([1, 2]).reindex([]).index.dtype) == "int64"
+    assert sd.frame.Series(s, index=[]).tolist() == []
+
+
+LABEL_MIX = r"cannot align (int64 labels with string|string labels with int64) labels$"
+
+
+def test_int_and_string_labels_say_the_same_thing_everywhere():  # docs/api/frame.md §5.6
+    i, t = sd.frame.Series([1, 2]), sd.frame.Series([1, 2], index=["a", "b"])
+    df = sd.frame.DataFrame({"a": [1, 2]})
+    cases = {
+        "": [lambda: i + t, lambda: t + i, lambda: df + sd.frame.DataFrame({"a": [1, 2]}, index=["a", "b"]),
+             lambda: i[sd.frame.Series([True, False], index=["a", "b"])], lambda: df.__setitem__("c", t),
+             lambda: i.__setitem__(slice(None), t)],
+        r"reindex\(\): ": [lambda: i.reindex(t.index), lambda: t.reindex([0, 1]), lambda: df.reindex(["a"])],
+        r"Series\(\): ": [lambda: sd.frame.Series(i, index=["a", "b"])],
+        r"DataFrame\(\): ": [lambda: sd.frame.DataFrame({"a": i, "b": t}), lambda: sd.frame.DataFrame(df, index=["a", "b"])],
+    }
+    for prefix, calls in cases.items():
+        for call in calls:
+            with pytest.raises(TypeError, match="^" + prefix + LABEL_MIX):
+                call()
+    with pytest.raises(TypeError, match=r"^concat\(\): cannot join int64 labels with string labels$"):
+        sd.frame.concat([i, t])
+
+
+def test_row_assignment_of_a_list_mixing_bool_and_numbers():  # docs/api/frame.md §5.7
+    mixed = "^cannot assign a list that mixes bool values with int or float values$"
+    for values in ([True, 2], (True, 2), [2, False], [True, 2.5], [None, True, 2], [np.bool_(True), np.int64(2)]):
+        s = sd.frame.Series([1, 2, 3])
+        with pytest.raises(TypeError, match=mixed):
+            s.iloc[: len(values)] = values
+        with pytest.raises(TypeError, match=mixed):
+            s.loc[list(range(len(values)))] = values
+        assert s.tolist() == [1, 2, 3]
+        df = sd.frame.DataFrame({"a": [1, 2, 3], "f": [1.0, 2.0, 3.0]})
+        for col in ("a", "f"):
+            with pytest.raises(TypeError, match=mixed):
+                df.loc[list(range(len(values))), col] = values
+            with pytest.raises(TypeError, match=mixed):
+                df.iloc[: len(values), 0] = values
+    # bools alone, and a bool scalar, go up into an int or float column (as fillna, §3.6)
+    s = sd.frame.Series([1, 2, 3])
+    s.iloc[:2] = [True, False]
+    s.iloc[2] = True
+    assert s.tolist() == [1, 0, 1] and str(s.dtype) == "int64"
+    f = sd.frame.Series([1.0, 2.0])
+    f.iloc[:] = [None, 2]
+    assert f.tolist() == [NA, 2.0]
+    # a whole column is made anew from the list, as in construction (§2.2, §5.7)
+    df = sd.frame.DataFrame({"a": [1, 2]})
+    df["a"] = [True, 2]
+    assert df["a"].tolist() == [1, 2] and str(df["a"].dtype) == "int64"
+    assert sd.frame.Series([True, 2]).tolist() == [1, 2]
+
+
+def test_assignment_takes_tuples_ranges_and_arrays():  # docs/api/frame.md §5.7
+    df = sd.frame.DataFrame({"a": [1, 2]})
+    df["t"], df["r"], df["n"], df["s"] = (1, 2), range(2), np.array([1.5, 2.5]), sd.asarray([1.5, 2.5])
+    assert [df[k].tolist() for k in "trns"] == [[1, 2], [0, 1], [1.5, 2.5], [1.5, 2.5]]
+    arr = sd.asarray([7.0, 8.0])
+    df["c"] = arr
+    arr[0] = 0.0  # always a copy (docs/api/frame.md §2.8)
+    assert df["c"].tolist() == [7.0, 8.0]
+    with pytest.raises(ValueError, match="^3 values for 2 rows$"):
+        df["c"] = sd.asarray([1.0, 2.0, 3.0])
+    s = sd.frame.Series([1.0, 2.0, 3.0])
+    for values in ((5, 6), range(5, 7), np.array([5, 6]), sd.asarray([5, 6])):
+        s.iloc[:2] = values
+        assert s.tolist() == [5.0, 6.0, 3.0]
+        s.iloc[:2] = [1.0, 2.0]
+
+
+def test_column_from_a_series_needs_unique_labels_in_the_series_only():  # docs/api/frame.md §5.6, §5.7
+    df = sd.frame.DataFrame({"a": [1, 2, 3]}, index=[5, 5, 6])
+    df["c"] = sd.frame.Series([10, 20, 99], index=[5, 6, 7])  # 7 is not a row: dropped
+    assert df["c"].tolist() == [10, 10, 20]
+    df["d"] = sd.frame.Series([10], index=[6])
+    assert df["d"].tolist() == [NA, NA, 10]
+    with pytest.raises(ValueError, match="^cannot reindex or align from an index with duplicate labels$"):
+        df["e"] = sd.frame.Series([1, 2, 3], index=[5, 5, 7])
+    df["e"] = sd.frame.Series([1, 2, 3], index=[5, 5, 6])  # the same labels: by position
+    assert df["e"].tolist() == [1, 2, 3]
+    s = sd.frame.Series([0, 0, 0], index=[5, 5, 6])
+    s.loc[[5]] = sd.frame.Series([7, 8], index=[5, 6])
+    assert s.tolist() == [7, 7, 0]

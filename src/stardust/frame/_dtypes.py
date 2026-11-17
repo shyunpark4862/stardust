@@ -24,9 +24,14 @@ def resolve(dtype, func):
     if type(dtype) is type(OBJECTS["bool"]):
         what = f"sd.{dtype}"  # a dtype the frame does not have: sd.complex128
     else:
-        # a string as itself, a type by its short name (<class 'int64'>, not numpy.int64), else its type
-        what = repr(dtype) if isinstance(dtype, str) else (
-            f"<class {dtype.__name__!r}>" if isinstance(dtype, type) else type(dtype).__name__)
+        # a string as itself, a type by its full name (numpy.int64: not to be read as sd.int64;
+        # builtins bare), else the value's type: the array area's wording (bind/pyutil.cpp)
+        if isinstance(dtype, str):
+            what = repr(dtype)
+        elif isinstance(dtype, type):
+            what = dtype.__qualname__ if dtype.__module__ == "builtins" else f"{dtype.__module__}.{dtype.__qualname__}"
+        else:
+            what = type(dtype).__name__
     raise TypeError(named(func, f"'dtype' must be sd.bool, sd.int64, sd.float64 or sd.string (or their names), not {what}"))
 
 

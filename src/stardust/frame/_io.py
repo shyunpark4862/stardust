@@ -34,6 +34,8 @@ def read_csv(path, /, *, sep=",", header=True, names=None, usecols=None, dtype=N
         raise TypeError(f"read_csv(): 'sep' must be a str, not {type_name(sep)}")
     if len(sep) != 1 or sep in '"\r\n':
         raise ValueError(f"read_csv(): 'sep' must be one character other than a quote or a line break, not {sep!r}")
+    if not sep.isascii():  # the parser splits on one byte
+        raise ValueError(f"read_csv(): 'sep' must be a single ASCII character, not {sep!r}")
     check_bool(header, "header", "read_csv")
     if index_col is not None and not isinstance(index_col, str):
         raise TypeError(f"read_csv(): 'index_col' must be a column name (str) or None, not {type_name(index_col)}")

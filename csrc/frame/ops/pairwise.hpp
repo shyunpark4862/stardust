@@ -38,7 +38,7 @@ double pairwise_sum_parallel(std::int64_t n, const Get& get, std::int64_t cost =
     if (n <= kPairwiseLeaf || n * cost < kParallelThreshold) return pairwise_sum(0, n, get);
     const pairwise::Leaves leaves = pairwise::plan(n, kPairwiseLeaf, /*complex=*/false);
     std::vector<double> part(leaves.size());
-    parallel::parallel_for(static_cast<std::int64_t>(part.size()), [&](std::int64_t t) {
+    run_unlocked(static_cast<std::int64_t>(part.size()), [&](std::int64_t t) {
         const auto k = static_cast<std::size_t>(t);
         part[k] = pairwise_sum(leaves[k].first, leaves[k].second, get);
     });

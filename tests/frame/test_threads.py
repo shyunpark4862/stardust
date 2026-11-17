@@ -337,3 +337,39 @@ def test_gil_is_released_even_with_one_thread():
         t.join()
         sd.set_num_threads(DEFAULT)
     assert during > 1000
+
+
+def test_gil_is_released_by_chunked_kernels_with_one_thread():
+    # At or above the threshold the kernels that run in chunks -- element-wise
+    # operations, reductions, filters, grouped reductions -- release the GIL
+    # with set_num_threads(1) too (docs/api/frame.md §12): a counting thread
+    # makes progress during each call.
+    n = 16_000_000
+    s = sd.frame.Series(np.random.default_rng(4).standard_normal(n))
+    mask = s > 0
+    k = sd.frame.Series(np.random.default_rng(5).integers(0, 1000, n))
+    g = sd.frame.DataFrame({"k": k, "v": s}).groupby("k")
+    g.size()  # the grouping, computed before the timed calls
+    calls = {"s + s": lambda: s + s, "sum": lambda: s.sum(), "min": lambda: s.min(), "var": lambda: s.var(),
+             "filter": lambda: s[mask], "groupby sum": lambda: g.sum()}
+    count, stop, during = [0], threading.Event(), {}
+
+    def counter():
+        while not stop.is_set():
+            count[0] += 1
+
+    t = threading.Thread(target=counter)
+    try:
+        sd.set_num_threads(1)
+        t.start()
+        while count[0] == 0:
+            pass
+        for name, call in calls.items():
+            before = count[0]
+            call()  # several ms in C++
+            during[name] = count[0] - before
+    finally:
+        stop.set()
+        t.join()
+        sd.set_num_threads(DEFAULT)
+    assert all(v > 1000 for v in during.values()), during

@@ -157,3 +157,12 @@ def test_concat_series():
         assert [0 if v is NA else v for v in got.tolist()] == want.tolist()
     with pytest.raises(TypeError):
         sd.frame.concat([s, sd.frame.Series(["a"])])
+
+
+def test_suffixes_is_a_tuple_of_two_str():  # docs/api/frame.md §9.1
+    a = sd.frame.DataFrame({"k": [1, 2], "v": [1, 2]})
+    b = sd.frame.DataFrame({"k": [1, 2], "v": [3, 4]})
+    for bad in (["_a", "_b"], ("_a",), ("_a", "_b", "_c"), ("_a", None), "ab", None):
+        with pytest.raises(TypeError, match=r"^merge\(\): 'suffixes' must be a tuple of two str$"):
+            sd.frame.merge(a, b, on="k", suffixes=bad)
+    assert list(sd.frame.merge(a, b, on="k", suffixes=("", "_b")).columns) == ["k", "v", "v_b"]

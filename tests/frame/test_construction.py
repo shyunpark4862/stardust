@@ -689,3 +689,77 @@ def test_complex_values_are_values_the_frame_cannot_store():
             call()
     with pytest.raises(TypeError, match=r"^fillna\(\): 'value' must be None, a bool, int, float or str, not complex$"):
         sd.frame.Series([1.0, None]).fillna(1j)
+
+
+def test_dropna_of_a_frame_without_columns():
+    assert sd.frame.DataFrame().dropna().shape == (0, 0)
+    df = sd.frame.DataFrame(index=[3, 4, 5])
+    for kwargs in ({}, {"how": "all"}, {"subset": []}):
+        got = df.dropna(**kwargs)  # no columns to look at: every row stays
+        assert got.shape == (3, 0) and got.index.tolist() == [3, 4, 5]
+    assert df.dropna(ignore_index=True).index.tolist() == [0, 1, 2]
+
+
+def test_int_beyond_float_names_the_function():
+    # the same message as the array area gives, with the public function in front (API.md §2.1).
+    big = 10**400
+    for call, name in ((lambda: sd.frame.Series([big, 0.5]), "Series"), (lambda: sd.frame.Series([big], dtype="float64"), "Series"),
+                       (lambda: sd.frame.DataFrame({"a": [big, 0.5]}), "DataFrame"), (lambda: sd.frame.Index([big, 0.5]), "Index"),
+                       (lambda: sd.frame.Series([1.0, None]).fillna(big), "fillna")):
+        with pytest.raises(OverflowError, match=rf"^{name}\(\): Python int too large to convert to float64$"):
+            call()
+    with pytest.raises(OverflowError, match="^Python int too large to convert to float64$"):  # an operator: no name
+        sd.frame.Series([1.0]) + big
+
+
+def test_to_numpy_of_a_converted_column_is_writable():
+    # A dtype conversion makes a new array: writable, as to_array's (docs/api/frame.md §2.7, §2.8).
+    s = sd.frame.Series([1, 2, 3])
+    for dtype, expect in (("float64", [1.0, 2.0, 3.0]), ("bool", [True, True, True])):
+        for copy in (None, True):
+            arr = s.to_numpy(dtype=dtype, copy=copy)
+            assert arr.flags.writeable and arr.dtype == np.dtype(dtype) and arr.tolist() == expect
+            arr[0] = 0
+            assert s.tolist() == [1, 2, 3] and s.to_numpy(dtype=dtype).tolist() == expect
+    assert not s.to_numpy().flags.writeable and not s.to_numpy(dtype="int64").flags.writeable  # no conversion: the view
+    assert sd.frame.Series([1, None]).to_numpy(dtype="float64", na_value=0.5).flags.writeable
+    arr = sd.frame.Series(["1", "2"]).to_numpy(dtype="int64")
+    arr += 1
+    assert arr.tolist() == [2, 3]
+
+
+@pytest.mark.parametrize("values,na_value,expected", [
+    ([1, None], np.int64(-1), [1, -1]), ([1, None], np.int8(-1), [1, -1]), ([1, None], np.uint16(7), [1, 7]),
+    ([1.5, None], np.float64(0.5), [1.5, 0.5]), ([1.5, None], np.float32(0.5), [1.5, 0.5]), ([1.5, None], np.int64(2), [1.5, 2.0]),
+    ([True, None], np.bool_(False), [True, False]), ([True, None], np.True_, [True, True]),
+])
+def test_na_value_takes_numpy_scalars(values, na_value, expected):  # as fillna reads them
+    s = sd.frame.Series(values)
+    assert s.to_numpy(na_value=na_value).tolist() == expected
+    assert s.to_array(na_value=na_value).tolist() == expected
+    assert s.fillna(na_value).tolist() == expected
+    assert sd.frame.DataFrame({"a": values}).to_numpy(na_value=na_value).tolist() == [[v] for v in expected]
+
+
+def test_na_value_numpy_scalars_follow_their_python_kind():
+    i, b = sd.frame.Series([1, None]), sd.frame.Series([True, None])
+    for s, bad in ((i, np.float64(1.5)), (i, np.bool_(True)), (b, np.int64(1)), (b, np.float64(0.0))):
+        with pytest.raises(TypeError, match=r"^to_numpy\(\): na_value=np\.\S+ does not fit an array of dtype"):
+            s.to_numpy(na_value=bad)
+        with pytest.raises(TypeError, match=r"^to_array\(\): na_value="):
+            s.to_array(na_value=bad)
+
+
+def test_frame_dict_values():  # docs/api/frame.md §2.5
+    df = sd.frame.DataFrame({"t": (1, 2), "r": range(2), "a": sd.asarray([1.5, 2.5]), "s": 7, "n": None, "w": "x"})
+    assert [df[k].tolist() for k in df] == [[1, 2], [0, 1], [1.5, 2.5], [7, 7], [NA, NA], ["x", "x"]]
+    assert [str(d) for d in df.dtypes.values()] == ["int64", "int64", "float64", "int64", "float64", "string"]
+    arr = sd.asarray([1.5, 2.5])
+    df = sd.frame.DataFrame({"a": arr})
+    arr[0] = 9.0  # always a copy (docs/api/frame.md §2.8)
+    assert df["a"].tolist() == [1.5, 2.5]
+    assert sd.frame.DataFrame({"a": 1}, index=[3, 4])["a"].tolist() == [1, 1]
+    with pytest.raises(ValueError, match=r"^DataFrame\(\): cannot make a DataFrame from scalars alone"):
+        sd.frame.DataFrame({"a": 1})
+    with pytest.raises(ValueError, match=r"^DataFrame\(\): expected a 1-D array, got 2 dimensions$"):
+        sd.frame.DataFrame({"a": sd.asarray([[1.5, 2.5]])})

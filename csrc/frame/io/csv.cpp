@@ -141,6 +141,8 @@ private:
         inside_ = (in >> 63) & 1;
         quotes_.push_back(q);
         bits_ = (mask64(v, static_cast<std::uint8_t>(sep_)) | mask64(v, '\n')) & ~in;
+        // The zero padding of a partial block is not input: sep="\0" would match it.
+        if (base + 64 > n_) bits_ &= (std::uint64_t{1} << (n_ - base)) - 1;
         if (bom_ && block_ == 0) bits_ &= ~std::uint64_t{7};  // never inside the BOM
         ++block_;
     }

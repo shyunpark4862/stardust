@@ -114,8 +114,8 @@ double float_minmax_range(const double* v, const std::uint8_t* m, std::int64_t l
         return best;
     }
     // With NA (docs/design/frame.md §7.4): blocks of rows are copied with NA rows replaced by the
-    // identity (+inf for min, -inf for max) -- a branch-free select -- and
-    // folded with the same vector instruction.
+    // identity (+inf for min, -inf for max) and folded with the same vector
+    // instruction. The copy compiles to a branch per row.
     constexpr std::int64_t kBlock = 1024;
     double buf[kBlock];
     float64x2_t acc[4];

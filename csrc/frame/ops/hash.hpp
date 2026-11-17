@@ -38,8 +38,7 @@ struct Fmix64 {
 // "mum" mix of the wyhash family): one multiply spreads every input bit over
 // the whole word. The last partial word is read byte-safely; the length is
 // mixed in so "a" and "a\0" differ; fmix64 finishes, so the low bits (the
-// Swiss tag) and the group bits are well mixed. It replaced FNV-1a, one byte
-// and one multiply per step.
+// Swiss tag) and the group bits are well mixed.
 struct HashBytes {
     static std::uint64_t mum(std::uint64_t a, std::uint64_t b) {
         const unsigned __int128 r = static_cast<unsigned __int128>(a) * b;

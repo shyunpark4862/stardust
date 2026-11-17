@@ -237,8 +237,9 @@ Column LabelTable::first_positions(const Column& targets) const {
 }
 
 Column LabelTable::all_positions(const Column& targets) const {
-    // The cache is built with the GIL held: two Python threads must not
-    // build it at once. The lookups after it read only.
+    // The CSR is built with the GIL held (nothing before the end of this
+    // block releases it): two Python threads must not build it at once. The
+    // lookups after it read only.
     if (group_start_.empty()) {  // counting sort of positions by code: CSR groups
         group_start_.assign(static_cast<std::size_t>(ngroups_ + 1), 0);
         for (std::int64_t c : codes_) ++group_start_[c + 1];

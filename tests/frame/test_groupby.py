@@ -212,3 +212,25 @@ def test_groupby_sees_the_frame_as_it_was():
     g2 = df.groupby("k")  # made after the writes: sees them
     df["v"] = [0.0, 0.0, 0.0]
     assert g2.sum()["v"].tolist() == [100.0, 50.0]
+
+
+def test_groupby_is_not_iterable():  # docs/api/frame.md §7.1
+    g = sd.frame.DataFrame({"q": ["x", "y"], "v": [1, 2]}).groupby("q")
+    for call in (lambda: list(g), lambda: iter(g), lambda: [x for x in g]):
+        with pytest.raises(TypeError, match="^'GroupBy' object is not iterable$"):
+            call()
+    assert g["v"].sum()["v"].tolist() == [1, 2]  # g[...] still selects value columns
+
+
+def test_agg_with_a_callable_names_what_agg_takes():  # docs/api/frame.md §7.4
+    g = sd.frame.DataFrame({"q": ["x", "y"], "v": [1, 2]}).groupby("q")
+    accepted = (r"; pass a function name \(a str such as 'sum'\), a dict of \{column: function name\}, "
+                r"or named aggregations \(name=\(column, function name\)\)$")
+    for func in (sum, lambda x: x, max):
+        with pytest.raises(TypeError, match=r"^agg\(\): a callable is not supported" + accepted):
+            g.agg(func)
+    with pytest.raises(TypeError, match=r"^agg\(\): int is not supported" + accepted):
+        g.agg(5)
+    for funcs in (["sum"], ("sum", "max")):
+        with pytest.raises(TypeError, match=r"^agg\(\): a list of functions is not supported"):
+            g.agg(funcs)

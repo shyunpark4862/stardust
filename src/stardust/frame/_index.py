@@ -41,6 +41,12 @@ def check_label(index, label, func=None):
         raise TypeError(named(func, f"a label of {_an(index._dtype)} index must be {kind}, not {type(label).__name__}"))
 
 
+def mixed_labels(ours, theirs):
+    """The message when labels of one dtype meet labels of the other (docs/api/frame.md §5.6):
+    one wording for operators, reindex, masks, assignment and the constructors."""
+    return f"cannot align {ours} labels with {theirs} labels"
+
+
 def _an(dtype):
     return f"an {dtype}" if dtype == "int64" else f"a {dtype}"
 
@@ -67,7 +73,9 @@ def label_column(index, labels, func=None):
     if isinstance(labels, (Index, RangeIndex)):
         col = labels._column()
         if col.dtype != index._dtype:
-            raise TypeError(named(func, f"cannot use {col.dtype} labels with {_an(index._dtype)} index"))
+            if len(col) == 0:  # no labels: nothing to mismatch (an empty list makes an int64 Index)
+                return Column.from_list([], NA, index._dtype)
+            raise TypeError(named(func, mixed_labels(index._dtype, col.dtype)))
         return col
     labels = list(labels)
     for x in labels:
@@ -251,7 +259,11 @@ class RangeIndex(_IndexBase):
         return r.index(label)
 
     def _slice(self, start, stop, step=1):  # the labels at positions range(start, stop, step)
-        return RangeIndex._from_range(self._range[start:stop:step], self._name)
+        # Not self._range[start:stop:step]: the positions come from slice.indices(), where a
+        # stop of -1 (a backward slice down to position 0) means "before 0", not "the last one".
+        r, count = self._range, len(range(start, stop, step))
+        first = r.start + start * r.step
+        return RangeIndex._from_range(range(first, first + count * step * r.step, step * r.step), self._name)
 
     def _take(self, positions):  # an Index of the labels at `positions` (an int64 Column)
         r = self._range
@@ -355,11 +367,15 @@ def _labels_from(data, func):
     return col
 
 
-def ensure_index(labels, func):
+def ensure_index(labels, func, like=None):
     """An Index or RangeIndex for `labels` (kept as is when it already is one),
-    made by the public function `func` (for messages)."""
+    made by the public function `func` (for messages). No labels at all take
+    the dtype of the index `like` (reindex([]) of string labels keeps string
+    labels, as .loc[[]] does)."""
     if isinstance(labels, _IndexBase):
         return labels
+    if like is not None and isinstance(labels, (list, tuple)) and len(labels) == 0:
+        return Index._new(Column.from_list([], NA, like._dtype))
     if isinstance(labels, range):
         return RangeIndex._from_range(labels)
     return Index._new(_labels_from(labels, func))
