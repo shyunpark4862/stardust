@@ -18,21 +18,22 @@ rng.state
 - **`shape`**: `None`이면 스칼라(Python `float`/`int`), 또는 int, int의 tuple이다. `integers`에서 `low`·`high`가 배열이면 `None`은 그 둘을 브로드캐스트한 모양이다(numpy의 `size=None`과 같다). 0인 축도 된다.
 
 ### §1.1 `default_rng(seed=None, /)`
-- `seed`: 0 이상의 int(크기 제한 없음), 그런 int의 시퀀스, `None`(OS 엔트로피). Generator를 주면 그대로 돌려준다.
+- `seed`: 0 이상의 int(크기 제한 없음), 그런 int의 시퀀스, `None`(OS 엔트로피). 시퀀스는 list·tuple이고, 길이가 있고 차례로 읽을 수 있는 객체(배열, set)도 읽은 순서대로 받는다. Generator를 주면 그대로 돌려준다.
 - 키는 numpy의 `SeedSequence`와 같은 해시로 만든다(R6). 그래서 비슷한 시드(0, 1, 2)도 서로 무관한 수열이다.
 
 ### §1.2 `random(shape=None, /)`
+- `shape`(모든 메서드 공통): `None`이면 스칼라, int나 int의 tuple이면 배열이다. `()`는 `ValueError`다(0차원 배열이 없다. 메시지는 `메서드(): 'shape' must not be ()`로 같다).
 - [0, 1)의 float64. 64비트의 위 53비트 × 2⁻⁵³ (numpy와 같은 변환).
 
 ### §1.3 `integers(low, high=None, /, *, shape=None, endpoint=False)`
 - [low, high)의 int64(`endpoint=True`면 [low, high]). `integers(n)`은 [0, n)이다.
 - `low`·`high`는 int(int64 범위) 또는 int64 배열이고, 서로와 `shape`에 브로드캐스트한다(R10).
-- 모든 원소에서 `low < high`(`endpoint=True`면 `low <= high`)여야 한다. 아니면 `ValueError`. int64 범위 밖의 int는 `OverflowError`.
+- 모든 원소에서 `low < high`(`endpoint=True`면 `low <= high`)여야 한다. 아니면 `ValueError`(`integers(n)`으로 불렀으면 메시지는 `'high' must be positive`다). int64 범위 밖의 int는 `OverflowError`(`choice`의 `a`, `permutation`의 `x`도 같다).
 - 치우침이 없다(Lemire의 방법, 기각은 원소 안에서).
 
 ### §1.4 `choice(a, /, *, shape=None, replace=True, p=None)`
 - `a`: 1차원 배열, 또는 int n(`arange(n)`에서 고른다).
-- `p`: 각 원소의 확률(1차원 float 배열, 길이 n). 음수·NaN이 없고 합이 1에서 sqrt(eps) 안이어야 한다(numpy와 같은 허용치, R10). 합으로 나눠 쓴다.
+- `p`: 각 원소의 확률(1차원 float 배열, 길이 n). 음수·NaN이 없고 합이 1에서 sqrt(eps) 안이어야 한다(numpy와 같은 허용치, R10). 합으로 나눠 쓴다. complex 배열은 `TypeError`다. 비복원 추출에서 0보다 큰 확률은 아무리 작아도(약 2e-307 아래 포함) 확률 0인 원소보다 먼저 뽑힌다.
 - `replace=False`: 같은 원소를 두 번 고르지 않는다. 표본 수가 모집단보다 크면 `ValueError`, `p`가 있으면 0이 아닌 확률의 수보다 커도 `ValueError`다. 가중치가 있으면 Efraimidis–Spirakis의 경주로 고른다(numpy와 방법이 달라 같은 시드의 분포는 같지만 값은 다르다).
 
 ### §1.5 `permutation(x, /)`
@@ -41,7 +42,7 @@ rng.state
 
 ### §1.6 `spawn(n, /)`, `state`, 복사와 피클
 - `spawn(n)`: 키가 다른 독립 생성기 n개의 리스트(numpy `SeedSequence.spawn`과 같은 키). 다시 부르면 번호가 이어진다.
-- `state`: 시드 수열과 위치를 담은 dict(`bit_generator`, `entropy`, `spawn_key`, `n_children_spawned`, `position`). 대입하면 그 상태로 돌아간다.
+- `state`: 시드 수열과 위치를 담은 dict(`bit_generator`, `entropy`, `spawn_key`, `n_children_spawned`, `position`). 대입하면 그 상태로 돌아간다. 잘못된 값의 에러는 모두 `.state: '키' …`로 시작한다(dict가 아니거나 키가 빠진 경우 포함).
 - `copy.copy`, `copy.deepcopy`, `pickle`은 같은 상태의 독립 생성기를 만든다.
 
 ### §1.7 여러 Python 스레드

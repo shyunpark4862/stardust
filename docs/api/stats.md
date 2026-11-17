@@ -77,13 +77,31 @@ X.sample(shape=(), /, *, rng)
 - **보장 영역** (사용자 결정 2026-11-15, T24): 닫힌 꼴 7개(`Normal Exponential Uniform Laplace Cauchy LogNormal Weibull`)는 매개변수와 입력의 정의역 전체다. special 기반 5개는 special이 보장하는 범위다: `Gamma` a ≤ 1e6, `ChiSquared` df ≤ 2e6, `Beta` a, b ≤ 1e5, `StudentT` df ≤ 1e6, `F` dfn, dfd ≤ 1e5. 그 밖도 값을 계산하지만 보장하지 않는다.
 - **느슨한 영역** (잰 최대): `StudentT`의 `icdf`·`iccdf`에서 df ≥ 1e5이고 확률이 2^-1000(약 9.3e-302) 아래인 구석은 1.4e-14다(`ilog…`는 9.8e-15). 나머지 범위 밖 점은 모두 1e-14 안이었다. `Gamma` a > 1e6의 역함수는 전에 2.5e-14였는데, special의 `gammaincinv`를 고친 뒤 1.7e-16이 됐다(2026-11-16; 보장 영역은 그대로다).
 - **잰 정확도** (bench/stats/t4/accuracy.md, Arb 참값 대비, 계약 단위): 보장 영역 안 최대 9.2e-15(87만 점). 같은 점에서 scipy(고전형)는 꼬리에서 상대오차 1에 이르거나 inf를 낸다(예: `Beta.pdf`, `StudentT.cdf`의 깊은 꼬리, `LogNormal.pdf`).
-- **속도** (bench/stats/t4/speed.md, 원소 10⁵개): 1스레드는 scipy의 0.3–4.6배(중앙값 0.94), 10스레드는 1.7–39배(중앙값 5.4). Python float 하나는 scipy보다 38–81배 빠르다(호출당 0.16–0.36 µs).
+- **속도** (bench/stats/t4/speed.md, 원소 10⁵개; 2026-11-17 최적화 뒤, docs/design/stats.md §3.4): 1스레드는 scipy의 0.68–6.6배(중앙값 1.84), 10스레드는 2.2–48배(중앙값 10.6). Python float 하나는 scipy보다 43–66배 빠르다(호출당 0.19–0.29 µs). 1스레드에서 scipy보다 느린 것은 96행 중 12행이다: 카이제곱의 cdf·ccdf(0.68–0.71배; 반정수가 아닌 모양의 불완전 감마)와 icdf(0.76–0.78배), t의 icdf(0.83배), t·F의 cdf(0.9배대).
+- **보장 영역 밖과 NaN** (사용자 결정 2026-11-17): 모든 호출은 정해진 시간 안에 끝나고, 구할 수 없는 값은 NaN이다. 닫힌 꼴 분포는 정의역 전체에서 값을 낸다(z나 x/scale이 double을 넘으면 극한값). special 기반 분포가 NaN이 되는 곳:
+  - `Gamma`·`InverseGamma`의 a > 2¹⁰⁰, `ChiSquared`의 df > 2¹⁰¹: cdf 계열과 역함수.
+  - `Gamma`·`InverseGamma`의 아주 작은 모양(2026-11-18): 서브노멀 a(< 2⁻¹⁰²²)에서도 cdf 계열과 역함수가 값을 낸다(기준 모양 2⁻⁶⁰⁰에서 계산해 옮긴다. `Gamma(a=5e-324).logccdf(1.0) = −745.957`). a ≤ 2⁻⁶⁰⁰에서 위꼬리 목표 Q ≥ 1600·a인 근은 0이다(`InverseGamma`는 inf, scale < 2⁻⁹⁰⁰이면 NaN). 서브노멀 a에서 Q가 약 665·a와 1600·a 사이이면 NaN이다(근이 2⁻⁹⁶⁰ 아래). `ChiSquared`는 df < 2⁻¹⁰²¹에서 NaN 그대로다.
+  - 감마 계열의 깊은 꼬리(확률 < 2⁻¹⁰⁰⁰) 역함수는 반복이 100번 안에 수렴하지 않으면 NaN이다(a ≥ 1e12에서 나온다. 전에는 수렴하지 않은 마지막 값을 냈다: `Gamma(a=1e-300).ilogccdf(-1e50)`이 1.27e80, 참값 1e50).
+  - `Beta`의 a, b가 모두 2¹⁰⁰ 초과, `F`의 dfn, dfd가 모두 2¹⁰¹ 초과: cdf 계열과 역함수.
+  - `ChiSquared`·`StudentT`·`F`의 df < 2⁻¹⁰²¹: pdf, cdf 계열, 역함수, median, entropy. df의 절반을 double로 나타낼 수 없다.
+  - 역함수: 아래 범위 밖에서는 구한 근에서 정방향 log 꼬리가 목표와 상대 1e-12 안에서 맞을 때만 값을 내고, 아니면 NaN이다. 감마 계열 a ∉ [1e-6, 1e6], `Beta` a, b ∉ [1e-3, 1e5], `StudentT` df ∉ [1e-3, 1e6], `F` dfn, dfd ∉ [1e-3, 1e5].
+  - `F.entropy`: dfn이나 dfd가 1e-2 미만이면 NaN.
+  - `F.logpdf`: 두 자유도가 모두 1e15 초과이고 베타 인자가 double 아래로 내려갈 때.
+  - `Beta.logcdf`: b < 1e-3이고 x > 0.9일 때.
 - scipy와 다르게 동작하는 곳은 docs/design/stats.md §2.4에 있다.
 
 ### §2.3 T5의 보장 영역과 잰 정확도
 - **보장 영역** (사용자 결정 2026-11-16): 잰 매개변수 범위다. 이항 n ≤ 1e6, 포아송 μ ≤ 1e6, 기하 p ≥ 1e-9, 음이항 n ∈ [0.1, 1e4]·p ≥ 1e-4, 초기하 total ≤ 3000, 베타이항 n ≤ 2000·a, b ∈ [0.1, 100], 로그 급수 p ≥ 1e-8, Zipf a ≤ 60. `Bernoulli`와 `DiscreteUniform`은 닫힌 꼴이라 정의역 전체다. 그 밖도 값을 계산하지만 보장하지 않는다.
 - **잰 정확도** (bench/stats/t5/accuracy.md, Arb 참값 대비, 계약 단위): 61만 점 전부 계약 안이다. 값 메서드의 최대는 6.5e-15이고, 분위수는 모든 점이 허용 구간 안이다. 같은 점에서 scipy는 꼬리에서 상대오차 1이나 inf를 낸다(이항·음이항·초기하의 cdf, 초기하·로그 급수의 logpmf). 분위수에서는 scipy의 답이 허용 구간 안에 드는 비율이 64–100%다(기하 `isf` 64%, 포아송 `isf` 64%, 이항 `isf` 88%).
-- **속도** (bench/stats/t5/speed.md, 원소 10⁵개): 1스레드는 scipy의 0.22–232배(중앙값 1.5), 10스레드는 2.5–1432배(중앙값 7.7)다. Python float 하나는 scipy보다 11–114배 빠르다(호출당 0.17–2.1 µs). 1스레드에서 scipy보다 느린 것은 이항(0.2–0.4배)과 음이항·베타이항의 pmf(0.3배)다. 깊은 꼬리까지 상대 정확도를 지키는 double-double 접두의 비용이다.
+- **속도** (bench/stats/t5/speed.md, 2026-11-17 최적화 뒤): 두 묶음을 잰다. 지지집합이 작은 묶음(이항 n = 40 등, 원소 10⁵개)은 정수점 값을 기억하는 표가 거의 모든 원소에 답해서 1스레드가 scipy의 1.15배 이상(중앙값 37배)이다. 이 묶음은 원소당 1–2 ns라 10스레드가 1스레드보다 빠르지 않은 행이 25개 있다. 넓은 묶음(이항 n = 1e9, 포아송 μ = 3e8 등, 거의 모든 k가 다름)은 한 번 계산하는 비용을 보인다: 1스레드 0.66–6055배(중앙값 5.3), 10스레드 중앙값 20배. 넓은 묶음에서 scipy보다 느린 것은 베타이항의 pmf·logpmf(0.66배; double-double log Γ 넷)뿐이고, 포아송의 cdf 계열은 scipy와 같은 수준(1.0배)이다. Python float 하나는 scipy보다 32–107배 빠르다(호출당 0.17–0.65 µs).
+
+- **보장 영역 밖** (사용자 결정 2026-11-17): 모든 호출은 정해진 시간 안에 끝나고, 구할 수 없는 값은 NaN이다. NaN이 되는 곳:
+  - 이항: n > 2⁵²의 cdf 계열·분위수·mode·entropy, n·p·q > 2⁴²의 entropy.
+  - 음이항: n < 2⁻¹²⁸, entropy는 n·q/p² > 2⁴² 또는 p < 2⁻²⁰.
+  - 초기하: total > 2⁵², kurtosis는 total > 2²⁴, 합이 2²⁰항을 넘는 cdf 계열(total 1e12부터 일부).
+  - 베타이항: n + a + b > 2³⁵(pmf 포함), 합이 2²⁰항을 넘는 cdf 계열(n = 1e9부터 일부), 모멘트는 a, b가 [2⁻¹⁵⁰, 2¹⁵⁰] 밖.
+  - 포아송·음이항: k ≥ 2⁵³에서 pmf(k)가 무시할 수 없는 cdf 계열.
+  - `DiscreteUniform`: high − low가 넘칠 때.
 
 ### §2.4 T6의 보장 영역과 잰 정확도
 - **보장 영역** (사용자 결정 2026-11-16, T26):
@@ -91,10 +109,16 @@ X.sample(shape=(), /, *, rng)
   - 비중심 셋은 special의 비중심 함수가 잰 범위다(docs/api/special.md §14): `NoncentralChiSquared` df ∈ [1e-2, 1e4]·nc ≤ 1e4, `NoncentralT` df ∈ [0.1, 1e5]·|nc| ≤ 100, `NoncentralF` dfn, dfd ∈ [1e-2, 1e4]·nc ≤ 1e4. 확률은 1e-300까지 보장한다(작은 쪽 꼬리가 그 아래인 x와, 그 아래 확률의 역함수는 보장 밖). 모멘트와 `mode`도 1e-14다.
   - 비중심 셋의 `entropy`는 적응 구적이고 보장하지 않는다. 참값은 아직 만들지 않았다(10코어로 약 12시간; 나중에 잰다).
 - **잰 정확도** (bench/stats/t6/accuracy.md, Arb 참값 대비, 계약 단위): 60만 점에서 보장 영역 안 최대 5.5e-15이고, 밖도 1.2e-15 안이다. 같은 점에서 scipy는 꼬리에서 틀린다. 예: `NoncentralF.cdf` 상대오차 2.3e95, `NoncentralT.cdf`·`GEV.ccdf`·`Pareto.logcdf` inf, `InverseGamma.icdf` 2.4e-5.
-- **속도** (bench/stats/t6/speed.md, 원소 10⁵개): 1스레드는 scipy의 0.09–2.8배(중앙값 0.56), 10스레드는 0.8–23배(중앙값 4.2)다. Python float 하나는 scipy보다 13–98배 빠르다(호출당 0.17–0.98 µs). 1스레드에서 느린 것은 다음과 같다.
-  - 비중심 t의 `pdf`(0.09배): 양의 적분이라, 급수가 상쇄하는 쪽 꼬리까지 상대 정확도를 지킨다.
-  - 비중심 F의 `pdf`(0.14배): double-double 포아송 혼합이다.
-  - `Pareto`의 `pdf`·`cdf`(0.22–0.25배)와 `InverseGamma.pdf`(0.27배): double-double 지수다.
+- **속도** (bench/stats/t6/speed.md, 원소 10⁵개; 2026-11-17 최적화 뒤): 1스레드는 scipy의 0.54–5.2배(중앙값 1.62), 10스레드는 2.0–44배(중앙값 9.9)다. Python float 하나는 scipy보다 36–84배 빠르다. 1스레드에서 scipy보다 느린 것은 72행 중 11행이고, 모두 비중심 분포와 역감마 밀도다.
+  - 비중심 F의 `logpdf`(0.54배)·`pdf`(0.69배)·`cdf`(0.70배)·`ccdf`(0.79배), 비중심 t의 `cdf`(0.67배), 비중심 카이제곱의 `ccdf`(0.72배): 항 20–50개의 합에 중심 분포의 불완전 함수 한 번이 더 든다.
+  - 비중심 t의 `pdf`·`ccdf`, 역감마의 `pdf`·`logpdf`: 0.9배 안팎.
+
+- **보장 영역 밖과 NaN** (사용자 결정 2026-11-17): 비중심 셋은 급수가 정해진 항 수 안에 끝나지 않으면 NaN이다.
+  - cdf 계열·역함수·median: 카이제곱·F는 nc가 약 2.3e9를 넘으면, t는 |nc|가 약 3.8e4를 넘으면 NaN이다. 카이제곱은 df가 1.1e24를 넘으면 평균 근처에서 NaN이다.
+  - pdf·logpdf: F는 nc가 약 1.3e8을 넘을 때, t는 |nc|나 |t|가 약 1e15를 넘을 때 NaN이다. 카이제곱은 큰 df와 큰 nc가 함께일 때만 NaN이다(df가 작으면 nc = 1e300까지 값이 나온다).
+  - mode: t는 |nc| > 128·√(1 + df)이면 NaN이다. F는 nc > 1.3e8이면 NaN이다.
+  - `ilogcdf`·`ilogccdf`: logp ≤ −2⁶²는 NaN이다.
+  - `entropy`(보장하지 않는 계약)는 영역 안에서도 NaN일 수 있다: 질량이 double 범위 밖에 남는 아주 작은 자유도(F의 dfd = 0.01, 카이제곱 df = 0.01·nc ≤ 30 등), 그리고 반분 12번에 수렴하지 않는 큰 nc(카이제곱 df = 3.5에서 약 7e7부터).
 
 ### §2.5 표본 (T7)
 ```
@@ -103,14 +127,11 @@ X.sample(shape=(), /, *, rng)
 - `rng`: `sd.random.default_rng(seed)`의 Generator이고, 꼭 줘야 한다(T27). 다른 것은 `TypeError`다. 표본은 생성기의 스트림에서 차례로 받으므로, 호출하면 `rng.state["position"]`이 원소 수만큼 나아간다.
 - **모양**: `shape`(int 또는 int의 tuple) + 매개변수의 브로드캐스트 모양이다(scipy 신형과 같다). 매개변수가 (3,)이고 `shape=(1000,)`이면 결과는 (1000, 3)이라 분포마다 1000개씩이다. 둘 다 비면 Python float이다.
 - **값**: float64다. 이산 분포도 정수인 float64다(icdf와 같다; Zipf가 double을 넘으면 inf). 매개변수가 정의역 밖이거나 NaN인 원소는 NaN이다.
+- **뽑을 수 없는 매개변수** (사용자 결정 2026-11-17): 표본기의 반복은 모두 횟수가 정해져 있고, 그 안에 뽑을 수 없으면 NaN이다. `Hypergeometric`은 표준편차가 65536을 넘거나 total ≥ 2⁵³일 때, `DiscreteUniform`은 폭이 2⁶⁴ 이상일 때, `StudentT`·`NoncentralT`는 df가 서브노멀일 때, `NoncentralF`는 두 자유도가 모두 서브노멀일 때 NaN이다. `Zipf`는 a > 1025이면 1이고, `Beta`·`BetaBinomial`·`F`는 서브노멀 모양에서 극한값이다.
 - **재현**: 같은 시드와 같은 호출 순서면 같은 값이다. 스레드 수와 무관하고, 한 호출을 둘로 나누어 불러도 같다. numpy·scipy와 값은 다르다(생성기와 방법이 다르다).
 - **방법**: 분포마다 정확한 방법(기각이나 조합, 근사 없음)이다. 정규는 ziggurat, 감마는 Marsaglia–Tsang, 이항은 BTRS, 포아송은 PTRS 등이고 표는 docs/design/stats.md §4에 있다.
 - **분포 검사** (bench/stats/t7/quality.md): 62개 경우에서 표본 10⁶개의 KS·카이제곱 p값이 모두 0.03 이상이다(가장 작은 값 0.034). 아주 작은 모양도 포함한다(감마 a = 1e-3은 질량의 47.5%가 5e-324 아래라 그 표본은 0이다).
-- **속도** (bench/stats/t7/speed.md, 표본 10⁶개, numpy Generator(PCG64) 대비): 1스레드 0.42–2.7배(중앙값 0.84), 10스레드 3.6–23배(중앙값 7.4). 1스레드에서 느린 것은 다음과 같다.
-  - 큰 n의 이항(0.42배)
-  - 비중심 F(0.48배)
-  - 모양이 둘 다 1보다 작은 베타(0.51배)
-  - 정규(0.55배): Philox는 단어당 1.1 ns이고, PCG64가 더 싸다.
+- **속도** (bench/stats/t7/speed.md, 표본 10⁶개, numpy Generator(PCG64) 대비; 2026-11-17 최적화 뒤): 1스레드 0.87–7.9배(중앙값 1.09), 10스레드 7.3–63배(중앙값 9.8). 1스레드에서 numpy보다 느린 것은 31행 중 10행이고 모두 0.87–0.97배다(비중심 카이제곱, 감마, 코시, 베타, F, 큰 n의 이항 등). 단어를 둘 이상 쓰는 방법은 원소마다 Philox 블록 하나를 더 계산하는데, PCG64는 이어지는 두 단어를 싸게 낸다.
 
   Python float 하나는 호출당 0.24–0.5 µs다(numpy의 0.4–2배).
 
@@ -128,18 +149,20 @@ X.sample(shape=(), /, *, rng)
 - **입력** x는 (..., d)이고, 앞 축이 배치와 브로드캐스트한다. 결과는 브로드캐스트한 모양이고, 축이 없으면 Python float이다. `mean()`은 배치 + (d,), `covariance()`는 배치 + (d, d), `entropy()`는 배치 모양이다.
 - **정의역** (T29, T8): 양의 정부호가 아닌 공분산(allow_singular는 없다), NaN이나 inf인 mu, df ≤ 0, 정수가 아닌 n, 음수가 있거나 합이 1에서 sqrt(eps) 밖인 p, 0 이하인 alpha는 모두 NaN이다. 그 배치 원소의 모든 메서드가 NaN이다. p는 합으로 나눠 쓴다(sd.random.choice의 p와 같다).
 - **지지집합**: Multinomial의 x가 합이 n인 음이 아닌 정수가 아니면 pmf는 0이다. Dirichlet의 x는 K개 성분이다. 음수가 있거나 합이 1에서 sqrt(eps)·K 밖이면 pdf는 0이다. 0인 성분에서는 극한값이다(alpha < 1이면 inf, = 1이면 그 항이 1, > 1이면 0). 정규·t에서 inf인 성분이 있으면 pdf는 0이다.
-- **MultivariateT**: df = inf는 MultivariateNormal(mu, shape)이다. mean은 df > 1, covariance는 df > 2에서 shape·df/(df − 2)이다. 1 < df ≤ 2이면 발산하고(shape의 부호로 ±inf, 0인 성분은 0), df ≤ 1이면 NaN이다(StudentT의 분산과 같다).
+- **MultivariateT**: df = inf는 MultivariateNormal(mu, shape)이다. df < 2⁻¹⁰²²이면 모든 메서드가 NaN이다. mean은 df > 1, covariance는 df > 2에서 shape·df/(df − 2)이다. 1 < df ≤ 2이면 발산하고(shape의 부호로 ±inf, 0인 성분은 0), df ≤ 1이면 NaN이다(StudentT의 분산과 같다).
 - **정확도** (T29): 보장 영역 κ(cov) ≤ 1e9, d ≤ 100에서 logpdf·entropy는 |오차| ≤ 1e-14·max(1, |값|), pdf는 상대 1e-14다. 촐레스키 분해, 삼각 풀이, 이차 형식이 모두 double-double이다. 잰 값(bench/stats/t9/accuracy.md, 50자리 참값 대비)은 κ = 1e9, d = 100, df = 1e9까지 반올림 수준(2.7e-16 이하)이다. 같은 점에서 scipy는 κ에 비례해 1e-13–1e-9이고, df = 1e9인 t의 logpdf는 1e-7까지 틀린다. Multinomial의 logpmf·entropy와 Dirichlet의 logpdf·entropy도 double-double이다. n = 1e5인 다항 엔트로피(log n!과 기댓값이 1e6에서 12.6으로 상쇄)와 alpha = 1e6인 디리클레 엔트로피가 50자리 참값과 1e-14 안이다(scipy는 각각 1e-9, 3e-9가 틀린다).
+- **보장 영역 밖** (사용자 결정 2026-11-17): Multinomial의 logpmf는 n이 약 1e13을 넘으면 항들의 상쇄가 큰 곳(최빈값 근처)에서 NaN일 수 있다. entropy는 범주별 표준편차의 합이 2¹⁷을 넘거나 n > 2⁵³이면 NaN이다(점질량은 0).
 - **cdf** (MultivariateNormal, MultivariateT): P(X ≤ x)다. 정규의 d ≤ 3과 t의 d ≤ 3은 정확한 공식(1-D 적분)이고, 오차 출력은 0이다. d ≥ 4는 Genz의 준몬테카를로(고정 시드, 결정적)로 계산하고 `atol`(기본 1e-6)까지 점을 늘린다. `max_points`는 평가 수의 상한이다(기본 10⁶ × 변수 수). `return_error=True`이면 (값, 오차 추정)이고, 오차 추정은 표준오차의 3배다(통계적이라 일부 점에서 넘을 수 있다: 잰 값으로 최대 1.9배). +inf인 좌표는 빼고, −inf가 있으면 0, NaN이면 NaN이다.
   - **보장 영역** (상대 1e-14): 정규 d = 2는 P ≥ 1e-15이면 모든 ρ이고, d = 3은 음의 상관이 하나 이하이고 P ≥ 1e-15이거나 P ≥ 1e-10이고 문제의 조건수 ≤ 100일 때다. t의 d = 2, 3은 P ≥ 7e-13이다(잰 최대 1.9e-15).
-  - **그 밖** (bench/stats/t9/cdf_accuracy.md): d = 2는 약 6·eps·|ln P|이고(1e-300 근처에서 2.7e-13), d = 3은 3.4u × 조건수 안이다(특이에 가까운 행렬에서 최악 4.3e-10).
+  - **그 밖** (bench/stats/t9/cdf_accuracy.md): d = 2는 약 6·eps·|ln P|이고(1e-300 근처에서 2.7e-13), d = 3은 조건수를 잴 수 있는 점에서 3.1u × 조건수 안이고, 전체 최대는 1.5e-13이다(음의 상관이 둘이고 P가 1e-254 근처인 칸; 음의 상관 셋·특이에 가까운 행렬의 P ≈ 1e-14 칸은 1.2e-13). 특이에 가까운 행렬에서 조건부 적분이 틀리던 것(κ = 7.7e7에서 1.7e-7)을 고치면서 깊은 꼬리 두 칸이 6.8e-14, 5.5e-14에서 이 값으로 늘었다(사용자 결정 2026-11-18: 영역 안의 값을 우선한다).
+  - **NaN** (사용자 결정 2026-11-17): 값이 NaN이면 오차 출력도 NaN이다. t의 d = 3은 |x/sd| > 1e100이고 조건부 적분으로 넘어가야 할 때 NaN이다(df ≤ 1에서 나온다). QMC는 96단계와 `max_points`에서 멈춘다.
   - **속도** (bench/stats/t9/cdf_speed.md, 1스레드, 점 하나): 정규 d = 2는 0.4 µs(scipy의 18배), d = 3은 1.0 µs(1700배), t d = 2, 3은 162–516 µs(1.6–3.5배)다. QMC는 같은 atol = 1e-5에서 정규 d = 5가 0.73 ms(2.3배), d = 10이 25.6 ms(1.3배)다. 기본 atol = 1e-6은 scipy의 기본값(1e-5, t는 실제 오차 약 5e-5)보다 엄격해서, 기본값끼리 비교하면 0.2–0.3배다. d ≥ 4인 t는 atol = 1e-4에서 1.9–2.1배다.
 - **표본**: 벡터 하나가 생성기 스트림의 원소 하나다. 정규·t는 mu + L z(·sqrt(df/V)), 다항은 조건부 이항, 디리클레는 감마를 정규화한다(아주 작은 alpha는 log로). 스레드 수와 무관하게 같은 값이다.
 - **속도** (bench/stats/t9/speed.md, 10⁵개, scipy 대비, 1스레드 / 10스레드):
-  - 표본: 0.73–1.45배 / 5.5–11배.
+  - 표본: 1.05–2.2배 / 7.6–17배.
   - 다항 logpmf: 3.2배 / 26배.
-  - 디리클레 logpdf: 0.56배 / 4.6배.
-  - 정규·t의 logpdf: d = 3에서 0.35–0.61배 / 2.6–2.8배, d = 10에서 0.14배 / 1배, d = 50에서 0.05배 / 0.4배다. double-double 삼각 풀이의 비용이다. scipy는 점을 모아 BLAS로 푼다.
+  - 디리클레 logpdf: 1.5배 / 11배.
+  - 정규·t의 logpdf: d = 3에서 0.70–0.79배 / 2.9–4.1배, d = 10에서 0.56배 / 3.3–4.4배, d = 50에서 0.40배 / 3.0–3.3배다(2026-11-17 최적화 전에는 d = 50이 0.05배). 순서가 정해진 NEON 내적과 점마다의 오차 상한의 비용이다. scipy는 점을 모아 BLAS로 푸는데, BLAS는 합의 순서를 몰라 상한을 셀 수 없다(docs/design/stats.md §3.4).
 
 ### §3.1 행렬 분포 (T10)
 ```
@@ -155,9 +178,10 @@ X.sample(shape=(), /, *, rng)
   - Wishart의 mode는 df ≥ p + 1일 때 (df − p − 1)·scale이고, 그 밖은 NaN이다.
   - 역Wishart의 mean은 df > p + 1이면 scale/(df − p − 1)이고, 그 밖은 발산한다(성분의 부호로 ±inf, 0인 성분은 0). var는 df > p + 3이면 유한하고, p + 1 < df ≤ p + 3이면 inf, df ≤ p + 1이면 NaN이다. p = 1이면 InverseGamma(df/2, scale/2)와 같다.
 - **정의역**: df ≤ p − 1(특이 Wishart), 양의 정부호가 아닌 scale, NaN인 mu는 NaN이다(T8).
-- **정확도** (bench/stats/t10/accuracy.md, 50자리 참값 대비): logpdf·entropy는 촐레스키 분해, V⁻¹, 삼각 풀이를 double-double로 계산한다. 엔트로피의 크기 n log n인 항은 다시 묶어서 지운다. 잰 값은 κ(scale) = 1e8, p = 12, df = 1e8까지 반올림 수준이다(entropy 5.3e-16 이하, logpdf 0). 같은 점에서 scipy의 logpdf는 최대 6.5e-8, Wishart 엔트로피는 df = 1e8에서 6.5e-9가 틀린다. scipy 1.18의 `invwishart.entropy()`는 공식이 틀려서 상대오차가 2.9까지 간다(몬테카를로로도 확인; tests/stats/test_matrix.py). 보장 영역(사용자 2026-11-16)은 T9와 같이 κ(scale), κ(rowcov), κ(colcov) ≤ 1e9, p ≤ 100에서 logpdf·entropy 1e-14 혼합 기준이다. 측정은 κ = 1e9, p = 30(행렬 정규 20×15), df = 1e8까지이고, 모두 2e-16 이하였다.
+- **보장 영역 밖** (사용자 결정 2026-11-17): Wishart·역Wishart의 logpdf는 df가 약 1e17을 넘고 항들이 서로 상쇄하는 곳(밀도가 큰 곳 근처)에서 NaN이다. 1e15까지는 1e-13 안이다.
+- **정확도** (bench/stats/t10/accuracy.md, Arb 참값 대비): logpdf·entropy는 촐레스키 분해, V⁻¹, 삼각 풀이를 double-double로 계산한다. 엔트로피의 크기 n log n인 항은 다시 묶어서 지운다. 잰 값은 κ(scale) = 1e8, p = 12, df = 1e8까지 반올림 수준이다(entropy 5.3e-16 이하, logpdf 0). 같은 점에서 scipy의 logpdf는 최대 6.5e-8, Wishart 엔트로피는 df = 1e8에서 6.5e-9가 틀린다. scipy 1.18의 `invwishart.entropy()`는 공식이 틀려서 상대오차가 2.9까지 간다(몬테카를로로도 확인; tests/stats/test_matrix.py). 보장 영역(사용자 2026-11-16)은 T9와 같이 κ(scale), κ(rowcov), κ(colcov) ≤ 1e9, p ≤ 100에서 logpdf·entropy 1e-14 혼합 기준이다. 측정은 κ = 1e9, p = 30(행렬 정규 20×15), df = 1e8까지이고, 모두 2e-16 이하였다.
 - **표본**: Wishart는 Bartlett 분해로 뽑는다. 대각은 √χ²(df − j)이고 실수 df도 된다. 역Wishart는 (L A⁻ᵀ)(L A⁻ᵀ)ᵀ, 행렬 정규는 μ + L_U Z L_Vᵀ다. 행렬 하나가 스트림 원소 하나다.
-- **속도** (bench/stats/t10/speed.md, 10⁴개, scipy 대비, 1스레드 / 10스레드): Wishart·역Wishart의 logpdf는 1.8–84배 / 15–510배이고, 표본은 2.2–14배 / 17–99배다. 행렬 정규는 logpdf가 0.24–0.70배 / 2.0–4.5배(double-double 삼각 풀이), 표본이 1.4–2.0배 / 11–13배다.
+- **속도** (bench/stats/t10/speed.md, 10⁴개, scipy 대비, 1스레드 / 10스레드): Wishart·역Wishart의 logpdf는 1.8–87배 / 15–650배이고, 표본은 2.4–18배 / 20–75배다. 행렬 정규는 logpdf가 0.87–1.25배 / 5.6–10배, 표본이 1.9–2.6배 / 16배다.
 
 ## §4. 기술통계 (T8)
 ```
@@ -179,7 +203,7 @@ differential_entropy(x, /, *, window_length=None, base=None, axis=None, method='
 - **scipy와의 차이** (이름과 기본값만이고 값은 같다): 축의 기본값(None), 자유도 인자 이름(`ddof` → `correction`), iqr의 `rng=(25, 75)`·`interpolation` → `q=(0.25, 0.75)`·`method`(sd.quantile과 같다), moment의 `order`는 꼭 준다.
 - **결과 객체**: `describe`는 `DescribeResult(nobs, minmax, mean, variance, skewness, kurtosis)`, `mode`는 `ModeResult(mode, count)`다(scipy와 같은 namedtuple). nobs는 propagate면 int이고, omit이면 줄마다의 개수다.
 - **정확도**: 적률은 평균을 두 부분(hi + lo)으로 들고 보상 합으로 계산한다. 평균 1e8·퍼짐 1의 데이터(2000개)에서 정확한 값(유리수 계산)과 비교한 상대오차는 skew 3.2e-16이고 kurtosis·m2는 0이다. scipy는 같은 데이터에서 skew 1.2e-8, kurtosis 1.1e-8이다(평균을 double로 반올림한 채 빼기 때문이다; m2는 0). 그 밖의 값은 scipy와 1e-13 안에서 같다(tests/stats/test_descriptive.py).
-- **속도** (bench/stats/t8/speed.md, 10⁶개, scipy 대비): 1스레드에서 skew·kurtosis·moment 3.0–3.9배, describe 3.9–4.9배, rankdata 1.3배, mode 1.1–2.7배, iqr 1.3–1.9배, differential_entropy 1.9–3.3배, omit이 있으면 4–22배다. 10스레드에서는 대부분 10–30배다. 1스레드에서 느린 것은 sem(0.3–0.46배)과 zscore(0.67–0.92배)다. 두 번 훑고 보상 합을 쓰는 비용이다(scipy의 std는 보상하지 않는다). 10스레드에서는 1.8–4.6배로 빠르다.
+- **속도** (bench/stats/t8/speed.md, 10⁶개, scipy 대비; 2026-11-17 최적화 뒤): 1스레드에서 skew·kurtosis·moment 6.0–7.5배, describe 4.9–6.0배, zscore 1.3배, rankdata 1.25–1.7배, mode 1.0–2.7배, iqr 1.3–2.1배, differential_entropy 2.0–3.1배, omit이 있으면 9–40배다. 10스레드에서는 대부분 10–45배다. 1스레드에서 scipy보다 느린 것은 sem(0.63–0.87배)뿐이다. 보상 합 셋을 쓰는 비용이다(scipy의 std는 보상하지 않는다). 10스레드에서는 3.8–4.0배로 빠르다.
 
 ## §5. 배열과 special에 더하는 것
 - 배열(T0, 완료): `cov`, `corrcoef`, `quantile`, `median`, NaN 리덕션. docs/api/array.md §7.9–§7.11.

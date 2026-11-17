@@ -1,7 +1,8 @@
 """T10: accuracy of the Wishart, inverse Wishart and matrix normal log densities and entropies
-against 50-digit references (mpmath on the matrices as given), over the condition number of
-the scale and the dimension (T30), and scipy's error at the same points. Errors are
-|error| / max(1, |value|).
+against Arb references (ball arithmetic on the matrices as given: Arb's LU for the
+determinants and the solves, at a working precision that doubles until every ball's radius is
+below 2^-80 of max(1, |value|)), over the condition number of the scale and the dimension
+(T30), and scipy's error at the same points. Errors are |error| / max(1, |value|).
 
     .venv/bin/python bench/stats/t10/accuracy.py > bench/stats/t10/accuracy.md
 """
@@ -9,13 +10,30 @@ the scale and the dimension (T30), and scipy's error at the same points. Errors 
 import math
 import warnings
 
-import mpmath as mp
 import numpy as np
 import scipy.stats as st
+from flint import arb, arb_mat, ctx
 
 import stardust as sd
 
-mp.mp.dps = 50
+BITS = 80  # the references' radius, relative to max(1, |value|)
+
+
+def settled(fn):
+    """fn() (a tuple of arb balls) at doubling working precision until every radius is below
+    2^-BITS of max(1, |value|)."""
+    old, prec = ctx.prec, 128
+    try:
+        while True:
+            ctx.prec = prec
+            vs = fn()
+            if all(v.is_finite() and v.rad() <= arb(2) ** -BITS * max(arb(1), abs(v.mid())) for v in vs):
+                return vs
+            if prec >= 1 << 13:
+                raise ArithmeticError(f"reference did not settle by {prec} bits")
+            prec *= 2
+    finally:
+        ctx.prec = old
 
 
 def spd(rng, d, kappa):
@@ -25,49 +43,63 @@ def spd(rng, d, kappa):
 
 
 def mvlgamma(p, a):
-    return p * (p - 1) / mp.mpf(4) * mp.log(mp.pi) + mp.fsum(mp.loggamma(a + mp.mpf(1 - j) / 2) for j in range(1, p + 1))
+    return p * (p - 1) / arb(4) * arb.pi().log() + sum(((a + arb(1 - j) / 2).lgamma() for j in range(1, p + 1)), arb(0))
 
 
 def mvdigamma(p, a):
-    return mp.fsum(mp.digamma(a + mp.mpf(1 - j) / 2) for j in range(1, p + 1))
+    return sum(((a + arb(1 - j) / 2).digamma() for j in range(1, p + 1)), arb(0))
+
+
+def trace_solve(A, B):
+    """tr(A^-1 B) by Arb's LU solve (A, B arb_mat)."""
+    Y = A.solve(B)
+    return sum((Y[i, i] for i in range(A.nrows())), arb(0))
 
 
 def ref_wishart(df, V, xs, inverse):
     p = V.shape[0]
-    n = mp.mpf(df)
-    Vm = mp.matrix(V.tolist())
-    ldv = mp.log(mp.det(Vm))
-    out = []
-    for x in xs:
-        X = mp.matrix(x.tolist())
-        ldx = mp.log(mp.det(X))
+
+    def fn():
+        n = arb(df)
+        Vm = arb_mat(V.tolist())
+        ldv = Vm.det().log()
+        out = []
+        for x in xs:
+            X = arb_mat(x.tolist())
+            ldx = X.det().log()
+            if not inverse:
+                tr = trace_solve(Vm, X)
+                out.append((n - p - 1) / 2 * ldx - tr / 2 - n * p / 2 * arb(2).log() - n / 2 * ldv - mvlgamma(p, n / 2))
+            else:
+                tr = trace_solve(X, Vm)  # tr(V X^-1) = tr(X^-1 V)
+                out.append(n / 2 * ldv - n * p / 2 * arb(2).log() - mvlgamma(p, n / 2) - (n + p + 1) / 2 * ldx - tr / 2)
         if not inverse:
-            tr = sum((mp.inverse(Vm) * X)[i, i] for i in range(p))
-            out.append((n - p - 1) / 2 * ldx - tr / 2 - n * p / 2 * mp.log(2) - n / 2 * ldv - mvlgamma(p, n / 2))
+            h = (p + 1) / arb(2) * ldv + p * (p + 1) / arb(2) * arb(2).log() + mvlgamma(p, n / 2) \
+                - (n - p - 1) / 2 * mvdigamma(p, n / 2) + n * p / 2
         else:
-            tr = sum((Vm * mp.inverse(X))[i, i] for i in range(p))
-            out.append(n / 2 * ldv - n * p / 2 * mp.log(2) - mvlgamma(p, n / 2) - (n + p + 1) / 2 * ldx - tr / 2)
-    if not inverse:
-        h = (p + 1) / mp.mpf(2) * ldv + p * (p + 1) / mp.mpf(2) * mp.log(2) + mvlgamma(p, n / 2) \
-            - (n - p - 1) / 2 * mvdigamma(p, n / 2) + n * p / 2
-    else:
-        h = (p + 1) / mp.mpf(2) * ldv - p * (p + 1) / mp.mpf(2) * mp.log(2) + mvlgamma(p, n / 2) \
-            - (n + p + 1) / 2 * mvdigamma(p, n / 2) + n * p / 2
+            h = (p + 1) / arb(2) * ldv - p * (p + 1) / arb(2) * arb(2).log() + mvlgamma(p, n / 2) \
+                - (n + p + 1) / 2 * mvdigamma(p, n / 2) + n * p / 2
+        return (*out, h)
+
+    *out, h = settled(fn)
     return [float(v) for v in out], float(h)
 
 
 def ref_matnorm(M, U, V, xs):
     n, p = M.shape
-    Um, Vm = mp.matrix(U.tolist()), mp.matrix(V.tolist())
-    lu, lv = mp.log(mp.det(Um)), mp.log(mp.det(Vm))
-    Ui, Vi = mp.inverse(Um), mp.inverse(Vm)
-    out = []
-    for x in xs:
-        D = mp.matrix((x - 0.0).tolist()) - mp.matrix(M.tolist())
-        T = Vi * D.T * Ui * D
-        tr = sum(T[i, i] for i in range(p))
-        out.append(-n * p / mp.mpf(2) * mp.log(2 * mp.pi) - p / mp.mpf(2) * lu - n / mp.mpf(2) * lv - tr / 2)
-    h = n * p / mp.mpf(2) * (1 + mp.log(2 * mp.pi)) + p / mp.mpf(2) * lu + n / mp.mpf(2) * lv
+
+    def fn():
+        Um, Vm = arb_mat(U.tolist()), arb_mat(V.tolist())
+        lu, lv = Um.det().log(), Vm.det().log()
+        out = []
+        for x in xs:
+            D = arb_mat(x.tolist()) - arb_mat(M.tolist())
+            tr = trace_solve(Vm, D.transpose() * Um.solve(D))  # tr(V^-1 D' U^-1 D)
+            out.append(-n * p / arb(2) * (2 * arb.pi()).log() - p / arb(2) * lu - n / arb(2) * lv - tr / 2)
+        h = n * p / arb(2) * (1 + (2 * arb.pi()).log()) + p / arb(2) * lu + n / arb(2) * lv
+        return (*out, h)
+
+    *out, h = settled(fn)
     return [float(v) for v in out], float(h)
 
 

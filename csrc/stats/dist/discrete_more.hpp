@@ -8,7 +8,8 @@
 //   * beta-binomial: log-gammas in double-double; skewness in closed form, the excess
 //     kurtosis as a polynomial without the "- 3", in double-double;
 //   * both: cdfs as tail sums (stats/discrete.hpp) of the side below 1/2, from its
-//     largest term outwards, as double-double logs;
+//     largest term outwards by the ratio recurrence in double-double, as double-double logs;
+//     over arrays the hypergeometric's pmf near the mean by the binomials' fast path;
 //   * logarithmic series: the tail sum_{j>k} p^j / j directly or, for p >= 0.9, by
 //     Euler-Maclaurin with e^x E_1(x) for the integral; log(L / p) apart, so the log pmf
 //     at k = 1 keeps a tiny p;
@@ -21,6 +22,7 @@
 #include "special/ops/expint.hpp"
 #include "special/ops/gamma.hpp"
 #include "special/ops/zeta.hpp"
+#include "stats/chunk.hpp"
 #include "stats/discrete.hpp"
 #include "stats/dist/discrete_basic.hpp"
 #include "stats/engine.hpp"
@@ -38,7 +40,12 @@ struct DiscreteUniform {
     static constexpr char name[] = "discreteuniform";
     static constexpr std::array<const char*, 2> params{"low", "high"};
 
-    static bool valid(double lo, double hi) { return disc::is_int(lo) && disc::is_int(hi) && lo < hi; }
+    // low and high integers with 0 < high - low < inf. The width in range also says that both
+    // ends are finite, and a width past the float64 range has no pmf (1 / width): NaN.
+    static bool valid(double lo, double hi) {
+        const double w = hi - lo;
+        return std::floor(lo) == lo && std::floor(hi) == hi && w > 0.0 && w < kInf;
+    }
 
     static double pmf(double k, double lo, double hi) {
         return disc::is_int(k) && k >= lo && k < hi ? 1.0 / (hi - lo) : 0.0;
@@ -77,8 +84,15 @@ struct DiscreteUniform {
     static double iccdf(double t, double lo, double hi) { return disc::iccdf(t, at(lo, hi, 1.0 - t)); }
     static double ilogcdf(double t, double lo, double hi) { return disc::ilogcdf(t, at(lo, hi, std::exp(t))); }
     static double ilogccdf(double t, double lo, double hi) { return disc::ilogccdf(t, at(lo, hi, -std::expm1(t))); }
+    SD_DISC_MEMO_SCALAR(DiscreteUniform, 2, logcdf, true)  // a log each; the rest is arithmetic
+    SD_DISC_MEMO_SCALAR(DiscreteUniform, 2, logccdf, true)
 
-    static double mean(double lo, double hi) { return 0.5 * lo + 0.5 * (hi - 1.0); }
+    // (low + high - 1) / 2, the sum of the halves exact as a double-double (past 2^53
+    // high - 1 is not a float64, and low + high may cancel).
+    static double mean(double lo, double hi) {
+        const num::DD s = num::dd::two_sum(0.5 * lo, 0.5 * hi);
+        return (s.hi - 0.5) + s.lo;
+    }
     static double variance(double lo, double hi) {  // (m^2 - 1) / 12, m = hi - lo
         const double m = hi - lo;
         return (m - 1.0) * (m + 1.0) / 12.0;
@@ -103,16 +117,20 @@ using num::DD;
 
 // The central moments m2, m3, m4 (sum (k - mu)^j pmf(k)) by summing outwards from the mode
 // until the rest is negligible: past a term t of m4 with ratio r < 1 to the one before, the
-// rest is about t r / (1 - r) (disc::entropy_sum's rule).
+// rest is about t r / (1 - r) (disc::entropy_run's rule). At most disc::kMaxMomentTerms terms:
+// the moments are NaN if the sums have not ended by then, or the mode is past 2^52 (the walk
+// needs its float64 neighbours).
 struct Central {
     double m2, m3, m4;
 };
 template <class LogPmf>
 Central central(double mu, double mode, double lo, double hi, LogPmf&& logpmf) {
+    constexpr Central kNone{kNaN, kNaN, kNaN};
     Central c{0.0, 0.0, 0.0};
     auto add = [&](double k) {
         const num::DD l = logpmf(k);
-        const double w = std::exp(l.hi + l.lo), d = k - mu, d2 = d * d;
+        const num::DD wd = num::exp_full(l);  // the pmf to a rounding (its error is the moments')
+        const double w = wd.hi + wd.lo, d = k - mu, d2 = d * d;
         c.m2 += w * d2;
         c.m3 += w * d2 * d;
         c.m4 += w * d2 * d2;
@@ -123,20 +141,35 @@ Central central(double mu, double mode, double lo, double hi, LogPmf&& logpmf) {
         return r < 1.0 && t * r <= (1.0 - r) * c.m4 * 0x1p-60;
     };
     const double m = std::clamp(std::floor(mode), lo, hi);
+    if (!(std::fabs(m) < disc::kMaxWalkStart)) return kNone;
+    int left = disc::kMaxMomentTerms;
     const double tm = add(m);
     double prev = tm;
     for (double k = m + 1.0; k <= hi; k += 1.0) {
+        if (--left < 0) return kNone;
         const double t = add(k);
         if (k > mode + 1.0 && done(t, prev)) break;
         prev = t;
     }
     prev = tm;
     for (double k = m - 1.0; k >= lo; k -= 1.0) {
+        if (--left < 0) return kNone;
         const double t = add(k);
         if (k < mode - 1.0 && done(t, prev)) break;
         prev = t;
     }
     return c;
+}
+
+// m3 / m2^(3/2) and m4 / m2^2 - 3; factor by factor where the denominator would leave the
+// normal range (a variance below 2^-500: a distribution all but at one point).
+inline double skewness_of(double m2, double m3) {
+    const double d = m2 * std::sqrt(m2);
+    return d >= 0x1p-1000 ? m3 / d : m3 / m2 / std::sqrt(m2);
+}
+inline double kurtosis_of(double m2, double m4) {
+    const double d = m2 * m2;
+    return d >= 0x1p-1000 ? m4 / d - 3.0 : m4 / m2 / m2 - 3.0;
 }
 
 // log P(X <= k) (upper: log P(X > k)) for a unimodal pmf with its peak at `mode`, as a
@@ -147,17 +180,17 @@ template <class LogPmf, class Up, class Down>
 DD log_side(double k, bool upper, double mode, double lo, double hi, LogPmf&& logpmf, Up&& up, Down&& down) {
     const double m = std::clamp(std::floor(mode), lo, hi);
     if (!upper) {
-        if (k <= m) return logpmf(k) + disc::log_tail_factor(k, -1.0, lo, down, logpmf);
+        if (k <= m) return logpmf(k) + disc::log_tail_factor(k, -1.0, lo, down);
         const DD lm = logpmf(m), d = logpmf(m + 1.0) - lm;  // the peak m < k: [lo, m] and (m, k]
-        const double a = disc::log_tail_factor(m, -1.0, lo, down, logpmf);
-        const double b = disc::log_tail_factor(m + 1.0, 1.0, k, up, logpmf);
+        const double a = disc::log_tail_factor(m, -1.0, lo, down);
+        const double b = disc::log_tail_factor(m + 1.0, 1.0, k, up);
         return lm + std::log(std::exp(a) + std::exp(d.hi + d.lo + b));
     }
     const double s = k + 1.0;
-    if (s >= m) return logpmf(s) + disc::log_tail_factor(s, 1.0, hi, up, logpmf);
+    if (s >= m) return logpmf(s) + disc::log_tail_factor(s, 1.0, hi, up);
     const DD lm = logpmf(m), d = logpmf(m - 1.0) - lm;  // the peak m > s: [m, hi] and [s, m)
-    const double a = disc::log_tail_factor(m, 1.0, hi, up, logpmf);
-    const double b = disc::log_tail_factor(m - 1.0, -1.0, s, down, logpmf);
+    const double a = disc::log_tail_factor(m, 1.0, hi, up);
+    const double b = disc::log_tail_factor(m - 1.0, -1.0, s, down);
     return lm + std::log(std::exp(a) + std::exp(d.hi + d.lo + b));
 }
 
@@ -165,16 +198,27 @@ DD log_side(double k, bool upper, double mode, double lo, double hi, LogPmf&& lo
 // directly: the side asked for when it is below 1/2, else 1 - the other side (then below
 // 1/2: no cancellation either way). `small` guesses whether the side asked for is the
 // small one (k below the mean for the lower side), so usually one sum suffices.
+//
+// A side may be NaN (a sum past its bound). The answer then comes from the other side where
+// that settles it: a side below 1/2 gives both its own value and the complement's; a side
+// above 1/2 gives its own probability (a sum of positive terms) but not its log, which near
+// 0 would carry the absolute error of the log pmf it starts from. Anything else is NaN.
 template <class Side>
 double prob(bool upper, bool log, bool small, Side&& side) {
+    constexpr double half = -num::kLn2.hi;
     auto direct = [&](DD l) { return log ? l.hi + l.lo : num::exp_dd(l); };
     auto other = [&](DD o) { return log ? std::log1p(-num::exp_dd(o)) : -std::expm1(o.hi + o.lo); };
     if (small) {
         const DD l = side(upper);
-        return l.hi < -num::kLn2.hi ? direct(l) : other(side(!upper));
+        if (l.hi < half) return direct(l);
+        const DD o = side(!upper);
+        if (o.hi < half || (l.hi == l.hi && o.hi == o.hi)) return other(o);
+        return log ? kNaN : direct(l);  // the other side is NaN (or this one is)
     }
     const DD o = side(!upper);
-    return o.hi < -num::kLn2.hi ? other(o) : direct(side(upper));
+    if (o.hi < half) return other(o);
+    const DD l = side(upper);
+    return o.hi == o.hi || !log || l.hi < half ? direct(l) : kNaN;
 }
 
 }  // namespace disc_sum
@@ -231,14 +275,19 @@ struct Hypergeometric {
         return binom_detail::log_pmf(k, K, p, q) + binom_detail::log_pmf(n - k, N - K, p, q) -
                binom_detail::log_pmf(n, N, p, q);
     }
+    // Past a total of disc::kMaxCount the counts K - k, n - k, N - K - n + k and their
+    // neighbours are not all float64s: the pmf (and the cdfs, the quantiles, the entropy)
+    // inside the support is NaN.
     static double logpmf(double k, double N, double K, double n) {
         if (!disc::is_int(k) || k < lo_of(N, K, n) || k > hi_of(N, K, n)) return -kInf;
+        if (N > disc::kMaxCount) return kNaN;
         if (N <= kExactN) return exact_pmf(k, N, K, n, true);
         const num::DD l = log_pmf(k, N, K, n);
         return l.hi + l.lo;
     }
     static double pmf(double k, double N, double K, double n) {
         if (!disc::is_int(k) || k < lo_of(N, K, n) || k > hi_of(N, K, n)) return 0.0;
+        if (N > disc::kMaxCount) return kNaN;
         if (N <= kExactN) return exact_pmf(k, N, K, n, false);
         return num::exp_dd(log_pmf(k, N, K, n));
     }
@@ -252,6 +301,7 @@ struct Hypergeometric {
         const double k = std::floor(x), lo = lo_of(N, K, n), hi = hi_of(N, K, n);
         if (k < lo) return upper ? (log ? 0.0 : 1.0) : (log ? -kInf : 0.0);
         if (k >= hi) return upper ? (log ? -kInf : 0.0) : (log ? 0.0 : 1.0);
+        if (N > disc::kMaxCount) return kNaN;  // no pmf to sum (logpmf)
         if (N <= kExactN) {
             using hyper_detail::choose;
             hyper_detail::U s = 0;
@@ -259,12 +309,17 @@ struct Hypergeometric {
             const hyper_detail::U d = choose(N, n);
             return hyper_detail::ratio(upper ? d - s : s, d, log);
         }
-        // pmf(j + 1) / pmf(j) and pmf(j - 1) / pmf(j)
-        auto up = [&](double j) { return (K - j) * (n - j) / ((j + 1.0) * (N - K - n + j + 1.0)); };
-        auto down = [&](double j) { return j * (N - K - n + j) / ((K - j + 1.0) * (n - j + 1.0)); };
+        // pmf(j + 1) / pmf(j) and pmf(j - 1) / pmf(j) as their exact factors (the counts)
+        using num::DD;
+        auto up = [&](double j) {
+            return disc::Ratio4{DD{K - j, 0.0}, DD{n - j, 0.0}, DD{j + 1.0, 0.0}, DD{N - K - n + j + 1.0, 0.0}};
+        };
+        auto down = [&](double j) {
+            return disc::Ratio4{DD{j, 0.0}, DD{N - K - n + j, 0.0}, DD{K - j + 1.0, 0.0}, DD{n - j + 1.0, 0.0}};
+        };
         auto side = [&](bool u) {
-            return disc_sum::log_side(k, u, mode_point(N, K, n), lo, hi, [&](double j) { return log_pmf(j, N, K, n); },
-                                      up, down);
+            return disc_sum::log_side(k, u, mode_point(N, K, n), lo, hi, [&](double j) { return log_pmf(j, N, K, n); }, up,
+                                      down);
         };
         return disc_sum::prob(upper, log, (k < mean(N, K, n)) != upper, side);
     }
@@ -283,10 +338,70 @@ struct Hypergeometric {
     static Fns fns(double N, double K, double n) {
         return {N, K, n, lo_of(N, K, n), hi_of(N, K, n), std::floor(n * K / N)};
     }
-    static double icdf(double t, double N, double K, double n) { return disc::icdf(t, fns(N, K, n)); }
-    static double iccdf(double t, double N, double K, double n) { return disc::iccdf(t, fns(N, K, n)); }
-    static double ilogcdf(double t, double N, double K, double n) { return disc::ilogcdf(t, fns(N, K, n)); }
-    static double ilogccdf(double t, double N, double K, double n) { return disc::ilogccdf(t, fns(N, K, n)); }
+    static auto searcher(disc::Inv which, double t, disc::InvMemo* m, double N, double K, double n) {
+        auto f = disc::Memoized(fns(N, K, n), m);
+        const double sd = std::sqrt(variance(N, K, n));
+        if (sd >= disc::kWideSd) disc::normal_start(f, which, t, mean(N, K, n), sd, skewness(N, K, n));
+        return f;
+    }
+    SD_DISC_INVERSES(Hypergeometric, 3)
+    // the value methods behind their memos (stats/discrete.hpp)
+    // pmf and logpmf by the binomials' saddle-point fast path (discrete_basic.hpp, saddle::):
+    // the three binomial pmfs of log_pmf, each as X_i = xh + xl and a factor,
+    //     X = X_1 + X_2 - X_3 (two_sum),   r = K (N - K) n (N - n) / (2 pi N k (K - k) (n - k) (N - K - n + k)),
+    // the pmf sqrt(r) e^X. Every count is >= 13 and every t within 1/8, or the element goes to
+    // the scalar definition (as do totals up to kExactN, whose ratios of integers are exact).
+    //   pmf: X within 0.5u (E_1 + E_2 + E_3) + 3.3u; vForce's exp 2.5u; 1 + xl and two products
+    //        3u; r nine products and quotients and the constant, 9.5u, sqrt: 5.75u. Together
+    //        0.5 E + 14.6 units: the fast path keeps to E <= 2.5 (2.2 sd around the mean).
+    //   logpmf = X + log(r) / 2 for r <= 1/2 (so log(r) / 2 <= -0.34 and X <= 0.03 add without
+    //        cancelling to speak of): 0.5u E + 3.3u, (9.5u + 4u |log r|) / 2, the sums 2u |v|, with
+    //        |v| >= E - 0.03 and >= |log r| / 2 - 0.03: at most 6.6 |v| + 8.1 units, 14.7 of
+    //        max(1, |v|) at any E.
+    struct FastParts {
+        saddle::Parts q;
+        bool ok;
+    };
+    static saddle::Parts third(double N, double n) { return saddle::binomial(n, N, n / N); }
+    static saddle::Parts fast_parts(double k, double N, double K, double n, const saddle::Parts& c) {
+        const double p = n / N;
+        const saddle::Parts a = saddle::binomial(k, K, p), b = saddle::binomial(n - k, N - K, p);
+        const num::DD s1 = num::dd::two_sum(a.xh, b.xh), s2 = num::dd::two_sum(s1.hi, -c.xh);
+        const double xl = (s1.lo + s2.lo) + (a.xl + b.xl - c.xl);
+        const double r = (K * (N - K)) * (n * (N - n)) /
+                         (2.0 * special::kPi * N * ((k * (K - k)) * ((n - k) * (N - K - n + k))));
+        return {s2.hi, xl, r, a.e + b.e + c.e, a.ok && b.ok && c.ok && N > kExactN && r <= 0.5};
+    }
+    template <class F>
+    static double scalar_at(const Chunk<3>& c, int i, F&& f) {
+        return valid(c.p[0][i], c.p[1][i], c.p[2][i]) && c.x[i] == c.x[i] ? f(c.x[i], c.p[0][i], c.p[1][i], c.p[2][i]) : kNaN;
+    }
+    template <class Run, class F>
+    static void fast_kernel(const Chunk<3>& c, double* out, Run&& run, F&& scalar) {
+        const bool same = c.same[0] && c.same[2];
+        saddle::Parts t = third(c.p[0][0], c.p[2][0]);
+        run(
+            c.n, out,
+            [&](int i) {
+                if (!same) t = third(c.p[0][i], c.p[2][i]);
+                return fast_parts(c.x[i], c.p[0][i], c.p[1][i], c.p[2][i], t);
+            },
+            [&](int i) { return scalar_at(c, i, scalar); });
+    }
+    static void pmf_kernel(const Chunk<3>& c, double* out) {
+        fast_kernel(c, out, [](int n, double* o, auto&& parts, auto&& precise) { saddle::pmf_kernel(n, o, parts, precise, 2.5); },
+                    &Hypergeometric::pmf);
+    }
+    static void logpmf_kernel(const Chunk<3>& c, double* out) {
+        fast_kernel(c, out, [](int n, double* o, auto&& parts, auto&& precise) { saddle::logpmf_kernel(n, o, parts, precise); },
+                    &Hypergeometric::logpmf);
+    }
+    SD_DISC_MEMO_KERNEL(Hypergeometric, 3, pmf, false)
+    SD_DISC_MEMO_KERNEL(Hypergeometric, 3, logpmf, false)
+    SD_DISC_MEMO_SCALAR(Hypergeometric, 3, cdf, true)
+    SD_DISC_MEMO_SCALAR(Hypergeometric, 3, ccdf, true)
+    SD_DISC_MEMO_SCALAR(Hypergeometric, 3, logcdf, true)
+    SD_DISC_MEMO_SCALAR(Hypergeometric, 3, logccdf, true)
 
     static double mean(double N, double K, double n) { return N == 0.0 ? 0.0 : n * (K / N); }
     static double variance(double N, double K, double n) {
@@ -307,11 +422,13 @@ struct Hypergeometric {
     }
     // [(N - 1) N^2 (N (N + 1) - 6 K (N - K) - 6 n (N - n)) + 6 n K (N - K) (N - n) (5N - 6)]
     // / (n K (N - K) (N - n) (N - 2) (N - 3)): the bracket cancels (often to 0 exactly), so
-    // it is formed in exact 128-bit integers while N <= 2^24 (its terms < 2^124); beyond
-    // that, and for N <= 3, the central moments as sums.
+    // it is formed in exact 128-bit integers, which hold it while N <= 2^24 (its terms
+    // < 2^124); for N <= 3 the central moments as sums (at most 4 points). Past 2^24 it is
+    // NaN: a sum of central moments loses what m4 / m2^2 - 3 cancels (the kurtosis is ~1 / sd^2).
     static double kurtosis(double N, double K, double n) {
         if (lo_of(N, K, n) == hi_of(N, K, n)) return kNaN;
-        if (N > 3.0 && N <= 0x1p24) {
+        if (N > 0x1p24) return kNaN;
+        if (N > 3.0) {
             using I = __int128;
             const I iN = static_cast<I>(N), iK = static_cast<I>(K), in = static_cast<I>(n);
             const I a = iK * (iN - iK), b = in * (iN - in);
@@ -323,16 +440,28 @@ struct Hypergeometric {
         return c.m4 / (c.m2 * c.m2) - 3.0;
     }
     // floor((n + 1)(K + 1) / (N + 2)); two modes when that ratio is an integer (T25).
+    // Past N = disc::kMaxCount (the limit of the pmf, kept for the mode): NaN.
     static double mode(double N, double K, double n) {
         if (lo_of(N, K, n) == hi_of(N, K, n)) return lo_of(N, K, n);
+        if (N > disc::kMaxCount) return kNaN;
         const __int128 a = static_cast<__int128>(n + 1.0) * static_cast<__int128>(K + 1.0);
         const __int128 d = static_cast<__int128>(N + 2.0);
         if (a % d == 0) return kNaN;
         return static_cast<double>(a / d);
     }
     static double entropy(double N, double K, double n) {
-        return disc::entropy_sum(mode_point(N, K, n), lo_of(N, K, n), hi_of(N, K, n),
-                                 [&](double j) { return log_pmf(j, N, K, n); });
+        if (lo_of(N, K, n) == hi_of(N, K, n)) return 0.0;  // one point
+        if (N > disc::kMaxCount) return kNaN;               // no pmf to sum (logpmf)
+        if (!(variance(N, K, n) <= disc::kMaxEntropyVariance)) return kNaN;  // a sum past its bound
+        return disc::entropy_sum(
+            mode_point(N, K, n), lo_of(N, K, n), hi_of(N, K, n), [&](double j) { return log_pmf(j, N, K, n); },
+            // pmf(j + 1) / pmf(j) = (K - j) (n - j) / ((j + 1) (N - K - n + j + 1)), the products
+            // of two counts exact as double-doubles; one step down, its reciprocal at j - 1
+            [&](double j, double dir) {
+                using num::dd::two_prod;
+                return dir > 0.0 ? two_prod(K - j, n - j) / two_prod(j + 1.0, N - K - n + j + 1.0)
+                                 : two_prod(j, N - K - n + j) / two_prod(K - j + 1.0, n - j + 1.0);
+            });
     }
     static double support_lo(double N, double K, double n) { return lo_of(N, K, n); }
     static double support_hi(double N, double K, double n) { return hi_of(N, K, n); }
@@ -357,15 +486,39 @@ struct BetaBinomial {
         return n >= 0.0 && disc::is_int(n) && a > 0.0 && std::isfinite(a) && b > 0.0 && std::isfinite(b);
     }
 
-    // log C(n, k) B(k + a, n - k + b) / B(a, b) = log B(k + a, n - k + b) - log B(a, b)
-    // - log(n + 1) - log B(k + 1, n - k + 1).
+    // Whether there is a pmf: n + a + b up to 2^35. The log pmf below is a difference of
+    // log-gammas of that size, each to ~2^-90 of itself, so its error grows in proportion to
+    // n + a + b: against Arb 1.2e-15 at 2^34 and 2.3e-15 at 2^35 (3.7e-15 with both shapes
+    // there), doubling with each further power of 2. Beyond, the pmf, and with it the cdfs,
+    // the quantiles and the entropy, are NaN rather than that.
+    static bool has_pmf(double n, double a, double b) { return n + a + b <= 0x1p35; }
+    // Whether the moments' closed forms stay in the normal range: n, a, b and 1 / a, 1 / b up
+    // to 2^150 (the kurtosis multiplies five of them). Outside, the moments are NaN.
+    static bool has_moments(double n, double a, double b) {
+        return n <= 0x1p150 && a >= 0x1p-150 && a <= 0x1p150 && b >= 0x1p-150 && b <= 0x1p150;
+    }
+
+    // log C(n, k) B(k + a, n - k + b) / B(a, b)
+    //   = log Gamma(k + a) + log Gamma(n - k + b) - log Gamma(k + 1) - log Gamma(n - k + 1) + C,
+    //   C = log Gamma(n + 1) - log Gamma(n + a + b) - log B(a, b),
+    // C of the parameters alone (kept per thread for the last n, a, b): four log-gammas an
+    // element (they were six, two of them of n + a + b and n + 2).
     static num::DD log_pmf(double k, double n, double a, double b) {
-        using betabinom_detail::log_beta;
-        thread_local num::Memo memo;
-        const num::DD lab = memo.get(a, b, [&] { return log_beta(num::DD{a, 0.0}, num::DD{b, 0.0}); });
-        const num::DD l1 = log_beta(num::dd::two_sum(k, a), num::dd::two_sum(n - k, b));
-        const num::DD l2 = log_beta(num::DD{k + 1.0, 0.0}, num::DD{n - k + 1.0, 0.0});
-        return l1 - lab - num::log_dd(n + 1.0) - l2;
+        using num::DD;
+        using num::log_gamma;
+        if (!has_pmf(n, a, b)) return {kNaN, 0.0};
+        struct Last {
+            double n = kNaN, a = kNaN, b = kNaN;
+            DD c{0.0, 0.0};
+        };
+        thread_local Last last;
+        if (!(last.n == n && last.a == a && last.b == b)) {
+            last.c = log_gamma(DD{n + 1.0, 0.0}) - log_gamma(num::dd::two_sum(a, b) + n) -
+                     betabinom_detail::log_beta(DD{a, 0.0}, DD{b, 0.0});
+            last.n = n, last.a = a, last.b = b;
+        }
+        return log_gamma(num::dd::two_sum(k, a)) + log_gamma(num::dd::two_sum(n - k, b)) - log_gamma(DD{k + 1.0, 0.0}) -
+               log_gamma(DD{n - k + 1.0, 0.0}) + last.c;
     }
     static double logpmf(double k, double n, double a, double b) {
         if (!disc::is_int(k) || k < 0.0 || k > n) return -kInf;
@@ -391,32 +544,61 @@ struct BetaBinomial {
         const double k = std::floor(x);
         if (k < 0.0) return upper ? (log ? 0.0 : 1.0) : (log ? -kInf : 0.0);
         if (k >= n) return upper ? (log ? -kInf : 0.0) : (log ? 0.0 : 1.0);
-        auto up = [&](double j) { return (n - j) * (j + a) / ((j + 1.0) * (n - j - 1.0 + b)); };
-        auto down = [&](double j) { return j * (n - j + b) / ((n - j + 1.0) * (j - 1.0 + a)); };
+        if (!has_pmf(n, a, b)) return kNaN;  // no pmf to sum
         auto lp = [&](double j) { return log_pmf(j, n, a, b); };
-        auto side = [&](bool u) -> num::DD {
-            if (a + b > 2.0) return disc_sum::log_side(k, u, split(n, a, b), 0.0, n, lp, up, down);
-            if (!u) return lp(k) + full_sum(k, -1.0, 0.0, down, lp);
-            return lp(k + 1.0) + full_sum(k + 1.0, 1.0, n, up, lp);
+        // the ratios as exact factors (every count is exact: n is below 2^35)
+        auto run = [&](auto&& up, auto&& down) {
+            auto side = [&](bool u) -> num::DD {
+                if (a + b > 2.0) return disc_sum::log_side(k, u, split(n, a, b), 0.0, n, lp, up, down);
+                if (!u) return lp(k) + full_sum(k, -1.0, 0.0, down, lp);
+                return lp(k + 1.0) + full_sum(k + 1.0, 1.0, n, up, lp);
+            };
+            return disc_sum::prob(upper, log, (k < mean(n, a, b)) != upper, side);
         };
-        return disc_sum::prob(upper, log, (k < mean(n, a, b)) != upper, side);
+        using num::DD;
+        using num::dd::two_sum;
+        return run(
+            [&](double j) {
+                return disc::Ratio4{DD{n - j, 0.0}, two_sum(j, a), DD{j + 1.0, 0.0}, two_sum(n - j - 1.0, b)};
+            },
+            [&](double j) {
+                return disc::Ratio4{DD{j, 0.0}, two_sum(n - j, b), DD{n - j + 1.0, 0.0}, two_sum(j - 1.0, a)};
+            });
     }
     // log sum_j pmf(j) / pmf(k) over every j from k to `end`, with the ratio recurrence
-    // resynchronized every 8 terms.
+    // resynchronized every 8 terms. NaN for more than disc::kMaxTailTerms terms. The log as
+    // a double-double: toward an end where the pmf rises (small shapes) the sum is far above
+    // its first term, and its log rounded to float64 would cost |log| ULP of the probability.
     template <class R, class L>
-    static double full_sum(double k, double dir, double end, R&& ratio, L&& lp) {
-        const num::DD l0 = lp(k);
-        double sum = 1.0, t = 1.0, j = k;
-        for (int i = 1; (dir > 0.0 ? j < end : j > end); ++i) {
-            t *= ratio(j);
-            j += dir;
-            if (i % 8 == 0) {
-                const num::DD d = lp(j) - l0;
-                t = std::exp(d.hi + d.lo);
+    static num::DD full_sum(double k, double dir, double end, R&& ratio, L&& lp) {
+        constexpr num::DD kNone{kNaN, 0.0};
+        if constexpr (std::is_same_v<std::invoke_result_t<R&, double>, disc::Ratio4>) {
+            const double sum = disc::tail_sum_dd(k, dir, end, ratio, true);
+            if (!(sum < kInf)) return kNone;
+            if (sum > 0.0) return num::log_dd(sum);
+            // a term underflowed: the rounded ratios, resynchronized from the log pmf
+            auto rounded = [&](double j) {
+                const disc::Ratio4 r = ratio(j);
+                return (r.a1.hi * r.a2.hi) / (r.b1.hi * r.b2.hi);
+            };
+            return full_sum(k, dir, end, rounded, lp);
+        } else {
+            // every term is needed: not formed for more than the bound, or past 2^53, where
+            // the next integer is not a float64 and j would not move
+            if (!(std::fabs(end - k) <= disc::kMaxTailTerms && std::fabs(k) < 0x1p53 && std::fabs(end) < 0x1p53)) return kNone;
+            const num::DD l0 = lp(k);
+            double sum = 1.0, t = 1.0, j = k;
+            for (int i = 1; (dir > 0.0 ? j < end : j > end); ++i) {
+                t *= ratio(j);
+                j += dir;
+                if (i % 8 == 0) {
+                    const num::DD d = lp(j) - l0;
+                    t = std::exp(d.hi + d.lo);
+                }
+                sum += t;
             }
-            sum += t;
+            return sum < kInf ? num::log_dd(sum) : kNone;
         }
-        return std::log(sum);
     }
     static double logcdf(double x, double n, double a, double b) { return tail(x, n, a, b, false, true); }
     static double logccdf(double x, double n, double a, double b) { return tail(x, n, a, b, true, true); }
@@ -431,20 +613,39 @@ struct BetaBinomial {
         double logccdf(double k) const { return BetaBinomial::logccdf(k, n, a, b); }
     };
     static Fns fns(double n, double a, double b) { return {n, a, b, 0.0, n, std::floor(n * a / (a + b))}; }
-    static double icdf(double t, double n, double a, double b) { return disc::icdf(t, fns(n, a, b)); }
-    static double iccdf(double t, double n, double a, double b) { return disc::iccdf(t, fns(n, a, b)); }
-    static double ilogcdf(double t, double n, double a, double b) { return disc::ilogcdf(t, fns(n, a, b)); }
-    static double ilogccdf(double t, double n, double a, double b) { return disc::ilogccdf(t, fns(n, a, b)); }
+    static auto searcher(disc::Inv which, double t, disc::InvMemo* m, double n, double a, double b) {
+        auto f = disc::Memoized(fns(n, a, b), m);
+        const double sd = std::sqrt(variance_of(n, a, b));
+        // a wide beta-binomial is n times a beta(a, b) variable smeared by a binomial: the
+        // search starts at n times the beta quantile (sd.special's inverses)
+        if (sd >= disc::kWideSd) {
+            const bool log = which == disc::Inv::ilogcdf || which == disc::Inv::ilogccdf;
+            const bool upper = which == disc::Inv::iccdf || which == disc::Inv::ilogccdf;
+            const double pr = log ? std::exp(t) : t;
+            const double g = std::floor(n * (upper ? special::Betainccinv::f(a, b, pr) : special::Betaincinv::f(a, b, pr)));
+            if (g >= 0.0 && g <= n) f.guess = g;
+        }
+        return f;
+    }
+    SD_DISC_INVERSES(BetaBinomial, 3)
+    // the value methods behind their memos (stats/discrete.hpp)
+    SD_DISC_MEMO_SCALAR(BetaBinomial, 3, pmf, false)
+    SD_DISC_MEMO_SCALAR(BetaBinomial, 3, logpmf, false)
+    SD_DISC_MEMO_SCALAR(BetaBinomial, 3, cdf, true)
+    SD_DISC_MEMO_SCALAR(BetaBinomial, 3, ccdf, true)
+    SD_DISC_MEMO_SCALAR(BetaBinomial, 3, logcdf, true)
+    SD_DISC_MEMO_SCALAR(BetaBinomial, 3, logccdf, true)
 
-    static double mean(double n, double a, double b) { return n * (a / (a + b)); }
-    static double variance(double n, double a, double b) {
+    static double mean(double n, double a, double b) { return has_moments(n, a, b) ? n * (a / (a + b)) : kNaN; }
+    static double variance_of(double n, double a, double b) {
         const double c = a + b;
         return n * (a / c) * (b / c) * ((c + n) / (c + 1.0));
     }
+    static double variance(double n, double a, double b) { return has_moments(n, a, b) ? variance_of(n, a, b) : kNaN; }
     // (a + b + 2n) (b - a) / (a + b + 2) sqrt((1 + a + b) / (n a b (n + a + b))): exactly 0
     // for a = b.
     static double skewness(double n, double a, double b) {
-        if (n == 0.0) return kNaN;
+        if (n == 0.0 || !has_moments(n, a, b)) return kNaN;
         const double c = a + b;
         return (c + 2.0 * n) * (b - a) / (c + 2.0) * std::sqrt((1.0 + c) / (n * a)) / std::sqrt(b * (n + c));
     }
@@ -456,7 +657,7 @@ struct BetaBinomial {
     // (s^2 - d^2 = 4ab put into the textbook form), the bracket in double-double from the
     // exact s and d, so only its own cancellation near the zero is left (2^-106 of it).
     static double kurtosis(double n, double a, double b) {
-        if (n == 0.0) return kNaN;
+        if (n == 0.0 || !has_moments(n, a, b)) return kNaN;
         using num::DD;
         const DD s = num::dd::two_sum(a, b), d = num::dd::two_sum(b, -a), s2 = s * s, s3 = s2 * s;
         const DD nd{n, 0.0}, n2 = num::dd::two_prod(n, n);
@@ -466,34 +667,40 @@ struct BetaBinomial {
         const double den = a * b * n * ((s.hi + 2.0) * (s.hi + 3.0) * (s.hi + n));
         return br.hi / den;
     }
-    // The single largest point (T21): from the ratio's crossing; NaN for a tie (the crossing
-    // at an integer inside, equal ends of a U-shaped pmf, or the uniform a = b = 1).
+    // The single largest point (T21); NaN for a tie (the crossing at an integer inside, equal
+    // ends of a U-shaped pmf, or the uniform a = b = 1).
+    //   a + b > 2: from the ratio's crossing (increasing while k <= t), NaN where the crossing
+    //       is past the float64 range;
+    //   a + b <= 2: the pmf falls to a trough and rises, or runs one way: the larger end, and
+    //       pmf(n) / pmf(0) = prod_{i < n} (a + i) / (b + i) is above 1 exactly when a > b.
     static double mode(double n, double a, double b) {
         if (n == 0.0) return 0.0;
-        if (a + b == 2.0) return a == 1.0 ? kNaN : (a > 1.0 ? n : 0.0);
+        if (a + b <= 2.0) return a == b ? kNaN : (a > b ? n : 0.0);
         const double t = turn(n, a, b);
-        if (a + b > 2.0) {  // increasing while k <= t
-            if (t < 0.0) return 0.0;
-            if (t >= n) return n;
-            if (std::floor(t) == t) return kNaN;  // pmf(t + 1) = pmf(t)
-            return std::floor(t) + 1.0;
-        }
-        // a + b < 2: decreasing while k < t, then increasing: the larger end
-        if (t <= 0.0) return n;
-        if (t >= n) return 0.0;
-        const double l0 = logpmf(0.0, n, a, b), ln = logpmf(n, n, a, b);
-        return l0 == ln ? kNaN : (l0 > ln ? 0.0 : n);
+        if (!std::isfinite(t)) return kNaN;
+        if (t < 0.0) return 0.0;
+        if (t >= n) return n;
+        if (std::floor(t) == t) return kNaN;  // pmf(t + 1) = pmf(t)
+        return std::floor(t) + 1.0;
     }
     static double entropy(double n, double a, double b) {
-        if (a + b > 2.0)
-            return disc::entropy_sum(split(n, a, b), 0.0, n, [&](double j) { return log_pmf(j, n, a, b); });
-        double h = 0.0;  // not unimodal: every point
-        for (double k = 0.0; k <= n; k += 1.0) {
-            const num::DD l = log_pmf(k, n, a, b);
-            const double lv = l.hi + l.lo;
-            h -= std::exp(lv) * lv;
+        if (!has_pmf(n, a, b)) return kNaN;  // no pmf to sum
+        auto lp = [&](double j) { return log_pmf(j, n, a, b); };
+        // pmf(j + 1) / pmf(j) = (n - j) (j + a) / ((j + 1) (n - j - 1 + b)); one step down, its
+        // reciprocal at j - 1
+        auto step = [&](double j, double dir) {
+            using num::dd::two_sum;
+            return dir > 0.0 ? (two_sum(j, a) * (n - j)) / (two_sum(n - j - 1.0, b) * (j + 1.0))
+                             : (two_sum(n - j, b) * j) / (two_sum(j - 1.0, a) * (n - j + 1.0));
+        };
+        if (a + b > 2.0) {
+            if (!(variance_of(n, a, b) <= disc::kMaxEntropyVariance)) return kNaN;  // a sum past its bound
+            return disc::entropy_sum(split(n, a, b), 0.0, n, lp, step);
         }
-        return h;
+        // not unimodal: the pmf falls from each end to a trough, or all the way from one end
+        // (a + b = 2: from n for a > 1, from 0 otherwise); every point is summed
+        const double trough = a + b == 2.0 ? (a > 1.0 ? 0.0 : n) : split(n, a, b);
+        return disc::entropy_sum_ends(trough, 0.0, n, lp, step);
     }
     static double support_lo(double, double, double) { return 0.0; }
     static double support_hi(double n, double, double) { return n; }
@@ -528,19 +735,22 @@ inline double l_over_p_m1(double p) {
     return (m.hi + m.lo) / p;
 }
 
+inline constexpr int kExpE1Terms = 1000;  // the most terms of exp_e1's continued fraction
+
 // e^x E_1(x), x > 0: the continued fraction 1 / (x + 1 - 1 / (x + 3 - 4 / (x + 5 - ...)))
 // for x > 1 (sd.special's E_n fraction, which is this scaled value before e^-x), else
 // e^x times the series.
 inline double exp_e1(double x) {
     if (x > 1.0) {
+        // the fraction's error after n terms falls like e^(-4 sqrt(n x)): 2^-53 by n = 85 / x
         const auto r = special::lentz_backward(
             x + 1.0,
             [&](int k) {
                 const double kd = k;
                 return std::pair{-kd * kd, x + 1.0 + 2.0 * kd};
             },
-            100000);
-        return 1.0 / r.value;
+            kExpE1Terms);
+        return r.converged ? 1.0 / r.value : kNaN;
     }
     return std::exp(x) * special::Expn::f(1.0, x);
 }
@@ -591,18 +801,21 @@ inline double phi_em(double p, double lw, double v) {
 inline DD log_tail_sum(double k, double p) {
     const double v = k + 1.0;
     const double lw = -std::log(p);
+    if (v >= disc::kFarCount && disc::overflows(lw, v)) return {-kInf, 0.0};  // p^(k+1) is below any float64's log
     double phi;
     if (lw <= 0.1) {
         phi = phi_em(p, lw, v);
     } else {
+        // p^m <= e^(-m / 10) is below 2^-60 of the first term from m = 416
         double s = 0.0, t = 1.0;
-        for (double m = 0.0; m < 1e9; m += 1.0) {
+        bool ended = false;
+        for (int m = 0; m < 512 && !ended; ++m) {
             const double term = t / (v + m);
             s += term;
-            if (term <= s * 0x1p-60) break;
+            ended = term <= s * 0x1p-60;
             t *= p;
         }
-        phi = s;
+        phi = ended ? s : kNaN;
     }
     return num::log_dd(p) * v + std::log(phi);
 }
@@ -622,7 +835,9 @@ struct LogSeries {
         return memo.get(p, 0.0, [&] { return num::DD{std::log1p(logser_detail::l_over_p_m1(p)), 0.0}; }).hi;
     }
     static num::DD log_pmf(double k, double p) {
-        return num::log_dd(p) * (k - 1.0) - num::log_dd(k) - log_l_over_p(p);
+        const num::DD lp = num::log_dd(p);
+        if (k >= disc::kFarCount && disc::overflows(lp.hi, k - 1.0)) return {-kInf, 0.0};
+        return lp * (k - 1.0) - num::log_dd(k) - log_l_over_p(p);
     }
     static double logpmf(double k, double p) {
         if (!disc::is_int(k) || k < 1.0) return -kInf;
@@ -637,7 +852,9 @@ struct LogSeries {
     // log P(X > k) as a double-double: exponentiated, a log of size 460 rounded to float64
     // would cost 50 ULP.
     static num::DD log_ccdf_dd(double k, double p) {
-        return logser_detail::log_tail_sum(k, p) - num::log_dd(p) - log_l_over_p(p);
+        const num::DD t = logser_detail::log_tail_sum(k, p);
+        if (t.hi == -kInf) return t;
+        return t - num::log_dd(p) - log_l_over_p(p);
     }
     static double logccdf(double x, double p) {
         const double k = std::floor(x);
@@ -678,10 +895,55 @@ struct LogSeries {
         double logccdf(double k) const { return LogSeries::logccdf(k, p); }
     };
     static Fns fns(double p) { return {p}; }
-    static double icdf(double t, double p) { return disc::icdf(t, fns(p)); }
-    static double iccdf(double t, double p) { return disc::iccdf(t, fns(p)); }
-    static double ilogcdf(double t, double p) { return disc::ilogcdf(t, fns(p)); }
-    static double ilogccdf(double t, double p) { return disc::ilogccdf(t, fns(p)); }
+    static auto searcher(disc::Inv, double, disc::InvMemo* m, double p) { return disc::Memoized(fns(p), m); }
+    SD_DISC_INVERSES(LogSeries, 1)
+    // the value methods behind their memos (stats/discrete.hpp)
+    // pmf = exp((k - 1) log p - log(L / p)) / k, the exponent in double-double with its two
+    // logs taken once per chunk for a scalar p (by the functions the per-element path calls):
+    // vForce's exp 2.5u, the factor 1 + lo, the product and the division 3u: 5.5 units (no
+    // log k: the scalar definition's third log). logpmf = exponent - log k with vForce's
+    // log: both parts are negative, so the 4u of log k and the two sums' 2u are relative to
+    // the result: 6 units.
+    static void pmf_kernel(const Chunk<1>& c, double* out) { exponent_kernel(c, out, false); }
+    static void logpmf_kernel(const Chunk<1>& c, double* out) { exponent_kernel(c, out, true); }
+    static void exponent_kernel(const Chunk<1>& c, double* out, bool log) {
+        double eh[kChunkSize], el[kChunkSize], w[kChunkSize];
+        bool fast[kChunkSize];
+        const bool same = c.same[0];
+        const bool ok0 = c.p[0][0] > 0.0 && c.p[0][0] < 1.0;
+        num::DD lp = num::log_dd(same && ok0 ? c.p[0][0] : 0.5);
+        double llp = same && ok0 ? log_l_over_p(c.p[0][0]) : 0.0;
+        for (int i = 0; i < c.n; ++i) {
+            const double k = c.x[i], p = c.p[0][i];
+            fast[i] = p > 0.0 && p < 1.0 && k >= 1.0 && std::isfinite(k) && std::floor(k) == k;
+            eh[i] = el[i] = 0.0;
+            w[i] = 1.0;
+            if (!fast[i]) continue;
+            if (!same) lp = num::log_dd(p), llp = log_l_over_p(p);
+            const num::DD e = lp * (k - 1.0) - llp;
+            // below: the scalar definition (results into the subnormals, k up to 2^53 times smaller)
+            fast[i] = e.hi > -650.0 && k < 0x1p53;
+            if (fast[i]) eh[i] = e.hi, el[i] = e.lo, w[i] = k;
+        }
+        if (log) {
+            ck::log(w, w, c.n);
+            for (int i = 0; i < c.n; ++i) out[i] = (eh[i] - w[i]) + el[i];
+        } else {
+            double y[kChunkSize];
+            ck::exp(y, eh, c.n);
+            for (int i = 0; i < c.n; ++i) out[i] = y[i] * (1.0 + el[i]) / w[i];
+        }
+        ck::fallback(c.n, fast, out, [&](int i) {
+            if (!valid(c.p[0][i]) || c.x[i] != c.x[i]) return kNaN;
+            return log ? LogSeries::logpmf(c.x[i], c.p[0][i]) : LogSeries::pmf(c.x[i], c.p[0][i]);
+        });
+    }
+    SD_DISC_MEMO_KERNEL(LogSeries, 1, pmf, false)
+    SD_DISC_MEMO_KERNEL(LogSeries, 1, logpmf, false)
+    SD_DISC_MEMO_SCALAR(LogSeries, 1, cdf, true)
+    SD_DISC_MEMO_SCALAR(LogSeries, 1, ccdf, true)
+    SD_DISC_MEMO_SCALAR(LogSeries, 1, logcdf, true)
+    SD_DISC_MEMO_SCALAR(LogSeries, 1, logccdf, true)
 
     // The raw moments E[X^r] = p A_r / (L w^r), A = 1, 1, 1 + p, 1 + 4p + p^2 (w = 1 - p).
     static double mean(double p) { return p / (logser_detail::big_l(p) * (1.0 - p)); }
@@ -704,15 +966,47 @@ struct LogSeries {
     }
     static double skewness(double p) {
         const disc_sum::Central c = central(p);
-        return c.m3 / (c.m2 * std::sqrt(c.m2));
+        return disc_sum::skewness_of(c.m2, c.m3);
     }
     static double kurtosis(double p) {
         const disc_sum::Central c = central(p);
-        return c.m4 / (c.m2 * c.m2) - 3.0;
+        return disc_sum::kurtosis_of(c.m2, c.m4);
     }
     static double mode(double) { return 1.0; }
+    // H = w E[X] + E[log X] + log L with w = -log p, E[X] = p / ((1 - p) L) and
+    // E[log X] = T / L, T = sum_k p^k log(k) / k.
+    //
+    // Above w = 2^-10 the sum over the support from k = 1 (terms falling like p^k: at most
+    // 5e4 of them). Below, T = -d/ds Li_s(e^-w) at s = 1 from the polylogarithm's expansion at
+    // w = 0, Li_s(e^-w) = Gamma(1 - s) w^(s-1) + sum_{n >= 0} zeta(s - n) (-w)^n / n! (|w| < 2 pi),
+    // whose two poles at s = 1 cancel:
+    //     T = log(w)^2 / 2 + gamma log(w) + C - sum_{n >= 1} zeta'(1 - n) (-w)^n / n!,
+    //     C = gamma^2 / 2 + pi^2 / 12 + gamma_1 (gamma_1: the first Stieltjes constant),
+    // the terms of one size and sign pattern log(w)^2 / 2 >> gamma |log w| (no cancellation to
+    // speak of), the series cut after n = 5: from n = 6 on |zeta'(1 - n)| / n! < (2 pi)^-n
+    // (8e-7 at n = 6), so the rest is below 2 (w / 2 pi)^6 < 2^-75. The direct sum would need
+    // 42 / w terms.
     static double entropy(double p) {
-        return disc::entropy_sum(1.0, 1.0, kInf, [&](double j) { return log_pmf(j, p); });
+        const num::DD lp = num::log_dd(p);
+        const double w = -(lp.hi + lp.lo);
+        if (w > 0x1p-10) {
+            return disc::entropy_sum(
+                1.0, 1.0, kInf, [&](double j) { return log_pmf(j, p); },
+                // pmf(k + 1) / pmf(k) = p k / (k + 1)
+                [&](double k, double dir) {
+                    return dir > 0.0 ? num::dd::two_prod(p, k) / (k + 1.0) : num::DD{k, 0.0} / (num::dd::two_prod(p, k - 1.0));
+                });
+        }
+        constexpr double kEuler = 0.5772156649015329, kC = 0.9162401498442958;
+        // zeta'(0), -zeta'(-1) / 2!, zeta'(-2) / 3!, -zeta'(-3) / 4!, zeta'(-4) / 5!
+        constexpr double c1 = -0.9189385332046727, c2 = 0.08271057185022546, c3 = -0.005074742843065545,
+                         c4 = -0.00022410734824059588, c5 = 6.65317620855718690e-05;
+        // log w and L as double-doubles: T / L is most of H, and a float64 log w would leave
+        // its rounding twice over in log(w)^2
+        const num::DD l = num::log_dd(w), L = -num::dd::log(num::dd::two_sum(1.0, -p));
+        const num::DD t = l * l * 0.5 + l * kEuler + (kC + w * (c1 + w * (c2 + w * (c3 + w * (c4 + w * c5)))));
+        const num::DD h = t / L + num::dd::log(L) + w * p / ((1.0 - p) * L.hi);
+        return h.hi + h.lo;
     }
     static double support_lo(double) { return 1.0; }
     static double support_hi(double) { return kInf; }
@@ -744,13 +1038,16 @@ inline DD log_hurwitz(double a, double q) {
     const double z = special::Hurwitz::f(a, q);
     if (z >= 0x1p-1000) return num::log_dd(z);
     if (a / q >= 1.0) {
+        // The terms pass 2^-60 at j = q (2^(60 / a) - 1) <= a (2^(60 / a) - 1), which falls in
+        // a, and zeta(a, q) < 2^-1000 with q <= a needs a >= 140: at most 49 terms.
         double s = 0.0;
-        for (double j = 0.0; j < 1e6; j += 1.0) {
+        bool ended = false;
+        for (int j = 0; j < 128 && !ended; ++j) {
             const double t = std::exp(-a * std::log1p(j / q));
             s += t;
-            if (t <= s * 0x1p-60) break;
+            ended = t <= s * 0x1p-60;
         }
-        return num::log_dd(q) * -a + std::log(s);
+        return ended ? num::log_dd(q) * -a + std::log(s) : num::DD{kNaN, 0.0};
     }
     const double r = 1.0 / q;
     const double c = 1.0 + (a - 1.0) * r * (0.5 + a * r * (1.0 / 12.0 - (a + 1.0) * (a + 2.0) * r * r / 720.0));
@@ -867,10 +1164,15 @@ struct Zipf {
         num::DD logccdf_dd(double k) const { return Zipf::log_ccdf_dd(k, a); }  // k >= 1, an integer
     };
     static Fns fns(double a) { return {a}; }
-    static double icdf(double t, double a) { return disc::icdf(t, fns(a)); }
-    static double iccdf(double t, double a) { return disc::iccdf(t, fns(a)); }
-    static double ilogcdf(double t, double a) { return disc::ilogcdf(t, fns(a)); }
-    static double ilogccdf(double t, double a) { return disc::ilogccdf(t, fns(a)); }
+    static auto searcher(disc::Inv, double, disc::InvMemo* m, double a) { return disc::Memoized(fns(a), m); }
+    SD_DISC_INVERSES(Zipf, 1)
+    // the value methods behind their memos (stats/discrete.hpp)
+    SD_DISC_MEMO_SCALAR(Zipf, 1, pmf, false)
+    SD_DISC_MEMO_SCALAR(Zipf, 1, logpmf, false)
+    SD_DISC_MEMO_SCALAR(Zipf, 1, cdf, true)
+    SD_DISC_MEMO_SCALAR(Zipf, 1, ccdf, true)
+    SD_DISC_MEMO_SCALAR(Zipf, 1, logcdf, true)
+    SD_DISC_MEMO_SCALAR(Zipf, 1, logccdf, true)
 
     // zeta(a - 1) / zeta(a) for a > 2 (else +inf); the central moments by zipf_detail::central;
     // a ratio is +inf where the variance is finite and its moment diverges, NaN where the
@@ -883,12 +1185,12 @@ struct Zipf {
     static double skewness(double a) {
         if (!(a > 4.0)) return a > 3.0 ? kInf : kNaN;
         const double mu = mean(a), m2 = zipf_detail::central(2, a, mu);
-        return zipf_detail::central(3, a, mu) / (m2 * std::sqrt(m2));
+        return disc_sum::skewness_of(m2, zipf_detail::central(3, a, mu));
     }
     static double kurtosis(double a) {
         if (!(a > 5.0)) return a > 3.0 ? kInf : kNaN;
         const double mu = mean(a), m2 = zipf_detail::central(2, a, mu);
-        return zipf_detail::central(4, a, mu) / (m2 * m2) - 3.0;
+        return disc_sum::kurtosis_of(m2, zipf_detail::central(4, a, mu));
     }
     static double mode(double) { return 1.0; }
     // log zeta(a) + a S / zeta(a), S = sum log k k^-a: the terms to K and the Euler-Maclaurin

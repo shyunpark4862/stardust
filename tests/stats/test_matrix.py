@@ -1,13 +1,13 @@
 """Matrix distributions (T10, docs/api/stats.md §3.1; decisions T30): log densities and entropies
-against 50-digit references, scipy's moments, the support, NaN and divergence rules, batching,
+against Arb references, scipy's moments, the support, NaN and divergence rules, batching,
 and samples (their marginal laws, determinism)."""
 
 import math
 
-import mpmath as mp
 import numpy as np
 import pytest
 import scipy.stats as st
+from flint import arb, arb_mat, ctx
 
 import stardust as sd
 
@@ -25,35 +25,63 @@ def sym(x):
     return np.tril(x) + np.swapaxes(np.tril(x, -1), -1, -2)
 
 
+def _settled(fn, bits=80):
+    """fn() (a tuple of arb balls) at doubling working precision until every ball's radius
+    is below 2^-bits of max(1, |value|): references certified far below the 1e-14 measured."""
+    old, prec = ctx.prec, 128
+    try:
+        while True:
+            ctx.prec = prec
+            vs = fn()
+            if all(v.is_finite() and v.rad() <= arb(2) ** -bits * max(arb(1), abs(v.mid())) for v in vs):
+                return vs
+            if prec >= 1 << 13:
+                raise ArithmeticError(f"reference did not settle by {prec} bits")
+            prec *= 2
+    finally:
+        ctx.prec = old
+
+
 def _mvlgamma(p, a):
-    return p * (p - 1) / mp.mpf(4) * mp.log(mp.pi) + mp.fsum(mp.loggamma(a + mp.mpf(1 - j) / 2) for j in range(1, p + 1))
+    return p * (p - 1) / arb(4) * arb.pi().log() + sum(((a + arb(1 - j) / 2).lgamma() for j in range(1, p + 1)), arb(0))
 
 
 def _mvdigamma(p, a):
-    return mp.fsum(mp.digamma(a + mp.mpf(1 - j) / 2) for j in range(1, p + 1))
+    return sum(((a + arb(1 - j) / 2).digamma() for j in range(1, p + 1)), arb(0))
+
+
+def _trace_solve(A, B):
+    """tr(A^-1 B) by Arb's LU solve (A, B arb_mat)."""
+    Y = A.solve(B)
+    return sum((Y[i, i] for i in range(A.nrows())), arb(0))
 
 
 def _ref_wishart(df, V, xs, inverse):
-    with mp.workdps(50):
-        p = V.shape[0]
-        n = mp.mpf(df)
-        Vm = mp.matrix(V.tolist())
-        ldv = mp.log(mp.det(Vm))
+    """Log densities at xs and the entropy, in ball arithmetic on the matrices as given."""
+    p = V.shape[0]
+
+    def fn():
+        n = arb(df)
+        Vm = arb_mat(V.tolist())
+        ldv = Vm.det().log()
         out = []
         for x in xs:
-            X = mp.matrix(x.tolist())
-            ldx = mp.log(mp.det(X))
+            X = arb_mat(x.tolist())
+            ldx = X.det().log()
             if inverse:
-                tr = sum((Vm * mp.inverse(X))[i, i] for i in range(p))
-                out.append(n / 2 * ldv - n * p / 2 * mp.log(2) - _mvlgamma(p, n / 2) - (n + p + 1) / 2 * ldx - tr / 2)
+                tr = _trace_solve(X, Vm)  # tr(V X^-1) = tr(X^-1 V)
+                out.append(n / 2 * ldv - n * p / 2 * arb(2).log() - _mvlgamma(p, n / 2) - (n + p + 1) / 2 * ldx - tr / 2)
             else:
-                tr = sum((mp.inverse(Vm) * X)[i, i] for i in range(p))
-                out.append((n - p - 1) / 2 * ldx - tr / 2 - n * p / 2 * mp.log(2) - n / 2 * ldv - _mvlgamma(p, n / 2))
+                tr = _trace_solve(Vm, X)
+                out.append((n - p - 1) / 2 * ldx - tr / 2 - n * p / 2 * arb(2).log() - n / 2 * ldv - _mvlgamma(p, n / 2))
         s = -1 if inverse else 1
         k = (n + p + 1) if inverse else (n - p - 1)
-        h = (p + 1) / mp.mpf(2) * ldv + s * p * (p + 1) / mp.mpf(2) * mp.log(2) + _mvlgamma(p, n / 2) \
+        h = (p + 1) / arb(2) * ldv + s * p * (p + 1) / arb(2) * arb(2).log() + _mvlgamma(p, n / 2) \
             - k / 2 * _mvdigamma(p, n / 2) + n * p / 2
-        return np.array([float(v) for v in out]), float(h)
+        return (*out, h)
+
+    *out, h = _settled(fn)
+    return np.array([float(v) for v in out]), float(h)
 
 
 def _mixed(a, b):
@@ -64,7 +92,7 @@ def _mixed(a, b):
 @pytest.mark.parametrize("inverse", [False, True])
 @pytest.mark.parametrize(("p", "extra", "kappa"), [(1, 0.5, 1.0), (2, 0.5, 1e4), (3, 7.0, 1e8), (5, 1e8, 1e4),
                                                      (8, 3.0, 1e6)])
-def test_wishart_against_50_digits(inverse, p, extra, kappa):
+def test_wishart_against_arb(inverse, p, extra, kappa):
     rng = np.random.default_rng(p * 13 + int(math.log10(kappa)))
     V = spd(rng, p, kappa)
     df = p - 1 + extra
@@ -90,22 +118,26 @@ def test_inverse_wishart_entropy_against_monte_carlo():
     assert abs(-lp.mean() - D.entropy()) < 5 * lp.std() / math.sqrt(lp.size)
 
 
-def test_matrix_normal_against_50_digits():
+def test_matrix_normal_against_arb():
     rng = np.random.default_rng(5)
     for n, p, kappa in ((1, 1, 1.0), (2, 3, 1e4), (5, 4, 1e8)):
         M = rng.normal(size=(n, p))
         U, V = spd(rng, n, kappa), spd(rng, p, kappa)
         xs = st.matrix_normal(M, U, V).rvs(3, random_state=1).reshape((-1, n, p))
-        with mp.workdps(50):
-            Um, Vm = mp.matrix(U.tolist()), mp.matrix(V.tolist())
-            lu, lv = mp.log(mp.det(Um)), mp.log(mp.det(Vm))
-            ref = []
+
+        def fn():
+            Um, Vm = arb_mat(U.tolist()), arb_mat(V.tolist())
+            lu, lv = Um.det().log(), Vm.det().log()
+            out = []
             for x in xs:
-                Dm = mp.matrix(x.tolist()) - mp.matrix(M.tolist())
-                T = mp.inverse(Vm) * Dm.T * mp.inverse(Um) * Dm
-                ref.append(float(-n * p / mp.mpf(2) * mp.log(2 * mp.pi) - p / mp.mpf(2) * lu - n / mp.mpf(2) * lv
-                                 - sum(T[i, i] for i in range(p)) / 2))
-            h = float(n * p / mp.mpf(2) * (1 + mp.log(2 * mp.pi)) + p / mp.mpf(2) * lu + n / mp.mpf(2) * lv)
+                Dm = arb_mat(x.tolist()) - arb_mat(M.tolist())
+                tr = _trace_solve(Vm, Dm.transpose() * Um.solve(Dm))  # tr(V^-1 D' U^-1 D)
+                out.append(-n * p / arb(2) * (2 * arb.pi()).log() - p / arb(2) * lu - n / arb(2) * lv - tr / 2)
+            h = n * p / arb(2) * (1 + (2 * arb.pi()).log()) + p / arb(2) * lu + n / arb(2) * lv
+            return (*out, h)
+
+        *vals, hb = _settled(fn)
+        ref, h = [float(v) for v in vals], float(hb)
         D = S.MatrixNormal(mu=sd.asarray(M), rowcov=sd.asarray(U), colcov=sd.asarray(V))
         assert _mixed(D.logpdf(sd.asarray(xs)), ref) <= 1e-14
         assert _mixed(D.entropy(), h) <= 1e-14
@@ -232,3 +264,62 @@ def test_argument_rules():
         S.Wishart(df=3.0, scale=sd.asarray(np.eye(2))).sample(rng=0)
     MN = S.MatrixNormal(mu=sd.asarray(np.zeros((2, 2))), rowcov=sd.asarray(np.eye(2)), colcov=sd.asarray(np.eye(2)))
     assert repr(MN).startswith("MatrixNormal(mu=") and MN.mu is not None
+
+
+@pytest.mark.parametrize("shape", [(1, 1), (3, 2), (2, 9), (10, 5), (17, 12)])
+@pytest.mark.parametrize("kappa", [1.0, 1e2, 1e8])
+def test_matrix_normal_fast_path_agrees_with_the_double_double_path(shape, kappa):
+    """The plain-double |L_U^-1 (X - M) L_V^-T|^2 is taken only where its bound allows: within
+    4.4e-15 of the double-double path, the same bits for a point alone and on any number of
+    threads."""
+    n, p = shape
+    rng = np.random.default_rng(n * 31 + p + int(math.log10(kappa)))
+
+    def cov(d, k):
+        q, _ = np.linalg.qr(rng.normal(size=(d, d)))
+        c = (q * k ** (-np.arange(d) / max(d - 1, 1))) @ q.T
+        return (c + c.T) / 2
+
+    U, V, M = cov(n, kappa), cov(p, math.sqrt(kappa)), rng.normal(size=(n, p))
+    D = S.MatrixNormal(mu=sd.asarray(M), rowcov=sd.asarray(U), colcov=sd.asarray(V))
+    LU, LV = np.linalg.cholesky(U), np.linalg.cholesky(V)
+    x = np.concatenate([M + LU @ rng.normal(size=(300, n, p)) @ LV.T, M + rng.normal(size=(300, n, p))])
+    got = np.asarray(D.logpdf(sd.asarray(x)))
+    k = sd._core.stats
+    rows, idx, _ = D._points(sd.asarray(x), "logpdf")
+    args = (rows, idx, D._mean, D._U, D._Ul, D._V, D._Vl, D._lu[0], D._lu[1], D._lv[0], D._lv[1], D._ok)
+    precise = np.asarray(k.matnorm_logpdf(*args, None, None, False))
+    assert np.max(np.abs(got - precise) / np.maximum(1.0, np.abs(precise))) <= 4.5e-15
+    pf, pp = np.asarray(D.pdf(sd.asarray(x))), np.asarray(k.matnorm_logpdf(*args, None, None, True))
+    ok = (pp > 1e-300) & np.isfinite(pp)
+    assert np.max(np.abs(pf[ok] - pp[ok]) / pp[ok], initial=0.0) <= 4.5e-15
+    assert np.array_equal(pf[~ok], pp[~ok])
+    for i in (0, 299, 300, 599):
+        assert D.logpdf(sd.asarray(x[i])) == got[i]
+    before = sd.get_num_threads()
+    try:
+        for th in (1, 3, 10):
+            sd.set_num_threads(th)
+            assert np.array_equal(np.asarray(D.logpdf(sd.asarray(x))), got)
+    finally:
+        sd.set_num_threads(before)
+
+
+def test_logpdf_at_huge_df_is_right_or_nan():
+    # the terms are of size df p log df: past df ~ 1e17 the double-double sum does not hold the
+    # value (-4690 where the truth is -35.8 at df = 1e30): NaN there, right below
+    ctx.prec = 3000
+    for p in (1, 3):
+        for df in (1e9, 1e12, 1e15, 1e18, 1e30, 1e100, 1e300):
+            n, X = arb(df), arb(df)
+            lg = sum((((n - j) / 2).lgamma() for j in range(p)), arb(0)) + arb(p * (p - 1)) / 4 * arb.pi().log()
+            ref = float(((n - p - 1) / 2 * p * X.log() - p * X / 2 - n * p / 2 * arb(2).log() - lg).mid())
+            got = sd.stats.Wishart(df=df, scale=sd.asarray(np.eye(p))).logpdf(sd.asarray(np.eye(p) * df))
+            assert math.isnan(got) or abs(got - ref) <= 1e-13 * max(1.0, abs(ref)), (p, df, got, ref)
+            if df <= 1e15:
+                assert not math.isnan(got)
+            ref = float((n / 2 * p * n.log() - n * p / 2 * arb(2).log() - lg - p * n / 2).mid())
+            got = sd.stats.InverseWishart(df=df, scale=sd.asarray(np.eye(p) * df)).logpdf(sd.asarray(np.eye(p)))
+            assert math.isnan(got) or abs(got - ref) <= 1e-13 * max(1.0, abs(ref)), (p, df, got, ref)
+            if df <= 1e15:
+                assert not math.isnan(got)

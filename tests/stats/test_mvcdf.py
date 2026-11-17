@@ -10,6 +10,7 @@ small margin.
 """
 
 import math
+import time
 from pathlib import Path
 
 import numpy as np
@@ -136,7 +137,36 @@ def test_t_exact_reference(name):
     assert rel.max() <= T_EXACT_REL[name]
 
 
-T_EXACT_REL = {"bvt": 5e-15, "tvt": 1e-14}  # measured 9.2e-16 and 1.9e-15
+T_EXACT_REL = {"bvt": 5e-15, "tvt": 1e-14}  # measured 4.7e-16 and 1.5e-15
+
+
+# Deep tails with negative correlations, where the relative condition number in r is
+# 120-500: an integration end or node rounded to a double moves r by an ulp (the bvt's
+# Plackett end acos(r), a panel's midpoint near the end; the tvt's partial correlation
+# 1 + rho in tvn's conditioning). (h, r, nu, P as hi + lo from tools/mvcdf_ref.py, bound).
+T_DEEP = [
+    ((-11.120329680209238, -27.77238005434969), (-0.6898238106996485,), 200.0,
+     3.3118380397696156e-117, 2.5146464075366847e-133, 5e-15),
+    ((-4.804580102610304, -19.698683904460054), (-0.6148417906207642,), 200.0,
+     1.215740297895119e-75, -2.835306111369282e-92, 5e-15),
+    ((-3.7335839333163428, -3.9410884052176867, -2.447525180477048),
+     (-0.6442238329924572, -0.9898248303389309, 0.656224159851288), 10.0,
+     4.336175783396395e-15, -1.966067893199322e-32, 1e-14),
+]
+
+
+@pytest.mark.parametrize("h, r, nu, hi, lo, bound", T_DEEP)
+def test_t_deep_negative_tails(h, r, nu, hi, lo, bound):
+    d = len(h)
+    S = np.eye(d)
+    for q, (a, b) in enumerate(((0, 1), (0, 2), (1, 2))[: len(r)]):
+        S[a, b] = S[b, a] = r[q]
+    v, e = mv(S, h, df=nu)
+    assert e[0] == 0
+    assert rel_err(v[0], hi, lo) <= bound
+    # and the public method agrees bit for bit
+    dist = sd.stats.MultivariateT(mu=np.zeros(d), shape=S, df=nu)
+    assert dist.cdf(np.asarray(h)) == v[0]
 
 
 def test_symmetry_and_scale():
@@ -356,3 +386,131 @@ def test_repeatable():
     b = mv(S, X, df=df, atol=1e-5, batch=bt)
     np.testing.assert_array_equal(a[0], b[0])
     np.testing.assert_array_equal(a[1], b[1])
+
+
+# ---- extreme arguments (docs/design/stats.md §3.5): right in the guaranteed region, right or NaN
+# outside it, and back in bounded time. The values are Arb's (tools/mvcdf_ref.py: _tvn, _tmix).
+
+def _r3(r12, r13, r23):
+    return [[1.0, r12, r13], [r12, 1.0, r23], [r13, r23, 1.0]]
+
+
+# (df, h, (r12, r13, r23), Arb value, relative tolerance): nearly singular matrices with the
+# limits near the spike of the conditioning integral
+NEAR_SINGULAR_T = [
+    # kappa = 1.2e9: the mixture's nodes saw 0 everywhere (4.6e-93)
+    (3.0, (-12.17856384214786, -8.494857448380905, -22.67301908649794),
+     (-0.3451108490502752, -0.0429027311687732, -0.9228915559487287), 1.4879477420118481e-27, 1e-13),
+    (200.0, (-2.0281751749742895e-10, -1.4937067297179837e-08, 3.3143228393008806e-09),
+     (0.4053892293140123, 0.051623144123027445, -0.891986723686701), 0.07465368511776431, 1e-13),
+    (10000.0, (-1.6477275108591463e-06, 2.3979659711392294e-06, -1.5933072525471904e-06),
+     (-0.7061539973173703, 0.391698937372982, 0.37487553948781616), 0.1252140727308341, 1e-13),
+    # kappa ~ 1e13: outside the guaranteed region
+    (1.0, (0.014209799236206924, 0.005327278396414281, 0.01711265979529816),
+     (0.12940313733974607, 0.6403351727402462, -0.6787761338372051), 0.134853804586885, 1e-11),
+    (3.0, (0.02874945929742609, -0.0001597185542287205, 0.011908711693108894),
+     (-0.808928057690323, -0.09928124031151792, 0.6653144156721507), 0.10532919243965236, 1e-11),
+    (3.0, (0.015876376841214956, 0.008126562418852042, 0.002673073607986585),
+     (-0.2487886205574421, -0.6592364812734366, 0.8923037034892591), 0.1388724420842488, 1e-11),
+]
+
+
+@pytest.mark.parametrize(("df", "h", "r", "truth", "tol"), NEAR_SINGULAR_T)
+def test_trivariate_t_near_singular_against_arb(df, h, r, truth, tol):
+    t0 = time.perf_counter()
+    v, e = mv(_r3(*r), h, df=df)
+    assert time.perf_counter() - t0 < 5.0
+    assert e[0] == 0.0
+    assert abs(v[0] - truth) <= tol * truth
+
+
+def test_trivariate_normal_near_singular_against_arb():
+    # the ridge of the partial correlation, 2.4e-4 wide at the end of the conditioning
+    # integral's range (kappa = 7.7e7, a well conditioned value): 1.7e-7 was left out
+    v, _ = mv(_r3(0.9568677458592744, -0.9042201499887199, -0.7411461466203424),
+              (-2.0443406070175297e-08, -8.011951213509317e-09, -1.7427948056932326e-08))
+    assert abs(v[0] - 0.07022649594984409) <= 1e-13 * 0.07022649594984409
+    # the spike of the conditioning integral (kappa = 1.2e9, limits ~ 1e-6): 0 before
+    v, _ = mv(_r3(-0.3451108490502752, -0.0429027311687732, -0.9228915559487287),
+              (-1.2178563842147859e-06, -8.4948574483809054e-07, -2.2673019086497941e-06))
+    assert abs(v[0] - 3.3026319357684824e-10) <= 1e-12 * 3.3026319357684824e-10
+
+
+def test_exact_t_with_huge_limits_scales_and_df():
+    R = _r3(0.1, 0.2, 0.3)
+    one, _ = mv(R, (1.0, 1.0, 1.0))
+    # df -> inf is the normal: the weight is 1 / sqrt(df) wide and was lost against the
+    # rounding of exp(v) (the result was 1)
+    for df in (1e16, 1e20, 1e300):
+        v, _ = mv(R, (1.0, 1.0, 1.0), df=df)
+        assert abs(v[0] - one[0]) <= 1e-13 * one[0], df
+    v2n, _ = mv(np.array([[1.0, 0.3], [0.3, 1.0]]), (-1.0, -0.5))
+    for df in (1e16, 1e300):
+        v, _ = mv(np.array([[1.0, 0.3], [0.3, 1.0]]), (-1.0, -0.5), df=df)
+        assert abs(v[0] - v2n[0]) <= 1e-13 * v2n[0], df
+    # limits beyond 1e150: exp(v) underflowed in the mixture (cdfs of -70 and -326)
+    p0 = 0.125 + (math.asin(0.1) + math.asin(0.2) + math.asin(0.3)) / (4 * math.pi)
+    for d, S in ((2, np.array([[1.0, 0.3], [0.3, 1.0]])), (3, np.array(R))):
+        for df in (0.5, 1.0, 3.0):
+            for scale in (1.0, 1e-300, 1e300):
+                for x in (1e150, -1e150, 1e308, -1e308, 1.0, -8.0):
+                    v, e = mv(S * scale, [x] * d, df=df)
+                    assert 0.0 <= v[0] <= 1.0 and e[0] == 0.0, (d, df, scale, x, v)
+    v, _ = mv(np.array(R), [1e150] * 3, df=3.0)
+    assert v[0] == 1.0
+    v, _ = mv(np.array([[1.0, 0.3], [0.3, 1.0]]), [-1e150, -1e150], df=0.5)  # ~ |x|^-df
+    assert 1e-77 < v[0] < 1e-75
+    # df -> 0: the orthant probability for any finite limits
+    v, _ = mv(np.array(R), [-1e308] * 3, df=1e-300)
+    assert abs(v[0] - p0) <= 1e-9 * p0
+    # a subnormal df is outside the domain (df / 2 rounds to 0): NaN, the error too
+    D = sd.stats.MultivariateT(mu=sd.asarray([0.0, 0.0]), shape=sd.asarray(np.eye(2)), df=5e-324)
+    v, e = D.cdf(sd.asarray([0.0, 0.0]), return_error=True)
+    assert math.isnan(v) and math.isnan(e) and math.isnan(D.logpdf(sd.asarray([0.0, 0.0])))
+
+
+def test_qmc_error_estimate_near_singular():
+    # twelve shifted lattices that all miss the thin region agreed to 7e-8 and were off by
+    # 2e-6 (kappa = 2e5); the value is Arb's for the three finite coordinates
+    r = (0.4053892293140123, 0.051623144123027445, -0.891986723686701)
+    S4 = np.eye(4)
+    S4[:3, :3] = _r3(*r)
+    x = [-2.0281751749742895e-10, -1.4937067297179837e-08, 3.3143228393008806e-09, 1e300]
+    for atol in (1e-5, 1e-6, 1e-7):
+        v, e = mv(S4, x, df=200.0, atol=atol, max_points=20_000_000)
+        assert abs(v[0] - 0.07465368511776431) <= 1.5 * e[0], (atol, v, e)
+        assert e[0] <= atol
+    # all twelve saw 0: the estimate was 0 where the truth is 3e-6
+    S4[:3, :3] = _r3(0.3099064256710591, -0.7621441731770189, 0.3793401950301065)
+    v, e = mv(S4, [-8.34804877955233, -21.71479925946965, -17.05713163348922, 1e300], df=3.0, atol=1e-6)
+    exact, _ = mv(S4[:3, :3], [-8.34804877955233, -21.71479925946965, -17.05713163348922], df=3.0)
+    assert abs(v[0] - exact[0]) <= max(1.5 * e[0], 1e-6)
+
+
+def test_qmc_stops_at_max_points():
+    rng = np.random.default_rng(3)
+    A = rng.normal(size=(50, 52))
+    S = A @ A.T
+    t0 = time.perf_counter()
+    for df in (INF, 3.0):
+        v, e = mv(S, np.ones(50), df=df, atol=1e-300, max_points=5000)
+        assert 0.0 <= v[0] <= 1.0 and e[0] > 0.0 and math.isfinite(e[0])
+        v, e = mv(S, np.ones(50), df=df, atol=1e-300, max_points=1)
+        assert 0.0 <= v[0] <= 1.0 and math.isfinite(e[0])
+    assert time.perf_counter() - t0 < 5.0
+
+
+def test_exact_cdf_returns_in_bounded_time():
+    # nearly singular matrices with tiny limits: the mixture over conditioning integrals
+    # took 45 and 215 s
+    cases = [
+        (200.0, (1.92421691567161e-06, 2.603125197915328e-06, -2.332990463916745e-06),
+         (-0.4735978781391643, 0.4252342952148637, -0.9985342126560572)),
+        (1.0, (-1.5547033708946613e-08, 2.282647522174669e-08, 2.355666993759351e-09),
+         (-0.6126371807139153, 0.3606834120301684, -0.9581315840972531)),
+    ]
+    for df, h, r in cases:
+        t0 = time.perf_counter()
+        v, e = mv(_r3(*r), h, df=df)
+        assert time.perf_counter() - t0 < 5.0
+        assert math.isnan(v[0]) or 0.0 <= v[0] <= 1.0

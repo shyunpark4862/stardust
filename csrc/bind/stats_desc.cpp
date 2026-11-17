@@ -22,6 +22,10 @@
 #include <utility>
 #include <vector>
 
+#if defined(__aarch64__)
+#include <arm_neon.h>
+#endif
+
 namespace nb = nanobind;
 
 namespace sd {
@@ -79,6 +83,67 @@ void each_lane(std::int64_t lanes, std::int64_t n, F&& f) {
                });
 }
 
+// std::sort of a long vector on the pool (a single lane, axis=None, is otherwise one thread:
+// rankdata of 10^6 was 60 ms on any number). A samplesort: 63 splitters from 1024 evenly
+// spaced elements, every element to the bucket of the splitters below it (equal elements
+// share a bucket) by fixed pieces in their original order, the buckets sorted side by side.
+// The pieces and splitters depend on the data alone, so the result does not depend on the
+// thread count: it is the sorted order, which is unique up to the order of equal elements
+// (-0.0 and 0.0), and that order is fixed too. Short vectors: std::sort as before.
+template <class T>
+void sort_long(std::vector<T>& v) {
+    constexpr std::int64_t kMin = 1 << 16, kBuckets = 64, kOver = 16, kPiece = 1 << 14;
+    const std::int64_t n = static_cast<std::int64_t>(v.size());
+    if (n < kMin) {
+        std::sort(v.begin(), v.end());
+        return;
+    }
+    std::vector<T> sample(static_cast<std::size_t>(kBuckets * kOver));
+    for (std::int64_t i = 0; i < kBuckets * kOver; ++i) sample[i] = v[static_cast<std::size_t>(i * (n / (kBuckets * kOver)))];
+    std::sort(sample.begin(), sample.end());
+    T split[kBuckets - 1];
+    for (std::int64_t b = 1; b < kBuckets; ++b) split[b - 1] = sample[static_cast<std::size_t>(b * kOver)];
+    const std::int64_t pieces = (n + kPiece - 1) / kPiece;
+    std::vector<std::uint8_t> id(static_cast<std::size_t>(n));
+    std::vector<std::int64_t> count(static_cast<std::size_t>(pieces * kBuckets), 0);
+    for_pieces(pieces, 1, n * 8, [&](std::int64_t, std::int64_t p0, std::int64_t p1) {
+        for (std::int64_t p = p0; p < p1; ++p) {
+            std::int64_t* c = count.data() + p * kBuckets;
+            for (std::int64_t i = p * kPiece, e = std::min(n, (p + 1) * kPiece); i < e; ++i) {
+                const T& x = v[static_cast<std::size_t>(i)];
+                std::int64_t lo = 0;  // the number of splitters below x: a branch-free binary search
+                for (std::int64_t step = kBuckets / 2; step > 0; step /= 2) lo += split[lo + step - 1] < x ? step : 0;
+                id[static_cast<std::size_t>(i)] = static_cast<std::uint8_t>(lo);
+                ++c[lo];
+            }
+        }
+    });
+    // where piece p's elements of bucket b go: after the bucket's elements of the pieces before
+    std::int64_t start[kBuckets + 1];
+    std::int64_t at = 0;
+    for (std::int64_t b = 0; b < kBuckets; ++b) {
+        start[b] = at;
+        for (std::int64_t p = 0; p < pieces; ++p) {
+            const std::int64_t c = count[static_cast<std::size_t>(p * kBuckets + b)];
+            count[static_cast<std::size_t>(p * kBuckets + b)] = at;
+            at += c;
+        }
+    }
+    start[kBuckets] = n;
+    std::vector<T> out(static_cast<std::size_t>(n));
+    for_pieces(pieces, 1, n * 8, [&](std::int64_t, std::int64_t p0, std::int64_t p1) {
+        for (std::int64_t p = p0; p < p1; ++p) {
+            std::int64_t* c = count.data() + p * kBuckets;
+            for (std::int64_t i = p * kPiece, e = std::min(n, (p + 1) * kPiece); i < e; ++i)
+                out[static_cast<std::size_t>(c[id[static_cast<std::size_t>(i)]]++)] = v[static_cast<std::size_t>(i)];
+        }
+    });
+    for_pieces(kBuckets, 1, n * 32, [&](std::int64_t, std::int64_t b0, std::int64_t b1) {
+        for (std::int64_t b = b0; b < b1; ++b) std::sort(out.begin() + start[b], out.begin() + start[b + 1]);
+    });
+    v.swap(out);
+}
+
 // The mean of v as hi + lo: hi the compensated sum over n, lo the mean of the residuals
 // x - hi (compensated). The deviations are then (x - hi) - lo: with the mean rounded to a
 // double, a mean of 1e8 is off by up to 7e-9 and that offset enters m3 as 3 offset m2 (a
@@ -125,7 +190,139 @@ struct Neu4 {
     void into(Neumaier& tot) const {
         for (int k = 0; k < 8; ++k) tot.add(s[k]), tot.add(c[k]);
     }
+#if defined(__aarch64__)
+    // chains 2 q and 2 q + 1 take the two lanes of x: the bits of add(2 q, x[0]), add(2 q + 1, x[1])
+    // (the scalar loop is not vectorized by the compiler: 7 flops an element, 0.45 ns)
+    void add2(int q, float64x2_t x) {
+        const float64x2_t sv = vld1q_f64(s + 2 * q), cv = vld1q_f64(c + 2 * q);
+        const float64x2_t t = vaddq_f64(sv, x), bb = vsubq_f64(t, sv);
+        vst1q_f64(c + 2 * q, vaddq_f64(cv, vaddq_f64(vsubq_f64(sv, vsubq_f64(t, bb)), vsubq_f64(x, bb))));
+        vst1q_f64(s + 2 * q, t);
+    }
+#endif
 };
+
+#if defined(__aarch64__)
+// The contiguous blocks' loops, eight elements at a time from j a multiple of eight (the
+// kernels' blocks start at multiples of kBlock): the same operations on the same chains as
+// the scalar loops, so the same bits.
+// xs[j0..j1) into q with the NaNs as 0; their number.
+std::int64_t sum_block(Neu4& q, const double* xs, std::int64_t j0, std::int64_t j1) {
+    std::int64_t j = j0, bad = 0;
+    uint64x2_t okc = vdupq_n_u64(0);
+    for (; j + 8 <= j1; j += 8)
+        for (int v = 0; v < 4; ++v) {
+            const float64x2_t x = vld1q_f64(xs + j + 2 * v);
+            const uint64x2_t ok = vceqq_f64(x, x);  // all ones where not NaN
+            okc = vsubq_u64(okc, ok);
+            q.add2(v, vreinterpretq_f64_u64(vandq_u64(vreinterpretq_u64_f64(x), ok)));
+        }
+    bad = (j - j0) - static_cast<std::int64_t>(vgetq_lane_u64(okc, 0) + vgetq_lane_u64(okc, 1));
+    for (; j < j1; ++j) {
+        const bool nan = std::isnan(xs[j]);
+        bad += nan;
+        q.add(j, nan ? 0.0 : xs[j]);
+    }
+    return bad;
+}
+// d = xs[j] - h (0 for a NaN), d^k into q[k - 1], k = 1..kmax
+void moment_block(Neu4* q, const double* xs, std::int64_t j0, std::int64_t j1, double h, int kmax) {
+    std::int64_t j = j0;
+    const float64x2_t hv = vdupq_n_f64(h);
+    for (; j + 8 <= j1; j += 8)
+        for (int v = 0; v < 4; ++v) {
+            const float64x2_t x = vld1q_f64(xs + j + 2 * v);
+            const uint64x2_t ok = vceqq_f64(x, x);
+            const float64x2_t d = vreinterpretq_f64_u64(vandq_u64(vreinterpretq_u64_f64(vsubq_f64(x, hv)), ok));
+            const float64x2_t d2 = vmulq_f64(d, d);
+            q[0].add2(v, d), q[1].add2(v, d2);
+            if (kmax >= 3) q[2].add2(v, vmulq_f64(d2, d));
+            if (kmax >= 4) q[3].add2(v, vmulq_f64(d2, d2));
+        }
+    for (; j < j1; ++j) {
+        const bool nan = std::isnan(xs[j]);
+        const double d = nan ? 0.0 : xs[j] - h, d2 = d * d;
+        q[0].add(j, d), q[1].add(j, d2);
+        if (kmax >= 3) q[2].add(j, d2 * d);
+        if (kmax >= 4) q[3].add(j, d2 * d2);
+    }
+}
+
+// Lanes that lie side by side in memory (strides[0] = 8: the reduced axis is not the array's
+// last, a lane is a column): a column walked alone touches a cache line per element and its
+// sums are scalar. Here the elements j of L adjacent lanes are one contiguous run, updated
+// together: chain j mod 8 of every lane, the lanes as the vector. The same operations on the
+// same chains as lane by lane, so the same bits.
+constexpr std::int64_t kSideLanes = 64;
+// S, C: 8 chains x L lanes (chain k at k * L), zero on entry. x (L doubles) into chain k.
+inline void side_add(double* S, double* C, std::int64_t L, int k, const float64x2_t* x, std::int64_t l) {
+    double *sp = S + k * L + l, *cp = C + k * L + l;
+    const float64x2_t sv = vld1q_f64(sp), cv = vld1q_f64(cp);
+    const float64x2_t t = vaddq_f64(sv, *x), bb = vsubq_f64(t, sv);
+    vst1q_f64(cp, vaddq_f64(cv, vaddq_f64(vsubq_f64(sv, vsubq_f64(t, bb)), vsubq_f64(*x, bb))));
+    vst1q_f64(sp, t);
+}
+inline void side_add1(double* S, double* C, std::int64_t L, int k, double x, std::int64_t l) {
+    double &sv = S[k * L + l], &cv = C[k * L + l];
+    const double t = sv + x, bb = t - sv;
+    cv += (sv - (t - bb)) + (x - bb);
+    sv = t;
+}
+// rows j0..j1 of lanes r0..r0+L: the sums of x (NaN as 0) into S, C and the NaN counts into bad
+void side_sum(const NDArray& a, std::int64_t r0, std::int64_t L, std::int64_t j0, std::int64_t j1, double* S, double* C,
+              std::int64_t* bad) {
+    std::vector<std::uint64_t> okc(static_cast<std::size_t>(L + 1), 0);
+    for (std::int64_t j = j0; j < j1; ++j) {
+        const double* row = reinterpret_cast<const double*>(reinterpret_cast<const char*>(a.data) + r0 * 8 + j * a.strides[1]);
+        const int k = static_cast<int>(j & 7);
+        std::int64_t l = 0;
+        for (; l + 2 <= L; l += 2) {
+            const float64x2_t x = vld1q_f64(row + l);
+            const uint64x2_t ok = vceqq_f64(x, x);
+            vst1q_u64(okc.data() + l, vsubq_u64(vld1q_u64(okc.data() + l), ok));
+            const float64x2_t v = vreinterpretq_f64_u64(vandq_u64(vreinterpretq_u64_f64(x), ok));
+            side_add(S, C, L, k, &v, l);
+        }
+        for (; l < L; ++l) {
+            const bool nan = std::isnan(row[l]);
+            okc[l] += !nan;
+            side_add1(S, C, L, k, nan ? 0.0 : row[l], l);
+        }
+    }
+    for (std::int64_t l = 0; l < L; ++l) bad[l] = (j1 - j0) - static_cast<std::int64_t>(okc[l]);
+}
+// d = x - h[lane] (0 for a NaN), d^k into S[k - 1], C[k - 1] (each 8 x L), k = 1..kmax
+void side_moments(const NDArray& a, std::int64_t r0, std::int64_t L, std::int64_t j0, std::int64_t j1, const double* h,
+                  int kmax, double* const* S, double* const* C) {
+    for (std::int64_t j = j0; j < j1; ++j) {
+        const double* row = reinterpret_cast<const double*>(reinterpret_cast<const char*>(a.data) + r0 * 8 + j * a.strides[1]);
+        const int k = static_cast<int>(j & 7);
+        std::int64_t l = 0;
+        for (; l + 2 <= L; l += 2) {
+            const float64x2_t x = vld1q_f64(row + l);
+            const uint64x2_t ok = vceqq_f64(x, x);
+            const float64x2_t d = vreinterpretq_f64_u64(vandq_u64(vreinterpretq_u64_f64(vsubq_f64(x, vld1q_f64(h + l))), ok));
+            const float64x2_t d2 = vmulq_f64(d, d);
+            side_add(S[0], C[0], L, k, &d, l), side_add(S[1], C[1], L, k, &d2, l);
+            if (kmax >= 3) {
+                const float64x2_t d3 = vmulq_f64(d2, d);
+                side_add(S[2], C[2], L, k, &d3, l);
+            }
+            if (kmax >= 4) {
+                const float64x2_t d4 = vmulq_f64(d2, d2);
+                side_add(S[3], C[3], L, k, &d4, l);
+            }
+        }
+        for (; l < L; ++l) {
+            const bool nan = std::isnan(row[l]);
+            const double d = nan ? 0.0 : row[l] - h[l], d2 = d * d;
+            side_add1(S[0], C[0], L, k, d, l), side_add1(S[1], C[1], L, k, d2, l);
+            if (kmax >= 3) side_add1(S[2], C[2], L, k, d2 * d, l);
+            if (kmax >= 4) side_add1(S[3], C[3], L, k, d2 * d2, l);
+        }
+    }
+}
+#endif
 
 nb::tuple moments(nb::handle rows_obj, bool omit, int kmax, bool minmax) {
     const NDArray& a = lanes_arg(rows_obj);
@@ -162,18 +359,51 @@ nb::tuple moments(nb::handle rows_obj, bool omit, int kmax, bool minmax) {
                        }
                    });
     };
+    // lanes side by side (see side_sum): groups of kSideLanes lanes x blocks on the pool
+    bool side = false;
+#if defined(__aarch64__)
+    side = a.strides[0] == 8 && lanes >= 2 && !minmax && n > 0;
+#endif
+    const std::int64_t groups = (lanes + kSideLanes - 1) / kSideLanes;
+    auto run_side = [&](auto&& body) {
+        for_pieces(groups * nb_, 1, lanes * n, [&](std::int64_t, std::int64_t t0, std::int64_t t1) {
+            for (std::int64_t t = t0; t < t1; ++t) {
+                const std::int64_t g = t / nb_, b = t % nb_, r0 = g * kSideLanes;
+                body(r0, std::min(kSideLanes, lanes - r0), b, b * kBlock, std::min(n, (b + 1) * kBlock));
+            }
+        });
+    };
     {
         nb::gil_scoped_release release;
+#if defined(__aarch64__)
+        if (side)
+            run_side([&](std::int64_t r0, std::int64_t L, std::int64_t b, std::int64_t j0, std::int64_t j1) {
+                std::vector<double> S(static_cast<std::size_t>(8 * L), 0.0), C(static_cast<std::size_t>(8 * L), 0.0);
+                std::vector<std::int64_t> bad(static_cast<std::size_t>(L));
+                side_sum(a, r0, L, j0, j1, S.data(), C.data(), bad.data());
+                for (std::int64_t l = 0; l < L; ++l) {
+                    P1& q = p1[static_cast<std::size_t>((r0 + l) * nb_ + b)];
+                    for (int k = 0; k < 8; ++k) q.s.s[k] = S[k * L + l], q.s.c[k] = C[k * L + l];
+                    q.nan = bad[l] != 0;
+                    q.cnt = (j1 - j0) - bad[l];
+                }
+            });
+        else
+#endif
         run([&](std::int64_t it, std::int64_t, const char* base, std::int64_t j0, std::int64_t j1) {
             P1& q = p1[static_cast<std::size_t>(it)];
             if (s1 == 8 && !minmax) {  // contiguous: NaNs counted, summed as 0 (selects, no branch)
                 const double* xs = reinterpret_cast<const double*>(base);
                 std::int64_t bad = 0;
+#if defined(__aarch64__)
+                bad = sum_block(q.s, xs, j0, j1);
+#else
                 for (std::int64_t j = j0; j < j1; ++j) {
                     const bool nan = std::isnan(xs[j]);
                     bad += nan;
                     q.s.add(j, nan ? 0.0 : xs[j]);
                 }
+#endif
                 q.nan = bad != 0;
                 q.cnt = (j1 - j0) - bad;
                 return;
@@ -205,12 +435,30 @@ nb::tuple moments(nb::handle rows_obj, bool omit, int kmax, bool minmax) {
             pmn[r] = bad || !minmax ? kNaN : lo;
             pmx[r] = bad || !minmax ? kNaN : hi;
         }
+#if defined(__aarch64__)
+        if (side)  // a lane without a finite mean gets sums nobody reads
+            run_side([&](std::int64_t r0, std::int64_t L, std::int64_t b, std::int64_t j0, std::int64_t j1) {
+                std::vector<double> buf(static_cast<std::size_t>(8 * 8 * L), 0.0);
+                double *S[4], *C[4];
+                for (int k = 0; k < 4; ++k) S[k] = buf.data() + (2 * k) * 8 * L, C[k] = buf.data() + (2 * k + 1) * 8 * L;
+                side_moments(a, r0, L, j0, j1, his.data() + r0, kmax, S, C);
+                for (std::int64_t l = 0; l < L; ++l) {
+                    P2& q = p2v[static_cast<std::size_t>((r0 + l) * nb_ + b)];
+                    for (int m = 0; m < 4; ++m)
+                        for (int k = 0; k < 8; ++k) q.s[m].s[k] = S[m][k * L + l], q.s[m].c[k] = C[m][k * L + l];
+                }
+            });
+        else
+#endif
         run([&](std::int64_t it, std::int64_t r, const char* base, std::int64_t j0, std::int64_t j1) {
             const double h = his[static_cast<std::size_t>(r)];
             if (!std::isfinite(h)) return;
             P2& q = p2v[static_cast<std::size_t>(it)];
             if (s1 == 8) {
                 const double* xs = reinterpret_cast<const double*>(base);
+#if defined(__aarch64__)
+                moment_block(q.s, xs, j0, j1, h, kmax);
+#else
                 for (std::int64_t j = j0; j < j1; ++j) {
                     const bool nan = std::isnan(xs[j]);
                     const double d = nan ? 0.0 : xs[j] - h, d2 = d * d;
@@ -218,6 +466,7 @@ nb::tuple moments(nb::handle rows_obj, bool omit, int kmax, bool minmax) {
                     if (kmax >= 3) q.s[2].add(j, d2 * d);
                     if (kmax >= 4) q.s[3].add(j, d2 * d2);
                 }
+#endif
                 return;
             }
             for (std::int64_t j = j0; j < j1; ++j) {
@@ -341,7 +590,7 @@ NDArray rank_rows(const NDArray& a, int method, bool omit) {
                 for (std::int64_t j = 0; j < n; ++j) o[j] = kNaN;
                 return;
             }
-            std::sort(vs.begin(), vs.end());
+            sort_long(vs);
             const std::int64_t m = static_cast<std::int64_t>(vs.size());
             double dense = 0.0;
             for (std::int64_t i = 0; i < m;) {
@@ -382,7 +631,7 @@ nb::tuple mode(nb::handle rows_obj, bool omit) {
             bool has_nan;
             lane(a, r, true, v, has_nan);  // the NaNs apart: counted as one value below
             const std::int64_t nans = has_nan && !omit ? n - static_cast<std::int64_t>(v.size()) : 0;
-            std::sort(v.begin(), v.end());
+            sort_long(v);
             double best = kNaN;
             std::int64_t bc = 0;
             for (std::size_t i = 0; i < v.size();) {
@@ -405,7 +654,7 @@ double diffent_lane(std::vector<double>& v, std::int64_t mw, int method) {
     const std::int64_t n = static_cast<std::int64_t>(v.size());
     const std::int64_t m = mw > 0 ? mw : static_cast<std::int64_t>(std::floor(std::sqrt(static_cast<double>(n)) + 0.5));
     if (!(2 <= 2 * m && 2 * m < n)) return kNaN;
-    std::sort(v.begin(), v.end());
+    sort_long(v);
     if (method < 0) method = n <= 10 ? 1 : (n <= 1000 ? 2 : 0);
     auto X = [&](std::int64_t i) {  // padded: X[i] for i in [-m, n + m), the ends repeated
         return v[static_cast<std::size_t>(std::clamp<std::int64_t>(i, 0, n - 1))];

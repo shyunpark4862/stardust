@@ -54,12 +54,12 @@
 | InverseWishart | 12 | 1e+08 | 1e+00 | 0.0e+00 | 2.0e-15 | 1.1e-16 | 2.4e-02 |
 | InverseWishart | 12 | 1e+08 | 1e+04 | 0.0e+00 | 2.9e-15 | 1.4e-16 | 2.9e-02 |
 | InverseWishart | 12 | 1e+08 | 1e+08 | 0.0e+00 | 2.1e-11 | 1.7e-16 | 3.7e-02 |
-| MatrixNormal | 2x3 | - | 1e+00 | 0.0e+00 | 1.7e-16 | 2.1e-16 | 2.1e-16 |
+| MatrixNormal | 2x3 | - | 1e+00 | 1.6e-16 | 1.7e-16 | 2.1e-16 | 2.1e-16 |
 | MatrixNormal | 2x3 | - | 1e+04 | 0.0e+00 | 1.5e-14 | 0.0e+00 | 1.8e-14 |
 | MatrixNormal | 2x3 | - | 1e+08 | 0.0e+00 | 1.9e-10 | 0.0e+00 | 2.3e-10 |
-| MatrixNormal | 4x4 | - | 1e+00 | 0.0e+00 | 2.9e-16 | 0.0e+00 | 1.6e-16 |
+| MatrixNormal | 4x4 | - | 1e+00 | 1.4e-16 | 2.9e-16 | 0.0e+00 | 1.6e-16 |
 | MatrixNormal | 4x4 | - | 1e+04 | 0.0e+00 | 1.5e-14 | 0.0e+00 | 1.9e-15 |
 | MatrixNormal | 4x4 | - | 1e+08 | 0.0e+00 | 4.1e-11 | 0.0e+00 | 2.6e-11 |
-| MatrixNormal | 10x6 | - | 1e+00 | 0.0e+00 | 3.0e-16 | 0.0e+00 | 1.7e-16 |
+| MatrixNormal | 10x6 | - | 1e+00 | 1.5e-16 | 3.0e-16 | 0.0e+00 | 1.7e-16 |
 | MatrixNormal | 10x6 | - | 1e+04 | 0.0e+00 | 2.5e-15 | 0.0e+00 | 1.1e-15 |
 | MatrixNormal | 10x6 | - | 1e+08 | 0.0e+00 | 3.2e-12 | 0.0e+00 | 3.2e-12 |

@@ -104,44 +104,49 @@ struct Sampler<D, std::index_sequence<I...>> {
                     if (extra) {
                         // their first extra blocks four elements at a time
                         std::array<std::uint64_t, 16> blk;
-                        std::int64_t i = i0;
-                        for (; i + 4 <= i1; i += 4) {
-                            const std::uint64_t es[4] = {at(i), at(i + 1), at(i + 2), at(i + 3)};
+                        std::uint64_t es[4], fw[4];
+                        std::int64_t at4 = 0;
+                        int have = 0;
+                        stats::smp::each_first(key, pos, i0, i1, [&](std::int64_t i, std::uint64_t first) {
+                            if (have == 0) at4 = i;
+                            es[have] = at(i), fw[have] = first;
+                            if (++have < 4) return;
                             random::philox4(es, key, blk, 1);
                             for (int q = 0; q < 4; ++q) {
-                                stats::smp::Words w(s, es[q], blk.data() + 4 * q);
-                                o[i + q] = C::draw(w, st);
+                                stats::smp::Words w(s, es[q], fw[q], blk.data() + 4 * q);
+                                o[at4 + q] = C::draw(w, st);
                             }
-                        }
-                        for (; i < i1; ++i) {
-                            stats::smp::Words w(s, at(i));
-                            o[i] = C::draw(w, st);
+                            have = 0;
+                        });
+                        for (int q = 0; q < have; ++q) {
+                            stats::smp::Words w(s, es[q], fw[q]);
+                            o[at4 + q] = C::draw(w, st);
                         }
                     } else {
-                        for (std::int64_t i = i0; i < i1; ++i) {
-                            stats::smp::Words w(s, at(i));
+                        stats::smp::each_first(key, pos, i0, i1, [&](std::int64_t i, std::uint64_t first) {
+                            stats::smp::Words w(s, at(i), first);
                             o[i] = C::draw(w, st);
-                        }
+                        });
                     }
                 } else {
-                    for (std::int64_t i = i0; i < i1; ++i) {
-                        stats::smp::Words w(s, at(i));
+                    stats::smp::each_first(key, pos, i0, i1, [&](std::int64_t i, std::uint64_t first) {
+                        stats::smp::Words w(s, at(i), first);
                         o[i] = stats::smp::sample<D>(w, v[I]...);
-                    }
+                    });
                 }
                 return;
             }
-            for (std::int64_t i = i0; i < i1; ++i) {
+            stats::smp::each_first(key, pos, i0, i1, [&](std::int64_t i, std::uint64_t first) {
                 const std::int64_t j = i % np;
                 const std::array<double, sizeof...(I)> v{param(p, j)...};
                 if (!D::valid(v[I]...)) {
                     o[i] = stats::kNaN;
-                    continue;
+                    return;
                 }
-                stats::smp::Words w(s, at(i));
+                stats::smp::Words w(s, at(i), first);
                 if constexpr (has_prep) o[i] = C::draw(w, C::prep(v[I]...));
                 else o[i] = stats::smp::sample<D>(w, v[I]...);
-            }
+            });
         });
         }
         return wrap(std::move(out));

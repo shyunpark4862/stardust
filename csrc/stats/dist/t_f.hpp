@@ -54,6 +54,7 @@ inline DD log_beta_half(double a) {
 // log(1 + t^2/df) as a double-double, any finite t.
 inline DD log1p_t2(double t, double df) {
     const double at = std::fabs(t);
+    if (at == 0.0) return {0.0, 0.0};  // (ilogb(0) is INT_MIN: the difference below overflowed for df >= 4)
     if (std::ilogb(at) > 500 || std::ilogb(at) - std::ilogb(df) / 2 > 480) {
         // t^2 dwarfs df: 2 log|t| - log df + log1p(df / t^2)
         const double r = (df / at) / at;
@@ -79,22 +80,104 @@ struct StudentT {
         const num::DD l0 = memo.get(df, 0.0, [&] { return -(num::log_dd(df) * 0.5 + t_detail::log_beta_half(a)); });
         return l0 - t_detail::log1p_t2(t, df) * num::dd::two_sum(a, 0.5);
     }
-    static double pdf(double t, double df) {
+    // The double-double definitions (the kernel's fallback: the tails, huge df).
+    static double pdf_dd(double t, double df) {
         if (std::isinf(t)) return 0.0;
         return num::exp_dd(log_density(t, df));
     }
-    static double logpdf(double t, double df) {
+    static double logpdf_dd(double t, double df) {
         if (std::isinf(t)) return -kInf;
         const num::DD l = log_density(t, df);
         return l.hi + l.lo;
     }
-    static double cdf(double t, double df) { return special::Stdtr::f(df, t); }
-    static double ccdf(double t, double df) { return special::Stdtr::f(df, -t); }
+    // The chunk kernel of pdf and logpdf (dens::kernel, stats/dist/gamma.hpp):
+    //     l = l0 - (a + 1/2) log(1 + v),   v = t^2 / df
+    // with 1 + v a double-double from exact pieces (two_prod, the division's remainder) and
+    // l0 the scalar definition's double-double.
+    static void density_chunk_raw(const Chunk<1>& c, double* out, bool log) {
+        const double* df = c.p[0];
+        thread_local dens::Const cst;
+        dens::kernel<false>(
+            c.n, log, out,
+            [&](int i) {
+                dens::In in = dens::kBlank;
+                const double a = 0.5 * df[i];
+                in.c = cst.get(df[i], 0.0, [&] {
+                    if (!(df[i] > 0.0 && df[i] <= gamma_detail::kPlainMax)) return num::DD{kNaN, 0.0};
+                    return -(num::log_dd(df[i]) * 0.5 + t_detail::log_beta_half(a));
+                });
+                const num::DD q = num::dd::two_prod(c.x[i], c.x[i]);
+                const double vh = q.hi / df[i];
+                const double vl = (std::fma(-vh, df[i], q.hi) + q.lo) / df[i];
+                const num::DD s = num::dd::two_sum(1.0, vh);
+                in.x1 = num::dd::quick_two_sum(s.hi, s.lo + vl);
+                in.k1 = -num::dd::two_sum(a, 0.5);
+                // t^2 exact to the last bit (not subnormal) or zero, and v in range
+                in.ok = (q.hi >= 0x1p-960 || q.hi == 0.0) && vh <= 0x1p1000 && in.c.hi == in.c.hi;
+                return in;
+            },
+            [&](int i) {
+                if (!(c.x[i] == c.x[i] && valid(df[i]))) return kNaN;
+                return log ? logpdf_dd(c.x[i], df[i]) : pdf_dd(c.x[i], df[i]);
+            });
+    }
+    // A df below 2^-1021 has no exact half (the beta and gamma shapes are df / 2): NaN, as the
+    // cdfs. Checked once for broadcast parameters.
+    static void density_chunk(const Chunk<1>& c, double* out, bool log) {
+        density_chunk_raw(c, out, log);
+        if (c.same[0]) {
+            if (!(c.p[0][0] < 0x1p-1021)) return;
+            for (int i = 0; i < c.n; ++i) out[i] = kNaN;
+            return;
+        }
+        for (int i = 0; i < c.n; ++i) out[i] = (c.p[0][i] < 0x1p-1021) ? kNaN : out[i];
+    }
+    static void pdf_chunk(const Chunk<1>& c, double* out) { density_chunk(c, out, false); }
+    static void logpdf_chunk(const Chunk<1>& c, double* out) { density_chunk(c, out, true); }
+    // The scalar forms: the kernel on one element (every caller gets the same bits).
+    static double density_one(double t, double df, bool log) {
+        double out;
+        density_chunk(Chunk<1>{1, &t, {&df}, {true}}, &out, log);
+        return out;
+    }
+    static double pdf(double t, double df) { return density_one(t, df, false); }
+    static double logpdf(double t, double df) { return density_one(t, df, true); }
+    // The beta shape is df / 2: below 2^-1021 a df has no exact half (the smallest subnormals),
+    // and the methods through the beta functions are NaN.
+    static bool halvable(double df) { return df >= 0x1p-1021; }
+    // Where the beta argument x = df / (df + t^2) is below the doubles' normal range (a huge
+    // |t|, or a tiny df) stdtr's value is 0 or 1, though the tail may be anything up to 1/2
+    // (df = 1e-50, t = -1e300: 0.5): there the smaller side from its log (logcdf's leading
+    // term).
+    // (For |t| <= 2^400 and df >= 2^-160 the quotient is at least 2^-960: two comparisons
+    // answer the usual call, without the divisions.)
+    static bool far(double t, double df) {
+        if (std::fabs(t) <= 0x1p400 && df >= 0x1p-160) [[likely]] return false;
+        return df / t / t < 0x1p-960;
+    }
+    static double cdf(double t, double df) {
+        if (!halvable(df)) return kNaN;
+        if (std::isfinite(t) && far(t, df)) {
+            const double v = num::exp_dd(far_log_lower(-std::fabs(t), df));
+            return t < 0.0 ? v : 1.0 - v;
+        }
+        return special::Stdtr::f(df, t);
+    }
+    static double ccdf(double t, double df) { return cdf(-t, df); }
+    // log P(T <= t) for t < 0 with x = 1 / (1 + t^2 / df) far below the range:
+    // I_x(a, 1/2) / 2 = x^a / (2 a B(a, 1/2)) (the next term is O(x)).
+    static num::DD far_log_lower(double t, double df) {
+        const double a = 0.5 * df;
+        const num::DD lx = -t_detail::log1p_t2(t, df);
+        return lx * a - num::log_dd(a) - t_detail::log_beta_half(a) - num::kLn2;
+    }
     // log P(T <= t): the small side (t < 0) from its value, from the beta pieces below the
     // normal range, and from the leading term (I_x(a, 1/2) = x^a / (a B), x = 1/(1 + t^2/df))
     // when x itself is below 1e-270.
     static double logcdf(double t, double df) {
+        if (!halvable(df)) return kNaN;
         if (std::isinf(t)) return t > 0.0 ? 0.0 : -kInf;
+        if (t > 0.0 && far(t, df)) return std::log1p(-num::exp_dd(far_log_lower(-t, df)));
         if (t >= 0.0) return std::log1p(-special::Stdtr::f(df, -t));
         const double v = special::Stdtr::f(df, t);
         if (v >= beta_detail::kDeep) return std::log(v);
@@ -112,9 +195,26 @@ struct StudentT {
     // The t <= 0 with P(T <= t) = p (p <= 1/2, lt = log p): stdtrit, or for a tiny p (or a
     // tiny x = df/(df + t^2)) I_x(a, 1/2) = 2p solved on the log side, t = -sqrt(df (1-x)/x).
     static double lower_t(double p, num::DD lt, double df) {
+        const double t = lower_t_raw(p, lt, df);
+        // outside the measured df (tests/stats/ref: 1e-2 to 1e6) a root is returned only if
+        // the forward log tail reproduces the target (num::accept_root)
+        if ((df >= 1e-3 && df <= 1e6) || t != t) return t;
+        if (!(t <= 0.0)) return kNaN;
+        if (std::isinf(t)) {  // a root beyond the doubles: the tail at the last one is still above the target
+            return logcdf(-std::numeric_limits<double>::max(), df) >= lt.hi - 1e-9 * std::max(1.0, std::fabs(lt.hi)) ? t : kNaN;
+        }
+        if (t == 0.0) return kNaN;  // (p < 1/2 here)
+        const num::DD ld = log_density(t, df);
+        return num::accept_root(t, logcdf(t, df), ld.hi + std::log(-t), lt.hi);
+    }
+    static double lower_t_raw(double p, num::DD lt, double df) {
         const double a = 0.5 * df;
         if (p >= beta_detail::kDeepP) {
-            const double est = (lt.hi + num::kLn2.hi + std::log(a) + special::Betaln::f(a, 0.5)) / a;
+            thread_local dens::Const cst;  // log(2 a B(a, 1/2)), once per df
+            const double k = cst.get(df, 0.0, [&] {
+                return num::DD{num::kLn2.hi + std::log(a) + special::Betaln::f(a, 0.5), 0.0};
+            }).hi;
+            const double est = (lt.hi + k) / a;
             if (est > -40.0) return special::Stdtrit::f(df, p);
         }
         const num::DD lx = beta_detail::deep_log_inverse(a, 0.5, lt + num::kLn2);
@@ -125,13 +225,14 @@ struct StudentT {
         return -num::exp_dd((num::log_dd(df) - lx + ly) * 0.5);
     }
     static double icdf(double p, double df) {
+        if (!halvable(df)) return kNaN;
         if (!(p > 0.0 && p < 1.0) || p == 0.5) return special::Stdtrit::f(df, p);
         if (p > 0.5) return -lower_t(1.0 - p, num::log_dd(1.0 - p), df);
         return lower_t(p, num::log_dd(p), df);
     }
     static double iccdf(double p, double df) { return -icdf(p, df); }
     static double ilogcdf(double lp, double df) {
-        if (!(lp <= 0.0)) return kNaN;
+        if (!(lp <= 0.0) || !halvable(df)) return kNaN;
         if (lp == 0.0) return kInf;
         if (lp == -kInf) return -kInf;
         if (lp > -num::kLn2.hi) {
@@ -176,30 +277,168 @@ struct F {
         return dfn > 0.0 && std::isfinite(dfn) && dfd > 0.0 && std::isfinite(dfd);
     }
 
+    // log B(p, q) where q may be far beyond p: log Gamma(p) - p log q once (p / q) max(1, p) is
+    // below 2^-56 (the next term is p (p - 1) / (2 q)); the log-gammas while both are below
+    // 1e15 (their cancellation leaves 1e-32 of q log q); NaN where neither applies.
+    static num::DD log_beta_far(double p, double q) {
+        if (p <= q * 0x1p-56 && p * p <= q * 0x1p-56) return num::log_gamma(num::DD{1.0, 0.0} + p) - num::log_dd(p) - num::log_dd(q) * p;
+        if (p <= 1e15 && q <= 1e15) return beta_detail::log_beta(p, q);
+        return {kNaN, 0.0};
+    }
     static num::DD log_density(double x, double dfn, double dfd) {
         const special::distr_detail::Arg g = special::distr_detail::f_arg(dfn, dfd, x);
-        return beta_detail::log_prefix(0.5 * dfn, 0.5 * dfd, g.x, g.y) - num::log_dd(x);
+        const bool tiny_w = g.x.hi < special::distr_detail::kTinyArg, tiny_v = g.y.hi < special::distr_detail::kTinyArg;
+        if (tiny_w || tiny_v) {
+            // The beta argument w = u / (1 + u), u = dfn x / dfd, or v = 1 - w is below the
+            // normal range (a rounded subnormal, or 0): the density from the logs, with
+            // log(1 + u) = u for a tiny u and log u + 1/u for a huge one:
+            //   tiny u:  a log u - (a + b) u   - log x - log B(a, b)
+            //   huge u: -b log u - (a + b) / u - log x - log B(a, b)
+            const double a = 0.5 * dfn, b = 0.5 * dfd;
+            const num::DD lx = num::log_dd(x);
+            const num::DD lu = num::log_dd(dfn) + lx - num::log_dd(dfd);
+            const num::DD ls = num::log_dd(a + b);
+            const num::DD lb = tiny_w ? (b >= a ? log_beta_far(a, b) : log_beta_far(b, a)) : (a >= b ? log_beta_far(b, a) : log_beta_far(a, b));
+            if (tiny_w) return lu * a - num::exp_dd(ls + lu) - lx - lb;
+            return -(lu * b) - num::exp_dd(ls - lu) - lx - lb;
+        }
+        return beta_detail::log_prefix(0.5 * dfn, 0.5 * dfd, g.x, g.y) - lx_of(x);
     }
+    static num::DD lx_of(double x) { return num::log_dd(x); }
     // The density at 0: dfn < 2 inf, dfn = 2 one, dfn > 2 zero.
     static double density0(double dfn) { return dfn < 2.0 ? kInf : (dfn == 2.0 ? 1.0 : 0.0); }
-    static double pdf(double x, double dfn, double dfd) {
+    // The double-double definitions (the kernel's fallback: the tails, huge shapes, the ends).
+    static double pdf_dd(double x, double dfn, double dfd) {
         if (x < 0.0 || std::isinf(x)) return 0.0;
         if (x == 0.0) return density0(dfn);
         return num::exp_dd(log_density(x, dfn, dfd));
     }
-    static double logpdf(double x, double dfn, double dfd) {
+    static double logpdf_dd(double x, double dfn, double dfd) {
         if (x < 0.0 || std::isinf(x)) return -kInf;
         if (x == 0.0) return std::log(density0(dfn));
         const num::DD l = log_density(x, dfn, dfd);
         return l.hi + l.lo;
     }
-    static double cdf(double x, double dfn, double dfd) { return x <= 0.0 ? 0.0 : special::Fdtr::f(dfn, dfd, x); }
-    static double ccdf(double x, double dfn, double dfd) { return x <= 0.0 ? 1.0 : special::Fdtrc::f(dfn, dfd, x); }
+    // The chunk kernel of pdf and logpdf (dens::kernel, stats/dist/gamma.hpp). With a = dfn/2,
+    // b = dfd/2, u = dfn x / dfd (the prefix w^a v^b / B at w = u / (1 + u), over x):
+    //     l = (a - 1) log x - (a + b) log(1 + u) + a log(dfn / dfd) - log B(a, b),
+    // 1 + u a double-double from exact pieces.
+    static void density_chunk_raw(const Chunk<2>& c, double* out, bool log) {
+        const double *dfn = c.p[0], *dfd = c.p[1];
+        thread_local dens::Const cst;
+        dens::kernel<true>(
+            c.n, log, out,
+            [&](int i) {
+                dens::In in = dens::kBlank;
+                const double a = 0.5 * dfn[i], b = 0.5 * dfd[i];
+                in.c = cst.get(dfn[i], dfd[i], [&] {
+                    if (!valid(dfn[i], dfd[i])) return num::DD{kNaN, 0.0};
+                    return (num::log_dd(dfn[i]) - num::log_dd(dfd[i])) * a - beta_detail::log_beta_dd(a, b);
+                });
+                const num::DD p = num::dd::two_prod(dfn[i], c.x[i]);
+                const double uh = p.hi / dfd[i];
+                const double ul = (std::fma(-uh, dfd[i], p.hi) + p.lo) / dfd[i];
+                const num::DD s = num::dd::two_sum(1.0, uh);
+                in.k1 = num::dd::two_sum(a, -1.0), in.x1 = {c.x[i], 0.0};
+                in.k2 = -num::dd::two_sum(a, b), in.x2 = num::dd::quick_two_sum(s.hi, s.lo + ul);
+                // false for a NaN, x <= 0, inf; dfn x exact to the last bit
+                in.ok = c.x[i] >= 0x1p-1000 && p.hi >= 0x1p-960 && uh <= 0x1p1000 && in.c.hi == in.c.hi;
+                return in;
+            },
+            [&](int i) {
+                if (!(c.x[i] == c.x[i] && valid(dfn[i], dfd[i]))) return kNaN;
+                return log ? logpdf_dd(c.x[i], dfn[i], dfd[i]) : pdf_dd(c.x[i], dfn[i], dfd[i]);
+            });
+    }
+    // A df below 2^-1021 has no exact half (the beta and gamma shapes are df / 2): NaN, as the
+    // cdfs. Checked once for broadcast parameters.
+    static void density_chunk(const Chunk<2>& c, double* out, bool log) {
+        density_chunk_raw(c, out, log);
+        if (c.same[0] && c.same[1]) {
+            if (!(c.p[0][0] < 0x1p-1021 || c.p[1][0] < 0x1p-1021)) return;
+            for (int i = 0; i < c.n; ++i) out[i] = kNaN;
+            return;
+        }
+        for (int i = 0; i < c.n; ++i) out[i] = (c.p[0][i] < 0x1p-1021 || c.p[1][i] < 0x1p-1021) ? kNaN : out[i];
+    }
+    static void pdf_chunk(const Chunk<2>& c, double* out) { density_chunk(c, out, false); }
+    static void logpdf_chunk(const Chunk<2>& c, double* out) { density_chunk(c, out, true); }
+    // The scalar forms: the kernel on one element (every caller gets the same bits).
+    static double density_one(double x, double dfn, double dfd, bool log) {
+        double out;
+        density_chunk(Chunk<2>{1, &x, {&dfn, &dfd}, {true, true}}, &out, log);
+        return out;
+    }
+    static double pdf(double x, double dfn, double dfd) { return density_one(x, dfn, dfd, false); }
+    static double logpdf(double x, double dfn, double dfd) { return density_one(x, dfn, dfd, true); }
+    // The beta shapes are dfn / 2 and dfd / 2: below 2^-1021 they are not exact halves, and the
+    // methods through the beta functions are NaN.
+    // Both past 2^101 (the beta shapes past 2^100: Beta::degenerate) are NaN too.
+    static bool halvable(double dfn, double dfd) {
+        return dfn >= 0x1p-1021 && dfd >= 0x1p-1021 && !(dfn > 0x1p101 && dfd > 0x1p101);
+    }
+    static double cdf(double x, double dfn, double dfd) {
+        if (!halvable(dfn, dfd)) return kNaN;
+        return x <= 0.0 ? 0.0 : special::Fdtr::f(dfn, dfd, x);
+    }
+    static double ccdf(double x, double dfn, double dfd) {
+        if (!halvable(dfn, dfd)) return kNaN;
+        return x <= 0.0 ? 1.0 : special::Fdtrc::f(dfn, dfd, x);
+    }
+    // For dfn, dfd <= 12 the smaller side's value is fdtr's or fdtrc's (Boost's betainc there,
+    // as cdf and ccdf: special/ops/distr.hpp), the side x < 1 suggests first; its log, or log1p
+    // of minus it. A deep tail and larger shapes: the double-double ibeta and the pieces.
     static double log_tail(double x, double dfn, double dfd, bool upper) {
+        if (!halvable(dfn, dfd)) return kNaN;
         if (x <= 0.0) return upper ? 0.0 : -kInf;
         if (std::isinf(x)) return upper ? -kInf : 0.0;
+        if (dfn <= 12.0 && dfd <= 12.0) {
+            bool lower_small = x < 1.0;  // (the beta argument below its mean)
+            double small = lower_small ? special::Fdtr::f(dfn, dfd, x) : special::Fdtrc::f(dfn, dfd, x);
+            if (small > 0.5) {
+                lower_small = !lower_small;
+                small = lower_small ? special::Fdtr::f(dfn, dfd, x) : special::Fdtrc::f(dfn, dfd, x);
+            }
+            if (small >= beta_detail::kDeep) return upper != lower_small ? std::log(small) : std::log1p(-small);
+        }
         const special::distr_detail::Arg g = special::distr_detail::f_arg(dfn, dfd, x);
-        return beta_detail::log_tail(0.5 * dfn, 0.5 * dfd, g.x, g.y, upper);
+        // A tiny beta argument (w ~ (dfn / dfd) x, or v = 1 - w ~ dfd / (dfn x)): from its log.
+        // f_arg's double-double is a rounded subnormal there, or 0 (F(10, 3).logcdf(1e-320)
+        // was 6.7e-8 off through it).
+        const double a = 0.5 * dfn, b = 0.5 * dfd;
+        // The other shape from 2^900 up: its product with the argument is not small, and the
+        // distribution is its chi-square limit (special's gamma_limit; b w = a x, a v = b / x).
+        if (g.x.hi < special::distr_detail::kTinyArg) {
+            if (b < 0x1p900) return tiny_log_tail(a, b, num::log_dd(dfn) + num::log_dd(x) - num::log_dd(dfd), upper);
+            return limit_log_tail(a, num::dd::two_prod(a, x), num::log_dd(a) + num::log_dd(x), upper);
+        }
+        if (g.y.hi < special::distr_detail::kTinyArg) {
+            if (a < 0x1p900) return tiny_log_tail(b, a, num::log_dd(dfd) - num::log_dd(dfn) - num::log_dd(x), !upper);
+            return limit_log_tail(b, num::DD{b, 0.0} / x, num::log_dd(b) - num::log_dd(x), !upper);
+        }
+        return beta_detail::log_tail(a, b, g.x, g.y, upper);
+    }
+    // log P(s, z) (upper: log Q(s, z)), z = hi + lo with the log lz: the gamma distribution's
+    // own log tail while z is a normal number; below, the pair from special's gamma_limit and,
+    // for a lower tail below the normal range, P = z^s / Gamma(s + 1) (1 + O(z)) in logs.
+    static double limit_log_tail(double s, num::DD z, num::DD lz, bool upper) {
+        if (z.hi >= 0x1p-1000) return gamma_detail::dist_log_tail(s, z, upper);
+        const special::ibeta_detail::IB r = special::ibeta_detail::gamma_limit(s, z, lz);
+        if (upper) return r.ic < r.i ? std::log(r.ic) : std::log1p(-r.i);
+        if (r.i >= beta_detail::kDeep) return r.i <= r.ic ? std::log(r.i) : std::log1p(-r.ic);
+        const num::DD l = lz * s - num::log_gamma(num::DD{s, 0.0} + 1.0);
+        return l.hi + l.lo;
+    }
+    // log I_w(a, b) (upper: log(1 - I_w(a, b))) for w = e^lw below 2^-1000: the pair from
+    // special's ibeta_tiny; a lower tail below the normal range from the leading term in
+    // logs, I = w^a / (a B(a, b)) (the next term, of the order of b w, is nothing).
+    static double tiny_log_tail(double a, double b, num::DD lw, bool upper) {
+        const special::ibeta_detail::IB r = special::ibeta_detail::ibeta_tiny(a, b, lw, false);
+        if (upper) return r.ic < r.i ? std::log(r.ic) : std::log1p(-r.i);
+        if (r.i >= beta_detail::kDeep) return r.i <= r.ic ? std::log(r.i) : std::log1p(-r.ic);
+        // (log B by its far form when one shape dwarfs the other: the log-gammas cancel)
+        const num::DD l = lw * a - num::log_dd(a) - (a <= b ? log_beta_far(a, b) : log_beta_far(b, a));
+        return l.hi + l.lo;
     }
     static double logcdf(double x, double dfn, double dfd) { return log_tail(x, dfn, dfd, false); }
     static double logccdf(double x, double dfn, double dfd) { return log_tail(x, dfn, dfd, true); }
@@ -211,7 +450,31 @@ struct F {
     // and the complement solve while t and the root are normal numbers; else the deep
     // inverse on the beta side, w (lower) or v = 1 - w (upper) tiny, x from logs.
     static double solve(double t, num::DD lt, double dfn, double dfd, bool lower) {
+        const double x = solve_raw(t, lt, dfn, dfd, lower);
+        // outside the measured shapes (tests/stats/ref: 0.1 to 1e5) a root is returned only if
+        // the forward log tail reproduces the target (num::accept_root)
+        if ((dfn >= 1e-3 && dfd >= 1e-3 && dfn <= 1e5 && dfd <= 1e5) || x != x) return x;
+        if (!(x >= 0.0)) return kNaN;
+        if (x == 0.0 || std::isinf(x)) {
+            // a root beyond the doubles: the tail at the last double inside is already past the
+            // target (the lower tail grows with x)
+            const bool low = x == 0.0;
+            const double lf = log_tail(low ? 0x1p-1074 : std::numeric_limits<double>::max(), dfn, dfd, !lower);
+            const double slack = 1e-9 * std::max(1.0, std::fabs(lt.hi));
+            return ((low == lower) ? lf >= lt.hi - slack : lf <= lt.hi + slack) ? x : kNaN;
+        }
+        const num::DD ld = log_density(x, dfn, dfd);
+        return num::accept_root(x, log_tail(x, dfn, dfd, !lower), ld.hi + std::log(x), lt.hi);
+    }
+    static double solve_raw(double t, num::DD lt, double dfn, double dfd, bool lower) {
         const double a = 0.5 * dfn, b = 0.5 * dfd;
+        if (beta_detail::fast_shapes(a, b) && t >= 0x1p-200) {
+            // small shapes: the beta argument w (or v = 1 - w, whichever is small) by Halley's
+            // method on Boost's betainc (beta_detail::fast_root), x = (dfd / dfn) w / v
+            beta_detail::XY r;
+            if (beta_detail::fast_root(a, b, t, !lower, r) && r.x >= 0x1p-60 && r.y >= 0x1p-60)
+                return from_wv(r.x, r.y, dfn, dfd);
+        }
         const double sa = lower ? a : b, sb = lower ? b : a;  // the beta whose argument is small
         if (t >= beta_detail::kDeepP) {
             const double est = (lt.hi + std::log(sa) + special::Betaln::f(sa, sb)) / sa;
@@ -237,19 +500,20 @@ struct F {
         return from_wv(w, 1.0 - w, dfn, dfd);
     }
     static double icdf(double p, double dfn, double dfd) {
+        if (!halvable(dfn, dfd)) return kNaN;
         if (!(p > 0.0 && p < 1.0)) return special::Fdtri::f(dfn, dfd, p);
         if (p > 0.5) return solve(1.0 - p, num::log_dd(1.0 - p), dfn, dfd, false);
         return solve(p, num::log_dd(p), dfn, dfd, true);
     }
     static double iccdf(double q, double dfn, double dfd) {
-        if (!(q >= 0.0 && q <= 1.0)) return kNaN;
+        if (!(q >= 0.0 && q <= 1.0) || !halvable(dfn, dfd)) return kNaN;
         if (q == 0.0) return kInf;
         if (q == 1.0) return 0.0;
         if (q > 0.5) return solve(1.0 - q, num::log_dd(1.0 - q), dfn, dfd, true);
         return solve(q, num::log_dd(q), dfn, dfd, false);
     }
     static double from_log(double lp, double dfn, double dfd, bool upper) {
-        if (!(lp <= 0.0)) return kNaN;
+        if (!(lp <= 0.0) || !halvable(dfn, dfd)) return kNaN;
         if (lp == 0.0) return upper ? 0.0 : kInf;
         if (lp == -kInf) return upper ? kInf : 0.0;
         if (lp > -num::kLn2.hi) {
@@ -268,30 +532,60 @@ struct F {
     static double variance(double dfn, double dfd) {
         if (!(dfd > 4.0)) return dfd > 2.0 ? kInf : kNaN;
         const double r = dfd / (dfd - 2.0);  // 2 dfd^2 (dfn + dfd - 2) / (dfn (dfd - 2)^2 (dfd - 4))
-        return 2.0 * r * r * ((dfn + dfd - 2.0) / (dfn * (dfd - 4.0)));
+        const double den = dfn * (dfd - 4.0);
+        if (!(den >= 0x1p-900 && den <= 0x1p900)) return 2.0 * r * r * (((dfn + dfd - 2.0) / dfn) / (dfd - 4.0));  // the product leaves the range
+        return 2.0 * r * r * ((dfn + dfd - 2.0) / den);
     }
     static double standard_deviation(double dfn, double dfd) {
         const double v = variance(dfn, dfd);
-        return std::sqrt(v);
+        if (v != v || (v >= 0x1p-900 && v <= 0x1p900)) return std::sqrt(v);
+        if (!(dfd > 4.0)) return v;  // inf
+        // the variance leaves the range where its root may not: by factors
+        return 1.4142135623730951 * (dfd / (dfd - 2.0)) * (std::sqrt((dfn + dfd - 2.0) / (dfd - 4.0)) / std::sqrt(dfn));
     }
+    // (2 dfn + dfd - 2) sqrt(8 (dfd - 4)) / ((dfd - 6) sqrt(dfn (dfn + dfd - 2)))
     static double skewness(double dfn, double dfd) {
         if (!(dfd > 6.0)) return dfd > 4.0 ? kInf : kNaN;
-        return (2.0 * dfn + dfd - 2.0) * std::sqrt(8.0 * (dfd - 4.0)) / ((dfd - 6.0) * std::sqrt(dfn * (dfn + dfd - 2.0)));
+        const double prod = dfn * (dfn + dfd - 2.0);
+        if (prod >= 0x1p-900 && prod <= 0x1p900 && dfd <= 0x1p900)
+            return (2.0 * dfn + dfd - 2.0) * std::sqrt(8.0 * (dfd - 4.0)) / ((dfd - 6.0) * std::sqrt(prod));
+        // A product or a sum leaves the range where the value does not (a subnormal dfn, a
+        // huge one): by factors, the sums on copies scaled by k = 2^-16 where they could overflow,
+        //     [(2 dfn + dfd - 2) / sqrt(dfn + dfd - 2)]  [sqrt(dfd - 4) / (dfd - 6)]  / sqrt(dfn)
+        const bool big = dfn > 0x1p1000 || dfd > 0x1p1000;
+        const double k = big ? 0x1p-16 : 1.0, n = dfn * k, d = dfd * k;
+        const double lead = (2.0 * n + d - 2.0 * k) / std::sqrt(n + d - 2.0 * k) * (big ? 0x1p8 : 1.0);
+        return 2.8284271247461903 * (lead * (std::sqrt(dfd - 4.0) / (dfd - 6.0))) / std::sqrt(dfn);
     }
     static double kurtosis(double dfn, double dfd) {
         if (!(dfd > 8.0)) return dfd > 6.0 ? kInf : kNaN;
         // 12 (dfn (5 dfd - 22)(dfn + dfd - 2) + (dfd - 4)(dfd - 2)^2) / (dfn (dfd - 6)(dfd - 8)(dfn + dfd - 2)),
         // as sums of ratios (no products of the parameters to overflow); every term is positive.
-        const double s = dfn + dfd - 2.0;
-        const double t1 = (5.0 * dfd - 22.0) / (dfd - 6.0) / (dfd - 8.0);
-        const double t2 = ((dfd - 4.0) / (dfd - 6.0)) * ((dfd - 2.0) / (dfd - 8.0)) * ((dfd - 2.0) / dfn) / s;
+        if (dfd <= 0x1p900 && dfn <= 0x1p900 && dfn >= 0x1p-900) {
+            const double s = dfn + dfd - 2.0;
+            const double t1 = (5.0 * dfd - 22.0) / (dfd - 6.0) / (dfd - 8.0);
+            const double t2 = ((dfd - 4.0) / (dfd - 6.0)) * ((dfd - 2.0) / (dfd - 8.0)) * ((dfd - 2.0) / dfn) / s;
+            return 12.0 * (t1 + t2);
+        }
+        // Next to the ends of the doubles 5 dfd, dfn + dfd and (dfd - 2) / dfn leave the range
+        // where the value does not: (dfd - 2) / (dfn + dfd - 2) = 1 / (1 + dfn / (dfd - 2)) first
+        const double t1 = (5.0 - 22.0 / dfd) * (dfd / (dfd - 6.0)) / (dfd - 8.0);
+        const double share = 1.0 / (1.0 + dfn / (dfd - 2.0));
+        const double t2 = ((dfd - 4.0) / (dfd - 6.0)) * ((dfd - 2.0) / (dfd - 8.0)) * share / dfn;
         return 12.0 * (t1 + t2);
     }
     static double mode(double dfn, double dfd) { return dfn > 2.0 ? ((dfn - 2.0) / dfn) * (dfd / (dfd + 2.0)) : 0.0; }
-    static double median(double dfn, double dfd) { return special::Fdtri::f(dfn, dfd, 0.5); }
+    static double median(double dfn, double dfd) {
+        // fdtri inside the measured shapes; outside, the checked inverse
+        if (dfn >= 1e-3 && dfd >= 1e-3 && dfn <= 1e5 && dfd <= 1e5) return special::Fdtri::f(dfn, dfd, 0.5);
+        return icdf(0.5, dfn, dfd);
+    }
     // log(b/a) + log B(a, b) + (1 - a) psi(a) - (1 + b) psi(b) + (a + b) psi(a + b)
     // = G(a) + G(b) + Gc(c) - log(a)/2 + 3 (log b - log c)/2 + log(2 pi)/2 + 2 (psi(c) - psi(b)).
     static double entropy(double dfn, double dfd) {
+        // below 1e-2 the digammas' poles (-2/dfn, -2/dfd, which cancel in the sum) take the
+        // digits: 3.5e-8 off at 1e-10, half the value at 1e-300. NaN.
+        if (!(dfn >= 1e-2 && dfd >= 1e-2)) return kNaN;
         const double a = 0.5 * dfn, b = 0.5 * dfd;
         const num::DD c = num::dd::two_sum(a, b);
         const double dpsi = b >= 12.0 ? num::digamma_diff_asym(b, a) : special::Digamma::f(c.hi) - special::Digamma::f(b);

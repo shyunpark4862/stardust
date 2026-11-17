@@ -18,6 +18,9 @@ _PARAM_METHODS = ("mean", "variance", "standard_deviation", "skewness", "kurtosi
                   "support_lo", "support_hi")
 
 
+_MAX_DOUBLE_INT = int(1.7976931348623157e308)  # ints above it round to inf or raise in float()
+
+
 def _check_param(name, value):
     """A parameter is a real Python number or a non-complex sd.ndarray (T19)."""
     if isinstance(value, _sd_core.ndarray):
@@ -25,6 +28,8 @@ def _check_param(name, value):
             raise TypeError(f"'{name}' must be real, not a complex128 array")
         return
     if isinstance(value, (bool, int, float)):
+        if isinstance(value, int) and abs(value) > _MAX_DOUBLE_INT:  # float(value) would overflow
+            raise OverflowError(f"'{name}' is out of range")
         return
     raise TypeError(f"'{name}' must be a real number or an sd.ndarray, not {type(value).__name__}")
 
@@ -155,8 +160,8 @@ class _Distribution:
             raise TypeError(f"sample(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), "
                             f"not {type(rng).__name__}")
         if shape == () and self._scalar is not None:  # one float: no arrays on the way
-            pos = rng._reserve(1)
-            return self._ops["sample1"](rng._key[0], rng._key[1], pos, *self._scalar)
+            key, pos = rng._reserve(1)
+            return self._ops["sample1"](key[0], key[1], pos, *self._scalar)
         shp = _random._shape(shape, "sample")
         arrays = [v for v in self._p if isinstance(v, _sd_core.ndarray)]
         pshape = tuple(_sd_core.broadcast_arrays(*arrays)[0].shape) if arrays else ()
@@ -170,8 +175,8 @@ class _Distribution:
                 ps.append(_sd_core.broadcast_to(v, pshape))
             else:
                 ps.append(_sd_core.asarray([float(v)]))
-        pos = rng._reserve(n)
-        out = self._ops["sample"](rng._key[0], rng._key[1], pos, out_shape if out_shape else (1,), *ps)
+        key, pos = rng._reserve(n)
+        out = self._ops["sample"](key[0], key[1], pos, out_shape if out_shape else (1,), *ps)
         return float(out[0]) if not out_shape else out
 
 

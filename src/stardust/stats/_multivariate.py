@@ -18,6 +18,7 @@ from .. import _core as _sd_core
 
 _k = _sd_core.stats
 _SQRT_EPS = math.sqrt(2.0**-52)
+_MIN_DF = 2.0**-1022
 
 
 def _type_name(v):
@@ -78,6 +79,20 @@ def _rows(v, batch, tail):
     return sd.reshape(sd.broadcast_to(v, full), (B,) + tail)
 
 
+_FAST_MAX_DOUBLES = 1 << 23  # 64 MB of inverse factors per distribution
+
+
+def _fast_factors(L, Ll, ok):
+    """The inverse factors of the densities' fast path (_core.stats.mv_fast_prep): (B, size)
+    doubles, size = padded(d) (d + 3) with d padded to a multiple of 8, or False where a huge
+    batch of them would take more memory than the path is worth (every point then takes the
+    double-double path)."""
+    B, d = L.shape[0], L.shape[1]
+    if B * ((d + 7) // 8 * 8) * (d + 3) > _FAST_MAX_DOUBLES:
+        return False
+    return _k.mv_fast_prep(L, Ll, ok)
+
+
 class _Batched:
     """What the multivariate distributions share: the batch shape, the per-point layout and
     the result shapes."""
@@ -135,7 +150,7 @@ class _Batched:
 class _Gaussian(_Batched):
     """MultivariateNormal and MultivariateT: mu, the scale matrix and df (inf: the normal)."""
 
-    __slots__ = ("_mu", "_cov", "_L", "_Ll", "_ldh", "_ldl", "_df", "_ih", "_il")
+    __slots__ = ("_mu", "_cov", "_L", "_Ll", "_ldh", "_ldl", "_df", "_ih", "_il", "_fast")
 
     def _setup(self, cls, mu, cov, df):
         sd = _sd_core
@@ -151,14 +166,18 @@ class _Gaussian(_Batched):
         self._cov = _rows(cov, batch, (d, d))
         self._df = _rows(df, batch, ())
         L, Ll, ldh, ldl, ok, self._ih, self._il = _k.mv_chol(self._cov)
-        good = sd.all(sd.isfinite(self._mu), axis=1) & ~sd.isnan(self._df) & (self._df > 0.0)
+        # df below the smallest normal double is outside the domain too (df / 2 rounds to 0)
+        good = sd.all(sd.isfinite(self._mu), axis=1) & ~sd.isnan(self._df) & (self._df >= _MIN_DF)
         self._ok = sd.where(good, ok, 0.0)
         self._L, self._Ll, self._ldh, self._ldl = L, Ll, ldh, ldl
+        self._fast = None
 
     def _log(self, x, name, as_pdf):
         rows, idx, out = self._points(x, name)
+        if self._fast is None:  # the inverse factors of the densities' fast path, on first use
+            self._fast = _fast_factors(self._L, self._Ll, self._ok)
         v = _k.mv_logpdf(rows, idx, self._mu, self._L, self._Ll, self._ldh, self._ldl, self._ok, self._df, self._ih,
-                         self._il, as_pdf)
+                         self._il, None if self._fast is False else self._fast, as_pdf)
         return self._result(v, out)
 
     def pdf(self, x, /):
@@ -201,8 +220,8 @@ class _Gaussian(_Batched):
     def sample(self, shape=(), /, *, rng):
         """Samples of shape `shape` + the batch shape + (d,): mu + L z (and sqrt(df / V) for the
         t), one stream element per vector (the same values on any thread count)."""
-        shp, N, pos = self._sample_rows(shape, rng)
-        v = _k.mv_sample(rng._key[0], rng._key[1], pos, N, self._mu, self._L, self._ok, self._df)
+        shp, N, (key, pos) = self._sample_rows(shape, rng)
+        v = _k.mv_sample(key[0], key[1], pos, N, self._mu, self._L, self._ok, self._df)
         return _sd_core.reshape(v, shp + self._batch + (self._d,))
 
 
@@ -351,8 +370,8 @@ class Multinomial(_Batched):
 
     def sample(self, shape=(), /, *, rng):
         """Count vectors of shape `shape` + the batch shape + (K,), by conditional binomials."""
-        shp, N, pos = self._sample_rows(shape, rng)
-        v = _k.multinomial_sample(rng._key[0], rng._key[1], pos, N, self._n, self._pp, self._ok)
+        shp, N, (key, pos) = self._sample_rows(shape, rng)
+        v = _k.multinomial_sample(key[0], key[1], pos, N, self._n, self._pp, self._ok)
         return _sd_core.reshape(v, shp + self._batch + (self._d,))
 
 
@@ -415,6 +434,6 @@ class Dirichlet(_Batched):
 
     def sample(self, shape=(), /, *, rng):
         """Points of the simplex, shape `shape` + the batch shape + (K,): gammas normalized."""
-        shp, N, pos = self._sample_rows(shape, rng)
-        v = _k.dirichlet_sample(rng._key[0], rng._key[1], pos, N, self._alpha, self._ok)
+        shp, N, (key, pos) = self._sample_rows(shape, rng)
+        v = _k.dirichlet_sample(key[0], key[1], pos, N, self._alpha, self._ok)
         return _sd_core.reshape(v, shp + self._batch + (self._d,))

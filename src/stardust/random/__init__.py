@@ -121,33 +121,33 @@ class _SeedSequence:
         return [_SeedSequence(self.entropy, self.spawn_key + (i,)) for i in range(first, first + n)]
 
 
-def _seed_entropy(seed, name):
+def _seed_entropy(seed, name, arg="seed"):
     """The seed as SeedSequence entropy: None (OS entropy), an int >= 0, or a sequence of them."""
     if seed is None:
         return secrets.randbits(128)
     if isinstance(seed, bool):
-        raise TypeError(f"{name}(): 'seed' must be an int, a sequence of ints or None, not bool")
+        raise TypeError(f"{name}(): '{arg}' must be an int, a sequence of ints or None, not bool")
     try:
         v = operator.index(seed)
     except TypeError:
         v = None
     if v is not None:
         if v < 0:
-            raise ValueError(f"{name}(): 'seed' must be non-negative")
+            raise ValueError(f"{name}(): '{arg}' must be non-negative")
         return v
     if isinstance(seed, (str, bytes)) or not hasattr(seed, "__len__"):
-        raise TypeError(f"{name}(): 'seed' must be an int, a sequence of ints or None, not {_type_name(seed)}")
+        raise TypeError(f"{name}(): '{arg}' must be an int, a sequence of ints or None, not {_type_name(seed)}")
     out = []
     for item in seed:
         if isinstance(item, bool):
-            raise TypeError(f"{name}(): 'seed' must be an int, a sequence of ints or None, not a sequence of bool")
+            raise TypeError(f"{name}(): '{arg}' must be an int, a sequence of ints or None, not a sequence of bool")
         try:
             iv = operator.index(item)
         except TypeError:
-            raise TypeError(f"{name}(): 'seed' must be an int, a sequence of ints or None, "
+            raise TypeError(f"{name}(): '{arg}' must be an int, a sequence of ints or None, "
                             f"not a sequence of {_type_name(item)}") from None
         if iv < 0:
-            raise ValueError(f"{name}(): 'seed' must be non-negative")
+            raise ValueError(f"{name}(): '{arg}' must be non-negative")
         out.append(iv)
     return tuple(out)
 
@@ -168,6 +168,15 @@ def _shape(shape, name):
     if not isinstance(shape, tuple):
         raise TypeError(f"{name}(): 'shape' must be an int or a tuple of ints, not {_type_name(shape)}")
     return tuple(_count(d, name, "shape") for d in shape)
+
+
+def _result_shape(shape, name):
+    """_shape for the Generator's own methods, whose result has exactly this shape: () is
+    refused (sd.stats' sample() takes it: there it is added to the batch shape)."""
+    shp = _shape(shape, name)
+    if shp == ():
+        raise ValueError(f"{name}(): 'shape' must not be () (stardust has no 0-d arrays; None gives a scalar)")
+    return shp
 
 
 def _count(v, name, arg):
@@ -230,7 +239,7 @@ class Generator:
 
     __slots__ = ("_seq", "_key", "_pos", "_lock")
 
-    def __init__(self, _seq, _pos=0):
+    def __init__(self, _seq=None, _pos=0):
         if not isinstance(_seq, _SeedSequence):
             raise TypeError("Generator(): make a generator with sd.random.default_rng(seed)")
         self._seq = _seq
@@ -239,10 +248,12 @@ class Generator:
         self._lock = threading.Lock()
 
     def _reserve(self, n):
+        """Take n elements of the stream: (key, position), read together under the lock, so
+        that a `state` assigned from another thread is seen whole or not at all."""
         with self._lock:
-            p = self._pos
+            key, p = self._key, self._pos
             self._pos = (p + n) & _MASK64
-        return p
+        return key, p
 
     def __repr__(self):
         return "Generator(Philox4x64-10)"
@@ -253,12 +264,12 @@ class Generator:
     def state(self):
         """The generator's state: a dict with its seed sequence and position (writable)."""
         with self._lock:
-            pos = self._pos
+            seq, pos = self._seq, self._pos
         return {
             "bit_generator": "Philox4x64-10",
-            "entropy": self._seq.entropy,
-            "spawn_key": self._seq.spawn_key,
-            "n_children_spawned": self._seq.n_children_spawned,
+            "entropy": seq.entropy,
+            "spawn_key": seq.spawn_key,
+            "n_children_spawned": seq.n_children_spawned,
             "position": pos,
         }
 
@@ -272,11 +283,19 @@ class Generator:
             raise ValueError(f".state: missing key '{missing[0]}'")
         if value["bit_generator"] != "Philox4x64-10":
             raise ValueError(f".state: 'bit_generator' must be 'Philox4x64-10', not {value['bit_generator']!r}")
-        entropy = _seed_entropy(value["entropy"], ".state")
-        spawn_key = tuple(_count(v, ".state", "spawn_key") for v in value["spawn_key"])
-        n_spawned = _count(value["n_children_spawned"], ".state", "n_children_spawned")
-        pos = operator.index(value["position"]) if not isinstance(value["position"], bool) else None
-        if pos is None or not 0 <= pos <= _MASK64:
+        try:
+            entropy = _seed_entropy(value["entropy"], ".state", "entropy")
+            if isinstance(value["spawn_key"], (str, bytes)) or not hasattr(value["spawn_key"], "__iter__"):
+                raise TypeError(f".state(): 'spawn_key' must be a sequence of ints, not {_type_name(value['spawn_key'])}")
+            spawn_key = tuple(_count(v, ".state", "spawn_key") for v in value["spawn_key"])
+            n_spawned = _count(value["n_children_spawned"], ".state", "n_children_spawned")
+        except (TypeError, ValueError, OverflowError) as e:  # the helpers write "name(): "
+            raise type(e)(str(e).replace(".state(): ", ".state: ", 1)) from None
+        pos = value["position"]
+        if isinstance(pos, bool) or not hasattr(pos, "__index__"):
+            raise TypeError(f".state: 'position' must be an int, not {_type_name(pos)}")
+        pos = operator.index(pos)
+        if not 0 <= pos <= _MASK64:
             raise ValueError(".state: 'position' must be an int in [0, 2**64)")
         seq = _SeedSequence(entropy, spawn_key, n_spawned)
         with self._lock:
@@ -302,10 +321,10 @@ class Generator:
 
     def random(self, shape=None, /):
         """Uniform float64 on [0, 1): a float, or an array of `shape`."""
-        shp = _shape(shape, "random")
+        shp = _result_shape(shape, "random")
         n = 1 if shp is None else _size(shp)
-        pos = self._reserve(n)
-        out = _k.uniform(self._key[0], self._key[1], pos, (1,) if shp is None else shp)
+        key, pos = self._reserve(n)
+        out = _k.uniform(key[0], key[1], pos, (1,) if shp is None else shp)
         return float(out[0]) if shp is None else out
 
     def integers(self, low, high=None, /, *, shape=None, endpoint=False):
@@ -314,13 +333,14 @@ class Generator:
         low and high are ints or int64 arrays, broadcast together and with `shape`."""
         import stardust as sd
 
-        lo = _int_bound(low, "integers", "low")
-        if high is None:
+        one_bound = high is None
+        lo = _int_bound(low, "integers", "high" if one_bound else "low")
+        if one_bound:
             lo, hi = 0, lo
         else:
             hi = _int_bound(high, "integers", "high")
         _bool_opt(endpoint, "integers", "endpoint")
-        shp = _shape(shape, "integers")
+        shp = _result_shape(shape, "integers")
         arrays = [v for v in (lo, hi) if isinstance(v, sd.ndarray)]
         scalar_result = shp is None and not arrays
         if shp is None:
@@ -343,10 +363,12 @@ class Generator:
             else:
                 bad = lo > hi if endpoint else lo >= hi
             if bad:
+                if one_bound:  # integers(high): the caller gave no 'low'
+                    raise ValueError(f"integers(): 'high' must be {'non-negative' if endpoint else 'positive'}")
                 rel = "less than or equal to" if endpoint else "less than"
                 raise ValueError(f"integers(): 'low' must be {rel} 'high'")
-        pos = self._reserve(_size(shp))
-        out = _k.integers(self._key[0], self._key[1], pos, lo_a, hi_a, endpoint)
+        key, pos = self._reserve(_size(shp))
+        out = _k.integers(key[0], key[1], pos, lo_a, hi_a, endpoint)
         return int(out[0]) if scalar_result else out
 
     def choice(self, a, /, *, shape=None, replace=True, p=None):
@@ -355,7 +377,7 @@ class Generator:
         import stardust as sd
 
         _bool_opt(replace, "choice", "replace")
-        shp = _shape(shape, "choice")
+        shp = _result_shape(shape, "choice")
         if isinstance(a, sd.ndarray):
             if a.ndim != 1:
                 raise ValueError(f"choice(): 'a' must be 1-dimensional, not {a.ndim}-dimensional")
@@ -369,6 +391,8 @@ class Generator:
                 raise TypeError(f"choice(): 'a' must be an int or a 1-dimensional array, not {_type_name(a)}") from None
             if n < 0:
                 raise ValueError("choice(): 'a' must be non-negative")
+            if n >= 2**63:
+                raise OverflowError("choice(): 'a' is out of range")
             pool = None
         k = 1 if shp is None else _size(shp)
         if p is not None:
@@ -376,6 +400,8 @@ class Generator:
                 raise TypeError(f"choice(): 'p' must be an array, not {_type_name(p)}")
             if p.ndim != 1 or p.shape[0] != n:
                 raise ValueError(f"choice(): 'p' must be 1-dimensional of length {n}")
+            if p.dtype == sd.complex128:
+                raise TypeError("choice(): 'p' must be a real array, not an array of complex128")
             p = sd.astype(p, sd.float64)
             if bool(sd.any(sd.isnan(p))) or bool(sd.any(p < 0)):
                 raise ValueError("choice(): 'p' must be non-negative")
@@ -396,13 +422,13 @@ class Generator:
                 idx = sd.minimum(sd.searchsorted(cdf, u, side="right"), n - 1)
         else:
             if p is None:  # the first k of a Fisher-Yates shuffle (O(k) for a small sample)
-                pos = self._reserve(k)
-                idx = _k.fisher_yates(self._key[0], self._key[1], pos, n, k)
+                key, pos = self._reserve(k)
+                idx = _k.fisher_yates(key[0], key[1], pos, n, k)
             else:
                 if k > int(sd.count_nonzero(p)):
                     raise ValueError("choice(): fewer non-zero probabilities in 'p' than the sample size")
-                pos = self._reserve(n)
-                keys = _k.race_keys(self._key[0], self._key[1], pos, p)
+                key, pos = self._reserve(n)
+                keys = _k.race_keys(key[0], key[1], pos, p)
                 idx = sd.argsort(keys)[:k]
         res = idx if pool is None else sd.take(pool, idx)
         if shp is None:
@@ -425,11 +451,13 @@ class Generator:
                 raise TypeError(f"permutation(): 'x' must be an int or an array, not {_type_name(x)}") from None
             if n < 0:
                 raise ValueError("permutation(): 'x' must be non-negative")
-        pos = self._reserve(n)
+            if n >= 2**63:
+                raise OverflowError("permutation(): 'x' is out of range")
+        key, pos = self._reserve(n)
         # Fisher-Yates (sequential, each step's draw from its own element of the stream:
         # the same on any thread count). Measured against sorting random keys (parallel):
         # 3.0 ms for 10^6 against 8.6 on one thread and 3.8 on ten.
-        perm = _k.fisher_yates(self._key[0], self._key[1], pos, n, n)
+        perm = _k.fisher_yates(key[0], key[1], pos, n, n)
         return sd.take(x, perm, axis=0) if isinstance(x, sd.ndarray) else perm
 
 

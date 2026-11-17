@@ -216,3 +216,94 @@ def test_entropy_relative_and_broadcast():
     q = np.array([0.1, 0.2, 0.7])[:, None]
     _close(S.entropy(sd.asarray(p), sd.asarray(q), axis=0), st.entropy(p, q, axis=0))
     _close(S.entropy(sd.asarray(p), sd.asarray(q), axis=0, base=2), st.entropy(p, q, axis=0, base=2))
+
+
+def test_long_lane_sorts_on_any_thread_count():
+    """A single long lane sorts on the pool (a samplesort from 65536 elements): the ranks, the
+    mode and the entropy estimate have the same bits on 1, 3 and 10 threads, and the ranks are
+    numpy's."""
+    rng = np.random.default_rng(12)
+    before = sd.get_num_threads()
+    try:
+        for n in (65535, 65536, 200003):
+            for x in (rng.normal(size=n), rng.integers(0, 40, n).astype(float), np.zeros(n),
+                      np.where(rng.random(n) < 0.3, -0.0, 0.0), np.sort(rng.normal(size=n))[::-1].copy()):
+                want = None
+                for th in (1, 3, 10):
+                    sd.set_num_threads(th)
+                    X = sd.asarray(x)
+                    got = (np.asarray(S.rankdata(X)), np.asarray(S.rankdata(X, method="ordinal")), tuple(S.mode(X)),
+                           S.differential_entropy(X))
+                    if want is None:
+                        want = got
+                        np.testing.assert_array_equal(got[0], st.rankdata(x))
+                        np.testing.assert_array_equal(got[1], st.rankdata(x, method="ordinal"))
+                        m = st.mode(x)
+                        assert got[2][0] == m.mode and got[2][1] == m.count
+                    else:
+                        assert np.array_equal(got[0], want[0]) and np.array_equal(got[1], want[1])
+                        assert got[2] == want[2] and math.copysign(1.0, got[2][0]) == math.copysign(1.0, want[2][0])
+                        assert got[3] == want[3] or (math.isnan(got[3]) and math.isnan(want[3]))
+    finally:
+        sd.set_num_threads(before)
+
+
+def test_lanes_side_by_side_match_lanes_alone():
+    """Reducing over an axis that is not the last (the lanes side by side in memory) gives the
+    bits of each lane reduced alone, NaNs and all, on any number of threads."""
+    rng = np.random.default_rng(13)
+    x = rng.normal(size=(20011, 131)) * 3.0 + 1e6
+    x[rng.integers(0, 20011, 40), rng.integers(0, 131, 40)] = np.nan
+    x[:, 7] = np.inf
+    X = sd.asarray(x)
+    before = sd.get_num_threads()
+    try:
+        for pol in ("propagate", "omit"):
+            sd.set_num_threads(1)
+            alone = [np.array([f(sd.asarray(np.ascontiguousarray(x[:, j])), nan_policy=pol) for j in range(131)])
+                     for f in (S.sem, S.skew, S.kurtosis)]
+            for th in (1, 3, 10):
+                sd.set_num_threads(th)
+                for f, want in zip((S.sem, S.skew, S.kurtosis), alone):
+                    np.testing.assert_array_equal(np.asarray(f(X, axis=0, nan_policy=pol)), want)
+                z = np.asarray(S.zscore(X, axis=0, nan_policy=pol))
+                for j in (0, 7, 64, 130):
+                    np.testing.assert_array_equal(z[:, j], np.asarray(S.zscore(sd.asarray(np.ascontiguousarray(x[:, j])),
+                                                                                nan_policy=pol)))
+    finally:
+        sd.set_num_threads(before)
+
+
+@pytest.mark.parametrize("c", [1e-300, 1e-200, 1e-160, 1e160, 1e200, 1e300])
+def test_moments_of_tiny_and_huge_data(c):
+    # the powers of x - mean overflow or underflow at these scales (sem of 1e-200-sized data
+    # was 0, the skewness of 1e160-sized data NaN): the lane is rescaled by a power of two
+    rng = np.random.default_rng(4)
+    x = rng.normal(size=(30, 6)) + 0.3
+    a, b = sd.asarray(x), sd.asarray(x * c)
+    for axis in (None, 0, 1):
+        for pol in ("propagate", "omit"):
+            kw = dict(axis=axis, nan_policy=pol)
+            for f in (S.skew, S.kurtosis, S.zscore, lambda v, **k: S.skew(v, bias=False, **k),
+                      lambda v, **k: S.describe(v, **k).kurtosis, lambda v, **k: S.describe(v, **k).skewness):
+                np.testing.assert_allclose(np.asarray(f(b, **kw)), np.asarray(f(a, **kw)), rtol=1e-12)
+            np.testing.assert_allclose(np.asarray(S.sem(b, **kw)), np.asarray(S.sem(a, **kw)) * c, rtol=1e-12)
+            for order in (2, 3):
+                with np.errstate(over="ignore", under="ignore"):
+                    want = np.asarray(S.moment(a, order=order, **kw)) * c**order if abs(math.log10(c)) * order < 300 else None
+                if want is not None:
+                    np.testing.assert_allclose(np.asarray(S.moment(b, order=order, **kw)), want, rtol=1e-12)
+
+
+def test_moments_of_extreme_data():
+    # subnormal data: integers times 5e-324
+    x = sd.asarray(np.array([1.0, 2.0, 0.0, 4.0, 3.0, 6.0]) * 5e-324)
+    assert S.skew(x) == pytest.approx(st.skew([1.0, 2.0, 0.0, 4.0, 3.0, 6.0]), rel=1e-13)
+    assert S.kurtosis(x) == pytest.approx(st.kurtosis([1.0, 2.0, 0.0, 4.0, 3.0, 6.0]), rel=1e-13)
+    # the largest doubles, mixed scales: the range itself overflows
+    z = np.asarray(S.zscore(sd.asarray([1e-300, 1.0, 1e300, -1e300, 0.0, 1e150, -1e150])))
+    assert z[2] == pytest.approx(math.sqrt(3.5), rel=1e-12) and z[3] == pytest.approx(-math.sqrt(3.5), rel=1e-12)
+    assert S.kurtosis(sd.asarray([1.7e308, -1.7e308, 1.7e308, -1.7e308])) == pytest.approx(-2.0, abs=1e-12)
+    # a constant lane stays NaN at any scale
+    for v in (5e-324, 1e-300, 1e300):
+        assert math.isnan(S.skew(sd.asarray([v, v, v]))) and np.isnan(np.asarray(S.zscore(sd.asarray([v, v, v])))).all()

@@ -12,6 +12,7 @@
 #include "special/coeffs/cephes_gamma.hpp"
 #include "special/common.hpp"
 #include "special/dd.hpp"
+#include "stats/coeffs/zeta_minus_one.hpp"
 
 #include <array>
 #include <cmath>
@@ -55,9 +56,17 @@ struct Memo {
 
 // exp(e) for e = hi + lo, one rounding: exp(hi) (1 + lo). Into the subnormals
 // exp(hi) rounds once more, which the subnormal (absolute) rule allows.
-inline double exp_dd(DD e) { return std::exp(e.hi) * (1.0 + e.lo); }
+// A low part that is not below 1 (hi past 2^53, where exp(hi) is 0 or inf already) or NaN (hi
+// infinite) is not applied: a select, no branch.
+inline double exp_dd(DD e) {
+    const double lo = std::fabs(e.lo) < 1.0 ? e.lo : 0.0;
+    return std::exp(e.hi) * (1.0 + lo);
+}
 
-// d / s as a double-double: q = d.hi / s, then the remainder d - q s exactly by fma.
+// d / s as a double-double: q = d.hi / s, then the remainder d - q s exactly by fma. (For |d|
+// below 2^-969 the remainder, 2^-53 of d, is rounded to a multiple of 2^-1074: the quotient
+// then holds d only to 2^-1074 / |d|. A caller that multiplies the result's relative error
+// handles such an operand itself: weibull_detail::log_ratio.)
 inline DD div(DD d, double s) {
     const double q = d.hi / s;
     if (!std::isfinite(q) || q == 0.0) return {q, 0.0};
@@ -66,21 +75,18 @@ inline DD div(DD d, double s) {
 }
 
 // z = (x - mu) / sigma as a double-double, for finite x, mu and sigma > 0.
-// x - mu may overflow while z does not (sigma > 1): then x / sigma - mu / sigma.
+// x - mu may overflow while z does not (sigma > 1): then (x/2 - mu/2) / (sigma/2).
 inline DD standardize(double x, double mu, double sigma) {
     const DD d = dd::two_sum(x, -mu);
     if (std::isfinite(d.hi)) return div(d, sigma);
-    return div(dd::two_sum(x / sigma, -mu / sigma), 1.0);
+    return div(dd::two_sum(0.5 * x, -0.5 * mu), 0.5 * sigma);  // the halves are exact (sigma > 2^-1021 or z overflows)
 }
 
 // x / s as a double-double (x finite, s > 0).
 inline DD ratio(double x, double s) { return div(DD{x, 0.0}, s); }
 
-// log(v) as a double-double for v > 0 finite (subnormal too).
-inline DD log_dd(double v) {
-    if (v >= 0x1p-1000) return dd::log(v);
-    return dd::log(std::ldexp(v, 200)) - kLn2 * 200.0;
-}
+// log(v) as a double-double for v > 0 finite (subnormal too): special's dd::log_pos.
+inline DD log_dd(double v) { return dd::log_pos(v); }
 
 // log(a b) as a double-double for a, b > 0 finite, the product unrounded.
 inline DD log_prod(double a, double b) {
@@ -113,24 +119,43 @@ inline DD exp_full(DD d) {
     return dd::ldexp(sum, static_cast<int>(n));
 }
 
-// log Gamma(z) for z > 0 a double-double, to ~1e-19 absolute: shifted to
-// w = z + n >= 30 (log Gamma(z) = log Gamma(w) - log(z (z+1) ... (z+n-1)), the
-// product and its log in double-double), then Stirling,
-//     log Gamma(w) = w log w - w - log(w)/2 + log sqrt(2 pi) + S(w),
-// with every large term in double-double and S(w) ~ 1/(12 w) (Cephes' series,
-// special/coeffs/cephes_gamma.hpp) in double: its own error is ~1e-19.
-inline DD log_gamma(DD z) {
-    DD w = z, prod{1.0, 0.0};
-    while (w.hi < 30.0) {
-        prod = prod * w;
-        w = w + 1.0;
+// log Gamma(z) for z > 0 a double-double, to ~1e-19 absolute: special's dd::loggamma
+// (the shift to z + n >= 30 and Stirling's form, the large terms in double-double).
+inline DD log_gamma(DD z) { return dd::loggamma(z); }
+
+inline constexpr DD kEulerGamma = {0.5772156649015329, -4.942915152430645e-18};
+
+// log Gamma(1 + x) as a double-double: the series -euler x + sum_j>=2 (-1)^j zeta(j) x^j / j
+// for |x| <= 1/2 (no 1 + x to round for a tiny x), else log_gamma of the exact 1 + x.
+inline DD lgamma1p(double x) {
+    if (std::fabs(x - 1.0) <= 0.25) {
+        // about its zero at x = 1: log(1 + d) + log Gamma(1 + d), d = x - 1 (exact), each to
+        // its own last bit (log_gamma's absolute 1e-19 is no part of a result near 0)
+        const DD d{x - 1.0, 0.0};
+        return (d - dd::log1pmx_neg(d)) + lgamma1p(d.hi);
     }
-    const DD lw = dd::log(w);
-    const double r = 1.0 / w.hi;
-    const double series = special::horner(r * r, special::cephes::kLgamA) * r;
-    DD l = w * lw - w - lw * 0.5 + kLogSqrt2Pi + series;
-    if (prod.hi != 1.0 || prod.lo != 0.0) l = l - dd::log(prod);
-    return l;
+    if (std::fabs(x) > 0.5) return num::log_gamma(dd::two_sum(1.0, x));
+    DD sum = kEulerGamma * -x, p{x, 0.0};
+    for (int j = 2; j < 200; ++j) {
+        p = p * x;
+        DD zeta{1.0, 0.0};
+        if (j <= kZetaMinusOneMax) zeta = zeta + DD{kZetaMinusOne[j - 2][0], kZetaMinusOne[j - 2][1]};
+        DD term = zeta * p / static_cast<double>(j);
+        if (j % 2 == 1) term = -term;
+        sum = sum + term;
+        if (std::fabs(term.hi) <= std::fabs(sum.hi) * 0x1p-108) break;
+    }
+    return sum;
+}
+
+// A root x from an inverse outside the guaranteed parameters is returned only if the forward
+// log tail lf at it meets the target lt: within the tail's change over 8 ULP of x (its slope
+// |x| f / F, from log_xf = log(|x| f(x))) and 1e-12 max(1, |lt|). NaN otherwise (and for a
+// NaN lf). The slope is taken over the larger of the tail and the target: a tail far below
+// the target (-inf for one that underflowed) must not widen its own tolerance.
+inline double accept_root(double x, double lf, double log_xf, double lt) {
+    const double tol = 0x1p-50 * std::exp(log_xf - std::max(lf, lt)) + 1e-12 * std::max(1.0, std::fabs(lt));
+    return std::fabs(lf - lt) <= tol ? x : std::numeric_limits<double>::quiet_NaN();
 }
 
 // E = e^D - 1 in double-double.

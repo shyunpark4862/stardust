@@ -2,15 +2,15 @@
 
 | distribution | method | sd 1T | sd 10T | scipy | scipy / sd 1T | scipy / sd 10T |
 |---|---|---:|---:|---:|---:|---:|
-| Wishart p=3 | logpdf | 0.94 | 0.16 | 78.62 | 83.94 | 506.8 |
-| Wishart p=3 | sample | 0.61 | 0.08 | 8.37 | 13.65 | 98.7 |
-| InverseWishart p=3 | logpdf | 1.46 | 0.25 | 41.30 | 28.34 | 162.1 |
-| InverseWishart p=3 | sample | 0.85 | 0.11 | 10.57 | 12.49 | 96.3 |
-| Wishart p=10 | logpdf | 9.68 | 1.28 | 84.90 | 8.77 | 66.3 |
-| Wishart p=10 | sample | 5.96 | 0.70 | 16.49 | 2.77 | 23.4 |
-| InverseWishart p=10 | logpdf | 25.45 | 3.07 | 45.97 | 1.81 | 15.0 |
-| InverseWishart p=10 | sample | 8.39 | 1.08 | 18.32 | 2.18 | 16.9 |
-| MatrixNormal 3x2 | logpdf | 0.75 | 0.12 | 0.52 | 0.70 | 4.5 |
-| MatrixNormal 3x2 | sample | 0.44 | 0.08 | 0.89 | 2.01 | 10.6 |
-| MatrixNormal 10x5 | logpdf | 14.60 | 1.77 | 3.54 | 0.24 | 2.0 |
-| MatrixNormal 10x5 | sample | 4.32 | 0.48 | 6.00 | 1.39 | 12.5 |
+| Wishart p=3 | logpdf | 0.95 | 0.18 | 81.74 | 85.84 | 466.9 |
+| Wishart p=3 | sample | 0.53 | 0.09 | 8.60 | 16.31 | 94.0 |
+| InverseWishart p=3 | logpdf | 1.47 | 0.26 | 42.88 | 29.19 | 166.2 |
+| InverseWishart p=3 | sample | 0.77 | 0.15 | 10.53 | 13.63 | 70.3 |
+| Wishart p=10 | logpdf | 9.70 | 1.28 | 89.76 | 9.25 | 70.1 |
+| Wishart p=10 | sample | 5.38 | 0.63 | 16.86 | 3.13 | 26.8 |
+| InverseWishart p=10 | logpdf | 25.97 | 3.20 | 48.32 | 1.86 | 15.1 |
+| InverseWishart p=10 | sample | 8.34 | 0.97 | 18.46 | 2.21 | 19.0 |
+| MatrixNormal 3x2 | logpdf | 0.71 | 0.10 | 0.57 | 0.80 | 5.8 |
+| MatrixNormal 3x2 | sample | 0.37 | 0.06 | 0.90 | 2.44 | 14.4 |
+| MatrixNormal 10x5 | logpdf | 3.04 | 0.38 | 3.82 | 1.26 | 10.1 |
+| MatrixNormal 10x5 | sample | 3.77 | 0.43 | 6.12 | 1.62 | 14.2 |

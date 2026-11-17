@@ -124,26 +124,39 @@ nb::tuple mv_cdf(nb::handle cov_o, nb::handle x_o, nb::handle batch_o, nb::handl
                 for (int i = 0; i < d; ++i) sdev[b * d + i] = std::sqrt(S[i * d + i]);
             }
         });
-        // the exact value of point p with n <= 3 finite coordinates (normal or t)
+        // the exact value of point p with n <= 3 finite coordinates (normal or t). The
+        // standardized limit x / sd can still overflow (a tiny variance): -inf gives 0 and
+        // +inf drops the coordinate, as an infinite x does. The normal's limits are clamped
+        // at +-1e100, far past where its cdf is 0 or 1 in any double (their squares would
+        // overflow inside); the t's are not (its tails are powers: P at -1e300 is not 0).
         auto exact = [&](std::int64_t p) {
             const std::int64_t b = batch[p];
             const double* xp = x.data() + p * d;
-            int idx[3], n = 0;
-            for (int i = 0; i < d; ++i)
-                if (xp[i] < kInf) idx[n++] = i;
             const bool normal = df[b] == kInf;
             const double* S = cov.data() + b * dd;
             const double* sd = sdev.data() + b * d;
-            auto h = [&](int q) { return xp[idx[q]] / sd[idx[q]]; };
+            int idx[3], n = 0;
+            double hv[3];
+            for (int i = 0; i < d; ++i) {
+                if (!(xp[i] < kInf)) continue;
+                double h = xp[i] / sd[i];
+                if (h == -kInf) return 0.0;
+                if (h == kInf) continue;
+                if (normal) h = std::clamp(h, -1e100, 1e100);
+                hv[n] = h, idx[n++] = i;
+            }
+            if (n == 0) return 1.0;
             auto r = [&](int q, int s) {
                 const int a = std::max(idx[q], idx[s]), c = std::min(idx[q], idx[s]);
-                return std::clamp(S[a * d + c] / (sd[a] * sd[c]), -1.0, 1.0);
+                const double pr = sd[a] * sd[c];  // under- or overflows for variances beyond 1e+-154
+                const double rr = pr >= 0x1p-1000 && pr <= 0x1p1000 ? S[a * d + c] / pr : S[a * d + c] / sd[a] / sd[c];
+                return std::clamp(rr, -1.0, 1.0);
             };
-            if (n == 1) return normal ? Phi(h(0)) : special::Stdtr::f(df[b], h(0));
-            if (n == 2) return normal ? bvn(h(0), h(1), r(0, 1)) : bvt(h(0), h(1), r(0, 1), df[b]);
+            if (n == 1) return normal ? Phi(hv[0]) : special::Stdtr::f(df[b], hv[0]);
+            if (n == 2) return normal ? bvn(hv[0], hv[1], r(0, 1)) : bvt(hv[0], hv[1], r(0, 1), df[b]);
             Tri T;
             for (int q = 0; q < 3; ++q) {
-                T.h[q] = h(q);
+                T.h[q] = hv[q];
                 T.r[q][q] = 1.0;
                 for (int s = 0; s < q; ++s) T.r[q][s] = T.r[s][q] = r(q, s);
             }
@@ -175,6 +188,7 @@ nb::tuple mv_cdf(nb::handle cov_o, nb::handle x_o, nb::handle batch_o, nb::handl
                     kind[p] = 2;
                 } else {
                     val[p] = exact(p);
+                    if (std::isnan(val[p])) err[p] = kNaN;
                 }
             }
         });
@@ -184,7 +198,10 @@ nb::tuple mv_cdf(nb::handle cov_o, nb::handle x_o, nb::handle batch_o, nb::handl
             if (kind[p] == 2) ts.push_back(p);
         for_pieces(static_cast<std::int64_t>(ts.size()), 1, static_cast<std::int64_t>(ts.size()) << 20,
                    [&](std::int64_t, std::int64_t q0, std::int64_t q1) {
-                       for (std::int64_t q = q0; q < q1; ++q) val[ts[q]] = exact(ts[q]);
+                       for (std::int64_t q = q0; q < q1; ++q) {
+                           val[ts[q]] = exact(ts[q]);
+                           if (std::isnan(val[ts[q]])) err[ts[q]] = kNaN;
+                       }
                    });
         // pass 2: the QMC points
         std::vector<std::int64_t> qs;

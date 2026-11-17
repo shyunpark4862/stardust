@@ -207,3 +207,83 @@ def test_samples_advance_the_generator():
     r2 = sd.random.default_rng(2)
     r2.random(100)
     assert np.array_equal(np.asarray(S.Normal().sample(100, rng=r2)), b)
+
+
+def test_rejections_first_test_keeps_the_exact_decision():
+    """Poisson (PTRS) and binomial (BTRS) decide in plain double where a margin allows and by the
+    double-double log pmf otherwise: their samples follow the pmf across the switch points and
+    for huge parameters (where the margin always defers)."""
+    r = sd.random.default_rng(31)
+    for D, lo in ((S.Poisson(mu=10.0), 0), (S.Poisson(mu=250.5), 150), (S.Binomial(n=40.0, p=0.25), 0),
+                  (S.Binomial(n=3000.0, p=0.97), 2850), (S.NegativeBinomial(n=7.0, p=0.2), 0)):
+        x = np.asarray(D.sample(400000, rng=r))
+        ks = np.arange(lo, lo + 120.0)
+        pm = np.asarray(D.pmf(sd.asarray(ks)))
+        keep = pm * len(x) >= 20.0
+        obs = np.array([(x == k).sum() for k in ks[keep]])
+        chi2 = ((obs - pm[keep] * len(x)) ** 2 / (pm[keep] * len(x))).sum()
+        assert st.chi2.sf(chi2, keep.sum()) > 1e-6, D
+    for D, m, s in ((S.Poisson(mu=1e15), 1e15, 10**7.5), (S.Binomial(n=1e15, p=0.5), 5e14, 2.5e14 ** 0.5)):
+        x = np.asarray(D.sample(20000, rng=r))
+        assert abs(x.mean() - m) < 6 * s / 20000**0.5 and 0.97 < x.std() / s < 1.03
+
+
+def test_reworked_samplers_follow_their_distributions():
+    """Gamma and beta below shape 1 (powers of uniforms as exponentials), the noncentral
+    chi-square as a gamma and a shifted normal square, and the noncentral F on top of it."""
+    r = sd.random.default_rng(32)
+    cases = [S.Gamma(a=0.5), S.Gamma(a=0.07, scale=3.0), S.Gamma(a=0.01), S.Beta(a=0.5, b=0.5), S.Beta(a=0.07, b=0.9),
+             S.Beta(a=0.05, b=0.9), S.Beta(a=0.3, b=4.0), S.NoncentralChiSquared(df=5.0, nc=2.0),
+             S.NoncentralChiSquared(df=1.0, nc=3.0), S.NoncentralChiSquared(df=0.4, nc=3.0),
+             S.NoncentralChiSquared(df=7.5, nc=0.0), S.NoncentralF(dfn=5.0, dfd=7.0, nc=2.0),
+             S.NoncentralF(dfn=0.5, dfd=1.5, nc=1.0), S.ChiSquared(df=0.3), S.InverseGamma(a=0.4),
+             S.NegativeBinomial(n=0.5, p=0.4), S.StudentT(df=0.8)]
+    for D in cases:
+        x = np.asarray(D.sample(200000, rng=r))
+        if isinstance(D, S.NegativeBinomial):
+            ks = np.arange(0.0, 12.0)
+            obs = np.array([(x == k).sum() for k in ks])
+            ex = np.asarray(D.pmf(sd.asarray(ks))) * len(x)
+            assert st.chi2.sf(((obs - ex) ** 2 / ex).sum(), len(ks)) > 1e-6
+            continue
+        u = np.asarray(D.cdf(sd.asarray(x)))
+        assert st.kstest(u, "uniform").pvalue > 1e-6, D
+
+
+def test_extreme_parameters_return_in_bounded_time():
+    import time
+
+    rng = sd.random.default_rng(11)
+    t0 = time.perf_counter()
+    # Zipf: 2^(a-1) overflows (inf / inf in the acceptance test: never accepted before)
+    assert np.all(np.asarray(S.Zipf(a=1e300).sample(1000, rng=rng)) == 1.0)
+    assert np.all(np.asarray(S.Zipf(a=2000.0).sample(1000, rng=rng)) == 1.0)
+    # hypergeometric: the walk from the mode is bounded (a standard deviation above 65536,
+    # or a population beyond 2^53: NaN); below, samples as before
+    for total, succ, draws in ((1e17, 5e16, 5e16), (1e100, 5e99, 5e99), (1e300, 1e299, 1e299), (1e15, 5e14, 5e14),
+                               (2.0**53, 9007199.0, 2.0**52)):
+        v = np.asarray(S.Hypergeometric(total=total, successes=succ, draws=draws).sample(2000, rng=rng))
+        assert np.isnan(v).all(), (total, succ, draws)
+    v = np.asarray(S.Hypergeometric(total=1e15, successes=1e6, draws=5e14).sample(2000, rng=rng))
+    assert abs(v.mean() - 5e5) < 100 and abs(v.std() - 500.0) < 50
+    # beta with subnormal shapes: both logs overflow (the rejection compared NaN forever)
+    v = np.asarray(S.Beta(a=5e-324, b=5e-324).sample(4000, rng=rng))
+    assert set(np.unique(v)) <= {0.0, 0.5, 1.0} and 0.4 < v.mean() < 0.6
+    v = np.asarray(S.Beta(a=1e-310, b=3e-310).sample(4000, rng=rng))
+    assert set(np.unique(v)) <= {0.0, 0.5, 1.0} and 0.2 < v.mean() < 0.3  # P(1) = a / (a + b)
+    v = np.asarray(S.BetaBinomial(n=7.0, a=5e-324, b=5e-324).sample(4000, rng=rng))
+    assert set(np.unique(v)) <= {0.0, 7.0} and 0.4 < (v == 7.0).mean() < 0.6
+    # more integers than a word indexes: NaN (uniform on [0, 2^64) before)
+    assert np.isnan(np.asarray(S.DiscreteUniform(low=0.0, high=1e100).sample(100, rng=rng))).all()
+    assert np.isnan(np.asarray(S.DiscreteUniform(low=-1e300, high=1e300).sample(100, rng=rng))).all()
+    v = np.asarray(S.DiscreteUniform(low=0.0, high=2.0**60).sample(4000, rng=rng))
+    assert 0.0 <= v.min() and v.max() < 2.0**60 and 0.45 < v.mean() / 2.0**60 < 0.55
+    # F with a subnormal dfn: dfd / dfn overflowed (NaN in 99% of the samples)
+    v = np.asarray(S.F(dfn=1e-310, dfd=0.5).sample(2000, rng=rng))
+    assert not np.isnan(v).any() and (v >= 0.0).all()
+    v = np.asarray(S.NoncentralF(dfn=5e-324, dfd=0.5, nc=1.0).sample(2000, rng=rng))
+    assert not np.isnan(v).any() and (v >= 0.0).all()
+    # binomial by inversion with a count beyond 2^53
+    v = np.asarray(S.Binomial(n=1e300, p=1e-300).sample(200000, rng=rng))
+    assert np.isfinite(v).all() and abs(v.mean() - 1.0) < 0.02
+    assert time.perf_counter() - t0 < 5.0

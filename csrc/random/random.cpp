@@ -16,8 +16,10 @@
 #include "array/convert.hpp"
 #include "array/ops/pieces.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -121,6 +123,9 @@ nb::object integers(std::uint64_t k0, std::uint64_t k1, std::uint64_t pos, const
 // E_i / p_i with E_i a standard exponential (-log of a uniform in (0, 1]): the
 // arrival times of a race whose k first finishers are a weighted sample of k
 // without replacement (Efraimidis and Spirakis, 2006). p_i = 0 never arrives (inf).
+// A positive p_i below about 2e-307 would overflow to the same inf and lose to a
+// zero by index; its key is the largest double instead (such elements are then
+// ordered by index among themselves: their whole probability is below 1e-300).
 nb::object race_keys(std::uint64_t k0, std::uint64_t k1, std::uint64_t pos, const NDArray& p) {
     NDArray out = new_array(DType::Float64, p.shape_span());
     double* o = reinterpret_cast<double*>(out.data);
@@ -130,7 +135,7 @@ nb::object race_keys(std::uint64_t k0, std::uint64_t k1, std::uint64_t pos, cons
         Stream s({k0, k1});
         for (std::int64_t i = i0; i < i1; ++i) {
             const double u = (static_cast<double>(s.first(pos + static_cast<std::uint64_t>(i)) >> 11) + 1.0) * 0x1p-53;
-            o[i] = pp[i] > 0.0 ? -std::log(u) / pp[i] : HUGE_VAL;
+            o[i] = pp[i] > 0.0 ? std::min(-std::log(u) / pp[i], std::numeric_limits<double>::max()) : HUGE_VAL;
         }
     });
     return wrap(std::move(out));

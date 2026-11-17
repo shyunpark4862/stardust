@@ -12,7 +12,7 @@ NaN in every method of that batch element (T8).
 import math
 
 from .. import _core as _sd_core
-from ._multivariate import _array, _broadcast, _rows, _shape_of, _type_name
+from ._multivariate import _array, _broadcast, _fast_factors, _rows, _shape_of, _type_name
 
 _k = _sd_core.stats
 
@@ -125,8 +125,8 @@ class _WishartBase(_MatrixBase):
     def sample(self, shape=(), /, *, rng):
         """Symmetric positive definite matrices of shape `shape` + the batch shape + (p, p)
         (Bartlett's decomposition), one stream element per matrix."""
-        shp, N, pos = self._sample_rows(shape, rng)
-        v = _k.wishart_sample(rng._key[0], rng._key[1], pos, N, self._df, self._L, self._ok, self._inverse)
+        shp, N, (key, pos) = self._sample_rows(shape, rng)
+        v = _k.wishart_sample(key[0], key[1], pos, N, self._df, self._L, self._ok, self._inverse)
         return _sd_core.reshape(v, shp + self._batch + self._shape)
 
     def _dfm(self):
@@ -199,7 +199,7 @@ class MatrixNormal(_MatrixBase):
     colcov (x) rowcov) (scipy's matrix_normal(mean, rowcov, colcov)); rowcov (..., n, n) and colcov (..., p, p) symmetric positive definite
     (their lower triangles read)."""
 
-    __slots__ = ("_mean", "_U", "_Ul", "_V", "_Vl", "_lu", "_lv")
+    __slots__ = ("_mean", "_U", "_Ul", "_V", "_Vl", "_lu", "_lv", "_fast")
     _names = ("mu", "rowcov", "colcov")
 
     def __init__(self, *, mu, rowcov, colcov):
@@ -225,6 +225,7 @@ class MatrixNormal(_MatrixBase):
         self._ok = sd.where(finite & (oku != 0.0) & (okv != 0.0), 1.0, 0.0)
         self._U, self._Ul, self._V, self._Vl = U, Ul, V, Vl
         self._lu, self._lv = (luh, lul), (lvh, lvl)
+        self._fast = None
 
     @property
     def mu(self):
@@ -243,8 +244,10 @@ class MatrixNormal(_MatrixBase):
 
     def _log(self, x, name, as_pdf):
         rows, idx, out = self._points(x, name)
+        if self._fast is None:  # the inverse factors of the densities' fast path, on first use
+            self._fast = (_fast_factors(self._U, self._Ul, self._ok), _fast_factors(self._V, self._Vl, self._ok))
         v = _k.matnorm_logpdf(rows, idx, self._mean, self._U, self._Ul, self._V, self._Vl, self._lu[0], self._lu[1],
-                              self._lv[0], self._lv[1], self._ok, as_pdf)
+                              self._lv[0], self._lv[1], self._ok, *(None if f is False else f for f in self._fast), as_pdf)
         return self._result(v, out)
 
     def pdf(self, x, /):
@@ -270,6 +273,6 @@ class MatrixNormal(_MatrixBase):
 
     def sample(self, shape=(), /, *, rng):
         """Matrices of shape `shape` + the batch shape + (n, p): mean + L_U Z L_V^T."""
-        shp, N, pos = self._sample_rows(shape, rng)
-        v = _k.matnorm_sample(rng._key[0], rng._key[1], pos, N, self._mean, self._U, self._V, self._ok)
+        shp, N, (key, pos) = self._sample_rows(shape, rng)
+        v = _k.matnorm_sample(key[0], key[1], pos, N, self._mean, self._U, self._V, self._ok)
         return _sd_core.reshape(v, shp + self._batch + self._shape)

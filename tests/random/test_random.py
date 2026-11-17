@@ -198,3 +198,68 @@ def test_choice_p_within_numpys_tolerance():
     r = sd.random.default_rng(8)
     p = sd.asarray([0.25, 0.25, 0.25, 0.25 + 1e-9])  # sums to 1 + 1e-9: accepted, normalised
     assert set(np.asarray(r.choice(4, shape=1000, p=p))) <= {0, 1, 2, 3}
+
+
+# ---- 2026-11-18: messages, tiny probabilities, the stream against numpy's Philox ----
+
+def test_integers_rejects_in_a_range_where_skipping_it_shows():
+    # Without the rejection step a range of 3 * 2**61 gives the values 3, 3, 2 preimages in
+    # turn (2**64 / range = 8/3): the residues mod 3 would come out 3/8, 3/8, 2/8.
+    r = sd.random.default_rng(11)
+    big = np.asarray(r.integers(0, 3 * 2**61, shape=300_000).tolist())
+    counts = np.bincount(big % 3, minlength=3)
+    assert abs(counts / big.size - 1 / 3).max() < 0.01
+
+
+def test_stream_is_numpys_philox_four_elements_on():
+    # the same key and counter-based stream; numpy starts one block (4 elements) later
+    r = sd.random.default_rng(12345)
+    ours = np.asarray(r.random((1000,)).tolist())
+    key = np.random.SeedSequence(12345).generate_state(2, np.uint64)
+    theirs = np.random.Generator(np.random.Philox(key=key)).random(996)
+    assert np.array_equal(ours[4:], theirs)
+
+
+def test_messages_name_the_method_and_the_argument():
+    r = sd.random.default_rng(1)
+    with pytest.raises(OverflowError, match=r"^choice\(\): 'a' is out of range"):
+        r.choice(2**63)
+    with pytest.raises(OverflowError, match=r"^choice\(\): 'a' is out of range"):
+        r.choice(2**63, shape=2, replace=False)
+    with pytest.raises(OverflowError, match=r"^permutation\(\): 'x' is out of range"):
+        r.permutation(2**63)
+    for call, name in ((lambda: r.random(()), "random"), (lambda: r.choice(5, shape=()), "choice"),
+                       (lambda: r.integers(5, shape=()), "integers")):
+        with pytest.raises(ValueError, match=rf"^{name}\(\): 'shape' must not be \(\)"):
+            call()
+    with pytest.raises(ValueError, match=r"^integers\(\): 'high' must be positive"):
+        r.integers(0)
+    with pytest.raises(ValueError, match=r"^integers\(\): 'high' must be non-negative"):
+        r.integers(-1, endpoint=True)
+    with pytest.raises(ValueError, match=r"^integers\(\): 'low' must be less than 'high'"):
+        r.integers(3, 3)
+    with pytest.raises(TypeError, match=r"^Generator\(\): make a generator with sd.random.default_rng"):
+        sd.random.Generator()
+    with pytest.raises(TypeError, match=r"^choice\(\): 'p' must be a real array"):
+        r.choice(3, p=sd.asarray([0.5 + 0j, 0.25, 0.25]))
+
+
+@pytest.mark.parametrize("key,value,error", [
+    ("entropy", -1, ValueError), ("entropy", "a", TypeError), ("spawn_key", 5, TypeError),
+    ("spawn_key", (True,), TypeError), ("n_children_spawned", -1, ValueError),
+    ("position", 1.0, TypeError), ("position", True, TypeError), ("position", -1, ValueError),
+])
+def test_state_errors_share_one_prefix(key, value, error):
+    r = sd.random.default_rng(1)
+    before = r.state
+    with pytest.raises(error, match=rf"^\.state: '{key}' "):
+        r.state = {**before, key: value}
+    assert r.state == before
+
+
+def test_choice_keeps_a_tiny_probability_ahead_of_zero():
+    # 1 / 1e-320 overflows: the element must still be drawn before one of probability 0
+    r = sd.random.default_rng(3)
+    p = sd.asarray([0.0, 1.0, 1e-320])
+    for _ in range(50):
+        assert sorted(r.choice(3, shape=2, replace=False, p=p).tolist()) == [1, 2]

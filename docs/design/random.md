@@ -26,7 +26,7 @@
 
 ## 2. 생성기 (`csrc/random/philox.hpp`)
 - **Philox4×64-10** (Salmon et al., "Parallel random numbers: as easy as 1, 2, 3", SC 2011; Random123). 키(128비트)와 계수기(256비트)에서 64비트 넷을 만드는 함수다. 상태가 없어서 어느 계수기 값이든 바로 계산된다.
-- 정확성: Random123의 알려진 답(KAT) 세 벡터와 비트까지 같고, numpy의 Philox 블록과도 같다(tests/random/test_random.py).
+- 정확성: Random123의 알려진 답(KAT) 세 벡터와 비트까지 같고, numpy의 Philox와도 같다: 같은 키의 numpy Philox 수열은 우리 수열을 원소 4개(한 블록) 민 것이다(numpy는 계수기 1에서 시작한다. tests/random/test_random.py).
 - **블록 넷을 함께**: 한 블록은 곱셈 20번이 이어지는 의존 사슬이라 지연 시간에 묶인다(블록당 약 12 ns). 독립인 블록 넷의 라운드를 섞어 곱셈기를 채운다(`philox4`). 균등 난수 10⁶개 2.98 → 1.14 ms. 블록마다 비트는 같다.
 
 ## 3. 결정성: 원소의 부분 수열
@@ -52,3 +52,4 @@
 ## 6. 측정
 - bench/random/t3_speed.md: numpy Generator(PCG64, Philox)와 1·10스레드 비교. 요약은 docs/api/random.md §1.8.
 - 테스트(tests/random/test_random.py): KAT, 계수기 배치, SeedSequence·spawn의 numpy 일치, 스레드 1·3·10과 나눈 호출의 같은 비트, 경계, 통계 검사(KS, 카이제곱: 정수·기각 구간·섞기 24가지·가중치), 비복원, 상태·피클·복사, 공유 Generator의 구간 예약, 에러 메시지.
+- **2026-11-18 정리**: 메서드는 키와 위치를 한 잠금 안에서 함께 읽는다(전에는 키를 잠금 밖에서 읽어, 다른 스레드의 `state` 대입과 겹치면 옛 키와 새 위치가 섞일 수 있었다). 가중치 비복원 추출의 키 E/p는 double 최댓값에서 자른다: p가 약 2e-307 아래이면 inf로 넘쳐 확률 0인 원소(inf)와 구별되지 않았고, 인덱스 순서로 0인 원소가 뽑혔다. 잘린 원소끼리는 인덱스 순서다(그 확률을 다 합쳐도 1e-300 아래다). `integers`의 치우침 테스트는 3·2⁶¹ 범위의 값을 3으로 나눈 나머지로 본다(기각을 빼면 3/8, 3/8, 2/8이 된다. 전의 구간 셋 세기는 기각이 없어도 통과했다). 에러 메시지의 접두사를 메서드 이름으로 맞췄다(`choice(2**63)`이 `integers():`로, `shape=()`가 메서드마다 다르게, `.state`가 `.state:`와 `.state():`로 섞여 나왔다).

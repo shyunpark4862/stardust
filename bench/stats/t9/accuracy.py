@@ -1,20 +1,39 @@
 """T9: accuracy of the multivariate normal and t log densities and entropies against
-50-digit references (mpmath LU of the matrices as given), over the condition number of the
-covariance and the dimension (T29: 1e-14 mixed for kappa <= 1e6, d <= 100), and scipy's error
-at the same points. Errors: |error| / max(1, |value|).
+Arb references (ball arithmetic on the matrices as given: Arb's LU for the determinant and the
+solves, at a working precision that doubles until every ball's radius is below 2^-80 of
+max(1, |value|)), over the condition number of the covariance and the dimension (T29: 1e-14
+mixed for kappa <= 1e6, d <= 100), and scipy's error at the same points. Errors:
+|error| / max(1, |value|).
 
     .venv/bin/python bench/stats/t9/accuracy.py > bench/stats/t9/accuracy.md
 """
 
 import math
 
-import mpmath as mp
 import numpy as np
 import scipy.stats as st
+from flint import arb, arb_mat, ctx
 
 import stardust as sd
 
-mp.mp.dps = 50
+BITS = 80  # the references' radius, relative to max(1, |value|)
+
+
+def settled(fn):
+    """fn() (a tuple of arb balls) at doubling working precision until every radius is below
+    2^-BITS of max(1, |value|)."""
+    old, prec = ctx.prec, 128
+    try:
+        while True:
+            ctx.prec = prec
+            vs = fn()
+            if all(v.is_finite() and v.rad() <= arb(2) ** -BITS * max(arb(1), abs(v.mid())) for v in vs):
+                return vs
+            if prec >= 1 << 13:
+                raise ArithmeticError(f"reference did not settle by {prec} bits")
+            prec *= 2
+    finally:
+        ctx.prec = old
 
 
 def spd(rng, d, kappa):
@@ -26,26 +45,32 @@ def spd(rng, d, kappa):
 
 def reference(mu, cov, xs, df=None):
     d = len(mu)
-    A = mp.matrix(cov.tolist())
-    lu_det = mp.log(mp.det(A))
-    out = []
-    for x in xs:
-        r = mp.matrix([mp.mpf(float(x[i])) - mp.mpf(float(mu[i])) for i in range(d)])
-        q = (r.T * mp.lu_solve(A, r))[0]
+
+    def fn():
+        A = arb_mat(cov.tolist())
+        ld = A.det().log()
+        R = arb_mat([[float(x[i]) for x in xs] for i in range(d)]) - arb_mat([[float(mu[i])] * len(xs) for i in range(d)])
+        Y = A.solve(R)
+        pi = arb.pi()
+        out = []
+        for j in range(len(xs)):
+            q = sum((R[i, j] * Y[i, j] for i in range(d)), arb(0))
+            if df is None:
+                out.append(-(d * (2 * pi).log() + ld + q) / 2)
+            else:
+                nu = arb(df)
+                out.append(((nu + d) / 2).lgamma() - (nu / 2).lgamma() - arb(d) / 2 * (nu * pi).log() - ld / 2
+                           - (nu + d) / 2 * (q / nu).log1p())
         if df is None:
-            out.append(-(d * mp.log(2 * mp.pi) + lu_det + q) / 2)
+            h = arb(d) / 2 * (1 + (2 * pi).log()) + ld / 2
         else:
-            nu = mp.mpf(df)
-            out.append(mp.loggamma((nu + d) / 2) - mp.loggamma(nu / 2) - d / 2 * mp.log(nu * mp.pi) - lu_det / 2
-                       - (nu + d) / 2 * mp.log1p(q / nu))
-    h = None
-    if df is None:
-        h = d / mp.mpf(2) * (1 + mp.log(2 * mp.pi)) + lu_det / 2
-    else:
-        nu = mp.mpf(df)
-        a, hh = nu / 2, mp.mpf(d) / 2
-        h = (lu_det / 2 + mp.loggamma(a) - mp.loggamma(a + hh) + hh * mp.log(nu * mp.pi)
-             + (a + hh) * (mp.digamma(a + hh) - mp.digamma(a)))
+            nu = arb(df)
+            a, hh = nu / 2, arb(d) / 2
+            h = (ld / 2 + a.lgamma() - (a + hh).lgamma() + hh * (nu * pi).log()
+                 + (a + hh) * ((a + hh).digamma() - a.digamma()))
+        return (*out, h)
+
+    *out, h = settled(fn)
     return [float(v) for v in out], float(h)
 
 

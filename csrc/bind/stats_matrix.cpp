@@ -10,6 +10,11 @@
 // the support: else pdf 0), V^-1 in double-double per batch, tr(Psi X^-1) = |L_X^-1 L_Psi|_F^2.
 // Matrix normal MN(M, U, V) (n x p): -np/2 log 2 pi - p/2 log|U| - n/2 log|V| - |A|_F^2 / 2,
 // A = L_U^-1 (X - M) L_V^-T.
+//
+// The matrix normal's fast path (stats/dd_linalg.hpp, as the multivariate normal's): A by plain
+// dot products with the rounded inverses of the two factors, the first product's error bounds
+// carried through the second, and |A|_F^2 taken where its bound fits kQuadBudget; every other
+// point runs the double-double substitutions.
 #include "bind/stats_bind.hpp"
 
 #include "array/convert.hpp"
@@ -23,6 +28,7 @@
 #include "stats/sample.hpp"
 #include "stats/sample_dist.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -43,6 +49,8 @@ namespace la = stats::ddla;
 
 constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 constexpr double kInf = std::numeric_limits<double>::infinity();
+constexpr double kQuadBudget = la::kQuadBudget;  // the quadratic forms' fast path, 40 u
+constexpr double kU = la::kU;
 
 const NDArray& f64(nb::handle o, int ndim, const char* what) {
     const NDArray& a = require_ndarray(o);
@@ -79,6 +87,10 @@ void load_L(const NDArray& h, const NDArray& l, std::int64_t b, std::int64_t d, 
 
 // ---- Wishart and inverse Wishart --------------------------------------------------------------
 
+// The terms of a Wishart log density (the constant's and log|X|'s) below which their
+// cancellation needs no check: wishart_logpdf.
+constexpr double kPlainTerms = 1e15;
+
 // log pdf at x (M, p, p) (lower triangles read): df (B,), the scale's factor L hi/lo (B, p, p)
 // and log det hi/lo (B,), ok (B,). inverse: the inverse Wishart.
 nb::object wishart_logpdf(nb::handle x_obj, nb::handle batch_obj, nb::handle df_obj, nb::handle lh_obj,
@@ -92,12 +104,15 @@ nb::object wishart_logpdf(nb::handle x_obj, nb::handle batch_obj, nb::handle df_
     const double pd = static_cast<double>(p);
     // per batch: the constant, and V^-1 (Wishart) or L_Psi (inverse) in double-double
     std::vector<DD> cst(static_cast<std::size_t>(B));
+    std::vector<double> cmag(static_cast<std::size_t>(B), 0.0);  // the size of the constant's terms
     std::vector<std::vector<DD>> mats(static_cast<std::size_t>(B));
     for (std::int64_t b = 0; b < B; ++b) {
         if (el(ok, b) == 0.0) continue;
         const double n = el(dfa, b);
         const DD ld{el(ldh, b), el(ldl, b)};
-        const DD base = -(dd::kLn2 * (0.5 * n * pd)) - la::log_mvgamma(p, 0.5 * n);
+        const DD lmg = la::log_mvgamma(p, 0.5 * n);
+        const DD base = -(dd::kLn2 * (0.5 * n * pd)) - lmg;
+        cmag[b] = 0.35 * n * pd + std::fabs(lmg.hi) + std::fabs(ld.hi) * 0.5 * n;
         std::vector<DD> L;
         load_L(Lh, Ll, b, p, L);
         if (!inverse) {
@@ -146,8 +161,25 @@ nb::object wishart_logpdf(nb::handle x_obj, nb::handle batch_obj, nb::handle df_
                                    for (std::int64_t i = 0; i < p; ++i) tr = tr + col[i] * col[i];
                                }
                            }
-                           const double coef = inverse ? -0.5 * (n + pd + 1.0) : 0.5 * (n - pd - 1.0);
-                           const DD l = cst[b] + ldx * coef - tr * 0.5;
+                           // n -+ (p + 1) kept exactly: its rounding (2^-54 of the coefficient)
+                           // times log|X| would reach the density
+                           const DD coef = inverse ? dd::two_sum(n, pd + 1.0) * -0.5 : dd::two_sum(n, -(pd + 1.0)) * 0.5;
+                           const DD lx = ldx * coef;
+                           const DD l = cst[b] + lx - tr * 0.5;
+                           // the terms are of size df p log df and cancel to O(p^2 log df): each
+                           // is good to ~2^-100 of its size, so from df ~ 1e17 on the
+                           // double-double sum no longer holds the value (measured: 1e-12 at
+                           // 1e18, nothing at 1e30): NaN
+                           // (With the constant's terms and lx below kPlainTerms the test cannot
+                           // fail: the trace alone would have to be 1e17 times l, which it is
+                           // part of. One comparison for the usual df.)
+                           if (!(cmag[b] + std::fabs(lx.hi) <= kPlainTerms)) [[unlikely]] {
+                               const double mag = cmag[b] + std::fabs(lx.hi) + 0.5 * std::fabs(tr.hi);
+                               if (!(0x1p-100 * mag <= 1e-13 * std::max(1.0, std::fabs(l.hi)))) {
+                                   po[m] = kNaN;
+                                   continue;
+                               }
+                           }
                            po[m] = as_pdf ? num::exp_dd(l) : l.hi + l.lo;
                        }
                    });
@@ -265,7 +297,8 @@ nb::object wishart_sample(std::uint64_t k0, std::uint64_t k1, std::uint64_t pos,
 // their log dets hi/lo (B,), ok (B,).
 nb::object matnorm_logpdf(nb::handle x_obj, nb::handle batch_obj, nb::handle mean_obj, nb::handle uh_obj,
                           nb::handle ul_obj, nb::handle vh_obj, nb::handle vl_obj, nb::handle ldu_h, nb::handle ldu_l,
-                          nb::handle ldv_h, nb::handle ldv_l, nb::handle ok_obj, bool as_pdf) {
+                          nb::handle ldv_h, nb::handle ldv_l, nb::handle ok_obj, nb::handle fu_obj, nb::handle fv_obj,
+                          bool as_pdf) {
     const NDArray &x = f64(x_obj, 3, "x"), &mean = f64(mean_obj, 3, "mean"), &Uh = f64(uh_obj, 3, "U"),
                   &Ul = f64(ul_obj, 3, "U"), &Vh = f64(vh_obj, 3, "V"), &Vl = f64(vl_obj, 3, "V"),
                   &luh = f64(ldu_h, 1, "logdet"), &lul = f64(ldu_l, 1, "logdet"), &lvh = f64(ldv_h, 1, "logdet"),
@@ -283,11 +316,26 @@ nb::object matnorm_logpdf(nb::handle x_obj, nb::handle batch_obj, nb::handle mea
     }
     NDArray out = out_vec(M);
     double* po = reinterpret_cast<double*>(out.data);
+    // the fast path's factors of U (B, fast_size(n)) and V (B, fast_size(p)), contiguous, or none
+    const double *pfu = nullptr, *pfv = nullptr;
+    const std::int64_t fsu = la::fast_size(n), fsv = la::fast_size(p), np_ = la::padded(n), pp = la::padded(p);
+    if (!fu_obj.is_none() && !fv_obj.is_none() && n > 0 && p > 0) {
+        const NDArray &fu = f64(fu_obj, 2, "fast"), &fv = f64(fv_obj, 2, "fast");
+        if (fu.shape[0] != B || fu.shape[1] != fsu || fu.strides[1] != 8 || fu.strides[0] != 8 * fsu ||
+            fv.shape[0] != B || fv.shape[1] != fsv || fv.strides[1] != 8 || fv.strides[0] != 8 * fsv)
+            throw nb::value_error("matrix: 'fast' does not fit the factors");
+        pfu = reinterpret_cast<const double*>(fu.data), pfv = reinterpret_cast<const double*>(fv.data);
+    }
     {
         nb::gil_scoped_release release;
-        for_pieces(M, std::max<std::int64_t>(1, 2048 / std::max<std::int64_t>(1, n * p * (n + p))),
+        for_pieces(M, std::clamp<std::int64_t>(16384 / std::max<std::int64_t>(1, n * p * (n + p)), 16, 1024),
                    M * n * p * (n + p), [&](std::int64_t, std::int64_t m0, std::int64_t m1) {
                        std::vector<DD> Y(static_cast<std::size_t>(n * p));
+                       // the fast path: R's row (zero past p), Y = R W_V^T and its bounds (n rows
+                       // of pp), a column of Y and its bounds (zero past n), the column of A
+                       std::vector<double> buf(static_cast<std::size_t>(pfu ? pp + 2 * n * pp + 4 * np_ : 0), 0.0);
+                       double *rr = buf.data(), *Yf = rr + pp, *Ef = Yf + n * pp, *yc = Ef + n * pp, *ec = yc + np_,
+                              *ac = ec + np_, *ea = ac + np_;
                        for (std::int64_t m = m0; m < m1; ++m) {
                            const std::int64_t b = eli(bi, m);
                            bool nan = el(ok, b) == 0.0, inf = false;
@@ -300,6 +348,46 @@ nb::object matnorm_logpdf(nb::handle x_obj, nb::handle batch_obj, nb::handle mea
                            if (nan || inf) {
                                po[m] = nan ? kNaN : (as_pdf ? 0.0 : -kInf);
                                continue;
+                           }
+                           if (pfu) {
+                               // Row i of Y = (X - M) W_V^T is W_V applied to row i of X - M (each
+                               // entry rounded once), to within Ef; column c of A = W_U Y is W_U
+                               // applied to column c of Y with those bounds as its input's. Q is
+                               // the sum of the columns' |.|^2 (p more additions: (p + 1) u Q), and
+                               // l = c.hi - Q / 2 (its error exactly, by TwoSum) + c.lo rounds once
+                               // more; the density exp(hi) (1 + lo) rounds three times (exp allowed
+                               // 2 u): 4 u, its budget absolute. Anything non-finite fails the test.
+                               const double *fu = pfu + b * fsu, *fv = pfv + b * fsv;
+                               for (std::int64_t i = 0; i < n; ++i) {
+                                   for (std::int64_t j = 0; j < p; ++j) rr[j] = el(x, m, i, j) - el(mean, b, i, j);
+                                   la::fast_solve(fv, p, rr, nullptr, Yf + i * pp, Ef + i * pp);
+                               }
+                               double q = 0.0, err = 0.0;
+                               for (std::int64_t c = 0; c < p; ++c) {
+                                   for (std::int64_t i = 0; i < n; ++i) yc[i] = Yf[i * pp + c], ec[i] = Ef[i * pp + c];
+                                   la::fast_solve(fu, n, yc, ec, ac, ea);
+                                   double e1;
+                                   q += la::fast_norm2(ac, ea, n, e1);
+                                   err += e1;
+                               }
+                               err = (err + (static_cast<double>(p) + 1.5) * kU * q) * la::kBoundSlack;
+                               const DD c = cst[b];
+                               const double t = 0.5 * q, bound = 0.5 * err;
+                               const DD s = dd::two_sum(c.hi, -t);
+                               const double lo = s.lo + c.lo;
+                               if (as_pdf) {
+                                   if (bound + kU * (4.0 + kU * std::fabs(c.hi)) <= kQuadBudget && std::fabs(s.hi) <= 700.0) {
+                                       po[m] = std::exp(s.hi) * (1.0 + lo);
+                                       continue;
+                                   }
+                               } else {
+                                   const double l = s.hi + lo;
+                                   if (bound + kU * (std::fabs(l) + kU * std::fabs(c.hi)) <=
+                                       kQuadBudget * std::max(1.0, std::fabs(l))) {
+                                       po[m] = l;
+                                       continue;
+                                   }
+                               }
                            }
                            for (std::int64_t i = 0; i < n; ++i)
                                for (std::int64_t j = 0; j < p; ++j) Y[i * p + j] = dd::two_sum(el(x, m, i, j), -el(mean, b, i, j));
@@ -366,7 +454,9 @@ void bind_stats_matrix(nb::module_& m) {
     m.def("wishart_logpdf", &wishart_logpdf);
     m.def("wishart_entropy", &wishart_entropy);
     m.def("wishart_sample", &wishart_sample);
-    m.def("matnorm_logpdf", &matnorm_logpdf);
+    m.def("matnorm_logpdf", &matnorm_logpdf, nb::arg("x"), nb::arg("batch"), nb::arg("mean"), nb::arg("uh"),
+          nb::arg("ul"), nb::arg("vh"), nb::arg("vl"), nb::arg("ldu_h"), nb::arg("ldu_l"), nb::arg("ldv_h"),
+          nb::arg("ldv_l"), nb::arg("ok"), nb::arg("fast_u").none(), nb::arg("fast_v").none(), nb::arg("as_pdf"));
     m.def("matnorm_sample", &matnorm_sample);
 }
 

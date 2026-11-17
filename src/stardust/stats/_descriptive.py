@@ -127,11 +127,78 @@ def _float(v):
     return v.astype(_sd_core.float64)
 
 
+_M2_SMALL = 2.0**-500  # below it m2^2 leaves the normal doubles (and the squares that made m2 may have)
+_BIG = 2.0**1000
+
+
 def _moments(a, axis, nan_policy, name, kmax=4, minmax=False):
+    """(lanes, (n, mean, m2, m3, m4, lo, hi, mean_lo), unit): the kernel's moments per lane.
+    `unit` is None, or a per-lane (u, f): the central moments of that lane are then those of
+    the lane divided by u f (m_k = m_k' (u f)^k), and the mean is the lane's own.
+
+    The kernel sums powers of x - mean: for data spread beyond ~1e77 (m4) or ~1e154 (m2), or
+    below their reciprocals, the powers overflow or underflow (sem of 1e-200-sized data came
+    out 0, the skewness of 1e150-sized data NaN). Such lanes (a moment that is not finite, or
+    m2 below 2^-500, with a finite mean) are computed again from (x - min) / u, u the power of
+    two below half their range: an exact rescaling, and central moments do not move with the
+    shift. Lanes reaching 2^1000 are halved first (x / 2 - min / 2: the range itself can
+    overflow), which f = 2 records."""
+    sd = _sd_core
     lanes = _Lanes(a, axis, name)
     _check_nan(a, nan_policy, name)
-    res = _k.desc_moments(lanes.rows, nan_policy == "omit", kmax, minmax)
-    return lanes, res
+    omit = nan_policy == "omit"
+    res = _k.desc_moments(lanes.rows, omit, kmax, minmax)
+    n, mean, m2 = res[0], res[1], res[2]
+    top = res[kmax]
+    if lanes.n < 2:
+        return lanes, res, None
+    if m2.shape[0] == 1:  # one lane (axis=None): the test on Python floats, ~0.2 us
+        if float(m2[0]) >= _M2_SMALL and math.isfinite(float(top[0])):
+            return lanes, res, None
+    else:
+        # every lane fine (the usual data): two reductions say so. A NaN or an infinity in
+        # either makes its reduction NaN or infinite, and the lanes are then looked at one by one.
+        if float(sd.min(m2)) >= _M2_SMALL and math.isfinite(float(sd.sum(top))):
+            return lanes, res, None
+    fine = (m2 >= _M2_SMALL) & sd.isfinite(top)
+    need = sd.isfinite(mean) & ~fine & (_float(n) >= 2.0)
+    if not bool(sd.any(need)):
+        return lanes, res, None
+    rows = lanes.rows
+    lo = (sd.nanmin if omit else sd.min)(rows, axis=1)
+    hi = (sd.nanmax if omit else sd.max)(rows, axis=1)
+    big = sd.maximum(sd.abs(lo), sd.abs(hi)) >= _BIG
+    half = sd.where(big, 0.5, 1.0)
+    span = hi * half - lo * half  # the range, or half of it
+    need = need & (span > 0.0) & sd.isfinite(span)
+    if not bool(sd.any(need)):
+        return lanes, res, None
+    u = sd.where(need, 2.0 ** sd.floor(sd.log2(sd.where(need, span, 1.0)) - sd.where(big, 0.0, 1.0)), 1.0)
+    u = sd.where(u > 0.0, u, 5e-324)  # a range of one subnormal step
+    f = sd.where(need & big, 2.0, 1.0)
+    shift = sd.where(need, lo, 0.0)
+    col = (rows.shape[0], 1)
+    hcol = sd.reshape(sd.where(need, half, 1.0), col)
+    y = (rows * hcol - sd.reshape(shift, col) * hcol) / sd.reshape(u, col)
+    res2 = _k.desc_moments(y, omit, kmax, False)
+    out = list(res)
+    for k in range(2, kmax + 1):
+        out[k] = sd.where(need, res2[k], res[k])
+    return lanes, tuple(out), (u, f)
+
+
+def _in_unit(v, unit, k=1):
+    """v (of the scaled lane, a k-th power of its unit) in the data's own unit."""
+    if unit is None:
+        return v
+    for _ in range(k):
+        v = v * unit[0] * unit[1]
+    return v
+
+
+def _mean_in_unit(mean, unit):
+    """The mean in the unit of the scaled moments (for the test against a constant lane)."""
+    return mean if unit is None else mean / unit[0] / unit[1]
 
 
 def _skew_of(n, mean, m2, m3, bias):
@@ -175,8 +242,8 @@ def skew(x, /, *, axis=None, bias=True, nan_policy="propagate", keepdims=False):
     for n > 2); NaN where the sample is constant."""
     name = "skew"
     _policy(nan_policy, name), _bool(bias, name, "bias"), _bool(keepdims, name, "keepdims")
-    lanes, (n, mean, m2, m3, _, _, _, _) = _moments(_as_array(x, name), axis, nan_policy, name, 3)
-    return lanes.out(_skew_of(n, mean, m2, m3, bias), keepdims)
+    lanes, (n, mean, m2, m3, _, _, _, _), unit = _moments(_as_array(x, name), axis, nan_policy, name, 3)
+    return lanes.out(_skew_of(n, _mean_in_unit(mean, unit), m2, m3, bias), keepdims)
 
 
 def kurtosis(x, /, *, axis=None, fisher=True, bias=True, nan_policy="propagate", keepdims=False):
@@ -185,8 +252,8 @@ def kurtosis(x, /, *, axis=None, fisher=True, bias=True, nan_policy="propagate",
     name = "kurtosis"
     _policy(nan_policy, name), _bool(fisher, name, "fisher"), _bool(bias, name, "bias")
     _bool(keepdims, name, "keepdims")
-    lanes, (n, mean, m2, _, m4, _, _, _) = _moments(_as_array(x, name), axis, nan_policy, name)
-    return lanes.out(_kurt_of(n, mean, m2, m4, fisher, bias), keepdims)
+    lanes, (n, mean, m2, _, m4, _, _, _), unit = _moments(_as_array(x, name), axis, nan_policy, name)
+    return lanes.out(_kurt_of(n, _mean_in_unit(mean, unit), m2, m4, fisher, bias), keepdims)
 
 
 def describe(x, /, *, axis=None, correction=1, bias=True, nan_policy="propagate"):
@@ -199,14 +266,16 @@ def describe(x, /, *, axis=None, correction=1, bias=True, nan_policy="propagate"
     a = _as_array(x, name)
     if a.size == 0:
         raise ValueError("describe(): the input must not be empty")
-    lanes, (n, mean, m2, m3, m4, lo, hi, _) = _moments(a, axis, nan_policy, name, 4, True)
+    lanes, (n, mean, m2, m3, m4, lo, hi, _), unit = _moments(a, axis, nan_policy, name, 4, True)
+    mean_u = _mean_in_unit(mean, unit)
     if nan_policy == "omit":
         nobs = lanes.out(n)
     else:
         nobs = lanes.n
-    return DescribeResult(nobs, (lanes.out(lo), lanes.out(hi)), lanes.out(mean), lanes.out(_var_of(n, m2, corr)),
-                          lanes.out(_skew_of(n, mean, m2, m3, bias)),
-                          lanes.out(_kurt_of(n, mean, m2, m4, True, bias)))
+    return DescribeResult(nobs, (lanes.out(lo), lanes.out(hi)), lanes.out(mean),
+                          lanes.out(_in_unit(_var_of(n, m2, corr), unit, 2)),
+                          lanes.out(_skew_of(n, mean_u, m2, m3, bias)),
+                          lanes.out(_kurt_of(n, mean_u, m2, m4, True, bias)))
 
 
 def _orders(order, name):
@@ -235,6 +304,7 @@ def moment(x, /, *, order, center=None, axis=None, nan_policy="propagate", keepd
     a = _as_array(x, name)
     lanes = _Lanes(a, axis, name)
     _check_nan(a, nan_policy, name)
+    unit = None
     centers = None
     if center is not None:
         c = _as_array(center, name, "center") if not isinstance(center, (int, float)) else None
@@ -251,11 +321,11 @@ def moment(x, /, *, order, center=None, axis=None, nan_policy="propagate", keepd
     omit = nan_policy == "omit"
     central = None
     if centers is None and any(o in (2.0, 3.0, 4.0) for o in orders):  # the moments kernel (parallel blocks)
-        central = _k.desc_moments(lanes.rows, omit, int(max(o for o in orders if o <= 4.0)), False)
+        _, central, unit = _moments(a, axis, nan_policy, name, int(max(o for o in orders if o <= 4.0)))
 
     def one(o):
         if central is not None and o in (2.0, 3.0, 4.0):
-            return central[int(o)]
+            return _in_unit(central[int(o)], unit, int(o))
         return _k.desc_moment(lanes.rows, o, centers, omit)
 
     res = [lanes.out(one(o), keepdims) for o in orders]
@@ -271,8 +341,8 @@ def sem(x, /, *, axis=None, correction=1, nan_policy="propagate", keepdims=False
     name = "sem"
     _policy(nan_policy, name), _bool(keepdims, name, "keepdims")
     corr = _correction(correction, name)
-    lanes, (n, _, m2, _, _, _, _, _) = _moments(_as_array(x, name), axis, nan_policy, name, 2)
-    return lanes.out(_sd_core.sqrt(_var_of(n, m2, corr) / _float(n)), keepdims)
+    lanes, (n, _, m2, _, _, _, _, _), unit = _moments(_as_array(x, name), axis, nan_policy, name, 2)
+    return lanes.out(_in_unit(_sd_core.sqrt(_var_of(n, m2, corr) / _float(n)), unit), keepdims)
 
 
 def zscore(x, /, *, axis=None, correction=0, nan_policy="propagate"):
@@ -283,8 +353,8 @@ def zscore(x, /, *, axis=None, correction=0, nan_policy="propagate"):
     _policy(nan_policy, name)
     corr = _correction(correction, name)
     a = _as_array(x, name)
-    lanes, (n, mean, m2, _, _, _, _, mean_lo) = _moments(a, axis, nan_policy, name, 2)
-    std = sd.sqrt(_var_of(n, m2, corr))
+    lanes, (n, mean, m2, _, _, _, _, mean_lo), unit = _moments(a, axis, nan_policy, name, 2)
+    std = _in_unit(sd.sqrt(_var_of(n, m2, corr)), unit)
     std = sd.where(std <= sd.abs(_EPS * mean), float("nan"), std)
     shape = lanes.keep_shape
     # (x - mean) - mean_lo: the mean's rounding would shift every z by it / std

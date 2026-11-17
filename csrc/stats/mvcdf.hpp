@@ -4,13 +4,15 @@
 // S ~ chi^2_nu independent). The caller has subtracted the mean.
 //
 //   normal, d = 1   Phi (sd.special's ndtr)
-//   normal, d = 2   Plackett's identity integrated in an angle (bvn below)
+//   normal, d = 2   Plackett's identity integrated along the correlation (bvn below)
 //   normal, d = 3   Plackett's identity along a path of correlations, or
 //                   conditioning on one variable where that cancels (tvn below)
 //   normal, d >= 4  Genz's quasi-Monte Carlo (qmc below)
 //   t,      d = 1   sd.special's stdtr
-//   t,      d = 2, 3  the scale mixture E[Phi_d(R h)], one more 1-D quadrature
-//                   around bvn / tvn (bvt, tvt below)
+//   t,      d = 2   Plackett's identity mixed over the chi variable: a closed-form
+//                   integrand, plus a 1-D mixture of Phi's (bvt below)
+//   t,      d = 3   the scale mixture E[Phi_3(R h)], one more 1-D quadrature
+//                   around tvn (tvt below)
 //   t,      d >= 4  Genz's quasi-Monte Carlo with the chi variable
 //
 // The exact formulas (d <= 3) are written so that the sums they form do not
@@ -25,6 +27,7 @@
 #include "array/ops/pieces.hpp"
 #include "parallel/pool.hpp"
 #include "random/philox.hpp"
+#include "special/dd.hpp"
 #include "special/ops/distr.hpp"
 #include "special/ops/erf.hpp"
 #include "special/ops/incgamma.hpp"
@@ -49,6 +52,9 @@ inline constexpr double kSqrt2OverPi = 0.7978845608028653559;  // sqrt(2 / pi)
 inline constexpr double kSqrtHalf = 0.7071067811865475244;
 
 inline double Phi(double x) { return special::distr_detail::one<special::Ndtr>(x); }
+
+// min(1, v) for sums that may be NaN (std::min(1.0, NaN) is 1.0).
+inline double cap1(double v) { return v > 1.0 ? 1.0 : v; }
 
 // phi(t) / Phi(t) (the inverse Mills ratio of the lower tail) without underflow:
 // sqrt(2 / pi) / erfcx(-t / sqrt 2), since Phi(t) = erfc(-t / sqrt 2) / 2.
@@ -117,43 +123,21 @@ inline constexpr int kMaxPanels = 200;
 // |integral|): base is what the integral is added to, so the sum is accurate to
 // ~1e-16 of its terms. Panels are bisected in a fixed order: the result depends on
 // the inputs alone.
-//
-// delta is the width of a step at w = 0: the integrands below behave there like
-// exp(-delta^2 / (2 w^2)), 0 below w ~ delta and smooth above, varying on the scale
-// of w itself. A first panel whose nodes all lie above the step cannot see it (it
-// lost 2e-8 relative at h + k = 1e-8), so the first panels are geometric from
-// max(a, delta): [a, c], [c, 4c], [4c, 16c], ..., each resolving the scale of its w.
-// A step below 1e-18 wide holds less than 1e-18 of the integral and is ignored.
 template <class F>
-double adapt(F& f, Panel* p, int n, double base) {
-    for (;;) {
+double adapt(F& f, Panel* p, int n, double base, int cap = kMaxPanels) {
+    for (;;) {  // at most cap splits: every pass that does not return adds a panel
         double v = 0.0, e = 0.0;
         int worst = 0;
         for (int i = 0; i < n; ++i) {
             v += p[i].val, e += p[i].err;
             if (p[i].err > p[worst].err) worst = i;
         }
-        if (!(e > kQuadRel * (std::fabs(base) + std::fabs(v))) || n == kMaxPanels) return v;
+        if (!(e > kQuadRel * (std::fabs(base) + std::fabs(v))) || n >= cap) return v;
         const double lo = p[worst].a, hi = p[worst].b, m = 0.5 * (lo + hi);
         if (!(lo < m && m < hi)) return v;  // the panel cannot be split further
         p[worst] = gk21(f, lo, m);
         p[n++] = gk21(f, m, hi);
     }
-}
-
-// The first panels for a step of width delta at 0 (above), then adapt.
-template <class F>
-double integrate(F&& f, double a, double b, double base, double delta = 0.0) {
-    Panel p[kMaxPanels];
-    int n = 0;
-    double c = delta >= 1e-18 && delta < b ? std::max(a, delta) : a;
-    if (c > a) p[n++] = gk21(f, a, c);
-    while (c > 0.0 && 4.0 * c < b && n < kMaxPanels / 2) {
-        p[n++] = gk21(f, c, 4.0 * c);
-        c *= 4.0;
-    }
-    p[n++] = gk21(f, c, b);
-    return adapt(f, p, n, base);
 }
 
 // The integral over [a, b] from first panels cut at the sorted breakpoints in (a, b).
@@ -170,23 +154,100 @@ double integrate_at(F&& f, double a, double b, const double* cuts, int ncuts, do
 
 // ---------------------------------------------------------------- bivariate
 
-// The angle variable. Plackett's identity (Plackett 1954; Drezner and Wesolowsky
+// The path variable. Plackett's identity (Plackett 1954; Drezner and Wesolowsky
 // 1990, "On the computation of the bivariate normal integral"; Genz 2004,
 // "Numerical computation of rectangular bivariate and trivariate normal and t
 // probabilities", Stat. Comput. 14) is
 //     d Phi2(h, k; r) / dr = exp(-q(r)) / (2 pi sqrt(1 - r^2)),
 //     q(r) = (h^2 - 2 r h k + k^2) / (2 (1 - r^2)),
 // and r = sin(theta) removes the square root: d Phi2 / d theta = exp(-q) / (2 pi).
-// The integrals below run in w, the angle from the nearer pole: s = r = cos w
-// (r >= 0) or -cos w (r <= 0), w in [0, pi/2], so that 1 - s and 1 + s are both
-// accurate (2 sin^2(w / 2) on the near side) even where s is within 1e-16 of +-1.
+// The integrals below run in t = sqrt(1 - |s|), the distance from the nearer pole:
+// s = 1 - t^2 (s >= 0) or t^2 - 1 (s <= 0), t in [0, 1], d theta = 2 dt / sqrt(2 - t^2)
+// (smooth: no square root singularity at the pole), and 1 - s, 1 + s are t^2 and
+// 2 - t^2, both accurate even where s is within 1e-16 of +-1.
+//
+// In the tails the integrand peaks at the end of the path, s = r, t = T = sqrt(1 -+ r),
+// with slope |d log f / dt| ~ q (hundreds), and the probability's relative condition
+// number in r is about as large. Two roundings would each move r by an ulp there:
+//   * the end itself: T is known as hi + lo (dd_sqrt, from the exact 1 -+ r), and the
+//     integral to T is the one to hi plus f(hi) lo;
+//   * the nodes: a node c + x hl near t ~ 0.5 is off by up to 2^-54, all of a panel's
+//     nodes by the same rounding of c (one panel at the end, slope 600, lost 3.6e-14).
+//     So the nodes are u = |t - T.hi| >= 0, measured from the end (small where the
+//     integrand is large, and so exact to their own size), and t^2 = (T.hi +- u)^2 is
+//     formed as hi + lo from u.
+namespace dd = special::dd;
+using dd::DD;
+
+// sqrt(x) for x = hi + lo >= 0, as hi + lo (one Newton step from the exact remainder).
+inline DD dd_sqrt(DD x) {
+    if (!(x.hi > 0.0)) return {0.0, 0.0};
+    const double r = std::sqrt(x.hi);
+    return dd::quick_two_sum(r, (std::fma(-r, r, x.hi) + x.lo) / (2.0 * r));
+}
+
+// The integral over t in [ta, tb] (0 <= ta <= tb <= 1, exact doubles) of f, given t^2 as
+// hi + lo (f(t2, n, out): n values), added to base. The nodes are u = t - ta (from_low)
+// or tb - t.
+//
+// delta is the width of a step at the pole t = 0: the normal's integrands behave there
+// like exp(-delta^2 / (4 t^2)), 0 below t ~ delta and smooth above, varying on the scale
+// of t itself. A first panel whose nodes all lie above the step cannot see it (it lost
+// 2e-8 relative at h + k = 1e-8), so the first panels are geometric in t from
+// max(ta, delta): [ta, c], [c, 4c], [4c, 16c], ..., each resolving the scale of its t. A
+// step below 1e-18 wide holds less than 1e-18 of the integral and is ignored. The t's
+// integrands go like t^(2a) below the step instead, not smooth at 0 for small a:
+// pole_levels more geometric panels below it.
+template <class F>
+double path_integral(F&& f, double ta, double tb, bool from_low, double base, double delta, int pole_levels = 0) {
+    if (!(tb > ta)) return 0.0;
+    const double T = from_low ? ta : tb, dir = from_low ? 1.0 : -1.0;
+    const DD TT = dd::two_prod(T, T);
+    const DD L = dd::two_sum(tb, -ta);  // the u range, as hi + lo
+    auto g = [&](const double* u, double* o, int n) {
+        DD t2[21];
+        for (int i = 0; i < n; ++i) t2[i] = TT + dd::two_prod(2.0 * dir * T, u[i]) + dd::two_prod(u[i], u[i]);
+        f(t2, n, o);
+    };
+    // the cuts in t, as integrate places them, then in u
+    double tc[64];
+    int nt = 0;
+    double c = delta >= 1e-18 && delta < tb ? std::max(ta, delta) : ta;
+    if (pole_levels > 0 && ta == 0.0 && delta >= 1e-18) {
+        c = std::min(delta, tb);
+        for (int l = pole_levels; l >= 1; --l) tc[nt++] = std::ldexp(c, -2 * l);
+    }
+    if (c > ta && c < tb) tc[nt++] = c;
+    while (c > 0.0 && 4.0 * c < tb && nt < 60) tc[nt++] = c *= 4.0;
+    double uc[64];
+    int nu = 0;
+    for (int i = 0; i < nt; ++i)
+        if (tc[i] > ta && tc[i] < tb) uc[nu++] = from_low ? tc[i] - ta : tb - tc[i];
+    std::sort(uc, uc + nu);
+    const double J = integrate_at(g, 0.0, L.hi, uc, nu, base);
+    if (L.lo == 0.0) return J;
+    double uf[1] = {L.hi}, vf[1];
+    g(uf, vf, 1);
+    return J + vf[0] * L.lo;
+}
+
+// The part of the integral between T.hi and the true end T.hi + T.lo: f(T.hi) T.lo.
+template <class F>
+double end_part(F&& f, DD T) {
+    if (T.lo == 0.0) return 0.0;
+    const DD t2[1] = {dd::two_prod(T.hi, T.hi)};
+    double v[1];
+    f(t2, 1, v);
+    return v[0] * T.lo;
+}
+
 struct Sides {
-    double s, sm, sp;  // s, 1 - s, 1 + s
+    double s, sm, sp, jac;  // s, 1 - s, 1 + s, d theta / dt
 };
-inline Sides sides(double w, bool minus) {
-    const double c = std::cos(w), h = std::sin(0.5 * w);
-    const double near = 2.0 * h * h, far = 1.0 + c;
-    return minus ? Sides{-c, far, near} : Sides{c, near, far};
+inline Sides sides(DD t2, bool minus) {
+    const double near = t2.hi, far = (DD{2.0, 0.0} - t2).hi, jac = 2.0 / std::sqrt(far);
+    const double s = (DD{1.0, 0.0} - t2).hi;
+    return minus ? Sides{-s, far, near, jac} : Sides{s, near, far, jac};
 }
 
 // q of (h, k) at correlation s, as a sum of two nonnegative terms (no cancellation):
@@ -213,46 +274,55 @@ inline double bvn_minus_one(double h, double k) {
     return (1.0 - Phi(-h)) - Phi(-k);         // -k < 0 < h
 }
 
-// The integral of exp(-q) over w in [a, b] on the given side, added to base.
-inline double bvn_integral(double h, double k, bool minus, double a, double b, double base) {
-    auto f = [&](const double* w, double* o, int n) {
+// The integral of exp(-q) dtheta on the given side over t from the end T (hi + lo) to the
+// pole (to_pole) or to s = 0, added to base.
+inline double bvn_integral(double h, double k, bool minus, DD T, bool to_pole, double base) {
+    auto f = [&](const DD* t2, int n, double* o) {
         for (int i = 0; i < n; ++i) {
-            const Sides s = sides(w[i], minus);
-            o[i] = std::exp(-qform(h, k, s.sm, s.sp));
+            const Sides s = sides(t2[i], minus);
+            o[i] = s.jac * std::exp(-qform(h, k, s.sm, s.sp));
         }
     };
-    // the step at the pole w = 0: s -> 1 (plus side) has width |h - k|, s -> -1 |h + k|
-    return integrate(f, a, b, base * kTwoPi, std::fabs(minus ? h + k : h - k));
+    // the step at the pole t = 0: s -> 1 (plus side) has width |h - k| / 2, s -> -1 |h + k| / 2
+    const double delta = 0.5 * std::fabs(minus ? h + k : h - k);
+    return to_pole ? path_integral(f, 0.0, T.hi, false, base * kTwoPi, delta) + end_part(f, T)
+                   : path_integral(f, T.hi, 1.0, true, base * kTwoPi, delta) - end_part(f, T);
 }
 
 // Below this r < 0 the integral starts at r = -1 directly (the start at 0 cancels).
 inline constexpr double kBvnSwitch = -0.5;
 
-// Phi2(h, k; r) = P(X <= h, Y <= k), unit variances, finite h and k, |r| <= 1.
+// t = sqrt(1 - |r|) for r = hi + lo, as hi + lo (0 at |r| >= 1).
+inline DD path_end(DD r) {
+    return dd_sqrt(r.hi > 0.0 ? dd::two_sum(1.0, -r.hi) - r.lo : dd::two_sum(1.0, r.hi) + r.lo);
+}
+
+// Phi2(h, k; r) = P(X <= h, Y <= k), unit variances, finite h and k, |r| <= 1, for r
+// given as hi + lo (tvn's partial correlation; a double r is {r, 0}).
 //     r >= 0:  Phi(h) Phi(k) + (1 / 2pi) int_0^asin r exp(-q) dtheta
 //              (both terms >= 0)
 //     r <  0:  Phi(h) Phi(k) - (1 / 2pi) int_asin r^0 exp(-q) dtheta
 //              when that loses at most two bits (r > -1/2 only), else
 //              Phi2(h, k; -1) + (1 / 2pi) int_-pi/2^asin r exp(-q) dtheta
 //              (both terms >= 0 again)
-inline double bvn(double h, double k, double r) {
-    if (std::isnan(h) || std::isnan(k) || std::isnan(r)) return kNaN;
+inline double bvn(double h, double k, DD r) {
+    if (std::isnan(h) || std::isnan(k) || std::isnan(r.hi)) return kNaN;
     const double ph = Phi(h), pk = Phi(k);
-    if (r == 0.0) return ph * pk;
-    r = std::clamp(r, -1.0, 1.0);
-    if (r > 0.0) {
+    if (r.hi == 0.0) return ph * pk;
+    const DD T = path_end(r);
+    if (r.hi > 0.0) {
         const double p0 = ph * pk;
-        return std::min(1.0, p0 + bvn_integral(h, k, false, std::acos(r), kHalfPi, p0) / kTwoPi);
+        return cap1(p0 + bvn_integral(h, k, false, T, false, p0) / kTwoPi);
     }
-    const double wr = std::acos(-r);  // (0, pi/2]: theta = asin r is w = wr on the minus side
-    if (r > kBvnSwitch) {
+    if (r.hi > kBvnSwitch) {
         const double p0 = ph * pk;
-        const double v = p0 - bvn_integral(h, k, true, wr, kHalfPi, p0) / kTwoPi;
+        const double v = p0 - bvn_integral(h, k, true, T, false, p0) / kTwoPi;
         if (p0 <= 4.0 * v) return v;
     }
     const double pm = bvn_minus_one(h, k);
-    return std::min(1.0, pm + bvn_integral(h, k, true, 0.0, wr, pm) / kTwoPi);
+    return cap1(pm + bvn_integral(h, k, true, T, true, pm) / kTwoPi);
 }
+inline double bvn(double h, double k, double r) { return bvn(h, k, DD{std::clamp(r, -1.0, 1.0), 0.0}); }
 
 // --------------------------------------------------------------- trivariate
 
@@ -269,27 +339,40 @@ inline double bvn(double h, double k, double r) {
 inline double tvn_term(double hi, double hk, double hj, double a, double c1, double c2, double base) {
     if (c1 == 0.0) return 0.0;
     const bool minus = c1 < 0.0;
-    const double ratio = c2 / c1, oma = (1.0 - a) * (1.0 + a);
-    auto f = [&](const double* w, double* o, int n) {
+    // det = (1 - a^2)(1 - s^2) - (b - a s)^2 = (1 - s^2) K - g^2 with g = (c2 - a c1) / c1
+    // (b - a s = s g) and K = 1 - a^2 + g^2, the constants as hi + lo and 1 - s^2 =
+    // t^2 (2 - t^2) from t^2 as hi + lo: det has no rounding beyond the last, where the
+    // matrix is nearly singular and det cancels
+    const DD oma = dd::two_sum(1.0, -a) * dd::two_sum(1.0, a);
+    const DD g = (DD{c2, 0.0} - dd::two_prod(a, c1)) / c1;
+    const DD g2 = g * g, K = oma + g2;
+    auto f = [&](const DD* t2, int n, double* o) {
         double u[21], ph[21];
         for (int i = 0; i < n; ++i) {
-            const Sides sd = sides(w[i], minus);
-            const double s = sd.s, oms = sd.sm * sd.sp, b = s * ratio;
-            const double g = b - a * s, det = oma * oms - g * g;
+            const Sides sd = sides(t2[i], minus);
+            const double s = sd.s, oms = sd.sm * sd.sp, b = s * c2 / c1;
+            const double det = ((t2[i] * (DD{2.0, 0.0} - t2[i])) * K - g2).hi;
             const double num = hj * oms - a * (hi - s * hk) - b * (hk - s * hi);
             u[i] = det > 0.0 ? num / std::sqrt(oms * det) : (num > 0.0 ? kInf : (num < 0.0 ? -kInf : 0.0));
-            o[i] = std::exp(-qform(hi, hk, sd.sm, sd.sp));
+            o[i] = sd.jac * std::exp(-qform(hi, hk, sd.sm, sd.sp));
         }
         special::Ndtr::chunk(u, ph, n);
         for (int i = 0; i < n; ++i) o[i] *= ph[i];
     };
-    const double J = integrate(f, std::acos(std::fabs(c1)), kHalfPi, base * kTwoPi, std::fabs(minus ? hi + hk : hi - hk));
+    // t from T = sqrt(1 - |c1|) (as hi + lo) to 1: sigma_ik from c1 to 0
+    const DD T = dd_sqrt(dd::two_sum(1.0, -std::fabs(c1)));
+    const double J = path_integral(f, T.hi, 1.0, true, base * kTwoPi, 0.5 * std::fabs(minus ? hi + hk : hi - hk)) -
+                     end_part(f, T);
     return minus ? -J : J;
 }
 
 struct Tri {
     double h[3];
     double r[3][3];
+    // The bvn evaluations tvn_condition may still spend for the call this problem belongs
+    // to (the t's mixture calls tvn at up to 4200 nodes, each conditioning integral takes
+    // hundreds to thousands of bvn's): at 0 the value is NaN. Null: no limit (one tvn).
+    std::int64_t* budget = nullptr;
 };
 
 // The path from (r_ij, 0, 0) with the pair (i, j) kept: value and the sum of the
@@ -325,32 +408,150 @@ inline void keep_pair(const Tri& T, int& i, int& j) {
 // a positive integrand: no cancellation at all, with bvn's relative accuracy inside;
 // but a bvn per node (some 200-600), so it is the last resort of tvn. k is the
 // smallest h (often the binding constraint). The range is [h_k - L, h_k], L doubled
-// until the part left out, at most Phi(h_k - L) min(Phi(a), Phi(b)) at h_k - L (Phi2 <=
-// min(Phi(a), Phi(b)), and a(z) is increasing in z when r_ik < 0), is below 1e-17 of
-// the integral.
+// (five times at most) until the part left out, at most Phi(h_k - L) min(Phi(a), Phi(b))
+// at h_k - L (Phi2 <= min(Phi(a), Phi(b)), and a(z) is increasing in z when r_ik < 0), is
+// below 1e-17 of the integral.
+//
+// Where the integrand lives. Near a singular matrix (|r_ik|, |r_jk| or |rho| near 1) it
+// is a spike far narrower than the range: uniform first panels see zeros only and the
+// integral came out 0 (h ~ 1e-6, smallest eigenvalue 1.6e-9: the truth is 3.3e-10). The
+// integrand is log-concave in z (Prekopa: a Gaussian measure of a convex set moved
+// affinely, times phi), so it has one peak, and
+//     Phi2(a, b; rho) <= Phi(-d) <= exp(-d^2 / 2) / 2,
+// d the Mahalanobis distance from the origin to the quadrant {u <= (a, b)} (a convex set
+// lies in a half-space at its distance). E(z) = z^2 + d^2(z) is convex and piecewise
+// quadratic in closed form: its minimum over z <= h_k (bisection on its derivative, 100
+// steps) is the peak to within its own width, and the first panels are cut
+// geometrically around it, from the peak's width (the curvature of E there, or the slope
+// at the end h_k) up to the range. The same cuts go around the three places where a
+// factor turns: a = 0, b = 0 (widths s / |r|) and the ridge a + b = 0 (rho < 0) or a = b
+// (rho > 0), sqrt(1 - rho^2) over the slope wide. A turn narrower than the spacing of a
+// panel's outer nodes is invisible to the error estimate whatever its size: the ridge
+// 2.4e-4 wide at the end of a panel 1.25 long, 1e-3 of the integrand high, left 1.7e-7 of
+// the result out (kappa = 7.7e7, P = 0.07, a well conditioned value). Only widths below
+// 1/64 of the range add cuts (wider ones span several nodes of a uniform panel): an
+// ordinary matrix keeps the eight uniform panels.
+// Nodes with E / 2 > 745.2 are 0 without their bvn (the bound above is below the
+// smallest double there).
+inline constexpr int kCondLevels = 9;  // geometric cuts per side, ratio 64: 64^9 > 160 / 2^-48
 inline double tvn_condition(const Tri& T) {
     int k = 0;
     for (int q = 1; q < 3; ++q)
         if (T.h[q] < T.h[k]) k = q;
     const int i = k == 0 ? 1 : 0, j = 3 - k - i;
     const double rik = T.r[i][k], rjk = T.r[j][k];
-    const double si = std::sqrt((1.0 - rik) * (1.0 + rik)), sj = std::sqrt((1.0 - rjk) * (1.0 + rjk));
-    const double rho = std::clamp((T.r[i][j] - rik * rjk) / (si * sj), -1.0, 1.0);
+    // s_i, s_j, 1 / s and rho as hi + lo: rho's numerator cancels when the matrix is
+    // nearly singular, and the bvn's end is sqrt(1 -+ rho)
+    const DD si = dd_sqrt(dd::two_sum(1.0, -rik) * dd::two_sum(1.0, rik));
+    const DD sj = dd_sqrt(dd::two_sum(1.0, -rjk) * dd::two_sum(1.0, rjk));
+    const DD isi = DD{1.0, 0.0} / si, isj = DD{1.0, 0.0} / sj;
+    DD rho = (DD{T.r[i][j], 0.0} - dd::two_prod(rik, rjk)) / (si * sj);
+    if (rho.hi > 1.0) rho = {1.0, 0.0};
+    if (rho.hi < -1.0) rho = {-1.0, 0.0};
     const double hi = T.h[i], hj = T.h[j], hk = T.h[k];
     constexpr double kInvSqrt2Pi = 0.3989422804014326779;
-    auto f = [&](const double* z, double* o, int n) {
-        for (int q = 0; q < n; ++q)
-            o[q] = kInvSqrt2Pi * std::exp(-0.5 * z[q] * z[q]) * bvn((hi - rik * z[q]) / si, (hj - rjk * z[q]) / sj, rho);
+
+    // a(z) = a0 + a1 z, b(z) = b0 + b1 z; omr = 1 - rho^2
+    const double a0 = hi * isi.hi, a1 = -rik * isi.hi, b0 = hj * isj.hi, b1 = -rjk * isj.hi;
+    const double rh = rho.hi, omr = ((DD{1.0, 0.0} - rho) * (DD{1.0, 0.0} + rho)).hi;
+    const bool proxy = omr > 0.0 && std::isfinite(a0) && std::isfinite(a1) && std::isfinite(b0) && std::isfinite(b1);
+    // E(z) = z^2 + d^2 (v = 0), dE/dz (v = 1) or d^2E/dz^2 (v = 2). d^2: 0 in the quadrant;
+    // a^2 (or b^2) where the nearest point lies on one edge; the form in both where it is
+    // the corner.
+    auto E = [&](double z, int v) {
+        const double a = a0 + a1 * z, b = b0 + b1 * z;
+        const double base = v == 0 ? z * z : (v == 1 ? 2.0 * z : 2.0);
+        if (a >= 0.0 && b >= 0.0) return base;
+        if (a < 0.0 && rh * a <= b) return base + (v == 0 ? a * a : (v == 1 ? 2.0 * a * a1 : 2.0 * a1 * a1));
+        if (b < 0.0 && rh * b <= a) return base + (v == 0 ? b * b : (v == 1 ? 2.0 * b * b1 : 2.0 * b1 * b1));
+        const double pa = a - rh * b, pb = b - rh * a;
+        if (v == 0) return base + (a * pa + b * pb) / omr;
+        if (v == 1) return base + 2.0 * (pa * a1 + pb * b1) / omr;
+        return base + 2.0 * (a1 * (a1 - rh * b1) + b1 * (b1 - rh * a1)) / omr;
     };
-    for (double L = 10.0;; L *= 2.0) {
+    auto f = [&](const double* z, double* o, int n) {
+        for (int q = 0; q < n; ++q) {
+            if (proxy && 0.5 * E(z[q], 0) > 745.2) {
+                o[q] = 0.0;
+                continue;
+            }
+            if (T.budget && --*T.budget < 0) {
+                o[q] = kNaN;
+                continue;
+            }
+            const double a = ((DD{hi, 0.0} - dd::two_prod(rik, z[q])) * isi).hi;
+            const double b = ((DD{hj, 0.0} - dd::two_prod(rjk, z[q])) * isj).hi;
+            o[q] = kInvSqrt2Pi * std::exp(-0.5 * z[q] * z[q]) * bvn(a, b, rho);
+        }
+    };
+
+    // The places to cut around, (center, width): the three turns, and the peak. E' is
+    // increasing: the peak is its zero in [h_k - 320, h_k], or the end h_k. Its width is the
+    // distance to where E has risen by 2 (the bound down by 1/e), the nearer side: E is
+    // piecewise, so the curvature at the peak says nothing about a wall a step away (a
+    // flat piece 3e-7 long before a curvature of 1e15).
+    double fc[4], fw[4];
+    int nf = 0;
+    auto feature = [&](double c, double w) {
+        if (std::isfinite(c) && w >= 0.0) fc[nf] = c, fw[nf++] = w;
+    };
+    if (proxy) {
+        if (a1 != 0.0) feature(-a0 / a1, 1.0 / std::fabs(a1));
+        if (b1 != 0.0) feature(-b0 / b1, 1.0 / std::fabs(b1));
+        const double slope = rh < 0.0 ? a1 + b1 : a1 - b1, off = rh < 0.0 ? a0 + b0 : a0 - b0;
+        if (slope != 0.0) feature(-off / slope, std::sqrt(omr) / std::fabs(slope));
+        auto bisect = [&](double zl, double zr, auto&& left) {  // 100 halvings at most; returns zr
+            for (int it = 0; it < 100; ++it) {
+                const double m = 0.5 * (zl + zr);
+                if (!(zl < m && m < zr)) break;
+                (left(m) ? zl : zr) = m;
+            }
+            return zr;
+        };
+        const double far = hk - 320.0;
+        bool found = true;
+        double pk = hk;
+        if (E(hk, 1) <= 0.0) pk = hk;
+        else if (E(far, 1) < 0.0) pk = bisect(far, hk, [&](double m) { return E(m, 1) < 0.0; });
+        else found = false;  // the peak is left of every range below
+        if (found) {
+            const double top = E(pk, 0) + 2.0;
+            // left of the peak E decreases toward it; right of it E increases
+            const double wl = E(pk - 320.0, 0) < top ? 320.0 : pk - bisect(pk - 320.0, pk, [&](double m) { return E(m, 0) >= top; });
+            const double wr = !(E(hk, 0) >= top) ? kInf : bisect(pk, hk, [&](double m) { return E(m, 0) < top; }) - pk;
+            feature(pk, std::min(wl, wr));
+        }
+    }
+
+    double L = 10.0;
+    for (int round = 0;; ++round, L *= 2.0) {  // L = 10, 20, 40, 80, 160
         const double lo = hk - L;
-        double cuts[7];
-        for (int q = 0; q < 7; ++q) cuts[q] = lo + L * (q + 1) / 8.0;
-        const double I = integrate_at(f, lo, hk, cuts, 7, 0.0);
+        double cuts[8 + 4 * (1 + 2 * kCondLevels)];
+        int nc = 0;
+        for (int q = 0; q < 7; ++q) cuts[nc++] = lo + L * (q + 1) / 8.0;
+        for (int q = 0; q < nf; ++q) {
+            if (!(fw[q] < L / 64.0) || !(fc[q] < hk + L)) continue;
+            auto add = [&](double z) {
+                if (z > lo && z < hk) cuts[nc++] = z;
+            };
+            add(fc[q]);
+            double w = std::max(fw[q], L * 0x1p-48);
+            for (int l = 0; l < kCondLevels && w < 2.0 * L; ++l, w *= 64.0) add(fc[q] - w), add(fc[q] + w);
+        }
+        if (nc > 7) std::sort(cuts, cuts + nc);
+        // its own panels: the cuts must not use up the refinements (kMaxPanels - 8, as without them)
+        Panel p[kMaxPanels + 4 * (1 + 2 * kCondLevels)];
+        int n = 0;
+        double from = lo;
+        for (int q = 0; q < nc; ++q)
+            if (cuts[q] > from) p[n++] = gk21(f, from, cuts[q]), from = cuts[q];
+        p[n++] = gk21(f, from, hk);
+        const double I = adapt(f, p, n, 0.0, n + kMaxPanels - 8);
+        if (std::isnan(I)) return I;  // the budget ran out
         double tail = 1.0;
-        if (rik < 0.0) tail = std::min(tail, Phi((hi - rik * lo) / si));
-        if (rjk < 0.0) tail = std::min(tail, Phi((hj - rjk * lo) / sj));
-        if (Phi(lo) * tail <= 1e-17 * I || L >= 160.0) return I;
+        if (rik < 0.0) tail = std::min(tail, Phi((hi - rik * lo) * isi.hi));
+        if (rjk < 0.0) tail = std::min(tail, Phi((hj - rjk * lo) * isj.hi));
+        if (Phi(lo) * tail <= 1e-17 * I || round == 4) return I;
     }
 }
 
@@ -412,79 +613,399 @@ inline double tvn(const Tri& T) {
 // ------------------------------------------------- the t at d = 2, 3, exactly
 
 // The t as a scale mixture: X = Z / R, R = sqrt(S / nu), S ~ chi^2_nu, so
-//     P(X <= h) = E[Phi_d(R h)] = int_0^inf Gamma(a)^-1 x^(a-1) e^-x Phi_d(sqrt(x / a) h) dx,
-// a = nu / 2, x = nu R^2 / 2 (Genz and Bretz 2009 §4.2 write the same mixture over the
-// chi variable). With Phi_d by bvn or tvn the only error is that of one more 1-D
-// quadrature, in v = log(x / a), where the weight is
-//     exp(c(a) - a (e^v - 1 - v)),  c(a) = a log a - a - lgamma(a):
-// written this way it has no cancellation for large a (a v - e^v - lgamma(a) directly
-// loses eps a log a: 7e-10 at nu = 1e6), and it peaks at v = 0 with width
-// ~ 1 / sqrt(a), or a left tail ~ e^(a v) for small a.
+//     P(X <= h) = E[Phi_d(R h)] = int_0^inf Gamma(a)^-1 y^(a-1) e^-y Phi_d(sqrt(y / a) h) dy,
+// a = nu / 2, y = nu R^2 / 2 (Genz and Bretz 2009 §4.2 write the same mixture over the
+// chi variable). In v = log(y / a) = log R^2 the weight is
+//     exp(c(a) - a (e^v - 1 - v)),  c(a) = a log a - a - lgamma(a),
+// peaked at v = 0 with width ~ 1 / sqrt(a), or a left tail ~ e^(a v) for small a.
 //
-// c(a) for a >= 10 by Stirling's series (lgamma(a) = (a - 1/2) log a - a + log(2 pi)/2 +
+// In the tails the exponents are large (a (e^v - 1 - v) and R^2 h^2 / 2 reach ~700 where
+// P ~ 1e-300), and a rounding of eps in one becomes 700 eps in the integrand. So each node
+// is evaluated at x = e^v as rounded, which is exact: the exponent a (x - 1 - log x) is
+// formed as hi + lo (special/dd.hpp), and so are the integrand's own (MixTerm.e below); the
+// node v' = log x, off v by ~1e-16, is moved back to v to first order by the integrand's
+// logarithmic derivative (MixTerm.dlog), whose own error is then negligible.
+//
+// c(a) as hi + lo (it is an exponent too: |c| ~ log a reaches 700 for a = 1e+-300, and its
+// rounding alone moved the result by 2e-14 at df = 1e300): below a = 10 from its three
+// terms in double-double (in double they cancel to ~eps a log a); above, Stirling's series (lgamma(a) = (a - 1/2) log a - a + log(2 pi)/2 +
 // sum B_2k / (2k (2k-1) a^(2k-1)); seven terms, the next < 3e-17 at a = 10).
-inline double stirling_c(double a) {
-    if (a < 10.0) return a * std::log(a) - a - std::lgamma(a);
+inline DD stirling_c(double a) {
+    if (a < 10.0) return dd::log(a) * a - a - dd::loggamma(DD{a, 0.0});
     const double r = 1.0 / a, r2 = r * r;
     const double s = r * (1.0 / 12 + r2 * (-1.0 / 360 + r2 * (1.0 / 1260 + r2 * (-1.0 / 1680 + r2 * (1.0 / 1188 +
                                                                                                      r2 * (-691.0 / 360360 + r2 * (1.0 / 156)))))));
-    return 0.5 * std::log(a / kTwoPi) - s;
+    return dd::log(a) * 0.5 - dd::kLogSqrt2Pi - s;
 }
 
-// e^v - 1 - v without cancellation (Taylor below |v| = 1/2: 20 terms, the next < 1e-26).
-inline double expm1mx(double v) {
-    if (std::fabs(v) >= 0.5) return std::expm1(v) - v;
-    double t = 1.0;  // v^2/2 (1 + v/3 (1 + v/4 (1 + ...)))
-    for (int k = 21; k >= 3; --k) t = 1.0 + v / k * t;
-    return 0.5 * v * v * t;
-}
+// One integrand value g(R) = exp(-e) f at R^2 = x, with d log g / dv (v = log x).
+struct MixTerm {
+    DD e{0.0, 0.0};
+    double f = 1.0, dlog = 0.0;
+};
 
-// E[Phi_d(R h)] for Phi_d = g (a function of the scale r), the orthant p0 = Phi_d(0) and
-// sum |h_i| = habs. The left end: for r <= r_c, |Phi_d(r h) - p0| <= r habs / sqrt(2 pi)
+// One node of the mixture, R^2 = x = e^v, in one of three forms:
+//   near   x the rounded exp(v) (lo = 0): the exponents are formed from x itself and the
+//          node is moved back by dlog (above);
+//   one    a > kMixBigA: the weight is 1 / sqrt(a) wide around v = 0, and the move from the
+//          rounded exp(v) (up to 1.1e-16) is no longer small against it (a dv^2 ~ 1 at
+//          a ~ 1e32: the integrand came out constant and the result 1). There x = 1 +
+//          expm1(v) as hi + lo, exact to eps |v|: nothing to move;
+//   far    v < kMixFarV: exp(v) is below the normal doubles (limits beyond 1e150 put the
+//          action at R ~ 1 / |h|; exp(v) rounded to 0 gave log(0) and results like -70).
+//          sqrt(x) h is formed in logs and the exponents from v directly.
+inline constexpr double kMixFarV = -700.0;
+inline constexpr double kMixBigA = 1e13;
+struct MixNode {
+    DD x{0.0, 0.0};
+    double half_v = 0.0;
+    bool far = false;
+    // sqrt(x) h
+    double times(double h) const {
+        if (!far) return std::sqrt(x.hi) * h;
+        if (h == 0.0) return 0.0;
+        return std::copysign(std::exp(half_v + std::log(std::fabs(h))), h);
+    }
+};
+
+// E[g(R)] for g given at a node (above), the orthant p0 = Phi_d(0), the limits hs[0, nh)
+// and sum |h_i| = habs. The left end: for R <= r_c, |Phi_d(R h) - p0| <= R habs / sqrt(2 pi)
 // (each partial derivative of Phi_d is at most phi(0)), so with r_c = 1e-17 p0 / (0.4 habs)
-// that part is p0 P(R <= r_c) to 1e-17 relative (sd.special's gammainc). The right end at
-// x = a + 40 sqrt(a) + 750 leaves out P(S > that) < 1e-300. The first panels are cut at
-// v = +-sigma 4^k, sigma = min(1, 1 / sqrt(a)): the weight's peak and its tails at their
-// own scales.
+// that part is p0 P(R <= r_c) to 1e-17 relative (sd.special's gammainc; where its argument
+// is below the normal doubles, the first term of its series, y^a / Gamma(a + 1), in logs).
+// The right end at y = a + 40 sqrt(a) + 750 leaves out P(S > that) < 1e-300. The first
+// panels are cut at v = +-sigma 4^k, sigma = min(1, 1 / sqrt(a)): the weight's peak and its
+// tails at their own scales; and around v_i = -2 log |h_i|, where R |h_i| ~ 1 and Phi_d
+// turns, when that is far from the weight's peak (|v_i| > 12: limits above 400 or below
+// 1/400).
 template <class G>
-double t_mixture(double nu, double p0, double habs, G&& g) {
+double t_mixture(double nu, double p0, double habs, const double* hs, int nh, G&& g) {
     if (habs == 0.0) return p0;
     const double a = 0.5 * nu;
-    const double c = stirling_c(a);
-    const double vhi = std::log1p((40.0 * std::sqrt(a) + 750.0) / a);
+    if (!(a > 0.0) || std::isnan(p0)) return kNaN;  // a subnormal nu halves to 0
+    const DD c = stirling_c(a);
+    double vhi = std::log1p((40.0 * std::sqrt(a) + 750.0) / a);
+    if (!(vhi < kInf)) vhi = std::log(a + 40.0 * std::sqrt(a) + 750.0) - std::log(a);  // the quotient overflowed
     const double rc = 1e-17 * p0 / (0.4 * habs);
-    const double vc = 2.0 * std::log(rc);
+    constexpr double kTiny = std::numeric_limits<double>::min(), kHuge = std::numeric_limits<double>::max();
+    const double vc = rc >= kTiny ? 2.0 * std::log(rc)
+                                  : 2.0 * (std::log(1e-17 * p0 / 0.4) - std::log(std::min(habs, kHuge)));
     if (!(vc < vhi)) return p0;
-    const double left = p0 * special::Gammainc::f(a, a * std::exp(vc));
+    const double yc = a * std::exp(vc);
+    const double left = yc >= kTiny ? p0 * special::Gammainc::f(a, yc)
+                                    : p0 * std::exp(a * (std::log(a) + vc) - std::lgamma(a + 1.0));
+    const bool big = a > kMixBigA;
     auto f = [&](const double* v, double* o, int n) {
         for (int i = 0; i < n; ++i) {
-            const double w = std::exp(c - a * expm1mx(v[i]));
-            o[i] = w == 0.0 ? 0.0 : w * g(std::exp(0.5 * v[i]));
+            MixNode nd;
+            DD ew;            // a (x - 1 - log x)
+            double dv = 0.0;  // v - log x (near)
+            if (v[i] < kMixFarV) {
+                nd.far = true, nd.half_v = 0.5 * v[i];
+                ew = dd::two_sum(-1.0, -v[i]) * a;  // x < 1e-304 adds nothing
+            } else if (big) {
+                if (std::fabs(v[i]) > 1e-3) {  // a (e^v - 1 - v) > 5e6
+                    o[i] = 0.0;
+                    continue;
+                }
+                nd.x = dd::two_sum(1.0, std::expm1(v[i]));
+                ew = dd::a_mu(a, nd.x);
+            } else {
+                const double x = std::exp(v[i]);
+                const DD lx = dd::log(x);
+                dv = (v[i] - lx.hi) - lx.lo;
+                nd.x = DD{x, 0.0};
+                ew = dd::a_mu(a, nd.x);
+            }
+            if ((ew - c).hi > 745.2) {  // t.e >= 0: the weight is 0 whatever g is
+                o[i] = 0.0;
+                continue;
+            }
+            const MixTerm t = g(nd);
+            const DD e = ew + t.e - c;
+            const double w = e.hi > 745.2 || t.f == 0.0 ? 0.0 : std::exp(-e.hi) * (1.0 - e.lo);
+            o[i] = dv == 0.0 ? w * t.f : w * t.f * (1.0 + (t.dlog - a * (nd.x.hi - 1.0)) * dv);
         }
     };
     const double sigma = std::min(1.0, 1.0 / std::sqrt(a));
-    double cuts[40];
+    double cuts[96];
     int nc = 0;
     for (double t = sigma * 0x1p40; t >= sigma && nc < 20; t *= 0.25)  // the negative side, outside in
         if (-t > vc) cuts[nc++] = -t;
     cuts[nc++] = 0.0;
     for (double t = sigma; t < vhi && nc < 40; t *= 4.0) cuts[nc++] = t;
-    return std::min(1.0, left + integrate_at(f, vc, vhi, cuts, nc, left));
+    for (int q = 0; q < nh && q < 4; ++q) {
+        if (hs[q] == 0.0) continue;
+        const double vi = -2.0 * std::log(std::fabs(hs[q]));
+        if (!(std::fabs(vi) > 12.0)) continue;
+        auto add = [&](double t) {
+            if (t > vc && t < vhi) cuts[nc++] = t;
+        };
+        add(vi);
+        for (double t = 1.0; t <= 1024.0; t *= 4.0) add(vi - t), add(vi + t);  // 6 a side
+    }
+    std::sort(cuts, cuts + nc);
+    return cap1(left + integrate_at(f, vc, vhi, cuts, nc, left));
 }
 
-// The bivariate and trivariate t, nu finite: Phi_2(0) = 1/4 + asin(r) / (2 pi) and
-// Phi_3(0) = 1/8 + (asin r12 + asin r13 + asin r23) / (4 pi) (Sheppard; Plackett 1954).
-inline double bvt(double h, double k, double r, double nu) {
-    const double p0 = 0.25 + std::asin(r) / kTwoPi;
-    return t_mixture(nu, p0, std::fabs(h) + std::fabs(k), [&](double s) { return bvn(s * h, s * k, r); });
+// The bivariate t, nu finite, by Plackett's identity mixed over R (Genz 2004 §4 writes
+// the t's version; tools/mvcdf_ref.py's bvt is the same mixture term by term):
+//     d P / d theta = E[exp(-R^2 q(s))] / (2 pi) = (1 + q / a)^-a / (2 pi),  s = sin theta,
+// a closed form, so P is one integral in the path variable t (as bvn) plus its start:
+//     r >= 0:  E[Phi(R h) Phi(R k)] + (1 / 2pi) int_0^asin r (1 + q/a)^-a dtheta
+//     r <  0:  E[Phi(R h) Phi(R k)] - (1 / 2pi) int_asin r^0 ...  (r > -1/2, losing at
+//              most two bits), else
+//              P(X <= h, Y <= k; -1) + (1 / 2pi) int_-pi/2^asin r ...
+// with the start at r = 0 one mixture over R of a product of Phi's (t_mixture) and at
+// r = -1 the t's P(-k <= X <= h) (sd.special's stdtr). The integrand's exponent
+// a log(1 + q / a) is formed in double-double from the exact t, h and k: it reaches ~700
+// in the tails, where the bivariate t's relative condition in r is ~200 too.
+inline double bvt_density(double h, double k, double a, bool minus, DD t2) {
+    const DD far = DD{2.0, 0.0} - t2;
+    if (t2.hi == 0.0) return 0.0;  // the pole (an end, never a node)
+    const DD sm = minus ? far : t2, sp = minus ? t2 : far;
+    // limits beyond 2^400 (their squares, over 1 - s^2, overflow): q of the limits scaled by 2^-E, exactly
+    int E = 0;
+    const double big = std::max(std::fabs(h), std::fabs(k));
+    if (big > 0x1p400) E = std::ilogb(big), h = std::ldexp(h, -E), k = std::ldexp(k, -E);
+    const DD hk = dd::two_prod(h, k);
+    const DD d = dd::two_sum(h, hk.hi >= 0.0 ? -k : k);
+    const DD qa = d * d / (sm * sp * 2.0);
+    const DD q = hk.hi >= 0.0 ? qa + hk / sp : qa - hk / sm;
+    const DD x = q / a;
+    if (E != 0 || !(x.hi < 0x1p900)) {
+        // log(1 + q 4^E / a) from the logs of its pieces (the quotient is beyond the doubles,
+        // or near it): plain double, a log(...) <= 745 where the density is not 0. q is a
+        // sum of non-negative terms: not finite means it overflowed near the pole.
+        if (!std::isfinite(q.hi)) return 0.0;
+        const double lx = std::log(q.hi) + 2.0 * E * 0.6931471805599453 - std::log(a);
+        const double e = a * (lx > 40.0 ? lx : std::log1p(std::exp(lx)));
+        return e > 745.2 ? 0.0 : std::exp(-e) * 2.0 / std::sqrt(far.hi);
+    }
+    // a log(1 + x) as hi + lo: log1p by its series form for small x (1 + x would drop x's low bits)
+    const DD L = x.hi < 0x1p-8 ? x - dd::log1pmx_neg(x) : dd::log(DD{1.0, 0.0} + x);
+    const DD E2 = L * a;
+    if (E2.hi > 745.2) return 0.0;
+    return std::exp(-E2.hi) * (1.0 - E2.lo) * 2.0 / std::sqrt(far.hi);
 }
+
+// The integral of (1 + q/a)^-a dtheta on the given side over t from the end T (hi + lo)
+// to the pole (to_pole) or to s = 0, added to base. Near the pole (t below |h -+ k| / 2)
+// the integrand goes like t^(2a), not smooth at 0 for small a: the panels are also cut
+// geometrically below the step, down to where t^(2a+1) is below 1e-17.
+inline double bvt_integral(double h, double k, double a, bool minus, DD T, bool to_pole, double base) {
+    auto f = [&](const DD* t2, int n, double* o) {
+        for (int i = 0; i < n; ++i) o[i] = bvt_density(h, k, a, minus, t2[i]);
+    };
+    const double delta = 0.5 * std::fabs(minus ? h + k : h - k);
+    if (!to_pole) return path_integral(f, T.hi, 1.0, true, base * kTwoPi, delta) - end_part(f, T);
+    const int levels = std::min(30, static_cast<int>(std::ceil(17.0 * 2.302585 / ((2.0 * a + 1.0) * 1.386294))));
+    return path_integral(f, 0.0, T.hi, false, base * kTwoPi, delta, levels) + end_part(f, T);
+}
+
+// P(X <= h, Y <= k) for the t at correlation -1: P(-k <= X <= h), by the tails it is made of.
+inline double bvt_minus_one(double h, double k, double nu) {
+    if (!(h > -k)) return 0.0;
+    auto T = [&](double x) { return special::Stdtr::f(nu, x); };
+    if (h <= 0.0) return T(h) - T(-k);
+    if (k <= 0.0) return T(k) - T(-h);
+    return (1.0 - T(-h)) - T(-k);
+}
+
+// Phi(sqrt(x) h) for the mixture: e^(-x h^2 / 2) erfcx(...) / 2 in the lower tail, its
+// exponent exact (from h and x; from y = sqrt(x) h itself at a far node, or where h^2 would
+// overflow). Below y = -40 the factor is 0 in any double.
+inline void mix_phi(const MixNode& nd, double h, MixTerm& t) {
+    const double y = nd.times(h);
+    if (h < 0.0) {
+        if (!(y > -40.0)) {
+            t.f = 0.0;
+            return;
+        }
+        if (nd.far || !(h > -0x1p500)) t.e = t.e + dd::two_prod(y, y) * 0.5;
+        else t.e = t.e + (nd.x.lo == 0.0 ? dd::two_prod(h, h) * (0.5 * nd.x.hi) : dd::two_prod(h, h) * (nd.x * 0.5));
+        t.f *= 0.5 * special::Erfcx::f(-y * kSqrtHalf);
+    } else {
+        t.f *= Phi(y);
+    }
+    if (!(y > 40.0)) t.dlog += 0.5 * y * mills_lower(y);  // beyond: 0 (and y may be inf, inf * 0)
+}
+
+// Phi_3(0), the orthant probability. Sheppard's 1/8 + (asin r12 + asin r13 + asin r23) /
+// (4 pi) (Plackett 1954) cancels where the matrix is nearly singular with negative
+// correlations (the sum of the asin's near -pi/2: the truth 3.3e-10 came out with seven
+// digits). The orthant is the cone {z : L z <= 0}; its edges are the columns of -L^-1,
+// whose Gram matrix is R^-1, and the solid angle of a cone with unit edges e1, e2, e3 is
+// (van Oosterom and Strackee 1983)
+//     tan(Omega / 2) = |det(e1 e2 e3)| / (1 + e1.e2 + e1.e3 + e2.e3).
+// With A = adj R (A_ii = 1 - r_jk^2, A_ij = r_ik r_jk - r_ij): e_i.e_j = A_ij / sqrt(A_ii A_jj)
+// and det = det R / sqrt(A11 A22 A33), every piece a product or a short sum formed as
+// hi + lo: no cancellation is left in Phi_3(0) = Omega / (4 pi).
+inline double orthant3(const Tri& T) {
+    const double r12 = T.r[0][1], r13 = T.r[0][2], r23 = T.r[1][2];
+    auto om = [](double r) { return dd::two_sum(1.0, -r) * dd::two_sum(1.0, r); };
+    const DD A11 = om(r23), A22 = om(r13), A33 = om(r12);
+    const DD A12 = dd::two_prod(r13, r23) - r12, A13 = dd::two_prod(r12, r23) - r13, A23 = dd::two_prod(r12, r13) - r23;
+    const DD det = A11 * A22 - A12 * A12;  // det R (R33 = 1)
+    if (!(det.hi > 0.0 && A11.hi > 0.0 && A22.hi > 0.0 && A33.hi > 0.0)) return kNaN;
+    const DD s1 = dd_sqrt(A11), s2 = dd_sqrt(A22), s3 = dd_sqrt(A33);
+    const DD num = det / (s1 * s2 * s3);
+    const DD den = DD{1.0, 0.0} + A12 / (s1 * s2) + A13 / (s1 * s3) + A23 / (s2 * s3);
+    return std::atan2(num.hi, den.hi) / kTwoPi;
+}
+
+// The bivariate and trivariate t, nu finite: Phi_2(0) = 1/4 + asin(r) / (2 pi) (Sheppard)
+// and Phi_3(0) above.
+// r as hi + lo (tvt_condition's partial correlation; a double r is {r, 0}).
+inline double bvt(double h, double k, DD r, double nu) {
+    const double a = 0.5 * nu;
+    if (!(a > 0.0) || std::isnan(h) || std::isnan(k) || std::isnan(r.hi)) return kNaN;
+    auto start = [&] {
+        const double hs[2] = {h, k};
+        return t_mixture(nu, 0.25, std::fabs(h) + std::fabs(k), hs, 2, [&](const MixNode& nd) {
+            MixTerm t;
+            mix_phi(nd, h, t);
+            if (t.f != 0.0) mix_phi(nd, k, t);
+            return t;
+        });
+    };
+    if (r.hi == 0.0) return start();
+    if (r.hi >= 1.0) r = {1.0, 0.0};
+    if (r.hi <= -1.0) r = {-1.0, 0.0};
+    const DD T = path_end(r);
+    if (r.hi > 0.0) {
+        const double p0 = start();
+        return cap1(p0 + bvt_integral(h, k, a, false, T, false, p0) / kTwoPi);
+    }
+    if (r.hi > kBvnSwitch) {
+        const double p0 = start();
+        const double v = p0 - bvt_integral(h, k, a, true, T, false, p0) / kTwoPi;
+        if (p0 <= 4.0 * v) return v;
+    }
+    const double pm = bvt_minus_one(h, k, nu);
+    return cap1(pm + bvt_integral(h, k, a, true, T, true, pm) / kTwoPi);
+}
+inline double bvt(double h, double k, double r, double nu) { return bvt(h, k, DD{r, 0.0}, nu); }
+
+// The trivariate t by conditioning on X_k, the t's own version of tvn_condition. Given
+// X_k = x (a univariate t_nu), (X_i, X_j) is a bivariate t with nu + 1 degrees of freedom,
+// location (r_ik, r_jk) x, the partial correlation rho and scales s_i tau, s_j tau,
+// tau(x) = sqrt((nu + x^2) / (nu + 1)) (Kotz and Nadarajah 2004, "Multivariate t
+// Distributions and Their Applications", §1.11):
+//     P = int_-inf^h_k f_nu(x) T2_{nu+1}((h_i - r_ik x) / (s_i tau), (h_j - r_jk x) / (s_j tau); rho) dx,
+// a positive integrand with bvt's accuracy inside. tvt uses it where the mixture over tvn
+// would itself condition at too many nodes (a nearly singular matrix: each tvn is then an
+// integral of bvn's, and the three nested quadratures took 45-215 s); here the inner
+// function is bvt, two quadratures of closed forms.
+//
+// The variable is u = asinh(h_k - x): linear near the end, logarithmic in the tail (the
+// t's tails are powers: smooth in log x), up to x = h_k - X, X = 1e17 max(1, sqrt nu, |h|),
+// beyond which the limits of T2 are their values at -inf to 1e-17 and the rest is
+// F_nu(h_k - X) T2(r_ik sqrt(nu+1) / s_i, r_jk sqrt(nu+1) / s_j; rho). First panels: every
+// log 16 in u, and geometric cuts (ratio 64 in x) around the places where a factor turns
+// within a width smaller than its distance from the end: x = 0 (the density's core, sqrt
+// nu wide), the zeros of the two limits (s tau / |r| wide) and the ridge of rho, where the
+// limits cross (sqrt(1 - rho^2) tau over the slope wide).
+inline DD dd_log1p(DD x) { return x.hi < 0x1p-8 ? x - dd::log1pmx_neg(x) : dd::log(DD{1.0, 0.0} + x); }
+inline constexpr double kCondTMax = 1e100;  // limits and sqrt(nu) up to here (x^2 must not overflow)
+inline double tvt_condition(const Tri& T, double nu) {
+    int k = 0;
+    for (int q = 1; q < 3; ++q)
+        if (T.h[q] < T.h[k]) k = q;
+    const int i = k == 0 ? 1 : 0, j = 3 - k - i;
+    const double rik = T.r[i][k], rjk = T.r[j][k];
+    const double hi = T.h[i], hj = T.h[j], hk = T.h[k];
+    const double hmax = std::max({std::fabs(hi), std::fabs(hj), std::fabs(hk)});
+    const double a = 0.5 * nu, rnu = std::sqrt(nu);
+    if (!(a > 0.0) || !(hmax <= kCondTMax) || !(rnu <= kCondTMax) || !(nu >= 0x1p-500)) return kNaN;
+    const DD si = dd_sqrt(dd::two_sum(1.0, -rik) * dd::two_sum(1.0, rik));
+    const DD sj = dd_sqrt(dd::two_sum(1.0, -rjk) * dd::two_sum(1.0, rjk));
+    const DD isi = DD{1.0, 0.0} / si, isj = DD{1.0, 0.0} / sj;
+    DD rho = (DD{T.r[i][j], 0.0} - dd::two_prod(rik, rjk)) / (si * sj);
+    if (rho.hi > 1.0) rho = {1.0, 0.0};
+    if (rho.hi < -1.0) rho = {-1.0, 0.0};
+    if (!(si.hi > 0.0 && sj.hi > 0.0) || std::isnan(rho.hi)) return kNaN;
+    // log of the density's constant, Gamma(a + 1/2) / (Gamma(a) sqrt(nu pi)), from c(a) (above):
+    // log Gamma(a + 1/2) - log Gamma(a) = a log1p(1 / 2a) + log(a + 1/2) / 2 - 1/2 - c(a + 1/2) + c(a)
+    const DD lc = dd_log1p(DD{0.5, 0.0} / a) * a + dd::log(dd::two_sum(a, 0.5)) * 0.5 - 0.5 - stirling_c(a + 0.5) +
+                  stirling_c(a) - (dd::log(nu) + dd::log(kPi)) * 0.5;
+    const double nu1 = nu + 1.0;
+    auto tau = [&](double x) { return std::sqrt((nu + x * x) / nu1); };
+    // f_nu(x) T2(...) at x
+    auto g = [&](double x) {
+        const DD x2 = dd::two_prod(x, x);
+        const DD e = dd_log1p(x2 / nu) * (a + 0.5) - lc;
+        if (e.hi > 745.2) return 0.0;
+        const DD itau = DD{1.0, 0.0} / dd_sqrt((x2 + nu) / nu1);
+        const double A = ((DD{hi, 0.0} - dd::two_prod(rik, x)) * isi * itau).hi;
+        const double B = ((DD{hj, 0.0} - dd::two_prod(rjk, x)) * isj * itau).hi;
+        return std::exp(-e.hi) * (1.0 - e.lo) * bvt(A, B, rho, nu1);
+    };
+    const double c0 = std::max(1.0, rnu);  // the scale of the end
+    auto f = [&](const double* u, double* o, int n) {
+        for (int q = 0; q < n; ++q) o[q] = g(hk - c0 * std::sinh(u[q])) * c0 * std::cosh(u[q]);
+    };
+    const double X = 1e17 * std::max({1.0, rnu, hmax});
+    const double umax = std::asinh(X / c0);
+    double cuts[kMaxPanels];
+    int nc = 0;
+    const int nuni = static_cast<int>(std::min(30.0, std::ceil(umax / 2.772588722239781)));
+    for (int q = 1; q < nuni; ++q) cuts[nc++] = umax * q / nuni;
+    // around a turn at x = c of width w
+    auto feature = [&](double c, double w) {
+        if (!std::isfinite(c) || !(w > 0.0) || !(c < hk + 64.0 * w)) return;
+        auto add = [&](double x) {
+            if (x < hk && nc < kMaxPanels / 2 - 4) {
+                const double uu = std::asinh((hk - x) / c0);
+                if (uu > 0.0 && uu < umax) cuts[nc++] = uu;
+            }
+        };
+        add(c);
+        double d = w;
+        for (int l = 0; l < 8; ++l, d *= 64.0) add(c - d), add(c + d);
+    };
+    const double a0 = hi * isi.hi, a1 = -rik * isi.hi, b0 = hj * isj.hi, b1 = -rjk * isj.hi;
+    const double omr = ((DD{1.0, 0.0} - rho) * (DD{1.0, 0.0} + rho)).hi;
+    if (rnu < 1.0) feature(0.0, rnu);
+    if (a1 != 0.0) feature(-a0 / a1, tau(-a0 / a1) / std::fabs(a1));
+    if (b1 != 0.0) feature(-b0 / b1, tau(-b0 / b1) / std::fabs(b1));
+    {
+        const double slope = rho.hi < 0.0 ? a1 + b1 : a1 - b1, off = rho.hi < 0.0 ? a0 + b0 : a0 - b0;
+        if (slope != 0.0 && omr >= 0.0) feature(-off / slope, std::max(std::sqrt(omr), 0x1p-52) * tau(-off / slope) / std::fabs(slope));
+    }
+    std::sort(cuts, cuts + nc);
+    const double I = integrate_at(f, 0.0, umax, cuts, nc, 0.0);
+    const double far = special::Stdtr::f(nu, hk - X);
+    const double rest = far > 0.0 ? far * bvt(rik * isi.hi * std::sqrt(nu1), rjk * isj.hi * std::sqrt(nu1), rho, nu1) : 0.0;
+    return cap1(I + rest);
+}
+
+// The trivariate t: the mixture over tvn where tvn's own paths do not cancel (0.2-0.5 ms,
+// 7e-16 against Arb). Where they do, its nodes condition (tvn_condition), hundreds of
+// bvn's each: they may spend kTvtBudget bvn's together (some tens of ms), and past that
+// the whole value is tvt_condition's (5-120 ms, 2.4e-15 against Arb on the same points;
+// the mixture alone took up to 0.6 s on them, and minutes near singular matrices).
+inline constexpr std::int64_t kTvtBudget = 20000;
+// The limits of the inner normal are clamped at +-1e100 (far past where Phi_3 is 0 or 1 in
+// any double; R |h| itself can overflow).
 inline double tvt(const Tri& T, double nu) {
-    const double p0 = 0.125 + (std::asin(T.r[0][1]) + std::asin(T.r[0][2]) + std::asin(T.r[1][2])) / (2.0 * kTwoPi);
-    return t_mixture(nu, p0, std::fabs(T.h[0]) + std::fabs(T.h[1]) + std::fabs(T.h[2]), [&](double s) {
+    const double p0 = orthant3(T);
+    if (!(p0 > 0.0)) return kNaN;  // not positive definite to working precision
+    std::int64_t budget = kTvtBudget;
+    const double v = t_mixture(nu, p0, std::fabs(T.h[0]) + std::fabs(T.h[1]) + std::fabs(T.h[2]), T.h, 3, [&](const MixNode& nd) {
         Tri U = T;
-        for (double& x : U.h) x *= s;
-        return tvn(U);
+        U.budget = &budget;
+        if (!nd.far) {
+            const double s = std::sqrt(nd.x.hi);
+            for (double& v : U.h) v = std::clamp(v * s, -1e100, 1e100);
+        } else {
+            for (double& v : U.h) v = std::clamp(nd.times(v), -1e100, 1e100);
+        }
+        MixTerm t;
+        t.f = tvn(U);
+        return t;
     });
+    return budget < 0 ? tvt_condition(T, nu) : v;
 }
 
 // ---------------------------------------------------------- quasi-Monte Carlo
@@ -952,9 +1473,30 @@ struct Neumaier {
 // The QMC estimate of a reordered problem (n >= 2). The work of a level is cut into
 // (shift, piece of kQmcItem points) tasks on the pool -- serially when the caller is
 // itself a task -- and the pieces are added per shift in order.
+//
+// Nearly singular problems (a variable whose conditional standard deviation given the
+// ones before it is below kQmcHardRatio of its own: R^2 > 0.9975) have integrands with a
+// thin region that most shifted lattices miss: twelve shifts that all miss it agree with
+// each other to 1e-8 and are all off by 2e-6 (measured at kappa = 2e5, N = 1009: the
+// estimate was 29 times too small, and its weight 1 / var kept every later level out).
+// For those problems only: at least kQmcHardLevels levels; a level's variance is never
+// taken below a finer level's scaled by the ratio of their sizes (a coarser rule is not
+// the more accurate one), so one lucky level cannot carry the result; and never below
+// (1 / (36 N))^2, the resolution of 12 N bounded values (so the error estimate is at
+// least 1 / (12 N): shifts that all returned 0 said "0, error 0" where the truth was 3e-6).
+inline constexpr double kQmcHardRatio = 0.05;
+inline constexpr int kQmcHardLevels = 3;
+inline constexpr int kQmcMaxLevels = 96;  // N grows by 1.5 at least: more than max_evals = 2^63 allows
 inline Estimate qmc(const Problem& P, double atol, std::int64_t max_evals) {
     const int n = P.n;
     const int D = std::isfinite(P.nu) ? n : n - 1;
+    bool hard = false;
+    for (int i = 1; i < n; ++i) {
+        double s2 = 0.0;
+        for (int k = 0; k <= i; ++k) s2 += P.L[static_cast<std::size_t>(i) * n + k] * P.L[static_cast<std::size_t>(i) * n + k];
+        hard = hard || P.L[static_cast<std::size_t>(i) * n + i] < kQmcHardRatio * std::sqrt(s2);
+    }
+    double lvar[kQmcMaxLevels], lmean[kQmcMaxLevels], lN[kQmcMaxLevels];
     const random::Key key{kShiftKey, static_cast<std::uint64_t>(n)};
     std::vector<double> shifts(static_cast<std::size_t>(kShifts) * D);
     double prec = 0.0, wsum = 0.0;  // the combination: sum 1 / var_l and sum v_l / var_l
@@ -995,11 +1537,28 @@ inline Estimate qmc(const Problem& P, double atol, std::int64_t max_evals) {
         var /= static_cast<double>(kShifts) * (kShifts - 1);
         evals += kShifts * N;
         if (!std::isfinite(mean)) return {kNaN, kNaN, evals};
+        if (hard) {
+            // 12 N values in [0, 1] cannot rule out a region of volume ~1 / (12 N): shifts that
+            // agree (or all see 0) are no evidence below that
+            const double floor = 1.0 / (static_cast<double>(kShifts) * static_cast<double>(N));
+            var = std::max(var, floor * floor / 9.0);
+        }
         if (var == 0.0) return {std::clamp(mean, 0.0, 1.0), 0.0, evals};  // a constant integrand
-        prec += 1.0 / var, wsum += mean / var;
+        if (hard) {
+            lvar[level] = var, lmean[level] = mean, lN[level] = static_cast<double>(N);
+            prec = 0.0, wsum = 0.0;
+            for (int k = 0; k <= level; ++k) {
+                const double vk = std::max(lvar[k], var * lN[level] / lN[k]);
+                prec += 1.0 / vk, wsum += lmean[k] / vk;
+            }
+        } else {
+            prec += 1.0 / var, wsum += mean / var;
+        }
         const double value = wsum / prec, err = 3.0 / std::sqrt(prec);
         const std::int64_t room = (max_evals - evals) / kShifts;
-        if (!(err > atol) || room < kQmcStart) return {std::clamp(value, 0.0, 1.0), err, evals};
+        const bool enough = !hard || level + 1 >= kQmcHardLevels;
+        if ((!(err > atol) && enough) || room < kQmcStart || level + 1 == kQmcMaxLevels)
+            return {std::clamp(value, 0.0, 1.0), err, evals};
         // the next level alone should reach atol: its error ~ N^-1 (lattice rules with
         // the baker's transformation do at least that on these integrands)
         const double lvl = 3.0 * std::sqrt(var);

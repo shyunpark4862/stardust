@@ -6,6 +6,12 @@ icdf, isf for iccdf); its new-style objects call the same functions with more Py
 around them. ilogcdf and ilogccdf have no classic form and are not timed. Scalar calls:
 one Python float.
 
+Two parameter sets. The first has small supports (binomial n = 40): an array of 1e5 points
+holds a few dozen different k, so the per-thread table of values at integers
+(csrc/stats/discrete.hpp, KMemo) answers nearly every element and a row shows a lookup. The
+second ("wide": n = 1e9, mu = 3e8, ...) has nearly every k different, so a row shows the cost
+of one evaluation.
+
     .venv/bin/python bench/stats/t5/speed.py > bench/stats/t5/speed.md
 """
 
@@ -85,6 +91,67 @@ def main():
     print("|---|---:|---:|---:|")
     for name, a, b in scalar_rows:
         print(f"| {name} | {a:.2f} | {b:.2f} | {b / a:.1f} |")
+    wide()
+
+
+# Wide supports: nearly every k of an array is different.
+WIDE = [
+    (S.Binomial, {"n": 10**9, "p": 0.3}, st.binom(10**9, 0.3)),
+    (S.Poisson, {"mu": 3e8}, st.poisson(3e8)),
+    (S.Geometric, {"p": 1e-6}, st.geom(1e-6)),
+    (S.NegativeBinomial, {"n": 2.5e6, "p": 1e-3}, st.nbinom(2.5e6, 1e-3)),
+    (S.Hypergeometric, {"total": 5 * 10**6, "successes": 12 * 10**5, "draws": 2 * 10**6},
+     st.hypergeom(5 * 10**6, 12 * 10**5, 2 * 10**6)),
+    (S.DiscreteUniform, {"low": 2, "high": 10**9}, st.randint(2, 10**9)),
+    (S.BetaBinomial, {"n": 20000, "a": 2.5, "b": 1.7}, st.betabinom(20000, 2.5, 1.7)),
+    (S.LogSeries, {"p": 1 - 1e-7}, st.logser(1 - 1e-7)),
+    (S.Zipf, {"a": 1.05}, st.zipf(1.05)),
+]
+
+
+def best_long(f, budget=0.5):
+    t = timeit.timeit(f, number=1)
+    if t > 2.0:
+        return t
+    reps = max(1, min(5, int(budget / max(t, 1e-9))))
+    return min([t] + timeit.repeat(f, number=1, repeat=reps))
+
+
+def wide():
+    rng = np.random.default_rng(0)
+    before = sd.get_num_threads()
+    print("\nWide parameters (nearly every k different), 20000 points; ns per element.\n")
+    print("| distribution | method | sd 1T | sd 10T | scipy | scipy / sd 1T | scipy / sd 10T |")
+    print("|---|---|---:|---:|---:|---:|---:|")
+    try:
+        for cls, params, ref in WIDE:
+            # the sums of the wide hypergeometric and beta-binomial cdfs run to thousands of terms
+            N = 2000 if cls in (S.Hypergeometric, S.BetaBinomial) else 20_000
+            p = rng.uniform(0, 1, N)
+            X = cls(**params)
+            x = np.asarray(X.icdf(sd.asarray(p)))
+            sx, sp = sd.asarray(x), sd.asarray(p)
+            for m in ("pmf", "logpmf", "cdf", "logcdf", "ccdf", "logccdf", "icdf", "iccdf"):
+                arg, npa = (sp, p) if m in ("icdf", "iccdf") else (sx, x)
+                f = getattr(X, m)
+                sd.set_num_threads(1)
+                t1 = best_long(lambda: f(arg)) / N * 1e9
+                sd.set_num_threads(10)
+                t10 = best_long(lambda: f(arg)) / N * 1e9
+                g = getattr(ref, SCIPY[m])
+                small = npa[: max(1, N // 50)]  # scipy's slow rows (sums, searches): a sample
+                try:
+                    if cls is S.Zipf and m not in ("pmf", "logpmf"):
+                        raise RuntimeError  # scipy's zipf cdf at k ~ 1e20 does not return
+                    ts = timeit.timeit(lambda: g(small), number=1) / len(small) * 1e9
+                    if ts * N < 2e9:
+                        ts = best_long(lambda: g(npa)) / N * 1e9
+                    row = f"{ts:.1f} | {ts / t1:.2f} | {ts / t10:.1f}"
+                except Exception:  # scipy's zipf ppf: "updating stopped, endless loop"
+                    row = "— | — | —"
+                print(f"| {cls.__name__} | `{m}` | {t1:.1f} | {t10:.1f} | {row} |", flush=True)
+    finally:
+        sd.set_num_threads(before)
 
 
 if __name__ == "__main__":

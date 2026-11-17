@@ -26,6 +26,7 @@ template <std::size_t> using handle_t = nb::handle;
 template <typename Op>
 constexpr const LoopTable& table_of() {
     if constexpr (requires { &Op::chunk; }) return special::chunked_table<Op>;
+    else if constexpr (requires { Op::table; }) return Op::table != nullptr ? *Op::table : nary_table<Op>;  // stats' chunk kernels
     else return nary_table<Op>;
 }
 
