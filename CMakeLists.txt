@@ -55,6 +55,7 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/linalg/ops/spectral.cpp
   csrc/linalg/ops/special.cpp
   csrc/parallel/pool.cpp
+  csrc/regression/linear.cpp
   csrc/special/reduce.cpp
   csrc/frame/column.cpp
   csrc/frame/convert.cpp
@@ -80,6 +81,7 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/bind/stats_mvcdf.cpp
   csrc/bind/stats_matrix.cpp
   csrc/bind/stats_mv.cpp
+  csrc/bind/regression_bind.cpp
   csrc/bind/module.cpp)
 
 target_include_directories(_core PRIVATE csrc)

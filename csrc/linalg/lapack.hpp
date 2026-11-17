@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <vector>
 
 namespace sd::linalg::lapack {
 
@@ -64,6 +65,20 @@ lint trtrs(char uplo, char trans, char diag, lint n, lint nrhs, const T* a, lint
     return checked(info, "trtrs");
 }
 
+// The reciprocal 1-norm condition number of a real triangular matrix (an estimate, Hager's
+// method: within a small factor of the true value). Reads only triangle `uplo`.
+inline double trcon_1(char uplo, lint n, const double* a, lint lda) {
+    if (n == 0) return 1.0;
+    std::vector<double> work(static_cast<std::size_t>(3 * n));
+    std::vector<lint> iwork(static_cast<std::size_t>(n));
+    char norm = '1', diag = 'N';
+    double rcond = 0.0;
+    lint info = 0;
+    dtrcon_(&norm, &uplo, &diag, &n, a, &lda, &rcond, work.data(), iwork.data(), &info);
+    checked(info, "trcon");
+    return rcond;
+}
+
 // Solves a tridiagonal system (partial pivoting) in one call: dl, d, du are
 // overwritten by the factorization, b by the solution. info > 0: an exact zero pivot.
 template <class T>
@@ -96,7 +111,7 @@ inline lint work_size(cplx q) { return std::max<lint>(1, static_cast<lint>(q.rea
 // Routine ids for Scratch::sizes keys.
 enum WorkId : lint {
     kGeqrf = 1, kGeqp3, kOrgqr, kGelsd, kSyevd, kSygvd, kSygv, kGesdd, kGesvd, kGeev, kGees, kGehrd, kOrghr,
-    kSytrf, kTrsyl3
+    kSytrf, kTrsyl3, kOrmqr
 };
 
 template <class T>
@@ -153,6 +168,46 @@ lint orgqr(lint m, lint n, lint k, T* a, lint lda, const T* tau, Scratch& s) {
     if constexpr (std::is_same_v<T, double>) dorgqr_(&m, &n, &k, a, &lda, tau, w, &lwork, &info);
     else zungqr_(&m, &n, &k, a, &lda, tau, w, &lwork, &info);
     return checked(info, "orgqr");
+}
+
+// Applies Q (trans 'N') or Q^T (trans 'T') from k reflectors (geqrf's, in a) to the
+// m x n matrix c from the left, in place. Real only (sd.regression, docs/design/regression.md §3.1).
+inline lint ormqr(char trans, lint m, lint n, lint k, const double* a, lint lda, const double* tau, double* c, lint ldc,
+                  Scratch& s) {
+    lint info = 0;
+    const char side = 'L';
+    double* av = const_cast<double*>(a);  // dormqr's prototype is not const; it does not write a
+    lint lwork = s.sizes({kOrmqr, m, n, k, trans, esize<double>()}, [&] {
+        lint q_lwork = -1;
+        double q = 0;
+        dormqr_(&side, &trans, &m, &n, &k, av, &lda, tau, c, &ldc, &q, &q_lwork, &info);
+        return WorkSizes{work_size(q)};
+    }).work;
+    double* w = s.get<double>(static_cast<std::size_t>(lwork), Scratch::kWork);
+    dormqr_(&side, &trans, &m, &n, &k, av, &lda, tau, c, &ldc, w, &lwork, &info);
+    return checked(info, "ormqr");
+}
+
+// (U^T U)^-1 from the upper triangular U, in place (upper triangle). info > 0: U has a zero on its diagonal.
+inline lint potri_upper(lint n, double* a, lint lda) {
+    lint info = 0;
+    const char uplo = 'U';
+    dpotri_(&uplo, &n, a, &lda, &info);
+    return checked(info, "potri");
+}
+
+// One elementary reflector H = I - tau v v^T with H [alpha; x] = [beta; 0] (dlarfg):
+// alpha becomes beta, x becomes v(2:n) (v(1) = 1).
+inline void larfg(lint n, double* alpha, double* x, double* tau) {
+    const lint one = 1;
+    dlarfg_(&n, alpha, x, &one, tau);
+}
+
+// C = H C for H = I - tau v v^T (dlarf, side 'L'); c is m x n, work has n doubles.
+inline void larf_left(lint m, lint n, const double* v, double tau, double* c, lint ldc, double* work) {
+    const char side = 'L';
+    const lint one = 1;
+    dlarf_(&side, &m, &n, v, &one, &tau, c, &ldc, work);
 }
 
 // Minimum-norm least squares by SVD (divide and conquer). b (ldb >= max(m, n))

@@ -34,6 +34,9 @@ LDLResult = namedtuple("LDLResult", ["L", "D", "perm"])
 # special: airy (built by csrc/bind/special_bind.cpp, which looks it up by name)
 AiryResult = namedtuple("AiryResult", ["ai", "aip", "bi", "bip"])
 
+# regression: linregress (scipy.stats' fields and order, docs/api/regression.md §2)
+LinregressResult = namedtuple("LinregressResult", ["slope", "intercept", "rvalue", "pvalue", "stderr", "intercept_stderr"])
+
 # The order the C++ core expects in _core.linalg._setup (csrc/linalg/pyrefs.hpp, enum Result).
 LINALG = (SlogdetResult, LUResult, QRResult, QRPivotedResult, LstsqResult, EighResult, SVDResult,
           EigResult, SchurResult, HessenbergResult, LDLResult)

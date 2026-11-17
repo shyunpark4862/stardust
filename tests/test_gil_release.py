@@ -77,6 +77,10 @@ def data():
     D.square = sd.asarray(rng.standard_normal((1200, 1200)) + 1200.0 * np.eye(1200))
     D.vectors = sd.asarray(rng.standard_normal(N))
     D.normal = sd.stats.Normal()
+    D.design = sd.asarray(rng.standard_normal((400_000, 8)))
+    D.response = sd.asarray(rng.standard_normal(400_000))
+    D.designs = sd.asarray(rng.standard_normal((20_000, 50, 3)))
+    D.responses = sd.asarray(rng.standard_normal((20_000, 50)))
     before, interval = sd.get_num_threads(), sys.getswitchinterval()
     # A thread waiting for the GIL gets it within this time from a thread that
     # runs Python code. Short, so that such waits (the watcher's turn just
@@ -130,6 +134,9 @@ CALLS = {
     "linalg.inv one matrix": lambda: sd.linalg.inv(D.square),
     "linalg.vector_norm": lambda: sd.linalg.vector_norm(D.vectors),
     "linalg.vecdot": lambda: sd.linalg.vecdot(D.vectors, D.vectors),
+    # regression: one large fit, and a batch through linalg's driver
+    "regression.ols one fit": lambda: sd.regression.ols(D.response, D.design).params,
+    "regression.ols batch": lambda: sd.regression.ols(D.responses, D.designs).params,
 }
 
 
