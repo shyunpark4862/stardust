@@ -62,7 +62,7 @@ export const areas = [
   { key: 'linalg', name: '선형대수', ns: 'sd.linalg', desc: '분해, 선형 시스템, 노름, 특수 구조, expm', status: 'done' },
   { key: 'frame', name: '데이터프레임', ns: 'sd.frame', desc: 'Series, DataFrame, NA, groupby, merge, read_csv', status: 'done' },
   { key: 'special', name: '특수함수', ns: 'sd.special', desc: '오차함수, 감마, 불완전 감마·베타, Bessel, 초기하', status: 'done' },
-  { key: 'stats', name: '통계', ns: 'sd.stats', desc: '단변량·다변량 분포, 기술통계, 검정', status: 'draft' },
+  { key: 'stats', name: '통계', ns: 'sd.stats', desc: '단변량·다변량·행렬 분포, 기술통계', status: 'draft' },
   { key: 'random', name: '난수', ns: 'sd.random', desc: '계수기형 생성기, 스레드 수와 무관한 결정성', status: 'done' },
 ] as const;
 
