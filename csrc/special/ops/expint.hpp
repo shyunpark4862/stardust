@@ -45,7 +45,8 @@ inline double en(double n, double x) {
     if (x <= 1.0) {
         double ans = nm1 != 0.0 ? 1.0 / nm1 : -std::log(x) - kEuler;
         double fact = 1.0;
-        for (int i = 1; i < 1000; ++i) {
+        bool ended = false;
+        for (int i = 1; i < 1000; ++i) {  // x <= 1: the terms fall like x^i / i!
             fact *= -x / i;
             double del;
             if (i != nm1) {
@@ -55,18 +56,21 @@ inline double en(double n, double x) {
                 del = fact * (-std::log(x) + psi);
             }
             ans += del;
-            if (std::fabs(del) <= std::fabs(ans) * 0x1p-56) break;
+            // (not at i = n - 1's neighbour: with n - 1 past the stop the logarithmic term is nothing)
+            if (std::fabs(del) <= std::fabs(ans) * 0x1p-56) {
+                ended = true;
+                break;
+            }
         }
-        return ans;
+        return ended ? ans : kNaN;
     }
-    const double tail = lentz_backward(
-                            x + n,
-                            [&](int k) {
-                                const double kd = k;
-                                return std::pair{-kd * (nm1 + kd), x + n + 2.0 * kd};
-                            },
-                            100000)
-                            .value;
+    const double tail = cf_value(
+        x + n,
+        [&](int k) {
+            const double kd = k;
+            return std::pair{-kd * (nm1 + kd), x + n + 2.0 * kd};
+        },
+        100000);
     return value(exp_scaled(-x) * scaled(1.0 / tail));
 }
 
@@ -78,13 +82,17 @@ inline double ei_pos(double x) {
     }
     if (x < 40.0) {
         double sum = 0.0, term = 1.0;
-        for (int k = 1; k < 500; ++k) {
+        bool ended = false;
+        for (int k = 1; k < 500; ++k) {  // x < 40: ends by k ~ 150
             term *= x / k;
             const double t = term / k;
             sum += t;
-            if (t <= sum * 0x1p-56) break;
+            if (t <= sum * 0x1p-56) {
+                ended = true;
+                break;
+            }
         }
-        return (kEuler + std::log(x)) + sum;
+        return ended ? (kEuler + std::log(x)) + sum : kNaN;
     }
     double s = 1.0, t = 1.0;
     for (int k = 1; k < 100; ++k) {
@@ -110,7 +118,9 @@ struct Expi : Real {
         if (x == 0.0) return -kInf;
         if (x == kInf) return kInf;
         if (x == -kInf) return -0.0;
-        if (x >= -700.0) {  // Boost (special/boost.hpp); the subnormal tail below and overflow are ours
+        // Boost (special/boost.hpp); the subnormal tail below, overflow and a subnormal x (its
+        // log there was off by 3e-5 at 2e-323) are ours
+        if (x >= -700.0 && std::fabs(x) >= 0x1p-1022) {
             const double r = bst::expint(x);
             if (bst::normal(r)) return r;
         }

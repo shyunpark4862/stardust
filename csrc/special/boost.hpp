@@ -9,7 +9,11 @@
 //
 // The headers are third_party/boost_math (tools/vendor_boost_math.py), built in
 // standalone mode. The policy turns every Boost error into a returned value
-// (NaN, inf or 0) and keeps double arithmetic in double.
+// (NaN, inf or 0) and keeps double arithmetic in double. One error is not a value:
+// an evaluation error, which Boost raises when a series or a root search reaches its
+// iteration limit (1e6 terms, 200 steps). Ignored, it would hand back the partial sum or
+// the last iterate; here it throws, and call() below turns that into NaN (a bound that is
+// reached gives NaN, docs/design/stats.md 1.3).
 #pragma once
 
 #include <boost/math/policies/policy.hpp>
@@ -18,10 +22,19 @@ namespace sd::special::bst {
 namespace bp = boost::math::policies;
 using Policy = bp::policy<bp::domain_error<bp::ignore_error>, bp::pole_error<bp::ignore_error>,
                           bp::overflow_error<bp::ignore_error>, bp::underflow_error<bp::ignore_error>,
-                          bp::denorm_error<bp::ignore_error>, bp::evaluation_error<bp::ignore_error>,
+                          bp::denorm_error<bp::ignore_error>, bp::evaluation_error<bp::user_error>,
                           bp::rounding_error<bp::ignore_error>, bp::indeterminate_result_error<bp::ignore_error>,
                           bp::promote_float<false>, bp::promote_double<false>>;
+struct NotEvaluated {};  // thrown for Boost's evaluation error
 }  // namespace sd::special::bst
+
+namespace boost::math::policies {
+// Boost's hook for evaluation_error<user_error> (declared in its error_handling.hpp).
+template <class T>
+T user_evaluation_error(const char*, const char*, const T&) {
+    throw sd::special::bst::NotEvaluated{};
+}
+}  // namespace boost::math::policies
 
 #include <boost/math/special_functions/bessel.hpp>
 #include <boost/math/special_functions/beta.hpp>

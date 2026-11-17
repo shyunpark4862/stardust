@@ -13,7 +13,9 @@
 // mu(t) = t - log(1 + t) -- with ~2^-64 relative accuracy.
 #pragma once
 
+#include "special/coeffs/cephes_gamma.hpp"
 #include "special/coeffs/dd_log_table.hpp"
+#include "special/common.hpp"
 
 #include <cmath>
 #include <cstdint>
@@ -212,6 +214,18 @@ inline DD log(DD lam) {
 }
 inline DD log(double x) { return log(DD{x, 0.0}); }
 
+// log(lambda) for any finite lambda = hi + lo > 0, subnormal too. Below 2^-999 the table
+// form does not apply (reduce) and a subnormal has no mantissa to split: lambda 2^256 (an
+// exact scaling, the low part with it) goes through log and 256 log 2 comes off. Against
+// Arb on 2e5 doubles from 5e-324 to 2^-999: 2^-92 of the log at most (the direct form:
+// 2^-76 over 1e5 doubles above).
+inline constexpr double kLogDirect = 0x1p-999;
+inline DD log_pos(DD lam) {
+    if (lam.hi >= kLogDirect) return log(lam);
+    return log(ldexp(lam, 256)) - kLn2 * 256.0;
+}
+inline DD log_pos(double x) { return log_pos(DD{x, 0.0}); }
+
 // mu(t) = t - log(1 + t) >= 0 for t = hi + lo > -1. Small t (|t| < 2^-8, where the
 // table point would be c = 1 anyway) goes straight to r^2/2 - r^3/3 + ... with r = t:
 // forming 1 + t as a double-double first would drop the low part of a tiny t (t =
@@ -247,6 +261,27 @@ inline DD log1pmx_neg(DD t) {
 inline DD a_mu(double a, DD lam) {
     if (lam.hi >= 0.5 && lam.hi <= 2.0) return log1pmx_neg(lam - 1.0) * a;
     return (lam - 1.0) * a - log(lam) * a;
+}
+
+// log Gamma(z) for z = hi + lo > 0, to ~1e-19 absolute: shifted to w = z + n >= 30
+// (log Gamma(z) = log Gamma(w) - log(z (z+1) ... (z+n-1)), the product and its log in
+// double-double), then Stirling,
+//     log Gamma(w) = w log w - w - log(w)/2 + log sqrt(2 pi) + S(w),
+// with every large term in double-double and S(w) ~ 1/(12 w) (Cephes' series,
+// special/coeffs/cephes_gamma.hpp) in double: its own error is ~1e-19.
+inline constexpr DD kLogSqrt2Pi = {0.9189385332046728, -3.8782941580672414e-17};  // log sqrt(2 pi)
+inline DD loggamma(DD z) {
+    DD w = z, prod{1.0, 0.0};
+    while (w.hi < 30.0) {
+        prod = prod * w;
+        w = w + 1.0;
+    }
+    const DD lw = log(w);
+    const double r = 1.0 / w.hi;
+    const double series = horner(r * r, cephes::kLgamA) * r;
+    DD l = w * lw - w - lw * 0.5 + kLogSqrt2Pi + series;
+    if (prod.hi != 1.0 || prod.lo != 0.0) l = l - log(prod);
+    return l;
 }
 
 }  // namespace sd::special::dd

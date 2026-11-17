@@ -131,3 +131,20 @@ def test_inverses_beyond_the_double_range():
     over = np.isinf(t)
     assert over.any() and np.all(t[over] < 0)
     assert np.all(np.asarray(S.stdtr(sd.asarray(df[over]), -1.7976931348623157e308)) >= q[over])
+
+
+def test_fdtr_where_one_shape_is_past_2_900_review_regression():
+    # dfd (or dfn) so large that the beta argument is below 2^-1000 while its product with
+    # the shape is not small: the chi-square limit. The leading term alone, used before, gave
+    # fdtr(2, 1e308, 1) = 1 (true: 1 - 1/e) and NaN at dfn = 200. Values: the series in Arb.
+    rows = [(2.0, 1e308, 1.0, 0.6321205588285577, 0.36787944117144233),
+            (200.0, 1e308, 1.0, 0.5132987982791487, 0.48670120172085135),
+            (2e-5, 1e300, 1e-320, 0.992550258327848, 0.007449741672151913),
+            (0.5, 1e305, 40.0, 0.9999979169695914, 2.083030408649431e-06),
+            (1e308, 2.0, 1.0, 0.36787944117144233, 0.6321205588285577),
+            (1e300, 2e-5, 1e305, 0.007106867638463068, 0.992893132361537),
+            (7.0, 1e300, 1e-05, 2.1806304891469145e-17, 1.0),
+            (16.419704325584377, 7.37960052026974e277, 5.776808771711861, 0.9999999999995333, 4.667669003019092e-13)]
+    for dfn, dfd, x, lo, up in rows:
+        assert abs(S.fdtr(dfn, dfd, x) / lo - 1) < 2e-15, (dfn, dfd, x)
+        assert abs(S.fdtrc(dfn, dfd, x) / up - 1) < 2e-15, (dfn, dfd, x)

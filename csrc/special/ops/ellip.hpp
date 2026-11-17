@@ -9,9 +9,9 @@
 // with the log singularity at m = 1 factored out, so nothing cancels; 1 - m
 // is exact from m = 1/2 up (Sterbenz). For m < 0, y = 1/(1-m) formed
 // directly and K(m) = K(y) / sqrt(1-m), E(m) = E(y) sqrt(1-m) (scipy forms
-// 1 - 1/x and then 1 minus that again). Chosen after S5's measurement (user
-// decision 2026-11-14): as accurate as the two methods below (max 3.0 / 4.2
-// ULP against 2.3 / 4.0) and 4-8x faster.
+// 1 - 1/x and then 1 minus that again). As accurate as the two methods below
+// (max 2.3 / 2.0 ULP against their 2.9 / 4.2) and 4-8x faster (S5 user
+// decision).
 //
 // Private, for comparison (the design's methods):
 // _ellipk_agm: the arithmetic-geometric mean, K = pi / (2 AGM(1, sqrt(1 - m))),
@@ -50,7 +50,8 @@ inline double carlson_rd(double x, double y, double z) {
     const double A0 = A;
     double Q = kTolFactor * std::max({std::fabs(A - x), std::fabs(A - y), std::fabs(A - z)});
     double sum = 0.0, fac = 1.0, pow4 = 1.0;
-    for (int it = 0; it < 200 && pow4 * Q >= std::fabs(A); ++it) {
+    int it = 0;
+    for (; it < 200 && pow4 * Q >= std::fabs(A); ++it) {  // pow4 falls 4x a turn: ~30 turns
         const double sx = std::sqrt(x), sy = std::sqrt(y), sz = std::sqrt(z);
         const double lam = sx * sy + sx * sz + sy * sz;
         sum += fac / (sz * (z + lam));
@@ -61,6 +62,7 @@ inline double carlson_rd(double x, double y, double z) {
         A = 0.25 * (A + lam);
         pow4 *= 0.25;
     }
+    if (it == 200) return kNaN;
     const double X = (A0 - x0) * pow4 / A, Y = (A0 - y0) * pow4 / A;
     const double Z = -(X + Y) / 3.0;
     const double XY = X * Y, Z2 = Z * Z;
@@ -85,13 +87,13 @@ inline double ellipe_y(double y) {
 // AGM(1, b) for b > 0 finite.
 inline double agm1(double b) {
     double a = 1.0;
-    for (int it = 0; it < 64; ++it) {
-        if (std::fabs(a - b) <= 0x1p-52 * a) break;
+    for (int it = 0; it < 64; ++it) {  // quadratic: ~10 turns from any b
+        if (std::fabs(a - b) <= 0x1p-52 * a) return 0.5 * (a + b);
         const double an = 0.5 * (a + b);
         b = std::sqrt(a * b);
         a = an;
     }
-    return 0.5 * (a + b);
+    return std::fabs(a - b) <= 0x1p-48 * a ? 0.5 * (a + b) : kNaN;
 }
 
 // Cephes ellpk, ellpe at y = 1 - m, 0 < y <= 1.

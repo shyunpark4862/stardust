@@ -47,7 +47,9 @@ inline double exp_dd(dd::DD e) { return std::exp(e.hi) * (1.0 + e.lo); }
 // log(v c) as hi + lo for v > 0 (subnormal too: scaled by 2^64 first) and c > 0 normal.
 inline dd::DD log_product(double v, double c) {
     if (v >= 0x1p-960) return dd::log(dd::two_prod(v, c));
-    return dd::log(dd::two_prod(std::ldexp(v, 64), c)) - dd::kLn2 * 64.0;
+    // (the logs apart: the product itself underflows for a small c -- fdtri(3, 1e16, 5e-324)
+    // was 14 for 2.3e-216)
+    return dd::log_pos(v) + dd::log_pos(c);
 }
 
 // An argument of the incomplete beta function and its complement, both
@@ -88,7 +90,13 @@ inline double t_tail(double df, double t) {
     if (g.x.hi < kTinyArg) {
         // I_x(a, 1/2) ~ x^a / (a B(a, 1/2)), x^a = (sqrt(df) / |t|)^df: x itself underflows
         // (stdtr(1, -1e200) = 3.2e-201 while x = 1e-400).
-        return 0.5 * std::pow(std::sqrt(df) / std::fabs(t), df) / (a * Beta::f(a, 0.5));
+        // (the ratio itself underflows for a tiny df with a huge t, where the power is near 1:
+        // from the logs there -- stdtr(1e-300, -1.7e308) was 0 for 0.5)
+        const double r = std::sqrt(df) / std::fabs(t);
+        // (the exponent as hi + lo: it reaches -700, and its rounding would enter that many times)
+        const double xa = r >= 0x1p-1000 ? std::pow(r, df)
+                                         : exp_dd((dd::log_pos(df) * 0.5 - dd::log_pos(std::fabs(t))) * df);
+        return 0.5 * xa / (a * Beta::f(a, 0.5));
     }
     if (a <= 6.0) {
         // Small a: the condition number of I_x in x is at most a x <= 6, so rounding
@@ -101,6 +109,15 @@ inline double t_tail(double df, double t) {
 
 // The F argument w = dfn x / (dfn x + dfd) and v = dfd / (dfn x + dfd) = 1 - w.
 inline Arg f_arg(double dfn, double dfd, double x) {
+    // (near the largest doubles dfn x + dfd overflows at a moderate x: w is the same for both
+    // scaled by 2^-64 -- fdtrc(1.8e308, 1.8e308, 1e-10) was 0 for 1)
+    if (dfn > 0x1p960 || dfd > 0x1p960) dfn *= 0x1p-64, dfd *= 0x1p-64;
+    // (and next to the smallest doubles dfn x underflows while w does not: both scaled up
+    // -- fdtr(1e-10, 1e-300, 5e-324) was 3e-8 off, its w = 5e-34 taken for 0)
+    if (dfn * x < 0x1p-900) {
+        const double m = std::max(dfn, dfd), sc = m < 0x1p-100 ? 0x1p1000 : (m < 0x1p400 ? 0x1p600 : 1.0);
+        dfn *= sc, dfd *= sc;
+    }
     const dd::DD u = dd::two_prod(dfn, x);
     const dd::DD s = u + dfd;
     if (!std::isfinite(u.hi) || !std::isfinite(s.hi) || !std::isfinite(u.lo)) {
@@ -112,16 +129,26 @@ inline Arg f_arg(double dfn, double dfd, double x) {
 }
 
 // fdtr (upper: fdtrc) for finite positive dfn, dfd and 0 < x < inf.
-inline double f_value(double dfn, double dfd, double x, bool upper) {
+// (a, b the shapes: dfn / 2, dfd / 2, or what stands for one of them, f_value below)
+inline double f_value_shapes(double a, double b, double dfn, double dfd, double x, bool upper) {
     const Arg g = f_arg(dfn, dfd, x);
-    const double a = 0.5 * dfn, b = 0.5 * dfd;
-    if (g.x.hi < kTinyArg) {  // I_w ~ w^a / (a B), w ~ (dfn / dfd) x
-        const double i = std::pow(dfn / dfd, a) * std::pow(x, a) / (a * Beta::f(a, b));
-        return upper ? 1.0 - i : i;
+    // A tiny argument, which may itself be below the doubles (w = 0 at x = 1e-320,
+    // dfn / dfd = 1e-5, where fdtr is 0.99 for dfn = 2e-5): from its log, by
+    // ibeta_detail::ibeta_tiny, which gives both sides without subtracting (1 - i from
+    // i = w^a / (a B) was 1.0e-14 off at dfn = 2.7e-4, x = 3.7e-299, i = 0.91). The other
+    // shape has to be below 2^900 for it; beyond, the F distribution is its chi-square
+    // limit (ibeta_detail::gamma_limit: fdtr(2, 1e308, 1) = 1 - 1/e, where w = 1e-308).
+    if (g.x.hi < kTinyArg) {  // I_w(a, b), w ~ (dfn / dfd) x; b w = a x
+        const ibeta_detail::IB r =
+            b < 0x1p900 ? ibeta_detail::ibeta_tiny(a, b, dd::log_pos(dfn) + dd::log_pos(x) - dd::log_pos(dfd), false)
+                        : ibeta_detail::gamma_limit(a, dd::two_prod(a, x), dd::log_pos(a) + dd::log_pos(x));
+        return upper ? r.ic : r.i;
     }
-    if (g.y.hi < kTinyArg) {  // 1 - I_w = I_v(b, a) ~ v^b / (b B), v ~ dfd / (dfn x)
-        const double ic = std::pow(dfd / dfn, b) * std::pow(x, -b) / (b * Beta::f(a, b));
-        return upper ? ic : 1.0 - ic;
+    if (g.y.hi < kTinyArg) {  // 1 - I_w = I_v(b, a), v ~ dfd / (dfn x); a v = b / x
+        const ibeta_detail::IB r =
+            a < 0x1p900 ? ibeta_detail::ibeta_tiny(b, a, dd::log_pos(dfd) - dd::log_pos(dfn) - dd::log_pos(x), false)
+                        : ibeta_detail::gamma_limit(b, dd::DD{b, 0.0} / x, dd::log_pos(b) - dd::log_pos(x));
+        return upper ? r.i : r.ic;
     }
     if (a <= 6.0 && b <= 6.0) {  // as in t_tail: rounding costs <= 3 ULP, Boost is faster
         if (g.x.hi <= g.y.hi) return upper ? Betaincc::f(a, b, g.x.hi) : Betainc::f(a, b, g.x.hi);
@@ -129,6 +156,19 @@ inline double f_value(double dfn, double dfd, double x, bool upper) {
     }
     const ibeta_detail::IB r = ibeta_detail::ibeta(a, b, g.x, g.y);
     return upper ? r.ic : r.i;
+}
+inline double f_value(double dfn, double dfd, double x, bool upper) {
+    const double a = 0.5 * dfn, b = 0.5 * dfd;
+    if (a == 0.0 || b == 0.0) [[unlikely]] {
+        // dfn or dfd is the smallest double: its half is not one (fdtr(1e-300, 5e-324, x) was
+        // 0 for 4.9e-24). Both below 2^-699: I_w(a, b) = b / (a + b) = dfd / (dfn + dfd). Else
+        // the side that vanishes with that shape is linear in it (1 - I_w(a, b) ~ a C for
+        // a -> 0, I_w(a, b) ~ b C for b -> 0): half its value at the double, the other side 1.
+        if (std::max(dfn, dfd) < 0x1p-699) return (upper ? dfn : dfd) / (dfn + dfd);
+        if (a == 0.0) return upper ? 0.5 * f_value_shapes(dfn, b, dfn, dfd, x, true) : 1.0;
+        return upper ? 1.0 : 0.5 * f_value_shapes(a, dfd, dfn, dfd, x, false);
+    }
+    return f_value_shapes(a, b, dfn, dfd, x, upper);
 }
 
 // |t| with P(|T| > |t|) = q2 for df >= 1: Hill's start (CACM algorithm 396, ~6 digits)
@@ -198,6 +238,9 @@ struct Stdtr : Real {
         if (std::isinf(t)) return t > 0 ? 1.0 : 0.0;
         if (std::isinf(df)) return distr_detail::one<Ndtr>(t);
         if (t == 0.0) return 0.5;
+        // df past 2^54 (1 + t^2)^2: the normal limit to 2^-56 (the tail's argument df /
+        // (df + t^2) rounds to 1 there: stdtr(1.8e308, 1e-10) was 0.5)
+        if (df > 0x1p54 * (1.0 + t * t) * (1.0 + t * t)) return distr_detail::one<Ndtr>(t);
         const double tail = distr_detail::t_tail(df, t);
         return t < 0 ? tail : 1.0 - tail;
     }
@@ -261,7 +304,20 @@ inline bool chi2_subnormal(double v, double x) { return x > 0.0 && x < 0x1p-1021
 inline double chi2_tiny(double v, double x) {
     if (v == 0.0) return 1.0;
     const double a = 0.5 * v;
-    return exp_dd(log_product(x, 0.5) * a) * Rgamma::f(a + 1.0);
+    const dd::DD e = log_product(x, 0.5) * a;
+    if (!(e.hi > -1e4)) return 0.0;  // (a huge v: the product is -inf, or NaN as a double-double)
+    return exp_dd(e) * Rgamma::f(a + 1.0);
+}
+// The complement there, 1 - y^a / Gamma(a + 1) = -expm1(a log y - log Gamma(a + 1)): for a
+// small a the lower value is within a rounding of 1 (chdtrc(1e-100, 5e-324) was 0 for
+// 3.7e-98). Below the normal doubles a = v / 2 would round: the exponent is v (log y +
+// euler) / 2 there (log Gamma(1 + a) = -euler a).
+inline double chi2_tiny_upper(double v, double x) {
+    if (v == 0.0) return 0.0;
+    const double a = 0.5 * v, ly = log_product(x, 0.5).hi;
+    const double e = a < 0x1p-1000 ? v * (0.5 * (ly + kEuler)) : a * ly - igam_detail::lgamma1p(a);
+    if (a < 1.0 && e > -0.5) return -std::expm1(e);
+    return 1.0 - chi2_tiny(v, x);
 }
 }  // namespace distr_detail
 
@@ -282,7 +338,10 @@ struct Chdtrc : Real {
     static constexpr std::array<const char*, 2> args{"v", "x"};
     static constexpr double cost_ns = cost::kGammaincc;
     static double f(double v, double x) {
-        if (distr_detail::chi2_subnormal(v, x)) return 1.0 - distr_detail::chi2_tiny(v, x);
+        if (distr_detail::chi2_subnormal(v, x)) return distr_detail::chi2_tiny_upper(v, x);
+        // v the smallest double: its half is not one, and Q(a, x) is linear in a -> 0
+        // (chdtrc(5e-324, 1e-300) was 0 for 1.7e-321)
+        if (0.5 * v == 0.0 && v > 0.0) [[unlikely]] return 0.5 * Gammaincc::f(v, 0.5 * x);
         return Gammaincc::f(0.5 * v, 0.5 * x);
     }
 };
@@ -358,17 +417,31 @@ struct Fdtri : Real {
         if (std::isinf(dfd)) return 2.0 * Gammaincinv::f(0.5 * dfn, p) / dfn;
         if (std::isinf(dfn)) return dfd / (2.0 * Gammainccinv::f(0.5 * dfd, p));
         const double a = 0.5 * dfn, b = 0.5 * dfd;
+        // One shape far beyond the other (the incomplete beta's gamma limit, ibeta_detail::
+        // limit_shapes): w = z / b with P(a, z) = p, or v = z / a with Q(b, z) = p, and x =
+        // (b/a) w / (1 - w) = (b/a) (1 - v) / v without the quotient z / b itself (subnormal
+        // for b near the largest doubles).
+        if (ibeta_detail::limit_shapes(a, b)) {
+            const double z = Gammaincinv::f(a, p);
+            return (z / a) / (1.0 - z / b);
+        }
+        if (ibeta_detail::limit_shapes(b, a)) {
+            const double z = Gammainccinv::f(b, p);
+            return (b / z) * (1.0 - z / a);
+        }
         // Solve for the smaller of w and v = 1 - w (choosing by p <= 1/2 lost
         // all of a tiny w: fdtri(0.019, 262, 0.70) gave 0 for 1.2e-14).
         if (p < Betainc::f(a, b, 0.5)) {
             const double w = Betaincinv::f(a, b, p);
-            if (w < 0x1p-60)  // p = w^a / (a B) (1 + O(w)): x = (dfd/dfn) w from logs in double-double
+            // p = w^a / (a B) (1 + O((b + 1) w)): x = (dfd/dfn) w from logs in double-double
+            if (w < 0x1p-60 && w * b < 0x1p-56)
                 return distr_detail::exp_dd(distr_detail::log_product(p, a * Beta::f(a, b)) / a + dd::log(dfd) -
                                             dd::log(dfn));
             return (w / (1.0 - w)) * (dfd / dfn);
         }
         const double v = Betainccinv::f(b, a, p);  // 1 - I_v(b, a) = p, i.e. I_w(a, b) = p
-        if (v < 0x1p-60 && p >= 0.5)  // 1 - p = v^b / (b B) (1 + O(v)), 1 - p exact here: x = (dfd/dfn) / v
+        // 1 - p = v^b / (b B) (1 + O((a + 1) v)), 1 - p exact here: x = (dfd/dfn) / v
+        if (v < 0x1p-60 && v * a < 0x1p-56 && p >= 0.5)
             return distr_detail::exp_dd(dd::log(dfd) - dd::log(dfn) -
                                         distr_detail::log_product(1.0 - p, b * Beta::f(a, b)) / b);
         return ((1.0 - v) / v) * (dfd / dfn);

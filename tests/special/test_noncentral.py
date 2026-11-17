@@ -173,3 +173,47 @@ def test_df_zero_at_subnormal_x_review_regression():
     assert abs(S.chndtr(0.0, 3.0, 5e-324) / math.exp(-1.5) - 1) < 1e-15
     assert abs(S.chndtrc(0.0, 3.0, 5e-324) / (1 - math.exp(-1.5)) - 1) < 1e-15
     assert S.chndtrix(0.0, 3.0, 0.3) > 0  # above the point mass: a positive root
+
+
+def test_tiny_noncentrality_and_tiny_argument_review_regression():
+    # The far-end walk's frames: a step of 1 / mu (mu = nc / 2 near 1e-200) on top of one of
+    # (s + 1) / y overflowed the scaled G, the sum became NaN and chndtr returned 1.0 for any
+    # nc below about 1e-155 at a tiny x; a subnormal mu made 1 / mu infinite. Values from Arb
+    # (the Poisson mixture's first terms at 700 bits).
+    for df, nc, x, want in [(2.0, 1e-200, 1e-160, 5e-161), (0.5, 1e-200, 1e-160, 9.277296085790009e-41),
+                            (3.5, 1e-320, 1e-160, 1.8484784848877647e-281), (1.0, 1e-155, 1e-160, 7.978845608028654e-81)]:
+        assert abs(S.chndtr(df, nc, x) / want - 1) < 2e-15, (df, nc, x)
+        assert S.chndtrc(df, nc, x) == 1.0
+    assert abs(S.chndtr(0.0, 1e-200, 1e-160) - 1.0) <= 2.3e-16  # the point mass e^(-nc/2)
+    assert abs(S.chndtrc(0.0, 1e-200, 1e-160) / 5e-201 - 1) < 2e-15
+    assert abs(S.ncfdtr(2.0, 3.0, 1e-200, 1e-160) / 1e-160 - 1) < 2e-15
+    assert abs(S.ncfdtr(0.5, 40.0, 1e-300, 1e-200) / 7.764613505692547e-51 - 1) < 2e-15
+    assert S.ncfdtrc(2.0, 3.0, 1e-200, 1e-160) == 1.0
+    assert S.nctdtr(3.0, 1e-200, 1e-160) == 0.5 and S.nctdtrc(3.0, 1e-200, 1e-160) == 0.5
+    assert abs(S.nctdtr(3.0, -1e-170, 0.5) / 0.6742760175759245 - 1) < 2e-15
+    # nc^2 / 2 below the doubles on the side away from the noncentrality (these were NaN)
+    assert abs(S.nctdtrc(0.2632616250534453, -2.276129563279541e-158, -2426.8530463003194) / 0.9540086053194111 - 1) < 2e-15
+    assert abs(S.nctdtrc(26.849635091450086, -5.963356455454383e-159, -0.5917525269167969) / 0.7205167625224951 - 1) < 2e-15
+
+
+def test_every_call_returns_and_an_unfinished_sum_is_nan():
+    # Every loop has a fixed most count of steps. A sum that would need more is NaN, never the
+    # part summed so far: chndtr(3.5, 1e15, x) was 2.28e-9 at every x (1e8 of its 4e8 terms,
+    # 1.7 s), and nc = 1e100 did not return (a bisection between neighbouring doubles).
+    for f, args in [(S.chndtr, (3.5, 1e15, 1e16)), (S.chndtrc, (3.5, 1e15, 0.5)), (S.chndtr, (3.5, 1e100, 1.0)),
+                    (S.chndtrc, (3.5, 1e100, 1e308)), (S.chndtrix, (3.5, 1e15, 0.5)), (S.chndtrix, (3.5, 1e100, 0.01)),
+                    (S.nctdtr, (9.0, 1e100, 0.5)), (S.nctdtrc, (9.0, 1e100, 1e30)), (S.nctdtr, (9.0, -1e8, -50.0)),
+                    (S.nctdtrit, (9.0, -1e8, 0.5)), (S.nctdtrit, (9.0, 1e100, 0.99)),
+                    (S.ncfdtr, (4.0, 13.0, 1e100, 1.0)), (S.ncfdtrc, (4.0, 13.0, 1e15, 1e16)), (S.ncfdtri, (4.0, 13.0, 1e100, 0.5))]:
+        assert math.isnan(f(*args)), (f.__name__, args)
+    # inside the guaranteed parameters every x has its value: a tail beyond every term is 0 or 1
+    assert S.chndtrc(3.5, 2.0, 1e300) == 0.0 and S.chndtr(3.5, 2.0, 1e300) == 1.0
+    assert S.chndtrc(1e4, 1e4, 1e30) == 0.0 and S.chndtr(1e4, 1e4, 1e30) == 1.0
+    # the t's tail away from nc at |t| next to the largest double (a t + root passed the
+    # doubles: NaN). Arb.
+    assert abs(S.nctdtr(0.1, 1.5, -1e308) / 8.255481062550066e-33 - 1) < 2e-15
+    assert abs(S.nctdtrc(0.1, -1.5, 1e308) / 8.255481062550066e-33 - 1) < 2e-15
+    assert S.nctdtrc(0.1, 1.5, -1e308) == 1.0
+    # arrays give the scalar's bits, NaN included
+    v = np.asarray(S.chndtr(sd.asarray([3.5, 3.5]), sd.asarray([1e15, 2.0]), sd.asarray([1e16, 1e300])))
+    assert math.isnan(v[0]) and v[1] == 1.0

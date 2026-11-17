@@ -144,3 +144,20 @@ def test_reduction_errors_name_the_function():
         S.logsumexp([1.0, 2.0])
     with pytest.raises((ValueError, IndexError), match=r"^softmax\(\)"):
         S.softmax(sd.asarray(np.ones(3)), axis=2)
+
+
+def test_reduction_call_shape():
+    # x is positional-only, axis (and logsumexp's keepdims) keyword-only; softmax and
+    # log_softmax keep x's shape and have no keepdims (docs/api/special.md §6). A wrong call
+    # shape is a TypeError that starts with the function's name (API.md §2.1).
+    x = sd.asarray(np.arange(6.0).reshape(2, 3))
+    for name in ("logsumexp", "softmax", "log_softmax"):
+        f = getattr(S, name)
+        bad = [lambda: f(x, 0), lambda: f(x, foo=1), lambda: f(x=x), lambda: f(), lambda: f(x, axis=0, out=None)]
+        if name != "logsumexp":
+            bad.append(lambda: f(x, keepdims=True))
+        for call in bad:
+            with pytest.raises(TypeError, match=rf"^{name}\(\)"):
+                call()
+        assert np.asarray(f(x, axis=0)).shape == ((3,) if name == "logsumexp" else (2, 3))
+    assert np.asarray(S.logsumexp(x, axis=0, keepdims=True)).shape == (1, 3)

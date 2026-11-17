@@ -1,13 +1,15 @@
 // The Riemann and Hurwitz zeta functions (docs/api/special.md §7,
 // docs/design/special.md §5.6; S3). Hurwitz: Cephes zeta.c (Euler-Maclaurin:
 // the first terms summed, then the tail as an integral and Bernoulli
-// corrections). Riemann: the same with q = 1 for x >= 0, the functional
-// equation for x < 0.
+// corrections). Riemann: Boost for x > -1 and at the negative integers, a
+// table at the even integers 2..52, the functional equation below -1 (the
+// routes are listed above struct Zeta).
 #pragma once
 
 #include "special/boost.hpp"
 
 #include "special/coeffs/cephes_gamma.hpp"
+#include "special/coeffs/zeta_even.hpp"
 #include "special/cost.hpp"
 #include "special/gamma_core.hpp"
 
@@ -28,7 +30,8 @@ inline double euler_maclaurin(double s, double sm1, double q) {
     double sum = std::pow(q, -s);
     double a = q, b = 0.0;
     int i = 0;
-    while (i < 9 || a <= 9.0) {
+    if (q > 0.0 && (sum == 0.0 || sum == kInf)) return sum;  // q^-s beyond the range: the later terms are nothing to it
+    while (i < 9 || a <= 9.0) {  // q >= -kDirectBelow (hurwitz): at most 9 + 9 + 64 turns
         ++i;
         a += 1.0;
         b = std::pow(a, -s);
@@ -53,6 +56,11 @@ inline double euler_maclaurin(double s, double sm1, double q) {
     return sum;
 }
 
+
+// A negative q at most this far from 0 is summed directly (euler_maclaurin's first loop:
+// 9 - q terms at most).
+inline constexpr double kDirectBelow = 64.0;
+
 // Hurwitz zeta(s, q), s >= 1 (s = 1: inf), with Cephes' conventions: NaN for
 // s < 1; inf at q = 0, -1, -2, ...; NaN for q < 0 when s is not an integer
 // (q^-s is complex); q > 1e8 by the first terms of the asymptotic series.
@@ -74,6 +82,19 @@ inline double hurwitz(double s, double sm1, double q) {
         const double sq = s / q;
         return (1.0 / sm1 + (6.0 + sq) / q / 12.0) * std::pow(q, -sm1);
     }
+    if (q < -1.0) {
+        // (s an integer here.) The N = ceil(-q) terms below 0 are a difference of two sums
+        // over positive arguments: with d = q + N in (0, 1),
+        //     zeta(s, q) = zeta(s, d) + (-1)^s (zeta(s, 1 - d) - zeta(s, 1 - q)).
+        const double d = q + std::ceil(-q);  // exact: q's fraction
+        const double sgn = std::fmod(s, 2.0) == 0.0 ? 1.0 : -1.0;
+        // At a half-integer q with an odd s the two sums near 0 cancel exactly; summed term by
+        // term they leave rounding noise 2^s 2^-53 (polygamma(20, -2.5) was -4.2e8 for -9.2e6).
+        if (d == 0.5 && sgn < 0.0) return hurwitz(s, sm1, 1.0 - q);
+        // Far below 0 the direct sum would take |q| terms.
+        if (q < -kDirectBelow)
+            return (euler_maclaurin(s, sm1, d) + sgn * euler_maclaurin(s, sm1, 1.0 - d)) - sgn * hurwitz(s, sm1, 1.0 - q);
+    }
     return euler_maclaurin(s, sm1, q);
 }
 
@@ -81,9 +102,48 @@ inline double hurwitz(double s, double sm1, double q) {
 // (polygamma's n! zeta(n + 1, x) for large n and x): every term is taken
 // relative to the first, q^-s, from pow_scaled, so the sum is an ordinary
 // number and q^-s is applied once, scaled.
+// zeta(s, q) q^s for 0 < q <= 1e8 and s > 1: the sum with every term relative to the
+// first, (q / (q + k))^s <= 1.
+inline double hurwitz_relative(double s, double sm1, double q) {
+    // (a/q)^-s = e^(-s log1p(k/q)): no power that leaves the range
+    auto rel = [&](double a) { return std::exp(-s * std::log1p((a - q) / q)); };
+    double sum = 1.0, a = q, b = 0.0;
+    int i = 0;
+    while (i < 9) {
+        ++i;
+        a += 1.0;
+        b = rel(a);
+        sum += b;
+        if (std::fabs(b / sum) < kEps && std::fabs(b * a / (sm1 * sum)) < kEps) return sum;
+    }
+    const double w = a;
+    sum += b * w / sm1;
+    sum -= 0.5 * b;
+    double fac = 1.0, k = 0.0;
+    for (int j = 0; j < 12; ++j) {
+        fac *= s + k;
+        b /= w;
+        const double t = fac * b / cephes::kZetaA[static_cast<std::size_t>(j)];
+        sum += t;
+        if (std::fabs(t / sum) < kEps) break;
+        k += 1.0;
+        fac *= s + k;
+        b /= w;
+        k += 1.0;
+    }
+    return sum;
+}
+
 inline Scaled hurwitz_scaled(double s, double sm1, double q) {
+    if (q < -1.0 && q != std::floor(q) && q + std::ceil(-q) == 0.5 && std::fmod(s, 2.0) == 1.0)
+        return hurwitz_scaled(s, sm1, 1.0 - q);  // (hurwitz: the sums near 0 cancel, zeta(s, 1 - q) is left)
+    if (q > 1e8 && s * std::log2(q) >= 900.0) {  // hurwitz's three terms, q^-(s-1) apart
+        const double sq = s / q;
+        return scaled(1.0 / sm1 + (6.0 + sq) / q / 12.0) * pow_scaled(q, -sm1);
+    }
     if (q <= 0.0 || q > 1e8 || s * std::log2(q) < 900.0) return scaled(hurwitz(s, sm1, q));
     const Scaled first = pow_scaled(q, -s);
+    if (first.m == 0.0) return first;  // q^-s beyond every range
     auto rel = [&](double a) { return value(pow_scaled(a, -s) / first); };  // (a/q)^-s, <= 1
     double sum = 1.0, a = q, b = 0.0;
     int i = 0;
@@ -112,15 +172,46 @@ inline Scaled hurwitz_scaled(double s, double sm1, double q) {
     return first * scaled(sum);
 }
 
+// zeta(x) for -60 < x < -1, x not an integer, by the functional equation
+//     zeta(x) = (2 pi)^x / pi  sin(pi x / 2)  Gamma(1 + y)  zeta(1 + y),  y = -x,
+// in plain doubles (every factor and partial product is far inside the range).
+// sin_half is sinpi(x / 2), relatively accurate next to the trivial zeros.
+// Gamma(1 + y) = y Gamma(y) with Lanczos, Gamma(y) = L(y) zgh^t e^-zgh,
+// zgh = y + g - 1/2, t = y - 1/2 (exact for y > 1): y enters exactly, where
+// rounding 1 + y first would cost up to y psi(y) 2^-53 (60 ULP for y in
+// (31, 32), whose doubles are twice as dense as those of 1 + y). The two
+// exponentials are one, e^(x log(2 pi) - zgh), with the exponent as a sum plus
+// a remainder: log(2 pi) in two parts, zgh's rounding, and the sum's rounding
+// are all applied as one first-order factor, together with zgh's rounding in
+// the power, (1 + lo/hi)^t ~ 1 + t lo/hi. Only zeta(1 + y) sees the rounded
+// 1 + y, and above 2 it moves by less than 1 ULP for that.
+inline double reflect(double x, double sin_half) {
+    const double y = -x;
+    const double p = x * kLog2PiHi;
+    const double perr = std::fma(x, kLog2PiHi, -p) + x * kLog2PiLo;
+    const TwoSum zgh = two_sum(y, lanczos::kG - 0.5);  // g - 1/2 is exact
+    const double t = y - 0.5;
+    const TwoSum e = two_sum(p, -zgh.s);
+    const double corr = (e.err + perr - zgh.err) + t * (zgh.err / zgh.s);
+    const double g = std::pow(zgh.s, t) * std::exp(e.s);
+    const double a = sin_half * bst::zeta(1.0 + y) * (y * lanczos_sum(y)) / kPi;
+    return a * (g + g * corr);
+}
+
 }  // namespace zeta_detail
 
-// Riemann zeta(x):
-//     x > 1, 0 <= x < 1:  Euler-Maclaurin with q = 1
-//     x < 0:  zeta(x) = (2 pi)^x / pi  sinpi(x/2)  Gamma(1 - x)  zeta(1 - x)
-//             with y = -x exact: Gamma(1 - x) = y Gamma(y), zeta(1 - x) from
-//             s - 1 = y; (2 pi)^x as exp of x log(2 pi) carried in two parts;
-//             the product scaled, so it overflows only where zeta does
-//             (beyond x = -260). The trivial zeros (even negative integers) are 0.
+// Riemann zeta(x), by region:
+//     |x| < 2^-30                  -1/2 - log(2 pi) x / 2
+//     x = 2, 4, ..., 52            the table of correctly rounded values (coeffs/zeta_even.hpp)
+//     x = -2, -4, ...              0 (the trivial zeros)
+//     other x >= -1                Boost
+//     x = -3, -5, ..., -59         Boost (its table of Bernoulli numbers)
+//     other -60 < x < -1           the functional equation in plain doubles (zeta_detail::reflect)
+//     x <= -60                     the functional equation with every factor scaled (m 2^e), so the
+//                                  product overflows only where zeta does (beyond x = -260);
+//                                  zeta(1 - x) by Euler-Maclaurin with s - 1 = -x exact
+// A Boost result that is not a normal number is not used: x >= 0 then takes Euler-Maclaurin with
+// q = 1, x < 0 the scaled functional equation.
 struct Zeta : Real {
     static constexpr const char* name = "zeta";
     static constexpr int nin = 1, nout = 1;
@@ -132,14 +223,31 @@ struct Zeta : Real {
         if (x == kInf) return 1.0;
         if (x == -kInf) return kNaN;
         if (std::fabs(x) < 0x1p-30) return -0.5 - kLogSqrt2Pi * x;  // zeta(x) = -1/2 - log(2 pi) x / 2 + O(x^2)
-        if (x > -60.0 && (x > 0.0 || sinpi(0.5 * x) != 0.0)) {  // Boost (special/boost.hpp); not the trivial zeros
+        // The even integers 2..52 from the table: Boost takes the closed form
+        // 2^(x-1) pi^x |B_x| / x! there and loses up to 9 ULP in pi^x, enough to put zeta(50)
+        // below 1. Every other x > 1 is within 1.3 ULP from Boost (measured).
+        if (x >= 2.0 && x <= kZetaEvenLast && 0.5 * x == std::floor(0.5 * x)) {
+            return kZetaEven[static_cast<std::size_t>(0.5 * x) - 1];
+        }
+        // Boost down to -1: its own reflection is within 11 ULP there, 1 - x being exact or
+        // nearly so. Below -1 it rounds 1 - x before Gamma and raises a rounded 2 pi to a power
+        // (65 ULP in (-32, -31)), so only the integers, which it reads from a table, stay with it.
+        if (x >= -1.0) {
             const double r = bst::zeta(x);
             if (bst::normal(r)) return r;
+            if (x >= 0.0) return zeta_detail::euler_maclaurin(x, x - 1.0, 1.0);
         }
-        if (x >= 0.0) return zeta_detail::euler_maclaurin(x, x - 1.0, 1.0);
         const double s = sinpi(0.5 * x);
         if (s == 0.0) return 0.0;
         const double y = -x;
+        if (y < 60.0) {
+            if (y != std::floor(y)) {
+                if (y > 1.0) return zeta_detail::reflect(x, s);
+            } else {
+                const double r = bst::zeta(x);
+                if (bst::normal(r)) return r;
+            }
+        }
         if (y > 400.0) return std::copysign(kInf, s);
         const double p = x * kLog2PiHi;
         const double perr = std::fma(x, kLog2PiHi, -p) + x * kLog2PiLo;

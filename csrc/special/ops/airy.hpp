@@ -3,7 +3,7 @@
 //
 //     -2 <= x <= 1     Maclaurin: Ai = c1 f - c2 g, Bi = sqrt3 (c1 f + c2 g)
 //     x > 1            Bessel functions of order 1/3, 2/3 at zeta = (2/3) x^(3/2)
-//                      (DLMF 9.6.1-9.6.3, written with K and I only):
+//                      (DLMF 9.6.2-9.6.5, written with K and I only):
 //                        Ai  = sqrt(x/3) K_1/3 / pi,       Ai' = -x K_2/3 / (pi sqrt3)
 //                        Bi  = sqrt(x/3) (2 I_1/3 + sqrt3 K_1/3 / pi)
 //                        Bi' = x/sqrt3 (2 I_2/3 + sqrt3 K_2/3 / pi)
@@ -143,8 +143,14 @@ inline Airy airy(double x) {
     if (x == kInf) return {0.0, -0.0, kInf, kInf};
     if (x == -kInf) return {0.0, kNaN, 0.0, kNaN};  // the derivatives' amplitude grows: no limit
     if (x >= -2.0 && x <= 1.0) return maclaurin(x);
+    // zeta = (2/3) x^(3/2) > 1885: Ai, Ai' are far below the doubles and Bi, Bi' far above
+    // (and zeta itself overflows from x = 1e206: the Bessel functions did not return)
+    if (x >= 200.0) return {0.0, -0.0, kInf, kInf};
     if (x > 1.0) return positive(x);
     if (x > -9.7) return negative_bessel(-x);
+    // Below -1e20 the phase zeta = (2/3) |x|^(3/2), a double-double, is off by more than 1e-3
+    // rad (zeta 2^-106) and by whole turns from 2.4e21: no value (the envelope alone is known).
+    if (x < -1e20) return {kNaN, kNaN, kNaN, kNaN};
     return negative_asymptotic(-x);
 }
 

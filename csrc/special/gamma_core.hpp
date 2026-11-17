@@ -4,7 +4,7 @@
 //
 // 1. Exact arguments. Gamma's relative sensitivity to its argument is
 //    psi(z) z: rounding z to float64 (2^-53 relative) costs z log z / 2 ULP --
-//    870 ULP at z = 170. So no formula forms 1 - x, a + b, n - k + 1 and then
+//    436 ULP at z = 170. So no formula forms 1 - x, a + b, n - k + 1 and then
 //    calls Gamma on it. The reflection uses Gamma(x) Gamma(-x) = -pi / (x
 //    sin(pi x)) (-x is exact), Gamma(x + 1) is x Gamma(x), and a sum that
 //    must be formed is kept as hi + lo (two_sum) and corrected to first order:
@@ -107,9 +107,11 @@ inline double log_abs(Scaled s) {
 
 // e^x for any finite x: 2^n e^r with r = x - n log 2 (Cody-Waite, log 2 in two parts).
 inline Scaled exp_scaled(double x) {
-    // beyond every result's range (value() clamps the exponent): keeps n's conversion defined
-    if (x > 1e5) return {0.5, 200000};
-    if (x < -1e5) return {0.5, -200000};
+    // An exponent past 2^57 is beyond every result that can come back into range (as in
+    // pow_scaled below): e^x is inf or 0 itself, and a product of one with the other is
+    // NaN rather than a number made of two clamped exponents (hyp1f1(100.5, 1e16, 1e300)
+    // was 0 for inf). Also keeps n's conversion defined.
+    if (!(std::fabs(x) < 0x1p57)) return {x > 0.0 ? kInf : (x < 0.0 ? 0.0 : x), 0};
     const double n = std::nearbyint(x / kLn2Hi);
     double r = std::fma(-n, kLn2Hi, x);
     r = std::fma(-n, kLn2Lo, r);
@@ -117,6 +119,9 @@ inline Scaled exp_scaled(double x) {
     s.e += static_cast<std::int64_t>(n);
     return s;
 }
+
+inline constexpr double kExpLimit = 0x1p58;
+inline constexpr std::int64_t kExpLimitInt = std::int64_t{1} << 58;
 
 // a^t for a > 0 and finite t, without overflow. a = m 2^ea with m in
 // [1/sqrt 2, sqrt 2): a^t = m^t 2^(ea t). ea t is split exactly (fma) into
@@ -130,21 +135,44 @@ inline Scaled pow_scaled(double a, double t) {
         --ea;
     }
     const double p = static_cast<double>(ea) * t;
+    // An exponent past 2^58 is beyond every result that can come back into range (and beyond
+    // the int64 sums of a few of them): the power is 0 or inf itself. |ea t| >= 2 |t log2 m|,
+    // so p's sign is the result's.
+    if (!(std::fabs(p) < kExpLimit)) return {p > 0.0 ? kInf : 0.0, 0};
     const double perr = std::fma(static_cast<double>(ea), t, -p);
-    const double ip = std::floor(p);
-    double f = std::exp2(p - ip);  // p - ip is exact
-    f += f * (perr * kLn2Hi);
+    double ip = std::floor(p);
+    double f;
+    if (std::fabs(p) < 0x1p52) {
+        f = std::exp2(p - ip);  // p - ip is exact
+        f += f * (perr * kLn2Hi);
+    } else {
+        // p is an integer and the product's rounding perr (up to 2^5 here) holds the
+        // fraction: its own integer part goes to the exponent (2^perr ~ 1 + perr log 2
+        // gave a negative power for perr < -1.44)
+        const double pi = std::floor(perr);
+        ip += pi;
+        f = std::exp2(perr - pi);
+    }
     Scaled r = scaled(f);
     r.e += static_cast<std::int64_t>(ip);
     double tk = t;
-    int k = 1;
-    while (std::fabs(tk) * 0.5 > 960.0) {
+    int halvings = 0;
+    while (std::fabs(tk) * 0.5 > 960.0) {  // at most 1014 times: |t| is a finite double
         tk *= 0.5;
-        k *= 2;
+        ++halvings;
     }
-    const Scaled part = scaled(std::pow(m, tk));
-    for (int i = 0; i < k; ++i) r = r * part;
-    return r;
+    Scaled part = scaled(std::pow(m, tk));
+    if (halvings <= 10) {
+        for (int i = 0; i < (1 << halvings); ++i) r = r * part;
+        return r;
+    }
+    // m^t = (m^tk)^(2^halvings) by squaring (a product of 2^halvings parts would not return
+    // for a huge t).
+    for (int i = 0; i < halvings; ++i) {
+        part = part * part;
+        if (part.e > kExpLimitInt || part.e < -kExpLimitInt) return {part.e > 0 ? kInf : 0.0, 0};
+    }
+    return r * part;
 }
 
 // ---- Lanczos ---------------------------------------------------------------
@@ -199,7 +227,8 @@ inline constexpr double kFactorial[23] = {1.0,
 
 // Gamma(z) for z > 0 as m 2^e (candidate A, Lanczos):
 //     Gamma(z) = L(z) zgh^(z - 1/2) e^-zgh,  zgh = z + g - 1/2
-// zgh is kept as hi + lo: rounding it would cost (z - 1/2) 2^-53 relative.
+// zgh is kept as hi + lo: rounding it moves the power by (z - 1/2) 2^-53 and
+// the exponential by zgh 2^-53 relative; the two cancel down to g 2^-53 (3 ULP).
 // Then zgh^t = hi^t (1 + lo/hi)^t ~ hi^t (1 + t lo/hi) and e^-zgh = e^-hi (1 - lo).
 // Integers up to 23 come from the table (exact), tiny z from 1/z - euler.
 inline Scaled gamma_scaled(double z) {

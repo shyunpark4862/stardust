@@ -30,7 +30,7 @@
 | Q10 정답지 | 엄밀한 구간 산술 Arb(python-flint)를 테스트 의존성으로 더한다(처음에는 mpmath, 2026-11-16 Arb로 바꿨다, §6). 정확도는 고정밀 값 대비 ULP로 잰다. scipy는 차이와 성능을 비교하는 데 쓴다 (§6) |
 | Q11 n항 디스패처 | 배열 영역에 일반 n항 원소별 디스패처를 더하고 `kMaxOperands`를 5로 올린다. 별도 마일스톤(S0)이고, 기존 함수의 결과는 비트까지 같다 (§3.1) |
 | Q12 이름 | scipy 이름을 쓴다. 입력은 모두 `/` 앞, `out=`은 `*` 뒤. sd에 이미 있는 함수는 다시 두지 않는다 |
-| Q13 리덕션 옵션 | `logsumexp`, `softmax`, `log_softmax`는 `axis=None`(과 `logsumexp`의 `keepdims=False`)만 둔다 |
+| Q13 리덕션 옵션 | `logsumexp`, `softmax`, `log_softmax`의 옵션은 `axis`(기본 `None`, int·tuple·리스트도 받는다)와 `logsumexp`의 `keepdims`(기본 `False`)뿐이다. scipy의 `b`, `return_sign`은 없다 |
 | Q14 시작 | 통합 로드맵 M7이 끝난 뒤 |
 | Q15 무거운 함수 | `jv yv iv kv`와 `jve yve ive kve`(실수 차수, 실수 인자), `hyp1f1`, `hyp2f1`(실수), `lambertw`(가지 0, −1), `airy`(`AiryResult`) |
 | Q16 커널 안의 `exp`/`log` | Q5의 NEON 함수는 커널 안에서 1024원소 버퍼로 vForce를 한꺼번에 부르고, 스칼라 입력도 n = 1로 같은 경로를 탄다. 나머지 함수는 libm (§3.4) |
@@ -52,7 +52,7 @@
   - 초기하와 Lambert W: `hyp1f1 hyp2f1 lambertw`
   - 복소수(마지막 마일스톤): `wofz`(새 함수), `loggamma`(새 함수), `erf erfc erfcx lambertw`의 complex 입력 (Q19)
 - **없는 것**
-  - sd에 이미 있는 함수: `expm1 log1p exp2 exp10 cbrt round sinc` 등 (Q12)
+  - sd에 이미 있는 함수: `expm1 log1p round` 등 (Q12)
   - 별칭: `jn`(= `jv`), `psi`(= `digamma`), `yn`(`yv`가 대신한다). 함수 하나에 이름 하나다 (docs/api/array.md §1.1)
   - Mathieu, 회전타원체, Struve, Kelvin, 직교다항식 `eval_*`, 구면조화, 구면 Bessel, `ellipkinc`/`ellipeinc`, `dawsn`, `erfi`, `fresnel`, `owens_t` 등
   - scipy의 오류 보고 체계(`errstate`, `seterr`, `SpecialFunctionWarning`): 경고를 내지 않는다 (API.md §2)
@@ -64,6 +64,10 @@
   - 배열 영역의 "데이터를 보고 알고리즘을 고르는 휴리스틱을 넣지 않는다"(array.md §1.4)는 배열 전체를 보고 고르는 것을 말한다. 원소 하나의 값으로 근사 구간을 고르는 것은 여기에 해당하지 않는다.
 - **NEON 경로는 스칼라 정의와 비트가 같다** (array.md §5.2와 같은 규칙). 테스트가 세 레이아웃(연속, 스칼라 브로드캐스트, strided)을 비트로 비교한다.
 - **원소의 값 때문에 실패하지 않는다** (docs/api/array.md §1.6). 정의역 밖은 NaN, 극점은 ±inf다.
+- **모든 호출은 정해진 시간 안에 끝난다** (사용자 결정 2026-11-17; docs/design/stats.md §1.3과 같다). 반복에는 상한을 상수로 두고, 상한에 닿으면 부분합이나 마지막 반복값이 아니라 NaN을 낸다. 보장 영역 안에서는 상한에 닿지 않는다. 마지막 비트에서 두 값을 오가는 반복은 그 값을 낸다.
+  - 상한: Halley 100회, 불완전 감마의 급수·연분수 1e5항, BPSER·BFRAC 1e5항, `expn`·`expi` 급수, Carlson RD 200회, AGM 64회, `lambertw` 64회, Bessel 멱급수 500항, 실수 차수 J·Y의 점화와 CF1 1e7(CF2 1e5), Hurwitz 제타의 직접 합 82항, `hyp1f1`·`hyp2f1` 급수 1e6항(극한 꼴 1e5항). 길이가 정해진 전개(BGRAT 30, BASYM 20, Hankel·Debye)는 그대로다.
+  - Boost가 평가 오류(급수 1e6항, 근 찾기 200회)를 내면 `bst::call`이 NaN으로 바꾼다.
+  - `pow_scaled`·`exp_scaled`는 2ᵏ를 제곱으로 만든다(1014번 이하).
 - **알고리즘 선택 규칙**: 함수마다 후보(§5)를 아래 순서로 견주어 고른다. 고른 것과 이유는 그 마일스톤의 해설에 측정과 함께 적는다.
   1. 보장 영역에서 정확도 목표(§2.3)를 지키는가
   2. 구간 한도(Q8)를 지키는가
@@ -87,8 +91,9 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
   | `special/common.hpp` | 상수(π, √π, 오일러 상수, ε), 다항식·유리식 평가(Horner, Estrin), 계수 표 형식 |
   | `special/cf.hpp` | 연분수(수정 Lentz), 급수 합의 공용 반복기와 수렴 판정 |
   | `special/prefix.hpp` | `x^a e^{-x} / Γ(a)`, `x^a (1-x)^b / B(a,b)` 같은 앞 인자를 Lanczos로 계산 (§5.4) |
-  | `special/ops/{erf,gamma,incomplete,logistic,zeta,expint,bessel01,bessel,airy,ellip,hyper,lambertw}.hpp` | 계열마다 Op 구조체 (스칼라 정의) |
-  | `special/kernels/neon.hpp` | Q5의 NEON 커널 |
+  | `special/ops/{erf,gamma,incgamma,incbeta,logistic,zeta,expint,bessel01,bessel,airy,ellip,hyper,lambertw,wofz,loggamma,distr,noncentral,testing}.hpp` | 계열마다 Op 구조체 (스칼라 정의) |
+  | `special/kernels/simd.hpp`, `special/kernels/chunked.hpp` | Q5의 NEON 커널: 레인 둘과 스칼라가 함께 쓰는 연산(`simd`), 1024원소 청크 루프(`chunked`) |
+  | `special/gamma_core.hpp`, `special/dd.hpp`, `special/halley.hpp`, `special/cplx.hpp`, `special/boost.hpp` | 감마 계열의 바닥(정확한 인자, `sinpi`, 가수·지수 분리), double-double, 역함수의 Halley, 복소수 보조 함수, Boost.Math 호출(§5.14) |
   | `special/reduce.cpp` | `logsumexp`, `softmax`, `log_softmax` |
   | `special/coeffs/*.hpp` | 가져온 계수 표. 파일 머리에 출처와 라이선스 |
   | `special/cost.hpp` | 함수마다 원소당 비용 (§3.3) |
@@ -184,11 +189,12 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
   - 배열의 이터레이터는 이미 작업량 가중치를 받는다 (레인 처리, array.md §4.5). 같은 장치를 쓴다.
   - S4에서 더함: 가중치의 상한 `kMaxWeight` = 256. 이터레이터는 태스크를 4096/가중치 원소로 자르는데, 가중치 800–8500인 불완전 함수는 태스크 하나가 원소 하나가 되어 10스레드가 4.8–7.8배에 그쳤다. 상한 256(태스크 16원소)에서 8.1–8.9배다 (bench/special/s4/threads.md).
   - `c`는 S0의 측정 도구로 함수마다 재고, 입력 분포는 보장 영역에서 고르게 뽑는다.
+  - `cost.hpp`의 값은 각 마일스톤에서 잰 값이고 §5의 속도 개선 뒤에 다시 재지 않았다. 48.6 ns(가중치 256) 이상인 값은 상한에 걸려 분할이 같으므로, 무거운 함수의 값이 달라져도 영향이 없다.
   - 가중치의 단위는 연속 float64 `add`의 원소당 비용이다 (`kAddNs`, 1스레드에서 0.18–0.19ns). 가중치 `w`인 함수는 원소 `2¹⁵/w`개부터 병렬이 되고, 태스크 하나는 원소 약 `2¹²/w`개다 (`bench/special/cost.py`).
 - 원소마다 반복 횟수가 다르다(연분수, Halley 반복). 정적 분할이면 스레드마다 일이 달라진다. 풀의 청크 분할(array.md §10)이 이것을 얼마나 흡수하는지 S4에서 잰다.
 
 ### 3.4 NEON (Q5)
-- 대상: `erf erfc ndtr ndtri expit logit gammaln`. 분기가 적어서 레인 두 개가 같은 길을 가는 함수들이다.
+- 대상(청크 커널, `Op::chunk`): `erf erfc ndtr log_ndtr ndtri erfinv erfcinv`(`ops/erf.hpp`)와 `expit logit`(`ops/logistic.hpp`). `erfcx`와 `gammaln`은 스칼라 libm 정의다.
 - 기법
   - 다항식 평가: Horner(곱셈-덧셈이 차례로 이어짐)와 Estrin(트리, 병렬도 높음)을 비교한다. `-ffp-contract=off`이므로 FMA는 코드에 적은 곳에서만 생긴다 (array.md §1.3). 스칼라 정의도 같은 식을 써야 비트가 같다.
   - 분기 없애기: 두 구간을 모두 계산한 뒤 `vbslq`로 고른다. 구간이 셋이면 셋 다 계산하는 비용과 분기 비용을 잰다.
@@ -206,6 +212,9 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 ### 3.5 리덕션 (`logsumexp`, `softmax`, `log_softmax`)
 - 정의: `logsumexp(x) = m + log(Σ exp(x - m))`, `m = max(x)`
 - 두 패스로 한다: 1) `max` 2) `exp(x - m)`의 pairwise 합 (base/pairwise.hpp). 배열의 리덕션 드라이버와 블록 분할(array.md §6.5)을 쓴다. 결과는 스레드 수와 무관하다.
+  - `axis`는 배열 리덕션의 규칙 그대로다(`sd.max`, `sd.sum`에 넘긴다).
+  - `logsumexp`는 `max`를 두 번 부른다: `x`와 브로드캐스트할 `keepdims=True`의 m, 결과에 더할 요청한 `keepdims`의 m.
+  - `x - m`은 TwoSum으로 hi + lo를 만들고 `exp(hi)·(1 + lo)`로 계산한다. 빼기를 반올림하면 exp에서 |x − m|·2⁻⁵³(−700에서 7.8e-14)을 잃는다.
 - 한 패스 방식(온라인 softmax: 최댓값이 바뀔 때마다 누적값을 다시 척도 조정)은 메모리 왕복이 한 번 줄지만 반올림이 늘어난다. 두 방식을 해설에서 비교하고, 공개 함수는 두 패스를 쓴다.
 - `m`이 ±inf일 때: 모두 `-inf`이면 결과는 `-inf`, `+inf`가 있으면 `+inf`, NaN은 전파한다 (scipy와 같다).
 - `softmax`는 `exp(x - logsumexp(x))`가 아니라 `exp(x - m) / Σ`로 계산한다. 나눗셈 하나가 log·exp 왕복보다 정확하다.
@@ -259,15 +268,15 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 - `beta`, `betaln`: Lanczos 비(Boost `beta`)로 세 Γ를 한 식에 모아 오버플로와 소거를 피한다. 큰 인자는 log 형태
 - `binom(n, k)`: 정수 k가 작으면 곱(정확), 그 밖은 `1/((n+1)·B(n-k+1, k+1))`. 음의 n은 반사
 - **S3에서 정하고 바꾼 것**
-  - `gamma`: 후보 B(Cephes)를 골랐다. 최대 4.4 대 6.5 ULP(x > 0), 3.4배 빠르다(§1.3의 규칙). A(Lanczos)는 오버플로를 넘는 scaled 경로(서브노멀 꼬리, beta, 음수 zeta, polygamma)에 쓴다.
+  - `gamma`: 후보 B(Cephes)를 골랐다. 최대 4.4 대 6.5 ULP(x > 0), 3.4배 빠르다(§1.3의 규칙). A(Lanczos)는 오버플로를 넘는 scaled 경로(서브노멀 꼬리, beta, 음수 zeta, polygamma)에 쓴다. 공개 `gamma`는 x > −170(극점 제외)에서 Boost를 먼저 부르고(§5.14), Cephes 식은 Boost의 결과가 정상 범위가 아닐 때와 `rgamma`·`beta` 안에서 쓴다.
   - 정확한 인자: 반사식은 `Γ(x)Γ(−x) = −π/(x·sinpi(x))`, `Γ(x+1) = x·Γ(x)`. 꼭 만들어야 하는 합(a+b, n−k+1)은 TwoSum으로 hi + lo를 들고 `Γ(hi+lo) ≈ Γ(hi)(1 + ψ(hi)·lo)`. `sinpi`·`cospi`는 인자를 정확히 줄인다.
   - `gammaln`(x > 0): 2 둘레의 Taylor 전개(계수는 ζ(k)−1, 28항)와 Stirling 두 근사. 1 근처는 `lgamma(2+e) − log1p(e)`. Cephes의 [2, 3] 유리식은 쓰지 않는다. **2구간**
   - `beta`: a+b ≤ 170은 Cephes Γ 셋, 그 위는 Γ를 가수·지수로 나눈 scaled 곱, 한 인자가 7000을 넘으면 Γ 비율 `L(a)/L(c)·e^E·cgh^{−b}`(E가 작게 남도록 정리)
-  - `zeta`: Riemann x ≥ 0은 Euler–Maclaurin(q = 1), x < 0은 함수방정식(scaled). Hurwitz는 Cephes `zeta.c`. q^{−s}가 언더플로하면 scaled로 더한다(polygamma).
+  - `zeta`: Riemann x ≥ 0은 Euler–Maclaurin(q = 1), x < 0은 함수방정식(scaled). Hurwitz는 Cephes `zeta.c`. q^{−s}가 언더플로하면 scaled로 더한다(polygamma). 공개 Riemann `zeta`는 x > −60(자명한 영점 제외)에서 Boost를 먼저 부른다(§5.14). x ≥ 0의 Euler–Maclaurin은 Boost의 결과가 정상 범위가 아닐 때만 쓴다.
 
 ### 5.3 불완전 감마 (`gammainc`, `gammaincc`)
 - `x < a + 1`: 거듭제곱급수로 P, `x ≥ a + 1`: Lentz 연분수로 Q. 나머지는 보수
-- 큰 a, `x ≈ a`(예: a > 20, |x − a| < 0.3a)는 급수와 연분수가 모두 느리고 소거가 생긴다. Temme 균등 점근전개를 쓴다 (DESIGN 1라운드 Q3의 예). **3구간**
+- 큰 a, `x ≈ a`(a > 20, |x − a| < 0.4a)는 급수와 연분수가 모두 느리고 소거가 생긴다. Temme 균등 점근전개를 쓴다 (DESIGN 1라운드 Q3의 예). **3구간**
 - 앞 인자 `x^a e^{-x}/Γ(a)`는 §5.4
 
 ### 5.4 앞 인자 (`special/prefix.hpp`)
@@ -298,6 +307,17 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
   - **연분수의 뒤로 가는 계산**(cf.hpp)은 앞으로 갈 때 만든 항 64개를 다시 쓴다.
   - 남은 것: a, b ≥ 100이고 평균 근처인 basym(계수 점화식이 O(n³), scipy의 0.5배)과 작은 a·큰 b의 bgrat(0.7배). 측정은 bench/special/opt2/.
 
+- **작은 모양과 아주 작은 x (2026-11-17, stats 최적화 중 Arb로 찾음)**: a, b ≤ 1에서 BRATIO는 x^a ≤ 0.9이면 멱급수로 I를 구하고 1 − I를 빼기로 만든다. I가 0.9에 이르면 급수 오차가 9배가 된다(우리 9.8e-15, 같은 규칙을 쓰는 Boost 6.0e-15). 그래서 I > 1/2이면 1 − I를 BRATIO의 다른 두 방법으로 직접 구한다. 급수의 첫 인자만으로 I > 1/2 + 2⁻⁴⁰임을 알면(b ≤ 1에서는 모든 항이 양수라 하한이다) 급수를 돌리지 않는다. x < 2⁻¹⁰⁰⁰은 log x를 받는 `ibeta_tiny`가 2⁻¹⁰⁰⁰에서의 값에서 양의 항만으로 내려간다(`fdtr`·`fdtrc`의 아주 작은 인자도 이것을 쓴다; 전에는 1 − i로 1.3e-13까지 틀렸다). x가 0으로 언더플로한 인자는 (0, 1)이다. 한 모양이 2⁹⁰⁰ 이상이면 감마 극한 I_x(s, c) = P(s, c·x)를 쓴다(`gamma_limit`; 전에는 `fdtr(2, 1e308, 1)`이 1.0, 참값 0.632). Boost의 값은 a, b ≤ 6, x ≥ 2⁻¹⁰²², 결과 ≥ 2⁻⁹⁶⁰일 때 쓴다: 서브노멀 x에서 Boost는 25%까지 틀리고, 결과가 2⁻¹⁰¹⁶ 아래이면 2.2e-13까지 틀린다. 그 안에서도 Boost가 빼기로 만드는 쪽은 부르기 전에 가려 우리 것으로 보낸다(`boost_subtracts`: a, b ≤ 1, 보수 쪽, a0 < b0, x0 < 0.02, 0.6 < x0^a0 ≤ 0.9. 우리가 쓰는 Boost는 x0 ≥ 0.02에서 연분수라 빼지 않는다. 0.6은 I ≤ x0^a0/y0에서 나온다). 6만 점에서 Boost가 남는 곳은 1.7e-15, 넘긴 곳은 Boost 6.8e-15 대 우리 1.3e-15다. 큰 지수의 e^(−E)(1 − E.lo)는 E ≥ 2⁵²에서 +0이다(전에는 −0.0, E ≈ 1e300부터 NaN: `betainc(1e300, 2, 0.5)`).
+- **극단 인자 정리 2차 (2026-11-18, 사용자 결정 "전부 값 또는 NaN으로")**: 극단 인자 점검에서 남았던 틀린 값 255점을 다시 재현해 83점으로 줄였다(Airy와 복소 erf·wofz를 빼면 218 → 38). 남은 것은 아래 '남은 결함'과 `hyp1f1`·`hyp2f1` 절에 적었다.
+  - `binom`: n + 1을 반올림한 뒤 k의 거듭제곱에 넣어 204 ULP를 잃던 것과, n ≥ 0에서 큰 음의 비정수 k가 0 대신 ±1·±inf를 내던 것을 고쳤다. n ≥ 0의 거대 인자 가지는 인자를 정확히 넣는 식으로 다시 썼다. 무작위 8000점에서 최대 8 ULP, 새 NaN은 없다.
+  - 서브노멀 모양: a, b < 2⁻⁷⁰⁰이면 `betainc`는 닫힌 꼴 b/(a + b)다(Boost는 1.0). `fdtr`·`fdtrc`·`chdtrc`의 df = 5e-324는 0이나 NaN 대신 값이다. `stdtr(0.9, -1.8e308)`은 130 → 0.8 ULP, `betaln(1e300, 1.8e308)`은 −inf → −2.0007e301이다.
+  - 비중심: t 함수는 |nc| < 2⁻⁵⁰⁰이면 중심 함수로 간다(`nctdtr(0.5, -5e-324, -1e300)`이 10% 틀렸다). F의 먼 꼬리에서 구한 쪽의 보수가 1/64 아래이면 NaN이다. 역함수는 nc ≠ 0이고 p가 서브노멀이면 NaN이다(Arb도 참값을 정하지 못했고, 정방향 검증으로 틀린 것만 알았다).
+  - 보장 영역에서 함께 찾은 것: `hyp1f1(0.5, 1000, -1e5)`가 4200 ULP(log Γ의 차) → 1.2 ULP, a = 1e5·b < 11의 Boost 값 83 ULP → 우리 식, `hyp2f1`의 큰 a에서 Pfaff 변환이 NaN이나 1e-12 오차를 내던 것, 넘치는 양의 합이 inf 대신 NaN이던 것.
+  - `hyp1f1` 급수의 뿌리 원인: 상쇄 추정을 보정하지 않은 합으로 해서 1e17 근처에서 포화했고, 1e13 한계가 걸리지 않았다. 느슨한 영역은 이제 우리 급수(1e13을 지킬 때), b > 0의 a 점화식(double-double), 큰 |x| 전개, Boost(|a|, |b| ≤ 100만), Tricomi 순으로 시도하고 모두 안 되면 NaN이다. 느슨한 영역의 호출은 느려졌다(표본 점에서 505 → 825 ns; 속도표의 행은 아니다).
+  - `hyp1f1` 보장 영역의 Boost 구간을 0 ≤ x < 16으로 줄였다(사용자 결정 2026-11-18: 보장을 넘는 곳은 우리 급수로). b < 11, a ≤ 100에서 쓰던 Boost 값은 x ≥ 18부터 4%의 점이 45 ULP를 넘고 x ≈ 500에서 297 ULP였다(무작위 4만 점, a 1e-2–100, b 1e-3–11, x 1–690). 우리 급수는 같은 점에서 최대 48 ULP(x ≈ 650, 상대 1e-14 안)이고 그 밖은 20 ULP 아래다. 정확도표의 보장 행은 78.6 → 15.9 ULP가 됐다. 속도표 입력에서는 1.2%의 점이 이 구간이라 1스레드가 2.8% 느려졌다(A/B 다섯 번 교대, 236–239 → 243–248 ms).
+  - `hyp2f1`: 급수가 지수를 따로 들고, c − b와 z/(z − 1)을 정확히 넣으며, 1 − z 변환은 스케일한 Γ와 상쇄 검사(1024배 초과면 NaN)를 쓴다.
+  - 속도(C++ A/B, 정확도 입력, 1스레드): 모든 행이 ±1% 안이고 `hyp2f1` +2.4%, `chndtrix` +2.1%다. 정확도표는 106행 가운데 104행이 같고 느슨한 두 행이 좋아졌다(`hyp1f1` 2.2e3 → 1.17e3, `hyp2f1` 3.07e3 → 2.73e3).
+- **남은 결함** (고치지 않음): b ≳ 1e200에서 `ibeta(14.38, 1e200, 1.5e-199)`가 NaN이고, `betaincinv(14.38, 1e200, 0.617)`이 1 − p의 근을 낸다. 2026-11-18 뒤에 남은 것: `hyp1f1` 느슨한 영역의 Boost 최대 1.2e-12·Tricomi 9e-12, `hyp2f1` 느슨한 영역 1.7e-12(z < −9, |c| > 1e4), `nctdtr`·`nctdtrc`의 df ≤ 1e-3에서 2.4e-13(23점), `fdtri(14.38, 1e-300, 5e-324)` 59 단위. 점검 점 가운데 8370점은 Arb 참값이 정해지지 않았고 6798점은 시간 초과라 검증하지 못했다.
 ### 5.6 제타와 지수적분
 - `zeta(x, q)`: Hurwitz, Euler–Maclaurin (Cephes `zeta.c`: 앞 N항 직접 합 + Bernoulli 꼬리). Riemann(`q` 생략)의 `x < 1`은 함수방정식(변환). Hurwitz의 `x < 1`은 NaN (scipy와 같다)
 - `expn(n, x)`: `x ≤ 1` 거듭제곱급수, `x > 1` Lentz 연분수 (NR `expint`), 큰 n은 균등 점근. **3구간**
@@ -305,6 +325,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 - **S5에서 정하고 바꾼 것**
   - `expn`: 큰 n의 균등 점근은 넣지 않았다. 연분수의 b = x + n이 크면 곧바로 수렴하고, 급수는 x^k/k!로 줄어서 n = 1e5까지 6.3 ULP다. **2구간**
   - `expi`: 양의 0점 x₀ = 0.3725… 둘레 [0.3, 0.45]에 Taylor 급수를 더했다(정확한 d = x − x₀, 계수는 `tools/gen_ei_taylor.py`). 거듭제곱급수는 거기서 γ + log x와 상쇄해 scipy가 5e15 ULP를 잃는다. **3구간**
+  - 공개 `expi`는 x ≥ −700에서 Boost를 먼저 부른다(§5.14). 위의 세 구간(x > 0)은 Boost의 결과가 정상 범위가 아닐 때만, −E₁(−x)는 그때와 x < −700(서브노멀 꼬리)에서 쓴다.
 
 ### 5.7 Bessel 0·1차 (`i0 i1 k0 k1 j0 j1 y0 y1`와 e-스케일 판)
 - `i0 i1 k0 k1`: Cephes Chebyshev 전개, 함수마다 **2구간** (x ≤ 8 / x > 8 또는 x ≤ 2 / x > 2). e-스케일 판은 같은 전개에서 `exp`를 빼면 된다.
@@ -333,7 +354,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 ### 5.10 타원적분 (`ellipk(m)`, `ellipe(m)`; scipy와 같은 매개변수 m)
 - `ellipk`: AGM. `K = π / (2·AGM(1, √(1-m)))`, 이차 수렴(약 5회). `m < 0`은 변환. m → 1의 log 특이점은 `1-m`이 정확하므로(m ≥ 0.5에서 Sterbenz) AGM이 그대로 처리한다.
 - `ellipe`: AGM의 `E = K·(1 - Σ 2^{n-1} c_n²)`는 m → 1에서 `∞ × 0`의 소거가 생긴다. 그래서 Carlson 대칭형 `E = R_F(0, 1-m, 1) - (m/3)·R_D(0, 1-m, 1)`(복제 정리)를 쓴다. 두 방법의 대비가 해설의 주제다.
-- **S5에서 바꾼 것** (사용자 결정 2026-11-14): 공개 함수는 Cephes `ellpk`·`ellpe`의 다항식 `P(y) − log(y)·Q(y)`, `P(y) − log(y)·y·Q(y)`(y = 1 − m)다. 위의 AGM·Carlson과 정확도가 같고(최대 2.3/2.0 대 3.0/4.2 ULP) 4–7배 빠르다. m < 0은 y = 1/(1−m)를 직접 만든다.
+- **S5에서 바꾼 것** (사용자 결정 2026-11-14): 공개 함수는 Cephes `ellpk`·`ellpe`의 다항식 `P(y) − log(y)·Q(y)`, `P(y) − log(y)·y·Q(y)`(y = 1 − m)다. 위의 AGM·Carlson과 정확도가 같고(최대 2.3/2.0 대 2.9/4.2 ULP) 4–7배 빠르다. m < 0은 y = 1/(1−m)를 직접 만든다.
   - AGM과 Carlson은 비교용 비공개 함수 `_ellipk_agm`, `_ellipe_carlson`으로 남겼다. 위의 Carlson 식은 m → 1에서 K − (K − E)의 상쇄가 있어서(y = 1e-16에서 약 20배), 두 항이 모두 양수인 `E = (y/3)(R_D(0, y, 1) + R_D(0, 1, y))`(DLMF 19.25.1)로 바꿨다.
 
 ### 5.11 초기하와 Lambert W
@@ -407,18 +428,19 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
   | `hyp1f1` | 느슨한 영역 전부, 보장 영역의 x ≥ 0이고 b < 11 | 보장 영역의 나머지 (Boost 208 ULP) |
 - 그대로 둔 것: Airy(우리는 네 값을 한 번에 계산해 277 ns, Boost는 넷을 따로 불러 약 720 ns이고 \|x\| > 15에서 틀린다), `expit`, `logit`, `erf` 계열, `expn`, `polygamma`, 타원적분, `jv`·`yv`, 불완전 감마(Boost가 느리거나 틀린다). Boost에 없는 함수(복소수 전부, `erfcx`, 정규분포, e-스케일 Bessel, `hyp2f1`, Hurwitz 제타, 리덕션)도 우리 것이다.
 - `hyp1f1`의 느슨한 영역에서 Boost도 값을 내지 못하면(큰 음의 a), a < −1e3이면 Tricomi의 Bessel 함수 전개(A&S 13.3.7)를 쓴다. |a| ≥ 1e3의 mpmath 참값 46점에서 Boost와 같은 수준(상대 1e-12 안팎)이었다. `hyp1f1(-1e12, 2, 0.5)`가 inf에서 −3.47e-10이 됐다(코드리뷰).
-- 내부 호출: `hyp2f1`과 `hyp1f1`의 우리 식이 부르는 `Gamma::f`, `Digamma::f`도 바뀐 구간에서는 Boost다. `betainc`와 `betaincc`의 합은 3 ULP까지 1에서 벗어난다(Boost가 둘을 따로 계산한다; 전에는 같은 BRATIO 호출이라 2 ULP 안).
+- 내부 호출: `hyp2f1`과 `hyp1f1`의 우리 식이 부르는 `Gamma::f`, `Digamma::f`도 바뀐 구간에서는 Boost다. `betainc`와 `betaincc`의 합은 4.5 ULP까지 1에서 벗어난다(모양 [1e-5, 6]의 34만 점; Boost가 둘을 따로 계산한다. 최대인 점은 둘 다 Boost 값이다).
 
 ---
 
 ### 5.15 분포 함수 (`special/ops/distr.hpp`, T1)
 - 15개 모두 기존 함수의 조합이다. 조합에서 정확도를 잃지 않는 것이 일의 거의 전부였다.
 - **인자를 반올림하지 않는다.** `stdtr`의 x = df/(df + t²), y = t²/(df + t²)와 `fdtr`의 w, 1 − w를 입력에서 double-double로 만들고, 반올림하지 않은 채 불완전 베타의 핵심(`ibeta_detail::ibeta(a, b, x, y)`, §5.4)에 넘긴다. 매개변수가 크면 I_x는 x에 민감하다(조건수 ~ a·x). 그래서 x를 double로 반올림하면 꼬리에서 100–300 ULP를 잃었다(처음 측정: fdtr 290, fdtrc 363). dd로 넘긴 뒤 16–18 ULP다. 핵심은 I와 1 − I를 한 번에 주므로 보수도 같은 호출이다.
+- **작은 모양은 반올림한 인자로 `betainc`를 부른다.** `stdtr`은 df/2 ≤ 6, `fdtr`·`fdtrc`는 dfn/2, dfd/2 ≤ 6이면 x, y 중 작은 쪽을 double로 반올림해 `Betainc::f`·`Betaincc::f`(§5.14의 Boost 구간)에 넘긴다. I_x의 x에 대한 조건수가 a·x ≤ 6이라 반올림이 3 ULP 안이다(`t_tail`, `f_value`).
 - **작은 인자 급수**: 인자가 2⁻¹⁰⁰⁰ 아래(언더플로 근처)이면 I_x(a, b) ≈ x^a/(a B(a, b))를 직접 쓴다. 예: `stdtr(1, −1e200)` = 3.2e-201인데 x = 1e-400은 언더플로한다.
 - **역함수는 작은 쪽을 푼다.** `stdtrit`, `fdtri`는 x와 1 − x 중 작은 쪽을 betaincinv/betainccinv로 푼다. 어느 쪽이 작은지는 p를 I₁/₂(a, b)와 비교해서 정한다. 처음에는 p ≤ 1/2로 골라서, x가 아주 작은데 1 − x를 풀었다. 그 결과 `stdtrit` 4e-9, `fdtri`는 0을 냈다.
 - **역함수의 먼 꼬리**: 근이 2⁻⁶⁰ 아래이면 급수 p ≈ x^a/(aB)를 거꾸로 풀어 거듭제곱으로 얻는다. 지수 −log(paB)/a를 double로 계산하면, 반올림한 지수에 |log|(~450)이 곱해져 191 ULP를 잃었다. 그래서 dd로 계산하고 exp를 한 번만 반올림한다(`exp_dd`, `log_product`; 서브노멀 p는 2⁶⁴를 곱해 둔다). 그 뒤 `stdtrit` 6.9 ULP다.
 - **`ndtri_exp`**: y > log ½이면 −ndtri(−expm1(y)), y > −700이면 ndtri(exp(y))다. 그 아래는 점근식 x² = −2y − log 2π − 2 log(−x) + 2 log(1 − 1/x² + 3/x⁴)의 고정점이다. −1e8 위에서는 그 값에서 log_ndtr로 Newton을 한다. Newton의 기울기 φ/Φ는 크기 x²/2인 두 수의 차라서, |x| > 1e6부터 자릿수를 잃었다(y = −1e17에서 2e13 ULP). 그래서 −1e8 아래는 고정점만 쓴다(다음 항 15/x⁶이 마지막 비트보다 훨씬 작다).
-- **`stdtrit`의 속도 (2026-11-15, 최적화 4단계)**: betaincinv로 풀면 꼬리 평가가 네댓 번이다(1100 ns, scipy의 0.21배). df ≥ 1이고 양쪽 꼬리 확률이 1e-12보다 크면 Hill의 근사(CACM 396, 6자리)에서 출발해 꼬리 함수에 Halley 걸음을 한다. 걸음이 4e-6|t| 아래이면 남는 오차가 1e-17이라, 대부분 평가 한 번으로 끝난다(440 ns, 0.54배). 참값 최대 7.4 ULP, 무작위 4천 점(df 1–1.6e5) 최대 4 ULP. 더 깊은 꼬리와 df < 1은 전처럼 betaincinv다.
+- **`stdtrit`의 속도 (2026-11-15, 최적화 4단계)**: betaincinv로 풀면 꼬리 평가가 네댓 번이다(1100 ns, scipy의 0.21배). df ≥ 1이고 양쪽 꼬리 확률이 1e-12보다 크면 Hill의 근사(CACM 396, 6자리)에서 출발해 꼬리 함수에 Halley 걸음을 한다. 걸음이 4e-6|t| 아래이면 남는 오차가 1e-17이라, 대부분 평가 한 번으로 끝난다(약 310 ns, scipy의 약 0.5배). 참값 최대 7.4 ULP, 무작위 4천 점(df 1–1.6e5) 최대 4 ULP. 더 깊은 꼬리와 df < 1은 전처럼 betaincinv다.
 - **S4의 결함을 고쳤다.** T1을 재다가 `betaincinv`, `betainccinv`가 a, b < 1의 약 8%에서 0이나 1을 돌려주는 것을 찾았다. AS109의 처음 추정이 U자 밀도에서 엉뚱한 끝을 골라 (0, 1) 밖의 값(예: 1 − x = 5400)을 냈고, 코드는 그것을 "근이 언더플로한다"로 읽었다. 이제는 범위 밖이면 다른 끝의 근사를, 그것도 안 되면 0.5에서 출발한다(`as109`). 40만 개 표본에서 scipy와 모두 일치한다. 그 영역의 참값 파일도 다시 만들었다. 옛 참값은 출발점으로 쓴 우리 함수의 0을 그대로 받아 0이 들어 있었다.
 - **참값 생성의 함정** (tools/special_ref.py, mpmath 시절. Arb로 바꾼 뒤에는 공이 자릿수 손실을 그대로 드러낸다, §6):
   - mpmath의 betainc는 인자가 1에 가까우면 자릿수를 잃는다. 그래서 x와 1 − x 중 작은 쪽에서 계산한다(`_ibeta_pair`).

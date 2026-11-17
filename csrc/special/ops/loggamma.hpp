@@ -105,6 +105,19 @@ inline cplx sinpi(cplx z) {  // sin(pi z) with exact reduction of Re z
     return {special::sinpi(x) * std::cosh(py), special::cospi(x) * std::sinh(py)};
 }
 
+// log sin(pi z). Within 2^-500 of an integer n, sin(pi z) = (-1)^n pi d (d = z - n) to
+// rounding: log pi + log d, the logarithm scaled (cx::clog) -- pi times a subnormal part
+// rounds by percents (loggamma(-34 - 5e-324i) was off by 0.046).
+inline cplx log_sinpi(cplx z) {
+    const double n = std::nearbyint(z.real()), dx = z.real() - n;
+    if (std::max(std::fabs(dx), std::fabs(z.imag())) < 0x1p-500) {
+        const double sgn = std::fmod(n, 2.0) == 0.0 ? 1.0 : -1.0;
+        const cplx l = clog(cplx{sgn * dx, sgn * z.imag()});
+        return {kLogPi + l.real(), l.imag()};
+    }
+    return clog(sinpi(z));
+}
+
 inline cplx loggamma(cplx z);
 
 inline cplx finite(cplx z) {
@@ -112,7 +125,7 @@ inline cplx finite(cplx z) {
     if (x > 7.0 || std::fabs(y) > 7.0) return stirling(z);
     if (x < 0.1) {
         const double t = std::copysign(kTwoPi, y) * std::floor(0.5 * x + 0.25);
-        return cplx{kLogPi, t} - clog(sinpi(z)) - loggamma(cplx{1.0 - x, -y});
+        return cplx{kLogPi, t} - log_sinpi(z) - loggamma(cplx{1.0 - x, -y});
     }
     if (x <= 4.0 && std::fabs(y) <= 3.0) return blob(z);
     if (!std::signbit(y)) return recurrence(z);

@@ -121,6 +121,8 @@ inline double j0_small(double x) {
 inline double j1_small(double x) {
     const double z = x * x;
     const double w = horner(z, cephes::kJ1Rp) / p1evl(z, cephes::kJ1Rq);
+    // (next to the subnormals x last: w x would round there, 1e-13 of the result)
+    if (x < 0x1p-900) return (w * (z - cephes::kJ1Z1) * (z - cephes::kJ1Z2)) * x;
     return w * x * (z - cephes::kJ1Z1) * (z - cephes::kJ1Z2);
 }
 

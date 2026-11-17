@@ -11,7 +11,9 @@
 // The costs are serial times per element on this machine (Apple M4 Pro, one
 // thread, inputs spread over the function's guaranteed region), measured by
 // bench/special/cost.py. A factor of two either way changes only where the
-// split starts, never a result.
+// split starts, never a result. The values are not re-measured when a function
+// gets faster: from 48.6 ns (kMaxWeight adds) up the weight is capped, so the
+// exact value of a heavy function's constant has no effect.
 #pragma once
 
 #include <algorithm>

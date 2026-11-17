@@ -78,7 +78,7 @@ def test_scipy_errors_get_true_values():
     assert S.gammainc(5e-324, 0.5) == 1.0  # scipy 0
     assert S.gammainc(5e-324, 1e-300) == 1.0
     assert S.gammainc(1.0, 5e-324) == 5e-324  # scipy 0
-    # scipy NaN (and mpmath 1.2e-647; Arb gives the value below): x^2 b (b+1) / 2 (1 - 2 b x / 3 + ...), b x = 5e-24
+    # scipy NaN; Arb gives the value below: x^2 b (b+1) / 2 (1 - 2 b x / 3 + ...), b x = 5e-24
     assert abs(S.betainc(2.0, 1e300, 5e-324) / 1.2205043120026404e-47 - 1) <= 1e-15
     assert S.gammaincinv(5e-324, 0.5) == 0.0  # scipy NaN: 0.5^(1/a) underflows
     x = S.betaincinv(2.0, 3.0, 5e-324)  # scipy NaN
@@ -149,3 +149,57 @@ def test_three_operand_broadcasting():
     want = sp.betainc(np.array([[0.5], [2.0], [30.0]]), np.array([1.0, 4.0]), x)
     assert got.shape == (3, 2)
     assert np.allclose(got, want, rtol=1e-13, atol=0)
+
+
+def test_a_zero_result_is_positive_zero_review_regression():
+    # The prefix e^-E (1 - E.lo): from E = 2^53 the low part is no longer below 1, and the
+    # factor turned the sign (gammainc(1e17, 1) was -0.0; scipy +0.0) or, from 1e300, made NaN.
+    for a in [1e16, 1e17, 1e18, 1e100, 1e300]:
+        got = [S.gammainc(a, 1.0), S.gammaincc(1.0, a), S.betainc(a, 2.0, 0.5), S.betaincc(2.0, a, 0.5),
+               S.betainc(a, a, 0.25), S.betainc(a, 0.5, 0.5), S.betaincc(0.5, a, 0.5)]
+        assert all(same_bits(v, 0.0) for v in got), (a, got)
+        assert S.gammaincc(a, 1.0) == 1.0 and S.betaincc(a, 2.0, 0.5) == 1.0
+    rng = np.random.default_rng(8)
+    a, b = np.exp(rng.uniform(0, 690, 4000)), np.exp(rng.uniform(0, 690, 4000))
+    x, u = a * np.exp(rng.uniform(-3, 3, 4000)), rng.uniform(0, 1, 4000)
+    A, B, X, U = (sd.asarray(v) for v in (a, b, x, u))
+    for v in (S.gammainc(A, X), S.gammaincc(A, X), S.betainc(A, B, U), S.betaincc(A, B, U)):
+        v = np.asarray(v)
+        assert not np.signbit(v).any() and np.all((v >= 0) & (v <= 1))
+
+
+def test_betainc_where_one_shape_is_past_2_900():
+    # The beta distribution's gamma limit, I_x(a, b) = P(a, b x): BRATIO's methods made NaN
+    # of the first point. Values: the series of I_x in Arb (3000 bits).
+    for a, b, x, lo, up in [(8.2, 3.7e277, 1.3e-276, 0.9999999999997419, 2.58155456806891e-13),
+                            (0.3, 1e300, 1e-301, 0.5459128495917965, 0.45408715040820347),
+                            (2.0, 1e290, 1e-310, 4.99999999999997e-41, 1.0)]:
+        assert abs(S.betainc(a, b, x) / lo - 1) < 2e-15, (a, b, x)
+        assert abs(S.betaincc(a, b, x) / up - 1) < 2e-15, (a, b, x)
+        assert abs(S.betaincc(b, a, 1.0 - x) / lo - 1) < 2e-15 or x < 1e-16  # (1 - x rounds to 1 below that)
+    assert S.betainc(1e300, 2.0, 0.5) == 0.0 and S.betaincc(1e300, 2.0, 0.5) == 1.0
+
+
+def test_betaincc_small_shapes_on_the_side_boost_subtracts():
+    # a, b <= 1, x < 0.02 and x^a in (0.6, 0.9]: Boost gives 1 - I as 1 minus a series near 1
+    # (6.8e-15 off at the first point); that side is ibeta's own. Values from Arb.
+    for a, b, x, lo, up in [(0.00039, 0.322, 1.54e-119, 0.8978643168072409, 0.10213568319275908),
+                            (0.00027, 0.014, 1.4e-188, 0.872943608883056, 0.127056391116944),
+                            (0.00636, 0.458, 2.36e-21, 0.7318146749103045, 0.26818532508969556),
+                            (0.0861, 0.514, 0.0228, 0.6517547885654456, 0.3482452114345544)]:
+        assert abs(S.betainc(a, b, x) / lo - 1) < 2.5e-15, (a, b, x)
+        assert abs(S.betaincc(a, b, x) / up - 1) < 2.5e-15, (a, b, x)
+        assert abs(S.betainc(b, a, 1.0 - x) / up - 1) < 2.5e-15 or x < 1e-16, (a, b, x)
+
+
+def test_betainc_and_betaincc_add_to_one():
+    # The two come from separate evaluations (Boost's ibeta and ibetac, or ibeta for one of
+    # them): measured 4.5 ULP of 1 at most over 3.4e5 points of these shapes.
+    rng = np.random.default_rng(12)
+    n = 20000
+    a, b = np.exp(rng.uniform(np.log(1e-5), np.log(6.0), n)), np.exp(rng.uniform(np.log(1e-5), np.log(6.0), n))
+    x = np.where(np.arange(n) % 2 == 0, rng.uniform(0, 1, n), np.exp(np.log(rng.uniform(0.3, 1.0, n)) / a))
+    ok = (x > 0) & (x < 1)
+    A, B, X = (sd.asarray(v[ok]) for v in (a, b, x))
+    lo, up = np.asarray(S.betainc(A, B, X)), np.asarray(S.betaincc(A, B, X))
+    assert np.max(np.abs((lo - 0.5) + (up - 0.5))) <= 8 * 2.0**-52

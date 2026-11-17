@@ -81,7 +81,9 @@ inline dd::DD gamma_exponent(double a, double x) {
 
 // e^-E (1 - E.lo) as m 2^e: D(a, x) without over- or underflow.
 inline Scaled exp_minus(dd::DD E) {
-    if (!(E.hi < 1e300)) return {0.0, 0};  // also E = inf (a huge exponent)
+    // 0 from 2^52 up (also E = inf): far below any m 2^e in use, and from 2^53 the low
+    // part is no longer below 1, where 1 - E.lo would turn the sign
+    if (!(E.hi < 0x1p52)) return {0.0, 0};
     if (std::fabs(E.hi) < 700.0) return scaled(std::exp(-E.hi) * (1.0 - E.lo));  // a normal double: no split
     return exp_scaled(-E.hi) * scaled(1.0 - E.lo);
 }

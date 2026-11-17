@@ -46,7 +46,6 @@ from flint import acb, arb
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "tests" / "special" / "ref"
-DPS = 50  # the mpmath tools' digits; kept because tools/stats_ref.py may still read it (Arb: arbref.TARGET_BITS)
 FLOOR = arbref.DOUBLE_TINY  # values below the normal doubles need only an absolute 2^-1132
 MODULUS_BITS = arbref.TARGET_BITS + 10  # a complex part far below |f| need only 2^-120 |f| (S8: |error| / |f|)
 TRUNC_BITS = arbref.TARGET_BITS + 12  # the series here stop when their tail bound is below 2^-max(122, prec) of the sum
@@ -1351,7 +1350,6 @@ def _ref_nct(df, d, t, upper):
     return _nct_lower_pos(df, -d, -t) if upper else _nct_upper_pos(df, -d, -t)
 
 
-_mp_nct = _ref_nct  # the mpmath tool's name (tools/stats_ref.py)
 
 
 def _chndtr_inputs(rng):
@@ -1621,7 +1619,7 @@ FUNCTIONS = {
 #   loggamma Re z <= 0: max(1, 1/|f|)  (|error| <= 1e-14 max(1, |f|))
 # On a branch cut (the negative real axis), Im z = -0 is the limit from below, taken as
 # conj(f(conj z)) (loggamma) or conj(W_{-k}(conj z)) (lambertw); Arb's value on the cut is
-# the limit from above, as mpmath's was.
+# the limit from above.
 
 
 def _w_ref(z):

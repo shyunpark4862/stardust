@@ -3,17 +3,17 @@ tools/stats_ref.py (docs/design/special.md §6, docs/design/stats.md §9).
 
 Every reference is an Arb ball [mid +- rad] that contains the true value. A value is
 settled when its radius is below 2^-TARGET_BITS of its magnitude: then its double-double
-hi + lo (to_dd) is the true value rounded, with no heuristic in between (mpmath's rule,
-"two precisions agree to 30 digits", accepted wrong values that both precisions shared:
-a 1 - p that lost p = 3e-123 at both). A value that does not settle by MAX_PREC raises
+hi + lo (to_dd) is the true value rounded, with no heuristic in between (a rule such as
+"two precisions agree to 30 digits" accepts wrong values that both precisions share: a
+1 - p that loses p = 3e-123 at both). A value that does not settle by MAX_PREC raises
 NotSettled and the point is dropped.
 
 What Arb cannot certify is a truncation we choose ourselves (a sum cut after N terms):
 such sums add a bound on their tail to the radius (add_error).
 
 The ball arithmetic is C (FLINT), with no Python-side caches, so a long run's memory
-stays flat (the mpmath tools held 140 GB of quadrature nodes once; see
-tools/stats_ref.py _trim_quad_cache's history in git).
+stays flat. The project uses Arb alone for true values: no mpmath (slow, and its
+quadrature caches grow without bound).
 """
 
 import math
@@ -261,13 +261,43 @@ def intersect(*vs):
 
 
 def nstr(v, n):
-    """v as mpmath's nstr(v, n, strip_zeros=False) prints it (the generators' coefficient
-    format): the digits are v's, mpmath only formats them. v is an arb (its midpoint, taken
-    exactly) or an exact number (fmpq, int), rounded at 4n + 128 bits first."""
-    import mpmath
-
+    """v to n significant digits in the generators' coefficient format: fixed notation for a
+    decimal exponent e with min(-(n // 3), -5) < e < n, else d.ddd...e+x / e-x; trailing zeros
+    kept. v is an arb (its midpoint, taken exactly) or an exact number (fmpq, int), rounded
+    at 4n + 128 bits first. The digits are the exact binary value m 2^p rounded half up at
+    n digits (the next digit of the exact expansion 5 or more: round up)."""
     if not isinstance(v, arb):
         with precision(4 * n + 128):
             v = arb(v)
-    man, exp = v.mid().man_exp()
-    return mpmath.nstr(mpmath.mp.make_mpf(mpmath.libmp.from_man_exp(int(man), int(exp))), n, strip_zeros=False)
+    man, p = (int(t) for t in v.mid().man_exp())
+    if man == 0:
+        return "0.0"
+    sign = "-" if man < 0 else ""
+    num, den = (abs(man) << p, 1) if p >= 0 else (abs(man), 1 << -p)
+
+    def below(e):  # num / den < 10^e
+        return num * 10**-e < den if e < 0 else num < den * 10**e
+
+    e = len(str(num)) - len(str(den))  # floor(log10(num / den)) is e or e - 1
+    while below(e):
+        e -= 1
+    while not below(e + 1):
+        e += 1
+    k = n - 1 - e  # q = floor(num / den 10^k) has n digits
+    a, b = (num * 10**k, den) if k >= 0 else (num, den * 10**-k)
+    q, r = divmod(a, b)
+    if 2 * r >= b:
+        q += 1
+    digits = str(q)
+    if len(digits) > n:  # 9.99...95 rounded up to 10.00...0
+        digits, e = digits[:n], e + 1
+    if min(-(n // 3), -5) < e < n:
+        if e < 0:
+            digits, split = "0" * -e + digits, 1
+        else:
+            split = e + 1
+        e = 0
+    else:
+        split = 1
+    out = sign + digits[:split] + "." + digits[split:]
+    return out if e == 0 else out + ("e+" if e > 0 else "e") + str(e)

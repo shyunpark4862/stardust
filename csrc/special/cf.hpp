@@ -98,4 +98,11 @@ CfResult lentz_backward(double b0, Term&& term, int max_terms) {
     return {b0 + t, r.terms, r.converged};
 }
 
+// The value of lentz_backward, or NaN if the fraction did not converge in max_terms terms.
+template <class Term>
+double cf_value(double b0, Term&& term, int max_terms) {
+    const CfResult r = lentz_backward(b0, term, max_terms);
+    return r.converged ? r.value : kNaN;
+}
+
 }  // namespace sd::special

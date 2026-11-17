@@ -29,7 +29,15 @@ inline cplx rdiv(double r, cplx t) {
 }
 inline double norm1(cplx a) { return std::fabs(a.real()) + std::fabs(a.imag()); }
 // log z: log|z| + i atan2(Im z, Re z) (atan2 keeps the side of the negative axis)
-inline cplx clog(cplx z) { return {std::log(std::hypot(z.real(), z.imag())), std::atan2(z.imag(), z.real())}; }
+// (|z| past 2^1000 or below 2^-900 through a power of two: the modulus would overflow at
+// the largest doubles and has only a few bits among the subnormals)
+inline cplx clog(cplx z) {
+    const double x = z.real(), y = z.imag();
+    const double m = std::max(std::fabs(x), std::fabs(y));
+    if (m > 0x1p1000 && m < kInf) return {std::log(std::hypot(x * 0x1p-100, y * 0x1p-100)) + 100.0 * 0.69314718055994530942, std::atan2(y, x)};
+    if (m < 0x1p-900 && m > 0.0) return {std::log(std::hypot(x * 0x1p200, y * 0x1p200)) - 200.0 * 0.69314718055994530942, std::atan2(y, x)};
+    return {std::log(std::hypot(x, y)), std::atan2(y, x)};
+}
 // log(1 + w) for small w: Re = log1p(2 Re w + |w|^2) / 2, Im = atan2(Im w, 1 + Re w)
 inline cplx clog1p(cplx w) {
     const double a = w.real(), b = w.imag();

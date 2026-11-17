@@ -16,9 +16,10 @@ namespace sd::special {
 // (geometric while the bracket spans more than a factor 4). Stops when the
 // residual is down to rounding (|F - t| <= 2^-50 F; the step from there is
 // final) or the step is below 2^-54 x. The result is accurate to the forward
-// error times F / (x F') (docs/api/special.md §3).
+// error times F / (x F') (docs/api/special.md §3). At most 100 steps: NaN if they do not settle.
 template <class Eval>
 inline double halley(double x, double t, bool inc, Eval&& eval, double lo = 0.0, double hi = kInf) {
+    double step = kInf;  // the last step taken, relative
     for (int it = 0; it < 100; ++it) {
         const auto [F, xfp, h] = eval(x);
         const double f = F - t;
@@ -51,9 +52,15 @@ inline double halley(double x, double t, bool inc, Eval&& eval, double lo = 0.0,
             else xn = 0.5 * (lo + hi);
         }
         if (xn == x || (std::isfinite(hi) && hi - lo <= 0x1p-53 * hi)) return xn;
+        step = std::fabs(xn - x) / std::fabs(xn);
         x = xn;
     }
-    return x;
+    // 100 steps without the tests above passing: the iterate if it only moves in its last
+    // bits (a cycle between neighbouring doubles), else no value
+    if (step <= 0x1p-48) return x;
+    // (a bracket that has fallen below the normal doubles: the root underflows, 0 by the
+    // inverses' convention)
+    return hi <= 0x1p-1022 ? 0.0 : kNaN;
 }
 
 }  // namespace sd::special

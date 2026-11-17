@@ -10,8 +10,8 @@
 //   erfc(x) = exp(-x^2) P(x) / Q(x)               1 <= x < 8
 //   erfc(x) = exp(-x^2) R(x) / S(x)               x >= 8
 //
-// Moshier's stated accuracy (IEEE): erf 2.2e-16 relative on [0, 1]; erfc
-// 3.7e-16 on [0, 26.6417] -- the error of exp(-x^2) aside.
+// Moshier's stated accuracy (IEEE, peak relative error): erf 3.7e-16 on
+// [0, 1]; erfc 5.7e-14 on [0, 26.6417], his exp(-x^2) included.
 #pragma once
 
 #include <array>

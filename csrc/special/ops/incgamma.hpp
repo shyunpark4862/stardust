@@ -14,8 +14,9 @@
 //     a > 20, |x - a| < 0.4a  Temme's uniform expansion (both converge slowly there)
 //
 // D(a, x) = x^a e^-x / Gamma(a+1) comes from special/prefix.hpp with its
-// exponent in double-double: scipy's Cephes forms a log x - x - lgamma(a) in
-// float64 and loses up to ~2000 ULP in the tails.
+// exponent in double-double: scipy (its igam, written after Boost's) forms
+// a log x - x - lgamma(a) in float64 for |x - a| > 0.4a and loses up to
+// ~2000 ULP in the tails.
 //
 // The inverses solve P(a, x) = p (or Q(a, x) = q, whichever of p, q is the
 // smaller, so its relative accuracy carries over) by Halley's method from an
@@ -63,6 +64,10 @@ inline double lgamma1p(double a) {
     return lgamma_taylor2(a - 1.0);
 }
 
+// The series and the fractions below end within a few thousand terms wherever igam() sends
+// an argument to them; one that has not ended by kMaxTerms gives NaN.
+inline constexpr int kMaxTerms = 100000;
+
 // Q for a < 1, x < 1.1 (Boost's tgamma_small_upper_part):
 //     Gamma(a, x) = (Gamma(1+a) - x^a) / a - x^a S,  S = sum_{n>=1} (-x)^n / (n! (a+n))
 // with Gamma(1+a) - 1 and x^a - 1 from expm1, so the difference keeps its
@@ -71,12 +76,17 @@ inline PQ small_a_upper(double a, double x) {
     const double tg = std::expm1(lgamma1p(a));  // Gamma(1+a) - 1
     const double pm = std::expm1(a * std::log(x));  // x^a - 1
     double s = 0.0, t = -x;
-    for (int n = 1; n < 200; ++n) {
+    bool ended = false;
+    for (int n = 1; n < 200; ++n) {  // x < 1.1: the terms fall like x^n / n!
         const double term = t / (a + n);
         s += term;
-        if (std::fabs(term) <= std::fabs(s) * 0x1p-56) break;
+        if (std::fabs(term) <= std::fabs(s) * 0x1p-56) {
+            ended = true;
+            break;
+        }
         t *= -x / (n + 1);
     }
+    if (!ended) return {kNaN, kNaN, kNaN};
     const double xa = pm + 1.0;
     if (a < 0x1p-60) {
         // (Gamma(1+a) - 1) / a = -euler, (x^a - 1) / a = log x to O(a): one
@@ -94,12 +104,17 @@ inline PQ series_lower(double a, double x) {
     const Scaled d = gamma_prefix(a, x);
     double sum = 1.0, term = 1.0, ap = a;
     if (d.m != 0.0) {
-        for (int n = 0; n < 100000; ++n) {
+        bool ended = false;
+        for (int n = 0; n < kMaxTerms; ++n) {
             ap += 1.0;
             term *= x / ap;
             sum += term;
-            if (term <= sum * 0x1p-56) break;
+            if (term <= sum * 0x1p-56) {
+                ended = true;
+                break;
+            }
         }
+        if (!ended) return {kNaN, kNaN, kNaN};
     }
     const double dv = value(d);
     // (the product in one rounding; through the split form only where it may leave the normals)
@@ -113,21 +128,21 @@ inline PQ cf_upper(double a, double x) {
     const Scaled d = gamma_prefix(a, x);
     double tail = 1.0;
     if (d.m != 0.0) {
-        tail = lentz_backward(
-                   x + 1.0 - a,
-                   [&](int n) {
-                       const double k = n;
-                       return std::pair{-k * (k - a), x + 2.0 * k + 1.0 - a};
-                   },
-                   100000)
-                   .value;
+        tail = cf_value(
+            x + 1.0 - a,
+            [&](int n) {
+                const double k = n;
+                return std::pair{-k * (k - a), x + 2.0 * k + 1.0 - a};
+            },
+            kMaxTerms);
+        if (std::isnan(tail)) return {kNaN, kNaN, kNaN};
     }
     const double dv = value(d);
     const double q = dv >= 0x1p-900 ? dv * (a / tail) : value(d * scaled(a / tail));
     return {1.0 - q, q, dv * a};
 }
 
-// Temme (DLMF 8.12.8): with eta = sign(x - a) sqrt(2 E / a),
+// Temme (DLMF 8.12.3, 8.12.4, 8.12.7): with eta = sign(x - a) sqrt(2 E / a),
 //     Q = erfc(sqrt E) / 2 + R,   x >= a
 //     P = erfc(sqrt E) / 2 - R,   x <  a
 //     R = e^-E / sqrt(2 pi a) sum_k c_k(eta) a^-k
@@ -217,23 +232,29 @@ inline std::array<double, 2> log_tail(double a, double x, bool lower, dd::DD lt)
     const double ld = lr.hi + (lr.lo - std::log(std::sqrt(2.0 * kPi * a) * gamma_star(a)));
     if (lower) {
         double sum = 1.0, term = 1.0, ap = a;
-        for (int n = 0; n < 100000; ++n) {
+        bool ended = false;
+        for (int n = 0; n < kMaxTerms; ++n) {
             ap += 1.0;
             term *= x / ap;
             sum += term;
-            if (term <= sum * 0x1p-56) break;
+            if (term <= sum * 0x1p-56) {
+                ended = true;
+                break;
+            }
         }
+        if (!ended) return {kNaN, kNaN};
         return {ld + std::log(sum), a / (x * sum)};
     }
-    const double tail = lentz_backward(
-                            x + 1.0 - a,
-                            [&](int n) {
-                                const double k = n;
-                                return std::pair{-k * (k - a), x + 2.0 * k + 1.0 - a};
-                            },
-                            100000)
-                            .value;
-    return {ld + std::log(a / tail), -tail / x};
+    const double tail = cf_value(
+        x + 1.0 - a,
+        [&](int n) {
+            const double k = n;
+            return std::pair{-k * (k - a), x + 2.0 * k + 1.0 - a};
+        },
+        kMaxTerms);
+    // (a / tail below the normal range has lost bits, or is 0: the logs apart)
+    const double r = a / tail;
+    return {ld + (r >= 0x1p-1022 ? std::log(r) : std::log(a) - std::log(tail)), -tail / x};
 }
 
 inline double ndtri1(double p) {
@@ -241,6 +262,9 @@ inline double ndtri1(double p) {
     Ndtri::chunk(&p, &o, 1);
     return o;
 }
+
+// From this shape on the inverse is the normal limit's expansion (igam_inverse).
+inline constexpr double kNormalShape = 1e10;
 
 // The x with P(a, x) = p (upper: Q(a, x) = p), 0 < p < 1, a > 0 finite.
 // Solves the smaller t of p, 1 - p against its own function (1 - p is exact
@@ -253,6 +277,14 @@ inline double ndtri1(double p) {
 inline double igam_inverse(double a, double p, bool upper) {
     const bool lower = upper ? p > 0.5 : p <= 0.5;  // solve P = t (else Q = t)
     const double t = (upper == lower) ? 1.0 - p : p;
+    if (a >= kNormalShape) {
+        // The Cornish-Fisher expansion about the normal limit, z the deviate of the tail:
+        //     x = a + z sqrt(a) + (z^2 - 1)/3 + (z^3 - 7z)/(36 sqrt(a)) - (3z^4 + 7z^2 - 16)/(810 a)
+        // The next term is 9 z^5 / (38880 a^(3/2)): below 2e-20 a for every |z| <= 38.5. (The
+        // iterations below would sum ~sqrt(a) terms a step.)
+        const double z = lower ? ndtri1(t) : -ndtri1(t), z2 = z * z, sa = std::sqrt(a);
+        return a + (z * sa + ((z2 - 1.0) / 3.0 + (z * (z2 - 7.0) / (36.0 * sa) - (3.0 * z2 * z2 + 7.0 * z2 - 16.0) / (810.0 * a))));
+    }
     const double lga1 = lgamma_pos(a + 1.0);
     const double c = 1.0 / (9.0 * a);
     double x;
@@ -284,15 +316,18 @@ inline double igam_inverse(double a, double p, bool upper) {
         // a few digits there, so the iteration works on log F from the unrounded
         // pieces, in log x for P (x tiny) and in x for Q (x large).
         const dd::DD lt = dd::log(t);
+        double step = kInf;  // the last step, relative
         for (int it = 0; it < 100; ++it) {
             const auto [g, dlf] = log_tail(a, x, lower, lt);
+            if (std::isnan(g)) return kNaN;  // the series or the fraction did not end
             double xn = lower ? x * std::exp(-g / (x * dlf)) : x - g / dlf;
             if (!(xn > 0.0) || !std::isfinite(xn)) xn = lower ? 0.5 * x : 2.0 * x;
             if (std::fabs(xn - x) <= 0x1p-54 * xn) return xn;
             if (xn == 0.0) return 0.0;
+            step = std::fabs(xn - x) / xn;
             x = xn;
         }
-        return x;
+        return step <= 0x1p-48 ? x : kNaN;  // (a cycle in the last bits is the root; else no value)
     }
     return halley(x, t, lower, [&](double y) {
         const PQ r = igam(a, y);
@@ -373,7 +408,7 @@ struct Gammaincinv : Real {
     static double f(double a, double p) {
         double out;
         if (igam_inverse_edge(a, p, false, out)) return out;
-        if (p >= 1e-300 && std::isfinite(a)) {  // Boost (special/boost.hpp); subnormal roots are ours
+        if (p >= 1e-300 && a < igam_detail::kNormalShape) {  // Boost (special/boost.hpp); subnormal roots are ours
             const double r = bst::gamma_p_inv(a, p);
             if (bst::normal(r) && r >= 1e-300) return igam_detail::igam_polish(a, p, false, r);
         }
@@ -389,7 +424,7 @@ struct Gammainccinv : Real {
     static double f(double a, double q) {
         double out;
         if (igam_inverse_edge(a, q, true, out)) return out;
-        if (std::isfinite(a)) {  // Boost (special/boost.hpp)
+        if (q >= 1e-300 && a < igam_detail::kNormalShape) {  // Boost (special/boost.hpp); as gammaincinv
             const double r = bst::gamma_q_inv(a, q);
             if (bst::normal(r)) return igam_detail::igam_polish(a, q, true, r);
         }

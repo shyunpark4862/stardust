@@ -10,9 +10,13 @@
 //     (coeffs/rgamma_taylor.hpp) rather than NR's fitted Chebyshev series.
 //   - x >= 2: Steed's CF2 for the same.
 //   - The Wronskian normalises J (I); Y (K) recur upward to nu.
-//   - x >= max(30, nu^2): Hankel's asymptotic series (CF1 needs ~x terms there).
-// Debye's uniform expansion for large nu is not used (design): a large nu
-// is right but costs O(nu).
+//   - x >= 30: Hankel's asymptotic series where hankel_pq accepts it (the terms
+//     reach 2^-56 of the sum before they grow again and none exceeds 2; CF1
+//     needs ~x terms there). J, Y with nu < x where it is refused at nu:
+//     Hankel at nu - floor(nu), then the recurrence upward (jy_upward).
+// I, K with |nu| >= 30: Debye's uniform expansion (debye_value). J, Y have no
+// uniform expansion: a large nu is right but costs O(nu).
+// iv (|nu| < 30) and kv (|nu| < 400) call Boost first (iv_route, kv_route).
 //
 // Changed from NR:
 //   - CF1's value is the backward pass over the terms Lentz counted (cf.hpp):
@@ -50,6 +54,14 @@ namespace bessel_detail {
 inline constexpr double kTwoOverPi = 0.63661977236758134308;
 inline constexpr double kTiny = 0x1p-1000;
 
+// The loops below are bounded (docs/design/stats.md 1.3): a recurrence over the order takes
+// at most kMaxOrderSteps steps and a continued fraction at most kMaxCfTerms terms (about
+// 0.1 s each); a call that would need more is NaN. J and Y have no uniform expansion here,
+// so that is |nu| past 1e7 with x not far below nu (far below, J = 0 and Y = -inf at once).
+inline constexpr double kMaxOrderSteps = 1e7;
+inline constexpr int kMaxCfTerms = 10000000;
+inline constexpr int kMaxCf2Terms = 100000;
+
 // Temme's gamma functions of mu, |mu| <= 1/2.
 struct Gammas {
     double g1, g2, gpl, gmi;  // Gamma1, Gamma2, 1/Gamma(1+mu), 1/Gamma(1-mu)
@@ -84,6 +96,7 @@ inline void rescale_down(dd::DD& a, dd::DD& b, std::int64_t& ex) {
 struct JY {
     Scaled j, y, jp, yp;  // J_nu, Y_nu and their derivatives
 };
+inline constexpr JY kNoJY{{kNaN, 0}, {kNaN, 0}, {kNaN, 0}, {kNaN, 0}};
 
 // Hankel: P, Q in 1/x. The terms a_k / x^k first grow while 4 nu^2 > 8 k x, then
 // fall (the factors 4nu^2 - (2k-1)^2 shrink), and grow again for k past ~2x.
@@ -139,16 +152,18 @@ inline bool jy_hankel(double nu, double x, JY& out) {
 
 // NR bessjy for nu >= 0, 0 < x < inf.
 inline JY jy_temme(double nu, double x) {
+    if (!((x < 2.0 ? nu : nu - x) <= kMaxOrderSteps)) return kNoJY;  // the recurrences' length
     const std::int64_t nl = x < 2.0 ? static_cast<std::int64_t>(nu + 0.5)
                                     : std::max<std::int64_t>(0, static_cast<std::int64_t>(nu - x + 1.5));
     const double mu = nu - nl, mu2 = mu * mu;
     const double xi = 1.0 / x, xi2 = 2.0 * xi, w = xi2 / kPi;
-    // CF1: f = J'_nu / J_nu = nu/x - 1/(2(nu+1)/x - 1/(2(nu+2)/x - ...)); isign = sign of J_nu
-    // relative to the downward recurrence's start (NR), from the forward pass.
-    int isign = 1, terms = 0;
+    // CF1: J'_nu / J_nu = nu/x - 1/(2(nu+1)/x - 1/(2(nu+2)/x - ...)). The forward pass
+    // (Lentz) only counts the terms.
+    int terms = 0;
     {
         double b = xi2 * nu, d = 0.0, c = std::max(nu * xi, kTiny);
-        for (int i = 1; i <= 50000000; ++i) {
+        bool converged = false;
+        for (int i = 1; i <= kMaxCfTerms; ++i) {
             b += xi2;
             d = b - d;
             if (std::fabs(d) < kTiny) d = kTiny;
@@ -156,16 +171,46 @@ inline JY jy_temme(double nu, double x) {
             if (std::fabs(c) < kTiny) c = kTiny;
             d = 1.0 / d;
             const double del = c * d;
-            if (d < 0.0) isign = -isign;
             terms = i;
-            if (std::fabs(del - 1.0) <= kEps) break;
+            if (std::fabs(del - 1.0) <= kEps) {
+                converged = true;
+                break;
+            }
         }
+        if (!converged) return kNoJY;  // (~x terms for x > nu: x past kMaxCfTerms)
     }
-    const double h = cf_backward(nu * xi, [&](int k) { return std::pair{-1.0, 2.0 * (nu + k) * xi}; }, terms + 4);
+    // The value from the backward pass: den_k = 2(nu+k)/x - 1/den_(k+1) is J_(nu+k-1) / J_(nu+k).
+    // J at a large order is positive, so the negative den_k give the signs of J_(nu+1) and J_nu;
+    // the forward pass can place x on the other side of a zero of J_nu than this pass does,
+    // and a sign from there would flip J'_nu (and Y_nu with it).
+    // The pair (J_nu, J'_nu) is kept unnormalised and never as the ratio J'/J: at the float64
+    // nearest a zero of J_nu den_1 can be exactly 0, the ratio infinite and every product
+    // with it NaN. J'_nu = (nu/x) J_nu - J_(nu+1).
+    // While nu + k >= x + 2 every den_k is above 1 (den_k > 2 - 1/den_(k+1), from den = inf),
+    // so only the steps below that are counted; counted without a branch, as the signs
+    // alternate unpredictably for x > nu.
+    double den = kInf;
+    int negatives = 0, k = terms + 4;
+    const double first_counted = std::max(1.0, x - nu + 2.0);
+    const int kcount = x < 0x1p40 && first_counted < k ? static_cast<int>(first_counted) : k;
+    for (; k > kcount; --k) den = 2.0 * (nu + k) * xi - 1.0 / den;
+    for (; k >= 2; --k) {
+        den = 2.0 * (nu + k) * xi - 1.0 / den;
+        negatives += den < 0.0;
+    }
+    const double s1 = negatives % 2 ? -1.0 : 1.0;  // the sign of J_(nu+1)
+    den = 2.0 * (nu + 1.0) * xi - 1.0 / den;  // J_nu / J_(nu+1)
+    double rjl1, rjp1;                        // J_nu, J'_nu up to a common positive factor
+    if (std::fabs(den) <= 0x1p500) {          // in units of |J_(nu+1)|
+        rjl1 = s1 * den;
+        rjp1 = nu * xi * rjl1 - s1;
+    } else {  // J_(nu+1) is 0 or nearly: in units of |J_nu|
+        rjl1 = den < 0.0 ? -s1 : s1;
+        rjp1 = (nu * xi - 1.0 / den) * rjl1;
+    }
     // downward recurrence from nu to mu, with the exponent kept apart
     const dd::DD xid = recip(x);
-    dd::DD rjl{static_cast<double>(isign), 0.0}, rjpl{h * isign, 0.0};
-    const double rjl1 = rjl.hi, rjp1 = rjpl.hi;
+    dd::DD rjl{rjl1, 0.0}, rjpl{rjp1, 0.0};
     std::int64_t ex = 0;  // true = stored * 2^ex
     for (std::int64_t l = nl - 1; l >= 0; --l) {
         const double v1 = nu - static_cast<double>(nl - l - 1), v0 = nu - static_cast<double>(nl - l);  // mu+l+1, mu+l
@@ -174,9 +219,12 @@ inline JY jy_temme(double nu, double x) {
         rjl = rjtemp;
         rescale_down(rjl, rjpl, ex);
     }
-    if (rjl.hi == 0.0) rjl = {kEps, 0.0};
-    const double f = (rjpl / rjl).hi;
-    double rjmu, rymu, rymup, ry1;
+    // (ja, jb) = (J_mu, J'_mu) / c with the larger of the two about 1 in magnitude; c > 0 comes from
+    // the Wronskian J Y' - J' Y = 2/(pi x) below, again without dividing by J_mu (mu = -1/2
+    // has a zero at pi/2).
+    const double jscale = 1.0 / std::max(std::fabs(rjl.hi), std::fabs(rjpl.hi));
+    const double ja = rjl.hi * jscale, jb = rjpl.hi * jscale;
+    double cj, rymu, rymup, ry1;
     if (x < 2.0) {
         const double x2 = 0.5 * x, pimu = kPi * mu;
         const double fact = std::fabs(mu) < 1e-300 ? 1.0 : pimu / sinpi(mu);
@@ -192,7 +240,8 @@ inline JY jy_temme(double nu, double x) {
         double c = 1.0;
         const double dd = -x2 * x2;
         double sum = ff + r * q, sum1 = p;
-        for (int i = 1; i < 1000; ++i) {
+        bool converged = false;
+        for (int i = 1; i < 1000; ++i) {  // x < 2: c falls like 1/i!
             ff = (i * ff + p + q) / (i * static_cast<double>(i) - mu2);
             c *= dd / i;
             p /= (i - mu);
@@ -201,12 +250,16 @@ inline JY jy_temme(double nu, double x) {
             sum += del;
             const double del1 = c * p - i * del;
             sum1 += del1;
-            if (std::fabs(del) <= (1.0 + std::fabs(sum)) * 0x1p-56) break;
+            if (std::fabs(del) <= (1.0 + std::fabs(sum)) * 0x1p-56) {
+                converged = true;
+                break;
+            }
         }
+        if (!converged) return kNoJY;
         rymu = -sum;
         ry1 = -sum1 * xi2;
         rymup = mu * xi * rymu - ry1;
-        rjmu = w / (rymup - f * rymu);
+        cj = w / (ja * rymup - jb * rymu);
     } else {
         // Steed's CF2: p + i q = (J'_mu + i Y'_mu) / (J_mu + i Y_mu)
         double a = 0.25 - mu2, p = -0.5 * xi, q = 1.0;
@@ -220,7 +273,8 @@ inline JY jy_temme(double nu, double x) {
         double temp = p * dlr - q * dli;
         q = p * dli + q * dlr;
         p = temp;
-        for (int i = 1; i < 50000000; ++i) {
+        bool converged = false;
+        for (int i = 1; i < kMaxCf2Terms; ++i) {  // x >= 2: a few hundred terms at most
             a += 2 * i;
             bi += 2.0;
             dr = a * dr + br;
@@ -238,17 +292,22 @@ inline JY jy_temme(double nu, double x) {
             temp = p * dlr - q * dli;
             q = p * dli + q * dlr;
             p = temp;
-            if (std::fabs(dlr - 1.0) + std::fabs(dli) <= kEps) break;
+            if (std::fabs(dlr - 1.0) + std::fabs(dli) <= kEps) {
+                converged = true;
+                break;
+            }
         }
-        const double gam = (p - f) / q;
-        rjmu = std::sqrt(w / ((p - f) * gam + q));
-        rjmu = std::copysign(rjmu, rjl.hi);
-        rymu = rjmu * gam;
-        rymup = rymu * (p + q / gam);
+        if (!converged) return kNoJY;
+        // J' = p J - q Y and Y' = q J + p Y: Y_mu = c yr with yr = (p ja - jb) / q, and the
+        // Wronskian is q (J^2 + Y^2)
+        const double yr = (p * ja - jb) / q;
+        cj = std::sqrt(w / (q * (ja * ja + yr * yr)));
+        rymu = cj * yr;
+        rymup = q * (cj * ja) + p * rymu;
         ry1 = mu * xi * rymu - rymup;
     }
-    // J_nu = rjl1 * rjmu / (rjl 2^ex)
-    const Scaled fact = sc(rjmu) / sc(rjl.hi) * Scaled{0.5, 1 - ex};
+    // J_nu = rjl1 c jscale / 2^ex
+    const Scaled fact = sc(cj) * sc(jscale) * Scaled{0.5, 1 - ex};
     const Scaled rj = sc(rjl1) * fact, rjp = sc(rjp1) * fact;
     // Y upward from mu to nu, exponent apart
     std::int64_t ey = 0;
@@ -271,6 +330,7 @@ inline JY jy_temme(double nu, double x) {
 struct IK {
     Scaled i, k, ip, kp;  // e^-x I_nu, e^x K_nu, e^-x I'_nu, e^x K'_nu
 };
+inline constexpr IK kNoIK{{kNaN, 0}, {kNaN, 0}, {kNaN, 0}, {kNaN, 0}};
 
 // The large-x series: e^-x I ~ sum (-1)^k a_k / x^k / sqrt(2 pi x), e^x K ~ sqrt(pi/(2x)) sum a_k / x^k,
 // accepted as hankel_pq accepts.
@@ -297,7 +357,8 @@ inline bool ik_asymptotic(double nu, double x, double& si, double& sk) {
 inline bool ik_hankel(double nu, double x, IK& out) {
     double si0, sk0, si1, sk1;
     if (!ik_asymptotic(nu, x, si0, sk0) || !ik_asymptotic(nu + 1.0, x, si1, sk1)) return false;
-    const double ai = 1.0 / std::sqrt(2.0 * kPi * x), ak = std::sqrt(kPi / (2.0 * x));
+    // (the roots apart: 2 x overflows for the largest x)
+    const double sx = std::sqrt(x), ai = 0.39894228040143267794 / sx, ak = 1.25331413731550025121 / sx;
     const double I0 = ai * si0, I1 = ai * si1, K0 = ak * sk0, K1 = ak * sk1;
     // I' = I_(nu+1) + (nu/x) I, K' = (nu/x) K - K_(nu+1)
     out = {sc(I0), sc(K0), sc(I1 + nu / x * I0), sc(nu / x * K0 - K1)};
@@ -306,12 +367,14 @@ inline bool ik_hankel(double nu, double x, IK& out) {
 
 // NR bessik for nu >= 0, 0 < x < inf, scaled.
 inline IK ik_temme(double nu, double x) {
+    if (!(nu <= kMaxOrderSteps)) return kNoIK;  // (the public functions call with nu < kDebyeOrder)
     const std::int64_t nl = static_cast<std::int64_t>(nu + 0.5);
     const double mu = nu - nl, mu2 = mu * mu;
     const double xi = 1.0 / x, xi2 = 2.0 * xi;
     // CF1: I'_nu / I_nu = nu/x + 1/(2(nu+1)/x + 1/(2(nu+2)/x + ...)): positive terms
     const CfResult cf =
-        lentz_backward(nu * xi, [&](int k) { return std::pair{1.0, 2.0 * (nu + k) * xi}; }, 50000000);
+        lentz_backward(nu * xi, [&](int k) { return std::pair{1.0, 2.0 * (nu + k) * xi}; }, kMaxCfTerms);
+    if (!cf.converged) return kNoIK;
     const double h = cf.value;
     const dd::DD xid = recip(x);
     dd::DD ril{1.0, 0.0}, ripl{h, 0.0};
@@ -339,7 +402,8 @@ inline IK ik_temme(double nu, double x) {
         double p = 0.5 * e / g.gpl, q = 0.5 / (e * g.gmi), c = 1.0;
         const double dd = x2 * x2;
         double sum1 = p;
-        for (int i = 1; i < 1000; ++i) {
+        bool converged = false;
+        for (int i = 1; i < 1000; ++i) {  // x < 2: c falls like 1/i!
             ff = (i * ff + p + q) / (i * static_cast<double>(i) - mu2);
             c *= dd / i;
             p /= (i - mu);
@@ -347,8 +411,12 @@ inline IK ik_temme(double nu, double x) {
             const double del = c * ff;
             sum += del;
             sum1 += c * (p - i * ff);
-            if (std::fabs(del) <= std::fabs(sum) * 0x1p-56) break;
+            if (std::fabs(del) <= std::fabs(sum) * 0x1p-56) {
+                converged = true;
+                break;
+            }
         }
+        if (!converged) return kNoIK;
         const double ex2 = std::exp(x);
         rkmu = sum * ex2;
         rk1 = sum1 * xi2 * ex2;
@@ -357,7 +425,8 @@ inline IK ik_temme(double nu, double x) {
         double b = 2.0 * (1.0 + x), d = 1.0 / b, hh = d, delh = d, q1 = 0.0, q2 = 1.0;
         const double a1 = 0.25 - mu2;
         double q = a1, c = a1, a = -a1, s = 1.0 + q * delh;
-        for (int i = 1; i < 50000000; ++i) {
+        bool converged = false;
+        for (int i = 1; i < kMaxCf2Terms; ++i) {  // x >= 2: a few hundred terms at most
             a -= 2 * i;
             c = -a * c / (i + 1.0);
             const double qnew = (q1 - b * q2) / a;
@@ -370,8 +439,12 @@ inline IK ik_temme(double nu, double x) {
             hh += delh;
             const double dels = q * delh;
             s += dels;
-            if (std::fabs(dels / s) <= kEps) break;
+            if (std::fabs(dels / s) <= kEps) {
+                converged = true;
+                break;
+            }
         }
+        if (!converged) return kNoIK;
         hh = a1 * hh;
         rkmu = std::sqrt(kPi / (2.0 * x)) / s;
         rk1 = rkmu * (mu + x + 0.5 - hh) * xi;
@@ -407,12 +480,12 @@ inline Scaled power_series(double nu, double x, double sign, double* deriv = nul
     auto sum_at = [&](double v) {
         const double q = sign * 0.25 * x * x;
         double s = 1.0, t = 1.0;
-        for (int k = 1; k < 500; ++k) {
+        for (int k = 1; k < 500; ++k) {  // |q| < (v + 1) / 4: the terms fall at least 4x a turn
             t *= q / (k * (v + k));
             s += t;
-            if (std::fabs(t) <= std::fabs(s) * 0x1p-56) break;
+            if (std::fabs(t) <= std::fabs(s) * 0x1p-56) return s;
         }
-        return s;
+        return kNaN;
     };
     // Gamma(nu + 1) = nu Gamma(nu): rounding nu + 1 would cost psi(nu) nu / 2 ULP (S3)
     const Scaled g1 = nu == 0.0 ? scaled(1.0) : gamma_scaled(nu) * scaled(nu);
@@ -432,6 +505,7 @@ inline bool use_power_series(double nu, double x) { return x * x < nu + 1.0; }
 // modulus 1) in both directions, while CF1 there loses ~0.3 x ULP to the
 // same neutrality (measured).
 inline bool jy_upward(double nu, double x, JY& out) {
+    if (!(nu <= kMaxOrderSteps)) return false;
     const double mu = nu - std::floor(nu);
     JY a, b;
     if (!jy_hankel(mu, x, a) || !jy_hankel(mu + 1.0, x, b)) return false;
@@ -464,7 +538,8 @@ inline JY jy(double nu, double x) {
     JY r;
     if (x >= 30.0) {
         if (jy_hankel(nu, x, r)) return r;
-        if (nu < x && jy_upward(nu, x, r)) return r;
+        // (an order past kMaxOrderSteps: no value. Temme's CF1 at nu < x would lose ~0.3 x ULP)
+        if (nu < x) return jy_upward(nu, x, r) ? r : kNoJY;
     }
     r = jy_temme(nu, x);
     if (use_power_series(nu, x)) {
@@ -492,14 +567,57 @@ inline IK ik(double nu, double x) {
 // ---- the shortcuts for an order far beyond x ---------------------------------
 
 // log of (x/2)^nu / Gamma(nu + 1), the size of J_nu(x) and I_nu(x) for nu >> x.
-inline double log_small_order_term(double nu, double x) { return nu * std::log(0.5 * x) - lgamma_pos(nu + 1.0); }
+inline double log_small_order_term(double nu, double x) {
+    const double lx = std::log(x) - kLn2Hi;  // log(x / 2), also for the smallest x
+    // from 1e8 by Stirling, nu log(e x / (2 nu)) - log(2 pi nu) / 2 (1e-9 absolute): the
+    // difference of the logs is formed before nu multiplies it, so nothing overflows
+    if (nu > 1e8) return nu * ((lx - std::log(nu)) + 1.0) - 0.5 * (kLog2PiHi + std::log(nu));
+    return nu * lx - lgamma_pos(nu + 1.0);
+}
 
 // True when nu is so far beyond x that J and I underflow to 0 and Y, K overflow
 // (avoids an O(nu) loop for an answer of 0 or inf).
 inline bool order_saturates(double nu, double x) {
     // I K ~ 1/(2 nu) and J Y ~ -1/(pi nu) for nu >> x: past -760 - log(2 nu) the
     // large partner overflows as well
-    return nu > 50.0 && x < 0.5 * nu && log_small_order_term(nu, x) + x < -760.0 - std::log(2.0 * nu);
+    return nu > 50.0 && x < 0.5 * nu && log_small_order_term(nu, x) + x < -760.0 - kLn2Hi - std::log(nu);
+}
+
+// ---- an argument below 2^-200 ---------------------------------------------------
+//
+// There every series is its first term to 2^-400 (the next is x^2 / 4 of it):
+//     J_a, I_a = (x/2)^a / Gamma(a + 1)
+//     Y_a = -Gamma(a) (2/x)^a / pi,  K_a = Gamma(a) (2/x)^a / 2 where the other solution's
+//                part, (x/2)^(2a) of it, is nothing;
+//     else       Temme's first terms (jy_temme, ik_temme at i = 0), which hold the two
+//                powers x^+-a together as a -> 0 (Y_0, K_0 ~ log x)
+// The recurrences' 1/x overflows for a subnormal x, and Temme's cosh and sinh of
+// e = a log(2/x) carry e ULP (170 ULP at a = 0.49, x = 1e-300, measured).
+inline constexpr double kTinyArg = 0x1p-200;
+struct TinyPair {
+    double small, big;  // (J_a, Y_a) or (I_a, K_a), a >= 0
+};
+inline TinyPair tiny_argument(double a, double x, bool modified) {
+    const Scaled xa = pow_scaled(x, a) * pow_scaled(0.5, a);  // (x/2)^a
+    const double small = a == 0.0 ? 1.0 : value(xa / (gamma_scaled(a) * scaled(a)));
+    const double d = -(std::log(x) - kLn2Hi);  // -log(x/2)
+    const double e = a * d;
+    // (x/2)^(2a) = e^-2e below 2^-70: the one power alone (also for a < 1/2: Temme's cosh e
+    // and sinh e would carry e ULP)
+    if (e > 25.0) {
+        const Scaled g = gamma_scaled(a) / xa;
+        return {small, modified ? value(g * scaled(0.5)) : -value(g * scaled(1.0 / kPi))};
+    }
+    const double pimu = kPi * a;
+    const double fact = a < 1e-300 ? 1.0 : pimu / sinpi(a);
+    const double fact2 = std::fabs(e) < 1e-300 ? 1.0 : std::sinh(e) / e;
+    const Gammas g = temme_gammas(a);
+    const double ff = fact * (g.g1 * std::cosh(e) + g.g2 * fact2 * d);
+    if (modified) return {small, ff};
+    const double q = 1.0 / (std::exp(e) * kPi * g.gmi);
+    const double fact3 = a < 1e-300 ? 1.0 : sinpi(0.5 * a) / (0.5 * pimu);
+    const double r = kPi * (0.5 * pimu) * fact3 * fact3;
+    return {small, -(kTwoOverPi * ff + r * q)};
 }
 
 inline bool is_int(double v) { return v == std::floor(v); }
@@ -550,8 +668,14 @@ inline double jv_or_yv(double v, double x, bool want_y) {
         if (!want_y) return sv == 0.0 ? cv * 0.0 : (sv > 0.0 ? kInf : -kInf);
         return cv == 0.0 ? 0.0 : (cv > 0.0 ? -kInf : kInf);
     }
-    const JY r = jy(a, x);
-    const double J = value(r.j), Y = value(r.y);
+    double J, Y;
+    if (x < kTinyArg) {
+        const TinyPair t = tiny_argument(a, x, false);
+        J = t.small, Y = t.big;
+    } else {
+        const JY r = jy(a, x);
+        J = value(r.j), Y = value(r.y);
+    }
     if (v >= 0.0) return want_y ? Y : J;
     const double cv = cospi(a), sv = sinpi(a);
     if (!want_y) return (cv == 0.0 ? 0.0 : cv * J) - (sv == 0.0 ? 0.0 : sv * Y);
@@ -572,6 +696,41 @@ inline constexpr double kDebyeOrder = 30.0;
 // exp_scaled's range and their saturated exponents would cancel). nu >= kDebyeOrder, x > 0.
 inline double debye_value(double v, double x, bool want_k, bool scaled_out) {
     const double nu = std::fabs(v);
+    auto sum_at = [&](double p, double sign) {  // sum_k (sign^k) U_k(p) / nu^k
+        const double p2 = p * p, inv = sign / nu;
+        double sum = 0.0;
+        for (int k = kDebyeTerms - 1; k >= 0; --k) {
+            const auto& c = kDebyeV[static_cast<std::size_t>(k)];
+            double u = 0.0;
+            for (std::size_t j = c.size() - static_cast<std::size_t>(k) - 1; j < c.size(); ++j) u = u * p2 + c[j];
+            sum = sum * inv + u * std::pow(p, k);
+        }
+        return sum;
+    };
+    const double z = x / nu;
+    if (z > 0x1p30) {
+        // x far beyond nu: s - x and the logarithm, each ~nu^2 / x, would be lost in s ~ x (and
+        // x^2 overflows from 1e154). With q = 1 / (z + sqrt(1 + z^2)),
+        //     nu eta - x = nu (q - log1p((1 + q) / z)) = -nu^2 / (2x) (1 + O(1/z^2)),
+        // in plain doubles. I itself is inf and K is 0 here (x > 3e10).
+        if (!scaled_out) return want_k ? 0.0 : kInf;
+        const double q = 1.0 / (z + std::sqrt(1.0 + z * z));
+        const double e = nu * (q - std::log1p((1.0 + q) / z));  // <= 0
+        const double s = x * std::sqrt(1.0 + 1.0 / (z * z)), p = nu / s;
+        if (want_k) return value(exp_scaled(-e) * sc(1.25331413731550025121 / std::sqrt(s) * sum_at(p, -1.0)));
+        // (v < 0, not an integer: the K term carries e^-2x, nothing here)
+        return value(exp_scaled(e) * sc(0.39894228040143267794 / std::sqrt(s) * sum_at(p, 1.0)));
+    }
+    if (nu > 0x1p500 || x > 0x1p500) {
+        // Both beyond the doubles' squares, x / nu <= 2^30: the exponent nu eta, eta(z) =
+        // sqrt(1 + z^2) + log(z / (1 + sqrt(1 + z^2))), is past every range, so the value is
+        // 0 or inf by its sign alone (the scaled forms: nu (eta - z) < 0 always).
+        const double r = std::sqrt(1.0 + z * z), eta = r + std::log(z / (1.0 + r));
+        if (scaled_out) return want_k ? kInf : (v >= 0.0 || is_int(nu) ? 0.0 : kNaN);
+        if (!(std::fabs(eta) * nu > 1e4)) return kNaN;  // next to eta's zero (z = 0.6627): not resolved
+        if (want_k) return eta > 0.0 ? 0.0 : kInf;
+        return v >= 0.0 || is_int(nu) ? (eta > 0.0 ? kInf : 0.0) : kNaN;
+    }
     const dd::DD s2 = dd::two_prod(nu, nu) + dd::two_prod(x, x);
     const double sh = std::sqrt(s2.hi);
     const dd::DD sh2 = dd::two_prod(sh, sh);
@@ -591,7 +750,7 @@ inline double debye_value(double v, double x, bool want_k, bool scaled_out) {
     }
     auto expo = [](dd::DD e) {  // e^(hi + lo); beyond exp_scaled's range the result is 0 or inf anyway
         Scaled r = exp_scaled(e.hi);
-        r.m = std::fma(r.m, e.lo, r.m);  // e^lo = 1 + lo where the result is in range
+        if (std::isfinite(r.m)) r.m = std::fma(r.m, e.lo, r.m);  // e^lo = 1 + lo where the result is in range
         return r;
     };
     // exponents: I ~ e^(nu eta), K ~ e^(-nu eta); the scaled ones e^-x I, e^x K
@@ -629,6 +788,13 @@ inline double iv_or_kv(double v, double x, bool want_k, bool scaled_out) {
         return sinpi(a) > 0.0 ? kInf : -kInf;
     }
     if (order_saturates(a, x) && (v >= 0.0 || want_k || is_int(a))) return want_k ? kInf : 0.0;
+    if (x < kTinyArg) {  // (e^+-x = 1: the scaled forms are the same)
+        const TinyPair t = tiny_argument(a, x, true);
+        if (want_k) return t.big;
+        if (v >= 0.0 || is_int(a)) return t.small;
+        const double sv = sinpi(a);  // I_-a = I_a + (2/pi) sin(a pi) K_a
+        return sv == 0.0 ? t.small : t.small + kTwoOverPi * sv * t.big;
+    }
     if (a >= kDebyeOrder) return debye_value(v, x, want_k, scaled_out);
     const IK r = ik(a, x);
     // scaled values; unscaled ones multiply by e^+-x as m 2^e
@@ -644,15 +810,18 @@ inline double iv_or_kv(double v, double x, bool want_k, bool scaled_out) {
 
 // iv for |v| < 30 and kv for |v| < 400 (x > 0): Boost (special/boost.hpp; 2-7x faster
 // there, as accurate); ours elsewhere and where Boost's result is not normal.
+inline constexpr double kBoostArgMin = kTinyArg, kBoostArgMax = 1e4;
 inline double iv_route(double v, double x) {
-    if (std::fabs(v) < 30.0 && x > 0.0 && std::isfinite(x)) {
+    // (x within kBoostArgMin..kBoostArgMax: beyond, I overflows -- Boost did not return for
+    // x >= 1e12 -- and below, the first terms are the value)
+    if (std::fabs(v) < 30.0 && x >= kBoostArgMin && x < kBoostArgMax) {
         const double r = bst::i(v, x);
         if (bst::normal(r)) return r;
     }
     return iv_or_kv(v, x, false, false);
 }
 inline double kv_route(double v, double x) {
-    if (std::fabs(v) < 400.0 && x > 0.0 && std::isfinite(x)) {
+    if (std::fabs(v) < 400.0 && x >= kBoostArgMin && x < kBoostArgMax) {
         const double r = bst::k(v, x);
         if (bst::normal(r)) return r;
     }
@@ -661,7 +830,7 @@ inline double kv_route(double v, double x) {
 // ive, kve: Boost's iv, kv times e^-+x in the same regions for 0 < x < 700 (both factors in
 // range there; one more rounding).
 inline double ive_route(double v, double x) {
-    if (std::fabs(v) < 30.0 && x > 0.0 && x < 700.0) {
+    if (std::fabs(v) < 30.0 && x >= kBoostArgMin && x < 700.0) {
         const double r = bst::i(v, x);
         if (bst::normal(r)) {
             const double s = r * std::exp(-x);
@@ -671,7 +840,7 @@ inline double ive_route(double v, double x) {
     return iv_or_kv(v, x, false, true);
 }
 inline double kve_route(double v, double x) {
-    if (std::fabs(v) < 400.0 && x > 0.0 && x < 700.0) {
+    if (std::fabs(v) < 400.0 && x >= kBoostArgMin && x < 700.0) {
         const double r = bst::k(v, x);
         if (bst::normal(r)) {
             const double s = r * std::exp(x);

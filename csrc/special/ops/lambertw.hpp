@@ -6,9 +6,10 @@
 //     an fma. In float64, e x + 1 cancels down to its last bits (scipy loses
 //     2e7 ULP there); the condition number 1/|1 + W| of W is large there, but
 //     the input is exact, so W keeps its relative accuracy.
-//   - Elsewhere: Halley's iteration on w e^w = x from an initial value (the
-//     branch series, log(1 + x), or the asymptotic L1 - L2 + L2/L1), to
-//     2^-53 relative.
+//   - |x + 1/e| >= 0.05: Boost (special/boost.hpp; w0_routed, wm1_routed).
+//   - Between the two, and where Boost's result is not normal: Halley's
+//     iteration on w e^w = x from an initial value (the branch series,
+//     log(1 + x), or the asymptotic L1 - L2 + L2/L1), to 2^-53 relative.
 // The float64 nearest -1/e (-0.36787944117144233, 8e-18 beyond -1/e) is taken
 // as the branch point itself: W = -1 on both branches (S7 user decision, as
 // Boost). Below it, and x > 0 on k = -1, there is no real value: NaN.
@@ -35,7 +36,11 @@ inline constexpr double kMinusInvE = -0.36787944117144233;  // the float64 neare
 inline double two_ex_plus_one(double x) { return 2.0 * (std::fma(kEHi, x, 1.0) + kELo * x); }
 
 // Halley on f(w) = w e^w - x from w.
+// (The loops here stop at a fixed point; after 64 steps the iterate is the value if its last
+// step was in its last bits -- a cycle between neighbouring doubles -- and NaN otherwise.)
+inline constexpr double kSettled = 0x1p-48;
 inline double halley(double w, double x) {
+    double step = kInf;
     for (int it = 0; it < 64; ++it) {
         const double ew = std::exp(w);
         const double f = w * ew - x;
@@ -43,9 +48,27 @@ inline double halley(double w, double x) {
         const double d = ew * wp1 - (w + 2.0) * f / (2.0 * wp1);
         const double wn = w - f / d;
         if (std::fabs(wn - w) <= 0x1p-53 * std::fabs(wn) || !std::isfinite(wn)) return wn;
+        step = std::fabs(wn - w) / std::fabs(wn);
         w = wn;
     }
-    return w;
+    return step <= kSettled ? w : kNaN;
+}
+
+// W_-1 for a tiny negative x (a subnormal's w e^w has only a few bits: Halley on it does not
+// settle): Halley on g(w) = w + log(-w) - L, L = log(-x), with g' = 1 + 1/w, g'' = -1/w^2.
+inline constexpr double kLogFormAbove = -0x1p-1000;
+inline double halley_log(double w, double L) {
+    double step = kInf;
+    for (int it = 0; it < 64; ++it) {
+        const double iw = 1.0 / w;
+        const double g = w + std::log(-w) - L;
+        const double g1 = 1.0 + iw;
+        const double wn = w - g / (g1 + g * iw * iw / (2.0 * g1));
+        if (std::fabs(wn - w) <= 0x1p-53 * std::fabs(wn) || !(wn < 0.0)) return wn < 0.0 ? wn : kNaN;
+        step = std::fabs(wn - w) / std::fabs(wn);
+        w = wn;
+    }
+    return step <= kSettled ? w : kNaN;
 }
 
 inline double w0(double x) {
@@ -72,6 +95,10 @@ inline double wm1(double x) {
     if (x == 0.0) return -kInf;
     if (x == kMinusInvE) return -1.0;
     if (x < kMinusInvE || x > 0.0) return kNaN;
+    if (x > kLogFormAbove) {
+        const double L = std::log(-x), L2 = std::log(-L);
+        return halley_log(L - L2 + L2 / L, L);
+    }
     const double q = two_ex_plus_one(x);
     const double p = -std::sqrt(q);
     if (q <= 0.25) return horner(p, kLambertwBranch);
@@ -95,7 +122,7 @@ inline double w0_routed(double x) {
     return w0(x);
 }
 inline double wm1_routed(double x) {
-    if (x < 0.0 && std::fabs(x - kMinusInvE) >= 0.05) {
+    if (x <= kLogFormAbove && std::fabs(x - kMinusInvE) >= 0.05) {
         const double r = bst::wm1(x);
         if (bst::normal(r)) return r;
     }
@@ -120,6 +147,7 @@ inline cplx chorner(cplx p) {
 
 // Halley on w e^w - z.
 inline cplx challey(cplx w, cplx z) {
+    double step = kInf;
     for (int it = 0; it < 64; ++it) {
         const cplx ew = cexp(w);
         const cplx f = mul(w, ew) - z;
@@ -127,23 +155,26 @@ inline cplx challey(cplx w, cplx z) {
         const cplx d = mul(ew, wp1) - div(mul(w + 2.0, f), 2.0 * wp1);
         const cplx wn = w - div(f, d);
         if (norm1(wn - w) <= 0x1p-53 * norm1(wn) || !std::isfinite(wn.real()) || !std::isfinite(wn.imag())) return wn;
+        step = norm1(wn - w) / norm1(wn);
         w = wn;
     }
-    return w;
+    return step <= lambertw_detail::kSettled ? w : cplx{kNaN, kNaN};
 }
 // For |z| beyond 1e150 or below 1e-150 (k != 0), where w e^w would overflow or
 // underflow: Halley on w + log w - L, L = log z + 2 pi i k (|W| > 300 there, away
 // from where the logarithm's branch could differ).
 inline cplx challey_log(cplx w, cplx L) {
+    double step = kInf;
     for (int it = 0; it < 64; ++it) {
         const cplx iw = div(1.0, w);
         const cplx g = w + clog(w) - L;
         const cplx g1 = 1.0 + iw, g2 = -mul(iw, iw);
         const cplx wn = w - div(g, g1 - div(mul(g, g2), 2.0 * g1));
         if (norm1(wn - w) <= 0x1p-53 * norm1(wn)) return wn;
+        step = norm1(wn - w) / norm1(wn);
         w = wn;
     }
-    return w;
+    return step <= lambertw_detail::kSettled ? w : cplx{kNaN, kNaN};
 }
 
 inline cplx cw(cplx z, double k) {
@@ -157,6 +188,15 @@ inline cplx cw(cplx z, double k) {
     if (y == 0.0 && x > kMinusInvE) {
         if (k == 0.0) return {w0_routed(x), y};
         if (x < 0.0 && ((k == -1.0 && !below) || (k == 1.0 && below))) return {wm1_routed(x), y};
+    }
+    // Next to the real branches' side of the cut (below it for k = 1, above for k = -1, on
+    // (-1/e, 0)): the real value and its slope, W(x + iy) = W(x) + i y W / (x (1 + W)), exact to
+    // (y/x)^2. (W itself is next to the negative axis there, where the iterations' log w would
+    // change its branch from one step to the next.)
+    if (x < 0.0 && x > kMinusInvE + 0.05 && std::fabs(y) <= 0x1p-30 * -x &&
+        ((k == -1.0 && !below) || (k == 1.0 && below))) {
+        const double wr = wm1_routed(x);
+        return {wr, y * (wr / (x * (1.0 + wr)))};
     }
     const cplx L = clog(z) + cplx{0.0, kTwoPi * k};
     const double r = std::hypot(x, y);

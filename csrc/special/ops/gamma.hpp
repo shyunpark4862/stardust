@@ -12,6 +12,7 @@
 
 #include "special/cost.hpp"
 #include "special/boost.hpp"
+#include "special/dd.hpp"
 #include "special/gamma_core.hpp"
 #include "special/ops/zeta.hpp"
 
@@ -68,8 +69,10 @@ inline Scaled gamma_pos_scaled(double y) {
 
 // Gamma(x) for x < 0, not an integer, as m 2^e: -pi / (x sinpi(x) Gamma(-x)).
 inline Scaled gamma_neg(double x) {
+    // (no shortcut to 0 for a large |x|: as m 2^e the value is still a factor of quotients
+    // that come back into range, binom(0.1, 1000) and beta(-500.5, 1000.5))
     const double y = -x;
-    if (y > 400.0) return {std::copysign(0.0, sinpi(x)), 0};  // |Gamma(x)| < 1e-860, sign of sinpi(x)
+    if (y < 0x1p-30) return Scaled{1.0, 0} / scaled(x) * scaled(1.0 - kEuler * x);  // 1/x - euler (x sinpi(x) underflows)
     return scaled(-kPi / (x * sinpi(x))) / gamma_pos_scaled(y);
 }
 // The same as a double where Gamma(-x) is finite: one division, rounded once
@@ -83,7 +86,7 @@ inline double gamma_neg_direct(double x) {
 // 1/Gamma(x) for x < 0, not an integer: -x sinpi(x) Gamma(-x) / pi.
 inline Scaled rgamma_neg(double x) {
     const double y = -x;
-    if (y > 400.0) return {std::copysign(kInf, sinpi(x)), 0};
+    if (y < 0x1p-30) return scaled(x) * scaled(1.0 + kEuler * x);
     return scaled(-x * sinpi(x) / kPi) * gamma_pos_scaled(y);
 }
 
@@ -99,9 +102,9 @@ inline Scaled rgamma_dd(double hi, double lo) {
         const double sign = std::fmod(n, 2.0) == 0.0 ? 1.0 : -1.0;
         return scaled(sign * lo) * gamma_pos_scaled(n + 1.0);
     }
+    if (hi > -0x1p-30) return scaled(hi + lo) * scaled(1.0 + kEuler * hi);  // x (1 + euler x)
     const double s = sinpi(hi) * cospi(lo) + cospi(hi) * sinpi(lo);  // exact identity, any lo
     const double y = -hi;
-    if (y > 400.0) return {std::copysign(kInf, s), 0};
     return scaled(-(hi + lo) * s / kPi) * gamma_dd(y, -lo);
 }
 
@@ -136,6 +139,12 @@ inline double lbeta_large(double a, double b) {
         return horner(w * w, cephes::kLgamA) * w;
     };
     const double c = a + b;
+    if (c == kInf) {
+        // a + b beyond the doubles (so both are huge and positive): b / c and log c through
+        // r = b / a <= 1 (betaln(1e300, 1.8e308) was -inf for -2.0e301)
+        const double r = b / a, bc = r / (1.0 + r), lc = std::log(a) + std::log1p(r);
+        return (b - 0.5) * std::log(bc) - 0.5 * lc + (a - 0.5) * std::log1p(-bc) + kLogSqrt2Pi + (mu(a) + mu(b));
+    }
     if (b < 0.0) return lgamma_abs(b) + (a - 0.5) * std::log1p(-b / c) - b * std::log(c) + b + mu(a) - mu(c);
     if (b >= 10.0) {
         // with Stirling for log Gamma(b) too, the b log b and b log c terms meet as
@@ -284,11 +293,43 @@ struct Polygamma : Real {
     static constexpr int nin = 2, nout = 1;
     static constexpr std::array<const char*, 2> args{"n", "x"};
     static constexpr double cost_ns = cost::kPolygamma;
+    // n! zeta(n + 1, x) for n > 7000 and x > 0, where n! alone is far beyond the range:
+    // from its log E = log Gamma(n + 1) - (n + 1) log x in double-double (zeta(s, x) =
+    // x^-s times a sum between 1 and 1 + x / (s - 1)). inf or 0 where E says so; the
+    // window between them (x near n / e) is computed up to n = 1e6 and is NaN beyond
+    // (E's own error grows with n).
+    static double large_order(double n, double x) {
+        if (x == kInf) return 0.0;
+        if (n >= 0x1p53) {
+            // log(n!) - n log x = n (log n - 1 - log x) to 1/n relative: the sign decides
+            const double t = std::log(n) - 1.0 - std::log(x);
+            if (std::fabs(t) * n < 1e4) return kNaN;
+            return t > 0.0 ? kInf : 0.0;
+        }
+        const dd::DD E = dd::loggamma(dd::DD{n, 0.0} + 1.0) - dd::log(dd::DD{x, 0.0}) * (n + 1.0);
+        // the sum is at most 1 + x / n: 2^62 x / n would have to pass e^-800 to matter below
+        if (E.hi > 720.0) return kInf;
+        if (E.hi < -800.0 - 45.0) return 0.0;
+        if (n > 1e6 || x > 1e8) return kNaN;
+        const double rel = zeta_detail::hurwitz_relative(n + 1.0, n, x);
+        return value(exp_scaled(E.hi) * scaled((1.0 + E.lo) * rel));
+    }
     static double f(double n, double x) {
         if (std::isnan(n) || std::isnan(x)) return kNaN;
         if (n < 0.0 || n != std::floor(n) || std::isinf(n)) return kNaN;
         if (n == 0.0) return Digamma::f(x);
         const double sign = std::fmod(n, 2.0) == 1.0 ? 1.0 : -1.0;  // (-1)^(n+1)
+        if (n > gamma_detail::kScaledMax && x > 0.0) return sign * large_order(n, x);
+        if (n > gamma_detail::kScaledMax && x < 0.0 && x != std::floor(x) && std::isfinite(x)) {
+            // zeta(s, x) = zeta(s, d) + (-1)^s (zeta(s, 1 - d) - zeta(s, 1 - x)), d = x's fraction
+            // (zeta.hpp), s = n + 1: for a large s the nearer pole's term alone, d^-s or
+            // (-1)^s (1 - d)^-s, and n! times it is beyond the range. Only at d = 1/2 with an
+            // odd s do the two cancel, leaving zeta(s, 1 - x).
+            const double d = x + std::ceil(-x);
+            const bool s_even = sign > 0.0;  // n odd
+            if (d == 0.5 && !s_even) return sign * large_order(n, 1.0 - x);
+            return (d < 0.5 || s_even) ? sign * kInf : -sign * kInf;
+        }
         const Scaled z = zeta_detail::hurwitz_scaled(n + 1.0, n, x);  // s - 1 = n exactly
         if (z.m == 0.0 || !std::isfinite(z.m)) return sign * z.m;
         if (n > gamma_detail::kScaledMax) return sign * std::copysign(kInf, z.m);
@@ -362,6 +403,9 @@ struct Beta : Real {
         }
         if (std::fabs(a) <= kScaledMax && std::fabs(b) <= kScaledMax) return value(beta_scaled(a, b));
         if (a > 0.0 && b > 0.0) return b > kScaledMax ? 0.0 : value(beta_large(a, b));
+        // a huge, b < 0 within the scaled range: Gamma(a) / Gamma(a + b) as a ratio, times
+        // Gamma(b) (exp(log|B|) below carries |log B| ULP: 2.4e-14 at B = 1e300)
+        if (a > kScaledMax && std::fabs(b) <= kScaledMax) return value(gamma_ratio(a, b) * gamma_neg(b));
         // a negative argument beyond the scaled range (mixed-bound region): the size
         // from log|B|, the sign from the three Gammas (Gamma(a)/Gamma(a + b) > 0 for a huge a)
         const double sign = a > 0.0 ? gamma_sign(b) : gamma_sign(a) * gamma_sign(b) * gamma_sign(a + b);
@@ -391,6 +435,29 @@ struct Binom : Real {
         if (w > 0.0) return gamma_scaled(w);
         return Scaled{1.0, 0} / rgamma_dd(w, 0.0);
     }
+    // With n or k above kScaledMax, a smaller one of k, n - k (or n + 1, |k|, k - n) above this
+    // puts the result beyond the doubles: binom(2 m, m) ~ 4^m / sqrt(pi m) > 2^1024 from m = 515.
+    static constexpr double kBothLarge = 1100.0;
+    // psi(x + y) - psi(x) for x, y > 0 with one of them above kScaledMax, to 1e-4 relative: for
+    // the first-order terms of a low part (a difference of two digammas would lose it all).
+    static double psi_step(double x, double y) {
+        using namespace gamma_detail;
+        return x > kScaledMax ? std::log1p(y / x) : std::log(x + y) - digamma_pos(x);
+    }
+    // B(x, y) = Gamma(x) Gamma(y) / Gamma(x + y) for x = xh + xl, y = yh + yl > 0, at least one
+    // above kScaledMax, as m 2^e; 0 where the smaller is above kBothLarge (below every double:
+    // B(x, y) <= B(y, y) ~ 4^-y).
+    static Scaled beta_big(double xh, double xl, double yh, double yl) {
+        using namespace gamma_detail;
+        if (xh < yh) {
+            std::swap(xh, yh);
+            std::swap(xl, yl);
+        }
+        if (yh > kBothLarge) return {0.0, 0};
+        // d log B = (psi(x) - psi(x + y)) dx + (psi(y) - psi(x + y)) dy
+        const double low = (xl != 0.0 ? -psi_step(xh, yh) * xl : 0.0) + (yl != 0.0 ? -psi_step(yh, xh) * yl : 0.0);
+        return gamma_ratio(xh, yh) * gamma_scaled(yh) * scaled(1.0 + low);
+    }
     static double f(double n, double k) {
         using namespace gamma_detail;
         if (std::isnan(n) || std::isnan(k)) return kNaN;
@@ -405,7 +472,9 @@ struct Binom : Real {
             if (kx >= 0.0 && kx < 20.0 && (std::fabs(n) > 1e-8 || n == 0.0)) {
                 double num = 1.0, den = 1.0;
                 for (int i = 1; i < 1 + static_cast<int>(kx); ++i) {
-                    num *= i + n - kx;
+                    // n - (kx - i): one rounding, none next to an integer n ((i + n) - kx rounds
+                    // i + n first: binom(1 - 2^-53, 7) lost its factor n - 1 to it)
+                    num *= (n - (kx - i)) + 0.0;  // (+ 0.0: a factor -0.0 at n = -0.0 is scipy's +0.0)
                     den *= i;
                     if (std::fabs(num) > 1e50) {
                         num /= den;
@@ -421,30 +490,69 @@ struct Binom : Real {
             if (n == std::floor(n) && n >= 0.0 && k > n) return 0.0;
         }
         if (n_negint) return kNaN;
-        if (std::isinf(k)) return kNaN;  // scipy
+        // k = +inf: no limit. k = -inf: |binom| ~ Gamma(n + 1) |k|^-(n+1) / pi with an oscillating
+        // sign, so the limit is 0 for finite n > -1 (user decision 2026-11-17) and none below.
+        if (std::isinf(k)) return k < 0.0 && n > -1.0 && std::isfinite(n) ? 0.0 : kNaN;
         if (std::isinf(n)) return 1.0 / ((n + 1.0) * Beta::f(n - k + 1.0, k + 1.0));  // scipy's formula, its conventions
         const TwoSum d1 = two_sum(n, -k);
         const TwoSum d = two_sum(d1.s, 1.0);
         const double dlo = d.err + d1.err;
         // n - k + 1 a pole of Gamma: 0, signed as scipy's 1 / ((n + 1) inf)
         if (is_nonpos_int(d.s) && dlo == 0.0) return std::copysign(0.0, n + 1.0);
+        if (n >= 0.0 && (n > kScaledMax || std::fabs(k) > kScaledMax)) {
+            // The guaranteed region with a huge n or k. Every form below keeps its arguments
+            // exact: a sum that is not a double (n + 1, k - n, n - k + 1) enters as hi + lo, the
+            // Gamma quotient at hi and the low part to first order (a relative 2^-53 in an
+            // argument x of B(x, y) moves it by up to 2^-53 x log(1 + y/x): 200 ULP at
+            // k = 1e300, 3000 at a 7000 beside 1e7), and no log Gamma is subtracted from another.
+            const TwoSum np1 = two_sum(n, 1.0);
+            if (k < 0.0) {
+                // Gamma(n+1) / (Gamma(k+1) Gamma(n-k+1)) with 1/Gamma(k+1) reflected:
+                //     sin(pi (k + 1)) / pi  B(n + 1, -k);  sin(pi (k + 1)) = -sin(pi k), k reduced exactly
+                // (sin(pi k) / pi = k below 2^-30, also where pi k is subnormal)
+                const double sk = k > -0x1p-30 ? k : sinpi(k) / kPi;
+                return value(scaled(-sk) * beta_big(np1.s, np1.err, -k, 0.0));
+            }
+            if (d1.s < 0.0) {
+                // k > n, with 1/Gamma(n-k+1) reflected: sin(pi (n - k + 1)) / pi  B(n + 1, k - n).
+                // sin(pi (d.s + d.err + d1.err)), the three parts each reduced exactly (their sum
+                // dlo rounds: at n = 1e-10 the 1 + n lost n's digits, 8e-8 of the result)
+                const double s1 = sinpi(d.s) * cospi(d.err) + cospi(d.s) * sinpi(d.err);
+                const double c1 = cospi(d.s) * cospi(d.err) - sinpi(d.s) * sinpi(d.err);
+                const double sn = s1 * cospi(d1.err) + c1 * sinpi(d1.err);
+                if (n <= kScaledMax && -d1.s <= kScaledMax) return value(gamma1p(n) / gamma1p(k) * rgamma_dd(d.s, dlo));
+                return value(scaled(sn / kPi) * beta_big(np1.s, np1.err, -d1.s, -d1.err));
+            }
+            // 0 <= k <= n (so n is the huge one): Gamma(n+1) / (Gamma(k+1) Gamma(n-k+1)), the
+            // smaller of k, n - k apart and the other against Gamma(n+1) as a quotient
+            if (std::min(k, d1.s) > kBothLarge) return kInf;  // binom(n, k) >= binom(2 kk, kk) ~ 4^kk
+            if (k <= d1.s) {
+                // Gamma(n-k+1) / Gamma(n+1) = ratio(a, k), a = n - k + 1 = d.s + dlo
+                const Scaled q = gamma_ratio(d.s, k) * scaled(1.0 - psi_step(d.s, k) * dlo);
+                return value(Scaled{1.0, 0} / q / gamma1p(k));
+            }
+            // Gamma(k+1) / Gamma(n+1) = ratio(a, b), a = k + 1, b = n - k = d1.s + d1.err; and Gamma(b + 1)
+            const TwoSum kp1 = two_sum(k, 1.0);
+            const double low = -psi_step(kp1.s, d1.s) * kp1.err - std::log(kp1.s + d1.s) * d1.err;
+            const Scaled q = gamma_ratio(kp1.s, d1.s) * scaled(1.0 + low);
+            const Scaled gb = gamma1p(d1.s) * scaled(1.0 + (d1.err != 0.0 ? digamma_pos(d1.s + 1.0) * d1.err : 0.0));
+            return value(Scaled{1.0, 0} / q / gb);
+        }
         if (std::fabs(n) > kScaledMax || std::fabs(k) > kScaledMax) {
+            // n < 0 (the mixed-bound region)
             if (k > kScaledMax && std::fabs(n + 1.0) <= kScaledMax && k - n > kScaledMax) {
                 // n moderate, k huge (so n - k + 1 < 0): with the reflection,
                 //     binom = Gamma(n + 1) / pi  sinpi(n - k + 1)  Gamma(k - n) / Gamma(k + 1)
-                // the last factor a Gamma ratio (no huge log Gamma cancels another)
-                const double s = sinpi(d.s) * cospi(dlo) + cospi(d.s) * sinpi(dlo);
-                return value(gamma1p(n) * scaled(s / kPi) * gamma_ratio(k - n, n + 1.0));
+                // the last factor a Gamma ratio (no huge log Gamma cancels another); the sine
+                // and the low part of n + 1 as above
+                const TwoSum np1 = two_sum(n, 1.0);
+                const double s1 = sinpi(d.s) * cospi(d.err) + cospi(d.s) * sinpi(d.err);
+                const double c1 = cospi(d.s) * cospi(d.err) - sinpi(d.s) * sinpi(d.err);
+                const double sn = s1 * cospi(d1.err) + c1 * sinpi(d1.err);
+                const double low = np1.err != 0.0 ? -std::log(k) * np1.err : 0.0;
+                return value(gamma1p(n) * scaled(sn / kPi) * gamma_ratio(k - n, np1.s) * scaled(1.0 + low));
             }
-            if (n > kScaledMax && std::fabs(k) <= kScaledMax)  // Gamma(n + 1) / Gamma(n - k + 1) = 1 / ratio
-                return value(Scaled{1.0, 0} / gamma_ratio(n - k + 1.0, k) / gamma1p(k));
-            if (n > kScaledMax && k >= 0.0 && k <= n) {
-                // n huge: Gamma(n + 1) / Gamma(n - k + 1) = 1 / ratio, the smaller of k, n - k first
-                const double kk = std::min(k, n - k);
-                if (kk > kScaledMax) return kInf;  // binom(n, k) >= binom(2 kk, kk) ~ 4^kk
-                return value(Scaled{1.0, 0} / gamma_ratio(n - kk + 1.0, kk) / gamma1p(kk));
-            }
-            // the rest (mixed-bound region): log|Gamma| term by term and the signs
+            // log|Gamma| term by term and the signs
             const double sign = gamma_sign(n + 1.0) * gamma_sign(k + 1.0) * gamma_sign(d.s);
             return sign * std::exp(lgamma_abs(n + 1.0) - lgamma_abs(k + 1.0) - lgamma_abs(d.s));
         }

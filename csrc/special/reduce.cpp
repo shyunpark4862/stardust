@@ -9,7 +9,7 @@
 // Accuracy (S5 user decision): logsumexp and log_softmax |error| <=
 // 1e-14 max(1, |value|), softmax relative 1e-14 per element. x - m rounds to
 // d = hi + lo (TwoSum, exact), and exp(d) = exp(hi) (1 + lo): rounding d itself
-// would cost |d| 2^-53 relative in exp -- 1.5e-13 at d = -700.
+// would cost |d| 2^-53 relative in exp -- 7.8e-14 at d = -700.
 //
 // scipy's conventions on infinities: logsumexp and log_softmax replace an
 // infinite max by 0 (so logsumexp([inf, 1]) = inf, log_softmax = [nan, -inf]);
