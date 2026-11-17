@@ -9,7 +9,7 @@ description = "An educational rebuild of array, linear algebra and dataframe lib
 requires-python = ">=3.15"
 
 [project.optional-dependencies]
-test = ["pytest", "hypothesis", "numpy", "scipy", "pandas", "polars", "python-flint"]
+test = ["pytest", "hypothesis", "numpy", "scipy", "pandas", "polars", "python-flint", "statsmodels", "scikit-learn"]
 
 [tool.scikit-build]
 minimum-version = "build-system.requires"

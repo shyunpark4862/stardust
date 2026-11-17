@@ -47,6 +47,7 @@ print([round(b, 12) for b in beta.tolist()])  # [1.0, 1.0]
 | 데이터프레임 | `sd.frame` | `Series`, `DataFrame`, `Index`, NA, Copy-on-Write, groupby, merge, sort, `read_csv`. `to_array()`로 배열과 잇는다 | [docs/api/frame.md](docs/api/frame.md) |
 | 특수함수 | `sd.special` | **S0–S11 완료 (로지스틱·정보 7, 오차함수 8, 감마·베타·제타 9, 불완전 감마·베타 8, 리덕션·지수적분·타원 7, Bessel·Airy 21, 초기하·Lambert W 3, 복소수 2와 erf·erfc·erfcx·lambertw의 complex)** ([ROADMAP.md](ROADMAP.md) S0–S11). scipy.special의 부분집합: 오차함수, 감마, 불완전 감마·베타, Bessel, 초기하 등 | [docs/api/special.md](docs/api/special.md) |
 | 통계 | `sd.stats` | **구현 (2026-11-18).** scipy.stats의 부분집합: 단변량 분포 31(신형 API `Normal(mu, sigma).cdf(x)`), 다변량 7, 기술통계 11. 검정과 상관은 나중에 따로 한다 | [docs/api/stats.md](docs/api/stats.md) |
+| 회귀 | `sd.regression` | **설계 초안 (2026-11-18), 구현 전.** 선형(OLS·WLS·GLS)·GLM·정규화(ridge·lasso·elastic net)·강건·분위·비선형 최소제곱. 함수 + 결과 객체, 추론과 예측을 함께 | [docs/api/regression.md](docs/api/regression.md) |
 | 난수 | `sd.random` | **T3 구현 (2026-11-15).** Philox4×64-10 계수기형 생성기(스레드 수와 무관한 결정성), Generator와 `random`·`integers`·`choice`·`permutation`·`spawn`. 분포별 표본은 `sd.stats` | [docs/api/random.md](docs/api/random.md) |
 
 - 세 영역이 함께 쓰는 규칙(dtype 객체, 에러 종류와 메시지, 스레드)은 [API.md](API.md)에 있다.

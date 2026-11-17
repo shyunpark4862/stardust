@@ -1,6 +1,6 @@
 # stardust 로드맵
 
-> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–, 진행 중)이다.
+> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6, 설계 초안)이다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -293,4 +293,33 @@
 
 ### T11. `sd.stats.tests` (뺌)
 - 검정은 이 영역에서 뺐다(사용자 결정 2026-11-18: 나중에 따로 한다). 위치(`sd.stats.tests`, 상관도 그곳)만 정해 둔 상태다(docs/design/stats.md §7).
+
+---
+
+# 회귀 영역 (sd.regression)
+
+> 상태: **설계 초안** (2026-11-18). 설계는 [docs/design/regression.md](docs/design/regression.md), API는 [docs/api/regression.md](docs/api/regression.md).
+>
+> **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
+
+## 진행 원칙
+- 다른 영역과 같다: 마일스톤마다 시작 전에 물을 것(docs/design/regression.md §8)을 묻고, 구현하고, 정확도·속도를 재고, 커밋하고, 결과를 전달하고, 승인받으면 다음으로 간다. 해설과 안내서는 쓰지 않는다.
+- 큰 결정(사용자, 2026-11-18): 추론과 예측을 동등하게, 선형·GLM·정규화·강건·분위·비선형 전부, 함수 + 결과 객체(배열 입력), 모듈 `sd.regression`, 절편 기본, 회귀에 딸린 t·p·F·구간은 결과에, 참값은 Arb와 statsmodels·scikit-learn 대조 (docs/design/regression.md §1.1 G1–G7).
+- 기존 영역의 결과는 비트까지 같아야 한다.
+- G0·G1의 질문은 정했다(사용자, 2026-11-18): docs/design/regression.md §1.1 G8–G18.
+
+## 진행 상태
+| 마일스톤 | 상태 |
+|---|---|
+| G0 준비: 대조 패키지, Arb 참값 도구, NIST StRD | 완료·승인 (2026-11-18) |
+| G1 선형: `ols wls gls linregress`, 추론·예측, 강건 표준오차 | 대기 |
+| G2 GLM | 대기 |
+| G3 정규화: `ridge lasso elastic_net`, 경로, 교차검증 | 대기 |
+| G4 강건: `rlm` | 대기 |
+| G5 분위: `quantreg` | 대기 |
+| G6 비선형 최소제곱 | 대기 |
+
+### G0. 준비
+- 결과: statsmodels 0.15.0·scikit-learn 1.9.1을 test 의존성에 넣고 설치했다(Python 3.15에서 설치됨). `tools/regref.py`(Arb 참값), `tests/regression/data/`(NIST StRD 11개, itl.nist.gov), `tests/regression/nist.py`; 테스트 tests/regression/test_reference_tool.py. 기존 패키지의 NIST 성적은 docs/design/regression.md §6.
+- 결과 객체의 공통 틀은 G1로 옮겼다(OLS의 필드와 함께 만든다).
 
