@@ -3,6 +3,7 @@
 #pragma once
 
 #include "linalg/types.hpp"
+#include "parallel/pool.hpp"
 
 #include <Python.h>
 
@@ -199,6 +200,10 @@ Failure run_batch(const Batch& b, double element_ns, F&& body, int max_tasks = 0
             if (f && (!best || f.index < best.index)) best = f;
         return best;
     }
+    // On the calling thread: one element, one thread or a busy pool. A batch
+    // worth splitting by its estimated time still runs without the GIL
+    // (docs/design/linalg.md §8.1); the body is the one the tasks run.
+    const parallel::Unlocked unlocked(element_ns > 0 && element_ns * static_cast<double>(n) >= kParallelMinNs);
     Scratch scratch;
     std::int64_t offs[kMaxOperands];
     for (std::int64_t i = 0; i < n; ++i) {

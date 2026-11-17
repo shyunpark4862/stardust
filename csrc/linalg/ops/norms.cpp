@@ -31,7 +31,7 @@ namespace sd::linalg {
 namespace {
 
 VecOrd parse_vector_ord(nb::handle o, const char* func) {
-    const std::optional<double> r = real_value(o);  // numpy integers too (API.md §2)
+    const std::optional<double> r = real_value(o, "ord");  // numpy integers too (API.md §2)
     if (!r)
         throw nb::type_error((std::string(func) + "(): 'ord' must be an int or a float, not " + py_type_name(o)).c_str());
     const double p = *r;
@@ -115,7 +115,7 @@ MatOrd parse_matrix_ord(nb::handle o) {
         const std::string s = nb::cast<std::string>(o);
         if (s == "fro") return MatOrd::Fro;
         if (s == "nuc") return MatOrd::Nuc;
-    } else if (const std::optional<double> r = real_value(o)) {  // numpy integers too (API.md §2)
+    } else if (const std::optional<double> r = real_value(o, "ord")) {  // numpy integers too (API.md §2)
         const double p = *r;
         if (p == 1) return MatOrd::One;
         if (p == -1) return MatOrd::NegOne;
@@ -207,6 +207,7 @@ nb::object matrix_norm(nb::handle xo, nb::handle keepdims_o, nb::handle ord_o) {
                 });
                 for (double v : sums) take(v);
             } else {
+                const parallel::Unlocked unlocked(lines * len >= kSumParallelMin);
                 for (std::int64_t l = 0; l < lines; ++l) take(line_sum(l));
             }
             return lines == 0 ? 0.0 : (nan ? kNaN : best);

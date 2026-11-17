@@ -232,7 +232,10 @@ inline double vnorm(VecOrd ord, std::int64_t count, Fill&& fill) {
     if (count == 0) return 0.0;
     if (count < kSumParallelMin) return vnorm_serial(ord, count, fill);
     const auto plan = pairwise_plan(count, false);
-    if (plan.size() == 1) return vnorm_serial(ord, count, fill);
+    if (plan.size() == 1) {  // no pool: the serial pass, without the GIL like the split one
+        const parallel::Unlocked unlocked(true);
+        return vnorm_serial(ord, count, fill);
+    }
     const std::size_t parts = plan.size();
     // max (or min) and NaN, or the nonzero count, of one leaf, chunk by chunk
     struct Side {

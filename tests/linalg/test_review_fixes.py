@@ -74,3 +74,63 @@ def test_matrix_ord_too_large_for_float(func, ord_):
         func(a, ord=ord_)
     with pytest.raises(OverflowError):
         sd.linalg.vector_norm(a, ord=ord_)
+
+
+# ---- 2026-11-18: lstsq(rtol=0), the error's module path, the bits of matrix_norm ----
+
+def test_lstsq_rtol_zero_counts_every_positive_singular_value():
+    # xLALSD replaces rcond <= 0 by machine epsilon; rtol = 0 must mean what it means in
+    # matrix_rank (only exact zeros are zero)
+    a = sd.ones((3, 2))
+    b = sd.ones((3,))
+    r = sd.linalg.lstsq(a, b, rtol=0.0)
+    assert min(r.singular_values.tolist()) > 0.0
+    assert r.rank == sd.linalg.matrix_rank(a, rtol=0.0) == 2
+    assert sd.linalg.lstsq(a, b, rtol=1e-300).rank == 2
+    assert sd.linalg.lstsq(a, b).rank == sd.linalg.matrix_rank(a) == 1
+    z = sd.linalg.lstsq(sd.zeros((3, 2)), b, rtol=0.0)
+    assert z.rank == 0 and z.solution.tolist() == [0.0, 0.0]
+
+
+def test_linalg_error_shows_its_public_path():
+    assert sd.linalg.LinAlgError.__module__ == "stardust.linalg"
+    with pytest.raises(sd.linalg.LinAlgError, match=r"^inv\(\): singular matrix"):
+        sd.linalg.inv(sd.zeros((2, 2)))
+
+
+@pytest.mark.parametrize("order", ["C", "F"])
+def test_matrix_norm_sums_each_line_pairwise(order):
+    # Each column (1, -1) or row (inf, -inf) is summed pairwise in its logical order, whatever
+    # the memory layout: the bits of numpy's sum over that line as a contiguous vector, and of
+    # sqrt(sum(x * x)) for 'fro'. numpy's own matrix norm adds the rows one after another when
+    # the summed axis is not the contiguous one, so it differs in the last bits there.
+    rng = np.random.default_rng(7)
+    m = rng.standard_normal((300, 500))
+    x = sd.asarray(np.asarray(m, order=order))
+    cols = np.array([np.abs(np.ascontiguousarray(m[:, j])).sum() for j in range(m.shape[1])])
+    rows = np.array([np.abs(np.ascontiguousarray(m[i, :])).sum() for i in range(m.shape[0])])
+    assert float(sd.linalg.matrix_norm(x, ord=1)) == cols.max()
+    assert float(sd.linalg.matrix_norm(x, ord=-1)) == cols.min()
+    assert float(sd.linalg.matrix_norm(x, ord=float("inf"))) == rows.max()
+    assert float(sd.linalg.matrix_norm(x, ord=float("-inf"))) == rows.min()
+    assert float(sd.linalg.matrix_norm(x, ord="fro")) == float(np.sqrt((m * m).sum()))
+
+
+def test_bits_shared_with_numpy_and_scipy():
+    # docs/design/linalg.md §12.2: the same driver and the same call
+    sl = pytest.importorskip("scipy.linalg")
+    rng = np.random.default_rng(3)
+    for n in (3, 7, 40):
+        a = rng.standard_normal((n, n))
+        s = a @ a.T + n * np.eye(n)
+        b = rng.standard_normal((n, 3))
+        lower = sd.linalg.cholesky(sd.asarray(s))
+        assert np.array_equal(np.asarray(lower.tolist()), np.linalg.cholesky(s))
+        x = sd.linalg.cholesky_solve(lower, sd.asarray(b))
+        assert np.array_equal(np.asarray(x.tolist()), sl.cho_solve((np.linalg.cholesky(s), True), b))
+        got = sd.linalg.qr_pivoted(sd.asarray(a))
+        q, r, perm = sl.qr(a, pivoting=True)
+        assert np.array_equal(np.asarray(got[0].tolist()), q) and np.array_equal(np.asarray(got[1].tolist()), r)
+        assert got[2].tolist() == perm.tolist()
+        sol = sd.linalg.lstsq(sd.asarray(a), sd.asarray(b)).solution
+        assert np.array_equal(np.asarray(sol.tolist()), np.linalg.lstsq(a, b, rcond=None)[0])

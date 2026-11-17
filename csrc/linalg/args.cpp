@@ -70,7 +70,7 @@ std::vector<int> parse_axes(nb::handle o, int ndim, const char* func) {
 // `rtol=` (docs/api/linalg.md §1.1): None -> max(m, n) * eps; else a real number >= 0.
 double parse_rtol(nb::handle o, std::int64_t m, std::int64_t n, const char* func) {
     if (o.is_none()) return static_cast<double>(std::max<std::int64_t>({m, n, 1})) * 2.220446049250313e-16;
-    const std::optional<double> r = real_value(o);
+    const std::optional<double> r = real_value(o, "rtol");
     if (!r)
         throw nb::type_error(
             (std::string(func) + "(): 'rtol' must be None, an int or a float, not " + py_type_name(o)).c_str());

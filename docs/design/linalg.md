@@ -27,7 +27,7 @@
   - 희소 행렬과 반복법(CG, GMRES)
   - randomized SVD: 난수 생성이 먼저 필요하다. 시그니처가 정해지지 않았다.
 
-### 1.2 Accelerate LAPACK을 감싼다 (`accelerate/lapack.hpp`)
+### 1.2 Accelerate LAPACK을 감싼다 (`linalg/lapack.hpp`)
 - **분해 알고리즘을 직접 짜지 않는다.** LAPACK을 부른다.
   - 직접 짜는 것은 LAPACK에 없는 것뿐이다: `expm`(§11), 그리고 LAPACK이 필요 없는 원소 루프(`vecdot`, `outer`, `trace`, `diagonal`, `kron`, `cross`, 노름, §10.8)
 - **래퍼**: 루틴 하나에 템플릿 함수 하나다. `double`이면 `d*`, `std::complex<double>`이면 `z*`를 부른다 (예: `getrf<T>`).
@@ -71,7 +71,7 @@
 | `linalg/pairwise.hpp` | pairwise 합과 긴 합의 병렬화 (§8.2, §8.3) |
 | `linalg/pyrefs.*` | Python 객체 캐시 (§3.4) |
 | `linalg/types.hpp` | `cplx`, `lint`, dtype 보조, 원소 곱 `mul` |
-| `linalg/input.*`, `linalg/outblock.*` | 지금의 경계 코드. M3에서 없어진다 (§3.6) |
+| `linalg/input.*`, `linalg/outblock.*` | 경계 코드: 빌린 입력 `Input`과 출력 블록 `Out` (§3.6) |
 | `linalg/ops/common.hpp` | 실패 코드와 `raise`, 우변 규칙(`Rhs`), `LapackSlot`, `triangle_operand`, `lu_factor`, `lu_inverse` |
 | `linalg/ops/lu.cpp` | `solve`, `inv`, `det`, `slogdet` |
 | `linalg/ops/basic.cpp` | `vecdot`, `outer`, `trace`, `diagonal`, `matrix_power`, `kron`, `cross` |
@@ -82,7 +82,7 @@
 | `linalg/ops/nonsym.cpp` | `eig`, `eigvals`, `schur`, `hessenberg`, `ldl` |
 | `linalg/ops/special.cpp` | `solve_tridiagonal`, `solve_banded`, `solve_sylvester` |
 | `linalg/ops/expm.cpp` | `expm` (§11) |
-| `accelerate/lapack.hpp` | LAPACK/BLAS 래퍼 (§1.2) |
+| `linalg/lapack.hpp` | LAPACK/BLAS 래퍼 (§1.2) |
 | `src/stardust/linalg/` | `__init__.py`(재노출), `_errors.py`(`LinAlgError`). 결과 namedtuple은 세 영역 공통의 `src/stardust/_results.py` |
 
 - 층은 아래로만 의존한다: `linalg/` → `array/`, `parallel/`, `accelerate/`, `base/` (ARCHITECTURE §1).
@@ -161,7 +161,7 @@
   - 대칭/에르미트 입력은 아래 삼각만 읽는다. 읽을 삼각을 고르는 옵션은 없다. (scipy는 `cholesky`, `solve_triangular`가 `lower=False`, `eigh`, `ldl`이 `lower=True`다.)
   - 결과로 낼 삼각은 `upper=False`로 고른다.
   - `solve_triangular`의 `upper`는 필수다. 위·아래를 잘못 지정하면 조용히 틀린 답이 나오기 때문이다.
-- **`eig`, `eigvals`의 고유값은 (실수부, 허수부) 사전순으로 정렬한다.** 배열의 complex 순서와 같다 (array.md §2.6). Array API와 LAPACK은 순서를 정하지 않는다.
+- **`eig`, `eigvals`의 고유값은 (실수부, 허수부) 사전순으로 정렬한다.** `sd.sort`는 complex를 받지 않으므로 이 순서는 여기서만 쓴다. Array API와 LAPACK은 순서를 정하지 않는다.
 - **분해 결과를 그대로 넘긴다**: `cholesky_solve(l, b, *, upper)`, `lu_solve(l, u, perm, b)`. scipy의 `(c, lower)`, `(lu, piv)` 같은 tuple이나 압축 형식을 쓰지 않는다.
 - **`lstsq`는 `(solution, rank, singular_values)`다.** `residuals`는 없다. 랭크가 부족하거나 M ≤ N이면 비거나 NaN이 되는 값이고, scipy 1.18에서 동작이 바뀌기도 했다. rank와 특이값은 `gelsd`가 추가 비용 없이 준다.
 - **순열은 int64 인덱스 벡터 `perm`이고 결과 tuple의 마지막에 둔다.** 순열 행렬은 돌려주지 않는다.
@@ -462,7 +462,11 @@
 ## 8. 병렬화와 결정성
 
 ### 8.1 풀
-- 배열 영역의 풀 하나를 쓴다 (array.md §10). 상주 워커, spin 후 대기, atomic 카운터로 태스크 분배, 호출 스레드 참여, 병렬일 때만 GIL 해제다.
+- 배열 영역의 풀 하나를 쓴다 (array.md §10). 상주 워커, spin 후 대기, atomic 카운터로 태스크 분배, 호출 스레드 참여다.
+- **GIL**: 배치의 추정 시간(원소당 추정 시간 × 원소 수)이 `kParallelMinNs`(10µs) 이상이면 스레드 수와 상관없이 GIL을 놓고 돈다 (API.md §3). 풀로 나누는 기준과 같은 값이다.
+  - 나눠서 돌 때는 `parallel_for`가 놓는다. 나누지 않을 때(행렬이 하나, 1스레드, 풀이 바쁨)는 `run_batch`의 직렬 루프가 `parallel::Unlocked`로 놓는다. 본문은 태스크에서 도는 것과 같은 함수라 Python 객체를 만지지 않는다.
+  - 원소당 추정 시간이 0인 함수(나누지 않기로 한 것, `cost.hpp`)는 GIL을 쥔 채 돈다.
+  - 긴 합(`kSumParallelMin` = 2¹⁵ 항 이상의 `pairwise_sum_mt`, `vnorm`, 행렬 노름의 줄 합)도 나누지 않을 때 `parallel::Unlocked`로 놓는다.
 - **중첩하지 않는다.** 태스크 안에서는 `begin_parallel()`이 false다(`parallel::available()`). 그래서 배치를 나눈 태스크 안의 긴 합, 큰 패킹, Schur 쌍은 그 스레드에서 직렬로 돈다.
 - 다른 Python 스레드가 풀을 쓰는 중이면 그 호출은 호출 스레드 혼자 돈다 (array.md §10.1).
 - 태스크 안에서는 Python 객체를 만지지 않는다. 결과 배열과 namedtuple은 태스크 밖에서 만든다.
@@ -474,6 +478,7 @@
   - 합은 `0.0 + 트리`다. numpy의 `add.reduce`와 같다(확인함).
 - **항의 순서는 논리적 C 순서다**(마지막 축이 가장 빠름). 메모리 레이아웃과 무관하므로 결과도 레이아웃과 무관하다.
 - 그래서 같은 항이면 numpy, 배열의 합과 비트까지 같다. 테스트로 고정한다.
+  - `matrix_norm`의 ±1, ±inf는 열(±1)이나 행(±inf) 하나하나를 논리 순서로 pairwise 합한다. 그 줄을 연속 벡터로 놓고 numpy로 더한 값과 비트가 같고, 'fro'는 `sqrt(sum(x * x))`와 같다(테스트로 고정). **numpy의 `matrix_norm` 자체와는 끝 비트가 다를 수 있다**(사용자 결정 2026-11-18: 코드는 두고 문서를 실제대로): numpy와 배열의 `sum(axis=)`은 더하는 축이 메모리에서 연속이 아니면 바깥 축을 따라 줄을 차례로 더한다(pairwise가 아니다). 그래서 C 순서 입력의 ±1과 F 순서 입력의 ±inf는 500×500 무작위 20개 가운데 0–2개만 numpy와 비트가 같았다. C 순서의 ±inf와 F 순서의 ±1은 20개 모두 같다. 'fro'는 numpy가 다른 식을 써서 15–16개가 같다. 우리 값은 레이아웃과 무관하다.
   - `vecdot(x, y) == sum(conj(x) * y, axis=-1)`, `trace(x) == sum(diagonal(x))`
   - 실수의 2-노름은 재조정이 필요 없을 때 `sqrt(sum(x * x))`와 같다.
 - 항은 보통 잎 하나 분량을 버퍼에 채운 뒤 더한다(어떤 레이아웃이든 같은 합산 루프). **연속 float64 `vecdot`은 버퍼 없이** 잎 안에서 곱을 바로 더한다. 같은 항을 같은 순서로 더하고 FMA 축약이 꺼져 있으므로 비트가 같다((1000, 1000) 행마다: 200 → 150µs, numpy 149µs).
@@ -641,7 +646,7 @@
   - **대역폭 (1, 1)은 `gtsv`로 푼다.** 삼중대각에서 `gtsv`가 `gbsv`보다 4–5배 빠르고(n = 1000: 8µs, 38µs), 두 결과는 반올림 수준에서 다르다. 그래서 `solve_banded(ab, b, lower_bandwidth=1, upper_bandwidth=1)`은 `solve_tridiagonal`과 비트까지 같고, scipy와도 같다(scipy도 이 경우 `gtsv`를 부른다).
   - 기각한 대안: 항상 `gbsv`. 규칙은 단순하지만 (1, 1)에서 scipy보다 느리고 비트도 다르다.
 - **`solve_sylvester`는 Bartels–Stewart다.** `a = U R Uᴴ`, `b = W S Wᴴ`(`gees`), `F = Uᴴ c W`(gemm 2번), `trsyl3`로 `R Y + Y S = F`, `x = U Y Wᴴ`(gemm 2번)
-  - `trsyl3`(LAPACK 3.10의 블록 버전)는 `trsyl`보다 n = 300에서 1.5배, 1000에서 4.8배 빠르다. n ≤ 32에서는 결과 비트까지 같고, 잔차는 둘 다 eps 수준이다.
+  - `trsyl3`(LAPACK 3.11의 블록 버전)는 `trsyl`보다 n = 300에서 1.5배, 1000에서 4.8배 빠르다. n ≤ 32에서는 결과 비트까지 같고, 잔차는 둘 다 eps 수준이다.
   - scipy는 `b`의 켤레 전치를 Schur 분해하고 `trsyl(tranb='C')`를 부른다. 우리는 `b`를 바로 분해하고 'N', 'N'으로 부른다. 수학적으로 같은 방정식이다.
   - **`a`와 `−b`가 공통(또는 eps 수준으로 가까운) 고유값을 가지면 `LinAlgError`다.** `trsyl3`는 이때 값을 살짝 바꾼 방정식을 풀고 `info = 1`을 알린다. scipy는 이것을 무시하고 그 해를 돌려준다. 요청한 방정식의 해가 아니고 경고를 쓰지 않으므로, 알릴 방법은 에러뿐이다. 문턱이 `eps·max(‖R‖, ‖S‖)` 수준이라 사실상 수치적으로 특이한 경우에만 걸린다.
   - **`scale`**: `trsyl3`는 `R Y + Y S = scale·F`를 푼다. 해는 `Y / scale`이다. (scipy 1.18.1은 `scale`을 곱한다. `scale < 1`은 넘치기 직전에만 나오므로 보통은 차이가 없다.)
@@ -759,7 +764,10 @@ LAPACK에 없으므로 직접 구현한다. 알고리즘은 Al-Mohy & Higham 200
 |---|---|
 | `eigh`, `qr`, `lstsq` | numpy와 비트까지 같다 (같은 드라이버, 같은 호출) |
 | `outer`, `kron`, `cross` | numpy와 같다 (같은 곱셈 식, §10.8) |
-| 모든 부동소수점 합 (`vecdot`, `trace`, 노름) | numpy와 같다 (같은 pairwise 트리, §8.2) |
+| 부동소수점 합 (`vecdot`, `trace`, `vector_norm`) | numpy와 같다 (같은 pairwise 트리, §8.2) |
+| `matrix_norm`의 ±1, ±inf, 'fro' | 줄마다의 pairwise 합이다. numpy와는 더하는 축이 연속일 때만 같다 (§8.2) |
+| `cholesky`, `cholesky_solve` | numpy·scipy와 비트까지 같다 (같은 `potrf`/`potrs`) |
+| `qr_pivoted` | perm, Q, R 모두 scipy와 비트까지 같다 (같은 `geqp3`) |
 | `ldl`, `solve_tridiagonal`, `solve_banded` | scipy와 같다 (같은 피벗 해석, 같은 `gtsv`/`gbsv`) |
 | `solve` | numpy와 반올림 수준에서 다르다 (`gesv` 대 `getrf + getrs`, §10.2) |
 | `svd` | 다를 수 있다 (`gesdd`의 `lwork`, §10.5) |

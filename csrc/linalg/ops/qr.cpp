@@ -6,6 +6,8 @@
 //             faster than gelss everywhere that matters, and unlike gelsy it
 //             gives the singular values the result carries (docs/api/linalg.md §4)
 #include "linalg/ops/qr.hpp"
+
+#include <limits>
 #include "bind/errors.hpp"
 
 #include "linalg/args.hpp"
@@ -17,6 +19,7 @@
 #include <nanobind/stl/string.h>
 
 #include <algorithm>
+#include <limits>
 #include <cmath>
 #include <string>
 
@@ -116,9 +119,13 @@ nb::object lstsq(nb::handle ao, nb::handle bo, nb::handle rtol_o) {
                 // xLALSD silently replaces rcond >= 1 by machine epsilon. By our
                 // definition (docs/api/linalg.md §4: singular values <= rtol * max are zero)
                 // rtol >= 1 zeroes all of them: rank 0 and solution 0 (docs/design/linalg.md §10.4).
+                // It does the same to rcond <= 0, so rtol = 0 (only exact zeros are zero, as in
+                // matrix_rank) goes in as the smallest positive double: xLALSD compares the
+                // values scaled to a largest of 1 with it, which only a zero fails.
                 const bool all_zero = rcond >= 1.0;
+                const double rc = all_zero ? 0.5 : rcond == 0.0 ? std::numeric_limits<double>::denorm_min() : rcond;
                 LapackSlot<double> sv(S + i * mn, mn, s, Scratch::kAlign0);
-                if (lapack::gelsd(m, n, nrhs, A, lda, B, ldb, sv.get(), all_zero ? 0.5 : rcond, rank, s) > 0)
+                if (lapack::gelsd(m, n, nrhs, A, lda, B, ldb, sv.get(), rc, rank, s) > 0)
                     return kNoConvergence;
                 if (all_zero) {
                     rank = 0;

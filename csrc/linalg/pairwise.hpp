@@ -118,7 +118,10 @@ T pairwise_sum_mt(std::int64_t n, Fill&& fill) {
     constexpr bool complex = std::is_same_v<T, cplx>;
     if (n < kSumParallelMin) return pairwise_sum<T>(n, fill);  // short: no plan, no allocation
     const auto plan = pairwise_plan(n, complex);
-    if (plan.size() == 1) return pairwise_sum<T>(n, fill);
+    if (plan.size() == 1) {  // no pool: the serial sum, without the GIL like the split one
+        const parallel::Unlocked unlocked(true);
+        return pairwise_sum<T>(n, fill);
+    }
     std::vector<T> parts(plan.size());
     pairwise_run(plan, [&](std::int64_t t) {
         auto f = fill;  // a copy per task

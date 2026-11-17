@@ -234,7 +234,7 @@ CondOrd parse_cond_ord(nb::handle o) {
         const std::string s = nb::cast<std::string>(o);
         if (s == "fro") return CondOrd::Fro;
         if (s == "nuc") return CondOrd::Nuc;
-    } else if (const std::optional<double> r = real_value(o)) {  // numpy integers too (API.md §2)
+    } else if (const std::optional<double> r = real_value(o, "ord")) {  // numpy integers too (API.md §2)
         const double p = *r;
         if (p == 2) return CondOrd::Two;
         if (p == -2) return CondOrd::NegTwo;
