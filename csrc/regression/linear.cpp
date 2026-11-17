@@ -13,8 +13,12 @@
 //      f = y - r - X beta and g = -X^T W r, are summed in double-double (Dot2, Ogita, Rump
 //      and Oishi 2005), and the correction is solved with the same QR (G15).
 //   4. Fitted values and residuals (every row, the zero-weight ones too) and the sums of
-//      squares in double-double; the covariance (R^T R)^-1, or the HC sandwich
-//      R^-1 (Q^T diag(omega) Q) R^-T (docs/design/regression.md §3.3).
+//      squares in double-double; the covariance (R^T R)^-1, or a sandwich R^-1 S R^-T whose
+//      meat S is formed from the scores u_t = q_t e_t (q_t a row of the thin Q, e_t the
+//      whitened residual): HC (sum omega_t q_t q_t^T), HAC (Newey-West lag sums with
+//      Bartlett weights) or cluster (sums over groups) (docs/design/regression.md §3.3).
+//   A second mode (hat_only) stops after step 2 and gives the hat values ||q_t||^2, the
+//   leverages of the result's diagnostics: the same columns, the same QR.
 //
 // Row sums are cut into chunks whose size depends on the number of columns only, and the
 // chunks' partial sums are added in order: the result does not depend on the thread count
@@ -58,15 +62,23 @@ constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 constexpr double kEps = 0x1p-52;
 
 // cov_type codes (the Python layer maps the names)
-enum Cov : int { kNonrobust = 0, kHC0 = 1, kHC1 = 2, kHC2 = 3, kHC3 = 4 };
+enum Cov : int { kNonrobust = 0, kHC0 = 1, kHC1 = 2, kHC2 = 3, kHC3 = 4, kHAC = 5, kCluster = 6 };
 
 // The per-regression scalars, in this order (stardust/regression/_linear.py reads them).
+// kNGroups: the clusters among the fit's rows (cluster), kLags: the lags used (HAC); NaN
+// for the other covariances.
 enum Stat : int {
-    kNobs = 0, kRank, kSsr, kCtss, kUtss, kEssC, kEssU, kSumLogW, kWaldF, kWaldQ, kIsNaN, kNStat
+    kNobs = 0, kRank, kSsr, kCtss, kUtss, kEssC, kEssU, kSumLogW, kWaldF, kWaldQ, kIsNaN, kNGroups, kLags,
+    kNStat
 };
 
 // Failure codes of one regression.
 constexpr int kInfY = 1, kInfX = 2, kInfW = 3, kNegW = 4, kInfU = 5;
+
+// Rows per chunk of the HAC lag sums (fixed: the bits do not depend on the thread count).
+constexpr lint kHacChunk = 4096;
+// Groups x columns up to which the cluster sums go into one matrix (else blocks of groups).
+constexpr lint kClusterDirect = 1 << 22;
 
 inline double rd(const std::byte* p) {
     double v;
@@ -203,10 +215,13 @@ constexpr double kSafety = 16.0;
 
 struct Problem {
     lint n, p, k;   // rows, columns of X, columns of the design (p + intercept)
-    bool intercept, has_w, has_u;
+    bool intercept, has_w, has_u, has_g;
     double rtol;    // < 0: max(nobs, k) * eps
     int cov;
     int steps;
+    std::int64_t maxlags;  // HAC; < 0: floor(4 (nobs / 100)^(2/9))
+    std::int64_t gtot;     // cluster: the codes are 0 .. gtot - 1 (-1: missing)
+    bool hat_only;
 };
 
 // The inputs of one regression (byte pointers and strides).
@@ -219,6 +234,8 @@ struct Data {
     std::int64_t ws;
     const std::byte* u;
     std::int64_t us;
+    const std::byte* g;  // int64 cluster codes
+    std::int64_t gs;
 };
 
 // Outputs of one regression.
@@ -230,9 +247,20 @@ struct Dest {
     double* resid;   // n
     std::uint8_t* kept;  // k
     double* stats;   // kNStat
+    double* hat;     // n (hat_only)
 };
 
+inline std::int64_t rd_i64(const std::byte* p) {
+    std::int64_t v;
+    std::memcpy(&v, p, sizeof v);
+    return v;
+}
+
 void fill_nan(const Problem& pb, const Dest& o) {
+    if (pb.hat_only) {
+        std::fill(o.hat, o.hat + pb.n, kNaN);
+        return;
+    }
     std::fill(o.params, o.params + pb.k, kNaN);
     std::fill(o.cov, o.cov + pb.k * pb.k, kNaN);
     std::fill(o.R, o.R + pb.k * pb.k, kNaN);
@@ -303,6 +331,9 @@ int fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
             if (std::isnan(v)) nan = true;
             else if (std::isinf(v)) return kInfU;
         }
+    if (pb.has_g)  // a missing cluster label is a NaN of the data
+        for (lint i = 0; i < n; ++i)
+            if (rd_i64(d.g + i * d.gs) < 0) nan = true;
     if (nan) {
         fill_nan(pb, o);
         return 0;
@@ -332,7 +363,8 @@ int fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
     const lint mm = std::max<lint>(m, 1), kk0 = std::max<lint>(k, 1);
     const lint chunk = chunk_rows(k);
     const lint nchunks = (m + chunk - 1) / chunk;
-    const bool robust = pb.cov != kNonrobust;
+    const bool robust = pb.cov != kNonrobust && !pb.hat_only;
+    const bool needQ = robust || pb.hat_only;
     std::size_t total = 0;
     auto reserve = [&](std::int64_t cnt) {
         const std::size_t at = total;
@@ -343,13 +375,13 @@ int fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
                       o_beta = reserve(kk0), o_c = reserve(mm), o_f = reserve(mm), o_r = reserve(mm),
                       o_P = reserve(mm), o_S = reserve(mm), o_h = reserve(kk0), o_g = reserve(kk0),
                       o_part = reserve(std::max<lint>(nchunks, 1) * 2 * (kk0 + kAccInit + kAccFinal)),
-                      o_work = reserve(kk0), o_RR = reserve(kk0 * kk0), o_M = reserve(robust ? kk0 * kk0 : 0),
-                      o_Q = reserve(robust ? mm * kk0 : 0), o_hat = reserve(robust ? mm : 0),
+                      o_work = reserve(kk0), o_RR = reserve(kk0 * kk0), o_M = reserve(robust ? kk0 * kk0 : 0), o_W2 = reserve(robust ? kk0 * kk0 : 0),
+                      o_Q = reserve(needQ ? mm * kk0 : 0), o_hat = reserve(needQ ? mm : 0),
                       o_refl = reserve(mm / kReflChunk + 1);
     double* base = sc.get<double>(total);
     double *s = base + o_s, *A = base + o_A, *tau = base + o_tau, *nrm = base + o_nrm, *beta = base + o_beta,
            *cv = base + o_c, *f = base + o_f, *r = base + o_r, *P = base + o_P, *S = base + o_S, *h = base + o_h,
-           *g = base + o_g, *part = base + o_part, *work = base + o_work, *RR = base + o_RR, *M = base + o_M,
+           *g = base + o_g, *part = base + o_part, *work = base + o_work, *RR = base + o_RR, *M = base + o_M, *work2 = base + o_W2,
            *Q = base + o_Q, *hat = base + o_hat, *refl = base + o_refl;
     for (lint t = 0; t < m; ++t) s[t] = pb.has_w ? std::sqrt(weight(idx[t])) : 1.0;
 
@@ -442,6 +474,24 @@ int fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
         }
     } else {
         kk = 0;
+    }
+
+    // the hat values h_t = ||q_t||^2 from the thin Q of the fit's own QR (0 for the rows out
+    // of the fit: their weighted leverage w_t x_t (X^T W X)^-1 x_t^T is 0)
+    auto hat_values = [&]() {
+        std::copy(A, A + m * kk, Q);
+        linalg::lapack::orgqr(m, kk, kk, Q, m, tau, sc);
+        std::fill(hat, hat + m, 0.0);
+        for (lint jj = 0; jj < kk; ++jj)
+            for (lint t = 0; t < m; ++t) hat[t] += Q[jj * m + t] * Q[jj * m + t];
+    };
+    if (pb.hat_only) {
+        std::fill(o.hat, o.hat + n, 0.0);
+        if (kk > 0) {
+            hat_values();
+            for (lint t = 0; t < m; ++t) o.hat[idx[t]] = hat[t];
+        }
+        return 0;
     }
 
     // ---- 3. solve and refine
@@ -646,6 +696,8 @@ int fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
     st[kWaldF] = kNaN;
     st[kWaldQ] = kNaN;
     st[kIsNaN] = 0;
+    st[kNGroups] = kNaN;
+    st[kLags] = kNaN;
     std::fill(o.params, o.params + k, kNaN);
     std::fill(o.kept, o.kept + k, std::uint8_t(0));
     std::fill(o.R, o.R + k * k, 0.0);
@@ -671,57 +723,173 @@ int fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
             }
         return 0;
     }
-    // HC: thin Q, hat values, omega, meat Q^T diag(omega) Q, cov = R^-1 meat R^-T
-    std::copy(A, A + m * kk, Q);
-    linalg::lapack::orgqr(m, kk, kk, Q, m, tau, sc);
-    if (pb.cov == kHC2 || pb.cov == kHC3) {
-        std::fill(hat, hat + m, 0.0);
-        for (lint jj = 0; jj < kk; ++jj)
-            for (lint t = 0; t < m; ++t) hat[t] += Q[jj * m + t] * Q[jj * m + t];
+    // robust: thin Q, the scores U = diag(e~) Q (e~ the whitened residuals), the meat S from
+    // them, cov = R^-1 S R^-T (no X^T X is formed)
+    const bool hc = pb.cov <= kHC3;
+    if (hc && (pb.cov == kHC2 || pb.cov == kHC3)) {
+        hat_values();
+    } else {
+        std::copy(A, A + m * kk, Q);
+        linalg::lapack::orgqr(m, kk, kk, Q, m, tau, sc);
     }
     for (lint t = 0; t < m; ++t) {
-        const double e = std::fabs(s[t] * r[t]);  // the whitened residual
-        double sq = e;                              // sqrt(omega)
+        const double e = s[t] * r[t];  // the whitened residual
+        double sq = e;                 // HC: sqrt(omega) (the sign drops out of the squares)
         if (pb.cov == kHC2) sq = e / std::sqrt(1.0 - hat[t]);
         else if (pb.cov == kHC3) sq = e / (1.0 - hat[t]);
         cv[t] = sq;
     }
     for (lint jj = 0; jj < kk; ++jj)
         for (lint t = 0; t < m; ++t) Q[jj * m + t] *= cv[t];
-    cblas_dsyrk(CblasColMajor, CblasUpper, CblasTrans, kk, m, 1.0, Q, m, 0.0, M, kk);
+    double c1 = 1.0;  // the small-sample factor
+    if (hc) {
+        cblas_dsyrk(CblasColMajor, CblasUpper, CblasTrans, kk, m, 1.0, Q, m, 0.0, M, kk);
+        if (pb.cov == kHC1) c1 = static_cast<double>(m) / static_cast<double>(m - kk);
+    } else if (pb.cov == kHAC) {
+        // Newey-West: S = U^T U + sum_l w_l (U_{l:}^T U_{:-l} + its transpose), w_l = 1 - l/(L+1)
+        // (Bartlett; statsmodels' S_hac_simple). The lag sums are U^T V with V_t = sum_l w_l
+        // u_{t-l} (a filter down each column), formed in chunks of rows and added in order.
+        const std::int64_t L =
+            pb.maxlags >= 0 ? pb.maxlags
+                            : static_cast<std::int64_t>(std::floor(4.0 * std::pow(static_cast<double>(m) / 100.0, 2.0 / 9.0)));
+        st[kLags] = static_cast<double>(L);
+        cblas_dsyrk(CblasColMajor, CblasUpper, CblasTrans, kk, m, 1.0, Q, m, 0.0, M, kk);
+        const lint Le = static_cast<lint>(std::min<std::int64_t>(L, m - 1));  // lags with a pair of rows
+        if (Le > 0) {
+            double* wl = sc.get<double>(static_cast<std::size_t>(Le + 1) + static_cast<std::size_t>(kHacChunk * kk) +
+                                            static_cast<std::size_t>(kk * kk),
+                                        3);
+            double* Vc = wl + Le + 1;
+            double* C = Vc + kHacChunk * kk;
+            for (lint l = 1; l <= Le; ++l) wl[l] = 1.0 - static_cast<double>(l) / (static_cast<double>(L) + 1.0);
+            std::fill(C, C + kk * kk, 0.0);
+            for (lint t0 = 0; t0 < m; t0 += kHacChunk) {
+                const lint t1 = std::min(m, t0 + kHacChunk), len = t1 - t0;
+                auto column = [&](lint jj) {
+                    const double* uj = Q + jj * m;
+                    double* vj = Vc + jj * kHacChunk;
+                    std::fill(vj, vj + len, 0.0);
+                    for (lint l = 1; l <= Le; ++l) {
+                        const double a = wl[l];
+                        for (lint t = std::max(t0, l); t < t1; ++t) vj[t - t0] += a * uj[t - l];
+                    }
+                };
+                if (kk >= 2 && double(len) * double(kk) * double(Le) >= double(1 << 18)) {
+                    parallel::parallel_for(kk, [&](std::int64_t jj) { column(static_cast<lint>(jj)); });
+                } else {
+                    for (lint jj = 0; jj < kk; ++jj) column(jj);
+                }
+                cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, kk, kk, len, 1.0, Q + t0, m, Vc, kHacChunk, 1.0, C,
+                            kk);
+            }
+            for (lint jj = 0; jj < kk; ++jj)
+                for (lint ii = 0; ii <= jj; ++ii) M[jj * kk + ii] += C[jj * kk + ii] + C[ii * kk + jj];
+        }
+    } else {
+        // one-way cluster: S = sum_g s_g s_g^T, s_g the sum of the group's scores (rows in
+        // order), with Stata's and statsmodels' factor G/(G-1) (m-1)/(m-k); G counts the groups
+        // among the fit's rows (zero-weight rows are out, G20)
+        const std::size_t gt = static_cast<std::size_t>(std::max<std::int64_t>(pb.gtot, 1));
+        // ints: the codes' local numbers, each row's group, G + 1 offsets (G <= m), a permutation
+        lint* loc = sc.get<lint>(gt + 3 * static_cast<std::size_t>(mm) + 1, 2);
+        lint* lab = loc + gt;
+        lint* off = lab + mm;
+        lint* perm = off + mm + 1;
+        std::fill(loc, loc + gt, lint(-1));
+        lint G = 0;
+        for (lint t = 0; t < m; ++t) {
+            const std::int64_t code = rd_i64(d.g + idx[t] * d.gs);
+            lint& l = loc[code];
+            if (l < 0) l = G++;
+            lab[t] = l;
+        }
+        st[kNGroups] = static_cast<double>(G);
+        if (G * kk <= kClusterDirect) {
+            // all group sums in one G x kk matrix, rows read in order
+            double* Sg = sc.get<double>(static_cast<std::size_t>(std::max<lint>(G, 1) * kk), 3);
+            auto column = [&](lint jj) {
+                double* sj = Sg + jj * G;
+                const double* uj = Q + jj * m;
+                std::fill(sj, sj + G, 0.0);
+                for (lint t = 0; t < m; ++t) sj[lab[t]] += uj[t];
+            };
+            if (kk >= 2 && double(m) * double(kk) >= double(1 << 18)) {
+                parallel::parallel_for(kk, [&](std::int64_t jj) { column(static_cast<lint>(jj)); });
+            } else {
+                for (lint jj = 0; jj < kk; ++jj) column(jj);
+            }
+            cblas_dsyrk(CblasColMajor, CblasUpper, CblasTrans, kk, G, 1.0, Sg, std::max<lint>(G, 1), 0.0, M, kk);
+        } else {
+            // many groups: rows sorted by group (stable), sums for blocks of groups; each sum
+            // adds its rows in the same order as above, so the bits are the same
+            std::fill(off, off + G + 1, lint(0));
+            for (lint t = 0; t < m; ++t) ++off[lab[t] + 1];
+            for (lint q = 0; q < G; ++q) off[q + 1] += off[q];
+            for (lint t = 0; t < m; ++t) perm[off[lab[t]]++] = t;
+            for (lint q = G; q > 0; --q) off[q] = off[q - 1];
+            off[0] = 0;
+            const lint B = std::max<lint>(1, kClusterDirect / kk);
+            double* Sb = sc.get<double>(static_cast<std::size_t>(B * kk), 3);
+            std::fill(M, M + kk * kk, 0.0);
+            for (lint g0 = 0; g0 < G; g0 += B) {
+                const lint g1 = std::min(G, g0 + B), nb2 = g1 - g0;
+                auto column = [&](lint jj) {
+                    const double* uj = Q + jj * m;
+                    double* sj = Sb + jj * B;
+                    for (lint q = g0; q < g1; ++q) {
+                        double acc = 0.0;
+                        for (lint p2 = off[q]; p2 < off[q + 1]; ++p2) acc += uj[perm[p2]];
+                        sj[q - g0] = acc;
+                    }
+                };
+                if (kk >= 2) {
+                    parallel::parallel_for(kk, [&](std::int64_t jj) { column(static_cast<lint>(jj)); });
+                } else {
+                    column(0);
+                }
+                cblas_dsyrk(CblasColMajor, CblasUpper, CblasTrans, kk, nb2, 1.0, Sb, B, 1.0, M, kk);
+            }
+        }
+        // one cluster: no estimate (the scores sum to 0 and G/(G-1) is infinite)
+        c1 = G < 2 ? kNaN
+                   : static_cast<double>(G) / static_cast<double>(G - 1) * (static_cast<double>(m) - 1.0) /
+                         static_cast<double>(m - kk);
+    }
     for (lint jj = 0; jj < kk; ++jj)
         for (lint ii = jj + 1; ii < kk; ++ii) M[jj * kk + ii] = M[ii * kk + jj];
+    // The Wald F statistic of every kept parameter but the intercept (statsmodels' fvalue
+    // under a robust covariance), b2^T V22^-1 b2 / q, formed in Q's coordinates: the intercept
+    // is the first column, so rows 2.. of R^-1 are [0, R22^-1], V22 = c R22^-1 S22 R22^-T and
+    // b2^T V22^-1 b2 = z^T S22^-1 z / c with z = R22 b2. No inverse of the covariance (whose
+    // condition is kappa(X)^2 times the meat's) is formed.
+    const lint q0 = (pb.intercept && K[0] == 0) ? 1 : 0, q = kk - q0;
+    st[kWaldQ] = static_cast<double>(q);
+    if (q > 0) {
+        double* V = work2;  // S22, then its Cholesky factor
+        double* z = cv;
+        for (lint b2 = 0; b2 < q; ++b2) {
+            double acc = 0.0;
+            for (lint jj = q0 + b2; jj < kk; ++jj) acc += A[jj * m + (q0 + b2)] * beta[jj];
+            z[b2] = acc;
+            for (lint a2 = 0; a2 < q; ++a2) V[b2 * q + a2] = M[(q0 + b2) * kk + (q0 + a2)];
+        }
+        if (linalg::lapack::potrf('U', q, V, q) > 0) {
+            st[kWaldF] = kNaN;
+        } else {
+            linalg::lapack::trtrs('U', 'T', 'N', q, 1, V, q, z, q);  // U^T v = z: z^T S22^-1 z = |v|^2
+            double ss = 0;
+            for (lint b2 = 0; b2 < q; ++b2) ss += z[b2] * z[b2];
+            st[kWaldF] = ss / c1 / static_cast<double>(q);
+        }
+    }
     cblas_dtrsm(CblasColMajor, CblasLeft, CblasUpper, CblasNoTrans, CblasNonUnit, kk, kk, 1.0, RR, kk, M, kk);
     cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasTrans, CblasNonUnit, kk, kk, 1.0, RR, kk, M, kk);
-    const double c1 = pb.cov == kHC1 ? static_cast<double>(m) / static_cast<double>(m - kk) : 1.0;
     for (lint jj = 0; jj < kk; ++jj)
         for (lint ii = 0; ii <= jj; ++ii) {
             const double v = M[jj * kk + ii] * c1;  // the upper triangle, mirrored
             o.cov[K[ii] * k + K[jj]] = v;
             o.cov[K[jj] * k + K[ii]] = v;
         }
-    // the Wald F statistic of every kept parameter but the intercept (statsmodels' fvalue
-    // under a robust covariance)
-    lint q = 0;
-    for (lint jj = 0; jj < kk; ++jj)
-        if (!(pb.intercept && K[jj] == 0)) work[q++] = static_cast<double>(jj);
-    st[kWaldQ] = static_cast<double>(q);
-    if (q == 0) return 0;
-    double* V = RR;  // R is no longer needed
-    double* bq = cv;
-    for (lint b2 = 0; b2 < q; ++b2) {
-        const lint jb = static_cast<lint>(work[b2]);
-        bq[b2] = beta[jb];
-        for (lint a2 = 0; a2 < q; ++a2) V[b2 * q + a2] = M[jb * kk + static_cast<lint>(work[a2])] * c1;
-    }
-    if (linalg::lapack::potrf('U', q, V, q) > 0) {
-        st[kWaldF] = kNaN;
-        return 0;
-    }
-    linalg::lapack::trtrs('U', 'T', 'N', q, 1, V, q, bq, q);  // U^T z = b: b^T V^-1 b = |z|^2
-    double ss = 0;
-    for (lint b2 = 0; b2 < q; ++b2) ss += bq[b2] * bq[b2];
-    st[kWaldF] = ss / static_cast<double>(q);
     return 0;
 }
 
@@ -742,19 +910,22 @@ std::vector<std::int64_t> with(std::vector<std::int64_t> shape, std::initializer
     return shape;
 }
 
-// fit(func, y (..., n), X (..., n, p), w (..., n) | None, u (..., n) | None, intercept, rtol, cov, steps)
-// -> (params, cov, R, fitted, resid, kept, stats). Inputs are float64 sd.ndarrays (the Python
-// layer converts); u is GLS's whitened column of ones (it replaces the intercept column and
-// centers the sums of squares).
+// fit(func, y (..., n), X (..., n, p), w (..., n) | None, u (..., n) | None, intercept, rtol, cov, steps,
+//     groups (..., n) | None, gtot, maxlags, hat_only)
+// -> (params, cov, R, fitted, resid, kept, stats), or with hat_only the hat values (..., n).
+// Inputs are float64 sd.ndarrays (the Python layer converts); u is GLS's whitened column of
+// ones (it replaces the intercept column and centers the sums of squares); groups are int64
+// codes 0 .. gtot - 1, -1 for a missing label (cov = cluster).
 nb::object fit(const std::string& func, nb::handle yo, nb::handle xo, nb::handle wo, nb::handle uo, bool intercept,
-               double rtol, int cov, int steps) {
+               double rtol, int cov, int steps, nb::handle go, std::int64_t gtot, std::int64_t maxlags, bool hat_only) {
     const char* fn = func.c_str();
     return call_named(fn, [&]() -> nb::object {
         Input y(yo, fn, "y"), X(xo, fn, "X");
-        const bool has_w = !wo.is_none(), has_u = !uo.is_none();
-        std::optional<Input> w, u;
+        const bool has_w = !wo.is_none(), has_u = !uo.is_none(), has_g = !go.is_none();
+        std::optional<Input> w, u, g;
         if (has_w) w.emplace(wo, fn, "weights");
         if (has_u) u.emplace(uo, fn, "sigma");
+        if (has_g) g.emplace(go, fn, "groups");
         Problem pb;
         pb.n = X.shape(-2);
         pb.p = X.shape(-1);
@@ -762,16 +933,40 @@ nb::object fit(const std::string& func, nb::handle yo, nb::handle xo, nb::handle
         pb.k = pb.p + (intercept ? 1 : 0);
         pb.has_w = has_w;
         pb.has_u = has_u;
+        pb.has_g = has_g;
         pb.rtol = rtol;
         pb.cov = cov;
         pb.steps = steps;
+        pb.maxlags = maxlags;
+        pb.gtot = gtot;
+        pb.hat_only = hat_only;
+        if (cov == kCluster && !has_g) throw nb::value_error("fit(): cluster needs groups");
+        if (has_w && has_u) throw nb::value_error("fit(): weights and sigma together");
         const linalg::BatchOperand none{};
         Batch b({{y.batch_shape(1), y.batch_strides(1)},
                  {X.batch_shape(2), X.batch_strides(2)},
-                 has_w ? linalg::BatchOperand{w->batch_shape(1), w->batch_strides(1)} : none,
-                 has_u ? linalg::BatchOperand{u->batch_shape(1), u->batch_strides(1)} : none},
+                 // the weights (WLS) and the whitened ones (GLS) never come together: one operand
+                 has_w   ? linalg::BatchOperand{w->batch_shape(1), w->batch_strides(1)}
+                 : has_u ? linalg::BatchOperand{u->batch_shape(1), u->batch_strides(1)}
+                         : none,
+                 has_g ? linalg::BatchOperand{g->batch_shape(1), g->batch_strides(1)} : none},
                 fn);
         const lint n = pb.n, k = pb.k;
+        const double nk = double(n) * double(std::max<lint>(k, 1));
+        if (hat_only) {
+            Out ho = linalg::alloc_c(with(b.shape(), {n}), DType::Float64);
+            const double element_ns = 1500.0 + nk * (1.2 * double(k) + 3.0);
+            const Failure f = linalg::run_batch(b, element_ns, [&](std::int64_t i, const std::int64_t* off, Scratch& sc) {
+                Data d{y.data() + off[0], y.stride(-1), X.data() + off[1], X.stride(-2), X.stride(-1),
+                       has_w ? w->data() + off[2] : nullptr, has_w ? w->stride(-1) : 0,
+                       has_u ? u->data() + off[2] : nullptr, has_u ? u->stride(-1) : 0,
+                       has_g ? g->data() + off[3] : nullptr, has_g ? g->stride(-1) : 0};
+                Dest o{nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, ho.as<double>() + i * n};
+                return fit_one(pb, d, o, sc);
+            });
+            if (f) raise_failure(b, f, fn);
+            return linalg::to_array(ho);
+        }
         Out po = linalg::alloc_c(with(b.shape(), {k}), DType::Float64);
         Out co = linalg::alloc_c(with(b.shape(), {k, k}), DType::Float64);
         Out ro = linalg::alloc_c(with(b.shape(), {k, k}), DType::Float64);
@@ -780,15 +975,16 @@ nb::object fit(const std::string& func, nb::handle yo, nb::handle xo, nb::handle
         Out ko = linalg::alloc_c(with(b.shape(), {k}), DType::Bool);
         Out so = linalg::alloc_c(with(b.shape(), {kNStat}), DType::Float64);
         // estimated serial ns of one regression: the QR, the passes and the fixed cost
-        const double nk = double(n) * double(std::max<lint>(k, 1));
-        const double element_ns = 1500.0 + nk * (0.6 * double(k) + 3.0 * (2 + steps)) + (cov ? 2.0 * nk * k : 0.0);
+        double element_ns = 1500.0 + nk * (0.6 * double(k) + 3.0 * (2 + steps)) + (cov ? 2.0 * nk * k : 0.0);
+        if (cov == kHAC) element_ns += nk * (maxlags >= 0 ? double(maxlags) : 4.0 * std::pow(double(n) / 100.0, 2.0 / 9.0));
         const Failure f = linalg::run_batch(b, element_ns, [&](std::int64_t i, const std::int64_t* off, Scratch& sc) {
             Data d{y.data() + off[0], y.stride(-1), X.data() + off[1], X.stride(-2), X.stride(-1),
                    has_w ? w->data() + off[2] : nullptr, has_w ? w->stride(-1) : 0,
-                   has_u ? u->data() + off[3] : nullptr, has_u ? u->stride(-1) : 0};
+                   has_u ? u->data() + off[2] : nullptr, has_u ? u->stride(-1) : 0,
+                   has_g ? g->data() + off[3] : nullptr, has_g ? g->stride(-1) : 0};
             Dest o{po.as<double>() + i * k, co.as<double>() + i * k * k, ro.as<double>() + i * k * k,
                    fo.as<double>() + i * n, eo.as<double>() + i * n, ko.as<std::uint8_t>() + i * k,
-                   so.as<double>() + i * kNStat};
+                   so.as<double>() + i * kNStat, nullptr};
             return fit_one(pb, d, o, sc);
         });
         if (f) raise_failure(b, f, fn);
@@ -848,6 +1044,93 @@ nb::object apply(const std::string& func, nb::handle xo, nb::handle bo, bool int
     });
 }
 
+// resid_stats(e (..., n), w (..., n) | None) -> (..., 4): over the rows with w > 0 (every row
+// without w), in order: Durbin-Watson's sum (e_t - e_{t-1})^2 over consecutive such rows and
+// the central sums sum d^p, d = e - mean(e), p = 2, 3, 4 (Jarque-Bera), all in double-double
+// (special/dd.hpp) and rounded once. Chunks of rows fixed by n are added in order: the same
+// bits for any thread count. NaN in e gives NaN.
+nb::object resid_stats(nb::handle eo, nb::handle wo) {
+    const char* fn = "resid_stats";
+    return call_named(fn, [&]() -> nb::object {
+        Input e(eo, fn, "e");
+        const bool has_w = !wo.is_none();
+        std::optional<Input> w;
+        if (has_w) w.emplace(wo, fn, "weights");
+        const lint n = e.shape(-1);
+        const linalg::BatchOperand none{};
+        Batch b({{e.batch_shape(1), e.batch_strides(1)},
+                 has_w ? linalg::BatchOperand{w->batch_shape(1), w->batch_strides(1)} : none},
+                fn);
+        Out so = linalg::alloc_c(with(b.shape(), {4}), DType::Float64);
+        constexpr lint kChunk = 4096;
+        const double element_ns = 100.0 + 40.0 * double(n);
+        linalg::run_batch(b, element_ns, [&](std::int64_t i, const std::int64_t* off, Scratch& sc) {
+            const lint nch = (n + kChunk - 1) / kChunk;
+            double* x = sc.get<double>(static_cast<std::size_t>(std::max<lint>(n, 1)) +
+                                       static_cast<std::size_t>(std::max<lint>(nch, 1)) * 8);
+            double* part = x + std::max<lint>(n, 1);
+            lint m = 0;  // the rows of the fit, compacted
+            for (lint t = 0; t < n; ++t) {
+                if (has_w && !(rd(w->data() + off[1] + t * w->stride(-1)) > 0)) continue;
+                x[m++] = rd(e.data() + off[0] + t * e.stride(-1));
+            }
+            double* out = so.as<double>() + i * 4;
+            if (m == 0) {
+                std::fill(out, out + 4, kNaN);
+                return 0;
+            }
+            const lint nc = (m + kChunk - 1) / kChunk;
+            auto chunks = [&](auto&& body) {
+                if (nc >= 2 && m >= (1 << 16)) {
+                    parallel::parallel_for(nc, [&](std::int64_t c) { body(static_cast<lint>(c)); });
+                } else {
+                    for (lint c = 0; c < nc; ++c) body(c);
+                }
+            };
+            auto total = [&](int q) {
+                DD acc{0.0, 0.0};
+                for (lint c = 0; c < nc; ++c) acc = acc + DD{part[c * 8 + 2 * q], part[c * 8 + 2 * q + 1]};
+                return acc;
+            };
+            // the sum (for the mean) and Durbin-Watson's sum
+            chunks([&](lint c) {
+                const lint t0 = c * kChunk, t1 = std::min(m, t0 + kChunk);
+                DD s1{0.0, 0.0}, dw{0.0, 0.0};
+                for (lint t = t0; t < t1; ++t) {
+                    s1 = s1 + DD{x[t], 0.0};
+                    if (t > 0) {
+                        double h, l;
+                        two_sum(x[t], -x[t - 1], h, l);
+                        const DD d = dd_of(h, l);
+                        dw = dw + d * d;
+                    }
+                }
+                part[c * 8 + 0] = s1.hi, part[c * 8 + 1] = s1.lo, part[c * 8 + 2] = dw.hi, part[c * 8 + 3] = dw.lo;
+            });
+            const DD mean = special::dd::operator/(total(0), DD{static_cast<double>(m), 0.0});
+            out[0] = total(1).hi;
+            chunks([&](lint c) {
+                const lint t0 = c * kChunk, t1 = std::min(m, t0 + kChunk);
+                DD a2{0.0, 0.0}, a3{0.0, 0.0}, a4{0.0, 0.0};
+                for (lint t = t0; t < t1; ++t) {
+                    const DD d = DD{x[t], 0.0} - mean;
+                    const DD d2 = d * d;
+                    a2 = a2 + d2;
+                    a3 = a3 + d2 * d;
+                    a4 = a4 + d2 * d2;
+                }
+                part[c * 8 + 0] = a2.hi, part[c * 8 + 1] = a2.lo, part[c * 8 + 2] = a3.hi, part[c * 8 + 3] = a3.lo;
+                part[c * 8 + 4] = a4.hi, part[c * 8 + 5] = a4.lo;
+            });
+            out[1] = total(0).hi;
+            out[2] = total(1).hi;
+            out[3] = total(2).hi;
+            return 0;
+        });
+        return linalg::to_array(so);
+    });
+}
+
 // cond(R (..., k, k), kept (..., k)) -> the 2-norm condition number of the kept columns'
 // R (that of the whitened design), NaN with no kept column.
 nb::object cond(nb::handle ro, nb::handle ko) {
@@ -897,10 +1180,13 @@ nb::object cond(nb::handle ro, nb::handle ko) {
 
 void bind_linear(nb::module_& m) {
     m.def("fit", &fit, nb::arg("func"), nb::arg("y").none(), nb::arg("X").none(), nb::arg("w").none(),
-          nb::arg("u").none(), nb::arg("intercept"), nb::arg("rtol"), nb::arg("cov"), nb::arg("steps"));
+          nb::arg("u").none(), nb::arg("intercept"), nb::arg("rtol"), nb::arg("cov"), nb::arg("steps"),
+          nb::arg("groups").none() = nb::none(), nb::arg("gtot") = 0, nb::arg("maxlags") = -1,
+          nb::arg("hat_only") = false);
     m.def("apply", &apply, nb::arg("func"), nb::arg("X").none(), nb::arg("beta").none(), nb::arg("intercept"),
           nb::arg("y").none());
     m.def("cond", &cond, nb::arg("R").none(), nb::arg("kept").none());
+    m.def("resid_stats", &resid_stats, nb::arg("e").none(), nb::arg("w").none());
 }
 
 }  // namespace sd::regression

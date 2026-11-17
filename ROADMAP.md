@@ -312,7 +312,7 @@
 | 마일스톤 | 상태 |
 |---|---|
 | G0 준비: 대조 패키지, Arb 참값 도구, NIST StRD | 완료·승인 (2026-11-18) |
-| G1 선형: `ols wls gls linregress`, 추론·예측, 강건 표준오차 | G1a(수치 핵심) 완료 (2026-11-18), G1b(HAC·군집, 진단, summary) 진행 |
+| G1 선형: `ols wls gls linregress`, 추론·예측, 강건 표준오차, 진단, summary | 완료, 승인 대기 (2026-11-18) |
 | G2 GLM | 대기 |
 | G3 정규화: `ridge lasso elastic_net`, 경로, 교차검증 | 대기 |
 | G4 강건: `rlm` | 대기 |

@@ -10,7 +10,10 @@ raises arbref.NotSettled. A singular X^T W X (rank deficiency) raises ValueError
 references are built from the full-rank subproblem by the caller.
 
 The result maps each name to a double-double (hi, lo) or a list of them (per coefficient
-or per observation); see ols() for the names, which are statsmodels'. No mpmath (the
+or per observation); see ols() for the names, which are statsmodels'. Besides the fit and
+the classical inference: HC0-HC3, HAC (Newey-West, Bartlett) and one-way cluster standard
+errors, hat values, studentized residuals, Cook's distance, Durbin-Watson, Jarque-Bera and
+Breusch-Pagan (studentized and not). No mpmath (the
 project uses Arb alone).
 """
 
@@ -63,7 +66,27 @@ def _t_quantile_upper(q, df, guess):
     return ar.solve_settled(g, dg, arb(guess), increasing=True)
 
 
-def _fit(y, X, w, intercept, alpha, t_guess):
+def _chi2_upper(x, df):
+    """P(X > x), chi-square with df degrees of freedom: Q(df/2, x/2)."""
+    if x.is_zero():
+        return arb(1)
+    return (x / 2).gamma_upper(df / 2, regularized=1)
+
+
+def _solve_ls(Z, v):
+    """Least squares of v on the columns of Z (lists of arbs, rows): (coefficients, fitted)."""
+    k = len(Z[0])
+    G = arb_mat([[sum((r[a] * r[b] for r in Z), arb(0)) for b in range(k)] for a in range(k)])
+    h = [sum((Z[i][a] * v[i] for i in range(len(Z))), arb(0)) for a in range(k)]
+    try:
+        Gi = G.inv()
+    except ZeroDivisionError:
+        raise ValueError("singular auxiliary regression")
+    c = [sum((Gi[a, b] * h[b] for b in range(k)), arb(0)) for a in range(k)]
+    return c, [sum((r[a] * c[a] for a in range(k)), arb(0)) for r in Z]
+
+
+def _fit(y, X, w, intercept, alpha, t_guess, groups=None, maxlags=None):
     # y, X: doubles (exact balls), or callables giving arbs at the working precision (data
     # given in decimal, polynomial columns as exact powers: the NIST StRD problems)
     if callable(y):
@@ -138,6 +161,78 @@ def _fit(y, X, w, intercept, alpha, t_guess):
         "bse_HC2": sandwich([e2[i] / (1 - hat[i]) for i in range(n)]),
         "bse_HC3": sandwich([e2[i] / (1 - hat[i]) ** 2 for i in range(n)]),
     }
+    # the scores of the whitened problem, rows of the fit in order: w_i x_i e_i
+    score = [[W[i] * A[i][a] * resid[i] for a in range(k)] for i in used]
+    # HAC (Newey-West, Bartlett weights 1 - l/(L+1), no small-sample factor: statsmodels' default)
+    L = maxlags if maxlags is not None else math.floor(4 * (m / 100) ** (2 / 9))
+    S = [[sum((u[a] * u[b] for u in score), arb(0)) for b in range(k)] for a in range(k)]
+    for lag in range(1, min(L, m - 1) + 1):
+        wl = 1 - arb(lag) / (L + 1)
+        for a in range(k):
+            for b in range(k):
+                S[a][b] += wl * sum((score[t][a] * score[t - lag][b] + score[t - lag][a] * score[t][b]
+                                     for t in range(lag, m)), arb(0))
+    V = Ginv * arb_mat(S) * Ginv
+    hc["bse_HAC"] = [V[a, a].sqrt() for a in range(k)]
+    hc_meta = {"maxlags": L}
+    if groups is not None:
+        # one-way cluster with G/(G-1) (m-1)/(m-k); t and the Wald F with G - 1 degrees of freedom
+        labels = [groups[i] for i in used]
+        order = list(dict.fromkeys(labels))
+        G = len(order)
+        sums = {g: [arb(0)] * k for g in order}
+        for u, g in zip(score, labels):
+            sums[g] = [sums[g][a] + u[a] for a in range(k)]
+        S = [[sum((sums[g][a] * sums[g][b] for g in order), arb(0)) for b in range(k)] for a in range(k)]
+        V = Ginv * arb_mat(S) * Ginv * (arb(G) / (G - 1) * arb(m - 1) / (m - k))
+        bc = [V[a, a].sqrt() for a in range(k)]
+        dfc = arb(G - 1)
+        hc["bse_cluster"] = bc
+        hc["pvalues_cluster"] = [2 * _t_upper(abs(beta[a] / bc[a]), dfc) for a in range(k)]
+        q0 = 1 if intercept else 0
+        q = k - q0
+        if 0 < q <= G - 1:  # the meat has rank G - 1 at most (the scores sum to 0)
+            V22 = arb_mat([[V[a, b] for b in range(q0, k)] for a in range(q0, k)])
+            b2 = arb_mat([[beta[a]] for a in range(q0, k)])
+            try:
+                V22i = V22.inv()
+            except ZeroDivisionError:
+                raise ValueError("cluster covariance not certified nonsingular at this precision")
+            fc = (b2.transpose() * V22i * b2)[0, 0] / q
+            hc["fvalue_cluster"] = fc
+            hc["f_pvalue_cluster"] = _f_upper(fc, arb(q), dfc)
+        hc_meta["n_groups"] = G
+    # studentized residuals (weighted: sqrt(w) e / (s sqrt(1 - h)); 0 at zero weights)
+    st_int = [W[i].sqrt() * resid[i] / (scale * (1 - hat[i])).sqrt() if not W[i].is_zero() else arb(0)
+              for i in range(n)]
+    # external: the scale without row i, (ssr - w e^2 / (1 - h)) / (df - 1), from its definition
+    st_ext = [W[i].sqrt() * resid[i] / ((ssr - W[i] * resid[i] ** 2 / (1 - hat[i])) / (dfr - 1) * (1 - hat[i])).sqrt()
+              if not W[i].is_zero() else arb(0) for i in range(n)]
+    # Breusch-Pagan: e~^2 on a constant and the whitened design's columns (the intercept
+    # column sqrt(w) is the constant itself for OLS)
+    ones_w = w is None or all(W[i] == 1 for i in used)
+    Z = []
+    for i in used:
+        sw = W[i].sqrt()
+        row = [arb(1)]
+        if intercept and not ones_w:
+            row.append(sw)
+        row += [sw * v for v in A[i][(1 if intercept else 0):]]
+        Z.append(row)
+    v = [W[i] * resid[i] ** 2 for i in used]
+    _, fz = _solve_ls(Z, v)
+    vbar = sum(v, arb(0)) / m
+    tss_a = sum(((x - vbar) ** 2 for x in v), arb(0))
+    ssr_a = sum(((v[j] - fz[j]) ** 2 for j in range(m)), arb(0))
+    ess_a = tss_a - ssr_a
+    qa = len(Z[0]) - 1
+    bp_lm = m * ess_a / tss_a
+    s2 = ssr / m
+    bp_lm0 = ess_a / (2 * s2 * s2)
+    bp_f = (ess_a / qa) / (ssr_a / (m - qa - 1))
+    bp = {"bp_lm": bp_lm, "bp_lm_pvalue": _chi2_upper(bp_lm, arb(qa)), "bp_fvalue": bp_f,
+          "bp_f_pvalue": _f_upper(bp_f, arb(qa), arb(m - qa - 1)),
+          "bp_lm_nonstudentized": bp_lm0, "bp_lm_nonstudentized_pvalue": _chi2_upper(bp_lm0, arb(qa))}
     # confidence intervals: beta -+ t_{1 - alpha/2} bse
     tq = _t_quantile_upper(arb(alpha) / 2, dfr, t_guess)
     ci_lo = [beta[a] - tq * bse[a] for a in range(k)]
@@ -147,9 +242,11 @@ def _fit(y, X, w, intercept, alpha, t_guess):
              for i in range(n)]
     sw_resid = [W[i].sqrt() * resid[i] for i in used]
     dw = sum(((sw_resid[j] - sw_resid[j - 1]) ** 2 for j in range(1, m)), arb(0)) / ssr
-    mu2 = ssr / m
-    mu3 = sum((r ** 3 for r in sw_resid), arb(0)) / m
-    mu4 = sum((r ** 4 for r in sw_resid), arb(0)) / m
+    # central moments (statsmodels' jarque_bera centers; the mean is 0 with an intercept)
+    rbar = sum(sw_resid, arb(0)) / m
+    mu2 = sum(((r - rbar) ** 2 for r in sw_resid), arb(0)) / m
+    mu3 = sum(((r - rbar) ** 3 for r in sw_resid), arb(0)) / m
+    mu4 = sum(((r - rbar) ** 4 for r in sw_resid), arb(0)) / m
     skew = mu3 / mu2 ** arb(1.5)
     kurt = mu4 / mu2 ** 2
     jb = arb(m) / 6 * (skew ** 2 + (kurt - 3) ** 2 / 4)
@@ -161,11 +258,12 @@ def _fit(y, X, w, intercept, alpha, t_guess):
         "ssr": ssr, "ess": ess, "centered_tss": tss, "rsquared": rsq, "rsquared_adj": rsq_adj,
         "scale": scale, "llf": llf, "aic": aic, "bic": bic,
         "durbin_watson": dw, "jarque_bera": jb, "jarque_bera_pvalue": jb_p,
-        **hc,
+        "resid_studentized_internal": st_int, "resid_studentized_external": st_ext,
+        **hc, **bp,
     }
     if fval is not None:
         out["fvalue"], out["f_pvalue"] = fval, fp
-    meta = {"nobs": m, "df_model": df_model, "df_resid": df_resid, "exact_fit": False}
+    meta = {"nobs": m, "df_model": df_model, "df_resid": df_resid, "exact_fit": False, **hc_meta}
     return out, meta
 
 
@@ -177,18 +275,19 @@ def _all_settled(d):
     return True
 
 
-def ols(y, X, *, weights=None, intercept=True, alpha=0.05, t_guess=2.0):
+def ols(y, X, *, weights=None, intercept=True, alpha=0.05, t_guess=2.0, groups=None, maxlags=None):
     """References for the OLS (weights=None) or WLS fit of y on X (X: a list of rows, without
     the constant column, which intercept puts first; y and X may also be callables that give
     arbs at the working precision). t_guess: a double near the t quantile
     t_{1 - alpha/2} (scipy's value is fine; it only starts Newton). Returns (values, meta):
     values maps each name to (hi, lo) or a list of (hi, lo); meta holds nobs, df_model,
-    df_resid."""
+    df_resid, the HAC lags (maxlags: None for floor(4 (nobs/100)^(2/9))) and with groups (one
+    label per row) the number of clusters."""
     p = ar.START_PREC
     while p <= ar.MAX_PREC:
         with ar.precision(p):
             try:
-                vals, meta = _fit(y, X, weights, intercept, alpha, t_guess)
+                vals, meta = _fit(y, X, weights, intercept, alpha, t_guess, groups, maxlags)
             except (ar.NotSettled, ValueError):
                 vals = None
             if vals is not None and _all_settled(vals):

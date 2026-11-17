@@ -6,7 +6,8 @@ Usage: ``import stardust as sd`` then ``r = sd.regression.ols(y, X)`` and ``r.pa
 docs/design/regression.md §1.1.
 """
 
-from .._results import LinregressResult
+from .._results import BreuschPaganResult, JarqueBeraResult, LinregressResult
 from ._linear import GLSResult, OLSResult, WLSResult, gls, linregress, ols, wls
 
-__all__ = ["ols", "wls", "gls", "linregress", "OLSResult", "WLSResult", "GLSResult", "LinregressResult"]
+__all__ = ["ols", "wls", "gls", "linregress", "OLSResult", "WLSResult", "GLSResult", "LinregressResult",
+           "JarqueBeraResult", "BreuschPaganResult"]

@@ -1,6 +1,6 @@
 # 회귀 영역 설계 (sd.regression)
 
-> 상태: **G1a 구현·확인** (2026-11-18): 선형 모형의 수치 핵심(§2, §3.1–§3.3). 큰 결정은 사용자가 정했다(§1.1). 나머지는 안이고, 마일스톤마다 시작 전에 물을 것은 §8에 있다. §3.1의 정확도 계약은 사용자 결정을 기다리는 제안이다.
+> 상태: **G1 구현** (2026-11-18): 선형 모형의 수치 핵심(§2, §3.1–§3.3). 큰 결정은 사용자가 정했다(§1.1). 나머지는 안이고, 마일스톤마다 시작 전에 물을 것은 §8에 있다. §3.1의 정확도 계약은 사용자 결정을 기다리는 제안이다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -36,6 +36,11 @@
 | G23 강건 공분산의 분포 (G1) | HC(와 G1b의 HAC·군집)에서도 p값과 구간은 t(`df_resid`), 모형 검정은 F(q, `df_resid`)다(R의 coeftest·Stata와 같다; statsmodels의 기본은 정규분포) (사용자 결정 2026-11-18) |
 | G24 inf (G1) | y·X·가중치에 inf가 있으면 `nan_policy`와 상관없이 `ValueError`다(statsmodels·R과 같다) (사용자 결정 2026-11-18) |
 | G25 G1a의 세부 (사용자 확인 2026-11-18) | NaN이 있는 회귀(propagate)는 `nobs`·`df_model`·`df_resid`가 NaN이고 `rank`는 0이다. 절편 여부는 `intercept` 옵션만 본다(상수 열을 찾지 않는다: 절편 없이 상수 열을 주면 R²는 비중심, R과 같다). `gls`의 `sigma`는 (…, n, n) 행렬만 받고 `cov_type`·`rtol`은 ols와 같다. 이름 `uncentered_tss`, 결과 클래스 `OLSResult`·`WLSResult`·`GLSResult`. `linregress`는 배치를 받고, 점이 한 직선 위에 있으면 p = 0이다(scipy는 1e-20을 더해 약 9e-11) |
+| G26 HAC (G1b) | `cov_type='HAC'`, 지연 수는 `maxlags=`(기본 floor(4(n/100)^(2/9)), Newey–West 1994), Bartlett 커널. 자동 대역폭 선택은 하지 않는다 (사용자 결정 2026-11-18) |
+| G27 군집 (G1b) | `cov_type='cluster', groups=…`(일원 군집만). 소표본 보정 G/(G−1)·(n−1)/(n−k), t의 자유도 G−1(Stata와 같다) (사용자 결정 2026-11-18) |
+| G28 스튜던트화 잔차 (G1b) | 내적 `resid_studentized_internal`과 외적 `resid_studentized_external`을 둘 다 둔다(statsmodels의 이름) (사용자 결정 2026-11-18) |
+| G29 Breusch–Pagan (G1b) | Koenker의 스튜던트화 판이 기본(statsmodels·R lmtest와 같다), `studentize=False`로 원래 판 (사용자 결정 2026-11-18) |
+| G30 G1b의 세부 (사용자 확인 2026-11-18) | 가중치 0인 행의 지렛대·스튜던트화 잔차·Cook 거리는 0(가중 공식의 값, statsmodels와 같다). Breusch–Pagan 보조 회귀는 늘 상수항을 넣는다. 군집 레이블은 float도 받고 NaN은 결측이다. 완전 적합에서 스튜던트화 잔차·Cook·DW·JB·BP는 NaN(0/0). 추론의 자유도는 공개 필드 `df_resid_inference`(군집이면 G−1). `summary(*, alpha=0.05)`, 배치는 에러 |
 | G16 NaN (G1) | `nan_policy`의 기본은 'propagate'(결과 값이 모두 NaN). 'omit'은 NaN이 있는 행을 빼고, 'raise'는 `ValueError` |
 | G17 진단 (G1) | 지렛대(hat), 스튜던트화 잔차, Cook 거리와 Durbin–Watson, Jarque–Bera, Breusch–Pagan. `summary()`에는 Durbin–Watson과 Jarque–Bera를 넣는다(statsmodels와 같다) |
 | G18 linregress (G1) | scipy와 같은 꼴: `linregress(x, y)`(인자 순서도 scipy), 결과는 `slope intercept rvalue pvalue stderr intercept_stderr` namedtuple |
@@ -71,10 +76,15 @@
 - **배치** (G14): `y`, `X`, `weights`(GLS는 백색화한 1의 열)의 배치 모양을 linalg의 `Batch`로 브로드캐스트하고, linalg의 `run_batch`로 회귀 하나를 태스크 하나로 돈다. 회귀 하나의 계산은 어디서 돌든 같으므로 배치는 회귀를 하나씩 부른 것과 비트까지 같고, 스레드 수와도 상관없다. 회귀 하나가 크면 그 안의 행 합(§3.1)을 스레드풀로 나누는데, 나누는 덩어리는 열 수로만 정해지고 부분합을 순서대로 더하므로 이것도 비트가 같다. 배치 안에서는 풀이 중첩되지 않아 행 합이 한 스레드로 돈다(결과는 같다).
 
 ### 2.2 결과 객체
-- `OLSResult`, `WLSResult`, `GLSResult`(같은 틀). 커널은 회귀마다 `params`, 공분산(고전형은 (RᵀR)⁻¹, HC는 샌드위치), 쓰인 열의 R, 적합값, 잔차, 쓰인 열 표시, 스칼라 11개(nobs, rank, SSR, 중심·비중심 TSS, 직접 더한 중심·비중심 ESS, Σlog w, Wald F와 그 자유도, NaN 표시)를 낸다. 나머지 필드는 Python에서 처음 읽을 때 sd 배열 연산과 sd.stats로 계산해 둔다(statsmodels의 `cache_readonly`와 같은 방식).
+- `OLSResult`, `WLSResult`, `GLSResult`(같은 틀). 커널은 회귀마다 `params`, 공분산(고전형은 (RᵀR)⁻¹, 강건형은 샌드위치), 쓰인 열의 R, 적합값, 잔차, 쓰인 열 표시, 스칼라 13개(nobs, rank, SSR, 중심·비중심 TSS, 직접 더한 중심·비중심 ESS, Σlog w, Wald F와 그 자유도, NaN 표시, 군집 수, HAC 지연 수)를 낸다. 나머지 필드는 Python에서 처음 읽을 때 sd 배열 연산과 sd.stats로 계산해 둔다(statsmodels의 `cache_readonly`와 같은 방식).
+- 결과는 커널에 준 입력(백색화한 y·X, 가중치, GLS의 백색화한 1의 열, 군집 번호)을 참조로 들고 있다. 진단은 처음 읽을 때 이것으로 커널을 다시 부른다(복사하지 않는다).
+  - `leverage`: 커널의 두 번째 방식(`hat_only`)이 적합과 같은 열 선택·같은 QR을 하고 `orgqr`로 얇은 Q를 만들어 h_t = ‖q_t‖²를 낸다. Q는 반올림 수준에서 직교이므로 1 − h도 κ와 상관없이 절대오차가 u 정도다(R로 R⁻ᵀx_t를 풀면 κu). 적합 자체에는 Q를 만드는 비용(QR 한 번 꼴)을 더하지 않으려고 따로 부른다.
+  - `durbin_watson`, `jarque_bera()`: 커널 `resid_stats`가 백색화한 잔차를 적합에 쓰인 행만 순서대로 모아 Σ(ẽ_t − ẽ_{t−1})²와 중심 적률의 합 Σd^p(p = 2, 3, 4, d = ẽ − 평균)을 double-double로 더한다. 덩어리는 n으로만 정해지고 순서대로 더하므로 스레드 수와 상관없는 비트다.
+  - `breusch_pagan()`: 보조 회귀(ẽ²를 상수와 백색화한 설계의 열에)를 같은 커널로 푼다(가중치 0인 행은 0/1 가중치로 뺀다). 보조 회귀의 R², ESS, F는 G1a의 필드 그대로다.
+  - 스튜던트화 잔차와 Cook 거리는 위의 것과 `scale`로 sd 배열 연산이다. 외적 스튜던트화 잔차는 r√((df − 1)/(df − r²))로 한 번에 구한다(statsmodels는 행을 하나씩 뺀 적합 n번).
 - 이름은 statsmodels의 것이다(G10). `centered_tss`(언제나 중심화)와 `uncentered_tss`를 둘 다 둔다(statsmodels와 같다; 절편이 없으면 R²는 비중심 TSS를 쓴다).
 - `conf_int`와 `predict_interval`은 (…, k, 2), (…, m, 2) 배열이다(statsmodels의 `conf_int`와 같은 모양).
-- `summary()`, 진단(G17)은 G1b다.
+- `summary()`(G13)는 회귀 하나의 글이다. 배치에서는 `ValueError`다(`nan_policy='omit'`의 배치 에러와 같은 꼴). 배치의 한 원소를 고르는 방법(결과의 인덱싱)은 없다.
 
 ---
 
@@ -147,7 +157,34 @@
 ### 3.3 강건 표준오차
 - HC0–HC3: 얇은 Q(`orgqr`)로 지렛대 h_i = ‖Q_i‖²(HC2·HC3만), ω_i = ẽ_i²·(1, n/(n−k), 1/(1−h_i), 1/(1−h_i)²)(ẽ는 백색화한 잔차), 고기 Qᵀdiag(ω)Q를 `syrk`로, 공분산 R⁻¹(Qᵀ diag(ω) Q)R⁻ᵀ를 `trsm` 두 번으로 만든다(XᵀX를 만들지 않는다). HC1의 보정은 nobs/df_resid다. 가중치 0인 행은 빠진다. Arb 참값(regref의 `bse_HC0`–`bse_HC3`)과 1e-13 안이다(κ가 작을 때).
 - HC에서도 p값과 구간은 **t(df_resid)**다(G23; R의 `lmtest::coeftest`·Stata와 같다. statsmodels의 기본은 정규분포 `use_t=False`라 `use_t=True`와 같은 값이다). `fvalue`는 절편을 뺀 계수 전부의 Wald 통계량 β₂ᵀV₂₂⁻¹β₂/q이고 p값은 F(q, df_resid)다(statsmodels의 `f_test`와 같다).
-- HAC(Newey–West, Bartlett 커널; 지연 수의 기본값과 소표본 보정은 statsmodels와 맞춘다), 군집 강건(군집 레이블, 소표본 보정 G/(G−1)·(n−1)/(n−k))은 G1b다(G11). 커널은 이미 얇은 Q와 백색화한 잔차를 만드므로, 고기 Qᵀ Ω Q 자리에 지연 합과 군집 합을 넣으면 된다. `cov_type` 코드와 Wald F의 경로는 공유한다.
+- 강건 공분산은 모두 점수 U = diag(ẽ) Q(얇은 Q의 행 q_t에 백색화한 잔차를 곱한 것)에서 고기 S를 만들고 R⁻¹ S R⁻ᵀ로 바꾼다. XᵀX와 (XᵀX)⁻¹을 만들지 않는다(statsmodels는 `pinv`의 (XᵀX)⁻¹을 양쪽에 곱한다).
+- **HAC** (G26): S = UᵀU + Σ_l w_l (U_{l:}ᵀU_{:−l} + 그 전치), w_l = 1 − l/(L+1)(Bartlett). 지연 L개의 행렬곱 대신 V_t = Σ_l w_l u_{t−l}(열마다 길이 L의 필터)을 만들어 지연 합 전체를 UᵀV 한 번으로 구한다. V는 4,096행 덩어리로 만들고(열마다 스레드풀) 덩어리의 `dgemm`을 순서대로 더하므로, 메모리는 덩어리 하나이고 비트는 스레드 수와 상관없다. 지연 수의 기본은 floor(4(nobs/100)^(2/9))로 statsmodels와 같은 double 연산이다. 소표본 보정은 하지 않는다: statsmodels의 `cov_type='HAC'`은 `use_correction=False`가 기본이고(True면 n/(n−k)), R `sandwich::NeweyWest`도 `adjust=FALSE`가 기본이다(R의 기본 지연 수는 자동 대역폭이고 사전 백색화를 해서 여기와 다르다). Stata의 `newey`는 n/(n−k)를 곱한다.
+- **군집** (G27): S = Σ_g s_g s_gᵀ, s_g는 군집 g의 점수 합(행 순서대로). 군집 수 × 열 수가 2²²(32 MB) 이하이면 G × k 행렬에 행을 순서대로 흩뿌려 더하고(열마다 스레드풀) `syrk` 한 번, 그보다 크면 행을 군집별로 안정 정렬해 군집 덩어리마다 합을 만들고 `syrk`를 누적한다. 두 길의 군집 합은 같은 순서로 더하므로 같은 값이다. 보정은 G/(G−1)·(n−1)/(n−k)(k는 rank)다. G는 적합에 쓰인 행에 나오는 군집 수이고, 하나면 공분산은 NaN이다.
+  - 자유도: t와 F의 분모는 G − 1이다. statsmodels(`use_t=True`)와 Stata가 같다(statsmodels는 이때 `df_resid_inference`를 두고 `df_resid`는 그대로; 여기도 `df_resid`는 그대로다). statsmodels의 `get_prediction`은 군집에서도 `df_resid`를 쓰지만 여기의 `predict_interval`은 `conf_int`와 같은 G − 1이다. statsmodels의 k는 X의 열 수라 겹친 열이 있을 때만 다르다. statsmodels의 기본(`use_t=False`)은 정규분포다.
+  - 레이블은 Python에서 0..G_tot−1의 번호로 바꾼다(정수·실수 배열은 `unique_inverse`, 문자열은 처음 나온 순서, frame `Series`는 frame의 `factorize`). 없는 레이블은 −1이고 커널이 NaN 데이터로 본다. 커널은 회귀마다 쓰인 행에 나오는 번호를 처음 나온 순서로 다시 매기므로, 결과는 번호를 매긴 방법과 상관없다.
+- **가중치 0** (G20): 0인 행은 Q에 행이 없으므로 HAC의 지연은 적합에 쓰인 행을 이어서 세고, 그 행에만 있는 군집은 G에 들지 않는다. 그래서 0인 행이 있는 WLS의 강건 공분산도 그 행을 뺀 WLS와 비트까지 같다. statsmodels(와 R의 `sandwich`)는 그 행을 점수 0인 시점·관측으로 남겨서, 지연의 짝과 G가 다르다.
+- **Wald F** (강건형 모두): 절편을 뺀 계수 b₂의 b₂ᵀV₂₂⁻¹b₂/q를 Q의 좌표에서 계산한다. 절편이 첫 열이므로 R⁻¹의 아래 행들은 [0, R₂₂⁻¹]이고, V₂₂ = c·R₂₂⁻¹S₂₂R₂₂⁻ᵀ이므로 b₂ᵀV₂₂⁻¹b₂ = zᵀS₂₂⁻¹z/c, z = R₂₂b₂다. 공분산(조건수가 κ(X)²과 고기의 조건수의 곱)의 역행렬을 만들지 않는다. κ = 10⁵인 군집 문제(ols_cond)에서 V₂₂를 Cholesky로 풀면 F의 상대오차가 2.4e-6, 이 식은 2.7e-11이다. S₂₂가 특이하면(군집 수 − 1 < q) NaN이다.
+- **정확도** (Arb 참값 `tests/regression/ref/linear.json`, 같은 double 입력): 관측별 값은 max|차| / max|참값|, 나머지는 상대오차다. Wampler2(잔차가 반올림 수준)와 Wampler1(완전 적합)은 뺐다.
+
+  | 문제 | κ | 지렛대 | 내적 | 외적 | Cook | DW | JB | BP | HAC bse | 군집 bse | 군집 p | 군집 F·p |
+  |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+  | ols_int | 1.6 | 4e-16 | 2e-16 | 2e-16 | 7e-16 | 1e-16 | 7e-16 | 2e-16 | 4e-16 | 5e-16 | 2e-15 | 2e-15 |
+  | ols_noint | 1.5 | 1e-16 | 2e-16 | 3e-16 | 5e-16 | 8e-17 | 3e-16 | 8e-16 | 2e-16 | 3e-17 | 4e-16 | 7e-16 |
+  | wls_zero | 1.8 | 3e-16 | 3e-16 | 4e-16 | 4e-16 | 3e-17 | 1e-15 | 7e-16 | 2e-16 | 4e-16 | 1e-15 | 2e-15 |
+  | wls_noint | 1.8 | 1e-16 | 2e-16 | 2e-16 | 3e-16 | 1e-16 | 2e-15 | 8e-16 | 2e-16 | 2e-16 | 9e-16 | 2e-15 |
+  | ols_cond | 1.0e5 | 3e-12 | 6e-14 | 6e-14 | 5e-13 | 5e-17 | 1e-15 | 8e-12 | 4e-13 | 2e-13 | 7e-17 | 3e-11 |
+  | ols_kappa11 | 1.0e11 | 4e-6 | 2e-7 | 2e-7 | 1e-6 | 6e-14 | 2e-12 | 6e-7 | 8e-7 | | | |
+  | Norris | 8.6e2 | 4e-16 | 4e-14 | 5e-14 | 8e-14 | 3e-14 | 4e-13 | 2e-13 | 2e-14 | | | |
+  | Pontius | 1.4e13 | 8e-16 | 2e-13 | 2e-13 | 4e-13 | 5e-15 | 7e-13 | 4e-13 | 2e-14 | | | |
+  | NoInt1 | 1 | 3e-16 | 4e-16 | 5e-16 | 6e-16 | 1e-16 | 7e-16 | 2e-14 | 1e-16 | | | |
+  | NoInt2 | 1 | 5e-16 | 3e-16 | 5e-15 | 2e-15 | 1e-16 | 4e-16 | 5e-15 | 4e-16 | | | |
+  | Filip | 1.8e15 | 4e-8 | 4e-8 | 4e-8 | 4e-8 | 4e-9 | 7e-8 | 2e-8 | 2e-7 | | | |
+  | Longley | 4.9e9 | 3e-13 | 1e-12 | 1e-12 | 3e-12 | 1e-16 | 7e-15 | 1e-12 | 1e-12 | | | |
+  | Wampler3–5 | 6.4e6 | 2e-14 | 1e-14 | 1e-14 | 5e-14 | 2e-17 | 2e-16 | 8e-16 | 6e-14 | | | |
+
+  - 조건이 좋은 문제는 모두 u의 몇 배다. 오차는 대략 κu를 따른다: 지렛대는 X의 열공간 자체가 κu만큼 움직이므로(Pontius처럼 조건수가 열의 척도에서만 오면 그렇지 않다), 잔차에서 오는 값은 β의 반올림이 작은 잔차에 |x||β|·u로 들어가므로(Norris 4e-14) 그렇다. 테스트의 기준은 max(1e-13, 10κu)다.
+  - statsmodels와는 HAC·군집의 bse·p·F, 지렛대, 두 스튜던트화 잔차, Cook 거리, DW, JB, BP 모두 1e-11 안에서 같다(OLS, WLS, GLS; `tests/regression/test_robust_diagnostics.py`).
+- **속도** (`bench/regression/g1b/speed.md`, statsmodels 대비): (10⁵, 10)에서 HAC 1.2배(1스레드)·2.3배(10스레드), 군집(1,000개) 1.1·2.0배, 적합과 진단 1.2·2.3배, (10⁶, 50)에서 HAC 1.7·3.1배, 군집 1.8·2.9배, 적합과 진단 1.5·2.4배 빠르다. 진단의 시간은 지렛대를 위한 QR·`orgqr` 한 번과 Breusch–Pagan의 보조 회귀(적합 한 번)이고, 고전형 적합의 시간은 진단이 없을 때와 같다.
 
 ### 3.4 GLM
 - IRLS(반복 가중 최소제곱): 매 반복이 WLS 한 번이다. 시작값은 statsmodels·R과 같은 규칙(μ₀ = (y + ȳ)/2 등)으로 두고, 수렴은 편차(deviance)의 상대 변화로 판정한다. 반복 상한은 안으로 100이다.
@@ -192,7 +229,7 @@
 - **닫힌 꼴(OLS·WLS·GLS·ridge)**: Arb의 행렬 연산(`arb_mat`)으로 정규방정식을 고정밀로 풀어 참값을 만든다(고정밀에서는 조건수 제곱이 문제가 아니다). 계수, 표준오차, t, p, R², F, 구간, 예측구간 모두.
 - **반복 방법**: 최적성 조건(GLM은 점수 방정식 Xᵀ W (z − Xβ) = 0, lasso는 KKT 조건과 쌍대 간격, 분위는 선형계획의 쌍대 실행 가능성)의 잔차를 재고, 같은 문제의 statsmodels·scikit-learn·R 결과와 비교한다. 해가 유일하지 않은 경우(분위 회귀의 여러 꼭짓점)는 목적함수 값으로 비교한다.
 - 시험 문제: NIST StRD의 선형 회귀 인증 데이터 11개(Norris, Pontius, NoInt1–2, Filip, Longley, Wampler1–5; `tests/regression/data/`, 읽기는 `tests/regression/nist.py`)는 공인된 참값(15자리)과 극단적인 조건수를 함께 준다.
-- **참값 도구** (G0, `tools/regref.py`): 입력(double, 또는 10진 문자열과 거듭제곱을 Arb로 주는 함수)을 정확한 구간으로 받아 정규방정식을 구간 산술로 푼다. 고정밀에서는 조건수의 제곱이 비트를 더 쓸 뿐 틀리게 하지 않는다. 모든 값의 구간이 2⁻¹¹⁰ 상대까지 좁아질 때까지 정밀도를 두 배씩 올린다. 내는 값: 계수, 표준오차, t, p, 신뢰구간, 적합값, 잔차, 지렛대, Cook 거리, SSR·ESS·TSS, R²·수정 R², F와 p, 척도, 로그우도·AIC·BIC, HC0–HC3 표준오차, Durbin–Watson, Jarque–Bera와 p. 가중치 0인 행은 R처럼 뺀다.
+- **참값 도구** (G0, `tools/regref.py`): 입력(double, 또는 10진 문자열과 거듭제곱을 Arb로 주는 함수)을 정확한 구간으로 받아 정규방정식을 구간 산술로 푼다. 고정밀에서는 조건수의 제곱이 비트를 더 쓸 뿐 틀리게 하지 않는다. 모든 값의 구간이 2⁻¹¹⁰ 상대까지 좁아질 때까지 정밀도를 두 배씩 올린다. 내는 값: 계수, 표준오차, t, p, 신뢰구간, 적합값, 잔차, 지렛대, 내적·외적 스튜던트화 잔차(외적은 행을 뺀 척도의 정의대로), Cook 거리, SSR·ESS·TSS, R²·수정 R², F와 p, 척도, 로그우도·AIC·BIC, HC0–HC3·HAC(지연 수를 받는다) 표준오차, 군집 레이블을 주면 군집 표준오차·p·Wald F와 p, Durbin–Watson, Jarque–Bera(중심 적률)와 p, Breusch–Pagan(스튜던트화 판과 원래 판, F 판). 가중치 0인 행은 R처럼 뺀다.
   - 잔차가 정확히 0인 완전 적합(Wampler1·2)은 어떤 유한 정밀도로도 0임을 확정할 수 없다. 1024비트에서도 잔차 제곱합의 구간이 0을 품으면 완전 적합으로 보고 계수·적합값과 0인 값들만 낸다(t·p·구간 등은 정의되지 않는다).
   - 확인: NIST 11개 모두 인증값(계수, 표준오차, 잔차 표준편차, R²)과 1e-14 안이다. 무작위 문제에서 statsmodels와 1e-15 수준으로 맞는다(Cook 거리는 statsmodels 쪽이 2.4e-14 틀린다). 테스트는 `tests/regression/test_reference_tool.py`.
 - **기존 패키지의 성적** (G0, 2026-11-18): 사용자가 실제로 주는 double 입력(10진 값을 double로, 거듭제곱 열도 double로)에 대한 Arb 참값과 계수를 비교했다(최대 상대오차).
@@ -230,7 +267,7 @@
 
 ## 8. 마일스톤을 시작하기 전에 물을 것
 - **G0**: 정했다(2026-11-18, G8).
-- **G1**: 정했다(2026-11-18, G9–G24). 남은 것: HAC·군집의 인자(G1b).
+- **G1**: 정했다(2026-11-18, G9–G30).
 - **G2**: 분포족·링크 목록, 반복 상한에 닿았을 때(NaN / 마지막 값 + `converged=False`), 척도 추정, 분리의 처리, 음이항의 α를 추정할지
 - **G3**: 목적함수의 꼴과 표준화(scikit-learn / glmnet), α의 이름(`alpha`·`l1_ratio` / `lambda`), 교차검증의 범위, 정규화 GLM(로지스틱), 추론 필드를 둘지
 - **G4**: M 추정 함수 목록, 척도 추정, Theil–Sen·Siegel(scipy의 `theilslopes`, `siegelslopes`)을 넣을지

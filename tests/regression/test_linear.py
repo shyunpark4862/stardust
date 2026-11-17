@@ -495,8 +495,8 @@ def test_errors():
         R.ols(1.0, X)
     with pytest.raises(TypeError, match=r"^ols\(\): 'intercept' must be True or False, not int$"):
         R.ols(y, X, intercept=1)
-    with pytest.raises(ValueError, match=r"^ols\(\): 'cov_type' must be 'nonrobust', 'HC0', 'HC1', 'HC2' or 'HC3', not 'HAC'$"):
-        R.ols(y, X, cov_type="HAC")
+    with pytest.raises(ValueError, match=r"^ols\(\): 'cov_type' must be 'nonrobust', 'HC0', 'HC1', 'HC2', 'HC3', 'HAC' or 'cluster', not 'hac'$"):
+        R.ols(y, X, cov_type="hac")
     with pytest.raises(TypeError, match=r"^ols\(\): 'cov_type' must be .* not NoneType$"):
         R.ols(y, X, cov_type=None)
     with pytest.raises(ValueError, match=r"^ols\(\): 'rtol' must be a finite number >= 0$"):

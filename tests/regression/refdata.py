@@ -1,10 +1,12 @@
 """Arb references for the linear models' tests (tools/regref.py; docs/design/regression.md §6).
 
 tests/regression/ref/linear.json holds, per problem, the inputs as doubles (y, X rows without
-the constant column, weights, intercept) and regref.ols's values as [hi, lo] pairs: random
-problems (OLS with and without the intercept, WLS with zero weights, an ill-conditioned one
-with a large residual) and the 11 NIST StRD problems as a user gives them (decimal data and
-powers rounded to double once). Regenerate with
+the constant column, weights, intercept, cluster labels) and regref.ols's values as [hi, lo]
+pairs: random problems (OLS with and without the intercept, WLS with zero weights, an
+ill-conditioned one with a large residual) and the 11 NIST StRD problems as a user gives them
+(decimal data and powers rounded to double once). The random problems have cluster labels
+(in wls_zero one cluster has only zero-weight rows, so it is not counted); HAC uses the
+default lags. Regenerate with
 
     uv run --no-sync python -m tests.regression.refdata
 """
@@ -26,13 +28,17 @@ def problems():
     rng = np.random.default_rng(1)
     X = rng.standard_normal((30, 3))
     y = X @ [1.0, -2.0, 0.5] + 0.3 + rng.standard_normal(30)
-    out["ols_int"] = (y.tolist(), X.tolist(), None, True)
-    out["ols_noint"] = (y.tolist(), X.tolist(), None, False)
+    # cluster labels drawn after the data, so the problems' data are the earlier ones
+    g = [int(v) for v in np.random.default_rng(7).integers(0, 6, 30)]
+    gz = list(g)
+    gz[4] = gz[17] = 9  # the zero-weight rows' own cluster
+    out["ols_int"] = (y.tolist(), X.tolist(), None, True, g)
+    out["ols_noint"] = (y.tolist(), X.tolist(), None, False, g)
     w = rng.uniform(0.2, 3.0, 30)
     w[[4, 17]] = 0.0
-    out["wls_zero"] = (y.tolist(), X.tolist(), w.tolist(), True)
+    out["wls_zero"] = (y.tolist(), X.tolist(), w.tolist(), True, gz)
     w2 = rng.uniform(0.2, 3.0, 30)
-    out["wls_noint"] = (y.tolist(), X.tolist(), w2.tolist(), False)
+    out["wls_noint"] = (y.tolist(), X.tolist(), w2.tolist(), False, g)
     # kappa 1e5 with a residual as large as X b (R^2 = 1/2), an intercept
     n, k = 50, 4
     U, _ = np.linalg.qr(rng.standard_normal((n, n)))
@@ -41,7 +47,7 @@ def problems():
     b = rng.standard_normal(k)
     r = U[:, k:] @ rng.standard_normal(n - k)
     yc = Xc @ b + r * (np.linalg.norm(Xc @ b) / np.linalg.norm(r))
-    out["ols_cond"] = (yc.tolist(), Xc.tolist(), None, False)
+    out["ols_cond"] = (yc.tolist(), Xc.tolist(), None, False, [int(v) for v in np.arange(n) % 7])
     # the contract's edge (G15): kappa 1e11 with a residual 100 times X b (R^2 = 1e-4)
     k = 6
     U, _ = np.linalg.qr(rng.standard_normal((n, n)))
@@ -50,25 +56,26 @@ def problems():
     b = rng.standard_normal(k)
     r = U[:, k:] @ rng.standard_normal(n - k)
     ye = Xe @ b + r * (100.0 * np.linalg.norm(Xe @ b) / np.linalg.norm(r))
-    out["ols_kappa11"] = (ye.tolist(), Xe.tolist(), None, False)
+    out["ols_kappa11"] = (ye.tolist(), Xe.tolist(), None, False, None)
     for name in nist.NAMES:
         d = nist.load(name)
         ys, Xs = nist.design_strings(d)
-        out["nist_" + name] = (ys, Xs, None, d["intercept"])
+        out["nist_" + name] = (ys, Xs, None, d["intercept"], None)
     return out
 
 
 def _one(item):
-    name, (y, X, w, intercept) = item
+    name, (y, X, w, intercept, groups) = item
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "tools"))
     import regref
     import scipy.stats as st
 
     k = len(X[0]) + (1 if intercept else 0)
     m = sum(1 for v in w if v > 0) if w is not None else len(y)
-    ref, meta = regref.ols(y, X, weights=w, intercept=intercept, t_guess=float(st.t.ppf(0.975, max(m - k, 1))))
+    ref, meta = regref.ols(y, X, weights=w, intercept=intercept, t_guess=float(st.t.ppf(0.975, max(m - k, 1))),
+                           groups=groups)
     vals = {key: ([list(p) for p in v] if isinstance(v, list) else list(v)) for key, v in ref.items()}
-    return name, {"y": y, "X": X, "weights": w, "intercept": intercept, "meta": meta, "ref": vals}
+    return name, {"y": y, "X": X, "weights": w, "intercept": intercept, "groups": groups, "meta": meta, "ref": vals}
 
 
 def generate():
