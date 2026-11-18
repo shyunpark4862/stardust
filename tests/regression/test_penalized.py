@@ -550,3 +550,26 @@ def test_errors():
         r.predict(np.ones((2, 3)))
     with pytest.raises(ValueError, match=r"'which' must be 'mean' or 'linear'"):
         GLMNET(yb, X, family="binomial", alpha=0.1).predict(X, which="x")
+
+
+def test_ridge_cv_default_grid_and_copies():
+    """G87: ridge_cv's default grid reaches eps = 1e-6 of its alpha_max (the lasso's and the
+    elastic net's keep 1e-3). G86: the fitted values read copies of y and X. G85: a constant y
+    has R^2 0/0, NaN."""
+    rng = np.random.default_rng(6)
+    X = rng.standard_normal((80, 4))
+    y = X @ [3.0, -2.0, 1.0, 0.5] + rng.standard_normal(80)
+    r = R.ridge_cv(y, X, cv="gcv")
+    g = a(r.alphas)
+    assert g[-1] / g[0] == pytest.approx(1e-6, rel=1e-12)
+    assert g[-1] < r.alpha < g[0]   # a clear signal's optimum inside the grid
+    lc = R.lasso_cv(y, X, rng=sd.random.default_rng(0))
+    assert a(lc.alphas)[-1] / a(lc.alphas)[0] == pytest.approx(1e-3, rel=1e-12)
+    Xs, ys = sd.asarray(X), sd.asarray(y)
+    f = R.ridge(ys, Xs, alpha=0.5)
+    want = a(f.fittedvalues)
+    Xs[0, 0] = 1e6
+    ys[0] = 1e6
+    assert a(f.fittedvalues).tolist() == want.tolist()
+    c = R.ridge(np.ones(10), np.arange(10.0), alpha=0.1)
+    assert math.isnan(c.rsquared)

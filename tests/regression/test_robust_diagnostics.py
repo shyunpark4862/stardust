@@ -326,6 +326,30 @@ def test_group_labels_and_nan_policy():
     assert np.all(np.isnan(a(one.bse))) and np.all(np.isnan(a(one.pvalues))) and math.isnan(one.fvalue)
 
 
+def test_cluster_f_needs_groups():
+    """G - 1 below the number of tested coefficients: the meat (rank <= G - 1) is singular and
+    fvalue, f_pvalue are NaN, though rounding can let its Cholesky through (it gave 1.83e20).
+    With G - 1 = q the test is defined (statsmodels' value)."""
+    import statsmodels.api as sm
+
+    h = np.arange(1.0, 9.0)
+    y = np.array([51.0, 58, 57, 66, 64, 73, 75, 80])
+    X = np.c_[h, h * h]
+    for groups, intercept in (([1, 1, 1, 1, 2, 2, 2, 2], True), ([1, 1, 1, 1, 2, 2, 2, 2], False),
+                              ([1, 1, 1, 2, 2, 2, 2, 2], True)):
+        for fit in (R.ols(y, X, cov_type="cluster", groups=groups, intercept=intercept),
+                    R.wls(y, X, weights=np.full(8, 2.0), cov_type="cluster", groups=groups, intercept=intercept)):
+            assert math.isnan(fit.fvalue) and math.isnan(fit.f_pvalue)
+            assert np.all(np.isfinite(a(fit.bse)))
+    g3 = np.array([1, 1, 1, 2, 2, 2, 3, 3])
+    r = R.ols(y, X, cov_type="cluster", groups=g3)
+    s = sm.OLS(y, sm.add_constant(X)).fit(cov_type="cluster", cov_kwds=dict(groups=g3))
+    assert r.fvalue == pytest.approx(s.fvalue, rel=1e-11) and r.f_pvalue == pytest.approx(s.f_pvalue, rel=1e-10)
+    # a batch: the rule per regression
+    rb = R.ols(np.vstack([y, y]), X, cov_type="cluster", groups=np.vstack([[1, 1, 1, 1, 2, 2, 2, 2], g3]))
+    assert math.isnan(float(rb.fvalue[0])) and float(rb.fvalue[1]) == r.fvalue
+
+
 def test_many_clusters_path():
     # G x k past 2^22 doubles: the group sums go in blocks of groups (rows sorted by group)
     rng = np.random.default_rng(17)

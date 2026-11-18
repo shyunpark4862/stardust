@@ -504,3 +504,36 @@ def test_errors():
         nls(decay, xn, yn, p0=p0, nan_policy="x")
     with pytest.raises(ZeroDivisionError):  # the model's own errors pass through
         nls(lambda x, a, b, c: 1 / 0, xn, yn, p0=p0)
+
+
+def test_noise_column_is_aliased():
+    """G88: at k ~ 100, exp(-k t) is below c's ulp on every row with t > 0, so the difference
+    column of k is rounding noise (constant over those rows: c's direction). It is set to 0 and
+    k is the aliased parameter; before, c was dropped in its place and k's bse was 1e15."""
+    t = np.linspace(0, 10, 25)
+    rng = np.random.default_rng(0)
+    y = 2.0 * np.exp(-0.5 * t) + 0.3 + 0.01 * rng.standard_normal(25)
+
+    def f(x, a, k, c):
+        return a * sd.exp(-k * x) + c
+
+    r = sd.regression.nls(f, t, y, p0=[1.0, 100.0, 0.0])
+    bse = np.asarray(r.bse.tolist())
+    assert r.rank == 2 and math.isnan(bse[1]) and np.all(np.isfinite(bse[[0, 2]]))
+    p = np.asarray(r.params.tolist())
+    # a and c are the fit of the first row and the mean of the rest
+    assert abs(p[2] - np.mean(y[1:])) <= 1e-12 and abs(p[0] + p[2] - y[0]) <= 1e-12
+    # an identified problem keeps every column
+    good = sd.regression.nls(f, t, y, p0=[1.0, 1.0, 0.0])
+    assert good.rank == 3 and np.all(np.isfinite(np.asarray(good.bse.tolist())))
+
+
+def test_overflowing_ssr_is_not_converged():
+    """G89: p0 = [1, -50, 0] grows to e^500; the xtol test passes far from a solution (scipy's lm
+    stops there too and reports success), the sum of squares overflows: converged=False."""
+    t = np.linspace(0, 10, 25)
+    rng = np.random.default_rng(0)
+    y = 2.0 * np.exp(-0.5 * t) + 0.3 + 0.01 * rng.standard_normal(25)
+    r = sd.regression.nls(lambda x, a, k, c: a * sd.exp(-k * x) + c, t, y, p0=[1.0, -50.0, 0.0])
+    assert math.isinf(r.ssr) and not r.converged
+    assert "overflows" in r.summary()

@@ -17,8 +17,8 @@ from .. import random as _random
 from .. import special as _special
 from .._results import SiegelslopesResult, TheilslopesResult
 from ._glm import _broadcast_shape, _check_int, _check_positive
-from ._linear import (_RegressionResult, _as_real, _check_alpha, _check_bool, _check_choice, _check_policy,
-                      _check_rtol, _count, _forg, _has_nan, _names, _pairs, _quantile_label, _type_name, _WIDTH)
+from ._linear import (_RegressionResult, _as_real, _check_alpha, _check_batches, _check_bool, _check_choice,
+                      _check_policy, _check_rtol, _frame_columns, _count, _forg, _has_nan, _names, _pairs, _quantile_label, _type_name, _WIDTH)
 
 _k = _sd.regression
 
@@ -28,8 +28,9 @@ _NORM_CODE = {"huber": 0, "bisquare": 1, "hampel": 2}
 _SCALES = ("mad", "huber")
 # statsmodels' class names, for summary()
 _NORM_NAME = {"huber": "HuberT", "bisquare": "TukeyBiweight", "hampel": "Hampel"}
-# the tuning constants' defaults (G54): 95% efficiency at the normal (statsmodels' HuberT(),
-# TukeyBiweight(), Hampel()); MM's M step: robustbase's lmrob.control() tuning.psi
+# the tuning constants' defaults (G54): statsmodels' HuberT(), TukeyBiweight(), Hampel() (95%
+# efficiency at the normal for Huber and bisquare, 0.990 for Hampel (2, 4, 8)); MM's M step:
+# robustbase's lmrob.control() tuning.psi
 _C_DEFAULT = {"huber": 1.345, "bisquare": 4.685, "hampel": (2.0, 4.0, 8.0)}
 _C_MM = 4.685061
 _NRESAMPLE = 500  # lmrob.control()'s nResample
@@ -180,9 +181,15 @@ def _check_c(c, func, norm, method):
         if not (all(math.isfinite(v) for v in (a, b, cc)) and 0 < a <= b < cc):
             raise ValueError(msg)
         return a, b, cc
+    msg = f"{func}(): 'c' must be None or a finite number > 0 for the {norm} norm"
     if isinstance(c, bool) or not isinstance(c, numbers.Real):
-        raise TypeError(f"{func}(): 'c' must be None or a number > 0 for the {norm} norm, not {_type_name(c)}")
-    v = _check_positive(c, func, "c")
+        raise TypeError(f"{msg}, not {_type_name(c)}")
+    try:
+        v = float(c)
+    except OverflowError:
+        raise OverflowError(f"{func}(): 'c' is out of range") from None
+    if not (math.isfinite(v) and v > 0):
+        raise ValueError(msg)
     return (v, 0.0, 0.0) if norm == "huber" else (0.0, 0.0, v)
 
 
@@ -220,6 +227,7 @@ def rlm(y, X, /, *, method="M", norm=None, c=None, scale_est=None, intercept=Tru
     yy, _ = _as_real(y, func, "y")
     if yy.ndim == 0:
         raise ValueError(f"{func}(): 'y' must have at least 1 dimension")
+    columns = _frame_columns(X)
     XX, names = _as_real(X, func, "X")
     if XX.ndim == 0:
         raise ValueError(f"{func}(): 'X' must have at least 1 dimension")
@@ -230,6 +238,7 @@ def rlm(y, X, /, *, method="M", norm=None, c=None, scale_est=None, intercept=Tru
         raise ValueError(f"{func}(): 'X' must have {n} rows like 'y', not {XX.shape[-2]}")
     if XX.shape[-1] == 0 and not intercept:
         raise ValueError(f"{func}(): the model has no parameters (no columns in 'X' and intercept=False)")
+    _check_batches(func, [("y", yy.shape[:-1]), ("X", XX.shape[:-2])])
     batch = yy.ndim > 1 or XX.ndim > 2
     if nan_policy == "raise":
         if _has_nan(yy, XX):
@@ -253,7 +262,8 @@ def rlm(y, X, /, *, method="M", norm=None, c=None, scale_est=None, intercept=Tru
     if est == "huber":
         est = "Huber"
     return RLMResult(raw, method=method, norm=norm, scale_est=est, param_names=_names(names, XX.shape[-1], intercept),
-                     intercept=intercept, cov_type="H1" if method == "M" else "avar1", batch=tuple(raw[0].shape[:-1]))
+                     intercept=intercept, cov_type="H1" if method == "M" else "avar1", batch=tuple(raw[0].shape[:-1]),
+                     columns=columns)
 
 
 # ---- Theil-Sen and Siegel (G56): scipy.stats' signatures and results

@@ -10,7 +10,8 @@
 // and tan failed those checks and stay on libm; complex functions are libm.
 //
 // This file is the operator-independent part: the function types, the
-// wrapper that fixes vvatan2's argument order, and the strided
+// wrapper that gives vvatan2 the binary function type (its order is already
+// atan2(y, x)), and the strided
 // runners. Which array operator maps to which vForce function is the array
 // area's (array/kernels/vforce.hpp).
 //

@@ -13,8 +13,8 @@ import textwrap
 from .. import _core as _sd
 from .. import special as _special
 from ._glm import _check_int, _check_positive
-from ._linear import (_RegressionResult, _as_real, _check_alpha, _check_bool, _check_choice, _check_policy,
-                      _check_rtol, _count, _div, _forg, _has_nan, _names, _pairs, _quantile_label, _type_name, _WIDTH)
+from ._linear import (_RegressionResult, _as_real, _check_alpha, _check_batches, _check_bool, _check_choice,
+                      _check_policy, _check_rtol, _frame_columns, _count, _div, _forg, _has_nan, _names, _pairs, _quantile_label, _type_name, _WIDTH)
 
 _k = _sd.regression
 
@@ -128,13 +128,21 @@ class QuantRegResult(_RegressionResult):
         their standard errors, t, p and 1 - alpha intervals. One regression and one quantile only."""
         alpha = _check_alpha(alpha, "summary")
         if self._batch:
-            raise ValueError(f"summary(): takes one regression, not a batch of shape {tuple(self._batch)}")
+            raise ValueError(f"summary(): takes one regression at one quantile, not {self._shape_text()}")
         return _summary(self, alpha)
+
+    def _shape_text(self):
+        """The leading axes of the fields: the batch's, then the quantile axis of an array q."""
+        batch = tuple(self._batch[:-1]) if self._qaxis else tuple(self._batch)
+        parts = [f"batch shape {batch}"] if batch else []
+        if self._qaxis:
+            parts.append(f"{self._batch[-1]} quantiles")
+        return " and ".join(parts)
 
     def __repr__(self):
         name = type(self).__name__
         if self._batch:
-            return f"{name}(batch shape {tuple(self._batch)}, {self.params.shape[-1]} parameters)"
+            return f"{name}({self._shape_text()}, {self.params.shape[-1]} parameters)"
         return (f"{name}(q={self.q:g}, nobs={self.nobs:g}, rank={self.rank}, objective={self.objective:.6g}, "
                 f"params={self.params})")
 
@@ -241,6 +249,7 @@ def quantreg(y, X, /, *, q=0.5, intercept=True, cov_type="nid", bandwidth="hall-
     yy, _ = _as_real(y, func, "y")
     if yy.ndim == 0:
         raise ValueError(f"{func}(): 'y' must have at least 1 dimension")
+    columns = _frame_columns(X)
     XX, names = _as_real(X, func, "X")
     if XX.ndim == 0:
         raise ValueError(f"{func}(): 'X' must have at least 1 dimension")
@@ -251,6 +260,7 @@ def quantreg(y, X, /, *, q=0.5, intercept=True, cov_type="nid", bandwidth="hall-
         raise ValueError(f"{func}(): 'X' must have {n} rows like 'y', not {XX.shape[-2]}")
     if XX.shape[-1] == 0 and not intercept:
         raise ValueError(f"{func}(): the model has no parameters (no columns in 'X' and intercept=False)")
+    _check_batches(func, [("y", yy.shape[:-1]), ("X", XX.shape[:-2])])
     batch = yy.ndim > 1 or XX.ndim > 2
     if nan_policy == "raise":
         if _has_nan(yy, XX):
@@ -277,4 +287,4 @@ def quantreg(y, X, /, *, q=0.5, intercept=True, cov_type="nid", bandwidth="hall-
                           tol, qaxis)
     return QuantRegResult(raw, q=qkeep, bw_rule=bandwidth, qaxis=qaxis,
                           param_names=_names(names, XX.shape[-1], intercept), intercept=intercept, cov_type=cov_type,
-                          batch=tuple(raw[0].shape[:-1]))
+                          batch=tuple(raw[0].shape[:-1]), columns=columns)

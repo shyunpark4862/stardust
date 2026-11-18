@@ -19,8 +19,8 @@ from ..stats import ChiSquared as _ChiSquared
 from ..stats import Normal as _Normal
 from ..stats import StudentT as _StudentT
 from ._linear import (_COV_TYPES, _RegressionResult, _arg, _as_real, _check_alpha, _check_bool, _check_choice,
-                      _check_maxlags, _check_policy, _check_rtol, _count, _div, _expand, _forg, _groups, _has_nan,
-                      _log, _names, _pairs, _quantile_label, _WIDTH, _COV_NOTES)
+                      _check_maxlags, _check_policy, _check_rtol, _count, _div, _expand, _forg, _frame_columns, _groups,
+                      _has_nan, _log, _names, _pairs, _quantile_label, _WIDTH, _COV_NOTES)
 
 _k = _sd.regression
 
@@ -202,10 +202,9 @@ class GLMResult(_RegressionResult):
         for name, v in (("offset", offset), ("exposure", exposure)):
             if v is None:
                 continue
-            a, _ = _as_real(v, func, name)
-            if a.ndim == 0 or a.shape[-1] != m:
-                got = "a scalar" if a.ndim == 0 else str(a.shape[-1])
-                raise ValueError(f"{func}(): '{name}' must have {m} values like the rows of 'X_new', not {got}")
+            a, _ = _as_real(v, func, name, per_row=f"{m} values like the rows of 'X_new'")
+            if a.shape[-1] != m:
+                raise ValueError(f"{func}(): '{name}' must have {m} values like the rows of 'X_new', not {a.shape[-1]}")
             if name == "exposure":
                 if self.link != "log":
                     raise ValueError(f"{func}(): 'exposure' is only used with the log link")
@@ -418,6 +417,7 @@ def glm(y, X, /, *, family, link=None, var_weights=None, freq_weights=None, tria
     yy, _ = _as_real(y, func, "y")
     if yy.ndim == 0:
         raise ValueError(f"{func}(): 'y' must have at least 1 dimension")
+    columns = _frame_columns(X)
     XX, names = _as_real(X, func, "X")
     if XX.ndim == 0:
         raise ValueError(f"{func}(): 'X' must have at least 1 dimension")
@@ -431,10 +431,9 @@ def glm(y, X, /, *, family, link=None, var_weights=None, freq_weights=None, tria
                     ("offset", offset), ("exposure", exposure)):
         if v is None:
             continue
-        a, _ = _as_real(v, func, name)
-        if a.ndim == 0 or a.shape[-1] != n:
-            got = "a scalar" if a.ndim == 0 else str(a.shape[-1])
-            raise ValueError(f"{func}(): '{name}' must have {n} values like 'y', not {got}")
+        a, _ = _as_real(v, func, name, per_row=f"{n} values like 'y'")
+        if a.shape[-1] != n:
+            raise ValueError(f"{func}(): '{name}' must have {n} values like 'y', not {a.shape[-1]}")
         rows[name] = a
     if "exposure" in rows:
         e = rows["exposure"]
@@ -482,4 +481,4 @@ def glm(y, X, /, *, family, link=None, var_weights=None, freq_weights=None, tria
     fixed = smode == 3 or (smode == 0 and family in ("binomial", "poisson"))
     return GLMResult(raw, family=family, link=link, scale_fixed=fixed,
                      param_names=_names(names, XX.shape[-1], intercept), intercept=intercept, cov_type=cov_type,
-                     batch=tuple(raw[0].shape[:-1]))
+                     batch=tuple(raw[0].shape[:-1]), columns=columns)

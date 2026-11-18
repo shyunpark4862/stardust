@@ -18,9 +18,9 @@
 //      on while the coefficients still move by more than rounding (the step after the next,
 //      predicted from the last two steps' ratio, above 2^-50 |beta|, and the steps still
 //      contracting). These polishing iterations refine (as the final solve) and, for a
-//      non-canonical link, take Newton's steps (the observed information: its weights in the
-//      least squares fit when they are all positive, else a k x k correction of Fisher's
-//      step), so that they converge quadratically.
+//      non-canonical link, take Newton's steps (the observed information, always through
+//      the thin Q of the weighted fit and its k x k correction T, G42), so that they converge
+//      quadratically.
 //   3. The final solve: one more weighted fit at the last iterate's weights through the
 //      full core (refinement on the augmented system, G15; the covariance (R^T R)^-1 =
 //      (X^T W X)^-1, or a sandwich whose bread is the observed information).
@@ -383,8 +383,7 @@ void working(const Model& M, const State& s, double* z, double* w, double* rho) 
     });
 }
 
-// eta = X beta + offset for every row (Dot2 over the columns with a coefficient; NaN
-// marks an aliased column, which takes no part)
+// the intercept column's value, read with stride 0
 const double kOneValue = 1.0;
 
 // The columns of the design with a coefficient (NaN marks an aliased column) and their
@@ -400,6 +399,8 @@ void design_cols(const Model& M, const double* beta, std::vector<dot2::ColRef>& 
     }
 }
 
+// eta = X beta + offset for every row (Dot2 over the columns with a coefficient; NaN
+// marks an aliased column, which takes no part)
 void xbeta_all(const Model& M, const double* beta, double* eta) {
     std::vector<dot2::ColRef> cols;
     std::vector<double> b;
@@ -894,7 +895,10 @@ std::vector<lint> failing(const Model& M, const double* w, const double* rho, co
 
 // The direction test: a direction b (k, NaN taken as 0) projected onto the null space of
 // the other rows of the fit must point every row of S (shrunk to the rows it does) to its
-// boundary by more than sqrt(eps) of the terms. Returns the certified rows (empty: none).
+// boundary by more than sqrt(eps) of the terms of the unprojected b (sum_j |x_ij b_j|): when
+// the other rows leave no null space the projection is rounding noise, which no threshold
+// relative to its own size can tell from a direction. Returns the certified rows (empty:
+// none).
 std::vector<lint> direction(const Model& M, const double* bdir, std::vector<lint> S, Scratch& sc) {
     const lint n = M.n, k = M.k;
     std::vector<double> b(static_cast<std::size_t>(k)), c(static_cast<std::size_t>(std::max<lint>(k, 1)));
@@ -931,12 +935,12 @@ std::vector<lint> direction(const Model& M, const double* bdir, std::vector<lint
         for (lint i : S) {
             double P = 0.0, Sd = 0.0, mag = 0.0;
             for (lint col = 0; col < k; ++col) {
-                const double t = x_at(i, col) * b[col];
+                const double b0 = std::isnan(bdir[col]) ? 0.0 : bdir[col];
                 double hp, ep, q;
                 two_prod(x_at(i, col), b[col], hp, ep);
                 two_sum(P, hp, P, q);
                 Sd += q + ep;
-                mag += std::fabs(t);
+                mag += std::fabs(x_at(i, col) * b0);
             }
             const double u = boundary(M, M.y[i]) * (P + Sd);
             if (u > kSqrtEps * mag) good.push_back(i);
@@ -1136,7 +1140,8 @@ int glm_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64_t ys
             }
             R.have_beta = false;
             R.have_kept = false;  // other rows: aliasing again from a QR
-            IrlsOut rr = irls(MR, R, op.max_iter, op.tol, op.inner_steps, op.inner_chol, sc);
+            // the rest's iterations share max_iter with the fit's (n_iter <= max_iter, G32)
+            IrlsOut rr = irls(MR, R, std::max(op.max_iter - total_iters, 0), op.tol, op.inner_steps, op.inner_chol, sc);
             total_iters += rr.iters;
             converged = converged && rr.converged;
             fin = &R.cur;

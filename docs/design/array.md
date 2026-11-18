@@ -76,7 +76,7 @@
 ### 1.5 층 사이의 의존
 - 배열 영역의 C++은 `csrc/base/`(Buffer, dtype, pairwise 합), `csrc/parallel/`(스레드풀), `csrc/accelerate/`(BLAS, vForce 래퍼), `csrc/array/`(ndarray, 이터레이터, 커널, 연산, 병렬화 기준값), `csrc/bind/`(nanobind)로 나뉜다.
 - **아래 층은 위 층을 모른다.** `base/`, `parallel/`, `accelerate/`는 `array/`를 include하지 않는다.
-  - NEON 커널(`array/kernels/neon.hpp`)과 "어느 연산이 vForce로 가는가"의 표(`array/kernels/vforce.hpp`)는 배열의 연산 정의(`ops::Maximum`, `ops::Exp` …)에 묶여 있어서 배열 영역에 둔다. `accelerate/vforce.hpp`에는 연산과 무관한 부분(함수 타입, `vvatan2`의 인자 순서를 맞추는 래퍼, strided 실행기)만 있다.
+  - NEON 커널(`array/kernels/neon.hpp`)과 "어느 연산이 vForce로 가는가"의 표(`array/kernels/vforce.hpp`)는 배열의 연산 정의(`ops::Maximum`, `ops::Exp` …)에 묶여 있어서 배열 영역에 둔다. `accelerate/vforce.hpp`에는 연산과 무관한 부분(함수 타입, `vvatan2`를 이항 함수 타입으로 감싸는 래퍼(인자 순서는 원래 atan2(y, x)다), strided 실행기)만 있다.
 
 ---
 
@@ -151,7 +151,7 @@
 | 범주 | numpy와의 관계 |
 |---|---|
 | 원소별 연산 (vForce 함수 제외) | 비트까지 같다. 이 Mac의 numpy float64 초월함수는 libm과 비트가 같다(`tanh`만 최대 1 ULP) |
-| vForce를 쓰는 float64 함수 16개 (§5.4) | 최대 8 ULP (계약). 측정한 최대는 4 ULP (`atanh`) |
+| vForce를 쓰는 float64 함수 15개 (§5.4) | 최대 8 ULP (계약). 측정한 최대는 4 ULP (`atanh`) |
 | 출력이 하나인 긴 합, 형변환 없음 (`sum(f)`) | 비트까지 같다 (§6.2) |
 | 순서와 무관한 리덕션 (정수 합·곱, max/min, any/all, argmax) | 같다 |
 | 블록으로 나누는 리덕션, float/complex `prod`, 긴 float 누적 스캔, 형변환이 있는 리덕션 | 다를 수 있다 (§6.9) |
@@ -336,7 +336,7 @@ float64 초월함수는 함수마다 구현을 나눈다.
   | 위치 독립성 (인덱스, 배열 길이, 정렬) | 약 24만 회 검사에서 불일치 0. 그래서 `exp(x)[i] == exp(x[i])`이고, 스레드 청크가 결과를 바꾸지 않는다 |
   | 스레드 안전성 | 14개 스레드 동시 호출에서 불일치 0 |
   | 내부 스레드 | 쓰지 않는다 (CPU 시간 / 경과 시간 = 1.00). 우리 풀과 충돌하지 않는다 |
-  | 특수값 (±0, ±inf, NaN) | 16개 함수(그때는 `pow` 포함)는 부호까지 정확하다 |
+  | 특수값 (±0, ±inf, NaN) | vForce 함수 15개는 부호까지 정확하다 |
   | 정확도 (libm 대비) | 최대 1~6 ULP. numpy 대비 측정 최대 4 ULP (`atanh`) |
 
 - **속도** (1스레드, libm 대비): 대부분 2~10배. `sin` 7.6배, `atan2` 10배, `exp` 4.2배.

@@ -55,7 +55,9 @@ BINARY = {
     "bitwise_left_shift": {I}, "bitwise_right_shift": {I},
 }
 # float64 functions that run on vForce: accurate to 8 ULP by contract
-# (docs/api/array.md §6.4). Everything else must match numpy bit for bit.
+# (docs/api/array.md §6.4); and pow (libm, whose exact forms for the exponents 2, -1 and
+# 0.5 are correctly rounded where numpy's libm is not, docs/design/array.md §5.4).
+# Everything else must match numpy bit for bit.
 VFORCE = {"exp", "log", "log2", "log10", "sin", "asin", "acos", "atan", "atan2", "sinh", "cosh", "tanh",
           "asinh", "acosh", "atanh", "pow"}
 
@@ -262,7 +264,7 @@ def test_float_power_exact_exponents(e):
     z **= e
     assert np.asarray(z).tobytes() == want
     assert np.asarray(xs[::3] ** e).tobytes() == _exact_power(x[::3], e).tobytes()
-    # mixed exponents: the elements with this exponent take the exact form, the rest vForce
+    # mixed exponents: the elements with this exponent take the exact form, the rest libm pow
     ex = np.where(np.arange(5000) % 2 == 0, e, 3.0)
     got = np.asarray(sd.pow(xs, sd.asarray(ex)))
     assert got[::2].tobytes() == _exact_power(x[::2], e).tobytes()

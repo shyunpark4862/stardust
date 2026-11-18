@@ -453,7 +453,9 @@ double huber_scale(const double* r, lint n, double T) {
         for (lint c = 0; c < nc; ++c) A = A + part[static_cast<std::size_t>(c)], nout += outs[static_cast<std::size_t>(c)];
         const double num = T - static_cast<double>(nout) * d2 * 0.5;
         const double den = 0.5 * (A.hi + A.lo);
-        if (!(den > 0.0)) return t > 0.0 ? 1.0 / std::sqrt(t) : 0.0;
+        // the rows inside are all exactly 0: f stays n_out d^2/2 for every larger t, so below
+        // T there is no root and the scale is 0 (an exact fit of the rows inside)
+        if (!(den > 0.0)) return (num > 0.0 || !(t > 0.0)) ? 0.0 : 1.0 / std::sqrt(t);
         const double tn = num / den;
         if (!(tn > t)) break;
         t = tn;
@@ -542,6 +544,93 @@ double new_scale(const ScaleRule& sr, const double* r, lint n, double s, Buffers
     }
 }
 
+// ---- exact fits to rounding --------------------------------------------------------------
+// A residual is 0 to rounding when |r_i| <= (k + 16) u (|y_i| + ||x_i||_1 ||beta||_inf),
+// quantreg's snapping tolerance (regression/quantile.cpp): rounding beta alone moves a row
+// on the fitted plane by about that much. When the rows that decide the scale are 0 to
+// rounding, the scale rule would give 0 for the exact fit: MAD, more than half the rows;
+// Huber's proposal 2, (n - zeros) d^2/2 <= T (no root, as huber_scale); the M-scale, at most
+// T rows not 0 (as mscale). The iterations then stop as at a scale of exactly 0
+// (docs/api/regression.md §5): the residuals of the rows on the fit are rounding noise, and
+// over a scale of the same size their psi, the weights and Newton's model are noise too (an
+// IRLS or Newton step from there can land anywhere, with a smaller |F|).
+struct ZeroTol {
+    double ymax = 0.0, x1max = 0.0;  // max |y_i| and max ||x_i||_1, for a quick bound first
+};
+
+ZeroTol zero_tol(const Design& D, const double* y) {
+    ZeroTol z;
+    for (lint i = 0; i < D.n; ++i) {
+        double l1 = 0.0;
+        for (lint c = 0; c < D.k; ++c) l1 += std::fabs(D.at(i, c));
+        z.ymax = std::max(z.ymax, std::fabs(y[i]));
+        z.x1max = std::max(z.x1max, l1);
+    }
+    return z;
+}
+
+inline double beta_inf(const double* beta, lint k) {  // NaN marks a column without a coefficient
+    double m = 0.0;
+    for (lint c = 0; c < k; ++c)
+        if (!std::isnan(beta[c])) m = std::max(m, std::fabs(beta[c]));
+    return m;
+}
+
+inline double zero_tol_row(const Design& D, const double* y, lint i, double bn) {
+    double l1 = 0.0;
+    for (lint c = 0; c < D.k; ++c) l1 += std::fabs(D.at(i, c));
+    return (static_cast<double>(D.k) + 16.0) * (0.5 * kEps) * (std::fabs(y[i]) + l1 * bn);
+}
+
+// The rows 0 to rounding a zero scale needs (more than n: the rule has no exact fit).
+lint zero_need(int mode, double T, lint n) {
+    switch (mode) {
+        case sMad: return n / 2 + 1;
+        case sHuber: return std::max<lint>(1, n - static_cast<lint>(std::floor(2.0 * T / (kHuberD * kHuberD))));
+        case sMScale: return std::max<lint>(1, n - static_cast<lint>(std::floor(T)));
+        default: return n + 1;
+    }
+}
+
+// Whether at least `need` residuals are 0 to rounding (the quick bound with the largest
+// tolerance first, so a fit far from exact costs one pass over r).
+bool zero_scale(const Design& D, const ZeroTol& zt, const double* y, const double* beta, const double* r, lint need) {
+    const lint n = D.n;
+    if (need > n) return false;
+    const double bn = beta_inf(beta, D.k);
+    const double emax = (static_cast<double>(D.k) + 16.0) * (0.5 * kEps) * (zt.ymax + zt.x1max * bn);
+    lint c0 = 0;
+    for (lint i = 0; i < n; ++i) c0 += std::fabs(r[i]) <= emax;
+    if (c0 < need) return false;
+    lint c = 0;
+    for (lint i = 0; i < n; ++i)
+        if (std::fabs(r[i]) <= emax && std::fabs(r[i]) <= zero_tol_row(D, y, i, bn)) ++c;
+    return c >= need;
+}
+
+// The exact fit the iterations tend to as the scale goes to 0: the least squares fit of the
+// rows 0 to rounding (weight 1, the others 0: the weights an exact fit reports), by the
+// refined QR. beta, kept and r (Dot2) become its; unchanged when it would lose a column.
+void exact_fit(const Design& D, const double* y, double* beta, std::uint8_t* kept, double* r, Buffers& B, Scratch& sc) {
+    const lint n = D.n, k = D.k;
+    const double bn = beta_inf(beta, k);
+    lint had = 0;
+    for (lint c = 0; c < k; ++c) had += kept[c] != 0;
+    for (lint i = 0; i < n; ++i) B.w[i] = std::fabs(r[i]) <= zero_tol_row(D, y, i, bn) ? 1.0 : 0.0;
+    if (qr_wls(D, y, B.w.data(), B.beta_new.data(), B.kept_new.data(), B.fit.data(), kRefineSteps, sc) < had) return;
+    std::copy(B.beta_new.begin(), B.beta_new.begin() + k, beta);
+    std::copy(B.kept_new.begin(), B.kept_new.begin() + k, kept);
+    resid_dd(D, y, beta, r, nullptr);
+}
+
+// Newton's step is taken only when the new scale stays within this factor of the old: its
+// model linearizes s(beta), and |F| = |sum psi(r_i/s) x_i| also falls as s grows (psi(z) ~ z
+// for small z), so a step that blows the scale up would pass the |F| test.
+constexpr double kNewtonScaleFactor = 2.0;
+inline bool scale_kept(double sn, double s) {
+    return sn > 0.0 && std::isfinite(sn) && sn <= kNewtonScaleFactor * s && s <= kNewtonScaleFactor * sn;
+}
+
 inline bool settled(DD a, DD b, double tol) {  // |b - a|/(|b| + 0.1) < tol
     const double d = (b.hi - a.hi) + (b.lo - a.lo);
     return std::fabs(d) / (std::fabs(b.hi) + 0.1) < tol;
@@ -555,9 +644,9 @@ struct IrlsOut {
 // The gradient of the scale with respect to beta at residuals r (scale s), for Newton's
 // step: MAD, s = |r_m| / C (the mean of two such terms for an even n), so ds = -sign(r_m)
 // x_m / C; Huber's proposal 2, s^2 = sum_in r_i^2 / (2T - n_out d^2) on the rows inside
-// |r| < d s; the S estimator's M-scale (sum rho~(r_i/s) = T), ds = -s sum psi(z_i) x_i /
-// sum psi(z_i) z_i (psi proportional to rho~'; 0 at the fixed point, where the first sum is
-// F); a fixed scale, 0. Over the columns K.
+// |r| < d s; the S estimator's M-scale (sum rho~(r_i/s) = T, differentiated: sum rho~'(z_i)
+// (x_i + z_i ds) = 0), ds = -sum psi(z_i) x_i / sum psi(z_i) z_i (psi proportional to rho~';
+// 0 at the fixed point, where the first sum is F); a fixed scale, 0. Over the columns K.
 void scale_grad(const Design& D, const ScaleRule& sr, const double* r, double s, const std::vector<lint>& K,
                 std::vector<double>& g) {
     const lint n = D.n, kk = static_cast<lint>(K.size());
@@ -575,7 +664,7 @@ void scale_grad(const Design& D, const ScaleRule& sr, const double* r, double s,
         });
         const double den = acc[kk];
         if (den > 0.0)
-            for (lint a = 0; a < kk; ++a) g[a] = -s * acc[a] / den;
+            for (lint a = 0; a < kk; ++a) g[a] = -acc[a] / den;
         return;
     }
     if (sr.mode == sMad) {
@@ -642,6 +731,7 @@ double estimating(const Design& D, const NormF& nf, const double* r, double s, c
 bool newton_step(const Design& D, const NormF& nf, const ScaleRule& sr, const double* beta, const double* r, double s,
                  const std::vector<lint>& K, const std::vector<double>& F, double* beta_new) {
     const lint n = D.n, kk = static_cast<lint>(K.size());
+    if (kk == 0) return false;
     const lint nc = row_chunks(n);
     const std::size_t slot = static_cast<std::size_t>(kk * kk + kk);
     std::vector<double> part(static_cast<std::size_t>(nc) * slot, 0.0);
@@ -694,9 +784,10 @@ constexpr int kSlowRuns = 3;
 // IRLS from beta (r its residuals, s their scale) for at most max_iter iterations (least
 // squares solves or Newton's steps). Past the objective's convergence, and earlier when the
 // IRLS is seen to be slow, the iterations are Newton's steps for the estimating equations
-// (the scale's dependence on beta included), each taken when it lowers |F| (else the
-// refined weighted least squares). On return beta, kept, r (Dot2) and s are the last
-// iterate's.
+// (the scale's dependence on beta included), each taken when it lowers |F| and keeps the
+// scale within kNewtonScaleFactor (else the refined weighted least squares). A scale whose
+// rows are 0 to rounding (zero_scale) is set to 0: the iterations stop there as at an exact
+// fit, converged. On return beta, kept, r (Dot2) and s are the last iterate's.
 IrlsOut irls(const Design& D, const double* y, const NormF& nf, const ScaleRule& sr, int max_iter, double tol,
              double* beta, std::uint8_t* kept, double* r, double& s, Buffers& B, Scratch& sc) {
     IrlsOut out;
@@ -707,7 +798,15 @@ IrlsOut irls(const Design& D, const double* y, const NormF& nf, const ScaleRule&
     int slow_runs = 0;
     int it = 0;
     std::vector<double> F, Fn, rn(static_cast<std::size_t>(std::max<lint>(n, 1)));
+    const lint need = zero_need(sr.mode, sr.T, n);
+    const ZeroTol zt = need <= n ? zero_tol(D, y) : ZeroTol{};
+    bool snapped = false;
+    const auto at_zero = [&] {
+        snapped = snapped || (s > 0.0 && std::isfinite(s) && zero_scale(D, zt, y, beta, r, need));
+        return snapped;
+    };
     while (it < max_iter) {
+        if (at_zero()) s = 0.0;
         if (!(s > 0.0) || !std::isfinite(s)) {
             if (s == 0.0) conv = true;
             break;
@@ -721,7 +820,7 @@ IrlsOut irls(const Design& D, const double* y, const NormF& nf, const ScaleRule&
             if (newton_step(D, nf, sr, beta, r, s, K, F, B.beta_new.data())) {
                 resid_dd(D, y, B.beta_new.data(), rn.data(), nullptr);
                 const double sn = new_scale(sr, rn.data(), n, s, B);
-                if (sn > 0.0 && std::isfinite(sn) && estimating(D, nf, rn.data(), sn, K, Fn) < f0) {
+                if (scale_kept(sn, s) && estimating(D, nf, rn.data(), sn, K, Fn) < f0) {
                     std::copy(rn.begin(), rn.begin() + n, r);
                     std::copy(kept, kept + k, B.kept_new.begin());
                     s = sn;
@@ -783,6 +882,8 @@ IrlsOut irls(const Design& D, const double* y, const NormF& nf, const ScaleRule&
         }
         prevstep = step;
     }
+    if (at_zero()) s = 0.0, conv = true;  // max_iter (or the polishing's end) reached it
+    if (snapped) exact_fit(D, y, beta, kept, r, B, sc);
     out.iters = it;
     out.converged = conv;
     if (!refined && it > 0 && s > 0.0) {
@@ -1027,7 +1128,10 @@ SOut fast_s(const Design& Dk, const double* Xr, const double* y, random::Key key
     }
     if (best.empty()) return out;
     // 3. the kept ones refined to convergence (|d beta| < refine.tol max(refine.tol, |beta|)),
-    // in the order kept; the smallest final scale wins (the earlier on a tie)
+    // in the order kept; the smallest final scale wins (the earlier on a tie). A scale whose
+    // rows are 0 to rounding is 0 (zero_scale), here and in 4.
+    const lint needS = zero_need(sMScale, T, n);
+    const ZeroTol ztS = zero_tol(Dk, y);
     Buffers B(n, p);
     double bestscale = kInf;
     std::vector<double> bb(static_cast<std::size_t>(p)), cur(static_cast<std::size_t>(p)), prev(cur.size());
@@ -1043,6 +1147,10 @@ SOut fast_s(const Design& Dk, const double* Xr, const double* y, random::Key key
             std::copy(cur.begin(), cur.end(), prev.begin());
             if (!s_step(Dk, y, cur.data(), r.data(), s, T, B, sc0)) break;
             ++it;
+            if (zero_scale(Dk, ztS, y, cur.data(), r.data(), needS)) {
+                s = 0.0;  // step 4 finds it again from the chosen one's residuals
+                break;
+            }
             double d2 = 0.0, b2 = 0.0;
             for (lint c = 0; c < p; ++c) d2 += (cur[c] - prev[c]) * (cur[c] - prev[c]), b2 += prev[c] * prev[c];
             if (std::sqrt(d2) < kRefineTol * std::max(kRefineTol, std::sqrt(b2))) {
@@ -1058,7 +1166,8 @@ SOut fast_s(const Design& Dk, const double* Xr, const double* y, random::Key key
     // the chi weights of its residuals over their exact M-scale, i.e. the root of the
     // estimating equations F = sum psi(r_i/s(beta)) x_i, psi ~ rho~'): each iteration tries
     // Newton's step for F (the M step's, with the M-scale's dependence on beta), taken when it
-    // lowers |F| (G82); else the weighted fit by the normal equations. The fixed point is the
+    // lowers |F| and keeps the scale (scale_kept; G82); else the weighted fit by the normal
+    // equations. The fixed point is the
     // same; the weighted fit alone converges linearly (rate 0.8-0.9). The last solve is the
     // refined QR's.
     std::vector<std::uint8_t> kept(static_cast<std::size_t>(p), 1);
@@ -1070,13 +1179,18 @@ SOut fast_s(const Design& Dk, const double* Xr, const double* y, random::Key key
     std::vector<lint> Kall(static_cast<std::size_t>(p));
     std::iota(Kall.begin(), Kall.end(), lint(0));
     std::vector<double> F, Fn, rn(static_cast<std::size_t>(std::max<lint>(n, 1)));
+    bool snapped = false;
     for (int it = 0; it < kKMax && s > 0.0; ++it) {
+        if (zero_scale(Dk, ztS, y, bb.data(), r.data(), needS)) {
+            s = 0.0, snapped = true;
+            break;
+        }
         bool took_newton = false;
         const double f0 = estimating(Dk, nfS, r.data(), s, Kall, F);
         if (newton_step(Dk, nfS, srS, bb.data(), r.data(), s, Kall, F, B.beta_new.data())) {
             resid_dd(Dk, y, B.beta_new.data(), rn.data(), nullptr);
             const double sn = mscale(rn.data(), n, kSChi, T, s, true);
-            if (sn > 0.0 && std::isfinite(sn) && estimating(Dk, nfS, rn.data(), sn, Kall, Fn) < f0) {
+            if (scale_kept(sn, s) && estimating(Dk, nfS, rn.data(), sn, Kall, Fn) < f0) {
                 std::copy(rn.begin(), rn.begin() + n, r.begin());
                 s = sn;
                 took_newton = true;
@@ -1112,7 +1226,9 @@ SOut fast_s(const Design& Dk, const double* Xr, const double* y, random::Key key
         }
         resid_dd(Dk, y, bb.data(), r.data(), nullptr);
         s = mscale(r.data(), n, kSChi, T, s, true);
+        if (s > 0.0 && zero_scale(Dk, ztS, y, bb.data(), r.data(), needS)) s = 0.0, snapped = true;
     }
+    if (snapped) exact_fit(Dk, y, bb.data(), kept.data(), r.data(), B, sc0);
     out.beta = bb;
     out.scale = s;
     out.iters = iters;
@@ -1169,6 +1285,7 @@ void gram_sums(const Design& D, const std::vector<lint>& K, const std::vector<do
 void avar1(const Design& D, const std::vector<lint>& K, const double* r, const double* r0, double s, double cpsi,
            const double* Rk, double* V, Scratch& sc) {
     const lint n = D.n, kk = static_cast<lint>(K.size());
+    if (kk == 0) return;  // V stays as the caller filled it (NaN)
     NormF bis{nBisquare, 0.0, 0.0, cpsi};
     std::vector<double> f1(static_cast<std::size_t>(n)), f2(f1.size()), g1(f1.size()), g2(f1.size());
     for (lint i = 0; i < n; ++i) {
@@ -1382,8 +1499,11 @@ int rlm_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64_t ys
     for (lint c = 0; c < k; ++c) rk += kept[c] != 0;
     for (lint c = 0; c < k; ++c) o.params[c] = beta[c], o.kept[c] = kept[c];
     std::vector<double> z(static_cast<std::size_t>(std::max<lint>(n, 1)));
+    const double bn = beta_inf(beta.data(), k);
     for (lint i = 0; i < n; ++i) {
-        z[i] = std_resid(o.resid[i], s);
+        // an exact fit (s = 0): the rows whose residual is 0 to rounding are on the fit
+        const bool on = s == 0.0 && std::fabs(o.resid[i]) <= zero_tol_row(D, y.data(), i, bn);
+        z[i] = on ? 0.0 : std_resid(o.resid[i], s);
         o.weights[i] = nf.weight(z[i]);
     }
     std::fill(o.cov, o.cov + k * k, kNaN);

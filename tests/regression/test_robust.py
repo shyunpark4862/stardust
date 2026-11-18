@@ -360,6 +360,79 @@ def test_exact_fit_and_iteration_cap():
     assert R.rlm(y2, X2, norm="bisquare", max_iter=2).n_iter == 2
 
 
+def _check_exact_or_root(r, y, x, line, norm, c):
+    """A converged fit is the exact fit of the line (scale 0, covariance 0, weights 1 on the
+    line and 0 off it) or a root of the estimating equations sum psi(r_i/s) x_i = 0."""
+    p = a(r.params)
+    X = np.column_stack([np.ones(len(y)), x])
+    if r.scale == 0.0:
+        assert np.max(np.abs(p - line)) <= 1e-15 * (1 + np.max(np.abs(line)))
+        assert np.all(a(r.bse) == 0.0)
+        on = np.abs(y - X @ line) < 1e-9   # the rows off the line are 5 or more off
+        assert a(r.weights).tolist() == on.astype(float).tolist()
+        return
+    z = (y - X @ p) / r.scale
+    q = _sm_norm(norm).psi(z) if c is None else sd_psi_bisquare(z, c)
+    F = X.T @ q
+    assert np.linalg.norm(F) <= 1e-8 * np.sum(np.abs(q)[:, None] * np.abs(X))
+
+
+def sd_psi_bisquare(z, c):
+    u = z / c
+    return np.where(np.abs(z) <= c, z * (1 - u * u) ** 2, 0.0)
+
+
+def test_exact_fit_to_rounding():
+    """Most rows on a line whose residuals the IRLS only approaches: the scale falls to the
+    rounding level without reaching 0, and the iterations stop there as at an exact fit (the
+    rows within (k + 16) u (|y_i| + ||x_i||_1 ||beta||_inf) count as 0). Before, the scaled
+    residuals of rounding noise sent a Newton step anywhere: x = 1..10, y = 1 + 2x with
+    y[3] = 50, y[7] = -20 gave [1.971, 1.820], scale 0.936, converged=True (statsmodels
+    gives [1, 2])."""
+    x = np.arange(1.0, 11.0)
+    for line in ([1.0, 2.0], [0.1, 0.3]):     # exact in double, and rounded
+        for out in ({3: 50.0, 7: -20.0}, {3: 50.0}):
+            y = line[0] + line[1] * x
+            for i, v in out.items():
+                y[i] = v
+            kws = [dict(norm=nm) for nm in ("huber", "hampel", "bisquare")]
+            kws += [dict(method="MM", rng=sd.random.default_rng(s)) for s in range(3)]
+            kws += [dict(max_iter=m) for m in (36, 38, 40)]
+            if len(out) == 1:   # with two of ten off the line proposal 2 has a root away from it
+                kws += [dict(norm=nm, scale_est="huber") for nm in ("huber", "hampel", "bisquare")]
+            for kw in kws:
+                r = R.rlm(y, x, **kw)
+                assert r.converged and r.scale == 0.0, kw
+                assert np.max(np.abs(a(r.params) - line)) <= 1e-15, kw
+                assert np.all(a(r.bse) == 0.0)
+                assert a(r.weights).tolist() == [0.0 if i in out else 1.0 for i in range(10)]
+                if kw.get("method") == "MM":
+                    assert r.n_iter == 0
+    # lines with fewer than half the rows off: every converged fit is the line or a root
+    rng = np.random.default_rng(11)
+    for trial in range(60):
+        n = int(rng.choice([8, 11, 15, 20, 31]))
+        x = [np.arange(1.0, n + 1), rng.integers(-10, 11, n).astype(float), np.round(rng.normal(size=n), 3)][trial % 3]
+        line = np.array([1.0, 2.0] if trial % 2 else [0.1, 0.3])
+        y = line[0] + line[1] * x
+        m = int(rng.integers(1, max(2, (n - 1) // 2)))
+        idx = rng.choice(n, m, replace=False)
+        y[idx] += rng.choice([-1, 1], m) * rng.uniform(5, 60, m)
+        y_line = line[0] + line[1] * x
+        for norm in ("huber", "hampel", "bisquare"):
+            for est in ("mad", "huber"):
+                r = R.rlm(y, x, norm=norm, scale_est=est)
+                if r.converged:
+                    _check_exact_or_root(r, y, x, line, norm, None)
+        r = R.rlm(y, x, method="MM", rng=sd.random.default_rng(trial))
+        assert r.converged
+        if r.scale == 0.0:
+            assert np.max(np.abs(a(r.params) - line)) <= 1e-15 * 3
+            assert a(r.weights).tolist() == (np.abs(y - y_line) < 1e-9).astype(float).tolist()
+        else:
+            _check_exact_or_root(r, y, x, line, "bisquare", 4.685061)
+
+
 def test_tuning_constants():
     import statsmodels.api as sm
     from statsmodels.robust import norms
@@ -404,8 +477,13 @@ def test_errors():
         (ValueError, "rlm(): 'scale_est' is only used with method='M'",
          lambda: R.rlm(y, X, method="MM", scale_est="mad", rng=g)),
         (ValueError, "rlm(): 'scale_est' must be 'mad' or 'huber', not 'iqr'", lambda: R.rlm(y, X, scale_est="iqr")),
-        (ValueError, "rlm(): 'c' must be a finite number > 0", lambda: R.rlm(y, X, c=-1.0)),
-        (TypeError, "rlm(): 'c' must be None or a number > 0 for the huber norm, not str", lambda: R.rlm(y, X, c="a")),
+        (ValueError, "rlm(): 'c' must be None or a finite number > 0 for the huber norm", lambda: R.rlm(y, X, c=-1.0)),
+        (ValueError, "rlm(): 'c' must be None or a finite number > 0 for the bisquare norm",
+         lambda: R.rlm(y, X, norm="bisquare", c=math.inf)),
+        (TypeError, "rlm(): 'c' must be None or a finite number > 0 for the huber norm, not str",
+         lambda: R.rlm(y, X, c="a")),
+        (TypeError, "rlm(): 'c' must be None or a finite number > 0 for the huber norm, not tuple",
+         lambda: R.rlm(y, X, c=(1, 2))),
         (ValueError, "rlm(): 'c' must be three numbers 0 < a <= b < c for the hampel norm",
          lambda: R.rlm(y, X, norm="hampel", c=(2, 8, 4))),
         (TypeError, "rlm(): 'c' must be three numbers 0 < a <= b < c for the hampel norm, not float",
@@ -554,3 +632,32 @@ def test_slopes_threads_bit_identical():
         sd.set_num_threads(old)
     assert out[0] == out[1]
     assert _same(out[0][0], st.theilslopes(y, x))
+
+
+def test_mscale_gradient_scale_free():
+    """The S polish's Newton step differentiates sum rho~(r_i/s) = T: grad s = -sum psi x /
+    sum psi z, no factor s (it had one: wrong for s != 1, though near the fixed point, where
+    the sums vanish, the step hardly saw it). MM is equivariant in y: the S iterations and the
+    scaled results are the same for y, 1000 y and y / 1000."""
+    from stardust.regression._robust import _R_SITER
+
+    rng = np.random.default_rng(1)
+    X = rng.standard_normal((300, 2))
+    y = X @ [1.0, -2.0] + 0.5 + rng.standard_normal(300)
+    y[:60] += 10
+    fits = [R.rlm(y * s, X, method="MM", rng=sd.random.default_rng(0)) for s in (1.0, 1000.0, 1e-3)]
+    its = [float(f._raw[6][_R_SITER]) for f in fits]
+    assert its[0] == its[1] == its[2]
+    for f, s in zip(fits[1:], (1000.0, 1e-3)):
+        assert np.max(np.abs(a(f.params) / s - a(fits[0].params))) <= 1e-13
+        assert abs(f.scale / s - fits[0].scale) <= 1e-13 * fits[0].scale
+
+
+def test_slopes_omit_keeps_positions():
+    """G83 ([scipy differs]): with x=None, nan_policy='omit' drops the point but the others keep
+    their positions 0, 1, 3, 4 (scipy renumbers them 0 .. 3: slope 1.4167)."""
+    y = [1.0, 2.0, math.nan, 4.0, 5.0]
+    for f in (R.theilslopes, R.siegelslopes):
+        r = f(y, nan_policy="omit")
+        assert r.slope == 1.0 and r.intercept == 1.0
+        assert f(y, [0.0, 1, 2, 3, 4], nan_policy="omit").slope == 1.0

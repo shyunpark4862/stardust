@@ -389,6 +389,36 @@ def test_max_iter():
     assert r1.n_iter == 1 and not r1.converged
 
 
+def test_max_iter_is_not_separation():
+    """Stopping early never certifies separation (G33 decides it, not max_iter) and n_iter
+    never exceeds max_iter (G32). Before, the next Fisher step of an early iterate failed the
+    rows' test, and the direction test compared its projection, rounding noise when the
+    other rows leave no null space, to that noise's own size: the hours/passed data with
+    max_iter=2 gave separation=True, n_iter 4 and a deviance (15.57) below the MLE's."""
+    hours = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.25, 3.5, 4, 4.25, 4.5, 4.75, 5, 5.5]
+    passed = [0.0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1]
+    full = R.glm(passed, hours, family="binomial")
+    for m in range(1, 8):
+        r = R.glm(passed, hours, family="binomial", max_iter=m)
+        assert not r.separation and r.n_iter <= m and np.all(np.isfinite(a(r.params)))
+        assert r.deviance >= full.deviance * (1 - 1e-14)
+        assert r.converged or r.n_iter == m
+    rng = np.random.default_rng(3)
+    for _ in range(200):
+        X = rng.standard_normal((30, 2))
+        eta = 0.5 * rng.standard_normal() + X @ (rng.standard_normal(2) * 2.0)
+        y = (rng.random(30) < 1 / (1 + np.exp(-eta))).astype(float)
+        full = R.glm(y, X, family="binomial")
+        for m in range(1, 8):
+            r = R.glm(y, X, family="binomial", max_iter=m)
+            assert r.n_iter <= m
+            if not full.separation:
+                assert not r.separation and np.all(np.isfinite(a(r.params)))
+                assert r.deviance >= full.deviance * (1 - 1e-12)
+            if not r.converged:
+                assert r.n_iter == m
+
+
 def test_aliased_columns():
     y, X = _data("poisson", "log", seed=16)
     X3 = np.c_[X, X[:, 0] + X[:, 1]]

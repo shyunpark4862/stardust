@@ -1001,7 +1001,12 @@ int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
     // condition is kappa(X)^2 times the meat's) is formed.
     const lint q0 = (pb.intercept && K[0] == 0) ? 1 : 0, q = kk - q0;
     st[kWaldQ] = static_cast<double>(q);
-    if (q > 0 && !pb.glm) {
+    // a cluster meat has rank at most G - 1 (the group sums of the scores add to X^T e = 0):
+    // with fewer than q + 1 groups S22 is singular and the test undefined (api §2), though its
+    // rounding can still pass the Cholesky
+    if (q > 0 && !pb.glm && pb.cov == kCluster && st[kNGroups] - 1.0 < static_cast<double>(q)) {
+        st[kWaldF] = kNaN;
+    } else if (q > 0 && !pb.glm) {
         double* V = work2;  // S22, then its Cholesky factor
         double* z = cv;
         for (lint b2 = 0; b2 < q; ++b2) {

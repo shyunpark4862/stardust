@@ -1,4 +1,6 @@
-# G1 속도: sd.regression.ols
+# G1 속도: sd.regression.ols (최적화 8772322 전 측정)
+
+> 이 파일의 수치는 회귀 커널 최적화(커밋 8772322) 전에 잰 값이다. 그 뒤의 수치는 다시 재야 한다(설계 문서의 일부 값은 그 최적화 때 따로 빠르게 잰 것이다).
 
 `bench/regression/g1/speed.py`로 쟀다(2026-11-18, Apple M4 Pro, statsmodels 0.15.0, scikit-learn 1.9.1, numpy 2.5.4, scipy 1.18.1). 시간은 ms, 여러 번 가운데 가장 빠른 값이다. 입력은 각 라이브러리의 배열로 미리 만들었다(statsmodels의 상수 열 포함). sd의 스레드는 `sd.set_num_threads`, numpy BLAS(statsmodels, scikit-learn 밑)는 threadpoolctl로 정했다.
 

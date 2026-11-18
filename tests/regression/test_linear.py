@@ -280,6 +280,17 @@ def test_linregress_batch():
         one = R.linregress(x[i], y[i])
         for f in got._fields:
             assert float(getattr(got, f)[i]) == getattr(one, f)
+    # one-sided batches broadcast (§1), the constant rows' NaN rule included: 1-D x with
+    # (3, n) y, and (3, n) x with 1-D y (both used to raise TypeError from broadcast_to)
+    y3 = np.vstack([y[0], y[1], np.full(20, 3.0)])
+    x3 = np.vstack([x[0], np.full(20, 2.0), x[2]])
+    for xb, yb, pair in ((x[0], y3, lambda i: (x[0], y3[i])), (x3, y[0], lambda i: (x3[i], y[0]))):
+        got = R.linregress(xb, yb)
+        for i in range(3):
+            one = R.linregress(*pair(i))
+            for f in got._fields:
+                g, w = float(getattr(got, f)[i]), getattr(one, f)
+                assert g == w or (math.isnan(g) and math.isnan(w)), (f, i)
 
 
 # ---- rank deficiency (G9, G21)
@@ -519,8 +530,16 @@ def test_errors():
     yb[1, 0] = np.inf
     with pytest.raises(ValueError, match=r"^ols\(\): 'y' contains infinity \(at batch index \(1,\)\)$"):
         R.ols(yb, X)
-    with pytest.raises(ValueError, match=r"^ols\(\): batch shapes do not broadcast"):
+    with pytest.raises(ValueError, match=r"^ols\(\): the batch shapes of 'y' \(2,\), 'X' \(3,\) do not broadcast$"):
         R.ols(np.ones((2, 10)), np.ones((3, 10, 2)))
+    with pytest.raises(ValueError, match=r"^wls\(\): the batch shapes of 'y' \(3,\), 'X' \(\), 'weights' \(2,\) do not broadcast$"):
+        R.wls(np.ones((3, 10)), np.ones((10, 1)), weights=np.ones((2, 10)))
+    with pytest.raises(ValueError, match=r"^wls\(\): 'weights' must have 10 values like 'y', not a scalar$"):
+        R.wls(y, X, weights=2.0)
+    with pytest.raises(TypeError, match=r"^ols\(\): 'y' must be .* or DataFrame, not list of str$"):
+        R.ols(["a"] * 10, X)
+    with pytest.raises(TypeError, match=r"^ols\(\): 'X' must have numeric columns$"):
+        R.ols(y, sd.frame.DataFrame({"x": list("abcdefghij")}))
     r = R.ols(y, X)
     with pytest.raises(ValueError, match=r"^predict\(\): 'X_new' must have 3 columns like the fit's 'X', not 2$"):
         r.predict(X[:, :2])
@@ -538,3 +557,92 @@ def test_contract_edge_kappa_1e11():
     r = fit("ols_kappa11", rtol=0.0)
     assert r.condition_number == pytest.approx(1e11, rel=0.5)
     assert norm_err(r.params, ref["params"]) <= CONTRACT
+
+
+# ---- decisions G84-G86, G90, G91 (2026-11-19)
+
+def test_constant_y_is_zero_over_zero():
+    """TSS exactly 0 (G85): R^2, adjusted R^2 and the F test are 0/0, NaN; ESS is 0. statsmodels
+    gives R^2 -inf and F -4 from the rounding."""
+    x = np.arange(6.0)
+    for r in (R.ols(np.ones(6), x), R.wls(np.ones(6), x, weights=np.arange(1.0, 7.0)),
+              R.ols(np.ones(6), x, cov_type="HC1"), R.gls(np.ones(6), x, sigma=np.eye(6) * 2.0)):
+        assert math.isnan(r.rsquared) and math.isnan(r.rsquared_adj)
+        assert math.isnan(r.fvalue) and math.isnan(r.f_pvalue) and r.ess == 0.0
+        assert abs(float(r.params[1])) < 1e-15
+    rb = R.ols(np.vstack([np.ones(6), x * 2 + np.r_[0.1, 0, 0, 0.2, 0, 0]]), x)
+    assert math.isnan(float(rb.rsquared[0])) and float(rb.ess[0]) == 0.0 and float(rb.rsquared[1]) > 0.9
+    # linregress: the exact line, slope +0 and the constant (scipy)
+    lr = R.linregress([1.0, 2, 3, 4, 5], [3.0] * 5)
+    assert lr.slope == 0.0 and math.copysign(1.0, lr.slope) == 1.0 and lr.intercept == 3.0
+    lb = R.linregress([1.0, 2, 3], np.array([[0.1] * 3, [1.0, 2, 4]]))
+    assert float(lb.slope[0]) == 0.0 and float(lb.intercept[0]) == 0.1 and float(lb.slope[1]) == 1.5
+
+
+def test_linregress_messages():
+    with pytest.raises(ValueError, match=r"^linregress\(\): 'x' and 'y' must not be empty$"):
+        R.linregress([], [])
+    with pytest.raises(ValueError, match=r"^linregress\(\): 'x' contains infinity$"):
+        R.linregress([1.0, math.inf, 3], [1.0, 2, 3])
+    with pytest.raises(ValueError, match=r"^linregress\(\): 'y' contains infinity$"):
+        R.linregress([1.0, 2, 3], [1.0, -math.inf, 3])
+
+
+def test_exact_zero_coefficients_are_positive():
+    """G84: no -0.0 among the coefficients (quantreg's simplex left one)."""
+    q = R.quantreg([1.0, 2, 3, 4, 5, 7], [1.0, 2, 3, 4, 5, 6])
+    assert a(q.params).tolist() == [0.0, 1.0] and math.copysign(1.0, float(q.params[0])) == 1.0
+    for r in (R.ols([1.0, 2, 3], [1.0, 2, 3]), R.lasso([1.0, 2, 3, 5], np.c_[[1.0, 2, 3, 4], [0.0] * 4], alpha=0.1)):
+        assert all(math.copysign(1.0, v) == 1.0 for v in a(r.params).tolist() if v == 0.0)
+
+
+def test_inputs_are_copied():
+    """G86: changing the arrays given to the fit (an sd.ndarray, or the numpy array it views)
+    afterwards changes none of the lazy fields."""
+    x = sd.asarray([1.0, 2, 3, 4, 5, 6, 7, 8])
+    y0 = [52.0, 55, 61, 64, 68, 70, 76, 79]
+    for make in (lambda v: sd.asarray(v), lambda v: np.asarray(v, dtype=float)):
+        X = make(np.c_[np.asarray(x.tolist()), np.asarray(x.tolist()) ** 2])
+        y = make(y0)
+        w = make(np.arange(1.0, 9.0))
+        fits = [R.ols(y, X), R.wls(y, X, weights=w)]
+        want = [(a(f.leverage), a(f.cooks_distance), f.breusch_pagan().lm, f.jarque_bera().statistic) for f in fits]
+        X[0, 1] = 100.0
+        y[1] = -5.0
+        w[2] = 50.0
+        for f, (lev, cook, bp, jb) in zip(fits, want):
+            assert a(f.leverage).tolist() == lev.tolist() and a(f.cooks_distance).tolist() == cook.tolist()
+            assert f.breusch_pagan().lm == bp and f.jarque_bera().statistic == jb
+    assert abs(float(R.ols(y0, np.c_[np.asarray(x.tolist()), np.asarray(x.tolist()) ** 2]).leverage[0]) - 0.70833) < 1e-5
+
+
+def test_predict_columns_and_inf():
+    """G90: a DataFrame fit predicts from a DataFrame with the same columns in the same order
+    (scikit-learn's rule), else ValueError; one side a DataFrame: by position. G91: inf in
+    X_new is a ValueError, NaN gives NaN."""
+    import stardust.frame as fr
+
+    F = fr.DataFrame({"a": [1.0, 2, 3, 4, 5, 6], "b": [2.0, 1, 4, 3, 6, 5]})
+    y = [3.0, 4, 8, 9, 13, 14]
+    arr = np.c_[[1.0, 2, 3, 4, 5, 6], [2.0, 1, 4, 3, 6, 5]]
+    good = fr.DataFrame({"a": [1.0, 2], "b": [10.0, 20]})
+    for fit in (R.ols(y, F), R.glm(y, F, family="poisson"), R.rlm(y, F), R.quantreg(y, F), R.ridge(y, F, alpha=0.1)):
+        want = a(fit.predict(np.c_[[1.0, 2], [10.0, 20]]))
+        assert a(fit.predict(good)).tolist() == want.tolist()
+        with pytest.raises(ValueError, match=r"^predict\(\): 'X_new' must have the columns \['a', 'b'\] in the "
+                                             r"fit's order, not \['b', 'a'\]$"):
+            fit.predict(fr.DataFrame({"b": [10.0, 20], "a": [1.0, 2]}))
+        with pytest.raises(ValueError, match=r"^predict\(\): 'X_new' must have the columns \['a', 'b'\] like the "
+                                             r"fit's 'X', not \['a', 'c'\]$"):
+            fit.predict(fr.DataFrame({"a": [1.0, 2], "c": [10.0, 20]}))
+        with pytest.raises(ValueError, match=r"^predict\(\): 'X_new' contains infinity$"):
+            fit.predict(np.c_[[1.0, 2], [10.0, math.inf]])
+        nanp = a(fit.predict(np.c_[[1.0, 2], [10.0, math.nan]]))
+        assert math.isnan(nanp[1]) and nanp[0] == want[0]
+    # an array fit takes a DataFrame by position
+    ra = R.ols(y, arr)
+    assert a(ra.predict(fr.DataFrame({"b": [1.0, 2], "a": [10.0, 20]}))).tolist() == a(ra.predict(np.c_[[1.0, 2], [10.0, 20]])).tolist()
+    with pytest.raises(ValueError, match=r"^predict_interval\(\): 'X_new' contains infinity$"):
+        ra.predict_interval(np.c_[[1.0], [math.inf]])
+    with pytest.raises(ValueError, match=r"^predict\(\): 'X_new' must have 1 column like the fit's 'X', not 2$"):
+        R.ols(y, arr[:, 0]).predict(arr)

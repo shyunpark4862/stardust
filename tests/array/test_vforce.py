@@ -1,4 +1,5 @@
-"""The 16 float64 functions that run on Accelerate vForce.
+"""The 15 float64 functions that run on Accelerate vForce, and pow (libm, numpy's own
+function) checked against the same contract.
 
 The contract (docs/api/array.md §6.4): within 8 ULP of numpy/libm, exact C99
 Annex F special values (signed zeros, infinities, NaN), and a result for an

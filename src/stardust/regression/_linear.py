@@ -179,9 +179,10 @@ def _check_alpha(v, func):
     return x
 
 
-def _as_real(x, func, arg):
+def _as_real(x, func, arg, per_row=None):
     """(x as a float64 sd.ndarray, its column names or None). Takes sd.ndarrays, sequences of
-    numbers and frame Series/DataFrames (missing values become NaN)."""
+    numbers and frame Series/DataFrames (missing values become NaN). per_row: for an argument
+    with a value per row, what it must have (e.g. "5 values like 'y'"), said for a scalar."""
     names = None
     if isinstance(x, (_frame.Series, _frame.DataFrame)):
         if isinstance(x, _frame.Series):
@@ -190,7 +191,7 @@ def _as_real(x, func, arg):
             names = [str(c) for c in x.columns]
         try:
             a = x.to_array(dtype=_sd.float64, na_value=math.nan)
-        except TypeError:
+        except (TypeError, ValueError):  # a string column is a ValueError of to_array
             raise TypeError(f"{func}(): '{arg}' must have numeric columns") from None
         return a, names
     if isinstance(x, _sd.ndarray):
@@ -198,6 +199,8 @@ def _as_real(x, func, arg):
     elif isinstance(x, numbers.Number):
         if isinstance(x, complex):
             raise TypeError(f"{func}(): '{arg}' must be real, not complex")
+        if per_row is not None:
+            raise ValueError(f"{func}(): '{arg}' must have {per_row}, not a scalar")
         raise ValueError(f"{func}(): '{arg}' must have at least 1 dimension")
     else:
         try:
@@ -206,12 +209,79 @@ def _as_real(x, func, arg):
             raise OverflowError(f"{func}(): Python int too large to convert to float64") from None
         except (TypeError, ValueError):
             raise TypeError(f"{func}(): '{arg}' must be an sd.ndarray, a sequence of numbers or a frame "
-                            f"Series or DataFrame, not {_type_name(x)}") from None
+                            f"Series or DataFrame, not {_seq_name(x)}") from None
     if a.dtype == _sd.complex128:
         raise TypeError(f"{func}(): '{arg}' must be real, not a complex128 array")
     if a.dtype != _sd.float64:
         a = a.astype(_sd.float64)
     return a, names
+
+
+def _seq_name(x):
+    """The type name of a rejected value; for a list or tuple also the first element type that
+    is not a number (`list of str`): the function takes lists, just not of those."""
+    name = _type_name(x)
+    if isinstance(x, (list, tuple)):
+        stack = list(x)
+        while stack:
+            v = stack.pop(0)
+            if isinstance(v, (list, tuple)):
+                stack[:0] = list(v)
+            elif v is None or isinstance(v, bool) or not isinstance(v, numbers.Number):
+                return f"{name} of {_type_name(v)}"
+    return name
+
+
+def _frame_columns(X):
+    """The column names of X when it is a frame DataFrame (predictions from a DataFrame are then
+    checked against them, docs/api/regression.md §1), else None."""
+    return [str(c) for c in X.columns] if isinstance(X, _frame.DataFrame) else None
+
+
+def _new_design(X_new, func, p, columns):
+    """X_new as the (..., m, p) design of a prediction from a fit with p columns (columns: the
+    fit's DataFrame column names, or None). A DataFrame X_new of a DataFrame fit must have the
+    same columns in the same order (scikit-learn's rule); otherwise the columns are taken by
+    position. inf is an error as in the fit's inputs (G24); NaN gives NaN."""
+    if columns is not None and isinstance(X_new, _frame.DataFrame):
+        got = [str(c) for c in X_new.columns]
+        if got != columns:
+            what = "in the fit's order" if sorted(got) == sorted(columns) else "like the fit's 'X'"
+            raise ValueError(f"{func}(): 'X_new' must have the columns {columns} {what}, not {got}")
+    Xn, _ = _as_real(X_new, func, "X_new")
+    cols = f"{p} column" + ("" if p == 1 else "s")
+    if Xn.ndim == 0:
+        raise ValueError(f"{func}(): 'X_new' must have at least 1 dimension")
+    if Xn.ndim == 1:
+        if p != 1:
+            raise ValueError(f"{func}(): 'X_new' must have {cols} like the fit's 'X', not 1-dimensional")
+        Xn = _sd.reshape(Xn, (Xn.shape[0], 1))
+    if Xn.shape[-1] != p:
+        raise ValueError(f"{func}(): 'X_new' must have {cols} like the fit's 'X', not {Xn.shape[-1]}")
+    if Xn.size and bool(_sd.any(_sd.isinf(Xn))):
+        raise ValueError(f"{func}(): 'X_new' contains infinity")
+    return Xn
+
+
+def _check_batches(func, named):
+    """named: (argument, its batch shape) pairs; ValueError naming them when they do not
+    broadcast (the kernels' own check names no argument)."""
+    out = []
+    for _, shape in named:
+        shape = tuple(shape)
+        if len(shape) > len(out):
+            out = [1] * (len(shape) - len(out)) + out
+        lead = len(out) - len(shape)
+        for d, s in enumerate(shape):
+            r = out[lead + d]
+            if s == r or s == 1:
+                continue
+            if r == 1:
+                out[lead + d] = s
+                continue
+            listed = ", ".join(f"'{a}' {tuple(sh)}" for a, sh in named)
+            raise ValueError(f"{func}(): the batch shapes of {listed} do not broadcast")
+    return tuple(out)
 
 
 def _has_nan(*arrays):
@@ -233,12 +303,17 @@ class _RegressionResult:
     inference and the design checks of predictions. statsmodels' names (G10); the intercept
     is params[0]."""
 
-    __slots__ = ("_raw", "_cache", "param_names", "cov_type", "_intercept", "_batch", "_extra", "_fitargs")
+    __slots__ = ("_raw", "_cache", "param_names", "cov_type", "_intercept", "_batch", "_extra", "_fitargs", "_columns")
     # the positions of the shared scalars in the kernel's stats
     _I_NOBS, _I_RANK, _I_ISNAN, _I_NGROUPS, _I_LAGS = _NOBS, _RANK, _ISNAN, _NGROUPS, _LAGS
 
-    def __init__(self, raw, *, param_names, intercept, cov_type, batch, extra=None, fitargs=None):
+    def __init__(self, raw, *, param_names, intercept, cov_type, batch, extra=None, fitargs=None, columns=None):
+        # exact zero coefficients are +0 (G84): the solves' -0 is a sign of rounding, not data
+        if not isinstance(raw, list):
+            raw = list(raw)
+        raw[0] = raw[0] + 0.0
         self._raw = raw          # params, cov, R, fitted, resid, kept, stats
+        self._columns = columns  # the fit's DataFrame column names, or None
         self._cache = {}
         self.param_names = param_names
         self.cov_type = cov_type
@@ -364,17 +439,8 @@ class _RegressionResult:
         return self._cached("beff", make)
 
     def _design(self, X_new, func):
-        Xn, _ = _as_real(X_new, func, "X_new")
         p = self.params.shape[-1] - (1 if self._intercept else 0)
-        if Xn.ndim == 0:
-            raise ValueError(f"{func}(): 'X_new' must have at least 1 dimension")
-        if Xn.ndim == 1:
-            if p != 1:
-                raise ValueError(f"{func}(): 'X_new' must have {p} columns like the fit's 'X', not 1-dimensional")
-            Xn = _sd.reshape(Xn, (Xn.shape[0], 1))
-        if Xn.shape[-1] != p:
-            raise ValueError(f"{func}(): 'X_new' must have {p} columns like the fit's 'X', not {Xn.shape[-1]}")
-        return Xn
+        return _new_design(X_new, func, p, self._columns)
 
 
 class _LinearResult(_RegressionResult):
@@ -425,24 +491,32 @@ class _LinearResult(_RegressionResult):
         total (R^2 < 1/2, where tss - ssr would cancel), else tss - ssr."""
         def make():
             e, s, t = self._ess_direct(), self.ssr, self._tss()
+            # a constant y (TSS exactly 0) leaves nothing to explain: ESS 0 (G85)
             if self._batch:
-                return _sd.where(e < s, e, t - s)
-            return e if e < s else t - s
+                return _sd.where(t == 0.0, 0.0, _sd.where(e < s, e, t - s))
+            return 0.0 if t == 0.0 else (e if e < s else t - s)
         return self._cached("ess", make)
+
+    def _no_tss(self, v):
+        """v, NaN where TSS is exactly 0 (a constant y: R^2 and the F test are 0/0, G85)."""
+        t = self._tss()
+        if self._batch:
+            return _sd.where(t == 0.0, math.nan, v)
+        return math.nan if t == 0.0 else v
 
     def _one_minus_r2(self):
         e, s, t = self._ess_direct(), self.ssr, self._tss()
         if self._batch:
-            return _sd.where(e < s, 1.0 - e / t, s / t)
-        return 1.0 - _div(e, t) if e < s else _div(s, t)
+            return self._no_tss(_sd.where(e < s, 1.0 - e / t, s / t))
+        return self._no_tss(1.0 - _div(e, t) if e < s else _div(s, t))
 
     @property
     def rsquared(self):
         def make():
             e, s, t = self._ess_direct(), self.ssr, self._tss()
             if self._batch:
-                return _sd.where(e < s, e / t, 1.0 - s / t)
-            return _div(e, t) if e < s else 1.0 - _div(s, t)
+                return self._no_tss(_sd.where(e < s, e / t, 1.0 - s / t))
+            return self._no_tss(_div(e, t) if e < s else 1.0 - _div(s, t))
         return self._cached("rsquared", make)
 
     @property
@@ -478,13 +552,13 @@ class _LinearResult(_RegressionResult):
     def fvalue(self):
         def make():
             if self._robust:
-                return self._stat(_WALDF)
+                return self._no_tss(self._stat(_WALDF))
             dfm = self.df_model
             f = _div(_div(self.ess, dfm), self.scale)
             # no parameter but the intercept: no F test (statsmodels: NaN)
             if self._batch:
-                return _sd.where(dfm == 0.0, math.nan, f)
-            return math.nan if dfm == 0 else f
+                return self._no_tss(_sd.where(dfm == 0.0, math.nan, f))
+            return self._no_tss(math.nan if dfm == 0 else f)
         return self._cached("fvalue", make)
 
     @property
@@ -835,11 +909,16 @@ def _prepare(func, y, X, weights, nan_policy, extra_rows=None, groups=None, cov_
         raise ValueError(f"{func}(): 'X' must have {n} rows like 'y', not {X.shape[-2]}")
     w = None
     if weights is not None:
-        w, _ = _as_real(weights, func, "weights")
-        if w.ndim == 0 or w.shape[-1] != n:
-            got = "a scalar" if w.ndim == 0 else str(w.shape[-1])
-            raise ValueError(f"{func}(): 'weights' must have {n} values like 'y', not {got}")
+        w, _ = _as_real(weights, func, "weights", per_row=f"{n} values like 'y'")
+        if w.shape[-1] != n:
+            raise ValueError(f"{func}(): 'weights' must have {n} values like 'y', not {w.shape[-1]}")
     codes, gtot, gmiss = _groups(groups, func, n, cov_type)
+    named = [("y", y.shape[:-1]), ("X", X.shape[:-2])]
+    if w is not None:
+        named.append(("weights", w.shape[:-1]))
+    if codes is not None:
+        named.append(("groups", codes.shape[:-1]))
+    _check_batches(func, named)
     batch = y.ndim > 1 or X.ndim > 2 or (w is not None and w.ndim > 1) or (codes is not None and codes.ndim > 1)
     keep = None
     if nan_policy == "raise":
@@ -866,6 +945,11 @@ def _prepare(func, y, X, weights, nan_policy, extra_rows=None, groups=None, cov_
     return y, X, w, names, batch, keep, (codes, gtot)
 
 
+def _own(a):
+    """A copy of a (None stays None) that a result can keep for its lazy fields."""
+    return None if a is None else a.copy()
+
+
 def _names(names, p, intercept):
     if names is None or len(names) != p:
         names = [f"x{j + 1}" for j in range(p)]
@@ -887,11 +971,15 @@ def _check_options(func, intercept, cov_type, maxlags, rtol, nan_policy):
 
 def _linear(func, cls, y, X, weights, intercept, cov_type, maxlags, groups, rtol, nan_policy):
     lags, tol = _check_options(func, intercept, cov_type, maxlags, rtol, nan_policy)
+    columns = _frame_columns(X)
     y, X, w, names, _, _, (codes, gtot) = _prepare(func, y, X, weights, nan_policy, groups=groups, cov_type=cov_type)
+    # the diagnostics read y, X and w later: copies (G86), so that changing the caller's
+    # arrays (or the numpy arrays they view) does not change the result
+    y, X, w = _own(y), _own(X), _own(w)
     raw = _k.fit(func, y, X, w, None, intercept, tol, _COV_TYPES.index(cov_type), _REFINE_STEPS, codes, gtot, lags,
                  False)
     return cls(raw, param_names=_names(names, X.shape[-1], intercept), intercept=intercept, cov_type=cov_type,
-               batch=_batch_shape(raw), fitargs=(func, y, X, w, None, tol, codes, gtot))
+               batch=_batch_shape(raw), fitargs=(func, y, X, w, None, tol, codes, gtot), columns=columns)
 
 
 def ols(y, X, /, *, intercept=True, cov_type="nonrobust", maxlags=None, groups=None, rtol=None,
@@ -935,11 +1023,13 @@ def gls(y, X, /, *, sigma, intercept=True, cov_type="nonrobust", maxlags=None, g
         # observation i has NaN when sigma's row or column i has one
         nanS = _sd.isnan(S)
         nan_rows = _sd.logical_or(_sd.any(nanS, axis=1), _sd.any(nanS, axis=0))
+    columns = _frame_columns(X)
     y, X, _, names, _, keep, (codes, gtot) = _prepare(func, yy, X, None, nan_policy, extra_rows=nan_rows,
                                                       groups=groups, cov_type=cov_type)
     if keep is not None:
         idx = _sd.nonzero(keep)[0]
         S = _sd.take(_sd.take(S, idx, axis=0), idx, axis=1)
+    _check_batches(func, [("y", y.shape[:-1]), ("X", X.shape[:-2]), ("sigma", S.shape[:-2])])
     m = y.shape[-1]
     # NaN under 'propagate' (sd.linalg takes none): whiten with the NaN replaced (sigma by I),
     # then give the kernel a NaN y for those regressions, so all their results are NaN
@@ -968,7 +1058,7 @@ def gls(y, X, /, *, sigma, intercept=True, cov_type="nonrobust", maxlags=None, g
     raw = list(_k.fit(func, yt, Xt, None, ones, intercept, tol, _COV_TYPES.index(cov_type), _REFINE_STEPS, codes,
                       gtot, lags, False))
     res = GLSResult(raw, param_names=_names(names, X.shape[-1], intercept), intercept=intercept, cov_type=cov_type,
-                    batch=_batch_shape(raw), fitargs=(func, yt, Xt, None, ones, tol, codes, gtot))
+                    batch=_batch_shape(raw), fitargs=(func, yt, Xt, None, ones, tol, codes, gtot), columns=columns)
     # fitted values and residuals on the original scale (statsmodels' fittedvalues and resid)
     fitted, resid = _k.apply(func, X, res._beff(), intercept, y)
     if raw[3].shape != fitted.shape:  # sigma's batch axes added to y's
@@ -983,6 +1073,14 @@ def gls(y, X, /, *, sigma, intercept=True, cov_type="nonrobust", maxlags=None, g
     return res
 
 
+def _constant(v, batch):
+    """Whether each regression's values in v (..., n) are all equal, broadcast to the batch
+    shape: a 1-D v (the other argument carries the batch) gives one answer for all."""
+    if v.ndim == 1:
+        return _sd.full(batch, float(_sd.max(v)) == float(_sd.min(v)))
+    return _sd.broadcast_to(_sd.max(v, axis=-1) == _sd.min(v, axis=-1), batch)
+
+
 def linregress(x, y, /):
     """scipy.stats.linregress: the least squares line y = intercept + slope x, with the
     correlation, the two-sided p-value of slope = 0 (Student t, n - 2 degrees of freedom) and
@@ -994,6 +1092,11 @@ def linregress(x, y, /):
         raise ValueError(f"{func}(): 'x' and 'y' must have at least 1 dimension")
     if xa.shape[-1] != ya.shape[-1]:
         raise ValueError(f"{func}(): 'x' must have {ya.shape[-1]} values like 'y', not {xa.shape[-1]}")
+    if ya.shape[-1] == 0:
+        raise ValueError(f"{func}(): 'x' and 'y' must not be empty")
+    for a, nm in ((xa, "x"), (ya, "y")):
+        if a.size and bool(_sd.any(_sd.isinf(a))):
+            raise ValueError(f"{func}(): '{nm}' contains infinity")
     X = _sd.expand_dims(xa, axis=-1)
     # only an exactly constant x is degenerate here (scipy): rtol 0
     raw = _k.fit(func, ya, X, None, None, True, 0.0, 0, _REFINE_STEPS)
@@ -1008,6 +1111,9 @@ def linregress(x, y, /):
         # standard errors; a constant x gives no line at all
         xconst = float(_sd.max(xa)) == float(_sd.min(xa))
         yconst = float(_sd.max(ya)) == float(_sd.min(ya))
+        if yconst and not xconst:
+            # the exact line (scipy's): slope +0 and the constant, not the solve's rounding
+            b1, b0 = 0.0, float(ya[0])
         if xconst:
             b0 = b1 = nan
         if xconst or yconst:
@@ -1017,9 +1123,13 @@ def linregress(x, y, /):
     se0, se1 = r.bse[..., 0], r.bse[..., 1]
     rvalue = _sd.clip(_sd.copysign(_sd.sqrt(r.rsquared), b1), min=-1.0, max=1.0)
     pvalue = 2.0 * _StudentT(df=r.df_resid).ccdf(_sd.abs(b1 / se1))
-    xconst = _sd.broadcast_to(_sd.max(xa, axis=-1) == _sd.min(xa, axis=-1), r._batch)
-    yconst = _sd.broadcast_to(_sd.max(ya, axis=-1) == _sd.min(ya, axis=-1), r._batch)
+    xconst = _constant(xa, r._batch)
+    yconst = _constant(ya, r._batch)
     degen = _sd.logical_or(xconst, yconst)
+    # a constant y: the exact line, slope +0 and the constant (scipy's)
+    b1 = _sd.where(yconst, 0.0, b1)
+    y0 = _sd.full(r._batch, float(ya[0])) if ya.ndim == 1 else _sd.broadcast_to(ya[..., 0], r._batch)
+    b0 = _sd.where(yconst, y0, b0)
     return _results.LinregressResult(_sd.where(xconst, nan, b1), _sd.where(xconst, nan, b0),
                                      _sd.where(degen, nan, rvalue), _sd.where(degen, nan, pvalue),
                                      _sd.where(degen, nan, se1), _sd.where(degen, nan, se0))

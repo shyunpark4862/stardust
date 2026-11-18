@@ -56,6 +56,11 @@ _FD_START, _FD_END = -8, -30
 # about 1e-12 - 1e-11 relative, so an exactly dependent column shows |R_jj| of that size; the
 # default with a user jac is the linear models' max(nobs, p) eps
 _FD_RTOL = 2.0 ** -30
+# a difference column whose 2-norm is at most this times its rounding level (_Model._column) is
+# taken as 0 (G88): f's own evaluation errors are a few ulps (sd's vForce functions up to 8), on
+# top of the rounding of each value that the level counts
+_NOISE_FACTOR = 16.0
+_U = 2.0 ** -53  # the unit roundoff: rounding a value moves it by at most u |f|
 
 
 def _param_names(f, p):
@@ -137,9 +142,11 @@ class NLSResult(_RegressionResult):
 
     @property
     def converged(self):
-        """True when the iteration stopped on one of its tests (ftol, xtol or gtol), False when
-        it reached max_nfev (the last iterate is returned, G32)."""
-        return self._count_stat(_S_STATUS) > 0
+        """True when the iteration stopped on one of its tests (ftol, xtol or gtol) at a point
+        whose sum of squares is finite; False when it reached max_nfev (the last iterate is
+        returned, G32) or when ssr overflows (G89: the tests can pass far from any solution
+        when the Jacobian's scaling is extreme; scipy reports success there)."""
+        return self._count_stat(_S_STATUS) > 0 and math.isfinite(self.ssr)
 
     @property
     def n_iter(self):
@@ -215,6 +222,8 @@ def _summary(r, alpha):
              "degrees of freedom."]
     if not r._isnan():
         notes.append(_STATUS_TEXT.get(r._count_stat(_S_STATUS), "") .capitalize() + ".")
+        if r._count_stat(_S_STATUS) > 0 and not math.isfinite(r.ssr):
+            notes.append("The sum of squares overflows there: not converged.")
         aliased = [nm for nm, k in zip(names, r._raw[5].tolist()) if not k]
         if aliased:
             notes.append("Aliased (the Jacobian's column is linearly dependent on earlier ones), no inference: "
@@ -331,6 +340,7 @@ class _Model:
         self.njev = 0
         self.steps = [None] * p     # the differences' step per parameter, chosen once
         self.central = [None] * p   # (h, f(theta - h e_j), f(theta + h e_j)) of the last Jacobian
+        self.noise = [0.0] * p      # the rounding level of the last difference column (_column)
 
     def _rows(self, v):
         return v[self.mask] if self.mask is not None else v
@@ -377,7 +387,11 @@ class _Model:
 
     def _column(self, theta, j, h, v0):
         """df/dtheta_j on the rows used (unweighted) by the first feasible 5-point stencil
-        with step h, or None; the central stencil's values are kept for _second()."""
+        with step h, or None; the central stencil's values are kept for _second(). Also sets
+        noise[j], the 2-norm (weighted as the Jacobian) of the column's rounding level: each
+        value f_i(theta + o h e_j) carries its rounding, up to u |f_i|, and the stencil
+        sum_o w_o f_o / (12 h) adds those with the weights, so element i is uncertain by up to
+        (sum_o |w_o|) / (12 h) u max_o |f_i(theta + o h e_j)|."""
         t = theta[j]
         for kind, (offs, wts) in enumerate(self._STENCILS):
             if not (self.lb[j] <= t + min(offs) * h and t + max(offs) * h <= self.ub[j]):
@@ -399,6 +413,15 @@ class _Model:
             if acc is not None:
                 if kind == 0:
                     self.central[j] = (h, vals[-1], vals[1])
+                big = None
+                for o, w in zip(offs, wts):
+                    if w != 0.0:
+                        a = _sd.abs(vals[o])
+                        big = a if big is None else _sd.maximum(big, a)
+                if self.sw is not None:
+                    big = big * self.sw
+                wsum = sum(abs(w) for w in wts)
+                self.noise[j] = wsum / (12.0 * h) * _U * float(_linalg.vector_norm(big)) if big.shape[0] else 0.0
                 return acc / (12.0 * h)
         return None
 
@@ -452,6 +475,14 @@ class _Model:
         J = _sd.stack(cols, axis=1)
         if self.sw is not None:
             J = J * _sd.reshape(self.sw, (self.sw.shape[0], 1))
+        # a column within _NOISE_FACTOR of its rounding level carries no derivative (G88): it
+        # is set to 0, so G21's test drops it as aliased. Kept, its noise has a direction of its
+        # own and can take the place of an identified parameter's column (a exp(-k t) + c at a
+        # large k: the k column was rounding noise constant over the rows, the direction of c's)
+        zero = [j for j in range(self.p) if float(_linalg.vector_norm(J[:, j])) <= _NOISE_FACTOR * self.noise[j]]
+        if zero:
+            keep = _sd.asarray([0.0 if j in zero else 1.0 for j in range(self.p)])
+            J = J * keep
         return J
 
     def second(self, theta, v0, c, idx):
@@ -562,9 +593,10 @@ def _in_box(theta, lb, ub):
 
 
 def _polish(M, func, theta, v, r, J, rt, free):
-    """Gauss-Newton steps from the converged iterate while they shrink (G73); when they
-    shrink slowly (two steps' ratio >= 1/8: the residuals' curvature term matters), Newton's
-    steps with that term S from second differences (as the GLM's G44). Returns (theta, v,
+    """Gauss-Newton steps from the converged iterate while they shrink (G73); Newton's steps
+    with the residuals' curvature term S from second differences (as the GLM's G44) when the
+    Gauss-Newton steps still needed at the last two steps' ratio cost more than S
+    (_newton_pays), or once when a step stops shrinking. Returns (theta, v,
     r, J, steps): J is the Jacobian at the returned theta (to 2^-45)."""
     prev = None
     steps = 0
