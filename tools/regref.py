@@ -590,6 +590,159 @@ def glm(y, X, *, family, link, var_weights=None, freq_weights=None, trials=None,
     raise ar.NotSettled("glm")
 
 
+def _penalized_fit(y, X, w, alpha, l1_ratio, family, intercept, standardize, beta0):
+    n, p = len(y), len(X[0]) if X else 0
+    used = [i for i in range(n) if w[i] > 0]
+    W = {i: arb(w[i]) for i in used}
+    Y = {i: arb(y[i]) for i in used}
+    Xa = {i: [arb(v) for v in X[i]] for i in used}
+    sw = sum((W[i] for i in used), arb(0))
+    # columns out of the fit: constant ones (zero ones without the intercept)
+    cols = []
+    for j in range(p):
+        vals = {X[i][j] for i in used}
+        if len(vals) == 1 and (intercept or 0.0 in vals):
+            continue
+        cols.append(j)
+    xbar = {j: (sum((W[i] * Xa[i][j] for i in used), arb(0)) / sw if intercept else arb(0)) for j in cols}
+    if standardize:
+        sc = {j: (sum((W[i] * (Xa[i][j] - xbar[j]) ** 2 for i in used), arb(0)) / sw).sqrt() for j in cols}
+    else:
+        sc = {j: arb(1) for j in cols}
+    l1 = arb(alpha) * arb(l1_ratio)
+    l2 = arb(alpha) * (1 - arb(l1_ratio))
+    off = 1 if intercept else 0
+    act = [j for j in cols if beta0[off + j] != 0.0]
+    sg = {j: (1 if beta0[off + j] > 0 else -1) for j in act}
+    a = len(act)
+    k = off + a
+
+    def design(i):
+        return ([arb(1)] if intercept else []) + [Xa[i][j] for j in act]
+
+    D = {i: design(i) for i in used}
+    # the penalty's gradient (beyond the data term) of each unknown: 0 for the intercept
+    def pen_grad(theta):
+        return [arb(0)] * off + [l2 * sc[j] ** 2 * theta[off + q] + l1 * sc[j] * sg[j] for q, j in enumerate(act)]
+
+    def pen_hess_diag():
+        return [arb(0)] * off + [l2 * sc[j] ** 2 for j in act]
+
+    if family == "gaussian":
+        M = [[sum((W[i] * D[i][u] * D[i][v] for i in used), arb(0)) / sw for v in range(k)] for u in range(k)]
+        for u, h in enumerate(pen_hess_diag()):
+            M[u][u] += h
+        rhs = [sum((W[i] * D[i][u] * Y[i] for i in used), arb(0)) / sw for u in range(k)]
+        for q, j in enumerate(act):
+            rhs[off + q] -= l1 * sc[j] * sg[j]
+        theta = [v for v in (arb_mat(M).solve(arb_mat([[r] for r in rhs])).entries())] if k else []
+
+        def mean(eta):
+            return eta
+    else:
+        link = "logit" if family == "binomial" else "log"
+
+        def mean(eta):
+            return _link(link, eta)[0]
+
+        def grad_hess(theta):
+            g = [arb(0)] * k
+            H = [[arb(0)] * k for _ in range(k)]
+            for i in used:
+                eta = sum((D[i][u] * theta[u] for u in range(k)), arb(0))
+                mu, muc, d1, _ = _link(link, eta)
+                r = W[i] * (Y[i] - mu) / sw
+                h = W[i] * d1 / sw
+                for u in range(k):
+                    g[u] += D[i][u] * r
+                    for v in range(k):
+                        H[u][v] += D[i][u] * D[i][v] * h
+            pg = pen_grad(theta)
+            for u in range(k):
+                g[u] -= pg[u]
+            for u, hd in enumerate(pen_hess_diag()):
+                H[u][u] += hd
+            return g, H  # g: minus the objective's gradient, H: its Hessian
+
+        theta = [arb(beta0[0])] * off + [arb(beta0[off + j]) for j in act]
+        for _ in range(200):
+            g, H = grad_hess(theta)
+            step = arb_mat([[H[u][v].mid() for v in range(k)] for u in range(k)]).solve(arb_mat([[x.mid()] for x in g]))
+            theta = [(theta[u] + step[u, 0]).mid() for u in range(k)]
+            if all(abs(step[u, 0].mid()) <= (abs(theta[u]) + arb(2) ** -60) * arb(2) ** (-ctx.prec + 12)
+                   for u in range(k)):
+                break
+        # Krawczyk's test on a box around the point (as glm): the unique stationary point
+        g, H = grad_hess(theta)
+        Ym = arb_mat([[H[u][v].mid() for v in range(k)] for u in range(k)]).inv()
+        Ym = arb_mat([[Ym[u, v].mid() for v in range(k)] for u in range(k)])
+        tmax = max((abs(t.mid()) for t in theta), key=lambda x: float(x)) + arb(2) ** -60
+        rad = tmax * arb(2) ** (-(ctx.prec // 2))
+        box = [arb(theta[u].mid(), rad.upper()) for u in range(k)]
+        _, HX = grad_hess(box)
+        YH = Ym * arb_mat(HX)
+        Yg = Ym * arb_mat([[x] for x in g])
+        K = []
+        for u in range(k):
+            v = theta[u] + Yg[u, 0]
+            for q in range(k):
+                v += ((1 if u == q else 0) - YH[u, q]) * (box[q] - theta[q])
+            if not (abs(v - theta[u]).upper() < rad.lower()):
+                raise ar.NotSettled("Krawczyk")
+            K.append(v)
+        theta = K
+    # the KKT certificate: the active coefficients keep their signs, every inactive column's
+    # |x_j^T W r| / sw is strictly below l1 s_j
+    for q, j in enumerate(act):
+        b = theta[off + q]
+        if not ((b > 0) if sg[j] > 0 else (b < 0)):
+            raise ValueError(f"the sign of column {j} does not hold")
+    eta = {i: sum((D[i][u] * theta[u] for u in range(k)), arb(0)) for i in used}
+    mu = {i: mean(eta[i]) for i in used}
+    for j in cols:
+        if j in sg:
+            continue
+        gj = sum((W[i] * Xa[i][j] * (Y[i] - mu[i]) for i in used), arb(0)) / sw
+        if not (abs(gj) < l1 * sc[j]):
+            raise ValueError(f"column {j} violates the KKT conditions of the inactive set")
+    params = [arb(0)] * (off + p)
+    if intercept:
+        params[0] = theta[0]
+    for q, j in enumerate(act):
+        params[off + j] = theta[off + q]
+    out = {"params": params}
+    if family == "gaussian":
+        out["ssr"] = sum((W[i] * (Y[i] - mu[i]) ** 2 for i in used), arb(0))
+    else:
+        lk = "logit" if family == "binomial" else "log"
+        out["deviance"] = sum((W[i] * _unit_dev(family, Y[i], mu[i], _link(lk, eta[i])[1]) for i in used), arb(0))
+    return out
+
+
+def penalized(y, X, *, alpha, l1_ratio, beta0, family="gaussian", weights=None, intercept=True, standardize=False):
+    """The certified solution of the penalized regression (G45; the GLMs' deviance / (2 sw) +
+    penalty, G47) whose active set and signs are those of the double solution beta0 (params,
+    the intercept first): the stationarity conditions on that set are solved exactly (a
+    linear system; Newton and Krawczyk's test for the GLMs), and the result is certified as
+    the minimizer by its signs and the strict KKT inequalities of every inactive column
+    (ValueError when they fail: then beta0's active set is not the solution's). Constant
+    columns (zero ones without the intercept) are out of the fit. Returns params and ssr (or
+    the deviance) as (hi, lo)."""
+    n = len(y)
+    w = weights if weights is not None else [1.0] * n
+    p = 256
+    while p <= ar.MAX_PREC:
+        with ar.precision(p):
+            try:
+                vals = _penalized_fit(y, X, w, alpha, l1_ratio, family, intercept, standardize, beta0)
+            except (ar.NotSettled, ZeroDivisionError):
+                vals = None
+            if vals is not None and _all_settled(vals):
+                return {k: ([ar.to_dd(x) for x in v] if isinstance(v, list) else ar.to_dd(v)) for k, v in vals.items()}
+        p *= 2
+    raise ar.NotSettled("penalized")
+
+
 def dd_value(hl):
     """hi + lo as one float (for printing)."""
     return hl[0] + hl[1]

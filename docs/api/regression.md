@@ -1,6 +1,6 @@
 # sd.regression API
 
-> 상태: **G1·G2 구현** (2026-11-18): §2의 `ols wls gls linregress`, 고전형·HC0–HC3·HAC·군집 공분산, 랭크 부족, 배치, 진단, `summary(*, alpha=0.05)`; §3의 `glm`. §4부터는 설계 초안이고, 이름·기본값·결과 필드는 마일스톤마다 확정한다([docs/design/regression.md](../design/regression.md) §8).
+> 상태: **G1–G3 구현** (2026-11-18): §2의 `ols wls gls linregress`, 고전형·HC0–HC3·HAC·군집 공분산, 랭크 부족, 배치, 진단, `summary(*, alpha=0.05)`; §3의 `glm`; §4의 `ridge lasso elastic_net`, 경로, `ridge_cv lasso_cv elastic_net_cv`, 정규화 GLM `penalized_glm`. §5부터는 설계 초안이고, 이름·기본값·결과 필드는 마일스톤마다 확정한다([docs/design/regression.md](../design/regression.md) §8).
 
 ## §1. 공통 규칙
 - 입력은 위치로만(`y`, `X`), 옵션은 키워드로만. 별칭은 없다.
@@ -95,12 +95,44 @@ glm(y, X, /, *, family, link=None, var_weights=None, freq_weights=None, trials=N
 
 ## §4. 정규화 (G3)
 ```
-ridge(y, X, /, *, alpha, intercept=True)              # alpha는 스칼라 또는 1차원(여러 값을 한 번에)
-lasso(y, X, /, *, alpha, intercept=True, max_iter=…, tol=…)
-elastic_net(y, X, /, *, alpha, l1_ratio=0.5, intercept=True, max_iter=…, tol=…)
+ridge(y, X, /, *, alpha, weights=None, intercept=True, standardize=False, nan_policy='propagate')
+lasso(y, X, /, *, alpha, weights=None, intercept=True, standardize=False, max_iter=1000, tol=0.0001, nan_policy='propagate')
+elastic_net(y, X, /, *, alpha, l1_ratio=0.5, weights=None, intercept=True, standardize=False, max_iter=1000, tol=0.0001, nan_policy='propagate')
+ridge_cv(y, X, /, *, rng=None, cv=5, alphas=100, eps=0.001, select='min', weights=None, intercept=True, standardize=False, nan_policy='propagate')
+lasso_cv(y, X, /, *, rng, cv=5, alphas=100, eps=0.001, select='min', weights=None, intercept=True, standardize=False, max_iter=1000, tol=0.0001, nan_policy='propagate')
+elastic_net_cv(y, X, /, *, rng, l1_ratio=0.5, cv=5, alphas=100, eps=0.001, select='min', weights=None, intercept=True, standardize=False, max_iter=1000, tol=0.0001, nan_policy='propagate')
+penalized_glm(y, X, /, *, family, alpha, l1_ratio=0.5, weights=None, intercept=True, standardize=False, max_iter=100, tol=1e-08, nan_policy='propagate')
 ```
-- 경로와 교차검증의 꼴은 G3에서 정한다.
-- 결과(안): `params intercept_ … predict(X_new) converged n_iter dual_gap`
+- §1의 공통 규칙(입력, 절편, NaN, inf, 배치, 스레드, 에러의 꼴)을 따른다. 정규화 GLM의 이름은 `penalized_glm`, 결과는 `PenalizedGLMResult`다(G49).
+- **목적함수** (G45, scikit-learn과 같다): (1/(2·sw))·Σ wᵢ(yᵢ − b₀ − xᵢβ)² + alpha·(l1_ratio·‖Sβ‖₁ + (1 − l1_ratio)/2·‖Sβ‖²). sw = Σw이고, 가중치가 없으면 wᵢ = 1(sw = n)이다. `ridge`는 l1_ratio = 0, `lasso`는 1이다. 절편 b₀은 벌점 밖이다(가중 평균으로 중심화한다). S는 `standardize=False`이면 I, `True`이면 열의 표준편차의 대각이다(아래).
+  - 가중치는 scikit-learn의 `sample_weight`와 같은 뜻이다(scikit-learn은 가중치를 합이 n이 되게 다시 맞추므로 같은 목적함수다). 0인 행은 적합과 `nobs`에서 빠지고 적합값·잔차만 계산한다(G20). 음수는 `ValueError`, NaN은 `nan_policy`를 따른다.
+  - scikit-learn과의 대응: `Lasso`·`ElasticNet`·`enet_path`의 `alpha`는 같다. `Ridge`는 Σw r² + alpha‖β‖²을 풀므로 그 `alpha`는 여기의 sw배다. `LogisticRegression`의 `C`는 1/(sw·alpha), `PoissonRegressor`의 `alpha`는 l1_ratio = 0에서 같다.
+- **`standardize=True`** (glmnet과 같다): 표준화한 계수 sⱼβⱼ에 벌점을 주고 원래 척도의 계수를 돌려준다. sⱼ는 모표준편차 √(Σw(xⱼ − x̄ⱼ)²/sw)이고, 절편이 없으면 √(Σw xⱼ²/sw)다(glmnet의 규칙으로 알고 있지만 R이 이 환경에 없어 확인하지 못했다). 그래서 X의 열에 상수를 곱해도 예측은 바뀌지 않는다.
+- 상수 열(절편이 없으면 0인 열)은 적합에서 빠지고 그 계수는 0이다.
+- **`alpha`**: 0 이상의 유한한 수, 또는 그런 수의 1차원 배열(경로, G46). 배열이면 큰 값부터 앞의 해에서 시작해(따뜻한 시작) 모두 풀고, 결과는 준 순서다. 그때 회귀 하나의 필드마다 배치 축 뒤, 자기 축 앞에 길이 L의 축이 붙는다: `params` (..., L, k), 스칼라 필드 (..., L), `fittedvalues`·`resid` (..., L, n), `predict` (..., L, m). 결과의 `alpha`는 준 값(수 또는 배열)이다. `ridge`·`lasso`·`elastic_net`의 경로의 각 해는 같은 alpha로 따로 푼 것과 비트까지 같다(lasso·엘라스틱 넷은 연마한 해의 활성 집합과 부호가 같으면; 아래 연마). 정규화 GLM은 시작점에 따라 반올림 수준에서 다를 수 있다.
+- **`ridge`의 풀이** (G52): 정규방정식 XᵀX를 만들지 않고 중심화한 설계의 QR과 R의 SVD 하나로 모든 alpha를 푼다(설계 §3.5). 해의 조건수가 크면 double-double 잔차로 개선한다(G51).
+- **결과** (G48, 예측 중심): `RidgeResult`, `LassoResult`, `ElasticNetResult`, `PenalizedGLMResult`와 교차검증의 `RidgeCVResult`, `LassoCVResult`, `ElasticNetCVResult`(각각 앞의 것에 교차검증 필드를 더한 것).
+  - 공통: `params`(절편 `params[0]`), `param_names`(§2와 같다), `alpha`, `l1_ratio`, `standardize`, `nobs`(가중치가 0보다 큰 행 수, `float`), `df_model`, `predict(X_new, /)`
+  - 선형(`ridge`·`lasso`·`elastic_net`): `fittedvalues`, `resid`(y − 적합값, double-double로 한 번 반올림), `ssr`(Σw r², 적합에 쓰인 행), `rsquared`(1 − `ssr`/TSS, TSS는 가중 평균에 대한 Σw(y − ȳ)²이고 절편이 없으면 Σw y²: `ols`와 같은 규칙. 절편이 있으면 scikit-learn의 `score(X, y, sample_weight=w)`와 같다)
+  - 좌표 하강(`lasso`·`elastic_net`·정규화 GLM): `converged`, `n_iter`, `dual_gap`. `ridge`는 닫힌 꼴이라 이 셋이 없다.
+  - 정규화 GLM: `family`, `separation`, `fittedvalues`(μ), `linear_predictor`(η), `resid_response`(y − μ), `deviance`, `null_deviance`(절편만의 모형, 절편이 없으면 η = 0), `deviance_ratio`(1 − `deviance`/`null_deviance`, glmnet의 `dev.ratio`), `predict(X_new, /, *, which='mean')`(`'linear'`이면 η)
+  - 표준오차·p값·구간 필드와 `summary()`는 없다(G48, G52).
+- **`df_model`** (유효 자유도, 절편은 세지 않는다): 0 아닌 계수의 집합 A에 대해 tr Z_A(Z_AᵀΩZ_A + alpha(1 − l1_ratio)I)⁻¹Z_AᵀΩ다(Z는 중심화한 열, `standardize`면 표준화한 열, Ω = diag(w/sw); 정규화 GLM은 Ω에 작업 가중치를 곱한다). lasso(l1_ratio = 1)는 0 아닌 계수의 수, ridge(A가 모든 열)는 Σ s²/(s² + alpha)(s는 Ω^½Z의 특이값)다. 엘라스틱 넷의 이 식은 Zou–Hastie(2005)의 것이다(glmnet의 `df`는 0 아닌 계수의 수).
+- **`lasso`·`elastic_net`의 수렴** (scikit-learn과 같은 판정): 열 순서의 좌표 하강이고, 쌍대 간격이 `tol` × Σω(y − ȳ)²(절편이 없으면 Σω y²) 이하이면 수렴이다. scikit-learn의 tol·‖y‖²(중심화·가중한 y, 그 목적함수의 n배 척도)와 같은 뜻이다. 간격은 가장 큰 계수 변화가 `tol` × 가장 큰 계수 이하인 전체 스윕 뒤에 잰다(scikit-learn과 같다). `n_iter`는 스윕 수(전체 스윕과 0 아닌 계수만의 스윕을 모두 센다), `max_iter`는 그 상한이다(alpha마다). 상한에 닿으면 마지막 값을 내고 `converged=False`다(G32). 경고는 없다.
+  - 수렴한 해는 KKT 연마를 거친다: 그 해의 0 아닌 계수와 부호로 정상 조건의 연립방정식을 풀고, 부호가 그대로이고 0인 계수마다 |zⱼᵀΩr| ≤ alpha·l1_ratio이면 그 해를 낸다(아니면 좌표 하강을 더 작은 허용오차로 이어 간 뒤 다시 연마하고, 끝내 통과하지 못하면 좌표 하강의 해를 낸다). 그래서 계수는 `tol`의 정밀도가 아니라 정확한 해에 반올림 수준으로 가깝고(아래 정확도), 해가 0인 계수는 정확히 0이다.
+  - `dual_gap`은 목적함수 단위의 쌍대 간격이다(scikit-learn의 `dual_gap_`은 sw배 큰 척도). 연마한 해에서는 반올림 수준이고 그 크기의 음수일 수도 있다.
+- **정규화 GLM** (G47): `family`는 `'binomial'`(logit 링크, `y`는 0 또는 1)과 `'poisson'`(log 링크, `y` ≥ 0)이다. 정준 링크만이다. 목적함수는 편차/(2·sw) + 같은 벌점이다(glmnet과 같다; 가중 편차는 Σwᵢdᵢ). 바깥은 IRLS(현재 계수에서 이차 근사)이고 안쪽은 같은 좌표 하강이다. 목적함수 F의 상대 변화 |F − F_old|/(|F| + 0.1)가 `tol`(기본 1e-8, `glm`과 같은 꼴) 아래면 수렴이다. 목적함수가 오르면 걸음을 반씩 줄인다. 수렴한 해는 0 아닌 계수와 부호를 고정한 뉴턴법으로 연마한다(선형과 같은 KKT 검사). `n_iter`는 IRLS 반복 수이고 `max_iter`(기본 100)가 그 상한이다. `dual_gap`은 돌려준 계수에서의 마지막 이차 근사 문제의 쌍대 간격(목적함수 단위)이다. y가 모두 0(이항은 모두 0 또는 모두 1)이면 유한한 해가 없어 계수가 NaN이고 `converged=False`다. 링크 인자와 `offset`·`trials`는 없다(G52).
+  - **alpha = 0** (G50): 벌점이 없으면 `glm`의 적합 그대로다(`var_weights=weights`; 같은 `max_iter`·`tol`). 분리는 `glm`의 증명서로 판정하고(G33), 그때 `params`는 NaN, `separation=True`, `linear_predictor`·`fittedvalues`·`deviance`는 `glm`의 극한값(경계 행의 η = ±inf, μ = 0 또는 1)이며 `dual_gap`은 NaN이다. 분리가 없으면 `params`·`deviance`·`n_iter`·`converged`·`df_model`이 `glm`의 것이다(겹친 열도 G9대로 NaN). 경로에서는 alpha가 0인 자리만 그렇다. alpha > 0이면 목적함수가 계수와 함께 커져 분리돼도 해가 유한하므로 판정하지 않고 `separation`은 False다.
+- **교차검증** (G46): k겹으로 alpha를 고르고 모든 데이터로 다시 적합한다.
+  - `cv`는 겹 수(2 이상, 행 수 이하; 기본 5, scikit-learn의 기본과 같다; glmnet은 10)다. 겹은 `rng`(`sd.random.default_rng(seed)`의 Generator, `sample`처럼 꼭 준다: `lasso_cv`·`elastic_net_cv`는 키워드 인자에 기본값이 없고, `ridge_cv`는 `cv='gcv'`일 때만 없어도 된다)의 `rng.permutation(n)`로 나눈다: 행 i의 겹은 (0, 1, …, n − 1 mod cv)를 그 순열로 섞은 값이다(glmnet의 `sample(rep(1:K, length = n))`과 같은 꼴, 겹 크기의 차이는 1 이하). 행은 `nan_policy='omit'`이 뺀 뒤의 행이다. 가중치 0인 행도 겹을 받지만 적합과 오차에는 들지 않는다. 배치면 모든 회귀가 같은 겹을 쓴다(배치는 같은 시드의 새 Generator로 하나씩 부른 것과 비트까지 같다).
+  - `alphas`: int이면 그 길이의 격자 alpha_max·`eps`^(i/(L − 1))(i = 0 … L − 1; scikit-learn의 `LassoCV`와 같은 격자, alpha_max는 해가 0이 되는 가장 작은 alpha, 1e-15 아래면 1e-15), 배열이면 그 값을 큰 것부터 정렬한 것이다. `ridge_cv`의 격자는 l1_ratio = 1e-3으로 계산한 alpha_max에서 시작한다(glmnet의 ridge 규칙; scikit-learn은 l1_ratio = 0의 자동 격자가 없다). `elastic_net_cv`의 l1_ratio = 0은 `alphas`를 배열로 줘야 한다.
+  - 겹마다 나머지로 경로 전체를 적합하고(배치로 함께 푼다), 그 겹의 가중 평균 제곱오차 Σw(y − ŷ)²/Σw를 잰다. `cv_error`는 겹들의 평균(scikit-learn의 `mse_path_.mean(axis=1)`과 같다), `cv_se`는 겹들의 표준편차(자유도 cv − 1)/√cv다.
+  - `alpha_min`은 `cv_error`가 가장 작은 alpha(같으면 큰 쪽), `alpha_1se`는 `cv_error` ≤ 최솟값 + 그 점의 `cv_se`인 가장 큰 alpha다(1-SE 규칙). `select='min'`(기본, scikit-learn과 같다)이면 `alpha_min`, `'1se'`면 `alpha_1se`로 다시 적합한다(glmnet의 `predict`는 `lambda.1se`가 기본). 결과의 `alpha`가 고른 값이고, 나머지 필드는 그 alpha의 적합(`ridge`·`lasso`·`elastic_net`을 그 alpha로 부른 것과 비트까지 같다)이다.
+  - 교차검증 필드: `alphas` (..., L), `cv_error` (..., L), `cv_se` (..., L), `alpha_min`, `alpha_1se`
+  - `elastic_net_cv`는 l1_ratio 하나를 받는다(scikit-learn의 `ElasticNetCV`처럼 여러 값을 함께 고르지 않는다, G52).
+  - `ridge_cv(cv='gcv')`: 일반화 교차검증(Golub–Heath–Wahba) GCV = (`ssr`/sw)/(1 − tr H/`nobs`)², tr H = `df_model` + 절편 수. 모든 데이터의 한 SVD로 닫힌 꼴이다. `cv_se`와 `alpha_1se`는 NaN이고 `select='1se'`는 `ValueError`다.
+- **정확도** (잰 값, 설계 §3.5): Arb 참값(정해진 활성 집합의 KKT 연립방정식을 정확히 풀고 0인 계수의 KKT 부등식으로 증명한 해)과 견준 계수 벡터의 상대오차(노름)는 조건이 좋은 문제(n = 60 – 20,000)에서 lasso·엘라스틱 넷·ridge 1.7e-15 안, 정규화 GLM 3e-16 안이다. 중심화한 설계의 조건수가 10²–10⁶이면 lasso·엘라스틱 넷 8.6e-15 안이다(연마가 개선한 칸은 3e-16 안). 조건이 나쁘면 ridge와 lasso·엘라스틱 넷의 연마는 double-double 잔차로 개선하고(G51), ridge는 조건수 10¹⁰, alpha 1e-18(최소제곱 가까이)까지 1.7e-15 안이다. scikit-learn은 기본 `tol=1e-4`에서 4e-6–2e-4(조건수 10²–10⁶에서 2e-4–0.34), `tol=1e-12`에서 5e-14–1e-12다.
+- **에러**: `lasso(): 'alpha' must be finite and >= 0`, `elastic_net(): 'l1_ratio' must be between 0 and 1 (inclusive)`, `lasso_cv(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not int`, `lasso_cv(): 'cv' must be <= the number of rows (30), not 31`, `ridge_cv(): 'cv' must be an int or 'gcv', not 'x'`, `penalized_glm(): 'family' must be 'binomial' or 'poisson', not 'gamma'`, `penalized_glm(): 'y' must be 0 or 1 for the binomial family`.
 
 ## §5. 강건 (G4)
 ```
@@ -121,7 +153,8 @@ quantreg(y, X, /, *, q=0.5, intercept=True)
 | 최소제곱 | `OLS(y, add_constant(X)).fit()` | `LinearRegression().fit(X, y)` | `stats.linregress` (단순) | `ols(y, X)` |
 | 가중 | `WLS` | `fit(..., sample_weight=)` | | `wls(y, X, weights=)` |
 | GLM | `GLM(y, X, family=)` | `LogisticRegression`, `PoissonRegressor` 등(정규화 포함) | | `glm(y, X, family=)` |
-| 정규화 | `OLS.fit_regularized` | `Ridge`, `Lasso`, `ElasticNet`, `…CV` | | `ridge`, `lasso`, `elastic_net` |
+| 정규화 | `OLS.fit_regularized` | `Ridge`, `Lasso`, `ElasticNet`, `enet_path`, `…CV` | | `ridge`, `lasso`, `elastic_net`(`alpha`에 배열이면 경로), `ridge_cv`, `lasso_cv`, `elastic_net_cv` |
+| 정규화 GLM | `GLM.fit_regularized` | `LogisticRegression`(penalty), `PoissonRegressor` | | `penalized_glm` |
 | 강건 | `RLM` | `HuberRegressor`, `TheilSenRegressor` | `stats.theilslopes`, `siegelslopes` | `rlm` |
 | 분위 | `QuantReg` | `QuantileRegressor` | | `quantreg` |
 | 비선형 | | | `optimize.curve_fit`, `least_squares` | G6 |
