@@ -177,7 +177,7 @@
 - **적합값과 잔차**: 마지막 β로 모든 행(가중치 0인 행도)의 Xβ와 y − Xβ를 double-double로 한 번 더 구해 반올림한다. 같은 합으로 SSR = Σw r², 중심 TSS = Σw(y − ȳ)², 비중심 TSS = Σw y², ESS = Σw(ŷ − ȳ)²와 Σw ŷ²를 double-double로 더한다(ȳ는 가중 평균, double-double). `predict`도 같은 Dot2이고 열 순서도 같아서, 적합에 쓴 X로 부르면 `fittedvalues`와 비트까지 같다.
 - **p값과 구간**: t의 두꼬리 p = 2·`StudentT(df).ccdf(|t|)`(1 − cdf가 아니므로 아주 작은 p도 상대 정확도), F의 p = `F(dfn, dfd).ccdf(F)`, 구간은 `iccdf`. 모두 sd.stats의 보장 영역에서 상대 1e-14다.
 - **R²**: ESS < SSR(R² < 1/2)이면 ESS/TSS(직접 더한 ESS), 그 밖은 1 − SSR/TSS다. 어느 쪽도 상쇄가 2배를 넘지 않는다. `rsquared_adj`의 1 − R²도 같은 쪽에서 구한다.
-- **완전 적합**: SSR이 정확히 0이면 IEEE대로 `bse` 0, t ±inf, p 0, `llf` +inf다. statsmodels는 잔차가 반올림 수준이라 bse ~1e-14, t ~1e13–1e15, p ~1e-90–1e-103을 낸다(numpy 경고와 함께; x = 0..9, y = 1 + 2x + 3x²에서 확인). R은 이 환경에 없어 확인하지 못했다. 계약은 정하지 않았다(§8).
+- **완전 적합**: SSR이 정확히 0이면 IEEE대로 `bse` 0, t ±inf, p 0, `llf` +inf다. statsmodels는 잔차가 반올림 수준이라 bse ~1e-14, t ~1e13–1e15, p ~1e-90–1e-103을 낸다(numpy 경고와 함께; x = 0..9, y = 1 + 2x + 3x²에서 확인). R(4.6.2)의 `summary.lm`도 같은 문제에서 "essentially perfect fit: summary may be unreliable" 경고와 함께 표준오차 9e-15·5e-15·5e-16, p 1e-96–1e-109, F 2.8e32를 내고, 잔차가 반올림 수준이라 `rstandard`·`cooks.distance`·`dwtest`(2.19)·`bptest`도 유한한 값이다. 계약은 정하지 않았다(§8).
 
 ### 3.2 WLS, GLS
 - WLS: 가중치 0인 행은 적합과 nobs·자유도에서 빼고 적합값·잔차만 계산한다(R과 같다, G20). statsmodels(0.15.0)는 그 행을 `nobs`에 세므로 자유도와 표준오차가 다르다(60행 중 2행이 0이면 df 57 대 55, 표준오차 1.8% 차이; tools/regref.py로 확인). 가중치가 모두 1이면 OLS와 비트까지 같고, 0인 행이 있는 WLS는 그 행을 뺀 WLS와 비트까지 같다. `llf`에 ½Σlog w(쓰인 행)를 더한다.
@@ -194,7 +194,7 @@
 - **군집** (G27): S = Σ_g s_g s_gᵀ, s_g는 군집 g의 점수 합(행 순서대로). 군집 수 × 열 수가 2²²(32 MB) 이하이면 G × k 행렬에 행을 순서대로 흩뿌려 더하고(열마다 스레드풀) `syrk` 한 번, 그보다 크면 행을 군집별로 안정 정렬해 군집 덩어리마다 합을 만들고 `syrk`를 누적한다. 두 길의 군집 합은 같은 순서로 더하므로 같은 값이다. 보정은 G/(G−1)·(n−1)/(n−k)(k는 rank)다. G는 적합에 쓰인 행에 나오는 군집 수이고, 하나면 공분산은 NaN이다.
   - 자유도: t와 F의 분모는 G − 1이다. statsmodels(`use_t=True`)와 Stata가 같다(statsmodels는 이때 `df_resid_inference`를 두고 `df_resid`는 그대로; 여기도 `df_resid`는 그대로다). statsmodels의 `get_prediction`은 군집에서도 `df_resid`를 쓰지만 여기의 `predict_interval`은 `conf_int`와 같은 G − 1이다. statsmodels의 k는 X의 열 수라 겹친 열이 있을 때만 다르다. statsmodels의 기본(`use_t=False`)은 정규분포다.
   - 레이블은 Python에서 0..G_tot−1의 번호로 바꾼다(정수·실수 배열은 `unique_inverse`, 문자열은 처음 나온 순서, frame `Series`는 frame의 `factorize`). 없는 레이블은 −1이고 커널이 NaN 데이터로 본다. 커널은 회귀마다 쓰인 행에 나오는 번호를 처음 나온 순서로 다시 매기므로, 결과는 번호를 매긴 방법과 상관없다.
-- **가중치 0** (G20): 0인 행은 Q에 행이 없으므로 HAC의 지연은 적합에 쓰인 행을 이어서 세고, 그 행에만 있는 군집은 G에 들지 않는다. 그래서 0인 행이 있는 WLS의 강건 공분산도 그 행을 뺀 WLS와 비트까지 같다. statsmodels(와 R의 `sandwich`)는 그 행을 점수 0인 시점·관측으로 남겨서, 지연의 짝과 G가 다르다.
+- **가중치 0** (G20): 0인 행은 Q에 행이 없으므로 HAC의 지연은 적합에 쓰인 행을 이어서 세고, 그 행에만 있는 군집은 G에 들지 않는다. 그래서 0인 행이 있는 WLS의 강건 공분산도 그 행을 뺀 WLS와 비트까지 같다. statsmodels는 그 행을 점수 0인 시점·관측으로 남겨서, 지연의 짝과 G가 다르다. R의 `sandwich`(3.1.3)도 그 행을 남기는데, n에 그 행을 세므로 HC0부터 공분산이 (n₀/n)²배(n₀는 쓰인 행 수)이고, HC1의 자유도도 그 행을 세며, HC2·HC3는 그 행이 빠진 `hatvalues`를 길이가 다른 채로 되풀이해 쓴다(경고). 그 행을 뺀 R의 적합과는 HC0–HC3·HAC·군집 모두 1e-15 안에서 같다.
 - **Wald F** (강건형 모두): 절편을 뺀 계수 b₂의 b₂ᵀV₂₂⁻¹b₂/q를 Q의 좌표에서 계산한다. 절편이 첫 열이므로 R⁻¹의 아래 행들은 [0, R₂₂⁻¹]이고, V₂₂ = c·R₂₂⁻¹S₂₂R₂₂⁻ᵀ이므로 b₂ᵀV₂₂⁻¹b₂ = zᵀS₂₂⁻¹z/c, z = R₂₂b₂다. 공분산(조건수가 κ(X)²과 고기의 조건수의 곱)의 역행렬을 만들지 않는다. κ = 10⁵인 군집 문제(ols_cond)에서 V₂₂를 Cholesky로 풀면 F의 상대오차가 2.4e-6, 이 식은 2.7e-11이다. S₂₂가 특이하면(군집 수 − 1 < q) NaN이다.
 - **정확도** (Arb 참값 `tests/regression/ref/linear.json`, 같은 double 입력): 관측별 값은 max|차| / max|참값|, 나머지는 상대오차다. Wampler2(잔차가 반올림 수준)와 Wampler1(완전 적합)은 뺐다.
 
@@ -216,6 +216,8 @@
 
   - 조건이 좋은 문제는 모두 u의 몇 배다. 오차는 대략 κu를 따른다: 지렛대는 X의 열공간 자체가 κu만큼 움직이므로(Pontius처럼 조건수가 열의 척도에서만 오면 그렇지 않다), 잔차에서 오는 값은 β의 반올림이 작은 잔차에 |x||β|·u로 들어가므로(Norris 4e-14) 그렇다. 테스트의 기준은 max(1e-13, 10κu)다.
   - statsmodels와는 HAC·군집의 bse·p·F, 지렛대, 두 스튜던트화 잔차, Cook 거리, DW, JB, BP 모두 1e-11 안에서 같다(OLS, WLS, GLS; `tests/regression/test_robust_diagnostics.py`).
+  - R(4.6.2 `lm`, sandwich 3.1.3, lmtest 0.9.40; `tests/regression/test_against_r.py`, 고정 데이터 `tests/regression/ref/regression_r.json`, `tools/gen_regression_r.py`)과는 조건이 좋은 문제 7개(절편 없음, 상수 열, 겹친 열, 가중치 0)에서 계수·표준오차·R²·F·잔차 4e-15, `hatvalues`·`rstandard`·`rstudent`·`cooks.distance` 4e-15, `vcovHC`(HC0–HC3)·`NeweyWest(lag, prewhite = FALSE, adjust = FALSE)`·`vcovCL(type = "HC1")`의 표준오차 4e-15, `coeftest`의 p값(군집은 `df = G − 1`) 1e-13, `dwtest` 5e-16, `bptest` 8e-15 안이다. R의 `AIC`는 σ를 모수로 세어 여기보다 2 크다. `bptest`의 기본 보조 회귀는 모형의 설계 그대로라 절편이 없는 모형에서는 상수가 없고(자유도 rank − 1), `varformula = ~ X`로 상수를 넣으면 여기와 같다. 가중 적합의 `bptest`는 원래 잔차로 가중 보조 회귀를 하는 다른 통계량이다. `dwtest`는 가중 적합이면 에러다("weighted regressions are not supported").
+  - 조건이 나쁘면 R 쪽이 틀린다(Arb 참값과 비교): κ = 10⁸(n = 100, 절편 없음)에서 R `lm`의 계수가 3e-9, `vcovHC`·`NeweyWest`·`vcovCL`의 표준오차가 0.01–0.18 틀리고(빵과 고기를 XᵀX 꼴로 곱해 κ²u), 여기는 계수 0, 표준오차 7e-10 안이다. 5차 다항식(κ = 2.6×10⁵, 절편 포함)에서는 R의 계수 3e-12, 강건 표준오차 4e-8–1e-7, 여기는 1e-13이다.
 - **속도** (`bench/regression/g1b/speed.md`, statsmodels 대비): (10⁵, 10)에서 HAC 1.2배(1스레드)·2.3배(10스레드), 군집(1,000개) 1.1·2.0배, 적합과 진단 1.2·2.3배, (10⁶, 50)에서 HAC 1.7·3.1배, 군집 1.8·2.9배, 적합과 진단 1.5·2.4배 빠르다. 진단의 시간은 지렛대를 위한 QR·`orgqr` 한 번과 Breusch–Pagan의 보조 회귀(적합 한 번)이고, 고전형 적합의 시간은 진단이 없을 때와 같다.
 
 ### 3.4 GLM
@@ -237,7 +239,7 @@
   - 잔차의 기준을 Xβ₀가 아니라 η₀로 둔다: η₀는 Xβ₀를 반올림한 값이라, Xβ₀를 쓰면 그 반올림이 C를 거쳐 점수에 들어가 κ²로 커진다(probit, κ = 10⁶에서 정확한 산술로도 3e-13; η₀를 쓰면 4e-16).
   - 시작값은 Fisher 해에서 만든 β₀ + R⁻¹(I − T)⁻¹(c₁ − Rβ₀)이고 개선이 고친다(최대 3번, G15의 규칙).
   - 관측 정보의 가중치가 모두 양수이면 그 가중치의 최소제곱이 뉴턴 걸음이지만, 음수인 행이 흔하고(이항 log, 포아송·감마 identity) 한 길로 두는 편이 단순해서 늘 위의 방법을 쓴다.
-- **마지막 풀이**: 마지막 반복의 가중치와 작업 반응으로 G1의 전체 풀이(반복 개선 최대 3번, 공분산)를 한 번 더 한다. 그 계수가 `params`이고(정준이 아닌 링크는 같은 QR의 뉴턴 걸음), (RᵀR)⁻¹ = (XᵀWX)⁻¹에 척도를 곱한 것이 공분산이다(기대 정보; R·statsmodels와 같다). R과 statsmodels는 마지막 반복 앞의 가중치로 공분산을 만들므로 마지막 걸음만큼 다르다(아래 표: 정준 링크에서 표준오차 1e-10–5e-9). 마지막 풀이의 계수가 유효하지 않거나 편차를 올리면 마지막 반복의 계수를 쓴다. `n_iter`는 마지막 풀이까지 센 최소제곱의 수다(R의 반복 수보다 1–2 크다: 연마와 마지막 풀이). `max_iter`는 그 수의 상한이다(G32).
+- **마지막 풀이**: 마지막 반복의 가중치와 작업 반응으로 G1의 전체 풀이(반복 개선 최대 3번, 공분산)를 한 번 더 한다. 그 계수가 `params`이고(정준이 아닌 링크는 같은 QR의 뉴턴 걸음), (RᵀR)⁻¹ = (XᵀWX)⁻¹에 척도를 곱한 것이 공분산이다(기대 정보; R·statsmodels와 같다). R과 statsmodels는 마지막 반복 앞의 가중치로 공분산을 만들므로 마지막 걸음만큼 다르다(아래 표: 정준 링크에서 표준오차 1e-10–5e-9). 마지막 풀이의 계수가 유효하지 않거나 편차를 올리면 마지막 반복의 계수를 쓴다. `n_iter`는 마지막 풀이까지 센 최소제곱의 수다(R 4.6.2의 기본 판정에서 센 반복 수보다 정준 링크는 1–2, 정준이 아닌 링크는 3–4 크다: 연마와 마지막 풀이; R의 계수가 판정의 정밀도까지만 맞는 대신이다). `max_iter`는 그 수의 상한이다(G32).
 - **중간 반복의 풀이와 반복 개선의 위치** (`bench/regression/g2/refine.py`, 결과 `refine.md`): X = U diag(s) Vᵀ(n = 200, k = 6, s는 1에서 1/κ까지 등비, Xβ의 크기 1)인 로지스틱·포아송 회귀의 계수 상대오차(노름, Arb 참값, 씨앗 3개의 최대). glm은 판정 전 반복이 정규방정식, 연마·마지막 풀이가 QR과 개선이다.
 
   | 분포족 | κ | glm | 판정 전 반복도 QR | 모든 반복을 개선 | 마지막 풀이 개선 없음 | 표준오차 |
@@ -272,7 +274,7 @@
 
   - κ ≤ 10⁸에서 3.5e-15 안으로 정준 링크와 같은 수준이고, 10¹⁰에서 4e-16–4e-14다(정준 1e-15 안). 10¹⁰의 남은 차이는 반올림한 η₀에서 구한 점수의 감도(관측 정보의 가중치 W − C로 사영한 η의 반올림)다. Fisher 걸음의 연마는 κ와 함께 나빠지고, 수렴이 느린 링크(이항 log, 감마·포아송 identity)는 κ와 상관없이 편차 판정의 정밀도(1e-8–1e-5)에 머문다.
   - 비용(`noncanonical.md`, 같은 적합을 처음부터 Fisher 걸음으로 한 것 대비): probit (10⁵, 10) 1스레드 +18%·10스레드 +30%, (10⁶, 50) +34%·+57%; 감마 log +7%·+11%, +13%·+32%. 연마 반복과 마지막 풀이마다 `orgqr` 한 번과 T의 `dgemm`(덩어리마다 스레드풀, 순서대로 합)이다(반복은 1번 줄어든다). probit은 분리 증명서의 Fisher 걸음 한 번이 더 들어 있다. 정준 링크는 그대로다(±2%).
-  - 느린 Fisher 득점법(G44): `refine.py` 꼴의 감마 log 문제(평평한 방향에서 수렴비 약 0.9)는 Fisher 걸음만으로는 편차가 계수보다 먼저 평평해져 판정을 계수가 1e-5–1e-3 틀린 채로 통과하고(21–49번), 연마만 뉴턴이면 맞는 값에 닿지만 31번이 든다(κ = 10⁶). 판정이 들면 κ = 10⁴–10¹⁰에서 9–15번에 3.8e-14 안이다(`noncanonical.md`). statsmodels는 이 문제에서 500번에 수렴하지 않고, R의 `glm.fit`도 Fisher 득점법이다(R은 이 환경에 없어 확인하지 못했다).
+  - 느린 Fisher 득점법(G44): `refine.py` 꼴의 감마 log 문제(평평한 방향에서 수렴비 약 0.9)는 Fisher 걸음만으로는 편차가 계수보다 먼저 평평해져 판정을 계수가 1e-5–1e-3 틀린 채로 통과하고(21–49번), 연마만 뉴턴이면 맞는 값에 닿지만 31번이 든다(κ = 10⁶). 판정이 들면 κ = 10⁴–10¹⁰에서 9–15번에 3.8e-14 안이다(`noncanonical.md`). statsmodels는 이 문제에서 500번에 수렴하지 않고, R의 `glm.fit`도 Fisher 득점법이다: R 4.6.2는 κ = 10⁴, 10⁶의 이 문제에서 기본 판정(epsilon 1e-8)으로 27번에 멈춰 계수가 1e-4–2e-3 다르고, epsilon 1e-15로도 83–94번에 5e-9–9e-9 다르다.
   - 표준오차는 G1처럼 R에서 계산하므로 상대오차가 κu 정도다(10⁸에서 7e-10).
 - **편차와 로그우도** (상쇄 없이): 단위 편차 d(y, μ)는
   - 정규 (y − μ)², 포아송 2μ·φ(r)(y = 0이면 2μ), 감마 2·ψ(r), 이항 2[μφ(r₁) + (1 − μ)φ(r₂)](y = 0이면 −2 log(1 − μ), y = 1이면 −2 log μ)이고, r = (y − μ)/μ, r₁ = (y − μ)/μ, r₂ = (μ − y)/(1 − μ), ψ(r) = r − log1p(r), φ(r) = (1 + r)log1p(r) − r이다.
@@ -312,13 +314,18 @@
   | 최대 | | 1.1e-16 | 4.5e-16 | 1.6e-13 | 2.2e-16 | 2.4e-16 | 9.5e-16 |
 
   - 이 17개(n = 60)는 행 수 × 열 수가 512 미만이라 판정 전 반복도 QR이다. 정규방정식의 길은 n = 200, k = 6의 Arb 문제(`test_inner_normal_equations_against_arb`; κ ≤ 10⁸에서 정준 링크 1e-15, probit·감마 log 5e-15 안)와 위의 반복 개선 표, QR 길과의 비교(`test_inner_normal_equations`)로 확인한다.
-  - statsmodels(0.15.0)와는 정준 링크에서 계수 1e-11, 정준이 아닌 링크에서 1e-6 안이다(`tests/regression/test_glm.py`). 정준이 아닌 링크의 차이는 statsmodels가 편차의 절대 변화로 멈춰 계수가 덜 수렴한 것이다(Arb와 비교한 위 표가 근거). 표준오차는 위의 공분산 가중치 차이로 1e-10–5e-9 다르다. R은 이 환경에 없어 비교하지 못했다.
+  - statsmodels(0.15.0)와는 정준 링크에서 계수 1e-11, 정준이 아닌 링크에서 1e-6 안이다(`tests/regression/test_glm.py`). 정준이 아닌 링크의 차이는 statsmodels가 편차의 절대 변화로 멈춰 계수가 덜 수렴한 것이다(Arb와 비교한 위 표가 근거). 표준오차는 위의 공분산 가중치 차이로 1e-10–5e-9 다르다.
+  - R(4.6.2 `glm`, sandwich 3.1.3, lmtest 0.9.40; `tests/regression/test_against_r.py`): 분포족·링크 12개와 시행 수, 오프셋(절편 없음 포함), 사전 가중치(0 포함), 절편 없음, quasipoisson·quasibinomial(여기의 `scale='X2'`) 21문제(n = 60). R의 `glm.fit`을 여기의 해에서 한 번 돌리면(`start = params`, `maxit = 1`) 계수가 그 자리에 머물고(1.2e-15), 표준오차·편차·Pearson χ²·척도·적합값 1.6e-15, `summary.glm`의 p값 1.8e-13, 귀무 편차 1e-15 안이다. 정준 링크의 `vcovHC`(HC0–HC3)·`NeweyWest`·`vcovCL`은 1.6e-15, `coeftest`의 p값(군집은 `df = G − 1`) 1.2e-12 안이다. R의 기본 판정(epsilon 1e-8)으로 끝까지 적합하면 편차 판정에서 멈추므로 계수가 정준 링크 1e-7 안, 정준이 아닌 링크 4e-7–2e-4 다르고, 표준오차는 마지막 반복 앞의 가중치 때문에 1e-4까지 다르다(epsilon 1e-13으로도 정준이 아닌 링크의 계수가 1e-10–1e-6 다르다).
 - **statsmodels·R과 다른 점** (확인한 것):
   - statsmodels GLM의 `cov_type='HC1'`·`'HC2'`·`'HC3'`는 모두 HC0을 낸다(보정을 하지 않는다). 여기는 G1의 OLS와 같은 뜻이다(HC2·HC3는 √W X의 지렛대; R `sandwich`와 같은 정의).
   - statsmodels의 `get_prediction`은 감소하는 역링크(감마 inverse)에서 구간의 아래·위가 뒤바뀐다. 여기는 순서대로 낸다.
   - statsmodels의 `nobs`는 행 수다(`freq_weights`의 합은 `wnobs`; `df_resid`는 같다). `var_weights`가 0인 행도 센다.
   - statsmodels의 `resid_response`는 이항 시행 수가 있으면 성공 수의 척도다. 여기는 R처럼 `y`의 척도다.
-  - R의 AIC는 정규·감마에서 척도를 모수로 하나 더 세고, R의 `logLik`은 그 척도를 편차/n으로 둔다. 여기는 statsmodels를 따랐다.
+  - R의 AIC는 정규·감마에서 척도를 모수로 하나 더 세고, R의 `logLik`은 그 척도를 편차/Σw로 둔다(여기서 `scale=deviance/nobs`로 적합하면 같은 값이다). 사전 가중치가 있으면 R의 감마 `logLik`은 Σwᵢ log f(yᵢ; μᵢ, φ)로 가중치를 밀도의 로그에 곱하고(여기와 statsmodels는 모양 wᵢ/φ), 가중치 0인 행이 있는 정규 분포족의 R AIC는 log 0 때문에 Inf다(`lm`의 `logLik`은 그 행을 빼서 유한하다). 여기는 statsmodels를 따랐다. 이항(시행 수의 log C(n, ny) 포함)·포아송(사전 가중치 포함)의 `llf`·`aic`는 R과 1e-14 안에서 같다.
+  - R `sandwich`의 빵은 기대 정보라 정준이 아닌 링크의 강건 표준오차가 여기(관측 정보)와 다르다(위 21문제에서 3–32%; R의 값은 기대 정보의 샌드위치와 1e-12 안에서 같다). 사전 가중치가 0인 행이 있으면 §3.3의 OLS와 같은 n의 차이가 있다.
+  - `lmtest::coeftest`는 glm이면 분포족과 상관없이 정규분포다(`df = Inf`가 기본). 여기는 G39대로 정규·감마와 척도를 추정하는 이항·포아송이 t(`df_resid`)다(z로 다시 계산하면 R의 p값과 1.2e-12 안에서 같다).
+  - 분리: R은 경고("fitted probabilities numerically 0 or 1 occurred", 완전 분리면 "algorithm did not converge"도)와 함께 큰 계수와 표준오차를 낸다(x = 1..10, y = [x > 5.5]의 로지스틱에서 계수 (−246, 45), 표준오차 (3.4e5, 6.1e4), 25번, `converged=FALSE`, 편차 7.9e-10; x = 5에 0과 1이 함께 있는 준완전 분리는 20번에 수렴으로 끝난다). 0만 있는 군의 포아송 log는 경고 없이 수렴으로 끝난다(계수 21.3, 표준오차 6.3e3). 여기는 셋 모두 `separation=True`이고 계수가 NaN이며, 편차는 R이 다가가는 극한(0, 5.5451774, 3.9121534)이다(G33).
+  - R은 시작값이 유효하지 않으면 에러다: 정규·log에서 y ≤ 0이 있으면 "cannot find valid starting values: please specify some", 첫 걸음이 범위를 벗어나면(포아송 identity에서 μ가 0에 가까운 자료) "no valid set of coefficients has been found: please supply starting values". 여기는 둘 다 적합하고, 그 해를 R의 시작값으로 주면 R도 같은 해에 머문다(1e-15). 경계에 해가 있는 이항 log는 R이 "algorithm stopped at boundary value"로 멈추고(편차가 1e-9 상대만큼 크다), 여기는 경계에 더 가깝다.
 - **속도** (`bench/regression/g2/speed.md`): (10⁵, 10)·(10⁶, 50)의 로지스틱·포아송에서 statsmodels보다 1스레드 1.2–3.1배, 10스레드 3.9–6.8배 빠르다(반복은 statsmodels보다 1–2번 많다: 연마와 마지막 풀이). 판정 전 반복의 정규방정식(G40)이 QR보다 시간을 1스레드 21–46%, 10스레드 45–64% 줄였다. scikit-learn은 lbfgs가 1.9–23배, newton-cholesky가 1.4–7.7배 빠르지만 표준오차가 없고 계수가 lbfgs 1e-4–1e-2, newton-cholesky 1e-7–2e-6 다르다. 작은 로지스틱 10,000개((50, 3))의 배치는 statsmodels 반복문보다 1스레드 18배, 10스레드 141배 빠르다.
 
 ### 3.5 정규화
@@ -364,7 +371,9 @@
   - scikit-learn의 `n_iter_`은 전체 스윕(epoch)이고 간격 안전 선별(gap safe screening)을 한다. 여기는 활성 집합 스윕도 세고 선별은 없다.
   - scikit-learn의 `LassoCV`는 기본으로 섞지 않은 연속 겹(`KFold`)이다. 여기는 `rng`의 무작위 겹이다(glmnet과 같은 꼴). 같은 겹을 주면 `mse_path_`의 평균, `alpha_`, 계수가 1e-9 안에서 같다.
   - scikit-learn의 liblinear는 절편에도 벌점을 준다(다른 문제). saga와 lbfgs의 기본 `tol`은 계수를 1e-5–4e-4 다르게 둔다(`bench/regression/g3/speed.md`).
-  - glmnet: λ가 여기의 alpha, glmnet의 alpha가 여기의 l1_ratio다(같은 목적함수). glmnet은 기본으로 표준화하고(여기는 G45대로 하지 않는다), 기본 겹 수 10, λ 격자의 최소 비율 1e-4(n > p) 또는 1e-2(여기는 scikit-learn의 `eps=1e-3`), `cv.glmnet`의 `predict` 기본은 `lambda.1se`(여기는 `select='min'`), 엘라스틱 넷의 `df`는 0 아닌 계수의 수다. 표준화의 sⱼ(모표준편차, 절편이 없으면 RMS)와 ridge 격자의 규칙(l1_ratio = 1e-3로 계산한 λ_max)은 glmnet의 Fortran 규칙으로 알고 쓴 것이고, R이 이 환경에 없어 glmnet과 비교하지 못했다.
+  - glmnet: λ가 여기의 alpha, glmnet의 alpha가 여기의 l1_ratio다. 이항·포아송과 lasso는 같은 목적함수다. 정규 분포족의 glmnet은 y를 모표준편차 s_y(가중; 절편이 없으면 √(Σw y²/sw))로 나눠 풀고 되돌리므로 L2 항이 λ(1 − α)/s_y다: glmnet(λ, α)의 해는 여기의 L1 계수 λα, L2 계수 λ(1 − α)/s_y인 해(alpha = λα + λ(1 − α)/s_y, l1_ratio = λα/alpha)와 같고, s_y = 1인 y에서만 같은 목적함수다(설명서의 목적함수와도 다르다; R의 `?glmnet`이 비교하려면 y를 표준화하라고 권하는 까닭).
+  - R glmnet 5.2(`thresh = 1e-20`; `tests/regression/test_against_r.py`)와는 lasso(표준화 여부, 가중치), 위 대응의 엘라스틱 넷·ridge, 이항·포아송 정규화 GLM(l1_ratio 1, 0.5, 0, 표준화 여부, 가중치)의 40개 적합에서 계수가 4e-11 안(glmnet의 수렴 판정)이고 여기의 목적함수 값이 glmnet 해의 값보다 크지 않다. glmnet의 `df`는 0 아닌 계수 수와 같고 `dev.ratio`는 `rsquared`·`deviance_ratio`와 같다. 기본 경로의 첫 λ(alpha 1과 0)는 `lasso_cv`·`ridge_cv`의 격자 첫 값과 1e-13 안에서 같다(절편 있음).
+  - glmnet은 기본으로 표준화하고(여기는 G45대로 하지 않는다), 기본 겹 수 10, λ 격자의 최소 비율 1e-4(n > p) 또는 1e-2(여기는 scikit-learn의 `eps=1e-3`), `cv.glmnet`의 `predict` 기본은 `lambda.1se`(여기는 `select='min'`), 엘라스틱 넷의 `df`는 0 아닌 계수의 수다. R(glmnet 5.2)로 확인했다(tests/regression/test_against_r.py): 절편이 있을 때의 sⱼ(모표준편차)와 ridge 격자의 규칙(l1_ratio = 1e-3로 계산한 λ_max)은 glmnet과 같다. 절편이 없으면 glmnet은 중심화한 모표준편차로, 여기는 RMS로 나눈다(사용자 결정 2026-11-18: RMS 유지). 정규 분포의 엘라스틱 넷·ridge는 glmnet이 y를 표준화하므로 s_y = 1일 때만 같다(api §4).
 - **속도** (`bench/regression/g3/speed.py`, 결과 `speed.md`, scikit-learn 대비 '배' = scikit-learn 시간/sd 시간):
 
   | (n, k) | 스레드 | ridge (Cholesky / svd) | lasso | 경로 100개 | lasso_cv 5겹 | ridge_cv GCV | 로지스틱 L1 (saga / liblinear) | 로지스틱 L2 (lbfgs / newton-cholesky) |
