@@ -1,0 +1,364 @@
+---
+title: 행렬 분포
+group: 표본과 다변량
+order: 4
+summary: Wishart, 역Wishart, 행렬 정규의 logpdf·엔트로피·표본이 안에서 어떻게 계산되는지 설명해요. 점마다 하는 double-double 촐레스키(지지집합 검사를 겸해요), 대각합과 ‖L_X⁻¹L_Ψ‖²_F, 다변량 감마 함수, 아주 큰 df에서 상쇄를 재는 검사, 2⁻⁶⁰⁰ 스케일로 넘침을 피해 −inf까지 가는 법, 크기 n log n인 항을 다시 묶어 지우는 엔트로피와 역Wishart 엔트로피의 유도, Bartlett 분해로 뽑는 표본까지 다뤄요.
+seeAlso: [multivariate, mvcdf, sampling, accuracy-performance]
+---
+import Callout from '../../../components/Callout.astro';
+import Bench from '../../../components/fig/Bench.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+세 분포는 행렬 값의 확률변수예요. [Wishart](/api/stats/wishart/)는 정규 벡터의 표본 공분산(곱의 합)이 따르는 분포이고, [역Wishart](/api/stats/inverse-wishart/)는 그 역행렬, [행렬 정규](/api/stats/matrix-normal/)는 행과 열에 따로 공분산이 있는 정규 행렬이에요.
+
+| 분포 | log 밀도 | 점마다의 일 | 엔트로피 |
+|---|---|---|---|
+| $W_p(n, V)$ | $\tfrac{n-p-1}{2}\log\lvert X\rvert - \tfrac12\mathrm{tr}(V^{-1}X) - \tfrac{np}{2}\log 2 - \tfrac n2\log\lvert V\rvert - \log\Gamma_p(\tfrac n2)$ | $X$의 촐레스키, 대각합 | $G(a_j)$로 다시 묶은 꼴 |
+| $IW_p(n, \Psi)$ | $\tfrac n2\log\lvert\Psi\rvert - \tfrac{np}{2}\log 2 - \log\Gamma_p(\tfrac n2) - \tfrac{n+p+1}{2}\log\lvert X\rvert - \tfrac12\mathrm{tr}(\Psi X^{-1})$ | $X$의 촐레스키, 삼각 풀이 $p$번 | 같은 묶음 |
+| $MN(M, U, V)$ | $-\tfrac{np}{2}\log 2\pi - \tfrac p2\log\lvert U\rvert - \tfrac n2\log\lvert V\rvert - \tfrac12\lVert A\rVert_F^2$ | 두 삼각 풀이(빠른 경로) | 닫힌 꼴 |
+
+$A = L_U^{-1}(X - M)L_V^{-\top}$예요. 클래스는 `src/stardust/stats/_matrix.py`, 커널은 `csrc/bind/stats_matrix.cpp`, 공통 선형대수는 [다변량 분포의 밀도](/internals/stats/multivariate/)와 같은 `csrc/stats/dd_linalg.hpp`예요.
+
+글 전체를 꿰는 생각은 넷이에요.
+
+1. **다변량 분포와 같은 틀이에요.** 매개변수를 배치 (B, …)로 펼치고, 척도 행렬을 배치마다 한 번 double-double로 촐레스키 분해해요(`mv_chol`). 점마다의 일은 그 위에서 해요.
+2. **입력 행렬의 분해가 지지집합 검사예요.** Wishart와 역Wishart의 $X$는 양의 정부호여야 해요. 아래 삼각을 double-double로 분해해서 피벗이 하나라도 양수가 아니면 지지집합 밖(pdf 0)이고, 성공하면 그 분해에서 $\log\lvert X\rvert$가 나와요.
+3. **크기 $n\log n$인 항은 미리 지워요.** 엔트로피는 다변량 감마와 다이감마의 큰 항이 서로 지워지는 식이라, 지워지는 부분을 식에서 먼저 없앤 $O(1)$ 조각으로 다시 써요.
+4. **넘침은 2의 거듭제곱 스케일로 피해요.** 원소가 $2^{500}$(행렬 정규는 $2^{400}$)을 넘으면 $2^{-600}$을 곱해 계산하고 로그에서 되돌려요. 그래서 원소가 아무리 커도 logpdf는 값이나 $-\infty$이고 NaN이 아니에요.
+
+## 매개변수와 입력
+
+`Wishart(df=, scale=)`와 `InverseWishart(df=, scale=)`는 `mv_chol`로 `scale`의 아래 삼각을 분해해서 $L$의 hi와 lo, $\log\lvert V\rvert$의 hi와 lo를 들고 있어요. `df`는 실수이고 $p - 1$보다 커야 해요. $p - 1$ 이하는 특이 Wishart라 밀도가 없고, 정의역 밖이라 NaN이에요. `MatrixNormal(mu=, rowcov=, colcov=)`은 두 공분산을 따로 분해해요.
+
+입력 $X$도 아래 삼각만 읽어요. 위 삼각에 무엇이 있든 값이 같아요.
+
+```python
+>>> V = sd.asarray([[2.0, 0.5], [0.5, 1.0]])
+>>> W = sd.stats.Wishart(df=5.0, scale=V)
+>>> W.logpdf(sd.asarray([[8.0, 2.0], [2.0, 6.0]]))
+-7.080490694974785
+>>> W.logpdf(sd.asarray([[8.0, 99.0], [2.0, 6.0]]))
+-7.080490694974785
+>>> W.pdf(sd.asarray([[1.0, 0.0], [2.0, 1.0]]))
+0.0
+>>> sd.stats.Wishart(df=1.0, scale=V).entropy()
+nan
+```
+
+셋째 입력의 아래 삼각은 $\begin{pmatrix}1 & 2\\ 2 & 1\end{pmatrix}$을 뜻하고 고유값에 $-1$이 있어서 지지집합 밖이에요. 마지막은 $p = 2$에서 df $= 1 = p - 1$이라 정의역 밖이에요.
+
+## Wishart의 logpdf
+
+<Fig column caption="Wishart.logpdf의 단계 (csrc/bind/stats_matrix.cpp, wishart_logpdf).">
+  <Steps
+    steps={[
+      { label: '배치마다', note: '상수 −(np/2) log 2 − (n/2) log|V| − log Γ_p(n/2)와 V⁻¹ = L⁻ᵀL⁻¹을 double-double로 한 번' },
+      { label: '점마다: NaN과 inf', note: '아래 삼각에 NaN이 있으면 NaN, inf가 있으면 pdf 0' },
+      { label: '점마다: X의 촐레스키', note: 'double-double. 실패하면 지지집합 밖(−inf). 성공하면 log|X|. 원소가 2⁵⁰⁰을 넘으면 2⁻⁶⁰⁰X를 분해' },
+      { label: '점마다: 대각합', note: 'tr(V⁻¹X)를 아래 삼각의 double-double 내적으로' },
+      { label: '점마다: 합과 검사', note: '상수 + (n−p−1)/2·log|X| − tr/2. 항이 아주 크면 상쇄를 재서 담지 못하면 NaN' },
+    ]}
+  />
+</Fig>
+
+### 배치 상수와 V⁻¹
+
+밀도에서 $X$에 의존하지 않는 부분은 배치마다 한 번 double-double로 계산해요. $V^{-1}$도 배치마다 한 번이에요. `inverse_from_cholesky`가 $L^{-1}$의 열을 전진 대입으로 하나씩 구하고, $V^{-1} = L^{-\top}L^{-1}$의 원소를 그 열들의 내적으로 만들어요(모두 double-double).
+
+### 점마다: 분해와 대각합
+
+$X$의 아래 삼각을 double-double로 촐레스키 분해해요. 피벗이 양수가 아니면 지지집합 밖이고, 성공하면 $\log\lvert X\rvert = 2\sum\log L_{X,jj}$예요. 분해가 곧 양의 정부호 검사라서 따로 고유값을 보지 않아요.
+
+대각합은 대칭성을 써서 아래 삼각만으로 계산해요.
+
+$$
+\mathrm{tr}(V^{-1}X) = \sum_i (V^{-1})_{ii}X_{ii} + 2\sum_{j \lt i}(V^{-1})_{ij}X_{ij}
+$$
+
+$\log\lvert X\rvert$의 계수 $(n - p - 1)/2$는 `two_sum`으로 정확히 둬요. 이 계수를 double로 반올림하면 상대 $2^{-54}$의 오차가 $\log\lvert X\rvert$에 곱해져 밀도에 그대로 들어가요. 디리클레의 $a_i - 1$과 같은 문제예요.
+
+```cpp
+// csrc/bind/stats_matrix.cpp, wishart_logpdf
+// n -+ (p + 1) kept exactly: its rounding (2^-54 of the coefficient)
+// times log|X| would reach the density
+const DD coef = inverse ? dd::two_sum(n, pd + 1.0) * -0.5 : dd::two_sum(n, -(pd + 1.0)) * 0.5;
+const DD lx = ldx * coef;
+const DD l = cst[b] + lx - htr;
+```
+
+### 왜 double-double인가
+
+$\log\lvert X\rvert$와 $\mathrm{tr}(V^{-1}X)$는 둘 다 행렬의 조건수만큼 입력의 반올림을 키워요. $X$를 float64로 분해하면 [다변량 정규](/internals/stats/multivariate/)의 이차 형식처럼 $\kappa\varepsilon$ 크기의 오차가 남아요. 같은 점에서 scipy 1.18.1의 `wishart.logpdf`는 $p = 2$, df $= 1.5$, $\kappa(V) = 10^8$에서 $4.9 \times 10^{-5}$ 틀려요(아래 정확도 표).
+
+### 아주 큰 df: 상쇄를 재요
+
+df가 크면 상수의 $\tfrac n2\log\lvert V\rvert$와 $\log\Gamma_p(n/2)$, 그리고 $\tfrac{n-p-1}{2}\log\lvert X\rvert$와 대각합이 각각 $np\log n$ 크기이고, 밀도가 큰 곳에서는 서로 지워져 $O(p^2\log n)$이 남아요. double-double 합은 각 항을 자기 크기의 약 $2^{-100}$까지 담아요. 그래서 $2^{-100} \cdot (\text{항 크기의 합})$이 $10^{-13}\max(1, \lvert l\rvert)$를 넘으면 값을 내지 않고 NaN을 내요. 항의 크기가 $10^{15}$ 아래인 배치는 검사가 실패할 수 없어서 건너뛰어요(비교 한 번).
+
+$p = 2$, $X = (n - 3)V$(최빈값)에서 Arb로 만든 참값과 비교하면 df $= 10^{12}$에서 $1.6 \times 10^{-16}$, $10^{15}$에서 $3.4 \times 10^{-14}$, $10^{16}$에서 $9.4 \times 10^{-14}$이고, $3 \times 10^{17}$부터 NaN이에요. 그 사이(df $\approx 10^{17}$)는 검사를 통과해 값이 나오지만 1e-13을 넘을 수 있어요(df $= 10^{17}$에서 $9.4 \times 10^{-12}$).
+
+```python
+>>> m = [[2.0 * (1e15 - 3), 0.5 * (1e15 - 3)], [0.5 * (1e15 - 3), 1e15 - 3]]
+>>> sd.stats.Wishart(df=1e15, scale=V).logpdf(sd.asarray(m))
+-56.09755105444503
+>>> m = [[2.0 * 3e17, 0.5 * 3e17], [0.5 * 3e17, 3e17]]
+>>> sd.stats.Wishart(df=3e17, scale=V).logpdf(sd.asarray(m))
+nan
+```
+
+## 역Wishart의 logpdf
+
+$X \sim IW_p(n, \Psi)$는 $X^{-1} \sim W_p(n, \Psi^{-1})$인 분포예요. 밀도의 대각합 $\mathrm{tr}(\Psi X^{-1})$에 $X^{-1}$이 들어가는데, 역행렬을 만들지 않고 두 촐레스키 인수로 바꿔요. $X = L_XL_X^\top$, $\Psi = L_\Psi L_\Psi^\top$이면
+
+$$
+\mathrm{tr}(\Psi X^{-1}) = \mathrm{tr}\bigl(L_\Psi L_\Psi^\top L_X^{-\top}L_X^{-1}\bigr) = \mathrm{tr}\bigl((L_X^{-1}L_\Psi)^\top(L_X^{-1}L_\Psi)\bigr) = \lVert L_X^{-1}L_\Psi\rVert_F^2
+$$
+
+예요. $L_X^{-1}L_\Psi$의 열 $c$는 $L_\Psi$의 열 $c$를 $L_X$로 전진 대입한 것이라, 열마다 double-double 대입 한 번이고 그 제곱합이 대각합이에요. 제곱의 합이라 상쇄가 없어요. $\log\lvert X\rvert$의 계수 $-(n + p + 1)/2$도 정확히 둬요.
+
+```python
+>>> sd.stats.InverseWishart(df=5.0, scale=V).logpdf(sd.asarray([[8.0, 2.0], [2.0, 6.0]]))
+-18.26504823657729
+```
+
+## 다변량 감마 함수
+
+Wishart의 정규화 상수에 들어가는 $\Gamma_p$는 양의 정부호 행렬 위의 적분이에요.
+
+$$
+\Gamma_p(a) = \int_{X \succ 0} e^{-\mathrm{tr}X}\,\lvert X\rvert^{a - (p+1)/2}\,dX = \pi^{p(p-1)/4}\prod_{j=1}^{p}\Gamma\Bigl(a + \frac{1 - j}{2}\Bigr)
+$$
+
+오른쪽 곱 꼴은 $X$를 촐레스키 인수로 바꾸면 대각 원소마다 감마 적분 하나, 비대각 원소마다 가우스 적분 하나로 갈라져서 나와요(Muirhead [3, §2.1]). 이 적분은 $a > (p - 1)/2$에서 수렴하고, $a = n/2$이면 그것이 정의역 df $> p - 1$이에요.
+
+`ddla::log_mvgamma`는 이 곱 꼴을 double-double로 계산해요. $a + (1 - j)/2$는 `two_sum`으로 정확히 만들고, 인수마다 double-double $\log\Gamma$를 더해요.
+
+```cpp
+// csrc/stats/dd_linalg.hpp
+inline DD log_mvgamma(std::int64_t p, double a) {
+    DD s = num::kLogPi * (0.25 * static_cast<double>(p * (p - 1)));
+    for (std::int64_t j = 1; j <= p; ++j) s = s + num::log_gamma(dd::two_sum(a, 0.5 * static_cast<double>(1 - j)));
+    return s;
+}
+```
+
+## 행렬 정규
+
+$X \sim MN(M, U, V)$는 $n \times p$ 행렬이고, 열을 쌓은 벡터가 $\mathrm{vec}(X) \sim N(\mathrm{vec}(M), V \otimes U)$예요. $U$는 행 사이의, $V$는 열 사이의 공분산이에요. 크로네커 곱의 성질 $\lvert V\otimes U\rvert = \lvert U\rvert^p\lvert V\rvert^n$과 $(V \otimes U)^{-1} = V^{-1}\otimes U^{-1}$으로 $np$차원 정규의 밀도가 $n \times n$, $p \times p$ 행렬 둘로 갈라져요.
+
+$$
+\log f = -\frac{np}{2}\log 2\pi - \frac p2\log\lvert U\rvert - \frac n2\log\lvert V\rvert - \frac12\lVert A\rVert_F^2, \qquad A = L_U^{-1}(X - M)L_V^{-\top}
+$$
+
+$\lVert A\rVert_F^2 = \mathrm{tr}\bigl(V^{-1}(X - M)^\top U^{-1}(X - M)\bigr)$가 이차 형식이에요. 정밀 경로는 $X - M$을 `two_sum`으로 정확히 빼고, 열마다 $L_U$로, 행마다 $L_V$로 double-double 전진 대입해요.
+
+```python
+>>> MN = sd.stats.MatrixNormal(mu=sd.zeros((2, 3)),
+...     rowcov=sd.asarray([[1.0, 0.3], [0.3, 2.0]]),
+...     colcov=sd.asarray([[1.0, 0.0, 0.2], [0.0, 1.0, 0.0], [0.2, 0.0, 1.0]]))
+>>> x = sd.asarray([[0.5, -1.0, 0.2], [1.0, 0.0, -0.3]])
+>>> MN.logpdf(x)
+-7.3629666855966365
+>>> mvn = sd.stats.MultivariateNormal(mu=sd.zeros(6),
+...     cov=sd.linalg.kron(sd.asarray([[1.0, 0.0, 0.2], [0.0, 1.0, 0.0], [0.2, 0.0, 1.0]]),
+...                        sd.asarray([[1.0, 0.3], [0.3, 2.0]])))
+>>> mvn.logpdf(sd.reshape(sd.matrix_transpose(x), (6,)))
+-7.3629666855966365
+```
+
+둘째 계산은 같은 확률을 $\mathrm{vec}$과 크로네커 곱으로 쓴 것이에요.
+
+### 빠른 경로: 곱 두 번의 오차를 이어서 세요
+
+다변량 정규의 빠른 경로를 두 번 이어요. $W_U = L_U^{-1}$, $W_V = L_V^{-1}$을 double-double로 구해 float64로 반올림해 두고, 먼저 $Y = (X - M)W_V^\top$의 행마다 `fast_solve`로 값과 성분별 오차 상한을 내요. 그다음 $A = W_UY$의 열마다 `fast_solve`를 부르는데, 이때 $Y$의 상한을 입력의 오차 $e_r$로 넘겨요. 상한 식의 $(\lvert\hat W\rvert e_r)_i$ 항이 첫 곱의 오차를 둘째 곱으로 옮겨요. $\lVert A\rVert_F^2$는 열마다의 제곱합에 $p$번의 덧셈($(p + 1.5)u\,Q$)을 더해 세요. 예산은 다변량 정규와 같은 40단위이고, 넘는 점만 정밀 경로로 가요. 두 곱을 거치니 최악 상한이 다변량 정규의 약 두 배라서 이 예산이 필요해요.
+
+### 엔트로피
+
+$$
+H = \frac{np}{2}(1 + \log 2\pi) + \frac p2\log\lvert U\rvert + \frac n2\log\lvert V\rvert
+$$
+
+두 로그 행렬식은 분해에서 나온 값(hi + lo)이에요.
+
+```python
+>>> MN.entropy()
+9.443464067795588
+```
+
+## 아주 큰 인자
+
+원소가 아주 크면 촐레스키의 곱 $L_{ik}L_{jk}$나 이차 형식의 제곱이 float64를 넘어 inf가 되고, inf − inf에서 NaN이 나와요. 그래서 원소가 문턱을 넘으면 정확한 스케일을 곱해 계산하고 되돌려요.
+
+- **Wishart·역Wishart**: 아래 삼각의 최대 원소가 $2^{500}$을 넘으면 $2^{-600}X$를 분해해요. $2^{1024}$이 $2^{424}$가 되어 곱과 제곱이 범위 안에 있어요. 되돌릴 때 $\log\lvert X\rvert$에 $600p\log 2$를 더하고, 대각합의 절반은 Wishart면 $2^{600}$배, 역Wishart면 $2^{-600}$배예요(`dd::ldexp`, 정확해요). 그 절반이 float64를 넘으면 밀도가 0이라 logpdf는 $-\infty$예요.
+- **행렬 정규**: $\lvert X - M\rvert$의 최대가 $2^{400}$을 넘거나 유한하지 않으면 $X$와 $M$에 각각 $2^{-600}$을 곱해 뺀 뒤 풀어요. $\lVert A\rVert^2/2$를 $4^{600}$배로 되돌리고, 넘치면 $-\infty$예요.
+- 원소에 inf가 있으면 세 분포 모두 pdf 0이에요.
+
+```python
+>>> one = sd.asarray([[1.0]])
+>>> N1 = sd.stats.MatrixNormal(mu=sd.asarray([[0.0]]), rowcov=one, colcov=one)
+>>> N1.logpdf(sd.asarray([[1.5e154]]))
+-1.1250000000000002e+308
+>>> N1.logpdf(sd.asarray([[1.9e154]]))
+-inf
+>>> W.logpdf(sd.asarray([[1.7e308, 0.0], [0.0, 1.7e308]]))
+-1.457142857142857e+308
+```
+
+첫 값의 참값(Arb)은 $-1.1250000000000001948 \times 10^{308}$이고, 셋째 값의 참값은 $-1.4571428571428570904 \times 10^{308}$이에요. 둘 다 float64로 반올림한 값 그대로예요.
+
+## 엔트로피의 묶음
+
+### Wishart
+
+교과서의 식은 이래요($a_j = n/2 + (1 - j)/2$, $\psi_p(a) = \sum_j\psi(a_j)$).
+
+$$
+H = \frac{p+1}{2}\log\lvert V\rvert + \frac{p(p+1)}{2}\log 2 + \log\Gamma_p\Bigl(\frac n2\Bigr) - \frac{n - p - 1}{2}\psi_p\Bigl(\frac n2\Bigr) + \frac{np}{2}
+$$
+
+$n$이 크면 $\log\Gamma(a_j)$, $\tfrac{n-p-1}{2}\psi(a_j)$, $np/2$가 모두 $n\log n$이나 $n$ 크기이고, 합은 $O(p^2\log n)$이에요. $n = 10^8$, $p = 2$이면 $10^9$ 크기의 항들이 33.4를 남겨요. float64로 따로 계산해 더하면 $10^9 \times 10^{-16} = 10^{-7}$이 절대오차가 돼요. scipy 1.18.1의 `wishart.entropy`가 df $= 10^8$에서 $6.5 \times 10^{-9}$ 틀리는 이유예요.
+
+그래서 [디리클레의 엔트로피](/internals/stats/multivariate/)와 같은 $O(1)$ 조각을 써요.
+
+$$
+G(a) = \log\Gamma(a) - (a - 1)\psi(a) + a - \tfrac12\log a - \tfrac12\log 2\pi
+$$
+
+$a \ge 12$에서 Stirling 급수로 $G = \tfrac12 - \tfrac1{2a} + S + (a - 1)T$이고, 큰 항은 식 안에서 이미 지워져 있어요. $\psi$의 계수를 $(a_j - 1)$과 나머지로 나누면
+
+$$
+\frac{n - p - 1}{2} = (a_j - 1) + \frac{j - p}{2}
+$$
+
+이므로 $\log\Gamma(a_j) - \tfrac{n-p-1}{2}\psi(a_j) = G(a_j) - a_j + \tfrac12\log a_j + \tfrac12\log 2\pi + \tfrac{p - j}{2}\psi(a_j)$예요. 남는 $-\sum_j a_j + np/2$는
+
+$$
+-\sum_{j=1}^p\Bigl(\frac n2 + \frac{1 - j}{2}\Bigr) + \frac{np}{2} = \sum_{j=1}^p\frac{j - 1}{2} = \frac{p(p-1)}{4}
+$$
+
+로 **정확히** 지워져요. 다변량 감마의 $\tfrac{p(p-1)}{4}\log\pi$와 합치면 최종 식이에요.
+
+$$
+H_W = \frac{p+1}{2}\log\lvert V\rvert + \frac{p(p+1)}{2}\log 2 + \frac{p(p-1)}{4}(1 + \log\pi) + \sum_{j=1}^p\Bigl[G(a_j) + \tfrac12\log a_j + \tfrac12\log 2\pi + \tfrac{p - j}{2}\psi(a_j)\Bigr]
+$$
+
+이 식에는 크기 $n$인 항이 하나도 없어요. 남은 $\psi(a_j) \approx \log a_j$는 $\log n$ 크기라 float64로 충분하고, 로그들은 double-double로 더해요. $a_j$는 `two_sum`으로 만들어요.
+
+### 역Wishart: 변수 바꾸기로
+
+$X = Y^{-1}$, $Y \sim W_p(n, \Psi^{-1})$로 놓아요. 대칭 행렬의 역변환의 야코비안은 $\lvert Y\rvert^{-(p+1)}$이고, 엔트로피는 변환의 로그 야코비안의 기댓값만큼 바뀌어요.
+
+$$
+H(X) = H(Y) - (p + 1)\,E\log\lvert Y\rvert, \qquad E\log\lvert Y\rvert = \psi_p\Bigl(\frac n2\Bigr) + p\log 2 - \log\lvert\Psi\rvert
+$$
+
+$H(Y)$에 위의 Wishart 식(척도 $\Psi^{-1}$)을 넣고 정리하면
+
+$$
+H_{IW} = \frac{p+1}{2}\log\lvert\Psi\rvert - \frac{p(p+1)}{2}\log 2 + \log\Gamma_p\Bigl(\frac n2\Bigr) - \frac{n + p + 1}{2}\psi_p\Bigl(\frac n2\Bigr) + \frac{np}{2}
+$$
+
+이고, 같은 방식으로 $\tfrac{n+p+1}{2} = (a_j - 1) + 1 + \tfrac{p + j}{2}$로 나누면 묶은 꼴이 나와요.
+
+$$
+H_{IW} = \frac{p+1}{2}\log\lvert\Psi\rvert - \frac{p(p+1)}{2}\log 2 + \frac{p(p-1)}{4}(1 + \log\pi) + \sum_{j=1}^p\Bigl[G(a_j) + \tfrac12\log a_j + \tfrac12\log 2\pi - \bigl(1 + \tfrac{p + j}{2}\bigr)\psi(a_j)\Bigr]
+$$
+
+```python
+>>> sd.stats.InverseWishart(df=5.0, scale=V).entropy()
+0.11326605064607614
+```
+
+scipy 1.18.1의 `invwishart.entropy()`는 같은 매개변수에서 1.1529868214859942를 내요. 엔트로피의 정의 $-E[\log f(X)]$를 표본으로 재면 어느 쪽이 맞는지 알 수 있어요. 이 분포에서 뽑은 표본 $2 \times 10^5$개의 $-\log f$ 평균은 0.1132(표준오차 0.006)로 우리 값과 맞고 scipy의 값과는 170 표준오차 떨어져 있어요. 아래 정확도 표에서 scipy의 역Wishart 엔트로피가 상대 $10^{-2}$–$2.9$ 틀리는 것도 같은 이유예요.
+
+## 표본: Bartlett 분해
+
+### W(n, I)를 삼각 행렬 하나로
+
+Bartlett [1]의 분해는 Wishart 행렬을 삼각 인수의 독립 원소로 나눠요. $W \sim W_p(n, I)$의 촐레스키 인수 $A$($W = AA^\top$, 아래 삼각)의 원소는 서로 독립이고
+
+$$
+A_{jj}^2 \sim \chi^2_{n - j}\ (j = 0, \dots, p - 1), \qquad A_{ij} \sim N(0, 1)\ (i \gt j)
+$$
+
+예요. 정수 $n$이라면 정규 벡터 $n$개의 외적 합으로 만들 수 있지만 그것은 $O(np^2)$이고 정수 $n$에서만 돼요. Bartlett 분해는 정규 $p(p-1)/2$개와 카이제곱 $p$개면 되고, $\chi^2_k = 2\,\Gamma(k/2)$라서 실수 $n$에도 그대로 써요. 모든 대각의 카이제곱이 존재하는 조건 $n - (p - 1) > 0$이 정의역 df $> p - 1$과 같아요.
+
+척도가 $V = LL^\top$이면 $(LA)(LA)^\top \sim W_p(n, V)$예요. 커널은 $T = LA$를 만들고 $TT^\top$의 아래 삼각을 계산해 위 삼각에도 같은 값을 써요. 그래서 결과가 정확히 대칭이에요.
+
+```python
+>>> Xs = W.sample((3,), rng=sd.random.default_rng(0))
+>>> Xs.shape
+(3, 2, 2)
+>>> bool(sd.all(Xs == sd.matrix_transpose(Xs)))
+True
+```
+
+### 역Wishart와 행렬 정규
+
+$X \sim IW_p(n, \Psi)$면 $X^{-1} \sim W_p(n, \Psi^{-1})$이에요. $W_p(n, I)$는 직교 변환에 불변이라($QWQ^\top$도 같은 분포), $\Psi^{-1}$의 제곱근은 아무것이나 써도 돼요. $\Psi^{-1} = L_\Psi^{-\top}L_\Psi^{-1}$이니 $M = L_\Psi^{-\top}$을 쓰면 $Y = (MA)(MA)^\top \sim W_p(n, \Psi^{-1})$이고
+
+$$
+X = Y^{-1} = (A^{-1}L_\Psi^\top)^\top(A^{-1}L_\Psi^\top) = (L_\Psi A^{-\top})(L_\Psi A^{-\top})^\top
+$$
+
+예요. 커널은 $A^{-1}$을 열마다 전진 대입으로 구해 전치하고, 나머지는 Wishart와 같아요. $\Psi$를 역행렬로 만들지 않아요.
+
+행렬 정규는 $M + L_UZL_V^\top$이고 $Z$는 표준 정규 $np$개예요. 세 분포 모두 행렬 하나가 난수 스트림의 원소 하나라서, 결과는 스레드 수와 무관해요([표본 뽑기](/internals/stats/sampling/)).
+
+## 정확도
+
+참값은 Arb(구간 산술)로 행렬을 입력 그대로 LU 분해해 행렬식과 풀이를 계산하고, 구간의 반지름이 $2^{-80}\max(1, \lvert\text{값}\rvert)$ 아래가 될 때까지 정밀도를 두 배씩 올려 만들었어요. 오차는 $\lvert\text{오차}\rvert/\max(1, \lvert\text{값}\rvert)$이에요. 표는 `bench/stats/t10/accuracy.md`에서 일부를 옮겼어요.
+
+| 분포 | $p$ | df | $\kappa$ | sd logpdf | scipy logpdf | sd entropy | scipy entropy |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Wishart | 2 | 1.5 | $10^8$ | 0 | $4.9 \times 10^{-5}$ | 0 | $3.1 \times 10^{-11}$ |
+| Wishart | 2 | $10^8$ | 1 | 0 | $8.2 \times 10^{-16}$ | 0 | $6.5 \times 10^{-9}$ |
+| Wishart | 12 | $10^8$ | $10^8$ | 0 | $2.0 \times 10^{-11}$ | $1.5 \times 10^{-16}$ | $2.1 \times 10^{-9}$ |
+| 역Wishart | 5 | 4.5 | $10^8$ | 0 | $6.5 \times 10^{-8}$ | 0 | $4.9 \times 10^{-2}$ |
+| 역Wishart | 12 | 11.5 | 1 | 0 | $5.0 \times 10^{-14}$ | $4.1 \times 10^{-16}$ | 2.9 |
+| 행렬 정규 | 2×3 | – | $10^8$ | 0 | $1.9 \times 10^{-10}$ | 0 | $2.3 \times 10^{-10}$ |
+| 행렬 정규 | 10×6 | – | $10^8$ | 0 | $3.2 \times 10^{-12}$ | 0 | $3.2 \times 10^{-12}$ |
+
+$p \in \lbrace 2, 5, 12\rbrace$, df 세 가지, $\kappa \in \lbrace 1, 10^4, 10^8\rbrace$의 63칸 전체에서 sd의 logpdf는 $1.6 \times 10^{-16}$ 이하, 엔트로피는 $5.3 \times 10^{-16}$ 이하예요. 같은 방식으로 $\kappa = 10^9$, $p = 30$(행렬 정규 20×15), df $= 10^8$까지 재도 $2 \times 10^{-16}$ 이하예요. 보장 영역은 $\kappa(\text{scale}), \kappa(U), \kappa(V) \le 10^9$, $p \le 100$에서 logpdf·entropy가 $10^{-14}\max(1, \lvert\text{값}\rvert)$이에요.
+
+## 속도
+
+`bench/stats/t10/speed.md`에서 옮겨요. 행렬 $10^4$개, Apple M4 Pro, scipy 1.18.1과 비교했어요.
+
+<Bench
+  rows={[
+    { label: 'Wishart p=3 logpdf', times: [81.74e-3, 0.95e-3, 0.18e-3] },
+    { label: 'InverseWishart p=3 logpdf', times: [42.88e-3, 1.47e-3, 0.26e-3] },
+    { label: 'Wishart p=10 logpdf', times: [89.76e-3, 9.70e-3, 1.28e-3] },
+    { label: 'InverseWishart p=10 logpdf', times: [48.32e-3, 25.97e-3, 3.20e-3] },
+    { label: 'MatrixNormal 3x2 logpdf', times: [0.57e-3, 0.71e-3, 0.10e-3] },
+    { label: 'MatrixNormal 10x5 logpdf', times: [3.82e-3, 3.04e-3, 0.38e-3] },
+  ]}
+  series={['scipy 1.18.1', 'stardust 1스레드', 'stardust 10스레드']}
+  caption="행렬 10⁴개의 logpdf. 배율은 scipy 대비예요."
+/>
+
+Wishart·역Wishart의 logpdf는 1스레드에서 1.9–86배예요. scipy는 행렬마다 Python 루프에서 `scipy.linalg`의 촐레스키와 `cho_solve`를 부르므로 행렬 하나에 수 µs의 고정 비용이 있고, 작은 $p$일수록 그 몫이 커요. 우리는 double-double 분해를 하지만 루프가 C++ 안에 있어요. $p = 10$의 역Wishart는 점마다 double-double 대입을 $p$번 하므로 차이가 1.9배로 줄어요. 행렬 정규의 logpdf는 0.80–1.26배예요.
+
+<Bench
+  rows={[
+    { label: 'Wishart p=3 sample', times: [8.60e-3, 0.53e-3, 0.09e-3] },
+    { label: 'Wishart p=10 sample', times: [16.86e-3, 5.38e-3, 0.63e-3] },
+    { label: 'InverseWishart p=10 sample', times: [18.46e-3, 8.34e-3, 0.97e-3] },
+    { label: 'MatrixNormal 10x5 sample', times: [6.12e-3, 3.77e-3, 0.43e-3] },
+  ]}
+  series={['scipy 1.18.1', 'stardust 1스레드', 'stardust 10스레드']}
+  caption="행렬 10⁴개의 표본."
+/>
+
+표본은 1스레드에서 1.6–16배, 10스레드에서 14–94배예요.
+
+## 참고 문헌
+
+1. M. S. Bartlett, "On the Theory of Statistical Regression", *Proceedings of the Royal Society of Edinburgh* 53, 260–283, 1933. (Bartlett 분해)
+2. W. B. Smith, R. R. Hocking, "Algorithm AS 53: Wishart Variate Generator", *Journal of the Royal Statistical Society, Series C* 21(3), 341–345, 1972. https://doi.org/10.2307/2346290
+3. R. J. Muirhead, *Aspects of Multivariate Statistical Theory*, Wiley, 1982. (§2.1 다변량 감마 함수, §3.2 Wishart 분포와 Bartlett 분해) https://doi.org/10.1002/9780470316559
+4. A. K. Gupta, D. K. Nagar, *Matrix Variate Distributions*, Chapman & Hall/CRC, 2000. (행렬 정규, 역Wishart)
+5. N. J. Higham, *Accuracy and Stability of Numerical Algorithms*, 2nd ed., SIAM, 2002. (§3.1 내적의 오차 상한, §10.1 촐레스키 분해) https://doi.org/10.1137/1.9780898718027

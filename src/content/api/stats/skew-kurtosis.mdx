@@ -1,0 +1,357 @@
+---
+title: 왜도와 첨도
+names: [skew, kurtosis]
+group: 기술통계
+order: 2
+signatures:
+  - "sd.stats.skew(x, /, *, axis=None, bias=True, nan_policy='propagate', keepdims=False)"
+  - "sd.stats.kurtosis(x, /, *, axis=None, fisher=True, bias=True, nan_policy='propagate', keepdims=False)"
+summary: 데이터 분포의 모양을 숫자 하나로 재요. skew(왜도)는 좌우가 얼마나 비대칭인지, kurtosis(첨도)는 꼬리가 얼마나 두꺼운지예요. 첨도는 기본으로 정규분포를 0으로 맞춘 초과 첨도예요.
+params:
+  - name: x
+    type: ndarray, 실수의 시퀀스, 또는 Python 실수
+    kind: positional-only
+    desc: 데이터. bool·정수는 float64로 바꿔서 계산해요.
+  - name: axis
+    type: int, int의 tuple, 또는 None
+    kind: keyword-only
+    desc: 줄여서 없앨 축. None(기본값)이면 모든 원소를 한 묶음으로 계산해요.
+  - name: fisher
+    type: bool
+    kind: "keyword-only, kurtosis에만"
+    desc: True(기본값)면 3을 뺀 초과 첨도(정규분포에서 0), False면 3을 빼지 않은 첨도(정규분포에서 3)예요.
+  - name: bias
+    type: bool
+    kind: keyword-only
+    desc: False면 표본 크기로 보정한 값을 줘요(skew는 n > 2, kurtosis는 n > 3일 때). 기본값 True는 보정하지 않은 값이에요.
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(그 줄의 결과가 NaN), 'omit'(NaN을 빼고 계산), 'raise'(ValueError) 중 하나예요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 줄인 축을 길이 1로 남겨요.
+returns:
+  type: ndarray 또는 Python float
+  desc: 왜도 또는 첨도. 언제나 float64이고, 남는 축이 없으면 Python float예요. 값이 둘 미만이거나 모두 같으면 NaN이에요.
+raises:
+  - type: TypeError
+    desc: x가 배열이나 숫자의 시퀀스가 아닐 때, 복소수일 때, axis가 int·tuple·None이 아닐 때, fisher·bias·keepdims가 True·False가 아닐 때.
+  - type: ValueError
+    desc: nan_policy 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때, axis가 범위를 벗어나거나 같은 축을 두 번 썼을 때.
+seeAlso: [describe, moment, zscore, sem]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+## 한눈에 보기
+
+평균과 분산은 데이터의 "위치"와 "폭"을 알려 줘요. 하지만 같은 평균과 분산이어도 모양은 다를 수 있어요. 한쪽으로 길게 늘어진 데이터도 있고, 대부분 가운데 몰려 있다가 가끔 아주 먼 값이 튀어나오는 데이터도 있어요. 이 모양을 숫자 하나로 요약하는 것이 **왜도**(skewness)와 **첨도**(kurtosis)예요.
+
+```python
+>>> import stardust as sd
+>>> wait = sd.asarray([1.0, 1.0, 2.0, 2.0, 3.0, 4.0, 6.0, 15.0])
+>>> sd.stats.skew(wait)
+1.7507572257967814
+>>> sd.stats.kurtosis(wait)
+1.7545338692285073
+```
+
+대기 시간(분) 여덟 개예요. 대부분 짧은데 15분짜리가 하나 있어서, 오른쪽(긴 쪽)으로 꼬리가 늘어졌어요. 왜도가 양수인 것이 그 뜻이에요. 첨도가 양수인 것은 "정규분포보다 멀리 튀는 값이 많다"는 뜻이에요.
+
+| 값 | 0이면 | 양수면 | 음수면 |
+|---|---|---|---|
+| 왜도 `skew` | 좌우 대칭 | 오른쪽(큰 값) 꼬리가 길어요 | 왼쪽(작은 값) 꼬리가 길어요 |
+| 초과 첨도 `kurtosis` | 정규분포만큼의 꼬리 | 꼬리가 두꺼워요(튀는 값이 잦아요) | 꼬리가 얇아요(값이 고르게 퍼져 있어요) |
+
+<Reference />
+
+## 왜도: 어느 쪽으로 기울었나요
+
+### 직관
+
+평균보다 큰 쪽으로 멀리 떨어진 값이 많으면 왜도가 양수예요. 소득, 집값, 대기 시간, 파일 크기처럼 "0보다 작을 수는 없고 위로는 한없이 클 수 있는" 양은 보통 오른쪽 꼬리가 길어서 왜도가 양수예요. 반대로 쉬운 시험의 점수처럼 만점 근처에 몰리고 낮은 점수가 드문드문 있으면 왜도가 음수예요.
+
+<Fig caption="평균 2, 분산 2로 같은 두 분포. 실선은 오른쪽 꼬리가 긴 감마 분포(a = 2, 왜도 √2 ≈ 1.41)이고, 점선은 좌우 대칭인 정규분포(왜도 0)예요.">
+  <Plot
+    curves={[
+      { f: (x) => (x > 0 ? x * Math.exp(-x) : 0), label: '감마 a = 2 (왜도 1.41)' },
+      { f: (x) => Math.exp(-((x - 2) * (x - 2)) / 4) / Math.sqrt(4 * Math.PI), label: '정규분포 (왜도 0)', dashed: true },
+    ]}
+    domain={[-3, 9]}
+    range={[0, 0.4]}
+    xTicks={[
+      { v: -2, label: '-2' },
+      { v: 0, label: '0' },
+      { v: 2, label: '2' },
+      { v: 4, label: '4' },
+      { v: 6, label: '6' },
+      { v: 8, label: '8' },
+    ]}
+    yTicks={[
+      { v: 0.1, label: '0.1' },
+      { v: 0.2, label: '0.2' },
+      { v: 0.3, label: '0.3' },
+    ]}
+  />
+</Fig>
+
+### 수식
+
+데이터 $x_1, \dots, x_n$의 평균을 $\bar x$, 평균에서 떨어진 거리의 $k$제곱 평균을 $m_k = \frac1n\sum_i (x_i - \bar x)^k$라고 할게요($k$차 중심 적률, [`moment`](/api/stats/moment/)). 왜도는
+
+$$
+g_1 = \frac{m_3}{m_2^{3/2}}
+$$
+
+예요. 세제곱은 부호를 남기므로, 평균보다 큰 쪽의 먼 값이 많으면 $m_3$이 양수가 돼요. $m_2^{3/2}$(표준편차의 세제곱)로 나눠서 단위가 없어져요. 그래서 데이터를 늘리거나 옮겨도 왜도는 그대로이고, 뒤집으면 부호만 바뀌어요.
+
+```python
+>>> sd.stats.skew(wait * 60.0 + 100.0)
+1.7507572257967818
+>>> sd.stats.skew(-wait)
+-1.7507572257967814
+```
+
+좌우 대칭인 데이터는 정확히 0이에요.
+
+```python
+>>> sd.stats.skew([1.0, 2.0, 3.0])
+0.0
+```
+
+## 첨도: 꼬리가 얼마나 두꺼운가요
+
+### 직관
+
+첨도는 평균에서 **아주 멀리** 떨어진 값이 얼마나 자주 나오는지를 재요. 네제곱을 쓰기 때문에 먼 값 몇 개가 결과를 크게 움직여요. 주가의 하루 수익률처럼 평소에는 잔잔하다가 가끔 크게 튀는 데이터는 첨도가 커요.
+
+이름(뾰족할 첨, 尖) 때문에 "가운데가 얼마나 뾰족한가"로 오해하기 쉬운데, 실제로 첨도를 크게 만드는 것은 꼬리예요. 아래 데이터는 가운데가 모두 10으로 평평하지만, 2와 18이 멀리 떨어져 있어서 첨도가 커요.
+
+```python
+>>> sd.stats.kurtosis([10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 18.0, 2.0])
+1.5
+```
+
+<Fig caption="평균 0, 분산 1로 같은 두 분포. 실선의 라플라스 분포는 초과 첨도가 3이라, 가운데가 좁고 꼬리가 정규분포(점선, 0)보다 두꺼워요.">
+  <Plot
+    curves={[
+      { f: (x) => Math.exp(-Math.SQRT2 * Math.abs(x)) / Math.SQRT2, label: '라플라스 (초과 첨도 3)' },
+      { f: (x) => Math.exp(-x * x / 2) / Math.sqrt(2 * Math.PI), label: '정규분포 (초과 첨도 0)', dashed: true },
+    ]}
+    domain={[-4, 4]}
+    range={[0, 0.75]}
+    xTicks={[
+      { v: -3, label: '-3' },
+      { v: -2, label: '-2' },
+      { v: -1, label: '-1' },
+      { v: 0, label: '0' },
+      { v: 1, label: '1' },
+      { v: 2, label: '2' },
+      { v: 3, label: '3' },
+    ]}
+    yTicks={[
+      { v: 0.2, label: '0.2' },
+      { v: 0.4, label: '0.4' },
+      { v: 0.6, label: '0.6' },
+    ]}
+  />
+</Fig>
+
+### 수식과 `fisher`
+
+첨도는
+
+$$
+b_2 = \frac{m_4}{m_2^{2}}
+$$
+
+예요. 정규분포에서는 이 값이 3이에요. 그래서 3을 빼서 정규분포를 0으로 맞춘 **초과 첨도** $g_2 = b_2 - 3$을 많이 써요. `kurtosis`의 기본값(`fisher=True`)이 이 초과 첨도예요. `fisher=False`를 주면 3을 빼지 않은 $b_2$가 나와요.
+
+```python
+>>> sd.stats.kurtosis(wait)
+1.7545338692285073
+>>> sd.stats.kurtosis(wait, fisher=False)
+4.754533869228507
+```
+
+$b_2$는 언제나 1 이상이라서, 초과 첨도는 −2보다 작아질 수 없어요. 값이 딱 둘로 갈린 데이터가 그 끝이에요.
+
+```python
+>>> sd.stats.kurtosis([1.0, 2.0])
+-2.0
+```
+
+<Callout type="note" title="어느 첨도인지 꼭 적어 두세요">
+"첨도 3"은 3을 뺀 값인지 아닌지에 따라 뜻이 완전히 달라요. 초과 첨도 3은 꼬리가 아주 두꺼운 분포(라플라스 분포)이고, 빼지 않은 첨도 3은 정규분포 그 자체예요. 다른 도구의 결과와 비교할 때는 어느 쪽인지 먼저 확인하세요.
+</Callout>
+
+## `bias`: 작은 표본의 보정
+
+위 수식은 손에 쥔 데이터 자체의 모양이에요. 데이터가 더 큰 집단에서 뽑은 표본이고 그 집단의 왜도·첨도를 어림하려는 것이라면, 표본이 작을 때 한쪽으로 치우쳐요. `bias=False`를 주면 표본 크기 $n$으로 보정한 값을 줘요.
+
+$$
+G_1 = \frac{\sqrt{n(n-1)}}{n-2}\, g_1, \qquad
+G_2 = \frac{(n^2 - 1)\, b_2 - 3(n-1)^2}{(n-2)(n-3)}
+$$
+
+($G_2$는 초과 첨도예요. `fisher=False`면 여기에 3을 더해요.)
+
+```python
+>>> sd.stats.skew(wait, bias=False)
+2.1835779021167934
+>>> sd.stats.kurtosis(wait, bias=False)
+5.084521125379865
+```
+
+보정은 $n$이 작을수록 크게 작용하고, $n$이 커지면 보정한 값과 안 한 값이 거의 같아져요. 왜도는 $n \le 2$, 첨도는 $n \le 3$이면 보정식의 분모가 0 이하라서, 보정하지 않은 값을 그대로 줘요.
+
+```python
+>>> sd.stats.kurtosis([1.0, 2.0, 3.0], bias=False)
+-1.5
+>>> sd.stats.kurtosis([1.0, 2.0, 3.0])
+-1.5
+```
+
+`bias`의 기본값 `True`는 "치우침이 있는 그대로 둔다", 즉 보정하지 않는다는 뜻이에요.
+
+## `axis`와 `keepdims`
+
+기본값 `axis=None`은 모든 원소를 한 묶음으로 계산해요(`sd.mean`, `sd.var`와 같아요). 행마다, 열마다 따로 계산하려면 `axis`를 줘요.
+
+```python
+>>> m = sd.asarray([[1.0, 2.0, 3.0, 10.0],
+...                 [1.0, 8.0, 9.0, 10.0]])
+>>> sd.stats.skew(m, axis=1)
+array([ 1.0182337649086284, -1.0182337649086284], dtype=float64)
+>>> sd.stats.skew(m)
+0.0
+```
+
+첫 행은 10이 홀로 멀리 있어 오른쪽으로, 둘째 행은 1이 홀로 멀리 있어 왼쪽으로 기울었어요. 둘을 한 묶음으로 보면 대칭이라 0이에요.
+
+`keepdims=True`면 줄인 축이 길이 1로 남아서, 원래 배열과 바로 계산할 수 있어요. 축 고르는 규칙은 [`sd.sum`](/api/array/sum/)의 `axis`·`keepdims`와 같아요.
+
+```python
+>>> sd.stats.skew(m, axis=1, keepdims=True)
+array([[ 1.0182337649086284],
+       [-1.0182337649086284]], dtype=float64)
+```
+
+## NaN이 있으면: `nan_policy`
+
+```python
+>>> y = sd.asarray([1.0, sd.nan, 3.0, 7.0])
+>>> sd.stats.skew(y)
+nan
+>>> sd.stats.skew(y, nan_policy='omit')
+0.3818017741606063
+>>> sd.stats.skew(y, nan_policy='raise')
+Traceback (most recent call last):
+    ...
+ValueError: skew(): the input contains NaN (nan_policy='raise')
+```
+
+- `'propagate'`(기본값): NaN이 있는 줄의 결과가 NaN이에요.
+- `'omit'`: 줄마다 NaN을 빼고 남은 값으로 계산해요. 이때 $n$도 남은 개수예요.
+- `'raise'`: NaN이 하나라도 있으면 `ValueError`예요.
+
+## 조심할 점
+
+### 값이 모두 같거나 너무 적으면 NaN이에요
+
+모든 값이 같으면 $m_2 = 0$이라 0을 0으로 나누게 돼요. 이때는 NaN이에요. 값이 하나뿐이거나 비어 있어도 NaN이에요. 에러는 나지 않아요.
+
+```python
+>>> sd.stats.skew([5.0, 5.0, 5.0])
+nan
+>>> sd.stats.kurtosis([5.0])
+nan
+>>> sd.stats.skew([])
+nan
+```
+
+값들이 반올림 오차만큼만 다를 때, 정확히는 표준편차가 평균 크기의 2⁻⁵²배 이하일 때도 "모두 같다"로 보고 NaN을 줘요.
+
+```python
+>>> sd.stats.skew([1.0, 1.0 + 2**-52, 1.0])
+nan
+```
+
+### 튀는 값 하나에 크게 흔들려요
+
+세제곱과 네제곱을 쓰기 때문에, 멀리 떨어진 값 하나가 결과를 거의 정해 버리기도 해요. 위의 대기 시간에서 15분을 6분으로 바꾸면 왜도가 4분의 1 남짓으로 줄어요.
+
+```python
+>>> sd.stats.skew([1.0, 1.0, 2.0, 2.0, 3.0, 4.0, 6.0, 6.0])
+0.4768013581656508
+```
+
+표본이 작을 때의 왜도·첨도는 참고로만 보고, 히스토그램([`sd.histogram`](/api/array/histogram/))을 함께 보는 것이 좋아요.
+
+### 평균이 아주 커도 정확해요
+
+모든 값에 1억을 더해도 모양은 그대로이니 왜도와 첨도도 같아야 해요. `skew`와 `kurtosis`는 평균을 반올림한 채로 빼지 않아서, 이런 데이터에서도 마지막 한두 자리까지 맞아요.
+
+```python
+>>> small = sd.asarray([1.0, 2.0, 4.0, 8.0, 3.0])
+>>> sd.stats.skew(small), sd.stats.skew(small + 1e8)
+(0.8978957037987336, 0.8978957037987333)
+>>> sd.stats.kurtosis(small), sd.stats.kurtosis(small + 1e8)
+(-0.49474573090636165, -0.49474573090636076)
+```
+
+어떻게 계산하는지는 [기술통계의 구현](/internals/stats/descriptive/)을 보세요.
+
+### 옵션은 이름을 붙여서
+
+```python
+>>> sd.stats.skew(m, 1)
+Traceback (most recent call last):
+    ...
+TypeError: skew() takes 1 positional argument but 2 were given
+>>> sd.stats.kurtosis(m, fisher=0)
+Traceback (most recent call last):
+    ...
+TypeError: kurtosis(): 'fisher' must be True or False, not int
+```
+
+## 분포 객체의 `skewness()`, `kurtosis()`와 다른 점
+
+`sd.stats.Normal`, `sd.stats.Gamma` 같은 분포 객체에도 `X.skewness()`와 `X.kurtosis()` 메서드가 있어요. 이름이 비슷하지만 하는 일이 달라요.
+
+| | `sd.stats.skew(x)`, `sd.stats.kurtosis(x)` | `X.skewness()`, `X.kurtosis()` |
+|---|---|---|
+| 무엇의 값 | 손에 쥔 **데이터** | 수식으로 정해진 **분포** |
+| 입력 | 데이터 배열 | 없음(매개변수로 정해져요) |
+| 결과 | 표본에서 어림한 값(뽑을 때마다 달라요) | 정확한 이론값 |
+| 첨도 | 기본은 초과 첨도, `fisher=False`로 바꿀 수 있어요 | 언제나 초과 첨도 |
+
+```python
+>>> X = sd.stats.Exponential()
+>>> X.skewness(), X.kurtosis()
+(2.0, 6.0)
+>>> data = X.sample(100000, rng=sd.random.default_rng(1))
+>>> sd.stats.skew(data), sd.stats.kurtosis(data)
+(1.9665415394737278, 5.682278857702798)
+```
+
+지수분포에서 10만 개를 뽑아도 표본의 왜도·첨도는 이론값과 조금 달라요. 특히 첨도는 꼬리의 드문 값에 많이 기대서 표본이 커도 천천히 가까워져요. 두 쪽 모두 기본은 초과 첨도라서, 정규분포의 표본이면 `kurtosis`가 0 근처로 나와요.
+
+## 비슷한 함수와의 차이
+
+| 쓸 것 | `skew`·`kurtosis`와 다른 점 |
+|---|---|
+| [`describe`](/api/stats/describe/) | 왜도·첨도(초과)를 개수·평균·분산 등과 함께 한 번에 줘요. `keepdims`와 `fisher`는 없어요. |
+| [`moment`](/api/stats/moment/) | 나누지 않은 $m_3$, $m_4$ 그 자체예요. 단위가 남아요. |
+| [`sd.var`, `sd.std`](/api/array/var/) | 2차 적률(퍼진 정도)이에요. |
+| [`zscore`](/api/stats/zscore/) | 값마다 평균에서 표준편차 몇 개만큼 떨어졌는지를 줘요. 요약값이 아니라 원래 모양의 배열이에요. |
+
+## scipy를 아는 분께
+
+- `axis`의 기본값이 `None`(전체)이에요. scipy는 `axis=0`이에요.
+- `bias=True`, `fisher=True` 기본값과 보정식은 scipy와 같아요. 상수 데이터에서 NaN인 것도 같아요.
+- 평균이 퍼짐보다 아주 큰 데이터에서 더 정확해요. 위 `small + 1e8`에서 scipy는 왜도 `0.8978957111981068`, 첨도 `-0.49474572204787437`로 여덟째 자리부터 틀려요.
+- 결과는 numpy 스칼라가 아니라 Python `float`예요. `x`는 위치로만, 옵션은 이름으로만 받아요.

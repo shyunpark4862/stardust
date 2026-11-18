@@ -1,0 +1,582 @@
+---
+title: 원소별 엔진과 빠른 경로
+group: 구조
+order: 2
+summary: 분포 구조체 하나에서 원소별 함수 20개를 만드는 템플릿 DistOp, 매개변수의 정의역을 거르는 자리, special과 함께 쓰는 n항 디스패처, 1024원소씩 계산하는 chunk 커널과 그 안의 빠른 경로·정밀 경로를 설명해요. 원소마다 오차 상한을 2⁻⁵³ 단위로 세는 규칙과 vForce 함수의 잰 오차, 위치에 무관한 함수만 쓰는 이유, 스칼라와 배열 매개변수가 같은 비트를 내게 하는 방법, 배열 double-double, 정수점 메모, 잰 비용으로 나누는 병렬 분할, 반복 상한까지 다뤄요.
+seeAlso: [overview, continuous, extreme-noncentral, discrete, accuracy-performance]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+import Tree from '../../../components/fig/Tree.astro';
+import Bench from '../../../components/fig/Bench.astro';
+
+## 한눈에 보기
+
+분포의 메서드는 대부분 원소별 함수예요. `Gamma(a, scale).cdf(x)`는 세 피연산자 `a`, `scale`, `x`를 브로드캐스트하고 원소마다 $P(X \le x)$를 계산해요. 그래서 통계 영역은 [sd.special의 원소별 엔진](/internals/special/engine/)을 그대로 써요. 브로드캐스팅, `out=`, dtype 변환, 스레드 분할, Python 숫자만 있을 때의 빠른 호출은 그 글에 있는 그대로이고, 이 글은 통계 영역에서 **다른 점**을 다뤄요.
+
+| 더한 것 | 왜 | 어디 |
+|---|---|---|
+| 분포 구조체에서 Op를 만드는 템플릿 | 분포 31개 × 메서드 20개 = 620개 함수를 손으로 쓰지 않아요 | `stats/engine.hpp`의 `DistOp<D, M>` |
+| 정의역 거르기 | 정의역 밖의 매개변수와 NaN 입력을 한 곳에서 NaN으로 | `DistOp::f`, `chunk_loop_impl` |
+| chunk 커널과 빠른 경로 | 원소마다 스칼라 libm과 double-double을 부르면 scipy의 벡터화된 루프보다 느려요 | `stats/chunk.hpp`, `stats/chunk_dd.hpp`, 분포마다 `*_chunk` |
+| 원소마다의 오차 상한 | 빠른 값이 계약을 지키는지 원소마다 판단하고, 아니면 정밀 정의로 | `kFastBudget`, `ck::fallback`, `ckd::retry` |
+| 정수점 메모 | 이산 분포의 자료는 같은 $k$가 되풀이돼요 | `stats/discrete.hpp`의 `KMemo` |
+| 잰 비용표 | 원소당 비용이 1 ns부터 수 µs까지 달라요 | `stats/cost_table.hpp` |
+| 반복 상한 | 어떤 인자에서도 정해진 시간 안에 끝나야 해요 | `stats/discrete.hpp`, `dist/noncentral.hpp` 등 |
+
+메서드 하나가 어느 루프로 가는지는 분포 구조체의 모양이 정해요.
+
+<Fig column caption="DistOp 하나가 어느 루프로 가는지. 바인딩(bind/nary_bind.hpp의 table_of)이 컴파일할 때 정해요.">
+  <Tree
+    root={{
+      label: 'nary_bind::table_of<DistOp<D, M>>()',
+      children: [
+        { label: 'D에 M의 chunk 커널이 있음 (예: Normal::cdf_chunk)', note: '→ chunk_loop<D, M>: 매개변수와 x를 1024원소 버퍼에 모아 커널 한 번, 그다음 정의역 밖과 NaN을 채워요 (닫힌 꼴 12개의 입력 메서드 87개, 감마 계열 6개의 pdf·logpdf, 이산 분포의 입력 메서드 대부분)', tone: 'a' },
+        { label: '없음 (예: Gamma::cdf)', note: '→ nary_loop<DistOp<D, M>, double>: 원소마다 DistOp::f가 정의역을 보고 D의 원소 함수를 불러요 (모멘트와 매개변수만의 메서드 전부, 감마 계열의 누적분포와 역함수, 비중심 셋, 이산 분포의 일부 메서드)' },
+      ],
+    }}
+  />
+</Fig>
+
+## 분포 구조체와 `DistOp`
+
+### 구조체 하나에 메서드 스무 개
+
+분포는 정적 함수만 있는 구조체예요. 이름, 매개변수 이름(에러 메시지에 써요), 정의역 `valid`, 그리고 메서드마다의 원소 함수가 있어요. 입력을 받는 원소 함수는 `cdf(x, params...)`처럼 입력이 앞이고, 매개변수만의 함수는 `mean(params...)`예요.
+
+메서드는 이름표(tag) 구조체예요. 입력을 받는 메서드 열두 개는 매크로 하나로 만들어요.
+
+```cpp
+// stats/engine.hpp (발췌)
+#define SD_STATS_INPUT_METHOD(Tag, fname, argname)                                \
+    struct Tag {                                                                  \
+        static constexpr char name[] = #fname;                                    \
+        static constexpr bool input = true;                                       \
+        static constexpr const char* arg = argname;                               \
+        template <class D, class... P>                                            \
+        static double call(double x, P... p) { return D::fname(x, p...); }        \
+        template <class D, class C>                                               \
+        static constexpr bool chunked = requires(const C& c, double* o) { D::fname##_chunk(c, o); }; \
+        ...                                                                       \
+    };
+
+SD_STATS_INPUT_METHOD(Cdf, cdf, "x")
+SD_STATS_INPUT_METHOD(Pmf, pmf, "k")      // 이산 분포의 입력 이름은 k
+SD_STATS_INPUT_METHOD(Icdf, icdf, "p")
+SD_STATS_INPUT_METHOD(Ilogcdf, ilogcdf, "logp")
+...
+```
+
+`chunked`는 C++20의 `requires` 식이에요. 분포 `D`에 `cdf_chunk`라는 함수가 있으면 참이에요. 이것이 위 그림의 갈림길이에요.
+
+기본값이 있는 메서드가 둘 있어요. `standard_deviation`은 분포가 따로 두지 않으면 `sqrt(variance)`이고(제곱근은 상대오차를 절반으로 줄여요), `median`은 닫힌 꼴이 없으면 `icdf(0.5)`예요. 둘 다 `if constexpr (requires { D::median(p...); })`로 컴파일할 때 골라요.
+
+### `DistOp<D, M>`
+
+Op 하나는 [special의 Op 구조체](/internals/special/engine/)와 같은 필드를 가져요. 다른 점은 모든 필드를 분포와 메서드에서 **계산해 낸다**는 것이에요.
+
+```cpp
+// stats/engine.hpp (줄인 발췌)
+template <class D, class M, std::size_t... I>
+struct DistOp<D, M, std::index_sequence<I...>> : Real {
+    template <std::size_t> using P = double;
+    static constexpr auto name_buf = join_name(D::name, M::name);       // "gamma" + "_" + "cdf"
+    static constexpr const char* name = name_buf.data();
+    static constexpr int nin = static_cast<int>(M::input) + static_cast<int>(sizeof...(I));
+    static constexpr int nout = 1;
+    static constexpr std::array<const char*, nin> args = ...;          // {"a", "scale", "x"}
+    static constexpr double cost_ns = cost_of<D, M>();                  // 아래 "비용표" 절
+    static constexpr const LoopTable* table = ...;                      // chunk 커널이 있으면 그 표
+
+    static double f(P<I>... p, double x) requires M::input {
+        if (!D::valid(p...) || std::isnan(x)) return kNaN;
+        if constexpr (kNonNegative<M>) return M::template call<D>(x, p...) + 0.0;
+        else return M::template call<D>(x, p...);
+    }
+    static double f(P<I>... p) requires(!M::input) {
+        if (!D::valid(p...)) return kNaN;
+        return M::template call<D>(p...);
+    }
+};
+```
+
+- **이름은 컴파일할 때 붙여요.** `join_name`이 `"gamma"`와 `"cdf"`를 `constexpr` 배열 하나로 이어요. 실행 중에 문자열을 만들지 않아요.
+- **인자 수는 매개변수 수에서 나와요.** `std::index_sequence<I...>`는 매개변수마다 하나씩인 정수 묶음이고, `P<I>...`가 그 수만큼 `double` 인자를 펼쳐요. 매개변수가 둘인 `Gamma`의 `cdf`는 `f(double a, double scale, double x)`가 돼요.
+- **바인딩은 한 줄이에요.** `def_continuous<stats::Gamma>(m)`이 메서드 이름표 20개로 `nary_bind::def<DistOp<Gamma, M>>`을 펼쳐요. 이산 분포는 `pdf`·`logpdf` 자리에 `pmf`·`logpmf`가 들어간 `def_discrete`예요.
+
+## 정의역 거르기
+
+### 원소 함수 앞의 한 줄
+
+`DistOp::f`의 첫 줄이 정의역의 전부예요. `D::valid(p...)`가 거짓이거나 입력이 NaN이면 분포의 원소 함수를 부르지 않고 NaN을 돌려줘요. 그래서 분포의 원소 함수는 **유효한 매개변수와 NaN이 아닌 입력만 받는다**고 가정하고 쓰여요. 매개변수가 NaN이면 `sigma > 0.0` 같은 비교가 거짓이라 `valid`도 거짓이에요. 이산 분포처럼 정수여야 하는 매개변수도 `valid`에서 봐요(`Binomial::valid`는 `n >= 0.0 && disc::is_int(n) && p >= 0.0 && p <= 1.0`).
+
+### chunk 루프에서는 뒤에서
+
+chunk 커널이 있는 메서드는 순서가 반대예요. 커널을 먼저 묶음 전체에 돌리고, 그 뒤 한 패스로 정의역 밖과 NaN인 자리를 덮어써요. 그래서 커널은 그런 원소에서 **맞는 값을 낼 필요는 없고 안전하기만** 하면 돼요(무한 루프나 범위 밖 메모리 접근이 없으면 돼요). 매개변수가 모두 브로드캐스트된 스칼라이면 `valid`를 한 번만 불러요.
+
+```cpp
+// chunk_loop_impl (stats/engine.hpp, 줄인 발췌)
+for (std::int64_t off = 0; off < n; off += kChunk) {
+    const int m = static_cast<int>(std::min<std::int64_t>(kChunk, n - off));
+    Chunk<NP> c{m, gather(args[NP] + off * s[NP], s[NP], m, xb),          // x를 연속 버퍼로
+                {gather(args[I] + off * s[I], s[I], m, pb[I])...},           // 매개변수도
+                {(s[I] == 0)...}};                                           // stride 0이면 same
+    M::template run_chunk<D, Chunk<NP>>(c, ob);                              // 커널 한 번
+    constexpr double zero = kNonNegative<M> ? 0.0 : -0.0;                    // v + -0.0은 v 그대로
+    if ((c.same[I] && ...)) {
+        if (!D::valid(c.p[I][0]...)) for (int i = 0; i < m; ++i) ob[i] = kNaN;
+        else for (int i = 0; i < m; ++i) ob[i] = c.x[i] != c.x[i] ? kNaN : ob[i] + zero;
+    } else {
+        for (int i = 0; i < m; ++i)
+            ob[i] = (!D::valid(c.p[I][i]...) || c.x[i] != c.x[i]) ? kNaN : ob[i] + zero;
+    }
+    // 연속이면 memcpy, 아니면 흩기
+}
+```
+
+`Chunk<NP>`는 커널이 받는 묶음이에요. 원소 수 `n`(1024 이하), 연속 배열 `x`, 매개변수마다의 연속 배열 `p[k]`, 그리고 그 매개변수가 묶음 안에서 모두 같은지(`same[k]`)를 담아요. stride 0인 피연산자는 `gather`가 버퍼를 같은 값으로 채우므로 커널은 언제나 연속 배열을 받고, `same`은 매개변수에서만 나오는 상수를 한 번만 계산할 기회로만 써요.
+
+### −0.0을 +0.0으로
+
+확률과 밀도는 음수가 아니므로 −0.0도 아니어야 해요. 그런데 식이 음수 인자와의 곱에서 언더플로하면 −0.0으로 반올림되는 곳이 있어요(`Weibull.pdf(1e100)`, `Gumbel.cdf(-50)`, `Rayleigh.ccdf(1e100)`). 엔진은 `pdf`, `pmf`, `cdf`, `ccdf`의 결과에 `+ 0.0`을 더해요. IEEE 754에서 $-0 + (+0) = +0$이고 다른 모든 값 $v$에는 $v + 0 = v$라서, 이 덧셈은 −0.0만 바꿔요. 같은 패스에서 다른 메서드는 `+ (-0.0)`을 더하는데, 이것은 −0.0까지 포함해 모든 값을 그대로 둬요. 그래서 분기 없이 한 루프로 써요. 로그 메서드가 부호를 남기는 이유는 1로 반올림되는 확률의 로그 −0.0이 아래에서 다가가는 극한이라서예요.
+
+```python
+>>> import math
+>>> v = sd.stats.Weibull(c=2.0).pdf(1e100)
+>>> v, math.copysign(1.0, v)
+(0.0, 1.0)
+```
+
+## n항 디스패처를 함께 쓰기
+
+통계 영역은 special의 바인딩 템플릿(`bind/nary_bind.hpp`)을 그대로 써요. 루프 표를 고르는 함수에 갈래 하나만 더했어요.
+
+```cpp
+// bind/nary_bind.hpp (발췌)
+template <typename Op>
+constexpr const LoopTable& table_of() {
+    if constexpr (requires { &Op::chunk; }) return special::chunked_table<Op>;          // special의 NEON 커널
+    else if constexpr (requires { Op::table; }) return Op::table != nullptr ? *Op::table : nary_table<Op>;
+    else return nary_table<Op>;                                                          // 원소마다 f
+}
+```
+
+special의 청크 커널은 입력이 하나인 함수(`erf`, `ndtri` 등)만 있고 Op에 `chunk(x, out, n)`이 있어요. 통계의 chunk 커널은 매개변수가 여럿이라 시그니처가 달라서 Op에 루프 표 포인터 `table`을 두고, 커널이 없는 메서드는 그 포인터가 `nullptr`라 원소마다 `f`를 부르는 `nary_table`로 가요.
+
+에러 메시지의 앞머리도 같은 장치가 붙여요. 그래서 커널이 내는 메시지는 `gamma_cdf(): 'x' must be ...`이고, Python 층이 앞머리를 메서드 이름으로 바꿔 `cdf(): 'x' must be ...`로 다시 내요([통계 영역의 구조](/internals/stats/overview/)).
+
+## chunk 커널
+
+### 왜 필요한가
+
+scipy의 원소별 루프는 컴파일러가 벡터화한 C 코드예요. stardust의 분포 함수는 원소마다 스칼라 libm `exp`·`log`를 부르고, 꼬리 정확도를 위해 표준화 변수와 지수를 double-double로 들고 다녀요. 정확하지만 원소당 비용이 커서, 같은 일을 하는 scipy보다 1스레드에서 느린 메서드가 많았어요. chunk 커널은 그 비용을 줄이는 장치이고, 조건은 하나예요. **정확도 계약을 그대로 지키면서** 빨라져야 해요.
+
+### 모양
+
+분포가 메서드에 `static void cdf_chunk(const Chunk<NP>& c, double* out)`을 두면 엔진이 배열을 1024원소씩 모아 이 함수를 불러요. 1024는 vForce 호출에 쓰는 스택 버퍼의 크기(`vforce_detail::kChunk`, 원소 1024개 = 8KB)예요. 커널은 대개 세 단계예요.
+
+1. **배열 단위의 계산**: 묶음 전체에 대해 `exp`, `log`, `pow`의 인자를 버퍼에 만들고, Apple Accelerate의 vForce(`vvexp`, `vvlog`, `vvpow` …)를 한 번에 불러요.
+2. **원소마다 오차 상한**: 원소마다 그 값의 상대오차 상한을 $2^{-53}$ 단위로 세어 `fast[i]`를 정해요.
+3. **정밀 정의로 넘기기**: `fast[i]`가 거짓인 원소만 분포의 스칼라 정의(double-double을 쓰는 원래 정의)로 다시 계산해요.
+
+```cpp
+// stats/engine.hpp (발췌)
+inline constexpr int kChunkSize = static_cast<int>(vforce_detail::kChunk);  // 1024
+inline constexpr double kUlp = 0x1p-53;            // 단위: 반올림 한 번
+inline constexpr double kFastBudget = 16.0;        // kUlp 단위: 1.8e-15
+
+// stats/chunk.hpp (발췌)
+template <class F>
+inline void fallback(int n, const bool* fast, double* out, F&& precise) {
+    for (int i = 0; i < n; ++i)
+        if (!fast[i]) out[i] = precise(i);
+}
+```
+
+계약 $10^{-14}$은 이 단위로 약 90이에요. 빠른 경로는 그 6분의 1도 안 되는 16단위($1.8 \times 10^{-15}$) 안에서만 값을 받아들여요. 그래서 계약을 지키는 근거는 두 가지뿐이에요. **정밀 정의**(스칼라 경로에서 이미 참값 파일로 검증된 것)와 **상한 계산**(빠른 값이 16단위 안이라는 것)이에요.
+
+### 정규분포의 `pdf`: 세 단계
+
+정규분포의 밀도 $f(x) = e^{-z^2/2} / (\sigma\sqrt{2\pi})$, $z = (x - \mu)/\sigma$로 보면 이래요.
+
+<Fig column caption="Normal::pdf_chunk의 단계. 각 원소는 자기를 받아 주는 첫 단계의 값을 가져요.">
+  <Steps
+    steps={[
+      { label: '단계 0: plain double', where: 'pdf_kernel(grade 0)', note: 'z = (x − μ)/σ, z², −z²/2를 double로 만들고 vForce exp 한 번. 상한 2.5 z² + 4.5 + 3.5 ≤ 16, 곧 |z| ≤ 2인 원소만 받아요.' },
+      { label: '단계 1: double-double 지수', where: 'ckd::retry → pdf_kernel(grade 1)', note: '남은 원소만 모아 지수 −(z²/2 + log σ√(2π))를 스칼라 정의와 같은 double-double 산술로 만들고, vForce exp(hi)·(1 + lo). 상한 kVfExp + 1 = 3.5, z와 무관해요. 결과가 2⁻¹⁰⁰⁰ 아래면 받지 않아요.' },
+      { label: '정밀 정의', where: 'ck::fallback → Normal::pdf', note: '그래도 남은 원소(서브노멀 결과, |z| > 10¹⁰, 무한대)는 libm exp를 쓰는 원래 스칼라 정의로 계산해요.' },
+    ]}
+  />
+</Fig>
+
+```cpp
+// Normal (stats/dist/normal.hpp, 줄인 발췌)
+static void pdf_kernel(const Chunk<2>& c, double* out, bool* fast, int grade) {
+    double eh[kChunkSize], el[kChunkSize];
+    if (grade == 0) {
+        for (int i = 0; i < c.n; ++i) {
+            const double z = (c.x[i] - c.p[0][i]) / c.p[1][i];
+            el[i] = z * z;
+            eh[i] = -0.5 * el[i];
+        }
+        ck::exp(out, eh, c.n);                                       // vvexp 한 번
+        for (int i = 0; i < c.n; ++i) {
+            const double k = num::kInvSqrt2Pi / c.p[1][i];
+            out[i] *= k;
+            fast[i] = 2.5 * el[i] + ck::kVfExp + 3.5 <= kFastBudget   // NaN이면 거짓
+                      && k >= 0x1p-1000 && k <= 0x1p1000;
+        }
+        return;
+    }
+    exponent_chunk(c, eh, el);                                       // double-double 지수
+    ckd::exp_dd(out, eh, el, c.n);
+    for (int i = 0; i < c.n; ++i) fast[i] = out[i] >= 0x1p-1000;
+}
+static void pdf_chunk(const Chunk<2>& c, double* out) {
+    bool fast[kChunkSize];
+    pdf_kernel(c, out, fast, 0);
+    ckd::retry(c, out, fast, [&](const Chunk<2>& s, double* o, bool* f) { pdf_kernel(s, o, f, 1); });
+    ck::fallback(c.n, fast, out, [&](int i) { return pdf(c.x[i], c.p[0][i], c.p[1][i]); });
+}
+```
+
+단계 0의 상한이 어디서 나오는지는 다음 절에서 셈해요. 표준정규에서 $\lvert z \rvert \le 2$는 질량의 95%라서, 정규분포에서 뽑은 자료는 대부분 단계 0에서 끝나요. 단계 1은 단계 0의 오차가 $z^2$에 비례해 커지는 꼬리를 맡아요. 지수의 오차가 $2^{-100}$ 수준이라 $z$가 아무리 커도 상한이 3.5단위로 일정해요.
+
+`ckd::retry`는 받아들여지지 않은 원소만 연속된 작은 묶음으로 모아 다음 단계의 커널을 부르고, 그 단계가 받아들인 값을 제자리에 돌려놔요. 원소가 어느 단계의 값을 받는지는 **그 원소의 값만으로** 정해져요. 이웃 원소가 무엇이든, 묶음이 어디서 잘렸든 같아요.
+
+### 한 원소도 chunk예요
+
+chunk 커널이 있는 메서드는 **모든 호출이 커널을 지나요.** Python 숫자 하나로 부르면 디스패처가 원소 하나짜리 루프(`n = 1`)를 부르고, 그것도 `chunk_loop`예요. 그래서 맞춰야 할 별도의 스칼라 경로가 없고, 커널의 각 원소 결과가 위치에 의존하지 않는 한 `f(x)[i] == f(x[i])`가 저절로 성립해요.
+
+```python
+>>> X = sd.stats.Normal(mu=1.5, sigma=2.0)
+>>> x = sd.linspace(-60.0, 60.0, 9)
+>>> a = X.pdf(x)
+>>> all(X.pdf(float(v)) == a[i] for i, v in enumerate(x.tolist()))
+True
+```
+
+이 배열에는 단계 0에서 끝나는 원소($z = -0.75$)와 단계 1로 넘어가는 원소($\lvert z \rvert$가 6에서 31)가 섞여 있어요. 감마 계열은 한 걸음 더 가서, 스칼라 정의 `Gamma::pdf` 자체가 원소 하나짜리 커널 호출이에요(`density_one`). 역함수의 Newton 단계처럼 다른 코드가 밀도를 부를 때도 같은 비트를 받게 하려는 것이에요.
+
+## 오차를 세는 규칙
+
+### 단위와 기본 규칙
+
+상한은 모두 $u = 2^{-53}$ 단위의 **상대오차**로 세요. 기본 규칙은 이래요.
+
+| 연산 | 상한 |
+|---|---|
+| 올바르게 반올림하는 연산 하나(`+ − × ÷`, `sqrt`, `fma`) | 1단위. 결과는 참값에서 $\lvert \delta \rvert \le u$ 상대오차예요 |
+| libm 함수 하나(`exp`, `log`, …) | 2단위(1 ULP) |
+| vForce 함수 하나 | 잰 값을 올림한 상수(아래 표) |
+| 곱과 몫 | 인수들의 상대오차를 더해요 |
+| 같은 부호의 합 | 항들의 상대오차 중 큰 것 + 1 |
+| `exp(e)` | $e$의 **절대**오차가 결과의 상대오차가 돼요 |
+| `log(v)`, `pow(v, c)` | $v$의 상대오차 $\varepsilon$이 절대오차 $\varepsilon$, 상대오차 $\lvert c \rvert \varepsilon$이 돼요 |
+
+정규분포 단계 0을 이 규칙으로 세면 이래요.
+
+1. $z = (x - \mu)/\sigma$: 뺄셈 하나와 나눗셈 하나라 2단위예요.
+2. $z^2$: $z$의 2단위가 두 번(곱은 상대오차를 더해요), 곱셈의 반올림 1단위로 5단위예요.
+3. $-z^2/2$: 2로 나누기는 정확해요. 상대 5단위는 **절대** $5u \cdot z^2/2 = 2.5 z^2 u$예요.
+4. `exp`: 지수의 절대오차 $2.5 z^2 u$가 결과의 상대오차가 되고, vForce의 `exp` 자체가 2.5단위예요.
+5. $1/(\sigma\sqrt{2\pi})$와의 곱: 상수와 나눗셈과 곱셈으로 3.5단위예요.
+
+합은 $2.5 z^2 + 2.5 + 3.5$단위이고, 16 이하이려면 $z^2 \le 4$예요. 같은 셈이 베이불의 꼬리에도 나와요. $\text{ccdf} = e^{-t}$, $t = (x/s)^c$에서 $t$의 상대오차 $\tau$는 지수의 절대오차 $t\tau$가 되므로, 상한은 $t\tau + \text{kVfExp} + 2$예요. `pow`로 만든 $t$는 $\tau = 4.5$라 $t \lesssim 2.5$까지만 받고, 그 위는 $t$를 double-double로 만드는 단계($\tau = 1/2$)로 넘겨요.
+
+### vForce 함수의 잰 오차
+
+vForce의 오차는 Apple이 문서로 약속하지 않아요. 그래서 함수마다 double-double 참값과 비교해 잰 최대를 올림해서 상수로 써요. 같은 점에서 libm은 `exp`, `log`, `pow` 모두 1.00단위로 재여서, 참값 쪽이 믿을 만하다는 것도 같은 측정에서 확인돼요(`bench/stats/opt/a/vforce_error.cpp`).
+
+| 함수 | 잰 최대 | 쓰는 상한 | 잰 범위 |
+|---|---:|---:|---|
+| `vvexp` | 2.06 | 2.5 (`ck::kVfExp`) | $[-700, 700]$ 등 네 분포, $2^{22}$점씩 |
+| `vvlog` | 3.78 | 4.0 (`ck::kVfLog`) | $e^{\pm 700}$, 1 둘레 등 |
+| `vvpow` | 2.08 | 2.5 (`ckd::kPow`) | 결과가 정규수인 곳: 1에 가까운 밑과 $10^6$까지의 지수, $e^{\pm 600}$의 밑 |
+| `vvtanh` | 5.27 | 6.5 (`ckd::kTanh`) | $[2^{-60}, 20]$, $2.5 \times 10^8$점 |
+| `vvatanh` | 3.77 | 4.5 (`ckd::kAtanh`) | $\lvert x \rvert \le 1/3$ |
+| `vvatan` | libm과 1 ULP 안 | 4 (`ckd::kAtan`) | $\lvert x \rvert \in [10^{-300}, 10^{300}]$ |
+
+`pow`는 `exp(c·log v)`로 만드는 것($\text{kVfExp} + \text{kVfLog}\lvert c \log v \rvert$)보다 상한이 훨씬 작아요. 로그의 아래 비트를 안에서 들고 가기 때문이에요. 그래서 베이불·GEV·파레토의 $t = (x/s)^c$는 `pow`로 계산해요.
+
+### 감마 계열의 밀도: 로그 둘의 상한
+
+감마, 카이제곱, 역감마, 베타, t, F의 로그 밀도는 모두 한 꼴로 쓸 수 있어요.
+
+$$
+\ell = k_1 \log x_1 + k_2 \log x_2 - \text{lin} + c
+$$
+
+감마는 $k_1 = a - 1$, $x_1 = x/s$, $\text{lin} = x/s$, $c = -\log\Gamma(a) - \log s$이고 둘째 로그가 없어요. 베타는 $(a-1)\log x + (b-1)\log(1-x)$예요. 커널(`dens::kernel`, `dist/gamma.hpp`)은 로그만 빼고 모든 것을 정확한 연산으로 만들어요. $k$, $x$, $\text{lin}$은 `two_sum`, `two_prod`, 나머지를 FMA로 구한 나눗셈으로 double-double이고, 곱 $k \log x$는 `two_prod`, 합은 `two_sum`이고, 낮은 부분은 double 하나에 모아요. 남는 오차는 로그의 오차뿐이라, $\ell$의 **절대**오차 상한은
+
+$$
+T = e \cdot (\lvert k_1 \log x_1 \rvert + \lvert k_2 \log x_2 \rvert) + 1 \quad (\text{단위 } u)
+$$
+
+이에요. $e$는 로그 하나의 상대오차예요. 로그는 두 층으로 써요.
+
+1. **vForce의 `log`** ($e = 4$): $T + \text{kVfExp} + 2 \le 16$이면 받아요. $\lvert k \log x \rvert$의 합이 2.6 정도까지, 곧 작은 모양의 분포에서 몸통 대부분이에요. 로그 하나에 1 ns 남짓이에요.
+2. **표 기반 double-double 로그** `dens::log` ($e = 2^{-10}$, 상대 $2^{-63}$): 항이 $10^4$ 크기가 될 때까지 상한 안이에요. 로그 하나에 약 3 ns로, special의 `dd::log`(약 8 ns)보다 빨라요.
+
+그 밖(아주 큰 모양의 최빈값 근처, 먼 꼬리, 지지집합의 끝, 무한대)은 Stirling 꼴로 정규화한 조각을 쓰는 스칼라 정의가 맡아요. 같은 점 60만 개에서 커널과 double-double 정의를 견주면, 감마 `pdf`는 24%의 원소에서 비트가 달랐고 차이는 최대 $9.1 \times 10^{-16}$, t의 `pdf`는 18.5%에서 최대 $8.7 \times 10^{-16}$이었어요(`bench/stats/opt/b/results.md`). 차이가 $10^{-15}$을 넘은 원소는 없었어요. 빠른 값과 정밀 정의의 값이 둘 다 참값 가까이 있고, 서로 마지막 한두 비트만 다르다는 뜻이에요.
+
+<Callout type="warn" title="엄밀한 상한이 아닌 곳">
+  모든 빠른 경로가 위처럼 셈한 상한을 갖지는 않아요. 베타·F의 누적분포와 역함수는 모양이 6 이하인 곳에서 special이 부르는 Boost.Math의 불완전 베타를 쓰고, 이 부분은 상한 대신 Arb로 잰 정확도에 기대요. 비중심 분포의 위꼬리 합도 안에서 부르는 불완전 함수의 잰 오차를 물려받아요. 반대로 상한을 더 넉넉히 둔 곳도 있어요. 다변량 정규·t와 행렬 정규의 `logpdf`는 점마다 Higham의 $\gamma_n$ 상한을 세고, 받아들이는 기준이 40단위($4.4 \times 10^{-15}$, `ddla::kQuadBudget`)예요([다변량 분포의 밀도](/internals/stats/multivariate/)).
+</Callout>
+
+### 역함수는 계약 단위로
+
+역함수의 계약은 $\lvert \Delta x/x \rvert \le 10^{-14} \max(1, \kappa)$예요. 결과가 0 근처로 상쇄하는 점에서는 $\kappa$가 크고, 빠른 경로는 이 $\max(1, \kappa)$ 단위의 계약을 지켜요. 정규분포의 `icdf`는 $\mu + \sigma z$가 상쇄하고 $z_0 = \Phi^{-1}(q) \in [-1, 0]$이면 Newton 한 단계를 선형 꼴 $z = z_0 + (q - t)/\varphi(z_0)$, $t = \Phi(z_0)$로 chunk 안에서 밟아요. $q - t$는 두 값이 몇 ULP 안이라 정확해요. 남는 오차는 $t$의 상대오차(이 구간에서 최대 7.5단위)에 $q\sigma/\varphi$를 곱한 것이고, 조건수 $\kappa = p\sigma/(\varphi \lvert x \rvert)$로 나누면 계약 단위로 그 7.5 + 2단위 안이에요. `Normal(mu=1.5, sigma=2.0).icdf(0.2267)`은 상대오차 $3.3 \times 10^{-13}$, $\kappa \approx 3120$이라 계약 단위로 $1.1 \times 10^{-16}$이에요. 라플라스, 로지스틱, Gumbel, GEV의 빠른 역함수도 같은 단위로 셈해요.
+
+## vForce 함수 고르기: 위치에 무관해야 해요
+
+chunk 커널이 쓰는 vForce 함수는 **원소의 결과가 배열 안의 위치, 배열 길이, 정렬에 의존하지 않는 것**뿐이에요. 배열 영역에서 이 성질을 함수마다 시험했고([원소별 커널](/internals/array/elementwise/)의 vForce 절), 통계 영역은 그 목록 안의 `exp`, `log`, `pow`, `tanh`, `atanh`, `atan`만 써요. 이 성질이 없으면 같은 값이 묶음의 어디에 놓이느냐, 스레드가 배열을 어떻게 잘랐느냐에 따라 비트가 달라져서 `f(x)[i] == f(x[i])`도 스레드 수와의 무관함도 깨져요. `expm1`, `log1p`, `cos`, `tan`은 그 시험을 통과하지 못했어요.
+
+빠진 둘은 통과한 함수로 다시 써요.
+
+```cpp
+// stats/chunk_dd.hpp (발췌)
+// 1 - e^-t = 2T / (1 + T), T = tanh(t/2): 상한 kTanh + 2 (libm expm1은 섞인 인자에서 원소당 5 ns, 이 꼴은 1.5 ns)
+inline constexpr double kOneMinusExp = kTanh + 2.0;
+inline void one_minus_exp(double* out, const double* t, int n) {
+    for (int i = 0; i < n; ++i) out[i] = 0.5 * t[i];
+    tanh(out, out, n);
+    for (int i = 0; i < n; ++i) out[i] = 2.0 * out[i] / (1.0 + out[i]);
+}
+// log(1 + x) = 2 atanh(x / (2 + x)), -1/2 <= x <= 1: 상한 2.2 + kAtanh
+inline constexpr double kLog1p = 2.2 + kAtanh;
+inline void log1p(double* out, const double* x, int n) {
+    for (int i = 0; i < n; ++i) out[i] = x[i] / (2.0 + x[i]);
+    atanh(out, out, n);
+    for (int i = 0; i < n; ++i) out[i] *= 2.0;
+}
+```
+
+두 항등식은 $\tanh(t/2) = (1 - e^{-t})/(1 + e^{-t})$와 $\operatorname{atanh} s = \tfrac12 \log\frac{1+s}{1-s}$에서 나와요. $T$의 오차는 $1/(1+T) \le 1$배로만 전해지고, $s = x/(2+x)$는 $\lvert s \rvert \le 1/3$이라 `atanh`의 잰 범위 안이에요. 상한을 셀 수 없는 libm `expm1`·`log1p` 루프(`ck::expm1`, `ck::log1p`)는 상한이 필요 없는 자리에만 남아 있어요.
+
+## 스칼라와 배열 매개변수가 같은 비트를 내게
+
+### 상수는 같은 함수로
+
+$\log\sigma$, $\log\Gamma(a)$처럼 매개변수에서만 나오는 상수는 매개변수가 스칼라이면 한 번만, 배열이면 원소마다 계산해요. 둘이 **같은 함수**여야 해요. 예를 들어 스칼라일 때 libm `log`, 배열일 때 vForce `log`로 계산하면, `Normal(mu=0.5, sigma=1.5).pdf(x)`와 `Normal(mu=sd.full(n, 0.5), sigma=1.5).pdf(x)`가 같은 매개변수에서 다른 비트를 내요. `ckd::constant`는 같은 람다 `f(i)`를 한 번 부를지 원소마다 부를지만 정해요.
+
+```cpp
+// stats/chunk_dd.hpp (발췌)
+template <std::size_t NP, class F>
+inline void constant(const Chunk<NP>& c, double* kh, double* kl, F&& f) {
+    bool same = true;
+    for (bool s : c.same) same = same && s;
+    if (same) {
+        const auto v = f(0);
+        for (int i = 0; i < c.n; ++i) kh[i] = v.hi, kl[i] = v.lo;
+    } else {
+        for (int i = 0; i < c.n; ++i) { const auto v = f(i); kh[i] = v.hi, kl[i] = v.lo; }
+    }
+}
+```
+
+정규분포의 커널은 이것을 `[&](int i) { return num::log_dd(c.p[1][i]) + num::kLogSqrt2Pi; }`로 부르고, 스칼라 정의도 같은 `num::log_dd(sigma) + num::kLogSqrt2Pi`를 써요.
+
+### 스레드마다의 마지막 값
+
+스칼라 정의에도 같은 생각의 기억 장치가 있어요. `num::Memo`는 스레드마다 마지막 매개변수와 그 상수를 하나 들고 있어서, 스칼라 매개변수로 원소마다 부르는 흔한 경우에 같은 $\log\Gamma$와 앞 인자를 다시 계산하지 않아요. 이것이 없으면 t의 밀도는 원소당 300 ns 가까이 들고, 그 대부분이 매개변수 쪽 계산이에요. 기억한 값은 같은 함수가 낸 값이므로 기억이 있든 없든 비트는 같아요. 감마 계열 커널의 `dens::Const`도 같은 구조예요.
+
+```python
+>>> x = sd.linspace(-8.0, 8.0, 7)
+>>> a = sd.stats.Normal(mu=0.5, sigma=1.5).pdf(x)
+>>> b = sd.stats.Normal(mu=sd.full((7,), 0.5), sigma=1.5).pdf(x)
+>>> bool(sd.all(a == b))
+True
+```
+
+테스트(`tests/stats/test_distributions.py`)는 닫힌 꼴 분포와 감마·베타 계열마다, 스칼라 매개변수와 그 값을 다른 값과 번갈아 섞은 배열 매개변수, strided 입력, 원소 하나씩의 호출, 1·3·10스레드의 결과를 비트로 비교해요. 입력에는 몸통, 두 꼬리, 특수값을 섞어서 모든 단계와 정밀 정의로의 넘김이 함께 시험돼요.
+
+## 배열 double-double (`chunk_dd.hpp`)
+
+스칼라 정의가 double-double로 드는 값(표준화 변수, 비, 로그)을 묶음 전체에 대해 **분기 없는 루프**로 만드는 부품이에요. 원소마다 독립이고, 다룰 수 없는 원소(무한대, 넘침, 서브노멀 등)는 `hi = NaN`으로 표시해요. NaN에서 나온 상한은 NaN이고 `bound <= kFastBudget`가 거짓이라, 그 원소는 표시만으로 정밀 정의로 가요.
+
+### 표준화 변수와 비
+
+```cpp
+// ckd::standardize (stats/chunk_dd.hpp, 발췌): num::standardize와 비트까지 같은 산술
+const double a = x[i], b = -mu[i], s = sigma[i];
+const double d = a + b;                                  // two_sum: d + dl = x - mu (정확)
+const double bb = d - a;
+const double dl = (a - (d - bb)) + (b - bb);
+const double q = d / s;
+const double r = std::fma(-q, s, d) + dl;                // 나머지 d - q s는 FMA로 정확
+const double rl = r / s;
+const double h = q + rl;
+const bool ok = std::isfinite(q) && (std::fabs(d) >= 0x1p-960 ? std::fabs(q) >= 0x1p-960 : d == 0.0);
+zh[i] = ok ? h : kNaN;
+zl[i] = ok ? rl - (h - q) : 0.0;
+```
+
+$x - \mu$를 TwoSum으로 정확히 $d + d_l$로 나누고, 몫 $q = d/\sigma$의 나머지 $d - q\sigma$를 FMA로 정확히 구해 $d_l$과 함께 다시 $\sigma$로 나눠요. 쌍 $(z_h, z_l)$의 상대오차는 약 $2^{-104}$예요. 스칼라의 `num::standardize`와 연산이 하나하나 같아서, 빠른 경로의 지수가 스칼라 정의의 지수와 **같은 비트**예요. 그래서 빠른 경로가 바꾸는 것은 libm의 `exp`·`log`를 vForce로 바꾼 부분뿐이고, 상한도 그 함수의 상수만큼이에요. `ckd::ratio`는 같은 방법의 $x/s$예요. TwoSum과 FMA로 곱의 오차를 구하는 방법은 [공통 수치 기법](/internals/special/techniques/)에 있어요.
+
+### 표 기반 로그 `log_dd`
+
+double-double $x = x_h + x_l$의 로그를 double-double로 내요. 축약은 special의 `dd::log`와 같은 표(`kLogTable`)를 쓰는 표 기반 로그예요. 짜임은 Tang의 표 기반 로그와 같아요.
+
+$$
+x_h = 2^k m, \quad m \in [\tfrac34, \tfrac32), \qquad c = \tfrac{j}{128} \approx m, \qquad r = \frac{m - c}{c}, \qquad \log x = k \log 2 + \log c + \log(1 + r)
+$$
+
+- $m - c$는 Sterbenz 보조정리로 정확해요. $r$은 표에 저장한 $1/c$를 곱하고 FMA로 한 번 고쳐 $r_h + r_l$로 만들고, $x_l$은 $2^{-k}$를 곱해 여기에 넣어요.
+- $\lvert m - c \rvert \le 1/256$, $c \ge 3/4$라 $\lvert r \rvert \le 2^{-7.58}$이에요. $\log(1+r) = r - r^2/2 + r^3(\tfrac13 - \tfrac r4 + \cdots + \tfrac{r^6}{9})$에서 $r^2$는 FMA로 반올림 오차까지 들고, 3차 이후는 double이에요. 3차 꼬리는 $r$의 $2^{-16}$ 아래라 그 몇 ULP는 결과의 $2^{-68}$이고, $r^{10}/10$ 아래를 자른 오차는 $2^{-79}$ 아래예요.
+- $k\log 2$, $\log c$(표, double-double), $r$, $-r^2/2$를 TwoSum으로 더하고 낮은 부분은 double 하나에 모아요.
+
+보장하는 상대오차는 $2^{-59}$(`kLq` = $2^{-6}$단위)이고, special의 `dd::log`($2^{-77}$)와 600만 점에서 견준 최대는 $2^{-68}$이었어요(`bench/stats/opt/a/log_dd.cpp`). 원소당 약 3.5 ns로, $r^2$와 $r^3$까지 double-double로 들고 매 합을 정규화하는 `dd::log`(약 7 ns)의 절반이에요. NEON 레인 둘로 계산하는 `log_dd_two`는 `log_dd_one`과 **같은 연산을 같은 순서로** 적어서 같은 비트를 내요. NEON의 덧셈·곱셈·FMA는 레인마다 IEEE 754 연산 그대로이기 때문이에요([special의 레인과 스칼라](/internals/special/engine/)).
+
+### 그 밖의 부품
+
+| 부품 | 계산 | 상한 ($u$ 단위) |
+|---|---|---|
+| `exp_dd(eh, el)` | $e^{e_h}(1 + e_l)$, $e^{e_h}$는 vForce | kVfExp + 1 = 3.5 |
+| `pow_dd(yh, yl, e)` | $y_h^e \cdot (1 + w + w^2/2)$, $w = e\,y_l/y_h$, $\lvert e \rvert \le 2^{30}$이라 $\lvert w \rvert \le 2^{-23}$ | kPow + 2 = 4.5 |
+| `one_minus_exp(t)` | $2T/(1+T)$, $T = \tanh(t/2)$ | kTanh + 2 = 8.5 |
+| `log1p(x)` | $2 \operatorname{atanh}(x/(2+x))$ | 2.2 + kAtanh = 6.7 |
+| `retry(c, out, fast, kernel)` | 받아들여지지 않은 원소만 모아 다음 단계 커널로 | |
+
+`pow_dd`의 $w^2/2$는 $2^{-47}$까지 가므로(64단위) 빼면 안 되고, 3차 항은 $2^{-71}$ 아래라 버려요.
+
+## 정수점 메모 (`KMemo`)
+
+이산 분포의 자료는 같은 값이 되풀이돼요. `Binomial(n=40, p=0.3)`에서 뽑은 원소 $10^5$개에는 서로 다른 $k$가 수십 개뿐이에요. 그래서 이산 분포의 값 메서드(`pmf`, `logpmf`, `cdf`, …)는 커널 앞에 **스레드마다의 직접 사상 표**를 둬요.
+
+```cpp
+// stats/discrete.hpp (발췌)
+struct KMemo {
+    static constexpr int kSlots = 1024;
+    double par[3];              // 매개변수 (비트로 비교)
+    double key[kSlots];         // k (NaN이면 빈 칸)
+    double val[kSlots];         // 그 k에서의 값
+    void bind(const double* p) {                       // 매개변수가 바뀌면 비워요
+        if (std::memcmp(par, p, sizeof par) == 0) return;
+        std::memcpy(par, p, sizeof par);
+        clear();
+    }
+    static int slot(double k) {                        // k의 아래 10비트
+        return std::fabs(k) < 0x1p62 ? static_cast<int>(static_cast<std::uint64_t>(static_cast<std::int64_t>(k)) & (kSlots - 1)) : 0;
+    }
+    ...
+};
+template <class Tag>
+KMemo& memo() { thread_local KMemo m; return m; }       // (분포, 메서드)마다, 스레드마다 하나
+```
+
+- **찾는 순서**: 매개변수가 모두 스칼라이고 원소가 8개 이상이면, 32원소씩 표를 보고 빗나간 원소만 작은 묶음으로 모아 커널(정밀 정의나 빠른 경로)을 불러요. 커널이 낸 값은 표에 넣어요. 누적분포는 `floor(k)`만 읽으므로 그것을 열쇠로 써요.
+- **포기하는 규칙**: 128원소를 본 뒤 빗나감이 75%를 넘으면 그 묶음의 나머지는 표 없이 커널로 바로 보내요. $n = 10^9$인 이항처럼 거의 모든 $k$가 다른 자료에서 표를 찾는 비용만 남지 않게 하려는 것이에요.
+- **비트는 같아요**: 표에 들어가는 값은 그 메서드의 하나뿐인 정의가 그 $k$와 그 매개변수에서 낸 값이에요. 그래서 표에서 찾은 값과 새로 계산한 값은 같은 비트이고, 어느 스레드의 표가 어떤 상태든 결과는 같아요.
+- **메모리**: 표 하나는 $1024 \times 16$바이트 = 16KB이고, 쓰인 (분포, 메서드)마다 스레드당 하나예요. 열쇠 `Tag`는 매크로가 메서드마다 만드는 지역 구조체라 두 메서드가 표를 나눠 쓰지 않아요.
+
+```python
+>>> B = sd.stats.Binomial(n=40, p=0.3)
+>>> k = sd.asarray([float(i % 41) for i in range(1000)])
+>>> v = B.pmf(k)
+>>> v[12] == B.pmf(12.0) == v[53]
+True
+```
+
+이 효과 때문에 이산 분포의 속도표는 두 묶음으로 재요. 지지집합이 작은 묶음(이항 $n = 40$, 포아송 $\mu = 4.5$ 등, 원소 $10^5$개)은 표가 거의 모든 원소에 답해서 `Binomial.pmf`가 1스레드 원소당 1.8 ns예요. 넓은 묶음(이항 $n = 10^9$ 등, 원소 $2 \times 10^4$개)은 한 번 계산하는 비용을 보여서 같은 메서드가 15.3 ns예요(`bench/stats/t5/speed.md`). 분위수 탐색에도 같은 생각의 메모(`InvMemo`)가 있어서, 탐색이 같은 $k$의 누적분포를 다시 계산하지 않아요([이산 분포](/internals/stats/discrete/)).
+
+## 비용표와 병렬 분할
+
+### 가중치
+
+원소당 비용으로 병렬 기준을 정하는 장치는 [special과 같아요](/internals/special/engine/). 비용 `cost_ns`를 덧셈 한 번의 비용 0.19 ns로 나눈 가중치 $w$(1 이상 256 이하)를 반복자에 넘기면, 원소 $2^{15}/w$개부터 스레드풀에 나누고 작업 하나는 원소 $\lfloor 2^{12}/w \rfloor$개예요.
+
+통계 영역에서 다른 것은 비용을 **어디서 가져오느냐**예요.
+
+```cpp
+// stats/engine.hpp (발췌)
+template <class D, class M>
+constexpr double cost_of() {
+    if (const double ns = cost_table::find(D::name, M::name); ns > 0.0) return ns;   // 잰 값
+    if constexpr (requires { D::template cost<M>(); }) return D::template cost<M>(); // 분포의 어림
+    else return 20.0;                                                                 // 기본값
+}
+```
+
+`cost_table.hpp`는 공식 속도표(`bench/stats/t4`, `t5`, `t6`의 `speed.md`)의 1스레드 열에서 `tools/gen_stats_cost.py`가 만든 파일이에요. 한 (분포, 메서드)에 줄이 여럿이면(이산 분포의 좁은·넓은 묶음) 기하평균을 쓰고, 0.5 ns 아래는 0.5로 올려요. 248줄이고, 표에 없는 메서드(모멘트 같은 매개변수만의 메서드, 역함수의 log 꼴)는 분포가 둔 어림이나 20 ns를 써요. `find`는 `constexpr` 함수라 비용은 컴파일할 때 정해져요.
+
+| 메서드 | 비용 | 가중치 $w$ | 병렬이 되는 원소 수 | 작업 하나의 원소 |
+|---|---:|---:|---:|---:|
+| `Normal.pdf` | 3.4 ns | 18 | 1821 | 227 |
+| `Binomial.pmf` | 4.35 ns | 23 | 1425 | 178 |
+| `Normal.cdf` | 8.2 ns | 43 | 763 | 95 |
+| `Gamma.cdf` | 43.3 ns | 228 | 144 | 17 |
+| `Gamma.icdf` | 212 ns | 256 (상한) | 128 | 16 |
+| (표에 없을 때의 기본값) | 20 ns | 105 | 313 | 39 |
+
+### 비용이 틀리면
+
+비용이 두 배쯤 틀려도 결과는 바뀌지 않아요. 바뀌는 것은 병렬을 시작하는 크기와 작업 하나의 크기뿐이에요. 하지만 chunk 커널처럼 원소당 몇 ns인 메서드에서는 몇 배 틀린 비용이 속도를 크게 해쳐요. `Normal.pdf`(잰 값 3.4 ns)에 기본값 20 ns를 쓰면 작업 하나가 39원소, 계산으로 0.13 µs 남짓으로 잘려요. 작업마다 드는 나눠 주기 비용([스레드풀과 결정성](/internals/core/threads/))에 비해 일이 너무 잘아서, 10스레드가 1스레드보다 느려져요. 그래서 실제로 잰 값을 써요.
+
+### 1스레드와 10스레드
+
+<Bench
+  rows={[
+    { label: 'Normal.pdf', times: [0.82e-3, 0.37e-3, 0.06e-3] },
+    { label: 'Normal.icdf', times: [1.05e-3, 0.79e-3, 0.21e-3] },
+    { label: 'Weibull.cdf', times: [1.32e-3, 0.74e-3, 0.11e-3] },
+    { label: 'Gamma.pdf', times: [1.45e-3, 0.91e-3, 0.13e-3] },
+    { label: 'Beta.pdf', times: [4.30e-3, 0.95e-3, 0.14e-3] },
+    { label: 'Gamma.cdf', times: [6.69e-3, 4.29e-3, 0.59e-3] },
+    { label: 'Binomial.pmf (n = 40)', times: [4.76e-3, 0.18e-3, 0.06e-3] },
+  ]}
+  series={['scipy 1.18.1', 'stardust 1스레드', 'stardust 10스레드']}
+  caption="원소 10⁵개(분포의 분위수에 고르게 퍼진 입력), Apple M4 Pro, 다섯 번 잰 것 중 최솟값. scipy는 고전형(scipy.stats.norm.pdf 등). Gamma.cdf만 chunk 커널이 없는 메서드이고, Binomial.pmf는 정수점 메모가 거의 모든 원소에 답하는 경우예요(bench/stats/t4, t5의 speed.md)."
+/>
+
+## 반복 상한
+
+"모든 호출은 정해진 시간 안에 끝난다"는 원칙([통계 영역의 구조](/internals/stats/overview/))은 코드에서 상수 몇 개와 그 상수를 지키는 루프의 모양이에요. 이산 분포의 상한은 한 곳에 모여 있어요.
+
+```cpp
+// stats/discrete.hpp (발췌)
+inline constexpr double kMaxTailTerms = 0x1p20;        // 꼬리 합 하나의 항 수 (보장 영역의 지지집합은 3001점 이하)
+inline constexpr int kMaxEntropyTerms = 1 << 25;       // 엔트로피 합 (영역 안 최대 1.9e7항)
+inline constexpr double kMaxEntropyVariance = 0x1p42;  // 이보다 큰 분산이면 시작하지 않아요
+inline constexpr int kMaxMomentTerms = 1 << 12;        // 중심 모멘트의 합
+inline constexpr int kMaxSearchSteps = 1100;           // 분위수 탐색의 배증, 그리고 이분
+```
+
+- **상한의 근거를 수로 적어요.** 분위수 탐색은 시작점에서 1, 2, 4, … 칸씩 질주한 뒤 이분해요. float64는 $2^{1024}$ 아래에서 끝나므로 배증 1025번이면 어떤 분위수에도 닿고, 이분은 이웃한 두 float64가 될 때까지 많아야 $1024 + 53$번이에요. 그래서 1100이에요.
+- **합은 상한을 넘을 것 같으면 시작하지 않거나, 넘으면 NaN이에요.** 잘린 합은 아무 표시 없는 틀린 값이기 때문이에요. 분산이 $2^{42}$를 넘는 엔트로피 합은 처음부터 NaN이에요. 분산이 $2^{42}$이면 표준편차가 $2^{21}$이라, 16표준편차만 덮어도 이미 $2^{25}$항이기 때문이에요.
+- **탐색의 술어는 NaN을 보지 않아요.** 합이 상한에 걸려 누적분포를 모르면 탐색을 감싼 함수가 계산 없이 답을 정해서, 탐색 자체는 산술만으로 끝나요.
+- **카운터는 정수예요.** 비중심 분포의 급수는 가장 큰 항 $j^*$에서 양쪽으로 걸어요. 카운터를 double로 두고 `j - i >= jmin`처럼 쓰면 $j^* \approx 10^{50}$($x = 10^{100}$일 때)에서 `j - i == j`가 되어 끝나지 않아요. 그래서 걸음 수는 `int`로 세고, $j^*$가 $2^{52}$를 넘으면($j + 1$이 정확하지 않으면) 아예 더하지 않아요.
+
+비중심 분포(`dist/noncentral.hpp`, special의 `ops/noncentral.hpp`)에는 급수 $2^{18}$항(`kMaxTerms`), 밀도 급수 한쪽 $2^{16}$항(`kSeriesTerms`), 구간 넓히기 256회, Brent 반복 200회가 있고, 엔트로피의 적분은 스레드마다 센 일의 양(`work_done`)으로 $2^{25}$단위에서 멈춰요. 감마 계열의 깊은 꼬리 역함수는 100번 안에 수렴하지 않으면 NaN이에요. 상한 전체와 보장 영역 안에서 잰 최대는 [통계 영역의 구조](/internals/stats/overview/)의 표에 있어요.
+
+## 비트 결정성 정리
+
+| 층 | 성질 | 왜 성립하나 |
+|---|---|---|
+| 정의역 | 정의역 밖·NaN은 어느 경로든 NaN | `DistOp::f`와 `chunk_loop_impl`이 같은 `D::valid`로 걸러요 |
+| chunk 커널 | `f(x)[i] == f(x[i])` | 모든 호출이 커널을 지나고(원소 하나도 `n = 1`), 단계 선택과 상한이 원소의 값만으로 정해지고, vForce 함수는 위치에 무관한 것만 써요 |
+| 매개변수 상수 | 스칼라와 배열 매개변수가 같은 비트 | 한 번이든 원소마다든 같은 함수로 계산해요(`ckd::constant`, `num::Memo`, `dens::Const`) |
+| 메모 | 표가 있든 없든 같은 비트 | 표의 값은 그 메서드의 하나뿐인 정의가 낸 값이에요 |
+| 스레드 | 1·3·10스레드가 같음 | 원소마다 독립이고, 스레드마다의 상태(메모, 마지막 상수)는 값을 바꾸지 않아요 |
+
+```python
+>>> X = sd.stats.Gamma(a=2.5, scale=1.5)
+>>> x = sd.linspace(0.0, 40.0, 200001)
+>>> before = sd.get_num_threads()
+>>> sd.set_num_threads(1)
+>>> one = X.logpdf(x)
+>>> sd.set_num_threads(before)
+>>> bool(sd.all(one == X.logpdf(x)))
+True
+```
+
+결정적이라는 것은 같은 빌드와 같은 기계에서의 약속이에요. 빠른 경로의 값은 정밀 정의의 값과 마지막 비트가 다를 수 있고(둘 다 계약 안이에요), scipy와는 알고리즘이 달라서 몇 ULP씩 달라요.
+
+## 참고 문헌
+
+1. Apple Developer Documentation, *vForce* (Accelerate). https://developer.apple.com/documentation/accelerate/vforce
+2. N. J. Higham, *Accuracy and Stability of Numerical Algorithms*, 2nd ed., SIAM, 2002. (반올림 오차의 전파, $\gamma_n$ 상한)
+3. J.-M. Muller 외, *Handbook of Floating-Point Arithmetic*, 2nd ed., Birkhäuser, 2018. (TwoSum, FMA로 곱과 나눗셈의 오차 구하기, double-double 산술)
+4. P. T. P. Tang, "Table-driven implementation of the logarithm function in IEEE floating-point arithmetic", *ACM Transactions on Mathematical Software*, 16(4), 378–400, 1990.
+5. P. H. Sterbenz, *Floating-Point Computation*, Prentice-Hall, 1974. ($y/2 \le x \le 2y$이면 $x - y$가 정확하다는 보조정리)

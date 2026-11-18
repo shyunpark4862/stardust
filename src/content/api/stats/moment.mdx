@@ -1,0 +1,264 @@
+---
+title: moment
+names: [moment]
+group: 기술통계
+order: 3
+signatures:
+  - "sd.stats.moment(x, /, *, order, center=None, axis=None, nan_policy='propagate', keepdims=False)"
+summary: 데이터가 기준점에서 떨어진 거리의 k제곱 평균(k차 적률)을 구해요. 기준점을 주지 않으면 평균을 기준으로 하는 중심 적률이에요. 차수 order는 꼭 줘야 해요.
+params:
+  - name: x
+    type: ndarray, 실수의 시퀀스, 또는 Python 실수
+    kind: positional-only
+    desc: 데이터. bool·정수는 float64로 바꿔서 계산해요.
+  - name: order
+    type: int 또는 int의 시퀀스·배열
+    kind: keyword-only, 필수
+    desc: 적률의 차수 k. 정수여야 해요(2.0처럼 정수인 float도 돼요). 음수도 받아요. 여러 개를 주면 차수마다의 결과가 맨 앞 축에 쌓여요.
+  - name: center
+    type: Python 실수, ndarray, 시퀀스, 또는 None
+    kind: keyword-only
+    desc: 기준점. None(기본값)이면 각 줄의 평균이에요. 배열이면 결과의 모양(keepdims 없이)으로 브로드캐스트돼야 해요.
+  - name: axis
+    type: int, int의 tuple, 또는 None
+    kind: keyword-only
+    desc: 줄여서 없앨 축. None(기본값)이면 모든 원소를 한 묶음으로 계산해요.
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(그 줄의 결과가 NaN), 'omit'(NaN을 빼고 계산), 'raise'(ValueError) 중 하나예요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 줄인 축을 길이 1로 남겨요.
+returns:
+  type: ndarray 또는 Python float
+  desc: "k차 적률. order가 숫자 하나이고 남는 축이 없으면 Python float예요. order가 여러 개면 결과 앞에 차수의 축이 붙어요. 빈 줄은 NaN이에요."
+raises:
+  - type: TypeError
+    desc: order를 주지 않았을 때(None 포함), order나 center의 타입이 틀렸을 때(bool·문자열 등), x가 배열이나 숫자의 시퀀스가 아니거나 복소수일 때, axis·keepdims의 타입이 틀렸을 때.
+  - type: ValueError
+    desc: order가 정수가 아닐 때(1.5 등), center를 결과의 모양으로 브로드캐스트할 수 없을 때, nan_policy 이름이 틀렸거나 'raise'인데 NaN이 있을 때, axis가 범위를 벗어나거나 겹칠 때.
+seeAlso: [skew-kurtosis, describe, zscore, sem]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 한눈에 보기
+
+**적률**(moment)은 "데이터가 어떤 기준점에서 얼마나 떨어져 있는지"를 거리의 거듭제곱으로 평균 낸 값이에요. 평균, 분산, 왜도, 첨도가 모두 적률로 만들어져요.
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([2.0, 4.0, 4.0, 5.0, 7.0, 8.0])
+>>> sd.stats.moment(x, order=2)
+4.0
+>>> sd.stats.moment(x, order=3)
+1.0
+>>> sd.stats.moment(x, order=4)
+30.0
+```
+
+기준점을 주지 않으면 평균(여기서는 5)을 기준으로 해요. 그래서 2차 적률은 분산과 같아요.
+
+```python
+>>> sd.var(x)
+4.0
+```
+
+차수 `order`는 기본값이 없어서 꼭 줘야 해요.
+
+```python
+>>> sd.stats.moment(x)
+Traceback (most recent call last):
+    ...
+TypeError: moment() missing 1 required keyword-only argument: 'order'
+```
+
+<Reference />
+
+## 적률은 무엇인가요
+
+기준점 $c$에 대한 $k$차 적률은
+
+$$
+\frac1n \sum_{i=1}^{n} (x_i - c)^k
+$$
+
+예요. `center`를 주지 않으면 $c$가 데이터의 평균 $\bar x$이고, 이것을 **중심 적률** $m_k$라고 불러요. 차수마다 뜻이 있어요.
+
+| 차수 | 중심 적률 $m_k$ | 뜻 |
+|---|---|---|
+| 0 | 언제나 1 | 확률의 합 같은 값이에요. |
+| 1 | 언제나 0 | 평균에서 떨어진 거리의 평균은 0이에요. |
+| 2 | 분산($n$으로 나눈 것) | 퍼진 정도 |
+| 3 | 왜도의 분자 | 좌우 비대칭 |
+| 4 | 첨도의 분자 | 꼬리의 두께 |
+
+```python
+>>> sd.stats.moment(x, order=0), sd.stats.moment(x, order=1)
+(1.0, 0.0)
+```
+
+### 왜도·첨도와의 관계
+
+3차, 4차 중심 적률은 데이터의 단위를 세제곱, 네제곱한 값이에요. 이것을 분산의 거듭제곱으로 나눠서 단위를 없앤 것이 [왜도와 첨도](/api/stats/skew-kurtosis/)예요.
+
+$$
+\text{skew} = \frac{m_3}{m_2^{3/2}}, \qquad \text{kurtosis} = \frac{m_4}{m_2^{2}} - 3
+$$
+
+```python
+>>> m2 = sd.stats.moment(x, order=2)
+>>> m3 = sd.stats.moment(x, order=3)
+>>> m3 / m2**1.5, sd.stats.skew(x)
+(0.125, 0.125)
+```
+
+## `order`에 여러 차수를 한꺼번에
+
+`order`에 리스트나 배열을 주면 차수마다 계산한 결과를 **맨 앞 축**에 쌓아요.
+
+```python
+>>> sd.stats.moment(x, order=[2, 3, 4])
+array([ 4.0,  1.0, 30.0], dtype=float64)
+```
+
+`axis`와 함께 쓰면 결과의 모양은 `(차수의 개수,) + 줄인 뒤의 모양`이에요.
+
+```python
+>>> t = sd.asarray([[1.0, 2.0, 3.0],
+...                 [2.0, 4.0, 9.0]])
+>>> sd.stats.moment(t, order=[2, 3], axis=1)
+array([[0.6666666666666666,  8.666666666666666],
+       [               0.0,               12.0]], dtype=float64)
+```
+
+첫 행이 2차, 둘째 행이 3차이고, 열은 `t`의 행 하나씩이에요. 원소가 하나뿐인 리스트도 배열 결과를 줘요. 숫자 하나로 받고 싶으면 리스트가 아닌 숫자로 주세요.
+
+```python
+>>> sd.stats.moment(x, order=[2])
+array([4.0], dtype=float64)
+```
+
+차수는 정수여야 해요. `2.0`처럼 값이 정수인 실수는 받지만, `1.5`는 `ValueError`예요. 음수 차수도 받아요.
+
+```python
+>>> sd.stats.moment(x, order=2.0)
+4.0
+>>> sd.stats.moment(x, order=1.5)
+Traceback (most recent call last):
+    ...
+ValueError: moment(): every 'order' must be integral
+```
+
+## `center`: 평균 말고 다른 기준점
+
+`center`를 주면 그 점을 기준으로 해요. `center=0.0`이면 **원점 적률**(raw moment)이에요. 1차 원점 적률은 평균, 2차는 제곱의 평균이에요.
+
+```python
+>>> sd.stats.moment(x, order=1, center=0.0)
+5.0
+>>> sd.stats.moment(x, order=2, center=0.0)
+29.0
+>>> sd.mean(x * x)
+29.0
+```
+
+목표값이 정해져 있을 때 "목표에서 얼마나 벗어났나"를 재는 데도 써요. 예를 들어 목표가 6이면 `center=6.0`의 2차 적률이 목표에서의 평균 제곱 오차예요.
+
+```python
+>>> sd.stats.moment(x, order=2, center=6.0)
+5.0
+```
+
+`axis`로 여러 줄을 계산할 때는 `center`에 줄마다 다른 기준점을 배열로 줄 수 있어요. 배열의 모양은 결과의 모양(`keepdims` 없이)으로 브로드캐스트될 수 있어야 해요.
+
+```python
+>>> sd.stats.moment(t, order=2, axis=1, center=sd.asarray([0.0, 5.0]))
+array([4.666666666666667, 8.666666666666666], dtype=float64)
+>>> sd.stats.moment(t, order=2, axis=1, center=sd.asarray([0.0, 5.0, 1.0]))
+Traceback (most recent call last):
+    ...
+ValueError: moment(): 'center' cannot be broadcast to the result's shape (2,)
+```
+
+## `axis`, `keepdims`, `nan_policy`
+
+다른 기술통계 함수와 같아요. 기본값 `axis=None`은 모든 원소를 한 묶음으로 보고(`sd.mean`, `sd.var`와 같아요), `keepdims=True`는 줄인 축을 길이 1로 남겨요.
+
+```python
+>>> sd.stats.moment(t, order=2, axis=1)
+array([0.6666666666666666,  8.666666666666666], dtype=float64)
+>>> sd.stats.moment(t, order=2, axis=1, keepdims=True)
+array([[0.6666666666666666],
+       [ 8.666666666666666]], dtype=float64)
+```
+
+NaN이 있으면 기본(`'propagate'`)은 그 줄이 NaN, `'omit'`은 NaN을 빼고 계산, `'raise'`는 `ValueError`예요.
+
+```python
+>>> y = sd.asarray([1.0, sd.nan, 3.0])
+>>> sd.stats.moment(y, order=2)
+nan
+>>> sd.stats.moment(y, order=2, nan_policy='omit')
+1.0
+```
+
+## 조심할 점
+
+### 빈 데이터는 NaN이에요
+
+값이 하나도 없으면 평균을 낼 수 없어서 어느 차수든 NaN이에요. 값이 하나면 중심 적률은 0이에요(평균에서 떨어진 값이 없어요).
+
+```python
+>>> sd.stats.moment([], order=2)
+nan
+>>> sd.stats.moment([3.0], order=2)
+0.0
+```
+
+### 차수가 높으면 쉽게 넘쳐요
+
+$k$제곱은 금방 커져요. 값이 크거나 차수가 높으면 결과가 실수의 범위(약 1.8 × 10³⁰⁸)를 넘어서 `inf`가 돼요. 높은 차수가 필요하면 데이터를 먼저 표준화([`zscore`](/api/stats/zscore/))하는 편이 안전해요.
+
+```python
+>>> sd.stats.moment(sd.asarray([1e200, -1e200]), order=2)
+inf
+```
+
+### 평균이 아주 커도 정확해요
+
+평균을 기준으로 하는 2–4차 적률은 평균을 반올림한 값으로 빼지 않아요. 그래서 모든 값에 1억을 더해도 같은 값이 나와요.
+
+```python
+>>> sd.stats.moment(x + 1e8, order=3)
+1.0
+```
+
+어떻게 계산하는지는 [기술통계의 구현](/internals/stats/descriptive/)을 보세요.
+
+### 분산과는 나누는 수가 같아요
+
+2차 중심 적률은 $n$으로 나눈 분산이에요. `sd.var`의 기본값(`correction=0`)과 같고, [`describe`](/api/stats/describe/)의 분산(기본 `correction=1`, $n - 1$로 나눔)과는 달라요.
+
+```python
+>>> sd.var(x, correction=1)
+4.8
+```
+
+## 비슷한 함수와의 차이
+
+| 쓸 것 | `moment`와 다른 점 |
+|---|---|
+| [`sd.mean`](/api/array/mean/) | 1차 원점 적률(`center=0.0`)과 같아요. |
+| [`sd.var`](/api/array/var/) | 2차 중심 적률과 같아요. `correction`으로 나누는 수를 바꿀 수 있어요. |
+| [`skew`, `kurtosis`](/api/stats/skew-kurtosis/) | 3·4차 적률을 분산의 거듭제곱으로 나눠 단위를 없앤 값이에요. |
+| [`describe`](/api/stats/describe/) | 평균·분산·왜도·첨도를 한 번에 줘요. |
+| 분포 객체의 `X.mean()`, `X.variance()`, `X.skewness()`, `X.kurtosis()` | 데이터가 아니라 분포의 이론값이에요. 임의 차수의 적률 메서드는 없어요. |
+
+## scipy를 아는 분께
+
+- `order`에 기본값이 없어요. scipy는 `order=1`이 기본이라 `moment(x)`가 0을 주지만, stardust는 `TypeError`예요.
+- `axis`의 기본값이 `None`(전체)이에요. scipy는 `axis=0`이에요.
+- `center`, 여러 차수를 앞 축에 쌓는 규칙, 정수가 아닌 차수의 `ValueError`는 scipy와 같아요.
+- 결과는 numpy 스칼라가 아니라 Python `float`예요.

@@ -1,0 +1,199 @@
+---
+title: zscore
+names: [zscore]
+group: 기술통계
+order: 4
+signatures:
+  - "sd.stats.zscore(x, /, *, axis=None, correction=0, nan_policy='propagate')"
+summary: 값마다 평균에서 표준편차 몇 개만큼 떨어져 있는지(표준 점수)를 구해요. 결과는 입력과 모양이 같은 배열이고, 평균 0·표준편차 1로 맞춰져요.
+params:
+  - name: x
+    type: ndarray, 실수의 시퀀스, 또는 Python 실수
+    kind: positional-only
+    desc: 표준화할 데이터. bool·정수는 float64로 바꿔서 계산해요.
+  - name: axis
+    type: int, int의 tuple, 또는 None
+    kind: keyword-only
+    desc: 평균과 표준편차를 계산할 축. None(기본값)이면 모든 원소의 평균·표준편차 하나로 표준화해요.
+  - name: correction
+    type: int 또는 float
+    kind: keyword-only
+    desc: 표준편차를 구할 때 나누는 수를 n - correction으로 만들어요. 기본값 0은 n으로 나눠요(sd.std와 같아요).
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(NaN이 있는 줄 전체가 NaN), 'omit'(NaN은 NaN으로 두고 나머지로 평균·표준편차를 구함), 'raise'(ValueError) 중 하나예요."
+returns:
+  type: ndarray
+  desc: x와 모양이 같은 float64 배열. Python 숫자 하나를 넣으면 원소 하나짜리 1차원 배열이에요. 줄의 값이 모두 같으면 그 줄은 NaN이에요.
+raises:
+  - type: TypeError
+    desc: x가 배열이나 숫자의 시퀀스가 아니거나 복소수일 때, axis가 int·tuple·None이 아닐 때, correction이 int·float가 아닐 때(bool 포함), 없는 옵션(keepdims 등)을 줬을 때.
+  - type: ValueError
+    desc: nan_policy 이름이 틀렸거나 'raise'인데 NaN이 있을 때, axis가 범위를 벗어나거나 겹칠 때.
+seeAlso: [rankdata, describe, sem, skew-kurtosis]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 한눈에 보기
+
+키 160cm와 몸무게 60kg 중 어느 쪽이 "더 큰 편"인지는 바로 비교할 수 없어요. 단위도 다르고, 보통 어디쯤인지도 달라요. 이럴 때 각 값을 **"평균에서 표준편차 몇 개만큼 떨어져 있나"**로 바꾸면 같은 잣대로 비교할 수 있어요. 이 값을 **표준 점수**(z 점수)라고 해요.
+
+$$
+z_i = \frac{x_i - \bar x}{s}
+$$
+
+$\bar x$는 평균, $s$는 표준편차예요.
+
+```python
+>>> import stardust as sd
+>>> h = sd.asarray([160.0, 170.0, 175.0, 165.0, 180.0])
+>>> sd.stats.zscore(h)
+array([ -1.414213562373095,                 0.0,  0.7071067811865475,
+       -0.7071067811865475,   1.414213562373095], dtype=float64)
+```
+
+평균 170cm인 170은 0이고, 180은 평균보다 표준편차 1.41개만큼 커요. 결과는 언제나 평균 0, 표준편차 1이에요.
+
+```python
+>>> z = sd.stats.zscore(h)
+>>> sd.mean(z), sd.std(z)
+(0.0, 0.9999999999999999)
+```
+
+<Reference />
+
+## 언제 쓰나요
+
+- **단위가 다른 값을 비교할 때**: 키와 몸무게, 국어와 수학 점수처럼 척도가 다른 값을 같은 잣대로 놓아요.
+- **튀는 값을 찾을 때**: 표준 점수의 절댓값이 크면(흔히 2나 3 넘게) 평균에서 많이 벗어난 값이에요.
+- **계산 전에 크기를 맞출 때**: 여러 변수의 크기 차이가 결과를 좌우하지 않게 미리 맞춰 둬요.
+
+표준화는 값을 옮기고 늘리기만 해서 순서와 모양은 그대로예요. 그래서 [왜도·첨도](/api/stats/skew-kurtosis/)도 바뀌지 않아요.
+
+## `axis`: 무엇을 기준으로 표준화할까요
+
+기본값 `axis=None`은 **배열 전체**의 평균과 표준편차 하나로 모든 원소를 표준화해요(`sd.mean`, `sd.std`와 같은 규칙이에요). 행이나 열마다 따로 하려면 `axis`를 줘요.
+
+```python
+>>> t = sd.asarray([[160.0, 170.0, 175.0],
+...                 [ 60.0,  65.0,  80.0]])
+>>> sd.stats.zscore(t, axis=1)
+array([[  -1.336306209562122,   0.2672612419124244,   1.0690449676496976],
+       [ -0.9805806756909201, -0.39223227027636803,    1.372812945967288]], dtype=float64)
+```
+
+첫 행이 키, 둘째 행이 몸무게라면 `axis=1`이 맞아요. 행마다 자기 평균과 표준편차로 표준화했어요. `axis`를 빼면 키와 몸무게를 한 묶음으로 섞어서, 키는 모두 양수, 몸무게는 모두 음수가 돼 버려요.
+
+```python
+>>> sd.stats.zscore(t)
+array([[ 0.8242255917447336,  1.0220397337634697,  1.1209468047728377],
+       [-1.1539158284426272, -1.0550087574332592,  -0.758287544405155]], dtype=float64)
+```
+
+<Callout type="warn" title="2차원 데이터는 axis를 꼭 확인하세요">
+기본값이 "전체"라서, 표(행: 사람, 열: 변수)를 그대로 넣으면 변수끼리 섞여서 표준화돼요. 변수가 열에 있으면 `axis=0`, 행에 있으면 `axis=1`을 주세요.
+</Callout>
+
+결과는 언제나 입력과 같은 모양이에요. 줄인 축이 없으니 `keepdims`도 없어요.
+
+## `correction`: 어떤 표준편차로 나눌까요
+
+기본값 `correction=0`은 $n$으로 나눈 표준편차예요(`sd.std`의 기본값과 같아요). 표본 표준편차($n - 1$로 나눔)로 나누려면 `correction=1`을 줘요. 값이 조금 작아져요.
+
+```python
+>>> sd.stats.zscore(h, correction=1)
+array([-1.2649110640673518,                 0.0,  0.6324555320336759,
+       -0.6324555320336759,  1.2649110640673518], dtype=float64)
+```
+
+<Callout type="note" title="describe·sem과 기본값이 달라요">
+`zscore`는 `correction=0`, [`describe`](/api/stats/describe/)와 [`sem`](/api/stats/sem/)은 `correction=1`이 기본이에요. 다른 함수의 표준편차와 맞추려면 값을 직접 정해 주세요.
+</Callout>
+
+## NaN이 있으면: `nan_policy`
+
+```python
+>>> y = sd.asarray([160.0, sd.nan, 175.0, 165.0])
+>>> sd.stats.zscore(y)
+array([nan, nan, nan, nan], dtype=float64)
+>>> sd.stats.zscore(y, nan_policy='omit')
+array([-1.0690449676496976,                 nan,   1.336306209562122,
+       -0.2672612419124244], dtype=float64)
+```
+
+- `'propagate'`(기본값): 평균을 알 수 없으니 NaN이 있는 줄의 **모든 값**이 NaN이에요.
+- `'omit'`: NaN이 아닌 값들로 평균과 표준편차를 구하고, NaN 자리는 NaN으로 남겨요. 결과의 모양은 그대로예요.
+- `'raise'`: NaN이 있으면 `ValueError`예요.
+
+## 조심할 점
+
+### 값이 모두 같으면 NaN이에요
+
+표준편차가 0이면 나눌 수 없어서 그 줄은 모두 NaN이에요. 값이 하나뿐이어도 마찬가지예요. 나누는 수 $n - $ `correction`이 0 이하가 될 때도 NaN이에요.
+
+```python
+>>> sd.stats.zscore([7.0, 7.0, 7.0])
+array([nan, nan, nan], dtype=float64)
+>>> sd.stats.zscore([1.0, 2.0], correction=2)
+array([nan, nan], dtype=float64)
+```
+
+### Python 숫자 하나는 원소 하나짜리 배열이 돼요
+
+결과가 언제나 배열이라서, 숫자 하나를 넣으면 `array([nan])`이 나와요(값이 하나라 표준편차가 0이에요).
+
+```python
+>>> sd.stats.zscore(3.0)
+array([nan], dtype=float64)
+```
+
+### 평균이 아주 커도 정확해요
+
+`(x - sd.mean(x)) / sd.std(x)`로 직접 계산하면 평균이 반올림된 만큼 모든 값이 조금씩 밀려요. `zscore`는 반올림으로 잃은 부분까지 빼서 이 오차가 없어요.
+
+```python
+>>> a = sd.asarray([1.0, 2.0, 4.0, 8.0, 3.0])
+>>> v = a + 1e8
+>>> sd.stats.zscore(a)[3], sd.stats.zscore(v)[3]
+(1.8207329549252096, 1.8207329549252096)
+>>> ((v - sd.mean(v)) / sd.std(v))[3]
+1.820732957391667
+```
+
+어떻게 계산하는지는 [기술통계의 구현](/internals/stats/descriptive/)을 보세요.
+
+### 표준 점수는 확률이 아니에요
+
+"z = 2면 상위 몇 %"라는 해석은 데이터가 정규분포를 따른다고 볼 때만 맞아요. 그 확률이 필요하면 `sd.stats.Normal().ccdf(2.0)`처럼 분포 객체로 계산해요. 정규분포가 아닌 데이터에서 순위가 궁금하면 [`rankdata`](/api/stats/rankdata/)가 더 알맞아요.
+
+```python
+>>> sd.stats.Normal().ccdf(2.0)
+0.02275013194817921
+```
+
+## 분포로 표준화하는 것과의 차이
+
+`zscore`는 **데이터에서 구한** 평균과 표준편차를 써요. 평균과 표준편차를 이미 알고 있으면(예: 키가 평균 170, 표준편차 10인 정규분포를 따른다고 알려져 있으면) 그 값으로 직접 빼고 나누면 돼요. 결과가 달라요.
+
+```python
+>>> X = sd.stats.Normal(mu=170.0, sigma=10.0)
+>>> (h - X.mean()) / X.standard_deviation()
+array([-1.0,  0.0,  0.5, -0.5,  1.0], dtype=float64)
+```
+
+## 비슷한 함수와의 차이
+
+| 쓸 것 | `zscore`와 다른 점 |
+|---|---|
+| `(x - sd.mean(x, keepdims=True)) / sd.std(x, keepdims=True)` | 같은 계산이지만, 평균이 클 때 오차가 생기고 NaN 처리 옵션이 없어요. [`sd.var`](/api/array/var/)에 이 방법이 있어요. |
+| [`rankdata`](/api/stats/rankdata/) | 값 대신 순위를 줘요. 튀는 값의 영향을 받지 않아요. |
+| [`sem`](/api/stats/sem/) | 평균의 표준오차 값 하나를 줘요. |
+| [`describe`](/api/stats/describe/) | 평균과 분산을 요약값으로 줘요. |
+
+## scipy를 아는 분께
+
+- `axis`의 기본값이 `None`(전체)이에요. scipy는 `axis=0`이라 2차원 배열을 열마다 표준화해요. 같은 결과를 원하면 `axis=0`을 주세요.
+- `ddof`는 `correction`이에요. 기본값 0은 scipy와 같아요.
+- 평균이 퍼짐보다 아주 큰 데이터에서 더 정확해요. 위의 `v`에서 scipy는 직접 계산한 것과 같은 `1.820732957391667`을 줘요(아홉째 자리부터 틀려요).
+- Python 숫자 하나를 넣으면 scipy는 축 오류를 내지만 stardust는 `array([nan])`을 줘요.

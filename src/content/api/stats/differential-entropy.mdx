@@ -1,0 +1,272 @@
+---
+title: differential_entropy
+names: [differential_entropy]
+group: 기술통계
+order: 10
+signatures:
+  - "sd.stats.differential_entropy(x, /, *, window_length=None, base=None, axis=None, method='auto', nan_policy='propagate', keepdims=False)"
+summary: 연속적인 값의 표본에서, 그 값들이 나온 분포의 미분 엔트로피를 어림해요. 정렬한 표본의 간격으로 계산하는 네 가지 방법이 있고, 기본값 'auto'는 표본 크기에 따라 골라요.
+params:
+  - name: x
+    type: ndarray, 실수의 시퀀스, 또는 Python 실수
+    kind: positional-only
+    desc: 연속 분포에서 뽑은 표본. 순서는 상관없어요(안에서 정렬해요). bool·정수는 float64로 바꿔요.
+  - name: window_length
+    type: int 또는 None
+    kind: keyword-only
+    desc: 간격을 잴 때 건너뛰는 칸 수 m. 1 이상이어야 해요. None(기본값)이면 floor(√n + 1/2)예요. 2m이 표본 크기 n 이상이면 결과가 NaN이에요.
+  - name: base
+    type: 양수 또는 None
+    kind: keyword-only
+    desc: 로그의 밑. None(기본값)이면 자연로그(나트), 2면 비트예요.
+  - name: axis
+    type: int, int의 tuple, 또는 None
+    kind: keyword-only
+    desc: 줄여서 없앨 축. None(기본값)이면 모든 원소를 한 표본으로 봐요.
+  - name: method
+    type: str
+    kind: keyword-only
+    desc: "'vasicek', 'van es', 'ebrahimi', 'correa', 'auto'(기본값) 중 하나. 대소문자는 가리지 않아요. 'auto'는 n ≤ 10이면 'van es', n ≤ 1000이면 'ebrahimi', 그보다 크면 'vasicek'이에요."
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(그 줄의 결과가 NaN), 'omit'(NaN을 빼고 계산), 'raise'(ValueError) 중 하나예요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 줄인 축을 길이 1로 남겨요.
+returns:
+  type: ndarray 또는 Python float
+  desc: 미분 엔트로피의 어림값. 언제나 float64이고, 남는 축이 없으면 Python float예요. 음수일 수도 있어요. 간격이 0인 곳이 있으면(같은 값이 많으면) -inf, 표본이 너무 작으면 NaN이에요.
+raises:
+  - type: TypeError
+    desc: window_length가 int나 None이 아닐 때(float·bool 포함), x가 배열이나 숫자의 시퀀스가 아니거나 복소수일 때, axis·keepdims의 타입이 틀렸을 때.
+  - type: ValueError
+    desc: window_length가 1보다 작을 때, method 이름이 틀렸을 때, base가 양수가 아닐 때, nan_policy 이름이 틀렸거나 'raise'인데 NaN이 있을 때, axis가 범위를 벗어나거나 겹칠 때.
+seeAlso: [entropy, describe, iqr]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 한눈에 보기
+
+[`entropy`](/api/stats/entropy/)는 "앞면/뒷면", "빨강/파랑/초록"처럼 범주가 나뉜 분포의 불확실성을 재요. 키나 대기 시간처럼 **연속적인 값**의 분포에는 같은 생각을 밀도로 옮긴 **미분 엔트로피**를 써요.
+
+$$
+h(X) = -\int f(x)\,\log f(x)\,dx
+$$
+
+$f$는 분포의 밀도예요. 밀도를 모르고 표본만 가지고 있을 때 이 값을 어림하는 함수가 `differential_entropy`예요.
+
+```python
+>>> import stardust as sd
+>>> X = sd.stats.Exponential()
+>>> X.entropy()
+1.0
+>>> sample = X.sample(2000, rng=sd.random.default_rng(3))
+>>> sd.stats.differential_entropy(sample)
+0.9491632600875758
+```
+
+지수분포(평균 1)의 미분 엔트로피는 정확히 1이에요. 그 분포에서 뽑은 표본 2000개로 어림하니 0.95가 나왔어요.
+
+<Reference />
+
+## 미분 엔트로피는 무엇인가요
+
+미분 엔트로피는 **값이 얼마나 넓게 흩어질 수 있는지**를 로그 단위로 잰 값이에요. 퍼짐이 넓을수록 커요. 데이터를 10배로 늘리면 정확히 $\log 10$만큼 커져요.
+
+```python
+>>> sd.stats.differential_entropy(sample * 10.0) - sd.stats.differential_entropy(sample)
+2.3025850929940455
+>>> sd.log(10.0)
+2.3025850929940455
+```
+
+### 음수가 될 수 있어요
+
+이산 분포의 엔트로피는 언제나 0 이상이지만, 미분 엔트로피는 **음수일 수 있어요.** 폭이 좁은 분포일수록 작아지기 때문이에요. 0과 0.5 사이의 균등분포는 $\log 0.5 \approx -0.69$예요.
+
+```python
+>>> U = sd.stats.Uniform(a=0.0, b=0.5)
+>>> U.entropy()
+-0.6931471805599453
+>>> sd.stats.differential_entropy(U.sample(2000, rng=sd.random.default_rng(3)))
+-0.7106526658889326
+```
+
+그래서 미분 엔트로피는 "불확실성이 몇 비트"처럼 절대적인 양으로 읽기보다, **같은 단위의 데이터끼리 비교**할 때 써요. 분산이 같으면 정규분포의 미분 엔트로피가 가장 커서, 데이터가 정규분포에서 얼마나 먼지를 볼 때도 써요.
+
+## 어떻게 어림하나요
+
+밀도가 높은 곳에서는 값들이 촘촘하게, 낮은 곳에서는 듬성듬성 나와요. 그래서 표본을 정렬했을 때 **이웃한 값 사이의 간격**이 밀도의 역수를 알려 줘요. 네 방법은 모두 이 생각을 써요.
+
+정렬한 표본을 $X_{(1)} \le \cdots \le X_{(n)}$이라고 하면, 기본이 되는 **Vasicek** 방법은 $m$칸 떨어진 두 값의 간격으로
+
+$$
+\hat h = \frac1n \sum_{i=1}^{n} \log\!\left(\frac{n}{2m}\,\bigl(X_{(i+m)} - X_{(i-m)}\bigr)\right)
+$$
+
+를 계산해요. 범위를 벗어난 자리는 양 끝 값으로 채워요($i - m < 1$이면 $X_{(1)}$, $i + m > n$이면 $X_{(n)}$). 나머지 방법은 이 식의 약점, 특히 양 끝에서 생기는 치우침을 줄이려고 고친 것이에요.
+
+| `method` | 특징 |
+|---|---|
+| `'vasicek'` | 위 식. 가장 기본이고, 표본이 작으면 값을 작게 어림하는 경향이 있어요. |
+| `'van es'` | 끝을 채우지 않고 $X_{(i+m)} - X_{(i)}$ 간격만 쓰고, 보정 항을 더해요. |
+| `'ebrahimi'` | Vasicek과 같은 간격을 쓰되, 양 끝의 $m$칸에서는 실제로 걸친 칸 수에 맞춰 가중치를 바꿔요. |
+| `'correa'` | 간격 대신, 각 점 주변 $2m + 1$개 값에 직선을 맞춘 기울기로 밀도를 어림해요. |
+| `'auto'` | $n \le 10$이면 `'van es'`, $n \le 1000$이면 `'ebrahimi'`, 그보다 크면 `'vasicek'`이에요. |
+
+구현은 [기술통계의 구현](/internals/stats/descriptive/)을 보세요.
+
+```python
+>>> for m in ['vasicek', 'van es', 'ebrahimi', 'correa']:
+...     print(m, sd.stats.differential_entropy(sample, method=m))
+vasicek 0.9491632600875758
+van es 0.9257538104555021
+ebrahimi 0.9633191364519155
+correa 0.9653989632682157
+```
+
+참값은 1이에요. 어느 방법이 가장 가까운지는 분포와 표본 크기에 따라 달라져요. 특별한 이유가 없으면 `'auto'`를 쓰세요. 방법 이름은 대소문자를 가리지 않아요(`'Vasicek'`도 돼요).
+
+### 표본이 커지면 참값에 가까워져요
+
+표준정규분포의 미분 엔트로피는 $\frac12\log(2\pi e) \approx 1.4189$예요. 표본을 키우면 어림값이 참값으로 다가가요.
+
+```python
+>>> N = sd.stats.Normal()
+>>> N.entropy()
+1.4189385332046727
+>>> rng = sd.random.default_rng(11)
+>>> [round(sd.stats.differential_entropy(N.sample(n, rng=rng)), 3) for n in (10, 100, 1000, 10000, 100000)]
+[1.202, 1.339, 1.454, 1.436, 1.421]
+```
+
+표본이 수십 개뿐이면 0.1 넘게 어긋나기도 해요. 작은 표본의 결과는 대략적인 값으로만 보세요.
+
+## `window_length`: 간격을 잴 칸 수
+
+$m$이 `window_length`예요. 작으면 간격 하나하나가 우연히 넓거나 좁은 데 크게 흔들리고, 크면 밀도의 세밀한 모양이 뭉개져요. 기본값 $\lfloor\sqrt n + 1/2\rfloor$는 그 사이의 흔한 선택이에요.
+
+```python
+>>> sd.stats.differential_entropy(sample, window_length=10)
+0.9267391850989531
+>>> sd.stats.differential_entropy(sample, window_length=100)
+0.9597804812780563
+```
+
+`window_length`는 1 이상의 정수여야 해요. `2.0` 같은 실수도 받지 않아요.
+
+```python
+>>> sd.stats.differential_entropy(sample, window_length=0)
+Traceback (most recent call last):
+    ...
+ValueError: differential_entropy(): 'window_length' must be positive
+>>> sd.stats.differential_entropy(sample, window_length=2.0)
+Traceback (most recent call last):
+    ...
+TypeError: differential_entropy(): 'window_length' must be an int or None, not float
+```
+
+### 표본이 너무 작으면 NaN이에요
+
+$2m$이 표본 크기 $n$보다 작아야 해요. 그렇지 않으면 에러 대신 NaN이에요. 기본 창에서는 값이 적어도 5개 있어야 해요($n = 4$이면 $m = 2$라서 $2m = n$이에요).
+
+```python
+>>> sd.stats.differential_entropy([1.0, 2.0, 3.0, 4.0])
+nan
+>>> sd.stats.differential_entropy([1.0, 2.0, 3.0, 4.0, 5.0])
+1.976480513893279
+>>> sd.stats.differential_entropy([1.0, 2.0, 3.0, 4.0, 5.0], window_length=3)
+nan
+```
+
+창을 줄이면 작은 표본에서도 값이 나와요.
+
+```python
+>>> sd.stats.differential_entropy([1.0, 2.0, 3.0, 4.0], window_length=1)
+2.083333333333333
+```
+
+## 같은 값이 많으면 `-inf`예요
+
+어림식은 간격의 로그를 써요. $m$칸 떨어진 두 값이 같으면 간격이 0이고 $\log 0 = -\infty$라서, 결과가 `-inf`예요. 모든 값이 같은 상수 데이터도 마찬가지예요.
+
+```python
+>>> sd.stats.differential_entropy([4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0])
+-inf
+```
+
+같은 값이 몇 개 있다고 늘 그런 것은 아니에요. 간격이 0이 되는지는 같은 값이 몇 개 연달아 있는지, 창의 크기, 방법에 따라 달라요. 아래 두 데이터는 2가 두 개인지 세 개인지만 달라요(여섯 개라 $m = 2$, `'auto'`는 `'van es'`예요).
+
+```python
+>>> sd.stats.differential_entropy([1.0, 2.0, 2.0, 3.0, 4.0, 5.0])
+1.796573590279973
+>>> sd.stats.differential_entropy([1.0, 2.0, 2.0, 2.0, 4.0, 5.0])
+-inf
+```
+
+`'correa'`는 간격 대신 기울기의 비를 쓰므로, 한 창의 값이 모두 같으면 0을 0으로 나누게 돼서 NaN이에요.
+
+```python
+>>> sd.stats.differential_entropy([4.0] * 8, method='correa')
+nan
+```
+
+<Callout type="warn" title="반올림하거나 정수로 기록한 데이터">
+미분 엔트로피는 연속적인 값을 전제로 해요. 값을 반올림해서 적었거나(소수 첫째 자리까지만 기록한 키 등) 원래 정수인 데이터는 같은 값이 많아서 `-inf`가 나오기 쉬워요. 범주가 나뉜 데이터라면 개수를 세어 [`entropy`](/api/stats/entropy/)를 쓰세요.
+</Callout>
+
+## `base`, `axis`, `keepdims`, `nan_policy`
+
+`base=2`면 비트 단위예요. 자연로그(나트)로 구한 값을 $\ln 2$로 나눈 값과 같아요.
+
+```python
+>>> sd.stats.differential_entropy(sample, base=2)
+1.369353128322347
+```
+
+기본값 `axis=None`은 모든 원소를 한 표본으로 봐요(`sd.mean`, `sd.var`와 같아요). 행마다 다른 표본이면 `axis=1`을 줘요.
+
+```python
+>>> two = sd.reshape(sample, (2, 1000))
+>>> sd.stats.differential_entropy(two, axis=1)
+array([0.9441952915294933, 0.9924923781998464], dtype=float64)
+>>> sd.stats.differential_entropy(two, axis=1, keepdims=True)
+array([[0.9441952915294933],
+       [0.9924923781998464]], dtype=float64)
+```
+
+NaN이 있으면 기본은 NaN, `'omit'`은 NaN을 빼고 남은 값만으로(창의 기본값도 남은 개수로) 계산, `'raise'`는 `ValueError`예요.
+
+```python
+>>> y = sd.asarray([0.3, 1.2, sd.nan, 2.2, 0.7, 1.9, 3.1])
+>>> sd.stats.differential_entropy(y)
+nan
+>>> sd.stats.differential_entropy(y, nan_policy='omit')
+1.5148206494825207
+```
+
+## 분포 객체의 `entropy()`와 다른 점
+
+| | `sd.stats.differential_entropy(x)` | 연속 분포의 `X.entropy()` |
+|---|---|---|
+| 입력 | 표본(데이터) | 없음(매개변수로 정해져요) |
+| 결과 | 표본에서 어림한 값. 표본마다 달라요. | 수식으로 정해진 참값 |
+| 같은 값이 많으면 | `-inf`가 될 수 있어요 | 해당 없어요 |
+
+분포를 알고 있으면 `X.entropy()`가 정확해요. `differential_entropy`는 분포를 모르고 데이터만 있을 때 써요.
+
+## 비슷한 함수와의 차이
+
+| 쓸 것 | `differential_entropy`와 다른 점 |
+|---|---|
+| [`entropy`](/api/stats/entropy/) | 범주마다의 확률(또는 개수)을 받아 이산 분포의 엔트로피를 구해요. 표본이 아니라 분포를 넣어요. |
+| [`sd.std`](/api/array/var/), [`iqr`](/api/stats/iqr/) | 퍼진 정도를 데이터 단위로 재요. 미분 엔트로피는 분포의 모양까지 반영한 퍼짐을 로그 단위로 재요. |
+| [`sd.histogram`](/api/array/histogram/) | 밀도의 모양 자체를 구간별로 보여 줘요. |
+
+## scipy를 아는 분께
+
+- `axis`의 기본값이 `None`(전체)이에요. scipy는 `axis=0`이에요.
+- 네 방법과 `'auto'`의 선택 규칙, 창의 기본값, 같은 값이 많을 때의 `-inf`와 상수 데이터에서 `'correa'`의 NaN은 scipy와 같아요. 값은 마지막 자리 안에서 같아요.
+- 입력은 위치로만, 옵션은 이름으로만 받아요. 결과는 numpy 스칼라가 아니라 Python `float`예요.

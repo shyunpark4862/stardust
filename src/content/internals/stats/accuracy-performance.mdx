@@ -1,0 +1,429 @@
+---
+title: 정확도와 성능
+group: 정확도와 성능
+order: 1
+summary: 통계 영역의 정확도를 무엇에 대고 어떤 단위로 재는지(Arb로 만든 참값, 상대 1e-14, 혼합 기준, 역함수의 조건수, 이산 역함수의 후방 오차), 분포 묶음마다 잰 최대 오차와 같은 점에서 scipy 1.18.1의 오차, 보장 영역과 그 밖에서 NaN이 되는 경계, 모든 호출이 정해진 시간 안에 끝나게 하는 반복의 상한을 정리해요. 측정 파일에 있는 속도를 조건과 함께 요약하고, scipy보다 느린 행과 그 이유도 다뤄요.
+seeAlso: [overview, engine, continuous, discrete, mvcdf, descriptive]
+---
+import Bench from '../../../components/fig/Bench.astro';
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+`sd.stats`의 정확도는 약속(계약)으로 정해져 있고, 그 약속은 `sd.special`과 같은 단위로 적어요.
+
+| 무엇 | 약속 |
+|---|---|
+| 단변량 분포의 값 메서드(`pdf`, `cdf`, `ccdf`, `logcdf`, `logccdf`, 적률, `median`, `mode`) | 보장 영역에서 참값 대비 상대오차 $\le 10^{-14}$ |
+| `logpdf`, `entropy`(값이 0을 지나는 양) | $\lvert\text{오차}\rvert \le 10^{-14}\max(1, \lvert\text{값}\rvert)$ |
+| 연속 분포의 역함수(`icdf`, `iccdf`, `ilogcdf`, `ilogccdf`) | $\lvert\Delta x/x\rvert \le 10^{-14}\max(1, \kappa)$, $\kappa$는 입력에 대한 조건수 |
+| 이산 분포의 역함수 | 목표를 상대 $10^{-14}$ 안에서 움직였을 때의 정확한 분위수 중 하나(후방 오차) |
+| 결과가 서브노멀 | 절대오차 $\le 45 \cdot 2^{-1074}$ |
+| 다변량 정규·t와 행렬 분포의 `logpdf`·`entropy` | $10^{-14}\max(1, \lvert\text{값}\rvert)$(보장 영역 $\kappa \le 10^9$, 차원 $\le 100$) |
+| 다변량 정규·t의 `cdf` | $d \le 3$은 정해진 영역에서 상대 $10^{-14}$, $d \ge 4$는 준몬테카를로의 `atol` |
+| 보장 영역 밖 | 값을 계산하고 잰 값을 적어요. 구할 수 없으면 NaN이고, 모든 호출은 정해진 시간 안에 끝나요 |
+| 같은 입력 | 스레드 수, 배열 안의 위치와 상관없이 같은 비트 |
+
+결과를 요약하면 이래요.
+
+- **분포 31개, 참값 파일 555개, 약 208만 점에서 보장 영역의 모든 점이 계약 안이에요.** 연속 분포의 최대는 $9.2 \times 10^{-15}$(`F.entropy`), 이산 분포는 $6.3 \times 10^{-15}$(`LogSeries.logccdf`), 극값·수명·비중심 분포는 $4.7 \times 10^{-15}$(`NoncentralT.kurtosis`)예요(계약 단위). 이산 분포의 역함수는 모든 점이 허용 구간 안이에요.
+- **scipy 1.18.1은 같은 점의 꼬리에서 자주 크게 틀려요.** 깊은 꼬리의 0이나 1, 참값이 유한한데 inf, 상대오차 1(값 전체가 틀림)이 흔하고, 다변량·행렬 분포는 공분산의 조건수에 비례해 $10^{-9}$–$10^{-5}$까지 틀려요.
+- **속도는 대부분 scipy보다 빠르지만 1스레드에서 느린 행도 있어요.** 연속 분포 96행 중 11행, 극값·수명·비중심 72행 중 12행, 다변량 `logpdf` 전부가 1스레드에서 scipy보다 느려요. 이유는 아래 [속도](#속도)에 있어요.
+
+## 정답지: Arb로 만든 참값
+
+### 만드는 방법
+
+`tools/stats_ref.py`가 분포와 메서드마다 입력 집합을 만들고, 구간 산술 라이브러리 Arb(python-flint)[1]로 참값을 계산해 `tests/stats/ref/<분포>_<메서드>.npz`에 저장해요. 테스트와 측정 도구는 이 파일만 읽어요.
+
+<Fig column caption="참값 파일이 만들어지고 쓰이는 길.">
+  <Steps steps={[
+    { label: 'tools/stats_ref.py', note: '입력 집합(시드 고정)을 만들고, 교과서의 정의를 Arb의 공으로 계산', where: 'tools/' },
+    { label: 'tools/arbref.py', note: '정밀도를 128비트부터 두 배씩 올려 공의 반지름이 값의 2⁻¹¹⁰배 아래가 될 때까지(최대 8192비트)', where: 'tools/', depth: 1 },
+    { label: 'ref/<분포>_<메서드>.npz', note: 'x0, x1, …(매개변수, 입력), 참값 hi + lo, guaranteed, scale, 이산 역함수는 kmin, kmax', where: 'tests/stats/' },
+    { label: 'test_reference.py', note: '계약 확인 + 배열과 Python float의 같은 비트 확인', where: 'tests/stats/', depth: 1 },
+    { label: 'bench/stats/t4–t6/accuracy.py', note: '분포·메서드마다 최대 오차와 scipy의 같은 값', depth: 1 },
+  ]} />
+</Fig>
+
+- **공으로 가둔 참값.** Arb의 값은 중심과 반지름을 가진 공이고, 참값이 그 안에 있다는 것을 Arb가 보장해요. 도구는 반지름이 값의 $2^{-110}$배 아래로 줄어들 때까지 정밀도를 올리고(`arbref.rigorous`), 그 공을 double-double $hi + lo$로 반올림해 저장해요. 두 정밀도가 같은 답을 내면 맞다고 보는 규칙과 달리, 두 정밀도에서 똑같이 틀리는 계산을 받아들이지 않아요. 8192비트에서도 줄지 않거나 점 하나에 30초를 넘기면 그 점은 파일에서 빼요.
+- **우리 코드가 아니라 교과서의 정의.** 참값은 분포의 정의 그대로 계산해요. 정규의 cdf는 $\Phi((x - \mu)/\sigma)$, 감마는 불완전 감마, 베타·t·F는 불완전 베타예요. 포아송 혼합(비중심 분포)이나 엔트로피의 합처럼 도구가 직접 자르는 급수는 남은 꼬리의 상한을 공의 반지름에 더해요(`add_error`). 그래서 어디서 잘라도 공은 참값을 품어요.
+- **연속 분포의 역함수**는 우리 라이브러리의 값에서 시작해 Arb로 Newton을 돌리되(양의 지지집합은 $\log x$, $(0, 1)$은 $\operatorname{logit} x$에서), 마지막에 $\log F(x) - \log p$의 부호가 $x(1 \mp 2^{-110})$의 양쪽에서 다르다는 것으로 근을 증명해요. 시작점이 우리 것이어도 증명은 독립이에요. 우리 답이 0이나 inf이면, 참 근이 double 범위 밖에 있는지 범위의 끝에서 그쪽 꼬리를 계산해 확인해요.
+- **이산 분포의 역함수**는 정확한 정수예요. cdf와 목표의 비교 하나하나를, 등호를 배제하는 공으로 판정하거나 등호가 가능한 곳에서는 유리수 산술로 판정해요.
+- **입력은 고정돼요.** 파일이 이미 있으면 그 입력 배열을 그대로 쓰고 참값만 다시 계산해요(`--resample`을 주면 새로 뽑아요). 일부 파일은 입력을 우리 라이브러리의 역함수로 뽑으므로, 고정하지 않으면 라이브러리를 바꿀 때마다 입력이 바뀌어요.
+- **실행.** 10프로세스로 돌리고, 워커는 500점마다 새로 띄워요(`maxtasksperchild=500`). Arb는 C로 된 라이브러리라 Python 쪽 캐시가 없지만, 오래 도는 계산의 메모리를 평탄하게 두려는 거예요.
+
+입력 집합은 분포마다 매개변수를 넓게 뽑아요. 위치·척도는 0과 1을 자주 넣고 $\mu \in [-10^6, 10^6]$, $\sigma \in [10^{-3}, 10^3]$의 로그 균등까지 넓혀요. 입력 메서드는 6000점(본체, $\pm 40$까지, 그 너머의 깊은 꼬리), 역함수는 4000점(균등, 두 꼬리 $10^{-300}$까지, 서브노멀 확률, $1/2$ 근처), 적률은 2500점이에요. 비중심 셋의 `entropy`는 보장하지 않는 계약이라 참값 파일이 없어요(31개 × 18메서드 − 3 = 555).
+
+### 다변량과 행렬 분포의 참값
+
+- **`logpdf`·`entropy`**(`bench/stats/t9/accuracy.py`, `t10/accuracy.py`): 주어진 행렬 그대로 Arb의 행렬(`arb_mat`)로 LU 분해, 행렬식, 풀이를 계산하고, 모든 공의 반지름이 $\max(1, \lvert\text{값}\rvert)$의 $2^{-80}$배 아래가 될 때까지 정밀도를 올려요.
+- **다변량 정규·t의 `cdf`**(`tools/mvcdf_ref.py`, `tests/stats/ref_mvcdf/`): 이변량 정규는 Plackett의 항등식을 $r = 0$에서 시작하는 각도 적분으로(Drezner–Wesolowsky, Genz 2004), 삼변량 정규는 Genz의 경로 적분으로 Arb의 적분(`acb.integral`)에서 계산해요. 삼변량은 열 점마다 다른 경로로 한 번 더 계산해 두 공이 겹치는지 확인해요. 한 요인 구조의 정규(`factor_n`, $d = 4$–$10$)는 $\int\phi(z)\prod_i\Phi(\cdot)\,dz$를 Arb로 $2^{-64}$까지, t의 $d = 2, 3$은 척도 혼합 $E[\Phi_d(Rh)]$를 이변량·삼변량 항등식의 항마다 닫힌 꼴 기댓값으로 바꿔 Arb로 $2^{-64}$까지 계산해요. 한 요인 구조의 t(`factor_t`)만은 Arb가 아니라 scipy의 2단 적응 구적이고 정확도는 약 $10^{-11}$이에요. 이 집합은 준몬테카를로의 오차($10^{-6}$ 단위)를 재는 데만 써요.
+
+## 오차를 재는 단위
+
+측정표의 숫자는 모두 **계약 단위**예요. $10^{-14}$가 계약의 한계이고, 이것을 넘지 않으면 계약 안이에요(`tests/stats/refdata.py`의 `contract_error`).
+
+**상대오차.** $\lvert\text{결과} - (hi + lo)\rvert / \lvert hi + lo\rvert$예요. float64의 1 ULP는 상대 $1.1$–$2.2 \times 10^{-16}$이라 $10^{-14}$는 45–90 ULP예요. 참값이 서브노멀이면 상대오차 대신 절대오차를 $45 \cdot 2^{-1074}$로 나누고 $10^{-14}$를 곱한 값을 써요. 서브노멀에서는 유효숫자 자체가 줄어서 상대 $10^{-14}$를 요구할 수 없고, 45는 정상 범위의 바닥에서 상대 $10^{-14}$와 이어지는 값이에요.
+
+**혼합 기준.** `logpdf`와 `entropy`는 값이 0을 지나가요. 0 근처에서 상대오차는 의미가 없으므로 $\lvert\text{오차}\rvert / \max(1, \lvert\text{값}\rvert)$로 재요. 값이 크면 상대, 작으면 절대예요. 베이불과 GEV의 왜도·첨도도 모양 매개변수의 어떤 값에서 0을 지나서($c \approx 3.60$의 왜도, $c \approx 2.25, 5.77$의 첨도) 같은 기준이에요.
+
+**역함수의 조건수.** 역함수의 입력 $p$는 이미 반올림된 수예요. $p$의 마지막 비트가 근 $x$를 얼마나 움직이는지는
+
+$$
+\kappa_{\texttt{icdf}} = \left\lvert\frac{p}{x\,f(x)}\right\rvert, \qquad
+\kappa_{\texttt{ilogcdf}} = \left\lvert\frac{\log p \cdot p}{x\,f(x)}\right\rvert
+$$
+
+가 정해요(`iccdf`, `ilogccdf`는 $p$ 자리에 위꼬리 확률). 근이 0 근처로 상쇄하는 곳에서는 $\kappa$가 커지고, 그 오차는 어떤 알고리즘으로도 줄일 수 없어요. 그래서 계약은 $10^{-14}\max(1, \kappa)$이고, 측정은 상대오차를 $\max(1, \kappa)$로 나눈 값이에요. 참값 도구가 근에서 $\kappa$를 Arb로 계산해 파일의 `scale`에 넣어 둬요.
+
+예를 들어 $N(1.5, 2^2)$의 $p = 0.2267$ 분위수는 $1.5 + 2z$에서 $z \approx -0.75$라 거의 0으로 상쇄해요.
+
+```python
+>>> X = sd.stats.Normal(mu=1.5, sigma=2.0)
+>>> x = X.icdf(0.2267)
+>>> x
+0.0004824445232910835
+>>> kappa = 0.2267 / (x * X.pdf(x))
+>>> kappa
+3120.2603602643553
+>>> from flint import arb, ctx
+>>> ctx.prec = 200
+>>> exact = arb(1.5) + 2 * arb(2).sqrt() * (2 * arb(0.2267) - 1).erfinv()
+>>> rel = float((abs((arb(x) - exact) / exact)).mid())
+>>> ctx.prec = 53
+>>> f"{rel:.1e}", f"{rel / kappa:.1e}"
+('3.3e-13', '1.1e-16')
+```
+
+상대오차는 $3.3 \times 10^{-13}$이지만 $\kappa \approx 3120$으로 나눈 계약 단위로는 $1.1 \times 10^{-16}$이에요. 정규·라플라스·로지스틱·Gumbel·GEV의 빠른 역함수는 이렇게 상쇄하는 점에서 $\max(1, \kappa)$ 단위의 계약만 지켜요([원소별 엔진과 빠른 경로](/internals/stats/engine/)).
+
+**이산 역함수의 후방 오차.** 이산 분포의 `icdf(p)`는 $\mathrm{cdf}(k) \ge p$인 가장 작은 정수예요. $p$가 계단 바로 옆에 있으면 $p$의 마지막 비트에 따라 답이 이웃 정수로 바뀌고, 분위수가 $10^{40}$을 넘는 Zipf($a \approx 1$)는 계단이 cdf의 분해능보다 촘촘해요. 그래서 계약은 "목표를 상대 $10^{-14}$ 안에서 움직였을 때의 정확한 분위수 중 하나"예요. `icdf`·`iccdf`는 $p$와 $1 - p$ 중 작은 쪽을, `ilogcdf`·`ilogccdf`는 입력 $t$ 자체를 움직여요. 참값 도구는 목표를 $\pm 10^{-14}$ 움직인 두 끝에서 정확한 분위수를 구해 점마다 허용 구간 $[k_{\min}, k_{\max}]$을 저장해요(역함수가 입력에 대해 단조라 그 사이의 답도 허용돼요). 측정값은 구간 안이면 0, 밖이면 $10^{-14}$ + 구간까지의 상대 거리예요.
+
+## 분포 묶음별 정확도
+
+아래 표는 측정 파일의 값을 분포마다 모은 것이에요. "보장 최대"는 보장 영역 안 모든 메서드의 최대(계약 단위)와 그 메서드, "밖 최대"는 보장 영역 밖에서 잰 점의 최대, "scipy 최대"는 같은 보장 영역 점에서 scipy 1.18.1(고전형 `scipy.stats.<이름>(...)`, `ccdf`는 `sf`, `icdf`는 `ppf`)의 같은 단위 최대예요. scipy는 입력을 받는 메서드만 비교했어요(log 역함수는 고전형에 없어요). inf는 참값이 유한한 점에서 scipy가 inf나 NaN을 냈다는 뜻이고, 1 안팎은 0이나 1처럼 값 전체가 틀린 경우예요.
+
+### 연속 분포 12개
+
+`bench/stats/t4/accuracy.md`, 86만 5758점.
+
+| 분포 | 점 | 보장 최대 | 메서드 | 밖 최대 | scipy 최대 | scipy의 예 |
+|---|:---:|:---:|---|:---:|:---:|---|
+| `Normal` | 72136 | 9.7e-16 | `logcdf` | — | 1.9e-13 | `cdf` 1.9e-13 |
+| `StudentT` | 72464 | 8.1e-15 | `entropy` | 1.4e-14 | inf | `pdf`·`cdf`·`ccdf` 1.0 |
+| `ChiSquared` | 72000 | 1.6e-15 | `entropy` | — | inf | `cdf` 5.4e-2, `iccdf` 2.8e-5 |
+| `F` | 72464 | 9.2e-15 | `entropy` | 1.2e-15 | inf | `cdf` 0.90, `pdf` 1.8e-9 |
+| `Gamma` | 72000 | 5.3e-15 | `entropy` | 1.1e-15 | inf | `cdf` 1.7e-3, `iccdf` 2.4e-5 |
+| `Beta` | 72000 | 7.4e-15 | `entropy` | — | inf | `cdf`·`ccdf` 1.0 |
+| `Exponential` | 71982 | 6.1e-16 | `logcdf` | — | 3.6e-14 | `ccdf` 3.6e-14 |
+| `LogNormal` | 72000 | 1.8e-15 | `iccdf` | — | inf | `pdf` 1.0, `cdf` 1.1e-6 |
+| `Uniform` | 72000 | 3.6e-16 | `variance` | — | 1.9e-13 | `ccdf` 1.9e-13 |
+| `Cauchy` | 72000 | 4.5e-16 | `logpdf` | — | inf | `pdf` 1.0, `icdf` inf |
+| `Laplace` | 72000 | 3.3e-15 | `icdf` | — | inf | `logpdf` inf, `cdf` 9.3e-14 |
+| `Weibull` | 72712 | 2.1e-15 | `variance` | — | 0.36 | `cdf` 0.36, `pdf` 3.9e-2 |
+
+가장 큰 줄은 감마 계열의 `entropy`예요. 엔트로피는 크기 $z\log z$인 $\log\Gamma$와 $(z - k)\psi(z)$ 항들의 합인데 값은 $O(\log z)$라서, 큰 항을 손으로 지운 묶음과 double-double 합으로 계산해요([연속 분포의 수치 기법](/internals/stats/continuous/)). `StudentT`의 밖 최대 $1.4 \times 10^{-14}$는 아래 [느슨한 영역](#보장-영역)이에요.
+
+### 이산 분포 10개
+
+`bench/stats/t5/accuracy.md`, 61만 2763점. 역함수 넷과 `median`은 모든 점이 허용 구간 안이에요(아래 "scipy 구간 안"은 scipy의 `ppf`, `isf` 답이 같은 허용 구간에 드는 비율).
+
+| 분포 | 점 | 보장 최대 | 메서드 | scipy 최대 | scipy의 예 | scipy 구간 안(`ppf` / `isf`) |
+|---|:---:|:---:|---|:---:|---|:---:|
+| `Binomial` | 58444 | 3.0e-15 | `cdf` | inf | `logcdf` inf | 98.90% / 87.88% |
+| `Poisson` | 56840 | 1.3e-15 | `ccdf` | inf | `logcdf` inf | 99.65% / 63.85% |
+| `Geometric` | 72000 | 3.7e-16 | `logcdf` | inf | `isf` 1.8e308 | 92.05% / 63.82% |
+| `NegativeBinomial` | 56813 | 3.1e-15 | `logcdf` | inf | `logcdf` inf | 96.40% / 95.08% |
+| `Hypergeometric` | 55842 | 4.9e-15 | `logpmf` | inf | `logpmf` 2.0e293 | 99.92% / 98.05% |
+| `Bernoulli` | 72000 | 2.3e-16 | `kurtosis` | 1.0 | `logcdf` 1.0 | 100% / 100% |
+| `DiscreteUniform` | 72000 | 3.0e-16 | `kurtosis` | 1.2e-11 | `isf` 1.2e-11 | 100% / 99.95% |
+| `BetaBinomial` | 55224 | 7.7e-16 | `logpmf` | inf | `ccdf` 1.1e100 | 98.98% / 99.50% |
+| `LogSeries` | 56800 | 6.3e-15 | `logccdf` | inf | `logcdf` 2.0e292 | — |
+| `Zipf` | 56800 | 1.7e-15 | `kurtosis` | inf | `logpmf` inf | — |
+
+이산 분포는 모든 점이 보장 영역 안이에요(보장 영역을 잰 매개변수 범위로 정했어요). scipy는 같은 점의 깊은 꼬리에서 log 메서드가 참값이 유한한데 $-\infty$를 내거나, cdf가 상대오차 $10^{100}$을 넘는 곳이 있고, `isf`의 답이 허용 구간 밖인 점이 기하·포아송에서 36%예요.
+
+### 극값·수명·비중심 분포 9개
+
+`bench/stats/t6/accuracy.md`, 59만 8676점. 비중심 셋의 "밖"은 작은 쪽 꼬리가 $10^{-300}$ 아래인 점과 그런 확률의 역함수예요.
+
+| 분포 | 점 | 보장 최대 | 메서드 | 밖 최대 | scipy 최대 | scipy의 예 |
+|---|:---:|:---:|---|:---:|:---:|---|
+| `Logistic` | 72000 | 6.4e-16 | `pdf` | — | 3.9e-3 | `ccdf` 3.9e-3 |
+| `Gumbel` | 72000 | 6.3e-16 | `pdf` | — | 3.8e-13 | `cdf` 3.8e-13 |
+| `GEV` | 72312 | 1.8e-15 | `kurtosis` | 0 | inf | `ccdf`·`pdf` inf, `cdf` 0.15 |
+| `Pareto` | 72000 | 5.0e-16 | `icdf` | — | inf | `logcdf` inf |
+| `Rayleigh` | 72000 | 4.3e-16 | `cdf` | — | 6.5e-14 | `pdf` 6.5e-14 |
+| `InverseGamma` | 72000 | 4.3e-15 | `entropy` | 1.2e-15 | inf | `logcdf` inf, `icdf` 2.4e-5 |
+| `NoncentralChiSquared` | 56111 | 1.6e-15 | `logcdf` | 5.6e-16 | inf | `ccdf` inf, `cdf`·`pdf` 1.0 |
+| `NoncentralT` | 54053 | 4.7e-15 | `kurtosis` | 4.0e-16 | inf | `cdf` inf, `ccdf` 0.22 |
+| `NoncentralF` | 56200 | 2.3e-15 | `iccdf` | 5.8e-16 | inf | `cdf` 2.3e95, `ccdf` 4.5e15 |
+
+### 다변량 분포
+
+`bench/stats/t9/accuracy.md`. 공분산(t는 `shape`)의 조건수 $\kappa$와 차원 $d \in \{2, 5, 20, 100\}$마다 잰 혼합 기준의 최대예요. 아래는 $d$에 대한 최대예요.
+
+| 분포 | $\kappa$ | sd `logpdf` | scipy `logpdf` | sd `entropy` | scipy `entropy` |
+|---|:---:|:---:|:---:|:---:|:---:|
+| 정규 | 1 | 2.2e-16 | 4.3e-15 | 0 | 1.6e-16 |
+| 정규 | 1e3 | 2.6e-16 | 1.2e-14 | 0 | 4.5e-16 |
+| 정규 | 1e6 | 0 | 7.3e-13 | 0 | 2.0e-13 |
+| 정규 | 1e9 | 0 | 5.5e-9 | 0 | 1.1e-9 |
+| t (df = 4.5) | 1 | 1.8e-16 | 2.0e-15 | 2.7e-16 | 2.7e-16 |
+| t (df = 4.5) | 1e9 | 4.4e-16 | 3.2e-9 | 0 | 1.1e-9 |
+| t (df = 1e9) | 1 | 2.4e-16 | 7.7e-7 | 0 | 2.0e-16 |
+| t (df = 1e9) | 1e9 | 0 | 1.2e-7 | 0 | 4.0e-10 |
+
+scipy의 오차는 $\kappa$에 비례해요. 공분산을 double로 분해하면 그 인수가 $A + E$($\lvert E\rvert \sim d\varepsilon\lvert A\rvert$)의 인수라서 이차 형식이 $\kappa\varepsilon$만큼 움직이기 때문이에요. stardust는 촐레스키 분해, 삼각 풀이, 이차 형식을 double-double로 계산해요([다변량 분포의 밀도](/internals/stats/multivariate/)). df = $10^9$인 t의 scipy `logpdf`는 $\kappa = 1$에서도 $7.7 \times 10^{-7}$이 틀려요. stardust는 $\log\Gamma((\nu+d)/2) - \log\Gamma(\nu/2)$를 $\nu/2 \ge 12$에서 Stirling 급수의 차로 계산해 큰 항을 지워요.
+
+### 행렬 분포
+
+`bench/stats/t10/accuracy.md`. 척도 행렬의 조건수 $\kappa$, 차원 $p \in \{2, 5, 12\}$, df(Wishart·역Wishart는 $p - 0.5$, $p + 10$, $10^8$)마다 잰 최대를 $\kappa$별로 모았어요.
+
+| 분포 | $\kappa$ | sd `logpdf` | scipy `logpdf` | sd `entropy` | scipy `entropy` |
+|---|:---:|:---:|:---:|:---:|:---:|
+| Wishart | 1 | 0 | 2.4e-12 | 1.7e-16 | 6.5e-9 |
+| Wishart | 1e8 | 0 | 4.9e-5 | 1.5e-16 | 2.1e-9 |
+| 역Wishart | 1 | 0 | 8.9e-14 | 4.1e-16 | 2.9 |
+| 역Wishart | 1e8 | 0 | 6.5e-8 | 2.2e-16 | 9.5e-2 |
+| 행렬 정규 | 1 | 1.6e-16 | 3.0e-16 | 2.1e-16 | 2.1e-16 |
+| 행렬 정규 | 1e8 | 0 | 1.9e-10 | 0 | 2.3e-10 |
+
+scipy의 Wishart `logpdf`는 $p = 2$, df $= 1.5$, $\kappa = 10^8$에서 $4.9 \times 10^{-5}$가 틀리고, 엔트로피는 df $= 10^8$에서 $6.5 \times 10^{-9}$가 틀려요. stardust는 엔트로피에서 크기 $n\log n$인 항들을 다시 묶어 정확히 지워요([행렬 분포](/internals/stats/matrix/)). scipy 1.18.1의 `invwishart.entropy()`는 식 자체가 달라서 상대오차가 2.9까지 가요. 우리 값은 $X = Y^{-1}$, $Y \sim W(n, \Psi^{-1})$로 변수를 바꿔 얻은 식이고, 몬테카를로 추정 $-E[\log f(X)]$와 맞아요(`tests/stats/test_matrix.py`).
+
+### 다변량 정규·t의 누적확률
+
+`bench/stats/t9/cdf_accuracy.md`(참값 `tests/stats/ref_mvcdf/`).
+
+| 경우 | 점 | 잰 정확도 |
+|---|:---:|---|
+| 정규 $d = 2$ | 7620 | $P \ge 10^{-15}$의 모든 $\rho$에서 최대 상대 $6.7 \times 10^{-15}$. 더 깊은 꼬리는 $\varepsilon\max(1, -\ln P)$의 2.4배 안($10^{-300}$ 근처에서 $5.2 \times 10^{-14}$) |
+| 정규 $d = 3$ | 2979 | 음의 상관이 하나 이하이고 $P \ge 10^{-15}$이면 $4.1 \times 10^{-15}$. $P \ge 10^{-10}$이고 문제의 조건수 $\le 100$이면 $9.5 \times 10^{-15}$. 조건수를 잴 수 있는 모든 점에서 $3.1u \times$ 조건수 안. 전체 최대 $1.5 \times 10^{-13}$(음의 상관 둘, $P \approx 10^{-254}$) |
+| t $d = 2$ | 119 | 최대 $4.7 \times 10^{-16}$(df 0.5–$10^4$) |
+| t $d = 3$ | 59 | 최대 $3.4 \times 10^{-15}$, $P \ge 10^{-15}$에서 $8.7 \times 10^{-16}$ |
+| 준몬테카를로 정규 $d = 4$–$10$ | 168 | `atol` $10^{-6}$에서 실제 오차 최대 $2.4 \times 10^{-7}$, 추정을 넘은 점 0 |
+| 준몬테카를로 t $d = 4$–$8$ | 120 | `atol` $10^{-6}$에서 실제 오차 최대 $8.9 \times 10^{-7}$, 120점 중 5점이 추정을 넘음(넘은 폭은 최대 1.9배) |
+
+scipy 1.18.1과는 기본값끼리 비교하면 정규 $d = 3$에서 최대 $3.7 \times 10^{-5}$, t $d = 2$에서 $1.8 \times 10^{-4}$, t $d = 3$에서 $2.2 \times 10^{-4}$ 차이가 나요(`bench/stats/t9/cdf_speed.md`). stardust의 $d \le 3$은 정확한 공식이라 이 차이는 scipy의 준몬테카를로 오차예요. 정규 $d = 2$는 차이가 $2.2 \times 10^{-16}$이에요. 방법은 [다변량 정규·t의 누적확률](/internals/stats/mvcdf/)에 있어요.
+
+### 기술통계
+
+참값 파일 대신 유리수 산술의 정확한 값과 비교해요. 평균 $10^8$·퍼짐 1인 데이터 2000개에서 `skew` $3.2 \times 10^{-16}$, `kurtosis`와 2차 적률 0이고, scipy는 `skew` $1.2 \times 10^{-8}$, `kurtosis` $1.1 \times 10^{-8}$이에요. 자세한 것은 [기술통계](/internals/stats/descriptive/)에 있어요.
+
+## 보장 영역
+
+보장 영역은 매개변수(와 입력)의 범위예요. 그 안에서는 위의 계약을 지키고, 밖에서도 값을 계산하지만 보장하지 않아요. 닫힌 꼴로 계산하는 분포는 정의역 전체가 보장 영역이에요. special의 불완전 함수 위에 세운 분포는 special이 보장하는 범위, 이산·비중심 분포는 잰 범위예요.
+
+| 분포 | 보장 영역 |
+|---|---|
+| `Normal Exponential Uniform Laplace Cauchy LogNormal Weibull` | 매개변수와 입력의 정의역 전체 |
+| `Logistic Gumbel GEV Pareto Rayleigh` | 매개변수와 입력의 정의역 전체 |
+| `Gamma`, `InverseGamma` | $a \le 10^6$ |
+| `ChiSquared` | df $\le 2 \times 10^6$ |
+| `Beta` | $a, b \le 10^5$ |
+| `StudentT` | df $\le 10^6$ |
+| `F` | dfn, dfd $\le 10^5$ |
+| `Binomial` | $n \le 10^6$ |
+| `Poisson` | $\mu \le 10^6$ |
+| `Geometric` | $p \ge 10^{-9}$ |
+| `NegativeBinomial` | $n \in [0.1, 10^4]$, $p \ge 10^{-4}$ |
+| `Hypergeometric` | total $\le 3000$ |
+| `BetaBinomial` | $n \le 2000$, $a, b \in [0.1, 100]$ |
+| `LogSeries` | $p \ge 10^{-8}$ |
+| `Zipf` | $a \le 60$ |
+| `Bernoulli`, `DiscreteUniform` | 정의역 전체 |
+| `NoncentralChiSquared` | df $\in [10^{-2}, 10^4]$, nc $\le 10^4$. 확률은 $10^{-300}$까지 |
+| `NoncentralT` | df $\in [0.1, 10^5]$, $\lvert\text{nc}\rvert \le 100$. 확률은 $10^{-300}$까지 |
+| `NoncentralF` | dfn, dfd $\in [10^{-2}, 10^4]$, nc $\le 10^4$. 확률은 $10^{-300}$까지 |
+| `MultivariateNormal`, `MultivariateT` | $\kappa(\text{cov}) \le 10^9$, $d \le 100$ (`logpdf`·`entropy` 혼합 기준, `pdf` 상대) |
+| `Wishart`, `InverseWishart`, `MatrixNormal` | $\kappa \le 10^9$, $p \le 100$ (`logpdf`·`entropy` 혼합 기준) |
+| 다변량 정규 `cdf` | $d = 2$: $P \ge 10^{-15}$인 모든 $\rho$. $d = 3$: 음의 상관이 하나 이하이고 $P \ge 10^{-15}$, 또는 $P \ge 10^{-10}$이고 조건수 $\le 100$ |
+| 다변량 t `cdf` | $d = 2, 3$: $P \ge 7 \times 10^{-13}$ |
+
+비중심 셋의 `entropy`는 구적의 두 추정이 $2^{-50}$까지 맞을 때까지 간격을 줄이는 느슨한 계약이고 보장하지 않아요. 비중심 셋의 적률과 `mode`는 보장 영역에서 $10^{-14}$예요.
+
+**느슨한 영역.** 보장 영역 밖에서 잰 점은 하나만 빼고 모두 $10^{-14}$ 안이었어요. 예외는 `StudentT`의 `icdf`·`iccdf`에서 df $\ge 10^5$이고 확률이 $2^{-1000}$($\approx 9.3 \times 10^{-302}$) 아래인 구석으로, $1.4 \times 10^{-14}$예요(`ilog…`는 $9.8 \times 10^{-15}$). 테스트는 이 두 파일만 밖의 점을 $2 \times 10^{-14}$로 확인해요(`tests/stats/test_reference.py`의 `LOOSE`).
+
+## 범위 밖에서 NaN이 되는 곳
+
+보장 영역 밖에서도 값을 계산하지만, 구할 수 없는 값은 조용히 틀린 값 대신 NaN을 내요. 매개변수가 정의역 밖이면 그 원소의 모든 메서드가 NaN인 것과는 별개로, 정의역 안이지만 double로 계산할 수 없는 곳의 목록이에요.
+
+```python
+>>> S = sd.stats
+>>> S.Gamma(a=2.0**101).cdf(1.0), S.Gamma(a=2.0**99).cdf(2.0**99)
+(nan, 0.5000000000000002)
+>>> S.Binomial(n=2.0**53, p=0.5).cdf(1.0), S.Binomial(n=2.0**52, p=0.5).cdf(1.0)
+(nan, 0.0)
+>>> S.NoncentralChiSquared(df=3.5, nc=2e9).cdf(2e9), S.NoncentralChiSquared(df=3.5, nc=3e9).cdf(3e9)
+(0.49998884922427456, nan)
+>>> S.NoncentralT(df=5.0, nc=100.0).mode(), S.NoncentralT(df=5.0, nc=1000.0).mode()
+(91.28253301015569, nan)
+>>> S.Gamma(a=5e-324).logccdf(1.0)
+-745.9570038803834
+>>> S.F(dfn=1e100, dfd=13.0).logpdf(1e300)
+-5174.3123071466
+```
+
+### 연속 분포
+
+| 분포 | NaN이 되는 곳 |
+|---|---|
+| `Gamma`, `InverseGamma` | $a > 2^{100}$의 cdf 계열과 역함수. 깊은 꼬리(확률 $< 2^{-1000}$)의 역함수가 100번 안에 수렴하지 않을 때($a \ge 10^{12}$에서 나와요) |
+| `Gamma`, `InverseGamma`의 아주 작은 $a$ | 서브노멀 $a$에서도 기준 모양 $a_0 = 2^{-600}$에서 계산해 옮겨($Q(a, y) = (a/a_0)Q(a_0, y)$) 값을 내요. $a \le 2^{-600}$이고 위꼬리 목표 $Q \ge 1600a$이면 근은 0(`InverseGamma`는 inf, scale $< 2^{-900}$이면 NaN). 서브노멀 $a$에서 $Q$가 약 $665a$와 $1600a$ 사이면 NaN(근이 $2^{-960}$ 아래) |
+| `ChiSquared` | df $> 2^{101}$의 cdf 계열과 역함수 |
+| `Beta`, `F` | $a, b$가 모두 $2^{100}$ 초과(F는 dfn, dfd가 모두 $2^{101}$ 초과)의 cdf 계열과 역함수 |
+| `ChiSquared`, `StudentT`, `F` | df $< 2^{-1021}$의 pdf, cdf 계열, 역함수, median, entropy(df의 절반을 double로 나타낼 수 없어요) |
+| 역함수의 검증 | 감마 계열 $a \notin [10^{-6}, 10^6]$, `Beta` $a, b \notin [10^{-3}, 10^5]$, `StudentT` df $\notin [10^{-3}, 10^6]$, `F` dfn, dfd $\notin [10^{-3}, 10^5]$에서는 구한 근에서 정방향 log 꼬리가 목표와 상대 $10^{-12}$ 안에서 맞을 때만 값을 내요 |
+| `F.entropy` | dfn이나 dfd가 $10^{-2}$ 미만 |
+| `F.logpdf` | 두 자유도가 모두 $10^{15}$ 초과이고 베타 인자가 double 아래로 내려갈 때 |
+| `Beta.logcdf` | $b < 10^{-3}$이고 $x > 0.9$ |
+
+닫힌 꼴 12개는 정의역 전체에서 값을 내요. $z$나 $x/\text{scale}$이 double을 넘으면 극한값이에요.
+
+### 이산 분포
+
+| 분포 | NaN이 되는 곳 |
+|---|---|
+| `Binomial` | $n > 2^{52}$의 cdf 계열·분위수·mode·entropy, $npq > 2^{42}$의 entropy |
+| `NegativeBinomial` | $n < 2^{-128}$. entropy는 $nq/p^2 > 2^{42}$ 또는 $p < 2^{-20}$ |
+| `Hypergeometric` | total $> 2^{52}$. kurtosis는 total $> 2^{24}$. 합이 $2^{20}$항을 넘는 cdf 계열(total $10^{12}$부터 일부) |
+| `BetaBinomial` | $n + a + b > 2^{35}$(pmf 포함). 합이 $2^{20}$항을 넘는 cdf 계열($n = 10^9$부터 일부). 적률은 $a, b$가 $[2^{-150}, 2^{150}]$ 밖 |
+| `Poisson`, `NegativeBinomial` | $k \ge 2^{53}$에서 pmf$(k)$가 무시할 수 없는 cdf 계열($k + 1$이 double이 아니어서 한 칸 어긋나요) |
+| `DiscreteUniform` | high − low가 넘칠 때 |
+
+$2^{52}$, $2^{53}$의 경계는 개수의 연산 때문이에요. 불완전 베타 $(n - k, k + 1)$을 쓰는 이항 cdf는 $n - k$, $k + 1$, $n + 1$이 정확해야 하는데, $2^{52}$를 넘으면 두 개수의 합이 더는 이웃 double이 1 차이인 범위에 있지 않아요.
+
+### 비중심 분포
+
+| 메서드 | NaN이 되는 곳 |
+|---|---|
+| cdf 계열, 역함수, median | 카이제곱·F는 nc가 약 $2.3 \times 10^9$ 초과, t는 $\lvert\text{nc}\rvert$가 약 $3.8 \times 10^4$ 초과. 카이제곱은 df가 $1.1 \times 10^{24}$를 넘으면 평균 근처 |
+| pdf, logpdf | F는 nc가 약 $1.3 \times 10^8$ 초과, t는 $\lvert\text{nc}\rvert$나 $\lvert t\rvert$가 약 $10^{15}$ 초과. 카이제곱은 큰 df와 큰 nc가 함께일 때만(df가 작으면 nc $= 10^{300}$까지 값이 나와요) |
+| mode | t는 $\lvert\text{nc}\rvert > 128\sqrt{1 + \text{df}}$, F는 nc $> 1.3 \times 10^8$ |
+| `ilogcdf`, `ilogccdf` | $\log p \le -2^{62}$ |
+| entropy | 질량이 double 범위 밖에 남는 아주 작은 자유도(F의 dfd $= 0.01$, 카이제곱 df $= 0.01$·nc $\le 30$ 등), 반분 12번에 수렴하지 않는 큰 nc(카이제곱 df $= 3.5$에서 약 $7 \times 10^7$부터) |
+
+### 표본, 다변량, 행렬
+
+| 대상 | NaN이 되는 곳 |
+|---|---|
+| `sample` | `Hypergeometric`은 표준편차 $> 65536$ 또는 total $\ge 2^{53}$, `DiscreteUniform`은 폭 $\ge 2^{64}$, `StudentT`·`NoncentralT`는 서브노멀 df, `NoncentralF`는 두 자유도가 모두 서브노멀. `Zipf`는 $a > 1025$이면 1, `Beta`·`BetaBinomial`·`F`는 서브노멀 모양에서 극한값 |
+| `Multinomial` | logpmf는 $n$이 약 $10^{13}$을 넘으면 최빈값 근처에서 NaN일 수 있음. entropy는 범주별 표준편차의 합 $> 2^{17}$ 또는 $n > 2^{53}$(점질량은 0) |
+| 다변량 t `cdf` | $d = 3$에서 $\lvert x/\text{sd}\rvert > 10^{100}$이고 조건부 적분으로 넘어가야 할 때(df $\le 1$에서 나와요). 값이 NaN이면 오차 출력도 NaN |
+| `Wishart`, `InverseWishart` | logpdf는 df가 약 $10^{17}$을 넘고 항들이 상쇄하는 곳(밀도가 큰 곳 근처). $10^{15}$까지는 $10^{-13}$ 안 |
+
+행렬 정규·Wishart·역Wishart의 `logpdf`는 원소가 아무리 커도(double의 최댓값, inf 포함) NaN이 아니에요. $2^{400}$(Wishart는 $2^{500}$) 위의 인자는 $2^{-600}$을 곱해 계산하고 로그 행렬식과 이차 형식을 되돌려요. 이차 형식의 절반이 double을 넘으면 $-\infty$예요.
+
+## 반복의 상한
+
+모든 호출은 정해진 시간 안에 끝나요. 합·탐색·반복마다 근거가 있는 상한을 상수로 두고, 상한에 닿으면 부분합이나 마지막 추정이 아니라 NaN을 돌려줘요. 보장 영역 안에서는 상한에 닿지 않아야 하므로, 상한은 영역 안에서 잰 최대보다 넉넉하게 정해요. 루프 카운터는 double로 두지 않아요. 가장 큰 항 $j$에서 양쪽으로 더하는 급수에서 $j \approx 10^{50}$이면 $j - i$가 $j$와 같아져 끝나지 않기 때문이에요.
+
+| 어디 | 상한 | 근거·영역 안의 최대 |
+|---|---|---|
+| 비중심 cdf의 포아송 혼합 합(`kMaxTerms`, `special/ops/noncentral.hpp`) | $2^{18}$항(걷기는 그 두 배) | 영역 안 확률은 바깥으로 4900, 돌아오며 5600걸음. 넓은 log 꼬리(정점 $j^* = 10^8$)는 $9\sqrt{j^*/2} = 6.4 \times 10^4$ |
+| 비중심 밀도의 급수(`kSeriesTerms`, `stats/dist/noncentral.hpp`) | 정점까지 64걸음, 한쪽 $2^{16}$항 | 항들의 종 모양 9폭. 영역 안 $1.2 \times 10^4$항. 정점이 $2^{52}$를 넘으면 더하지 않음 |
+| 비중심 역함수의 구간 넓히기·zeroin | 256회·200회 | 영역 안 최대 32회·16회 |
+| 비중심 엔트로피 | 반분 12번, 일 $2^{25}$단위(`kEntropyWork`) | 보장하지 않는 계약 |
+| 이산 분위수 탐색(`kMaxSearchSteps`, `stats/discrete.hpp`) | 배증·이분 각 1100회 | 1에서 배증하면 1025번에 $2^{1024}$에 닿고, 이분은 이웃 double 둘까지 1024 + 53번 |
+| 이산 꼬리 합(`kMaxTailTerms`) | $2^{20}$항 | 초기하·베타이항의 닫힌 꼴이 없는 cdf |
+| 이산 엔트로피 합(`kMaxEntropyTerms`) | $2^{25}$항(분산 $> 2^{42}$이면 시작하지 않음) | 영역 안 가장 넓은 음이항($n = 10^4$, $p = 10^{-4}$)이 $1.9 \times 10^7$항, 0.19초 |
+| 이산 중심 적률 합(`kMaxMomentTerms`) | 4096항 | 쓰이는 합은 약 200항 이하 |
+| 감마 계열 깊은 꼬리 역함수(`deep_inverse`, `stats/dist/gamma.hpp`) | 100번 | 수렴하지 않으면 NaN |
+| 다변량 cdf | 적응 구적 200구간(`kMaxPanels`), 준몬테카를로 96단계와 `max_points` | 기본 `max_points`는 $10^6 \times$ 적분 변수 수 |
+| 표본기 | 이항 역변환 $k \le 1024$, 초기하 표준편차 $\le 65536$, 다항 엔트로피 $2^{23}$항 | 넘으면 NaN 또는 다른 방법 |
+
+모든 루프가 상한을 갖는다는 것은 극단 인자 묶음에서 호출마다 시간 제한을 두고 Arb 값과 대조해 확인해요. 시간 제한과 함께 고정한 호출들이 테스트에 있어요(`tests/stats/test_discrete.py`, `test_distributions.py`, `tests/special/test_noncentral.py`).
+
+## 속도
+
+### 재는 방법
+
+속도는 측정 파일의 값을 그대로 옮겨요. 공통 조건은 Apple M4 Pro 한 대, scipy 1.18.1, numpy 2.5.4이고, 같은 호출을 여러 번(파일마다 3–5번) 재서 가장 빠른 값을 적어요. scipy는 고전형(`scipy.stats.norm(...).cdf(x)`)으로 재요. 신형 객체는 같은 함수를 더 많은 Python 층으로 감싸니 고전형이 scipy의 빠른 길이에요. 입력 $x$는 분포의 분위수로 고르게 퍼뜨려요. 표의 배율은 scipy 시간 / stardust 시간이에요.
+
+| 측정 | 조건 | 행 | 1스레드 배율 (중앙값) | 10스레드 배율 (중앙값) | Python float 하나 |
+|---|---|:---:|:---:|:---:|:---:|
+| 연속 분포 `t4/speed.md` | 원소 $10^5$개, 메서드 8개 | 96 | 0.67–6.49 (1.84) | 2.5–47.8 (10.8) | 0.19–0.28 µs, scipy의 44–66배 |
+| 이산 분포, 좁은 매개변수 `t5/speed.md` | 원소 $10^5$개, 이항 $n = 40$ 등 | 78 | 1.16–40053 (36.3) | 3.2–12712 (59.2) | 0.17–0.64 µs, scipy의 31–106배 |
+| 이산 분포, 넓은 매개변수 `t5/speed.md` | 원소 20000개(초기하·베타이항은 2000개), 이항 $n = 10^9$ 등 | 64 | 0.67–6045 (5.56) | 0.9–35987 (17.1) | |
+| 극값·수명·비중심 `t6/speed.md` | 원소 $10^5$개 | 72 | 0.52–5.49 (1.60) | 3.5–48.4 (9.7) | 0.23–0.39 µs, scipy의 36–86배 |
+| 표본 `t7/speed.md` | 표본 $10^6$개, numpy `Generator(PCG64)` 대비 | 31 | 0.85–8.32 (1.10) | 7.5–62.8 (10.0) | 0.24–0.37 µs, numpy의 0.41–2.08배 |
+| 기술통계 `t8/speed.md` | 원소 $10^6$개 | 24 | 0.67–39.1 (2.35) | 3.2–179 (14.0) | |
+| 다변량 `t9/speed.md` | 벡터 $10^5$개, $d = 3, 10, 50$ | 16 | 0.40–3.27 (1.36) | 2.8–27.0 (11.9) | |
+| 행렬 분포 `t10/speed.md` | 행렬 $10^4$개 | 12 | 0.80–85.8 (2.79) | 5.8–467 (22.9) | |
+
+Python float 하나를 넣는 호출은 계산보다 Python 경계를 넘는 비용이 커요([Python 경계](/internals/core/python-boundary/)).
+
+**두 이산 묶음.** 좁은 묶음은 $10^5$개 원소에 서로 다른 $k$가 수십 개뿐이라, 스레드마다 정수점의 값을 기억하는 표(`KMemo`)가 거의 모든 원소에 답해요. 원소당 1–2 ns라 80행 중 27행은 10스레드가 1스레드보다 빠르지 않아요(스레드를 나누는 비용이 계산보다 커요). 넓은 묶음은 거의 모든 $k$가 달라서 한 번 계산하는 비용을 보여요. scipy가 답을 내지 못한 행은 비교하지 않았어요. scipy의 `zipf.ppf`는 `RuntimeError`("updating stopped, endless loop")를 내고, 넓은 묶음의 Zipf cdf 계열($k \approx 10^{20}$)은 돌아오지 않고, 넓은 묶음의 `logser` 역함수도 예외를 내요.
+
+<Bench
+  series={['scipy 1.18.1', 'stardust 1스레드', 'stardust 10스레드']}
+  rows={[
+    { label: 'Normal.cdf', times: [1.38e-3, 0.91e-3, 0.20e-3] },
+    { label: 'Gamma.logccdf', times: [28.52e-3, 4.39e-3, 0.62e-3] },
+    { label: 'Beta.logcdf', times: [106.71e-3, 18.73e-3, 2.27e-3] },
+    { label: 'F.icdf', times: [66.71e-3, 52.57e-3, 6.06e-3] },
+    { label: 'NoncentralT.logccdf', times: [365.00e-3, 66.47e-3, 7.54e-3] },
+    { label: 'Hypergeometric.pmf', times: [50.21e-3, 0.13e-3, 0.05e-3] },
+    { label: 'Wishart p=3 logpdf', times: [81.74e-3, 0.95e-3, 0.18e-3] },
+  ]}
+  caption="대표 행. 원소 10⁵개(Wishart는 행렬 10⁴개), Apple M4 Pro. 초기하는 좁은 묶음(total 500)이라 정수점의 값을 기억하는 표가 답해요."
+/>
+
+### scipy보다 느린 행
+
+<Bench
+  series={['scipy 1.18.1', 'stardust 1스레드', 'stardust 10스레드']}
+  rows={[
+    { label: 'ChiSquared.cdf (df=4.5)', times: [6.47e-3, 9.64e-3, 1.23e-3] },
+    { label: 'ChiSquared.icdf', times: [26.51e-3, 33.85e-3, 4.08e-3] },
+    { label: 'StudentT.icdf (df=3.5)', times: [16.97e-3, 20.76e-3, 2.45e-3] },
+    { label: 'Beta.cdf (2.5, 0.7)', times: [15.18e-3, 16.42e-3, 1.89e-3] },
+    { label: 'NoncentralF.logpdf', times: [10.43e-3, 20.03e-3, 2.41e-3] },
+    { label: 'NoncentralT.cdf', times: [36.74e-3, 54.75e-3, 6.17e-3] },
+    { label: 'InverseGamma.logpdf', times: [1.27e-3, 1.59e-3, 0.23e-3] },
+    { label: 'MultivariateNormal d=50 logpdf', times: [5.85e-3, 14.77e-3, 1.80e-3] },
+    { label: 'sem (10⁶개)', times: [0.55e-3, 0.81e-3, 0.14e-3] },
+  ]}
+  caption="1스레드에서 scipy보다 느린 행의 일부. 원소 10⁵개(sem은 10⁶개, 다변량은 벡터 10⁵개). 10스레드에서는 모두 scipy보다 빨라요."
+/>
+
+| 측정 | 1스레드에서 scipy보다 느린 행 | 이유 |
+|---|---|---|
+| 연속 분포 | `ChiSquared`의 `cdf`·`ccdf`(0.67–0.69배), `icdf`·`iccdf`(0.77–0.78배) | 감마 계열의 cdf는 $2a$가 정수이고 $a \le 30$, $a \le y \le 690$이면 위꼬리를 유한 합으로 내는 빠른 경로가 있어요. 측정의 df $= 4.5$는 $a = 2.25$라 이 경로를 못 타요(같은 표에서 $a = 2.5$인 `Gamma`의 cdf는 1.56배, icdf는 1.16배) |
+| 연속 분포 | `StudentT`의 `cdf`(0.92배), `icdf`·`iccdf`(0.81–0.82배), `F`의 `cdf`·`ccdf`(0.94–0.97배), `Beta`의 `cdf`·`ccdf`(0.92배) | 원소마다 불완전 베타 하나가 비용의 대부분이에요. 측정의 모양은 모두 6 이하라 special의 Boost 커널을 쓰고, 역함수는 그것을 여러 번 불러요 |
+| 이산 분포(넓은 묶음) | `BetaBinomial`의 `pmf`·`logpmf`(0.67–0.68배), `Poisson`의 cdf 계열(0.93–0.99배) | 베타이항의 pmf는 double-double $\log\Gamma$ 넷이에요. 포아송의 cdf 계열은 scipy와 같은 수준이에요 |
+| 극값·수명·비중심 | 비중심 F의 `logpdf`(0.52배)·`pdf`(0.68배)·`cdf`(0.72배)·`ccdf`(0.80배), 비중심 t의 `cdf`(0.67배)·`pdf`·`ccdf`(0.88배)·`logpdf`(0.98배), 비중심 카이제곱의 `ccdf`(0.68배) | 항 20–50개의 양항 합에 중심 분포의 불완전 함수 한 번이 더 들어요 |
+| 극값·수명·비중심 | `InverseGamma`의 `pdf`(0.93배)·`logpdf`(0.80배), `Pareto`의 `cdf`(0.98배) | 거의 같은 수준이에요 |
+| 표본 | 31행 중 10행(0.85–0.96배): 코시, 베이불, 감마($a = 3$), 카이제곱, 베타($2, 3$), F, 비중심 카이제곱, 이산 균등, 포아송($\mu = 100$), 이항($n = 10^4$) | 단어를 둘 이상 쓰는 방법은 원소마다 Philox 블록 하나를 더 계산하는데, PCG64는 이어지는 두 단어를 싸게 내요 |
+| 기술통계 | `sem`(0.67배, 0.83배) | 보상 합 셋(첫 훑기의 합, 두 번째 훑기의 $S_1$, $S_2$)을 써요. scipy의 표준편차는 보상하지 않는 합이에요 |
+| 다변량 | 정규·t의 `logpdf` 전부: $d = 3$에서 0.71–0.78배, $d = 10$에서 0.54–0.56배, $d = 50$에서 0.40–0.42배 | $W = L^{-1}$을 double-double로 한 번 구해 두고 $z = W r$을 순서가 정해진 NEON 내적으로 계산하며, 점마다 Higham의 $\gamma$ 상한을 세요. scipy는 점을 모아 BLAS로 푸는데, BLAS는 합의 순서를 알 수 없어서 상한도 위치에 무관한 비트도 보장할 수 없어요 |
+| 행렬 분포 | 행렬 정규 3×2의 `logpdf`(0.80배) | 다변량 `logpdf`와 같은 구조예요(10×5에서는 1.26배) |
+
+**다변량 cdf**(`bench/stats/t9/cdf_speed.md`, 점 하나, 1스레드): 정규 $d = 2$는 0.3 µs(scipy의 21배), $d = 3$은 1.1 µs(1729배)예요. t $d = 2$는 34 µs(17배), $d = 3$은 474 µs(1.8배)예요. 준몬테카를로는 기본 `atol`이 다르니 같은 `atol`끼리 비교해야 해요. stardust의 기본 $10^{-6}$은 scipy의 기본($10^{-5}$, t의 실제 오차는 약 $5 \times 10^{-5}$)보다 엄격하고, 기본값끼리는 0.1–0.3배예요. 같은 `atol` $= 10^{-5}$에서 정규 $d = 5$는 2.3배, $d = 10$은 1.3배이고, `atol` $= 10^{-4}$에서 t $d = 5, 10$은 1.9–2.2배예요.
+
+<Callout>
+속도표의 배율은 측정 파일의 조건(매개변수 하나, 원소 수, 입력의 분포)에서 잰 값이에요. 같은 메서드라도 매개변수가 빠른 경로의 조건(감마 계열의 $2a$가 정수, 모양 $\le 6$의 베타 등)에 드는지, 이산 분포의 입력에 같은 $k$가 얼마나 반복되는지에 따라 몇 배 달라져요.
+</Callout>
+
+## 같은 비트
+
+계약의 마지막 줄 "같은 입력이면 같은 비트"는 이렇게 확인해요.
+
+| 테스트 | 무엇을 |
+|---|---|
+| `tests/stats/test_reference.py::test_scalar_path_gives_the_same_bits` | 참값 파일 555개마다 고르게 고른 100점에서, 배열로 계산한 $f(x)[i]$와 Python float로 계산한 $f(x_i)$의 비트가 같은지 |
+| `bench/stats/opt/` 아래의 해시 도구 | 크기, NaN 정책, 레이아웃, 스레드 수(1, 3, 4, 10)를 바꿔 가며 결과의 해시를 만들어 두 빌드를 비트까지 비교 |
+| `tests/stats/test_sample.py` | 같은 시드의 표본이 스레드 수와 호출을 나누는 방법에 무관한지 |
+
+성립하는 이유는 구조에 있어요. 빠른 경로를 탈지는 원소의 값으로 정하고(오차 상한이 예산 안이면 빠른 값, 아니면 그 원소만 정밀 정의), 쓰는 vForce 함수는 원소의 값이 배열 안 위치와 길이에 무관한 것만 골라요. 매개변수에서 나오는 상수는 스칼라일 때와 배열일 때 같은 함수로 계산해요. 자세한 것은 [원소별 엔진과 빠른 경로](/internals/stats/engine/)에 있어요.
+
+## 참고 문헌
+
+1. F. Johansson, "Arb: efficient arbitrary-precision midpoint-radius interval arithmetic", *IEEE Transactions on Computers* 66(8), 1281–1292, 2017. doi:10.1109/TC.2017.2690633. 파이썬 바인딩 python-flint. https://flintlib.org/
+2. A. Genz, "Numerical computation of rectangular bivariate and trivariate normal and t probabilities", *Statistics and Computing* 14, 251–260, 2004. doi:10.1023/B:STCO.0000035304.20635.31
+3. Z. Drezner, G. O. Wesolowsky, "On the computation of the bivariate normal integral", *Journal of Statistical Computation and Simulation* 35(1–2), 101–107, 1990. doi:10.1080/00949659008811236
+4. N. J. Higham, *Accuracy and Stability of Numerical Algorithms*, 2nd ed., SIAM, 2002. doi:10.1137/1.9780898718027 (내적과 삼각 풀이의 오차 상한 $\gamma_n$)
+5. D. Goldberg, "What every computer scientist should know about floating-point arithmetic", *ACM Computing Surveys* 23(1), 5–48, 1991. doi:10.1145/103162.103163 (ULP와 상대오차)
