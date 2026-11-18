@@ -13,7 +13,7 @@ params:
     kind: positional-only
     desc: 데이터. bool·정수는 float64로 바꿔서 계산해요.
   - name: axis
-    type: int, int의 tuple, 또는 None
+    type: int, int의 tuple·리스트, 또는 None
     kind: keyword-only
     desc: 줄여서 없앨 축. None(기본값)이면 모든 원소를 한 묶음으로 계산해요.
   - name: fisher
@@ -37,7 +37,7 @@ returns:
   desc: 왜도 또는 첨도. 언제나 float64이고, 남는 축이 없으면 Python float예요. 값이 둘 미만이거나 모두 같으면 NaN이에요.
 raises:
   - type: TypeError
-    desc: x가 배열이나 숫자의 시퀀스가 아닐 때, 복소수일 때, axis가 int·tuple·None이 아닐 때, fisher·bias·keepdims가 True·False가 아닐 때.
+    desc: x가 배열이나 숫자의 시퀀스가 아닐 때, 복소수일 때, axis가 int·tuple·리스트·None이 아닐 때, fisher·bias·keepdims가 True·False가 아닐 때, nan_policy에 문자열이 아닌 값을 줬을 때.
   - type: ValueError
     desc: nan_policy 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때, axis가 범위를 벗어나거나 같은 축을 두 번 썼을 때.
 seeAlso: [describe, moment, zscore, sem]
@@ -240,6 +240,17 @@ array([[ 1.0182337649086284],
        [-1.0182337649086284]], dtype=float64)
 ```
 
+여러 축은 `axis=(0, 1)`이나 `axis=[0, 1]`처럼 tuple이나 리스트로 줘요. 같은 축을 두 번 쓰면(음수 번호로 같은 축을 가리켜도) `ValueError`예요.
+
+```python
+>>> sd.stats.skew(m, axis=[0, 1])
+0.0
+>>> sd.stats.skew(m, axis=[1, -1])
+Traceback (most recent call last):
+    ...
+ValueError: skew(): repeated axis
+```
+
 ## NaN이 있으면: `nan_policy`
 
 ```python
@@ -257,6 +268,15 @@ ValueError: skew(): the input contains NaN (nan_policy='raise')
 - `'propagate'`(기본값): NaN이 있는 줄의 결과가 NaN이에요.
 - `'omit'`: 줄마다 NaN을 빼고 남은 값으로 계산해요. 이때 $n$도 남은 개수예요.
 - `'raise'`: NaN이 하나라도 있으면 `ValueError`예요.
+
+이름은 이 셋 중 하나를 소문자 그대로 써요. 다른 이름은 `ValueError`, 문자열이 아니면(`None` 등) `TypeError`예요.
+
+```python
+>>> sd.stats.skew(y, nan_policy='ignore')
+Traceback (most recent call last):
+    ...
+ValueError: skew(): 'nan_policy' must be 'propagate', 'omit' or 'raise', not 'ignore'
+```
 
 ## 조심할 점
 

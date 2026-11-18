@@ -360,6 +360,17 @@ nan
 1.0
 ```
 
+`support()`는 값이 하나로 몰려도 이항 분포 족의 지지집합 (0, n)이에요. 그래서 `icdf(1)`도 그 위 끝 `n`이에요. 1 아래의 확률에서는 질량이 있는 0을 돌려줘요.
+
+```python
+>>> Z.support()
+(0.0, 10.0)
+>>> Z.icdf(1.0)
+10.0
+>>> Z.icdf(0.999)
+0.0
+```
+
 ## 표본
 
 `sample`은 이항 분포를 따르는 난수를 뽑아요. 생성기 `rng`를 꼭 줘야 하고, 값은 정수인 float64예요. 공통 규칙은 [표본 뽑기](/api/stats/sample/)에 있어요.
@@ -379,6 +390,16 @@ array([3.0, 4.0, 4.0, 1.0, 1.0, 2.0, 5.0, 2.0], dtype=float64)
 ```
 
 표본 10만 개의 평균과 분산이 이론값 3과 2.1에 가까워요.
+
+`shape`를 빼면 매개변수 집합마다 표본 하나예요. 매개변수가 스칼라면 Python float 하나, 배열이면 그 모양의 배열이에요. 스칼라와 배열을 섞어도 돼요.
+
+```python
+>>> sd.stats.Binomial(n=10, p=sd.asarray([0.1, 0.5, 0.9])).sample(rng=sd.random.default_rng(1))
+array([0.0, 4.0, 9.0], dtype=float64)
+>>> sd.stats.Binomial(n=10, p=sd.asarray([0.1, 0.5, 0.9])).sample((2,), rng=sd.random.default_rng(1))
+array([[ 0.0,  4.0,  9.0],
+       [ 0.0,  3.0, 10.0]], dtype=float64)
+```
 
 ## 다른 분포와의 관계
 
@@ -453,7 +474,7 @@ nan
 
 - `scipy.stats.binom(n, p)`, `scipy.stats.Binomial(n=, p=)`와 같은 분포예요. 분위수 `icdf`, `iccdf`는 `binom.ppf`, `binom.isf`와 정의가 같아요.
 - `icdf(0)`은 지지집합의 왼쪽 끝 0이에요. `binom.ppf(0, n, p)`는 −1이에요.
-- `p = 0`, `p = 1`을 받아서 점질량이 돼요(왜도·첨도는 NaN). scipy 1.18.1의 `Binomial(n=10, p=0)`은 모든 값이 NaN이고, `binom.stats(10, 0, moments='k')`는 9.2e18을 내요.
+- `p = 0`, `p = 1`을 받아서 점질량이 돼요(왜도·첨도는 NaN). 그때의 `support()`와 `icdf(1)`은 `binom.support(10, 0)`, `binom.ppf(1, 10, 0)`과 같은 (0, 10)과 10이에요. scipy 1.18.1의 `Binomial(n=10, p=0)`은 모든 값이 NaN이고, `binom.stats(10, 0, moments='k')`는 9.2e18을 내요.
 - `cdf`는 정수가 아닌 k를 내려요. `binom.cdf(3.7, 10, 0.3)`도 그렇지만, `scipy.stats.Binomial(n=10, p=0.3).cdf(3.7)`은 0.8002로 내리지 않은 값을 내요(이 분포의 답은 0.6496).
 - `kurtosis()`는 초과 첨도예요. `scipy.stats.Binomial`의 `kurtosis()`는 기본이 초과가 아닌 첨도(2.876)라 3만큼 달라요.
 - `mode()`는 최빈값이 둘이면 NaN이에요. `scipy.stats.Binomial(n=9, p=0.5).mode()`는 5예요.

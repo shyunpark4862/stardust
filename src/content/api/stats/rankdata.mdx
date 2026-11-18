@@ -28,7 +28,7 @@ returns:
   desc: 순위를 담은 float64 배열. axis=None이면 1차원(원소 수만큼), axis를 주면 x와 같은 모양이에요.
 raises:
   - type: TypeError
-    desc: x가 배열이나 숫자의 시퀀스가 아니거나 복소수일 때, axis가 int·None이 아닐 때(tuple 포함).
+    desc: x가 배열이나 숫자의 시퀀스가 아니거나 복소수일 때, axis가 int·None이 아닐 때(tuple·리스트 포함), method·nan_policy에 문자열이 아닌 값을 줬을 때.
   - type: ValueError
     desc: method나 nan_policy 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때, axis가 범위를 벗어났을 때.
 seeAlso: [zscore, mode, iqr, describe]
@@ -156,7 +156,7 @@ array([[2.0, 1.5, 1.0],
        [1.0, 1.5, 2.0]], dtype=float64)
 ```
 
-`axis`에는 축 하나만 줄 수 있어요. 여러 축을 한꺼번에 순위 매기려면 먼저 `sd.reshape`로 합쳐 주세요.
+`axis`에는 축 하나만 줄 수 있어요. 다른 기술통계 함수와 달리 tuple이나 리스트는 받지 않아요. 여러 축을 한꺼번에 순위 매기려면 먼저 `sd.reshape`로 합쳐 주세요.
 
 ```python
 >>> sd.stats.rankdata(t, axis=(0, 1))
@@ -212,7 +212,7 @@ array([1.0], dtype=float64)
 >>> sd.stats.rankdata(s, method='first')
 Traceback (most recent call last):
     ...
-ValueError: rankdata(): 'method' must be one of 'average', 'min', 'max', 'dense', 'ordinal', not 'first'
+ValueError: rankdata(): 'method' must be 'average', 'min', 'max', 'dense' or 'ordinal', not 'first'
 ```
 
 다른 도구에서 `'first'`라고 부르는 방법(동점을 나온 순서대로)은 여기서 `'ordinal'`이에요.

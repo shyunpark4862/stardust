@@ -11,11 +11,11 @@ params:
   - name: dfn
     type: Python 실수 또는 ndarray
     kind: keyword-only
-    desc: 분자의 자유도. 0보다 큰 유한한 실수예요(정수가 아니어도 돼요). 0 이하, inf, NaN인 원소는 모든 메서드가 NaN이에요.
+    desc: 분자의 자유도. 0보다 큰 실수예요(정수가 아니어도 돼요). inf이면 극한 분포예요(dfd/χ²(dfd), 곧 InverseGamma(a=dfd/2, scale=dfd/2)). 0 이하이거나 NaN인 원소, 그리고 두 자유도가 모두 inf인 원소는 모든 메서드가 NaN이에요.
   - name: dfd
     type: Python 실수 또는 ndarray
     kind: keyword-only
-    desc: 분모의 자유도. dfn과 같은 정의역이에요. 평균, 분산, 왜도, 첨도가 유한한지는 dfd가 정해요.
+    desc: 분모의 자유도. dfn과 같은 정의역이에요. inf이면 극한 분포 χ²(dfn)/dfn이에요. 평균, 분산, 왜도, 첨도가 유한한지는 dfd가 정해요.
 returns:
   type: F
   desc: F 분포 객체. pdf·cdf·icdf 같은 메서드, mean·variance 같은 요약값, sample을 가져요. dfn, dfd는 읽기 전용 속성으로 준 값 그대로 남아요.
@@ -98,7 +98,7 @@ F(dfn=3, dfd=10)
 
 ## 만들기와 매개변수
 
-두 자유도 `dfn`, `dfd`를 꼭 이름을 붙여서 줘요. 기본값은 없어요. 둘 다 0보다 큰 유한한 실수이고, 정수가 아니어도 돼요.
+두 자유도 `dfn`, `dfd`를 꼭 이름을 붙여서 줘요. 기본값은 없어요. 둘 다 0보다 큰 실수이고, 정수가 아니어도 돼요.
 
 ```python
 >>> X.dfn, X.dfd
@@ -110,8 +110,12 @@ TypeError: F.__init__() takes 1 positional argument but 3 were given
 >>> sd.stats.F(dfn=0, dfd=10).cdf(1.0)
 nan
 >>> sd.stats.F(dfn=3, dfd=sd.inf).mean()
+1.0
+>>> sd.stats.F(dfn=sd.inf, dfd=sd.inf).mean()
 nan
 ```
+
+자유도 하나가 inf이면 그 극한 분포예요. 분모 자유도가 inf이면 분모 $V/d_2$가 정확히 1이 되어 $\chi^2(d_1)/d_1$이고, 분자 자유도가 inf이면 분자가 1이 되어 $d_2/\chi^2(d_2)$, 곧 [역감마 분포](/api/stats/inverse-gamma/) $\mathrm{InverseGamma}(d_2/2,\ d_2/2)$예요([분모 자유도가 크면 카이제곱](#분모-자유도가-크면-카이제곱)). 둘 다 inf이면 1 한 점에 몰려서 확률분포가 아니니 NaN이에요.
 
 두 자유도에 배열을 주면 서로 [브로드캐스팅](/api/array/broadcasting/)해요. 브로드캐스트할 수 없는 모양이면 만들 때 `ValueError`예요.
 
@@ -122,7 +126,7 @@ array([[4.964602743730714, 4.102821015130401,  3.47804969076523],
 >>> sd.stats.F(dfn=sd.asarray([1.0, 2.0]), dfd=sd.asarray([1.0, 2.0, 3.0]))
 Traceback (most recent call last):
     ...
-ValueError: broadcast_arrays(): shapes could not be broadcast together: (2,) (3,)
+ValueError: F(): shapes could not be broadcast together: (2,) (3,)
 ```
 
 위의 표는 흔히 책 뒤에 실린 "F 분포표"의 한 조각이에요. 행이 분모 자유도, 열이 분자 자유도예요.
@@ -271,7 +275,7 @@ array([               nan,                inf, 11.111111111111112,
 array([               nan,                nan,                inf,
                      11.0,  5.003702332976757, 2.4435313546278805], dtype=float64)
 >>> Xs.kurtosis()
-array([               nan,                nan,                nan,
+array([               nan,                nan,                inf,
                       inf, 124.66666666666667, 11.448979591836734], dtype=float64)
 ```
 
@@ -280,7 +284,7 @@ array([               nan,                nan,                nan,
 - **평균**: F 분포는 0 이상이라 적분이 발산하면 $+\infty$로만 가요. 그래서 $d_2 \le 2$이면 평균은 NaN이 아니라 inf예요.
 - **분산**: $2 < d_2 \le 4$이면 평균은 유한하고 제곱의 평균이 발산하니 inf예요. $d_2 \le 2$이면 평균부터 무한해서 "평균에서 떨어진 정도"를 말할 수 없으니 NaN이에요.
 - **왜도**: $4 < d_2 \le 6$이면 분산은 유한하고 세제곱의 평균이 $+\infty$로 발산하니 inf예요. 분산이 유한하지 않으면($d_2 \le 4$) NaN이에요.
-- **첨도**: $6 < d_2 \le 8$이면 inf, $d_2 \le 6$이면 NaN이에요.
+- **첨도**: $4 < d_2 \le 8$이면 분산은 유한하고 네제곱의 평균이 $+\infty$로 발산하니 inf예요. 분산이 유한하지 않으면($d_2 \le 4$) NaN이에요.
 
 ## 표본
 
@@ -348,13 +352,24 @@ array([        0.26171875, 0.7863390254060808, 0.9809269525029634], dtype=float6
 
 ### 분모 자유도가 크면 카이제곱
 
-$d_2$가 커지면 분모 $V/d_2$가 1로 모여서, $d_1 X$가 자유도 $d_1$인 카이제곱 분포에 가까워져요.
+$d_2$가 커지면 분모 $V/d_2$가 1로 모여서, $d_1 X$가 자유도 $d_1$인 카이제곱 분포에 가까워져요. `dfd=inf`는 그 극한이라 카이제곱과 똑같아요.
 
 ```python
 >>> sd.stats.F(dfn=3, dfd=1e5).cdf(x)
 array([0.31772880416905747,  0.8883824771443609,  0.9998946180627202], dtype=float64)
+>>> sd.stats.F(dfn=3, dfd=sd.inf).cdf(x)
+array([0.31772966966378746,  0.8883897749052875,  0.9998947238182285], dtype=float64)
 >>> sd.stats.ChiSquared(df=3).cdf(3 * x)
 array([0.31772966966378746,  0.8883897749052875,  0.9998947238182285], dtype=float64)
+```
+
+거꾸로 분자 자유도 $d_1$이 커지면 분자 $U/d_1$이 1로 모여서, $X$가 $d_2/V$, 곧 역감마 분포 $\mathrm{InverseGamma}(d_2/2,\ d_2/2)$에 가까워져요. `dfn=inf`는 역감마 분포와 똑같아요.
+
+```python
+>>> sd.stats.F(dfn=sd.inf, dfd=6).cdf(x)
+array([0.06196880441665896,  0.8088468305380582,  0.9904532609400744], dtype=float64)
+>>> sd.stats.InverseGamma(a=3.0, scale=3.0).cdf(x)
+array([0.06196880441665896,  0.8088468305380582,  0.9904532609400744], dtype=float64)
 ```
 
 ### 비중심 F 분포
@@ -389,7 +404,7 @@ array([0.31772966966378746,  0.8883897749052875,  0.9998947238182285], dtype=flo
 
 - 두 자유도가 **모두** $2^{101}$(약 2.5e30)을 넘으면 `cdf` 계열과 역함수가 NaN이에요. 하나만 크면 계산해요.
 - 자유도가 $2^{-1021}$(약 4.5e-308)보다 작으면 `pdf`, `cdf` 계열, 역함수, `median`, `entropy`가 NaN이에요.
-- 자유도가 $[10^{-3}, 10^5]$ 밖이면 역함수는 구한 근을 다시 넣어 확인하고, 맞을 때만 값을 내요.
+- 자유도가 $[10^{-3}, 10^5]$ 밖이면 역함수는 구한 근을 다시 넣어 확인하고, 맞을 때만 값을 내요. 확률이 $2^{-1000}$보다 작은 깊은 꼬리의 역함수가 정해진 반복 안에 수렴하지 않을 때도 NaN이에요.
 - `entropy()`는 자유도 하나라도 $10^{-2}$보다 작으면 NaN이에요. 그 아래에서는 공식의 큰 항들이 서로 지워지면서 자릿수가 남지 않아요.
 - `logpdf`는 두 자유도가 모두 $10^{15}$를 넘고 계산 중간의 베타 인자가 float64 범위 아래로 내려가면 NaN이에요.
 
@@ -406,9 +421,10 @@ nan
 
 - `scipy.stats.f`에 해당해요. 메서드 이름은 scipy의 새 분포 API를 따라요(`sf` → `ccdf`, `ppf` → `icdf`, `isf` → `iccdf`, `logsf` → `logccdf`).
 - `loc`, `scale`이 없고, 자유도는 키워드(`dfn`, `dfd`)로만 받아요.
+- 자유도 하나가 inf이면 극한 분포(χ²(dfn)/dfn이나 역감마)예요. scipy `f(3, inf).cdf(2.0)`과 `f(inf, 6).cdf(2.0)`은 NaN이에요.
 - 모멘트의 특수값이 달라요.
   - $d_2 \le 2$의 `variance()`는 NaN이에요(scipy `f.var`는 inf).
-  - $4 < d_2 \le 6$의 `skewness()`와 $6 < d_2 \le 8$의 `kurtosis()`는 inf예요(scipy `f.stats(..., moments='sk')`는 NaN).
+  - $4 < d_2 \le 6$의 `skewness()`와 $4 < d_2 \le 8$의 `kurtosis()`는 inf예요(scipy `f.stats(..., moments='sk')`는 NaN).
 - `kurtosis()`는 초과 첨도예요(scipy `f.stats(..., moments='k')`와 같아요).
 - 꼬리에서 scipy가 inf나 `-inf`를 내는 곳에서 값을 내요. `F(dfn=3, dfd=7).iccdf(1e-30)`은 1.107e9이고 scipy `f.isf(1e-30, 3, 7)`은 inf예요.
 - 자유도가 $10^{-2}$보다 작으면 `entropy()`가 NaN이에요. scipy는 값을 내요.

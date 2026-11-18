@@ -24,6 +24,8 @@ returns:
 raises:
   - type: TypeError
     desc: string 컬럼일 때(DataFrame은 그런 컬럼이 하나라도 있으면), skipna가 True·False가 아닐 때, correction이 int·float가 아닐 때(bool, None 포함), 옵션을 이름 없이 넘겼을 때.
+  - type: OverflowError
+    desc: correction이 float64로 바꿀 수 없을 만큼 큰 정수일 때(예 10**400).
 seeAlso: [sum-mean, min-max, na, groupby-agg]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -258,6 +260,15 @@ TypeError: var(): 'correction' must be an int or a float, not bool
 Traceback (most recent call last):
     ...
 TypeError: var(): 'correction' must be an int or a float, not NoneType
+```
+
+실수로 바꿀 수 없을 만큼 큰 정수는 `OverflowError`예요. 배열의 `sd.var`와 같은 메시지예요.
+
+```python
+>>> score.var(correction=10**400)
+Traceback (most recent call last):
+    ...
+OverflowError: var(): 'correction' is out of range
 ```
 
 ### 아주 큰 정수

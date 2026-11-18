@@ -12,7 +12,7 @@ params:
     kind: positional-only
     desc: 표준화할 데이터. bool·정수는 float64로 바꿔서 계산해요.
   - name: axis
-    type: int, int의 tuple, 또는 None
+    type: int, int의 tuple·리스트, 또는 None
     kind: keyword-only
     desc: 평균과 표준편차를 계산할 축. None(기본값)이면 모든 원소의 평균·표준편차 하나로 표준화해요.
   - name: correction
@@ -28,7 +28,7 @@ returns:
   desc: x와 모양이 같은 float64 배열. Python 숫자 하나를 넣으면 원소 하나짜리 1차원 배열이에요. 줄의 값이 모두 같으면 그 줄은 NaN이에요.
 raises:
   - type: TypeError
-    desc: x가 배열이나 숫자의 시퀀스가 아니거나 복소수일 때, axis가 int·tuple·None이 아닐 때, correction이 int·float가 아닐 때(bool 포함), 없는 옵션(keepdims 등)을 줬을 때.
+    desc: x가 배열이나 숫자의 시퀀스가 아니거나 복소수일 때, axis가 int·tuple·리스트·None이 아닐 때, correction이 int·float가 아닐 때(bool 포함), 없는 옵션(keepdims 등)을 줬을 때, nan_policy에 문자열이 아닌 값을 줬을 때.
   - type: ValueError
     desc: nan_policy 이름이 틀렸거나 'raise'인데 NaN이 있을 때, axis가 범위를 벗어나거나 겹칠 때.
 seeAlso: [rankdata, describe, sem, skew-kurtosis]
@@ -73,7 +73,7 @@ array([ -1.414213562373095,                 0.0,  0.7071067811865475,
 
 ## `axis`: 무엇을 기준으로 표준화할까요
 
-기본값 `axis=None`은 **배열 전체**의 평균과 표준편차 하나로 모든 원소를 표준화해요(`sd.mean`, `sd.std`와 같은 규칙이에요). 행이나 열마다 따로 하려면 `axis`를 줘요.
+기본값 `axis=None`은 **배열 전체**의 평균과 표준편차 하나로 모든 원소를 표준화해요(`sd.mean`, `sd.std`와 같은 규칙이에요). 행이나 열마다 따로 하려면 `axis`를 줘요. 여러 축을 한 묶음으로 보려면 tuple이나 리스트로 줘요.
 
 ```python
 >>> t = sd.asarray([[160.0, 170.0, 175.0],

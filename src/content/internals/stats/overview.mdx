@@ -36,7 +36,7 @@ import Layers from '../../../components/fig/Layers.astro';
       { label: 'nary_bind::def<DistOp<Gamma, Cdf>>', where: 'bind/nary_bind.hpp', note: '입력 셋(a, scale, x)을 위치 전용으로, out=을 키워드 전용으로 받는 함수예요. special과 같은 바인딩 코드예요.' },
       { label: 'run_nary', where: 'array/ops/ufunc.cpp', note: '피연산자마다 dtype을 읽고 승격해 float64 루프를 골라요. complex128이면 여기서 TypeError예요.' },
       { label: 'launch', where: 'array/ops/ufunc.cpp', note: 'Python 숫자 2.5와 1.0을 원소 하나짜리 배열로 만들고 x와 브로드캐스트해요. stride가 0인 피연산자가 돼요.' },
-      { label: 'NdIter::run(weight = 228)', where: 'array/iter.cpp', note: '감마 cdf의 원소당 비용(잰 값 43.3 ns)을 덧셈 단위로 바꾼 가중치예요. 원소 144개부터 스레드풀에 나누고, 작업 하나는 원소 17개예요.' },
+      { label: 'NdIter::run(weight = 226)', where: 'array/iter.cpp', note: '감마 cdf의 원소당 비용(잰 값 42.9 ns)을 덧셈 단위로 바꾼 가중치예요. 원소 145개부터 스레드풀에 나누고, 작업 하나는 원소 18개예요.' },
       { label: 'nary_loop<DistOp<Gamma, Cdf>, double>', depth: 1, where: 'array/kernels/elementwise.hpp', note: '조각 하나의 원소마다 DistOp::f(a, scale, x)를 불러요. 감마의 cdf에는 chunk 커널이 없어서 이 루프예요.' },
       { label: 'DistOp<Gamma, Cdf>::f', depth: 2, where: 'stats/engine.hpp', note: 'Gamma::valid(a, scale)가 거짓이거나 x가 NaN이면 NaN을 돌려줘요. 아니면 Gamma::cdf를 부르고 + 0.0으로 −0을 +0으로 바꿔요.' },
       { label: 'Gamma::cdf → ratio_tail', depth: 2, where: 'stats/dist/gamma.hpp', note: 'y = x/scale을 double-double로 만들어요. 2a가 정수이고 a ≤ y ≤ 690이면 위꼬리를 유한 합으로, 그 밖은 special의 불완전 감마에 y.hi를 넣고 y.lo를 1차 보정으로 더해요.' },
@@ -160,10 +160,12 @@ class _Distribution:
 
     def cdf(self, x, /, *, out=None):
         """P(X <= x)."""
+        if type(x) is int:
+            _int_input(x, "cdf")
         try:
             return self._ops["cdf"](*self._p, x, out=out)
         except _RENAMED as e:
-            raise _renamed(e, 'cdf', 'x') from None
+            raise _renamed(e, 'cdf', 'x', x) from None
 ```
 
 C++ 쪽 분포 구조체는 이렇게 생겼어요.
@@ -176,10 +178,10 @@ struct Normal {
     static bool valid(double mu, double sigma) {                     // 매개변수의 정의역
         return std::isfinite(mu) && sigma > 0.0 && std::isfinite(sigma);
     }
-    static double pdf(double x, double mu, double sigma);            // 메서드마다 원소 함수
-    static double cdf(double x, double mu, double sigma);
+    static double pdf(double x, double mu, double sigma) { ... }     // 메서드마다 원소 함수
+    static double cdf(double x, double mu, double sigma) { return tail(x, mu, sigma, false); }
     ...
-    static void pdf_chunk(const Chunk<2>& c, double* out);           // 있으면 빠른 경로
+    static void pdf_chunk(const Chunk<2>& c, double* out) { ... }    // 있으면 빠른 경로
     static double mean(double mu, double) { return mu; }
     ...
 };
@@ -193,8 +195,10 @@ struct Normal {
 
 생성자는 매개변수를 키워드로만 받고(`Gamma(2.5)`는 `TypeError`), 두 가지만 검사해요.
 
-- **형**: Python 실수(`bool`, `int`, `float`)이거나 complex가 아닌 `sd.ndarray`여야 해요(`_check_param`). 그 밖은 `TypeError`예요. float으로 바꾸면 넘칠 만큼 큰 Python int는 `OverflowError`예요.
+- **형**: Python 실수(`bool`, `int`, `float`)이거나 complex가 아닌 `sd.ndarray`여야 해요(`_check_param`). 그 밖은 `TypeError`예요. float으로 바꾸면 넘칠 만큼 큰 Python int는 `OverflowError`(`Normal(): 'mu' is out of range`)예요.
 - **모양**: 배열 매개변수가 둘 이상이면 서로 브로드캐스트되는지 확인해요. 뷰만 만드는 `broadcast_arrays`를 불러 보고, 안 되면 그 자리에서 `ValueError`예요.
+
+생성자의 에러는 모두 클래스 이름으로 시작해요(`Normal(): ...`). 브로드캐스트 에러도 배열 영역이 낸 메시지의 앞머리를 클래스 이름으로 바꿔 다시 내요. 공통 기반 `ContinuousDistribution`, `DiscreteDistribution`은 `isinstance` 검사용이라 직접 만들면 `TypeError`예요.
 
 **값은 검사하지 않아요.** `Gamma(a=-1.0)`도 만들어지고, 그 원소의 모든 메서드가 NaN을 내요. 배열 매개변수에서 정의역 밖인 원소가 섞여 있어도 나머지 원소는 제 값을 내야 하기 때문에, 정의역은 원소마다 따지는 성질이에요. 매개변수는 준 값 그대로 읽기 전용 속성(`X.a`)으로 들고 있어요.
 
@@ -206,7 +210,11 @@ array([2.5, nan, nan], dtype=float64)
 >>> sd.stats.Normal(mu="a")
 Traceback (most recent call last):
     ...
-TypeError: 'mu' must be a real number or an sd.ndarray, not str
+TypeError: Normal(): 'mu' must be a real number or an sd.ndarray, not str
+>>> sd.stats.Normal(mu=sd.zeros(2), sigma=sd.ones(3))
+Traceback (most recent call last):
+    ...
+ValueError: Normal(): shapes could not be broadcast together: (2,) (3,)
 ```
 
 ### 부를 때: 매개변수와 입력을 함께
@@ -222,13 +230,17 @@ array([[                   0.5, 2.8665157187919386e-07],
 array([ 0.0, 10.0], dtype=float64)
 ```
 
-입력의 형이 틀리면 C++ 커널이 `gamma_cdf(): 'x' must be ...` 같은 메시지로 에러를 내요. 이 앞머리는 사용자가 부른 적 없는 이름이라, Python 층이 그것을 메서드 이름으로 바꾸고 complex 배열에 대한 문구도 실수만 받는다는 말로 고쳐요(`_renamed`).
+입력의 형이 틀리면 C++ 커널이 `gamma_cdf(): 'x' must be ...` 같은 메시지로 에러를 내요. 이 앞머리는 사용자가 부른 적 없는 이름이라, Python 층이 그것을 메서드 이름으로 바꾸고 complex 배열에 대한 문구도 실수만 받는다는 말로 고쳐요(`_renamed`). int64 범위 밖의 Python int 입력은 커널에 넘기기 전에 `OverflowError`예요. sd.special의 함수와 같은 규칙이에요(`_int_input`).
 
 ```python
 >>> sd.stats.Normal().cdf("a")
 Traceback (most recent call last):
     ...
 TypeError: cdf(): 'x' must be an sd.ndarray or a real number, not str
+>>> sd.stats.Normal().cdf(2**70)
+Traceback (most recent call last):
+    ...
+OverflowError: cdf(): Python int too large to convert to int64
 ```
 
 ## 정확도 계약과 보장 영역
@@ -273,9 +285,9 @@ stats는 $y = x/\text{scale}$을 double-double $y_\text{hi} + y_\text{lo}$로 �
 | 이산 | 이항 $n \le 10^6$, 포아송 $\mu \le 10^6$, 기하 $p \ge 10^{-9}$, 음이항 $n \in [0.1, 10^4]$·$p \ge 10^{-4}$, 초기하 total $\le 3000$, 베타이항 $n \le 2000$·$a, b \in [0.1, 100]$, 로그 급수 $p \ge 10^{-8}$, Zipf $a \le 60$. 베르누이와 이산 균등은 전체 |
 | 다변량 정규·t (밀도, 엔트로피) | $\kappa(\text{cov}) \le 10^9$, $d \le 100$ |
 | 다변량 정규·t (누적확률) | 정규 $d = 2$는 $P \ge 10^{-15}$, $d = 3$은 상관의 부호와 조건수에 따른 범위, t의 $d = 2, 3$은 $P \ge 7 \times 10^{-13}$. $d \ge 4$는 준몬테카를로라 `atol`까지의 느슨한 계약 |
-| 행렬 분포 | $\kappa \le 10^9$, $p \le 100$ |
+| 행렬 분포 | $\kappa \le 10^9$, $p \le 100$. Wishart·역Wishart의 `logpdf`는 df $\le 10^{30}$ |
 
-잰 값은 보장 영역 안 최대가 중심 연속 12개 $9.2 \times 10^{-15}$(87만 점), 이산 10개 $6.5 \times 10^{-15}$(61만 점, 분위수는 모든 점이 허용 구간 안), 극값·수명·비중심 9개 $5.5 \times 10^{-15}$(60만 점)이에요. 같은 점에서 scipy 1.18.1은 꼬리에서 상대오차 1에 이르거나 inf를 내는 메서드가 여럿이에요. 표 전체는 [정확도와 성능](/internals/stats/accuracy-performance/)에 있어요.
+잰 값은 보장 영역 안 최대가 중심 연속 12개 $9.2 \times 10^{-15}$(87만 점), 이산 10개 $6.3 \times 10^{-15}$(61만 점, 분위수는 모든 점이 허용 구간 안), 극값·수명·비중심 9개 $4.7 \times 10^{-15}$(60만 점)이에요. 같은 점에서 scipy 1.18.1은 꼬리에서 상대오차 1에 이르거나 inf를 내는 메서드가 여럿이에요. 표 전체는 [정확도와 성능](/internals/stats/accuracy-performance/)에 있어요.
 
 ### 정답지
 
@@ -291,7 +303,7 @@ stats는 $y = x/\text{scale}$을 double-double $y_\text{hi} + y_\text{lo}$로 �
 
 NaN은 아래 다섯 곳에서만 나와요. 에러도 경고도 내지 않아요.
 
-1. **매개변수가 정의역 밖이거나 NaN**: 그 원소의 모든 메서드가 NaN이에요. 엔진이 원소 함수를 부르기 전에 걸러요.
+1. **매개변수가 정의역 밖이거나 NaN**: 그 원소의 모든 메서드가 NaN이에요. 엔진이 원소 함수를 부르기 전에 걸러요. 정의역 밖이어도 극한 분포가 있는 매개변수(t의 df = inf는 정규, 음이항의 n = 0은 0의 점질량)는 NaN이 아니라 그 분포의 값이에요([원소별 엔진과 빠른 경로](/internals/stats/engine/#매개변수의-극한)).
 2. **입력이 NaN**: 입력을 받는 메서드는 NaN이에요.
 3. **확률이 아닌 확률 입력**: `icdf`·`iccdf`의 입력이 $[0, 1]$ 밖이거나, `ilogcdf`·`ilogccdf`의 입력이 양수일 때예요. 0과 1(log 쪽은 $-\infty$와 0)에서는 지지집합의 끝이에요.
 4. **정의되지 않는 값**: 코시의 평균, $\text{df} \le 1$인 t의 평균처럼 정의되지 않는 모멘트, 최빈값이 하나로 정해지지 않는 `mode`(균등, $a, b < 1$이거나 $a = b = 1$인 베타, 이항의 $(n+1)p$가 정수일 때 등)예요. 발산하는 모멘트는 NaN이 아니라 inf예요.
@@ -309,8 +321,8 @@ NaN은 아래 다섯 곳에서만 나와요. 에러도 경고도 내지 않아�
 
 | 어디 | 상한 | 보장 영역 안의 최대 |
 |---|---|---|
-| 비중심 분포의 포아송 혼합 급수 (special) | $2^{18}$항 | 2483항 |
-| 비중심 분포의 넓은 꼬리 합 | $2^{18}$–$2^{19}$항 | $6.7 \times 10^4$항 |
+| 비중심 분포의 포아송 혼합 급수 (special) | $2^{18}$항 | 2421항 |
+| 비중심 분포의 혼합 합(정점에서 나갔다 돌아오는 걷기) | $2^{18}$–$2^{19}$걸음 | 확률 2300·2701걸음, log 꼴과 역함수의 넓은 합 3805·4645걸음 |
 | 비중심 카이제곱·F의 밀도 급수 | 한쪽 $2^{16}$항 | 10345항 |
 | 비중심 역함수의 구간 넓히기 / Brent 반복 | 256회 / 200회 | 32회 / 16회 |
 | 비중심 엔트로피의 적분 | 일 $2^{25}$단위 | |
@@ -318,7 +330,7 @@ NaN은 아래 다섯 곳에서만 나와요. 에러도 경고도 내지 않아�
 | 이산 꼬리 합 (초기하, 베타이항) | $2^{20}$항 | |
 | 이산 엔트로피 합 | $2^{25}$항, 분산이 $2^{42}$를 넘으면 시작하지 않아요 | |
 | 이산 중심 모멘트의 합 | 4096항 | |
-| 감마 계열의 깊은 꼬리 역함수 | 100회 | |
+| 감마·베타·t·F의 깊은 꼬리 역함수 | 100걸음 | |
 | 다변량 누적확률의 적응 구적 / 준몬테카를로 | 구간 200개 / 96단계와 `max_points` | |
 | 다항 분포의 엔트로피 | 범주별 표준편차의 합 $2^{17}$, 한쪽 $2^{23}$항 | |
 | 표본: 이항 역변환 / 초기하 | $k \le 1024$ / 최빈값에서 $2^{20}$ 안 | |
@@ -362,7 +374,7 @@ True
 
 ### random
 
-`X.sample(shape, rng=rng)`의 난수는 [sd.random](/internals/random/generator/)의 Philox 스트림에서 받아요. `rng`는 꼭 줘야 해요(전역 생성기가 없어요). Python 층이 `rng`에서 원소 수만큼 스트림 위치를 예약하고, C++ 커널은 호출의 원소 $i$(C 순서)를 스트림 원소 $\text{pos} + i$에 대응시켜요. 그 원소의 첫 단어는 sd.random과 같은 블록에서, 기각이나 조합에 필요한 추가 단어는 그 원소만의 블록에서 차례로 받아요. 그래서 표본 하나는 (키, 원소 번호, 매개변수)만으로 정해지고, 스레드 수나 호출을 나누어 부르는 방법과 무관해요. 분포별 방법은 [표본 뽑기](/internals/stats/sampling/)에 있어요.
+`X.sample(shape, rng=rng)`의 난수는 [sd.random](/internals/random/generator/)의 Philox 스트림에서 받아요. `rng`는 꼭 줘야 해요(전역 생성기가 없어요). Python 층이 `rng`에서 원소 수만큼 스트림 위치를 예약하고(물리 메모리보다 큰 요청이면 위치를 움직이기 전에 `MemoryError`예요), C++ 커널은 호출의 원소 $i$(C 순서)를 스트림 원소 $\text{pos} + i$에 대응시켜요. 그 원소의 첫 단어는 sd.random과 같은 블록에서, 기각이나 조합에 필요한 추가 단어는 그 원소만의 블록에서 차례로 받아요. 그래서 표본 하나는 (키, 원소 번호, 매개변수)만으로 정해지고, 스레드 수나 호출을 나누어 부르는 방법과 무관해요. 분포별 방법은 [표본 뽑기](/internals/stats/sampling/)에 있어요.
 
 ### linalg와 배열
 
@@ -373,19 +385,19 @@ True
 
 | 파일 | 줄 수 | 내용 |
 |---|---:|---|
-| `src/stardust/stats/_distribution.py` | 293 | 단변량 분포의 공통 기반 |
+| `src/stardust/stats/_distribution.py` | 351 | 단변량 분포의 공통 기반 |
 | `src/stardust/stats/_continuous.py`, `_discrete.py` | 251, 120 | 분포 클래스 31개 |
-| `src/stardust/stats/_multivariate.py`, `_matrix.py` | 439, 278 | 다변량·행렬 분포 |
-| `src/stardust/stats/_descriptive.py` | 499 | 기술통계 |
+| `src/stardust/stats/_multivariate.py`, `_matrix.py` | 488, 284 | 다변량·행렬 분포 |
+| `src/stardust/stats/_descriptive.py` | 528 | 기술통계 |
 | `csrc/bind/stats_bind.cpp` | 101 | 단변량 분포 620개 함수 등록 |
-| `csrc/bind/stats_sample.cpp`, `stats_mv.cpp`, `stats_mvcdf.cpp`, `stats_matrix.cpp`, `stats_desc.cpp` | 185–960 | 표본, 다변량, 누적확률, 행렬, 기술통계 커널 |
-| `csrc/stats/engine.hpp` | 261 | `DistOp`, chunk 루프, 비용 |
+| `csrc/bind/stats_sample.cpp`, `stats_mv.cpp`, `stats_mvcdf.cpp`, `stats_matrix.cpp`, `stats_desc.cpp` | 195–960 | 표본, 다변량, 누적확률, 행렬, 기술통계 커널 |
+| `csrc/stats/engine.hpp` | 347 | `DistOp`, chunk 루프, 매개변수의 극한, 비용 |
 | `csrc/stats/chunk.hpp`, `chunk_dd.hpp` | 43, 314 | chunk 커널의 vForce 호출과 오차 상수, 배열 double-double |
 | `csrc/stats/cost_table.hpp` | 273 | 잰 원소당 비용 248줄 (생성 파일) |
 | `csrc/stats/numeric.hpp` | 235 | 표준화 변수, 지수화, 엔트로피 묶음 |
 | `csrc/stats/discrete.hpp` | 702 | 분위수 탐색, 꼬리 합, 엔트로피 합, 정수점 메모, 상한 |
-| `csrc/stats/dist/*.hpp` | 163–1309 | 분포 31개 |
-| `csrc/stats/sample.hpp`, `sample_dist.hpp` | 136, 903 | 표본의 단어, 분포별 방법 |
+| `csrc/stats/dist/*.hpp` | 163–1336 | 분포 31개 |
+| `csrc/stats/sample.hpp`, `sample_dist.hpp` | 136, 933 | 표본의 단어, 분포별 방법 |
 | `csrc/stats/dd_linalg.hpp`, `mvcdf.hpp` | 324, 1572 | double-double 선형대수, 다변량 누적확률 |
 | `csrc/stats/coeffs/` | | $\zeta(j) - 1$ ($j = 2..110$, Arb로 계산), 비중심 t 모멘트 급수의 유리수 계수 |
 | `tools/stats_ref.py`, `tests/stats/ref/` | | Arb 참값 생성과 저장 |

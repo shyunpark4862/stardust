@@ -37,7 +37,7 @@ import Steps from '../../../components/fig/Steps.astro';
 
 <Fig column caption="x의 모양이 (2, 3, 4)이고 axis=(0, 2)일 때. 남는 축 1을 앞으로, 줄일 축 0과 2를 뒤로 보내면 길이 8인 줄 3개가 돼요. 커널은 줄마다 값을 하나 내고, 결과는 남은 축의 모양 (3,)이에요.">
   <Steps steps={[
-    { label: '_axes(axis, ndim)', note: 'None이면 모든 축. 음수 축을 고치고, 범위 밖·중복·bool이면 에러. 정렬한 튜플', where: 'Python' },
+    { label: '_axes(axis, ndim)', note: 'None이면 모든 축. int 하나나 int의 튜플·리스트를 받아 음수 축을 고치고, 범위 밖·중복·bool이면 에러. 정렬한 튜플', where: 'Python' },
     { label: 'permute_dims(a, kept + red)', note: '남는 축을 앞에, 줄일 축을 뒤에. 축 순서가 그대로면 건너뜀', where: 'Python' },
     { label: 'reshape(t, (lanes, n))', note: '행 하나가 줄 하나. 뷰로 만들 수 있으면 복사하지 않음', where: 'Python' },
     { label: 'desc_*(rows, ...)', note: '줄마다 계산. 2차원 float64 배열이면 stride는 무엇이든 받음', where: 'C++' },
@@ -48,7 +48,9 @@ import Steps from '../../../components/fig/Steps.astro';
 
 `reshape`가 뷰를 돌려줄 수 있으면 데이터를 복사하지 않아요. C 순서 `(1000, 1000)` 행렬의 `axis=0`이면 `permute_dims`가 전치 뷰를 만들고, 그 뷰의 행(곧 원래 행렬의 열)은 메모리에서 8000바이트씩 떨어진 원소들이에요. 커널은 이 경우를 따로 알아보고 이웃한 줄 여럿을 함께 계산해요(아래 [보상 합](#보상-합-twosum과-neumaier)).
 
-`keepdims=True`면 줄인 축을 길이 1로 남긴 모양(`keep_shape`)으로 돌려줘요. `rankdata`는 `axis=None`일 때 먼저 1차원으로 펴서 축 0을 따라 계산하고(결과가 1차원인 것은 scipy와 같아요), 튜플 축은 받지 않아요. `iqr`과 `entropy`는 `_Lanes`를 쓰지 않고 배열 영역의 `quantile`, `sum`에 축을 그대로 넘겨요.
+`axis`는 배열 영역의 리덕션과 같은 꼴(int, int의 튜플이나 리스트)이고, 에러 문구도 같아요(중복이면 `skew(): repeated axis`). `keepdims=True`면 줄인 축을 길이 1로 남긴 모양(`keep_shape`)으로 돌려줘요. `rankdata`는 `axis=None`일 때 먼저 1차원으로 펴서 축 0을 따라 계산하고(결과가 1차원인 것은 scipy와 같아요), 튜플이나 리스트 축은 `TypeError`예요. `iqr`과 `entropy`는 `_Lanes`를 쓰지 않아요. `axis`를 `_axes`로 정규화한 튜플로 바꿔 배열 영역의 `quantile`, `sum`에 넘겨서, 축 에러가 다른 기술통계와 같은 이름과 문구로 나와요.
+
+데이터는 `sd.ndarray`가 아니어도 돼요. Python 실수와 실수의 시퀀스(리스트, 튜플)를 `sd.asarray`로 바꿔 받아요(`_as_array`). 배열 함수와 분포의 메서드는 리스트를 받지 않지만, 기술통계는 손에 든 데이터를 바로 요약하는 함수라 scipy.stats처럼 리스트를 그대로 넘기는 쓰임이 흔해서 일부러 받아요.
 
 ### nan_policy
 
@@ -82,6 +84,19 @@ array([3, 2], dtype=int64)
 Traceback (most recent call last):
     ...
 ValueError: skew(): the input contains NaN (nan_policy='raise')
+```
+
+문자열 옵션(`nan_policy`, `rankdata`와 `differential_entropy`의 `method`)은 `_choice` 하나가 검사해요. 정확한 이름만 받고 대소문자도 바꾸지 않아요. 문자열이 아니면 `TypeError`, 목록에 없는 문자열이면 `ValueError`이고, 두 메시지 모두 받을 수 있는 이름을 다 적어요. `iqr`의 `method`는 `sd.quantile`이 검사하고, 그 에러의 함수 이름만 `iqr()`로 바꿔 다시 내요.
+
+```python
+>>> sd.stats.skew(x, nan_policy='OMIT')
+Traceback (most recent call last):
+    ...
+ValueError: skew(): 'nan_policy' must be 'propagate', 'omit' or 'raise', not 'OMIT'
+>>> sd.stats.skew(x, nan_policy=None)
+Traceback (most recent call last):
+    ...
+TypeError: skew(): 'nan_policy' must be 'propagate', 'omit' or 'raise', not NoneType
 ```
 
 ## 적률: 평균을 hi + lo로
@@ -322,13 +337,15 @@ $$
 \Phi^{-1}(0.75) - \Phi^{-1}(0.25) = 2\sqrt2\,\operatorname{erfinv}(1/2) = 1.3489795003921634\ldots
 $$
 
-로 나누는 것이에요. 정규 표본이면 그 결과가 표준편차 $\sigma$의 추정값이 돼요. 상수를 코드에 적어 두었어요(`_NORMAL_IQR`).
+로 나누는 것이에요. 정규 표본이면 그 결과가 표준편차 $\sigma$의 추정값이 돼요. 상수를 코드에 적어 두었어요(`_NORMAL_IQR`). 나눗셈은 IEEE 나눗셈(`sd.divide`)이라 `scale=0`이면 inf, 사분위 범위도 0이면 NaN이에요(scipy와 같아요).
 
 ```python
 >>> sd.stats.iqr(sd.asarray([1.0, 2.0, 3.0, 4.0, 10.0]))
 2.0
 >>> sd.stats.iqr(sd.asarray([1.0, 2.0, 3.0, 4.0, 10.0]), scale='normal')
 1.482602218505602
+>>> sd.stats.iqr(sd.asarray([1.0, 2.0, 3.0, 4.0, 10.0]), scale=0)
+inf
 ```
 
 ## entropy
@@ -339,7 +356,7 @@ $$
 H(p) = -\sum_i p_i \log p_i, \qquad D(p\,\|\,q) = \sum_i p_i \log\frac{p_i}{q_i}
 $$
 
-이고 단위는 nat이에요. `base`를 주면 $\log(\text{base})$로 나눠요. 합은 배열 영역의 `sum`이라 고정된 블록 분할과 쌍별 합이에요. `entr`와 `rel_entr`의 정확도는 [로지스틱과 정보량 함수](/api/special/entr/)에 있어요.
+이고 단위는 nat이에요. `base`를 주면 $\log(\text{base})$로 나눠요. 이것도 IEEE 나눗셈이라 `base=1`이면 $\log 1 = 0$으로 나눠 inf, 엔트로피가 0이면 NaN이에요(scipy와 같아요). `differential_entropy`의 `base`도 같아요. 합은 배열 영역의 `sum`이라 고정된 블록 분할과 쌍별 합이에요. `entr`와 `rel_entr`의 정확도는 [로지스틱과 정보량 함수](/api/special/entr/)에 있어요.
 
 ## differential_entropy
 
@@ -386,16 +403,35 @@ $$
 
 `method='auto'`는 scipy와 같은 규칙으로 골라요: $n \le 10$이면 van Es, $n \le 1000$이면 Ebrahimi, 그 위는 Vasicek이에요. `window_length`의 기본값은 $m = \lfloor\sqrt n + 1/2\rfloor$이고, $2 \le 2m < n$이 아니면 그 줄은 NaN이에요.
 
-**간격이 0인 경우.** 동점이 있으면 어떤 간격이 0이고 그 항은 $\log 0 = -\infty$라 추정값도 $-\infty$예요(scipy와 같아요). 그런데 보상 합에 $-\infty$를 넣으면 보정항에서 $\infty - \infty$가 생겨 NaN이 돼요. 그래서 0인 항은 합에 넣지 않고 따로 표시해 두었다가 결과를 $-\infty$로 바꿔요. Correa는 창 안의 값이 모두 같으면 분자와 분모가 모두 0인 $0/0$이라 NaN이에요(scipy와 같아요).
+**간격이 0이거나 무한한 경우.** 동점이 있으면 어떤 간격이 0이고 그 항은 $\log 0 = -\infty$라 추정값도 $-\infty$예요. 데이터에 inf가 있으면 그 값에 닿는 간격이 inf이고 그 항은 $+\infty$라 추정값도 inf예요. 둘이 함께면 $-\infty + \infty$라 NaN이에요(셋 다 scipy와 같아요). 그런데 보상 합에 무한한 항을 넣으면 보정항에서 $\infty - \infty$가 생겨 NaN이 돼요. 그래서 0이나 inf인 항은 합에 넣지 않고 따로 표시해 두었다가, 마지막에 `result`가 유한한 항으로 계산한 값을 무한대로 바꿔요. 그 값이 이미 NaN이거나 반대쪽 무한대이면 NaN이에요.
 
 ```cpp
 // csrc/bind/stats_desc.cpp, diffent_lane (발췌)
-bool zero = false;
+bool zero = false, infinite = false;
 auto add_log = [&](double t) {
     if (t == 0.0) zero = true;
+    else if (t == kInf) infinite = true;
     else s.add(std::log(t));
 };
-auto result = [&](double value) { return zero ? (std::isnan(value) || value == kInf ? kNaN : -kInf) : value; };
+auto result = [&](double value) {
+    if (std::isnan(value)) return kNaN;
+    if (zero && infinite) return kNaN;
+    if (zero) return value == kInf ? kNaN : -kInf;
+    if (infinite) return value == -kInf ? kNaN : kInf;
+    return value;
+};
+```
+
+Correa는 이 표시를 쓰지 않아요. 창 안의 값이 모두 같으면 분자와 분모가 모두 0인 $0/0$이고, 창에 inf가 있으면 창의 평균을 뺄 때 $\infty - \infty$라 NaN이에요(둘 다 scipy와 같아요).
+
+```python
+>>> de = sd.stats.differential_entropy
+>>> de(sd.asarray([1.0, 1.0, 1.0, 1.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0]))
+-inf
+>>> de(sd.asarray([1.0, 2.0, 3.0, 4.0, 5.0, 7.0, 8.0, 9.0, 10.0, sd.inf]))
+inf
+>>> de(sd.asarray([1.0, 1.0, 1.0, 1.0, 1.0, 2.0, 3.0, 4.0, 5.0, sd.inf]))
+nan
 ```
 
 표준정규분포 표본 1000개에서 네 방법을 비교하면 이래요. 참값은 $\tfrac12\log(2\pi e) = 1.41894\ldots$예요.

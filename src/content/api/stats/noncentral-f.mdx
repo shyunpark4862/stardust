@@ -11,11 +11,11 @@ params:
   - name: dfn
     type: Python 실수 또는 ndarray
     kind: keyword-only
-    desc: 분자 자유도. 0보다 큰 유한한 실수예요(정수가 아니어도 돼요). 0 이하, inf, NaN이면 그 원소의 모든 결과가 NaN이에요.
+    desc: 분자 자유도. 0보다 큰 실수예요(정수가 아니어도 돼요). inf이면 극한 분포 InverseGamma(a=dfd/2, scale=dfd/2)예요. 0 이하이거나 NaN이면, 그리고 두 자유도가 모두 inf이면 그 원소의 모든 결과가 NaN이에요.
   - name: dfd
     type: Python 실수 또는 ndarray
     kind: keyword-only
-    desc: 분모 자유도. 0보다 큰 유한한 실수예요. 0 이하, inf, NaN이면 그 원소의 모든 결과가 NaN이에요.
+    desc: 분모 자유도. 0보다 큰 실수예요. inf이면 극한 분포인 비중심 카이제곱 χ'²(dfn, nc)/dfn이에요. 0 이하이거나 NaN이면 그 원소의 모든 결과가 NaN이에요.
   - name: nc
     type: Python 실수 또는 ndarray
     kind: keyword-only
@@ -120,8 +120,8 @@ array([ 0.9451413813317049,  0.6136366015817301, 0.13883657187370804], dtype=flo
 
 | 매개변수 | 뜻 | 정의역 |
 |---|---|---|
-| `dfn` | 분자 자유도 $d_1$ | $0 < d_1 < \infty$ (정수가 아니어도 돼요) |
-| `dfd` | 분모 자유도 $d_2$ | $0 < d_2 < \infty$ |
+| `dfn` | 분자 자유도 $d_1$ | $0 < d_1 \le \infty$ (정수가 아니어도 돼요) |
+| `dfd` | 분모 자유도 $d_2$ | $0 < d_2 \le \infty$ (둘 다 $\infty$는 안 돼요) |
 | `nc` | 비중심 모수 $\lambda$ | $0 \le \lambda < \infty$ |
 
 ```python
@@ -143,16 +143,18 @@ TypeError: NoncentralF.__init__() missing 1 required keyword-only argument: 'nc'
 >>> sd.stats.NoncentralF(dfn=3, dfd="20", nc=5)
 Traceback (most recent call last):
     ...
-TypeError: 'dfd' must be a real number or an sd.ndarray, not str
+TypeError: NoncentralF(): 'dfd' must be a real number or an sd.ndarray, not str
 ```
 
-배열 매개변수는 서로 [브로드캐스트](/api/array/broadcasting/)하고, 브로드캐스트할 수 없는 모양이면 만들 때 `ValueError`예요. 값이 정의역 밖이면 에러 대신 그 원소의 결과가 NaN이에요. 자유도 `inf`도 NaN이에요.
+배열 매개변수는 서로 [브로드캐스트](/api/array/broadcasting/)하고, 브로드캐스트할 수 없는 모양이면 만들 때 `ValueError`예요. 값이 정의역 밖이면 에러 대신 그 원소의 결과가 NaN이에요. 자유도 하나가 `inf`이면 그 극한 분포예요([분모 자유도가 크면 비중심 카이제곱이에요](#분모-자유도가-크면-비중심-카이제곱이에요)). 두 자유도가 모두 `inf`이거나 `nc`가 `inf`이면 NaN이에요.
 
 ```python
 >>> sd.stats.NoncentralF(dfn=sd.asarray([3.0, 0.0, 3.0, 3.0]), dfd=sd.asarray([20.0, 20.0, -1.0, 20.0]), nc=sd.asarray([5.0, 5.0, 5.0, -1.0])).cdf(2.0)
 array([0.4031300850345886,                nan,                nan,
                       nan], dtype=float64)
 >>> sd.stats.NoncentralF(dfn=3, dfd=sd.inf, nc=5).cdf(2.0)
+0.4101075585254692
+>>> sd.stats.NoncentralF(dfn=sd.inf, dfd=sd.inf, nc=5).cdf(2.0)
 nan
 ```
 
@@ -352,7 +354,7 @@ array([2.0858006021749453,  1.354002792911061,  1.150755964739628,
 (2.958843214245383, 5.071218624052835)
 ```
 
-표본의 평균과 분산이 위의 `mean()` 2.963, `variance()` 5.110에 가까워요.
+표본의 평균과 분산이 위의 `mean()` 2.963, `variance()` 5.110에 가까워요. 두 자유도가 모두 서브노멀 수(약 2.2e-308 미만)이면 표본은 NaN이에요.
 
 ## 다른 분포와의 관계
 
@@ -373,14 +375,25 @@ $\lambda = 0$이면 보통의 F 분포 [`F(dfn=d₁, dfd=d₂)`](/api/stats/f/)�
 
 ### 분모 자유도가 크면 비중심 카이제곱이에요
 
-$d_2$가 커지면 분모 $V/d_2$가 1에 몰려서, $d_1 F$는 [비중심 카이제곱](/api/stats/noncentral-chi-squared/) $\chi'^2(d_1, \lambda)$에 가까워져요. 그래서 $P(F \le x) \approx P(X \le d_1 x)$예요. 그 극한인 `dfd = inf`는 받지 않으니, 필요하면 `NoncentralChiSquared`를 쓰세요.
+$d_2$가 커지면 분모 $V/d_2$가 1에 몰려서, $d_1 F$는 [비중심 카이제곱](/api/stats/noncentral-chi-squared/) $\chi'^2(d_1, \lambda)$에 가까워져요. 그래서 $P(F \le x) \approx P(X \le d_1 x)$예요. 그 극한인 `dfd = inf`는 비중심 카이제곱을 $d_1$로 나눈 분포와 똑같아요.
 
 ```python
 >>> H = sd.stats.NoncentralF(dfn=3, dfd=1e8, nc=5)
 >>> H.cdf(2.0)
 0.4101075571584545
+>>> sd.stats.NoncentralF(dfn=3, dfd=sd.inf, nc=5).cdf(2.0)
+0.4101075585254692
 >>> sd.stats.NoncentralChiSquared(df=3, nc=5).cdf(3 * 2.0)
 0.4101075585254692
+```
+
+거꾸로 분자 자유도가 inf이면 분자 $\chi'^2(d_1, \lambda)/d_1$이 1에 몰려서 `nc`와 상관없이 $d_2/V$, 곧 [역감마 분포](/api/stats/inverse-gamma/) $\mathrm{InverseGamma}(d_2/2,\ d_2/2)$예요. 중심 F의 `dfn = inf`와 같아요.
+
+```python
+>>> sd.stats.NoncentralF(dfn=sd.inf, dfd=20, nc=5).cdf(2.0)
+0.9681719426937951
+>>> sd.stats.InverseGamma(a=10.0, scale=10.0).cdf(2.0)
+0.9681719426937951
 ```
 
 ### 비중심 t의 제곱
@@ -407,7 +420,7 @@ True
 | 어디서 | NaN이 되는 것 |
 |---|---|
 | `nc`가 약 1.3e8 초과 | `pdf`, `logpdf`, `mode` |
-| `nc`가 약 1.5e9 초과 | `cdf` 계열, 역함수, `median` |
+| `nc`가 약 1.47e9 초과 | 평균 근처의 `cdf` 계열, 역함수, `median` |
 | `ilogcdf`, `ilogccdf`의 입력이 $-2^{62}$ 이하 | 결과 |
 
 평균과 분산은 이런 매개변수에서도 값이 나와요.
@@ -425,5 +438,6 @@ True
 - scipy의 `scipy.stats.ncf(dfn, dfd, nc)`에 해당해요. 매개변수 이름은 같지만 **키워드로만** 받아요. `loc`, `scale`은 없어요.
 - 메서드 이름이 달라요. `sf` → `ccdf`, `ppf` → `icdf`, `isf` → `iccdf`, `logsf` → `logccdf`예요.
 - `kurtosis()`는 초과 첨도예요(`ncf.stats(moments='k')`와 같은 뜻).
-- 발산하는 모멘트가 달라요. scipy는 발산하는 모멘트를 NaN으로 내지만, stardust는 $+\infty$로 발산하면 inf예요. $d_2 \le 2$의 평균, $2 < d_2 \le 4$의 분산, $4 < d_2 \le 6$의 왜도, $6 < d_2 \le 8$의 첨도가 그래요.
+- 발산하는 모멘트가 달라요. scipy는 발산하는 모멘트를 NaN으로 내지만, stardust는 $+\infty$로 발산하면 inf예요. $d_2 \le 2$의 평균, $2 < d_2 \le 4$의 분산, $4 < d_2 \le 6$의 왜도, $4 < d_2 \le 8$의 첨도가 그래요.
+- 자유도 하나가 inf이면 극한 분포예요. scipy `ncf.cdf(2.0, 3, inf, 5)`와 `ncf.cdf(2.0, inf, 6, 5)`는 NaN이에요.
 - 깊은 꼬리에서 scipy가 크게 틀리는 곳에서도 값이 맞아요. 예를 들어 `NoncentralF(dfn=300, dfd=5, nc=2500).cdf(0.02)`는 3.1652e-283인데, `scipy.stats.ncf.cdf(0.02, 300, 5, 2500)`은 4.348e-214예요(자릿수가 69개 틀려요).

@@ -503,7 +503,7 @@ stardust의 `solve`는 **언제나 LU**예요. 구조를 쓰고 싶으면 그 �
 |---|---|---|---|
 | `qr` | `geqrf` + `orgqr`/`ungqr` | Householder 반사로 열마다 대각 아래를 0으로 만들어 $A = QR$로 분해하고(`geqrf`), 반사들을 곱해 $Q$를 행렬로 만듦(`orgqr`) | [QR](/internals/linalg/qr/) |
 | `qr_pivoted` | `geqp3` + `orgqr`/`ungqr` | 남은 열 중 노름이 가장 큰 열을 앞으로 옮겨 가며 $AP = QR$. $\lvert r_{ii}\rvert$가 줄어드는 순서라 랭크가 드러남 | [QR](/internals/linalg/qr/) |
-| `lstsq` | `gelsd` | 이중대각으로 줄이고 분할 정복 SVD로 $\lVert Ax - b\rVert_2$를 최소로 하는 해 중 노름이 가장 작은 해를 구함. 랭크가 부족해도 됨 | [QR](/internals/linalg/qr/) |
+| `lstsq` | `gelsd` (`rtol` < ε이면 `gesvd` + `gesdd`) | 이중대각으로 줄이고 분할 정복 SVD로 $\lVert Ax - b\rVert_2$를 최소로 하는 해 중 노름이 가장 작은 해를 구함. 랭크가 부족해도 됨 | [QR](/internals/linalg/qr/) |
 
 ### 고유값
 
@@ -835,7 +835,7 @@ numpy·scipy와의 관계는 함수마다 달라요. 같은 루틴을 같은 방
 
 | 함수 | numpy·scipy와의 관계 |
 |---|---|
-| `eigh`, `qr`, `lstsq` | numpy 2.5.4와 비트까지 같아요 (같은 루틴, 같은 호출) |
+| `eigh`, `qr`, `lstsq` | numpy 2.5.4와 비트까지 같아요 (같은 루틴, 같은 호출. `lstsq`는 `rtol` ≥ ε일 때) |
 | `outer`, `kron`, `cross`, 모든 부동소수점 합(`vecdot`, `trace`, 노름) | numpy와 비트까지 같아요 (같은 곱셈 식, 같은 pairwise 합 순서) |
 | `ldl`, `solve_tridiagonal`, `solve_banded` | scipy 1.18.1과 비트까지 같아요 |
 | `solve` | numpy와 반올림 수준에서 달라요 (numpy는 `gesv`, stardust는 `getrf` + `getrs`) |

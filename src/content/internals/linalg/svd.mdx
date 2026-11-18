@@ -536,6 +536,8 @@ inf
 
 `matrix_rank`의 특이값은 `gesvd` `'N'`에서, `lstsq`의 랭크는 `gelsd` 안의 SVD에서, `pinv`가 버릴 특이값은 `gesdd`에서 나와요. 세 계산은 반올림 수준에서 다르므로, 어떤 특이값이 $\text{rtol}\cdot\sigma_1$에 **아주 가까우면** 셋의 랭크가 이론상 다를 수 있어요. 무작위 입력의 테스트에서는 늘 같았어요. 셋을 같은 루틴으로 맞추려면 `pinv`나 `lstsq`가 특이값을 한 번 더 구해야 해서 그 비용을 들이지 않았어요.
 
+예외는 `rtol` < ε인 `lstsq`예요. `gelsd`는 $\varepsilon\sigma_1$ 아래의 값을 $\varepsilon$ 근처로 올려 버려서 그 문턱에서는 랭크를 믿을 수 없어요. 그래서 이때만 `lstsq`가 `matrix_rank`와 같은 `gesvd` `'N'`의 값을 한 번 더 구해 랭크를 정하고, 두 함수의 랭크가 언제나 같아요([QR 분해와 최소제곱](/internals/linalg/qr/)).
+
 ## `pinv`: 유사역행렬
 
 유사역행렬(Moore–Penrose pseudo-inverse) $A^{+}$는 정사각이 아니거나 특이한 행렬에도 정의되는 "역행렬"이에요. $Ax = b$의 최소제곱해 가운데 노름이 가장 작은 것이 $x = A^{+}b$예요. SVD로 쓰면

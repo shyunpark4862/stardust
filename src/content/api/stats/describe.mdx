@@ -12,7 +12,7 @@ params:
     kind: positional-only
     desc: 요약할 데이터. bool·정수는 float64로 바꿔서 계산해요. 비어 있으면 안 돼요.
   - name: axis
-    type: int, int의 tuple, 또는 None
+    type: int, int의 tuple·리스트, 또는 None
     kind: keyword-only
     desc: 요약해서 없앨 축. None(기본값)이면 모든 원소를 한 묶음으로 요약해요.
   - name: correction
@@ -32,7 +32,7 @@ returns:
   desc: "(nobs, minmax, mean, variance, skewness, kurtosis) 여섯 칸의 이름 붙은 튜플. minmax는 (최솟값, 최댓값) 튜플이에요. 남는 축이 없으면 칸마다 Python 숫자, 있으면 배열이에요. kurtosis는 초과 첨도(정규분포에서 0)예요."
 raises:
   - type: TypeError
-    desc: x가 배열이나 숫자의 시퀀스가 아닐 때, 복소수일 때, axis가 int·tuple·None이 아닐 때, bias가 True·False가 아닐 때, correction이 int·float가 아닐 때(bool 포함), 없는 옵션(keepdims 등)을 줬을 때.
+    desc: x가 배열이나 숫자의 시퀀스가 아닐 때, 복소수일 때, axis가 int·tuple·리스트·None이 아닐 때, bias가 True·False가 아닐 때, correction이 int·float가 아닐 때(bool 포함), 없는 옵션(keepdims 등)을 줬을 때, nan_policy에 문자열이 아닌 값을 줬을 때.
   - type: ValueError
     desc: x가 비어 있을 때, nan_policy 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때, axis가 범위를 벗어나거나 같은 축을 두 번 썼을 때.
 seeAlso: [skew-kurtosis, moment, sem, iqr, mode, zscore]
@@ -63,7 +63,7 @@ DescribeResult(nobs=8, minmax=(61.0, 95.0), mean=79.0, variance=141.714285714285
 | `skewness` | −0.23 | 왜도. 0보다 조금 작아서 왼쪽(낮은 점수 쪽) 꼬리가 약간 길어요. |
 | `kurtosis` | −1.22 | 초과 첨도. 0보다 작아서 정규분포보다 꼬리가 얇고 고르게 퍼져 있어요. |
 
-리스트를 바로 넣어도 돼요. 정수는 실수로 바꿔서 계산해요.
+리스트를 바로 넣어도 돼요. 정수는 실수로 바꿔서 계산해요. [`sd.mean`](/api/array/mean/) 같은 배열 함수는 `sd.ndarray`만 받지만, 기술통계 함수는 손에 든 데이터를 바로 요약하는 함수라 리스트도 받아요.
 
 ```python
 >>> sd.stats.describe([1, 2, 3, 4])
@@ -186,10 +186,12 @@ array([78.25, 79.75], dtype=float64)
 (array([66.0, 61.0], dtype=float64), array([90.0, 95.0], dtype=float64))
 ```
 
-`axis=1`은 1번 축(열이 늘어선 방향)을 따라 요약하고 그 축을 없애요. 그래서 행마다 값이 하나씩 남아요. 축 고르는 법은 [`sd.sum`](/api/array/sum/)의 `axis`와 같아요. `axis=(0, 1)`처럼 tuple로 여러 축을 한꺼번에 줄일 수도 있어요.
+`axis=1`은 1번 축(열이 늘어선 방향)을 따라 요약하고 그 축을 없애요. 그래서 행마다 값이 하나씩 남아요. 축 고르는 법은 [`sd.sum`](/api/array/sum/)의 `axis`와 같아요. `axis=(0, 1)`이나 `axis=[0, 1]`처럼 tuple이나 리스트로 여러 축을 한꺼번에 줄일 수도 있어요.
 
 ```python
 >>> sd.stats.describe(t, axis=(0, 1)).mean
+79.0
+>>> sd.stats.describe(t, axis=[0, 1]).mean
 79.0
 ```
 
@@ -306,13 +308,26 @@ Traceback (most recent call last):
 TypeError: describe(): 'correction' must be an int or a float, not bool
 ```
 
-`axis`는 int, int의 tuple, None만 받아요. 범위를 벗어나거나 같은 축을 두 번 쓰면 `ValueError`예요.
+`axis`는 int, int의 tuple이나 리스트, None만 받아요. 범위를 벗어나거나 같은 축을 두 번 쓰면 `ValueError`예요.
 
 ```python
 >>> sd.stats.describe(scores, axis=1)
 Traceback (most recent call last):
     ...
 ValueError: describe(): axis 1 is out of bounds for an array of dimension 1
+>>> sd.stats.describe(t, axis=[1, 1])
+Traceback (most recent call last):
+    ...
+ValueError: describe(): repeated axis
+```
+
+`nan_policy`는 정확한 이름 셋 중 하나여야 해요. 대문자로 쓴 이름도 받지 않아요.
+
+```python
+>>> sd.stats.describe(scores, nan_policy='Omit')
+Traceback (most recent call last):
+    ...
+ValueError: describe(): 'nan_policy' must be 'propagate', 'omit' or 'raise', not 'Omit'
 ```
 
 ## 비슷한 기능과의 차이

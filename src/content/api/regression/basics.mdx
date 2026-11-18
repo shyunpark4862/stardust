@@ -438,7 +438,7 @@ ValueError: ols(): 'rtol' must be a finite number >= 0
 >>> sd.regression.ols(score, hours, nan_policy='drop')
 Traceback (most recent call last):
     ...
-ValueError: ols(): 'nan_policy' must be one of 'propagate', 'omit', 'raise', not 'drop'
+ValueError: ols(): 'nan_policy' must be 'propagate', 'omit' or 'raise', not 'drop'
 >>> sd.regression.ols(score, hours, cov_type='HC4')
 Traceback (most recent call last):
     ...

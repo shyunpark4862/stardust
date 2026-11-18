@@ -189,7 +189,7 @@ $$
 계수는 성격이 두 가지예요.
 
 - **맞춘(fitted) 계수**: minimax 같은 최적화로 만든 계수예요. 계수 하나하나에 수학적 의미가 없고, 정해진 구간 밖에서는 쓸 수 없어요.
-- **급수 자체의 계수**: Taylor 계수, 점근전개의 계수처럼 정의에서 바로 나오는 값이에요. `tools/gen_*.py`가 Arb(256비트 이상)나 정확한 유리수 산술로 계산해 float64로 반올림해요(`lgamma_taylor2.hpp`만 40자리 고정밀로 만든 값이에요). 맞춘 값이 아니라서 언제든 다시 만들어 확인할 수 있어요.
+- **급수 자체의 계수**: Taylor 계수, 점근전개의 계수처럼 정의에서 바로 나오는 값이에요. `tools/gen_*.py`가 Arb(256비트 이상)나 정확한 유리수 산술로 계산해 float64로 반올림해요(`lgamma_taylor2.hpp`의 28개는 Arb 300비트 값을 가장 가까운 double로 반올림한 것과 비트까지 같아요). 맞춘 값이 아니라서 언제든 다시 만들어 확인할 수 있어요.
 
 | 파일 | 무엇의 근사 | 형태 | 출처, 라이선스 |
 |---|---|---|---|
@@ -199,7 +199,7 @@ $$
 | `cephes_bessel.hpp` | $I_0, I_1, K_0, K_1, J_0, J_1, Y_0, Y_1$ | Chebyshev 급수, 유리식, Hankel 진폭·위상의 유리식 (맞춤) | Cephes `i0.c`–`j1.c`, BSD-3 |
 | `cephes_ellip.hpp` | $K(m)$, $E(m)$ | $P(y) - \log(y)Q(y)$, $y = 1-m$ (맞춤) | Cephes `ellpk.c` `ellpe.c`, BSD-3 |
 | `lanczos13m53.hpp` | $\Gamma(z)$ | Lanczos 합 13항, $g \approx 6.0247$ | Boost.Math `lanczos.hpp`, BSL-1.0 |
-| `lgamma_taylor2.hpp` | $\log\Gamma(2+e)$ | Taylor, 계수 $(-1)^k(\zeta(k)-1)/k$ | 생성(40자리) |
+| `lgamma_taylor2.hpp` | $\log\Gamma(2+e)$ | Taylor, 계수 $(-1)^k(\zeta(k)-1)/k$ | 생성(Arb) |
 | `rgamma_taylor.hpp` | $1/\Gamma(1+z)$ | Taylor, 짝·홀로 나눔 | 생성(Arb) |
 | `loggamma_taylor.hpp` | 복소 loggamma의 1 근처 | 계수 $(-1)^k\zeta(k,7)/k$ | 생성(Arb) |
 | `temme_igamma.hpp` | 불완전 감마의 Temme 계수 $c_k(\eta)$ | $\eta$의 Taylor | 생성(DLMF 8.12의 정의식, 정확한 유리수) |
@@ -706,7 +706,7 @@ inline DD operator/(DD a, DD b) {
 }
 ```
 
-`dd.hpp`에는 지수 계산에 필요한 것만 있어요: 덧셈·곱셈·나눗셈과 두 가지 로그, $\log\lambda$와 $\mu(t) = t - \log(1+t)$. 로그는 표를 써요. $\lambda = 2^k c\,(1 + r)$로 줄이는데, $c = i/128$($i = 96..192$, 97점, `coeffs/dd_log_table.hpp`)은 가수에 가장 가까운 표의 점이고 $|r| \le 2^{-7.58}$예요. $\log c$는 표에 double-double로 있고, $\log(1+r) = r - r^2/2 + r^3/3 - \cdots$는 $r^2$, $r^3$까지만 double-double로, 나머지는 float64로 계산해요($r^{11}/11 < 2^{-86}$에서 잘라요). 같은 일을 하는 급수판(나눗셈 세 번과 12–20항)이 호출당 31 ns인데 표판은 7 ns이고, 고정밀 값과 비교한 상대오차도 표판이 더 작아요($\log$ $2^{-77}$, $\mu$ $2^{-68}$, 6만 점). 급수판은 표의 범위를 벗어나는 입력에 남겨 둬요. 로그의 인자가 $2^{-999}$ 아래(서브노멀 포함)이면 가수를 나눌 수 없어서, 인자에 $2^{256}$을 곱해(정확한 크기 조정) 표판으로 계산하고 $256\log 2$를 빼요(`log_pos`). Arb와 견준 상대오차는 $5 \times 10^{-324}$부터 $2^{-999}$까지 20만 점에서 $2^{-92}$ 이하예요.
+`dd.hpp`에는 지수 계산에 필요한 것만 있어요: 덧셈·곱셈·나눗셈과 두 가지 로그, $\log\lambda$와 $\mu(t) = t - \log(1+t)$. 로그는 표를 써요. $\lambda = 2^k c\,(1 + r)$로 줄이는데, $c = i/128$($i = 96..192$, 97점, `coeffs/dd_log_table.hpp`)은 가수에 가장 가까운 표의 점이고 $|r| \le 2^{-7.58}$예요. $\log c$는 표에 double-double로 있고, $\log(1+r) = r - r^2/2 + r^3/3 - \cdots$는 $r^2$, $r^3$까지만 double-double로, 나머지는 float64로 계산해요($r^{11}/11 < 2^{-86}$에서 잘라요). 같은 일을 하는 급수판(나눗셈 세 번과 12–20항)이 호출당 31 ns인데 표판은 7 ns이고, Arb와 비교한 최대 상대오차도 표판이 더 작아요(6만 점에서 $\log$ $2^{-77.6}$, $\mu$ $2^{-68.9}$, 급수판은 $2^{-64.6}$, $2^{-62.4}$). 급수판은 표의 범위를 벗어나는 입력에 남겨 둬요. 로그의 인자가 $2^{-999}$ 아래(서브노멀 포함)이면 가수를 나눌 수 없어서, 인자에 $2^{256}$을 곱해(정확한 크기 조정) 표판으로 계산하고 $256\log 2$를 빼요(`log_pos`). Arb와 견준 상대오차는 $5 \times 10^{-324}$부터 $2^{-999}$까지 20만 점에서 $2^{-92}$ 이하예요.
 
 같은 파일에 double-double $\log\Gamma$도 있어요(`dd::loggamma`). 인자를 30 이상으로 점화해 올린 뒤 Stirling 꼴 $w\log w - w - \tfrac12\log w + \log\sqrt{2\pi} + S(w)$의 큰 항을 모두 double-double로 계산하고, 작은 꼬리 $S(w) \approx 1/(12w)$만 float64(Cephes의 급수)로 더해요. 절대오차가 $10^{-19}$ 정도라, 큰 $\log\Gamma$ 둘의 차(`polygamma`의 큰 차수 등)를 만들 때 써요.
 

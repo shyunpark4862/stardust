@@ -34,7 +34,8 @@ import Steps from '../../../components/fig/Steps.astro';
   <Steps
     steps={[
       { label: 'rng.random(shape)', where: 'random/__init__.py', note: 'shape을 검사하고 원소 수 n을 구해요. 검사가 실패하면 위치는 움직이지 않아요.' },
-      { label: '_reserve(n)', where: 'random/__init__.py', note: 'threading.Lock 안에서 키와 pos를 함께 읽고 pos += n (mod 2⁶⁴). 이 호출의 구간은 [pos, pos + n)이에요.' },
+      { label: '_take(n, "random")', where: 'random/__init__.py', note: '결과(원소당 8바이트)가 이 컴퓨터의 물리 메모리보다 크면 MemoryError. 위치는 움직이지 않아요.' },
+      { label: '_reserve(n)', depth: 1, where: 'random/__init__.py', note: 'threading.Lock 안에서 키와 pos를 함께 읽고 pos += n (mod 2⁶⁴). 이 호출의 구간은 [pos, pos + n)이에요.' },
       { label: '_core.random.uniform(k0, k1, pos, shape)', where: 'random.cpp', note: '결과 배열을 만들고 원소 범위를 4096개씩 조각으로 나눠요.' },
       { label: 'for_pieces', depth: 1, where: 'array/ops/pieces.hpp', note: '원소가 4096개보다 많으면 스레드풀에서, 아니면 호출한 스레드에서 조각을 돌려요.' },
       { label: 'Stream::first(e)', depth: 2, where: 'philox.hpp', note: '원소 e가 든 16원소 묶음의 블록 넷을 philox4로 한꺼번에 계산해 두고 꺼내요.' },
@@ -398,7 +399,7 @@ def _reserve(self, n):
     return key, p
 ```
 
-메서드는 인자를 검사한 뒤 `_reserve(n)`으로 키와 구간 `[p, p + n)`을 받아 커널에 넘겨요(`_k.uniform(key[0], key[1], pos, …)`). 잠금 안에서 하는 일은 읽기 셋과 쓰기 하나뿐이에요. 원소 계산은 잠금을 풀고 나서 해요.
+메서드는 인자를 검사한 뒤 `_take(n, 이름)`을 거쳐 `_reserve(n)`으로 키와 구간 `[p, p + n)`을 받아 커널에 넘겨요(`_k.uniform(key[0], key[1], pos, …)`). `_take`는 예약하기 전에 결과의 바이트 수를 이 컴퓨터의 물리 메모리와 비교해서, 넘으면 메서드 이름을 붙인 `MemoryError`(`random(): cannot allocate 8796093022208 bytes: more than this machine's physical memory`)를 내요. 그래서 거절된 호출은 위치를 움직이지 않아요. 잠금 안에서 하는 일은 읽기 셋과 쓰기 하나뿐이에요. 원소 계산은 잠금을 풀고 나서 해요.
 
 키도 잠금 안에서 함께 읽는 것은 다른 스레드의 `state` 대입 때문이에요. `state` 대입은 키와 위치를 한 잠금 안에서 함께 바꿔요([시드, spawn, 상태](/internals/random/seeding/)). 메서드가 위치만 잠금 안에서 읽고 키는 `self._key`로 따로 읽으면, 그 사이에 대입이 끼어들어 옛 키와 새 위치(또는 그 반대)로 계산할 수 있어요. 둘을 한 번에 읽으면 대입 전 상태든 대입 후 상태든 온전한 한쪽만 봐요.
 

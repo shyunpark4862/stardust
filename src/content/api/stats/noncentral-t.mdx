@@ -11,7 +11,7 @@ params:
   - name: df
     type: Python 실수 또는 ndarray
     kind: keyword-only
-    desc: 자유도. 0보다 큰 유한한 실수예요(정수가 아니어도 돼요). 0 이하, inf, NaN이면 그 원소의 모든 결과가 NaN이에요.
+    desc: 자유도. 0보다 큰 실수예요(정수가 아니어도 돼요). inf이면 극한 분포인 정규분포 Normal(mu=nc)예요. 0 이하이거나 NaN이면 그 원소의 모든 결과가 NaN이에요.
   - name: nc
     type: Python 실수 또는 ndarray
     kind: keyword-only
@@ -121,7 +121,7 @@ array([   0.9633059826146299,    0.4809731528179072, 0.0027821090637209483], dty
 
 | 매개변수 | 뜻 | 정의역 |
 |---|---|---|
-| `df` | 자유도 $\nu$ | $0 < \nu < \infty$ (정수가 아니어도 돼요) |
+| `df` | 자유도 $\nu$ | $0 < \nu \le \infty$ (정수가 아니어도 돼요) |
 | `nc` | 비중심 모수 $\delta$ | 유한한 실수 (음수도 돼요) |
 
 카이제곱이나 F와 달리 `nc`는 음수도 돼요. 참 평균이 가정보다 작은 쪽으로 다르면 $\delta$가 음수예요.
@@ -147,15 +147,15 @@ TypeError: NoncentralT.__init__() missing 1 required keyword-only argument: 'nc'
 >>> sd.stats.NoncentralT(df=10, nc=2j)
 Traceback (most recent call last):
     ...
-TypeError: 'nc' must be a real number or an sd.ndarray, not complex
+TypeError: NoncentralT(): 'nc' must be a real number or an sd.ndarray, not complex
 ```
 
-배열 매개변수는 서로 [브로드캐스트](/api/array/broadcasting/)하고, 브로드캐스트할 수 없는 모양이면 만들 때 `ValueError`예요. 값이 정의역 밖이면 에러 대신 그 원소의 결과가 NaN이에요. 자유도 `inf`도 NaN이에요. 자유도가 아주 큰 경우는 아래 [다른 분포와의 관계](#다른-분포와의-관계)를 보세요.
+배열 매개변수는 서로 [브로드캐스트](/api/array/broadcasting/)하고, 브로드캐스트할 수 없는 모양이면 만들 때 `ValueError`예요. 값이 정의역 밖이면 에러 대신 그 원소의 결과가 NaN이에요. 자유도 `inf`는 그 극한인 정규분포 `Normal(mu=nc)`예요([자유도가 크면 정규분포에 가까워요](#자유도가-크면-정규분포에-가까워요)). 아래에서 마지막 원소는 `Normal(mu=1.0).cdf(0.0)`과 같아요.
 
 ```python
 >>> sd.stats.NoncentralT(df=sd.asarray([-1.0, 0.0, 10.0, sd.inf]), nc=1).cdf(0.0)
 array([                nan,                 nan, 0.15865525393145707,
-                       nan], dtype=float64)
+       0.15865525393145707], dtype=float64)
 ```
 
 ## 밀도와 누적분포
@@ -370,7 +370,7 @@ array([-0.02318602061287422,  0.46108057107745154,   3.5023654311537222,
 (2.1645174420720457, 1.536733285815022)
 ```
 
-표본의 평균과 분산이 위의 `mean()` 2.1674, `variance()` 1.5522에 가까워요.
+표본의 평균과 분산이 위의 `mean()` 2.1674, `variance()` 1.5522에 가까워요. 자유도가 서브노멀 수(약 2.2e-308 미만)이면 표본은 NaN이에요.
 
 ## 다른 분포와의 관계
 
@@ -403,19 +403,21 @@ $T^2$은 분자 자유도 1, 분모 자유도 $\nu$, 비중심 모수 $\delta^2$
 
 ### 자유도가 크면 정규분포에 가까워요
 
-$\nu$가 커지면 분모 $\sqrt{V/\nu}$가 1에 몰려서, $T$는 평균 $\delta$, 표준편차 1인 [정규분포](/api/stats/normal/)에 가까워져요. 그 극한인 `df = inf`는 받지 않으니, 정규분포가 필요하면 `Normal(mu=δ)`를 쓰세요.
+$\nu$가 커지면 분모 $\sqrt{V/\nu}$가 1에 몰려서, $T$는 평균 $\delta$, 표준편차 1인 [정규분포](/api/stats/normal/)에 가까워져요. 그 극한인 `df = inf`는 `Normal(mu=δ)`와 마지막 비트까지 같아요.
 
 ```python
 >>> big = sd.stats.NoncentralT(df=1e6, nc=2)
 >>> big.cdf(2.5)
 0.6914619661828861
+>>> sd.stats.NoncentralT(df=sd.inf, nc=2).cdf(2.5)
+0.6914624612740131
 >>> sd.stats.Normal(mu=2.0).cdf(2.5)
 0.6914624612740131
 ```
 
 ### special 함수
 
-누적분포와 그 역함수는 특수함수 [`sd.special.nctdtr`, `nctdtrc`, `nctdtrit`](/api/special/nctdtr/)로도 구할 수 있어요. `cdf`, `ccdf`와 같은 값이에요. 특수함수 쪽은 밀도와 요약값이 없고, `df = inf`를 정규분포로 받는다는 점이 달라요.
+누적분포와 그 역함수는 특수함수 [`sd.special.nctdtr`, `nctdtrc`, `nctdtrit`](/api/special/nctdtr/)로도 구할 수 있어요. `cdf`, `ccdf`와 같은 값이에요(`df = inf`의 정규분포 극한도 같아요). 특수함수 쪽은 밀도와 요약값이 없어요.
 
 ```python
 >>> sd.special.nctdtr(10, 2, 1.0) == T.cdf(1.0)
@@ -454,4 +456,4 @@ True
 - `kurtosis()`는 초과 첨도예요(`nct.stats(moments='k')`와 같은 뜻).
 - 발산하는 모멘트가 달라요. $1 < \nu \le 2$의 분산과 $2 < \nu \le 4$의 첨도를 stardust는 inf로 내고, scipy는 NaN을 내요.
 - 깊은 꼬리에서 scipy가 NaN을 내는 곳에서도 값을 내요. 예를 들어 `NoncentralT(df=100, nc=20).cdf(-10.0)`은 8.3362e-149인데, `scipy.stats.nct.cdf(-10.0, 100, 20)`은 NaN이에요.
-- `df = inf`를 scipy는 정규분포로 받지만, stardust는 NaN이에요.
+- `df = inf`는 scipy처럼 정규분포예요.

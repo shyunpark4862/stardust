@@ -25,7 +25,7 @@ returns:
   desc: 분포 객체. 매개변수는 같은 이름의 읽기 전용 속성(mu, shape, df)으로, 준 값 그대로 남아 있어요.
 raises:
   - type: TypeError
-    desc: 매개변수를 위치로 넘기거나 빠뜨렸을 때, 숫자 배열로 바꿀 수 없는 값(문자열 등)이거나 복소수일 때.
+    desc: 매개변수를 위치로 넘기거나 빠뜨렸을 때, mu나 shape가 sd.ndarray가 아닐 때(리스트, tuple, numpy 배열도 TypeError예요), df가 실수도 sd.ndarray도 아닐 때, 복소수일 때.
   - type: ValueError
     desc: mu가 0차원이거나 shape가 2차원보다 작을 때, shape의 마지막 두 축이 (d, d)가 아닐 때, mu·shape·df의 배치 축이 서로 브로드캐스트되지 않을 때.
 seeAlso: [multivariate-normal, student-t, sample]
@@ -93,7 +93,7 @@ $$
 
 ## 만들기와 매개변수
 
-매개변수 셋은 모두 키워드로 꼭 줘야 해요. 모양과 배치 규칙은 [`MultivariateNormal`](/api/stats/multivariate-normal/)과 같아요. `mu`는 (..., d), `shape`는 (..., d, d)이고 아래 삼각만 읽어요. `df`는 배치 모양 (...)이에요. 세 매개변수의 앞 축이 서로 브로드캐스트해요.
+매개변수 셋은 모두 키워드로 꼭 줘야 해요. 모양과 배치 규칙은 [`MultivariateNormal`](/api/stats/multivariate-normal/)과 같아요. `mu`는 (..., d), `shape`는 (..., d, d)인 `sd.ndarray`이고(리스트는 `TypeError`예요), `shape`는 아래 삼각만 읽어요. `df`는 배치 모양 (...)의 배열이거나 Python 실수예요. 세 매개변수의 앞 축이 서로 브로드캐스트해요.
 
 ```python
 >>> T
@@ -205,7 +205,7 @@ array([[inf, 0.0],
 array([nan, nan], dtype=float64)
 ```
 
-df = 4이면 공분산이 `shape`의 4/2 = 2배예요. 엔트로피(미분 엔트로피, 단위 nat)는 이래요. ψ는 [디감마 함수](/api/special/digamma/)예요.
+df = 4이면 공분산이 `shape`의 4/2 = 2배예요. `shape`의 위 삼각은 여기서도 보지 않아서, `covariance()`는 아래 삼각을 대칭으로 옮긴 행렬에서 나와요. 엔트로피(미분 엔트로피, 단위 nat)는 이래요. ψ는 [디감마 함수](/api/special/digamma/)예요.
 
 $$
 H = \tfrac12 \log|\Sigma| + \log\frac{(\nu\pi)^{d/2}\,\Gamma\!\left(\frac{\nu}{2}\right)}{\Gamma\!\left(\frac{\nu+d}{2}\right)}
@@ -222,9 +222,11 @@ array([ 4.694036030183455,  3.194036030183455, 2.7607026968501214,
 
 ## 표본
 
-`sample(shape, rng=...)`은 `shape` + 배치 + (d,) 모양이에요. 위의 $\mu + Z\sqrt{\nu/V}$ 그대로 뽑아요. 공통 규칙은 [표본 뽑기](/api/stats/sample/)에 있어요.
+`sample(shape, rng=...)`은 `shape` + 배치 + (d,) 모양이에요. `shape`를 빼면 분포마다 벡터 하나(배치 + (d,))예요. 위의 $\mu + Z\sqrt{\nu/V}$ 그대로 뽑아요. 공통 규칙은 [표본 뽑기](/api/stats/sample/)에 있어요.
 
 ```python
+>>> T.sample(rng=sd.random.default_rng(3))
+array([-0.046889303034321685,  -0.41565319769137493], dtype=float64)
 >>> s = T.sample(100000, rng=sd.random.default_rng(3))
 >>> s.shape
 (100000, 2)
@@ -276,7 +278,7 @@ array([[ 2.007986637144399, 1.0273282844341858],
 
 ## scipy를 아는 분께
 
-- `scipy.stats.multivariate_t(loc, shape, df)`에 해당해요. 위치의 이름이 `loc`가 아니라 `mu`이고, 모든 매개변수를 키워드로 꼭 줘야 해요(scipy는 `df=1`이 기본값이에요).
+- `scipy.stats.multivariate_t(loc, shape, df)`에 해당해요. 위치의 이름이 `loc`가 아니라 `mu`이고, 모든 매개변수를 키워드로 꼭 줘야 해요(scipy는 `df=1`이 기본값이에요). scipy는 `loc`, `shape`, `x`에 리스트도 받지만, sd는 `sd.ndarray`만 받아요.
 - scipy 1.18.1의 `multivariate_t`에는 평균과 공분산을 구하는 메서드가 없어요. sd에는 `mean()`, `covariance()`가 있어요.
 - `allow_singular`가 없고, 양의 정부호가 아닌 `shape`는 NaN이에요.
 - `cdf`가 결정적이에요. scipy 1.18.1은 난수로 적분해서 `random_state`를 주지 않으면 부를 때마다 값이 달라요(위의 `T.cdf([1, -0.5])`를 세 번 부르면 0.2983874, 0.2983843, 0.2983850이고, sd의 값은 0.2983759예요). sd는 d ≤ 3에서 정확한 공식을 써요.

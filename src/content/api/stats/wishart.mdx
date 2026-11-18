@@ -21,7 +21,7 @@ returns:
   desc: 분포 객체. 매개변수는 같은 이름의 읽기 전용 속성(df, scale)으로, 준 값 그대로 남아 있어요.
 raises:
   - type: TypeError
-    desc: 매개변수를 위치로 넘기거나 빠뜨렸을 때, 숫자 배열로 바꿀 수 없는 값(문자열 등)이거나 복소수일 때.
+    desc: 매개변수를 위치로 넘기거나 빠뜨렸을 때, scale이 sd.ndarray가 아닐 때(리스트, tuple, numpy 배열도 TypeError예요), df가 실수도 sd.ndarray도 아닐 때, 복소수일 때.
   - type: ValueError
     desc: scale이 2차원보다 작거나 마지막 두 축이 정사각이 아닐 때, df와 scale의 배치 축이 서로 브로드캐스트되지 않을 때.
 seeAlso: [inverse-wishart, matrix-normal, multivariate-normal, chi-squared, gamma]
@@ -95,7 +95,7 @@ array([[22.511702444306334,  5.398708115315422],
 두 매개변수 모두 키워드로 꼭 줘야 해요.
 
 - `df`: 자유도 ν. 위의 구성에서는 벡터의 수라 정수지만, **p − 1보다 큰 실수**면 무엇이든 돼요. p − 1 이하에서는 행렬이 특이해져서 밀도가 없어요(NaN이에요).
-- `scale`: p × p 척도 행렬 V. 대칭 양의 정부호여야 하고 **아래 삼각만** 읽어요. 양의 정부호가 아니면 NaN이에요.
+- `scale`: p × p 척도 행렬 V를 담은 `sd.ndarray`예요(리스트는 `TypeError`예요). 대칭 양의 정부호여야 하고 **아래 삼각만** 읽어요. `mean()`, `mode()`, `var()`도 아래 삼각을 대칭으로 옮긴 행렬에서 나와요. 양의 정부호가 아니면 NaN이에요.
 
 ```python
 >>> W
@@ -107,7 +107,7 @@ array([[nan, nan],
 >>> sd.stats.Wishart(df=3.0, scale=sd.ones((2, 3)))
 Traceback (most recent call last):
     ...
-ValueError: Wishart: 'scale' must be square on its last two axes, not (2, 3)
+ValueError: Wishart(): 'scale' must be square on its last two axes, not (2, 3)
 ```
 
 p = 2에서 `df = 1.0`은 p − 1 = 1 이하라 NaN이에요. inf나 NaN인 `df`도 NaN이에요.
@@ -134,7 +134,7 @@ $$
 
 $|X|$는 행렬식, $\operatorname{tr}$은 대각합, $\Gamma_p$는 다변량 감마 함수 $\Gamma_p(a) = \pi^{p(p-1)/4} \prod_{j=1}^{p} \Gamma\!\left(a + \tfrac{1 - j}{2}\right)$예요. p = 1이면 $V$가 수 $v$가 되고, 식이 [감마 분포](/api/stats/gamma/) Gamma(a = ν/2, scale = 2v)의 밀도가 돼요.
 
-입력 `x`의 마지막 두 축은 (p, p)이고, 앞 축은 배치와 브로드캐스트해요. `x`도 **아래 삼각만** 읽어요.
+입력 `x`는 마지막 두 축이 (p, p)인 `sd.ndarray`이고(리스트는 `TypeError`예요), 앞 축은 배치와 브로드캐스트해요. `x`도 **아래 삼각만** 읽어요.
 
 ```python
 >>> X = sd.asarray([[8.0, 2.0], [2.0, 5.0]])
@@ -202,7 +202,7 @@ array([[nan, nan],
 
 ## 표본
 
-`sample(shape, rng=...)`은 `shape` + 배치 + (p, p) 모양의 대칭 양의 정부호 행렬을 돌려줘요. 행렬 하나가 표본 하나이고, 결과는 정확히 대칭이에요. 정수가 아닌 `df`에서도 뽑을 수 있어요. 공통 규칙은 [표본 뽑기](/api/stats/sample/)에 있어요.
+`sample(shape, rng=...)`은 `shape` + 배치 + (p, p) 모양의 대칭 양의 정부호 행렬을 돌려줘요. `shape`를 빼면 분포마다 행렬 하나(배치 + (p, p))예요. 행렬 하나가 표본 하나이고, 결과는 정확히 대칭이에요. 정수가 아닌 `df`에서도 뽑을 수 있어요. 공통 규칙은 [표본 뽑기](/api/stats/sample/)에 있어요.
 
 ```python
 >>> W.sample(rng=sd.random.default_rng(7))
@@ -247,13 +247,19 @@ array([[39.932626191319294,    11.170615494155],
 10.975852488794162
 ```
 
-- **범위 밖**: df가 약 1e17을 넘으면 밀도가 큰 곳 근처에서 `logpdf`가 NaN일 수 있어요. 1e15까지는 1e-13 안이에요.
+- **자유도가 아주 큰 `logpdf`**: 위의 보장은 df ≤ 1e30까지예요(κ(scale) ≤ 1e9, p ≤ 100). 잰 값은 df = 1e30까지 9.4e-16 이하예요. 그보다 크면 계산에 남는 반올림 오차의 상한이 1e-14 · max(1, |값|)를 넘는 곳에서 틀린 숫자 대신 NaN이에요. 최빈값 근처의 표본에서는 df가 약 1e35부터예요.
+
+```python
+>>> W30 = sd.stats.Wishart(df=1e30, scale=sd.asarray([[1.0]]))
+>>> W30.logpdf(sd.asarray([[1e30]])), sd.stats.Gamma(a=5e29, scale=2.0).logpdf(1e30)
+(-35.80428851839533, -35.80428851839533)
+```
 
 자세한 방법은 [행렬 분포](/internals/stats/matrix/)에 있어요.
 
 ## scipy를 아는 분께
 
-- `scipy.stats.wishart(df, scale)`와 이름과 메서드(`mean`, `mode`, `var`, `entropy`)가 같아요. 키워드로만 받고, 기본값이 없어요(scipy는 `scale=1`, `df=p`가 기본이에요).
+- `scipy.stats.wishart(df, scale)`와 이름과 메서드(`mean`, `mode`, `var`, `entropy`)가 같아요. 키워드로만 받고, 기본값이 없어요(scipy는 `scale=1`, `df=p`가 기본이에요). scipy는 `scale`과 `x`에 리스트와 수 하나도 받지만, sd는 `sd.ndarray`만 받아요.
 - df ≤ p − 1이면 NaN이에요. scipy 1.18.1은 `ValueError`를 내요.
 - `mode()`가 정의되지 않으면 NaN이에요. scipy 1.18.1은 `None`을 돌려줘요.
 - 양의 정부호가 아닌 `x`의 `pdf`는 0이에요. scipy 1.18.1은 `LinAlgError`를 내요.

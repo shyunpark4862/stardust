@@ -21,7 +21,7 @@ returns:
   desc: 분포 객체. 매개변수는 같은 이름의 읽기 전용 속성(df, scale)으로, 준 값 그대로 남아 있어요.
 raises:
   - type: TypeError
-    desc: 매개변수를 위치로 넘기거나 빠뜨렸을 때, 숫자 배열로 바꿀 수 없는 값(문자열 등)이거나 복소수일 때.
+    desc: 매개변수를 위치로 넘기거나 빠뜨렸을 때, scale이 sd.ndarray가 아닐 때(리스트, tuple, numpy 배열도 TypeError예요), df가 실수도 sd.ndarray도 아닐 때, 복소수일 때.
   - type: ValueError
     desc: scale이 2차원보다 작거나 마지막 두 축이 정사각이 아닐 때, df와 scale의 배치 축이 서로 브로드캐스트되지 않을 때.
 seeAlso: [wishart, inverse-gamma, multivariate-normal, sample]
@@ -77,7 +77,7 @@ export const iw5 = [[0.005, 5.5969e-37], [0.01, 2.5649e-16], [0.015, 1.074e-09],
 
 ## 만들기와 매개변수
 
-매개변수, 배치, 정의역 규칙은 [`Wishart`](/api/stats/wishart/)와 같아요. `df`는 p − 1보다 큰 유한한 실수, `scale`은 대칭 양의 정부호 p × p 행렬이고 아래 삼각만 읽어요. 그 밖이면 에러가 아니라 그 분포의 모든 메서드가 NaN이에요.
+매개변수, 배치, 정의역 규칙은 [`Wishart`](/api/stats/wishart/)와 같아요. `df`는 p − 1보다 큰 유한한 실수(Python 수나 배열), `scale`은 대칭 양의 정부호 p × p 행렬을 담은 `sd.ndarray`이고(리스트는 `TypeError`예요) 아래 삼각만 읽어요. 요약값도 아래 삼각을 대칭으로 옮긴 행렬에서 나와요. 그 밖이면 에러가 아니라 그 분포의 모든 메서드가 NaN이에요.
 
 ```python
 >>> IW
@@ -94,13 +94,22 @@ f(X) = \frac{|\Psi|^{\nu/2}}{2^{\nu p/2}\,\Gamma_p\!\left(\frac{\nu}{2}\right)}\
 |X|^{-(\nu + p + 1)/2}\; e^{-\operatorname{tr}(\Psi X^{-1})/2}
 $$
 
-Ψ는 `scale`, ν는 `df`, $\Gamma_p$는 다변량 감마 함수예요([`Wishart`](/api/stats/wishart/#밀도)). 입력 `x`의 모양, 아래 삼각만 읽는 것, 양의 정부호가 아닌 `x`에서 밀도 0(`logpdf`는 −inf)인 것, 원소가 아무리 커도 `logpdf`가 NaN이 아닌 것은 `Wishart`와 같아요.
+Ψ는 `scale`, ν는 `df`, $\Gamma_p$는 다변량 감마 함수예요([`Wishart`](/api/stats/wishart/#밀도)). 입력 `x`의 모양과 형(`sd.ndarray`만 받아요), 아래 삼각만 읽는 것, 양의 정부호가 아닌 `x`에서 밀도 0(`logpdf`는 −inf)인 것, 원소가 아무리 커도 `logpdf`가 NaN이 아닌 것은 `Wishart`와 같아요.
 
 ```python
 >>> IW.pdf(sd.asarray([[1.0, 2.0], [2.0, 1.0]]))
 0.0
 >>> IW.logpdf(sd.asarray([[1e300, 0.0], [0.0, 1.0]]))
 -2766.525855839214
+```
+
+반대로 원소가 아주 작아서 $\operatorname{tr}(\Psi X^{-1})$이 float64를 넘으면(서브노멀 대각 등) 밀도는 0, `logpdf`는 −inf예요. p = 1의 [`InverseGamma`](/api/stats/inverse-gamma/)와 같아요.
+
+```python
+>>> IW.logpdf(sd.asarray([[1e-310, 0.0], [0.0, 1.0]]))
+-inf
+>>> sd.stats.InverseGamma(a=2.5, scale=1.0).logpdf(1e-310)
+-inf
 ```
 
 ### Wishart와의 관계
@@ -174,7 +183,7 @@ p = 2에서 ν = 5는 p + 1 < ν ≤ p + 3이라 평균은 유한하지만 분�
 
 ## 표본
 
-`sample(shape, rng=...)`은 `shape` + 배치 + (p, p) 모양의 대칭 양의 정부호 행렬이에요. 행렬 하나가 표본 하나이고, 결과는 정확히 대칭이에요. 공통 규칙은 [표본 뽑기](/api/stats/sample/)에 있어요.
+`sample(shape, rng=...)`은 `shape` + 배치 + (p, p) 모양의 대칭 양의 정부호 행렬이에요. `shape`를 빼면 분포마다 행렬 하나(배치 + (p, p))예요. 행렬 하나가 표본 하나이고, 결과는 정확히 대칭이에요. 공통 규칙은 [표본 뽑기](/api/stats/sample/)에 있어요.
 
 ```python
 >>> I8 = sd.stats.InverseWishart(df=8.0, scale=V)
@@ -214,11 +223,11 @@ array([[1.7491886578591809, 0.5338264110260644],
 
 ## 정확도와 범위
 
-[`Wishart`](/api/stats/wishart/#정확도와-범위)와 같아요. κ(scale) ≤ 1e9, p ≤ 100에서 `logpdf`와 `entropy`는 |오차| ≤ 1e-14 · max(1, |값|)이고, df가 약 1e17을 넘으면 밀도가 큰 곳 근처에서 `logpdf`가 NaN일 수 있어요. 자세한 방법은 [행렬 분포](/internals/stats/matrix/)에 있어요.
+[`Wishart`](/api/stats/wishart/#정확도와-범위)와 같아요. κ(scale) ≤ 1e9, p ≤ 100에서 `logpdf`와 `entropy`는 |오차| ≤ 1e-14 · max(1, |값|)이고, `logpdf`의 이 보장은 df ≤ 1e30까지예요. 그보다 크면 반올림 오차의 상한이 기준을 넘는 곳에서 NaN이에요(최빈값 근처에서는 df가 약 1e35부터). 자세한 방법은 [행렬 분포](/internals/stats/matrix/)에 있어요.
 
 ## scipy를 아는 분께
 
-- `scipy.stats.invwishart(df, scale)`에 해당해요. 클래스 이름은 `InverseWishart`이고, 키워드로만 받고 기본값이 없어요.
+- `scipy.stats.invwishart(df, scale)`에 해당해요. 클래스 이름은 `InverseWishart`이고, 키워드로만 받고 기본값이 없어요. scipy는 `scale`과 `x`에 리스트도 받지만, sd는 `sd.ndarray`만 받아요.
 - 평균이나 분산이 발산하면 inf나 NaN이에요. scipy 1.18.1은 `None`을 돌려줘요.
 - df ≤ p − 1이면 NaN이에요. scipy 1.18.1은 `ValueError`를 내요.
 

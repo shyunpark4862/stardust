@@ -50,6 +50,8 @@ import Steps from '../../../components/fig/Steps.astro';
 
 매개변수는 마지막 축(벡터) 또는 마지막 두 축(행렬) 앞에 배치 축을 가질 수 있어요. `mu`의 모양이 (3, 2)이고 `cov`가 (2, 2)이면 배치 모양은 (3,)이고, 세 분포가 같은 공분산을 나눠 가져요. Python 쪽 `_rows`가 매개변수를 배치 모양 + 꼬리 모양으로 브로드캐스트하고 (B, …)로 펼쳐요. B는 배치 원소의 수예요.
 
+매개변수는 `_param`이 받아요. 벡터와 행렬 매개변수(`mu`, `cov`, `shape`, `p`, `alpha`)는 `sd.ndarray`여야 하고, 스칼라 매개변수(`df`, `n`)는 Python 실수도 돼요. 리스트, 튜플, numpy 배열은 단변량 분포와 같이 `TypeError`예요. 생성자의 에러는 모두 `MultivariateNormal(): …`처럼 클래스 이름으로 시작해요.
+
 ```python
 >>> X = sd.stats.MultivariateNormal(mu=sd.asarray([[0.0, 0.0], [1.0, -1.0], [2.0, 0.5]]),
 ...                                 cov=sd.asarray([[2.0, 0.3], [0.3, 1.0]]))
@@ -59,7 +61,14 @@ array([  -2.31849675026584, -3.5226852319412325, -2.7504339230407093], dtype=flo
 (4, 3)
 ```
 
-입력 `x` (…, d)도 같은 규칙이에요. `_points`는 `x`의 앞 축과 배치 모양을 브로드캐스트한 결과 모양을 정하고, 점을 (M, d) 행렬과 점마다의 배치 번호 (M,)로 펼쳐요. 커널은 점 $m$을 계산할 때 배치 번호 $b$로 매개변수의 행을 골라요. 이웃한 점이 같은 배치이면 배치마다의 값(평균, 상수)을 다시 읽지 않아요. 위 예의 (4, 1, 2)는 (4, 1)과 (3,)이 (4, 3)으로 브로드캐스트되어 점 12개가 돼요.
+입력 `x` (…, d)도 같은 규칙이에요. `_points`는 먼저 `_array`로 `x`가 `sd.ndarray`인지 보고(아니면 `logpdf(): 'x' must be an sd.ndarray, not list`처럼 메서드 이름의 `TypeError`), 그다음 `x`의 앞 축과 배치 모양을 브로드캐스트한 결과 모양을 정하고, 점을 (M, d) 행렬과 점마다의 배치 번호 (M,)로 펼쳐요. 커널은 점 $m$을 계산할 때 배치 번호 $b$로 매개변수의 행을 골라요. 이웃한 점이 같은 배치이면 배치마다의 값(평균, 상수)을 다시 읽지 않아요. 위 예의 (4, 1, 2)는 (4, 1)과 (3,)이 (4, 3)으로 브로드캐스트되어 점 12개가 돼요.
+
+```python
+>>> X.logpdf([0.5, 0.5])
+Traceback (most recent call last):
+    ...
+TypeError: logpdf(): 'x' must be an sd.ndarray, not list
+```
 
 ### 정의역 밖은 그 배치 원소만 NaN
 
@@ -78,7 +87,7 @@ array([2.8378770664093453,                nan], dtype=float64)
 
 ### 표본의 배치
 
-`sample(shape)`의 결과는 `shape` + 배치 모양 + (d,)이에요. 커널은 결과를 (N, d)의 행으로 보고, 행 $i$의 배치를 $i \bmod B$로 정해요. 행 하나가 난수 스트림의 원소 하나라서 결과는 스레드 수와 무관해요([표본 뽑기](/internals/stats/sampling/)).
+`sample(shape)`의 결과는 `shape` + 배치 모양 + (d,)이에요. `shape`의 기본값 `None`은 배치 원소마다 벡터 하나라서 결과가 배치 모양 + (d,)이고, `shape=()`는 0차원 배열이 없어서 `ValueError`예요. 결과가 물리 메모리보다 크면 난수 스트림을 움직이기 전에 `MemoryError`를 내요(`rng._take`가 행 수 × d × 8바이트를 먼저 검사해요). 커널은 결과를 (N, d)의 행으로 보고, 행 $i$의 배치를 $i \bmod B$로 정해요. 행 하나가 난수 스트림의 원소 하나라서 결과는 스레드 수와 무관해요([표본 뽑기](/internals/stats/sampling/)).
 
 ## 촐레스키 분해를 double-double로
 
@@ -109,7 +118,18 @@ float64로 촐레스키 분해한 $\hat L$은 원래 행렬의 인수가 아니�
 
 ### 코드
 
-`ddla::cholesky`는 교과서의 열 단위 촐레스키를 double-double 산술(`DD`의 덧셈, 곱셈, 나눗셈)로 옮긴 것이에요. 행렬은 아래 삼각만 읽어요(`sd.linalg.cholesky`, LAPACK의 `potrf 'L'`과 같은 규칙).
+`ddla::cholesky`는 교과서의 열 단위 촐레스키를 double-double 산술(`DD`의 덧셈, 곱셈, 나눗셈)로 옮긴 것이에요. 행렬은 아래 삼각만 읽어요(`sd.linalg.cholesky`, LAPACK의 `potrf 'L'`과 같은 규칙). 생성자는 펼친 공분산을 먼저 `_lower_symmetric`으로 아래 삼각을 위로 옮긴 대칭 행렬로 바꿔 들고 있어서, 밀도와 누적확률이 읽는 행렬과 `covariance()`가 돌려주는 행렬이 같아요. 매개변수 속성 `cov`는 받은 배열 그대로예요.
+
+```python
+>>> A = sd.stats.MultivariateNormal(mu=sd.asarray([0.0, 0.0]), cov=sd.asarray([[2.0, 99.0], [0.3, 1.0]]))
+>>> A.covariance()
+array([[2.0, 0.3],
+       [0.3, 1.0]], dtype=float64)
+>>> A.logpdf(sd.asarray([0.5, 0.5]))
+-2.31849675026584
+```
+
+위 삼각의 99는 읽지 않으니, logpdf는 맨 앞의 예에서 첫 배치 원소(같은 아래 삼각)의 값과 같아요.
 
 ```cpp
 // csrc/stats/dd_linalg.hpp
@@ -355,7 +375,7 @@ $$
 - $E[\log X!] = \sum_k P(X = k)\log k!$을 최빈값 $\lfloor(n + 1)p\rfloor$에서 시작해 양쪽으로 더해요.
 - 각 $P(X = k)$는 double-double log pmf(`log_gamma`로 $\log k!$, $\log(n-k)!$)에서 `exp_full`(약 $10^{-30}$)로 구해요. 이항 분포의 보통 log pmf는 앞 인자의 로그를 double로 반올림하므로 pmf마다 $10^{-16}$이 틀리고, 크기 $n\log n$의 기댓값이 그것을 키워 $n = 10^5$에서 $4 \times 10^{-11}$이 돼요.
 - 멈추는 규칙: 한 항 $t$와 그 앞 항의 비가 $r < 1$이면 나머지 꼬리는 약 $tr/(1 - r)$이에요. 이것이 합의 $2^{-110}$ 아래면 멈춰요.
-- 상한: 일은 범주별 표준편차 $\sqrt{np_i(1-p_i)}$의 합에 비례해요(범주마다 표준편차의 약 25배 항). 그 합이 $2^{17}$(약 $3 \times 10^6$항, 1초 정도)을 넘거나 $n > 2^{53}$이면(정수 $n - k$가 정확하지 않아요) NaN이에요. 한쪽 걸음은 $2^{23}$번까지예요. 확률이 1인 범주(점질량)는 엔트로피 0이고 $n$에 상관없이 계산해요.
+- 상한: 일은 범주별 표준편차 $\sqrt{np_i(1-p_i)}$의 합에 비례해요(범주마다 표준편차의 약 25배 항). 그 합이 $2^{17}$(약 $3 \times 10^6$항, 1초 정도)을 넘거나 $n > 2^{53}$이면(정수 $n - k$가 정확하지 않아요) NaN이에요. 한쪽 걸음은 $2^{23}$번까지예요. 확률이 1인 범주(점질량)는 엔트로피 0이고 $n$에 상관없이 계산해요. $n = 0$도 모든 개수가 0인 점질량이라 엔트로피가 0이에요.
 
 ```python
 >>> sd.stats.Multinomial(n=100000.0, p=sd.asarray([0.2, 0.3, 0.5])).entropy()
@@ -363,6 +383,8 @@ $$
 >>> sd.stats.Multinomial(n=1e12, p=sd.asarray([0.5, 0.5])).entropy()
 nan
 >>> sd.stats.Multinomial(n=1e300, p=sd.asarray([1.0, 0.0])).entropy()
+0.0
+>>> sd.stats.Multinomial(n=0, p=sd.asarray([0.2, 0.3, 0.5])).entropy()
 0.0
 ```
 

@@ -18,15 +18,15 @@ params:
   - name: base
     type: 양수 또는 None
     kind: keyword-only
-    desc: 로그의 밑. None(기본값)이면 자연로그(나트), 2면 비트예요.
+    desc: 로그의 밑. None(기본값)이면 자연로그(나트), 2면 비트예요. 1이면 log 1 = 0으로 나누어서 inf(어림값이 0이면 NaN)예요.
   - name: axis
-    type: int, int의 tuple, 또는 None
+    type: int, int의 tuple·리스트, 또는 None
     kind: keyword-only
     desc: 줄여서 없앨 축. None(기본값)이면 모든 원소를 한 표본으로 봐요.
   - name: method
     type: str
     kind: keyword-only
-    desc: "'vasicek', 'van es', 'ebrahimi', 'correa', 'auto'(기본값) 중 하나. 대소문자는 가리지 않아요. 'auto'는 n ≤ 10이면 'van es', n ≤ 1000이면 'ebrahimi', 그보다 크면 'vasicek'이에요."
+    desc: "'vasicek', 'van es', 'ebrahimi', 'correa', 'auto'(기본값) 중 하나. 소문자로 쓴 정확한 이름만 받아요. 'auto'는 n ≤ 10이면 'van es', n ≤ 1000이면 'ebrahimi', 그보다 크면 'vasicek'이에요."
   - name: nan_policy
     type: str
     kind: keyword-only
@@ -37,10 +37,10 @@ params:
     desc: True면 줄인 축을 길이 1로 남겨요.
 returns:
   type: ndarray 또는 Python float
-  desc: 미분 엔트로피의 어림값. 언제나 float64이고, 남는 축이 없으면 Python float예요. 음수일 수도 있어요. 간격이 0인 곳이 있으면(같은 값이 많으면) -inf, 표본이 너무 작으면 NaN이에요.
+  desc: 미분 엔트로피의 어림값. 언제나 float64이고, 남는 축이 없으면 Python float예요. 음수일 수도 있어요. 간격이 0인 곳이 있으면(같은 값이 많으면) -inf, 표본에 inf가 있어 간격이 inf이면 inf, 둘이 함께 있거나 표본이 너무 작으면 NaN이에요.
 raises:
   - type: TypeError
-    desc: window_length가 int나 None이 아닐 때(float·bool 포함), x가 배열이나 숫자의 시퀀스가 아니거나 복소수일 때, axis·keepdims의 타입이 틀렸을 때.
+    desc: window_length가 int나 None이 아닐 때(float·bool 포함), x가 배열이나 숫자의 시퀀스가 아니거나 복소수일 때, axis·keepdims의 타입이 틀렸을 때, base가 수나 None이 아닐 때(문자열·bool), method·nan_policy에 문자열이 아닌 값을 줬을 때.
   - type: ValueError
     desc: window_length가 1보다 작을 때, method 이름이 틀렸을 때, base가 양수가 아닐 때, nan_policy 이름이 틀렸거나 'raise'인데 NaN이 있을 때, axis가 범위를 벗어나거나 겹칠 때.
 seeAlso: [entropy, describe, iqr]
@@ -127,7 +127,14 @@ ebrahimi 0.9633191364519155
 correa 0.9653989632682157
 ```
 
-참값은 1이에요. 어느 방법이 가장 가까운지는 분포와 표본 크기에 따라 달라져요. 특별한 이유가 없으면 `'auto'`를 쓰세요. 방법 이름은 대소문자를 가리지 않아요(`'Vasicek'`도 돼요).
+참값은 1이에요. 어느 방법이 가장 가까운지는 분포와 표본 크기에 따라 달라져요. 특별한 이유가 없으면 `'auto'`를 쓰세요. 방법 이름은 위의 소문자 이름 그대로 써요. `'Vasicek'`처럼 대문자를 섞으면 `ValueError`예요.
+
+```python
+>>> sd.stats.differential_entropy(sample, method='Vasicek')
+Traceback (most recent call last):
+    ...
+ValueError: differential_entropy(): 'method' must be 'vasicek', 'van es', 'ebrahimi', 'correa' or 'auto', not 'Vasicek'
+```
 
 ### 표본이 커지면 참값에 가까워져요
 
@@ -213,6 +220,15 @@ nan
 nan
 ```
 
+반대로 표본에 inf나 −inf가 있으면 그 값에 걸친 간격이 inf라서 결과가 inf예요. 0인 간격과 inf인 간격이 함께 있으면 $-\infty + \infty$라 NaN이에요.
+
+```python
+>>> sd.stats.differential_entropy([1.0, 2.0, 3.0, sd.inf, 5.0])
+inf
+>>> sd.stats.differential_entropy([2.0] * 6 + [sd.inf])
+nan
+```
+
 <Callout type="warn" title="반올림하거나 정수로 기록한 데이터">
 미분 엔트로피는 연속적인 값을 전제로 해요. 값을 반올림해서 적었거나(소수 첫째 자리까지만 기록한 키 등) 원래 정수인 데이터는 같은 값이 많아서 `-inf`가 나오기 쉬워요. 범주가 나뉜 데이터라면 개수를 세어 [`entropy`](/api/stats/entropy/)를 쓰세요.
 </Callout>
@@ -224,9 +240,13 @@ nan
 ```python
 >>> sd.stats.differential_entropy(sample, base=2)
 1.369353128322347
+>>> sd.stats.differential_entropy(sample, base=1)
+inf
 ```
 
-기본값 `axis=None`은 모든 원소를 한 표본으로 봐요(`sd.mean`, `sd.var`와 같아요). 행마다 다른 표본이면 `axis=1`을 줘요.
+`base=1`은 $\ln 1 = 0$으로 나누는 셈이라 inf예요(어림값이 0이면 NaN).
+
+기본값 `axis=None`은 모든 원소를 한 표본으로 봐요(`sd.mean`, `sd.var`와 같아요). 행마다 다른 표본이면 `axis=1`을 줘요. 여러 축을 한 표본으로 묶으려면 tuple이나 리스트로 줘요.
 
 ```python
 >>> two = sd.reshape(sample, (2, 1000))
@@ -268,5 +288,6 @@ nan
 ## scipy를 아는 분께
 
 - `axis`의 기본값이 `None`(전체)이에요. scipy는 `axis=0`이에요.
-- 네 방법과 `'auto'`의 선택 규칙, 창의 기본값, 같은 값이 많을 때의 `-inf`와 상수 데이터에서 `'correa'`의 NaN은 scipy와 같아요. 값은 마지막 자리 안에서 같아요.
+- 네 방법과 `'auto'`의 선택 규칙, 창의 기본값, 같은 값이 많을 때의 `-inf`와 상수 데이터에서 `'correa'`의 NaN, inf가 든 표본의 inf, `base=1`의 inf는 scipy와 같아요. 값은 마지막 자리 안에서 같아요.
+- `method`는 정확한 소문자 이름만 받아요. scipy는 `'Vasicek'`처럼 대문자를 섞은 이름도 받아요.
 - 입력은 위치로만, 옵션은 이름으로만 받아요. 결과는 numpy 스칼라가 아니라 Python `float`예요.

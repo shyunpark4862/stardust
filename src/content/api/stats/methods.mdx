@@ -13,7 +13,7 @@ signatures:
   - "X.support()"
   - "X.mean()  X.variance()  X.standard_deviation()  X.skewness()  X.kurtosis()"
   - "X.median()  X.mode()  X.entropy()"
-  - "X.sample(shape=(), /, *, rng)"
+  - "X.sample(shape=None, /, *, rng)"
 summary: 모든 단변량 분포가 함께 가진 메서드를 한곳에 모았어요. 밀도와 누적확률, 꼬리 확률과 그 로그, 분위수(역함수), 모멘트·중앙값·최빈값·엔트로피의 뜻과 특수값 규칙, 그리고 연속 분포와 이산 분포의 차이를 설명해요.
 params:
   - name: x
@@ -45,7 +45,7 @@ raises:
   - type: ValueError
     desc: 매개변수와 입력, 또는 out의 모양을 맞출 수 없을 때.
   - type: OverflowError
-    desc: 입력이 float64로 나타낼 수 없을 만큼 큰 Python 정수일 때.
+    desc: "입력이 int64 범위를 넘는 Python 정수일 때(`cdf(): Python int too large to convert to int64`)."
 seeAlso: [basics, sample, normal, uniform, poisson, binomial]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -333,6 +333,18 @@ array([ inf, -inf,  nan], dtype=float64)
 (1.0, inf)
 ```
 
+지지집합은 **분포 족의 범위**예요. 매개변수 때문에 값이 한 점에 몰려도 줄어들지 않아요. 평균이 0인 포아송분포는 언제나 0이 나오지만 지지집합은 다른 포아송분포와 같은 (0, inf)이고, 성공 확률이 0인 이항분포도 (0, n)이에요. `icdf(1)`(이산 분포에서는 `iccdf(0)`도)은 이 지지집합의 오른쪽 끝이에요.
+
+```python
+>>> P0 = sd.stats.Poisson(mu=0.0)
+>>> P0.support(), P0.icdf(0.5), P0.icdf(1.0)
+((0.0, inf), 0.0, inf)
+>>> sd.stats.Binomial(n=10.0, p=0.0).support()
+(0.0, 10.0)
+>>> sd.stats.Geometric(p=1.0).support()
+(1.0, inf)
+```
+
 지지집합 밖의 입력에서는 이렇게 정해진 값을 내요.
 
 | 메서드 | 왼쪽 끝보다 작은 x | 오른쪽 끝보다 큰 x |
@@ -448,7 +460,7 @@ array([nan, 2.0], dtype=float64)
 
 ## 엔트로피: `entropy()`
 
-분포가 얼마나 **불확실한지**를 재는 값이에요. 값이 한곳에 몰려 있으면 작고, 넓게 퍼져 있으면 커요. 단위는 자연로그를 쓰는 **nat**예요. 비트 단위가 필요하면 `log 2`로 나누세요.
+분포가 얼마나 **불확실한지**를 재는 값이에요. 값이 한곳에 몰려 있으면 작고, 넓게 퍼져 있으면 커요. 연속 분포는 **미분 엔트로피**, 이산 분포는 **섀넌 엔트로피**예요(아래 식). 단위는 자연로그를 쓰는 **nat**예요. 비트 단위가 필요하면 `log 2`로 나누세요.
 
 $$
 H = -\int f(x) \log f(x)\, dx \quad(\text{연속}), \qquad H = -\sum_k P(X=k) \log P(X=k) \quad(\text{이산})
@@ -540,7 +552,7 @@ array([0.0, inf], dtype=float64)
 
 - `median()`은 `icdf(0.5)`예요.
 - `mode()`는 확률질량이 가장 큰 정수예요. 둘 이상이면 NaN이에요(위의 `Poisson(mu=2.0)`).
-- 매개변수 때문에 값이 한 점에만 몰리면(`Binomial(p=0)`처럼) 분산은 0이고, 왜도와 첨도는 0으로 나누는 꼴이라 NaN이에요.
+- 매개변수 때문에 값이 한 점에만 몰리면(`Binomial(p=0)`, `Poisson(mu=0)`, `Geometric(p=1)`처럼) 분산은 0이고, 왜도와 첨도는 0으로 나누는 꼴이라 NaN이에요.
 
 ```python
 >>> D = sd.stats.Binomial(n=10.0, p=0.0)
@@ -583,7 +595,7 @@ nan
 0.0004824445232910835
 ```
 
-여기서 κ는 약 3000이에요. 0.2267을 float64로 저장할 때 생기는 반올림(약 1e-17)만으로도 x가 이 정도 움직여요. 그래서 약속의 단위로 재면 오차는 1e-16쯤이에요.
+여기서 κ는 약 3100이에요. 0.2267을 float64로 저장할 때 생기는 반올림(약 1e-17)만으로도 x가 이 정도 움직여요. 그래서 약속의 단위로 재면 오차는 1e-16쯤이에요.
 
 ### 이산 분포의 역함수
 
@@ -597,6 +609,7 @@ nan
   - t분포 `df ≤ 1`의 평균: NaN이에요. scipy는 inf예요.
   - F분포 `dfd ≤ 2`의 분산: NaN이에요(평균부터 무한대예요). scipy는 inf예요.
   - F분포 `4 < dfd ≤ 6`의 왜도: inf예요. scipy는 NaN이에요.
+  - F분포 `4 < dfd ≤ 8`의 첨도: inf예요. scipy는 NaN이에요.
 - 최빈값이 하나로 정해지지 않으면 NaN이에요. scipy 신형은 `Uniform(a=0, b=1).mode()`에 0.5, `Binomial(n=9, p=0.5).mode()`에 5.0을 내요.
 - 이산 분포의 `icdf(0)`은 지지집합의 왼쪽 끝이에요(포아송 0, 기하 1). scipy의 `ppf(0)`은 그보다 1 작은 값(포아송 −1, 기하 0)이에요. `iccdf(1)`과 `isf(1)`도 같은 차이가 있어요.
 - 결과는 Python `float`이거나 `sd.ndarray`예요. `numpy.float64`가 아니에요.

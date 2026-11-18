@@ -137,7 +137,7 @@ TypeError: NoncentralChiSquared.__init__() missing 1 required keyword-only argum
 >>> sd.stats.NoncentralChiSquared(df=[1, 2], nc=1)
 Traceback (most recent call last):
     ...
-TypeError: 'df' must be a real number or an sd.ndarray, not list
+TypeError: NoncentralChiSquared(): 'df' must be a real number or an sd.ndarray, not list
 ```
 
 배열 매개변수는 서로 [브로드캐스트](/api/array/broadcasting/)해요. 모양이 (2, 1)인 `df`와 (3,)인 `nc`를 주면 (2, 3)개의 분포가 한꺼번에 생겨요. 메서드의 입력도 이 모양과 브로드캐스트해요. 브로드캐스트할 수 없는 모양이면 만들 때 `ValueError`가 나요.
@@ -153,7 +153,7 @@ array([[ 0.9544997361036416,  0.7206706485153441, 0.20371363708553145],
 >>> sd.stats.NoncentralChiSquared(df=sd.asarray([1.0, 2.0, 3.0]), nc=sd.asarray([1.0, 2.0]))
 Traceback (most recent call last):
     ...
-ValueError: broadcast_arrays(): shapes could not be broadcast together: (3,) (2,)
+ValueError: NoncentralChiSquared(): shapes could not be broadcast together: (3,) (2,)
 ```
 
 값이 정의역 밖이면 에러 대신 그 원소의 결과가 NaN이에요. 배열 안에 잘못된 값이 하나 섞여도 나머지 원소는 제대로 계산돼요.
@@ -357,17 +357,17 @@ array([ 3.355506339075342, 0.7725252822005075, 1.9769708832492823,
 
 ### nc = 0이면 중심 카이제곱이에요
 
-$\lambda = 0$이면 모든 $\mu_i$가 0이라서 보통의 카이제곱 분포 [`ChiSquared(df=k)`](/api/stats/chi-squared/)가 돼요. 밀도, 누적분포와 그 역함수는 마지막 비트까지 같아요. 요약값도 같은 값이에요. 다만 왜도는 식이 달라서 마지막 자리가 다를 수 있어요.
+$\lambda = 0$이면 모든 $\mu_i$가 0이라서 보통의 카이제곱 분포 [`ChiSquared(df=k)`](/api/stats/chi-squared/)가 돼요. 밀도, 누적분포와 그 역함수는 마지막 비트까지 같아요. 평균, 분산, 왜도, 첨도 같은 요약값도 같은 값이에요.
 
 ```python
 >>> C = sd.stats.ChiSquared(df=3)
 >>> X0 = sd.stats.NoncentralChiSquared(df=3, nc=0)
 >>> X0.cdf(4.0) == C.cdf(4.0), X0.pdf(4.0) == C.pdf(4.0), X0.icdf(0.3) == C.icdf(0.3)
 (True, True, True)
->>> X0.mean(), X0.variance(), X0.mode()
-(3.0, 6.0, 1.0)
->>> C.mean(), C.variance(), C.mode()
-(3.0, 6.0, 1.0)
+>>> X0.mean(), X0.variance(), X0.skewness(), X0.mode()
+(3.0, 6.0, 1.632993161855452, 1.0)
+>>> C.mean(), C.variance(), C.skewness(), C.mode()
+(3.0, 6.0, 1.632993161855452, 1.0)
 ```
 
 ### 포아송 혼합
@@ -416,8 +416,7 @@ True
 
 | 어디서 | NaN이 되는 것 |
 |---|---|
-| `nc`가 약 1.5e9 초과 | 역함수(확률에 따라), `median` |
-| `nc`가 약 2.3e9 초과 | `cdf` 계열 |
+| `nc`가 약 2.33e9 초과 | 평균 근처부터 `cdf` 계열, 역함수, `median`(자유도 1부터 1e4까지 같은 경계예요) |
 | `df`가 1.1e24 초과 | 평균 근처의 `cdf` 계열 |
 | `df`와 `nc`가 함께 아주 클 때 | `pdf`, `logpdf` (`df`가 작으면 `nc = 1e300`에서도 값이 나와요) |
 | `ilogcdf`, `ilogccdf`의 입력이 $-2^{62}$ 이하 | 결과 |

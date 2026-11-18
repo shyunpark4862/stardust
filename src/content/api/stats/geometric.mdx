@@ -285,6 +285,17 @@ nan
 0.0
 ```
 
+`support()`는 `p = 1`이어도 기하 분포 족의 지지집합 (1, inf)이에요. 그래서 `icdf(1)`도 그 위 끝 inf예요.
+
+```python
+>>> Z.support()
+(1.0, inf)
+>>> Z.icdf(1.0)
+inf
+>>> Z.icdf(0.5)
+1.0
+```
+
 ## 실패 횟수로 쓰기
 
 첫 성공 **전의 실패 횟수** Y(0, 1, 2, …)가 필요하면 $Y = X - 1$이에요. 이 분포는 `n = 1`인 [음이항 분포](/api/stats/negative-binomial/)와 같아요. 음이항 분포는 실패 횟수를 세기 때문이에요.
@@ -360,5 +371,5 @@ inf
 
 - `scipy.stats.geom(p)`와 같은 정의예요(시도 횟수, k ≥ 1). numpy의 `Generator.geometric`도 시도 횟수를 뽑아요.
 - `icdf(0)`은 지지집합의 왼쪽 끝 1이에요. `geom.ppf(0, p)`는 0이에요.
-- `p = 1`의 왜도와 첨도는 NaN이에요. `geom.stats(1.0, moments='sk')`는 둘 다 inf예요.
+- `p = 1`의 왜도와 첨도는 NaN이에요. `geom.stats(1.0, moments='sk')`는 둘 다 inf예요. `support()`와 `icdf(1)`은 `geom.support(1.0)`, `geom.ppf(1, 1.0)`과 같은 (1, inf)와 inf예요.
 - 먼 꼬리의 분위수가 정확해요. `geom.isf(1e-100, 0.2)`는 inf이지만 답은 1032예요. `geom.isf(1e-10, 1e-6)`은 23025839로, 그 점의 ccdf가 아직 1e-10보다 커서 한 칸 모자라요(답은 23025840).

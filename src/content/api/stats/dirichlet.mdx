@@ -17,7 +17,7 @@ returns:
   desc: 분포 객체. 매개변수는 읽기 전용 속성 alpha로, 준 값 그대로 남아 있어요.
 raises:
   - type: TypeError
-    desc: alpha를 위치로 넘기거나 빠뜨렸을 때, 숫자 배열로 바꿀 수 없는 값(문자열, Python 실수 하나 등)이거나 복소수일 때.
+    desc: alpha를 위치로 넘기거나 빠뜨렸을 때, alpha가 sd.ndarray가 아닐 때(리스트, tuple, numpy 배열, Python 실수 하나도 TypeError예요), 복소수일 때.
   - type: ValueError
     desc: alpha가 0차원일 때.
 seeAlso: [beta, multinomial, gamma, sample]
@@ -86,7 +86,7 @@ K = 2이면 비율 하나 x와 나머지 1 − x라서 [베타 분포](/api/stat
 
 ## 만들기와 매개변수
 
-`alpha`는 키워드로 꼭 줘야 하고, 마지막 축 길이 K가 성분의 수예요. 앞 축은 여러 분포를 담는 배치 축이에요.
+`alpha`는 키워드로 꼭 줘야 하는 `sd.ndarray`이고, 마지막 축 길이 K가 성분의 수예요. 앞 축은 여러 분포를 담는 배치 축이에요.
 
 ```python
 >>> D = sd.stats.Dirichlet(alpha=sd.asarray([2.0, 3.0, 5.0]))
@@ -96,7 +96,7 @@ Dirichlet(alpha=array([2.0, 3.0, 5.0], dtype=float64))
 array([              1.0, 2.160899999999999], dtype=float64)
 ```
 
-0 이하, inf, NaN인 성분이 하나라도 있으면 그 분포의 모든 메서드가 NaN이에요. Python 실수 하나는 받지 않아요(K가 정해지지 않으니까요).
+0 이하, inf, NaN인 성분이 하나라도 있으면 그 분포의 모든 메서드가 NaN이에요. 리스트는 `sd.asarray`로 바꿔서 넘겨요. Python 실수 하나도 받지 않아요(K가 정해지지 않으니까요).
 
 ```python
 >>> sd.stats.Dirichlet(alpha=sd.asarray([0.0, 1.0, 1.0])).mean()
@@ -104,7 +104,11 @@ array([nan, nan, nan], dtype=float64)
 >>> sd.stats.Dirichlet(alpha=2.0)
 Traceback (most recent call last):
     ...
-TypeError: Dirichlet: 'alpha' must be an sd.ndarray or a sequence of numbers, not float
+TypeError: Dirichlet(): 'alpha' must be an sd.ndarray, not float
+>>> sd.stats.Dirichlet(alpha=[2.0, 3.0, 5.0])
+Traceback (most recent call last):
+    ...
+TypeError: Dirichlet(): 'alpha' must be an sd.ndarray, not list
 ```
 
 ## 밀도
@@ -130,7 +134,7 @@ array([            8.505, 3.096576000000001], dtype=float64)
 
 ### 지지집합: 합이 1인 K개 성분
 
-입력 `x`는 **K개 성분을 모두** 줘요. 마지막 성분을 빼고 K − 1개만 주면 `ValueError`예요. 값이 놓일 수 있는 곳(지지집합)은 성분이 모두 0 이상이고 합이 1인 점들이에요. 이런 점의 모임을 **단체**(simplex)라고 불러요.
+입력 `x`는 **K개 성분을 모두** 담은 `sd.ndarray`예요. 마지막 성분을 빼고 K − 1개만 주면 `ValueError`예요. 값이 놓일 수 있는 곳(지지집합)은 성분이 모두 0 이상이고 합이 1인 점들이에요. 이런 점의 모임을 **단체**(simplex)라고 불러요.
 
 - 음수 성분이 있거나, 합이 1에서 √eps · K(K = 3이면 약 4.5e-8)보다 많이 벗어나면 밀도는 0(`logpdf`는 −inf)이에요. 에러가 아니에요.
 - 합이 그 안에서 벗어난 것은 반올림으로 보고, 준 `x`에서 그대로 계산해요.
@@ -189,7 +193,7 @@ array([[ 0.014545454545454545, -0.005454545454545455,  -0.00909090909090909],
 
 ## 표본
 
-`sample(shape, rng=...)`은 `shape` + 배치 + (K,) 모양이고, 각 벡터는 단체 위의 점이에요. 합은 반올림 오차 안에서 1이에요. 공통 규칙은 [표본 뽑기](/api/stats/sample/)에 있어요.
+`sample(shape, rng=...)`은 `shape` + 배치 + (K,) 모양이고(`shape`를 빼면 분포마다 하나, 배치 + (K,)), 각 벡터는 단체 위의 점이에요. 합은 반올림 오차 안에서 1이에요. 공통 규칙은 [표본 뽑기](/api/stats/sample/)에 있어요.
 
 ```python
 >>> s = D.sample(4, rng=sd.random.default_rng(0))
@@ -246,7 +250,7 @@ array([0.032564096759705674, 0.044977281329092005, 0.048506333647814516], dtype=
 
 ## scipy를 아는 분께
 
-- `scipy.stats.dirichlet(alpha)`와 이름이 같아요. 키워드로만 받아요.
+- `scipy.stats.dirichlet(alpha)`와 이름이 같아요. 키워드로만 받아요. scipy는 `alpha`와 `x`에 리스트도 받지만, sd는 `sd.ndarray`만 받아요.
 - 지지집합 밖의 `x`는 0이에요. scipy 1.18.1은 합이 1이 아닌 `x`나, alpha < 1인 성분이 0인 `x`에서 `ValueError`를 내요. sd는 각각 0과 inf를 돌려줘요.
 - `x`는 K개 성분을 모두 줘야 해요. scipy는 마지막 성분을 뺀 K − 1개도 받아요.
 - `var()`가 없어요. 성분별 분산은 `covariance()`의 대각이에요. `cov()`의 이름은 `covariance()`예요.

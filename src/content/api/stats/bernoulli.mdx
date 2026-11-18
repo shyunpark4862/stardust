@@ -279,6 +279,18 @@ nan
 0.0
 ```
 
+`support()`는 `p`와 상관없이 (0, 1)이에요. `icdf(0)`과 `icdf(1)`도 언제나 그 두 끝 0과 1이에요.
+
+```python
+>>> Z0 = sd.stats.Bernoulli(p=0.0)
+>>> Z0.support()
+(0.0, 1.0)
+>>> Z0.icdf(1.0)
+1.0
+>>> Z0.icdf(0.5)
+0.0
+```
+
 ### 엔트로피는 special의 entr로도
 
 엔트로피 식의 두 항은 special의 [`entr`](/api/special/entr/)(−x log x)와 같아요. 정의대로 계산해도 같은 값이 나와요.

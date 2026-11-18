@@ -554,7 +554,7 @@ $$
 \log\Gamma(2 + e) = (1 - \gamma)\,e + \sum_{k=2}^{\infty} \frac{(-1)^k\,(\zeta(k) - 1)}{k}\, e^k, \qquad \lvert e \rvert \lt 2
 $$
 
-계수는 근사로 맞춘 값이 아니라 급수 자체의 값이에요. 40자리 고정밀로 계산해 반올림했어요(`coeffs/lgamma_taylor2.hpp`). $\zeta(k) - 1 \approx 2^{-k}$라서 $\lvert e \rvert \le \tfrac12$에서 항은 $4^{-k}/k$로 줄고, 28항이면 나머지가 $2 \times 10^{-19}$ 아래예요. 이 급수의 장점은 **$e = 0$에서 값이 정확히 0이고, 모든 항이 $e$에 비례한다**는 것이에요. 큰 수끼리 빼서 0을 만들지 않으니 상대 정확도가 그대로 남아요. 계산은 $e \cdot \text{horner}(e, \text{계수})$예요.
+계수는 근사로 맞춘 값이 아니라 급수 자체의 값이에요. Arb로 계산해 가장 가까운 double로 반올림했어요(`coeffs/lgamma_taylor2.hpp`). $\zeta(k) - 1 \approx 2^{-k}$라서 $\lvert e \rvert \le \tfrac12$에서 항은 $4^{-k}/k$로 줄고, 28항이면 나머지가 $2 \times 10^{-19}$ 아래예요. 이 급수의 장점은 **$e = 0$에서 값이 정확히 0이고, 모든 항이 $e$에 비례한다**는 것이에요. 큰 수끼리 빼서 0을 만들지 않으니 상대 정확도가 그대로 남아요. 계산은 $e \cdot \text{horner}(e, \text{계수})$예요.
 
 나머지 구간은 이 급수로 정확히 옮겨 와요(`lgamma_pos`).
 

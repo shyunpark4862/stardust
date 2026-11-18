@@ -26,7 +26,7 @@ export const mPdf = [[-4, 0.00013383], [-3.95, 0.00016326], [-3.9, 0.00019866], 
 모든 분포는 같은 메서드로 표본을 뽑아요.
 
 ```python
-X.sample(shape=(), /, *, rng)
+X.sample(shape=None, /, *, rng)
 ```
 
 ```python
@@ -88,7 +88,7 @@ array([172.05687312731786, 164.84520119173104, 168.77840817008175,
 >>> X.sample(3)
 Traceback (most recent call last):
     ...
-TypeError: _Distribution.sample() missing 1 required keyword-only argument: 'rng'
+TypeError: sample() missing 1 required keyword-only argument: 'rng'
 >>> X.sample(3, rng=42)
 Traceback (most recent call last):
     ...
@@ -105,7 +105,7 @@ TypeError: sample(): 'rng' must be an sd.random.Generator (sd.random.default_rng
 
 | `shape` | 매개변수가 모두 숫자일 때의 결과 |
 |:---:|---|
-| `()`(생략) | Python `float` 하나 |
+| `None`(생략) | Python `float` 하나 |
 | 정수 `n` | 길이 `n`인 1차원 배열 |
 | 튜플 `(2, 3)` | 그 모양의 배열 |
 
@@ -134,11 +134,16 @@ Traceback (most recent call last):
 ValueError: sample(): 'shape' must be non-negative
 ```
 
-<Callout type="note" title="생성기의 메서드와 다른 점">
+빈 튜플 `()`도 `ValueError`예요. stardust에는 0차원 배열이 없어서, `()` 모양의 결과를 만들 수 없기 때문이에요. 표본 하나가 필요하면 `shape`을 생략하거나 `None`을 넣으세요. 생성기의 메서드 [`rng.random(shape)`](/api/random/random/)과 같은 규칙이에요.
 
-생성기의 메서드 [`rng.random(shape)`](/api/random/random/)은 `shape`을 생략(`None`)하면 숫자 하나이고, `()`는 에러예요. `sample`은 `shape`의 기본값이 `()`이고, 그것이 "표본 하나"예요. `sample`에 `None`을 넣지 마세요. 숫자 하나가 필요하면 `shape`을 생략하면 돼요.
-
-</Callout>
+```python
+>>> Z.sample((), rng=rng)
+Traceback (most recent call last):
+    ...
+ValueError: sample(): 'shape' must not be () (stardust has no 0-d arrays; None gives one sample)
+>>> type(Z.sample(None, rng=rng))
+<class 'float'>
+```
 
 ### 매개변수가 배열이면: `shape` + 매개변수의 모양
 
@@ -156,7 +161,7 @@ array([[  1.1939197603947032,   10.457053022651998,    20.00169596221037],
        [ -0.2224503255015328,    10.60280479408333,    18.74458193771095]], dtype=float64)
 ```
 
-`shape`을 생략하면 분포마다 하나씩, 매개변수와 같은 모양이 나와요. 매개변수와 `shape`이 모두 비어 있을 때만 Python `float`예요.
+`shape`을 생략하면 분포마다 하나씩, 매개변수와 같은 모양이 나와요. 매개변수가 모두 숫자이고 `shape`을 생략했을 때만 Python `float`예요.
 
 ```python
 >>> Y.sample(rng=sd.random.default_rng(1))
@@ -169,6 +174,18 @@ array([1.1939197603947032, 10.457053022651998,  20.00169596221037], dtype=float6
 >>> m = sd.mean(Y.sample(100_000, rng=sd.random.default_rng(2)), axis=0)
 >>> [round(float(v), 1) for v in m]
 [0.0, 10.0, 20.0]
+```
+
+숫자 매개변수와 배열 매개변수를 섞어도 돼요. 숫자는 브로드캐스트되어 모든 분포에 같이 쓰여요. 아래는 모양이 2로 같고 척도가 1과 100인 감마분포 둘이에요.
+
+```python
+>>> G = sd.stats.Gamma(a=2.0, scale=sd.asarray([1.0, 100.0]))
+>>> G.sample(3, rng=sd.random.default_rng(3))
+array([[ 1.595522740492922, 150.31100786381722],
+       [ 1.131842495855226, 112.79416242749325],
+       [2.8435560468607064,  170.7016833397115]], dtype=float64)
+>>> G.mean()
+array([  2.0, 200.0], dtype=float64)
 ```
 
 ## 값은 언제나 float64
@@ -205,6 +222,17 @@ array([1.3409119681655297e-238,                     0.0,
 >>> rng.state["position"]
 1
 >>> _ = Z.sample((2, 3), rng=rng)
+>>> rng.state["position"]
+7
+```
+
+이 컴퓨터의 메모리에 담을 수 없을 만큼 큰 모양을 달라고 하면 `MemoryError`예요. 수열에서 꺼내기 전에 알리므로 생성기의 위치는 그대로예요.
+
+```python
+>>> Z.sample(10 ** 12, rng=rng)
+Traceback (most recent call last):
+    ...
+MemoryError: sample(): cannot allocate 8000000000000 bytes: more than this machine's physical memory
 >>> rng.state["position"]
 7
 ```
@@ -349,7 +377,7 @@ array([nan, nan], dtype=float64)
 
 - **같은 시드라도 값이 달라요.** 난수 생성기의 종류도, 분포마다 표본을 만드는 방법도 numpy·scipy와 달라요. numpy의 `default_rng(42).normal(size=3)`이나 scipy의 `Normal().sample(3, rng=42)`로 만든 값을 stardust로 다시 만들 수는 없어요.
 - **`rng`는 꼭 줘야 해요.** scipy 신형의 `sample(shape=(), *, method=None, rng=None)`은 `rng`를 생략하거나 시드 정수, numpy 생성기를 받지만, 여기서는 `sd.random.default_rng`의 생성기만 받아요. `method=`는 없어요.
-- 결과 모양의 규칙(`shape` + 매개변수의 브로드캐스트 모양)은 scipy 신형과 같아요.
+- 결과 모양의 규칙(`shape` + 매개변수의 브로드캐스트 모양)은 scipy 신형과 같아요. 기본값만 달라요. scipy 신형은 `shape=()`가 기본값이고 그것이 표본 하나인데, 여기서는 `shape=None`(생략)이 표본 하나이고 `()`는 `ValueError`예요.
 - 이산 분포의 표본이 float64인 것은 scipy 신형과 같아요. numpy 생성기의 `binomial`, `poisson`은 int64예요.
 - numpy의 `rng.normal(loc, scale, size)`, `rng.gamma(shape, scale, size)` 같은 분포 메서드는 `sd.random`의 생성기에 없어요. `sd.stats.Normal(mu=loc, sigma=scale).sample(size, rng=rng)`처럼 분포 객체에서 뽑아요.
 - numpy·scipy가 약속하지 않는 것을 약속해요. 값이 스레드 수와 상관없고, 한 호출을 둘로 나눠 불러도 같은 값이에요.

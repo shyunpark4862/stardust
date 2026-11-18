@@ -287,7 +287,7 @@ array([-inf, -inf,  2.0], dtype=float64)
 array([  -40.0, -1000.0,     2.0], dtype=float64)
 ```
 
-로그 확률은 0 이하라서, y가 0보다 크면 NaN이에요. y = 0은 확률 1이라 `inf`, `-inf`는 확률 0이라 `-inf`예요. 아주 큰 음수(-1e300까지)도 계산해요.
+로그 확률은 0 이하라서, y가 0보다 크면 NaN이에요. y = 0은 확률 1이라 `inf`, `-inf`는 확률 0이라 `-inf`예요. 아주 큰 음수도 float64가 담는 끝(약 -1.8e308)까지 계산해요.
 
 ```python
 >>> sd.special.ndtri_exp(sd.asarray([-1000.0, 0.0, 1.0, -sd.inf]))
@@ -295,6 +295,8 @@ array([-44.61574773196941,                inf,                nan,
                      -inf], dtype=float64)
 >>> sd.special.ndtri_exp(-1e300)
 -1.4142135623730951e+150
+>>> sd.special.ndtri_exp(-1.7e308)
+-1.8439088914585775e+154
 ```
 
 ## 특수값

@@ -113,7 +113,7 @@ $$
 | 분포 | 점 | 보장 최대 | 메서드 | 밖 최대 | scipy 최대 | scipy의 예 |
 |---|:---:|:---:|---|:---:|:---:|---|
 | `Normal` | 72136 | 9.7e-16 | `logcdf` | — | 1.9e-13 | `cdf` 1.9e-13 |
-| `StudentT` | 72464 | 8.1e-15 | `entropy` | 1.4e-14 | inf | `pdf`·`cdf`·`ccdf` 1.0 |
+| `StudentT` | 72464 | 8.1e-15 | `entropy` | 3.2e-16 | inf | `pdf`·`cdf`·`ccdf` 1.0 |
 | `ChiSquared` | 72000 | 1.6e-15 | `entropy` | — | inf | `cdf` 5.4e-2, `iccdf` 2.8e-5 |
 | `F` | 72464 | 9.2e-15 | `entropy` | 1.2e-15 | inf | `cdf` 0.90, `pdf` 1.8e-9 |
 | `Gamma` | 72000 | 5.3e-15 | `entropy` | 1.1e-15 | inf | `cdf` 1.7e-3, `iccdf` 2.4e-5 |
@@ -125,7 +125,7 @@ $$
 | `Laplace` | 72000 | 3.3e-15 | `icdf` | — | inf | `logpdf` inf, `cdf` 9.3e-14 |
 | `Weibull` | 72712 | 2.1e-15 | `variance` | — | 0.36 | `cdf` 0.36, `pdf` 3.9e-2 |
 
-가장 큰 줄은 감마 계열의 `entropy`예요. 엔트로피는 크기 $z\log z$인 $\log\Gamma$와 $(z - k)\psi(z)$ 항들의 합인데 값은 $O(\log z)$라서, 큰 항을 손으로 지운 묶음과 double-double 합으로 계산해요([연속 분포의 수치 기법](/internals/stats/continuous/)). `StudentT`의 밖 최대 $1.4 \times 10^{-14}$는 아래 [느슨한 영역](#보장-영역)이에요.
+가장 큰 줄은 감마 계열의 `entropy`예요. 엔트로피는 크기 $z\log z$인 $\log\Gamma$와 $(z - k)\psi(z)$ 항들의 합인데 값은 $O(\log z)$라서, 큰 항을 손으로 지운 묶음과 double-double 합으로 계산해요([연속 분포의 수치 기법](/internals/stats/continuous/)). `StudentT`의 밖 최대 $3.2 \times 10^{-16}$은 자유도 $10^5$ 이상의 깊은 꼬리 역함수예요(아래 [보장 영역](#보장-영역)).
 
 ### 이산 분포 10개
 
@@ -196,7 +196,7 @@ scipy의 Wishart `logpdf`는 $p = 2$, df $= 1.5$, $\kappa = 10^8$에서 $4.9 \ti
 
 ### 다변량 정규·t의 누적확률
 
-`bench/stats/t9/cdf_accuracy.md`(참값 `tests/stats/ref_mvcdf/`).
+`bench/stats/t9/cdf_accuracy.md`(참값 `tests/stats/ref_mvcdf/`). 정규(이변량, 삼변량, 한 인자 $d = 4$–10)와 t의 $d = 2, 3$은 Arb의 엄밀한 값이고, 한 인자 t($d = 2$–8)는 scipy의 2단 적응 구적으로 만든 약 $10^{-11}$ 정확도의 값이에요.
 
 | 경우 | 점 | 잰 정확도 |
 |---|:---:|---|
@@ -239,17 +239,17 @@ scipy 1.18.1과는 기본값끼리 비교하면 정규 $d = 3$에서 최대 $3.7
 | `NoncentralT` | df $\in [0.1, 10^5]$, $\lvert\text{nc}\rvert \le 100$. 확률은 $10^{-300}$까지 |
 | `NoncentralF` | dfn, dfd $\in [10^{-2}, 10^4]$, nc $\le 10^4$. 확률은 $10^{-300}$까지 |
 | `MultivariateNormal`, `MultivariateT` | $\kappa(\text{cov}) \le 10^9$, $d \le 100$ (`logpdf`·`entropy` 혼합 기준, `pdf` 상대) |
-| `Wishart`, `InverseWishart`, `MatrixNormal` | $\kappa \le 10^9$, $p \le 100$ (`logpdf`·`entropy` 혼합 기준) |
+| `Wishart`, `InverseWishart`, `MatrixNormal` | $\kappa \le 10^9$, $p \le 100$ (`logpdf`·`entropy` 혼합 기준). Wishart·역Wishart의 `logpdf`는 df $\le 10^{30}$ |
 | 다변량 정규 `cdf` | $d = 2$: $P \ge 10^{-15}$인 모든 $\rho$. $d = 3$: 음의 상관이 하나 이하이고 $P \ge 10^{-15}$, 또는 $P \ge 10^{-10}$이고 조건수 $\le 100$ |
 | 다변량 t `cdf` | $d = 2, 3$: $P \ge 7 \times 10^{-13}$ |
 
 비중심 셋의 `entropy`는 구적의 두 추정이 $2^{-50}$까지 맞을 때까지 간격을 줄이는 느슨한 계약이고 보장하지 않아요. 비중심 셋의 적률과 `mode`는 보장 영역에서 $10^{-14}$예요.
 
-**느슨한 영역.** 보장 영역 밖에서 잰 점은 하나만 빼고 모두 $10^{-14}$ 안이었어요. 예외는 `StudentT`의 `icdf`·`iccdf`에서 df $\ge 10^5$이고 확률이 $2^{-1000}$($\approx 9.3 \times 10^{-302}$) 아래인 구석으로, $1.4 \times 10^{-14}$예요(`ilog…`는 $9.8 \times 10^{-15}$). 테스트는 이 두 파일만 밖의 점을 $2 \times 10^{-14}$로 확인해요(`tests/stats/test_reference.py`의 `LOOSE`).
+**보장 영역 밖.** 보장 영역 밖에서 잰 점도 모두 $10^{-14}$ 안이에요. 가장 어려운 구석인 `StudentT`의 `icdf`·`iccdf`에서 df $\ge 10^5$이고 확률이 $2^{-1000}$($\approx 9.3 \times 10^{-302}$) 아래인 점도 $3.2 \times 10^{-16}$이에요(`ilog…`는 $2.8 \times 10^{-16}$). 근 $x$가 1에 가까운 깊은 역함수에서 $1 - x$를 $\log(1 - x)$의 뉴턴으로 직접 구하기 때문이에요([연속 분포의 수치 기법](/internals/stats/continuous/#베타tf-deep_log_inverse)). 테스트는 밖의 점도 보장 영역과 같은 $10^{-14}$로 확인해요(`tests/stats/test_reference.py`).
 
 ## 범위 밖에서 NaN이 되는 곳
 
-보장 영역 밖에서도 값을 계산하지만, 구할 수 없는 값은 조용히 틀린 값 대신 NaN을 내요. 매개변수가 정의역 밖이면 그 원소의 모든 메서드가 NaN인 것과는 별개로, 정의역 안이지만 double로 계산할 수 없는 곳의 목록이에요.
+보장 영역 밖에서도 값을 계산하지만, 구할 수 없는 값은 조용히 틀린 값 대신 NaN을 내요. 매개변수가 정의역 밖이면 그 원소의 모든 메서드가 NaN인 것과는 별개로, 정의역 안이지만 double로 계산할 수 없는 곳의 목록이에요. 정의역 밖이어도 극한 분포가 있는 매개변수(t·F·비중심 t·F의 무한한 자유도, 음이항의 $n = 0$)는 NaN이 아니라 그 분포의 값이에요([원소별 엔진과 빠른 경로](/internals/stats/engine/#매개변수의-극한)).
 
 ```python
 >>> S = sd.stats
@@ -274,6 +274,7 @@ scipy 1.18.1과는 기본값끼리 비교하면 정규 $d = 3$에서 최대 $3.7
 | `Gamma`, `InverseGamma` | $a > 2^{100}$의 cdf 계열과 역함수. 깊은 꼬리(확률 $< 2^{-1000}$)의 역함수가 100번 안에 수렴하지 않을 때($a \ge 10^{12}$에서 나와요) |
 | `Gamma`, `InverseGamma`의 아주 작은 $a$ | 서브노멀 $a$에서도 기준 모양 $a_0 = 2^{-600}$에서 계산해 옮겨($Q(a, y) = (a/a_0)Q(a_0, y)$) 값을 내요. $a \le 2^{-600}$이고 위꼬리 목표 $Q \ge 1600a$이면 근은 0(`InverseGamma`는 inf, scale $< 2^{-900}$이면 NaN). 서브노멀 $a$에서 $Q$가 약 $665a$와 $1600a$ 사이면 NaN(근이 $2^{-960}$ 아래) |
 | `ChiSquared` | df $> 2^{101}$의 cdf 계열과 역함수 |
+| `Beta`, `StudentT`, `F` | 깊은 꼬리(확률 $< 2^{-1000}$)나 아주 작은 근의 역함수가 100걸음 안에 수렴하지 않을 때(마지막 걸음이 $2^{-48}\max(1, \lvert\log x\rvert)$를 넘을 때) |
 | `Beta`, `F` | $a, b$가 모두 $2^{100}$ 초과(F는 dfn, dfd가 모두 $2^{101}$ 초과)의 cdf 계열과 역함수 |
 | `ChiSquared`, `StudentT`, `F` | df $< 2^{-1021}$의 pdf, cdf 계열, 역함수, median, entropy(df의 절반을 double로 나타낼 수 없어요) |
 | 역함수의 검증 | 감마 계열 $a \notin [10^{-6}, 10^6]$, `Beta` $a, b \notin [10^{-3}, 10^5]$, `StudentT` df $\notin [10^{-3}, 10^6]$, `F` dfn, dfd $\notin [10^{-3}, 10^5]$에서는 구한 근에서 정방향 log 꼬리가 목표와 상대 $10^{-12}$ 안에서 맞을 때만 값을 내요 |
@@ -288,7 +289,7 @@ scipy 1.18.1과는 기본값끼리 비교하면 정규 $d = 3$에서 최대 $3.7
 | 분포 | NaN이 되는 곳 |
 |---|---|
 | `Binomial` | $n > 2^{52}$의 cdf 계열·분위수·mode·entropy, $npq > 2^{42}$의 entropy |
-| `NegativeBinomial` | $n < 2^{-128}$. entropy는 $nq/p^2 > 2^{42}$ 또는 $p < 2^{-20}$ |
+| `NegativeBinomial` | $0 < n < 2^{-128}$($n = 0$은 0의 점질량이에요). entropy는 $nq/p^2 > 2^{42}$ 또는 $p < 2^{-20}$ |
 | `Hypergeometric` | total $> 2^{52}$. kurtosis는 total $> 2^{24}$. 합이 $2^{20}$항을 넘는 cdf 계열(total $10^{12}$부터 일부) |
 | `BetaBinomial` | $n + a + b > 2^{35}$(pmf 포함). 합이 $2^{20}$항을 넘는 cdf 계열($n = 10^9$부터 일부). 적률은 $a, b$가 $[2^{-150}, 2^{150}]$ 밖 |
 | `Poisson`, `NegativeBinomial` | $k \ge 2^{53}$에서 pmf$(k)$가 무시할 수 없는 cdf 계열($k + 1$이 double이 아니어서 한 칸 어긋나요) |
@@ -300,7 +301,7 @@ $2^{52}$, $2^{53}$의 경계는 개수의 연산 때문이에요. 불완전 베�
 
 | 메서드 | NaN이 되는 곳 |
 |---|---|
-| cdf 계열, 역함수, median | 카이제곱·F는 nc가 약 $2.3 \times 10^9$ 초과, t는 $\lvert\text{nc}\rvert$가 약 $3.8 \times 10^4$ 초과. 카이제곱은 df가 $1.1 \times 10^{24}$를 넘으면 평균 근처 |
+| cdf 계열, 역함수, median | 카이제곱은 nc가 약 $2.33 \times 10^9$ 초과(평균 근처부터), F는 nc가 약 $1.47 \times 10^9$ 초과, t는 $\lvert\text{nc}\rvert$가 약 $3.8 \times 10^4$ 초과. 카이제곱은 df가 $1.1 \times 10^{24}$를 넘으면 평균 근처 |
 | pdf, logpdf | F는 nc가 약 $1.3 \times 10^8$ 초과, t는 $\lvert\text{nc}\rvert$나 $\lvert t\rvert$가 약 $10^{15}$ 초과. 카이제곱은 큰 df와 큰 nc가 함께일 때만(df가 작으면 nc $= 10^{300}$까지 값이 나와요) |
 | mode | t는 $\lvert\text{nc}\rvert > 128\sqrt{1 + \text{df}}$, F는 nc $> 1.3 \times 10^8$ |
 | `ilogcdf`, `ilogccdf` | $\log p \le -2^{62}$ |
@@ -313,9 +314,9 @@ $2^{52}$, $2^{53}$의 경계는 개수의 연산 때문이에요. 불완전 베�
 | `sample` | `Hypergeometric`은 표준편차 $> 65536$ 또는 total $\ge 2^{53}$, `DiscreteUniform`은 폭 $\ge 2^{64}$, `StudentT`·`NoncentralT`는 서브노멀 df, `NoncentralF`는 두 자유도가 모두 서브노멀. `Zipf`는 $a > 1025$이면 1, `Beta`·`BetaBinomial`·`F`는 서브노멀 모양에서 극한값 |
 | `Multinomial` | logpmf는 $n$이 약 $10^{13}$을 넘으면 최빈값 근처에서 NaN일 수 있음. entropy는 범주별 표준편차의 합 $> 2^{17}$ 또는 $n > 2^{53}$(점질량은 0) |
 | 다변량 t `cdf` | $d = 3$에서 $\lvert x/\text{sd}\rvert > 10^{100}$이고 조건부 적분으로 넘어가야 할 때(df $\le 1$에서 나와요). 값이 NaN이면 오차 출력도 NaN |
-| `Wishart`, `InverseWishart` | logpdf는 df가 약 $10^{17}$을 넘고 항들이 상쇄하는 곳(밀도가 큰 곳 근처). $10^{15}$까지는 $10^{-13}$ 안 |
+| `Wishart`, `InverseWishart` | logpdf는 df $\ge 10^9$에서 크기 $np\log n$인 항을 식에서 지운 꼴이라 df $\le 10^{30}$을 보장해요. 남는 반올림의 상한이 $10^{-14}\max(1, \lvert\text{값}\rvert)$를 넘으면 NaN(최빈값 근처에서 df $10^{34}$–$10^{35}$쯤부터) |
 
-행렬 정규·Wishart·역Wishart의 `logpdf`는 원소가 아무리 커도(double의 최댓값, inf 포함) NaN이 아니에요. $2^{400}$(Wishart는 $2^{500}$) 위의 인자는 $2^{-600}$을 곱해 계산하고 로그 행렬식과 이차 형식을 되돌려요. 이차 형식의 절반이 double을 넘으면 $-\infty$예요.
+행렬 정규·Wishart·역Wishart의 `logpdf`는 원소가 아무리 커도(double의 최댓값, inf 포함) NaN이 아니에요. $2^{400}$(Wishart는 $2^{500}$) 위의 인자는 $2^{-600}$을 곱해 계산하고 로그 행렬식과 이차 형식을 되돌려요. 이차 형식의 절반이 double을 넘으면 $-\infty$예요. 역Wishart에서 $X$의 피벗이 서브노멀인 점도 같은 이유로 $-\infty$예요(`InverseGamma`와 같아요).
 
 ## 반복의 상한
 
@@ -323,7 +324,7 @@ $2^{52}$, $2^{53}$의 경계는 개수의 연산 때문이에요. 불완전 베�
 
 | 어디 | 상한 | 근거·영역 안의 최대 |
 |---|---|---|
-| 비중심 cdf의 포아송 혼합 합(`kMaxTerms`, `special/ops/noncentral.hpp`) | $2^{18}$항(걷기는 그 두 배) | 영역 안 확률은 바깥으로 4900, 돌아오며 5600걸음. 넓은 log 꼬리(정점 $j^* = 10^8$)는 $9\sqrt{j^*/2} = 6.4 \times 10^4$ |
+| 비중심 cdf의 포아송 혼합 합(`kMaxTerms`, `special/ops/noncentral.hpp`) | $2^{18}$항(걷기는 그 두 배) | 영역 안 참값 점에서 급수 최대 2421항. 걷기는 확률이 나가며 2300·돌아오며 2701걸음, log 꼴과 역함수의 넓은 합이 3805·4645걸음. 정점이 $j^* = 10^8$인 넓은 꼬리라도 $9\sqrt{j^*/2} = 6.4 \times 10^4$걸음 나가고 그 두 배를 돌아와 상한 안 |
 | 비중심 밀도의 급수(`kSeriesTerms`, `stats/dist/noncentral.hpp`) | 정점까지 64걸음, 한쪽 $2^{16}$항 | 항들의 종 모양 9폭. 영역 안 $1.2 \times 10^4$항. 정점이 $2^{52}$를 넘으면 더하지 않음 |
 | 비중심 역함수의 구간 넓히기·zeroin | 256회·200회 | 영역 안 최대 32회·16회 |
 | 비중심 엔트로피 | 반분 12번, 일 $2^{25}$단위(`kEntropyWork`) | 보장하지 않는 계약 |
@@ -331,7 +332,8 @@ $2^{52}$, $2^{53}$의 경계는 개수의 연산 때문이에요. 불완전 베�
 | 이산 꼬리 합(`kMaxTailTerms`) | $2^{20}$항 | 초기하·베타이항의 닫힌 꼴이 없는 cdf |
 | 이산 엔트로피 합(`kMaxEntropyTerms`) | $2^{25}$항(분산 $> 2^{42}$이면 시작하지 않음) | 영역 안 가장 넓은 음이항($n = 10^4$, $p = 10^{-4}$)이 $1.9 \times 10^7$항, 0.19초 |
 | 이산 중심 적률 합(`kMaxMomentTerms`) | 4096항 | 쓰이는 합은 약 200항 이하 |
-| 감마 계열 깊은 꼬리 역함수(`deep_inverse`, `stats/dist/gamma.hpp`) | 100번 | 수렴하지 않으면 NaN |
+| 감마 계열 깊은 꼬리 역함수(`deep_inverse`, `stats/dist/gamma.hpp`) | 100걸음 | 수렴하지 않으면 NaN |
+| 베타·t·F 깊은 꼬리 역함수(`deep_log_inverse`, `deep_log_inverse_both`, `stats/dist/beta.hpp`) | $\log x$, $\log(1 - x)$에서 각 100걸음 | 걸음이 $2^{-54}\max(1, \lvert\log x\rvert)$ 아래면 끝, 100걸음째에 $2^{-48}$배를 넘으면 NaN |
 | 다변량 cdf | 적응 구적 200구간(`kMaxPanels`), 준몬테카를로 96단계와 `max_points` | 기본 `max_points`는 $10^6 \times$ 적분 변수 수 |
 | 표본기 | 이항 역변환 $k \le 1024$, 초기하 표준편차 $\le 65536$, 다항 엔트로피 $2^{23}$항 | 넘으면 NaN 또는 다른 방법 |
 

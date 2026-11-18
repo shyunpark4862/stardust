@@ -328,7 +328,7 @@ nan
 | `cephes_bessel.hpp` | $I_0, I_1, K_0, K_1$의 지수 척도 판, $J_0, J_1, Y_0, Y_1$ | Chebyshev 급수(`chbevl`)와 유리식, Hankel 진폭·위상 유리식 | Cephes `i0.c` … `j1.c`, SciPy 판 |
 | `cephes_ellip.hpp` | $K(m)$, $E(m)$ | $P(y) - \log(y)\,Q(y)$, $P(y) - \log(y)\,y\,Q(y)$, $y = 1 - m$ | Cephes `ellpk.c`, `ellpe.c`, SciPy 판 |
 | `lanczos13m53.hpp` | $\Gamma(z)$ (Lanczos 근사) | $\Gamma(z) = L(z)\,(z+g-\tfrac12)^{z-1/2} e^{-(z+g-1/2)}$, $L$은 13항 유리식 | Boost.Math `lanczos.hpp` [6], BSL-1.0 |
-| `lgamma_taylor2.hpp`, `rgamma_taylor.hpp`, `loggamma_taylor.hpp` | $\log\Gamma(2+e)$, $1/\Gamma(1+z)$, 복소 $\log\Gamma(1+w)$의 나머지 | Taylor 급수 ($\zeta(k)$로 정해진 계수) | 생성 (`lgamma_taylor2`는 40자리 고정밀, 나머지는 Arb) |
+| `lgamma_taylor2.hpp`, `rgamma_taylor.hpp`, `loggamma_taylor.hpp` | $\log\Gamma(2+e)$, $1/\Gamma(1+z)$, 복소 $\log\Gamma(1+w)$의 나머지 | Taylor 급수 ($\zeta(k)$로 정해진 계수) | 생성 (Arb) |
 | `zeta_even.hpp` | $\zeta(2), \zeta(4), \ldots, \zeta(52)$ | 올바르게 반올림한 값의 표 | 생성 (Arb, 공을 $2^{-200}$까지) |
 | `temme_igamma.hpp`, `debye_u.hpp` | 불완전 감마의 Temme 계수 $c_k(\eta)$, Debye 다항식 $U_k(p)$ | 균등 점근전개 | 생성, DLMF 8.12, 10.41의 정의식 [7] |
 | `ei_taylor.hpp`, `lambertw_branch.hpp` | Ei의 양의 영점 둘레, W의 분기점 둘레 | Taylor 급수 | 생성 |

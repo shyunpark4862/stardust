@@ -317,7 +317,7 @@ LAPACK의 많은 루틴은 입력 자리에 결과를 써요. `getrs`는 우변 
 | `hessenberg` | `x` → 작업 | `gehrd` 뒤 H를 옮기고, 반사 벡터를 Q의 결과 자리에 복사한 뒤 `orghr`가 그 자리를 Q로 |
 | `solve_tridiagonal`, `solve_banded` | 대각들·띠 → 작업, `b` → 결과 자리 | `gtsv`/`gbsv`가 결과 자리를 해로 |
 | `solve_sylvester` | `a`, `b` → 작업, `c` → 결과 자리 | `trsyl3`가 그 자리를 해로, 마지막 `gemm`도 그 자리에 |
-| `lstsq` | `a`, `b` → 작업 | `gelsd`가 작업의 `b`를 해로, 결과로 복사 |
+| `lstsq` | `a`, `b` → 작업 | `gelsd`가 작업의 `b`를 해로, 결과로 복사 (`rtol` < ε이면 마지막 `gemm`이 결과 자리에 바로) |
 
 몇 가지는 바로 패킹할 수 없어요.
 

@@ -116,6 +116,8 @@ nan
 nan
 ```
 
+자유도가 inf이면 값이 통째로 무한대로 달아나서, 극한이 확률분포가 아니에요. 그래서 t 분포나 F 분포의 `df = inf`와 달리 NaN이에요.
+
 `df`에 배열을 주면 원소마다 다른 분포가 되고, 메서드에 넣는 값과 [브로드캐스팅](/api/array/broadcasting/)해요. 자유도별로 위 5% 임계값을 한 번에 구해 볼게요.
 
 ```python
@@ -401,4 +403,5 @@ nan
 - 꼬리에서 scipy가 `-inf`를 내는 곳에서 값을 내요. `ChiSquared(df=3).logccdf(2000.0)`은 −996.42이고 scipy `chi2.logsf(2000, 3)`은 `-inf`, `logcdf(1e-300)`은 −1037.49이고 scipy는 `-inf`예요.
 - 깊은 꼬리의 분위수도 정확해요. `ChiSquared(df=3).icdf(1e-300)`의 참값은 2.41798793102470446e-200인데, scipy `chi2.ppf(1e-300, 3)`은 2.4179879310247908e-200으로 상대오차가 3.6e-14예요.
 - 자유도가 $2^{101}$을 넘으면 `cdf`가 NaN이에요. scipy는 값을 내요.
+- `df = inf`는 NaN이에요. scipy는 `chi2.cdf(1.0, inf)`에 0.0, `chi2.mean(inf)`에 inf를 내요.
 - `sample`은 `rng`를 꼭 받아요. 값은 numpy·scipy와 달라요.

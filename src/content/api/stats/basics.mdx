@@ -221,6 +221,33 @@ AttributeError: property 'sigma' of 'Normal' object has no setter
 (nan, nan, (nan, nan))
 ```
 
+### 자유도가 inf이면 극한 분포예요
+
+[t분포](/api/stats/student-t/)는 자유도가 커질수록 표준정규분포에 가까워지고, 자유도가 무한대인 극한은 표준정규분포 그 자체예요. 그래서 자유도에 `sd.inf`를 주면 **그 극한 분포**가 돼요. 모든 메서드(밀도, 누적확률, 역함수, 모멘트, 엔트로피, 지지집합, 표본)가 극한 분포의 값을 내고, 그 분포 객체로 계산한 값과 마지막 비트까지 같아요.
+
+```python
+>>> T = sd.stats.StudentT(df=sd.asarray([1.0, 30.0, sd.inf]))
+>>> T.cdf(1.96)
+array([0.8498285541119834, 0.9703288435519748, 0.9750021048517795], dtype=float64)
+>>> sd.stats.Normal().cdf(1.96)
+0.9750021048517795
+```
+
+| 자유도가 inf인 분포 | 같은 분포 |
+|---|---|
+| `StudentT(df=inf)` | `Normal()` |
+| `NoncentralT(df=inf, nc=nc)` | `Normal(mu=nc)` |
+| `F(dfn=n, dfd=inf)` | 카이제곱 χ²(n)을 n으로 나눈 것 |
+| `NoncentralF(dfn=n, dfd=inf, nc=nc)` | 비중심 카이제곱 χ²(n, nc)를 n으로 나눈 것 |
+| `F(dfn=inf, dfd=m)`, `NoncentralF(dfn=inf, dfd=m, nc=nc)` | `InverseGamma(a=m/2, scale=m/2)` |
+
+극한이 확률분포가 아닌 경우는 정의역 밖처럼 NaN이에요. `ChiSquared(df=inf)`와 `NoncentralChiSquared(df=inf)`는 값이 무한대로 달아나고, 두 자유도가 모두 inf인 F와 비중심 F는 1 한 점에 몰려요. 비중심도 `nc`가 무한대이면 NaN이에요.
+
+```python
+>>> sd.stats.ChiSquared(df=sd.inf).cdf(1.0), sd.stats.F(dfn=sd.inf, dfd=sd.inf).cdf(1.0)
+(nan, nan)
+```
+
 ## 매개변수와 입력은 함께 브로드캐스트해요
 
 ### 매개변수가 배열이면 분포 여러 개
@@ -277,7 +304,7 @@ array([[                0.5, 0.15865525393145707, 0.02275013194817921],
 >>> sd.stats.Normal(mu=sd.asarray([0.0, 1.0]), sigma=sd.asarray([1.0, 2.0, 3.0]))
 Traceback (most recent call last):
     ...
-ValueError: broadcast_arrays(): shapes could not be broadcast together: (2,) (3,)
+ValueError: Normal(): shapes could not be broadcast together: (2,) (3,)
 >>> sd.stats.Normal(mu=sd.asarray([0.0, 1.0])).cdf(sd.asarray([0.0, 1.0, 2.0]))
 Traceback (most recent call last):
     ...
@@ -305,7 +332,7 @@ TypeError: pdf(): 'x' must be real, not a complex128 array
 >>> sd.stats.Normal(mu=[0.0, 1.0])
 Traceback (most recent call last):
     ...
-TypeError: 'mu' must be a real number or an sd.ndarray, not list
+TypeError: Normal(): 'mu' must be a real number or an sd.ndarray, not list
 ```
 
 ### 결과는 float64, 모두 숫자면 Python float
@@ -379,10 +406,10 @@ nan
 |---|---|
 | `TypeError` | 매개변수를 이름 없이 줌, 꼭 줘야 하는 매개변수를 빠뜨림, 리스트·문자열·복소수를 줌, 결과를 담을 수 없는 `out`, `sample`에 `rng`를 주지 않음 |
 | `ValueError` | 매개변수끼리 또는 매개변수와 입력의 모양이 맞지 않음, `out`의 모양이 틀림 |
-| `OverflowError` | float64로 나타낼 수 없을 만큼 큰 Python 정수 |
+| `OverflowError` | 매개변수로 준 Python 정수가 float64로 나타낼 수 없을 만큼 큼, 메서드의 입력으로 준 Python 정수가 int64 범위(±9.2e18 정도)를 넘음 |
 | `AttributeError` | 매개변수 속성에 값을 넣으려 함 |
 
-메서드에서 나는 에러의 메시지는 `cdf(): `처럼 **부른 메서드의 이름**으로 시작해요. 어떤 인자가 문제인지도 이름으로 알려 줘요(`'x'`, `'p'`, `'logp'`). 다변량·행렬 분포도 같아요. 객체를 만들 때 나는 에러는 매개변수의 이름(`'mu'`)을 알려 줘요.
+메서드에서 나는 에러의 메시지는 `cdf(): `처럼 **부른 메서드의 이름**으로 시작해요. 어떤 인자가 문제인지도 이름으로 알려 줘요(`'x'`, `'p'`, `'logp'`). 다변량·행렬 분포도 같아요. 객체를 만들 때 나는 에러는 `Normal(): `처럼 **분포의 이름**으로 시작하고, 문제인 매개변수의 이름(`'mu'`)을 알려 줘요.
 
 ```python
 >>> sd.stats.Normal().icdf("0.5")
@@ -397,7 +424,11 @@ ValueError: cdf(): 'x' must have 2 components on its last axis, not 3
 >>> sd.stats.Normal(mu=2 ** 2000)
 Traceback (most recent call last):
     ...
-OverflowError: 'mu' is out of range
+OverflowError: Normal(): 'mu' is out of range
+>>> sd.stats.Normal().cdf(2 ** 63)
+Traceback (most recent call last):
+    ...
+OverflowError: cdf(): Python int too large to convert to int64
 ```
 
 ## 정확도 약속

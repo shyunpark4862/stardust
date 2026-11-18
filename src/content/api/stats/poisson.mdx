@@ -100,7 +100,11 @@ Poisson(mu=4.0)
 nan
 >>> sd.stats.Poisson(mu=float('inf')).pmf(0)
 nan
+>>> sd.special.pdtr(5, sd.inf)
+0.0
 ```
+
+평균이 inf이면 질량이 모두 무한대로 달아나 확률분포가 남지 않아서 NaN이에요. special의 [`pdtr`](/api/special/pdtr/)은 함수의 극한값 0을 주는 점이 달라요.
 
 `mu`에 배열을 주면 원소마다 다른 분포가 되고, 입력과 [브로드캐스트](/api/array/broadcasting/)해요. 평균이 1, 4, 9인 세 분포(열)에서 0건과 4건의 확률(행)을 한 번에 구해요.
 
@@ -261,6 +265,17 @@ nan
 0.0
 ```
 
+`support()`는 `mu = 0`이어도 포아송 분포 족의 지지집합 (0, inf)이에요. 그래서 `icdf(1)`도 그 위 끝 inf예요.
+
+```python
+>>> Z.support()
+(0.0, inf)
+>>> Z.icdf(1.0)
+inf
+>>> Z.icdf(0.5)
+0.0
+```
+
 ## 표본
 
 `sample`은 포아송 난수를 정수인 float64로 뽑아요. 생성기 `rng`를 꼭 줘야 해요. 공통 규칙은 [표본 뽑기](/api/stats/sample/)에 있어요.
@@ -345,6 +360,7 @@ nan
 
 - `scipy.stats.poisson(mu)`와 같은 분포예요. 분위수 `icdf`, `iccdf`는 `poisson.ppf`, `poisson.isf`와 정의가 같아요.
 - `icdf(0)`은 지지집합의 왼쪽 끝 0이에요. `poisson.ppf(0, mu)`는 −1이에요.
-- `mu = 0`의 왜도와 첨도는 NaN이에요. `poisson.stats(0, moments='sk')`는 둘 다 inf예요.
+- `mu = 0`의 왜도와 첨도는 NaN이에요. `poisson.stats(0, moments='sk')`는 둘 다 inf예요. `support()`와 `icdf(1)`은 `poisson.support(0)`, `poisson.ppf(1, 0)`과 같은 (0, inf)와 inf예요.
+- `mu = inf`는 NaN이에요. `poisson.cdf(5, inf)`는 극한값 0.0이에요.
 - `mode()`가 있고 `mu`가 정수이면 NaN이에요. `scipy.stats.poisson`에는 최빈값 메서드가 없어요.
 - 먼 꼬리에서 값이 있어요. `Poisson(mu=3.0).logccdf(500)`은 −2070.14이고 `poisson.logsf(500, 3)`은 −inf예요. `poisson.isf(1e-30, 3)`은 NaN이지만 답은 39예요.

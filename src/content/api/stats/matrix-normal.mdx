@@ -25,7 +25,7 @@ returns:
   desc: 분포 객체. 매개변수는 같은 이름의 읽기 전용 속성(mu, rowcov, colcov)으로, 준 값 그대로 남아 있어요.
 raises:
   - type: TypeError
-    desc: 매개변수를 위치로 넘기거나 빠뜨렸을 때, 숫자 배열로 바꿀 수 없는 값(문자열 등)이거나 복소수일 때.
+    desc: 매개변수를 위치로 넘기거나 빠뜨렸을 때, 매개변수가 sd.ndarray가 아닐 때(리스트, tuple, numpy 배열도 TypeError예요), 복소수일 때.
   - type: ValueError
     desc: 매개변수가 2차원보다 작을 때, rowcov가 (n, n)이 아니거나 colcov가 (p, p)가 아닐 때, 세 매개변수의 배치 축이 서로 브로드캐스트되지 않을 때.
 seeAlso: [multivariate-normal, wishart, sample]
@@ -59,7 +59,7 @@ import Callout from '../../../components/Callout.astro';
 
 ## 만들기와 매개변수
 
-세 매개변수 모두 키워드로 꼭 줘야 해요. 평균의 이름은 `mu`예요(`mean`은 평균을 돌려주는 메서드 이름이에요).
+세 매개변수 모두 키워드로 꼭 줘야 하고, 모두 `sd.ndarray`예요(리스트는 `TypeError`예요). 평균의 이름은 `mu`예요(`mean`은 평균을 돌려주는 메서드 이름이에요).
 
 - `mu`: n × p 평균 행렬
 - `rowcov`: n × n, `colcov`: p × p. 둘 다 대칭 양의 정부호이고 아래 삼각만 읽어요.
@@ -73,7 +73,7 @@ MatrixNormal(mu=array([[0.0, 0.0],
 >>> sd.stats.MatrixNormal(mu=M, rowcov=V, colcov=V)
 Traceback (most recent call last):
     ...
-ValueError: MatrixNormal: 'rowcov' must be (2, 2) on its last two axes (mu is 2 x 3), not (3, 3)
+ValueError: MatrixNormal(): 'rowcov' must be (2, 2) on its last two axes (mu is 2 x 3), not (3, 3)
 ```
 
 양의 정부호가 아닌 공분산이나 NaN·inf가 든 `mu`는 에러가 아니라 그 분포의 모든 메서드가 NaN이에요.
@@ -107,7 +107,7 @@ $$
 f(X) = \frac{\exp\!\left(-\tfrac12 \operatorname{tr}\!\left[V^{-1} (X - M)^{\mathsf T} U^{-1} (X - M)\right]\right)}{(2\pi)^{np/2}\, |V|^{n/2}\, |U|^{p/2}}
 $$
 
-입력 `x`의 마지막 두 축은 (n, p)이고, 앞 축은 배치와 브로드캐스트해요. 대칭 행렬이 아니라 일반 행렬이라 **모든 원소를 읽어요.**
+입력 `x`는 마지막 두 축이 (n, p)인 `sd.ndarray`이고, 앞 축은 배치와 브로드캐스트해요. 대칭 행렬이 아니라 일반 행렬이라 **모든 원소를 읽어요.**
 
 ```python
 >>> MN.pdf(sd.stack([M, X])).shape
@@ -176,7 +176,7 @@ array([[1.0, 2.0, 1.0],
 
 ## 표본
 
-`sample(shape, rng=...)`은 `shape` + 배치 + (n, p) 모양이에요. 행렬 하나가 표본 하나예요. 공통 규칙은 [표본 뽑기](/api/stats/sample/)에 있어요.
+`sample(shape, rng=...)`은 `shape` + 배치 + (n, p) 모양이에요. `shape`를 빼면 분포마다 행렬 하나(배치 + (n, p))예요. 행렬 하나가 표본 하나예요. 공통 규칙은 [표본 뽑기](/api/stats/sample/)에 있어요.
 
 ```python
 >>> MN.sample(rng=sd.random.default_rng(11))
@@ -215,6 +215,6 @@ array([[1.0068618719434976,  1.992969288638812,  1.004340516427924],
 
 ## scipy를 아는 분께
 
-- `scipy.stats.matrix_normal(mean, rowcov, colcov)`에 해당해요. 평균의 이름이 `mean`이 아니라 **`mu`**예요. 모든 매개변수를 키워드로 꼭 줘야 해요(scipy는 `rowcov=1`, `colcov=1`이 기본이에요).
+- `scipy.stats.matrix_normal(mean, rowcov, colcov)`에 해당해요. 평균의 이름이 `mean`이 아니라 **`mu`**예요. 모든 매개변수를 키워드로 꼭 줘야 해요(scipy는 `rowcov=1`, `colcov=1`이 기본이에요). scipy는 매개변수와 `x`에 리스트도 받지만, sd는 `sd.ndarray`만 받아요.
 - 메서드는 scipy와 같이 `pdf`, `logpdf`, `mean`, `entropy`, `sample`(scipy의 `rvs`)이에요. scipy의 `mean`은 속성이고, sd의 `mean()`은 메서드예요.
 - 원소가 아주 큰 `logpdf`가 값을 가져요. 위의 x = 1.5e154를 scipy 1.18.1은 −inf로 계산해요.

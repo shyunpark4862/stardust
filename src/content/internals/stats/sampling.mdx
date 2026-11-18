@@ -2,7 +2,7 @@
 title: 표본 뽑기
 group: 표본과 다변량
 order: 1
-summary: 단변량 분포 31개의 sample이 생성기 스트림에서 원소마다 단어를 받아 표본을 만드는 구조와, 분포마다 쓰는 정확한 방법을 설명해요. 재현성과 스레드 무관의 근거, ziggurat, Marsaglia–Tsang 감마와 작은 모양의 exp(−E/a), Jöhnk 베타, PTRS 포아송, BTRS 이항과 두 단계 기각 판정, 최빈값에서 바깥으로 가는 초기하 역변환, Kemp의 로그 급수, Devroye의 Zipf 기각, 반복의 상한과 NaN, 분포 검사와 속도를 다뤄요.
+summary: 단변량 분포 31개의 sample이 생성기 스트림에서 원소마다 단어를 받아 표본을 만드는 구조와, 분포마다 쓰는 정확한 방법을 설명해요. 재현성과 스레드 무관의 근거, ziggurat, Marsaglia–Tsang 감마와 작은 모양의 exp(−E/a), Jöhnk 베타, 무한한 자유도의 극한, PTRS 포아송, BTRS 이항과 두 단계 기각 판정, 최빈값에서 바깥으로 가는 초기하 역변환, Kemp의 로그 급수, Devroye의 Zipf 기각, 반복의 상한과 NaN, 분포 검사와 속도를 다뤄요.
 seeAlso: [discrete, continuous, multivariate, matrix, accuracy-performance]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -15,7 +15,7 @@ export const zig8 = [[0, 1], [0.7384, 1.0], [0.7384, 0.7614], [1.0274, 0.7614], 
 
 ## 한눈에 보기
 
-`X.sample(shape, rng=rng)`은 분포 `X`에서 표본을 뽑아요. 쓰는 법은 [표본 뽑기 API](/api/stats/sample/)에 있고, 이 글은 그 안에서 일어나는 일을 다뤄요.
+`X.sample(shape, rng=rng)`은 분포 `X`에서 표본을 뽑아요. `shape`를 주지 않으면(None) 매개변수 집합마다 하나예요. 쓰는 법은 [표본 뽑기 API](/api/stats/sample/)에 있고, 이 글은 그 안에서 일어나는 일을 다뤄요.
 
 - **표본 하나는 생성기 스트림의 원소 하나예요.** 호출의 원소 $i$(C 순서)는 스트림의 원소 $e = \text{pos} + i$이고, 그 원소가 쓰는 64비트 단어는 모두 (키, $e$)로 정해진 Philox 블록에서 나와요. 그래서 표본은 (키, $e$, 매개변수)만의 함수예요. 스레드 수, 작업 분할, 호출을 나누어 부르는 것과 무관해요.
 - **분포마다 정확한 방법을 써요.** 기각(rejection)이나 조합(composition)이고, 근사는 없어요. 받아들인 표본의 분포가 수학적으로 목표 분포와 같아요.
@@ -46,11 +46,11 @@ export const zig8 = [[0, 1], [0.7384, 1.0], [0.7384, 0.7614], [1.0274, 0.7614], 
 
 <Fig column caption="X.sample(shape, rng=rng) 한 번의 흐름. 위치 예약만 잠금 안이고, 계산은 GIL을 놓고 스레드 풀에서 해요.">
   <Steps steps={[
-    { label: 'X.sample()', note: 'rng가 Generator인지 검사. 결과 모양 = shape + 매개변수의 브로드캐스트 모양', where: '_distribution.py' },
-    { label: 'rng._reserve(n)', note: '원소 수 n만큼 스트림 위치 [pos, pos + n)을 예약(잠금 안). 모양이 ()이고 매개변수가 스칼라면 n = 1로 바로 <dist>_sample1', depth: 1 },
+    { label: 'X.sample()', note: 'rng가 Generator인지 검사. 결과 모양 = shape + 매개변수의 브로드캐스트 모양(shape=None이면 매개변수의 모양, shape=()는 ValueError)', where: '_distribution.py' },
+    { label: 'rng._take(n, "sample")', note: '결과가 물리 메모리보다 크면 여기서 MemoryError(위치는 그대로). 아니면 원소 수 n만큼 스트림 위치 [pos, pos + n)을 예약(잠금 안). shape=None이고 매개변수가 스칼라면 이 단계 대신 rng._reserve(1)과 <dist>_sample1로 바로 가요', depth: 1 },
     { label: '<dist>_sample(k0, k1, pos, shape, params…)', note: 'float64 배열을 만들고 GIL을 놓아요', where: 'stats_sample.cpp' },
     { label: 'for_pieces', note: '원소를 조각으로 나눠 스레드 풀에 줘요. 원소당 일의 추정은 64', depth: 1 },
-    { label: 'D::valid, Custom<D>::prep', note: '매개변수가 스칼라면 조각마다 한 번. 정의역 밖이면 조각 전체가 NaN', depth: 1 },
+    { label: 'in_domain<D>, Custom<D>::prep', note: '매개변수가 스칼라면 조각마다 한 번. 정의역 밖이면 조각 전체가 NaN. df = inf 같은 극한은 통과시켜 표본기가 직접 뽑아요', depth: 1 },
     { label: 'each_first', note: '원소 16개의 첫 단어를 Philox 블록 넷으로 한 번에', where: 'sample.hpp', depth: 1 },
     { label: 'Custom<D>::draw(Words&, state)', note: '원소 하나의 표본. 단어가 더 필요하면 그 원소의 추가 블록에서', where: 'sample_dist.hpp', depth: 2 },
   ]} />
@@ -134,9 +134,17 @@ True
 
 정규 표본은 `fma(sigma, z, mu)`이고 $\sigma = 1$이면 $\mathrm{fl}(z + \mu)$라서 두 쪽이 같은 연산이에요.
 
+스칼라 매개변수가 배열 매개변수 옆에 있으면, Python 쪽이 그 스칼라를 브로드캐스트 모양으로 넓혀 커널에 넘겨요. 커널은 매개변수 집합의 수를 매개변수에서 읽으므로 모든 매개변수가 같은 모양이어야 해요. `shape`를 주지 않으면 결과는 매개변수의 모양 그대로, 매개변수 집합마다 하나예요.
+
+```python
+>>> sigma = sd.asarray([1.0, 10.0, 100.0])
+>>> sd.stats.Normal(mu=0.0, sigma=sigma).sample(rng=sd.random.default_rng(3)).tolist()
+[-0.05591110736495433, -1.3107646883385446, -46.87077495747134]
+```
+
 ### 매개변수의 검사와 준비
 
-- **스칼라 매개변수**(보통의 호출): 조각마다 `D::valid`를 한 번 보고, 방법에 준비 단계가 있으면(`prep`: 감마의 $d, c$, PTRS의 상수 등) 한 번 계산해요. 정의역 밖이면 조각 전체가 NaN이에요.
+- **스칼라 매개변수**(보통의 호출): 조각마다 정의역을 한 번 보고(`in_domain`), 방법에 준비 단계가 있으면(`prep`: 감마의 $d, c$, PTRS의 상수 등) 한 번 계산해요. 정의역 밖이면 조각 전체가 NaN이에요.
 - **배열 매개변수**: 원소마다 검사하고 준비해요. 정의역 밖인 원소만 NaN이에요.
 
 ```python
@@ -144,11 +152,42 @@ True
 [[3.731983022214118, nan], [1.6688571033680708, nan]]
 ```
 
-- **`shape=()`이고 매개변수가 모두 스칼라**: 배열을 만들지 않고 `<dist>_sample1`이 Python float 하나를 바로 돌려줘요. 값은 같은 위치에서 배열로 뽑은 첫 원소와 비트까지 같아요.
+`in_domain`은 분포의 `valid`에, 정의역 밖이지만 다른 분포의 극한인 매개변수(`at_limit`, t의 df = inf 같은 것)를 더한 거예요. 그런 매개변수는 NaN으로 막지 않고 표본기에 넘기고, 표본기의 준비 단계가 극한 분포의 꼴을 골라요([아래](#감마로-만드는-분포)).
+
+```cpp
+// csrc/bind/stats_sample.cpp
+template <class D, class... P>
+bool in_domain(P... p) {
+    if constexpr (stats::has_limit<D, P...>) {
+        if (D::at_limit(p...)) return true;
+    }
+    return D::valid(p...);
+}
+```
+
+- **`shape=None`이고 매개변수가 모두 스칼라**: 배열을 만들지 않고 `<dist>_sample1`이 Python float 하나를 바로 돌려줘요. 값은 같은 위치에서 배열로 뽑은 첫 원소와 비트까지 같아요.
 
 ```python
 >>> sd.stats.Gamma(a=2.5).sample(rng=sd.random.default_rng(1))
 4.442038968696807
+>>> sd.stats.Gamma(a=2.5).sample(1, rng=sd.random.default_rng(1)).tolist()
+[4.442038968696807]
+```
+
+`shape=()`는 stardust에 0차원 배열이 없어서 `ValueError`예요. 결과가 이 컴퓨터의 물리 메모리보다 크면, 스트림 위치를 예약하기 전에(`rng._take`) `MemoryError`를 내요. 그래서 거절된 호출은 생성기의 위치를 움직이지 않아요.
+
+```python
+>>> rng = sd.random.default_rng(1)
+>>> sd.stats.Normal().sample((), rng=rng)
+Traceback (most recent call last):
+  ...
+ValueError: sample(): 'shape' must not be () (stardust has no 0-d arrays; None gives one sample)
+>>> sd.stats.Normal().sample(10**15, rng=rng)
+Traceback (most recent call last):
+  ...
+MemoryError: sample(): cannot allocate 8000000000000000 bytes: more than this machine's physical memory
+>>> rng.state["position"]
+0
 ```
 
 ### 기본 방법: 역함수 법
@@ -303,11 +342,51 @@ $G(a+1)$과 $U$가 독립이면 곱이 $G(a)$를 따라요. $U^{1/a} = \exp(\log
 | t | $Z\sqrt{(\text{df}/2)/G(\text{df}/2)}$ |
 | F | $\dfrac{G_1}{G_2}\cdot\dfrac{\text{dfd}/2}{\text{dfn}/2}$, 작은 모양은 $\exp(\log G_1 - \log G_2 + \log(\text{dfd}/\text{dfn}))$ |
 | 베타 | 아래 |
-| 비중심 카이제곱 | $\text{df} \ge 1$: $\chi^2_{\text{df}-1} + (Z + \sqrt{\text{nc}})^2$, $\text{df} < 1$: $2\,G(\text{df}/2 + N)$, $N \sim \text{Poisson}(\text{nc}/2)$ |
+| 비중심 카이제곱 | $\text{df} > 1$: $\chi^2_{\text{df}-1} + (Z + \sqrt{\text{nc}})^2$, $\text{df} = 1$: $(Z + \sqrt{\text{nc}})^2$, $\text{df} < 1$: $2\,G(\text{df}/2 + N)$, $N \sim \text{Poisson}(\text{nc}/2)$ |
 | 비중심 t | $(Z + \text{nc})\sqrt{(\text{df}/2)/G(\text{df}/2)}$ |
 | 비중심 F | $(X_1/\text{dfn})/(2G_2/\text{dfd})$, $X_1$은 비중심 카이제곱 |
 
-비중심 카이제곱의 $\text{df} \ge 1$ 꼴은 비중심도를 정규 좌표 하나에 몰아넣은 거예요. $\sum_i (Z_i + \mu_i)^2$의 분포는 $\sum\mu_i^2$에만 기대므로, 비중심도 전체를 첫 좌표에 두면 나머지 $\text{df} - 1$ 좌표는 중심 카이제곱이에요. 감마 하나와 정규 하나로 끝나요. $\text{df} < 1$이면 $\text{df} - 1$이 음수라 이 꼴을 쓸 수 없어서, 포아송 혼합 $2G(\text{df}/2 + N)$을 써요.
+비중심 카이제곱의 $\text{df} > 1$ 꼴은 비중심도를 정규 좌표 하나에 몰아넣은 거예요. $\sum_i (Z_i + \mu_i)^2$의 분포는 $\sum\mu_i^2$에만 기대므로, 비중심도 전체를 첫 좌표에 두면 나머지 $\text{df} - 1$ 좌표는 중심 카이제곱이에요. 감마 하나와 정규 하나로 끝나요. $\text{df} = 1$이면 남는 좌표가 없어서 정규 하나의 제곱이에요. $\text{df} < 1$이면 $\text{df} - 1$이 음수라 이 꼴을 쓸 수 없어서, 포아송 혼합 $2G(\text{df}/2 + N)$을 써요.
+
+```cpp
+// csrc/stats/sample_dist.hpp, Custom<NoncentralChiSquared>::draw
+if (s.df >= 1.0) {
+    const double z = std_normal(w) + s.snc;
+    return s.df == 1.0 ? z * z : 2.0 * gamma_draw(w, s.g1) + z * z;
+}
+const double n = poisson_draw(w, s.pn);
+return 2.0 * gamma_draw(w, n == 0.0 ? s.g0 : gamma_prep(s.h + n));
+```
+
+`g1`은 모양 $(\text{df} - 1)/2$의 감마 준비이고, $2G((\text{df}-1)/2)$가 $\chi^2_{\text{df}-1}$이에요.
+
+**무한한 자유도**는 극한 분포의 표본이에요. $\chi^2_\text{df}/\text{df}$는 $\text{df} \to \infty$에서 1로 모이므로, 그 인자를 1로 두면 돼요.
+
+| 분포 | 자유도 | 표본 | 같은 분포 |
+|---|---|---|---|
+| t | df = inf | $Z$ | `Normal()` |
+| 비중심 t | df = inf | $Z + \text{nc}$ | `Normal(mu=nc)` |
+| F | dfd = inf | $G_1/(\text{dfn}/2)$ | $\chi^2_\text{dfn}/\text{dfn}$ |
+| F, 비중심 F | dfn = inf | $(\text{dfd}/2)/G_2$ | `InverseGamma(a=dfd/2, scale=dfd/2)` |
+| 비중심 F | dfd = inf | $X_1/\text{dfn}$ | 비중심 $\chi^2(\text{dfn}, \text{nc})/\text{dfn}$ |
+
+준비 단계가 어느 꼴인지 정해 두고(t의 `kind`, F의 `lim`), 뽑을 때는 그 꼴의 단어만 써요. 그래서 같은 위치에서 뽑으면 극한 분포의 표본과 비트까지 같아요.
+
+```python
+>>> inf = float("inf")
+>>> a = sd.stats.StudentT(df=inf).sample(3, rng=sd.random.default_rng(1))
+>>> b = sd.stats.Normal().sample(3, rng=sd.random.default_rng(1))
+>>> a.tolist() == b.tolist()
+True
+>>> sd.stats.F(dfn=inf, dfd=4).sample(rng=sd.random.default_rng(1))
+0.5359081185780519
+>>> sd.stats.InverseGamma(a=2, scale=2).sample(rng=sd.random.default_rng(1))
+0.5359081185780519
+```
+
+`ChiSquared(df=inf)`(질량이 무한대로 달아나요)와 두 자유도가 모두 inf인 F는 극한 분포로 두지 않아서 정의역 밖이고, 표본도 NaN이에요.
+
+반대쪽 끝도 있어요. t와 비중심 t는 df가 서브노멀(`kMinSampleDf` = $2^{-1022}$ 아래)이면 NaN이에요. 그런 df의 절반을 모양으로 하는 감마를 뽑을 수 없기 때문이에요. 비중심 F는 두 자유도가 모두 서브노멀일 때 NaN이에요.
 
 **베타**는 세 갈래예요.
 
@@ -400,7 +479,7 @@ $\ell_d$는 Stirling 급수($1/(1260k^5)$까지, 16 미만은 표)로 만든 $\l
 
 ### 음이항과 베타이항: 혼합
 
-- **음이항**: $\lambda = G(n)\cdot q/p$를 뽑고 $\text{Poisson}(\lambda)$를 뽑아요. 실패 횟수가 감마 비율을 가진 포아송의 혼합이라는 고전적 성질이에요. $\lambda$가 원소마다 달라 포아송 준비는 원소마다 해요. $q/p$가 $2^{\pm 500}$ 밖이거나 $n < 1$이면 $\exp(\log G + \log(q/p))$로 만들어요.
+- **음이항**: $\lambda = G(n)\cdot q/p$를 뽑고 $\text{Poisson}(\lambda)$를 뽑아요. 실패 횟수가 감마 비율을 가진 포아송의 혼합이라는 고전적 성질이에요. $\lambda$가 원소마다 달라 포아송 준비는 원소마다 해요. $q/p$가 $2^{\pm 500}$ 밖이거나 $n < 1$이면 $\exp(\log G + \log(q/p))$로 만들어요. $p = 1$과 $n = 0$은 0의 점질량이라, 준비 단계에서 표시해 두고 단어를 쓰지 않고 0을 내요.
 - **베타이항**: $B \sim \text{Beta}(a, b)$를 감마 두 개의 log 차로 뽑고 $\text{Binomial}(n, B)$를 뽑아요. $p = B$와 $q = 1 - B$를 둘 다 log 차에서 직접 만들어 작은 쪽을 정확히 유지하고, 작은 쪽으로 이항을 뽑아요.
 
 ### 초기하: 최빈값에서 바깥으로
@@ -539,7 +618,11 @@ $a > 1025$이면 $b = 2^{a-1}$이 double을 넘어요. 그때 $P(X > 1) < 2^{-10
 | `DiscreteUniform` | 폭 ≥ $2^{64}$ | NaN |
 | `Zipf` | $a > 1025$ | 1 |
 | `Zipf` | 표본이 double을 넘음 | inf |
+| `StudentT`, `NoncentralT` | df가 서브노멀($< 2^{-1022}$) | NaN |
+| `NoncentralF` | 두 자유도가 모두 서브노멀 | NaN |
 | `Beta`, `BetaBinomial`, `F` | 서브노멀 모양 | 극한값(두 끝이나 0, inf) |
+| `StudentT`, `NoncentralT`, `F`, `NoncentralF` | 자유도 inf | 극한 분포의 표본 |
+| `NegativeBinomial` | $n = 0$ | 0 |
 
 ```python
 >>> sd.stats.DiscreteUniform(low=0, high=2.0**64).sample(2, rng=sd.random.default_rng(1)).tolist()
@@ -559,7 +642,7 @@ $a > 1025$이면 $b = 2^{a-1}$이 double을 넘어요. 그때 $P(X > 1) < 2^{-10
 - **추가 블록을 넷씩**: Philox 블록 하나는 의존 사슬이 길어 지연 시간이 12 ns예요. 추가 단어를 쓰는 방법(`kExtra`)은 이웃한 원소 넷의 첫 추가 블록을 `philox4`로 함께 계산해요. 사슬 넷이 섞여 원소당 4.5 ns가 돼요. 포아송과 이항은 준비 단계에서 역변환인지(단어 하나) 보고, 역변환이면 추가 블록을 만들지 않아요.
 - **흔한 경로를 인라인**: ziggurat와 Marsaglia–Tsang의 첫 라운드는 인라인되고, 드문 경로는 `noinline` 함수로 따로 둬요.
 - **준비는 한 번**: 스칼라 매개변수의 호출은 검사와 준비(감마의 $d$, $c$, PTRS·BTRS의 상수, 초기하의 최빈값과 이웃 pmf)를 조각마다 한 번만 해요.
-- **Python float 하나**: 배열을 만들지 않는 `<dist>_sample1` 경로예요.
+- **Python float 하나**: `shape=None`이고 매개변수가 스칼라인 호출은 배열을 만들지 않는 `<dist>_sample1` 경로예요.
 
 다변량 분포와 행렬 분포의 표본도 같은 `Words`를 써요. 행 하나가 원소 하나이고, 행이 쓰는 정규·감마 변수를 그 원소의 첫 단어와 추가 단어에서 차례로 받아요(`each_words`가 원소 넷의 추가 블록 여러 개를 함께 계산해요). 분포마다의 조립은 [다변량 분포의 밀도](/internals/stats/multivariate/)와 [행렬 분포](/internals/stats/matrix/)에 있어요.
 

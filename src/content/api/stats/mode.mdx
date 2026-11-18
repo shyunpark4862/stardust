@@ -12,7 +12,7 @@ params:
     kind: positional-only
     desc: 데이터. bool·정수는 float64로 바꿔서 세요.
   - name: axis
-    type: int, int의 tuple, 또는 None
+    type: int, int의 tuple·리스트, 또는 None
     kind: keyword-only
     desc: 줄여서 없앨 축. None(기본값)이면 모든 원소를 한 묶음으로 세요.
   - name: nan_policy
@@ -28,7 +28,7 @@ returns:
   desc: "(mode, count) 두 칸의 이름 붙은 튜플. mode는 float64, count는 정수예요. 남는 축이 없으면 Python float와 int, 있으면 float64 배열과 int64 배열이에요. 빈 줄은 (nan, 0)이에요."
 raises:
   - type: TypeError
-    desc: x가 배열이나 숫자의 시퀀스가 아니거나 복소수일 때, axis가 int·tuple·None이 아닐 때, keepdims가 True·False가 아닐 때.
+    desc: x가 배열이나 숫자의 시퀀스가 아니거나 복소수일 때, axis가 int·tuple·리스트·None이 아닐 때, keepdims가 True·False가 아닐 때, nan_policy에 문자열이 아닌 값을 줬을 때.
   - type: ValueError
     desc: nan_policy 이름이 틀렸거나 'raise'인데 NaN이 있을 때, axis가 범위를 벗어나거나 겹칠 때.
 seeAlso: [describe, rankdata, entropy, iqr]
@@ -130,7 +130,7 @@ ModeResult(mode=nan, count=0)
 
 ## `axis`와 `keepdims`
 
-기본값 `axis=None`은 모든 원소를 한 묶음으로 세요(`sd.mean` 등과 같아요). 행마다, 열마다 따로 세려면 `axis`를 줘요. 그러면 `mode`와 `count`가 모두 배열이 돼요.
+기본값 `axis=None`은 모든 원소를 한 묶음으로 세요(`sd.mean` 등과 같아요). 행마다, 열마다 따로 세려면 `axis`를 줘요. 그러면 `mode`와 `count`가 모두 배열이 돼요. 여러 축을 함께 줄이려면 tuple이나 리스트로 줘요.
 
 ```python
 >>> t = sd.asarray([[1, 1, 2],

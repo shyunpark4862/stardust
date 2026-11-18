@@ -572,14 +572,72 @@ Arb로 이 근에서 정칙화 불완전 감마의 log를 계산해 목표와의
 
 - **급수.** $I = \frac{x^a}{aB(a, b)}(1 + cx + O(x^2))$, $c = a(1 - b)/(a + 1)$이므로 $\log x = (\log t + \log a + \log B)/a - cx/a$예요. $\lvert c\rvert x \lt 10^{-9}$이면 이것으로 끝이에요.
 - **뉴턴.** 그 밖은 $\log x$에서 $\log I$에 대해 뉴턴을 돌려요. 기울기 $d\log I/d\log x = xf/I = \mathcal B/(yI)$는 앞 인자의 log에서 나와서, $I$가 double 아래여도 계산돼요. $\log I$는 위의 `log_lower_deep`이에요.
+- **멈춤.** 걸음이 $2^{-54}\max(1, \lvert\log x\rvert)$ 아래가 되면 끝이에요. $\log x$ 자체의 간격이 그 $2^{-52}$배이고, $\log I$의 반올림 때문에 걸음이 그보다 훨씬 작아지지는 않아요. 100걸음 안에 거기 닿지 않으면 마지막 걸음이 $2^{-48}\max(1, \lvert\log x\rvert)$ 이하일 때만 근으로 받고, 아니면 NaN이에요. 감마의 깊은 역함수처럼 수렴하지 않은 값은 내지 않아요.
 
-t와 F는 베타 인자의 log를 얻은 뒤 원래 변수로 돌아가요. 이때 $1 - x$를 $x$에서 빼서 만들지 않아요. 근이 분포의 가운데에 있으면 $x \approx 1$이라 빼기가 자릿수를 잃어요.
+```cpp
+// csrc/stats/dist/beta.hpp (deep_log_inverse의 뉴턴)
+double lx = lx0.hi, step = kInf;
+for (int it = 0; it < 100; ++it) {
+    const double x = std::exp(lx);
+    const DD xd{x, 0.0}, yd = dd::two_sum(1.0, -x);
+    const double li = log_lower_deep(a, b, xd, yd);
+    const DD lp = log_prefix(a, b, xd, yd);
+    const double slope = std::exp(lp.hi - std::log(yd.hi) - li);
+    const DD g = DD{li, 0.0} - lt;
+    step = (g.hi + g.lo) / slope;
+    lx -= step;
+    if (std::fabs(step) <= 0x1p-54 * std::max(1.0, std::fabs(lx))) return DD{lx, 0.0};
+}
+if (!(std::fabs(step) <= 0x1p-48 * std::max(1.0, std::fabs(lx)))) return DD{kNaN, 0.0};
+return DD{lx, 0.0};
+```
+
+t와 F는 베타 인자 $x$와 $1 - x$의 비로 원래 변수로 돌아가요.
 
 $$
-t = -\sqrt{\nu\,\frac{1 - x}{x}}, \qquad \log(1 - x) = \log\!\big(-\operatorname{expm1}(\log x)\big)
+t = -\sqrt{\nu\,\frac{1 - x}{x}}, \qquad F = \frac{d_2}{d_1}\cdot\frac{w}{v}
 $$
 
-$x \lt 2^{-60}$이면 $\log(1 - x) = -x$예요. 그리고 $t$는 $\tfrac12(\log\nu - \log x + \log(1 - x))$의 double-double을 지수화해서 만들어요. F는 $x = (d_2/d_1)\,w/v$를 $\log w - \log v + \log d_2 - \log d_1$의 지수로 만들어요.
+그래서 $\log x$와 함께 $\log(1 - x)$가 필요해요. 근이 $\tfrac12$ 아래면 $\log(1 - x) = \log(-\operatorname{expm1}(\log x))$로 충분해요($x \lt 2^{-60}$이면 $-x$). 근이 1에 가까우면 그렇지 않아요. 뉴턴은 $\log x$를 그 크기의 $2^{-54}$까지만 맞추는데, $\lvert\log x\rvert \approx 1 - x$가 작으니 이 절대오차가 $1 - x$에서는 상대 $2^{-54}/\lvert\log x\rvert$가 돼요. t의 근이 분포의 가운데에 가까운 곳, 곧 큰 자유도의 깊은 꼬리가 그래요. $\nu = 10^6$, $p \approx 10^{-305}$이면 $x = 1 - 1.4 \times 10^{-3}$이라, $\log x$에서 $1 - x$를 만들면 t가 $1.6 \times 10^{-14}$ 틀려요.
+
+그래서 $x \gt \tfrac12$이면 $y = 1 - x$의 log에서 뉴턴을 한 번 더 돌려요(`deep_log_inverse_both`). 기울기는 $d\log I/d\log y = -(xf/I)(y/x) = -\mathcal B/(xI)$이고, 멈춤 규칙은 $\log y$에 대해 같아요. 그다음 $\log x$는 $1 - e^{\log y}$의 double-double log예요.
+
+```cpp
+// csrc/stats/dist/beta.hpp
+inline LogPair deep_log_inverse_both(double a, double b, DD lt) {
+    const DD lx = deep_log_inverse(a, b, lt);
+    if (!(lx.hi == lx.hi)) return {lx, lx};
+    if (lx.hi < -num::kLn2.hi) {  // x < 1/2: 1 - x is well defined from log x
+        const double x = std::exp(lx.hi);
+        return {lx, x < 0x1p-60 ? DD{-x, 0.0} : num::log_dd(-std::expm1(lx.hi))};
+    }
+    double ly = std::log(-std::expm1(lx.hi)), step = kInf;
+    for (int it = 0; it < 100; ++it) {
+        const double y = std::exp(ly);
+        const DD yd{y, 0.0}, xd = dd::two_sum(1.0, -y);
+        const double li = log_lower_deep(a, b, xd, yd);
+        const DD lp = log_prefix(a, b, xd, yd);
+        const double slope = -std::exp(lp.hi - std::log(xd.hi) - li);
+        const DD g = DD{li, 0.0} - lt;
+        step = (g.hi + g.lo) / slope;
+        ly -= step;
+        if (std::fabs(step) <= 0x1p-54 * std::max(1.0, std::fabs(ly))) {
+            step = 0.0;
+            break;
+        }
+    }
+    if (!(std::fabs(step) <= 0x1p-48 * std::max(1.0, std::fabs(ly)))) return {DD{kNaN, 0.0}, DD{kNaN, 0.0}};
+    return {dd::log(dd::two_sum(1.0, -std::exp(ly))), DD{ly, 0.0}};
+}
+```
+
+t는 $\tfrac12(\log\nu - \log x + \log(1 - x))$의 double-double을 지수화해서 만들고, F는 $\log w - \log v + \log d_2 - \log d_1$의 지수예요.
+
+```cpp
+// csrc/stats/dist/t_f.hpp (StudentT의 깊은 역함수)
+const beta_detail::LogPair r = beta_detail::deep_log_inverse_both(a, 0.5, lt + num::kLn2);
+return -num::exp_dd((num::log_dd(df) - r.lx + r.ly) * 0.5);
+```
 
 ```python
 >>> sd.stats.Beta(a=2.0, b=3.0).ilogcdf(-1300.0)
@@ -595,7 +653,7 @@ $x \lt 2^{-60}$이면 $\log(1 - x) = -x$예요. 그리고 $t$는 $\tfrac12(\log\
 같은 방법으로 Arb에서 잰 근의 상대오차는 $9 \times 10^{-19}$, $1.5 \times 10^{-17}$, $1.8 \times 10^{-16}$, $5.7 \times 10^{-17}$이에요. 마지막은 서브노멀 확률이에요. scipy 1.18.1의 `t.ppf(1e-310, 5)`는 $-\infty$예요.
 
 <Callout title="t의 깊은 역함수와 큰 자유도">
-t의 `icdf`·`iccdf`에서 자유도가 $10^5$ 이상이고 확률이 $2^{-1000}$ 아래인 구석은 느슨한 영역이에요. 잰 최대가 $1.4 \times 10^{-14}$(`ilog…`는 $9.8 \times 10^{-15}$)로 계약을 조금 넘어요. 보장 영역의 나머지와 그 밖의 다른 점은 모두 $10^{-14}$ 안이었어요(`bench/stats/t4/accuracy.md`).
+$1 - x$를 $\log(1 - x)$에서 직접 구하기 때문에, t의 `icdf`·`iccdf`는 자유도가 $10^5$ 이상이고 확률이 $2^{-1000}$ 아래인 구석에서도 잰 오차가 반올림 수준이에요. 이 구석을 포함한 보장 영역 밖 점의 잰 최대가 $3.2 \times 10^{-16}$(`ilog…`는 $2.8 \times 10^{-16}$)이고, 영역 안은 $1.0 \times 10^{-15}$(`ilog…`는 $4.9 \times 10^{-16}$)이에요(`bench/stats/t4/accuracy.md`).
 </Callout>
 
 ## 작은 모양의 불완전 베타와 감마의 유한합
@@ -797,6 +855,25 @@ nan
 
 $Q(a, 1) \approx a\,E_1(1) = 5 \times 10^{-324} \times 0.2194$의 log예요.
 
+## 무한한 자유도
+
+자유도가 inf인 t와 F는 극한 분포예요. `StudentT(df=inf)`는 표준정규, `F(dfn, dfd=inf)`는 $\chi^2(d_1)/d_1$, `F(dfn=inf, dfd)`는 $d_2/\chi^2(d_2)$, 곧 `InverseGamma(a=dfd/2, scale=dfd/2)`예요. t·F의 식에 inf를 넣어 계산하지 않고, 엔진이 그 매개변수를 알아보고 극한 분포의 메서드를 불러요. 그래서 모든 메서드가 극한 분포와 비트까지 같아요. 그 장치는 [원소별 엔진과 빠른 경로](/internals/stats/engine/#매개변수의-극한)에 있어요.
+
+```python
+>>> inf = float("inf")
+>>> x = sd.asarray([-3.0, 0.5, 8.0])
+>>> bool(sd.all(sd.stats.StudentT(df=inf).logpdf(x) == sd.stats.Normal().logpdf(x)))
+True
+>>> sd.stats.F(dfn=4.0, dfd=inf).ccdf(2.5), sd.stats.ChiSquared(df=4.0).ccdf(10.0)
+(0.0404276819945128, 0.0404276819945128)
+>>> sd.stats.F(dfn=inf, dfd=6.0).icdf(0.25), sd.stats.InverseGamma(a=3.0, scale=3.0).icdf(0.25)
+(0.7652276358043044, 0.7652276358043044)
+>>> sd.stats.ChiSquared(df=inf).cdf(1.0), sd.stats.F(dfn=inf, dfd=inf).mean()
+(nan, nan)
+```
+
+극한이 연속 분포가 아니면 정의역 밖 그대로 NaN이에요. 카이제곱은 df와 함께 질량이 무한대로 달아나고, 두 자유도가 모두 inf인 F는 1에 몰린 점질량이에요.
+
 ## 분포마다의 경로
 
 | 분포 | pdf·logpdf | cdf·ccdf | 깊은 log 꼬리 | 역함수 | 모멘트·엔트로피 |
@@ -810,8 +887,8 @@ $Q(a, 1) \approx a\,E_1(1) = 5 \times 10^{-324} \times 0.2194$의 log예요.
 | 베이불 | $\log c - \log s + E - \log y - t$ | $e^{-t}$, $t$에 exp 잔차를 접음 | $E - t/2$, $-t$ | $s\exp(\log t/c)$ | $D_k$의 ζ 급수, Γ의 1차 보정 |
 | 감마·카이제곱 | Temme 지수($a \ge 13$), $a\log y - \log y$ | `igam` + `xderiv` 보정, 반정수는 유한합 | `igam_detail::log_tail` | `gammaincinv`·`gammainccinv`, `deep_inverse`, 범위 밖 검증 | $G(a)$ 묶음 |
 | 베타 | log 앞 인자 $- \log x - \log y$ | $a, b \le 6$은 Boost, 그 밖은 `ibeta` | 앞 인자 + BPSER·BFRAC 비율, log BGRAT | `fast_root`, `betaincinv`, `deep_log_inverse`, 범위 밖 검증 | $G(a) + G(b) + G_c(c)$, 첨도 분자 double-double |
-| t | $l_0 - (a + \tfrac12)\log(1 + t^2/\nu)$, $L(a)$ | `stdtr`, 인자가 언더플로하면 주항 | 베타 경로, $x \lt 10^{-270}$이면 주항 | `stdtrit`, `deep_log_inverse`, $1 - x = -\operatorname{expm1}(\log x)$ | $L(a)$와 ψ 차의 급수 |
-| F | 베타 앞 인자, 작은 인자는 log에서 | `fdtr`, `fdtrc` | 자유도 ≤ 12는 `fdtr`, 작은 인자, 카이제곱 극한, 베타 경로 | `fast_root`, `fdtri`, `deep_log_inverse` | $G$ 묶음 + ψ 차, 모멘트는 비의 곱 |
+| t | $l_0 - (a + \tfrac12)\log(1 + t^2/\nu)$, $L(a)$ | `stdtr`, 인자가 언더플로하면 주항 | 베타 경로, $x \lt 10^{-270}$이면 주항 | `stdtrit`, `deep_log_inverse_both`(근이 $\tfrac12$ 위면 $\log(1 - x)$에서 다시 뉴턴) | $L(a)$와 ψ 차의 급수 |
+| F | 베타 앞 인자, 작은 인자는 log에서 | `fdtr`, `fdtrc` | 자유도 ≤ 12는 `fdtr`, 작은 인자, 카이제곱 극한, 베타 경로 | `fast_root`, `fdtri`, `deep_log_inverse_both` | $G$ 묶음 + ψ 차, 모멘트는 비의 곱 |
 
 감마·베타·t·F·역감마의 밀도는 배열 입력에서 log 둘과 선형 항의 합 $k_1\log x_1 + k_2\log x_2 - \text{lin} + c$로 다시 쓴 묶음 커널이 먼저 맡아요. 스칼라 호출도 원소 하나짜리 커널이라 어느 길로 부르든 같은 비트예요. 커널이 오차 예산 안에서 답할 수 없는 원소(거대한 모양의 최빈값 근처, 먼 꼬리, 지지집합의 끝)만 위 표의 double-double 정의로 가요([원소별 엔진과 빠른 경로](/internals/stats/engine/)).
 

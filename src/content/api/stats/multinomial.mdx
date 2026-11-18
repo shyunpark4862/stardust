@@ -21,7 +21,7 @@ returns:
   desc: 분포 객체. 매개변수는 같은 이름의 읽기 전용 속성(n, p)으로, 준 값 그대로 남아 있어요.
 raises:
   - type: TypeError
-    desc: 매개변수를 위치로 넘기거나 빠뜨렸을 때, 숫자 배열로 바꿀 수 없는 값(문자열, None 등)이거나 복소수일 때.
+    desc: 매개변수를 위치로 넘기거나 빠뜨렸을 때, p가 sd.ndarray가 아닐 때(리스트, tuple, numpy 배열도 TypeError예요), n이 실수도 sd.ndarray도 아닐 때(문자열, None 등), 복소수일 때.
   - type: ValueError
     desc: p가 0차원일 때, n과 p의 배치 축이 서로 브로드캐스트되지 않을 때.
 seeAlso: [binomial, dirichlet, sample]
@@ -55,7 +55,7 @@ K = 2이면 "성공 몇 번, 실패 몇 번"이라 [이항분포](/api/stats/bin
 
 ## 만들기와 매개변수
 
-두 매개변수 모두 키워드로 꼭 줘야 해요. `p`의 마지막 축 길이 K가 범주의 수예요.
+두 매개변수 모두 키워드로 꼭 줘야 해요. `p`는 `sd.ndarray`이고(리스트는 `TypeError`예요) 마지막 축 길이 K가 범주의 수예요. `n`은 Python 수나 배열이에요.
 
 ```python
 >>> M = sd.stats.Multinomial(n=10, p=sd.asarray([0.2, 0.3, 0.5]))
@@ -80,13 +80,15 @@ nan
 
 ### n은 0 이상의 정수
 
-`n`은 float로 줘도 되지만 값은 정수여야 해요. 정수가 아니거나 음수, inf, NaN이면 그 분포의 모든 메서드가 NaN이에요. `n = 0`은 "한 번도 하지 않았다"는 뜻이라 모든 개수가 0인 점에 확률 1이 있어요.
+`n`은 float로 줘도 되지만 값은 정수여야 해요. 정수가 아니거나 음수, inf, NaN이면 그 분포의 모든 메서드가 NaN이에요. `n = 0`은 "한 번도 하지 않았다"는 뜻이라 모든 개수가 0인 점에 확률 1이 있어요. 값이 하나뿐이라 엔트로피는 0이에요.
 
 ```python
 >>> sd.stats.Multinomial(n=10.5, p=sd.asarray([0.5, 0.5])).mean()
 array([nan, nan], dtype=float64)
 >>> sd.stats.Multinomial(n=0, p=sd.asarray([0.5, 0.5])).pmf(sd.asarray([0.0, 0.0]))
 1.0
+>>> sd.stats.Multinomial(n=0, p=sd.asarray([0.5, 0.5])).entropy()
+0.0
 ```
 
 ### 배치
@@ -122,7 +124,7 @@ $$
 -2.4645159601402664
 ```
 
-입력 `x`는 마지막 축이 K인 배열이고, 앞 축은 배치와 브로드캐스트해요. **0 이상의 정수가 아니거나 합이 n이 아닌** `x`에서는 확률이 0(`logpmf`는 −inf)이에요. 에러가 아니에요.
+입력 `x`는 마지막 축이 K인 `sd.ndarray`이고(리스트는 `TypeError`예요), 앞 축은 배치와 브로드캐스트해요. **0 이상의 정수가 아니거나 합이 n이 아닌** `x`에서는 확률이 0(`logpmf`는 −inf)이에요. 에러가 아니에요.
 
 ```python
 >>> M.pmf(sd.asarray([[2.0, 3.0, 5.0], [0.0, 0.0, 10.0]]))
@@ -174,9 +176,11 @@ array([[ 1.6, -0.6, -1.0],
 
 ## 표본
 
-`sample(shape, rng=...)`은 `shape` + 배치 + (K,) 모양의 개수 벡터를 돌려줘요. 값은 정수인 float64이고, 각 벡터의 합은 언제나 n이에요. 공통 규칙은 [표본 뽑기](/api/stats/sample/)에 있어요.
+`sample(shape, rng=...)`은 `shape` + 배치 + (K,) 모양의 개수 벡터를 돌려줘요. `shape`를 빼면 분포마다 하나(배치 + (K,))예요. 값은 정수인 float64이고, 각 벡터의 합은 언제나 n이에요. 공통 규칙은 [표본 뽑기](/api/stats/sample/)에 있어요.
 
 ```python
+>>> M.sample(rng=sd.random.default_rng(5))
+array([1.0, 2.0, 7.0], dtype=float64)
 >>> s = M.sample(5, rng=sd.random.default_rng(5))
 >>> s
 array([[1.0, 2.0, 7.0],
@@ -226,7 +230,7 @@ nan
 
 ## scipy를 아는 분께
 
-- `scipy.stats.multinomial(n, p)`와 이름이 같아요. 키워드로만 받아요.
+- `scipy.stats.multinomial(n, p)`와 이름이 같아요. 키워드로만 받아요. scipy는 `p`와 `x`에 리스트도 받지만, sd는 `sd.ndarray`만 받아요.
 - `p`의 합이 1에서 조금(√eps 안) 벗어나면 합으로 나눠 써요. scipy 1.18.1은 `p = (0.2, 0.3, 0.5 + 1e-9)`에서 `pmf`와 `mean`이 NaN이에요.
 - 공분산은 `cov()`가 아니라 `covariance()`예요.
 - n이 큰 엔트로피가 달라요. 위의 n = 100000 예를 scipy 1.18.1은 12.597520883893594로 계산해서 여덟째 자리부터 달라요.

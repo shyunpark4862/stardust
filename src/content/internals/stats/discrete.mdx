@@ -90,6 +90,25 @@ double icdf(double p, const F& f) {
 - **$p < 2^{-1000}$** (`kTinyP`): 확률이 서브노멀에 가까우면 `cdf`의 값 자체가 절대 정확도밖에 없어요. 그래서 log 쪽에서 $\log F(k) \ge \log p$로 비교해요.
 - `iccdf`는 거울상이에요. `ilogcdf(t)`는 $t \le -\log 2$이면 log 쪽에서 직접, 그 위면 작은 쪽 확률 $-\operatorname{expm1}(t)$에 대한 `iccdf`로 넘겨요.
 
+$p = 0$과 $p = 1$의 답인 `f.lo`, `f.hi`는 분포 족의 지지집합의 끝이에요. `support()`가 내는 값과 같고, 매개변수가 퇴화해 질량이 한 점에 모여도 줄이지 않아요. 포아송은 $\mu = 0$에서도 $[0, \infty)$, 기하는 $p = 1$에서도 $[1, \infty)$, 이항은 $p = 0$에서도 $[0, n]$이에요. 그래서 점질량의 `icdf(1)`은 그 점이 아니라 족의 위 끝이에요.
+
+```python
+>>> P = sd.stats.Poisson(mu=0)
+>>> P.support(), P.icdf(0.5), P.icdf(1.0)
+((0.0, inf), 0.0, inf)
+```
+
+음이항의 $n = 0$(기다릴 성공이 없으니 실패도 없어요)도 0의 점질량이에요. $n = 0$은 `valid`의 정의역 밖이라, 엔진의 극한 장치(`at_limit`)가 모든 메서드를 $p = 1$인 음이항의 값으로 보내요([원소별 엔진과 빠른 경로](/internals/stats/engine/)).
+
+```cpp
+// csrc/stats/dist/discrete_basic.hpp, NegativeBinomial
+static bool at_limit(double n, double p) { return n == 0.0 && p > 0.0 && p <= 1.0; }
+template <class M>
+static double limit_in(double x, double, double) { return method_of<NegativeBinomial, M>(x, 1.0, 1.0); }
+template <class M>
+static double limit_par(double, double) { return method_of<NegativeBinomial, M>(1.0, 1.0); }
+```
+
 Zipf처럼 깊은 꼬리의 분위수가 아주 큰 분포는 한 단계 더 가요. $q$가 $2^{-1000}$ 아래이면 $\log q \approx -700$이고, 그 ULP는 $1.1 \times 10^{-13}$이에요. Zipf의 위꼬리는 $P(X > k) \approx k^{1-a}/((a-1)\zeta(a))$라서 $\log q$가 한 ULP 움직이면 분위수는 상대적으로 그 $1/(a-1)$배 움직여요. 그래서 이 분포는 `logccdf_dd`(위꼬리의 log를 double-double로)를 주고, 탐색은 $\log q$도 double-double로 만들어 두 쌍을 비교해요(`dd_le`).
 
 ### 질주와 이분
@@ -331,7 +350,7 @@ inline U choose(double nd, double kd) {
 2.0
 ```
 
-double `0.3`은 $0.29999999999999998889\ldots$이라 정확한 $(n+1)p$는 3보다 조금 작고, 참 최빈값은 2예요. 그래서 `two_prod`로 곱의 두 부분을 정확히 만들어 hi가 정수이면 lo의 부호를 봐요. lo = 0이면 곱이 정확히 정수, 곧 최빈값이 둘(그 정수와 하나 아래)이라 NaN이에요. 음이항은 나머지 $r = (n-1)q - mp$(가장 가까운 정수 $m$)를 정확한 곱들로 만들어 부호를 보고, 초기하는 $(n+1)(K+1)$과 $N+2$를 128비트 정수로 나눠 나머지를 봐요. 포아송은 정수 $\mu$에서 최빈값이 둘($\mu - 1$, $\mu$)이라 NaN이에요.
+double `0.3`은 $0.29999999999999998889\ldots$이라 정확한 $(n+1)p$는 3보다 조금 작고, 참 최빈값은 2예요. 그래서 `two_prod`로 곱의 두 부분을 정확히 만들어 hi가 정수이면 lo의 부호를 봐요. lo = 0이면 곱이 정확히 정수, 곧 최빈값이 둘(그 정수와 하나 아래)이라 NaN이에요. 음이항은 나머지 $r = (n-1)q - mp$(가장 가까운 정수 $m$)를 정확한 곱들로 만들어 부호를 보고, 초기하는 $(n+1)(K+1)$과 $N+2$를 128비트 정수로 나눠 나머지를 봐요. 포아송은 정수 $\mu$에서 최빈값이 둘($\mu - 1$, $\mu$)이라 NaN이에요. 이항의 최빈값은 누적확률과 같은 한계를 써서, $n$이 $2^{52}$(`kMaxCount`, [아래](#반복의-상한과-nan))를 넘으면 NaN이에요($n = 2^{52}$ 자체는 값이 있어요).
 
 ## 누적확률
 
@@ -554,7 +573,7 @@ $P(X > k) = q^k = \exp(k\log q)$이고, 지수 $k\log q$를 double-double로 만
 
 ### 최빈값에서 바깥으로
 
-$H = -\sum_k P(k)\log P(k)$를 지지집합 위에서 더해요. 단봉 분포는 최빈값 $m$에서 양쪽으로 걸어요(`disc::entropy_sum`). 항은 $t_k = P(k)/P(m)$를 비율 점화식(double-double)으로 들고 가고, 항마다 float64 log 하나만 써요. 항마다 double-double log pmf를 새로 구하는 것보다 훨씬 가벼워요.
+섀넌 엔트로피 $H = -\sum_k P(k)\log P(k)$(단위 nat)를 지지집합 위에서 더해요. 단봉 분포는 최빈값 $m$에서 양쪽으로 걸어요(`disc::entropy_sum`). 항은 $t_k = P(k)/P(m)$를 비율 점화식(double-double)으로 들고 가고, 항마다 float64 log 하나만 써요. 항마다 double-double log pmf를 새로 구하는 것보다 훨씬 가벼워요.
 
 합의 꼴에도 요령이 있어요. $P(k) = t_k P(m)$이고 $\sum P(k) = 1$이므로 $P(m) = 1/(1 + \rho)$, $\rho = \sum_{k \ne m} t_k$예요. 그러면
 

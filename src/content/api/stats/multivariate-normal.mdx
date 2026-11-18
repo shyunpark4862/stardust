@@ -21,7 +21,7 @@ returns:
   desc: 분포 객체. 매개변수는 같은 이름의 읽기 전용 속성(mu, cov)으로, 준 값 그대로 남아 있어요.
 raises:
   - type: TypeError
-    desc: 매개변수를 위치로 넘기거나 빠뜨렸을 때, 숫자 배열로 바꿀 수 없는 값(문자열, Python 실수 하나 등)이거나 복소수 배열일 때.
+    desc: 매개변수를 위치로 넘기거나 빠뜨렸을 때, 매개변수가 sd.ndarray가 아닐 때(리스트, tuple, numpy 배열, Python 실수 하나도 TypeError예요), 복소수 배열일 때.
   - type: ValueError
     desc: mu가 0차원이거나 cov가 2차원보다 작을 때, cov의 마지막 두 축이 (d, d)가 아닐 때, mu와 cov의 배치 축이 서로 브로드캐스트되지 않을 때.
 seeAlso: [multivariate-t, matrix-normal, normal, sample, wishart]
@@ -89,7 +89,7 @@ export const c99 = [[-1.4651, 0], [-1.4767, 0.2645], [-1.5113, 0.527], [-1.5686,
 
 ## 만들기와 매개변수
 
-매개변수는 키워드로만 줘요. 기본값은 없어서 `mu`와 `cov`를 모두 줘야 해요.
+매개변수는 키워드로만 줘요. 기본값은 없어서 `mu`와 `cov`를 모두 줘야 해요. 둘 다 `sd.ndarray`여야 해요. 리스트나 tuple, numpy 배열은 `sd.asarray`로 바꿔서 넘겨요.
 
 ```python
 >>> X = sd.stats.MultivariateNormal(mu=sd.asarray([0.0, 0.0]),
@@ -103,6 +103,10 @@ array([0.0, 0.0], dtype=float64)
 Traceback (most recent call last):
     ...
 TypeError: MultivariateNormal.__init__() takes 1 positional argument but 3 were given
+>>> sd.stats.MultivariateNormal(mu=[0.0, 0.0], cov=sd.eye(2))
+Traceback (most recent call last):
+    ...
+TypeError: MultivariateNormal(): 'mu' must be an sd.ndarray, not list
 ```
 
 ### 모양
@@ -113,7 +117,7 @@ TypeError: MultivariateNormal.__init__() takes 1 positional argument but 3 were 
 >>> sd.stats.MultivariateNormal(mu=sd.zeros(2), cov=sd.eye(3))
 Traceback (most recent call last):
     ...
-ValueError: MultivariateNormal: 'cov' must be (2, 2) on its last two axes (mu has 2 components), not (3, 3)
+ValueError: MultivariateNormal(): 'cov' must be (2, 2) on its last two axes (mu has 2 components), not (3, 3)
 ```
 
 ### 공분산은 아래 삼각만 읽어요
@@ -126,7 +130,16 @@ ValueError: MultivariateNormal: 'cov' must be (2, 2) on its last two axes (mu ha
 True
 ```
 
-다만 속성 `cov`와 `covariance()`는 준 행렬을 그대로 돌려주니, 언제나 대칭 행렬을 주는 편이 좋아요.
+`covariance()`도 아래 삼각을 대칭으로 옮긴 행렬을 돌려줘요. 속성 `cov`만 준 행렬 그대로예요.
+
+```python
+>>> odd.covariance()
+array([[1.0, 0.5],
+       [0.5, 1.0]], dtype=float64)
+>>> odd.cov
+array([[ 1.0, 99.0],
+       [ 0.5,  1.0]], dtype=float64)
+```
 
 ### 양의 정부호가 아니면 NaN
 
@@ -173,7 +186,7 @@ $\Sigma$는 공분산 행렬, $|\Sigma|$는 그 행렬식이에요. $Q$는 **마
 
 ### 입력의 모양
 
-`pdf`와 `logpdf`의 입력 `x`는 마지막 축이 d인 배열이에요. 앞 축은 배치 축과 브로드캐스트하고, 결과는 그 앞 축의 모양이에요. 앞 축이 없으면 Python `float`예요.
+`pdf`와 `logpdf`의 입력 `x`는 마지막 축이 d인 `sd.ndarray`예요(리스트나 Python 실수는 `TypeError`예요). 앞 축은 배치 축과 브로드캐스트하고, 결과는 그 앞 축의 모양이에요. 앞 축이 없으면 Python `float`예요.
 
 ```python
 >>> X.pdf(sd.asarray([[0.0, 0.0], [1.0, 1.0], [1.0, -1.0]]))
@@ -184,6 +197,10 @@ array([ 0.18377629847393068,  0.09435389770895922, 0.024871417406145686], dtype=
 Traceback (most recent call last):
     ...
 ValueError: pdf(): 'x' must have 2 components on its last axis, not 3
+>>> X.pdf([0.0, 0.0])
+Traceback (most recent call last):
+    ...
+TypeError: pdf(): 'x' must be an sd.ndarray, not list
 ```
 
 둘째 예는 점 4개(4, 1, 2)를 배치 3개(3,)와 맞춰 (4, 3)개의 밀도를 구했어요. (1, 1)과 (1, −1)은 평균에서 떨어진 거리가 같지만, 상관이 양수라 같은 방향으로 함께 움직인 (1, 1)의 밀도가 4배쯤 커요.
@@ -332,15 +349,15 @@ array([ 0.3333333333333333,  0.7452035868467497, 0.15850839416544282], dtype=flo
 >>> X.cdf(sd.zeros(2), atol=0)
 Traceback (most recent call last):
     ...
-ValueError: MultivariateNormal.cdf(): 'atol' must be a positive number
+ValueError: cdf(): 'atol' must be a positive number
 >>> X.cdf(sd.zeros(2), return_error=1)
 Traceback (most recent call last):
     ...
-TypeError: MultivariateNormal.cdf(): 'return_error' must be True or False, not int
+TypeError: cdf(): 'return_error' must be True or False, not int
 >>> X.cdf(sd.zeros(2), max_points=0)
 Traceback (most recent call last):
     ...
-ValueError: MultivariateNormal.cdf(): 'max_points' must be positive
+ValueError: cdf(): 'max_points' must be positive
 ```
 
 ## 요약값
@@ -372,9 +389,11 @@ array([36.0, 64.0], dtype=float64)
 
 ## 표본
 
-`sample(shape, rng=...)`은 `shape` + 배치 모양 + (d,) 모양의 표본을 돌려줘요. 벡터 하나가 표본 하나예요. `rng`는 [`sd.random.default_rng`](/api/random/default_rng/)로 만든 생성기이고 꼭 줘야 해요. 공통 규칙은 [표본 뽑기](/api/stats/sample/)에 있어요.
+`sample(shape, rng=...)`은 `shape` + 배치 모양 + (d,) 모양의 표본을 돌려줘요. 벡터 하나가 표본 하나예요. `shape`를 빼면 분포마다 벡터 하나라서 배치 모양 + (d,)예요. `rng`는 [`sd.random.default_rng`](/api/random/default_rng/)로 만든 생성기이고 꼭 줘야 해요. 공통 규칙은 [표본 뽑기](/api/stats/sample/)에 있어요.
 
 ```python
+>>> body.sample(rng=sd.random.default_rng(1))
+array([177.1635185623682, 65.75767946705913], dtype=float64)
 >>> rng = sd.random.default_rng(1)
 >>> body.sample(5, rng=rng)
 array([[ 177.1635185623682,  65.75767946705913],
@@ -449,7 +468,7 @@ array([[35.859069484423564, 29.869087069523808],
 
 ## scipy를 아는 분께
 
-- `scipy.stats.multivariate_normal(mean, cov)`에 해당해요. 평균의 이름은 `mu`이고 키워드로만 받아요. scipy의 `.mean`, `.cov` 속성 대신 `mean()`, `covariance()` 메서드가 있고, 속성 `mu`, `cov`는 준 값 그대로예요.
+- `scipy.stats.multivariate_normal(mean, cov)`에 해당해요. 평균의 이름은 `mu`이고 키워드로만 받아요. scipy는 매개변수와 `x`에 리스트도 받지만, sd는 `sd.ndarray`만 받아요. scipy의 `.mean`, `.cov` 속성 대신 `mean()`, `covariance()` 메서드가 있고, 속성 `mu`, `cov`는 준 값 그대로예요.
 - `allow_singular`가 없어요. scipy 1.18.1은 특이 공분산에서 객체를 만들 때 `LinAlgError`를 내지만, sd는 객체를 만들고 모든 메서드가 NaN이에요.
 - `pdf`의 결과 모양을 줄이지 않아요. scipy는 결과의 길이 1인 축을 없애지만, sd는 언제나 입력의 앞 축과 배치를 브로드캐스트한 모양이에요.
 - `cdf`가 결정적이에요. scipy 1.18.1은 d ≥ 3에서 난수로 적분해 `rng`를 주지 않으면 부를 때마다 값이 조금씩 달라요(위의 d = 4 예에서 0.2000035, 0.1999963). sd의 기본 `atol`은 1e-6으로, scipy의 기본 `abseps=1e-5`보다 엄격해요.

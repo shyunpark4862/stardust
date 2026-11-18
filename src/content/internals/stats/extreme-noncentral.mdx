@@ -244,16 +244,56 @@ $P(\tfrac12, y) = \operatorname{erf}(\sqrt y) = 10^{-300}$이라 $y = \pi\cdot10
 
 ### nc = 0은 중심 분포
 
-세 분포 모두 $nc = 0$이면 모든 메서드가 중심 분포의 함수를 그대로 불러요. 결과가 비트까지 같아요.
+$nc = 0$이면 분포 함수와 역함수, 밀도, 중앙값, 최빈값, 엔트로피가 중심 분포의 함수를 그대로 불러서 결과가 비트까지 같아요. 카이제곱과 t는 모멘트도 그래요. F의 분산·왜도·첨도는 비중심 식(아래 "비중심 모멘트")을 그대로 쓰므로 중심 F와 마지막 한두 비트가 다를 수 있어요.
 
 ```python
 >>> sd.stats.NoncentralChiSquared(df=3.0, nc=0.0).cdf(2.0) == sd.stats.ChiSquared(df=3.0).cdf(2.0)
 True
+>>> sd.stats.NoncentralChiSquared(df=3.0, nc=0.0).kurtosis() == sd.stats.ChiSquared(df=3.0).kurtosis()
+True
+```
+
+### 무한한 자유도
+
+비중심 t와 F는 자유도가 inf이면 극한 분포예요. `NoncentralT(df=inf, nc)`는 `Normal(mu=nc)`, `NoncentralF(dfn, dfd=inf, nc)`는 비중심 $\chi^2(d_1, nc)/d_1$, `NoncentralF(dfn=inf, dfd, nc)`는 중심 F와 같은 `InverseGamma(a=dfd/2, scale=dfd/2)`예요(분자의 비중심 $\chi^2(d_1, nc)/d_1$이 1로 가요). 엔진의 극한 장치가 그 분포의 메서드를 불러서 비트까지 같아요([원소별 엔진과 빠른 경로](/internals/stats/engine/#매개변수의-극한)). 비중심 카이제곱의 df = inf와 무한한 비중심도는 분포가 아니라서 NaN 그대로예요.
+
+```python
+>>> inf = float("inf")
+>>> sd.stats.NoncentralT(df=inf, nc=1.5).cdf(0.7), sd.stats.Normal(mu=1.5).cdf(0.7)
+(0.2118553985833967, 0.2118553985833967)
+>>> sd.stats.NoncentralF(dfn=inf, dfd=6.0, nc=2.0).cdf(1.2), sd.stats.InverseGamma(a=3.0, scale=3.0).cdf(1.2)
+(0.5438131158833297, 0.5438131158833297)
+>>> sd.stats.NoncentralChiSquared(df=inf, nc=2.0).mean(), sd.stats.NoncentralT(df=5.0, nc=inf).mean()
+(nan, nan)
 ```
 
 ### 누적분포는 special의 함수
 
 `cdf`와 `ccdf`는 special의 `chndtr`·`chndtrc`, `nctdtr`·`nctdtrc`, `ncfdtr`·`ncfdtrc`예요. 포아송 혼합의 양의 항만 더하고, 위꼬리도 위꼬리 가족의 합으로 직접 계산하고, 꼬리에서는 가장 큰 항 $j^*$ 둘레를 안정한 방향으로 한 번 걷고, 가운데에서는 $j = 0$부터 더하고, 비중심 t의 반대쪽 꼬리는 적분으로 구해요. 이 알고리즘은 모두 [분포 함수](/internals/special/distributions/)의 비중심 절에 있어요. 보장 영역은 확률 $10^{-300}$까지예요.
+
+혼합 합 가운데 1에 가까운 쪽은 무게의 종 전체, 약 $19\sqrt\mu$항($\mu = nc/2$)을 지나야 끝나요. 작은 쪽은 항이 종을 다 지나기 전에 사라지므로, 걸음 수의 상한에는 1에 가까운 쪽이 먼저 닿아요. 그래서 한쪽 합이 끝나지 않으면(NaN) 다른 쪽을 구해 보고, 그 값이 $\tfrac12$ 이하면 1에서 빼서 내요(`or_complement`). 작은 쪽의 절대오차 $\varepsilon$은 1에 가까운 쪽에서는 상대오차와 같아서 빼기가 자릿수를 잃지 않아요.
+
+```cpp
+// csrc/special/ops/noncentral.hpp
+template <class Sum>
+inline Scaled or_complement(const Sum& sum, bool upper, bool wide) {
+    const Scaled v = sum(upper, wide);
+    if (v.m == v.m) return v;
+    Scaled o = sum(!upper, wide);
+    if (o.m != o.m && wide) o = sum(!upper, false);
+    return o.m == o.m && value(o) <= 0.5 ? one_minus(o) : v;
+}
+```
+
+넓은 합끼리도 끝나지 않으면(꼬리가 $e^{-2000}$보다 한참 아래라 항의 정점에 닿지 못하는 경우) 보통 합으로 다른 쪽을 구해요. 그 확률이 0이면 이쪽은 1이에요. 이 장치의 효과는 비중심도의 한계에서 보여요. 카이제곱은 1에 가까운 쪽이 $nc \approx 1.47 \times 10^9$에서 걸음을 넘지만, 작은 쪽은 약 $2.33 \times 10^9$까지 끝나서 그때까지 값이 있어요. F는 베타 인자가 무게의 종 안에서 거의 변하지 않아 두 쪽 모두 종 전체를 지나야 하므로, $1.47 \times 10^9$을 넘으면 평균 근처가 NaN이에요.
+
+```python
+>>> X = sd.stats.NoncentralChiSquared(df=3.0, nc=1.5e9)
+>>> X.icdf(0.5)
+1500000002.0
+>>> X.cdf(X.mean()), X.ccdf(X.mean())
+(0.50000515032269, 0.4999948496773105)
+```
 
 ### 넓은 지수의 꼬리
 
@@ -521,8 +561,8 @@ Arb로 $E[(Z + \delta)^k]E[R^k]$에서 직접 만든 참값과의 차는 0과 $3
 
 | 반복 | 상한 | 보장 영역에서 잰 최대 | 상한에 닿으면 |
 |---|---|---|---|
-| special의 급수(`kMaxTerms`) | $2^{18}$항 | 2483 | NaN |
-| special의 혼합 합(걷기 왕복) | $2^{18}$–$2^{19}$걸음 | $6.7 \times 10^4$ | NaN |
+| special의 급수(`kMaxTerms`) | $2^{18}$항 | 2421 | NaN |
+| special의 혼합 합(걷기 왕복) | $2^{18}$–$2^{19}$걸음 | 확률 2300·2701, 넓은 합 3805·4645(나가는·돌아오는 걸음) | 다른 쪽에서 1 − Q, 그래도 안 되면 NaN |
 | 밀도의 정점 합(`log_series`), 한쪽 | 정점 찾기 64걸음, $2^{16}$항 | 10345 | NaN |
 | 밀도의 $j = 0$ 합(`hyper_sum`) | 400항 | | 정점 합으로 |
 | Hankel 전개 | 72항 | | NaN |
@@ -532,7 +572,7 @@ Arb로 $E[(Z + \delta)^k]E[R^k]$에서 직접 만든 참값과의 차는 0과 $3
 | Brent의 zeroin | 200걸음 | 16 | NaN |
 | 엔트로피 | 반분 12번, 일 $2^{25}$ 단위 | | NaN |
 
-이 상한 때문에 NaN이 되는 곳은 보장 영역 밖이에요. cdf 계열·역함수·중앙값은 카이제곱·F의 $nc$가 약 $2.3 \times 10^9$, t의 $\lvert nc\rvert$가 약 $3.8 \times 10^4$을 넘으면 NaN이고, 밀도는 F의 $nc$가 약 $1.3 \times 10^8$을 넘거나 t의 $\lvert nc\rvert$나 $\lvert t\rvert$가 약 $10^{15}$을 넘으면 NaN이에요. 카이제곱 밀도는 Hankel 닫힌 꼴 덕분에 큰 $df$와 큰 $nc$가 함께일 때만 NaN이에요.
+이 상한 때문에 NaN이 되는 곳은 보장 영역 밖이에요. cdf 계열·역함수·중앙값은 카이제곱의 $nc$가 약 $2.33 \times 10^9$(평균 근처부터, df = 1–$10^4$에서 같아요), F의 $nc$가 약 $1.47 \times 10^9$, t의 $\lvert nc\rvert$가 약 $3.8 \times 10^4$을 넘으면 NaN이고, 밀도는 F의 $nc$가 약 $1.3 \times 10^8$을 넘거나 t의 $\lvert nc\rvert$나 $\lvert t\rvert$가 약 $10^{15}$을 넘으면 NaN이에요. 카이제곱 밀도는 Hankel 닫힌 꼴 덕분에 큰 $df$와 큰 $nc$가 함께일 때만 NaN이에요.
 
 ```python
 >>> sd.stats.NoncentralChiSquared(df=3.0, nc=1e10).cdf(1e10)
@@ -541,7 +581,7 @@ nan
 
 엔트로피는 영역 안에서도 NaN일 수 있어요. 질량이 double 범위 밖에 남는 아주 작은 자유도(F의 $d_2 = 0.01$, 카이제곱 $df = 0.01$에 $nc \le 30$ 등)와, 반분 12번에 수렴하지 않는 큰 $nc$(카이제곱 $df = 3.5$에서 약 $7 \times 10^7$부터)예요.
 
-정확도는 Arb 참값 60만 점과 대조해 재요. 보장 영역 안 최대가 계약 단위로 $5.5 \times 10^{-15}$, 밖도 $1.2 \times 10^{-15}$ 안이고, 같은 점에서 scipy 1.18.1은 `NoncentralF.cdf`가 상대오차 $2.3 \times 10^{95}$, `NoncentralT.cdf`·`GEV.ccdf`·`Pareto.logcdf`가 inf예요(`bench/stats/t6/accuracy.md`, [정확도와 성능](/internals/stats/accuracy-performance/)).
+정확도는 Arb 참값 60만 점과 대조해 재요. 보장 영역 안 최대가 계약 단위로 $4.7 \times 10^{-15}$(`NoncentralT.kurtosis`), 밖도 $1.2 \times 10^{-15}$ 안이고, 같은 점에서 scipy 1.18.1은 `NoncentralF.cdf`가 상대오차 $2.3 \times 10^{95}$, `NoncentralT.cdf`·`GEV.ccdf`·`Pareto.logcdf`가 inf예요(`bench/stats/t6/accuracy.md`, [정확도와 성능](/internals/stats/accuracy-performance/)).
 
 ## 참고 문헌
 
