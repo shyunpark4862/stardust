@@ -49,11 +49,13 @@
 #include "regression/penalized.hpp"
 
 #include "regression/lsq.hpp"
+#include "regression/dot2.hpp"
 
 #include "bind/errors.hpp"
 #include "linalg/ops/common.hpp"
 #include "parallel/pool.hpp"
 #include "special/dd.hpp"
+#include "special/ops/logistic.hpp"
 
 #include <nanobind/stl/string.h>
 
@@ -166,6 +168,22 @@ void chunk_sum(lint m, lint len, double* out, double cols, F&& body) {
         for (lint q = 0; q < len; ++q) out[q] += parts[static_cast<std::size_t>(c * len + q)];
 }
 
+// sum over the m rows in double-double of f(t): per chunk of kRowChunk rows, the chunks added
+// in order (the same bits for any thread count).
+template <class F>
+DD dd_chunk_sum(lint m, F&& f) {
+    const lint nch = std::max<lint>(1, (m + kRowChunk - 1) / kRowChunk);
+    std::vector<DD> parts(static_cast<std::size_t>(nch), DD{0.0, 0.0});
+    for_chunks(nch, double(m), [&](lint c) {
+        DD a{0.0, 0.0};
+        for (lint t = c * kRowChunk; t < std::min(m, (c + 1) * kRowChunk); ++t) a = a + f(t);
+        parts[static_cast<std::size_t>(c)] = a;
+    });
+    DD tot{0.0, 0.0};
+    for (const DD& a : parts) tot = tot + a;
+    return tot;
+}
+
 // G (q x q, column-major, full) = B^T B over the m rows, B packed by pack(t0, t1, buf) as a
 // (t1 - t0) x q row-major block (rows contiguous). Fixed chunks of rows; slot s accumulates the chunks s,
 // s + S, ... in order by dsyrk and the slots are added in order (S fixed by q and m).
@@ -268,9 +286,7 @@ void prep_rows(const Src& s, bool intercept, Prep& P) {
         }
     }
     P.m = static_cast<lint>(P.idx.size());
-    DD sw{0.0, 0.0};
-    for (const double w : P.wt) sw = sw + DD{w, 0.0};
-    P.sw = sw.hi;
+    P.sw = dd_chunk_sum(static_cast<lint>(P.wt.size()), [&](lint t) { return DD{P.wt[t], 0.0}; }).hi;
     const lint p = s.p, m = P.m;
     if (m == 0) return;
     // per column: sum w x, whether every value equals the first row's; y's sum
@@ -342,8 +358,44 @@ struct Packer {
             off[q] = j * s.xcs;
         }
         const lint yc = pc, oc = pc + (with_y ? 1 : 0), q_all = oc + (with_one ? 1 : 0);
-        // element (t, q) at out[q * cs]: cs = len column-major, 1 row-major (row stride q_all)
-        const lint cs = rowmajor ? 1 : t1 - t0, rs = rowmajor ? q_all : 1;
+        if (!rowmajor) {
+            // column-major: tiles of kTile rows written column by column. Row by row, the
+            // stores of one row are (t1 - t0) doubles apart, a power of two for a full chunk
+            // (32 KB), and land in a few cache sets that evict one another; a tile's column
+            // is one contiguous run. The same arithmetic per element.
+            constexpr lint kTile = 64;
+            const lint len = t1 - t0;
+            double r[kTile];
+            const std::byte* rows[kTile];
+            for (lint a = t0; a < t1; a += kTile) {
+                const lint b = std::min(t1, a + kTile), nt = b - a;
+                for (lint u = 0; u < nt; ++u) {
+                    const lint i = P.idx[a + u];
+                    r[u] = std::sqrt(f[a + u]);
+                    rows[u] = s.X + i * s.xrs;
+                }
+                for (lint q = 0; q < pc; ++q) {
+                    double* out = buf + q * len + (a - t0);
+                    const double c = cc[q], sc = is[q];
+                    const std::int64_t o = off[q];
+                    for (lint u = 0; u < nt; ++u) out[u] = r[u] * ((rd(rows[u] + o) - c) * sc);
+                }
+                if (with_y) {
+                    double* out = buf + yc * len + (a - t0);
+                    for (lint u = 0; u < nt; ++u) {
+                        const lint i = P.idx[a + u];
+                        out[u] = r[u] * ((yv ? yv[i] : s.yv(i)) - cy);
+                    }
+                }
+                if (with_one) {
+                    double* out = buf + oc * len + (a - t0);
+                    for (lint u = 0; u < nt; ++u) out[u] = r[u];
+                }
+            }
+            return;
+        }
+        // row-major: element (t, q) at out[q] of row t (row stride q_all)
+        const lint cs = 1, rs = q_all;
         for (lint t = t0; t < t1; ++t) {
             const lint i = P.idx[t];
             const double r = std::sqrt(f[t]);
@@ -1000,7 +1052,8 @@ void tsqr(lint m, lint pc, double* A, double* v, double* R, double* d1, DD& acc)
         for (lint j = 0; j < pc; ++j)
             for (lint i = 0; i < pc; ++i) r[j * pc + i] = i <= j && i < mm ? a[j * lda + i] : 0.0;
         for (lint i = 0; i < pc; ++i) d[i] = i < mm ? vv[i] : 0.0;
-        for (lint t = pc; t < mm; ++t) sq = sq + DD{vv[t], 0.0} * DD{vv[t], 0.0};
+        // the rows below the R part, in chunks of kRowChunk rows added in order
+        if (mm > pc) sq = sq + dd_chunk_sum(mm - pc, [&](lint t) { return DD{vv[pc + t], 0.0} * DD{vv[pc + t], 0.0}; });
     };
     if (nb < 4) {
         Scratch sc;
@@ -1101,7 +1154,9 @@ int ridge_one(const Opts& op, const Src& src, const double* alphas, std::int64_t
         Vt(static_cast<std::size_t>(std::max<lint>(r * pc, 1)));
     double rss_perp = 0.0;
     double vv = 0.0;
-    for (lint t = 0; t < m; ++t) vv += rv[t] * rv[t];
+    chunk_sum(m, 1, &vv, 1.0, [&](lint t0, lint t1, double* part) {
+        for (lint t = t0; t < t1; ++t) part[0] += rv[t] * rv[t];
+    });
     if (pc == 0) {
         rss_perp = vv;
     } else if (m >= pc) {
@@ -1221,29 +1276,8 @@ inline double phi_fn(double r, double x) {
     if (r >= -0.5 && r <= 1.0) return r * r - (1.0 + r) * mu_fn(r, x);
     return x * std::log(x) - r;
 }
-// log(1 + e^z) without overflow
-inline double softplus(double z) { return z > 0 ? z + std::log1p(std::exp(-z)) : std::log1p(std::exp(z)); }
-
-// mu and the variance (= mu' for the canonical links) at eta
-inline void link(int fam, double eta, double& mu, double& var) {
-    if (fam == fBinomial) {
-        if (eta >= 0) {
-            const double e = std::exp(-eta);
-            mu = 1.0 / (1.0 + e);
-            var = mu * (e / (1.0 + e));
-        } else {
-            const double e = std::exp(eta);
-            mu = e / (1.0 + e);
-            var = mu * (1.0 / (1.0 + e));
-        }
-    } else {
-        mu = std::exp(eta);
-        var = mu;
-    }
-}
-// the unit deviance at eta
-inline double unit_dev(int fam, double y, double eta, double mu) {
-    if (fam == fBinomial) return 2.0 * softplus(y == 1.0 ? -eta : eta);
+// The poisson unit deviance at mu = e^eta.
+inline double poisson_dev(double y, double mu) {
     if (y == 0.0) return 2.0 * mu;
     return 2.0 * mu * phi_fn((y - mu) / mu, y / mu);
 }
@@ -1260,30 +1294,51 @@ void glm_eval(const Src& src, const Prep& P, int fam, const double* beta, double
     g.eta.resize(static_cast<std::size_t>(m));
     g.mu.resize(static_cast<std::size_t>(m));
     g.var.resize(static_cast<std::size_t>(m));
-    std::vector<lint> nz;
+    std::vector<dot2::ColRef> nz;
+    std::vector<double> bz;
     for (const lint j : P.cols)
-        if (beta[j] != 0.0) nz.push_back(j);
+        if (beta[j] != 0.0) nz.push_back({src.X + j * src.xcs, src.xrs}), bz.push_back(beta[j]);
     const lint nch = std::max<lint>(1, (m + kRowChunk - 1) / kRowChunk);
     std::vector<double> parts(static_cast<std::size_t>(2 * nch));
     std::vector<std::uint8_t> bad(static_cast<std::size_t>(nch), 0);
     for_chunks(nch, double(m) * double(nz.size() + 4), [&](lint c) {
         DD acc{0.0, 0.0};
-        for (lint t = c * kRowChunk; t < std::min(m, (c + 1) * kRowChunk); ++t) {
-            const lint i = P.idx[t];
-            double S = b0, E = 0.0;
-            for (const lint j : nz) {
-                double hp, ep, q;
-                two_prod(src.x(i, j), beta[j], hp, ep);
-                two_sum(S, hp, S, q);
-                E += q + ep;
+        const lint t0 = c * kRowChunk, t1 = std::min(m, (c + 1) * kRowChunk);
+        // eta = b0 + x beta (Dot2, four rows at a time): the two parts in mu and var for now
+        dot2::dot2_rows(nz.data(), bz.data(), static_cast<lint>(nz.size()), t1 - t0,
+                        [&](lint t) { return P.idx[t0 + t]; }, g.mu.data() + t0, g.var.data() + t0, b0);
+        for (lint t = t0; t < t1; ++t) g.eta[t] = g.mu[t] + g.var[t];
+        if (fam == fBinomial) {
+            // mu = expit(eta) and 1 - mu = expit(-eta) by sd.special's kernel, as glm's logit
+            // link (regression/glm.cpp: the same mu for the same eta, G81); var = mu (1 - mu).
+            // The unit deviance 2 softplus(z), z = -eta for y = 1 and eta for y = 0, takes
+            // log(1 + e^-|eta|) = -log1p(-m) from m = expit(-|eta|), the smaller of the two
+            alignas(16) double neg[special::kChunk], uc[special::kChunk];
+            for (lint b = t0; b < t1; b += special::kChunk) {
+                const int len = static_cast<int>(std::min<lint>(special::kChunk, t1 - b));
+                const double* e = g.eta.data() + b;
+                for (int u = 0; u < len; ++u) neg[u] = -e[u];
+                special::Expit::chunk(e, g.mu.data() + b, len);
+                special::Expit::chunk(neg, uc, len);
+                for (int u = 0; u < len; ++u) {
+                    const lint t = b + u;
+                    const double eta = e[u], mu = g.mu[t];
+                    g.var[t] = mu * uc[u];
+                    const double L = -std::log1p(-(eta >= 0 ? uc[u] : mu));
+                    const double z = src.yv(P.idx[t]) == 1.0 ? -eta : eta;
+                    const double dv = 2.0 * (z > 0 ? z + L : L);
+                    if (!std::isfinite(dv) || !std::isfinite(eta)) bad[c] = 1;
+                    acc = acc + DD{P.wt[t] * dv, 0.0};
+                }
             }
-            const double eta = S + E;
-            double mu, var;
-            link(fam, eta, mu, var);
-            g.eta[t] = eta, g.mu[t] = mu, g.var[t] = var;
-            const double dv = unit_dev(fam, src.yv(i), eta, mu);
-            if (!std::isfinite(dv) || !std::isfinite(eta)) bad[c] = 1;
-            acc = acc + DD{P.wt[t] * dv, 0.0};
+        } else {
+            for (lint t = t0; t < t1; ++t) {  // poisson: mu = var = e^eta
+                const double eta = g.eta[t], mu = std::exp(eta);
+                g.mu[t] = mu, g.var[t] = mu;
+                const double dv = poisson_dev(src.yv(P.idx[t]), mu);
+                if (!std::isfinite(dv) || !std::isfinite(eta)) bad[c] = 1;
+                acc = acc + DD{P.wt[t] * dv, 0.0};
+            }
         }
         parts[2 * c] = acc.hi, parts[2 * c + 1] = acc.lo;
     });
@@ -1371,7 +1426,9 @@ void glm_subproblem(const Src& src, const Prep& P, const GlmState& g, const std:
             std::copy_n(buf.data() + pc * len, len, s.rv.data() + t0);
         });
         double vv = 0.0;
-        for (lint t = 0; t < m; ++t) vv += s.rv[t] * s.rv[t];
+        chunk_sum(m, 1, &vv, 1.0, [&](lint t0, lint t1, double* part) {
+            for (lint t = t0; t < t1; ++t) part[0] += s.rv[t] * s.rv[t];
+        });
         s.vv = vv;
     }
     s.init_state();
@@ -1468,8 +1525,7 @@ int glm_one(const Opts& op, const Src& src, const double* alphas, std::int64_t a
     }
     const lint pc = static_cast<lint>(P.cols.size());
     // the null model: the weighted mean of y (intercept) or eta = 0
-    DD sy{0.0, 0.0};
-    for (lint t = 0; t < m; ++t) sy = sy + DD{P.wt[t] * src.yv(P.idx[t]), 0.0};
+    const DD sy = dd_chunk_sum(m, [&](lint t) { return DD{P.wt[t] * src.yv(P.idx[t]), 0.0}; });
     const double ybar = sy.hi / P.sw;
     double eta0 = 0.0;
     if (op.intercept) {

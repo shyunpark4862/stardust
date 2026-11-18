@@ -2,7 +2,8 @@
 
 tests/regression/ref/robust.json holds, per problem, the inputs as doubles (y, X rows, norm,
 tuning constants, scale rule, intercept; for MM the rng seed and the S estimate's params and
-scale that sd.regression found with it) and regref.rlm's certified solution (params, scale,
+scale: regref.s_estimate's certified fixed point near the one sd.regression found with it,
+rounded to doubles) and regref.rlm's certified solution (params, scale,
 weights, bse) as [hi, lo] pairs: the three norms with the MAD and Huber's proposal 2 scales
 on data with outliers (an even and an odd n, no intercept, a larger fit), Brownlee's stack
 loss, and the MM estimator's M step on contaminated data. The pieces of psi (and the median's
@@ -86,10 +87,14 @@ def _one(item):
     r = fit(p)
     beta0 = [float(v) for v in r.params.tolist()]
     if p["method"] == "MM":
-        init = [float(v) for v in r._raw[8].tolist()]
-        p = dict(p, init_params=init, s_scale=float(r.scale))
+        # the S estimate: the certified fixed point near sd's (regref.s_estimate), rounded;
+        # the M step's reference starts from it
+        S = regref.s_estimate(p["y"], p["X"], beta0=[float(v) for v in r._raw[8].tolist()], scale0=float(r.scale),
+                              intercept=p["intercept"])
+        init = [float(h) for h, _ in S["params"]]
+        p = dict(p, init_params=init, s_scale=float(S["scale"][0]))
         ref = regref.rlm(p["y"], p["X"], beta0=beta0, norm="bisquare", c=(4.685061,), intercept=p["intercept"],
-                         scale=r.scale, init_params=init)
+                         scale=p["s_scale"], init_params=init)
     else:
         ref = regref.rlm(p["y"], p["X"], beta0=beta0, norm=p["norm"], c=C_REF[p["norm"]], scale_est=p["scale_est"],
                          intercept=p["intercept"])

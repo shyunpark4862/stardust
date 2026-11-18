@@ -79,9 +79,10 @@ def test_against_arb(name):
     assert rel(r.bse, dd(ref["bse"])) <= 4e-15
     assert np.max(np.abs(a(r.weights) - dd(ref["weights"]))) <= 4e-15
     if p["method"] == "MM":
-        # the S start the reference was certified from
-        assert rel(r._raw[8], p["init_params"]) <= 1e-13
-        assert r.scale == pytest.approx(p["s_scale"], rel=1e-14)
+        # the S estimate against its certified fixed point (regref.s_estimate, rounded): the
+        # S iteration's Newton steps (G82) reach it to rounding (measured 9.4e-16, 2.2e-16)
+        assert rel(r._raw[8], p["init_params"]) <= 2e-15
+        assert r.scale == pytest.approx(p["s_scale"], rel=1e-15)
 
 
 # ---- statsmodels
@@ -178,9 +179,10 @@ def test_against_lmrob(name):
     Rv = pr["R"]
     r = R.rlm(pr["y"], pr["X"], method="MM", rng=sd.random.default_rng(pr["seed"]))
     assert r.converged
-    # the S start the R values were made from
-    assert rel(r._raw[8], pr["S_params"]) <= 1e-13
-    assert r.scale == pytest.approx(pr["S_scale"], rel=1e-14)
+    # the S start the R values were made from: the certified fixed point near sd's S estimate
+    # (regref.s_estimate, rounded), which sd reaches to rounding (G82; measured 3.8e-16, 0)
+    assert rel(r._raw[8], pr["S_params"]) <= 2e-15
+    assert r.scale == pytest.approx(pr["S_scale"], rel=1e-15)
     # robustbase's M step and .vcov.avar1 from the same start (rel.tol 1e-15)
     assert Rv["mstep_conv"][0] == 1
     assert np.max(np.abs(a(r.params) - Rv["mstep_coef"])) <= 1e-14 * np.max(np.abs(Rv["mstep_coef"]))

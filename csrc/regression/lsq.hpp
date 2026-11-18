@@ -41,6 +41,9 @@ struct Problem {
     // params, kept, the fitted values of every row, stats[kNobs], stats[kRank] and (when Dest
     // has it) R are written (no sums of squares or covariance).
     bool lean = false;
+    // y, X and the weights are known finite (and the weights >= 0): the caller checked them
+    // (the GLM's final solve, rlm's start), so the scans are skipped
+    bool checked = false;
     // The GLM's final solve: no Wald F (the GLM has none), the robust options of Data.
     bool glm = false;
 };

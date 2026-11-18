@@ -36,6 +36,7 @@
 #include "regression/robust.hpp"
 
 #include "regression/lsq.hpp"
+#include "regression/dot2.hpp"
 
 #include "bind/errors.hpp"
 #include "linalg/ops/common.hpp"
@@ -51,6 +52,7 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <numeric>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -79,6 +81,8 @@ constexpr double kEps = 0x1p-52;
 enum Norm : int { nHuber = 0, nBisquare, nHampel };
 enum Method : int { mM = 0, mMM };
 enum ScaleEst : int { sMad = 0, sHuber, sFixed };
+// internal: the S estimator's M-scale (MM's S step, G82)
+constexpr int sMScale = 3;
 
 // The per-regression scalars, in this order (stardust/regression/_robust.py reads them).
 // rNGroups and rLags are NaN (the shared result code asks for them).
@@ -148,6 +152,19 @@ DD row_sum(lint n, F&& f) {
     DD s{0.0, 0.0};
     for (const DD& p : part) s = s + p;
     return s;
+}
+
+// W plain sums over the rows: body(i0, i1, part) adds rows [i0, i1) into part[0 .. W)
+// (zeroed), per fixed chunk; the chunks added in order.
+template <class F>
+std::vector<double> chunk_sums(lint n, lint W, F&& body) {
+    const lint nc = row_chunks(n);
+    std::vector<double> part(static_cast<std::size_t>(nc * W), 0.0);
+    for_row_chunks(n, [&](lint c, lint i0, lint i1) { body(i0, i1, part.data() + c * W); });
+    std::vector<double> t(static_cast<std::size_t>(W), 0.0);
+    for (lint c = 0; c < nc; ++c)
+        for (lint q = 0; q < W; ++q) t[q] += part[c * W + q];
+    return t;
 }
 
 // ---- the norms (G54): psi, the IRLS weight psi(z)/z, rho and psi' -------------------------
@@ -263,22 +280,38 @@ struct Design {
 
 // r = y - X beta and fit = X beta for every row, each in double-double rounded once (Dot2;
 // NaN marks a column without a coefficient). fit may be null.
+const double kOneValue = 1.0;
+
+// The columns of D with a coefficient (NaN marks a column without one), in order.
+void design_cols(const Design& D, const double* beta, std::vector<dot2::ColRef>& cols, std::vector<double>& b) {
+    cols.clear();
+    b.clear();
+    for (lint c = 0; c < D.k; ++c) {
+        if (std::isnan(beta[c])) continue;
+        if (D.intercept && c == 0) cols.push_back({reinterpret_cast<const std::byte*>(&kOneValue), 0});
+        else cols.push_back({D.X + (c - (D.intercept ? 1 : 0)) * D.xcs, D.xrs});
+        b.push_back(beta[c]);
+    }
+}
+
 void resid_dd(const Design& D, const double* y, const double* beta, double* r, double* fit) {
+    std::vector<dot2::ColRef> cols;
+    std::vector<double> b;
+    design_cols(D, beta, cols, b);
+    const lint nc = static_cast<lint>(cols.size());
     for_row_chunks(D.n, [&](lint, lint i0, lint i1) {
-        for (lint i = i0; i < i1; ++i) {
-            double P = 0.0, S = 0.0;
-            for (lint c = 0; c < D.k; ++c) {
-                const double b = beta[c];
-                if (std::isnan(b)) continue;
-                double hp, ep, q;
-                two_prod(D.at(i, c), b, hp, ep);
-                two_sum(P, hp, P, q);
-                S += q + ep;
+        constexpr lint kBlk = 256;
+        double P[kBlk], S[kBlk];
+        for (lint a = i0; a < i1; a += kBlk) {
+            const lint nt = std::min(i1 - a, kBlk);
+            dot2::dot2_rows(cols.data(), b.data(), nc, nt, [&](lint t) { return a + t; }, P, S);
+            for (lint t = 0; t < nt; ++t) {
+                const lint i = a + t;
+                if (fit) fit[i] = P[t] + S[t];
+                double hh, e;
+                two_sum(y[i], -P[t], hh, e);
+                r[i] = hh + (e - S[t]);
             }
-            if (fit) fit[i] = P + S;
-            double hh, e;
-            two_sum(y[i], -P, hh, e);
-            r[i] = hh + (e - S);
         }
     });
 }
@@ -362,12 +395,12 @@ bool chol_wls(const Design& D, const double* y, const double* w, const std::uint
         if (!std::isfinite(h[jj])) return false;
     for (lint j = 0; j < k; ++j) beta[j] = kNaN, kept[j] = 0;
     for (lint jj = 0; jj < kk; ++jj) beta[K[jj]] = h[jj], kept[K[jj]] = 1;
+    // fit in plain double, four rows at a time (each row's sum over the columns in order)
+    std::vector<dot2::ColRef> cols;
+    std::vector<double> hb;
+    design_cols(D, beta, cols, hb);
     for_row_chunks(n, [&](lint, lint i0, lint i1) {
-        for (lint i = i0; i < i1; ++i) {
-            double acc = 0.0;
-            for (lint jj = 0; jj < kk; ++jj) acc += D.at(i, K[jj]) * h[jj];
-            fit[i] = acc;
-        }
+        dot2::plain_rows(cols.data(), hb.data(), kk, i1 - i0, [&](lint t) { return i0 + t; }, fit + i0);
     });
     return true;
 }
@@ -496,14 +529,15 @@ struct Buffers {
 };
 
 struct ScaleRule {
-    int mode;  // sMad, sHuber, sFixed
-    double T;  // Huber's proposal 2: the target n h
+    int mode;  // sMad, sHuber, sFixed, sMScale
+    double T;  // Huber's proposal 2: the target n h; the M-scale: (n - p) b
 };
 
 double new_scale(const ScaleRule& sr, const double* r, lint n, double s, Buffers& B) {
     switch (sr.mode) {
         case sMad: return mad0(r, n, B.buf.data());
         case sHuber: return huber_scale(r, n, sr.T);
+        case sMScale: return mscale(r, n, kSChi, sr.T, s, true);
         default: return s;
     }
 }
@@ -521,12 +555,29 @@ struct IrlsOut {
 // The gradient of the scale with respect to beta at residuals r (scale s), for Newton's
 // step: MAD, s = |r_m| / C (the mean of two such terms for an even n), so ds = -sign(r_m)
 // x_m / C; Huber's proposal 2, s^2 = sum_in r_i^2 / (2T - n_out d^2) on the rows inside
-// |r| < d s; a fixed scale, 0. Over the columns K.
+// |r| < d s; the S estimator's M-scale (sum rho~(r_i/s) = T), ds = -s sum psi(z_i) x_i /
+// sum psi(z_i) z_i (psi proportional to rho~'; 0 at the fixed point, where the first sum is
+// F); a fixed scale, 0. Over the columns K.
 void scale_grad(const Design& D, const ScaleRule& sr, const double* r, double s, const std::vector<lint>& K,
                 std::vector<double>& g) {
     const lint n = D.n, kk = static_cast<lint>(K.size());
     g.assign(static_cast<std::size_t>(kk), 0.0);
     if (sr.mode == sFixed) return;
+    if (sr.mode == sMScale) {
+        const NormF nf{nBisquare, 0.0, 0.0, kSChi};
+        const std::vector<double> acc = chunk_sums(n, kk + 1, [&](lint i0, lint i1, double* P) {
+            for (lint i = i0; i < i1; ++i) {
+                const double z = r[i] / s, q = nf.psi(z);
+                if (q == 0.0) continue;
+                P[kk] += q * z;
+                for (lint a = 0; a < kk; ++a) P[a] += q * D.at(i, K[a]);
+            }
+        });
+        const double den = acc[kk];
+        if (den > 0.0)
+            for (lint a = 0; a < kk; ++a) g[a] = -s * acc[a] / den;
+        return;
+    }
     if (sr.mode == sMad) {
         // the rows of the middle |r| / C (s itself for an odd n; the two around it for an even n)
         std::vector<std::pair<double, lint>> v(static_cast<std::size_t>(n));
@@ -545,14 +596,12 @@ void scale_grad(const Design& D, const ScaleRule& sr, const double* r, double s,
     // Huber's proposal 2
     const double d2 = kHuberD * kHuberD, t = 1.0 / (s * s);
     lint nout = 0;
-    std::vector<double> acc(static_cast<std::size_t>(kk), 0.0);
-    for (lint i = 0; i < n; ++i) {
-        if (r[i] * r[i] * t < d2) {
-            for (lint a = 0; a < kk; ++a) acc[a] += r[i] * D.at(i, K[a]);
-        } else {
-            ++nout;
-        }
-    }
+    for (lint i = 0; i < n; ++i) nout += !(r[i] * r[i] * t < d2);
+    const std::vector<double> acc = chunk_sums(n, kk, [&](lint i0, lint i1, double* P) {
+        for (lint i = i0; i < i1; ++i)
+            if (r[i] * r[i] * t < d2)
+                for (lint a = 0; a < kk; ++a) P[a] += r[i] * D.at(i, K[a]);
+    });
     const double den = 2.0 * sr.T - static_cast<double>(nout) * d2;
     for (lint a = 0; a < kk; ++a) g[a] = -acc[a] / (s * den);
 }
@@ -1006,22 +1055,46 @@ SOut fast_s(const Design& Dk, const double* Xr, const double* y, random::Key key
     }
     if (!std::isfinite(bestscale)) return out;
     // 4. the chosen one polished to the S estimator's fixed point (beta the weighted fit at
-    // the chi weights of its residuals over their exact M-scale): normal equations while the
-    // steps contract, the last solve by the refined QR
+    // the chi weights of its residuals over their exact M-scale, i.e. the root of the
+    // estimating equations F = sum psi(r_i/s(beta)) x_i, psi ~ rho~'): each iteration tries
+    // Newton's step for F (the M step's, with the M-scale's dependence on beta), taken when it
+    // lowers |F| (G82); else the weighted fit by the normal equations. The fixed point is the
+    // same; the weighted fit alone converges linearly (rate 0.8-0.9). The last solve is the
+    // refined QR's.
     std::vector<std::uint8_t> kept(static_cast<std::size_t>(p), 1);
     resid_dd(Dk, y, bb.data(), r.data(), nullptr);
     double s = mscale(r.data(), n, kSChi, T, bestscale, true);
     double prevstep = kInf;
+    const NormF nfS{nBisquare, 0.0, 0.0, kSChi};
+    const ScaleRule srS{sMScale, T};
+    std::vector<lint> Kall(static_cast<std::size_t>(p));
+    std::iota(Kall.begin(), Kall.end(), lint(0));
+    std::vector<double> F, Fn, rn(static_cast<std::size_t>(std::max<lint>(n, 1)));
     for (int it = 0; it < kKMax && s > 0.0; ++it) {
-        for (lint i = 0; i < n; ++i) B.w[i] = wchi_s(r[i] / s, kSChi);
-        if (!chol_wls(Dk, y, B.w.data(), kept.data(), B.beta_new.data(), B.kept_new.data(), B.fit.data()))
-            if (qr_wls(Dk, y, B.w.data(), B.beta_new.data(), B.kept_new.data(), B.fit.data(), 0, sc0) < p) break;
+        bool took_newton = false;
+        const double f0 = estimating(Dk, nfS, r.data(), s, Kall, F);
+        if (newton_step(Dk, nfS, srS, bb.data(), r.data(), s, Kall, F, B.beta_new.data())) {
+            resid_dd(Dk, y, B.beta_new.data(), rn.data(), nullptr);
+            const double sn = mscale(rn.data(), n, kSChi, T, s, true);
+            if (sn > 0.0 && std::isfinite(sn) && estimating(Dk, nfS, rn.data(), sn, Kall, Fn) < f0) {
+                std::copy(rn.begin(), rn.begin() + n, r.begin());
+                s = sn;
+                took_newton = true;
+            }
+        }
+        if (!took_newton) {
+            for (lint i = 0; i < n; ++i) B.w[i] = wchi_s(r[i] / s, kSChi);
+            if (!chol_wls(Dk, y, B.w.data(), kept.data(), B.beta_new.data(), B.kept_new.data(), B.fit.data()))
+                if (qr_wls(Dk, y, B.w.data(), B.beta_new.data(), B.kept_new.data(), B.fit.data(), 0, sc0) < p) break;
+        }
         double step = 0.0, bn = 0.0;
         for (lint c = 0; c < p; ++c)
             step = std::max(step, std::fabs(B.beta_new[c] - bb[c])), bn = std::max(bn, std::fabs(B.beta_new[c]));
         std::copy(B.beta_new.begin(), B.beta_new.begin() + p, bb.begin());
-        for (lint i = 0; i < n; ++i) r[i] = y[i] - B.fit[i];
-        s = mscale(r.data(), n, kSChi, T, s, true);
+        if (!took_newton) {
+            for (lint i = 0; i < n; ++i) r[i] = y[i] - B.fit[i];
+            s = mscale(r.data(), n, kSChi, T, s, true);
+        }
         ++iters;
         const double lim = 0x1p-46 * bn;  // the normal equations' floor; the refined solve follows
         if (step <= lim) break;
@@ -1233,6 +1306,7 @@ int rlm_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64_t ys
     double st0[kNStat];
     {
         Problem pb{n, p, k, op.intercept, false, false, false, op.rtol, kNonrobust, kRefineSteps, -1, 0, false};
+        pb.checked = true;  // y and X were scanned above
         Dest od{beta.data(), cov0.data(), o.R, o.fitted, r.data(), kept.data(), st0, nullptr};
         fit_one(pb, d0, od, sc);
     }

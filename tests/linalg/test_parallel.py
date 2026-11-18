@@ -8,6 +8,7 @@ the same and every error message names the same (smallest) batch index
 import math
 import threading
 
+import hashlib
 import numpy as np
 import pytest
 import stardust as sd
@@ -32,12 +33,19 @@ def bits(r):
     return [np.asarray(v).tobytes() for v in as_tuple(r)]
 
 
+def digest(b):
+    return [hashlib.sha256(v).digest() for v in b]
+
+
 def same_for_all_counts(call):
-    results = []
+    # the first count's digests; each later result is compared and dropped (no results kept)
+    first = None
     for n in COUNTS:
         sd.set_num_threads(n)
-        results.append(bits(call()))
-    assert all(r == results[0] for r in results[1:])
+        d = digest(bits(call()))
+        if first is None:
+            first = d
+        assert d == first
 
 
 def matrices(rng, batch, n, dtype):

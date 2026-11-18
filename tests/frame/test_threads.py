@@ -9,6 +9,7 @@ against numpy/pandas make sure the chunked code is also right, since a
 
 import math
 import os
+import hashlib
 import struct
 import threading
 
@@ -42,17 +43,27 @@ def canon(x):
     return x
 
 
+def digest(c):
+    """A digest of a canon() value (its repr: bytes, numbers, strings, NA and dtypes)."""
+    return hashlib.sha256(repr(c).encode()).digest()
+
+
 def same_for_all_thread_counts(fn):
-    results = []
+    # the first thread count's canon() (returned) and its digest; later results are compared
+    # by digest and dropped
+    first = d0 = None
     try:
         for t in THREADS:
             sd.set_num_threads(t)
-            results.append(canon(fn()))
+            c = canon(fn())
+            if first is None:
+                first, d0 = c, digest(c)
+            else:
+                assert digest(c) == d0
+            del c
     finally:
         sd.set_num_threads(DEFAULT)
-    for r in results[1:]:
-        assert r == results[0]
-    return results[0]
+    return first
 
 
 rng = np.random.default_rng(11)
@@ -204,7 +215,9 @@ HASHING = {
     "groupby int": lambda: D.DF.groupby("i").agg({"f": "sum", "s": "max"}),
     "groupby two keys": lambda: D.DF.groupby(["b", "s"]).agg({"f": "mean", "i": "count"}),
     "groupby string std": lambda: D.DF.groupby("s", sort=False)["f"].std(),
-    "merge inner": lambda: sd.frame.merge(D.DF, D.DF[["s", "i"]].drop_duplicates(), on="s", how="inner"),
+    # one right row per key, so the result has N rows (on "s" alone the 198,140 (s, i) pairs gave
+    # 8.1 million); both sides stay above the parallel threshold
+    "merge inner": lambda: sd.frame.merge(D.DF, D.DF[["s", "i"]].drop_duplicates(), on=["s", "i"], how="inner"),
     "merge outer": lambda: sd.frame.merge(D.DF[["i", "f"]], D.DF[["i", "b"]].head(5000), on="i", how="outer"),
     "merge left two keys": lambda: sd.frame.merge(D.DF[["i", "b", "f"]], D.DF[["i", "b", "s"]].head(30_000), on=["i", "b"], how="left"),
     "merge right": lambda: sd.frame.merge(D.DF[["s", "f"]].head(40_000), D.DF[["s", "i"]].head(60_000), on="s", how="right"),

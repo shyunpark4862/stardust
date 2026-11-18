@@ -2,7 +2,7 @@
 // (docs/design/array.md §5.4).
 //
 // vForce computes a whole array per call (vvexp(y, x, &n)) with SIMD code
-// tuned for Apple chips. The 16 functions used here were checked: the result
+// tuned for Apple chips. The 15 functions used here were checked: the result
 // for an element does not depend on its position, the array length or
 // alignment (so exp(x)[i] == exp(x[i]), and thread chunking cannot change
 // results), they keep C99 Annex F special values, use no threads of their
@@ -10,7 +10,7 @@
 // and tan failed those checks and stay on libm; complex functions are libm.
 //
 // This file is the operator-independent part: the function types, the
-// wrappers that fix vvpow's and vvatan2's argument order, and the strided
+// wrapper that fixes vvatan2's argument order, and the strided
 // runners. Which array operator maps to which vForce function is the array
 // area's (array/kernels/vforce.hpp).
 //
@@ -33,7 +33,6 @@ using VUnary = void (*)(double*, const double*, const int*);
 // Binary functions, normalized to f(out, a, b, n) = op(a, b) elementwise.
 using VBinary = void (*)(double*, const double*, const double*, const int*);
 
-inline void vf_pow(double* o, const double* a, const double* b, const int* n) { vvpow(o, b, a, n); }  // vvpow(z, y, x): x^y
 inline void vf_atan2(double* o, const double* a, const double* b, const int* n) { vvatan2(o, a, b, n); }  // atan2(y, x)
 
 

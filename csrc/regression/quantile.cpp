@@ -1366,12 +1366,15 @@ double median_slope(const std::vector<double>& v, const std::vector<double>& t, 
     std::vector<double> X(static_cast<std::size_t>(2 * n)), y(v);
     for (lint i = 0; i < n; ++i) X[2 * i] = 1.0, X[2 * i + 1] = t[i];
     // least squares start
-    double mt = 0.0, mv = 0.0;
-    for (lint i = 0; i < n; ++i) mt += t[i], mv += v[i];
-    mt /= static_cast<double>(n);
-    mv /= static_cast<double>(n);
-    double sxy = 0.0, sxx = 0.0;
-    for (lint i = 0; i < n; ++i) sxy += (t[i] - mt) * (v[i] - mv), sxx += (t[i] - mt) * (t[i] - mt);
+    std::vector<double> m1, m2;
+    chunk_sum(n, 2, m1, [&](lint i0, lint i1, double* acc) {
+        for (lint i = i0; i < i1; ++i) acc[0] += t[i], acc[1] += v[i];
+    });
+    const double mt = m1[0] / static_cast<double>(n), mv = m1[1] / static_cast<double>(n);
+    chunk_sum(n, 2, m2, [&](lint i0, lint i1, double* acc) {
+        for (lint i = i0; i < i1; ++i) acc[0] += (t[i] - mt) * (v[i] - mv), acc[1] += (t[i] - mt) * (t[i] - mt);
+    });
+    const double sxy = m2[0], sxx = m2[1];
     const double b1 = sxx > 0.0 ? sxy / sxx : 0.0;
     const double start[2] = {mv - b1 * mt, b1};
     Packed pk;
@@ -1463,6 +1466,55 @@ int quantreg_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64
     double ymax = 0.0;
     for (lint i = 0; i < n; ++i) ymax = std::max(ymax, std::fabs(y[i]));
     const double eps_y = kSqrtEps * (ymax > 0.0 ? ymax : 1.0);
+    // 'nid': the sandwich from the fits at q +- h (bh, bl), into quantile l's covariance
+    auto nid_cov = [&](lint l, double tau, double h, const std::vector<double>& bh, const std::vector<double>& bl,
+                       Scratch& scr) {
+        std::vector<double> f(static_cast<std::size_t>(n));
+        for (lint i = 0; i < n; ++i) {
+            double dyh = 0.0;
+            for (lint a = 0; a < kk; ++a) dyh += D.at(i, K[a]) * (bh[a] - bl[a]);
+            f[i] = std::max(0.0, (2.0 * h) / (dyh - eps_y));
+        }
+        std::vector<double> Rf(static_cast<std::size_t>(kk * kk)), V(static_cast<std::size_t>(std::max<lint>(kk * kk, 1)));
+        if (!weighted_r(D, K, f.data(), Rf.data(), scr)) return;
+        sandwich(kk, R0k.data(), Rf.data(), tau, V.data());
+        double* cov = o.cov + l * k * k;
+        for (lint a = 0; a < kk; ++a)
+            for (lint b = 0; b < kk; ++b) cov[K[a] * k + K[b]] = V[a * kk + b];
+    };
+    // With several quantiles, the 'nid' fits at q +- h start from each quantile's vertex
+    // of the warm-started chain and are independent of one another: they run as tasks on
+    // the pool (each serial inside), in waves of at most kNidWave (2 per quantile; the
+    // chain's states kept meanwhile), after the chain has reached the wave's quantiles.
+    // Each is the same computation as in place, so the bits do not change.
+    struct NidJob {
+        lint l;
+        double tau, h;
+        State S;
+    };
+    std::vector<NidJob> jobs;
+    const bool nid_tasks = op.cov == cNid && L > 1;
+    // waves bounded in memory: a running fit holds about 4 doubles per row
+    const lint kNidWave =
+        std::max<lint>(2, std::min<lint>(2 * L, static_cast<lint>((lint(1) << 28) / (32 * std::max<lint>(n, 1)))));
+    auto run_jobs = [&]() {
+        const std::int64_t nt = static_cast<std::int64_t>(2 * jobs.size());
+        std::vector<std::vector<double>> res(static_cast<std::size_t>(nt));
+        std::vector<std::uint8_t> conv(static_cast<std::size_t>(nt), 0);
+        parallel::parallel_for(nt, [&](std::int64_t t) {
+            const NidJob& j = jobs[static_cast<std::size_t>(t / 2)];
+            const int sgn = t % 2 == 0 ? 1 : -1;
+            State T = j.S;
+            Work U;
+            Scratch scr;
+            const QOut o2 = solve_q(pk.P, j.tau + sgn * j.h, T, U, true, qo, start.data(), scr);
+            conv[static_cast<std::size_t>(t)] = o2.converged ? 1 : 0;
+            res[static_cast<std::size_t>(t)] = std::move(U.beta);
+        });
+        for (std::size_t q = 0; q < jobs.size(); ++q)
+            if (conv[2 * q] && conv[2 * q + 1]) nid_cov(jobs[q].l, jobs[q].tau, jobs[q].h, res[2 * q], res[2 * q + 1], sc);
+        jobs.clear();
+    };
     for (lint l = 0; l < L; ++l) {
         const double tau = op.qs[l];
         double* params = o.params + l * k;
@@ -1530,7 +1582,8 @@ int quantreg_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64
         std::fill(cov, cov + k * k, kNaN);
         double hused = kNaN;
         std::vector<double> V(static_cast<std::size_t>(std::max<lint>(kk * kk, 1)), kNaN);
-        bool have = false;
+        bool have = false, have_nid = false;
+        std::vector<double> bh_nid, bl_nid;
         if (kk > 0 && qr.converged && dfr > 0) {
             if (op.cov == cIid) {
                 hused = op.hraw[l];
@@ -1555,12 +1608,13 @@ int quantreg_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64
                         have = true;
                     }
                 }
-            } else {
+            } else if (op.cov == cNid) {
                 hused = op.hhalf[l];
-                std::vector<double> f(static_cast<std::size_t>(n));
-                bool ok = true;
-                if (op.cov == cNid) {
+                if (nid_tasks) {
+                    jobs.push_back({l, tau, hused, S});
+                } else {
                     std::vector<double> bh(static_cast<std::size_t>(kk)), bl(bh.size());
+                    bool ok = true;
                     for (int sgn : {1, -1}) {
                         State T = S;
                         Work U;
@@ -1568,25 +1622,29 @@ int quantreg_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64
                         ok = ok && o2.converged;
                         (sgn > 0 ? bh : bl) = U.beta;
                     }
-                    for (lint i = 0; i < n; ++i) {
-                        double dyh = 0.0;
-                        for (lint a = 0; a < kk; ++a) dyh += D.at(i, K[a]) * (bh[a] - bl[a]);
-                        f[i] = std::max(0.0, (2.0 * hused) / (dyh - eps_y));
+                    if (ok) {
+                        have_nid = true;
+                        bh_nid = std::move(bh);
+                        bl_nid = std::move(bl);
                     }
-                } else {
+                }
+            } else {
+                hused = op.hhalf[l];
+                std::vector<double> f(static_cast<std::size_t>(n));
+                {
                     // Powell's kernel: h in the residuals' units, as summary.rq
-                    double mean = 0.0;
-                    {
-                        Sum2 s;
-                        for (lint i = 0; i < n; ++i) s.add(resid[i]);
-                        mean = s.value() / dn;
-                    }
-                    Sum2 ss;
-                    for (lint i = 0; i < n; ++i) {
-                        const double e = resid[i] - mean;
-                        ss.add_prod(e, e);
-                    }
-                    const double sdv = std::sqrt(ss.value() / (dn - 1.0));
+                    std::vector<Sum2> s1, s2;
+                    chunk_sum2(n, 1, s1, [&](lint i0, lint i1, Sum2* acc) {
+                        for (lint i = i0; i < i1; ++i) acc[0].add(resid[i]);
+                    });
+                    const double mean = s1[0].value() / dn;
+                    chunk_sum2(n, 1, s2, [&](lint i0, lint i1, Sum2* acc) {
+                        for (lint i = i0; i < i1; ++i) {
+                            const double e = resid[i] - mean;
+                            acc[0].add_prod(e, e);
+                        }
+                    });
+                    const double sdv = std::sqrt(s2[0].value() / (dn - 1.0));
                     std::vector<double> u(resid, resid + n);
                     const double q3 = quantile7(u, 0.75), q1 = quantile7(u, 0.25);
                     const double hr = op.kerc[l] * std::min(sdv, (q3 - q1) / 1.34);
@@ -1597,7 +1655,7 @@ int quantreg_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64
                     }
                 }
                 std::vector<double> Rf(static_cast<std::size_t>(kk * kk));
-                if (ok && weighted_r(D, K, f.data(), Rf.data(), sc)) {
+                if (weighted_r(D, K, f.data(), Rf.data(), sc)) {
                     sandwich(kk, R0k.data(), Rf.data(), tau, V.data());
                     have = true;
                 }
@@ -1606,6 +1664,8 @@ int quantreg_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64
         if (have)
             for (lint a = 0; a < kk; ++a)
                 for (lint b = 0; b < kk; ++b) cov[K[a] * k + K[b]] = V[a * kk + b];
+        if (have_nid) nid_cov(l, tau, hused, bh_nid, bl_nid, sc);
+        if (!jobs.empty() && (2 * static_cast<lint>(jobs.size()) + 2 > kNidWave || l + 1 == L)) run_jobs();
         st[qNobs] = dn;
         st[qRank] = static_cast<double>(kk);
         st[qObjective] = ob[0].value();

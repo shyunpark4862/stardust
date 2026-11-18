@@ -25,7 +25,6 @@ template <> inline constexpr VUnary vforce_unary<ops::Acosh> = &vvacosh;
 template <> inline constexpr VUnary vforce_unary<ops::Atanh> = &vvatanh;
 
 template <typename Op> inline constexpr VBinary vforce_binary = nullptr;
-template <> inline constexpr VBinary vforce_binary<ops::Pow> = &vf_pow;
 template <> inline constexpr VBinary vforce_binary<ops::Atan2> = &vf_atan2;
 
 }  // namespace sd

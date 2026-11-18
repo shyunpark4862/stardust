@@ -39,6 +39,7 @@
 #include "regression/glm.hpp"
 
 #include "regression/lsq.hpp"
+#include "regression/dot2.hpp"
 
 #include "bind/errors.hpp"
 #include "linalg/ops/common.hpp"
@@ -51,6 +52,7 @@
 #include <nanobind/stl/string.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -140,6 +142,26 @@ void for_row_chunks(lint n, F&& body) {
     }
 }
 inline lint row_chunks(lint n) { return std::max<lint>(1, (n + kRowChunk - 1) / kRowChunk); }
+
+// W sums over the rows in double-double: body(i0, i1, acc) adds rows [i0, i1) of each into
+// acc[0 .. W) (zeroed), per fixed chunk; the chunks added in order (the same bits for any
+// thread count).
+template <int W, class F>
+std::array<DD, W> dd_sums(lint n, F&& body) {
+    const lint nc = row_chunks(n);
+    std::vector<std::array<DD, W>> part(static_cast<std::size_t>(nc));
+    for_row_chunks(n, [&](lint c, lint i0, lint i1) {
+        std::array<DD, W> a;
+        a.fill(DD{0.0, 0.0});
+        body(i0, i1, a);
+        part[static_cast<std::size_t>(c)] = a;
+    });
+    std::array<DD, W> t;
+    t.fill(DD{0.0, 0.0});
+    for (const auto& a : part)
+        for (int q = 0; q < W; ++q) t[q] = t[q] + a[q];
+    return t;
+}
 
 // ---- deviance pieces without cancellation
 
@@ -363,20 +385,33 @@ void working(const Model& M, const State& s, double* z, double* w, double* rho) 
 
 // eta = X beta + offset for every row (Dot2 over the columns with a coefficient; NaN
 // marks an aliased column, which takes no part)
+const double kOneValue = 1.0;
+
+// The columns of the design with a coefficient (NaN marks an aliased column) and their
+// coefficients, in order.
+void design_cols(const Model& M, const double* beta, std::vector<dot2::ColRef>& cols, std::vector<double>& b) {
+    cols.clear();
+    b.clear();
+    for (lint c = 0; c < M.k; ++c) {
+        if (std::isnan(beta[c])) continue;
+        if (M.intercept && c == 0) cols.push_back({reinterpret_cast<const std::byte*>(&kOneValue), 0});
+        else cols.push_back({M.X + (c - (M.intercept ? 1 : 0)) * M.xcs, M.xrs});
+        b.push_back(beta[c]);
+    }
+}
+
 void xbeta_all(const Model& M, const double* beta, double* eta) {
+    std::vector<dot2::ColRef> cols;
+    std::vector<double> b;
+    design_cols(M, beta, cols, b);
+    const lint nc = static_cast<lint>(cols.size());
     for_row_chunks(M.n, [&](lint, lint i0, lint i1) {
-        for (lint i = i0; i < i1; ++i) {
-            double P = 0.0, S = 0.0;
-            for (lint c = 0; c < M.k; ++c) {
-                const double b = beta[c];
-                if (std::isnan(b)) continue;
-                const double x = (M.intercept && c == 0) ? 1.0 : rd(M.X + i * M.xrs + (c - (M.intercept ? 1 : 0)) * M.xcs);
-                double hp, ep, q;
-                two_prod(x, b, hp, ep);
-                two_sum(P, hp, P, q);
-                S += q + ep;
-            }
-            eta[i] = (P + S) + M.o[i];
+        constexpr lint kBlk = 256;
+        double P[kBlk], S[kBlk];
+        for (lint a = i0; a < i1; a += kBlk) {
+            const lint nt = std::min(i1 - a, kBlk);
+            dot2::dot2_rows(cols.data(), b.data(), nc, nt, [&](lint t) { return a + t; }, P, S);
+            for (lint t = 0; t < nt; ++t) eta[a + t] = (P[t] + S[t]) + M.o[a + t];
         }
     });
 }
@@ -479,19 +514,31 @@ void obs_correction(const Model& M, const State& s, const double* w, double* c) 
 // = 1e-4; with e <= 1e-4 the iteration counts stay those of the QR path. The polishing
 // iterations and the final solve (QR and refinement) set the final accuracy.
 constexpr double kCholMaxErr = 1e-4;
+// The polishing iterations of a canonical link (G80) by the normal equations too when
+// kappa(X^T W X) u <= kCholPolishMaxErr, solved for the step d from the iterate b
+// (X^T W X d = X^T W rho, rho the working residual) so that the normal equations' error is
+// relative to the step, not to b: the new iterate is b + d to within kappa(X^T W X) u |d| +
+// u |b|, as accurate as the QR's. Their eta is Dot2, as the QR's: the final solve's working
+// response and weights, hence the covariance, are formed from the last iterate. The final
+// solve (QR and refinement) sets the coefficients' accuracy.
+constexpr double kCholPolishMaxErr = 1e-10;
 // Rows x columns below which the inner iterations stay QR: there the QR costs no more than
 // the Gram matrix's setup (measured, docs/design/regression.md §3.4: a logistic (50, 3) fit
 // 18.7 us by QR, 19.9 us by Cholesky; (200, 3) the same; (500, 5) 13% faster by Cholesky)
 constexpr double kCholMinWork = 512;
 
 bool solve_chol(const Model& M, const double* z, const double* w, const std::uint8_t* keep, double* beta,
-                std::uint8_t* kept, double* eta) {
+                std::uint8_t* kept, double* eta, double max_err = kCholMaxErr, const double* base = nullptr,
+                const double* rho = nullptr) {
     const lint n = M.n, k = M.k;
     std::vector<lint> K;
     for (lint j = 0; j < k; ++j)
         if (keep[j]) K.push_back(j);
     const lint kk = static_cast<lint>(K.size());
     if (kk == 0) return false;
+    if (base)
+        for (const lint j : K)
+            if (std::isnan(base[j])) return false;
     const lint nc = row_chunks(n);
     const std::size_t slot = static_cast<std::size_t>(kk * kk + kk);
     std::vector<double> part(static_cast<std::size_t>(nc) * slot, 0.0);
@@ -510,7 +557,7 @@ bool solve_chol(const Model& M, const double* z, const double* w, const std::uin
         for (lint t = 0; t < len; ++t) {
             const lint i = rows[t];
             const double s = std::sqrt(w[i]);
-            v[t] = s * z[i];
+            v[t] = s * (base ? rho[i] : z[i]);
             double* a = A.data() + t * kk;
             const std::byte* xi = M.X + i * M.xrs;
             for (lint jj = 0; jj < kk; ++jj) {
@@ -534,7 +581,7 @@ bool solve_chol(const Model& M, const double* z, const double* w, const std::uin
     for (lint jj = 0; jj < kk; ++jj) nrm[jj] = std::sqrt(U[jj * kk + jj]);  // ||sqrt(w) x_j||
     if (linalg::lapack::potrf('U', kk, U, kk) > 0) return false;
     const double rc = linalg::lapack::trcon_1('U', kk, U, kk);
-    if (!(rc > 0.0) || 0x1p-53 / (rc * rc) > kCholMaxErr) return false;
+    if (!(rc > 0.0) || 0x1p-53 / (rc * rc) > max_err) return false;
     // G21's aliasing rule on the Cholesky factor, which is the QR's R up to signs: a column
     // with |U_jj| <= rtol ||x_j|| (with a factor 2 of margin for the factor's rounding) would be
     // aliased; the QR decides it
@@ -548,22 +595,21 @@ bool solve_chol(const Model& M, const double* z, const double* w, const std::uin
     for (lint j = 0; j < k; ++j) beta[j] = kNaN, kept[j] = 0;
     for (lint jj = 0; jj < kk; ++jj) {
         if (!std::isfinite(h[jj])) return false;
-        beta[K[jj]] = h[jj];
+        beta[K[jj]] = base ? base[K[jj]] + h[jj] : h[jj];
         kept[K[jj]] = 1;
     }
+    if (base) {
+        xbeta_all(M, beta, eta);
+        return true;
+    }
     // eta = X beta + offset in plain double: an inner iterate's error in eta enters the next
-    // least squares fit only at second order
+    // least squares fit only at second order (four rows at a time, each row's sum in order)
+    std::vector<dot2::ColRef> cols;
+    std::vector<double> hb;
+    design_cols(M, beta, cols, hb);
     for_row_chunks(n, [&](lint, lint i0, lint i1) {
-        for (lint i = i0; i < i1; ++i) {
-            double acc = 0.0;
-            for (lint jj = 0; jj < kk; ++jj) {
-                const lint col = K[jj];
-                const double x = (M.intercept && col == 0) ? 1.0
-                                                           : rd(M.X + i * M.xrs + (col - (M.intercept ? 1 : 0)) * M.xcs);
-                acc += x * h[jj];
-            }
-            eta[i] = acc + M.o[i];
-        }
+        dot2::plain_rows(cols.data(), hb.data(), kk, i1 - i0, [&](lint t) { return i0 + t; }, eta + i0);
+        for (lint i = i0; i < i1; ++i) eta[i] += M.o[i];
     });
     return true;
 }
@@ -610,8 +656,12 @@ IrlsOut irls(const Model& M, Work& W, int max_lean, double tol, int inner_steps,
         if (!W.have_kept) std::fill(W.kept, W.kept + k, std::uint8_t(1));  // every column until a QR drops one
         // before the deviance's convergence: the normal equations over the columns the last QR
         // kept (G40), the QR when they cannot (failure, ill-conditioning, G21's rule)
-        const bool by_chol = !conv && !polish_newton && inner_chol && double(M.n) * double(M.k) >= kCholMinWork &&
-                             solve_chol(M, W.z, W.w, W.kept, W.beta_new, W.kept_new, W.nxt.eta);
+        // past it, a canonical link's polishing iterations too when the normal equations are
+        // accurate enough (G80); the QR otherwise
+        const bool by_chol = (!conv || canonical(M)) && !polish_newton && inner_chol &&
+                             double(M.n) * double(M.k) >= kCholMinWork &&
+                             solve_chol(M, W.z, W.w, W.kept, W.beta_new, W.kept_new, W.nxt.eta,
+                                        conv ? kCholPolishMaxErr : kCholMaxErr, conv ? W.beta : nullptr, W.rho);
         if (!by_chol) {
             // the polishing iterations refine as the final solve does: their iterate's error is
             // what the final step starts from
@@ -750,13 +800,13 @@ bool start(const Model& M, State& s, double* part) {
     double ybar = 0.0;
     bool any_nonpos = false;
     if (M.fam == fGaussian && M.link == lLog) {
-        DD sy{0, 0}, sw{0, 0};
+        const auto t = dd_sums<2>(n, [&](lint i0, lint i1, std::array<DD, 2>& a) {
+            for (lint i = i0; i < i1; ++i)
+                if (M.pw[i] > 0.0) a[0] = a[0] + DD{M.pw[i] * M.y[i], 0.0}, a[1] = a[1] + DD{M.pw[i], 0.0};
+        });
         for (lint i = 0; i < n; ++i)
-            if (M.pw[i] > 0.0) {
-                sy = sy + DD{M.pw[i] * M.y[i], 0.0};
-                sw = sw + DD{M.pw[i], 0.0};
-                if (!(M.y[i] > 0.0)) any_nonpos = true;
-            }
+            if (M.pw[i] > 0.0 && !(M.y[i] > 0.0)) any_nonpos = true;
+        const DD sy = t[0], sw = t[1];
         ybar = sw.hi > 0 ? sy.hi / sw.hi : kNaN;
         if (any_nonpos && !(ybar > 0.0)) return false;
     }
@@ -963,8 +1013,11 @@ int glm_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64_t ys
         has_offset = has_offset || off[i] != 0.0;
         m[i] = v[i] * tr[i];
         pw[i] = f[i] * m[i];
-        if (pw[i] > 0.0) nobs = nobs + DD{f[i], 0.0};
     }
+    nobs = dd_sums<1>(n, [&](lint i0, lint i1, std::array<DD, 1>& a) {
+        for (lint i = i0; i < i1; ++i)
+            if (pw[i] > 0.0) a[0] = a[0] + DD{f[i], 0.0};
+    })[0];
     Model M{op.fam, op.link, n, p, k, op.intercept, op.rtol, y, v, f, tr, m, pw, off, Xb, xrs, xcs};
 
     // ---- 2. IRLS
@@ -1003,6 +1056,7 @@ int glm_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64_t ys
         Problem pb{n, p, k, op.intercept, true, false, gb != nullptr, op.rtol, op.cov, 3, op.maxlags, op.gtot, false};
         pb.steps = op.final_steps;
         pb.glm = true;
+        pb.checked = true;  // X was scanned above; z and w are finite (w >= 0) by construction
         Data d{reinterpret_cast<const std::byte*>(W.z), 8, Xb, xrs, xcs, reinterpret_cast<const std::byte*>(W.w), 8,
                nullptr, 0, gb, gs};
         d.smult = smult.empty() ? nullptr : smult.data();
@@ -1257,17 +1311,25 @@ int glm_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64_t ys
         bool const_mu = false;
         double mc = kNaN, mcc = kNaN;
         bool okn = true;
+        // sums over fixed chunks of rows (double-double), added in order (§3.4)
+        const lint ncn = row_chunks(n);
         if (op.intercept && !has_offset) {
+            std::vector<DD> pa(static_cast<std::size_t>(3 * ncn), DD{0.0, 0.0});
+            for_row_chunks(n, [&](lint c, lint i0, lint i1) {
+                DD a{0, 0}, b{0, 0}, w{0, 0};
+                for (lint i = i0; i < i1; ++i)
+                    if (pw[i] > 0.0) {
+                        double h, l;
+                        two_prod(pw[i], y[i], h, l);
+                        a = a + DD{h, l};
+                        two_prod(pw[i], 1.0 - y[i], h, l);
+                        b = b + DD{h, l};
+                        w = w + DD{pw[i], 0.0};
+                    }
+                pa[3 * c] = a, pa[3 * c + 1] = b, pa[3 * c + 2] = w;
+            });
             DD sy{0, 0}, sy1{0, 0}, sw{0, 0};
-            for (lint i = 0; i < n; ++i)
-                if (pw[i] > 0.0) {
-                    double h, l;
-                    two_prod(pw[i], y[i], h, l);
-                    sy = sy + DD{h, l};
-                    two_prod(pw[i], 1.0 - y[i], h, l);
-                    sy1 = sy1 + DD{h, l};
-                    sw = sw + DD{pw[i], 0.0};
-                }
+            for (lint c = 0; c < ncn; ++c) sy = sy + pa[3 * c], sy1 = sy1 + pa[3 * c + 1], sw = sw + pa[3 * c + 2];
             mc = special::dd::operator/(sy, sw).hi;
             mcc = special::dd::operator/(sy1, sw).hi;
             const_mu = true;
@@ -1288,16 +1350,22 @@ int glm_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64_t ys
             link_eval(M, e0.data(), mun.data(), mucn.data(), d0.data(), 0, n);
         }
         if (okn) {
-            DD dn{0, 0}, sn{0, 0};
-            for (lint i = 0; i < n; ++i) {
-                if (!(pw[i] > 0.0)) continue;
-                const double mu = const_mu ? mc : mun[i], muc = const_mu ? mcc : mucn[i];
-                dn = dn + DD{pw[i] * unit_dev(op.fam, y[i], mu, muc), 0.0};
-                if (gid) {
-                    const double d = y[i] - mu;
-                    sn = sn + DD{pw[i] * d * d, 0.0};
+            std::vector<DD> pd(static_cast<std::size_t>(2 * ncn), DD{0.0, 0.0});
+            for_row_chunks(n, [&](lint c, lint i0, lint i1) {
+                DD a{0, 0}, b{0, 0};
+                for (lint i = i0; i < i1; ++i) {
+                    if (!(pw[i] > 0.0)) continue;
+                    const double mu = const_mu ? mc : mun[i], muc = const_mu ? mcc : mucn[i];
+                    a = a + DD{pw[i] * unit_dev(op.fam, y[i], mu, muc), 0.0};
+                    if (gid) {
+                        const double d = y[i] - mu;
+                        b = b + DD{pw[i] * d * d, 0.0};
+                    }
                 }
-            }
+                pd[2 * c] = a, pd[2 * c + 1] = b;
+            });
+            DD dn{0, 0}, sn{0, 0};
+            for (lint c = 0; c < ncn; ++c) dn = dn + pd[2 * c], sn = sn + pd[2 * c + 1];
             Dnull = dn.hi;
             if (gid) llnull = llf_at(nullptr, nullptr, 0, 0, nullptr, true, sn.hi);
             else llnull = const_mu ? llf_at(nullptr, nullptr, mc, mcc, nullptr, false, 0)

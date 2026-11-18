@@ -4,6 +4,8 @@
 
 #include "frame/parallel.hpp"
 
+#include "array/kernels/elementwise.hpp"
+
 #include <nanobind/nanobind.h>
 
 #include <algorithm>
@@ -187,6 +189,42 @@ double float_mod(double a, double b) {
     return mod;
 }
 
+// float64 ** (int64 is converted first): the array area's kernel (sd::pow_float_run: libm's
+// pow, with the exact forms of the exponents 2, 0, 1, -1 and 0.5), so a Series and an array
+// give the same bits (docs/api/frame.md §3.2). A scalar side is a stride-0 operand, as in the
+// array.
+template <class A, class B>
+Column float_pow(const Column& a, const Column& b, int scalar_side) {
+    const std::int64_t n = scalar_side == 1 ? b.length : a.length;
+    Column out = make_fixed(DType::Float64, n);
+    out.validity = and_validity(a, b, scalar_side, n);
+    double* o = reinterpret_cast<double*>(out.values->data());
+    const A* pa = a.data<A>();
+    const B* pb = b.data<B>();
+    for_chunks(n, [&](std::int64_t lo, std::int64_t hi) {
+        const std::int64_t len = hi - lo;
+        std::vector<double> ta, tb;
+        auto operand = [&](const auto* p, bool scalar, std::vector<double>& t, std::int64_t& stride) {
+            using T = std::remove_cv_t<std::remove_pointer_t<decltype(p)>>;
+            stride = scalar ? 0 : static_cast<std::int64_t>(sizeof(double));
+            if constexpr (std::is_same_v<T, double>) {
+                if (scalar) return reinterpret_cast<const std::byte*>(p);
+                return reinterpret_cast<const std::byte*>(p + lo);
+            } else {
+                t.resize(scalar ? 1 : static_cast<std::size_t>(len));
+                for (std::size_t i = 0; i < t.size(); ++i) t[i] = static_cast<double>(p[scalar ? 0 : lo + i]);
+                return reinterpret_cast<const std::byte*>(t.data());
+            }
+        };
+        std::int64_t sa, sb;
+        const std::byte* xa = operand(pa, scalar_side == 1, ta, sa);
+        const std::byte* xb = operand(pb, scalar_side == 2, tb, sb);
+        sd::pow_float_run(xa, sa, xb, sb, reinterpret_cast<std::byte*>(o + lo), sizeof(double), len);
+    });
+    finish_fixed(out);
+    return out;
+}
+
 template <class A, class B>
 Column float_arith(Op op, const Column& a, const Column& b, int side) {
     auto run = [&](auto f) { return map2<double, A, B>(a, b, side, DType::Float64, f); };
@@ -198,7 +236,7 @@ Column float_arith(Op op, const Column& a, const Column& b, int side) {
     case Op::TrueDiv: return run([&](auto x, auto y) { return d(x) / d(y); });
     case Op::FloorDiv: return run([&](auto x, auto y) { return float_floordiv(d(x), d(y)); });
     case Op::Mod: return run([&](auto x, auto y) { return float_mod(d(x), d(y)); });
-    case Op::Pow: return run([&](auto x, auto y) { return std::pow(d(x), d(y)); });
+    case Op::Pow: return float_pow<A, B>(a, b, side);
     default: break;
     }
     throw nb::value_error("not an arithmetic operator");

@@ -317,7 +317,7 @@ DataFrame.to_array(*, dtype=None, copy=None, na_value=<없음>)
     - 단항 `+`는 bool, int64, float64를 받는다. bool은 `-`, `abs`처럼 int64가 된다 (배열의 `positive`와 같다). string은 `TypeError`다.
 - `//`와 `%`는 floor 규칙을 따른다 (Python, numpy와 같다). `%`의 결과는 나누는 수의 부호를 따른다.
 - int 규칙은 §1.5에 있다: wrap, `// 0`과 `% 0`은 NA, `** 음수`는 NA
-- float는 IEEE 754를 따른다.
+- float는 IEEE 754를 따른다. `**`는 배열의 `pow`와 같은 커널이라 비트까지 같다(libm `pow`와 지수 2, 0, 1, −1, 0.5의 정확한 꼴, array.md §6).
 - **NA가 들어가면 결과는 NA다.** 예외가 없다. **[pandas와 다름]**
   - pandas는 `NA ** 0`과 `1 ** NA`를 1로 만든다.
 

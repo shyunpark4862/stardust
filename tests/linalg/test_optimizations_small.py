@@ -4,6 +4,7 @@ near n = 32, and large C-order inputs transposed on the pool
 (docs/design/linalg.md §8.4, §7.5, §5.6). Every result is the same for any
 thread count."""
 
+import hashlib
 import numpy as np
 import pytest
 import stardust as sd
@@ -29,12 +30,16 @@ def bits(r):
 
 
 def same_for_all_counts(call):
-    res = []
+    # the first count's result (returned) and its digests; later results are compared by digest
+    first = digests = None
     for n in COUNTS:
         sd.set_num_threads(n)
-        res.append(bits(call()))
-    assert all(r == res[0] for r in res[1:])
-    return res[0]
+        b = bits(call())
+        d = [hashlib.sha256(v).digest() for v in b]
+        if first is None:
+            first, digests = b, d
+        assert d == digests
+    return first
 
 
 @pytest.mark.parametrize("dtype", ["float64", "complex128"])

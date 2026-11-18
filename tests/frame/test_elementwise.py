@@ -61,6 +61,19 @@ def numpy_oracle(op, x, y, dtx, dty):
         return NA
     if ints and op == "**" and y < 0:
         return NA
+    if op == "**" and not ints and float(y) in (2.0, -1.0, 0.5):
+        # the exact forms of these exponents (docs/api/array.md): x*x, 1/x and sqrt with C99
+        # pow's special values; numpy's one-element array exponent goes through libm pow,
+        # which is not correctly rounded in about 0.1% of these cases
+        xf, e = float(x), float(y)
+        with np.errstate(all="ignore"):
+            if e == 2.0:
+                return (np.float64(xf) * np.float64(xf)).item()
+            if e == -1.0:
+                return (np.float64(1.0) / np.float64(xf)).item()
+        if xf == 0.0 or xf == -math.inf:
+            return abs(xf)
+        return math.sqrt(xf) if xf >= 0 or math.isnan(xf) else math.nan
     with np.errstate(all="ignore"):
         r = NP_ARITH[op](np.array([x], dtype=dtx), np.array([y], dtype=dty))[0]
     return r.item()
@@ -85,6 +98,28 @@ def test_arithmetic_matches_numpy(data):
     if n and ys[0] is not None:
         assert_values(ARITH[op](a, ys[0]), [numpy_oracle(op, x, ys[0], dtx, dty) for x in xs])
         assert_values(ARITH[op](ys[0], a), [numpy_oracle(op, ys[0], x, dty, dtx) for x in xs])
+
+
+def test_power_is_the_array_kernel():
+    # frame ** and array ** are one kernel (libm's pow with the exact forms of the exponents
+    # 2, 0, 1, -1 and 0.5): the same bits for scalar and Series exponents, int and float
+    # operands; NA rows stay NA
+    rng = np.random.default_rng(5)
+    x = np.exp(rng.uniform(-700, 700, 2000)) * rng.choice([1.0, -1.0], 2000)
+    x[:9] = [0.0, -0.0, math.inf, -math.inf, math.nan, 5e-324, 1e-310, 1.0, -1.0]
+    e = rng.uniform(-20, 20, 2000)
+    e[::5] = rng.choice([2.0, 0.0, -0.0, 1.0, -1.0, 0.5], 400)
+    xs, es = sd.asarray(x), sd.asarray(e)
+    s, t = sd.frame.Series(x), sd.frame.Series(e)
+    assert np.asarray((s ** t).to_array()).tobytes() == np.asarray(xs ** es).tobytes()
+    for b in (2.0, 0.0, 1.0, -1.0, 0.5, 3.0, -2.5, 0.25, math.nan, math.inf):
+        assert np.asarray((s ** b).to_array()).tobytes() == np.asarray(xs ** b).tobytes()
+        assert np.asarray((b ** s).to_array()).tobytes() == np.asarray(b ** xs).tobytes()
+    i = rng.integers(-5, 6, 2000)
+    assert np.asarray((sd.frame.Series(i) ** t).to_array()).tobytes() == np.asarray(sd.asarray(i.astype(float)) ** es).tobytes()
+    assert np.asarray((s ** sd.frame.Series(i)).to_array()).tobytes() == np.asarray(xs ** sd.asarray(i.astype(float))).tobytes()
+    na = sd.frame.Series([2.0, None, 3.0]) ** sd.frame.Series([0.5, 2.0, None])
+    assert na.tolist()[1:] == [NA, NA] and na.tolist()[0] == math.sqrt(2.0)
 
 
 def test_result_dtypes():

@@ -25,6 +25,7 @@
 // or on whether the regression runs alone or inside a batch.
 #include "regression/linear.hpp"
 #include "regression/lsq.hpp"
+#include "regression/dot2.hpp"
 
 #include "bind/errors.hpp"
 #include "linalg/ops/common.hpp"
@@ -269,14 +270,15 @@ int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
     const lint n = pb.n, k = pb.k;
     // ---- 1. checks, used rows, whitening factors
     bool nan = false;
-    for (lint i = 0; i < n && !pb.lean; ++i) {
+    const bool scan = !pb.lean && !pb.checked;
+    for (lint i = 0; i < n && scan; ++i) {
         const double v = rd(d.y + i * d.ys);
         if (std::isnan(v)) nan = true;
         else if (std::isinf(v)) return kInfY;
     }
-    if (!pb.lean)
+    if (scan)
         if (const int f = scan_x(d, n, pb.p, nan)) return f;
-    if (pb.has_w && !pb.lean)
+    if (pb.has_w && scan)
         for (lint i = 0; i < n; ++i) {
             const double v = rd(d.w + i * d.ws);
             if (std::isnan(v)) nan = true;
@@ -370,7 +372,12 @@ int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
     double tol = pb.rtol >= 0 ? pb.rtol : static_cast<double>(std::max(m, k)) * kEps;
     if (m > 0 && k > 0) {
         pack(A, K, k);
-        for (lint c = 0; c < k; ++c) nrm[c] = cblas_dnrm2(m, A + c * m, 1);
+        // one dnrm2 call per column (on the pool when large): the same bits for any thread count
+        if (k >= 2 && double(m) * k >= double(1 << 20)) {
+            parallel::parallel_for(k, [&](std::int64_t c) { nrm[c] = cblas_dnrm2(m, A + c * m, 1); });
+        } else {
+            for (lint c = 0; c < k; ++c) nrm[c] = cblas_dnrm2(m, A + c * m, 1);
+        }
         linalg::lapack::geqrf(m, k, A, m, tau, sc);
         bool dropped = false;
         int restarts = 0;
@@ -498,8 +505,17 @@ int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
 
     // ---- 3. solve and refine
     auto colK = [&](lint jj) { return col(K[jj]); };
+    std::vector<dot2::ColRef> CK(static_cast<std::size_t>(std::max<lint>(kk, 1)));
+    for (lint jj = 0; jj < kk; ++jj) CK[jj] = {colK(jj).base, colK(jj).stride};
+    // a row-major X: the row passes go along rows (NEON lanes over rows for x beta), else
+    // along the columns (each a contiguous run); the same bits either way
+    const bool rowwise = std::llabs(d.xcs) < std::llabs(d.xrs);
     // x beta for rows [t0, t1) into (P, S) (Dot2)
     auto xbeta = [&](lint t0, lint t1, const double* b) {
+        if (rowwise) {
+            dot2::dot2_rows(CK.data(), b, kk, t1 - t0, [&](lint t) { return idx[t0 + t]; }, P + t0, S + t0);
+            return;
+        }
         for (lint t = t0; t < t1; ++t) P[t] = S[t] = 0.0;
         for (lint jj = 0; jj < kk; ++jj) {
             const Col c = colK(jj);
@@ -541,36 +557,17 @@ int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
                 AH[t] = a.hi;
                 AL[t] = a.lo;
             }
-            for (lint jj = 0; jj < kk; ++jj) {
-                const Col c = colK(jj);
-                double hi = 0, lo = 0;
-                for (lint t = t0; t < t1; ++t) {
-                    const double x = rd(c.base + idx[t] * c.stride);
-                    double hp, ep, q;
-                    two_prod(AH[t], x, hp, ep);
-                    two_sum(hi, hp, hi, q);
-                    lo += q + ep + AL[t] * x;
-                }
-                gp[2 * jj] = hi;
-                gp[2 * jj + 1] = lo;
-            }
+            // each column's sum over the rows in order (NEON lanes over columns)
+            dot2::dot2_cols(CK.data(), kk, t1 - t0, [&](lint t) { return idx[t0 + t]; },
+                            [&](lint t, double& ah, double& al) { ah = AH[t0 + t], al = AL[t0 + t]; }, gp);
             return;
         }
-        for (lint jj = 0; jj < kk; ++jj) {
-            const Col c = colK(jj);
-            double hi = 0, lo = 0;
-            for (lint t = t0; t < t1; ++t) {
-                double ah = r[t], al = 0.0;
-                if (pb.has_w) two_prod(weight(idx[t]), r[t], ah, al);
-                const double x = rd(c.base + idx[t] * c.stride);
-                double hp, ep, q;
-                two_prod(ah, x, hp, ep);
-                two_sum(hi, hp, hi, q);
-                lo += q + ep + al * x;
-            }
-            gp[2 * jj] = hi;
-            gp[2 * jj + 1] = lo;
-        }
+        dot2::dot2_cols(CK.data(), kk, t1 - t0, [&](lint t) { return idx[t0 + t]; },
+                        [&](lint t, double& ah, double& al) {
+                            ah = r[t0 + t], al = 0.0;
+                            if (pb.has_w) two_prod(weight(idx[t0 + t]), r[t0 + t], ah, al);
+                        },
+                        gp);
     };
     auto gcombine = [&]() {
         for (lint jj = 0; jj < kk; ++jj) {

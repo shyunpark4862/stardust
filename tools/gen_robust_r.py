@@ -12,9 +12,10 @@ What it stores, per problem (the inputs too):
   - robustbase::lmrob (0.99.7) at lmrob.control()'s defaults: coefficients, scale, the
     standard errors of vcov() (.vcov.avar1), the S start (a problem with n = 5000 takes its
     large-n fast-S).
-  - From sd's own S start (rlm(method='MM', rng=default_rng(seed)); its params and scale are
-    stored): robustbase's M step lmrob..M..fit at rel.tol = 1e-15 and .vcov.avar1, so the
-    final step is compared without the subsamples' randomness.
+  - From the S start of sd's subsamples (rlm(method='MM', rng=default_rng(seed))), taken to
+    its certified fixed point by tools/regref.py's s_estimate and rounded (its params and
+    scale are stored): robustbase's M step lmrob..M..fit at rel.tol = 1e-15 and .vcov.avar1,
+    so the final step is compared without the subsamples' randomness.
 """
 
 import json
@@ -30,6 +31,9 @@ sys.path.insert(0, str(ROOT / "tests" / "regression"))
 OUT = ROOT / "tests" / "regression" / "ref" / "robust_r.json"
 
 from refdata_robust import STACKLOSS_X, STACKLOSS_Y  # noqa: E402
+
+sys.path.insert(0, str(ROOT / "tools"))
+import regref  # noqa: E402
 
 R_SCRIPT = r'''
 suppressMessages({library(MASS); library(robustbase)})
@@ -89,11 +93,13 @@ def run(prob):
     import stardust as sd
 
     r = sd.regression.rlm(prob["y"], prob["X"], method="MM", rng=sd.random.default_rng(prob["seed"]))
-    bS = [float(v) for v in r._raw[8].tolist()]
+    S = regref.s_estimate(prob["y"], prob["X"], beta0=[float(v) for v in r._raw[8].tolist()], scale0=float(r.scale))
+    bS = [float(h) for h, _ in S["params"]]
+    sS = float(S["scale"][0])
     with tempfile.TemporaryDirectory() as d:
         d = pathlib.Path(d)
         np.savetxt(d / "data.csv", np.column_stack([prob["y"], prob["X"]]), delimiter=",", fmt="%.17g")
-        np.savetxt(d / "start.txt", np.array(bS + [float(r.scale)]), fmt="%.17g")
+        np.savetxt(d / "start.txt", np.array(bS + [sS]), fmt="%.17g")
         (d / "run.R").write_text(R_SCRIPT)
         res = subprocess.run(["Rscript", str(d / "run.R"), str(d / "data.csv"), str(d / "start.txt")],
                              capture_output=True, text=True, check=True)
@@ -102,7 +108,7 @@ def run(prob):
         parts = line.split()
         if parts:
             vals[parts[0]] = [float(v) for v in parts[1:]]
-    return dict(prob, S_params=bS, S_scale=float(r.scale), R=vals)
+    return dict(prob, S_params=bS, S_scale=sS, R=vals)
 
 
 def main():

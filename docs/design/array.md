@@ -76,7 +76,7 @@
 ### 1.5 층 사이의 의존
 - 배열 영역의 C++은 `csrc/base/`(Buffer, dtype, pairwise 합), `csrc/parallel/`(스레드풀), `csrc/accelerate/`(BLAS, vForce 래퍼), `csrc/array/`(ndarray, 이터레이터, 커널, 연산, 병렬화 기준값), `csrc/bind/`(nanobind)로 나뉜다.
 - **아래 층은 위 층을 모른다.** `base/`, `parallel/`, `accelerate/`는 `array/`를 include하지 않는다.
-  - NEON 커널(`array/kernels/neon.hpp`)과 "어느 연산이 vForce로 가는가"의 표(`array/kernels/vforce.hpp`)는 배열의 연산 정의(`ops::Maximum`, `ops::Exp` …)에 묶여 있어서 배열 영역에 둔다. `accelerate/vforce.hpp`에는 연산과 무관한 부분(함수 타입, `vvpow`/`vvatan2`의 인자 순서를 맞추는 래퍼, strided 실행기)만 있다.
+  - NEON 커널(`array/kernels/neon.hpp`)과 "어느 연산이 vForce로 가는가"의 표(`array/kernels/vforce.hpp`)는 배열의 연산 정의(`ops::Maximum`, `ops::Exp` …)에 묶여 있어서 배열 영역에 둔다. `accelerate/vforce.hpp`에는 연산과 무관한 부분(함수 타입, `vvatan2`의 인자 순서를 맞추는 래퍼, strided 실행기)만 있다.
 
 ---
 
@@ -325,7 +325,9 @@ numpy `nditer`의 축소판이다. N차원 문제를 되도록 적고, 길고, �
 
 ### 5.4 vForce (`array/kernels/vforce.hpp`, `accelerate/vforce.hpp`)
 float64 초월함수는 함수마다 구현을 나눈다.
-- **vForce를 쓰는 16개**: `exp` `log` `log2` `log10` `sin` `asin` `acos` `atan` `sinh` `cosh` `tanh` `asinh` `acosh` `atanh`, 이항 `pow` `atan2`
+- **vForce를 쓰는 15개**: `exp` `log` `log2` `log10` `sin` `asin` `acos` `atan` `sinh` `cosh` `tanh` `asinh` `acosh` `atanh`, 이항 `atan2`
+- **`pow`는 libm**(원소마다 `std::pow`; numpy와 같은 함수라 비트가 같다). vForce의 `vvpow`를 쓰다가 바꿨다(사용자 결정 2026-11-19): Arb로 구한 올바른 반올림 값과 비교하면(무작위 400만 쌍: x는 [1e-300, 1e300]에서 로그 균등, e는 [−50, 50]의 균등·정수·정수 근처, |e·log x|가 넘침과 서브노멀 경계 근처) libm은 최대 0.75 ULP에 올바르게 반올림되지 않는 원소가 0.014–1.2%, `vvpow`는 최대 1.35 ULP에 2.6–26%였다. 대신 느리다(10⁶개 `x ** 2.5` 1스레드 4.0 → 5.0 ms, 10스레드 0.45 → 0.55 ms; numpy 4.7 ms).
+  - 지수가 2, 0, 1, −1, 0.5인 원소는 정확한 꼴이다(`ops::pow_exact`): `x * x`, 1, `x`, `1 / x`, `sqrt(x)`. numpy도 스칼라 지수일 때 같은 다섯을 바꾼다. 모두 올바르게 반올림되고, 특수값은 C99 `pow`다: 0(−0 포함)은 NaN에도 1, `1 / x`는 ±0, ±inf, NaN에서 `pow`와 같고, 0.5만 `sqrt`와 두 곳이 달라 고친다(`pow(−0, 0.5) = +0`, `pow(−inf, 0.5) = +inf`; numpy의 스칼라 0.5는 `sqrt`의 −0과 NaN이다). libm `pow`는 이 지수에서도 올바르게 반올림되지 않는 원소가 있다(2, −1, 0.5에서 약 0.1%가 1 ULP). 지수가 브로드캐스트한 스칼라이면 그 꼴의 루프로 가고, 그 밖에는 원소마다 같은 판정(`Pow::f`)이라 지수의 stride와 상관없이 같은 비트다. frame의 `**`도 이 커널을 부른다.
 - **libm을 쓰는 넷**: `expm1` `log1p` `cos` `tan`. vForce가 IEEE / C99 Annex F 의미론을 어긴다: `cos(±0) ≠ 1`, `expm1`/`log1p`/`tan`이 `-0`의 부호를 잃음, `expm1`이 서브노멀 입력을 0으로 만듦.
 - **vForce를 써도 되는 근거** (독립 실험으로 확인)
 
@@ -334,7 +336,7 @@ float64 초월함수는 함수마다 구현을 나눈다.
   | 위치 독립성 (인덱스, 배열 길이, 정렬) | 약 24만 회 검사에서 불일치 0. 그래서 `exp(x)[i] == exp(x[i])`이고, 스레드 청크가 결과를 바꾸지 않는다 |
   | 스레드 안전성 | 14개 스레드 동시 호출에서 불일치 0 |
   | 내부 스레드 | 쓰지 않는다 (CPU 시간 / 경과 시간 = 1.00). 우리 풀과 충돌하지 않는다 |
-  | 특수값 (±0, ±inf, NaN) | 16개 함수는 부호까지 정확하다 |
+  | 특수값 (±0, ±inf, NaN) | 16개 함수(그때는 `pow` 포함)는 부호까지 정확하다 |
   | 정확도 (libm 대비) | 최대 1~6 ULP. numpy 대비 측정 최대 4 ULP (`atanh`) |
 
 - **속도** (1스레드, libm 대비): 대부분 2~10배. `sin` 7.6배, `atan2` 10배, `exp` 4.2배.

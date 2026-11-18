@@ -982,6 +982,103 @@ def rlm(y, X, *, beta0, norm, c, scale_est="mad", intercept=True, scale=None, in
     raise ar.NotSettled("rlm")
 
 
+def _s_fit(y, X, intercept, beta0, s0):
+    n = len(y)
+    A = [([arb(1)] if intercept else []) + [arb(v) for v in r] for r in X]
+    k = len(A[0])
+    Y = [arb(v) for v in y]
+    c = arb(_S_CHI)
+    T = (n - k) * arb(_S_B)
+
+    def resid(beta):
+        return [Y[i] - sum((A[i][a] * beta[a] for a in range(k)), arb(0)) for i in range(n)]
+
+    r0 = [float(v.mid()) for v in resid([arb(v) for v in beta0])]
+    inside = [abs(r0[i] / s0) < _S_CHI for i in range(n)]  # each row's piece, from the double solution
+
+    def G(beta, s):
+        # (sum psi(z_i) x_i, sum rho~(z_i) - T) and its Jacobian in (beta, s), z = r / s,
+        # psi(z) = z t^2 (proportional to rho~'), rho~(z) = 1 - t^3, t = 1 - (z/c)^2 inside |z| < c
+        r = resid(beta)
+        F = [arb(0)] * (k + 1)
+        J = [[arb(0)] * (k + 1) for _ in range(k + 1)]
+        F[k] = -T
+        for i in range(n):
+            if not inside[i]:
+                F[k] += 1
+                continue
+            z = r[i] / s
+            v = z / c
+            t = 1 - v * v
+            ps, dps = z * t * t, t * (t - 4 * v * v)
+            rh, drh = 1 - t * t * t, 6 * z * t * t / (c * c)
+            dz = [-A[i][b] / s for b in range(k)] + [-z / s]
+            for a in range(k):
+                F[a] += ps * A[i][a]
+                for b in range(k + 1):
+                    J[a][b] += dps * A[i][a] * dz[b]
+            F[k] += rh
+            for b in range(k + 1):
+                J[k][b] += drh * dz[b]
+        return F, J, r
+
+    u = [arb(v) for v in beta0] + [arb(s0)]
+    for _ in range(100):
+        F, J, _ = G(u[:k], u[k])
+        Jm = arb_mat([[J[a][b].mid() for b in range(k + 1)] for a in range(k + 1)])
+        step = Jm.solve(arb_mat([[x.mid()] for x in F]))
+        u = [(u[a] - step[a, 0]).mid() for a in range(k + 1)]
+        if all(abs(step[a, 0].mid()) <= (abs(u[a]) + arb(2) ** -60) * arb(2) ** (-ctx.prec + 12) for a in range(k + 1)):
+            break
+    F, J, _ = G(u[:k], u[k])
+    Ym = arb_mat([[J[a][b].mid() for b in range(k + 1)] for a in range(k + 1)]).inv()
+    Ym = arb_mat([[Ym[a, b].mid() for b in range(k + 1)] for a in range(k + 1)])
+    umax = max((abs(x.mid()) for x in u), key=lambda x: float(x)) + arb(2) ** -60
+    rr = umax * arb(2) ** (-(ctx.prec // 2))
+    box = [arb(u[a].mid(), rr.upper()) for a in range(k + 1)]
+    _, JX, rX = G(box[:k], box[k])
+    # every row on its piece over the whole box
+    for i in range(n):
+        z = rX[i] / box[k]
+        if inside[i] and not bool(abs(z) < c):
+            raise ar.NotSettled("S piece")
+        if not inside[i] and not bool(abs(z) > c):
+            raise ar.NotSettled("S piece")
+    YJ = Ym * arb_mat(JX)
+    YF = Ym * arb_mat([[x] for x in F])
+    K = []
+    for a in range(k + 1):
+        v = u[a] - YF[a, 0]
+        for b in range(k + 1):
+            v += ((1 if a == b else 0) - YJ[a, b]) * (box[b] - u[b])
+        if not (abs(v - u[a]).upper() < rr.lower()):
+            raise ar.NotSettled("Krawczyk")
+        K.append(v)
+    return {"params": K[:k], "scale": K[k]}
+
+
+def s_estimate(y, X, *, beta0, scale0, intercept=True):
+    """The certified S estimate (robustbase's lmrob S step, sd.regression's MM start, G53, G82)
+    near the double solution (beta0, scale0): the fixed point of the S iteration, i.e. the
+    root of sum psi(r_i/s) x_i = 0 together with the M-scale equation sum rho~(r_i/s) =
+    (n - k)/2 (rho~ the normalized bisquare with c = 1.54764, psi proportional to rho~'),
+    solved by Newton in (beta, s) on the pieces (|z| < c or not) of the double solution and
+    certified by Krawczyk's test on a box on which those pieces are certain. Only the local
+    root: which local minimum the subsampling reached is the double solution's. Returns
+    params and scale as (hi, lo)."""
+    p = 256
+    while p <= 2048:
+        with ar.precision(p):
+            try:
+                vals = _s_fit(y, X, intercept, beta0, scale0)
+            except (ar.NotSettled, ZeroDivisionError):
+                vals = None
+            if vals is not None and _all_settled(vals):
+                return {kk: ([ar.to_dd(x) for x in v] if isinstance(v, list) else ar.to_dd(v)) for kk, v in vals.items()}
+        p *= 2
+    raise ar.NotSettled("s_estimate")
+
+
 # ---- quantile regression (G60-G63): the exact vertex of a basis and its certificate
 
 def _q(v):

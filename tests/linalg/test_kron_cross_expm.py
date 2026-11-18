@@ -1,5 +1,6 @@
 """kron, cross, expm (docs/api/linalg.md §2, §7; docs/design/linalg.md §10.8, §11)."""
 
+import hashlib
 import math
 import os
 import warnings
@@ -269,18 +270,23 @@ def test_same_bits_for_any_thread_count():
     rng = np.random.default_rng(5)
     default = sd.get_num_threads()
     calls = [
-        lambda a: sd.linalg.expm(a),
-        lambda a: sd.linalg.kron(a, a),
-        lambda a: sd.linalg.cross(a[..., 0, :3], a[..., 1, :3]),
+        lambda a, a32: sd.linalg.expm(a),
+        # the n = 110 batch's kron on its leading 32 x 32 blocks (contiguous): the full one is
+        # 6 x 12,100^2 doubles (7 GB) per result; a batch of six splits all the same
+        lambda a, a32: sd.linalg.kron(a32, a32),
+        lambda a, a32: sd.linalg.cross(a[..., 0, :3], a[..., 1, :3]),
     ]
     try:
         for batch, n in (((400,), 3), ((48,), 16), ((6,), 110)):
-            a = as_sd(rng.standard_normal((*batch, n, n)) * 2)
+            an = rng.standard_normal((*batch, n, n)) * 2
+            a = as_sd(an)
+            a32 = as_sd(np.ascontiguousarray(an[..., :32, :32])) if n > 32 else a
             for call in calls:
-                results = []
+                first = None  # a digest per thread count, compared to the first
                 for t in sorted({1, 3, default}):
                     sd.set_num_threads(t)
-                    results.append(np.asarray(call(a)).tobytes())
-                assert all(r == results[0] for r in results[1:])
+                    d = hashlib.sha256(np.ascontiguousarray(np.asarray(call(a, a32))).data).digest()
+                    first = d if first is None else first
+                    assert d == first
     finally:
         sd.set_num_threads(default)

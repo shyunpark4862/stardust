@@ -584,7 +584,9 @@ where(condition, x1, x2, /, *, out=None)
   - `reciprocal`: 정수도 float64로 계산한다(Array API; numpy는 정수 나눗셈). complex는 numpy의 Smith 공식이다.
   - `signbit`: -0.0과 음수 NaN에서도 부호 비트를 본다.
 - **정확도**
-  - float64 입력의 `exp` `log` `log2` `log10` `sin` `asin` `acos` `atan` `atan2` `sinh` `cosh` `tanh` `asinh` `acosh` `atanh` `pow`는 numpy와 몇 ULP까지 다를 수 있다 (8 ULP 이내).
+  - float64 입력의 `exp` `log` `log2` `log10` `sin` `asin` `acos` `atan` `atan2` `sinh` `cosh` `tanh` `asinh` `acosh` `atanh`는 numpy와 몇 ULP까지 다를 수 있다 (8 ULP 이내).
+  - float64의 `pow`는 libm의 `pow`다(numpy와 같은 함수라 비트까지 같다; 잰 오차는 0.75 ULP 이내). 다만 지수가 2, 0, 1, −1, 0.5인 원소는 정확한 꼴이다: `x * x`, `1`, `x`, `1 / x`, `sqrt(x)`. 모두 올바르게 반올림되고 특수값은 C99 `pow`의 것이다(0은 NaN에도 1). 지수가 스칼라든 배열이든 같은 규칙이라 같은 비트이고, frame의 `**`도 같은 커널이다.
+    - numpy와 다른 곳은 둘이다. **[numpy와 다름]** (1) 스칼라 지수 0.5에서 numpy는 `sqrt`를 그대로 써서 `(-0.0) ** 0.5`가 `-0.0`, `(-inf) ** 0.5`가 `nan`이다. 여기는 C99 `pow`처럼 `+0.0`, `+inf`다. (2) numpy는 지수가 배열이면 이 다섯 값에서도 libm `pow`를 불러, 2, −1, 0.5에서 원소의 약 0.1%가 1 ULP 다르다(libm `pow`는 그 자리에서 올바르게 반올림되지 않는다). 여기는 지수의 모양과 상관없이 정확한 꼴이고, numpy의 스칼라 지수와 같다.
   - 특수값(±0, ±inf, NaN)은 부호까지 정확하다.
   - 같은 입력이면 위치, stride, 스레드 수와 상관없이 같은 비트가 나온다. 예: `exp(x)[i] == exp(x[i])`
   - 그 밖의 원소별 함수는 numpy와 비트까지 같다.

@@ -211,6 +211,109 @@ def test_integer_power():
     assert (sd.asarray([3]) ** 40).tolist() == [wrap(3**40)]
 
 
+def _exact_power(x, e):
+    """The exact forms of x ** e for e in 2, 0, 1, -1, 0.5 with C99 pow's special values."""
+    with np.errstate(all="ignore"):
+        if e == 2:
+            return x * x
+        if e == 0:
+            return np.ones_like(x)
+        if e == 1:
+            return x.copy()
+        if e == -1:
+            return 1.0 / x
+        r = np.sqrt(x)
+        r[x == 0] = 0.0          # pow(-0, 0.5) = +0 (sqrt keeps -0)
+        r[x == -math.inf] = math.inf  # pow(-inf, 0.5) = +inf (sqrt gives NaN)
+        return r
+
+
+EXACT_EXPONENTS = [2.0, 0.0, -0.0, 1.0, -1.0, 0.5]
+
+
+@pytest.mark.parametrize("e", EXACT_EXPONENTS)
+def test_float_power_exact_exponents(e):
+    # x ** e for the exponents with an exact form (numpy's fast paths; C99 pow's special
+    # values), whatever the exponent's layout: a scalar (Python float, and int where it is
+    # one), an array of e, a broadcast row of e; out= and in place; strided x. Special
+    # values, subnormals and overflow included.
+    rng = np.random.default_rng(7)
+    x = rng.standard_normal(5000) * 10.0 ** rng.integers(-170, 170, 5000)
+    x[:14] = [math.nan, math.inf, -math.inf, -0.0, 0.0, 5e-324, -5e-324, 1e-160, 1e200, -1e200, 1.5e154, 2.0**-537,
+              -1.0, 1.0]
+    want = _exact_power(x, e).tobytes()
+    if e != 0.5:  # numpy's scalar fast paths agree (its 0.5 keeps sqrt's -0 and NaN)
+        with np.errstate(all="ignore"):
+            assert (x**e).tobytes() == want
+    with np.errstate(all="ignore"):  # C99 pow's special values (numpy's array-exponent pow is libm's)
+        sp = x[:14]
+        assert np.array_equal(_exact_power(sp, e), np.power(sp, np.full(14, e)), equal_nan=True)
+        assert np.signbit(_exact_power(sp, e)).tolist() == np.signbit(np.power(sp, np.full(14, e))).tolist()
+    xs = sd.asarray(x)
+    scalars = [e] + ([int(e)] if e == int(e) and not (e == 0 and math.copysign(1, e) < 0) else [])
+    outs = [xs**v for v in scalars] + [sd.pow(xs, v) for v in scalars]
+    outs += [sd.pow(xs, sd.full(x.shape, e)), sd.pow(xs.reshape((50, 100)), sd.full((1, 100), e)).reshape((5000,))]
+    for got in outs:
+        assert np.asarray(got).tobytes() == want
+    out = sd.empty(x.shape)
+    sd.pow(xs, e, out=out)
+    assert np.asarray(out).tobytes() == want
+    z = sd.asarray(x.copy())
+    z **= e
+    assert np.asarray(z).tobytes() == want
+    assert np.asarray(xs[::3] ** e).tobytes() == _exact_power(x[::3], e).tobytes()
+    # mixed exponents: the elements with this exponent take the exact form, the rest vForce
+    ex = np.where(np.arange(5000) % 2 == 0, e, 3.0)
+    got = np.asarray(sd.pow(xs, sd.asarray(ex)))
+    assert got[::2].tobytes() == _exact_power(x[::2], e).tobytes()
+    assert np.asarray(sd.pow(xs, 3.0))[1::2].tobytes() == got[1::2].tobytes()
+    # a 1-element result goes through the same rule
+    assert np.asarray(sd.pow(xs[3:4], e)).tobytes() == _exact_power(x[3:4], e).tobytes()
+
+
+def _libm_pow():
+    import ctypes
+    import ctypes.util
+
+    f = ctypes.CDLL(ctypes.util.find_library("m") or None).pow
+    f.restype, f.argtypes = ctypes.c_double, [ctypes.c_double, ctypes.c_double]
+    return f
+
+
+def test_float_power_is_libm_pow():
+    # every exponent but the exact forms' (2, 0, 1, -1, 0.5) is libm's pow, element by element,
+    # for a scalar and an array exponent: the same bits as numpy and the frame
+    pw = _libm_pow()
+    rng = np.random.default_rng(11)
+    n = 3000
+    x = np.exp(rng.uniform(-700, 700, n)) * rng.choice([1.0, -1.0], n)
+    e = rng.uniform(-50, 50, n)
+    e[::7] = np.round(e[::7])
+    e[np.isin(e, EXACT_EXPONENTS)] = 3.0
+    special = [0.0, -0.0, math.inf, -math.inf, math.nan, 5e-324, -5e-324, 1e-310, 1.0, -1.0, 0.5, 2.0, 1e308]
+    sx = np.array([a for a in special for _ in special])
+    se = np.array([b for _ in special for b in special + [3.0, -2.5, 1e300, -1e300]][: len(sx)])
+    xs_all = np.concatenate([x, sx])
+    es_all = np.concatenate([e, se])
+    want = np.array([pw(float(a), float(b)) for a, b in zip(xs_all, es_all)])
+    exact = np.isin(es_all, EXACT_EXPONENTS)
+    got = np.asarray(sd.pow(sd.asarray(xs_all), sd.asarray(es_all)))
+    assert got[~exact].tobytes() == want[~exact].tobytes()
+    with np.errstate(all="ignore"):
+        assert got[~exact].tobytes() == np.power(xs_all, es_all)[~exact].tobytes()
+    for b in (3.0, -2.5, 7.25, 1e-3, -37.0, 1e300, math.inf, -math.inf, math.nan):
+        got = np.asarray(sd.asarray(xs_all) ** b)
+        assert got.tobytes() == np.array([pw(float(a), b) for a in xs_all]).tobytes()
+
+
+def test_integer_power_untouched_by_float_fast_paths():
+    assert (sd.asarray([3, -4, 2**32]) ** 2).tolist() == [9, 16, 0]
+    assert (sd.asarray([3, -4]) ** 2).dtype == sd.int64
+    assert (sd.asarray([3, -4, 0]) ** 0).tolist() == [1, 1, 1]
+    assert (sd.asarray([3, -4]) ** 1).tolist() == [3, -4]
+    assert (sd.asarray([1, -1, 2]) ** -1).tolist() == [1, -1, 0]
+
+
 def test_bool_arithmetic_is_int64():
     t = sd.asarray([True, False])
     for got, want in [(t + t, [2, 0]), (t - t, [0, 0]), (t * t, [1, 0]), (-t, [-1, 0]), (+t, [1, 0]),

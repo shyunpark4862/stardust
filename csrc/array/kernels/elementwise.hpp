@@ -162,11 +162,55 @@ inline void int_pow_scalar(const std::int64_t* a, std::int64_t e, std::int64_t* 
     }
 }
 
+// The exponent loop of pow_float_run for one exact kind (a broadcast scalar exponent).
+template <ops::PowKind K>
+inline void pow_exact_run(const std::byte* a, std::int64_t sa, std::byte* o, std::int64_t so, std::int64_t n) {
+    constexpr std::int64_t d = sizeof(double);
+    auto f = [](double u) { return ops::pow_exact(K, u); };
+    if (sa == d && so == d) {
+        const double* x = reinterpret_cast<const double*>(a);
+        double* y = reinterpret_cast<double*>(o);
+        if (static_cast<const void*>(x) == static_cast<const void*>(y)) {  // x **= e
+            in_place_blocks(y, n, f, x);
+        } else {
+            for (std::int64_t i = 0; i < n; ++i) y[i] = f(x[i]);
+        }
+        return;
+    }
+    for (std::int64_t i = 0; i < n; ++i) *reinterpret_cast<double*>(o + i * so) = f(load_as<double>(a + i * sa));
+}
+
+// float64 x ** y: libm's pow (numpy's: the same bits as numpy and the frame; more accurate than
+// vForce's vvpow, docs/design/array.md §5.4) element by element, except the exponents 2, 0, 1,
+// -1 and 0.5, which have exact forms (ops::pow_exact: x * x, 1, x, 1 / x, sqrt with C99 pow's
+// special values; numpy's fast paths). A broadcast scalar exponent of those takes its own
+// loop; otherwise each element is ops::Pow::f, so the bits do not depend on the exponent's
+// stride (array, broadcast or scalar).
+inline void pow_float_run(const std::byte* a, std::int64_t sa, const std::byte* b, std::int64_t sb, std::byte* o,
+                          std::int64_t so, std::int64_t n) {
+    if (sb == 0) {
+        switch (ops::pow_kind(load_as<double>(b))) {
+            case ops::PowKind::kSquare: return pow_exact_run<ops::PowKind::kSquare>(a, sa, o, so, n);
+            case ops::PowKind::kOne: return pow_exact_run<ops::PowKind::kOne>(a, sa, o, so, n);
+            case ops::PowKind::kSame: return pow_exact_run<ops::PowKind::kSame>(a, sa, o, so, n);
+            case ops::PowKind::kRecip: return pow_exact_run<ops::PowKind::kRecip>(a, sa, o, so, n);
+            case ops::PowKind::kSqrt: return pow_exact_run<ops::PowKind::kSqrt>(a, sa, o, so, n);
+            default: break;
+        }
+    }
+    for (std::int64_t i = 0; i < n; ++i)
+        *reinterpret_cast<double*>(o + i * so) = ops::Pow::f(load_as<double>(a + i * sa), load_as<double>(b + i * sb));
+}
+
 // args: a, b, out
 template <typename Op, typename T>
 void binary_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, void*) {
     using R = binary_result_t<Op, T>;
-    if constexpr (ops::is_float<T> && vforce_binary<Op> != nullptr) {  // pow, atan2 through vForce
+    if constexpr (std::is_same_v<Op, ops::Pow> && ops::is_float<T>) {
+        pow_float_run(args[0], s[0], args[1], s[1], args[2], s[2], n);
+        return;
+    }
+    if constexpr (ops::is_float<T> && vforce_binary<Op> != nullptr) {  // atan2 through vForce
         vforce_binary_run(vforce_binary<Op>, args[0], s[0], args[1], s[1], args[2], s[2], n);
         return;
     }

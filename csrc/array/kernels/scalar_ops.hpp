@@ -253,11 +253,39 @@ inline c128 complex_pow(c128 a, c128 b) {
     return from_c99(cpow(to_c99(a), to_c99(b)));
 }
 
+// The float64 exponents of x ** e with an exact form (numpy's fast paths; docs/design/array.md
+// §5.4), each with C99 pow's special values: 2 -> x * x, 0 (and -0) -> 1 for every x (NaN
+// too), 1 -> x, -1 -> 1 / x, 0.5 -> sqrt(x) except pow(-0, 0.5) = +0 and pow(-inf, 0.5) =
+// +inf (sqrt gives -0 and NaN there; numpy keeps sqrt's). All correctly rounded. Sets r and
+// returns true for those exponents.
+enum class PowKind : int { kNone = 0, kSquare, kOne, kSame, kRecip, kSqrt };
+inline PowKind pow_kind(double e) {
+    if (e == 2.0) return PowKind::kSquare;
+    if (e == 0.0) return PowKind::kOne;
+    if (e == 1.0) return PowKind::kSame;
+    if (e == -1.0) return PowKind::kRecip;
+    if (e == 0.5) return PowKind::kSqrt;
+    return PowKind::kNone;
+}
+inline double pow_exact(PowKind k, double x) {
+    switch (k) {
+        case PowKind::kSquare: return x * x;
+        case PowKind::kOne: return 1.0;
+        case PowKind::kSame: return x;
+        case PowKind::kRecip: return 1.0 / x;
+        default: return x == 0.0 ? 0.0 : (x == -std::numeric_limits<double>::infinity()
+                                              ? std::numeric_limits<double>::infinity() : std::sqrt(x));
+    }
+}
+
 struct Pow {
     static constexpr const char* name = "pow";
     template <typename T> static constexpr bool ok = !is_bool<T>;
     static i64 f(i64 a, i64 b) { return int_pow(a, b); }
-    static double f(double a, double b) { return std::pow(a, b); }
+    static double f(double a, double b) {  // as the array loop
+        const PowKind k = pow_kind(b);
+        return k == PowKind::kNone ? std::pow(a, b) : pow_exact(k, a);
+    }
     static c128 f(c128 a, c128 b) { return complex_pow(a, b); }
 };
 
