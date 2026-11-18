@@ -743,6 +743,245 @@ def penalized(y, X, *, alpha, l1_ratio, beta0, family="gaussian", weights=None, 
     raise ar.NotSettled("penalized")
 
 
+# ---- robust regression (docs/design/regression.md §3.6)
+
+_MAD_C = 0.6744897501960817  # the double the kernel divides |r| by (statsmodels' Gaussian.ppf(3/4))
+_HUBER_D = 2.5               # statsmodels' HuberScale() d
+_S_CHI = 1.54764             # robustbase's tuning.chi (bisquare, 50% breakdown)
+_S_B = 0.5
+
+
+def _region(norm, c, z):
+    """The piece of the norm a double z falls in: Huber 0 (|z| <= t) / 1; bisquare 0 (|z| <=
+    c) / 1; Hampel 0 (|z| <= a), 1 (<= b), 2 (<= c), 3."""
+    az = abs(z)
+    if norm == "huber":
+        return 0 if az <= c[0] else 1
+    if norm == "bisquare":
+        return 0 if az <= c[0] else 1
+    a, b, cc = c
+    return 0 if az <= a else (1 if az <= b else (2 if az <= cc else 3))
+
+
+def _in_region(norm, c, reg, z):
+    """The ball z lies inside piece reg of the norm (strictly away from its ends)."""
+    az = abs(z)
+    if norm in ("huber", "bisquare"):
+        t = arb(c[0])
+        return bool(az < t) if reg == 0 else bool(az > t)
+    a, b, cc = (arb(v) for v in c)
+    return [bool(az < a), bool(az > a) and bool(az < b), bool(az > b) and bool(az < cc), bool(az > cc)][reg]
+
+
+def _psi(norm, c, reg, z):
+    """psi(z) and psi'(z) on piece reg (no branching on the value: balls stay one formula)."""
+    if norm == "huber":
+        t = arb(c[0])
+        return (z, arb(1)) if reg == 0 else ((t if z > 0 else -t), arb(0))
+    if norm == "bisquare":
+        if reg == 1:
+            return arb(0), arb(0)
+        u = z / arb(c[0])
+        t = 1 - u * u
+        return z * t * t, t * (t - 4 * u * u)
+    a, b, cc = (arb(v) for v in c)
+    sg = arb(1) if z > 0 else arb(-1)  # certain off piece 0
+    if reg == 0:
+        return z, arb(1)
+    if reg == 1:
+        return a * sg, arb(0)
+    if reg == 2:
+        return a * (cc - abs(z)) / (cc - b) * sg, -a / (cc - b)
+    return arb(0), arb(0)
+
+
+def _rlm_fit(y, X, intercept, norm, c, scale_est, beta0, s_fixed, init_params, df_rank):
+    n = len(y)
+    A = [([arb(1)] if intercept else []) + [arb(v) for v in r] for r in X]
+    k = len(A[0])
+    Y = [arb(v) for v in y]
+    b0 = [arb(v) for v in beta0]
+    def resid(beta):
+        return [Y[i] - sum((A[i][a] * beta[a] for a in range(k)), arb(0)) for i in range(n)]
+    r0 = [float(v.mid()) for v in resid(b0)]
+    # the double solution's pattern: the scale rule's rows and each row's piece of the norm
+    if scale_est == "mad":
+        order = sorted(range(n), key=lambda i: abs(r0[i]))
+        mids = [order[(n - 1) // 2]] if n % 2 else [order[n // 2 - 1], order[n // 2]]
+        sg = {i: (1 if r0[i] > 0 else -1) for i in mids}
+        s_d = (sum(abs(r0[i]) for i in mids) / len(mids)) / _MAD_C
+    elif scale_est == "huber":
+        d = arb(_HUBER_D)
+        E = d * d + (1 - d * d) * (arb(1) - (d / arb(2).sqrt()).erfc() / 2) - arb(0.5) \
+            - d / (2 * arb.pi()).sqrt() * (-d * d / 2).exp()
+        T = (n - df_rank) * E
+        # the split |r| < d s from the double scale (the kernel's equation)
+        Tm = float(T.mid())
+        q = sorted(v * v for v in r0)
+        s_d = None
+        for j in range(n, -1, -1):  # j rows inside
+            den = 2 * Tm - (n - j) * _HUBER_D ** 2
+            if den <= 0:
+                continue
+            s2 = sum(q[:j]) / den
+            if (j == 0 or q[j - 1] < _HUBER_D ** 2 * s2) and (j == n or q[j] >= _HUBER_D ** 2 * s2):
+                s_d = s2 ** 0.5
+                break
+        inside = [i for i in range(n) if r0[i] ** 2 < (_HUBER_D * s_d) ** 2]
+        outside = [i for i in range(n) if i not in set(inside)]
+    else:
+        s_d = s_fixed
+    reg = [_region(norm, c, r0[i] / s_d) for i in range(n)]
+
+    def scale(r):
+        if scale_est == "mad":
+            return sum((sg[i] * r[i] for i in mids), arb(0)) / (len(mids) * arb(_MAD_C))
+        if scale_est == "huber":
+            Q = sum((r[i] * r[i] for i in inside), arb(0))
+            return (Q / (2 * T - len(outside) * arb(_HUBER_D) ** 2)).sqrt()
+        return arb(s_fixed)
+
+    def grad_s(r, s):
+        if scale_est == "mad":
+            return [-sum((sg[i] * A[i][a] for i in mids), arb(0)) / (len(mids) * arb(_MAD_C)) for a in range(k)]
+        if scale_est == "huber":
+            den = 2 * T - len(outside) * arb(_HUBER_D) ** 2
+            return [-2 * sum((r[i] * A[i][a] for i in inside), arb(0)) / (2 * s * den) for a in range(k)]
+        return [arb(0)] * k
+
+    def FJ(beta):
+        r = resid(beta)
+        s = scale(r)
+        gs = grad_s(r, s)
+        F = [arb(0)] * k
+        J = [[arb(0)] * k for _ in range(k)]
+        for i in range(n):
+            z = r[i] / s
+            ps, dp = _psi(norm, c, reg[i], z)
+            for a in range(k):
+                F[a] += ps * A[i][a]
+            if dp == 0:
+                continue
+            dz = [(-A[i][b] - z * gs[b]) / s for b in range(k)]
+            for a in range(k):
+                for b in range(k):
+                    J[a][b] += dp * A[i][a] * dz[b]
+        return F, J, r, s
+
+    beta = [arb(v) for v in beta0]
+    for _ in range(100):
+        F, J, _, _ = FJ(beta)
+        Jm = arb_mat([[J[a][b].mid() for b in range(k)] for a in range(k)])
+        step = Jm.solve(arb_mat([[x.mid()] for x in F]))
+        beta = [(beta[a] - step[a, 0]).mid() for a in range(k)]
+        if all(abs(step[a, 0].mid()) <= (abs(beta[a]) + arb(2) ** -60) * arb(2) ** (-ctx.prec + 12) for a in range(k)):
+            break
+    F, J, _, _ = FJ(beta)
+    Ym = arb_mat([[J[a][b].mid() for b in range(k)] for a in range(k)]).inv()
+    Ym = arb_mat([[Ym[a, b].mid() for b in range(k)] for a in range(k)])
+    bmax = max((abs(b.mid()) for b in beta), key=lambda x: float(x)) + arb(2) ** -60
+    rr = bmax * arb(2) ** (-(ctx.prec // 2))
+    box = [arb(beta[a].mid(), rr.upper()) for a in range(k)]
+    _, JX, rX, sX = FJ(box)
+    # the pattern holds on the whole box: every row in its piece, the scale's rows the middle ones
+    for i in range(n):
+        if not _in_region(norm, c, reg[i], rX[i] / sX):
+            raise ar.NotSettled("piece")
+    if scale_est == "mad":
+        lo = min((abs(rX[i]) for i in mids), key=lambda v: float(v.lower()))
+        hi = max((abs(rX[i]) for i in mids), key=lambda v: float(v.upper()))
+        below = sum(1 for i in range(n) if i not in mids and bool(abs(rX[i]) < lo))
+        above = sum(1 for i in range(n) if i not in mids and bool(abs(rX[i]) > hi))
+        if below + above != n - len(mids) or below != (n - len(mids)) // 2:
+            raise ar.NotSettled("median")
+        if not all(bool(sg[i] * rX[i] > 0) for i in mids):
+            raise ar.NotSettled("median sign")
+    if scale_est == "huber":
+        if not all(bool(abs(rX[i]) < arb(_HUBER_D) * sX) for i in inside):
+            raise ar.NotSettled("huber split")
+        if not all(bool(abs(rX[i]) > arb(_HUBER_D) * sX) for i in outside):
+            raise ar.NotSettled("huber split")
+    YJ = Ym * arb_mat(JX)
+    YF = Ym * arb_mat([[x] for x in F])
+    K = []
+    for a in range(k):
+        v = beta[a] - YF[a, 0]
+        for b in range(k):
+            v += ((1 if a == b else 0) - YJ[a, b]) * (box[b] - beta[b])
+        if not (abs(v - beta[a]).upper() < rr.lower()):
+            raise ar.NotSettled("Krawczyk")
+        K.append(v)
+    beta = K
+    r = resid(beta)
+    s = scale(r)
+    z = [r[i] / s for i in range(n)]
+    pd = [_psi(norm, c, reg[i], z[i]) for i in range(n)]
+    out = {"params": beta, "scale": s, "weights": [pd[i][0] / z[i] if z[i] != 0 else arb(1) for i in range(n)]}
+    if init_params is None:
+        # Huber's H1
+        m = sum((p[1] for p in pd), arb(0)) / n
+        var = sum(((p[1] - m) ** 2 for p in pd), arb(0)) / n
+        ss = sum((p[0] ** 2 for p in pd), arb(0))
+        kk = 1 + arb(df_rank) / n * var / (m * m)
+        f = kk * kk * (ss / (n - df_rank) * s * s) / (m * m)
+        G = arb_mat([[sum((A[i][a] * A[i][b] for i in range(n)), arb(0)) for b in range(k)] for a in range(k)]).inv()
+        cov = [[f * G[a, b] for b in range(k)] for a in range(k)]
+    else:
+        # robustbase's .vcov.avar1 (lmrob's default for MM), s the S scale
+        bS = [arb(v) for v in init_params]
+        rS = resid(bS)
+        cchi = arb(_S_CHI)
+        def chi(u):
+            if bool(abs(u) < cchi):
+                v = u / cchi
+                t = 1 - v * v
+                return 1 - t * t * t, 6 * u * t * t / (cchi * cchi)
+            if bool(abs(u) > cchi):
+                return arb(1), arb(0)
+            raise ar.NotSettled("chi piece")
+        z0 = [rS[i] / s for i in range(n)]
+        ch = [chi(u) for u in z0]
+        G1 = arb_mat([[sum((pd[i][1] * A[i][a] * A[i][b] for i in range(n)), arb(0)) for b in range(k)] for a in range(k)])
+        G2 = arb_mat([[sum((pd[i][0] ** 2 * A[i][a] * A[i][b] for i in range(n)), arb(0)) for b in range(k)] for a in range(k)])
+        Am = G1.inv() * s
+        v1 = arb_mat([[sum((A[i][a] * pd[i][1] * z[i] for i in range(n)), arb(0))] for a in range(k)])
+        v2 = arb_mat([[sum((A[i][a] * pd[i][0] * ch[i][0] for i in range(n)), arb(0))] for a in range(k)])
+        mw0 = sum((ch[i][1] * z0[i] for i in range(n)), arb(0)) / n
+        mu4 = sum((ch[i][0] ** 2 - arb(_S_B) ** 2 for i in range(n)), arb(0)) / n
+        av = Am * v1 * (1 / mw0)
+        Av2 = Am * v2
+        V = Am * G2 * Am
+        cov = [[V[a, b] + (-(av[a, 0] * Av2[b, 0]) - Av2[a, 0] * av[b, 0] + mu4 * av[a, 0] * av[b, 0]) / n for b in range(k)]
+               for a in range(k)]
+    out["bse"] = [cov[a][a].sqrt() for a in range(k)]
+    return out
+
+
+def rlm(y, X, *, beta0, norm, c, scale_est="mad", intercept=True, scale=None, init_params=None):
+    """The certified M estimate near the double solution beta0 (params, the intercept first):
+    the estimating equations sum psi(r_i/s) x_i = 0 with the scale rule of the kernel --
+    'mad' (s = median |r_i| / 0.6744897501960817, the double the kernel uses), 'huber'
+    (Huber's proposal 2 with d = 2.5: sum chi(r_i/s) = (n - k) E chi(Z), E exact) or a fixed
+    s (`scale`, MM's M step, with `init_params` the S estimate for the covariance) -- solved
+    by Newton on the pieces of psi and of the median that the double solution has, and
+    certified by Krawczyk's test on a box on which those pieces are certain. c: (t,) Huber,
+    (c,) bisquare, (a, b, c) Hampel. Returns params, scale, weights and bse (H1 for M,
+    robustbase's .vcov.avar1 with init_params) as (hi, lo)."""
+    k = len(beta0)
+    p = 256
+    while p <= 2048:
+        with ar.precision(p):
+            try:
+                vals = _rlm_fit(y, X, intercept, norm, c, scale_est if scale is None else "fixed", beta0, scale,
+                                init_params, k)
+            except (ar.NotSettled, ZeroDivisionError):
+                vals = None
+            if vals is not None and _all_settled(vals):
+                return {kk: ([ar.to_dd(x) for x in v] if isinstance(v, list) else ar.to_dd(v)) for kk, v in vals.items()}
+        p *= 2
+    raise ar.NotSettled("rlm")
+
+
 def dd_value(hl):
     """hi + lo as one float (for printing)."""
     return hl[0] + hl[1]

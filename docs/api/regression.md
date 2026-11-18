@@ -1,6 +1,6 @@
 # sd.regression API
 
-> 상태: **G1–G3 구현** (2026-11-18): §2의 `ols wls gls linregress`, 고전형·HC0–HC3·HAC·군집 공분산, 랭크 부족, 배치, 진단, `summary(*, alpha=0.05)`; §3의 `glm`; §4의 `ridge lasso elastic_net`, 경로, `ridge_cv lasso_cv elastic_net_cv`, 정규화 GLM `penalized_glm`. §5부터는 설계 초안이고, 이름·기본값·결과 필드는 마일스톤마다 확정한다([docs/design/regression.md](../design/regression.md) §8).
+> 상태: **G1–G4 구현** (2026-11-18): §2의 `ols wls gls linregress`, 고전형·HC0–HC3·HAC·군집 공분산, 랭크 부족, 배치, 진단, `summary(*, alpha=0.05)`; §3의 `glm`; §4의 `ridge lasso elastic_net`, 경로, `ridge_cv lasso_cv elastic_net_cv`, 정규화 GLM `penalized_glm`; §5의 `rlm theilslopes siegelslopes`. §6부터는 설계 초안이고, 이름·기본값·결과 필드는 마일스톤마다 확정한다([docs/design/regression.md](../design/regression.md) §8).
 
 ## §1. 공통 규칙
 - 입력은 위치로만(`y`, `X`), 옵션은 키워드로만. 별칭은 없다.
@@ -136,8 +136,43 @@ penalized_glm(y, X, /, *, family, alpha, l1_ratio=0.5, weights=None, intercept=T
 
 ## §5. 강건 (G4)
 ```
-rlm(y, X, /, *, norm='huber', intercept=True, max_iter=…)
+rlm(y, X, /, *, method='M', norm=None, c=None, scale_est=None, intercept=True, max_iter=50, tol=1e-08, rng=None, rtol=None, nan_policy='propagate')
+theilslopes(y, x=None, /, *, alpha=0.95, method='separate', nan_policy='propagate')   # -> TheilslopesResult(slope, intercept, low_slope, high_slope)
+siegelslopes(y, x=None, /, *, method='hierarchical', nan_policy='propagate')          # -> SiegelslopesResult(slope, intercept)
 ```
+- `rlm`의 결과는 `RLMResult`이고 필드 이름은 statsmodels의 것이다(G10). §1의 공통 규칙(입력, 절편, NaN, inf, 배치, 스레드, 에러의 꼴)을 따른다. 가중치 인자(`weights`)는 없다(statsmodels RLM과 같다; G59).
+- **방식** (G53): `method='M'`(기본)은 최소제곱에서 시작하는 IRLS로 statsmodels `RLM(...).fit()`과 같은 추정이다. `method='MM'`은 S 추정에서 시작해 bisquare M 추정으로 가는 R robustbase `lmrob`의 방식이다.
+- **ψ 함수** (G54): `norm`은 `'huber'`, `'bisquare'`, `'hampel'`이고 None이면 M은 `'huber'`, MM은 `'bisquare'`다(MM은 bisquare만 받는다). `c`는 조율 상수로, None이면 정규 효율 95%의 표준값이다: Huber t = 1.345, bisquare c = 4.685, Hampel (a, b, c) = (2, 4, 8)(statsmodels의 `HuberT()`, `TukeyBiweight()`, `Hampel()`). Huber·bisquare는 수 하나(> 0), Hampel은 수 세 개(0 < a ≤ b < c)다. MM의 `c`는 M 단계의 bisquare 상수이고 기본은 4.685061(`lmrob.control()`의 `tuning.psi`)이다.
+
+  | `norm` | ψ(z) | 가중치 w(z) = ψ(z)/z | ρ(z) |
+  |---|---|---|---|
+  | `'huber'` | z (\|z\| ≤ t), t·sign z | 1, t/\|z\| | z²/2, t\|z\| − t²/2 |
+  | `'bisquare'` | z(1 − (z/c)²)² (\|z\| ≤ c), 0 | (1 − (z/c)²)², 0 | c²/6·(1 − (1 − (z/c)²)³), c²/6 |
+  | `'hampel'` | z, a·sign z, a(c − \|z\|)/(c − b)·sign z, 0 (\|z\| ≤ a, ≤ b, ≤ c, 그 밖) | 1, a/\|z\|, a(c − \|z\|)/(\|z\|(c − b)), 0 | z²/2, a\|z\| − a²/2, a(b + c − a)/2 − a(c − \|z\|)²/(2(c − b)), a(b + c − a)/2 |
+
+- **척도** (G55): z = r/s의 s다. M의 `scale_est`는 `'mad'`(None과 같다)와 `'huber'`이고, 반복마다 새 잔차로 다시 구한다(statsmodels의 `update_scale=True`).
+  - `'mad'`: 0을 중심으로 한 MAD, median(\|r_i\|/0.6744897501960817)이다. 나누는 수는 Φ⁻¹(3/4)의 double(statsmodels의 `mad(center=0)`; 짝수 개면 가운데 둘의 평균)이고, 곱으로 쓰면 1.482602218505602다. R `MASS::rlm`의 MAD는 0.6745로 나눠서 척도가 1.5×10⁻⁵, 계수가 10⁻⁶ 정도 다르다.
+  - `'huber'`: Huber의 제안 2. Σ χ(r_i/s) = (nobs − rank)·E χ(Z), χ(z) = min(z², d²)/2, d = 2.5(고정, 옵션이 아니다), Z는 표준정규다(statsmodels `HuberScale()`의 방정식; R `MASS::rlm(scale.est='proposal 2', k2=2.5)`와 같은 해). 반복마다 이 방정식을 정확히 푼다(statsmodels는 MAD에서 시작한 고정점 반복 30번까지).
+  - MM에는 `scale_est`가 없다(주면 `ValueError`): 척도는 S 추정의 척도이고 M 단계 동안 고정이다.
+- **M의 반복과 수렴** (G32): 반복마다 직전 잔차의 가중치로 y를 가중 최소제곱한다(정규방정식, 안 되면 QR; G1의 최소제곱 핵심). 목적함수 D = Σ ρ(r_i/s)의 상대 변화 \|D − D_old\|/(\|D\| + 0.1)가 `tol`(기본 1e-8) 아래면 `converged=True`다(GLM과 같은 꼴; statsmodels는 절대 변화 ≤ 1e-8). 그 뒤에도 계수가 반올림보다 크게 움직이는 동안 추정방정식 Σ ψ(r_i/s) x_i = 0의 뉴턴 걸음(척도가 계수에 따라 바뀌는 것까지 넣은 야코비안)을 이어 가고(IRLS의 걸음이 직전의 1/2 아래로 줄지 않는 반복이 3번 이어지면 그때부터), 마지막 최소제곱은 반복 개선한 QR이다. 그래서 계수는 `tol`의 정밀도가 아니라 해에 반올림 수준으로 가깝다. `n_iter`는 반복(최소제곱 또는 뉴턴 걸음) 수이고 `max_iter`(≥ 1, 기본 50: statsmodels의 `maxiter`)에 닿으면 마지막 값을 내고 `converged=False`, `n_iter`는 `max_iter`다. 경고는 없다.
+- **MM** (G53, `lmrob.control()`의 기본값):
+  - S 추정: 기본 부분표본 500개. 후보 j는 행을 무작위 순서로 뽑아, 앞서 고른 행들과 선형 독립인 행만 p개(쓰인 열 수)까지 모은 기본 부분집합(앞 행들에 직교하는 성분이 그 행의 노름의 10⁻⁷보다 클 때만 받는다, `solve.tol`)의 정확한 해에서, 척도 1.4826·median\|r\|로 한 걸음 개선한다(`k.fast.s` = 1). 척도 방정식은 (1/(n − p)) Σ ρ̃(r_i/s) = 1/2, ρ̃는 상수 1.54764의 bisquare를 1로 정규화한 것이다(`tuning.chi`, `bb`; 붕괴점 50%). 후보를 순서대로 보며 가장 작은 척도 2개를 남기고(`best.r.s`; 지금 남긴 것보다 척도가 작을 때만 척도를 구한다), 둘을 상대 변화 10⁻⁷까지 다듬어(`k.max` 200, `refine.tol`) 척도가 작은 쪽을 고른 뒤, 그 고정점까지 더 반복한다(robustbase는 10⁻⁷에서 멈춘다). 부분표본 수 500은 옵션이 아니다.
+  - **큰 n** (G58, n > 2000; `fast.s.large.n`): robustbase처럼 행 2,000개(`groups` 5 × `n.group` 400)를 비복원으로 뽑아 400개씩 5묶음으로 나누고, 묶음마다 위의 탐색(후보 500개, 가장 좋은 2개)을 한다. 그 10개를 뽑은 2,000행 전체에서 묶음의 척도로 한 걸음 개선해(`k.fast.s`) 그 2,000행의 척도로 가장 좋은 2개를 고르고, 그 둘을 모든 행에서 위처럼 다듬는다. 뽑은 행 수보다 열이 많으면(p ≥ 400) 작은 n의 방식이다. `k.m_s`는 M-S 추정의 것이라 쓰지 않는다(R의 추적 출력에서도 병합 단계는 한 걸음이다).
+  - M 단계: bisquare(`c`)로 S 계수에서 시작하고 S 척도를 고정한 M과 같은 IRLS다.
+  - 난수: `rng`(`sd.random.default_rng(seed)`의 Generator)를 꼭 준다(없으면 `TypeError`, M에 주면 `ValueError`). 회귀마다 64비트 두 단어를 `rng.integers(-2**63, 2**63 - 1, endpoint=True, shape=batch_shape + (2,))`로 배치의 C 순서대로 뽑고, 후보 j의 행은 그 두 단어를 키로 한 Philox4×64-10의 원소 j·2³² + t(t = 0, 1, …)로 뽑는다. 큰 n의 행 2,000개는 같은 키의 원소 2⁶³ + t(t = 0 … 1,999)로 하는 부분 Fisher–Yates 섞기로 뽑고, 묶음 g의 후보 j는 원소 (g·500 + j)·2³² + t를 쓴다. 그래서 같은 상태의 `rng`면 같은 비트이고, 스레드 수와 상관없으며, 배치는 같은 `rng`로 하나씩 부른 것과 비트까지 같다. 부분표본의 수가 R과 다르므로 robustbase와 S 계수가 같지는 않다(아래 정확도).
+- **추론** (G57): 공분산은 M이 Huber의 H1(statsmodels의 기본 `cov='H1'`): K²·(Σψ(z_i)²/df_resid)·s²/m²·(XᵀX)⁻¹, m = mean ψ′(z), K = 1 + rank/nobs·var ψ′(z)/m²(var는 n으로 나눈다; R `MASS`의 `summary.rlm`은 n − 1로 나눠 그만큼 다르다). (XᵀX)⁻¹은 시작 최소제곱의 R에서 구한다. MM은 robustbase의 `.vcov.avar1`(Croux–Dhaene–Hoorelbeke 2003의 점근 공분산, `lmrob.control()`의 MM 기본)이고, 음의 고윳값은 그 `posdefify`처럼 0으로 두고 대각을 되돌린다. p값과 구간은 t(`df_resid`)다(R의 요약과 같다; statsmodels는 정규분포). `cov_type`은 `'H1'` 또는 `'avar1'`이다.
+- **결과 필드**: `params bse tvalues pvalues`, `conf_int(alpha=0.05)`, `cov_params()`, `fittedvalues resid`, `scale`(M은 마지막 잔차의 척도, MM은 S 척도), `weights`(마지막 잔차의 w(r_i/s), statsmodels의 `weights`, lmrob의 `rweights`), `nobs df_model df_resid`(nobs는 행 수, df_resid = nobs − rank), `rank condition_number converged n_iter param_names method norm cov_type`, `predict(X_new, /)`, `summary(*, alpha=0.05)`(statsmodels RLM summary의 꼴: 모형, 방법, ψ, 척도, 공분산, 반복 수와 관측 수, 자유도, 척도; 계수 표는 `t`·`P>|t|`).
+- 겹친 열(G9, G21)은 시작 최소제곱의 QR이 정하고(그 뒤 가중치가 어떤 열의 행을 모두 0으로 만들면 그 열도 빠진다), 그 계수와 추론은 NaN이다. 나머지는 그 열을 뺀 적합과 비트까지 같다.
+- **완전 적합**: 척도가 정확히 0이면(M은 잔차의 절반 넘게가 정확히 0, MM은 (n + p)/2 개 이상이 0) 반복을 멈추고 `converged=True`, 공분산은 0(`bse` 0, p 0)이고, 가중치는 잔차가 0인 행 1, 그 밖 0이다. MM은 S 척도가 0이면 M 단계 없이 S 계수를 내고 `n_iter`는 0이다. Huber처럼 다시 내려가지 않는 ψ는 척도가 0으로 다가가기만 해서 `max_iter`에 닿는다.
+- **정확도** (잰 값, 설계 §3.6): Arb 참값(추정방정식을 해의 ψ 조각과 중앙값 행에서 풀고 그 조각이 확실한 상자에서 Krawczyk로 증명한 해)과 견준 계수 벡터의 상대오차는 ψ 세 개 × 척도 두 개, 절편 없음, n = 400, 스택 손실, MM의 M 단계 19개 문제에서 1.1×10⁻¹⁶ 안이고, 척도 1.4×10⁻¹⁵, 표준오차 1.9×10⁻¹⁵, 가중치 1.1×10⁻¹⁵ 안이다. statsmodels(tol 1e-15)와는 계수·척도·표준오차가 2.3×10⁻¹⁵ 안이다. R의 `MASS::rlm`(proposal 2, k2 = 2.5)과는 계수 4.1×10⁻¹⁵, 척도 1.7×10⁻¹⁴ 안이고, robustbase의 M 단계(`lmrob..M..fit`, `rel.tol` 1e-15)와 `.vcov.avar1`을 같은 S 시작에서 부르면 계수 8.8×10⁻¹⁶, 표준오차 7.1×10⁻¹⁵ 안이다(스택 손실만 1.8×10⁻¹³: robustbase가 XᵀΨ′X를 직접 역행렬로 만들어 κ²u이고, sd는 Arb와 1.9×10⁻¹⁵). `lmrob` 자체와는 자기 부분표본과 10⁻⁷의 S 정밀도 때문에 계수가 10⁻⁹–10⁻⁷ 다르다(큰 n의 n = 5,000, 10⁴, 10⁵, 10⁶에서도 10⁻⁸ 수준).
+- **에러**: `rlm(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not NoneType`, `rlm(): 'rng' is only used with method='MM'`, `rlm(): method='MM' takes the bisquare norm, not 'huber'`, `rlm(): 'scale_est' is only used with method='M' (MM's scale is the S estimate's)`, `rlm(): 'c' must be three numbers 0 < a <= b < c for the hampel norm`, `rlm(): the model has no parameters (no columns in 'X' and intercept=False)`.
+
+- **`theilslopes`·`siegelslopes`** (G56): scipy 1.18.1의 인자 순서·기본값·결과(namedtuple, 필드 순서도 같다)다. `x`가 None이면 0, 1, …, n − 1이다. 결과는 Python `float`이고 `y`·`x`가 (…, n)이면 배치 모양의 배열이다(브로드캐스트한다).
+  - 기울기는 x_i ≠ x_j인 쌍의 (y_i − y_j)/(x_i − x_j)를 scipy처럼 double로 만든 값들의 중앙값이다(짝수 개면 0.5a + 0.5b, scipy `quantile`의 기본). 중앙값과 순위 통계량을 정확히 고르므로 값이 scipy와 비트까지 같다. 다른 것은 0의 부호뿐이다: 기울기가 0이면 +0을 낸다(scipy의 −0·+0은 정렬 순서에 따른다).
+  - `theilslopes`: 절편은 `method='separate'`(기본) median(y) − 기울기·median(x), `'joint'`는 median(y − 기울기·x)다. `low_slope`·`high_slope`는 Sen(1968)의 신뢰구간으로, `alpha`가 신뢰수준이다(scipy처럼 0.5보다 크면 1 − alpha로 접어서 0.1과 0.9가 같은 90% 구간이다; 0 < alpha < 1). 분산 σ² = (n(n − 1)(2n + 5) − Σ동률 x − Σ동률 y)/18, 순위는 round((N ∓ zσ)/2)(짝수로 반올림, N은 유한한 기울기 수)로 scipy의 식 그대로다.
+  - `siegelslopes`: 점마다 다른 점들로의 기울기의 중앙값, 그 중앙값들의 중앙값이다. 절편은 `method='hierarchical'`(기본) median(y − 기울기·x), `'separate'`는 점마다 다른 점들로의 절편 y_i − 기울기_ij·x_i의 중앙값들의 중앙값이다.
+  - 계산: Siegel은 점마다 선택(O(n²) 시간, 작업마다 O(n) 메모리). Theil–Sen은 기울기가 2²³개까지 한 배열에 모아 선택하고, 그보다 많으면 쌍을 저장하지 않고 훑는다: 쌍의 표본에서 구한 피벗 사이의 기울기 수를 정확히 세고, 사이에 든 값만(많으면 해시로 고른 부분표본만) 모아 다음 훑기의 피벗을 좁힌다. 보통 2–3번 훑고(O(n²) 시간, 메모리 O(n + 2²²)), 세는 수가 정확하므로 결과는 표본과 상관없다. scipy는 n × n 배열을 만든다(n = 10⁴에 GB 단위, 10⁵은 만들지 못한다).
+  - NaN: `nan_policy`(scipy 1.18의 `nan_policy`와 같은 세 값, 기본 'propagate'): 'propagate'는 모든 값이 NaN, 'omit'은 y나 x가 NaN인 점을 뺀다(배치에서는 `ValueError`), 'raise'는 `ValueError`다. inf는 `ValueError`다(G24; scipy는 받는다). 점이 2개보다 적으면 `ValueError`(scipy와 같다), x가 모두 같으면 모든 값이 NaN이다(scipy와 같다).
 
 ## §6. 분위 (G5)
 ```
@@ -155,6 +190,6 @@ quantreg(y, X, /, *, q=0.5, intercept=True)
 | GLM | `GLM(y, X, family=)` | `LogisticRegression`, `PoissonRegressor` 등(정규화 포함) | | `glm(y, X, family=)` |
 | 정규화 | `OLS.fit_regularized` | `Ridge`, `Lasso`, `ElasticNet`, `enet_path`, `…CV` | | `ridge`, `lasso`, `elastic_net`(`alpha`에 배열이면 경로), `ridge_cv`, `lasso_cv`, `elastic_net_cv` |
 | 정규화 GLM | `GLM.fit_regularized` | `LogisticRegression`(penalty), `PoissonRegressor` | | `penalized_glm` |
-| 강건 | `RLM` | `HuberRegressor`, `TheilSenRegressor` | `stats.theilslopes`, `siegelslopes` | `rlm` |
+| 강건 | `RLM` (R `MASS::rlm`, `robustbase::lmrob`) | `HuberRegressor`, `TheilSenRegressor` | `stats.theilslopes`, `siegelslopes` | `rlm`(M, MM), `theilslopes`, `siegelslopes` |
 | 분위 | `QuantReg` | `QuantileRegressor` | | `quantreg` |
 | 비선형 | | | `optimize.curve_fit`, `least_squares` | G6 |

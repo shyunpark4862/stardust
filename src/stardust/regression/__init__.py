@@ -6,14 +6,17 @@ Usage: ``import stardust as sd`` then ``r = sd.regression.ols(y, X)`` and ``r.pa
 docs/design/regression.md §1.1.
 """
 
-from .._results import BreuschPaganResult, JarqueBeraResult, LinregressResult
+from .._results import (BreuschPaganResult, JarqueBeraResult, LinregressResult, SiegelslopesResult,
+                        TheilslopesResult)
 from ._glm import GLMResult, glm
 from ._linear import GLSResult, OLSResult, WLSResult, gls, linregress, ols, wls
 from ._penalized import (ElasticNetCVResult, ElasticNetResult, LassoCVResult, LassoResult, PenalizedGLMResult,
                          RidgeCVResult, RidgeResult, elastic_net, elastic_net_cv, lasso, lasso_cv, penalized_glm, ridge,
                          ridge_cv)
+from ._robust import RLMResult, rlm, siegelslopes, theilslopes
 
 __all__ = ["ols", "wls", "gls", "linregress", "glm", "ridge", "lasso", "elastic_net", "ridge_cv", "lasso_cv",
-           "elastic_net_cv", "penalized_glm", "OLSResult", "WLSResult", "GLSResult", "GLMResult", "LinregressResult",
-           "JarqueBeraResult", "BreuschPaganResult", "RidgeResult", "LassoResult", "ElasticNetResult",
-           "RidgeCVResult", "LassoCVResult", "ElasticNetCVResult", "PenalizedGLMResult"]
+           "elastic_net_cv", "penalized_glm", "rlm", "theilslopes", "siegelslopes", "OLSResult", "WLSResult",
+           "GLSResult", "GLMResult", "LinregressResult", "JarqueBeraResult", "BreuschPaganResult", "RidgeResult",
+           "LassoResult", "ElasticNetResult", "RidgeCVResult", "LassoCVResult", "ElasticNetCVResult",
+           "PenalizedGLMResult", "RLMResult", "TheilslopesResult", "SiegelslopesResult"]

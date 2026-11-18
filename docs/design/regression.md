@@ -1,6 +1,6 @@
 # 회귀 영역 설계 (sd.regression)
 
-> 상태: **G1–G3 구현** (2026-11-18): 선형 모형, GLM, 정규화의 수치 핵심(§2, §3.1–§3.5). 큰 결정은 사용자가 정했다(§1.1). 나머지는 안이고, 마일스톤마다 시작 전에 물을 것은 §8에 있다. §3.1의 정확도 계약은 사용자 결정을 기다리는 제안이다.
+> 상태: **G1–G4 구현** (2026-11-18): 선형 모형, GLM, 정규화, 강건 회귀의 수치 핵심(§2, §3.1–§3.6). 큰 결정은 사용자가 정했다(§1.1). 나머지는 안이고, 마일스톤마다 시작 전에 물을 것은 §8에 있다. §3.1의 정확도 계약은 사용자 결정을 기다리는 제안이다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -63,6 +63,13 @@
 | G50 alpha = 0의 정규화 GLM (G3) | 벌점이 없으면 `glm`과 같은 규칙: 분리 증명서로 판정해 계수를 NaN으로 두고 `separation=True`(G33). alpha > 0이면 해가 유한하므로 판정하지 않는다 (사용자 결정 2026-11-18) |
 | G51 ridge의 개선 (G3) | 개선 잔차를 double-double로 구한다(G1의 OLS와 같은 정확도 수준) (사용자 결정 2026-11-18). lasso·엘라스틱 넷의 KKT 연마의 개선도 같다 (사용자 결정 2026-11-18) |
 | G52 G3의 세부 (사용자 확인 2026-11-18) | 경로 축은 배치 축 뒤(`params` (…, L, k)). 가중치 인자 `weights`. ridge에는 `converged`·`n_iter`·`dual_gap`이 없다. `ssr` 필드. CV의 `select='min'|'1se'`(기본 min), ridge 기본 격자는 glmnet 규칙, `elastic_net_cv`는 l1_ratio 하나, 배치는 같은 겹을 공유. 정규화 GLM은 정준 링크만, offset·trials 없음, l1_ratio 기본 0.5. `summary()` 없음. ridge는 정확도를 위해 QR + SVD(정규방정식을 쓰지 않음) |
+| G53 강건 추정 방식 (G4) | `rlm(method='M')`(기본, 최소제곱에서 시작하는 IRLS, statsmodels RLM과 같은 결과)과 `method='MM'`(S 추정에서 시작해 bisquare M으로, R robustbase lmrob의 방식; 무작위 부분표본이라 `rng=` 필수) (사용자 결정 2026-11-18) |
+| G54 ψ 함수 (G4) | Huber, Tukey bisquare, Hampel. 조율 상수의 기본은 정규 효율 95%의 표준값(Huber 1.345, bisquare 4.685, Hampel은 statsmodels 기본) (사용자 결정 2026-11-18) |
+| G55 척도 (G4) | M 추정은 반복마다 MAD(1.4826 × 잔차 MAD)를 갱신한다(statsmodels 기본). `scale_est='huber'`로 Huber의 제안 2 (사용자 결정 2026-11-18) |
+| G56 Theil–Sen·Siegel (G4) | `theilslopes(y, x)`, `siegelslopes(y, x)`를 scipy와 같은 결과 꼴로 둔다. 중앙값은 정확히 구하므로 scipy와 같은 값이어야 한다 (사용자 결정 2026-11-18) |
+| G57 rlm의 추론 (G4) | M은 Huber의 H1(statsmodels 기본), MM은 lmrob의 샌드위치. 분포는 t(df_resid)(R의 요약과 같다; statsmodels는 z) (사용자 결정 2026-11-18) |
+| G58 MM의 큰 n (G4) | n > 2000이면 robustbase의 큰 n 방식(구간별 부분표본 후 병합)을 쓴다. 작은 n은 그대로 (사용자 결정 2026-11-18) |
+| G59 G4의 세부 (사용자 확인 2026-11-18) | `norm`·`scale_est`의 기본은 None(M은 huber·MAD, MM은 bisquare·S 척도; MM에 huber·hampel이나 `scale_est`를 주면 `ValueError`). MM의 상수는 lmrob 값(1.54764, 4.685061), M의 bisquare 기본은 statsmodels 값(4.685). 제안 2의 d = 2.5 고정. `tol`은 GLM과 같은 상대 기준, `max_iter` 기본 50. `weights` 없음. 완전 적합은 척도 0. 부분표본 수 500 고정. `method`·`norm`은 공개 필드 |
 | G16 NaN (G1) | `nan_policy`의 기본은 'propagate'(결과 값이 모두 NaN). 'omit'은 NaN이 있는 행을 빼고, 'raise'는 `ValueError` |
 | G17 진단 (G1) | 지렛대(hat), 스튜던트화 잔차, Cook 거리와 Durbin–Watson, Jarque–Bera, Breusch–Pagan. `summary()`에는 Durbin–Watson과 Jarque–Bera를 넣는다(statsmodels와 같다) |
 | G18 linregress (G1) | scipy와 같은 꼴: `linregress(x, y)`(인자 순서도 scipy), 결과는 `slope intercept rvalue pvalue stderr intercept_stderr` namedtuple |
@@ -74,7 +81,7 @@
 - **선형**: `ols`, `wls`(가중치), `gls`(알려진 오차 공분산), 단순회귀 `linregress`(scipy와 같은 결과, G18). 다항식 적합은 `ols`로 한다(G12). 공분산 추정은 고전형, HC0–HC3, HAC(Newey–West), 군집 강건(G11)
 - **일반화 선형**: `glm(y, X, family=…, link=…)`. 분포족은 정규(identity·log), 이항(logit·probit·cloglog·log), 포아송(log·identity·sqrt), 감마(inverse·log·identity)다(G31). 오프셋과 노출(exposure), 사전 가중치(`var_weights`)와 빈도 가중치(`freq_weights`)
 - **정규화**: `ridge`(여러 α를 한 번에), `lasso`, `elastic_net`, 정규화 경로, 교차검증으로 α 고르기(`ridge_cv`·`lasso_cv`·`elastic_net_cv`, ridge는 GCV도), 정규화 GLM `penalized_glm`(이항·포아송) (G45–G52, §3.5)
-- **강건**: `rlm`(M 추정: Huber, Tukey bisquare 등, 척도는 MAD), §8 G4 질문으로 Theil–Sen·Siegel
+- **강건**: `rlm`(M 추정: Huber, Tukey bisquare, Hampel, 척도는 MAD 또는 Huber의 제안 2; MM 추정), Theil–Sen·Siegel의 `theilslopes`·`siegelslopes` (G53–G57, §3.6)
 - **분위**: `quantreg(y, X, q=0.5)`. 선형계획으로 정확한 해(§3.6)와 표준오차
 - **비선형 최소제곱**: `curve_fit`/`least_squares` 꼴(Levenberg–Marquardt, 범위 제약). 사용자 함수는 Python 호출이다(§3.7)
 - **없는 것** (안): 공식 문자열과 범주형 변수 자동 처리(더미 코딩은 사용자가 만든다), 추정기 클래스, 혼합 효과 모형, 시계열 모형(ARIMA 등), 패널·도구변수(linearmodels), 생존 분석, 베이즈 회귀, 신경망·트리 같은 비모수 예측 모형, 결과의 그림
@@ -106,6 +113,7 @@
   - 스튜던트화 잔차와 Cook 거리는 위의 것과 `scale`로 sd 배열 연산이다. 외적 스튜던트화 잔차는 r√((df − 1)/(df − r²))로 한 번에 구한다(statsmodels는 행을 하나씩 뺀 적합 n번).
 - `GLMResult`(G2)도 같은 틀(공통 부분은 `_RegressionResult`: 계수의 추론, 예측의 설계 검사)이다. 커널 `glm_fit`은 회귀마다 `params`, 공분산(고전형은 척도를 곱하기 전의 (XᵀWX)⁻¹, 강건형은 샌드위치), R, μ, η, 쓰인 열 표시, 스칼라 14개(nobs, rank, 편차, 귀무 편차, Pearson χ², 척도, llf, llnull, 반복 수, 수렴, 분리, NaN 표시, 군집 수, HAC 지연 수)와 행마다의 잔차 네 가지(반응, Pearson, 편차, 작업)를 낸다. 진단(지렛대 등)은 GLM에 두지 않는다.
 - 정규화의 결과(G48: `RidgeResult`, `LassoResult`, `ElasticNetResult`, 교차검증의 `…CVResult`, `PenalizedGLMResult`)는 `_RegressionResult`를 쓰지 않는다(추론이 없다; `summary()`도 없다, G52). 커널 `penalized_path`가 alpha마다 `params`와 스칼라 13개(nobs, sw, 반복 수, 쌍대 간격, 수렴, 유효 자유도, NaN 표시, 잔차 제곱합(GLM은 편차), TSS(GLM은 귀무 편차), 시험 오차와 시험 가중치 합, 연마 표시, GCV)를 내고, 적합값과 잔차는 처음 읽을 때 `apply`(Dot2)로 구한다. `ssr`도 그 잔차에서 더한다(Gram의 잔차 제곱합은 R²가 1에 가까우면 상쇄된다). 경로의 축은 배치 축 뒤, 필드 자신의 축 앞이다.
+- `RLMResult`(G4)도 `_RegressionResult`의 틀이다(계수의 추론, 예측). 커널 `rlm_fit`이 내는 것은 §3.6에 있다. 공분산은 커널이 마지막 값(H1 또는 avar1)으로 내므로 `cov_type`은 `'H1'`·`'avar1'`이고 척도를 다시 곱하지 않는다. Theil–Sen·Siegel의 결과는 namedtuple(`TheilslopesResult`, `SiegelslopesResult`)이다(G56).
 - 이름은 statsmodels의 것이다(G10). `centered_tss`(언제나 중심화)와 `uncentered_tss`를 둘 다 둔다(statsmodels와 같다; 절편이 없으면 R²는 비중심 TSS를 쓴다).
 - `conf_int`와 `predict_interval`은 (…, k, 2), (…, m, 2) 배열이다(statsmodels의 `conf_int`와 같은 모양).
 - `summary()`(G13)는 회귀 하나의 글이다. 배치에서는 `ValueError`다(`nan_policy='omit'`의 배치 에러와 같은 꼴). 배치의 한 원소를 고르는 방법(결과의 인덱싱)은 없다.
@@ -373,7 +381,33 @@
   - 로지스틱 L2는 newton-cholesky와 같은 뉴턴법이지만 반복마다 Gram을 다시 만들고 Dot2로 η를 구해 1스레드 0.29–0.61배다. lbfgs는 더 빠르지만 계수가 기본 `tol`에서 3e-5–4e-4 다르다.
 
 ### 3.6 강건과 분위
-- **RLM**: M 추정을 IRLS로 푼다. 척도는 MAD(정규 일관 상수 1.4826), Huber의 제안 2는 §8 G4 질문. 표준오차는 Huber의 샌드위치(statsmodels의 H1).
+- **커널** (`csrc/regression/robust.cpp`): 회귀 하나가 태스크 하나다(G1의 `run_batch`). 시작은 G1의 최소제곱 핵심 그대로다(QR과 반복 개선, G21의 겹친 열, (XᵀX)⁻¹ = (RᵀR)⁻¹). 결과는 계수, 공분산(H1 또는 avar1), 시작의 R, 적합값·잔차(Dot2), 쓰인 열 표시, 스칼라 10개(nobs, rank, 척도, 반복 수, 수렴, NaN 표시, S의 반복 수와 수렴, 그리고 공통 결과 코드가 묻는 군집 수·지연 수 자리의 NaN), 가중치, MM의 S 계수다.
+- **M** (G53, G55): IRLS의 한 반복은 직전 잔차의 가중치 w(r_i/s)로 y를 가중 최소제곱하고, 새 잔차로 척도를 다시 구한다(statsmodels `RLM.fit`의 순서와 같다). 그래서 고정점은 추정방정식 Σ ψ(r_i/s(β)) x_i = 0과 척도 규칙 s(β)를 함께 푼 해이고, statsmodels와 같은 해다.
+  - 판정 전의 최소제곱은 GLM의 중간 반복과 같은 정규방정식(덩어리의 `dsyrk`, Cholesky, G40; 조건이 나쁘거나 G21이 열을 빼면 QR)이고, 판정 뒤와 마지막은 반복 개선한 QR이다(`lsq.hpp`의 `fit_one`을 lean으로).
+  - **뉴턴 걸음**: IRLS는 선형으로 수렴하고, MAD 척도에서는 그 비율이 0.7에 이르기도 한다(n = 61, Huber에서 statsmodels는 tol 1e-15까지 89번). 그래서 목적함수의 판정 뒤, 그리고 판정 전이라도 걸음이 직전의 1/2 아래로 줄지 않는 반복이 3번 이어지면(GLM의 G44와 같은 판정), F(β) = Σ ψ(z_i) x_i의 뉴턴 걸음 β + s M⁻¹F, M = XᵀΨ′X + (XᵀΨ′z)(∇s)ᵀ로 간다. ∇s는 MAD면 가운데 행의 −sign(r_m) x_m/C(짝수 n이면 두 행의 평균), 제안 2면 −Σ_안 r_i x_i/(s(2T − n_밖 d²)), 고정 척도면 0이다. F는 열마다 double-double로 더하고, M은 k × k LU로 푼다. 걸음은 ‖F‖가 줄 때만 받고, 아니면 그 반복은 개선한 QR의 IRLS다. 멈추는 규칙은 GLM과 같다(걸음 ≤ 2⁻⁵⁰‖β‖, 또는 두 걸음의 비율로 내다본 나머지가 그 아래, 또는 걸음이 더 줄지 않을 때). Arb 문제 19개에서 IRLS만으로는 12–50번이고 두 문제가 `max_iter` 50에 닿아 계수 오차가 7×10⁻¹⁰·9×10⁻¹¹이며, 뉴턴 걸음을 넣으면 6–19번에 반올림 수준이다.
+  - **MAD**: 0을 중심으로 \|r_i\|/0.6744897501960817의 중앙값을 선택(`nth_element`)으로 구한다(statsmodels는 정렬). 짝수 n은 아래 절반의 최댓값과의 평균이다(numpy의 `median`과 같은 (a + b)/2).
+  - **제안 2**: t = 1/s²에서 f(t) = Σ min(r_i² t, d²)/2는 오목하고 증가하는 조각별 일차함수이므로, t = 0에서 시작한 뉴턴 걸음 t ← (T − n_밖 d²/2)/(Σ_안 r_i²/2)는 근까지 단조롭게 올라가 근에서 멈춘다(보통 3–5번, 합은 double-double). T = nobs·((nobs − rank)/nobs)·E χ(Z), E χ(Z) = d² + (1 − d²)Φ(d) − 1/2 − dφ(d)는 statsmodels의 식이다(Φ는 `erfc`로).
+- **MM** (G53): robustbase 0.99.7 `lmrob`의 fast-S(Salibian-Barrera–Yohai 2006)와 M 단계다. R의 `lmrob.control()` 기본값과 같다(`nResample` 500, `tuning.chi` 1.54764, `bb` 0.5, `best.r.s` 2, `k.fast.s` 1, `k.max` 200, `refine.tol` 1e-7, `solve.tol` 1e-7, `mts` 1000, `tuning.psi` 4.685061, `cov` `.vcov.avar1`). 쓰인 열(시작 최소제곱이 남긴 열)을 행 우선으로 꾸려 쓴다.
+  1. 후보 500개를 따로 계산한다(한 회귀면 4개씩 묶은 태스크로 스레드풀): 기본 부분집합(robustbase의 "nonsingular" 표본처럼 선형 독립인 행만, 재직교화한 그람-슈미트로 판정), LU로 그 해, robustbase의 MAD(1.4826·median\|r\|)에서 한 걸음(척도 한 걸음 s ← s√(Σρ̃(r/s)/T), T = (n − p)/2, bisquare χ 가중치의 가중 최소제곱). 후보마다 Philox의 자기 원소에서 뽑으므로 계산 순서와 상관없다.
+  2. robustbase의 선택을 후보 순서대로: 남긴 것 중 가장 큰 척도 W에서 Σρ̃(r/W) < T인 후보만(척도가 W보다 작다) 척도를 구해(아래, 상대 10⁻¹⁰) W를 바꾼다. 척도를 구하는 후보는 보통 십여 개다(500개 모두에 구하면 (10⁵, 10)에서 4배 느리다).
+  3. 남긴 2개를 robustbase처럼 상대 변화 10⁻⁷까지 다듬고(척도 한 걸음 + 가중 최소제곱) 척도가 작은 쪽을 고른다. 그 뒤 고정점(β가 자기 잔차의 정확한 M-척도로 만든 가중치의 가중 최소제곱)까지 정규방정식으로 더 반복하고, 마지막 하나는 개선한 QR이다. 이 반복은 비율 0.8–0.9로 선형이라 50–90번 걸린다.
+  4. M 단계: bisquare(c = 4.685061)로 S 척도를 고정한 M의 IRLS(뉴턴 걸음 포함).
+  - **M-척도**: g(s) = Σρ̃(r_i/s) − T는 s → 0에서 (0이 아닌 잔차 수) − T, s → ∞에서 −T로 감소한다. 0이 아닌 잔차가 T 이하이면 0(robustbase의 완전 적합)이고, 아니면 부호로 아는 괄호 (0, ∞) 안에서 g와 g′를 한 번에 더하는 뉴턴(괄호를 벗어나면 이분, 끝이 없으면 2배·1/2배)으로 반올림까지 푼다.
+  - 난수: 회귀마다 Python이 `rng`에서 64비트 두 단어를 받아 키로 쓴다. 후보 j는 원소 j·2³² + t의 첫 단어로 행을 뽑고(Lemire의 방법, 기각은 그 원소의 여분 단어; sd.random과 같은 규칙), 이미 고른 행이거나 독립이 아니면 다음 t로 간다(`mts` 1000번까지).
+  - **큰 n** (G58): n > 2000(`fast.s.large.n`)이고 p < 400이면 robustbase의 `fast_s_large_n`(Salibian-Barrera–Yohai 2006의 큰 n 방식)이다. C 소스가 설치본에 없어 R의 `lmrob.control()` 값과 `trace.lev = 4`의 추적 출력으로 단계를 확인했다: 행 2,000개를 비복원으로 뽑아(Philox 원소 2⁶³ + t의 부분 Fisher–Yates) 400개씩 5묶음으로 나누고, 묶음마다 1–2단계를 그 400행에서 한다(묶음마다 후보 500개, T = (400 − p)/2; 묶음 g의 후보 j는 원소 (g·500 + j)·2³² + t). 남은 10개는 뽑은 2,000행 전체에서 자기 묶음의 척도로 한 걸음 개선하고(R의 출력도 "1 refinement"; `k.m_s`는 M-S 추정의 값이라 이 단계에 쓰이지 않는다) 그 2,000행의 M-척도로 2개를 고른다(지금 남긴 것보다 작을 때만 바꾼다). 그 뒤 3–4단계는 모든 행에서 같다. 모든 행의 작은 n 탐색과 S 척도가 같았고(`bench/regression/g4/speed.md`의 세 문제에서 12자리, 테스트의 n = 6,000 지렛대 25%·40%에서 1e-10 안), (10⁵, 10)에서 7.5배(1스레드)·4배(10스레드) 빠르다.
+- **추론** (G57):
+  - M의 H1: statsmodels `RLMResults.bcov_scaled`의 식 그대로이고 (XᵀX)⁻¹은 시작의 (RᵀR)⁻¹(statsmodels는 `pinv`)이다. ψ′·ψ²의 합은 double-double이다. R `MASS`의 `summary.rlm`은 같은 식에서 var ψ′를 n − 1로 나눈다(K가 1 + p var/(n m²)·n/(n − 1)): R과의 비교는 그 비를 곱해 1e-14 안이다.
+  - MM의 avar1: robustbase 0.99.7의 `.vcov.avar1` 소스와 같은 식이다. A = s(XᵀΨ′X)⁻¹, a = A·Xᵀ(ψ′(z)z)/mean(χ′(z₀)z₀), V = A(XᵀΨ²X)A − (a(AXᵀ(ψχ))ᵀ + (AXᵀ(ψχ))aᵀ)/n + mean(χ(z₀)² − b²)aaᵀ/n(z₀ = S 잔차/s, χ = ρ̃). 이는 MM 추정의 영향함수에 S 척도의 영향을 더한 β̂ − β ≈ Σ[Ax_iψ_i − a(χ_i − b)/n]의 공분산이다(Croux, Dhaene, Hoorelbeke 2003; 위 식의 b 항은 robustbase가 쓴 꼴 그대로). 합은 시작의 R로 얇은 Q 좌표(q_i = R⁻ᵀx_i)에서 만들고 V = R⁻¹V_Q R⁻ᵀ로 되돌린다: XᵀΨ′X를 직접 만들어 역행렬을 구하면 κ(X)²u라 스택 손실(κ ≈ 10³)에서 8×10⁻¹⁴ 틀리고(robustbase도 같은 크기), Q 좌표에서는 2×10⁻¹⁵다. 음의 고윳값이 있으면 robustbase의 `posdefify`(0으로 두고 대각을 원래 값으로 다시 맞춘다)를 `syevd`로 한다.
+- **Theil–Sen·Siegel** (G56, `csrc/regression/slopes.cpp`): API §5. 쌍의 기울기는 scipy가 만드는 double 그대로이고, 순위 통계량을 정확히 고른다.
+  - Theil–Sen의 순위는 중앙값(짝수면 둘)과 Sen 구간의 두 끝, 최대 4개다. 기울기가 2²³개 이하면 한 배열에 모아 순위 순서로 `nth_element`, 그보다 많으면 훑기다: 고정 키 Philox로 쌍 2¹⁶개를 뽑아 순위마다 피벗 lo, hi를 표본의 위치 ± (4√m + 4)에서 고른다. 한 번 훑으며(행 덩어리 128개, 크기로만 정한다) 순위마다 lo보다 작은·같은, hi보다 작은·같은 값의 수를 세고, 사이 값의 예상 수가 2²² 이하면 사이 값을 모두, 넘으면 쌍의 해시로 고른 부분표본(약 2¹⁶개)을 모은다. 답이 피벗과 같으면 끝, 사이에 있고 모두 모았으면 선택, 부분표본이면 그것으로 피벗을 좁혀 다시 훑는다. 표본이 빗나가 답이 피벗 밖이면 이미 아는 경계와 그 피벗 사이를 정확한 수로 다시 훑는다. 비교는 순서를 보존하는 정수 키(−0은 +0)로 한다. n = 10⁴(5×10⁷쌍)은 1번, 10⁵(5×10⁹쌍)은 2번 훑는다.
+  - 무한대 기울기(차의 넘침)가 있으면 Sen 구간의 순위를 유한한 기울기 수로 다시 정해 고른다(scipy의 nt).
+  - 0의 부호는 +0으로 낸다: scipy의 −0·+0은 정렬이 같은 값 사이에서 무엇을 앞에 두는지에 달려 있다.
+- **정확도와 대조** (`bench/regression/g4/accuracy.md`; 테스트 `tests/regression/test_robust.py`)
+  - Arb(`tools/regref.py`의 `rlm`): 해의 ψ 조각과 척도의 행(MAD의 가운데 행, 제안 2의 안·밖)을 고정한 매끄러운 방정식을 뉴턴으로 풀고, 그 조각과 순서가 상자 전체에서 확실한지 확인한 뒤 Krawczyk 판정으로 근을 증명한다(MM은 S 계수와 척도를 고정한 M 단계). 19개 문제(ψ 3 × 척도 2 × 짝·홀 n, 절편 없음, n = 400, 스택 손실 ψ 3, MM 2)에서 계수 벡터 1.1×10⁻¹⁶, 척도 1.4×10⁻¹⁵, 표준오차 2.0×10⁻¹⁵, 가중치(절대) 1.1×10⁻¹⁵ 안이다. 척도의 오차는 가운데 잔차의 상쇄(\|r_m\|가 \|y\|보다 작다)에서 온다.
+  - statsmodels(tol 1e-15, maxiter 1000, `HuberScale(d=2.5, tol=1e-15)`): ψ 3 × 척도 2에서 계수 2.3×10⁻¹⁵, 척도 2.1×10⁻¹⁵, 표준오차 1.3×10⁻¹⁵, 가중치 4.7×10⁻¹⁵ 안. statsmodels의 기본값(목적함수의 절대 변화 1e-8)과는 그쪽의 수렴 오차만큼(10⁻⁵ 이하, 속도 표의 문제에서 3×10⁻¹⁵–2.4×10⁻¹⁴) 다르다.
+  - R(4.6.2, `tests/regression/ref/robust_r.json`, `tools/gen_robust_r.py`; R은 테스트 의존성이 아니라 결과를 한 번 만들어 둔다): `MASS::rlm(scale.est='proposal 2', k2=2.5, acc=1e-15)`와 계수 4.1×10⁻¹⁵, 척도 1.7×10⁻¹⁴ 안, 표준오차는 var ψ′의 n − 1을 맞추면 10⁻¹⁴ 안이다. `MASS`의 MAD(0.6745)와는 척도 1.0–1.9×10⁻⁵, 계수 3×10⁻⁷–3×10⁻⁶ 다르다. `lmrob`의 M 단계를 sd의 S 시작에서 `rel.tol` 1e-15로 부르면 계수 8.8×10⁻¹⁶, `.vcov.avar1`은 7.1×10⁻¹⁵(스택 손실은 robustbase 쪽 κ²u로 1.8×10⁻¹³) 안이다. `lmrob` 자체(자기 부분표본, S의 `refine.tol` 1e-7; 큰 n 문제 n = 5,000 포함)와는 계수 1.1×10⁻⁹–1.2×10⁻⁷, 척도 1.3×10⁻⁸–1.1×10⁻⁵다. lmrob의 `scale`은 마지막 고정점 걸음의 값이라 정확한 M-척도와 그 정도 다르고(같은 잔차의 M-척도는 R의 `find_scale`과 10⁻¹⁰ 안에서 같다), 그래서 sd보다 작을 때도 있다.
+  - scipy: 무작위·동률·격자·평평한 자료, n = 2–5,000, 두 방법, 여러 `alpha`에서 비트까지 같다(0의 부호 빼고). 작은 n에서 쌍의 정확한 유리수 기울기의 중앙값과 4ulp 안, 기울기가 double로 정확한 정수 자료에서는 같다. 훑기 알고리즘은 테스트가 한계를 낮춰(모으기 한계 40–5,000) 작은 문제로도 돌려 scipy와 비트까지 같음을 확인한다.
+- **속도** (`bench/regression/g4/speed.md`): M(Huber, bisquare)은 statsmodels RLM의 기본값보다 (10⁵, 10)에서 3.2–3.3배(1스레드)·8.2–8.7배(10스레드), (10⁶, 50)에서 8.3–9.2배·29–31배 빠르다(statsmodels는 반복마다 `pinv`). MM(큰 n 방식)은 (10⁴, 5) 63 ms·35 ms, (10⁵, 10) 240 ms·65 ms, (10⁶, 10) 1.88 s·0.42 s(1·10스레드)이고 R `lmrob`(92 ms, 398 ms, 2.65 s)보다 1.4–1.7배·2.7–6.2배 빠르다. lmrob과의 계수 차이는 10⁻⁸ 수준이다. Theil–Sen은 scipy보다 n = 10³에서 11배, 10⁴에서 36배·138배, Siegel은 2.3–2.7배(1스레드)·16–23배(10스레드) 빠르고, n = 10⁵(scipy는 메모리가 모자란다)은 Theil–Sen 37 s·4.2 s, Siegel 68 s·7.9 s다.
 - **분위 회귀**: 목적함수 Σ ρ_q(y − Xβ)는 선형계획이다. statsmodels의 IRLS 근사는 정확한 해를 주지 않는다. 안은 Frisch–Newton 내부점법(Koenker–Portnoy, R `quantreg`의 `fn`)으로 풀고 마지막에 기저를 찾아 정확한 꼭짓점 해를 낸다. 표준오차는 커널 샌드위치(Hendricks–Koenker)와 순위 기반 구간 가운데 §8 G5 질문.
 
 ### 3.7 비선형 최소제곱
@@ -429,7 +463,7 @@
 | G1 선형 | 결과 객체의 공통 틀, `ols wls gls linregress`, 추론·예측·구간, 강건 표준오차, 랭크 부족, 진단, 배치 |
 | G2 GLM | 분포족·링크, IRLS, 분리 감지, 우도비, 편차·Pearson 잔차 |
 | G3 정규화 | `ridge lasso elastic_net`, 경로, 교차검증 |
-| G4 강건 | `rlm`(M 추정) |
+| G4 강건 | `rlm`(M·MM 추정), `theilslopes`, `siegelslopes` |
 | G5 분위 | `quantreg`(내부점법, 정확한 해), 표준오차 |
 | G6 비선형 | `curve_fit`/`least_squares` 꼴 |
 
@@ -442,6 +476,6 @@
 - **G1**: 정했다(2026-11-18, G9–G30).
 - **G2**: 정했다(2026-11-18, G31–G44).
 - **G3**: 정했다(2026-11-18, G45–G52).
-- **G4**: M 추정 함수 목록, 척도 추정, Theil–Sen·Siegel(scipy의 `theilslopes`, `siegelslopes`)을 넣을지
+- **G4**: 정했다(2026-11-18, G53–G59).
 - **G5**: 표준오차 방법, 여러 분위를 한 번에 받을지
 - **G6**: 이름과 API(scipy의 `curve_fit`과 `least_squares` 가운데 어느 꼴), 방법, 야코비안을 사용자가 줄 수 있게 할지, 범위 제약

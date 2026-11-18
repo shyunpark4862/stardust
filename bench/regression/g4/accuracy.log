@@ -1,0 +1,77 @@
+## against Arb
+| problem | params | scale | bse | weights | n_iter |
+|---|---:|---:|---:|---:|---:|
+| huber_mad_even | 4.9e-17 | 0.0e+00 | 0.0e+00 | 1.1e-16 | 15 |
+| huber_mad_odd | 5.1e-17 | 1.7e-16 | 1.4e-16 | 2.2e-16 | 13 |
+| huber_huber_even | 2.4e-17 | 1.3e-16 | 1.5e-16 | 1.1e-16 | 13 |
+| huber_huber_odd | 8.0e-17 | 1.2e-16 | 1.5e-16 | 2.2e-16 | 15 |
+| bisquare_mad_even | 7.0e-17 | 1.9e-16 | 1.9e-16 | 3.3e-16 | 12 |
+| bisquare_mad_odd | 7.6e-17 | 0.0e+00 | 1.9e-16 | 3.3e-16 | 13 |
+| bisquare_huber_even | 8.4e-17 | 1.4e-16 | 2.0e-16 | 3.3e-16 | 9 |
+| bisquare_huber_odd | 8.2e-17 | 1.2e-16 | 2.7e-16 | 3.3e-16 | 15 |
+| hampel_mad_even | 4.9e-17 | 0.0e+00 | 3.9e-16 | 3.5e-17 | 12 |
+| hampel_mad_odd | 5.7e-17 | 0.0e+00 | 1.9e-16 | 6.9e-17 | 18 |
+| hampel_huber_even | 9.8e-17 | 1.4e-16 | 1.7e-16 | 2.2e-16 | 15 |
+| hampel_huber_odd | 8.7e-17 | 1.2e-16 | 3.8e-16 | 1.1e-16 | 10 |
+| huber_mad_noint | 5.7e-17 | 0.0e+00 | 3.2e-16 | 2.8e-17 | 13 |
+| bisquare_mad_400 | 3.5e-17 | 2.0e-16 | 5.2e-16 | 3.3e-16 | 12 |
+| stackloss_huber | 9.6e-17 | 7.3e-16 | 1.0e-15 | 5.6e-16 | 19 |
+| stackloss_bisquare | 7.2e-17 | 1.4e-15 | 1.1e-15 | 1.1e-15 | 11 |
+| stackloss_hampel | 1.1e-16 | 4.3e-16 | 1.0e-15 | 3.3e-16 | 11 |
+| mm_leverage | 5.3e-17 | 0.0e+00 | 1.8e-15 | 3.3e-16 | 6 |
+| mm_stackloss | 5.8e-17 | 0.0e+00 | 1.9e-15 | 8.9e-16 | 14 |
+| largest | 1.1e-16 | 1.4e-15 | 1.9e-15 | 1.1e-15 | |
+
+## against statsmodels (tight tolerance), largest over three problems
+| norm | scale_est | params | scale | bse | weights (abs) | sd n_iter | sm iterations |
+|---|---|---:|---:|---:|---:|---:|---:|
+| huber | mad | 2.3e-15 | 2.1e-15 | 1.2e-15 | 4.7e-15 | 12/13/12 | 20/47/22 |
+| huber | huber | 2.1e-15 | 1.2e-15 | 9.5e-16 | 1.8e-15 | 11/11/11 | 1000/19/20 |
+| bisquare | mad | 2.2e-15 | 9.9e-16 | 6.8e-16 | 2.4e-15 | 12/13/12 | 27/22/20 |
+| bisquare | huber | 2.1e-15 | 1.4e-15 | 1.0e-15 | 1.3e-15 | 9/8/9 | 17/16/19 |
+| hampel | mad | 1.6e-15 | 1.2e-15 | 8.5e-16 | 2.0e-15 | 9/16/9 | 14/30/17 |
+| hampel | huber | 1.7e-15 | 1.1e-15 | 1.3e-15 | 1.4e-15 | 16/17/16 | 1000/1000/29 |
+
+## against R (R version 4.6.2 (2026-10-29) | MASS 7.3.66 | robustbase 0.99.7)
+| problem | fit | coef | scale | se | note |
+|---|---|---:|---:|---:|---|
+| stackloss | MASS huber | 8.6e-16 | 1.3e-16 | 8.0e-16 | proposal 2, k2 = 2.5; se with var(psi') over n - 1 |
+| stackloss | MASS huber | 3.2e-07 | 1.9e-05 | 9.2e-06 | MAD / 0.6745; se with var(psi') over n - 1 |
+| stackloss | MASS bisquare | 6.9e-16 | 1.9e-15 | 2.8e-15 | proposal 2, k2 = 2.5; se with var(psi') over n - 1 |
+| stackloss | MASS bisquare | 6.9e-07 | 1.2e-05 | 1.0e-05 | MAD / 0.6745; se with var(psi') over n - 1 |
+| stackloss | MASS hampel | 4.4e-17 | 1.4e-15 | 2.4e-15 | proposal 2, k2 = 2.5; se with var(psi') over n - 1 |
+| stackloss | MASS hampel | 8.3e-07 | 1.0e-05 | 3.5e-06 | MAD / 0.6745; se with var(psi') over n - 1 |
+| stackloss | lmrob M step from sd's S | 5.3e-18 | 0 | 1.8e-13 | rel.tol 1e-15 |
+| stackloss | lmrob (its own subsamples) | 1.2e-07 | 1.4e-06 | 1.9e-06 | S refine.tol 1e-7 |
+| vertical | MASS huber | 1.1e-15 | 1.7e-14 | 9.9e-15 | proposal 2, k2 = 2.5; se with var(psi') over n - 1 |
+| vertical | MASS huber | 5.1e-07 | 1.3e-05 | 7.1e-06 | MAD / 0.6745; se with var(psi') over n - 1 |
+| vertical | MASS bisquare | 9.6e-16 | 3.5e-15 | 6.1e-16 | proposal 2, k2 = 2.5; se with var(psi') over n - 1 |
+| vertical | MASS bisquare | 5.2e-07 | 1.4e-05 | 2.9e-07 | MAD / 0.6745; se with var(psi') over n - 1 |
+| vertical | MASS hampel | 3.9e-16 | 2.5e-15 | 2.9e-15 | proposal 2, k2 = 2.5; se with var(psi') over n - 1 |
+| vertical | MASS hampel | 3.7e-07 | 1.5e-05 | 4.8e-06 | MAD / 0.6745; se with var(psi') over n - 1 |
+| vertical | lmrob M step from sd's S | 2.3e-16 | 0 | 2.8e-15 | rel.tol 1e-15 |
+| vertical | lmrob (its own subsamples) | 5.6e-09 | 1.3e-08 | 9.2e-09 | S refine.tol 1e-7 |
+| leverage20 | MASS huber | 8.3e-16 | 0.0e+00 | 7.3e-16 | proposal 2, k2 = 2.5; se with var(psi') over n - 1 |
+| leverage20 | MASS huber | 2.7e-06 | 1.4e-05 | 6.2e-06 | MAD / 0.6745; se with var(psi') over n - 1 |
+| leverage20 | MASS bisquare | 4.9e-16 | 1.5e-16 | 8.9e-16 | proposal 2, k2 = 2.5; se with var(psi') over n - 1 |
+| leverage20 | MASS bisquare | 2.4e-06 | 1.7e-05 | 1.8e-06 | MAD / 0.6745; se with var(psi') over n - 1 |
+| leverage20 | MASS hampel | 4.5e-16 | 7.3e-16 | 3.7e-16 | proposal 2, k2 = 2.5; se with var(psi') over n - 1 |
+| leverage20 | MASS hampel | 4.9e-07 | 1.6e-05 | 2.0e-06 | MAD / 0.6745; se with var(psi') over n - 1 |
+| leverage20 | lmrob M step from sd's S | 6.6e-16 | 0 | 6.5e-16 | rel.tol 1e-15 |
+| leverage20 | lmrob (its own subsamples) | 1.1e-09 | 1.9e-07 | 3.5e-08 | S refine.tol 1e-7 |
+| leverage30 | MASS huber | 1.3e-15 | 0.0e+00 | 6.4e-16 | proposal 2, k2 = 2.5; se with var(psi') over n - 1 |
+| leverage30 | MASS huber | 6.7e-07 | 1.7e-05 | 9.1e-06 | MAD / 0.6745; se with var(psi') over n - 1 |
+| leverage30 | MASS bisquare | 5.9e-16 | 3.0e-16 | 8.9e-16 | proposal 2, k2 = 2.5; se with var(psi') over n - 1 |
+| leverage30 | MASS bisquare | 1.0e-06 | 1.2e-05 | 3.8e-07 | MAD / 0.6745; se with var(psi') over n - 1 |
+| leverage30 | MASS hampel | 1.6e-15 | 1.5e-16 | 1.4e-15 | proposal 2, k2 = 2.5; se with var(psi') over n - 1 |
+| leverage30 | MASS hampel | 5.1e-07 | 1.5e-05 | 4.9e-06 | MAD / 0.6745; se with var(psi') over n - 1 |
+| leverage30 | lmrob M step from sd's S | 8.8e-16 | 0 | 7.1e-15 | rel.tol 1e-15 |
+| leverage30 | lmrob (its own subsamples) | 3.4e-08 | 9.7e-06 | 1.1e-07 | S refine.tol 1e-7 |
+| large25 | MASS huber | 4.1e-15 | 6.1e-16 | 1.0e-14 | proposal 2, k2 = 2.5; se with var(psi') over n - 1 |
+| large25 | MASS huber | 2.9e-07 | 1.7e-05 | 8.0e-06 | MAD / 0.6745; se with var(psi') over n - 1 |
+| large25 | MASS bisquare | 3.7e-15 | 0.0e+00 | 8.5e-16 | proposal 2, k2 = 2.5; se with var(psi') over n - 1 |
+| large25 | MASS bisquare | 5.4e-07 | 1.7e-05 | 1.4e-06 | MAD / 0.6745; se with var(psi') over n - 1 |
+| large25 | MASS hampel | 1.6e-15 | 1.2e-15 | 8.6e-16 | proposal 2, k2 = 2.5; se with var(psi') over n - 1 |
+| large25 | MASS hampel | 2.8e-07 | 1.5e-05 | 3.5e-06 | MAD / 0.6745; se with var(psi') over n - 1 |
+| large25 | lmrob M step from sd's S | 8.8e-16 | 0 | 4.0e-15 | rel.tol 1e-15 |
+| large25 | lmrob (its own subsamples) | 9.6e-09 | 1.1e-05 | 2.3e-07 | S refine.tol 1e-7 |

@@ -12,11 +12,11 @@ from .._api_doc import signature_blocks
 
 API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "regression.md"
 
-# Documented, not implemented yet (docs/design/regression.md §7: G4-G5).
-PLANNED = {"rlm", "quantreg"}
+# Documented, not implemented yet (docs/design/regression.md §7: G5).
+PLANNED = {"quantreg"}
 RESULTS = {"OLSResult", "WLSResult", "GLSResult", "GLMResult", "LinregressResult", "JarqueBeraResult",
            "BreuschPaganResult", "RidgeResult", "LassoResult", "ElasticNetResult", "RidgeCVResult", "LassoCVResult",
-           "ElasticNetCVResult", "PenalizedGLMResult"}
+           "ElasticNetCVResult", "PenalizedGLMResult", "RLMResult", "TheilslopesResult", "SiegelslopesResult"}
 
 
 def documented():
