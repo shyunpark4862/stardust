@@ -149,7 +149,7 @@ GLSResult(nobs=30, rank=2, rsquared=0.806533, params=[2.094439045499515 0.504882
 True
 ```
 
-다만 NaN과 inf는 위 삼각에 있어도 찾아내요([NaN과 inf](#nan과-inf)).
+다만 NaN과 inf는 위 삼각에 있어도 찾아내요. `sigma`는 대칭 행렬이어야 해서, 읽지 않는 칸이라도 NaN이나 inf가 있으면 행렬 전체를 믿을 수 없다고 보기 때문이에요([NaN과 inf](#nan과-inf)).
 
 모양이 맞지 않으면 `ValueError`예요. 대각만 있는 분산 벡터(1차원)는 받지 않아요. 그럴 때는 [`wls`](/api/regression/wls/)에 `weights=1/분산`으로 주거나, 대각 행렬을 만들어 주세요.
 
@@ -264,13 +264,26 @@ Traceback (most recent call last):
 ValueError: gls(): the input contains NaN (nan_policy='raise')
 ```
 
-`Sn`은 (4, 2) 칸이 NaN이라 관측 2와 4가 함께 빠져요. 그 결과는 두 관측을 뺀 데이터와 그에 맞게 줄인 `sigma`로 푼 것과 같아요.
+`Sn`은 (4, 2) 칸이 NaN이라 관측 2와 4가 함께 빠져요. 그 결과는 두 관측을 뺀 데이터와 그에 맞게 줄인 `sigma`로 푼 것과 같아요. NaN이 읽지 않는 위 삼각의 (2, 4) 칸에 있어도 똑같이 관측 2와 4가 빠져요.
 
-inf는 `nan_policy`와 상관없이 `ValueError`예요.
+```python
+>>> rows = S.tolist()
+>>> rows[2][4] = math.nan
+>>> sd.regression.gls(y, t, sigma=sd.asarray(rows), nan_policy='omit').params.tolist() == a.params.tolist()
+True
+```
+
+inf는 `nan_policy`와 상관없이 `ValueError`예요. 위 삼각에 있어도 같아요.
 
 ```python
 >>> rows = S.tolist()
 >>> rows[0][0] = math.inf
+>>> sd.regression.gls(y, t, sigma=sd.asarray(rows))
+Traceback (most recent call last):
+    ...
+ValueError: gls(): 'sigma' contains infinity
+>>> rows = S.tolist()
+>>> rows[0][5] = math.inf
 >>> sd.regression.gls(y, t, sigma=sd.asarray(rows))
 Traceback (most recent call last):
     ...
@@ -306,6 +319,15 @@ array([[0.22910293378735336, 0.04291491143539509],
 Traceback (most recent call last):
     ...
 stardust.linalg.LinAlgError: gls(): 'sigma' is not positive definite (at batch index (2,))
+```
+
+`y`, `X`, `sigma`의 배치 모양이 서로 브로드캐스트하지 않으면 `ValueError`예요.
+
+```python
+>>> sd.regression.gls(sd.stack([yy, yy]), x, sigma=Sb)
+Traceback (most recent call last):
+    ...
+ValueError: gls(): the batch shapes of 'y' (2,), 'X' (), 'sigma' (3,) do not broadcast
 ```
 
 배치에서는 `nan_policy='omit'`을 쓸 수 없어요. 공통 규칙은 [회귀분석 기본](/api/regression/basics/)에 있어요.

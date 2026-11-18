@@ -187,7 +187,7 @@ ValueError: penalized_glm(): 'family' must be 'binomial' or 'poisson', not 'gamm
 | `resid_response` | `y - fittedvalues` |
 | `deviance` | 적합한 모형의 가중 편차 $\sum_i w_i d(y_i, \mu_i)$ |
 | `null_deviance` | 절편만 있는 모형의 편차(절편이 없으면 $\eta = 0$인 모형) |
-| `deviance_ratio` | 1 − `deviance`/`null_deviance` |
+| `deviance_ratio` | 1 − `deviance`/`null_deviance`. `null_deviance`가 0이면 NaN이에요. |
 | `df_model` | 유효 자유도(절편은 세지 않아요) |
 | `converged`, `n_iter`, `dual_gap` | 수렴했는지, 바깥 반복 횟수, 쌍대 간격(아래) |
 | `separation` | 분리로 최대우도 추정이 없는지(`alpha=0`에서만 True가 될 수 있어요) |
@@ -250,6 +250,15 @@ ValueError: predict(): 'which' must be 'mean' or 'linear', not 'prob'
 ```python
 >>> [round(v, 4) for v in pp.predict(sd.asarray([[0.0, 0.0, 0.0]])).tolist()]
 [1.9087]
+```
+
+`DataFrame`으로 적합하고 `DataFrame`으로 예측하면 열 이름과 순서가 적합과 같아야 해요(다르면 `ValueError`). 한쪽만 `DataFrame`이면 열을 위치로 맞춰요. `X_new`에 inf가 있으면 `ValueError`예요. 규칙은 [`ridge`](/api/regression/ridge/)의 예측과 같아요.
+
+```python
+>>> e.predict([[float('inf'), 0.0, 0.0]])
+Traceback (most recent call last):
+    ...
+ValueError: predict(): 'X_new' contains infinity
 ```
 
 ## `alpha = 0`: 벌점 없는 `glm`
@@ -340,6 +349,18 @@ array([False,  True], dtype=bool)
 ([nan, nan], False, 8.0)
 ```
 
+### `y`가 모두 같을 때
+
+포아송의 `y`가 모두 같은 양수면 절편만의 모형이 이미 완전히 맞아서 `null_deviance`가 0이에요. 그러면 `deviance_ratio`는 0/0이라 NaN이에요. 계수는 그대로 구해져서 절편이 $\log y$이고 나머지는 0이에요.
+
+```python
+>>> same = R.penalized_glm(sd.ones(8) * 2.0, xs, family='poisson', alpha=0.1)
+>>> same.params.tolist(), same.null_deviance, same.deviance_ratio
+([0.6931471805599453, 0.0], 0.0, nan)
+```
+
+$e^{\log y}$가 반올림 때문에 `y`와 정확히 같지 않으면 `null_deviance`가 0 대신 반올림 수준의 작은 수(`y`가 3이면 5.3e-31)가 되고, `deviance_ratio`는 NaN이 아니라 0.0이에요. 어느 쪽이든 설명할 흩어짐이 없다는 뜻이라 이 값은 해석하지 않아요.
+
 ### 가중치와 NaN
 
 `weights`는 편차에 곱해지는 가중치예요(`glm`의 `var_weights`). 0인 행은 적합과 `nobs`에서 빠지고, 적합값·선형 예측은 그 행에도 계산해요. NaN과 inf, 배치는 [`ridge`](/api/regression/ridge/), [`lasso`](/api/regression/lasso/)와 같아요.
@@ -388,11 +409,11 @@ True
   ```python
   >>> d = LogisticRegression(C=1 / (80 * 0.05)).fit(Xn, yn)
   >>> rel = np.linalg.norm(np.r_[d.intercept_, d.coef_.ravel()] - e0.params.tolist()) / np.linalg.norm(e0.params.tolist())
-  >>> 1e-4 < rel < 1e-3
+  >>> bool(1e-4 < rel < 1e-3)
   True
   ```
 
-- scikit-learn의 `PoissonRegressor(alpha=a)`는 L2 벌점만 있고, 여기의 `alpha=a, l1_ratio=0.0`과 같아요. `score`는 `deviance_ratio`와 같아요.
+- scikit-learn의 `PoissonRegressor(alpha=a)`는 L2 벌점만 있고, 여기의 `alpha=a, l1_ratio=0.0`과 같아요. `score`는 `deviance_ratio`와 같아요(다만 `y`가 모두 같으면 scikit-learn은 NaN 대신 0.0을 내요).
 
   ```python
   >>> from sklearn.linear_model import PoissonRegressor

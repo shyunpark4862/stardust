@@ -35,7 +35,9 @@ SITE = Path(__file__).resolve().parent.parent
 CONTENT = SITE / "src" / "content"
 DIST = SITE / "dist"
 ROOT = CONTENT / "api"
-FENCE = re.compile(r"^```python\n(.*?)^```", re.M | re.S)
+# Blocks may be indented (inside list items or components); the closing
+# fence has the same indent as the opening one.
+FENCE = re.compile(r"^([ \t]*)```python\n(.*?)^\1```", re.M | re.S)
 FLAGS = doctest.ELLIPSIS | doctest.NORMALIZE_WHITESPACE
 
 NAMESPACES = {
@@ -52,7 +54,7 @@ NAMESPACES = {
 def check_page(path: Path) -> tuple[int, int]:
     """Returns (failures, examples) for one page."""
     text = path.read_text(encoding="utf-8")
-    blocks = [b for b in FENCE.findall(text) if ">>> " in b]
+    blocks = [b for _, b in FENCE.findall(text) if ">>> " in b]
     if not blocks:
         return 0, 0
     # MDX indents blocks inside components; doctest needs the prompts flush left.

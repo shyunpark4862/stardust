@@ -519,6 +519,8 @@ Traceback (most recent call last):
 ValueError: predict(): 'X_new' must have 2 columns like the fit's 'X', not 1-dimensional
 ```
 
+`DataFrame`으로 적합하고 `X_new`도 `DataFrame`으로 주면 컬럼 이름과 순서가 적합 때와 같아야 하고, 다르면 `ValueError`예요. 한쪽만 `DataFrame`이면 열을 위치로 맞춰요. `X_new`에 inf가 있으면 `ValueError`이고, NaN이 있는 행은 그 행의 예측이 NaN이에요. 자세한 규칙은 [결과 객체 읽기](/api/regression/results/#predict)에 있어요.
+
 겹친 열이 있는 적합에서는 그 열을 쓰지 않고 예측해요. 구간의 자유도는 `df_resid_inference`예요.
 
 ## 특수한 경우
@@ -527,6 +529,7 @@ ValueError: predict(): 'X_new' must have 2 columns like the fit's 'X', not 1-dim
 - **겹친 열**: 그 계수와 표준오차·t·p가 NaN이고 나머지는 그 열을 뺀 적합과 비트까지 같아요. `rank`가 그만큼 줄어요.
 - **완전 적합**(잔차가 정확히 0): `bse`가 0, `tvalues`가 ±inf, `pvalues`가 0, `llf`가 +inf예요. 0으로 나눈 값의 극한을 그대로 줘요.
 - **열이 행보다 많을 때**: 앞의 열부터 `nobs`개까지만 쓰이고 나머지는 겹친 열로 NaN이에요.
+- **반응이 모두 같을 때**(TSS가 0): 설명할 흩어짐이 없어서 `rsquared`, `rsquared_adj`, `fvalue`, `f_pvalue`가 NaN이고 `ess`는 0이에요. 계수와 표준오차는 그대로 나와요.
 
 ```python
 >>> xp = sd.arange(6.0)
@@ -608,6 +611,9 @@ statsmodels 0.15.0, scikit-learn 1.9.1, numpy 2.5.4 기준이에요.
 - 겹친 열: 위의 `[hours, 2 * hours]` 예에서 statsmodels는 의사역행렬로 두 열에 값을 나눠 줘요(`[47.97, 0.811, 1.621]`, 경고와 함께). sd는 앞 열을 남기고 뒤 열을 NaN으로 둬요(`[47.97, 4.053, nan]`).
 - 완전 적합: statsmodels는 잔차가 반올림 수준으로 남아 표준오차 1e-14 안팎, t 1e13–1e15, p 1e-90–1e-103 같은 값을 내요($x = 0, \dots, 9$, $y = 1 + 2x + 3x^2$). sd는 0, inf, 0이에요.
 - NaN: statsmodels의 기본(`missing='none'`)은 에러 없이 NaN 계수를 줘요. `missing='drop'`이 sd의 `nan_policy='omit'`이에요.
+- 반응이 모두 같으면 statsmodels는 R²에 −inf, F에 음수 같은 반올림의 값을 내요. sd는 R²와 F가 NaN, `ess`가 0이에요.
+- `predict`: statsmodels는 pandas `DataFrame`의 컬럼 이름을 보지 않고 위치로 곱해요. sd는 적합과 예측이 둘 다 `DataFrame`이면 이름과 순서를 확인해요.
+- 진단(`get_influence()` 등)을 statsmodels는 모형이 들고 있는 배열로 나중에 계산해서, 적합 뒤에 그 배열을 고치면 값이 바뀌어요. sd는 적합할 때 입력을 복사해 둬서 바뀌지 않아요.
 - `summary()`의 꼴과 숫자 형식은 statsmodels와 같아요. `Dep. Variable`, 날짜, 시각 줄과 `Omnibus`, `Skew`, `Kurtosis` 줄은 없어요.
 - 배치가 있어요. statsmodels는 회귀 하나씩 불러야 해요.
 - 정확도: 위의 $t = 100, \dots, 110$ 3차식에 표준정규 잡음을 더한 문제(`sd.random.default_rng(1)`, 조건수 5.7e10)에서 Arb(구간 산술)로 만든 참값과 견주면, sd의 계수는 참값을 반올림한 값과 같고, statsmodels는 상대오차 1.9e-9, numpy `lstsq`는 1.9e-10이에요.
@@ -619,4 +625,5 @@ statsmodels 0.15.0, scikit-learn 1.9.1, numpy 2.5.4 기준이에요.
 - 표준오차, p값, 신뢰구간, 예측 구간이 없어요.
 - NaN이 있으면 `ValueError`예요. sd의 기본은 NaN을 전파하고, `'raise'`를 주면 sd도 `ValueError`예요.
 - 겹친 열에는 최소 노름 해를 줘요(같은 예에서 `coef_`가 `[0.811, 1.621]`).
+- `predict`의 열 규칙은 같아요. 둘 다 `DataFrame`이면 이름과 순서가 같아야 하고(다르면 `ValueError`), 한쪽만 `DataFrame`이면 위치로 맞춰요. 이때 scikit-learn은 `UserWarning`을 내지만 sd는 경고를 내지 않아요.
 - 위의 조건수 5.7e10 문제에서 `LinearRegression`은 `rank_`가 2라 방향 하나를 버리고, 잔차 제곱합이 3.21로 최소제곱 해(sd의 2.957)보다 커요.

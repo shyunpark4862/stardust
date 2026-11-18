@@ -127,14 +127,13 @@ LinregressResult(slope=nan, intercept=nan, rvalue=nan, pvalue=nan, stderr=nan, i
 
 ### `y`가 모두 같을 때
 
-수평선이 데이터를 그대로 지나요. 절편은 그 값이고 기울기는 0이에요. 상관계수는 $y$의 흩어짐이 0이라 정할 수 없어서, `rvalue`, `pvalue`, `stderr`, `intercept_stderr`가 NaN이에요.
+수평선이 데이터를 그대로 지나요. 절편은 그 값이고 기울기는 정확히 0이에요(반올림이 남는 계산 대신 그 직선을 그대로 줘요). 상관계수는 $y$의 흩어짐이 0이라 정할 수 없어서, `rvalue`, `pvalue`, `stderr`, `intercept_stderr`가 NaN이에요.
 
 ```python
->>> c = sd.regression.linregress([1.0, 2.0, 3.0, 4.0, 5.0], [3.0, 3.0, 3.0, 3.0, 3.0])
->>> c.intercept, abs(c.slope) < 1e-15
-(3.0, True)
->>> c.rvalue, c.pvalue, c.stderr, c.intercept_stderr
-(nan, nan, nan, nan)
+>>> sd.regression.linregress([1.0, 2.0, 3.0, 4.0, 5.0], [3.0, 3.0, 3.0, 3.0, 3.0])
+LinregressResult(slope=0.0, intercept=3.0, rvalue=nan, pvalue=nan, stderr=nan, intercept_stderr=nan)
+>>> sd.regression.linregress([0.1, 0.2, 0.3, 0.4, 0.7], [0.3, 0.3, 0.3, 0.3, 0.3])
+LinregressResult(slope=0.0, intercept=0.3, rvalue=nan, pvalue=nan, stderr=nan, intercept_stderr=nan)
 ```
 
 ### 점이 한 직선 위에 있을 때
@@ -170,15 +169,23 @@ LinregressResult(slope=nan, intercept=nan, rvalue=nan, pvalue=nan, stderr=nan, i
 Traceback (most recent call last):
     ...
 ValueError: linregress(): 'y' contains infinity
+>>> sd.regression.linregress([1.0, float('inf'), 3.0], [2.0, 4.0, 3.0])
+Traceback (most recent call last):
+    ...
+ValueError: linregress(): 'x' contains infinity
 ```
 
-길이가 다르면 `ValueError`, 인자를 하나만 주면 `TypeError`예요.
+길이가 다르거나 비어 있으면 `ValueError`, 인자를 하나만 주면 `TypeError`예요.
 
 ```python
 >>> sd.regression.linregress([1.0, 2.0, 3.0], [1.0, 2.0])
 Traceback (most recent call last):
     ...
 ValueError: linregress(): 'x' must have 2 values like 'y', not 3
+>>> sd.regression.linregress([], [])
+Traceback (most recent call last):
+    ...
+ValueError: linregress(): 'x' and 'y' must not be empty
 >>> sd.regression.linregress([1.0, 2.0, 3.0])
 Traceback (most recent call last):
     ...
@@ -187,14 +194,14 @@ TypeError: linregress() missing 1 required positional argument: 'y'
 
 ## 배치: 직선 여러 개
 
-`x`와 `y`가 (..., n)이면 마지막 축을 따라 직선을 하나씩 맞춰요. 칸마다 배치 모양의 배열이 돼요. 같은 `x`를 여러 `y`에 쓰려면 `sd.broadcast_to`로 `y`와 같은 모양을 만들어 줘요.
+`x`와 `y`가 (..., n)이면 마지막 축을 따라 직선을 하나씩 맞춰요. 칸마다 배치 모양의 배열이 돼요. `x`와 `y`의 앞 축은 서로 [브로드캐스트](/api/array/broadcasting/)해서, 1차원 `x` 하나를 여러 `y`에 그대로 쓸 수 있어요(그 반대도 돼요).
 
 ```python
 >>> x = sd.asarray([1.0, 2.0, 3.0, 4.0, 5.0])
 >>> Y = sd.asarray([[2.0, 4.1, 5.9, 8.2, 9.9],
 ...                 [1.0, 1.4, 2.1, 2.4, 3.1],
 ...                 [5.0, 4.0, 3.2, 1.9, 1.1]])
->>> b = sd.regression.linregress(sd.broadcast_to(x, (3, 5)), Y)
+>>> b = sd.regression.linregress(x, Y)
 >>> b.slope
 array([ 1.99,  0.52, -0.99], dtype=float64)
 >>> b.rvalue
@@ -246,4 +253,4 @@ scipy 1.18.1의 `scipy.stats.linregress` 기준이에요.
 - 값의 형이 Python `float`(배치면 `sd.ndarray`)예요. scipy는 `numpy.float64`예요.
 - 점이 한 직선 위에 있으면 sd의 `pvalue`는 0이에요. scipy는 t를 구하는 식의 분모에 1e-20을 더하기 때문에 `[1, 2, 3, 4, 5]`, `[3, 5, 7, 9, 11]`에서 1.2e-30을 줘요.
 - scipy의 `alternative=`(한 꼬리 p값), `axis=`, `nan_policy=`, `keepdims=`는 없어요. sd는 언제나 두 꼬리, 마지막 축, NaN 전파예요. scipy의 `axis` 기본값은 0이라 (배치, n) 모양의 배열은 `axis=-1`을 줘야 sd와 같은 축을 따라 맞춰요.
-- `x`나 `y`가 모두 같을 때, 점이 둘이나 하나일 때 NaN이 되는 칸은 scipy와 같아요.
+- `x`나 `y`가 모두 같을 때, 점이 둘이나 하나일 때 NaN이 되는 칸은 scipy와 같아요. `y`가 모두 같을 때의 기울기 0.0과 절편(그 값)도 같아요.

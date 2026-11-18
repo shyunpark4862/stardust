@@ -287,6 +287,21 @@ True
 
 수렴하면 거기서 멈추지 않고, 그때의 0 아닌 계수와 부호로 최적성 조건(위의 "정확히 0이 되는 까닭"의 등식)을 바로 풀어서 해를 다듬어요. 다듬은 해가 조건을 모두 만족하면 그 해를 내요. 그래서 **계수는 `tol`의 정밀도가 아니라 정확한 해에 반올림 수준으로 가깝고**, `dual_gap`도 반올림 수준이에요(반올림 때문에 아주 작은 음수일 수도 있어요). `tol`을 바꿔도 계수는 보통 같은 비트예요.
 
+`tol`이 아주 크면 판정을 일찍 통과하지만, 그 해가 아직 멀어서 다듬기가 실패할 수 있어요. 그때는 더 좁은 판정으로 반복을 이어 가고, 그 반복도 `n_iter`에 들어가요. 그래서 `tol`을 키웠는데 `n_iter`가 오히려 클 수 있어요.
+
+```python
+>>> sd.regression.lasso(y, X, alpha=0.1).n_iter, sd.regression.lasso(y, X, alpha=0.1, tol=1.0).n_iter
+(2, 4)
+```
+
+이어 간 반복이 `max_iter`에 닿으면 다듬지 못한 마지막 값을 내요. `tol`의 판정은 통과했으니 `converged`는 True이고, 계수는 `tol`만큼의 정밀도예요. 이때도 `dual_gap`이 그 크기를 알려 줘요.
+
+```python
+>>> kt = sd.regression.lasso(ya, Xa, alpha=0.001, tol=0.1)
+>>> kt.converged, kt.n_iter, round(kt.dual_gap, 4)
+(True, 1000, 0.1358)
+```
+
 ```python
 >>> a = sd.regression.lasso(y, X, alpha=0.1)
 >>> b = sd.regression.lasso(y, X, alpha=0.1, tol=1e-12)
@@ -294,7 +309,7 @@ True
 True
 ```
 
-`max_iter`에 닿으면 마지막 값을 내고 `converged=False`예요. 경고는 내지 않으니 `converged`를 확인하세요. 이때 `dual_gap`이 해가 얼마나 덜 풀렸는지 알려 줘요.
+판정을 통과하기 전에 `max_iter`에 닿으면 마지막 값을 내고 `converged=False`예요. 경고는 내지 않으니 `converged`를 확인하세요. 이때 `dual_gap`이 해가 얼마나 덜 풀렸는지 알려 줘요.
 
 ```python
 >>> k = sd.regression.lasso(ya, Xa, alpha=0.001, max_iter=3)
@@ -349,8 +364,8 @@ True
 | `dual_gap` | 돌려준 계수에서의 쌍대 간격(목적함수 단위) |
 | `fittedvalues`, `resid` | 적합값과 잔차 `y - fittedvalues` |
 | `ssr` | 적합에 쓴 행의 $\sum_i w_i r_i^2$ |
-| `rsquared` | 1 − `ssr`/TSS([`ridge`](/api/regression/ridge/)와 같은 규칙) |
-| `predict(X_new, /)` | 새 행의 예측. 경로면 (L, m)이에요. |
+| `rsquared` | 1 − `ssr`/TSS([`ridge`](/api/regression/ridge/)와 같은 규칙). `y`가 모두 같아 TSS가 0이면 NaN이에요. |
+| `predict(X_new, /)` | 새 행의 예측. 경로면 (L, m)이에요. `DataFrame`으로 적합했을 때의 열 이름 규칙과 inf는 [`ridge`](/api/regression/ridge/)의 예측과 같아요. |
 
 라소의 유효 자유도 `df_model`은 0이 아닌 계수의 수예요. 라소는 열을 고르는 만큼 자유도를 더 쓰고 계수를 줄이는 만큼 덜 쓰는데, 0 아닌 계수의 수가 그 자유도를 치우침 없이 어림한다는 것이 알려져 있어요(Zou–Hastie–Tibshirani, 2007).
 
@@ -459,7 +474,9 @@ True
   [-4.812, 6.812, 0.16]
   ```
 
-  `tol`을 아주 작게 하고 `max_iter`를 키워야 scikit-learn도 같은 해에 닿아요. scikit-learn의 `dual_gap_`은 여기 `dual_gap`과 같은 단위예요.
+  `tol`을 아주 작게 하고 `max_iter`를 키워야 scikit-learn도 같은 해에 닿아요.
+- **`dual_gap`은 scikit-learn 1.9.1의 `dual_gap_`과 같은 단위예요**(목적함수 단위). 다듬기 전의 반복은 scikit-learn과 같은 순서로 계수를 고치므로, `max_iter`를 같게 주면 수렴 전의 계수와 간격도 반올림 수준에서 같아요(위의 `max_iter=3`에서 둘 다 0.4901). 판정을 통과한 뒤의 `n_iter`는 scikit-learn의 `n_iter_`와 같지 않아요. 이 페이지의 첫 예에서 scikit-learn은 3, 여기는 2이고, `tol=1.0`이면 scikit-learn은 0, 여기는 다듬기에 실패해 이어 간 반복까지 세어 4예요.
+- `y`가 모두 같으면 `rsquared`가 NaN이에요. scikit-learn의 `score`는 이때 1.0이나 0.0을 내요.
 - 결과는 `coef_`, `intercept_` 대신 `params`(절편이 `params[0]`) 하나예요. `alpha`에 배열을 주면 `lasso_path`·`enet_path`처럼 경로가 나와요.
 - scikit-learn에는 `standardize`가 없어요.
 - R의 glmnet(`alpha = 1`)의 `lambda`는 여기 `alpha`와 같아요. 같은 `lambda`, 같은 표준화 설정이면 같은 해예요. 다만 glmnet은 기본으로 열을 표준화하고(`standardize = TRUE`), 여기는 기본이 `standardize=False`예요. glmnet의 `df`는 `df_model`과 같은 0 아닌 계수의 수이고, `dev.ratio`는 `rsquared`와 같아요.

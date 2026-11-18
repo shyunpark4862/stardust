@@ -216,7 +216,7 @@ True
 
 ## 잘못된 가중치
 
-음수는 분산의 역수가 될 수 없어서 `ValueError`예요. 길이가 다르거나 inf가 있어도 `ValueError`예요.
+음수는 분산의 역수가 될 수 없어서 `ValueError`예요. 길이가 다르거나, 행마다가 아닌 수 하나를 주거나, inf가 있어도 `ValueError`예요. 모든 행에 같은 가중치를 주는 것은 `ols`와 같은 적합이라 수 하나는 받지 않아요.
 
 ```python
 >>> sd.regression.wls(y, x, weights=[1.0, 1.0, 1.0, -1.0, 1.0, 1.0, 1.0, 1.0])
@@ -227,6 +227,10 @@ ValueError: wls(): 'weights' must be >= 0
 Traceback (most recent call last):
     ...
 ValueError: wls(): 'weights' must have 8 values like 'y', not 7
+>>> sd.regression.wls(y, x, weights=2.0)
+Traceback (most recent call last):
+    ...
+ValueError: wls(): 'weights' must have 8 values like 'y', not a scalar
 >>> sd.regression.wls(y, x, weights=[1.0, 1.0, 1.0, float('inf'), 1.0, 1.0, 1.0, 1.0])
 Traceback (most recent call last):
     ...
@@ -309,6 +313,15 @@ array([0.4527146850442554, 0.1449247472119852], dtype=float64)
 >>> rb.params
 array([[0.21726682986942655,  1.9189027327051025],
        [ 0.2928571428571428,   1.957142857142857]], dtype=float64)
+```
+
+배치 모양이 맞지 않으면 `ValueError`이고, 메시지가 인자마다의 배치 모양을 알려 줘요.
+
+```python
+>>> sd.regression.wls(sd.stack([y, y, y]), x, weights=W)
+Traceback (most recent call last):
+    ...
+ValueError: wls(): the batch shapes of 'y' (3,), 'X' (), 'weights' (2,) do not broadcast
 ```
 
 ## 정확도

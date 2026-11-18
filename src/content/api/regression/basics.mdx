@@ -174,7 +174,7 @@ array([ 0.5,  1.0, -1.0], dtype=float64)
 array([               2.0, 0.6666666666666666], dtype=float64)
 ```
 
-꼴이 맞지 않으면 에러예요. 행 수가 다르면 `ValueError`, 복소수는 `TypeError`, 숫자 하나(0차원)는 `ValueError`예요.
+꼴이 맞지 않으면 에러예요. 행 수가 다르면 `ValueError`, 복소수와 숫자가 아닌 원소는 `TypeError`, 숫자 하나(0차원)는 `ValueError`예요. 리스트를 받지 못할 때는 어떤 원소가 문제인지 메시지에 나와요(`list of str`는 문자열이 섞인 리스트라는 뜻이에요).
 
 ```python
 >>> sd.regression.ols(score, hours[:7])
@@ -189,6 +189,10 @@ TypeError: ols(): 'X' must be real, not a complex128 array
 Traceback (most recent call last):
     ...
 ValueError: ols(): 'y' must have at least 1 dimension
+>>> sd.regression.ols(score, ['1', '2', '3', '4', '5', '6', '7', '8'])
+Traceback (most recent call last):
+    ...
+TypeError: ols(): 'X' must be an sd.ndarray, a sequence of numbers or a frame Series or DataFrame, not list of str
 ```
 
 ### frame 입력과 계수 이름
@@ -218,6 +222,16 @@ ValueError: ols(): 'y' must have at least 1 dimension
 ```
 
 frame의 결측값(NA)은 NaN으로 바뀌어서 아래 [NaN 규칙](#nan과-nan_policy)을 따라요.
+
+`DataFrame`의 열은 모두 숫자로 읽을 수 있어야 해요. 숫자로 읽을 수 없는 문자열 열이 있으면 `TypeError`예요. 범주를 나타내는 문자열 열은 0과 1의 열로 바꿔서 주세요.
+
+```python
+>>> bad = sd.frame.DataFrame({'hours': hours, 'cls': ['a', 'b', 'a', 'b', 'a', 'b', 'a', 'b']})
+>>> sd.regression.ols(score, bad)
+Traceback (most recent call last):
+    ...
+TypeError: ols(): 'X' must have numeric columns
+```
 
 ## 절편은 기본으로 들어가요
 
@@ -351,7 +365,7 @@ array([ 0.951323509346432, 0.9940828402366864, 0.7032967032967032], dtype=float6
 >>> sd.regression.ols(Y, Xb)
 Traceback (most recent call last):
     ...
-ValueError: ols(): batch shapes do not broadcast: (3,) (2,) () ()
+ValueError: ols(): the batch shapes of 'y' (3,), 'X' (2,) do not broadcast
 ```
 
 ### 배치의 규칙
@@ -379,7 +393,7 @@ Traceback (most recent call last):
 ValueError: summary(): takes one regression, not a batch of shape (3,)
 ```
 
-배치를 받는 함수는 `ols`, `wls`, `gls`, `glm`, 정규화 함수들, `rlm`, `quantreg`예요. `linregress`, `theilslopes`, `siegelslopes`는 `x`와 `y`가 (…, n)이면 앞 축마다 한 번씩 계산해요. `nls`는 회귀 하나만 받아요(모형 함수가 사용자의 Python 함수라서예요).
+배치를 받는 함수는 `ols`, `wls`, `gls`, `glm`, 정규화 함수들, `rlm`, `quantreg`예요. `linregress`, `theilslopes`, `siegelslopes`는 `x`와 `y`가 (…, n)이면 앞 축마다 한 번씩 계산해요. 이때도 `x`와 `y`의 앞 축은 서로 브로드캐스트해서, `x` 하나를 `y` 여럿에 쓸 수 있어요. `nls`는 회귀 하나만 받아요(모형 함수가 사용자의 Python 함수라서예요).
 
 ## 결과의 형
 

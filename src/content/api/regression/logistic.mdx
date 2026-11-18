@@ -333,7 +333,7 @@ array([-inf, -inf, -inf, -inf, -inf,  inf,  inf,  inf,  inf,  inf], dtype=float6
 
 x = 5와 6 사이에서 로그 오즈를 가파르게 꺾을수록 모든 행의 적합 확률이 관측값(0 또는 1)에 가까워지고 우도가 1에 다가가요. 기울기를 아무리 키워도 더 나아지니, **최대우도 추정값이 존재하지 않아요.** 이것을 **완전 분리**(complete separation)라고 불러요.
 
-`glm`은 이 상황을 증명해서 알려요.
+`glm`은 이 상황을 증명해서 알려요. 계수가 경계로 간다는 증거를 데이터에서 확인할 때만 분리로 보고, 반복이 `max_iter`에 닿았다는 것만으로는 분리로 보지 않아요([`glm`의 분리](/api/regression/glm/#분리)).
 
 - `separation=True`, `params`·`bse`·`tvalues`·`pvalues`·`cov_params()`는 NaN이에요. 무한대로 가는 계수에는 의미 있는 값도 표준오차도 없으니까요.
 - `fittedvalues`는 극한값 0과 1, `linear_predictor`는 ±inf, 잔차는 0이에요.

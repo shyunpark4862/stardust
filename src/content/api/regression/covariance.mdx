@@ -251,6 +251,17 @@ array([1.5574417146506807,  2.562576395732936], dtype=float64)
 (23.956635, 23.956635)
 ```
 
+`'cluster'`에서는 군집 수 − 1이 검정할 계수의 수(절편을 뺀 계수)보다 작으면 `fvalue`와 `f_pvalue`가 NaN이에요. 군집마다 $x_i e_i$를 더한 합 G개는 모두 더하면 $X^\top e = 0$이 되어서, 군집 G개로는 G − 1개 방향의 흩어짐밖에 잴 수 없기 때문이에요. 그보다 많은 계수를 한꺼번에 검정하는 F는 정할 수 없어요. 계수 하나씩의 `bse`와 t값은 그대로 나와요.
+
+```python
+>>> X2 = [[h, h * h] for h in h8]
+>>> r2 = sd.regression.ols(y8, X2, cov_type='cluster', groups=['a'] * 4 + ['b'] * 4)
+>>> r2.fvalue, r2.f_pvalue
+(nan, nan)
+>>> bool(sd.all(sd.isfinite(r2.bse)))
+True
+```
+
 `glm`은 분포족에 따라 정규분포(z)로 검정하기도 해요. 그때 `df_resid_inference`는 `inf`예요. 자세한 규칙은 [glm](/api/regression/glm/)에 있어요.
 
 ## 가중치가 0인 행
@@ -321,5 +332,5 @@ ValueError: quantreg(): 'cov_type' must be 'iid', 'nid' or 'ker', not 'HC3'
 - 옵션은 `cov_kwds` 사전이 아니라 키워드예요. statsmodels의 `cov_kwds={'maxlags': 4}`는 `maxlags=4`, `cov_kwds={'groups': g}`는 `groups=g`예요.
 - **p값과 구간의 분포가 달라요.** statsmodels는 강건 공분산이면 기본으로 정규분포를 써요(`use_t=False`). 여기서는 늘 t분포예요. statsmodels의 `fit(cov_type=..., use_t=True)`와 같은 값이고, 위의 HC3 기울기 p값은 statsmodels 기본이 $9.9 \times 10^{-7}$, 여기가 $3.7 \times 10^{-5}$예요.
 - statsmodels의 `'HAC'`은 `maxlags`를 꼭 줘야 해요. 여기서는 빼면 $\lfloor 4(n/100)^{2/9} \rfloor$예요. 같은 `maxlags`면 값이 같아요. 소표본 보정을 하지 않는 것(`use_correction=False`)도 statsmodels의 기본과 같아요.
-- `'cluster'`의 자유도 G − 1, 소표본 보정, `fvalue`는 statsmodels의 `use_t=True`와 같아요. 다만 statsmodels의 `get_prediction`은 군집에서도 `df_resid`로 구간을 만들고, 여기의 `predict_interval`은 G − 1을 써요.
+- `'cluster'`의 자유도 G − 1, 소표본 보정, `fvalue`는 statsmodels의 `use_t=True`와 같아요. 군집 수 − 1이 검정할 계수 수보다 작을 때 statsmodels는 `ValueWarning`과 함께 F 값을 내고, 여기서는 `fvalue`·`f_pvalue`가 NaN이에요. 다만 statsmodels의 `get_prediction`은 군집에서도 `df_resid`로 구간을 만들고, 여기의 `predict_interval`은 G − 1을 써요.
 - `wls`에서 가중치가 0인 행을 statsmodels는 점수 0인 관측으로 남겨서, 그 행에만 나오는 군집도 군집 수에 세고 HAC의 지연 짝도 달라져요. 여기서는 그 행을 뺀 적합과 같아요.

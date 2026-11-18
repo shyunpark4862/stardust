@@ -91,6 +91,13 @@ array([  19.708601395933567,    2.997447946508792, -0.03789720249661012], dtype=
 
 기온의 계수 3.00은 "비가 같은 날끼리 보면, 기온이 1℃ 오를 때 매출이 평균 3.00 오른다"는 뜻이에요. 설명변수가 여럿이면 각 계수는 **다른 변수를 그대로 둘 때** 그 변수 하나의 효과예요. 참값 3에 아주 가깝고, 강수량의 계수 −0.04도 참값 0에 가까워요. 하지만 데이터가 30개뿐이니 이 숫자가 얼마나 흔들릴 수 있는지 알아야 해요. 그것을 재는 것이 다음 필드들이에요.
 
+계수가 정확히 0이면 언제나 `0.0`(+0.0)이에요. 계산의 반올림이 남긴 부호는 데이터에 뜻이 없어서 −0.0으로 내지 않아요.
+
+```python
+>>> sd.regression.ols([5.0, 1, 1, 5], [1.0, 2, 3, 4]).params
+array([3.0, 0.0], dtype=float64)
+```
+
 ## 표준오차: bse
 
 같은 가게에서 다른 30일을 골라 다시 맞추면 계수는 조금씩 달라져요. 오차가 날마다 우연히 다르기 때문이에요. **표준오차**(`bse`, standard error)는 그 흔들림의 크기, 곧 "다시 모으면 계수가 대략 이 정도 흔들린다"는 어림이에요. 계수의 표준편차를 데이터 한 벌에서 어림한 값이에요.
@@ -318,6 +325,16 @@ $$R^2_{\text{adj}} = 1 - \frac{n - 1}{\text{df\_resid}}(1 - R^2)$$
 
 절편만 있는 모형(설명변수가 없음)은 설명한 것이 없으니 `ess`와 `rsquared`가 0이에요.
 
+반응이 모두 같은 값이면 TSS가 0이에요. 설명할 흩어짐이 처음부터 없으니 R²는 0/0이라 `rsquared`와 `rsquared_adj`가 NaN이고, `ess`는 0이에요. 계수와 표준오차는 그대로 계산돼요.
+
+```python
+>>> rc = sd.regression.ols([3.0, 3, 3, 3, 3], [1.0, 2, 3, 4, 5])
+>>> rc.centered_tss, rc.ess
+(0.0, 0.0)
+>>> rc.rsquared, rc.rsquared_adj, rc.fvalue, rc.f_pvalue
+(nan, nan, nan, nan)
+```
+
 ## F 검정: fvalue와 f_pvalue
 
 `fvalue`와 `f_pvalue`는 "절편을 뺀 계수가 **모두** 0인가"를 한꺼번에 따지는 F 검정의 통계량과 p값이에요. t값과 p값이 계수 하나씩을 본다면, 이것은 모형 전체가 평균 하나보다 나은지를 봐요. p값은 [F분포](/api/stats/f/)(자유도 `df_model`, `df_resid_inference`)의 위꼬리 확률이에요.
@@ -329,7 +346,7 @@ $$R^2_{\text{adj}} = 1 - \frac{n - 1}{\text{df\_resid}}(1 - R^2)$$
 True
 ```
 
-절편만 있는 모형은 검정할 계수가 없어서 둘 다 NaN이에요. 강건 표준오차(`cov_type`)를 쓰면 `fvalue`는 그 공분산으로 만든 Wald 검정의 F예요([표준오차의 종류](/api/regression/covariance/)).
+절편만 있는 모형은 검정할 계수가 없어서 둘 다 NaN이에요. 반응이 모두 같아서 TSS가 0일 때도 둘 다 NaN이에요(위의 `rc`). 강건 표준오차(`cov_type`)를 쓰면 `fvalue`는 그 공분산으로 만든 Wald 검정의 F예요([표준오차의 종류](/api/regression/covariance/)).
 
 ## 로그우도와 정보 기준
 
@@ -384,16 +401,33 @@ ValueError: predict(): 'X_new' must have 2 columns like the fit's 'X', not 1-dim
 
 적합에 쓴 `X`를 그대로 주면 `fittedvalues`와 비트까지 같은 값이에요.
 
-<Callout type="warn" title="열은 이름이 아니라 순서로 맞춰요">
-
-`X_new`에 `DataFrame`을 주어도 컬럼 이름을 보지 않고 **열의 순서**대로 계수를 곱해요. 적합할 때와 컬럼 순서가 다르면 에러 없이 틀린 값이 나와요. `df[['temp', 'rain']]`처럼 적합 때와 같은 순서로 골라서 주세요.
-
-</Callout>
+`DataFrame`으로 적합하고 `X_new`도 `DataFrame`으로 주면, `X_new`의 컬럼 이름과 순서가 적합할 때와 **같아야 해요**. 순서만 다르거나 이름이 다르면 `ValueError`예요. 어느 열이 어느 계수에 맞는지 짐작하지 않고, 틀린 값 대신 에러로 알려 줘요. 순서가 다르면 `new[['temp', 'rain']]`처럼 적합 때의 순서로 골라서 주세요.
 
 ```python
->>> new = sd.frame.DataFrame({'temp': [20.0, 30.0], 'rain': [5.0, 5.0]})
+>>> new = sd.frame.DataFrame({'rain': [5.0, 5.0], 'temp': [20.0, 30.0]})
+>>> r.predict(new)
+Traceback (most recent call last):
+    ...
+ValueError: predict(): 'X_new' must have the columns ['temp', 'rain'] in the fit's order, not ['rain', 'temp']
 >>> r.predict(new[['temp', 'rain']])
 array([ 79.46807431362636, 109.44255377871427], dtype=float64)
+>>> r.predict(sd.frame.DataFrame({'temp': [20.0], 'snow': [5.0]}))
+Traceback (most recent call last):
+    ...
+ValueError: predict(): 'X_new' must have the columns ['temp', 'rain'] like the fit's 'X', not ['temp', 'snow']
+```
+
+한쪽만 `DataFrame`이면(배열로 적합하고 `DataFrame`으로 예측하거나, 그 반대) 비교할 이름이 없으니 열을 **위치로** 맞춰요. 위의 `[[20.0, 5.0], [30.0, 5.0]]`처럼 리스트나 배열로 줄 때는 적합 때의 열 순서대로 값을 넣어요.
+
+`X_new`에 inf가 있으면 적합의 입력처럼 `ValueError`예요. NaN이 있는 행은 그 행의 예측만 NaN이에요.
+
+```python
+>>> r.predict([[20.0, sd.inf]])
+Traceback (most recent call last):
+    ...
+ValueError: predict(): 'X_new' contains infinity
+>>> r.predict([[20.0, sd.nan], [30.0, 5.0]])
+array([               nan, 109.44255377871427], dtype=float64)
 ```
 
 ### predict_interval
@@ -471,11 +505,15 @@ True
 
 [지렛대와 Cook 거리](/api/regression/diagnostics/) 같은 진단 필드는 처음 읽을 때 적합에 준 설명변수로 계산을 한 번 더 해요. 적합 한 번쯤 드는 계산이에요.
 
-<Callout type="warn" title="적합한 뒤에 입력 배열을 고치지 마세요">
+이 계산에 쓰려고 결과 객체는 적합할 때 `y`, `X`, 가중치를 **복사해 둬요**. 그래서 적합한 뒤에 넘긴 배열을 제자리에서 고쳐도 결과는 그대로예요. 대신 결과 객체 하나가 `X`의 크기(n × k × 8바이트)와 `y`·가중치만큼 메모리를 더 써요.
 
-결과 객체는 진단에 쓸 설명변수를 복사하지 않고 그대로 들고 있어요. `sd.ndarray`로 준 `X`를 적합 뒤에 제자리에서 바꾸고 `leverage` 같은 진단 필드나 `breusch_pagan()`을 처음 읽으면 바뀐 값으로 계산될 수 있어요. 입력을 고쳐야 한다면 사본을 만들어 고치세요.
-
-</Callout>
+```python
+>>> X = sd.stack([temp, rain], axis=1)
+>>> ra = sd.regression.ols(sales, X)
+>>> X[0, 0] = 100.0
+>>> float(ra.leverage[0]) == float(r.leverage[0])
+True
+```
 
 ## 다른 결과 객체
 
@@ -511,4 +549,6 @@ True
 - 예측 구간은 statsmodels의 `get_prediction(X_new).summary_frame()`에 해당해요. `kind='mean'`이 `mean_ci_lower`·`mean_ci_upper`, `kind='observation'`이 `obs_ci_lower`·`obs_ci_upper`와 같은 값이에요. statsmodels와 달리 `X_new`에 절편 열을 넣지 않아요.
 - 강건 공분산(`cov_type='HC3'` 등)에서 statsmodels의 기본은 p값과 구간을 정규분포로 계산해요(`use_t=False`). 여기서는 늘 t분포예요. statsmodels의 `fit(cov_type=..., use_t=True)`와 같은 값이에요([표준오차의 종류](/api/regression/covariance/)).
 - `summary()`의 꼴은 statsmodels의 OLS summary와 같지만 날짜와 시각 줄이 없어요.
-- 진단 필드(`leverage`, `cooks_distance` 등)는 statsmodels처럼 `get_influence()`를 거치지 않고 결과에서 바로 읽어요([회귀 진단](/api/regression/diagnostics/)).
+- 진단 필드(`leverage`, `cooks_distance` 등)는 statsmodels처럼 `get_influence()`를 거치지 않고 결과에서 바로 읽어요([회귀 진단](/api/regression/diagnostics/)). statsmodels는 모형이 들고 있는 설계 행렬로 나중에 계산해서, 적합 뒤에 그 배열을 고치면 진단 값이 바뀌어요. 여기서는 적합할 때 복사해 둔 값으로 계산해요.
+- 반응이 모두 같으면 statsmodels는 R²와 수정 결정계수에 −inf, F에 음수 같은 반올림의 값을 내요. 여기서는 `rsquared`, `rsquared_adj`, `fvalue`, `f_pvalue`가 NaN이고 `ess`는 0이에요.
+- statsmodels의 `predict`는 pandas `DataFrame`을 받아도 컬럼 이름을 보지 않고 위치로 곱해서, 순서가 다르면 에러 없이 다른 값을 내요. 여기서는 둘 다 `DataFrame`이면 이름과 순서를 확인해요. `X_new`의 inf도 statsmodels는 inf 예측을 내지만 여기서는 `ValueError`예요.

@@ -66,7 +66,7 @@ params:
   - name: max_iter
     type: int
     kind: keyword-only
-    desc: 반복 횟수의 상한(1 이상, 기본값 100). 닿으면 converged=False로 마지막 값을 내요.
+    desc: 반복 횟수 n_iter의 상한(1 이상, 기본값 100). 분리 뒤 나머지 행을 다시 맞추는 반복도 함께 세요. 닿으면 converged=False로 마지막 값을 내요.
   - name: tol
     type: float
     kind: keyword-only
@@ -420,7 +420,7 @@ inf
 array([0.0, 0.0], dtype=float64)
 ```
 
-`n_iter`는 마지막 다듬기까지 센 반복 횟수예요. `max_iter`(1 이상의 int)에 닿으면 마지막 계수를 내고 `converged=False`예요. 경고는 내지 않으니 `converged`를 확인하세요.
+`n_iter`는 반복마다 푼 최소제곱의 횟수예요. 마지막 다듬기와, [분리](#분리)가 있으면 나머지 행을 다시 맞추는 반복까지 모두 세요. `max_iter`(1 이상의 int)는 이 횟수의 상한이라 `n_iter`는 `max_iter`를 넘지 않아요. 닿으면 마지막 계수를 내고 `converged=False`예요. 경고는 내지 않으니 `converged`를 확인하세요.
 
 ```python
 >>> e1 = sd.regression.glm(yp, xp, family='poisson', max_iter=2)
@@ -586,7 +586,18 @@ array([1.1434544681948875,  3.044135578107621], dtype=float64)
 >>> p.predict(sd.asarray([[2.0, 1.0]]))
 Traceback (most recent call last):
     ...
-ValueError: predict(): 'X_new' must have 1 columns like the fit's 'X', not 2
+ValueError: predict(): 'X_new' must have 1 column like the fit's 'X', not 2
+```
+
+`DataFrame`으로 적합하고 `X_new`도 `DataFrame`으로 주면 컬럼 이름과 순서가 적합 때와 같아야 하고, 다르면 `ValueError`예요. 한쪽만 `DataFrame`이면 열을 위치로 맞춰요. `X_new`에 inf가 있으면 `ValueError`이고, NaN이 있는 행은 그 행의 예측이 NaN이에요. 규칙은 [결과 객체 읽기](/api/regression/results/#predict)와 같아요.
+
+```python
+>>> p.predict(sd.asarray([2.0, sd.inf]))
+Traceback (most recent call last):
+    ...
+ValueError: predict(): 'X_new' contains infinity
+>>> p.predict(sd.asarray([2.0, sd.nan]))
+array([3.137588364969129,               nan], dtype=float64)
 ```
 
 오프셋이나 노출로 맞춘 모형이면 새 행의 `offset`·`exposure`를 함께 줘요. 주지 않으면 0(노출 1)으로 봐요.
@@ -642,6 +653,16 @@ array([nan, nan], dtype=float64)
 array([0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0], dtype=float64)
 >>> s.deviance
 0.0
+```
+
+분리는 계수가 경계로 간다는 증거를 데이터에서 직접 확인해서 정해요. 반복이 `max_iter`에 닿았다는 것만으로는 분리로 보지 않아요. 같은 데이터라도 반복 세 번으로는 그 증거가 아직 서지 않아서, `separation=False`, `converged=False`이고 계수는 커지는 도중의 값이에요.
+
+```python
+>>> s3 = sd.regression.glm([0, 0, 0, 0, 0, 1, 1, 1, 1, 1], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0], family='binomial', max_iter=3)
+>>> s3.separation, s3.converged, s3.n_iter
+(False, False, 3)
+>>> s3.params
+array([-10.428383402116154,  1.8960697094756642], dtype=float64)
 ```
 
 `summary()`의 Notes에도 분리가 적혀요. 분리가 무엇이고 어떻게 다루는지는 [로지스틱 회귀](/api/regression/logistic/#분리)와 [셈 자료](/api/regression/poisson-gamma/#0만-있는-군)에 자세히 있어요. 포아송의 identity·sqrt 링크나 감마처럼 경계에서도 유한한 최대우도 추정값이 있는 경우는 분리가 아니에요.

@@ -48,7 +48,7 @@ export const hetResid = [[7.115, 3.8819], [7.175, 4.1319], [7.235, 3.8819], [7.1
 | 잔차가 정규분포 모양인지 | `jarque_bera()` | p값이 작으면 정규분포에서 벗어나요 |
 | 잔차의 분산이 고른지 | `breusch_pagan()` | p값이 작으면 분산이 고르지 않아요 |
 
-모두 [`ols`](/api/regression/ols/), [`wls`](/api/regression/wls/), [`gls`](/api/regression/gls/)의 결과에 있는 필드와 메서드예요. 따로 부르는 함수가 없고, 처음 읽을 때 계산해 둬요.
+모두 [`ols`](/api/regression/ols/), [`wls`](/api/regression/wls/), [`gls`](/api/regression/gls/)의 결과에 있는 필드와 메서드예요. 따로 부르는 함수가 없고, 처음 읽을 때 계산해 둬요. 계산에 쓰는 `y`, `X`, 가중치는 적합할 때 복사해 둔 것이라, 적합한 뒤에 넘긴 배열을 고쳐도 진단 값은 그대로예요.
 
 <Reference />
 

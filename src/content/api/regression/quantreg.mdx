@@ -265,7 +265,16 @@ k는 절편을 포함한 계수의 수예요. 배치(y가 (B, n))와 함께 쓰�
 True
 ```
 
-`summary()`는 분위 하나만 받아요. 분위 배열의 결과는 `rq.params[j]`처럼 필드를 직접 꺼내 보세요.
+`summary()`는 분위 하나만 받아요. 분위 배열의 결과는 `rq.params[j]`처럼 필드를 직접 꺼내 보세요. 결과를 그대로 찍으면 분위의 수만 보여 줘요.
+
+```python
+>>> rq
+QuantRegResult(3 quantiles, 2 parameters)
+>>> rq.summary()
+Traceback (most recent call last):
+    ...
+ValueError: summary(): takes one regression at one quantile, not 3 quantiles
+```
 
 ### cov_type과 bandwidth: 표준오차
 
@@ -332,7 +341,7 @@ TypeError: quantreg() got an unexpected keyword argument 'weights'
 
 | 필드 | 뜻 |
 |---|---|
-| `params` | 계수. 절편이 있으면 `params[0]`이에요. |
+| `params` | 계수. 절편이 있으면 `params[0]`이에요. 정확히 0인 계수는 언제나 `0.0`이에요(`-0.0`이 아니에요). |
 | `bse`, `tvalues`, `pvalues` | 표준오차, t값(계수 ÷ 표준오차), p값(자유도 `df_resid`의 t 분포) |
 | `conf_int(alpha=0.05)` | 1 − alpha 신뢰구간. (k, 2) 배열이에요. |
 | `cov_params()` | 계수의 공분산 행렬 (k, k). 대각선의 제곱근이 `bse`예요. |
@@ -449,6 +458,21 @@ array([[1.7781590268058434,  4.813620635812161],
 
 분위 배열이면 결과가 (L, m)이에요. 줄마다 그 분위의 예측이에요.
 
+`X_new`에 inf가 있으면 `ValueError`이고, NaN이 있는 행은 예측이 NaN이에요. `DataFrame`으로 적합하고 `DataFrame`으로 예측하면 열 이름과 순서가 적합과 같아야 해요. 순서만 달라도 알아서 맞추지 않고 `ValueError`를 내요. 한쪽만 `DataFrame`이면 열을 위치로 맞춰요.
+
+```python
+>>> r.predict([float('inf')])
+Traceback (most recent call last):
+    ...
+ValueError: predict(): 'X_new' contains infinity
+>>> df = sd.frame.DataFrame({'size': x, 'age': x * x})
+>>> fd = sd.regression.quantreg(y, df)
+>>> fd.predict(sd.frame.DataFrame({'age': [1.0], 'size': [2.0]}))
+Traceback (most recent call last):
+    ...
+ValueError: predict(): 'X_new' must have the columns ['size', 'age'] in the fit's order, not ['age', 'size']
+```
+
 ## 특수한 경우
 
 ### 표준오차가 NaN이 될 때
@@ -515,7 +539,11 @@ y에 앞 축을 붙이면 같은 모양의 회귀 여러 개를 한 번에 풀�
 >>> sd.regression.quantreg(yb, [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).params
 array([[0.5, 1.0],
        [1.4, 0.6]], dtype=float64)
+>>> sd.regression.quantreg(yb, [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], q=[0.25, 0.5])
+QuantRegResult(batch shape (2,) and 2 quantiles, 2 parameters)
 ```
+
+배치나 분위 배열의 결과에는 `summary()`를 쓸 수 없어요.
 
 ## 에러
 

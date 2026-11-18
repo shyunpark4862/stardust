@@ -279,7 +279,7 @@ array([ 2.912521645037168, 283686833508115.25, -141843416754056.9], dtype=float6
 | `pvalues` | 0 | |
 | `conf_int()`, `predict_interval()` | 폭 0인 구간 | 아래 끝 = 위 끝 |
 | `llf`, `aic`, `bic` | +inf, −inf, −inf | 잔차 0의 정규 우도 |
-| `rsquared`, `fvalue` | 1, inf | |
+| `rsquared`, `fvalue` | 1, inf | 반응이 모두 같으면(TSS 0) 0 ÷ 0이라 NaN |
 
 ```python
 >>> rp.conf_int()

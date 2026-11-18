@@ -25,6 +25,8 @@ import Bench from '../../../components/fig/Bench.astro';
 | Durbin–Watson, Jarque–Bera | 백색화한 잔차의 double-double 합 | 처음 읽을 때 커널 `resid_stats` |
 | Breusch–Pagan | 보조 회귀(같은 커널로 적합 한 번) | 처음 부를 때 |
 
+처음 읽을 때 커널을 다시 부르는 진단은 적합할 때 복사해 둔 y, X, 가중치를 읽어요. 그래서 적합 뒤에 넘긴 배열을 고쳐도 진단은 적합한 자료의 값이에요([회귀 영역의 구조](/internals/regression/overview/)).
+
 자유도는 `df_resid` $= \text{nobs} - \text{rank}$예요. 군집 공분산에서만 t와 F의 분모 자유도가 군집 수 − 1이고, 그 값이 `df_resid_inference`에 있어요.
 
 ## 고전형 공분산
@@ -261,7 +263,12 @@ $$
 ```cpp
     const lint q0 = (pb.intercept && K[0] == 0) ? 1 : 0, q = kk - q0;
     st[kWaldQ] = static_cast<double>(q);
-    if (q > 0 && !pb.glm) {
+    // a cluster meat has rank at most G - 1 (the group sums of the scores add to X^T e = 0):
+    // with fewer than q + 1 groups S22 is singular and the test undefined (api §2), though its
+    // rounding can still pass the Cholesky
+    if (q > 0 && !pb.glm && pb.cov == kCluster && st[kNGroups] - 1.0 < static_cast<double>(q)) {
+        st[kWaldF] = kNaN;
+    } else if (q > 0 && !pb.glm) {
         double* V = work2;  // S22, then its Cholesky factor
         double* z = cv;
         for (lint b2 = 0; b2 < q; ++b2) {
@@ -281,7 +288,27 @@ $$
     }
 ```
 
-κ = 10⁵인 군집 문제에서 $V_{22}$를 Cholesky로 풀면 F의 상대오차가 2.4×10⁻⁶, 이 식은 2.7×10⁻¹¹이에요(Arb 참값 대비). $S_{22}$가 특이하면(군집 수 − 1 < q) F는 NaN이에요. 이 F는 statsmodels가 강건 공분산에서 내는 `fvalue`(`f_test`)와 같은 통계량이에요.
+κ = 10⁵인 군집 문제에서 $V_{22}$를 Cholesky로 풀면 F의 상대오차가 2.4×10⁻⁶, 이 식은 2.7×10⁻¹¹이에요(Arb 참값 대비). Cholesky가 실패하면 F는 NaN이에요.
+
+군집의 고기는 랭크가 많아야 $G - 1$이에요. 군집마다 더한 점수 $s_g$를 모두 더하면 $X^{\mathsf T}e = 0$이라, $G$개의 $s_g$가 선형 독립일 수 없기 때문이에요. 그래서 $G - 1 < q$면 $S_{22}$는 특이하고 검정이 정의되지 않아요. 이때 $S_{22}$는 반올림 때문에 Cholesky를 통과할 수도 있어서, Cholesky의 성공에 맡기지 않고 군집 수로 먼저 판정해 F를 NaN으로 둬요. 계수마다의 표준오차는 그대로 나와요.
+
+```python
+>>> rng = sd.random.default_rng(5)
+>>> X3 = sd.stats.Normal().sample((40, 3), rng=rng)
+>>> y3 = X3 @ sd.asarray([1.0, -1.0, 0.5]) + sd.stats.Normal().sample(40, rng=rng)
+>>> c3 = sd.regression.ols(y3, X3, cov_type="cluster", groups=[i % 3 for i in range(40)])
+>>> c3.fvalue, c3.f_pvalue
+(nan, nan)
+>>> bool(sd.all(sd.isfinite(c3.bse)))
+True
+>>> c4 = sd.regression.ols(y3, X3, cov_type="cluster", groups=[i % 4 for i in range(40)])
+>>> round(c4.fvalue, 6)
+660.244778
+```
+
+군집 3개에 기울기 3개($q = 3$)라 F가 NaN이고, 군집이 4개면 F가 나와요. statsmodels는 3개에서도 F(4.78)를 내요.
+
+y가 모두 같아 TSS가 정확히 0이면 강건형이든 고전형이든 `fvalue`와 `f_pvalue`가 NaN이에요(`rsquared`와 같은 규칙, [최소제곱 풀이](/internals/regression/least-squares/)). 이 F는 statsmodels가 강건 공분산에서 내는 `fvalue`(`f_test`)와 같은 통계량이에요.
 
 ## 지렛대
 
@@ -524,7 +551,7 @@ Arb(구간 산술)로 만든 참값과 같은 double 입력에서 비교한 값�
 
 ## 속도
 
-`bench/regression/g1b/speed.md`(Apple M4 Pro, statsmodels 0.15.0, numpy 2.5.4)의 값이에요. 오차는 AR(1)(계수 0.5)이고, 시간은 여러 번 가운데 가장 빠른 값이에요. 두 라이브러리 모두 `bse`·`pvalues`를 읽고, statsmodels는 `use_t=True`예요. 진단은 지렛대, 내적 스튜던트화 잔차, Cook 거리, Durbin–Watson, Jarque–Bera, Breusch–Pagan이에요. statsmodels의 시간은 BLAS 1스레드 값이에요(10스레드에서도 거의 같아요).
+`bench/regression/g1b/speed.md`(커널 최적화 전에 잰 값; Apple M4 Pro, statsmodels 0.15.0, numpy 2.5.4)의 값이에요. 오차는 AR(1)(계수 0.5)이고, 시간은 여러 번 가운데 가장 빠른 값이에요. 두 라이브러리 모두 `bse`·`pvalues`를 읽고, statsmodels는 `use_t=True`예요. 진단은 지렛대, 내적 스튜던트화 잔차, Cook 거리, Durbin–Watson, Jarque–Bera, Breusch–Pagan이에요. statsmodels의 시간은 BLAS 1스레드 값이에요(10스레드에서도 거의 같아요).
 
 <Bench
   series={['statsmodels 0.15.0', 'stardust 1스레드', 'stardust 10스레드']}

@@ -45,7 +45,7 @@ import Layers from '../../../components/fig/Layers.astro';
       { label: '_core.regression.fit', where: 'regression/linear.cpp', note: 'y (…, n), X (…, n, p), 가중치의 배치 모양을 linalg의 Batch로 브로드캐스트하고 결과 배열 일곱 개를 할당해요.' },
       { label: 'run_batch', depth: 1, where: 'linalg/batch.hpp', note: '회귀 하나의 추정 시간 element_ns로 태스크를 나눠요. 회귀가 하나뿐이면 호출 스레드에서 돌고, 추정 시간이 10 µs 이상이면 GIL을 놓아요.' },
       { label: 'lsq::fit_one', depth: 2, where: 'regression/linear.cpp', note: '검사, 쓰인 행과 백색화, 꾸리기, geqrf와 겹친 열, 처음 해, 증강 시스템의 반복 개선, 적합값·잔차·제곱합, 공분산.' },
-      { label: 'OLSResult(raw, …)', where: 'regression/_linear.py', note: '커널의 일곱 배열을 그대로 들고, 입력(백색화한 y, X, 가중치, 군집 번호)을 참조로 들고 있어요. 복사하지 않아요.' },
+      { label: 'OLSResult(raw, …)', where: 'regression/_linear.py', note: '커널의 일곱 배열을 그대로 들고(계수의 −0은 +0으로), 커널에 준 입력(y, X, 가중치, 군집 번호)을 들고 있어요. y, X, 가중치는 적합할 때 복사한 것이에요.' },
       { label: 'r.bse', where: 'regression/_linear.py', note: 'scale = ssr / df_resid를 곱한 cov_params의 대각의 제곱근이에요. 계산한 값은 _cache에 남아 다음에는 그대로 돌려줘요.' },
     ]}
   />
@@ -154,9 +154,10 @@ Python 층의 결과 클래스는 두 갈래예요.
 `_as_real`(`src/stardust/regression/_linear.py`)이 y, X, 가중치를 float64 `sd.ndarray`로 바꿔요.
 
 ```python
-def _as_real(x, func, arg):
+def _as_real(x, func, arg, per_row=None):
     """(x as a float64 sd.ndarray, its column names or None). Takes sd.ndarrays, sequences of
-    numbers and frame Series/DataFrames (missing values become NaN)."""
+    numbers and frame Series/DataFrames (missing values become NaN). per_row: for an argument
+    with a value per row, what it must have (e.g. "5 values like 'y'"), said for a scalar."""
     names = None
     if isinstance(x, (_frame.Series, _frame.DataFrame)):
         if isinstance(x, _frame.Series):
@@ -165,13 +166,15 @@ def _as_real(x, func, arg):
             names = [str(c) for c in x.columns]
         try:
             a = x.to_array(dtype=_sd.float64, na_value=math.nan)
-        except TypeError:
+        except (TypeError, ValueError):  # a string column is a ValueError of to_array
             raise TypeError(f"{func}(): '{arg}' must have numeric columns") from None
         return a, names
 ```
 
-- frame은 `to_array(dtype=float64, na_value=NaN)`로 바꾸고 컬럼 이름만 들고 가요. frame의 결측은 여기서 NaN이 되므로 뒤의 NaN 정책을 그대로 따라요.
+- frame은 `to_array(dtype=float64, na_value=NaN)`로 바꾸고 컬럼 이름만 들고 가요. frame의 결측은 여기서 NaN이 되므로 뒤의 NaN 정책을 그대로 따라요. 문자열 열은 `to_array`가 숫자로 읽을 수 있을 때("1", "2.5" 같은)만 받고, 아니면 `TypeError`("'X' must have numeric columns")예요.
 - bool과 int64는 float64로 바꾸고, complex128은 `TypeError`예요.
+- 숫자가 아닌 원소가 든 리스트는 `TypeError`이고, 메시지에 처음 걸린 원소의 형을 적어요("not list of str"). 리스트 자체는 받는 형이니까요.
+- 행마다 값이 하나씩인 인자(`weights`, GLM의 `offset` 등)에 스칼라를 주면 `per_row`로 무엇이 필요한지 말해요("'weights' must have 4 values like 'y', not a scalar").
 - X가 1차원 (n,)이면 설명변수 하나짜리 (n, 1)로 바꿔요.
 - 계수 이름은 절편이 있으면 `'const'`가 앞에 오고, 나머지는 frame의 컬럼 이름이거나 `'x1'`, `'x2'`, …예요.
 
@@ -200,6 +203,7 @@ def _as_real(x, func, arg):
 | `nan_policy='omit'` | Python(`_prepare`) | NaN이 있는 행을 빼고 적합해요. 배치면 회귀마다 남는 행이 달라지므로 `ValueError` |
 | `nan_policy='raise'` | Python(`_prepare`) | NaN이 하나라도 있으면 `ValueError` |
 | inf | 커널 | 정책과 상관없이 `ValueError`. 배치면 몇 번째 회귀인지 붙여요 |
+| 예측의 `X_new`에 inf | Python(`_new_design`) | `ValueError`("'X_new' contains infinity"). NaN은 그 행의 예측이 NaN이에요 |
 
 ```python
 >>> x = sd.asarray([0.0, 1.0, 2.0, 3.0])
@@ -247,6 +251,17 @@ ValueError: ols(): 'y' contains infinity (at batch index (1,))
 
 블록의 결과를 블록 순서로 읽어 inf가 하나라도 있으면 inf가 이겨요. 그래서 어느 블록을 어느 스레드가 봤는지와 상관없이 같은 판정이에요.
 
+### 배치 모양
+
+y (…, n), X (…, n, p), 가중치 (…, n), 군집 번호 (…, n)(GLS는 `sigma` (…, n, n))의 앞 축은 배치이고 서로 브로드캐스트해요. 맞지 않으면 커널에 가기 전에 `_check_batches`가 인자마다의 배치 모양을 적어 `ValueError`를 내요.
+
+```python
+>>> sd.regression.wls(sd.ones((3, 4)), sd.ones((2, 4, 1)), weights=sd.ones((2, 4)))
+Traceback (most recent call last):
+    ...
+ValueError: wls(): the batch shapes of 'y' (3,), 'X' (2,), 'weights' (2,) do not broadcast
+```
+
 ### 가중치와 군집 레이블
 
 - 가중치는 0 이상이어야 해요. 음수는 커널이 `ValueError`로 알려요. 0인 행은 적합과 `nobs`에서 빠지고 적합값과 잔차만 계산해요(R의 `lm`과 같아요). 커널은 처음에 가중치가 0보다 큰 행의 번호를 `idx`에 모아 두고, 이후의 모든 행 합은 이 `idx`를 따라 돌아요.
@@ -269,7 +284,7 @@ enum Stat : int {
 
 - **커널이 낸 그대로**: `params`, `fittedvalues`, `resid`, `nobs`, `rank`, `ssr`, `centered_tss`, `uncentered_tss`.
 - **처음 읽을 때 sd 배열 연산과 sd.stats로**: `scale`, `cov_params()`, `bse`, `tvalues`, `pvalues`, `rsquared`, `rsquared_adj`, `llf`, `aic`, `bic`, `fvalue`, `f_pvalue`. `_cached(name, make)`가 계산한 값을 `_cache`에 남겨요(statsmodels의 `cache_readonly`와 같은 방식). p값은 `sd.stats.StudentT`와 `sd.stats.F`의 `ccdf`, 구간은 `iccdf`예요.
-- **처음 읽을 때 커널을 다시 불러서**: `leverage`(지렛대), `durbin_watson`, `jarque_bera()`, `breusch_pagan()`, `condition_number`. 결과는 커널에 준 입력을 `_fitargs`로 들고 있다가 그대로 다시 넘겨요. 지렛대는 같은 커널의 `hat_only` 방식이 적합과 같은 열 선택과 같은 QR로 얇은 Q를 만들어 구해요. 적합할 때 늘 Q를 만들면 모든 적합이 QR 한 번 꼴의 비용을 더 내므로 따로 불러요([추론과 진단](/internals/regression/inference/)).
+- **처음 읽을 때 커널을 다시 불러서**: `leverage`(지렛대), `durbin_watson`, `jarque_bera()`, `breusch_pagan()`, `condition_number`. 결과는 커널에 준 입력을 `_fitargs`로 들고 있다가 그대로 다시 넘겨요. 그 y, X, 가중치는 적합할 때 복사해 둔 것이라(`_own`), 적합 뒤에 넘긴 배열(이나 그 배열이 가리키는 numpy 배열)을 고쳐도 나중에 읽는 진단이 바뀌지 않아요. 메모리는 X 하나만큼 더 들어요. GLS는 백색화한 y와 X를 새로 만들어 들고 있으므로 따로 복사하지 않아요. 정규화의 결과도 적합값을 읽을 때 쓰는 y, X, 가중치를 같은 방식으로 복사해 둬요. 지렛대는 같은 커널의 `hat_only` 방식이 적합과 같은 열 선택과 같은 QR로 얇은 Q를 만들어 구해요. 적합할 때 늘 Q를 만들면 모든 적합이 QR 한 번 꼴의 비용을 더 내므로 따로 불러요([추론과 진단](/internals/regression/inference/)).
 
 ```python
     def _cached(self, name, make):
@@ -280,6 +295,45 @@ enum Stat : int {
 ```
 
 배치 결과에서는 스칼라 필드가 배치 모양의 배열이고, 회귀 하나면 Python float예요. `_stat(i)`와 `_scalar(v)`가 그 둘을 가려요.
+
+```python
+>>> y = sd.asarray([1.0, 2.1, 2.9, 4.2, 4.8, 6.1])
+>>> x = sd.asarray([0.0, 1, 2, 3, 4, 5])
+>>> r = sd.regression.ols(y, x)
+>>> y[0] = 100.0
+>>> r.durbin_watson == sd.regression.ols(sd.asarray([1.0, 2.1, 2.9, 4.2, 4.8, 6.1]), x).durbin_watson
+True
+```
+
+적합 뒤에 `y`를 고쳤지만, 처음 읽는 `durbin_watson`은 적합할 때의 값으로 계산돼요.
+
+결과를 만들 때 계수에 $+0.0$을 더해요(`_RegressionResult.__init__`과 `_PenalizedResult.__init__`). QR 풀이나 꼭짓점 계산이 내는 $-0.0$은 연산 순서가 남긴 부호일 뿐이라, 정확히 0인 계수는 어느 함수에서나 $+0.0$이에요.
+
+### 예측의 설계
+
+`predict(X_new)`의 설계 검사는 모든 결과가 `_new_design` 하나를 써요. 열 수가 적합의 X와 같아야 하고(1차원이면 열 하나짜리 적합에서만 받아요), inf가 있으면 `ValueError`예요. 적합의 X가 frame `DataFrame`이었으면 결과가 그 열 이름을 `_columns`에 들고 있다가, `X_new`도 `DataFrame`일 때 열 이름과 순서가 같은지 봐요. 한쪽만 `DataFrame`이면 열을 위치로 맞춰요(경고 없이).
+
+```python
+>>> from stardust import frame as fr
+>>> df = fr.DataFrame({"a": [0.0, 1, 2, 3, 4, 5], "b": [1.0, 0, 1, 0, 1, 0]})
+>>> rf = sd.regression.ols(sd.asarray([1.0, 2.1, 2.9, 4.2, 4.8, 6.1]), df)
+>>> rf.predict(fr.DataFrame({"b": [1.0], "a": [6.0]}))
+Traceback (most recent call last):
+    ...
+ValueError: predict(): 'X_new' must have the columns ['a', 'b'] in the fit's order, not ['b', 'a']
+>>> rf.predict(fr.DataFrame({"a": [6.0], "c": [1.0]}))
+Traceback (most recent call last):
+    ...
+ValueError: predict(): 'X_new' must have the columns ['a', 'b'] like the fit's 'X', not ['a', 'c']
+>>> rf.predict(fr.DataFrame({"a": [6.0], "b": [1.0]})).tolist() == rf.predict(sd.asarray([[6.0, 1.0]])).tolist()
+True
+>>> rf.predict(sd.asarray([[float("inf"), 1.0]]))
+Traceback (most recent call last):
+    ...
+ValueError: predict(): 'X_new' contains infinity
+```
+
+같은 이름이 순서만 바뀌었으면 "in the fit's order", 이름이 다르면 "like the fit's 'X'"라고 적어요. 이름을 보는 것은 둘 다 이름이 있을 때뿐이에요. 배열에는 이름이 없으니 위치가 유일한 정보예요.
 
 ## 공용 부품
 

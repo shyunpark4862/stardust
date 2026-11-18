@@ -287,10 +287,10 @@ Fisher 득점법은 정준이 아닌 링크에서 선형으로 수렴해, 수렴
 
 `bench/regression/g4/accuracy.md`와 `tests/regression/test_robust.py`.
 
-- **Arb**: 19개 문제(ψ 3가지 × 척도 2가지 × 짝·홀 $n$, 절편 없음, $n = 400$, 스택 손실 ψ 3가지, MM 2개)에서 계수 벡터 $1.1 \times 10^{-16}$, 척도 $1.4 \times 10^{-15}$, 표준오차 $2.0 \times 10^{-15}$, 가중치(절대) $1.1 \times 10^{-15}$ 안이에요. 척도의 오차는 가운데 잔차의 상쇄($\lvert r_m\rvert$가 $\lvert y\rvert$보다 작아요)에서 와요. MM의 S는 `s_estimate`로 증명한 고정점과 원소마다 $9.4 \times 10^{-16}$, 척도 $2.2 \times 10^{-16}$ 안이에요.
-- 뉴턴 걸음 없이 IRLS만이면 두 문제가 `max_iter` 50에 닿아 계수 오차가 $6.7 \times 10^{-10}$, $8.7 \times 10^{-11}$이에요. MM의 avar1을 $X^{\mathsf T}\Psi'X$로 직접 만들면 스택 손실의 표준오차가 $8 \times 10^{-14}$(얇은 Q 좌표에서 $1.9 \times 10^{-15}$)예요.
+- **Arb**: 19개 문제(ψ 3가지 × 척도 2가지 × 짝·홀 $n$, 절편 없음, $n = 400$, 스택 손실 ψ 3가지, MM 2개)에서 계수 벡터 $1.1 \times 10^{-16}$, 척도 $1.4 \times 10^{-15}$, 표준오차 $1.2 \times 10^{-15}$, 가중치(절대) $1.1 \times 10^{-15}$ 안이에요. 척도의 오차는 가운데 잔차의 상쇄($\lvert r_m\rvert$가 $\lvert y\rvert$보다 작아요)에서 와요. MM의 S는 `s_estimate`로 증명한 고정점과 원소마다 $9.4 \times 10^{-16}$, 척도 $2.2 \times 10^{-16}$ 안이에요.
+- 뉴턴 걸음 없이 IRLS만이면 두 문제가 `max_iter` 50에 닿아 계수 오차가 $6.7 \times 10^{-10}$, $8.7 \times 10^{-11}$이에요. MM의 avar1을 $X^{\mathsf T}\Psi'X$로 직접 만들면 스택 손실의 표준오차가 $8 \times 10^{-14}$(얇은 Q 좌표에서 $6.7 \times 10^{-16}$)예요.
 - **statsmodels**(`tol=1e-15`, `maxiter=1000`): 계수 $2.3 \times 10^{-15}$, 척도 $2.1 \times 10^{-15}$, 표준오차 $1.3 \times 10^{-15}$, 가중치 $4.7 \times 10^{-15}$ 안이에요. 기본값(목적함수의 절대 변화 $10^{-8}$)과는 그쪽의 수렴 오차만큼($10^{-5}$ 이하) 달라요.
-- **R**(4.6.2, MASS 7.3.66, robustbase 0.99.7): `MASS::rlm(scale.est='proposal 2', acc=1e-15)`와 계수 $4.1 \times 10^{-15}$, 척도 $1.7 \times 10^{-14}$, 표준오차 $10^{-14}$ 안이에요(MASS가 var ψ′를 $n - 1$로 나누는 비를 맞춰서). robustbase의 M 단계를 증명한 S 시작에서 `rel.tol` 1e-15로 부르면 계수 $1.1 \times 10^{-15}$, `.vcov.avar1` $7.2 \times 10^{-15}$ 안이고, `lmrob` 자체(자기 부분표본, S의 `refine.tol` 1e-7)와는 계수 $1.1 \times 10^{-9}$–$1.2 \times 10^{-7}$, 척도 $1.3 \times 10^{-8}$–$1.1 \times 10^{-5}$ 달라요.
+- **R**(4.6.2, MASS 7.3.66, robustbase 0.99.7): `MASS::rlm(scale.est='proposal 2', acc=1e-15)`와 계수 $4.1 \times 10^{-15}$, 척도 $1.7 \times 10^{-14}$, 표준오차 $10^{-14}$ 안이에요(MASS가 var ψ′를 $n - 1$로 나누는 비를 맞춰서). robustbase의 M 단계를 증명한 S 시작에서 `rel.tol` 1e-15로 부르면 계수 $1.1 \times 10^{-15}$, `.vcov.avar1` $7.2 \times 10^{-15}$ 안이고(스택 손실만 $1.5 \times 10^{-13}$: robustbase가 $X^{\mathsf T}\Psi'X$를 직접 역행렬로 풀어서, sd는 Arb와 $6.7 \times 10^{-16}$), `lmrob` 자체(자기 부분표본, S의 `refine.tol` 1e-7)와는 계수 $1.1 \times 10^{-9}$–$1.2 \times 10^{-7}$, 척도 $1.3 \times 10^{-8}$–$1.1 \times 10^{-5}$ 달라요.
 - **Theil–Sen·Siegel**: $n = 2$–$5{,}000$의 무작위·동률·격자·평평한 자료, 두 방법, 여러 `alpha`, 배치에서 scipy와 비트까지 같아요(0의 부호 빼고). 쌍의 정확한 유리수 기울기의 중앙값과는 4ulp 안이에요([Theil–Sen과 Siegel](/internals/regression/slopes/)).
 
 ### 분위 회귀
@@ -340,6 +340,7 @@ R(4.6.2, `deriv()`의 해석적 기울기, `nls.control(tol = 1e-10)`)의 `nls`�
 - 입력은 각 라이브러리의 배열로 미리 만들어요(statsmodels는 상수 열을 붙인 것). sd의 스레드는 `sd.set_num_threads`로, numpy BLAS(statsmodels·scikit-learn 밑)는 threadpoolctl로 같은 수로 정해요.
 - R은 한 세션 안에서 `system.time`으로 재고(작은 $n$은 여러 번 부른 시간을 나눠요) 1스레드예요.
 - '배'는 참조 라이브러리의 시간 / sd의 시간이에요. 1보다 크면 sd가 빨라요.
+- `g1`–`g5`의 측정 파일은 회귀 커널 최적화(행 패스의 NEON, 정규화 Packer의 타일, 정준 링크 연마의 정규방정식, MM의 S 고정점 뉴턴 걸음 등) 전에 잰 값이에요. 아래 표의 † 없는 값도 그래요.
 
 | 측정 파일 | 무엇 | 크기 | 비교 대상과 판 |
 |---|---|---|---|

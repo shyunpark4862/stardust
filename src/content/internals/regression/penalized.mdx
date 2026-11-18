@@ -359,7 +359,7 @@ array([-0.07362559212117398,   1.9584402667701377,  -1.3317157948761331,
 True
 ```
 
-활성 열의 기울기는 정확히 $\pm\alpha$이고, 0인 열(셋째와 여섯째)은 $\alpha$ 아래예요. 0인 계수는 정확히 0이에요. 같은 자료의 scikit-learn `Lasso(alpha=0.1)`(기본 `tol=1e-4`)은 계수가 이 해와 $1.6\times10^{-6}$(최대 계수 대비) 다르고, `tol=1e-12`로 조이면 $6.7\times10^{-14}$예요.
+활성 열의 기울기는 정확히 $\pm\alpha$이고, 0인 열(셋째와 여섯째)은 $\alpha$ 아래예요. 0인 계수는 정확히 0이에요. 같은 자료의 scikit-learn `Lasso(alpha=0.1)`(기본 `tol=1e-4`)은 계수가 이 해와 $1.6\times10^{-6}$(최대 계수 대비) 다르고, `tol=1e-12`로 조이면 $6.7\times10^{-14}$예요. 결과의 `dual_gap`은 돌려준 해에서 잰 간격(위 목적함수 단위)이에요. scikit-learn 1.9.1의 `dual_gap_`도 n_samples로 나눈 같은 단위예요.
 
 ### 언제 연마하나
 
@@ -414,7 +414,22 @@ std::vector<lint> path_order(const double* alphas, std::int64_t as, lint L) {
 True
 ```
 
-기본 격자는 scikit-learn과 같은 $\alpha_{\max}\,\epsilon^{i/(L-1)}$($\epsilon$ = `eps` = $10^{-3}$, $L$ = 100)이에요. $\alpha_{\max}$는 해가 0이 되는 가장 작은 alpha로, 닫힌 꼴 $\max_j\lvert\sum_i w_i(x_{ij} - \bar x_j)(y_i - \bar y)\rvert/(s_w\,s_j\,\rho)$이에요. $b = 0$이 KKT 조건 $\lvert z_j^{\mathsf T}\Omega v\rvert \le l_1$을 모든 열에서 만족하는 가장 작은 $l_1$이 그것이기 때문이에요. ridge의 격자는 $\rho = 10^{-3}$으로 계산한 $\alpha_{\max}$에서 시작해요(glmnet이 alpha = 0에 쓰는 규칙).
+기본 격자는 scikit-learn과 같은 $\alpha_{\max}\,\epsilon^{i/(L-1)}$($\epsilon$ = `eps`, $L$ = 100)이에요. `eps`의 기본은 lasso·엘라스틱 넷이 $10^{-3}$, ridge가 $10^{-6}$이에요(이유는 아래). $\alpha_{\max}$는 해가 0이 되는 가장 작은 alpha로, 닫힌 꼴 $\max_j\lvert\sum_i w_i(x_{ij} - \bar x_j)(y_i - \bar y)\rvert/(s_w\,s_j\,\rho)$이에요. $b = 0$이 KKT 조건 $\lvert z_j^{\mathsf T}\Omega v\rvert \le l_1$을 모든 열에서 만족하는 가장 작은 $l_1$이 그것이기 때문이에요. ridge의 격자는 $\rho = 10^{-3}$으로 계산한 $\alpha_{\max}$에서 시작해요(glmnet이 alpha = 0에 쓰는 규칙).
+
+ridge에는 해가 0이 되는 alpha가 없어서 이 $\alpha_{\max}$는 lasso의 $\alpha_{\max}$를 1,000배 한 값일 뿐이에요. 그래서 `eps`가 $10^{-3}$이면 격자의 작은 끝이 바로 lasso의 $\alpha_{\max}$이고, 신호가 뚜렷한 자료의 최적 alpha는 대개 그보다 작아 격자 끝에 걸려요. ridge는 (겹마다) SVD 하나로 모든 alpha를 닫힌 꼴로 풀므로 격자를 넓혀도 분해를 다시 하지 않아요. 그래서 ridge의 기본 `eps`는 $10^{-6}$이고, 격자가 lasso의 $\alpha_{\max}$보다 세 자릿수 아래까지 가요. 위 50행 자료에서 보면 이래요.
+
+```python
+>>> rc = sd.regression.ridge_cv(y, X, rng=sd.random.default_rng(0))
+>>> float(rc.alphas[0]), float(rc.alphas[-1])
+(2053.5292001606126, 0.0020535292001606126)
+>>> int(sd.argmin(rc.cv_error)), rc.alpha_min
+(86, 0.012600264755431832)
+>>> narrow = sd.regression.ridge_cv(y, X, rng=sd.random.default_rng(0), eps=1e-3)
+>>> int(sd.argmin(narrow.cv_error)), float(narrow.alphas[-1])
+(99, 2.0535292001606127)
+```
+
+`eps=1e-3`의 격자에서는 가장 작은 alpha(99번째, lasso의 $\alpha_{\max}$)가 뽑혀요. 기본 격자에서는 최소점이 격자 안(86번째)에 있어요.
 
 <Fig caption="위 50행 자료의 lasso 경로(30개 alpha, 큰 것부터). 가로축은 log₁₀ alpha이고 오른쪽으로 갈수록 alpha가 작아져요. 계수가 0에서 하나씩 나오고, 각 alpha의 해는 앞의 해에서 시작해 스윕 2번과 연마로 끝나요(경로 전체 n_iter 58).">
   <Plot
@@ -674,7 +689,7 @@ True
 
 ## 속도
 
-`bench/regression/g3/speed.md`의 측정이에요. Apple M4 Pro, scikit-learn 1.9.1, numpy 2.5.4, 여러 번 가운데 가장 빠른 값이고, 칸은 scikit-learn 시간 / sd 시간(1보다 크면 sd가 빨라요)이에요. X는 표준정규, lasso는 alpha = alpha_max/20, 경로는 alpha_max에서 $10^{-3}$·alpha_max까지 100개(`lasso_path`), CV는 같은 격자와 같은 겹의 `LassoCV`, GCV는 100개 alpha의 `RidgeCV`, 로지스틱은 alpha = $10^{-3}$이에요.
+`bench/regression/g3/speed.md`의 측정이에요(커널 최적화 전). Apple M4 Pro, scikit-learn 1.9.1, numpy 2.5.4, 여러 번 가운데 가장 빠른 값이고, 칸은 scikit-learn 시간 / sd 시간(1보다 크면 sd가 빨라요)이에요. X는 표준정규, lasso는 alpha = alpha_max/20, 경로는 alpha_max에서 $10^{-3}$·alpha_max까지 100개(`lasso_path`), CV는 같은 격자와 같은 겹의 `LassoCV`, GCV는 100개 alpha의 `RidgeCV`, 로지스틱은 alpha = $10^{-3}$이에요.
 
 | (n, k) | 스레드 | ridge (Cholesky / svd) | lasso | 경로 100개 | lasso_cv 5겹 | ridge_cv GCV | 로지스틱 L1 (saga / liblinear) | 로지스틱 L2 (lbfgs / newton-cholesky) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
