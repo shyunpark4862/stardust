@@ -6,6 +6,8 @@ the native elementwise functions stardust._core.stats.<name>_<method>, whose inp
 Parameters outside their domain give NaN (T8), never an error.
 """
 
+import operator
+
 from .. import _core as _sd_core
 from .. import random as _random
 
@@ -63,6 +65,58 @@ def _check_param(cls, name, value):
     raise TypeError(f"{cls}(): '{name}' must be a real number or an sd.ndarray, not {type(value).__name__}")
 
 
+def _real_option(v, func, arg):
+    """An int-or-float option as a float (API.md §2: numpy integers are ints, bool is not; an
+    int beyond the doubles is OverflowError "'arg' is out of range"), or None when v is not
+    a real number."""
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, float):  # (numpy's float64 too)
+        return float(v)
+    try:
+        i = operator.index(v)
+    except TypeError:
+        return None
+    try:
+        return float(i)
+    except OverflowError:
+        raise OverflowError(f"{func}(): '{arg}' is out of range") from None
+
+
+def _keyword_constructor(cls):
+    """cls.__init__ (keyword-only parameters, T19) with Python's own call-shape errors in the
+    constructors' form (T36, API.md §2.1): "Normal(): unexpected keyword argument 'cool'",
+    "Gamma(): missing 1 required keyword-only argument: 'a'", "Normal(): takes no positional
+    arguments but 1 was given", not "Normal.__init__() got ...". The class named is the one
+    called (Wishart for the __init__ it shares with InverseWishart)."""
+    init = cls.__dict__.get("__init__")
+    if init is None or getattr(init, "_keyword_constructor", False):
+        return
+    head = f"{init.__qualname__}() "
+
+    def __init__(self, *args, **kwargs):
+        if args:
+            n = len(args)
+            raise TypeError(f"{type(self).__name__}(): takes no positional arguments but {n} "
+                            f"{'was' if n == 1 else 'were'} given")
+        try:
+            init(self, **kwargs)
+        except TypeError as e:
+            msg = str(e)
+            if not msg.startswith(head):  # a parameter's own check (already "Normal(): ...")
+                raise
+            rest = msg[len(head):]
+            if rest.startswith("got an unexpected"):
+                rest = rest[len("got an "):]
+            raise TypeError(f"{type(self).__name__}(): {rest}") from None
+
+    __init__.__wrapped__ = init  # (inspect.signature shows the keyword-only parameters)
+    __init__.__doc__ = init.__doc__
+    __init__.__qualname__ = init.__qualname__
+    __init__._keyword_constructor = True
+    cls.__init__ = __init__
+
+
 def _parameter(i, name):
     def get(self):
         return self._p[i]
@@ -90,6 +144,7 @@ class _Distribution:
         cls._ops = ops
         for i, p in enumerate(cls._params):  # read-only attributes (T19)
             setattr(cls, p, _parameter(i, p))
+        _keyword_constructor(cls)
 
     def __init__(self, *args, **kwargs):
         # (every distribution defines its own __init__: only the bases arrive here)

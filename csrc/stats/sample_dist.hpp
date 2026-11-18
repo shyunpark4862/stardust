@@ -619,9 +619,11 @@ struct Custom<Beta> {
         return beta_of_logs(lx, log_gamma_draw(w, s.gb));
     }
 };
-// A degree of freedom below the normal doubles: the t's sample is not drawn (its half has no
-// gamma to draw from: NaN, docs/api/stats.md §2.5); df = inf is the normal's.
-inline constexpr double kMinSampleDf = 0x1p-1022;
+// A degree of freedom below 2^-1021 has no exact half (the subnormals and the smallest
+// normal binade): the t's sample is not drawn (its half has no gamma to draw from: NaN, the
+// same boundary as the value methods' StudentT::halvable, docs/api/stats.md §2.2, §2.5);
+// df = inf is the normal's.
+inline constexpr double kMinSampleDf = 0x1p-1021;
 
 // Z sqrt(df / V), V = 2 G(df / 2): Z exp((log df - log 2 - log G) / 2)
 template <>
@@ -630,7 +632,7 @@ struct Custom<StudentT> {
     struct State {
         GammaPrep g;
         double l;  // log(df / 2)
-        int kind;  // 0 the t, 1 the normal (df = inf), 2 NaN (df subnormal)
+        int kind;  // 0 the t, 1 the normal (df = inf), 2 NaN (df < 2^-1021)
     };
     static State prep(double df) {
         const int kind = df == kInf ? 1 : (df < kMinSampleDf ? 2 : 0);
@@ -670,6 +672,7 @@ struct Custom<F> {
 };
 // df > 1: chi^2(df - 1) + (Z + sqrt(nc))^2 (the noncentrality on one normal coordinate: a
 // gamma and a normal); df = 1: the square alone; df < 1: 2 G(df/2 + N), N ~ Poisson(nc/2).
+// nc = 0: the central chi-square's own draw (its bits, as every other method).
 template <>
 struct Custom<NoncentralChiSquared> {
     static constexpr bool kExtra = true;  // draws extra words
@@ -684,6 +687,7 @@ struct Custom<NoncentralChiSquared> {
                 gamma_prep(df > 1.0 ? 0.5 * (df - 1.0) : 1.0)};
     }
     static double draw(Words& w, const State& s) {
+        if (s.snc == 0.0) return Custom<ChiSquared>::draw(w, s.g0);
         if (s.df >= 1.0) {
             const double z = std_normal(w) + s.snc;
             return s.df == 1.0 ? z * z : 2.0 * gamma_draw(w, s.g1) + z * z;
@@ -697,7 +701,7 @@ struct Custom<NoncentralChiSquared> {
         return log_gamma_draw(w, n == 0.0 ? s.g0 : gamma_prep(s.h + n));
     }
 };
-// (Z + nc) sqrt(df / V); df = inf: Z + nc; df subnormal: NaN (as the t)
+// (Z + nc) sqrt(df / V); df = inf: Z + nc; df < 2^-1021: NaN (as the t)
 template <>
 struct Custom<NoncentralT> {
     static constexpr bool kExtra = true;  // draws extra words
@@ -718,7 +722,9 @@ struct Custom<NoncentralT> {
     }
 };
 // (X1 / dfn) / (V2 / dfd), X1 noncentral chi-square(dfn, nc); dfd = inf: X1 / dfn; dfn = inf:
-// (dfd / 2) / G2; both degrees of freedom subnormal: NaN (docs/api/stats.md §2.5)
+// (dfd / 2) / G2; either degree of freedom below 2^-1021 (no exact half): NaN, as the value
+// methods (user decision 2026-11-19, docs/api/stats.md §2.5); nc = 0: the central F's own
+// draw (its bits).
 template <>
 struct Custom<NoncentralF> {
     static constexpr bool kExtra = true;  // draws extra words
@@ -727,14 +733,18 @@ struct Custom<NoncentralF> {
         GammaPrep g2;
         double l, r;  // log(dfd / dfn), dfd / dfn
         double dfn;
-        int lim;  // 0, 1 dfd = inf, 2 dfn = inf, 3 NaN
+        int lim;  // 0, 1 dfd = inf, 2 dfn = inf, 3 NaN, 4 nc = 0 (the central F)
+        Custom<F>::State central;
     };
     static State prep(double dfn, double dfd, double nc) {
-        const int lim = dfd == kInf ? 1 : (dfn == kInf ? 2 : (dfn < kMinSampleDf && dfd < kMinSampleDf ? 3 : 0));
+        const int lim = dfd == kInf ? 1 : (dfn == kInf ? 2 : (dfn < kMinSampleDf || dfd < kMinSampleDf ? 3 : 0));
+        const int kind = nc == 0.0 && lim != 3 ? 4 : lim;
         return {Custom<NoncentralChiSquared>::prep(lim == 2 ? 1.0 : dfn, nc), gamma_prep(lim == 1 ? 1.0 : 0.5 * dfd),
-                lim == 0 ? log_ratio(dfd, dfn) : 0.0, dfd / dfn, dfn, lim};
+                lim == 0 ? log_ratio(dfd, dfn) : 0.0, dfd / dfn, dfn, kind,
+                kind == 4 ? Custom<F>::prep(dfn, dfd) : Custom<F>::State{}};
     }
     static double draw(Words& w, const State& s) {
+        if (s.lim == 4) return Custom<F>::draw(w, s.central);
         if (s.lim == 3) return std::numeric_limits<double>::quiet_NaN();
         if (s.lim == 1) return Custom<NoncentralChiSquared>::draw(w, s.x1) / s.dfn;
         if (s.lim == 2) return s.g2.a / gamma_draw(w, s.g2);

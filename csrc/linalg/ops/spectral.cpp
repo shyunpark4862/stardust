@@ -211,13 +211,28 @@ nb::object pinv(nb::handle xo, nb::handle rtol_o) {
             double* sv = s.get<double>(static_cast<std::size_t>(k), 3);
             if (lapack::gesdd('S', m, n, a, lda, sv, u, m, vh, k, s) > 0) return kNoConvergence;
             const double tol = rtol * sv[0];
+            lint rank = 0;
+            for (lint j = 0; j < k; ++j) rank += sv[j] > tol;
+            // the kept values below 2^-1022 (no double reciprocal) apart: svals.hpp
+            const lint rn = normal_rank(sv, rank);
+            constexpr char h = std::is_same_v<T, cplx> ? 'C' : 'T';
             // W = Vh^H S^+ (n x k), built in `a`'s storage (no longer needed).
             T* w = a;
             for (lint j = 0; j < k; ++j) {
-                const double inv = sv[j] > tol ? 1.0 / sv[j] : 0.0;
+                const double inv = sv[j] > tol && sv[j] >= kTinySingular ? 1.0 / sv[j] : 0.0;
                 for (lint r = 0; r < n; ++r) w[j * n + r] = conj_if_complex(vh[r * k + j]) * inv;
             }
-            lapack::gemm<T>('N', std::is_same_v<T, cplx> ? 'C' : 'T', n, m, k, w, n, u, m, out, n);
+            lapack::gemm<T>('N', h, n, m, k, w, n, u, m, out, n);
+            if (rank > rn) {  // rare: a kept singular value in the subnormals
+                const lint nh = rank - rn;
+                std::vector<T> wh(static_cast<std::size_t>(n * nh)), oh(static_cast<std::size_t>(n * m));
+                for (lint jj = 0; jj < nh; ++jj) {
+                    const double inv = 1.0 / (sv[rn + jj] * kSingularShift);
+                    for (lint r = 0; r < n; ++r) wh[jj * n + r] = conj_if_complex(vh[r * k + rn + jj]) * inv;
+                }
+                lapack::gemm<T>('N', h, n, m, nh, wh.data(), n, u + rn * m, m, oh.data(), n);
+                add_shifted(out, oh.data(), n * m);
+            }
             return 0;
         });
         if (f) raise(b, f, "pinv", "x");

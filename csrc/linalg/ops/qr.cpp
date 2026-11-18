@@ -119,6 +119,33 @@ nb::object lstsq(nb::handle ao, nb::handle bo, nb::handle rtol_o) {
             if (!pack(y.dtype(), y.data() + off[1], m, r.k, r.rs, r.cs, B, ldb, true)) return kNonFiniteB;
             T* xi = X + i * n * r.k;
             lint rank = 0;
+            // x = V S_r^-1 U^H b from gesdd's U, Vh with the `rank` largest values inverted
+            // (A and B packed); the values below 2^-1022 apart (svals.hpp: inf times an
+            // exact zero of a singular vector was NaN, lstsq(diag(1, 5e-324), 1) [nan, inf]).
+            auto svd_solve = [&](lint keep) -> int {
+                // U (m x mn), Vh (mn x n) and gesdd's own singular values in slot 2; U^H b in slot 3
+                T* u = s.get<T>(static_cast<std::size_t>(m * mn + mn * n + mn), 2);
+                T* vh = u + m * mn;
+                double* sd = reinterpret_cast<double*>(vh + mn * n);
+                if (lapack::gesdd('S', m, n, A, lda, sd, u, m, vh, mn, s) > 0) return kNoConvergence;
+                if (r.k == 0) return 0;
+                T* w = s.get<T>(static_cast<std::size_t>(mn * r.k), 3);
+                constexpr char h = std::is_same_v<T, cplx> ? 'C' : 'T';
+                lapack::gemm<T>(h, 'N', mn, r.k, m, u, m, B, ldb, w, mn);
+                const lint rn = normal_rank(sd, keep), nh = keep - rn;
+                std::vector<T> wh(static_cast<std::size_t>(nh * r.k));
+                for (lint j = 0; j < r.k; ++j)
+                    for (lint q = rn; q < keep; ++q) wh[j * nh + q - rn] = w[j * mn + q] / (sd[q] * kSingularShift);
+                for (lint j = 0; j < r.k; ++j)
+                    for (lint q = 0; q < mn; ++q) w[j * mn + q] = q < rn ? w[j * mn + q] / sd[q] : T(0);
+                lapack::gemm<T>(h, 'N', n, r.k, mn, vh, mn, w, mn, xi, n);
+                if (nh > 0) {  // rare: a kept singular value in the subnormals
+                    std::vector<T> xh(static_cast<std::size_t>(n * r.k));
+                    lapack::gemm<T>(h, 'N', n, r.k, nh, vh + rn, mn, wh.data(), nh, xh.data(), n);
+                    add_shifted(xi, xh.data(), n * r.k);
+                }
+                return 0;
+            };
             if (m > 0 && n > 0 && rcond < kEps) {
                 // rtol below eps: gelsd's xLALSD moves the bidiagonal's entries below eps (of the
                 // largest) to +-eps before its divide and conquer (min(m, n) > 25), so a zero
@@ -132,19 +159,7 @@ nb::object lstsq(nb::handle ao, nb::handle bo, nb::handle rtol_o) {
                 if (const int code = singular_values<T>(a, off[0], m, n, s, svp)) return code;
                 const double tol = rcond * svp[0];
                 for (lint j = 0; j < mn; ++j) rank += svp[j] > tol;
-                // U (m x mn), Vh (mn x n) and gesdd's own singular values in slot 2; U^H b in slot 3
-                T* u = s.get<T>(static_cast<std::size_t>(m * mn + mn * n + mn), 2);
-                T* vh = u + m * mn;
-                double* sd = reinterpret_cast<double*>(vh + mn * n);
-                if (lapack::gesdd('S', m, n, A, lda, sd, u, m, vh, mn, s) > 0) return kNoConvergence;
-                if (r.k > 0) {
-                    T* w = s.get<T>(static_cast<std::size_t>(mn * r.k), 3);
-                    constexpr char h = std::is_same_v<T, cplx> ? 'C' : 'T';
-                    lapack::gemm<T>(h, 'N', mn, r.k, m, u, m, B, ldb, w, mn);
-                    for (lint j = 0; j < r.k; ++j)
-                        for (lint q = 0; q < mn; ++q) w[j * mn + q] = q < rank ? w[j * mn + q] / sd[q] : T(0);
-                    lapack::gemm<T>(h, 'N', n, r.k, mn, vh, mn, w, mn, xi, n);
-                }
+                if (const int code = svd_solve(rank)) return code;
             } else if (m > 0 && n > 0) {
                 // xLALSD silently replaces rcond >= 1 by machine epsilon. By our
                 // definition (docs/api/linalg.md §4: singular values <= rtol * max are zero)
@@ -159,6 +174,13 @@ nb::object lstsq(nb::handle ao, nb::handle bo, nb::handle rtol_o) {
                 if (all_zero) {
                     rank = 0;
                     std::fill(xi, xi + n * r.k, T(0));
+                } else if (r.k > 0 && rank > 0 && sv.get()[rank - 1] < kTinySingular) {
+                    // a kept singular value in the subnormals (a matrix of tiny entries):
+                    // gelsd's 1/sigma overflowed into NaN where entries are 0 or finite
+                    // (diag(5e-324, 5e-324) with rtol=1e-300). gelsd's rank, the SVD solve.
+                    if (!pack(a.dtype(), a.data() + off[0], m, n, a.stride(-2), a.stride(-1), A, lda, true)) return kNonFinite;
+                    if (!pack(y.dtype(), y.data() + off[1], m, r.k, r.rs, r.cs, B, ldb, true)) return kNonFiniteB;
+                    if (const int code = svd_solve(rank)) return code;
                 } else {
                     for (lint j = 0; j < r.k; ++j) std::copy(B + j * ldb, B + j * ldb + n, xi + j * n);
                 }

@@ -799,7 +799,11 @@ struct NoncentralF {
         num::DD l;
         return log_density_bulk(x, dfn, dfd, nc, l) ? l : series(x, dfn, dfd, nc).log;
     }
+    // A df below 2^-1021 has no exact half (the beta shapes are df / 2): NaN, as F's
+    // density, cdfs, inverses, median and entropy (and the sample, sample_dist.hpp).
+    static bool halvable(double dfn, double dfd) { return dfn >= 0x1p-1021 && dfd >= 0x1p-1021; }
     static double pdf(double x, double dfn, double dfd, double nc) {
+        if (!halvable(dfn, dfd)) return kNaN;
         if (nc == 0.0) return F::pdf(x, dfn, dfd);
         if (x < 0.0 || std::isinf(x)) return 0.0;
         if (x == 0.0) return density0(dfn, nc);
@@ -808,6 +812,7 @@ struct NoncentralF {
         return ncd::density(log_density(x, dfn, dfd, nc));
     }
     static double logpdf(double x, double dfn, double dfd, double nc) {
+        if (!halvable(dfn, dfd)) return kNaN;
         if (nc == 0.0) return F::logpdf(x, dfn, dfd);
         if (x < 0.0 || std::isinf(x)) return -kInf;
         if (x == 0.0) return dfn == 2.0 ? -0.5 * nc : std::log(density0(dfn, nc));
@@ -815,10 +820,12 @@ struct NoncentralF {
         return l.hi + l.lo;
     }
     static double cdf(double x, double dfn, double dfd, double nc) {
+        if (!halvable(dfn, dfd)) return kNaN;
         if (nc == 0.0) return F::cdf(x, dfn, dfd);
         return x <= 0.0 ? 0.0 : special::Ncfdtr::f(dfn, dfd, nc, x);
     }
     static double ccdf(double x, double dfn, double dfd, double nc) {
+        if (!halvable(dfn, dfd)) return kNaN;
         if (nc == 0.0) return F::ccdf(x, dfn, dfd);
         return x <= 0.0 ? 1.0 : special::Ncfdtrc::f(dfn, dfd, nc, x);
     }
@@ -831,17 +838,19 @@ struct NoncentralF {
                                     [&](bool u, bool wide) { return tail(x, dfn, dfd, nc, u, wide); }, upper, inside);
     }
     static double logcdf(double x, double dfn, double dfd, double nc) {
+        if (!halvable(dfn, dfd)) return kNaN;
         if (nc == 0.0) return F::logcdf(x, dfn, dfd);
         if (x <= 0.0) return -kInf;
         return log_of_tail(x, dfn, dfd, nc, false);
     }
     static double logccdf(double x, double dfn, double dfd, double nc) {
+        if (!halvable(dfn, dfd)) return kNaN;
         if (nc == 0.0) return F::logccdf(x, dfn, dfd);
         if (x <= 0.0) return 0.0;
         return log_of_tail(x, dfn, dfd, nc, true);
     }
     static double inv(double p, double dfn, double dfd, double nc, bool upper) {
-        if (!(p >= 0.0 && p <= 1.0)) return kNaN;
+        if (!(p >= 0.0 && p <= 1.0) || !halvable(dfn, dfd)) return kNaN;
         if (nc == 0.0) return upper ? F::iccdf(p, dfn, dfd) : F::icdf(p, dfn, dfd);
         if (p == 0.0) return upper ? kInf : 0.0;
         if (p == 1.0) return upper ? 0.0 : kInf;
@@ -857,6 +866,7 @@ struct NoncentralF {
     static double icdf(double p, double dfn, double dfd, double nc) { return inv(p, dfn, dfd, nc, false); }
     static double iccdf(double p, double dfn, double dfd, double nc) { return inv(p, dfn, dfd, nc, true); }
     static double from_log(double lp, double dfn, double dfd, double nc, bool upper) {
+        if (!halvable(dfn, dfd)) return kNaN;
         if (nc == 0.0) return upper ? F::ilogccdf(lp, dfn, dfd) : F::ilogcdf(lp, dfn, dfd);
         if (!(lp <= 0.0)) return kNaN;
         if (lp == -kInf) return inv(0.0, dfn, dfd, nc, upper);
@@ -889,7 +899,9 @@ struct NoncentralF {
         mb = bw / r1;  // dfd / (dfd - 2)
         return ncf_detail::product_central(ma, mb, mx, my);
     }
+    // (nc = 0: the central F's own moments, its bits, as the chi-square's)
     static double mean(double dfn, double dfd, double nc) {
+        if (nc == 0.0) return F::mean(dfn, dfd);
         return dfd > 2.0 ? (dfn + nc) / dfn * (dfd / (dfd - 2.0)) : kInf;
     }
     // The central moments' products (dfn^4, the fourth power of 1 + nc / dfn, the square of
@@ -899,18 +911,21 @@ struct NoncentralF {
         return dfn <= 1e50 && nc <= 1e50 && nc <= 1e50 * dfn && dfd <= 1e40;
     }
     static double variance(double dfn, double dfd, double nc) {
+        if (nc == 0.0) return F::variance(dfn, dfd);
         if (!(dfd > 4.0)) return dfd > 2.0 ? kInf : kNaN;
         if (!moments_in_range(dfn, dfd, nc)) return kNaN;
         double ma, mb;
         return central(dfn, dfd, nc, ma, mb).m2;
     }
     static double standard_deviation(double dfn, double dfd, double nc) {
+        if (nc == 0.0) return F::standard_deviation(dfn, dfd);
         if (!(dfd > 4.0)) return dfd > 2.0 ? kInf : kNaN;
         if (!moments_in_range(dfn, dfd, nc)) return kNaN;
         double ma, mb;
         return std::sqrt(central(dfn, dfd, nc, ma, mb).m2);
     }
     static double skewness(double dfn, double dfd, double nc) {
+        if (nc == 0.0) return F::skewness(dfn, dfd);
         if (!(dfd > 6.0)) return dfd > 4.0 ? kInf : kNaN;
         if (!moments_in_range(dfn, dfd, nc)) return kNaN;
         double ma, mb;
@@ -925,6 +940,7 @@ struct NoncentralF {
     //   + 12 a b m3X m3Y + 12 a b^2 m3X m2Y + 6 a^2 m2X k4Y + 12 a^2 m2X m2Y^2 + 12 a^2 b m2X m3Y + a^4 k4Y,
     // k4X = 48 (dfn + 4 nc) / dfn^4, k4Y = m2Y^2 (30 al - 66) / ((al - 3)(al - 4)), al = dfd/2.
     static double kurtosis(double dfn, double dfd, double nc) {
+        if (nc == 0.0) return F::kurtosis(dfn, dfd);
         if (!(dfd > 8.0)) return dfd > 4.0 ? kInf : kNaN;
         if (!moments_in_range(dfn, dfd, nc)) return kNaN;
         double a, b;
@@ -960,7 +976,12 @@ struct NoncentralF {
         return special::nc_detail::solve(g, x0, [](double x) { return std::log(x); },
                                          [](double u) { return std::exp(u); }, 0.125, 0.0, kInf);
     }
+    static double median(double dfn, double dfd, double nc) {
+        if (nc == 0.0 && halvable(dfn, dfd)) return F::median(dfn, dfd);
+        return icdf(0.5, dfn, dfd, nc);
+    }
     static double entropy(double dfn, double dfd, double nc) {
+        if (!halvable(dfn, dfd)) return kNaN;
         if (nc == 0.0) return F::entropy(dfn, dfd);
         const double m = std::max((dfn + nc) / dfn, 1e-3);
         if (!std::isfinite(m)) return kNaN;
@@ -1154,21 +1175,27 @@ struct NoncentralT {
         num::DD l;
         return log_density_bulk(t, df, nc, l) ? l : nct_detail::log_moment(1, df, nc, t);
     }
+    // A df below 2^-1021 has no exact half (the gamma and beta shapes are df / 2): NaN, as
+    // the t's density, cdfs, inverses, median and entropy (and the sample, sample_dist.hpp).
     static double pdf(double t, double df, double nc) {
+        if (!StudentT::halvable(df)) return kNaN;
         if (nc == 0.0) return StudentT::pdf(t, df);
         if (std::isinf(t)) return 0.0;
         return ncd::density(log_density(t, df, nc));
     }
     static double logpdf(double t, double df, double nc) {
+        if (!StudentT::halvable(df)) return kNaN;
         if (nc == 0.0) return StudentT::logpdf(t, df);
         if (std::isinf(t)) return -kInf;
         const num::DD l = log_density(t, df, nc);
         return l.hi + l.lo;
     }
     static double cdf(double t, double df, double nc) {
+        if (!StudentT::halvable(df)) return kNaN;
         return nc == 0.0 ? StudentT::cdf(t, df) : special::Nctdtr::f(df, nc, t);
     }
     static double ccdf(double t, double df, double nc) {
+        if (!StudentT::halvable(df)) return kNaN;
         return nc == 0.0 ? StudentT::ccdf(t, df) : special::Nctdtrc::f(df, nc, t);
     }
     static special::Scaled tail(double t, double df, double nc, bool upper, bool wide = true) {
@@ -1180,10 +1207,12 @@ struct NoncentralT {
                                     [&](bool u, bool wide) { return tail(t, df, nc, u, wide); }, upper, inside);
     }
     static double logcdf(double t, double df, double nc) {
+        if (!StudentT::halvable(df)) return kNaN;
         if (nc == 0.0) return StudentT::logcdf(t, df);
         return log_of_tail(t, df, nc, false);
     }
     static double logccdf(double t, double df, double nc) {
+        if (!StudentT::halvable(df)) return kNaN;
         if (nc == 0.0) return StudentT::logccdf(t, df);
         return log_of_tail(t, df, nc, true);
     }
@@ -1205,7 +1234,7 @@ struct NoncentralT {
                            start(p, df, nc, upper), false);
     }
     static double inv(double p, double df, double nc, bool upper) {
-        if (!(p >= 0.0 && p <= 1.0)) return kNaN;
+        if (!(p >= 0.0 && p <= 1.0) || !StudentT::halvable(df)) return kNaN;
         if (nc == 0.0) return upper ? StudentT::iccdf(p, df) : StudentT::icdf(p, df);
         if (p == 0.0) return upper ? kInf : -kInf;
         if (p == 1.0) return upper ? -kInf : kInf;
@@ -1218,6 +1247,7 @@ struct NoncentralT {
     static double icdf(double p, double df, double nc) { return inv(p, df, nc, false); }
     static double iccdf(double p, double df, double nc) { return inv(p, df, nc, true); }
     static double from_log(double lp, double df, double nc, bool upper) {
+        if (!StudentT::halvable(df)) return kNaN;
         if (nc == 0.0) return upper ? StudentT::ilogccdf(lp, df) : StudentT::ilogcdf(lp, df);
         if (!(lp <= 0.0)) return kNaN;
         if (lp == -kInf) return inv(0.0, df, nc, upper);
@@ -1322,7 +1352,12 @@ struct NoncentralT {
         if (!(std::fabs(nc) <= 128.0 * std::sqrt(1.0 + df))) return kNaN;
         return mode_root(df, nc);
     }
+    static double median(double df, double nc) {
+        if (nc == 0.0) return StudentT::median(df);
+        return icdf(0.5, df, nc);
+    }
     static double entropy(double df, double nc) {
+        if (!StudentT::halvable(df)) return kNaN;
         if (nc == 0.0) return StudentT::entropy(df);
         const double m = mode_root(df, nc);  // (the grid's centre: any point of the bell)
         const double s = df > 2.0 ? std::sqrt(variance(df, nc)) : 1.0 + std::fabs(nc);

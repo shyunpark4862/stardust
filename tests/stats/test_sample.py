@@ -310,7 +310,10 @@ def test_extreme_parameters_return_in_bounded_time():
     # F with a subnormal dfn: dfd / dfn overflowed (NaN in 99% of the samples)
     v = np.asarray(S.F(dfn=1e-310, dfd=0.5).sample(2000, rng=rng))
     assert not np.isnan(v).any() and (v >= 0.0).all()
+    # (the noncentral F with a df below 2^-1021 is NaN, as its values: user decision 2026-11-19, T45)
     v = np.asarray(S.NoncentralF(dfn=5e-324, dfd=0.5, nc=1.0).sample(2000, rng=rng))
+    assert np.isnan(v).all()
+    v = np.asarray(S.NoncentralF(dfn=2.0**-1021, dfd=0.5, nc=1.0).sample(2000, rng=rng))
     assert not np.isnan(v).any() and (v >= 0.0).all()
     # binomial by inversion with a count beyond 2^53
     v = np.asarray(S.Binomial(n=1e300, p=1e-300).sample(200000, rng=rng))

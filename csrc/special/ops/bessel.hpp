@@ -58,8 +58,8 @@ inline constexpr double kTiny = 0x1p-1000;
 // at most kMaxOrderSteps steps and a continued fraction at most kMaxCfTerms terms (about
 // 0.25 s each: jv(2e7, 1e7), 1e7 steps, takes 0.23 s); a call that would need more is NaN.
 // J and Y have no uniform expansion here, so that is x > |nu| > 1e7 below the Hankel
-// expansion's reach (x ~ nu^2 / 4), and |nu| - x > 1e7 where J is not known to underflow
-// (order_saturates: there J = 0 and Y = -inf at once).
+// expansion's reach (x < (nu + 1)^2 / 4, jy_upward), and |nu| - x > 1e7 where J is not
+// proven to underflow (j_underflows; order_saturates gives J = 0 and Y = -inf at once).
 inline constexpr double kMaxOrderSteps = 1e7;
 inline constexpr int kMaxCfTerms = 10000000;
 inline constexpr int kMaxCf2Terms = 100000;
@@ -501,8 +501,10 @@ inline Scaled power_series(double nu, double x, double sign, double* deriv = nul
 }
 inline bool use_power_series(double nu, double x) { return x * x < nu + 1.0; }
 
-// J and Y for x >= 30 > nu where Hankel does not converge at nu itself (nu^2 >
-// ~16 x): Hankel at mu = nu - floor(nu) and mu + 1, then the three-term
+// J and Y for x >= 30 > nu where Hankel is refused at nu itself (at a large order its
+// first term (4 nu^2 - 1) / (8x) passes hankel_pq's bound of 2, so with the order nu + 1
+// that jy_hankel also takes, x below ((2 nu + 2)^2 - 1) / 16 ~ nu^2 / 4: measured
+// nu^2 / x = 4.0 at nu = 1.2e7-2e7): Hankel at mu = nu - floor(nu) and mu + 1, then the three-term
 // recurrence up to nu. For nu < x the recurrence is neutral (its roots have
 // modulus 1) in both directions, while CF1 there loses ~0.3 x ULP to the
 // same neutrality (measured).
@@ -586,6 +588,39 @@ inline double log_small_order_term(double nu, double x) {
 inline bool order_saturates(double nu, double x, bool modified) {
     return nu > 50.0 && x < 0.5 * nu &&
            log_small_order_term(nu, x) + (modified ? x : 0.0) < -760.0 - kLn2Hi - std::log(nu);
+}
+
+// True when J_nu(x) (nu > 0, 0 < x < nu) is proven to round to 0: an upper bound below
+// e^-746.2, under half the smallest subnormal (2^-1075 = e^-745.13; the nat of margin covers
+// the bounds' own rounding many times over). Two rigorous bounds (user decision 2026-11-19):
+//   DLMF 10.14.5: |J_nu(nu sech a)| <= e^(-nu (a - tanh a)), nu >= 0 (Debye's exponent),
+//   DLMF 10.14.4: |J_nu(x)| <= (x/2)^nu / Gamma(nu + 1) (sharper for x << nu).
+// a - tanh a = atanh(t) - t with t = tanh a = sqrt(1 - (x/nu)^2): below t = 1/2 the positive
+// series t^3/3 + t^5/5 + ... (no cancellation as x nears nu; t from nu - x, exact for
+// x >= nu / 2, so that nu ~ 1e30 next to x keeps its t), above it log(nu/x) + log1p(t) - t. Y has no such bound in the
+// other direction (DLMF 10.14 bounds J only): jv(3e7, 1.9e7) = 0 (e^-7.6e6) while yv there
+// stays a 1e7-step recurrence, NaN. (order_saturates above, the older test, also gives Y.)
+inline constexpr double kJZeroLog = -746.2;
+inline bool j_underflows(double nu, double x) {
+    if (!(nu > 0.0 && x > 0.0 && x < nu)) return false;
+    const double t = std::sqrt((nu - x) / nu) * std::sqrt((nu + x) / nu);
+    double g;  // a - tanh a
+    if (t < 0.5) {
+        const double t2 = t * t;
+        double term = t * t2, s = 0.0;
+        for (int k = 3; k < 200; k += 2) {  // ratio t^2 <= 1/4: 2^-60 by k = 63
+            s += term / k;
+            term *= t2;
+            if (term < 0x1p-60 * s) break;
+        }
+        g = s;
+    } else {
+        // a = acosh(nu / x) = log(nu / x) + log1p(t), the logs apart (nu / x may overflow; and
+        // atanh(t) loses t's last bits as t rounds to 1 for a tiny x)
+        g = (std::log(nu) - std::log(x)) + std::log1p(t) - t;
+    }
+    if (-nu * g < kJZeroLog) return true;
+    return log_small_order_term(nu, x) < kJZeroLog;
 }
 
 // ---- an argument below 2^-200 ---------------------------------------------------
@@ -673,6 +708,9 @@ inline double jv_or_yv(double v, double x, bool want_y) {
         if (!want_y) return sv == 0.0 ? cv * 0.0 : (sv > 0.0 ? kInf : -kInf);
         return cv == 0.0 ? 0.0 : (cv > 0.0 ? -kInf : kInf);
     }
+    // J alone proven below the subnormals (j_underflows); a negative non-integer order also
+    // takes Y_a (J_-a = cos(a pi) J_a - sin(a pi) Y_a): computed as before
+    if (!want_y && (v >= 0.0 || is_int(a)) && j_underflows(a, x)) return v >= 0.0 ? 0.0 : cospi(a) * 0.0;
     double J, Y;
     if (x < kTinyArg) {
         const TinyPair t = tiny_argument(a, x, false);

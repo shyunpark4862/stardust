@@ -15,6 +15,7 @@ import operator
 from collections import namedtuple
 
 from .. import _core as _sd_core
+from ._distribution import _real_option
 
 _k = _sd_core.stats
 
@@ -50,7 +51,7 @@ def _base(base, name):
     """base=: None (nats) or a positive number; base 1 divides by log 1 = 0 (inf, as scipy)."""
     if base is None:
         return
-    if isinstance(base, bool) or not isinstance(base, (int, float)):
+    if _real_option(base, name, "base") is None:
         raise TypeError(f"{name}(): 'base' must be a positive number or None, not {_type_name(base)}")
     if not base > 0:
         raise ValueError(f"{name}(): 'base' must be a positive number or None")
@@ -250,9 +251,10 @@ def _var_of(n, m2, correction):
 
 
 def _correction(v, name):
-    if isinstance(v, bool) or not isinstance(v, (int, float)):
+    c = _real_option(v, name, "correction")
+    if c is None:
         raise TypeError(f"{name}(): 'correction' must be an int or a float, not {_type_name(v)}")
-    return float(v)
+    return c
 
 
 # ---- the functions ------------------------------------------------------------------------
@@ -333,10 +335,11 @@ def moment(x, /, *, order, center=None, axis=None, nan_policy="propagate", keepd
     unit = None
     centers = None
     if center is not None:
-        c = _as_array(center, name, "center") if not isinstance(center, (int, float)) else None
+        cv = float(center) if isinstance(center, bool) else _real_option(center, name, "center")
+        c = _as_array(center, name, "center") if cv is None else None
         lanes_count = lanes.rows.shape[0]
         if c is None:
-            centers = sd.full((lanes_count,), float(center))
+            centers = sd.full((lanes_count,), cv)
         else:
             try:
                 centers = sd.reshape(sd.broadcast_to(c, lanes.kept_shape), (lanes_count,)) if lanes.kept_shape \
@@ -403,8 +406,14 @@ def rankdata(x, /, *, method="average", axis=None, nan_policy="propagate"):
     if axis is None:
         a = sd.reshape(a, (a.size,))
         axis = 0
-    elif isinstance(axis, (tuple, list)):
-        raise TypeError(f"rankdata(): 'axis' must be an int or None, not {_type_name(axis)}")
+    else:
+        # one axis (T37): the message names what this function takes, not the reductions' tuples
+        try:
+            if isinstance(axis, bool):
+                raise TypeError
+            operator.index(axis)
+        except TypeError:
+            raise TypeError(f"rankdata(): 'axis' must be an int or None, not {_type_name(axis)}") from None
     _check_nan(a, nan_policy, name)
     lanes = _Lanes(a, axis, name)
     return lanes.back(_k.desc_rank(lanes.rows, _RANK_METHODS[method], nan_policy == "omit"))
@@ -442,8 +451,11 @@ def iqr(x, /, *, axis=None, q=(0.25, 0.75), scale=1.0, method="linear", nan_poli
         if scale != "normal":
             raise ValueError(f"iqr(): 'scale' must be a number or 'normal', not {scale!r}")
         scale = _NORMAL_IQR
-    elif isinstance(scale, bool) or not isinstance(scale, (int, float)):
-        raise TypeError(f"iqr(): 'scale' must be a number or 'normal', not {_type_name(scale)}")
+    else:
+        sc = _real_option(scale, name, "scale")
+        if sc is None:
+            raise TypeError(f"iqr(): 'scale' must be a number or 'normal', not {_type_name(scale)}")
+        scale = sc
     a = _as_array(x, name)
     red = _axes(axis, a.ndim, name) if axis is not None else None  # (this function's own messages)
     _check_nan(a, nan_policy, name)

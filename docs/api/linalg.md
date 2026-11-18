@@ -383,12 +383,14 @@ pinv(x, /, *, rtol=None)
     - `singular_values`: `(..., min(M, N))`, 내림차순
   - `rtol >= 1`이면 모든 특이값이 0이므로 `rank`는 `0`, `solution`은 0이다. LAPACK과 numpy는 이 경우 `rtol`을 eps로 바꿔 버린다.
   - `rtol`이 eps보다 작으면(`rtol=0` 포함) `matrix_rank`와 같은 특이값(`svdvals`의 값)으로 랭크를 정하고 SVD로 푼다. 그래서 `rank`는 `matrix_rank(a, rtol=rtol)`과 언제나 같다(사용자 결정 2026-11-19). LAPACK의 `gelsd`는 eps 아래의 특이값을 eps로 올려 정확한 0도 세었다(열 하나가 0인 30×30에서 랭크 30).
+  - 남긴 특이값이 2⁻¹⁰²² 아래라 1/σ가 double을 넘어도, 해의 정확한 0은 0이고 넘치는 성분은 ±inf다(2026-11-19). 예: `lstsq(diag(1, 5e-324), [1, 1], rtol=0)`의 해는 [1, inf]다(참값 [1, 2.02e323]; 전에는 [nan, inf]). `pinv`도 같다.
   - 잔차(`residuals`)는 돌려주지 않는다.
 - **`inv`**
   - `inv(x)`는 `solve(x, I)`와 비트까지 같다.
 - **`pinv`**
   - `(..., M, N)` → `(..., N, M)`이다. SVD로 계산한다.
   - 허용오차는 `matrix_rank`, `lstsq`와 같은 정의다. `rtol >= 1`이면 영행렬이다.
+  - 남긴 특이값이 2⁻¹⁰²² 아래여도 정확한 0인 성분은 0이고, double을 넘는 성분은 ±inf다: `pinv(diag(1, 5e-324), rtol=0)`은 [[1, 0], [0, inf]]다(2026-11-19; 전에는 [[nan, nan], [nan, inf]]).
 
 ---
 

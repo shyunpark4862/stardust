@@ -82,6 +82,7 @@ bool  int64  float64  complex128  string
   - 인덱싱이 없는 라벨이나 열을 찾으면 dict처럼 `KeyError(label)`다. 함수가 없는 열을 받으면 `sort_values(): no column 'x'`다.
   - 속성 대입: `property 'shape' of 'ndarray' object has no setter`
 - Python과 nanobind가 직접 내는 에러는 그대로다: 틀린 호출 모양(`Series.head() got some positional-only arguments passed as keyword arguments: 'n'`, 없는 키워드나 인자 개수가 틀린 호출에 대한 nanobind의 `incompatible function arguments`), 파일을 열 때의 `FileNotFoundError`. 인자의 **값**이 틀린 것은 언제나 위의 형식이다.
+  - 예외: `sd.stats` 분포의 생성자는 호출 모양의 에러도 생성자 형식이다(docs/design/stats.md T36; 2026-11-19): `Normal(): unexpected keyword argument 'cool'`, `Gamma(): missing 1 required keyword-only argument: 'a'`, `Normal(): takes no positional arguments but 1 was given`.
 - **메시지에 문서의 절 번호를 넣지 않는다.** 문서의 번호는 바뀌어도 메시지는 사용자 코드가 붙잡고 있을 수 있다.
 
 ## §3. 스레드와 결정성

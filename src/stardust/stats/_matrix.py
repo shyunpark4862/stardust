@@ -12,6 +12,7 @@ NaN in every method of that batch element (T8).
 import math
 
 from .. import _core as _sd_core
+from ._distribution import _keyword_constructor
 from ._multivariate import (_array, _broadcast, _fast_factors, _lower_symmetric, _param, _public_names, _rows,
                             _shape_of, _type_name)
 
@@ -282,3 +283,5 @@ class MatrixNormal(_MatrixBase):
 
 for _cls in (_MatrixBase, _WishartBase, Wishart, InverseWishart, MatrixNormal):
     _public_names(_cls)
+for _cls in (_WishartBase, MatrixNormal):
+    _keyword_constructor(_cls)  # "Wishart(): unexpected keyword argument ..." (T36)

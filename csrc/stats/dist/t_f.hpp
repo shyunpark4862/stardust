@@ -264,6 +264,7 @@ struct StudentT {
     // = (a + 1/2) dpsi + log(2 pi)/2 - L(a) (t_detail::big_l: the log-gammas' large terms
     // cancelled by hand, the digamma difference by its series).
     static double entropy(double df) {
+        if (!halvable(df)) return kNaN;  // (2^-1022 <= df < 2^-1021 gave 4.5e307)
         const double a = 0.5 * df;
         if (a >= t_detail::kBig) {
             const num::DD h = num::kLogSqrt2Pi + ((a + 0.5) * num::digamma_diff_asym(a, 0.5) - t_detail::big_l(a));

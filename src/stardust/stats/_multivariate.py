@@ -15,10 +15,11 @@ import math
 import operator
 
 from .. import _core as _sd_core
+from ._distribution import _keyword_constructor, _real_option
 
 _k = _sd_core.stats
 _SQRT_EPS = math.sqrt(2.0**-52)
-_MIN_DF = 2.0**-1022
+_MIN_DF = 2.0**-1021  # StudentT's boundary: below it df / 2 is not exact (docs/api/stats.md §2.2)
 
 
 def _type_name(v):
@@ -203,7 +204,7 @@ class _Gaussian(_Batched):
         self._cov = _lower_symmetric(_rows(cov, batch, (d, d)))  # (the lower triangle is what is read)
         self._df = _rows(df, batch, ())
         L, Ll, ldh, ldl, ok, self._ih, self._il = _k.mv_chol(self._cov)
-        # df below the smallest normal double is outside the domain too (df / 2 rounds to 0)
+        # df below 2^-1021 is outside the domain too (df / 2 is not exact; StudentT's NaN)
         good = sd.all(sd.isfinite(self._mu), axis=1) & ~sd.isnan(self._df) & (self._df >= _MIN_DF)
         self._ok = sd.where(good, ok, 0.0)
         self._L, self._Ll, self._ldh, self._ldl = L, Ll, ldh, ldl
@@ -230,10 +231,11 @@ class _Gaussian(_Batched):
         else Genz's quasi-Monte Carlo with a fixed seed (deterministic) to `atol`. With
         return_error=True: (value, error estimate)."""
         sd = _sd_core
-        if isinstance(atol, bool) or not isinstance(atol, (int, float)):
+        tol = _real_option(atol, "cdf", "atol")
+        if tol is None:
             raise TypeError(f"cdf(): 'atol' must be an int or a float, not {_type_name(atol)}")
-        if not atol > 0 or atol == math.inf:
-            raise ValueError("cdf(): 'atol' must be a positive number")
+        if not 0.0 < tol < math.inf:
+            raise ValueError("cdf(): 'atol' must be a finite number > 0")
         if return_error is not True and return_error is not False:
             raise TypeError(f"cdf(): 'return_error' must be True or False, not {_type_name(return_error)}")
         mp = 0
@@ -251,7 +253,7 @@ class _Gaussian(_Batched):
         rows, idx, out = self._points(x, "cdf")
         shifted = rows - sd.take(self._mu, idx, axis=0)
         cov = sd.where(sd.reshape(self._ok, (self._B, 1, 1)) != 0.0, self._cov, float("nan"))
-        v, err = _k.mv_cdf(cov, shifted, idx, self._df, float(atol), mp)
+        v, err = _k.mv_cdf(cov, shifted, idx, self._df, tol, mp)
         if return_error:
             return self._result(v, out), self._result(err, out)
         return self._result(v, out)
@@ -486,3 +488,5 @@ class Dirichlet(_Batched):
 
 for _cls in (_Batched, _Gaussian, MultivariateNormal, MultivariateT, Multinomial, Dirichlet):
     _public_names(_cls)
+for _cls in (MultivariateNormal, MultivariateT, Multinomial, Dirichlet):
+    _keyword_constructor(_cls)  # "MultivariateNormal(): unexpected keyword argument ..." (T36)

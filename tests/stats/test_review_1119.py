@@ -273,7 +273,7 @@ def test_constructor_messages_name_the_class():
 
 def test_method_messages():
     M = S.MultivariateNormal(mu=A([0.0, 0.0]), cov=A([[1.0, 0.2], [0.2, 1.0]]))
-    with pytest.raises(ValueError, match=r"^cdf\(\): 'atol' must be a positive number$"):
+    with pytest.raises(ValueError, match=r"^cdf\(\): 'atol' must be a finite number > 0$"):
         M.cdf(A([0.0, 0.0]), atol=-1.0)
     with pytest.raises(TypeError, match=r"^cdf\(\): 'atol' must be an int or a float, not str$"):
         M.cdf(A([0.0, 0.0]), atol="a")

@@ -498,8 +498,11 @@ def test_degenerate_degrees_of_freedom():
     T = S.MultivariateT(mu=sd.asarray([0.0, 0.0]), shape=sd.asarray(np.eye(2)), df=5e-324)
     assert math.isnan(T.logpdf(sd.asarray([0.0, 1.0]))) and math.isnan(T.entropy())
     assert np.isnan(np.asarray(T.sample(3, rng=sd.random.default_rng(1)))).all()
-    # the smallest normal df is in the domain
+    # StudentT's boundary (2026-11-19): below 2^-1021 df / 2 is not exact, NaN; 2^-1021 is in
     T = S.MultivariateT(mu=sd.asarray([0.0, 0.0]), shape=sd.asarray(np.eye(2)), df=2.0**-1022)
+    assert math.isnan(T.logpdf(sd.asarray([0.0, 1.0])))
+    assert math.isnan(S.StudentT(df=2.0**-1022).logpdf(1.0))
+    T = S.MultivariateT(mu=sd.asarray([0.0, 0.0]), shape=sd.asarray(np.eye(2)), df=2.0**-1021)
     assert math.isfinite(T.logpdf(sd.asarray([0.0, 1.0])))
 
 
