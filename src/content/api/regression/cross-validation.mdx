@@ -1,0 +1,430 @@
+---
+title: 교차검증
+names: [ridge_cv, lasso_cv, elastic_net_cv, RidgeCVResult, LassoCVResult, ElasticNetCVResult]
+group: 정규화 회귀
+order: 4
+signatures:
+  - "sd.regression.ridge_cv(y, X, /, *, rng=None, cv=5, alphas=100, eps=0.001, select='min', weights=None, intercept=True, standardize=False, nan_policy='propagate')"
+  - "sd.regression.lasso_cv(y, X, /, *, rng, cv=5, alphas=100, eps=0.001, select='min', weights=None, intercept=True, standardize=False, max_iter=1000, tol=0.0001, nan_policy='propagate')"
+  - "sd.regression.elastic_net_cv(y, X, /, *, rng, l1_ratio=0.5, cv=5, alphas=100, eps=0.001, select='min', weights=None, intercept=True, standardize=False, max_iter=1000, tol=0.0001, nan_policy='propagate')"
+summary: 데이터를 몇 겹으로 나눠 한 겹씩 떼어 두고 예측 오차를 재는 k겹 교차검증으로 ridge, lasso, elastic_net의 alpha를 골라요. 고른 alpha로 모든 데이터를 다시 적합한 결과에 오차 곡선과 두 선택(최소 오차, 1-SE 규칙)을 붙여 돌려줘요.
+params:
+  - name: y
+    type: ndarray, 실수의 시퀀스, 또는 Series
+    kind: positional-only
+    desc: 반응 (..., n). 앞 축은 배치이고, 배치의 모든 회귀가 같은 겹을 써요.
+  - name: X
+    type: ndarray, 실수의 시퀀스, 또는 DataFrame
+    kind: positional-only
+    desc: 설명변수 (..., n, k) 또는 (n,). 절편 열은 넣지 않아요.
+  - name: rng
+    type: sd.random.Generator
+    kind: keyword-only
+    desc: 겹을 무작위로 나눌 난수 생성기(sd.random.default_rng(seed)). lasso_cv와 elastic_net_cv는 꼭 줘야 해요. ridge_cv는 cv='gcv'일 때만 없어도 돼요.
+  - name: l1_ratio
+    type: float
+    kind: keyword-only
+    desc: elastic_net_cv만. 0 이상 1 이하, 기본값 0.5. 값 하나만 받아요. 0이면 alphas를 배열로 줘야 해요.
+  - name: cv
+    type: int 또는 'gcv'
+    kind: keyword-only
+    desc: 겹의 수. 2 이상, 행 수 이하예요. 기본값은 5예요. ridge_cv는 'gcv'(일반화 교차검증)도 받아요.
+  - name: alphas
+    type: int 또는 1차원 배열
+    kind: keyword-only
+    desc: int이면 그 개수의 기본 격자(alpha_max에서 alpha_max × eps까지 등비), 배열이면 그 값들(큰 것부터 정렬해요). 기본값은 100이에요.
+  - name: eps
+    type: float
+    kind: keyword-only
+    desc: 기본 격자의 가장 작은 값과 가장 큰 값의 비. 0보다 크고 1 이하예요. 기본값은 1e-3이에요.
+  - name: select
+    type: str
+    kind: keyword-only
+    desc: "다시 적합할 alpha. 'min'(기본, 오차가 가장 작은 alpha) 또는 '1se'(1-SE 규칙)예요."
+  - name: weights, intercept, standardize, max_iter, tol, nan_policy
+    type: 각 함수와 같음
+    kind: keyword-only
+    desc: ridge, lasso, elastic_net과 같은 뜻이에요. max_iter와 tol은 lasso_cv, elastic_net_cv만 받아요.
+returns:
+  type: RidgeCVResult, LassoCVResult, ElasticNetCVResult
+  desc: "고른 alpha에서 모든 데이터로 다시 적합한 RidgeResult·LassoResult·ElasticNetResult의 모든 필드에, 교차검증 필드 alphas, cv_error, cv_se, alpha_min, alpha_1se를 더한 것이에요. alpha는 고른 값이에요."
+raises:
+  - type: TypeError
+    desc: rng가 sd.random.Generator가 아닐 때(lasso_cv·elastic_net_cv에서 rng를 빠뜨렸을 때 포함), cv가 int(ridge_cv는 int나 'gcv')가 아닐 때, alphas가 int나 수의 배열이 아닐 때, eps가 수가 아닐 때, 그 밖에 ridge·lasso·elastic_net과 같은 경우.
+  - type: ValueError
+    desc: cv가 2보다 작거나 행 수보다 클 때, ridge_cv의 cv가 'gcv'가 아닌 문자열일 때, select가 'min'·'1se'가 아닐 때, cv='gcv'에서 select='1se'일 때, eps가 0 이하이거나 1보다 클 때, alphas가 1보다 작은 int이거나 음수·inf·NaN을 담을 때, elastic_net_cv에서 l1_ratio=0인데 alphas가 int일 때, 그 밖에 ridge·lasso·elastic_net과 같은 경우.
+seeAlso: [ridge, lasso, elastic-net, penalized-glm, results, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const cvErr = [[0.0214, 5.9218], [-0.0089, 5.8722], [-0.0392, 5.796], [-0.0695, 5.6627], [-0.0998, 5.5061], [-0.1301, 5.3469], [-0.1604, 5.1462], [-0.1907, 4.9718], [-0.221, 4.8203], [-0.2513, 4.6886], [-0.2816, 4.5742], [-0.3119, 4.4798], [-0.3422, 4.4039], [-0.3725, 4.3393], [-0.4028, 4.2844], [-0.4332, 4.2379], [-0.4635, 4.1985], [-0.4938, 4.1654], [-0.5241, 4.1386], [-0.5544, 4.1184], [-0.5847, 4.1035], [-0.615, 4.0921], [-0.6453, 4.084], [-0.6756, 4.0786], [-0.7059, 4.0765], [-0.7362, 4.0798], [-0.7665, 4.0844], [-0.7968, 4.088], [-0.8271, 4.0912], [-0.8574, 4.0952], [-0.8877, 4.0989], [-0.918, 4.1019], [-0.9483, 4.1053], [-0.9786, 4.109], [-1.0089, 4.1132], [-1.0392, 4.1185], [-1.0695, 4.126], [-1.0998, 4.1344], [-1.1301, 4.1436], [-1.1604, 4.1541], [-1.1907, 4.1652], [-1.221, 4.177], [-1.2513, 4.1908], [-1.2816, 4.2047], [-1.3119, 4.2178], [-1.3422, 4.2303], [-1.3725, 4.242], [-1.4028, 4.2524], [-1.4332, 4.2623], [-1.4635, 4.2716], [-1.4938, 4.2806], [-1.5241, 4.289], [-1.5544, 4.2977], [-1.5847, 4.3059], [-1.615, 4.3136], [-1.6453, 4.321], [-1.6756, 4.3278], [-1.7059, 4.3346], [-1.7362, 4.3414], [-1.7665, 4.3477], [-1.7968, 4.3536], [-1.8271, 4.3592], [-1.8574, 4.3644], [-1.8877, 4.3695], [-1.918, 4.3743], [-1.9483, 4.3787], [-1.9786, 4.3829], [-2.0089, 4.3868], [-2.0392, 4.3905], [-2.0695, 4.3939], [-2.0998, 4.3972], [-2.1301, 4.4002], [-2.1604, 4.403], [-2.1907, 4.4056], [-2.221, 4.4081], [-2.2513, 4.4104], [-2.2816, 4.4126], [-2.3119, 4.4146], [-2.3422, 4.4165], [-2.3725, 4.4182], [-2.4028, 4.4199], [-2.4332, 4.4214], [-2.4635, 4.4228], [-2.4938, 4.4242], [-2.5241, 4.4254], [-2.5544, 4.4266], [-2.5847, 4.4277], [-2.615, 4.4287], [-2.6453, 4.4297], [-2.6756, 4.4306], [-2.7059, 4.4314], [-2.7362, 4.4322], [-2.7665, 4.4329], [-2.7968, 4.4336], [-2.8271, 4.4342], [-2.8574, 4.4348], [-2.8877, 4.4353], [-2.918, 4.4358], [-2.9483, 4.4363], [-2.9786, 4.4368]];
+export const cvUp = [[0.0214, 7.1599], [-0.0089, 7.099], [-0.0392, 7.021], [-0.0695, 6.8687], [-0.0998, 6.7005], [-0.1301, 6.5303], [-0.1604, 6.2826], [-0.1907, 6.0687], [-0.221, 5.8838], [-0.2513, 5.7242], [-0.2816, 5.5862], [-0.3119, 5.4701], [-0.3422, 5.3742], [-0.3725, 5.2928], [-0.4028, 5.2239], [-0.4332, 5.1657], [-0.4635, 5.1168], [-0.4938, 5.0758], [-0.5241, 5.042], [-0.5544, 5.0154], [-0.5847, 4.9952], [-0.615, 4.9794], [-0.6453, 4.9676], [-0.6756, 4.9591], [-0.7059, 4.9544], [-0.7362, 4.9557], [-0.7665, 4.9587], [-0.7968, 4.9611], [-0.8271, 4.9631], [-0.8574, 4.9661], [-0.8877, 4.9695], [-0.918, 4.9731], [-0.9483, 4.9773], [-0.9786, 4.9818], [-1.0089, 4.9868], [-1.0392, 4.9934], [-1.0695, 5.0022], [-1.0998, 5.0119], [-1.1301, 5.0224], [-1.1604, 5.0331], [-1.1907, 5.0451], [-1.221, 5.0584], [-1.2513, 5.0753], [-1.2816, 5.0924], [-1.3119, 5.1086], [-1.3422, 5.1239], [-1.3725, 5.138], [-1.4028, 5.1502], [-1.4332, 5.1618], [-1.4635, 5.1728], [-1.4938, 5.1833], [-1.5241, 5.1932], [-1.5544, 5.2034], [-1.5847, 5.213], [-1.615, 5.2221], [-1.6453, 5.2307], [-1.6756, 5.2388], [-1.7059, 5.2467], [-1.7362, 5.2546], [-1.7665, 5.262], [-1.7968, 5.2689], [-1.8271, 5.2754], [-1.8574, 5.2815], [-1.8877, 5.2873], [-1.918, 5.2928], [-1.9483, 5.2979], [-1.9786, 5.3027], [-2.0089, 5.3072], [-2.0392, 5.3114], [-2.0695, 5.3153], [-2.0998, 5.319], [-2.1301, 5.3225], [-2.1604, 5.3257], [-2.1907, 5.3287], [-2.221, 5.3316], [-2.2513, 5.3342], [-2.2816, 5.3367], [-2.3119, 5.339], [-2.3422, 5.3411], [-2.3725, 5.3431], [-2.4028, 5.345], [-2.4332, 5.3468], [-2.4635, 5.3484], [-2.4938, 5.3499], [-2.5241, 5.3514], [-2.5544, 5.3527], [-2.5847, 5.354], [-2.615, 5.3551], [-2.6453, 5.3562], [-2.6756, 5.3572], [-2.7059, 5.3582], [-2.7362, 5.3591], [-2.7665, 5.3599], [-2.7968, 5.3607], [-2.8271, 5.3614], [-2.8574, 5.362], [-2.8877, 5.3627], [-2.918, 5.3633], [-2.9483, 5.3638], [-2.9786, 5.3643]];
+export const cvLo = [[0.0214, 4.6837], [-0.0089, 4.6454], [-0.0392, 4.571], [-0.0695, 4.4566], [-0.0998, 4.3118], [-0.1301, 4.1636], [-0.1604, 4.0098], [-0.1907, 3.875], [-0.221, 3.7567], [-0.2513, 3.6531], [-0.2816, 3.5622], [-0.3119, 3.4895], [-0.3422, 3.4336], [-0.3725, 3.3858], [-0.4028, 3.345], [-0.4332, 3.31], [-0.4635, 3.2803], [-0.4938, 3.2549], [-0.5241, 3.2352], [-0.5544, 3.2213], [-0.5847, 3.2117], [-0.615, 3.2048], [-0.6453, 3.2004], [-0.6756, 3.1982], [-0.7059, 3.1986], [-0.7362, 3.204], [-0.7665, 3.2101], [-0.7968, 3.215], [-0.8271, 3.2194], [-0.8574, 3.2243], [-0.8877, 3.2283], [-0.918, 3.2307], [-0.9483, 3.2333], [-0.9786, 3.2362], [-1.0089, 3.2396], [-1.0392, 3.2436], [-1.0695, 3.2498], [-1.0998, 3.2568], [-1.1301, 3.2648], [-1.1604, 3.275], [-1.1907, 3.2853], [-1.221, 3.2956], [-1.2513, 3.3064], [-1.2816, 3.3169], [-1.3119, 3.3271], [-1.3422, 3.3367], [-1.3725, 3.3459], [-1.4028, 3.3545], [-1.4332, 3.3627], [-1.4635, 3.3705], [-1.4938, 3.3778], [-1.5241, 3.3848], [-1.5544, 3.392], [-1.5847, 3.3988], [-1.615, 3.4052], [-1.6453, 3.4112], [-1.6756, 3.4169], [-1.7059, 3.4225], [-1.7362, 3.4281], [-1.7665, 3.4334], [-1.7968, 3.4383], [-1.8271, 3.4429], [-1.8574, 3.4473], [-1.8877, 3.4516], [-1.918, 3.4557], [-1.9483, 3.4595], [-1.9786, 3.4631], [-2.0089, 3.4665], [-2.0392, 3.4696], [-2.0695, 3.4725], [-2.0998, 3.4753], [-2.1301, 3.4779], [-2.1604, 3.4803], [-2.1907, 3.4826], [-2.221, 3.4847], [-2.2513, 3.4866], [-2.2816, 3.4885], [-2.3119, 3.4902], [-2.3422, 3.4918], [-2.3725, 3.4933], [-2.4028, 3.4947], [-2.4332, 3.4961], [-2.4635, 3.4973], [-2.4938, 3.4984], [-2.5241, 3.4995], [-2.5544, 3.5005], [-2.5847, 3.5014], [-2.615, 3.5023], [-2.6453, 3.5031], [-2.6756, 3.5039], [-2.7059, 3.5046], [-2.7362, 3.5053], [-2.7665, 3.5059], [-2.7968, 3.5065], [-2.8271, 3.507], [-2.8574, 3.5075], [-2.8877, 3.508], [-2.918, 3.5084], [-2.9483, 3.5088], [-2.9786, 3.5092]];
+
+## 한눈에 보기
+
+[`ridge`](/api/regression/ridge/), [`lasso`](/api/regression/lasso/), [`elastic_net`](/api/regression/elastic-net/)은 벌점의 세기 `alpha`를 정해 줘야 해요. 너무 작으면 과적합하고, 너무 크면 계수를 지나치게 눌러서 쓸모 있는 효과까지 놓쳐요. 좋은 `alpha`는 **새 데이터에서 예측이 가장 좋은 값**이에요. 새 데이터가 없으니 가진 데이터를 나눠서 흉내 내요. 이것이 **k겹 교차검증**이에요.
+
+1. 행을 무작위로 k개의 겹(fold)으로 나눠요.
+2. 겹 하나를 떼어 두고, 나머지 k − 1겹으로 `alpha` 격자의 모든 값에서 적합해요.
+3. 떼어 둔 겹에서 예측 오차(평균 제곱오차)를 재요.
+4. 겹마다 되풀이하고, `alpha`마다 k개의 오차를 평균해요. 이것이 `cv_error`예요.
+5. `cv_error`로 `alpha`를 고르고, 그 `alpha`로 **모든 데이터를 다시 적합해요.**
+
+열 8개 가운데 둘(`x1`, `x2`)만 효과가 있는 데이터로 볼게요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(0)
+>>> X = sd.stats.Normal().sample((60, 8), rng=rng)
+>>> y = 1.0 + 1.5 * X[:, 0] - 1.0 * X[:, 1] + 2.0 * sd.stats.Normal().sample(60, rng=rng)
+>>> cv = sd.regression.lasso_cv(y, X, rng=sd.random.default_rng(0))
+>>> cv.alpha
+0.19684418690847075
+>>> [round(v, 3) for v in cv.params.tolist()]
+[0.866, 1.153, -0.826, 0.0, -0.036, 0.0, 0.0, 0.0, 0.0]
+```
+
+교차검증이 고른 `alpha`는 0.197이고, 그 `alpha`의 라소는 `x1`, `x2`에 `x4`를 조금 더해 셋을 남겼어요. 결과는 `LassoResult`의 필드를 모두 가지면서 교차검증 필드가 더 있어요.
+
+```python
+>>> cv.alphas.shape, cv.cv_error.shape, cv.cv_se.shape
+((100,), (100,), (100,))
+>>> round(cv.alpha_min, 4), round(cv.alpha_1se, 4)
+(0.1968, 0.6011)
+```
+
+아래 그림이 오차 곡선이에요. 가운데 실선이 `cv_error`이고, 점선은 `cv_error` ± `cv_se`(겹들 사이의 흔들림)예요. 왼쪽(작은 `alpha`)은 과적합으로, 오른쪽(큰 `alpha`)은 지나친 벌점으로 오차가 커요.
+
+<Fig caption="라소의 교차검증 오차(5겹). 가로축은 alpha(로그 눈금)예요. alpha_min은 오차가 가장 작은 곳, alpha_1se는 오차가 최솟값 + 그 점의 표준오차 안에 드는 가장 큰 alpha예요.">
+  <Plot
+    curves={[
+      { points: cvErr, label: 'cv_error' },
+      { points: cvUp, label: 'cv_error + cv_se', dashed: true },
+      { points: cvLo, label: 'cv_error - cv_se', dashed: true },
+    ]}
+    domain={[-3.05, 0.1]}
+    range={[3, 7.5]}
+    xTicks={[
+      { v: -3, label: '0.001' },
+      { v: -2, label: '0.01' },
+      { v: -1, label: '0.1' },
+      { v: -0.70588, label: 'alpha_min' },
+      { v: -0.22103, label: 'alpha_1se' },
+    ]}
+    yTicks={[
+      { v: 4, label: '4' },
+      { v: 5, label: '5' },
+      { v: 6, label: '6' },
+      { v: 7, label: '7' },
+    ]}
+  />
+</Fig>
+
+<Reference />
+
+## 세 함수
+
+| 함수 | 고르는 것 | 다시 적합 | 결과 |
+|---|---|---|---|
+| `ridge_cv` | [`ridge`](/api/regression/ridge/)의 `alpha` | `ridge(y, X, alpha=...)` | `RidgeCVResult` |
+| `lasso_cv` | [`lasso`](/api/regression/lasso/)의 `alpha` | `lasso(y, X, alpha=...)` | `LassoCVResult` |
+| `elastic_net_cv` | [`elastic_net`](/api/regression/elastic-net/)의 `alpha`(`l1_ratio`는 고정) | `elastic_net(y, X, alpha=..., l1_ratio=...)` | `ElasticNetCVResult` |
+
+`ridge_cv`는 겹을 나누는 대신 일반화 교차검증(`cv='gcv'`)도 할 수 있어요(아래).
+
+## 겹 나누기: `rng`와 `cv`
+
+겹은 `rng`로 무작위로 나눠요. `rng`는 [`sd.random.default_rng(seed)`](/api/random/default_rng/)로 만든 생성기예요. 나누는 방법이 결과를 바꾸므로, 아무 값으로나 정하지 않도록 `lasso_cv`와 `elastic_net_cv`는 `rng`에 기본값이 없어요. `ridge_cv`도 겹을 쓰면(`cv`가 int) `rng`가 있어야 해요.
+
+```python
+>>> sd.regression.lasso_cv(y, X)
+Traceback (most recent call last):
+    ...
+TypeError: lasso_cv() missing 1 required keyword-only argument: 'rng'
+>>> sd.regression.lasso_cv(y, X, rng=0)
+Traceback (most recent call last):
+    ...
+TypeError: lasso_cv(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not int
+```
+
+같은 씨앗으로 새로 만든 생성기를 주면 언제나 같은 겹, 같은 결과예요. 생성기는 겹을 뽑으면서 앞으로 나아가므로, 같은 생성기를 다시 쓰면 다른 겹이 나와요.
+
+```python
+>>> g = sd.random.default_rng(0)
+>>> a1 = sd.regression.lasso_cv(y, X, rng=g)
+>>> a2 = sd.regression.lasso_cv(y, X, rng=g)
+>>> a1.alpha_min == cv.alpha_min, a2.alpha_min == cv.alpha_min
+(True, False)
+```
+
+겹을 어떻게 나누느냐에 따라 고르는 `alpha`도 달라져요. 데이터가 작을수록 차이가 커요.
+
+```python
+>>> [round(sd.regression.lasso_cv(y, X, rng=sd.random.default_rng(s)).alpha_min, 4) for s in range(4)]
+[0.1968, 0.2111, 0.1968, 0.2427]
+```
+
+정확히는 행 i의 겹 번호를 0, 1, …, cv − 1, 0, 1, …을 `rng.permutation(n)`으로 섞어 정해요. 그래서 겹의 크기는 서로 많아야 1 차이예요. 겹을 직접 보고 싶으면 이렇게 만들 수 있어요.
+
+```python
+>>> labels = sd.take(sd.asarray([i % 5 for i in range(60)]), sd.random.default_rng(0).permutation(60))
+>>> labels[:10]
+array([1, 4, 2, 0, 4, 4, 1, 1, 3, 2], dtype=int64)
+>>> [int(sd.sum(labels == k)) for k in range(5)]
+[12, 12, 12, 12, 12]
+```
+
+`cv`는 겹의 수예요. 2 이상, 행 수 이하이고 기본값은 5예요. 겹이 많을수록 각 적합이 데이터의 더 많은 부분을 쓰지만 계산이 늘어요.
+
+```python
+>>> c10 = sd.regression.lasso_cv(y, X, rng=sd.random.default_rng(0), cv=10)
+>>> round(c10.alpha_min, 4)
+0.1836
+>>> sd.regression.lasso_cv(y, X, rng=sd.random.default_rng(0), cv=61)
+Traceback (most recent call last):
+    ...
+ValueError: lasso_cv(): 'cv' must be <= the number of rows (60), not 61
+```
+
+## `alpha`의 격자: `alphas`와 `eps`
+
+`alphas`가 int(기본 100)이면 다음 격자를 써요.
+
+$$
+\alpha_i = \alpha_{\max}\cdot \varepsilon^{\,i/(L-1)}, \qquad i = 0, 1, \dots, L - 1
+$$
+
+$L$이 `alphas`, $\varepsilon$이 `eps`(기본 1e-3)예요. $\alpha_{\max}$는 모든 계수가 0이 되는 가장 작은 `alpha`([`lasso`](/api/regression/lasso/)의 "모든 계수가 0이 되는 alpha")라서, 격자는 "모든 계수가 0"에서 시작해 그 1000분의 1까지 내려가요. 격자는 모든 데이터로 한 번 정하고 모든 겹이 같이 써요.
+
+```python
+>>> c = sd.regression.lasso_cv(y, X, rng=sd.random.default_rng(0), alphas=5, eps=1e-2)
+>>> [round(v, 5) for v in c.alphas.tolist()]
+[1.0505, 0.3322, 0.10505, 0.03322, 0.0105]
+```
+
+배열을 주면 그 값들을 큰 것부터 정렬해 써요.
+
+```python
+>>> c = sd.regression.lasso_cv(y, X, rng=sd.random.default_rng(0), alphas=[0.01, 1.0, 0.1])
+>>> c.alphas
+array([ 1.0,  0.1, 0.01], dtype=float64)
+>>> c.alpha_min
+0.1
+```
+
+- `elastic_net_cv`의 $\alpha_{\max}$는 그 `l1_ratio`에서 계산해요(L1 몫이 작을수록 커요). `l1_ratio=0`이면 모든 계수를 0으로 만드는 `alpha`가 없어서 기본 격자를 만들 수 없고, `alphas`를 배열로 줘야 해요.
+- `ridge_cv`의 격자는 `l1_ratio = 0.001`로 계산한 $\alpha_{\max}$, 곧 라소의 $\alpha_{\max}$의 1000배에서 시작해요. 기본 `eps=1e-3`이면 가장 작은 값이 라소의 $\alpha_{\max}$예요.
+
+<Callout type="warn">
+`alpha_min`이 격자의 끝(가장 크거나 가장 작은 값)이면 진짜 최솟값이 격자 밖에 있을 수 있어요. 특히 `ridge_cv`의 기본 격자는 작은 쪽이 일찍 끝나서, 신호가 뚜렷한 데이터에서는 가장 작은 값이 뽑히기 쉬워요. 그럴 때는 `eps`를 줄이거나 `alphas`를 직접 주세요.
+
+```python
+>>> rc = sd.regression.ridge_cv(y, X, rng=sd.random.default_rng(0))
+>>> rc.alpha_min == rc.alphas[-1]
+True
+>>> rc = sd.regression.ridge_cv(y, X, rng=sd.random.default_rng(0), eps=1e-5)
+>>> rc.alpha_min == rc.alphas[-1], round(rc.alpha_min, 4)
+(False, 0.1712)
+```
+</Callout>
+
+## 오차 곡선: `cv_error`와 `cv_se`
+
+겹 q를 떼어 두고 나머지로 적합한 뒤, 떼어 둔 행에서 가중 평균 제곱오차를 재요.
+
+$$
+\text{MSE}_q(\alpha) = \frac{\sum_{i \in q} w_i\,\bigl(y_i - \hat y_i^{(-q)}(\alpha)\bigr)^2}{\sum_{i \in q} w_i}
+$$
+
+$\hat y^{(-q)}$는 겹 q 없이 적합한 모형의 예측이에요. `cv_error`는 겹 cv개의 평균이고, `cv_se`는 그 평균의 표준오차(겹 오차의 표준편차(자유도 cv − 1)를 $\sqrt{\text{cv}}$로 나눈 것)예요. 둘 다 `alphas`와 같은 순서(큰 `alpha`부터)예요.
+
+```python
+>>> i = cv.alphas.tolist().index(cv.alpha_min)
+>>> i, round(cv.cv_error[i], 4), round(cv.cv_se[i], 4)
+(24, 4.0765, 0.8779)
+```
+
+`cv_se`는 "겹을 다르게 나눴다면 곡선이 이 정도는 흔들렸을 것"이라는 크기예요. 위에서 최솟값 4.08에 비해 0.88이니, 곡선의 바닥 근처 `alpha`들은 서로 뚜렷이 다르다고 보기 어려워요.
+
+## 고르기: `select='min'`과 `'1se'`
+
+두 가지 규칙으로 `alpha`를 고르고, 둘 다 결과에 남겨요.
+
+- `alpha_min`: `cv_error`가 가장 작은 `alpha`(같으면 큰 쪽).
+- `alpha_1se`: `cv_error`가 (최솟값 + 그 점의 `cv_se`) 이하인 `alpha` 가운데 **가장 큰 것**. 이것이 **1-SE 규칙**이에요. 오차가 최솟값과 통계적으로 구별되지 않는 범위에서 가장 단순한(벌점이 센) 모형을 고르자는 생각이에요.
+
+`select`는 어느 쪽으로 다시 적합할지를 정해요. 기본 `'min'`은 `alpha_min`, `'1se'`는 `alpha_1se`예요.
+
+```python
+>>> s = sd.regression.lasso_cv(y, X, rng=sd.random.default_rng(0), select='1se')
+>>> s.alpha == s.alpha_1se
+True
+>>> [round(v, 3) for v in s.params.tolist()]
+[0.912, 0.597, -0.367, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+>>> cv.df_model, s.df_model
+(3.0, 2.0)
+```
+
+`'1se'`의 모형은 효과가 있는 `x1`, `x2`만 남겼어요. 대신 계수가 더 많이 당겨져 있어요(1.15 → 0.60). 열을 고르는 것이 목적이면 `'1se'`가, 예측 오차가 목적이면 `'min'`이 대개 맞아요.
+
+## 다시 적합한 결과
+
+결과의 `alpha`는 고른 값이고, 나머지 필드(`params`, `fittedvalues`, `df_model`, `converged` 등)는 **모든 데이터로 그 `alpha`에서 적합한 것**이에요. 그 `alpha`로 `lasso`를 부른 것과 비트까지 같아요.
+
+```python
+>>> one = sd.regression.lasso(y, X, alpha=cv.alpha)
+>>> cv.params.tolist() == one.params.tolist()
+True
+>>> cv.converged, round(cv.rsquared, 4)
+(True, 0.3993)
+>>> [round(v, 3) for v in cv.predict(sd.asarray([[1.0, 0, 0, 0, 0, 0, 0, 0]])).tolist()]
+[2.018]
+```
+
+| 교차검증 필드 | 모양(회귀 하나) | 뜻 |
+|---|---|---|
+| `alphas` | (L,) | 쓴 격자(큰 것부터) |
+| `cv_error` | (L,) | 겹들의 평균 제곱오차의 평균(`cv='gcv'`면 GCV 값) |
+| `cv_se` | (L,) | `cv_error`의 표준오차(`cv='gcv'`면 NaN) |
+| `alpha_min` | `float` | `cv_error`가 가장 작은 `alpha` |
+| `alpha_1se` | `float` | 1-SE 규칙의 `alpha`(`cv='gcv'`면 NaN) |
+
+그 밖의 필드는 [`ridge`](/api/regression/ridge/), [`lasso`](/api/regression/lasso/), [`elastic_net`](/api/regression/elastic-net/)의 결과와 같아요. 다시 적합한 결과는 `alpha` 하나의 결과라서 경로 축이 없어요.
+
+`elastic_net_cv`는 `l1_ratio`를 하나 받아 그 값에서 `alpha`만 골라요.
+
+```python
+>>> en = sd.regression.elastic_net_cv(y, X, rng=sd.random.default_rng(0))
+>>> en.l1_ratio, round(en.alpha_min, 4), round(en.alphas[0], 4)
+(0.5, 0.2101, 2.101)
+>>> sd.regression.elastic_net_cv(y, X, rng=sd.random.default_rng(0), l1_ratio=0.0)
+Traceback (most recent call last):
+    ...
+ValueError: elastic_net_cv(): the default grid needs l1_ratio > 0 (give 'alphas' for l1_ratio = 0)
+```
+
+## `ridge_cv(cv='gcv')`: 일반화 교차검증
+
+릿지는 데이터를 나누지 않고도 교차검증 오차를 어림할 수 있어요. **일반화 교차검증**(GCV; Golub–Heath–Wahba)은 다음 값이 가장 작은 `alpha`를 골라요.
+
+$$
+\text{GCV}(\alpha) = \frac{\text{ssr}/s_w}{\bigl(1 - \operatorname{tr} H / \text{nobs}\bigr)^2},
+\qquad \operatorname{tr} H = \text{df\_model} + (\text{절편이 있으면 } 1)
+$$
+
+분자는 학습 데이터의 평균 제곱오차이고, 분모는 모형이 쓴 자유도만큼 그 값을 키워서 과적합을 벌해요. 모든 데이터로 한 번에 계산하므로 겹도 `rng`도 필요 없고 빨라요.
+
+```python
+>>> gv = sd.regression.ridge_cv(y, X, cv='gcv', eps=1e-5)
+>>> round(gv.alpha_min, 4), gv.alpha_1se
+(0.1712, nan)
+>>> p = sd.regression.ridge(y, X, alpha=gv.alpha)
+>>> round((p.ssr / 60) / (1 - (p.df_model + 1) / 60) ** 2, 10) == round(min(gv.cv_error.tolist()), 10)
+True
+```
+
+겹이 없으니 `cv_se`와 `alpha_1se`는 NaN이고, `select='1se'`는 에러예요.
+
+```python
+>>> sd.regression.ridge_cv(y, X, cv='gcv', select='1se')
+Traceback (most recent call last):
+    ...
+ValueError: ridge_cv(): select='1se' needs folds (cv='gcv' has no standard errors)
+>>> sd.regression.ridge_cv(y, X, cv='x')
+Traceback (most recent call last):
+    ...
+ValueError: ridge_cv(): 'cv' must be an int or 'gcv', not 'x'
+```
+
+## 가중치와 NaN
+
+`weights`가 있으면 각 겹의 적합과 오차가 모두 가중치를 써요. 가중치가 0인 행도 겹 번호는 받지만 적합에도 오차에도 들지 않아요.
+
+```python
+>>> w = sd.where(sd.arange(60) < 6, 0.0, 1.0)
+>>> cw = sd.regression.lasso_cv(y, X, rng=sd.random.default_rng(0), weights=w)
+>>> cw.nobs
+54.0
+```
+
+`nan_policy`는 ridge, lasso와 같아요. `'propagate'`면 NaN이 있는 회귀의 모든 값이 NaN이에요(고른 `alpha`도요). `'omit'`이면 NaN이 있는 행을 뺀 뒤에 겹을 나눠요.
+
+```python
+>>> import math
+>>> yn = sd.where(sd.arange(60) == 0, math.nan, y)
+>>> sd.regression.lasso_cv(yn, X, rng=sd.random.default_rng(0)).alpha
+nan
+>>> sd.regression.lasso_cv(yn, X, rng=sd.random.default_rng(0), nan_policy='omit').nobs
+59.0
+```
+
+## 배치
+
+`y`나 `X`에 배치 축이 있으면 회귀마다 교차검증을 해요. **배치의 모든 회귀가 같은 겹을 써요.** 배치의 각 결과는 같은 씨앗으로 새로 만든 생성기로 하나씩 부른 것과 비트까지 같아요.
+
+```python
+>>> Y = sd.stack([y, y + 3 * X[:, 2]])
+>>> b = sd.regression.lasso_cv(Y, X, rng=sd.random.default_rng(0))
+>>> b.alphas.shape, b.cv_error.shape, b.params.shape
+((2, 100), (2, 100), (2, 9))
+>>> [round(v, 4) for v in b.alpha_min.tolist()]
+[0.1968, 0.1492]
+>>> b1 = sd.regression.lasso_cv(Y[1], X, rng=sd.random.default_rng(0))
+>>> b.params[1].tolist() == b1.params.tolist()
+True
+```
+
+격자는 회귀마다 그 데이터의 $\alpha_{\max}$로 정해서 `alphas`도 (배치, L)이에요. 배치에서는 `nan_policy='omit'`을 쓸 수 없어요(회귀마다 남는 행이 달라지면 겹을 함께 쓸 수 없어서예요).
+
+## 에러
+
+```python
+>>> sd.regression.lasso_cv(y, X, rng=sd.random.default_rng(0), cv=1)
+Traceback (most recent call last):
+    ...
+ValueError: lasso_cv(): 'cv' must be >= 2
+>>> sd.regression.lasso_cv(y, X, rng=sd.random.default_rng(0), select='best')
+Traceback (most recent call last):
+    ...
+ValueError: lasso_cv(): 'select' must be 'min' or '1se', not 'best'
+>>> sd.regression.lasso_cv(y, X, rng=sd.random.default_rng(0), eps=0)
+Traceback (most recent call last):
+    ...
+ValueError: lasso_cv(): 'eps' must be > 0 and <= 1
+>>> sd.regression.ridge_cv(y, X)
+Traceback (most recent call last):
+    ...
+TypeError: ridge_cv(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not NoneType
+```
+
+## 정확도
+
+다시 적합한 결과는 고른 `alpha`의 [`ridge`](/api/regression/ridge/)·[`lasso`](/api/regression/lasso/)·[`elastic_net`](/api/regression/elastic-net/)과 같으므로 정확도도 같아요. 겹마다의 적합도 같은 방법으로 풀어서, `cv_error`는 `tol`의 정밀도가 아니라 정확한 해에서 잰 값에 가까워요. 같은 입력과 같은 씨앗이면 스레드 수와 상관없이 같은 비트예요. 구현은 [정규화의 구현](/internals/regression/penalized/)에 있어요.
+
+## scikit-learn·glmnet을 아는 분께
+
+- **기본 겹이 달라요.** scikit-learn의 `LassoCV`·`ElasticNetCV`는 기본으로 섞지 않은 연속 겹(`KFold`)을 써요. 여기는 `rng`로 섞은 겹이에요. 같은 겹을 주고 scikit-learn의 `tol`을 조이면 격자, `alpha_`, `mse_path_`의 평균이 반올림 수준에서 같아요(기본 `tol`에서는 `mse_path_`가 조금 달라요).
+
+  ```python
+  >>> import numpy as np
+  >>> from sklearn.linear_model import LassoCV
+  >>> lab = np.array(labels.tolist())
+  >>> folds = [(np.nonzero(lab != k)[0], np.nonzero(lab == k)[0]) for k in range(5)]
+  >>> Xn, yn = np.array(X.tolist()), np.array(y.tolist())
+  >>> m = LassoCV(cv=folds, tol=1e-12, max_iter=10**6).fit(Xn, yn)
+  >>> abs(m.alpha_ - cv.alpha_min) < 1e-15
+  True
+  >>> bool(np.allclose(m.mse_path_.mean(axis=1), cv.cv_error.tolist(), rtol=1e-9))
+  True
+  >>> round(LassoCV().fit(Xn, yn).alpha_, 4)
+  0.1712
+  ```
+
+  마지막 줄은 scikit-learn의 기본(섞지 않은 5겹)이 고른 값이라 0.1968과 달라요.
+- 기본 격자(`alphas=100`, `eps=1e-3`)와 겹 수 5는 `LassoCV`와 같아요. `cv_error`는 `mse_path_.mean(axis=1)`, `alpha_min`은 `alpha_`에 해당해요. 1-SE 규칙(`alpha_1se`, `select='1se'`)은 scikit-learn에 없어요.
+- `ElasticNetCV`는 `l1_ratio`를 여러 개 받아 함께 고르지만, `elastic_net_cv`는 하나만 받아요.
+- scikit-learn의 `RidgeCV`는 기본으로 한 행씩 떼는 교차검증을 닫힌 꼴로 하고, `alphas` 기본값이 (0.1, 1, 10)이며 `alpha`의 척도가 여기의 n배예요([`ridge`](/api/regression/ridge/)). `ridge_cv(cv='gcv')`와는 기준이 달라요.
+- R의 `cv.glmnet`은 겹 수 기본이 10이고, `predict`의 기본이 `lambda.1se`예요(여기는 `select='min'`). 기본 겹은 `sample(rep(seq(nfolds), length = N))`로 섞은 번호라 여기와 같은 꼴이에요. glmnet은 기본으로 열을 표준화하고, 격자의 가장 작은 비율이 1e-4(행이 열보다 많을 때)예요.

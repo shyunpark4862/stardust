@@ -63,6 +63,7 @@ export const areas = [
   { key: 'frame', name: '데이터프레임', ns: 'sd.frame', desc: 'Series, DataFrame, NA, groupby, merge, read_csv', status: 'done' },
   { key: 'special', name: '특수함수', ns: 'sd.special', desc: '오차함수, 감마, 불완전 감마·베타, Bessel, 초기하', status: 'done' },
   { key: 'stats', name: '통계', ns: 'sd.stats', desc: '단변량·다변량·행렬 분포, 기술통계', status: 'done' },
+  { key: 'regression', name: '회귀분석', ns: 'sd.regression', desc: '선형 모형, GLM, 정규화, 강건·분위 회귀, 비선형 최소제곱', status: 'done' },
   { key: 'random', name: '난수', ns: 'sd.random', desc: '계수기형 생성기, 스레드 수와 무관한 결정성', status: 'done' },
 ] as const;
 
@@ -74,5 +75,6 @@ export const internalsAreas = [
   { key: 'frame', name: '데이터프레임', ns: 'sd.frame', desc: '컬럼과 Copy-on-Write, Swiss table과 factorize, 기수 정렬과 groupby, merge, CSV 파싱, 병렬화와 성능' },
   { key: 'special', name: '특수함수', ns: 'sd.special', desc: '원소별 엔진, 유리 근사·연분수·점근전개 같은 수치 기법, 함수별 알고리즘, 정확도와 성능' },
   { key: 'stats', name: '통계', ns: 'sd.stats', desc: '분포 엔진과 빠른 경로, 연속·이산·비중심 분포의 수치 기법, 표본, 다변량 밀도와 누적확률, 기술통계, 정확도와 성능' },
+  { key: 'regression', name: '회귀분석', ns: 'sd.regression', desc: '최소제곱과 반복 개선, 추론과 진단, IRLS와 분리 판정, 좌표 하강과 KKT 연마, 강건·분위 회귀, 비선형 최소제곱, 정확도와 성능' },
   { key: 'random', name: '난수', ns: 'sd.random', desc: '계수기형 생성기 Philox, 시드와 spawn, 정수·순열·가중치 추출의 알고리즘, 성능과 검증' },
 ] as const;

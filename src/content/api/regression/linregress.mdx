@@ -1,0 +1,249 @@
+---
+kind: function
+title: linregress
+names: [linregress, LinregressResult]
+group: 선형 회귀
+order: 4
+signatures:
+  - "sd.regression.linregress(x, y, /)"
+summary: 설명변수가 하나인 직선 y = intercept + slope·x를 최소제곱으로 맞춰요. 기울기, 절편, 상관계수, 기울기의 p값, 두 표준오차를 이름 붙은 튜플 LinregressResult로 돌려줘요. 인자 순서가 x, y로 ols와 반대예요.
+params:
+  - name: x
+    type: ndarray, 실수의 시퀀스, 또는 frame Series
+    kind: positional-only
+    desc: "설명변수(가로축). 모양은 (n,)이고, (..., n)이면 마지막 축을 따라 직선을 여러 개 맞춰요. bool·정수는 float64로 바꿔요."
+  - name: y
+    type: ndarray, 실수의 시퀀스, 또는 frame Series
+    kind: positional-only
+    desc: "반응 변수(세로축). x와 길이가 같아야 해요."
+returns:
+  type: LinregressResult
+  desc: "(slope, intercept, rvalue, pvalue, stderr, intercept_stderr) 여섯 칸의 이름 붙은 튜플. 직선 하나면 칸마다 Python float, 배치면 배치 모양의 배열이에요."
+raises:
+  - type: TypeError
+    desc: x·y가 배열·숫자의 시퀀스·frame이 아니거나 복소수일 때, 인자를 하나만 줬을 때.
+  - type: ValueError
+    desc: x·y가 0차원일 때, 길이가 다를 때, 비어 있을 때, inf가 있을 때.
+seeAlso: [ols, theilslopes, siegelslopes, results, basics]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 무엇을 하나요
+
+점들 $(x_i, y_i)$에 직선 $y = a + bx$ 하나를 맞추는 가장 흔한 일을 함수 하나로 해요. 직선은 [`ols`](/api/regression/ols/)와 같이 세로 거리 제곱합이 가장 작은 직선이에요.
+
+$$
+\hat b = \frac{\sum_i (x_i - \bar x)(y_i - \bar y)}{\sum_i (x_i - \bar x)^2}, \qquad \hat a = \bar y - \hat b\,\bar x
+$$
+
+결과는 객체가 아니라 여섯 칸의 튜플이에요. 직선의 기울기와 절편, 두 변수가 얼마나 직선적으로 함께 움직이는지(상관계수), 기울기가 0이 아니라는 근거(p값), 기울기와 절편의 표준오차가 들어 있어요. 예측 구간이나 진단, 설명변수 여럿이 필요하면 `ols`를 쓰세요.
+
+<Callout type="warn" title="인자 순서가 ols와 반대예요">
+`linregress(x, y)`는 가로축 `x`가 먼저예요. `ols(y, X)`는 `y`가 먼저예요. 순서를 바꾸면 에러 없이 "y로 x를 설명하는" 다른 직선이 나와요.
+</Callout>
+
+<Reference />
+
+## 기본 사용
+
+```python
+>>> import stardust as sd
+>>> hours = [1.0, 2.0, 2.5, 3.0, 4.0, 4.5, 5.0, 6.0, 7.0, 8.0]
+>>> score = [52.0, 55.0, 61.0, 58.0, 66.0, 63.0, 70.0, 74.0, 73.0, 82.0]
+>>> r = sd.regression.linregress(hours, score)
+>>> r
+LinregressResult(slope=4.052631578947368, intercept=47.973684210526315, rvalue=0.9697368963556728, pvalue=3.5381164280859763e-06, stderr=0.36074394763119616, intercept_stderr=1.7319466828098458)
+```
+
+| 칸 | 값 | 뜻 |
+|---|---|---|
+| `slope` | 4.05 | 기울기. `x`가 1 늘 때 `y`가 늘어나는 양 |
+| `intercept` | 47.97 | 절편. `x = 0`에서의 직선 높이 |
+| `rvalue` | 0.970 | 피어슨 상관계수. −1에서 1 사이이고 부호는 기울기와 같아요. |
+| `pvalue` | 3.5e-6 | 참 기울기가 0이라면 이만큼 가파른 기울기가 나올 확률(두 꼬리, 자유도 n − 2의 t분포) |
+| `stderr` | 0.361 | 기울기의 표준오차 |
+| `intercept_stderr` | 1.73 | 절편의 표준오차 |
+
+`rvalue`를 제곱하면 [`ols`](/api/regression/ols/)의 R²예요. 공부 시간이 점수 차이의 94%를 설명해요.
+
+```python
+>>> r.rvalue ** 2
+0.940389648153533
+```
+
+순서를 바꾸면 다른 직선이에요. 상관계수와 p값은 (반올림 차이 안에서) 같지만 기울기와 절편이 달라요.
+
+```python
+>>> sd.regression.linregress(score, hours)
+LinregressResult(slope=0.23204419889502761, intercept=-10.875690607734807, rvalue=0.9697368963556728, pvalue=3.5381164280859602e-06, stderr=0.020655354108466268, intercept_stderr=1.3633785493759383)
+```
+
+## 결과 읽기: `LinregressResult`
+
+이름이 붙은 튜플이라 이름으로도, 번호로도 꺼낼 수 있고 풀어서 받을 수도 있어요.
+
+```python
+>>> r.slope, r[1]
+(4.052631578947368, 47.973684210526315)
+>>> slope, intercept, rvalue, pvalue, stderr, intercept_stderr = r
+>>> r._fields
+('slope', 'intercept', 'rvalue', 'pvalue', 'stderr', 'intercept_stderr')
+>>> isinstance(r, sd.regression.LinregressResult), isinstance(r, tuple)
+(True, True)
+>>> type(r.slope)
+<class 'float'>
+```
+
+기울기의 신뢰구간이 필요하면 `stderr`와 t분포의 분위수로 만들어요. 자유도는 n − 2예요.
+
+```python
+>>> q = sd.stats.StudentT(df=len(hours) - 2).iccdf(0.025)
+>>> r.slope - q * r.stderr, r.slope + q * r.stderr
+(3.2207545439599543, 4.884508613934782)
+```
+
+[`ols`](/api/regression/ols/)의 `conf_int()`와 같은 구간이에요. 실제로 `linregress`의 값은 같은 데이터의 `ols`와 비트까지 같아요.
+
+```python
+>>> o = sd.regression.ols(score, hours)
+>>> r.slope == float(o.params[1]), r.stderr == float(o.bse[1]), r.pvalue == float(o.pvalues[1])
+(True, True, True)
+>>> o.conf_int()[1]
+array([3.2207545439599543,  4.884508613934782], dtype=float64)
+```
+
+## 특수한 경우
+
+### `x`가 모두 같을 때
+
+세로로 선 점들에는 기울기가 없어요. 모든 칸이 NaN이에요.
+
+```python
+>>> sd.regression.linregress([2.0, 2.0, 2.0, 2.0], [1.0, 2.0, 3.0, 4.0])
+LinregressResult(slope=nan, intercept=nan, rvalue=nan, pvalue=nan, stderr=nan, intercept_stderr=nan)
+```
+
+`x`가 정확히 같을 때만 그래요. 아주 조금이라도 다르면 그 차이로 직선을 맞춰요.
+
+### `y`가 모두 같을 때
+
+수평선이 데이터를 그대로 지나요. 절편은 그 값이고 기울기는 0이에요. 상관계수는 $y$의 흩어짐이 0이라 정할 수 없어서, `rvalue`, `pvalue`, `stderr`, `intercept_stderr`가 NaN이에요.
+
+```python
+>>> c = sd.regression.linregress([1.0, 2.0, 3.0, 4.0, 5.0], [3.0, 3.0, 3.0, 3.0, 3.0])
+>>> c.intercept, abs(c.slope) < 1e-15
+(3.0, True)
+>>> c.rvalue, c.pvalue, c.stderr, c.intercept_stderr
+(nan, nan, nan, nan)
+```
+
+### 점이 한 직선 위에 있을 때
+
+잔차가 정확히 0이라 표준오차가 0이고 `pvalue`도 0이에요. `rvalue`는 ±1이에요.
+
+```python
+>>> sd.regression.linregress([1.0, 2.0, 3.0, 4.0, 5.0], [3.0, 5.0, 7.0, 9.0, 11.0])
+LinregressResult(slope=2.0, intercept=1.0, rvalue=1.0, pvalue=0.0, stderr=0.0, intercept_stderr=0.0)
+>>> sd.regression.linregress([1.0, 2.0, 3.0, 4.0, 5.0], [11.0, 9.0, 7.0, 5.0, 3.0]).rvalue
+-1.0
+```
+
+### 점이 둘이나 하나일 때
+
+점 두 개는 직선이 정확히 지나가지만 자유도(n − 2)가 0이라 오차의 크기를 어림할 수 없어요. `pvalue`와 두 표준오차가 NaN이에요. 점 하나면 직선을 정할 수 없어서 모두 NaN이에요.
+
+```python
+>>> sd.regression.linregress([1.0, 2.0], [3.0, 5.5])
+LinregressResult(slope=2.5, intercept=0.5, rvalue=1.0, pvalue=nan, stderr=nan, intercept_stderr=nan)
+>>> sd.regression.linregress([1.0], [2.0])
+LinregressResult(slope=nan, intercept=nan, rvalue=nan, pvalue=nan, stderr=nan, intercept_stderr=nan)
+```
+
+### NaN과 inf
+
+`linregress`에는 `nan_policy`가 없어요. NaN이 하나라도 있으면 모든 칸이 NaN이에요. NaN인 점을 빼고 맞추려면 [`ols`](/api/regression/ols/)에 `nan_policy='omit'`을 쓰거나 미리 걸러 주세요. inf는 `ValueError`예요.
+
+```python
+>>> sd.regression.linregress([1.0, 2.0, float('nan'), 4.0, 5.0], [3.0, 5.0, 7.0, 9.0, 11.5])
+LinregressResult(slope=nan, intercept=nan, rvalue=nan, pvalue=nan, stderr=nan, intercept_stderr=nan)
+>>> sd.regression.linregress([1.0, 2.0, 3.0], [2.0, float('inf'), 3.0])
+Traceback (most recent call last):
+    ...
+ValueError: linregress(): 'y' contains infinity
+```
+
+길이가 다르면 `ValueError`, 인자를 하나만 주면 `TypeError`예요.
+
+```python
+>>> sd.regression.linregress([1.0, 2.0, 3.0], [1.0, 2.0])
+Traceback (most recent call last):
+    ...
+ValueError: linregress(): 'x' must have 2 values like 'y', not 3
+>>> sd.regression.linregress([1.0, 2.0, 3.0])
+Traceback (most recent call last):
+    ...
+TypeError: linregress() missing 1 required positional argument: 'y'
+```
+
+## 배치: 직선 여러 개
+
+`x`와 `y`가 (..., n)이면 마지막 축을 따라 직선을 하나씩 맞춰요. 칸마다 배치 모양의 배열이 돼요. 같은 `x`를 여러 `y`에 쓰려면 `sd.broadcast_to`로 `y`와 같은 모양을 만들어 줘요.
+
+```python
+>>> x = sd.asarray([1.0, 2.0, 3.0, 4.0, 5.0])
+>>> Y = sd.asarray([[2.0, 4.1, 5.9, 8.2, 9.9],
+...                 [1.0, 1.4, 2.1, 2.4, 3.1],
+...                 [5.0, 4.0, 3.2, 1.9, 1.1]])
+>>> b = sd.regression.linregress(sd.broadcast_to(x, (3, 5)), Y)
+>>> b.slope
+array([ 1.99,  0.52, -0.99], dtype=float64)
+>>> b.rvalue
+array([ 0.9991551336721896,  0.9934089358711311, -0.9974083346927147], dtype=float64)
+```
+
+배치의 결과는 직선을 하나씩 맞춘 결과와 비트까지 같아요. 위의 특수한 경우도 칸마다 따로 적용돼요.
+
+```python
+>>> one = sd.regression.linregress(x, Y[2])
+>>> all(float(getattr(b, f)[2]) == getattr(one, f) for f in b._fields)
+True
+>>> sd.regression.linregress(sd.asarray([[1.0, 2.0, 3.0], [2.0, 2.0, 2.0]]), sd.asarray([[1.0, 2.0, 4.0], [1.0, 2.0, 3.0]])).slope
+array([1.5, nan], dtype=float64)
+```
+
+## `ols`와 무엇이 다른가요
+
+같은 직선을 맞추지만 쓰임이 달라요.
+
+| | `linregress(x, y)` | `ols(y, X)` |
+|---|---|---|
+| 인자 순서 | `x`, `y` | `y`, `X` |
+| 설명변수 | 하나 | 여럿 |
+| 결과 | 여섯 칸의 튜플 | 필드와 메서드가 많은 결과 객체 |
+| 상관계수 | `rvalue` | 없음(`rsquared`의 제곱근에 기울기의 부호) |
+| 신뢰구간·예측 구간·진단 | 없음 | `conf_int`, `predict_interval`, `leverage` 등 |
+| 강건 표준오차 | 없음 | `cov_type=` |
+| NaN | 전파만 | `nan_policy='omit'`·`'raise'`도 |
+
+이상값에 덜 흔들리는 직선이 필요하면 [`theilslopes`](/api/regression/theilslopes/)나 [`siegelslopes`](/api/regression/siegelslopes/)를 보세요.
+
+## 정확도
+
+`ols`와 같은 계산이라 같은 약속이에요. 조건수가 $10^{11}$ 이하이면 기울기와 절편의 상대오차가 1e-14 이하예요([`ols`의 정확도](/api/regression/ols/#정확도)). `x`가 0에서 멀리 떨어져 있어도(예: 연도 2000, 2001, …) 자릿수를 잃지 않아요.
+
+```python
+>>> years = [2000.0, 2001.0, 2002.0, 2003.0, 2004.0]
+>>> sd.regression.linregress(years, [1.0 + 0.5 * (v - 2000.0) for v in years])
+LinregressResult(slope=0.5, intercept=-999.0, rvalue=1.0, pvalue=0.0, stderr=0.0, intercept_stderr=0.0)
+```
+
+## scipy를 아는 분께
+
+scipy 1.18.1의 `scipy.stats.linregress` 기준이에요.
+
+- 이름, 인자 순서(`x`, `y`), 칸 이름이 같아요. 값은 반올림 차이 안에서 같아요.
+- scipy의 결과는 튜플로 풀면 다섯 칸(`slope` … `stderr`)이고 `intercept_stderr`는 속성으로만 있어요. sd는 여섯 칸 모두 튜플의 칸이에요.
+- 값의 형이 Python `float`(배치면 `sd.ndarray`)예요. scipy는 `numpy.float64`예요.
+- 점이 한 직선 위에 있으면 sd의 `pvalue`는 0이에요. scipy는 t를 구하는 식의 분모에 1e-20을 더하기 때문에 `[1, 2, 3, 4, 5]`, `[3, 5, 7, 9, 11]`에서 1.2e-30을 줘요.
+- scipy의 `alternative=`(한 꼬리 p값), `axis=`, `nan_policy=`, `keepdims=`는 없어요. sd는 언제나 두 꼬리, 마지막 축, NaN 전파예요. scipy의 `axis` 기본값은 0이라 (배치, n) 모양의 배열은 `axis=-1`을 줘야 sd와 같은 축을 따라 맞춰요.
+- `x`나 `y`가 모두 같을 때, 점이 둘이나 하나일 때 NaN이 되는 칸은 scipy와 같아요.

@@ -344,7 +344,7 @@ True
 
 ### 무엇을 어디에 둘지 정한 사례
 
-**NEON 커널과 vForce 표는 배열에 있어요.** 손으로 짠 NEON 커널(`array/kernels/neon.hpp`)과 "어느 연산이 vForce로 가는가"의 표(`array/kernels/vforce.hpp`)는 둘 다 배열의 연산 정의(`ops::Maximum`, `ops::Exp` …, `array/kernels/scalar_ops.hpp`)를 include해야 해요. 이것을 `base/`나 `accelerate/`에 두면 바닥이 위 층을 아는 역방향 의존이 생겨서, 배열 쪽에 둬요. `accelerate/vforce.hpp`에는 연산과 무관한 부분만 있어요: 함수 포인터 타입, `vvpow`/`vvatan2`의 뒤바뀐 인자 순서를 맞추는 래퍼, strided 입력을 연속 버퍼로 모아 실행하는 실행기예요.
+**NEON 커널과 vForce 표는 배열에 있어요.** 손으로 짠 NEON 커널(`array/kernels/neon.hpp`)과 "어느 연산이 vForce로 가는가"의 표(`array/kernels/vforce.hpp`)는 둘 다 배열의 연산 정의(`ops::Maximum`, `ops::Exp` …, `array/kernels/scalar_ops.hpp`)를 include해야 해요. 이것을 `base/`나 `accelerate/`에 두면 바닥이 위 층을 아는 역방향 의존이 생겨서, 배열 쪽에 둬요. `accelerate/vforce.hpp`에는 연산과 무관한 부분만 있어요: 함수 포인터 타입, `vvatan2`를 이항 함수의 한 모양 `f(out, a, b, n)`으로 감싸는 래퍼, strided 입력을 연속 버퍼로 모아 실행하는 실행기예요.
 
 **병렬화 기준값은 영역마다 따로예요.** 풀은 하나지만 "얼마나 큰 일부터 나눌까"는 영역의 커널에 따라 잰 값이 달라요. 그래서 풀 헤더에는 기준값이 없고, 각 영역이 자기 이름공간에 둬요.
 

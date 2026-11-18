@@ -1,0 +1,364 @@
+---
+title: theilslopes
+names: [theilslopes, TheilslopesResult]
+group: 강건 회귀
+order: 2
+signatures:
+  - "sd.regression.theilslopes(y, x=None, /, *, alpha=0.95, method='separate', nan_policy='propagate')"
+summary: 두 점씩 짝지은 모든 쌍의 기울기의 중앙값으로 직선을 맞추는 Theil–Sen 추정이에요. 설명 변수가 하나일 때 쓰고, 점의 30% 가까이가 이상값이어도 기울기가 버텨요. 기울기의 신뢰구간도 함께 줘요.
+params:
+  - name: y
+    type: ndarray, 실수의 시퀀스, 또는 frame의 Series
+    kind: positional-only
+    desc: 반응 변수. 모양 (n,) 또는 배치 (..., n)이에요. 마지막 축이 점의 축이에요.
+  - name: x
+    type: ndarray, 실수의 시퀀스, frame의 Series, 또는 None
+    kind: positional-only
+    desc: 설명 변수 하나. y와 브로드캐스트되는 (..., n) 모양이에요. None(기본값)이면 0, 1, …, n - 1이에요.
+  - name: alpha
+    type: float
+    kind: keyword-only
+    desc: 기울기 신뢰구간의 신뢰수준(0과 1 사이, 끝은 빼고). 기본값 0.95는 95% 구간이에요. 0.5보다 작으면 1 - alpha로 바꿔서 읽으므로 0.1과 0.9는 같은 90% 구간이에요.
+  - name: method
+    type: str
+    kind: keyword-only
+    desc: "절편을 구하는 방법. 'separate'(기본값)는 median(y) - slope * median(x), 'joint'는 median(y - slope * x)예요."
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(기본값, 모든 값이 NaN), 'omit'(y나 x가 NaN인 점을 빼고 계산), 'raise'(ValueError) 중 하나예요."
+returns:
+  type: TheilslopesResult
+  desc: "(slope, intercept, low_slope, high_slope) 네 칸의 이름 붙은 튜플이에요. 회귀 하나면 칸마다 Python float, 배치면 배치 모양의 배열이에요."
+raises:
+  - type: TypeError
+    desc: alpha가 실수가 아닐 때(bool 포함), y나 x가 복소수일 때, 없는 인자(axis 등)를 주거나 alpha·method를 위치로 줬을 때.
+  - type: ValueError
+    desc: "점이 2개보다 적을 때, x의 길이가 y와 다를 때, y나 x가 0차원일 때, inf가 있을 때, alpha가 0과 1 사이가 아닐 때, method·nan_policy 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때, 배치에서 nan_policy='omit'을 줬을 때."
+seeAlso: [siegelslopes, rlm, linregress, quantreg, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const cross = (pts, dx, dy) => pts.flatMap(([x, y]) => [[x - dx, y], [x + dx, y], [NaN, NaN], [x, y - dy], [x, y + dy], [NaN, NaN]]);
+export const data4 = [[1, 3.1], [2, 5.3], [3, 6.4], [4, 9.0], [5, 11.7], [6, 13.7], [7, 15.4], [8, 17.5], [9, 18.4], [10, 21.2], [11, 23.5], [12, 24.5], [13, 27.0], [14, 28.8], [15, 30.6], [16, 33.4], [17, 2.0], [18, 2.1], [19, 2.2], [20, 2.3]];
+
+## 한눈에 보기
+
+점 두 개를 고르면 그 둘을 잇는 직선의 기울기가 하나 나와요. 점이 $n$개면 이런 쌍이 $n(n-1)/2$개 있어요. **Theil–Sen 추정**은 이 모든 기울기의 **중앙값**을 직선의 기울기로 써요.
+
+중앙값은 한쪽 끝의 값이 아무리 커져도 움직이지 않아요. 이상값이 섞인 쌍의 기울기는 엉뚱하지만, 그런 쌍이 절반을 넘지 않는 한 중앙값은 멀쩡한 쌍들의 기울기 사이에 남아요. 그래서 계산이 단순한데도 이상값에 강해요.
+
+스무 개의 측정값 가운데 마지막 넷이 센서 고장으로 2 근처에 찍힌 예를 볼게요.
+
+```python
+>>> import stardust as sd
+>>> x = [float(i) for i in range(1, 21)]
+>>> y = [3.1, 5.3, 6.4, 9.0, 11.7, 13.7, 15.4, 17.5, 18.4, 21.2,
+...      23.5, 24.5, 27.0, 28.8, 30.6, 33.4, 2.0, 2.1, 2.2, 2.3]
+>>> sd.regression.ols(y, x).params[1]
+0.24759398496240603
+>>> r = sd.regression.theilslopes(y, x)
+>>> r.slope
+1.876388888888889
+```
+
+진짜 기울기는 2 정도예요. 최소제곱의 기울기는 0.25로 무너졌고, Theil–Sen은 1.88로 버텼어요.
+
+<Fig caption="마지막 네 점(x = 17–20)이 최소제곱 직선을 눕혀 버려요. Theil–Sen 직선(절편은 method='joint')은 나머지 열여섯 점을 따라가요.">
+  <Plot
+    curves={[
+      { f: (t) => 2.12431 + 1.87639 * t, label: 'theilslopes' },
+      { f: (t) => 12.30526 + 0.24759 * t, label: 'ols', dashed: true },
+      { points: cross(data4, 0.2, 1.1), label: '데이터' },
+    ]}
+    domain={[0, 21]}
+    range={[0, 44]}
+    xTicks={[
+      { v: 5, label: '5' },
+      { v: 10, label: '10' },
+      { v: 15, label: '15' },
+      { v: 20, label: '20' },
+    ]}
+    yTicks={[
+      { v: 10, label: '10' },
+      { v: 20, label: '20' },
+      { v: 30, label: '30' },
+      { v: 40, label: '40' },
+    ]}
+  />
+</Fig>
+
+이런 때 써요.
+
+- 설명 변수가 하나이고 이상값이 섞였을 수 있을 때. 시계열의 추세(해마다 얼마나 오르는지), 환경 측정의 장기 경향 같은 곳에 많이 써요.
+- 오차가 정규분포인지 알 수 없을 때. 순위만 쓰므로 분포를 가정하지 않아요.
+- 설정할 것이 없는 간단한 방법을 원할 때. 조율 상수도 척도도 없어요.
+
+설명 변수가 여럿이면 [`rlm`](/api/regression/rlm/)을 쓰세요.
+
+<Reference />
+
+## 결과 읽기: `TheilslopesResult`
+
+결과는 네 칸의 이름 붙은 튜플이에요.
+
+```python
+>>> r
+TheilslopesResult(slope=1.876388888888889, intercept=-5.152083333333334, low_slope=0.09999999999999964, high_slope=1.97)
+```
+
+| 칸 | 뜻 |
+|---|---|
+| `slope` | 기울기: 쌍 기울기의 중앙값 |
+| `intercept` | 절편. 구하는 방법은 `method`가 정해요. |
+| `low_slope`, `high_slope` | 기울기의 신뢰구간(기본 95%)의 아래·위 끝 |
+
+이름으로도, 번호로도 꺼낼 수 있고 풀어서 받을 수도 있어요.
+
+```python
+>>> slope, intercept, lo, hi = r
+>>> r[0] == r.slope
+True
+>>> r._fields
+('slope', 'intercept', 'low_slope', 'high_slope')
+>>> isinstance(r, sd.regression.TheilslopesResult), type(r.slope)
+(True, <class 'float'>)
+```
+
+이 예에서는 절편이 −5.15로 이상해요. 다음 절의 `method`가 그 이유예요. 신뢰구간도 아래 끝이 0.1까지 넓어졌어요. 이상값 쌍의 기울기가 많아서 기울기가 얼마인지 덜 확실하다는 뜻이에요.
+
+## 어떻게 계산하나요
+
+$x_i \ne x_j$인 모든 쌍 $i \lt j$의 기울기
+
+$$
+s_{ij} = \frac{y_i - y_j}{x_i - x_j}
+$$
+
+를 모아 그 중앙값을 기울기로 써요. 개수가 짝수면 가운데 두 값 $a \le b$의 $0.5a + 0.5b$예요. $x$가 같은 쌍은 기울기가 없으니 빼요.
+
+깨끗한 데이터에서는 최소제곱과 거의 같아요.
+
+```python
+>>> y_clean = [3.1, 5.3, 6.4, 9.0, 11.7, 13.7, 15.4, 17.5, 18.4, 21.2,
+...            23.5, 24.5, 27.0, 28.8, 30.6, 33.4, 34.8, 36.7, 39.7, 41.0]
+>>> sd.regression.theilslopes(y_clean, x).slope
+1.9874999999999998
+>>> sd.regression.ols(y_clean, x).params[1]
+1.9906015037593985
+```
+
+### 붕괴점
+
+**붕괴점**은 데이터의 몇 %를 마음대로 바꿔야 추정값을 얼마든지 멀리 보낼 수 있는지예요. 최소제곱은 점 하나로 충분해서 사실상 0%예요. Theil–Sen은 약 29.3%($1 - 1/\sqrt2$)예요. 점의 29.3%가 망가지면 망가진 점이 낀 쌍이 전체 쌍의 절반에 이르기 때문이에요.
+
+앞의 예에서 고장 난 점을 다섯, 여섯으로 늘려 보면, 스무 점의 30%인 여섯에서 무너져요.
+
+```python
+>>> def broken(k):
+...     return y_clean[:20 - k] + [2.0 + 0.1 * j for j in range(k)]
+>>> [round(sd.regression.theilslopes(broken(k), x).slope, 3) for k in range(8)]
+[1.987, 1.973, 1.937, 1.913, 1.876, 1.75, 0.1, 0.1]
+```
+
+더 많은 이상값을 견뎌야 하면 붕괴점이 50%인 [`siegelslopes`](/api/regression/siegelslopes/)를 쓰세요.
+
+## `method`: 절편 구하기
+
+기울기를 정한 뒤 절편을 구하는 방법이 둘 있어요.
+
+- **`'separate'`**(기본값): $\operatorname{median}(y) - \text{slope}\cdot\operatorname{median}(x)$. y의 중앙값과 x의 중앙값을 따로 구해서 그 점을 지나게 해요.
+- **`'joint'`**: $\operatorname{median}(y_i - \text{slope}\cdot x_i)$. 기울기를 빼고 남은 높이들의 중앙값이에요.
+
+`'separate'`는 y의 중앙값을 그대로 쓰므로, 이상값이 한쪽(여기서는 아래쪽)에 몰리면 중앙값이 끌려가요. `'joint'`는 기울기를 뺀 뒤에 중앙값을 보니 이상값이 한쪽에 몰려도 덜 흔들려요.
+
+```python
+>>> sd.regression.theilslopes(y, x).intercept
+-5.152083333333334
+>>> sd.regression.theilslopes(y, x, method='joint').intercept
+2.124305555555554
+>>> sd.regression.theilslopes(y_clean, x).intercept, sd.regression.theilslopes(y_clean, x, method='joint').intercept
+(1.4812500000000028, 1.2062500000000007)
+```
+
+깨끗한 데이터에서는 둘이 비슷해요. 이상값이 걱정되면 `'joint'`가 안전해요. 기본값이 `'separate'`인 것은 scipy와 같게 하기 위해서예요. `method`는 기울기와 신뢰구간에는 영향을 주지 않아요.
+
+## `alpha`: 기울기의 신뢰구간
+
+`low_slope`와 `high_slope`는 Sen(1968)의 신뢰구간이에요. 기울기의 순위를 이용한 구간이라 오차의 분포를 가정하지 않아요. `alpha`는 **신뢰수준**이에요(보통 쓰는 유의수준과 반대예요). 0.95면 95% 구간이에요.
+
+```python
+>>> r95 = sd.regression.theilslopes(y_clean, x)
+>>> r95.low_slope, r95.high_slope
+(1.9428571428571426, 2.033333333333333)
+>>> r90 = sd.regression.theilslopes(y_clean, x, alpha=0.9)
+>>> r90.low_slope, r90.high_slope
+(1.95, 2.0250000000000004)
+```
+
+신뢰수준을 낮추면 구간이 좁아져요. `alpha`가 0.5보다 작으면 `1 - alpha`로 바꿔서 읽어요. 그래서 0.1과 0.9는 같은 90% 구간이에요.
+
+```python
+>>> sd.regression.theilslopes(y_clean, x, alpha=0.1) == r90
+True
+>>> sd.regression.theilslopes(y_clean, x, alpha=1.0)
+Traceback (most recent call last):
+    ...
+ValueError: theilslopes(): 'alpha' must be between 0 and 1 (exclusive)
+```
+
+<Callout type="note" title="구간은 어떻게 정하나요">
+유한한 쌍 기울기 $N$개를 작은 순으로 $s_{(1)} \le \dots \le s_{(N)}$이라 하고, 신뢰수준 $1 - a$의 표준정규 분위수를 $z = \Phi^{-1}(1 - a/2)$라 할 때
+
+$$
+\sigma^2 = \frac{n(n-1)(2n+5) - \sum_x t(t-1)(2t+5) - \sum_y u(u-1)(2u+5)}{18}
+$$
+
+이에요. $t$는 x에서 값이 같은 묶음마다의 크기, $u$는 y의 그것이에요(Kendall 순위상관의 분산). 그러면
+
+$$
+\text{low} = s_{(\operatorname{round}((N - z\sigma)/2))}, \qquad \text{high} = s_{(\operatorname{round}((N + z\sigma)/2) + 1)}
+$$
+
+이에요. round는 가운데 값을 짝수 쪽으로 반올림하고, 순위가 1보다 작거나 $N$보다 크면 끝으로 붙여요. 구간은 기울기에 대한 것이고 절편의 구간은 없어요.
+</Callout>
+
+## `x=None`: 순서만 있는 데이터
+
+`x`를 주지 않으면 0, 1, …, n − 1을 써요. 같은 간격으로 잰 시계열의 추세를 볼 때 편해요.
+
+```python
+>>> monthly = [10.2, 10.8, 11.1, 11.9, 30.0, 12.6, 13.1, 13.4]
+>>> sd.regression.theilslopes(monthly)
+TheilslopesResult(slope=0.45999999999999996, intercept=10.64, low_slope=0.34999999999999964, high_slope=0.6000000000000014)
+>>> sd.regression.theilslopes(monthly, [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]).slope
+0.45999999999999996
+```
+
+다섯째 달의 30.0은 튀는 값이지만 기울기는 한 달에 0.46 정도로 나머지 달의 추세를 따라요.
+
+`nan_policy='omit'`으로 점을 뺄 때도 x는 빼기 전의 위치예요. 빠진 점의 자리는 비워 두고 나머지 점의 위치는 그대로예요.
+
+## 같은 x와 같은 y
+
+x가 같은 두 점은 기울기를 만들지 않아요. 남은 쌍만으로 중앙값을 구하고, 구간의 분산에서도 동률만큼 빼요.
+
+```python
+>>> sd.regression.theilslopes([1.0, 2.0, 2.0, 3.0, 3.0, 5.0], [1.0, 1.0, 2.0, 2.0, 3.0, 3.0])
+TheilslopesResult(slope=1.0, intercept=0.5, low_slope=0.0, high_slope=3.0)
+```
+
+x가 모두 같으면 기울기를 하나도 만들 수 없어서 모든 값이 NaN이에요. 에러는 아니에요.
+
+```python
+>>> sd.regression.theilslopes([1.0, 2.0, 3.0], [2.0, 2.0, 2.0])
+TheilslopesResult(slope=nan, intercept=nan, low_slope=nan, high_slope=nan)
+```
+
+y가 모두 같으면 기울기는 0이에요. 0은 언제나 +0.0으로 내요.
+
+```python
+>>> sd.regression.theilslopes([1.0, 1.0, 1.0])
+TheilslopesResult(slope=0.0, intercept=1.0, low_slope=0.0, high_slope=0.0)
+```
+
+## NaN, inf, 점의 수
+
+`nan_policy`로 NaN을 다뤄요.
+
+```python
+>>> yn = [1.0, 2.0, float('nan'), 4.0, 5.0]
+>>> sd.regression.theilslopes(yn)
+TheilslopesResult(slope=nan, intercept=nan, low_slope=nan, high_slope=nan)
+>>> sd.regression.theilslopes(yn, nan_policy='omit')
+TheilslopesResult(slope=1.0, intercept=1.0, low_slope=1.0, high_slope=1.0)
+>>> sd.regression.theilslopes(yn, nan_policy='raise')
+Traceback (most recent call last):
+    ...
+ValueError: theilslopes(): the input contains NaN (nan_policy='raise')
+```
+
+`'omit'`은 y나 x 가운데 하나라도 NaN인 점을 빼요. 위의 예는 x = 0, 1, 3, 4의 네 점이 남아서 기울기가 정확히 1이에요.
+
+inf는 `nan_policy`와 상관없이 에러예요. 남은 점(NaN을 뺀 뒤)이 2개보다 적어도 에러예요.
+
+```python
+>>> sd.regression.theilslopes([1.0, 2.0, float('inf'), 4.0])
+Traceback (most recent call last):
+    ...
+ValueError: theilslopes(): 'y' contains infinity
+>>> sd.regression.theilslopes([1.0])
+Traceback (most recent call last):
+    ...
+ValueError: theilslopes(): 'x' and 'y' must have length at least 2
+```
+
+## 배치
+
+`y`나 `x`가 2차원 이상이면 마지막 축이 점의 축이고, 앞 축마다 따로 계산해요. `y`와 `x`의 모양은 서로 브로드캐스트해요(`x` 하나에 `y` 여럿). 결과의 칸은 배치 모양의 배열이 되고, 하나씩 부른 것과 비트까지 같아요.
+
+```python
+>>> Y = sd.asarray([y, y_clean])
+>>> rb = sd.regression.theilslopes(Y, x)
+>>> rb.slope
+array([ 1.876388888888889, 1.9874999999999998], dtype=float64)
+>>> rb.low_slope
+array([0.09999999999999964, 1.9428571428571426], dtype=float64)
+```
+
+한 줄에 NaN이 있으면 그 줄만 NaN이에요. 배치에서는 줄마다 남는 점이 달라지므로 `nan_policy='omit'`을 쓸 수 없어요.
+
+```python
+>>> sd.regression.theilslopes([[1.0, 2.0, float('nan')], [3.0, 2.0, 1.0]]).slope
+array([ nan, -1.0], dtype=float64)
+>>> sd.regression.theilslopes([[1.0, 2.0, float('nan')], [3.0, 2.0, 1.0]], nan_policy='omit')
+Traceback (most recent call last):
+    ...
+ValueError: theilslopes(): nan_policy='omit' takes one regression, not a batch (the regressions would keep different points)
+```
+
+배치의 공통 규칙은 [기본 개념](/api/regression/basics/)에 있어요.
+
+## 정확도와 큰 데이터
+
+- 중앙값과 구간의 끝은 쌍 기울기 가운데 해당 순위의 값을 **정확히** 골라요. 어림이 없으니 결과는 쌍 기울기 하나(또는 가운데 두 값의 평균)와 정확히 같고, 스레드 수와 상관없이 같은 비트예요.
+- 쌍을 모두 저장하지 않아서 메모리가 n에 비례해 늘어요. n = 10⁵(쌍 약 50억 개)도 다룰 수 있어요. 시간은 쌍의 수만큼, 곧 $n^2$에 비례해요.
+
+구현은 [Theil–Sen과 Siegel의 구현](/internals/regression/slopes/)에 있어요.
+
+## scipy를 아는 분께
+
+`scipy.stats.theilslopes`와 인자 순서(`y`가 먼저, 그다음 `x`), 기본값, 결과(필드 순서까지 같은 `TheilslopesResult`)가 같아요. 값은 0의 부호를 빼고 비트까지 같아요.
+
+```python
+>>> import scipy.stats
+>>> scipy.stats.theilslopes(y, x)
+TheilslopesResult(slope=np.float64(1.876388888888889), intercept=np.float64(-5.152083333333334), low_slope=np.float64(0.09999999999999964), high_slope=np.float64(1.97))
+```
+
+다른 점이에요.
+
+- **0의 부호**: 기울기가 0이면 sd는 +0.0을 내요. scipy는 정렬에서 −0.0과 +0.0 가운데 무엇이 앞에 오는지에 따라 −0.0을 낼 때가 있어요.
+
+  ```python
+  >>> scipy.stats.theilslopes([1.0, 1.0, 1.0]).slope
+  np.float64(-0.0)
+  >>> sd.regression.theilslopes([1.0, 1.0, 1.0]).slope
+  0.0
+  ```
+
+- **inf**: scipy는 inf를 받아서 기울기에 ±inf가 섞인 채 계산해요. sd는 `ValueError`예요.
+- **`alpha`, `method`는 키워드로만** 받아요. scipy의 `theilslopes(y, x, 0.9)`는 `theilslopes(y, x, alpha=0.9)`로 써요.
+- **배치**: sd는 마지막 축을 점의 축으로 보고 앞 축을 배치로 받아요. scipy는 기본(`axis=None`)이 모든 원소를 한 줄로 펴고, `axis=-1`을 주면 sd와 같아요. sd에는 `axis`, `keepdims`가 없어요.
+- **`x=None`에 `nan_policy='omit'`**: sd는 빼기 전의 위치(0, 1, 3, 4, …)를 x로 써요. scipy는 뺀 뒤의 점에 0, 1, 2, …를 다시 매겨서 값이 달라요.
+
+  ```python
+  >>> scipy.stats.theilslopes(yn, nan_policy='omit').slope
+  np.float64(1.4166666666666665)
+  ```
+
+- **점이 2개보다 적을 때**: sd는 `ValueError`예요. scipy는 경고를 내고 NaN을 줘요.
+- **결과의 형**: sd는 Python `float`(배치면 `sd.ndarray`), scipy는 numpy의 `float64`예요.
+- **큰 n**: scipy는 n × n 차 배열을 만들어서 n = 10⁴이면 배열 하나가 800MB예요. sd는 쌍을 저장하지 않아요.

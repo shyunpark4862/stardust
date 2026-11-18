@@ -47,7 +47,7 @@ import Plot from '../../../components/fig/Plot.astro';
 |---|:---:|:---:|
 | `pow(x1, x2)` | x1의 x2제곱 | `x1 ** x2` |
 | `square(x)` | x² | `x ** 2` |
-| `sqrt(x)` | √x | `x ** 0.5`와 비슷 |
+| `sqrt(x)` | √x | `x ** 0.5`와 거의 같음 |
 | `reciprocal(x)` | 1/x | `1 / x` |
 | `hypot(x1, x2)` | √(x1² + x2²) | 없음 |
 
@@ -96,7 +96,7 @@ array([ 1,  4,  9, 16], dtype=int64)
 >>> 2 ** a
 array([ 2,  4,  8, 16], dtype=int64)
 >>> a ** 0.5
-array([               1.0, 1.4142135623730951, 1.7320508075688774,
+array([               1.0, 1.4142135623730951, 1.7320508075688772,
                       2.0], dtype=float64)
 ```
 
@@ -266,16 +266,22 @@ array([2j], dtype=complex128)
 array([ inf, -0.0,  nan], dtype=float64)
 ```
 
-### `** 0.5`보다 sqrt를 쓰세요
+### sqrt와 `** 0.5`
 
-`x ** 0.5`도 제곱근이지만, `sqrt`는 언제나 가장 가까운 실수를 정확히 돌려줘요. `** 0.5`는 일반적인 거듭제곱 계산이라 마지막 자리가 다를 수 있어요.
+`x ** 0.5`도 제곱근이에요. 지수가 0.5면 `sqrt`와 같은 계산을 해서 값이 비트까지 같아요. 다른 곳은 두 특수값뿐이에요. `-0.0 ** 0.5`는 `0.0`이고(`sqrt`는 `-0.0`), `-inf ** 0.5`는 `inf`예요(`sqrt`는 NaN). 거듭제곱의 특수값 규칙을 따르기 때문이에요.
 
 ```python
+>>> sd.asarray([3.0]) ** 0.5
+array([1.7320508075688772], dtype=float64)
 >>> sd.sqrt(sd.asarray([3.0]))
 array([1.7320508075688772], dtype=float64)
->>> sd.asarray([3.0]) ** 0.5
-array([1.7320508075688774], dtype=float64)
+>>> sd.asarray([-0.0, -sd.inf]) ** 0.5
+array([0.0, inf], dtype=float64)
+>>> sd.sqrt(sd.asarray([-0.0, -sd.inf]))
+array([-0.0,  nan], dtype=float64)
 ```
+
+지수가 2, −1, 1, 0일 때도 마찬가지예요. `x ** 2`는 `x * x`, `x ** -1`은 `1 / x`와 비트까지 같아요. 지수가 숫자 하나든 배열이든 같은 규칙이에요.
 
 ## reciprocal: 역수
 
@@ -414,7 +420,7 @@ TypeError: sqrt(): 'x' must be an sd.ndarray or a bool, int, float or complex, n
 | 하고 싶은 일 | 쓸 것 | 메모 |
 |---|---|---|
 | 제곱 | `square(x)`, `x ** 2`, `x * x` | 셋 다 같은 값, 같은 dtype이에요. |
-| 제곱근 | `sqrt(x)` | `x ** 0.5`보다 정확해요. 결과는 언제나 실수예요. |
+| 제곱근 | `sqrt(x)`, `x ** 0.5` | 값은 같고 `-0.0`, `-inf`에서만 달라요. `sqrt`의 결과는 언제나 실수예요. |
 | 역수 | `reciprocal(x)`, `1 / x` | 둘 다 실수 결과예요. `x ** -1`은 정수 배열이면 정수예요. |
 | 2차원 거리 | `hypot(x, y)` | `sqrt(x**2 + y**2)`보다 범위가 넓어요. |
 | 복소수의 크기 | [`abs(z)`](/api/array/sign/) | `hypot(real(z), imag(z))`와 같은 값이에요. |
@@ -427,4 +433,7 @@ TypeError: sqrt(): 'x' must be an sd.ndarray or a bool, int, float or complex, n
 - 정수의 음수 지수는 numpy처럼 에러가 아니라 **정수 결과**예요(`1`, `±1`, 나머지는 `0`).
 - `reciprocal`은 정수를 넣어도 **float64**예요. numpy는 정수 나눗셈을 해서 `reciprocal(2) == 0`이에요.
 - `hypot`은 복소수를 받지 않아요(`TypeError`). 음수의 `sqrt`나 분수 제곱은 경고 없이 NaN이에요.
-- `pow`의 실수 결과는 numpy와 마지막 몇 자리(8 ULP 이내)가 다를 수 있어요. `sqrt`, `square`, `reciprocal`, `hypot`은 numpy와 비트까지 같아요.
+- `pow`의 실수 결과는 numpy와 같은 함수로 계산해서 비트까지 같아요. 다른 곳은 둘이에요.
+  - 지수가 숫자 0.5일 때 numpy는 `sqrt`를 써서 `(-0.0) ** 0.5`가 `-0.0`, `(-inf) ** 0.5`가 NaN이에요. 여기는 `0.0`, `inf`예요.
+  - 지수가 **배열**이면 numpy는 2, −1, 0.5인 자리에서도 일반 거듭제곱을 계산해서, 원소의 약 0.1%가 마지막 자리 하나 달라요. 여기는 지수가 숫자든 배열이든 `x * x`, `1 / x`, `sqrt(x)`와 같은 값이에요.
+- `sqrt`, `square`, `reciprocal`, `hypot`은 numpy와 비트까지 같아요.

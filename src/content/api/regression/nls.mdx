@@ -1,0 +1,658 @@
+---
+kind: function
+title: nls
+names: [nls, NLSResult]
+group: 비선형 회귀
+order: 1
+signatures:
+  - "sd.regression.nls(f, x, y, /, *, p0, jac=None, bounds=None, method=None, weights=None, ftol=1e-08, xtol=1e-08, gtol=1e-08, max_nfev=None, rtol=None, nan_policy='propagate')"
+summary: 비선형 최소제곱이에요. 모수가 지수, 분수, 거듭제곱 안에 들어간 모형 f(x, θ)를 데이터에 맞춰 잔차 제곱합을 가장 작게 하는 θ를 찾고, 표준오차와 신뢰구간까지 줘요. 지수 감쇠, Michaelis–Menten, 성장 곡선처럼 직선으로 쓸 수 없는 모형에 써요.
+params:
+  - name: f
+    type: 호출 가능한 객체
+    kind: positional-only
+    desc: "모형 함수 f(x, *theta). x는 float64 sd.ndarray, theta는 Python float 모수들이고, 행마다 값 하나씩 n개(sd.ndarray나 실수의 시퀀스)를 돌려줘요."
+  - name: x
+    type: ndarray, 실수의 시퀀스, 또는 frame
+    kind: positional-only
+    desc: 설명 변수. (n,)이거나 변수가 여럿이면 (n, d)예요. 첫 축이 관측이에요. f에 그대로 넘어가요.
+  - name: y
+    type: ndarray, 실수의 시퀀스, 또는 Series
+    kind: positional-only
+    desc: 반응 변수 (n,). 1차원이어야 해요(배치는 없어요).
+  - name: p0
+    type: 실수의 시퀀스
+    kind: keyword-only (필수)
+    desc: 모수의 시작값. 길이가 모수의 수 p예요. 유한해야 해요.
+  - name: jac
+    type: 호출 가능한 객체 또는 None
+    kind: keyword-only
+    desc: "야코비안 jac(x, *theta). (n, p) 배열(p = 1이면 (n,)도 돼요)로 ∂f_i/∂θ_j를 돌려줘요. None(기본값)이면 차분으로 구해요."
+  - name: bounds
+    type: (lower, upper) 또는 None
+    kind: keyword-only
+    desc: 모수의 범위. lower와 upper는 각각 수 하나(모든 모수에)이거나 p개의 수이고, ±inf는 범위 없음이에요. lower < upper이고 p0가 그 안이어야 해요.
+  - name: method
+    type: str 또는 None
+    kind: keyword-only
+    desc: "'lm' 또는 'trf'. None(기본값)이면 bounds에 유한한 끝이 있을 때 'trf', 없으면 'lm'이에요. 'lm'은 bounds를 받지 않아요."
+  - name: weights
+    type: ndarray, 실수의 시퀀스, 또는 None
+    kind: keyword-only
+    desc: 행마다의 가중치(0 이상) n개. 제곱합이 Σ w_i r_i²이 돼요. 0인 행은 적합에서 빠져요.
+  - name: ftol, xtol, gtol
+    type: float
+    kind: keyword-only
+    desc: 반복을 멈추는 판정(제곱합의 상대 감소, 걸음의 상대 크기, 기울기). 0 이상이고 셋 가운데 하나는 2.2e-16 이상이어야 해요. 기본값 1e-8. 계수의 정확도는 거의 바꾸지 않아요.
+  - name: max_nfev
+    type: int 또는 None
+    kind: keyword-only
+    desc: 반복이 f를 부를 수 있는 상한(차분의 호출 포함). None(기본값)이면 jac이 있을 때 100p, 없을 때 100p(p + 1)이에요. 닿으면 converged=False예요.
+  - name: rtol
+    type: float 또는 None
+    kind: keyword-only
+    desc: 겹친 모수를 가려내는 상대 기준(0 이상). None(기본값)이면 jac이 있을 때 max(nobs, p)·2.2e-16, 차분이면 2⁻³⁰이에요.
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "NaN을 다루는 방법. 'propagate'(기본값; f를 부르지 않고 결과가 모두 NaN), 'omit'(y, x, weights에 NaN이 있는 행을 빼고 풂), 'raise'(ValueError) 중 하나예요."
+returns:
+  type: NLSResult
+  desc: 모수(params), 표준오차(bse), t값, p값, 신뢰구간(conf_int), 적합값과 잔차, 제곱합(ssr), 척도(scale), llf·aic·bic, 수렴 정보(converged, n_iter, nfev, njev), predict와 summary를 가진 결과 객체예요.
+raises:
+  - type: TypeError
+    desc: f나 jac이 호출 가능하지 않을 때, p0가 없거나 시퀀스가 아닐 때, bounds가 쌍이 아닐 때, f·jac이 복소수나 숫자가 아닌 것을 돌려줄 때, 허용오차가 수가 아닐 때. f 안에서 난 에러(모수 수가 맞지 않는 TypeError 등)도 그대로 나와요.
+  - type: ValueError
+    desc: f가 n개가 아닌 값을, jac이 (n, p)가 아닌 모양을 돌려줄 때, p0가 유한하지 않거나 bounds 밖일 때, lower ≥ upper일 때, method='lm'에 bounds를 줬을 때, method 이름이 틀렸을 때, y가 1차원이 아닐 때, x의 행 수가 y와 다를 때, 가중치가 음수이거나 개수가 틀릴 때, inf가 있을 때, nan_policy='raise'인데 NaN이 있을 때, 모수가 쓰인 관측보다 많을 때, p0에서 f가 유한하지 않을 때, 세 허용오차가 모두 2.2e-16보다 작을 때, max_nfev가 1보다 작을 때.
+seeAlso: [basics, results, ols, wls, glm, collinearity]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const decPts = [[0.0,5.6194],[0.4167,4.7781],[0.8333,4.0828],[1.25,3.487],[1.6667,3.1232],[2.0833,2.5768],[2.5,2.3419],[2.9167,2.0078],[3.3333,1.939],[3.75,1.5934],[4.1667,1.5047],[4.5833,1.1739],[5.0,1.2571],[5.4167,1.2124],[5.8333,1.0746],[6.25,0.8992],[6.6667,1.0698],[7.0833,0.8198],[7.5,0.7736],[7.9167,0.8573],[8.3333,0.57],[8.75,0.6002],[9.1667,0.4778],[9.5833,0.58],[10.0,0.6063]];
+
+export const decFit = [[0.0,5.5545],[0.125,5.3062],[0.25,5.0702],[0.375,4.8459],[0.5,4.6326],[0.625,4.4298],[0.75,4.237],[0.875,4.0538],[1.0,3.8796],[1.125,3.714],[1.25,3.5566],[1.375,3.4069],[1.5,3.2646],[1.625,3.1294],[1.75,3.0008],[1.875,2.8786],[2.0,2.7624],[2.125,2.6519],[2.25,2.5469],[2.375,2.447],[2.5,2.3521],[2.625,2.2619],[2.75,2.1761],[2.875,2.0946],[3.0,2.0171],[3.125,1.9434],[3.25,1.8733],[3.375,1.8067],[3.5,1.7434],[3.625,1.6833],[3.75,1.626],[3.875,1.5717],[4.0,1.5199],[4.125,1.4708],[4.25,1.4241],[4.375,1.3796],[4.5,1.3374],[4.625,1.2973],[4.75,1.2591],[4.875,1.2228],[5.0,1.1883],[5.125,1.1555],[5.25,1.1244],[5.375,1.0947],[5.5,1.0666],[5.625,1.0398],[5.75,1.0143],[5.875,0.9901],[6.0,0.9671],[6.125,0.9452],[6.25,0.9244],[6.375,0.9047],[6.5,0.8859],[6.625,0.868],[6.75,0.851],[6.875,0.8349],[7.0,0.8196],[7.125,0.805],[7.25,0.7911],[7.375,0.7779],[7.5,0.7654],[7.625,0.7535],[7.75,0.7421],[7.875,0.7314],[8.0,0.7211],[8.125,0.7114],[8.25,0.7021],[8.375,0.6933],[8.5,0.685],[8.625,0.677],[8.75,0.6695],[8.875,0.6623],[9.0,0.6555],[9.125,0.649],[9.25,0.6428],[9.375,0.6369],[9.5,0.6314],[9.625,0.626],[9.75,0.621],[9.875,0.6162],[10.0,0.6117]];
+
+export const mmFit = [[0.0,0.0],[0.02,50.566],[0.04,81.706],[0.06,102.811],[0.08,118.058],[0.1,129.589],[0.12,138.615],[0.14,145.873],[0.16,151.835],[0.18,156.82],[0.2,161.05],[0.22,164.685],[0.24,167.841],[0.26,170.608],[0.28,173.054],[0.3,175.23],[0.32,177.18],[0.34,178.938],[0.36,180.529],[0.38,181.977],[0.4,183.3],[0.42,184.514],[0.44,185.632],[0.46,186.664],[0.48,187.62],[0.5,188.509],[0.52,189.337],[0.54,190.11],[0.56,190.833],[0.58,191.511],[0.6,192.149],[0.62,192.749],[0.64,193.316],[0.66,193.85],[0.68,194.357],[0.7,194.836],[0.72,195.292],[0.74,195.724],[0.76,196.136],[0.78,196.528],[0.8,196.902],[0.82,197.259],[0.84,197.6],[0.86,197.926],[0.88,198.239],[0.9,198.539],[0.92,198.826],[0.94,199.102],[0.96,199.367],[0.98,199.622],[1.0,199.868],[1.02,200.104],[1.04,200.332],[1.06,200.552],[1.08,200.764],[1.1,200.969],[1.12,201.167],[1.14,201.358],[1.16,201.543],[1.18,201.722],[1.2,201.896]];
+
+export const waveSsr = [[0.2,72.756],[0.22,72.803],[0.24,71.507],[0.26,69.115],[0.28,65.958],[0.3,62.403],[0.32,58.815],[0.34,55.515],[0.36,52.752],[0.38,50.68],[0.4,49.354],[0.42,48.741],[0.44,48.733],[0.46,49.175],[0.48,49.898],[0.5,50.745],[0.52,51.593],[0.54,52.375],[0.56,53.078],[0.58,53.747],[0.6,54.463],[0.62,55.331],[0.64,56.453],[0.66,57.907],[0.68,59.728],[0.7,61.896],[0.72,64.334],[0.74,66.91],[0.76,69.454],[0.78,71.77],[0.8,73.666],[0.82,74.967],[0.84,75.537],[0.86,75.293],[0.88,74.209],[0.9,72.313],[0.92,69.683],[0.94,66.431],[0.96,62.686],[0.98,58.582],[1.0,54.24],[1.02,49.757],[1.04,45.208],[1.06,40.638],[1.08,36.074],[1.1,31.535],[1.12,27.039],[1.14,22.615],[1.16,18.315],[1.18,14.216],[1.2,10.417],[1.22,7.038],[1.24,4.21],[1.26,2.06],[1.28,0.696],[1.3,0.202],[1.32,0.62],[1.34,1.947],[1.36,4.137],[1.38,7.103],[1.4,10.724],[1.42,14.859],[1.44,19.359],[1.46,24.08],[1.48,28.892],[1.5,33.688],[1.52,38.384],[1.54,42.921],[1.56,47.26],[1.58,51.371],[1.6,55.234],[1.62,58.821],[1.64,62.1],[1.66,65.028],[1.68,67.554],[1.7,69.622],[1.72,71.178],[1.74,72.179],[1.76,72.602],[1.78,72.447],[1.8,71.744],[1.82,70.555],[1.84,68.967],[1.86,67.089],[1.88,65.041],[1.9,62.948],[1.92,60.923],[1.94,59.064],[1.96,57.443],[1.98,56.106],[2.0,55.073],[2.02,54.338],[2.04,53.878],[2.06,53.66],[2.08,53.646],[2.1,53.802],[2.12,54.102],[2.14,54.531],[2.16,55.08],[2.18,55.751],[2.2,56.543],[2.22,57.453],[2.24,58.47],[2.26,59.57],[2.28,60.712],[2.3,61.845],[2.32,62.907],[2.34,63.833],[2.36,64.559],[2.38,65.032],[2.4,65.217],[2.42,65.098],[2.44,64.683],[2.46,64.005],[2.48,63.113],[2.5,62.072],[2.52,60.954],[2.54,59.828],[2.56,58.759],[2.58,57.795],[2.6,56.971],[2.62,56.301],[2.64,55.787],[2.66,55.418],[2.68,55.176],[2.7,55.043],[2.72,55.003],[2.74,55.046],[2.76,55.172],[2.78,55.388],[2.8,55.704],[2.82,56.135],[2.84,56.687],[2.86,57.364],[2.88,58.153],[2.9,59.031],[2.92,59.961],[2.94,60.894],[2.96,61.777],[2.98,62.554],[3.0,63.175],[3.02,63.601],[3.04,63.809],[3.06,63.794],[3.08,63.567],[3.1,63.157],[3.12,62.607],[3.14,61.965],[3.16,61.281],[3.18,60.602],[3.2,59.964],[3.22,59.394],[3.24,58.905],[3.26,58.499],[3.28,58.169],[3.3,57.902],[3.32,57.687],[3.34,57.515],[3.36,57.382],[3.38,57.292],[3.4,57.257]];
+
+export const mmPts = [[0.02,76],[0.02,47],[0.06,97],[0.06,107],[0.11,123],[0.11,139],[0.22,159],[0.22,152],[0.56,191],[0.56,201],[1.1,207],[1.1,200]];
+
+export const Scatter = ({ points, lines, domain, range, xTicks, yTicks, label }) => {
+  const W = 640, H = 280, L = 44, R = 16, T = 16, B = 30;
+  const sx = (v) => L + ((v - domain[0]) / (domain[1] - domain[0])) * (W - L - R);
+  const sy = (v) => H - B - ((v - range[0]) / (range[1] - range[0])) * (H - T - B);
+  const tick = { fill: 'var(--fg-subtle)', 'font-family': 'var(--font-mono)', 'font-size': '11px' };
+  return (
+    <div style={{ width: '100%', 'max-width': '640px' }}>
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label} style={{ width: '100%', height: 'auto' }}>
+        {xTicks.map((t) => <line x1={sx(t)} x2={sx(t)} y1={T} y2={H - B} style={{ stroke: 'var(--line)' }} />)}
+        {yTicks.map((t) => <line x1={L} x2={W - R} y1={sy(t)} y2={sy(t)} style={{ stroke: 'var(--line)' }} />)}
+        {xTicks.map((t) => <text x={sx(t)} y={H - 10} text-anchor="middle" style={tick}>{t}</text>)}
+        {yTicks.map((t) => <text x={L - 8} y={sy(t) + 4} text-anchor="end" style={tick}>{t}</text>)}
+        {lines.map((l) => <path d={l.pts.map(([a, b], i) => `${i ? 'L' : 'M'}${sx(a).toFixed(1)} ${sy(b).toFixed(1)}`).join('')} style={{ fill: 'none', stroke: l.color, 'stroke-width': 2 }} />)}
+        {points.map(([a, b]) => <circle cx={sx(a)} cy={sy(b)} r="3.2" style={{ fill: 'var(--slate-500)' }} />)}
+      </svg>
+      <ul style={{ display: 'flex', 'flex-wrap': 'wrap', 'justify-content': 'center', gap: 'var(--space-5)', margin: 'var(--space-2) 0 0', padding: 0, 'list-style': 'none', 'font-family': 'var(--font-mono)', 'font-size': 'var(--text-xs)', color: 'var(--fg-muted)' }}>
+        {lines.map((l) => <li style={{ display: 'flex', 'align-items': 'center', gap: 'var(--space-2)', margin: 0 }}><span style={{ width: '14px', height: '2px', background: l.color }} />{l.label}</li>)}
+      </ul>
+    </div>
+  );
+};
+
+## 무엇을 하나요
+
+데이터에 곡선을 맞추고 싶은데, 그 곡선의 모양을 정하는 모수가 식 안쪽 깊이 들어가 있는 경우가 많아요.
+
+- **지수 감쇠** $f(t) = a e^{-kt} + c$: 약의 혈중 농도, 식어 가는 커피의 온도, 방사성 붕괴. k는 줄어드는 빠르기예요.
+- **Michaelis–Menten** $f(s) = V_{\max}\, s / (K_m + s)$: 기질 농도 s에 따른 효소의 반응 속도. 속도는 $V_{\max}$에 다가가며 포화하고, $K_m$은 절반 속도의 농도예요.
+- **로지스틱 성장** $f(t) = K / (1 + e^{-r(t - t_0)})$, **가우스 봉우리** $f(x) = A e^{-(x - \mu)^2 / (2\sigma^2)}$ 같은 모형도 그래요.
+
+이런 모형은 **모수에 대해 비선형**이에요. k가 지수 안에 있어서, k를 두 배로 해도 곡선이 두 배가 되지 않아요. 반대로 $a + bx + cx^2$는 x에 대해서는 곡선이지만 모수 a, b, c에 대해서는 일차라서 [ols](/api/regression/ols/)로 한 번에 풀려요. `nls`는 모수에 대해 비선형인 모형을 위한 함수예요.
+
+`nls`는 잔차 제곱합을 가장 작게 하는 θ를 찾아요.
+
+$$
+\min_\theta \sum_{i=1}^n w_i \bigl(y_i - f(x_i, \theta)\bigr)^2
+$$
+
+가중치 $w_i$는 주지 않으면 모두 1이에요. 이 최소점은 한 번의 공식으로 구할 수 없어서, 시작값 `p0`에서 출발해 제곱합이 줄어드는 쪽으로 θ를 조금씩 고쳐 가요(반복). 그래서 시작값이 필요하고, 시작값에 따라 다른 답에 닿을 수도 있어요.
+
+<Fig caption="지수 감쇠 데이터 25개(점)와 nls로 맞춘 a·exp(−k·t) + c (선)">
+  <Scatter
+    label="지수 감쇠 데이터와 맞춘 곡선"
+    points={decPts}
+    lines={[{ pts: decFit, label: 'fit: 5.03 exp(-0.405 t) + 0.524', color: 'var(--blue-600)' }]}
+    domain={[0, 10]}
+    range={[0, 6]}
+    xTicks={[0, 2, 4, 6, 8, 10]}
+    yTicks={[1, 2, 3, 4, 5]}
+  />
+</Fig>
+
+<Reference />
+
+## 기본 사용
+
+지수 감쇠 데이터 25개를 만들어 맞춰 볼게요. 참값은 a = 5, k = 0.4, c = 0.5이고 잡음을 조금 섞었어요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(1)
+>>> t = sd.linspace(0, 10, 25)
+>>> y = 5.0 * sd.exp(-0.4 * t) + 0.5 + 0.1 * sd.stats.Normal().sample(25, rng=rng)
+>>> def decay(t, a, k, c):
+...     return a * sd.exp(-k * t) + c
+>>> r = sd.regression.nls(decay, t, y, p0=[1.0, 1.0, 0.0])
+>>> r
+NLSResult(method='lm', nobs=25, ssr=0.201028, converged=True, params=[ 5.030580751301966 0.4048767917071542 0.5239091983451125])
+>>> r.param_names
+['a', 'k', 'c']
+>>> r.params
+array([ 5.030580751301966, 0.4048767917071542, 0.5239091983451125], dtype=float64)
+```
+
+**모수**(`params`)는 f의 인자 순서대로예요. `param_names`는 f의 x 다음 인자 이름에서 가져와요. **표준오차**(`bse`)는 모수가 표본에 따라 얼마나 흔들리는지의 크기이고, **신뢰구간**(`conf_int`)은 참값이 들어 있을 만한 범위예요. 셋 모두 참값(5, 0.4, 0.5)을 구간 안에 담고 있어요. t값, p값 같은 말의 뜻은 [결과 객체 읽기](/api/regression/results/)에 있어요.
+
+```python
+>>> r.bse
+array([ 0.07021109423882066, 0.014446846009307198, 0.045133885388052165], dtype=float64)
+>>> r.conf_int()
+array([[  4.884971853892004,   5.176189648711928],
+       [ 0.3749158668522952, 0.43483771656201314],
+       [0.43030724898896405,  0.6175111477012609]], dtype=float64)
+```
+
+`summary()`는 한 번에 보여 줘요.
+
+```python
+>>> print(r.summary())
+                       Nonlinear Least Squares Results
+==============================================================================
+Model:                             NLS  Residual Std. Error:           0.09559
+Method:            Levenberg-Marquardt  Sum of Squares:               0.201028
+No. Observations:                   25  Converged:                        True
+Df Residuals:                       22  No. Iterations:                      9
+Df Model:                            3  Function Evals:                    143
+==============================================================================
+                 coef    std err          t      P>|t|     [0.025     0.975]
+------------------------------------------------------------------------------
+a              5.0306      0.070     71.649      0.000      4.885      5.176
+k              0.4049      0.014     28.025      0.000      0.375      0.435
+c              0.5239      0.045     11.608      0.000      0.430      0.618
+==============================================================================
+<BLANKLINE>
+Notes:
+[1] Standard errors are sigma^2 (J^T W J)^-1 with J from 5-point differences
+    at the solution; t uses df_resid degrees of freedom.
+[2] The iteration stopped on the relative reduction of the sum of squares
+    (ftol).
+```
+
+Residual Std. Error는 잔차의 표준편차 추정 $\hat\sigma = \sqrt{\text{ssr}/\text{df\_resid}}$예요. 섞은 잡음의 크기 0.1과 비슷해요.
+
+## 모형 함수 f
+
+f는 `f(x, *theta)` 꼴이에요(scipy `curve_fit`과 같은 꼴).
+
+- 첫 인자 x는 **float64 sd.ndarray**예요. 리스트로 줘도 sd 배열로 바뀌어서 넘어가요.
+- 그 뒤의 인자가 모수예요. Python `float`로 하나씩 넘어가요. 모수의 수는 `p0`의 길이예요.
+- **모든 행의 값을 한 번에** 계산해서 n개(sd.ndarray나 실수의 시퀀스)를 돌려줘요. 행마다 한 번씩 부르지 않아요.
+- 그래서 f 안에서는 `sd.exp`, `sd.sqrt`, `sd.log`처럼 배열을 받는 sd 함수를 써요. `math.exp`는 배열을 받지 못하고, numpy의 함수(`np.exp`)도 sd 배열에는 쓸 수 없어요.
+
+설명 변수가 여럿이면 x를 (n, d)로 줘요. **첫 축이 관측**이라 f 안에서 `x[:, 0]`, `x[:, 1]`로 열을 꺼내요.
+
+```python
+>>> X = sd.asarray([[0.0, 1.0], [1.0, 0.0], [2.0, 2.0], [3.0, 1.0],
+...                 [4.0, 3.0], [5.0, 0.0], [6.0, 2.0], [7.0, 1.0]])
+>>> z = sd.asarray([4.1, 2.4, 3.9, 1.9, 4.3, 0.4, 2.6, 1.2])
+>>> def surface(X, a, b, c):
+...     return a * sd.exp(-b * X[:, 0]) + c * X[:, 1]
+>>> rs = sd.regression.nls(surface, X, z, p0=[1.0, 0.1, 1.0])
+>>> rs.params
+array([ 3.104855670304113, 0.3752542507998231, 1.1550940374105307], dtype=float64)
+```
+
+f는 늘 모든 행의 x를 받아요. `nan_policy='omit'`이 뺀 행은 빠지지만, 가중치가 0인 행은 들어 있어요. f 안에서 난 에러는 그대로 나와요. 예를 들어 모수가 셋인 f에 `p0`를 둘만 주면 f를 부를 때 Python의 TypeError가 나요.
+
+### param_names
+
+f의 x 다음 위치 인자가 정확히 p개면 그 이름이 `param_names`예요. `f(x, *p)`처럼 이름을 알 수 없거나 기본값이 있는 인자가 더 있으면 `'b1'`, `'b2'`, …예요.
+
+```python
+>>> xs = sd.asarray([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+>>> ys = sd.asarray([2.1, 3.9, 6.2, 7.8, 10.1, 12.0])
+>>> sd.regression.nls(lambda x, a, b: a + b * x, xs, ys, p0=[0.0, 1.0]).param_names
+['a', 'b']
+>>> def anon(x, *p):
+...     return p[0] + p[1] * x
+>>> sd.regression.nls(anon, xs, ys, p0=[0.0, 1.0]).param_names
+['b1', 'b2']
+```
+
+## 시작값 p0
+
+`p0`는 꼭 줘야 해요. 반복은 `p0`에서 출발해 **가까운** 골짜기의 바닥으로 내려가기 때문에, 제곱합에 골짜기가 여럿이면 어느 바닥에 닿을지는 시작값이 정해요.
+
+sin(ωx) 꼴의 파동에서 진동수 ω를 맞추는 문제로 볼게요(참값 1.3). 아래 그림은 ω에 따른 제곱합이에요. 1.3의 깊은 골짜기 말고도 얕은 골짜기가 여러 개 있어요.
+
+<Fig caption="sin(ω·x)를 맞출 때 ω에 따른 잔차 제곱합. 참값 1.3 말고도 0.43, 2.07, 2.72 근처에 골짜기가 있어요.">
+  <Plot
+    curves={[{ points: waveSsr, label: 'ssr(ω)' }]}
+    domain={[0.2, 3.4]}
+    range={[0, 80]}
+    xTicks={[
+      { v: 0.5, label: '0.5' },
+      { v: 1, label: '1' },
+      { v: 1.5, label: '1.5' },
+      { v: 2, label: '2' },
+      { v: 2.5, label: '2.5' },
+      { v: 3, label: '3' },
+    ]}
+    yTicks={[
+      { v: 20, label: '20' },
+      { v: 40, label: '40' },
+      { v: 60, label: '60' },
+    ]}
+  />
+</Fig>
+
+```python
+>>> xw = sd.linspace(0, 10, 60)
+>>> yw = sd.sin(1.3 * xw) + 0.05 * sd.stats.Normal().sample(60, rng=sd.random.default_rng(2))
+>>> def wave(x, w):
+...     return sd.sin(w * x)
+>>> for w0 in [1.0, 2.0, 0.5]:
+...     rw = sd.regression.nls(wave, xw, yw, p0=[w0])
+...     print(w0, round(float(rw.params[0]), 4), round(rw.ssr, 3), rw.converged)
+1.0 1.3009 0.201 True
+2.0 2.0714 53.629 True
+0.5 0.4301 48.67 True
+```
+
+세 번 모두 `converged=True`예요. `converged`는 반복이 멈춤 판정에 닿았다는 뜻이지 **가장 좋은 답**이라는 뜻이 아니에요. 제곱합(`ssr`)을 비교하거나 적합값을 그려 보면 1.0에서 시작한 것만 맞는 답이라는 것을 알 수 있어요.
+
+시작값을 고르는 요령이에요.
+
+- 모수의 뜻에서 어림해요. Michaelis–Menten의 $V_{\max}$는 y의 최댓값 근처, $K_m$은 y가 그 절반쯤 되는 x예요.
+- 변환으로 어림해요. $a e^{-kt}$는 log y가 t의 직선이라 ols로 a와 k의 대강을 얻을 수 있어요.
+- 몇 개의 시작값에서 풀어 `ssr`이 가장 작은 것을 골라요.
+
+`p0`에서 f가 유한하지 않으면(0으로 나누기 등) 바로 ValueError예요.
+
+```python
+>>> S = [0.02, 0.02, 0.06, 0.06, 0.11, 0.11, 0.22, 0.22, 0.56, 0.56, 1.10, 1.10]
+>>> v = [76.0, 47.0, 97.0, 107.0, 123.0, 139.0, 159.0, 152.0, 191.0, 201.0, 207.0, 200.0]
+>>> def mm(s, vmax, km):
+...     return vmax * s / (km + s)
+>>> sd.regression.nls(mm, S, v, p0=[200.0, -0.02])
+Traceback (most recent call last):
+    ...
+ValueError: nls(): 'f' is not finite at 'p0' (rows used)
+```
+
+$K_m = -0.02$이면 s = 0.02에서 분모가 0이에요.
+
+## 예: Michaelis–Menten
+
+효소 반응 속도 데이터 12개(퓨로마이신을 처리한 세포)예요. 속도가 기질 농도와 함께 늘다가 포화해요.
+
+```python
+>>> m = sd.regression.nls(mm, S, v, p0=[200.0, 0.1])
+>>> m.params
+array([  212.6837431425346, 0.06412128168156461], dtype=float64)
+>>> m.bse
+array([  6.9471551600424535, 0.008280949498485068], dtype=float64)
+```
+
+최대 속도는 약 213, 절반 속도의 농도는 약 0.064예요.
+
+<Fig caption="기질 농도와 반응 속도(점), 그리고 맞춘 Michaelis–Menten 곡선">
+  <Scatter
+    label="Michaelis-Menten 데이터와 맞춘 곡선"
+    points={mmPts}
+    lines={[{ pts: mmFit, label: 'fit: 212.7 s / (0.0641 + s)', color: 'var(--blue-600)' }]}
+    domain={[0, 1.2]}
+    range={[0, 230]}
+    xTicks={[0, 0.2, 0.4, 0.6, 0.8, 1, 1.2]}
+    yTicks={[50, 100, 150, 200]}
+  />
+</Fig>
+
+## method와 bounds
+
+반복의 방법은 두 가지예요.
+
+| method | 범위(bounds) | 특징 |
+|---|---|---|
+| `'lm'` | 받지 않아요 | Levenberg–Marquardt. 범위가 없는 문제의 기본값이에요. |
+| `'trf'` | 받아요 | 신뢰 영역 반사법. 반복점이 늘 범위 안에 있어요. 범위가 있으면 기본값이에요. |
+
+`method=None`(기본값)이면 `bounds`에 유한한 끝이 하나라도 있을 때 `'trf'`, 아니면 `'lm'`을 골라요. 범위가 없는 문제에 `'trf'`를 골라도 돼요. 수렴한 답은 두 방법이 거의 같아요.
+
+`bounds=(lower, upper)`의 lower와 upper는 수 하나(모든 모수에 같은 범위)이거나 p개의 수예요. 끝이 없는 쪽은 `float('inf')`, `-float('inf')`로 줘요.
+
+```python
+>>> sd.regression.nls(mm, S, v, p0=[200.0, 0.1], bounds=(0, float('inf'))).method
+'trf'
+>>> mb = sd.regression.nls(mm, S, v, p0=[200.0, 0.1], bounds=([0, 0], [210, 1]))
+>>> mb.params
+array([             210.0, 0.06160515021352417], dtype=float64)
+>>> print(mb.summary().split('Notes:')[1])
+<BLANKLINE>
+[1] Standard errors are sigma^2 (J^T W J)^-1 with J from 5-point differences
+    at the solution; t uses df_resid degrees of freedom.
+[2] The iteration stopped on both ftol and xtol.
+[3] At a bound: vmax.
+```
+
+$V_{\max} \le 210$을 주면 최소점(212.7)이 범위 밖이라 $V_{\max}$는 경계 210에 붙어요. 경계에 걸린 모수는 정확히 경계값으로 맞추고, 나머지 모수는 그 상태에서 최적으로 다듬어요. `summary()`의 끝에 "At a bound"로 적혀요.
+
+<Callout type="warn" title="경계에 걸린 모수의 표준오차">
+경계에 걸린 모수가 있어도 표준오차는 범위가 없는 것처럼 계산한 전체 공분산이에요(scipy와 같아요). 경계에서는 이 근사가 맞지 않으니, 그 모수의 `bse`와 `conf_int`는 참고만 하세요.
+</Callout>
+
+`p0`는 범위 안이어야 해요. `'lm'`에 범위를 주면 ValueError예요.
+
+```python
+>>> sd.regression.nls(mm, S, v, p0=[300.0, 0.1], bounds=([0, 0], [210, 1]))
+Traceback (most recent call last):
+    ...
+ValueError: nls(): 'p0' must be within 'bounds'
+>>> sd.regression.nls(mm, S, v, p0=[200.0, 0.1], bounds=(0, float('inf')), method='lm')
+Traceback (most recent call last):
+    ...
+ValueError: nls(): method='lm' takes no bounds (method='trf' does)
+```
+
+## jac: 야코비안
+
+**야코비안**은 f를 모수로 미분한 행렬 $J_{ij} = \partial f(x_i, \theta)/\partial \theta_j$예요(n × p). 반복은 이것으로 어느 쪽으로 얼마나 움직일지를 정하고, 표준오차도 이것으로 구해요.
+
+`jac`을 주지 않으면 `nls`가 **차분**으로 구해요. 모수를 조금씩 움직여 f를 여러 번 부르는 방식이에요. 정확한 표준오차와 계수를 위해 해에서는 모수마다 간격을 골라 5점 차분을 쓰는데, 그 대가로 f를 많이 불러요. f를 미분할 수 있으면 `jac`을 주는 것이 좋아요. 호출 수가 크게 줄고 계수도 더 정확해요.
+
+```python
+>>> def decay_jac(t, a, k, c):
+...     e = sd.exp(-k * t)
+...     return sd.stack([e, -a * t * e, sd.ones_like(t)], axis=1)
+>>> rj = sd.regression.nls(decay, t, y, p0=[1.0, 1.0, 0.0], jac=decay_jac)
+>>> rj.params
+array([ 5.030580751301965, 0.4048767917071579, 0.5239091983451243], dtype=float64)
+>>> (r.nfev, r.njev), (rj.nfev, rj.njev)
+((143, 14), (19, 16))
+```
+
+`nfev`는 f를 부른 횟수, `njev`는 야코비안을 구한 횟수(jac을 부른 횟수 또는 차분 야코비안의 수)예요. 차분이면 f를 143번, jac이 있으면 19번 불렀어요. f가 비싸거나 n이 크면 이 차이가 시간 차이예요. 두 답은 상대 3×10⁻¹⁴ 안에서 같아요.
+
+jac은 (n, p)를 돌려줘야 해요(p = 1이면 (n,)도 돼요). 열의 순서는 모수의 순서예요.
+
+```python
+>>> sd.regression.nls(mm, S, v, p0=[200.0, 0.1], jac=lambda s, vmax, km: sd.stack([s / (km + s)], axis=1))
+Traceback (most recent call last):
+    ...
+ValueError: nls(): 'jac' must return shape (12, 2), not (12, 1)
+```
+
+## weights: 가중치
+
+가중치 $w_i$는 행마다 얼마나 믿을지예요. 측정의 표준편차가 $\sigma_i$로 알려져 있으면 `weights = 1 / sigma**2`를 줘요. 정밀한 행일수록 무겁게 세져요. 뜻은 [wls](/api/regression/wls/)의 가중치와 같아요.
+
+```python
+>>> sig = sd.asarray([5.0, 5, 5, 5, 8, 8, 8, 8, 10, 10, 10, 10])
+>>> mw = sd.regression.nls(mm, S, v, p0=[200.0, 0.1], weights=1 / sig**2)
+>>> mw.params
+array([ 207.06485923598655, 0.05778757528956835], dtype=float64)
+```
+
+가중치가 0인 행은 적합에서 빠지고 `nobs`와 자유도에도 들어가지 않지만, `fittedvalues`와 `resid`는 그 행에서도 계산해요. 그 행에서는 f가 유한하지 않아도 돼요. 음수 가중치는 ValueError예요.
+
+```python
+>>> w0 = [1.0, 1.0, 0.0, 1.0, 2.0, 2.0]
+>>> lw = sd.regression.nls(lambda x, a, b: a + b * x, xs, ys, p0=[0.0, 1.0], weights=w0)
+>>> lw.nobs, lw.df_resid, lw.fittedvalues.shape
+(5.0, 3.0, (6,))
+>>> sd.regression.nls(mm, S, v, p0=[200.0, 0.1], weights=-sig)
+Traceback (most recent call last):
+    ...
+ValueError: nls(): 'weights' must be >= 0
+```
+
+## 수렴과 정확도
+
+### 무엇이 반복을 멈추나요
+
+반복은 다음 판정 가운데 하나에 닿으면 멈춰요.
+
+- `ftol`: 제곱합이 한 걸음에 상대적으로 `ftol`보다 덜 줄어들 때
+- `xtol`: 걸음이 모수의 크기에 비해 `xtol`보다 작을 때
+- `gtol`: 잔차와 야코비안의 열이 거의 직교할 때(기울기가 0에 가까울 때)
+
+`converged`는 반복이 이 가운데 하나로 멈췄는지예요. 어느 판정이었는지는 `summary()`의 끝에 적혀요.
+
+### 허용오차를 바꿔도 답은 거의 같아요
+
+반복이 멈춘 점은 판정의 허용오차만큼 해에서 떨어져 있을 수 있어요. `nls`는 반복이 수렴하면 정확한 야코비안으로 몇 걸음 더 다듬어서, 모수가 반올림보다 크게 움직이지 않을 때까지 해에 다가가요. 그래서 `ftol`, `xtol`, `gtol`은 언제 다듬기로 넘어갈지만 정하고, 답은 거의 바꾸지 않아요.
+
+```python
+>>> loose = sd.regression.nls(decay, t, y, p0=[1.0, 1.0, 0.0], ftol=1e-2, xtol=1e-2, gtol=1e-2)
+>>> [f'{v:.1e}' for v in ((loose.params - r.params) / r.params).tolist()]
+['-8.8e-16', '1.8e-14', '4.5e-14']
+>>> loose.n_iter, r.n_iter
+(7, 9)
+```
+
+허용오차를 10⁻²로 느슨하게 해도 모수가 상대 10⁻¹³ 안에서 같아요. 정확도를 올리려고 허용오차를 줄일 필요는 없어요. 정확도를 정하는 것은 야코비안의 정확도예요. `jac`이 정확하면 모수가 해와 반올림 수준으로 가깝고, 차분이면 그보다 조금 덜해요(보통 상대 10⁻¹³ 안팎, 조건이 나쁜 문제에서 10⁻¹⁰까지).
+
+### max_nfev에 닿을 때
+
+반복이 `max_nfev`번 넘게 f를 부르면 마지막 반복점을 내고 `converged=False`예요. 경고는 없어요. 이때는 다듬기를 하지 않아서, 모수는 해와 멀 수 있어요. 표준오차는 그 점에서 구한 값이에요.
+
+```python
+>>> short = sd.regression.nls(decay, t, y, p0=[1.0, 1.0, 0.0], max_nfev=10)
+>>> short.converged
+False
+>>> short.params
+array([ 1.8634295032042565, 0.23723295528732338,  0.2348010842921157], dtype=float64)
+```
+
+`nfev`는 반복 말고도 다듬기와 해의 야코비안에서 부른 것까지 세므로 `max_nfev`보다 클 수 있어요.
+
+### 반복 중에 f가 NaN이나 inf를 낼 때
+
+반복이 시험해 본 모수에서 f가 쓰인 행에 유한하지 않은 값을 내면, `nls`는 그 걸음을 버리고 더 작은 걸음으로 다시 해요. 그래서 모수의 일부 영역에서만 정의되는 모형도 맞출 수 있어요. 아래 f는 k < 0이면 NaN을 내는데, 반복이 그쪽을 두 번 시험했지만 같은 답에 닿았어요.
+
+```python
+>>> tried = []
+>>> def guarded(t, a, k, c):
+...     tried.append(k)
+...     if k < 0:
+...         return sd.full((25,), float('nan'))
+...     return a * sd.exp(-k * t) + c
+>>> rg = sd.regression.nls(guarded, t, y, p0=[1.0, 3.0, 0.0])
+>>> sum(1 for k in tried if k < 0), rg.converged
+(2, True)
+>>> [f'{v:.0e}' for v in ((rg.params - r.params) / r.params).tolist()]
+['-5e-16', '4e-15', '1e-14']
+```
+
+다만 `p0`에서 유한하지 않으면 시작할 수 없어서 ValueError예요(위). 해의 야코비안을 차분으로 구할 때 f가 한쪽에서 유한하지 않으면 다른 쪽 차분을 써요.
+
+### n_iter, nfev, njev
+
+| 필드 | 뜻 |
+|---|---|
+| `n_iter` | 반복의 횟수(반복이 구한 야코비안의 수, p0의 것 포함) |
+| `nfev` | f를 부른 모든 횟수(반복의 차분, 다듬기, 해의 야코비안 포함) |
+| `njev` | 야코비안을 구한 횟수(jac의 호출 또는 차분 야코비안) |
+
+## 결과 필드
+
+| 필드 | 뜻 |
+|---|---|
+| `params` | 모수. f의 인자 순서대로예요. |
+| `bse`, `tvalues`, `pvalues` | 표준오차, t값, p값(자유도 `df_resid`의 [t 분포](/api/stats/student-t/)) |
+| `conf_int(alpha=0.05)` | 1 − alpha 신뢰구간 (p, 2) |
+| `cov_params()` | 모수의 공분산 $\hat\sigma^2 (J^\top W J)^{-1}$ (p, p) |
+| `fittedvalues` | f(x, *params). 모든 행(가중치 0인 행 포함)이에요. |
+| `resid` | y − fittedvalues |
+| `ssr` | 쓰인 행의 가중 잔차 제곱합 $\sum w_i r_i^2$ |
+| `scale` | $\hat\sigma^2$ = ssr / df_resid |
+| `llf`, `aic`, `bic` | 정규 우도의 최댓값과 정보 기준(아래) |
+| `nobs`, `df_model`, `df_resid` | 쓰인 관측 수, 추정한 모수 수(= rank), nobs − rank. 모두 float예요. |
+| `rank`, `condition_number` | 겹치지 않은 모수의 수, 해에서 √W J의 조건수 |
+| `converged`, `n_iter`, `nfev`, `njev` | 수렴 정보(위) |
+| `method`, `cov_type`, `param_names` | 쓴 방법('lm' 또는 'trf'), `'nonrobust'`, 모수 이름 |
+| `predict(x_new, /)` | f(x_new, *params) |
+| `summary(*, alpha=0.05)` | 결과 표(문자열) |
+
+`nls`에는 절편 옵션이 없어요. 상수항이 필요하면 f에 모수로 넣어요(위의 c처럼).
+
+### llf, aic, bic
+
+`llf`는 오차가 정규분포라고 볼 때 로그 우도의 최댓값이고, `aic`와 `bic`는 모형끼리 견줄 때 쓰는 정보 기준(작을수록 좋음)이에요. 식은 [ols](/api/regression/ols/)와 같아요.
+
+$$
+\text{llf} = -\frac{n}{2}\Bigl(\log 2\pi + \log\frac{\text{ssr}}{n} + 1\Bigr) + \frac12\sum_i \log w_i, \quad
+\text{aic} = -2\,\text{llf} + 2\,\text{rank}, \quad
+\text{bic} = -2\,\text{llf} + \log(n)\,\text{rank}
+$$
+
+n은 `nobs`이고 가중치 항은 가중치가 있을 때만 들어가요. 척도 $\sigma$는 모수로 세지 않아요. 모수에 대해 일차인 모형을 `nls`로 풀면 `ols`와 같은 값이에요.
+
+```python
+>>> o = sd.regression.ols(ys, xs)
+>>> lin = sd.regression.nls(lambda x, a, b: a + b * x, xs, ys, p0=[0.0, 1.0])
+>>> round(o.llf, 10), round(lin.llf, 10)
+(3.5650917255, 3.5650917255)
+>>> round(o.aic, 10), round(lin.aic, 10)
+(-3.1301834511, -3.1301834511)
+```
+
+## 예측
+
+`predict(x_new)`는 맞춘 모수로 f(x_new, *params)를 계산해요. x_new는 적합의 x와 같은 꼴이에요(1차원, 또는 같은 열 수의 2차원).
+
+```python
+>>> m.predict([0.05, 0.5, 2.0])
+array([ 93.18320825382564, 188.50888102338106, 206.07678921780112], dtype=float64)
+>>> rs.predict(sd.asarray([[1.0, 1.0], [2.0, 0.0]]))
+array([3.2884855663405794, 1.4658843756382072], dtype=float64)
+>>> m.predict(sd.zeros((3, 2)))
+Traceback (most recent call last):
+    ...
+ValueError: predict(): 'x_new' must be 1-dimensional like the fit's 'x', not shape (3, 2)
+```
+
+## 특수한 경우
+
+### 겹친 모수
+
+모수끼리 서로 대신할 수 있으면 데이터가 그 모수들을 따로 정하지 못해요. 예를 들어 $f(x) = a\,b\,x$에서는 곱 ab만 정해지고 a와 b는 따로 정해지지 않아요. 이때 뒤쪽 모수의 `bse`, `tvalues`, `pvalues`, `conf_int`, `cov_params()`의 그 행과 열이 NaN이에요. `params`는 반복이 닿은 값 그대로 남겨요. f를 계산하려면 값이 있어야 하기 때문이에요. 다만 그 값은 유일하지 않아요(여기서는 a·b ≈ 2.002만 의미가 있어요).
+
+```python
+>>> pr = sd.regression.nls(lambda x, a, b: a * b * x, xs, ys, p0=[1.0, 1.0])
+>>> pr.params, pr.bse
+(array([ 4.12814607432746, 0.4850113746335858], dtype=float64), array([0.031994053061536916,                  nan], dtype=float64))
+>>> pr.rank, pr.df_model, pr.df_resid
+(1, 1.0, 5.0)
+```
+
+`rank`, `df_model`, `df_resid`는 남은 모수로 세요. `summary()`에는 "Aliased"로 적혀요. 판정의 기준이 `rtol`이에요. 자세한 규칙은 [겹친 열과 완전 적합](/api/regression/collinearity/)에 있어요.
+
+### 자유도가 0일 때
+
+관측 수와 모수 수가 같으면 곡선이 모든 점을 지나고 잔차 자유도가 0이라 표준오차를 구할 수 없어요(NaN). 모수가 관측보다 많으면 ValueError예요.
+
+```python
+>>> two = sd.regression.nls(lambda x, a, b: a + b * x, xs[:2], ys[:2], p0=[0.0, 1.0])
+>>> two.params, two.bse, two.df_resid
+(array([0.3000000000000006, 1.7999999999999996], dtype=float64), array([nan, nan], dtype=float64), 0.0)
+>>> sd.regression.nls(lambda x, a, b, c: a + b * x + c, xs[:2], ys[:2], p0=[0.0, 1.0, 0.0])
+Traceback (most recent call last):
+    ...
+ValueError: nls(): 'p0' has 3 parameters, more than the 2 observations used
+```
+
+### NaN과 inf
+
+기본 `'propagate'`면 y, x, weights에 NaN이 하나라도 있을 때 **f를 부르지 않고** 모든 값이 NaN이에요(`nobs`도 NaN, `rank` 0, `converged` False, `nfev` 0, `predict`도 NaN). `'omit'`은 y, x의 어느 열, 가중치에 NaN이 있는 행을 빼고 풀어요. inf는 늘 ValueError예요. 공통 규칙은 [기본 개념](/api/regression/basics/)에 있어요.
+
+```python
+>>> yn = sd.asarray([2.1, 3.9, float('nan'), 7.8, 10.1, 12.0])
+>>> line = lambda x, a, b: a + b * x
+>>> pn = sd.regression.nls(line, xs, yn, p0=[0.0, 1.0])
+>>> pn.params, pn.converged, pn.nfev
+(array([nan, nan], dtype=float64), False, 0)
+>>> sd.regression.nls(line, xs, yn, p0=[0.0, 1.0], nan_policy='omit').nobs
+5.0
+```
+
+### 배치는 없어요
+
+`nls`는 회귀 하나만 풀어요. y가 2차원이면 ValueError예요. 여러 데이터에 맞추려면 하나씩 불러요.
+
+```python
+>>> sd.regression.nls(line, xs, sd.stack([ys, ys]), p0=[0.0, 1.0])
+Traceback (most recent call last):
+    ...
+ValueError: nls(): 'y' must be 1-dimensional (nls fits one regression, not a batch)
+```
+
+## 에러
+
+```python
+>>> sd.regression.nls(3, xs, ys, p0=[1.0])
+Traceback (most recent call last):
+    ...
+TypeError: nls(): 'f' must be callable, not int
+>>> sd.regression.nls(line, xs, ys)
+Traceback (most recent call last):
+    ...
+TypeError: nls() missing 1 required keyword-only argument: 'p0'
+>>> sd.regression.nls(line, xs, ys, p0=[0.0, 1.0], bounds=([0, 1], [10, 1]))
+Traceback (most recent call last):
+    ...
+ValueError: nls(): each lower bound must be less than its upper bound
+>>> sd.regression.nls(lambda x, a, b: (a + b * x)[:-1], xs, ys, p0=[0.0, 1.0])
+Traceback (most recent call last):
+    ...
+ValueError: nls(): 'f' must return 6 values (one per row of 'x'), not shape (5,)
+>>> sd.regression.nls(line, xs, ys, p0=[0.0, 1.0], ftol=0, xtol=0, gtol=0)
+Traceback (most recent call last):
+    ...
+ValueError: nls(): at least one of 'ftol', 'xtol' and 'gtol' must be >= 2.2e-16 (the machine epsilon)
+>>> sd.regression.nls(line, xs, ys, p0=[0.0, 1.0], method='x')
+Traceback (most recent call last):
+    ...
+ValueError: nls(): 'method' must be 'lm' or 'trf', not 'x'
+```
+
+## 정확도
+
+- 반복이 수렴하면 다듬기 덕분에, 모수는 허용오차(`ftol`, `xtol`, `gtol`)와 상관없이 해에 가까워요. `jac`이 정확하면 반올림 수준(상대 10⁻¹³ 안), 차분이면 보통 상대 10⁻¹³ 안팎이고 조건이 나쁜 문제에서 10⁻¹⁰까지예요.
+- NIST의 비선형 회귀 시험 문제 27개(시작점 2개씩)에서 수렴한 적합은 모두 인증값과 계수 9.5자리, 표준오차 9자리 이상 맞아요. 잔차가 반올림 크기인 Lanczos1만 표준오차가 3–4자리예요.
+- 표준오차는 해의 정확한 야코비안(`jac` 또는 5점 차분)으로 구해요.
+- 정확도의 값은 f가 정확할 때의 이야기예요. f가 반올림 오차를 크게 내면 그만큼 나빠져요.
+
+자세한 방법은 [비선형 최소제곱의 구현](/internals/regression/nls/)에 있어요.
+
+## scipy·R을 아는 분께
+
+**scipy `curve_fit`**
+
+- `curve_fit(f, xdata, ydata, p0=...)`이 `nls(f, x, y, p0=...)`예요. f의 꼴(`f(x, *theta)`)이 같아요. 다만 f가 받는 x는 numpy 배열이 아니라 sd 배열이라 f 안에서 `np.exp` 대신 `sd.exp`를 써요. `p0`는 scipy에서는 생략하면 모두 1이지만 `nls`에서는 꼭 줘야 해요.
+- scipy는 `(popt, pcov)`를 돌려줘요. `popt`가 `params`, `pcov`가 `cov_params()`, `sqrt(diag(pcov))`가 `bse`예요.
+- `sigma`(`absolute_sigma=False`, 기본)는 `weights=1/sigma**2`와 같은 문제예요. `absolute_sigma=True`의 공분산은 `cov_params() / scale`이에요(σ를 아는 값으로 보고 $\hat\sigma^2$을 곱하지 않은 것).
+- `method`의 기본 규칙이 같아요. 범위가 없으면 `'lm'`, 있으면 `'trf'`예요. `bounds`의 꼴도 같아요.
+- 정확도: scipy는 반복이 `ftol` 등에서 멈춘 점을 내요. 위의 지수 감쇠에서 scipy의 계수는 `nls`와 상대 3×10⁻⁹–1.2×10⁻⁷, Michaelis–Menten에서 5×10⁻⁷–3×10⁻⁶ 달라요. `nls`의 두 계산(차분과 jac)은 서로 상대 3×10⁻¹⁴ 안이에요.
+- 호출 수: 그 정확도 때문에 `nls`가 f를 더 많이 불러요. 지수 감쇠에서 차분이면 scipy 38번, `nls` 143번, jac이 있으면 scipy 11번, `nls` 19번이에요.
+- 경계에 걸린 모수: scipy는 경계보다 조금 안쪽 값(Michaelis–Menten에서 209.99999999999991)을, `nls`는 경계값 210.0을 내요.
+- 겹친 모수: f = a·b·x에서 scipy는 경고 없이 10²⁶ 크기의 공분산을 내고, `nls`는 겹친 모수의 추론을 NaN으로 내요.
+- scipy의 `least_squares`(잔차 함수 꼴, 손실 함수)에 해당하는 것은 없어요.
+
+**R `nls`**
+
+- 모형과 척도는 R `nls`와 같아요(`scale`이 `sigma(fit)^2`, 자유도도 같아요). R의 기본 허용오차로는 계수가 조금 덜 다듬어져서, Michaelis–Menten(R의 `Puromycin`의 treated)에서 R의 $V_{\max}$는 212.68363, `nls`는 212.68374예요.
+- `llf`는 R `logLik`과 같지만 R의 `AIC`, `BIC`는 σ를 모수로 세서 `nls`보다 각각 2, log(nobs) 커요.

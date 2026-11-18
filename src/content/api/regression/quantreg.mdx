@@ -1,0 +1,599 @@
+---
+kind: function
+title: quantreg
+names: [quantreg, QuantRegResult]
+group: 분위 회귀
+order: 1
+signatures:
+  - "sd.regression.quantreg(y, X, /, *, q=0.5, intercept=True, cov_type='nid', bandwidth='hall-sheather', max_iter=100, tol=1e-05, rtol=None, nan_policy='propagate')"
+summary: 분위 회귀예요. x가 주어졌을 때 y의 평균 대신 중앙값이나 10%·90% 같은 분위수가 x에 따라 어떻게 바뀌는지를 직선(평면)으로 맞춰요. 퍼짐이 x에 따라 달라지는 데이터나 이상값이 섞인 데이터에서 써요.
+params:
+  - name: y
+    type: ndarray, 실수의 시퀀스, 또는 Series
+    kind: positional-only
+    desc: 반응 변수(설명하려는 값). 모양은 (n,)이고, 앞에 축을 더 붙이면(..., n) 회귀 여러 개를 한 번에 풀어요.
+  - name: X
+    type: ndarray, 실수의 시퀀스, 또는 DataFrame
+    kind: positional-only
+    desc: 설명 변수. (n, k)이거나 설명 변수 하나면 (n,)이에요. 절편 열은 넣지 않아요(intercept=True가 붙여요). 열이 없는 (n, 0)이면 절편만인 모형이에요.
+  - name: q
+    type: float 또는 1차원 배열
+    kind: keyword-only
+    desc: 맞출 분위. 0보다 크고 1보다 작은 수예요. 기본값 0.5는 중앙값이에요. 수의 1차원 배열을 주면 분위마다 한 번씩 풀고 결과에 분위 축이 붙어요.
+  - name: intercept
+    type: bool
+    kind: keyword-only
+    desc: 절편을 넣을지. 기본값은 True예요. 절편은 params[0]이에요.
+  - name: cov_type
+    type: str
+    kind: keyword-only
+    desc: "표준오차를 구하는 방법. 'nid'(기본값; 오차의 퍼짐이 행마다 달라도 됨), 'iid'(모든 행의 오차가 같은 분포라고 가정), 'ker'(커널로 잰 샌드위치) 중 하나예요."
+  - name: bandwidth
+    type: str
+    kind: keyword-only
+    desc: "표준오차에 쓰는 대역폭 규칙. 'hall-sheather'(기본값) 또는 'bofinger'예요."
+  - name: max_iter
+    type: int
+    kind: keyword-only
+    desc: 처음 단계의 반복 상한(1 이상, 기본값 100). 돌려주는 해는 바뀌지 않고 걸리는 시간만 바뀌어요.
+  - name: tol
+    type: float
+    kind: keyword-only
+    desc: 처음 단계를 멈추는 정밀도(0보다 큼, 기본값 1e-5). max_iter처럼 해는 바꾸지 않아요.
+  - name: rtol
+    type: float 또는 None
+    kind: keyword-only
+    desc: 겹친 열을 가려내는 상대 기준(0 이상). None(기본값)이면 max(n, k)·2.2e-16이에요. 겹친 열과 완전 적합 페이지를 보세요.
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "NaN을 다루는 방법. 'propagate'(기본값; 결과가 모두 NaN), 'omit'(NaN이 있는 행을 빼고 풂), 'raise'(ValueError) 중 하나예요."
+returns:
+  type: QuantRegResult
+  desc: 계수(params), 표준오차(bse), t값, p값, 신뢰구간(conf_int), 적합값과 잔차, 목적함수(objective), 의사 결정계수(prsquared), 수렴 정보(converged, nonunique, n_iter, n_pivots), predict와 summary를 가진 결과 객체예요.
+raises:
+  - type: TypeError
+    desc: y나 X가 복소수일 때, q가 bool이나 문자열일 때, intercept가 True·False가 아닐 때, 없는 인자(weights 등)를 줬을 때.
+  - type: ValueError
+    desc: q가 0 이하나 1 이상이거나 2차원 이상일 때, cov_type·bandwidth·nan_policy 이름이 틀렸을 때, X의 행 수가 y와 다를 때, 열도 없고 intercept=False일 때, y나 X가 Python 스칼라일 때, inf가 있을 때, nan_policy='raise'인데 NaN이 있을 때, 배치에 nan_policy='omit'을 줬을 때, max_iter가 1보다 작거나 tol이 0 이하일 때.
+seeAlso: [basics, results, ols, rlm, theilslopes, collinearity]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const qrPts = [[6.044,5.035],[3.484,4.368],[9.766,6.976],[5.332,5.656],[4.688,3.977],[4.261,3.0],[3.63,5.004],[2.374,2.779],[1.387,2.379],[5.12,4.483],[3.028,3.474],[9.86,5.462],[1.007,2.515],[7.602,4.812],[8.023,5.082],[5.277,5.387],[1.027,2.647],[0.373,2.196],[1.404,2.423],[0.238,1.659],[9.327,10.873],[4.38,4.804],[6.895,5.002],[5.57,3.873],[8.412,5.48],[9.717,5.413],[4.206,4.501],[8.157,3.76],[6.074,4.823],[7.09,4.858],[6.149,7.129],[5.139,4.74],[7.331,7.122],[7.638,9.219],[5.213,5.663],[7.058,9.046],[6.823,5.833],[8.05,10.241],[1.8,2.986],[7.242,2.439],[2.096,2.419],[9.354,9.773],[9.149,7.056],[6.699,5.108],[2.579,4.188],[2.017,3.519],[7.307,6.026],[4.491,4.179],[2.37,3.283],[7.73,4.639],[5.42,5.133],[3.638,2.166],[9.145,6.917],[2.095,2.903],[7.208,4.401],[7.498,6.201],[0.099,2.345],[2.972,2.874],[9.259,5.462],[5.748,4.379],[2.872,2.764],[5.995,3.365],[8.908,7.115],[9.483,7.146],[6.62,7.55],[1.736,3.091],[5.143,2.808],[9.567,7.75],[2.222,2.711],[4.433,4.669],[7.763,3.974],[7.746,6.256],[4.04,4.874],[4.839,4.128],[7.405,5.06],[8.957,9.336],[4.838,5.508],[4.858,3.882],[1.489,2.834],[5.749,4.637],[7.623,6.489],[3.256,2.669],[0.621,2.154],[9.745,8.154],[1.239,2.647],[6.191,4.95],[3.719,3.643],[7.149,4.12],[9.717,6.536],[3.979,3.577],[3.506,3.63],[2.175,3.76],[5.8,5.259],[8.129,4.703],[0.629,2.569],[6.647,5.453],[7.626,6.332],[9.515,9.011],[9.423,8.627],[2.893,3.399],[9.356,6.107],[0.324,2.117],[6.314,5.46],[5.349,5.084],[8.109,6.778],[9.127,7.489],[8.737,6.767],[7.753,5.902],[7.363,5.099],[4.72,4.409],[5.479,5.94],[8.12,6.972],[4.166,3.009],[5.501,6.482],[3.138,4.214],[9.307,4.812],[5.099,4.042],[9.374,6.102],[2.998,3.187],[4.23,4.921],[8.357,5.608],[6.384,2.784],[4.341,3.368],[9.976,6.248],[9.94,7.822],[7.055,5.653],[4.406,3.437],[5.148,4.954],[3.623,3.671],[6.62,4.099],[2.365,3.403],[8.322,5.055],[4.372,3.898],[3.813,3.901],[0.037,2.135],[1.972,1.955],[0.744,2.846],[8.642,6.941],[2.943,4.843],[1.475,2.7],[5.474,4.012],[3.407,4.585],[2.075,2.874],[7.809,5.312],[5.809,4.193],[9.434,5.635],[3.618,3.188],[6.422,4.799],[3.459,2.426],[7.106,5.459]];
+
+export const Scatter = ({ points, lines, domain, range, xTicks, yTicks, label }) => {
+  const W = 640, H = 300, L = 44, R = 16, T = 16, B = 30;
+  const sx = (v) => L + ((v - domain[0]) / (domain[1] - domain[0])) * (W - L - R);
+  const sy = (v) => H - B - ((v - range[0]) / (range[1] - range[0])) * (H - T - B);
+  const tick = { fill: 'var(--fg-subtle)', 'font-family': 'var(--font-mono)', 'font-size': '11px' };
+  return (
+    <div style={{ width: '100%', 'max-width': '640px' }}>
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label} style={{ width: '100%', height: 'auto' }}>
+        {xTicks.map((t) => <line x1={sx(t)} x2={sx(t)} y1={T} y2={H - B} style={{ stroke: 'var(--line)' }} />)}
+        {yTicks.map((t) => <line x1={L} x2={W - R} y1={sy(t)} y2={sy(t)} style={{ stroke: 'var(--line)' }} />)}
+        {xTicks.map((t) => <text x={sx(t)} y={H - 10} text-anchor="middle" style={tick}>{t}</text>)}
+        {yTicks.map((t) => <text x={L - 8} y={sy(t) + 4} text-anchor="end" style={tick}>{t}</text>)}
+        {points.map(([a, b]) => <circle cx={sx(a)} cy={sy(b)} r="2.6" style={{ fill: 'var(--slate-400)', opacity: 0.7 }} />)}
+        {lines.map((l) => <path d={l.pts.map(([a, b], i) => `${i ? 'L' : 'M'}${sx(a).toFixed(1)} ${sy(b).toFixed(1)}`).join('')} style={{ fill: 'none', stroke: l.color, 'stroke-width': 2, 'stroke-dasharray': l.dashed ? '5 5' : 'none' }} />)}
+      </svg>
+      <ul style={{ display: 'flex', 'flex-wrap': 'wrap', 'justify-content': 'center', gap: 'var(--space-5)', margin: 'var(--space-2) 0 0', padding: 0, 'list-style': 'none', 'font-family': 'var(--font-mono)', 'font-size': 'var(--text-xs)', color: 'var(--fg-muted)' }}>
+        {lines.map((l) => <li style={{ display: 'flex', 'align-items': 'center', gap: 'var(--space-2)', margin: 0 }}><span style={{ width: '14px', height: '2px', background: l.color }} />{l.label}</li>)}
+      </ul>
+    </div>
+  );
+};
+
+## 무엇을 하나요
+
+보통의 회귀([ols](/api/regression/ols/))는 "x가 이만할 때 y는 **평균적으로** 얼마인가"를 직선으로 답해요. 분위 회귀는 같은 질문을 평균 대신 **분위수**로 물어요. "x가 이만할 때 y의 중앙값은 얼마인가", "아래쪽 10%는 어디까지 내려가는가", "위쪽 10%는 어디부터인가" 같은 질문이에요. 이렇게 x마다 정해지는 y의 분위수를 **조건부 분위수**라고 해요.
+
+아래 그림은 x가 커질수록 y가 더 넓게 퍼지는 데이터 150개예요. 분위 0.1, 0.5, 0.9의 직선을 따로 맞췄어요. 세 직선이 오른쪽으로 갈수록 벌어지는 것이 퍼짐이 커지는 모습 그대로예요. 점선인 최소제곱 직선은 하나뿐이라 이런 퍼짐의 변화를 보여 주지 못해요.
+
+<Fig caption="퍼짐이 x에 따라 커지는 데이터와 분위 0.1·0.5·0.9의 분위 회귀 직선, 그리고 최소제곱 직선(점선)">
+  <Scatter
+    label="분위 회귀 직선 세 개와 최소제곱 직선을 그린 산점도"
+    points={qrPts}
+    lines={[
+      { pts: [[0, 2.2039], [10, 9.3578]], label: 'q = 0.9', color: 'var(--blue-800)' },
+      { pts: [[0, 1.9537], [10, 7.011]], label: 'q = 0.5', color: 'var(--blue-500)' },
+      { pts: [[0, 1.5679], [10, 5.3913]], label: 'q = 0.1', color: 'var(--blue-300)' },
+      { pts: [[0, 1.8438], [10, 7.2048]], label: 'ols', color: 'var(--slate-600)', dashed: true },
+    ]}
+    domain={[0, 10]}
+    range={[1, 11.5]}
+    xTicks={[0, 2, 4, 6, 8, 10]}
+    yTicks={[2, 4, 6, 8, 10]}
+  />
+</Fig>
+
+분위 회귀가 쓸모 있는 곳은 이런 곳이에요.
+
+- **퍼짐이 x에 따라 달라질 때**: 소득에 따른 지출, 나이에 따른 키·몸무게의 성장 곡선처럼 가운데뿐 아니라 위아래 끝이 어떻게 움직이는지가 궁금할 때예요.
+- **끝이 관심일 때**: 손실의 위쪽 5%, 배송 시간의 위쪽 10%처럼 평균보다 꼬리가 중요한 문제예요.
+- **이상값이 섞였을 때**: 중앙값 회귀(q = 0.5)는 아주 큰 값 하나에 끌려가지 않아요. 아래 ols·rlm과 비교하는 절에서 다뤄요.
+
+<Reference />
+
+## 기본 사용
+
+x가 커질수록 퍼짐이 커지는 데이터 60개를 만들어 중앙값 회귀를 해 볼게요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(0)
+>>> n = 60
+>>> x = 10 * rng.random(n)
+>>> y = 2 + 0.5 * x + (0.2 + 0.15 * x) * sd.stats.Normal().sample(n, rng=rng)
+>>> r = sd.regression.quantreg(y, x)
+>>> r
+QuantRegResult(q=0.5, nobs=60, rank=2, objective=22.7544, params=[1.8361726710057302 0.5415194134757703])
+>>> r.param_names
+['const', 'x1']
+>>> r.params
+array([1.8361726710057302, 0.5415194134757703], dtype=float64)
+```
+
+**계수**(`params`)는 맞춘 직선의 절편과 기울기예요. 절편 1.84는 x = 0일 때 y의 중앙값, 기울기 0.54는 x가 1 늘 때 y의 중앙값이 늘어나는 양이에요. `const`가 절편이고, 설명 변수에는 `x1`, `x2`, … 이름이 붙어요(DataFrame을 주면 그 열 이름이에요).
+
+**표준오차**(`bse`)는 계수가 표본에 따라 얼마나 흔들리는지의 크기이고, **신뢰구간**(`conf_int`)은 참값이 들어 있을 만한 범위예요. **t값**은 계수 ÷ 표준오차, **p값**은 참값이 0인데도 이만큼 큰 t가 나올 확률이에요. 이 말들의 자세한 뜻은 [결과 객체 읽기](/api/regression/results/)에 있어요.
+
+```python
+>>> r.bse
+array([0.15610494454795532, 0.06732381195427736], dtype=float64)
+>>> r.conf_int()
+array([[ 1.5236946741425657,   2.148650667868895],
+       [0.40675616198758724,  0.6762826649639533]], dtype=float64)
+```
+
+q를 바꾸면 다른 분위의 직선이 나와요. q = 0.9의 직선 아래에는 점의 약 90%가 있어요.
+
+```python
+>>> r9 = sd.regression.quantreg(y, x, q=0.9)
+>>> r9.params
+array([ 2.227970901629098, 0.6868466378481818], dtype=float64)
+>>> float(sd.mean(y <= r9.fittedvalues))
+0.9166666666666666
+```
+
+기울기가 중앙값의 0.54보다 큰 0.69예요. 위쪽 끝이 가운데보다 빨리 올라간다는 뜻이고, 퍼짐이 x와 함께 커지는 데이터의 모습이에요.
+
+## 목적함수: 체크 손실
+
+최소제곱은 잔차 $r_i = y_i - x_i\beta$의 제곱합을 가장 작게 하는 β를 찾아요. 분위 회귀는 제곱 대신 **체크 손실**(check loss) $\rho_q$의 합을 가장 작게 해요.
+
+$$
+\min_\beta \sum_{i=1}^n \rho_q(y_i - x_i\beta), \qquad
+\rho_q(r) = r\,(q - [r < 0]) =
+\begin{cases} q\,r & r \ge 0 \\ (q - 1)\,r & r < 0 \end{cases}
+$$
+
+$[r < 0]$은 r이 음수면 1, 아니면 0이에요. 그래서 $\rho_q$는 0에서 꺾이는 두 직선이에요. 직선보다 위에 있는 점(r > 0)은 $q$의 비율로, 아래에 있는 점은 $1 - q$의 비율로 벌점을 받아요.
+
+<Fig caption="체크 손실 ρ_q(r). q = 0.5는 절댓값의 절반이고, q = 0.9는 위쪽 잔차에 9배 무거운 벌점을 줘요.">
+  <Plot
+    curves={[
+      { f: (r) => r * (0.9 - (r < 0 ? 1 : 0)), label: 'q = 0.9' },
+      { f: (r) => r * (0.5 - (r < 0 ? 1 : 0)), label: 'q = 0.5' },
+      { f: (r) => r * (0.1 - (r < 0 ? 1 : 0)), label: 'q = 0.1', dashed: true },
+    ]}
+    domain={[-2, 2]}
+    range={[0, 1.9]}
+    xTicks={[
+      { v: -2, label: '-2' },
+      { v: -1, label: '-1' },
+      { v: 0, label: '0' },
+      { v: 1, label: '1' },
+      { v: 2, label: '2' },
+    ]}
+    yTicks={[
+      { v: 0.5, label: '0.5' },
+      { v: 1, label: '1' },
+      { v: 1.5, label: '1.5' },
+    ]}
+  />
+</Fig>
+
+q = 0.9이면 위쪽 점의 벌점이 아래쪽 점의 9배라서, 직선은 위로 올라가 점의 10%만 위에 남는 곳에서 멈춰요. 이것이 이 목적함수의 최소점이 q분위수가 되는 이유예요.
+
+절편만 있는 모형이면 이 최소점은 그냥 y의 표본 q분위수예요. 열이 없는 X(`sd.zeros((n, 0))`)를 주면 절편만인 모형이 돼요.
+
+```python
+>>> y7 = [3.0, 1.0, 4.0, 1.0, 5.0, 9.0, 2.0]
+>>> sd.regression.quantreg(y7, sd.zeros((7, 0))).params
+array([3.0], dtype=float64)
+>>> sd.regression.quantreg(y7, sd.zeros((7, 0)), q=0.8).params
+array([5.0], dtype=float64)
+```
+
+정렬하면 1, 1, 2, 3, 4, 5, 9라서 중앙값은 3, 0.8분위수는 5예요.
+
+결과의 `objective`가 이 최솟값 $\sum \rho_q(r_i)$이에요. `prsquared`는 Koenker–Machado의 의사 결정계수 $R^1$이에요.
+
+$$
+R^1 = 1 - \frac{\text{objective}}{\text{절편만인 모형의 최소 목적함수}}
+$$
+
+설명 변수가 체크 손실을 얼마나 줄였는지를 0과 1 사이로 나타내요. 최소제곱의 R²(분산 가운데 설명된 비율)와 비슷한 구실이지만 같은 값은 아니에요. 절편이 없으면(`intercept=False`) 분모는 $\sum \rho_q(y_i)$예요.
+
+```python
+>>> r.objective
+22.754426184522682
+>>> r.prsquared
+0.5079029626784556
+```
+
+## 인자
+
+### q: 분위 하나 또는 여러 개
+
+q에 수의 1차원 배열(리스트도 돼요)을 주면 분위마다 한 번씩 풀어요. 결과의 필드에는 **분위 축**이 붙어요.
+
+```python
+>>> rq = sd.regression.quantreg(y, x, q=[0.1, 0.5, 0.9])
+>>> rq.params
+array([[1.7781590268058434, 0.3035461609006318],
+       [1.8361726710057302, 0.5415194134757703],
+       [ 2.227970901629098, 0.6868466378481818]], dtype=float64)
+>>> rq.params.shape, rq.fittedvalues.shape, rq.conf_int().shape, rq.cov_params().shape
+((3, 2), (3, 60), (3, 2, 2), (3, 2, 2))
+>>> rq.objective
+array([ 8.979340017335188, 22.754426184522682,  8.096398368401488], dtype=float64)
+>>> rq.q
+array([0.1, 0.5, 0.9], dtype=float64)
+```
+
+| 필드 | 분위 하나 | 분위 L개 |
+|---|---|---|
+| `params`, `bse`, `tvalues`, `pvalues` | (k,) | (L, k) |
+| `objective`, `prsquared`, `nobs`, `bandwidth` 같은 스칼라 | Python 수 | (L,) |
+| `converged`, `nonunique` | bool | bool 배열 (L,) |
+| `n_iter`, `n_pivots` | int | int64 배열 (L,) |
+| `fittedvalues`, `resid` | (n,) | (L, n) |
+| `conf_int()` | (k, 2) | (L, k, 2) |
+| `cov_params()` | (k, k) | (L, k, k) |
+| `predict(X_new)` | (m,) | (L, m) |
+
+k는 절편을 포함한 계수의 수예요. 배치(y가 (B, n))와 함께 쓰면 분위 축은 배치 축 뒤에 붙어요(`params`가 (B, L, k)). `q`는 준 값 그대로 돌려줘요.
+
+여러 분위를 한 번에 풀어도 결과는 분위마다 따로 부른 것과 비트까지 같아요.
+
+```python
+>>> rq.params[0].tolist() == sd.regression.quantreg(y, x, q=0.1).params.tolist()
+True
+```
+
+`summary()`는 분위 하나만 받아요. 분위 배열의 결과는 `rq.params[j]`처럼 필드를 직접 꺼내 보세요.
+
+### cov_type과 bandwidth: 표준오차
+
+분위 회귀의 표준오차는 잔차가 0 근처에 얼마나 빽빽이 모여 있는지(분위에서의 밀도)를 재서 구해요. 밀도가 높으면 직선을 조금만 옮겨도 체크 손실이 크게 바뀌어서 계수가 잘 정해지고, 표준오차가 작아요. 이 밀도를 재는 방법이 세 가지예요.
+
+| cov_type | 하는 일 | 언제 |
+|---|---|---|
+| `'nid'`(기본값) | q보다 조금 위(q + h)와 아래(q − h)의 분위 직선을 다시 맞추고, 두 직선의 간격으로 행마다 밀도를 재요. | 퍼짐이 행마다 다를 때도 맞아요. 보통은 이것을 써요. |
+| `'iid'` | 모든 행의 오차가 같은 분포라고 보고 밀도 하나를 잔차의 순서 통계량에서 재요. | 퍼짐이 고르다고 믿을 수 있을 때. 가장 싸요. |
+| `'ker'` | 잔차에 정규 커널을 씌워 행마다 밀도를 재요(Powell). | 'nid'처럼 퍼짐이 달라도 되는 다른 추정이에요. |
+
+h가 **대역폭**이에요. q의 단위(0과 1 사이의 수)이고 n이 클수록 작아져요. `bandwidth`는 그 규칙을 골라요. `'hall-sheather'`(기본값)는 $n^{-1/3}$, `'bofinger'`는 $n^{-1/5}$의 빠르기로 줄어요. 결과의 `bandwidth`는 실제로 쓴 h예요. 'nid'와 'ker'에서는 q − h가 0 밑이나 q + h가 1 위로 나가면 h를 반씩 줄인 값이에요.
+
+```python
+>>> for ct in ['nid', 'iid', 'ker']:
+...     print(ct, sd.regression.quantreg(y, x, cov_type=ct).bse)
+nid [0.15610494454795532 0.06732381195427736]
+iid [ 0.2262942955021175 0.04042391471075932]
+ker [ 0.3605084850776452 0.08406100218339024]
+>>> r.bandwidth
+0.24817161530270776
+>>> sd.regression.quantreg(y, x, bandwidth='bofinger').bandwidth
+0.28558823034202463
+```
+
+계수는 cov_type이나 bandwidth와 상관없이 같아요. 바뀌는 것은 `bse`, `tvalues`, `pvalues`, `conf_int`, `cov_params`뿐이에요. p값과 신뢰구간은 자유도 `df_resid`의 [t 분포](/api/stats/student-t/)로 구해요. cov_type의 뜻은 선형 모형의 [표준오차의 종류](/api/regression/covariance/)와 이름 체계가 달라요. 분위 회귀에는 'HC0'이나 'cluster'가 없어요.
+
+y를 c배 하면 계수와 표준오차가 정확히 c배가 돼요(반올림 수준에서). y의 단위를 바꿔도 결과가 단위만 따라 바뀐다는 뜻이에요.
+
+```python
+>>> big = sd.regression.quantreg(y * 1000, x)
+>>> [round(v, 9) for v in (big.bse / r.bse).tolist()]
+[1000.0, 1000.0]
+```
+
+### max_iter, tol: 답을 바꾸지 않아요
+
+`quantreg`는 먼저 해 근처까지 빠르게 다가간 뒤, 거기서 정확한 최적점(꼭짓점, 아래 수렴 절)으로 옮겨 가요. `max_iter`와 `tol`은 처음 단계를 언제 멈출지만 정해요. 어디서 멈추든 같은 꼭짓점에 닿으므로 **답은 그대로**이고, 걸린 반복 수(`n_iter`)와 옮겨 간 걸음 수(`n_pivots`)만 달라져요.
+
+```python
+>>> a = sd.regression.quantreg(y, x)
+>>> b = sd.regression.quantreg(y, x, max_iter=1)
+>>> c = sd.regression.quantreg(y, x, tol=0.5)
+>>> a.params.tolist() == b.params.tolist() == c.params.tolist()
+True
+>>> (a.n_iter, a.n_pivots), (b.n_iter, b.n_pivots), (c.n_iter, c.n_pivots)
+((5, 0), (1, 2), (2, 0))
+```
+
+정밀도를 위해 이 값을 바꿀 필요는 없어요.
+
+### 가중치는 없어요
+
+`quantreg`에는 `weights` 인자가 없어요.
+
+```python
+>>> sd.regression.quantreg(y, x, weights=sd.ones(60))
+Traceback (most recent call last):
+    ...
+TypeError: quantreg() got an unexpected keyword argument 'weights'
+```
+
+## 결과 필드
+
+| 필드 | 뜻 |
+|---|---|
+| `params` | 계수. 절편이 있으면 `params[0]`이에요. |
+| `bse`, `tvalues`, `pvalues` | 표준오차, t값(계수 ÷ 표준오차), p값(자유도 `df_resid`의 t 분포) |
+| `conf_int(alpha=0.05)` | 1 − alpha 신뢰구간. (k, 2) 배열이에요. |
+| `cov_params()` | 계수의 공분산 행렬 (k, k). 대각선의 제곱근이 `bse`예요. |
+| `fittedvalues`, `resid` | 적합값 $x_i\hat\beta$와 잔차 $y_i - x_i\hat\beta$ |
+| `q` | 준 분위(수 또는 배열) |
+| `objective` | 최소 목적함수 $\sum \rho_q(r_i)$ |
+| `prsquared` | 의사 결정계수 $R^1$ |
+| `nobs`, `df_model`, `df_resid` | 쓰인 관측 수, 모형 자유도(절편 뺀 계수 수), 잔차 자유도(nobs − rank). 모두 float예요. |
+| `rank`, `condition_number` | 겹치지 않은 열의 수, 설계 행렬의 조건수 |
+| `converged`, `nonunique` | 최적임이 확인됐는지, 최소점이 여럿인지(아래) |
+| `n_iter`, `n_pivots` | 처음 단계의 반복 수, 그 뒤 꼭짓점으로 옮겨 간 걸음 수 |
+| `cov_type`, `bandwidth` | 표준오차 방법, 쓴 대역폭 h |
+| `param_names` | 계수 이름 |
+| `predict(X_new, /)` | 새 X의 적합값 |
+| `summary(*, alpha=0.05)` | 결과 표(문자열) |
+
+`summary()`는 이렇게 생겼어요.
+
+```python
+>>> print(r.summary())
+                         QuantReg Regression Results
+==============================================================================
+Model:                        QuantReg  Pseudo R-squared:               0.5079
+Method:                  Frisch-Newton  Bandwidth:                      0.2482
+Quantile:                          0.5  No. Observations:                   60
+Cov Type:                          nid  Df Residuals:                       58
+Bandwidth rule:          hall-sheather  Df Model:                            1
+==============================================================================
+                 coef    std err          t      P>|t|     [0.025     0.975]
+------------------------------------------------------------------------------
+const          1.8362      0.156     11.762      0.000      1.524      2.149
+x1             0.5415      0.067      8.044      0.000      0.407      0.676
+==============================================================================
+<BLANKLINE>
+Notes:
+[1] Standard errors are the Hendricks-Koenker sandwich (the sparsity from the
+    fits at q +- bandwidth, as R's summary.rq se='nid'). t uses df_resid
+    degrees of freedom.
+```
+
+## 유일하지 않은 해: nonunique
+
+체크 손실의 최솟값은 하나지만, 그 최솟값을 내는 β는 여럿일 수 있어요. 가장 쉬운 예는 짝수 개의 중앙값이에요. 1, 2, 3, 4에서는 2와 3 사이의 **어느 값이든** 체크 손실이 똑같이 가장 작아요.
+
+이럴 때 결과의 `nonunique`가 True이고, `params`는 최소점들 가운데 **사전식으로 가장 작은 점**이에요. 먼저 `params[0]`이 가장 작은 점들을 고르고, 그 가운데 `params[1]`이 가장 작은 점, 그다음 `params[2]`, … 순서로 하나를 정해요. 그래서 같은 데이터면 늘 같은 점이 나와요.
+
+절편만인 모형이면 이 점은 정렬한 값의 $\lceil nq \rceil$번째 값(R `quantile(type = 1)`의 표본 분위수)이에요. 짝수 개의 중앙값이면 가운데 두 값 가운데 아래쪽이에요.
+
+```python
+>>> e = sd.regression.quantreg([5.0, 1.0, 3.0, 8.0, 2.0, 7.0], sd.zeros((6, 0)))
+>>> e.params, e.nonunique
+(array([3.0], dtype=float64), True)
+```
+
+정렬하면 1, 2, 3, 5, 7, 8이라 3과 5 사이가 모두 최소점이고, 그 가운데 가장 작은 3이 나와요. 이것은 `sd.median`의 4.0(두 값의 평균)과 달라요.
+
+설명 변수가 있어도 같아요. 두 집단(더미 변수 g)의 정수 반응을 볼게요.
+
+```python
+>>> g = [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0]
+>>> yg = [1.0, 2.0, 3.0, 4.0, 2.0, 3.0, 5.0, 6.0]
+>>> d = sd.regression.quantreg(yg, g)
+>>> d.params, d.nonunique
+(array([2.0, 1.0], dtype=float64), True)
+```
+
+집단 0(1, 2, 3, 4)의 중앙값은 2와 3 사이, 집단 1(2, 3, 5, 6)의 중앙값은 3과 5 사이 어디든 돼요. 절편 = 집단 0의 값, 절편 + 기울기 = 집단 1의 값이므로, 먼저 절편을 가장 작게(2) 하고 그다음 기울기를 가장 작게(3 − 2 = 1) 한 점이 (2, 1)이에요.
+
+<Callout type="note" title="q가 10진 수라서 생기는 동률">
+n = 10, q = 0.3이면 nq = 3이라 3번째와 4번째 값 사이가 모두 최소점이에요. 그런데 double의 0.3은 0.3보다 아주 조금 작아서 정확히 계산하면 최소점이 하나예요. `quantreg`는 이런 반올림 크기의 차이를 동률로 보아 `nonunique=True`를 내요. 사람이 의도한 0.3에 맞는 판정이에요.
+</Callout>
+
+```python
+>>> ten = [float(i) for i in range(1, 11)]
+>>> t3 = sd.regression.quantreg(ten, sd.zeros((10, 0)), q=0.3)
+>>> t3.params, t3.nonunique
+(array([3.0], dtype=float64), True)
+```
+
+`nonunique=True`는 잘못된 것이 아니에요. 데이터가 하나의 답을 정하지 못한다는 정보예요. 정수 반응이나 더미 변수가 많은 설계에서 자주 생겨요.
+
+## 수렴과 그 필드
+
+분위 회귀의 해는 늘 **꼭짓점**에 있어요. 꼭짓점은 잔차가 0인 행 k개(계수의 수만큼)가 정하는 점이에요. 그림에서 직선이 점 두 개를 정확히 지나는 것이 그 모습이에요. `quantreg`는 돌려준 꼭짓점이 정말 최적인지를 확인하는 조건(최적성 증명서)까지 계산해요.
+
+| 필드 | 뜻 |
+|---|---|
+| `converged` | 돌려준 꼭짓점이 최적임이 확인됐으면 True예요. |
+| `nonunique` | 최소점이 여럿이면 True예요(위). |
+| `n_iter` | 처음 단계의 반복 수예요. 분위 배열의 둘째 분위부터는 앞 분위의 결과에서 바로 시작하므로 0이에요. |
+| `n_pivots` | 처음 단계가 멈춘 곳에서 최적 꼭짓점까지 옮겨 간 걸음 수예요. |
+
+```python
+>>> r.converged, r.nonunique, r.n_iter, r.n_pivots
+(True, False, 5, 0)
+>>> rq.n_iter, rq.n_pivots
+(array([9, 0, 0], dtype=int64), array([0, 6, 4], dtype=int64))
+```
+
+걸음 수에는 넉넉한 안전 상한(4n + 64k + 1000번)이 있고, 닿으면 그때의 꼭짓점을 내고 `converged=False`예요. 경고는 내지 않아요. 보통의 데이터에서는 닿지 않아요.
+
+## 예측
+
+`predict(X_new)`는 새 X에서 맞춘 분위 직선의 값을 줘요. X_new는 적합의 X와 같은 열 수이고, 절편 열은 넣지 않아요.
+
+```python
+>>> r.predict([0.0, 5.0, 10.0])
+array([1.8361726710057302,  4.543769738384581,  7.251366805763433], dtype=float64)
+>>> rq.predict([0.0, 10.0])
+array([[1.7781590268058434,  4.813620635812161],
+       [1.8361726710057302,  7.251366805763433],
+       [ 2.227970901629098,  9.096437280110916]], dtype=float64)
+```
+
+분위 배열이면 결과가 (L, m)이에요. 줄마다 그 분위의 예측이에요.
+
+## 특수한 경우
+
+### 표준오차가 NaN이 될 때
+
+밀도를 잴 수 없는 곳에서는 표준오차와 그에 딸린 값(`tvalues`, `pvalues`, `conf_int`, `cov_params`)이 NaN이에요. 계수는 그대로 나와요.
+
+- **완전 적합**: 모든 점이 한 직선 위에 있어 잔차가 모두 0이면 밀도가 무한이라 정의되지 않아요.
+- **q가 0이나 1에 아주 가까울 때**: q ± h의 두 직선이 같은 꼭짓점이면 간격이 0이라 잴 수 없어요.
+- **잔차 자유도가 0 이하일 때**: 점이 계수 수보다 많지 않으면 그래요.
+
+```python
+>>> line = sd.regression.quantreg([3.0, 5.0, 7.0, 9.0, 11.0, 13.0], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+>>> line.params, line.bse
+(array([1.0, 2.0], dtype=float64), array([nan, nan], dtype=float64))
+>>> sd.regression.quantreg(y, x, q=0.01).bse
+array([nan, nan], dtype=float64)
+>>> sd.regression.quantreg(y, x, q=0.02).bse
+array([0.21733963767002032, 0.07598754194475305], dtype=float64)
+>>> sd.regression.quantreg([1.0, 3.0], [1.0, 2.0]).bse
+array([nan, nan], dtype=float64)
+```
+
+n = 60에서 q = 0.01은 맨 아래 점 한두 개로 정해지는 분위라 밀도를 잴 수 없어요. 끝 분위의 추론은 n이 충분히 클 때만 믿을 수 있어요.
+
+### NaN과 inf
+
+규칙은 회귀 영역 공통이에요([기본 개념](/api/regression/basics/)). 기본 `'propagate'`면 NaN이 하나라도 있을 때 모든 값이 NaN이고 `converged`·`nonunique`는 False, `rank`·`n_iter`·`n_pivots`는 0이에요. `'omit'`은 NaN이 있는 행을 빼고 풀어요. inf는 늘 ValueError예요.
+
+```python
+>>> yn = [1.2, 1.9, float('nan'), 3.9, 5.3, 5.8, 7.4, 8.1]
+>>> xs = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
+>>> bad = sd.regression.quantreg(yn, xs)
+>>> bad.params, bad.nobs, bad.converged
+(array([nan, nan], dtype=float64), nan, False)
+>>> ok = sd.regression.quantreg(yn, xs, nan_policy='omit')
+>>> ok.nobs, ok.fittedvalues.shape
+(7.0, (7,))
+>>> sd.regression.quantreg(yn, xs, nan_policy='raise')
+Traceback (most recent call last):
+    ...
+ValueError: quantreg(): the input contains NaN (nan_policy='raise')
+```
+
+### 겹친 열
+
+다른 열의 일차결합인 열(예: x와 2x)은 계수와 그 추론이 NaN이고, 나머지는 그 열을 뺀 적합과 비트까지 같아요. `rank`, `df_model`, `df_resid`는 남은 열로 세요. 판정 규칙은 [겹친 열과 완전 적합](/api/regression/collinearity/)과 같아요.
+
+```python
+>>> yc = [1.2, 1.9, 3.4, 3.9, 5.3, 5.8, 7.4, 8.1]
+>>> X2 = sd.stack([sd.asarray(xs), 2 * sd.asarray(xs)], axis=1)
+>>> rc = sd.regression.quantreg(yc, X2)
+>>> rc.params, rc.rank
+(array([0.21428571428571427, 0.9857142857142857, nan], dtype=float64), 2)
+>>> sd.regression.quantreg(yc, xs).params
+array([0.21428571428571427, 0.9857142857142857], dtype=float64)
+```
+
+### 배치
+
+y에 앞 축을 붙이면 같은 모양의 회귀 여러 개를 한 번에 풀어요. 결과는 하나씩 부른 것과 비트까지 같아요. 공통 규칙은 [기본 개념](/api/regression/basics/)에 있어요.
+
+```python
+>>> yb = sd.asarray([[1.5, 2.0, 3.5, 4.0, 5.5, 7.0], [2.0, 1.0, 4.0, 3.0, 6.0, 5.0]])
+>>> sd.regression.quantreg(yb, [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).params
+array([[0.5, 1.0],
+       [1.4, 0.6]], dtype=float64)
+```
+
+## 에러
+
+```python
+>>> sd.regression.quantreg(y, x, q=1.0)
+Traceback (most recent call last):
+    ...
+ValueError: quantreg(): 'q' must be a number or a 1-dimensional array of numbers strictly between 0 and 1
+>>> sd.regression.quantreg(y, x, cov_type='boot')
+Traceback (most recent call last):
+    ...
+ValueError: quantreg(): 'cov_type' must be 'iid', 'nid' or 'ker', not 'boot'
+>>> sd.regression.quantreg(y, x, bandwidth='x')
+Traceback (most recent call last):
+    ...
+ValueError: quantreg(): 'bandwidth' must be 'hall-sheather' or 'bofinger', not 'x'
+>>> sd.regression.quantreg(y, sd.zeros((60, 0)), intercept=False)
+Traceback (most recent call last):
+    ...
+ValueError: quantreg(): the model has no parameters (no columns in 'X' and intercept=False)
+>>> sd.regression.quantreg(y, x[:59])
+Traceback (most recent call last):
+    ...
+ValueError: quantreg(): 'X' must have 60 rows like 'y', not 59
+>>> sd.regression.quantreg(y, x, q=True)
+Traceback (most recent call last):
+    ...
+TypeError: quantreg(): 'q' must be a number or a 1-dimensional array, not bool
+```
+
+## ols·rlm과 어떻게 다를까요
+
+세 함수 모두 직선을 맞추지만 무엇을 맞추는지가 달라요.
+
+| | [ols](/api/regression/ols/) | [rlm](/api/regression/rlm/) | quantreg |
+|---|---|---|---|
+| 맞추는 것 | 조건부 평균 | 이상값의 영향을 줄인 가운데 | 조건부 q분위수 |
+| 목적 | 잔차 제곱합 | 큰 잔차를 덜 세는 손실 | 체크 손실 |
+| 이상값 | 크게 끌려가요 | 덜 끌려가요 | 중앙값(q = 0.5)은 거의 끌려가지 않아요 |
+| 퍼짐의 변화 | 보이지 않아요 | 보이지 않아요 | 여러 q로 보여요 |
+
+마지막 점 하나를 크게 튀게 한 데이터로 비교해 볼게요.
+
+```python
+>>> xo = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
+>>> yo = [2.3, 3.8, 6.4, 8.1, 9.7, 12.2, 14.1, 15.8, 18.3, 60.0]
+>>> sd.regression.ols(yo, xo).params
+array([-7.873333333333334,  4.171515151515152], dtype=float64)
+>>> sd.regression.rlm(yo, xo).params
+array([-0.04391716017032889,    2.036219831561605], dtype=float64)
+>>> sd.regression.quantreg(yo, xo).params
+array([-0.060000000000001205,                  2.04], dtype=float64)
+```
+
+나머지 점의 기울기는 2 남짓이에요. ols는 점 하나 때문에 4.17로 끌려갔고, rlm과 중앙값 회귀는 2.04 근처에 머물러요. 이상값에 강한 직선이 목적이면 rlm과 중앙값 회귀 모두 쓸 수 있어요. rlm은 오차가 정규분포에 가까울 때 더 효율적이고(표준오차가 작고), quantreg는 가운데 말고 다른 분위도 볼 수 있어요. 기울기 하나만 필요하면 [theilslopes](/api/regression/theilslopes/)도 있어요.
+
+## 정확도
+
+- 돌려주는 계수는 정확한 최적 꼭짓점과 반올림 수준(상대오차 10⁻¹⁶ 정도)으로 같아요. 최적임을 확인하는 조건도 함께 성립해요.
+- `max_iter`, `tol`, 스레드 수, 분위를 배열로 주었는지와 상관없이 같은 비트예요. 최소점이 여럿일 때도 사전식 최소점 하나로 정해지기 때문이에요.
+- 'nid', 'iid', 'ker' 표준오차는 R `summary.rq`와 같은 식이에요. 다만 R은 0으로 볼 잔차의 기준(2⁻²⁶)을 y의 단위 그대로 쓰고 `quantreg`는 max|yᵢ|에 비례해 써서, max|yᵢ| = 1이 아니면 'nid'가 R과 조금 달라요(y의 단위가 아주 작으면 'iid'도 달라요).
+
+## statsmodels·scikit-learn·R을 아는 분께
+
+**statsmodels `QuantReg`**
+
+- `QuantReg(y, sm.add_constant(X)).fit(q=0.5)`가 `quantreg(y, X, q=0.5)`예요. 절편은 기본으로 들어가고 `intercept=False`로 꺼요. statsmodels처럼 X의 상수 열을 찾아 절편으로 보지는 않아요.
+- 필드 이름(`params`, `bse`, `tvalues`, `pvalues`, `conf_int`, `prsquared`, `nobs`, `df_model`, `df_resid`)은 같아요. statsmodels에 없는 것은 `objective`, `converged`, `nonunique`, `n_pivots`예요. statsmodels의 `iterations`는 그쪽 반복의 수라 `n_iter`와 뜻이 달라요. `q`에 배열을 주는 것도 `quantreg`만 돼요.
+- 계수: statsmodels는 반복을 `p_tol`(기본 1e-6)에서 멈춘 근사이고, `quantreg`는 정확한 꼭짓점이에요. 그래서 계수가 조금 다르고 목적함수는 `quantreg`가 작거나 같아요. 위의 60개 데이터에서 statsmodels의 계수는 1.83617146, 0.54152101이에요.
+- 표준오차: statsmodels의 기본(`vcov='robust'`, Epanechnikov 커널)은 다른 추정이라 값이 달라요. 같은 데이터에서 statsmodels는 0.300, 0.0536, `quantreg`의 'nid'는 0.156, 0.0673이에요. statsmodels의 `bandwidth`(summary의 Bandwidth)는 잔차 단위의 커널 폭이고, `quantreg`의 `bandwidth`는 q 단위의 h예요.
+- 유일하지 않은 해에서 statsmodels는 최소점 집합 안의 아무 점이나 낼 수 있어요. 1, 2, 3, 5, 7, 8의 중앙값을 statsmodels는 4.333, `quantreg`는 3.0으로 내요.
+- `prsquared`: statsmodels는 절편만인 모형의 값을 보간한 백분위수에서 재요. 그 점이 최소점이 아니면 `quantreg`보다 커요. y = 3, 1, 4, 1, 5, 9, 2, 6, 5, 3.5와 x = 0, …, 9, q = 0.25에서 statsmodels는 0.1674, `quantreg`는 0.1523이에요.
+
+**scikit-learn `QuantileRegressor`**
+
+- 기본값 `alpha=1.0`은 계수에 L1 벌점을 주는 다른 모형이에요. 위의 60개 데이터에서 기울기가 0.150으로 줄어요. `alpha=0`이면 같은 문제이고, 이 데이터에서 계수가 `quantreg`와 반올림 수준(마지막 자리)으로 같아요. 표준오차는 주지 않아요.
+
+**R `quantreg`**
+
+- `rq(y ~ x, tau = 0.5)`(기본 `method = "br"`)와 유일한 해에서는 계수가 반올림 수준으로 같아요. 유일하지 않으면 다른 최소점일 수 있어요. 위의 두 집단 데이터에서 R은 (3, 0), `quantreg`는 (2, 1)이에요(둘 다 최소점). R은 유일한 해에서도 "Solution may be nonunique" 경고를 낼 때가 있어요.
+- R `summary.rq`의 기본 `se`는 n < 1001이면 순위 역전 구간(`"rank"`)이에요. `quantreg`의 기본은 `se = "nid"`에 해당해요. 위의 60개 데이터(max|yᵢ| = 8.65)에서 'nid' 표준오차는 R과 상대 2×10⁻⁷ 정도 달라요. 차이는 0으로 볼 잔차의 기준을 y의 크기에 맞추는 데서 와요.

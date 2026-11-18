@@ -1,0 +1,325 @@
+---
+kind: concept
+title: 표준오차의 종류
+group: 기본 개념
+order: 3
+summary: cov_type으로 표준오차를 계산하는 방법을 고르는 법을 설명해요. 기본(nonrobust), 오차의 크기가 관측마다 다를 때의 HC0–HC3, 시간 순서로 오차가 이어질 때의 HAC와 maxlags, 묶음 안에서 오차가 이어질 때의 cluster와 groups, 그리고 각각의 자유도와 에러가 여기에 있어요.
+seeAlso: [results, basics, ols, wls, glm, diagnostics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const hetPts = [[0.62002, 3.1582], [0.69002, 3.1582], [0.65502, NaN], [0.65502, 2.8148], [0.65502, 3.5017], [0.65502, NaN], [-1.6562, -0.17778], [-1.5862, -0.17778], [-1.6212, NaN], [-1.6212, -0.52124], [-1.6212, 0.16568], [-1.6212, NaN], [-1.6242, -0.32301], [-1.5542, -0.32301], [-1.5892, NaN], [-1.5892, -0.66647], [-1.5892, 0.020446], [-1.5892, NaN], [-2.9835, -11.289], [-2.9135, -11.289], [-2.9485, NaN], [-2.9485, -11.632], [-2.9485, -10.945], [-2.9485, NaN], [-1.1021, 0.28891], [-1.0321, 0.28891], [-1.0671, NaN], [-1.0671, -0.054544], [-1.0671, 0.63237], [-1.0671, NaN], [1.1519, 5.1036], [1.2219, 5.1036], [1.1869, NaN], [1.1869, 4.7601], [1.1869, 5.447], [1.1869, NaN], [0.064108, 1.2371], [0.13411, 1.2371], [0.099108, NaN], [0.099108, 0.89363], [0.099108, 1.5805], [0.099108, NaN], [-1.3263, -1.9723], [-1.2563, -1.9723], [-1.2913, NaN], [-1.2913, -2.3158], [-1.2913, -1.6289], [-1.2913, NaN], [0.62649, 0.77328], [0.69649, 0.77328], [0.66149, NaN], [0.66149, 0.42982], [0.66149, 1.1167], [0.66149, NaN], [-0.10051, 0.87252], [-0.030514, 0.87252], [-0.065514, NaN], [-0.065514, 0.52906], [-0.065514, 1.216], [-0.065514, NaN], [-0.80172, -0.5007], [-0.73172, -0.5007], [-0.76672, NaN], [-0.76672, -0.84416], [-0.76672, -0.15724], [-0.76672, NaN], [0.048286, 1.1851], [0.11829, 1.1851], [0.083286, NaN], [0.083286, 0.84169], [0.083286, 1.5286], [0.083286, NaN], [-0.57332, -0.093426], [-0.50332, -0.093426], [-0.53832, NaN], [-0.53832, -0.43688], [-0.53832, 0.25003], [-0.53832, NaN], [0.00013175, 1.038], [0.070132, 1.038], [0.035132, NaN], [0.035132, 0.69451], [0.035132, 1.3814], [0.035132, NaN], [0.34401, 1.5572], [0.41401, 1.5572], [0.37901, NaN], [0.37901, 1.2137], [0.37901, 1.9006], [0.37901, NaN], [2.3509, 5.5109], [2.4209, 5.5109], [2.3859, NaN], [2.3859, 5.1674], [2.3859, 5.8543], [2.3859, NaN], [-1.2751, -0.79067], [-1.2051, -0.79067], [-1.2401, NaN], [-1.2401, -1.1341], [-1.2401, -0.44721], [-1.2401, NaN], [0.84844, 2.2856], [0.91844, 2.2856], [0.88344, NaN], [0.88344, 1.9421], [0.88344, 2.629], [0.88344, NaN], [0.12559, 1.2622], [0.19559, 1.2622], [0.16059, NaN], [0.16059, 0.91876], [0.16059, 1.6057], [0.16059, NaN], [0.71892, 2.1346], [0.78892, 2.1346], [0.75392, NaN], [0.75392, 1.7911], [0.75392, 2.478], [0.75392, NaN], [-0.1795, 0.57696], [-0.1095, 0.57696], [-0.1445, NaN], [-0.1445, 0.2335], [-0.1445, 0.92042], [-0.1445, NaN], [-0.25311, 0.22657], [-0.18311, 0.22657], [-0.21811, NaN], [-0.21811, -0.11688], [-0.21811, 0.57003], [-0.21811, NaN], [0.57651, 0.53092], [0.64651, 0.53092], [0.61151, NaN], [0.61151, 0.18746], [0.61151, 0.87438], [0.61151, NaN], [-0.33495, 0.39204], [-0.26495, 0.39204], [-0.29995, NaN], [-0.29995, 0.048582], [-0.29995, 0.7355], [-0.29995, NaN], [1.4236, 4.048], [1.4936, 4.048], [1.4586, NaN], [1.4586, 3.7046], [1.4586, 4.3915], [1.4586, NaN], [-1.9652, -5.2968], [-1.8952, -5.2968], [-1.9302, NaN], [-1.9302, -5.6403], [-1.9302, -4.9533], [-1.9302, NaN], [-0.98026, -1.9857], [-0.91026, -1.9857], [-0.94526, NaN], [-0.94526, -2.3291], [-0.94526, -1.6422], [-0.94526, NaN], [-0.95606, 0.70961], [-0.88606, 0.70961], [-0.92106, NaN], [-0.92106, 0.36616], [-0.92106, 1.0531], [-0.92106, NaN], [0.33836, 1.9465], [0.40836, 1.9465], [0.37336, NaN], [0.37336, 1.603], [0.37336, 2.2899], [0.37336, NaN], [2.244, 7.3612], [2.314, 7.3612], [2.279, NaN], [2.279, 7.0177], [2.279, 7.7046], [2.279, NaN]];
+export const hetEnv = [[-3.2, -11.8], [-3.1, -11.4], [-3.0, -11.0], [-2.9, -10.6], [-2.8, -10.2], [-2.7, -9.8], [-2.6, -9.4], [-2.5, -9.0], [-2.4, -8.6], [-2.3, -8.2], [-2.2, -7.8], [-2.1, -7.4], [-2.0, -7.0], [-1.9, -6.6], [-1.8, -6.2], [-1.7, -5.8], [-1.6, -5.4], [-1.5, -5.0], [-1.4, -4.6], [-1.3, -4.2], [-1.2, -3.8], [-1.1, -3.4], [-1.0, -3.0], [-0.9, -2.6], [-0.8, -2.2], [-0.7, -1.8], [-0.6, -1.4], [-0.5, -1.0], [-0.4, -0.6], [-0.3, -0.2], [-0.2, 0.2], [-0.1, 0.6], [0.0, 1.0], [0.1, 1.0], [0.2, 1.0], [0.3, 1.0], [0.4, 1.0], [0.5, 1.0], [0.6, 1.0], [0.7, 1.0], [0.8, 1.0], [0.9, 1.0], [1.0, 1.0], [1.1, 1.0], [1.2, 1.0], [1.3, 1.0], [1.4, 1.0], [1.5, 1.0], [1.6, 1.0], [1.7, 1.0], [1.8, 1.0], [1.9, 1.0], [2.0, 1.0], [2.1, 1.0], [2.2, 1.0], [2.3, 1.0], [2.4, 1.0], [2.5, 1.0], [2.6, 1.0], [2.6, NaN], [-3.2, 1.0], [-3.1, 1.0], [-3.0, 1.0], [-2.9, 1.0], [-2.8, 1.0], [-2.7, 1.0], [-2.6, 1.0], [-2.5, 1.0], [-2.4, 1.0], [-2.3, 1.0], [-2.2, 1.0], [-2.1, 1.0], [-2.0, 1.0], [-1.9, 1.0], [-1.8, 1.0], [-1.7, 1.0], [-1.6, 1.0], [-1.5, 1.0], [-1.4, 1.0], [-1.3, 1.0], [-1.2, 1.0], [-1.1, 1.0], [-1.0, 1.0], [-0.9, 1.0], [-0.8, 1.0], [-0.7, 1.0], [-0.6, 1.0], [-0.5, 1.0], [-0.4, 1.0], [-0.3, 1.0], [-0.2, 1.0], [-0.1, 1.0], [0.0, 1.0], [0.1, 1.4], [0.2, 1.8], [0.3, 2.2], [0.4, 2.6], [0.5, 3.0], [0.6, 3.4], [0.7, 3.8], [0.8, 4.2], [0.9, 4.6], [1.0, 5.0], [1.1, 5.4], [1.2, 5.8], [1.3, 6.2], [1.4, 6.6], [1.5, 7.0], [1.6, 7.4], [1.7, 7.8], [1.8, 8.2], [1.9, 8.6], [2.0, 9.0], [2.1, 9.4], [2.2, 9.8], [2.3, 10.2], [2.4, 10.6], [2.5, 11.0], [2.6, 11.4]];
+
+## 한눈에 보기
+
+[표준오차](/api/regression/results/#표준오차-bse)는 "데이터를 다시 모으면 계수가 얼마나 흔들릴까"의 어림이에요. 이 어림은 오차가 어떻게 생겼다고 보느냐에 따라 달라요. 기본 계산은 오차가 관측마다 **같은 크기**로, **서로 독립으로** 흔들린다고 봐요. 이 가정이 틀리면 표준오차가 실제 흔들림보다 작게 나와서, p값은 너무 작고 신뢰구간은 너무 좁아져요.
+
+`cov_type`은 이 가정을 바꾸는 옵션이에요. 가정이 약한 계산을 고르면 표준오차가 실제 흔들림을 따라가요.
+
+| `cov_type` | 오차에 대해 가정하는 것 | 이럴 때 써요 |
+|---|---|---|
+| `'nonrobust'`(기본) | 크기가 고르고 서로 독립 | 가정이 맞을 때. 가장 좁고 정확해요 |
+| `'HC0'`, `'HC1'`, `'HC2'`, `'HC3'` | 서로 독립. 크기는 관측마다 달라도 됨 | 잔차의 퍼짐이 설명변수에 따라 달라질 때 |
+| `'HAC'` | 크기가 달라도 되고, 가까운 시점끼리 이어져도 됨 | 시계열처럼 행이 시간 순서이고 오차가 이어질 때 |
+| `'cluster'` | 묶음(군집) 안에서는 마음대로 이어져도 되고, 묶음끼리는 독립 | 학생이 반에, 가게가 지역에 묶여 있을 때 |
+
+`cov_type`은 **계수를 바꾸지 않아요**. 바뀌는 것은 계수의 공분산 `cov_params()`와 거기서 나오는 `bse`, `tvalues`, `pvalues`, `conf_int()`, `fvalue`, `f_pvalue`, `predict_interval()`이에요. 적합값, 잔차, R², 로그우도도 그대로예요.
+
+`cov_type`을 받는 함수는 [`ols`](/api/regression/ols/), [`wls`](/api/regression/wls/), [`gls`](/api/regression/gls/), [`glm`](/api/regression/glm/)이고, 이름과 뜻이 모두 같아요. 결과의 `cov_type` 필드가 쓴 종류예요.
+
+## 예: 오차의 크기가 x에 따라 달라요
+
+x가 0에서 멀수록 오차가 커지는 데이터를 만들어 봐요. 참 모형은 y = 1 + 2x + 오차이고, 오차의 표준편차는 |x|예요.
+
+```python
+>>> rng = sd.random.default_rng(2)
+>>> n = 30
+>>> x = sd.stats.Normal().sample(n, rng=rng)
+>>> y = 1.0 + 2.0 * x + sd.abs(x) * sd.stats.Normal().sample(n, rng=rng)
+>>> plain = sd.regression.ols(y, x)
+>>> robust = sd.regression.ols(y, x, cov_type='HC3')
+>>> plain.params
+array([0.9499640008878938,  2.437716965595369], dtype=float64)
+>>> robust.params
+array([0.9499640008878938,  2.437716965595369], dtype=float64)
+>>> plain.bse
+array([0.28039386647021175, 0.23686808647183255], dtype=float64)
+>>> robust.bse
+array([0.27464979526330174,  0.4980470453476059], dtype=float64)
+```
+
+계수는 비트까지 같지만, 기울기의 표준오차는 0.237에서 0.498로 두 배가 넘어요. 신뢰구간도 그만큼 넓어져요.
+
+```python
+>>> plain.conf_int()[1]
+array([1.9525146856030935, 2.9229192455876443], dtype=float64)
+>>> robust.conf_int()[1]
+array([1.4175138409553127,  3.457920090235425], dtype=float64)
+>>> robust.cov_type
+'HC3'
+```
+
+<Fig caption="십자는 데이터, 진한 선은 ols의 적합선, 점선은 참 직선에서 오차의 표준편차 두 배(±2|x|)만큼 떨어진 선이에요. 양 끝으로 갈수록 점이 넓게 퍼져요. 기울기는 양 끝의 점이 가장 크게 정하는데, 바로 그 점들의 오차가 커요. 기본 표준오차는 오차의 크기를 모든 점에서 평균으로 보니 기울기의 흔들림을 작게 어림해요.">
+  <Plot
+    curves={[
+      { points: hetPts, label: '데이터' },
+      { f: (x) => 0.949964 + 2.437717 * x, label: '적합선' },
+      { points: hetEnv, label: '1 + 2x ± 2|x|', dashed: true },
+    ]}
+    domain={[-3.2, 2.6]}
+    range={[-12, 9]}
+    xTicks={[
+      { v: -2, label: '-2' },
+      { v: 2, label: '2' },
+    ]}
+    yTicks={[
+      { v: -8, label: '-8' },
+      { v: 4, label: '4' },
+    ]}
+  />
+</Fig>
+
+어느 쪽이 맞는지는 실험으로 알 수 있어요. x는 그대로 두고 오차만 새로 뽑아 4,000벌을 만들고, 각 `cov_type`의 95% 신뢰구간이 참 기울기 2를 품는 비율을 세어 봐요. 제대로 된 95% 구간이면 0.95 가까이 나와야 해요.
+
+```python
+>>> E = sd.abs(x) * sd.stats.Normal().sample((4000, n), rng=rng)
+>>> Y = 1.0 + 2.0 * x + E
+>>> for ct in ['nonrobust', 'HC0', 'HC1', 'HC2', 'HC3']:
+...     ci = sd.regression.ols(Y, x, cov_type=ct).conf_int()[:, 1, :]
+...     print(ct, float(sd.mean((ci[:, 0] <= 2.0) & (2.0 <= ci[:, 1]))))
+nonrobust 0.72475
+HC0 0.886
+HC1 0.89775
+HC2 0.91525
+HC3 0.93475
+```
+
+기본 표준오차의 "95%" 구간은 실제로 72%만 참값을 품어요. 강건 표준오차는 모두 그보다 낫고, HC3가 0.95에 가장 가까워요.
+
+## HC0–HC3: 오차의 크기가 관측마다 다를 때
+
+오차의 분산이 관측마다 다른 것을 **이분산**이라고 해요. 소득이 높은 집일수록 지출의 차이가 크고, 큰 회사일수록 매출의 변동이 큰 것처럼 흔한 일이에요. HC 표준오차(heteroscedasticity-consistent)는 각 관측의 잔차 제곱을 그 관측의 오차 분산으로 써서 공분산을 만들어요.
+
+$$\widehat{\mathrm{Cov}}(\hat\beta) = (X^\top X)^{-1} \Big( \sum_i \omega_i\, x_i x_i^\top \Big) (X^\top X)^{-1}$$
+
+네 종류는 잔차 제곱 $e_i^2$에 곱하는 보정 $\omega_i$만 달라요. $h_i$는 관측 i의 [지렛대](/api/regression/diagnostics/)(그 점이 자기 적합값을 얼마나 끌어당기는지, 0과 1 사이)예요.
+
+| `cov_type` | $\omega_i$ | 성질 |
+|---|---|---|
+| `'HC0'` | $e_i^2$ | 보정 없음. 표본이 작으면 표준오차를 작게 어림해요 |
+| `'HC1'` | $\frac{n}{n-k}\, e_i^2$ | 자유도만큼 전체를 키워요 |
+| `'HC2'` | $\frac{e_i^2}{1-h_i}$ | 지렛대가 큰 점의 잔차를 키워요 |
+| `'HC3'` | $\frac{e_i^2}{(1-h_i)^2}$ | 지렛대가 큰 점을 더 크게 키워요 |
+
+지렛대가 큰 점은 적합선을 자기 쪽으로 끌어당기므로 잔차가 실제 오차보다 작게 나와요. 그래서 잔차 제곱을 그대로 쓰는 HC0는 오차를 작게 어림하고, HC2와 HC3는 $1 - h_i$로 나눠 그만큼을 되돌려요. 위 실험에서 HC0, HC1, HC2, HC3 순서로 0.95에 다가간 것이 그 차이예요.
+
+**어느 것을 쓸까요?** 오차가 이분산일 수 있고 표본이 수십에서 수백 개라면 `'HC3'`를 쓰세요. 위 실험처럼 지렛대가 큰 점이 있을 때 가장 덜 좁아요. 표본이 아주 크면 $h_i$가 0에 가까워져서 네 종류의 차이가 사라져요. `'HC1'`은 HC0에 자유도 보정만 한 것이라 계산이 가장 단순해요.
+
+오차가 정말로 고르다면 HC3를 써도 손해가 작아요. 같은 x에 고른 오차(표준편차 1)로 4,000벌을 만들면 95% 구간이 참값을 품는 비율은 기본 0.957, HC3 0.953이고, 구간의 평균 폭은 0.63과 0.66이에요. 반대로 이분산인데 기본을 쓰면 위처럼 크게 틀려요. 이분산인지는 [Breusch–Pagan](/api/regression/diagnostics/)으로 살펴볼 수 있어요.
+
+## HAC: 시간 순서로 오차가 이어질 때
+
+시계열 데이터에서는 오늘의 오차가 어제의 오차와 비슷한 경우가 많아요. 날씨가 며칠씩 이어지는 것처럼요. 이런 **자기상관**이 있으면 데이터가 실제보다 많은 정보를 가진 것처럼 보여서, 기본 표준오차도 HC 표준오차도 너무 작게 나와요.
+
+`cov_type='HAC'`(heteroscedasticity and autocorrelation consistent, Newey–West)는 가까운 시점의 오차끼리의 공분산까지 더해서 이것을 보정해요. **행은 주어진 순서가 시간 순서**예요. 날짜 순으로 정렬해서 주세요.
+
+예로, 설명변수와 오차가 모두 앞 시점의 0.8배를 이어받는 시계열 120개를 만들어 봐요. `L`은 그런 이어받음을 행렬 곱 한 번으로 만드는 아래 삼각 행렬이에요.
+
+```python
+>>> n = 120
+>>> idx = sd.arange(n)
+>>> L = sd.tril(0.8 ** (idx[:, None] - idx[None, :]))
+>>> rng = sd.random.default_rng(4)
+>>> xt = L @ sd.stats.Normal().sample(n, rng=rng)
+>>> yt = 1.0 + 0.5 * xt + L @ sd.stats.Normal().sample(n, rng=rng)
+>>> sd.regression.ols(yt, xt).bse
+array([0.14250252724489762, 0.09308502634005272], dtype=float64)
+>>> sd.regression.ols(yt, xt, cov_type='HAC').bse
+array([ 0.2560356139976089, 0.15265435104905903], dtype=float64)
+```
+
+HAC 표준오차가 기본보다 60% 넘게 커요. 잔차의 Durbin–Watson 값이 2보다 한참 작은 것도 자기상관의 신호예요([회귀 진단](/api/regression/diagnostics/)).
+
+```python
+>>> round(sd.regression.ols(yt, xt).durbin_watson, 3)
+0.503
+```
+
+### maxlags: 몇 시점까지 볼까
+
+`maxlags`는 몇 시점 떨어진 오차까지 공분산을 더할지예요. l 시점 떨어진 짝에는 무게 $1 - l/(L+1)$을 줘서 멀수록 덜 세요(Bartlett 커널). `maxlags`는 0 이상의 정수이고, `None`(기본)이면 관측 수로 정해요.
+
+$$L = \left\lfloor 4 \left(\frac{n}{100}\right)^{2/9} \right\rfloor$$
+
+n = 120이면 4, n = 1,000이면 6, n = 100,000이면 18이에요. 쓴 지연 수는 `summary()`의 끝에 적혀 있어요.
+
+```python
+>>> print(sd.regression.ols(yt, xt, cov_type='HAC').summary().splitlines()[-1])
+    using 4 lags (Bartlett kernel) and without small sample correction.
+>>> sd.regression.ols(yt, xt, cov_type='HAC', maxlags=8).bse
+array([0.28593933345817113, 0.15915981938814616], dtype=float64)
+```
+
+`maxlags=0`이면 이웃의 공분산을 더하지 않으니 `'HC0'`과 같아요. 자기상관이 오래 이어진다고 생각되면 `maxlags`를 키우세요. 소표본 보정은 하지 않아요.
+
+같은 방법으로 2,000벌을 만들어 기울기의 95% 구간이 참값 0.5를 품는 비율을 세면, 기본은 0.67, HAC는 0.83이에요. HAC가 크게 낫지만 자기상관이 이렇게 강하고 표본이 120개뿐이면 0.95에는 못 미쳐요. HAC 표준오차는 표본이 클수록 믿을 만해요.
+
+## cluster: 묶음 안의 상관
+
+학생들이 여러 반에 나뉘어 있으면, 같은 반 학생들은 같은 선생님, 같은 교실을 공유해서 오차가 비슷하게 움직여요. 이렇게 관측이 **묶음**(군집)으로 나뉘고 묶음 안에서 오차가 이어지면, 독립인 관측이 실제로는 관측 수보다 훨씬 적어요. `cov_type='cluster'`는 묶음 안의 상관을 마음대로 두고 묶음끼리만 독립이라고 봐요. 묶음은 `groups`로 알려 줘요.
+
+예로, 반 12개에 학생이 10명씩 있고 반마다 공통의 효과(표준편차 3)가 있는 데이터를 만들어 봐요. 공부 시간도 반마다 비슷해요.
+
+```python
+>>> G, m = 12, 10
+>>> rng = sd.random.default_rng(8)
+>>> cls = sd.asarray([g for g in range(G) for _ in range(m)])
+>>> hours_c = sd.stats.Uniform(a=0.0, b=10.0).sample(G, rng=rng)
+>>> class_eff = sd.stats.Normal(sigma=3.0).sample(G, rng=rng)
+>>> hours = hours_c[cls] + sd.stats.Normal().sample(G * m, rng=rng)
+>>> score = 50.0 + 2.0 * hours + class_eff[cls] + sd.stats.Normal(sigma=2.0).sample(G * m, rng=rng)
+>>> sd.regression.ols(score, hours).bse
+array([   0.50708426408661, 0.08719867829562077], dtype=float64)
+>>> rc = sd.regression.ols(score, hours, cov_type='cluster', groups=cls)
+>>> rc.bse
+array([  1.280624627870335, 0.22833745072602085], dtype=float64)
+```
+
+군집 표준오차가 기본의 2.6배예요. 학생 120명이지만 반이 12개뿐이라서, 공부 시간의 효과에 대한 정보는 학생 120명이 아니라 반 12개에 가까워요. 같은 방법으로 2,000벌을 만들어 95% 구간이 참 기울기 2를 품는 비율을 세면, 기본과 HC3는 0.51, 군집은 0.92예요.
+
+### groups
+
+`groups`는 행마다 그 행이 속한 묶음의 레이블이에요. 레이블은 같은지만 봐요. 받는 것은 다음과 같아요.
+
+- 정수, 실수, bool의 `sd.ndarray`
+- 정수, 실수, 문자열의 리스트
+- frame의 `Series`
+
+```python
+>>> labels = ['class%d' % int(c) for c in cls]
+>>> rs = sd.regression.ols(score, hours, cov_type='cluster', groups=labels)
+>>> bool(sd.all(rs.bse == rc.bse))
+True
+```
+
+레이블이 빈 행(실수 배열의 NaN, 리스트의 `None`이나 NaN, frame의 NA)은 데이터의 NaN처럼 [`nan_policy`](/api/regression/basics/#nan과-nan_policy)를 따라요.
+
+```python
+>>> y8 = [51.0, 58, 57, 66, 64, 73, 75, 80]
+>>> h8 = [1.0, 2, 3, 4, 5, 6, 7, 8]
+>>> g8 = ['a', 'a', None, 'b', 'b', 'c', 'c', 'c']
+>>> sd.regression.ols(y8, h8, cov_type='cluster', groups=g8).nobs
+nan
+>>> sd.regression.ols(y8, h8, cov_type='cluster', groups=g8, nan_policy='omit').nobs
+7.0
+```
+
+군집 수 G는 적합에 쓰인 행에 나오는 레이블의 수예요. 공분산에는 소표본 보정 $\frac{G}{G-1} \cdot \frac{n-1}{n-k}$을 곱해요. 군집이 하나뿐이면 묶음끼리의 비교가 없으니 공분산이 NaN이에요.
+
+```python
+>>> sd.regression.ols(y8, h8, cov_type='cluster', groups=[1] * 8).bse
+array([nan, nan], dtype=float64)
+```
+
+군집 표준오차는 군집이 많을수록 믿을 만해요. 군집이 수십 개 아래면 아래의 자유도 보정이 중요해요.
+
+## 자유도: t와 F는 무엇으로 계산하나요
+
+어느 `cov_type`이든 p값과 신뢰구간은 정규분포가 아니라 [t분포](/api/stats/student-t/)로 계산해요. 자유도는 결과의 `df_resid_inference`예요.
+
+| `cov_type` | t의 자유도 `df_resid_inference` | F의 자유도 |
+|---|---|---|
+| `'nonrobust'`, `'HC0'`–`'HC3'`, `'HAC'` | `df_resid` (n − rank) | (`df_model`, `df_resid`) |
+| `'cluster'` | G − 1 | (`df_model`, G − 1) |
+
+```python
+>>> rc.df_resid, rc.df_resid_inference
+(118.0, 11.0)
+>>> rc.conf_int()[1]
+array([1.5574417146506807,  2.562576395732936], dtype=float64)
+```
+
+군집이 12개면 t의 자유도는 118이 아니라 11이에요. 정보의 단위가 군집이라는 생각을 자유도에도 반영한 것이에요. `df_resid` 자체는 그대로 n − rank예요. `predict_interval()`도 같은 자유도를 써요.
+
+강건 표준오차에서 `fvalue`는 절편을 뺀 계수가 모두 0인지를 그 공분산으로 검정하는 Wald F예요. 기울기가 하나면 t값의 제곱이에요.
+
+```python
+>>> round(robust.fvalue, 6), round(robust.tvalues[1] ** 2, 6)
+(23.956635, 23.956635)
+```
+
+`glm`은 분포족에 따라 정규분포(z)로 검정하기도 해요. 그때 `df_resid_inference`는 `inf`예요. 자세한 규칙은 [glm](/api/regression/glm/)에 있어요.
+
+## 가중치가 0인 행
+
+`wls`에서 가중치가 0인 행은 적합에 쓰이지 않으니 강건 공분산에서도 빠져요. HAC의 시점은 적합에 쓰인 행만 이어서 세고, 그 행에만 나오는 군집은 G에 들지 않아요. 그래서 가중치 0인 행이 있는 `wls`의 강건 표준오차는 그 행을 지우고 맞춘 것과 비트까지 같아요.
+
+## 에러
+
+`maxlags`와 `groups`는 각자의 `cov_type`에서만 받아요. 빠뜨리거나 다른 `cov_type`에 주면 `ValueError`예요.
+
+```python
+>>> sd.regression.ols(yt, xt, maxlags=3)
+Traceback (most recent call last):
+    ...
+ValueError: ols(): 'maxlags' is only used when cov_type='HAC'
+>>> sd.regression.ols(yt, xt, cov_type='HAC', maxlags=-1)
+Traceback (most recent call last):
+    ...
+ValueError: ols(): 'maxlags' must be >= 0
+>>> sd.regression.ols(yt, xt, cov_type='HAC', maxlags=2.0)
+Traceback (most recent call last):
+    ...
+TypeError: ols(): 'maxlags' must be None or an int, not float
+>>> sd.regression.ols(score, hours, cov_type='cluster')
+Traceback (most recent call last):
+    ...
+ValueError: ols(): 'groups' is required when cov_type='cluster'
+>>> sd.regression.ols(score, hours, groups=cls)
+Traceback (most recent call last):
+    ...
+ValueError: ols(): 'groups' is only used when cov_type='cluster'
+>>> sd.regression.ols(score, hours, cov_type='cluster', groups=cls[:-1])
+Traceback (most recent call last):
+    ...
+ValueError: ols(): 'groups' must have 120 values like 'y', not 119
+>>> sd.regression.ols(score, hours, cov_type='HC4')
+Traceback (most recent call last):
+    ...
+ValueError: ols(): 'cov_type' must be 'nonrobust', 'HC0', 'HC1', 'HC2', 'HC3', 'HAC' or 'cluster', not 'HC4'
+```
+
+## 다른 함수의 표준오차
+
+`cov_type`이라는 이름의 필드는 다른 결과에도 있지만, 고를 수 있는 값은 함수마다 달라요.
+
+| 함수 | 표준오차 | 고르는 법 |
+|---|---|---|
+| `ols`, `wls`, `gls`, `glm` | 이 페이지의 일곱 가지 | `cov_type=` 옵션 |
+| [`rlm`](/api/regression/rlm/) | `method='M'`이면 `'H1'`, `'MM'`이면 `'avar1'` | 옵션이 없어요. `method`가 정해요 |
+| [`quantreg`](/api/regression/quantreg/) | `'nid'`(기본), `'iid'`, `'ker'` | `cov_type=` 옵션 |
+| [`nls`](/api/regression/nls/) | `'nonrobust'` | 하나뿐이에요 |
+| 정규화 함수 | 없음 | 표준오차를 내지 않아요 |
+
+```python
+>>> sd.regression.rlm(y8, h8).cov_type
+'H1'
+>>> sd.regression.quantreg(y8, h8).cov_type
+'nid'
+>>> sd.regression.quantreg(y8, h8, cov_type='HC3')
+Traceback (most recent call last):
+    ...
+ValueError: quantreg(): 'cov_type' must be 'iid', 'nid' or 'ker', not 'HC3'
+```
+
+## statsmodels를 아는 분께
+
+- 이름(`'nonrobust'`, `'HC0'`–`'HC3'`, `'HAC'`, `'cluster'`)과 계산은 statsmodels의 `fit(cov_type=...)`과 같아요. 위 데이터에서 HC0–HC3의 표준오차는 statsmodels 0.15.0과 상대 $6 \times 10^{-16}$ 안에서 같아요.
+- 옵션은 `cov_kwds` 사전이 아니라 키워드예요. statsmodels의 `cov_kwds={'maxlags': 4}`는 `maxlags=4`, `cov_kwds={'groups': g}`는 `groups=g`예요.
+- **p값과 구간의 분포가 달라요.** statsmodels는 강건 공분산이면 기본으로 정규분포를 써요(`use_t=False`). 여기서는 늘 t분포예요. statsmodels의 `fit(cov_type=..., use_t=True)`와 같은 값이고, 위의 HC3 기울기 p값은 statsmodels 기본이 $9.9 \times 10^{-7}$, 여기가 $3.7 \times 10^{-5}$예요.
+- statsmodels의 `'HAC'`은 `maxlags`를 꼭 줘야 해요. 여기서는 빼면 $\lfloor 4(n/100)^{2/9} \rfloor$예요. 같은 `maxlags`면 값이 같아요. 소표본 보정을 하지 않는 것(`use_correction=False`)도 statsmodels의 기본과 같아요.
+- `'cluster'`의 자유도 G − 1, 소표본 보정, `fvalue`는 statsmodels의 `use_t=True`와 같아요. 다만 statsmodels의 `get_prediction`은 군집에서도 `df_resid`로 구간을 만들고, 여기의 `predict_interval`은 G − 1을 써요.
+- `wls`에서 가중치가 0인 행을 statsmodels는 점수 0인 관측으로 남겨서, 그 행에만 나오는 군집도 군집 수에 세고 HAC의 지연 짝도 달라져요. 여기서는 그 행을 뺀 적합과 같아요.

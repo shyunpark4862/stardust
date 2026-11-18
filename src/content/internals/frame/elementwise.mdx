@@ -139,7 +139,8 @@ Column float_arith(Op op, const Column& a, const Column& b, int side) {
     switch (op) {                                   // 연산 종류는 여기서 한 번 고르고
     case Op::Add: return run([&](auto x, auto y) { return d(x) + d(y); });   // 람다마다 루프 한 벌
     case Op::Sub: return run([&](auto x, auto y) { return d(x) - d(y); });
-    // ... Mul, TrueDiv, FloorDiv, Mod, Pow
+    // ... Mul, TrueDiv, FloorDiv, Mod
+    case Op::Pow: return float_pow<A, B>(a, b, side);   // 배열의 pow와 같은 커널
     }
 }
 ```

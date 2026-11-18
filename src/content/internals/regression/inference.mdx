@@ -1,0 +1,546 @@
+---
+title: 추론과 진단
+group: 선형 모형
+order: 2
+summary: ols·wls·gls의 결과가 표준오차, p값, 진단을 구하는 방법이에요. XᵀX의 역행렬 없이 R에서 공분산을 만드는 방법, 얇은 Q의 점수로 짓는 HC0–HC3·HAC(Newey–West)·군집 샌드위치, 강건 공분산의 Wald F, sd.stats로 구하는 t·F의 p값, 지렛대·스튜던트화 잔차·Cook 거리, double-double로 더하는 Durbin–Watson과 Jarque–Bera, Breusch–Pagan의 보조 회귀, 가중치 0인 행의 처리, summary()의 짜임을 다뤄요.
+seeAlso: [least-squares, overview, glm, accuracy-performance]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+import Bench from '../../../components/fig/Bench.astro';
+
+## 한눈에 보기
+
+적합이 끝나면 커널은 $R$(쓰인 열의 위 삼각 인자), 백색화한 잔차, 그리고 공분산 하나를 내요. 추론과 진단은 모두 이것들과, 필요할 때 다시 만드는 **얇은 Q**에서 나와요. 어디서도 $X^{\mathsf T}X$나 그 역행렬을 만들지 않아요.
+
+| 결과 | 무엇에서 | 언제 |
+|---|---|---|
+| 고전형 공분산 $\hat\sigma^2(R^{\mathsf T}R)^{-1}$ | $R$(`potri`) | 적합 때, `scale`은 처음 읽을 때 곱해요 |
+| HC0–HC3, HAC, 군집 공분산 $R^{-1}SR^{-\mathsf T}$ | 얇은 Q와 잔차로 만든 점수 | 적합 때(`cov_type`을 줬을 때) |
+| 강건형의 Wald F | Q의 좌표에서 $z^{\mathsf T}S_{22}^{-1}z$ | 적합 때 |
+| t, p, 신뢰구간, F의 p | `sd.stats.StudentT`, `sd.stats.F` | 처음 읽을 때 |
+| 지렛대 $h_t$ | 같은 QR의 얇은 Q, $\lVert q_t\rVert^2$ | 처음 읽을 때 커널을 다시 불러요 |
+| 스튜던트화 잔차, Cook 거리 | 지렛대, 잔차, `scale` | 처음 읽을 때 sd 배열 연산 |
+| Durbin–Watson, Jarque–Bera | 백색화한 잔차의 double-double 합 | 처음 읽을 때 커널 `resid_stats` |
+| Breusch–Pagan | 보조 회귀(같은 커널로 적합 한 번) | 처음 부를 때 |
+
+자유도는 `df_resid` $= \text{nobs} - \text{rank}$예요. 군집 공분산에서만 t와 F의 분모 자유도가 군집 수 − 1이고, 그 값이 `df_resid_inference`에 있어요.
+
+## 고전형 공분산
+
+### R에서 바로
+
+오차가 독립이고 분산이 같으면($\operatorname{Var}(\varepsilon) = \sigma^2 W^{-1}$) 계수의 공분산은
+
+$$
+\operatorname{Var}(\hat\beta) = \sigma^2 (X^{\mathsf T}WX)^{-1}, \qquad \hat\sigma^2 = \frac{\text{SSR}}{n - k}
+$$
+
+이에요. 백색화한 설계를 $\tilde X = W^{1/2}X = QR$로 분해했으므로 $\tilde X^{\mathsf T}\tilde X = R^{\mathsf T}Q^{\mathsf T}QR = R^{\mathsf T}R$이에요. 그래서
+
+$$
+(X^{\mathsf T}WX)^{-1} = (R^{\mathsf T}R)^{-1} = R^{-1}R^{-\mathsf T}
+$$
+
+이고, LAPACK `potri`가 위 삼각 $R$에서 이 역행렬을 바로 만들어요(Cholesky 인자에서 역행렬을 만드는 루틴이에요. $R$이 곧 $\tilde X^{\mathsf T}\tilde X$의 Cholesky 인자이기 때문이에요). $X^{\mathsf T}X$를 만들면 조건수가 $\kappa^2$인 행렬을 거치지만, $R$은 조건수가 $\kappa$예요. 공분산의 상대오차는 대략 $\kappa u$예요.
+
+```cpp
+    if (!robust) {
+        if (linalg::lapack::potri_upper(kk, RR, kk) > 0) {
+            std::fill(RR, RR + kk * kk, kNaN);  // an exact zero on R's diagonal (cannot happen once kept)
+        }
+```
+
+커널이 내는 것은 척도를 곱하기 전의 $(R^{\mathsf T}R)^{-1}$이에요. Python의 `cov_params()`가 처음 읽을 때 `scale`을 곱하고, `bse`는 그 대각의 제곱근이에요. 겹친 열의 행과 열은 NaN이에요.
+
+```python
+    def cov_params(self):
+        """The covariance of the parameters (k x k); rows and columns of aliased parameters are NaN."""
+        def make():
+            c = self._raw[1]
+            if self._robust:
+                return c
+            return self._per(self.scale, 2) * c
+        return self._cached("cov_params", make)
+```
+
+### t, p, 신뢰구간
+
+t값은 $t_j = \hat\beta_j / \operatorname{se}_j$이고, 두꼬리 p값과 $1 - \alpha$ 신뢰구간은 Student t 분포로 구해요.
+
+$$
+p_j = 2\,\bar F_{t(\nu)}(\lvert t_j \rvert), \qquad \hat\beta_j \pm \bar F_{t(\nu)}^{-1}(\alpha/2)\cdot\operatorname{se}_j
+$$
+
+$\bar F$는 위꼬리 확률(`ccdf`), $\bar F^{-1}$은 그 역함수(`iccdf`)예요. $1 - F$(`1 - cdf`)로 구하지 않으므로 아주 작은 p값도 상대 정확도가 있어요. 두 함수는 sd.stats의 보장 영역에서 상대오차 10⁻¹⁴ 안이에요([Student t 분포](/api/stats/student-t/)).
+
+```python
+    @property
+    def pvalues(self):
+        return self._cached("pvalues", lambda: 2.0 * self._dist().ccdf(_sd.abs(self.tvalues)))
+
+    def conf_int(self, alpha=0.05):
+        """(..., k, 2): the lower and upper bounds of the 1 - alpha confidence intervals."""
+        alpha = _check_alpha(alpha, "conf_int")
+        q = self._dist().iccdf(alpha / 2)
+        half = q * self.bse
+        return _sd.stack([self.params - half, self.params + half], axis=-1)
+```
+
+`_dist()`는 자유도 `df_resid_inference`의 `sd.stats.StudentT`예요.
+
+```python
+>>> x = sd.arange(20.0)
+>>> e = sd.asarray([0.3, -0.1, 0.2, -0.4, 0.1, 0.0, -0.2, 0.3, -0.3, 0.1,
+...                 0.2, -0.1, 0.0, 0.4, -0.2, -0.1, 0.1, -0.3, 0.2, 0.0])
+>>> r = sd.regression.ols(1.0 + 2.0 * x + e, x)
+>>> r.tvalues
+array([10.436628304539708,  225.9633201022047], dtype=float64)
+>>> r.pvalues
+array([  4.60833390194385e-09, 1.5550191275406217e-32], dtype=float64)
+>>> T = sd.stats.StudentT(df=r.df_resid)
+>>> 2.0 * (1.0 - T.cdf(r.tvalues[1]))
+0.0
+```
+
+강건 공분산에서도 분포는 t(`df_resid`)예요. R의 `lmtest::coeftest`와 Stata의 관례와 같고, statsmodels는 강건 공분산의 기본이 정규분포라 `use_t=True`를 줘야 같은 값이에요. 모형 전체의 F는 고전형이면 $(\text{ESS}/\text{df\_model})/\hat\sigma^2$, 강건형이면 아래의 Wald F이고, p값은 `sd.stats.F(dfn, dfd).ccdf(F)`예요.
+
+## 샌드위치 공분산
+
+### 점수와 고기
+
+오차의 분산이 행마다 다르거나(이분산) 행끼리 상관이 있으면 $\sigma^2(X^{\mathsf T}X)^{-1}$이 틀려요. 그래도 최소제곱 해 자체는 쓸 수 있고, 그 공분산은 "빵–고기–빵" 꼴로 추정해요. 백색화한 좌표에서
+
+$$
+\operatorname{Var}(\hat\beta) = (\tilde X^{\mathsf T}\tilde X)^{-1}\;\tilde X^{\mathsf T}\Omega\tilde X\;(\tilde X^{\mathsf T}\tilde X)^{-1}
+$$
+
+이고, 가운데의 $\tilde X^{\mathsf T}\Omega\tilde X$(고기)를 자료에서 추정해요. $\tilde X = QR$을 넣으면
+
+$$
+(R^{\mathsf T}R)^{-1}R^{\mathsf T}Q^{\mathsf T}\,\Omega\,QR\,(R^{\mathsf T}R)^{-1} = R^{-1}\,\big(Q^{\mathsf T}\Omega Q\big)\,R^{-\mathsf T}
+$$
+
+이 돼요. 그래서 고기를 $X$가 아니라 **얇은 Q의 좌표**에서 만들어요. Q는 반올림 수준에서 직교라 조건수가 1이고, 빵 $R^{-1}(\cdot)R^{-\mathsf T}$는 삼각 풀이(`trsm`) 두 번이에요. 고기를 $X^{\mathsf T}\Omega X$로 만들고 $(X^{\mathsf T}X)^{-1}$을 양쪽에 곱하면 조건수 $\kappa^2$인 행렬끼리 곱하게 돼요.
+
+모든 강건 공분산은 **점수** $u_t = \tilde e_t\,q_t$(얇은 Q의 행 $q_t$에 백색화한 잔차 $\tilde e_t$를 곱한 것)에서 고기 $S$를 만들어요.
+
+| `cov_type` | 고기 $S$ | 곱하는 상수 $c$ |
+|---|---|---|
+| `'HC0'` | $\sum_t \tilde e_t^2\, q_t q_t^{\mathsf T}$ | 1 |
+| `'HC1'` | 같음 | $n/(n-k)$ |
+| `'HC2'` | $\sum_t \dfrac{\tilde e_t^2}{1 - h_t}\, q_t q_t^{\mathsf T}$ | 1 |
+| `'HC3'` | $\sum_t \dfrac{\tilde e_t^2}{(1 - h_t)^2}\, q_t q_t^{\mathsf T}$ | 1 |
+| `'HAC'` | $\sum_t u_tu_t^{\mathsf T} + \sum_{l=1}^{L} w_l \sum_t (u_t u_{t-l}^{\mathsf T} + u_{t-l}u_t^{\mathsf T})$ | 1 |
+| `'cluster'` | $\sum_g s_g s_g^{\mathsf T}$, $s_g = \sum_{t \in g} u_t$ | $\dfrac{G}{G-1}\cdot\dfrac{n-1}{n-k}$ |
+
+$n$은 쓰인 행의 수, $k$는 랭크, $h_t$는 지렛대예요. 공분산은 $c\,R^{-1}SR^{-\mathsf T}$예요.
+
+### HC0–HC3
+
+HC는 $\sqrt{\omega_t}$를 Q의 행에 곱해 $U$를 만들고 `syrk`로 $U^{\mathsf T}U$를 구해요. 부호는 제곱에서 사라지므로 $\sqrt{\omega_t}$ 대신 $\tilde e_t$, $\tilde e_t/\sqrt{1-h_t}$, $\tilde e_t/(1-h_t)$를 그대로 곱해요(`csrc/regression/linear.cpp`).
+
+```cpp
+    for (lint t = 0; t < m; ++t) {
+        double e = s[t] * r[t];  // the whitened residual
+        // GLM frequency weights: a replicated row adds its score's square once per copy (HC,
+        // HAC), not the square of the summed copies (statsmodels' convention)
+        if (d.smult && pb.cov != kCluster) e *= d.smult[idx[t]];
+        double sq = e;                 // HC: sqrt(omega) (the sign drops out of the squares)
+        if (pb.cov == kHC2) sq = e / std::sqrt(1.0 - hat[t]);
+        else if (pb.cov == kHC3) sq = e / (1.0 - hat[t]);
+        cv[t] = sq;
+    }
+    for (lint jj = 0; jj < kk; ++jj)
+        for (lint t = 0; t < m; ++t) Q[jj * m + t] *= cv[t];
+    double c1 = 1.0;  // the small-sample factor
+    if (hc) {
+        cblas_dsyrk(CblasColMajor, CblasUpper, CblasTrans, kk, m, 1.0, Q, m, 0.0, M, kk);
+        if (pb.cov == kHC1) c1 = n_eff / (n_eff - static_cast<double>(kk));
+```
+
+HC2·HC3만 지렛대가 필요해서, 그때만 `orgqr`로 만든 Q에서 $h_t$를 함께 구해요. 네 가지는 MacKinnon과 White(1985)의 이름이에요. HC0이 White(1980)의 원래 추정량이고, HC1은 자유도 보정, HC2와 HC3은 지렛대가 큰 행의 잔차가 작게 나오는 것($\operatorname{E}\tilde e_t^2 = \sigma^2(1 - h_t)$)을 되돌리는 보정이에요.
+
+### HAC: Newey–West
+
+시계열처럼 가까운 행끼리 오차가 상관이 있으면 점수의 곱 $u_tu_{t-l}^{\mathsf T}$도 고기에 들어가야 해요. Newey와 West(1987)는 지연 $l$의 항에 Bartlett 가중치 $w_l = 1 - l/(L+1)$을 곱했어요. 이 가중치를 쓰면 $S$가 언제나 양의 준정부호라서 공분산의 대각이 음수가 되지 않아요. 지연 수의 기본은 Newey와 West(1994)의 경험식 $L = \lfloor 4(n/100)^{2/9} \rfloor$이고, statsmodels와 같은 double 연산으로 구해요. 자동 대역폭 선택과 사전 백색화는 하지 않아요.
+
+지연 $L$개의 행렬곱을 따로 하지 않아요. 열마다 필터 $v_t = \sum_{l=1}^{L} w_l u_{t-l}$을 만들면
+
+$$
+\sum_{l=1}^{L} w_l \sum_t u_t u_{t-l}^{\mathsf T} = \sum_t u_t \Big(\sum_{l} w_l u_{t-l}\Big)^{\mathsf T} = U^{\mathsf T}V
+$$
+
+라서 지연 합 전체가 행렬곱 한 번 $C = U^{\mathsf T}V$이고, $S = U^{\mathsf T}U + C + C^{\mathsf T}$예요.
+
+```cpp
+        cblas_dsyrk(CblasColMajor, CblasUpper, CblasTrans, kk, m, 1.0, Q, m, 0.0, M, kk);
+        const lint Le = static_cast<lint>(std::min<std::int64_t>(L, m - 1));  // lags with a pair of rows
+        if (Le > 0) {
+            double* wl = sc.get<double>(static_cast<std::size_t>(Le + 1) + static_cast<std::size_t>(kHacChunk * kk) +
+                                            static_cast<std::size_t>(kk * kk),
+                                        3);
+            double* Vc = wl + Le + 1;
+            double* C = Vc + kHacChunk * kk;
+            for (lint l = 1; l <= Le; ++l) wl[l] = 1.0 - static_cast<double>(l) / (static_cast<double>(L) + 1.0);
+            std::fill(C, C + kk * kk, 0.0);
+            for (lint t0 = 0; t0 < m; t0 += kHacChunk) {
+                const lint t1 = std::min(m, t0 + kHacChunk), len = t1 - t0;
+                auto column = [&](lint jj) {
+                    const double* uj = Q + jj * m;
+                    double* vj = Vc + jj * kHacChunk;
+                    std::fill(vj, vj + len, 0.0);
+                    for (lint l = 1; l <= Le; ++l) {
+                        const double a = wl[l];
+                        for (lint t = std::max(t0, l); t < t1; ++t) vj[t - t0] += a * uj[t - l];
+                    }
+                };
+```
+
+$V$는 4,096행 덩어리로 만들고(열마다 스레드풀), 덩어리마다의 `dgemm`을 순서대로 $C$에 누적해요. 메모리는 덩어리 하나 분량이고, 비트는 스레드 수와 상관없어요. 쓰인 지연 수는 결과의 `summary()` 주석에 나와요.
+
+소표본 보정은 하지 않아요. statsmodels의 `cov_type='HAC'`(`use_correction` 기본 False)과 R `sandwich::NeweyWest(lag = L, prewhite = FALSE)`(기본 `adjust = FALSE`)와 같은 값이에요.
+
+### 군집
+
+같은 군집(학교, 회사, 지역) 안에서 오차가 상관이 있고 군집끼리는 독립이면, 군집마다 점수를 더한 $s_g$가 독립인 단위가 돼요. 고기는 $\sum_g s_gs_g^{\mathsf T}$이고, Stata와 statsmodels의 보정 $\tfrac{G}{G-1}\tfrac{n-1}{n-k}$를 곱해요. t와 F의 분모 자유도는 $G - 1$이에요(Stata와 같아요). 군집이 하나뿐이면 점수의 합이 0이고 $G/(G-1)$이 무한이라 공분산이 NaN이에요.
+
+```cpp
+        lint G = 0;
+        for (lint t = 0; t < m; ++t) {
+            const std::int64_t code = rd_i64(d.g + idx[t] * d.gs);
+            lint& l = loc[code];
+            if (l < 0) l = G++;
+            lab[t] = l;
+        }
+        st[kNGroups] = static_cast<double>(G);
+        if (G * kk <= kClusterDirect) {
+            // all group sums in one G x kk matrix, rows read in order
+            double* Sg = sc.get<double>(static_cast<std::size_t>(std::max<lint>(G, 1) * kk), 3);
+            auto column = [&](lint jj) {
+                double* sj = Sg + jj * G;
+                const double* uj = Q + jj * m;
+                std::fill(sj, sj + G, 0.0);
+                for (lint t = 0; t < m; ++t) sj[lab[t]] += uj[t];
+            };
+```
+
+- 커널은 쓰인 행에 나오는 군집 번호를 처음 나온 순서로 다시 매겨요. 그래서 $G$는 적합에 쓰인 행에 있는 군집 수이고, 결과는 Python이 번호를 매긴 방법과 상관없어요.
+- 군집 수 × 열 수가 2²²(32 MB) 이하이면 $G \times k$ 행렬에 행을 순서대로 흩뿌려 더하고 `syrk` 한 번이에요. 그보다 크면 행을 군집별로 안정 정렬해 군집 덩어리마다 합을 만들고 `syrk`를 누적해요. 두 길 모두 한 군집의 행을 같은 순서로 더하므로 같은 값이에요.
+
+```python
+>>> rng = sd.random.default_rng(3)
+>>> N = sd.stats.Normal()
+>>> X = N.sample((40, 2), rng=rng)
+>>> y = 1.0 + X @ sd.asarray([0.5, -1.0]) + N.sample(40, rng=rng) * (1.0 + sd.abs(X[:, 0]))
+>>> g = [i // 4 for i in range(40)]
+>>> c = sd.regression.ols(y, X, cov_type="cluster", groups=g)
+>>> c.bse
+array([0.21803629519520773,  0.3056031066284625,  0.2703799566186886], dtype=float64)
+>>> c.df_resid_inference
+9.0
+>>> sd.regression.ols(y, X, cov_type="cluster", groups=[0] * 40).bse
+array([nan, nan, nan], dtype=float64)
+```
+
+같은 자료에서 statsmodels의 `fit(cov_type='cluster', cov_kwds={'groups': g}, use_t=True)`와 R의 `vcovCL(m, cluster = ~g, type = "HC1")`이 같은 표준오차를 내요.
+
+### 강건형의 Wald F
+
+강건 공분산 $V$에서 "절편을 뺀 계수가 모두 0"을 검정하는 통계량은 $F = b_2^{\mathsf T}V_{22}^{-1}b_2/q$예요($b_2$는 절편을 뺀 계수, $q$는 그 수). $V_{22}$의 역행렬을 만들면 조건수가 $\kappa(X)^2$ × 고기의 조건수인 행렬을 풀게 돼요. 그래서 Q의 좌표에서 계산해요. 절편이 첫 열이므로 $R^{-1}$의 아래 행들은 $[0,\ R_{22}^{-1}]$이고
+
+$$
+V_{22} = c\,R_{22}^{-1}S_{22}R_{22}^{-\mathsf T}
+\quad\Rightarrow\quad
+b_2^{\mathsf T}V_{22}^{-1}b_2 = \frac{z^{\mathsf T}S_{22}^{-1}z}{c}, \qquad z = R_{22}\,b_2
+$$
+
+예요. $S_{22}$를 Cholesky로 풀어요.
+
+```cpp
+    const lint q0 = (pb.intercept && K[0] == 0) ? 1 : 0, q = kk - q0;
+    st[kWaldQ] = static_cast<double>(q);
+    if (q > 0 && !pb.glm) {
+        double* V = work2;  // S22, then its Cholesky factor
+        double* z = cv;
+        for (lint b2 = 0; b2 < q; ++b2) {
+            double acc = 0.0;
+            for (lint jj = q0 + b2; jj < kk; ++jj) acc += A[jj * m + (q0 + b2)] * beta[jj];
+            z[b2] = acc;
+            for (lint a2 = 0; a2 < q; ++a2) V[b2 * q + a2] = M[(q0 + b2) * kk + (q0 + a2)];
+        }
+        if (linalg::lapack::potrf('U', q, V, q) > 0) {
+            st[kWaldF] = kNaN;
+        } else {
+            linalg::lapack::trtrs('U', 'T', 'N', q, 1, V, q, z, q);  // U^T v = z: z^T S22^-1 z = |v|^2
+            double ss = 0;
+            for (lint b2 = 0; b2 < q; ++b2) ss += z[b2] * z[b2];
+            st[kWaldF] = ss / c1 / static_cast<double>(q);
+        }
+    }
+```
+
+κ = 10⁵인 군집 문제에서 $V_{22}$를 Cholesky로 풀면 F의 상대오차가 2.4×10⁻⁶, 이 식은 2.7×10⁻¹¹이에요(Arb 참값 대비). $S_{22}$가 특이하면(군집 수 − 1 < q) F는 NaN이에요. 이 F는 statsmodels가 강건 공분산에서 내는 `fvalue`(`f_test`)와 같은 통계량이에요.
+
+## 지렛대
+
+지렛대 $h_t$는 적합값이 자기 관측값에 얼마나 끌려가는지예요. 모자 행렬 $H = \tilde X(\tilde X^{\mathsf T}\tilde X)^{-1}\tilde X^{\mathsf T}$의 대각이고, $\tilde X = QR$이면 $H = QQ^{\mathsf T}$라서
+
+$$
+h_t = \lVert q_t \rVert_2^2, \qquad \sum_t h_t = \text{rank}
+$$
+
+예요. 결과의 `leverage`는 커널의 두 번째 방식(`hat_only`)을 불러요. 적합과 같은 열 선택, 같은 QR을 하고 `orgqr`로 얇은 Q를 만들어 행마다 제곱합을 내요.
+
+```cpp
+    auto hat_values = [&]() {
+        std::copy(A, A + m * kk, Q);
+        linalg::lapack::orgqr(m, kk, kk, Q, m, tau, sc);
+        std::fill(hat, hat + m, 0.0);
+        for (lint jj = 0; jj < kk; ++jj)
+            for (lint t = 0; t < m; ++t) hat[t] += Q[jj * m + t] * Q[jj * m + t];
+    };
+```
+
+Q는 반올림 수준에서 직교이므로 $h_t$와 $1 - h_t$의 절대오차가 $\kappa$와 상관없이 $u$ 정도예요. $R$로 $R^{-\mathsf T}x_t$를 풀어 $h_t = \lVert R^{-\mathsf T}x_t\rVert^2$로 구하면 $\kappa u$예요. 지렛대가 1에 가까운 행에서 $1 - h_t$가 분모로 쓰이므로(HC2·HC3, 스튜던트화 잔차, Cook) 이 차이가 중요해요. 다만 X의 열공간 자체가 반올림으로 $\kappa u$만큼 움직이므로, 조건이 나쁜 문제에서는 지렛대의 참값과의 오차도 대략 $\kappa u$를 따라요.
+
+적합 때 Q를 늘 만들지 않는 이유는 비용이에요. `orgqr`는 QR 한 번 꼴이라, 진단을 읽지 않는 적합까지 그만큼 느려져요. 그래서 처음 읽을 때 따로 불러요.
+
+가중치가 0인 행의 지렛대는 0이에요. 가중 공식 $w_t x_t(X^{\mathsf T}WX)^{-1}x_t^{\mathsf T}$에서 $w_t = 0$이기 때문이에요(statsmodels와 같아요).
+
+## 스튜던트화 잔차와 Cook 거리
+
+잔차의 분산은 행마다 $\sigma^2(1 - h_t)$로 달라서, 크기를 비교하려면 표준화해야 해요.
+
+$$
+r_t = \frac{\tilde e_t}{s\sqrt{1 - h_t}} \quad(\text{내적}),
+\qquad
+r_t^* = \frac{\tilde e_t}{s_{(t)}\sqrt{1 - h_t}} \quad(\text{외적})
+$$
+
+$s^2$는 `scale`, $s_{(t)}^2$는 행 $t$를 뺀 적합의 척도예요. 외적 판은 행 $t$를 뺀 적합을 $n$번 하지 않고 한 번에 구해요. 행 하나를 빼면 잔차 제곱합이 $\tilde e_t^2/(1-h_t)$만큼 줄어드는 항등식이 있어서
+
+$$
+s_{(t)}^2 = \frac{(n-k)s^2 - \tilde e_t^2/(1-h_t)}{n-k-1}
+\quad\Rightarrow\quad
+\frac{s_{(t)}^2}{s^2} = \frac{\text{df} - r_t^2}{\text{df} - 1}
+\quad\Rightarrow\quad
+r_t^* = r_t\sqrt{\frac{\text{df} - 1}{\text{df} - r_t^2}}
+$$
+
+이에요($\text{df} = n - k$). Cook 거리는 행 $t$를 뺐을 때 적합값 전체가 움직이는 정도예요.
+
+$$
+D_t = \frac{\sum_i (\hat y_i - \hat y_{i(t)})^2}{k\,s^2} = \frac{r_t^2}{k}\cdot\frac{h_t}{1 - h_t}
+$$
+
+```python
+    @property
+    def resid_studentized_external(self):
+        """e~_t / (s_(t) sqrt(1 - h_t)) with s_(t) the residual scale without row t (statsmodels'
+        resid_studentized_external, R's rstudent): r sqrt((df - 1) / (df - r^2)), r the internal one."""
+        def make():
+            r = self.resid_studentized_internal
+            df = self._per(self.df_resid)
+            return r * _sd.sqrt((df - 1.0) / (df - r * r))
+        return self._cached("resid_studentized_external", make)
+
+    @property
+    def cooks_distance(self):
+        """Cook's distance r_t^2 / rank * h_t / (1 - h_t), r the internal studentized residual
+        (R's cooks.distance; statsmodels' cooks_distance[0])."""
+        def make():
+            r, h = self.resid_studentized_internal, self.leverage
+            return r * r / self._per(self._stat(_RANK)) * (h / (1.0 - h))
+        return self._cached("cooks_distance", make)
+```
+
+닫힌 식이 행을 뺀 적합과 같은지 직접 볼 수 있어요.
+
+```python
+>>> r = sd.regression.ols(y, X)
+>>> float(sd.sum(r.leverage)), r.rank
+(3.0, 3)
+>>> t = 7
+>>> keep = sd.arange(40) != t
+>>> r_t = sd.regression.ols(y[keep], X[keep])
+>>> float(r.resid[t]) / ((r_t.scale * (1.0 - float(r.leverage[t]))) ** 0.5)
+1.0168598318244315
+>>> float(r.resid_studentized_external[t])
+1.0168598318244313
+>>> float(sd.sum((r.fittedvalues - r_t.predict(X)) ** 2)) / (r.rank * r.scale)
+0.017164633066568402
+>>> float(r.cooks_distance[t])
+0.01716463306656841
+```
+
+statsmodels의 `resid_studentized_external`은 행을 하나씩 뺀 적합을 $n$번 해요. (10⁵, 10)에서 sd의 외적 스튜던트화 잔차는 적합을 포함해 14.5 ms(1스레드)예요.
+
+잔차가 정확히 0인 완전 적합에서는 $s = 0$이고 $h_t < 1$이라 스튜던트화 잔차와 Cook 거리가 $0/0$ = NaN이에요.
+
+## 잔차의 합: Durbin–Watson과 Jarque–Bera
+
+$$
+d = \frac{\sum_{t=2}^{n}(\tilde e_t - \tilde e_{t-1})^2}{\sum_t \tilde e_t^2},
+\qquad
+\text{JB} = \frac{n}{6}\left(S^2 + \frac{(K - 3)^2}{4}\right)
+$$
+
+Durbin–Watson $d$는 이웃한 잔차의 차이로 1차 자기상관을 봐요(상관이 없으면 2 근처). Jarque–Bera는 잔차의 왜도 $S = \mu_3/\mu_2^{3/2}$와 첨도 $K = \mu_4/\mu_2^2$($\mu_p = \tfrac1n\sum(\tilde e_t - \bar e)^p$)가 정규분포의 0과 3에서 얼마나 벗어났는지를 χ²(2)로 재요.
+
+분자의 합은 커널 `resid_stats`가 적합에 쓰인 행만 순서대로 모아 double-double로 더해요. 이웃한 잔차의 차는 two-sum으로 정확히 구한 뒤 제곱해요. $\mu_p$의 $d = \tilde e - \bar e$도 double-double 평균에서 빼요.
+
+```cpp
+            chunks([&](lint c) {
+                const lint t0 = c * kChunk, t1 = std::min(m, t0 + kChunk);
+                DD s1{0.0, 0.0}, dw{0.0, 0.0};
+                for (lint t = t0; t < t1; ++t) {
+                    s1 = s1 + DD{x[t], 0.0};
+                    if (t > 0) {
+                        double h, l;
+                        two_sum(x[t], -x[t - 1], h, l);
+                        const DD d = dd_of(h, l);
+                        dw = dw + d * d;
+                    }
+                }
+                part[c * 8 + 0] = s1.hi, part[c * 8 + 1] = s1.lo, part[c * 8 + 2] = dw.hi, part[c * 8 + 3] = dw.lo;
+            });
+```
+
+덩어리는 4,096행으로 n만으로 정하고 순서대로 더하므로 스레드 수와 상관없는 비트예요. 덩어리 경계의 차 $\tilde e_{t_0} - \tilde e_{t_0-1}$도 그 덩어리가 맡아요(`t > 0`이면 앞 덩어리의 마지막 행을 읽어요). Durbin–Watson의 분모는 적합의 `ssr`이에요.
+
+이 합들은 적합 안에서 구하지 않고 처음 읽을 때 따로 구해요. (10⁵, 10)·1스레드에서 적합 안에서 더하면 적합이 9.0 ms에서 10.3 ms로 느려지기 때문이에요(`bench/regression/g1b/speed.md`).
+
+## Breusch–Pagan
+
+잔차의 분산이 설명변수에 따라 변하는지(이분산)를 보는 검정이에요. 잔차의 제곱 $\tilde e_t^2$를 상수와 설계의 열들에 회귀하는 **보조 회귀**를 같은 커널로 풀어요.
+
+$$
+\tilde e_t^2 = \gamma_0 + z_t\gamma + \eta_t, \qquad
+\text{LM}_{\text{Koenker}} = n R^2_{\text{aux}}, \qquad
+\text{LM}_{\text{BP}} = \frac{\text{ESS}_{\text{aux}}}{2\hat\sigma^4},\ \hat\sigma^2 = \frac{\text{SSR}}{n}
+$$
+
+- 기본(`studentize=True`)은 Koenker(1981)의 스튜던트화 판이에요. 오차가 정규분포가 아니어도 크기가 맞아요. `studentize=False`는 Breusch와 Pagan(1979)의 원래 판이에요.
+- LM은 χ²(보조 회귀의 `df_model`)과 비교하고, `fvalue`·`f_pvalue`는 보조 회귀 자신의 F예요.
+- 보조 회귀는 모형에 절편이 없어도 늘 상수를 넣어요. 설계의 열은 백색화한 것이에요(WLS면 $\sqrt{w}$를 곱한 열과 $\sqrt{w}$ 열 자체, GLS면 $L^{-1}X$와 $L^{-1}\mathbf 1$).
+- 가중치가 0인 행은 보조 회귀에서도 빠지도록 0/1 가중치를 줘요.
+
+```python
+            raw = _k.fit("breusch_pagan", e * e, Z, wa, None, True, tol, 0, _REFINE_STEPS)
+            return OLSResult(raw, param_names=None, intercept=True, cov_type="nonrobust", batch=_batch_shape(raw))
+```
+
+보조 회귀의 R², ESS, F는 [최소제곱 풀이](/internals/regression/least-squares/)의 필드 그대로라서, R²가 0에 가까운 보통의 경우(이분산이 없을 때)에도 ESS를 직접 더한 정확한 값이에요.
+
+```python
+>>> r.breusch_pagan()
+BreuschPaganResult(lm=3.162926704447994, lm_pvalue=0.20567390451681203, fvalue=1.5884580070413283, f_pvalue=0.21785365334745044)
+>>> r.jarque_bera()
+JarqueBeraResult(statistic=4.900130126253963, pvalue=0.08628797215143992)
+>>> r.durbin_watson
+2.4772685414802473
+```
+
+같은 자료에서 R의 `lmtest::bptest(m)`은 BP = 3.1629, p = 0.2057, `dwtest(m)`은 DW = 2.477269예요.
+
+## 가중치가 0인 행
+
+WLS에서 가중치가 0인 행은 적합, `nobs`, 자유도에서 빠져요(R의 `lm`과 같아요). 추론과 진단도 이 규칙을 끝까지 따라요.
+
+- 얇은 Q에 그 행이 없으므로 HC의 고기에 들지 않고, 지렛대·스튜던트화 잔차·Cook 거리는 0이에요.
+- HAC의 지연은 적합에 쓰인 행을 이어서 세요. 0인 행을 건너뛰고 앞뒤 행이 이웃이 돼요.
+- 그 행에만 있는 군집은 $G$에 들지 않아요.
+- Durbin–Watson과 Jarque–Bera의 합도 쓰인 행만이에요.
+
+그래서 0인 행이 있는 WLS는 강건 공분산까지 그 행을 뺀 WLS와 비트까지 같아요.
+
+```python
+>>> w = sd.where(sd.arange(40) == 5, 0.0, 1.0)
+>>> a = sd.regression.wls(y, X, weights=w, cov_type="HAC", maxlags=2)
+>>> k5 = sd.arange(40) != 5
+>>> b = sd.regression.wls(y[k5], X[k5], weights=sd.ones(39), cov_type="HAC", maxlags=2)
+>>> bool(sd.all(a.bse == b.bse)), float(a.leverage[5])
+(True, 0.0)
+```
+
+statsmodels 0.15.0은 그 행을 `nobs`에 세요. 60행 가운데 2행의 가중치가 0이면 `df_resid`가 sd 55, statsmodels 57이고, 고전형 표준오차가 1.8% 달라요. HAC와 군집에서도 statsmodels는 그 행을 점수 0인 시점·관측으로 남겨서 지연의 짝과 $G$가 달라져요.
+
+## summary()
+
+`summary()`는 statsmodels의 OLS 요약과 같은 짜임과 숫자 꼴의 글이에요. 회귀 하나만 받고, 배치면 `ValueError`예요.
+
+```python
+>>> s = sd.regression.ols(y, X, cov_type="HAC", maxlags=2)
+>>> print(s.summary())
+                            OLS Regression Results
+==============================================================================
+Model:                             OLS  R-squared:                       0.030
+Method:                  Least Squares  Adj. R-squared:                 -0.022
+No. Observations:                   40  F-statistic:                    0.9026
+Df Residuals:                       37  Prob (F-statistic):              0.414
+Df Model:                            2  Log-Likelihood:                -75.999
+Covariance Type:                   HAC  AIC:                             158.0
+                                        BIC:                             163.1
+==============================================================================
+                 coef    std err          t      P>|t|     [0.025     0.975]
+------------------------------------------------------------------------------
+const          0.7350      0.215      3.421      0.002      0.300      1.170
+x1             0.0661      0.371      0.178      0.860     -0.686      0.818
+x2            -0.3029      0.246     -1.232      0.226     -0.801      0.195
+==============================================================================
+Durbin-Watson:                   2.477  Jarque-Bera (JB):                4.900
+Prob(JB):                       0.0863  Cond. No.                         1.37
+==============================================================================
+<BLANKLINE>
+Notes:
+[1] Standard errors are heteroscedasticity and autocorrelation robust (HAC)
+    using 2 lags (Bartlett kernel) and without small sample correction.
+```
+
+- 첫 덩어리는 왼쪽(모형, 행 수, 자유도, 공분산 종류)과 오른쪽(R², 수정 R², F와 p, 로그우도, AIC, BIC) 두 열이에요. 열마다 38자이고 값은 오른쪽 정렬이에요.
+- 계수 표는 계수, 표준오차, t, p, `1 - alpha` 구간이에요. 숫자는 statsmodels의 `forg` 규칙(소수 3자리, 10⁴ 이상이거나 10⁻⁴ 미만이면 유효숫자 3자리)이에요. 구간의 머리는 `alpha`에서 만들어요(`alpha=0.1`이면 `[0.05`, `0.95]`).
+- 아래 덩어리는 Durbin–Watson, Jarque–Bera와 그 p, 조건수(`condition_number`: 쓰인 열의 R의 2-노름 조건수)예요. `summary()`가 적합에 더하는 시간은 이 셋뿐이에요.
+- 주석은 공분산 종류에 따라 달라요. HAC는 지연 수, 군집은 군집 수와 t·F의 자유도를 적어요. 겹친 열이 있으면 "Aliased (linearly dependent on earlier columns), not estimated: x2." 같은 줄이 붙어요.
+
+## 정확도
+
+Arb(구간 산술)로 만든 참값과 같은 double 입력에서 비교한 값이에요(`tests/regression/ref/linear.json`). 관측별 값(지렛대, 잔차들, Cook)은 max|차| / max|참값|, 나머지는 상대오차예요.
+
+| 문제 | κ | 지렛대 | 외적 스튜던트화 | Cook | DW | JB | BP | HAC bse | 군집 bse | 군집 F·p |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| ols_int | 1.6 | 4e-16 | 2e-16 | 7e-16 | 1e-16 | 7e-16 | 2e-16 | 4e-16 | 5e-16 | 2e-15 |
+| wls_zero | 1.8 | 3e-16 | 4e-16 | 4e-16 | 3e-17 | 1e-15 | 7e-16 | 2e-16 | 4e-16 | 2e-15 |
+| ols_cond | 1.0e5 | 3e-12 | 6e-14 | 5e-13 | 5e-17 | 1e-15 | 8e-12 | 4e-13 | 2e-13 | 3e-11 |
+| ols_kappa11 | 1.0e11 | 4e-6 | 2e-7 | 1e-6 | 6e-14 | 2e-12 | 6e-7 | 8e-7 | | |
+| Norris | 8.6e2 | 4e-16 | 5e-14 | 8e-14 | 3e-14 | 4e-13 | 2e-13 | 2e-14 | | |
+| Longley | 4.9e9 | 3e-13 | 1e-12 | 3e-12 | 1e-16 | 7e-15 | 1e-12 | 1e-12 | | |
+| Filip | 1.8e15 | 4e-8 | 4e-8 | 4e-8 | 4e-9 | 7e-8 | 2e-8 | 2e-7 | | |
+
+- 조건이 좋은 문제는 모두 $u$의 몇 배예요. 오차는 대략 $\kappa u$를 따라요. 지렛대는 X의 열공간 자체가 $\kappa u$만큼 움직이기 때문이고, 잔차에서 오는 값은 $\beta$의 반올림이 작은 잔차에 $\lvert x\rvert\lvert\beta\rvert u$로 들어가기 때문이에요(Norris 4×10⁻¹⁴).
+- DW와 JB는 잔차의 합을 double-double로 더해서 조건이 나빠도 덜 나빠져요(Longley의 DW 10⁻¹⁶).
+- statsmodels와는 HAC·군집의 bse·p·F, 지렛대, 두 스튜던트화 잔차, Cook 거리, DW, JB, BP가 모두 10⁻¹¹ 안에서 같아요(OLS, WLS, GLS; `tests/regression/test_robust_diagnostics.py`).
+
+## 속도
+
+`bench/regression/g1b/speed.md`(Apple M4 Pro, statsmodels 0.15.0, numpy 2.5.4)의 값이에요. 오차는 AR(1)(계수 0.5)이고, 시간은 여러 번 가운데 가장 빠른 값이에요. 두 라이브러리 모두 `bse`·`pvalues`를 읽고, statsmodels는 `use_t=True`예요. 진단은 지렛대, 내적 스튜던트화 잔차, Cook 거리, Durbin–Watson, Jarque–Bera, Breusch–Pagan이에요. statsmodels의 시간은 BLAS 1스레드 값이에요(10스레드에서도 거의 같아요).
+
+<Bench
+  series={['statsmodels 0.15.0', 'stardust 1스레드', 'stardust 10스레드']}
+  rows={[
+    { label: '(10⁵, 10) HAC, 지연 18', times: [17.6e-3, 14.8e-3, 7.77e-3] },
+    { label: '(10⁵, 10) 군집 1,000개', times: [13.5e-3, 12.3e-3, 6.90e-3] },
+    { label: '(10⁵, 10) 적합 + 진단', times: [30.2e-3, 25.5e-3, 13.1e-3] },
+    { label: '(10⁵, 10) 적합 + summary()', times: [17.9e-3, 11.0e-3, 4.39e-3] },
+    { label: '(10⁶, 50) HAC, 지연 30', times: [1500e-3, 871e-3, 489e-3] },
+    { label: '(10⁶, 50) 군집 1,000개', times: [1200e-3, 659e-3, 420e-3] },
+    { label: '(10⁶, 50) 적합 + 진단', times: [2040e-3, 1370e-3, 860e-3] },
+    { label: '(10⁶, 50) 적합 + summary()', times: [1040e-3, 486e-3, 242e-3] },
+  ]}
+  caption="배수는 statsmodels 대비예요."
+/>
+
+- 모든 경우에 statsmodels보다 빨라요(1스레드 1.1–2.1배, 10스레드 2.0–4.3배).
+- HAC와 군집이 고전형 적합에 더하는 시간의 대부분은 얇은 Q(`orgqr`, QR 한 번 꼴)예요. (10⁶, 50)에서 HAC(지연 30)는 군집보다 1스레드 212 ms, 10스레드 69 ms 더 걸리는데, 이것이 Bartlett 필터와 $U^{\mathsf T}V$예요.
+- 진단의 시간은 적합, 지렛대를 위한 QR과 `orgqr`, Breusch–Pagan의 보조 회귀(같은 크기의 적합 한 번)예요. 고전형 적합의 시간은 진단을 읽지 않으면 그대로예요.

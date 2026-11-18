@@ -13,6 +13,7 @@ const groupOrder: Record<string, string[]> = {
   random: ['생성기', '뽑기', '성능과 검증'],
   special: ['구조', '수치 기법', '함수별 알고리즘', '정확도와 성능'],
   stats: ['구조', '분포별 알고리즘', '표본과 다변량', '기술통계', '정확도와 성능'],
+  regression: ['구조', '선형 모형', '일반화 선형 모형', '정규화', '강건과 분위', '비선형', '정확도와 성능'],
 };
 
 export const splitInternalsId = (entry: InternalsEntry) => splitEntryId(entry);

@@ -1,0 +1,408 @@
+---
+title: penalized_glm
+names: [penalized_glm, PenalizedGLMResult]
+group: 정규화 회귀
+order: 5
+signatures:
+  - "sd.regression.penalized_glm(y, X, /, *, family, alpha, l1_ratio=0.5, weights=None, intercept=True, standardize=False, max_iter=100, tol=1e-08, nan_policy='propagate')"
+summary: 로지스틱 회귀(이항)와 포아송 회귀에 라소·릿지·엘라스틱 넷의 벌점을 준 정규화 GLM이에요. 0과 1의 반응이나 셈 자료에서 열이 많거나 겹칠 때, 또는 분리 때문에 최대우도 추정이 없을 때도 유한하고 안정된 계수를 줘요.
+params:
+  - name: y
+    type: ndarray, 실수의 시퀀스, 또는 Series
+    kind: positional-only
+    desc: "반응 (..., n). family='binomial'이면 0 또는 1, 'poisson'이면 0 이상(정수가 아니어도 돼요)."
+  - name: X
+    type: ndarray, 실수의 시퀀스, 또는 DataFrame
+    kind: positional-only
+    desc: 설명변수 (..., n, k) 또는 (n,). 절편 열은 넣지 않아요.
+  - name: family
+    type: str
+    kind: keyword-only
+    desc: "'binomial'(logit 링크) 또는 'poisson'(log 링크). 꼭 줘야 해요."
+  - name: alpha
+    type: float 또는 1차원 배열
+    kind: keyword-only
+    desc: 벌점의 세기. 0 이상의 유한한 수이고 꼭 줘야 해요. 0이면 glm과 같은 적합이에요. 1차원 배열이면 경로예요.
+  - name: l1_ratio
+    type: float
+    kind: keyword-only
+    desc: 벌점 가운데 절댓값(L1) 쪽의 비율. 0 이상 1 이하이고 기본값은 0.5예요. 1이면 라소, 0이면 릿지의 벌점이에요.
+  - name: weights
+    type: None 또는 ndarray
+    kind: keyword-only
+    desc: 행마다의 가중치 (..., n). 편차에 곱해져요(glm의 var_weights와 같은 뜻). 0 이상이고, 0인 행은 적합에서 빠져요.
+  - name: intercept
+    type: bool
+    kind: keyword-only
+    desc: 절편을 넣을지. 기본값 True예요. 절편은 벌점을 받지 않아요.
+  - name: standardize
+    type: bool
+    kind: keyword-only
+    desc: True면 열마다 표준편차로 나눈 척도의 계수에 벌점을 줘요. 기본값은 False예요.
+  - name: max_iter
+    type: int
+    kind: keyword-only
+    desc: alpha 하나마다 바깥 반복의 상한. 1 이상, 기본값 100이에요.
+  - name: tol
+    type: float
+    kind: keyword-only
+    desc: 수렴 판정의 허용오차. 목적함수의 상대 변화가 이보다 작으면 수렴이에요. 기본값은 1e-8(glm과 같아요)이에요.
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "NaN을 다루는 방법. 'propagate'(기본), 'omit', 'raise' 중 하나예요."
+returns:
+  type: PenalizedGLMResult
+  desc: "계수 params(절편이 params[0]), fittedvalues(평균 μ), linear_predictor(η), resid_response, deviance, null_deviance, deviance_ratio, df_model, converged, n_iter, dual_gap, separation, family, nobs와 predict(which=). 표준오차·p값은 없어요."
+raises:
+  - type: TypeError
+    desc: family를 빠뜨렸을 때, y나 X를 이름으로 줬을 때, alpha가 수나 1차원 배열이 아닐 때, l1_ratio·tol이 수가 아닐 때, max_iter가 int가 아닐 때, link·offset 같은 없는 인자를 줬을 때, 입력이 복소수일 때.
+  - type: ValueError
+    desc: family가 'binomial'·'poisson'이 아닐 때, y가 분포족의 범위 밖일 때(이항은 0·1이 아닌 값, 포아송은 음수), l1_ratio가 0과 1 사이가 아닐 때, alpha가 음수·inf·NaN일 때, max_iter < 1, tol ≤ 0일 때, 모양이 맞지 않을 때, weights가 음수일 때, inf가 있을 때, nan_policy가 틀렸거나 'raise'인데 NaN이 있을 때, 배치에서 nan_policy='omit'일 때.
+  - type: OverflowError
+    desc: alpha나 max_iter가 너무 큰 정수일 때.
+seeAlso: [glm, logistic, poisson-gamma, lasso, elastic-net, ridge, cross-validation]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const glmPath1 = [[-3, 2.1576], [-2.975, 2.1559], [-2.95, 2.1541], [-2.925, 2.1522], [-2.9, 2.1502], [-2.875, 2.148], [-2.85, 2.1458], [-2.825, 2.1434], [-2.8, 2.1409], [-2.775, 2.1383], [-2.75, 2.1355], [-2.725, 2.1325], [-2.7, 2.1294], [-2.675, 2.1262], [-2.65, 2.1227], [-2.625, 2.119], [-2.6, 2.1152], [-2.575, 2.1111], [-2.55, 2.1068], [-2.525, 2.1023], [-2.5, 2.0975], [-2.475, 2.0925], [-2.45, 2.0872], [-2.425, 2.0816], [-2.4, 2.0757], [-2.375, 2.0696], [-2.35, 2.0631], [-2.325, 2.0563], [-2.3, 2.0491], [-2.275, 2.0415], [-2.25, 2.0336], [-2.225, 2.0253], [-2.2, 2.0166], [-2.175, 2.0074], [-2.15, 1.9978], [-2.125, 1.9878], [-2.1, 1.9772], [-2.075, 1.9662], [-2.05, 1.9547], [-2.025, 1.9426], [-2, 1.93], [-1.975, 1.9169], [-1.95, 1.9032], [-1.925, 1.8889], [-1.9, 1.874], [-1.875, 1.8585], [-1.85, 1.8423], [-1.825, 1.8256], [-1.8, 1.8082], [-1.775, 1.7901], [-1.75, 1.7713], [-1.725, 1.7519], [-1.7, 1.7318], [-1.675, 1.711], [-1.65, 1.6896], [-1.625, 1.6674], [-1.6, 1.6445], [-1.575, 1.621], [-1.55, 1.5967], [-1.525, 1.5718], [-1.5, 1.5462], [-1.475, 1.5199], [-1.45, 1.4929], [-1.425, 1.4653], [-1.4, 1.4371], [-1.375, 1.4082], [-1.35, 1.3787], [-1.325, 1.3486], [-1.3, 1.3179], [-1.275, 1.2844], [-1.25, 1.2496], [-1.225, 1.2141], [-1.2, 1.1779], [-1.175, 1.141], [-1.15, 1.1035], [-1.125, 1.0653], [-1.1, 1.0265], [-1.075, 0.98707], [-1.05, 0.94703], [-1.025, 0.90638], [-1, 0.86511], [-0.975, 0.82323], [-0.95, 0.78071], [-0.925, 0.73756], [-0.9, 0.69372], [-0.875, 0.64919], [-0.85, 0.60389], [-0.825, 0.55776], [-0.8, 0.51072], [-0.775, 0.46242], [-0.75, 0.41194], [-0.725, 0.35978], [-0.7, 0.30577], [-0.675, 0.24972], [-0.65, 0.1914], [-0.625, 0.13052], [-0.6, 0.066697], [-0.575, 0], [-0.55, 0], [-0.525, 0], [-0.5, 0], [-0.475, 0], [-0.45, 0], [-0.425, 0], [-0.4, 0], [-0.375, 0], [-0.35, 0], [-0.325, 0], [-0.3, 0], [-0.275, 0], [-0.25, 0], [-0.225, 0], [-0.2, 0], [-0.175, 0], [-0.15, 0], [-0.125, 0], [-0.1, 0], [-0.075, 0], [-0.05, 0], [-0.025, 0], [0, 0]];
+export const glmPath2 = [[-3, -1.1506], [-2.975, -1.1494], [-2.95, -1.1482], [-2.925, -1.1469], [-2.9, -1.1456], [-2.875, -1.1442], [-2.85, -1.1427], [-2.825, -1.1411], [-2.8, -1.1394], [-2.775, -1.1376], [-2.75, -1.1357], [-2.725, -1.1338], [-2.7, -1.1317], [-2.675, -1.1295], [-2.65, -1.1271], [-2.625, -1.1247], [-2.6, -1.1221], [-2.575, -1.1194], [-2.55, -1.1165], [-2.525, -1.1135], [-2.5, -1.1103], [-2.475, -1.1069], [-2.45, -1.1033], [-2.425, -1.0996], [-2.4, -1.0957], [-2.375, -1.0915], [-2.35, -1.0872], [-2.325, -1.0826], [-2.3, -1.0778], [-2.275, -1.0728], [-2.25, -1.0675], [-2.225, -1.0619], [-2.2, -1.0561], [-2.175, -1.05], [-2.15, -1.0436], [-2.125, -1.0368], [-2.1, -1.0298], [-2.075, -1.0224], [-2.05, -1.0148], [-2.025, -1.0067], [-2, -0.99832], [-1.975, -0.98955], [-1.95, -0.98041], [-1.925, -0.97088], [-1.9, -0.96096], [-1.875, -0.95063], [-1.85, -0.93989], [-1.825, -0.92872], [-1.8, -0.91712], [-1.775, -0.90509], [-1.75, -0.89261], [-1.725, -0.87969], [-1.7, -0.86631], [-1.675, -0.85247], [-1.65, -0.83817], [-1.625, -0.8234], [-1.6, -0.80816], [-1.575, -0.79246], [-1.55, -0.77628], [-1.525, -0.75964], [-1.5, -0.74252], [-1.475, -0.72493], [-1.45, -0.70687], [-1.425, -0.68835], [-1.4, -0.66936], [-1.375, -0.64992], [-1.35, -0.63001], [-1.325, -0.60965], [-1.3, -0.58883], [-1.275, -0.56639], [-1.25, -0.54313], [-1.225, -0.51938], [-1.2, -0.49514], [-1.175, -0.4704], [-1.15, -0.44515], [-1.125, -0.41939], [-1.1, -0.39311], [-1.075, -0.36629], [-1.05, -0.33892], [-1.025, -0.31098], [-1, -0.28244], [-0.975, -0.25329], [-0.95, -0.22348], [-0.925, -0.19298], [-0.9, -0.16175], [-0.875, -0.12972], [-0.85, -0.096821], [-0.825, -0.062978], [-0.8, -0.028081], [-0.775, 0], [-0.75, 0], [-0.725, 0], [-0.7, 0], [-0.675, 0], [-0.65, 0], [-0.625, 0], [-0.6, 0], [-0.575, 0], [-0.55, 0], [-0.525, 0], [-0.5, 0], [-0.475, 0], [-0.45, 0], [-0.425, 0], [-0.4, 0], [-0.375, 0], [-0.35, 0], [-0.325, 0], [-0.3, 0], [-0.275, 0], [-0.25, 0], [-0.225, 0], [-0.2, 0], [-0.175, 0], [-0.15, 0], [-0.125, 0], [-0.1, 0], [-0.075, 0], [-0.05, 0], [-0.025, 0], [0, 0]];
+export const glmPath3 = [[-3, -0.33338], [-2.975, -0.33281], [-2.95, -0.33221], [-2.925, -0.33157], [-2.9, -0.3309], [-2.875, -0.33019], [-2.85, -0.32944], [-2.825, -0.32864], [-2.8, -0.3278], [-2.775, -0.32691], [-2.75, -0.32597], [-2.725, -0.32498], [-2.7, -0.32393], [-2.675, -0.32281], [-2.65, -0.32164], [-2.625, -0.3204], [-2.6, -0.31909], [-2.575, -0.3177], [-2.55, -0.31624], [-2.525, -0.3147], [-2.5, -0.31307], [-2.475, -0.31134], [-2.45, -0.30953], [-2.425, -0.30761], [-2.4, -0.30559], [-2.375, -0.30345], [-2.35, -0.3012], [-2.325, -0.29883], [-2.3, -0.29633], [-2.275, -0.29369], [-2.25, -0.29092], [-2.225, -0.28799], [-2.2, -0.28492], [-2.175, -0.28168], [-2.15, -0.27827], [-2.125, -0.27468], [-2.1, -0.27091], [-2.075, -0.26695], [-2.05, -0.26279], [-2.025, -0.25842], [-2, -0.25383], [-1.975, -0.24902], [-1.95, -0.24397], [-1.925, -0.23868], [-1.9, -0.23314], [-1.875, -0.22734], [-1.85, -0.22126], [-1.825, -0.21491], [-1.8, -0.20828], [-1.775, -0.20134], [-1.75, -0.1941], [-1.725, -0.18655], [-1.7, -0.17867], [-1.675, -0.17047], [-1.65, -0.16192], [-1.625, -0.15303], [-1.6, -0.14379], [-1.575, -0.13418], [-1.55, -0.12421], [-1.525, -0.11386], [-1.5, -0.10313], [-1.475, -0.092022], [-1.45, -0.080518], [-1.425, -0.068619], [-1.4, -0.056319], [-1.375, -0.043616], [-1.35, -0.030506], [-1.325, -0.016987], [-1.3, -0.0030549], [-1.275, 0], [-1.25, 0], [-1.225, 0], [-1.2, 0], [-1.175, 0], [-1.15, 0], [-1.125, 0], [-1.1, 0], [-1.075, 0], [-1.05, 0], [-1.025, 0], [-1, 0], [-0.975, 0], [-0.95, 0], [-0.925, 0], [-0.9, 0], [-0.875, 0], [-0.85, 0], [-0.825, 0], [-0.8, 0], [-0.775, 0], [-0.75, 0], [-0.725, 0], [-0.7, 0], [-0.675, 0], [-0.65, 0], [-0.625, 0], [-0.6, 0], [-0.575, 0], [-0.55, 0], [-0.525, 0], [-0.5, 0], [-0.475, 0], [-0.45, 0], [-0.425, 0], [-0.4, 0], [-0.375, 0], [-0.35, 0], [-0.325, 0], [-0.3, 0], [-0.275, 0], [-0.25, 0], [-0.225, 0], [-0.2, 0], [-0.175, 0], [-0.15, 0], [-0.125, 0], [-0.1, 0], [-0.075, 0], [-0.05, 0], [-0.025, 0], [0, 0]];
+
+## 한눈에 보기
+
+[`glm`](/api/regression/glm/)은 0과 1의 반응(로지스틱 회귀)이나 셈 자료(포아송 회귀)를 최대우도로 맞춰요. `penalized_glm`은 여기에 [`lasso`](/api/regression/lasso/), [`ridge`](/api/regression/ridge/), [`elastic_net`](/api/regression/elastic-net/)과 같은 벌점을 더해요. 벌점이 하는 일도 같아요.
+
+- 열이 많거나 서로 겹칠 때 계수가 크게 흔들리지 않게 해요.
+- L1 쪽 벌점(`l1_ratio > 0`)은 쓸모가 적은 열의 계수를 정확히 0으로 만들어요.
+- 0과 1이 설명변수로 완전히 갈리는 **분리**가 있으면 최대우도 추정이 무한대로 달아나는데, 벌점이 있으면 유한한 해가 있어요.
+
+로지스틱 회귀로 볼게요. 참값은 절편 −0.5, `x1` 1.5, `x2` −1, `x3` 0이에요. 반응은 확률 $\mu = 1/(1 + e^{-\eta})$로 1이 되는 0·1 값이에요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(3)
+>>> X = sd.stats.Normal().sample((80, 3), rng=rng)
+>>> eta = -0.5 + 1.5 * X[:, 0] - 1.0 * X[:, 1]
+>>> y = sd.where(rng.random(80) < sd.special.expit(eta), 1.0, 0.0)
+>>> R = sd.regression
+>>> r = R.penalized_glm(y, X, family='binomial', alpha=0.05, l1_ratio=1.0)
+>>> [round(v, 4) for v in r.params.tolist()]
+[-0.1484, 1.3192, -0.5897, -0.0036]
+>>> [round(v, 4) for v in R.glm(y, X, family='binomial').params.tolist()]
+[-0.2218, 2.1867, -1.1701, -0.3431]
+```
+
+벌점이 계수를 0 쪽으로 당겼어요. 아래 그림은 `l1_ratio=1`(라소 벌점)의 경로예요. `alpha`가 커지면 `x3`, `x2`, `x1` 순서로 계수가 정확히 0이 돼요.
+
+<Fig caption="L1 벌점 로지스틱 회귀의 계수 경로. 가로축은 alpha(로그 눈금)예요. 왼쪽 끝은 벌점 없는 glm에 가까워요.">
+  <Plot
+    curves={[
+      { points: glmPath1, label: 'x1' },
+      { points: glmPath2, label: 'x2' },
+      { points: glmPath3, label: 'x3', dashed: true },
+    ]}
+    domain={[-3, 0]}
+    range={[-1.3, 2.3]}
+    xTicks={[
+      { v: -3, label: '0.001' },
+      { v: -2, label: '0.01' },
+      { v: -1, label: '0.1' },
+      { v: 0, label: '1' },
+    ]}
+    yTicks={[
+      { v: -1, label: '-1' },
+      { v: 0, label: '0' },
+      { v: 1, label: '1' },
+      { v: 2, label: '2' },
+    ]}
+  />
+</Fig>
+
+<Reference />
+
+## 목적함수
+
+$$
+\frac{1}{2\,s_w}\sum_{i=1}^{n} w_i\, d(y_i, \mu_i)
+\;+\; \alpha\Bigl(\rho\,\lVert S\beta\rVert_1 + \frac{1 - \rho}{2}\,\lVert S\beta\rVert_2^2\Bigr),
+\qquad \mu_i = g^{-1}(b_0 + x_i^\top\beta)
+$$
+
+- $d(y, \mu)$는 단위 편차예요. 편차는 모형이 데이터에서 얼마나 먼지를 재는 양으로, 로그우도의 −2배를 포화 모형(모든 행을 정확히 맞추는 모형)에 맞춰 0부터 잰 거예요. 정규분포에서는 잔차 제곱이고, 그래서 이 식은 선형 회귀의 목적함수와 같은 꼴이에요.
+  - 이항: $d = -2\bigl[y\log\mu + (1 - y)\log(1 - \mu)\bigr]$
+  - 포아송: $d = 2\bigl[y\log(y/\mu) - (y - \mu)\bigr]$
+- $\rho$가 `l1_ratio`(기본 0.5), $S$는 `standardize`의 척도, $s_w = \sum_i w_i$예요. 절편 $b_0$는 벌점 밖이에요.
+- 링크 $g$는 정준 링크만 써요. 이항은 logit($\eta = \log\frac{\mu}{1 - \mu}$), 포아송은 log($\eta = \log\mu$)예요. 다른 링크, `trials`, `offset`·`exposure`가 필요하면 벌점 없는 [`glm`](/api/regression/glm/)을 쓰세요.
+
+벌점의 뜻, `l1_ratio`, `standardize`는 [`elastic_net`](/api/regression/elastic-net/)과 같아요. `l1_ratio`의 기본값이 0.5라서, 라소 벌점을 원하면 `l1_ratio=1.0`, 릿지 벌점을 원하면 `l1_ratio=0.0`을 직접 줘야 해요.
+
+## `family`
+
+| `family` | 링크 | `y` | 평균 `fittedvalues` |
+|---|---|---|---|
+| `'binomial'` | logit | 0 또는 1 | 1이 될 확률 $\mu \in (0, 1)$ |
+| `'poisson'` | log | 0 이상의 수(정수가 아니어도 돼요) | 기댓값 $\mu > 0$ |
+
+포아송의 예를 볼게요. 셈 자료의 평균이 $e^{0.5 + 0.6x_1 - 0.4x_3}$이에요.
+
+```python
+>>> rp = sd.random.default_rng(4)
+>>> Xp = sd.stats.Normal().sample((60, 3), rng=rp)
+>>> yp = sd.stats.Poisson(mu=sd.exp(0.5 + 0.6 * Xp[:, 0] - 0.4 * Xp[:, 2])).sample(rng=rp)
+>>> pp = R.penalized_glm(yp, Xp, family='poisson', alpha=0.05)
+>>> pp
+PenalizedGLMResult(alpha=0.05, nobs=60, df_model=1.98308, params=[  0.6464010020599703   0.6509250229865187                  0.0
+ -0.29705525267001454])
+```
+
+효과가 없는 `x2`의 계수가 정확히 0이에요. 범위 밖의 `y`나 다른 이름은 에러예요.
+
+```python
+>>> R.penalized_glm(y * 0.5, X, family='binomial', alpha=0.1)
+Traceback (most recent call last):
+    ...
+ValueError: penalized_glm(): 'y' must be 0 or 1 for the binomial family
+>>> R.penalized_glm(y - 1, X, family='poisson', alpha=0.1)
+Traceback (most recent call last):
+    ...
+ValueError: penalized_glm(): 'y' must be >= 0 for the poisson family
+>>> R.penalized_glm(y, X, family='gamma', alpha=0.1)
+Traceback (most recent call last):
+    ...
+ValueError: penalized_glm(): 'family' must be 'binomial' or 'poisson', not 'gamma'
+```
+
+## 결과 읽기: `PenalizedGLMResult`
+
+| 필드 | 뜻 |
+|---|---|
+| `params`, `param_names` | 계수(절편이 `params[0]`, 0인 계수는 정확히 0.0)와 이름 |
+| `family`, `alpha`, `l1_ratio`, `standardize` | 준 값 |
+| `nobs` | 적합에 쓴 행 수(가중치 > 0), `float` |
+| `fittedvalues` | 평균 $\mu_i$(이항은 확률) |
+| `linear_predictor` | 선형 예측 $\eta_i = b_0 + x_i^\top\beta$ |
+| `resid_response` | `y - fittedvalues` |
+| `deviance` | 적합한 모형의 가중 편차 $\sum_i w_i d(y_i, \mu_i)$ |
+| `null_deviance` | 절편만 있는 모형의 편차(절편이 없으면 $\eta = 0$인 모형) |
+| `deviance_ratio` | 1 − `deviance`/`null_deviance` |
+| `df_model` | 유효 자유도(절편은 세지 않아요) |
+| `converged`, `n_iter`, `dual_gap` | 수렴했는지, 바깥 반복 횟수, 쌍대 간격(아래) |
+| `separation` | 분리로 최대우도 추정이 없는지(`alpha=0`에서만 True가 될 수 있어요) |
+| `predict(X_new, /, *, which='mean')` | 새 행의 μ(`'mean'`) 또는 η(`'linear'`) |
+
+```python
+>>> e = R.penalized_glm(y, X, family='binomial', alpha=0.05)
+>>> e.family, e.l1_ratio, e.nobs
+('binomial', 0.5, 80.0)
+>>> round(e.deviance, 4), round(e.null_deviance, 4), round(e.deviance_ratio, 4)
+(70.1544, 110.1022, 0.3628)
+>>> e.converged, e.n_iter, e.separation
+(True, 5, False)
+>>> round(e.df_model, 4)
+2.5222
+```
+
+선형 회귀의 결과와 달리 `resid`, `ssr`, `rsquared`는 없고, 그 자리에 `resid_response`, `deviance`, `deviance_ratio`가 있어요. 표준오차·p값·`summary()`는 [`ridge`](/api/regression/ridge/)와 같은 까닭으로 없어요. 계수의 추론이 필요하면 벌점 없는 [`glm`](/api/regression/glm/)을 쓰세요.
+
+### `deviance_ratio`
+
+`deviance_ratio`는 절편만 있는 모형에 비해 편차를 얼마나 줄였는지예요. 0이면 절편만큼만 맞고, 1이면 완전히 맞아요. 선형 회귀의 R²에 해당하는 값이에요(정규분포에서는 편차가 잔차 제곱합이라 R²와 같아요). R glmnet의 `dev.ratio`, scikit-learn의 `PoissonRegressor.score`와 같은 값이에요.
+
+```python
+>>> round(1 - e.deviance / e.null_deviance, 12) == round(e.deviance_ratio, 12)
+True
+>>> round(pp.deviance_ratio, 4)
+0.4875
+```
+
+### 유효 자유도 `df_model`
+
+[`elastic_net`](/api/regression/elastic-net/)의 식에서 행의 가중치에 해의 작업 가중치(이항은 $\mu(1 - \mu)$, 포아송은 $\mu$)를 곱한 거예요. `l1_ratio=1`이면 0 아닌 계수의 수예요.
+
+```python
+>>> r.df_model
+3.0
+```
+
+## 예측: `predict`
+
+`which='mean'`(기본)은 평균 μ(이항은 확률), `which='linear'`는 선형 예측 η예요. η를 링크의 역함수로 옮긴 것이 μ예요.
+
+```python
+>>> new = sd.asarray([[0.0, 0.0, 0.0], [1.0, -1.0, 0.0]])
+>>> [round(v, 4) for v in e.predict(new).tolist()]
+[0.4558, 0.845]
+>>> [round(v, 4) for v in e.predict(new, which='linear').tolist()]
+[-0.1772, 1.6961]
+>>> [round(v, 4) for v in sd.special.expit(e.predict(new, which='linear')).tolist()]
+[0.4558, 0.845]
+>>> e.predict(new, which='prob')
+Traceback (most recent call last):
+    ...
+ValueError: predict(): 'which' must be 'mean' or 'linear', not 'prob'
+```
+
+포아송이면 `'mean'`이 $e^\eta$예요.
+
+```python
+>>> [round(v, 4) for v in pp.predict(sd.asarray([[0.0, 0.0, 0.0]])).tolist()]
+[1.9087]
+```
+
+## `alpha = 0`: 벌점 없는 `glm`
+
+`alpha=0`이면 벌점이 없으니 [`glm`](/api/regression/glm/)의 적합 그대로예요(`weights`는 `glm`의 `var_weights`로, `max_iter`, `tol`도 같은 값으로). 계수, 편차, 반복 수, 수렴, `df_model`이 `glm`의 것과 같아요.
+
+```python
+>>> z = R.penalized_glm(y, X, family='binomial', alpha=0.0)
+>>> g = R.glm(y, X, family='binomial')
+>>> z.params.tolist() == g.params.tolist(), z.deviance == g.deviance, z.n_iter == g.n_iter
+(True, True, True)
+```
+
+### 분리
+
+0과 1이 설명변수 하나로 완전히 갈리면(예: `x < 0`이면 모두 0, `x > 0`이면 모두 1), 계수를 키울수록 가능도가 끝없이 커져서 최대우도 추정이 존재하지 않아요. 이것을 **분리**라고 해요. 자세한 이야기는 [로지스틱 회귀](/api/regression/logistic/)에 있어요.
+
+`alpha=0`이면 `glm`과 같은 규칙을 따라요. `separation=True`이고 계수는 NaN이에요. 적합값은 극한(경계 쪽 행은 0 또는 1), 선형 예측은 ±inf이고, `dual_gap`은 NaN이에요.
+
+```python
+>>> xs = sd.asarray([-2.0, -1.5, -1.0, -0.5, 0.5, 1.0, 1.5, 2.0])
+>>> ys = sd.asarray([0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0])
+>>> s0 = R.penalized_glm(ys, xs, family='binomial', alpha=0.0)
+>>> s0.separation, s0.params.tolist(), s0.dual_gap
+(True, [nan, nan], nan)
+>>> s0.fittedvalues.tolist()
+[0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0]
+>>> s0.linear_predictor.tolist()[:2]
+[-inf, -inf]
+```
+
+`alpha > 0`이면 계수가 커질수록 벌점이 커지므로, 분리돼도 유한한 해가 있어요(L1 벌점만이어도요). 그래서 분리를 판정하지 않고 `separation`은 언제나 False예요. `alpha`가 작을수록 계수가 커져요.
+
+```python
+>>> for a in (0.1, 0.01, 0.001):
+...     s = R.penalized_glm(ys, xs, family='binomial', alpha=a)
+...     print(a, s.separation, s.converged, round(s.params[1], 3))
+0.1 False True 1.609
+0.01 False True 3.762
+0.001 False True 6.962
+```
+
+분리된 데이터에서 유한한 계수가 필요하면 작은 `alpha`의 벌점이 흔한 해결책이에요. 경로에서는 `alpha`가 0인 자리만 분리 규칙을 따라요.
+
+```python
+>>> sp = R.penalized_glm(ys, xs, family='binomial', alpha=[0.1, 0.0])
+>>> sp.separation
+array([False,  True], dtype=bool)
+```
+
+## 수렴: `converged`, `n_iter`, `dual_gap`
+
+`penalized_glm`은 현재 계수에서 목적함수를 이차식으로 어림해 푸는 일을 되풀이해요. 목적함수 F의 상대 변화 $\lvert F - F_{\text{old}}\rvert / (\lvert F\rvert + 0.1)$가 `tol`(기본 1e-8, `glm`과 같은 꼴)보다 작아지면 수렴이에요. 목적함수가 오히려 커지면 걸음을 반씩 줄여요.
+
+- `n_iter`: 바깥 반복의 횟수예요. `max_iter`(기본 100)가 상한이고, 닿으면 마지막 값을 내고 `converged=False`예요. 경고는 없어요.
+- `dual_gap`: 돌려준 계수에서 마지막 이차 어림 문제의 쌍대 간격(목적함수 단위)이에요. 해에서는 이차 어림과 목적함수의 기울기가 같아서 0에 가까울수록 최적에 가깝다는 척도지만, 선형 라소와 달리 목적함수 값 차이의 상한은 아니에요.
+
+수렴한 해는 0 아닌 계수와 부호를 고정한 최적성 조건으로 다시 다듬으므로, 계수는 `tol`의 정밀도가 아니라 정확한 해에 반올림 수준으로 가까워요.
+
+```python
+>>> e.converged, e.n_iter, abs(e.dual_gap) < 1e-15
+(True, 5, True)
+```
+
+## 경로
+
+`alpha`에 1차원 배열을 주면 큰 값부터 앞의 해에서 시작해 풀고, 결과는 준 순서예요. 필드마다 길이 L의 축이 붙어요. 선형 모형과 달리 출발점에 따라 결과가 **반올림 수준에서** 다를 수 있어요(비트까지 같다는 약속은 없어요).
+
+```python
+>>> pg = R.penalized_glm(y, X, family='binomial', alpha=[0.2, 0.05, 0.0], l1_ratio=1.0)
+>>> pg.params.shape, pg.deviance.shape, pg.n_iter
+((3, 4), (3,), array([3, 5, 8], dtype=int64))
+>>> [[round(v, 4) for v in row] for row in pg.params.tolist()]
+[[-0.1778, 0.3035, 0.0, 0.0], [-0.1484, 1.3192, -0.5897, -0.0036], [-0.2218, 2.1867, -1.1701, -0.3431]]
+```
+
+`alpha`를 고르는 교차검증 함수는 정규화 GLM에는 없어요. 경로를 구해 직접 시험 데이터로 비교하세요.
+
+## 특수한 경우
+
+### 유한한 해가 없는 반응
+
+포아송의 `y`가 모두 0이거나 이항의 `y`가 모두 0 또는 모두 1이면, 절편만의 모형부터 유한한 해가 없어요(평균이 0이나 1로 가야 해서 η가 ±inf예요). 그때는 계수가 NaN이고 `converged=False`예요.
+
+```python
+>>> allzero = R.penalized_glm(sd.zeros(8), xs, family='poisson', alpha=0.1)
+>>> allzero.params.tolist(), allzero.converged, allzero.nobs
+([nan, nan], False, 8.0)
+```
+
+### 가중치와 NaN
+
+`weights`는 편차에 곱해지는 가중치예요(`glm`의 `var_weights`). 0인 행은 적합과 `nobs`에서 빠지고, 적합값·선형 예측은 그 행에도 계산해요. NaN과 inf, 배치는 [`ridge`](/api/regression/ridge/), [`lasso`](/api/regression/lasso/)와 같아요.
+
+```python
+>>> w = sd.where(sd.arange(80) < 4, 0.0, 1.0)
+>>> ew = R.penalized_glm(y, X, family='binomial', alpha=0.05, weights=w)
+>>> ew.nobs, ew.params.tolist() == R.penalized_glm(y[4:], X[4:], family='binomial', alpha=0.05).params.tolist()
+(76.0, True)
+>>> ew.fittedvalues.shape
+(80,)
+```
+
+### 배치
+
+```python
+>>> b = R.penalized_glm(sd.stack([y, 1 - y]), X, family='binomial', alpha=0.05)
+>>> b.params.shape, b.separation.tolist()
+((2, 4), [False, False])
+>>> b.params[1].tolist() == R.penalized_glm(1 - y, X, family='binomial', alpha=0.05).params.tolist()
+True
+```
+
+배치의 각 결과는 하나씩 부른 것과 비트까지 같아요.
+
+## 정확도
+
+계수 벡터의 상대오차는 정확한 해(Arb 구간 산술로 최적성 조건의 해를 증명한 참값)와 견줘 로지스틱·포아송, `l1_ratio` 1, 0.5, 0의 문제에서 3e-16 안이에요. 같은 입력이면 스레드 수와 상관없이 같은 비트예요. 구현은 [정규화의 구현](/internals/regression/penalized/)에 있어요.
+
+## scikit-learn·glmnet을 아는 분께
+
+- **scikit-learn의 `LogisticRegression`은 `alpha` 대신 `C`를 써요.** `C`는 벌점의 역수 쪽이라 $C = 1/(s_w \cdot \alpha)$(가중치가 없으면 $1/(n\alpha)$)가 여기 `alpha`에 해당해요. `l1_ratio`는 같은 뜻이에요. 다만 기본값이 달라서 scikit-learn은 `l1_ratio=0`(L2), 여기는 0.5예요.
+
+  ```python
+  >>> import numpy as np
+  >>> from sklearn.linear_model import LogisticRegression
+  >>> Xn, yn = np.array(X.tolist()), np.array(y.tolist())
+  >>> m = LogisticRegression(C=1 / (80 * 0.05), l1_ratio=0.0, solver='newton-cholesky', tol=1e-14).fit(Xn, yn)
+  >>> e0 = R.penalized_glm(y, X, family='binomial', alpha=0.05, l1_ratio=0.0)
+  >>> bool(np.allclose(np.r_[m.intercept_, m.coef_.ravel()], e0.params.tolist(), rtol=1e-12))
+  True
+  ```
+
+- **기본 설정에서는 값이 달라요.** scikit-learn의 기본 풀이(`lbfgs`, `tol=1e-4`)는 위 문제에서 계수가 상대적으로 3e-4쯤 달라요. `liblinear`는 절편에도 벌점을 줘서 아예 다른 문제를 풀어요.
+
+  ```python
+  >>> d = LogisticRegression(C=1 / (80 * 0.05)).fit(Xn, yn)
+  >>> rel = np.linalg.norm(np.r_[d.intercept_, d.coef_.ravel()] - e0.params.tolist()) / np.linalg.norm(e0.params.tolist())
+  >>> 1e-4 < rel < 1e-3
+  True
+  ```
+
+- scikit-learn의 `PoissonRegressor(alpha=a)`는 L2 벌점만 있고, 여기의 `alpha=a, l1_ratio=0.0`과 같아요. `score`는 `deviance_ratio`와 같아요.
+
+  ```python
+  >>> from sklearn.linear_model import PoissonRegressor
+  >>> Xpn, ypn = np.array(Xp.tolist()), np.array(yp.tolist())
+  >>> mp = PoissonRegressor(alpha=0.05, solver='newton-cholesky', tol=1e-14, max_iter=10**4).fit(Xpn, ypn)
+  >>> p0 = R.penalized_glm(yp, Xp, family='poisson', alpha=0.05, l1_ratio=0.0)
+  >>> bool(np.allclose(np.r_[mp.intercept_, mp.coef_], p0.params.tolist(), rtol=1e-12))
+  True
+  >>> round(mp.score(Xpn, ypn), 10) == round(p0.deviance_ratio, 10)
+  True
+  ```
+
+- R의 glmnet(`family = "binomial"`, `"poisson"`)은 같은 목적함수예요. glmnet의 `lambda`가 여기 `alpha`, glmnet의 `alpha`가 여기 `l1_ratio`이고, 선형 모형과 달리 `y`의 척도 문제가 없어서 그대로 대응해요. glmnet은 기본으로 열을 표준화하고(`standardize = TRUE`), `dev.ratio`가 `deviance_ratio`예요.

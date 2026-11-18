@@ -45,6 +45,7 @@ NAMESPACES = {
     "special": sd.special,
     "stats": sd.stats,
     "random": sd.random,
+    "regression": sd.regression,
 }
 
 
