@@ -24,6 +24,7 @@
 // chunks' partial sums are added in order: the result does not depend on the thread count
 // or on whether the regression runs alone or inside a batch.
 #include "regression/linear.hpp"
+#include "regression/lsq.hpp"
 
 #include "bind/errors.hpp"
 #include "linalg/ops/common.hpp"
@@ -45,6 +46,7 @@
 namespace sd::regression {
 
 namespace nb = nanobind;
+using namespace lsq;
 using linalg::Batch;
 using linalg::Failure;
 using linalg::Input;
@@ -60,20 +62,6 @@ namespace {
 
 constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 constexpr double kEps = 0x1p-52;
-
-// cov_type codes (the Python layer maps the names)
-enum Cov : int { kNonrobust = 0, kHC0 = 1, kHC1 = 2, kHC2 = 3, kHC3 = 4, kHAC = 5, kCluster = 6 };
-
-// The per-regression scalars, in this order (stardust/regression/_linear.py reads them).
-// kNGroups: the clusters among the fit's rows (cluster), kLags: the lags used (HAC); NaN
-// for the other covariances.
-enum Stat : int {
-    kNobs = 0, kRank, kSsr, kCtss, kUtss, kEssC, kEssU, kSumLogW, kWaldF, kWaldQ, kIsNaN, kNGroups, kLags,
-    kNStat
-};
-
-// Failure codes of one regression.
-constexpr int kInfY = 1, kInfX = 2, kInfW = 3, kNegW = 4, kInfU = 5;
 
 // Rows per chunk of the HAC lag sums (fixed: the bits do not depend on the thread count).
 constexpr lint kHacChunk = 4096;
@@ -213,43 +201,6 @@ enum AccF : int { fSsr = 0, fCtss, fUtss, fEssC, fEssU, kAccFinal };
 // The factor over LAPACK's condition estimate in the refinement's stopping test.
 constexpr double kSafety = 16.0;
 
-struct Problem {
-    lint n, p, k;   // rows, columns of X, columns of the design (p + intercept)
-    bool intercept, has_w, has_u, has_g;
-    double rtol;    // < 0: max(nobs, k) * eps
-    int cov;
-    int steps;
-    std::int64_t maxlags;  // HAC; < 0: floor(4 (nobs / 100)^(2/9))
-    std::int64_t gtot;     // cluster: the codes are 0 .. gtot - 1 (-1: missing)
-    bool hat_only;
-};
-
-// The inputs of one regression (byte pointers and strides).
-struct Data {
-    const std::byte* y;
-    std::int64_t ys;
-    const std::byte* X;
-    std::int64_t xrs, xcs;
-    const std::byte* w;
-    std::int64_t ws;
-    const std::byte* u;
-    std::int64_t us;
-    const std::byte* g;  // int64 cluster codes
-    std::int64_t gs;
-};
-
-// Outputs of one regression.
-struct Dest {
-    double* params;  // k
-    double* cov;     // k x k, row-major
-    double* R;       // k x k, row-major (kept rows/columns in their places)
-    double* fitted;  // n
-    double* resid;   // n
-    std::uint8_t* kept;  // k
-    double* stats;   // kNStat
-    double* hat;     // n (hat_only)
-};
-
 inline std::int64_t rd_i64(const std::byte* p) {
     std::int64_t v;
     std::memcpy(&v, p, sizeof v);
@@ -272,53 +223,60 @@ void fill_nan(const Problem& pb, const Dest& o) {
     o.stats[kIsNaN] = 1;
 }
 
+}  // namespace
+
+// X scanned in memory order (rows outside for a row-major X), on the pool when large; NaN
+// and infinity are told apart only when a value is not finite. Returns kInfX or 0 (nan set
+// when X has a NaN).
+int lsq::scan_x(const Data& d, lint n, lint p, bool& nan) {
+    const bool rows_outer = std::llabs(d.xcs) <= std::llabs(d.xrs);
+    const lint outer = rows_outer ? n : p, inner = rows_outer ? p : n;
+    const std::int64_t os = rows_outer ? d.xrs : d.xcs, is = rows_outer ? d.xcs : d.xrs;
+    constexpr lint kBlock = 1024;
+    const lint nblocks = (outer + kBlock - 1) / kBlock;
+    std::vector<std::uint8_t> flags(static_cast<std::size_t>(std::max<lint>(nblocks, 1)), 0);
+    auto block = [&](lint b) {
+        std::uint64_t bad = 0;
+        for (lint o = b * kBlock; o < std::min(outer, (b + 1) * kBlock); ++o) {
+            const std::byte* row = d.X + o * os;
+            for (lint q = 0; q < inner; ++q) {
+                std::uint64_t u;
+                std::memcpy(&u, row + q * is, sizeof u);
+                bad |= static_cast<std::uint64_t>((u & 0x7ff0000000000000ull) == 0x7ff0000000000000ull);
+            }
+        }
+        if (!bad) return;
+        std::uint8_t f = 1;  // NaN
+        for (lint o = b * kBlock; o < std::min(outer, (b + 1) * kBlock); ++o)
+            for (lint q = 0; q < inner; ++q)
+                if (std::isinf(rd(d.X + o * os + q * is))) f = 2;
+        flags[static_cast<std::size_t>(b)] = f;
+    };
+    if (nblocks >= 2 && double(n) * double(p) >= double(1 << 20)) {
+        parallel::parallel_for(nblocks, [&](std::int64_t b) { block(static_cast<lint>(b)); });
+    } else {
+        for (lint b = 0; b < nblocks; ++b) block(b);
+    }
+    for (const std::uint8_t f : flags) {
+        if (f == 2) return kInfX;
+        if (f == 1) nan = true;
+    }
+    return 0;
+}
+
 // One regression. Returns 0 or a failure code.
-int fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
+int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
     const lint n = pb.n, k = pb.k;
     // ---- 1. checks, used rows, whitening factors
     bool nan = false;
-    for (lint i = 0; i < n; ++i) {
+    for (lint i = 0; i < n && !pb.lean; ++i) {
         const double v = rd(d.y + i * d.ys);
         if (std::isnan(v)) nan = true;
         else if (std::isinf(v)) return kInfY;
     }
-    // X in memory order (rows outside for a row-major X), on the pool when large; NaN and
-    // infinity are told apart only when a value is not finite
-    {
-        const bool rows_outer = std::llabs(d.xcs) <= std::llabs(d.xrs);
-        const lint outer = rows_outer ? n : pb.p, inner = rows_outer ? pb.p : n;
-        const std::int64_t os = rows_outer ? d.xrs : d.xcs, is = rows_outer ? d.xcs : d.xrs;
-        constexpr lint kBlock = 1024;
-        const lint nblocks = (outer + kBlock - 1) / kBlock;
-        std::vector<std::uint8_t> flags(static_cast<std::size_t>(std::max<lint>(nblocks, 1)), 0);
-        auto block = [&](lint b) {
-            std::uint64_t bad = 0;
-            for (lint o = b * kBlock; o < std::min(outer, (b + 1) * kBlock); ++o) {
-                const std::byte* row = d.X + o * os;
-                for (lint q = 0; q < inner; ++q) {
-                    std::uint64_t u;
-                    std::memcpy(&u, row + q * is, sizeof u);
-                    bad |= static_cast<std::uint64_t>((u & 0x7ff0000000000000ull) == 0x7ff0000000000000ull);
-                }
-            }
-            if (!bad) return;
-            std::uint8_t f = 1;  // NaN
-            for (lint o = b * kBlock; o < std::min(outer, (b + 1) * kBlock); ++o)
-                for (lint q = 0; q < inner; ++q)
-                    if (std::isinf(rd(d.X + o * os + q * is))) f = 2;
-            flags[static_cast<std::size_t>(b)] = f;
-        };
-        if (nblocks >= 2 && double(n) * double(pb.p) >= double(1 << 20)) {
-            parallel::parallel_for(nblocks, [&](std::int64_t b) { block(static_cast<lint>(b)); });
-        } else {
-            for (lint b = 0; b < nblocks; ++b) block(b);
-        }
-        for (const std::uint8_t f : flags) {
-            if (f == 2) return kInfX;
-            if (f == 1) nan = true;
-        }
-    }
-    if (pb.has_w)
+    if (!pb.lean)
+        if (const int f = scan_x(d, n, pb.p, nan)) return f;
+    if (pb.has_w && !pb.lean)
         for (lint i = 0; i < n; ++i) {
             const double v = rd(d.w + i * d.ws);
             if (std::isnan(v)) nan = true;
@@ -364,7 +322,9 @@ int fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
     const lint chunk = chunk_rows(k);
     const lint nchunks = (m + chunk - 1) / chunk;
     const bool robust = pb.cov != kNonrobust && !pb.hat_only;
-    const bool needQ = robust || pb.hat_only;
+    const bool want_T = o.T != nullptr && d.hdiff != nullptr && !pb.hat_only;
+    const bool newton = d.newton_b0 != nullptr && d.newton_eta0 != nullptr && d.hdiff != nullptr && !pb.hat_only;
+    const bool needQ = robust || pb.hat_only || want_T || newton;
     std::size_t total = 0;
     auto reserve = [&](std::int64_t cnt) {
         const std::size_t at = total;
@@ -373,7 +333,7 @@ int fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
     };
     const std::size_t o_s = reserve(mm), o_A = reserve(mm * kk0), o_tau = reserve(kk0), o_nrm = reserve(kk0),
                       o_beta = reserve(kk0), o_c = reserve(mm), o_f = reserve(mm), o_r = reserve(mm),
-                      o_P = reserve(mm), o_S = reserve(mm), o_h = reserve(kk0), o_g = reserve(kk0),
+                      o_P = reserve(mm), o_S = reserve(mm), o_h = reserve(kk0), o_g = reserve(kk0), o_AH = reserve(newton ? mm : 0), o_AL = reserve(newton ? mm : 0),
                       o_part = reserve(std::max<lint>(nchunks, 1) * 2 * (kk0 + kAccInit + kAccFinal)),
                       o_work = reserve(kk0), o_RR = reserve(kk0 * kk0), o_M = reserve(robust ? kk0 * kk0 : 0), o_W2 = reserve(robust ? kk0 * kk0 : 0),
                       o_Q = reserve(needQ ? mm * kk0 : 0), o_hat = reserve(needQ ? mm : 0),
@@ -382,7 +342,7 @@ int fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
     double *s = base + o_s, *A = base + o_A, *tau = base + o_tau, *nrm = base + o_nrm, *beta = base + o_beta,
            *cv = base + o_c, *f = base + o_f, *r = base + o_r, *P = base + o_P, *S = base + o_S, *h = base + o_h,
            *g = base + o_g, *part = base + o_part, *work = base + o_work, *RR = base + o_RR, *M = base + o_M, *work2 = base + o_W2,
-           *Q = base + o_Q, *hat = base + o_hat, *refl = base + o_refl;
+           *Q = base + o_Q, *hat = base + o_hat, *refl = base + o_refl, *AH = base + o_AH, *AL = base + o_AL;
     for (lint t = 0; t < m; ++t) s[t] = pb.has_w ? std::sqrt(weight(idx[t])) : 1.0;
 
     // ---- 2. QR with aliased columns dropped
@@ -485,6 +445,48 @@ int fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
         for (lint jj = 0; jj < kk; ++jj)
             for (lint t = 0; t < m; ++t) hat[t] += Q[jj * m + t] * Q[jj * m + t];
     };
+    // T = Q^T diag(hdiff/w) Q (want_T, newton) into Tk (kk x kk column-major), summed by dgemm
+    // over fixed chunks of rows in order; copied to o.T when asked
+    std::vector<double> Tk;
+    auto make_T = [&](bool form_q = true) {
+        Tk.assign(static_cast<std::size_t>(kk * kk), 0.0);
+        if (kk == 0) return;
+        if (form_q) {
+            std::copy(A, A + m * kk, Q);
+            linalg::lapack::orgqr(m, kk, kk, Q, m, tau, sc);
+        }
+        // each chunk's Q^T diag(c/w) Q into its own slot (on the pool when large), the slots
+        // added in chunk order: the same bits for any thread count
+        constexpr lint kTChunk = 4096;
+        const lint ntc = (m + kTChunk - 1) / kTChunk;
+        const std::size_t slot = static_cast<std::size_t>(kk * kk);
+        std::vector<double> parts(static_cast<std::size_t>(ntc) * slot);
+        auto chunkT = [&](lint c) {
+            const lint t0 = c * kTChunk, t1 = std::min(m, t0 + kTChunk), len = t1 - t0;
+            std::vector<double> Bc(static_cast<std::size_t>(len * kk));
+            for (lint jj = 0; jj < kk; ++jj)
+                for (lint t = t0; t < t1; ++t) Bc[jj * len + (t - t0)] = Q[jj * m + t] * (d.hdiff[idx[t]] / (s[t] * s[t]));
+            cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, kk, kk, len, 1.0, Q + t0, m, Bc.data(), len, 0.0,
+                        parts.data() + static_cast<std::size_t>(c) * slot, kk);
+        };
+        if (ntc >= 2 && double(m) * double(kk) >= kPassParallelMin) {
+            parallel::parallel_for(ntc, [&](std::int64_t c) { chunkT(static_cast<lint>(c)); });
+        } else {
+            for (lint c = 0; c < ntc; ++c) chunkT(c);
+        }
+        for (lint c = 0; c < ntc; ++c) {
+            const double* q = parts.data() + static_cast<std::size_t>(c) * slot;
+            for (std::size_t e = 0; e < slot; ++e) Tk[e] += q[e];
+        }
+        for (lint jj = 0; jj < kk; ++jj)
+            for (lint ii = 0; ii < jj; ++ii) Tk[jj * kk + ii] = Tk[ii * kk + jj] = 0.5 * (Tk[jj * kk + ii] + Tk[ii * kk + jj]);
+    };
+    auto copy_T = [&]() {
+        std::fill(o.T, o.T + k * k, 0.0);
+        if (Tk.size() != static_cast<std::size_t>(kk * kk)) make_T();
+        for (lint jj = 0; jj < kk; ++jj)
+            for (lint ii = 0; ii < kk; ++ii) o.T[K[ii] * k + K[jj]] = Tk[jj * kk + ii];
+    };
     if (pb.hat_only) {
         std::fill(o.hat, o.hat + n, 0.0);
         if (kk > 0) {
@@ -510,9 +512,50 @@ int fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
             }
         }
     };
-    // g's partial sums for chunk ch: sum_t (w_t r_t) x_tj in (hi, lo) pairs
+    // Newton's step (Data::newton_b0): its coefficients' origin b0 in the kept columns, the
+    // Cholesky factor of I - T and whether it is taken (set after the first solution)
+    bool use_newton = false;
+    std::vector<double> b0K, Mc;
+    double kappa_m = 1.0;
+    // g's partial sums for chunk ch: sum_t (w_t r_t) x_tj in (hi, lo) pairs; with Newton's
+    // step sum_t (w_t r_t + c_t x_t (beta - b0)) x_tj, the row factor formed in double-double
     auto gsum = [&](lint ch, lint t0, lint t1) {
         double* gp = part + ch * 2 * (kk0 + kAccInit + kAccFinal);
+        if (use_newton) {
+            for (lint t = t0; t < t1; ++t) {
+                // x_t beta - eta0_t in double-double
+                double Pd = 0.0, Sd = 0.0;
+                for (lint jj = 0; jj < kk; ++jj) {
+                    const Col c = colK(jj);
+                    double hp, ep, q;
+                    two_prod(rd(c.base + idx[t] * c.stride), beta[jj], hp, ep);
+                    two_sum(Pd, hp, Pd, q);
+                    Sd += q + ep;
+                }
+                double dh, de;
+                two_sum(Pd, -d.newton_eta0[idx[t]], dh, de);
+                const DD del = dd_of(dh, de + Sd);
+                double ah, al;
+                two_prod(weight(idx[t]), r[t], ah, al);
+                const DD a = dd_of(ah, al) + del * d.hdiff[idx[t]];
+                AH[t] = a.hi;
+                AL[t] = a.lo;
+            }
+            for (lint jj = 0; jj < kk; ++jj) {
+                const Col c = colK(jj);
+                double hi = 0, lo = 0;
+                for (lint t = t0; t < t1; ++t) {
+                    const double x = rd(c.base + idx[t] * c.stride);
+                    double hp, ep, q;
+                    two_prod(AH[t], x, hp, ep);
+                    two_sum(hi, hp, hi, q);
+                    lo += q + ep + AL[t] * x;
+                }
+                gp[2 * jj] = hi;
+                gp[2 * jj + 1] = lo;
+            }
+            return;
+        }
         for (lint jj = 0; jj < kk; ++jj) {
             const Col c = colK(jj);
             double hi = 0, lo = 0;
@@ -548,6 +591,78 @@ int fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
         apply_reflectors(A, m, kk, tau, cv, true, refl);
         std::copy(cv, cv + kk, beta);
         linalg::lapack::trtrs('U', 'N', 'N', kk, 1, A, m, beta, kk);
+    }
+    // Newton's step: I - T = U^T U (else Fisher's stays), beta = b0 + R^-1 (I - T)^-1 (c_1 - R b0)
+    // as the start the refinement corrects
+    if (newton && kk > 0) {
+        make_T();
+        Mc.assign(static_cast<std::size_t>(kk * kk), 0.0);
+        for (lint jj = 0; jj < kk; ++jj)
+            for (lint ii = 0; ii <= jj; ++ii) Mc[jj * kk + ii] = (ii == jj ? 1.0 : 0.0) - Tk[jj * kk + ii];
+        if (linalg::lapack::potrf('U', kk, Mc.data(), kk) == 0) {
+            const double rc = linalg::lapack::trcon_1('U', kk, Mc.data(), kk);
+            if (rc > 0.0) {
+                use_newton = true;
+                kappa_m = 1.0 / (rc * rc);
+            }
+        }
+        if (use_newton) {
+            b0K.assign(static_cast<std::size_t>(kk), 0.0);
+            for (lint jj = 0; jj < kk; ++jj) b0K[jj] = std::isnan(d.newton_b0[K[jj]]) ? 0.0 : d.newton_b0[K[jj]];
+            std::vector<double> y(static_cast<std::size_t>(kk));
+            for (lint ii = 0; ii < kk; ++ii) {
+                double acc = 0.0;
+                for (lint jj = ii; jj < kk; ++jj) acc += A[jj * m + ii] * b0K[jj];
+                y[ii] = cv[ii] - acc;
+            }
+            linalg::lapack::trtrs('U', 'T', 'N', kk, 1, Mc.data(), kk, y.data(), kk);
+            linalg::lapack::trtrs('U', 'N', 'N', kk, 1, Mc.data(), kk, y.data(), kk);
+            linalg::lapack::trtrs('U', 'N', 'N', kk, 1, A, m, y.data(), kk);
+            for (lint jj = 0; jj < kk; ++jj) beta[jj] = b0K[jj] + y[jj];
+        }
+    }
+    if (o.newton) *o.newton = use_newton ? 1 : 0;
+    // an inner IRLS solve (lean): X beta for every row (Dot2), params and kept
+    auto lean_output = [&]() {
+        for_chunks(nchunks, work_rows, [&](lint ch) {
+            const lint t0 = ch * chunk, t1 = std::min(m, t0 + chunk);
+            xbeta(t0, t1, beta);
+            for (lint t = t0; t < t1; ++t) o.fitted[idx[t]] = P[t] + S[t];
+        });
+        if (m < n) {
+            std::vector<char> used(static_cast<std::size_t>(n), 0);
+            for (lint t = 0; t < m; ++t) used[static_cast<std::size_t>(idx[t])] = 1;
+            for (lint i = 0; i < n; ++i) {
+                if (used[static_cast<std::size_t>(i)]) continue;
+                double Pi = 0, Si = 0;
+                for (lint jj = 0; jj < kk; ++jj) {
+                    const Col c = colK(jj);
+                    double hp, ep, q;
+                    two_prod(rd(c.base + i * c.stride), beta[jj], hp, ep);
+                    two_sum(Pi, hp, Pi, q);
+                    Si += q + ep;
+                }
+                o.fitted[i] = Pi + Si;
+            }
+        }
+        o.stats[kNobs] = static_cast<double>(m);
+        o.stats[kRank] = static_cast<double>(kk);
+        std::fill(o.params, o.params + k, kNaN);
+        std::fill(o.kept, o.kept + k, std::uint8_t(0));
+        for (lint jj = 0; jj < kk; ++jj) {
+            o.params[K[jj]] = beta[jj];
+            o.kept[K[jj]] = 1;
+        }
+        if (o.R) {  // R of the kept columns in their places (row-major k x k), when asked
+            std::fill(o.R, o.R + k * k, 0.0);
+            for (lint jj = 0; jj < kk; ++jj)
+                for (lint ii = 0; ii <= jj; ++ii) o.R[K[ii] * k + K[jj]] = A[jj * m + ii];
+        }
+    };
+    if (pb.lean && pb.steps == 0 && !use_newton) {
+        lean_output();
+        if (want_T) copy_T();
+        return 0;
     }
     // the first pass: r = y - X beta rounded, f its remainder, g; and the centering sums
     for_chunks(nchunks, work_rows, [&](lint ch) {
@@ -586,7 +701,8 @@ int fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
     // left is about |d| kappa u, and below 2^-54 |beta| a further step changes nothing. kappa
     // is LAPACK's estimate from R (trcon, within a small factor; kSafety covers it). The test
     // depends only on the data, so the result is the same for any thread count.
-    const double kappa_u = kk > 0 ? kSafety * 0x1p-53 / linalg::lapack::trcon_1('U', kk, A, m) : 0.0;
+    const double kappa_u =
+        kk > 0 ? kSafety * 0x1p-53 / linalg::lapack::trcon_1('U', kk, A, m) * (use_newton ? kappa_m : 1.0) : 0.0;
     for (int step = 0; step < pb.steps && kk > 0; ++step) {
         // correction: h = R^-T g, d = Q^T (s f), dbeta = R^-1 (d_1 - h), dr~ = Q [h; d_2]
         std::copy(g, g + kk, h);
@@ -594,6 +710,12 @@ int fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
         for (lint t = 0; t < m; ++t) cv[t] = s[t] * f[t];
         apply_reflectors(A, m, kk, tau, cv, true, refl);
         for (lint jj = 0; jj < kk; ++jj) work[jj] = cv[jj] - h[jj];
+        if (use_newton) {
+            // y = (I - T)^-1 (d_1 - h); dbeta = R^-1 y; dr~ = Q [d_1 - y; d_2]
+            linalg::lapack::trtrs('U', 'T', 'N', kk, 1, Mc.data(), kk, work, kk);
+            linalg::lapack::trtrs('U', 'N', 'N', kk, 1, Mc.data(), kk, work, kk);
+            for (lint jj = 0; jj < kk; ++jj) cv[jj] -= work[jj];
+        }
         linalg::lapack::trtrs('U', 'N', 'N', kk, 1, A, m, work, kk);
         double dn = 0.0, bn = 0.0;
         for (lint jj = 0; jj < kk; ++jj) {
@@ -601,7 +723,7 @@ int fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
             dn = std::max(dn, std::fabs(work[jj]));
             bn = std::max(bn, std::fabs(beta[jj]));
         }
-        std::copy(h, h + kk, cv);
+        if (!use_newton) std::copy(h, h + kk, cv);
         apply_reflectors(A, m, kk, tau, cv, false, refl);
         for (lint t = 0; t < m; ++t) r[t] += cv[t] / s[t];
         const bool converged = !(dn * kappa_u > 0x1p-54 * bn);  // NaN: stop (nothing to refine)
@@ -621,6 +743,11 @@ int fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
             gcombine();
         }
         if (converged) break;
+    }
+    if (pb.lean) {
+        lean_output();
+        if (want_T) copy_T();
+        return 0;
     }
 
     // ---- 4. fitted values, residuals and the sums of squares
@@ -707,6 +834,7 @@ int fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
         o.kept[K[jj]] = 1;
         for (lint ii = 0; ii <= jj; ++ii) o.R[K[ii] * k + K[jj]] = A[jj * m + ii];
     }
+    if (want_T) copy_T();
     if (kk == 0) return 0;
     // (R^T R)^-1 into RR (column-major kk x kk, full)
     for (lint jj = 0; jj < kk; ++jj)
@@ -732,8 +860,20 @@ int fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
         std::copy(A, A + m * kk, Q);
         linalg::lapack::orgqr(m, kk, kk, Q, m, tau, sc);
     }
+    // GLM: T = Q^T diag(hdiff / w) Q, the observed information's correction in Q's coordinates
+    // (into work2: the Wald F, which uses it otherwise, is not computed for a GLM)
+    const bool oim = pb.glm && d.hdiff != nullptr;
+    if (oim) {  // Q is the thin Q here (orgqr above)
+        if (Tk.size() != static_cast<std::size_t>(kk * kk)) make_T(false);
+        std::copy(Tk.begin(), Tk.end(), work2);
+    }
+    // the n of the small-sample factors: the rows used, or the GLM's sum of frequency weights
+    const double n_eff = d.nobs_eff >= 0 ? d.nobs_eff : static_cast<double>(m);
     for (lint t = 0; t < m; ++t) {
-        const double e = s[t] * r[t];  // the whitened residual
+        double e = s[t] * r[t];  // the whitened residual
+        // GLM frequency weights: a replicated row adds its score's square once per copy (HC,
+        // HAC), not the square of the summed copies (statsmodels' convention)
+        if (d.smult && pb.cov != kCluster) e *= d.smult[idx[t]];
         double sq = e;                 // HC: sqrt(omega) (the sign drops out of the squares)
         if (pb.cov == kHC2) sq = e / std::sqrt(1.0 - hat[t]);
         else if (pb.cov == kHC3) sq = e / (1.0 - hat[t]);
@@ -744,7 +884,7 @@ int fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
     double c1 = 1.0;  // the small-sample factor
     if (hc) {
         cblas_dsyrk(CblasColMajor, CblasUpper, CblasTrans, kk, m, 1.0, Q, m, 0.0, M, kk);
-        if (pb.cov == kHC1) c1 = static_cast<double>(m) / static_cast<double>(m - kk);
+        if (pb.cov == kHC1) c1 = n_eff / (n_eff - static_cast<double>(kk));
     } else if (pb.cov == kHAC) {
         // Newey-West: S = U^T U + sum_l w_l (U_{l:}^T U_{:-l} + its transpose), w_l = 1 - l/(L+1)
         // (Bartlett; statsmodels' S_hac_simple). The lag sums are U^T V with V_t = sum_l w_l
@@ -852,8 +992,8 @@ int fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
         }
         // one cluster: no estimate (the scores sum to 0 and G/(G-1) is infinite)
         c1 = G < 2 ? kNaN
-                   : static_cast<double>(G) / static_cast<double>(G - 1) * (static_cast<double>(m) - 1.0) /
-                         static_cast<double>(m - kk);
+                   : static_cast<double>(G) / static_cast<double>(G - 1) * (n_eff - 1.0) /
+                         (n_eff - static_cast<double>(kk));
     }
     for (lint jj = 0; jj < kk; ++jj)
         for (lint ii = jj + 1; ii < kk; ++ii) M[jj * kk + ii] = M[ii * kk + jj];
@@ -864,7 +1004,7 @@ int fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
     // condition is kappa(X)^2 times the meat's) is formed.
     const lint q0 = (pb.intercept && K[0] == 0) ? 1 : 0, q = kk - q0;
     st[kWaldQ] = static_cast<double>(q);
-    if (q > 0) {
+    if (q > 0 && !pb.glm) {
         double* V = work2;  // S22, then its Cholesky factor
         double* z = cv;
         for (lint b2 = 0; b2 < q; ++b2) {
@@ -882,6 +1022,20 @@ int fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
             st[kWaldF] = ss / c1 / static_cast<double>(q);
         }
     }
+    if (oim) {
+        // the bread (R^T (I - T) R)^-1 = R^-1 (I - T)^-1 R^-T: with I - T = U^T U (Cholesky; it is
+        // positive definite at a maximum of the likelihood), the meat becomes U^-1 U^-T S U^-1 U^-T
+        for (lint jj = 0; jj < kk; ++jj)
+            for (lint ii = 0; ii < kk; ++ii) work2[jj * kk + ii] = (ii == jj ? 1.0 : 0.0) - work2[jj * kk + ii];
+        if (linalg::lapack::potrf('U', kk, work2, kk) > 0) {
+            std::fill(M, M + kk * kk, kNaN);  // not a maximum: no sandwich
+        } else {
+            cblas_dtrsm(CblasColMajor, CblasLeft, CblasUpper, CblasTrans, CblasNonUnit, kk, kk, 1.0, work2, kk, M, kk);
+            cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit, kk, kk, 1.0, work2, kk, M, kk);
+            cblas_dtrsm(CblasColMajor, CblasLeft, CblasUpper, CblasNoTrans, CblasNonUnit, kk, kk, 1.0, work2, kk, M, kk);
+            cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasTrans, CblasNonUnit, kk, kk, 1.0, work2, kk, M, kk);
+        }
+    }
     cblas_dtrsm(CblasColMajor, CblasLeft, CblasUpper, CblasNoTrans, CblasNonUnit, kk, kk, 1.0, RR, kk, M, kk);
     cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasTrans, CblasNonUnit, kk, kk, 1.0, RR, kk, M, kk);
     for (lint jj = 0; jj < kk; ++jj)
@@ -892,6 +1046,8 @@ int fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
         }
     return 0;
 }
+
+namespace {
 
 [[noreturn]] void raise_failure(const Batch& b, const Failure& f, const char* func) {
     std::string what;

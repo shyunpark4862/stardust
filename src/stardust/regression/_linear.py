@@ -229,10 +229,15 @@ def _expand(v, nd):
 
 # ---- the result object
 
-class _LinearResult:
-    """The result of ols, wls or gls: statsmodels' names (G10). The intercept is params[0]."""
+class _RegressionResult:
+    """What every regression result shares (the linear models' and the GLM's): the kernel's
+    raw output (params, cov, R, ., ., kept, stats, ...), the cached fields, the coefficients'
+    inference and the design checks of predictions. statsmodels' names (G10); the intercept
+    is params[0]."""
 
     __slots__ = ("_raw", "_cache", "param_names", "cov_type", "_intercept", "_batch", "_extra", "_fitargs")
+    # the positions of the shared scalars in the kernel's stats
+    _I_NOBS, _I_RANK, _I_ISNAN, _I_NGROUPS, _I_LAGS = _NOBS, _RANK, _ISNAN, _NGROUPS, _LAGS
 
     def __init__(self, raw, *, param_names, intercept, cov_type, batch, extra=None, fitargs=None):
         self._raw = raw          # params, cov, R, fitted, resid, kept, stats
@@ -281,21 +286,17 @@ class _LinearResult:
         return self._raw[3]
 
     @property
-    def resid(self):
-        return self._raw[4]
-
-    @property
     def nobs(self):
-        return self._stat(_NOBS)
+        return self._stat(self._I_NOBS)
 
     @property
     def rank(self):
-        r = self._raw[6][..., _RANK]
+        r = self._raw[6][..., self._I_RANK]
         return int(float(r)) if not self._batch else r.astype(_sd.int64)
 
     def _isnan(self):
         """True for a regression whose data had NaN (nan_policy='propagate')."""
-        f = self._raw[6][..., _ISNAN]
+        f = self._raw[6][..., self._I_ISNAN]
         return f != 0 if self._batch else float(f) != 0
 
     def _nan_where(self, v):
@@ -303,6 +304,89 @@ class _LinearResult:
         if self._batch:
             return _sd.where(f, math.nan, v)
         return math.nan if f else v
+
+    @property
+    def condition_number(self):
+        return self._cached("condition_number", lambda: _k.cond(self._raw[2], self._raw[5]))
+
+    # -- inference
+    def cov_params(self):
+        """The covariance of the parameters (k x k); rows and columns of aliased parameters are NaN."""
+        def make():
+            c = self._raw[1]
+            if self._robust:
+                return c
+            return self._per(self.scale, 2) * c
+        return self._cached("cov_params", make)
+
+    @property
+    def bse(self):
+        return self._cached("bse", lambda: _sd.sqrt(_linalg.diagonal(self.cov_params())))
+
+    @property
+    def tvalues(self):
+        return self._cached("tvalues", lambda: self.params / self.bse)
+
+    def _df_inference(self):
+        """The degrees of freedom of the t and F reference distributions: df_resid, or the
+        number of clusters - 1 under cov_type='cluster' (Stata; statsmodels' df_resid_inference)."""
+        if self.cov_type == "cluster":
+            return self._cached("df_inference", lambda: self._nan_where(self._stat(self._I_NGROUPS) - 1.0))
+        return self.df_resid
+
+    @property
+    def df_resid_inference(self):
+        """The degrees of freedom of the t (and the F's denominator) used for p-values and
+        intervals: df_resid, or G - 1 for a cluster covariance (G27; statsmodels' name)."""
+        return self._df_inference()
+
+    def _dist(self, nd=1):
+        """The reference distribution of the t statistics: Student t with df_resid, under a
+        robust covariance too (user decision 2026-11-18: as R's coeftest and Stata; statsmodels'
+        default is the normal); G - 1 degrees of freedom for cluster (G27)."""
+        return _StudentT(df=self._per(self._df_inference(), nd))
+
+    @property
+    def pvalues(self):
+        return self._cached("pvalues", lambda: 2.0 * self._dist().ccdf(_sd.abs(self.tvalues)))
+
+    def conf_int(self, alpha=0.05):
+        """(..., k, 2): the lower and upper bounds of the 1 - alpha confidence intervals."""
+        alpha = _check_alpha(alpha, "conf_int")
+        q = self._dist().iccdf(alpha / 2)
+        half = q * self.bse
+        return _sd.stack([self.params - half, self.params + half], axis=-1)
+
+    # -- prediction
+    def _beff(self):
+        """params with 0 for the aliased columns (they take no part in predictions, as in R)."""
+        def make():
+            keep = _sd.logical_or(self._raw[5], self._per(self._isnan(), 1))
+            return _sd.where(keep, self.params, 0.0)
+        return self._cached("beff", make)
+
+    def _design(self, X_new, func):
+        Xn, _ = _as_real(X_new, func, "X_new")
+        p = self.params.shape[-1] - (1 if self._intercept else 0)
+        if Xn.ndim == 0:
+            raise ValueError(f"{func}(): 'X_new' must have at least 1 dimension")
+        if Xn.ndim == 1:
+            if p != 1:
+                raise ValueError(f"{func}(): 'X_new' must have {p} columns like the fit's 'X', not 1-dimensional")
+            Xn = _sd.reshape(Xn, (Xn.shape[0], 1))
+        if Xn.shape[-1] != p:
+            raise ValueError(f"{func}(): 'X_new' must have {p} columns like the fit's 'X', not {Xn.shape[-1]}")
+        return Xn
+
+
+class _LinearResult(_RegressionResult):
+    """The result of ols, wls or gls: statsmodels' names (G10). The intercept is params[0]."""
+
+    __slots__ = ()
+
+    @property
+    def resid(self):
+        return self._raw[4]
 
     @property
     def df_model(self):
@@ -393,58 +477,6 @@ class _LinearResult:
         return self._cached("bic", lambda: -2.0 * self.llf + _log(self.nobs) * self._stat(_RANK))
 
     @property
-    def condition_number(self):
-        return self._cached("condition_number", lambda: _k.cond(self._raw[2], self._raw[5]))
-
-    # -- inference
-    def cov_params(self):
-        """The covariance of the parameters (k x k); rows and columns of aliased parameters are NaN."""
-        def make():
-            c = self._raw[1]
-            if self._robust:
-                return c
-            return self._per(self.scale, 2) * c
-        return self._cached("cov_params", make)
-
-    @property
-    def bse(self):
-        return self._cached("bse", lambda: _sd.sqrt(_linalg.diagonal(self.cov_params())))
-
-    @property
-    def tvalues(self):
-        return self._cached("tvalues", lambda: self.params / self.bse)
-
-    def _df_inference(self):
-        """The degrees of freedom of the t and F reference distributions: df_resid, or the
-        number of clusters - 1 under cov_type='cluster' (Stata; statsmodels' df_resid_inference)."""
-        if self.cov_type == "cluster":
-            return self._cached("df_inference", lambda: self._nan_where(self._stat(_NGROUPS) - 1.0))
-        return self.df_resid
-
-    @property
-    def df_resid_inference(self):
-        """The degrees of freedom of the t (and the F's denominator) used for p-values and
-        intervals: df_resid, or G - 1 for a cluster covariance (G27; statsmodels' name)."""
-        return self._df_inference()
-
-    def _dist(self, nd=1):
-        """The reference distribution of the t statistics: Student t with df_resid, under a
-        robust covariance too (user decision 2026-11-18: as R's coeftest and Stata; statsmodels'
-        default is the normal); G - 1 degrees of freedom for cluster (G27)."""
-        return _StudentT(df=self._per(self._df_inference(), nd))
-
-    @property
-    def pvalues(self):
-        return self._cached("pvalues", lambda: 2.0 * self._dist().ccdf(_sd.abs(self.tvalues)))
-
-    def conf_int(self, alpha=0.05):
-        """(..., k, 2): the lower and upper bounds of the 1 - alpha confidence intervals."""
-        alpha = _check_alpha(alpha, "conf_int")
-        q = self._dist().iccdf(alpha / 2)
-        half = q * self.bse
-        return _sd.stack([self.params - half, self.params + half], axis=-1)
-
-    @property
     def fvalue(self):
         def make():
             if self._robust:
@@ -463,27 +495,6 @@ class _LinearResult:
             dfn = self._stat(_WALDQ) if self._robust else self.df_model
             return self._scalar(_F(dfn=_arg(dfn), dfd=_arg(self._df_inference())).ccdf(_arg(self.fvalue)))
         return self._cached("f_pvalue", make)
-
-    # -- prediction
-    def _beff(self):
-        """params with 0 for the aliased columns (they take no part in predictions, as in R)."""
-        def make():
-            keep = _sd.logical_or(self._raw[5], self._per(self._isnan(), 1))
-            return _sd.where(keep, self.params, 0.0)
-        return self._cached("beff", make)
-
-    def _design(self, X_new, func):
-        Xn, _ = _as_real(X_new, func, "X_new")
-        p = self.params.shape[-1] - (1 if self._intercept else 0)
-        if Xn.ndim == 0:
-            raise ValueError(f"{func}(): 'X_new' must have at least 1 dimension")
-        if Xn.ndim == 1:
-            if p != 1:
-                raise ValueError(f"{func}(): 'X_new' must have {p} columns like the fit's 'X', not 1-dimensional")
-            Xn = _sd.reshape(Xn, (Xn.shape[0], 1))
-        if Xn.shape[-1] != p:
-            raise ValueError(f"{func}(): 'X_new' must have {p} columns like the fit's 'X', not {Xn.shape[-1]}")
-        return Xn
 
     def predict(self, X_new, /):
         """X_new @ params (the intercept added), summed in double-double. Aliased columns take

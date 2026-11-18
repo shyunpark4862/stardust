@@ -7,7 +7,8 @@ docs/design/regression.md §1.1.
 """
 
 from .._results import BreuschPaganResult, JarqueBeraResult, LinregressResult
+from ._glm import GLMResult, glm
 from ._linear import GLSResult, OLSResult, WLSResult, gls, linregress, ols, wls
 
-__all__ = ["ols", "wls", "gls", "linregress", "OLSResult", "WLSResult", "GLSResult", "LinregressResult",
-           "JarqueBeraResult", "BreuschPaganResult"]
+__all__ = ["ols", "wls", "gls", "linregress", "glm", "OLSResult", "WLSResult", "GLSResult", "GLMResult",
+           "LinregressResult", "JarqueBeraResult", "BreuschPaganResult"]

@@ -81,6 +81,8 @@ def data():
     D.response = sd.asarray(rng.standard_normal(400_000))
     D.designs = sd.asarray(rng.standard_normal((20_000, 50, 3)))
     D.responses = sd.asarray(rng.standard_normal((20_000, 50)))
+    D.binary = sd.asarray((rng.standard_normal(400_000) > 0).astype(float))
+    D.binaries = sd.asarray((rng.standard_normal((20_000, 50)) > 0).astype(float))
     before, interval = sd.get_num_threads(), sys.getswitchinterval()
     # A thread waiting for the GIL gets it within this time from a thread that
     # runs Python code. Short, so that such waits (the watcher's turn just
@@ -137,6 +139,8 @@ CALLS = {
     # regression: one large fit, and a batch through linalg's driver
     "regression.ols one fit": lambda: sd.regression.ols(D.response, D.design).params,
     "regression.ols batch": lambda: sd.regression.ols(D.responses, D.designs).params,
+    "regression.glm one fit": lambda: sd.regression.glm(D.binary, D.design, family="binomial").params,
+    "regression.glm batch": lambda: sd.regression.glm(D.binaries, D.designs, family="binomial").params,
 }
 
 

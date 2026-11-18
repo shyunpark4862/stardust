@@ -297,6 +297,299 @@ def ols(y, X, *, weights=None, intercept=True, alpha=0.05, t_guess=2.0, groups=N
     raise ar.NotSettled("ols")
 
 
+# ---- generalized linear models (docs/design/regression.md §3.4)
+
+GLM_FAMILIES = ("gaussian", "binomial", "poisson", "gamma")
+
+
+def _link(link, eta):
+    """(mu, 1 - mu, mu', mu'') at eta (balls)."""
+    if link == "identity":
+        return eta, 1 - eta, arb(1), arb(0)
+    if link == "log":
+        mu = eta.exp()
+        return mu, -eta.expm1(), mu, mu
+    if link == "logit":
+        mu = 1 / (1 + (-eta).exp())
+        muc = 1 / (1 + eta.exp())
+        d1 = mu * muc
+        return mu, muc, d1, d1 * (muc - mu)
+    if link == "probit":
+        s2 = arb(2).sqrt()
+        mu = (-eta / s2).erfc() / 2
+        muc = (eta / s2).erfc() / 2
+        d1 = (-eta * eta / 2).exp() / (2 * arb.pi()).sqrt()
+        return mu, muc, d1, -eta * d1
+    if link == "cloglog":
+        t = eta.exp()
+        muc = (-t).exp()
+        mu = -(-t).expm1()
+        d1 = t * muc
+        return mu, muc, d1, d1 * (1 - t)
+    if link == "sqrt":
+        return eta * eta, 1 - eta * eta, 2 * eta, arb(2)
+    if link == "inverse":
+        mu = 1 / eta
+        return mu, 1 - mu, -mu * mu, 2 * mu * mu * mu
+    raise ValueError(link)
+
+
+def _var(family, mu, muc):
+    """(V(mu), V'(mu))."""
+    if family == "binomial":
+        return mu * muc, muc - mu
+    if family == "poisson":
+        return mu, arb(1)
+    if family == "gamma":
+        return mu * mu, 2 * mu
+    return arb(1), arb(0)
+
+
+def _xlogx_ratio(a, b):
+    """a log(a/b), 0 for a = 0."""
+    return arb(0) if a.is_zero() else a * (a / b).log()
+
+
+def _unit_dev(family, y, mu, muc):
+    if family == "gaussian":
+        return (y - mu) ** 2
+    if family == "poisson":
+        return 2 * (_xlogx_ratio(y, mu) - (y - mu))
+    if family == "gamma":
+        return 2 * (-(y / mu).log() + (y - mu) / mu)
+    return 2 * (_xlogx_ratio(y, mu) + _xlogx_ratio(1 - y, muc))
+
+
+def _loglike_obs(family, y, mu, muc, v, n, phi):
+    """statsmodels' loglike_obs (before the frequency weight)."""
+    if family == "gaussian":
+        return -(v * (y - mu) ** 2 / phi + (phi / v).log() + (2 * arb.pi()).log()) / 2
+    if family == "poisson":
+        ylogmu = arb(0) if y.is_zero() else y * mu.log()
+        return v / phi * (ylogmu - mu - (y + 1).lgamma())
+    if family == "gamma":
+        ws = v / phi
+        return ws * (ws * y / mu).log() - ws * y / mu - ws.lgamma() - y.log()
+    s = n * y
+    fl = n - s
+    l = (n + 1).lgamma() - (s + 1).lgamma() - (fl + 1).lgamma()
+    if not s.is_zero():
+        l += s * mu.log()
+    if not fl.is_zero():
+        l += fl * muc.log()
+    return v * l
+
+
+def _normal_upper(z):
+    """P(Z > z)."""
+    return (z / arb(2).sqrt()).erfc() / 2
+
+
+def _glm_fit(y, X, family, link, vw, fw, tr, off, intercept, scale, beta0, alpha, groups, maxlags, null_beta0,
+             full=True):
+    n = len(y)
+    A = [([arb(1)] if intercept else []) + [arb(v) for v in r] for r in X]
+    k = len(A[0])
+    Y = [arb(v) for v in y]
+    V = [arb(v) for v in vw]
+    F = [arb(v) for v in fw]
+    T = [arb(v) for v in tr]
+    O = [arb(v) for v in off]
+    M = [V[i] * T[i] for i in range(n)]
+    PW = [F[i] * M[i] for i in range(n)]
+    used = [i for i in range(n) if not PW[i].is_zero()]
+    nobs = sum((F[i] for i in used), arb(0))
+
+    def at(beta):
+        eta = [sum((A[i][a] * beta[a] for a in range(k)), arb(0)) + O[i] for i in range(n)]
+        return eta, [_link(link, e) for e in eta]
+
+    def grad_hess(beta):
+        eta, L = at(beta)
+        g = [arb(0)] * k
+        H = [[arb(0)] * k for _ in range(k)]
+        for i in used:
+            mu, muc, d1, d2 = L[i]
+            Vv, Vp = _var(family, mu, muc)
+            r = Y[i] - mu
+            gi = PW[i] * r * d1 / Vv
+            hi = PW[i] * (-d1 * d1 / Vv + r * (d2 / Vv - d1 * d1 * Vp / (Vv * Vv)))
+            for a in range(k):
+                g[a] += A[i][a] * gi
+                for b in range(k):
+                    H[a][b] += A[i][a] * A[i][b] * hi
+        return g, H
+
+    # Newton on the midpoints, then Krawczyk's test on a box around the result
+    beta = [arb(b) for b in beta0]
+    for _ in range(200):
+        g, H = grad_hess(beta)
+        Hm = arb_mat([[H[a][b].mid() for b in range(k)] for a in range(k)])
+        step = Hm.solve(arb_mat([[x.mid()] for x in g]))
+        beta = [(beta[a] - step[a, 0]).mid() for a in range(k)]
+        if all(abs(step[a, 0].mid()) <= (abs(beta[a]) + arb(2) ** -60) * arb(2) ** (-ctx.prec + 12) for a in range(k)):
+            break
+    g, H = grad_hess(beta)
+    Ym = arb_mat([[H[a][b].mid() for b in range(k)] for a in range(k)]).inv()
+    Ym = arb_mat([[Ym[a, b].mid() for b in range(k)] for a in range(k)])
+    # the box: half the working precision around the point, relative to the largest
+    # coefficient (Newton's point is good to about cond(H) 2^-prec in norm)
+    bmax = max((abs(b.mid()) for b in beta), key=lambda x: float(x)) + arb(2) ** -60
+    r = [bmax * arb(2) ** (-(ctx.prec // 2)) for a in range(k)]
+    box = [arb(beta[a].mid(), r[a].upper()) for a in range(k)]
+    _, HX = grad_hess(box)
+    YH = Ym * arb_mat(HX)
+    Yg = Ym * arb_mat([[x] for x in g])
+    K = []
+    for a in range(k):
+        v = beta[a] - Yg[a, 0]
+        for b in range(k):
+            v += ((1 if a == b else 0) - YH[a, b]) * (box[b] - beta[b])
+        if not (abs(v - beta[a]).upper() < r[a].lower()):
+            raise ar.NotSettled("Krawczyk")
+        K.append(v)
+    beta = K
+    eta, L = at(beta)
+    mu = [l[0] for l in L]
+    muc = [l[1] for l in L]
+    if not full:
+        return {"_mu": mu, "_muc": muc}, {}
+    dev = sum((M[i] * F[i] * _unit_dev(family, Y[i], mu[i], muc[i]) for i in used), arb(0))
+    pear = sum((PW[i] * (Y[i] - mu[i]) ** 2 / _var(family, mu[i], muc[i])[0] for i in used), arb(0))
+    df_resid = nobs - k
+    if scale is None:
+        phi = pear / df_resid if family in ("gaussian", "gamma") else arb(1)
+    elif scale == "X2":
+        phi = pear / df_resid
+    elif scale == "dev":
+        phi = dev / df_resid
+    else:
+        phi = arb(scale)
+    gid = family == "gaussian" and link == "identity"
+
+    def loglike(mus, mucs):
+        if gid:
+            ssr = sum((PW[i] * (Y[i] - mus[i]) ** 2 for i in used), arb(0))
+            return -nobs / 2 * ((2 * arb.pi()).log() + (ssr / nobs).log() + 1) + \
+                sum((F[i] * V[i].log() for i in used), arb(0)) / 2
+        return sum((F[i] * _loglike_obs(family, Y[i], mus[i], mucs[i], V[i], T[i], phi) for i in used), arb(0))
+
+    llf = loglike(mu, muc)
+    # the null model
+    if intercept and all(o == 0 for o in off):
+        sw = sum((PW[i] for i in used), arb(0))
+        m0 = sum((PW[i] * Y[i] for i in used), arb(0)) / sw
+        mu0, muc0 = [m0] * n, [1 - m0] * n
+    elif intercept:
+        sub, _ = _glm_fit(y, [[] for _ in range(n)], family, link, vw, fw, tr, off, True, scale, [null_beta0], alpha,
+                          None, None, null_beta0, full=False)
+        mu0, muc0 = sub["_mu"], sub["_muc"]
+    else:
+        L0 = [_link(link, O[i]) for i in range(n)]
+        mu0, muc0 = [l[0] for l in L0], [l[1] for l in L0]
+    dev0 = sum((M[i] * F[i] * _unit_dev(family, Y[i], mu0[i], muc0[i]) for i in used), arb(0))
+    llnull = loglike(mu0, muc0)
+    # covariances: the expected information (nonrobust), the observed one as robust bread
+    W = []
+    for i in range(n):
+        m_, mc_, d1, _ = L[i]
+        W.append(PW[i] * d1 * d1 / _var(family, m_, mc_)[0] if i in used else arb(0))
+    I = arb_mat([[sum((W[i] * A[i][a] * A[i][b] for i in used), arb(0)) for b in range(k)] for a in range(k)])
+    Iinv = I.inv()
+    cov = [[phi * Iinv[a, b] for b in range(k)] for a in range(k)]
+    bse = [cov[a][a].sqrt() for a in range(k)]
+    zval = [beta[a] / bse[a] for a in range(k)]
+    fixed = (family in ("binomial", "poisson") and scale is None) or (scale is not None and not isinstance(scale, str))
+    if fixed:
+        pval = [2 * _normal_upper(abs(z)) for z in zval]
+    else:
+        pval = [2 * _t_upper(abs(z), df_resid) for z in zval]
+    _, Hb = grad_hess(beta)
+    Binv = (-arb_mat(Hb)).inv()
+    u = []  # per-unit scores (no frequency weight)
+    for i in used:
+        m_, mc_, d1, _ = L[i]
+        sc = M[i] * (Y[i] - m_) * d1 / _var(family, m_, mc_)[0]
+        u.append([A[i][a] * sc for a in range(k)])
+    fu = [F[i] for i in used]
+    hat = [W[i] * sum((A[i][a] * Iinv[a, b] * A[i][b] for a in range(k) for b in range(k)), arb(0)) for i in used]
+
+    def sand(rows, factor=1):
+        S = arb_mat([[sum((r[a] * r[b] for r in rows), arb(0)) for b in range(k)] for a in range(k)])
+        C = Binv * S * Binv
+        return [(C[a, a] * factor).sqrt() for a in range(k)]
+
+    sq = [[x * fu[j].sqrt() for x in u[j]] for j in range(len(used))]
+    out = {"params": beta, "bse": bse, "tvalues": zval, "pvalues": pval, "deviance": dev, "pearson_chi2": pear,
+           "scale": phi, "llf": llf, "null_deviance": dev0, "llnull": llnull,
+           "aic": -2 * llf + 2 * k, "bic": -2 * llf + nobs.log() * k,
+           "fittedvalues": mu, "_mu": mu, "_muc": muc}
+    out["bse_HC0"] = sand(sq)
+    out["bse_HC1"] = sand(sq, nobs / (nobs - k))
+    out["bse_HC2"] = sand([[x / (1 - hat[j]).sqrt() for x in sq[j]] for j in range(len(used))])
+    out["bse_HC3"] = sand([[x / (1 - hat[j]) for x in sq[j]] for j in range(len(used))])
+    Lg = maxlags if maxlags is not None else math.floor(4 * (len(used) / 100) ** (2 / 9))
+    S = [[sum((s[a] * s[b] for s in sq), arb(0)) for b in range(k)] for a in range(k)]
+    for lag in range(1, min(Lg, len(used) - 1) + 1):
+        wl = 1 - arb(lag) / (Lg + 1)
+        for a in range(k):
+            for b in range(k):
+                S[a][b] += wl * sum((sq[t][a] * sq[t - lag][b] + sq[t - lag][a] * sq[t][b] for t in range(lag, len(used))),
+                                    arb(0))
+    C = Binv * arb_mat(S) * Binv
+    out["bse_HAC"] = [C[a, a].sqrt() for a in range(k)]
+    meta = {"nobs": float(nobs.mid()), "df_resid": float(df_resid.mid()), "maxlags": Lg, "rank": k}
+    if groups is not None:
+        labels = [groups[i] for i in used]
+        order = list(dict.fromkeys(labels))
+        G = len(order)
+        sums = {gg: [arb(0)] * k for gg in order}
+        for j, gg in enumerate(labels):
+            sums[gg] = [sums[gg][a] + fu[j] * u[j][a] for a in range(k)]
+        S = arb_mat([[sum((sums[gg][a] * sums[gg][b] for gg in order), arb(0)) for b in range(k)] for a in range(k)])
+        C = Binv * S * Binv * (arb(G) / (G - 1) * (nobs - 1) / (nobs - k))
+        bc = [C[a, a].sqrt() for a in range(k)]
+        out["bse_cluster"] = bc
+        out["pvalues_cluster"] = [2 * _t_upper(abs(beta[a] / bc[a]), arb(G - 1)) for a in range(k)]
+        meta["n_groups"] = G
+    out["resid_pearson"] = [(M[i]).sqrt() * (Y[i] - mu[i]) / _var(family, mu[i], muc[i])[0].sqrt() for i in range(n)]
+    return out, meta
+
+
+def glm(y, X, *, family, link, var_weights=None, freq_weights=None, trials=None, offset=None, intercept=True,
+        scale=None, beta0, alpha=0.05, groups=None, maxlags=None, null_beta0=0.0):
+    """References for the GLM fit of y on X (rows without the constant column; intercept puts
+    it first) with statsmodels' definitions: the MLE (Newton on the score equations from the
+    double start beta0, then certified by Krawczyk's test: the interval Newton operator maps a
+    box around it into itself, so the box holds the unique root), its standard errors
+    (expected information x scale), z or t values and p-values (normal for a fixed scale,
+    t(df_resid) for an estimated one), deviance, Pearson chi2, scale, log-likelihood (the
+    gaussian identity's concentrated), null deviance and log-likelihood (the intercept-only
+    fit, by the same solver when there is an offset; null_beta0 starts it), AIC, BIC (llf
+    based), fitted values, Pearson residuals, and the robust standard errors HC0-HC3, HAC and
+    cluster with the observed information as bread. Rows with a zero weight are out of the
+    fit. Returns (values as (hi, lo) or lists of them, meta)."""
+    n = len(y)
+    vw = var_weights if var_weights is not None else [1.0] * n
+    fw = freq_weights if freq_weights is not None else [1.0] * n
+    tr = trials if trials is not None else [1.0] * n
+    off = offset if offset is not None else [0.0] * n
+    p = 256
+    while p <= ar.MAX_PREC:
+        with ar.precision(p):
+            try:
+                vals, meta = _glm_fit(y, X, family, link, vw, fw, tr, off, intercept, scale, beta0, alpha, groups,
+                                      maxlags, null_beta0)
+                vals = {key: v for key, v in vals.items() if not key.startswith("_")}
+            except (ar.NotSettled, ValueError, ZeroDivisionError):
+                vals = None
+            if vals is not None and _all_settled(vals):
+                conv = {k: ([ar.to_dd(x) for x in v] if isinstance(v, list) else ar.to_dd(v)) for k, v in vals.items()}
+                return conv, meta
+        p *= 2
+    raise ar.NotSettled("glm")
+
+
 def dd_value(hl):
     """hi + lo as one float (for printing)."""
     return hl[0] + hl[1]

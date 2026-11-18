@@ -1,6 +1,6 @@
 # sd.regression API
 
-> 상태: **G1 구현** (2026-11-18): §2의 `ols wls gls linregress`, 고전형·HC0–HC3·HAC·군집 공분산, 랭크 부족, 배치, 진단, `summary(*, alpha=0.05)`. §3부터는 설계 초안이고, 이름·기본값·결과 필드는 마일스톤마다 확정한다([docs/design/regression.md](../design/regression.md) §8).
+> 상태: **G1·G2 구현** (2026-11-18): §2의 `ols wls gls linregress`, 고전형·HC0–HC3·HAC·군집 공분산, 랭크 부족, 배치, 진단, `summary(*, alpha=0.05)`; §3의 `glm`. §4부터는 설계 초안이고, 이름·기본값·결과 필드는 마일스톤마다 확정한다([docs/design/regression.md](../design/regression.md) §8).
 
 ## §1. 공통 규칙
 - 입력은 위치로만(`y`, `X`), 옵션은 키워드로만. 별칭은 없다.
@@ -59,11 +59,39 @@ linregress(x, y, /)                       # -> LinregressResult(slope, intercept
 
 ## §3. 일반화 선형 (G2)
 ```
-glm(y, X, /, *, family, link=None, weights=None, offset=None, exposure=None, intercept=True,
-    max_iter=100, nan_policy='propagate')
+glm(y, X, /, *, family, link=None, var_weights=None, freq_weights=None, trials=None, offset=None, exposure=None, intercept=True, scale=None, cov_type='nonrobust', maxlags=None, groups=None, max_iter=100, tol=1e-08, rtol=None, nan_policy='propagate')
 ```
-- `family`(안): `'gaussian'`, `'binomial'`, `'poisson'`, `'gamma'`, `'inverse_gaussian'`, `'negative_binomial'`. `link`가 None이면 정준 링크.
-- 결과(안): §2의 추론 필드 + `deviance pearson_chi2 null_deviance llr llr_pvalue converged n_iter`, `resid_deviance resid_pearson resid_response`
+- 결과는 `GLMResult`이고 필드 이름은 statsmodels의 것이다(G10). §1의 공통 규칙(입력, 절편, NaN, inf, 배치, 스레드, 에러의 꼴)을 따른다.
+- **분포족과 링크** (G31): `family`는 `'gaussian'`, `'binomial'`, `'poisson'`, `'gamma'`이고 `link`는 분포족마다 다음 가운데 하나다. None이면 정준 링크(맨 앞)다.
+
+  | `family` | `link` | 분산 V(μ) | `y` |
+  |---|---|---|---|
+  | `'gaussian'` | `'identity'`, `'log'` | 1 | 실수 |
+  | `'binomial'` | `'logit'`, `'probit'`, `'cloglog'`, `'log'` | μ(1 − μ) | 0 또는 1, `trials`가 있으면 [0, 1]의 비율 |
+  | `'poisson'` | `'log'`, `'identity'`, `'sqrt'` | μ | ≥ 0 (정수가 아니어도 된다) |
+  | `'gamma'` | `'inverse'`, `'log'`, `'identity'` | μ² | > 0 |
+
+  - 이름은 문자열로만 받는다(`family='binomial', link='probit'`; statsmodels처럼 객체를 받지 않는다). 다른 이름은 `ValueError`(`glm(): 'link' must be None, 'logit', 'probit', 'cloglog' or 'log' for the binomial family, not 'identity'`)다.
+  - `y`가 분포족의 범위 밖이면 가중치와 상관없이 `ValueError`다(`glm(): 'y' must be 0 or 1 for the binomial family without 'trials'`; R과 같다).
+- **가중치** (G36): `var_weights`(분산이 V(μ)/w, R의 `weights`)와 `freq_weights`(행마다 같은 관측의 수). 둘 다 ≥ 0이고 정수가 아니어도 된다. `freq_weights`는 행을 그 수만큼 반복한 적합과 같다: `nobs`는 적합에 쓰인 행의 `freq_weights` 합이고 `df_resid`, `llf`, `aic`, `bic`, 강건 공분산도 반복한 자료의 값이다(statsmodels의 `nobs`는 행 수이고 이 합은 `wnobs`다). 가중치(`var_weights`·`freq_weights`·`trials`의 곱)가 0인 행은 적합과 `nobs`·자유도에서 빠지고 적합값·잔차만 계산한다(G20; statsmodels는 `var_weights`가 0인 행을 `nobs`에 센다). 음수는 `ValueError`, NaN은 `nan_policy`를 따른다.
+- **이항 반응** (G35): `trials`(> 0, 이항 분포족만)를 주면 `y`는 성공의 비율이다. 시행 수는 R의 사전 가중치처럼 분산과 편차에 곱해지고, `llf`에는 log C(n, ny)가 들어간다(statsmodels의 (성공, 실패) 두 열 반응과 같은 값).
+- **오프셋과 노출**: η = Xβ + `offset` + log(`exposure`)다. `exposure`는 > 0이고 log 링크에서만 받는다(statsmodels와 같다). `predict`·`predict_interval`에도 새 행의 `offset`·`exposure`를 준다(없으면 0).
+- **척도** (G34): `scale=None`은 이항·포아송 1, 정규·감마 Pearson χ²/`df_resid`다. `'X2'`는 Pearson χ²/`df_resid`, `'dev'`는 편차/`df_resid`, 양수는 그 값으로 고정한다(이항·포아송에도 준다: 과대산포의 준우도).
+- **검정 분포** (G38, G39): 척도가 고정이면(이항·포아송의 기본, 또는 수로 준 `scale`) 정규분포(z), 추정하면(정규·감마의 기본, `'X2'`, `'dev'`) t(`df_resid`)다(R의 `summary.glm`과 같다). 강건 공분산(G39)은 HC0–HC3·HAC에서 척도가 고정인 이항·포아송이면 정규분포(R의 `coeftest`·Stata와 같고, statsmodels의 `use_t=False`와 같다), 정규·감마와 척도를 추정하는 이항·포아송(`'X2'`, `'dev'`)이면 t(`df_resid`)이고, 군집은 분포족과 상관없이 t(G − 1)다(G27). `df_resid_inference`는 그 자유도이고 정규분포면 inf다. `summary()`의 표 머리는 `z`·`P>|z|` 또는 `t`·`P>|t|`다.
+- **결과 필드**:
+  - 계수와 추론: `params bse tvalues pvalues`, `conf_int(alpha=0.05)`, `cov_params()`(척도 × (XᵀWX)⁻¹, W는 기대 정보(Fisher)의 가중치), `df_resid_inference`
+  - 적합: `fittedvalues`(μ), `linear_predictor`(η), `resid_response`(y − μ, `y`의 척도), `resid_pearson`((y − μ)√(m/V(μ)), m = `var_weights` × `trials`), `resid_deviance`(sign(y − μ)√(m·d(y, μ))), `resid_working`((y − μ)g′(μ))
+  - 적합도: `deviance null_deviance pearson_chi2 scale llf llnull llr llr_pvalue aic bic nobs df_model df_resid`
+  - 상태: `rank condition_number converged n_iter separation param_names family link cov_type`
+  - 예측: `predict(X_new, /, *, offset=None, exposure=None, which='mean')`(`'linear'`이면 η), `predict_interval(X_new, /, *, offset=None, exposure=None, alpha=0.05, which='mean')`: η ± q·se(η)를 역링크로 옮긴 구간(…, m, 2; 역링크가 감소하는 inverse 링크에서도 아래·위 순서)
+  - `summary(*, alpha=0.05)`: statsmodels의 GLM summary와 같은 꼴의 글(날짜·시각은 넣지 않는다)
+- `llf`는 statsmodels의 `loglike`(상수항 포함, 척도는 `scale`)다. 정규·identity는 척도를 편차/`nobs`로 둔 집중 로그우도라 `ols`의 `llf`와 같다. `aic` = −2·`llf` + 2·`rank`, `bic` = −2·`llf` + log(`nobs`)·`rank`(statsmodels의 `bic_llf`; 편차로 만든 `bic_deviance`는 두지 않는다). 척도는 모수로 세지 않는다(statsmodels와 같다; R의 AIC는 정규·감마에서 1을 더 센다).
+- 귀무 모형은 절편만 있는 모형이다(오프셋이 있으면 그 오프셋과 함께 다시 적합한다). `intercept=False`이면 귀무 모형은 모수가 없는 η = `offset`이다(R의 `glm`; statsmodels는 이때도 상수를 적합한다). `null_deviance`, `llnull`(같은 척도, 정규·identity는 집중 로그우도)이 그 값이고, `llr` = 2(`llf` − `llnull`), `llr_pvalue`는 자유도 `df_model`의 카이제곱이다.
+- **`cov_type`** (G37): §2와 같은 이름과 옵션이다. 강건 공분산은 점수 s_i = x_i·m_i(y_i − μ_i)μ′_i/V(μ_i)의 샌드위치이고, 빵은 관측 정보(로그우도의 헤시안)의 역행렬이다(statsmodels와 같다; 정준 링크에서는 기대 정보와 같다). `'HC1'`은 `'HC0'`에 nobs/(nobs − rank)를, `'HC2'`·`'HC3'`는 √W X의 지렛대 h로 1/(1 − h)·1/(1 − h)²를 곱한다(§2의 OLS와 같은 뜻; statsmodels의 GLM은 `'HC1'`–`'HC3'`에도 `'HC0'`을 낸다). `freq_weights`는 반복한 행이 각각 점수를 내는 것으로 센다(HC·HAC, 군집은 같은 군집의 합).
+- **수렴** (G32): IRLS가 편차의 상대 변화 |D − D_old|/(|D| + 0.1) < `tol`(R의 `glm.fit`과 같은 판정, 기본 1e-8)에 닿으면 `converged=True`다. 판정 전의 반복은 정규방정식(Cholesky; 조건이 나쁘거나 G21이 열을 뺄 때, 또 행 수 × 열 수가 512 미만이면 QR)으로 푼다(G40, G43). 판정 뒤에도 계수가 반올림보다 크게 움직이는 동안 QR로 반복을 이어 가고 마지막에 반복 개선을 한 최소제곱을 한 번 더 풀므로(정준이 아닌 링크는 이 둘이 관측 정보의 뉴턴 걸음이고 얇은 Q로 푼다, G42; 판정 전에도 Fisher 걸음이 직전의 1/2 아래로 줄지 않는 반복이 3번 이어지면 그때부터 뉴턴 걸음이다, G44), 계수는 그 판정의 정밀도가 아니라 최대우도 추정에 반올림 수준으로 가깝다(설계 §3.4). `n_iter`는 최소제곱을 푼 횟수다(마지막 풀이 포함; R은 그 풀이를 세지 않는다). `max_iter`(≥ 1)에 닿으면 마지막 값을 내고 `converged=False`, `n_iter`는 `max_iter`다. 경고는 없다.
+- **분리** (G33, 이항과 로그 링크의 포아송): 최대우도 추정이 존재하지 않으면(완전·준완전 분리, 0만 있는 포아송 군 등) `separation=True`이고 `params`·`bse`·`tvalues`·`pvalues`·`cov_params()`는 NaN이다. 경계로 가는 행의 `fittedvalues`는 y(0 또는 1, 포아송은 0), `linear_predictor`는 ±inf, 잔차는 0이다. 나머지 행은 그 행들만의 적합(가능도 최대화의 극한)이고 `deviance`·`llf`·`pearson_chi2`도 그 극한의 값이다. 판정은 설계 §3.4의 증명서다. 이항·포아송 밖이나 다른 링크(경계에서 유한한 최대우도 추정, 예: 포아송 identity에서 μ = 0)는 분리가 아니다.
+- 겹친 열(G9, G21)·`rtol`·배치·`nan_policy`는 §2와 같다. 겹친 열의 계수와 추론은 NaN이고 `rank`, `df_model`, `df_resid`, `aic`, `bic`는 남은 열로 센다.
+- **정확도** (잰 값, 설계 §3.4): 계수 벡터의 상대오차(노름)는 Arb 참값과 견줘 분포족·링크 12개와 가중치·시행 수·노출·절편 없음·`scale='dev'`의 무작위 문제 17개에서 최대 1.1e-16이다. √W X의 조건수 κ가 클 때는 정준 링크(로지스틱·포아송 log) κ ≤ 10¹⁰에서 1.3e-15, 10¹²에서 9e-12, 정준이 아닌 링크 8개(probit, cloglog, 이항 log, 포아송 identity·sqrt, 감마 log·identity, 정규 log) κ ≤ 10⁸에서 3.5e-15, 10¹⁰에서 4e-14다. 같은 17개에서 표준오차·편차·Pearson χ²·로그우도·강건 표준오차는 1e-15 안, p값은 2e-13 안이다. 표준오차는 G1처럼 R에서 계산하므로 상대오차가 κ·u 정도다.
 
 ## §4. 정규화 (G3)
 ```
