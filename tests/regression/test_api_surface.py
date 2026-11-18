@@ -17,7 +17,7 @@ PLANNED = set()
 RESULTS = {"OLSResult", "WLSResult", "GLSResult", "GLMResult", "LinregressResult", "JarqueBeraResult",
            "BreuschPaganResult", "RidgeResult", "LassoResult", "ElasticNetResult", "RidgeCVResult", "LassoCVResult",
            "ElasticNetCVResult", "PenalizedGLMResult", "RLMResult", "TheilslopesResult", "SiegelslopesResult",
-           "QuantRegResult"}
+           "QuantRegResult", "NLSResult"}
 
 
 def documented():

@@ -1,6 +1,6 @@
 # sd.regression API
 
-> 상태: **G1–G5 구현** (2026-11-18): §2의 `ols wls gls linregress`, 고전형·HC0–HC3·HAC·군집 공분산, 랭크 부족, 배치, 진단, `summary(*, alpha=0.05)`; §3의 `glm`; §4의 `ridge lasso elastic_net`, 경로, `ridge_cv lasso_cv elastic_net_cv`, 정규화 GLM `penalized_glm`; §5의 `rlm theilslopes siegelslopes`; §6의 `quantreg`. §7부터는 설계 초안이고, 이름·기본값·결과 필드는 마일스톤마다 확정한다([docs/design/regression.md](../design/regression.md) §8).
+> 상태: **G1–G6 구현** (2026-11-18): §2의 `ols wls gls linregress`, 고전형·HC0–HC3·HAC·군집 공분산, 랭크 부족, 배치, 진단, `summary(*, alpha=0.05)`; §3의 `glm`; §4의 `ridge lasso elastic_net`, 경로, `ridge_cv lasso_cv elastic_net_cv`, 정규화 GLM `penalized_glm`; §5의 `rlm theilslopes siegelslopes`; §6의 `quantreg`; §7의 `nls`(G6, 2026-11-19).
 
 ## §1. 공통 규칙
 - 입력은 위치로만(`y`, `X`), 옵션은 키워드로만. 별칭은 없다.
@@ -206,7 +206,36 @@ quantreg(y, X, /, *, q=0.5, intercept=True, cov_type='nid', bandwidth='hall-shea
 - **에러**: `quantreg(): 'q' must be a number or a 1-dimensional array of numbers strictly between 0 and 1`, `quantreg(): 'cov_type' must be 'iid', 'nid' or 'ker', not 'boot'`, `quantreg(): 'bandwidth' must be 'hall-sheather' or 'bofinger', not 'x'`, `quantreg(): the model has no parameters (no columns in 'X' and intercept=False)`.
 
 ## §7. 비선형 최소제곱 (G6)
-- `curve_fit`/`least_squares` 꼴의 시그니처는 G6에서 정한다.
+```
+nls(f, x, y, /, *, p0, jac=None, bounds=None, method=None, weights=None, ftol=1e-08, xtol=1e-08, gtol=1e-08, max_nfev=None, rtol=None, nan_policy='propagate')
+```
+- 결과는 `NLSResult`이고 필드 이름은 다른 결과 객체와 같다(G10; 모형과 척도는 R `nls`의 것, G68). 회귀 하나만 받는다: 배치는 없고 `y`가 1차원이 아니면 `ValueError`(`nls(): 'y' must be 1-dimensional (nls fits one regression, not a batch)`)다. 절편 옵션은 없다(모형이 사용자의 것이다).
+- **모형** (G68, G71): Σ w_i (y_i − f(x, θ)_i)²를 θ에 대해 최소화한다. `f(x, *theta)`는 scipy `curve_fit`의 꼴이다: x는 float64 `sd.ndarray`, θ는 Python `float` 인자들이고, n개의 값(`sd.ndarray`나 실수의 시퀀스)을 돌려준다. f는 늘 모든 행(`nan_policy='omit'`이 뺀 뒤, 가중치 0인 행 포함)의 x를 받는다. 모수의 수는 `p0`의 길이다. f가 낸 에러는 그대로 나간다. `least_squares` 꼴(잔차 함수)의 일반 풀이는 두지 않는다.
+- **입력** (G75): `x`는 (n,) 또는 (n, d)(첫 축이 관측), `y`는 (n,)이다. `sd.ndarray`, 실수의 시퀀스, frame을 받는다(§1). `p0`는 유한한 실수의 1차원 시퀀스다(필수 키워드).
+- **방법** (G69): `method=None`이면 `bounds`에 유한한 끝이 하나라도 있을 때 `'trf'`, 없으면 `'lm'`이다(scipy `curve_fit`의 규칙).
+  - `'lm'`: MINPACK `lmder`의 Levenberg–Marquardt(신뢰 영역 꼴; 열 피벗 QR, 척도는 야코비안의 열 노름, factor 100). scipy `leastsq`와 같은 걸음과 판정이다. `bounds`와 함께 주면 `ValueError`(`nls(): method='lm' takes no bounds (method='trf' does)`)다.
+  - `'trf'`: scipy `least_squares(method='trf')`의 신뢰 영역 반사법(Coleman–Li 척도, SVD로 푸는 부분문제, 반사 걸음과 기울기 걸음, 엄격히 안쪽인 반복점; x_scale = 1). `p0`가 경계에서 10⁻¹⁰·max(1, |경계|) 안이면 scipy처럼 그만큼 안으로 옮겨 시작한다.
+  - `bounds=(lower, upper)`: 각각 수 하나(모든 모수) 또는 p개의 수이고 ±inf는 경계 없음이다. lower < upper이고 `p0`가 그 안이어야 한다(`ValueError`).
+- **야코비안** (G70): `jac(x, *theta)`는 (n, p)를 돌려준다(p = 1이면 (n,)도 받는다). 없으면 반복은 MINPACK `fdjac2`의 전진 차분(h = √u·|θ_j|, θ_j = 0이면 √u; 'trf'에서 경계를 넘으면 뒤로)이고, 해의 야코비안(공분산과 다듬기)은 5점 중앙 차분이다. 그 간격은 모수마다 처음 한 번 고른다: 2⁻⁸|θ_j|에서 4배씩 줄이며 이웃한 두 추정의 차이가 8배 넘게 줄어드는 동안(절단 오차 O(h⁴)이 앞서는 동안) 이어 가고 마지막 추정의 간격을 그 뒤에도 쓴다. 경계에 걸리거나 한쪽에서 f가 유한하지 않으면 한쪽 5점 차분이다. NIST 27개에서 해석적 야코비안과의 차이는 열마다 상대 1.4×10⁻¹¹ 안이다(고정 간격 2⁻¹⁰|θ_j|면 위치 모수의 척도가 |θ_j|보다 훨씬 작은 Eckerle4에서 7×10⁻⁵).
+- **가중치** (G72): `weights`(≥ 0)는 wls(G20)와 같은 뜻이다: 0인 행은 적합과 `nobs`·자유도에서 빠지고 `fittedvalues`·`resid`만 계산한다(그 행에서는 f가 유한하지 않아도 된다; R `summary.nls`의 n과 같다). 음수는 `ValueError`(`nls(): 'weights' must be >= 0`), NaN은 `nan_policy`를 따른다. scipy `curve_fit`의 `sigma`(`absolute_sigma=False`)는 `weights=1/sigma**2`다.
+- **NaN과 inf**: `nan_policy`(§1): `'propagate'`는 f를 부르지 않고 모든 값이 NaN이다(`nobs` NaN, `rank` 0, `converged` False, `nfev` 0; `predict`도 NaN). `'omit'`은 y, x의 어느 열, 가중치가 NaN인 행을 빼고, `'raise'`는 `ValueError`다. y·x·가중치의 inf는 `ValueError`다(G24).
+- **유한하지 않은 함수값** (G74): 반복의 시험점에서 f가 쓰인 행에서 유한하지 않으면 그 걸음을 거절하고 신뢰 영역을 줄인다('lm'은 잔차 노름을 +inf로 보아 lmder의 규칙대로 1/10로, 'trf'는 scipy처럼 걸음 길이의 1/4로). `p0`에서 유한하지 않으면 `ValueError`(`nls(): 'f' is not finite at 'p0' (rows used)`)이고, 차분이나 `jac`이 유한하지 않으면 `ValueError`다.
+- **수렴** (G73, G32): 반복은 scipy와 같은 판정으로 멈춘다. 'lm'은 lmder의 ftol(실제·예측 감소가 모두 ftol 이하), xtol(신뢰 영역 Δ ≤ xtol·‖Dθ‖), gtol(잔차와 야코비안의 각 열의 코사인의 최댓값 ≤ gtol)과 그 기계 정밀도 판(lmder의 info 6–8)이고, 'trf'는 least_squares의 ftol(dF < ftol·F이고 비율 > 1/4), xtol(‖Δθ‖ < xtol(xtol + ‖θ‖)), gtol(‖g ∘ v‖∞ < gtol)이다. 세 값이 모두 u보다 작으면 `ValueError`다.
+  - `converged`는 반복이 이 판정 가운데 하나로 멈췄는지다. `max_nfev`(None이면 `jac`이 있을 때 100p, 없을 때 100p(p + 1); least_squares의 기본이고 차분의 호출도 센다)에 닿으면 마지막 반복점을 내고 `converged=False`, 경고는 없다. 이때는 아래 다듬기를 하지 않는다(공분산은 그 점의 정확한 야코비안이다).
+  - **다듬기**: 수렴한 반복점에서 정확한 야코비안(사용자의 것 또는 5점 차분)의 가우스–뉴턴 걸음을 계수가 반올림보다 크게 움직이는 동안 잇는다. 걸음은 선형 모형의 QR과 반복 개선(G15)으로 푼다(정규방정식이 아니다). 걸음이 모수의 2⁻⁵⁰ 밑(성분마다 상대)이거나, 두 걸음의 비로 내다본 나머지가 그 밑이거나, 2⁻⁴⁰ 밑에서 절반 넘게 줄지 않으면(반올림의 바닥) 멈춘다. 걸음이 줄지 않거나 남은 걸음이 비싸게 천천히 줄면(잔차가 커서 가우스–뉴턴의 수렴비가 크면) 잔차의 곡률 항 S = Σ w_i r_i ∇²f_i를 2차 차분으로 한 번 구해 뉴턴 걸음 (JᵀWJ + S)d = −JᵀWr로 바꾼다(GLM의 G44와 같은 생각). 모두 10걸음까지다. 고정점은 정확한 야코비안의 JᵀWr = 0이라 S의 정확도는 속도만 바꾼다.
+  - 그래서 `ftol`·`xtol`·`gtol`은 언제 다듬기로 넘어가는지만 정하고, 계수는 f와 야코비안이 정확하면 해에 반올림 수준으로 가깝다(아래 정확도).
+- **추론** (G72): 공분산은 σ̂²(JᵀWJ)⁻¹, σ̂² = `scale` = `ssr`/`df_resid`, `df_resid` = `nobs` − `rank`다(R `nls`와 같다). J는 해의 정확한 야코비안이고 (JᵀWJ)⁻¹은 √W J의 QR의 R에서 구한다. p값과 구간은 t(`df_resid`)다(ols와 같다). `bounds`의 경계에 걸린 모수가 있어도 같은 J의 전체 공분산이다(scipy와 R의 `algorithm = "port"`와 같다; 경계에서는 이 점근 근사가 맞지 않는다). 경계에 걸린 모수(scipy의 `find_active_constraints`의 거리(rtol = xtol) 안이고 기울기가 바깥을 향하는 모수)는 경계값으로 맞추고 다듬기에서 고정한다.
+- **겹친 모수** (G9, G21, G76, G77): 해의 √W J에서 피벗 없는 QR의 |R_jj| ≤ rtol·‖J_j‖인 열의 모수는 `bse`·`tvalues`·`pvalues`·`conf_int`·`cov_params()`의 그 행과 열이 NaN이다. `params`는 반복이 닿은 값 그대로다(f를 계산하는 데 필요하므로 NaN으로 두지 않는다; 그 값은 유일하지 않다). `rank`, `df_model`, `df_resid`는 남은 열로 센다. `rtol`의 기본은 `jac`이 있으면 max(nobs, p)·u(선형 모형과 같다), 차분이면 2⁻³⁰이다(G77; 차분 야코비안의 열은 상대 10⁻¹²–10⁻¹¹ 정확도라 정확히 겹친 열도 그 크기의 |R_jj|를 갖는다; NIST 27개의 가장 작은 |R_jj|/‖J_j‖는 Bennett5의 4.9×10⁻⁵다).
+- **결과 필드**: `params bse tvalues pvalues`, `conf_int(alpha=0.05)`(p, 2), `cov_params()`(p, p), `fittedvalues`(f(x, *params), 모든 행), `resid`(y − `fittedvalues`), `ssr`(쓰인 행의 Σw r²), `scale`, `llf aic bic`, `nobs df_model df_resid`(`df_model`은 `rank`), `rank condition_number`(√W J의 쓰인 열), `converged n_iter nfev njev`, `method param_names cov_type`(`'nonrobust'`), `predict(x_new, /)`, `summary(*, alpha=0.05)`.
+  - `llf`·`aic`·`bic` (G78): ols·wls와 같은 식과 모수 수다. `llf`는 정규 우도의 최댓값 −nobs/2·(log 2π + log(ssr/nobs) + 1) + ½Σlog w(가중치가 있으면, 쓰인 행)이고, `aic` = −2·`llf` + 2·`rank`, `bic` = −2·`llf` + log(`nobs`)·`rank`다(척도는 세지 않는다). R `logLik.nls`와 같은 `llf`이고, R의 `AIC`·`BIC`는 σ를 모수로 세어 2, log(nobs)만큼 크다(R의 `lm`과 `ols`의 관계와 같다).
+  - `param_names`: f의 x 뒤 위치 인자가 정확히 p개면 그 이름(`f(x, a, b)` → `['a', 'b']`), 아니면 `'b1'…'bp'`.
+  - `n_iter`는 반복(신뢰 영역 방법)이 계산한 야코비안 수(`p0`의 것 포함), `nfev`는 f의 모든 호출(반복의 차분, 다듬기, 해의 야코비안과 간격 고르기 포함), `njev`는 야코비안 수(`jac`의 호출 또는 차분 야코비안)다.
+  - `predict(x_new)`는 f(x_new, *params)다. x_new는 적합의 x와 같은 꼴(1차원, 또는 같은 열 수의 2차원)이다.
+  - `summary()`는 모형, 방법, 관측 수, 자유도, 잔차 표준오차, 제곱합, 수렴, 반복·호출 수와 계수 표(`t`·`P>|t|`)이고, 끝에 야코비안의 출처, 멈춘 판정, 겹친 모수, 경계에 걸린 모수를 적는다.
+- **비용** (G79): 차분 야코비안이면 `nls`는 f를 scipy `curve_fit`보다 여러 배(잰 모형에서 5–7배) 부른다. 해의 정확한 야코비안(모수마다 간격을 처음 한 번 고르는 데 약 16번, 그 뒤 야코비안마다 4p번)과 다듬기의 걸음(보통 2–4번, 걸음마다 야코비안 하나) 때문이고, 그만큼 계수와 표준오차가 정확하다(아래 정확도). 이 비용을 끄는 옵션은 없다. 사용자 `jac`을 주면 그 비용의 대부분이 없어진다(잰 모형에서 f 호출 7–13번, scipy는 4–6번; n = 10⁶이면 scipy와 같거나 빠르다; `bench/regression/g6/speed.md`).
+- **GIL**: f가 Python이라 반복은 GIL을 쥔 채 돈다(API.md §3). 큰 QR과 f 안의 큰 sd 연산은 GIL을 놓는다.
+- **정확도** (잰 값, 설계 §3.7): NIST StRD 27개 × 시작점 2개에서, 기본값(차분)은 수렴한 50개 적합 모두 인증값(11자리)과 계수 LRE 9.5 이상(중앙값 10.7), 표준오차 LRE 9.0 이상(Lanczos1 빼고)이고, 해석적 `jac`이면 계수 10.3, 표준오차 10.4 이상이다. 같은 double 자료의 Arb 참값과는 `jac`이면 계수 3.1×10⁻¹³ 안(중앙값 1×10⁻¹⁵), 차분이면 3.0×10⁻¹⁰ 안(중앙값 3–6×10⁻¹³)이다. scipy `curve_fit`·R `nls`·minpack.lm `nlsLM`의 기본값은 계수 LRE 중앙값 5.9–6.8, 표준오차 5.0–6.3이다. Lanczos1은 잔차가 f의 반올림 크기라 표준오차가 3–4자리다.
+- **에러**: `nls(): 'f' must be callable, not int`, `nls(): 'p0' must be within 'bounds'`, `nls(): each lower bound must be less than its upper bound`, `nls(): 'f' must return 40 values (one per row of 'x'), not shape (39,)`, `nls(): 'jac' must return shape (40, 3), not (40, 2)`, `nls(): 'p0' has 3 parameters, more than the 2 observations used`, `nls(): at least one of 'ftol', 'xtol' and 'gtol' must be >= 2.2e-16 (the machine epsilon)`, `predict(): 'x_new' must be 1-dimensional like the fit's 'x', not shape (3, 2)`.
 
 ## §8. 다른 라이브러리와의 대응 (안)
 | 하는 일 | statsmodels | scikit-learn | scipy | sd.regression |
@@ -218,4 +247,4 @@ quantreg(y, X, /, *, q=0.5, intercept=True, cov_type='nid', bandwidth='hall-shea
 | 정규화 GLM | `GLM.fit_regularized` | `LogisticRegression`(penalty), `PoissonRegressor` | | `penalized_glm` |
 | 강건 | `RLM` (R `MASS::rlm`, `robustbase::lmrob`) | `HuberRegressor`, `TheilSenRegressor` | `stats.theilslopes`, `siegelslopes` | `rlm`(M, MM), `theilslopes`, `siegelslopes` |
 | 분위 | `QuantReg` | `QuantileRegressor` | | `quantreg` |
-| 비선형 | | | `optimize.curve_fit`, `least_squares` | G6 |
+| 비선형 | | | `optimize.curve_fit`, `least_squares` | `nls`(`curve_fit` 꼴; `'lm'`·`'trf'`, `bounds`, `jac`) |

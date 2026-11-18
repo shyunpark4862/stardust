@@ -1135,6 +1135,114 @@ def quantreg(y, X, basis, q, *, intercept=True):
                 n_zero=len(zero), margin=float(margin) if margin is not None else None)
 
 
+# ---- nonlinear least squares (sd.regression.nls, docs/design/regression.md §3.7)
+
+class ArbVec:
+    """A vector of arbs with elementwise arithmetic, so model functions written for an array
+    namespace (tests/regression/nist_nls.py's) run in Arb. A 2-column x is a list of rows;
+    x[:, j] gives column j."""
+
+    __slots__ = ("v",)
+
+    def __init__(self, v):
+        self.v = list(v)
+
+    def _op(self, o, fn):
+        if isinstance(o, ArbVec):
+            return ArbVec(fn(a, b) for a, b in zip(self.v, o.v))
+        o = o if isinstance(o, arb) else arb(o)
+        return ArbVec(fn(a, o) for a in self.v)
+
+    def _rop(self, o, fn):
+        o = o if isinstance(o, arb) else arb(o)
+        return ArbVec(fn(o, a) for a in self.v)
+
+    __add__ = lambda s, o: s._op(o, lambda a, b: a + b)
+    __radd__ = lambda s, o: s._rop(o, lambda a, b: a + b)
+    __sub__ = lambda s, o: s._op(o, lambda a, b: a - b)
+    __rsub__ = lambda s, o: s._rop(o, lambda a, b: a - b)
+    __mul__ = lambda s, o: s._op(o, lambda a, b: a * b)
+    __rmul__ = lambda s, o: s._rop(o, lambda a, b: a * b)
+    __truediv__ = lambda s, o: s._op(o, lambda a, b: a / b)
+    __rtruediv__ = lambda s, o: s._rop(o, lambda a, b: a / b)
+    __pow__ = lambda s, o: s._op(o, lambda a, b: a ** b)
+    __neg__ = lambda s: ArbVec(-a for a in s.v)
+
+    def __getitem__(self, key):
+        _, j = key
+        return ArbVec(row[j] for row in self.v)
+
+
+class _ArbNamespace:
+    """exp, log, cos, sin, atan and stack on ArbVecs (the subset nist_nls.model uses)."""
+
+    @staticmethod
+    def _map(x, fn):
+        return ArbVec(fn(a) for a in x.v)
+
+    exp = staticmethod(lambda x: _ArbNamespace._map(x, arb.exp))
+    log = staticmethod(lambda x: _ArbNamespace._map(x, arb.log))
+    cos = staticmethod(lambda x: _ArbNamespace._map(x, arb.cos))
+    sin = staticmethod(lambda x: _ArbNamespace._map(x, arb.sin))
+    atan = staticmethod(lambda x: _ArbNamespace._map(x, arb.atan))
+
+    @staticmethod
+    def stack(cols, axis=1):
+        return [c.v for c in cols]  # columns
+
+    @staticmethod
+    def asarray(v):
+        if v and isinstance(v[0], (list, tuple)):
+            return ArbVec([[arb(t) for t in row] for row in v])
+        return ArbVec(arb(t) for t in v)
+
+
+ARB = _ArbNamespace()
+
+
+def nls(f, jac, x, y, theta0, *, weights=None, prec=320, tol_bits=120, max_iter=3000):
+    """The minimizer of sum w_i (y_i - f(x_i, theta))^2 near theta0 for double data x, y (and
+    weights), with f and jac written for ARB: Gauss-Newton in Arb at `prec` bits (the exact
+    Jacobian, the normal equations at that precision) until a step is below 2^-tol_bits of
+    the parameters. Returns dict(params, bse, ssr, scale) as floats (the midpoints rounded:
+    the remaining step and the balls' radii are far below a double's rounding), and the
+    iterations."""
+    with ar.precision(prec):
+        X = ARB.asarray(x)
+        Y = [arb(v) for v in y]
+        sw = [arb(w).sqrt() for w in weights] if weights is not None else None
+        used = [i for i in range(len(Y)) if weights is None or weights[i] > 0]
+        th = [arb(t) for t in theta0]
+        p = len(th)
+
+        def system(th):
+            fv = f(X, *th).v
+            cols = jac(X, *th)
+            r = [(Y[i] - fv[i]) * (sw[i] if sw else 1) for i in used]
+            J = [[cols[j][i] * (sw[i] if sw else 1) for j in range(p)] for i in used]
+            return r, J
+
+        it = 0
+        for it in range(1, max_iter + 1):
+            r, J = system(th)
+            A = arb_mat(J)
+            At = A.transpose()
+            d = (At * A).solve(At * arb_mat([[v] for v in r]))
+            step = max(abs(float(d[j, 0].mid())) / max(abs(float(th[j].mid())), 1e-300) for j in range(p))
+            th = [arb((th[j] + d[j, 0]).mid()) for j in range(p)]
+            if step < 2.0 ** -tol_bits:
+                break
+        r, J = system(th)
+        A = arb_mat(J)
+        ssr = sum((v * v for v in r), arb(0))
+        n = len(used)
+        scale = ssr / (n - p)
+        C = (A.transpose() * A).inv()
+        bse = [(scale * C[j, j]).sqrt() for j in range(p)]
+        return dict(params=[float(t.mid()) for t in th], bse=[float(b.mid()) for b in bse], ssr=float(ssr.mid()),
+                    scale=float(scale.mid()), iterations=it)
+
+
 def dd_value(hl):
     """hi + lo as one float (for printing)."""
     return hl[0] + hl[1]
