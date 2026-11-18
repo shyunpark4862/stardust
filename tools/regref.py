@@ -982,6 +982,159 @@ def rlm(y, X, *, beta0, norm, c, scale_est="mad", intercept=True, scale=None, in
     raise ar.NotSettled("rlm")
 
 
+# ---- quantile regression (G60-G63): the exact vertex of a basis and its certificate
+
+def _q(v):
+    """A double as an exact rational."""
+    from flint import fmpq
+
+    a, b = float(v).as_integer_ratio()
+    return fmpq(a, b)
+
+
+def _q_dd(v):
+    with ar.precision(400):
+        return ar.to_dd(arb(v))
+
+
+def _exact_lp_max(A, b, c):
+    """max c^T v s.t. A v = b, v >= 0 by the two-phase simplex in exact rationals (Bland's
+    rule). A: list of rows (fmpq), b, c: lists. Returns the optimal value, or None when
+    infeasible (the feasible sets here are bounded)."""
+    from flint import fmpq
+
+    m, nv = len(A), len(c)
+    rows = []
+    for i in range(m):
+        sgn = -1 if b[i] < 0 else 1
+        rows.append([sgn * a for a in A[i]] + [fmpq(1) if j == i else fmpq(0) for j in range(m)] + [sgn * b[i]])
+    basis = [nv + i for i in range(m)]
+    width = nv + m
+
+    def run(cost, allowed):
+        # tableau minimization of cost^T v (reduced costs recomputed from the basis)
+        while True:
+            red = [cost[j] - sum(cost[basis[i]] * rows[i][j] for i in range(m)) for j in range(width)]
+            enter = next((j for j in range(width) if allowed(j) and j not in basis and red[j] < 0), None)
+            if enter is None:
+                return
+            best = None
+            for i in range(m):
+                a = rows[i][enter]
+                if a > 0:
+                    t = rows[i][-1] / a
+                    if best is None or t < best[0] or (t == best[0] and basis[i] < basis[best[1]]):
+                        best = (t, i)
+            if best is None:
+                raise ValueError("unbounded")
+            r = best[1]
+            piv = rows[r][enter]
+            rows[r] = [v / piv for v in rows[r]]
+            for i in range(m):
+                if i != r and rows[i][enter] != 0:
+                    f = rows[i][enter]
+                    rows[i] = [vi - f * vr for vi, vr in zip(rows[i], rows[r])]
+            basis[r] = enter
+
+    run([fmpq(0)] * nv + [fmpq(1)] * m, lambda j: True)
+    if sum(rows[i][-1] for i in range(m) if basis[i] >= nv) != 0:
+        return None
+    # drive degenerate artificials out where possible, then optimize with them barred
+    for i in range(m):
+        if basis[i] >= nv:
+            j = next((j for j in range(nv) if rows[i][j] != 0 and j not in basis), None)
+            if j is not None:
+                piv = rows[i][j]
+                rows[i] = [v / piv for v in rows[i]]
+                for r2 in range(m):
+                    if r2 != i and rows[r2][j] != 0:
+                        f = rows[r2][j]
+                        rows[r2] = [vi - f * vr for vi, vr in zip(rows[r2], rows[i])]
+                basis[i] = j
+    run([-v for v in c] + [fmpq(0)] * m, lambda j: j < nv)
+    val = fmpq(0)
+    for i in range(m):
+        if basis[i] < nv:
+            val += c[basis[i]] * rows[i][-1]
+    return val
+
+
+def quantreg(y, X, basis, q, *, intercept=True):
+    """The exact vertex of quantile regression's basis rows and its optimality certificate,
+    in rationals (the doubles are exact rationals; no rounding anywhere).
+
+    beta solves X_B beta = y_B; r = y - X beta exactly. The vertex is optimal iff some
+    lambda with lambda_i = psi_q(r_i) off the zero residuals, lambda_i in [q - 1, q] on them
+    and X^T lambda = 0 exists; it is the unique minimizer iff such a lambda exists strictly
+    inside (q - 1, q) on the zero residuals (relative interiors commute with linear maps). On
+    a nondegenerate vertex (zero residuals only on the basis) lambda_B is solved directly;
+    otherwise an exact linear program gives the largest margin eps (rows with equal x merged:
+    their multipliers' sum ranges over the box scaled by the count). Returns params and the
+    objective sum rho_q(r_i) as double-doubles, optimal, unique, the number of zero residuals
+    and the margin (min distance of lambda to the box's ends; a lower bound with ties)."""
+    from flint import fmpq, fmpq_mat
+
+    n = len(y)
+    rows = [([fmpq(1)] if intercept else []) + [_q(v) for v in (X[i] if hasattr(X[i], "__len__") else [X[i]])]
+            for i in range(n)]
+    k = len(rows[0])
+    yq = [_q(v) for v in y]
+    tau = _q(q)
+    B = list(basis)
+    XB = fmpq_mat(k, k, [rows[i][c] for i in B for c in range(k)])
+    beta = XB.solve(fmpq_mat(k, 1, [yq[i] for i in B]))
+    beta = [beta[c, 0] for c in range(k)]
+    r = [yq[i] - sum(rows[i][c] * beta[c] for c in range(k)) for i in range(n)]
+    assert all(r[i] == 0 for i in B)
+    zero = [i for i in range(n) if r[i] == 0]
+    g = [fmpq(0)] * k
+    obj = fmpq(0)
+    for i in range(n):
+        if r[i] == 0:
+            continue
+        psi = tau if r[i] > 0 else tau - 1
+        obj += psi * r[i]
+        for c in range(k):
+            g[c] += psi * rows[i][c]
+    h = [-v for v in g]
+    if len(zero) == k:
+        lam = XB.transpose().solve(fmpq_mat(k, 1, h))
+        lam = [lam[a, 0] for a in range(k)]
+        margin = min(min(v - (tau - 1), tau - v) for v in lam)
+        optimal = margin >= 0
+        unique = margin > 0
+    else:
+        groups = {}
+        for i in zero:
+            groups.setdefault(tuple(rows[i]), []).append(i)
+        G = list(groups)
+        mcount = [fmpq(len(groups[gk])) for gk in G]
+        m = len(G)
+        # variables: mu_g (m), eps, s_g (m), t_g (m); lambda_g = m_g (q - 1) + mu_g
+        nv = 3 * m + 1
+        A, bvec = [], []
+        for c in range(k):
+            row = [G[j][c] for j in range(m)] + [fmpq(0)] * (2 * m + 1)
+            A.append(row)
+            bvec.append(h[c] - sum(mcount[j] * (tau - 1) * G[j][c] for j in range(m)))
+        for j in range(m):
+            row = [fmpq(0)] * nv
+            row[j], row[m], row[m + 1 + j] = fmpq(1), -mcount[j], fmpq(-1)
+            A.append(row)
+            bvec.append(fmpq(0))
+            row = [fmpq(0)] * nv
+            row[j], row[m], row[2 * m + 1 + j] = fmpq(1), mcount[j], fmpq(1)
+            A.append(row)
+            bvec.append(mcount[j])
+        cvec = [fmpq(0)] * nv
+        cvec[m] = fmpq(1)
+        margin = _exact_lp_max(A, bvec, cvec)
+        optimal = margin is not None
+        unique = optimal and margin > 0
+    return dict(params=[_q_dd(v) for v in beta], objective=_q_dd(obj), optimal=bool(optimal), unique=bool(unique),
+                n_zero=len(zero), margin=float(margin) if margin is not None else None)
+
+
 def dd_value(hl):
     """hi + lo as one float (for printing)."""
     return hl[0] + hl[1]

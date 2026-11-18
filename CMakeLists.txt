@@ -58,6 +58,7 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/regression/glm.cpp
   csrc/regression/linear.cpp
   csrc/regression/penalized.cpp
+  csrc/regression/quantile.cpp
   csrc/regression/robust.cpp
   csrc/regression/slopes.cpp
   csrc/special/reduce.cpp

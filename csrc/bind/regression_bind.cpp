@@ -4,6 +4,7 @@
 #include "regression/glm.hpp"
 #include "regression/linear.hpp"
 #include "regression/penalized.hpp"
+#include "regression/quantile.hpp"
 #include "regression/robust.hpp"
 
 namespace nb = nanobind;
@@ -16,6 +17,7 @@ void bind_regression(nb::module_& core) {
     regression::bind_glm(m);
     regression::bind_penalized(m);
     regression::bind_robust(m);
+    regression::bind_quantile(m);
 }
 
 }  // namespace sd

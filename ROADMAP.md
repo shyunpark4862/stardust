@@ -316,7 +316,7 @@
 | G2 GLM: 정규·이항·포아송·감마, IRLS + 뉴턴, 분리 증명서, 강건 공분산 | 완료·승인 (2026-11-18) |
 | G3 정규화: `ridge lasso elastic_net`, 경로, 교차검증, `penalized_glm` | 완료·승인 (2026-11-18) |
 | G4 강건: `rlm`(M·MM), `theilslopes`, `siegelslopes` | 완료·승인 (2026-11-18) |
-| G5 분위: `quantreg` | 대기 |
+| G5 분위: `quantreg` | 완료, 승인 대기 |
 | G6 비선형 최소제곱 | 대기 |
 
 ### G0. 준비

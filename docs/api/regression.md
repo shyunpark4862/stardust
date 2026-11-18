@@ -1,6 +1,6 @@
 # sd.regression API
 
-> 상태: **G1–G4 구현** (2026-11-18): §2의 `ols wls gls linregress`, 고전형·HC0–HC3·HAC·군집 공분산, 랭크 부족, 배치, 진단, `summary(*, alpha=0.05)`; §3의 `glm`; §4의 `ridge lasso elastic_net`, 경로, `ridge_cv lasso_cv elastic_net_cv`, 정규화 GLM `penalized_glm`; §5의 `rlm theilslopes siegelslopes`. §6부터는 설계 초안이고, 이름·기본값·결과 필드는 마일스톤마다 확정한다([docs/design/regression.md](../design/regression.md) §8).
+> 상태: **G1–G5 구현** (2026-11-18): §2의 `ols wls gls linregress`, 고전형·HC0–HC3·HAC·군집 공분산, 랭크 부족, 배치, 진단, `summary(*, alpha=0.05)`; §3의 `glm`; §4의 `ridge lasso elastic_net`, 경로, `ridge_cv lasso_cv elastic_net_cv`, 정규화 GLM `penalized_glm`; §5의 `rlm theilslopes siegelslopes`; §6의 `quantreg`. §7부터는 설계 초안이고, 이름·기본값·결과 필드는 마일스톤마다 확정한다([docs/design/regression.md](../design/regression.md) §8).
 
 ## §1. 공통 규칙
 - 입력은 위치로만(`y`, `X`), 옵션은 키워드로만. 별칭은 없다.
@@ -178,8 +178,32 @@ siegelslopes(y, x=None, /, *, method='hierarchical', nan_policy='propagate')    
 
 ## §6. 분위 (G5)
 ```
-quantreg(y, X, /, *, q=0.5, intercept=True)
+quantreg(y, X, /, *, q=0.5, intercept=True, cov_type='nid', bandwidth='hall-sheather', max_iter=100, tol=1e-05, rtol=None, nan_policy='propagate')
 ```
+- 결과는 `QuantRegResult`이고 필드 이름은 statsmodels의 것이다(G10). §1의 공통 규칙(입력, 절편, NaN, inf, 배치, 스레드, 에러의 꼴)을 따른다. 가중치 인자(`weights`)는 없다(statsmodels QuantReg와 같다; R의 `rq`에는 있다).
+- **목적함수**: Σ ρ_q(y_i − x_iβ), ρ_q(r) = r(q − [r < 0])(Koenker–Bassett 1978). `q`는 0 < q < 1인 수, 또는 그런 수의 1차원 배열(아래 여러 분위)이다.
+- **풀이** (G60): Frisch–Newton 내부점법(R quantreg의 `rq.fit.fnb`: 쌍대 선형계획, Mehrotra의 예측–보정, 경계까지의 0.99995만큼 걸음)의 계수에서 |r_i|가 작은 행부터(같으면 행 순서) 선형 독립인 k행을 기저로 잡고, 심플렉스(Barrodale–Roberts의 걸음: 기저 행 하나를 떼는 모서리를 따라 꺾이는 점들 위의 정확한 직선 탐색)로 최적 꼭짓점까지 간다. 내는 `params`는 기저 행 k개의 연립방정식 X_Bβ = y_B를 QR과 double-double 잔차의 보정(최대 3번)으로 푼 꼭짓점이고, 최적성 증명서(기저 행마다 쌍대 변수가 [q − 1, q] 안)를 갖춘다. 모든 n에서 같은 방법이다.
+  - 내부점법은 최소제곱 계수의 절편을 그 잔차의 q분위수만큼 옮긴 점에서 시작하고, 상대 쌍대 간격이 `tol`(> 0, 기본 1e-5) 아래거나 `max_iter`(≥ 1, 기본 100)에 닿거나 뉴턴 행렬을 분해할 수 없으면 멈춘다. 이 정밀도는 결과에 들어가지 않는다: 어디서 멈추든 심플렉스가 같은 꼭짓점에 간다(멈추는 곳은 피벗 수만 바꾼다).
+  - `converged`는 돌려준 꼭짓점이 증명서를 갖췄는지다. `n_iter`는 내부점법의 반복 수, `n_pivots`는 그 뒤의 심플렉스 피벗 수다. 피벗은 4n + 64k + 1000번까지이고, 닿으면 그때의 꼭짓점을 내고 `converged=False`다(G32). 경고는 없다.
+  - y와 x가 같은 행(비트까지, 0의 부호는 빼고)은 한 행으로 합쳐 그 개수를 곱해 푼다(같은 목적함수다).
+  - 잔차가 반올림 수준((k + 16)u(|y_i| + ‖x_i‖₁‖β‖∞) 안)이면 0으로 본다. 그래서 반올림한 값들로 만든 평면 위의 점들(완전 적합)은 그 수준에서 최적이다.
+- **유일하지 않은 해** (G63): 목적함수의 최솟값은 유일하지만 최소점이 여럿일 수 있다(짝수 개의 중앙값, 정수 반응과 더미 설계 등). 그때 `nonunique=True`이고, `params`는 최소점들 가운데 사전식으로 가장 작은 점(`params[0]`이 가장 작은 것, 그 가운데 `params[1]`이 가장 작은 것, …)이다. 그 점은 꼭짓점이고, 시작점(내부점법이든 앞 분위의 기저든)이나 스레드 수와 상관없다. 절편만 있으면 type-1 표본 분위수(R의 `quantile(type = 1)`; 짝수 개의 중앙값이면 아래쪽 값)다. R의 `rq(method = "br")`도 이때 아래쪽 값을 내지만, 일반적으로는 다른 최적 꼭짓점일 수 있다.
+  - 최적 기저의 쌍대 변수가 경계에서 32u(그 행의 크기를 곱한) 안이면 경계에 있다고 본다. q가 10진 수의 double이라서 생기는 차이는 동률로 본다: n = 10, q = 0.3이면 double의 nq가 3보다 1.1×10⁻¹⁶ 작아 정확한 계산으로는 최소점이 하나지만, `nonunique=True`다.
+  - 경계에 있는 쌍대 변수가 있으면 증명서의 부호 조건이 정하는 최소점 집합 안에서 Bland 규칙의 피벗으로 사전식 최소점까지 가고, 그 집합에 다른 점이 있는지(사전식 최대 쪽으로 길이가 있는 피벗이 있는지)로 `nonunique`를 정한다.
+  - 꼭짓점의 기저는 잔차가 0인 행 가운데 행 순서로 처음의 선형 독립인 k행으로 다시 고르고 그 행들로 β를 푼다. 그래서 같은 꼭짓점이면 비트까지 같다.
+- **여러 분위** (G62): `q`가 1차원 배열(길이 L)이면 배치 축 뒤에 분위 축이 붙는다(G52의 경로 축과 같은 자리): `params` (…, L, k), 스칼라 필드 (…, L), `fittedvalues`·`resid` (…, L, n), `cov_params()` (…, L, k, k), `conf_int` (…, L, k, 2), `predict` (…, L, m). 준 순서대로 풀고, 둘째부터는 앞 분위의 기저에서 심플렉스로 시작한다(내부점법 없이; `n_iter`는 0). 결과는 분위마다 따로 부른 것과 비트까지 같다(위의 규칙). 결과의 `q`는 준 값(수 또는 배열)이다.
+- **표준오차** (G61): `cov_type`은 R의 `summary.rq`(quantreg 6.1)의 같은 이름이고 계산도 같다. p값과 구간은 t(`df_resid`)다(R과 같다).
+  - `'nid'`(기본; Hendricks–Koenker): 대역폭 h(아래; q − h < 0이거나 q + h > 1이면 반씩 줄인다)로 q ± h에서 다시 적합하고, f_i = max(0, 2h/(x_i(β̂_{q+h} − β̂_{q−h}) − ε)), ε = 2⁻²⁶·max\|y_i\|(적합에 쓰인 행; y가 모두 0이면 2⁻²⁶. G67), 공분산 q(1 − q)H⁻¹JH⁻¹, H = XᵀFX, J = XᵀX다. H와 J는 √f·X와 X의 QR의 R로 만든다(XᵀX를 곱해 만들지 않는다). 다시 적합은 그 분위의 기저에서 시작하고 위 규칙의 꼭짓점이다(R의 `br` 적합의 요약과 같은 것; R의 `fn` 적합의 요약은 내부점법의 근사 계수를 쓴다).
+  - `'iid'`(Koenker–Bassett): \|r_i\| < ε(위와 같은 ε)인 잔차의 수 pz와 h = max(k + 1, ⌈n·대역폭⌉)(줄이지 않는다)로, |r|의 순서(같으면 행 순서)에서 pz + 1번째부터 pz + h + 1번째까지의 잔차를 정렬해 (pz + 1, …, pz + h + 1)/(n − k)에 q = 1/2로 회귀한 기울기가 희소도 s이고, 공분산은 s²q(1 − q)(XᵀX)⁻¹다(R과 같은 식). 이 중앙값 회귀가 유일하지 않으면 위 규칙의 꼭짓점이라 R의 `br`과 다를 수 있다(아래 정확도). pz + h + 1이 n을 넘으면 NaN이다.
+  - `'ker'`(Powell): h′ = (Φ⁻¹(q + h) − Φ⁻¹(q − h))·min(sd(r), IQR(r)/1.34)(sd는 n − 1로 나눈다, IQR은 R의 type 7 분위수), f_i = φ(r_i/h′)/h′, 공분산은 `'nid'`와 같은 샌드위치다.
+  - ε가 y의 크기에 비례하므로 y에 c를 곱하면 `params`와 `bse`가 정확히 c배(반올림 수준에서)다. R의 `summary.rq`는 ε = 2⁻²⁶을 y의 단위 그대로 쓴다: y가 작은 단위면(y × 10⁻⁹) 'nid'의 f가 0으로 잘리고 'iid'가 모든 잔차를 0으로 센다. 그래서 R과는 max\|y_i\| = 1일 때(또는 y를 max\|y_i\|로 나눠 부르고 표준오차에 그 값을 곱하면) 같고, 그 밖에는 'nid'에서 대략 ε의 차이/x_i(β̂_{q+h} − β̂_{q−h})만큼 다르다. 'ker'에는 절대적인 상수가 없다(h′가 잔차의 척도를 따른다).
+  - `bandwidth`: `'hall-sheather'`(기본; R `bandwidth.rq(hs = TRUE)`: n^(−1/3)·Φ⁻¹(0.975)^(2/3)·(1.5φ(z)²/(2z² + 1))^(1/3), z = Φ⁻¹(q)) 또는 `'bofinger'`(`hs = FALSE`: n^(−1/5)·(4.5φ(z)⁴/(2z² + 1)²)^(1/5)). 결과의 `bandwidth`는 쓴 h다(q의 단위; `'nid'`·`'ker'`는 줄인 뒤).
+  - 정의되지 않는 곳은 NaN이다: `df_resid` ≤ 0, 모든 잔차가 0인 완전 적합(`'nid'`의 f가 모두 0, `'iid'`의 창이 n을 넘는다), q가 0이나 1에 아주 가까워 q ± h의 적합이 같은 꼭짓점일 때(R도 같은 곳에서 특이 행렬이다).
+- **결과 필드**: `params bse tvalues pvalues`, `conf_int(alpha=0.05)`, `cov_params()`, `fittedvalues resid`(double-double로 한 번 반올림), `q`, `objective`(Σρ_q(resid), double-double 합), `prsquared`(Koenker–Machado의 R¹ = 1 − `objective`/절편만인 모형의 최소 목적함수(type-1 표본 분위수에서); 절편이 없으면 Σρ_q(y)), `nobs df_model df_resid`, `rank condition_number`, `converged nonunique n_iter n_pivots`, `cov_type bandwidth param_names`, `predict(X_new, /)`, `summary(*, alpha=0.05)`(statsmodels QuantReg summary의 꼴: 모형, 방법, 분위, 공분산, 대역폭 규칙, R¹, 대역폭, 관측 수, 자유도; 계수 표는 `t`·`P>|t|`. 회귀 하나, 분위 하나만).
+  - statsmodels의 `prsquared`는 절편만인 모형을 보간한 백분위수(`scoreatpercentile`)에서 재므로 그 점이 최소점이 아니면 조금 다르다.
+- 겹친 열(G9, G21)은 최소제곱의 QR이 정하고, 그 계수와 추론은 NaN, 나머지는 그 열을 뺀 적합과 비트까지 같다. `rank`, `df_model`, `df_resid`는 남은 열로 센다.
+- **정확도** (잰 값, 설계 §3.6): 돌려준 기저를 유리수로 다시 푼 정확한 꼭짓점과 견줘 78개 적합(R 대조의 문제, n 50–5,000·k 2–10의 무작위 설계, 5차 다항식, 더미 설계의 정수 반응)에서 계수 벡터의 상대오차(노름) 8.6×10⁻¹⁷, 목적함수 1.9×10⁻¹⁶ 안이고, 모두 증명서가 정확히 성립하며 `nonunique`가 정확한 판정과 같다. R `rq(method = "br")`와 유일한 해에서 계수 1.0×10⁻¹⁴(R 쪽의 기저 풀이 오차), 유일하지 않은 해에서 목적함수가 같다. `summary.rq`와 'nid'(두 대역폭) 7.8×10⁻¹⁴, sd의 꼭짓점에서 'ker' 4.0×10⁻¹⁴, 'iid' 1.3×10⁻¹⁴ 안이다('iid'의 중앙값 회귀가 유일하지 않은 세 경우만 R의 br과 다른 꼭짓점이라 다르다). statsmodels의 IRLS는 정확한 해에서 계수가 1.2×10⁻⁷–9.6×10⁻², 목적함수가 10⁻¹⁰–10⁻⁴ 떨어져 있다.
+- **에러**: `quantreg(): 'q' must be a number or a 1-dimensional array of numbers strictly between 0 and 1`, `quantreg(): 'cov_type' must be 'iid', 'nid' or 'ker', not 'boot'`, `quantreg(): 'bandwidth' must be 'hall-sheather' or 'bofinger', not 'x'`, `quantreg(): the model has no parameters (no columns in 'X' and intercept=False)`.
 
 ## §7. 비선형 최소제곱 (G6)
 - `curve_fit`/`least_squares` 꼴의 시그니처는 G6에서 정한다.
