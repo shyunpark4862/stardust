@@ -12,7 +12,8 @@ NaN in every method of that batch element (T8).
 import math
 
 from .. import _core as _sd_core
-from ._multivariate import _array, _broadcast, _fast_factors, _rows, _shape_of, _type_name
+from ._multivariate import (_array, _broadcast, _fast_factors, _lower_symmetric, _param, _public_names, _rows,
+                            _shape_of, _type_name)
 
 _k = _sd_core.stats
 
@@ -58,9 +59,9 @@ class _MatrixBase:
         if not isinstance(rng, _random.Generator):
             raise TypeError(f"sample(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), "
                             f"not {_type_name(rng)}")
-        shp = _random._shape(shape, "sample")
+        shp = _random._sample_shape(shape)
         N = math.prod(shp) * self._B
-        return shp, N, rng._reserve(N)
+        return shp, N, rng._take(N, "sample", 8 * N * math.prod(self._shape))
 
 
 def _diverge(m):
@@ -77,16 +78,16 @@ class _WishartBase(_MatrixBase):
     def __init__(self, *, df, scale):
         sd = _sd_core
         cls = type(self).__name__
-        df_v = _array(df, cls, "df", 0)
-        sc = _array(scale, cls, "scale", 2)
+        df_v = _param(df, cls, "df", 0)
+        sc = _param(scale, cls, "scale", 2)
         p = sc.shape[-1]
         if sc.shape[-2] != p:
-            raise ValueError(f"{cls}: 'scale' must be square on its last two axes, not {tuple(sc.shape[-2:])}")
+            raise ValueError(f"{cls}(): 'scale' must be square on its last two axes, not {tuple(sc.shape[-2:])}")
         self._p = (df, scale)
-        batch = _broadcast(_shape_of(df_v), tuple(sc.shape[:-2]), what=f"{cls}: the parameters")
+        batch = _broadcast(_shape_of(df_v), tuple(sc.shape[:-2]), what=f"{cls}(): the parameters")
         self._batch, self._B, self._shape = batch, math.prod(batch), (p, p)
         self._df = _rows(df_v, batch, ())
-        self._scale = _rows(sc, batch, (p, p))
+        self._scale = _lower_symmetric(_rows(sc, batch, (p, p)))  # (the lower triangle is what is read)
         L, Ll, ldh, ldl, ok, _, _ = _k.mv_chol(self._scale)
         good = (self._df > p - 1.0) & sd.isfinite(self._df)
         self._ok = sd.where(good, ok, 0.0)
@@ -122,7 +123,7 @@ class _WishartBase(_MatrixBase):
         p = self._shape[0]
         return self._per_batch(_k.wishart_entropy(self._df, self._ldh, self._ldl, self._ok, p, self._inverse))
 
-    def sample(self, shape=(), /, *, rng):
+    def sample(self, shape=None, /, *, rng):
         """Symmetric positive definite matrices of shape `shape` + the batch shape + (p, p)
         (Bartlett's decomposition), one stream element per matrix."""
         shp, N, (key, pos) = self._sample_rows(shape, rng)
@@ -205,18 +206,19 @@ class MatrixNormal(_MatrixBase):
     def __init__(self, *, mu, rowcov, colcov):
         sd = _sd_core
         cls = "MatrixNormal"
-        m = _array(mu, cls, "mu", 2)
-        u = _array(rowcov, cls, "rowcov", 2)
-        v = _array(colcov, cls, "colcov", 2)
+        m = _param(mu, cls, "mu", 2)
+        u = _param(rowcov, cls, "rowcov", 2)
+        v = _param(colcov, cls, "colcov", 2)
         n, p = m.shape[-2], m.shape[-1]
         if tuple(u.shape[-2:]) != (n, n):
-            raise ValueError(f"{cls}: 'rowcov' must be ({n}, {n}) on its last two axes (mu is {n} x {p}), "
+            raise ValueError(f"{cls}(): 'rowcov' must be ({n}, {n}) on its last two axes (mu is {n} x {p}), "
                              f"not {tuple(u.shape[-2:])}")
         if tuple(v.shape[-2:]) != (p, p):
-            raise ValueError(f"{cls}: 'colcov' must be ({p}, {p}) on its last two axes (mu is {n} x {p}), "
+            raise ValueError(f"{cls}(): 'colcov' must be ({p}, {p}) on its last two axes (mu is {n} x {p}), "
                              f"not {tuple(v.shape[-2:])}")
         self._p = (mu, rowcov, colcov)
-        batch = _broadcast(tuple(m.shape[:-2]), tuple(u.shape[:-2]), tuple(v.shape[:-2]), what=f"{cls}: the parameters")
+        batch = _broadcast(tuple(m.shape[:-2]), tuple(u.shape[:-2]), tuple(v.shape[:-2]),
+                           what=f"{cls}(): the parameters")
         self._batch, self._B, self._shape = batch, math.prod(batch), (n, p)
         self._mean = _rows(m, batch, (n, p))
         U, Ul, luh, lul, oku, _, _ = _k.mv_chol(_rows(u, batch, (n, n)))
@@ -271,8 +273,12 @@ class MatrixNormal(_MatrixBase):
         h = 0.5 * n * p * (1.0 + math.log(2.0 * math.pi)) + 0.5 * p * lu + 0.5 * n * lv
         return self._per_batch(sd.where(self._ok != 0.0, h, float("nan")))
 
-    def sample(self, shape=(), /, *, rng):
+    def sample(self, shape=None, /, *, rng):
         """Matrices of shape `shape` + the batch shape + (n, p): mean + L_U Z L_V^T."""
         shp, N, (key, pos) = self._sample_rows(shape, rng)
         v = _k.matnorm_sample(key[0], key[1], pos, N, self._mean, self._U, self._V, self._ok)
         return _sd_core.reshape(v, shp + self._batch + self._shape)
+
+
+for _cls in (_MatrixBase, _WishartBase, Wishart, InverseWishart, MatrixNormal):
+    _public_names(_cls)

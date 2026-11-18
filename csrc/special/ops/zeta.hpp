@@ -1,7 +1,7 @@
 // The Riemann and Hurwitz zeta functions (docs/api/special.md §7,
 // docs/design/special.md §5.6; S3). Hurwitz: Cephes zeta.c (Euler-Maclaurin:
 // the first terms summed, then the tail as an integral and Bernoulli
-// corrections). Riemann: Boost for x > -1 and at the negative integers, a
+// corrections). Riemann: Boost for x >= -1 and at the negative integers, a
 // table at the even integers 2..52, the functional equation below -1 (the
 // routes are listed above struct Zeta).
 #pragma once

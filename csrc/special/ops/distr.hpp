@@ -585,13 +585,18 @@ struct NdtriExp : Real {
         if (y > kLogHalf) return -one<Ndtri>(-std::expm1(y));
         if (y > -700.0) return one<Ndtri>(std::exp(y));
         constexpr double kLog2Pi = 1.83787706640934548356;
+        constexpr double kSqrt2 = 1.41421356237309504880;
         // The asymptote log ndtr(x) = -x^2/2 - log(-x) - log(2 pi)/2 + log S,
         // S = 1 - 1/x^2 + 3/x^4 - ..., as a fixed point for x^2.
+        // Past y = -2^1000, -2y would overflow (from y = -8.99e307): the same fixed point for
+        // x^2 / 2, x = -sqrt(2) sqrt(-y - log(2 pi)/2 - log(-x) + log S).
+        const bool huge = y < -0x1p1000;
         auto asymptote = [&](double x) {
             const double r = 1.0 / (x * x);
+            if (huge) return -kSqrt2 * std::sqrt(-y - 0.5 * kLog2Pi - std::log(-x) + std::log1p(r * (-1.0 + 3.0 * r)));
             return -std::sqrt(-2.0 * y - kLog2Pi - 2.0 * std::log(-x) + 2.0 * std::log1p(r * (-1.0 + 3.0 * r)));
         };
-        double x = -std::sqrt(-2.0 * y - kLog2Pi);
+        double x = huge ? -kSqrt2 * std::sqrt(-y - 0.5 * kLog2Pi) : -std::sqrt(-2.0 * y - kLog2Pi);
         for (int i = 0; i < 5; ++i) x = asymptote(x);
         // For y < -1e8 (|x| > 1.4e4) the series' next term (15/x^6) is far below
         // the last bit, so the fixed point is the answer. Newton's slope

@@ -165,8 +165,8 @@ def test_t_deep_negative_tails(h, r, nu, hi, lo, bound):
     assert e[0] == 0
     assert rel_err(v[0], hi, lo) <= bound
     # and the public method agrees bit for bit
-    dist = sd.stats.MultivariateT(mu=np.zeros(d), shape=S, df=nu)
-    assert dist.cdf(np.asarray(h)) == v[0]
+    dist = sd.stats.MultivariateT(mu=sd.zeros(d), shape=sd.asarray(S), df=nu)
+    assert dist.cdf(sd.asarray(np.asarray(h, dtype=float))) == v[0]
 
 
 def test_symmetry_and_scale():

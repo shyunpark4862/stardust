@@ -57,10 +57,8 @@ def _check_choice(v, func, arg, choices):
 
 
 def _check_policy(v, func):
-    # sd.stats' message for the same option (stats/_descriptive.py)
-    if v not in _POLICIES:
-        raise ValueError(f"{func}(): 'nan_policy' must be one of 'propagate', 'omit', 'raise', not {v!r}")
-    return v
+    # the string-option form, as sd.stats' same option (stats/_descriptive.py)
+    return _check_choice(v, func, "nan_policy", tuple(_POLICIES))
 
 
 def _check_rtol(v, func):

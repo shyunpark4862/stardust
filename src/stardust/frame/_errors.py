@@ -64,13 +64,18 @@ def check_int(value, what, func):
 
 def check_real(value, what, func):
     """A real-number argument (correction=): a float, or an int as check_int
-    reads it (numpy integers too), as float; TypeError otherwise."""
+    reads it (numpy integers too), as float; TypeError otherwise. An int
+    beyond the double range is an OverflowError naming the argument, as the
+    array area's (var(): 'correction' is out of range, API.md §2)."""
     if isinstance(value, float):
         return value
     v = as_index(value)
     if v is None:
         raise TypeError(named(func, f"'{what}' must be an int or a float, not {type_name(value)}"))
-    return float(v)
+    try:
+        return float(v)
+    except OverflowError:
+        raise OverflowError(named(func, f"'{what}' is out of range")) from None
 
 
 def _one_of(choices):

@@ -2,7 +2,7 @@
 Arb references (ball arithmetic on the matrices as given: Arb's LU for the determinant and the
 solves, at a working precision that doubles until every ball's radius is below 2^-80 of
 max(1, |value|)), over the condition number of the covariance and the dimension (T29: 1e-14
-mixed for kappa <= 1e6, d <= 100), and scipy's error at the same points. Errors:
+mixed for kappa <= 1e9, d <= 100), and scipy's error at the same points. Errors:
 |error| / max(1, |value|).
 
     .venv/bin/python bench/stats/t9/accuracy.py > bench/stats/t9/accuracy.md

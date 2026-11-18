@@ -46,10 +46,29 @@ def _as_array(x, name, arg="x"):
     return a if a.dtype == sd.float64 else a.astype(sd.float64)
 
 
+def _base(base, name):
+    """base=: None (nats) or a positive number; base 1 divides by log 1 = 0 (inf, as scipy)."""
+    if base is None:
+        return
+    if isinstance(base, bool) or not isinstance(base, (int, float)):
+        raise TypeError(f"{name}(): 'base' must be a positive number or None, not {_type_name(base)}")
+    if not base > 0:
+        raise ValueError(f"{name}(): 'base' must be a positive number or None")
+
+
+def _choice(v, name, arg, choices):
+    """A string option, by the message form of every area (API.md §2.1): not a str is a
+    TypeError ("must be 'a', 'b' or 'c', not NoneType"), another str a ValueError ("..., not 'x'")."""
+    listed = ", ".join(f"'{c}'" for c in choices[:-1]) + f" or '{choices[-1]}'"
+    if not isinstance(v, str):
+        raise TypeError(f"{name}(): '{arg}' must be {listed}, not {_type_name(v)}")
+    if v not in choices:
+        raise ValueError(f"{name}(): '{arg}' must be {listed}, not {v!r}")
+    return v
+
+
 def _policy(nan_policy, name):
-    if nan_policy not in _POLICIES:
-        raise ValueError(f"{name}(): 'nan_policy' must be one of 'propagate', 'omit', 'raise', not {nan_policy!r}")
-    return nan_policy
+    return _choice(nan_policy, name, "nan_policy", _POLICIES)
 
 
 def _check_nan(a, nan_policy, name):
@@ -67,20 +86,22 @@ def _axes(axis, ndim, name):
     """The reduced axes, sorted (None: all)."""
     if axis is None:
         return tuple(range(ndim))
-    items = axis if isinstance(axis, tuple) else (axis,)
+    # an int, or a tuple or list of ints, as the array area's reductions (docs/api/array.md §1.3)
+    items = tuple(axis) if isinstance(axis, (tuple, list)) else (axis,)
     out = []
     for ax in items:
         if isinstance(ax, bool):
-            raise TypeError(f"{name}(): 'axis' must be an int, a tuple of ints or None, not bool")
+            raise TypeError(f"{name}(): 'axis' must be an int or a tuple or list of ints, not bool")
         try:
             i = operator.index(ax)
         except TypeError:
-            raise TypeError(f"{name}(): 'axis' must be an int, a tuple of ints or None, not {_type_name(ax)}") from None
+            raise TypeError(f"{name}(): 'axis' must be an int or a tuple or list of ints, not {_type_name(ax)}") \
+                from None
         if not -ndim <= i < ndim:
             raise ValueError(f"{name}(): axis {i} is out of bounds for an array of dimension {ndim}")
         out.append(i % ndim)
     if len(set(out)) != len(out):
-        raise ValueError(f"{name}(): repeated axis in 'axis'")
+        raise ValueError(f"{name}(): repeated axis")
     return tuple(sorted(out))
 
 
@@ -282,7 +303,12 @@ def _orders(order, name):
     if order is None:
         raise TypeError(f"{name}(): missing the keyword argument 'order'")
     scalar = isinstance(order, (bool, int, float))
-    items = [order] if scalar else list(order.tolist() if isinstance(order, _sd_core.ndarray) else order)
+    try:
+        items = [order] if scalar else list(order.tolist() if isinstance(order, _sd_core.ndarray) else order)
+    except TypeError:
+        raise TypeError(f"{name}(): 'order' must be an int or a sequence of ints, not {_type_name(order)}") from None
+    if not items:
+        raise ValueError(f"{name}(): 'order' must not be empty")
     out = []
     for o in items:
         if isinstance(o, bool) or not isinstance(o, (int, float)):
@@ -372,14 +398,13 @@ def rankdata(x, /, *, method="average", axis=None, nan_policy="propagate"):
     name = "rankdata"
     sd = _sd_core
     _policy(nan_policy, name)
-    if method not in _RANK_METHODS:
-        raise ValueError(f"rankdata(): 'method' must be one of {', '.join(map(repr, _RANK_METHODS))}, not {method!r}")
+    _choice(method, name, "method", tuple(_RANK_METHODS))
     a = _as_array(x, name)
     if axis is None:
         a = sd.reshape(a, (a.size,))
         axis = 0
-    elif isinstance(axis, tuple):
-        raise TypeError("rankdata(): 'axis' must be an int or None, not tuple")
+    elif isinstance(axis, (tuple, list)):
+        raise TypeError(f"rankdata(): 'axis' must be an int or None, not {_type_name(axis)}")
     _check_nan(a, nan_policy, name)
     lanes = _Lanes(a, axis, name)
     return lanes.back(_k.desc_rank(lanes.rows, _RANK_METHODS[method], nan_policy == "omit"))
@@ -420,11 +445,17 @@ def iqr(x, /, *, axis=None, q=(0.25, 0.75), scale=1.0, method="linear", nan_poli
     elif isinstance(scale, bool) or not isinstance(scale, (int, float)):
         raise TypeError(f"iqr(): 'scale' must be a number or 'normal', not {_type_name(scale)}")
     a = _as_array(x, name)
+    red = _axes(axis, a.ndim, name) if axis is not None else None  # (this function's own messages)
     _check_nan(a, nan_policy, name)
     f = sd.nanquantile if nan_policy == "omit" else sd.quantile
-    lo = f(a, q0, axis=axis, method=method, keepdims=keepdims)
-    hi = f(a, q1, axis=axis, method=method, keepdims=keepdims)
-    return (hi - lo) / float(scale)
+    try:
+        lo = f(a, q0, axis=red, method=method, keepdims=keepdims)
+        hi = f(a, q1, axis=red, method=method, keepdims=keepdims)
+    except (TypeError, ValueError) as e:  # method=: the quantile's check, under this function's name
+        head, sep, rest = str(e).partition("(): ")
+        raise type(e)(f"iqr(): {rest}" if sep else str(e)) from None
+    # IEEE division (scale = 0 gives inf, or NaN for a zero range, as scipy)
+    return sd.divide(hi - lo, float(scale))
 
 
 def entropy(pk, qk=None, /, *, base=None, axis=None, nan_policy="propagate", keepdims=False):
@@ -434,8 +465,7 @@ def entropy(pk, qk=None, /, *, base=None, axis=None, nan_policy="propagate", kee
     name = "entropy"
     sd = _sd_core
     _policy(nan_policy, name), _bool(keepdims, name, "keepdims")
-    if base is not None and (isinstance(base, bool) or not isinstance(base, (int, float)) or not base > 0):
-        raise ValueError("entropy(): 'base' must be a positive number or None")
+    _base(base, name)
     p = _as_array(pk, name, "pk")
     q = _as_array(qk, name, "qk") if qk is not None else None
     if q is not None:
@@ -459,7 +489,8 @@ def entropy(pk, qk=None, /, *, base=None, axis=None, nan_policy="propagate", kee
         q = q / sd.sum(q, axis=red, keepdims=True)
         vec = sd.special.rel_entr(p, q)
     s = sd.sum(vec, axis=red, keepdims=keepdims)
-    return s / math.log(base) if base is not None else s
+    # base 1: log(base) = 0, IEEE division (inf, or NaN for a zero entropy, as scipy)
+    return sd.divide(s, math.log(base)) if base is not None else s
 
 
 _DE_METHODS = {"vasicek": 0, "van es": 1, "ebrahimi": 2, "correa": 3, "auto": -1}
@@ -473,9 +504,8 @@ def differential_entropy(x, /, *, window_length=None, base=None, axis=None, meth
     floor(sqrt(n) + 1/2); a lane with 2m >= n (or m < 1) gives NaN."""
     name = "differential_entropy"
     _policy(nan_policy, name), _bool(keepdims, name, "keepdims")
-    if not isinstance(method, str) or method.lower() not in _DE_METHODS:
-        raise ValueError(f"differential_entropy(): 'method' must be one of {', '.join(map(repr, _DE_METHODS))}, "
-                         f"not {method!r}")
+    sd = _sd_core
+    _choice(method, name, "method", tuple(_DE_METHODS))  # exact names, as every string option
     if window_length is None:
         m = 0
     else:
@@ -488,12 +518,11 @@ def differential_entropy(x, /, *, window_length=None, base=None, axis=None, meth
                             f"{_type_name(window_length)}") from None
         if m < 1:
             raise ValueError("differential_entropy(): 'window_length' must be positive")
-    if base is not None and (isinstance(base, bool) or not isinstance(base, (int, float)) or not base > 0):
-        raise ValueError("differential_entropy(): 'base' must be a positive number or None")
+    _base(base, name)
     a = _as_array(x, name)
     lanes = _Lanes(a, axis, name)
     _check_nan(a, nan_policy, name)
-    v = _k.desc_diffent(lanes.rows, m, _DE_METHODS[method.lower()], nan_policy == "omit")
+    v = _k.desc_diffent(lanes.rows, m, _DE_METHODS[method], nan_policy == "omit")
     if base is not None:
-        v = v / math.log(base)
+        v = sd.divide(v, math.log(base))
     return lanes.out(v, keepdims)

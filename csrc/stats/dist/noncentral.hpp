@@ -37,6 +37,8 @@
 #include "stats/discrete.hpp"
 #include "stats/dist/beta.hpp"
 #include "stats/dist/gamma.hpp"
+#include "stats/dist/lifetime.hpp"
+#include "stats/dist/normal.hpp"
 #include "stats/dist/t_f.hpp"
 #include "stats/engine.hpp"
 #include "stats/numeric.hpp"
@@ -610,11 +612,13 @@ struct NoncentralChiSquared {
     static double standard_deviation(double df, double nc) { return std::sqrt(2.0 * (df + 2.0 * nc)); }
     // (the powers of v = df + 2 nc pass the doubles from v = 1e205 and 1e154: the ratio first there)
     static double skewness(double df, double nc) {  // 2^(3/2) (df + 3 nc) / (df + 2 nc)^(3/2)
+        if (nc == 0.0) return ChiSquared::skewness(df);  // the central one's bits
         const double v = df + 2.0 * nc;
         if (!(v < 0x1p600)) return 2.8284271247461903 * ((df + 3.0 * nc) / v) / std::sqrt(v);
         return 2.8284271247461903 * (df + 3.0 * nc) / (v * std::sqrt(v));
     }
     static double kurtosis(double df, double nc) {  // 12 (df + 4 nc) / (df + 2 nc)^2
+        if (nc == 0.0) return ChiSquared::kurtosis(df);
         const double v = df + 2.0 * nc;
         if (!(v < 0x1p500)) return 12.0 * ((df + 4.0 * nc) / v) / v;
         return 12.0 * (df + 4.0 * nc) / (v * v);
@@ -693,6 +697,23 @@ struct NoncentralF {
 
     static bool valid(double dfn, double dfd, double nc) {
         return dfn > 0.0 && std::isfinite(dfn) && dfd > 0.0 && std::isfinite(dfd) && nc >= 0.0 && std::isfinite(nc);
+    }
+    // One infinite degree of freedom, as special.ncfdtr: dfd = inf is the noncentral
+    // chi-square(dfn, nc) / dfn; dfn = inf is dfd / chi-square(dfd) (the noncentral numerator
+    // over dfn goes to 1), the inverse gamma (dfd/2, dfd/2). Both infinite stays NaN.
+    static bool at_limit(double dfn, double dfd, double nc) {
+        if (!(nc >= 0.0 && std::isfinite(nc))) return false;
+        return (dfd == kInf && dfn > 0.0 && std::isfinite(dfn)) || (dfn == kInf && dfd > 0.0 && std::isfinite(dfd));
+    }
+    template <class M>
+    static double limit_in(double x, double dfn, double dfd, double nc) {
+        if (dfd == kInf) return scaled_of<NoncentralChiSquared, M>(dfn, x, dfn, nc);
+        return method_of<InverseGamma, M>(x, 0.5 * dfd, 0.5 * dfd);
+    }
+    template <class M>
+    static double limit_par(double dfn, double dfd, double nc) {
+        if (dfd == kInf) return scaled_of<NoncentralChiSquared, M>(dfn, dfn, nc);
+        return method_of<InverseGamma, M>(0.5 * dfd, 0.5 * dfd);
     }
 
     // f(x) = sum_j Pois(j; nc/2) beta(w; dfn/2 + j, dfd/2) dw/dx, w = dfn x / (dfn x + dfd):
@@ -1078,6 +1099,12 @@ struct NoncentralT {
     static constexpr std::array<const char*, 2> params{"df", "nc"};
 
     static bool valid(double df, double nc) { return df > 0.0 && std::isfinite(df) && std::isfinite(nc); }
+    // df = inf: the normal (nc, 1), every method (as special.nctdtr)
+    static bool at_limit(double df, double nc) { return df == kInf && std::isfinite(nc); }
+    template <class M>
+    static double limit_in(double x, double, double nc) { return method_of<Normal, M>(x, nc, 1.0); }
+    template <class M>
+    static double limit_par(double, double nc) { return method_of<Normal, M>(nc, 1.0); }
 
     // The bulk: the density's series in u = nc t sqrt(2 / (df + t^2)),
     //     f(t) = t(t; df) e^(-mu) sum_j Gamma(c + j/2) / Gamma(c) u^j / j!,   c = (df + 1) / 2, mu = nc^2 / 2,

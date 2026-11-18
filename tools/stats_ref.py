@@ -2057,7 +2057,7 @@ class F(Distribution):
     skewness = staticmethod(lambda m, n: (2 * m + n - 2) * (8 * (n - 4)).sqrt() / ((n - 6) * (m * (m + n - 2)).sqrt())
                             if n > 6 else (INF if n > 4 else NAN))
     kurtosis = staticmethod(lambda m, n: 12 * (m * (5 * n - 22) * (m + n - 2) + (n - 4) * (n - 2) ** 2)
-                            / (m * (n - 6) * (n - 8) * (m + n - 2)) if n > 8 else (INF if n > 6 else NAN))
+                            / (m * (n - 6) * (n - 8) * (m + n - 2)) if n > 8 else (INF if n > 4 else NAN))
     mode = staticmethod(lambda m, n: (m - 2) / m * n / (n + 2) if m > 2 else arb(0))
 
     @staticmethod

@@ -133,7 +133,7 @@ betainccinv(a, b, q, /, *, out=None)
 - 보수(`*cc`)는 1에서 빼서 계산하지 않는다. 꼬리에서도 상대 정확도가 유지된다.
 - 역함수는 `gammainc(a, x) = p`, `gammaincc(a, x) = q`, `betainc(a, b, x) = p`, `betaincc(a, b, x) = q`의 x를 돌려준다.
 - **보장 영역** (사용자 결정 2026-11-14): 네 순방향 함수는 정의역 전체(a, b > 0, x의 정의역 안)에서 상대오차 1e-14다. 결과가 서브노멀이면 docs/design/special.md §2.3의 절대오차 규칙을 따른다. 네 역함수는 `|Δx/x| ≤ 1e-14·max(1, κ)`다. κ = |F/(x·F′)|는 p(또는 q)에 대한 x의 조건수다. 입력의 마지막 비트가 허용하는 만큼 정확하다는 뜻이다. 예를 들어 a가 작으면 x ≈ (p·Γ(a+1))^(1/a)라서 p의 1 ULP가 x를 1/a ULP 움직인다. 테스트는 감마 a ≤ 1e6, 베타 a, b ≤ 1e5를 덮는다.
-- **잰 정확도** (bench/special/arb/accuracy.md, Arb 참값 대비, 최대 ULP): `gammainc` 8.9, `gammaincc` 13, `betainc` 22, `betaincc` 19. 역함수(ULP / max(1, κ)): `gammaincinv` 5.3, `gammainccinv` 16, `betaincinv` 59 ULP(상대오차로 기준 안), `betainccinv` 9.6
+- **잰 정확도** (bench/special/arb/accuracy.md, Arb 참값 대비, 최대 ULP): `gammainc` 8.9, `gammaincc` 13, `betainc` 22, `betaincc` 19. 역함수(ULP / max(1, κ)): `gammaincinv` 5.3, `gammainccinv` 5.33, `betaincinv` 9.2, `betainccinv` 9.6
 - **특수값**: 끝점과 ±inf, NaN의 규약은 scipy와 비트까지 같다. 다른 곳(docs/design/special.md §2.4)은 아래 표의 굵은 줄이다.
 
   | 입력 | 값 | 비고 |
@@ -212,7 +212,7 @@ expi(x, /, *, out=None)
 expn(n, x, /, *, out=None)
 ```
 - `zeta(x)`는 Riemann ζ, `zeta(x, q)`는 Hurwitz ζ(x, q)다. Riemann은 `x < 1`도 정의된다(함수방정식). Hurwitz의 `x < 1`은 NaN이다 (scipy와 같다).
-- `zeta`는 S3에서 구현했다(`expi`, `expn`은 S5). 보장 영역: Riemann은 정의역 전체, Hurwitz는 q > 0(그 밖은 |오차| ≤ 1e-14·max(1, |값|)). 잰 최대(bench/special/arb/accuracy.md): Riemann 9.4 ULP(−60 < x < −1의 반사식; 2026-11-17 전에는 Boost의 반사식이 x ∈ (−32, −31)에서 65 ULP였다), Hurwitz 5.5 ULP. 짝수 정수 2–52는 표의 값이라 올바르게 반올림된다. 특수값은 §3의 표에 있다.
+- `zeta`는 S3에서 구현했다(`expi`, `expn`은 S5). 보장 영역: Riemann은 정의역 전체, Hurwitz는 q > 0(그 밖은 |오차| ≤ 1e-14·max(1, |값|)). 잰 최대(bench/special/arb/accuracy.md): Riemann 9.4 ULP(x ≈ −3.3e-4, Boost가 맡는 −1 < x < 0. −60 < x < −1의 반사식은 6.2 ULP다; 2026-11-17 전에는 Boost의 반사식이 x ∈ (−32, −31)에서 65 ULP였다), Hurwitz 5.5 ULP. 짝수 정수 2–52는 표의 값이라 올바르게 반올림된다. 특수값은 §3의 표에 있다.
 - `expi`는 지수적분 Ei, `expn(n, x)`는 일반화 지수적분 Eₙ(x)다. `n`은 int64나 float64이고, 0 이상의 정수 값만 정의된다. 정수가 아니거나 음수이면 NaN이다. **scipy는 `expn(1.5, 1.0)`에서 n을 1로 자른다. 우리는 NaN이다.**
 - **보장 영역** (사용자 결정 2026-11-14): `expi`, `expn`은 정의역 전체에서 상대오차 1e-14다. `expi`의 양의 0점 x₀ = 0.3725… 근처도 상대 정확도다. `expn`의 테스트는 n ≤ 1e5를 덮는다. 서브노멀 결과는 절대오차 규칙이다.
 - **잰 정확도** (bench/special/arb/accuracy.md, Arb 참값 대비, 최대 ULP): `expi` 4.7, `expn` 6.3
@@ -270,7 +270,7 @@ kve(v, x, /, *, out=None)
 ```
 - 차수 `v`와 인자 `x`는 실수다. 음의 `x`는 정수 차수에서만 정의되고, 그 밖은 NaN이다 (scipy와 같다).
 - 실수 인자에서 `jve`, `yve`는 `jv`, `yv`와 같은 값이다 (scipy와 같다: 스케일 인자 `exp(-|Im x|)`가 1이다).
-- 큰 차수(|v| ≫ x)는 맞는 값이지만 계산 시간이 |v|에 비례한다. 점화와 연분수는 1e7번에서 멈춘다: `jv yv jve yve`는 |v| > 1e7이면 NaN이다(x가 v보다 한참 작아 J = 0, Y = −inf로 정해지는 곳은 그 값). 연분수가 1e7항 안에 수렴하지 않을 때도 NaN이다(x ≥ 약 1e7이고 v ≥ x).
+- 큰 차수(|v| ≫ x)는 맞는 값이지만 계산 시간이 |v|에 비례한다. 점화와 연분수는 1e7번에서 멈추고, 그보다 많이 필요한 `jv yv jve yve`는 NaN이다. 그런 곳은 둘이다. (가) x > |v| > 1e7이고 x가 약 v²/4 아래일 때다(위로 가는 점화가 1e7걸음을 넘고, 큰 x의 Hankel 전개는 아직 수렴하지 않는다). (나) |v| − x > 1e7이고 값이 언더플로로 정해지지 않을 때다(연분수가 1e7항을 넘는다). x가 v보다 한참 작아 J = 0, Y = −inf로 정해지는 곳은 그 값이고(|J_v(x)| ≤ (x/2)^v/Γ(v + 1)로 판정한다. 2026-11-19부터 `jv(3e7, 1.49e7)` = 0, 전에는 NaN), x = v 근처도 값이다: `jv(2e7, 2e7)` = 0.0016479. 1e7걸음의 점화 한 번은 약 0.25초다(`jv(2e7, 1e7)` 0.23초).
 - **보장** (사용자 결정 2026-11-14): `iv`·`ive`(v ≥ 0 또는 정수), `kv`, `kve`는 정의역 전체에서 상대오차 1e-14다. `jv yv jve yve`는 §8.1의 진동 함수 기준이다. M = √(J_v² + Y_v²)이고, 음의 비정수 v는 모든 x에서 포락선 기준이다. 음의 비정수 v의 `iv`·`ive`는 I₋ₐ = Iₐ + (2/π)sin(aπ)Kₐ의 두 항이 상쇄할 수 있어서 |오차| ≤ 1e-14·(|Iₐ| + |(2/π)sin(aπ)Kₐ|)다(`ive`는 두 항에 e⁻ˣ를 곱한 크기). 테스트는 |v| ≤ 1000, x ≤ 1e5를 덮는다(`ive`의 참값 파일은 v ≥ 0만).
 - **특수값**: 아래 표의 굵은 줄 말고는 scipy와 비트까지 같다.
 
@@ -398,7 +398,7 @@ ndtri_exp(y, /, *, out=None)
   - `chdtr`: 카이제곱, `gammainc(v/2, x/2)`. `chdtri`는 **`chdtrc`의** 역함수다(scipy와 같다): `chdtrc(v, x) = p`의 x.
   - `fdtr`: F 분포. `fdtri`는 `fdtr(dfn, dfd, x) = p`의 x다.
   - `pdtr`: 포아송, `bdtr`: 이항, `nbdtr`: 음이항(n번째 성공 전의 실패 수, 성공 확률 p).
-  - `ndtri_exp(y)`: `ndtri(exp(y))`. `exp(y)`가 언더플로하는 y(−1e300까지)도 계산한다.
+  - `ndtri_exp(y)`: `ndtri(exp(y))`. `exp(y)`가 언더플로하는 y도 double의 끝(−1.8e308)까지 계산한다(2026-11-19; 전에는 −2y가 넘치는 y ≤ −8.99e307에서 NaN이었다).
 - **계산**: betainc·gammainc 등의 조합이다(docs/design/special.md §5.15). 꼬리는 보수 함수로 직접 계산해서 1에서 빼지 않는다. 그래서 꼬리에서도 상대 정확도가 유지된다.
 - **정수 인자** (T1 결정): `pdtr bdtr nbdtr`의 k는 내림한다(P(X ≤ k)의 뜻). `bdtr`의 n은 음이 아닌 정수여야 한다(아니면 NaN). `nbdtr`의 n은 0 이상의 실수다. scipy는 n도 내림한다.
 - **특수값** (참값·극한, T1 결정). scipy와 다른 곳은 굵게 적었다.

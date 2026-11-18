@@ -95,6 +95,88 @@ constexpr int kFar = 600;
 // cancellation needs no check: wishart_logpdf.
 constexpr double kPlainTerms = 1e15;
 
+// From this df on, the Wishart densities take the form without the terms of size n p log n
+// (wishart_far_df; below it the plain form's terms are under 1e11 and its logs' 2^-77 hold).
+constexpr double kFarDf = 1e9;
+
+// The log density for a df >= kFarDf (user decision 2026-11-19), the terms of size n p log n
+// removed by hand as in Gamma's log density. W = L_V^-1 X L_V^-T / n (Wishart) or
+// L_Psi^T X^-1 L_Psi / n (inverse) has the eigenvalues of V^-1 X / n (Psi X^-1 / n), all
+// near 1 at the mode, and with a_j = (n + 1 - j) / 2 and Stirling's form of each log Gamma,
+//     log W(X)  = (n-p-1)/2 log|W| - n/2 (tr W - p) - p(p+1)/4 log(2n) + R - (p+1)/2 log|V|
+//     log IW(X) = (n+p+1)/2 log|W| - n/2 (tr W - p) + 3p(p+1)/4 log n - p(p+1)/4 log 2 + R
+//                 - (p+1)/2 log|Psi|
+//     R = -p(p-1)/4 (1 + log pi) - p/2 log(2 pi) - sum_j [(a_j - 1/2) log1p((1-j)/n) + S(a_j)],
+// S(a) = 1/(12 a) - 1/(360 a^3) (the next term, 1/(1260 a^5), is below 2^-150 here). log|W|
+// is 2 sum log d_i of W's Cholesky pivots, each by log1p(d_i^2 - 1): the rounding of W's
+// entries reaches log|W| and tr W alike and cancels to first order (the density is flat in W
+// at the mode), and what is left is W's Cholesky on the small parts W - I (err: a bound).
+// m: the point's factor (X's, L_X); Lb: L_V or L_Psi. False: W is not positive definite (to
+// rounding: the plain form then).
+inline bool wishart_far(std::int64_t p, double n, bool inverse, const std::vector<DD>& LX, const std::vector<DD>& Lb,
+                        DD ld, DD& out, double& err) {
+    const double pd = static_cast<double>(p);
+    // C = L_V^-1 L_X (W = C C^T / n) or C = L_X^-1 L_Psi (W = C^T C / n), column by column
+    std::vector<DD> C(static_cast<std::size_t>(p * p), DD{0.0, 0.0}), col(static_cast<std::size_t>(p));
+    for (std::int64_t c = 0; c < p; ++c) {
+        for (std::int64_t i = 0; i < p; ++i) col[i] = i >= c ? (inverse ? Lb[i * p + c] : LX[i * p + c]) : DD{0.0, 0.0};
+        la::solve_lower(inverse ? LX : Lb, p, col.data());
+        for (std::int64_t i = 0; i < p; ++i) C[i * p + c] = col[i];
+    }
+    // E = W - I (lower triangle): the small parts, which the Cholesky below works on, so that
+    // no pivot is rounded as a number near 1 (a pivot 1 + u held as a double-double has 2^-106
+    // of 1, not of u: times n / 2 that was 1e-5 at df = 1e30)
+    std::vector<DD> E(static_cast<std::size_t>(p * p));
+    DD trm{0.0, 0.0};  // tr W - p
+    double dev = 0.0;  // max |W - I|
+    for (std::int64_t i = 0; i < p; ++i)
+        for (std::int64_t j = 0; j <= i; ++j) {
+            DD t{0.0, 0.0};
+            for (std::int64_t k = 0; k < p; ++k)
+                t = t + (inverse ? C[k * p + i] * C[k * p + j] : C[i * p + k] * C[j * p + k]);
+            const DD w = t / n;
+            const DD d = i == j ? w - 1.0 : w;
+            E[i * p + j] = d;
+            if (i == j) trm = trm + d;
+            dev = std::max(dev, std::fabs(d.hi));
+        }
+    // log|W| = sum log1p(u_j), the pivots 1 + u_j of W = L L^T with u_j = E_jj - sum_k L_jk^2
+    std::vector<DD> L(static_cast<std::size_t>(p * p), DD{0.0, 0.0});
+    DD lw{0.0, 0.0};
+    for (std::int64_t j = 0; j < p; ++j) {
+        DD u = E[j * p + j];
+        for (std::int64_t k = 0; k < j; ++k) u = u - L[j * p + k] * L[j * p + k];
+        if (!(u.hi > -1.0) || !std::isfinite(u.hi)) return false;
+        lw = lw + la::log1p(u);
+        const DD ljj = la::sqrt(u + 1.0);
+        L[j * p + j] = ljj;
+        for (std::int64_t i = j + 1; i < p; ++i) {
+            DD t = E[i * p + j];
+            for (std::int64_t k = 0; k < j; ++k) t = t - L[i * p + k] * L[j * p + k];
+            L[i * p + j] = t / ljj;
+        }
+    }
+    const DD coef = dd::two_sum(n, inverse ? pd + 1.0 : -(pd + 1.0)) * 0.5;
+    const double q = pd * (pd + 1.0) / 4.0;  // p(p+1)/4, exact
+    const DD logn = num::log_dd(n);
+    const DD pw = inverse ? logn * (3.0 * q) - dd::kLn2 * q : -(logn + dd::kLn2) * q;
+    DD r = -(num::kLogPi + 1.0) * (pd * (pd - 1.0) / 4.0) - (num::kLogPi + dd::kLn2) * (0.5 * pd);  // log(2 pi) = log pi + log 2
+    for (std::int64_t j = 1; j <= p; ++j) {
+        const double jd = static_cast<double>(j);
+        if (j > 1) {
+            const DD delta = DD{1.0 - jd, 0.0} / n;  // (1 - j) / n, its log1p by the series
+            r = r - dd::two_sum(n, -jd) * 0.5 * la::log1p(delta);
+        }
+        const double a = 0.5 * (n + 1.0 - jd);
+        r = r - (1.0 / (12.0 * a) - 1.0 / (360.0 * a * a * a));
+    }
+    out = coef * lw - trm * (0.5 * n) + pw + r - ld * (0.5 * (pd + 1.0));
+    // What is not cancelled, times n / 2: the pivots' logs (log1p of at most dev, to 2^-104 of
+    // it) and the Cholesky's products (dev^2 each, p of them); the constants' 2^-100 p^2 log n
+    err = 0x1p-100 * pd * (n * dev * (1.0 + pd * dev) + pd * (64.0 + std::fabs(logn.hi)));
+    return true;
+}
+
 // log pdf at x (M, p, p) (lower triangles read): df (B,), the scale's factor L hi/lo (B, p, p)
 // and log det hi/lo (B,), ok (B,). inverse: the inverse Wishart.
 nb::object wishart_logpdf(nb::handle x_obj, nb::handle batch_obj, nb::handle df_obj, nb::handle lh_obj,
@@ -109,7 +191,7 @@ nb::object wishart_logpdf(nb::handle x_obj, nb::handle batch_obj, nb::handle df_
     // per batch: the constant, and V^-1 (Wishart) or L_Psi (inverse) in double-double
     std::vector<DD> cst(static_cast<std::size_t>(B));
     std::vector<double> cmag(static_cast<std::size_t>(B), 0.0);  // the size of the constant's terms
-    std::vector<std::vector<DD>> mats(static_cast<std::size_t>(B));
+    std::vector<std::vector<DD>> mats(static_cast<std::size_t>(B)), facs(static_cast<std::size_t>(B));
     for (std::int64_t b = 0; b < B; ++b) {
         if (el(ok, b) == 0.0) continue;
         const double n = el(dfa, b);
@@ -119,6 +201,7 @@ nb::object wishart_logpdf(nb::handle x_obj, nb::handle batch_obj, nb::handle df_
         cmag[b] = 0.35 * n * pd + std::fabs(lmg.hi) + std::fabs(ld.hi) * 0.5 * n;
         std::vector<DD> L;
         load_L(Lh, Ll, b, p, L);
+        if (n >= kFarDf) facs[b] = L;  // (wishart_far)
         if (!inverse) {
             cst[b] = base - ld * (0.5 * n);
             la::inverse_from_cholesky(L, p, mats[b]);
@@ -162,6 +245,19 @@ nb::object wishart_logpdf(nb::handle x_obj, nb::handle batch_obj, nb::handle df_
                                po[m] = as_pdf ? 0.0 : -kInf;
                                continue;
                            }
+                           if (n >= kFarDf && shift == 0) {  // the large df: without the n log n terms
+                               DD l;
+                               double err;
+                               if (wishart_far(p, n, inverse, LX, facs[b], DD{el(ldh, b), el(ldl, b)}, l, err)) {
+                                   // (a df so large that W's rounding passes the contract: NaN)
+                                   if (!(err <= 1e-14 * std::max(1.0, std::fabs(l.hi)))) {
+                                       po[m] = kNaN;
+                                       continue;
+                                   }
+                                   po[m] = as_pdf ? num::exp_dd(l) : l.hi + l.lo;
+                                   continue;
+                               }
+                           }
                            const std::vector<DD>& A = mats[b];
                            DD tr{0.0, 0.0};
                            if (!inverse) {  // tr(V^-1 X) over X's lower triangle
@@ -181,10 +277,13 @@ nb::object wishart_logpdf(nb::handle x_obj, nb::handle batch_obj, nb::handle df_
                            if (shift != 0) {  // log|X| = log|2^-s X| + p s log 2; the trace scales by 2^(+-s)
                                ldx = ldx + dd::kLn2 * (pd * shift);
                                htr = dd::ldexp(htr, inverse ? -shift : shift);
-                               if (!std::isfinite(htr.hi)) {  // tr / 2 beyond the doubles: the density is 0
-                                   po[m] = as_pdf ? 0.0 : -kInf;
-                                   continue;
-                               }
+                           }
+                           // tr / 2 beyond the doubles (also the inverse's |L_X^-1 L_Psi|^2 for an X
+                           // with a subnormal pivot): the density is 0, as InverseGamma's at such an x
+                           // (the double-double sum below would make inf - inf of it)
+                           if (!std::isfinite(htr.hi)) {
+                               po[m] = as_pdf ? 0.0 : -kInf;
+                               continue;
                            }
                            // n -+ (p + 1) kept exactly: its rounding (2^-54 of the coefficient)
                            // times log|X| would reach the density

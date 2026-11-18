@@ -81,13 +81,17 @@ inline DD log_beta(double a, double b) {
 // range. For a small root, the series I = x^a / (a B(a, b)) (1 + c x + O(x^2)),
 // c = a (1 - b) / (a + 1): log x = (lt + log a + log B) / a - c x / a, exact once
 // c x < 1e-9 (the next term is below 2^-60). Otherwise Newton in log x on log I from
-// the pieces, d log I / d log x = x f / I = prefix / (y I).
+// the pieces, d log I / d log x = x f / I = prefix / (y I). Newton stops at a step of
+// 2^-54 (of max(1, |log x|): log x's own spacing is 2^-52 of it, and log I's rounding
+// keeps the steps from shrinking much below); not there in 100 steps, the root is taken
+// when the last step was at most 2^-48, else NaN (as the gamma's deep inverse, never a value
+// that has not converged).
 inline DD deep_log_inverse(double a, double b, DD lt) {
     const DD lx0 = (lt + num::log_dd(a) + log_beta(a, b)) / a;
     const double c = a * (1.0 - b) / (a + 1.0);
     const double x0 = std::exp(lx0.hi);
     if (std::fabs(c) * x0 < 1e-9) return lx0 - c * x0 / a;
-    double lx = lx0.hi, step = 0.0;
+    double lx = lx0.hi, step = kInf;
     for (int it = 0; it < 100; ++it) {
         const double x = std::exp(lx);
         const DD xd{x, 0.0}, yd = dd::two_sum(1.0, -x);
@@ -97,9 +101,46 @@ inline DD deep_log_inverse(double a, double b, DD lt) {
         const DD g = DD{li, 0.0} - lt;
         step = (g.hi + g.lo) / slope;
         lx -= step;
-        if (std::fabs(step) <= 0x1p-60 * std::max(1.0, std::fabs(lx))) break;
+        if (std::fabs(step) <= 0x1p-54 * std::max(1.0, std::fabs(lx))) return DD{lx, 0.0};
     }
+    if (!(std::fabs(step) <= 0x1p-48 * std::max(1.0, std::fabs(lx)))) return DD{kNaN, 0.0};
     return DD{lx, 0.0};
+}
+
+// Both logs of the deep root, log x and log(1 - x) (the t's and the F's quantiles are
+// ratios of x and 1 - x). Where the root is near 1 (x > 1/2), 1 - x from log x loses what
+// log x has of x's distance from 1: Newton stops at 2^-54 of log x itself (the spacing near
+// 1 allows no better), which is 2^-54 / |log x| of 1 - x (t's quantile at df = 1e6 and p ~
+// 1e-305 was 1.6e-14 off, x = 1 - 1.4e-3). There the root is refined in log y, y = 1 - x:
+// d log I / d log y = -(x f / I)(y / x) = -prefix / (x I), the same stops (2^-54 of
+// max(1, |log y|); not there in 100 steps: the last step at most 2^-48, else NaN).
+struct LogPair {
+    DD lx, ly;
+};
+inline LogPair deep_log_inverse_both(double a, double b, DD lt) {
+    const DD lx = deep_log_inverse(a, b, lt);
+    if (!(lx.hi == lx.hi)) return {lx, lx};
+    if (lx.hi < -num::kLn2.hi) {  // x < 1/2: 1 - x is well defined from log x
+        const double x = std::exp(lx.hi);
+        return {lx, x < 0x1p-60 ? DD{-x, 0.0} : num::log_dd(-std::expm1(lx.hi))};
+    }
+    double ly = std::log(-std::expm1(lx.hi)), step = kInf;
+    for (int it = 0; it < 100; ++it) {
+        const double y = std::exp(ly);
+        const DD yd{y, 0.0}, xd = dd::two_sum(1.0, -y);
+        const double li = log_lower_deep(a, b, xd, yd);
+        const DD lp = log_prefix(a, b, xd, yd);
+        const double slope = -std::exp(lp.hi - std::log(xd.hi) - li);
+        const DD g = DD{li, 0.0} - lt;
+        step = (g.hi + g.lo) / slope;
+        ly -= step;
+        if (std::fabs(step) <= 0x1p-54 * std::max(1.0, std::fabs(ly))) {
+            step = 0.0;
+            break;
+        }
+    }
+    if (!(std::fabs(step) <= 0x1p-48 * std::max(1.0, std::fabs(ly)))) return {DD{kNaN, 0.0}, DD{kNaN, 0.0}};
+    return {dd::log(dd::two_sum(1.0, -std::exp(ly))), DD{ly, 0.0}};
 }
 
 // Below this a probability goes to the deep inverse (from its log in double-double).

@@ -25,23 +25,57 @@ def _type_name(v):
     return type(v).__name__
 
 
-def _array(v, cls, arg, min_ndim):
+_MAX_DOUBLE_INT = int(1.7976931348623157e308)  # ints above it raise in float()
+
+
+def _array(v, func, arg, min_ndim):
+    """An input x of `func` (e.g. "logpdf()"): an sd.ndarray, as float64. Lists, tuples and
+    numpy arrays are refused as by the univariate methods and sd.special (user decision
+    2026-11-19, docs/design/stats.md T39)."""
+    if not isinstance(v, _sd_core.ndarray):
+        raise TypeError(f"{func}: '{arg}' must be an sd.ndarray, not {_type_name(v)}")
+    return _checked(v, func, arg, min_ndim)
+
+
+def _param(v, cls, arg, min_ndim):
+    """A parameter of the constructor `cls`: an sd.ndarray, or for a scalar parameter (min_ndim
+    0) a real Python number too; lists are refused as for the univariate distributions (T19)."""
     sd = _sd_core
+    func = f"{cls}()"
     if isinstance(v, sd.ndarray):
-        a = v
-    elif isinstance(v, (bool, int, float)) and min_ndim == 0:
-        return float(v)
-    else:
-        try:
-            a = sd.asarray(v)
-        except (TypeError, ValueError) as e:
-            raise TypeError(f"{cls}: '{arg}' must be an sd.ndarray or a sequence of numbers, not {_type_name(v)}") \
-                from e
+        return _checked(v, func, arg, min_ndim)
+    if min_ndim == 0:
+        if isinstance(v, (bool, int, float)):
+            if isinstance(v, int) and abs(v) > _MAX_DOUBLE_INT:
+                raise OverflowError(f"{func}: '{arg}' is out of range")
+            return float(v)
+        raise TypeError(f"{func}: '{arg}' must be a real number or an sd.ndarray, not {_type_name(v)}")
+    raise TypeError(f"{func}: '{arg}' must be an sd.ndarray, not {_type_name(v)}")
+
+
+def _checked(a, func, arg, min_ndim):
+    sd = _sd_core
     if a.dtype == sd.complex128:
-        raise TypeError(f"{cls}: '{arg}' must be real, not a complex128 array")
+        raise TypeError(f"{func}: '{arg}' must be real, not a complex128 array")
     if a.ndim < min_ndim:
-        raise ValueError(f"{cls}: '{arg}' must have at least {min_ndim} dimension{'s' if min_ndim > 1 else ''}")
+        raise ValueError(f"{func}: '{arg}' must have at least {min_ndim} dimension{'s' if min_ndim > 1 else ''}")
     return a if a.dtype == sd.float64 else a.astype(sd.float64)
+
+
+def _lower_symmetric(a):
+    """The symmetric matrices (..., d, d) of a's lower triangles: what the densities read, and
+    so what the summaries (covariance, mean, ...) report."""
+    sd = _sd_core
+    return sd.tril(a) + sd.tril(a, k=-1).mT
+
+
+def _public_names(cls):
+    """Python's own call errors (a missing rng=, an unknown keyword) name a function by its
+    __qualname__: the method's name alone, as every message of a method (API.md §2.1), and
+    not the private base class that defines it."""
+    for name, f in list(vars(cls).items()):
+        if callable(f) and hasattr(f, "__qualname__") and not name.startswith("__"):
+            f.__qualname__ = name
 
 
 def _shape_of(v):
@@ -136,9 +170,12 @@ class _Batched:
         if not isinstance(rng, _random.Generator):
             raise TypeError(f"sample(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), "
                             f"not {_type_name(rng)}")
-        shp = _random._shape(shape, "sample")
+        shp = _random._sample_shape(shape)
         N = math.prod(shp) * self._B
-        return shp, N, rng._reserve(N)
+        return shp, N, rng._take(N, "sample", 8 * N * self._row_size())
+
+    def _row_size(self):
+        return self._d
 
     def _nan_where_bad(self, v, tail):
         """v (B,) + tail with NaN where the batch element's parameters are invalid."""
@@ -154,16 +191,16 @@ class _Gaussian(_Batched):
 
     def _setup(self, cls, mu, cov, df):
         sd = _sd_core
-        mu = _array(mu, cls, "mu", 1)
-        cov = _array(cov, cls, self._names[1], 2)
+        mu = _param(mu, cls, "mu", 1)
+        cov = _param(cov, cls, self._names[1], 2)
         d = mu.shape[-1]
         if cov.shape[-1] != cov.shape[-2] or cov.shape[-1] != d:
-            raise ValueError(f"{cls}: '{self._names[1]}' must be ({d}, {d}) on its last two axes (mu has {d} "
+            raise ValueError(f"{cls}(): '{self._names[1]}' must be ({d}, {d}) on its last two axes (mu has {d} "
                              f"components), not {tuple(cov.shape[-2:])}")
-        batch = _broadcast(tuple(mu.shape[:-1]), tuple(cov.shape[:-2]), _shape_of(df), what=f"{cls}: the parameters")
+        batch = _broadcast(tuple(mu.shape[:-1]), tuple(cov.shape[:-2]), _shape_of(df), what=f"{cls}(): the parameters")
         self._batch, self._B, self._d = batch, math.prod(batch), d
         self._mu = _rows(mu, batch, (d,))
-        self._cov = _rows(cov, batch, (d, d))
+        self._cov = _lower_symmetric(_rows(cov, batch, (d, d)))  # (the lower triangle is what is read)
         self._df = _rows(df, batch, ())
         L, Ll, ldh, ldl, ok, self._ih, self._il = _k.mv_chol(self._cov)
         # df below the smallest normal double is outside the domain too (df / 2 rounds to 0)
@@ -193,18 +230,24 @@ class _Gaussian(_Batched):
         else Genz's quasi-Monte Carlo with a fixed seed (deterministic) to `atol`. With
         return_error=True: (value, error estimate)."""
         sd = _sd_core
-        cls = type(self).__name__
-        if isinstance(atol, bool) or not isinstance(atol, (int, float)) or not atol > 0:
-            raise ValueError(f"{cls}.cdf(): 'atol' must be a positive number")
+        if isinstance(atol, bool) or not isinstance(atol, (int, float)):
+            raise TypeError(f"cdf(): 'atol' must be an int or a float, not {_type_name(atol)}")
+        if not atol > 0 or atol == math.inf:
+            raise ValueError("cdf(): 'atol' must be a positive number")
         if return_error is not True and return_error is not False:
-            raise TypeError(f"{cls}.cdf(): 'return_error' must be True or False, not {_type_name(return_error)}")
+            raise TypeError(f"cdf(): 'return_error' must be True or False, not {_type_name(return_error)}")
         mp = 0
         if max_points is not None:
             if isinstance(max_points, bool):
-                raise TypeError(f"{cls}.cdf(): 'max_points' must be an int or None, not bool")
-            mp = operator.index(max_points)
+                raise TypeError("cdf(): 'max_points' must be an int or None, not bool")
+            try:
+                mp = operator.index(max_points)
+            except TypeError:
+                raise TypeError(f"cdf(): 'max_points' must be an int or None, not {_type_name(max_points)}") from None
             if mp < 1:
-                raise ValueError(f"{cls}.cdf(): 'max_points' must be positive")
+                raise ValueError("cdf(): 'max_points' must be positive")
+            if mp >= 2**63:
+                raise OverflowError("cdf(): 'max_points' is out of range")
         rows, idx, out = self._points(x, "cdf")
         shifted = rows - sd.take(self._mu, idx, axis=0)
         cov = sd.where(sd.reshape(self._ok, (self._B, 1, 1)) != 0.0, self._cov, float("nan"))
@@ -217,7 +260,7 @@ class _Gaussian(_Batched):
         """The differential entropy, in nats."""
         return self._per_batch(_k.mv_entropy(self._ldh, self._ldl, self._ok, self._df, self._d))
 
-    def sample(self, shape=(), /, *, rng):
+    def sample(self, shape=None, /, *, rng):
         """Samples of shape `shape` + the batch shape + (d,): mu + L z (and sqrt(df / V) for the
         t), one stream element per vector (the same values on any thread count)."""
         shp, N, (key, pos) = self._sample_rows(shape, rng)
@@ -263,7 +306,7 @@ class MultivariateT(_Gaussian):
     _names = ("mu", "shape", "df")
 
     def __init__(self, *, mu, shape, df):
-        df_v = _array(df, "MultivariateT", "df", 0)
+        df_v = _param(df, "MultivariateT", "df", 0)
         self._p = (mu, shape, df)
         self._setup("MultivariateT", mu, shape, df_v)
 
@@ -309,11 +352,11 @@ class Multinomial(_Batched):
 
     def __init__(self, *, n, p):
         sd = _sd_core
-        n_v = _array(n, "Multinomial", "n", 0)
-        p_v = _array(p, "Multinomial", "p", 1)
+        n_v = _param(n, "Multinomial", "n", 0)
+        p_v = _param(p, "Multinomial", "p", 1)
         self._p = (n, p)
         K = p_v.shape[-1]
-        batch = _broadcast(_shape_of(n_v), tuple(p_v.shape[:-1]), what="Multinomial: the parameters")
+        batch = _broadcast(_shape_of(n_v), tuple(p_v.shape[:-1]), what="Multinomial(): the parameters")
         self._batch, self._B, self._d = batch, math.prod(batch), K
         self._n = _rows(n_v, batch, ())
         self._pp = _rows(p_v, batch, (K,))
@@ -365,10 +408,12 @@ class Multinomial(_Batched):
         return sd.reshape(self._nan_where_bad(c, (K, K)), self._batch + (K, K))
 
     def entropy(self):
-        """The entropy, in nats."""
-        return self._per_batch(_k.multinomial_entropy(self._n, self._pp, self._ok))
+        """The entropy, in nats: 0 for a point mass (n = 0, or one category of probability 1)."""
+        sd = _sd_core
+        h = _k.multinomial_entropy(self._n, self._pp, self._ok)
+        return self._per_batch(sd.where((self._n == 0.0) & (self._ok != 0.0), 0.0, h))
 
-    def sample(self, shape=(), /, *, rng):
+    def sample(self, shape=None, /, *, rng):
         """Count vectors of shape `shape` + the batch shape + (K,), by conditional binomials."""
         shp, N, (key, pos) = self._sample_rows(shape, rng)
         v = _k.multinomial_sample(key[0], key[1], pos, N, self._n, self._pp, self._ok)
@@ -385,7 +430,7 @@ class Dirichlet(_Batched):
 
     def __init__(self, *, alpha):
         sd = _sd_core
-        a = _array(alpha, "Dirichlet", "alpha", 1)
+        a = _param(alpha, "Dirichlet", "alpha", 1)
         self._p = (alpha,)
         K = a.shape[-1]
         batch = tuple(a.shape[:-1])
@@ -432,8 +477,12 @@ class Dirichlet(_Batched):
         """The differential entropy, in nats."""
         return self._per_batch(_k.dirichlet_entropy(self._alpha, self._ok))
 
-    def sample(self, shape=(), /, *, rng):
+    def sample(self, shape=None, /, *, rng):
         """Points of the simplex, shape `shape` + the batch shape + (K,): gammas normalized."""
         shp, N, (key, pos) = self._sample_rows(shape, rng)
         v = _k.dirichlet_sample(key[0], key[1], pos, N, self._alpha, self._ok)
         return _sd_core.reshape(v, shp + self._batch + (self._d,))
+
+
+for _cls in (_Batched, _Gaussian, MultivariateNormal, MultivariateT, Multinomial, Dirichlet):
+    _public_names(_cls)

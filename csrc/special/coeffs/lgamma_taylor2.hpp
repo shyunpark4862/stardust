@@ -1,7 +1,7 @@
 // The Taylor series of log Gamma about 2:
 //     lgamma(2 + e) = (1 - euler) e + sum_{k>=2} (-1)^k (zeta(k) - 1) / k e^k
 // Not fitted coefficients: these are the series' own values, computed with
-// mpmath at 40 digits (2026-11-14) and rounded. zeta(k) - 1 ~ 2^-k, so on
+// Arb and rounded to nearest (all 28 checked bit-exact at 300 bits, 2026-11-19). zeta(k) - 1 ~ 2^-k, so on
 // |e| <= 1/2 the terms fall like 4^-k / k; 28 terms leave < 2e-19.
 // Highest power first, without the constant term (lgamma(2) = 0): the sum is
 // e * horner(e, kLgammaTaylor2).

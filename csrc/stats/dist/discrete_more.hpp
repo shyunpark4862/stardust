@@ -565,8 +565,10 @@ struct BetaBinomial {
                 return disc::Ratio4{DD{j, 0.0}, two_sum(n - j, b), DD{n - j + 1.0, 0.0}, two_sum(j - 1.0, a)};
             });
     }
-    // log sum_j pmf(j) / pmf(k) over every j from k to `end`, with the ratio recurrence
-    // resynchronized every 8 terms. NaN for more than disc::kMaxTailTerms terms. The log as
+    // log sum_j pmf(j) / pmf(k) over every j from k to `end`: the ratio recurrence in
+    // double-double (disc::tail_sum_dd); where a term underflows below 1e-200, the rounded
+    // ratios resynchronized from the log pmf every 8 terms. NaN for more than
+    // disc::kMaxTailTerms terms. The log as
     // a double-double: toward an end where the pmf rises (small shapes) the sum is far above
     // its first term, and its log rounded to float64 would cost |log| ULP of the probability.
     template <class R, class L>

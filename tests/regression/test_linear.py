@@ -503,7 +503,7 @@ def test_errors():
         R.ols(y, X, rtol=-1)
     with pytest.raises(TypeError, match=r"^ols\(\): 'rtol' must be None, an int or a float, not str$"):
         R.ols(y, X, rtol="1")
-    with pytest.raises(ValueError, match=r"^ols\(\): 'nan_policy' must be one of 'propagate', 'omit', 'raise', not 'x'$"):
+    with pytest.raises(ValueError, match=r"^ols\(\): 'nan_policy' must be 'propagate', 'omit' or 'raise', not 'x'$"):
         R.ols(y, X, nan_policy="x")
     X2 = X.copy()
     X2[3, 1] = np.inf

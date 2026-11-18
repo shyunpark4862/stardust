@@ -499,7 +499,7 @@ def test_errors():
         nls(decay, xn, yn, p0=p0, max_nfev=0)
     with pytest.raises(ValueError, match=r"^nls\(\): 'p0' has 3 parameters, more than the 2 observations used$"):
         nls(decay, xn[:2], yn[:2], p0=p0)
-    with pytest.raises(ValueError, match=r"^nls\(\): 'nan_policy' must be one of 'propagate', 'omit', 'raise', "
+    with pytest.raises(ValueError, match=r"^nls\(\): 'nan_policy' must be 'propagate', 'omit' or 'raise', "
                                          r"not 'x'$"):
         nls(decay, xn, yn, p0=p0, nan_policy="x")
     with pytest.raises(ZeroDivisionError):  # the model's own errors pass through

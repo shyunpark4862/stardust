@@ -18,7 +18,7 @@ BIG = 10**400
     (lambda x, a: sd.linalg.cond(sd.ones((2, 2)), ord=BIG), r"cond\(\): 'ord' is out of range"),
     (lambda x, a: sd.linalg.matrix_rank(a, rtol=BIG), r"matrix_rank\(\): 'rtol' is out of range"),
     (lambda x, a: sd.linalg.lstsq(a, x, rtol=BIG), r"lstsq\(\): 'rtol' is out of range"),
-    (lambda x, a: sd.stats.Normal(mu=BIG), r"'mu' is out of range"),
+    (lambda x, a: sd.stats.Normal(mu=BIG), r"Normal\(\): 'mu' is out of range"),
     (lambda x, a: sd.asarray([BIG, 0.5]), r"asarray\(\): Python int too large to convert to float64"),
     (lambda x, a: sd.full((2,), BIG, dtype=sd.float64), r"full\(\): Python int too large to convert to float64"),
     (lambda x, a: sd.linspace(0, BIG, 3), r"linspace\(\): Python int too large to convert to float64"),
@@ -35,8 +35,8 @@ def test_an_int_beyond_the_double_range(call, message):
 @pytest.mark.parametrize("call,prefix", [
     (lambda: sd.zeros((2**50,)), r"zeros\(\): "),
     (lambda: sd.arange(2**50), r"arange\(\): "),
-    (lambda: sd.random.default_rng(1).permutation(2**50), ""),
-    (lambda: sd.random.default_rng(1).random((2**50,)), ""),
+    (lambda: sd.random.default_rng(1).permutation(2**50), r"permutation\(\): "),
+    (lambda: sd.random.default_rng(1).random((2**50,)), r"random\(\): "),
     (lambda: sd.ones((2**25, 1)) * sd.ones((1, 2**25)), ""),
 ])
 def test_a_request_beyond_physical_memory_is_memory_error(call, prefix):

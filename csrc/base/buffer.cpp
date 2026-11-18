@@ -10,8 +10,6 @@
 
 namespace sd {
 
-namespace {
-
 // Bytes of physical memory (hw.memsize), read once; no limit if it cannot be read.
 std::uint64_t physical_memory() {
     static const std::uint64_t bytes = [] {
@@ -22,6 +20,8 @@ std::uint64_t physical_memory() {
     }();
     return bytes;
 }
+
+namespace {
 
 // std::bad_alloc (MemoryError in Python) that says why.
 class TooLarge : public std::bad_alloc {

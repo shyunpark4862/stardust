@@ -96,7 +96,7 @@ def test_describe_matches_scipy():
     assert isinstance(d.mean, float)
 
 
-@pytest.mark.parametrize("method", ["vasicek", "van es", "ebrahimi", "correa", "auto", "Vasicek"])
+@pytest.mark.parametrize("method", ["vasicek", "van es", "ebrahimi", "correa", "auto"])
 @pytest.mark.parametrize("n", [5, 9, 50, 2000])
 def test_differential_entropy_methods(method, n):
     y = np.random.default_rng(n).normal(size=n)

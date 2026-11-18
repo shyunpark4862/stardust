@@ -124,8 +124,9 @@ nb::object integers(std::uint64_t k0, std::uint64_t k1, std::uint64_t pos, const
 // arrival times of a race whose k first finishers are a weighted sample of k
 // without replacement (Efraimidis and Spirakis, 2006). p_i = 0 never arrives (inf).
 // A positive p_i below about 2e-307 would overflow to the same inf and lose to a
-// zero by index; its key is the largest double instead (such elements are then
-// ordered by index among themselves: their whole probability is below 1e-300).
+// zero by index; its key is the largest double instead. Such elements are then
+// ordered by index among themselves: each has p_i below 2.05e-307 (E_i is at most
+// 53 log 2 = 36.7, at the smallest uniform), so n of them hold below n * 2.05e-307.
 nb::object race_keys(std::uint64_t k0, std::uint64_t k1, std::uint64_t pos, const NDArray& p) {
     NDArray out = new_array(DType::Float64, p.shape_span());
     double* o = reinterpret_cast<double*>(out.data);

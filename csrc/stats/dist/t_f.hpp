@@ -11,6 +11,9 @@
 #include "special/ops/distr.hpp"
 #include "special/ops/gamma.hpp"
 #include "stats/dist/beta.hpp"
+#include "stats/dist/gamma.hpp"
+#include "stats/dist/lifetime.hpp"
+#include "stats/dist/normal.hpp"
 #include "stats/engine.hpp"
 #include "stats/numeric.hpp"
 
@@ -72,6 +75,12 @@ struct StudentT {
     static constexpr std::array<const char*, 1> params{"df"};
 
     static bool valid(double df) { return df > 0.0 && std::isfinite(df); }
+    // df = inf: the standard normal, every method (as special.stdtr and MultivariateT)
+    static bool at_limit(double df) { return df == kInf; }
+    template <class M>
+    static double limit_in(double x, double) { return method_of<Normal, M>(x, 0.0, 1.0); }
+    template <class M>
+    static double limit_par(double) { return method_of<Normal, M>(0.0, 1.0); }
 
     // log density: log f(0) - (a + 1/2) log(1 + t^2/df), log f(0) = -(log df / 2 + log B(a, 1/2)).
     static num::DD log_density(double t, double df) {
@@ -217,12 +226,10 @@ struct StudentT {
             const double est = (lt.hi + k) / a;
             if (est > -40.0) return special::Stdtrit::f(df, p);
         }
-        const num::DD lx = beta_detail::deep_log_inverse(a, 0.5, lt + num::kLn2);
-        const double x = std::exp(lx.hi);
-        // log(1 - x), 1 - x = -expm1(log x): x rounded and subtracted from 1 lost digits near
-        // the centre (x ~ 1)
-        const num::DD ly = x < 0x1p-60 ? num::DD{-x, 0.0} : num::log_dd(-std::expm1(lx.hi));
-        return -num::exp_dd((num::log_dd(df) - lx + ly) * 0.5);
+        // log x and log(1 - x) both from the solve (near x = 1, the centre, refined in
+        // log(1 - x) itself: beta_detail::deep_log_inverse_both)
+        const beta_detail::LogPair r = beta_detail::deep_log_inverse_both(a, 0.5, lt + num::kLn2);
+        return -num::exp_dd((num::log_dd(df) - r.lx + r.ly) * 0.5);
     }
     static double icdf(double p, double df) {
         if (!halvable(df)) return kNaN;
@@ -250,7 +257,8 @@ struct StudentT {
     }
     static double skewness(double df) { return df > 3.0 ? 0.0 : kNaN; }
     static double kurtosis(double df) { return df > 4.0 ? 6.0 / (df - 4.0) : (df > 2.0 ? kInf : kNaN); }
-    static double median(double) { return 0.0; }
+    // (a df below 2^-1021 has no exact half: NaN as the pdf, the cdfs and the entropy)
+    static double median(double df) { return df < 0x1p-1021 ? kNaN : 0.0; }
     static double mode(double) { return 0.0; }
     // (a + 1/2)(psi(a + 1/2) - psi(a)) + log B(a, 1/2) + log(df)/2, a = df/2; from a = 12
     // = (a + 1/2) dpsi + log(2 pi)/2 - L(a) (t_detail::big_l: the log-gammas' large terms
@@ -275,6 +283,22 @@ struct F {
 
     static bool valid(double dfn, double dfd) {
         return dfn > 0.0 && std::isfinite(dfn) && dfd > 0.0 && std::isfinite(dfd);
+    }
+    // One infinite degree of freedom (the other finite and valid), as special.fdtr:
+    // dfd = inf is chi-square(dfn) / dfn, dfn = inf is dfd / chi-square(dfd), the inverse gamma
+    // (dfd/2, dfd/2). Both infinite (a point mass at 1) stays NaN.
+    static bool at_limit(double dfn, double dfd) {
+        return (dfd == kInf && dfn > 0.0 && std::isfinite(dfn)) || (dfn == kInf && dfd > 0.0 && std::isfinite(dfd));
+    }
+    template <class M>
+    static double limit_in(double x, double dfn, double dfd) {
+        if (dfd == kInf) return scaled_of<ChiSquared, M>(dfn, x, dfn);
+        return method_of<InverseGamma, M>(x, 0.5 * dfd, 0.5 * dfd);
+    }
+    template <class M>
+    static double limit_par(double dfn, double dfd) {
+        if (dfd == kInf) return scaled_of<ChiSquared, M>(dfn, dfn);
+        return method_of<InverseGamma, M>(0.5 * dfd, 0.5 * dfd);
     }
 
     // log B(p, q) where q may be far beyond p: log Gamma(p) - p log q once (p / q) max(1, p) is
@@ -480,9 +504,9 @@ struct F {
             const double est = (lt.hi + std::log(sa) + special::Betaln::f(sa, sb)) / sa;
             if (est > -40.0) return lower ? special::Fdtri::f(dfn, dfd, t) : upper_solve(t, dfn, dfd);
         }
-        const num::DD lr = beta_detail::deep_log_inverse(sa, sb, lt);  // log w or log v
-        const double r = std::exp(lr.hi);
-        const num::DD lo = r < 0x1p-60 ? num::DD{-r, 0.0} : num::log_dd(-std::expm1(lr.hi));  // log(1 - r)
+        // log w or log v, and log(1 - it) (refined there near 1: deep_log_inverse_both)
+        const beta_detail::LogPair pr = beta_detail::deep_log_inverse_both(sa, sb, lt);
+        const num::DD lr = pr.lx, lo = pr.ly;
         const num::DD ratio = num::log_dd(dfd) - num::log_dd(dfn);
         return num::exp_dd(lower ? lr - lo + ratio : lo - lr + ratio);
     }
@@ -558,7 +582,9 @@ struct F {
         return 2.8284271247461903 * (lead * (std::sqrt(dfd - 4.0) / (dfd - 6.0))) / std::sqrt(dfn);
     }
     static double kurtosis(double dfn, double dfd) {
-        if (!(dfd > 8.0)) return dfd > 6.0 ? kInf : kNaN;
+        // the fourth moment diverges for dfd <= 8; the variance is finite from dfd > 4 (inf, as
+        // the t's kurtosis for 2 < df <= 4), NaN below
+        if (!(dfd > 8.0)) return dfd > 4.0 ? kInf : kNaN;
         // 12 (dfn (5 dfd - 22)(dfn + dfd - 2) + (dfd - 4)(dfd - 2)^2) / (dfn (dfd - 6)(dfd - 8)(dfn + dfd - 2)),
         // as sums of ratios (no products of the parameters to overflow); every term is positive.
         if (dfd <= 0x1p900 && dfn <= 0x1p900 && dfn >= 0x1p-900) {

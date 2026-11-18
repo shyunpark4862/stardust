@@ -101,8 +101,11 @@ def test_pairs_add_to_one():
     y = rng.uniform(0, 1, 2000)
     s = np.asarray(S.betainc(sd.asarray(a), sd.asarray(b), sd.asarray(y))) + \
         np.asarray(S.betaincc(sd.asarray(a), sd.asarray(b), sd.asarray(y)))
-    # a, b <= 6 go to Boost (special/boost.hpp), which computes the two apart: 3 ULP measured
-    assert np.max(np.abs(s - 1)) <= 8e-16
+    # a, b <= 6 go to Boost (special/boost.hpp), which computes the two apart, each within the
+    # contract (against Arb up to 9 ULP for a, b < 1) and at times off the same way: over 50
+    # seeds of 1e5 draws of this distribution the sum was off by at most 1.0e-15 (a = 2.886,
+    # b = 0.224, x = 0.943), 4.4e-16 at the 99.9th percentile
+    assert np.max(np.abs(s - 1)) <= 2e-15
 
 
 def test_beta_symmetry():

@@ -50,10 +50,12 @@ inline constexpr double kTol = 0x1p-56;
 // Every loop here ends within a fixed number of steps: a sum takes at most kMaxTerms terms
 // (its walk twice that), and one that has not ended by then gives NaN, never the part
 // summed so far. Inside the guaranteed region (nc <= 1e4, |nc| <= 100 for the t) the
-// longest sum is the walk across the terms' bell, 9 widths out and 18 back: measured at
-// most 4.9e3 steps out and 5.6e3 back for the probabilities; the wide tails (sd.stats' log
-// forms), whose peak may sit at j* = 1e8, take 9 sqrt(j* / 2) = 6.4e4 out and twice that
-// back.
+// longest sum is the walk across the terms' bell, 9 widths out and 18 back. Counted over the
+// reference points of the region (tests/special/ref, tests/stats/ref; 2026-11-19): the
+// G kernels' series at most 2421 terms, the walk at most 2300 steps out and 2701 back for
+// the probabilities and 3805 out and 4645 back for the wide sums (sd.stats' log forms and
+// inverses). A wide tail whose peak sat at j* = 1e8 would take 9 sqrt(j* / 2) = 6.4e4 out
+// and twice that back, inside the bound.
 inline constexpr int kMaxTerms = 1 << 18;
 inline constexpr Scaled kNotSummed{kNaN, 0};
 // A probability from a sum: rounding may pass 1 by an ULP (NaN stays NaN: std::min would
@@ -908,9 +910,27 @@ inline bool ncf_lite(double dfn, double dfd, double nc, double x, bool upper, do
     return true;
 }
 
+// The side of a mixture that is near 1 is summed across the whole bell of the weights, about
+// 19 sqrt(mu) terms, so it runs out of steps first (chi-square from nc ~ 1.47e9, where the
+// smaller side still has some 0.6e9 to go): a sum that did not end (NaN) is 1 minus the other
+// side when that one is at most 1/2 (its absolute error eps is a relative one of the sum).
+// sum(upper, wide) is the mixture; for a wide sum whose other side is not summed either (a
+// tail far below e^-2000, its terms' peak out of reach), the other side's probability, 0
+// there, still says that this one is 1.
+template <class Sum>
+inline Scaled or_complement(const Sum& sum, bool upper, bool wide) {
+    const Scaled v = sum(upper, wide);
+    if (v.m == v.m) return v;
+    Scaled o = sum(!upper, wide);
+    if (o.m != o.m && wide) o = sum(!upper, false);
+    return o.m == o.m && value(o) <= 0.5 ? one_minus(o) : v;
+}
+
 // chndtr (upper: chndtrc) for 0 < df, nc, x finite (df = 0 too), as m 2^e (wide: see mixture_s).
 inline Scaled ncx2_s(double df, double nc, double x, bool upper, bool wide = false) {
-    return mixture_s(0.5 * nc, 0.0, 0.5 * df, GammaFamily{0.5 * x, upper}, 0.0, wide);
+    return or_complement(
+        [&](bool u, bool w) { return mixture_s(0.5 * nc, 0.0, 0.5 * df, GammaFamily{0.5 * x, u}, 0.0, w); }, upper,
+        wide);
 }
 inline double ncx2(double df, double nc, double x, bool upper) {
     double out;
@@ -943,7 +963,9 @@ inline Scaled ncf_s(double dfn, double dfd, double nc, double x, bool upper, boo
         }
         return upper ? one_minus(lower) : lower;
     }
-    return mixture_s(0.5 * nc, 0.0, 0.5 * dfn, BetaFamily{0.5 * dfd, g.x, g.y, upper}, 0.0, wide);
+    return or_complement(
+        [&](bool u, bool w) { return mixture_s(0.5 * nc, 0.0, 0.5 * dfn, BetaFamily{0.5 * dfd, g.x, g.y, u}, 0.0, w); },
+        upper, wide);
 }
 inline double ncf(double dfn, double dfd, double nc, double x, bool upper) {
     double out;

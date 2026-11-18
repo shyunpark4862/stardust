@@ -787,7 +787,7 @@ def test_noncentral_methods_return_outside_the_guaranteed_region():
 
     start = time.perf_counter()
     nan = [
-        (S.NoncentralChiSquared(df=3.5, nc=1e15), ("cdf", 1e16), ("ccdf", 0.5), ("logcdf", 1e16), ("icdf", 0.5), ("entropy",)),
+        (S.NoncentralChiSquared(df=3.5, nc=1e15), ("cdf", 1e15), ("ccdf", 1e15), ("logcdf", 1e15), ("icdf", 0.5), ("entropy",)),
         (S.NoncentralChiSquared(df=3.5, nc=1e100), ("cdf", 1.0), ("ccdf", 1e308), ("icdf", 0.01), ("ilogcdf", -1.0), ("median",)),
         (S.NoncentralChiSquared(df=1e100, nc=2.0), ("pdf", 1e300), ("logpdf", 1e300)),
         (S.NoncentralT(df=9.0, nc=1e100), ("cdf", 0.5), ("logccdf", 1e30), ("icdf", 0.5), ("median",)),

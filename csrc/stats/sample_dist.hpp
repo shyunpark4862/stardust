@@ -619,6 +619,10 @@ struct Custom<Beta> {
         return beta_of_logs(lx, log_gamma_draw(w, s.gb));
     }
 };
+// A degree of freedom below the normal doubles: the t's sample is not drawn (its half has no
+// gamma to draw from: NaN, docs/api/stats.md §2.5); df = inf is the normal's.
+inline constexpr double kMinSampleDf = 0x1p-1022;
+
 // Z sqrt(df / V), V = 2 G(df / 2): Z exp((log df - log 2 - log G) / 2)
 template <>
 struct Custom<StudentT> {
@@ -626,24 +630,37 @@ struct Custom<StudentT> {
     struct State {
         GammaPrep g;
         double l;  // log(df / 2)
+        int kind;  // 0 the t, 1 the normal (df = inf), 2 NaN (df subnormal)
     };
-    static State prep(double df) { return {gamma_prep(0.5 * df), std::log(0.5 * df)}; }
+    static State prep(double df) {
+        const int kind = df == kInf ? 1 : (df < kMinSampleDf ? 2 : 0);
+        return {gamma_prep(kind == 0 ? 0.5 * df : 1.0), std::log(0.5 * df), kind};
+    }
     static double draw(Words& w, const State& s) {
         const double z = std_normal(w);
+        if (s.kind != 0) return s.kind == 1 ? z : std::numeric_limits<double>::quiet_NaN();
         if (!s.g.small) return z * std::sqrt(s.g.a / gamma_mt(w, s.g.d, s.g.c));
         return z * std::exp(0.5 * (s.l - log_gamma_draw(w, s.g)));
     }
 };
-// (V1 / dfn) / (V2 / dfd) = G1 / G2 * dfd / dfn
+// (V1 / dfn) / (V2 / dfd) = G1 / G2 * dfd / dfn; one infinite df: G1 / (dfn / 2) (dfd = inf),
+// (dfd / 2) / G2 (dfn = inf)
 template <>
 struct Custom<F> {
     static constexpr bool kExtra = true;  // draws extra words
     struct State {
         GammaPrep g1, g2;
         double l;  // log(dfd / dfn)
+        int lim;   // 0, 1 dfd = inf, 2 dfn = inf
     };
-    static State prep(double dfn, double dfd) { return {gamma_prep(0.5 * dfn), gamma_prep(0.5 * dfd), log_ratio(dfd, dfn)}; }
+    static State prep(double dfn, double dfd) {
+        const int lim = dfd == kInf ? 1 : (dfn == kInf ? 2 : 0);
+        return {gamma_prep(lim == 2 ? 1.0 : 0.5 * dfn), gamma_prep(lim == 1 ? 1.0 : 0.5 * dfd),
+                lim == 0 ? log_ratio(dfd, dfn) : 0.0, lim};
+    }
     static double draw(Words& w, const State& s) {
+        if (s.lim == 1) return gamma_draw(w, s.g1) / s.g1.a;
+        if (s.lim == 2) return s.g2.a / gamma_draw(w, s.g2);
         if (!s.g1.small && !s.g2.small) {
             const double g1 = gamma_mt(w, s.g1.d, s.g1.c);
             return g1 / gamma_mt(w, s.g2.d, s.g2.c) * (s.g2.a / s.g1.a);
@@ -680,22 +697,28 @@ struct Custom<NoncentralChiSquared> {
         return log_gamma_draw(w, n == 0.0 ? s.g0 : gamma_prep(s.h + n));
     }
 };
-// (Z + nc) sqrt(df / V)
+// (Z + nc) sqrt(df / V); df = inf: Z + nc; df subnormal: NaN (as the t)
 template <>
 struct Custom<NoncentralT> {
     static constexpr bool kExtra = true;  // draws extra words
     struct State {
         GammaPrep g;
         double l, nc;
+        int kind;  // as Custom<StudentT>
     };
-    static State prep(double df, double nc) { return {gamma_prep(0.5 * df), std::log(0.5 * df), nc}; }
+    static State prep(double df, double nc) {
+        const int kind = df == kInf ? 1 : (df < kMinSampleDf ? 2 : 0);
+        return {gamma_prep(kind == 0 ? 0.5 * df : 1.0), std::log(0.5 * df), nc, kind};
+    }
     static double draw(Words& w, const State& s) {
         const double z = std_normal(w) + s.nc;
+        if (s.kind != 0) return s.kind == 1 ? z : std::numeric_limits<double>::quiet_NaN();
         if (!s.g.small) return z * std::sqrt(s.g.a / gamma_mt(w, s.g.d, s.g.c));
         return z * std::exp(0.5 * (s.l - log_gamma_draw(w, s.g)));
     }
 };
-// (X1 / dfn) / (V2 / dfd), X1 noncentral chi-square(dfn, nc)
+// (X1 / dfn) / (V2 / dfd), X1 noncentral chi-square(dfn, nc); dfd = inf: X1 / dfn; dfn = inf:
+// (dfd / 2) / G2; both degrees of freedom subnormal: NaN (docs/api/stats.md §2.5)
 template <>
 struct Custom<NoncentralF> {
     static constexpr bool kExtra = true;  // draws extra words
@@ -703,11 +726,18 @@ struct Custom<NoncentralF> {
         Custom<NoncentralChiSquared>::State x1;
         GammaPrep g2;
         double l, r;  // log(dfd / dfn), dfd / dfn
+        double dfn;
+        int lim;  // 0, 1 dfd = inf, 2 dfn = inf, 3 NaN
     };
     static State prep(double dfn, double dfd, double nc) {
-        return {Custom<NoncentralChiSquared>::prep(dfn, nc), gamma_prep(0.5 * dfd), log_ratio(dfd, dfn), dfd / dfn};
+        const int lim = dfd == kInf ? 1 : (dfn == kInf ? 2 : (dfn < kMinSampleDf && dfd < kMinSampleDf ? 3 : 0));
+        return {Custom<NoncentralChiSquared>::prep(lim == 2 ? 1.0 : dfn, nc), gamma_prep(lim == 1 ? 1.0 : 0.5 * dfd),
+                lim == 0 ? log_ratio(dfd, dfn) : 0.0, dfd / dfn, dfn, lim};
     }
     static double draw(Words& w, const State& s) {
+        if (s.lim == 3) return std::numeric_limits<double>::quiet_NaN();
+        if (s.lim == 1) return Custom<NoncentralChiSquared>::draw(w, s.x1) / s.dfn;
+        if (s.lim == 2) return s.g2.a / gamma_draw(w, s.g2);
         if (s.x1.df >= 1.0 && !s.g2.small) {  // no tiny values: the ratio directly
             const double x1 = Custom<NoncentralChiSquared>::draw(w, s.x1);
             return 0.5 * x1 / gamma_mt(w, s.g2.d, s.g2.c) * s.r;
@@ -777,9 +807,9 @@ struct Custom<NegativeBinomial> {
         bool one;   // p = 1
         double r;   // q / p
     };
-    static State prep(double n, double p) {
+    static State prep(double n, double p) {  // (n = 0 or p = 1: the point mass at 0)
         const double lr = std::log1p(-p) - std::log(p);
-        return {gamma_prep(n), lr, p == 1.0, std::exp(lr)};
+        return {gamma_prep(n == 0.0 ? 1.0 : n), lr, p == 1.0 || n == 0.0, std::exp(lr)};
     }
     static double draw(Words& w, const State& s) {
         if (s.one) return 0.0;

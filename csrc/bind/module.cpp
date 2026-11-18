@@ -23,6 +23,7 @@
 #include "array/ops/sort.hpp"
 #include "array/ops/ufunc.hpp"
 #include "parallel/pool.hpp"
+#include "base/buffer.hpp"
 
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/string.h>
@@ -117,6 +118,9 @@ NB_MODULE(_core, m) {
         });
     }, nb::arg().none());
     m.def("get_num_threads", &sd::parallel::num_threads);
+    // The limit of one allocation (base/buffer.hpp): sd.random checks a request against it before
+    // taking its part of the stream, so a refused call leaves the generator where it was.
+    m.def("_physical_memory", [] { return sd::physical_memory(); });
     sd::bind_linalg(m);  // after the array: it looks up the array objects bound above
     sd::bind_frame(m);
     sd::bind_special(m);  // after the array, like linalg

@@ -112,7 +112,7 @@ inline void ratio(const double* x, const double* s, double* yh, double* yl, int 
 
 // The relative error of log_dd below, in kUlp: 2^-59. Measured against special::dd::log
 // (2^-77) over 6e6 points (the whole range [2^-999, 2^999], the neighbourhood of 1 down to
-// |x - 1| = 2^-53, random low parts): at most 2^-68 (bench/stats/opt/a/logq.cpp).
+// |x - 1| = 2^-53, random low parts): at most 2^-68 (bench/stats/opt/a/log_dd.cpp).
 inline constexpr double kLq = 0x1p-6;
 
 // (oh, ol) = log(xh + xl) for a normalised double-double in [2^-999, 2^999]; hi = NaN outside

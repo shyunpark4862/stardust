@@ -20,7 +20,7 @@
 //     E = R_F(0, y, 1) - (m/3) R_D(0, y, 1),
 // is K - (K - E): near m = 1 both terms grow like log(1/y) while E -> 1, a
 // cancellation of ~20x at y = 1e-16. The form with two positive terms
-// (DLMF 19.25.1, checked with mpmath)
+// (DLMF 19.25.1; checked in Arb against elliptic_e for m from -100 to 1 - 1e-16)
 //     E = (y/3) (R_D(0, y, 1) + R_D(0, 1, y))
 // cancels nothing. For y < 2^-34 the expansion about m = 1,
 //     E = 1 + (y/4)(log(16/y) - 1) + (3y^2/32)(log(16/y) - 13/6),

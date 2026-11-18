@@ -360,11 +360,11 @@ struct Binomial {
     // floor((n + 1) p); two modes ((n + 1) p and one below) when (n + 1) p is an integer (T25).
     // The floor is of the exact product (its two parts): rounded to float64 a product within
     // an ULP below an integer is that integer (n = 9, p = 0.3: 2.9999999999999998 -> 3).
-    // NaN from n = disc::kMaxCount on (the limit of the cdfs, kept for the mode).
+    // NaN beyond n = disc::kMaxCount (the cdfs' limit: n = 2^52 itself still has them).
     static double mode(double n, double p) {
         double at;
         if (degenerate(n, p, at)) return at;
-        if (n >= disc::kMaxCount) return kNaN;
+        if (n > disc::kMaxCount) return kNaN;
         const num::DD m = num::dd::two_prod(n + 1.0, p);
         const double f = std::floor(m.hi);
         if (f != m.hi) return f;
@@ -501,7 +501,8 @@ struct Poisson {
         double logcdf(double k) const { return Poisson::logcdf(k, mu); }
         double logccdf(double k) const { return Poisson::logccdf(k, mu); }
     };
-    static Fns fns(double mu) { return {mu, 0.0, mu == 0.0 ? 0.0 : kInf, std::floor(mu)}; }
+    // (the family's support, [0, inf), also for the point mass mu = 0: docs/api/stats.md §2)
+    static Fns fns(double mu) { return {mu, 0.0, kInf, std::floor(mu)}; }
     static auto searcher(disc::Inv which, double t, disc::InvMemo* m, double mu) {
         auto f = disc::Memoized(fns(mu), m);
         const double sd = std::sqrt(mu);
@@ -570,7 +571,7 @@ struct Poisson {
             [&](double k, double dir) { return dir > 0.0 ? num::DD{mu, 0.0} / (k + 1.0) : num::DD{k, 0.0} / mu; });
     }
     static double support_lo(double) { return 0.0; }
-    static double support_hi(double mu) { return mu == 0.0 ? 0.0 : kInf; }
+    static double support_hi(double) { return kInf; }  // (the family's: mu = 0 too)
 };
 
 struct Geometric {
@@ -645,7 +646,7 @@ struct Geometric {
         double logcdf(double k) const { return Geometric::logcdf(k, p); }
         double logccdf(double k) const { return Geometric::logccdf(k, p); }
     };
-    static Fns fns(double p) { return {p, 1.0, p == 1.0 ? 1.0 : kInf, std::floor(1.0 / p)}; }
+    static Fns fns(double p) { return {p, 1.0, kInf, std::floor(1.0 / p)}; }  // (p = 1 too: the family's support)
     // The search starts at the closed form ceil(log P(X > k) / log q) (q^k <= the upper tail).
     static Fns at(double p, double log_upper) { return disc::with_guess(fns(p), std::ceil(log_upper / std::log1p(-p))); }
     static double icdf(double t, double p) { return disc::icdf(t, at(p, std::log1p(-t))); }
@@ -787,7 +788,7 @@ struct Geometric {
         return h.hi + h.lo;
     }
     static double support_lo(double) { return 1.0; }
-    static double support_hi(double p) { return p == 1.0 ? 1.0 : kInf; }
+    static double support_hi(double) { return kInf; }  // (the family's: p = 1 too)
 };
 
 namespace nbinom_detail {
@@ -807,6 +808,14 @@ struct NegativeBinomial {
     static constexpr std::array<const char*, 2> params{"n", "p"};
 
     static bool valid(double n, double p) { return n > 0.0 && std::isfinite(n) && p > 0.0 && p <= 1.0; }
+    // n = 0 (no successes to wait for: no failures) is the point mass at 0, as Binomial's n = 0
+    // and Poisson's mu = 0 (user decision 2026-11-19), and as special.nbdtr(k, 0, p) = 1: every
+    // method is that of the point mass p = 1 (the family's support [0, inf) included).
+    static bool at_limit(double n, double p) { return n == 0.0 && p > 0.0 && p <= 1.0; }
+    template <class M>
+    static double limit_in(double x, double, double) { return method_of<NegativeBinomial, M>(x, 1.0, 1.0); }
+    template <class M>
+    static double limit_par(double, double) { return method_of<NegativeBinomial, M>(1.0, 1.0); }
 
     // The smallest n with a pmf. The prefix's exponent holds log n to an ULP, so the pmf's
     // relative error grows like 5e-17 |log n| (1.1e-14 at n = 1e-100, measured against Arb),
@@ -873,7 +882,7 @@ struct NegativeBinomial {
         double logcdf(double k) const { return NegativeBinomial::logcdf(k, n, p); }
         double logccdf(double k) const { return NegativeBinomial::logccdf(k, n, p); }
     };
-    static Fns fns(double n, double p) { return {n, p, 0.0, p == 1.0 ? 0.0 : kInf, std::floor(n * (1.0 - p) / p)}; }
+    static Fns fns(double n, double p) { return {n, p, 0.0, kInf, std::floor(n * (1.0 - p) / p)}; }  // (p = 1 too)
     static auto searcher(disc::Inv which, double t, disc::InvMemo* m, double n, double p) {
         auto f = disc::Memoized(fns(n, p), m);
         const double sd = std::sqrt(variance(n, p));
@@ -963,7 +972,7 @@ struct NegativeBinomial {
             });
     }
     static double support_lo(double, double) { return 0.0; }
-    static double support_hi(double, double p) { return p == 1.0 ? 0.0 : kInf; }
+    static double support_hi(double, double) { return kInf; }  // (the family's: p = 1 too)
 };
 
 }  // namespace sd::stats

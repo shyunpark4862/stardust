@@ -13,6 +13,7 @@ rng.permutation(x, /)
 rng.spawn(n, /)
 rng.state
 ```
+- 물리 메모리보다 큰 결과를 요청하면 스트림을 움직이기 전에 `MemoryError`다: `permutation(): cannot allocate 8796093022208 bytes: more than this machine's physical memory`(API.md §2). 생성기의 `position`은 그대로다.
 - 전역 함수와 전역 상태가 없다. 난수는 언제나 Generator에서 받는다. 분포의 표본은 `sd.stats`의 각 분포에 있다(`X.sample(shape, rng=rng)`).
 - 생성기는 **Philox4×64-10**이다(R5). 같은 시드와 같은 호출 순서면 같은 값이고, **스레드 수와 상관없다**. 한 호출을 둘로 나누어 불러도 앞의 원소들은 같다. numpy의 `default_rng`와 값은 다르다.
 - **`shape`**: `None`이면 스칼라(Python `float`/`int`), 또는 int, int의 tuple이다. `integers`에서 `low`·`high`가 배열이면 `None`은 그 둘을 브로드캐스트한 모양이다(numpy의 `size=None`과 같다). 0인 축도 된다.

@@ -15,6 +15,7 @@
 #include "linalg/outblock.hpp"
 #include "linalg/pyrefs.hpp"
 #include "linalg/ops/common.hpp"
+#include "linalg/ops/svals.hpp"
 
 #include <nanobind/stl/string.h>
 
@@ -86,6 +87,9 @@ nb::object qr_impl(nb::handle xo, nb::handle mode_o, bool pivoted) {
 nb::object qr(nb::handle xo, nb::handle mode_o) { return qr_impl(xo, mode_o, false); }
 nb::object qr_pivoted(nb::handle xo, nb::handle mode_o) { return qr_impl(xo, mode_o, true); }
 
+// rtol below this goes through the SVD (see the loop below).
+constexpr double kEps = 0x1p-52;
+
 nb::object lstsq(nb::handle ao, nb::handle bo, nb::handle rtol_o) {
     Input a(ao, "lstsq", "a");
     Input y(bo, "lstsq", "b");
@@ -115,15 +119,40 @@ nb::object lstsq(nb::handle ao, nb::handle bo, nb::handle rtol_o) {
             if (!pack(y.dtype(), y.data() + off[1], m, r.k, r.rs, r.cs, B, ldb, true)) return kNonFiniteB;
             T* xi = X + i * n * r.k;
             lint rank = 0;
-            if (m > 0 && n > 0) {
+            if (m > 0 && n > 0 && rcond < kEps) {
+                // rtol below eps: gelsd's xLALSD moves the bidiagonal's entries below eps (of the
+                // largest) to +-eps before its divide and conquer (min(m, n) > 25), so a zero
+                // singular value counted as one (rtol = 0: a 30 x 30 with a zero column had rank
+                // 30, matrix_rank 29). Here the singular values are matrix_rank's own (gesvd,
+                // values only: the same rank to the bit), and the solution is
+                // V S_r^-1 U^H b from gesdd, inverting the `rank` largest (user decision
+                // 2026-11-19; docs/design/linalg.md §10.4).
+                LapackSlot<double> sv(S + i * mn, mn, s, Scratch::kAlign0);
+                double* svp = sv.get();
+                if (const int code = singular_values<T>(a, off[0], m, n, s, svp)) return code;
+                const double tol = rcond * svp[0];
+                for (lint j = 0; j < mn; ++j) rank += svp[j] > tol;
+                // U (m x mn), Vh (mn x n) and gesdd's own singular values in slot 2; U^H b in slot 3
+                T* u = s.get<T>(static_cast<std::size_t>(m * mn + mn * n + mn), 2);
+                T* vh = u + m * mn;
+                double* sd = reinterpret_cast<double*>(vh + mn * n);
+                if (lapack::gesdd('S', m, n, A, lda, sd, u, m, vh, mn, s) > 0) return kNoConvergence;
+                if (r.k > 0) {
+                    T* w = s.get<T>(static_cast<std::size_t>(mn * r.k), 3);
+                    constexpr char h = std::is_same_v<T, cplx> ? 'C' : 'T';
+                    lapack::gemm<T>(h, 'N', mn, r.k, m, u, m, B, ldb, w, mn);
+                    for (lint j = 0; j < r.k; ++j)
+                        for (lint q = 0; q < mn; ++q) w[j * mn + q] = q < rank ? w[j * mn + q] / sd[q] : T(0);
+                    lapack::gemm<T>(h, 'N', n, r.k, mn, vh, mn, w, mn, xi, n);
+                }
+            } else if (m > 0 && n > 0) {
                 // xLALSD silently replaces rcond >= 1 by machine epsilon. By our
                 // definition (docs/api/linalg.md §4: singular values <= rtol * max are zero)
                 // rtol >= 1 zeroes all of them: rank 0 and solution 0 (docs/design/linalg.md §10.4).
-                // It does the same to rcond <= 0, so rtol = 0 (only exact zeros are zero, as in
-                // matrix_rank) goes in as the smallest positive double: xLALSD compares the
-                // values scaled to a largest of 1 with it, which only a zero fails.
+                // (rcond >= eps here: the values it moves to eps, below eps before, stay at or
+                // below rcond, zero as they were.)
                 const bool all_zero = rcond >= 1.0;
-                const double rc = all_zero ? 0.5 : rcond == 0.0 ? std::numeric_limits<double>::denorm_min() : rcond;
+                const double rc = all_zero ? 0.5 : rcond;
                 LapackSlot<double> sv(S + i * mn, mn, s, Scratch::kAlign0);
                 if (lapack::gelsd(m, n, nrhs, A, lda, B, ldb, sv.get(), rc, rank, s) > 0)
                     return kNoConvergence;

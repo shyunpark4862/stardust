@@ -74,6 +74,9 @@ inline DD log_ndtr_dd(double z) {
 inline DD quantile_small(double q, DD lq, bool flip) {
     const double z = q >= 0x1p-1000 ? ndtri(q) : special::NdtriExp::f(lq.hi);  // <= 0
     if (std::isinf(z)) return {flip ? -z : z, 0.0};
+    // |z| beyond 2^500 (log q below -2^1000): the asymptote's fixed point is the answer (its
+    // next term is 15 / z^6 below the last bit), and z^2 / 2 in the step would overflow
+    if (lq.hi < -0x1p1000) return {flip ? -z : z, 0.0};
     DD lz;
     if (z <= -1.0) lz = log_ndtr_dd(z);
     else lz = {log_ndtr(z), 0.0};

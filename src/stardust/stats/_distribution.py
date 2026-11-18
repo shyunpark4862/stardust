@@ -24,7 +24,17 @@ _MAX_DOUBLE_INT = int(1.7976931348623157e308)  # ints above it round to inf or r
 _RENAMED = (TypeError, ValueError, OverflowError)
 
 
-def _renamed(e, method, arg):
+_INT64_MIN, _INT64_MAX = -(2**63), 2**63 - 1
+
+
+def _int_input(x, method):
+    """A Python int input beyond int64: OverflowError as in sd.special (the array area's rule
+    for an int operand, docs/api/array.md §1.5), whatever the parameters' types."""
+    if not _INT64_MIN <= x <= _INT64_MAX:
+        raise OverflowError(f"{method}(): Python int too large to convert to int64")
+
+
+def _renamed(e, method, arg, value=None):
     """The kernel's error (prefixed with its own name, e.g. normal_cdf()) as the method's:
     "cdf(): ...". A complex input, refused by the kernels' type table, is said as such."""
     msg = str(e)
@@ -33,23 +43,24 @@ def _renamed(e, method, arg):
         msg = rest
     if arg is not None and isinstance(e, TypeError):
         if msg.startswith("not supported for") and "complex128" in msg:
-            msg = f"'{arg}' must be real, not a complex128 array"
+            msg = f"'{arg}' must be real, not {'complex' if isinstance(value, complex) else 'a complex128 array'}"
         else:  # the kernels' table takes complex too; the methods do not
             msg = msg.replace("must be an sd.ndarray or a bool, int, float or complex,", "must be an sd.ndarray or a real number,")
     return type(e)(f"{method}(): {msg}")
 
 
-def _check_param(name, value):
-    """A parameter is a real Python number or a non-complex sd.ndarray (T19)."""
+def _check_param(cls, name, value):
+    """A parameter is a real Python number or a non-complex sd.ndarray (T19); errors name the
+    constructor, "Normal(): ..." (API.md §2.1)."""
     if isinstance(value, _sd_core.ndarray):
         if value.dtype == _sd_core.complex128:
-            raise TypeError(f"'{name}' must be real, not a complex128 array")
+            raise TypeError(f"{cls}(): '{name}' must be real, not a complex128 array")
         return
     if isinstance(value, (bool, int, float)):
         if isinstance(value, int) and abs(value) > _MAX_DOUBLE_INT:  # float(value) would overflow
-            raise OverflowError(f"'{name}' is out of range")
+            raise OverflowError(f"{cls}(): '{name}' is out of range")
         return
-    raise TypeError(f"'{name}' must be a real number or an sd.ndarray, not {type(value).__name__}")
+    raise TypeError(f"{cls}(): '{name}' must be a real number or an sd.ndarray, not {type(value).__name__}")
 
 
 def _parameter(i, name):
@@ -80,14 +91,23 @@ class _Distribution:
         for i, p in enumerate(cls._params):  # read-only attributes (T19)
             setattr(cls, p, _parameter(i, p))
 
+    def __init__(self, *args, **kwargs):
+        # (every distribution defines its own __init__: only the bases arrive here)
+        raise TypeError(f"{type(self).__name__}(): a base class for isinstance checks, not a distribution "
+                        "(make one of its subclasses, e.g. sd.stats.Normal)")
+
     def _set(self, *values):
+        cls = type(self).__name__
         arrays = []
         for name, v in zip(self._params, values):
-            _check_param(name, v)
+            _check_param(cls, name, v)
             if isinstance(v, _sd_core.ndarray):
                 arrays.append(v)
         if len(arrays) > 1:
-            _sd_core.broadcast_arrays(*arrays)  # parameters that cannot broadcast fail here (views only)
+            try:  # parameters that cannot broadcast fail here (views only)
+                _sd_core.broadcast_arrays(*arrays)
+            except ValueError as e:
+                raise ValueError(f"{cls}(): {str(e).partition('(): ')[2] or e}") from None
         self._p = values
         self._scalar = None if arrays else tuple(float(v) for v in values)  # for one-sample calls
 
@@ -99,59 +119,75 @@ class _Distribution:
 
     def cdf(self, x, /, *, out=None):
         """P(X <= x)."""
+        if type(x) is int:
+            _int_input(x, "cdf")
         try:
             return self._ops["cdf"](*self._p, x, out=out)
         except _RENAMED as e:
-            raise _renamed(e, 'cdf', 'x') from None
+            raise _renamed(e, 'cdf', 'x', x) from None
 
     def logcdf(self, x, /, *, out=None):
         """log P(X <= x), without underflow."""
+        if type(x) is int:
+            _int_input(x, "logcdf")
         try:
             return self._ops["logcdf"](*self._p, x, out=out)
         except _RENAMED as e:
-            raise _renamed(e, 'logcdf', 'x') from None
+            raise _renamed(e, 'logcdf', 'x', x) from None
 
     def ccdf(self, x, /, *, out=None):
         """P(X > x), computed directly (accurate in the upper tail, not 1 - cdf)."""
+        if type(x) is int:
+            _int_input(x, "ccdf")
         try:
             return self._ops["ccdf"](*self._p, x, out=out)
         except _RENAMED as e:
-            raise _renamed(e, 'ccdf', 'x') from None
+            raise _renamed(e, 'ccdf', 'x', x) from None
 
     def logccdf(self, x, /, *, out=None):
         """log P(X > x), without underflow."""
+        if type(x) is int:
+            _int_input(x, "logccdf")
         try:
             return self._ops["logccdf"](*self._p, x, out=out)
         except _RENAMED as e:
-            raise _renamed(e, 'logccdf', 'x') from None
+            raise _renamed(e, 'logccdf', 'x', x) from None
 
     def icdf(self, p, /, *, out=None):
         """The x with cdf(x) = p (the inverse of cdf)."""
+        if type(p) is int:
+            _int_input(p, "icdf")
         try:
             return self._ops["icdf"](*self._p, p, out=out)
         except _RENAMED as e:
-            raise _renamed(e, 'icdf', 'p') from None
+            raise _renamed(e, 'icdf', 'p', p) from None
 
     def iccdf(self, p, /, *, out=None):
         """The x with ccdf(x) = p (the inverse of ccdf)."""
+        if type(p) is int:
+            _int_input(p, "iccdf")
         try:
             return self._ops["iccdf"](*self._p, p, out=out)
         except _RENAMED as e:
-            raise _renamed(e, 'iccdf', 'p') from None
+            raise _renamed(e, 'iccdf', 'p', p) from None
 
     def ilogcdf(self, logp, /, *, out=None):
         """The x with logcdf(x) = logp."""
+        if type(logp) is int:
+            _int_input(logp, "ilogcdf")
         try:
             return self._ops["ilogcdf"](*self._p, logp, out=out)
         except _RENAMED as e:
-            raise _renamed(e, 'ilogcdf', 'logp') from None
+            raise _renamed(e, 'ilogcdf', 'logp', logp) from None
 
     def ilogccdf(self, logp, /, *, out=None):
         """The x with logccdf(x) = logp."""
+        if type(logp) is int:
+            _int_input(logp, "ilogccdf")
         try:
             return self._ops["ilogccdf"](*self._p, logp, out=out)
         except _RENAMED as e:
-            raise _renamed(e, 'ilogccdf', 'logp') from None
+            raise _renamed(e, 'ilogccdf', 'logp', logp) from None
 
     # ---- parameter-only methods: the parameters' broadcast shape (a float for scalars)
 
@@ -206,7 +242,8 @@ class _Distribution:
             raise _renamed(e, 'mode', None) from None
 
     def entropy(self):
-        """The differential entropy, in nats."""
+        """The entropy, in nats: differential for a continuous distribution, Shannon's for a
+        discrete one."""
         try:
             return self._ops["entropy"](*self._p)
         except _RENAMED as e:
@@ -221,17 +258,18 @@ class _Distribution:
 
     # ---- samples (T7)
 
-    def sample(self, shape=(), /, *, rng):
-        """Random samples, an array of shape `shape` + the parameters' broadcast shape (a float
-        when both are empty). `rng` is an sd.random.Generator (sd.random.default_rng(seed)); the
-        values depend on its state only, not on the thread count (docs/api/stats.md §2.5)."""
+    def sample(self, shape=None, /, *, rng):
+        """Random samples: one per parameter set for shape=None (a float for scalar parameters),
+        else an array of shape `shape` + the parameters' broadcast shape. `rng` is an
+        sd.random.Generator (sd.random.default_rng(seed)); the values depend on its state only,
+        not on the thread count (docs/api/stats.md §2.5)."""
         if not isinstance(rng, _random.Generator):
             raise TypeError(f"sample(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), "
                             f"not {type(rng).__name__}")
-        if shape == () and self._scalar is not None:  # one float: no arrays on the way
+        if shape is None and self._scalar is not None:  # one float: no arrays on the way
             key, pos = rng._reserve(1)
             return self._ops["sample1"](key[0], key[1], pos, *self._scalar)
-        shp = _random._shape(shape, "sample")
+        shp = _random._sample_shape(shape)
         arrays = [v for v in self._p if isinstance(v, _sd_core.ndarray)]
         pshape = tuple(_sd_core.broadcast_arrays(*arrays)[0].shape) if arrays else ()
         out_shape = shp + pshape
@@ -242,9 +280,12 @@ class _Distribution:
                 if v.dtype != _sd_core.float64:
                     v = v.astype(_sd_core.float64)
                 ps.append(_sd_core.broadcast_to(v, pshape))
+            elif pshape:  # a scalar beside array parameters: the same broadcast shape (the kernel
+                # takes the parameter sets' count from the first parameter)
+                ps.append(_sd_core.broadcast_to(_sd_core.asarray([float(v)]), pshape))
             else:
                 ps.append(_sd_core.asarray([float(v)]))
-        key, pos = rng._reserve(n)
+        key, pos = rng._take(n, "sample")
         out = self._ops["sample"](key[0], key[1], pos, out_shape if out_shape else (1,), *ps)
         return float(out[0]) if not out_shape else out
 
@@ -257,17 +298,21 @@ class ContinuousDistribution(_Distribution):
 
     def pdf(self, x, /, *, out=None):
         """The probability density at x."""
+        if type(x) is int:
+            _int_input(x, "pdf")
         try:
             return self._ops["pdf"](*self._p, x, out=out)
         except _RENAMED as e:
-            raise _renamed(e, 'pdf', 'x') from None
+            raise _renamed(e, 'pdf', 'x', x) from None
 
     def logpdf(self, x, /, *, out=None):
         """log pdf(x), without underflow."""
+        if type(x) is int:
+            _int_input(x, "logpdf")
         try:
             return self._ops["logpdf"](*self._p, x, out=out)
         except _RENAMED as e:
-            raise _renamed(e, 'logpdf', 'x') from None
+            raise _renamed(e, 'logpdf', 'x', x) from None
 
 
 class DiscreteDistribution(_Distribution):
@@ -280,14 +325,27 @@ class DiscreteDistribution(_Distribution):
 
     def pmf(self, k, /, *, out=None):
         """P(X = k): 0 where k is not an integer of the support."""
+        if type(k) is int:
+            _int_input(k, "pmf")
         try:
             return self._ops["pmf"](*self._p, k, out=out)
         except _RENAMED as e:
-            raise _renamed(e, 'pmf', 'k') from None
+            raise _renamed(e, 'pmf', 'k', k) from None
 
     def logpmf(self, k, /, *, out=None):
         """log pmf(k), without underflow."""
+        if type(k) is int:
+            _int_input(k, "logpmf")
         try:
             return self._ops["logpmf"](*self._p, k, out=out)
         except _RENAMED as e:
-            raise _renamed(e, 'logpmf', 'k') from None
+            raise _renamed(e, 'logpmf', 'k', k) from None
+
+
+# Python's own call errors (a missing rng=, an unknown keyword such as mean(out=...)) name a
+# function by its __qualname__: the method's name alone, as every message of a method (API.md
+# §2.1), not the private base class that defines it.
+for _cls in (_Distribution, ContinuousDistribution, DiscreteDistribution):
+    for _name, _f in list(vars(_cls).items()):
+        if callable(_f) and not _name.startswith("__"):
+            _f.__qualname__ = _name

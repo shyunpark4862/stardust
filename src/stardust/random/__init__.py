@@ -172,10 +172,22 @@ def _shape(shape, name):
 
 def _result_shape(shape, name):
     """_shape for the Generator's own methods, whose result has exactly this shape: () is
-    refused (sd.stats' sample() takes it: there it is added to the batch shape)."""
+    refused (no 0-d arrays; sd.stats' sample() refuses it the same way, _sample_shape)."""
     shp = _shape(shape, name)
     if shp == ():
         raise ValueError(f"{name}(): 'shape' must not be () (stardust has no 0-d arrays; None gives a scalar)")
+    return shp
+
+
+def _sample_shape(shape):
+    """sd.stats' sample(shape=None): None is one sample per parameter set (the parameters'
+    shape, a float when they are scalars); an int or a tuple is added before that shape. () is
+    refused as for the Generator's methods: no 0-d arrays."""
+    shp = _shape(shape, "sample")
+    if shp is None:
+        return ()
+    if shp == ():
+        raise ValueError("sample(): 'shape' must not be () (stardust has no 0-d arrays; None gives one sample)")
     return shp
 
 
@@ -191,6 +203,13 @@ def _count(v, name, arg):
     if n >= 2**63:
         raise OverflowError(f"{name}(): '{arg}' is out of range")
     return n
+
+
+def _check_alloc(nbytes, name):
+    """MemoryError, with the caller's name, for a result larger than physical memory (the
+    check every allocation makes, base/buffer.cpp; made here before the stream moves)."""
+    if nbytes > _sd_core._physical_memory():
+        raise MemoryError(f"{name}(): cannot allocate {nbytes} bytes: more than this machine's physical memory")
 
 
 def _size(shape):
@@ -254,6 +273,13 @@ class Generator:
             key, p = self._key, self._pos
             self._pos = (p + n) & _MASK64
         return key, p
+
+    def _take(self, n, name, nbytes=None):
+        """_reserve(n) for a call `name` whose result takes nbytes (8 per element unless
+        given): a request beyond the machine's physical memory is a MemoryError before the
+        stream moves, so a refused call leaves the generator where it was (API.md §2)."""
+        _check_alloc(8 * n if nbytes is None else nbytes, name)
+        return self._reserve(n)
 
     def __repr__(self):
         return "Generator(Philox4x64-10)"
@@ -323,7 +349,7 @@ class Generator:
         """Uniform float64 on [0, 1): a float, or an array of `shape`."""
         shp = _result_shape(shape, "random")
         n = 1 if shp is None else _size(shp)
-        key, pos = self._reserve(n)
+        key, pos = self._take(n, "random")
         out = _k.uniform(key[0], key[1], pos, (1,) if shp is None else shp)
         return float(out[0]) if shp is None else out
 
@@ -367,7 +393,7 @@ class Generator:
                     raise ValueError(f"integers(): 'high' must be {'non-negative' if endpoint else 'positive'}")
                 rel = "less than or equal to" if endpoint else "less than"
                 raise ValueError(f"integers(): 'low' must be {rel} 'high'")
-        key, pos = self._reserve(_size(shp))
+        key, pos = self._take(_size(shp), "integers")
         out = _k.integers(key[0], key[1], pos, lo_a, hi_a, endpoint)
         return int(out[0]) if scalar_result else out
 
@@ -395,6 +421,7 @@ class Generator:
                 raise OverflowError("choice(): 'a' is out of range")
             pool = None
         k = 1 if shp is None else _size(shp)
+        _check_alloc(8 * k, "choice")  # (before integers() or random() below take their part)
         if p is not None:
             if not isinstance(p, sd.ndarray):
                 raise TypeError(f"choice(): 'p' must be an array, not {_type_name(p)}")
@@ -427,7 +454,7 @@ class Generator:
             else:
                 if k > int(sd.count_nonzero(p)):
                     raise ValueError("choice(): fewer non-zero probabilities in 'p' than the sample size")
-                key, pos = self._reserve(n)
+                key, pos = self._take(n, "choice")
                 keys = _k.race_keys(key[0], key[1], pos, p)
                 idx = sd.argsort(keys)[:k]
         res = idx if pool is None else sd.take(pool, idx)
@@ -453,7 +480,7 @@ class Generator:
                 raise ValueError("permutation(): 'x' must be non-negative")
             if n >= 2**63:
                 raise OverflowError("permutation(): 'x' is out of range")
-        key, pos = self._reserve(n)
+        key, pos = self._take(n, "permutation")
         # Fisher-Yates (sequential, each step's draw from its own element of the stream:
         # the same on any thread count). Measured against sorting random keys (parallel):
         # 3.0 ms for 10^6 against 8.6 on one thread and 3.8 on ten.

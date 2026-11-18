@@ -141,6 +141,35 @@ def test_array_parameters_match_scalar_ones(name):
     assert np.array_equal(got.reshape(-1).view(np.uint64), scalar.view(np.uint64))
 
 
+@pytest.mark.parametrize("name", [n for n, kw in CONTINUOUS + DISCRETE if len(kw) >= 2])
+@pytest.mark.parametrize("which", ["first", "last"])
+def test_scalar_beside_array_parameters(name, which):
+    # one parameter an array, the others Python scalars: the same bits as all of them arrays
+    # (a scalar first parameter used to make the kernel see one parameter set)
+    kw = next(kw for n, kw in CONTINUOUS + DISCRETE if n == name)
+    keys = list(kw)
+    arr_key = keys[-1] if which == "first" else keys[0]
+    v0 = kw[arr_key]  # three different values, so that reading only the first one shows
+    vals = [v0, v0 + 1, v0 + 2] if float(v0).is_integer() else [v0, v0 * 0.999, v0 * 0.998]
+    mixed = {k: (sd.asarray(vals) if k == arr_key else v) for k, v in kw.items()}
+    full = {k: sd.asarray(vals if k == arr_key else [v, v, v]) for k, v in kw.items()}
+    a = np.asarray(getattr(S, name)(**mixed).sample(4, rng=sd.random.default_rng(9)))
+    b = np.asarray(getattr(S, name)(**full).sample(4, rng=sd.random.default_rng(9)))
+    assert a.shape == b.shape == (4, 3)
+    assert np.array_equal(a.view(np.uint64), b.view(np.uint64))
+
+
+def test_scalar_beside_array_parameters_values():
+    # the reported cases: each column follows its own parameters
+    rng = sd.random.default_rng(3)
+    x = np.asarray(S.Normal(mu=0.0, sigma=sd.asarray([1e-9, 1000.0])).sample(4000, rng=rng))
+    assert np.std(x[:, 0]) < 1e-8 and 900 < np.std(x[:, 1]) < 1100
+    b = np.asarray(S.Binomial(n=10, p=sd.asarray([0.01, 0.99])).sample(4000, rng=rng))
+    assert b[:, 0].mean() < 0.5 and b[:, 1].mean() > 9.5
+    v = np.asarray(S.Normal(sigma=sd.asarray([1.0, -1.0])).sample(3, rng=rng))
+    assert np.all(np.isfinite(v[:, 0])) and np.all(np.isnan(v[:, 1]))
+
+
 @pytest.mark.parametrize("name", ALL_NAMES)
 def test_one_float_is_the_first_element(name):
     D = _one(name)

@@ -56,8 +56,10 @@ inline constexpr double kTiny = 0x1p-1000;
 
 // The loops below are bounded (docs/design/stats.md 1.3): a recurrence over the order takes
 // at most kMaxOrderSteps steps and a continued fraction at most kMaxCfTerms terms (about
-// 0.1 s each); a call that would need more is NaN. J and Y have no uniform expansion here,
-// so that is |nu| past 1e7 with x not far below nu (far below, J = 0 and Y = -inf at once).
+// 0.25 s each: jv(2e7, 1e7), 1e7 steps, takes 0.23 s); a call that would need more is NaN.
+// J and Y have no uniform expansion here, so that is x > |nu| > 1e7 below the Hankel
+// expansion's reach (x ~ nu^2 / 4), and |nu| - x > 1e7 where J is not known to underflow
+// (order_saturates: there J = 0 and Y = -inf at once).
 inline constexpr double kMaxOrderSteps = 1e7;
 inline constexpr int kMaxCfTerms = 10000000;
 inline constexpr int kMaxCf2Terms = 100000;
@@ -575,12 +577,15 @@ inline double log_small_order_term(double nu, double x) {
     return nu * lx - lgamma_pos(nu + 1.0);
 }
 
-// True when nu is so far beyond x that J and I underflow to 0 and Y, K overflow
-// (avoids an O(nu) loop for an answer of 0 or inf).
-inline bool order_saturates(double nu, double x) {
-    // I K ~ 1/(2 nu) and J Y ~ -1/(pi nu) for nu >> x: past -760 - log(2 nu) the
-    // large partner overflows as well
-    return nu > 50.0 && x < 0.5 * nu && log_small_order_term(nu, x) + x < -760.0 - kLn2Hi - std::log(nu);
+// True when nu is so far beyond x that J (modified: I) underflows to 0 and Y (K) overflows
+// (avoids an O(nu) loop for an answer of 0 or inf). The bounds on the small solution:
+// |J_nu(x)| <= (x/2)^nu / Gamma(nu + 1) for real x (DLMF 10.14.4), and I_nu(x) <= that times
+// e^x. For x < nu / 2, I K ~ 1/(2 nu) and |J Y| ~ 1/(pi nu tanh a) with tanh a > 0.86 (Debye,
+// sech a = x / nu): past -760 - log(2 nu) the large partner overflows as well. (J without the
+// e^x: jv(3e7, 1.49e7), e^-1.4e7, was a 1.5e7-step recurrence and NaN.)
+inline bool order_saturates(double nu, double x, bool modified) {
+    return nu > 50.0 && x < 0.5 * nu &&
+           log_small_order_term(nu, x) + (modified ? x : 0.0) < -760.0 - kLn2Hi - std::log(nu);
 }
 
 // ---- an argument below 2^-200 ---------------------------------------------------
@@ -661,7 +666,7 @@ inline double jv_or_yv(double v, double x, bool want_y) {
         if (cv == 0.0) return 0.0;
         return cv > 0.0 ? -kInf : kInf;
     }
-    if (order_saturates(a, x)) {
+    if (order_saturates(a, x, false)) {
         // J_a = 0, Y_a = -inf; reflected: J_-a = -sin(a pi) Y_a, Y_-a = cos(a pi) Y_a
         if (v >= 0.0) return want_y ? -kInf : 0.0;
         const double cv = cospi(a), sv = sinpi(a);
@@ -787,7 +792,7 @@ inline double iv_or_kv(double v, double x, bool want_k, bool scaled_out) {
         // I_-a(0) = I_a(0) + (2/pi) sin(a pi) K_a(0) = sign(sin(a pi)) inf
         return sinpi(a) > 0.0 ? kInf : -kInf;
     }
-    if (order_saturates(a, x) && (v >= 0.0 || want_k || is_int(a))) return want_k ? kInf : 0.0;
+    if (order_saturates(a, x, true) && (v >= 0.0 || want_k || is_int(a))) return want_k ? kInf : 0.0;
     if (x < kTinyArg) {  // (e^+-x = 1: the scaled forms are the same)
         const TinyPair t = tiny_argument(a, x, true);
         if (want_k) return t.big;

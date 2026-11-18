@@ -171,7 +171,7 @@ Mean mean_of(const std::vector<double>& v) {
 // Two passes over fixed blocks of kBlock elements (lane, block) on the pool, combined in
 // order: the blocks do not depend on the thread count, so neither do the bits, and a single
 // long lane (axis=None) runs in parallel too. Pass 1: count, the compensated sum, min, max,
-// NaN; hi = sum / n. Pass 2: S_k = mean(d^k) of d = x - hi, k = 1..kmax, each by four
+// NaN; hi = sum / n. Pass 2: S_k = mean(d^k) of d = x - hi, k = 1..kmax, each by eight
 // interleaved compensated sums (one chain is latency-bound). The mean's low part is lo = S_1,
 // and the central moments of x - (hi + lo) follow without a third pass:
 //     m2 = S2 - lo^2,  m3 = S3 - 3 lo S2 + 2 lo^3,  m4 = S4 - 4 lo S3 + 6 lo^2 S2 - 3 lo^4.
@@ -662,14 +662,22 @@ double diffent_lane(std::vector<double>& v, std::int64_t mw, int method) {
     const double nd = static_cast<double>(n), md = static_cast<double>(m);
     Neumaier s;
     // A zero spacing (tied values, a constant lane) is a term log 0 = -inf, and so is the
-    // estimate, as in scipy. The compensated sum would turn -inf into NaN (inf - inf in its
-    // correction), so such a term is counted aside.
-    bool zero = false;
+    // estimate, as in scipy; an infinite spacing (an infinite value) is a term +inf, and the
+    // estimate inf, again as in scipy (both: NaN). The compensated sum would turn an infinite
+    // term into NaN (inf - inf in its correction), so such terms are counted aside.
+    bool zero = false, infinite = false;
     auto add_log = [&](double t) {
         if (t == 0.0) zero = true;
+        else if (t == kInf) infinite = true;
         else s.add(std::log(t));
     };
-    auto result = [&](double value) { return zero ? (std::isnan(value) || value == kInf ? kNaN : -kInf) : value; };
+    auto result = [&](double value) {
+        if (std::isnan(value)) return kNaN;
+        if (zero && infinite) return kNaN;
+        if (zero) return value == kInf ? kNaN : -kInf;
+        if (infinite) return value == -kInf ? kNaN : kInf;
+        return value;
+    };
     switch (method) {
         case 0:  // Vasicek: mean log(n / (2m) (X[i+m] - X[i-m]))
             for (std::int64_t i = 0; i < n; ++i) add_log(nd / (2.0 * md) * (X(i + m) - X(i - m)));

@@ -10,6 +10,10 @@
 
 namespace sd {
 
+// Bytes of physical memory (hw.memsize); the largest uint64 if it cannot be read. A request
+// above it is a MemoryError before anything is allocated (API.md §2).
+std::uint64_t physical_memory();
+
 class Buffer {
 public:
     // One cache line on Apple M4. Aligning the start of every allocation to a

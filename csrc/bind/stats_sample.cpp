@@ -58,6 +58,16 @@ constexpr std::int64_t sample_work() {
     else return 64;
 }
 
+// The parameters a sample is drawn for: the domain, and a limit at an infinite parameter
+// (stats/engine.hpp: the t at df = inf), which the distribution's sampler draws itself.
+template <class D, class... P>
+bool in_domain(P... p) {
+    if constexpr (stats::has_limit<D, P...>) {
+        if (D::at_limit(p...)) return true;
+    }
+    return D::valid(p...);
+}
+
 template <class D, class Seq = std::make_index_sequence<D::params.size()>>
 struct Sampler;
 
@@ -92,7 +102,7 @@ struct Sampler<D, std::index_sequence<I...>> {
             auto at = [&](std::int64_t i) { return pos + static_cast<std::uint64_t>(i); };
             if (scalar) {  // one parameter set: checked (and prepared) once
                 const std::array<double, sizeof...(I)> v{param(p, 0)...};
-                if (!D::valid(v[I]...)) {
+                if (!in_domain<D>(v[I]...)) {
                     for (std::int64_t i = i0; i < i1; ++i) o[i] = stats::kNaN;
                     return;
                 }
@@ -139,7 +149,7 @@ struct Sampler<D, std::index_sequence<I...>> {
             stats::smp::each_first(key, pos, i0, i1, [&](std::int64_t i, std::uint64_t first) {
                 const std::int64_t j = i % np;
                 const std::array<double, sizeof...(I)> v{param(p, j)...};
-                if (!D::valid(v[I]...)) {
+                if (!in_domain<D>(v[I]...)) {
                     o[i] = stats::kNaN;
                     return;
                 }
@@ -157,7 +167,7 @@ struct Sampler<D, std::index_sequence<I...>> {
     template <std::size_t>
     using Num = double;
     static double one(std::uint64_t k0, std::uint64_t k1, std::uint64_t pos, Num<I>... p) {
-        if (!D::valid(p...)) return stats::kNaN;
+        if (!in_domain<D>(p...)) return stats::kNaN;
         random::Stream s({k0, k1});
         stats::smp::Words w(s, pos);
         using C = stats::smp::Custom<D>;

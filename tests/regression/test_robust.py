@@ -415,7 +415,7 @@ def test_errors():
         (ValueError, "rlm(): 'X' must have 30 rows like 'y', not 29", lambda: R.rlm(y, X[:29])),
         (ValueError, "rlm(): the model has no parameters", lambda: R.rlm(y, np.zeros((30, 0)), intercept=False)),
         (TypeError, "rlm(): 'X' must be real, not a complex128 array", lambda: R.rlm(y, sd.asarray(X) * 1j)),
-        (ValueError, "rlm(): 'nan_policy' must be one of", lambda: R.rlm(y, X, nan_policy="drop")),
+        (ValueError, "rlm(): 'nan_policy' must be 'propagate', 'omit' or 'raise', not 'drop'", lambda: R.rlm(y, X, nan_policy="drop")),
     ]
     for exc, msg, f in cases:
         with pytest.raises(exc) as e:

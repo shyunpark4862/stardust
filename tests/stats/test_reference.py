@@ -14,9 +14,8 @@ from . import refdata
 # (docs/api/stats.md §2.2). Points outside the parameter ranges that still measure within
 # 1e-14 are held to 1e-14; the files listed here measured more.
 LOOSE: dict[str, float] = {
-    # t, df >= 1e5 with p below the normal range (the deep inverse;
-    # user decision 2026-11-15): 1.4e-14 measured
-    "studentt_icdf": 2e-14, "studentt_iccdf": 2e-14,
+    # (empty since 2026-11-19: the t's deep inverse near x = 1, 1.4e-14 before, solves in
+    # log(1 - x) and measures 3.2e-16)
 }
 
 

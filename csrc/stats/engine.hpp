@@ -185,6 +185,24 @@ inline constexpr bool kNonNegative = std::is_same_v<M, method::Pdf> || std::is_s
 template <class D, class M, class = std::make_index_sequence<D::params.size()>>
 struct DistOp;
 
+// ---- limits at a parameter outside the domain (docs/api/stats.md §2, user decision 2026-11-19) --
+//
+// A distribution may be another one at a parameter value that valid() leaves out, the limit
+// of an infinite parameter (the t at df = inf is the normal) or a point mass (the negative
+// binomial's n = 0): it then says where, and gives every method's value there,
+//
+//     static bool at_limit(double df);                           // outside valid(), as inf is
+//     template <class M> static double limit_in(double x, double df);   // methods with an input
+//     template <class M> static double limit_par(double df);            // the others
+//
+// usually from the other distribution's own Op (method_of), or from a scaled one (scaled_of:
+// X = Y / c). The engine asks at_limit before valid, in the scalar and the chunk paths alike.
+template <class D, class... P>
+constexpr bool has_limit = requires(P... p) { D::at_limit(p...); };
+
+template <std::size_t>
+using Dbl = double;
+
 // The loop of a method with a chunk kernel. args: the parameters, x, out.
 template <class D, class M, std::size_t... I>
 void chunk_loop_impl(std::byte* const* args, std::int64_t n, const std::int64_t* s, std::index_sequence<I...>) {
@@ -207,6 +225,12 @@ void chunk_loop_impl(std::byte* const* args, std::int64_t n, const std::int64_t*
         } else {
             for (int i = 0; i < m; ++i) ob[i] = (!D::valid(c.p[I][i]...) || c.x[i] != c.x[i]) ? kNaN : ob[i] + zero;
         }
+        if constexpr (has_limit<D, Dbl<I>...>) {  // the limits: another distribution's values
+            if (!(c.same[I] && ...) || D::at_limit(c.p[I][0]...))
+                for (int i = 0; i < m; ++i)
+                    if (D::at_limit(c.p[I][i]...))
+                        ob[i] = c.x[i] != c.x[i] ? kNaN : D::template limit_in<M>(c.x[i], c.p[I][i]...) + zero;
+        }
         std::byte* o = args[NP + 1] + off * s[NP + 1];
         if (s[NP + 1] == sizeof(double)) std::memcpy(o, ob, static_cast<std::size_t>(m) * sizeof(double));
         else scatter(ob, o, s[NP + 1], m);
@@ -219,6 +243,58 @@ void chunk_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, v
 template <class D, class M>
 inline constexpr LoopTable chunk_table = {LoopEntry{}, LoopEntry{}, LoopEntry{&chunk_loop<D, M>, DType::Float64},
                                           LoopEntry{}};
+
+// Method M of distribution T at one point, with the bits T's own method gives a Python
+// float: through its chunk kernel (a chunk of one) when it has one, else its Op.
+template <class T, class M, class... A>
+double method_of(double x, A... a)
+    requires M::input
+{
+    constexpr std::size_t NP = sizeof...(A);
+    if constexpr (M::template chunked<T, Chunk<NP>>) {
+        double pv[NP] = {a...};
+        double xv = x, out = 0.0;
+        std::byte* args[NP + 2];
+        std::int64_t st[NP + 2];
+        for (std::size_t k = 0; k < NP; ++k) args[k] = reinterpret_cast<std::byte*>(&pv[k]);
+        args[NP] = reinterpret_cast<std::byte*>(&xv);
+        args[NP + 1] = reinterpret_cast<std::byte*>(&out);
+        for (std::size_t k = 0; k < NP + 2; ++k) st[k] = sizeof(double);
+        chunk_loop<T, M>(args, 1, st, nullptr);
+        return out;
+    } else {
+        return DistOp<T, M>::f(a..., x);
+    }
+}
+template <class T, class M, class... A>
+double method_of(A... a)
+    requires(!M::input)
+{
+    return DistOp<T, M>::f(a...);
+}
+
+// Method M of X = Y / c (c > 0 finite), Y of distribution T with parameters a.
+template <class T, class M, class... A>
+double scaled_of(double c, double x, A... a)
+    requires M::input
+{
+    if constexpr (std::is_same_v<M, method::Pdf>) return c * method_of<T, M>(c * x, a...);
+    else if constexpr (std::is_same_v<M, method::Logpdf>) return std::log(c) + method_of<T, M>(c * x, a...);
+    else if constexpr (std::is_same_v<M, method::Cdf> || std::is_same_v<M, method::Ccdf> ||
+                       std::is_same_v<M, method::Logcdf> || std::is_same_v<M, method::Logccdf>)
+        return method_of<T, M>(c * x, a...);
+    else return method_of<T, M>(x, a...) / c;  // the four inverses
+}
+template <class T, class M, class... A>
+double scaled_of(double c, A... a)
+    requires(!M::input)
+{
+    if constexpr (std::is_same_v<M, method::Variance>) return method_of<T, M>(a...) / c / c;
+    else if constexpr (std::is_same_v<M, method::Skewness> || std::is_same_v<M, method::Kurtosis>)
+        return method_of<T, M>(a...);
+    else if constexpr (std::is_same_v<M, method::Entropy>) return method_of<T, M>(a...) - std::log(c);
+    else return method_of<T, M>(a...) / c;  // mean, standard deviation, median, mode, the support
+}
 
 template <class D, class M, std::size_t... I>
 struct DistOp<D, M, std::index_sequence<I...>> : Real {
@@ -246,6 +322,13 @@ struct DistOp<D, M, std::index_sequence<I...>> : Real {
     static double f(P<I>... p, double x)
         requires M::input
     {
+        if constexpr (has_limit<D, P<I>...>) {
+            if (D::at_limit(p...)) {
+                if (std::isnan(x)) return kNaN;
+                if constexpr (kNonNegative<M>) return D::template limit_in<M>(x, p...) + 0.0;
+                else return D::template limit_in<M>(x, p...);
+            }
+        }
         if (!D::valid(p...) || std::isnan(x)) return kNaN;
         if constexpr (kNonNegative<M>) return M::template call<D>(x, p...) + 0.0;
         else return M::template call<D>(x, p...);
@@ -253,6 +336,9 @@ struct DistOp<D, M, std::index_sequence<I...>> : Real {
     static double f(P<I>... p)
         requires(!M::input)
     {
+        if constexpr (has_limit<D, P<I>...>) {
+            if (D::at_limit(p...)) return D::template limit_par<M>(p...);
+        }
         if (!D::valid(p...)) return kNaN;
         return M::template call<D>(p...);
     }

@@ -65,7 +65,7 @@
 - **NEON 경로는 스칼라 정의와 비트가 같다** (array.md §5.2와 같은 규칙). 테스트가 세 레이아웃(연속, 스칼라 브로드캐스트, strided)을 비트로 비교한다.
 - **원소의 값 때문에 실패하지 않는다** (docs/api/array.md §1.6). 정의역 밖은 NaN, 극점은 ±inf다.
 - **모든 호출은 정해진 시간 안에 끝난다** (사용자 결정 2026-11-17; docs/design/stats.md §1.3과 같다). 반복에는 상한을 상수로 두고, 상한에 닿으면 부분합이나 마지막 반복값이 아니라 NaN을 낸다. 보장 영역 안에서는 상한에 닿지 않는다. 마지막 비트에서 두 값을 오가는 반복은 그 값을 낸다.
-  - 상한: Halley 100회, 불완전 감마의 급수·연분수 1e5항, BPSER·BFRAC 1e5항, `expn`·`expi` 급수, Carlson RD 200회, AGM 64회, `lambertw` 64회, Bessel 멱급수 500항, 실수 차수 J·Y의 점화와 CF1 1e7(CF2 1e5), Hurwitz 제타의 직접 합 82항, `hyp1f1`·`hyp2f1` 급수 1e6항(극한 꼴 1e5항). 길이가 정해진 전개(BGRAT 30, BASYM 20, Hankel·Debye)는 그대로다.
+  - 상한: Halley 100회, 불완전 감마의 급수·연분수 1e5항, BPSER·BFRAC 1e5항, `expn`·`expi` 급수, Carlson RD 200회, AGM 64회, `lambertw` 64회, Bessel 멱급수 500항, 실수 차수 J·Y의 점화와 CF1 1e7(CF2 1e5; 1e7걸음에 약 0.25초), Hurwitz 제타의 직접 합 82항, `hyp1f1`·`hyp2f1` 급수 1e6항(극한 꼴 1e5항). 길이가 정해진 전개(BGRAT 30, BASYM 20, Hankel·Debye)는 그대로다.
   - Boost가 평가 오류(급수 1e6항, 근 찾기 200회)를 내면 `bst::call`이 NaN으로 바꾼다.
   - `pow_scaled`·`exp_scaled`는 2ᵏ를 제곱으로 만든다(1014번 이하).
 - **알고리즘 선택 규칙**: 함수마다 후보(§5)를 아래 순서로 견주어 고른다. 고른 것과 이유는 그 마일스톤의 해설에 측정과 함께 적는다.
@@ -272,7 +272,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
   - 정확한 인자: 반사식은 `Γ(x)Γ(−x) = −π/(x·sinpi(x))`, `Γ(x+1) = x·Γ(x)`. 꼭 만들어야 하는 합(a+b, n−k+1)은 TwoSum으로 hi + lo를 들고 `Γ(hi+lo) ≈ Γ(hi)(1 + ψ(hi)·lo)`. `sinpi`·`cospi`는 인자를 정확히 줄인다.
   - `gammaln`(x > 0): 2 둘레의 Taylor 전개(계수는 ζ(k)−1, 28항)와 Stirling 두 근사. 1 근처는 `lgamma(2+e) − log1p(e)`. Cephes의 [2, 3] 유리식은 쓰지 않는다. **2구간**
   - `beta`: a+b ≤ 170은 Cephes Γ 셋, 그 위는 Γ를 가수·지수로 나눈 scaled 곱, 한 인자가 7000을 넘으면 Γ 비율 `L(a)/L(c)·e^E·cgh^{−b}`(E가 작게 남도록 정리)
-  - `zeta`: Riemann x ≥ 0은 Euler–Maclaurin(q = 1), x < 0은 함수방정식(scaled). Hurwitz는 Cephes `zeta.c`. q^{−s}가 언더플로하면 scaled로 더한다(polygamma). 공개 Riemann `zeta`는 x > −60(자명한 영점 제외)에서 Boost를 먼저 부른다(§5.14). x ≥ 0의 Euler–Maclaurin은 Boost의 결과가 정상 범위가 아닐 때만 쓴다.
+  - `zeta`: Riemann x ≥ 0은 Euler–Maclaurin(q = 1), x < 0은 함수방정식(scaled). Hurwitz는 Cephes `zeta.c`. q^{−s}가 언더플로하면 scaled로 더한다(polygamma). 공개 Riemann `zeta`는 x ≥ −1과 음의 홀수 정수 −3, …, −59(Boost가 Bernoulli 수의 표에서 읽는다)에서 Boost를 먼저 부르고, 2–52의 짝수는 올바르게 반올림한 표, 음의 짝수는 0이다(§5.14). 정수가 아닌 −60 < x < −1은 우리 함수방정식을 double로 계산한다(`zeta_detail::reflect`: 1 − x를 반올림하지 않고 넣고, 두 지수 함수를 하나로 묶어 그 반올림을 1차 보정으로 붙인다). Boost는 그 구간에서 1 − x를 반올림한 뒤 Γ에 넣고 반올림한 2π를 거듭제곱해서 x ∈ (−32, −31)에서 65 ULP였다. x ≤ −60은 인수마다 scaled로 계산한 함수방정식이다. x ≥ 0의 Euler–Maclaurin은 Boost의 결과가 정상 범위가 아닐 때만 쓴다.
 
 ### 5.3 불완전 감마 (`gammainc`, `gammaincc`)
 - `x < a + 1`: 거듭제곱급수로 P, `x ≥ a + 1`: Lentz 연분수로 Q. 나머지는 보수
@@ -284,7 +284,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 - 이 값은 불완전 함수의 도함수이기도 하다. 역함수의 Halley 반복이 이것을 다시 쓴다.
 
 - **속도 (2026-11-15, 최적화 1단계)**: 앞 인자가 `gammainc` 시간의 3/4였다(174 ns 중 132 ns). 정밀도는 그대로 두고 계산만 바꿨다.
-  - **표 기반 로그**: λ = 2^k·c·(1 + r), c = i/128(97점, `coeffs/dd_log_table.hpp`, `tools/gen_dd_log_table.py`), |r| ≤ 2⁻⁷·⁵⁸. log(1 + r)는 r², r³까지 hi + lo, 나머지는 float64다. 31 ns → 7 ns. mpmath 대비 상대오차는 log 2⁻⁷⁷(급수판 2⁻⁶⁴·⁵), mu 2⁻⁶⁸(급수판 2⁻⁶²)로 오히려 좋아졌다. 급수판은 비정상 입력(서브노멀 등)의 뒷길로 남겼다.
+  - **표 기반 로그**: λ = 2^k·c·(1 + r), c = i/128(97점, `coeffs/dd_log_table.hpp`, `tools/gen_dd_log_table.py`), |r| ≤ 2⁻⁷·⁵⁸. log(1 + r)는 r², r³까지 hi + lo, 나머지는 float64다. 31 ns → 7 ns. Arb 대비 상대오차(6만 점)는 최대 log 2⁻⁷⁷·⁶(급수판 2⁻⁶⁴·⁶), mu 2⁻⁶⁸·⁹(급수판 2⁻⁶²·⁴)로 오히려 좋다. 급수판은 비정상 입력(서브노멀 등)의 뒷길로 남겼다.
   - **나눗셈**: double-double 몫을 나눗셈 두 번과 fma 하나로 줄였다(세 번째 보정항은 지수에 쓸모가 없었다).
   - **a < 13의 앞 인자**: Stirling 꼴을 거치지 않고 e^(a log x − x)/Γ(a+1)로 바로 구한다(지수는 double-double).
   - **지수 분리 생략**: 결과가 정상 범위(|E| < 700)이면 `Scaled`의 frexp·ldexp를 건너뛴다.
@@ -411,7 +411,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 
   | 함수 | Boost 구간 | 우리 구간 (이유) |
   |---|---|---|
-  | `zeta` | x > −60 (자명한 영점 제외) | x ≤ −60 (Boost 1.7e3 ULP) |
+  | `zeta` | x ≥ −1, 음의 홀수 정수 −3 … −59 (자명한 영점과 2–52의 짝수 제외) | 정수가 아닌 −60 < x < −1 (Boost 65 ULP), x ≤ −60 (Boost 1.7e3 ULP) |
   | `i0 i1 k0 k1` | 전부 | 결과가 정상 범위 밖(i0·i1의 713 근처 참값, k1(5e-324)) |
   | `iv`, `kv` | \|ν\| < 30, \|ν\| < 400 (x > 0) | 그 밖 (Boost가 결과가 작은 곳에서 30배까지). ν ≥ 30은 Debye. `kv`의 30 ≤ ν < 400은 둘 다 계약 안이고 Boost가 5% 빨라 Boost |
   | `ive`, `kve` (S11) | 같은 구간에서 Boost의 값 × e^{∓x}, 0 < x < 700 | 그 밖 |
@@ -439,7 +439,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 - **작은 인자 급수**: 인자가 2⁻¹⁰⁰⁰ 아래(언더플로 근처)이면 I_x(a, b) ≈ x^a/(a B(a, b))를 직접 쓴다. 예: `stdtr(1, −1e200)` = 3.2e-201인데 x = 1e-400은 언더플로한다.
 - **역함수는 작은 쪽을 푼다.** `stdtrit`, `fdtri`는 x와 1 − x 중 작은 쪽을 betaincinv/betainccinv로 푼다. 어느 쪽이 작은지는 p를 I₁/₂(a, b)와 비교해서 정한다. 처음에는 p ≤ 1/2로 골라서, x가 아주 작은데 1 − x를 풀었다. 그 결과 `stdtrit` 4e-9, `fdtri`는 0을 냈다.
 - **역함수의 먼 꼬리**: 근이 2⁻⁶⁰ 아래이면 급수 p ≈ x^a/(aB)를 거꾸로 풀어 거듭제곱으로 얻는다. 지수 −log(paB)/a를 double로 계산하면, 반올림한 지수에 |log|(~450)이 곱해져 191 ULP를 잃었다. 그래서 dd로 계산하고 exp를 한 번만 반올림한다(`exp_dd`, `log_product`; 서브노멀 p는 2⁶⁴를 곱해 둔다). 그 뒤 `stdtrit` 6.9 ULP다.
-- **`ndtri_exp`**: y > log ½이면 −ndtri(−expm1(y)), y > −700이면 ndtri(exp(y))다. 그 아래는 점근식 x² = −2y − log 2π − 2 log(−x) + 2 log(1 − 1/x² + 3/x⁴)의 고정점이다. −1e8 위에서는 그 값에서 log_ndtr로 Newton을 한다. Newton의 기울기 φ/Φ는 크기 x²/2인 두 수의 차라서, |x| > 1e6부터 자릿수를 잃었다(y = −1e17에서 2e13 ULP). 그래서 −1e8 아래는 고정점만 쓴다(다음 항 15/x⁶이 마지막 비트보다 훨씬 작다).
+- **`ndtri_exp`**: y > log ½이면 −ndtri(−expm1(y)), y > −700이면 ndtri(exp(y))다. 그 아래는 점근식 x² = −2y − log 2π − 2 log(−x) + 2 log(1 − 1/x² + 3/x⁴)의 고정점이다. −1e8 위에서는 그 값에서 log_ndtr로 Newton을 한다. Newton의 기울기 φ/Φ는 크기 x²/2인 두 수의 차라서, |x| > 1e6부터 자릿수를 잃었다(y = −1e17에서 2e13 ULP). 그래서 −1e8 아래는 고정점만 쓴다(다음 항 15/x⁶이 마지막 비트보다 훨씬 작다). y < −2¹⁰⁰⁰에서는 −2y가 넘치므로(y ≤ −8.99e307) 같은 고정점을 x²/2에 대해 풀고 x = −√2·√(−y − log(2π)/2 − log(−x) + log S)로 쓴다(2026-11-19). `sd.stats.Normal`의 `ilogcdf`·`ilogccdf`는 log q < −2¹⁰⁰⁰에서 이 값을 그대로 쓴다(Newton의 z²/2가 넘친다).
 - **`stdtrit`의 속도 (2026-11-15, 최적화 4단계)**: betaincinv로 풀면 꼬리 평가가 네댓 번이다(1100 ns, scipy의 0.21배). df ≥ 1이고 양쪽 꼬리 확률이 1e-12보다 크면 Hill의 근사(CACM 396, 6자리)에서 출발해 꼬리 함수에 Halley 걸음을 한다. 걸음이 4e-6|t| 아래이면 남는 오차가 1e-17이라, 대부분 평가 한 번으로 끝난다(약 310 ns, scipy의 약 0.5배). 참값 최대 7.4 ULP, 무작위 4천 점(df 1–1.6e5) 최대 4 ULP. 더 깊은 꼬리와 df < 1은 전처럼 betaincinv다.
 - **S4의 결함을 고쳤다.** T1을 재다가 `betaincinv`, `betainccinv`가 a, b < 1의 약 8%에서 0이나 1을 돌려주는 것을 찾았다. AS109의 처음 추정이 U자 밀도에서 엉뚱한 끝을 골라 (0, 1) 밖의 값(예: 1 − x = 5400)을 냈고, 코드는 그것을 "근이 언더플로한다"로 읽었다. 이제는 범위 밖이면 다른 끝의 근사를, 그것도 안 되면 0.5에서 출발한다(`as109`). 40만 개 표본에서 scipy와 모두 일치한다. 그 영역의 참값 파일도 다시 만들었다. 옛 참값은 출발점으로 쓴 우리 함수의 0을 그대로 받아 0이 들어 있었다.
 - **참값 생성의 함정** (tools/special_ref.py, mpmath 시절. Arb로 바꾼 뒤에는 공이 자릿수 손실을 그대로 드러낸다, §6):

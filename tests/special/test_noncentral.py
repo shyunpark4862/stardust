@@ -200,12 +200,15 @@ def test_every_call_returns_and_an_unfinished_sum_is_nan():
     # Every loop has a fixed most count of steps. A sum that would need more is NaN, never the
     # part summed so far: chndtr(3.5, 1e15, x) was 2.28e-9 at every x (1e8 of its 4e8 terms,
     # 1.7 s), and nc = 1e100 did not return (a bisection between neighbouring doubles).
-    for f, args in [(S.chndtr, (3.5, 1e15, 1e16)), (S.chndtrc, (3.5, 1e15, 0.5)), (S.chndtr, (3.5, 1e100, 1.0)),
+    for f, args in [(S.chndtr, (3.5, 1e15, 1e15)), (S.chndtrc, (3.5, 1e15, 1e15)), (S.chndtr, (3.5, 1e100, 1.0)),
                     (S.chndtrc, (3.5, 1e100, 1e308)), (S.chndtrix, (3.5, 1e15, 0.5)), (S.chndtrix, (3.5, 1e100, 0.01)),
                     (S.nctdtr, (9.0, 1e100, 0.5)), (S.nctdtrc, (9.0, 1e100, 1e30)), (S.nctdtr, (9.0, -1e8, -50.0)),
                     (S.nctdtrit, (9.0, -1e8, 0.5)), (S.nctdtrit, (9.0, 1e100, 0.99)),
                     (S.ncfdtr, (4.0, 13.0, 1e100, 1.0)), (S.ncfdtrc, (4.0, 13.0, 1e15, 1e16)), (S.ncfdtri, (4.0, 13.0, 1e100, 0.5))]:
         assert math.isnan(f(*args)), (f.__name__, args)
+    # the side near 1 that runs out of terms is 1 minus the other side where that one is
+    # summed (here 0: x far beyond the bulk)
+    assert S.chndtr(3.5, 1e15, 1e16) == 1.0 and S.chndtrc(3.5, 1e15, 0.5) == 1.0
     # inside the guaranteed parameters every x has its value: a tail beyond every term is 0 or 1
     assert S.chndtrc(3.5, 2.0, 1e300) == 0.0 and S.chndtr(3.5, 2.0, 1e300) == 1.0
     assert S.chndtrc(1e4, 1e4, 1e30) == 0.0 and S.chndtr(1e4, 1e4, 1e30) == 1.0
@@ -215,5 +218,5 @@ def test_every_call_returns_and_an_unfinished_sum_is_nan():
     assert abs(S.nctdtrc(0.1, -1.5, 1e308) / 8.255481062550066e-33 - 1) < 2e-15
     assert S.nctdtrc(0.1, 1.5, -1e308) == 1.0
     # arrays give the scalar's bits, NaN included
-    v = np.asarray(S.chndtr(sd.asarray([3.5, 3.5]), sd.asarray([1e15, 2.0]), sd.asarray([1e16, 1e300])))
+    v = np.asarray(S.chndtr(sd.asarray([3.5, 3.5]), sd.asarray([1e15, 2.0]), sd.asarray([1e15, 1e300])))
     assert math.isnan(v[0]) and v[1] == 1.0

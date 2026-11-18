@@ -135,8 +135,9 @@ inline DD log_series(DD lam) {
 // r^2 and r^3 as hi + lo, the rest in float64 (below 2^-30 of r^2), the series cut
 // at r^11/11 < 2^-86. The series versions above took 31 ns (three divisions and 12
 // to 20 terms); these take a quarter of it (7 ns) and are closer to the true value:
-// against mpmath on 60 000 points, log 2^-77 (the series 2^-64.5) and mu 2^-68
-// (the series 2^-62) relative (docs/design/special.md §5.4).
+// against Arb on 60 000 points (lambda over [2^-990, 2^1000] and near 1, t over
+// (-1/2, 1] and below 2^-8; low parts within half an ULP), log 2^-77.6 (the series
+// 2^-64.6) and mu 2^-68.9 (the series 2^-62.4) relative at most (docs/design/special.md §5.4).
 struct Reduced {
     double k;      // the binary exponent
     DD logc;       // log c

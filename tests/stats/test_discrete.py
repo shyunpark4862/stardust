@@ -131,7 +131,7 @@ def test_degenerate_parameters():
     # point masses: p = 0 or 1, n = 0, mu = 0
     for X, at in ((S.Binomial(n=7, p=0.0), 0.0), (S.Binomial(n=7, p=1.0), 7.0), (S.Binomial(n=0, p=0.4), 0.0),
                   (S.Poisson(mu=0.0), 0.0), (S.Bernoulli(p=1.0), 1.0), (S.Geometric(p=1.0), 1.0),
-                  (S.NegativeBinomial(n=2.0, p=1.0), 0.0)):
+                  (S.NegativeBinomial(n=2.0, p=1.0), 0.0), (S.NegativeBinomial(n=0.0, p=0.5), 0.0)):
         assert X.pmf(at) == 1.0 and X.logpmf(at) == 0.0 and X.cdf(at) == 1.0 and X.ccdf(at - 1.0) == 1.0
         assert X.mean() == at and X.variance() == 0.0 and X.mode() == at and X.entropy() == 0.0
         assert math.isnan(X.skewness()) and math.isnan(X.kurtosis())  # undefined for a point mass
@@ -139,7 +139,7 @@ def test_degenerate_parameters():
 
 def test_parameters_outside_the_domain():
     for X in (S.Binomial(n=5.5, p=0.3), S.Binomial(n=5, p=1.5), S.Poisson(mu=-1.0), S.Geometric(p=0.0),
-              S.NegativeBinomial(n=0.0, p=0.5), S.Hypergeometric(total=10, successes=11, draws=3),
+              S.NegativeBinomial(n=-1.0, p=0.5), S.Hypergeometric(total=10, successes=11, draws=3),
               S.DiscreteUniform(low=3, high=3), S.DiscreteUniform(low=0.5, high=3), S.BetaBinomial(n=4, a=0.0, b=1.0),
               S.LogSeries(p=1.0), S.Zipf(a=1.0)):
         assert math.isnan(X.pmf(1.0)) and math.isnan(X.cdf(1.0)) and math.isnan(X.mean()) and math.isnan(X.icdf(0.5))

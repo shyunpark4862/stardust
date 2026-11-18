@@ -165,10 +165,10 @@
 | `studentt_ccdf` | 6000 | 1.5e-15 | — | 1.0e+00 |
 | `studentt_cdf` | 6000 | 1.5e-15 | — | 1.0e+00 |
 | `studentt_entropy` | 2558 | 8.1e-15 | 1.3e-16 | — |
-| `studentt_iccdf` | 4000 | 1.5e-15 | 1.4e-14 | inf |
-| `studentt_icdf` | 4000 | 1.5e-15 | 1.4e-14 | inf |
-| `studentt_ilogccdf` | 4000 | 9.6e-16 | 9.8e-15 | — |
-| `studentt_ilogcdf` | 4000 | 9.6e-16 | 9.8e-15 | — |
+| `studentt_iccdf` | 4000 | 1.0e-15 | 3.2e-16 | inf |
+| `studentt_icdf` | 4000 | 1.0e-15 | 3.2e-16 | inf |
+| `studentt_ilogccdf` | 4000 | 4.9e-16 | 2.8e-16 | — |
+| `studentt_ilogcdf` | 4000 | 4.9e-16 | 2.8e-16 | — |
 | `studentt_kurtosis` | 2558 | 1.1e-16 | 7.9e-17 | — |
 | `studentt_logccdf` | 6000 | 1.6e-15 | — | inf |
 | `studentt_logcdf` | 6000 | 1.6e-15 | — | inf |
