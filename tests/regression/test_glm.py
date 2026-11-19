@@ -102,7 +102,7 @@ def _compare(r, s, rtol, *, fixed):
     for name in ("deviance", "null_deviance", "pearson_chi2", "llf", "aic", "scale", "df_resid", "df_model"):
         assert getattr(r, name) == pytest.approx(getattr(s, name), rel=rtol), name
     assert r.bic == pytest.approx(s.bic_llf, rel=rtol)
-    np.testing.assert_allclose(a(r.conf_int(0.1)), np.asarray(s.conf_int(0.1)), rtol=rcov)
+    np.testing.assert_allclose(a(r.conf_int(alpha=0.1)), np.asarray(s.conf_int(0.1)), rtol=rcov)
     np.testing.assert_allclose(a(r.cov_params()), np.asarray(s.cov_params()), rtol=rcov)
     assert r._normal() == fixed
 
@@ -244,7 +244,7 @@ def test_robust_against_statsmodels(family, link):
     s = sm.GLM(y, Xc, family=fam).fit(cov_type="HC0", use_t=not fixed, tol=1e-14)
     for name in ("bse", "pvalues"):
         np.testing.assert_allclose(a(getattr(r, name)), np.asarray(getattr(s, name)), rtol=rtol, err_msg=name)
-    np.testing.assert_allclose(a(r.conf_int(0.1)), np.asarray(s.conf_int(0.1)), rtol=max(rtol, 1e-10))
+    np.testing.assert_allclose(a(r.conf_int(alpha=0.1)), np.asarray(s.conf_int(0.1)), rtol=max(rtol, 1e-10))
     assert r.df_resid_inference == (math.inf if fixed else r.df_resid)
     # statsmodels' GLM gives HC0 for HC1-HC3 too; HC1 here is HC0 x sqrt(n/(n - k)) as ols's
     r1 = R.glm(y, X, family=family, link=link, cov_type="HC1")

@@ -86,7 +86,7 @@ constexpr int sMScale = 3;
 
 // The per-regression scalars, in this order (stardust/regression/_robust.py reads them).
 // rNGroups and rLags are NaN (the shared result code asks for them).
-enum RStat : int { rNobs = 0, rRank, rScale, rNIter, rConverged, rIsNaN, rSIter, rSConverged, rNGroups, rLags, rNStat };
+enum RStat : int { rNobs = 0, rRank, rScale, rNIter, rConverged, rIsNaN, rNGroups, rLags, rNStat };
 
 constexpr int eInfY = 1, eInfX = 2;
 
@@ -278,8 +278,6 @@ struct Design {
     }
 };
 
-// r = y - X beta and fit = X beta for every row, each in double-double rounded once (Dot2;
-// NaN marks a column without a coefficient). fit may be null.
 const double kOneValue = 1.0;
 
 // The columns of D with a coefficient (NaN marks a column without one), in order.
@@ -294,6 +292,8 @@ void design_cols(const Design& D, const double* beta, std::vector<dot2::ColRef>&
     }
 }
 
+// r = y - X beta and fit = X beta for every row, each in double-double rounded once (Dot2;
+// NaN marks a column without a coefficient). fit may be null.
 void resid_dd(const Design& D, const double* y, const double* beta, double* r, double* fit) {
     std::vector<dot2::ColRef> cols;
     std::vector<double> b;
@@ -426,6 +426,7 @@ double mad0(const double* r, lint n, double* buf) {
 // steps from t = 0 increase to the root and stop at it: each solves f = T on the current
 // split of the rows, t = (T - n_out d^2/2) / (sum_in r_i^2 / 2). Sums in double-double.
 double huber_scale(const double* r, lint n, double T) {
+    if (!(T > 0.0)) return 0.0;  // n <= rank: the fit is exact, its scale 0 (as mscale)
     const double d2 = kHuberD * kHuberD;
     double t = 0.0;
     for (int it = 0; it < 1000; ++it) {
@@ -805,10 +806,11 @@ IrlsOut irls(const Design& D, const double* y, const NormF& nf, const ScaleRule&
         snapped = snapped || (s > 0.0 && std::isfinite(s) && zero_scale(D, zt, y, beta, r, need));
         return snapped;
     };
+    bool polished = false;  // the polish reached rounding (not cut by max_iter)
     while (it < max_iter) {
         if (at_zero()) s = 0.0;
         if (!(s > 0.0) || !std::isfinite(s)) {
-            if (s == 0.0) conv = true;
+            if (s == 0.0) conv = polished = true;
             break;
         }
         bool took_newton = false;
@@ -874,18 +876,25 @@ IrlsOut irls(const Design& D, const double* y, const NormF& nf, const ScaleRule&
         // than rounding (the GLM's rule): stop when this step is below it, when the remaining
         // ones predicted from the last two steps' ratio are, or when they stop contracting
         const double lim = 0x1p-50 * bn;
-        if (step <= lim) break;
+        if (step <= lim) {
+            polished = true;
+            break;
+        }
         if (prevstep < kInf) {
             const double q = step / prevstep;
-            if (q < 1.0 && step * q / (1.0 - q) <= lim) break;
-            if (q >= 1.0) break;
+            if ((q < 1.0 && step * q / (1.0 - q) <= lim) || q >= 1.0) {
+                polished = true;
+                break;
+            }
         }
         prevstep = step;
     }
-    if (at_zero()) s = 0.0, conv = true;  // max_iter (or the polishing's end) reached it
+    if (at_zero()) s = 0.0, conv = polished = true;  // max_iter (or the polishing's end) reached it
     if (snapped) exact_fit(D, y, beta, kept, r, B, sc);
     out.iters = it;
-    out.converged = conv;
+    // converged: the objective's test passed and the polish finished; max_iter cutting the
+    // polish short is not converged (decision 1, G93)
+    out.converged = conv && polished;
     if (!refined && it > 0 && s > 0.0) {
         // the last iteration's least squares by the refined QR (its weights are in B.w)
         qr_wls(D, y, B.w.data(), beta, kept, B.fit.data(), kRefineSteps, sc);
@@ -900,7 +909,6 @@ IrlsOut irls(const Design& D, const double* y, const NormF& nf, const ScaleRule&
 struct SOut {
     std::vector<double> beta;  // p (the packed design's columns)
     double scale = kNaN;
-    int iters = 0;
     bool converged = false;
     bool ok = false;
 };
@@ -1135,7 +1143,6 @@ SOut fast_s(const Design& Dk, const double* Xr, const double* y, random::Key key
     Buffers B(n, p);
     double bestscale = kInf;
     std::vector<double> bb(static_cast<std::size_t>(p)), cur(static_cast<std::size_t>(p)), prev(cur.size());
-    int iters = 0;
     bool conv_best = false;
     for (std::size_t q = 0; q < best.size(); ++q) {
         std::copy(best[q].beta.begin(), best[q].beta.end(), cur.begin());
@@ -1159,7 +1166,7 @@ SOut fast_s(const Design& Dk, const double* Xr, const double* y, random::Key key
             }
         }
         if (s == 0.0) conv = true;
-        if (s < bestscale) bestscale = s, bb = cur, iters = it, conv_best = conv;
+        if (s < bestscale) bestscale = s, bb = cur, conv_best = conv;
     }
     if (!std::isfinite(bestscale)) return out;
     // 4. the chosen one polished to the S estimator's fixed point (beta the weighted fit at
@@ -1180,9 +1187,10 @@ SOut fast_s(const Design& Dk, const double* Xr, const double* y, random::Key key
     std::iota(Kall.begin(), Kall.end(), lint(0));
     std::vector<double> F, Fn, rn(static_cast<std::size_t>(std::max<lint>(n, 1)));
     bool snapped = false;
+    bool fixed_point = !(s > 0.0);  // the polish reached its end (not kKMax)
     for (int it = 0; it < kKMax && s > 0.0; ++it) {
         if (zero_scale(Dk, ztS, y, bb.data(), r.data(), needS)) {
-            s = 0.0, snapped = true;
+            s = 0.0, snapped = true, fixed_point = true;
             break;
         }
         bool took_newton = false;
@@ -1209,21 +1217,24 @@ SOut fast_s(const Design& Dk, const double* Xr, const double* y, random::Key key
             for (lint i = 0; i < n; ++i) r[i] = y[i] - B.fit[i];
             s = mscale(r.data(), n, kSChi, T, s, true);
         }
-        ++iters;
         const double lim = 0x1p-46 * bn;  // the normal equations' floor; the refined solve follows
-        if (step <= lim) break;
+        if (step <= lim) {
+            fixed_point = true;
+            break;
+        }
         if (prevstep < kInf) {
             const double q = step / prevstep;
-            if (q >= 1.0 || step * q / (1.0 - q) <= lim) break;
+            if (q >= 1.0 || step * q / (1.0 - q) <= lim) {
+                fixed_point = true;
+                break;
+            }
         }
         prevstep = step;
     }
     if (s > 0.0) {
         for (lint i = 0; i < n; ++i) B.w[i] = wchi_s(r[i] / s, kSChi);
-        if (qr_wls(Dk, y, B.w.data(), B.beta_new.data(), B.kept_new.data(), B.fit.data(), kRefineSteps, sc0) == p) {
+        if (qr_wls(Dk, y, B.w.data(), B.beta_new.data(), B.kept_new.data(), B.fit.data(), kRefineSteps, sc0) == p)
             std::copy(B.beta_new.begin(), B.beta_new.begin() + p, bb.begin());
-            ++iters;
-        }
         resid_dd(Dk, y, bb.data(), r.data(), nullptr);
         s = mscale(r.data(), n, kSChi, T, s, true);
         if (s > 0.0 && zero_scale(Dk, ztS, y, bb.data(), r.data(), needS)) s = 0.0, snapped = true;
@@ -1231,8 +1242,9 @@ SOut fast_s(const Design& Dk, const double* Xr, const double* y, random::Key key
     if (snapped) exact_fit(Dk, y, bb.data(), kept.data(), r.data(), B, sc0);
     out.beta = bb;
     out.scale = s;
-    out.iters = iters;
-    out.converged = conv_best;
+    // the chosen candidate's refinement (robustbase's 1e-7) and the polish to the fixed point
+    // both finished (decision 1, G93)
+    out.converged = conv_best && fixed_point;
     out.ok = true;
     return out;
 }
@@ -1416,6 +1428,13 @@ int rlm_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64_t ys
         fill_nan(n, k, o);
         return 0;
     }
+    if (n == 0) {  // no row: a NaN result with nobs 0 (G96)
+        fill_nan(n, k, o);
+        o.stats[rNobs] = 0.0;
+        o.stats[rNIter] = 0.0;
+        o.stats[rConverged] = 0.0;
+        return 0;
+    }
     Design D{n, p, k, op.intercept, op.rtol, Xb, xrs, xcs};
     std::vector<double> cov0(static_cast<std::size_t>(std::max<lint>(k * k, 1))), r(static_cast<std::size_t>(std::max<lint>(n, 1)));
     std::vector<double> beta(static_cast<std::size_t>(std::max<lint>(k, 1)));
@@ -1442,8 +1461,38 @@ int rlm_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64_t ys
     IrlsOut io;
     NormF nf{op.norm, op.c0, op.c1, op.c2};
     std::vector<double> r0;  // MM: the S residuals
-    double sS = kNaN;
-    if (op.method == mM) {
+    // an exact start: y constant with the intercept (the exact solution (y0, 0, ..., 0), G94;
+    // the least squares leave rounding there, a slope of 1e-33 and a t of -inf), or no
+    // degree of freedom left (n = rank: the least squares fit is exact). The perfect fit's
+    // rule (§5): scale 0, no iteration, the start's coefficients (MM's S coefficients)
+    bool exact = rank > 0 && n == rank;
+    if (op.intercept && kept[0] && rank > 0) {
+        bool cy = true;
+        for (lint i = 1; i < n && cy; ++i) cy = y[i] == y[0];
+        if (cy) {
+            exact = true;
+            beta[0] = y[0];
+            for (lint c = 1; c < k; ++c) beta[c] = kept[c] ? 0.0 : kNaN;
+            resid_dd(D, y.data(), beta.data(), r.data(), nullptr);
+        }
+    }
+    if (exact || rank == 0) {
+        if (exact) {
+            s = 0.0;
+        } else if (op.method == mM) {  // no column: the residuals' scale, nothing to iterate
+            const double ech = kHuberD * kHuberD + (1.0 - kHuberD * kHuberD) * (0.5 * std::erfc(-kHuberD / std::sqrt(2.0))) -
+                               0.5 - kHuberD / std::sqrt(2.0 * M_PI) * std::exp(-0.5 * kHuberD * kHuberD);
+            s = op.scale_est == sHuber ? huber_scale(r.data(), n, df * ech) : mad0(r.data(), n, B.buf.data());
+        } else {  // MM without a column: the S scale of y itself
+            s = mscale(r.data(), n, kSChi, dn * kSB, kRbMad * mad0(r.data(), n, B.buf.data()) * kMadC, true);
+        }
+        io.iters = 0;
+        io.converged = true;
+        if (op.method == mMM) {
+            r0 = r;
+            for (lint c = 0; c < k; ++c) o.init[c] = beta[c];
+        }
+    } else if (op.method == mM) {
         // ---- 2. M
         ScaleRule sr{op.scale_est, 0.0};
         if (op.scale_est == sHuber) {
@@ -1472,10 +1521,10 @@ int rlm_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64_t ys
             o.stats[rNobs] = dn;
             o.stats[rRank] = static_cast<double>(rank);
             o.stats[rConverged] = 0;
-            o.stats[rSConverged] = 0;
+            o.stats[rNIter] = 0;
             return 0;
         }
-        sS = so.scale;
+        const double sS = so.scale;
         std::vector<double> bk(so.beta), rk(static_cast<std::size_t>(std::max<lint>(n, 1)));
         std::vector<std::uint8_t> kk(static_cast<std::size_t>(std::max<lint>(pk, 1)), 1);
         resid_dd(Dk, y.data(), bk.data(), rk.data(), nullptr);
@@ -1489,8 +1538,9 @@ int rlm_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64_t ys
         std::fill(kept.begin(), kept.end(), std::uint8_t(0));
         for (lint a = 0; a < pk; ++a)
             if (kk[a]) beta[K[a]] = bk[a], kept[K[a]] = 1;
-        o.stats[rSIter] = so.iters;
-        o.stats[rSConverged] = so.converged ? 1.0 : 0.0;
+        // the S estimate's refinement to its fixed point is part of the fit: one cut short
+        // (its iteration limit) leaves MM not converged (decision 1, G93)
+        io.converged = io.converged && so.converged;
         s = sS;
     }
     // ---- outputs: the fit (Dot2), the weights, the covariance
@@ -1555,7 +1605,6 @@ int rlm_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64_t ys
     o.stats[rScale] = s;
     o.stats[rNIter] = io.iters;
     o.stats[rConverged] = io.converged ? 1.0 : 0.0;
-    (void)sS;
     return 0;
 }
 

@@ -115,7 +115,7 @@ def test_hac_against_statsmodels(maxlags, intercept):
     for name in ("bse", "tvalues", "pvalues"):
         np.testing.assert_allclose(a(getattr(r, name)), getattr(s, name), rtol=1e-12, err_msg=name)
     np.testing.assert_allclose(a(r.cov_params()), s.cov_params(), rtol=1e-12)
-    np.testing.assert_allclose(a(r.conf_int(0.1)), s.conf_int(0.1), rtol=1e-12)
+    np.testing.assert_allclose(a(r.conf_int(alpha=0.1)), s.conf_int(0.1), rtol=1e-12)
     assert r.fvalue == pytest.approx(s.fvalue, rel=1e-12) and r.f_pvalue == pytest.approx(s.f_pvalue, rel=1e-11)
     assert r.df_resid == s.df_resid
 
@@ -546,7 +546,7 @@ def test_inference_df_and_summary_alpha():
     assert c.df_resid_inference == len(set(g.tolist())) - 1
     text = r.summary(alpha=0.1)
     assert "[0.050" in text and "0.950]" in text
-    lo = float(r.conf_int(0.1)[1, 0])
+    lo = float(r.conf_int(alpha=0.1)[1, 0])
     assert f"{lo:.3f}" in text
     with pytest.raises(ValueError, match=r"^summary\(\): 'alpha' must be between 0 and 1"):
         r.summary(alpha=1.5)

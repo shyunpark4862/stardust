@@ -21,8 +21,8 @@ from .. import random as _random
 from .. import special as _special
 from . import _glm as _glm_mod
 from ._glm import _broadcast_shape
-from ._linear import (_arg, _check_bool, _check_choice, _check_policy, _div, _frame_columns, _names, _new_design,
-                      _own, _prepare)
+from ._linear import (_check_bool, _check_choice, _check_params, _check_pred_batch, _check_policy, _div, _frame_columns, _names,
+                      _new_design, _number_or_1d, _own, _prepare, _real)
 
 _k = _sd.regression
 
@@ -45,48 +45,17 @@ def _type_name(v):
 
 # ---- argument checks
 
-def _check_alpha_value(v, func, arg="alpha"):
-    """A finite real >= 0 as a float."""
-    if isinstance(v, bool) or not isinstance(v, numbers.Real):
-        raise TypeError(f"{func}(): '{arg}' must be a number or a 1-dimensional array of numbers, not {_type_name(v)}")
-    try:
-        x = float(v)
-    except OverflowError:
-        raise OverflowError(f"{func}(): '{arg}' is out of range") from None
-    if not (math.isfinite(x) and x >= 0):
-        raise ValueError(f"{func}(): '{arg}' must be finite and >= 0")
-    return x
-
-
 def _check_alpha(v, func, arg="alpha"):
     """(alphas as a 1-D float64 sd.ndarray, is_path, the echo): a number, or a 1-D array or
-    sequence of them (a path)."""
-    if isinstance(v, numbers.Number) and not isinstance(v, bool):
-        x = _check_alpha_value(v, func, arg)
-        return _sd.asarray([x]), False, x
-    if isinstance(v, (str, bytes, bool)) or v is None:
-        raise TypeError(f"{func}(): '{arg}' must be a number or a 1-dimensional array of numbers, not {_type_name(v)}")
-    try:
-        a = v if isinstance(v, _sd.ndarray) else _sd.asarray(v)
-    except (TypeError, ValueError, OverflowError):
-        raise TypeError(f"{func}(): '{arg}' must be a number or a 1-dimensional array of numbers, "
-                        f"not {_type_name(v)}") from None
-    if a.dtype == _sd.complex128:
-        raise TypeError(f"{func}(): '{arg}' must be real, not a complex128 array")
-    if a.ndim != 1:
-        raise ValueError(f"{func}(): '{arg}' must be a number or a 1-dimensional array, not {a.ndim}-dimensional")
-    if a.shape[0] == 0:
-        raise ValueError(f"{func}(): '{arg}' must not be empty")
-    a = a.astype(_sd.float64)
+    sequence of them (a path); each finite and >= 0."""
+    a, path = _number_or_1d(v, func, arg)
     if not bool(_sd.all(_sd.isfinite(a))) or bool(_sd.any(a < 0)):
         raise ValueError(f"{func}(): '{arg}' must be finite and >= 0")
-    return a, True, a
+    return a, path, (a if path else float(a[0]))
 
 
 def _check_ratio(v, func):
-    if isinstance(v, bool) or not isinstance(v, numbers.Real):
-        raise TypeError(f"{func}(): 'l1_ratio' must be an int or a float, not {_type_name(v)}")
-    x = float(v)
+    x = _real(v, func, "l1_ratio")
     if not 0 <= x <= 1:
         raise ValueError(f"{func}(): 'l1_ratio' must be between 0 and 1 (inclusive)")
     return x
@@ -104,18 +73,14 @@ def _check_int(v, func, arg, lo):
 
 
 def _check_tol(v, func):
-    if isinstance(v, bool) or not isinstance(v, numbers.Real):
-        raise TypeError(f"{func}(): 'tol' must be an int or a float, not {_type_name(v)}")
-    x = float(v)
+    x = _real(v, func, "tol")
     if not (math.isfinite(x) and x > 0):
         raise ValueError(f"{func}(): 'tol' must be a finite number > 0")
     return x
 
 
 def _check_eps(v, func):
-    if isinstance(v, bool) or not isinstance(v, numbers.Real):
-        raise TypeError(f"{func}(): 'eps' must be an int or a float, not {_type_name(v)}")
-    x = float(v)
+    x = _real(v, func, "eps")
     if not 0 < x <= 1:
         raise ValueError(f"{func}(): 'eps' must be > 0 and <= 1")
     return x
@@ -145,7 +110,7 @@ class _PenalizedResult:
     """What the penalized fits share: the kernel's params (..., L, k) and per-alpha scalars,
     the alpha axis kept for a path and dropped for one alpha. The intercept is params[0]."""
 
-    __slots__ = ("_P", "_S", "_cache", "param_names", "alpha", "l1_ratio", "standardize", "_intercept", "_batch",
+    __slots__ = ("_P", "_S", "_cache", "_param_names", "_alpha", "_l1_ratio", "_standardize", "_intercept", "_batch",
                  "_path", "_fit", "_columns")
 
     def __init__(self, P, S, *, alpha, l1_ratio, path, param_names, intercept, standardize, fit, columns=None):
@@ -153,14 +118,33 @@ class _PenalizedResult:
         self._columns = columns  # the fit's DataFrame column names, or None
         self._S = S            # stats (batch..., L, nstat)
         self._cache = {}
-        self.alpha = alpha
-        self.l1_ratio = l1_ratio
-        self.standardize = standardize
-        self.param_names = param_names
+        self._alpha = alpha
+        self._l1_ratio = l1_ratio
+        self._standardize = standardize
+        self._param_names = param_names
         self._intercept = intercept
         self._path = path
         self._batch = tuple(P.shape[:-2])
         self._fit = fit        # (y, X, weights or None) of the fit, after nan_policy='omit'
+
+    # the fit's configuration: read-only (G98)
+    @property
+    def param_names(self):
+        """The coefficients' names ('const' for the intercept, then the columns')."""
+        return self._param_names
+
+    @property
+    def alpha(self):
+        """The penalty's alpha as given (a number or the path's array; the CV's chosen one)."""
+        return self._alpha
+
+    @property
+    def l1_ratio(self):
+        return self._l1_ratio
+
+    @property
+    def standardize(self):
+        return self._standardize
 
     def _cached(self, name, make):
         c = self._cache
@@ -201,7 +185,9 @@ class _PenalizedResult:
         return _sd.reshape(Xn, tuple(Xn.shape[:-2]) + (1,) + tuple(Xn.shape[-2:]))
 
     def _design(self, X_new, func):
-        return _new_design(X_new, func, self._P.shape[-1] - (1 if self._intercept else 0), self._columns)
+        Xn = _new_design(X_new, func, self._P.shape[-1] - (1 if self._intercept else 0), self._columns)
+        _check_pred_batch(func, Xn, self._batch)
+        return Xn
 
     def _linear(self, Xn, func):
         """X params (the intercept added), summed in double-double."""
@@ -216,9 +202,12 @@ class _PenalizedResult:
 
     def __repr__(self):
         name = type(self).__name__
-        shape = self._batch + ((self._P.shape[-2],) if self._path else ())
-        if shape:
-            return f"{name}(shape {shape}, {self._P.shape[-1]} parameters)"
+        # the leading axes, named: the batch's, then the path's (quantreg's form)
+        parts = [f"batch shape {self._batch}"] if self._batch else []
+        if self._path:
+            parts.append(f"a path of {self._P.shape[-2]} alphas")
+        if parts:
+            return f"{name}({' and '.join(parts)}, {self._P.shape[-1]} parameters)"
         return f"{name}(alpha={self.alpha:g}, nobs={self.nobs:g}, df_model={self.df_model:.6g}, params={self.params})"
 
 
@@ -262,8 +251,7 @@ class _Iterative:
 
     @property
     def converged(self):
-        v = self._stat(_CONV)
-        return v == 1.0 if isinstance(v, _sd.ndarray) else v == 1.0
+        return self._stat(_CONV) == 1.0
 
     @property
     def n_iter(self):
@@ -346,13 +334,17 @@ class ElasticNetCVResult(_CV, ElasticNetResult):
 
 class PenalizedGLMResult(_Iterative, _PenalizedResult):
     """The result of sd.regression.penalized_glm."""
-    __slots__ = ("family", "_sep", "_glm0")
+    __slots__ = ("_family", "_sep", "_glm0")
 
     def __init__(self, *a, family, sep, glm0, **kw):
         super().__init__(*a, **kw)
-        self.family = family
+        self._family = family
         self._sep = sep      # (batch..., L) 1.0 where alpha = 0 and glm found separation
         self._glm0 = glm0    # (mask of the alphas that are 0, glm's result) or None
+
+    @property
+    def family(self):
+        return self._family
 
     def _mean(self, eta):
         return _special.expit(eta) if self.family == "binomial" else _sd.exp(eta)
@@ -442,6 +434,7 @@ def _common(func, y, X, weights, intercept, standardize, nan_policy):
     _check_policy(nan_policy, func)
     columns = _frame_columns(X)
     y, X, w, names, _, _, _ = _prepare(func, y, X, weights, nan_policy)
+    _check_params(func, X.shape[-1], intercept)
     # the result's fitted values read y, X and w later: copies (G86)
     return _own(y), _own(X), _own(w), _names(names, X.shape[-1], intercept), columns
 
@@ -500,7 +493,6 @@ def penalized_glm(y, X, /, *, family, alpha, l1_ratio=0.5, weights=None, interce
     y, X, w, names, columns = _common(func, y, X, weights, intercept, standardize, nan_policy)
     alphas, path, echo = _check_alpha(alpha, func)
     P, S = _run(func, _GLMNET, y, X, w, alphas, l1_ratio, family, intercept, standardize, max_iter, tol)
-    L = alphas.shape[0]
     zero = [v == 0.0 for v in alphas.tolist()]
     sep = _sd.zeros(tuple(S.shape[:-1]))
     glm0 = None
@@ -537,6 +529,10 @@ def penalized_glm(y, X, /, *, family, alpha, l1_ratio=0.5, weights=None, interce
 def _grid(func, y, X, w, l1_ratio, intercept, standardize, alphas, eps, ratio):
     """(grid (..., L) largest first): scikit-learn's default (alpha_max eps^(i/(L-1)), alpha_max
     the smallest alpha whose solution is 0 at l1_ratio `ratio`), or the given values sorted."""
+    if isinstance(alphas, numbers.Number) and not isinstance(alphas, (bool, numbers.Integral)):
+        # a number of alphas or the alphas themselves: a float is neither
+        raise TypeError(f"{func}(): 'alphas' must be an int (the grid's length) or a 1-dimensional array of "
+                        f"numbers, not {_type_name(alphas)}")
     if isinstance(alphas, numbers.Integral) and not isinstance(alphas, bool):
         L = _check_int(alphas, func, "alphas", 1)
         amax = _k.alpha_max(func, y, X, w, ratio, 0, intercept, standardize)
@@ -564,7 +560,7 @@ def _cv(func, cls, kind, y, X, *, rng, cv, alphas, eps, select, l1_ratio, weight
         cv = _check_int(cv, func, "cv", 2)
         _check_rng(rng, func)
     elif rng is not None:
-        _check_rng(rng, func)
+        raise ValueError(f"{func}(): 'rng' is only used when 'cv' is a number of folds (cv='gcv' draws none)")
     eps = _check_eps(eps, func)
     _check_choice(select, func, "select", ("min", "1se"))
     if gcv and select == "1se":
@@ -573,6 +569,17 @@ def _cv(func, cls, kind, y, X, *, rng, cv, alphas, eps, select, l1_ratio, weight
     grid = _grid(func, y, X, w, l1_ratio, intercept, standardize, alphas, eps, ratio)
     n = y.shape[-1]
     nan = math.nan
+    if n == 0:
+        # no rows (or none left after nan_policy='omit'): a NaN result with nobs 0 (G96)
+        P, S = _run(func, kind, y, X, w, _sd.asarray([0.0]), l1_ratio, "gaussian", intercept, standardize, max_iter,
+                    tol)
+        batch = tuple(S.shape[:-2])
+        err = _sd.broadcast_to(grid, batch + (grid.shape[-1],)) * nan if batch else grid * nan
+        amin = _sd.full(batch, nan) if batch else nan
+        r = cls(P, S, alpha=amin, l1_ratio=l1_ratio, path=False, param_names=names, intercept=intercept,
+                standardize=standardize, fit=(y, X, w), columns=columns)
+        r._cv_fields = {"alphas": grid, "cv_error": err, "cv_se": err, "alpha_min": amin, "alpha_1se": amin}
+        return r
     if gcv:
         Pg, Sg = _run(func, kind, y, X, w, grid, l1_ratio, "gaussian", intercept, standardize, max_iter, tol)
         err = Sg[..., _GCV]
@@ -591,9 +598,20 @@ def _cv(func, cls, kind, y, X, *, rng, cv, alphas, eps, select, l1_ratio, weight
         tw = test * base
         trw = (1.0 - test) * base
         _, S = _run(func, kind, y, X, trw, grid, l1_ratio, "gaussian", intercept, standardize, max_iter, tol, tw=tw)
-        mse = S[..., _TEST_SSE] / S[..., _TEST_SW]  # (cv, batch..., L)
-        err = _sd.mean(mse, axis=0)
-        se = _sd.std(mse, axis=0, correction=1) / math.sqrt(cv)
+        sw = S[..., _TEST_SW]
+        mse = S[..., _TEST_SSE] / sw  # (cv, batch..., L)
+        empty = sw == 0.0
+        if not bool(_sd.any(empty)):
+            err = _sd.mean(mse, axis=0)
+            se = _sd.std(mse, axis=0, correction=1) / math.sqrt(cv)
+        else:
+            # a fold whose test rows all have weight 0 measures nothing: out of the mean and
+            # the standard error (G107); a regression whose every row has weight 0 is NaN
+            used = _sd.logical_not(empty)
+            cnt = _sd.sum(_sd.where(used, 1.0, 0.0), axis=0)
+            err = _sd.sum(_sd.where(used, mse, 0.0), axis=0) / cnt
+            dev = _sd.where(used, mse - err, 0.0)
+            se = _sd.sqrt(_sd.sum(dev * dev, axis=0) / (cnt - 1.0)) / _sd.sqrt(cnt)
     # the choices (largest alpha first in the grid, so the first minimum is the largest alpha)
     if not isinstance(err, _sd.ndarray) or err.ndim == 1:
         e = err.tolist()
@@ -640,13 +658,16 @@ def _cv(func, cls, kind, y, X, *, rng, cv, alphas, eps, select, l1_ratio, weight
             S = _sd.take_along_axis(Sg, _sd.expand_dims(pick, axis=-1), axis=-2)
     else:
         P, S = _run(func, kind, y, X, w, refit_alphas, l1_ratio, "gaussian", intercept, standardize, max_iter, tol)
+    # no choice (a NaN curve): NaN coefficients and scalars, but the rows' count stays (nobs 0
+    # for a regression without rows, G96)
+    keep_cols = _sd.logical_or(_sd.arange(S.shape[-1]) == _NOBS, _sd.arange(S.shape[-1]) == _SUMW)
     if isinstance(chosen, _sd.ndarray):
         nanrow = _sd.reshape(_sd.isnan(chosen), tuple(chosen.shape) + (1, 1))
         P = _sd.where(nanrow, nan, P)
-        S = _sd.where(nanrow, nan, S)
+        S = _sd.where(_sd.logical_and(nanrow, _sd.logical_not(keep_cols)), nan, S)
     elif bad:
         P = P * nan
-        S = S * nan
+        S = _sd.where(keep_cols, S, nan)
     r = cls(P, S, alpha=chosen, l1_ratio=l1_ratio, path=False, param_names=names, intercept=intercept,
             standardize=standardize, fit=(y, X, w), columns=columns)
     r._cv_fields = {"alphas": grid, "cv_error": err, "cv_se": se, "alpha_min": amin, "alpha_1se": a1se}

@@ -16,10 +16,12 @@ import numbers
 import textwrap
 
 from .. import _core as _sd
+from .. import frame as _frame
 from .. import linalg as _linalg
 from ._glm import _check_int
-from ._linear import (_RegressionResult, _as_real, _check_alpha, _check_choice, _check_policy, _check_rtol, _count,
-                      _div, _forg, _has_nan, _log, _pairs, _quantile_label, _type_name, _WIDTH)
+from ._linear import (_RegressionResult, _as_real, _check_alpha, _check_choice, _check_policy, _check_rows,
+                      _check_rtol, _count, _div0, _frame_columns, _read_y, _real, _rows_message,
+                      _div, _forg, _log, _pairs, _quantile_label, _type_name, _WIDTH)
 
 _k = _sd.regression
 
@@ -81,16 +83,23 @@ class NLSResult(_RegressionResult):
     """The result of sd.regression.nls: the names of the other result objects (G10, R's
     nls for the model). params are in f's order of the parameters."""
 
-    __slots__ = ("method", "_f", "_xshape", "_jac_kind", "_active")
+    __slots__ = ("_method", "_f", "_xshape", "_jac_kind", "_active", "_model", "_polish_cut")
     _I_NOBS, _I_RANK, _I_ISNAN, _I_NGROUPS, _I_LAGS = _S_NOBS, _S_RANK, _S_ISNAN, _S_NGROUPS, _S_LAGS
 
-    def __init__(self, raw, *, method, f, xshape, jac_kind, active, **kw):
+    def __init__(self, raw, *, method, f, xshape, jac_kind, active, model=None, polish_cut=False, **kw):
         super().__init__(raw, intercept=False, cov_type="nonrobust", batch=(), **kw)
-        self.method = method
+        self._method = method
         self._f = f
         self._xshape = xshape      # x's shape after the first axis
         self._jac_kind = jac_kind  # 'jac' or 'differences'
         self._active = active      # parameters at a bound (trf), by index
+        self._model = model        # the fit's _Model (jac, bounds, the differences' steps)
+        self._polish_cut = polish_cut  # max_nfev stopped the polish before rounding (G93)
+
+    @property
+    def method(self):
+        """'lm' or 'trf' (read-only, G98)."""
+        return self._method
 
     @property
     def resid(self):
@@ -104,8 +113,20 @@ class NLSResult(_RegressionResult):
 
     @property
     def scale(self):
-        """sigma^2 = ssr / df_resid (R's nls: sigma(fit)^2)."""
-        return self._cached("scale", lambda: _div(self.ssr, self.df_resid))
+        """sigma^2 = ssr / df_resid (R's nls: sigma(fit)^2); NaN for df_resid = 0 (0/0, G95)."""
+        return self._cached("scale", lambda: _div0(self.ssr, self.df_resid))
+
+    @property
+    def tvalues(self):
+        """params / bse; NaN for a perfect fit (ssr exactly 0 with df_resid > 0: bse is 0, and
+        theta / 0 would show a significance the fit cannot have, as the slopes of rounding size
+        a model like a + b x keeps for a constant y; G109)."""
+        def make():
+            t = self.params / self.bse
+            if self.ssr == 0.0 and self.df_resid > 0:
+                return t * math.nan
+            return t
+        return self._cached("tvalues", make)
 
     @property
     def llf(self):
@@ -134,7 +155,7 @@ class NLSResult(_RegressionResult):
 
     @property
     def df_resid(self):
-        return self._cached("df_resid", lambda: self.nobs - self._stat(_S_RANK))
+        return self._cached("df_resid", lambda: self._nan_where(self.nobs - self._stat(_S_RANK)))
 
     def _count_stat(self, i):
         v = float(self._raw[6][i])
@@ -143,10 +164,11 @@ class NLSResult(_RegressionResult):
     @property
     def converged(self):
         """True when the iteration stopped on one of its tests (ftol, xtol or gtol) at a point
-        whose sum of squares is finite; False when it reached max_nfev (the last iterate is
-        returned, G32) or when ssr overflows (G89: the tests can pass far from any solution
-        when the Jacobian's scaling is extreme; scipy reports success there)."""
-        return self._count_stat(_S_STATUS) > 0 and math.isfinite(self.ssr)
+        whose sum of squares is finite and the polish finished; False when it reached max_nfev
+        (the last iterate is returned, G32; the polish's calls count against it too, G93) or
+        when ssr overflows (G89: the tests can pass far from any solution when the Jacobian's
+        scaling is extreme; scipy reports success there)."""
+        return self._count_stat(_S_STATUS) > 0 and math.isfinite(self.ssr) and not self._polish_cut
 
     @property
     def n_iter(self):
@@ -164,9 +186,14 @@ class NLSResult(_RegressionResult):
         """Jacobians evaluated: calls of jac, or difference Jacobians."""
         return self._count_stat(_S_NJEV)
 
-    def predict(self, x_new, /):
-        """f(x_new, *params): x_new is (m,) or (m, d) like the fit's x."""
-        func = "predict"
+    def _xnew(self, x_new, func):
+        """x_new like the fit's x: the same columns (a DataFrame's names and order when both
+        are DataFrames, G90; else by position), no inf (G91)."""
+        if self._columns is not None and isinstance(x_new, _frame.DataFrame):
+            got = [str(c) for c in x_new.columns]
+            if got != self._columns:
+                what = "in the fit's order" if sorted(got) == sorted(self._columns) else "like the fit's 'x'"
+                raise ValueError(f"{func}(): 'x_new' must have the columns {self._columns} {what}, not {got}")
         xn, _ = _as_real(x_new, func, "x_new")
         if xn.ndim == 0:
             raise ValueError(f"{func}(): 'x_new' must have at least 1 dimension")
@@ -174,10 +201,42 @@ class NLSResult(_RegressionResult):
             want = "1-dimensional" if not self._xshape else f"{self._xshape[0]} columns"
             got = "1-dimensional" if xn.ndim == 1 else f"shape {tuple(xn.shape)}"
             raise ValueError(f"{func}(): 'x_new' must be {want} like the fit's 'x', not {got}")
+        if xn.size and bool(_sd.any(_sd.isinf(xn))):
+            raise ValueError(f"{func}(): 'x_new' contains infinity")
+        return xn
+
+    def predict(self, x_new, /):
+        """f(x_new, *params): x_new is (m,) or (m, d) like the fit's x."""
+        func = "predict"
+        xn = self._xnew(x_new, func)
         m = xn.shape[0]
         if self._isnan():
             return _sd.full((m,), math.nan)
         return _values(self._f(xn, *[float(v) for v in self.params.tolist()]), m, func, "f", "'x_new'")
+
+    def predict_interval(self, x_new, /, *, alpha=0.05):
+        """(m, 2): the 1 - alpha confidence interval of the fitted value f(x_new, params) by the
+        delta method, f -+ t(df_resid) se, se^2 = J cov_params() J^T with J = df/dtheta at the
+        rows of x_new and the solution (the user's jac, or the fit's 5-point differences with
+        the steps chosen at the solution) (G103). No interval for a new observation: a nonlinear
+        fit gives no error distribution for one (the interval of f is the delta method's
+        linearization alone)."""
+        func = "predict_interval"
+        alpha = _check_alpha(alpha, func)
+        xn = self._xnew(x_new, func)
+        m = xn.shape[0]
+        if self._isnan() or self._model is None:
+            return _sd.full((m, 2), math.nan)
+        theta = [float(v) for v in self.params.tolist()]
+        mean = _values(self._f(xn, *theta), m, func, "f", "'x_new'")
+        fm = self._model
+        M = _Model(func, fm.f, fm.jac, xn, _sd.zeros((m,)), None, None, fm.p, fm.lb, fm.ub)
+        M.steps = list(fm.steps)
+        J = M.accurate_jac(theta, mean)
+        var = _sd.sum(_sd.matmul(J, self.cov_params()) * J, axis=-1)
+        q = self._dist().iccdf(alpha / 2)
+        half = q * _sd.sqrt(var)
+        return _sd.stack([mean - half, mean + half], axis=-1)
 
     def summary(self, *, alpha=0.05):
         """A text table: the fit, then the parameters with their standard errors, t, p and
@@ -202,7 +261,7 @@ def _summary(r, alpha):
     lines += _pairs(left, right)
     lines.append(stars)
     names = [str(v) for v in r.param_names]
-    ci = r.conf_int(alpha)
+    ci = r.conf_int(alpha=alpha)
     params, bse, tv, pv = (r.params, r.bse, r.tvalues, r.pvalues)
     wname = max([len(v) for v in names] + [9]) + 1
     cols = ["coef", "std err", "t", "P>|t|", "[" + _quantile_label(alpha / 2), _quantile_label(1 - alpha / 2) + "]"]
@@ -265,9 +324,7 @@ def _values(v, n, func, what, rows="'x'"):
 
 
 def _check_tol(v, func, arg):
-    if isinstance(v, bool) or not isinstance(v, numbers.Real):
-        raise TypeError(f"{func}(): '{arg}' must be an int or a float, not {_type_name(v)}")
-    x = float(v)
+    x = _real(v, func, arg)
     if not (math.isfinite(x) and x >= 0):
         raise ValueError(f"{func}(): '{arg}' must be a finite number >= 0")
     return x
@@ -298,8 +355,10 @@ def _real_list(v, func, arg, p=None):
 def _bounds(bounds, func, p):
     if bounds is None:
         return [-math.inf] * p, [math.inf] * p
-    if isinstance(bounds, (str, bytes)) or not hasattr(bounds, "__len__") or len(bounds) != 2:
+    if isinstance(bounds, (str, bytes)) or not hasattr(bounds, "__len__"):
         raise TypeError(f"{func}(): 'bounds' must be None or a pair (lower, upper), not {_type_name(bounds)}")
+    if len(bounds) != 2:  # the right kind, the wrong length
+        raise ValueError(f"{func}(): 'bounds' must be a pair (lower, upper), not {len(bounds)} values")
     lb = _real_list(bounds[0], func, "bounds", p)
     ub = _real_list(bounds[1], func, "bounds", p)
     if any(math.isnan(v) for v in lb + ub):
@@ -350,6 +409,11 @@ class _Model:
         self.nfev += 1
         return v
 
+    def step_cost(self):
+        """Calls of f a polishing step takes: the new point and its accurate Jacobian (4 per
+        parameter with differences)."""
+        return 1 + (0 if self.jac is not None else 4 * self.p)
+
     def resid_of(self, v):
         """sqrt(w) (f - y) on the rows used."""
         r = self._rows(v) - self.yu
@@ -361,6 +425,8 @@ class _Model:
     def user_jac(self, theta):
         """sqrt(w) jac(x, *theta) on the rows used: (m, p)."""
         J = self.jac(self.x, *theta)
+        if isinstance(J, numbers.Number) and not isinstance(J, complex):  # as f's (_values)
+            raise ValueError(f"{self.func}(): 'jac' must return shape ({self.n}, {self.p}), not a scalar")
         if not isinstance(J, _sd.ndarray):
             try:
                 J = _sd.asarray(J)
@@ -592,17 +658,26 @@ def _in_box(theta, lb, ub):
     return all(a <= t <= b for t, a, b in zip(theta, lb, ub))
 
 
-def _polish(M, func, theta, v, r, J, rt, free):
+def _polish(M, func, theta, v, r, J, rt, free, budget=math.inf):
     """Gauss-Newton steps from the converged iterate while they shrink (G73); Newton's steps
     with the residuals' curvature term S from second differences (as the GLM's G44) when the
     Gauss-Newton steps still needed at the last two steps' ratio cost more than S
-    (_newton_pays), or once when a step stops shrinking. Returns (theta, v,
-    r, J, steps): J is the Jacobian at the returned theta (to 2^-45)."""
+    (_newton_pays), or once when a step stops shrinking. budget: the calls of f left under
+    max_nfev (the polish's count against it, G93). Returns (theta, v, r, J, steps, cut): J is
+    the Jacobian at the returned theta (to 2^-45); cut when the budget stopped a step that was
+    still needed."""
     prev = None
     steps = 0
     S = None
     tried = False
+    start = M.nfev
+
+    def afford(calls):
+        return M.nfev - start + calls <= budget
+
     for _ in range(_POLISH_STEPS):
+        if not afford(M.step_cost()):
+            return theta, v, r, J, steps, True
         d, cols, C = _gn_step(func, r, J, rt, free)
         if S is not None:
             dn = _newton_step(d, cols, C, S) if C is not None else None
@@ -615,7 +690,7 @@ def _polish(M, func, theta, v, r, J, rt, free):
             break
         if prev is not None and size >= prev:
             # not contracting: Newton's steps from here, once, unless at the rounding floor
-            if S is None and not tried and C is not None and prev > _POLISH_FLOOR:
+            if S is None and not tried and C is not None and prev > _POLISH_FLOOR and afford(2 * M.p * M.p):
                 tried = True
                 S = M.second(theta, v, r * M.sw if M.sw is not None else r, cols)
                 prev = None
@@ -647,12 +722,13 @@ def _polish(M, func, theta, v, r, J, rt, free):
         if done:
             break
         prev = size
-        if S is None and not tried and C is not None and _newton_pays(M, size, q, _POLISH_STEPS - steps):
+        if (S is None and not tried and C is not None and _newton_pays(M, size, q, _POLISH_STEPS - steps)
+                and afford(2 * M.p * M.p)):
             tried = True
             c = r * M.sw if M.sw is not None else r
             S = M.second(theta, v, c, cols)
             prev = None
-    return theta, v, r, J, steps
+    return theta, v, r, J, steps, False
 
 
 def _active(theta, lb, ub, g, rtol):
@@ -667,16 +743,19 @@ def _active(theta, lb, ub, g, rtol):
     return out
 
 
-def _nan_result(f, n, p, names, method, xshape, jac_kind):
+def _nan_result(f, n, p, names, method, xshape, jac_kind, nobs=math.nan, columns=None):
+    """NaN in the data (nobs NaN) or no row in the fit (nobs 0, G96)."""
     nan = math.nan
     stats = [nan] * _NSTAT
+    stats[_S_NOBS] = nobs
     stats[_S_RANK] = 0.0
     stats[_S_ISNAN] = 1.0
     stats[_S_NFEV] = stats[_S_NJEV] = stats[_S_NITER] = stats[_S_NPOLISH] = 0.0
     stats[_S_STATUS] = 0.0
     raw = [_sd.full((p,), nan), _sd.full((p, p), nan), _sd.full((p, p), nan), _sd.full((n,), nan),
            _sd.full((n,), nan), _sd.ones((p,), dtype=_sd.bool), _sd.asarray(stats)]
-    return NLSResult(raw, method=method, f=f, xshape=xshape, jac_kind=jac_kind, active=[], param_names=names)
+    return NLSResult(raw, method=method, f=f, xshape=xshape, jac_kind=jac_kind, active=[], param_names=names,
+                     columns=columns)
 
 
 def nls(f, x, y, /, *, p0, jac=None, bounds=None, method=None, weights=None, ftol=1e-08, xtol=1e-08, gtol=1e-08,
@@ -694,7 +773,7 @@ def nls(f, x, y, /, *, p0, jac=None, bounds=None, method=None, weights=None, fto
     theta0 = _real_list(p0, func, "p0")
     p = len(theta0)
     if p == 0:
-        raise ValueError(f"{func}(): 'p0' must have at least one value")
+        raise ValueError(f"{func}(): the model has no parameters ('p0' is empty)")
     if not all(math.isfinite(t) for t in theta0):
         raise ValueError(f"{func}(): 'p0' must be finite")
     lb, ub = _bounds(bounds, func, p)
@@ -721,24 +800,26 @@ def nls(f, x, y, /, *, p0, jac=None, bounds=None, method=None, weights=None, fto
         rt = _FD_RTOL
     _check_policy(nan_policy, func)
 
-    yy, _ = _as_real(y, func, "y")
+    yy = _read_y(y, func)
     if yy.ndim != 1:
         raise ValueError(f"{func}(): 'y' must be 1-dimensional (nls fits one regression, not a batch)")
+    columns = _frame_columns(x)
     xx, _ = _as_real(x, func, "x")
     if xx.ndim not in (1, 2):
         raise ValueError(f"{func}(): 'x' must be 1-dimensional (n,) or 2-dimensional (n, d)")
     n = yy.shape[0]
     if xx.shape[0] != n:
-        raise ValueError(f"{func}(): 'x' must have {n} rows like 'y', not {xx.shape[0]}")
+        raise ValueError(_rows_message(func, "x", n, xx.shape[0], yy.shape))
     w = None
     if weights is not None:
-        w, _ = _as_real(weights, func, "weights")
-        if w.ndim != 1 or w.shape[0] != n:
-            got = "a scalar" if w.ndim == 0 else f"shape {tuple(w.shape)}"
-            raise ValueError(f"{func}(): 'weights' must have {n} values like 'y', not {got}")
-    for a, nm in ((yy, "y"), (xx, "x"), (w, "weights")):
-        if a is not None and a.size and bool(_sd.any(_sd.isinf(a))):
-            raise ValueError(f"{func}(): '{nm}' contains infinity")
+        # wls's forms and messages for the same mistakes
+        w, _ = _as_real(weights, func, "weights", per_row=f"{n} value{'' if n == 1 else 's'} like 'y'")
+        if w.ndim != 1:
+            raise ValueError(f"{func}(): 'weights' must be 1-dimensional (nls fits one regression, not a batch)")
+        if w.shape[0] != n:
+            raise ValueError(_rows_message(func, "weights", n, w.shape[0], yy.shape, "values"))
+    # inf and negative weights are errors whatever the NaN policy, also in a row with a NaN
+    _check_rows(func, [("y", yy), ("x", xx), ("weights", w)], nonneg=("weights",))
     names = _param_names(f, p)
     xshape = tuple(xx.shape[1:])
     jac_kind = "jac" if jac is not None else "differences"
@@ -753,7 +834,7 @@ def nls(f, x, y, /, *, p0, jac=None, bounds=None, method=None, weights=None, fto
         if nan_policy == "raise":
             raise ValueError(f"{func}(): the input contains NaN (nan_policy='raise')")
         if nan_policy == "propagate":
-            return _nan_result(f, n, p, names, method, xshape, jac_kind)
+            return _nan_result(f, n, p, names, method, xshape, jac_kind, columns=columns)
         keep = _sd.logical_not(bad)
         yy, xx = yy[keep], xx[keep]
         if w is not None:
@@ -761,13 +842,13 @@ def nls(f, x, y, /, *, p0, jac=None, bounds=None, method=None, weights=None, fto
         n = yy.shape[0]
     mask = sw = None
     if w is not None:
-        if w.size and bool(_sd.any(w < 0)):
-            raise ValueError(f"{func}(): 'weights' must be >= 0")
         pos = w > 0
         if not bool(_sd.all(pos)):
             mask = pos
         sw = _sd.sqrt(w[mask] if mask is not None else w)
     nobs = int(_sd.sum(mask)) if mask is not None else n
+    if nobs == 0:  # no row in the fit: f is not called (G96)
+        return _nan_result(f, n, p, names, method, xshape, jac_kind, nobs=0.0, columns=columns)
     if nobs < p:
         raise ValueError(f"{func}(): 'p0' has {p} parameters, more than the {nobs} observations used")
 
@@ -804,8 +885,12 @@ def nls(f, x, y, /, *, p0, jac=None, bounds=None, method=None, weights=None, fto
                 free[j] = False
             active = [j for j, _b in act]
     npolish = 0
+    cut = False
     if status > 0 and any(free):
-        theta, v, r, J, npolish = _polish(M, func, theta, v, r, J, rt, free)
+        # the polish's calls of f count against max_nfev (the solution's own Jacobian, needed
+        # for the covariance, is outside it) (G93)
+        budget = max_nfev - nfev
+        theta, v, r, J, npolish, cut = _polish(M, func, theta, v, r, J, rt, free, budget)
     # the covariance and the aliased parameters from the QR of J at the solution
     raw = _k.fit(func, -r, J, None, None, False, rt, 0, 3)
     stats = [math.nan] * _NSTAT
@@ -820,4 +905,5 @@ def nls(f, x, y, /, *, p0, jac=None, bounds=None, method=None, weights=None, fto
     stats[_S_NPOLISH] = float(npolish)
     stats[_S_SUMLOGW] = float(_sd.sum(_sd.log(w[mask] if mask is not None else w))) if w is not None else 0.0
     out = [_sd.asarray(theta), raw[1], raw[2], v, yy - v, raw[5], _sd.asarray(stats)]
-    return NLSResult(out, method=method, f=f, xshape=xshape, jac_kind=jac_kind, active=active, param_names=names)
+    return NLSResult(out, method=method, f=f, xshape=xshape, jac_kind=jac_kind, active=active, param_names=names,
+                     model=M, polish_cut=cut, columns=columns)

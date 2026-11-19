@@ -526,9 +526,12 @@ def _glm_fit(y, X, family, link, vw, fw, tr, off, intercept, scale, beta0, alpha
            "fittedvalues": mu, "_mu": mu, "_muc": muc}
     out["bse_HC0"] = sand(sq)
     out["bse_HC1"] = sand(sq, nobs / (nobs - k))
-    out["bse_HC2"] = sand([[x / (1 - hat[j]).sqrt() for x in sq[j]] for j in range(len(used))])
-    out["bse_HC3"] = sand([[x / (1 - hat[j]) for x in sq[j]] for j in range(len(used))])
-    Lg = maxlags if maxlags is not None else math.floor(4 * (len(used) / 100) ** (2 / 9))
+    # a row of frequency f stands for f copies, each with the leverage h / f (decision 2026-11-19)
+    hf = [hat[j] / fu[j] for j in range(len(used))]
+    out["bse_HC2"] = sand([[x / (1 - hf[j]).sqrt() for x in sq[j]] for j in range(len(used))])
+    out["bse_HC3"] = sand([[x / (1 - hf[j]) for x in sq[j]] for j in range(len(used))])
+    # the default lags from nobs (the sum of the frequency weights)
+    Lg = maxlags if maxlags is not None else math.floor(4 * (float(nobs.mid()) / 100) ** (2 / 9))
     S = [[sum((s[a] * s[b] for s in sq), arb(0)) for b in range(k)] for a in range(k)]
     for lag in range(1, min(Lg, len(used) - 1) + 1):
         wl = 1 - arb(lag) / (Lg + 1)

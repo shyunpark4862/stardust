@@ -56,7 +56,7 @@ def test_random_against_arb(name):
     assert max_rel(r.bse, ref["bse"]) <= tol
     assert max_rel(r.tvalues, ref["tvalues"]) <= tol
     assert max_rel(r.pvalues, ref["pvalues"]) <= 100 * tol
-    ci = a(r.conf_int(0.05))
+    ci = a(r.conf_int(alpha=0.05))
     assert max_rel(ci[:, 0], ref["conf_int_lower"]) <= tol
     assert max_rel(ci[:, 1], ref["conf_int_upper"]) <= tol
     scalars = ["ssr", "ess", "rsquared", "rsquared_adj", "scale", "llf", "aic", "bic", "fvalue", "f_pvalue"]
@@ -134,7 +134,7 @@ def test_ols_against_statsmodels(cov_type, intercept):
     for name in ("nobs", "df_model", "df_resid", "ssr", "ess", "centered_tss", "uncentered_tss", "rsquared",
                  "rsquared_adj", "fvalue", "f_pvalue", "llf", "aic", "bic", "scale", "condition_number"):
         assert getattr(r, name) == pytest.approx(getattr(s, name), rel=1e-11), name
-    np.testing.assert_allclose(a(r.conf_int(0.1)), s.conf_int(0.1), rtol=1e-11)
+    np.testing.assert_allclose(a(r.conf_int(alpha=0.1)), s.conf_int(0.1), rtol=1e-11)
     np.testing.assert_allclose(a(r.cov_params()), s.cov_params(), rtol=1e-11)
     Xn = np.random.default_rng(5).standard_normal((6, 3))
     pr = s.get_prediction(sm.add_constant(Xn, has_constant="add") if intercept else Xn).summary_frame(alpha=0.1)
@@ -256,8 +256,7 @@ def test_linregress_degenerate_like_scipy():
     st = pytest.importorskip("scipy.stats")
     import warnings
 
-    cases = [([1.0, 1, 1], [1.0, 2, 3]), ([1.0, 2], [3.0, 5]), ([1.0, 2, 3], [5.0, 5, 5]), ([1.0], [2.0]),
-             ([1.0, 2, 3, 4], [2.0, 4, 6, np.nan])]
+    cases = [([1.0, 1, 1], [1.0, 2, 3]), ([1.0, 2, 3], [5.0, 5, 5]), ([1.0, 2, 3, 4], [2.0, 4, 6, np.nan])]
     for x, y in cases:
         got = R.linregress(x, y)
         with warnings.catch_warnings():
@@ -269,6 +268,14 @@ def test_linregress_degenerate_like_scipy():
     # an exact line: scipy's p-value comes from its 1e-20 guard (9e-11); here t is infinite and p 0
     got = R.linregress([1.0, 2, 3], [2.0, 4, 6])
     assert got.slope == 2.0 and got.rvalue == 1.0 and got.stderr == 0.0 and got.pvalue == 0.0
+    # two points: no degree of freedom left, the inference is 0/0 (G95; scipy's special case
+    # gives stderr 0 and p 0); fewer than two points is an error (G96; scipy warns and gives NaN)
+    got = R.linregress([1.0, 2], [3.0, 5])
+    assert got.slope == 2.0 and got.intercept == 1.0 and got.rvalue == 1.0
+    assert all(math.isnan(v) for v in (got.pvalue, got.stderr, got.intercept_stderr))
+    for x, y in (([1.0], [2.0]), ([], [])):
+        with pytest.raises(ValueError, match=r"linregress\(\): 'x' and 'y' must have length at least 2"):
+            R.linregress(x, y)
 
 
 def test_linregress_batch():
@@ -546,7 +553,7 @@ def test_errors():
     with pytest.raises(ValueError, match=r"^predict_interval\(\): 'kind' must be 'mean' or 'observation', not 'x'$"):
         r.predict_interval(X, kind="x")
     with pytest.raises(ValueError, match=r"^conf_int\(\): 'alpha' must be between 0 and 1 \(exclusive\)$"):
-        r.conf_int(1.5)
+        r.conf_int(alpha=1.5)
     with pytest.raises(ValueError, match=r"^linregress\(\): 'x' must have 10 values like 'y', not 9$"):
         R.linregress(X[:9, 0], y)
 
@@ -580,7 +587,7 @@ def test_constant_y_is_zero_over_zero():
 
 
 def test_linregress_messages():
-    with pytest.raises(ValueError, match=r"^linregress\(\): 'x' and 'y' must not be empty$"):
+    with pytest.raises(ValueError, match=r"^linregress\(\): 'x' and 'y' must have length at least 2$"):
         R.linregress([], [])
     with pytest.raises(ValueError, match=r"^linregress\(\): 'x' contains infinity$"):
         R.linregress([1.0, math.inf, 3], [1.0, 2, 3])

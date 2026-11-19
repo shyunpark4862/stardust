@@ -8,7 +8,8 @@
 //      (G9, G21; the rule of R's dqrdc2, so the earlier column stays): it is dropped and the
 //      columns after it are factored again. When anything was dropped, the kept columns are
 //      factored once more from scratch, so the fit is the reduced problem's, bit for bit.
-//   3. beta from R beta = (Q^T b)_1, then `steps` corrections on the augmented system
+//   3. beta from R beta = (Q^T b)_1, then up to `steps` corrections (fewer when a further one
+//      cannot matter, G15) on the augmented system
 //      [I X; X^T W 0] [r; beta] = [y; 0] (Bjorck 1967): both blocks of its residual,
 //      f = y - r - X beta and g = -X^T W r, are summed in double-double (Dot2, Ogita, Rump
 //      and Oishi 2005), and the correction is solved with the same QR (G15).
@@ -307,6 +308,12 @@ int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
             if (rd(d.w + i * d.ws) > 0) idx[m++] = i;
     } else {
         for (lint i = 0; i < n; ++i) idx[i] = i;
+    }
+    if (m == 0 && !pb.lean && !pb.checked && !pb.hat_only) {
+        // no row (none given, or every weight 0): a NaN result with nobs 0 (G96)
+        fill_nan(pb, o);
+        o.stats[kNobs] = 0.0;
+        return 0;
     }
     auto weight = [&](lint i) { return pb.has_w ? rd(d.w + i * d.ws) : 1.0; };
     auto uval = [&](lint i) { return pb.has_u ? rd(d.u + i * d.us) : 1.0; };
@@ -785,6 +792,30 @@ int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
         const double* ap = accs(ch) + 2 * kAccInit;
         for (int q = 0; q < kAccFinal; ++q) fin[q] = fin[q] + DD{ap[2 * q], ap[2 * q + 1]};
     }
+    // A perfect fit (G95): every used row's residual within rounding of its terms,
+    // |r_t| <= (kk + 16) u (|y_t| + ||x_t||_1 ||beta||_inf) (rlm's and quantreg's test). Its
+    // residuals are rounding, not data: the sum of squares is 0 (scale 0, bse 0 and llf +inf
+    // when df_resid > 0, G22) and the robust covariances' scores vanish. The test stops at the
+    // first row outside it (usually the first).
+    if (kk > 0 && fin[fSsr].hi > 0.0) {
+        double bmax = 0.0;
+        for (lint jj = 0; jj < kk; ++jj) bmax = std::max(bmax, std::fabs(beta[jj]));
+        const double c = static_cast<double>(kk + 16) * 0x1p-53;
+        bool perfect = std::isfinite(bmax);
+        for (lint t = 0; t < m && perfect; ++t) {
+            const lint i = idx[t];
+            double nx = 0.0;
+            for (lint jj = 0; jj < kk; ++jj) {
+                const Col cl = colK(jj);
+                nx += std::fabs(rd(cl.base + i * cl.stride));
+            }
+            perfect = std::fabs(r[t]) <= c * (std::fabs(rd(d.y + i * d.ys)) + nx * bmax);
+        }
+        if (perfect) {
+            fin[fSsr] = DD{0.0, 0.0};
+            std::fill(r, r + m, 0.0);
+        }
+    }
     if (pb.has_w && m < n) {  // zero-weight rows: fitted values and residuals only
         std::vector<char> used(static_cast<std::size_t>(n), 0);
         for (lint t = 0; t < m; ++t) used[static_cast<std::size_t>(idx[t])] = 1;
@@ -872,8 +903,11 @@ int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
         // HAC), not the square of the summed copies (statsmodels' convention)
         if (d.smult && pb.cov != kCluster) e *= d.smult[idx[t]];
         double sq = e;                 // HC: sqrt(omega) (the sign drops out of the squares)
-        if (pb.cov == kHC2) sq = e / std::sqrt(1.0 - hat[t]);
-        else if (pb.cov == kHC3) sq = e / (1.0 - hat[t]);
+        // a GLM row of frequency f stands for f copies, each with the leverage h / f (the
+        // repeated data's value)
+        const double ht = d.smult ? hat[t] * (d.smult[idx[t]] * d.smult[idx[t]]) : hat[t];
+        if (pb.cov == kHC2) sq = e / std::sqrt(1.0 - ht);
+        else if (pb.cov == kHC3) sq = e / (1.0 - ht);
         cv[t] = sq;
     }
     for (lint jj = 0; jj < kk; ++jj)
@@ -886,9 +920,11 @@ int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
         // Newey-West: S = U^T U + sum_l w_l (U_{l:}^T U_{:-l} + its transpose), w_l = 1 - l/(L+1)
         // (Bartlett; statsmodels' S_hac_simple). The lag sums are U^T V with V_t = sum_l w_l
         // u_{t-l} (a filter down each column), formed in chunks of rows and added in order.
+        // the default from nobs: the rows used, or the GLM's sum of frequency weights (with
+        // frequency weights the lags stay those of the rows, statsmodels' convention)
         const std::int64_t L =
             pb.maxlags >= 0 ? pb.maxlags
-                            : static_cast<std::int64_t>(std::floor(4.0 * std::pow(static_cast<double>(m) / 100.0, 2.0 / 9.0)));
+                            : static_cast<std::int64_t>(std::floor(4.0 * std::pow(n_eff / 100.0, 2.0 / 9.0)));
         st[kLags] = static_cast<double>(L);
         cblas_dsyrk(CblasColMajor, CblasUpper, CblasTrans, kk, m, 1.0, Q, m, 0.0, M, kk);
         const lint Le = static_cast<lint>(std::min<std::int64_t>(L, m - 1));  // lags with a pair of rows
@@ -926,16 +962,29 @@ int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
         // one-way cluster: S = sum_g s_g s_g^T, s_g the sum of the group's scores (rows in
         // order), with Stata's and statsmodels' factor G/(G-1) (m-1)/(m-k); G counts the groups
         // among the fit's rows (zero-weight rows are out, G20)
-        const std::size_t gt = static_cast<std::size_t>(std::max<std::int64_t>(pb.gtot, 1));
+        // A batch's codes run over the labels of every regression (gtot), so a table of gtot
+        // entries per regression would cost the batch's labels for each one: above m labels,
+        // the codes are first made dense by sorting this regression's own (O(m log m)). Either
+        // way the local numbers are in order of first appearance (the same sums, the same bits).
+        const bool dense = pb.gtot > m;
+        const std::size_t gt = dense ? static_cast<std::size_t>(mm) : static_cast<std::size_t>(std::max<std::int64_t>(pb.gtot, 1));
         // ints: the codes' local numbers, each row's group, G + 1 offsets (G <= m), a permutation
         lint* loc = sc.get<lint>(gt + 3 * static_cast<std::size_t>(mm) + 1, 2);
         lint* lab = loc + gt;
         lint* off = lab + mm;
         lint* perm = off + mm + 1;
         std::fill(loc, loc + gt, lint(-1));
+        std::vector<std::int64_t> uniq;
+        if (dense) {
+            uniq.resize(static_cast<std::size_t>(m));
+            for (lint t = 0; t < m; ++t) uniq[static_cast<std::size_t>(t)] = rd_i64(d.g + idx[t] * d.gs);
+            std::sort(uniq.begin(), uniq.end());
+            uniq.erase(std::unique(uniq.begin(), uniq.end()), uniq.end());
+        }
         lint G = 0;
         for (lint t = 0; t < m; ++t) {
-            const std::int64_t code = rd_i64(d.g + idx[t] * d.gs);
+            std::int64_t code = rd_i64(d.g + idx[t] * d.gs);
+            if (dense) code = std::lower_bound(uniq.begin(), uniq.end(), code) - uniq.begin();
             lint& l = loc[code];
             if (l < 0) l = G++;
             lab[t] = l;
@@ -1151,20 +1200,26 @@ nb::object fit(const std::string& func, nb::handle yo, nb::handle xo, nb::handle
     });
 }
 
-// apply(func, X (..., m, p), beta (..., k), intercept, y (..., m) | None) -> (X beta, y - X beta | None),
-// each in double-double rounded once (Dot2, the column order of the fit: predict on the
-// fit's own X gives its fitted values bit for bit). beta has 0 for aliased columns.
-nb::object apply(const std::string& func, nb::handle xo, nb::handle bo, bool intercept, nb::handle yo) {
+// apply(func, X (..., m, p), beta (..., k), intercept, y (..., m) | None, mask (..., k) | None)
+// -> (X beta, y - X beta | None), each in double-double rounded once (Dot2, the column order
+// of the fit: predict on the fit's own X gives its fitted values bit for bit). mask: 1.0 for
+// the columns in the model, 0.0 for the aliased ones, which take no part (R: a NaN in X_new
+// there does not reach the prediction); None: every column. A column in the model takes part
+// whatever its coefficient (a NaN in X_new under a coefficient 0 gives NaN).
+nb::object apply(const std::string& func, nb::handle xo, nb::handle bo, bool intercept, nb::handle yo,
+                 nb::handle mo) {
     const char* fn = func.c_str();
     return call_named(fn, [&]() -> nb::object {
         Input X(xo, fn, "X"), be(bo, fn, "params");
-        const bool has_y = !yo.is_none();
-        std::optional<Input> y;
+        const bool has_y = !yo.is_none(), has_m = !mo.is_none();
+        std::optional<Input> y, mk;
         if (has_y) y.emplace(yo, fn, "y");
+        if (has_m) mk.emplace(mo, fn, "mask");
         const lint m = X.shape(-2), p = X.shape(-1), k = be.shape(-1);
         const linalg::BatchOperand none{};
         Batch b({{X.batch_shape(2), X.batch_strides(2)}, {be.batch_shape(1), be.batch_strides(1)},
-                 has_y ? linalg::BatchOperand{y->batch_shape(1), y->batch_strides(1)} : none},
+                 has_y ? linalg::BatchOperand{y->batch_shape(1), y->batch_strides(1)} : none,
+                 has_m ? linalg::BatchOperand{mk->batch_shape(1), mk->batch_strides(1)} : none},
                 fn);
         Out fo = linalg::alloc_c(with(b.shape(), {m}), DType::Float64);
         Out eo;
@@ -1175,11 +1230,12 @@ nb::object apply(const std::string& func, nb::handle xo, nb::handle bo, bool int
             const std::byte* bb = be.data() + off[1];
             double* fi = fo.as<double>() + i * m;
             double* ei = has_y ? eo.as<double>() + i * m : nullptr;
+            const std::byte* mb = has_m ? mk->data() + off[3] : nullptr;
             for (lint t = 0; t < m; ++t) {
                 double Pv = 0, Sv = 0;
                 for (lint c = 0; c < k; ++c) {
+                    if (mb && rd(mb + c * mk->stride(-1)) == 0.0) continue;  // aliased: no term (nor in the fit)
                     const double bj = rd(bb + c * be.stride(-1));
-                    if (bj == 0.0) continue;  // aliased: no term (the fit has none either)
                     const double x = (intercept && c == 0) ? 1.0 : rd(xb + t * X.stride(-2) + (c - (intercept ? 1 : 0)) * X.stride(-1));
                     double hp, ep, q;
                     two_prod(x, bj, hp, ep);
@@ -1342,7 +1398,7 @@ void bind_linear(nb::module_& m) {
           nb::arg("groups").none() = nb::none(), nb::arg("gtot") = 0, nb::arg("maxlags") = -1,
           nb::arg("hat_only") = false);
     m.def("apply", &apply, nb::arg("func"), nb::arg("X").none(), nb::arg("beta").none(), nb::arg("intercept"),
-          nb::arg("y").none());
+          nb::arg("y").none(), nb::arg("mask").none() = nb::none());
     m.def("cond", &cond, nb::arg("R").none(), nb::arg("kept").none());
     m.def("resid_stats", &resid_stats, nb::arg("e").none(), nb::arg("w").none());
 }

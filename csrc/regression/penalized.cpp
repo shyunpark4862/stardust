@@ -92,7 +92,7 @@ constexpr double kU = 0x1p-53;
 
 // The per-alpha scalars, in this order (stardust/regression/_penalized.py reads them).
 // pRss: sum w r^2 (GLM: the deviance); pTss: sum w (y - ybar)^2, or sum w y^2 without the
-// intercept (GLM: the null deviance); pTestSse, pTestSw: the squared error (GLM: deviance)
+// intercept (GLM: the null deviance); pTestSse, pTestSw: the squared error
 // and the weight sum over the rows of the test weights (cross-validation); pGcv: ridge's
 // generalized cross-validation; pPolished: 1 when the KKT polish was taken.
 enum PStat : int {
@@ -609,6 +609,7 @@ CDResult cd_solve(Solver& s, double l1, double l2, int max_iter, double gap_tol,
 void active_gram(const Solver& s, const std::vector<lint>& A, double l2, std::vector<double>& H) {
     const lint a = static_cast<lint>(A.size());
     H.assign(static_cast<std::size_t>(a * a), 0.0);
+    if (a == 0) return;  // no active column (BLAS rejects ldc = 0)
     if (s.cov) {
         for (lint q = 0; q < a; ++q)
             for (lint u = 0; u < a; ++u) H[q * a + u] = s.G[A[q] * s.pc + A[u]];
@@ -801,13 +802,17 @@ void fill_nan(lint L, lint k, double* params, double* stats, double nobs) {
 
 // The squared error over the test rows (tw > 0) of every alpha's params (L x k), into
 // stats[pTestSse], stats[pTestSw]: chunks of rows by dgemm, added in order.
-void test_errors(const Src& s, bool intercept, lint L, const double* params, double* stats, int fam = fGaussian) {
+void test_errors(const Src& s, bool intercept, lint L, const double* params, double* stats) {
     if (!s.tw) return;
     const lint n = s.n, p = s.p, k = p + (intercept ? 1 : 0);
     std::vector<lint> rows;
     for (lint i = 0; i < n; ++i)
         if (s.twv(i) > 0) rows.push_back(i);
     const lint nt = static_cast<lint>(rows.size());
+    if (nt == 0) {  // a fold whose test rows all have weight 0: no error to measure (BLAS rejects m = 0)
+        for (lint l = 0; l < L; ++l) stats[l * pNStat + pTestSse] = stats[l * pNStat + pTestSw] = 0.0;
+        return;
+    }
     std::vector<double> B(static_cast<std::size_t>(p * L));
     for (lint l = 0; l < L; ++l)
         for (lint j = 0; j < p; ++j) B[l * p + j] = params[l * k + (intercept ? 1 : 0) + j];
@@ -829,20 +834,8 @@ void test_errors(const Src& s, bool intercept, lint L, const double* params, dou
             const double tw = s.twv(i), y = s.yv(i);
             part[L] += tw;
             for (lint l = 0; l < L; ++l) {
-                const double eta = Pm[l * cnt + (t - t0)] + (intercept ? params[l * k] : 0.0);
-                double e;
-                if (fam == fGaussian) {
-                    const double r = y - eta;
-                    e = r * r;
-                } else if (fam == fBinomial) {
-                    // -2 log likelihood of y in {0, 1}: 2 log(1 + e^{-+eta})
-                    const double z = y == 1.0 ? -eta : eta;
-                    e = 2.0 * (z > 0 ? z + std::log1p(std::exp(-z)) : std::log1p(std::exp(z)));
-                } else {
-                    const double mu = std::exp(eta);
-                    e = y == 0.0 ? 2.0 * mu : 2.0 * (y * std::log(y / mu) - (y - mu));
-                }
-                part[l] += tw * e;
+                const double r = y - (Pm[l * cnt + (t - t0)] + (intercept ? params[l * k] : 0.0));
+                part[l] += tw * (r * r);
             }
         }
     });
@@ -1007,6 +1000,8 @@ int enet_one(const Opts& op, const Src& src, const double* alphas, std::int64_t 
                 if (!more.converged) break;
                 po = polish(s, src, P, op.intercept, l1, l2, op.refine_cond);
             }
+            // max_iter cut the retries before a polish took: not converged (decision 1, G93)
+            if (!po.ok && cd.n_iter >= op.max_iter) cd.converged = false;
         }
         double* st = stats + l * pNStat;
         std::fill(st, st + pNStat, kNaN);
@@ -1483,6 +1478,50 @@ void wgram(const Src& src, const Prep& P, const GlmState& g, const std::vector<l
     });
 }
 
+// The parts of the working-weight Gram (WG) the naive path (more than kGlmCovMaxCols columns)
+// needs at the polish's KKT check and the final values, in O(n p) time and O(p) memory instead
+// of the (p + 3)^2 Gram: per column the column's sums with sqrt(W) and u and its diagonal entry,
+// and the 3 x 3 block of [sqrt(W), sqrt(W) eta, u].
+struct WV {
+    lint na = 0;
+    std::vector<double> v;  // S(a) | G(a, u) | G(a, a) | one.one, one.eta, one.u, eta.eta, eta.u, u.u
+    double S(lint a) const { return v[static_cast<std::size_t>(a)]; }
+    double gu(lint a) const { return v[static_cast<std::size_t>(na + a)]; }
+    double daa(lint a) const { return v[static_cast<std::size_t>(2 * na + a)]; }
+    double blk(int i) const { return v[static_cast<std::size_t>(3 * na + i)]; }
+    double sW() const { return blk(0); }
+    double g0() const { return blk(2); }
+    double uu() const { return blk(5); }
+    double zbar() const { return (blk(1) + g0()) / sW(); }
+    double gc(lint a) const { return gu(a) - S(a) * g0() / sW(); }
+    double Hcd(lint a) const { return daa(a) - S(a) * S(a) / sW(); }
+};
+
+void wvec(const Src& src, const Prep& P, const GlmState& g, const std::vector<lint>& cols, WV& out) {
+    const lint na = static_cast<lint>(cols.size()), len = 3 * na + 6;
+    out.na = na;
+    out.v.assign(static_cast<std::size_t>(len), 0.0);
+    chunk_sum(P.m, len, out.v.data(), double(na), [&](lint t0, lint t1, double* part) {
+        for (lint t = t0; t < t1; ++t) {
+            const lint i = P.idx[t];
+            const double var = g.var[t];
+            const double W = P.wt[t] * var;
+            const double r = W > 0.0 ? std::sqrt(W) : 0.0;
+            const double e = r * g.eta[t];
+            const double u = r > 0.0 ? std::sqrt(P.wt[t] / var) * (src.yv(i) - g.mu[t]) : 0.0;
+            for (lint a = 0; a < na; ++a) {
+                const lint j = cols[a];
+                const double z = r * ((src.x(i, j) - P.cx[j]) / P.sc[j]);
+                part[a] += z * r;
+                part[na + a] += z * u;
+                part[2 * na + a] += z * z;
+            }
+            double* b = part + 3 * na;
+            b[0] += r * r, b[1] += r * e, b[2] += r * u, b[3] += e * e, b[4] += e * u, b[5] += u * u;
+        }
+    });
+}
+
 int glm_one(const Opts& op, const Src& src, const double* alphas, std::int64_t as, lint L, double* params,
             double* stats) {
     const lint p = src.p, k = p + (op.intercept ? 1 : 0);
@@ -1535,7 +1574,10 @@ int glm_one(const Opts& op, const Src& src, const double* alphas, std::int64_t a
         if (!(ybar > 0.0) || (fam == fBinomial && !(ybar < 1.0))) {
             // all y at the boundary: no finite fit
             fill_nan(L, k, params, stats, double(m));
-            for (lint l = 0; l < L; ++l) stats[l * pNStat + pIsNaN] = 0.0, stats[l * pNStat + pConv] = 0.0;
+            // the null model mu = ybar is y itself: null deviance 0 (glm's)
+            for (lint l = 0; l < L; ++l)
+                stats[l * pNStat + pIsNaN] = 0.0, stats[l * pNStat + pConv] = 0.0, stats[l * pNStat + pTss] = 0.0,
+                stats[l * pNStat + pSumW] = P.sw;
             return 0;
         }
         eta0 = fam == fBinomial ? std::log(ybar) - std::log1p(-ybar) : std::log(ybar);
@@ -1659,7 +1701,9 @@ int glm_one(const Opts& op, const Src& src, const double* alphas, std::int64_t a
         // the polish: Newton's method on the active set with the signs fixed (every column
         // without an L1 term); true when it settled and the KKT conditions hold
         int newton_steps = 0;
-        auto try_polish = [&]() -> bool {
+        // cap: the most Newton steps (the start without an L1 term counts them against
+        // max_iter); keep: commit the last valid point when the cap stops the steps
+        auto try_polish = [&](int cap, bool keep) -> bool {
             std::vector<lint> A, Acols;
             std::vector<double> sg;
             for (lint a_ = 0; a_ < pc; ++a_)
@@ -1673,7 +1717,8 @@ int glm_one(const Opts& op, const Src& src, const double* alphas, std::int64_t a
             bool settled = false;
             double Fp = objective(gp, nbeta);
             newton_steps = 0;
-            for (int step = 0; step < kNewtonSteps; ++step) {
+            const int steps = std::min(kNewtonSteps, cap);
+            for (int step = 0; step < steps; ++step) {
                 ++newton_steps;
                 wgram(src, P, gp, Acols, w);
                 const double sW = w.sW();
@@ -1736,18 +1781,33 @@ int glm_one(const Opts& op, const Src& src, const double* alphas, std::int64_t a
                 }
                 prev = step_size;
             }
-            if (!settled) return false;
+            if (!settled) {
+                if (keep && newton_steps == steps && steps < kNewtonSteps && gp.valid && Fp <= objective(g, beta)) {
+                    // the budget ran out on the way: the Newton iterate stands (no L1 term, so
+                    // no sign to keep), IRLS goes on from it with what is left
+                    beta = nbeta;
+                    b0 = nb0;
+                    std::swap(g, gp);
+                }
+                return false;
+            }
             for (lint q = 0; q < na; ++q)
                 if (l1 > 0.0 && !(nbeta[Acols[q]] * sg[q] > 0.0)) return false;
             if (na < pc) {
-                // the inactive columns' KKT conditions at the polished point
-                wgram(src, P, gp, P.cols, w);
+                // the inactive columns' KKT conditions at the polished point (the naive path
+                // without the full Gram)
+                const bool full = pc <= kGlmCovMaxCols;
+                WV wv;
+                if (full) wgram(src, P, gp, P.cols, w);
+                else wvec(src, P, gp, P.cols, wv);
                 std::vector<std::uint8_t> in(static_cast<std::size_t>(pc), 0);
                 for (const lint a_ : A) in[a_] = 1;
                 for (lint a_ = 0; a_ < pc; ++a_) {
                     if (in[a_]) continue;
-                    const double gj = (op.intercept ? w.gc(a_) : w.at(a_, w.u())) / P.sw;
-                    const double dj = std::max(0.0, op.intercept ? w.Hc(a_, a_) : w.at(a_, a_)) / P.sw;
+                    const double gj = (full ? (op.intercept ? w.gc(a_) : w.at(a_, w.u()))
+                                            : (op.intercept ? wv.gc(a_) : wv.gu(a_))) / P.sw;
+                    const double dj = std::max(0.0, full ? (op.intercept ? w.Hc(a_, a_) : w.at(a_, a_))
+                                                         : (op.intercept ? wv.Hcd(a_) : wv.daa(a_))) / P.sw;
                     if (!(std::fabs(gj) <= l1 * (1.0 + kKktRel) + kKktAbs * std::sqrt(dj * gp.dev / P.sw))) return false;
                 }
             }
@@ -1761,7 +1821,7 @@ int glm_one(const Opts& op, const Src& src, const double* alphas, std::int64_t a
         // without an L1 term the objective is smooth: Newton's method from the start (IRLS with
         // the exact inner solve), the coordinate descent only when it fails
         if (l1 == 0.0 && op.polish) {
-            polished = conv = try_polish();
+            polished = conv = try_polish(op.max_iter, true);
             it = newton_steps;
         }
         if (!polished) {
@@ -1770,7 +1830,7 @@ int glm_one(const Opts& op, const Src& src, const double* alphas, std::int64_t a
             it += used;
         }
         if (conv && op.polish && !polished) {
-            polished = try_polish();
+            polished = try_polish(kNewtonSteps, false);
             // a failed polish: the iterate's active set is not the solution's yet; IRLS again
             // with the inner coordinate descent to a smaller gap
             double t = kInnerTol;
@@ -1783,43 +1843,59 @@ int glm_one(const Opts& op, const Src& src, const double* alphas, std::int64_t a
                     conv = false;
                     break;
                 }
-                polished = try_polish();
+                polished = try_polish(kNewtonSteps, false);
             }
+            // the retries cut by max_iter before a polish took: not converged (decision 1)
+            if (!polished && it >= op.max_iter) conv = false;
         }
         st[pNIter] = it;
         st[pConv] = conv ? 1.0 : 0.0;
         st[pPolished] = polished ? 1.0 : 0.0;
         // the final values: deviance, the quadratic model's duality gap, the effective df
         st[pRss] = g.dev;
-        wgram(src, P, g, P.cols, wg);
-        const double sW = wg.sW();
+        // the full working Gram up to kGlmCovMaxCols columns; above, the per-column sums (WV)
+        // and the active columns' Gram only (memory O(n p), not (p + 3)^2)
+        const bool full = pc <= kGlmCovMaxCols;
+        WV wv;
+        if (full) wgram(src, P, g, P.cols, wg);
+        else wvec(src, P, g, P.cols, wv);
+        const double sW = full ? wg.sW() : wv.sW();
         if (sW > 0.0) {
             const double scl = P.sw / sW;
-            means_from(wg, P.cols);
-            const double zbar = op.intercept ? wg.zbar() : 0.0;
+            std::fill(cw.begin(), cw.end(), 0.0);
+            if (op.intercept)
+                for (lint a_ = 0; a_ < pc; ++a_)
+                    cw[P.cols[a_]] = P.cx[P.cols[a_]] + P.sc[P.cols[a_]] * ((full ? wg.S(a_) : wv.S(a_)) / sW);
+            const double zbar = op.intercept ? (full ? wg.zbar() : wv.zbar()) : 0.0;
+            const double g0 = full ? wg.g0() : wv.g0();
+            const double uu = full ? wg.at(wg.u(), wg.u()) : wv.uu();
             s.pc = pc;
             s.d.assign(static_cast<std::size_t>(pc), 1.0);
             s.b.assign(static_cast<std::size_t>(pc), 0.0);
             s.xta.assign(static_cast<std::size_t>(pc), 0.0);
-            std::vector<lint> A;
+            std::vector<lint> A, Acols;
             for (lint a_ = 0; a_ < pc; ++a_) {
                 s.b[a_] = beta[P.cols[a_]] * P.sc[P.cols[a_]];
-                s.xta[a_] = (op.intercept ? wg.gc(a_) : wg.at(a_, wg.u())) / sW;
-                if (s.b[a_] != 0.0) A.push_back(a_);
+                s.xta[a_] = (full ? (op.intercept ? wg.gc(a_) : wg.at(a_, wg.u()))
+                                  : (op.intercept ? wv.gc(a_) : wv.gu(a_))) / sW;
+                if (s.b[a_] != 0.0) A.push_back(a_), Acols.push_back(P.cols[a_]);
             }
             double gam = b0 - zbar;
             for (const lint j : P.cols) gam += cw[j] * beta[j];
-            double D = (op.intercept ? gam : 0.0) * wg.g0() / sW;
+            double D = (op.intercept ? gam : 0.0) * g0 / sW;
             for (lint a_ = 0; a_ < pc; ++a_) D += s.b[a_] * s.xta[a_];
-            st[pGap] = s.gap_from(l1 * scl, l2 * scl, wg.at(wg.u(), wg.u()) / sW, D) / scl;
+            st[pGap] = s.gap_from(l1 * scl, l2 * scl, uu / sW, D) / scl;
             const lint na = static_cast<lint>(A.size());
             if (l2 == 0.0 || na == 0) {
                 st[pDf] = double(na);
             } else {
+                WG wa;  // the naive path: the active columns' Gram
+                if (!full) wgram(src, P, g, Acols, wa);
                 std::vector<double> H(static_cast<std::size_t>(na * na));
                 for (lint q = 0; q < na; ++q) {
                     for (lint r_ = 0; r_ < na; ++r_)
-                        H[r_ * na + q] = (op.intercept ? wg.Hc(A[q], A[r_]) : wg.at(A[q], A[r_])) / P.sw;
+                        H[r_ * na + q] = (full ? (op.intercept ? wg.Hc(A[q], A[r_]) : wg.at(A[q], A[r_]))
+                                               : (op.intercept ? wa.Hc(q, r_) : wa.at(q, r_))) / P.sw;
                     H[q * na + q] += l2;
                 }
                 st[pDf] = effective_df(H, na, l2);
@@ -1829,7 +1905,7 @@ int glm_one(const Opts& op, const Src& src, const double* alphas, std::int64_t a
         if (op.intercept) pr[0] = b0;
         std::copy(beta.begin(), beta.end(), pr + (op.intercept ? 1 : 0));
     }
-    test_errors(src, op.intercept, L, params, stats, fam);
+    test_errors(src, op.intercept, L, params, stats);
     return 0;
 }
 
@@ -1849,15 +1925,13 @@ int alpha_max_one(const Opts& op, const Src& src, double* out) {
         return 0;
     }
     const lint pc0 = static_cast<lint>(P.cols.size());
-    // without the intercept the GLM's null model is eta = 0: mu0 = 1/2 or 1
-    const double mu0 = op.intercept || op.family == fGaussian ? 0.0 : (op.family == fBinomial ? 0.5 : 1.0);
     const lint len = 3 * pc0 + 2;
     std::vector<double> sums(static_cast<std::size_t>(len));
     chunk_sum(P.m, len, sums.data(), double(pc0), [&](lint t0, lint t1, double* part) {
         for (lint t = t0; t < t1; ++t) {
             const lint i = P.idx[t];
             const double w = P.wt[t];
-            const double v = src.yv(i) - P.cy - mu0;
+            const double v = src.yv(i) - P.cy;
             for (lint a = 0; a < pc0; ++a) {
                 const double u = src.x(i, P.cols[a]) - P.cx[P.cols[a]];
                 part[a] += w * u;

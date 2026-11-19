@@ -50,7 +50,7 @@ def test_against_statsmodels():
         assert all(close(a, b) for a, b in zip(theirs, ref[name])), name
     for name in ("rsquared", "rsquared_adj", "fvalue", "f_pvalue", "llf", "aic", "bic", "ssr"):
         assert close(getattr(r, name), ref[name]), name
-    lo, hi = r.conf_int(0.05).T
+    lo, hi = r.conf_int(alpha=0.05).T
     assert all(close(a, b) for a, b in zip(lo, ref["conf_int_lower"]))
     assert all(close(a, b) for a, b in zip(hi, ref["conf_int_upper"]))
 

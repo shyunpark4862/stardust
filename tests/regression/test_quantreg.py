@@ -445,11 +445,21 @@ def test_nan_policies_and_inf():
 
 def test_errors():
     y, X = np.arange(10.0), np.ones((10, 1))
-    for q in (0.0, 1.0, -0.1, math.nan, [0.2, 1.0], [[0.5]], []):
-        with pytest.raises(ValueError, match="'q' must be a number or a 1-dimensional array"):
+    for q in (0.0, 1.0, -0.1, math.nan, [0.2, 1.0]):
+        with pytest.raises(ValueError, match="'q' must be a number or a 1-dimensional array of numbers strictly"):
             R.quantreg(y, X, q=q)
-    with pytest.raises(TypeError, match="'q' must be"):
-        R.quantreg(y, X, q="0.5")
+    # the forms and messages of ridge's alpha (the same mistake, the same message)
+    for q, err, msg in (([[0.5]], ValueError, "'q' must be a number or a 1-dimensional array, not 2-dimensional"),
+                        (np.array(0.5), ValueError, "'q' must be a number or a 1-dimensional array, not 0-dimensional"),
+                        ([], ValueError, "'q' must not be empty"),
+                        ("0.5", TypeError, "'q' must be a number or a 1-dimensional array of numbers, not str"),
+                        (None, TypeError, "'q' must be a number or a 1-dimensional array of numbers, not NoneType"),
+                        (np.array([True]), TypeError, "of numbers, not a bool array"),
+                        ([10**400], OverflowError, "'q' is out of range")):
+        with pytest.raises(err, match=msg):
+            R.quantreg(y, X, q=q)
+        with pytest.raises(err, match=msg.replace("'q'", "'alpha'")):
+            R.ridge(y, X, alpha=q)
     with pytest.raises(ValueError, match=r"'cov_type' must be 'iid', 'nid' or 'ker', not 'boot'"):
         R.quantreg(y, X, cov_type="boot")
     with pytest.raises(ValueError, match=r"'bandwidth' must be 'hall-sheather' or 'bofinger', not 'x'"):
@@ -477,7 +487,7 @@ def test_result_fields_and_summary():
     assert isinstance(r.n_iter, int) and isinstance(r.n_pivots, int) and isinstance(r.converged, bool)
     t = a(r.tvalues)
     assert same(r.pvalues, 2 * sd.stats.StudentT(df=233.0).ccdf(sd.asarray(np.abs(t))))
-    ci = a(r.conf_int(0.1))
+    ci = a(r.conf_int(alpha=0.1))
     assert ci.shape == (2, 2) and np.all(ci[:, 0] < a(r.params)) and np.all(a(r.params) < ci[:, 1])
     assert tuple(r.cov_params().shape) == (2, 2) and same(sd.sqrt(sd.linalg.diagonal(r.cov_params())), r.bse)
     assert np.max(np.abs(a(r.fittedvalues) + a(r.resid) - y)) <= 1e-13 * np.max(np.abs(y))

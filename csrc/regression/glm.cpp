@@ -637,6 +637,7 @@ IrlsOut irls(const Model& M, Work& W, int max_lean, double tol, int inner_steps,
     IrlsOut out;
     const lint k = M.k;
     bool conv = false;
+    bool polished = false;  // the polishing iterations reached rounding (not cut by max_iter)
     int t_conv = 0;
     double prevstep = kInf;
     // G44: Fisher scoring seen to be slow before the deviance's convergence (kSlowRuns
@@ -772,15 +773,20 @@ IrlsOut irls(const Model& M, Work& W, int max_lean, double tol, int inner_steps,
             // Newton steps' accuracy depends on the observed information, binomial log 9e-15
             // against 9e-16 at kappa 1e6)
             const double lim = 0x1p-50 * bn;
-            if (step <= lim) break;
+            if (step <= lim) {
+                polished = true;
+                break;
+            }
             if (prevstep < kInf) {
                 const double r = step / prevstep;
                 const double after = canonical(M) ? step * r * r : step * r;
-                if (after <= lim) break;
                 // not contracting: the rounding's floor. Not at the deviance's convergence
                 // itself with a non-canonical link, whose next step is the first of Newton's
                 // (it may be larger than a slow Fisher step)
-                if (r > 0.5 && (canonical(M) || t > t_conv)) break;
+                if (after <= lim || (r > 0.5 && (canonical(M) || t > t_conv))) {
+                    polished = true;
+                    break;
+                }
             }
             if (!canonical(M) && t == t_conv && !newton_mode) {
                 prevstep = kInf;  // the ratios are Newton's from here
@@ -789,7 +795,9 @@ IrlsOut irls(const Model& M, Work& W, int max_lean, double tol, int inner_steps,
         }
         prevstep = step;
     }
-    out.converged = conv;
+    // converged: the deviance's test passed and the polish finished; max_iter cutting the
+    // polish short leaves the coefficients short of rounding (decision 1, G93)
+    out.converged = conv && polished;
     return out;
 }
 
@@ -1022,6 +1030,16 @@ int glm_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64_t ys
         for (lint i = i0; i < i1; ++i)
             if (pw[i] > 0.0) a[0] = a[0] + DD{f[i], 0.0};
     })[0];
+    {
+        bool any = false;
+        for (lint i = 0; i < n && !any; ++i) any = pw[i] > 0.0;
+        if (!any) {  // no row in the fit (none given, or every weight 0): NaN with nobs 0 (G96)
+            fill_nan(n, k, o);
+            o.stats[gNobs] = 0.0;
+            o.stats[gNIter] = 0.0;
+            return 0;
+        }
+    }
     Model M{op.fam, op.link, n, p, k, op.intercept, op.rtol, y, v, f, tr, m, pw, off, Xb, xrs, xcs};
 
     // ---- 2. IRLS
@@ -1085,7 +1103,9 @@ int glm_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64_t ys
     const bool have_beta = ir.ok && W.have_beta;
     bool use_final = have_beta && W.nxt.valid && !rises(W.cur.dev, W.nxt.dev, op.tol);
     if (!have_beta && W.nxt.valid) use_final = true;  // no iterate with coefficients: the final solve is all there is
-    bool converged = ir.converged || (ir.ok && use_final && settled(W.cur.dev, W.nxt.dev, op.tol));
+    // the deviance's test passed and the polish finished within max_iter (G93): a final solve
+    // that settles the deviance after max_iter cut the iterations is not a finished polish
+    bool converged = ir.converged;
     const lint rank = static_cast<lint>(fstats[kRank]);
     o.stats[gNGroups] = fstats[kNGroups];
     o.stats[gLags] = fstats[kLags];
@@ -1223,14 +1243,42 @@ int glm_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64_t ys
     }
     double D = dev.hi, P = pear.hi;
     if (gid && use_final && !separated) D = P = fstats[kSsr];  // the least squares' own sum (as ols)
+    // the gaussian family's identity link with an intercept and no offset, y exactly constant
+    // over the fit's rows (y0): the exact solution (y0, 0, ..., 0), as ols (G92, G94). The
+    // least squares leave rounding there (a slope of 1e-32, a scale of 1e-66 and a spurious t)
+    bool gconst = gid && op.intercept && !has_offset && !separated && have_beta && o.kept[0];
+    double y0 = kNaN;
+    for (lint i = 0; i < n && gconst; ++i) {
+        if (!(pw[i] > 0.0)) continue;
+        if (std::isnan(y0)) y0 = y[i];
+        else gconst = y[i] == y0;
+    }
+    if (gconst) {
+        o.params[0] = y0;
+        for (lint c = 1; c < k; ++c) o.params[c] = o.kept[c] ? 0.0 : kNaN;
+        for (lint i = 0; i < n; ++i) {
+            const double r = y[i] - y0;
+            o.mu[i] = o.eta[i] = y0;
+            o.rresp[i] = o.rwork[i] = r;
+            o.rpear[i] = std::sqrt(m[i]) * r;
+            o.rdev[i] = std::copysign(std::sqrt(m[i]) * std::fabs(r), r);
+        }
+        if (op.cov != kNonrobust && !(op.cov == kCluster && !(o.stats[gNGroups] >= 2.0)))  // the scores vanish
+            for (lint a = 0; a < k; ++a)
+                for (lint b = 0; b < k; ++b)
+                    if (o.kept[a] && o.kept[b]) o.cov[a * k + b] = 0.0;
+        D = P = 0.0;
+    }
     const double nob = nobs.hi;
     const double df_resid = nob - static_cast<double>(rank);
+    // an estimated scale with no degree of freedom left is 0/0 (G95)
+    auto per_df = [&](double v) { return df_resid == 0.0 ? kNaN : v / df_resid; };
     double phi = 1.0;
     switch (op.scale_mode) {
-        case sX2: phi = P / df_resid; break;
-        case sDev: phi = D / df_resid; break;
+        case sX2: phi = per_df(P); break;
+        case sDev: phi = per_df(D); break;
         case sFixed: phi = op.scale_value; break;
-        default: phi = (op.fam == fGaussian || op.fam == fGamma) ? P / df_resid : 1.0; break;
+        default: phi = (op.fam == fGaussian || op.fam == fGamma) ? per_df(P) : 1.0; break;
     }
     // log-likelihood at the scale (statsmodels' loglike; gaussian identity: concentrated)
     // the log-likelihood's terms free of mu, once for llf and llnull: v lgamma(y + 1)
@@ -1258,7 +1306,12 @@ int glm_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64_t ys
         });
     }
     auto llf_at = [&](const double* mus, const double* mucs, double mconst, double mcconst, const std::uint8_t* sp,
-                      bool concentrated, double ssr_c) -> double {
+                      bool concentrated, double ssr_c, double dev_at = kNaN) -> double {
+        if (!concentrated && phi == 0.0) {
+            // an estimated scale of 0 (a perfect fit): the likelihood's limit, +inf where the
+            // model fits every row exactly (its deviance 0), -inf elsewhere (G97, as ols's G22)
+            return dev_at == 0.0 ? kInf : -kInf;
+        }
         if (concentrated) {
             // -n/2 (log(2 pi) + log(ssr/n) + 1) + sum f log v / 2, as ols's llf
             return -nob / 2.0 * (std::log(2.0 * M_PI) + std::log(ssr_c / nob) + 1.0) + slogw.hi / 2.0;
@@ -1305,7 +1358,7 @@ int glm_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64_t ys
     };
     double llf = kNaN;
     if (gid) llf = llf_at(nullptr, nullptr, 0, 0, nullptr, true, D);
-    else if (fin) llf = llf_at(fmu, fmuc, 0, 0, sep.data(), false, 0);
+    else if (fin) llf = llf_at(fmu, fmuc, 0, 0, sep.data(), false, 0, D);
     else if (separated) llf = 0.0;  // every row at its boundary
 
     // the null model: the intercept alone (closed form without an offset, else IRLS), or
@@ -1372,9 +1425,10 @@ int glm_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64_t ys
             DD dn{0, 0}, sn{0, 0};
             for (lint c = 0; c < ncn; ++c) dn = dn + pd[2 * c], sn = sn + pd[2 * c + 1];
             Dnull = dn.hi;
+            if (gconst) Dnull = sn.hi = 0.0;  // the null model is the fit itself
             if (gid) llnull = llf_at(nullptr, nullptr, 0, 0, nullptr, true, sn.hi);
-            else llnull = const_mu ? llf_at(nullptr, nullptr, mc, mcc, nullptr, false, 0)
-                                   : llf_at(mun.data(), mucn.data(), 0, 0, nullptr, false, 0);
+            else llnull = const_mu ? llf_at(nullptr, nullptr, mc, mcc, nullptr, false, 0, Dnull)
+                                   : llf_at(mun.data(), mucn.data(), 0, 0, nullptr, false, 0, Dnull);
         }
     }
 

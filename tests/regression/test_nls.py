@@ -247,8 +247,24 @@ def test_weight_errors():
         sd.regression.nls(decay, xn, yn, p0=[1.0, 1.0, 1.0], weights=np.where(np.arange(len(w)) == 3, -1.0, w))
     with pytest.raises(ValueError, match=r"^nls\(\): 'weights' contains infinity$"):
         sd.regression.nls(decay, xn, yn, p0=[1.0, 1.0, 1.0], weights=np.where(np.arange(len(w)) == 3, np.inf, w))
-    with pytest.raises(ValueError, match=r"^nls\(\): 'weights' must have 40 values like 'y', not shape \(39,\)$"):
+    # wls's messages for the same mistakes (G95's consistency)
+    with pytest.raises(ValueError, match=r"^nls\(\): 'weights' must have 40 values like 'y', not 39$"):
         sd.regression.nls(decay, xn, yn, p0=[1.0, 1.0, 1.0], weights=w[:-1])
+    with pytest.raises(ValueError, match=r"^wls\(\): 'weights' must have 40 values like 'y', not 39$"):
+        sd.regression.wls(yn, xn, weights=w[:-1])
+    for fn in (lambda: sd.regression.nls(decay, xn, yn, p0=[1.0, 1.0, 1.0], weights=2.0),
+               lambda: sd.regression.wls(yn, xn, weights=2.0)):
+        with pytest.raises(ValueError, match=r"\(\): 'weights' must have 40 values like 'y', not a scalar$"):
+            fn()
+    # a negative weight is an error also in a row whose y is NaN, under every policy (as wls)
+    yb = yn.copy()
+    yb[3] = np.nan
+    wb = np.where(np.arange(len(w)) == 3, -1.0, w)
+    for pol in ("propagate", "omit"):
+        for fn in (lambda: sd.regression.nls(decay, xn, yb, p0=[1.0, 1.0, 1.0], weights=wb, nan_policy=pol),
+                   lambda: sd.regression.wls(yb, xn, weights=wb, nan_policy=pol)):
+            with pytest.raises(ValueError, match=r"\(\): 'weights' must be >= 0$"):
+                fn()
 
 
 # ---- NaN (G75)
@@ -457,7 +473,7 @@ def test_errors():
         nls(decay, xn, yn, p0=p0, jac="2-point")
     with pytest.raises(TypeError):
         nls(decay, xn, yn)
-    with pytest.raises(ValueError, match=r"^nls\(\): 'p0' must have at least one value$"):
+    with pytest.raises(ValueError, match=r"^nls\(\): the model has no parameters \('p0' is empty\)$"):
         nls(decay, xn, yn, p0=[])
     with pytest.raises(ValueError, match=r"^nls\(\): 'p0' must be finite$"):
         nls(decay, xn, yn, p0=[1.0, math.nan, 1.0])

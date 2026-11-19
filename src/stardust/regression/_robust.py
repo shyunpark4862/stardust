@@ -17,7 +17,8 @@ from .. import random as _random
 from .. import special as _special
 from .._results import SiegelslopesResult, TheilslopesResult
 from ._glm import _broadcast_shape, _check_int, _check_positive
-from ._linear import (_RegressionResult, _as_real, _check_alpha, _check_batches, _check_bool, _check_choice,
+from ._linear import (_RegressionResult, _as_real, _check_alpha, _check_batches, _check_bool, _check_choice, _expand,
+                      _check_rows, _prepare, _read_y, _rows_message,
                       _check_policy, _check_rtol, _frame_columns, _count, _forg, _has_nan, _names, _pairs, _quantile_label, _type_name, _WIDTH)
 
 _k = _sd.regression
@@ -36,20 +37,29 @@ _C_MM = 4.685061
 _NRESAMPLE = 500  # lmrob.control()'s nResample
 
 # the kernel's per-regression scalars (csrc/regression/robust.cpp, enum RStat)
-_R_NOBS, _R_RANK, _R_SCALE, _R_NITER, _R_CONV, _R_ISNAN, _R_SITER, _R_SCONV, _R_NGROUPS, _R_LAGS = range(10)
+_R_NOBS, _R_RANK, _R_SCALE, _R_NITER, _R_CONV, _R_ISNAN, _R_NGROUPS, _R_LAGS = range(8)
 
 
 class RLMResult(_RegressionResult):
     """The result of sd.regression.rlm: statsmodels' names (G10). The intercept is params[0]."""
 
-    __slots__ = ("method", "norm", "_scale_est")
+    __slots__ = ("_method", "_norm", "_scale_est")
     _I_NOBS, _I_RANK, _I_ISNAN, _I_NGROUPS, _I_LAGS = _R_NOBS, _R_RANK, _R_ISNAN, _R_NGROUPS, _R_LAGS
 
     def __init__(self, raw, *, method, norm, scale_est, **kw):
         super().__init__(raw, **kw)
-        self.method = method
-        self.norm = norm
+        self._method = method
+        self._norm = norm
         self._scale_est = scale_est
+
+    # -- the fit's configuration: read-only (G98)
+    @property
+    def method(self):
+        return self._method
+
+    @property
+    def norm(self):
+        return self._norm
 
     @property
     def resid(self):
@@ -72,7 +82,18 @@ class RLMResult(_RegressionResult):
 
     @property
     def df_resid(self):
-        return self._cached("df_resid", lambda: self.nobs - self._stat(_R_RANK))
+        return self._cached("df_resid", lambda: self._nan_where(self.nobs - self._stat(_R_RANK)))
+
+    def cov_params(self):
+        """The covariance of the parameters (k x k); rows and columns of aliased parameters are
+        NaN, and all of it with no degree of freedom left (n = rank: 0/0, G95)."""
+        def make():
+            c = self._raw[1]
+            df = self.df_resid
+            if self._batch:
+                return _sd.where(_expand(df == 0.0, 2), math.nan, c)
+            return c * math.nan if df == 0 else c
+        return self._cached("cov_params", make)
 
     @property
     def converged(self):
@@ -89,9 +110,15 @@ class RLMResult(_RegressionResult):
 
     def predict(self, X_new, /):
         """X_new @ params (the intercept added), summed in double-double. Aliased columns take
-        no part."""
-        Xn = self._design(X_new, "predict")
-        return _k.apply("predict", Xn, self._beff(), self._intercept, None)[0]
+        no part; a NaN in a column of the model gives NaN."""
+        return self._xbeta(self._design(X_new, "predict"), "predict")
+
+    def predict_interval(self, X_new, /, *, alpha=0.05):
+        """(..., m, 2): the 1 - alpha confidence interval of the fitted value (the mean's
+        location) at each row of X_new, x params -+ t se, se^2 = x cov_params() x^T (G103). No
+        interval for a new observation: the robust fit has no error distribution to draw it
+        from (the scale is a robust spread, not a standard deviation)."""
+        return self._interval(X_new, "predict_interval", alpha)
 
     def summary(self, *, alpha=0.05):
         """A text table like statsmodels' RLM summary: the fit, then the coefficients with their
@@ -113,13 +140,13 @@ def _summary(r, alpha):
     stars = "=" * _WIDTH
     lines = ["Robust linear Model Regression Results".center(_WIDTH).rstrip(), stars]
     left = [("Model:", "RLM"), ("Method:", "IRLS" if r.method == "M" else "MM"), ("Norm:", _NORM_NAME[r.norm]),
-            ("Scale Est.:", r._scale_est), ("Cov Type:", r.cov_type), ("No. Iterations:", str(r.n_iter))]
+            ("Scale Est.:", r._scale_est), ("Covariance Type:", r.cov_type), ("No. Iterations:", str(r.n_iter))]
     right = [("No. Observations:", _count(r.nobs)), ("Df Residuals:", _count(r.df_resid)),
              ("Df Model:", _count(r.df_model)), ("Scale:", f"{r.scale:#8.5g}".strip())]
     lines += _pairs(left, right)
     lines.append(stars)
     names = [str(v) for v in r.param_names]
-    ci = r.conf_int(alpha)
+    ci = r.conf_int(alpha=alpha)
     params, bse, tv, pv = (r.params, r.bse, r.tvalues, r.pvalues)
     wname = max([len(v) for v in names] + [9]) + 1
     cols = ["coef", "std err", "t", "P>|t|", "[" + _quantile_label(alpha / 2), _quantile_label(1 - alpha / 2) + "]"]
@@ -224,33 +251,8 @@ def rlm(y, X, /, *, method="M", norm=None, c=None, scale_est=None, intercept=Tru
     elif rng is not None:
         raise ValueError(f"{func}(): 'rng' is only used with method='MM'")
 
-    yy, _ = _as_real(y, func, "y")
-    if yy.ndim == 0:
-        raise ValueError(f"{func}(): 'y' must have at least 1 dimension")
     columns = _frame_columns(X)
-    XX, names = _as_real(X, func, "X")
-    if XX.ndim == 0:
-        raise ValueError(f"{func}(): 'X' must have at least 1 dimension")
-    if XX.ndim == 1:
-        XX = _sd.reshape(XX, (XX.shape[0], 1))
-    n = yy.shape[-1]
-    if XX.shape[-2] != n:
-        raise ValueError(f"{func}(): 'X' must have {n} rows like 'y', not {XX.shape[-2]}")
-    if XX.shape[-1] == 0 and not intercept:
-        raise ValueError(f"{func}(): the model has no parameters (no columns in 'X' and intercept=False)")
-    _check_batches(func, [("y", yy.shape[:-1]), ("X", XX.shape[:-2])])
-    batch = yy.ndim > 1 or XX.ndim > 2
-    if nan_policy == "raise":
-        if _has_nan(yy, XX):
-            raise ValueError(f"{func}(): the input contains NaN (nan_policy='raise')")
-    elif nan_policy == "omit":
-        if batch:
-            raise ValueError(f"{func}(): nan_policy='omit' takes one regression, not a batch "
-                             "(the regressions would keep different rows)")
-        bad = _sd.logical_or(_sd.isnan(yy), _sd.any(_sd.isnan(XX), axis=1))
-        if bool(_sd.any(bad)):
-            keep = _sd.logical_not(bad)
-            yy, XX = yy[keep], XX[keep]
+    yy, XX, _, names, _, _, _ = _prepare(func, y, X, None, nan_policy, intercept=intercept)
     keys = None
     if method == "MM":
         shape = _broadcast_shape(func, tuple(yy.shape[:-1]), tuple(XX.shape[:-2]))
@@ -269,7 +271,7 @@ def rlm(y, X, /, *, method="M", norm=None, c=None, scale_est=None, intercept=Tru
 # ---- Theil-Sen and Siegel (G56): scipy.stats' signatures and results
 
 def _slopes_input(func, y, x, nan_policy):
-    yy, _ = _as_real(y, func, "y")
+    yy = _read_y(y, func)
     if yy.ndim == 0:
         raise ValueError(f"{func}(): 'y' must have at least 1 dimension")
     n = yy.shape[-1]
@@ -280,7 +282,7 @@ def _slopes_input(func, y, x, nan_policy):
         if xx.ndim == 0:
             raise ValueError(f"{func}(): 'x' must have at least 1 dimension")
         if xx.shape[-1] != n:
-            raise ValueError(f"{func}(): 'x' must have {n} values like 'y', not {xx.shape[-1]}")
+            raise ValueError(_rows_message(func, "x", n, xx.shape[-1], yy.shape, "values"))
     _check_batches(func, [("y", yy.shape[:-1]), ("x", xx.shape[:-1])])
     batch = yy.ndim > 1 or xx.ndim > 1
     if nan_policy == "raise":
@@ -290,6 +292,7 @@ def _slopes_input(func, y, x, nan_policy):
         if batch:
             raise ValueError(f"{func}(): nan_policy='omit' takes one regression, not a batch "
                              "(the regressions would keep different points)")
+        _check_rows(func, [("y", yy), ("x", xx)])  # inf stays an error in a row with a NaN (G24)
         bad = _sd.logical_or(_sd.isnan(yy), _sd.isnan(xx))
         if bool(_sd.any(bad)):
             keep = _sd.logical_not(bad)

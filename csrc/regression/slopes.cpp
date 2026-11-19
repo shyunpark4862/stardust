@@ -155,6 +155,7 @@ std::vector<double> select_slopes(const Pts& P, std::int64_t N, const std::vecto
                 const double dx = P.x[i] - P.x[j];
                 if (dx == 0.0) continue;
                 const double s = (P.y[i] - P.y[j]) / dx;
+                if (std::isnan(s)) continue;  // inf / inf from overflowing differences: no slope
                 if (std::isinf(s)) ++ninf;
                 v.push_back(s);
             }
@@ -179,7 +180,9 @@ std::vector<double> select_slopes(const Pts& P, std::int64_t N, const std::vecto
         if (i == j) continue;
         const double dx = P.x[i] - P.x[j];
         if (dx == 0.0) continue;
-        samp.push_back(okey((P.y[i] - P.y[j]) / dx));
+        const double sv = (P.y[i] - P.y[j]) / dx;
+        if (std::isnan(sv)) continue;
+        samp.push_back(okey(sv));
     }
     std::sort(samp.begin(), samp.end());
     std::vector<Target> T(want.size());
@@ -244,7 +247,7 @@ std::vector<double> select_slopes(const Pts& P, std::int64_t N, const std::vecto
                     std::int64_t bits;
                     std::memcpy(&bits, &v, sizeof bits);
                     bits = bits >= 0 ? bits : bits ^ std::numeric_limits<std::int64_t>::max();
-                    kq[j] = dx == 0.0 ? kKeyMax : bits;
+                    kq[j] = (dx == 0.0 || v != v) ? kKeyMax : bits;  // no slope: above every rank wanted
                 }
                 if (round == 0)
                     for (lint j = i + 1; j < n; ++j) ni += (kq[j] == kinfp) + (kq[j] == kinfn);
@@ -349,7 +352,16 @@ void theil_one(const Pts& P, bool joint, double z, const Limits& lim, double* o)
     std::int64_t sx, px, sy, py;
     ties(xs, sx, px);
     ties(ys, sy, py);
-    const std::int64_t N = std::int64_t(n) * (n - 1) / 2 - px;
+    // the pairs with a slope: x_i != x_j, and not inf / inf, which needs a difference of x that
+    // overflows (counted only then; scipy's slopes are the finite and infinite ones, G56)
+    std::int64_t nnan = 0;
+    if (n > 1 && std::isinf(*std::max_element(P.x, P.x + n) - *std::min_element(P.x, P.x + n)))
+        for (lint i = 0; i + 1 < n; ++i)
+            for (lint j = i + 1; j < n; ++j) {
+                const double dx = P.x[i] - P.x[j];
+                nnan += dx != 0.0 && std::isnan((P.y[i] - P.y[j]) / dx);
+            }
+    const std::int64_t N = std::int64_t(n) * (n - 1) / 2 - px - nnan;
     if (N == 0) {
         std::fill(o, o + 4, kNaN);
         return;
@@ -421,6 +433,7 @@ void siegel_one(const Pts& P, bool separate, double* o) {
                 const double dx = P.x[i] - P.x[j];
                 if (dx == 0.0) continue;
                 const double s = (P.y[i] - P.y[j]) / dx;
+                if (std::isnan(s)) continue;  // inf / inf: no slope (as theilslopes)
                 if (separate) w[c] = P.y[i] - s * P.x[i];
                 v[c++] = s;
             }

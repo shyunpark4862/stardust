@@ -120,7 +120,7 @@ def test_against_statsmodels(norm, scale_est, seed):
     t = a(r.params) / a(r.bse)
     assert a(r.pvalues) == pytest.approx(2 * st.t.sf(np.abs(t), r.df_resid), rel=1e-12)
     assert a(r.tvalues) == pytest.approx(s.tvalues, rel=1e-12)
-    ci = a(r.conf_int(0.1))
+    ci = a(r.conf_int(alpha=0.1))
     q = st.t.ppf(0.95, r.df_resid)
     assert ci[:, 1] == pytest.approx(a(r.params) + q * a(r.bse), rel=1e-12)
     assert r.nobs == 150 + 7 * seed and r.df_model == 3 and r.df_resid == r.nobs - 4
@@ -639,15 +639,13 @@ def test_mscale_gradient_scale_free():
     sum psi z, no factor s (it had one: wrong for s != 1, though near the fixed point, where
     the sums vanish, the step hardly saw it). MM is equivariant in y: the S iterations and the
     scaled results are the same for y, 1000 y and y / 1000."""
-    from stardust.regression._robust import _R_SITER
-
     rng = np.random.default_rng(1)
     X = rng.standard_normal((300, 2))
     y = X @ [1.0, -2.0] + 0.5 + rng.standard_normal(300)
     y[:60] += 10
     fits = [R.rlm(y * s, X, method="MM", rng=sd.random.default_rng(0)) for s in (1.0, 1000.0, 1e-3)]
-    its = [float(f._raw[6][_R_SITER]) for f in fits]
-    assert its[0] == its[1] == its[2]
+    its = [(f.n_iter, f.converged) for f in fits]
+    assert its[0] == its[1] == its[2] and its[0][1]
     for f, s in zip(fits[1:], (1000.0, 1e-3)):
         assert np.max(np.abs(a(f.params) / s - a(fits[0].params))) <= 1e-13
         assert abs(f.scale / s - fits[0].scale) <= 1e-13 * fits[0].scale

@@ -7,14 +7,15 @@ checks and converts the inputs, computes quantreg's bandwidths and builds the re
 """
 
 import math
-import numbers
 import textwrap
 
 from .. import _core as _sd
 from .. import special as _special
 from ._glm import _check_int, _check_positive
-from ._linear import (_RegressionResult, _as_real, _check_alpha, _check_batches, _check_bool, _check_choice,
-                      _check_policy, _check_rtol, _frame_columns, _count, _div, _forg, _has_nan, _names, _pairs, _quantile_label, _type_name, _WIDTH)
+from ._linear import (_RegressionResult, _check_alpha, _check_bool, _check_choice,
+                      _check_pred_batch, _new_design, _prepare,
+                      _check_policy, _check_rtol, _frame_columns, _count, _div, _forg, _names,
+                      _number_or_1d, _pairs, _quantile_label, _WIDTH)
 
 _k = _sd.regression
 
@@ -38,14 +39,19 @@ _COV_NOTES = {
 class QuantRegResult(_RegressionResult):
     """The result of sd.regression.quantreg: statsmodels' names (G10). The intercept is params[0]."""
 
-    __slots__ = ("q", "_bw_rule", "_qaxis")
+    __slots__ = ("_q", "_bw_rule", "_qaxis")
     _I_NOBS, _I_RANK, _I_ISNAN, _I_NGROUPS, _I_LAGS = _Q_NOBS, _Q_RANK, _Q_ISNAN, _Q_NGROUPS, _Q_LAGS
 
     def __init__(self, raw, *, q, bw_rule, qaxis, **kw):
         super().__init__(raw, **kw)
-        self.q = q
+        self._q = q
         self._bw_rule = bw_rule
         self._qaxis = qaxis
+
+    @property
+    def q(self):
+        """The quantile(s) as given: a number or a copy of the 1-D array (read-only, G98)."""
+        return self._q
 
     @property
     def resid(self):
@@ -57,7 +63,7 @@ class QuantRegResult(_RegressionResult):
 
     @property
     def df_resid(self):
-        return self._cached("df_resid", lambda: self.nobs - self._stat(_Q_RANK))
+        return self._cached("df_resid", lambda: self._nan_where(self.nobs - self._stat(_Q_RANK)))
 
     @property
     def objective(self):
@@ -117,11 +123,24 @@ class QuantRegResult(_RegressionResult):
             return Xn
         return _sd.reshape(Xn, tuple(Xn.shape[:-2]) + (1,) + tuple(Xn.shape[-2:]))
 
+    def _design(self, X_new, func):
+        p = self.params.shape[-1] - (1 if self._intercept else 0)
+        Xn = _new_design(X_new, func, p, self._columns)
+        # X_new's batch against the regressions' (the quantile axis is the result's own)
+        _check_pred_batch(func, Xn, self._batch[:-1] if self._qaxis else self._batch)
+        return Xn
+
     def predict(self, X_new, /):
         """X_new @ params (the intercept added), summed in double-double (..., [L,] m). Aliased
-        columns take no part."""
-        Xn = self._design(X_new, "predict")
-        return _k.apply("predict", self._shape_X(Xn), self._beff(), self._intercept, None)[0]
+        columns take no part; a NaN in a column of the model gives NaN."""
+        return self._xbeta(self._design(X_new, "predict"), "predict")
+
+    def predict_interval(self, X_new, /, *, alpha=0.05):
+        """(..., [L,] m, 2): the 1 - alpha confidence interval of the fitted q-quantile at each
+        row of X_new, x params -+ t(df_resid) se, se^2 = x cov_params() x^T (G103). No interval
+        for a new observation: that is the conditional distribution's spread, which a single
+        quantile does not describe (fit q/2 and 1 - q/2 for one)."""
+        return self._interval(X_new, "predict_interval", alpha)
 
     def summary(self, *, alpha=0.05):
         """A text table like statsmodels' QuantReg summary: the fit, then the coefficients with
@@ -151,14 +170,14 @@ def _summary(r, alpha):
     stars = "=" * _WIDTH
     lines = ["QuantReg Regression Results".center(_WIDTH).rstrip(), stars]
     left = [("Model:", "QuantReg"), ("Method:", "Frisch-Newton"), ("Quantile:", f"{r.q:g}"),
-            ("Cov Type:", r.cov_type), ("Bandwidth rule:", r._bw_rule)]
+            ("Covariance Type:", r.cov_type), ("Bandwidth rule:", r._bw_rule)]
     right = [("Pseudo R-squared:", f"{r.prsquared:#8.4g}".strip()), ("Bandwidth:", f"{r.bandwidth:#8.4g}".strip()),
              ("No. Observations:", _count(r.nobs)), ("Df Residuals:", _count(r.df_resid)),
              ("Df Model:", _count(r.df_model))]
     lines += _pairs(left, right)
     lines.append(stars)
     names = [str(v) for v in r.param_names]
-    ci = r.conf_int(alpha)
+    ci = r.conf_int(alpha=alpha)
     params, bse, tv, pv = (r.params, r.bse, r.tvalues, r.pvalues)
     wname = max([len(v) for v in names] + [9]) + 1
     cols = ["coef", "std err", "t", "P>|t|", "[" + _quantile_label(alpha / 2), _quantile_label(1 - alpha / 2) + "]"]
@@ -207,27 +226,14 @@ def _bandwidth(q, n, hall_sheather):
 
 
 def _check_q(q, func):
-    """(list of floats, the value to keep in the result, whether q is an array)."""
-    msg = f"{func}(): 'q' must be a number or a 1-dimensional array of numbers strictly between 0 and 1"
-    if isinstance(q, bool):
-        raise TypeError(f"{func}(): 'q' must be a number or a 1-dimensional array, not bool")
-    if isinstance(q, numbers.Real):
-        v = float(q)
-        if not 0.0 < v < 1.0:
-            raise ValueError(msg)
-        return [v], v, False
-    if isinstance(q, (str, bytes)):
-        raise TypeError(f"{func}(): 'q' must be a number or a 1-dimensional array, not {_type_name(q)}")
-    try:
-        a, _ = _as_real(q, func, "q")
-    except TypeError:
-        raise TypeError(f"{func}(): 'q' must be a number or a 1-dimensional array, not {_type_name(q)}") from None
-    if a.ndim != 1 or a.shape[0] == 0:
-        raise ValueError(msg)
+    """(list of floats, the value to keep in the result (a copy of an array), whether q is an
+    array). The forms and messages of ridge's alpha (_number_or_1d)."""
+    a, qaxis = _number_or_1d(q, func, "q")
     vals = [float(v) for v in a.tolist()]
     if not all(0.0 < v < 1.0 for v in vals):
-        raise ValueError(msg)
-    return vals, a, True
+        raise ValueError(f"{func}(): 'q' must be a number or a 1-dimensional array of numbers strictly between 0 "
+                         "and 1")
+    return vals, (a.copy() if qaxis else vals[0]), qaxis
 
 
 def quantreg(y, X, /, *, q=0.5, intercept=True, cov_type="nid", bandwidth="hall-sheather", max_iter=100, tol=1e-05,
@@ -246,33 +252,8 @@ def quantreg(y, X, /, *, q=0.5, intercept=True, cov_type="nid", bandwidth="hall-
     rt = _check_rtol(rtol, func)
     _check_policy(nan_policy, func)
 
-    yy, _ = _as_real(y, func, "y")
-    if yy.ndim == 0:
-        raise ValueError(f"{func}(): 'y' must have at least 1 dimension")
     columns = _frame_columns(X)
-    XX, names = _as_real(X, func, "X")
-    if XX.ndim == 0:
-        raise ValueError(f"{func}(): 'X' must have at least 1 dimension")
-    if XX.ndim == 1:
-        XX = _sd.reshape(XX, (XX.shape[0], 1))
-    n = yy.shape[-1]
-    if XX.shape[-2] != n:
-        raise ValueError(f"{func}(): 'X' must have {n} rows like 'y', not {XX.shape[-2]}")
-    if XX.shape[-1] == 0 and not intercept:
-        raise ValueError(f"{func}(): the model has no parameters (no columns in 'X' and intercept=False)")
-    _check_batches(func, [("y", yy.shape[:-1]), ("X", XX.shape[:-2])])
-    batch = yy.ndim > 1 or XX.ndim > 2
-    if nan_policy == "raise":
-        if _has_nan(yy, XX):
-            raise ValueError(f"{func}(): the input contains NaN (nan_policy='raise')")
-    elif nan_policy == "omit":
-        if batch:
-            raise ValueError(f"{func}(): nan_policy='omit' takes one regression, not a batch "
-                             "(the regressions would keep different rows)")
-        bad = _sd.logical_or(_sd.isnan(yy), _sd.any(_sd.isnan(XX), axis=1))
-        if bool(_sd.any(bad)):
-            keep = _sd.logical_not(bad)
-            yy, XX = yy[keep], XX[keep]
+    yy, XX, _, names, _, _, _ = _prepare(func, y, X, None, nan_policy, intercept=intercept)
     nobs = yy.shape[-1]
     hs = bandwidth == "hall-sheather"
     hraw, hhalf, kerc = [], [], []

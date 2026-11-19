@@ -317,14 +317,45 @@ struct Basis {
                 d[r] = P + S;
             }
             trans ? solve_t(d.data(), sc) : solve(d.data(), sc);
+            // a correction below u ||v||_inf is the double-double residual's own rounding (it
+            // resolves the large components only): no change
+            double vmax = 0.0;
+            for (lint r = 0; r < k; ++r) vmax = std::max(vmax, std::fabs(v[r]));
             bool changed = false;
             for (lint r = 0; r < k; ++r) {
                 const double nv = v[r] + d[r];
-                if (nv != v[r]) changed = true;
+                if (nv != v[r] && std::fabs(d[r]) > 0x1p-53 * vmax) changed = true;
                 v[r] = nv;
             }
             if (!changed) break;
         }
+        // components below u ||v||_inf whose true value is 0 (a vertex coordinate exactly 0,
+        // as the slopes of a constant y) are left at 1e-63 by the solve: 0 when that does not
+        // increase the basis rows' largest residual (decision 2026-11-19)
+        double vmax = 0.0;
+        for (lint r = 0; r < k; ++r) vmax = std::max(vmax, std::fabs(v[r]));
+        std::vector<double> w(v, v + k);
+        bool any = false;
+        for (lint r = 0; r < k; ++r)
+            if (w[r] != 0.0 && std::fabs(w[r]) <= 0x1p-53 * vmax) w[r] = 0.0, any = true;
+        if (any && residual_max(bh, bl, w.data(), trans) <= residual_max(bh, bl, v, trans))
+            std::copy(w.begin(), w.end(), v);
+    }
+    // max_r |(b - A v)_r| in double-double (A = X_B or X_B^T), rounded once
+    double residual_max(const double* bh, const double* bl, const double* v, bool trans) const {
+        double m = 0.0;
+        for (lint r = 0; r < k; ++r) {
+            double P = bh[r], S = bl ? bl[r] : 0.0;
+            for (lint c = 0; c < k; ++c) {
+                const double e = trans ? a[r * k + c] : a[c * k + r];
+                double hp, ep, q;
+                two_prod(-e, v[c], hp, ep);
+                two_sum(P, hp, P, q);
+                S += q + ep;
+            }
+            m = std::max(m, std::fabs(P + S));
+        }
+        return m;
     }
 };
 
@@ -1419,6 +1450,14 @@ int quantreg_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64
         fill_nan(n, k, L, o);
         return 0;
     }
+    if (n == 0) {  // no row: a NaN result with nobs 0, not converged (G96)
+        fill_nan(n, k, L, o);
+        for (lint l = 0; l < L; ++l) {
+            double* st = o.stats + l * qNStat;
+            st[qNobs] = 0.0, st[qNIter] = 0.0, st[qNPivots] = 0.0, st[qConverged] = 0.0, st[qNonunique] = 0.0;
+        }
+        return 0;
+    }
     Design D{n, p, k, op.intercept, Xb, xrs, xcs};
     // ---- 1. least squares: the aliased columns, R, (R^T R)^-1, the start
     std::vector<double> cov0(static_cast<std::size_t>(std::max<lint>(k * k, 1))), R0(cov0.size()),
@@ -1631,7 +1670,11 @@ int quantreg_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64
             } else {
                 hused = op.hhalf[l];
                 std::vector<double> f(static_cast<std::size_t>(n));
-                {
+                // a perfect fit (every residual within eps_y, G67's): no sparsity to estimate,
+                // the kernel's width is rounding noise (G65: NaN, as 'nid' and 'iid' there)
+                bool perfect = true;
+                for (lint i = 0; i < n && perfect; ++i) perfect = std::fabs(resid[i]) < eps_y;
+                if (!perfect) {
                     // Powell's kernel: h in the residuals' units, as summary.rq
                     std::vector<Sum2> s1, s2;
                     chunk_sum2(n, 1, s1, [&](lint i0, lint i1, Sum2* acc) {
@@ -1655,7 +1698,7 @@ int quantreg_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64
                     }
                 }
                 std::vector<double> Rf(static_cast<std::size_t>(kk * kk));
-                if (weighted_r(D, K, f.data(), Rf.data(), sc)) {
+                if (!perfect && weighted_r(D, K, f.data(), Rf.data(), sc)) {
                     sandwich(kk, R0k.data(), Rf.data(), tau, V.data());
                     have = true;
                 }

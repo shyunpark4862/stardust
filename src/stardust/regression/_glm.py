@@ -19,8 +19,9 @@ from ..stats import ChiSquared as _ChiSquared
 from ..stats import Normal as _Normal
 from ..stats import StudentT as _StudentT
 from ._linear import (_COV_TYPES, _RegressionResult, _arg, _as_real, _check_alpha, _check_bool, _check_choice,
-                      _check_batches, _check_maxlags, _check_policy, _check_rtol, _count, _div, _expand, _forg,
-                      _frame_columns, _groups, _has_nan, _log, _names, _pairs, _quantile_label, _WIDTH, _COV_NOTES)
+                      _check_batches, _check_maxlags, _check_params, _check_policy, _check_rows, _check_rtol, _count,
+                      _div, _expand, _forg, _frame_columns, _groups, _has_nan, _log, _names, _pairs, _quantile_label,
+                      _read_y, _rows_message, _WIDTH, _COV_NOTES)
 
 _k = _sd.regression
 
@@ -64,14 +65,23 @@ def _inverse_link(link, eta):
 class GLMResult(_RegressionResult):
     """The result of sd.regression.glm: statsmodels' names (G10). The intercept is params[0]."""
 
-    __slots__ = ("family", "link", "_scale_fixed")
+    __slots__ = ("_family", "_link", "_scale_fixed")
     _I_NOBS, _I_RANK, _I_ISNAN, _I_NGROUPS, _I_LAGS = _G_NOBS, _G_RANK, _G_ISNAN, _G_NGROUPS, _G_LAGS
 
     def __init__(self, raw, *, family, link, scale_fixed, **kw):
         super().__init__(raw, **kw)
-        self.family = family
-        self.link = link
+        self._family = family
+        self._link = link
         self._scale_fixed = scale_fixed  # binomial and poisson by default, or a given value
+
+    # -- the fit's configuration: read-only (G98)
+    @property
+    def family(self):
+        return self._family
+
+    @property
+    def link(self):
+        return self._link
 
     # -- fit
     @property
@@ -129,7 +139,22 @@ class GLMResult(_RegressionResult):
 
     @property
     def df_resid(self):
-        return self._cached("df_resid", lambda: self.nobs - self._stat(_G_RANK))
+        return self._cached("df_resid", lambda: self._nan_where(self.nobs - self._stat(_G_RANK)))
+
+    def cov_params(self):
+        """The covariance of the parameters (k x k); rows and columns of aliased parameters are
+        NaN, and all of it when an estimated scale has no degree of freedom (0/0, G95)."""
+        def make():
+            c = self._raw[1]
+            if not self._robust:
+                c = self._per(self.scale, 2) * c
+            if self._scale_fixed:
+                return c
+            df = self.df_resid
+            if self._batch:
+                return _sd.where(_expand(df == 0.0, 2), math.nan, c)
+            return c * math.nan if df == 0 else c
+        return self._cached("cov_params", make)
 
     @property
     def aic(self):
@@ -144,6 +169,21 @@ class GLMResult(_RegressionResult):
     def llr(self):
         """The likelihood ratio statistic 2 (llf - llnull) against the null model."""
         return self._cached("llr", lambda: 2.0 * (self.llf - self.llnull))
+
+    def pseudo_rsquared(self, *, kind="cs"):
+        """The pseudo R-squared (statsmodels' name and default, G100): kind='cs' (Cox and Snell,
+        the summary's) 1 - exp(2 (llnull - llf) / nobs), or 'mcf' (McFadden) 1 - llf / llnull.
+        NaN where it is 0/0 (a perfect fit whose null model fits too: llf = llnull = +inf; or
+        llnull 0 for McFadden)."""
+        _check_choice(kind, "pseudo_rsquared", "kind", ("cs", "mcf"))
+
+        def make():
+            if kind == "cs":
+                v = -_expm1(-_div(self.llr, self.nobs))
+            else:
+                v = 1.0 - _div(self.llf, self.llnull)
+            return self._nan_where(v)
+        return self._cached(("pseudo_rsquared", kind), make)
 
     @property
     def llr_pvalue(self):
@@ -205,6 +245,8 @@ class GLMResult(_RegressionResult):
             a, _ = _as_real(v, func, name, per_row=f"{m} values like the rows of 'X_new'")
             if a.shape[-1] != m:
                 raise ValueError(f"{func}(): '{name}' must have {m} values like the rows of 'X_new', not {a.shape[-1]}")
+            if a.size and bool(_sd.any(_sd.isinf(a))):  # as X_new's (G91)
+                raise ValueError(f"{func}(): '{name}' contains infinity")
             if name == "exposure":
                 if self.link != "log":
                     raise ValueError(f"{func}(): 'exposure' is only used with the log link")
@@ -220,7 +262,7 @@ class GLMResult(_RegressionResult):
         func = "predict"
         _check_choice(which, func, "which", ("mean", "linear"))
         Xn = self._design(X_new, func)
-        eta = _k.apply(func, Xn, self._beff(), self._intercept, None)[0]
+        eta = self._xbeta(Xn, func)
         o = self._offset(offset, exposure, func, Xn.shape[-2])
         if o is not None:
             eta = eta + o
@@ -234,19 +276,11 @@ class GLMResult(_RegressionResult):
         alpha = _check_alpha(alpha, func)
         _check_choice(which, func, "which", ("mean", "linear"))
         Xn = self._design(X_new, func)
-        eta = _k.apply(func, Xn, self._beff(), self._intercept, None)[0]
+        eta = self._xbeta(Xn, func)
         o = self._offset(offset, exposure, func, Xn.shape[-2])
         if o is not None:
             eta = eta + o
-        Xf = _sd.concat([_sd.ones(tuple(Xn.shape[:-1]) + (1,)), Xn], axis=-1) if self._intercept else Xn
-        kept = self._raw[5]
-        both = _sd.logical_and(_sd.expand_dims(kept, axis=-1), _sd.expand_dims(kept, axis=-2))
-        C = _sd.where(both, self.cov_params(), 0.0)
-        var = _sd.sum(_sd.matmul(Xf, C) * Xf, axis=-1)
-        if self._batch:
-            var = _sd.where(_expand(self._isnan(), 1), math.nan, var)
-        elif self._isnan():
-            var = var * math.nan
+        var = self._mean_var_s(Xn)
         q = self._dist().iccdf(alpha / 2)
         half = q * _sd.sqrt(var)
         lo, hi = eta - half, eta + half
@@ -276,8 +310,7 @@ def _summary(r, alpha):
     stars = "=" * _WIDTH
     lines = ["Generalized Linear Model Regression Results".center(_WIDTH).rstrip(), stars]
     nan = r._isnan()
-    llr = r.llr
-    prsq = -math.expm1(-_div(llr, r.nobs)) if not nan else math.nan  # Cox-Snell: 1 - exp((llnull - llf) 2/n)
+    prsq = r.pseudo_rsquared()  # Cox-Snell: 1 - exp((llnull - llf) 2/n)
     left = [("Model:", "GLM"), ("Model Family:", _FAMILY_NAME[r.family]), ("Link Function:", _LINK_NAME[r.link]),
             ("Method:", "IRLS"), ("No. Iterations:", str(r.n_iter)), ("Covariance Type:", r.cov_type)]
     right = [("No. Observations:", _count(r.nobs)), ("Df Residuals:", _count(r.df_resid)),
@@ -287,7 +320,7 @@ def _summary(r, alpha):
     lines += _pairs(left, right)
     lines.append(stars)
     names = [str(v) for v in r.param_names]
-    ci = r.conf_int(alpha)
+    ci = r.conf_int(alpha=alpha)
     params, bse, tv, pv = (r.params, r.bse, r.tvalues, r.pvalues)
     stat = "z" if r._normal() else "t"
     wname = max([len(v) for v in names] + [9]) + 1
@@ -374,6 +407,12 @@ def _check_scale(v, func):
     return 3, _check_positive(v, func, "scale")
 
 
+def _expm1(x):
+    if isinstance(x, _sd.ndarray):
+        return _sd.expm1(x)
+    return math.expm1(x) if not math.isnan(x) else math.nan
+
+
 def _broadcast_shape(func, a, b):
     """The broadcast of two batch shapes (the per-row arrays' batch axes)."""
     nd = max(len(a), len(b))
@@ -414,7 +453,7 @@ def glm(y, X, /, *, family, link=None, var_weights=None, freq_weights=None, tria
     if exposure is not None and link != "log":
         raise ValueError(f"{func}(): 'exposure' is only used with the log link")
 
-    yy, _ = _as_real(y, func, "y")
+    yy = _read_y(y, func)
     if yy.ndim == 0:
         raise ValueError(f"{func}(): 'y' must have at least 1 dimension")
     columns = _frame_columns(X)
@@ -425,15 +464,16 @@ def glm(y, X, /, *, family, link=None, var_weights=None, freq_weights=None, tria
         XX = _sd.reshape(XX, (XX.shape[0], 1))
     n = yy.shape[-1]
     if XX.shape[-2] != n:
-        raise ValueError(f"{func}(): 'X' must have {n} rows like 'y', not {XX.shape[-2]}")
+        raise ValueError(_rows_message(func, "X", n, XX.shape[-2], yy.shape))
+    _check_params(func, XX.shape[-1], intercept)
     rows = {}
     for name, v in (("var_weights", var_weights), ("freq_weights", freq_weights), ("trials", trials),
                     ("offset", offset), ("exposure", exposure)):
         if v is None:
             continue
-        a, _ = _as_real(v, func, name, per_row=f"{n} values like 'y'")
+        a, _ = _as_real(v, func, name, per_row=f"{n} value{'' if n == 1 else 's'} like 'y'")
         if a.shape[-1] != n:
-            raise ValueError(f"{func}(): '{name}' must have {n} values like 'y', not {a.shape[-1]}")
+            raise ValueError(_rows_message(func, name, n, a.shape[-1], yy.shape, "values"))
         rows[name] = a
     if "exposure" in rows:
         e = rows["exposure"]
@@ -455,6 +495,10 @@ def glm(y, X, /, *, family, link=None, var_weights=None, freq_weights=None, tria
         if batch:
             raise ValueError(f"{func}(): nan_policy='omit' takes one regression, not a batch "
                              "(the regressions would keep different rows)")
+        # inf and invalid weights stay errors in a row that also has a NaN (G24)
+        _check_rows(func, [("y", yy), ("X", XX)] + list(rows.items()), nonneg=("var_weights", "freq_weights"))
+        if "trials" in rows and bool(_sd.any(rows["trials"] <= 0)):
+            raise ValueError(f"{func}(): 'trials' must be finite and > 0")
         bad = _sd.logical_or(_sd.isnan(yy), _sd.any(_sd.isnan(XX), axis=1))
         for a in rows.values():
             bad = _sd.logical_or(bad, _sd.isnan(a))
