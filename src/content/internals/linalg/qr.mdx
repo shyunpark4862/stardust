@@ -615,7 +615,7 @@ $$
 <Fig column caption="dgelsd의 경로(참조 구현, m ≥ n일 때). 가로로 긴 행렬은 QR 대신 LQ(dgelqf)를 쓰는 같은 구조예요.">
   <Steps
     steps={[
-      { label: '크기 조정', note: 'A, B의 최대 원소가 [smlnum, bignum] 밖이면 dlascl로 범위 안으로. A가 0행렬이면 해 0, 랭크 0으로 끝', where: 'dgelsd' },
+      { label: '크기 조정', note: 'A, B의 최대 원소가 [smlnum, bignum] 밖이면 dlascl로 범위 안으로(smlnum = sfmin/ε = 2⁻⁹⁷⁰ ≈ 1e-292). A가 0행렬이면 해 0, 랭크 0으로 끝', where: 'dgelsd' },
       { label: 'dgeqrf + dormqr', note: 'm ≥ 1.6n일 때만: 먼저 A = QR로 줄이고 B ← QᵀB. 이후 n×n의 R로 계산', depth: 1 },
       { label: 'dgebrd', note: 'A(또는 R)를 위 이중대각 B로: QᵦᵀAPᵦ = B', where: 'dgebrd' },
       { label: 'dormbr (Q, T)', note: '우변에 왼쪽 반사들을 적용: B ← QᵦᵀB' },
@@ -787,7 +787,7 @@ LAPACK의 최소제곱 드라이버 중 랭크 부족을 다루는 것은 셋이
 - **`gelsy`는 정칙인 정사각에서 2–4배 빨라요.** 이중대각화와 SVD가 없고 열 피벗 QR 하나가 주된 비용이라서예요. 하지만 랭크가 부족하면 최대 2.4배, 가로로 긴 행렬에서 1.7배 느렸어요. 무엇보다 **특이값을 주지 않아요.** `lstsq`의 결과에는 특이값이 있어야 하고, `gelsy`로 그것을 주려면 SVD를 따로 한 번 더 해야 해요.
 - **랭크 판정이 `rtol`의 정의와 같아요.** `gelsy`의 랭크는 조건수 **추정**으로 정해서, "특이값이 `rtol`×최대 이하이면 0"이라는 정의와 정확히 맞지 않아요. `gelsd`는 특이값을 직접 문턱과 비교하므로 `matrix_rank`, `pinv`와 같은 규칙이에요(`rtol` < ε은 위 절 참고).
 
-numpy와 scipy(`lstsq`의 기본 드라이버)도 `gelsd`를 써요. 그래서 `rtol` ≥ ε이면(기본값 포함) stardust의 `lstsq`는 numpy와 같은 루틴을 같은 인자로 불러요. 랭크와 특이값은 언제나 비트까지 같고, 해도 정사각·세로로 긴 행렬에서는 비트까지 같아요. 가로로 긴 행렬은 모양에 따라 해의 마지막 자리가 달라요(무작위 9×11 행렬 40개 가운데 34개, 5×7은 28개, 상대 차이 $3 \times 10^{-14}$ 아래; 3×8, 13×20은 모두 같아요).
+numpy와 scipy(`lstsq`의 기본 드라이버)도 `gelsd`를 써요. 그래서 `rtol` ≥ ε이면(기본값 포함) stardust의 `lstsq`는 numpy와 같은 루틴을 같은 인자로 불러요. 랭크, 특이값, 해가 모든 모양에서 비트까지 같아요. 해까지 같으려면 우변 `B`를 numpy와 같은 메모리 위치에 둬야 해요(아래 [B의 자리](#b의-자리-numpy와-같은-정렬)).
 
 ### rtol ≥ 1: 모든 특이값이 0
 
@@ -850,12 +850,41 @@ array([inf, 0.0], dtype=float64)
 // 우변이 없어도(k = 0) 랭크와 특이값은 필요한데, xLALSD는 nrhs = 0을 거부해요:
 // 0으로 채운 열 하나를 줘요.
 const lint nrhs = std::max<lint>(r.k, 1);
-T* B = s.get<T>(ldb * nrhs, 1);
+T* B = s.get<T>(static_cast<std::size_t>(ldb * nrhs) + 1, 1);
+if constexpr (std::is_same_v<T, double>) B += (m * n) % 2;   // 아래 절
 if (r.k == 0) std::fill(B, B + ldb, T(0));
 if (!pack(y.dtype(), y.data() + off[1], m, r.k, r.rs, r.cs, B, ldb, true)) return kNonFiniteB;
 ```
 
 0으로 채운 우변 한 열을 넣고, 그 열의 해는 결과로 옮기지 않아요(`r.k = 0`이라 복사 반복이 돌지 않아요). 특이값은 우변의 개수와도 무관해서, 우변이 0개일 때의 `singular_values`는 우변이 있을 때와 비트까지 같아요.
+
+### B의 자리: numpy와 같은 정렬
+
+Accelerate의 `dgelsd`는 같은 `A`, 같은 `B`의 값을 받아도 **`B`의 시작 주소가 16바이트 경계에 있는지에 따라** 해의 마지막 비트가 달라요. 열이 행보다 많은($m < n$) 경로에서 그래요. 같은 루틴을 ctypes로 불러 `B`의 위치만 바꿔 보면, 무작위 연립 40개 가운데 9×11은 35개, 5×7은 34개가 마지막 비트에서 달랐어요. 3×8과 세로로 긴 11×9는 0개였어요. 값은 둘 다 맞는 해이고 차이는 반올림 수준이지만, numpy와 비트까지 같으려면 `B`가 numpy의 `B`와 같은 경계 위치에 있어야 해요.
+
+numpy(`umath_linalg.cpp`의 `init_gelsd`)는 `A`, `B`, 특이값을 메모리 한 덩어리(`PyMem_RawMalloc`)에 이어 둬요. `b = a + a_size`이고 `a_size`는 $m \cdot n$개 원소의 바이트 수예요. 덩어리의 시작은 16바이트 경계(arm64 macOS의 `malloc`)이니, float64에서 `B`는 경계에서 $8mn \bmod 16$바이트 떨어져 있어요. $mn$이 홀수이면 8바이트 어긋나요. complex128은 원소가 16바이트라 언제나 경계 위예요.
+
+stardust의 `Scratch` 슬롯은 언제나 16바이트 경계에서 시작해요([패킹과 결과 레이아웃](/internals/linalg/packing/)). 그래서 `B`를 원소 하나만큼 더 크게 받고, float64이면 $mn \bmod 2$개 원소만큼 앞으로 옮겨 numpy와 같은 위치에 둬요.
+
+```cpp
+// ops/qr.cpp의 lstsq (줄임)
+// B를 numpy가 두는 자리에(numpy는 A, B, S를 malloc 하나에 이어 둬요): 16바이트 경계에서
+// 8mn바이트 뒤예요. Accelerate의 dgelsd는 열이 더 많은 경로에서 B가 16바이트 경계를
+// 벗어나 있으면 다른 끝비트를 내요. 그래서 B는 numpy와 같은 어긋남을 지켜요.
+T* B = s.get<T>(static_cast<std::size_t>(ldb * nrhs) + 1, 1);
+if constexpr (std::is_same_v<T, double>) B += (m * n) % 2;
+```
+
+어긋남은 모양($m$, $n$)만으로 정해지고 슬롯의 시작은 언제나 경계라서, 같은 행렬은 배치 안의 위치나 스레드와 상관없이 같은 자리의 `B`를 받아요. 그래서 배치 결과가 하나씩 부른 결과와 비트까지 같다는 성질도 그대로예요. `A`와 특이값은 16바이트 경계에서 시작해요.
+
+```python
+>>> import numpy as np
+>>> rng = np.random.default_rng(0)
+>>> a, b = rng.standard_normal((9, 11)), rng.standard_normal(9)
+>>> x = sd.linalg.lstsq(sd.asarray(a), sd.asarray(b)).solution
+>>> np.array_equal(np.asarray(x.tolist()), np.linalg.lstsq(a, b, rcond=None)[0])
+True
+```
 
 ### stardust가 감싸는 나머지
 
@@ -950,11 +979,11 @@ Accelerate는 `geqrf`를 n = 1024까지 사실상 1스레드로 돌려요(CPU �
 |---|---|---|---|
 | `qr` (reduced, complete) | numpy 2.5.4 | 비트까지 같아요 | 같은 `geqrf` → `orgqr`/`ungqr`, 같은 크기 인자 |
 | `qr_pivoted` | scipy 1.18.1 `qr(pivoting=True)` | `Q`, `R`, `perm` 모두 비트까지 같아요 | 같은 `geqp3` → `orgqr`/`ungqr` |
-| `lstsq` (`rtol` ≥ ε, 기본값 포함) | numpy 2.5.4 | 랭크와 특이값은 비트까지 같아요. 해는 정사각·세로로 긴 행렬에서 비트까지 같고, 가로로 긴 일부 모양에서 마지막 자리가 달라요 | 같은 `gelsd`, 같은 `ldb`, 같은 최적 `lwork`(그래서 같은 경로) |
+| `lstsq` (`rtol` ≥ ε, 기본값 포함) | numpy 2.5.4 | 해, 랭크, 특이값 모두 비트까지 같아요 | 같은 `gelsd`, 같은 `ldb`, 같은 최적 `lwork`(그래서 같은 경로), 같은 `B`의 16바이트 경계 위치 |
 | `lstsq(rtol ≥ 1)` | numpy | 달라요 (랭크 0, 해 0) | 정의를 따르고 LAPACK의 $\varepsilon$ 대체를 따르지 않아요 |
 | `lstsq(rtol < ε)` | numpy | 달라요 (랭크는 `matrix_rank`와 같음) | numpy는 `rcond=0`을 그대로 넘겨 $\varepsilon$이 쓰이고, stardust는 `gelsd`를 쓰지 않고 SVD로 풀어요 |
 
-`qr`의 비트 일치는 float64와 complex128 모두에서, 정사각·세로로 긴·가로로 긴 모양 모두에서 성립해요. `lstsq`의 해는 위 표처럼 가로로 긴 일부 모양에서만 마지막 자리가 달라요. 테스트는 `qr`의 비트 일치를 고정하고, `lstsq`는 상대 $10^{-10}$ 이내로 비교해요. 결과는 메모리 레이아웃, 배치 안의 위치, 스레드 수와도 무관하게 비트까지 같아요. 패킹이 모든 레이아웃을 같은 F-order 버퍼로 만들고, `LapackSlot`이 정렬을 맞추고, 원소마다 같은 `lwork`를 쓰기 때문이에요.
+`qr`의 비트 일치는 float64와 complex128 모두에서, 정사각·세로로 긴·가로로 긴 모양 모두에서 성립해요. `lstsq`도 float64와 complex128, 세 모양, 랭크 부족, 우변 여럿, 배치에서 해가 비트까지 같아요. 테스트는 `qr`의 비트 일치를 고정하고, `lstsq`는 `tests/linalg/test_lstsq_numpy_bits.py`가 $m \le 13$, $n \le 20$의 49가지 모양과 30×41, 41×30, 7×100에서 비트 일치를 고정해요. 결과는 메모리 레이아웃, 배치 안의 위치, 스레드 수와도 무관하게 비트까지 같아요. 패킹이 모든 레이아웃을 같은 F-order 버퍼로 만들고, `LapackSlot`이 정렬을 맞추고, 원소마다 같은 `lwork`를 쓰기 때문이에요.
 
 `rtol` ≥ ε일 때 `lstsq`의 `singular_values`는 `gelsd`가 구한 값이라, `svdvals`(`gesvd`의 값 전용 모드)와는 계산 경로가 달라 $10^{-14}$ 수준에서 다를 수 있어요(60×40 무작위 행렬에서 최대 절대 차이 $2.1 \times 10^{-14}$). 둘 다 맞는 값이고, `rtol` ≥ ε인 동안은 `rtol`이나 우변의 개수와 무관하게 비트까지 같아요. `rtol` < ε이면 `svdvals`의 값 그대로예요.
 

@@ -36,7 +36,7 @@ returns:
   desc: "k차 적률. order가 숫자 하나이고 남는 축이 없으면 Python float예요. order가 여러 개면 결과 앞에 차수의 축이 붙어요. 빈 줄은 NaN이에요."
 raises:
   - type: TypeError
-    desc: order를 주지 않았을 때(None 포함), order나 center의 타입이 틀렸을 때(bool·문자열 등), x가 배열이나 숫자의 시퀀스가 아니거나 복소수일 때, axis·keepdims의 타입이 틀렸을 때, nan_policy에 문자열이 아닌 값을 줬을 때.
+    desc: order를 주지 않았거나 None을 줬을 때, order나 center의 타입이 틀렸을 때(bool·문자열 등), x가 배열이나 숫자의 시퀀스가 아니거나 복소수일 때, axis·keepdims의 타입이 틀렸을 때, nan_policy에 문자열이 아닌 값을 줬을 때.
   - type: ValueError
     desc: order가 정수가 아닐 때(1.5, inf, NaN 등), center를 결과의 모양으로 브로드캐스트할 수 없을 때, nan_policy 이름이 틀렸거나 'raise'인데 NaN이 있을 때, axis가 범위를 벗어나거나 겹칠 때.
   - type: OverflowError
@@ -73,7 +73,16 @@ import Callout from '../../../components/Callout.astro';
 >>> sd.stats.moment(x)
 Traceback (most recent call last):
     ...
-TypeError: moment() missing 1 required keyword-only argument: 'order'
+TypeError: moment(): missing 1 required keyword-only argument: 'order'
+```
+
+`order=None`은 차수를 빠뜨린 것이 아니라 틀린 값을 준 것이라, 다른 틀린 값과 같은 메시지예요.
+
+```python
+>>> sd.stats.moment(x, order=None)
+Traceback (most recent call last):
+    ...
+TypeError: moment(): 'order' must be an int or a sequence of ints, not NoneType
 ```
 
 <Reference />

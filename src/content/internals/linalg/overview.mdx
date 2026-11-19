@@ -835,7 +835,7 @@ numpy·scipy와의 관계는 함수마다 달라요. 같은 루틴을 같은 방
 
 | 함수 | numpy·scipy와의 관계 |
 |---|---|
-| `eigh`, `qr`, `lstsq` | numpy 2.5.4와 비트까지 같아요 (같은 루틴, 같은 호출. `lstsq`는 `rtol` ≥ ε일 때이고, 가로로 긴 일부 행렬에서는 해의 마지막 자리가 달라요) |
+| `eigh`, `qr`, `lstsq` | numpy 2.5.4와 비트까지 같아요 (같은 루틴, 같은 호출. `lstsq`는 `rtol` ≥ ε일 때이고, 우변을 numpy와 같은 16바이트 경계 위치에 둬서 모든 모양에서 해까지 같아요) |
 | `outer`, `kron`, `cross`, 모든 부동소수점 합(`vecdot`, `trace`, 노름) | numpy와 비트까지 같아요 (같은 곱셈 식, 같은 pairwise 합 순서) |
 | `ldl`, `solve_tridiagonal`, `solve_banded` | scipy 1.18.1과 비트까지 같아요 |
 | `solve` | numpy와 반올림 수준에서 달라요 (numpy는 `gesv`, stardust는 `getrf` + `getrs`) |

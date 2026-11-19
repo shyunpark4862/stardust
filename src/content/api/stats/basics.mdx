@@ -475,7 +475,22 @@ True
 - **매개변수는 이름으로만** 줘요. 위치·척도가 있는 분포는 `mu`·`sigma`, 0 이상의 분포는 모양 + `scale`이에요. 정규와 균등의 이름(`mu`, `sigma`, `a`, `b`)은 scipy 신형과 같아요.
 - 메서드 이름은 신형과 같아요(`ccdf`, `icdf`, `iccdf`, `ilogcdf`, …). 고전형의 `sf`, `ppf`, `isf`, `logsf`는 없어요.
 - **`kurtosis()`는 초과 첨도**예요(정규분포에서 0). scipy 신형의 기본값은 첨도(정규분포에서 3)라서, scipy의 `kurtosis(convention='excess')`와 같은 값이에요.
-- 결과는 Python `float`이거나 `sd.ndarray`예요. scipy처럼 `numpy.float64`가 아니에요. 리스트와 numpy 배열은 받지 않아요.
+- 결과는 Python `float`이거나 `sd.ndarray`예요. scipy처럼 `numpy.float64`가 아니에요. 리스트와 numpy 배열은 받지 않아요. numpy 배열은 `sd.asarray`로 바꿔서 넘겨요. 에러 메시지에서 numpy의 타입은 `numpy.ndarray`, `numpy.random.Generator`처럼 모듈 이름을 붙여 보여 줘서 `sd.ndarray`, `sd.random.Generator`와 헷갈리지 않아요.
+
+```python
+>>> import numpy as np
+>>> sd.stats.Normal().cdf(np.array([0.0, 1.0]))
+Traceback (most recent call last):
+    ...
+TypeError: cdf(): 'x' must be an sd.ndarray or a real number, not numpy.ndarray
+>>> sd.stats.Normal().cdf(sd.asarray(np.array([0.0, 1.0])))
+array([               0.5, 0.8413447460685429], dtype=float64)
+>>> sd.stats.Normal().sample(rng=np.random.default_rng(0))
+Traceback (most recent call last):
+    ...
+TypeError: sample(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not numpy.random.Generator
+```
+
 - `sample`의 `rng`는 꼭 줘야 하고, `sd.random.default_rng`로 만든 생성기만 받아요. 같은 시드라도 scipy와 값이 달라요([표본 뽑기](/api/stats/sample/)).
 - 분포끼리의 산술(`2 * X + 1`), 절단, 혼합(`Mixture`), 순서통계량, 분포 맞추기(`fit`)는 없어요.
 - 기술통계 함수의 축 기본값은 `axis=None`(전체)이에요. scipy는 `axis=0`이에요. 자유도 인자는 `ddof`가 아니라 `correction`이에요([`sd.var`](/api/array/var/)와 같아요).

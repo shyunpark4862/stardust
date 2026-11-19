@@ -260,6 +260,7 @@ True
 | `dfn`이 아주 작음(약 1e-300 아래) | $e^{-\lambda/2}$ × `fdtr(dfn, dfd, f)` | 확률 $e^{-\lambda/2}$만큼은 중심 F처럼 움직이고, 나머지는 아주 큰 `f` 쪽에 있어요. `ncfdtrc`는 그 나머지 |
 | `ncfdtri`의 `p = 0`, `p = 1` | 0, inf | 정의역의 두 끝 |
 | `ncfdtri`의 `p`가 0보다 크고 2.2e-308보다 작음(서브노멀), `nc > 0` | NaN | 이렇게 작은 확률에서는 근을 믿을 만하게 구할 수 없어요 |
+| `ncfdtri`의 근이 double로 나타낼 수 있는 범위 밖 | inf 또는 0 | 가장 큰 double에서도 `ncfdtr`가 `p`에 못 미치면 inf, 가장 작은 양수에서 이미 `p`를 넘으면 0이에요 |
 | `dfn ≤ 0`, `dfd ≤ 0`, `nc < 0`, `f < 0` | NaN | 정의역 밖 |
 | `p < 0` 또는 `p > 1` | NaN | 확률이 아니에요 |
 | 인자에 NaN | NaN | |
@@ -273,11 +274,15 @@ True
 1.0
 >>> sd.special.ncfdtr(1e-310, 5, 2, 1)
 0.36787944117144233
+>>> sd.special.ncfdtri(5e-324, 5, 2, 0.5)
+inf
 >>> sd.special.ncfdtr(3, 20, -1, 2)
 nan
 >>> sd.special.ncfdtri(3, 20, 5, 1.0)
 inf
 ```
+
+`dfn`이 아주 작으면 아래꼬리 확률은 가장 큰 double에서도 $e^{-\lambda/2}$(위 예에서 $e^{-1} \approx 0.368$) 근처에 머물러요. 그래서 `ncfdtri(5e-324, 5, 2, 0.5)`의 근은 double 범위를 넘어 inf예요.
 
 ## 정확도
 
@@ -338,4 +343,5 @@ TypeError: ncfdtr(): 'f' must be an sd.ndarray or a bool, int, float or complex,
 - `ncfdtrc`는 scipy.special에 없는 함수예요. scipy에서 `1 - ncfdtr(...)`로 쓰던 계산을 이것으로 바꾸면 작은 꼬리가 정확해져요(`1 - scipy.special.ncfdtr(3, 20, 5, 200)`은 1.784017e-12로, 참값 1.784081e-12와 여섯째 자리부터 달라요).
 - 모수를 푸는 `ncfdtridfd`, `ncfdtridfn`, `ncfdtrinc`는 없어요.
 - 끝점의 값이 달라요. `dfd = inf`, `dfn = inf`, `nc = inf`에서 scipy는 NaN을, stardust는 위 표의 극한값을 돌려줘요.
+- 근이 double 범위 밖이면 scipy의 `ncfdtri`는 NaN, stardust는 inf나 0이에요. `ncfdtri(5e-324, 5, 2, 0.5)`가 그래요.
 - `where=`, `dtype=` 같은 ufunc 인자는 없고 `out=`만 있어요. 인자는 모두 positional-only예요.

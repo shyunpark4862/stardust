@@ -142,6 +142,73 @@ Traceback (most recent call last):
 TypeError: rankdata(): 'axis' must be an int or None, not float
 ```
 
+`order`는 꼭 줘야 하는 키워드라, 빠뜨리면 Python이 호출 모양의 에러를 내요. `order=None`은 빠뜨린 것이 아니라 틀린 값이라 `_orders`가 다른 틀린 값과 같은 메시지를 내요.
+
+```python
+>>> sd.stats.moment(y, order=None)
+Traceback (most recent call last):
+    ...
+TypeError: moment(): 'order' must be an int or a sequence of ints, not NoneType
+```
+
+### 호출 모양의 에러
+
+모르는 키워드, 빠진 필수 키워드, 너무 많은 위치 인자는 함수 본문에 들어가기 전에 Python이 직접 내는 에러예요. 그대로 두면 `moment() missing 1 required keyword-only argument: 'order'`처럼 앞머리가 `moment()` 뒤에 콜론이 없는 Python의 꼴이라, 함수 자신의 검사가 내는 `moment(): ...`와 모양이 달라요. 그래서 공개 함수 열한 개를 모두 `_library_call_errors`로 감싸요. 분포 생성자의 `_keyword_constructor`([통계 영역의 구조](/internals/stats/overview/#만들-때-형과-모양만))와 같은 생각이에요. `TypeError`의 앞머리가 `moment() `이면 `moment(): `로 바꾸고 `got an `을 떼어 다시 내요. 함수 자신의 검사가 낸 에러는 이미 `moment(): `로 시작하므로 그대로 지나가요.
+
+```python
+# src/stardust/stats/_descriptive.py
+def _library_call_errors(fn):
+    """fn with Python's own call-shape errors in the library's form (as the distributions'
+    constructors): "moment(): missing 1 required keyword-only argument: 'order'",
+    "skew(): unexpected keyword argument 'ddof'", not "moment() missing ...".
+    The function's own checks already say "moment(): ..." and pass through."""
+    head = f"{fn.__qualname__}() "
+
+    @functools.wraps(fn)
+    def call(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except TypeError as e:
+            msg = str(e)
+            if not msg.startswith(head):
+                raise
+            rest = msg[len(head):]
+            if rest.startswith("got an unexpected"):
+                rest = rest[len("got an "):]
+            raise TypeError(f"{fn.__name__}(): {rest}") from None
+
+    return call
+
+
+describe = _library_call_errors(describe)
+skew = _library_call_errors(skew)
+...
+```
+
+`functools.wraps`가 `__wrapped__`를 남겨서 `inspect.signature`는 원래 함수의 매개변수를 보여 줘요. 받은 값의 타입 이름은 분포와 같은 `_core._type_name`이 만들어서, numpy의 값은 `numpy.bool`, `numpy.ndarray`처럼 모듈을 붙여 보여 줘요.
+
+```python
+>>> sd.stats.moment(y)
+Traceback (most recent call last):
+    ...
+TypeError: moment(): missing 1 required keyword-only argument: 'order'
+>>> sd.stats.skew(y, ddof=1)
+Traceback (most recent call last):
+    ...
+TypeError: skew(): unexpected keyword argument 'ddof'
+>>> sd.stats.skew(y, 1)
+Traceback (most recent call last):
+    ...
+TypeError: skew(): takes 1 positional argument but 2 were given
+>>> sd.stats.skew(y, bias=np.True_)
+Traceback (most recent call last):
+    ...
+TypeError: skew(): 'bias' must be True or False, not numpy.bool
+>>> import inspect
+>>> inspect.signature(sd.stats.skew)
+<Signature (x, /, *, axis=None, bias=True, nan_policy='propagate', keepdims=False)>
+```
+
 ## 적률: 평균을 hi + lo로
 
 ### 반올림한 평균이 하는 일

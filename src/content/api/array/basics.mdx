@@ -557,7 +557,15 @@ IndexError: index 5 is out of bounds for axis 0 with size 2
 
 - **0차원 배열이 없어요.** numpy가 0차원 배열이나 numpy 스칼라(`np.int64`)를 돌려주는 자리에서 stardust는 Python `int`·`float`·`complex`·`bool`을 돌려줘요. `asarray(5)`, `zeros(())`, `reshape(x, ())`는 `ValueError`예요.
 - **모듈 함수가 기본이에요.** 메서드는 `reshape`, `astype`, `copy`, `tolist`와 집계 11개뿐이에요. `x.flatten()`, `x.transpose()`, `x.sort()`, `x.fill()` 등은 없어요. `x.reshape(3, 2)`처럼 모양을 여러 인자로 나눠 줄 수도 없어요(`x.reshape((3, 2))`).
-- **옵션은 이름을 붙여서만 넘겨요(keyword-only).** `np.sum(x, 0)`처럼 자리로 넘길 수 없어요. 참·거짓 옵션은 `True`/`False`만 받아요.
+- **옵션은 이름을 붙여서만 넘겨요(keyword-only).** `np.sum(x, 0)`처럼 자리로 넘길 수 없어요. 참·거짓 옵션은 `True`/`False`만 받아요. numpy의 bool(`np.True_`)도 받지 않고, 메시지에는 Python의 bool과 구별되게 `numpy.bool`로 나와요.
+
+  ```python
+  >>> import numpy as np
+  >>> sd.sum(x, keepdims=np.True_)
+  Traceback (most recent call last):
+      ...
+  TypeError: sum(): 'keepdims' must be True or False, not numpy.bool
+  ```
 - **리스트를 받지 않아요.** `np.sum([1, 2])`처럼 리스트를 알아서 바꿔 주지 않아요. numpy 배열도 `sd.asarray`로 먼저 바꿔야 해요.
 - **경고가 없어요.** `np.errstate`, `np.seterr`에 해당하는 것도 없어요.
 - 차원 수는 1 이상 32 이하예요.

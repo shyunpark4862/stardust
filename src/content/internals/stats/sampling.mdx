@@ -28,7 +28,7 @@ export const zig8 = [[0, 1], [0.7384, 1.0], [0.7384, 0.7614], [1.0274, 0.7614], 
 | 균등, 라플라스, 코시, 로지스틱 | 닫힌 꼴 역함수 |
 | 감마, 카이제곱 | Marsaglia–Tsang($a \ge 1$), $G(a+1)\,e^{-E/a}$($a < 1$) |
 | 역감마, t, F | 감마와 정규의 조합 |
-| 베타 | $X/(X+Y)$(두 모양 ≥ 1), Jöhnk(두 모양 < 1), log 감마(섞인 경우) |
+| 베타 | $X/(X+Y)$(두 모양 ≥ 1), Jöhnk(두 모양 < 1), log 감마(섞인 경우), 두 점(모양 < $2^{-1021}$) |
 | 비중심 카이제곱, t, F | 감마·정규·포아송의 조합 |
 | 베르누이, 이산 균등, 기하 | $u < p$, Lemire의 정수, $\lceil \log U/\log q\rceil$ |
 | 포아송 | $\mu < 10$은 0부터의 역변환, 그 위는 PTRS |
@@ -400,7 +400,7 @@ True
 
 `ChiSquared(df=inf)`(질량이 무한대로 달아나요)와 두 자유도가 모두 inf인 F는 극한 분포로 두지 않아서 정의역 밖이고, 표본도 NaN이에요.
 
-반대쪽 끝도 있어요. 카이제곱, t, 비중심 t는 df가 $2^{-1021}$(`kMinSampleDf`) 아래이면 NaN이에요(비중심 카이제곱은 nc = 0일 때). 표본은 모양 df/2의 감마에서 나오는데, 그 아래의 df는 절반이 double로 정확하지 않기 때문이에요. 서브노멀 df는 반으로 나누면 비트를 잃거나 0이 되고, 가장 작은 정규수 구간 $[2^{-1022}, 2^{-1021})$의 df도 절반이 서브노멀이라 마지막 비트가 1이면 반올림돼요. $2^{-1021}$ 이상이면 절반이 정규수라 언제나 정확해요. 값 메서드의 경계(`StudentT::halvable`)와 같은 상수라서, 카이제곱, t, 비중심 t·F는 같은 df에서 값 메서드와 표본이 함께 NaN이에요.
+반대쪽 끝도 있어요. 카이제곱, t, 비중심 t는 df가 $2^{-1021}$(`kMinSampleDf`) 아래이면 NaN이에요(비중심 카이제곱은 nc = 0일 때). 표본은 모양 df/2의 감마에서 나오는데, 그 아래의 df는 절반이 double로 정확하지 않기 때문이에요. 서브노멀 df는 반으로 나누면 비트를 잃거나 0이 되고, 가장 작은 정규수 구간 $[2^{-1022}, 2^{-1021})$의 df도 절반이 서브노멀이라 마지막 비트가 1이면 반올림돼요. $2^{-1021}$ 이상이면 절반이 정규수라 언제나 정확해요. 값 메서드의 경계(`StudentT::halvable`)와 같은 상수라서, 카이제곱, t, F, 비중심 t·F는 같은 df에서 값 메서드와 표본이 함께 NaN이에요.
 
 ```cpp
 // csrc/stats/sample_dist.hpp
@@ -425,7 +425,26 @@ struct Custom<ChiSquared> {
 };
 ```
 
-비중심 F는 두 자유도 중 하나라도 이 경계 아래이면 NaN이에요. nc = 0이어도 같아서, 이 아래에서는 극한값(0이나 inf)을 내는 `F`의 표본과 달라요. 준비 단계가 inf인 자유도를 먼저 보므로, 다른 자유도가 inf이면 위 표의 극한 분포를 뽑아요.
+F는 두 자유도 중 하나라도 이 경계 아래이면 NaN이에요(`lim` = 3). 두 감마의 모양이 자유도의 절반이라 카이제곱과 같은 까닭이에요. 극한 분포와 겹치는 곳은 값 메서드를 따라요. dfd = inf이면 표본이 $\chi^2_\text{dfn}/\text{dfn}$이라 작은 dfn은 카이제곱처럼 NaN이에요. dfn = inf이면 역감마 `InverseGamma(a=dfd/2, scale=dfd/2)`의 극한이고, 역감마는 서브노멀 모양에서도 값 메서드가 값이라 작은 dfd에서도 그 극한에서 뽑아요.
+
+```cpp
+// csrc/stats/sample_dist.hpp, Custom<F>
+// A df below 2^-1021 (no exact half): NaN, as the value methods; with dfd = inf that is
+// ChiSquared(dfn)'s NaN, while dfn = inf with a small dfd is the inverse gamma's limit,
+// which has values (its sample too).
+static State prep(double dfn, double dfd) {
+    const bool tiny = dfn < kMinSampleDf || dfd < kMinSampleDf;
+    const int lim = dfd == kInf ? (tiny ? 3 : 1) : (dfn == kInf ? 2 : (tiny ? 3 : 0));
+    return {gamma_prep(lim == 2 ? 1.0 : 0.5 * dfn), gamma_prep(lim == 1 ? 1.0 : 0.5 * dfd),
+            lim == 0 ? log_ratio(dfd, dfn) : 0.0, lim};
+}
+static double draw(Words& w, const State& s) {
+    if (s.lim == 3) return std::numeric_limits<double>::quiet_NaN();
+    ...
+}
+```
+
+비중심 F도 두 자유도 중 하나라도 이 경계 아래이면 NaN이에요. nc = 0이면 준비 단계가 `Custom<F>`에 넘기므로(`kind` = 4), 이 경계 아래에서도 두 분포의 표본이 같아요. 준비 단계가 inf인 자유도를 먼저 보므로, 다른 자유도가 inf이면 위 표의 극한 분포를 뽑아요.
 
 ```cpp
 // csrc/stats/sample_dist.hpp, Custom<NoncentralF>::prep
@@ -440,6 +459,9 @@ const int kind = nc == 0.0 && lim != 3 ? 4 : lim;
 >>> sd.stats.ChiSquared(df=2**-1022).sample(rng=rng(1)), sd.stats.NoncentralChiSquared(df=2**-1022, nc=0.0).sample(rng=rng(1))
 (nan, nan)
 >>> sd.stats.NoncentralF(dfn=5.0, dfd=1e-310, nc=0.0).sample(rng=rng(1)), sd.stats.F(dfn=5.0, dfd=1e-310).sample(rng=rng(1))
+(nan, nan)
+>>> inf = float("inf")
+>>> sd.stats.F(dfn=1e-310, dfd=inf).sample(rng=rng(1)), sd.stats.F(dfn=inf, dfd=1e-310).sample(rng=rng(1))
 (nan, inf)
 ```
 
@@ -453,13 +475,34 @@ const int kind = nc == 0.0 && lim != 3 ? 4 : lim;
 
 $e^{-1/2} = 0.6065$예요.
 
-**베타**는 세 갈래예요.
+**베타**는 네 갈래예요.
 
+- **모양 하나라도 $2^{-1021}$ 미만**: 값 메서드와 같은 두 점 분포예요([작은 모양의 두 점](/internals/stats/engine/#작은-모양의-두-점-two_point)). 준비 단계에서 값 메서드와 같은 `two_point::of_shapes`로 두 질량을 정해 두고, 균등 단어 하나 $u$로 $u < q$이면 1, 아니면 0을 내요. 한쪽 질량이 0으로 반올림됐으면 단어를 보지 않고 그 점을 내요.
 - **두 모양 ≥ 1**: $X/(X+Y)$, $X \sim G(a)$, $Y \sim G(b)$예요.
 - **두 모양 < 1**: Jöhnk의 방법[5]이에요. $X = U^{1/a}$, $Y = V^{1/b}$를 뽑아 $X + Y \le 1$이면 $X/(X+Y)$를 내요. 그 조건 아래에서 $X/(X+Y)$가 $\text{Beta}(a, b)$를 따라요. 받아들일 확률은 $\Gamma(a+1)\Gamma(b+1)/\Gamma(a+b+1)$이라 두 모양이 1보다 작으면 1/2 이상이에요($a = b = 1/2$에서 $\pi/4 \approx 0.79$). 거듭제곱은 $\exp(-E/a)$로 만들고, 모양이 1/16보다 작으면 log에서 판정해요.
 - **섞인 경우**: 두 감마를 log로 뽑아 $1/(1 + e^{\log Y - \log X})$로 합쳐요(지수가 넘치지 않는 쪽을 골라요).
 
-두 모양이 서브노멀이면 두 log가 모두 −inf예요. 그때는 더 작은 모양으로 두 지수의 크기를 맞춰 비교해서 0, 1, 1/2 중 하나를 내요. 이것이 그 극한에서의 분포예요(질량이 두 끝으로 갈라져요).
+```cpp
+// csrc/stats/sample_dist.hpp, Custom<Beta>
+static State prep(double a, double b) {
+    const bool at = Beta::at_limit(a, b);
+    return {gamma_prep(a), gamma_prep(b), at, at ? two_point::of_shapes(a, b, 0.0, 1.0, false) : two_point::Law{}};
+}
+static double draw(Words& w, const State& s) {
+    if (s.at) return s.t.q == 0.0 ? 0.0 : (s.t.qc == 0.0 ? 1.0 : (w.u01() < s.t.q ? 1.0 : 0.0));
+    ...
+}
+```
+
+Jöhnk 갈래의 거듭제곱은 log에서 $-E/a$예요. 경계 바로 위의 모양($2^{-1021}$의 몇 배)에서는 $E/a$가 double을 넘어 두 log가 모두 −inf가 될 수 있어요. 그때는 더 작은 모양으로 두 지수의 크기를 맞춰 비교해서 0, 1, 1/2 중 하나를 내요. 질량이 두 끝으로 갈라지는 극한에서의 판정이에요.
+
+```python
+>>> x = sd.stats.Beta(a=1e-310, b=3e-310).sample(100000, rng=rng(1))
+>>> sorted(set(x.tolist())), sd.mean(x)
+([0.0, 1.0], 0.24972)
+```
+
+베타이항도 모양 하나라도 $2^{-1021}$ 미만이면 같은 `Law`로 0과 $n$ 중 하나를 내요([음이항과 베타이항](#음이항과-베타이항-혼합)).
 
 ## 이산 분포
 
@@ -545,7 +588,7 @@ $\ell_d$는 Stirling 급수($1/(1260k^5)$까지, 16 미만은 표)로 만든 $\l
 ### 음이항과 베타이항: 혼합
 
 - **음이항**: $\lambda = G(n)\cdot q/p$를 뽑고 $\text{Poisson}(\lambda)$를 뽑아요. 실패 횟수가 감마 비율을 가진 포아송의 혼합이라는 고전적 성질이에요. $\lambda$가 원소마다 달라 포아송 준비는 원소마다 해요. $q/p$가 $2^{\pm 500}$ 밖이거나 $n < 1$이면 $\exp(\log G + \log(q/p))$로 만들어요. $p = 1$과 $n = 0$은 0의 점질량이라, 준비 단계에서 표시해 두고 단어를 쓰지 않고 0을 내요.
-- **베타이항**: $B \sim \text{Beta}(a, b)$를 감마 두 개의 log 차로 뽑고 $\text{Binomial}(n, B)$를 뽑아요. $p = B$와 $q = 1 - B$를 둘 다 log 차에서 직접 만들어 작은 쪽을 정확히 유지하고, 작은 쪽으로 이항을 뽑아요.
+- **베타이항**: $B \sim \text{Beta}(a, b)$를 감마 두 개의 log 차로 뽑고 $\text{Binomial}(n, B)$를 뽑아요. $p = B$와 $q = 1 - B$를 둘 다 log 차에서 직접 만들어 작은 쪽을 정확히 유지하고, 작은 쪽으로 이항을 뽑아요. 모양 하나라도 $2^{-1021}$ 미만이면 값 메서드와 같은 두 점 분포라, 베타처럼 준비 단계의 두 질량으로 0이나 $n$을 내요.
 
 ### 초기하: 최빈값에서 바깥으로
 
@@ -674,7 +717,7 @@ $a > 1025$이면 $b = 2^{a-1}$이 double을 넘어요. 그때 $P(X > 1) < 2^{-10
 
 역변환은 걸음 수에 상한이 있어요. 포아송($\mu < 10$)과 이항($np < 10$)은 pmf가 언더플로할 때까지(약 230걸음, 이항은 1024에서 자름), 초기하는 최빈값에서 $2^{20}$ 안이에요.
 
-뽑을 수 없는 매개변수는 NaN이고, 극한이 분명하면 극한값이에요.
+뽑을 수 없는 매개변수는 NaN이에요. 값 메서드가 NaN인 매개변수에서는 표본도 NaN이고, 값 메서드가 극한 분포의 값을 내는 매개변수에서는 표본도 그 극한 분포에서 뽑아요. 값 메서드는 NaN인데 표본만 0이나 inf 같은 극한값을 내는 표본기는 없어요.
 
 | 분포 | 경우 | 결과 |
 |---|---|---|
@@ -684,10 +727,11 @@ $a > 1025$이면 $b = 2^{a-1}$이 double을 넘어요. 그때 $P(X > 1) < 2^{-10
 | `Zipf` | $a > 1025$ | 1 |
 | `Zipf` | 표본이 double을 넘음 | inf |
 | `ChiSquared`, `StudentT`, `NoncentralT` | df $< 2^{-1021}$ | NaN |
+| `F` | dfn이나 dfd가 $2^{-1021}$ 미만(dfn = inf가 아닐 때) | NaN |
 | `NoncentralChiSquared` | df $< 2^{-1021}$이고 nc = 0 | NaN |
 | `NoncentralChiSquared` | df $< 2^{-1021}$이고 nc > 0 | 값(약 $e^{-\text{nc}/2}$의 비율로 0) |
 | `NoncentralF` | dfn이나 dfd가 $2^{-1021}$ 미만(nc = 0 포함, 다른 자유도가 inf가 아닐 때) | NaN |
-| `Beta`, `BetaBinomial`, `F` | 서브노멀 모양 | 극한값(두 끝이나 0, inf) |
+| `Beta`, `BetaBinomial` | a나 b가 $2^{-1021}$ 미만 | 두 점 분포(0과 1, 0과 $n$)의 표본 |
 | `StudentT`, `NoncentralT`, `F`, `NoncentralF` | 자유도 inf | 극한 분포의 표본 |
 | `NegativeBinomial` | $n = 0$ | 0 |
 
@@ -698,7 +742,7 @@ $a > 1025$이면 $b = 2^{a-1}$이 double을 넘어요. 그때 $P(X > 1) < 2^{-10
 [1.0, 1.0, 1.0]
 >>> x = sd.stats.Beta(a=5e-324, b=5e-324).sample(4000, rng=sd.random.default_rng(1))
 >>> sorted(set(x.tolist())), sd.mean(x)
-([0.0, 1.0], 0.49925)
+([0.0, 1.0], 0.497)
 ```
 
 ## 속도 기법

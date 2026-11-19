@@ -372,7 +372,7 @@ hypothesis는 무작위 입력을 만들어 "어떤 입력에서도 성립해야
 - **연산자와 인덱싱은 Python의 형식을 지켜요:** `unsupported operand dtypes for <: complex128 and int64`. `func(): `로 시작하면 안 돼요.
 - **같은 실수에는 영역과 상관없이 같은 메시지예요:** bool 옵션에 다른 값을 주면 `sort()`든 `cholesky()`든 Series의 `sum()`이든 `'stable' must be True or False, not int` 형식이에요.
 - **메시지에 문서 절 번호(`§`)나 문서 이름이 없어요.**
-- **퍼징:** 배열과 linalg의 C++로 바인딩된 모든 공개 함수에 대해, 인자 하나씩과 keyword 옵션 하나씩에 틀린 값 10가지(`None`, 1, True, "a", 1.5, `[1]`, numpy 정수, numpy bool, `object()`, $2^{70}$)를 넣어 봐요. 어떤 메시지에도 nanobind의 시그니처 덤프("incompatible function arguments"), 모듈 경로, 줄바꿈이 나오면 안 돼요. 모든 틀린 값이 인자 이름을 말하는 검사에 닿는다는 뜻이에요.
+- **퍼징:** 배열과 linalg의 C++로 바인딩된 모든 공개 함수에 대해, 인자 하나씩과 keyword 옵션 하나씩에 틀린 값 10가지(`None`, 1, True, "a", 1.5, `[1]`, numpy 정수, numpy bool, `object()`, $2^{70}$)를 넣어 봐요. 어떤 메시지에도 nanobind의 시그니처 덤프("incompatible function arguments"), stardust 내부 모듈 경로(`stardust._core`), 줄바꿈이 나오면 안 돼요. numpy의 타입만 공개 모듈을 붙인 이름(`not numpy.bool`, `not numpy.int64`)으로 보여요. 모든 틀린 값이 인자 이름을 말하는 검사에 닿는다는 뜻이에요.
 
 ### API 표면 테스트
 

@@ -241,6 +241,14 @@ TypeError: default_rng() got some positional-only arguments passed as keyword ar
 
 - 시드를 해석하는 방식은 numpy의 `default_rng`와 같아요. 정수와 정수의 시퀀스를 받고, 이웃한 시드도 무관한 수열을 내며, 끝에 붙은 0이 구별되지 않는 것도 같아요.
 - **그래도 값은 numpy와 달라요.** 생성기의 종류가 달라서 `sd.random.default_rng(42).random()`은 `0.4513007976393718`, `np.random.default_rng(42).random()`은 `0.7739560485559633`이에요.
-- numpy의 `SeedSequence`, `BitGenerator`, numpy `Generator`는 시드로 받지 않아요. stardust의 Generator만 그대로 돌려줘요.
+- numpy의 `SeedSequence`, `BitGenerator`, numpy `Generator`는 시드로 받지 않아요. stardust의 Generator만 그대로 돌려줘요. 메시지에는 stardust의 Generator와 구별되게 numpy의 타입이 모듈 이름과 함께 나와요.
+
+  ```python
+  >>> import numpy as np
+  >>> sd.random.default_rng(np.random.default_rng(42))
+  Traceback (most recent call last):
+      ...
+  TypeError: default_rng(): 'seed' must be an int, a sequence of ints or None, not numpy.random.Generator
+  ```
 - `seed`는 자리로만 넘겨요. numpy처럼 `default_rng(seed=42)`라고 쓸 수 없어요.
 - `np.random.seed`처럼 전역 시드를 정하는 함수는 없어요. 시드는 언제나 생성기마다 따로예요.

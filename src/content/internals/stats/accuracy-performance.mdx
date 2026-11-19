@@ -276,11 +276,13 @@ scipy 1.18.1과는 기본값끼리 비교하면 정규 $d = 3$에서 최대 $3.7
 | `ChiSquared` | df $> 2^{101}$의 cdf 계열과 역함수 |
 | `Beta`, `StudentT`, `F` | 깊은 꼬리(확률 $< 2^{-1000}$)나 아주 작은 근의 역함수가 100걸음 안에 수렴하지 않을 때(마지막 걸음이 $2^{-48}\max(1, \lvert\log x\rvert)$를 넘을 때) |
 | `Beta`, `F` | $a, b$가 모두 $2^{100}$ 초과(F는 dfn, dfd가 모두 $2^{101}$ 초과)의 cdf 계열과 역함수 |
-| `ChiSquared`, `StudentT`, `F` | df $< 2^{-1021}$(서브노멀 전부와 가장 작은 정규수 구간 $[2^{-1022}, 2^{-1021})$; F는 dfn, dfd 중 하나라도)의 pdf, cdf 계열, 역함수, median, entropy. df의 절반을 double로 정확히 나타낼 수 없어요 |
+| `ChiSquared`, `StudentT`, `F` | df $< 2^{-1021}$(서브노멀 전부와 가장 작은 정규수 구간 $[2^{-1022}, 2^{-1021})$; F는 dfn, dfd 중 하나라도)의 pdf, cdf 계열, 역함수, median, entropy, 표본. df의 절반을 double로 정확히 나타낼 수 없어요 |
 | 역함수의 검증 | 감마 계열 $a \notin [10^{-6}, 10^6]$, `Beta` $a, b \notin [10^{-3}, 10^5]$, `StudentT` df $\notin [10^{-3}, 10^6]$, `F` dfn, dfd $\notin [10^{-3}, 10^5]$에서는 구한 근에서 정방향 log 꼬리가 목표와 상대 $10^{-12}$ 안에서 맞을 때만 값을 내요 |
 | `F.entropy` | dfn이나 dfd가 $10^{-2}$ 미만 |
 | `F.logpdf` | 두 자유도가 모두 $10^{15}$ 초과이고 베타 인자가 double 아래로 내려갈 때 |
 | `Beta.logcdf` | $b < 10^{-3}$이고 $x > 0.9$ |
+
+`Beta`는 $a$나 $b$가 $2^{-1021}$ 미만이어도 NaN이 아니에요. 0과 1의 두 점 분포($P(1) = a/(a + b)$)라서 모든 메서드가 그 분포의 값이에요([작은 모양의 두 점](/internals/stats/engine/#작은-모양의-두-점-two_point)). `Beta(a=1e-310, b=3e-310).cdf(0.5)`는 0.75예요. $(0, 1)$ 안의 질량은 모양 크기 정도라 double에서 보이지 않아요.
 
 닫힌 꼴 12개는 정의역 전체에서 값을 내요. $z$나 $x/\text{scale}$이 double을 넘으면 극한값이에요.
 
@@ -291,7 +293,7 @@ scipy 1.18.1과는 기본값끼리 비교하면 정규 $d = 3$에서 최대 $3.7
 | `Binomial` | $n > 2^{52}$의 cdf 계열·분위수·mode·entropy, $npq > 2^{42}$의 entropy |
 | `NegativeBinomial` | $0 < n < 2^{-128}$($n = 0$은 0의 점질량이에요). entropy는 $nq/p^2 > 2^{42}$ 또는 $p < 2^{-20}$ |
 | `Hypergeometric` | total $> 2^{52}$. kurtosis는 total $> 2^{24}$. 합이 $2^{20}$항을 넘는 cdf 계열(total $10^{12}$부터 일부) |
-| `BetaBinomial` | $n + a + b > 2^{35}$(pmf 포함). 합이 $2^{20}$항을 넘는 cdf 계열($n = 10^9$부터 일부). 적률은 $a, b$가 $[2^{-150}, 2^{150}]$ 밖 |
+| `BetaBinomial` | $n + a + b > 2^{35}$(pmf 포함). 합이 $2^{20}$항을 넘는 cdf 계열($n = 10^9$부터 일부). 적률은 $a, b$가 $[2^{-150}, 2^{150}]$ 밖(단, $2^{-1021}$ 미만의 모양은 0과 $n$의 두 점 분포라 적률도 값이에요) |
 | `Poisson`, `NegativeBinomial` | $k \ge 2^{53}$에서 pmf$(k)$가 무시할 수 없는 cdf 계열($k + 1$이 double이 아니어서 한 칸 어긋나요) |
 | `DiscreteUniform` | high − low가 넘칠 때 |
 
@@ -312,7 +314,7 @@ $2^{52}$, $2^{53}$의 경계는 개수의 연산 때문이에요. 불완전 베�
 
 | 대상 | NaN이 되는 곳 |
 |---|---|
-| `sample` | `Hypergeometric`은 표준편차 $> 65536$ 또는 total $\ge 2^{53}$, `DiscreteUniform`은 폭 $\ge 2^{64}$, `ChiSquared`·`StudentT`·`NoncentralT`와 nc $= 0$인 `NoncentralChiSquared`는 df $< 2^{-1021}$, `NoncentralF`는 dfn이나 dfd $< 2^{-1021}$(nc $= 0$ 포함, 다른 자유도가 inf이면 극한 분포의 표본). `Zipf`는 $a > 1025$이면 1, `Beta`·`BetaBinomial`·`F`는 서브노멀 모양에서 극한값 |
+| `sample` | `Hypergeometric`은 표준편차 $> 65536$ 또는 total $\ge 2^{53}$, `DiscreteUniform`은 폭 $\ge 2^{64}$, `ChiSquared`·`StudentT`·`NoncentralT`와 nc $= 0$인 `NoncentralChiSquared`는 df $< 2^{-1021}$, `F`와 `NoncentralF`는 dfn이나 dfd $< 2^{-1021}$(nc $= 0$ 포함, dfn $=$ inf이면 역감마 극한의 표본). 값 메서드가 NaN인 곳에서는 표본도 NaN이에요. `Zipf`는 $a > 1025$이면 1, `Beta`·`BetaBinomial`은 모양 $< 2^{-1021}$에서 두 점 분포의 표본 |
 | `Multinomial` | logpmf는 $n$이 약 $10^{13}$을 넘으면 최빈값 근처에서 NaN일 수 있음. entropy는 범주별 표준편차의 합 $> 2^{17}$ 또는 $n > 2^{53}$(점질량은 0) |
 | 다변량 t `cdf` | $d = 3$에서 $\lvert x/\text{sd}\rvert > 10^{100}$이고 조건부 적분으로 넘어가야 할 때(df $\le 1$에서 나와요). 값이 NaN이면 오차 출력도 NaN |
 | `Wishart`, `InverseWishart` | logpdf는 df $\ge 10^9$에서 크기 $np\log n$인 항을 식에서 지운 꼴이라 df $\le 10^{30}$을 보장해요. 남는 반올림의 상한이 $10^{-14}\max(1, \lvert\text{값}\rvert)$를 넘으면 NaN. 그 df는 점에 따라 달라요. 정확히 나타낸 최빈값·평균(scale $= I$)은 df $= 10^{46}$까지 값이고, 원소가 반올림된 점은 $10^{31}$–$3 \times 10^{35}$(가장 이른 곳은 역Wishart $p = 10$, $\kappa = 10^4$의 평균), 분포에서 뽑은 점은 $2.4 \times 10^{32}$–$10^{35}$부터예요. 점이 분포의 폭보다 멀면 값이 다시 나와요 |

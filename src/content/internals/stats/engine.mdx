@@ -174,7 +174,7 @@ for (std::int64_t off = 0; off < n; off += kChunk) {
 
 ### 정의역 밖에서 다른 분포가 되는 곳
 
-몇몇 분포는 `valid`가 빼 둔 매개변수에서 다른 분포가 돼요. 무한한 매개변수의 극한이거나, 점질량이에요.
+몇몇 분포는 `valid`가 빼 둔 매개변수에서 다른 분포가 돼요. 무한한 매개변수의 극한이거나, 점질량이에요. 베타와 베타이항의 아주 작은 모양은 `valid` 안에 있지만, 엔진이 `valid`보다 `at_limit`을 먼저 묻기 때문에 같은 장치로 극한 분포가 돼요([아래 절](#작은-모양의-두-점-two_point)).
 
 | 분포 | 그 매개변수 | 극한 분포 |
 |---|---|---|
@@ -183,6 +183,8 @@ for (std::int64_t off = 0; off < n; off += kChunk) {
 | `F` | dfd = inf / dfn = inf | $\chi^2(d_1)/d_1$ / `InverseGamma(a=dfd/2, scale=dfd/2)` |
 | `NoncentralF` | dfd = inf / dfn = inf | 비중심 $\chi^2(d_1, \text{nc})/d_1$ / `InverseGamma(a=dfd/2, scale=dfd/2)` |
 | `NegativeBinomial` | n = 0 | 0의 점질량(p = 1과 같아요) |
+| `Beta` | a나 b < $2^{-1021}$ | 0과 1의 두 점, $P(1) = a/(a + b)$ |
+| `BetaBinomial` | a나 b < $2^{-1021}$ | 0과 n의 두 점, $P(n) = a/(a + b)$ |
 
 이런 분포는 정적 함수 셋을 더 둬요. 어디가 극한인지(`at_limit`), 입력을 받는 메서드의 값(`limit_in`), 매개변수만의 메서드의 값(`limit_par`)이에요.
 
@@ -297,6 +299,76 @@ array([               3.0,                1.0, 1.0714285714285714], dtype=float6
 ```
 
 배열 매개변수에 inf가 섞여도 그 원소만 극한 분포의 값이에요. 극한이 진짜 분포가 아닌 매개변수(`ChiSquared(df=inf)`, 두 자유도가 모두 inf인 F, 무한한 비중심도, 음이항의 p = 0)에는 `at_limit`이 참이 아니라서 NaN 그대로예요. 표본은 `sample`이 `at_limit`인 매개변수도 정의역으로 받고, 분포의 표본기가 극한 분포를 직접 뽑아요([표본 뽑기](/internals/stats/sampling/)).
+
+### 작은 모양의 두 점: `two_point`
+
+베타 분포의 모양이 0으로 가면 질량이 두 끝으로 갈라져요. $a, b \to 0$에서 $\mathrm{Beta}(a, b)$는 1에 $a/(a + b)$, 0에 $b/(a + b)$를 둔 두 점 분포로 가요. 그 사이 $(0, 1)$의 질량은 $a$, $b$ 정도라서, 모양이 $2^{-1021}$ 아래이면 double로는 보이지 않아요. 이 경계 아래에서는 베타 함수와 불완전 베타의 계산도 모양의 비트를 잃어요. 그래서 엔진의 극한 장치로 모든 메서드를 두 점 분포의 값으로 바꿔요. 경계는 t·F의 자유도와 같은 $2^{-1021}$(`kMinShape`)이에요. 베타이항은 같은 두 점이 0과 $n$이에요.
+
+```cpp
+// stats/dist/beta.hpp (Beta, 발췌)
+// A shape below 2^-1021: the shape's limit at 0, the point
+// mass at 0 (a), at 1 (b), or both atoms with P(1) = a / (a + b), every method
+// (stats/dist/two_point.hpp).
+static bool at_limit(double a, double b) {
+    return valid(a, b) && (a < two_point::kMinShape || b < two_point::kMinShape);
+}
+template <class M>
+static double limit_in(double x, double a, double b) {
+    return two_point::in<M>(x, two_point::of_shapes(a, b, 0.0, 1.0, false));
+}
+```
+
+두 질량은 `of_shapes`가 한 번에 정해요. 두 모양이 모두 1보다 작으면 둘에 $2^{1000}$을 곱한 뒤 나눠요. 2의 거듭제곱이라 곱이 정확하고, 서브노멀 모양도 비트를 잃지 않아요. 위 질량 $q$와 아래 질량 $q_c$를 따로 나눠서, 한쪽이 1에 가까워도 다른 쪽의 작은 질량이 $1 - q$의 상쇄 없이 남아요.
+
+```cpp
+// stats/dist/two_point.hpp (발췌)
+inline Law of_shapes(double a, double b, double lo, double hi, bool discrete) {
+    constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
+    if (lo == hi) return {lo, hi, 0.0, 1.0, discrete, lo};
+    const double k = std::max(a, b) < 1.0 ? 0x1p1000 : 1.0;
+    const double as = a * k, bs = b * k, s = as + bs;
+    const double q = as / s, qc = bs / s;
+    double mode = q == 0.0 ? lo : (qc == 0.0 ? hi : (b >= 1.0 ? lo : (a >= 1.0 ? hi : kNaN)));
+    if (discrete) mode = q > qc ? hi : (q < qc ? lo : kNaN);  // the larger mass (a tie is NaN)
+    return {lo, hi, q, qc, discrete, mode};
+}
+
+// log P(lo) and log P(hi), from the smaller mass where the other is near 1
+inline double log_lo(const Law& t) { return t.qc >= 0.5 ? std::log1p(-t.q) : std::log(t.qc); }
+inline double log_hi(const Law& t) { return t.q >= 0.5 ? std::log1p(-t.qc) : std::log(t.q); }
+```
+
+메서드의 값은 이 두 질량에서 바로 나와요(`two_point::in`, `two_point::par`).
+
+- **밀도**: 질량이 있는 점에서 inf, 그 밖에서 0이에요(`logpdf`는 inf와 −inf). 베타이항의 `pmf`는 두 질량이에요.
+- **누적분포와 역함수**: `cdf`는 0 앞에서 0, 0과 위 끝 사이에서 $q_c$, 위 끝부터 1인 계단이에요. 역함수는 `cdf`가 목표 이상이 되는 가장 작은 점이고, `icdf(1)`과 `iccdf(0)`은 지지집합의 위 끝이에요.
+- **모멘트**: 평균 $q\cdot w$, 분산 $q q_c w^2$($w$는 1이나 $n$)이에요. 한쪽 질량이 0으로 반올림되면 한 점이라 분산 0, 왜도·첨도는 NaN이에요.
+- **최빈값**: 베타는 베타 자신의 규칙 그대로예요. $b \ge 1$이면 0, $a \ge 1$이면 1, 둘 다 1보다 작으면 두 끝에서 밀도가 발산하니 NaN이에요. 베타이항은 질량이 큰 점이고, 같으면 NaN이에요.
+- **엔트로피**: 베타는 −inf예요. 점질량에는 유한한 미분 엔트로피가 없어요. 베타이항은 두 질량의 섀넌 엔트로피 $-(q\log q + q_c\log q_c)$이고, 한 점이면 정확히 0이에요.
+
+경계를 지날 때 값이 뛰지 않아요. 경계 아래의 $a = 2^{-1022}$, $b = 2^{-1021}$은 두 점 분포라 $q = 1/3$이고, 경계 위의 $a = 2^{-1021}$, $b = 2^{-1020}$은 베타 자신의 계산인데 같은 값이에요.
+
+```python
+>>> B = sd.stats.Beta(a=sd.asarray([2**-1022, 2**-1021]), b=sd.asarray([2**-1021, 2**-1020]))
+>>> B.ccdf(0.5)
+array([0.3333333333333333, 0.3333333333333333], dtype=float64)
+>>> Bt = sd.stats.Beta(a=1e-310, b=3e-310)
+>>> Bt.logccdf(0.5), Bt.iccdf(0.25), Bt.iccdf(0.2)
+(-1.3862943611198906, 0.0, 1.0)
+>>> sd.stats.BetaBinomial(n=10, a=1e-310, b=3e-310).entropy()
+0.5623351446188083
+>>> sd.stats.BetaBinomial(n=10, a=5e-324, b=2.0).entropy()
+0.0
+```
+
+다른 모양이 작지 않으면 질량 하나가 아주 작아요. `Beta(a=2**-1022, b=2)`의 $q$는 $2^{-1023}$이고, $a = 5\times10^{-324}$이면 0으로 반올림돼 0의 점질량이에요. 이때 크기가 $a$ 정도인 값(분산, `ccdf`)은 두 점 분포의 값이라 베타 자신과 $1 + b$배쯤 달라요. 평균 $a/(a + b)$는 둘이 같아요.
+
+```python
+>>> sd.stats.Beta(a=2**-1022, b=2.0).ccdf(0.5)
+1.1125369292536007e-308
+```
+
+표본기도 같은 `Law`를 써요([표본 뽑기](/internals/stats/sampling/#반복의-상한과-nan)).
 
 ## n항 디스패처를 함께 쓰기
 

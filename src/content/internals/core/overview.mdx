@@ -130,7 +130,7 @@ Python 코드는 전부 합쳐 약 4,100줄이에요. 그중 약 2,900줄이 데
 | `module.cpp` | `NB_MODULE(_core, m)`. 모듈 하나를 정의하고 영역별 등록 함수를 차례로 불러요 |
 | `array_bind.cpp` | `ndarray` 타입: 속성, 연산자, 버퍼 프로토콜 내보내기, 스칼라 변환 금지 |
 | `pyutil.{hpp,cpp}` | dtype 객체 다섯, 인자 해석(`parse_int`, `parse_axes`, `parse_bool` …), `is_ndarray`/`as_ndarray`, `view_of` |
-| `errors.{hpp,cpp}` | 공개 함수 이름을 에러 메시지 앞에 붙이는 `named`, `call_named`, 메시지에 넣을 짧은 타입 이름 `py_type_name` |
+| `errors.{hpp,cpp}` | 공개 함수 이름을 에러 메시지 앞에 붙이는 `named`, `call_named`, 메시지에 넣을 타입 이름 `py_type_name`(짧은 이름, numpy의 타입은 `numpy.bool`처럼 공개 모듈을 붙여요) |
 | `linalg_bind.cpp`, `frame_bind.cpp`, `special_bind.cpp`, `stats_bind.cpp` | 하위 모듈 `_core.linalg`, `_core.frame`, `_core.special`, `_core.stats` |
 | `nary_bind.hpp` | 원소별 연산 정의 하나를 배열의 n항 디스패처에 얹어 Python 함수로 등록해요. special과 stats가 함께 써요 |
 
@@ -379,7 +379,7 @@ True
 - `array`, `linalg`, `special`, `random`이 `bind/`를 include하는 것은 연산의 입구(`ops/*.cpp`)가 인자 해석 도구(`bind/pyutil.hpp`)와 에러 이름(`bind/errors.hpp`)을 쓰기 때문이에요. `array/kernels/`에는 `bind/` include가 하나도 없어요.
 - `accelerate/`는 위의 어느 디렉터리도 include하지 않아요. LAPACK 래퍼는 linalg의 타입(LAPACK 정수 타입 `lint`, 배치 구조 `linalg/batch.hpp`)에 묶여 있고 linalg만 쓰므로 `linalg/lapack.hpp`에 둬요. 바닥에 두면 바닥이 영역의 헤더를 include하게 돼요. linalg는 Accelerate 프레임워크 헤더를 직접 include하므로 `accelerate/` 헤더가 필요 없어요.
 - linalg의 `array/` 2줄은 `NDArray`를 받고 돌려주는 `linalg/input.hpp`, `linalg/outblock.hpp`예요. float64 → int64 변환 규칙은 `linalg/types.hpp`가 `base/saturate.hpp`에서 직접 가져와요. 배열의 변환 헤더를 거치지 않으므로 linalg의 타입 정의가 배열 내부에 기대지 않아요.
-- frame의 `array/` 2줄과 `bind/pyutil.hpp` 1줄은 모두 `interop.cpp`에 있어요. `frame/convert.cpp`는 에러 메시지의 짧은 타입 이름(`py_type_name`)만 필요해서 `bind/errors.hpp`를 include해요. 이 헤더는 nanobind 말고는 아무것도 끌어오지 않으므로, 배열 헤더가 frame에 들어오는 곳은 `interop.cpp` 하나로 남아요.
+- frame의 `array/` 2줄과 `bind/pyutil.hpp` 1줄은 모두 `interop.cpp`에 있어요. `frame/convert.cpp`는 에러 메시지의 타입 이름(`py_type_name`)만 필요해서 `bind/errors.hpp`를 include해요. 이 헤더는 nanobind 말고는 아무것도 끌어오지 않으므로, 배열 헤더가 frame에 들어오는 곳은 `interop.cpp` 하나로 남아요.
 - stats 행에는 `special/`만 있어요. 배열의 디스패처와 만나는 곳은 `bind/stats_bind.cpp`와 `bind/nary_bind.hpp`라서, 분포를 정의하는 헤더는 배열도 Python도 몰라요.
 
 ## 공통 부품

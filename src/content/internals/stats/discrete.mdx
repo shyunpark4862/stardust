@@ -109,6 +109,25 @@ template <class M>
 static double limit_par(double, double) { return method_of<NegativeBinomial, M>(1.0, 1.0); }
 ```
 
+베타이항은 모양 $a$나 $b$가 $2^{-1021}$ 아래이면 0과 $n$의 두 점 분포예요($P(n) = a/(a + b)$). 이 모양은 `valid` 안에 있지만, 엔진이 `at_limit`을 먼저 물어서 같은 장치로 넘어가요. 값은 베타와 함께 쓰는 `two_point.hpp`에서 나와요([작은 모양의 두 점](/internals/stats/engine/#작은-모양의-두-점-two_point)). 분위수 탐색을 거치지 않고 `cdf`가 목표 이상이 되는 가장 작은 점을 바로 골라요. 지지집합은 여기서도 족의 것 $[0, n]$이라 `icdf(1)`은 $n$이에요.
+
+```cpp
+// csrc/stats/dist/discrete_more.hpp, BetaBinomial
+static bool at_limit(double n, double a, double b) {
+    return valid(n, a, b) && (a < two_point::kMinShape || b < two_point::kMinShape);
+}
+template <class M>
+static double limit_in(double x, double n, double a, double b) {
+    return two_point::in<M>(x, two_point::of_shapes(a, b, 0.0, n, true));
+}
+```
+
+```python
+>>> T = sd.stats.BetaBinomial(n=10, a=1e-310, b=3e-310)
+>>> T.support(), T.icdf(0.75), T.icdf(0.76), T.icdf(1.0)
+((0.0, 10.0), 0.0, 10.0, 10.0)
+```
+
 Zipf처럼 깊은 꼬리의 분위수가 아주 큰 분포는 한 단계 더 가요. $q$가 $2^{-1000}$ 아래이면 $\log q \approx -700$이고, 그 ULP는 $1.1 \times 10^{-13}$이에요. Zipf의 위꼬리는 $P(X > k) \approx k^{1-a}/((a-1)\zeta(a))$라서 $\log q$가 한 ULP 움직이면 분위수는 상대적으로 그 $1/(a-1)$배 움직여요. 그래서 이 분포는 `logccdf_dd`(위꼬리의 log를 double-double로)를 주고, 탐색은 $\log q$도 double-double로 만들어 두 쌍을 비교해요(`dd_le`).
 
 ### 질주와 이분
@@ -567,6 +586,15 @@ $P(X > k) = q^k = \exp(k\log q)$이고, 지수 $k\log q$를 double-double로 만
 (nan, inf)
 ```
 
+베타이항의 모멘트는 $a, b$가 $[2^{-150}, 2^{150}]$ 안에서만 계산해요(그 밖은 NaN). 다만 $2^{-1021}$ 아래의 모양은 위의 두 점 분포라, 모멘트도 그 분포의 닫힌 꼴이에요. 평균 $nq$, 분산 $n^2 q q_c$, 왜도 $(q_c - q)/\sqrt{q q_c}$, 첨도 $(1 - 6 q q_c)/(q q_c)$이고, 한쪽 질량이 0이면 분산 0, 왜도·첨도 NaN이에요.
+
+```python
+>>> T.mean(), T.variance(), T.skewness(), T.kurtosis()
+(2.5, 18.75, 1.1547005383792517, -0.6666666666666666)
+>>> sd.stats.BetaBinomial(n=10, a=1e-200, b=1.0).mean()
+nan
+```
+
 `disc_sum::central`의 멈춤 규칙은 아래 엔트로피와 같아요. 상한은 4096항(`kMaxMomentTerms`)이에요.
 
 ## 엔트로피
@@ -637,6 +665,7 @@ $a + b \le 2$인 베타이항은 양 끝에서 골짜기 쪽으로 걸어요(`en
   T = \frac{\log^2 w}{2} + \gamma\log w + C - \sum_{n \ge 1}\zeta'(1-n)\frac{(-w)^n}{n!}, \qquad C = \frac{\gamma^2}{2} + \frac{\pi^2}{12} + \gamma_1
   $$
   이 남아요($\gamma_1$은 첫 Stieltjes 상수). $n = 6$부터 $\lvert\zeta'(1-n)\rvert/n! < (2\pi)^{-n}$이라 다섯 항에서 끊으면 나머지가 $2^{-75}$ 아래예요. $\log w$와 $L$은 double-double이에요. $T/L$이 $H$의 대부분이고, float64 $\log w$는 $\log^2 w$에서 반올림이 두 번 들어가기 때문이에요.
+- **베타이항의 두 점 분포**(모양 $< 2^{-1021}$): $-(q\log q + q_c\log q_c)$예요. 1에 가까운 질량의 log는 다른 쪽 작은 질량에서 `log1p`로 만들어서, $q$가 $10^{-308}$ 정도로 작아도 두 항이 상쇄 없이 나와요. 한쪽 질량이 0이면 합을 거치지 않고 정확히 0이에요.
 - **Zipf**: $H = \log\zeta(a) + a S/\zeta(a)$, $S = \sum_k k^{-a}\log k$예요. $k < 10^4$은 작은 항부터 보정 합으로 더하고, 나머지는 $f(x) = x^{-a}\log x$의 Euler–Maclaurin 꼬리 $\int_K^\infty f + f(K)/2 - f'(K)/12 + f'''(K)/720$로 닫아요.
 
 ```python
