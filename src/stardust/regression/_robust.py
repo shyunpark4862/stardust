@@ -17,7 +17,7 @@ from .. import random as _random
 from .. import special as _special
 from .._results import SiegelslopesResult, TheilslopesResult
 from ._glm import _broadcast_shape, _check_int, _check_positive
-from ._linear import (_RegressionResult, _as_real, _check_alpha, _check_batches, _check_bool, _check_choice, _expand,
+from ._linear import (_call_errors, _RegressionResult, _as_real, _check_alpha, _check_batches, _check_bool, _check_choice, _expand,
                       _check_rows, _prepare, _read_y, _rows_message,
                       _check_policy, _check_rtol, _frame_columns, _count, _forg, _has_nan, _names, _pairs, _quantile_label, _type_name, _WIDTH)
 
@@ -340,3 +340,7 @@ def siegelslopes(y, x=None, /, *, method="hierarchical", nan_policy="propagate")
     yy, xx, batch = _slopes_input(func, y, x, nan_policy)
     v = _k.slopes(func, yy, xx, 1, method == "separate", 0.0)
     return _out(v, batch, SiegelslopesResult)
+
+
+# the methods' call-shape errors in the library's form (R89)
+_call_errors(RLMResult)

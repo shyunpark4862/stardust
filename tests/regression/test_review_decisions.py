@@ -753,3 +753,167 @@ def test_nls_perfect_fit_no_significance():
     # not perfect: t as before
     rr = R.nls(decay, TD, YD, p0=[1.0, 1.0, 0.0])
     assert np.all(np.isfinite(a(rr.tvalues)))
+
+
+# ---- R88-R100 (2026-11-19) and G110-G113
+
+def test_configuration_fields_are_fresh_copies():
+    """G113: a list or array field is a new copy at each access."""
+    r = R.ols(Y, X)
+    names = r.param_names
+    names.append("zz")
+    assert r.param_names == ["const", "x1", "x2"]
+    q = R.quantreg(Y, X, q=[0.3, 0.6])
+    qq = q.q
+    qq[0] = 0.9
+    assert a(q.q).tolist() == [0.3, 0.6]
+    lp = R.lasso(Y, X, alpha=[0.2, 0.1])
+    al = lp.alpha
+    al[0] = 5.0
+    assert a(lp.alpha).tolist() == [0.2, 0.1]
+    lp.param_names.append("zz")
+    assert len(lp.param_names) == 3
+
+
+def test_method_call_shape_messages():
+    """R89: the methods' call-shape errors say the method's name (sd.stats' form)."""
+    cases = [R.ols(Y, X), R.glm(YB, X, family="binomial"), R.rlm(Y, X), R.quantreg(Y, X),
+             R.nls(decay, TD, YD, p0=[1.0, 1.0, 0.0])]
+    for r in cases:
+        for call, msg in ((lambda: r.conf_int(0.1), r"^conf_int\(\): takes 0 positional arguments but 1 was given$"),
+                          (lambda: r.summary(0.1), r"^summary\(\): takes 0 positional arguments but 1 was given$"),
+                          (lambda: r.predict(), r"^predict\(\): missing 1 required positional argument: '[xX]_new'$"),
+                          (lambda: r.predict_interval(X[:2], 0.1),
+                           r"^predict_interval\(\): takes 1 positional argument but 2 were given$"),
+                          (lambda: r.cov_params(1, 2), r"^cov_params\(\): takes 0 positional arguments but 2 were given$")):
+            with pytest.raises(TypeError, match=msg):
+                call()
+        with pytest.raises(TypeError, match=r"^predict\(\): unexpected keyword argument 'foo'$"):
+            r.predict(X[:2], foo=1)
+    with pytest.raises(TypeError, match=r"^breusch_pagan\(\): takes 0 positional arguments but 1 was given$"):
+        R.ols(Y, X).breusch_pagan(True)
+    with pytest.raises(TypeError, match=r"^pseudo_rsquared\(\): takes 0 positional arguments but 1 was given$"):
+        R.glm(YB, X, family="binomial").pseudo_rsquared("cs")
+    for r in (R.lasso(Y, X, alpha=0.1), R.penalized_glm(YB, X, family="binomial", alpha=0.1)):
+        with pytest.raises(TypeError, match=r"^predict\(\): takes 1 positional argument but 2 were given$"):
+            r.predict(X[:2], X[:2])
+    # the methods' own errors pass unchanged, and the signatures stay
+    with pytest.raises(TypeError, match=r"^conf_int\(\): 'alpha' must be an int or a float, not str$"):
+        R.ols(Y, X).conf_int(alpha="x")
+    import inspect
+    assert str(inspect.signature(R.ols(Y, X).conf_int)) == "(*, alpha=0.05)"
+
+
+def test_extreme_scale_t_in_fitted_units():
+    """R90: t from beta' / sqrt(C') in the fitted units, also when a coefficient in the data's
+    units overflows or underflows."""
+    h = np.array([1, 2, 2.5, 3, 4, 4.5, 5, 6, 7, 8])
+    s = np.array([52, 55, 61, 58, 66, 63, 70, 74, 73, 82.0])
+    b = R.ols(s, h)
+    r = R.ols(s * 1e300, h * 1e-300)  # the slope's 1e600 overflows
+    np.testing.assert_allclose(a(r.tvalues), a(b.tvalues), rtol=1e-13)
+    np.testing.assert_allclose(a(r.pvalues), a(b.pvalues), rtol=1e-12)
+    lr, lb = R.linregress(h * 1e-300, s * 1e300), R.linregress(h, s)
+    assert lr.pvalue == pytest.approx(lb.pvalue, rel=1e-12) and lr.rvalue == pytest.approx(lb.rvalue, rel=1e-14)
+    x = np.arange(8.0)
+    y = np.array([1.0, 2.9, 5.2, 6.8, 9.1, 11.2, 12.8, 15.1]) + 3 * np.sin(x)
+    b = R.ols(y, x)
+    r = R.ols(y * 1e-165, x * 1e160)  # the slope's 1e-325 underflows
+    np.testing.assert_allclose(a(r.tvalues), a(b.tvalues), rtol=1e-13)
+    lr, lb = R.linregress(x * 1e160, y * 1e-165), R.linregress(x, y)
+    assert lr.rvalue == pytest.approx(lb.rvalue, rel=1e-14) and lr.pvalue == pytest.approx(lb.pvalue, rel=1e-12)
+
+
+def test_converged_at_the_cap():
+    """R94/R95: the cap stops a fit only before the test and the polish complete: a fit that
+    finishes exactly at max_iter is converged with n_iter = max_iter."""
+    ref = R.glm(YB, X, family="binomial")
+    m = ref.n_iter
+    at = R.glm(YB, X, family="binomial", max_iter=m)
+    assert at.n_iter == m and at.converged and a(at.params).tolist() == a(ref.params).tolist()
+    assert not R.glm(YB, X, family="binomial", max_iter=m - 1).converged
+
+
+def test_alphas_messages_name_the_accepted_forms():
+    form = r"'alphas' must be an int \(the grid's length\) or a 1-dimensional array"
+    for v in (True, "x", 1.5, None, ["a"], np.array([True])):
+        with pytest.raises(TypeError, match=r"^lasso_cv\(\): " + form + r" of numbers, not "):
+            R.lasso_cv(Y, X, rng=gen(), alphas=v)
+    with pytest.raises(ValueError, match=r"^lasso_cv\(\): " + form + r", not 2-dimensional$"):
+        R.lasso_cv(Y, X, rng=gen(), alphas=[[0.1]])
+
+
+def test_nls_predict_interval_nan_rows():
+    """R100: a NaN row of x_new has a NaN interval (no differences through it), with or
+    without jac; the other rows as without it."""
+    tn = np.array([0.5, np.nan, 2.0])
+    for jac in (None, decay_jac):
+        r = R.nls(decay, TD, YD, p0=[1.0, 1.0, 0.0], jac=jac)
+        pi = a(r.predict_interval(tn))
+        assert np.all(np.isnan(pi[1])) and np.all(np.isfinite(pi[[0, 2]]))
+        np.testing.assert_allclose(pi[[0, 2]], a(r.predict_interval(tn[[0, 2]])), rtol=1e-12)
+        assert np.all(np.isnan(a(r.predict_interval(np.array([np.nan])))))
+
+
+def test_lasso_alpha_zero_is_ridges():
+    """G110: lasso and elastic_net at alpha = 0 give ridge(alpha=0)'s minimum-norm solution bit
+    for bit (p > n too, and in a path), converged, n_iter 0, dual_gap 0."""
+    rng = np.random.default_rng(1)
+    for n, p in ((30, 4), (10, 15)):
+        Xw = rng.normal(size=(n, p))
+        Xw = np.column_stack([Xw, Xw[:, 0]])  # an aliased column too
+        y = rng.normal(size=n)
+        rr = R.ridge(y, Xw, alpha=0.0)
+        for fit in (lambda **k: R.lasso(y, Xw, **k), lambda **k: R.elastic_net(y, Xw, l1_ratio=0.4, **k)):
+            r = fit(alpha=0.0)
+            assert a(r.params).tolist() == a(rr.params).tolist()
+            assert r.converged and r.n_iter == 0 and r.dual_gap == 0.0 and r.df_model == rr.df_model
+            path = fit(alpha=[0.3, 0.0, 0.05])
+            assert a(path.params)[1].tolist() == a(rr.params).tolist() and a(path.n_iter)[1] == 0
+            assert a(fit(alpha=[0.3, 0.0, 0.05]).params)[0].tolist() == a(fit(alpha=0.3).params).tolist()
+        cv = R.lasso_cv(y, Xw, rng=gen(), cv=3, alphas=np.array([1.0, 0.1, 0.0]))
+        if cv.alpha == 0.0:
+            assert a(cv.params).tolist() == a(rr.params).tolist()
+    # a NaN regression stays NaN at alpha = 0
+    yn = Y.copy()
+    yn[0] = np.nan
+    r = R.lasso(yn, X, alpha=0.0)
+    assert np.all(np.isnan(a(r.params))) and not r.converged and r.n_iter == 0
+
+
+@pytest.mark.parametrize("fam,link,y0,kw", [
+    ("poisson", "log", 3.0, {}), ("poisson", "sqrt", 3.0, {}), ("poisson", "identity", 3.0, {}),
+    ("gamma", "inverse", 2.0, {}), ("gamma", "log", 2.0, {}), ("gamma", "identity", 2.0, {}), ("gaussian", "log", 2.0, {}),
+    ("binomial", "logit", 0.3, {"trials": 10.0}), ("binomial", "probit", 0.3, {"trials": 10.0}),
+    ("binomial", "cloglog", 0.3, {"trials": 10.0}), ("binomial", "log", 0.3, {"trials": 10.0})])
+def test_glm_constant_y_every_family(fam, link, y0, kw):
+    """G111: the exact solution (g(y0), 0, ...) with mu = y0; no spurious significance: NaN for
+    an estimated scale (0/0), t 0 and p 1 for a fixed one."""
+    kw = {k: np.full(N, v) for k, v in kw.items()}
+    r = R.glm(np.full(N, y0), X, family=fam, link=link, **kw)
+    sm_link = {"logit": lambda m: math.log(m / (1 - m)), "probit": lambda m: float(sd.special.ndtri(m)),
+               "cloglog": lambda m: math.log(-math.log1p(-m)), "log": math.log, "identity": lambda m: m,
+               "sqrt": math.sqrt, "inverse": lambda m: 1 / m}[link]
+    assert a(r.params)[1:].tolist() == [0.0, 0.0] and float(r.params[0]) == pytest.approx(sm_link(y0), rel=1e-15)
+    assert np.all(a(r.fittedvalues) == y0) and r.deviance == 0.0 and r.null_deviance == 0.0
+    assert r.converged and not r.separation and r.llnull == r.llf
+    if fam in ("gaussian", "gamma"):
+        assert r.scale == 0.0 and r.llf == math.inf and np.all(a(r.bse) == 0.0)
+        assert np.all(np.isnan(a(r.pvalues)[1:])) and math.isnan(r.pseudo_rsquared(kind="mcf"))
+    else:
+        assert np.all(a(r.tvalues)[1:] == 0.0) and np.all(a(r.pvalues)[1:] == 1.0)
+        assert r.llr == 0.0 and r.pseudo_rsquared() == 0.0 and r.pseudo_rsquared(kind="mcf") == 0.0
+
+
+def test_glm_constant_y_at_the_boundary_keeps_its_rules():
+    for y, fam in ((np.ones(N), "binomial"), (np.zeros(N), "binomial"), (np.zeros(N), "poisson")):
+        r = R.glm(y, X, family=fam)
+        assert r.separation and np.all(np.isnan(a(r.params)))
+
+
+def test_mcfadden_nan_for_infinite_llf():
+    """G112: McFadden is NaN where llf is infinite; Cox-Snell keeps its limit."""
+    x = np.arange(1.0, 9.0)
+    r = R.glm(1.0 + 2.0 * x, x, family="gaussian")
+    assert r.llf == math.inf
+    assert math.isnan(r.pseudo_rsquared(kind="mcf")) and r.pseudo_rsquared(kind="cs") == 1.0

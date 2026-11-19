@@ -18,7 +18,7 @@ from .. import special as _special
 from ..stats import ChiSquared as _ChiSquared
 from ..stats import Normal as _Normal
 from ..stats import StudentT as _StudentT
-from ._linear import (_COV_TYPES, _RegressionResult, _arg, _as_real, _check_alpha, _check_bool, _check_choice,
+from ._linear import (_call_errors, _COV_TYPES, _RegressionResult, _arg, _as_real, _check_alpha, _check_bool, _check_choice,
                       _check_batches, _check_maxlags, _check_params, _check_policy, _check_rows, _check_rtol, _count,
                       _div, _expand, _forg, _frame_columns, _groups, _has_nan, _log, _names, _pairs, _quantile_label,
                       _read_y, _rows_message, _WIDTH, _COV_NOTES)
@@ -174,14 +174,21 @@ class GLMResult(_RegressionResult):
         """The pseudo R-squared (statsmodels' name and default, G100): kind='cs' (Cox and Snell,
         the summary's) 1 - exp(2 (llnull - llf) / nobs), or 'mcf' (McFadden) 1 - llf / llnull.
         NaN where it is 0/0 (a perfect fit whose null model fits too: llf = llnull = +inf; or
-        llnull 0 for McFadden)."""
+        llnull 0 for McFadden) and, for McFadden, wherever llf is infinite (G112)."""
         _check_choice(kind, "pseudo_rsquared", "kind", ("cs", "mcf"))
 
         def make():
             if kind == "cs":
                 v = -_expm1(-_div(self.llr, self.nobs))
             else:
-                v = 1.0 - _div(self.llf, self.llnull)
+                # an infinite llf (a zero scale, G97) has no ratio: NaN (G112); Cox-Snell
+                # keeps its limit through exp
+                llf, lln = self.llf, self.llnull
+                v = 1.0 - _div(llf, lln)
+                if isinstance(v, _sd.ndarray):
+                    v = _sd.where(_sd.logical_or(_sd.isinf(llf), lln == 0.0), math.nan, v)
+                elif math.isinf(llf) or lln == 0.0:
+                    v = math.nan
             return self._nan_where(v)
         return self._cached(("pseudo_rsquared", kind), make)
 
@@ -530,3 +537,7 @@ def glm(y, X, /, *, family, link=None, var_weights=None, freq_weights=None, tria
     return GLMResult(raw, family=family, link=link, scale_fixed=fixed,
                      param_names=_names(names, XX.shape[-1], intercept), intercept=intercept, cov_type=cov_type,
                      batch=tuple(raw[0].shape[:-1]), columns=columns)
+
+
+# the methods' call-shape errors in the library's form (R89)
+_call_errors(GLMResult)

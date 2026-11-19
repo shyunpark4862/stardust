@@ -1246,22 +1246,38 @@ int glm_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64_t ys
     // the gaussian family's identity link with an intercept and no offset, y exactly constant
     // over the fit's rows (y0): the exact solution (y0, 0, ..., 0), as ols (G92, G94). The
     // least squares leave rounding there (a slope of 1e-32, a scale of 1e-66 and a spurious t)
-    bool gconst = gid && op.intercept && !has_offset && !separated && have_beta && o.kept[0];
+    // y exactly constant over the fit's rows (y0) with an intercept and no offset: the exact
+    // solution (g(y0), 0, ..., 0) for every family and link where g(y0) is finite and y0 inside
+    // the family's range (V(y0) > 0; else the boundary's rules), as ols (G92, G94, G111). The
+    // iterations leave rounding there (a slope of 1e-32, a scale of 1e-66 and a spurious t)
+    bool gconst = op.intercept && !has_offset && !separated && have_beta && o.kept[0];
     double y0 = kNaN;
     for (lint i = 0; i < n && gconst; ++i) {
         if (!(pw[i] > 0.0)) continue;
         if (std::isnan(y0)) y0 = y[i];
         else gconst = y[i] == y0;
     }
+    double etac = kNaN, muc0 = kNaN, d10 = kNaN;
     if (gconst) {
-        o.params[0] = y0;
+        double m0 = y0, mt, mct;
+        muc0 = op.fam == fBinomial ? 1.0 - y0 : 0.0;
+        link_fun(M, &m0, &etac, 0, 1);
+        link_eval(M, &etac, &mt, &mct, &d10, 0, 1);
+        gconst = std::isfinite(etac) && variance(op.fam, y0, muc0) > 0.0 && row_valid(M, etac, y0, muc0) &&
+                 std::isfinite(d10) && d10 != 0.0;
+    }
+    if (gconst) {
+        o.params[0] = etac;
         for (lint c = 1; c < k; ++c) o.params[c] = o.kept[c] ? 0.0 : kNaN;
+        const double V0 = variance(op.fam, y0, muc0);
         for (lint i = 0; i < n; ++i) {
-            const double r = y[i] - y0;
-            o.mu[i] = o.eta[i] = y0;
-            o.rresp[i] = o.rwork[i] = r;
-            o.rpear[i] = std::sqrt(m[i]) * r;
-            o.rdev[i] = std::copysign(std::sqrt(m[i]) * std::fabs(r), r);
+            const double r = y_minus_mu(op.fam, y[i], y0, muc0);
+            o.mu[i] = y0;
+            o.eta[i] = etac;
+            o.rresp[i] = r;
+            o.rwork[i] = r / d10;
+            o.rpear[i] = std::sqrt(m[i]) * r / std::sqrt(V0);
+            o.rdev[i] = std::copysign(std::sqrt(std::max(m[i] * unit_dev(op.fam, y[i], y0, muc0), 0.0)), r);
         }
         if (op.cov != kNonrobust && !(op.cov == kCluster && !(o.stats[gNGroups] >= 2.0)))  // the scores vanish
             for (lint a = 0; a < k; ++a)
@@ -1358,6 +1374,7 @@ int glm_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64_t ys
     };
     double llf = kNaN;
     if (gid) llf = llf_at(nullptr, nullptr, 0, 0, nullptr, true, D);
+    else if (gconst) llf = llf_at(nullptr, nullptr, y0, muc0, nullptr, false, 0, D);  // at mu = y0 exactly
     else if (fin) llf = llf_at(fmu, fmuc, 0, 0, sep.data(), false, 0, D);
     else if (separated) llf = 0.0;  // every row at its boundary
 
@@ -1426,7 +1443,8 @@ int glm_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64_t ys
             for (lint c = 0; c < ncn; ++c) dn = dn + pd[2 * c], sn = sn + pd[2 * c + 1];
             Dnull = dn.hi;
             if (gconst) Dnull = sn.hi = 0.0;  // the null model is the fit itself
-            if (gid) llnull = llf_at(nullptr, nullptr, 0, 0, nullptr, true, sn.hi);
+            if (gconst) llnull = llf;
+            else if (gid) llnull = llf_at(nullptr, nullptr, 0, 0, nullptr, true, sn.hi);
             else llnull = const_mu ? llf_at(nullptr, nullptr, mc, mcc, nullptr, false, 0, Dnull)
                                    : llf_at(mun.data(), mucn.data(), 0, 0, nullptr, false, 0, Dnull);
         }

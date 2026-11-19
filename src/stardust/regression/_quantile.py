@@ -12,8 +12,8 @@ import textwrap
 from .. import _core as _sd
 from .. import special as _special
 from ._glm import _check_int, _check_positive
-from ._linear import (_RegressionResult, _check_alpha, _check_bool, _check_choice,
-                      _check_pred_batch, _new_design, _prepare,
+from ._linear import (_call_errors, _RegressionResult, _check_alpha, _check_bool, _check_choice,
+                      _check_pred_batch, _fresh, _new_design, _prepare,
                       _check_policy, _check_rtol, _frame_columns, _count, _div, _forg, _names,
                       _number_or_1d, _pairs, _quantile_label, _WIDTH)
 
@@ -50,8 +50,9 @@ class QuantRegResult(_RegressionResult):
 
     @property
     def q(self):
-        """The quantile(s) as given: a number or a copy of the 1-D array (read-only, G98)."""
-        return self._q
+        """The quantile(s) as given: a number, or the 1-D array (a new copy at each access,
+        G113; read-only, G98)."""
+        return _fresh(self._q)
 
     @property
     def resid(self):
@@ -269,3 +270,7 @@ def quantreg(y, X, /, *, q=0.5, intercept=True, cov_type="nid", bandwidth="hall-
     return QuantRegResult(raw, q=qkeep, bw_rule=bandwidth, qaxis=qaxis,
                           param_names=_names(names, XX.shape[-1], intercept), intercept=intercept, cov_type=cov_type,
                           batch=tuple(raw[0].shape[:-1]), columns=columns)
+
+
+# the methods' call-shape errors in the library's form (R89)
+_call_errors(QuantRegResult)

@@ -19,7 +19,7 @@ from .. import _core as _sd
 from .. import frame as _frame
 from .. import linalg as _linalg
 from ._glm import _check_int
-from ._linear import (_RegressionResult, _as_real, _check_alpha, _check_choice, _check_policy, _check_rows,
+from ._linear import (_call_errors, _RegressionResult, _as_real, _check_alpha, _check_choice, _check_policy, _check_rows,
                       _check_rtol, _count, _div0, _frame_columns, _read_y, _real, _rows_message,
                       _div, _forg, _log, _pairs, _quantile_label, _type_name, _WIDTH)
 
@@ -229,11 +229,30 @@ class NLSResult(_RegressionResult):
             return _sd.full((m, 2), math.nan)
         theta = [float(v) for v in self.params.tolist()]
         mean = _values(self._f(xn, *theta), m, func, "f", "'x_new'")
-        fm = self._model
-        M = _Model(func, fm.f, fm.jac, xn, _sd.zeros((m,)), None, None, fm.p, fm.lb, fm.ub)
-        M.steps = list(fm.steps)
-        J = M.accurate_jac(theta, mean)
-        var = _sd.sum(_sd.matmul(J, self.cov_params()) * J, axis=-1)
+        # a row with NaN (x_new or its f) has a NaN interval; the Jacobian is formed on the
+        # other rows only (its differences would find the model "not finite" there)
+        ok = _sd.isfinite(mean)
+        if xn.ndim == 2:
+            ok = _sd.logical_and(ok, _sd.all(_sd.isfinite(xn), axis=1))
+        else:
+            ok = _sd.logical_and(ok, _sd.isfinite(xn))
+        var = _sd.full((m,), math.nan)
+        if bool(_sd.any(ok)):
+            all_ok = bool(_sd.all(ok))
+            xs = xn if all_ok else xn[ok]
+            ms = mean if all_ok else mean[ok]
+            fm = self._model
+            M = _Model(func, fm.f, fm.jac, xs, _sd.zeros((xs.shape[0],)), None, None, fm.p, fm.lb, fm.ub)
+            M.steps = list(fm.steps)
+            J = M.accurate_jac(theta, ms)
+            v = _sd.sum(_sd.matmul(J, self.cov_params()) * J, axis=-1)
+            if all_ok:
+                var = v
+            else:  # back to every row, NaN where it was left out
+                out = [math.nan] * m
+                for i, vi in zip(_sd.nonzero(ok)[0].tolist(), v.tolist()):
+                    out[i] = vi
+                var = _sd.asarray(out)
         q = self._dist().iccdf(alpha / 2)
         half = q * _sd.sqrt(var)
         return _sd.stack([mean - half, mean + half], axis=-1)
@@ -907,3 +926,7 @@ def nls(f, x, y, /, *, p0, jac=None, bounds=None, method=None, weights=None, fto
     out = [_sd.asarray(theta), raw[1], raw[2], v, yy - v, raw[5], _sd.asarray(stats)]
     return NLSResult(out, method=method, f=f, xshape=xshape, jac_kind=jac_kind, active=active, param_names=names,
                      model=M, polish_cut=cut, columns=columns)
+
+
+# the methods' call-shape errors in the library's form (R89)
+_call_errors(NLSResult)

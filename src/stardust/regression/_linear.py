@@ -8,9 +8,12 @@ output with sd.stats' distributions. Every field is an sd.ndarray, or a Python n
 scalar of one regression; a batch of regressions puts the batch shape in front.
 """
 
+import functools
+import inspect
 import math
 import numbers
 import operator
+import re
 import textwrap
 
 from .. import _core as _sd
@@ -188,13 +191,13 @@ def _check_alpha(v, func):
     return x
 
 
-def _number_or_1d(v, func, arg):
+def _number_or_1d(v, func, arg, scalar="a number"):
     """(values as a 1-D float64 sd.ndarray, is_array): a number, or a 1-D array or sequence of
     numbers (a path of alphas, several quantiles). The same mistake gives the same message for
     every such argument (ridge's alpha, quantreg's q): a non-number (bools, bool arrays, strings,
     None) is a TypeError, a 0-, 2- or more-dimensional or empty array a ValueError, an int beyond
     the doubles an OverflowError. The values' range is the caller's to check."""
-    what = f"{func}(): '{arg}' must be a number or a 1-dimensional array of numbers"
+    what = f"{func}(): '{arg}' must be {scalar} or a 1-dimensional array of numbers"
     if isinstance(v, bool) or isinstance(v, (str, bytes)) or v is None:
         raise TypeError(f"{what}, not {_type_name(v)}")
     if isinstance(v, numbers.Number):
@@ -202,7 +205,7 @@ def _number_or_1d(v, func, arg):
             raise TypeError(f"{what}, not {_type_name(v)}")
         return _sd.asarray([_real(v, func, arg)]), False
     if getattr(v, "ndim", None) == 0:  # a 0-d (numpy) array: sd has none
-        raise ValueError(f"{func}(): '{arg}' must be a number or a 1-dimensional array, not 0-dimensional")
+        raise ValueError(f"{func}(): '{arg}' must be {scalar} or a 1-dimensional array, not 0-dimensional")
     try:
         a = v if isinstance(v, _sd.ndarray) else _sd.asarray(v)
     except OverflowError:
@@ -214,7 +217,7 @@ def _number_or_1d(v, func, arg):
     if a.dtype == _sd.bool:
         raise TypeError(f"{what}, not a bool array")
     if a.ndim != 1:
-        raise ValueError(f"{func}(): '{arg}' must be a number or a 1-dimensional array, not {a.ndim}-dimensional")
+        raise ValueError(f"{func}(): '{arg}' must be {scalar} or a 1-dimensional array, not {a.ndim}-dimensional")
     if a.shape[0] == 0:
         raise ValueError(f"{func}(): '{arg}' must not be empty")
     return a.astype(_sd.float64), True
@@ -369,8 +372,9 @@ class _RegressionResult:
     # -- the fit's configuration: read-only (G98)
     @property
     def param_names(self):
-        """The coefficients' names ('const' for the intercept, then the columns')."""
-        return self._param_names
+        """The coefficients' names ('const' for the intercept, then the columns'): a new list
+        at each access (G113)."""
+        return _fresh(self._param_names)
 
     @property
     def cov_type(self):
@@ -560,6 +564,67 @@ class _RegressionResult:
         q = self._dist().iccdf(alpha / 2)
         half = q * _sd.sqrt(var) * self._per(self._unit(), 1)
         return _sd.stack([mean - half, mean + half], axis=-1)
+
+
+_TAKES = re.compile(r"takes (from (\d+) to )?(\d+) positional arguments? but (\d+)( positional arguments?)?(.*) "
+                    r"(was|were) given")
+
+
+def _call_message(name, rest):
+    """Python's call-shape error of a method (its numbers count self) in the library's form:
+    "conf_int(): takes 0 positional arguments but 1 was given" (the form of sd.stats'
+    constructors, T36)."""
+    m = _TAKES.match(rest)
+    if m:
+        lo, hi, got = (int(m.group(2)) - 1 if m.group(2) else None), int(m.group(3)) - 1, int(m.group(4)) - 1
+        span = f"from {lo} to {hi}" if lo is not None else f"{hi}"
+        noun = "argument" if hi == 1 and lo is None else "arguments"
+        was = "was" if got == 1 else "were"
+        tail = m.group(6) or ""
+        if m.group(5):
+            tail = f" positional argument{'' if got == 1 else 's'}{tail}"
+        rest = f"takes {span} positional {noun} but {got}{tail} {was} given"
+    elif rest.startswith("got an unexpected"):
+        rest = rest[len("got an "):]
+    return f"{name}(): {rest}"
+
+
+def _call_errors(cls):
+    """Wraps the public methods defined in cls so that a wrong call shape (positional for a
+    keyword-only option, a missing or an unexpected argument) says the method's name, as
+    every other error of the library: "summary(): takes 0 positional arguments but 1 was
+    given", not "_LinearResult.summary() takes 1 ...". Errors from inside the method pass."""
+    for name, fn in list(vars(cls).items()):
+        if name.startswith("_") or not inspect.isfunction(fn) or getattr(fn, "_call_errors", False):
+            continue
+
+        def make(fn=fn, name=name):
+            head = f"{fn.__qualname__}() "
+
+            @functools.wraps(fn)
+            def method(self, *args, **kwargs):
+                try:
+                    return fn(self, *args, **kwargs)
+                except TypeError as e:
+                    msg = str(e)
+                    # only the call's own binding error (no frame of fn beneath this one)
+                    if not msg.startswith(head) or e.__traceback__.tb_next is not None:
+                        raise
+                    raise TypeError(_call_message(name, msg[len(head):])) from None
+            method._call_errors = True
+            return method
+        setattr(cls, name, make())
+    return cls
+
+
+def _fresh(v):
+    """A configuration field as the result gives it (G113): a new list or array at each
+    access, so that changing what was returned does not change the result."""
+    if isinstance(v, list):
+        return list(v)
+    if isinstance(v, _sd.ndarray):
+        return v.copy()
+    return v
 
 
 def _check_pred_batch(func, Xn, batch):
@@ -778,11 +843,11 @@ class _LinearResult(_RegressionResult):
     @property
     def tvalues(self):
         def make():
-            g = self._colfactor()
-            if g is None:
+            if "beff_params_s" not in self._extra:
                 return self.params / self.bse
-            # the fit's own units: neither factor can leave the doubles there
-            return (self.params / g) / _sd.sqrt(_linalg.diagonal(self._cov_s()))
+            # the fit's own units, beta' / sqrt(C'): neither can leave the doubles there, while a
+            # parameter or its standard error in the data's units may overflow or underflow
+            return (self._extra["beff_params_s"] + 0.0) / _sd.sqrt(_linalg.diagonal(self._cov_s()))
         return self._cached("tvalues", make)
 
     def predict(self, X_new, /):
@@ -956,6 +1021,10 @@ class _LinearResult(_RegressionResult):
         if self._batch:
             return f"{name}(batch shape {tuple(self._batch)}, {self.params.shape[-1]} parameters)"
         return f"{name}(nobs={self.nobs:g}, rank={self.rank}, rsquared={self.rsquared:.6g}, params={self.params})"
+
+
+_call_errors(_RegressionResult)
+_call_errors(_LinearResult)
 
 
 class OLSResult(_LinearResult):
@@ -1540,8 +1609,11 @@ def linregress(x, y, /, *, nan_policy="propagate"):
         b0, b1 = float(r.params[0]), float(r.params[1])
         se0, se1 = float(r.bse[0]), float(r.bse[1])
         rsq = r.rsquared
-        rvalue = min(1.0, max(-1.0, math.copysign(math.sqrt(rsq), b1))) if rsq >= 0 else nan
-        pvalue = 2.0 * _StudentT(df=r.df_resid).ccdf(abs(float(r.tvalues[1])))
+        t1 = float(r.tvalues[1])
+        # the slope's sign from the fitted units' t (the slope itself may underflow to 0)
+        sgn = t1 if math.isfinite(t1) and t1 != 0 else b1
+        rvalue = min(1.0, max(-1.0, math.copysign(math.sqrt(rsq), sgn))) if rsq >= 0 else nan
+        pvalue = 2.0 * _StudentT(df=r.df_resid).ccdf(abs(t1))
         # scipy's degenerate cases: x or y constant gives r = NaN, and with it p and both
         # standard errors; a constant x gives no line at all. A NaN regression stays NaN.
         if not r._isnan():
@@ -1557,8 +1629,10 @@ def linregress(x, y, /, *, nan_policy="propagate"):
         return _results.LinregressResult(b1 + 0.0, b0 + 0.0, rvalue, pvalue, se1, se0)
     b0, b1 = r.params[..., 0], r.params[..., 1]
     se0, se1 = r.bse[..., 0], r.bse[..., 1]
-    rvalue = _sd.clip(_sd.copysign(_sd.sqrt(r.rsquared), b1), min=-1.0, max=1.0)
-    pvalue = 2.0 * _StudentT(df=r.df_resid).ccdf(_sd.abs(r.tvalues[..., 1]))
+    t1 = r.tvalues[..., 1]
+    sgn = _sd.where(_sd.logical_and(_sd.isfinite(t1), t1 != 0.0), t1, b1)
+    rvalue = _sd.clip(_sd.copysign(_sd.sqrt(r.rsquared), sgn), min=-1.0, max=1.0)
+    pvalue = 2.0 * _StudentT(df=r.df_resid).ccdf(_sd.abs(t1))
     ok = _sd.logical_not(r._isnan())
     xconst = _sd.logical_and(_constant(xa, r._batch), ok)
     yconst = _sd.logical_and(_constant(ya, r._batch), ok)

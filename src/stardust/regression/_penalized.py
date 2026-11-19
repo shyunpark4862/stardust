@@ -21,7 +21,7 @@ from .. import random as _random
 from .. import special as _special
 from . import _glm as _glm_mod
 from ._glm import _broadcast_shape
-from ._linear import (_check_bool, _check_choice, _check_params, _check_pred_batch, _check_policy, _div, _frame_columns, _names,
+from ._linear import (_call_errors, _check_bool, _check_choice, _check_params, _check_pred_batch, _fresh, _check_policy, _div, _frame_columns, _names,
                       _new_design, _number_or_1d, _own, _prepare, _real)
 
 _k = _sd.regression
@@ -45,10 +45,10 @@ def _type_name(v):
 
 # ---- argument checks
 
-def _check_alpha(v, func, arg="alpha"):
+def _check_alpha(v, func, arg="alpha", scalar="a number"):
     """(alphas as a 1-D float64 sd.ndarray, is_path, the echo): a number, or a 1-D array or
     sequence of them (a path); each finite and >= 0."""
-    a, path = _number_or_1d(v, func, arg)
+    a, path = _number_or_1d(v, func, arg, scalar)
     if not bool(_sd.all(_sd.isfinite(a))) or bool(_sd.any(a < 0)):
         raise ValueError(f"{func}(): '{arg}' must be finite and >= 0")
     return a, path, (a if path else float(a[0]))
@@ -130,13 +130,14 @@ class _PenalizedResult:
     # the fit's configuration: read-only (G98)
     @property
     def param_names(self):
-        """The coefficients' names ('const' for the intercept, then the columns')."""
-        return self._param_names
+        """The coefficients' names ('const' for the intercept, then the columns'): a new list
+        at each access (G113)."""
+        return _fresh(self._param_names)
 
     @property
     def alpha(self):
         """The penalty's alpha as given (a number or the path's array; the CV's chosen one)."""
-        return self._alpha
+        return _fresh(self._alpha)
 
     @property
     def l1_ratio(self):
@@ -424,8 +425,25 @@ def _aux(w, tw, n):
 
 def _run(func, kind, y, X, w, alphas, l1_ratio, family, intercept, standardize, max_iter, tol, tw=None):
     aux = _aux(w, tw, y.shape[-1])
-    return _k.penalized_path(func, kind, y, X, aux, w is not None, tw is not None, alphas, l1_ratio,
+    P, S = _k.penalized_path(func, kind, y, X, aux, w is not None, tw is not None, alphas, l1_ratio,
                              _FAMILY_CODE[family], intercept, standardize, max_iter, tol)
+    if kind == _ENET and alphas.ndim == 1 and bool(_sd.any(alphas == 0.0)):
+        # alpha = 0 (G110): the minimum-norm least squares solution, ridge's at alpha = 0 bit for
+        # bit (its SVD; coordinate descent would stop at one of the minimizers of an aliased
+        # design, and needs no iterations here): converged, n_iter 0, dual_gap 0
+        P0, S0 = _k.penalized_path(func, _RIDGE, y, X, aux, w is not None, tw is not None, _sd.asarray([0.0]),
+                                   0.0, _FAMILY_CODE[family], intercept, standardize, 1, 1.0)
+        ok = S0[..., _ISNAN] == 0.0
+        cols = [S0[..., j] for j in range(S0.shape[-1])]
+        cols[_CONV] = _sd.where(ok, 1.0, 0.0)
+        cols[_NITER] = _sd.where(ok, 0.0, math.nan)
+        cols[_GAP] = _sd.where(ok, 0.0, math.nan)
+        cols[_POLISHED] = _sd.where(ok, 0.0, math.nan)
+        S0 = _sd.stack(cols, axis=-1)
+        z = _sd.expand_dims(alphas == 0.0, axis=-1)
+        P = _sd.where(z, P0, P)
+        S = _sd.where(z, S0, S)
+    return P, S
 
 
 def _common(func, y, X, weights, intercept, standardize, nan_policy):
@@ -529,10 +547,11 @@ def penalized_glm(y, X, /, *, family, alpha, l1_ratio=0.5, weights=None, interce
 def _grid(func, y, X, w, l1_ratio, intercept, standardize, alphas, eps, ratio):
     """(grid (..., L) largest first): scikit-learn's default (alpha_max eps^(i/(L-1)), alpha_max
     the smallest alpha whose solution is 0 at l1_ratio `ratio`), or the given values sorted."""
-    if isinstance(alphas, numbers.Number) and not isinstance(alphas, (bool, numbers.Integral)):
-        # a number of alphas or the alphas themselves: a float is neither
-        raise TypeError(f"{func}(): 'alphas' must be an int (the grid's length) or a 1-dimensional array of "
-                        f"numbers, not {_type_name(alphas)}")
+    form = "an int (the grid's length)"
+    if isinstance(alphas, bool) or (isinstance(alphas, numbers.Number) and not isinstance(alphas, numbers.Integral)):
+        # the grid's length or the alphas themselves: a float (or a bool) is neither
+        raise TypeError(f"{func}(): 'alphas' must be {form} or a 1-dimensional array of numbers, "
+                        f"not {_type_name(alphas)}")
     if isinstance(alphas, numbers.Integral) and not isinstance(alphas, bool):
         L = _check_int(alphas, func, "alphas", 1)
         amax = _k.alpha_max(func, y, X, w, ratio, 0, intercept, standardize)
@@ -544,7 +563,7 @@ def _grid(func, y, X, w, l1_ratio, intercept, standardize, alphas, eps, ratio):
         if isinstance(amax, _sd.ndarray):
             return _sd.expand_dims(amax, axis=-1) * ratios
         return amax * ratios
-    a, _, _ = _check_alpha(alphas, func, "alphas")
+    a, _, _ = _check_alpha(alphas, func, "alphas", form)
     return _sd.flip(_sd.sort(a))
 
 
@@ -710,3 +729,8 @@ def elastic_net_cv(y, X, /, *, rng, l1_ratio=0.5, cv=5, alphas=100, eps=1e-3, se
     return _cv(func, ElasticNetCVResult, _ENET, y, X, rng=rng, cv=cv, alphas=alphas, eps=eps, select=select,
                l1_ratio=l1_ratio, weights=weights, intercept=intercept, standardize=standardize, max_iter=max_iter,
                tol=tol, nan_policy=nan_policy)
+
+
+# the methods' call-shape errors in the library's form (R89)
+_call_errors(_LinearPenalized)
+_call_errors(PenalizedGLMResult)
