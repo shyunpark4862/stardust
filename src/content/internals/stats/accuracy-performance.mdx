@@ -272,7 +272,7 @@ scipy 1.18.1과는 기본값끼리 비교하면 정규 $d = 3$에서 최대 $3.7
 | 분포 | NaN이 되는 곳 |
 |---|---|
 | `Gamma`, `InverseGamma` | $a > 2^{100}$의 cdf 계열과 역함수. 깊은 꼬리(확률 $< 2^{-1000}$)의 역함수가 100번 안에 수렴하지 않을 때($a \ge 10^{12}$에서 나와요) |
-| `Gamma`, `InverseGamma`의 아주 작은 $a$ | 서브노멀 $a$에서도 기준 모양 $a_0 = 2^{-600}$에서 계산해 옮겨($Q(a, y) = (a/a_0)Q(a_0, y)$) 값을 내요. $a \le 2^{-600}$이고 위꼬리 목표 $Q \ge 1600a$이면 근은 0이에요. `InverseGamma`의 역함수 넷과 median은 근이 double 밖이면 끝에서 정해요: 가장 큰 double에서도 아래꼬리가 목표에 못 미치면 inf, 가장 작은 양수에서 이미 넘으면 0. $a \lt 10^{-6}$에서 $Q$가 약 $665a$와 $745a$ 사이이면 감마의 근이 $2^{-960}$ 아래의 double이라 NaN이에요(`InverseGamma`는 근 $s/y$가 double 너머가 아닐 때). 엔트로피는 `InverseGamma`가 $a \lt 2^{-1000}$에서 $1/a + \log(s/a) + 1 + \gamma$($1/a$가 넘치면 inf) |
+| `Gamma`, `InverseGamma`의 아주 작은 $a$ | 서브노멀 $a$에서도 기준 모양 $a_0 = 2^{-600}$에서 계산해 옮겨($Q(a, y) = (a/a_0)Q(a_0, y)$) 값을 내요. $a \le 2^{-600}$이고 위꼬리 목표 $Q \ge 1600a$이면 근은 0이에요. `InverseGamma`의 역함수 넷과 median은 근이 double 밖이면 끝에서 정해요: 가장 큰 double에서도 아래꼬리가 목표에 못 미치면 inf, 가장 작은 양수에서 이미 넘으면 0. 작은 $a$의 위꼬리 근($Q = ca$이면 $y \approx e^{-c-\gamma}$)은 double로 나타낼 수 있으면 언제나 찾아요. $y \lt 2^{-960}$이면 $\log y = (\log(1 - q) + \log\Gamma(1 + a))/a$를 닫힌 꼴로 얻고 척도는 지수에 넣어요. 그래서 $y$가 가장 작은 서브노멀 아래여도 $sy$(`InverseGamma`는 $s/y$)가 double 안이면 값이에요. 엔트로피는 `InverseGamma`가 $a \lt 2^{-1000}$에서 $1/a + \log(s/a) + 1 + \gamma$($1/a$가 넘치면 inf) |
 | `ChiSquared` | df $> 2^{101}$의 cdf 계열과 역함수 |
 | `Beta`, `StudentT`, `F` | 깊은 꼬리(확률 $< 2^{-1000}$)나 아주 작은 근의 역함수가 100걸음 안에 수렴하지 않을 때(마지막 걸음이 $2^{-48}\max(1, \lvert\log x\rvert)$를 넘을 때) |
 | `Beta`, `F` | $a, b$가 모두 $2^{100}$ 초과(F는 dfn, dfd가 모두 $2^{101}$ 초과)의 cdf 계열과 역함수 |

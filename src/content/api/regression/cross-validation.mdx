@@ -52,7 +52,7 @@ raises:
   - type: TypeError
     desc: rng가 sd.random.Generator가 아닐 때(lasso_cv·elastic_net_cv에서 rng를 빠뜨렸을 때 포함), cv가 int(ridge_cv는 int나 'gcv')가 아닐 때, alphas가 int나 수의 배열이 아닐 때(float 하나 포함), eps가 수가 아닐 때, 그 밖에 ridge·lasso·elastic_net과 같은 경우.
   - type: ValueError
-    desc: cv가 2보다 작거나 행 수보다 클 때, ridge_cv의 cv가 'gcv'가 아닌 문자열일 때, select가 'min'·'1se'가 아닐 때, cv='gcv'에서 select='1se'일 때, ridge_cv(cv='gcv')에 rng를 줬을 때, X에 열이 없는데 intercept=False라 모수가 없을 때, eps가 0 이하이거나 1보다 클 때, alphas가 1보다 작은 int이거나 음수·inf·NaN을 담을 때, elastic_net_cv에서 l1_ratio=0인데 alphas가 int일 때, 그 밖에 ridge·lasso·elastic_net과 같은 경우.
+    desc: cv가 2보다 작거나 행 수보다 클 때, ridge_cv의 cv가 'gcv'가 아닌 문자열일 때, select가 'min'·'1se'가 아닐 때, cv='gcv'에서 select='1se'일 때, ridge_cv(cv='gcv')에 rng를 줬을 때, X에 열이 없는데 intercept=False라 모수가 없을 때, eps가 0 이하이거나 1보다 클 때, alphas가 1보다 작은 int이거나 음수·inf·NaN을 담을 때, alphas가 빈 배열·2차원 이상 배열·numpy의 0차원 배열일 때, elastic_net_cv에서 l1_ratio=0인데 alphas가 int일 때, 그 밖에 ridge·lasso·elastic_net과 같은 경우.
 seeAlso: [ridge, lasso, elastic-net, penalized-glm, results, basics]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -222,6 +222,16 @@ TypeError: lasso_cv(): 'alphas' must be an int (the grid's length) or a 1-dimens
 array([ 1.0,  0.1, 0.01], dtype=float64)
 >>> c.alpha_min
 0.1
+```
+
+격자에 0을 넣어도 돼요. 그 자리의 겹 적합과 다시 적합은 [`ridge`](/api/regression/ridge/)의 `alpha=0`과 같은 최소제곱 해예요(`lasso_cv`·`elastic_net_cv`도 반복 없이 풀어서 `converged` True, `n_iter` 0).
+
+```python
+>>> c0 = sd.regression.lasso_cv(y, X, rng=sd.random.default_rng(0), alphas=[0.0])
+>>> c0.alpha, c0.converged, c0.n_iter, c0.dual_gap
+(0.0, True, 0, 0.0)
+>>> c0.params.tolist() == sd.regression.ridge(y, X, alpha=0.0).params.tolist()
+True
 ```
 
 - `elastic_net_cv`의 $\alpha_{\max}$는 그 `l1_ratio`에서 계산해요(L1 몫이 작을수록 커요). `l1_ratio=0`이면 모든 계수를 0으로 만드는 `alpha`가 없어서 기본 격자를 만들 수 없고, `alphas`를 배열로 줘야 해요.

@@ -306,11 +306,11 @@ inline bool scale_kept(double sn, double s) {
 True
 >>> f"{float(np.max(np.abs(p - d.params)) / np.max(np.abs(p))):.1e}"
 '5.8e-12'
->>> [sd.regression.rlm(y, x, max_iter=m).converged for m in (8, 14, 15)]
-[False, False, True]
+>>> [(f.n_iter, f.converged) for f in (sd.regression.rlm(y, x, max_iter=m) for m in (8, 14, 15))]
+[(8, False), (14, False), (15, True)]
 ```
 
-같은 적합을 `max_iter`로 끊으면 연마까지 마치는 15번 전에는 `converged`가 False예요.
+같은 적합을 `max_iter`로 끊으면 연마까지 마치는 15번 전에는 `converged`가 False예요. 상한이 정확히 15이면 연마가 상한에서 끝나요. 멈춤 규칙이 섰으므로 `n_iter`가 상한과 같아도 True예요. 상한에 닿았는지가 아니라, 판정과 연마가 끝났는지가 기준이에요.
 
 ### 척도가 0일 때
 

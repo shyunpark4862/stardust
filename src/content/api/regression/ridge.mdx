@@ -42,7 +42,7 @@ raises:
   - type: TypeError
     desc: y나 X를 이름으로 줬을 때, alpha가 수나 1차원 배열이 아닐 때(bool·bool 배열·문자열·None 포함), y·X·alpha가 복소수일 때, intercept·standardize가 True·False가 아닐 때.
   - type: ValueError
-    desc: alpha가 음수·inf·NaN이거나 빈 배열·2차원 배열일 때, X에 열이 없는데 intercept=False라 모수가 없을 때, X의 행 수나 weights의 길이가 y와 다를 때, weights가 음수일 때, y나 X에 inf가 있을 때, y가 0차원일 때, nan_policy 이름이 틀렸거나 'raise'인데 NaN이 있을 때, 배치에서 nan_policy='omit'일 때, 배치 모양이 브로드캐스트되지 않을 때.
+    desc: alpha가 음수·inf·NaN이거나 빈 배열·2차원 이상 배열·numpy의 0차원 배열일 때, X에 열이 없는데 intercept=False라 모수가 없을 때, X의 행 수나 weights의 길이가 y와 다를 때, weights가 음수일 때, y나 X에 inf가 있을 때, y가 0차원일 때, nan_policy 이름이 틀렸거나 'raise'인데 NaN이 있을 때, 배치에서 nan_policy='omit'일 때, 배치 모양이 브로드캐스트되지 않을 때.
   - type: OverflowError
     desc: alpha가 float64로 나타낼 수 없을 만큼 큰 정수일 때.
 seeAlso: [lasso, elastic-net, cross-validation, penalized-glm, ols, collinearity, results, basics]
@@ -354,13 +354,17 @@ frame의 `DataFrame`을 주면 열 이름이 `param_names`가 돼요.
 ['const', 'height', 'weight']
 ```
 
-`alpha`, `l1_ratio`, `standardize`, `param_names`는 적합의 설정을 알려 주는 읽기 전용 필드예요. 값을 대입하면 `AttributeError`예요. 다른 `alpha`가 필요하면 새로 적합하세요.
+`alpha`, `l1_ratio`, `standardize`, `param_names`는 적합의 설정을 알려 주는 읽기 전용 필드예요. 값을 대입하면 `AttributeError`예요. 다른 `alpha`가 필요하면 새로 적합하세요. `param_names`와 배열 `alpha`는 읽을 때마다 새 복사본이라, 돌려받은 것을 고쳐도 결과는 그대로예요.
 
 ```python
 >>> r.alpha = 1.0
 Traceback (most recent call last):
     ...
 AttributeError: property 'alpha' of 'RidgeResult' object has no setter
+>>> names = r.param_names
+>>> names[0] = 'b0'
+>>> r.param_names
+['const', 'x1', 'x2', 'x3']
 ```
 
 ### 유효 자유도 `df_model`
@@ -493,6 +497,8 @@ array([nan], dtype=float64)
 >>> sd.regression.ols(y, Xd).params.tolist()[2]
 nan
 ```
+
+[`lasso`](/api/regression/lasso/)와 [`elastic_net`](/api/regression/elastic-net/)의 `alpha=0`도 이 해와 비트까지 같아요. 그쪽은 `alpha > 0`이면 반복해서 풀지만, `alpha=0`에서는 반복 없이 같은 최소제곱 해를 내요.
 
 벌점을 준 GLM인 [`penalized_glm`](/api/regression/penalized-glm/)은 다르게 해요. 거기서 `alpha=0`은 벌점 없는 [`glm`](/api/regression/glm/)의 적합 그대로라서, 똑같은 열의 뒤쪽 계수가 `ols`처럼 NaN이에요. 릿지의 결과는 예측을 위한 것이라 경로를 따라 계수가 이어지는 편이 더 쓸모 있고, `penalized_glm`의 `alpha=0`은 `glm`과 같은 답(분리 판정 포함)을 주는 편이 쓸모 있기 때문이에요.
 

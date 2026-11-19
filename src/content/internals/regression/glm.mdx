@@ -233,11 +233,11 @@ True
 연마 중에 `max_iter`(마지막 풀이에 하나를 남긴 반복 수)에 닿으면 판정은 통과했어도 False예요. 판정이 보장하는 것은 계수의 $\sqrt{\text{tol}}$ 남짓의 정밀도뿐이고, `converged`가 약속하는 "반올림 수준의 해"에는 연마가 끝나야 닿기 때문이에요. 같은 이유로, `max_iter`에 잘린 반복 뒤의 마지막 풀이가 편차를 판정 안으로 가져와도 그것만으로는 True가 아니에요. 그 한 걸음이 편차를 맞춰도 계수는 판정의 정밀도까지만 맞아요. 걸음 반감이 막혀 반복이 멈추면(유효 범위의 경계) 그때까지의 판정 결과 그대로예요.
 
 ```python
->>> [sd.regression.glm(y, X, family="binomial", max_iter=m).converged for m in (4, 5, 6)]
-[False, False, True]
+>>> [(f.n_iter, f.converged) for f in (sd.regression.glm(y, X, family="binomial", max_iter=m) for m in (4, 5, 6))]
+[(4, False), (5, False), (6, True)]
 ```
 
-위 80행 로지스틱은 연마를 마치고 마지막 풀이까지 가는 데 6번이 들어서, 상한이 5 이하이면 False예요.
+위 80행 로지스틱은 연마를 마치고 마지막 풀이까지 가는 데 6번이 들어서, 상한이 5 이하이면 False예요. 상한이 정확히 6이면 마지막 풀이가 상한에서 끝나요. 판정과 연마가 모두 끝났으므로 `n_iter`가 상한과 같아도 True이고, 계수도 상한이 없을 때와 비트까지 같아요. `max_iter`는 반복을 자를 수 있는 상한일 뿐이고, 상한에 닿았다는 사실만으로 False가 되지는 않아요.
 
 `n_iter`는 마지막 풀이까지 센 최소제곱의 수예요. 연마와 마지막 풀이 때문에 R의 기본 판정으로 센 반복 수보다 정준 링크는 1–2번, 정준이 아닌 링크는 3–4번 많아요. `max_iter`는 그 수의 상한이에요. 분리를 증명한 뒤 나머지 행을 다시 적합하는 반복도 같은 상한 안에서 세요(아래 분리의 증명서 절). `max_iter`에 닿아 멈춘 것만으로는 분리로 보지 않아요(`converged=False`이고 결과를 그대로 내요).
 
@@ -634,19 +634,67 @@ array([0.9999999999999997, 1.1547005383792512], dtype=float64)
 
 ### 반응이 모두 같을 때
 
-정규·identity에서 절편이 있고 오프셋이 없으며 적합의 행의 $y$가 정확히 한 값 $y_0$이면, 커널이 마지막 풀이 뒤에 정확한 해로 바꿔요. 계수 $(y_0, 0, \dots, 0)$(겹친 열은 NaN), $\mu = \eta = y_0$, 잔차 $y - y_0$, 편차와 Pearson χ² 0, 귀무 편차 0이에요. 최소제곱은 이 해에 기울기 $10^{-32}$ 크기의 반올림을 남기고, 척도가 0이면 그 반올림이 t = ±inf를 만들기 때문이에요([최소제곱 풀이](/internals/regression/least-squares/)의 같은 규칙). 강건 공분산은 점수가 모두 0이라 0이고, 군집이 하나면 NaN 그대로예요.
+절편이 있고 오프셋이 없으며 적합의 행의 $y$가 정확히 한 값 $y_0$이면, 모든 행에서 $\mu = y_0$인 모형이 최대우도 추정이에요. 점수 $\sum_i x_i m_i(y_i - \mu_i)\mu'_i/V(\mu_i)$의 모든 항이 정확히 0이기 때문이에요. 그 모형은 계수 $(g(y_0), 0, \dots, 0)$이고, 분포족과 링크와 상관없이 자명해요. 그런데 IRLS는 이 해에 반올림을 남겨요. 기울기가 $10^{-32}$ 크기로 남고, 척도를 추정하는 분포족은 Pearson χ²가 $10^{-66}$ 크기라 그 반올림을 거의 0인 표준오차로 나눈 가짜 t가 생겨요([최소제곱 풀이](/internals/regression/least-squares/)의 같은 규칙).
+
+그래서 커널이 마지막 풀이 뒤에 쓰인 행(가중치 > 0)의 $y$를 보고, 정확히 한 값이면 정확한 해로 바꿔요. 바꾸는 조건은 넷이에요.
+
+- 링크의 값 $\eta_0 = g(y_0)$가 유한해요.
+- $y_0$가 분포족의 범위 안이에요($V(y_0) > 0$).
+- $(\eta_0, y_0)$가 걸음 반감과 같은 유효 범위 안이에요(`row_valid`).
+- $d\mu/d\eta$가 $\eta_0$에서 유한하고 0이 아니에요(작업 잔차를 그것으로 나눠요).
+
+이항의 $y$가 모두 0이나 모두 1이면 logit이 $\pm\infty$이고, 포아송 log의 $y$가 모두 0이면 $\log 0 = -\infty$예요. 그런 자료는 이 길을 타지 않고 분리와 경계의 규칙 그대로예요(위 분리의 증명서 절).
 
 ```cpp
-    bool gconst = gid && op.intercept && !has_offset && !separated && have_beta && o.kept[0];
+    // y exactly constant over the fit's rows (y0) with an intercept and no offset: the exact
+    // solution (g(y0), 0, ..., 0) for every family and link where g(y0) is finite and y0 inside
+    // the family's range (V(y0) > 0; else the boundary's rules), as ols. The
+    // iterations leave rounding there (a slope of 1e-32, a scale of 1e-66 and a spurious t)
+    bool gconst = op.intercept && !has_offset && !separated && have_beta && o.kept[0];
     double y0 = kNaN;
     for (lint i = 0; i < n && gconst; ++i) {
         if (!(pw[i] > 0.0)) continue;
         if (std::isnan(y0)) y0 = y[i];
         else gconst = y[i] == y0;
     }
+    double etac = kNaN, muc0 = kNaN, d10 = kNaN;
+    if (gconst) {
+        double m0 = y0, mt, mct;
+        muc0 = op.fam == fBinomial ? 1.0 - y0 : 0.0;
+        link_fun(M, &m0, &etac, 0, 1);
+        link_eval(M, &etac, &mt, &mct, &d10, 0, 1);
+        gconst = std::isfinite(etac) && variance(op.fam, y0, muc0) > 0.0 && row_valid(M, etac, y0, muc0) &&
+                 std::isfinite(d10) && d10 != 0.0;
+    }
 ```
 
-다른 분포족에는 이 규칙을 쓰지 않아요. 정규·identity처럼 정확한 해가 링크와 상관없이 자명한 경우가 아니면, "정확한 해"를 정하는 것 자체가 링크의 반올림을 거치기 때문이에요.
+조건이 맞으면 계수는 $(\eta_0, 0, \dots, 0)$(겹친 열은 NaN)이고, 적합값은 $\mu = y_0$, 선형 예측은 $\eta = \eta_0$예요. 절편 $\eta_0$은 $g(y_0)$를 double로 한 번 반올림한 값이지만, 적합값을 $g^{-1}(\eta_0)$로 되돌리지 않고 $y_0$ 그대로 두므로 잔차와 편차가 정확히 0이에요. 링크를 되돌리면 그 반올림이 다시 들어와요. 포아송 log의 $y_0 = 3$이면 절편이 $\log 3$을 반올림한 1.0986122886681098이고, $e^{1.0986122886681098}$은 3.0000000000000004라 모든 행에 잔차와 편차가 남아요. 잔차는 행마다 $y_i - y_0$(이항은 여사건 $1 - y_0$로 상쇄 없이)이고, 쓰인 행에서는 0, 가중치 0인 행에서는 그 차예요. 작업 잔차는 그것을 $d\mu/d\eta$로 나눈 값, Pearson 잔차는 $\sqrt{m_i}\,r_i/\sqrt{V(y_0)}$, 편차 잔차는 $\operatorname{sign}(r_i)\sqrt{m_i\,d(y_i, y_0)}$예요. 편차, Pearson χ², 귀무 편차가 0이고, 강건 공분산은 점수가 모두 0이라 0이에요(군집이 하나면 NaN 그대로). 귀무 모형이 곧 이 적합이라 `llnull`은 `llf`와 같고, `llf`는 $\mu = y_0$에서 바로 재요.
+
+```cpp
+    else if (gconst) llf = llf_at(nullptr, nullptr, y0, muc0, nullptr, false, 0, D);  // at mu = y0 exactly
+```
+
+공분산은 바꾸지 않아요. 마지막 풀이의 $(X^{\mathsf T}WX)^{-1}$은 $\mu$가 $y_0$에 반올림만큼 가까운 점의 값이라 정확한 해의 것과 반올림 안에서 같기 때문이에요. 그래서 추론은 척도에 따라 갈려요.
+
+- **척도를 추정하는 분포족**(정규, 감마, `scale='X2'`·`'dev'`)은 Pearson χ²가 0이라 $\phi = 0$이고 `bse`가 0이에요. 기울기의 t는 $0/0$ = NaN이고 p도 NaN이에요. 절편은 $\eta_0 \ne 0$이면 t가 ±inf, p가 0이에요(완전 적합의 규칙). `llf`는 아래 절의 +inf예요.
+- **척도가 고정인 분포족**(이항, 포아송)은 $\phi = 1$이라 공분산이 유한해요. 기울기의 t는 $0/\text{se} = 0$이고 p는 1이에요. 가짜 유의성이 없고, $0/0$도 생기지 않아요. `llf` = `llnull`이 유한해서 `llr`이 0이에요.
+
+```python
+>>> x8 = sd.arange(1.0, 9.0)
+>>> gi = sd.regression.glm(sd.full(8, 3.0), x8, family="gamma")
+>>> gi.params, gi.tvalues, gi.pvalues
+(array([0.3333333333333333, 0.0], dtype=float64), array([inf, nan], dtype=float64), array([0.0, nan], dtype=float64))
+>>> p2 = sd.regression.glm(sd.full(8, 2.0), x8, family="poisson")
+>>> p2.params, p2.tvalues, p2.pvalues
+(array([0.6931471805599453, 0.0], dtype=float64), array([1.2580416335441953, 0.0], dtype=float64), array([0.2083766997956319, 1.0], dtype=float64))
+>>> bool(sd.all(p2.fittedvalues == 2.0)), p2.deviance, p2.llf == p2.llnull
+(True, 0.0, True)
+>>> bp = sd.regression.glm(sd.full(8, 0.3), x8, family="binomial", link="probit", trials=sd.full(8, 10.0))
+>>> bp.params[0], bp.tvalues[1], bp.pvalues[1], bool(sd.all(bp.fittedvalues == 0.3))
+(-0.5244005127080407, 0.0, 1.0, True)
+```
+
+감마 inverse의 절편은 $1/3$을 반올림한 값이지만 적합값은 정확히 3이에요. 포아송의 절편 t는 $\log\mu = 0$($\mu = 1$)인지를 묻는 보통의 검정이라 유한한 값이고, 기울기만 정확히 0, p 1이에요.
 
 ### φ = 0의 로그우도
 
@@ -698,12 +746,34 @@ array([0.9999999999999997, 1.1547005383792512], dtype=float64)
 
 `pseudo_rsquared(kind='cs')`(기본)는 Cox–Snell의 $1 - e^{2(\ell_0 - \ell)/n}$이고, `summary()`가 적는 값이에요. $2(\ell - \ell_0)$이 `llr`이라 $-\operatorname{expm1}(-\text{llr}/n)$으로 구해요. `llr`이 작을 때 $1 - e^{-x}$를 그대로 빼면 상쇄로 자릿수를 잃기 때문이에요. `kind='mcf'`는 McFadden의 $1 - \ell/\ell_0$이에요. 둘 다 statsmodels의 이름과 정의예요. 반응이 모두 같은 완전 적합은 $\ell = \ell_0 = +\infty$라 `llr`이 $\infty - \infty$이고, 두 값 모두 $0/0$꼴이라 NaN이에요.
 
+척도를 추정하는 분포족의 다른 완전 적합은 $\ell = +\infty$이고 $\ell_0$은 유한하거나(정규·identity의 집중 로그우도) $-\infty$예요. 그때 `llr`은 $+\infty$이고, Cox–Snell은 $1 - e^{-\infty}$의 극한 1을 그대로 내요. 모형이 모든 것을 설명했다는 뜻으로 읽을 수 있는 값이에요. McFadden의 $\ell/\ell_0$은 그렇지 않아요. $\ell_0$이 유한하면 $\ell_0$의 부호에 따라 $1 - \ell/\ell_0$이 $+\infty$나 $-\infty$가 되고, $\ell_0 = -\infty$면 $\infty/\infty$예요. 어느 쪽도 0과 1 사이의 비율로 읽을 수 없어서, `llf`가 무한하면 McFadden은 NaN이에요. $\ell_0 = 0$일 때도(포아송의 $y$가 모두 0처럼 모든 행이 경계라 로그우도가 0) 나눌 수 없어 NaN이에요. 척도가 고정인 분포족의 상수 $y$는 $\ell = \ell_0$이 유한해서 두 값 모두 0이에요.
+
+```python
+            else:
+                # an infinite llf (a zero scale) has no ratio: NaN; Cox-Snell
+                # keeps its limit through exp
+                llf, lln = self.llf, self.llnull
+                v = 1.0 - _div(llf, lln)
+                if isinstance(v, _sd.ndarray):
+                    v = _sd.where(_sd.logical_or(_sd.isinf(llf), lln == 0.0), math.nan, v)
+                elif math.isinf(llf) or lln == 0.0:
+                    v = math.nan
+```
+
 ```python
 >>> pr = sd.regression.glm(sd.asarray([0.0, 1, 0, 1, 1, 0, 1, 1]), x8, family="binomial")
 >>> pr.pseudo_rsquared(), pr.pseudo_rsquared(kind="mcf")
 (0.15149977517179766, 0.12416419161526604)
 >>> c8.llr, c8.pseudo_rsquared()
 (nan, nan)
+>>> pg = sd.regression.glm(1.0 + 2.0 * x8, x8, family="gaussian")
+>>> pg.llf, pg.llr, pg.pseudo_rsquared(), pg.pseudo_rsquared(kind="mcf")
+(inf, inf, 1.0, nan)
+>>> p2.pseudo_rsquared(), p2.pseudo_rsquared(kind="mcf")
+(0.0, 0.0)
+>>> z8 = sd.regression.glm(sd.zeros(8), x8, family="poisson")
+>>> z8.llnull, z8.pseudo_rsquared(kind="mcf")
+(0.0, nan)
 ```
 
 ## 강건 공분산

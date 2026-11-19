@@ -92,6 +92,8 @@ $$
 p_j = 2\,\bar F_{t(\nu)}(\lvert t_j \rvert), \qquad \hat\beta_j \pm \bar F_{t(\nu)}^{-1}(\alpha/2)\cdot\operatorname{se}_j
 $$
 
+열이나 $y$를 2의 거듭제곱으로 옮겨 적합했으면 t는 데이터 단위의 계수와 `bse`로 나누지 않고, 적합의 단위의 계수와 $\sqrt{\operatorname{diag}C'}$로 바로 나눠요. 비는 단위와 상관없는데, 데이터 단위의 계수나 표준오차는 따로 double을 넘치거나 아래로 넘칠 수 있기 때문이에요. 그래서 계수가 inf로 넘친 회귀에서도 t와 p는 유한한 참값이에요([최소제곱 풀이](/internals/regression/least-squares/)의 극단적인 척도).
+
 $\bar F$는 위꼬리 확률(`ccdf`), $\bar F^{-1}$은 그 역함수(`iccdf`)예요. $1 - F$(`1 - cdf`)로 구하지 않으므로 아주 작은 p값도 상대 정확도가 있어요. 두 함수는 sd.stats의 보장 영역에서 상대오차 10⁻¹⁴ 안이에요([Student t 분포](/api/stats/student-t/)).
 
 ```python
@@ -122,7 +124,15 @@ array([  4.60833390194385e-09, 1.5550191275406217e-32], dtype=float64)
 >>> T = sd.stats.StudentT(df=r.df_resid)
 >>> 2.0 * (1.0 - T.cdf(r.tvalues[1]))
 0.0
+>>> r.conf_int(alpha=0.1)[1].tolist()
+[1.9830103719994951, 2.013681357323813]
+>>> r.conf_int(0.1)
+Traceback (most recent call last):
+    ...
+TypeError: conf_int(): takes 0 positional arguments but 1 was given
 ```
+
+위치로 준 `alpha`의 에러는 메서드 이름으로 시작해요. 호출 모양의 에러를 모든 결과 메서드에서 이 꼴로 바꾸는 방법은 [회귀 영역의 구조](/internals/regression/overview/)의 에러의 꼴에 있어요.
 
 강건 공분산에서도 분포는 t(`df_resid`)예요. R의 `lmtest::coeftest`와 Stata의 관례와 같고, statsmodels는 강건 공분산의 기본이 정규분포라 `use_t=True`를 줘야 같은 값이에요. 모형 전체의 F는 고전형이면 $(\text{ESS}/\text{df\_model})/\hat\sigma^2$, 강건형이면 아래의 Wald F이고, p값은 `sd.stats.F(dfn, dfd).ccdf(F)`예요.
 

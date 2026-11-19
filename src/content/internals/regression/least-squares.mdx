@@ -778,6 +778,30 @@ array([4.3403891381277555,  2.444902493779801], dtype=float64)
 
 마지막 줄처럼, 참값 자체가 double 밖이면(SSR의 참값이 약 $1.8\times10^{-329}$) 그 필드만 0이나 inf예요. 그 값으로 만드는 t, p, $R^2$는 적합의 단위에서 구하므로 맞아요.
 
+계수 자체가 double을 벗어나도 같아요. $y \cdot 10^{300}$을 $x \cdot 10^{-300}$에 회귀하면 기울기의 참값이 $6.4\times10^{599}$라, 데이터 단위의 `params`와 `bse`의 그 원소는 inf예요. 그 둘로 t를 만들면 inf/inf = NaN이 되므로, `tvalues`는 데이터 단위의 값을 거치지 않아요. `_unscale`이 계수를 돌려놓기 전에 적합의 단위의 계수 $\beta'$를 `beff_params_s`로 남겨 두고, t는 그것을 $\sqrt{\operatorname{diag}C'}$로 바로 나눠요. 척도를 바꾸지 않은 적합에는 그 자리가 없어서 `params / bse`예요(배율이 1이라 같은 값이에요).
+
+```python
+    @property
+    def tvalues(self):
+        def make():
+            if "beff_params_s" not in self._extra:
+                return self.params / self.bse
+            # the fit's own units, beta' / sqrt(C'): neither can leave the doubles there, while a
+            # parameter or its standard error in the data's units may overflow or underflow
+            return (self._extra["beff_params_s"] + 0.0) / _sd.sqrt(_linalg.diagonal(self._cov_s()))
+        return self._cached("tvalues", make)
+```
+
+p는 이 t에서 구하므로 넘친 계수의 p도 맞아요. 구간 $\beta \pm q\cdot\text{bse}$는 데이터의 단위라 그 원소가 inf이거나 $\infty - \infty$ = NaN이에요. `linregress`도 p와 r을 이 t에서 만들고, r의 부호를 기울기가 아니라 t에서 읽어요(t가 유한하고 0이 아닐 때). 기울기가 아래로 넘쳐 0이 되어도 r의 부호가 남아요.
+
+```python
+>>> big = sd.regression.ols(1e300 * ys, 1e-300 * xs)
+>>> big.params[1], big.bse[1], big.tvalues[1], big.pvalues[1] == base.pvalues[1]
+(inf, inf, 2.444902493779801, True)
+>>> sd.regression.linregress(1e160 * xs, -1e-165 * ys)
+LinregressResult(slope=0.0, intercept=-9.706892633147886e-166, rvalue=-0.49929723052004504, pvalue=0.025005323114196457, stderr=0.0, intercept_stderr=2.2364106821387434e-166)
+```
+
 ## NIST StRD
 
 NIST의 선형 회귀 인증 자료 11개는 극단적인 조건수와 공인된 참값을 함께 줘요. 사용자가 실제로 주는 입력(10진 자료와 그 거듭제곱 열을 double로 한 번 반올림한 것)에 대한 Arb 참값과 비교한 계수의 최대 상대오차예요. 0번은 개선 없는 QR 해, 1번과 2번은 개선 횟수를 고정한 값이에요(`bench/regression/g1/refine.log`).

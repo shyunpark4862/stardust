@@ -566,6 +566,41 @@ return {num::exp_dd(lx), lx};
 
 Arb로 이 근에서 정칙화 불완전 감마의 log를 계산해 목표와의 차를 근의 상대오차로 바꾸면 $7.5 \times 10^{-17}$과 $2.7 \times 10^{-17}$이에요. 첫째는 scipy 1.18.1의 `gamma.ppf(exp(-2000), 3)`이 0이에요($e^{-2000}$이 0으로 언더플로해요).
 
+### 감마: 작은 모양의 위꼬리 근
+
+모양이 작으면 위꼬리 확률이 작지 않아도 근이 0에 바짝 붙어요. 작은 $a$에서 $Q(a, y) \approx a\,E_1(y)$이고 $y \to 0$에서 $E_1(y) \approx -\gamma - \log y$라서, $Q = ca$의 근은 $y \approx e^{-c-\gamma}$예요. $a = 10^{-8}$, $q = 7 \times 10^{-6}$이면 $y = 5.5 \times 10^{-305}$이에요. 근이 $2^{-960}$ 아래이면 special의 `gammainccinv`에 맡기지 않아요. 근이 $2^{-1074}$ 아래면 0으로 언더플로해서 척도가 커도 $sy$를 되살릴 수 없고, 서브노멀이면 비트를 잃기 때문이에요.
+
+대신 아래꼬리의 주항을 써요. $P = 1 - q = \frac{y^a}{\Gamma(a+1)}(1 + O(y))$이므로
+
+$$
+\log y = \frac{\log(1 - q) + \log\Gamma(1 + a)}{a}
+$$
+
+이고, $y \lt 2^{-960}$이면 버린 $O(y)$가 double에서 보이지 않아 이 식이 그대로 근이에요. $\log(1 - q)$는 `log1p(-q)`, $\log\Gamma(1 + a)$는 double-double `lgamma1p`예요. 척도는 깊은 역함수처럼 $\log s$로 지수에 더해 `exp_dd` 한 번에 $sy$를 만들어요.
+
+```cpp
+// csrc/stats/dist/gamma.hpp (발췌)
+inline bool small_upper_log_root(double a, double q, DD& ly) {
+    if (!(q > 0.0 && q < 1.0)) return false;
+    ly = (DD{std::log1p(-q), 0.0} + num::lgamma1p(a)) / a;
+    return ly.hi < -960.0 * num::kLn2.hi;
+}
+inline double upper_inverse(double a, double s, double q, DD lt) {
+    if (q < kDeepP) return deep_inverse(a, lt, false, s);
+    if (DD ly; a < 1.0 && small_upper_log_root(a, q, ly)) return num::exp_dd(ly + num::log_dd(s));
+    // ... where 2a is an integer, one Halley step on the finite sum; else s * Gammainccinv::f(a, q)
+}
+```
+
+```python
+>>> sd.stats.Gamma(a=1e-8).iccdf(700e-8)
+5.522262751657156e-305
+>>> sd.stats.Gamma(a=1e-8, scale=1e300).iccdf(800e-8)
+2.0527835228667717e-48
+```
+
+Arb 참값 대비 근의 상대오차는 $2.2 \times 10^{-14}$와 $1.7 \times 10^{-14}$이고, 조건수가 각각 약 700, 800이에요($\kappa \approx c$). 둘째는 감마의 근 $e^{-800.6}$이 가장 작은 서브노멀 아래인데, 척도를 곱한 값은 double 안이에요. 같은 식이 `InverseGamma`의 아래꼬리 근 $s/y$도 줘요([극값·수명·비중심 분포](/internals/stats/extreme-noncentral/#역감마)).
+
 ### 베타·t·F: deep_log_inverse
 
 베타의 깊은 역함수는 처음부터 $\log x$를 풀어요.
@@ -828,6 +863,20 @@ inline double accept_root(double x, double lf, double log_xf, double lt) {
 
 기울기는 꼬리와 목표 중 **큰 쪽**으로 나눠서 구해요. 꼬리가 목표보다 훨씬 작으면(언더플로해서 $-\infty$인 꼬리도) 자기 기울기를 키워서 스스로 허용폭을 넓히면 안 되기 때문이에요. 감마 계열은 여기에 해석적 상한을 더 둬요. $P \ge y^a e^{-y}/\Gamma(a + 1)$이므로 $yf/P \le a$이고, $Q$는 연분수의 첫 근사에서 $yf/Q \le y + 1$이에요. 그리고 서브노멀 근은 그 자체가 $2^{-1075}/x$만큼 반올림돼 있으므로 그만큼을 허용폭에 더해요.
 
+감마 계열에서 몫 $y = x/s$가 $2^{-960}$ 아래이면(작은 모양의 위꼬리 근이에요) $y$의 double-double이 이미 비트를 잃었거나 0으로 언더플로했어요. 그때는 꼬리를 $\log x - \log s$에서 주항으로 만들고(`ratio_tail`), 기울기의 $\log(yf(y)) = a\log y - y - \log\Gamma(a)$도 log에서 만들어요.
+
+```cpp
+// csrc/stats/dist/gamma.hpp (inverse_beyond, 발췌)
+if (y.hi >= 0x1p-960) {
+    lf = dist_log_tail(a, y, !lower);
+    ld = log_density_std(a, y) + dd::log(y);
+} else {
+    lf = ratio_tail(a, r, s, !lower, true);
+    const DD ly = num::log_dd(r) - num::log_dd(s);
+    ld = ly * a - y.hi - special::Gammaln::f(a);
+}
+```
+
 근이 double 밖(0이나 inf)이면 그 방향의 마지막 double에서 꼬리를 재요. 아래꼬리는 $x$와 함께 커지므로, 근이 0이라는 것은 가장 작은 서브노멀에서의 꼬리가 이미 목표 이상이라는 뜻이에요. 그것이 성립할 때만 0을 내요(여유는 $10^{-9}\max(1, \lvert l_t\rvert)$).
 
 ```python
@@ -905,7 +954,7 @@ True
 | 라플라스 | $e^{-(\lvert z\rvert + \log 2\sigma)}$ | $\tfrac12 e^{-\lvert z\rvert}$ | $z - \log 2$ | $\log 2p$ | 닫힌 꼴 |
 | 코시 | 인수마다 $m\cdot2^e$ | $\arctan(-1/z)/\pi$ | $-\log\lvert z\rvert - \log\pi$ | $-1/\tan(\pi p)$, $\sigma/(\pi p)$ | 모멘트 NaN, 엔트로피 $\log 4\pi\sigma$ |
 | 베이불 | $\log c - \log s + E - \log y - t$ | $e^{-t}$, $t$에 exp 잔차를 접음 | $E - t/2$, $-t$ | $s\exp(\log t/c)$ | $D_k$의 ζ 급수, Γ의 1차 보정 |
-| 감마·카이제곱 | Temme 지수($a \ge 13$), $a\log y - \log y$ | `igam` + `xderiv` 보정, 반정수는 유한합 | `igam_detail::log_tail` | `gammaincinv`·`gammainccinv`, `deep_inverse`, 범위 밖 검증 | $G(a)$ 묶음 |
+| 감마·카이제곱 | Temme 지수($a \ge 13$), $a\log y - \log y$ | `igam` + `xderiv` 보정, 반정수는 유한합 | `igam_detail::log_tail` | `gammaincinv`·`gammainccinv`, `deep_inverse`, 작은 모양의 위꼬리 log 근, 범위 밖 검증 | $G(a)$ 묶음 |
 | 베타 | log 앞 인자 $- \log x - \log y$ | $a, b \le 6$은 Boost, 그 밖은 `ibeta` | 앞 인자 + BPSER·BFRAC 비율, log BGRAT | `fast_root`, `betaincinv`, `deep_log_inverse`, 범위 밖 검증 | $G(a) + G(b) + G_c(c)$, 첨도 분자 double-double |
 | t | $l_0 - (a + \tfrac12)\log(1 + t^2/\nu)$, $L(a)$ | `stdtr`, 인자가 언더플로하면 주항 | 베타 경로, $x \lt 10^{-270}$이면 주항 | `stdtrit`, `deep_log_inverse_both`(근이 $\tfrac12$ 위면 $\log(1 - x)$에서 다시 뉴턴) | $L(a)$와 ψ 차의 급수 |
 | F | 베타 앞 인자, 작은 인자는 log에서 | `fdtr`, `fdtrc` | 자유도 ≤ 12는 `fdtr`, 작은 인자, 카이제곱 극한, 베타 경로 | `fast_root`, `fdtri`, `deep_log_inverse_both` | $G$ 묶음 + ψ 차, 모멘트는 비의 곱 |

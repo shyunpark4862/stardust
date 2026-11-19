@@ -38,7 +38,7 @@ import Tree from '../../../components/fig/Tree.astro';
 |---|---|---|
 | `gammainc`, `gammaincc` | 전부 (작은 a 급수, 거듭제곱급수, 연분수, Temme) | 없음 |
 | `gammaincinv` | $p < 10^{-300}$, 근이 $10^{-300}$ 아래, $a \ge 10^{10}$ | 그 밖 전부(근을 우리 `igam`으로 한 걸음 다듬어요) |
-| `gammainccinv` | $q < 10^{-300}$, $a \ge 10^{10}$, Boost의 결과가 정상 범위 밖(서브노멀, 0, inf) | 그 밖 전부(같이 다듬어요) |
+| `gammainccinv` | 서브노멀 $a$, $q < 10^{-300}$, $a \ge 10^{10}$, Boost의 결과가 정상 범위 밖(서브노멀, 0, inf) | 그 밖 전부(같이 다듬어요) |
 | `betainc`, `betaincc` | $a > 6$ 또는 $b > 6$, 서브노멀 $x$, 두 모양이 모두 $2^{-700}$ 아래, Boost가 1에서 빼서 만드는 쪽, Boost의 결과가 $2^{-960}$ 아래 | 그 밖의 $a, b \le 6$ |
 | `betaincinv` | $a < 10$, $b < 10$, 모양이 $10^6$ 초과, $p < 10^{-300}$ | $10 \le a, b \le 10^6$ |
 | `betainccinv` | $a < 1$, $b < 1$, 모양이 $10^6$ 초과, $q < 10^{-300}$ | $1 \le a, b \le 10^6$ |
@@ -726,7 +726,60 @@ Boost의 `ibeta_inv_imp`(`detail/ibeta_inverse.hpp`)는 초기값을 $a, b$의 �
 
 ### 끝점
 
-`igam_inverse_edge`, `ibeta_inverse_edge`가 scipy의 규칙대로 먼저 처리해요. $p = 0$이면 0, $p = 1$이면 inf(감마)·1(베타)이고 보수 역함수는 반대예요. $a$나 $b$가 0이나 inf인데 $p$가 (0, 1) 안이면 NaN이에요. 근이 float64로 담기지 않을 만큼 작으면 0을 내요. 예를 들어 `gammaincinv(5e-324, 0.5)`의 참값은 $0.5^{1/a}$ 꼴로 언더플로하므로 0이고(scipy는 NaN), `betaincinv(0.0102, 36.2, 3.13e-169)`의 참값은 $10^{-16522}$이라 0이에요(scipy는 DBL_MIN).
+`igam_inverse_edge`, `ibeta_inverse_edge`가 scipy의 규칙대로 먼저 처리해요. $p = 0$이면 0, $p = 1$이면 inf(감마)·1(베타)이고 보수 역함수는 반대예요. $a$나 $b$가 0이나 inf인데 $p$가 (0, 1) 안이면 NaN이에요. 근이 float64로 담기지 않을 만큼 작으면 0을 내요. 예를 들어 `gammaincinv(5e-324, 0.5)`의 참값은 $0.5^{1/a}$ 꼴로 언더플로하므로 0이고(scipy는 NaN), `betaincinv(0.0102, 36.2, 3.13e-169)`의 참값은 $10^{-16522}$이라 0이에요(scipy는 DBL_MIN). 서브노멀 $a$의 `gammaincinv`는 $p < 1$이면 언제나 0이에요. 근 $(p\,\Gamma(1 + a))^{1/a}$의 log가 $\log p / a$인데, $p \le 1 - 2^{-53}$이면 $\log p \le -1.1 \times 10^{-16}$이라 $a \lt 2^{-1022}$로 나누면 $-10^{291}$보다 작아요.
+
+### 서브노멀 모양의 `gammainccinv`
+
+$a \lt 2^{-1022}$이면 $a$ 자체가 비트를 잃었고, Boost와 `igam`이 쓰는 조각($a/\text{tail}$, $\sqrt{2\pi a}$, $x/a$)도 마찬가지라 둘 다 근을 찾지 못해요. 그런데 이렇게 작은 모양에서는 double이 닿는 모든 $y$에서
+
+$$
+Q(a, y) = a\,E_1(y)\,\bigl(1 + O(a(1 + \log^2 y))\bigr)
+$$
+
+이에요. $\Gamma(a, y) = \Gamma(a) - \gamma(a, y)$에 $\Gamma(a) = 1/a - \gamma + O(a)$와 $\gamma(a, y) = y^a/a + O(y)$를 넣으면 $\Gamma(a, y) = (1 - y^a)/a - \gamma + \dots = -\log y - \gamma + y - \dots - a\log^2 y/2$, 곧 $E_1(y) + O(a\log^2 y)$이기 때문이에요. 괄호 안의 보정은 $a \lt 2^{-1022}$이고 $\lvert\log y\rvert \le 745$이면 약 $10^{-302}$ 이하라 보이지 않아요. 그래서 문제는 $E_1(y) = c = q/a$를 푸는 것이 돼요.
+
+- $q/a$는 넘칠 수 있어서($q = 0.5$, $a = 5 \times 10^{-324}$) $\log c = \log q - \log a$로 만들어요.
+- $c > 40$이면 근이 $e^{-40}$ 아래이고, 그곳에서 $E_1(y) = -\gamma - \log y + O(y)$라서 $y = e^{-c-\gamma}$예요. 버린 $O(y)$는 $c$의 $10^{-19}$ 아래예요. 근이 가장 작은 서브노멀의 절반보다 작으면 `exp`가 0을 내요.
+- 그 밖은 $E_1$이 감소함수라는 것으로 이분해요. 처음 구간 $[2^{-60}, 800]$은 $E_1(2^{-60}) > 40 \ge c \gt E_1(800) = 0$이라 근을 품어요. 구간의 양 끝이 두 배 넘게 벌어져 있으면 기하 평균으로, 그 아래는 산술 평균으로 나눠서 이웃한 두 double까지 좁히고(많아야 130걸음 정도), $E_1$이 $c$에 더 가까운 쪽을 내요. $E_1$은 [`expn`](/api/special/expi/)이 쓰는 `expint_detail::en(1, x)`예요.
+
+```cpp
+// csrc/special/ops/incgamma.hpp
+inline double tiny_shape_upper_root(double a, double q) {
+    const double lc = std::log(q) - std::log(a);  // log c (q / a may overflow)
+    if (lc > std::log(40.0)) return std::exp(-std::exp(lc) - kEuler);
+    const double c = std::exp(lc);
+    double lo = 0x1p-60, hi = 800.0;  // E1(2^-60) > 40 >= c > E1(800) = 0
+    for (int it = 0; it < 400; ++it) {
+        const double mid = hi / lo > 2.0 ? std::sqrt(lo) * std::sqrt(hi) : 0.5 * (lo + hi);
+        if (!(mid > lo && mid < hi)) break;
+        (expint_detail::en(1.0, mid) > c ? lo : hi) = mid;
+    }
+    // the nearer of the two neighbours
+    return std::fabs(expint_detail::en(1.0, lo) - c) <= std::fabs(expint_detail::en(1.0, hi) - c) ? lo : hi;
+}
+```
+
+`Gammainccinv::f`는 끝점 다음에 이 갈래를 먼저 골라요.
+
+```cpp
+// csrc/special/ops/incgamma.hpp (Gammainccinv::f)
+double out;
+if (igam_inverse_edge(a, q, true, out)) return out;
+if (a < 0x1p-1022) [[unlikely]] return tiny_shape_upper_root(a, q);
+if (q >= 1e-300 && a < igam_detail::kNormalShape) {  // Boost (special/boost.hpp); as gammaincinv
+    const double r = bst::gamma_q_inv(a, q);
+    if (bst::normal(r)) return igam_detail::igam_polish(a, q, true, r);
+}
+return igam_detail::igam_inverse(a, q, true);
+```
+
+```python
+>>> sd.special.gammainccinv(5e-324, sd.asarray([5e-324, 700 * 5e-324, 760 * 5e-324]))
+array([   0.26473701045154324, 5.535808900544749e-305,
+                          0.0], dtype=float64)
+```
+
+첫째는 $E_1(y) = 1$의 근이고, 둘째는 $e^{-700-\gamma}$, 셋째는 $e^{-760.6}$이 가장 작은 서브노멀의 절반 아래라 0이에요.
 
 ## 성능
 

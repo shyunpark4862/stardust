@@ -309,6 +309,16 @@ array([inf, 0.0], dtype=float64)
 array([nan, nan, nan], dtype=float64)
 ```
 
+a가 서브노멀(약 2.2e-308보다 작은 수)일 만큼 0에 가까우면 질량 거의 전부가 0에 붙어요. 이때 Q(a, x)는 float64에서 a·E₁(x)와 같아서(E₁은 [지수 적분](/api/special/expi/)), `gammainccinv(a, q)`는 E₁(x) = q/a가 되는 x예요. q가 a의 700배이면 x는 약 5.5e-305이고, 근이 가장 작은 양수(약 5e-324)의 절반보다 작으면 0이에요. `gammaincinv(a, p)`는 p < 1이면 0이에요. 참값이 p^(1/a) 꼴이라 float64가 담을 수 있는 어떤 수보다도 작아요.
+
+```python
+>>> sd.special.gammainccinv(1e-310, sd.asarray([1e-310, 5e-310, 700e-310, 760e-310]))
+array([   0.26473701045154324,  0.0037974640015838216,
+       5.535808900544749e-305,                    0.0], dtype=float64)
+>>> sd.special.gammaincinv(1e-310, sd.asarray([0.3, 0.999, 1.0]))
+array([0.0, 0.0, inf], dtype=float64)
+```
+
 ### 역함수의 정확도는 p가 허용하는 만큼
 
 역함수는 "입력 p의 마지막 자리가 허용하는 만큼" 정확해요. 보통은 x도 앞자리 14자리 정도가 맞아요. 그런데 a가 아주 작으면 P(a, x)가 x에 아주 둔감해져요. 아래처럼 a = 0.01이면 x가 1e-30에서 1e-10으로 10²⁰배 바뀌어도 P는 0.50에서 0.80으로밖에 안 움직여요.
@@ -435,5 +445,6 @@ TypeError: gammainc(): cannot implicitly convert float64 to int64 (that would lo
 - 결과가 아주 작은 곳에서 0 대신 참값을 내요. `gammainc(1, 5e-324)`는 `5e-324`(scipy `0.0`), `gammaincc(1, 740)`은 `4.2e-322`(scipy `0.0`)예요.
 - a가 거의 0인 곳의 값이 달라요. `gammainc(5e-324, 0.5)`는 `1.0`(scipy `0.0`), `gammainc(1e-300, 5e-324)`는 `1.0`이에요(scipy는 1보다 큰 `1.0000000000000238`).
 - `gammaincinv(5e-324, 0.5)`는 `0.0`이에요(scipy는 NaN). 참값이 float64로 담기지 않을 만큼 작아서 0이 돼요.
+- a가 서브노멀인 `gammainccinv`가 달라요. `gammainccinv(1e-310, 5e-310)`은 `0.0037974640015838216`이고(참값 0.00379746400158469…), scipy는 `0.003797450316862619`로 여섯째 자리부터 틀려요.
 - 그 밖의 값은 scipy와 마지막 몇 자리가 다를 수 있어요.
 - 리스트나 numpy 배열은 받지 않고, `out`은 keyword-only예요. 경고를 내지 않아요.

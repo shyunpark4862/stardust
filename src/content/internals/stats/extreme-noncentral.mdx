@@ -231,7 +231,7 @@ $X = s/Y$, $Y \sim$ 감마$(a, 1)$이에요. 그래서 거의 모든 메서드�
 - **cdf.** $P(X \le x) = Q(a, s/x)$, $P(X > x) = P(a, s/x)$예요. 감마의 `ratio_tail(a, s, x, ...)`에 분자와 분모를 바꿔 넘겨서, 몫 $y = s/x$를 double-double로 만들고 1차 보정·유한합·깊은 log 꼬리·서브노멀 모양 처리를 그대로 받아요.
 - **밀도.** $f_X(x) = f_Y(y)\,y^2/s$라서 log 밀도는 감마의 `log_density_std(a, y)`에 $2\log y - \log s$를 더한 거예요. $y \lt 2^{-960}$이면 $(a + 1)\log y - \log\Gamma(a) - \log s$를 log에서 바로 만들어요.
 - **엔트로피.** 감마의 엔트로피(큰 항을 지운 $G(a)$ 묶음)에 $\log s - 2\psi(a)$를 더해요. $E\log\lvert dx/dy\rvert = \log s - 2E\log Y$이기 때문이에요. $a \lt 2^{-1000}$이면 닫힌 꼴 $1/a + \log(s/a) + 1 + \gamma$예요. $\log\Gamma(a) = -\log a - \gamma a + O(a^2)$, $\psi(a) = -1/a - \gamma + O(a)$를 $a + \log(s\,\Gamma(a)) - (1 + a)\psi(a)$에 넣으면 버린 항이 $O(a)$뿐이에요. 값은 double로 $1/a$와 거의 같고, $1/a$가 double을 넘으면 inf예요. 감마의 묶음은 서브노멀 $a$에서 $\Gamma(a)$와 $\psi(a)$가 넘쳐 쓸 수 없어요. Arb 참값과 같아요(`InverseGamma(a=1e-308, scale=1e-308).entropy()`는 1e+308).
-- **역함수.** $X$의 아래꼬리는 $Y$의 위꼬리예요. 감마의 역함수로 $y$를 구하고 $x = s/y$예요. $y$가 $[2^{-1000}, 2^{1000}]$ 밖이면(0이나 inf로 넘쳤을 수도 있어요) 척도를 감마 역함수의 척도 인자로 접어 넣어서 다시 풀어요. 먼저 $1/s$를 넣어 $w = y/s$를 받으면 $x = 1/w$이고, 그것도 범위 밖이면 2의 거듭제곱을 넣어요.
+- **역함수.** $X$의 아래꼬리는 $Y$의 위꼬리예요. 감마의 역함수로 $y$를 구하고 $x = s/y$예요. $y$가 $[2^{-1000}, 2^{1000}]$ 밖이면(0이나 inf로 넘쳤을 수도 있어요) 척도를 감마 역함수의 척도 인자로 접어 넣어서 다시 풀어요. 먼저 $1/s$를 넣어 $w = y/s$를 받으면 $x = 1/w$이고, 그것도 범위 밖이면 2의 거듭제곱을 넣어요. 작은 $a$의 위꼬리 근은 감마가 $\log y$를 닫힌 꼴로 만들고 척도 인자를 지수에 더하므로([작은 모양의 위꼬리 근](/internals/stats/continuous/#감마-작은-모양의-위꼬리-근)), $y$가 가장 작은 서브노멀보다 작아도 $w = y/s$가 double 안이면 근이 나와요.
 - **double 밖의 근.** 그래도 근을 놓지 못하는 곳이 있어요. 서브노멀 $a$에서는 $Y$의 질량이 $e^{-1/a}$ 근처, 곧 double보다 한참 아래에 몰려서 감마의 근이 모든 배율 밖이에요. $s \lt 2^{-900}$이면 $y$가 $2^{-2000}$ 아래여도 $x = s/y$가 double 너머인지 알 수 없어요. 그러면 두 끝을 봐요(`past_the_ends`). 가장 큰 double에서도 $X$의 아래꼬리가 목표에 못 미치면 근은 그 너머라 inf, 가장 작은 양수에서 이미 넘으면 0이에요. 위꼬리 목표는 방향이 반대예요. 인자 자체가 NaN이거나 목표가 $[0, 1]$ 밖이면 NaN 그대로예요. `median`도 `icdf(0.5)`라 같은 규칙을 따르고, `F(dfn=inf, dfd)`의 작은 `dfd`도 이 극한이라 값을 내요.
 
 ```cpp
@@ -257,9 +257,11 @@ static double past_the_ends(double r, double lt, double a, double s, bool upper)
 >>> X = sd.stats.InverseGamma(a=5e-311, scale=5e-311)
 >>> X.icdf(1e-310), X.median(), X.iccdf(1.0)
 (6.0700216117316e-310, inf, 0.0)
+>>> sd.stats.InverseGamma(a=1e-100, scale=1e-300).icdf(800e-100)
+4.855870551499206e+47
 ```
 
-$Q(a, s/x) = 10^{-310}$의 근은 서브노멀이지만 double 안이라 값이 나와요(Arb로 되넣으면 목표와 같아요). 확률 $\tfrac12$의 근은 $P(a, y) \approx y^a = \tfrac12$에서 $x = s\,e^{(\log 2)/a}$ 꼴이라 double을 한참 넘어서 inf예요.
+$Q(a, s/x) = 10^{-310}$의 근은 서브노멀이지만 double 안이라 값이 나와요(Arb로 되넣으면 목표와 같아요). 확률 $\tfrac12$의 근은 $P(a, y) \approx y^a = \tfrac12$에서 $x = s\,e^{(\log 2)/a}$ 꼴이라 double을 한참 넘어서 inf예요. 마지막 줄은 감마의 근 $y \approx e^{-800.6}$이 double 아래이고, $1/s = 10^{300}$을 접어 넣은 $w = y/s$가 $2.06 \times 10^{-48}$이라 $x = 1/w$예요. Arb 참값 대비 $2.2 \times 10^{-16}$이에요.
 
 ```python
 >>> sd.stats.InverseGamma(a=0.5, scale=1e-310).iccdf(1e-300)

@@ -324,7 +324,6 @@ array([ 1.468654599892409, 0.6122641855705204, 1.3374685630104162], dtype=float6
 - `a`가 $2^{100}$(약 1.3e30)을 넘으면 누적분포 계열(`cdf`, `ccdf`와 그 log)과 역함수, `median`이 NaN이에요. 밀도와 평균 같은 닫힌 꼴 요약값은 값이 있어요.
 - `a`가 [1e-6, 1e6] 밖이면 역함수는 구한 근을 누적분포에 다시 넣어 목표와 상대 1e-12 안에서 맞을 때만 값을 내고, 아니면 NaN이에요.
 - 아주 큰 `a`(1e12 이상)에서 확률이 $2^{-1000}$(약 9.3e-302)보다 작은 깊은 꼬리의 역함수는, 반복이 정해진 횟수 안에 수렴하지 않으면 NaN이에요.
-- `a`가 1e-6보다 작으면 근이 double 안에 있어도 `scale`의 $2^{960}$배(약 1e289배)보다 크면 역함수가 NaN이에요. 위의 되넣기 검사를 통과하지 못하는 곳이에요.
 
 ```python
 >>> big = sd.stats.InverseGamma(a=2.0 ** 101)
@@ -334,7 +333,7 @@ array([ 1.468654599892409, 0.6122641855705204, 1.3374685630104162], dtype=float6
 (1.6104765627345383e+45, 3.944304526105059e-31)
 ```
 
-아주 작은 `a`($2^{-600}$ 이하)에서는 질량 거의 전부가 아주 큰 값에 몰려서, 많은 확률에서 분위수가 double을 넘어 inf예요. 역함수 넷과 `median`은 근이 double로 나타낼 수 있는 범위 밖이면 끝에서 정해요. 가장 큰 double에서도 누적확률이 목표에 못 미치면 inf, 가장 작은 양수에서 이미 목표를 넘으면 0이에요. `a`가 서브노멀(약 2.2e-308 미만)이거나 `scale`이 아주 작아도 마찬가지예요. 근이 double 안에 있으면 그 값을 내요.
+아주 작은 `a`($2^{-600}$ 이하)에서는 질량 거의 전부가 아주 큰 값에 몰려서, 많은 확률에서 분위수가 double을 넘어 inf예요. 역함수 넷과 `median`은 근이 double로 나타낼 수 있는 범위 밖이면 끝에서 정해요. 가장 큰 double에서도 누적확률이 목표에 못 미치면 inf, 가장 작은 양수에서 이미 목표를 넘으면 0이에요. `a`가 서브노멀(약 2.2e-308 미만)이거나 `scale`이 아주 작아도 마찬가지예요. 근이 double 안에 있으면 그 값을 내요. 근이 `scale`보다 몇백 자릿수 커도 마찬가지예요. 아래 `InverseGamma(a=1e-100, scale=1e-300)`의 분위수는 `scale`의 약 $5 \times 10^{347}$배예요.
 
 `entropy()`는 `a`가 $2^{-1000}$보다 작으면 $1/a + \log(s/a) + 1 + \gamma$로 계산해요($\gamma$는 오일러 상수). $\log\Gamma(a) \approx -\log a$, $\psi(a) \approx -1/a - \gamma$를 위 식에 넣은 꼴이에요. 값은 거의 $1/a$라서 $1/a$가 double을 넘으면 inf예요.
 
@@ -344,6 +343,8 @@ inf
 >>> tiny = sd.stats.InverseGamma(a=5e-311, scale=5e-311)
 >>> tiny.icdf(1e-310), tiny.median(), tiny.iccdf(1.0)
 (6.0700216117316e-310, inf, 0.0)
+>>> sd.stats.InverseGamma(a=1e-100, scale=1e-300).icdf(800e-100)
+4.855870551499206e+47
 >>> sd.stats.InverseGamma(a=1e-308, scale=1e-308).entropy(), tiny.entropy()
 (1e+308, inf)
 ```
@@ -355,6 +356,6 @@ inf
 - `scipy.stats.invgamma(a, scale=s)`에 해당해요. **`loc`이 없어요.** 지지집합은 언제나 $(0, \infty)$예요.
 - 모멘트의 발산 표시가 달라요. `InverseGamma(a=1).variance()`는 NaN(scipy 1.18.1은 inf), `InverseGamma(a=3).skewness()`와 `InverseGamma(a=4).kurtosis()`는 inf(scipy는 nan)예요. 이 라이브러리는 그 모멘트가 발산하면 inf, 더 낮은 모멘트가 이미 무한해서 정의할 수 없으면 NaN을 내요.
 - 깊은 꼬리의 로그를 내요. `InverseGamma(a=3, scale=2).logcdf(0.001)`은 −1985.49…, `logccdf(1e300)`은 −2072.04…이고 scipy의 `logcdf`, `logsf`는 둘 다 −inf예요.
-- 아주 작은 모양에서도 분위수를 내요. `InverseGamma(a=5e-311, scale=5e-311).median()`은 inf, `icdf(1e-310)`은 6.0700216117316e-310이에요. scipy의 `median()`은 nan이고 `ppf(1e-310)`은 6.08022200639344e-310이라 셋째 자리부터 달라요.
+- 아주 작은 모양에서도 분위수를 내요. `InverseGamma(a=5e-311, scale=5e-311).median()`은 inf, `icdf(1e-310)`은 6.0700216117316e-310이에요. scipy의 `median()`은 nan이고 `ppf(1e-310)`은 6.08022200639344e-310이라 셋째 자리부터 달라요. `InverseGamma(a=1e-100, scale=1e-300).icdf(800e-100)`은 4.855870551499206e+47이고 scipy의 `invgamma.ppf(800e-100, 1e-100, scale=1e-300)`은 inf예요.
 - 깊은 꼬리의 분위수가 끝자리까지 맞아요. `InverseGamma(a=3, scale=2).iccdf(1e-300)`은 1.1006424162982089e+100이고(참값 1.10064241629820888…e+100), scipy의 `isf`는 1.1006424162981899e+100이에요.
 - `kurtosis()`는 초과 첨도예요.

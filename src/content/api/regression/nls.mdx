@@ -475,7 +475,7 @@ array([ 1.8634295032042565, 0.23723295528732338,  0.2348010842921157], dtype=flo
 True
 ```
 
-`nfev`는 f를 부른 모든 횟수라 `max_nfev`보다 조금 클 수 있어요. 표준오차에는 해의 정확한 야코비안이 늘 필요해서, 그 호출(그 점의 값 1번과, 차분이면 모수마다 간격을 고르는 데 십여 번)은 상한과 따로 그 위에 더해 부르기 때문이에요. `jac`이 있으면 1번, 차분이면 모수 수에 비례하는 수십 번이에요.
+`nfev`는 f를 부른 모든 횟수라 `max_nfev`보다 클 수 있어요. 표준오차에는 해의 정확한 야코비안이 늘 필요해서, 그 호출은 상한과 따로 그 위에 더해 부르기 때문이에요. `jac`이 있으면 그 점의 값 1번뿐이에요. 차분이면 그 1번에 간격을 고르는 호출이 더해지는데, 모수마다 보통 12–16번이고 많아야 48번(후보 간격 12개 × 중앙 차분 4번)이에요. 경계 가까이나 한쪽에서 f가 유한하지 않아 한쪽 차분으로 물러서면 그보다 많을 수 있어요. 모수가 셋인 위의 `short`는 `nfev`가 51로, 상한 10보다 41번 많아요.
 
 ```python
 >>> cut.nfev, short.nfev
@@ -531,7 +531,14 @@ True
 | `predict_interval(x_new, /, *, alpha=0.05)` | 새 x에서 f의 신뢰구간 (m, 2) |
 | `summary(*, alpha=0.05)` | 결과 표(문자열) |
 
-`method`, `cov_type`, `param_names`는 적합의 설정이라 읽기만 할 수 있어요. 값을 넣으면 `AttributeError`예요.
+`method`, `cov_type`, `param_names`는 적합의 설정이라 읽기만 할 수 있어요. 값을 넣으면 `AttributeError`예요. `param_names`는 읽을 때마다 새 리스트라, 돌려받은 리스트를 고쳐도 결과는 그대로예요. `conf_int`·`summary`·`predict_interval`의 `alpha`는 키워드로만 받고, 위치로 주면 메서드 이름으로 시작하는 `TypeError`예요.
+
+```python
+>>> m.conf_int(0.1)
+Traceback (most recent call last):
+    ...
+TypeError: conf_int(): takes 0 positional arguments but 1 was given
+```
 
 `nls`에는 절편 옵션이 없어요. 상수항이 필요하면 f에 모수로 넣어요(위의 c처럼).
 
@@ -571,7 +578,7 @@ Traceback (most recent call last):
 ValueError: predict(): 'x_new' must be 1-dimensional like the fit's 'x', not shape (3, 2)
 ```
 
-`x_new`에 inf가 있으면 `ValueError`이고, NaN이 있는 행은 예측이 NaN이에요. `DataFrame`으로 적합하고 `DataFrame`으로 예측하면 열 이름과 순서가 적합과 같아야 해요. 순서만 달라도 알아서 맞추지 않고 `ValueError`를 내요. 한쪽만 `DataFrame`이면 열을 위치로 맞춰요. 다른 회귀 함수의 `predict`와 같은 규칙이에요.
+`x_new`에 inf가 있으면 `ValueError`이고, NaN이 있는 행은 예측이 NaN이에요(`predict_interval`도 그 행만 NaN이에요, 아래). `DataFrame`으로 적합하고 `DataFrame`으로 예측하면 열 이름과 순서가 적합과 같아야 해요. 순서만 달라도 알아서 맞추지 않고 `ValueError`를 내요. 한쪽만 `DataFrame`이면 열을 위치로 맞춰요. 다른 회귀 함수의 `predict`와 같은 규칙이에요.
 
 ```python
 >>> m.predict([float('inf')])
@@ -608,6 +615,15 @@ $$
 $$
 
 $J$는 x_new의 행에서 f를 모수로 미분한 값(해에서의 야코비안; `jac`을 줬으면 그것, 아니면 적합과 같은 5점 차분), $C$는 `cov_params()`, $t$는 자유도 `df_resid`인 t 분포의 분위수예요. 데이터를 다시 모으면 **그 x에서의 곡선의 높이**가 이 안에 들 것이라는 범위예요. 위의 Michaelis–Menten에서는 s = 2.0(데이터의 범위 밖)의 구간이 s = 0.5보다 넓어요.
+
+`x_new`의 행에 NaN이 있거나 그 행에서 f가 NaN이면 그 행의 구간만 NaN이에요. 나머지 행은 NaN이 없을 때와 같은 값이에요.
+
+```python
+>>> m.predict_interval([0.05, float('nan'), 2.0])
+array([[ 82.38373270368935, 103.98268380396193],
+       [               nan,                nan],
+       [192.43611722678858, 219.71746120881366]], dtype=float64)
+```
 
 새 관측 하나가 떨어질 범위(예측 구간)는 주지 않아요. 비선형 적합은 새 관측의 오차분포를 알려 주지 않고, 이 구간도 f의 일차 근사일 뿐이기 때문이에요. 모수가 겹쳤으면(아래) 그 모수의 분산이 없으니 구간은 NaN이에요. 일차 근사라서, 곡선이 모수에 대해 많이 휘어 있거나 데이터가 적으면 실제 흔들림과 다를 수 있어요.
 

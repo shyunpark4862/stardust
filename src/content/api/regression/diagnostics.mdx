@@ -292,6 +292,10 @@ True
 Traceback (most recent call last):
     ...
 TypeError: breusch_pagan(): 'studentize' must be True or False, not int
+>>> r.breusch_pagan(False)
+Traceback (most recent call last):
+    ...
+TypeError: breusch_pagan(): takes 0 positional arguments but 1 was given
 ```
 
 ## 가중 적합과 GLS의 진단

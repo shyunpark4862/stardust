@@ -38,7 +38,7 @@ params:
   - name: max_iter
     type: int
     kind: keyword-only
-    desc: 반복 수의 상한(1 이상). 기본값 50이에요. 닿으면 그때의 값을 내고 converged가 False예요.
+    desc: 반복 수의 상한(1 이상). 기본값 50이에요. 판정과 다듬기가 끝나기 전에 닿으면 그때의 값을 내고 converged가 False예요. 마침 상한에서 끝나면 True예요.
   - name: tol
     type: float
     kind: keyword-only
@@ -188,6 +188,17 @@ array([[ 0.5560244918186881,   1.375554455549733],
        [0.45616600785959693,  0.5675182026667188]], dtype=float64)
 >>> r.scale
 0.18727606970597102
+```
+
+`conf_int`와 `summary`의 `alpha`(유의수준)는 키워드로만 받아요. 위치로 주면 메서드 이름으로 시작하는 `TypeError`예요.
+
+```python
+>>> r.conf_int(alpha=0.1).shape
+(2, 2)
+>>> r.conf_int(0.1)
+Traceback (most recent call last):
+    ...
+TypeError: conf_int(): takes 0 positional arguments but 1 was given
 ```
 
 ## M 추정은 무엇을 하나요
@@ -443,7 +454,7 @@ True
 | `predict_interval(X_new, /, *, alpha=0.05)` | 새 X에서 적합값의 신뢰구간 (m, 2) |
 | `summary(*, alpha=0.05)` | 표로 된 요약(회귀 하나만) |
 
-`param_names`, `method`, `norm`, `cov_type`은 적합의 설정이라 읽기만 할 수 있어요. 값을 넣으면 `AttributeError`예요. 결과 필드의 `weights`는 추정이 정한 가중치예요. [`wls`](/api/regression/wls/) 같은 함수의 인자 `weights`(사용자가 주는 행의 가중치)와 이름은 같지만 뜻이 달라요.
+`param_names`, `method`, `norm`, `cov_type`은 적합의 설정이라 읽기만 할 수 있어요. 값을 넣으면 `AttributeError`예요. `param_names`는 읽을 때마다 새 리스트라서, 돌려받은 리스트를 고쳐도 결과는 그대로예요. 결과 필드의 `weights`는 추정이 정한 가중치예요. [`wls`](/api/regression/wls/) 같은 함수의 인자 `weights`(사용자가 주는 행의 가중치)와 이름은 같지만 뜻이 달라요.
 
 ```python
 >>> r.nobs, r.df_model, r.df_resid, r.rank
@@ -456,6 +467,10 @@ True
 Traceback (most recent call last):
     ...
 AttributeError: property 'norm' of 'RLMResult' object has no setter
+>>> names = r.param_names
+>>> names[0] = 'b0'
+>>> r.param_names
+['const', 'x1']
 >>> r.condition_number
 15.918008662903244
 ```
@@ -513,7 +528,7 @@ array([[7.2864169062947886,  7.953056777915738]], dtype=float64)
 >>> r.predict_interval([13.0], kind='observation')
 Traceback (most recent call last):
     ...
-TypeError: RLMResult.predict_interval() got an unexpected keyword argument 'kind'
+TypeError: predict_interval(): unexpected keyword argument 'kind'
 ```
 
 배치면 결과의 앞에 배치 모양이 붙어요(`(..., m, 2)`).
@@ -530,8 +545,6 @@ ValueError: predict(): 'X_new' must have the columns ['month', 'promo'] in the f
 array([7.637499999999999], dtype=float64)
 ```
 
-`rlm`에는 `predict_interval`이 없어요.
-
 ## 반복과 수렴: `max_iter`, `tol`
 
 M은 최소제곱에서 출발해 가중치와 척도를 고치며 반복해요. 목적함수 $D = \sum_i\rho(r_i/s)$의 상대 변화 $\lvert D - D_\text{old}\rvert / (\lvert D\rvert + 0.1)$가 `tol`보다 작아지면 `converged=True`예요. 판정 뒤에도 계수가 반올림보다 크게 움직이는 동안은 계속 다듬어서, 결과는 `tol`의 정밀도가 아니라 **해에 반올림 수준으로 가까워요**. `tol`을 크게 줘도 계수가 거의 같아요.
@@ -541,7 +554,7 @@ M은 최소제곱에서 출발해 가중치와 척도를 고치며 반복해요.
 array([ 1.0204972712629068, 0.49456337739014716], dtype=float64)
 ```
 
-`max_iter`에 닿으면 그때의 값을 내고 `converged=False`, `n_iter`는 `max_iter`예요. `n_iter`가 `max_iter`를 넘는 일은 없어요. 경고는 내지 않으니 `converged`를 확인하세요.
+판정과 다듬기가 끝나기 전에 `max_iter`에 닿으면 그때의 값을 내고 `converged=False`, `n_iter`는 `max_iter`예요. `n_iter`가 `max_iter`를 넘는 일은 없어요. 경고는 내지 않으니 `converged`를 확인하세요.
 
 ```python
 >>> short = sd.regression.rlm(y, x, max_iter=2)
@@ -551,7 +564,7 @@ array([ 1.0204972712629068, 0.49456337739014716], dtype=float64)
 array([0.9188298666692064, 0.5262658680938224], dtype=float64)
 ```
 
-`converged=True`는 판정을 통과하고 **그 뒤의 다듬기까지** 끝났다는 뜻이에요. 판정은 통과했어도 다듬는 중에 `max_iter`에 닿으면 `converged=False`예요. 이 예는 25번에 끝나므로 상한이 24 이하면 False예요.
+`converged=True`는 판정을 통과하고 **그 뒤의 다듬기까지** 끝났다는 뜻이에요. 판정은 통과했어도 다듬는 중에 `max_iter`에 닿으면 `converged=False`예요. 이 예는 25번에 끝나므로 상한이 24 이하면 False이고, 마침 25면 끝까지 돈 적합과 같아서 True예요.
 
 ```python
 >>> [sd.regression.rlm(y, x, max_iter=m).converged for m in (24, 25)]
@@ -845,6 +858,7 @@ statsmodels의 `RLM`과 대응은 이래요.
 - **p값과 신뢰구간**: statsmodels는 정규분포(`z`, `P>|z|`)를 쓰고 sd는 t(`df_resid`)를 써요(R의 요약과 같아요). 표준오차는 같지만 p값과 구간은 달라요. 위 예에서 절편의 p값이 statsmodels 1.5e-07, sd 3.7e-04예요.
 - **완전 적합**: 위의 완전 적합 예에서 statsmodels도 직선 [1, 2]에 닿지만, 척도와 표준오차는 0이 아니라 반올림 수준의 값이에요(huber에서 척도 2.6e-15, 절편의 표준오차 2.0e-15). sd는 직선 위의 점이 반올림 수준 안에서 맞으면 척도·표준오차를 0으로 내요. `scale_est='huber'`의 예(척도 18.87)는 `HuberScale(tol=1e-15, maxiter=10000)`로 준 statsmodels와 같아요.
 - **y가 모두 같을 때**: statsmodels는 반복으로 풀어 기울기에 반올림 크기의 값(y = 3이 12개면 −1.2e-16)과 척도 2.6e-15를 남기고, 기울기의 t를 −0.72로 내요. sd는 정확한 답 (3, 0)과 척도 0을 내고 기울기의 t·p는 NaN이에요.
+- **`conf_int`의 `alpha`**: statsmodels는 `conf_int(0.1)`처럼 위치로도 받지만, sd는 `conf_int(alpha=0.1)`처럼 키워드로만 받아요.
 - **`scale`**: statsmodels RLM의 `scale`과 같은 퍼짐 σ예요. statsmodels OLS의 `scale`(σ²)과 단위가 다른 것도 같아요.
 - **예측 구간**: statsmodels의 `RLMResults`에는 `get_prediction`이 없어요. sd의 `predict_interval`은 적합값의 신뢰구간만 줘요.
 - **절편**: statsmodels처럼 `X`의 상수 열을 찾아 절편으로 보지 않아요. `intercept`만 봐요.
