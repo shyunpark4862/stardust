@@ -7,7 +7,6 @@ plain-Python sort; integer and string keys are also checked against pandas.
 """
 
 import math
-import os
 
 import numpy as np
 import pandas as pd
@@ -17,8 +16,10 @@ from hypothesis import strategies as st
 
 import stardust as sd
 
+from .._tier import examples
+
 NA = sd.frame.NA
-EXAMPLES = int(os.environ.get("SDPD_EXAMPLES", 200))
+EXAMPLES = examples(200)
 
 
 def same(x, y):

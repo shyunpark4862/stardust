@@ -8,7 +8,6 @@ str()/float() for string conversions.
 
 import math
 import operator
-import os
 
 import numpy as np
 import pandas as pd
@@ -18,8 +17,10 @@ from hypothesis import strategies as st
 
 import stardust as sd
 
+from .._tier import examples
+
 NA = sd.frame.NA
-EXAMPLES = int(os.environ.get("SDPD_EXAMPLES", 300))
+EXAMPLES = examples(300)
 
 I64 = st.integers(-(2**63), 2**63 - 1)
 SMALL = st.integers(-20, 20)

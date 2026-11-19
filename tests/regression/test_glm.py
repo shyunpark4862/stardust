@@ -713,6 +713,7 @@ def test_inner_normal_equations_aliasing():
 @pytest.mark.parametrize(
     "family,link", [("binomial", "logit"), ("binomial", "probit"), ("poisson", "log"), ("gamma", "log")]
 )
+@pytest.mark.deep
 @pytest.mark.parametrize("kappa", [1.0, 1e4, 1e8])
 def test_inner_normal_equations_against_arb(family, link, kappa):
     # G40 on problems large enough for the normal equations (n k = 1200): the coefficients stay
@@ -759,6 +760,7 @@ NONCANONICAL = [
 ]
 
 
+@pytest.mark.deep
 @pytest.mark.parametrize("family,link,base,scale", NONCANONICAL)
 @pytest.mark.parametrize("kappa", [1e4, 1e6, 1e8, 1e10])
 def test_noncanonical_against_arb(family, link, base, scale, kappa):

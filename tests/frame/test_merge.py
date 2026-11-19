@@ -6,7 +6,6 @@ rows were paired, in which order.
 """
 
 import math
-import os
 
 import pandas as pd
 import pytest
@@ -15,8 +14,10 @@ from hypothesis import strategies as st
 
 import stardust as sd
 
+from .._tier import examples
+
 NA = sd.frame.NA
-EXAMPLES = int(os.environ.get("SDPD_EXAMPLES", 300))
+EXAMPLES = examples(300)
 KEYS = {
     "int64": st.integers(-2, 2),
     "float64": st.sampled_from([0.0, -0.0, 1.5, math.nan]),

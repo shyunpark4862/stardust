@@ -13,7 +13,7 @@ from collections.abc import Callable
 
 import numpy as np
 
-AREAS = ("special", "stats")
+AREAS = ("special", "stats", "regression")
 GUARANTEED = 1e-14
 
 
@@ -87,6 +87,115 @@ def stats_sweeps():
     return out
 
 
+# --------------------------------------------------------------------------------------------
+# regression: one sweep per problem of tests/regression/ref/{linear,glm,penalized,robust}.json, one
+# region per reference field; no documented bound (contract None), so only the baseline judges.
+
+REG_KINDS = ("linear", "glm", "penalized", "robust")
+_BP = {"bp_lm": "lm", "bp_lm_pvalue": "lm_pvalue", "bp_fvalue": "fvalue", "bp_f_pvalue": "f_pvalue"}
+
+
+@dataclasses.dataclass
+class RegSweep:
+    area: str
+    name: str  # kind/problem
+    kind: str
+    problem: dict
+
+    @property
+    def id(self):
+        return f"{self.area}/{self.name}"
+
+
+def regression_sweeps():
+    import json
+
+    from tests.regression import refdata
+
+    out = []
+    for kind in REG_KINDS:
+        data = json.loads((refdata.pathlib.Path(refdata.__file__).parent / "ref" / f"{kind}.json").read_text())
+        for name, p in data.items():
+            out.append(RegSweep("regression", f"{kind}/{name}", kind, p))
+    return out
+
+
+def _reg_fit(sw, **kw):
+    import stardust as sd
+    from tests.regression import refdata_glm, refdata_penalized, refdata_robust
+
+    p = sw.problem
+    if sw.kind == "linear":
+        if p["weights"] is not None:
+            return sd.regression.wls(p["y"], p["X"], weights=p["weights"], intercept=p["intercept"], **kw)
+        return sd.regression.ols(p["y"], p["X"], intercept=p["intercept"], **kw)
+    if sw.kind == "glm":
+        return refdata_glm.fit(p, **kw)
+    if sw.kind == "penalized":
+        return refdata_penalized.fit(p)
+    return refdata_robust.fit(p)
+
+
+def _reg_value(sw, r, field, cache):
+    """The fitted value a reference field holds, or None when this tool does not know it."""
+    p = sw.problem
+
+    def refit(**kw):
+        key = kw["cov_type"]  # the groups are the problem's own
+        if key not in cache:
+            cache[key] = _reg_fit(sw, **kw)
+        return cache[key]
+
+    if field.startswith(("bse_", "pvalues_", "fvalue_", "f_pvalue_")):
+        attr, ct = field.rsplit("_", 1)
+        kw = {"cov_type": ct, "groups": p["groups"]} if ct == "cluster" else {"cov_type": ct}
+        return getattr(refit(**kw), attr)
+    if field in ("conf_int_lower", "conf_int_upper"):
+        return np.asarray(r.conf_int(alpha=0.05))[:, 0 if field.endswith("lower") else 1]
+    if field == "hat":
+        return r.leverage
+    if field == "centered_tss":  # regref's tss is the one R^2 uses
+        return r.centered_tss if p["intercept"] else r.uncentered_tss
+    if field in ("jarque_bera", "jarque_bera_pvalue"):
+        jb = r.jarque_bera()
+        return jb.statistic if field == "jarque_bera" else jb.pvalue
+    if field in _BP:
+        return getattr(r.breusch_pagan(), _BP[field])
+    if field.startswith("bp_lm_nonstudentized"):
+        bp = r.breusch_pagan(studentize=False)
+        return bp.lm_pvalue if field.endswith("pvalue") else bp.lm
+    return getattr(r, field, None)
+
+
+def measure_regression(sw: RegSweep) -> dict:
+    from tests.special import refdata as R
+
+    r = _reg_fit(sw)
+    cache = {}
+    regions = {}
+    for field, ref in sw.problem["ref"].items():
+        v = _reg_value(sw, r, field, cache)
+        if v is None:
+            regions[field] = {"points": 0, "unmapped": True}
+            continue
+        hl = np.asarray(ref, dtype=np.float64).reshape(-1, 2)
+        hi, lo = hl[:, 0], hl[:, 1]
+        got = np.asarray(v, dtype=np.float64).reshape(-1)
+        with np.errstate(all="ignore"):
+            ulp = R.ulp_error(got, hi, lo)
+            rel = R.rel_error(got, hi, lo)
+            den = np.linalg.norm(hi + lo)
+            norm = float(np.linalg.norm((got - hi) - lo) / den) if den > 0 else float(np.linalg.norm(got - hi))
+        worst = int(np.argmax(np.where(np.isnan(rel), np.inf, rel)))
+        regions[field] = {
+            "points": int(hi.size), "ulp_max": _finite_max(ulp), "ulp_p999": _p999(ulp),
+            "rel_max": _finite_max(rel), "norm_rel": norm if hi.size > 1 else None,
+            "contract": None, "bound": None, "worst": [worst],
+        }  # fmt: skip
+    return {"id": sw.id, "area": sw.area, "name": sw.name, "points": sum(x["points"] for x in regions.values()),
+            "regions": regions}  # fmt: skip
+
+
 def sweeps(areas=None):
     areas = areas or AREAS
     out = []
@@ -94,6 +203,8 @@ def sweeps(areas=None):
         out += special_sweeps()
     if "stats" in areas:
         out += stats_sweeps()
+    if "regression" in areas:
+        out += regression_sweeps()
     return out
 
 
@@ -111,7 +222,9 @@ def _p999(e):
     return float(np.quantile(e, 0.999, method="higher")) if e.size else None
 
 
-def measure(sw: Sweep) -> dict:
+def measure(sw) -> dict:
+    if isinstance(sw, RegSweep):
+        return measure_regression(sw)
     from tests.special import refdata as R
 
     xs, hi, lo, g, scale = sw.load()

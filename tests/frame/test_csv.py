@@ -7,7 +7,6 @@ column's dtype and values from the same field texts.
 """
 
 import math
-import os
 import re
 
 import numpy as np
@@ -18,8 +17,10 @@ from hypothesis import strategies as st
 
 import stardust as sd
 
+from .._tier import examples
+
 NA = sd.frame.NA
-EXAMPLES = int(os.environ.get("SDPD_EXAMPLES", 200))
+EXAMPLES = examples(200)
 INT_RE = re.compile(r"\A[+-]?[0-9]+\Z")
 FLOAT_RE = re.compile(r"\A[+-]?(([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]+)?|(?i:nan|inf|infinity))\Z")
 

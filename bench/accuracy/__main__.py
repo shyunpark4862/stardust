@@ -20,7 +20,17 @@ import time
 
 from . import results, sources, tables
 
-MEASURES = ("contract", "ulp_max", "ulp_p999", "ulp_cond_max", "ulp_cond_p999", "mixed_max", "mixed_p999", "rel_max")
+MEASURES = (
+    "contract",
+    "ulp_max",
+    "ulp_p999",
+    "ulp_cond_max",
+    "ulp_cond_p999",
+    "mixed_max",
+    "mixed_p999",
+    "rel_max",
+    "norm_rel",
+)
 
 
 def select(a):

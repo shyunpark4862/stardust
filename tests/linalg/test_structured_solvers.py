@@ -1,7 +1,5 @@
 """solve_tridiagonal, solve_banded, solve_sylvester."""
 
-import os
-
 import numpy as np
 import pytest
 import scipy.linalg as sl
@@ -10,6 +8,7 @@ from hypothesis import strategies as st
 
 import stardust as sd
 
+from .._tier import examples
 from .conftest import (
     DTYPES,
     LAYOUTS,
@@ -23,7 +22,7 @@ from .conftest import (
     with_layout,
 )
 
-SETTINGS = settings(max_examples=int(os.environ.get("SDLA_EXAMPLES", 150)), deadline=None)
+SETTINGS = settings(max_examples=examples(150), deadline=None)
 EPS = np.finfo(np.float64).eps
 VEC_LAYOUTS = ["C", "strided", "reversed"]
 

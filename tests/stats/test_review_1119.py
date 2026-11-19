@@ -180,6 +180,7 @@ def test_negative_binomial_n0_is_the_point_mass():
 # ---- S2: the noncentral NaN boundaries (docs/api/stats.md §2.4)
 
 
+@pytest.mark.deep
 def test_noncentral_chi_square_large_nc():
     for nc in (1.5e9, 2.2e9):
         X = S.NoncentralChiSquared(df=3.0, nc=nc)

@@ -57,6 +57,7 @@ def test_noncentral_chi_square_at_nc_zero(df):
     _same_everywhere(S.NoncentralChiSquared(df=df, nc=0.0), S.ChiSquared(df=df))
 
 
+@pytest.mark.deep
 @pytest.mark.parametrize("dfn", (0.01, 2.0, 3.0, 1e5, 1e55, math.inf))
 @pytest.mark.parametrize("dfd", (0.5, 3.0, 5.0, 6.5, 9.0, 11.0, 1e45, math.inf))
 def test_noncentral_f_at_nc_zero(dfn, dfd):

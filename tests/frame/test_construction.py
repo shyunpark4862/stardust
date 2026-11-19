@@ -10,6 +10,8 @@ from hypothesis import strategies as st
 
 import stardust as sd
 
+from .._tier import examples
+
 NA = sd.frame.NA
 
 
@@ -86,21 +88,21 @@ def test_big_exact_int_mixed_with_float_is_fine():
     assert sd.frame.Series([2**60, 0.5]).tolist() == [float(2**60), 0.5]
 
 
-@settings(max_examples=200, deadline=None)
+@settings(max_examples=examples(200), deadline=None)
 @given(st.lists(st.none() | st.integers(-(2**63), 2**63 - 1)))
 def test_int_round_trip(values):
     s = sd.frame.Series(values, dtype="int64")
     assert s.tolist() == [NA if v is None else v for v in values]
 
 
-@settings(max_examples=200, deadline=None)
+@settings(max_examples=examples(200), deadline=None)
 @given(st.lists(st.none() | st.text()))
 def test_string_round_trip(values):
     s = sd.frame.Series(values, dtype="string")
     assert s.tolist() == [NA if v is None else v for v in values]
 
 
-@settings(max_examples=200, deadline=None)
+@settings(max_examples=examples(200), deadline=None)
 @given(st.lists(st.none() | st.floats()))
 def test_float_round_trip_is_bit_exact(values):
     out = sd.frame.Series(values, dtype="float64").tolist()

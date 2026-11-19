@@ -10,6 +10,7 @@ from hypothesis import strategies as st
 
 import stardust as sd
 
+from .._tier import examples
 from .conftest import (
     DTYPES,
     LAYOUTS,
@@ -23,7 +24,7 @@ from .conftest import (
     with_layout,
 )
 
-SETTINGS = settings(max_examples=int(__import__("os").environ.get("SDLA_EXAMPLES", 150)), deadline=None)
+SETTINGS = settings(max_examples=examples(150), deadline=None)
 
 
 def f_order_strides(shape, itemsize):

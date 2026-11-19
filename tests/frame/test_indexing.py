@@ -7,7 +7,6 @@ is plain Python over the labels.
 """
 
 import math
-import os
 
 import numpy as np
 import pandas as pd
@@ -17,8 +16,10 @@ from hypothesis import strategies as st
 
 import stardust as sd
 
+from .._tier import examples
+
 NA = sd.frame.NA
-EXAMPLES = int(os.environ.get("SDPD_EXAMPLES", 300))
+EXAMPLES = examples(300)
 
 
 def pd_index_repr(idx):

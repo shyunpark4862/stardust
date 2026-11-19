@@ -5,11 +5,21 @@
 ## 1. 테스트
 
 ```bash
-.venv/bin/python -m pytest -q -p no:cacheprovider
+.venv/bin/python -m pytest -q -p no:cacheprovider        # quick, 한 프로세스
+.venv/bin/python tools/test.py                           # quick, 병렬 (워커 6개 + serial 따로)
+SD_TIER=deep .venv/bin/python tools/test.py              # deep
+.venv/bin/python tools/test.py tests/frame -k merge      # pytest 인자를 그대로 넘긴다 (-m은 빼고)
 ```
 
-- 전체(약 7,700개)가 2분 안팎이다. 영역만 돌리려면 `tests/<영역>`을 준다.
-- hypothesis의 예제 수는 아직 옛 환경 변수(`SDLA_EXAMPLES`는 linalg, `SDPD_EXAMPLES`는 frame)로 바꾼다. 등급(`quick`·`deep`·`external`)과 하나의 환경 변수로 바꾸는 계획은 [tiers-plan.md](tiers-plan.md)에 있다.
+- **등급**은 환경 변수 `SD_TIER` 하나(또는 `--tier`)로 고른다. 정의는 `tests/conftest.py`에 있다.
+  - `quick`(기본): `deep`·`external` 마커가 없는 모든 테스트. hypothesis는 `derandomize=True`라 매번 같은 예제다(병렬로 돌려도 결정적이다).
+  - `deep`: quick과 `@pytest.mark.deep` 테스트(Arb 참값을 그 자리에서 계산하는 것, 넓은 격자), hypothesis는 무작위이고 예제 수가 10배(프로필 기본 1000)다. 골든 비교와 정확도 비교(`tests/golden/test_golden.py`)도 여기 든다.
+  - `all`: deep과 `@pytest.mark.external`(R이나 Fortran 컴파일러를 실제로 부르는 테스트; 지금은 없다).
+  - 고르지 않은 등급의 테스트는 deselect된다(요약에 `N deselected`). 파일 하나의 deep 테스트를 돌리려면 `SD_TIER=deep`을 함께 준다.
+- **예제 수**는 테스트마다 `examples(n)`(`tests/_tier.py`)으로 쓴다. quick에서 n, deep에서 10n이다. 옛 환경 변수 `SDLA_EXAMPLES`, `SDPD_EXAMPLES`는 없앴다.
+- **병렬**: `pytest`만 치면 한 프로세스다. `tools/test.py`는 `serial`이 아닌 테스트를 pytest-xdist 워커 `-n`개(기본 6, 최대 8)로 돌리고, 그 뒤에 `serial` 테스트를 혼자 돌린다. `serial`은 다른 테스트 프로세스와 기계를 나누면 안 되는 모듈이다(GIL 해제를 벽시계로 재는 것, 시간 제한이 있는 하위 프로세스, 물리 메모리 근처의 할당; 목록은 `tests/conftest.py`의 `SERIAL`).
+- 잰 값(2026-11-20, 이 Mac, quick 9,348개): 한 프로세스 약 150초·최대 RSS 3.7GB, `tools/test.py` 70초(병렬 34초 + serial 36초)·워커 합 약 9.4GB. 워커를 8개로 늘려도 빨라지지 않고(48초) GIL 테스트가 부하로 실패했다. 워커마다 sd 스레드 수는 기본값 그대로가 가장 빨랐다(2로 줄이면 51초).
+- `--strict-markers`라서 등록하지 않은 마커는 에러다. 마커는 `deep`, `external`, `serial`이다.
 
 ## 2. 골든 (비트 동일성)
 
@@ -69,4 +79,4 @@ Arb 참값 대비 오차를 함수마다 재서 표로 만들고, 이전 측정�
 - 지표는 (함수, 영역)마다: 최대·99.9% ULP, 역함수의 ULP/max(1, κ), 0을 지나는 값의 mixed(|오차|/max(1, |값|), 2⁻⁵² 단위), 최대 상대오차, 계약 대비(1 이하가 계약 안). 계약 판정은 `tests/<영역>/test_reference.py`의 것을 그대로 부른다.
 - `run`은 계약을 넘는 것이 있으면 종료 코드 1이다. `compare`는 계약을 넘거나, 계약 안이라도 어느 지표든 기준선보다 커진 것을 모두 `WORSE`로 적고 종료 코드 1이다.
 - 기준선은 `bench/accuracy/results/<영역>.json`(커밋한다), 표는 `bench/<영역>/accuracy.md`(기준선에서 만든다. 손으로 고치지 않는다), 실행 파일은 `build/accuracy/`(커밋하지 않는다).
-- 지금 영역은 special, stats(단변량)다. 다음은 regression이다.
+- 영역은 special, stats(단변량), regression(문제별 고정 참값: linear 17, glm 17, penalized 21, robust 19; 필드마다 상대오차와 ULP, 수치 계약이 없어 기준선과의 비교만)이다. 다변량·행렬 분포와 mvcdf, linalg, array, optimize는 아직 없다.

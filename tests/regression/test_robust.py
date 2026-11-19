@@ -593,6 +593,7 @@ def test_slopes_against_scipy(n, kind):
 @pytest.mark.parametrize(
     "n,direct,collect", [(200, 0, 10**9), (300, 0, 100), (700, 0, 40), (3000, 0, 5000), (2500, 10**5, 3000)]
 )
+@pytest.mark.deep
 def test_theil_passes(n, direct, collect):
     """The pass algorithm (beyond 2^23 slopes) on small problems: forced by its limits."""
     z = float(sd.special.ndtri(0.025))

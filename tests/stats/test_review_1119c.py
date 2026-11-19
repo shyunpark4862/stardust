@@ -214,6 +214,7 @@ def test_chdtrc_odd_subnormal_df(v, x):
     assert abs(sp.chdtrc(v, x) - want) <= 2.0**-1074
 
 
+@pytest.mark.deep
 def test_inverse_gamma_subnormal_shape():
     # R87 (T51): the roots beyond the doubles are inf (were NaN), the finite ones solve the tail
     for a in (5e-324, 5e-311, 1e-308):

@@ -9,7 +9,7 @@ description = "An educational rebuild of array, linear algebra and dataframe lib
 requires-python = ">=3.15"
 
 [project.optional-dependencies]
-test = ["pytest", "pytest-cov", "hypothesis", "numpy", "scipy", "pandas", "polars", "python-flint", "statsmodels", "scikit-learn"]
+test = ["pytest", "pytest-cov", "pytest-xdist", "hypothesis", "numpy", "scipy", "pandas", "polars", "python-flint", "statsmodels", "scikit-learn"]
 
 [tool.scikit-build]
 minimum-version = "build-system.requires"
@@ -22,6 +22,8 @@ editable.verbose = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# The marks (deep, external, serial) are registered in tests/conftest.py, with the tiers.
+addopts = "--strict-markers"
 
 # Formatting and lint: tools/format.py applies them, tools/check.py only checks.
 [tool.ruff]

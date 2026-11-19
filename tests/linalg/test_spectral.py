@@ -1,7 +1,6 @@
 """eigh, eigvalsh, svd, svdvals, matrix_rank, pinv, cond, matrix_norm (2, -2, nuc)."""
 
 import math
-import os
 
 import numpy as np
 import pytest
@@ -11,9 +10,10 @@ from hypothesis import strategies as st
 
 import stardust as sd
 
+from .._tier import examples
 from .conftest import DTYPES, LAYOUTS, as_sd, batch_shapes, compute_dtype, npy, random_values, with_layout
 
-SETTINGS = settings(max_examples=int(os.environ.get("SDLA_EXAMPLES", 150)), deadline=None)
+SETTINGS = settings(max_examples=examples(150), deadline=None)
 EPS = np.finfo(np.float64).eps
 INF = math.inf
 

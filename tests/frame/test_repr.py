@@ -12,7 +12,6 @@ here and the difference has its own test.
 """
 
 import math
-import os
 
 import numpy as np
 import pandas as pd
@@ -22,8 +21,10 @@ from hypothesis import strategies as st
 
 import stardust as sd
 
+from .._tier import examples
+
 NA = sd.frame.NA
-EXAMPLES = int(os.environ.get("SDPD_EXAMPLES", 300))  # SDPD_EXAMPLES=5000 for a long oracle run
+EXAMPLES = examples(300)  # SD_TIER=deep for a long oracle run
 PD_NAMES = {"Int64": "int64", "boolean": "bool", "string": "string", "str": "string"}
 
 SERIES_OPTS = dict(name=True, dtype=True, min_rows=10, max_rows=60, length="truncate")

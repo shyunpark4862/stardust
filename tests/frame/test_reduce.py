@@ -7,7 +7,6 @@ pandas is too. int64 means are the array area's float64 sum over the count
 """
 
 import math
-import os
 
 import numpy as np
 import pandas as pd
@@ -17,8 +16,10 @@ from hypothesis import strategies as st
 
 import stardust as sd
 
+from .._tier import examples
+
 NA = sd.frame.NA
-EXAMPLES = int(os.environ.get("SDPD_EXAMPLES", 300))
+EXAMPLES = examples(300)
 
 
 def bits(x):
@@ -131,7 +132,7 @@ def test_bool_reductions():
     assert b.std(correction=1) == sd.std(sd.asarray([True, False, True]), correction=1)
 
 
-@settings(max_examples=60, deadline=None)
+@settings(max_examples=examples(60), deadline=None)
 @given(st.lists(st.booleans(), min_size=1, max_size=3000), st.sampled_from([0, 1, 0.5]))
 def test_bool_std_var_have_the_array_bits(values, correction):
     s, x = sd.frame.Series(values), sd.asarray(values)
