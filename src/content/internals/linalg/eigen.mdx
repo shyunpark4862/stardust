@@ -2,7 +2,7 @@
 title: 고유값 분해
 group: 고유값과 특이값
 order: 1
-summary: eigh·eigvalsh·eig·eigvals·schur·hessenberg가 안에서 하는 일을 설명해요. 고유값에 닫힌 공식이 없어 반복법을 쓰는 이유에서 시작해, 대칭 행렬의 삼중대각화와 분할 정복, 일반 행렬의 Hessenberg 축약과 Francis QR, 결과를 정렬하고 복소 고유벡터를 조립하는 stardust의 코드까지 다뤄요.
+summary: 고유값에는 유한한 공식이 없어서 모든 알고리즘이 반복법이에요. 반복 전에 행렬을 삼중대각이나 Hessenberg 꼴로 줄여 한 번의 비용을 낮추는 생각을 따라, 대칭 행렬과 일반 행렬이 서로 다른 길로 고유값을 구하는 과정을 설명해요.
 seeAlso: [qr, symmetric, svd, special, batch, performance]
 ---
 import Callout from '../../../components/Callout.astro';

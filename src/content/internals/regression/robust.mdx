@@ -2,7 +2,7 @@
 title: 강건 회귀의 M과 MM 추정
 group: 강건과 분위
 order: 1
-summary: rlm이 안에서 하는 일을 설명해요. M 추정을 가중 최소제곱의 반복(IRLS)으로 푸는 이유, ψ·ρ·가중치 함수, MAD 척도와 반복마다 정확히 푸는 Huber 제안 2, 수렴 판정과 척도의 미분까지 넣은 뉴턴 걸음, 반올림 수준의 완전 적합, MM의 S 추정(Philox 키로 뽑는 기본 부분집합, bisquare 척도 방정식, 가장 좋은 둘, 고정점까지의 연마, robustbase식 큰 n 묶음), 반복하지 않는 정확한 시작(상수 y, 행 수 = 랭크, 랭크 0), H1과 Croux–Dhaene–Hoorelbeke avar1 공분산, 평균의 구간, statsmodels·MASS·robustbase와의 비교를 다뤄요.
+summary: rlm이 큰 잔차를 덜 세게 세는 M 추정을 가중 최소제곱의 반복으로 푸는 방법을 설명해요. 느린 IRLS는 척도까지 미분한 뉴턴 걸음으로 마무리하고, 지렛대점 무리에 강한 MM은 무작위 부분집합의 S 추정에서 시작해요.
 seeAlso: [slopes, quantile, glm, least-squares, inference, overview, accuracy-performance]
 ---
 import Callout from '../../../components/Callout.astro';

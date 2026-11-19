@@ -2,7 +2,7 @@
 title: 패킹과 결과 레이아웃
 group: 구조
 order: 2
-summary: 어떤 메모리 배치의 입력이든 LAPACK이 읽는 열 우선 작업 버퍼로 옮기는 패킹과, 결과를 열 우선 그대로 돌려주는 이유를 설명해요. 한 패스에 하는 세 가지 일, C 순서 입력의 타일 전치, 삼각만 읽기, 출력 자리에 바로 패킹하기, 16바이트 정렬, 복사하지 않고 그 자리에서 읽는 조건을 다뤄요.
+summary: 어떤 메모리 배치의 입력이든 LAPACK이 읽는 열 우선 작업 버퍼로 옮기는 패킹을 설명해요. 모든 배치가 같은 버퍼로 바뀌니 결과가 입력 배치와 무관하게 같은 비트이고, 결과는 C 순서로 되돌리지 않고 열 우선 그대로 돌려줘요.
 seeAlso: [overview, batch, lu, symmetric, performance]
 ---
 import Callout from '../../../components/Callout.astro';

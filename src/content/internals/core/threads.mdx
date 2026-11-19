@@ -2,7 +2,7 @@
 title: 스레드풀과 결정성
 group: 병렬 처리
 order: 1
-summary: 모든 영역이 함께 쓰는 손으로 짠 스레드풀 하나가 어떻게 생겼고, 일을 언제 어떻게 나누며, 스레드 수를 바꿔도 결과가 비트까지 같게 하려고 무엇을 지키는지 설명해요.
+summary: 모든 영역이 함께 쓰는 스레드풀 하나가 일을 나누고 기다리는 방식을 설명해요. 자르는 위치는 데이터 크기로만 정하고 부분 결과는 늘 같은 순서로 합쳐서, 스레드 수를 바꿔도 결과가 비트까지 같아요.
 seeAlso: [overview, python-boundary]
 ---
 import Tree from '../../../components/fig/Tree.astro';

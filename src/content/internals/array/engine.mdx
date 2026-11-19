@@ -2,7 +2,7 @@
 title: 연산 엔진
 group: 연산 엔진
 order: 1
-summary: 원소별 연산, 형변환, 복사, 축 방향 연산이 모두 같은 장치 위에서 돌아요. 1차원 커널 하나, N차원 문제를 긴 1차원 구간으로 바꾸는 이터레이터, 형변환을 작은 버퍼로 끼워 넣는 래퍼, 루프를 고르는 디스패처가 어떻게 생겼고 왜 그렇게 만들었는지 설명해요.
+summary: 원소별 연산, 형변환, 복사, 축 방향 집계가 함께 쓰는 연산 엔진을 설명해요. 커널은 1차원 구간만 알고, 차원과 브로드캐스팅, 메모리 배치, 스레드는 N차원을 긴 1차원으로 접는 이터레이터가 모두 맡아요.
 seeAlso: [elementwise, conversion, reductions, data-model, small-arrays]
 ---
 import Steps from '../../../components/fig/Steps.astro';

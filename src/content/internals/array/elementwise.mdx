@@ -2,7 +2,7 @@
 title: 원소별 커널
 group: 연산 엔진
 order: 2
-summary: 덧셈, 비교, 초월함수 같은 원소별 연산이 원소 하나를 어떻게 계산하는지 설명해요. 컴파일러가 벡터화하는 연속 fast path, 손으로 짠 NEON 커널, numpy와 비트까지 같은 결과를 내는 방법, 초월함수를 맡는 Accelerate vForce와 그 정확도 계약을 다뤄요.
+summary: 덧셈, 비교, 초월함수 같은 원소별 연산이 원소 하나를 어떻게 계산하는지 설명해요. NEON 커널이든 strided 루프든 어느 경로를 타도 값이 같고, vForce에 맡긴 초월함수를 빼면 numpy와 비트까지 같아요.
 seeAlso: [engine, conversion, accuracy, performance, reductions]
 ---
 import Tree from '../../../components/fig/Tree.astro';

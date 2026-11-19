@@ -2,7 +2,7 @@
 title: 분포 함수
 group: 함수별 알고리즘
 order: 5
-summary: t·카이제곱·F·포아송·이항·음이항 분포 함수와 비중심 카이제곱·t·F 분포 함수가 불완전 감마·베타를 어떻게 조합하는지, 그 조합에서 정확도를 잃지 않으려고 무엇을 하는지 설명해요. 반올림하지 않는 인자, 작은 쪽 꼬리의 직접 계산, 역함수의 초기값과 반복, 비중심 분포의 양의 항 포아송 혼합과 한 번의 걷기, 비중심 t의 반대쪽 꼬리를 구하는 적분, 그리고 이 함수들이 부르는 Boost.Math 구간의 알고리즘까지 다뤄요.
+summary: 분포 함수를 불완전 감마·베타로 조합할 때 정확도를 잃는 곳과 그것을 막는 방법을 설명해요. 계산해서 만든 인자를 반올림하지 않고 작은 쪽 꼬리를 직접 구해서, scipy가 0을 내는 먼 꼬리에서도 상대 정확도를 지켜요.
 seeAlso: [incomplete, erf-gamma, techniques, accuracy-performance]
 ---
 import Callout from '../../../components/Callout.astro';

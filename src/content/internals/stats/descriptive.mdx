@@ -2,7 +2,7 @@
 title: 기술통계
 group: 기술통계
 order: 1
-summary: 기술통계 함수 11개가 축을 줄(lane)로 바꿔 네이티브 커널에 넘기는 방법, nan_policy 세 가지를 구현하는 방법, 모멘트을 평균의 두 부분(hi + lo)과 보상 합으로 계산해 평균이 큰 데이터에서도 자릿수를 지키는 방법을 설명해요. 거듭제곱이 넘치거나 사라지는 줄을 2의 거듭제곱으로 다시 스케일하는 방법, NEON으로 벡터화한 보상 합, 스레드 수와 상관없이 같은 결과를 내는 samplesort, rankdata·mode·iqr·entropy의 구현, differential_entropy의 네 추정량(Vasicek, van Es, Ebrahimi, Correa)의 수식과 잰 속도도 다뤄요.
+summary: 기술통계 함수 11개가 축을 줄로 펼쳐 네이티브 커널에서 계산하는 방법을 설명해요. 평균을 두 부분으로 나눠 들고 보상 합으로 더해서, 평균이 아주 큰 데이터에서도 왜도와 첨도의 자릿수를 지켜요.
 seeAlso: [overview, engine, accuracy-performance]
 ---
 import Bench from '../../../components/fig/Bench.astro';

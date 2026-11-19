@@ -2,7 +2,7 @@
 title: 인덱싱
 group: 인덱싱과 정렬
 order: 1
-summary: x[key]와 x[key] = v의 구현을 설명해요. 키를 해석하는 순서, 포인터 계산만으로 끝나는 기본 인덱싱, 정수 배열과 bool 마스크를 처리하는 루프, 그리고 bool 마스크가 numpy보다 10배 빠른 이유를 다뤄요.
+summary: "`x[key]`와 `x[key] = v`가 키를 해석하고 원소를 옮기는 과정을 설명해요. 기본 인덱싱은 복사 없이 뷰만 계산하고, bool 마스크는 좌표로 바꾸지 않은 채 고정 청크로 나눠 압축해서 병렬로 돌아도 직렬과 같은 결과를 내요."
 seeAlso: [sorting, data-model, engine, small-arrays]
 ---
 import Callout from '../../../components/Callout.astro';

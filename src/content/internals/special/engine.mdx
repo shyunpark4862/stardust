@@ -2,7 +2,7 @@
 title: 원소별 엔진과 병렬화
 group: 구조
 order: 2
-summary: 특수함수가 배열 영역의 원소별 엔진 위에서 어떻게 돌아가는지 설명해요. 입력이 넷까지인 n항 디스패처, 함수 하나를 적는 Op 구조체, 원소당 비용으로 정하는 병렬 기준, NEON 레인과 vForce를 섞는 청크 커널과 분기를 남긴 이유, Horner와 Estrin, logsumexp·softmax·log_softmax의 구조, 결과가 레이아웃과 스레드 수에 상관없이 비트까지 같은 이유를 다뤄요.
+summary: 특수함수가 배열 영역의 원소별 엔진 위에서 어떻게 돌아가는지 설명해요. 함수마다 원소당 비용을 재서 병렬 기준과 작업 크기를 정하고, NEON 레인과 스칼라가 같은 비트를 내게 해서 결과가 레이아웃과 스레드 수에 상관없이 같아요.
 seeAlso: [overview, techniques, erf-gamma, more-functions, accuracy-performance]
 ---
 import Callout from '../../../components/Callout.astro';

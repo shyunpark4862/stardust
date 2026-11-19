@@ -18,9 +18,16 @@ const { prev, next, label } = Astro.props;
 <nav class="pager" aria-label={label}>
   {
     prev ? (
-      <a class="pager__link" href={prev.href}>
-        <span class="pager__dir">이전</span>
-        <span class:list={['pager__name', prev.mono && 'pager__name--mono']}>{prev.title}</span>
+      <a class="pager__link pager__link--prev" href={prev.href} rel="prev">
+        <span class="pager__arrow" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M11 7H3m3.5-3.5L3 7l3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </span>
+        <span class="pager__text">
+          <span class="pager__dir">이전</span>
+          <span class:list={['pager__name', prev.mono && 'pager__name--mono']}>{prev.title}</span>
+        </span>
       </a>
     ) : (
       <span />
@@ -28,39 +35,78 @@ const { prev, next, label } = Astro.props;
   }
   {
     next && (
-      <a class="pager__link pager__link--next" href={next.href}>
-        <span class="pager__dir">다음</span>
-        <span class:list={['pager__name', next.mono && 'pager__name--mono']}>{next.title}</span>
+      <a class="pager__link pager__link--next" href={next.href} rel="next">
+        <span class="pager__text">
+          <span class="pager__dir">다음</span>
+          <span class:list={['pager__name', next.mono && 'pager__name--mono']}>{next.title}</span>
+        </span>
+        <span class="pager__arrow" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M3 7h8M7.5 3.5 11 7l-3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </span>
       </a>
     )
   }
 </nav>
 
 <style>
+  /* A way along the area, not another card: no frames, a rule above, an
+     arrow that leans the way it goes. */
   .pager {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: var(--space-4);
-    margin-top: var(--space-16);
+    gap: var(--space-3);
+    margin-top: var(--space-12);
+    padding-top: var(--space-6);
+    border-top: 1px solid var(--line);
   }
   .pager__link {
     display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-    padding: var(--space-4) var(--space-5);
-    border: 1px solid var(--line);
+    align-items: center;
+    gap: var(--space-4);
+    min-width: 0;
+    padding: var(--space-3) var(--space-4);
     border-radius: var(--radius-md);
-    transition:
-      border-color var(--dur-fast) var(--ease),
-      background-color var(--dur-fast) var(--ease);
+    text-decoration: none;
+    transition: background-color var(--dur-fast) var(--ease);
   }
   .pager__link:hover {
-    border-color: var(--accent-soft-line);
-    background: var(--accent-soft);
+    background: var(--area-soft);
   }
   .pager__link--next {
-    align-items: flex-end;
+    justify-content: flex-end;
     text-align: right;
+  }
+  .pager__text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .pager__arrow {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-full);
+    color: var(--fg-subtle);
+    transition:
+      border-color var(--dur-fast) var(--ease),
+      color var(--dur-fast) var(--ease),
+      transform var(--dur-fast) var(--ease);
+  }
+  .pager__link:hover .pager__arrow {
+    border-color: var(--area-line);
+    color: var(--area);
+  }
+  .pager__link--prev:hover .pager__arrow {
+    transform: translateX(-3px);
+  }
+  .pager__link--next:hover .pager__arrow {
+    transform: translateX(3px);
   }
   .pager__dir {
     font-size: var(--text-xs);
@@ -69,12 +115,27 @@ const { prev, next, label } = Astro.props;
     color: var(--fg-subtle);
   }
   .pager__name {
-    font-size: var(--text-base);
-    font-weight: 600;
+    overflow: hidden;
+    font-size: var(--text-md);
+    font-weight: 650;
     line-height: var(--leading-snug);
+    text-overflow: ellipsis;
+    white-space: nowrap;
     color: var(--fg);
+  }
+  .pager__link:hover .pager__name {
+    color: var(--area);
   }
   .pager__name--mono {
     font-family: var(--font-mono);
+    font-size: var(--text-base);
+  }
+  @media (max-width: 640px) {
+    .pager {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .pager__link--next {
+      grid-row: 1;
+    }
   }
 </style>

@@ -2,7 +2,7 @@
 title: LU 분해와 선형 시스템
 group: 선형 시스템과 분해
 order: 1
-summary: solve, inv, det, slogdet, lu, lu_solve, solve_triangular, 그리고 cond의 일부가 모두 기대는 LU 분해를 설명해요. 가우스 소거가 왜 LU 분해인지, 피벗이 왜 필요한지, LAPACK의 getrf·getrs가 안에서 어떻게 계산하는지, stardust가 그 위에서 무엇을 고르고 왜 그렇게 골랐는지를 다뤄요.
+summary: "`solve`, `inv`, `det`가 함께 기대는 LU 분해를 가우스 소거에서 출발해 설명해요. 부분 피벗이 소거를 안정하게 만드는 이유를 보이고, LAPACK 루틴을 재서 골라 `inv(a)`가 `solve(a, I)`와 비트까지 같아지게 한 선택을 다뤄요."
 seeAlso: [overview, packing, batch, symmetric, qr, svd, performance]
 ---
 import Callout from '../../../components/Callout.astro';

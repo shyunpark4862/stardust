@@ -2,7 +2,7 @@
 title: 통계 함수
 group: 집계와 통계
 order: 2
-summary: 분위수, NaN을 건너뛰는 리덕션, 공분산, 히스토그램의 구현을 설명해요. quantile·median이 레인을 모아 고르고 numpy와 비트까지 같은 위치·보간을 계산하는 방법, 복사본 없이 NaN을 건너뛰는 방법, cov·corrcoef의 BLAS 선택과 대칭 처리, bincount·histogram의 구간 계산과 가중치 합을 다뤄요.
+summary: 분위수와 히스토그램 같은 통계 함수가 집계·정렬·BLAS 부품 위에서 어떻게 계산되는지 설명해요. 위치 계산식과 보간식까지 numpy의 계산을 단계마다 옮겨서 대부분 numpy와 비트까지 같고, 병렬로 나눠도 결과가 바뀌지 않아요.
 seeAlso: [reductions, sorting, matmul, accuracy]
 ---
 import Callout from '../../../components/Callout.astro';

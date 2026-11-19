@@ -2,7 +2,7 @@
 title: 행렬 지수
 group: 특수 구조와 행렬 함수
 order: 2
-summary: LAPACK에 없어서 stardust가 직접 구현한 expm을 설명해요. 행렬 지수의 뜻, Taylor 급수가 실패하는 이유, Padé 근사와 스케일링·제곱, Al-Mohy–Higham 2009의 차수와 제곱 횟수 고르기, 노름을 싸게 구하는 방법(상한, lacn2 추정), 대각·삼각 입력과 극단값 처리, scipy와의 정확도 비교를 다뤄요.
+summary: LAPACK에 없어서 직접 짠 행렬 지수 `expm`을 설명해요. 행렬을 2의 거듭제곱으로 나눠 Padé 근사로 지수를 구한 뒤 다시 제곱하는데, 오차가 단위 반올림 아래에 머무는 가장 싼 차수와 제곱 횟수를 행렬마다 골라요.
 seeAlso: [lu, batch, packing, special, performance]
 ---
 import Fig from '../../../components/fig/Fig.astro';

@@ -2,7 +2,7 @@
 title: 띠 행렬과 Sylvester 방정식
 group: 특수 구조와 행렬 함수
 order: 1
-summary: solve_tridiagonal, solve_banded, solve_sylvester의 구현을 설명해요. 띠 저장 형식, gtsv의 삼중대각 소거와 부분 피벗, gbsv의 띠 LU가 채움을 위해 kl개의 행을 더 쓰는 이유, 대역폭 (1, 1)을 gtsv로 보내는 이유, 그리고 Sylvester 방정식을 Schur 분해 두 번과 trsyl3로 푸는 Bartels–Stewart 방법을 다뤄요.
+summary: 띠 행렬과 Sylvester 방정식을 일반 LU 대신 문제의 구조를 이용해 푸는 방법을 설명해요. 띠 행렬은 띠 안에서만 소거해 시간이 크기에 비례하고, Sylvester 방정식은 두 행렬을 따로 삼각화하는 Bartels–Stewart 방법으로 계산량을 크게 줄여요.
 seeAlso: [lu, eigen, symmetric, batch, packing, performance]
 ---
 import Callout from '../../../components/Callout.astro';

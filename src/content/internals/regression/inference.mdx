@@ -2,7 +2,7 @@
 title: 추론과 진단
 group: 선형 모형
 order: 2
-summary: ols·wls·gls의 결과가 표준오차, p값, 진단을 구하는 방법이에요. XᵀX의 역행렬 없이 R에서 공분산을 만드는 방법, 얇은 Q의 점수로 짓는 HC0–HC3·HAC(Newey–West)·군집 샌드위치, 강건 공분산의 Wald F, sd.stats로 구하는 t·F의 p값, 지렛대·스튜던트화 잔차·Cook 거리, double-double로 더하는 Durbin–Watson과 Jarque–Bera, Breusch–Pagan의 보조 회귀, 가중치 0인 행의 처리, 남은 자유도가 없을 때의 NaN, summary()의 짜임을 다뤄요.
+summary: ols·wls·gls의 결과에서 표준오차, p값, 진단을 구하는 방법을 설명해요. 어디서도 XᵀX나 그 역행렬을 만들지 않고, 공분산과 샌드위치, 지렛대를 모두 QR의 R과 얇은 Q에서 얻어요.
 seeAlso: [least-squares, overview, glm, accuracy-performance]
 ---
 import Callout from '../../../components/Callout.astro';

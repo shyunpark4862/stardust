@@ -2,7 +2,7 @@
 title: 연속 분포의 수치 기법
 group: 분포별 알고리즘
 order: 1
-summary: 정규·t·카이제곱·F·감마·베타·지수·로그정규·균등·코시·라플라스·베이불, 기본 연속 분포 12개가 special 함수를 조합하면서 자릿수를 잃지 않으려고 쓰는 기법을 설명해요. 표준화 변수를 double-double로 만들기, 역함수의 뉴턴 한 단계, 작은 쪽 꼬리의 직접 계산, double 범위 아래의 log 꼬리(TOMS 708의 BPSER·BFRAC·BGRAT에 단위 접두를 주어 비율만 얻기), log 쪽에서 푸는 깊은 역함수, 엔트로피와 모멘트의 상쇄를 손으로 지우는 법, 작은 모양의 불완전 베타, 잰 모양 범위 밖에서 역함수의 근을 검증하는 법까지 다뤄요.
+summary: 기본 연속 분포 12개를 special 함수로 조합할 때, 조합하는 자리에서 자릿수를 잃지 않게 하는 기법을 설명해요. 표준화 변수를 반올림하지 않고 double-double로 만드는 것처럼 여러 분포가 되풀이해 쓰는 장치를 하나씩 봐요.
 seeAlso: [overview, engine, extreme-noncentral, discrete, accuracy-performance]
 ---
 import Callout from '../../../components/Callout.astro';

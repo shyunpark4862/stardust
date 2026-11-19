@@ -2,7 +2,7 @@
 title: LAPACK 없이 계산하는 함수
 group: 기본 연산
 order: 1
-summary: vecdot, outer, kron, cross, trace, diagonal, matrix_power, vector_norm, matrix_norm처럼 LAPACK을 부르지 않고 직접 루프로 계산하는 함수를 설명해요. 노름·크로네커 곱·외적의 수학, numpy와 비트까지 같은 FMA 복소수 곱, 이진 거듭제곱, 넘치지 않게 다시 스케일하는 노름을 다뤄요.
+summary: "`vecdot`이나 노름처럼 LAPACK 없이 직접 짠 루프로 계산하는 함수를 설명해요. complex 곱은 numpy와 같은 FMA 식으로, 합은 numpy의 pairwise 순서로 계산해 numpy와 비트를 맞추고, 노름은 넘쳤을 때만 다시 스케일해요."
 seeAlso: [batch, overview, svd, lu, packing]
 ---
 import Callout from '../../../components/Callout.astro';

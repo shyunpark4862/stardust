@@ -2,7 +2,7 @@
 title: 일반화 선형 모형의 IRLS
 group: 일반화 선형 모형
 order: 1
-summary: glm이 안에서 하는 일을 설명해요. 우도에서 끌어낸 Fisher 득점법으로서의 IRLS, 작업 반응과 가중치, 분포족마다의 시작값, 편차로 하는 수렴 판정, 중간 반복의 Cholesky 정규방정식과 QR(그리고 크기 문턱), 계수를 반올림 수준까지 가져가는 연마(정준 링크는 정규방정식, 정준이 아닌 링크는 얇은 Q로 푸는 관측 정보의 뉴턴 걸음), 걸음의 비가 1/2 아래로 줄지 않을 때 뉴턴으로 넘어가는 규칙, 최대우도 추정이 없음을 증명하는 분리의 증명서와 그 극한 적합, 척도와 z·t의 선택, 귀무 모형, 반응이 모두 같을 때의 정확한 해(분포족 범위의 경계 포함), 완전 적합과 남은 자유도가 없을 때의 규칙(φ = 0의 로그우도), pseudo R², 관측 정보로 만든 강건 공분산, freq_weights와 var_weights(사본 하나의 지렛대 h/f)를 다뤄요.
+summary: glm이 IRLS로 최대우도 추정을 구하는 과정을 설명해요. 편차로 수렴을 판정한 뒤에도 계수가 반올림 수준이 될 때까지 걸음을 이어 가고, 최대우도 추정이 없는 분리는 반복 횟수가 아니라 증명서로 판정해요.
 seeAlso: [overview, least-squares, inference, robust, accuracy-performance]
 ---
 import Callout from '../../../components/Callout.astro';

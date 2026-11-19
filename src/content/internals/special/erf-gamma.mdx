@@ -2,7 +2,7 @@
 title: 오차함수와 감마
 group: 함수별 알고리즘
 order: 1
-summary: 오차함수 계열(erf, erfc, erfcx, erfinv, erfcinv, ndtr, log_ndtr, ndtri, ndtri_exp)과 감마 계열(gamma, rgamma, gammaln, digamma, polygamma, beta, betaln, binom, 복소수 loggamma)이 정의역을 어떻게 나누고 구간마다 무엇으로 계산하는지 설명해요. Cephes의 유리 근사, Wichura의 AS241, Boost.Math의 Lanczos 근사가 안에서 하는 일과 왜 정확한지, 꼬리와 극점과 영점을 어떻게 다루는지를 측정값과 함께 다뤄요.
+summary: 영역 전체의 바닥이 되는 오차함수와 감마함수 가족을 어떻게 계산하는지 설명해요. 보수 함수는 1에서 빼지 않고 따로 근사하고, 인자에 민감한 감마는 계산 도중의 인자를 반올림하지 않아서 꼬리와 영점 근처에서도 상대 정확도를 지켜요.
 seeAlso: [techniques, engine, incomplete, more-functions, accuracy-performance, overview]
 ---
 import Callout from '../../../components/Callout.astro';

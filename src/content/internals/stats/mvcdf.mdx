@@ -2,7 +2,7 @@
 title: 다변량 정규·t의 누적확률
 group: 표본과 다변량
 order: 3
-summary: MultivariateNormal.cdf와 MultivariateT.cdf가 안에서 어떻게 계산되는지 설명해요. 이변량 정규의 Plackett 항등식(Drezner–Wesolowsky, Genz)과 상쇄하지 않는 시작점, 삼변량 정규의 경로 적분과 조건부 적분, 적응 Gauss–Kronrod, 다변량 t의 d = 2, 3을 위한 카이 변수 혼합의 1차원 적분, d ≥ 4의 Genz 준몬테카를로(변수 순서 바꾸기, fast-CBC 격자, 고정 시드의 이동, 3σ 오차 추정)와 역 카이의 Chebyshev 표, 반복의 상한, 그리고 잰 정확도와 속도까지 다뤄요.
+summary: 다변량 정규·t의 누적확률을 차원에 따라 다른 방법으로 계산하는 과정을 설명해요. 2차원과 3차원은 시작값에 더해지기만 하는 1차원 적분으로 반올림 몇 번 수준까지 맞추고, 4차원부터는 고정 시드의 준몬테카를로로 구해요.
 seeAlso: [multivariate, matrix, accuracy-performance]
 ---
 import Callout from '../../../components/Callout.astro';

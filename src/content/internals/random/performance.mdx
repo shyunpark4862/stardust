@@ -2,7 +2,7 @@
 title: 성능과 검증
 group: 성능과 검증
 order: 1
-summary: sd.random을 numpy의 Generator(PCG64, Philox)와 원소 10⁶개에서 잰 결과를 호출별로 정리하고, 1스레드에서 빠른 이유, 10스레드에서 8배 안팎으로 빨라지는 이유, 섞기와 작은 비복원 추출이 그렇지 않은 이유를 설명해요. 알려진 답, 계수기 배치, numpy와의 키 일치, 스레드 수 불변성, 통계 검사로 정확성을 어떻게 지키는지도 다뤄요.
+summary: "`sd.random`을 numpy의 Generator와 원소 10⁶개에서 나란히 잰 결과예요. 원소마다 값이 독립인 호출은 10스레드에서 7~8배 빨라지고, 섞기처럼 순차인 일은 그렇지 않은 이유를 원인별로 설명해요."
 seeAlso: [generator, seeding, sampling]
 ---
 import Callout from '../../../components/Callout.astro';

@@ -68,6 +68,6 @@ const headings = [
 >
   <Content />
 
-  <Related items={related.map((e) => ({ ...link(e), summary: e.data.summary }))} />
+  <Related items={related.map((e) => ({ ...link(e), summary: e.data.summary, tag: e.data.group }))} />
   <Pager label="이전·다음 글" prev={prev && link(prev)} next={next && link(next)} />
 </Docs>

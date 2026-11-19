@@ -2,7 +2,7 @@
 title: 라벨, 조회, 선택
 group: 구조
 order: 3
-summary: 행 라벨(RangeIndex와 Index)을 어떻게 저장하는지, 라벨을 위치로 바꾸는 조회 엔진 LabelTable, 두 라벨 집합을 맞추는 정렬(alignment), .loc·.iloc·[]의 키를 네 모양으로 바꾸는 선택, 그리고 그 밑의 take·마스크 필터·대입 커널을 설명해요. pandas·Polars가 같은 일을 어떻게 하는지도 비교해요.
+summary: 행 라벨로 행을 찾고 두 Series의 라벨을 맞추는 방법을 설명해요. 라벨 조회를 factorize 위에 올려 같음의 규칙을 하나로 두고, 결과가 공유인지 복사인지는 데이터가 아니라 키의 모양으로만 정해요.
 seeAlso: [columns, hashing, merge-concat, elementwise, parallel]
 ---
 import Fig from '../../../components/fig/Fig.astro';

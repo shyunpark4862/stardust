@@ -2,7 +2,7 @@
 title: 배치와 병렬화
 group: 구조
 order: 3
-summary: 행렬 묶음 하나가 어떻게 배치 원소로 쪼개지고, 언제 몇 개의 태스크로 스레드풀에 나뉘는지 설명해요. 배치 브로드캐스팅, run_batch, 작업 메모리 Scratch, 반올림을 바꾸는 16바이트 정렬, a + c·w 비용 모델, AMX 경로의 태스크 수 상한, pairwise 합, 그리고 스레드 수와 상관없이 같은 비트를 내는 이유를 다뤄요.
+summary: 행렬 묶음 하나를 배치 원소로 쪼개 스레드풀에 나누는 방식을 설명해요. 나눌지는 원소 하나의 비용을 시간으로 추정해 정하고, 작업 메모리와 16바이트 정렬까지 맞춰서 어떻게 나눠도 결과가 비트까지 같아요.
 seeAlso: [overview, packing, basic, lu, performance]
 ---
 import Callout from '../../../components/Callout.astro';

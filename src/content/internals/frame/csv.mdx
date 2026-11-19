@@ -2,7 +2,7 @@
 title: read_csv
 group: 입출력
 order: 1
-summary: CSV 파일을 DataFrame으로 읽는 과정을 설명해요. RFC 4180 규칙, 64바이트 블록을 비트마스크로 바꾸는 structural index 토크나이저, 십진수를 올바르게 반올림하는 숫자 파서(Clinger의 빠른 길, Eisel–Lemire, from_chars), 값을 만들면서 하는 타입 추론, 따옴표 홀짝을 먼저 세서 파일을 청크로 나누는 병렬 읽기, 에러의 줄 번호를 다뤄요.
+summary: CSV 파일을 DataFrame으로 읽는 과정을 설명해요. 64바이트 블록을 비트마스크로 바꿔 바이트마다 분기하지 않고 필드를 찾고, 따옴표 개수의 홀짝으로 파일을 나눠 병렬로 읽어도 직렬과 같은 결과를 내요.
 seeAlso: [overview, columns, elementwise, parallel, performance]
 ---
 import Fig from '../../../components/fig/Fig.astro';

@@ -2,7 +2,7 @@
 title: 계수기형 생성기
 group: 생성기
 order: 1
-summary: sd.random의 생성기 Philox4×64-10이 한 라운드에 무엇을 계산하는지, 원소 하나의 난수를 어느 계수기에서 꺼내는지, 그래서 스레드 수와 호출을 나누는 방법에 상관없이 같은 값이 나오는 이유를 설명해요. 블록 넷을 함께 계산하는 최적화, 여러 Python 스레드가 한 생성기를 쓸 때의 위치 예약, 알려진 답으로 확인하는 정확성도 다뤄요.
+summary: "`sd.random`의 생성기가 키와 위치 두 값만으로 난수를 만드는 방식을 설명해요. 원소마다 정해진 계수기를 Philox4×64-10에 넣어 값을 바로 얻으므로, 스레드 수나 호출을 나누는 방법과 상관없이 같은 난수가 나와요."
 seeAlso: [seeding, sampling, performance]
 ---
 import Fig from '../../../components/fig/Fig.astro';

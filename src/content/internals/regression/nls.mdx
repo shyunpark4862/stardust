@@ -2,7 +2,7 @@
 title: 비선형 최소제곱
 group: 비선형
 order: 1
-summary: nls가 안에서 하는 일을 설명해요. 반복과 다듬기의 두 단계로 나눈 까닭, MINPACK lmder의 Levenberg–Marquardt(신뢰 영역, 열 척도, LM 매개변수 찾기, 멈춤 판정 info 1–8), scipy least_squares의 신뢰 영역 반사법(Coleman–Li 척도, 반사 걸음, SVD 부분문제), 반복의 전진 차분과 해의 5점 중앙 차분(모수마다 간격 고르기), 선형 모형의 QR 커널로 푸는 가우스–뉴턴 다듬기와 곡률 항 S를 넣은 뉴턴 전환, max_nfev 안의 다듬기 예산, 경계에 걸린 모수, 겹친 모수와 rtol, 공분산과 완전 적합, 델타 방법의 평균 구간, GIL, f 호출의 비용을 다뤄요.
+summary: nls가 비선형 최소제곱을 반복과 다듬기 두 단계로 푸는 방법을 설명해요. scipy와 같은 신뢰 영역 반복이 멈춘 뒤 정확한 야코비안의 가우스–뉴턴 걸음으로 다듬어서, 결과의 정확도가 멈춤 판정과 거의 상관없어요.
 seeAlso: [overview, least-squares, glm, accuracy-performance]
 ---
 import Callout from '../../../components/Callout.astro';

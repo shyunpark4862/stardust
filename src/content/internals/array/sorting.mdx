@@ -2,7 +2,7 @@
 title: 정렬과 집합
 group: 인덱싱과 정렬
 order: 2
-summary: sort, argsort, unique_*의 구현을 설명해요. NaN과 -0.0을 다루는 규칙, dtype과 길이에 따라 NEON 정렬 네트워크·기수 정렬·merge sort 중 하나를 고르는 기준, 긴 레인 하나를 여러 스레드로 나누는 방법을 다뤄요. searchsorted, nonzero, take도 함께 다뤄요.
+summary: "`sort`, `argsort`, `unique_*`가 데이터 분포가 아니라 dtype과 길이만 보고 정렬 알고리즘을 고르는 방식을 설명해요. NaN을 미리 떼어 내 비교를 단순하게 하고, 결과가 안정 정렬과 구별되지 않을 때만 빠른 불안정 정렬을 써요."
 seeAlso: [indexing, engine, statistics, performance]
 ---
 import Callout from '../../../components/Callout.astro';

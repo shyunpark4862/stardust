@@ -2,7 +2,7 @@
 title: 정확도와 성능
 group: 정확도와 성능
 order: 1
-summary: 통계 영역의 정확도를 무엇에 대고 어떤 단위로 재는지(Arb로 만든 참값, 상대 1e-14, 혼합 기준, 역함수의 조건수, 이산 역함수의 후방 오차), 분포 묶음마다 잰 최대 오차와 같은 점에서 scipy 1.18.1의 오차, 보장 영역과 그 밖에서 NaN이 되는 경계, 모든 호출이 정해진 시간 안에 끝나게 하는 반복의 상한을 정리해요. 측정 파일에 있는 속도를 조건과 함께 요약하고, scipy보다 느린 행과 그 이유도 다뤄요.
+summary: 통계 영역의 정확도를 Arb 참값에 대고 재는 방법과 그 결과, 속도를 한곳에 모았어요. 약 208만 점에서 보장 영역의 모든 점이 계약 안이고, scipy보다 느린 행은 그 이유까지 적었어요.
 seeAlso: [overview, engine, continuous, discrete, mvcdf, descriptive]
 ---
 import Bench from '../../../components/fig/Bench.astro';

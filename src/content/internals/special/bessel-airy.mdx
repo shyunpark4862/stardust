@@ -2,7 +2,7 @@
 title: Bessel과 Airy
 group: 함수별 알고리즘
 order: 3
-summary: 0·1차 Bessel 함수(i0 … y1), 실수 차수 Bessel 함수(jv yv iv kv와 e-스케일 판), Airy 함수를 안에서 어떻게 계산하는지 설명해요. 구간마다 쓰는 근사식·급수·연분수·점근전개, 점화식의 방향과 안정성, 위상을 반올림하지 않는 방법, 진동 함수의 정확도 기준, Boost.Math를 부르는 구간에서 Boost가 하는 일까지 다뤄요.
+summary: Bessel 함수와 Airy 함수를 어떻게 계산하는지 설명해요. 진동하는 J·Y와 지수로 자라는 I·K라는 두 성격이 구현을 정하고, 점화식은 안정한 방향으로만 돌리며 큰 x의 위상은 반올림하지 않아 오차가 x에 비례해 커지지 않아요.
 seeAlso: [overview, techniques, engine, erf-gamma, incomplete, more-functions, accuracy-performance]
 ---
 import Callout from '../../../components/Callout.astro';

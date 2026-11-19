@@ -2,7 +2,7 @@
 title: 컬럼과 메모리
 group: 구조
 order: 2
-summary: 데이터프레임의 컬럼이 메모리에 어떻게 놓이는지 설명해요. Column 구조체, 결측을 표시하는 validity 비트맵과 그것을 읽는 방법, 결측 자리를 0으로 두는 이유, dtype별 저장(문자열의 offsets와 바이트), 복사 없는 슬라이스, 참조 수로 판단하는 Copy-on-Write, numpy와 sd.ndarray와 주고받는 규칙을 다뤄요.
+summary: 데이터프레임의 컬럼이 메모리에 어떻게 놓이는지 설명해요. 컬럼은 데이터를 갖지 않고 공유 버퍼를 가리키며, 결측은 비트맵으로 표시하고 쓰기는 참조 수를 보는 Copy-on-Write라서 복사가 꼭 필요할 때만 일어나요.
 seeAlso: [overview, labels, elementwise, parallel]
 ---
 import Callout from '../../../components/Callout.astro';

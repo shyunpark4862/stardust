@@ -2,7 +2,7 @@
 title: 불완전 감마와 베타
 group: 함수별 알고리즘
 order: 2
-summary: gammainc, gammaincc, betainc, betaincc와 네 역함수가 안에서 어떻게 계산되는지 설명해요. 두 함수에 공통인 앞 인자를 Stirling 꼴과 double-double 지수로 넘침과 소거 없이 만드는 법, 불완전 감마의 네 구간(작은 a의 급수, 거듭제곱급수, Legendre 연분수, Temme 균등 점근전개), 불완전 베타의 BRATIO 다섯 방법, 역함수의 초기값과 Halley 반복, 그리고 Boost.Math를 부르는 구간에서 Boost가 실제로 하는 일까지 다뤄요.
+summary: 불완전 감마·베타와 그 역함수를 어떻게 계산하는지 설명해요. 둘 중 작은 쪽 꼬리를 직접 구하고, 값의 크기를 거의 다 정하는 앞 인자의 지수를 double-double로 만들어서 먼 꼬리에서도 상대 정확도를 잃지 않아요.
 seeAlso: [techniques, erf-gamma, distributions, engine, accuracy-performance]
 ---
 import Callout from '../../../components/Callout.astro';

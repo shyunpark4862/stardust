@@ -2,7 +2,7 @@
 title: 원소별 엔진과 빠른 경로
 group: 구조
 order: 2
-summary: 분포 구조체 하나에서 원소별 함수 20개를 만드는 템플릿 DistOp, 매개변수의 정의역을 거르는 자리와 자유도 inf처럼 정의역 밖에서 다른 분포가 되는 극한, special과 함께 쓰는 n항 디스패처, 1024원소씩 계산하는 청크 커널과 그 안의 빠른 경로·정밀 경로를 설명해요. 원소마다 오차 상한을 2⁻⁵³ 단위로 세는 규칙과 vForce 함수의 잰 오차, 위치에 무관한 함수만 쓰는 이유, 스칼라와 배열 매개변수가 같은 비트를 내게 하는 방법, 배열 double-double, 정수점 메모, 잰 비용으로 나누는 병렬 분할, 반복 상한까지 다뤄요.
+summary: 분포 31개의 메서드 620개를 손으로 쓰지 않고 분포 구조체 하나에서 템플릿으로 만드는 원소별 엔진을 설명해요. 빠른 경로는 원소마다 오차 상한을 세어, 계약을 지키지 못할 원소만 정밀 경로로 넘겨요.
 seeAlso: [overview, continuous, extreme-noncentral, discrete, accuracy-performance]
 ---
 import Callout from '../../../components/Callout.astro';

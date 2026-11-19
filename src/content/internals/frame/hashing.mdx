@@ -2,7 +2,7 @@
 title: 해시 테이블과 factorize
 group: 연산
 order: 2
-summary: unique, duplicated, value_counts, groupby, merge, 정렬, Index 조회가 모두 기대는 factorize(값을 정수 코드로 바꾸는 일)를 설명해요. 같은 키의 규칙을 비트로 바꾸는 키 정규화, linear probing 대신 NEON Swiss table을 쓰는 이유, fmix64와 wyhash의 곱셈 섞기, 테이블을 미리 잡는 기준, 다중 키, 스레드 수와 무관한 코드를 내는 병렬 factorize, 조회 루프를 다뤄요.
+summary: 중복 찾기, groupby, merge, 라벨 조회가 모두 기대는 factorize를 설명해요. 같은 키의 규칙은 해시 전에 비트로 바꿔 한 곳에만 두고, 분기 예측 실패를 없애려고 linear probing 대신 Swiss table을 써요.
 seeAlso: [overview, columns, labels, groupby-sort, merge-concat, parallel, performance]
 ---
 import Callout from '../../../components/Callout.astro';

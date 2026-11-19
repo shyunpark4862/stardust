@@ -870,20 +870,23 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
     margin-bottom: var(--space-8);
     border-bottom: 1px solid var(--line);
   }
+  /* Titles one step under a landing headline: this is a page to read, and
+     the scale (30 / 24 / 19 over a 16px body) keeps headings from breaking
+     the text into blocks. */
   .page-head__title {
-    margin-top: var(--space-4);
-    font-size: var(--text-3xl);
+    margin-top: var(--space-3);
+    font-size: 1.875rem; /* 30 */
     letter-spacing: var(--tracking-display);
   }
   .page-head__title--mono {
     font-family: var(--font-mono);
-    font-size: var(--text-2xl);
+    font-size: 1.5rem; /* 24 */
     font-weight: 600;
     letter-spacing: -0.02em;
   }
   .page-head__lead {
-    margin-top: var(--space-4);
-    font-size: var(--text-lg);
+    margin-top: var(--space-3);
+    font-size: 1.0625rem; /* 17 */
     line-height: 1.65;
     color: var(--fg-muted);
   }
@@ -894,7 +897,7 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
   .page-head--band {
     position: relative;
     overflow: hidden;
-    padding: var(--space-8);
+    padding: 1.75rem; /* 28 */
     border: 1px solid var(--area-line);
     border-radius: var(--radius-lg);
     background:
@@ -913,7 +916,7 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-2) var(--space-4);
-    margin: var(--space-6) 0 0;
+    margin: var(--space-5) 0 0;
     padding: 0;
     list-style: none;
     font-size: var(--text-sm);
@@ -1053,7 +1056,7 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
       padding-top: var(--space-8);
     }
     .page-head__title {
-      font-size: var(--text-2xl);
+      font-size: 1.625rem; /* 26 */
     }
   }
 </style>

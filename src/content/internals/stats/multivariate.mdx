@@ -2,7 +2,7 @@
 title: 다변량 분포의 밀도
 group: 표본과 다변량
 order: 2
-summary: 다변량 정규·t, 다항, 디리클레의 밀도와 엔트로피가 안에서 어떻게 계산되는지 설명해요. 매개변수를 배치로 펼치는 법, 공분산을 double-double로 촐레스키 분해하는 이유, Dot2로 하는 전진 대입, L⁻¹을 곱하는 NEON 내적과 Higham의 γ 상한으로 점마다 오차를 세는 빠른 경로(40단위), BLAS를 쓰지 않는 이유, 크기 a log a인 항을 지우는 log Γ 차와 엔트로피의 묶음, 다항 엔트로피의 기댓값 합까지 다뤄요.
+summary: 다변량 정규·t, 다항, 디리클레의 밀도와 엔트로피를 계산하는 방법을 설명해요. 공분산은 double-double로 한 번 촐레스키 분해하고, 점마다 빠른 내적으로 계산하면서 오차 상한을 세어 계약을 지키는지 확인해요.
 seeAlso: [mvcdf, matrix, sampling, accuracy-performance]
 ---
 import Callout from '../../../components/Callout.astro';

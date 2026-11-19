@@ -2,7 +2,7 @@
 title: 선형대수 영역의 구조
 group: 구조
 order: 1
-summary: sd.linalg 전체의 지도예요. Python과 C++가 일을 어떻게 나누는지, 호출 하나가 인자 검사부터 결과까지 어떤 단계를 거치는지, LAPACK을 어떻게 감싸는지, 어떤 함수가 어떤 LAPACK 루틴으로 계산되는지, 실패를 어떻게 알리는지를 설명하고 나머지 글로 안내해요.
+summary: "`sd.linalg` 전체의 지도예요. 분해는 LAPACK에 맡기고 stardust는 그 앞뒤에서 입력을 옮기고 행렬을 스레드에 나누고 실패를 알리는 일을 맡는데, numpy·scipy와의 속도 차이도 거의 다 여기서 나와요."
 seeAlso: [packing, batch, basic, lu, symmetric, qr, eigen, svd, special, expm, performance]
 ---
 import Fig from '../../../components/fig/Fig.astro';

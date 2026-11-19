@@ -2,7 +2,7 @@
 title: merge와 concat
 group: 연산
 order: 4
-summary: merge가 쓰는 해시 조인(오른쪽 키로 테이블을 만들고 왼쪽 키로 조회), 결과 행 순서 규칙을 정렬 없이 지키는 방법, NA 키와 다중 키, outer의 남은 오른쪽 행, right 조인을 left 조인의 거울로 푸는 방법, 결과 컬럼 조립을 설명해요. concat의 dtype 승격과 버퍼 이어 붙이기, pandas·Polars와의 비교도 다뤄요.
+summary: merge가 두 표를 키로 잇는 해시 조인과 concat을 설명해요. 테이블을 오른쪽 키로 만들고 왼쪽 키로 조회하면 결과 행 순서가 반복문의 순서에서 저절로 나와서, 결과를 다시 정렬하지 않아요.
 seeAlso: [hashing, groupby-sort, labels, parallel, performance]
 ---
 import Fig from '../../../components/fig/Fig.astro';

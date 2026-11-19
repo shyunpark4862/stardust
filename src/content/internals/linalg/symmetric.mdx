@@ -2,7 +2,7 @@
 title: "대칭 행렬의 분해: Cholesky와 LDL"
 group: 선형 시스템과 분해
 order: 2
-summary: 대칭(에르미트) 행렬을 반만 계산하는 두 분해를 설명해요. 양정치 행렬의 Cholesky 분해(potrf, potrs)가 피벗 없이도 안정한 이유, 부정치 행렬의 LDL 분해(sytrf)가 1×1·2×2 블록과 Bunch–Kaufman 피벗을 쓰는 이유, LAPACK의 ipiv를 scipy와 같은 perm, L, D로 바꾸는 방법을 다뤄요.
+summary: 대칭 행렬을 절반만 읽고 계산하는 두 분해를 설명해요. 양정치 행렬의 Cholesky 분해는 피벗 없이도 안정하고, 양정치가 아닌 행렬은 2×2 블록과 대칭 피벗을 쓰는 LDL 분해로 풀어 그 결과를 scipy와 비트까지 같은 꼴로 돌려줘요.
 seeAlso: [lu, packing, batch, eigen, special, performance]
 ---
 import Callout from '../../../components/Callout.astro';

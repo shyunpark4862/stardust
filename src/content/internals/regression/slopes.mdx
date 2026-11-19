@@ -2,7 +2,7 @@
 title: Theil–Sen과 Siegel 기울기
 group: 강건과 분위
 order: 2
-summary: theilslopes와 siegelslopes가 쌍 기울기의 중앙값과 순위 통계량을 정확한 선택으로 구하는 방법을 설명해요. Siegel의 점마다 선택, x·y의 차가 넘쳐 기울기가 없는 쌍의 처리, Theil–Sen의 한 배열 선택과 2²³개를 넘는 기울기를 저장하지 않고 훑는 방법(표본에서 고른 피벗, 정확한 셈, 좁히기), 동률을 보정한 Sen의 신뢰구간, scipy와 0의 부호만 빼고 비트까지 같은 이유와 입력 정리(omit, n < 2)에서 다른 점, scipy의 n × n 배열과 견준 메모리와 속도를 다뤄요.
+summary: theilslopes와 siegelslopes가 쌍 기울기의 중앙값을 구하는 방법을 설명해요. 정렬 대신 정확한 선택으로 골라 scipy와 0의 부호만 빼고 비트까지 같은 값을 내고, 기울기가 아주 많으면 저장하지 않고 훑어 메모리를 O(n)으로 줄여요.
 seeAlso: [robust, quantile, overview, accuracy-performance]
 ---
 import Callout from '../../../components/Callout.astro';

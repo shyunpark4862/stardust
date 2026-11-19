@@ -2,7 +2,7 @@
 title: 정규화 회귀의 풀이
 group: 정규화
 order: 1
-summary: ridge, lasso, elastic_net, 교차검증, penalized_glm이 안에서 하는 일을 설명해요. 중심화한 설계의 QR 한 번과 R의 SVD로 모든 alpha를 푸는 ridge와 조건이 나쁠 때의 double-double 개선, 반올림 여유를 둔 소프트 문턱으로 쓰는 좌표 하강(Friedman–Hastie–Tibshirani)과 활성 집합 스윕, 쌍대 간격과 수렴 판정, 활성 집합과 부호로 정상 조건을 풀고 비활성 부등식을 검사하는 KKT 연마, 경로의 따뜻한 시작, 표준화, 유효 자유도, 교차검증의 겹과 1-SE 규칙, 닫힌 꼴의 GCV, 바깥 IRLS와 안쪽 좌표 하강·걸음 반감·뉴턴 연마로 푸는 정규화 GLM, 선형 정규화의 alpha = 0(ridge 커널로 푸는 최소 노름 해)과 alpha = 0을 glm에 맡기는 정규화 GLM의 길, 시험 가중치가 없는 겹, 수렴의 뜻을 다뤄요.
+summary: ridge, lasso, elastic_net과 정규화 GLM이 안에서 하는 일을 설명해요. ridge는 분해 한 번으로 모든 alpha를 풀고, lasso 계열은 좌표 하강이 멈춘 뒤 활성 집합과 부호로 정상 조건을 직접 풀어 해를 반올림 수준까지 맞춰요.
 seeAlso: [overview, least-squares, glm, accuracy-performance]
 ---
 import Callout from '../../../components/Callout.astro';

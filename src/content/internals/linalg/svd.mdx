@@ -2,7 +2,7 @@
 title: 특이값 분해
 group: 고유값과 특이값
 order: 2
-summary: svd와 특이값만 쓰는 함수들(svdvals, matrix_rank, cond, matrix_norm의 2·−2·nuc, pinv)이 안에서 하는 일을 설명해요. 특이값의 기하학적 뜻, 이중대각화, 분할 정복(gesdd)과 값 전용 경로(gesvd)가 어떤 알고리즘으로 도는지, 왜 그 둘을 골랐는지, numpy와 비트가 같은 곳과 다른 곳을 다뤄요.
+summary: 특이값 분해가 어떤 행렬이든 돌리기, 늘이기, 돌리기로 나눈다는 뜻에서 출발해 LAPACK이 이중대각화와 반복법으로 특이값을 구하는 과정을 설명해요. 특이값만 쓰는 함수는 모두 같은 헬퍼를 거쳐 `svdvals`와 비트까지 같은 값을 봐요.
 seeAlso: [eigen, qr, lu, batch, packing, performance]
 ---
 import Callout from '../../../components/Callout.astro';

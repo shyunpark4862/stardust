@@ -3,7 +3,7 @@ kind: concept
 title: 표준오차의 종류
 group: 기본 개념
 order: 3
-summary: cov_type으로 표준오차를 계산하는 방법을 고르는 법을 설명해요. 기본(nonrobust), 오차의 크기가 관측마다 다를 때의 HC0–HC3, 시간 순서로 오차가 이어질 때의 HAC와 maxlags, 묶음 안에서 오차가 이어질 때의 cluster와 groups, 그리고 각각의 자유도, 가중치가 0인 행과 glm의 빈도 가중치, 에러가 여기에 있어요.
+summary: "`cov_type`으로 표준오차를 계산하는 방법을 고르는 법을 설명해요. 오차의 크기가 관측마다 다르거나 시간 순서나 묶음 안에서 오차가 이어질 때, 기본 계산 대신 그 가정에 맞는 강건한 표준오차를 골라요."
 seeAlso: [results, basics, ols, wls, glm, diagnostics]
 ---
 import Callout from '../../../components/Callout.astro';

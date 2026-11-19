@@ -2,7 +2,7 @@
 title: Python과 C++의 경계
 group: Python과의 경계
 order: 1
-summary: Python 객체와 C++ 객체가 만나는 곳을 설명해요. nanobind 바인딩, ndarray 타입, 인자 해석 규칙, 에러 메시지 체계, GIL, 버퍼 프로토콜과 DLPack, 그리고 메모리를 누가 붙잡고 있는지를 다뤄요.
+summary: Python에서 부른 함수가 C++ 계산에 닿았다가 결과로 돌아오기까지 경계에서 일어나는 일을 설명해요. 인자를 대부분 타입 없는 handle로 받아 직접 해석하고, 에러에는 바인딩이 함수 이름을 붙여 모든 영역의 메시지 형식을 하나로 맞춰요.
 seeAlso: [overview, threads]
 ---
 import Steps from '../../../components/fig/Steps.astro';

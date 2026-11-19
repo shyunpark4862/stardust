@@ -2,7 +2,7 @@
 title: 행렬곱
 group: 행렬곱
 order: 1
-summary: matmul의 구현을 설명해요. shape와 dtype을 정하는 규칙, float64·complex128을 Accelerate BLAS에 복사 없이 넘기는 방법, BLAS가 없는 int64를 위한 자체 루프, 배치를 스레드에 나누는 방식을 다뤄요. tensordot과 vecdot이 matmul과 어떤 관계인지도 다뤄요.
+summary: "`matmul`이 shape와 dtype을 정하고 행렬마다 계산을 맡기는 방식을 설명해요. float64·complex128은 되도록 복사 없이 Accelerate BLAS에 넘기고, 행렬 하나는 늘 한 스레드에서 계산해서 배치를 어떻게 나눠도 결과가 같아요."
 seeAlso: [engine, conversion, performance, accuracy]
 ---
 import Callout from '../../../components/Callout.astro';

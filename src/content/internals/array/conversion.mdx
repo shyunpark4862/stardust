@@ -2,7 +2,7 @@
 title: 변환과 승격
 group: 데이터
 order: 2
-summary: 두 dtype이 만나면 어느 dtype으로 계산하는지, Python 리스트·버퍼·DLPack에서 배열을 어떻게 만드는지, 값을 다른 dtype으로 바꾸는 규칙을 어떻게 정의된 동작이면서 빠르게 구현하는지 설명해요.
+summary: 값이 한 dtype에서 다른 dtype으로 옮겨 가는 다섯 길의 규칙과 구현을 설명해요. 결과 dtype은 값이 아니라 dtype만 보고 정하고, 막을 변환은 원소를 건드리기 전에 막아서 변환 커널에는 에러 경로가 없어요.
 seeAlso: [data-model, engine, elementwise, accuracy]
 ---
 import Callout from '../../../components/Callout.astro';
