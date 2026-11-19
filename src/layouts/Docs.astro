@@ -96,14 +96,14 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
                 </ul>
               </details>
             </div>
-            <div class="filter">
+            <button class="filter" type="button" data-search-open aria-label="문서 검색 (/)">
               <svg class="filter__icon" width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
                 <circle cx="6" cy="6" r="4.25" stroke="currentColor" stroke-width="1.5" />
                 <path d="m9.25 9.25 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
               </svg>
-              <input class="filter__input" type="search" placeholder="이름으로 찾기" aria-label="문서 이름으로 찾기" autocomplete="off" spellcheck="false" />
+              <span class="filter__label">이름으로 찾기</span>
               <kbd class="filter__key" aria-hidden="true">/</kbd>
-            </div>
+            </button>
           </div>
         )}
         <nav aria-label="문서 메뉴">
@@ -124,7 +124,6 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
                           class="side__link"
                           href={item.href}
                           aria-current={path === item.href ? 'page' : undefined}
-                          data-search={[item.label, ...(item.names ?? [])].join(' ').toLowerCase()}
                         >
                           <span class="side__label">
                             <span class:list={[item.mono && 'side__mono']}>{item.label}</span>
@@ -153,7 +152,6 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
               ),
             )
           }
-          {area && <p class="filter__empty" hidden>맞는 이름이 없어요.</p>}
         </nav>
       </div>
     </aside>
@@ -308,55 +306,13 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
 </script>
 
 <script>
-  // Reference sidebar: bring the current page into view, filter by name.
+  // Reference sidebar: bring the current page into view. (Finding a page by
+  // name is the site search; the sidebar box opens it.)
   const side = document.querySelector<HTMLElement>('.docs__side');
   const current = side?.querySelector<HTMLElement>('.side__link[aria-current="page"]');
   if (side && current && side.scrollHeight > side.clientHeight) {
     side.scrollTop = current.offsetTop - side.clientHeight / 2;
   }
-
-  const input = document.querySelector<HTMLInputElement>('.filter__input');
-  const groups = [...document.querySelectorAll<HTMLDetailsElement>('.side__group--fold')];
-  const empty = document.querySelector<HTMLElement>('.filter__empty');
-  const initiallyOpen = new Map(groups.map((g) => [g, g.open]));
-  const apply = () => {
-    const q = (input?.value ?? '').trim().toLowerCase();
-    let any = false;
-    for (const g of groups) {
-      let hit = false;
-      g.querySelectorAll<HTMLAnchorElement>('.side__link').forEach((a) => {
-        const match = !q || (a.dataset.search ?? '').includes(q);
-        a.parentElement!.hidden = !match;
-        hit ||= match;
-      });
-      g.hidden = !hit;
-      g.open = q ? hit : initiallyOpen.get(g)!;
-      any ||= hit;
-    }
-    if (empty) empty.hidden = any;
-  };
-  input?.addEventListener('input', apply);
-  input?.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      input.value = '';
-      apply();
-      input.blur();
-    }
-    // Enter opens the first match, but only once something has been typed:
-    // on an empty filter every page "matches".
-    if (e.key === 'Enter' && input.value.trim()) {
-      const first = document.querySelector<HTMLAnchorElement>('.side__group--fold:not([hidden]) li:not([hidden]) .side__link');
-      if (first) location.href = first.href;
-    }
-  });
-  // "/" focuses the filter from anywhere on the page.
-  addEventListener('keydown', (e) => {
-    const t = e.target as HTMLElement;
-    if (e.key === '/' && input && !/^(INPUT|TEXTAREA)$/.test(t.tagName) && !t.isContentEditable) {
-      e.preventDefault();
-      input.focus();
-    }
-  });
 </script>
 
 <script>
@@ -585,49 +541,40 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
     color: var(--fg-subtle);
   }
 
-  /* Name filter */
+  /* The sidebar's search box: a button that opens the site search with
+     this area's pages first. */
   .filter {
     position: relative;
-    margin-inline: calc(var(--space-3) * -1);
-  }
-  .filter__icon {
-    position: absolute;
-    top: 50%;
-    left: var(--space-3);
-    color: var(--fg-subtle);
-    transform: translateY(-50%);
-    pointer-events: none;
-  }
-  .filter__input {
-    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: calc(100% + var(--space-3) * 2);
     height: 36px;
-    padding: 0 var(--space-8) 0 calc(var(--space-3) + 14px + var(--space-2));
+    margin-inline: calc(var(--space-3) * -1);
+    padding: 0 var(--space-2) 0 var(--space-3);
     border: 1px solid var(--line);
     border-radius: var(--radius-md);
     background: var(--bg-subtle);
     font: inherit;
     font-size: var(--text-sm);
-    color: var(--fg);
+    color: var(--fg-subtle);
+    text-align: left;
+    cursor: pointer;
     transition:
       border-color var(--dur-fast) var(--ease),
-      background-color var(--dur-fast) var(--ease);
+      color var(--dur-fast) var(--ease);
   }
-  .filter__input::placeholder {
-    color: var(--fg-subtle);
+  .filter:hover {
+    border-color: var(--line-strong);
+    color: var(--fg);
   }
-  .filter__input:focus {
-    border-color: var(--accent-soft-line);
-    background: var(--bg);
-    outline: none;
-    box-shadow: 0 0 0 3px var(--accent-soft);
+  .filter__icon {
+    flex: none;
   }
-  .filter__input::-webkit-search-cancel-button {
-    display: none;
+  .filter__label {
+    flex: 1;
   }
   .filter__key {
-    position: absolute;
-    top: 50%;
-    right: var(--space-2);
     display: grid;
     place-items: center;
     width: 20px;
@@ -635,18 +582,9 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
     border: 1px solid var(--line);
     border-radius: 4px;
     background: var(--bg);
+    font-family: var(--font-sans);
     font-size: var(--text-xs);
     line-height: 1;
-    color: var(--fg-subtle);
-    transform: translateY(-50%);
-  }
-  .filter__input:focus + .filter__key,
-  .filter__input:not(:placeholder-shown) + .filter__key {
-    display: none;
-  }
-  .filter__empty {
-    padding: var(--space-3) 0;
-    font-size: var(--text-sm);
     color: var(--fg-subtle);
   }
 
@@ -1022,8 +960,11 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
       padding: var(--space-2) 0 0;
       box-shadow: none;
     }
-    .area,
+    .area {
+      margin-inline: 0;
+    }
     .filter {
+      width: 100%;
       margin-inline: 0;
     }
     .side__group--fold > .side__title {

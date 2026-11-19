@@ -53,6 +53,8 @@
   const input = dialog.querySelector<HTMLInputElement>('.search__input')!;
   const list = dialog.querySelector<HTMLUListElement>('.search__results')!;
   let items: Item[] | null = null;
+  // The area of the page being read: its pages come first in the results.
+  const here = document.querySelector<HTMLElement>('.docs[data-area]')?.dataset.area;
   let shown: Item[] = [];
   let active = 0;
 
@@ -83,6 +85,7 @@
       if (it.s.toLowerCase().includes(w)) s += 1;
     }
     if (it.h.startsWith('/api/')) s += 2;
+    if (here && it.a === here) s += 12;
     return s;
   };
 
@@ -132,12 +135,19 @@
     render();
   };
 
-  document.querySelector('.search-btn')?.addEventListener('click', open);
+  document.querySelectorAll('.search-btn, [data-search-open]').forEach((b) => b.addEventListener('click', open));
   addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
       e.preventDefault();
       if (dialog.open) dialog.close();
       else open();
+      return;
+    }
+    // "/" opens it too, unless one is typing somewhere.
+    const t = e.target as HTMLElement;
+    if (e.key === '/' && !dialog.open && !/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !t.isContentEditable) {
+      e.preventDefault();
+      open();
     }
   });
   input.addEventListener('input', render);
