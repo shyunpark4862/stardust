@@ -19,3 +19,14 @@ export function inlineHtml(text: string): string {
 export function plainText(text: string): string {
   return text.replace(/`([^`]+)`/g, '$1');
 }
+
+/**
+ * A Korean subject particle that fits the word: 이 after a final consonant,
+ * 가 after a vowel ("배열이", "특수함수가"). Words that end in something other
+ * than a Hangul syllable take the vowel form.
+ */
+export function subject(word: string): string {
+  const code = word.charCodeAt(word.length - 1) - 0xac00;
+  const final = code >= 0 && code < 11172 && code % 28 !== 0;
+  return `${word}${final ? '이' : '가'}`;
+}

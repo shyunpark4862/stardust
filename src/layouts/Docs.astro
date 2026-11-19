@@ -32,15 +32,13 @@ interface Props {
   area?: AreaNav;
   /** Set the title in the code font (function pages). */
   monoTitle?: boolean;
-  /** Articles: the head becomes a dark band in the area's colour. */
-  band?: boolean;
   /** Short facts under the lead (reading time, sections). */
   meta?: string[];
 }
 const fm = Astro.props.frontmatter ?? (Astro.props as Required<Props>['frontmatter']);
 const { title, description, section, sample = false } = fm;
 const groups = Astro.props.groups ?? sidebars[section] ?? [];
-const { area, monoTitle = false, band = false, meta = [] } = Astro.props;
+const { area, monoTitle = false, meta = [] } = Astro.props;
 // Table of contents as a tree: each h2 with the h3s under it.
 const labels = new Map<string, string>();
 for (const h of Astro.props.headings ?? []) if (h.parts) labels.set(h.slug, await tocLabel(h));
@@ -161,7 +159,7 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
     </aside>
 
     <article class="docs__main">
-      <header class:list={['page-head', band && 'page-head--band']}>
+      <header class="page-head">
         {
           crumbs.length > 0 && (
             <nav class="crumbs" aria-label="현재 위치">
@@ -899,27 +897,6 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
     color: var(--fg-muted);
   }
 
-  /* Article head: a light band in the area's colour with a faint scatter of
-     stars, so an article reads apart from a reference page at a glance
-     without weighing on the white page. */
-  .page-head--band {
-    position: relative;
-    overflow: hidden;
-    padding: 1.75rem; /* 28 */
-    border: 1px solid var(--area-line);
-    border-radius: var(--radius-lg);
-    background:
-      radial-gradient(1.5px 1.5px at 78% 24%, color-mix(in srgb, var(--area) 55%, transparent), transparent),
-      radial-gradient(1px 1px at 86% 58%, color-mix(in srgb, var(--area) 45%, transparent), transparent),
-      radial-gradient(1px 1px at 66% 40%, color-mix(in srgb, var(--area) 35%, transparent), transparent),
-      radial-gradient(1.5px 1.5px at 93% 34%, color-mix(in srgb, var(--area) 40%, transparent), transparent),
-      radial-gradient(1px 1px at 72% 80%, color-mix(in srgb, var(--area) 30%, transparent), transparent),
-      radial-gradient(90% 120% at 100% 0%, color-mix(in srgb, var(--area) 14%, transparent), transparent 60%),
-      linear-gradient(180deg, var(--area-soft), var(--bg));
-  }
-  .page-head--band .page-head__title {
-    color: var(--fg);
-  }
   .page-head__meta {
     display: flex;
     flex-wrap: wrap;
@@ -939,14 +916,6 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
     font-family: var(--font-mono);
     font-weight: 600;
     color: var(--area);
-  }
-  .page-head--band + .prose {
-    margin-top: var(--space-10);
-  }
-  @media (max-width: 640px) {
-    .page-head--band {
-      padding: var(--space-6) var(--space-5);
-    }
   }
   .page-head__sample {
     display: flex;

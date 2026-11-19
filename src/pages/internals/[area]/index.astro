@@ -1,4 +1,5 @@
 ---
+import { subject } from '../../../data/inline';
 import Docs from '../../../layouts/Docs.astro';
 import { inlineHtml } from '../../../data/inline';
 import { groupId } from '../../../data/sections';
@@ -24,7 +25,7 @@ const headings = groups.map((g) => ({ depth: 2, slug: groupId(g.title), text: g.
 
 <Docs
   title={info.name}
-  description={`${info.name}이 안에서 어떻게 만들어졌는지 주제별로 풀어 쓴 글이에요.`}
+  description={`${subject(info.name)} 안에서 어떻게 만들어졌는지 주제별로 풀어 쓴 글이에요.`}
   section="internals"
   crumbs={internalsCrumbs(area).slice(0, 1)}
   groups={await internalsSidebar(area)}
