@@ -33,6 +33,7 @@
 #include "special/gamma_core.hpp"
 #include "special/halley.hpp"
 #include "special/ops/erf.hpp"
+#include "special/ops/expint.hpp"
 #include "special/prefix.hpp"
 
 #include <algorithm>
@@ -385,6 +386,26 @@ struct Gammaincc : Real {
 // other way for Q) for any a >= 0; NaN for a = 0 or inf inside (0, 1), p
 // outside [0, 1] or NaN. A root below the subnormals is 0 (scipy: NaN at
 // gammaincinv(5e-324, 0.5)).
+// The y with Q(a, y) = q for a subnormal a (2026-11-19, T52): there Q(a, y) = a E1(y)
+// (1 + O(a (1 + log^2 y))) for every y a double reaches, so E1(y) = c = q / a. Beyond c = 40
+// (y < e^-40) E1(y) = -euler - log y + O(y): y = e^(-c - euler), 0 below the subnormals; else
+// a bracketed bisection on E1 (decreasing), geometric while the bracket spans binades, then to
+// adjacent doubles (at most ~130 steps). gammainccinv was NaN for every subnormal a (Boost's
+// and igam's pieces lose the shape), sd.stats solved it at a reference shape.
+inline double tiny_shape_upper_root(double a, double q) {
+    const double lc = std::log(q) - std::log(a);  // log c (q / a may overflow)
+    if (lc > std::log(40.0)) return std::exp(-std::exp(lc) - kEuler);
+    const double c = std::exp(lc);
+    double lo = 0x1p-60, hi = 800.0;  // E1(2^-60) > 40 >= c > E1(800) = 0
+    for (int it = 0; it < 400; ++it) {
+        const double mid = hi / lo > 2.0 ? std::sqrt(lo) * std::sqrt(hi) : 0.5 * (lo + hi);
+        if (!(mid > lo && mid < hi)) break;
+        (expint_detail::en(1.0, mid) > c ? lo : hi) = mid;
+    }
+    // the nearer of the two neighbours
+    return std::fabs(expint_detail::en(1.0, lo) - c) <= std::fabs(expint_detail::en(1.0, hi) - c) ? lo : hi;
+}
+
 inline bool igam_inverse_edge(double a, double p, bool upper, double& out) {
     if (std::isnan(a) || std::isnan(p) || a < 0.0 || p < 0.0 || p > 1.0) {
         out = kNaN;
@@ -424,6 +445,7 @@ struct Gammainccinv : Real {
     static double f(double a, double q) {
         double out;
         if (igam_inverse_edge(a, q, true, out)) return out;
+        if (a < 0x1p-1022) [[unlikely]] return tiny_shape_upper_root(a, q);
         if (q >= 1e-300 && a < igam_detail::kNormalShape) {  // Boost (special/boost.hpp); as gammaincinv
             const double r = bst::gamma_q_inv(a, q);
             if (bst::normal(r)) return igam_detail::igam_polish(a, q, true, r);

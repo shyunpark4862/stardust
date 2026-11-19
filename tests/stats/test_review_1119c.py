@@ -232,3 +232,53 @@ def test_inverse_gamma_subnormal_shape():
     F = S.F(dfn=math.inf, dfd=1e-310)
     assert F.median() == math.inf and F.icdf(0.9) == math.inf and F.entropy() == math.inf
     assert F.cdf(1.0) == pytest.approx(3.5695865517192284e-308, rel=1e-14)
+
+
+# ---- R101, R102 (2026-11-19, sixth pass; T52): small shapes' upper roots below 2^-960
+
+def _arb_q_rel(a, y, s, q):
+    ctx.prec = 3000
+    try:
+        return float(arb(y).gamma_upper(arb(a), 1) / arb(q)) - 1 if s is None else \
+            float((arb(y) / arb(s)).gamma_upper(arb(a), 1) / arb(q)) - 1
+    finally:
+        ctx.prec = 53
+
+
+@pytest.mark.parametrize("a", [3e-7, 1e-8, 1e-100, 1e-310, 5e-324])
+@pytest.mark.parametrize("k", [600, 665, 680, 700, 720, 740])
+def test_gamma_upper_root_band(a, k):
+    # the root e^(-k - euler): a normal or subnormal double, found (was NaN for k ~ 665-745)
+    y = S.Gamma(a=a).iccdf(k * a)
+    assert 0.0 < y < 1e-250
+    if y >= 2.0**-1022:
+        assert abs(_arb_q_rel(a, y, None, k * a)) <= 1e-14 * k  # kappa ~ k
+    else:  # a subnormal root: its rounding, the tail's slope a e^-y / y over it
+        assert abs(_arb_q_rel(a, y, None, k * a)) * k <= 2 * (2.0**-1074 / y)
+    assert S.Gamma(a=a).iccdf(760 * a) == 0.0  # below half the smallest subnormal
+    assert S.Gamma(a=a).ilogccdf(math.log(k * a)) == pytest.approx(y, rel=1e-12 * k)
+
+
+def test_gamma_upper_root_with_a_scale():
+    # the root below 2^-1074 itself, s y a double: from logs (0 or NaN before)
+    for a, s, k in ((1e-8, 1e300, 800.0), (1e-100, 1e300, 900.0)):
+        r = S.Gamma(a=a, scale=s).iccdf(k * a)
+        assert 0.0 < r < 1e-40 and abs(_arb_q_rel(a, r, s, k * a)) <= 1e-14 * k
+    # R102: InverseGamma's root inside the doubles, its gamma's below them
+    X = S.InverseGamma(a=1e-100, scale=1e-300)
+    for x in (X.icdf(800e-100), X.ilogcdf(math.log(800e-100))):
+        assert 1e47 < x < 1e48
+        ctx.prec = 3000
+        try:
+            assert float((arb(1e-300) / arb(x)).gamma_upper(arb(1e-100), 1) / arb(800e-100)) == pytest.approx(1.0, abs=1e-14 * 800)
+        finally:
+            ctx.prec = 53
+
+
+@pytest.mark.parametrize("a", [1e-310, 2.0**-1023, 5e-324])
+@pytest.mark.parametrize("c", [1.0, 5.0, 39.0, 41.0, 300.0, 665.0, 700.0])
+def test_gammainccinv_subnormal_shape(a, c):
+    # E1(y) = q / a (Q(a, y) = a E1(y)): was NaN for every subnormal a
+    y = sp.gammainccinv(a, c * a)
+    assert y > 0.0 and abs(_arb_q_rel(a, y, None, c * a)) <= 1e-14 * max(1.0, c) * 2
+    assert sp.gammainccinv(a, 760 * a) == 0.0 and sp.gammaincinv(a, 0.3) == 0.0

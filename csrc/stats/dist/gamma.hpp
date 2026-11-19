@@ -258,8 +258,19 @@ inline double lower_inverse(double a, double s, double p, DD lt) {
 // root at or above a) that step is taken on it instead of igam's continued fraction: the
 // same step from a value at least as accurate, with x Q' = -y^a e^-y / Gamma(a) in double
 // (it multiplies a step of a few 1e-15 x: 1e-10 would do).
+// A small shape's upper root far below 1: P = 1 - q = y^a / Gamma(a + 1) (1 + O(y)), so
+//     log y = (log(1 - q) + log Gamma(1 + a)) / a,
+// exact to the doubles once y < 2^-960. Where that is the case, log y (true); the root is
+// then s y from logs, s folded into the exponent: special's root underflowed below 2^-1074
+// (a scale far above 1 brings it back; 0 before) and lost bits as a subnormal (2026-11-19, T52).
+inline bool small_upper_log_root(double a, double q, DD& ly) {
+    if (!(q > 0.0 && q < 1.0)) return false;
+    ly = (DD{std::log1p(-q), 0.0} + num::lgamma1p(a)) / a;
+    return ly.hi < -960.0 * num::kLn2.hi;
+}
 inline double upper_inverse(double a, double s, double q, DD lt) {
     if (q < kDeepP) return deep_inverse(a, lt, false, s);
+    if (DD ly; a < 1.0 && small_upper_log_root(a, q, ly)) return num::exp_dd(ly + num::log_dd(s));
     if (a <= kFiniteMax && 2.0 * a == std::floor(2.0 * a)) {
         const double r = special::bst::gamma_q_inv(a, q);
         double F;
@@ -317,9 +328,21 @@ inline constexpr double kMeasuredMinA = 1e-6;
         return ((below == lower) ? lf >= lt.hi - slack : lf <= lt.hi + slack) ? r : kNaN;
     }
     const DD y = num::ratio(r, s);
-    if (!(y.hi >= 0x1p-960) || std::isinf(y.hi)) return kNaN;
-    const double lf = dist_log_tail(a, y, !lower);
-    const DD ld = log_density_std(a, y) + dd::log(y);  // log(y f(y))
+    if (!(y.hi >= 0.0) || std::isinf(y.hi)) return kNaN;  // (y = r / s may underflow: the logs below)
+    double lf;
+    DD ld;  // log(y f(y))
+    if (y.hi >= 0x1p-960) {
+        lf = dist_log_tail(a, y, !lower);
+        ld = log_density_std(a, y) + dd::log(y);
+    } else {
+        // y below 2^-960 (a small shape's upper root e^(-q/a), a normal or subnormal double: it
+        // was refused here, NaN for q between ~665 a and ~745 a; 2026-11-19, T52): the tail from
+        // log r - log s (ratio_tail's leading term, Q = -expm1(a log y + ...) to O(y)), and
+        // y f(y) = y^a e^-y / Gamma(a) in logs
+        lf = ratio_tail(a, r, s, !lower, true);
+        const DD ly = num::log_dd(r) - num::log_dd(s);
+        ld = ly * a - y.hi - special::Gammaln::f(a);
+    }
     const double slope = std::min(std::exp(ld.hi - std::max(lf, lt.hi)), lower ? a : y.hi + 1.0);
     // (a subnormal r is itself rounded by up to 2^-1075 / r)
     const double tol = (0x1p-50 + 0x1p-1073 / r) * slope + 1e-12 * std::max(1.0, std::fabs(lt.hi));

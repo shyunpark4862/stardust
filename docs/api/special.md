@@ -154,6 +154,7 @@ betainccinv(a, b, q, /, *, out=None)
   | `betaincinv(a, b, 0)`, `betaincinv(a, b, 1)` | 0, 1 | `betainccinv`은 반대. a, b가 0이면 끝점에서도 NaN, inf이면 (0, 1) 안에서 NaN |
   | `betaincinv(2, 3, 5e-324)`, `betainccinv(2, 3, 5e-324)` | 9.07e-163, 1.0 | **scipy는 NaN** |
   | `betaincinv(0.0102, 36.2, 3.13e-169)` | 0 | **scipy는 2.2e-308** (DBL_MIN에 고정. 근은 1e-16522) |
+- **서브노멀 a의 역함수** (2026-11-19): `gammainccinv(a, q)`는 Q(a, y) = a·E₁(y)이므로 E₁(y) = q/a의 근이다(q/a > 40이면 y = e^(−q/a−γ), 그 밖은 이분). 전에는 NaN이었다. `gammaincinv(a, p)`는 p < 1에서 0이다(근이 e^(log p / a), 모든 double 아래).
 
 ## §5. 로지스틱과 정보량
 ```
