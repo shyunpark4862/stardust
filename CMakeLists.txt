@@ -54,7 +54,9 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/linalg/ops/qr.cpp
   csrc/linalg/ops/spectral.cpp
   csrc/linalg/ops/special.cpp
+  csrc/optimize/batch.cpp
   csrc/optimize/lsq.cpp
+  csrc/optimize/scalar.cpp
   csrc/parallel/pool.cpp
   csrc/regression/glm.cpp
   csrc/regression/linear.cpp

@@ -1,6 +1,6 @@
 # sd.optimize API
 
-> 상태: **초안** (O0, 2026-11-20; O1 2026-11-20). 지금 공개된 것은 결과 객체 `OptimizeResult`(§1.3), 수치 미분 `approx_fprime`·`check_grad`(§2), 비선형 최소제곱 `least_squares`(§3)다(O1). 나머지 풀이 함수는 O2–O5에서 구현한다(docs/design/optimize.md §8). 아래 시그니처는 scipy 1.18.1의 이름과 인자 이름(O3, O10–O12)에 stardust의 규칙을 입힌 안이다. 마일스톤을 시작할 때 정할 것은 본문에 "(O1에서 정한다)"처럼 적고 §9에 모았다.
+> 상태: **초안** (O0, 2026-11-20; O1·O2 2026-11-20). 지금 공개된 것은 결과 객체 `OptimizeResult`(§1.3), 수치 미분 `approx_fprime`·`check_grad`(§2), 비선형 최소제곱 `least_squares`(§3)(O1), 스칼라 근 `root_scalar`(§4), 스칼라 최솟값 `minimize_scalar`(§5), 배치 스칼라 `find_root`·`bracket_root`·`find_minimum`·`bracket_minimum`(§6)(O2)다. 나머지 풀이 함수는 O3–O5에서 구현한다(docs/design/optimize.md §8). 아래 시그니처는 scipy 1.18.1의 이름과 인자 이름(O3, O10–O12)에 stardust의 규칙을 입힌 안이다. 마일스톤을 시작할 때 정할 것은 본문에 "(O1에서 정한다)"처럼 적고 §9에 모았다.
 
 ## §1. 공통 규칙
 
@@ -8,7 +8,7 @@
 - 입력은 위치로만(`fun`, `x0`, `A`, `b`), 옵션은 키워드로만 받는다. 별칭은 없다: scipy의 `success`·`nit` 같은 다른 이름도, 대소문자만 다른 방법 이름도 받지 않는다.
 - **방법 이름은 소문자만** 받는다(O15): `'bfgs'`, `'l-bfgs-b'`, `'nelder-mead'`, `'newton-cg'`, `'trust-ncg'`, `'trust-exact'`, `'brentq'`, `'hybr'` 등. scipy가 받는 다른 대소문자는 소문자 꼴을 짚는 `ValueError`다: `minimize(): 'method' must be lowercase: 'bfgs', not 'BFGS'`. 모르는 이름은 다른 문자열 옵션과 같은 꼴이다(`minimize(): 'method' must be 'nelder-mead', 'bfgs', 'l-bfgs-b', 'newton-cg', 'trust-ncg' or 'trust-exact', not 'cg'`).
 - **반복 상한의 이름은 `max_iter`와 `max_nfev`**다(O14, regression의 `glm`·`lasso`의 `max_iter`, `nls`의 `max_nfev`와 같다). scipy의 `maxiter`(반복 수)는 `max_iter`, `maxfev`·`maxfun`(함수 계산 수)은 `max_nfev`다. 함수의 키워드와 `options`의 키 모두 그렇다. scipy의 이름은 받지 않는다(`minimize(): method='bfgs' has no option 'maxiter' (the iteration cap is 'max_iter')`).
-- 사용자 함수의 추가 인자 `args=()`·`kwargs`는 없다(O12). 상수는 클로저나 `lambda`로 넘긴다: `minimize(lambda x: f(x, a), x0)`.
+- 사용자 함수의 추가 인자 `args=()`·`kwargs`는 없다(O12). 상수는 클로저나 `lambda`로 넘긴다: `minimize(lambda x: f(x, a), x0)`. 배치 스칼라 함수(§6)만 원소마다 다른 상수를 위해 `args`를 받는다(O39).
 - scipy의 개별 함수(`brentq`, `toms748`, `bisect`, `newton`, `fminbound`, `brent`, `golden`, `fmin`, `fmin_bfgs`, `fmin_l_bfgs_b`, `fmin_ncg`, `fsolve`, `leastsq`)는 없다(O10). 방법은 통합 함수의 `method=`로 고른다. `curve_fit`도 없다(O11): 곡선 적합은 `sd.regression.nls`가 추론까지 한다.
 - `x0`(그리고 `A`, `b`, 구간의 끝)은 `sd.ndarray`, 실수의 시퀀스, numpy 배열을 받고 float64로 계산한다(bool·int64는 바꿔서). complex는 `TypeError`(`minimize(): 'x0' must be real, not a complex128 array`)다. `x0`는 1차원이고 유한해야 한다(`ValueError`). 스칼라 함수의 `x0`·`bracket`의 끝은 실수다.
 - 옵션의 검사와 메시지는 다른 영역과 같은 꼴이다(API.md §2.1): bool은 `'adaptive' must be True or False, not int`, int는 `'max_iter' must be an int, not float`, 수는 `'tol' must be a finite number >= 0`, 문자열은 `'method' must be 'trf' or 'lm', not 'x'`.
@@ -19,10 +19,10 @@
 ### §1.2 사용자 함수
 - 사용자 함수는 Python 호출 가능한 객체다. 반복은 C++ 커널이 돌고 함수값은 콜백으로 받는다(`sd.regression.nls`와 같다).
 - 다변수 함수에 넘기는 x는 float64 `sd.ndarray`(1차원, 길이 n)이고, 함수가 고쳐도 반복에는 영향이 없다(새 배열이다). 스칼라 함수(`root_scalar`, `minimize_scalar`)에는 Python `float`를 넘긴다.
-- 돌려받는 값: 스칼라 함수와 `minimize`의 `fun`은 실수 하나, `least_squares`·`root`의 `fun`은 길이 m의 1차원 값, 야코비안은 (m, n)이다. `sd.ndarray`, 실수의 시퀀스, numpy 배열을 받는다(nls의 규칙).
+- 돌려받는 값: 스칼라 함수와 `minimize`의 `fun`은 실수 하나(Python·numpy의 수, 0차원 numpy 배열; 아니면 `root_scalar(): 'f' must return a real number, not shape (1,)`), `least_squares`·`root`의 `fun`은 길이 m의 1차원 값, 야코비안은 (m, n)이다. 배열은 `sd.ndarray`, 실수의 시퀀스, numpy 배열을 받는다(nls의 규칙).
 - 사용자 함수가 낸 에러는 그대로 나간다.
-- 유한하지 않은 함수값의 처리(걸음을 거절하고 신뢰 영역을 줄일지, 멈출지)는 방법마다 정한다(§9). `least_squares`는 nls의 규칙(G74)을 옮겼다: 시험점에서 유한하지 않으면 걸음을 거절하고 신뢰 영역을 줄이며, `x0`에서 유한하지 않으면 `ValueError`(`least_squares(): 'fun' is not finite at 'x0'`)다.
-- 배치 스칼라 함수(§6)의 콜백은 모양이 (k,)인 float64 `sd.ndarray`를 받아 같은 모양을 돌려준다. 이미 끝난 원소는 다음 호출에서 뺀다(scipy `elementwise`와 같다; O2에서 정한다).
+- 유한하지 않은 함수값의 처리(걸음을 거절하고 신뢰 영역을 줄일지, 멈출지)는 방법마다 정한다(§9). 스칼라 근과 최솟값은 scipy의 처리를 따른다(§4, §5). `least_squares`는 nls의 규칙(G74)을 옮겼다: 시험점에서 유한하지 않으면 걸음을 거절하고 신뢰 영역을 줄이며, `x0`에서 유한하지 않으면 `ValueError`(`least_squares(): 'fun' is not finite at 'x0'`)다.
+- 배치 스칼라 함수(§6)의 사용자 함수는 아직 끝나지 않은 원소만 모은 새 float64 `sd.ndarray` (k,)를 받아 k개 값((k,)의 `sd.ndarray`, 실수의 시퀀스, numpy 배열)을 돌려준다(O38, scipy `elementwise`와 같다). 원소는 입력의 순서(배치 모양을 C 순서로 편 것)이고 끝난 원소는 다음 호출에서 빠진다. 시작점에서의 계산(find_root 둘, find_minimum·bracket_minimum 셋, bracket_root 둘)도 모든 원소를 1차원으로 받는다(O48; scipy는 그 호출에 입력의 모양 그대로 넘긴다). 원소마다 다른 상수는 `args`로 넘긴다(O39): 사용자 함수는 `f(x, *args)`로 불리고, args의 배열마다 x와 같은 원소만 모은 새 1차원 배열 (k,)을 받는다.
 
 ### §1.3 결과 `OptimizeResult`
 ```
@@ -36,8 +36,8 @@ OptimizeResult
 
 | 필드 | 뜻 | 주는 함수 |
 |---|---|---|
-| `x` | 해. 다변수는 (n,) `sd.ndarray`, 스칼라는 `float`, 배치는 배치 모양의 배열 | 모두 |
-| `fun` | 해에서의 함수값: 스칼라 목적함수는 `float`, `least_squares`·`root`·`lsq_linear`는 잔차 (m,) | 모두 |
+| `x` | 해. 다변수는 (n,) `sd.ndarray`, 스칼라는 `float`, 배치는 배치 모양의 배열 | 모두(`bracket_root`·`bracket_minimum` 빼고) |
+| `fun` | 해에서의 함수값: 스칼라 목적함수는 `float`, `least_squares`·`root`·`lsq_linear`는 잔차 (m,) | 모두(`root_scalar`·`bracket_root`·`bracket_minimum` 빼고) |
 | `jac` | 해에서의 기울기(최소화) 또는 야코비안 (m, n)(최소제곱) | `minimize`의 기울기를 쓰는 방법, `least_squares` |
 | `hess` | 해에서의 헤시안 | `minimize`의 trust-ncg·trust-exact(`hess`를 줄 때) |
 | `hess_inv` | 헤시안 역행렬의 근사 | `minimize`의 BFGS, L-BFGS-B (꼴은 O3에서 정한다) |
@@ -48,12 +48,12 @@ OptimizeResult
 | `status` | 멈춘 이유의 번호(scipy의 번호, O17) | 모두 |
 | `message` | 멈춘 이유의 글(scipy의 글, O17) | 모두(배치 빼고) |
 | `n_iter` | 반복 수(int, 배치면 int64 배열) | 모두 |
-| `nfev`, `njev`, `nhev` | 함수, 야코비안(기울기), 헤시안을 계산한 수 | 방법마다 |
+| `nfev`, `njev`, `nhev` | 함수, 야코비안(기울기), 헤시안을 계산한 수(`root_scalar`는 f, f′, f″) | 방법마다 |
 | `method` | 쓴 방법의 이름 | 모두(배치 빼고) |
 
 - 스칼라 문제의 숫자 필드는 Python 수다(`converged`는 `bool`, `status`·`n_iter`·`nfev`는 `int`, `fun`은 `float`). 배치 스칼라는 필드마다 배치 모양의 `sd.ndarray`다(`x` float64, `converged` bool, `status`·`nfev`·`n_iter` int64).
 - `nfev`는 사용자 함수를 부른 수 전부다. 차분 야코비안의 호출도 센다(O18, nls와 같다). scipy 1.18.1의 `least_squares`는 두 방법 모두, `minimize`도 차분의 호출을 세지 않으므로 차분을 쓰면 scipy의 `nfev`와 다르다(scipy의 수는 `nfev − (차분 한 번의 호출 수)·njev`다). `njev`는 야코비안(기울기)을 계산한 수다: 사용자 함수의 호출 수, 또는 차분 야코비안의 수.
-- `root_scalar`의 결과도 이 클래스다(scipy의 `RootResults`의 `root`·`iterations`·`function_calls`·`flag`가 아니라 `x`·`n_iter`·`nfev`·`message`; O2에서 정한다).
+- `root_scalar`의 결과도 이 클래스다: scipy `RootResults`의 `root`·`iterations`·`function_calls`·`flag` 대신 `x`·`n_iter`·`nfev`(와 `njev`·`nhev`)·`message`다(O4, §4).
 
 ### §1.4 멈춤, 상한, 경고
 - **모든 호출은 정해진 시간 안에 끝난다.** 반복 방법은 반복 수와 함수 호출 수에 상한이 있다(기본값은 scipy의 것). 상한에 닿으면 마지막 점과 `converged=False`를 돌려준다(regression G32와 같다). 예외는 내지 않는다(scipy의 `nnls`는 `RuntimeError`를 낸다; O5에서 정한다).
@@ -65,12 +65,12 @@ OptimizeResult
 - 공개 함수의 에러는 함수 이름과 `(): `로 시작한다(API.md §2.1): `least_squares(): 'x0' must be 1-dimensional, not shape (2, 2)`, `minimize(): 'fun' must be callable, not int`.
 - 사용자 함수가 틀린 모양을 돌려주면 `ValueError`다: `minimize(): 'fun' must return a real number, not shape (3,)`, `least_squares(): 'fun' must return a 1-dimensional array, not shape (3, 2)`, `least_squares(): 'jac' must return shape (40, 3), not (40, 2)`, `root(): 'fun' must return 3 values (one per variable), not 2`.
 - 방법과 맞지 않는 인자는 `ValueError`다: `least_squares(): method='lm' takes no bounds (method='trf' does)`(nls와 같다), `root_scalar(): 'x0' is required when method='newton'`, `root_scalar(): 'bracket' is required when method='brentq'`, `minimize(): method='nelder-mead' takes no 'hess'`.
-- 구간: `root_scalar(): 'bracket' must be a pair (a, b), not 3 values`, `minimize_scalar(): 'bounds' must be a pair (lower, upper), not 3 values`, `minimize_scalar(): the lower bound must be less than the upper bound`, `least_squares(): 'x0' must be within 'bounds'`.
-- 근을 끼지 않는 구간(`f(a)`와 `f(b)`의 부호가 같다)을 `ValueError`로 할지 `converged=False`로 할지는 O2에서 정한다.
+- 구간: `root_scalar(): 'bracket' must be a pair (a, b), not 3 values`, `minimize_scalar(): 'bounds' must be a pair (lower, upper), not 3 values`, `minimize_scalar(): the lower bound must not be greater than the upper bound`, `least_squares(): 'x0' must be within 'bounds'`.
+- 근을 끼지 않는 구간(`f(a)`와 `f(b)`의 부호가 같다)은 `root_scalar`에서 `ValueError`다(O32, scipy와 같다): `root_scalar(): 'bracket' does not enclose a root: f(a) and f(b) have the same sign (f(1.0) = 0.5, f(2.0) = 1.5)`. 배치 `find_root`는 그 원소의 `status`가 −1이다(§6).
 
 ### §1.6 스레드와 GIL
 - 사용자 함수가 Python이라 반복은 GIL을 쥔 채 돈다(API.md §3). 큰 선형대수(QR, SVD, Cholesky)만 linalg의 10µs 규칙으로 GIL을 놓는다. 사용자 함수 안의 큰 sd 연산은 그 영역의 규칙대로 GIL을 놓는다.
-- 배치 스칼라 함수(§6)는 원소마다의 상태 갱신을 C++에서 배열 전체로 하므로, 원소가 많으면 그 부분이 스레드로 나뉜다(기준값은 O2에서 잰다).
+- 배치 스칼라 함수(§6)는 원소마다의 상태 갱신을 C++에서 1스레드로 한다. 호출 사이의 그 계산은 원소 하나에 수 ns로 사용자 함수의 계산보다 작다(`bench/optimize/o2/speed.md`). 사용자 함수 안의 sd 연산은 그 영역의 규칙대로 스레드를 쓴다.
 
 ## §2. 수치 미분 (O1)
 ```
@@ -107,35 +107,50 @@ nnls(A, b, /, *, max_iter=None)
 ```
 root_scalar(f, /, *, method=None, bracket=None, fprime=None, fprime2=None, x0=None, x1=None, xtol=None, rtol=None, max_iter=None, options=None)
 ```
-- `method`: `'brentq'`(Brent 1973, scipy의 C 구현과 같은 걸음), `'toms748'`(Alefeld–Potra–Shi 1995), `'bisect'`, `'newton'`, `'halley'`, `'secant'`. scipy의 `'brenth'`, `'ridder'`는 없다.
-- `method=None`이면 scipy의 규칙으로 고른다: `bracket`이 있으면 `'brentq'`, 없고 `x0`와 `fprime`·`fprime2`가 있으면 `'halley'`, `fprime`만 있으면 `'newton'`, `x1`이 있으면 `'secant'`, `x0`만 있으면 `'newton'`(도함수는 2점 차분). 아무것도 없으면 `ValueError`(`root_scalar(): give 'bracket' or 'x0'`)다.
-- 기본 허용오차는 scipy의 것이다: 구간법(brentq, toms748, bisect)은 `xtol` 2×10⁻¹², `rtol` 4u ≈ 8.88×10⁻¹⁶, `max_iter` 100; newton·halley·secant는 `xtol` 1.48×10⁻⁸, `rtol` 0, `max_iter` 50. 구간법의 기본을 "근을 끼는 구간이 1 ULP가 될 때까지"로 할지는 O2에서 정한다(구간법은 그 정확도에 이를 수 있다; 참값은 `tools/optimize_ref.py`).
-- `fprime=True`(f가 (f, f′)를 돌려준다)처럼 scipy가 bool을 받는 꼴을 둘지는 O2에서 정한다. `options`에 남는 것은 toms748의 `k`(기본 1)다.
-- 결과: `x fun converged status message n_iter nfev method`. 근을 끼지 않는 구간은 O2에서 정한다(§1.5).
+- `method`: `'brentq'`(Brent 1973, scipy의 C 구현과 같은 걸음), `'toms748'`(Alefeld–Potra–Shi 1995, scipy의 `TOMS748Solver`), `'bisect'`(scipy의 C 구현), `'newton'`, `'halley'`, `'secant'`(scipy `newton()`의 스칼라 판). scipy의 `'brenth'`, `'ridder'`는 없다.
+- `method=None`이면 scipy의 규칙으로 고른다: `bracket`이 있으면 `'brentq'`, 없고 `x0`와 `fprime`·`fprime2`가 있으면 `'halley'`, `fprime`만 있으면 `'newton'`, `x1`이 있으면 `'secant'`, `x0`만 있으면 `'newton'`(도함수는 차분). 아무것도 없으면 `ValueError`(`root_scalar(): give 'bracket' or 'x0'`)다.
+- 방법마다 받는 인자: 구간법(brentq, toms748, bisect)은 `bracket=(a, b)`(유한한 실수 둘)를 꼭 받고 `x0`·`x1`·`fprime`·`fprime2`는 받지 않는다. newton은 `x0`와 `fprime`(없으면 scipy처럼 2점 차분 (f(x + h) − f(x))/h, h = 2⁻²⁶·sign(x)·max(1, |x|)), halley는 `x0`·`fprime`·`fprime2`, secant는 `x0`와 `x1`(없으면 scipy처럼 x0(1 + 10⁻⁴) ± 10⁻⁴; `x0`와 달라야 한다)을 받는다. 맞지 않는 인자는 `ValueError`다(`root_scalar(): method='brentq' takes no 'x0'`, `root_scalar(): 'x0' is required when method='newton'`). scipy는 쓰지 않는 인자를 무시한다. `x0`·`x1`은 유한해야 한다.
+- 구간의 끝(O47): 유한해야 한다. brentq와 bisect는 (b, a)도 받는다(scipy의 C 코드와 같다). toms748은 a < b여야 한다(scipy와 같다, `root_scalar(): method='toms748' needs a < b in 'bracket', not (2.0, 0.0)`). a == b는 근을 끼지 않는 구간이라 `ValueError`다(f(a) = 0이면 a가 근이다).
+- `fprime`·`fprime2`는 호출 가능한 객체나 None이다. scipy의 `fprime=True`(f가 (f, f′)를 돌려준다)는 없다(O34): `root_scalar(): 'fprime' must be callable, not bool`.
+- **허용오차** (O33): scipy의 기본값이다. 구간법은 `xtol` 2×10⁻¹², `rtol` 4u ≈ 8.88×10⁻¹⁶, `max_iter` 100; newton·halley·secant는 `xtol` 1.48×10⁻⁸, `rtol` 0, `max_iter` 50. 멈춤의 뜻도 scipy의 것이다: brentq는 근을 끼는 구간의 반이 (xtol + rtol·|x|)/2보다 작을 때, bisect는 반으로 줄인 걸음이 xtol + rtol·|x|보다 작을 때, toms748은 |a − b| ≤ xtol + rtol·|b|일 때, newton·halley·secant는 마지막 걸음이 xtol + rtol·|x| 이하일 때 멈춘다(f가 정확히 0인 점에서도 멈춘다). 기본값은 "반올림까지"가 아니다.
+- `xtol=0`이면 구간법은 rtol만으로 멈추므로 끝자리 몇 개까지 간다: Arb 참값과 견주면 brentq는 3 ULP, toms748(`rtol` = u)은 1 ULP, bisect는 4 ULP 안이다(f가 double로 정확히 0인 점에서 멈춘 경우는 빼고; docs/design/optimize.md §7). 근이 0이면 정규수의 끝까지 줄어들어야 하므로 `max_iter`를 늘린다(bisect 1,100번, brentq 200번이면 시험 문제가 모두 수렴한다). scipy는 `xtol=0`을 받지 않는다.
+- `xtol`과 `rtol`은 0 이상의 유한한 수다. 구간법의 `rtol`은 scipy의 하한(brentq·bisect 4u, toms748 u) 이상이어야 한다(`root_scalar(): 'rtol' must be >= 8.9e-16 (4 times the machine epsilon) when method='brentq'`). `max_iter`는 brentq·bisect가 0 이상, 나머지가 1 이상이다(scipy와 같다).
+- `options`: toms748의 `k`(1–100, 기본 1: 반복 하나에서 역보간·뉴턴 걸음을 하는 수)만 있다. 100을 넘으면 `ValueError`다(O46; scipy는 경고하고 100으로 한다). 다른 키는 `ValueError`(`root_scalar(): method='brentq' has no option 'k'`)다.
+- 결과: `x converged status message n_iter nfev method`, newton·halley는 `njev`(도함수의 수: `fprime`의 호출 또는 차분), halley는 `nhev`(`fprime2`의 호출)도 있다. `nfev`는 `f`의 호출 수다(newton의 차분이 부르는 f(x + h)도 센다). scipy의 `function_calls`는 세 함수의 호출을 합한 수다: newton·halley는 `nfev + njev + nhev`, 차분 newton은 `nfev`(scipy는 f(x)를 두 번 부르지만 f와 f′로 센다)와 같다. `fun`은 없다(O40, scipy와 같다: 대부분의 방법이 돌려주는 x에서 f를 계산하지 않는다). 셈을 따로 두는 것은 O41이다.
+- **`status`와 `message`** (O17, scipy의 번호와 글): 0 `'converged'`, −2 `'convergence error'`(`max_iter`), −3 f가 NaN(구간법만: scipy처럼 그 점에서 멈추고 `x`는 그 점, `message`는 `The function value at x=0.5 is NaN; solver cannot continue.`). newton의 도함수가 0이면 −2와 `'Derivative was zero.'`, secant의 두 함수값이 같으면 −2와 `'Tolerance of 1e-07 reached.'`(x1 − x0)다(O43: scipy의 결과는 둘 다 `'convergence error'`이고 이 글은 경고로 낸다; `converged=False`). newton·halley·secant는 NaN을 만나도 scipy처럼 계속 가서 `max_iter`에서 멈춘다. `converged`는 `status == 0`이다.
+- 유한하지 않은 값: brentq·bisect는 ±inf로도 계속 간다(부호만 쓴다). toms748은 ±inf에서도 NaN처럼 그 점에서 멈추고 status −3이다(O45, `message`는 `The function value at x=1.0 is inf; solver cannot continue.`). scipy는 toms748의 ±inf에 `ValueError`를 낸다.
+- 근을 끼지 않는 구간은 `ValueError`다(O32, §1.5). 구간의 끝에서 f가 0이면 그 끝이 근이다(`n_iter` 0; toms748은 f(a) = 0이면 f(b)를 부르지 않는다).
 
 ## §5. 스칼라 최솟값 (O2)
 ```
 minimize_scalar(fun, /, *, bracket=None, bounds=None, method=None, tol=None, options=None)
 ```
-- `method`: `'brent'`(scipy의 `Brent`: 포물선 보간과 황금분할), `'golden'`, `'bounded'`(scipy `fminbound`, Brent의 fmin). None이면 `bounds`가 있을 때 `'bounded'`, 없으면 `'brent'`다(scipy).
-- `bracket`: (a, b) 또는 (a, b, c). 두 점이면 scipy의 `bracket`처럼 내리막으로 넓혀 세 점을 찾는다. `bounds=(lower, upper)`는 `'bounded'`만 받는다(`minimize_scalar(): method='brent' takes no bounds`).
-- 옵션(scipy의 기본): brent `xtol=1.48e-08`, `max_iter=500`; golden `xtol=1.4901161193847656e-08`, `max_iter=5000`; bounded `xatol=1e-05`, `max_iter=500`. `tol`은 brent·golden의 `xtol`, bounded의 `xatol`이다.
+- `method`: `'brent'`(scipy의 `Brent`: 포물선 보간과 황금분할), `'golden'`(scipy의 황금분할), `'bounded'`(scipy `fminbound`, Brent의 fmin). None이면 `bounds`가 있을 때 `'bounded'`, 없으면 `'brent'`다(scipy).
+- `bracket`(brent, golden): None이면 scipy처럼 (0, 1)에서, (xa, xb) 두 점이면 그 두 점에서 scipy의 `bracket`(내리막으로 황금비 1.618034씩 넓히고 포물선으로 외삽, 한 번에 110배까지, 1,000번까지)으로 f(xb)가 양 끝보다 작은 세 점을 찾는다. 세 점 (xa, xb, xc)이면 xa < xb < xc(또는 거꾸로)이고 f(xb)가 f(xa)와 f(xc)보다 작아야 한다: 아니면 `ValueError`(`minimize_scalar(): 'bracket' must have xa < xb < xc (or xc < xb < xa), not (0.0, 3.0, 2.0)`, `minimize_scalar(): 'bracket' must have f(xb) < f(xa) and f(xb) < f(xc), not f(xa) = 1.0, f(xb) = 0.0, f(xc) = 0.0`; 세 값을 계산한 뒤다). 구간의 끝은 유한한 실수다.
+- 세 점을 찾지 못하면 scipy처럼 `converged=False`이고 세 점 가운데 f가 가장 작은 점(NaN이 있으면 NaN)을 돌려준다(`status` 3, scipy `BracketError`의 글 `The algorithm terminated without finding a valid bracket. Consider trying different initial points.`, `n_iter` 0). 찾기가 1,000번을 넘으면 scipy는 `RuntimeError`를 내지만 여기서는 `status` 4와 scipy의 그 글이다(§1.4: 상한은 예외가 아니다).
+- `bounds=(lower, upper)`는 `'bounded'`만 받고(`minimize_scalar(): method='brent' takes no bounds (method='bounded' does)`), `'bounded'`는 `bracket`을 받지 않는다. 경계는 유한한 실수이고 lower ≤ upper다(같으면 그 점 하나를 계산하고 멈춘다; scipy와 같다, O47).
+- 옵션(scipy의 기본): brent `xtol=1.48e-08`, `max_iter=500`; golden `xtol=1.4901161193847656e-08`, `max_iter=5000`; bounded `xatol=1e-05`, `max_iter=500`(함수 계산 수의 상한: scipy의 `maxiter`가 `maxfun`이다). `tol`은 brent·golden의 `xtol`, bounded의 `xatol`이다(scipy는 bounded에서 경고를 낸다). `tol`과 `options`의 같은 키를 함께 주면 `ValueError`(`minimize_scalar(): give 'tol' or options['xtol'], not both`)다. scipy의 `disp`는 없다.
 - 최솟값의 위치는 근처에서 f가 평평해 상대 정확도가 √u 정도에서 막힌다. 기본 허용오차가 그 크기다.
-- 결과: `x fun converged status message n_iter nfev method`.
+- 결과: `x fun converged status message n_iter nfev method`. bounded의 `n_iter`는 `nfev`와 같다(scipy와 같다).
+- **`status`와 `message`**: bounded는 scipy의 flag와 글이다(0 `Solution found.`, 1 `Maximum number of function calls reached.`, 2 `NaN result encountered.`). brent·golden은 scipy의 결과에 `status`가 없어 같은 번호를 쓴다: 0(scipy의 글 `\nOptimization terminated successfully;\nThe returned value satisfies the termination criteria\n(using xtol = 1.48e-08 )`), 1 `\nMaximum number of iterations exceeded`, 2 `NaN result encountered.`, 3과 4는 위의 구간 찾기(O44).
 
-## §6. 배치 스칼라 (O2, O5)
+## §6. 배치 스칼라 (O2)
 ```
-find_root(f, init, /, *, tolerances=None, max_iter=None, callback=None)
-bracket_root(f, xl0, xr0=None, /, *, xmin=None, xmax=None, factor=None, max_iter=1000)
-find_minimum(f, init, /, *, tolerances=None, max_iter=100, callback=None)
-bracket_minimum(f, xm0, /, *, xl0=None, xr0=None, xmin=None, xmax=None, factor=None, max_iter=1000)
+find_root(f, init, /, *, args=(), xatol=None, xrtol=None, fatol=None, frtol=None, max_iter=None)
+bracket_root(f, xl0, xr0=None, /, *, xmin=None, xmax=None, factor=None, args=(), max_iter=1000)
+find_minimum(f, init, /, *, args=(), xatol=None, xrtol=None, fatol=None, frtol=None, max_iter=100)
+bracket_minimum(f, xm0, /, *, xl0=None, xr0=None, xmin=None, xmax=None, factor=None, args=(), max_iter=1000)
 ```
-- scipy `optimize.elementwise`의 이름과 뜻이다(O5). 원소마다 따로 풀고 사용자 함수는 배열 전체로 한 번에 부른다. 입력(`init`의 끝, `xl0` 등)은 서로 브로드캐스트하고 그 모양이 결과의 배치 모양이다.
-- `find_root`: Chandrupatla(1997)의 구간법. `init=(xl, xr)`이고 f(xl)과 f(xr)의 부호가 달라야 한다(아니면 그 원소의 `status`가 −1). 멈춤은 scipy와 같다: |xr − xl| < xatol + |x_min|·xrtol 또는 |f(x_min)| ≤ fatol + |f_min0|·frtol, 기본 xatol = 4·tiny, xrtol = 4u, fatol = tiny, frtol = 0(tiny는 가장 작은 정규수).
-- `find_minimum`: Chandrupatla(1998)의 최솟값 판. `init=(x1, x2, x3)`이고 x1 < x2 < x3, f(x1) ≥ f(x2) ≤ f(x3)(하나는 엄격). 멈춤: |x3 − x2|/2 ≤ |x2|·xrtol + xatol 또는 (f1 − 2f2 + f3)/2 ≤ |f2|·frtol + fatol, 기본 xrtol = √u, 나머지는 tiny.
-- `bracket_root`, `bracket_minimum`: scipy와 같은 넓히기(`factor` 기본 2, `xmin`·`xmax`가 있으면 그쪽으로 1/factor씩 다가간다).
-- `status`(scipy의 번호): 0 수렴, −1 구간이 맞지 않음(넓히기는 한계에 닿음), −2 `max_iter`, −3 유한하지 않은 값, −4 `callback`이 멈춤, −5 처음 구간이 `xmin ≤ xl0 < xr0 ≤ xmax`가 아님.
-- 결과: `x fun bracket f_bracket converged status n_iter nfev`(배치 모양의 배열). `nfev`는 그 원소의 함수값 수다(호출 수가 아니다). scipy의 이름 `f_x`를 `fun`으로 할지, `tolerances`의 dict를 `xatol`·`xrtol`·`fatol`·`frtol` 키워드로 풀지, `callback`을 둘지는 O2에서 정한다.
+- scipy `optimize.elementwise`의 이름과 뜻이다(O5). 원소마다 따로 풀고 사용자 함수는 남은 원소 전체로 한 번에 부른다(§1.2, O38). 원소 하나마다 scipy와 같은 점에서 f를 부른다(비트까지; docs/design/optimize.md §7).
+- 입력(`init`의 값, `xl0`, `xmin`, `factor` 등)은 실수, `sd.ndarray`, 실수의 시퀀스, numpy 배열이고 서로 브로드캐스트한다. 그 모양이 결과의 배치 모양이다(`find_root(): the inputs must broadcast together, not shapes (2,), (3,)`). 입력이 모두 실수이면 결과의 필드는 Python 수다(`x` float, `converged` bool, `status`·`n_iter`·`nfev` int; O48). 입력의 NaN·inf는 에러가 아니다: 그 원소만 `status`가 −3(또는 처음 구간이 맞지 않아 −5)이 되고 나머지 원소는 풀린다(O49). `init`은 튜플이나 리스트(또는 첫 축으로 나누는 배열)다.
+- 허용오차는 키워드다(O36, scipy의 `tolerances` dict가 아니다). `callback`은 없다(O37).
+- `args` (O39, scipy와 같다): 사용자 함수의 추가 인자의 튜플(`args=(c,)`; 튜플이 아니면 `TypeError`). 값마다 실수나 배열(`sd.ndarray`, 시퀀스, numpy 배열; dtype은 그대로)이고 입력과 함께 브로드캐스트하여 배치 모양을 정한다. 호출마다 x와 같은 원소만 모은 새 1차원 배열로 넘긴다: `find_root(lambda x, c: x**3 - c, (0.0, 10.0), args=(c,))`.
+- `find_root`: Chandrupatla(1997)의 구간법(scipy `_chandrupatla`). `init=(xl, xr)`이고 f(xl)과 f(xr)의 부호가 달라야 한다(아니면 그 원소의 `status`가 −1이고 `x`·`fun`이 NaN; O32). 멈춤은 scipy와 같다: |xr − xl| < xatol + |x_min|·xrtol 또는 |f(x_min)| ≤ fatol + frtol·min(|f(xl)|, |f(xr)|)(처음 구간의 값). 기본 xatol = 4·tiny, xrtol = 4u, fatol = tiny, frtol = 0(tiny = 2.2×10⁻³⁰⁸, 가장 작은 정규수). `max_iter=None`이면 scipy처럼 2046(= log₂(최대 double) − log₂ tiny)이다. f가 x⁹처럼 근에서 tiny 아래로 내려가면 fatol 판정으로 근에서 떨어진 점(10⁻¹⁷–10⁻³⁵)에서 멈춘다(scipy와 같다).
+- `find_minimum`: Chandrupatla(1998)의 최솟값 판(scipy `_chandrupatla_minimize`). `init=(x1, x2, x3)`을 정렬한 뒤 f(x2) ≤ f(x1), f(x2) ≤ f(x3)이어야 한다(아니면 `status` −1, `x`·`fun`은 NaN). 멈춤: |x3 − x2| ≤ 2(|x2|·xrtol + xatol) 또는 f1 − 2f2 + f3 ≤ 2(|f2|·frtol + fatol). 기본 xatol = fatol = frtol = tiny, xrtol = √u, `max_iter` 100.
+- `bracket_root`: scipy `_bracket_root`의 넓히기. `xr0`의 기본은 xl0 + min((xmax − xl0)/8, 1)이다. 양쪽을 따로 넓힌다: 한계(`xmin`, `xmax`)가 없는 쪽은 반대쪽 처음 점에서의 거리를 `factor`(기본 2)배씩, 한계가 있는 쪽은 한계까지의 거리를 1/factor씩 줄이며 다가간다. 한쪽에서 부호가 바뀌면 그 원소가 끝난다(다른 쪽도 멈춘다). xmin ≤ xl0 < xr0 ≤ xmax가 아니면 `status` −5다. `factor`는 1보다 커야 한다(`bracket_root(): 'factor' must be > 1`).
+- `bracket_minimum`: scipy `_bracket_minimum`. `xl0`의 기본은 xm0 − min((xm0 − xmin)/16, 0.5), `xr0`는 xm0 + min((xmax − xm0)/16, 0.5)다(scipy와 같다). 내리막 쪽으로 걸음을 `factor`배씩 늘리고, 한계가 있으면 한계까지의 거리를 1/factor씩 줄인다. f(xm)이 양 끝 이하(하나는 엄격)가 되면 끝난다. xmin ≤ xl0 < xm0 < xr0 ≤ xmax가 아니면 `status` −5다.
+- **`status`** (scipy의 번호): 0 수렴, −1 find_*는 구간이 근이나 최솟값을 끼지 않음, bracket_*는 한계(xmin·xmax)에 닿음, −2 `max_iter`, −3 유한하지 않은 값(구간의 끝이나 함수값), −5 처음 구간이 맞지 않음(bracket_*). scipy의 −4(`callback`이 멈춤)는 없다(O37). `converged`는 `status == 0`이다.
+- 결과(O35, O42): find_root·find_minimum은 `x fun bracket f_bracket converged status n_iter nfev`, bracket_root·bracket_minimum은 `bracket f_bracket converged status n_iter nfev`다. 필드마다 배치 모양의 `sd.ndarray`다(`x`·`fun` float64, `converged` bool, `status`·`n_iter`·`nfev` int64). scipy의 `f_x`는 `fun`이다. `bracket`은 find_root·bracket_root가 (xl, xr), find_minimum·bracket_minimum이 (xl, xm, xr)이고 `f_bracket`은 그 점의 값이다(배열의 튜플; xl ≤ xr로 정렬). `nfev`는 그 원소의 함수값 수다(호출 수가 아니다; bracket_root는 두 쪽의 합, `n_iter`는 두 쪽의 큰 쪽). `message`와 `method`는 없다.
 
 ## §7. 다변수 최소화 (O3, O4)
 ```
@@ -172,7 +187,7 @@ O0에서 본문에 남긴 질문을 마일스톤별로 모았다. docs/design/op
 
 - 모든 마일스톤에 걸친 질문(반복 상한의 이름, 방법 이름의 대소문자, `options` dict, `status`·`message`)은 정했다(O14–O17, §1.1).
 - **O1**: 정했다(2026-11-20, docs/design/optimize.md §1.1 O18–O31).
-- **O2**: 근을 끼지 않는 구간(`ValueError` 또는 `converged=False`), 구간법의 기본 허용오차, `root_scalar`의 결과 이름(§4), `fprime=True`, 배치의 `f_x`/`fun`, `tolerances` dict/키워드, `callback`, 배치의 콜백 규약.
+- **O2**: 정했다(2026-11-20, docs/design/optimize.md §1.1 O32–O38, 구현하며 생긴 질문은 O39–O49).
 - **O3–O4**: 기본 방법, `callback`, `hess_inv`의 꼴(L-BFGS-B), `bounds`의 꼴(쌍의 시퀀스, `Bounds`), 경계 밖의 `x0`, 유한하지 않은 함수값, `final_simplex`, L-BFGS-B의 `maxls`(선 탐색 상한)도 O14처럼 `max_ls` 꼴로 바꿀지.
 - **O5**: hybr의 기본 허용오차, `root`의 다른 방법, `fjac`·`r`·`qtf`, `nnls`의 결과(§3), `lsq_linear`의 `unbounded_sol`과 `lsmr`.
 

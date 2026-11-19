@@ -166,3 +166,76 @@ def _bounds(bounds, func, n):
     if not all(a < b for a, b in zip(lb, ub)):
         raise ValueError(f"{func}(): each lower bound must be less than its upper bound")
     return lb, ub
+
+
+def _check_options(options, func, method, known):
+    """options (None or a dict) as a new dict, every key one the method knows (O16): another key
+    is a ValueError, scipy's names of the iteration caps with the name used here (O14)."""
+    if options is None:
+        return {}
+    if not isinstance(options, dict):
+        raise TypeError(f"{func}(): 'options' must be a dict or None, not {_type_name(options)}")
+    for key in options:
+        if key not in known:
+            hint = ""
+            if key == "maxiter":
+                hint = " (the iteration cap is 'max_iter')"
+            elif key in ("maxfev", "maxfun"):
+                hint = " (the cap on function evaluations is 'max_nfev')"
+            raise ValueError(f"{func}(): method={method!r} has no option {key!r}{hint}")
+    return dict(options)
+
+
+def _finite_real(v, func, arg):
+    """A finite real number (an int or a float) as a float."""
+    x = _real(v, func, arg)
+    if not math.isfinite(x):
+        raise ValueError(f"{func}(): '{arg}' must be finite")
+    return x
+
+
+def _real_pair(v, func, arg, names, counts=(2,)):
+    """A sequence (tuple, list, sd.ndarray, numpy array) of len in counts finite real numbers,
+    as a list of floats; names is how the message calls the pair, e.g. '(a, b)'."""
+    if isinstance(v, (str, bytes, dict)) or not hasattr(v, "__len__") or not hasattr(v, "__getitem__"):
+        raise TypeError(f"{func}(): '{arg}' must be a {names}, not {_type_name(v)}")
+    if len(v) not in counts:
+        raise ValueError(f"{func}(): '{arg}' must be a {names}, not {len(v)} values")
+    out = []
+    for t in (v[i] for i in range(len(v))):
+        if isinstance(t, bool) or not isinstance(t, numbers.Real):
+            raise TypeError(f"{func}(): the values of '{arg}' must be real numbers, not {_type_name(t)}")
+        t = float(t)
+        if not math.isfinite(t):
+            raise ValueError(f"{func}(): the values of '{arg}' must be finite")
+        out.append(t)
+    return out
+
+
+def _scalar_check(func):
+    """check(value, what) for the scalar kernels: a value the user's function returned that is not
+    a Python float, as one (a real number or a 0-d numpy array), or the error."""
+
+    def check(v, what):
+        if isinstance(v, bool) or v is None or isinstance(v, (str, bytes)):
+            raise TypeError(f"{func}(): '{what}' must return a real number, not {_type_name(v)}")
+        if isinstance(v, numbers.Real):
+            return float(v)
+        if isinstance(v, numbers.Complex):
+            raise TypeError(f"{func}(): '{what}' must return a real number, not complex")
+        shape = getattr(v, "shape", None)
+        if shape is None and isinstance(v, (list, tuple)):
+            shape = (len(v),)
+        if shape is not None:
+            shape = tuple(shape)
+            kind = getattr(getattr(v, "dtype", None), "kind", "")
+            if shape == () and kind and kind in "iuf":
+                return float(v)
+            if shape == () and kind == "c":
+                raise TypeError(f"{func}(): '{what}' must return a real number, not complex")
+            if shape == ():
+                raise TypeError(f"{func}(): '{what}' must return a real number, not {_type_name(v)}")
+            raise ValueError(f"{func}(): '{what}' must return a real number, not shape {shape}")
+        raise TypeError(f"{func}(): '{what}' must return a real number, not {_type_name(v)}")
+
+    return check
