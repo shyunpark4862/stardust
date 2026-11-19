@@ -335,6 +335,14 @@ array([1.0, 0.0], dtype=float64)
 
 첫 줄의 둘째 성분은 참값이 $1/(5 \times 10^{-324}) \approx 2 \times 10^{323}$이라 담을 수 없어서 `inf`예요. 둘째 줄은 우변의 둘째 값이 0이라 그 성분도 정확히 0이에요. 기본 `rtol`이면 `5e-324`를 0으로 쳐서 둘 다 `[1.0, 0.0]`이에요.
 
+원소가 모두 아주 작은 행렬도 같은 규칙이에요. 아래 행렬은 특이값이 둘 다 `5e-324`라 기본 `rtol`에서도 둘 다 남아요. 해의 첫 성분은 범위를 넘어 `inf`이고, 우변이 0인 둘째 성분은 정확히 0이에요.
+
+```python
+>>> t2 = sd.asarray([[5e-324, 0.0], [0.0, 5e-324]])
+>>> sd.linalg.lstsq(t2, sd.asarray([1.0, 0.0])).solution
+array([inf, 0.0], dtype=float64)
+```
+
 `rtol`은 [matrix_rank](/api/linalg/matrix_rank/)와 [pinv](/api/linalg/inv/)의 `rtol`과 같은 뜻이에요.
 
 ## 조심할 점
@@ -476,6 +484,7 @@ True
 
 - 결과는 `(solution, rank, singular_values)` **세 개**예요. `np.linalg.lstsq`와 `scipy.linalg.lstsq`가 주는 잔차 제곱합(`residuals`)은 없어요. 필요하면 `b - a @ solution`으로 계산하세요.
 - 허용오차 옵션의 이름은 `rcond`나 `cond`가 아니라 `rtol`이고, 이름을 붙여서만 넘겨요. 기본값은 `max(M, N) × eps`예요.
+- 원소가 아주 작은 행렬도 numpy와 같은 해를 내요. 위의 `t2`에서 `np.linalg.lstsq`도 `[inf, 0.]`이에요.
 - `rtol`이 1 이상이면 랭크 0, 해 0이에요. numpy는 이 경우 허용오차로 `eps`를 써서 풀어요.
 - `rtol=0`이면 정확히 0인 특이값만 버려요(`matrix_rank(rtol=0)`과 같은 랭크). numpy의 `rcond=0`은 `eps`를 써서, 위의 `s`에서 `rank`가 1이고 해는 기본값과 같은 `[0.2, 0.4]`예요.
 - `rank`는 행렬 하나면 Python `int`예요. `a`가 3차원 이상이면 행렬 여러 개를 한 번에 풀어요(numpy의 `lstsq`는 2차원만 받아요).

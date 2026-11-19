@@ -257,6 +257,7 @@ True
 | `dfd = inf` | `chndtr(dfn, nc, dfn·f)` | 분모가 1로 고정돼서 비중심 카이제곱을 `dfn`으로 나눈 것이 돼요 |
 | `dfn = inf` | `fdtr(inf, dfd, f)` | 분자가 1로 고정돼요 |
 | `nc = inf` | `ncfdtr` 0, `ncfdtrc` 1 | 분포가 무한대로 밀려나요. `f`도 inf이면 NaN |
+| `dfn`이 아주 작음(약 1e-300 아래) | $e^{-\lambda/2}$ × `fdtr(dfn, dfd, f)` | 확률 $e^{-\lambda/2}$만큼은 중심 F처럼 움직이고, 나머지는 아주 큰 `f` 쪽에 있어요. `ncfdtrc`는 그 나머지 |
 | `ncfdtri`의 `p = 0`, `p = 1` | 0, inf | 정의역의 두 끝 |
 | `ncfdtri`의 `p`가 0보다 크고 2.2e-308보다 작음(서브노멀), `nc > 0` | NaN | 이렇게 작은 확률에서는 근을 믿을 만하게 구할 수 없어요 |
 | `dfn ≤ 0`, `dfd ≤ 0`, `nc < 0`, `f < 0` | NaN | 정의역 밖 |
@@ -270,6 +271,8 @@ True
 0.4101075585254692
 >>> sd.special.ncfdtrc(3, 20, sd.inf, 2)
 1.0
+>>> sd.special.ncfdtr(1e-310, 5, 2, 1)
+0.36787944117144233
 >>> sd.special.ncfdtr(3, 20, -1, 2)
 nan
 >>> sd.special.ncfdtri(3, 20, 5, 1.0)

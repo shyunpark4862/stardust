@@ -718,7 +718,7 @@ LAPACK의 `dlalsd`는 `rcond ≤ 0`이나 `rcond ≥ 1`을 아무 말 없이 $\v
 그래서 `rtol` < $\varepsilon$이면 `gelsd`를 부르지 않고 두 단계로 풀어요.
 
 1. **랭크는 `matrix_rank`의 특이값으로.** 특이값은 `matrix_rank`, `svdvals`, `cond`가 같이 쓰는 `singular_values`(`gesvd`의 값 전용 모드)로 구하고, $\text{rtol}\cdot\sigma_1$보다 큰 것의 개수가 랭크예요. 같은 함수, 같은 비교라서 `rank`는 언제나 `matrix_rank(a, rtol=rtol)`과 같고, 결과의 `singular_values`는 `svdvals(a)`와 비트까지 같아요.
-2. **해는 SVD에서 직접.** `gesdd`(`'S'`)로 $U$, $V^{\mathsf H}$를 구하고 $x = V \Sigma_r^{-1} U^{\mathsf H} b$를 만들어요. $U^{\mathsf H} b$를 `gemm`으로 구하고, 앞의 `rank`개 성분만 `gesdd`가 함께 구한 특이값으로 나누고 나머지는 0으로 둔 뒤, $V$를 곱하는 `gemm`이 결과 자리에 바로 써요. 이 풀이는 `svd_solve` 하나로 묶여 있고, 아래의 `gelsd` 경로도 같은 함수를 불러요.
+2. **해는 SVD에서 직접.** `gesdd`(`'S'`)로 $U$, $V^{\mathsf H}$를 구하고 $x = V \Sigma_r^{-1} U^{\mathsf H} b$를 만들어요. $U^{\mathsf H} b$를 `gemm`으로 구하고, 앞의 `rank`개 성분만 `gesdd`가 함께 구한 특이값으로 나누고 나머지는 0으로 둔 뒤, $V$를 곱하는 `gemm`이 결과 자리에 바로 써요. 이 풀이는 `svd_solve` 하나로 묶여 있어요.
 
 ```cpp
 // ops/qr.cpp의 lstsq (줄임)
@@ -787,7 +787,7 @@ LAPACK의 최소제곱 드라이버 중 랭크 부족을 다루는 것은 셋이
 - **`gelsy`는 정칙인 정사각에서 2–4배 빨라요.** 이중대각화와 SVD가 없고 열 피벗 QR 하나가 주된 비용이라서예요. 하지만 랭크가 부족하면 최대 2.4배, 가로로 긴 행렬에서 1.7배 느렸어요. 무엇보다 **특이값을 주지 않아요.** `lstsq`의 결과에는 특이값이 있어야 하고, `gelsy`로 그것을 주려면 SVD를 따로 한 번 더 해야 해요.
 - **랭크 판정이 `rtol`의 정의와 같아요.** `gelsy`의 랭크는 조건수 **추정**으로 정해서, "특이값이 `rtol`×최대 이하이면 0"이라는 정의와 정확히 맞지 않아요. `gelsd`는 특이값을 직접 문턱과 비교하므로 `matrix_rank`, `pinv`와 같은 규칙이에요(`rtol` < ε은 위 절 참고).
 
-numpy와 scipy(`lstsq`의 기본 드라이버)도 `gelsd`를 써요. 그래서 `rtol` ≥ ε이면(기본값 포함) stardust의 `lstsq`는 numpy와 같은 루틴을 같은 인자로 부르고, 해·랭크·특이값이 비트까지 같아요.
+numpy와 scipy(`lstsq`의 기본 드라이버)도 `gelsd`를 써요. 그래서 `rtol` ≥ ε이면(기본값 포함) stardust의 `lstsq`는 numpy와 같은 루틴을 같은 인자로 불러요. 랭크와 특이값은 언제나 비트까지 같고, 해도 정사각·세로로 긴 행렬에서는 비트까지 같아요. 가로로 긴 행렬은 모양에 따라 해의 마지막 자리가 달라요(무작위 9×11 행렬 40개 가운데 34개, 5×7은 28개, 상대 차이 $3 \times 10^{-14}$ 아래; 3×8, 13×20은 모두 같아요).
 
 ### rtol ≥ 1: 모든 특이값이 0
 
@@ -803,11 +803,6 @@ if (lapack::gelsd(m, n, nrhs, A, lda, B, ldb, sv.get(), rc, rank, s) > 0)
 if (all_zero) {
     rank = 0;
     std::fill(xi, xi + n * r.k, T(0));
-} else if (r.k > 0 && rank > 0 && sv.get()[rank - 1] < kTinySingular) {
-    // 남긴 특이값이 서브노멀: gelsd의 랭크로 SVD 풀이를 다시 해요 (아래 절)
-    if (!pack(a.dtype(), a.data() + off[0], m, n, a.stride(-2), a.stride(-1), A, lda, true)) return kNonFinite;
-    if (!pack(y.dtype(), y.data() + off[1], m, r.k, r.rs, r.cs, B, ldb, true)) return kNonFiniteB;
-    if (const int code = svd_solve(rank)) return code;
 } else {
     for (lint j = 0; j < r.k; ++j) std::copy(B + j * ldb, B + j * ldb + n, xi + j * n);
 }
@@ -830,16 +825,20 @@ LstsqResult(solution=array([0.0, 0.0], dtype=float64), rank=0, singular_values=a
 - `add_shifted`는 따로 모은 항이 정확히 0이면 더하지 않아요. 그래서 정확한 0은 0으로 남고(결과의 −0.0도 부호를 지켜요), 넘치는 성분만 $2^{600}$을 곱할 때 ±inf가 돼요. 참값을 반올림한 결과와 같은 inf예요.
 - 서브노멀 특이값이 없으면 `nh = 0`이라 따로 모으는 일이 없고, 다른 항의 비트도 바뀌지 않아요.
 
-`gelsd` 경로는 `gelsd`가 돌려준 특이값 가운데 남긴 마지막 것(`sv.get()[rank - 1]`)이 $2^{-1022}$ 아래일 때만, 덮어쓴 `A`와 `B`를 다시 패킹하고 `gelsd`의 랭크로 `svd_solve`를 불러요. `gelsd`는 안에서 $1/\sigma$를 셈하는 방식이 따로 정해져 있어서, 이런 값이 있을 때 정확한 0이 0으로 남는다는 보장을 같은 헬퍼로 맞추는 거예요. 그런 행렬은 원소가 모두 서브노멀 근처인 드문 경우라 SVD를 한 번 더 하는 비용은 거의 문제가 되지 않아요. 복소수와 배치도 같은 길이에요.
+이렇게 나누는 것은 `rtol` < ε의 SVD 풀이(와 `pinv`)뿐이고 복소수와 배치도 같은 길이에요. `gelsd` 경로(`rtol` ≥ ε)는 따로 할 일이 없어요. 남긴 특이값은 $\text{rtol}\cdot\sigma_1 \ge \varepsilon\sigma_1$보다 크므로, 그것이 $2^{-1022}$ 아래이려면 $\sigma_1 < 2^{-1022}/\varepsilon = 2^{-970}$이어야 해요. 그런데 `dgelsd`의 `smlnum`은 `dlamch('S')/dlamch('P')` $= 2^{-1022}/2^{-52} = 2^{-970}$이고, 가장 큰 원소의 절댓값은 $\sigma_1$ 이하예요. 그래서 이런 행렬은 언제나 1단계의 크기 조정에 걸려요. `dlascl`이 `A`의 가장 큰 원소를 `smlnum`까지 올려(`B`도 같은 범위 검사를 해요) 풀고, 3단계에서 해에 그 비율을 되돌려 곱해요. 안에서 $1/\sigma$가 넘치지 않으니 정확한 0은 0으로 남고, double을 넘는 성분만 마지막 곱셈에서 inf가 돼요. numpy도 같은 `gelsd`를 같은 인자로 부르므로 같은 해를 내요(아래 `t2`에서 둘 다 `[inf, 0.0]`).
 
 ```python
 >>> t = sd.asarray([[1.0, 0.0], [0.0, 5e-324]])
 >>> sd.linalg.lstsq(t, sd.asarray([1.0, 1.0]), rtol=0).solution
 array([1.0, inf], dtype=float64)
 >>> t2 = sd.asarray([[5e-324, 0.0], [0.0, 5e-324]])
+>>> sd.linalg.lstsq(t2, sd.asarray([1.0, 0.0])).solution
+array([inf, 0.0], dtype=float64)
 >>> sd.linalg.lstsq(t2, sd.asarray([1.0, 0.0]), rtol=1e-300).solution
 array([inf, 0.0], dtype=float64)
 ```
+
+첫 줄은 `rtol = 0`이라 SVD 풀이가 나눠 더한 결과예요. `t2`의 둘째 줄은 기본 `rtol`이라 `gelsd`가 크기 조정으로 푼 결과이고, 셋째 줄은 `rtol = 1e-300`이 ε보다 작아 SVD 풀이로 간 결과예요. 두 경로가 같은 해를 내요.
 
 ### 우변이 0개일 때
 
@@ -951,11 +950,11 @@ Accelerate는 `geqrf`를 n = 1024까지 사실상 1스레드로 돌려요(CPU �
 |---|---|---|---|
 | `qr` (reduced, complete) | numpy 2.5.4 | 비트까지 같아요 | 같은 `geqrf` → `orgqr`/`ungqr`, 같은 크기 인자 |
 | `qr_pivoted` | scipy 1.18.1 `qr(pivoting=True)` | `Q`, `R`, `perm` 모두 비트까지 같아요 | 같은 `geqp3` → `orgqr`/`ungqr` |
-| `lstsq` (`rtol` ≥ ε, 기본값 포함) | numpy 2.5.4 | 해, 랭크, 특이값이 비트까지 같아요 | 같은 `gelsd`, 같은 `ldb`, 같은 최적 `lwork`(그래서 같은 경로) |
+| `lstsq` (`rtol` ≥ ε, 기본값 포함) | numpy 2.5.4 | 랭크와 특이값은 비트까지 같아요. 해는 정사각·세로로 긴 행렬에서 비트까지 같고, 가로로 긴 일부 모양에서 마지막 자리가 달라요 | 같은 `gelsd`, 같은 `ldb`, 같은 최적 `lwork`(그래서 같은 경로) |
 | `lstsq(rtol ≥ 1)` | numpy | 달라요 (랭크 0, 해 0) | 정의를 따르고 LAPACK의 $\varepsilon$ 대체를 따르지 않아요 |
 | `lstsq(rtol < ε)` | numpy | 달라요 (랭크는 `matrix_rank`와 같음) | numpy는 `rcond=0`을 그대로 넘겨 $\varepsilon$이 쓰이고, stardust는 `gelsd`를 쓰지 않고 SVD로 풀어요 |
 
-비트 일치는 float64와 complex128 모두에서, 정사각·세로로 긴·가로로 긴 모양 모두에서 성립해요. 테스트는 `qr`의 비트 일치를 고정하고, `lstsq`는 상대 $10^{-10}$ 이내로 비교해요. 결과는 메모리 레이아웃, 배치 안의 위치, 스레드 수와도 무관하게 비트까지 같아요. 패킹이 모든 레이아웃을 같은 F-order 버퍼로 만들고, `LapackSlot`이 정렬을 맞추고, 원소마다 같은 `lwork`를 쓰기 때문이에요.
+`qr`의 비트 일치는 float64와 complex128 모두에서, 정사각·세로로 긴·가로로 긴 모양 모두에서 성립해요. `lstsq`의 해는 위 표처럼 가로로 긴 일부 모양에서만 마지막 자리가 달라요. 테스트는 `qr`의 비트 일치를 고정하고, `lstsq`는 상대 $10^{-10}$ 이내로 비교해요. 결과는 메모리 레이아웃, 배치 안의 위치, 스레드 수와도 무관하게 비트까지 같아요. 패킹이 모든 레이아웃을 같은 F-order 버퍼로 만들고, `LapackSlot`이 정렬을 맞추고, 원소마다 같은 `lwork`를 쓰기 때문이에요.
 
 `rtol` ≥ ε일 때 `lstsq`의 `singular_values`는 `gelsd`가 구한 값이라, `svdvals`(`gesvd`의 값 전용 모드)와는 계산 경로가 달라 $10^{-14}$ 수준에서 다를 수 있어요(60×40 무작위 행렬에서 최대 절대 차이 $2.1 \times 10^{-14}$). 둘 다 맞는 값이고, `rtol` ≥ ε인 동안은 `rtol`이나 우변의 개수와 무관하게 비트까지 같아요. `rtol` < ε이면 `svdvals`의 값 그대로예요.
 

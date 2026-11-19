@@ -99,7 +99,7 @@ Traceback (most recent call last):
 TypeError: skew(): 'nan_policy' must be 'propagate', 'omit' or 'raise', not NoneType
 ```
 
-수 옵션(`describe`·`sem`·`zscore`의 `correction`, `entropy`·`differential_entropy`의 `base`, `iqr`의 `scale`, `moment`의 `center`)은 `_real_option` 하나가 float으로 바꿔요. 분포 영역과 같은 함수이고, 다변량 cdf의 `atol`도 이것으로 읽어요.
+수 옵션(`describe`·`sem`·`zscore`의 `correction`, `entropy`·`differential_entropy`의 `base`, `iqr`의 `scale`, `moment`의 `center`와 `order`)은 `_real_option` 하나가 float으로 바꿔요. `order`는 그 값이 유한한 정수인지 한 번 더 봐서, inf와 NaN도 1.5처럼 `every 'order' must be integral`(`ValueError`)이에요. 분포 영역과 같은 함수이고, 다변량 cdf의 `atol`도 이것으로 읽어요.
 
 ```python
 # src/stardust/stats/_distribution.py

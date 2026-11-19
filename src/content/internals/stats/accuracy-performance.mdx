@@ -305,14 +305,14 @@ $2^{52}$, $2^{53}$의 경계는 개수의 연산 때문이에요. 불완전 베�
 | pdf, logpdf | F는 nc가 약 $1.3 \times 10^8$ 초과, t는 $\lvert\text{nc}\rvert$나 $\lvert t\rvert$가 약 $10^{15}$ 초과. 카이제곱은 큰 df와 큰 nc가 함께일 때만(df가 작으면 nc $= 10^{300}$까지 값이 나와요) |
 | mode | t는 $\lvert\text{nc}\rvert > 128\sqrt{1 + \text{df}}$, F는 nc $> 1.3 \times 10^8$ |
 | `ilogcdf`, `ilogccdf` | $\log p \le -2^{62}$ |
-| 아주 작은 자유도 | t는 df $< 2^{-1021}$, F는 dfn이나 dfd $< 2^{-1021}$이면 pdf, cdf 계열, 역함수, median, entropy가 NaN(중심 분포와 같은 경계). 카이제곱은 nc $> 0$이면 df $< 2^{-1021}$에서도 값을 내요(0의 점질량을 품은 포아송 혼합: `NoncentralChiSquared(df=2**-1022, nc=1).cdf(1)` $= 0.73288$). nc $= 0$은 `ChiSquared`처럼 NaN |
+| 아주 작은 자유도 | t는 df $< 2^{-1021}$, F는 dfn이나 dfd $< 2^{-1021}$이면 pdf, cdf 계열, 역함수, median, entropy가 NaN(중심 분포와 같은 경계). 카이제곱은 nc $> 0$이면 df $< 2^{-1021}$에서도 값을 내요. df $= 0$의 극한이라 0에 질량 $e^{-\text{nc}/2}$가 있어요(`NoncentralChiSquared(df=2**-1022, nc=1)`의 `cdf(0)` $= 0.60653$, `cdf(1)` $= 0.73288$, `pdf(0)` $=$ inf, entropy $= -\infty$). nc $= 0$은 `ChiSquared`처럼 NaN |
 | entropy | 질량이 double 범위 밖에 남는 아주 작은 자유도(F의 dfd $= 0.01$, 카이제곱 df $= 0.01$·nc $\le 30$ 등), 반분 12번에 수렴하지 않는 큰 nc(카이제곱 df $= 3.5$에서 약 $7 \times 10^7$부터) |
 
 ### 표본, 다변량, 행렬
 
 | 대상 | NaN이 되는 곳 |
 |---|---|
-| `sample` | `Hypergeometric`은 표준편차 $> 65536$ 또는 total $\ge 2^{53}$, `DiscreteUniform`은 폭 $\ge 2^{64}$, `StudentT`·`NoncentralT`는 df $< 2^{-1021}$, `NoncentralF`는 dfn이나 dfd $< 2^{-1021}$(nc $= 0$ 포함, 다른 자유도가 inf이면 극한 분포의 표본). `Zipf`는 $a > 1025$이면 1, `Beta`·`BetaBinomial`·`F`는 서브노멀 모양에서 극한값 |
+| `sample` | `Hypergeometric`은 표준편차 $> 65536$ 또는 total $\ge 2^{53}$, `DiscreteUniform`은 폭 $\ge 2^{64}$, `ChiSquared`·`StudentT`·`NoncentralT`와 nc $= 0$인 `NoncentralChiSquared`는 df $< 2^{-1021}$, `NoncentralF`는 dfn이나 dfd $< 2^{-1021}$(nc $= 0$ 포함, 다른 자유도가 inf이면 극한 분포의 표본). `Zipf`는 $a > 1025$이면 1, `Beta`·`BetaBinomial`·`F`는 서브노멀 모양에서 극한값 |
 | `Multinomial` | logpmf는 $n$이 약 $10^{13}$을 넘으면 최빈값 근처에서 NaN일 수 있음. entropy는 범주별 표준편차의 합 $> 2^{17}$ 또는 $n > 2^{53}$(점질량은 0) |
 | 다변량 t `cdf` | $d = 3$에서 $\lvert x/\text{sd}\rvert > 10^{100}$이고 조건부 적분으로 넘어가야 할 때(df $\le 1$에서 나와요). 값이 NaN이면 오차 출력도 NaN |
 | `Wishart`, `InverseWishart` | logpdf는 df $\ge 10^9$에서 크기 $np\log n$인 항을 식에서 지운 꼴이라 df $\le 10^{30}$을 보장해요. 남는 반올림의 상한이 $10^{-14}\max(1, \lvert\text{값}\rvert)$를 넘으면 NaN. 그 df는 점에 따라 달라요. 정확히 나타낸 최빈값·평균(scale $= I$)은 df $= 10^{46}$까지 값이고, 원소가 반올림된 점은 $10^{31}$–$3 \times 10^{35}$(가장 이른 곳은 역Wishart $p = 10$, $\kappa = 10^4$의 평균), 분포에서 뽑은 점은 $2.4 \times 10^{32}$–$10^{35}$부터예요. 점이 분포의 폭보다 멀면 값이 다시 나와요 |
