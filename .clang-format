@@ -1,0 +1,54 @@
+# C++ style for csrc/ and bench/ (clang-format 23). tools/format.py applies it, tools/check.py checks it.
+# Chosen to match the existing code where it was consistent; a declaration or call that does not fit
+# on one line opens after "(" and closes on its own line, like ruff format does for Python.
+# Not formatted: .clang-format-ignore (vendored and generated files).
+BasedOnStyle: Google
+ColumnLimit: 120
+IndentWidth: 4
+ContinuationIndentWidth: 4
+AccessModifierOffset: -4
+IndentCaseLabels: true
+NamespaceIndentation: None
+FixNamespaceComments: true
+DerivePointerAlignment: false
+PointerAlignment: Left
+
+# Too long for one line: "f(" / the parameters, one per line / ")". Calls and braced lists break the
+# same way (calls keep several arguments per line; a braced list that is not a table goes one per
+# line, so numeric tables are wrapped in `// clang-format off/on`). if/for/while conditions are
+# not broken this way.
+AlignAfterOpenBracket: true
+BreakAfterOpenBracketFunction: true
+BreakBeforeCloseBracketFunction: true
+BreakAfterOpenBracketBracedList: true
+BreakBeforeCloseBracketBracedList: true
+BreakAfterOpenBracketIf: false
+BreakBeforeCloseBracketIf: false
+BinPackParameters: OnePerLine
+BinPackArguments: true
+LambdaBodyIndentation: Signature
+
+# One-line forms the code uses everywhere: `if (c) return x;`, `for (...) s += a[i];`,
+# `double f(double x) { return x; }`, `case k: return v;`.
+AllowShortIfStatementsOnASingleLine: AllIfsAndElse
+AllowShortLoopsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: All
+AllowShortBlocksOnASingleLine: Always
+AllowShortLambdasOnASingleLine: All
+AllowShortCaseLabelsOnASingleLine: true
+BreakTemplateDeclarations: Leave
+
+# Comments: never rewrapped (the aligned formulas in them stay as written), trailing comments keep
+# their columns, two spaces before `//`.
+ReflowComments: false
+AlignTrailingComments:
+  Kind: Leave
+SpacesBeforeTrailingComments: 2
+
+# Includes keep their hand-made order and grouping.
+SortIncludes: Never
+IncludeBlocks: Preserve
+
+MaxEmptyLinesToKeep: 2
+InsertNewlineAtEOF: true
+LineEnding: LF

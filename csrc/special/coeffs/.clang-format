@@ -1,0 +1,4 @@
+# Generated coefficient tables (tools/gen_*.py): never formatted, also by editors whose
+# clang-format predates .clang-format-ignore.
+DisableFormat: true
+SortIncludes: Never

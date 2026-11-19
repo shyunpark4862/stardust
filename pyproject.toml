@@ -22,3 +22,42 @@ editable.verbose = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+# Formatting and lint: tools/format.py applies them, tools/check.py only checks.
+[tool.ruff]
+required-version = ">=0.16.6,<0.17"
+line-length = 120
+# ruff 0.16 marks py315 as under development (a warning on every run); nothing here uses 3.15-only
+# syntax yet. Move to "py315" once ruff supports it fully.
+target-version = "py314"
+# Python only: Markdown code blocks in docs/ and the root documents are not formatted.
+include = ["*.py", "*.pyi"]
+extend-exclude = ["third_party", "build", ".venv-legacy"]
+force-exclude = true  # also for paths given on the command line (tools/format.py PATH, editors)
+
+[tool.ruff.format]
+quote-style = "double"
+line-ending = "lf"
+docstring-code-format = false
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = [
+    "E731",  # lambda assigned to a name: the numeric code's style
+    "E741",  # l, I, O as names: math notation
+    "B905",  # zip() without strict=: adding strict=True changes behavior; reviewed separately
+    "B023",  # closures over loop variables: called inside the same iteration (timing, references)
+]
+# Fixes that could change behavior are left for review: removing an import runs one module less.
+unfixable = ["F401"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]  # re-exports and subpackage imports
+# The subpackages are imported in dependency order (linalg after the array objects, regression
+# after stats and frame); sorting would merge and reorder them.
+"src/stardust/__init__.py" = ["F401", "I001"]
+# One-off measurement scripts: pyflakes and import order only.
+"bench/**" = ["E", "W", "B", "UP"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["stardust", "stardust_numpy", "stardust_linalg", "stardust_pandas", "tests", "bench"]

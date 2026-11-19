@@ -1,0 +1,9 @@
+# Files clang-format leaves alone (clang-format 18+ reads this file; tools/format.py and
+# tools/check.py rely on it).
+# Vendored Boost.Math (tools/vendor_boost_math.py).
+third_party/**
+# Generated: tools/gen_*.py and `python -m bench.speed cost` write these; edit the generator instead.
+csrc/special/coeffs/*
+csrc/stats/coeffs/*
+csrc/frame/ops/pow5_table.hpp
+csrc/*/cost_table.hpp
