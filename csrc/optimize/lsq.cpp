@@ -1,26 +1,34 @@
-// Nonlinear least squares' iterations (docs/design/regression.md §3.7).
+// Nonlinear least squares' iterations (docs/design/optimize.md §3.4, docs/design/regression.md
+// §3.7): sd.optimize.least_squares and sd.regression.nls.
 //
-// The residual vector r(theta) of the rows used (length m) comes from a Python callback
-// (stardust/regression/_nls.py: sqrt(w) (f(x, *theta) - y)), and so does a user Jacobian;
-// the loop holds the GIL for them. Two methods, as scipy's curve_fit picks them (G69):
-//   - 'lm', unconstrained: MINPACK's lmder (Moré 1978; scipy's leastsq and
-//     least_squares(method='lm')): the Levenberg-Marquardt step of lmpar/qrsolv on the
-//     column-pivoted QR of J, the step bound update and the ftol, xtol, gtol tests of lmder.
-//     Without a user Jacobian, lmdif's forward differences (fdjac2), whose calls nfev counts.
-//   - 'trf', with bounds: scipy's least_squares(method='trf') (trf_bounds, the 'exact'
-//     subproblem; Branch, Coleman and Li 1999): Coleman-Li scaling, the trust-region
-//     subproblem through the SVD, the reflected and the gradient step, strictly feasible
-//     iterates.
+// The residual vector r(x) (length m) comes from a Python callback (least_squares: the
+// user's fun; nls: sqrt(w) (f(x, *theta) - y) on the rows used), and so does a user Jacobian;
+// the loop holds the GIL for them. Two methods:
+//   - 'lm': MINPACK's lmder (Moré 1978; scipy's leastsq and least_squares(method='lm')): the
+//     Levenberg-Marquardt step of lmpar/qrsolv on the column-pivoted QR of J, the step bound
+//     update and the ftol, xtol, gtol tests of lmder (factor 100, mode 1).
+//   - 'trf': scipy's least_squares(method='trf') (trf_bounds, the 'exact' subproblem, x_scale
+//     1, no loss; Branch, Coleman and Li 1999): Coleman-Li scaling, the trust-region subproblem
+//     through the SVD, the reflected and the gradient step, strictly feasible iterates. With
+//     infinite bounds this is scipy's trf_no_bounds (v = 1, dv = 0: the same steps).
+// Difference Jacobians (whose calls nfev counts): MINPACK's fdjac2 (nls), or scipy's
+// approx_derivative '2-point' and '3-point' with its steps and their adjustment to the bounds
+// (least_squares; diff.hpp).
 // The m x p work per Jacobian is one Householder QR (LAPACK geqrf, then ormqr for Q0^T r):
 // J = Q0 R0. Everything after it is p-sized: lmder's pivoted QR of J is the pivoted QR of R0
 // (Q0 keeps the columns' norms and inner products), and TRF's SVD of [J d; D] is the SVD of
-// [R0 d; D] (with the first p entries of U^T [r; 0] from Q0^T r).
+// [R0 d; D] (with the first p entries of U^T [r; 0] from Q0^T r). With fewer residuals than
+// variables (trf only) J gets zero rows up to p: the same problem.
 // A trial point whose residuals are not all finite is rejected and the trust region shrunk
-// (G74): lm takes its norm as +inf (lmder's own rule then shrinks the bound tenfold), trf
-// sets Delta to a quarter of the step (scipy's rule).
-#include "regression/nls.hpp"
+// (regression G74): lm takes its norm as +inf (lmder's own rule then shrinks the bound
+// tenfold), trf sets Delta to a quarter of the step (scipy's rule).
+#include "optimize/lsq.hpp"
 
+#include "optimize/diff.hpp"
+
+#include "array/ndarray.hpp"
 #include "bind/errors.hpp"
+#include "bind/pyutil.hpp"
 #include "linalg/input.hpp"
 #include "linalg/lapack.hpp"
 
@@ -38,7 +46,7 @@
 #include <utility>
 #include <vector>
 
-namespace sd::regression {
+namespace sd::optimize {
 
 namespace nb = nanobind;
 using linalg::Input;
@@ -54,7 +62,8 @@ constexpr double kEps = std::numeric_limits<double>::epsilon();
 constexpr double kInf = std::numeric_limits<double>::infinity();
 constexpr double kDwarf = std::numeric_limits<double>::min();
 
-// The stopping codes (stardust/regression/_nls.py reads them): > 0 converged.
+// The stopping codes (scipy's least_squares status; stardust/optimize/_lsq.py and
+// stardust/regression/_nls.py read them): > 0 converged.
 enum Status : int {
     sMaxNfev = 0,      // max_nfev reached
     sGtol = 1,         // the gradient test
@@ -90,26 +99,59 @@ double dot(const vec& a, const vec& b) {
 
 // ---- the residual vector and its Jacobian (Python callbacks)
 
+// The difference Jacobians (diff.hpp)
+enum Diff : int {
+    kFdjac2 = 0,      // MINPACK's fdjac2 (epsfcn = eps), turned back at a bound or a non-finite side
+    kTwoPoint = 1,    // scipy's '2-point'
+    kThreePoint = 2,  // scipy's '3-point'
+};
+
 struct Model {
     nb::handle fun, jac;  // jac: None for differences
+    // None (nls: its callbacks return float64 sd.ndarrays of the right shape), or a Python
+    // callable check(value, what) -> such an array, called when a returned value is not one
+    nb::handle check;
     const char* fn;
     lint m, p;
-    const vec* lb = nullptr;  // TRF's bounds (forward differences step inwards)
+    int diff = kFdjac2;
+    const vec* rel_step = nullptr;  // scipy's diff_step, one per variable (nullptr: none)
+    bool array_x = false;           // x as an sd.ndarray (least_squares), else a list of floats (nls)
+    const vec* lb = nullptr;        // the bounds the differences keep to (fdjac2: TRF's only)
     const vec* ub = nullptr;
     lint nfev = 0, njev = 0;
     Scratch sc;
+    vec wb;  // '3-point': the second value
 
-    nb::list args(const vec& x) const {
+    nb::object args(const vec& x) const {
+        if (array_x) {
+            const std::int64_t shape[1] = {static_cast<std::int64_t>(x.size())};
+            NDArray a = new_array(DType::Float64, shape);
+            if (!x.empty()) std::memcpy(a.data, x.data(), x.size() * sizeof(double));
+            return wrap(std::move(a));
+        }
         nb::list a;
         for (double v : x) a.append(v);
         return a;
     }
 
+    // A returned value as a float64 sd.ndarray of shape (rows,) or (rows, cols): taken as it
+    // is when it is one, else through check (which raises for a wrong one).
+    nb::object conform(nb::object o, lint rows, lint cols, const char* what) const {
+        if (check.is_none()) return o;
+        if (is_ndarray(o)) {
+            const NDArray& a = as_ndarray(o);
+            if (a.dtype == DType::Float64 && a.ndim == (cols < 0 ? 1 : 2) && a.shape[0] == rows &&
+                (cols < 0 || a.shape[1] == cols))
+                return o;
+        }
+        return check(o, what);
+    }
+
     // r(x) into r (m); false when some value is not finite.
     bool eval(const vec& x, double* r) {
-        nb::object o = fun(args(x));
+        nb::object o = conform(fun(args(x)), m, -1, "fun");
         ++nfev;
-        Input in(o, fn, "f");  // float64 (m,), checked by the Python layer
+        Input in(o, fn, "f");  // float64 (m,)
         const std::byte* d = in.data();
         const std::int64_t s = in.stride(0);
         bool ok = true;
@@ -126,8 +168,8 @@ struct Model {
     bool jacobian(vec& x, const double* r, double* J, double* wa) {
         ++njev;
         if (!jac.is_none()) {
-            nb::object o = jac(args(x));
-            Input in(o, fn, "jac");  // float64 (m, p), checked by the Python layer
+            nb::object o = conform(jac(args(x)), m, p, "jac");
+            Input in(o, fn, "jac");  // float64 (m, p)
             const std::byte* d = in.data();
             const std::int64_t s0 = in.stride(0), s1 = in.stride(1);
             bool ok = true;
@@ -140,6 +182,8 @@ struct Model {
                 }
             return ok;
         }
+        if (diff == kTwoPoint) return two_point(x, r, J, wa);
+        if (diff == kThreePoint) return three_point(x, r, J, wa);
         // MINPACK's fdjac2 with epsfcn = eps: h = sqrt(eps) |x_j| (sqrt(eps) at 0), the step
         // actually taken ((x_j + h) - x_j) in the quotient; backwards when forwards leaves the
         // bounds or the model is not finite there.
@@ -167,19 +211,107 @@ struct Model {
         return true;
     }
 
-    // J (destroyed) = Q0 R0: R0 (p x p column-major, upper) and qtf = (Q0^T r)[0:p].
+    double step(lint j, double t, double rstep) const {
+        const bool has = rel_step != nullptr;
+        return absolute_step(t, rstep, has, has ? (*rel_step)[static_cast<std::size_t>(j)] : 0.0);
+    }
+
+    // scipy's '2-point': (r(x + h e_j) - r(x)) / ((x_j + h) - x_j), h from absolute_step and
+    // adjust_one_sided; a side where r is not finite is tried once from the other side when
+    // that stays within the bounds.
+    bool two_point(vec& x, const double* r, double* J, double* wa) {
+        const double rstep = rel_step_2point();
+        for (lint j = 0; j < p; ++j) {
+            const auto uj = static_cast<std::size_t>(j);
+            const double t = x[uj];
+            double h = adjust_one_sided(t, step(j, t, rstep), (*lb)[uj], (*ub)[uj]);
+            bool ok = false;
+            for (int attempt = 0; attempt < 2 && !ok; ++attempt) {
+                if (attempt == 1) {
+                    h = -h;
+                    if (t + h < (*lb)[uj] || t + h > (*ub)[uj]) break;
+                }
+                x[uj] = t + h;
+                ok = eval(x, wa);
+                x[uj] = t;
+                const double dx = (t + h) - t;
+                if (ok)
+                    for (lint i = 0; i < m; ++i) J[i + j * m] = (wa[i] - r[i]) / dx;
+            }
+            if (!ok) return false;
+        }
+        return true;
+    }
+
+    // scipy's '3-point': (r(x + h e_j) - r(x - h e_j)) / ((x_j + h) - (x_j - h)), or at a
+    // bound (-3 r(x) + 4 r(x + h e_j) - r(x + 2h e_j)) / ((x_j + 2h) - x_j) (adjust_two_sided).
+    bool three_point(vec& x, const double* r, double* J, double* wa) {
+        const double rstep = rel_step_3point();
+        wb.resize(static_cast<std::size_t>(m));
+        for (lint j = 0; j < p; ++j) {
+            const auto uj = static_cast<std::size_t>(j);
+            const double t = x[uj];
+            bool one_sided;
+            const double h = adjust_two_sided(t, step(j, t, rstep), (*lb)[uj], (*ub)[uj], one_sided);
+            const double x1 = one_sided ? t + h : t - h, x2 = one_sided ? t + 2 * h : t + h;
+            x[uj] = x1;
+            bool ok = eval(x, wa);
+            x[uj] = x2;
+            ok = eval(x, wb.data()) && ok;
+            x[uj] = t;
+            if (!ok) return false;
+            const double* w2 = wb.data();
+            if (one_sided) {
+                const double dx = x2 - t;
+                for (lint i = 0; i < m; ++i) J[i + j * m] = (-3.0 * r[i] + 4 * wa[i] - w2[i]) / dx;
+            } else {
+                const double dx = x2 - x1;
+                for (lint i = 0; i < m; ++i) J[i + j * m] = (w2[i] - wa[i]) / dx;
+            }
+        }
+        return true;
+    }
+
+    // J (destroyed) = Q0 R0: R0 (p x p column-major, upper) and qtf = (Q0^T r)[0:p]. With
+    // m < p (trf), [J; 0] and [r; 0] (p rows).
     void qr(double* J, const double* r, double* R0, double* qtf) {
-        vec tau(static_cast<std::size_t>(p)), c(r, r + m);
+        if (m < p) {
+            const auto up = static_cast<std::size_t>(p);
+            vec Jp(up * up, 0.0), rp(up, 0.0);
+            for (lint j = 0; j < p; ++j)
+                for (lint i = 0; i < m; ++i) Jp[static_cast<std::size_t>(i + j * p)] = J[i + j * m];
+            for (lint i = 0; i < m; ++i) rp[static_cast<std::size_t>(i)] = r[i];
+            qr_rows(p, Jp.data(), rp.data(), R0, qtf);
+            return;
+        }
+        qr_rows(m, J, r, R0, qtf);
+    }
+
+    void qr_rows(lint rows, double* J, const double* r, double* R0, double* qtf) {
+        vec tau(static_cast<std::size_t>(p)), c(r, r + rows);
         {
             // the GIL is let go for a large factorization (linalg's 10 us rule, about 2e5 flops)
             std::optional<nb::gil_scoped_release> rel;
-            if (2.0 * double(m) * double(p) * double(p) > 2e5) rel.emplace();
-            lapack::geqrf(m, p, J, m, tau.data(), sc);
-            lapack::ormqr('T', m, 1, p, J, m, tau.data(), c.data(), m, sc);
+            if (2.0 * double(rows) * double(p) * double(p) > 2e5) rel.emplace();
+            lapack::geqrf(rows, p, J, rows, tau.data(), sc);
+            lapack::ormqr('T', rows, 1, p, J, rows, tau.data(), c.data(), rows, sc);
         }
         for (lint j = 0; j < p; ++j)
-            for (lint i = 0; i < p; ++i) R0[i + j * p] = i <= j ? J[i + j * m] : 0.0;
+            for (lint i = 0; i < p; ++i) R0[i + j * p] = i <= j ? J[i + j * rows] : 0.0;
         for (lint i = 0; i < p; ++i) qtf[i] = c[i];
+    }
+};
+
+// What the caller keeps of the last iterate: its residuals and Jacobian (least_squares'
+// result; nls recomputes them with its accurate Jacobian).
+struct Final {
+    bool want = false;
+    vec J;             // m x p column-major: the Jacobian at the last point it was computed
+    bool fresh = false;  // ... which is the current x
+    void keep(const double* Jm, lint m, lint p) {
+        if (!want) return;
+        J.assign(Jm, Jm + m * p);
+        fresh = true;
     }
 };
 
@@ -367,13 +499,14 @@ void lmpar(lint n, double* r, const lint* ipvt, const double* diag, const double
 }
 
 // lmder's loop (factor 100, mode 1: the scaling from the Jacobian's column norms).
-int levenberg_marquardt(Model& M, vec& x, double ftol, double xtol, double gtol, lint maxfev, lint& n_iter) {
+int levenberg_marquardt(Model& M, vec& x, vec& fvec, bool have_f0, double ftol, double xtol, double gtol,
+                        lint maxfev, lint& n_iter, Final& fin) {
     const lint m = M.m, n = M.p;
     const auto un = static_cast<std::size_t>(n), um = static_cast<std::size_t>(m);
-    vec fvec(um), wa4(um), J(um * un), R0(un * un), qtf0(un), fjac(un * un), diag(un), qtf(un), wa1(un), wa2(un),
-        wa3(un), wa5(un), xt(un);
+    vec wa4(um), J(um * un), R0(un * un), qtf0(un), fjac(un * un), diag(un), qtf(un), wa1(un), wa2(un), wa3(un),
+        wa5(un), xt(un);
     std::vector<lint> ipvt(un);
-    if (!M.eval(x, fvec.data())) return sStartNonfinite;
+    if (!have_f0 && !M.eval(x, fvec.data())) return sStartNonfinite;
     double fnorm = enorm(fvec);
     double par = 0, delta = 0, xnorm = 0;
     lint iter = 1;
@@ -383,6 +516,7 @@ int levenberg_marquardt(Model& M, vec& x, double ftol, double xtol, double gtol,
     for (;;) {
         if (!M.jacobian(x, fvec.data(), J.data(), wa4.data())) return sJacNonfinite;
         ++n_iter;
+        fin.keep(J.data(), m, n);
         M.qr(J.data(), fvec.data(), R0.data(), qtf0.data());
         fjac = R0;
         qrfac(n, fjac.data(), ipvt.data(), wa1.data(), wa2.data(), wa3.data());
@@ -457,6 +591,7 @@ int levenberg_marquardt(Model& M, vec& x, double ftol, double xtol, double gtol,
                 xnorm = enorm(wa2);
                 fnorm = fnorm1;
                 ++iter;
+                fin.fresh = false;
             }
             const bool fsmall = std::abs(actred) <= ftol && prered <= ftol && 0.5 * ratio <= 1;
             if (fsmall) info = 1;
@@ -470,6 +605,12 @@ int levenberg_marquardt(Model& M, vec& x, double ftol, double xtol, double gtol,
             if (info != 0) break;
         } while (ratio < 1e-4);
         if (info != 0) break;
+    }
+    // the result's Jacobian at the last iterate (scipy's least_squares evaluates jac(x) there)
+    if (fin.want && !fin.fresh) {
+        fin.J.resize(um * un);
+        if (!M.jacobian(x, fvec.data(), fin.J.data(), wa4.data())) return sJacNonfinite;
+        fin.fresh = true;
     }
     switch (info) {
         case 1: case 6: return sFtol;
@@ -740,16 +881,17 @@ double select_step(const vec& x, const Quad& Q, const vec& gh, vec pp, vec ph, c
     return -ag_value;
 }
 
-int trust_region_reflective(Model& M, vec& x, const vec& lb, const vec& ub, double ftol, double xtol, double gtol,
-                            lint max_nfev, lint& n_iter) {
+int trust_region_reflective(Model& M, vec& x, vec& f, bool have_f0, const vec& lb, const vec& ub, double ftol,
+                            double xtol, double gtol, lint max_nfev, lint& n_iter, Final& fin) {
     const lint m = M.m, p = M.p;
     const auto up = static_cast<std::size_t>(p), um = static_cast<std::size_t>(m);
-    vec f(um), fnew(um), wa(um), J(um * up), R0(up * up), qtf(up), g(up), v(up), dv(up), d(up), dh(up), gh(up),
+    vec fnew(um), wa(um), J(um * up), R0(up * up), qtf(up), g(up), v(up), dv(up), d(up), dh(up), gh(up),
         Rh(up * up), A(2 * up * up), U(2 * up * up), s(up), Vt(up * up), uf(up), step, step_h;
-    if (!M.eval(x, f.data())) return sStartNonfinite;
+    if (!have_f0 && !M.eval(x, f.data())) return sStartNonfinite;
     auto refresh = [&]() {  // J, its QR and the gradient g = J^T f = R0^T Q0^T f at x
         if (!M.jacobian(x, f.data(), J.data(), wa.data())) return false;
         ++n_iter;
+        fin.keep(J.data(), m, p);
         M.qr(J.data(), f.data(), R0.data(), qtf.data());
         for (lint j = 0; j < p; ++j) {
             double t = 0;
@@ -846,44 +988,84 @@ int trust_region_reflective(Model& M, vec& x, const vec& lb, const vec& ub, doub
     return status == -100 ? sMaxNfev : status;
 }
 
-// nls_solve(func, fun, jac, x0, lb, ub, method, ftol, xtol, gtol, max_nfev, m)
-//   -> (x [p], status, nfev, njev, n_iter)
-// fun(theta: list) -> float64 sd.ndarray (m,) of residuals; jac(theta) -> (m, p) or None.
-// method 0 'lm', 1 'trf' (lb, ub: the bounds, +-inf for none).
-nb::object nls_solve(const std::string& func, nb::callable fun, nb::object jac, const vec& x0, const vec& lb,
-                     const vec& ub, int method, double ftol, double xtol, double gtol, std::int64_t max_nfev,
-                     std::int64_t m) {
+nb::object vector_out(const vec& v) {
+    const std::int64_t shape[1] = {static_cast<std::int64_t>(v.size())};
+    NDArray a = new_array(DType::Float64, shape);
+    if (!v.empty()) std::memcpy(a.data, v.data(), v.size() * sizeof(double));
+    return wrap(std::move(a));
+}
+
+nb::object matrix_out(const vec& Jc, lint m, lint p) {  // column-major m x p -> (m, p)
+    const std::int64_t shape[2] = {static_cast<std::int64_t>(m), static_cast<std::int64_t>(p)};
+    NDArray a = new_array(DType::Float64, shape);
+    auto* d = reinterpret_cast<double*>(a.data);
+    for (lint i = 0; i < m; ++i)
+        for (lint j = 0; j < p; ++j) d[i * p + j] = Jc[static_cast<std::size_t>(i + j * m)];
+    return wrap(std::move(a));
+}
+
+// lsq_solve(func, fun, jac, check, x0, lb, ub, method, ftol, xtol, gtol, max_nfev, m, diff,
+//           diff_step, array_x, f0, final)
+//   -> (x [p] list, status, nfev, njev, n_iter, f (m,) or None, J (m, p) or None)
+// fun(x) -> residuals (m,); jac(x) -> (m, p), or None for differences (diff: 0 fdjac2, 1
+// '2-point', 2 '3-point'; diff_step: scipy's relative steps, empty for none). x is a list of
+// floats, or a new float64 sd.ndarray when array_x. check: see Model. method 0 'lm', 1 'trf'
+// (lb, ub: the bounds, +-inf for none). f0: the residuals at x0 when the caller has them (its
+// call counts in nfev). final: return the last iterate's residuals and Jacobian (lm
+// evaluates the Jacobian there when its last one is elsewhere).
+nb::object lsq_solve(const std::string& func, nb::callable fun, nb::object jac, nb::object check, const vec& x0,
+                     const vec& lb, const vec& ub, int method, double ftol, double xtol, double gtol,
+                     std::int64_t max_nfev, std::int64_t m, int diff, const vec& diff_step, bool array_x,
+                     nb::object f0, bool final) {
     const char* fn = func.c_str();
     return call_named(fn, [&]() -> nb::object {
         Model M;
         M.fun = fun;
         M.jac = jac;
+        M.check = check;
         M.fn = fn;
         M.m = static_cast<lint>(m);
         M.p = static_cast<lint>(x0.size());
-        vec x = x0;
-        lint n_iter = 0;
-        int status;
-        if (method == 0) {
-            status = levenberg_marquardt(M, x, ftol, xtol, gtol, max_nfev, n_iter);
-        } else {
+        M.diff = diff;
+        M.array_x = array_x;
+        if (!diff_step.empty()) M.rel_step = &diff_step;
+        if (diff != kFdjac2 || method == 1) {
             M.lb = &lb;
             M.ub = &ub;
-            status = trust_region_reflective(M, x, lb, ub, ftol, xtol, gtol, max_nfev, n_iter);
         }
+        vec x = x0, f(static_cast<std::size_t>(m));
+        const bool have_f0 = !f0.is_none();
+        if (have_f0) {
+            Input in(f0, fn, "f0");  // float64 (m,), checked by the Python layer
+            for (lint i = 0; i < M.m; ++i)
+                std::memcpy(&f[static_cast<std::size_t>(i)], in.data() + i * in.stride(0), sizeof(double));
+            M.nfev = 1;
+        }
+        Final fin;
+        fin.want = final;
+        lint n_iter = 0;
+        int status;
+        if (method == 0) status = levenberg_marquardt(M, x, f, have_f0, ftol, xtol, gtol, max_nfev, n_iter, fin);
+        else status = trust_region_reflective(M, x, f, have_f0, lb, ub, ftol, xtol, gtol, max_nfev, n_iter, fin);
         nb::list xs;
         for (double v : x) xs.append(v);
+        nb::object fo = nb::none(), Jo = nb::none();
+        if (final && status >= 0) {
+            fo = vector_out(f);
+            Jo = matrix_out(fin.J, M.m, M.p);
+        }
         return nb::make_tuple(xs, status, static_cast<std::int64_t>(M.nfev), static_cast<std::int64_t>(M.njev),
-                              static_cast<std::int64_t>(n_iter));
+                              static_cast<std::int64_t>(n_iter), fo, Jo);
     });
 }
 
 }  // namespace
 
-void bind_nls(nb::module_& m) {
-    m.def("nls_solve", &nls_solve, nb::arg("func"), nb::arg("fun"), nb::arg("jac").none(), nb::arg("x0"),
-          nb::arg("lb"), nb::arg("ub"), nb::arg("method"), nb::arg("ftol"), nb::arg("xtol"), nb::arg("gtol"),
-          nb::arg("max_nfev"), nb::arg("m"));
+void bind_lsq(nb::module_& m) {
+    m.def("lsq_solve", &lsq_solve, nb::arg("func"), nb::arg("fun"), nb::arg("jac").none(), nb::arg("check").none(),
+          nb::arg("x0"), nb::arg("lb"), nb::arg("ub"), nb::arg("method"), nb::arg("ftol"), nb::arg("xtol"),
+          nb::arg("gtol"), nb::arg("max_nfev"), nb::arg("m"), nb::arg("diff"), nb::arg("diff_step"),
+          nb::arg("array_x"), nb::arg("f0").none(), nb::arg("final"));
 }
 
-}  // namespace sd::regression
+}  // namespace sd::optimize

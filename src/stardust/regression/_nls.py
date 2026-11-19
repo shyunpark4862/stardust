@@ -1,11 +1,12 @@
 """Nonlinear least squares: nls (docs/api/regression.md §7, docs/design/regression.md §3.7).
 
-The iterations are the native kernel stardust._core.regression.nls_solve (MINPACK's
-Levenberg-Marquardt without bounds, scipy's trust region reflective method with them), which
-calls back into this module for the residuals sqrt(w) (f(x, *theta) - y) of the rows used and
-for a user Jacobian. After a converged iteration, Gauss-Newton steps with an accurate Jacobian
-(the user's, or 5-point differences) solved by the linear models' QR kernel (with its
-refinement) continue while the parameters move by more than rounding (G73). The covariance
+The iterations are sd.optimize's least squares kernel stardust._core.optimize.lsq_solve
+(MINPACK's Levenberg-Marquardt without bounds, scipy's trust region reflective method with
+them; MINPACK's forward differences), which calls back into this module for the residuals
+sqrt(w) (f(x, *theta) - y) of the rows used and for a user Jacobian. After a converged
+iteration, Gauss-Newton steps with an accurate Jacobian (the user's, or sd.optimize's 5-point
+differences, optimize/_diff.py) solved by the linear models' QR kernel (with its refinement)
+continue while the parameters move by more than rounding (G73). The covariance
 sigma^2 (J^T W J)^-1 and the aliased parameters (G9, G21) come from the same kernel at the
 solution.
 """
@@ -18,6 +19,7 @@ import textwrap
 from .. import _core as _sd
 from .. import frame as _frame
 from .. import linalg as _linalg
+from ..optimize._diff import Differences as _Differences
 from ._glm import _check_int
 from ._linear import (_call_errors, _RegressionResult, _as_real, _check_alpha, _check_choice, _check_policy, _check_rows,
                       _check_rtol, _count, _div0, _frame_columns, _read_y, _real, _rows_message,
@@ -34,7 +36,7 @@ _EPS = 2.0 ** -52
 _NSTAT = 12
 _LOG_2PI = math.log(2 * math.pi)
 
-# the kernel's stopping codes (csrc/regression/nls.cpp, enum Status)
+# the kernel's stopping codes (csrc/optimize/lsq.cpp, enum Status)
 _ST_MAXNFEV, _ST_GTOL, _ST_FTOL, _ST_XTOL, _ST_BOTH, _ST_JAC, _ST_START = 0, 1, 2, 3, 4, -1, -2
 _STATUS_TEXT = {
     _ST_MAXNFEV: "the iteration reached max_nfev",
@@ -51,18 +53,10 @@ _STATUS_TEXT = {
 _POLISH_STEPS = 10
 _POLISH_TOL = 2.0 ** -50
 _POLISH_FLOOR = 2.0 ** -40
-# the accurate Jacobian's steps (5-point differences, truncation O(h^4)): powers of two from
-# 2^-8 |theta_j| down to 2^-30 |theta_j|, chosen per parameter (bench/regression/g6/accuracy.md)
-_FD_START, _FD_END = -8, -30
 # rtol's default (G21's aliased columns) for a difference Jacobian: its columns are accurate to
 # about 1e-12 - 1e-11 relative, so an exactly dependent column shows |R_jj| of that size; the
 # default with a user jac is the linear models' max(nobs, p) eps
 _FD_RTOL = 2.0 ** -30
-# a difference column whose 2-norm is at most this times its rounding level (_Model._column) is
-# taken as 0 (G88): f's own evaluation errors are a few ulps (sd's vForce functions up to 8), on
-# top of the rounding of each value that the level counts
-_NOISE_FACTOR = 16.0
-_U = 2.0 ** -53  # the unit roundoff: rounding a value moves it by at most u |f|
 
 
 def _param_names(f, p):
@@ -243,7 +237,7 @@ class NLSResult(_RegressionResult):
             ms = mean if all_ok else mean[ok]
             fm = self._model
             M = _Model(func, fm.f, fm.jac, xs, _sd.zeros((xs.shape[0],)), None, None, fm.p, fm.lb, fm.ub)
-            M.steps = list(fm.steps)
+            M.diff.steps = list(fm.diff.steps)
             J = M.accurate_jac(theta, ms)
             v = _sd.sum(_sd.matmul(J, self.cov_params()) * J, axis=-1)
             if all_ok:
@@ -416,9 +410,8 @@ class _Model:
         self.lb, self.ub = lb, ub
         self.nfev = 0
         self.njev = 0
-        self.steps = [None] * p     # the differences' step per parameter, chosen once
-        self.central = [None] * p   # (h, f(theta - h e_j), f(theta + h e_j)) of the last Jacobian
-        self.noise = [0.0] * p      # the rounding level of the last difference column (_column)
+        # the accurate differences of f on the rows used (their steps, chosen once, are kept)
+        self.diff = _Differences(lambda theta: self._rows(self.values(theta)), p, lb, ub, sw)
 
     def _rows(self, v):
         return v[self.mask] if self.mask is not None else v
@@ -465,152 +458,24 @@ class _Model:
             J = J * _sd.reshape(self.sw, (self.sw.shape[0], 1))
         return J
 
-    # the 5-point stencils: central, and one-sided at a bound or where the model is not
-    # finite on one side (offsets in steps h, weights, the denominator's multiple of h)
-    _STENCILS = (((-2, -1, 1, 2), (1.0, -8.0, 8.0, -1.0)), ((0, 1, 2, 3, 4), (-25.0, 48.0, -36.0, 16.0, -3.0)),
-                 ((0, -1, -2, -3, -4), (25.0, -48.0, 36.0, -16.0, 3.0)))
-
-    def _column(self, theta, j, h, v0):
-        """df/dtheta_j on the rows used (unweighted) by the first feasible 5-point stencil
-        with step h, or None; the central stencil's values are kept for _second(). Also sets
-        noise[j], the 2-norm (weighted as the Jacobian) of the column's rounding level: each
-        value f_i(theta + o h e_j) carries its rounding, up to u |f_i|, and the stencil
-        sum_o w_o f_o / (12 h) adds those with the weights, so element i is uncertain by up to
-        (sum_o |w_o|) / (12 h) u max_o |f_i(theta + o h e_j)|."""
-        t = theta[j]
-        for kind, (offs, wts) in enumerate(self._STENCILS):
-            if not (self.lb[j] <= t + min(offs) * h and t + max(offs) * h <= self.ub[j]):
-                continue
-            acc = None
-            vals = {}
-            for o, w in zip(offs, wts):
-                if o == 0:
-                    vr = self._rows(v0)
-                else:
-                    th = list(theta)
-                    th[j] = t + o * h
-                    vr = self._rows(self.values(th))
-                    if not bool(_sd.all(_sd.isfinite(vr))):
-                        acc = None
-                        break
-                vals[o] = vr
-                acc = w * vr if acc is None else acc + w * vr
-            if acc is not None:
-                if kind == 0:
-                    self.central[j] = (h, vals[-1], vals[1])
-                big = None
-                for o, w in zip(offs, wts):
-                    if w != 0.0:
-                        a = _sd.abs(vals[o])
-                        big = a if big is None else _sd.maximum(big, a)
-                if self.sw is not None:
-                    big = big * self.sw
-                wsum = sum(abs(w) for w in wts)
-                self.noise[j] = wsum / (12.0 * h) * _U * float(_linalg.vector_norm(big)) if big.shape[0] else 0.0
-                return acc / (12.0 * h)
-        return None
-
-    def _choose_step(self, theta, j, v0):
-        """The step of parameter j's differences, chosen once: from 2^-8 |theta_j| down by
-        factors of 4 while consecutive estimates get closer by more than 8 times (the
-        truncation error, O(h^4), still dominates); the last such estimate and its step."""
-        base = math.frexp(abs(theta[j]) if theta[j] != 0 else 1.0)[1]
-        best = hbest = None
-        dprev = math.inf
-        prev = None
-        for e in range(_FD_START, _FD_END - 1, -2):
-            h = math.ldexp(1.0, base + e)
-            col = self._column(theta, j, h, v0)
-            if col is None:
-                if best is not None:
-                    break
-                continue
-            if prev is None:
-                best, hbest = col, h
-            else:
-                sc = float(_sd.max(_sd.abs(col)))
-                dd = float(_sd.max(_sd.abs(col - prev))) / sc if sc > 0 else 0.0
-                if dd >= dprev / 8:
-                    break
-                best, hbest = col, h
-                dprev = dd
-                if dd == 0:
-                    break
-            prev = col
-        return best, hbest
-
     def accurate_jac(self, theta, v0):
-        """sqrt(w) df/dtheta on the rows used, (m, p): the user's jac, or 5-point differences
-        with the steps chosen at the first call (bench/regression/g6/accuracy.md)."""
+        """sqrt(w) df/dtheta on the rows used, (m, p): the user's jac, or the accurate 5-point
+        differences of sd.optimize (with the steps chosen at the first call; a column at its
+        rounding level is 0, G88)."""
         self.njev += 1
         if self.jac is not None:
             return self.user_jac(theta)
-        self.central = [None] * self.p
-        cols = []
-        for j in range(self.p):
-            col = None
-            if self.steps[j] is not None:
-                col = self._column(theta, j, self.steps[j], v0)
-            if col is None:
-                col, self.steps[j] = self._choose_step(theta, j, v0)
-            if col is None:
-                raise ValueError(f"{self.func}(): the model is not finite near the parameters {list(theta)} "
-                                 "(the differences for the Jacobian)")
-            cols.append(col)
-        J = _sd.stack(cols, axis=1)
-        if self.sw is not None:
-            J = J * _sd.reshape(self.sw, (self.sw.shape[0], 1))
-        # a column within _NOISE_FACTOR of its rounding level carries no derivative (G88): it
-        # is set to 0, so G21's test drops it as aliased. Kept, its noise has a direction of its
-        # own and can take the place of an identified parameter's column (a exp(-k t) + c at a
-        # large k: the k column was rounding noise constant over the rows, the direction of c's)
-        zero = [j for j in range(self.p) if float(_linalg.vector_norm(J[:, j])) <= _NOISE_FACTOR * self.noise[j]]
-        if zero:
-            keep = _sd.asarray([0.0 if j in zero else 1.0 for j in range(self.p)])
-            J = J * keep
+        J, bad = self.diff.jacobian(theta, self._rows(v0), zero_noise=True)
+        if J is None:
+            raise ValueError(f"{self.func}(): the model is not finite near the parameters {list(theta)} "
+                             "(the differences for the Jacobian)")
         return J
 
     def second(self, theta, v0, c, idx):
         """S = sum_i c_i d^2 f_i / dtheta^2 (c on the rows used) over the parameters idx (0
-        elsewhere), by central differences with the Jacobian's steps (its kept values for
-        the diagonal); None when a point is outside the bounds or not finite."""
-        p = self.p
-        hs = []
-        for j in range(p):
-            if self.central[j] is not None:
-                hs.append(self.central[j][0])
-            elif self.steps[j] is not None:
-                hs.append(self.steps[j])
-            else:
-                hs.append(math.ldexp(1.0, math.frexp(abs(theta[j]) if theta[j] != 0 else 1.0)[1] + _FD_START - 2))
-        if not all(self.lb[j] <= theta[j] - hs[j] and theta[j] + hs[j] <= self.ub[j] for j in idx):
-            return None
-        c0 = float(_linalg.vecdot(c, self._rows(v0)))
-
-        def phi(steps):
-            th = list(theta)
-            for j, s in steps:
-                th[j] = theta[j] + s * hs[j]
-            vr = self._rows(self.values(th))
-            if not bool(_sd.all(_sd.isfinite(vr))):
-                raise ArithmeticError
-            return float(_linalg.vecdot(c, vr))
-
-        S = [[0.0] * p for _ in range(p)]
-        try:
-            for a, j in enumerate(idx):
-                if self.central[j] is not None:
-                    fm, fp = (float(_linalg.vecdot(c, v)) for v in self.central[j][1:])
-                else:
-                    fm, fp = phi([(j, -1)]), phi([(j, 1)])
-                S[j][j] = (fp - 2 * c0 + fm) / (hs[j] * hs[j])
-                for k in idx[:a]:
-                    v = (phi([(j, 1), (k, 1)]) - phi([(j, 1), (k, -1)]) - phi([(j, -1), (k, 1)])
-                         + phi([(j, -1), (k, -1)])) / (4 * hs[j] * hs[k])
-                    S[j][k] = S[k][j] = v
-        except ArithmeticError:
-            return None
-        return S
+        elsewhere), by central differences with the Jacobian's steps; None when a point is
+        outside the bounds or not finite."""
+        return self.diff.second(theta, self._rows(v0), c, idx)
 
 
 def _ssr(r):
@@ -874,8 +739,9 @@ def nls(f, x, y, /, *, p0, jac=None, bounds=None, method=None, weights=None, fto
     M = _Model(func, f, jac, xx, yy, mask, sw, p, lb, ub)
     x0 = _strictly_feasible(theta0, lb, ub) if method == "trf" else theta0
     kjac = M.user_jac if jac is not None else None
-    xs, status, nfev, njev, n_iter = _k.nls_solve(func, M.residuals, kjac, x0, lb, ub, _METHODS.index(method), ftol,
-                                                  xtol, gtol, max_nfev, nobs)
+    xs, status, nfev, njev, n_iter, _, _ = _sd.optimize.lsq_solve(
+        func, M.residuals, kjac, None, x0, lb, ub, _METHODS.index(method), ftol, xtol, gtol, max_nfev, nobs, 0, [],
+        False, None, False)
     if status == _ST_START:
         raise ValueError(f"{func}(): 'f' is not finite at 'p0' (rows used)")
     if status == _ST_JAC:

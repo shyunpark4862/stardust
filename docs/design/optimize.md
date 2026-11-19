@@ -1,6 +1,6 @@
 # 최적화 영역 설계 (sd.optimize)
 
-> 상태: **설계 초안** (2026-11-20). 큰 결정(§1.1 O1–O17)은 사용자가 정했다. 나머지는 안이고, 시작 전에 정할 것은 §9에 있다.
+> 상태: **설계 초안** (2026-11-20). 큰 결정(§1.1 O1–O31)은 사용자가 정했다. O0·O1을 구현했다(§8). 나머지는 안이고, 시작 전에 정할 것은 §9에 있다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -34,6 +34,20 @@
 | O15 방법 이름 (O0) | `method`는 소문자 이름만 받는다(`'bfgs'`, `'l-bfgs-b'`, `'nelder-mead'` …). 다른 대소문자는 소문자 꼴을 짚는 `ValueError`다 (사용자 결정 2026-11-20) |
 | O16 방법마다의 옵션 (O0) | scipy처럼 `options=`의 dict로 받는다. 방법이 모르는 키는 `ValueError`다(scipy는 경고만 낸다) (사용자 결정 2026-11-20) |
 | O17 `status`와 `message` (O0) | 방법마다 scipy의 번호와 글을 그대로 쓴다 (사용자 결정 2026-11-20) |
+| O18 `nfev`가 세는 것 (O1) | `least_squares`의 `nfev`는 차분 야코비안의 함수 호출도 센다(두 방법 모두, nls와 같다). `max_nfev`도 그 호출을 넣은 수다. scipy의 'trf'(와 1.18.1의 'lm')는 차분의 호출을 세지 않으므로 차분을 쓰면 `nfev`가 scipy와 다르다 (사용자 결정 2026-11-20) |
+| O19 `bounds`의 기본값 (O1) | `least_squares(bounds=None)`이 기본이고 경계가 없다는 뜻이다. `(lower, upper)`로 경계를 준다(nls와 같은 꼴) (사용자 결정 2026-11-20) |
+| O20 유한하지 않은 마지막 값 (O1) | 멈춤 판정을 통과해도 마지막 `cost`가 유한하지 않으면 `converged=False`다(nls G89). `status`와 `message`는 scipy의 것 그대로다 (사용자 결정 2026-11-20) |
+| O21 반복 안의 차분 (O1) | `jac=`는 `'2-point'`(기본), `'3-point'`, 호출 가능한 객체를 받고 `diff_step`을 둔다. `'cs'`는 없다(사용자 함수에 complex를 넘기지 않는다) (사용자 결정 2026-11-20) |
+| O22 뒤로 미룬 것 (O1) | `loss`·`f_scale`, `x_scale`, `tr_solver='lsmr'`, `jac_sparsity`, `callback`, `workers`, 다듬기 옵션은 O1에 넣지 않는다 (사용자 결정 2026-11-20) |
+| O23 `max_nfev`의 기본값 (O1) | 두 방법 모두 nls의 규칙: `jac`이 있으면 100n, 차분이면 100n(n + 1)(차분의 호출을 센 수). nls는 그대로다. 3점 차분은 O25가 고쳤다 (사용자 결정 2026-11-20) |
+| O24 'lm'의 결과 야코비안 (O1) | 'lm'은 결과의 `jac`을 위해 마지막 반복점에서 야코비안을 계산한다(마지막 야코비안이 다른 점의 것일 때, scipy의 `jac(x)`와 같다). 그 호출을 `nfev`·`njev`에 센다(그때 `njev = n_iter + 1`) (사용자 결정 2026-11-20) |
+| O25 차분의 `max_nfev` 기본 (O1) | O23을 바꾼다: 기본은 100n(kn + 1)이고 k는 차분 야코비안 하나가 변수마다 부르는 수(`'2-point'` 1, `'3-point'` 2)다. 호출 가능한 `jac`은 100n, 2점은 그대로 100n(n + 1)이다. 그래서 두 차분 모두 상한에 닿는 반복 수가 scipy(100n, 차분 호출을 세지 않음)와 같다 (사용자 결정 2026-11-20) |
+| O26 유한하지 않은 야코비안 (O1) | 반복 중 야코비안(사용자 `jac` 또는 차분)이 유한하지 않으면 `ValueError`다(nls와 같다; scipy는 NaN으로 계속 간다) (사용자 결정 2026-11-20) |
+| O27 차분의 한쪽 값 (O1) | `'2-point'`에서 한쪽 값이 유한하지 않으면 반대쪽으로 한 번 더 해 본다(nls의 fdjac2와 같다). `'3-point'`는 바로 `ValueError`다 (사용자 결정 2026-11-20) |
+| O28 빈 입력 (O1) | 빈 `x0`(`'x0' is empty (no variables)`)와 값을 하나도 돌려주지 않는 `fun`(`'fun' must return at least 1 value`)은 `ValueError`다 (사용자 결정 2026-11-20) |
+| O29 `diff_step`과 호출 가능한 `jac` (O1) | 함께 주면 `ValueError`다(`rng`의 규칙과 같다; scipy는 무시한다) (사용자 결정 2026-11-20) |
+| O30 `approx_fprime`의 세부 (O1) | 길이 1인 배열을 돌려주는 f는 (1, n), 실수 하나를 돌려주는 f는 (n,)이다. 반올림에 묻힌 열을 0으로 두는 것(G88)은 하지 않는다. xk에서 f가 유한하지 않으면 기본(5점)은 `ValueError`, `epsilon`을 주면 scipy처럼 계산한다 (사용자 결정 2026-11-20) |
+| O31 `check_grad`의 `rng` (O1) | `direction='random'`에 `rng`가 없으면 rlm·`lasso_cv`와 같은 꼴의 `TypeError`(`'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not NoneType`)다 (사용자 결정 2026-11-20) |
 
 ### 1.2 범위 (안)
 | 덩어리 | 공개 함수 | 방법 |
@@ -78,10 +92,10 @@
 
 ## 3. 수치 방법 (안)
 
-### 3.1 수치 미분
-- nls의 정확한 야코비안(regression §3.7, G70)을 공용으로 옮긴다: 5점 중앙 차분, 2의 거듭제곱 간격, 모수마다 처음 한 번 간격을 고르기(2⁻⁸|θ_j|에서 4배씩 줄이며 이웃 추정의 차이가 직전의 1/8보다 작은 동안), 경계나 유한하지 않은 쪽에서는 한쪽 5점 차분.
-- 반복 안의 야코비안은 scipy처럼 2점 차분(`'2-point'`, h = √u·max(1, |x|))을 기본으로 하고 `'3-point'`·`'5-point'`를 고를 수 있게 할지는 §9 O1 질문이다.
-- `approx_fprime(xk, f, *, epsilon=None)`: epsilon이 None이면 간격을 고르는 5점 차분, 수를 주면 scipy와 같은 앞쪽 차분. `check_grad`는 그 차이의 2-노름이다.
+### 3.1 수치 미분 (O1에서 구현)
+- nls의 정확한 야코비안(regression §3.7, G70)을 `src/stardust/optimize/_diff.py`의 `Differences`로 옮겼다: 5점 중앙 차분, 2의 거듭제곱 간격, 변수마다 처음 한 번 간격을 고르기(2⁻⁸|x_j|에서 4배씩 줄이며 이웃 추정의 차이가 직전의 1/8보다 작은 동안), 경계나 유한하지 않은 쪽에서는 한쪽 5점 차분, 열의 반올림 수준(`noise`)과 이계 차분(`second`, nls의 뉴턴 다듬기). 반올림 수준에 묻힌 열을 0으로 두는 것(G88)은 nls만 켠다(`zero_noise`).
+- `approx_fprime(xk, f, *, epsilon=None)`: epsilon이 None이면 위의 5점 차분(경계 없음), 수를 주면 scipy와 같은 앞쪽 차분(scipy의 √u를 주면 비트까지 같다). `check_grad`는 그 차이의 2-노름이고, `direction='random'`이면 `rng`의 표준정규 방향 하나로 잰다.
+- 반복 안의 야코비안(`least_squares`, O21)은 scipy 1.18.1 `approx_derivative`의 '2-point'(h = √u·sign(x)·max(1, |x|), 경계에서 `_adjust_scheme_to_bounds`의 '1-sided')와 '3-point'(u^(1/3), '2-sided': 경계에서 (x, x + h, x + 2h))를 C++로 옮겼다(`csrc/optimize/diff.hpp`). 2점에서 한쪽 값이 유한하지 않으면 반대쪽으로 한 번 더 해 본다(nls의 fdjac2와 같다). nls의 반복은 지금처럼 MINPACK의 fdjac2(h = √u·|x|)다.
 
 ### 3.2 스칼라 근
 - brentq: scipy의 C 구현(`brentq.c`, Brent 1973)과 같은 걸음과 판정. toms748: Alefeld–Potra–Shi(1995) 알고리즘 748(scipy의 Python 구현과 같은 걸음). bisect, secant, newton, halley: scipy `newton`의 규칙.
@@ -94,9 +108,11 @@
 - 최솟값의 위치는 근처에서 f가 평평해 √u 상대 정확도가 한계다. 문서에 그 한계를 적는다.
 
 ### 3.4 최소제곱
-- `least_squares`: nls의 커널을 옮긴다(O6). 'lm'은 MINPACK lmder, 'trf'는 scipy 1.18.1 `trf`('exact' 부분문제, x_scale = 1, 손실 함수 없음)를 같은 순서로 옮긴 것이다(regression §3.7, G69).
-- nls에만 있는 것(다듬기 G73, 정확한 야코비안의 공분산, 겹친 모수 G76)은 `nls` 쪽에 남긴다. `least_squares`가 다듬기를 옵션으로 가질지는 §9 O1 질문이다.
-- scipy의 `loss`(soft_l1, huber, cauchy, arctan), `x_scale`, `f_scale`, `tr_solver='lsmr'`, `jac_sparsity`를 넣을지는 §9 O1 질문이다.
+- `least_squares` (O1에서 구현): nls의 커널을 `csrc/optimize/lsq.cpp`로 옮겼다(O6; `stardust._core.optimize.lsq_solve`). 'lm'은 MINPACK lmder(factor 100, mode 1), 'trf'는 scipy 1.18.1 `trf`('exact' 부분문제, x_scale = 1, 손실 함수 없음)를 같은 순서로 옮긴 것이다(regression §3.7, G69). 경계가 없으면 'trf'는 v = 1, dv = 0이 되어 scipy의 `trf_no_bounds`와 같은 걸음이다.
+- 야코비안마다 m 크기의 일은 LAPACK의 Householder QR 하나(J = Q₀R₀, Q₀ᵀf)이고 나머지는 n 크기다(lmder의 열 피벗 QR은 R₀의 것, trf의 SVD는 [R₀d; D]의 것). m < n이면('trf'만) J에 0인 행을 n까지 붙인다(같은 문제다).
+- 커널이 nls와 다른 것은 꼴뿐이다(nls를 부를 때는 지금까지와 같은 계산): 사용자 함수에 새 float64 `sd.ndarray`를 넘기기(nls는 Python float의 리스트), 돌려받은 값이 float64 `sd.ndarray`이고 모양이 맞으면 그대로 읽고 아니면 Python의 검사(`_conform`)를 거치기, x0에서의 값을 받기(모양을 알려고 Python에서 먼저 부른 것; nfev에 센다), scipy의 2점·3점 차분, 마지막 반복점의 잔차와 야코비안을 돌려주기('lm'은 마지막 야코비안이 다른 점의 것이면 x에서 한 번 더 계산한다: scipy의 `jac(x)`).
+- 결과(`grad` = Jᵀf, `optimality`, `active_mask`)는 scipy의 정의다(`optimality`는 'trf'가 Coleman–Li 척도의 ‖v·g‖∞, 'lm'은 ‖g‖∞; `active_mask`는 `find_active_constraints`(rtol = xtol)).
+- nls에만 있는 것(다듬기 G73, 정확한 야코비안의 공분산, 겹친 모수 G76)은 `nls` 쪽에 남겼다. scipy의 `loss`, `x_scale`, `f_scale`, `tr_solver='lsmr'`, `jac_sparsity`, `callback`, `workers`, 다듬기 옵션은 넣지 않았다(O22).
 - `lsq_linear`: trf(scipy의 경계 있는 선형 최소제곱)와 bvls(Stark–Parker). `nnls`: Lawson–Hanson(scipy 1.18.1의 구현과 같은 걸음). 바닥은 linalg의 QR이다.
 
 ### 3.5 다변수 최소화
@@ -132,7 +148,7 @@
 ## 6. 층과 파일 (안)
 - `src/stardust/optimize/`: 공개 함수(`_scalar.py`, `_minimize.py`, `_lsq.py`, `_root.py`, `_diff.py`), 결과 객체(`_result.py`), 입력 정리와 메시지
 - `csrc/optimize/`: `scalar.hpp`(근·최솟값, 배치 상태), `diff.hpp`, `lsq.cpp`(nls에서 옮긴 lmder·trf), `nelder_mead.cpp`, `bfgs.cpp`(+ `dcsrch`), `lbfgsb.cpp`, `trust.cpp`, `hybrd.cpp`, `nnls.cpp`; 바인딩 `csrc/bind/optimize_bind.cpp`
-- `regression.nls`는 `csrc/optimize/lsq.cpp`와 `_diff.py`를 쓴다(O6). `csrc/regression/nls.cpp`는 없어진다.
+- `regression.nls`는 `csrc/optimize/lsq.cpp`와 `_diff.py`를 쓴다(O6). `csrc/regression/nls.cpp`는 없앴다(O1).
 - `tests/optimize/`, `bench/optimize/`
 
 ---
@@ -168,13 +184,36 @@ O0에서 만든 것(2026-11-20). 문제 모음은 `tests/optimize/`, 고정 데�
   - 그래서 O9("scipy와 같은 걸음")의 대상은 scipy 1.18.1이다. 이 라이브러리의 커널은 scipy의 C 판을 옮기므로, O1–O5의 대조는 `scipy_*.json`이 기준이고 Fortran의 결과는 원본에서 얼마나 떨어지는지를 보는 데 쓴다.
 - nls를 옮긴 뒤 G6의 테스트 전부와 골든 출력(NIST 27개 × 시작점 2개, 두 방법)이 비트까지 같아야 한다(O1). NIST StRD 비선형 27개는 이미 `tests/regression/data/nls/`에 있다. CUTEst는 쓰지 않는다.
 
+O1에서 확인한 것(2026-11-20):
+
+- **nls의 비트 동일**: 옮기기 전에 골든 출력을 만들었다: NIST 27개 × 시작점 2개 × 'lm'·'trf' × 차분·사용자 야코비안(216적합), 같은 216경우의 시작점 둘레 상자 경계(108적합), 경계·가중치·0인 가중치·`max_nfev`·느슨한 허용오차·유한하지 않은 시험점·x0에서 유한하지 않음·겹친 모수의 14경우, 모두 338개. 결과의 모든 필드(params, bse, tvalues, pvalues, resid, fittedvalues, ssr, scale, llf, aic, bic, nobs, df_model, df_resid, rank, converged, n_iter, nfev, njev, cov_params, conf_int, summary 글, repr, 경계에 걸린 모수, 멈춘 번호, 다듬기 수, predict, predict_interval, 에러의 글)를 float의 16진 표기로 적었다. 커널을 옮긴 뒤와 정확한 차분을 옮긴 뒤에 다시 만든 출력이 바이트까지 같다(`cmp`). `tests/regression/test_nls.py`도 모두 통과한다.
+- **scipy 1.18.1과 같은 걸음** (O9; `tests/optimize/test_least_squares.py`). 기록된 실행(`data/scipy_least_squares.json`)과 견준 수(110경우, 상자는 47경우; nfev는 차분의 호출을 뺀 scipy의 셈, njev는 'trf'의 njev와 'lm'의 `n_iter`, x는 max|Δx|/max(‖x‖∞, ‖x0‖∞) ≤ 10⁻⁶):
+
+  | 방법 | 같은 status | 같은 nfev | 같은 njev | 같은 x | converged = success |
+  |---|---:|---:|---:|---:|---:|
+  | trf 해석적 | 110 | 107 | 107 | 108 | 110 |
+  | trf 해석적, 상자 | 47 | 45 | 46 | 45 | 47 |
+  | trf 2점 | 106 | 97 | 94 | 93 | 110 |
+  | trf 2점, 상자 | 47 | 42 | 43 | 41 | 47 |
+  | lm 해석적 | 108 | 101 | 97 | 102 | 110 |
+  | lm 2점 | 109 | 84 | 110(기록 없음) | 87 | 110 |
+
+  - 사용자 함수를 부른 점을 차례대로 scipy와 견주면(실행하며 기록), 해석적 야코비안의 'trf'는 110경우 가운데 103경우가 호출 수가 같고 모든 점이 10⁻¹⁰ 안이다(106경우가 10⁻⁶ 안; 상자 43/47, 'lm' 81/110). x0와 첫 야코비안의 점들은 비트까지 같다. 첫 시험점부터 끝자리가 다른데, 같은 J에서 이 커널은 QR을 먼저 하고 n 크기에서 SVD·피벗 QR을 하고 scipy는 m × n에서 한다(반올림의 순서가 다르다).
+  - 갈리는 곳은 반올림이 결정하는 곳이다: 거의 특이하거나 정확히 계수가 모자란 야코비안(선형 계수 1 함수 33·34, Watson n = 9·12, x0에서 두 열이 같은 Biggs EXP6, 100x0의 Gaussian(야코비안이 사실상 0), cond(J(x0)) ≈ 10¹⁶인 100x0의 Brown almost-linear: 첫 신뢰 영역 걸음이 3×10⁻³ 다르다), MINPACK의 `nsing`처럼 정확한 0을 보는 판정, ftol·xtol 판정이 반올림 수준의 감소로 갈리는 곳(선형 함수 32). 차분은 반복점의 끝자리 차이를 다음 야코비안의 10⁻⁸ 수준 차이로 키우므로 2점 차분의 경로가 더 일찍 갈린다.
+  - 3점 차분과 `diff_step`은 기록이 없어 실행하며 견줬다: 잘 조건화된 7경우에서 status, nfev(차분 2n·njev를 뺀 수), x가 같다.
+  - 3점 차분의 `max_nfev` 기본이 O23의 100n(n + 1)일 때는 상한에 닿아 scipy는 수렴하고 이쪽은 `status=0`인 경우가 MGH에 4개(trf 2, lm 1, 상자 trf 1) 있었다: 3점 야코비안은 2n번을 부르므로 상한에 닿는 반복 수가 scipy의 절반쯤이었다. O25(100n(2n + 1))로 바꾼 뒤 그 넷은 scipy와 같은 곳에서 멈춘다(차분을 뺀 nfev가 같다). 다시 견준 3점(실행하며 견줌, 110경우): 같은 status trf 107, lm 105, 상자 47/47; converged = success는 trf 110, lm 109(mgh15 100x0은 scipy가 상한 100n에 닿고 이쪽은 수렴한다), 상자 47.
+- **NIST StRD** (27개 × 시작점 2개 = 54적합, scipy를 실행하며 견줌): 같은 status는 trf 해석적 52, trf 2점 49, lm 해석적 50, lm 2점 52이고, x가 10⁻⁶ 안인 것은 54, 50, 51, 52다. 갈리는 것은 MGH09, MGH10, MGH17, BoxBOD, Bennett5(대부분 시작점 1)다. 인증값을 6자리 이상 맞히는 적합의 수는 scipy와 같거나 많다(trf 해석적 35/35, 2점 30/29, lm 해석적 35/34, 2점 31/31).
+- **Fortran LMDER1** (드라이버의 53경우, tol = √u, gtol = 0, maxfev = 100(n + 1)): 'lm' 해석적이 같은 info 48, 같은 호출 수(f와 야코비안) 47, x가 10⁻¹² 안 35, 10⁻⁶ 안 44다(scipy `leastsq`는 44, 47, 37, 45). 커널을 nls의 fdjac2 차분으로 돌리면 LMDIF1과 같은 info 50, 같은 호출 수 30, x 13·31이다(scipy `leastsq`는 52, 34, 13, 31).
+- **approx_fprime**: `epsilon=2**-26`(scipy의 기본)이면 MGH 47경우의 기울기와 야코비안이 scipy와 비트까지 같고 `check_grad`는 10⁻¹² 안이다. 기본(정확한 차분)은 해석적 도함수와의 상대 차이가 최대 1.2×10⁻¹¹(야코비안), 6.4×10⁻¹¹(기울기)이다.
+- 속도는 `bench/optimize/o1/speed.md`: 작은 문제의 반복당 자기 비용이 scipy의 1/4–1/20, (10⁴, 100)의 'lm'은 반복당 6.5 ms 대 42 ms, m = n = 40에서만 비슷하다.
+
 ---
 
 ## 8. 마일스톤 (안)
 | 마일스톤 | 내용 |
 |---|---|
 | O0 준비 | API 문서 초안, 결과 객체의 틀, 시험 문제 모음(MGH 35, scipy 시험 함수), 대조 도구, 벤치마크 기준선(scipy). 완료(2026-11-20): §7, docs/api/optimize.md, `bench/optimize/o0/` |
-| O1 수치 미분과 최소제곱 | `approx_fprime`, `check_grad`, nls 커널을 `least_squares`로 옮기기(nls 비트 동일) |
+| O1 수치 미분과 최소제곱 | `approx_fprime`, `check_grad`, nls 커널을 `least_squares`로 옮기기(nls 비트 동일). 완료(2026-11-20): §3.1, §3.4, §7, `bench/optimize/o1/` |
 | O2 스칼라 | `root_scalar`, `minimize_scalar`, 배치 `find_root bracket_root find_minimum bracket_minimum` |
 | O3 최소화 1 | `minimize`: Nelder–Mead, BFGS, L-BFGS-B |
 | O4 최소화 2 | `minimize`: Newton-CG, trust-ncg, trust-exact |
@@ -187,7 +226,7 @@ O0에서 만든 것(2026-11-20). 문제 모음은 `tests/optimize/`, 고정 데�
 
 ## 9. 마일스톤을 시작하기 전에 물을 것
 - **O0**: 정했다(2026-11-20, O9–O13). O0에서 API 초안을 쓰며 생긴 질문 가운데 모든 마일스톤에 걸친 넷(반복 상한의 이름, 방법 이름의 대소문자, `options` dict, `status`·`message`)도 정했다(O14–O17). 마일스톤별로 남은 질문은 docs/api/optimize.md §9에 있다(`nfev`가 차분을 세는지, `least_squares`의 `bounds` 기본값, `root_scalar`의 결과 이름, `nnls`의 결과 등).
-- **O1**: 반복 안의 차분 꼴(2점 기본, 3·5점 선택), `least_squares`의 다듬기 옵션, `loss`·`x_scale`·`lsmr`·`jac_sparsity`를 넣을지, nls를 옮기는 순서(먼저 옮기고 비트 확인 뒤 공개 함수).
+- **O1**: 정했다(2026-11-20, O18–O23, 구현하며 생긴 질문은 O24–O31). 옮기는 순서는 설계대로 먼저 옮기고 비트를 확인한 뒤 공개 함수를 만들었다.
 - **O2**: 구간법의 기본 허용오차(scipy 값 또는 반올림까지), 근을 끼지 않는 구간의 결과(ValueError 또는 NaN과 `converged=False`), 배치의 콜백 규약(남은 원소만 넘기기).
 - **O3–O4**: 기본 방법(scipy: 경계가 없으면 BFGS, 있으면 L-BFGS-B), `callback`을 둘지, `hess_inv`를 결과에 둘지, 유한하지 않은 함수값의 처리(걸음 거절 또는 멈춤).
 - **O5**: hybr의 기본 허용오차(scipy 1.49×10⁻⁸), `root`의 다른 방법(broyden 등)을 넣을지.

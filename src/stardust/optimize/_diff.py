@@ -1,0 +1,344 @@
+"""Numerical differentiation: approx_fprime, check_grad (docs/api/optimize.md §2,
+docs/design/optimize.md §3.1), and the accurate difference Jacobian they share with
+sd.regression.nls (regression G70, G88).
+
+The accurate differences are 5-point stencils with a step per variable chosen once: from
+2^-8 |x_j| down by factors of 4 while consecutive estimates get closer by more than 8 times
+(the truncation error, O(h^4), still dominates), powers of two so that x_j +- k h is exact;
+one-sided 5-point stencils at a bound or where the function is not finite on one side
+(bench/regression/g6/accuracy.md).
+"""
+
+import math
+import numbers
+
+from .. import _core as _sd
+from .. import linalg as _linalg
+from ._common import _callable, _check_choice, _real, _real_vector, _type_name, _x0
+
+# the steps: powers of two from 2^-8 |x_j| down to 2^-30 |x_j|
+_FD_START, _FD_END = -8, -30
+# a difference column whose 2-norm is at most this times its rounding level is taken as 0
+# (regression G88): f's own evaluation errors are a few ulps (sd's vForce functions up to 8),
+# on top of the rounding of each value that the level counts
+_NOISE_FACTOR = 16.0
+_U = 2.0**-53  # the unit roundoff: rounding a value moves it by at most u |f|
+
+
+class Differences:
+    """5-point difference Jacobians of g(x) -> (m,) values (a float64 sd.ndarray), x a list
+    of p floats within [lb, ub], with each variable's step chosen at its first column and
+    kept (steps). weights (None or (m,)) scale the rows of the Jacobian. central keeps the
+    last Jacobian's central values (h, g(x - h e_j), g(x + h e_j)) for second(); noise the
+    rounding level of each column (column())."""
+
+    # the 5-point stencils: central, and one-sided at a bound or where g is not finite on one
+    # side (offsets in steps h, weights, the denominator's multiple of h)
+    _STENCILS = (
+        ((-2, -1, 1, 2), (1.0, -8.0, 8.0, -1.0)),
+        ((0, 1, 2, 3, 4), (-25.0, 48.0, -36.0, 16.0, -3.0)),
+        ((0, -1, -2, -3, -4), (25.0, -48.0, 36.0, -16.0, 3.0)),
+    )
+
+    def __init__(self, g, p, lb, ub, weights=None):
+        self.g, self.p, self.lb, self.ub, self.weights = g, p, lb, ub, weights
+        self.steps = [None] * p  # the step per variable, chosen once
+        self.central = [None] * p  # (h, g(x - h e_j), g(x + h e_j)) of the last Jacobian
+        self.noise = [0.0] * p  # the rounding level of the last difference column
+
+    def column(self, x, j, h, g0):
+        """dg/dx_j (unweighted) by the first feasible 5-point stencil with step h, or None;
+        the central stencil's values are kept for second(). Also sets noise[j], the 2-norm
+        (weighted as the Jacobian) of the column's rounding level: each value
+        g_i(x + o h e_j) carries its rounding, up to u |g_i|, and the stencil
+        sum_o w_o g_o / (12 h) adds those with the weights, so element i is uncertain by up to
+        (sum_o |w_o|) / (12 h) u max_o |g_i(x + o h e_j)|."""
+        t = x[j]
+        for kind, (offs, wts) in enumerate(self._STENCILS):
+            if not (self.lb[j] <= t + min(offs) * h and t + max(offs) * h <= self.ub[j]):
+                continue
+            acc = None
+            vals = {}
+            for o, w in zip(offs, wts):
+                if o == 0:
+                    vr = g0
+                else:
+                    th = list(x)
+                    th[j] = t + o * h
+                    vr = self.g(th)
+                    if not bool(_sd.all(_sd.isfinite(vr))):
+                        acc = None
+                        break
+                vals[o] = vr
+                acc = w * vr if acc is None else acc + w * vr
+            if acc is not None:
+                if kind == 0:
+                    self.central[j] = (h, vals[-1], vals[1])
+                big = None
+                for o, w in zip(offs, wts):
+                    if w != 0.0:
+                        a = _sd.abs(vals[o])
+                        big = a if big is None else _sd.maximum(big, a)
+                if self.weights is not None:
+                    big = big * self.weights
+                wsum = sum(abs(w) for w in wts)
+                self.noise[j] = wsum / (12.0 * h) * _U * float(_linalg.vector_norm(big)) if big.shape[0] else 0.0
+                return acc / (12.0 * h)
+        return None
+
+    def choose_step(self, x, j, g0):
+        """The step of variable j, chosen once: from 2^-8 |x_j| down by factors of 4 while
+        consecutive estimates get closer by more than 8 times; the last such estimate and its
+        step."""
+        base = math.frexp(abs(x[j]) if x[j] != 0 else 1.0)[1]
+        best = hbest = None
+        dprev = math.inf
+        prev = None
+        for e in range(_FD_START, _FD_END - 1, -2):
+            h = math.ldexp(1.0, base + e)
+            col = self.column(x, j, h, g0)
+            if col is None:
+                if best is not None:
+                    break
+                continue
+            if prev is None:
+                best, hbest = col, h
+            else:
+                sc = float(_sd.max(_sd.abs(col)))
+                dd = float(_sd.max(_sd.abs(col - prev))) / sc if sc > 0 else 0.0
+                if dd >= dprev / 8:
+                    break
+                best, hbest = col, h
+                dprev = dd
+                if dd == 0:
+                    break
+            prev = col
+        return best, hbest
+
+    def jacobian(self, x, g0, zero_noise=False):
+        """(J, bad): the (m, p) Jacobian at x (g0 = g(x)), rows scaled by the weights, with the
+        steps chosen at the first call; bad is the first variable whose column no stencil
+        gives (J is None then). zero_noise: a column within _NOISE_FACTOR of its rounding level
+        is set to 0 (regression G88)."""
+        self.central = [None] * self.p
+        cols = []
+        for j in range(self.p):
+            col = None
+            if self.steps[j] is not None:
+                col = self.column(x, j, self.steps[j], g0)
+            if col is None:
+                col, self.steps[j] = self.choose_step(x, j, g0)
+            if col is None:
+                return None, j
+            cols.append(col)
+        J = _sd.stack(cols, axis=1)
+        if self.weights is not None:
+            J = J * _sd.reshape(self.weights, (self.weights.shape[0], 1))
+        if zero_noise:
+            # kept, a noise column has a direction of its own and can take the place of an
+            # identified parameter's column (a exp(-k t) + c at a large k: the k column was
+            # rounding noise constant over the rows, the direction of c's)
+            zero = [j for j in range(self.p) if float(_linalg.vector_norm(J[:, j])) <= _NOISE_FACTOR * self.noise[j]]
+            if zero:
+                keep = _sd.asarray([0.0 if j in zero else 1.0 for j in range(self.p)])
+                J = J * keep
+        return J, None
+
+    def second(self, x, g0, c, idx):
+        """S = sum_i c_i d^2 g_i / dx^2 over the variables idx (0 elsewhere), by central
+        differences with the Jacobian's steps (its kept values for the diagonal); None when a
+        point is outside the bounds or not finite."""
+        p = self.p
+        hs = []
+        for j in range(p):
+            if self.central[j] is not None:
+                hs.append(self.central[j][0])
+            elif self.steps[j] is not None:
+                hs.append(self.steps[j])
+            else:
+                hs.append(math.ldexp(1.0, math.frexp(abs(x[j]) if x[j] != 0 else 1.0)[1] + _FD_START - 2))
+        if not all(self.lb[j] <= x[j] - hs[j] and x[j] + hs[j] <= self.ub[j] for j in idx):
+            return None
+        c0 = float(_linalg.vecdot(c, g0))
+
+        def phi(steps):
+            th = list(x)
+            for j, s in steps:
+                th[j] = x[j] + s * hs[j]
+            vr = self.g(th)
+            if not bool(_sd.all(_sd.isfinite(vr))):
+                raise ArithmeticError
+            return float(_linalg.vecdot(c, vr))
+
+        S = [[0.0] * p for _ in range(p)]
+        try:
+            for a, j in enumerate(idx):
+                if self.central[j] is not None:
+                    fm, fp = (float(_linalg.vecdot(c, v)) for v in self.central[j][1:])
+                else:
+                    fm, fp = phi([(j, -1)]), phi([(j, 1)])
+                S[j][j] = (fp - 2 * c0 + fm) / (hs[j] * hs[j])
+                for k in idx[:a]:
+                    v = (
+                        phi([(j, 1), (k, 1)])
+                        - phi([(j, 1), (k, -1)])
+                        - phi([(j, -1), (k, 1)])
+                        + phi([(j, -1), (k, -1)])
+                    ) / (4 * hs[j] * hs[k])
+                    S[j][k] = S[k][j] = v
+        except ArithmeticError:
+            return None
+        return S
+
+
+# ---- the public functions
+
+
+def _f_values(v, func, what, m=None):
+    """What a user function returned: (values as a 1-D float64 sd.ndarray, scalar). A real
+    number (numpy's 0-dimensional arrays too) is a scalar, of 1 value; else 1-dimensional, of
+    m values when m is given (the count at the first point)."""
+    if isinstance(v, _sd.ndarray):
+        a = v
+    elif isinstance(v, numbers.Number) or (hasattr(v, "ndim") and v.ndim == 0):
+        if isinstance(v, bool):
+            raise TypeError(f"{func}(): '{what}' must return a real number or a 1-dimensional array, not bool")
+        if isinstance(v, complex) or (hasattr(v, "dtype") and getattr(v.dtype, "kind", "") == "c"):
+            raise TypeError(f"{func}(): '{what}' must return real values, not complex")
+        try:
+            t = float(v)
+        except TypeError, ValueError:
+            raise TypeError(
+                f"{func}(): '{what}' must return a real number or a 1-dimensional array, not {_type_name(v)}"
+            ) from None
+        a = _sd.asarray([t])
+        if m is not None and m != 1:
+            raise ValueError(f"{func}(): '{what}' must return {m} values as at the first point, not a scalar")
+        return a, True
+    else:
+        if isinstance(v, (str, bytes)) or v is None:
+            raise TypeError(
+                f"{func}(): '{what}' must return a real number or a 1-dimensional array, not {_type_name(v)}"
+            )
+        try:
+            a = _sd.asarray(v)
+        except OverflowError:
+            raise OverflowError(f"{func}(): Python int too large to convert to float64") from None
+        except TypeError, ValueError:
+            raise TypeError(
+                f"{func}(): '{what}' must return a real number or a 1-dimensional array, not {_type_name(v)}"
+            ) from None
+    if a.dtype == _sd.complex128:
+        raise TypeError(f"{func}(): '{what}' must return real values, not a complex128 array")
+    if a.dtype == _sd.string:
+        raise TypeError(f"{func}(): '{what}' must return real values, not a string array")
+    if a.dtype != _sd.float64:
+        a = a.astype(_sd.float64)
+    if a.ndim != 1:
+        raise ValueError(
+            f"{func}(): '{what}' must return a real number or a 1-dimensional array, not shape {tuple(a.shape)}"
+        )
+    if m is not None and a.shape[0] != m:
+        raise ValueError(f"{func}(): '{what}' must return {m} values as at the first point, not shape {tuple(a.shape)}")
+    return a, False
+
+
+def _forward(f, x, f0, eps, m, func, what):
+    """scipy's approx_fprime: (f(x + h_j e_j) - f(x)) / ((x_j + h_j) - x_j) with h_j = eps_j,
+    or sqrt(u) sign(x_j) max(1, |x_j|) where x_j + eps_j rounds to x_j (approx_derivative's
+    abs_step)."""
+    xl = x.tolist()
+    cols = []
+    for j, (t, h) in enumerate(zip(xl, eps)):
+        if (t + h) - t == 0:
+            h = 2.0**-26 * (1.0 if t >= 0 else -1.0) * max(1.0, abs(t))
+        xj = x.copy()
+        xj[j] = t + h
+        dx = (t + h) - t
+        cols.append((_f_values(f(xj), func, what, m)[0] - f0) / dx)
+    return _sd.stack(cols, axis=1)
+
+
+def _derivative(func, what, f, x, epsilon):
+    """(J (m, n), scalar): approx_fprime's work for the public function func, whose messages
+    name f as `what`."""
+    n = x.shape[0]
+    eps = (
+        None
+        if epsilon is None
+        else _real_vector(
+            epsilon, func, "epsilon", n, positive=True, like="'xk'" if func == "approx_fprime" else "'x0'"
+        )
+    )
+    xl = [float(v) for v in x.tolist()]
+    f0, scalar = _f_values(f(x.copy()), func, what)
+    m = 1 if scalar else f0.shape[0]
+
+    def g(th):
+        return _f_values(f(_sd.asarray(th)), func, what, m)[0]
+
+    if eps is not None:
+        return _forward(f, x, f0, eps, m, func, what), scalar
+    if not bool(_sd.all(_sd.isfinite(f0))):
+        raise ValueError(f"{func}(): '{what}' is not finite at the point")
+    D = Differences(g, n, [-math.inf] * n, [math.inf] * n)
+    J, bad = D.jacobian(xl, f0)
+    if J is None:
+        raise ValueError(f"{func}(): '{what}' is not finite near the point (the differences of variable {bad})")
+    return J, scalar
+
+
+def approx_fprime(xk, f, /, *, epsilon=None):
+    """The gradient (f returns a real number: (n,)) or the Jacobian (f returns m values:
+    (m, n)) of f at xk by differences: with epsilon=None the accurate 5-point differences
+    with a step chosen per variable (about 1e-11 - 1e-13 relative); with epsilon (a number or
+    n numbers) scipy's forward differences (docs/api/optimize.md §2)."""
+    func = "approx_fprime"
+    x = _x0(xk, func, "xk")
+    _callable(f, func, "f")
+    J, scalar = _derivative(func, "f", f, x, epsilon)
+    return J[0] if scalar else J
+
+
+def check_grad(func, grad, x0, /, *, epsilon=None, direction="all", rng=None):
+    """The 2-norm of grad(x0) - approx_fprime(x0, func, epsilon=epsilon), as scipy's; with
+    direction='random' |grad(x0) . v - d/dw func(x0 + w v)| at w = 0 along one direction v of
+    standard normal entries drawn from rng (docs/api/optimize.md §2)."""
+    fn = "check_grad"
+    _callable(func, fn, "func")
+    _callable(grad, fn, "grad")
+    x = _x0(x0, fn, "x0")
+    n = x.shape[0]
+    _check_choice(direction, fn, "direction", ("all", "random"))
+    if direction == "all":
+        if rng is not None:
+            raise ValueError(f"{fn}(): 'rng' is only used when direction='random'")
+    else:
+        from .. import random as _random
+
+        if not isinstance(rng, _random.Generator):
+            raise TypeError(
+                f"{fn}(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not {_type_name(rng)}"
+            )
+        if epsilon is not None:
+            _real(epsilon, fn, "epsilon")  # one step, along the direction
+
+    def value(t):
+        a, scalar = _f_values(func(t), fn, "func")
+        if not scalar:
+            raise ValueError(f"{fn}(): 'func' must return a real number, not shape {tuple(a.shape)}")
+        return float(a[0])
+
+    g0, scalar = _f_values(grad(x.copy()), fn, "grad")
+    if scalar or g0.shape[0] != n:
+        got = "a scalar" if scalar else f"shape {tuple(g0.shape)}"
+        raise ValueError(f"{fn}(): 'grad' must return {n} values (one per variable), not {got}")
+    if direction == "all":
+        J, _ = _derivative(fn, "func", value, x, epsilon)
+        return float(_linalg.vector_norm(g0 - J[0]))
+    from ..stats import Normal
+
+    v = Normal().sample((n,), rng=rng)
+    analytic = float(_linalg.vecdot(g0, v))
+    J, _ = _derivative(fn, "func", lambda w: value(x + float(w[0]) * v), _sd.asarray([0.0]), epsilon)
+    return abs(analytic - float(J[0][0]))

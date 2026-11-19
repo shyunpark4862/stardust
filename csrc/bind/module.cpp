@@ -4,6 +4,7 @@
 #include "bind/errors.hpp"
 #include "bind/frame_bind.hpp"
 #include "bind/linalg_bind.hpp"
+#include "bind/optimize_bind.hpp"
 #include "bind/regression_bind.hpp"
 #include "bind/special_bind.hpp"
 #include "bind/stats_bind.hpp"
@@ -129,4 +130,5 @@ NB_MODULE(_core, m) {
     sd::bind_stats(m);  // after the array, like special
     sd::bind_random(m);  // after the array too (it returns ndarrays)
     sd::bind_regression(m);  // after linalg (its batch driver and results)
+    sd::bind_optimize(m);  // after the array (it returns ndarrays)
 }

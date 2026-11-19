@@ -3,7 +3,6 @@
 
 #include "regression/glm.hpp"
 #include "regression/linear.hpp"
-#include "regression/nls.hpp"
 #include "regression/penalized.hpp"
 #include "regression/quantile.hpp"
 #include "regression/robust.hpp"
@@ -19,7 +18,6 @@ void bind_regression(nb::module_& core) {
     regression::bind_penalized(m);
     regression::bind_robust(m);
     regression::bind_quantile(m);
-    regression::bind_nls(m);
 }
 
 }  // namespace sd

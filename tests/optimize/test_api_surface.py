@@ -12,11 +12,11 @@ from .._api_doc import signature_blocks
 
 API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "optimize.md"
 
-# Documented, not implemented yet (docs/design/optimize.md §8): O1 approx_fprime check_grad
-# least_squares; O2 root_scalar minimize_scalar and the batched four; O3-O4 minimize; O5 root
-# lsq_linear nnls.
-PLANNED = {"approx_fprime", "check_grad", "least_squares", "lsq_linear", "nnls", "root_scalar", "minimize_scalar",
-           "find_root", "bracket_root", "find_minimum", "bracket_minimum", "minimize", "root"}
+# Documented, not implemented yet (docs/design/optimize.md §8): O2 root_scalar minimize_scalar
+# and the batched four; O3-O4 minimize; O5 root lsq_linear nnls. (O1's approx_fprime check_grad
+# least_squares are exported.)
+PLANNED = {"lsq_linear", "nnls", "root_scalar", "minimize_scalar", "find_root", "bracket_root", "find_minimum",
+           "bracket_minimum", "minimize", "root"}
 RESULTS = {"OptimizeResult"}
 
 

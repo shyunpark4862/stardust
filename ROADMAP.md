@@ -1,6 +1,6 @@
 # stardust 로드맵
 
-> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6, 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1–O6 시작 전)이다.
+> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6, 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2–O6 시작 전)이다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -371,7 +371,7 @@
 
 # 최적화 영역 (sd.optimize)
 
-> 상태: **O0 완료·승인** (2026-11-20). 설계는 [docs/design/optimize.md](docs/design/optimize.md), API의 초안은 [docs/api/optimize.md](docs/api/optimize.md)다.
+> 상태: **O0 완료·승인**, **O1 완료·승인** (2026-11-20). 설계는 [docs/design/optimize.md](docs/design/optimize.md), API의 초안은 [docs/api/optimize.md](docs/api/optimize.md)다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -379,13 +379,14 @@
 - 다른 영역과 같다: 마일스톤마다 시작 전에 물을 것(docs/design/optimize.md §9)을 묻고, 구현하고, 정확도·속도를 재고, 커밋하고, 결과를 전달하고, 승인받으면 다음으로 간다. 해설과 안내서는 쓰지 않는다.
 - 큰 결정(사용자, 2026-11-20): 다섯 덩어리(스칼라 근·최솟값, 최소제곱, 다변수 최소화, 방정식계의 근, 수치 미분), scipy의 이름과 stardust의 규칙, 결과 이름은 `converged`·`n_iter`, 스칼라의 배치 버전, nls의 커널을 옮겨 같이 쓰기, 전용 풀이는 그대로, 확률적 최적화·LP·제약·전역 최적화는 뺀다 (docs/design/optimize.md §1.1 O1–O8).
 - O0의 결정(사용자, 2026-11-20): scipy 1.18.1과 같은 걸음(비트까지는 아님), 통합 함수만(개별 함수 없음), `curve_fit` 없음, `args` 없음, MGH 35와 scipy 시험 함수, Fortran 원본 대조 (docs/design/optimize.md §1.1 O9–O13). API 초안 뒤의 결정(2026-11-20): 반복 상한은 `max_iter`·`max_nfev`, 방법 이름은 소문자만, 방법마다의 옵션은 `options` dict(모르는 키는 `ValueError`), `status`·`message`는 scipy의 것 (O14–O17).
+- O1의 결정(사용자, 2026-11-20): `nfev`는 차분의 호출도 센다, `bounds=None`이 기본, 유한하지 않은 마지막 cost는 `converged=False`, 반복 안의 차분은 `'2-point'`·`'3-point'`·`diff_step`(`'cs'` 없음), `loss`·`x_scale`·`lsmr`·`jac_sparsity`·`callback`·`workers`·다듬기는 미룬다, `max_nfev`의 기본은 nls의 규칙 (O18–O23). 구현 뒤의 결정(2026-11-20): 'lm'의 마지막 야코비안을 센다, 3점 차분의 `max_nfev` 기본은 100n(2n + 1), 유한하지 않은 야코비안과 3점의 한쪽 값은 `ValueError`, 빈 입력과 `diff_step`+호출 가능한 `jac`은 `ValueError`, `approx_fprime`의 모양·잡음 열·유한하지 않은 값, `check_grad`의 `rng` 에러 꼴 (O24–O31).
 - 기존 영역의 결과는 비트까지 같아야 한다(nls를 옮겨도).
 
 ## 진행 상태
 | 마일스톤 | 상태 |
 |---|---|
 | O0 준비: API 문서, 결과 객체, 시험 문제(MGH 35), 대조 도구, 기준선 | 완료·승인 (2026-11-20) |
-| O1 수치 미분과 최소제곱: `approx_fprime check_grad least_squares`, nls 옮기기 | 시작 전 |
+| O1 수치 미분과 최소제곱: `approx_fprime check_grad least_squares`, nls 옮기기 | 완료·승인 (2026-11-20) |
 | O2 스칼라: `root_scalar minimize_scalar`, 배치 `find_root bracket_root find_minimum bracket_minimum` | 시작 전 |
 | O3 최소화 1: Nelder–Mead, BFGS, L-BFGS-B | 시작 전 |
 | O4 최소화 2: Newton-CG, trust-ncg, trust-exact | 시작 전 |
@@ -399,3 +400,10 @@
 - 결정(사용자, 2026-11-20): docs/design/optimize.md §1.1 O9–O13, API 초안 뒤에 O14–O17.
 - 결과: docs/api/optimize.md(공개 함수 13개의 시그니처 초안과 마일스톤별 질문 §9), src/stardust/optimize/(`__init__.py`, `_result.py`의 `OptimizeResult`), `sd.optimize`; 시험 문제 tests/optimize/(`mgh.py` MGH 35개·110경우, `systems.py` MINPACK 방정식계 14개·55경우, `functions.py` scipy 시험 함수·스칼라 근 204·최솟값 57·선형 최소제곱 12, `ad.py` IEEE double·Arb·2차 자동 미분); 도구 tools/gen_optimize_scipy.py(scipy 1.18.1 3,781번), tools/gen_optimize_fortran.py(MINPACK·L-BFGS-B 3.0 원본 빌드·실행·scipy와 비교), tools/optimize_ref.py(Arb 1 ULP 근); 고정 데이터 tests/optimize/data/(1.8 MB); 기준선 bench/optimize/o0/(speed.py, speed.md: scipy의 시간과 nfev, 10스레드가 빨라지는 곳은 BFGS n = 1000뿐); 테스트 tests/optimize/(test_result.py, test_api_surface.py, test_problems.py, test_reference_data.py). 결과는 docs/design/optimize.md §7.
 - 찾은 것: MINPACK 드라이버의 문제는 Fortran과 비트까지 같다(216점). scipy의 C 판 MINPACK·L-BFGS-B는 첫 시험점부터 끝자리가 원본과 달라(계산점의 순서까지 같은 경우는 LMDER1 2/53, HYBRJ1 4/55, L-BFGS-B 7/83) 특이·비유일 해의 문제에서 다른 점에서 멈춘다. scipy `_tstutils`의 이계도함수 셋(aps02·aps09·aps10)이 틀렸다.
+
+### O1. 수치 미분과 최소제곱
+- `approx_fprime`, `check_grad`, `least_squares`('trf'·'lm', 해석적·'2-point'·'3-point' 야코비안, `diff_step`, 경계); nls의 LM·TRF 커널과 정확한 야코비안을 sd.optimize로 옮기고 nls가 그것을 쓴다.
+- 결정(사용자, 2026-11-20): docs/design/optimize.md §1.1 O18–O23, 구현 뒤에 O24–O31.
+- 결과: csrc/optimize/(lsq.cpp, lsq.hpp, diff.hpp; csrc/regression/nls.cpp에서 옮김), csrc/bind/optimize_bind.cpp(`stardust._core.optimize`), src/stardust/optimize/(`_lsq.py`, `_diff.py`, `_common.py`), src/stardust/regression/_nls.py(커널과 `Differences`를 씀); docs/api/optimize.md §2–§3, docs/design/optimize.md §3.1·§3.4·§7; 측정 bench/optimize/o1/(speed.py, speed.md); 테스트 tests/optimize/(test_least_squares.py, test_diff.py, test_api_surface.py).
+- 결과 수치: nls는 옮기기 전후 골든 출력 338적합(NIST 27 × 시작점 2 × 두 방법 × 야코비안 둘, 상자 경계, 가중치 등)의 모든 필드가 바이트까지 같다. MGH 110경우에서 scipy 1.18.1과 같은 status는 trf 해석적 110, lm 해석적 108, trf 2점 106, lm 2점 109(상자 47/47), 해석적 'trf'는 103경우에서 모든 호출점이 10⁻¹⁰ 안. NIST 54적합의 x가 scipy와 10⁻⁶ 안인 것 50–54. `approx_fprime(epsilon=2**-26)`은 scipy와 비트까지 같고 기본(5점)은 해석적 도함수와 1.2×10⁻¹¹ 안. 반복당 자기 비용은 작은 문제에서 scipy의 1/4–1/20, (10⁴, 100) 'lm' 6.5 ms 대 42 ms.
+- 찾은 것: 갈리는 경우는 모두 반올림이 결정하는 곳(거의 특이한 야코비안, 정확한 0을 보는 판정, 반올림 수준의 감소에서의 ftol·xtol)이다. 3점 차분은 O23의 기본 `max_nfev`에서 scipy보다 반복을 절반쯤만 할 수 있어 MGH 4경우가 상한에 닿았다: O25(100n(2n + 1))로 고친 뒤 넷 모두 scipy와 같은 곳에서 멈춘다. m = n = 40에서는 반복당 비용이 scipy와 비슷하다(QR을 먼저 하는 것이 덜어 주는 것이 없다; O6의 후보).
