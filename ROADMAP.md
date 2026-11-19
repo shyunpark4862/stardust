@@ -1,6 +1,6 @@
 # stardust 로드맵
 
-> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6, 완료·승인)이다.
+> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6, 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0–O6, 설계 초안)이다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -298,7 +298,7 @@
 
 # 회귀 영역 (sd.regression)
 
-> 상태: **설계 초안** (2026-11-18). 설계는 [docs/design/regression.md](docs/design/regression.md), API는 [docs/api/regression.md](docs/api/regression.md).
+> 상태: **G0–G6 구현·승인 완료** (2026-11-19, 최적화 승인 포함). 그 뒤의 코드 리뷰와 사이트 작업에서 찾은 문제는 결정 G83–G116으로 고쳤다(2026-11-20까지). 설계는 [docs/design/regression.md](docs/design/regression.md), API는 [docs/api/regression.md](docs/api/regression.md).
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -318,8 +318,75 @@
 | G4 강건: `rlm`(M·MM), `theilslopes`, `siegelslopes` | 완료·승인 (2026-11-18) |
 | G5 분위: `quantreg` | 완료·승인 (2026-11-19) |
 | G6 비선형 최소제곱: `nls` | 완료·승인 (2026-11-19) |
+| 회귀 최적화: Dot2 행 훑기, 64행 타일, 정준 링크 연마, expit 공유, MM의 S 뉴턴 | 완료·승인 (2026-11-19) |
+| 코드 리뷰와 사이트 작업에서 찾은 문제 (P1–P4, R1–R112) | 고침 (2026-11-19–20, 결정 G83–G116) |
+
+## 마일스톤
 
 ### G0. 준비
 - 결과: statsmodels 0.15.0·scikit-learn 1.9.1을 test 의존성에 넣고 설치했다(Python 3.15에서 설치됨). `tools/regref.py`(Arb 참값), `tests/regression/data/`(NIST StRD 11개, itl.nist.gov), `tests/regression/nist.py`; 테스트 tests/regression/test_reference_tool.py. 기존 패키지의 NIST 성적은 docs/design/regression.md §6.
 - 결과 객체의 공통 틀은 G1로 옮겼다(OLS의 필드와 함께 만든다).
 
+
+### G1. 선형
+- `ols wls gls linregress`, 추론(표준오차·t·p·구간·F·우도), 예측과 예측 구간, 강건 표준오차(HC0–HC3, HAC, 군집), 랭크 부족, 진단(지렛대, 스튜던트화 잔차, Cook 거리, Breusch–Pagan, Jarque–Bera), `summary`, 배치
+- G1a(선형 모형과 추론)와 G1b(HAC·군집, 진단, summary)로 나눠 진행했다.
+- 결정(사용자, 2026-11-18): docs/design/regression.md §1.1 G9–G30 (R식 랭크 부족, statsmodels의 필드 이름, 앞 축 배치, 필요할 때까지 최대 3번의 반복 개선, 완전 적합의 극한값, 강건 공분산도 t·F, inf는 ValueError, HAC의 지연 수, 일원 군집과 Stata의 보정).
+- 결과: csrc/regression/(linear.cpp, lsq.hpp), csrc/bind/regression_bind.cpp, src/stardust/regression/_linear.py, src/stardust/_results.py; docs/api/regression.md §1–§2, docs/design/regression.md §2·§3.1–§3.3; 측정 bench/regression/g1/(speed.md, refine.log), bench/regression/g1b/speed.md; 테스트 tests/regression/test_linear.py, test_reference_tool.py.
+
+### G2. GLM
+- 분포족(정규·이항·포아송·감마)과 링크, IRLS와 뉴턴, 분리 증명서, 우도비와 편차·Pearson 잔차, 강건 공분산
+- 결정(사용자, 2026-11-18): docs/design/regression.md §1.1 G31–G44 (미수렴은 마지막 값과 `converged=False`, 완전 분리의 판정과 결과, 척도, 이항 반응의 꼴, 가중치, 검정 분포, 비정준 링크의 마지막 걸음, 느린 수렴).
+- 결과: csrc/regression/glm.cpp, src/stardust/regression/_glm.py; docs/api/regression.md §3, docs/design/regression.md §3.4; 측정 bench/regression/g2/(speed.md, noncanonical.md, refine.md, accuracy.log); 테스트 tests/regression/test_glm.py, test_against_r.py(tools/gen_regression_r.py).
+
+### G3. 정규화
+- `ridge lasso elastic_net`, 정규화 경로, 교차검증(`ridge_cv lasso_cv elastic_net_cv`), `penalized_glm`
+- 결정(사용자, 2026-11-18): docs/design/regression.md §1.1 G45–G52 (scikit-learn의 목적함수, 경로와 교차검증, 정규화 GLM의 범위와 이름, 예측 중심의 결과(표준오차 없음), alpha = 0의 정규화 GLM은 glm의 규칙, ridge의 반복 개선).
+- 결과: csrc/regression/penalized.cpp, src/stardust/regression/_penalized.py; docs/api/regression.md §4, docs/design/regression.md §3.5; 측정 bench/regression/g3/(accuracy.md, speed.md); 테스트 tests/regression/test_penalized.py.
+
+### G4. 강건
+- `rlm`(M·MM 추정, Huber·bisquare·Hampel), `theilslopes`, `siegelslopes`
+- 결정(사용자, 2026-11-18): docs/design/regression.md §1.1 G53–G59 (statsmodels의 M과 robustbase의 MM, ψ 함수와 상수, 반복마다 MAD 척도와 Huber의 제안 2, scipy의 Theil–Sen·Siegel, rlm의 추론, MM의 큰 n).
+- 결과: csrc/regression/(robust.cpp, slopes.cpp), src/stardust/regression/_robust.py; docs/api/regression.md §5, docs/design/regression.md §3.6; 측정 bench/regression/g4/(accuracy.md, speed.md); 테스트 tests/regression/test_robust.py, test_robust_diagnostics.py, test_against_r.py(tools/gen_robust_r.py).
+
+### G5. 분위
+- `quantreg`: Frisch–Newton 내부점법과 기저 교차, Barrodale–Roberts 단체법, 여러 분위, 표준오차(nid·iid·ker)
+- 결정(사용자, 2026-11-18–19): docs/design/regression.md §1.1 G60–G67 (내부점법 뒤 정확한 꼭짓점, R quantreg의 표준오차, 여러 분위를 한 번에, 유일하지 않은 해는 사전식 최소 꼭짓점, 수렴, 정의되지 않는 표준오차, 10진 q의 동률, summary.rq의 eps).
+- 결과: csrc/regression/quantile.cpp, src/stardust/regression/_quantile.py; docs/api/regression.md §6, docs/design/regression.md §3.6; 측정 bench/regression/g5/(accuracy.md, speed.md); 테스트 tests/regression/test_quantreg.py(tools/gen_quantreg_r.py).
+
+### G6. 비선형 최소제곱
+- `nls`: Levenberg–Marquardt(MINPACK lmder)와 TRF(scipy `least_squares`), 모수마다 간격을 고르는 5점 차분, 가우스–뉴턴·뉴턴 다듬기, 추론과 예측 구간
+- 결정(사용자, 2026-11-19): docs/design/regression.md §1.1 G68–G79 (`curve_fit` 꼴의 이름과 입력, 두 방법, 정확한 야코비안, 사용자 함수의 입력, 가중치와 척도, 수렴과 정확도, 유한하지 않은 함수값, 겹친 모수, rtol 기본값, llf·aic·bic, 차분 비용).
+- 결과: csrc/regression/nls.cpp, src/stardust/regression/_nls.py; docs/api/regression.md §7, docs/design/regression.md §3.7; 측정 bench/regression/g6/(accuracy.md, speed.md); 테스트 tests/regression/test_nls.py, nist_nls.py(NIST StRD 비선형 27개, tests/regression/data/nls/), tools/gen_nls_r.py.
+
+### 회귀 최적화
+- 행을 도는 계산의 NEON Dot2 훑기(csrc/regression/dot2.hpp), 64행 Packer 타일, 정준 링크 GLM의 정규방정식 연마(G80), glm과 정규화 로지스틱이 같이 쓰는 expit 커널(G81), MM의 S 단계 뉴턴(G82)
+- 결과: 커밋 8772322; docs/design/regression.md §3.4–§3.6의 새 수치; 테스트 tests/regression/test_kernel_paths.py. g1–g4의 speed.md는 최적화 전 측정이라 다시 재야 한다(사용자가 나중에 직접 잰다).
+
+### 코드 리뷰와 사이트 작업에서 찾은 문제
+- 사이트 문서를 쓰며 찾은 P1–P4·R1–R112와 회귀 전체 코드 리뷰(2026-11-19)를 고쳤다. 사용자 결정은 docs/design/regression.md §1.1 G83–G116이다(0의 부호, 입력 복사, 상수 y의 정확한 해, 수렴과 다듬기, df_resid = 0, 빈 입력, 읽기 전용 설정 필드, `conf_int(*, alpha)`, pseudo R², 강건·분위·비선형의 예측 구간, alpha = 0의 정규화, 경계의 상수 y, 좌표 하강의 정확한 0 등).
+- 결과: 커밋 6ec75a2, 5db5a13, b56b891, d0f8553, 1c56929, 2de64d1, 9f8736e, b215b6e, 2aecdc1, 4bcd109, a2c1bbd(통계·특수함수 쪽 수정 포함); 테스트 tests/regression/test_review_decisions.py.
+
+---
+
+# 최적화 영역 (sd.optimize)
+
+> 상태: **설계 초안** (2026-11-20). 설계는 [docs/design/optimize.md](docs/design/optimize.md), API는 O0에서 [docs/api/optimize.md](docs/api/optimize.md)로 쓴다.
+>
+> **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
+
+## 진행 원칙
+- 다른 영역과 같다: 마일스톤마다 시작 전에 물을 것(docs/design/optimize.md §9)을 묻고, 구현하고, 정확도·속도를 재고, 커밋하고, 결과를 전달하고, 승인받으면 다음으로 간다. 해설과 안내서는 쓰지 않는다.
+- 큰 결정(사용자, 2026-11-20): 다섯 덩어리(스칼라 근·최솟값, 최소제곱, 다변수 최소화, 방정식계의 근, 수치 미분), scipy의 이름과 stardust의 규칙, 결과 이름은 `converged`·`n_iter`, 스칼라의 배치 버전, nls의 커널을 옮겨 같이 쓰기, 전용 풀이는 그대로, 확률적 최적화·LP·제약·전역 최적화는 뺀다 (docs/design/optimize.md §1.1 O1–O8).
+- 기존 영역의 결과는 비트까지 같아야 한다(nls를 옮겨도).
+
+## 진행 상태
+| 마일스톤 | 상태 |
+|---|---|
+| O0 준비: API 문서, 결과 객체, 시험 문제(MGH 35), 대조 도구, 기준선 | 시작 전 |
+| O1 수치 미분과 최소제곱: `approx_fprime check_grad least_squares`, nls 옮기기 | 시작 전 |
+| O2 스칼라: `root_scalar minimize_scalar`, 배치 `find_root bracket_root find_minimum bracket_minimum` | 시작 전 |
+| O3 최소화 1: Nelder–Mead, BFGS, L-BFGS-B | 시작 전 |
+| O4 최소화 2: Newton-CG, trust-ncg, trust-exact | 시작 전 |
+| O5 방정식계와 선형 최소제곱: `root`(hybr, lm), `lsq_linear`, `nnls` | 시작 전 |
+| O6 최적화와 일관성 점검 | 시작 전 |
