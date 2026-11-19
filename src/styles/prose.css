@@ -231,9 +231,10 @@
 }
 
 /* Math: MathJax SVG (STIX Two), drawn at build time. The SVG is sized in
-   ex of the surrounding text, so font-size scales it. */
+   ex of the surrounding text, so font-size scales it. At 100% its digits
+   are as tall as the body's; the serif's heavier strokes need no boost. */
 .prose .math mjx-container {
-  font-size: 108%;
+  font-size: 100%;
 }
 /* The site's reset makes every svg a block; a formula's pieces sit in the
    line like letters. */
@@ -275,7 +276,7 @@ mjx-container text {
 .prose .math-display mjx-container {
   margin: 0;
   padding: 0;
-  font-size: calc(114% * var(--math-fit, 1));
+  font-size: calc(106% * var(--math-fit, 1));
 }
 .prose .math-display.is-scrolling mjx-container {
   /* Left-aligned, so the start of the formula is what shows. */
