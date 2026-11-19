@@ -118,6 +118,8 @@ NB_MODULE(_core, m) {
         });
     }, nb::arg().none());
     m.def("get_num_threads", &sd::parallel::num_threads);
+    // the type name messages show for a value (`not list`, `not numpy.bool`): bind/errors.cpp
+    m.def("_type_name", [](nb::handle v) { return sd::py_type_name(v); }, nb::arg().none());
     // The limit of one allocation (base/buffer.hpp): sd.random checks a request against it before
     // taking its part of the stream, so a refused call leaves the generator where it was.
     m.def("_physical_memory", [] { return sd::physical_memory(); });

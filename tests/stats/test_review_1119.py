@@ -203,7 +203,7 @@ def test_multinomial_point_mass_entropy_and_tiny_inverse_wishart():
     lambda: S.MatrixNormal(mu=[[0.0]], rowcov=A([[1.0]]), colcov=A([[1.0]])),
 ])
 def test_matrix_and_multivariate_parameters_refuse_lists(make):
-    with pytest.raises(TypeError, match=r"^[A-Za-z]+\(\): '\w+' must be (a real number or )?an sd.ndarray, not (list|ndarray)$"):
+    with pytest.raises(TypeError, match=r"^[A-Za-z]+\(\): '\w+' must be (a real number or )?an sd.ndarray, not (list|numpy.ndarray)$"):
         make()
 
 
@@ -394,7 +394,7 @@ def test_entropy_doc_and_sample_shape():
 def test_multivariate_and_matrix_inputs_refuse_lists(x):
     M = S.MultivariateNormal(mu=A([0.0, 0.0]), cov=A([[1.0, 0.0], [0.0, 1.0]]))
     for m in ("pdf", "logpdf", "cdf"):
-        with pytest.raises(TypeError, match=rf"^{m}\(\): 'x' must be an sd.ndarray, not (list|tuple|ndarray)$"):
+        with pytest.raises(TypeError, match=rf"^{m}\(\): 'x' must be an sd.ndarray, not (list|tuple|numpy.ndarray)$"):
             getattr(M, m)(x)
     with pytest.raises(TypeError, match=r"^logpmf\(\): 'x' must be an sd.ndarray, not"):
         S.Multinomial(n=3, p=A([0.5, 0.5])).logpmf(x)

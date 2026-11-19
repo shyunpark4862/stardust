@@ -909,7 +909,9 @@ def test_central_extreme_arguments():
         ("InverseGamma", "ccdf", dict(a=1e-10, scale=5e-324), 1e+300, 0.9999998565361718),
         ("InverseGamma", "pdf", dict(a=0.5, scale=5e-324), 1e+100, 1.2540573332e-312),
         ("InverseGamma", "logcdf", dict(a=3.7, scale=1e+300), 5e-324, -math.inf),
-        ("Beta", "standard_deviation", dict(a=5e-324, b=0.5), None, 2.5666207247176107e-162),
+        # (a below 2^-1021: the limit's two atoms, P(1) = a / (a + b) = 1e-323, sd sqrt(q (1 - q)),
+        # T50; the Beta's own value is 2.57e-162, sqrt(1 + b) apart)
+        ("Beta", "standard_deviation", dict(a=5e-324, b=0.5), None, 3.1434555694052576e-162),
         ("Beta", "entropy", dict(a=5e-324, b=1.0), None, -math.inf),
         ("Beta", "skewness", dict(a=1e-300, b=1e-100), None, 1e+100),
         ("Beta", "mean", dict(a=1.7e+308, b=1.7e+308), None, 0.5),

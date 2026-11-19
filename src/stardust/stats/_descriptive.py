@@ -10,6 +10,7 @@ The reductions move the reduced axes last and run lane by lane in the native ker
 stardust._core.stats.desc_* (compensated sums, two-pass moments).
 """
 
+import functools
 import math
 import operator
 from collections import namedtuple
@@ -27,7 +28,7 @@ _EPS = 2.0**-52
 
 
 def _type_name(v):
-    return type(v).__name__
+    return _sd_core._type_name(v)  # (numpy's types as numpy.bool: API.md §2.1)
 
 
 def _as_array(x, name, arg="x"):
@@ -302,8 +303,8 @@ def describe(x, /, *, axis=None, correction=1, bias=True, nan_policy="propagate"
 
 
 def _orders(order, name):
-    if order is None:
-        raise TypeError(f"{name}(): missing the keyword argument 'order'")
+    if order is None:  # (None takes the same check as any wrong value, API.md §2.1)
+        raise TypeError(f"{name}(): 'order' must be an int or a sequence of ints, not NoneType")
     # one number (numpy integers too, API.md §2; an int beyond the doubles is "'order' is out
     # of range") or a sequence of them
     scalar = isinstance(order, bool) or _real_option(order, name, "order") is not None
@@ -541,3 +542,39 @@ def differential_entropy(x, /, *, window_length=None, base=None, axis=None, meth
     if base is not None:
         v = sd.divide(v, math.log(base))
     return lanes.out(v, keepdims)
+
+
+def _library_call_errors(fn):
+    """fn with Python's own call-shape errors in the library's form (as the distributions'
+    constructors, T36): "moment(): missing 1 required keyword-only argument: 'order'",
+    "skew(): unexpected keyword argument 'ddof'", not "moment() missing ..." (user decision
+    2026-11-19). The function's own checks already say "moment(): ..." and pass through."""
+    head = f"{fn.__qualname__}() "
+
+    @functools.wraps(fn)
+    def call(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except TypeError as e:
+            msg = str(e)
+            if not msg.startswith(head):
+                raise
+            rest = msg[len(head):]
+            if rest.startswith("got an unexpected"):
+                rest = rest[len("got an "):]
+            raise TypeError(f"{fn.__name__}(): {rest}") from None
+
+    return call
+
+
+describe = _library_call_errors(describe)
+skew = _library_call_errors(skew)
+kurtosis = _library_call_errors(kurtosis)
+moment = _library_call_errors(moment)
+zscore = _library_call_errors(zscore)
+rankdata = _library_call_errors(rankdata)
+sem = _library_call_errors(sem)
+iqr = _library_call_errors(iqr)
+mode = _library_call_errors(mode)
+entropy = _library_call_errors(entropy)
+differential_entropy = _library_call_errors(differential_entropy)

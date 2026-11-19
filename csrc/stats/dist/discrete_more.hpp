@@ -25,6 +25,7 @@
 #include "stats/chunk.hpp"
 #include "stats/discrete.hpp"
 #include "stats/dist/discrete_basic.hpp"
+#include "stats/dist/two_point.hpp"
 #include "stats/engine.hpp"
 #include "stats/numeric.hpp"
 
@@ -484,6 +485,20 @@ struct BetaBinomial {
 
     static bool valid(double n, double a, double b) {
         return n >= 0.0 && disc::is_int(n) && a > 0.0 && std::isfinite(a) && b > 0.0 && std::isfinite(b);
+    }
+    // A shape below 2^-1021: its limit at 0 (user decision 2026-11-19, T50), the point mass at
+    // 0 (a), at n (b), or both atoms with P(n) = a / (a + b) (stats/dist/two_point.hpp; the
+    // moments and the entropy are those of the atoms, past has_moments' shape range).
+    static bool at_limit(double n, double a, double b) {
+        return valid(n, a, b) && (a < two_point::kMinShape || b < two_point::kMinShape);
+    }
+    template <class M>
+    static double limit_in(double x, double n, double a, double b) {
+        return two_point::in<M>(x, two_point::of_shapes(a, b, 0.0, n, true));
+    }
+    template <class M>
+    static double limit_par(double n, double a, double b) {
+        return two_point::par<M>(two_point::of_shapes(a, b, 0.0, n, true));
     }
 
     // Whether there is a pmf: n + a + b up to 2^35. The log pmf below is a difference of

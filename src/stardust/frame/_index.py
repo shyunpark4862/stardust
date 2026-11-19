@@ -21,8 +21,8 @@ def check_name(name, what="a Series", func=None):
     if name is not None and not isinstance(name, str):
         # docs/api/frame.md §2.6, §5.1
         if func is None:
-            raise TypeError(f"the name of {what} must be a str or None, not {type(name).__name__}")
-        raise TypeError(f"{func}(): 'name' must be a str or None, not {type(name).__name__}")
+            raise TypeError(f"the name of {what} must be a str or None, not {type_name(name)}")
+        raise TypeError(f"{func}(): 'name' must be a str or None, not {type_name(name)}")
     return name
 
 
@@ -38,7 +38,7 @@ def check_label(index, label, func=None):
     ok = _is_int_label(label) if index._dtype == "int64" else isinstance(label, str)
     if not ok:
         kind = "an int" if index._dtype == "int64" else "a str"
-        raise TypeError(named(func, f"a label of {_an(index._dtype)} index must be {kind}, not {type(label).__name__}"))
+        raise TypeError(named(func, f"a label of {_an(index._dtype)} index must be {kind}, not {type_name(label)}"))
 
 
 def mixed_labels(ours, theirs):

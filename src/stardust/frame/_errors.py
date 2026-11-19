@@ -14,6 +14,8 @@ string options (check_choice) and lists of column names (name_list).
 
 import operator
 
+from .. import _core as _sd_core
+
 _INT64_MIN, _INT64_MAX = -(2**63), 2**63 - 1
 
 
@@ -23,8 +25,9 @@ def named(func, msg):
 
 
 def type_name(value):
-    """The short type name a message shows for a value of the wrong type (`not list`, `not ndarray`)."""
-    return type(value).__name__
+    """The type name a message shows for a value of the wrong type (`not list`, `not ndarray`,
+    numpy's with their module: `not numpy.bool`; the one helper of every area, API.md §2.1)."""
+    return _sd_core._type_name(value)
 
 
 def check_bool(value, what, func):

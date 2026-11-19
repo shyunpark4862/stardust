@@ -22,7 +22,7 @@ BOOL_OPTIONS = [
 
 @pytest.mark.parametrize(("call", "name", "option"), BOOL_OPTIONS)
 def test_bool_options_take_true_or_false(call, name, option):
-    for bad, shown in ((1, "int"), (0, "int"), (None, "NoneType"), (np.True_, "bool"), ("yes", "str")):
+    for bad, shown in ((1, "int"), (0, "int"), (None, "NoneType"), (np.True_, "numpy.bool"), ("yes", "str")):
         with pytest.raises(TypeError, match=rf"^{name}\(\): '{option}' must be True or False, not {shown}$"):
             call(**{option: bad})
     call(**{option: True})
@@ -45,7 +45,7 @@ def test_bool_options_take_true_or_false(call, name, option):
     (lambda: LA.solve_banded(A, V, lower_bandwidth=None, upper_bandwidth=0),
      r"^solve_banded\(\): 'lower_bandwidth' must be an int, not NoneType$"),
     (lambda: LA.lstsq(A, V, rtol="a"), r"^lstsq\(\): 'rtol' must be None, an int or a float, not str$"),
-    (lambda: LA.inv(np.eye(2)), r"^inv\(\): 'x' must be an sd\.ndarray, not ndarray$"),
+    (lambda: LA.inv(np.eye(2)), r"^inv\(\): 'x' must be an sd\.ndarray, not numpy\.ndarray$"),
 ])
 def test_wrong_values_name_the_argument(call, message):
     with pytest.raises(TypeError, match=message):
@@ -71,10 +71,10 @@ def test_numpy_integers_are_int_arguments():
     assert LA.matrix_rank(A, rtol=np.int64(0)) == 2
     ab = sd.asarray([[4.0, 3.0]])  # diagonal only
     assert LA.solve_banded(ab, V, lower_bandwidth=np.int64(0), upper_bandwidth=np.uint8(0)).tolist() == [0.75, 4 / 3]
-    for bad in (np.True_, True):
-        with pytest.raises(TypeError, match=r"^matrix_power\(\): 'n' must be an int, not bool$"):
+    for bad, shown in ((np.True_, "numpy.bool"), (True, "bool")):
+        with pytest.raises(TypeError, match=rf"^matrix_power\(\): 'n' must be an int, not {shown}$"):
             LA.matrix_power(A, bad)
-        with pytest.raises(TypeError, match=r"^vector_norm\(\): 'ord' must be an int or a float, not bool$"):
+        with pytest.raises(TypeError, match=rf"^vector_norm\(\): 'ord' must be an int or a float, not {shown}$"):
             LA.vector_norm(V, ord=bad)
     with pytest.raises(OverflowError, match=r"^matrix_power\(\): 'n' is out of range$"):
         LA.matrix_power(A, np.uint64(2**63))

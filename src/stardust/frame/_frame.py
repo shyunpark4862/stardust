@@ -71,7 +71,7 @@ class DataFrame(Reductions):
         elif isinstance(data, (list, tuple)):
             cols, natural = _from_rows(data, columns, dtype)
         else:
-            raise TypeError(f"DataFrame(): cannot make a DataFrame from {type(data).__name__}")
+            raise TypeError(f"DataFrame(): cannot make a DataFrame from {type_name(data)}")
         if target is not None and natural is not target:
             if len(natural) != len(target) and cols:
                 raise ValueError(f"DataFrame(): {len(natural)} rows for an index of {len(target)} labels")

@@ -13,7 +13,7 @@ slices and scalar results apart from gathers:
 import sys
 
 from . import _core
-from ._errors import named
+from ._errors import named, type_name
 from ._index import Index, _IndexBase, mixed_labels
 
 Column = _core.Column
@@ -90,11 +90,11 @@ def by_position(n, key, what="rows"):
         positions = array_items(key)
         for p in positions:
             if not _is_int(p):
-                raise IndexError(f"positions must be ints, not {type(p).__name__}")
+                raise IndexError(f"positions must be ints, not {type_name(p)}")
             if not -n <= p < n:
                 raise IndexError(f"position {p} is out of range for {n} {what}")
         return ("take", Column.from_list([int(p) + n if p < 0 else int(p) for p in positions], None, "int64"))
-    raise IndexError(f"cannot select {what} by position with {type(key).__name__}; "
+    raise IndexError(f"cannot select {what} by position with {type_name(key)}; "
                      "use an int, a slice or a list of ints")
 
 

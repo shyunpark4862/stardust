@@ -5,7 +5,7 @@ import sys
 
 from .. import _core as _sd_core
 from . import _core, _dtypes
-from ._errors import named
+from ._errors import named, type_name
 from ._na import NA
 
 Column = _core.Column
@@ -41,7 +41,7 @@ def column_from(data, dtype=None, func=None):
         return _from_ndarray(data, dtype, func)
     if isinstance(data, (list, tuple, range)):
         return Column.from_list(data, NA, dtype, func=func)
-    raise TypeError(named(func, f"cannot make a column from {type(data).__name__}; "
+    raise TypeError(named(func, f"cannot make a column from {type_name(data)}; "
                                 "expected a list, tuple, range, numpy array or sd.ndarray"))
 
 
@@ -168,7 +168,7 @@ def common_dtype(cols, func, what):
 def check_copy(copy, func):
     """copy= as in the array area's asarray: True, False or None."""
     if copy is not None and not isinstance(copy, bool):
-        raise TypeError(named(func, f"'copy' must be True, False or None, not {type(copy).__name__}"))
+        raise TypeError(named(func, f"'copy' must be True, False or None, not {type_name(copy)}"))
     return copy
 
 

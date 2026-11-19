@@ -349,7 +349,7 @@ def test_options_are_checked(func):
     x = sd.asarray([[3, 1], [2, 4]])
     name = func.__name__
     for option in ("descending", "stable"):
-        for bad, shown in ((1, "int"), (None, "NoneType"), (np.True_, "bool")):
+        for bad, shown in ((1, "int"), (None, "NoneType"), (np.True_, "numpy.bool")):
             with pytest.raises(TypeError, match=rf"^{name}\(\): '{option}' must be True or False, not {shown}$"):
                 func(x, **{option: bad})
     with pytest.raises(TypeError, match=rf"^{name}\(\): 'axis' must be an int, not NoneType$"):

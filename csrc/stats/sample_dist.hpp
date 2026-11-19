@@ -595,9 +595,15 @@ struct Custom<Beta> {
     static constexpr bool kExtra = true;  // draws extra words
     struct State {
         GammaPrep ga, gb;
+        bool at;  // a shape below 2^-1021: the limit's atoms (T50, as the value methods)
+        two_point::Law t;
     };
-    static State prep(double a, double b) { return {gamma_prep(a), gamma_prep(b)}; }
+    static State prep(double a, double b) {
+        const bool at = Beta::at_limit(a, b);
+        return {gamma_prep(a), gamma_prep(b), at, at ? two_point::of_shapes(a, b, 0.0, 1.0, false) : two_point::Law{}};
+    }
     static double draw(Words& w, const State& s) {
+        if (s.at) return s.t.q == 0.0 ? 0.0 : (s.t.qc == 0.0 ? 1.0 : (w.u01() < s.t.q ? 1.0 : 0.0));
         if (!s.ga.small && !s.gb.small) {  // shapes >= 1: X / (X + Y) directly
             const double x = gamma_mt(w, s.ga.d, s.ga.c);
             return x / (x + gamma_mt(w, s.gb.d, s.gb.c));
@@ -660,14 +666,19 @@ struct Custom<F> {
     struct State {
         GammaPrep g1, g2;
         double l;  // log(dfd / dfn)
-        int lim;   // 0, 1 dfd = inf, 2 dfn = inf
+        int lim;   // 0, 1 dfd = inf, 2 dfn = inf, 3 NaN
     };
+    // A df below 2^-1021 (no exact half): NaN, as the value methods (user decision 2026-11-19,
+    // T49, as T45 and T48); with dfd = inf that is ChiSquared(dfn)'s NaN, while dfn = inf with a
+    // small dfd is the inverse gamma's limit, which has values (its sample too).
     static State prep(double dfn, double dfd) {
-        const int lim = dfd == kInf ? 1 : (dfn == kInf ? 2 : 0);
+        const bool tiny = dfn < kMinSampleDf || dfd < kMinSampleDf;
+        const int lim = dfd == kInf ? (tiny ? 3 : 1) : (dfn == kInf ? 2 : (tiny ? 3 : 0));
         return {gamma_prep(lim == 2 ? 1.0 : 0.5 * dfn), gamma_prep(lim == 1 ? 1.0 : 0.5 * dfd),
                 lim == 0 ? log_ratio(dfd, dfn) : 0.0, lim};
     }
     static double draw(Words& w, const State& s) {
+        if (s.lim == 3) return std::numeric_limits<double>::quiet_NaN();
         if (s.lim == 1) return gamma_draw(w, s.g1) / s.g1.a;
         if (s.lim == 2) return s.g2.a / gamma_draw(w, s.g2);
         if (!s.g1.small && !s.g2.small) {
@@ -844,10 +855,16 @@ struct Custom<BetaBinomial> {
     struct State {
         double n;
         GammaPrep ga, gb;
+        bool at;  // a shape below 2^-1021: the limit's atoms 0 and n (T50, as the value methods)
+        two_point::Law t;
     };
-    static State prep(double n, double a, double b) { return {n, gamma_prep(a), gamma_prep(b)}; }
+    static State prep(double n, double a, double b) {
+        const bool at = BetaBinomial::at_limit(n, a, b);
+        return {n, gamma_prep(a), gamma_prep(b), at, at ? two_point::of_shapes(a, b, 0.0, n, true) : two_point::Law{}};
+    }
     static double draw(Words& w, const State& s) {
         if (s.n == 0.0) return 0.0;
+        if (s.at) return s.t.q == 0.0 ? 0.0 : (s.t.qc == 0.0 ? s.n : (w.u01() < s.t.q ? s.n : 0.0));
         const double d = log_gamma_diff(w, s.ga, s.gb);  // log X - log Y
         const double p = beta_of_logs(0.0, -d), q = beta_of_logs(0.0, d);
         if (p == 0.0) return 0.0;

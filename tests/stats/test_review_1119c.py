@@ -2,6 +2,7 @@
 for df < 2^-1021 (T44, T46, T47), the chi-square samples there (T48), the noncentral F just
 above the boundary, moment's order, the gelsd path with tiny singular values."""
 
+import inspect
 import math
 
 import numpy as np
@@ -129,3 +130,39 @@ def test_gelsd_path_is_numpys_for_tiny_systems():
         want = np.linalg.lstsq(a, b, rcond=None)[0]
         assert not np.isnan(x).any()
         assert np.array_equal(x, want), (a, b)
+
+
+# ---- R75, R77, R78 (2026-11-19, fourth pass)
+
+@pytest.mark.parametrize("df", [5e-324, 2.0**-1022, 2.0**-1021, 1e-307, 1e-305, 1e-292])
+def test_chndtrc_tiny_df(df):
+    # R77: NaN for df up to ~1e-305 at small x; now the df = 0 law plus the j = 0 term's tail
+    for x in (1e-300, 1e-100, 1e-20):
+        assert sp.chndtrc(df, 1.0, x) == pytest.approx(-math.expm1(-0.5), rel=1e-15)
+        assert sp.chndtr(df, 1.0, x) == pytest.approx(math.exp(-0.5), rel=1e-12)
+    # nc tiny too: both terms count, mu e^-y and e^-mu (df/2) E1(y)
+    want = 5e-301 + 0.5 * df * sp.expn(1, 5e-301)
+    assert sp.chndtrc(df, 1e-300, 1e-300) == pytest.approx(want, rel=1e-14, abs=45 * 2.0**-1074)
+    X = S.NoncentralChiSquared(df=max(df, 2.0**-1021), nc=1.0)
+    assert X.ccdf(1e-300) == pytest.approx(-math.expm1(-0.5), rel=1e-15)
+    assert X.logccdf(1e-20) == pytest.approx(math.log(-math.expm1(-0.5)), rel=1e-14)
+
+
+def test_ncfdtri_root_beyond_the_doubles():
+    # R78: the tail at the largest double is still short of the target: inf (was NaN)
+    assert sp.ncfdtri(5e-324, 5.0, 2.0, 0.5) == math.inf and sp.ncfdtri(1e-320, 5.0, 2.0, 0.5) == math.inf
+    assert sp.ncfdtri(5e-324, 5.0, 2.0, 0.2) == 0.0  # inside the j = 0 mass, below every double
+    assert sp.ncfdtri(2.0**-1021, 5.0, 2.0, 0.5) == pytest.approx(1.8609659255940713e307, rel=1e-12)
+
+
+def test_descriptive_call_shape_errors():
+    # R75: the library's form, as the constructors' (T36)
+    with pytest.raises(TypeError, match=r"^moment\(\): missing 1 required keyword-only argument: 'order'$"):
+        S.moment([1.0, 2.0, 4.0])
+    with pytest.raises(TypeError, match=r"^moment\(\): 'order' must be an int or a sequence of ints, not NoneType$"):
+        S.moment([1.0, 2.0, 4.0], order=None)
+    with pytest.raises(TypeError, match=r"^skew\(\): unexpected keyword argument 'ddof'"):
+        S.skew([1.0, 2.0, 3.0], ddof=1)
+    with pytest.raises(TypeError, match=r"^describe\(\): takes 1 positional argument but 2 were given$"):
+        S.describe([1.0, 2.0], 0)
+    assert S.moment.__name__ == "moment" and str(inspect.signature(S.moment)).startswith("(x, /, *, order")

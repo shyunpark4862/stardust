@@ -146,7 +146,7 @@ SAME_MISTAKE = [
     # a bool option given something else
     (lambda: sd.sort(X3, stable=1), "sort(): 'stable' must be True or False, not int"),
     (lambda: sd.argsort(X3, descending=None), "argsort(): 'descending' must be True or False, not NoneType"),
-    (lambda: sd.sum(X3, keepdims=np.True_), "sum(): 'keepdims' must be True or False, not bool"),
+    (lambda: sd.sum(X3, keepdims=np.True_), "sum(): 'keepdims' must be True or False, not numpy.bool"),
     (lambda: X3.mean(keepdims="no"), "mean(): 'keepdims' must be True or False, not str"),
     (lambda: sd.cumulative_sum(X3, include_initial=1), "cumulative_sum(): 'include_initial' must be True or False, not int"),
     (lambda: sd.linspace(0, 1, 3, endpoint=0), "linspace(): 'endpoint' must be True or False, not int"),
@@ -168,16 +168,17 @@ SAME_MISTAKE = [
     (lambda: sd.matmul(None, X3), "matmul(): "),
     (lambda: sd.linalg.inv(None), "inv(): 'x' must be an sd.ndarray, not NoneType"),
     (lambda: S([1]).head(None), "head(): 'n' must be an int, not NoneType"),
-    # short type names: no module paths
+    # short type names: no module paths, except numpy's types (numpy.bool, numpy.ndarray: user
+    # decision 2026-11-19, API.md §2.1)
     (lambda: sd.zeros(sd.ones(1)), "zeros(): 'shape' must be an int or a tuple of ints, not ndarray"),
-    (lambda: sd.zeros(np.float64(2)), "zeros(): 'shape' must be an int or a tuple of ints, not float64"),
+    (lambda: sd.zeros(np.float64(2)), "zeros(): 'shape' must be an int or a tuple of ints, not numpy.float64"),
     (lambda: sd.zeros(2, dtype=np.dtype("int64")),
-     "zeros(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names), not Int64DType"),
+     "zeros(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names), not numpy.dtypes.Int64DType"),
     (lambda: sd.zeros(2, dtype=np.int64),
      "zeros(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names), not numpy.int64"),
     (lambda: S([1]).astype(np.int64),
      "astype(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.string (or their names), not numpy.int64"),
-    (lambda: sd.linalg.det(np.eye(2)), "det(): 'x' must be an sd.ndarray, not ndarray"),
+    (lambda: sd.linalg.det(np.eye(2)), "det(): 'x' must be an sd.ndarray, not numpy.ndarray"),
     (lambda: sd.concat(X3), "concat(): 'arrays' must be a list or tuple of sd.ndarray, not ndarray"),
     (lambda: sd.arange(X3), "arange(): 'start' must be a bool, int or float, not ndarray"),
     # wrong messages fixed (DESIGN.md §10.3)
@@ -202,7 +203,7 @@ def test_the_same_mistake_has_the_same_message(call, text):
     assert message(call).startswith(text)
 
 
-DUMP = re.compile(r"incompatible function arguments|stardust\._core|numpy\.|nanobind")
+DUMP = re.compile(r"incompatible function arguments|stardust\._core|nanobind")  # (numpy's types are named with their module: API.md §2.1)
 
 
 def test_array_types_keep_their_module():
@@ -248,3 +249,28 @@ def test_no_argument_value_shows_nanobinds_dump_or_a_module_path():
                 if DUMP.search(text) or "\n" in text:
                     found.append(f"{name}{tuple(type(a).__name__ for a in args)} {kwargs}: {text.splitlines()[0]}")
     assert not found, "\n".join(found[:20])
+
+
+# numpy's types keep their public module in "not <type>" (user decision 2026-11-19, API.md §2.1):
+# a numpy.bool for a bool option is still a TypeError, but not shown as Python's bool
+@pytest.mark.parametrize("call,text", [
+    (lambda: sd.sort(sd.ones(3), stable=np.True_), "sort(): 'stable' must be True or False, not numpy.bool"),
+    (lambda: sd.frame.Series([1.0]).sum(skipna=np.True_), "sum(): 'skipna' must be True or False, not numpy.bool"),
+    (lambda: sd.linalg.cholesky(sd.eye(2), upper=np.True_), "cholesky(): 'upper' must be True or False, not numpy.bool"),
+    (lambda: sd.stats.skew([1.0, 2.0, 3.0], bias=np.True_), "skew(): 'bias' must be True or False, not numpy.bool"),
+    (lambda: sd.regression.ols(sd.ones((5, 2)), sd.arange(5.0), intercept=np.True_),
+     "ols(): 'intercept' must be True or False, not numpy.bool"),
+    (lambda: sd.random.default_rng(1).random(np.float64(3)), "random(): 'shape' must be an int or a tuple of ints, not numpy.float64"),
+    (lambda: sd.special.erf(np.ones(2)), "erf(): 'x' must be an sd.ndarray or a bool, int, float or complex, not numpy.ndarray"),
+    (lambda: sd.stats.Normal(mu=np.ones(2)), "Normal(): 'mu' must be a real number or an sd.ndarray, not numpy.ndarray"),
+    (lambda: sd.stats.Normal().sample(rng=np.random.default_rng(1)),
+     "sample(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not numpy.random.Generator"),
+    (lambda: sd.stats.rankdata([1.0, 2.0], axis=np.float64(0)), "rankdata(): 'axis' must be an int or None, not numpy.float64"),
+    (lambda: sd.frame.Series([1.0]).head(np.float32(1)), "head(): 'n' must be an int, not numpy.float32"),
+])
+def test_numpy_types_keep_their_module(call, text):
+    with pytest.raises(TypeError) as e:
+        call()
+    assert str(e.value) == text
+    # Python's own types and sd's stay short
+    assert sd._core._type_name(True) == "bool" and sd._core._type_name(sd.ones(1)) == "ndarray"

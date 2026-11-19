@@ -9,10 +9,37 @@
 namespace sd {
 
 std::string py_type_name(nb::handle o) {
-    // tp_name is "module.Name" for static types (numpy.int64), "Name" for heap types.
-    const char* name = Py_TYPE(o.ptr())->tp_name;
+    // tp_name is "module.Name" for static types (numpy.int64), "Name" for heap types: the
+    // short name, except numpy's types, which keep their public module (numpy.bool,
+    // numpy.float64, numpy.ndarray, numpy.random.Generator: the module without its private
+    // parts, numpy.random._generator; not to be read as Python's bool or sd's ndarray; user
+    // decision 2026-11-19, API.md §2.1). The one helper of every area (Python's too:
+    // _core._type_name).
+    PyTypeObject* t = Py_TYPE(o.ptr());
+    const char* name = t->tp_name;
     const char* dot = std::strrchr(name, '.');
-    return dot ? dot + 1 : name;
+    std::string out = dot ? dot + 1 : name;
+    PyObject* mod = PyObject_GetAttrString(reinterpret_cast<PyObject*>(t), "__module__");
+    if (mod == nullptr) {
+        PyErr_Clear();
+        return out;
+    }
+    if (PyUnicode_Check(mod)) {
+        const char* m = PyUnicode_AsUTF8(mod);
+        if (m == nullptr) PyErr_Clear();
+        else if (std::strncmp(m, "numpy", 5) == 0 && (m[5] == '\0' || m[5] == '.')) {
+            std::string pub;  // the module's parts up to the first private one
+            for (const char *p = m, *e; *p != '\0'; p = *e ? e + 1 : e) {
+                e = std::strchr(p, '.');
+                if (e == nullptr) e = p + std::strlen(p);
+                if (*p == '_') break;
+                pub += (pub.empty() ? "" : ".") + std::string(p, e);
+            }
+            out = pub + "." + out;
+        }
+    }
+    Py_DECREF(mod);
+    return out;
 }
 
 std::string with_name(const char* func, const char* msg) {

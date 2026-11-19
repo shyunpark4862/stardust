@@ -23,7 +23,7 @@ _MIN_DF = 2.0**-1021  # StudentT's boundary: below it df / 2 is not exact (docs/
 
 
 def _type_name(v):
-    return type(v).__name__
+    return _sd_core._type_name(v)  # (numpy's types as numpy.bool: API.md §2.1)
 
 
 _MAX_DOUBLE_INT = int(1.7976931348623157e308)  # ints above it raise in float()

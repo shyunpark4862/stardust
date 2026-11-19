@@ -406,7 +406,7 @@ def test_position_keys_of_the_wrong_kind_are_index_errors():
             s.iloc[key]
         with pytest.raises(IndexError, match=rf"^cannot select rows by position with {shown}; "):
             df.iloc[key]
-    for key, shown in (([1.0], "float"), ([0, True], "bool"), (np.array([0.5]), "float64")):
+    for key, shown in (([1.0], "float"), ([0, True], "bool"), (np.array([0.5]), "numpy.float64")):
         with pytest.raises(IndexError, match=rf"^positions must be ints, not {shown}$"):
             s.iloc[key]
     with pytest.raises(IndexError, match=r"^cannot select columns by position with float; "):
@@ -481,7 +481,7 @@ def test_frame_getitem_takes_an_array_of_names():  # as df.loc[:, array] (docs/a
     assert df[np.array([], dtype=str)].shape == (2, 0)
     with pytest.raises(KeyError, match="^'zz'$"):
         df[np.array(["a", "zz"])]
-    with pytest.raises(TypeError, match="^column names must be str, not int64$"):
+    with pytest.raises(TypeError, match="^column names must be str, not numpy.int64$"):
         df[np.array([0])]
     with pytest.raises(ValueError, match="^column names must be unique$"):
         df[np.array(["a", "a"])]

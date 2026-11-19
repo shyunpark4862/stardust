@@ -58,7 +58,7 @@ def test_bool_options_take_true_or_false(owner, name, option, tmp_path):
         (tmp_path / "t.csv").write_text("a\n1\n")
         args, kwargs = [tmp_path / "t.csv"], {"names": ["a"]}
     f = getattr(OBJECTS[owner], name)
-    for bad, shown in ((1, "int"), (0, "int"), (None, "NoneType"), (np.True_, "bool"), ("yes", "str")):
+    for bad, shown in ((1, "int"), (0, "int"), (None, "NoneType"), (np.True_, "numpy.bool"), ("yes", "str")):
         with pytest.raises(TypeError, match=rf"^{name}\(\): '{option}' must be True or False, not {shown}$"):
             f(*args, **kwargs, **{option: bad})
     f(*args, **kwargs, **{option: True})
@@ -70,8 +70,8 @@ def test_bool_options_take_true_or_false(owner, name, option, tmp_path):
 def test_int_arguments(obj, name):
     f = getattr(obj, name)
     assert len(f(2)) == 2 and len(f(-1)) == 2 and len(f(2**63 - 1)) == 3 and len(f(-(2**63))) == 0
-    for bad, shown in ((True, "bool"), (2.0, "float"), ("2", "str"), (None, "NoneType"), (np.True_, "bool"),
-                       (np.float64(2), "float64")):
+    for bad, shown in ((True, "bool"), (2.0, "float"), ("2", "str"), (None, "NoneType"), (np.True_, "numpy.bool"),
+                       (np.float64(2), "numpy.float64")):
         with pytest.raises(TypeError, match=rf"^{name}\(\): 'n' must be an int, not {shown}$"):
             f(bad)
     assert len(f(np.int64(2))) == 2 and len(f(np.uint8(1))) == 1  # numpy integers (DESIGN.md §10.1 #13)
@@ -127,7 +127,7 @@ def test_correction_takes_numpy_numbers():
     s = sd.frame.Series([1.0, 2.0, 4.0])
     assert s.var(correction=np.int64(1)) == s.var(correction=1)
     assert DF.groupby("a").std(correction=np.int8(0))["b"].tolist() == DF.groupby("a").std()["b"].tolist()
-    for bad, shown in ((True, "bool"), (np.True_, "bool"), (None, "NoneType"), ("1", "str")):
+    for bad, shown in ((True, "bool"), (np.True_, "numpy.bool"), (None, "NoneType"), ("1", "str")):
         with pytest.raises(TypeError, match=rf"^var\(\): 'correction' must be an int or a float, not {shown}$"):
             s.var(correction=bad)
 

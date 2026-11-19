@@ -162,12 +162,12 @@ def test_numpy_integers_are_int_arguments():
     assert_same(sd.linspace(0, 1, np.int64(5)), np.linspace(0, 1, 5))
     assert sd.arange(np.int64(3)).tolist() == [0, 1, 2]
     assert sd.reshape(sd.arange(6), (np.int64(2), -1)).shape == (2, 3)
-    for bad, shown in ((np.True_, "bool"), (np.float64(2.0), "float64"), (sd.ones(1), "ndarray")):
+    for bad, shown in ((np.True_, "numpy.bool"), (np.float64(2.0), "numpy.float64"), (sd.ones(1), "ndarray")):
         with pytest.raises(TypeError, match=rf"^zeros\(\): 'shape' must be an int or a tuple of ints, not {shown}$"):
             sd.zeros(bad)
         with pytest.raises(TypeError, match=rf"^eye\(\): 'n_rows' must be an int, not {shown}$"):
             sd.eye(bad)
-    with pytest.raises(TypeError, match=r"^zeros\(\): 'shape' must be an int or a tuple of ints, not a tuple holding bool$"):
+    with pytest.raises(TypeError, match=r"^zeros\(\): 'shape' must be an int or a tuple of ints, not a tuple holding numpy.bool$"):
         sd.zeros((np.True_,))
     with pytest.raises(OverflowError, match=r"^zeros\(\): 'shape' is out of range$"):
         sd.zeros(np.uint64(2**63))
@@ -175,7 +175,7 @@ def test_numpy_integers_are_int_arguments():
 
 def test_bool_options_take_true_or_false():
     # DESIGN.md §10.3: the frame's message, no nanobind argument dump
-    for bad, shown in ((1, "int"), (None, "NoneType"), (np.True_, "bool"), ("yes", "str")):
+    for bad, shown in ((1, "int"), (None, "NoneType"), (np.True_, "numpy.bool"), ("yes", "str")):
         with pytest.raises(TypeError, match=rf"^linspace\(\): 'endpoint' must be True or False, not {shown}$"):
             sd.linspace(0, 1, 3, endpoint=bad)
 

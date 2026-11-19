@@ -307,8 +307,11 @@ def test_extreme_parameters_return_in_bounded_time():
     assert np.isnan(np.asarray(S.DiscreteUniform(low=-1e300, high=1e300).sample(100, rng=rng))).all()
     v = np.asarray(S.DiscreteUniform(low=0.0, high=2.0**60).sample(4000, rng=rng))
     assert 0.0 <= v.min() and v.max() < 2.0**60 and 0.45 < v.mean() / 2.0**60 < 0.55
-    # F with a subnormal dfn: dfd / dfn overflowed (NaN in 99% of the samples)
+    # F with a subnormal dfn: dfd / dfn overflowed (NaN in 99% of the samples); since T49 NaN on
+    # purpose (as its values), and just above 2^-1021 the ratio holds
     v = np.asarray(S.F(dfn=1e-310, dfd=0.5).sample(2000, rng=rng))
+    assert np.isnan(v).all()
+    v = np.asarray(S.F(dfn=2.0**-1021, dfd=0.5).sample(2000, rng=rng))
     assert not np.isnan(v).any() and (v >= 0.0).all()
     # (the noncentral F with a df below 2^-1021 is NaN, as its values: user decision 2026-11-19, T45)
     v = np.asarray(S.NoncentralF(dfn=5e-324, dfd=0.5, nc=1.0).sample(2000, rng=rng))

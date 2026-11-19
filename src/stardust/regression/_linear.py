@@ -36,7 +36,7 @@ _LOG_2PI = math.log(2 * math.pi)
 
 
 def _type_name(v):
-    return type(v).__name__
+    return _sd._type_name(v)  # (numpy's types as numpy.bool: API.md §2.1)
 
 
 # ---- argument checks (the message forms of API.md §2.1 and of sd.stats / sd.linalg)

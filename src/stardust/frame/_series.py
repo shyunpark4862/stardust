@@ -4,7 +4,7 @@ from . import _column, _core, _dtypes, _format, _ops, _select, _sort, _unique
 from ._reduce import Reductions, own_reductions
 from ._column import _NO_VALUE
 from ._dtypes import resolve
-from ._errors import check_bool, check_int
+from ._errors import check_bool, check_int, type_name
 from ._na import NA
 from ._index import RangeIndex, check_name, ensure_index
 
@@ -364,7 +364,7 @@ def fill_column(col, value, func):
     if value is NA or value is None:
         return col
     if not _ops.is_operand_scalar(value):
-        raise TypeError(f"{func}(): 'value' must be None, a bool, int, float or str, not {type(value).__name__}")
+        raise TypeError(f"{func}(): 'value' must be None, a bool, int, float or str, not {type_name(value)}")
     return col.fill_na(_column.implicit_scalar(value, col.dtype, func))  # implicit, by dtype (docs/api/frame.md §3.6)
 
 

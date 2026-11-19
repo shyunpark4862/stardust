@@ -15,7 +15,7 @@ def _names(value, what):  # for merge()
         raise ValueError(f"merge(): '{what}' must name at least one column")
     for k in names:
         if not isinstance(k, str):
-            raise TypeError(f"merge(): column names must be str, not {type(k).__name__}")
+            raise TypeError(f"merge(): column names must be str, not {type_name(k)}")
     return names
 
 

@@ -240,7 +240,7 @@ def test_numpy_integers_are_ints_in_all_three_areas():
     assert S([1, 2, 3]).iloc[n] == 3 and x[n - 1, n - 2] == 3.0
     for call in (lambda: sd.zeros(np.True_), lambda: sd.linalg.matrix_power(x, np.True_), lambda: S([1]).head(np.True_),
                  lambda: sd.frame.RangeIndex(np.True_)):
-        with pytest.raises(TypeError, match=r"must be an int, not bool$|must be an int or a tuple of ints, not bool$"):
+        with pytest.raises(TypeError, match=r"must be an int, not numpy.bool$|must be an int or a tuple of ints, not numpy.bool$"):
             call()
 
 

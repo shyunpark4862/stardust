@@ -145,7 +145,7 @@ def test_set_and_get_num_threads():
             sd.set_num_threads(bad)
     sd.set_num_threads(np.int64(2))  # a numpy integer is an int (DESIGN.md §10.1 #13)
     assert sd.get_num_threads() == 2
-    for bad, shown in ((np.True_, "bool"), (None, "NoneType")):
+    for bad, shown in ((np.True_, "numpy.bool"), (None, "NoneType")):
         with pytest.raises(TypeError, match=rf"^set_num_threads\(\): 'n' must be an int, not {shown}$"):
             sd.set_num_threads(bad)
     sd.set_num_threads(1)

@@ -14,6 +14,7 @@
 #include "special/prefix.hpp"
 #include "stats/chunk.hpp"
 #include "stats/dist/gamma.hpp"
+#include "stats/dist/two_point.hpp"
 #include "stats/engine.hpp"
 #include "stats/numeric.hpp"
 
@@ -249,6 +250,20 @@ struct Beta {
     static constexpr std::array<const char*, 2> params{"a", "b"};
 
     static bool valid(double a, double b) { return a > 0.0 && std::isfinite(a) && b > 0.0 && std::isfinite(b); }
+    // A shape below 2^-1021: the shape's limit at 0 (user decision 2026-11-19, T50), the point
+    // mass at 0 (a), at 1 (b), or both atoms with P(1) = a / (a + b), every method
+    // (stats/dist/two_point.hpp).
+    static bool at_limit(double a, double b) {
+        return valid(a, b) && (a < two_point::kMinShape || b < two_point::kMinShape);
+    }
+    template <class M>
+    static double limit_in(double x, double a, double b) {
+        return two_point::in<M>(x, two_point::of_shapes(a, b, 0.0, 1.0, false));
+    }
+    template <class M>
+    static double limit_par(double a, double b) {
+        return two_point::par<M>(two_point::of_shapes(a, b, 0.0, 1.0, false));
+    }
 
     // log density at 0 < x < 1: log prefix - log x - log(1 - x).
     static num::DD log_density(double x, double a, double b) {

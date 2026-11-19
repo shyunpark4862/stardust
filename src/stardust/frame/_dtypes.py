@@ -4,7 +4,7 @@ sd.int64, sd.float64, sd.string) or their names, as in the array area
 (API.md §1). Columns keep the name; the public `.dtype` is the object."""
 
 from .. import _core as _sd_core
-from ._errors import named
+from ._errors import named, type_name
 
 DTYPES = ("bool", "int64", "float64", "string")
 
@@ -31,7 +31,7 @@ def resolve(dtype, func):
         elif isinstance(dtype, type):
             what = dtype.__qualname__ if dtype.__module__ == "builtins" else f"{dtype.__module__}.{dtype.__qualname__}"
         else:
-            what = type(dtype).__name__
+            what = type_name(dtype)
     raise TypeError(named(func, f"'dtype' must be sd.bool, sd.int64, sd.float64 or sd.string (or their names), not {what}"))
 
 

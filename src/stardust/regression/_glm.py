@@ -337,7 +337,7 @@ def _summary(r, alpha):
 
 def _check_int(v, func, arg, lo):
     if isinstance(v, bool) or not isinstance(v, numbers.Integral):
-        raise TypeError(f"{func}(): '{arg}' must be an int, not {type(v).__name__}")
+        raise TypeError(f"{func}(): '{arg}' must be an int, not {_sd._type_name(v)}")
     v = operator.index(v)
     if v < lo:
         raise ValueError(f"{func}(): '{arg}' must be >= {lo}")
@@ -348,7 +348,7 @@ def _check_int(v, func, arg, lo):
 
 def _check_positive(v, func, arg):
     if isinstance(v, bool) or not isinstance(v, numbers.Real):
-        raise TypeError(f"{func}(): '{arg}' must be an int or a float, not {type(v).__name__}")
+        raise TypeError(f"{func}(): '{arg}' must be an int or a float, not {_sd._type_name(v)}")
     try:
         x = float(v)
     except OverflowError:
@@ -370,7 +370,7 @@ def _check_scale(v, func):
             return 2, 0.0
         raise ValueError(f"{func}(): 'scale' must be None, 'X2', 'dev' or a number > 0, not {v!r}")
     if isinstance(v, bool) or not isinstance(v, numbers.Real):
-        raise TypeError(f"{func}(): 'scale' must be None, 'X2', 'dev' or a number > 0, not {type(v).__name__}")
+        raise TypeError(f"{func}(): 'scale' must be None, 'X2', 'dev' or a number > 0, not {_sd._type_name(v)}")
     return 3, _check_positive(v, func, "scale")
 
 
@@ -398,7 +398,7 @@ def glm(y, X, /, *, family, link=None, var_weights=None, freq_weights=None, tria
         link = links[0]
     elif not isinstance(link, str) or link not in links:
         listed = ", ".join(f"'{c}'" for c in links[:-1]) + f" or '{links[-1]}'"
-        what = repr(link) if isinstance(link, str) else type(link).__name__
+        what = repr(link) if isinstance(link, str) else _sd._type_name(link)
         err = ValueError if isinstance(link, str) else TypeError
         raise err(f"{func}(): 'link' must be None, {listed} for the {family} family, not {what}")
     _check_bool(intercept, func, "intercept")

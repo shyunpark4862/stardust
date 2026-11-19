@@ -36,7 +36,7 @@ bool  int64  float64  complex128  string
   - 배열이 필요한 자리에 다른 객체를 넣었다.
   - 함수가 그 dtype을 받지 않는다 (예: complex의 순서 비교).
   - 암묵적 하향 변환이다 (docs/api/array.md §1.5). 데이터프레임의 대입과 `fillna`도 같다 (docs/api/frame.md §3.6, §5.7).
-  - bool 옵션에 `True`/`False`가 아닌 값을 넣었다 (docs/api/array.md §1.1). `0`, `1`, `None`, `numpy.bool_`도 그렇다.
+  - bool 옵션에 `True`/`False`가 아닌 값을 넣었다 (docs/api/array.md §1.1). `0`, `1`, `None`, `numpy.bool_`도 그렇다. `numpy.bool_`은 메시지에서 `not numpy.bool`로 보인다(§2.1).
   - int 인자에 int가 아닌 값을 넣었다. **int 인자는 `operator.index`의 규칙으로 읽는다**: Python int와 numpy 정수(`np.int64(3)` 등 `__index__`가 있는 객체)는 int이고, bool과 `numpy.bool_`은 아니다. 세 영역의 모든 int 인자(`shape`, `axis`, `k`, `n`, `num`, `head(n)`, `RangeIndex`, `set_num_threads` …)와 인덱싱이 같다. int나 float를 받는 인자(`correction`, `ord`, `rtol`)도 numpy 정수를 int로 받는다 (DESIGN.md §10.1 13번).
   - 원소 하나에 스칼라가 아닌 값을 대입했다: `x[0] = 'a'`, `x[0] = [7]` (docs/api/array.md §5.3)
 - **`ValueError`**: 타입은 맞지만 값이 맞지 않는다.
@@ -67,7 +67,8 @@ bool  int64  float64  complex128  string
 - **인자는 작은따옴표 안에 이름을 쓴다**: `'axis'`, `'dtype'`. 인자와 값을 함께 보일 때는 호출 모양 그대로 쓴다: `copy=False`, `header=False`
   - 인자가 아닌 낱말에는 따옴표가 없다. 예: `axis 3 is out of bounds for an array of dimension 2`의 axis는 배열의 축이다.
   - 받은 값은 타입 이름으로 보인다(`not list`). 문자열은 그 자체로 보인다(`not 'float32'`). 타입은 모듈을 붙인 이름으로 보인다(`not numpy.int64`; 내장 타입은 `not float`). `sd.int64`와 헷갈리지 않게 하려는 것이다(사용자 결정 2026-11-18, 전에는 `<class 'int64'>`).
-  - **타입 이름은 모듈 경로 없는 짧은 이름이다**: `not ndarray`, `not int64`, `not Int64DType`, `not <class 'int64'>`. `stardust._core.ndarray`, `numpy.int64`, `numpy.dtypes.Int64DType`처럼 쓰지 않는다.
+  - **타입 이름은 모듈 경로 없는 짧은 이름이다**: `not ndarray`, `not list`, `not DType`. `stardust._core.ndarray`처럼 쓰지 않는다.
+    - 예외는 numpy의 타입이다. 공개 모듈을 붙인다(비공개 부분 `_generator` 등은 뺀다): `not numpy.bool`, `not numpy.int64`, `not numpy.float64`, `not numpy.ndarray`, `not numpy.dtypes.Int64DType`, `not numpy.random.Generator`. Python의 `bool`, sd의 `ndarray`·`int64`와 헷갈리지 않게 하려는 것이다(사용자 결정 2026-11-19; 전에는 `sum(): 'keepdims' must be True or False, not bool`처럼 numpy의 bool이 Python의 bool로 읽혔다). 모든 영역이 한 함수(C++ `py_type_name`, Python에서는 `_core._type_name`)로 이름을 만든다.
     - Python이 직접 내는 메시지도 같다. C++로 묶은 타입도 Python으로 쓴 클래스처럼 짧은 이름을 갖는다: `unsupported operand type(s) for +: 'ndarray' and 'list'`, `unhashable type: 'ndarray'`, `cannot pickle 'ndarray' object`, `'ndarray' object has no attribute 'foo'`
 - **같은 실수에는 어느 영역에서든 같은 메시지다** (DESIGN.md §10.3). 옵션의 종류마다 검사가 하나라서 형식이 하나다.
   - bool 옵션: `sort(): 'stable' must be True or False, not int`, `sum(): 'skipna' must be True or False, not NoneType`
@@ -82,7 +83,7 @@ bool  int64  float64  complex128  string
   - 인덱싱이 없는 라벨이나 열을 찾으면 dict처럼 `KeyError(label)`다. 함수가 없는 열을 받으면 `sort_values(): no column 'x'`다.
   - 속성 대입: `property 'shape' of 'ndarray' object has no setter`
 - Python과 nanobind가 직접 내는 에러는 그대로다: 틀린 호출 모양(`Series.head() got some positional-only arguments passed as keyword arguments: 'n'`, 없는 키워드나 인자 개수가 틀린 호출에 대한 nanobind의 `incompatible function arguments`), 파일을 열 때의 `FileNotFoundError`. 인자의 **값**이 틀린 것은 언제나 위의 형식이다.
-  - 예외: `sd.stats` 분포의 생성자는 호출 모양의 에러도 생성자 형식이다(docs/design/stats.md T36; 2026-11-19): `Normal(): unexpected keyword argument 'cool'`, `Gamma(): missing 1 required keyword-only argument: 'a'`, `Normal(): takes no positional arguments but 1 was given`.
+  - 예외: `sd.stats` 분포의 생성자는 호출 모양의 에러도 생성자 형식이다(docs/design/stats.md T36; 2026-11-19): `Normal(): unexpected keyword argument 'cool'`, `Gamma(): missing 1 required keyword-only argument: 'a'`, `Normal(): takes no positional arguments but 1 was given`. `sd.stats`의 기술통계 함수도 같다: `moment(): missing 1 required keyword-only argument: 'order'`(2026-11-19). 분포의 메서드는 Python의 형식 그대로다(`sample() missing 1 required keyword-only argument: 'rng'`).
 - **메시지에 문서의 절 번호를 넣지 않는다.** 문서의 번호는 바뀌어도 메시지는 사용자 코드가 붙잡고 있을 수 있다.
 
 ## §3. 스레드와 결정성

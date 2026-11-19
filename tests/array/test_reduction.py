@@ -414,7 +414,7 @@ BOOL_OPTIONS = [
 def test_bool_options_take_true_or_false(func, option):
     x = sd.asarray([1.0, 2.0, 3.0])
     name = func.__name__
-    for bad, shown in ((1, "int"), (0, "int"), (None, "NoneType"), (np.True_, "bool"), ("yes", "str")):
+    for bad, shown in ((1, "int"), (0, "int"), (None, "NoneType"), (np.True_, "numpy.bool"), ("yes", "str")):
         with pytest.raises(TypeError, match=rf"^{name}\(\): '{option}' must be True or False, not {shown}$"):
             func(x, **{option: bad})
         if option == "keepdims":  # the method is the same function
@@ -443,7 +443,7 @@ def test_numpy_integers_are_int_arguments():
     assert sd.argmax(x, axis=np.int64(-1)).tolist() == [1, 1]
     assert sd.cumulative_sum(x, axis=np.int64(1)).tolist() == [[1.0, 3.0], [3.0, 8.0]]
     assert sd.var(x, correction=np.int64(1)) == sd.var(x, correction=1)
-    with pytest.raises(TypeError, match=r"^sum\(\): 'axis' must be an int or a tuple or list of ints, not bool$"):
+    with pytest.raises(TypeError, match=r"^sum\(\): 'axis' must be an int or a tuple or list of ints, not numpy.bool$"):
         sd.sum(x, axis=np.True_)
-    with pytest.raises(TypeError, match=r"^var\(\): 'correction' must be an int or a float, not bool$"):
+    with pytest.raises(TypeError, match=r"^var\(\): 'correction' must be an int or a float, not numpy.bool$"):
         sd.var(x, correction=np.True_)

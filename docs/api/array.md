@@ -18,7 +18,7 @@
   - 함수의 본 인자. 예: `reshape`의 `shape`, `full`의 `fill_value`, `permute_dims`의 `axes`
 - **keyword-only (`*` 뒤)**: 이름이 붙은 옵션은 모두 keyword-only다.
   - 옵션 이름: `dtype`, `axis`, `keepdims`, `out`, `copy`, `stable`, `descending`, `correction`, `min`, `max`, `k`, `endpoint`, `include_initial`
-- **bool 옵션**(`keepdims`, `stable`, `descending`, `endpoint`, `include_initial`)은 `True`/`False`만 받는다. `0`, `1`, `None`, `numpy.bool_`은 `TypeError`다. 메시지는 데이터프레임과 같다: `sort(): 'stable' must be True or False, not int` (API.md §2.1).
+- **bool 옵션**(`keepdims`, `stable`, `descending`, `endpoint`, `include_initial`)은 `True`/`False`만 받는다. `0`, `1`, `None`, `numpy.bool_`은 `TypeError`다. 메시지는 데이터프레임과 같다: `sort(): 'stable' must be True or False, not int` (API.md §2.1). `numpy.bool_`은 Python의 bool과 구별해 `not numpy.bool`이다(2026-11-19).
 - 옵션에 `None`을 주어도 그 옵션의 검사가 받는다. `None`이 뜻이 있는 옵션(`axis=None`, `dtype=None`, `copy=None`)이 아니면 다른 틀린 값과 같은 `TypeError`다. 예: `sort(x, axis=None)`은 `sort(): 'axis' must be an int, not NoneType`
 - **이름**
   - Python Array API Standard의 이름을 쓴다. 예: `acos`, `concat`, `pow`, `permute_dims`

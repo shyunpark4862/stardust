@@ -62,7 +62,7 @@ def _check_param(cls, name, value):
         if isinstance(value, int) and abs(value) > _MAX_DOUBLE_INT:  # float(value) would overflow
             raise OverflowError(f"{cls}(): '{name}' is out of range")
         return
-    raise TypeError(f"{cls}(): '{name}' must be a real number or an sd.ndarray, not {type(value).__name__}")
+    raise TypeError(f"{cls}(): '{name}' must be a real number or an sd.ndarray, not {_sd_core._type_name(value)}")
 
 
 def _real_option(v, func, arg):
@@ -320,7 +320,7 @@ class _Distribution:
         not on the thread count (docs/api/stats.md §2.5)."""
         if not isinstance(rng, _random.Generator):
             raise TypeError(f"sample(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), "
-                            f"not {type(rng).__name__}")
+                            f"not {_sd_core._type_name(rng)}")
         if shape is None and self._scalar is not None:  # one float: no arrays on the way
             key, pos = rng._reserve(1)
             return self._ops["sample1"](key[0], key[1], pos, *self._scalar)

@@ -114,7 +114,12 @@ nb::object lstsq(nb::handle ao, nb::handle bo, nb::handle rtol_o) {
             // With no right-hand side (k = 0) the rank and singular values are still
             // wanted, but gelsd's helper xLALSD rejects nrhs = 0: give it one zero column.
             const lint nrhs = std::max<lint>(r.k, 1);
-            T* B = s.get<T>(static_cast<std::size_t>(ldb * nrhs), 1);
+            // B where numpy has it (numpy and scipy's buffer: A, then B, then S in one malloc):
+            // 8 m n bytes past a 16-byte boundary. Accelerate's dgelsd gives other last bits
+            // for a B off 16 bytes on its underdetermined path (9 x 11: 34 of 40 random
+            // systems differed from numpy), so B keeps numpy's offset (2026-11-19).
+            T* B = s.get<T>(static_cast<std::size_t>(ldb * nrhs) + 1, 1);
+            if constexpr (std::is_same_v<T, double>) B += (m * n) % 2;
             if (r.k == 0) std::fill(B, B + ldb, T(0));
             if (!pack(y.dtype(), y.data() + off[1], m, r.k, r.rs, r.cs, B, ldb, true)) return kNonFiniteB;
             T* xi = X + i * n * r.k;
@@ -176,8 +181,9 @@ nb::object lstsq(nb::handle ao, nb::handle bo, nb::handle rtol_o) {
                     std::fill(xi, xi + n * r.k, T(0));
                 } else {
                     // (A kept value in the subnormals needs nothing here: with rcond >= eps it
-                    // means sigma_max < 2^-970, and gelsd scales such a matrix (norm below
-                    // its smlnum, ~1e-146) into range and the solution back, so exact zeros
+                    // means sigma_max < 2^-970, so the largest entry is below gelsd's smlnum
+                    // (sfmin / eps = 2^-970; dgelsd.f): it scales the matrix into range and
+                    // the solution back, so exact zeros
                     // stay zero and overflow is inf: 9000 random tiny systems gave no NaN,
                     // the same as numpy's; 2026-11-19.)
                     for (lint j = 0; j < r.k; ++j) std::copy(B + j * ldb, B + j * ldb + n, xi + j * n);

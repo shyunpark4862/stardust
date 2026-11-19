@@ -28,7 +28,7 @@ _MASK64 = 0xFFFFFFFFFFFFFFFF
 
 
 def _type_name(v):
-    return type(v).__name__
+    return _sd_core._type_name(v)  # (numpy's types as numpy.bool: API.md §2.1)
 
 
 # ---- seeding: numpy's SeedSequence, ported (numpy/random/bit_generator.pyx) ----------

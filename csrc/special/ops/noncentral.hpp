@@ -14,6 +14,7 @@
 #include "special/cost.hpp"
 #include "special/cf.hpp"
 #include "special/ops/distr.hpp"
+#include "special/ops/expint.hpp"
 
 #include <algorithm>
 #include <array>
@@ -1325,7 +1326,14 @@ inline double invert_positive(const L& F, const U& Fc, double p, double x0) {
     // 546 eps of absolute error, 1e-13 of F (the root moved by 190 ULP)
     auto g = [&](double x) { return low ? std::log(F(x) / target) : std::log(target / Fc(x)); };
     if (!(x0 > 0.0 && x0 < kInf)) x0 = 1.0;
-    return solve(g, x0, [](double x) { return std::log(x); }, [](double u) { return std::exp(u); }, 0.125, 0.0, kInf);
+    const double r = solve(g, x0, [](double x) { return std::log(x); }, [](double u) { return std::exp(u); }, 0.125, 0.0, kInf);
+    if (r == r) return r;
+    // no bracket inside the doubles: a root beyond the largest one is inf (the tail there is
+    // still short of the target: ncfdtri(5e-324, 5, 2, 1/2), 2026-11-19), below the smallest 0
+    constexpr double kMax = std::numeric_limits<double>::max(), kMin = std::numeric_limits<double>::denorm_min();
+    if (g(kMax) < 0.0) return kInf;
+    if (g(kMin) > 0.0) return 0.0;
+    return r;
 }
 
 // The real t with F(t) = p.
@@ -1366,13 +1374,22 @@ inline bool ncx2_edge(double df, double nc, double x, bool upper, double& out) {
     } else if (x == 0.0) {
         // P(X <= 0): the point mass e^(-nc/2) for df = 0 (chdtr(0, 0) is NaN, as gammainc(0, 0)), else 0
         out = df == 0.0 ? kNaN : (upper ? 1.0 : 0.0);
-    } else if (df < 0x1p-1021 && df > 0.0 && nc >= 0x1p-899) {
-        // df/2 below the normals (gammainc's subnormal shapes): the df = 0 values. The j = 0
-        // term's Q(df/2, x/2) ~ (df/2) E1(x/2) is below 2^-1022 * 745 and, beside the rest
-        // (at least mu e^-mu e^-y; 1 - e^-mu ~ mu next to 0), under 2^-110 of the tail for
-        // mu >= 2^-900 (2026-11-19; the upper tail was NaN, chndtrc(2^-1022, 1, 1e-300))
+    } else if (df > 0.0 && df < 0x1p-960) {
+        // a = df/2 below 2^-961 (gammainc's tiny shapes: the upper tail was NaN for df up to
+        // ~1e-305 at small x, chndtrc(1e-307, 1, 1e-300); 2026-11-19): from the df = 0 law,
+        // whose shapes j >= 1 are off from a + j by a relative a |log y| < 2^-950, and its
+        // j = 0 term, a point mass at 0 there: here e^-mu Q(a, y) with Q(a, y) = a E1(y) to
+        // the same order (Gamma(a) = 1/a, Gamma(a, y) = E1(y) + O(a)). The upper tail adds it
+        // to df = 0's (it counts when mu is tiny too: chndtrc(2^-1022, 1e-300, 1e-300)); the
+        // lower one, 1 to rounding beside it, is df = 0's.
         double o;
         if (!ncx2_edge(0.0, nc, x, upper, o)) o = nc_detail::ncx2(0.0, nc, x, upper);
+        if (upper) {
+            const double y = 0.5 * x;
+            // (a scaled by 2^1000 while the product is formed: a subnormal a keeps its bits)
+            const double j0 = std::exp(-0.5 * nc) * ((0.5 * df * 0x1p1000) * expint_detail::en(1.0, y)) * 0x1p-1000;
+            o = o + j0;
+        }
         out = o;
     } else if (x < 0x1p-1021) {
         // x/2 below the normals: only the j = 0 term counts (the next carries a factor x/2),
