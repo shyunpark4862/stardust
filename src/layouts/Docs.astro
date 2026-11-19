@@ -527,12 +527,20 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
     background: var(--bg-subtle);
     color: var(--fg);
   }
+  /* The sidebar scrolls and so clips what pokes out of it; while the area
+     menu is open it lets the menu hang below its own end. */
+  .docs__side:has(.area__switch[open]) {
+    overflow: visible;
+  }
   .area__menu {
     position: absolute;
     top: calc(100% + var(--space-1));
     right: 0;
     z-index: 10;
     width: 232px;
+    /* On a short window the menu scrolls on its own. */
+    max-height: calc(100vh - var(--header-h) - 140px);
+    overflow-y: auto;
     margin: 0;
     padding: var(--space-1);
     border: 1px solid var(--line);
