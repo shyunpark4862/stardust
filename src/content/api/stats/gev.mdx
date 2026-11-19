@@ -112,7 +112,7 @@ GEV(c=0.25, mu=1.0, sigma=2.0)
 >>> sd.stats.GEV()
 Traceback (most recent call last):
     ...
-TypeError: GEV.__init__() missing 1 required keyword-only argument: 'c'
+TypeError: GEV(): missing 1 required keyword-only argument: 'c'
 ```
 
 막힌 끝은 $\mu + \sigma/c$예요. 위 예에서는 $1 + 2/0.25 = 9$예요. `c < 0`이면 같은 식이 아래 끝이 돼요.

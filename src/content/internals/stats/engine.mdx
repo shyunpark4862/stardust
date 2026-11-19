@@ -134,9 +134,8 @@ chunk 커널이 있는 메서드는 순서가 반대예요. 커널을 먼저 묶
 // chunk_loop_impl (stats/engine.hpp, 줄인 발췌)
 for (std::int64_t off = 0; off < n; off += kChunk) {
     const int m = static_cast<int>(std::min<std::int64_t>(kChunk, n - off));
-    Chunk<NP> c{m, gather(args[NP] + off * s[NP], s[NP], m, xb),          // x를 연속 버퍼로
-                {gather(args[I] + off * s[I], s[I], m, pb[I])...},           // 매개변수도
-                {(s[I] == 0)...}};                                           // stride 0이면 same
+    Chunk<NP> c{m, gather(args[NP] + off * s[NP], s[NP], m, xb), {gather(args[I] + off * s[I], s[I], m, pb[I])...},
+                {(s[I] == 0)...}};  // x와 매개변수를 연속 버퍼로, stride 0이면 same
     M::template run_chunk<D, Chunk<NP>>(c, ob);                              // 커널 한 번
     constexpr double zero = kNonNegative<M> ? 0.0 : -0.0;  // v + -0.0 is v for every v
     if ((c.same[I] && ...)) {
@@ -375,8 +374,7 @@ static void pdf_kernel(const Chunk<2>& c, double* out, bool* fast, int grade) {
         for (int i = 0; i < c.n; ++i) {
             const double k = num::kInvSqrt2Pi / c.p[1][i];
             out[i] *= k;
-            fast[i] = 2.5 * el[i] + ck::kVfExp + 3.5 <= kFastBudget   // NaN이면 거짓
-                      && k >= 0x1p-1000 && k <= 0x1p1000;
+            fast[i] = 2.5 * el[i] + ck::kVfExp + 3.5 <= kFastBudget && k >= 0x1p-1000 && k <= 0x1p1000;  // NaN이면 거짓
         }
         return;
     }
@@ -522,7 +520,10 @@ inline void constant(const Chunk<NP>& c, double* kh, double* kl, F&& f) {
         const auto v = f(0);
         for (int i = 0; i < c.n; ++i) kh[i] = v.hi, kl[i] = v.lo;
     } else {
-        for (int i = 0; i < c.n; ++i) { const auto v = f(i); kh[i] = v.hi, kl[i] = v.lo; }
+        for (int i = 0; i < c.n; ++i) {
+            const auto v = f(i);
+            kh[i] = v.hi, kl[i] = v.lo;
+        }
     }
 }
 ```
@@ -614,7 +615,10 @@ struct KMemo {
     ...
 };
 template <class Tag>
-KMemo& memo() { thread_local KMemo m; return m; }       // (분포, 메서드)마다, 스레드마다 하나
+KMemo& memo() {  // (분포, 메서드)마다, 스레드마다 하나
+    thread_local KMemo m;
+    return m;
+}
 ```
 
 - **찾는 순서**: 매개변수가 모두 스칼라이고 원소가 8개 이상이면, 32원소씩 표를 보고 빗나간 원소만 작은 묶음으로 모아 커널(정밀 정의나 빠른 경로)을 불러요. 커널이 낸 값은 표에 넣어요. 누적분포는 `floor(k)`만 읽으므로 그것을 열쇠로 써요.

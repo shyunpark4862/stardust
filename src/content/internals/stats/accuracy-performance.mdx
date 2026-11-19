@@ -276,7 +276,7 @@ scipy 1.18.1과는 기본값끼리 비교하면 정규 $d = 3$에서 최대 $3.7
 | `ChiSquared` | df $> 2^{101}$의 cdf 계열과 역함수 |
 | `Beta`, `StudentT`, `F` | 깊은 꼬리(확률 $< 2^{-1000}$)나 아주 작은 근의 역함수가 100걸음 안에 수렴하지 않을 때(마지막 걸음이 $2^{-48}\max(1, \lvert\log x\rvert)$를 넘을 때) |
 | `Beta`, `F` | $a, b$가 모두 $2^{100}$ 초과(F는 dfn, dfd가 모두 $2^{101}$ 초과)의 cdf 계열과 역함수 |
-| `ChiSquared`, `StudentT`, `F` | df $< 2^{-1021}$의 pdf, cdf 계열, 역함수, median, entropy(df의 절반을 double로 나타낼 수 없어요) |
+| `ChiSquared`, `StudentT`, `F` | df $< 2^{-1021}$(서브노멀 전부와 가장 작은 정규수 구간 $[2^{-1022}, 2^{-1021})$; F는 dfn, dfd 중 하나라도)의 pdf, cdf 계열, 역함수, median, entropy. df의 절반을 double로 정확히 나타낼 수 없어요 |
 | 역함수의 검증 | 감마 계열 $a \notin [10^{-6}, 10^6]$, `Beta` $a, b \notin [10^{-3}, 10^5]$, `StudentT` df $\notin [10^{-3}, 10^6]$, `F` dfn, dfd $\notin [10^{-3}, 10^5]$에서는 구한 근에서 정방향 log 꼬리가 목표와 상대 $10^{-12}$ 안에서 맞을 때만 값을 내요 |
 | `F.entropy` | dfn이나 dfd가 $10^{-2}$ 미만 |
 | `F.logpdf` | 두 자유도가 모두 $10^{15}$ 초과이고 베타 인자가 double 아래로 내려갈 때 |
@@ -305,16 +305,17 @@ $2^{52}$, $2^{53}$의 경계는 개수의 연산 때문이에요. 불완전 베�
 | pdf, logpdf | F는 nc가 약 $1.3 \times 10^8$ 초과, t는 $\lvert\text{nc}\rvert$나 $\lvert t\rvert$가 약 $10^{15}$ 초과. 카이제곱은 큰 df와 큰 nc가 함께일 때만(df가 작으면 nc $= 10^{300}$까지 값이 나와요) |
 | mode | t는 $\lvert\text{nc}\rvert > 128\sqrt{1 + \text{df}}$, F는 nc $> 1.3 \times 10^8$ |
 | `ilogcdf`, `ilogccdf` | $\log p \le -2^{62}$ |
+| 아주 작은 자유도 | t는 df $< 2^{-1021}$, F는 dfn이나 dfd $< 2^{-1021}$이면 pdf, cdf 계열, 역함수, median, entropy가 NaN(중심 분포와 같은 경계). 카이제곱은 nc $> 0$이면 df $< 2^{-1021}$에서도 값을 내요(0의 점질량을 품은 포아송 혼합: `NoncentralChiSquared(df=2**-1022, nc=1).cdf(1)` $= 0.73288$). nc $= 0$은 `ChiSquared`처럼 NaN |
 | entropy | 질량이 double 범위 밖에 남는 아주 작은 자유도(F의 dfd $= 0.01$, 카이제곱 df $= 0.01$·nc $\le 30$ 등), 반분 12번에 수렴하지 않는 큰 nc(카이제곱 df $= 3.5$에서 약 $7 \times 10^7$부터) |
 
 ### 표본, 다변량, 행렬
 
 | 대상 | NaN이 되는 곳 |
 |---|---|
-| `sample` | `Hypergeometric`은 표준편차 $> 65536$ 또는 total $\ge 2^{53}$, `DiscreteUniform`은 폭 $\ge 2^{64}$, `StudentT`·`NoncentralT`는 서브노멀 df, `NoncentralF`는 두 자유도가 모두 서브노멀. `Zipf`는 $a > 1025$이면 1, `Beta`·`BetaBinomial`·`F`는 서브노멀 모양에서 극한값 |
+| `sample` | `Hypergeometric`은 표준편차 $> 65536$ 또는 total $\ge 2^{53}$, `DiscreteUniform`은 폭 $\ge 2^{64}$, `StudentT`·`NoncentralT`는 df $< 2^{-1021}$, `NoncentralF`는 dfn이나 dfd $< 2^{-1021}$(nc $= 0$ 포함, 다른 자유도가 inf이면 극한 분포의 표본). `Zipf`는 $a > 1025$이면 1, `Beta`·`BetaBinomial`·`F`는 서브노멀 모양에서 극한값 |
 | `Multinomial` | logpmf는 $n$이 약 $10^{13}$을 넘으면 최빈값 근처에서 NaN일 수 있음. entropy는 범주별 표준편차의 합 $> 2^{17}$ 또는 $n > 2^{53}$(점질량은 0) |
 | 다변량 t `cdf` | $d = 3$에서 $\lvert x/\text{sd}\rvert > 10^{100}$이고 조건부 적분으로 넘어가야 할 때(df $\le 1$에서 나와요). 값이 NaN이면 오차 출력도 NaN |
-| `Wishart`, `InverseWishart` | logpdf는 df $\ge 10^9$에서 크기 $np\log n$인 항을 식에서 지운 꼴이라 df $\le 10^{30}$을 보장해요. 남는 반올림의 상한이 $10^{-14}\max(1, \lvert\text{값}\rvert)$를 넘으면 NaN(최빈값 근처에서 df $10^{34}$–$10^{35}$쯤부터) |
+| `Wishart`, `InverseWishart` | logpdf는 df $\ge 10^9$에서 크기 $np\log n$인 항을 식에서 지운 꼴이라 df $\le 10^{30}$을 보장해요. 남는 반올림의 상한이 $10^{-14}\max(1, \lvert\text{값}\rvert)$를 넘으면 NaN. 그 df는 점에 따라 달라요. 정확히 나타낸 최빈값·평균(scale $= I$)은 df $= 10^{46}$까지 값이고, 원소가 반올림된 점은 $10^{31}$–$3 \times 10^{35}$(가장 이른 곳은 역Wishart $p = 10$, $\kappa = 10^4$의 평균), 분포에서 뽑은 점은 $2.4 \times 10^{32}$–$10^{35}$부터예요. 점이 분포의 폭보다 멀면 값이 다시 나와요 |
 
 행렬 정규·Wishart·역Wishart의 `logpdf`는 원소가 아무리 커도(double의 최댓값, inf 포함) NaN이 아니에요. $2^{400}$(Wishart는 $2^{500}$) 위의 인자는 $2^{-600}$을 곱해 계산하고 로그 행렬식과 이차 형식을 되돌려요. 이차 형식의 절반이 double을 넘으면 $-\infty$예요. 역Wishart에서 $X$의 피벗이 서브노멀인 점도 같은 이유로 $-\infty$예요(`InverseGamma`와 같아요).
 

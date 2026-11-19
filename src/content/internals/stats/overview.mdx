@@ -152,11 +152,14 @@ True
 class _Distribution:
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
-        if not cls._name:  # ContinuousDistribution, DiscreteDistribution 자체
+        if not cls._name:  # the bases ContinuousDistribution and DiscreteDistribution
             return
         ops = {m: getattr(_k, f"{cls._name}_{m}") for m in cls._density + _INPUT_METHODS + _PARAM_METHODS}
         ...
         cls._ops = ops
+        for i, p in enumerate(cls._params):  # read-only attributes (T19)
+            setattr(cls, p, _parameter(i, p))
+        _keyword_constructor(cls)
 
     def cdf(self, x, /, *, out=None):
         """P(X <= x)."""
@@ -175,9 +178,7 @@ C++ 쪽 분포 구조체는 이렇게 생겼어요.
 struct Normal {
     static constexpr char name[] = "normal";                         // gamma_cdf의 "gamma"
     static constexpr std::array<const char*, 2> params{"mu", "sigma"};
-    static bool valid(double mu, double sigma) {                     // 매개변수의 정의역
-        return std::isfinite(mu) && sigma > 0.0 && std::isfinite(sigma);
-    }
+    static bool valid(double mu, double sigma) { return std::isfinite(mu) && sigma > 0.0 && std::isfinite(sigma); }
     static double pdf(double x, double mu, double sigma) { ... }     // 메서드마다 원소 함수
     static double cdf(double x, double mu, double sigma) { return tail(x, mu, sigma, false); }
     ...
@@ -198,7 +199,7 @@ struct Normal {
 - **형**: Python 실수(`bool`, `int`, `float`)이거나 complex가 아닌 `sd.ndarray`여야 해요(`_check_param`). 그 밖은 `TypeError`예요. float으로 바꾸면 넘칠 만큼 큰 Python int는 `OverflowError`(`Normal(): 'mu' is out of range`)예요.
 - **모양**: 배열 매개변수가 둘 이상이면 서로 브로드캐스트되는지 확인해요. 뷰만 만드는 `broadcast_arrays`를 불러 보고, 안 되면 그 자리에서 `ValueError`예요.
 
-생성자의 에러는 모두 클래스 이름으로 시작해요(`Normal(): ...`). 브로드캐스트 에러도 배열 영역이 낸 메시지의 앞머리를 클래스 이름으로 바꿔 다시 내요. 공통 기반 `ContinuousDistribution`, `DiscreteDistribution`은 `isinstance` 검사용이라 직접 만들면 `TypeError`예요.
+생성자의 에러는 모두 클래스 이름으로 시작해요(`Normal(): ...`). 브로드캐스트 에러도 배열 영역이 낸 메시지의 앞머리를 클래스 이름으로 바꿔 다시 내요. 호출 모양이 틀린 에러(모르는 키워드, 빠진 필수 매개변수, 위치 인자)도 같은 꼴이에요. 이 에러는 Python이 직접 내는 것이라, 그대로 두면 `Normal.__init__() got an unexpected keyword argument 'cool'`처럼 사용자가 부른 적 없는 `__init__`을 말해요. 그래서 `__init_subclass__`의 마지막 줄 `_keyword_constructor`가 클래스의 `__init__`을 감싸요. 위치 인자가 있으면 원래 생성자를 부르지 않고 `takes no positional arguments`로 바로 에러를 내고, 나머지는 원래 생성자를 부른 뒤 `TypeError`의 앞머리가 `Normal.__init__() `이면 그것을 `Normal(): `로 바꿔 다시 내요(`got an `도 떼요). 매개변수 검사가 낸 에러는 이미 `Normal(): `로 시작하므로 그대로 지나가요. 감싼 함수에 `__wrapped__`를 달아 두어서 `inspect.signature`는 원래의 키워드 전용 매개변수를 보여 줘요. 다변량·행렬 분포도 같은 함수로 감싸요. `Wishart`와 `InverseWishart`는 `__init__` 하나를 함께 쓰지만, 메시지의 이름은 부른 클래스의 것이에요. 공통 기반 `ContinuousDistribution`, `DiscreteDistribution`은 `isinstance` 검사용이라 직접 만들면 `TypeError`예요.
 
 **값은 검사하지 않아요.** `Gamma(a=-1.0)`도 만들어지고, 그 원소의 모든 메서드가 NaN을 내요. 배열 매개변수에서 정의역 밖인 원소가 섞여 있어도 나머지 원소는 제 값을 내야 하기 때문에, 정의역은 원소마다 따지는 성질이에요. 매개변수는 준 값 그대로 읽기 전용 속성(`X.a`)으로 들고 있어요.
 
@@ -215,6 +216,22 @@ TypeError: Normal(): 'mu' must be a real number or an sd.ndarray, not str
 Traceback (most recent call last):
     ...
 ValueError: Normal(): shapes could not be broadcast together: (2,) (3,)
+>>> sd.stats.Gamma(2.5)
+Traceback (most recent call last):
+    ...
+TypeError: Gamma(): takes no positional arguments but 1 was given
+>>> sd.stats.Normal(mu=0.0, cool=1)
+Traceback (most recent call last):
+    ...
+TypeError: Normal(): unexpected keyword argument 'cool'
+>>> sd.stats.Gamma()
+Traceback (most recent call last):
+    ...
+TypeError: Gamma(): missing 1 required keyword-only argument: 'a'
+>>> sd.stats.InverseWishart(df=3.0, q=1)
+Traceback (most recent call last):
+    ...
+TypeError: InverseWishart(): unexpected keyword argument 'q'
 ```
 
 ### 부를 때: 매개변수와 입력을 함께

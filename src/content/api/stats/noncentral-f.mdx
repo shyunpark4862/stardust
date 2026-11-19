@@ -11,7 +11,7 @@ params:
   - name: dfn
     type: Python 실수 또는 ndarray
     kind: keyword-only
-    desc: 분자 자유도. 0보다 큰 실수예요(정수가 아니어도 돼요). inf이면 극한 분포 InverseGamma(a=dfd/2, scale=dfd/2)예요. 0 이하이거나 NaN이면, 그리고 두 자유도가 모두 inf이면 그 원소의 모든 결과가 NaN이에요.
+    desc: 분자 자유도. 0보다 큰 실수예요(정수가 아니어도 돼요). inf이면 극한 분포 InverseGamma(a=dfd/2, scale=dfd/2)예요. 0 이하이거나 NaN이면, 그리고 두 자유도가 모두 inf이면 그 원소의 모든 결과가 NaN이에요. dfn이나 dfd가 2⁻¹⁰²¹(약 4.5e-308)보다 작은 양수이면 F처럼 밀도, 확률, 분위수, median, entropy, 표본이 NaN이에요(다른 자유도가 inf이면 극한 분포를 따라요).
   - name: dfd
     type: Python 실수 또는 ndarray
     kind: keyword-only
@@ -135,11 +135,11 @@ array([ 0.9451413813317049,  0.6136366015817301, 0.13883657187370804], dtype=flo
 >>> sd.stats.NoncentralF(3, 20, 5)
 Traceback (most recent call last):
     ...
-TypeError: NoncentralF.__init__() takes 1 positional argument but 4 were given
+TypeError: NoncentralF(): takes no positional arguments but 3 were given
 >>> sd.stats.NoncentralF(dfn=3, dfd=20)
 Traceback (most recent call last):
     ...
-TypeError: NoncentralF.__init__() missing 1 required keyword-only argument: 'nc'
+TypeError: NoncentralF(): missing 1 required keyword-only argument: 'nc'
 >>> sd.stats.NoncentralF(dfn=3, dfd="20", nc=5)
 Traceback (most recent call last):
     ...
@@ -354,13 +354,22 @@ array([2.0858006021749453,  1.354002792911061,  1.150755964739628,
 (2.958843214245383, 5.071218624052835)
 ```
 
-표본의 평균과 분산이 위의 `mean()` 2.963, `variance()` 5.110에 가까워요. 두 자유도가 모두 서브노멀 수(약 2.2e-308 미만)이면 표본은 NaN이에요.
+표본의 평균과 분산이 위의 `mean()` 2.963, `variance()` 5.110에 가까워요.
+
+`dfn`이나 `dfd` 가운데 하나라도 $2^{-1021}$(약 4.5e-308)보다 작으면 표본은 NaN이에요. 값 메서드와 같은 경계이고, `nc = 0`이어도 그래요. 중심 [`F`](/api/stats/f/)의 표본은 이 경계 아래에서도 극한값(0이나 inf)을 내서, 여기서는 `nc = 0`이어도 두 분포의 표본이 달라요. 다른 자유도가 inf이면 아래의 극한 분포에서 뽑아요.
+
+```python
+>>> sd.stats.NoncentralF(dfn=2**-1022, dfd=5, nc=0).sample(rng=sd.random.default_rng(0))
+nan
+>>> sd.stats.F(dfn=2**-1022, dfd=5).sample(rng=sd.random.default_rng(0))
+0.0
+```
 
 ## 다른 분포와의 관계
 
 ### nc = 0이면 중심 F예요
 
-$\lambda = 0$이면 보통의 F 분포 [`F(dfn=d₁, dfd=d₂)`](/api/stats/f/)가 돼요. 밀도, 누적분포와 그 역함수는 마지막 비트까지 같고, 요약값도 같아요.
+$\lambda = 0$이면 보통의 F 분포 [`F(dfn=d₁, dfd=d₂)`](/api/stats/f/)가 돼요. 밀도, 누적분포와 그 역함수, 모멘트, `median`, `mode`, `entropy`가 마지막 비트까지 같고, 같은 `rng` 상태에서 뽑은 표본도 같아요.
 
 ```python
 >>> C = sd.stats.F(dfn=3, dfd=20)
@@ -371,6 +380,12 @@ $\lambda = 0$이면 보통의 F 분포 [`F(dfn=d₁, dfd=d₂)`](/api/stats/f/)�
 (1.1111111111111112, 1.080246913580247, 0.303030303030303)
 >>> C.mean(), C.variance(), C.mode()
 (1.1111111111111112, 1.080246913580247, 0.303030303030303)
+>>> F0.median() == C.median(), F0.kurtosis() == C.kurtosis()
+(True, True)
+>>> F0.sample((3,), rng=sd.random.default_rng(3))
+array([0.6046383424697521, 0.6325493599286396, 0.6790133692085232], dtype=float64)
+>>> C.sample((3,), rng=sd.random.default_rng(3))
+array([0.6046383424697521, 0.6325493599286396, 0.6790133692085232], dtype=float64)
 ```
 
 ### 분모 자유도가 크면 비중심 카이제곱이에요
@@ -415,12 +430,13 @@ True
 
 작은 쪽 꼬리 확률이 1e-300보다 작아지는 $x$와, 1e-300보다 작은 확률을 주는 역함수는 보장 밖이에요. 값은 계산하지만 정확도를 약속하지는 않아요.
 
-보장 영역 밖도 값을 계산해요. 다만 $\lambda$가 아주 커서 계산이 정해진 양 안에 끝나지 않는 곳에서는 NaN을 돌려줘요.
+보장 영역 밖도 값을 계산해요. 다만 $\lambda$가 아주 커서 계산이 정해진 양 안에 끝나지 않는 곳과, 자유도가 너무 작아 그 절반을 float64로 정확히 나타낼 수 없는 곳에서는 NaN을 돌려줘요.
 
 | 어디서 | NaN이 되는 것 |
 |---|---|
 | `nc`가 약 1.3e8 초과 | `pdf`, `logpdf`, `mode` |
 | `nc`가 약 1.47e9 초과 | 평균 근처의 `cdf` 계열, 역함수, `median` |
+| $d_1$이나 $d_2$가 $2^{-1021}$(약 4.5e-308) 미만이고 다른 자유도가 유한 | `pdf`, `cdf` 계열, 역함수, `median`, `entropy`, 표본 |
 | `ilogcdf`, `ilogccdf`의 입력이 $-2^{62}$ 이하 | 결과 |
 
 평균과 분산은 이런 매개변수에서도 값이 나와요.

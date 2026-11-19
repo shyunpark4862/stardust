@@ -40,7 +40,7 @@ Bessel 함수는 원통이나 원형 막처럼 둥근 대칭이 있는 곳에서
 <Fig column caption="jv(v, x) 한 원소가 고르는 경로. 위에서부터 차례로 시도하고, 앞의 경로가 거절하면 다음으로 내려가요.">
   <Steps
     steps={[
-      { label: '특수값', where: 'ops/bessel.hpp', note: 'NaN, 음의 x(정수 차수만), x = 0, ±inf, 차수가 x보다 터무니없이 커서 J = 0·Y = −inf가 확실한 곳(order_saturates)을 먼저 정해요.' },
+      { label: '특수값', where: 'ops/bessel.hpp', note: 'NaN, 음의 x(정수 차수만), x = 0, ±inf, 차수가 x보다 터무니없이 커서 J = 0·Y = −inf가 확실한 곳(order_saturates), jv에서는 J가 0으로 반올림된다고 증명되는 곳(j_underflows)을 먼저 정해요.' },
       { label: '아주 작은 x', where: 'tiny_argument', note: 'x < 2⁻²⁰⁰이면 급수의 첫 항이 곧 값이에요(다음 항은 그 x²/4배).' },
       { label: 'Hankel 점근', depth: 1, where: 'jy_hankel', note: 'x ≥ 30이고 점근급수가 2⁻⁵⁶까지 줄어들면 그 값을 써요.' },
       { label: '위로 점화', depth: 1, where: 'jy_upward', note: 'x ≥ 30, ν < x인데 ν에서 Hankel이 수렴하지 않으면, 작은 차수 μ와 μ+1의 Hankel 값에서 ν까지 double-double로 올라가요. ν가 10⁷을 넘으면 NaN이에요.' },
@@ -294,11 +294,11 @@ $\nu < x$인 진동 영역에서는 $J$, $Y$가 비슷한 크기라 어느 방�
 
 ### 경로의 지도
 
-<Fig caption="(x, ν) 평면에서 jv·yv의 경로. ν > x² − 1(실선 위)은 J를 거듭제곱급수로, x ≥ 30에서는 Hankel이 수렴하는 곳(대략 ν² < 16x, 점선 아래)은 Hankel, ν < x(가는 선 아래)이고 Hankel이 수렴하지 않으면 위로 점화, 나머지는 Temme 방법이에요. x = 30이 Hankel과 위로 점화를 시도하는 경계예요.">
+<Fig caption="(x, ν) 평면에서 jv·yv의 경로. ν > x² − 1(실선 위)은 J를 거듭제곱급수로, x ≥ 30에서는 Hankel이 받아들여지는 곳(x ≥ (ν + 1)²/4, 곧 ν ≤ 2√x − 1, 점선 아래)은 Hankel, ν < x(가는 선 아래)이고 Hankel이 수렴하지 않으면 위로 점화, 나머지는 Temme 방법이에요. x = 30이 Hankel과 위로 점화를 시도하는 경계예요.">
   <Plot
     curves={[
       { label: 'ν = x² − 1 (거듭제곱급수 경계)', f: (x) => (x > 1 && 8 > x ? x * x - 1 : NaN) },
-      { label: 'ν ≈ 4√x (x ≥ 30, Hankel 수렴 경계)', f: (x) => (x >= 30 ? 4 * Math.sqrt(x) : NaN), dashed: true },
+      { label: 'ν = 2√x − 1 (x ≥ 30, Hankel 경계)', f: (x) => (x >= 30 ? 2 * Math.sqrt(x) - 1 : NaN), dashed: true },
       { label: 'ν = x (x ≥ 30, 위로 점화의 한계)', f: (x) => (x >= 30 ? x : NaN) },
     ]}
     domain={[0, 60]}
@@ -415,6 +415,56 @@ $x^2/4 < (\nu+1)/4$라 첫 항부터 항의 비가 $\lvert x^2/(4(k)(\nu+k))\rve
 
 **차수가 터무니없이 크면 바로 답.** 실수 $x$에서 $\lvert J_\nu(x)\rvert \le (x/2)^\nu/\Gamma(\nu+1)$이에요(DLMF 10.14.4). 그래서 $\nu > 50$, $x < \nu/2$이고 $\log\bigl((x/2)^\nu/\Gamma(\nu+1)\bigr) < -760 - \log(2\nu)$이면 $J$는 0으로 언더플로해요. $x < \nu/2$에서는 $\lvert J Y\rvert \approx 1/(\pi\nu\tanh a)$($\operatorname{sech} a = x/\nu$, $\tanh a > 0.86$, Debye)라서 그때 $Y$도 넘쳐요. 이때 $O(\nu)$ 루프를 돌지 않고 $J = 0$, $Y = -\infty$를 돌려줘요(`order_saturates`). 변형 함수 $I_\nu$는 같은 상한에 $e^x$를 곱한 것 이하라서, `iv`·`kv`는 왼쪽에 $x$를 더해 판정해요($I K \approx 1/(2\nu)$). `jv(3e7, 1.49e7)`은 이 판정으로 0이에요. $\nu > 10^8$이면 $\log\Gamma(\nu+1)$ 대신 Stirling 꼴 $\nu\bigl(\log\tfrac{x}{2} - \log\nu + 1\bigr) - \tfrac12\log(2\pi\nu)$로 크기를 재요. 두 로그의 차를 먼저 만들고 $\nu$를 곱하므로 중간값이 넘치지 않아요.
 
+**J만 0이라고 증명되면 0.** `order_saturates`는 $Y$의 −∞까지 함께 정해야 해서 $x < \nu/2$와 $-760 - \log(2\nu)$라는 넉넉한 문턱을 요구해요. 그래서 $J$의 참값이 한참 언더플로하는 곳에서도 판정이 서지 않는 띠가 남아요. `jv(3e7, 1.9e7)`의 참값은 약 $e^{-7.6\times10^6}$인데, $x > \nu/2$라서 이 판정에 들지 않아요. 그런 곳은 $\nu - x > 10^7$이라 점화가 상한을 넘고 NaN이 될 자리예요. `jv`(와 `jve`)는 $J$ 하나에 대해서만 엄밀한 상한을 하나 더 봐요(`j_underflows`). DLMF 10.14.5 [2]는 $\nu \ge 0$, $0 < x \le 1$에서
+
+$$
+\lvert J_\nu(\nu x)\rvert \le \frac{x^\nu \exp\bigl(\nu\sqrt{1 - x^2}\bigr)}{\bigl(1 + \sqrt{1 - x^2}\bigr)^\nu}
+$$
+
+이에요. $x = \operatorname{sech} a$로 두면 $t = \sqrt{1 - x^2} = \tanh a$이고 $(1 + t)/x = e^{a}$라서, 오른쪽은 $e^{-\nu(a - \tanh a)}$예요. Debye 전개의 지수와 같은 꼴이라 $x$가 $\nu$에 가까울 때도 날카로워요. $x \ll \nu$에서는 10.14.4의 $(x/2)^\nu/\Gamma(\nu + 1)$이 더 좁으므로 둘 중 하나라도 문턱 아래면 0이에요. 문턱은 $e^{-746.2}$예요. 가장 작은 서브노멀의 절반 $2^{-1075} = e^{-745.13}$보다 1 nat쯤 아래라서, 상한 자체를 float64로 셈한 반올림이 결론을 바꾸지 못해요.
+
+$g = a - \tanh a = \operatorname{atanh} t - t$는 두 가지로 셈해요. $t < 1/2$이면($x$가 $\nu$에 가까우면) 양항 급수 $t^3/3 + t^5/5 + \cdots$라 상쇄가 없고, $t$는 $(\nu - x)/\nu$와 $(\nu + x)/\nu$의 제곱근을 곱해 만들어서 $\nu$가 $10^{30}$이고 $x$가 그 바로 옆이어도 $t$가 살아 있어요. $t \ge 1/2$이면 $a = \operatorname{acosh}(\nu/x) = \log(\nu/x) + \operatorname{log1p}(t)$로 써요. $\nu/x$를 직접 나누면 아주 작은 $x$에서 넘치고, $\operatorname{atanh} t$는 $t$가 1로 반올림되면 inf라서 로그를 따로 빼요.
+
+```cpp
+// ops/bessel.hpp: J_nu(x) (nu > 0, 0 < x < nu)가 0으로 반올림된다고 증명되면 true
+inline constexpr double kJZeroLog = -746.2;
+inline bool j_underflows(double nu, double x) {
+    if (!(nu > 0.0 && x > 0.0 && x < nu)) return false;
+    const double t = std::sqrt((nu - x) / nu) * std::sqrt((nu + x) / nu);
+    double g;  // a - tanh a
+    if (t < 0.5) {
+        const double t2 = t * t;
+        double term = t * t2, s = 0.0;
+        for (int k = 3; k < 200; k += 2) {  // 비가 t^2 <= 1/4라 k = 63이면 2^-60
+            s += term / k;
+            term *= t2;
+            if (term < 0x1p-60 * s) break;
+        }
+        g = s;
+    } else {
+        // a = acosh(nu / x) = log(nu / x) + log1p(t), 두 로그를 따로
+        g = (std::log(nu) - std::log(x)) + std::log1p(t) - t;
+    }
+    if (-nu * g < kJZeroLog) return true;
+    return log_small_order_term(nu, x) < kJZeroLog;
+}
+```
+
+`jv_or_yv`는 `order_saturates` 바로 다음에 이 판정을 불러요.
+
+```cpp
+if (!want_y && (v >= 0.0 || is_int(a)) && j_underflows(a, x)) return v >= 0.0 ? 0.0 : cospi(a) * 0.0;
+```
+
+음의 정수 차수는 $J_{-n} = (-1)^n J_n$이라 부호 있는 0이고, 음의 비정수 차수는 $J_{-a} = \cos(a\pi)J_a - \sin(a\pi)Y_a$에 $Y_a$가 들어가므로 이 판정을 쓰지 않아요. $Y$에는 같은 방향의 엄밀한 부등식이 없어요. DLMF 10.14는 $J$의 상한만 주고, Debye 꼴 $\lvert JY\rvert \approx 1/(\pi\nu\tanh a)$는 점근식일 뿐 증명이 아니에요. 그래서 `yv`의 −∞는 `order_saturates`가 정하는 곳뿐이고, `yv(3e7, 1.9e7)`은 NaN이에요. 이 판정은 차수의 크기와 상관없이 쓰여요. 판정이 0을 내는 곳은 참값이 $2^{-1075}$ 아래라 계산했어도 0으로 반올림됐을 곳이에요.
+
+```python
+>>> sd.special.jv(3e7, 1.9e7), sd.special.yv(3e7, 1.9e7)
+(0.0, nan)
+>>> sd.special.jv(-30000001.0, 1.9e7)
+-0.0
+```
+
 **$x < 2^{-200}$이면 첫 항.** 이렇게 작은 $x$에서는 모든 급수의 다음 항이 첫 항의 $x^2/4 < 2^{-400}$배라서 첫 항이 곧 값이에요(`tiny_argument`). $J_a = (x/2)^a/\Gamma(a+1)$이고, $Y_a$는 다른 해의 몫 $(x/2)^{2a}$가 $2^{-70}$ 아래이면 $-\Gamma(a)(2/x)^a/\pi$ 하나, 그렇지 않으면($a$가 0에 가까우면) Temme 급수의 첫 항이에요. Temme 급수의 첫 항은 $x^{\pm a}$ 두 거듭제곱을 함께 들어서 $a \to 0$에서 $Y_0 \sim \tfrac{2}{\pi}\log x$로 매끄럽게 이어져요. 이 경로가 따로 있는 이유는 둘이에요. 점화식의 $1/x$는 서브노멀 $x$에서 넘치고, Temme 급수의 $\cosh e$, $\sinh e$($e = a\log(2/x)$)는 $e$ ULP를 실어 $a = 0.49$, $x = 10^{-300}$에서 170 ULP를 잃었어요. `iv`, `kv`도 같은 경로를 써요($K_a = \Gamma(a)(2/x)^a/2$).
 
 ### x ≥ 30: Hankel 점근과 위로 점화
@@ -427,7 +477,7 @@ $x$가 크면 CF1에 약 $x$항이 들어서 느리고, 진동 영역의 중립�
 
 위상은 0·1차와 같은 생각으로 반올림하지 않아요. $\chi = x - \pi\nu/2 - \pi/4$에서 $\cos x$, $\sin x$는 libm으로, $\cos(\pi\nu/2)$, $\sin(\pi\nu/2)$는 `cospi`·`sinpi`(인자를 $\bmod 2$로 정확히 줄이는 함수)로 구해 덧셈정리로 묶어요. 도함수는 $\nu+1$차의 Hankel 값에서 얻어요.
 
-Hankel이 거절되는 것은 $\nu^2$이 대략 $16x$를 넘을 때예요. $\nu < x$이면(진동 영역) 작은 차수 $\mu = \nu - \lfloor\nu\rfloor$와 $\mu + 1$에서 Hankel로 $J$, $Y$를 구하고, 같은 점화식으로 $\nu$까지 **위로** 올라가요(`jy_upward`). 진동 영역에서는 점화식이 양쪽 방향으로 중립이라 $J$도 위로 올라가도 괜찮고, double-double이라 걸음당 오차가 $2^{-106}$ 수준이에요. $\nu \ge x$이면 Temme로 내려가요. $\nu < x$인데 위로 점화도 할 수 없으면($\nu > 10^7$) Temme로 넘기지 않고 NaN이에요. 그곳의 CF1은 약 $x$항이 들고 진동 영역의 중립성 때문에 약 $0.3x$ ULP를 잃기 때문이에요.
+Hankel이 거절되는 것은 $x < (\nu + 1)^2/4$일 때예요. 차수가 크면 첫 항 $(4\nu^2 - 1)/(8x)$가 이미 2를 넘고, `jy_hankel`은 도함수를 위해 차수 $\nu + 1$에서도 `hankel_pq`를 부르므로, 그 첫 항이 2를 넘는 $x < ((2\nu + 2)^2 - 1)/16 \approx (\nu + 1)^2/4$에서 거절돼요. 차수가 작아도 경계는 같은 곳이에요. 항의 최댓값이 대략 $y^k/k!$($y = \nu^2/(2x)$)의 최댓값이라 $y \approx 2$ 근처에서 2를 넘기 때문이에요. `hankel_pq`를 그대로 따라 셈하면 처음 거절되는 차수가 $x = 30$에서 9.97, $x = 1000$에서 62.25, $x = 10^6$에서 1999.01이고, 모두 $(\nu + 1)^2/4$가 $x$와 0.1 안으로 같아요. `jv(2e7, x)`는 $x = 100000010000000$에서 NaN, $100000010000000.5$에서 값이에요($(\nu + 1)^2/4 = 100000010000000.25$). $\nu < x$이면(진동 영역) 작은 차수 $\mu = \nu - \lfloor\nu\rfloor$와 $\mu + 1$에서 Hankel로 $J$, $Y$를 구하고, 같은 점화식으로 $\nu$까지 **위로** 올라가요(`jy_upward`). 진동 영역에서는 점화식이 양쪽 방향으로 중립이라 $J$도 위로 올라가도 괜찮고, double-double이라 걸음당 오차가 $2^{-106}$ 수준이에요. $\nu \ge x$이면 Temme로 내려가요. $\nu < x$인데 위로 점화도 할 수 없으면($\nu > 10^7$) Temme로 넘기지 않고 NaN이에요. 그곳의 CF1은 약 $x$항이 들고 진동 영역의 중립성 때문에 약 $0.3x$ ULP를 잃기 때문이에요.
 
 ### 계산 시간의 상한
 
@@ -440,13 +490,13 @@ Hankel이 거절되는 것은 $\nu^2$이 대략 $16x$를 넘을 때예요. $\nu 
 | Steed CF2 | $10^5$항 (`kMaxCf2Terms`) | 보장 영역에서는 닿지 않아요($x \ge 2$에서 보통 수백 항) |
 | Temme 급수, 거듭제곱급수 | 1000항, 500항 | 닿지 않아요(항이 $1/k!$이나 매 항 4배 이상 줄어요) |
 
-한 상한은 원소당 대략 0.25초예요(`jv(2e7, 1e7)`의 $10^7$걸음이 0.23초). $J$, $Y$에는 차수와 상관없는 균등 전개가 없으므로, 결과적으로 $\lvert\nu\rvert \le 10^7$에서는 언제나 값을 내고, $\lvert\nu\rvert > 10^7$에서는 $x$에 따라 이렇게 갈려요.
+한 상한은 원소당 대략 0.25초예요(`yv(2e7, 1e7)`의 $10^7$걸음이 0.24초). $J$, $Y$에는 차수와 상관없는 균등 전개가 없으므로, 결과적으로 $\lvert\nu\rvert \le 10^7$에서는 언제나 값을 내고, $\lvert\nu\rvert > 10^7$에서는 $x$에 따라 이렇게 갈려요.
 
 - $x$가 $\nu$보다 한참 작으면 `order_saturates`가 $J = 0$, $Y = -\infty$를 바로 내요.
-- $\nu - x > 10^7$인데 `order_saturates`가 0을 판정하지 못하면 점화가 상한을 넘으므로 NaN이에요(`jv(3e7, 1.9e7)`). $J$의 참값이 언더플로하는 곳이라도 위의 상한이 $-760$ 아래로 내려가지 않으면 그래요.
-- $x \le \nu$이고 $\nu - x \le 10^7$이면 Temme 경로가 계산해요. 예를 들어 `jv(2e7, 2e7)`은 0.0016479예요. 전이 영역의 점근식 $J_\nu(\nu) \approx 0.4473\,\nu^{-1/3}$과 맞아요. 걸음 수가 많으면 시간이 들어서 `jv(2e7, 1e7)`과 `yv(2e7, 1e7)`을 함께 부르는 데 약 0.5초가 걸려요(값은 0과 −inf). $x = \nu$에서는 `jv(1e12, 1e12)`까지 값을 내고, $10^{14}$쯤부터는 연분수가 상한 안에 수렴하지 않아 NaN이에요.
+- $\nu - x > 10^7$인데 `order_saturates`가 판정하지 못하면, `jv`는 `j_underflows`가 0을 증명하면 0이고(`jv(3e7, 1.9e7)`), `yv`는 점화가 상한을 넘으므로 NaN이에요(`yv(3e7, 1.9e7)`). `j_underflows`의 지수 $\nu(a - \tanh a)$는 $x$가 $\nu$에 가까우면 대략 $(2(\nu - x))^{3/2}/(3\sqrt\nu)$라서, $\nu - x$가 $10^7$을 조금 넘는 곳에서 746을 넘기려면 $\nu$가 약 $1.6\times10^{15}$ 아래여야 해요. 그보다 큰 차수에서는 `jv`도 NaN인 띠가 남아요(`jv(1e16, 1e16 - 1.1e7)`는 상한이 약 $e^{-344}$라 0을 증명하지 못해요).
+- $x \le \nu$이고 $\nu - x \le 10^7$이면 Temme 경로가 계산해요. 예를 들어 `jv(2e7, 2e7)`은 0.0016479예요. 전이 영역의 점근식 $J_\nu(\nu) \approx 0.4473\,\nu^{-1/3}$과 맞아요. 걸음 수가 많으면 시간이 들어요. `yv(2e7, 1e7)`은 약 0.24초가 걸려 −inf를 내고, 같은 점의 `jv`는 `j_underflows`가 바로 0을 내요. $x = \nu$에서는 `jv(1e12, 1e12)`까지 값을 내고, $10^{14}$쯤부터는 연분수가 상한 안에 수렴하지 않아 NaN이에요.
 - $x > \nu$이면 Hankel이 거절되는 한 NaN이에요(`jv(2e7, 2e7 + 10)`, `jv(2e7, 3e7)`). 위로 점화는 걸음 수 상한에, Temme의 CF1은 위에서 말한 정확도 문제에 걸려요.
-- $x$가 대략 $\nu^2/4$를 넘어 Hankel 급수가 수렴하면 다시 값을 내요(`jv(2e7, 9e13)`은 NaN, `jv(2e7, 2e14)`는 $4.54 \times 10^{-8}$).
+- $x \ge (\nu + 1)^2/4$가 되어 Hankel이 받아들여지면 다시 값을 내요(`jv(2e7, 9e13)`은 NaN, `jv(2e7, 2e14)`는 $4.54 \times 10^{-8}$).
 
 ### 음의 차수와 음의 x
 
@@ -687,13 +737,13 @@ scipy가 크게 틀리는 곳은 대부분 위에서 설명한 것들이에요. 
 비트 수준의 성질도 지켜요. 경로를 원소의 값으로만 고르고 병렬 분할이 결과에 닿지 않으므로, 1·3·10스레드의 결과가 비트까지 같고 `f(x)[i] == f(x[i])`예요. 테스트(`tests/special/test_bessel_airy.py`)가 세 레이아웃(연속, 스칼라 브로드캐스트, strided)을 비트로 비교해요.
 
 <Callout type="warn">
-큰 차수(대략 $\lvert\nu\rvert \gg x$이고 $\nu$가 수천 이상)의 `jv`·`yv`는 값은 맞지만 원소마다 차수에 비례하는 시간이 들어요. 차수가 $10^7$을 넘고 $x$가 차수보다 크면 NaN이에요. 같은 범위의 `iv`·`kv`는 Debye 전개로 차수와 상관없이 0.15 µs 안팎이에요.
+큰 차수(대략 $\lvert\nu\rvert \gg x$이고 $\nu$가 수천 이상)의 `jv`·`yv`는 값은 맞지만 원소마다 차수에 비례하는 시간이 들어요. 차수가 $10^7$을 넘고 $x$가 차수보다 크면 $x \ge (\nu + 1)^2/4$가 될 때까지 NaN이에요. 같은 범위의 `iv`·`kv`는 Debye 전개로 차수와 상관없이 0.15 µs 안팎이에요.
 </Callout>
 
 ## 참고 문헌
 
 1. S. L. Moshier, *Methods and Programs for Mathematical Functions*, Ellis Horwood, 1989. (Cephes: `i0.c`, `i1.c`, `k0.c`, `k1.c`, `j0.c`, `j1.c`. 계수는 scipy 1.15.1에 포함된 판, BSD 3조항)
-2. F. W. J. Olver et al. (eds.), *NIST Digital Library of Mathematical Functions*, https://dlmf.nist.gov/ — 9.6(Airy와 Bessel의 관계), 9.7(Airy 점근전개, 9.7.2·9.7.9–12), 10.17(Hankel 점근, 10.17.1–4), 10.40(I·K의 큰 인자 점근), 10.41(Debye 균등 전개, 10.41.3–4·10.41.9)
+2. F. W. J. Olver et al. (eds.), *NIST Digital Library of Mathematical Functions*, https://dlmf.nist.gov/ — 9.6(Airy와 Bessel의 관계), 9.7(Airy 점근전개, 9.7.2·9.7.9–12), 10.14(J의 상한, 10.14.4–5), 10.17(Hankel 점근, 10.17.1–4), 10.40(I·K의 큰 인자 점근), 10.41(Debye 균등 전개, 10.41.3–4·10.41.9)
 3. M. Abramowitz, I. A. Stegun (eds.), *Handbook of Mathematical Functions*, National Bureau of Standards Applied Mathematics Series 55, 1964. (9.7.2, Boost의 K 점근식)
 4. N. M. Temme, "On the numerical evaluation of the modified Bessel function of the third kind", *Journal of Computational Physics* 19, 324–337, 1975. doi:10.1016/0021-9991(75)90082-0
 5. N. M. Temme, "On the numerical evaluation of the ordinary Bessel function of the second kind", *Journal of Computational Physics* 21, 343–350, 1976. doi:10.1016/0021-9991(76)90032-2

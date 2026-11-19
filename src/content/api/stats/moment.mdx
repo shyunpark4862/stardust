@@ -16,7 +16,7 @@ params:
     kind: keyword-only, 필수
     desc: 적률의 차수 k. 정수여야 해요(2.0처럼 정수인 float도 돼요). 음수도 받아요. 여러 개를 주면 차수마다의 결과가 맨 앞 축에 쌓여요.
   - name: center
-    type: Python 실수, ndarray, 시퀀스, 또는 None
+    type: Python 실수(numpy 정수도 돼요), ndarray, 시퀀스, 또는 None
     kind: keyword-only
     desc: 기준점. None(기본값)이면 각 줄의 평균이에요. 배열이면 결과의 모양(keepdims 없이)으로 브로드캐스트돼야 해요.
   - name: axis
@@ -39,6 +39,8 @@ raises:
     desc: order를 주지 않았을 때(None 포함), order나 center의 타입이 틀렸을 때(bool·문자열 등), x가 배열이나 숫자의 시퀀스가 아니거나 복소수일 때, axis·keepdims의 타입이 틀렸을 때, nan_policy에 문자열이 아닌 값을 줬을 때.
   - type: ValueError
     desc: order가 정수가 아닐 때(1.5 등), center를 결과의 모양으로 브로드캐스트할 수 없을 때, nan_policy 이름이 틀렸거나 'raise'인데 NaN이 있을 때, axis가 범위를 벗어나거나 겹칠 때.
+  - type: OverflowError
+    desc: center가 float로 나타낼 수 없을 만큼 큰 int일 때(10**400 등).
 seeAlso: [skew-kurtosis, describe, zscore, sem]
 ---
 import Callout from '../../../components/Callout.astro';

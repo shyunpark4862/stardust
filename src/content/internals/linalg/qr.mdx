@@ -718,30 +718,45 @@ LAPACK의 `dlalsd`는 `rcond ≤ 0`이나 `rcond ≥ 1`을 아무 말 없이 $\v
 그래서 `rtol` < $\varepsilon$이면 `gelsd`를 부르지 않고 두 단계로 풀어요.
 
 1. **랭크는 `matrix_rank`의 특이값으로.** 특이값은 `matrix_rank`, `svdvals`, `cond`가 같이 쓰는 `singular_values`(`gesvd`의 값 전용 모드)로 구하고, $\text{rtol}\cdot\sigma_1$보다 큰 것의 개수가 랭크예요. 같은 함수, 같은 비교라서 `rank`는 언제나 `matrix_rank(a, rtol=rtol)`과 같고, 결과의 `singular_values`는 `svdvals(a)`와 비트까지 같아요.
-2. **해는 SVD에서 직접.** `gesdd`(`'S'`)로 $U$, $V^{\mathsf H}$를 구하고 $x = V \Sigma_r^{-1} U^{\mathsf H} b$를 만들어요. $U^{\mathsf H} b$를 `gemm`으로 구하고, 앞의 `rank`개 성분만 `gesdd`가 함께 구한 특이값으로 나누고 나머지는 0으로 둔 뒤, $V$를 곱하는 `gemm`이 결과 자리에 바로 써요.
+2. **해는 SVD에서 직접.** `gesdd`(`'S'`)로 $U$, $V^{\mathsf H}$를 구하고 $x = V \Sigma_r^{-1} U^{\mathsf H} b$를 만들어요. $U^{\mathsf H} b$를 `gemm`으로 구하고, 앞의 `rank`개 성분만 `gesdd`가 함께 구한 특이값으로 나누고 나머지는 0으로 둔 뒤, $V$를 곱하는 `gemm`이 결과 자리에 바로 써요. 이 풀이는 `svd_solve` 하나로 묶여 있고, 아래의 `gelsd` 경로도 같은 함수를 불러요.
 
 ```cpp
-// ops/qr.cpp의 lstsq, rtol < ε 경로 (줄임)
+// ops/qr.cpp의 lstsq (줄임)
+auto svd_solve = [&](lint keep) -> int {
+    // U (m x mn), Vh (mn x n), gesdd의 특이값은 슬롯 2, U^H b는 슬롯 3
+    T* u = s.get<T>(static_cast<std::size_t>(m * mn + mn * n + mn), 2);
+    T* vh = u + m * mn;
+    double* sd = reinterpret_cast<double*>(vh + mn * n);
+    if (lapack::gesdd('S', m, n, A, lda, sd, u, m, vh, mn, s) > 0) return kNoConvergence;
+    if (r.k == 0) return 0;
+    T* w = s.get<T>(static_cast<std::size_t>(mn * r.k), 3);
+    constexpr char h = std::is_same_v<T, cplx> ? 'C' : 'T';
+    lapack::gemm<T>(h, 'N', mn, r.k, m, u, m, B, ldb, w, mn);
+    const lint rn = normal_rank(sd, keep), nh = keep - rn;
+    std::vector<T> wh(static_cast<std::size_t>(nh * r.k));
+    for (lint j = 0; j < r.k; ++j)
+        for (lint q = rn; q < keep; ++q) wh[j * nh + q - rn] = w[j * mn + q] / (sd[q] * kSingularShift);
+    for (lint j = 0; j < r.k; ++j)
+        for (lint q = 0; q < mn; ++q) w[j * mn + q] = q < rn ? w[j * mn + q] / sd[q] : T(0);
+    lapack::gemm<T>(h, 'N', n, r.k, mn, vh, mn, w, mn, xi, n);
+    if (nh > 0) {  // 드물어요: 남긴 특이값이 서브노멀
+        std::vector<T> xh(static_cast<std::size_t>(n * r.k));
+        lapack::gemm<T>(h, 'N', n, r.k, nh, vh + rn, mn, wh.data(), nh, xh.data(), n);
+        add_shifted(xi, xh.data(), n * r.k);
+    }
+    return 0;
+};
 if (m > 0 && n > 0 && rcond < kEps) {
     LapackSlot<double> sv(S + i * mn, mn, s, Scratch::kAlign0);
     double* svp = sv.get();
     if (const int code = singular_values<T>(a, off[0], m, n, s, svp)) return code;
     const double tol = rcond * svp[0];
     for (lint j = 0; j < mn; ++j) rank += svp[j] > tol;
-    T* u = s.get<T>(static_cast<std::size_t>(m * mn + mn * n + mn), 2);
-    T* vh = u + m * mn;
-    double* sd = reinterpret_cast<double*>(vh + mn * n);
-    if (lapack::gesdd('S', m, n, A, lda, sd, u, m, vh, mn, s) > 0) return kNoConvergence;
-    if (r.k > 0) {
-        T* w = s.get<T>(static_cast<std::size_t>(mn * r.k), 3);
-        constexpr char h = std::is_same_v<T, cplx> ? 'C' : 'T';
-        lapack::gemm<T>(h, 'N', mn, r.k, m, u, m, B, ldb, w, mn);
-        for (lint j = 0; j < r.k; ++j)
-            for (lint q = 0; q < mn; ++q) w[j * mn + q] = q < rank ? w[j * mn + q] / sd[q] : T(0);
-        lapack::gemm<T>(h, 'N', n, r.k, mn, vh, mn, w, mn, xi, n);
-    }
+    if (const int code = svd_solve(rank)) return code;
 }
 ```
+
+`rn`, `nh`, `wh`, `add_shifted`는 남긴 특이값이 $2^{-1022}$ 아래일 때만 일을 해요(아래 [아주 작은 특이값](#아주-작은-특이값)). 그런 값이 없으면 `nh = 0`이고 계산은 위의 두 `gemm`뿐이에요.
 
 `kEps`는 $2^{-52}$예요. 이 경로는 SVD를 두 번(값만, 그리고 벡터까지) 하므로 `gelsd`보다 비싸요. 기본 `rtol`은 $\max(m, n)\cdot\varepsilon \ge \varepsilon$이라 언제나 `gelsd` 경로이고, `rtol`을 일부러 $\varepsilon$보다 작게 줄 때만 이 비용을 내요. 우변이 0개면 랭크와 특이값만 구하고 `gemm`은 건너뛰어요.
 
@@ -788,6 +803,11 @@ if (lapack::gelsd(m, n, nrhs, A, lda, B, ldb, sv.get(), rc, rank, s) > 0)
 if (all_zero) {
     rank = 0;
     std::fill(xi, xi + n * r.k, T(0));
+} else if (r.k > 0 && rank > 0 && sv.get()[rank - 1] < kTinySingular) {
+    // 남긴 특이값이 서브노멀: gelsd의 랭크로 SVD 풀이를 다시 해요 (아래 절)
+    if (!pack(a.dtype(), a.data() + off[0], m, n, a.stride(-2), a.stride(-1), A, lda, true)) return kNonFinite;
+    if (!pack(y.dtype(), y.data() + off[1], m, r.k, r.rs, r.cs, B, ldb, true)) return kNonFiniteB;
+    if (const int code = svd_solve(rank)) return code;
 } else {
     for (lint j = 0; j < r.k; ++j) std::copy(B + j * ldb, B + j * ldb + n, xi + j * n);
 }
@@ -798,6 +818,27 @@ if (all_zero) {
 ```python
 >>> sd.linalg.lstsq(a, b, rtol=1.0)
 LstsqResult(solution=array([0.0, 0.0], dtype=float64), rank=0, singular_values=array([     1.414213562373095, 1.0000000000000002e-08], dtype=float64))
+```
+
+### 아주 작은 특이값
+
+남긴 특이값 $\sigma$가 가장 작은 정규 수 $2^{-1022}$보다 작으면 $1/\sigma$가 float64를 넘어 inf예요. 그 inf가 특이벡터의 정확한 0과 곱해지면 NaN이 되어, 참값이 0이거나 유한한 성분까지 NaN으로 번져요. `diag(1, 5e-324)`에 우변 `[1, 1]`, `rtol = 0`을 주면 $V\Sigma^{-1}U^{\mathsf H}b$를 그대로 셈한 해는 `[nan, inf]`예요(참값은 $[1, 2.02\times10^{323}]$).
+
+그래서 `svd_solve`는 남긴 특이값을 둘로 나눠요. `normal_rank`가 앞에서부터 $2^{-1022}$ 이상인 것의 개수 `rn`을 세고, 그 값들은 평소처럼 $1/\sigma$로 나눠요. 나머지 `nh`개는 $\sigma \cdot 2^{600}$으로 나눈 항을 따로 모아(`wh`) 따로 곱한 뒤(`xh`), `add_shifted`가 $2^{600}$을 곱해 결과에 더해요. 이 헬퍼와 상수는 `pinv`와 같이 써요([SVD의 `pinv`](/internals/linalg/svd/)).
+
+- $2^{600}$은 2의 거듭제곱이라 $\sigma\cdot2^{600}$은 반올림이 없고, 그 역수는 $2^{1074-600} = 2^{474}$ 이하라 넘치지 않아요.
+- `add_shifted`는 따로 모은 항이 정확히 0이면 더하지 않아요. 그래서 정확한 0은 0으로 남고(결과의 −0.0도 부호를 지켜요), 넘치는 성분만 $2^{600}$을 곱할 때 ±inf가 돼요. 참값을 반올림한 결과와 같은 inf예요.
+- 서브노멀 특이값이 없으면 `nh = 0`이라 따로 모으는 일이 없고, 다른 항의 비트도 바뀌지 않아요.
+
+`gelsd` 경로는 `gelsd`가 돌려준 특이값 가운데 남긴 마지막 것(`sv.get()[rank - 1]`)이 $2^{-1022}$ 아래일 때만, 덮어쓴 `A`와 `B`를 다시 패킹하고 `gelsd`의 랭크로 `svd_solve`를 불러요. `gelsd`는 안에서 $1/\sigma$를 셈하는 방식이 따로 정해져 있어서, 이런 값이 있을 때 정확한 0이 0으로 남는다는 보장을 같은 헬퍼로 맞추는 거예요. 그런 행렬은 원소가 모두 서브노멀 근처인 드문 경우라 SVD를 한 번 더 하는 비용은 거의 문제가 되지 않아요. 복소수와 배치도 같은 길이에요.
+
+```python
+>>> t = sd.asarray([[1.0, 0.0], [0.0, 5e-324]])
+>>> sd.linalg.lstsq(t, sd.asarray([1.0, 1.0]), rtol=0).solution
+array([1.0, inf], dtype=float64)
+>>> t2 = sd.asarray([[5e-324, 0.0], [0.0, 5e-324]])
+>>> sd.linalg.lstsq(t2, sd.asarray([1.0, 0.0]), rtol=1e-300).solution
+array([inf, 0.0], dtype=float64)
 ```
 
 ### 우변이 0개일 때

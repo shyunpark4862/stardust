@@ -11,7 +11,7 @@ params:
   - name: df
     type: Python 실수 또는 ndarray
     kind: keyword-only
-    desc: 자유도. 0보다 큰 실수예요(정수가 아니어도 돼요). inf이면 극한 분포인 정규분포 Normal(mu=nc)예요. 0 이하이거나 NaN이면 그 원소의 모든 결과가 NaN이에요.
+    desc: 자유도. 0보다 큰 실수예요(정수가 아니어도 돼요). inf이면 극한 분포인 정규분포 Normal(mu=nc)예요. 0 이하이거나 NaN이면 그 원소의 모든 결과가 NaN이에요. 2⁻¹⁰²¹(약 4.5e-308)보다 작은 양수이면 StudentT처럼 밀도, 확률, 분위수, median, entropy, 표본이 NaN이에요.
   - name: nc
     type: Python 실수 또는 ndarray
     kind: keyword-only
@@ -139,11 +139,11 @@ array([-2.0536911511184894,                 0.0,  2.0536911511184894], dtype=flo
 >>> sd.stats.NoncentralT(10, 2)
 Traceback (most recent call last):
     ...
-TypeError: NoncentralT.__init__() takes 1 positional argument but 3 were given
+TypeError: NoncentralT(): takes no positional arguments but 2 were given
 >>> sd.stats.NoncentralT(df=10)
 Traceback (most recent call last):
     ...
-TypeError: NoncentralT.__init__() missing 1 required keyword-only argument: 'nc'
+TypeError: NoncentralT(): missing 1 required keyword-only argument: 'nc'
 >>> sd.stats.NoncentralT(df=10, nc=2j)
 Traceback (most recent call last):
     ...
@@ -370,13 +370,13 @@ array([-0.02318602061287422,  0.46108057107745154,   3.5023654311537222,
 (2.1645174420720457, 1.536733285815022)
 ```
 
-표본의 평균과 분산이 위의 `mean()` 2.1674, `variance()` 1.5522에 가까워요. 자유도가 서브노멀 수(약 2.2e-308 미만)이면 표본은 NaN이에요.
+표본의 평균과 분산이 위의 `mean()` 2.1674, `variance()` 1.5522에 가까워요. 자유도가 $2^{-1021}$(약 4.5e-308)보다 작으면 표본은 NaN이에요. 값 메서드와 같은 경계예요.
 
 ## 다른 분포와의 관계
 
 ### nc = 0이면 중심 t예요
 
-$\delta = 0$이면 보통의 t 분포 [`StudentT(df=ν)`](/api/stats/student-t/)가 돼요. 밀도, 누적분포와 그 역함수는 마지막 비트까지 같아요.
+$\delta = 0$이면 보통의 t 분포 [`StudentT(df=ν)`](/api/stats/student-t/)가 돼요. 밀도, 누적분포와 그 역함수, 모멘트, `median`, `mode`, `entropy`가 마지막 비트까지 같고, 같은 `rng` 상태에서 뽑은 표본도 같아요.
 
 ```python
 >>> S = sd.stats.StudentT(df=10)
@@ -387,6 +387,10 @@ $\delta = 0$이면 보통의 t 분포 [`StudentT(df=ν)`](/api/stats/student-t/)
 (0.0, 1.25, 1.0)
 >>> S.mean(), S.variance(), S.kurtosis()
 (0.0, 1.25, 1.0)
+>>> T0.sample((3,), rng=sd.random.default_rng(3))
+array([-0.06594138934693201, -0.13948622290998608,  -0.4270087759050241], dtype=float64)
+>>> S.sample((3,), rng=sd.random.default_rng(3))
+array([-0.06594138934693201, -0.13948622290998608,  -0.4270087759050241], dtype=float64)
 ```
 
 ### 제곱하면 비중심 F예요
@@ -436,6 +440,7 @@ True
 |---|---|
 | $\lvert\delta\rvert$가 약 3.8e4 초과 | `cdf` 계열, 역함수, `median` |
 | $\lvert\delta\rvert$나 $\lvert t\rvert$가 약 1e15 초과 | `pdf`, `logpdf` |
+| $\nu < 2^{-1021}$(약 4.5e-308) | `pdf`, `cdf` 계열, 역함수, `median`, `entropy`, 표본 |
 | $\lvert\delta\rvert > 128\sqrt{1+\nu}$ | `mode` |
 | `ilogcdf`, `ilogccdf`의 입력이 $-2^{62}$ 이하 | 결과 |
 
@@ -445,6 +450,16 @@ True
 >>> huge = sd.stats.NoncentralT(df=10, nc=4e4)
 >>> huge.mean(), huge.cdf(4e4), huge.pdf(4e4)
 (43348.89231756574, nan, 4.386684216779493e-05)
+```
+
+자유도의 경계는 [`StudentT`](/api/stats/student-t/)와 같아요. 자유도의 절반을 float64로 정확히 나타낼 수 없는 $\nu < 2^{-1021}$이 NaN이에요. 그보다 조금 큰 자유도는 값을 내고, 그때 `median`이 inf인 것은 맞는 값이에요. $T = (Z + \delta)/\sqrt{V/\nu}$에서 $\nu$가 0에 가까우면 $V/\nu$의 거의 모든 질량이 0 근처에 몰려서, $T$는 $Z + \delta$의 부호를 따라 $\pm\infty$로 가요. $\delta = 1$이면 $T$가 $+\infty$일 확률이 $P(Z > -1) \approx 0.84$라서, 가운데 지점도 $+\infty$예요.
+
+```python
+>>> sd.stats.NoncentralT(df=2**-1022, nc=1.0).median()
+nan
+>>> tiny = sd.stats.NoncentralT(df=1e-300, nc=1.0)
+>>> tiny.median(), tiny.cdf(0.0)
+(inf, 0.15865525393145707)
 ```
 
 계산 방법은 [극값·수명·비중심 분포의 구현](/internals/stats/extreme-noncentral/)에 있어요.
@@ -457,3 +472,4 @@ True
 - 발산하는 모멘트가 달라요. $1 < \nu \le 2$의 분산과 $2 < \nu \le 4$의 첨도를 stardust는 inf로 내고, scipy는 NaN을 내요.
 - 깊은 꼬리에서 scipy가 NaN을 내는 곳에서도 값을 내요. 예를 들어 `NoncentralT(df=100, nc=20).cdf(-10.0)`은 8.3362e-149인데, `scipy.stats.nct.cdf(-10.0, 100, 20)`은 NaN이에요.
 - `df = inf`는 scipy처럼 정규분포예요.
+- `df`가 $2^{-1021}$보다 작으면 NaN이에요. scipy는 값을 내요(`nct.cdf(1, 2**-1022, 1)`은 0.1587, `nct.ppf(0.5, 2**-1022, 1)`은 9.49e7).

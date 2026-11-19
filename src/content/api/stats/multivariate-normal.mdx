@@ -102,7 +102,7 @@ array([0.0, 0.0], dtype=float64)
 >>> sd.stats.MultivariateNormal(sd.asarray([0.0, 0.0]), sd.eye(2))
 Traceback (most recent call last):
     ...
-TypeError: MultivariateNormal.__init__() takes 1 positional argument but 3 were given
+TypeError: MultivariateNormal(): takes no positional arguments but 2 were given
 >>> sd.stats.MultivariateNormal(mu=[0.0, 0.0], cov=sd.eye(2))
 Traceback (most recent call last):
     ...
@@ -343,13 +343,21 @@ array([ 0.3333333333333333,  0.7452035868467497, 0.15850839416544282], dtype=flo
 
 ### 인자 검사
 
-`atol`은 양수, `return_error`는 `True`나 `False`, `max_points`는 양의 정수나 `None`이어야 해요.
+`atol`은 유한한 양수(int나 float, numpy 정수도 돼요), `return_error`는 `True`나 `False`, `max_points`는 양의 정수나 `None`이어야 해요. 0, 음수, inf, NaN인 `atol`은 `ValueError`이고, float로 나타낼 수 없을 만큼 큰 int는 `OverflowError`예요.
 
 ```python
 >>> X.cdf(sd.zeros(2), atol=0)
 Traceback (most recent call last):
     ...
-ValueError: cdf(): 'atol' must be a positive number
+ValueError: cdf(): 'atol' must be a finite number > 0
+>>> X.cdf(sd.zeros(2), atol=float('inf'))
+Traceback (most recent call last):
+    ...
+ValueError: cdf(): 'atol' must be a finite number > 0
+>>> X.cdf(sd.zeros(2), atol=10**400)
+Traceback (most recent call last):
+    ...
+OverflowError: cdf(): 'atol' is out of range
 >>> X.cdf(sd.zeros(2), return_error=1)
 Traceback (most recent call last):
     ...

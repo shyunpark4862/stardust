@@ -16,7 +16,7 @@ params:
     kind: keyword-only
     desc: 요약해서 없앨 축. None(기본값)이면 모든 원소를 한 묶음으로 요약해요.
   - name: correction
-    type: int 또는 float
+    type: int 또는 float(numpy 정수도 돼요)
     kind: keyword-only
     desc: 분산을 나누는 수를 n - correction으로 만들어요. 기본값 1은 표본 분산(n - 1로 나눔)이에요. 왜도와 첨도에는 영향이 없어요.
   - name: bias
@@ -35,6 +35,8 @@ raises:
     desc: x가 배열이나 숫자의 시퀀스가 아닐 때, 복소수일 때, axis가 int·tuple·리스트·None이 아닐 때, bias가 True·False가 아닐 때, correction이 int·float가 아닐 때(bool 포함), 없는 옵션(keepdims 등)을 줬을 때, nan_policy에 문자열이 아닌 값을 줬을 때.
   - type: ValueError
     desc: x가 비어 있을 때, nan_policy 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때, axis가 범위를 벗어나거나 같은 축을 두 번 썼을 때.
+  - type: OverflowError
+    desc: correction이 float로 나타낼 수 없을 만큼 큰 int일 때(10**400 등).
 seeAlso: [skew-kurtosis, moment, sem, iqr, mode, zscore]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -306,7 +308,13 @@ TypeError: describe(): 'bias' must be True or False, not int
 Traceback (most recent call last):
     ...
 TypeError: describe(): 'correction' must be an int or a float, not bool
+>>> sd.stats.describe(scores, correction=10**400)
+Traceback (most recent call last):
+    ...
+OverflowError: describe(): 'correction' is out of range
 ```
+
+`correction`에는 numpy 정수도 줄 수 있어요. float로 나타낼 수 없을 만큼 큰 int는 위처럼 `OverflowError`예요.
 
 `axis`는 int, int의 tuple이나 리스트, None만 받아요. 범위를 벗어나거나 같은 축을 두 번 쓰면 `ValueError`예요.
 

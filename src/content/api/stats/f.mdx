@@ -106,7 +106,7 @@ F(dfn=3, dfd=10)
 >>> sd.stats.F(3, 10)
 Traceback (most recent call last):
     ...
-TypeError: F.__init__() takes 1 positional argument but 3 were given
+TypeError: F(): takes no positional arguments but 2 were given
 >>> sd.stats.F(dfn=0, dfd=10).cdf(1.0)
 nan
 >>> sd.stats.F(dfn=3, dfd=sd.inf).mean()
@@ -403,7 +403,7 @@ array([0.06196880441665896,  0.8088468305380582,  0.9904532609400744], dtype=flo
 값을 구할 수 없는 곳에서는 NaN이에요. 모든 호출은 정해진 시간 안에 끝나요.
 
 - 두 자유도가 **모두** $2^{101}$(약 2.5e30)을 넘으면 `cdf` 계열과 역함수가 NaN이에요. 하나만 크면 계산해요.
-- 자유도가 $2^{-1021}$(약 4.5e-308)보다 작으면 `pdf`, `cdf` 계열, 역함수, `median`, `entropy`가 NaN이에요.
+- 자유도가 $2^{-1021}$(약 4.5e-308)보다 작으면 `pdf`, `cdf` 계열, 역함수, `median`, `entropy`가 NaN이에요. 표본은 극한값이에요(분자 자유도가 작으면 0, 분모 자유도가 작으면 inf).
 - 자유도가 $[10^{-3}, 10^5]$ 밖이면 역함수는 구한 근을 다시 넣어 확인하고, 맞을 때만 값을 내요. 확률이 $2^{-1000}$보다 작은 깊은 꼬리의 역함수가 정해진 반복 안에 수렴하지 않을 때도 NaN이에요.
 - `entropy()`는 자유도 하나라도 $10^{-2}$보다 작으면 NaN이에요. 그 아래에서는 공식의 큰 항들이 서로 지워지면서 자릿수가 남지 않아요.
 - `logpdf`는 두 자유도가 모두 $10^{15}$를 넘고 계산 중간의 베타 인자가 float64 범위 아래로 내려가면 NaN이에요.

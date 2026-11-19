@@ -11,7 +11,7 @@ params:
   - name: df
     type: Python 실수 또는 ndarray
     kind: keyword-only
-    desc: 자유도. 0보다 큰 실수예요(정수가 아니어도 돼요). 작을수록 꼬리가 두꺼워요. inf이면 극한인 표준정규분포예요. 0 이하이거나 NaN인 원소는 모든 메서드가 NaN이에요. 배열이면 원소마다 다른 분포가 돼요.
+    desc: 자유도. 0보다 큰 실수예요(정수가 아니어도 돼요). 작을수록 꼬리가 두꺼워요. inf이면 극한인 표준정규분포예요. 0 이하이거나 NaN인 원소는 모든 메서드가 NaN이에요. 2⁻¹⁰²¹(약 4.5e-308)보다 작은 양수이면 밀도, 확률, 분위수, median, entropy, 표본이 NaN이에요. 배열이면 원소마다 다른 분포가 돼요.
 returns:
   type: StudentT
   desc: t 분포 객체. pdf·cdf·icdf 같은 메서드, mean·variance 같은 요약값, sample을 가져요. df는 읽기 전용 속성으로 준 값 그대로 남아요.
@@ -94,7 +94,7 @@ StudentT(df=5)
 >>> sd.stats.StudentT(5)
 Traceback (most recent call last):
     ...
-TypeError: StudentT.__init__() takes 1 positional argument but 2 were given
+TypeError: StudentT(): takes no positional arguments but 1 was given
 >>> T.df
 5
 ```
@@ -409,7 +409,18 @@ $T$가 자유도 $\nu$인 t 분포를 따르면 $T^2$은 자유도 $(1, \nu)$인
 
 값을 구할 수 없는 곳에서는 엉뚱한 값을 내지 않고 NaN을 돌려줘요. 모든 호출은 정해진 시간 안에 끝나요.
 
-- `df`가 $2^{-1021}$(약 4.5e-308)보다 작으면 `pdf`, `cdf` 계열, 역함수, `median`, `entropy`가 NaN이에요. 자유도의 절반을 float64로 정확히 나타낼 수 없어요. `df`가 서브노멀 수($2^{-1022}$, 약 2.2e-308 미만)이면 표본도 NaN이에요.
+- `df`가 $2^{-1021}$(약 4.5e-308)보다 작으면 `pdf`, `cdf` 계열, 역함수, `median`, `entropy`, 표본이 모두 NaN이에요. 자유도의 절반을 float64로 정확히 나타낼 수 없어요. 서브노멀 수(약 2.2e-308 미만)뿐 아니라 가장 작은 정규 float64 $2^{-1022}$도 여기에 들어요.
+
+  ```python
+  >>> Tt = sd.stats.StudentT(df=2**-1022)
+  >>> Tt.cdf(1.0), Tt.median(), Tt.entropy()
+  (nan, nan, nan)
+  >>> Tt.sample(rng=sd.random.default_rng(0))
+  nan
+  >>> sd.stats.StudentT(df=2**-1021).cdf(1.0)
+  0.5
+  ```
+
 - 확률이 $2^{-1000}$보다 작은 깊은 꼬리의 역함수가 정해진 반복 안에 수렴하지 않으면 NaN이에요.
 - 자유도가 $[10^{-3}, 10^6]$ 밖이면 역함수(`icdf`, `iccdf`, `ilogcdf`, `ilogccdf`)는 구한 근을 다시 넣어 확률이 맞는지 확인하고, 맞을 때만 값을 내요. 맞지 않으면 NaN이에요.
 - 근이 float64 범위를 넘으면 극한값이에요. 자유도가 아주 작으면 꼬리가 극단적으로 두꺼워서 1% 분위수도 float64 범위 밖이에요.
@@ -432,6 +443,7 @@ $T$가 자유도 $\nu$인 t 분포를 따르면 $T^2$은 자유도 $(1, \nu)$인
 - `loc`, `scale`이 없어요. 위치와 척도가 필요하면 `(x - m) / s`로 표준화해요.
 - `df`는 키워드로만 받아요. `df = inf`는 scipy처럼 표준정규분포예요.
 - `df ≤ 1`의 `mean()`은 NaN이에요(scipy `t.mean(1)`은 inf).
+- `df`가 $2^{-1021}$보다 작으면 NaN이에요. scipy는 값을 내요: `t.cdf(1, 2**-1022)`는 0.5, `t.entropy(2**-1022)`는 4.49e307이에요.
 - `kurtosis()`는 초과 첨도예요. scipy의 `t.stats(df, moments='k')`와 같고, 새 API의 `kurtosis()` 기본값(초과하지 않은 첨도, df = 5에서 9.0)보다 3 작아요.
 - 꼬리에서 scipy가 0이나 `-inf`를 내는 곳에서 값을 내요. 예: `StudentT(df=10).logccdf(1e100)`은 −2293.17이고 scipy `t.logsf(1e100, 10)`은 `-inf`예요. `StudentT(df=3).logpdf(1e200)`은 −1840.87이고 scipy는 `-inf`예요.
 - `StudentT(df=5).icdf(1e-300)`은 −1.57e60이고, scipy `t.ppf(1e-300, 5)`는 `inf`(부호까지 틀린 값)예요.

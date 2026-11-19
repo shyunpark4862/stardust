@@ -98,11 +98,11 @@ Exponential(scale=1.0)
 >>> sd.stats.Exponential(2.0)
 Traceback (most recent call last):
     ...
-TypeError: Exponential.__init__() takes 1 positional argument but 2 were given
+TypeError: Exponential(): takes no positional arguments but 1 was given
 >>> sd.stats.Exponential(rate=0.5)
 Traceback (most recent call last):
     ...
-TypeError: Exponential.__init__() got an unexpected keyword argument 'rate'
+TypeError: Exponential(): unexpected keyword argument 'rate'
 >>> sd.stats.Exponential(scale=1 / 0.5)
 Exponential(scale=2.0)
 ```

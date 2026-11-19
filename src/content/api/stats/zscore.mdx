@@ -16,7 +16,7 @@ params:
     kind: keyword-only
     desc: 평균과 표준편차를 계산할 축. None(기본값)이면 모든 원소의 평균·표준편차 하나로 표준화해요.
   - name: correction
-    type: int 또는 float
+    type: int 또는 float(numpy 정수도 돼요)
     kind: keyword-only
     desc: 표준편차를 구할 때 나누는 수를 n - correction으로 만들어요. 기본값 0은 n으로 나눠요(sd.std와 같아요).
   - name: nan_policy
@@ -31,6 +31,8 @@ raises:
     desc: x가 배열이나 숫자의 시퀀스가 아니거나 복소수일 때, axis가 int·tuple·리스트·None이 아닐 때, correction이 int·float가 아닐 때(bool 포함), 없는 옵션(keepdims 등)을 줬을 때, nan_policy에 문자열이 아닌 값을 줬을 때.
   - type: ValueError
     desc: nan_policy 이름이 틀렸거나 'raise'인데 NaN이 있을 때, axis가 범위를 벗어나거나 겹칠 때.
+  - type: OverflowError
+    desc: correction이 float로 나타낼 수 없을 만큼 큰 int일 때(10**400 등).
 seeAlso: [rankdata, describe, sem, skew-kurtosis]
 ---
 import Callout from '../../../components/Callout.astro';

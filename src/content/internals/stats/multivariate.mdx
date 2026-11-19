@@ -85,6 +85,24 @@ array([2.8378770664093453,                nan], dtype=float64)
 
 둘째 행렬은 고유값이 $3, -1$이라 양의 정부호가 아니에요. 촐레스키 분해의 둘째 피벗이 $1 - 4 = -3$으로 음수가 되는 순간 실패로 판정해요.
 
+분해 말고도 같은 표시를 0으로 만드는 조건이 있어요. `mu`에 NaN이나 inf가 있거나, MultivariateT의 df가 NaN이거나 $2^{-1021}$ 아래일 때예요. df의 경계는 StudentT와 같아요. 그 아래에서는 df의 절반이 double로 정확하지 않아서 StudentT가 NaN이고, 그래서 $d = 1$인 MultivariateT가 StudentT와 같은 곳에서 NaN이에요.
+
+```python
+# src/stardust/stats/_multivariate.py, _Gaussian (발췌)
+_MIN_DF = 2.0**-1021  # StudentT's boundary: below it df / 2 is not exact (docs/api/stats.md §2.2)
+...
+# df below 2^-1021 is outside the domain too (df / 2 is not exact; StudentT's NaN)
+good = sd.all(sd.isfinite(self._mu), axis=1) & ~sd.isnan(self._df) & (self._df >= _MIN_DF)
+self._ok = sd.where(good, ok, 0.0)
+```
+
+```python
+>>> T0 = sd.stats.MultivariateT(mu=sd.asarray([0.0, 0.0]), shape=sd.asarray([[1.0, 0.0], [0.0, 1.0]]),
+...                             df=sd.asarray([2**-1022, 2**-1021]))
+>>> T0.logpdf(sd.asarray([0.5, 0.5]))
+array([               nan, -708.8480012375535], dtype=float64)
+```
+
 ### 표본의 배치
 
 `sample(shape)`의 결과는 `shape` + 배치 모양 + (d,)이에요. `shape`의 기본값 `None`은 배치 원소마다 벡터 하나라서 결과가 배치 모양 + (d,)이고, `shape=()`는 0차원 배열이 없어서 `ValueError`예요. 결과가 물리 메모리보다 크면 난수 스트림을 움직이기 전에 `MemoryError`를 내요(`rng._take`가 행 수 × d × 8바이트를 먼저 검사해요). 커널은 결과를 (N, d)의 행으로 보고, 행 $i$의 배치를 $i \bmod B$로 정해요. 행 하나가 난수 스트림의 원소 하나라서 결과는 스레드 수와 무관해요([표본 뽑기](/internals/stats/sampling/)).

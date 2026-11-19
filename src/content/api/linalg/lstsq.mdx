@@ -323,6 +323,18 @@ array([0.2, 0.4], dtype=float64)
 array([-0.34728478492265025,   0.6736423924613251], dtype=float64)
 ```
 
+특이값이 아주 작으면 그 역수가 float64의 범위(약 $1.8 \times 10^{308}$)를 넘어요. `rtol`을 작게 줘서 그런 특이값까지 쓰면, 해에서 범위를 넘는 성분은 `inf`이고 정확히 0이어야 하는 성분은 0이에요. 다른 성분은 그대로 맞는 값이에요.
+
+```python
+>>> tiny = sd.asarray([[1.0, 0.0], [0.0, 5e-324]])
+>>> sd.linalg.lstsq(tiny, sd.asarray([1.0, 1.0]), rtol=0).solution
+array([1.0, inf], dtype=float64)
+>>> sd.linalg.lstsq(tiny, sd.asarray([1.0, 0.0]), rtol=0).solution
+array([1.0, 0.0], dtype=float64)
+```
+
+첫 줄의 둘째 성분은 참값이 $1/(5 \times 10^{-324}) \approx 2 \times 10^{323}$이라 담을 수 없어서 `inf`예요. 둘째 줄은 우변의 둘째 값이 0이라 그 성분도 정확히 0이에요. 기본 `rtol`이면 `5e-324`를 0으로 쳐서 둘 다 `[1.0, 0.0]`이에요.
+
 `rtol`은 [matrix_rank](/api/linalg/matrix_rank/)와 [pinv](/api/linalg/inv/)의 `rtol`과 같은 뜻이에요.
 
 ## 조심할 점

@@ -163,6 +163,10 @@ array([[2.0, 1.5, 1.0],
 Traceback (most recent call last):
     ...
 TypeError: rankdata(): 'axis' must be an int or None, not tuple
+>>> sd.stats.rankdata(t, axis=1.0)
+Traceback (most recent call last):
+    ...
+TypeError: rankdata(): 'axis' must be an int or None, not float
 ```
 
 ## NaN이 있으면: `nan_policy`

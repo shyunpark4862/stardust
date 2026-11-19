@@ -347,6 +347,18 @@ array([[ 4409081616917742.0, -2204540808458871.2],
        [-2204540808458871.0,  1102270404229435.8]], dtype=float64)
 ```
 
+남긴 특이값이 아주 작아서 역수가 float64의 범위를 넘으면, 그 성분은 `inf`예요. 정확히 0이어야 하는 성분은 0으로 남아요.
+
+```python
+>>> tiny = sd.asarray([[1.0, 0.0], [0.0, 5e-324]])
+>>> sd.linalg.pinv(tiny, rtol=0)
+array([[1.0, 0.0],
+       [0.0, inf]], dtype=float64)
+>>> sd.linalg.pinv(tiny)
+array([[1.0, 0.0],
+       [0.0, 0.0]], dtype=float64)
+```
+
 `rtol`은 [matrix_rank](/api/linalg/matrix_rank/)와 [lstsq](/api/linalg/lstsq/)에서도 같은 뜻이에요. 세 함수가 "0으로 보는 특이값"을 같은 기준으로 정하기 때문에, `matrix_rank(x)`가 말하는 랭크는 `pinv(x)`가 살려 둔 특이값의 개수예요.
 
 `rtol`은 0 이상의 유한한 수여야 하고, 이름을 붙여서만 줄 수 있어요.
@@ -517,6 +529,7 @@ array([[0.0, 0.0],
 - `inv`는 `np.linalg.inv`, `pinv`는 `np.linalg.pinv`에 해당해요. 배치를 받는 것도 같아요.
 - **`pinv`의 기본 허용오차가 `np.linalg.pinv`와 달라요.** numpy의 기본은 `rcond=1e-15`이고, 여기서는 `max(M, N) × eps`예요(`scipy.linalg.pinv`의 기본과 같아요). 옵션 이름은 `rtol` 하나뿐이고 `rcond=`, `atol=`은 없어요.
 - **`rtol`이 1 이상이면 결과는 영행렬이에요.** 기준과 같은 특이값도 0으로 쳐요(`<=`).
+- 남긴 특이값의 역수가 넘쳐도 정확한 0은 0이에요. `np.linalg.pinv(np.diag([1.0, 5e-324]), rcond=0)`과 `scipy.linalg.pinv(..., atol=0, rtol=0)`은 `[[nan, nan], [nan, inf]]`이고, 여기서는 `[[1.0, 0.0], [0.0, inf]]`예요.
 - `rtol`에 배열을 줄 수 없어요(배치마다 다른 허용오차는 없어요). `hermitian=` 옵션도 없어요.
 - NaN·inf가 있으면 두 함수 모두 `ValueError`예요. numpy는 검사하지 않고, scipy의 `check_finite=`에 해당하는 옵션은 없어요.
 - scipy의 "ill-conditioned" 경고에 해당하는 것이 없어요. 필요하면 `cond`로 직접 확인하세요.

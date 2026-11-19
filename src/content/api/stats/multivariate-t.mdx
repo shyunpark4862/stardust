@@ -19,7 +19,7 @@ params:
   - name: df
     type: ndarray (...) 또는 Python 실수
     kind: keyword-only
-    desc: 자유도. 0보다 큰 실수이고 inf도 돼요(다변량 정규분포). 0 이하, NaN, 2⁻¹⁰²²보다 작은 값이면 그 분포의 모든 메서드가 NaN이에요.
+    desc: 자유도. 0보다 큰 실수이고 inf도 돼요(다변량 정규분포). 0 이하, NaN, 2⁻¹⁰²¹(약 4.5e-308)보다 작은 값이면 그 분포의 모든 메서드가 NaN이에요.
 returns:
   type: MultivariateT
   desc: 분포 객체. 매개변수는 같은 이름의 읽기 전용 속성(mu, shape, df)으로, 준 값 그대로 남아 있어요.
@@ -120,12 +120,14 @@ array([ 0.003920798031732139,  0.002871504663655167, 0.0008438027357315953,
 
 ### 정의역 밖은 NaN
 
-양의 정부호가 아닌 `shape`, NaN·inf가 든 `mu`, 0 이하이거나 NaN인 `df`는 에러가 아니라 그 분포의 모든 메서드가 NaN이에요. 2⁻¹⁰²²(가장 작은 정규 float64)보다 작은 양수 `df`도 NaN이에요.
+양의 정부호가 아닌 `shape`, NaN·inf가 든 `mu`, 0 이하이거나 NaN인 `df`는 에러가 아니라 그 분포의 모든 메서드가 NaN이에요. 2⁻¹⁰²¹(약 4.5e-308)보다 작은 양수 `df`도 NaN이에요. 자유도의 절반을 float64로 정확히 나타낼 수 없는 범위이고, [`StudentT`](/api/stats/student-t/)와 같은 경계예요. 서브노멀 수뿐 아니라 가장 작은 정규 float64 2⁻¹⁰²²도 여기에 들어요.
 
 ```python
 >>> sd.stats.MultivariateT(mu=sd.zeros(2), shape=sh, df=0.0).pdf(sd.zeros(2))
 nan
 >>> sd.stats.MultivariateT(mu=sd.zeros(2), shape=sh, df=1e-320).pdf(sd.zeros(2))
+nan
+>>> sd.stats.MultivariateT(mu=sd.zeros(2), shape=sh, df=2**-1022).entropy()
 nan
 ```
 

@@ -350,6 +350,7 @@ $G(a+1)$과 $U$가 독립이면 곱이 $G(a)$를 따라요. $U^{1/a} = \exp(\log
 
 ```cpp
 // csrc/stats/sample_dist.hpp, Custom<NoncentralChiSquared>::draw
+if (s.snc == 0.0) return Custom<ChiSquared>::draw(w, s.g0);
 if (s.df >= 1.0) {
     const double z = std_normal(w) + s.snc;
     return s.df == 1.0 ? z * z : 2.0 * gamma_draw(w, s.g1) + z * z;
@@ -359,6 +360,19 @@ return 2.0 * gamma_draw(w, n == 0.0 ? s.g0 : gamma_prep(s.h + n));
 ```
 
 `g1`은 모양 $(\text{df} - 1)/2$의 감마 준비이고, $2G((\text{df}-1)/2)$가 $\chi^2_{\text{df}-1}$이에요.
+
+첫 줄은 $\text{nc} = 0$이에요. 위 꼴도 nc = 0에서 카이제곱 분포를 뽑지만, 단어를 쓰는 방법이 달라서 같은 `rng` 상태에서 `ChiSquared`와 다른 값이 나와요. 그래서 nc = 0이면 카이제곱의 표본기를 그대로 불러요. 비중심 F도 준비 단계에서 nc = 0을 알아보고(`lim` = 4) `Custom<F>`의 준비와 뽑기를 써요. 비중심 t는 $Z + \text{nc}$가 nc = 0에서 $Z$와 같은 비트라 따로 둘 것이 없어요. 셋 모두 다른 메서드처럼 중심 분포와 비트까지 같아요.
+
+```python
+>>> a = sd.stats.NoncentralChiSquared(df=3.0, nc=0.0).sample(3, rng=sd.random.default_rng(1))
+>>> b = sd.stats.ChiSquared(df=3.0).sample(3, rng=sd.random.default_rng(1))
+>>> a.tolist() == b.tolist()
+True
+>>> a = sd.stats.NoncentralF(dfn=3.0, dfd=11.0, nc=0.0).sample(3, rng=sd.random.default_rng(1))
+>>> b = sd.stats.F(dfn=3.0, dfd=11.0).sample(3, rng=sd.random.default_rng(1))
+>>> a.tolist() == b.tolist()
+True
+```
 
 **무한한 자유도**는 극한 분포의 표본이에요. $\chi^2_\text{df}/\text{df}$는 $\text{df} \to \infty$에서 1로 모이므로, 그 인자를 1로 두면 돼요.
 
@@ -386,7 +400,38 @@ True
 
 `ChiSquared(df=inf)`(질량이 무한대로 달아나요)와 두 자유도가 모두 inf인 F는 극한 분포로 두지 않아서 정의역 밖이고, 표본도 NaN이에요.
 
-반대쪽 끝도 있어요. t와 비중심 t는 df가 서브노멀(`kMinSampleDf` = $2^{-1022}$ 아래)이면 NaN이에요. 그런 df의 절반을 모양으로 하는 감마를 뽑을 수 없기 때문이에요. 비중심 F는 두 자유도가 모두 서브노멀일 때 NaN이에요.
+반대쪽 끝도 있어요. t와 비중심 t는 df가 $2^{-1021}$(`kMinSampleDf`) 아래이면 NaN이에요. 표본은 모양 df/2의 감마에서 나오는데, 그 아래의 df는 절반이 double로 정확하지 않기 때문이에요. 서브노멀 df는 반으로 나누면 비트를 잃거나 0이 되고, 가장 작은 정규수 구간 $[2^{-1022}, 2^{-1021})$의 df도 절반이 서브노멀이라 마지막 비트가 1이면 반올림돼요. $2^{-1021}$ 이상이면 절반이 정규수라 언제나 정확해요. 값 메서드의 경계(`StudentT::halvable`)와 같은 상수라서, t와 비중심 t·F는 같은 df에서 값 메서드와 표본이 함께 NaN이에요.
+
+```cpp
+// csrc/stats/sample_dist.hpp
+inline constexpr double kMinSampleDf = 0x1p-1021;
+```
+
+비중심 F는 두 자유도 중 하나라도 이 경계 아래이면 NaN이에요. nc = 0이어도 같아서, 이 아래에서는 극한값(0이나 inf)을 내는 `F`의 표본과 달라요. 준비 단계가 inf인 자유도를 먼저 보므로, 다른 자유도가 inf이면 위 표의 극한 분포를 뽑아요.
+
+```cpp
+// csrc/stats/sample_dist.hpp, Custom<NoncentralF>::prep
+const int lim = dfd == kInf ? 1 : (dfn == kInf ? 2 : (dfn < kMinSampleDf || dfd < kMinSampleDf ? 3 : 0));
+const int kind = nc == 0.0 && lim != 3 ? 4 : lim;
+```
+
+```python
+>>> rng = sd.random.default_rng
+>>> sd.stats.StudentT(df=2**-1022).sample(rng=rng(1)), sd.stats.StudentT(df=2**-1021).sample(rng=rng(1))
+(nan, inf)
+>>> sd.stats.NoncentralF(dfn=5.0, dfd=1e-310, nc=0.0).sample(rng=rng(1)), sd.stats.F(dfn=5.0, dfd=1e-310).sample(rng=rng(1))
+(nan, inf)
+```
+
+비중심 카이제곱은 nc > 0이면 이 경계 아래에서도 뽑아요(값 메서드도 값을 내요). df < 1의 포아송 혼합 꼴에서 $N = 0$이면 모양 df/2의 감마가 0이라 0의 점질량(확률 $e^{-\text{nc}/2}$)이 되고, $N \ge 1$이면 모양이 $N$에 가까운 보통 감마예요.
+
+```python
+>>> x = sd.stats.NoncentralChiSquared(df=2**-1022, nc=1.0).sample(100000, rng=rng(1))
+>>> sd.mean(x == 0.0)
+0.60826
+```
+
+$e^{-1/2} = 0.6065$예요.
 
 **베타**는 세 갈래예요.
 
@@ -618,8 +663,8 @@ $a > 1025$이면 $b = 2^{a-1}$이 double을 넘어요. 그때 $P(X > 1) < 2^{-10
 | `DiscreteUniform` | 폭 ≥ $2^{64}$ | NaN |
 | `Zipf` | $a > 1025$ | 1 |
 | `Zipf` | 표본이 double을 넘음 | inf |
-| `StudentT`, `NoncentralT` | df가 서브노멀($< 2^{-1022}$) | NaN |
-| `NoncentralF` | 두 자유도가 모두 서브노멀 | NaN |
+| `StudentT`, `NoncentralT` | df $< 2^{-1021}$ | NaN |
+| `NoncentralF` | dfn이나 dfd가 $2^{-1021}$ 미만(nc = 0 포함, 다른 자유도가 inf가 아닐 때) | NaN |
 | `Beta`, `BetaBinomial`, `F` | 서브노멀 모양 | 극한값(두 끝이나 0, inf) |
 | `StudentT`, `NoncentralT`, `F`, `NoncentralF` | 자유도 inf | 극한 분포의 표본 |
 | `NegativeBinomial` | $n = 0$ | 0 |

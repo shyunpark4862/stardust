@@ -164,7 +164,7 @@ Gamma(a=2.0, scale=3.0)
 >>> sd.stats.Normal(0.0, 1.0)
 Traceback (most recent call last):
     ...
-TypeError: Normal.__init__() takes 1 positional argument but 3 were given
+TypeError: Normal(): takes no positional arguments but 2 were given
 ```
 
 기본값은 **위치는 0, 척도는 1**에만 있어요. `Normal()`은 표준정규분포 `Normal(mu=0, sigma=1)`이고, `Gamma(a=2.0)`의 척도는 1이에요. 분포의 모양을 정하는 매개변수(`df`, `a`, `b`, `p` 등)와 균등분포의 두 끝 `a`, `b`는 기본값이 없어서 꼭 줘야 해요.
@@ -177,7 +177,7 @@ Gamma(a=2.0, scale=1.0)
 >>> sd.stats.StudentT()
 Traceback (most recent call last):
     ...
-TypeError: StudentT.__init__() missing 1 required keyword-only argument: 'df'
+TypeError: StudentT(): missing 1 required keyword-only argument: 'df'
 ```
 
 ### 매개변수 이름의 규칙
@@ -409,7 +409,7 @@ nan
 | `OverflowError` | 매개변수로 준 Python 정수가 float64로 나타낼 수 없을 만큼 큼, 메서드의 입력으로 준 Python 정수가 int64 범위(±9.2e18 정도)를 넘음 |
 | `AttributeError` | 매개변수 속성에 값을 넣으려 함 |
 
-메서드에서 나는 에러의 메시지는 `cdf(): `처럼 **부른 메서드의 이름**으로 시작해요. 어떤 인자가 문제인지도 이름으로 알려 줘요(`'x'`, `'p'`, `'logp'`). 다변량·행렬 분포도 같아요. 객체를 만들 때 나는 에러는 `Normal(): `처럼 **분포의 이름**으로 시작하고, 문제인 매개변수의 이름(`'mu'`)을 알려 줘요.
+메서드에서 나는 에러의 메시지는 `cdf(): `처럼 **부른 메서드의 이름**으로 시작해요. 어떤 인자가 문제인지도 이름으로 알려 줘요(`'x'`, `'p'`, `'logp'`). 다변량·행렬 분포도 같아요. 객체를 만들 때 나는 에러는 `Normal(): `처럼 **분포의 이름**으로 시작하고, 문제인 매개변수의 이름(`'mu'`)을 알려 줘요. 매개변수를 이름 없이 주거나, 빠뜨리거나, 없는 이름을 줬을 때도 같은 꼴이에요(`Normal(): unexpected keyword argument 'mean'`).
 
 ```python
 >>> sd.stats.Normal().icdf("0.5")
@@ -421,6 +421,10 @@ TypeError: icdf(): 'p' must be an sd.ndarray or a real number, not str
 Traceback (most recent call last):
     ...
 ValueError: cdf(): 'x' must have 2 components on its last axis, not 3
+>>> sd.stats.Normal(mean=0.0)
+Traceback (most recent call last):
+    ...
+TypeError: Normal(): unexpected keyword argument 'mean'
 >>> sd.stats.Normal(mu=2 ** 2000)
 Traceback (most recent call last):
     ...
