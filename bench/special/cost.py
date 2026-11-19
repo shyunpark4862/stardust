@@ -9,9 +9,8 @@ never a result).
 
 import sys
 
-import numpy as np
-
 import common
+import numpy as np
 
 N = 10**6
 

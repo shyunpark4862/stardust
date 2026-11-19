@@ -5,8 +5,8 @@ import sys
 
 import numpy as np
 import pytest
-import stardust as sd
 
+import stardust as sd
 
 # Each expm case runs in a child process with a time limit: before the fix
 # these never returned (about 2^31 squarings), which would hang the suite.

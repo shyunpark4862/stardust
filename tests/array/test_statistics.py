@@ -14,6 +14,7 @@ import numpy as np
 import pytest
 
 import stardust as sd
+
 from .conftest import assert_same
 
 METHODS = [

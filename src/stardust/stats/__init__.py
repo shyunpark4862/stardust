@@ -29,18 +29,6 @@ from ._continuous import (
     Uniform,
     Weibull,
 )
-from ._discrete import (
-    Bernoulli,
-    BetaBinomial,
-    Binomial,
-    DiscreteUniform,
-    Geometric,
-    Hypergeometric,
-    LogSeries,
-    NegativeBinomial,
-    Poisson,
-    Zipf,
-)
 from ._descriptive import (
     DescribeResult,
     ModeResult,
@@ -55,6 +43,18 @@ from ._descriptive import (
     sem,
     skew,
     zscore,
+)
+from ._discrete import (
+    Bernoulli,
+    BetaBinomial,
+    Binomial,
+    DiscreteUniform,
+    Geometric,
+    Hypergeometric,
+    LogSeries,
+    NegativeBinomial,
+    Poisson,
+    Zipf,
 )
 from ._distribution import ContinuousDistribution, DiscreteDistribution
 from ._matrix import InverseWishart, MatrixNormal, Wishart

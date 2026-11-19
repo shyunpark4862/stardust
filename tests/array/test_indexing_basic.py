@@ -8,6 +8,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 import stardust as sd
+
 from .conftest import assert_same
 
 

@@ -19,15 +19,16 @@ from ..stats import ChiSquared as _ChiSquared
 from ..stats import Normal as _Normal
 from ..stats import StudentT as _StudentT
 from ._linear import (
-    _call_errors,
+    _COV_NOTES,
     _COV_TYPES,
-    _RegressionResult,
+    _WIDTH,
     _arg,
     _as_real,
+    _call_errors,
     _check_alpha,
+    _check_batches,
     _check_bool,
     _check_choice,
-    _check_batches,
     _check_maxlags,
     _check_params,
     _check_policy,
@@ -45,9 +46,8 @@ from ._linear import (
     _pairs,
     _quantile_label,
     _read_y,
+    _RegressionResult,
     _rows_message,
-    _WIDTH,
-    _COV_NOTES,
 )
 
 _k = _sd.regression

@@ -1,12 +1,12 @@
 """Series: one Column plus its row labels (docs/design/frame.md §3.1)."""
 
 from . import _column, _core, _dtypes, _format, _ops, _select, _sort, _unique
-from ._reduce import Reductions, own_reductions
 from ._column import _NO_VALUE
 from ._dtypes import resolve
 from ._errors import check_bool, check_int, type_name
-from ._na import NA
 from ._index import RangeIndex, check_name, ensure_index
+from ._na import NA
+from ._reduce import Reductions, own_reductions
 
 Column = _core.Column
 

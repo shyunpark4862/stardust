@@ -5,22 +5,23 @@ import math
 
 import numpy as np
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
+
 import stardust as sd
+
 from .conftest import (
     DTYPES,
     LAYOUTS,
+    as_sd,
     batch_shapes,
     compute_dtype,
     npy,
     random_values,
     residual_ok,
-    as_sd,
     well_conditioned,
     with_layout,
 )
-from hypothesis import given, settings
-from hypothesis import strategies as st
-
 
 SETTINGS = settings(max_examples=int(__import__("os").environ.get("SDLA_EXAMPLES", 150)), deadline=None)
 

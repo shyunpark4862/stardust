@@ -6,6 +6,7 @@ import math
 
 import numpy as np
 import pytest
+
 import stardust as sd
 
 L = sd.linalg

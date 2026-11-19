@@ -4,6 +4,7 @@ sits 8 m n bytes after a; sd puts b at the same offset (docs/design/linalg.md §
 
 import numpy as np
 import pytest
+
 import stardust as sd
 
 SHAPES = [(m, n) for m in (1, 2, 3, 5, 8, 9, 13) for n in (1, 2, 3, 7, 8, 11, 20)] + [(30, 41), (41, 30), (7, 100)]

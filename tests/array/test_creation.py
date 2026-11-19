@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 import stardust as sd
+
 from .conftest import NP_DTYPE, assert_same
 
 SHAPES = [3, (2, 3), (0,), (4, 0, 2), (1, 1, 1)]

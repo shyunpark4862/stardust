@@ -8,13 +8,13 @@ from .. import _core as _sd_core
 
 _core = _sd_core.frame  # first: every module below takes its native functions from here
 
-from ._na import NA  # noqa: E402
+from . import _na  # noqa: E402
 from ._frame import DataFrame  # noqa: E402
 from ._index import Index, RangeIndex  # noqa: E402
 from ._io import read_csv  # noqa: E402
 from ._merge import concat, merge  # noqa: E402
+from ._na import NA  # noqa: E402
 from ._series import Series  # noqa: E402
-from . import _na  # noqa: E402
 
 _na._attach()  # NA's operators use the Series kernels and rules (docs/api/frame.md §1.4)
 

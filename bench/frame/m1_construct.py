@@ -11,9 +11,9 @@ import random
 import numpy as np
 import pandas as pd
 import polars as pl
+from _harness import env_info, fmt_ns, per_call_ns
 
 import stardust_pandas as sdpd
-from _harness import env_info, fmt_ns, per_call_ns
 
 N = 1_000_000
 rng = random.Random(0)
@@ -67,7 +67,7 @@ lines = [
     "",
     "Environment: " + ", ".join(f"{k} {v}" for k, v in env_info().items()),
     "",
-    f"1M rows unless stated. Minimum per-call time over 7 batches.",
+    "1M rows unless stated. Minimum per-call time over 7 batches.",
     "",
     "| case | ours | pandas | Polars |",
     "|---|---:|---:|---:|",

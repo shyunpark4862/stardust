@@ -18,29 +18,29 @@ from .. import special as _special
 from .._results import SiegelslopesResult, TheilslopesResult
 from ._glm import _broadcast_shape, _check_int, _check_positive
 from ._linear import (
-    _call_errors,
-    _RegressionResult,
+    _WIDTH,
     _as_real,
+    _call_errors,
     _check_alpha,
     _check_batches,
     _check_bool,
     _check_choice,
-    _expand,
-    _check_rows,
-    _prepare,
-    _read_y,
-    _rows_message,
     _check_policy,
+    _check_rows,
     _check_rtol,
-    _frame_columns,
     _count,
+    _expand,
     _forg,
+    _frame_columns,
     _has_nan,
     _names,
     _pairs,
+    _prepare,
     _quantile_label,
+    _read_y,
+    _RegressionResult,
+    _rows_message,
     _type_name,
-    _WIDTH,
 )
 
 _k = _sd.regression

@@ -4,7 +4,13 @@ coordinate's mean and a digest over 1, 3 and 10 threads.
     .venv/bin/python bench/stats/opt/e/mv_sample_speed.py
 """
 
-import stardust as sd, numpy as np, timeit, scipy.stats as st, hashlib
+import hashlib
+import timeit
+
+import numpy as np
+import scipy.stats as st
+
+import stardust as sd
 
 S = sd.stats
 rng = np.random.default_rng(0)

@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 import stardust as sd
+
 from .conftest import NP_DTYPE, assert_same
 
 SHAPES = [

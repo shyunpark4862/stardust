@@ -19,9 +19,9 @@ import timeit
 import numpy as np
 import scipy
 import scipy.linalg as sl
-import stardust_numpy as sdnp
 
 import stardust_linalg as sdla
+import stardust_numpy as sdnp
 
 MATRIX_SHAPES = [(3, 3), (32, 32), (300, 300), (1000, 1000), (1000, 3, 3), (100, 32, 32)]
 

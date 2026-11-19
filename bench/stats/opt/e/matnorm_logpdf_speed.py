@@ -4,7 +4,12 @@ without it and scipy (bench/stats/t10/speed.py's parameters, and 30 x 20).
     .venv/bin/python bench/stats/opt/e/matnorm_logpdf_speed.py
 """
 
-import stardust as sd, numpy as np, timeit, scipy.stats as st
+import timeit
+
+import numpy as np
+import scipy.stats as st
+
+import stardust as sd
 
 S = sd.stats
 _k = sd._core.stats

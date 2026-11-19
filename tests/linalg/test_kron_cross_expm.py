@@ -8,12 +8,13 @@ import warnings
 import numpy as np
 import pytest
 import scipy.linalg as sl
-import stardust as sd
-from .conftest import DTYPES, LAYOUTS, batch_shapes, compute_dtype, npy, random_values, as_sd, with_layout
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
+import stardust as sd
 from stardust._core import linalg as _core
+
+from .conftest import DTYPES, LAYOUTS, as_sd, batch_shapes, compute_dtype, npy, random_values, with_layout
 
 SETTINGS = settings(max_examples=int(os.environ.get("SDLA_EXAMPLES", 150)), deadline=None)
 EPS = np.finfo(np.float64).eps

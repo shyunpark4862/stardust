@@ -5,7 +5,13 @@ NEON loops and the side-by-side lanes keep every bit); `time`: 10^6 values again
     .venv/bin/python bench/stats/opt/e/desc_moments.py hash|time
 """
 
-import sys, hashlib, numpy as np, timeit, scipy.stats as st
+import hashlib
+import sys
+import timeit
+
+import numpy as np
+import scipy.stats as st
+
 import stardust as sd
 
 S = sd.stats

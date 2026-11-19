@@ -10,6 +10,7 @@ import struct
 
 import numpy as np
 import pytest
+
 import stardust as sd
 
 S = sd.stats

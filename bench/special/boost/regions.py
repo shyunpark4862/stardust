@@ -16,6 +16,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "bench/special"))
 import common  # noqa: E402
+
 import stardust as sd  # noqa: E402
 from tests.special import refdata  # noqa: E402
 

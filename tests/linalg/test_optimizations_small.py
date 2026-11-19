@@ -5,12 +5,14 @@ near n = 32, and large C-order inputs transposed on the pool
 thread count."""
 
 import hashlib
+
 import numpy as np
 import pytest
-import stardust as sd
-from .conftest import as_sd
 
+import stardust as sd
 from stardust._core import linalg as _core
+
+from .conftest import as_sd
 
 DEFAULT = sd.get_num_threads()
 COUNTS = sorted({1, 3, DEFAULT})

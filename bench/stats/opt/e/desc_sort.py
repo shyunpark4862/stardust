@@ -5,7 +5,13 @@ compare two builds; `time`: 10^6 values on 1 and 10 threads.
     .venv/bin/python bench/stats/opt/e/desc_sort.py hash|time
 """
 
-import sys, hashlib, numpy as np, timeit, scipy.stats as st
+import hashlib
+import sys
+import timeit
+
+import numpy as np
+import scipy.stats as st
+
 import stardust as sd
 
 S = sd.stats

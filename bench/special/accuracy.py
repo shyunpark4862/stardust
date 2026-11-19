@@ -9,9 +9,8 @@ The S4 inverses report ULP / max(1, kappa) (their contract, docs/api/special.md 
 
 import sys
 
-import numpy as np
-
 import common
+import numpy as np
 
 
 def stats(err):

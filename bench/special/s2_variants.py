@@ -13,9 +13,8 @@ Arb reference (tests/special/ref/erfc.npz).
 
 import argparse
 
-import numpy as np
-
 import common
+import numpy as np
 
 N = 10**6
 

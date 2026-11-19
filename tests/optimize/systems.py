@@ -9,7 +9,7 @@ systems are the gradients of 1/2 sum F_i^2 of the paper's least squares problems
 """
 
 from .ad import FLOAT
-from .mgh import f07, j07, f13, j13, f26, f27, j27, f28, j28, f29, j29, f30, j30, f31, j31, f35, j35
+from .mgh import f07, f13, f26, f27, f28, f29, f30, f31, f35, j07, j13, j27, j28, j29, j30, j31, j35
 
 
 def _sq(t):

@@ -2,6 +2,7 @@
 the argument, as in the array area (API.md §2)."""
 
 import pytest
+
 import stardust as sd
 
 

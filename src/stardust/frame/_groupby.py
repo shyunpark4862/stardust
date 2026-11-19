@@ -9,8 +9,8 @@ first appearance, with NA-key groups dropped (dropna=True) or last.
 
 from . import _core, _unique
 from ._errors import check_bool, name_list, type_name
-from ._reduce import Reductions, own_reductions
 from ._index import RangeIndex
+from ._reduce import Reductions, own_reductions
 
 AGG_FUNCS = ("sum", "mean", "min", "max", "count", "std", "var", "first", "last", "size")
 

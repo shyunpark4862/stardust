@@ -9,6 +9,7 @@ from hypothesis import strategies as st
 from hypothesis.extra import numpy as hnp
 
 import stardust as sd
+
 from .conftest import NP_DTYPE, assert_same
 
 REAL = [sd.bool, sd.int64, sd.float64]

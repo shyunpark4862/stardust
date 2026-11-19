@@ -32,6 +32,7 @@ SEEDS = 3
 
 def problems():
     import numpy as np
+
     from tests.regression import nist
 
     out = []
@@ -74,6 +75,7 @@ def reference(item):
 
 def measure(items, refs):
     import numpy as np
+
     import stardust as sd
 
     rows = []

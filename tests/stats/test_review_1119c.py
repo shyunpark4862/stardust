@@ -7,8 +7,9 @@ import math
 
 import numpy as np
 import pytest
-import stardust as sd
 from flint import arb, ctx
+
+import stardust as sd
 
 S = sd.stats
 sp = sd.special

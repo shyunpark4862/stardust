@@ -22,7 +22,6 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
 import numpy as np  # noqa: E402
-
 from _harness import per_call_ns, per_call_ns_cycle  # noqa: E402
 
 SIZES = [1_000, 100_000, 1_000_000]

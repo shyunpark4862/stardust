@@ -12,9 +12,8 @@ and a single Python-float call. Inputs: the guaranteed-region reference inputs
 import argparse
 import sys
 
-import numpy as np
-
 import common
+import numpy as np
 
 N = 10**6
 

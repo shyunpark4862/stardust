@@ -19,10 +19,8 @@ project uses Arb alone).
 
 import math
 
-from flint import arb, arb_mat
-
 import arbref as ar
-from flint import ctx
+from flint import arb, arb_mat, ctx
 
 EXACT_FIT_PREC = 1024  # bits from which residuals whose balls still hold 0 are taken as exact zeros
 

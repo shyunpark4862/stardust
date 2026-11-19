@@ -349,9 +349,7 @@ class Index(_IndexBase):
 
 def _labels_from(data, func):
     """The label Column of an Index made from `data` by the public function `func`."""
-    from ._column import column_from
-
-    from ._column import is_ndarray, is_sdarray
+    from ._column import column_from, is_ndarray, is_sdarray
 
     if isinstance(data, _IndexBase):
         col = data._column()

@@ -10,9 +10,9 @@ import pathlib
 import numpy as np
 import pandas as pd
 import polars as pl
+from _harness import env_info, fmt_ns, per_call_ns
 
 import stardust_pandas as sdpd
-from _harness import env_info, fmt_ns, per_call_ns
 
 N = 1_000_000
 rng = np.random.default_rng(0)

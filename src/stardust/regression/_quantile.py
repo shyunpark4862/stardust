@@ -13,26 +13,26 @@ from .. import _core as _sd
 from .. import special as _special
 from ._glm import _check_int, _check_positive
 from ._linear import (
+    _WIDTH,
     _call_errors,
-    _RegressionResult,
     _check_alpha,
     _check_bool,
     _check_choice,
-    _check_pred_batch,
-    _fresh,
-    _new_design,
-    _prepare,
     _check_policy,
+    _check_pred_batch,
     _check_rtol,
-    _frame_columns,
     _count,
     _div,
     _forg,
+    _frame_columns,
+    _fresh,
     _names,
+    _new_design,
     _number_or_1d,
     _pairs,
+    _prepare,
     _quantile_label,
-    _WIDTH,
+    _RegressionResult,
 )
 
 _k = _sd.regression

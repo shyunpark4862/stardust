@@ -17,10 +17,10 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
-import numpy as np  # noqa: E402
-import stardust_numpy as sdnp  # noqa: E402
-
 import baseline  # noqa: E402  (imports stardust_linalg from PYTHONPATH: the build under test)
+import numpy as np  # noqa: E402
+
+import stardust_numpy as sdnp  # noqa: E402
 
 
 def main():

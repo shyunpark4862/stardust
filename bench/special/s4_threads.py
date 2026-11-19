@@ -10,9 +10,8 @@ same elements shuffled.
     .venv/bin/python bench/special/s4_threads.py > bench/special/s4/threads.md
 """
 
-import numpy as np
-
 import common
+import numpy as np
 
 
 def inputs(n, rng):

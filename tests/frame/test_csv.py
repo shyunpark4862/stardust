@@ -41,7 +41,7 @@ def field_text(field, sep):
 
 def oracle_column(fields):
     """(dtype, values) of one column by docs/api/frame.md §10.4."""
-    present = [t for t, q in fields if not (t is None)]
+    present = [t for t, q in fields if t is not None]
     if not present:
         return "float64", [NA] * len(fields)
     ints = all(INT_RE.match(t) for t in present)

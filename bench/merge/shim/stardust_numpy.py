@@ -3,4 +3,4 @@ stardust_numpy` gets stardust's array namespace. Put this directory first on
 PYTHONPATH (bench/merge/rerun.sh)."""
 
 from stardust import *  # noqa: F401,F403
-from stardust import __all__, set_num_threads, get_num_threads  # noqa: F401
+from stardust import __all__, get_num_threads, set_num_threads  # noqa: F401

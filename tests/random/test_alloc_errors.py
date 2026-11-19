@@ -2,6 +2,7 @@
 does not move (API.md §2)."""
 
 import pytest
+
 import stardust as sd
 
 

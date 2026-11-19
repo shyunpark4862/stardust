@@ -6,6 +6,7 @@ import statistics
 import time
 
 import numpy as np
+
 import stardust_linalg as la
 import stardust_numpy as sdnp
 import stardust_pandas as sdpd

@@ -6,8 +6,9 @@ not small: a single point mass), in every method and the samples. Arb checks the
 import math
 
 import pytest
-import stardust as sd
 from flint import arb, ctx
+
+import stardust as sd
 
 S = sd.stats
 T = 2.0**-1022  # below 2^-1021

@@ -7,9 +7,9 @@ against numpy/pandas make sure the chunked code is also right, since a
 1-thread run goes through the same chunks.
 """
 
+import hashlib
 import math
 import os
-import hashlib
 import struct
 import threading
 

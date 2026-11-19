@@ -2,11 +2,11 @@
 
 from . import _column, _core, _dtypes, _format, _ops, _select, _sort, _unique
 from ._column import _NO_VALUE
-from ._errors import check_bool, check_choice, check_int, name_list, named, type_name
 from ._dtypes import resolve
-from ._reduce import Reductions, own_reductions
-from ._na import NA
+from ._errors import check_bool, check_choice, check_int, name_list, named, type_name
 from ._index import Index, RangeIndex, _IndexBase, ensure_index
+from ._na import NA
+from ._reduce import Reductions, own_reductions
 from ._series import Series, assignment_values, fill_column
 
 Column = _core.Column

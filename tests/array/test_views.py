@@ -7,6 +7,7 @@ from hypothesis import strategies as st
 from hypothesis.extra import numpy as hnp
 
 import stardust as sd
+
 from .conftest import assert_same
 
 

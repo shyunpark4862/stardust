@@ -22,7 +22,6 @@ import math
 
 from .ad import FLOAT
 
-
 # ---- multivariate
 
 

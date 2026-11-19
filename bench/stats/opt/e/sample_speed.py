@@ -5,7 +5,13 @@ samples, one thread, against numpy's Generator(PCG64) (the cases of bench/stats/
     .venv/bin/python bench/stats/opt/e/sample_speed.py hash|time
 """
 
-import sys, hashlib, numpy as np, importlib.util, timeit
+import hashlib
+import importlib.util
+import sys
+import timeit
+
+import numpy as np
+
 import stardust as sd
 
 spec = importlib.util.spec_from_file_location("t7speed", "bench/stats/t7/speed.py")

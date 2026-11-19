@@ -5,15 +5,16 @@ the same and every error message names the same (smallest) batch index
 (docs/design/linalg.md §8.5).
 """
 
+import hashlib
 import math
 import threading
 
-import hashlib
 import numpy as np
 import pytest
-import stardust as sd
-from .conftest import npy, as_sd
 
+import stardust as sd
+
+from .conftest import as_sd, npy
 
 DEFAULT = sd.get_num_threads()
 COUNTS = sorted({1, 3, DEFAULT})

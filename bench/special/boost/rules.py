@@ -1,14 +1,18 @@
 # bench/special/boost: run as .venv/bin/python bench/special/boost/rules.py <dir with boost_eval> (from the repository root); the candidate rules of routing.md
 # Try routing rules: use Boost where rule(inputs, boost_value) is True, ours elsewhere; report
 # contract violations of the combination, and the share of points routed to Boost.
-import sys, numpy as np, subprocess
+import subprocess
+import sys
+
+import numpy as np
 
 sys.path.insert(0, ".")
 from tests.special import refdata
-from tests.special.test_reference import contract_error, LOOSE
+from tests.special.test_reference import LOOSE, contract_error
 
 sys.path.insert(0, "bench/special")
 import common
+
 import stardust as sd
 
 D = sys.argv[1]

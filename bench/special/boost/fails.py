@@ -1,11 +1,14 @@
 # bench/special/boost: run as .venv/bin/python bench/special/boost/fails.py <dir with boost_eval> NAME ... (from the repository root)
 # For each candidate: the points where Boost breaks the contract (test_reference's measure), by input.
-import sys, numpy as np, subprocess
+import subprocess
+import sys
+
+import numpy as np
 
 sys.path.insert(0, ".")
 sys.path.insert(0, "tests/special")
 from tests.special import refdata
-from tests.special.test_reference import contract_error, LOOSE
+from tests.special.test_reference import LOOSE, contract_error
 
 D = sys.argv[1]
 

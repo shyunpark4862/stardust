@@ -5,7 +5,12 @@ between the two paths on these points (bench/stats/t9/speed.py's data).
     .venv/bin/python bench/stats/opt/e/mv_logpdf_speed.py
 """
 
-import stardust as sd, numpy as np, timeit, scipy.stats as st
+import timeit
+
+import numpy as np
+import scipy.stats as st
+
+import stardust as sd
 
 S = sd.stats
 _k = sd._core.stats

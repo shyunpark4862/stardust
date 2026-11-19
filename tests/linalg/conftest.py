@@ -3,8 +3,9 @@ checked by residuals first, and directly against numpy where the answer is
 unique (docs/design/linalg.md §12.1, §13)."""
 
 import numpy as np
-import stardust as sd
 from hypothesis import strategies as st
+
+import stardust as sd
 
 EPS = np.finfo(np.float64).eps
 

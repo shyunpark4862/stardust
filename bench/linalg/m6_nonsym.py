@@ -7,9 +7,9 @@ import timeit
 
 import numpy as np
 import scipy.linalg as sl
-import stardust_numpy as sdnp
 
 import stardust_linalg as sdla
+import stardust_numpy as sdnp
 
 
 def best_us(fn):

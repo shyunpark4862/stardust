@@ -144,7 +144,7 @@ def test_ill_conditioned_data_against_exact_values():
     assert abs(S.moment(X, order=4) - float(m4)) <= 1e-14 * float(m4)
     assert abs(S.describe(X).mean - float(m)) <= 1e-16 * float(m)
     z = np.asarray(S.zscore(X))
-    exact = np.array([float((Fraction(v) - m)) for v in x[:5]]) / math.sqrt(float(m2))
+    exact = np.array([float(Fraction(v) - m) for v in x[:5]]) / math.sqrt(float(m2))
     assert np.allclose(z[:5], exact, rtol=1e-14, atol=0)
 
 

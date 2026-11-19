@@ -3,16 +3,22 @@
 # as bench/special/speed.py. Prints one line per function at once; writes results.json.
 #   clang++ -O3 -std=c++20 -I<boostorg/math>/include boost_eval.cpp -o <dir>/boost_eval
 #   .venv/bin/python bench/special/boost/drive.py <dir> [NAME ...]
-import json, subprocess, sys, time, pathlib
+import json
+import pathlib
+import subprocess
+import sys
+import time
+
 import numpy as np
 
 D = pathlib.Path(sys.argv[1])  # a scratch directory holding boost_eval (built from boost_eval.cpp)
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "bench/special"))
-from tests.special import refdata
 import common
+
 import stardust as sd
+from tests.special import refdata
 
 EXE = str(D / "boost_eval")
 names = subprocess.run([EXE, "list"], capture_output=True, text=True).stdout.split()

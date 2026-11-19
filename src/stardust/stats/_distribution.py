@@ -11,7 +11,6 @@ import operator
 from .. import _core as _sd_core
 from .. import random as _random
 
-
 _k = _sd_core.stats
 
 # Methods with an input (and out=) besides the density, and the parameter-only ones (T9, T22).

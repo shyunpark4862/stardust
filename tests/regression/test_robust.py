@@ -7,12 +7,12 @@ robustbase::lmrob (tests/regression/ref/robust_r.json, made by tools/gen_robust_
 not needed here), MM's breakdown, determinism, batches, threads, NaN policies, edge cases and
 errors; the slopes against scipy bit for bit and against exact rational medians."""
 
-import math
-from fractions import Fraction
 import itertools
 import json
+import math
 import pathlib
 import warnings
+from fractions import Fraction
 
 import numpy as np
 import pytest

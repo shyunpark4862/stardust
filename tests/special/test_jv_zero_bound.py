@@ -5,8 +5,9 @@ jv is 0. Arb (python-flint) checks the points next to the boundary."""
 import math
 
 import pytest
-import stardust as sd
 from flint import arb, ctx
+
+import stardust as sd
 
 sp = sd.special
 

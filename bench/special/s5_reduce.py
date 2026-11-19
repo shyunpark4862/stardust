@@ -3,10 +3,9 @@
 .venv/bin/python bench/special/s5_reduce.py > bench/special/s5/reduce.md
 """
 
+import common
 import numpy as np
 import scipy.special as sp
-
-import common
 
 
 def main():

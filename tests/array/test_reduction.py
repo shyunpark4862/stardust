@@ -14,6 +14,7 @@ from hypothesis import strategies as st
 from hypothesis.extra import numpy as hnp
 
 import stardust as sd
+
 from .conftest import ALL_DTYPES, NP_DTYPE, assert_same
 
 INT_MAX, INT_MIN = 2**63 - 1, -(2**63)

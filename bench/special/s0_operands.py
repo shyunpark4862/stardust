@@ -54,6 +54,7 @@ def measure(site, only):
     if site != "current":
         common.use_build(site)
     import numpy as np
+
     import stardust as sd
 
     out = {}

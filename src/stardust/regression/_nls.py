@@ -22,27 +22,27 @@ from .. import linalg as _linalg
 from ..optimize._diff import Differences as _Differences
 from ._glm import _check_int
 from ._linear import (
-    _call_errors,
-    _RegressionResult,
+    _WIDTH,
     _as_real,
+    _call_errors,
     _check_alpha,
     _check_choice,
     _check_policy,
     _check_rows,
     _check_rtol,
     _count,
-    _div0,
-    _frame_columns,
-    _read_y,
-    _real,
-    _rows_message,
     _div,
+    _div0,
     _forg,
+    _frame_columns,
     _log,
     _pairs,
     _quantile_label,
+    _read_y,
+    _real,
+    _RegressionResult,
+    _rows_message,
     _type_name,
-    _WIDTH,
 )
 
 _k = _sd.regression

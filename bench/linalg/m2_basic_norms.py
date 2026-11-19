@@ -10,9 +10,9 @@ import pathlib
 import timeit
 
 import numpy as np
-import stardust_numpy as sdnp
 
 import stardust_linalg as sdla
+import stardust_numpy as sdnp
 
 
 def best_us(fn):
