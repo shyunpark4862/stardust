@@ -491,7 +491,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
   - **mpmath에서 바꾼 이유** (2026-11-16): mpmath의 규칙("두 정밀도가 30자리까지 일치")은 두 정밀도가 함께 틀린 값을 받아들였다. 바꾸면서 찾은 옛 참값의 오류: `betaincinv` 41점·`betainccinv` 119점은 mpmath가 조용히 실패해 우리 함수의 출발값이 참값으로 들어가 있었다(I_x/p − 1 = 1.7e-12). `zeta_hurwitz` 14점(7.3e-28, mpmath는 300자리에서야 맞음), `lambertw` 4점(허수부 lo), 리덕션 17점(1 + e⁻²⁰⁵를 잃음), 오래된 `wofz` 입력 64점. 계수 표 `zeta_minus_one`의 j = 94–110 lo(1e-28 상대, ζ(j) − 1의 상쇄)도 고쳤다. 다른 계수 표 7개는 바이트까지 같았다. 또 mpmath가 버렸던 점 약 900개를 이제 얻는다(`betainccinv` +248, `nctdtrit` +150 등). 메모리도 일정하다: mpmath의 quad는 구간 끝점마다 노드를 캐시해 140GB까지 쌓였다.
   - **새 참값이 드러낸 라이브러리 오차**: `gammainccinv`(a = 9.5e5, q = 3.3e-33)가 1.21e-14였다. Boost의 `gamma_q_inv`는 Halley 반복을 자릿수의 절반에서 멈추므로 큰 a에서 100 ULP까지 남는다. 이제 Boost의 근에서 우리 P, Q로 Halley 한 걸음을 더 한다(`igam_polish`, 오차 e가 e³이 된다). 참값 최대가 `gammaincinv` 9.3e-15 → 7.3e-16, `gammainccinv` 1.2e-14 → 2.4e-15가 됐다. 1백만 원소 비용은 10 ms 안팎 그대로다.
   - 입력 집합: 함수마다 보장 영역의 격자 + 로그 균등 무작위 + 경계(구간 경계의 앞뒤 ULP, 극점, 0, 정의역 끝)
-- **정확도 보고**: `bench/special/accuracy.py`가 함수마다 보장 영역·느슨한 영역의 최대·99.9% ULP를 표로 낸다. scipy의 같은 값도 함께 낸다(scipy보다 나쁜 줄은 원인을 적는다).
+- **정확도 보고**: `python -m bench.accuracy`가 참값 파일의 모든 점에서 잰 기준선(`bench/accuracy/results/special.json`)으로 [bench/special/accuracy.md](../../bench/special/accuracy.md)의 표를 만든다(tests/README.md). 함수마다 보장 영역·느슨한 영역·혼합 척도 영역의 최대·99.9% ULP, 역함수의 ULP/max(1, κ), 혼합 척도, 계약 대비를 낸다. scipy와 같은 점의 비교는 이 표에 없고, `bench/special/accuracy.py`가 낸 bench/special/arb/accuracy.md에 있다(scipy보다 나쁜 줄은 원인을 적는다).
 - **성능**: scipy와 같은 자리에서 번갈아 잰다 (통합 때의 `sameseat` 방식). 1스레드와 10스레드, 원소 10⁶개와 스칼라 1개.
 - **비트 테스트**: NEON 경로 = 스칼라 정의, 스레드 1·3·10이 같은 비트, `f(x)[i] == f(x[i])`
 

@@ -31,7 +31,7 @@
 
 ### §1.4 정확도
 - 함수마다 **보장 영역**을 둔다. 그 안에서 고정밀 값 대비 상대오차가 1e-14 이하다.
-- 보장 영역 밖(정의역 안)도 값을 계산한다. 잰 최대 오차를 함수별 절에 적는다.
+- 보장 영역 밖(정의역 안)도 값을 계산한다. 잰 오차는 [bench/special/accuracy.md](../../bench/special/accuracy.md)의 표에 영역(보장·느슨)별로 있고, 함수별 절이 그 표를 가리킨다.
 - 모든 호출은 정해진 시간 안에 끝난다 (사용자 결정 2026-11-17). 급수·연분수·반복은 횟수의 상한이 있고, 상한 안에 수렴하지 않으면 부분합이나 마지막 반복값 대신 NaN을 낸다. 보장 영역 안에서는 상한에 닿지 않는다. NaN이 되는 범위는 함수별 절에 적는다.
 - 진동 함수(`j0 j1 y0 y1 jv yv jve yve`, x < 0의 `airy`)는 상대오차 대신 `|오차| ≤ 1e-14 × 포락선`을 보장한다. 영점 근처에서는 상대오차를 정의할 수 없기 때문이다. 포락선의 식은 함수별 절에 적는다.
 - 같은 입력이면 위치, stride, 스레드 수와 상관없이 같은 비트가 나온다 (`f(x)[i] == f(x[i])`, API.md §3).
@@ -57,7 +57,7 @@ ndtri(p, /, *, out=None)
 - `ndtr`는 표준정규분포의 cdf, `ndtri`는 그 역함수다. `ndtri(0)`은 `-inf`, `ndtri(1)`은 `inf`, [0, 1] 밖은 NaN
 - `erfinv`는 [−1, 1], `erfcinv`는 [0, 2]에서 정의된다.
 - **보장 영역**: 여덟 함수 모두 정의역 전체다 (사용자 결정 2026-11-13). `erf erfc erfcx ndtr log_ndtr`는 유한한 모든 x, `erfinv`는 −1 < y < 1, `erfcinv`는 0 < z < 2, `ndtri`는 0 < p < 1(서브노멀 포함)이다. 결과가 서브노멀이면 docs/design/special.md §2.3의 절대오차 규칙을 따른다.
-- **잰 정확도** (Arb 참값 대비 최대 ULP, bench/special/arb/accuracy.md): `erf` 2.3, `erfc` 7.8, `erfcx` 6.0, `ndtr` 6.7, `log_ndtr` 7.0, `ndtri` 5.4, `erfinv` 4.6, `erfcinv` 4.5
+- **잰 정확도**: Arb 참값 대비 오차는 [bench/special/accuracy.md](../../bench/special/accuracy.md)의 표(`python -m bench.accuracy`가 만든다)에 함수마다 있다.
 - **특수값**: ±0, ±inf, NaN, 경계값에서 scipy와 비트까지 같다. 다른 곳은 아래 표의 굵은 줄이다 (docs/design/special.md §2.4).
 
   | 입력 | 값 | 비고 |
@@ -93,7 +93,7 @@ binom(n, k, /, *, out=None)
 - `polygamma`는 n > 1e6이고 값이 0도 ±inf도 아닌 좁은 구간에서 NaN이다(n ≤ 1e6까지 double-double log로 계산한다).
 - `binom(n, k)`는 실수 n, k의 일반화 이항계수다.
 - **보장 영역** (사용자 결정 2026-11-14): 상대오차 1e-14는 `gamma`, `rgamma`의 정의역 전체, `gammaln`, `digamma`, `polygamma`의 x > 0, `beta`의 a, b > 0, `binom`의 n ≥ 0이다. 그 밖(음수 쪽)과 `betaln` 전체는 |오차| ≤ 1e-14·max(1, |값|)이다. log|Γ|, ψ, log B에는 음수 쪽이나 B = 1인 곡선 위에 0이 무한히 많아 상대오차를 보장할 수 없기 때문이다.
-- **잰 정확도** (bench/special/arb/accuracy.md, Arb 참값 대비, 보장 영역 최대 ULP): `gamma` 10, `rgamma` 5.1, `gammaln` 5.5, `digamma` 2.1, `polygamma` 17, `beta` 53, `binom` 9.3. 혼합 한계 영역(오차/max(1,|값|), 2⁻⁵² 단위): `gammaln` 2.1, `digamma` 15, `polygamma` 3.1, `beta` 6.8, `betaln` 27, `binom` 8.0
+- **잰 정확도**: Arb 참값 대비 오차는 [bench/special/accuracy.md](../../bench/special/accuracy.md)의 표(`python -m bench.accuracy`가 만든다)에 함수마다 있다. 보장 영역은 guaranteed 행의 ULP이고, 혼합 한계 영역(오차/max(1,|값|), 2⁻⁵² 단위)은 mixed 행의 mixed 열이다.
 - **특수값**: 극점과 ±inf의 규약은 scipy와 비트까지 같다. 다른 곳(docs/design/special.md §2.4)은 아래 표의 굵은 줄이다.
 
   | 입력 | 값 | 비고 |
@@ -133,7 +133,7 @@ betainccinv(a, b, q, /, *, out=None)
 - 보수(`*cc`)는 1에서 빼서 계산하지 않는다. 꼬리에서도 상대 정확도가 유지된다.
 - 역함수는 `gammainc(a, x) = p`, `gammaincc(a, x) = q`, `betainc(a, b, x) = p`, `betaincc(a, b, x) = q`의 x를 돌려준다.
 - **보장 영역** (사용자 결정 2026-11-14): 네 순방향 함수는 정의역 전체(a, b > 0, x의 정의역 안)에서 상대오차 1e-14다. 결과가 서브노멀이면 docs/design/special.md §2.3의 절대오차 규칙을 따른다. 네 역함수는 `|Δx/x| ≤ 1e-14·max(1, κ)`다. κ = |F/(x·F′)|는 p(또는 q)에 대한 x의 조건수다. 입력의 마지막 비트가 허용하는 만큼 정확하다는 뜻이다. 예를 들어 a가 작으면 x ≈ (p·Γ(a+1))^(1/a)라서 p의 1 ULP가 x를 1/a ULP 움직인다. 테스트는 감마 a ≤ 1e6, 베타 a, b ≤ 1e5를 덮는다.
-- **잰 정확도** (bench/special/arb/accuracy.md, Arb 참값 대비, 최대 ULP): `gammainc` 8.9, `gammaincc` 13, `betainc` 22, `betaincc` 19. 역함수(ULP / max(1, κ)): `gammaincinv` 5.3, `gammainccinv` 5.33, `betaincinv` 9.2, `betainccinv` 9.6
+- **잰 정확도**: Arb 참값 대비 오차는 [bench/special/accuracy.md](../../bench/special/accuracy.md)의 표(`python -m bench.accuracy`가 만든다)에 함수마다 있다. 역함수는 ULP/max(1, κ) 열이다.
 - **특수값**: 끝점과 ±inf, NaN의 규약은 scipy와 비트까지 같다. 다른 곳(docs/design/special.md §2.4)은 아래 표의 굵은 줄이다.
 
   | 입력 | 값 | 비고 |
@@ -170,7 +170,7 @@ rel_entr(x, y, /, *, out=None)
 - `entr(x) = -x·log(x)`. `entr(0)`은 0, 음수는 `-inf`다.
 - `rel_entr(x, y) = x·log(x/y)`. 규약은 scipy와 같다: `x = 0, y ≥ 0`이면 0, 그 밖의 음수는 `inf`다.
 - **보장 영역**: 일곱 함수 모두 정의역 전체다 (사용자 결정 2026-11-13). `expit`, `log_expit`는 유한한 모든 x, `logit`은 0 < p < 1, `xlogy`는 y > 0, `xlog1py`는 y > −1, `entr`는 x ≥ 0, `rel_entr`는 x, y > 0이다. 결과가 넘치거나 서브노멀이면 §1.3과 docs/design/special.md §2.3을 따른다.
-- **잰 정확도** (Arb 참값 대비 최대 ULP, bench/special/arb/accuracy.md): `expit` 2.1, `logit` 2.8, `log_expit` 1.2, `xlogy` 1.2, `xlog1py` 1.2, `entr` 1.2, `rel_entr` 2.1
+- **잰 정확도**: Arb 참값 대비 오차는 [bench/special/accuracy.md](../../bench/special/accuracy.md)의 표(`python -m bench.accuracy`가 만든다)에 함수마다 있다.
 - **특수값**: scipy와 비트까지 같다. 예외는 `expit`의 서브노멀 꼬리 하나다(아래 표). 시험 입력은 ±0, ±inf, NaN, 서브노멀, 경계값을 서로 조합한 것이다.
 
   | 입력 | 값 | 비고 |
@@ -213,10 +213,10 @@ expi(x, /, *, out=None)
 expn(n, x, /, *, out=None)
 ```
 - `zeta(x)`는 Riemann ζ, `zeta(x, q)`는 Hurwitz ζ(x, q)다. Riemann은 `x < 1`도 정의된다(함수방정식). Hurwitz의 `x < 1`은 NaN이다 (scipy와 같다).
-- `zeta`는 S3에서 구현했다(`expi`, `expn`은 S5). 보장 영역: Riemann은 정의역 전체, Hurwitz는 q > 0(그 밖은 |오차| ≤ 1e-14·max(1, |값|)). 잰 최대(bench/special/arb/accuracy.md): Riemann 9.4 ULP(x ≈ −3.3e-4, Boost가 맡는 −1 < x < 0. −60 < x < −1의 반사식은 6.2 ULP다; 2026-11-17 전에는 Boost의 반사식이 x ∈ (−32, −31)에서 65 ULP였다), Hurwitz 5.5 ULP. 짝수 정수 2–52는 표의 값이라 올바르게 반올림된다. 특수값은 §3의 표에 있다.
+- `zeta`는 S3에서 구현했다(`expi`, `expn`은 S5). 보장 영역: Riemann은 정의역 전체, Hurwitz는 q > 0(그 밖은 |오차| ≤ 1e-14·max(1, |값|)). 잰 오차는 [bench/special/accuracy.md](../../bench/special/accuracy.md)의 표(`python -m bench.accuracy`가 만든다)의 `zeta`, `zeta_hurwitz` 행이다. Boost에 맡기는 구간과 그렇지 않은 구간은 docs/design/special.md §5.14에 있다. 짝수 정수 2–52는 표의 값이라 올바르게 반올림된다. 특수값은 §3의 표에 있다.
 - `expi`는 지수적분 Ei, `expn(n, x)`는 일반화 지수적분 Eₙ(x)다. `n`은 int64나 float64이고, 0 이상의 정수 값만 정의된다. 정수가 아니거나 음수이면 NaN이다. **scipy는 `expn(1.5, 1.0)`에서 n을 1로 자른다. 우리는 NaN이다.**
 - **보장 영역** (사용자 결정 2026-11-14): `expi`, `expn`은 정의역 전체에서 상대오차 1e-14다. `expi`의 양의 0점 x₀ = 0.3725… 근처도 상대 정확도다. `expn`의 테스트는 n ≤ 1e5를 덮는다. 서브노멀 결과는 절대오차 규칙이다.
-- **잰 정확도** (bench/special/arb/accuracy.md, Arb 참값 대비, 최대 ULP): `expi` 4.7, `expn` 6.3
+- **잰 정확도**: Arb 참값 대비 오차는 [bench/special/accuracy.md](../../bench/special/accuracy.md)의 표(`python -m bench.accuracy`가 만든다)에 함수마다 있다.
 - **특수값**: 아래 표의 굵은 줄 말고는 scipy와 비트까지 같다.
 
   | 입력 | 값 | 비고 |
@@ -306,7 +306,7 @@ ellipe(m, /, *, out=None)
 ```
 - 매개변수는 scipy와 같은 `m`(= k²)이다. `ellipk(1)`은 `inf`, `m > 1`은 NaN이다.
 - **보장 영역** (사용자 결정 2026-11-14): 둘 다 m ≤ 1 전체에서 상대오차 1e-14다.
-- **잰 정확도** (bench/special/arb/accuracy.md, Arb 참값 대비, 최대 ULP): `ellipk` 2.3, `ellipe` 2.0
+- **잰 정확도**: Arb 참값 대비 오차는 [bench/special/accuracy.md](../../bench/special/accuracy.md)의 표(`python -m bench.accuracy`가 만든다)에 함수마다 있다.
 - **특수값**: scipy와 비트까지 같다. `ellipk(0) = ellipe(0) = π/2`, `ellipe(1) = 1`, `ellipk(-inf) = 0`, `ellipe(-inf) = inf`
 
 ## §11. 초기하 함수와 Lambert W
@@ -324,9 +324,9 @@ lambertw(x, /, *, k=0, out=None)
   - **−1/e에 가장 가까운 double(−0.36787944117144233)은 분기점으로 본다**: 두 가지 모두 −1이다 (사용자 결정 2026-11-14, Boost와 같다). 그 double은 참 −1/e보다 8e-18 바깥이라 scipy는 NaN이다. 그보다 작은 x는 NaN이다.
 - **보장** (사용자 결정 2026-11-14):
   - `lambertw`: 두 가지 모두 정의역 전체에서 상대오차 1e-14다. 분기점 근처는 e·x + 1을 double-double로 만들어 상대 정확도를 낸다(scipy는 그곳에서 2e7 ULP를 잃는다).
-  - `hyp1f1`: 상쇄 없는 표현이 있는 a ≥ 0, b > 0이고 (x ≥ 0 또는 b ≥ a)인 곳만 상대 1e-14다. 그 밖은 느슨한 영역이다(아래 측정). 잰 최대는 15.9 ULP다(정확도표). Boost의 값은 0 ≤ x < 16, b < 11, a ≤ 100에서만 쓴다(그 밖의 x에서는 297 ULP까지 틀렸다).
+  - `hyp1f1`: 상쇄 없는 표현이 있는 a ≥ 0, b > 0이고 (x ≥ 0 또는 b ≥ a)인 곳만 상대 1e-14다. 그 밖은 느슨한 영역이다(아래 측정). 잰 오차는 [bench/special/accuracy.md](../../bench/special/accuracy.md)의 표(`python -m bench.accuracy`가 만든다)의 `hyp1f1` guaranteed 행이다. Boost의 값은 0 ≤ x < 16, b < 11, a ≤ 100에서만 쓴다(그 밖의 x에서는 297 ULP까지 틀렸다).
   - `hyp2f1`: a, b ≥ 0, c > 0, c ≥ min(a, b), −1 ≤ z ≤ 0.9에서 상대 1e-14다. 그 밖은 느슨한 영역이다.
-  - 느슨한 영역은 값을 내되 보장하지 않는다(사용자 결정 2026-11-18: 값 유지, 잰 최대를 적는다). 잰 최대(Arb 참값 대비 상대오차, 무작위 1.1만 점씩, 인자 크기 1e6까지): `hyp1f1` 9e-12(Tricomi 전개; Boost를 쓰는 |a|, |b| ≤ 100은 1.2e-12), `hyp2f1` 1.7e-12(z < −9이고 |c| > 1e4). 1e-12를 넘는 점은 각각 3점이었다. 정확도표의 느슨한 행(`bench/special/arb/accuracy.md`)은 `hyp1f1` 1.17e3 ULP, `hyp2f1` 2.73e3 ULP다(scipy 2.33e3, 1.83e12).
+  - 느슨한 영역은 값을 내되 보장하지 않는다(사용자 결정 2026-11-18: 값 유지, 잰 최대를 적는다). 잰 최대(Arb 참값 대비 상대오차, 무작위 1.1만 점씩, 인자 크기 1e6까지): `hyp1f1` 9e-12(Tricomi 전개; Boost를 쓰는 |a|, |b| ≤ 100은 1.2e-12), `hyp2f1` 1.7e-12(z < −9이고 |c| > 1e4). 1e-12를 넘는 점은 각각 3점이었다. 정확도표에서는 [bench/special/accuracy.md](../../bench/special/accuracy.md)의 `hyp1f1`, `hyp2f1` loose 행이다. 같은 점에서 scipy는 `hyp1f1` 2.33e3 ULP, `hyp2f1` 1.83e12 ULP다(bench/special/arb/accuracy.md).
   - NaN이 되는 곳(보장 영역 밖, 2026-11-18 갱신): 손실을 아는 식이 없으면 값을 내지 않는다.
     - `hyp1f1`: 인자 하나가 크기 1e6을 넘을 때(짧은 다항식과 큰 x의 점근식은 값). 그 안에서는 max(|a|, |b|) > 100이고 다음 가운데 어느 것도 쓸 수 없을 때다: 상쇄 손실이 1e13배 이하인 급수(1e6항까지), b > 0에서 a에 대한 점화식(53비트를 지킬 때), 큰 |x|의 점근식, Tricomi 전개(a < −1e3, b ≤ 170). 실제로는 대부분 b < 0이고 |a|나 |b|가 큰 곳이다. |a|, |b| ≤ 100은 Boost의 값을 쓴다.
     - `hyp2f1`: 급수가 1e6항(극한 꼴의 합은 1e5항) 안에 끝나지 않을 때, 급수의 상쇄가 1e16배를 넘을 때, 1 − z(z < −9에서는 1/(1 − z))가 1e-3 아래인데 c − a − b가 정수에서 2⁻⁴⁸–1e-3만큼 떨어져 있을 때, 극한 꼴의 합이 64배 넘게 상쇄하거나 Γ가 범위를 벗어날 때, 큰 항들이 정확히 지워진 합(전에는 0을 냈다)이다.
@@ -428,8 +428,8 @@ ndtri_exp(y, /, *, out=None)
   | **`nbdtr(inf, n, p)`** | 1 | cdf의 k → ∞. **scipy는 NaN** |
   | `ndtri_exp(0)`, `ndtri_exp(-inf)`, y > 0 | inf, −inf, NaN | |
 - **보장 영역** (사용자 결정 2026-11-15): 잰 범위 전체다. 순방향 11개와 `ndtri_exp`는 상대오차 1e-14(약 45 ULP), 역함수 `stdtrit chdtri fdtri`는 §4처럼 `|Δx/x| ≤ 1e-14·max(1, κ)`다. 결과가 서브노멀이면 docs/design/special.md §2.3의 절대오차 규칙을 따른다. 범위는 아래 '잰 범위'이고, 그 밖(더 큰 자유도·k·n)도 값을 계산하지만 보장하지 않는다. 경계값 `fdtr(inf, inf, x)`, `nbdtr(k, 0, p)`, `chdtri(inf, p)` = NaN도 같은 날 확정했다.
-  - **잰 값** (bench/special/arb/accuracy.md, Arb 참값 대비, 최대 ULP; 역함수는 ULP/max(1, κ)): `stdtr` 8.9, `stdtrit` 7.3, `chdtr` 5.3, `chdtrc` 9.7, `chdtri` 5.4, `fdtr` 12, `fdtrc` 11, `fdtri` 23, `pdtr` 4.3, `pdtrc` 13, `bdtr` 4.9, `bdtrc` 7.4, `nbdtr` 7.2, `nbdtrc` 8.8, `ndtri_exp` 6.5
-  - 같은 점에서 scipy: 최대 25 ULP(`chdtri`)부터 4.9e16 ULP(`fdtri`), inf(`stdtrit` 등)까지.
+  - **잰 값**: Arb 참값 대비 오차는 [bench/special/accuracy.md](../../bench/special/accuracy.md)의 표(`python -m bench.accuracy`가 만든다)에 함수마다 있다. 역함수는 ULP/max(1, κ) 열이다.
+  - 같은 점에서 scipy(bench/special/arb/accuracy.md): 최대 25 ULP(`chdtri`)부터 4.9e16 ULP(`fdtri`), inf(`stdtrit` 등)까지.
   - 잰 범위: 자유도 1e-2–1e6(t), 1e-2–1e5(카이제곱), 1e-2–1e4(F), k·n 1e4까지, 카이제곱의 x는 v/100–100v와 1e-6–50, `chdtri`의 p는 1e-300까지, `ndtri_exp`의 y는 −1e300–0. 근이 double 범위 밖이면(`fdtri` → 0, `stdtrit` → −inf) 순방향 함수로 확인한다(tests/special/test_distributions.py).
 
 ## §14. 비중심 분포 함수 (T2)
@@ -469,8 +469,8 @@ ncfdtri(dfn, dfd, nc, p, /, *, out=None)
   | **`ncfdtr(dfn, dfd, inf, f)`** | 0 (`ncfdtrc`는 1) | **scipy는 NaN**. f도 inf이면 NaN |
   | 역함수의 p = 0, 1 | 정의역의 두 끝(0 또는 −inf, inf) | |
 - **보장 영역** (사용자 결정 2026-11-15): 아래 '잰 범위' 전체다. 순방향 6개는 상대오차 1e-14(약 45 ULP), 역함수 `chndtrix nctdtrit ncfdtri`는 §4처럼 `|Δx/x| ≤ 1e-14·max(1, κ)`다. 결과가 서브노멀이면 docs/design/special.md §2.3의 절대오차 규칙을 따른다. `chndtr(0, nc, 0)` = NaN(`chdtr(0, 0)`과 일관)도 같은 날 확정했다.
-  - **잰 값** (bench/special/arb/accuracy.md, Arb 참값 대비, 최대 ULP; 역함수는 ULP/max(1, κ)): `chndtr` 4.7, `chndtrc` 9.5, `chndtrix` 3.5, `nctdtr` 4.8, `nctdtrc` 6.7, `nctdtrit` 9.8, `ncfdtr` 6.6, `ncfdtrc` 15, `ncfdtri` 9.9
-  - 같은 점에서 scipy(Boost): 최대 7e3 ULP(`ncfdtrc`)부터 8.8e15 ULP(0이나 엉뚱한 값), inf·NaN(역함수)까지.
+  - **잰 값**: Arb 참값 대비 오차는 [bench/special/accuracy.md](../../bench/special/accuracy.md)의 표(`python -m bench.accuracy`가 만든다)에 함수마다 있다. 역함수는 ULP/max(1, κ) 열이다.
+  - 같은 점에서 scipy(Boost, bench/special/arb/accuracy.md): 최대 7e3 ULP(`ncfdtrc`)부터 8.8e15 ULP(0이나 엉뚱한 값), inf·NaN(역함수)까지.
   - 잰 범위: 자유도 1e-2–1e4(카이제곱·F), 1e-1–1e5(t); nc 1e-3–1e4(카이제곱·F), |δ| ≤ 100(t); 확률은 1e-300까지. 근이 double 범위 밖이면 0이나 ±inf이고 순방향 함수로 확인한다(tests/special/test_noncentral.py).
   - NaN이 되는 곳(잰 범위 밖, 2026-11-18): `ncfdtr`·`ncfdtrc`는 먼 꼬리에서 구한 쪽의 보수가 1/64 아래일 때(dfn이나 dfd ≤ 1e-10에서만 봤다. 전에는 `ncfdtr(1e7, 1e-300, 2, 0.1)`이 참값 3.4e-298 대신 2.2e-16). `chndtrix nctdtrit ncfdtri`는 nc ≠ 0이고 p < 2⁻¹⁰²²(서브노멀)일 때다(전에는 9–16% 틀렸다). t 함수는 |nc| < 2⁻⁵⁰⁰이면 중심 분포의 값이다.
   - 잰 범위 밖의 값은 보장하지 않는다(사용자 결정 2026-11-18: 값 유지): `nctdtr`·`nctdtrc`는 df ≤ 1e-3에서 상대 2.4e-13까지 틀린 점이 있었다(극단 인자 점검의 23점).

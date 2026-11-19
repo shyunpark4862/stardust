@@ -86,7 +86,7 @@ X.sample(shape=None, /, *, rng)
 ### §2.2 T4의 보장 영역과 잰 정확도
 - **보장 영역** (사용자 결정 2026-11-15, T24): 닫힌 꼴 7개(`Normal Exponential Uniform Laplace Cauchy LogNormal Weibull`)는 매개변수와 입력의 정의역 전체다. special 기반 5개는 special이 보장하는 범위다: `Gamma` a ≤ 1e6, `ChiSquared` df ≤ 2e6, `Beta` a, b ≤ 1e5, `StudentT` df ≤ 1e6, `F` dfn, dfd ≤ 1e5. 그 밖도 값을 계산하지만 보장하지 않는다.
 - **느슨한 영역** (잰 최대): `StudentT`의 `icdf`·`iccdf`에서 df ≥ 1e5이고 확률이 2^-1000(약 9.3e-302) 아래인 구석은 3.2e-16이다(`ilog…`는 2.8e-16; 사용자 결정 2026-11-19, T42). 전에는 1.4e-14였다: 깊은 역함수가 베타의 인자 w = df/(df + t²) ≈ 1을 log w로 구하고 t를 1 − w에서 냈는데, log w를 2⁻⁵⁴까지 맞춰도 1 − w에는 그 1/|log w|배로 옮았다. 지금은 w > 1/2이면 log(1 − w)에서 Newton을 한 번 더 해 1 − w를 직접 구한다. 나머지 범위 밖 점도 모두 1e-14 안이다. `Gamma` a > 1e6의 역함수는 전에 2.5e-14였는데, special의 `gammaincinv`를 고친 뒤 1.7e-16이 됐다(2026-11-16; 보장 영역은 그대로다).
-- **잰 정확도** (bench/stats/t4/accuracy.md, Arb 참값 대비, 계약 단위): 보장 영역 안 최대 9.2e-15(87만 점). 같은 점에서 scipy(고전형)는 꼬리에서 상대오차 1에 이르거나 inf를 낸다(예: `Beta.pdf`, `StudentT.cdf`의 깊은 꼬리, `LogNormal.pdf`).
+- **잰 정확도**: Arb 참값 대비 오차는 [bench/stats/accuracy.md](../../bench/stats/accuracy.md)의 표(`python -m bench.accuracy`가 만든다)에 메서드마다 있다. 계약 단위의 값은 계약 대비 열이다. 같은 점에서 scipy(고전형)는 꼬리에서 상대오차 1에 이르거나 inf를 낸다(예: `Beta.pdf`, `StudentT.cdf`의 깊은 꼬리, `LogNormal.pdf`; bench/stats/t4/accuracy.md).
 - **속도** (bench/stats/t4/speed.md, 원소 10⁵개; 2026-11-17 최적화 뒤, docs/design/stats.md §3.4): 1스레드는 scipy의 0.67–6.49배(중앙값 1.84), 10스레드는 2.5–47.8배(중앙값 10.8). Python float 하나는 scipy보다 44–66배 빠르다(호출당 0.19–0.28 µs). 1스레드에서 scipy보다 느린 것은 96행 중 11행이다: 카이제곱의 cdf·ccdf(0.67–0.69배; 반정수가 아닌 모양의 불완전 감마)와 icdf·iccdf(0.77–0.78배), t의 icdf·iccdf(0.81–0.82배), t·베타의 cdf와 베타의 ccdf(0.92배), F의 cdf·ccdf(0.94–0.97배).
 - **보장 영역 밖과 NaN** (사용자 결정 2026-11-17): 모든 호출은 정해진 시간 안에 끝나고, 구할 수 없는 값은 NaN이다. 닫힌 꼴 분포는 정의역 전체에서 값을 낸다(z나 x/scale이 double을 넘으면 극한값). special 기반 분포가 NaN이 되는 곳:
   - `Gamma`·`InverseGamma`의 a > 2¹⁰⁰, `ChiSquared`의 df > 2¹⁰¹: cdf 계열과 역함수.
@@ -104,7 +104,7 @@ X.sample(shape=None, /, *, rng)
 
 ### §2.3 T5의 보장 영역과 잰 정확도
 - **보장 영역** (사용자 결정 2026-11-16): 잰 매개변수 범위다. 이항 n ≤ 1e6, 포아송 μ ≤ 1e6, 기하 p ≥ 1e-9, 음이항 n ∈ [0.1, 1e4]·p ≥ 1e-4, 초기하 total ≤ 3000, 베타이항 n ≤ 2000·a, b ∈ [0.1, 100], 로그 급수 p ≥ 1e-8, Zipf a ≤ 60. `Bernoulli`와 `DiscreteUniform`은 닫힌 꼴이라 정의역 전체다. 그 밖도 값을 계산하지만 보장하지 않는다.
-- **잰 정확도** (bench/stats/t5/accuracy.md, Arb 참값 대비, 계약 단위): 61만 점 전부 계약 안이다. 값 메서드의 최대는 6.3e-15(`LogSeries.logccdf`)이고, 분위수는 모든 점이 허용 구간 안이다. 같은 점에서 scipy는 꼬리에서 상대오차 1이나 inf를 낸다(이항·음이항·초기하의 cdf, 초기하·로그 급수의 logpmf). 분위수에서는 scipy의 답이 허용 구간 안에 드는 비율이 64–100%다(기하 `isf` 64%, 포아송 `isf` 64%, 이항 `isf` 88%).
+- **잰 정확도**: Arb 참값 대비 오차는 [bench/stats/accuracy.md](../../bench/stats/accuracy.md)의 표(`python -m bench.accuracy`가 만든다)에 메서드마다 있다. 계약 단위의 값은 계약 대비 열이고, 분위수는 허용 구간 안이면 0이다. 같은 점에서 scipy는 꼬리에서 상대오차 1이나 inf를 낸다(이항·음이항·초기하의 cdf, 초기하·로그 급수의 logpmf). 분위수에서는 scipy의 답이 허용 구간 안에 드는 비율이 64–100%다(기하 `isf` 64%, 포아송 `isf` 64%, 이항 `isf` 88%; bench/stats/t5/accuracy.md).
 - **속도** (bench/stats/t5/speed.md, 2026-11-17 최적화 뒤): 두 묶음을 잰다. 지지집합이 작은 묶음(이항 n = 40 등, 원소 10⁵개)은 정수점 값을 기억하는 표가 거의 모든 원소에 답해서 1스레드가 scipy의 1.16배 이상(중앙값 36.3배)이다. 이 묶음은 원소당 1–2 ns라 10스레드가 1스레드보다 빠르지 않은 행이 80행 중 27개 있다. 넓은 묶음(이항 n = 1e9, 포아송 μ = 3e8 등, 거의 모든 k가 다름)은 한 번 계산하는 비용을 보인다: 1스레드 0.67–6045배(중앙값 5.56), 10스레드 중앙값 17배. 넓은 묶음에서 scipy보다 느린 것은 베타이항의 pmf·logpmf(0.67–0.68배; double-double log Γ 넷)와 포아송의 cdf 계열(0.93–0.99배)이다. Python float 하나는 scipy보다 31–106배 빠르다(호출당 0.17–0.64 µs).
 
 - **보장 영역 밖** (사용자 결정 2026-11-17): 모든 호출은 정해진 시간 안에 끝나고, 구할 수 없는 값은 NaN이다. NaN이 되는 곳:
@@ -121,7 +121,7 @@ X.sample(shape=None, /, *, rng)
   - 비중심 셋은 special의 비중심 함수가 잰 범위다(docs/api/special.md §14): `NoncentralChiSquared` df ∈ [1e-2, 1e4]·nc ≤ 1e4, `NoncentralT` df ∈ [0.1, 1e5]·|nc| ≤ 100, `NoncentralF` dfn, dfd ∈ [1e-2, 1e4]·nc ≤ 1e4. 확률은 1e-300까지 보장한다(작은 쪽 꼬리가 그 아래인 x와, 그 아래 확률의 역함수는 보장 밖). 모멘트와 `mode`도 1e-14다.
   - 비중심 셋의 `entropy`는 적응 구적이고 보장하지 않는다. 참값은 아직 만들지 않았다(10코어로 약 12시간; 나중에 잰다).
   - nc = 0이면 중심 분포(`ChiSquared`, `StudentT`, `F`)와 모든 메서드가 비트까지 같다: 밀도부터 역함수, 모멘트, median, mode, entropy, `sample`(같은 `rng` 상태에서). 2026-11-19에 비중심 F의 평균·분산·표준편차·왜도·첨도·median과 비중심 카이제곱·F의 표본을 맞췄다(전에는 `NoncentralF(dfn=3, dfd=11, nc=0).variance()`가 1.7072310405643738, `F(3, 11)`은 1.707231040564374였고, 표본은 비중심의 방법으로 뽑았다).
-- **잰 정확도** (bench/stats/t6/accuracy.md, Arb 참값 대비, 계약 단위): 60만 점에서 보장 영역 안 최대 4.7e-15(`NoncentralT.kurtosis`)이고, 밖도 1.2e-15 안이다. 같은 점에서 scipy는 꼬리에서 틀린다. 예: `NoncentralF.cdf` 상대오차 2.3e95, `NoncentralT.cdf`·`GEV.ccdf`·`Pareto.logcdf` inf, `InverseGamma.icdf` 2.4e-5.
+- **잰 정확도**: Arb 참값 대비 오차는 [bench/stats/accuracy.md](../../bench/stats/accuracy.md)의 표(`python -m bench.accuracy`가 만든다)에 메서드마다 있다. 계약 단위의 값은 계약 대비 열이다. 같은 점에서 scipy는 꼬리에서 틀린다(bench/stats/t6/accuracy.md). 예: `NoncentralF.cdf` 상대오차 2.3e95, `NoncentralT.cdf`·`GEV.ccdf`·`Pareto.logcdf` inf, `InverseGamma.icdf` 2.4e-5.
 - **속도** (bench/stats/t6/speed.md, 원소 10⁵개; 2026-11-17 최적화 뒤): 1스레드는 scipy의 0.52–5.49배(중앙값 1.6), 10스레드는 3.5–48.4배(중앙값 9.7)다. Python float 하나는 scipy보다 36–86배 빠르다. 1스레드에서 scipy보다 느린 것은 72행 중 12행이고, 파레토의 `cdf`(0.98배) 말고는 비중심 분포와 역감마 밀도다.
   - 비중심 F의 `logpdf`(0.52배)·`pdf`(0.68배)·`cdf`(0.72배)·`ccdf`(0.80배), 비중심 t의 `cdf`(0.67배), 비중심 카이제곱의 `ccdf`(0.68배): 항 20–50개의 합에 중심 분포의 불완전 함수 한 번이 더 든다.
   - 비중심 t의 `pdf`·`ccdf`(0.88배)·`logpdf`(0.98배), 역감마의 `logpdf`(0.80배)·`pdf`(0.93배).
