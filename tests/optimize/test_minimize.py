@@ -655,9 +655,6 @@ def test_errors():
         m(quad, [0.0], method="BFGS")
     with pytest.raises(ValueError, match=r"'method' must be 'nelder-mead', 'bfgs', 'l-bfgs-b', 'newton-cg', "):
         m(quad, [0.0], method="cg")
-    for later in ("newton-cg", "trust-ncg", "trust-exact"):
-        with pytest.raises(NotImplementedError, match=rf"method={later!r} is not implemented yet"):
-            m(quad, [0.0], method=later)
     with pytest.raises(ValueError, match=r"method='bfgs' takes no 'hess'"):
         m(quad, [0.0], hess=lambda x: None)
     with pytest.raises(ValueError, match=r"method='l-bfgs-b' takes no 'hessp'"):

@@ -1,12 +1,15 @@
 """Multivariate minimization: minimize (docs/api/optimize.md §7, docs/design/optimize.md §3.5).
 
-The iterations are the native kernels stardust._core.optimize.nelder_mead_solve, bfgs_solve and
-lbfgsb_solve, each the same steps as scipy 1.18.1's method (O9): _minimize_neldermead,
-_minimize_bfgs with its Wolfe line searches, and _minimize_lbfgsb with scipy's C translation of
-L-BFGS-B 3.0. The gradient is the user's jac, fun's second value (jac=True) or scipy's
-differences, with scipy's ScalarFunction memo (csrc/optimize/objective.hpp). The user's
-functions get a new float64 sd.ndarray x; what they return is checked here when it is not a
-Python float (fun) or a float64 sd.ndarray of shape (n,) (the gradient).
+The iterations are the native kernels stardust._core.optimize.nelder_mead_solve, bfgs_solve,
+lbfgsb_solve, newton_cg_solve and trust_solve, each the same steps as scipy 1.18.1's method
+(O9): _minimize_neldermead, _minimize_bfgs with its Wolfe line searches, _minimize_lbfgsb with
+scipy's C translation of L-BFGS-B 3.0, _minimize_newtoncg, and _minimize_trust_region with the
+Steihaug-Toint (trust-ncg) and Moré-Sorensen (trust-exact) subproblems. The gradient is the
+user's jac, fun's second value (jac=True) or scipy's differences, with scipy's ScalarFunction memo
+(csrc/optimize/objective.hpp); the Hessian the user's hess or hessp, or scipy's differences of
+the gradient (csrc/optimize/hessian.hpp). The user's functions get a new float64 sd.ndarray x;
+what they return is checked here when it is not a Python float (fun) or a float64 sd.ndarray of
+the shape asked for ((n,) for a gradient or a Hessian product, (n, n) for a Hessian).
 """
 
 import math
@@ -35,17 +38,30 @@ from ._result import OptimizeResult, _Lazy
 _k = _sd.optimize
 
 _METHODS = ("nelder-mead", "bfgs", "l-bfgs-b", "newton-cg", "trust-ncg", "trust-exact")
-_LATER = ("newton-cg", "trust-ncg", "trust-exact")
+_NEWTON = ("newton-cg", "trust-ncg", "trust-exact")  # the methods that take hess, hessp (O4)
+_TRUST_OPTIONS = ("initial_trust_radius", "max_trust_radius", "eta", "gtol", "max_iter")
 _OPTIONS = {
     "nelder-mead": ("max_iter", "max_nfev", "xatol", "fatol", "adaptive", "initial_simplex"),
     "bfgs": ("gtol", "norm", "eps", "max_iter", "finite_diff_rel_step", "xrtol", "c1", "c2", "hess_inv0"),
     "l-bfgs-b": ("maxcor", "ftol", "gtol", "eps", "max_nfev", "max_iter", "max_ls", "finite_diff_rel_step"),
+    "newton-cg": ("xtol", "eps", "max_iter", "c1", "c2"),
+    "trust-ncg": _TRUST_OPTIONS,
+    "trust-exact": _TRUST_OPTIONS + ("subproblem_max_iter",),
 }
 # tol sets these options (scipy's minimize)
-_TOL_KEYS = {"nelder-mead": ("xatol", "fatol"), "bfgs": ("gtol",), "l-bfgs-b": ("ftol", "gtol")}
+_TOL_KEYS = {
+    "nelder-mead": ("xatol", "fatol"),
+    "bfgs": ("gtol",),
+    "l-bfgs-b": ("ftol", "gtol"),
+    "newton-cg": ("xtol",),
+    "trust-ncg": ("gtol",),
+    "trust-exact": ("gtol",),
+}
 
 # the kernels' gradient modes (csrc/optimize/objective.hpp, GradMode)
 _G_CALLABLE, _G_2POINT, _G_3POINT, _G_ABSOLUTE, _G_WITH_FUN = 0, 1, 2, 3, 4
+# and Hessian modes (csrc/optimize/hessian.hpp, HessMode)
+_H_NONE, _H_CALLABLE, _H_2POINT, _H_3POINT = 0, 1, 2, 3
 
 _SQRT_EPS = math.sqrt(_EPS)  # scipy's _epsilon, BFGS's eps
 
@@ -57,6 +73,21 @@ _PR_LOSS = "Desired error not necessarily achieved due to precision loss."
 _NAN = "NaN result encountered."
 _NM_MESSAGES = {0: _SUCCESS, 1: _MAXFEV, 2: _MAXITER}
 _BFGS_MESSAGES = {0: _SUCCESS, 1: _MAXITER, 2: _PR_LOSS, 3: _NAN}
+# Newton-CG's (status, message) by the kernel's status: scipy's terminate() calls, 3 twice
+_NCG_RESULTS = {
+    0: (0, _SUCCESS),
+    1: (1, "Warning: " + _MAXITER),
+    2: (2, "Warning: " + _PR_LOSS),
+    3: (3, "Warning: CG iterations didn't converge. The Hessian is not positive definite."),
+    4: (3, _NAN),
+}
+# _minimize_trust_region's status_messages
+_TRUST_MESSAGES = {
+    0: _SUCCESS,
+    1: _MAXITER,
+    2: "A bad approximation caused failure to predict improvement.",
+    3: "A linalg error occurred, such as a non-psd Hessian.",
+}
 # L-BFGS-B's task and its message (scipy's status_messages and task_messages)
 _LB_TASKS = {4: "CONVERGENCE", 5: "STOP", 8: "ABNORMAL"}
 _LB_MESSAGES = {
@@ -71,8 +102,8 @@ _FIXED = "All independent variables were fixed by bounds."
 
 def _checks(func, n):
     """check(value, what) for the kernels: what fun returned ('fun') as a float, a gradient
-    ('jac') as a float64 sd.ndarray (n,), fun's pair (f, g) with jac=True ('pair'), or the
-    error."""
+    ('jac') or a Hessian product ('hessp') as a float64 sd.ndarray (n,), a Hessian ('hess') as a
+    float64 sd.ndarray (n, n), fun's pair (f, g) with jac=True ('pair'), or the error."""
     real = _scalar_check(func)
 
     def check(v, what):
@@ -83,25 +114,55 @@ def _checks(func, n):
                 return (v[0], v[1])
             got = f"{len(v)} values" if isinstance(v, (tuple, list)) else _type_name(v)
             raise TypeError(f"{func}(): 'fun' must return a pair (f, g) when jac=True, not {got}")
-        return _gradient(v, func, n)
+        if what == "hess":
+            return _hessian(v, func, n)
+        return _gradient(v, func, n, what)
 
     return check
 
 
-def _gradient(v, func, n):
+def _not_dense(v, func, name):
+    """scipy's sparse matrices and LinearOperator are not taken (O63)."""
+    if type(v).__module__.startswith("scipy.sparse"):
+        raise TypeError(f"{func}(): {name!r} must return an sd.ndarray or a sequence of numbers, not {_type_name(v)}")
+
+
+def _gradient(v, func, n, name="jac"):
     if isinstance(v, bool) or v is None or isinstance(v, (str, bytes)):
-        raise TypeError(f"{func}(): 'jac' must return an sd.ndarray or a sequence of numbers, not {_type_name(v)}")
+        raise TypeError(f"{func}(): {name!r} must return an sd.ndarray or a sequence of numbers, not {_type_name(v)}")
+    _not_dense(v, func, name)
     scalar = isinstance(v, numbers.Real) or (hasattr(v, "ndim") and getattr(v, "ndim", None) == 0)
     if scalar and not isinstance(v, complex) and getattr(getattr(v, "dtype", None), "kind", "f") in "iuf":
         if n == 1:
             return _sd.asarray([float(v)])
-        raise ValueError(f"{func}(): 'jac' must return {n} values (one per variable), not a scalar")
+        raise ValueError(f"{func}(): {name!r} must return {n} values (one per variable), not a scalar")
     try:
-        a = _as_array(v, func, "jac")
+        a = _as_array(v, func, name)
     except TypeError as e:
-        raise TypeError(str(e).replace("'jac' must be", "'jac' must return")) from None
+        raise TypeError(str(e).replace(f"{name!r} must be", f"{name!r} must return")) from None
     if a.ndim != 1 or a.shape[0] != n:
-        raise ValueError(f"{func}(): 'jac' must return {n} values (one per variable), not shape {tuple(a.shape)}")
+        raise ValueError(f"{func}(): {name!r} must return {n} values (one per variable), not shape {tuple(a.shape)}")
+    return a
+
+
+def _hessian(v, func, n):
+    """A returned Hessian as a float64 sd.ndarray (n, n); a number when n = 1 (O63)."""
+    if isinstance(v, bool) or v is None or isinstance(v, (str, bytes)):
+        raise TypeError(f"{func}(): 'hess' must return an sd.ndarray or a sequence of numbers, not {_type_name(v)}")
+    _not_dense(v, func, "hess")
+    scalar = isinstance(v, numbers.Real) or (hasattr(v, "ndim") and getattr(v, "ndim", None) == 0)
+    if scalar and not isinstance(v, complex) and getattr(getattr(v, "dtype", None), "kind", "f") in "iuf":
+        if n == 1:
+            return _sd.asarray([[float(v)]])
+        raise ValueError(f"{func}(): 'hess' must return shape ({n}, {n}), not a scalar")
+    try:
+        a = _as_array(v, func, "hess")
+    except TypeError as e:
+        raise TypeError(str(e).replace("'hess' must be", "'hess' must return")) from None
+    except ValueError:
+        raise ValueError(f"{func}(): 'hess' must return shape ({n}, {n}), not a scalar") from None
+    if tuple(a.shape) != (n, n):
+        raise ValueError(f"{func}(): 'hess' must return shape ({n}, {n}), not {tuple(a.shape)}")
     return a
 
 
@@ -155,8 +216,9 @@ def _fun_value(fun, x, func):
 
 
 def minimize(fun, x0, /, *, method=None, jac=None, hess=None, hessp=None, bounds=None, tol=None, options=None):
-    """A local minimum of fun(x) from x0: method='nelder-mead' (the simplex method), 'bfgs' or
-    'l-bfgs-b' (bounds allowed); None picks 'bfgs', or 'l-bfgs-b' with bounds
+    """A local minimum of fun(x) from x0: method='nelder-mead' (the simplex method), 'bfgs',
+    'l-bfgs-b' (bounds allowed), or with the gradient and the Hessian (hess or hessp)
+    'newton-cg', 'trust-ncg' and 'trust-exact'; None picks 'bfgs', or 'l-bfgs-b' with bounds
     (docs/api/optimize.md §7)."""
     func = "minimize"
     _callable(fun, func, "fun")
@@ -166,16 +228,18 @@ def minimize(fun, x0, /, *, method=None, jac=None, hess=None, hessp=None, bounds
         method = "bfgs" if bounds is None else "l-bfgs-b"  # O50
     else:
         _check_method(method, func, _METHODS)
-    if method in _LATER:
-        raise NotImplementedError(f"{func}(): method={method!r} is not implemented yet")
-    for name, v in (("hess", hess), ("hessp", hessp)):
-        if v is not None:
-            raise ValueError(f"{func}(): method={method!r} takes no {name!r}")
+    if method not in _NEWTON:
+        for name, v in (("hess", hess), ("hessp", hessp)):
+            if v is not None:
+                raise ValueError(f"{func}(): method={method!r} takes no {name!r}")
     if method == "nelder-mead" and jac is not None:
         raise ValueError(f"{func}(): method='nelder-mead' takes no 'jac'")
-    if method == "bfgs" and bounds is not None:
-        raise ValueError(f"{func}(): method='bfgs' takes no bounds (method='l-bfgs-b' and method='nelder-mead' do)")
+    if method in ("bfgs",) + _NEWTON and bounds is not None:  # O66
+        raise ValueError(f"{func}(): method={method!r} takes no bounds (method='l-bfgs-b' and method='nelder-mead' do)")
     mode = _jac_mode(jac, func, method) if method != "nelder-mead" else None
+    if method in _NEWTON:
+        _needs_jac(jac, mode, func, method)  # O65
+        hmode = _hess_mode(hess, hessp, func, method)  # O63, O64
     bd = None if bounds is None else _bounds(bounds, func, n, allow_equal=True)  # O51
     xl = [float(v) for v in x.tolist()]
     if bd is not None and not all(a <= t <= b for t, a, b in zip(xl, *bd)):
@@ -189,9 +253,15 @@ def minimize(fun, x0, /, *, method=None, jac=None, hess=None, hessp=None, bounds
             opts[key] = tol
     if method == "nelder-mead":
         return _nelder_mead(fun, xl, bd, opts, func)
+    g = jac if mode == _G_CALLABLE else None
     if method == "bfgs":
-        return _bfgs(fun, jac if mode == _G_CALLABLE else None, mode, xl, opts, func)
-    return _lbfgsb(fun, jac if mode == _G_CALLABLE else None, mode, xl, bd, opts, func)
+        return _bfgs(fun, g, mode, xl, opts, func)
+    if method == "l-bfgs-b":
+        return _lbfgsb(fun, g, mode, xl, bd, opts, func)
+    h = hess if hmode == _H_CALLABLE else None
+    if method == "newton-cg":
+        return _newton_cg(fun, g, h, hessp, mode, hmode, xl, opts, func)
+    return _trust(fun, g, h, hessp, mode, hmode, method, xl, opts, func)
 
 
 def _nelder_mead(fun, xl, bd, opts, func):
@@ -379,4 +449,133 @@ def _lbfgsb(fun, jac, mode, xl, bd, opts, func):
         nfev=nfev,
         njev=njev,
         method="l-bfgs-b",
+    )
+
+
+# ---- Newton-CG, trust-ncg and trust-exact (O4)
+
+
+def _needs_jac(jac, mode, func, method):
+    """O65: a callable jac or jac=True (scipy turns the difference forms into None and raises)."""
+    if jac is None:
+        raise ValueError(
+            f"{func}(): 'jac' is required when method={method!r} (a callable, or True when 'fun' returns (f, g))"
+        )
+    if mode not in (_G_CALLABLE, _G_WITH_FUN):
+        raise ValueError(f"{func}(): method={method!r} needs 'jac' as a callable or True, not {jac!r}")
+
+
+def _hess_mode(hess, hessp, func, method):
+    """The Hessian's form for the kernels (O63, O64): hess callable, '2-point' or '3-point'
+    (products by differences of the gradient), or hessp alone."""
+    hmode = _H_NONE
+    if hess is not None:
+        if callable(hess):
+            hmode = _H_CALLABLE
+        elif isinstance(hess, str) and hess in ("2-point", "3-point"):
+            hmode = _H_2POINT if hess == "2-point" else _H_3POINT
+        elif isinstance(hess, str):
+            raise ValueError(f"{func}(): 'hess' must be callable, '2-point', '3-point' or None, not {hess!r}")
+        else:
+            raise TypeError(f"{func}(): 'hess' must be callable, '2-point', '3-point' or None, not {_type_name(hess)}")
+    if hessp is not None:
+        if not callable(hessp):
+            raise TypeError(f"{func}(): 'hessp' must be callable or None, not {_type_name(hessp)}")
+        if method == "trust-exact":
+            raise ValueError(f"{func}(): method='trust-exact' takes no 'hessp' (it needs the matrix 'hess')")
+        if hmode in (_H_2POINT, _H_3POINT):
+            raise ValueError(f"{func}(): give 'hessp' or hess={hess!r}, not both")
+        if method == "newton-cg" and hmode == _H_CALLABLE:  # O74: hessp would be unused (O62)
+            raise ValueError(f"{func}(): method='newton-cg' takes 'hess' or 'hessp', not both")
+    if method == "trust-exact" and hmode != _H_CALLABLE:
+        if hess is None:
+            raise ValueError(f"{func}(): 'hess' is required when method='trust-exact' (a callable giving the matrix)")
+        raise ValueError(f"{func}(): method='trust-exact' needs 'hess' as a callable (the matrix), not {hess!r}")
+    if method == "trust-ncg" and hess is None and hessp is None:
+        raise ValueError(f"{func}(): method='trust-ncg' needs 'hess' or 'hessp'")
+    return hmode
+
+
+def _not_finite(status, xs, func):
+    what = {-1: "'jac' is", -2: "'hess' is", -3: "the trust-region subproblem is"}[status]
+    raise ValueError(f"{func}(): {what} not finite at x = {xs}")
+
+
+def _newton_cg(fun, jac, hess, hessp, mode, hmode, xl, opts, func):
+    n = len(xl)
+    xtol = _check_tol(opts.get("xtol", 1e-5), func, "xtol")
+    if opts.get("eps") is not None and (hmode != _H_NONE or hessp is not None):
+        raise ValueError(f"{func}(): 'eps' is only used when method='newton-cg' has no 'hess' and no 'hessp'")
+    eps = _steps(opts, "eps", [_SQRT_EPS] * n, func, n)
+    max_iter = _cap(opts, "max_iter", 200 * n, func, 0)
+    c1, c2 = _c1_c2(opts, func)
+    x, f, g, kstatus, n_iter, nfev, njev, nhev = _k.newton_cg_solve(
+        func, fun, jac, hess, hessp, _checks(func, n), mode, hmode, xl, xtol, eps, max_iter, c1, c2
+    )
+    status, message = _NCG_RESULTS[kstatus]
+    return OptimizeResult(
+        x=x,
+        fun=f,
+        jac=g,
+        converged=status == 0 and math.isfinite(f),
+        status=status,
+        message=message,
+        n_iter=n_iter,
+        nfev=nfev,
+        njev=njev,
+        nhev=nhev,
+        method="newton-cg",
+    )
+
+
+def _trust(fun, jac, hess, hessp, mode, hmode, method, xl, opts, func):
+    n = len(xl)
+    r0 = _real(opts.get("initial_trust_radius", 1.0), func, "initial_trust_radius")
+    rmax = _real(opts.get("max_trust_radius", 1000.0), func, "max_trust_radius")
+    eta = _real(opts.get("eta", 0.15), func, "eta")
+    if not (0 <= eta < 0.25):
+        raise ValueError(f"{func}(): 'eta' must be >= 0 and < 0.25")
+    if not rmax > 0:
+        raise ValueError(f"{func}(): 'max_trust_radius' must be > 0")
+    if not (math.isfinite(r0) and r0 > 0):
+        raise ValueError(f"{func}(): 'initial_trust_radius' must be finite and > 0")
+    if not r0 < rmax:
+        raise ValueError(f"{func}(): 'initial_trust_radius' must be less than 'max_trust_radius'")
+    gtol = _check_tol(opts.get("gtol", 1e-4), func, "gtol")
+    max_iter = _cap(opts, "max_iter", 200 * n, func, 0)
+    sub = _cap(opts, "subproblem_max_iter", 25, func, 1)
+    x, f, g, H, status, n_iter, nfev, njev, nhev = _k.trust_solve(
+        func,
+        fun,
+        jac,
+        hess,
+        hessp,
+        _checks(func, n),
+        mode,
+        hmode,
+        method == "trust-exact",
+        xl,
+        r0,
+        rmax,
+        eta,
+        gtol,
+        max_iter,
+        sub,
+    )
+    if status < 0:
+        _not_finite(status, x.tolist(), func)
+    fields = {} if H is None else {"hess": H}
+    return OptimizeResult(
+        x=x,
+        fun=f,
+        jac=g,
+        **fields,
+        converged=status == 0 and math.isfinite(f),
+        status=status,
+        message=_TRUST_MESSAGES[status],
+        n_iter=n_iter,
+        nfev=nfev,
+        njev=njev,
+        nhev=nhev,
+        method=method,
     )

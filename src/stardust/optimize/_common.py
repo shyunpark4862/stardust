@@ -194,6 +194,8 @@ def _check_options(options, func, method, known):
                 hint = " (the cap on function evaluations is 'max_nfev')"
             elif key == "maxls":
                 hint = " (the cap on line-search steps is 'max_ls')"
+            elif key == "subproblem_maxiter":
+                hint = " (the cap on the subproblem's iterations is 'subproblem_max_iter')"
             raise ValueError(f"{func}(): method={method!r} has no option {key!r}{hint}")
     return dict(options)
 

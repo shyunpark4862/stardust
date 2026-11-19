@@ -17,6 +17,8 @@ void bind_optimize(nb::module_& core) {
     optimize::bind_nelder_mead(m);
     optimize::bind_bfgs(m);
     optimize::bind_lbfgsb(m);
+    optimize::bind_newton_cg(m);
+    optimize::bind_trust(m);
 }
 
 }  // namespace sd

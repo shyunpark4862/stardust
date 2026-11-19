@@ -79,6 +79,7 @@ struct Objective {
     bool m_valid = false;
 
     std::int64_t nfev = 0, ngev = 0;
+    std::uint64_t point = 0;  // counts the changes of x: a memo of the Hessian is for one point (hessian.hpp)
     vec xt;  // scratch: the points of the differences
 
     nb::object array(const double* v) const { return out_vector(v, n); }
@@ -132,6 +133,7 @@ struct Objective {
         if (same) return;
         x.assign(v, v + n);
         f_updated = g_updated = false;
+        ++point;
     }
 
     void update_fun() {
@@ -161,8 +163,21 @@ struct Objective {
     void start(const double* x0) {
         x.assign(x0, x0 + n);
         f_updated = g_updated = false;
+        ++point;
         update_fun();
         update_grad();
+    }
+
+    // The gradient at v into out, past the memo (ScalarFunction's _wrapped_grad, as its difference
+    // Hessian calls it): jac(v), or fun's pair through MemoizeJac; counted as a gradient.
+    void raw_gradient(const double* v, double* out) {
+        if (mode == kGradWithFun) {
+            memo(v);
+            std::memcpy(out, mg.data(), n * sizeof(double));
+        } else {
+            vector(jac(array(v)), out);
+        }
+        ++ngev;
     }
 
     double value(const double* v) {

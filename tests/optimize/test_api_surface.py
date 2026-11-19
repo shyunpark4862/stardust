@@ -14,8 +14,8 @@ API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "optimize.md"
 
 # Documented, not implemented yet (docs/design/optimize.md §8): O5 root lsq_linear nnls. (O1's
 # approx_fprime check_grad least_squares, O2's root_scalar minimize_scalar find_root bracket_root
-# find_minimum bracket_minimum and O3's minimize are exported; minimize's O4 methods raise
-# NotImplementedError.)
+# find_minimum bracket_minimum and O3's minimize are exported; O4 added minimize's newton-cg,
+# trust-ncg and trust-exact.)
 PLANNED = {
     "lsq_linear",
     "nnls",

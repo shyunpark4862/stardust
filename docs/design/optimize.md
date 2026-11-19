@@ -1,6 +1,6 @@
 # 최적화 영역 설계 (sd.optimize)
 
-> 상태: **설계 초안** (2026-11-20). 큰 결정(§1.1 O1–O62)은 사용자가 정했다. O0·O1·O2·O3을 구현했다(§8). 나머지는 안이고, 시작 전에 정할 것은 §9에 있다.
+> 상태: **설계 초안** (2026-11-20). 큰 결정(§1.1 O1–O76)은 사용자가 정했다. O0–O4를 구현했다(§8). 나머지는 안이고, 시작 전에 정할 것은 §9에 있다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -79,6 +79,20 @@
 | O60 L-BFGS-B `hess_inv`의 순서 (O3) | scipy처럼 저장된 쌍을 저장 순서로 쓴다(scipy의 `todense()`와 같은 행렬) (사용자 결정 2026-11-20) |
 | O61 BFGS의 H 갱신 (O3) | 지금은 scipy의 n³ 갱신(행렬곱 두 번)을 둔다. n²의 갱신은 O6에서 다시 본다 (사용자 결정 2026-11-20) |
 | O62 옵션의 검사 (O3) | 그대로 둔다: `eps`·`finite_diff_rel_step`을 쓰이지 않는 `jac`과 주면 `ValueError`(O29를 넓힘), `c1`·`c2`는 반복 전에 검사, `tol`과 같은 옵션 키를 함께 주면 `ValueError` (사용자 결정 2026-11-20) |
+| O63 `hess`·`hessp`의 꼴 (O4) | `hess(x)`는 (n, n) 배열(`sd.ndarray`, numpy 배열, 중첩 시퀀스), `hessp(x, p)`는 (n,) 배열을 돌려준다. `LinearOperator`, 희소 행렬, `HessianUpdateStrategy`는 받지 않는다(늘 쓰는 꼴의 `TypeError`) (사용자 결정 2026-11-20) |
+| O64 차분 헤시안 (O4) | `hess='2-point'`·`'3-point'`(`jac`의 차분)을 O21의 `jac`처럼 받는다. `'cs'`는 없다. `hess`·`hessp`가 없는 newton-cg는 scipy처럼 기울기의 차분으로 헤세 곱을 만든다 (사용자 결정 2026-11-20) |
+| O65 `jac`이 꼭 있다 (O4) | newton-cg, trust-ncg, trust-exact는 `jac`이 있어야 한다(scipy의 'Jacobian is required'). 없으면 stardust 꼴의 `ValueError`다 (사용자 결정 2026-11-20) |
+| O66 `bounds` (O4) | 세 방법에 `bounds`를 주면 `ValueError`다(scipy는 경고하고 무시한다). bfgs와 같은 규칙이다 (사용자 결정 2026-11-20) |
+| O67 trust-ncg의 CG 상한 (O4) | 부분문제의 CG는 20n번까지이고 넘으면 status 3이다. scipy에는 상한이 없어 비대칭 헤시안에서 끝나지 않을 수 있다 (사용자 결정 2026-11-20) |
+| O68 `nhev`가 세는 것 (O4) | 사용자 `hess`·`hessp`(와 차분 연산자의 곱)를 실제로 부른 수만 센다. `hessp`만 준 trust-ncg에서 scipy가 자리 채움 `hess` 몫으로 더하는 1은 없다 (사용자 결정 2026-11-20) |
+| O69 trust-ncg의 결과 `hess` (O4) | 결과를 위해 끝에 x에서 부르는 `hess`도 `nhev`에 센다(scipy는 세지 않는다) (사용자 결정 2026-11-20) |
+| O70 newton-cg의 결과 `jac` (O4) | 돌려주는 x에서의 기울기다(scipy는 마지막 반복을 시작한 점의 것). 기억에 있으면 부르지 않고, 없으면 `jac`을 한 번 더 부르고 `njev`에 센다 (사용자 결정 2026-11-20) |
+| O71 반복 중의 유한하지 않은 기울기·헤시안 (O4) | 받아들인 점의 기울기나 trust-exact가 새 점에서 만든 헤시안이 유한하지 않으면 그 점을 적은 `ValueError`다(O26과 같은 꼴; scipy는 `scipy.linalg`의 검사로 `ValueError`) (사용자 결정 2026-11-20) |
+| O72 trust-exact 부분문제의 상한 (O4) | 걸음을 하나도 만들지 못하고 상한에 닿으면 status 3이다(scipy는 `UnboundLocalError`) (사용자 결정 2026-11-20) |
+| O73 `subproblem_max_iter` (O4) | trust-exact의 옵션 이름은 `subproblem_max_iter`(scipy의 `subproblem_maxiter`, O14의 꼴), 기본 25다 (사용자 결정 2026-11-20) |
+| O74 newton-cg의 `hess`와 `hessp` (O4) | 함께 주면 `ValueError`다(O62의 규칙: `hessp`가 쓰이지 않는다; scipy는 `hessp`를 버린다) (사용자 결정 2026-11-20) |
+| O75 신뢰 영역의 `max_iter=0` (O4) | trust-ncg·trust-exact는 반복 없이 x0에서 멈춘다(newton-cg·BFGS와 같다; scipy는 반복 하나를 한다) (사용자 결정 2026-11-20) |
+| O76 trust-exact의 차분 `hess` (O4) | `hess='2-point'`·`'3-point'`는 scipy처럼 `ValueError`다(행렬을 분해해야 한다) (사용자 결정 2026-11-20) |
 
 ### 1.2 범위 (안)
 | 덩어리 | 공개 함수 | 방법 |
@@ -113,7 +127,7 @@
 - 배치 스칼라 함수(O5)의 사용자 함수는 아직 끝나지 않은 원소만 모은 float64 `sd.ndarray` (k,)를 받아 k개 값을 돌려준다(O38, scipy `elementwise`와 같다). 시작점에서의 계산은 모든 원소를 받는다.
 
 ### 2.2 결과 객체 `OptimizeResult`
-- 필드: `x`, `fun`, `jac`(있을 때), `hess_inv`(BFGS·L-BFGS-B), `converged`, `status`, `message`, `n_iter`, `nfev`, `njev`, `nhev`(있을 때). 최소제곱은 `cost`, `fun`(잔차), `jac`, `grad`, `optimality`, `active_mask`(scipy `least_squares`와 같은 뜻).
+- 필드: `x`, `fun`, `jac`(있을 때), `hess`(trust-ncg·trust-exact, `hess`를 줄 때), `hess_inv`(BFGS·L-BFGS-B), `converged`, `status`, `message`, `n_iter`, `nfev`, `njev`, `nhev`(있을 때). 최소제곱은 `cost`, `fun`(잔차), `jac`, `grad`, `optimality`, `active_mask`(scipy `least_squares`와 같은 뜻).
 - 이름은 regression의 결과와 같은 규칙이다(O4). scipy의 `success`·`nit`를 별칭으로 두지 않는다(별칭 없음).
 - 배치 스칼라 결과는 필드마다 입력의 배치 모양이다(`x` (...), `converged` (...) bool, `nfev` (...) int64).
 - 결과는 읽기 전용이고 배열 필드는 복사본을 돌려준다(regression G98, G113과 같다).
@@ -157,19 +171,26 @@
 - nls에만 있는 것(다듬기 G73, 정확한 야코비안의 공분산, 겹친 모수 G76)은 `nls` 쪽에 남겼다. scipy의 `loss`, `x_scale`, `f_scale`, `tr_solver='lsmr'`, `jac_sparsity`, `callback`, `workers`, 다듬기 옵션은 넣지 않았다(O22).
 - `lsq_linear`: trf(scipy의 경계 있는 선형 최소제곱)와 bvls(Stark–Parker). `nnls`: Lawson–Hanson(scipy 1.18.1의 구현과 같은 걸음). 바닥은 linalg의 QR이다.
 
-### 3.5 다변수 최소화 (O3에서 Nelder–Mead, BFGS, L-BFGS-B를 구현)
-- 커널은 `csrc/optimize/nelder_mead.cpp`, `bfgs.cpp`, `lbfgsb.cpp`(`stardust._core.optimize.nelder_mead_solve`, `bfgs_solve`, `lbfgsb_solve`)이고 Python 층은 `src/stardust/optimize/_minimize.py`다. 사용자 함수는 새 float64 `sd.ndarray` x를 받고, 커널은 콜백을 부르는 동안 GIL을 쥔다. 큰 선형대수(BFGS의 행렬곱, L-BFGS-B의 방향 계산과 메모리 갱신, Nelder–Mead의 무게중심)만 10 µs 규칙으로 GIL을 놓는다.
+### 3.5 다변수 최소화 (O3에서 Nelder–Mead, BFGS, L-BFGS-B, O4에서 Newton-CG, trust-ncg, trust-exact를 구현)
+- 커널은 `csrc/optimize/nelder_mead.cpp`, `bfgs.cpp`, `lbfgsb.cpp`, `newton_cg.cpp`, `trust.cpp`(`stardust._core.optimize.nelder_mead_solve`, `bfgs_solve`, `lbfgsb_solve`, `newton_cg_solve`, `trust_solve`)이고 Python 층은 `src/stardust/optimize/_minimize.py`다. 사용자 함수는 새 float64 `sd.ndarray` x를 받고, 커널은 콜백을 부르는 동안 GIL을 쥔다. 큰 선형대수(BFGS의 행렬곱, L-BFGS-B의 방향 계산과 메모리 갱신, Nelder–Mead의 무게중심)만 10 µs 규칙으로 GIL을 놓는다.
 - 기울기는 scipy 1.18.1의 `ScalarFunction`과 같다(`csrc/optimize/objective.hpp`): 마지막 점과 그 점의 f·g를 기억하고, 다른 점(`np.array_equal`: NaN은 같지 않고 −0.0과 0.0은 같다)이거나 아직 계산하지 않았을 때만 계산한다. 사용자 `jac`, `jac=True`(fun이 (f, g)를 돌려준다; scipy의 `MemoizeJac`처럼 x로 기억한다), 차분(`jac=None`은 `approx_derivative`의 '2-point'에 절대 간격 `eps`, `'2-point'`·`'3-point'`는 상대 간격 `finite_diff_rel_step` 또는 기본; 경계에 맞춘 조정은 §3.1의 diff.hpp)이다. `nfev`는 차분의 호출을 센다: scipy의 `ScalarFunction.nfev`도 세므로 O18의 셈이 scipy의 셈과 같다.
 - Nelder–Mead: scipy의 `_minimize_neldermead`. 처음 단체(x0와 x0[k]를 1.05배, 0이면 0.00025), `initial_simplex`, `adaptive`(Gao–Han의 계수), 경계(위 경계 너머의 꼭짓점을 반사하고 자르기, 새 점마다 자르기), `xatol`·`fatol`, `max_nfev`를 넘는 호출은 하지 않고 그 반복을 멈추기, 정렬은 numpy `argsort`의 introsort(17개 미만은 삽입 정렬이라 같은 값의 순서가 그대로이고, 그 위는 아니다)를 그대로 옮겼다. 무게중심은 numpy처럼 +0.0에서 행을 차례로 더한다. 정렬은 행을 옮기지 않고 행 번호를 옮긴다.
-- BFGS: scipy의 `_minimize_bfgs`와 `_line_search_wolfe12`: `line_search_wolfe1`(scipy의 Python `DCSRCH`·`dcstep`, c1·c2, xtol 10⁻¹⁴, 걸음 [10⁻¹⁰⁰, 10¹⁰⁰], 100번)이 걸음을 못 찾으면 `line_search_wolfe2`(두 배로 넓히기와 3차·2차 보간의 zoom, 10번씩), 둘 다 못 찾으면 status 2. H는 scipy처럼 (I − ρsyᵀ)H(I − ρysᵀ) + ρssᵀ를 두 번의 행렬곱(BLAS dgemm)으로 만든다. scipy의 Python 코드는 FMA가 없으므로 이 파일은 축약 없이 빌드한다. zoom의 보간은 scipy가 `np.errstate(divide, over, invalid='raise')` 안에서 하고 그 에러에서 보간을 버린다: 여기서는 연산마다 numpy의 규칙(유한한 0 아닌 수를 0으로 나누기, 유한한 값에서의 넘침, NaN이 아닌 값에서 NaN)으로 같은 판정을 한다(2 × 2 곱은 numpy처럼 dgemv). 사용자 함수가 Python float을 돌려줄 때 scipy는 Python의 곱셈 넘침을 에러로 보지 않으므로 그런 경계의 경우만 다를 수 있다.
+- BFGS: scipy의 `_minimize_bfgs`와 `_line_search_wolfe12`(`csrc/optimize/wolfe.hpp`, Newton-CG와 같이 쓴다): `line_search_wolfe1`(scipy의 Python `DCSRCH`·`dcstep`, c1·c2, xtol 10⁻¹⁴, 걸음 [10⁻¹⁰⁰, 10¹⁰⁰], 100번)이 걸음을 못 찾으면 `line_search_wolfe2`(두 배로 넓히기와 3차·2차 보간의 zoom, 10번씩), 둘 다 못 찾으면 status 2. H는 scipy처럼 (I − ρsyᵀ)H(I − ρysᵀ) + ρssᵀ를 두 번의 행렬곱(BLAS dgemm)으로 만든다. scipy의 Python 코드는 FMA가 없으므로 이 파일은 축약 없이 빌드한다. zoom의 보간은 scipy가 `np.errstate(divide, over, invalid='raise')` 안에서 하고 그 에러에서 보간을 버린다: 여기서는 연산마다 numpy의 규칙(유한한 0 아닌 수를 0으로 나누기, 유한한 값에서의 넘침, NaN이 아닌 값에서 NaN)으로 같은 판정을 한다(2 × 2 곱은 numpy처럼 dgemv). 사용자 함수가 Python float을 돌려줄 때 scipy는 Python의 곱셈 넘침을 에러로 보지 않으므로 그런 경계의 경우만 다를 수 있다.
 - L-BFGS-B: scipy 1.15부터의 C 판(`scipy/optimize/src/lbfgsb.c`, L-BFGS-B 3.0의 setulb·mainlb와 하위 루틴: cauchy, hpsolb, bmv, freev, formk, cmprlb, subsm, lnsrlb, dcsrch, dcstep, matupd, formt, projgr)과 scipy의 드라이버 고리(`_minimize_lbfgsb`: NEW_X마다 반복을 세고 `max_iter`·`max_nfev`(> 비교)로 멈춤)를 계산 순서까지 옮겼다. scipy가 원본과 다른 곳(2-노름을 dnrm2로, 0부터 세는 번호에서 결코 참이 되지 않는 Cauchy 점의 마지막 구간 판정 `nleft == -1 && nbreak == n`)도 그대로다.
   - scipy는 이 C 파일을 clang의 기본(`-ffp-contract=on`)으로 빌드하여 한 식 안의 a·b + c를 FMA 하나로 계산한다. 그래서 이 파일은 `#pragma clang fp contract(on)`으로 같은 축약을 하고 식을 scipy의 꼴 그대로 적었다(축약을 끄면 경계 없는 114경우 가운데 13경우만 호출점이 비트까지 같다).
   - Accelerate의 ddot은 둘째 인자가 16바이트 정렬인지에 따라 합의 순서가 다르다(길이 5 이상에서 끝자리가 달라진다). scipy의 작업 배열 `wa`는 numpy 배열 하나를 setulb가 나눠 쓰므로 부분마다 정렬이 다르다: 여기서도 작업 공간 하나를 scipy와 같은 위치로 나눈다(그래야 경계 있는 문제의 호출점이 비트까지 같다).
   - scipy의 setulb는 f를 값으로 받으므로 ABNORMAL(선 탐색 실패)에서 x와 g는 앞의 반복점으로 되돌려도 결과의 `fun`은 마지막 시험점의 값이다. 여기서는 되돌린 `x`의 값(앞의 반복점의 f)을 준다(O59; 걸음은 같다).
   - `hess_inv`(O55)는 scipy의 `LbfgsInvHessProduct(s[:k], y[:k]).todense()`와 같은 행렬이다: 저장된 쌍을 저장 순서로(메모리가 한 바퀴 돈 뒤에는 시간 순서가 아니다; scipy와 같다, O60), H₀ = I로 두 고리 재귀를 단위 행렬에 적용한다. 처음 읽을 때 계산하고 결과에 둔다(n²의 메모리: n = 10⁴이면 800 MB).
   - 모든 변수가 고정된 경계(lower = upper)면 scipy처럼 fun을 한 번 부르고 끝낸다(`'All independent variables were fixed by bounds.'`). 일부가 고정되고 기울기가 차분이면 scipy처럼 그 변수를 빼고 푼다(결과의 `jac`은 그 자리가 NaN, `hess_inv` 필드는 없다; O58).
-- 그래서 세 방법 모두 scipy 1.18.1과 호출점이 비트까지 같다(§7). O9는 끝자리 차이를 허용하지만 이 세 방법은 차이가 없다.
-- Newton-CG, trust-ncg(Steihaug–Toint CG), trust-exact(Moré–Sorensen)는 O4다: scipy의 구현과 같은 걸음, 헤세 곱은 사용자 `hess`·`hessp`나 기울기의 차분. 지금은 `NotImplementedError`다.
+- 헤시안(`csrc/optimize/hessian.hpp`): scipy의 `ScalarFunction`처럼 마지막 점의 헤시안을 기억한다. 호출 가능한 `hess`는 처음에 x0에서(f와 기울기 다음) 부르고, 다른 점에서만 다시 부른다(fun, 기울기, 헤시안 가운데 어느 요청으로든 점이 바뀌면 기억을 버린다). `'2-point'`·`'3-point'`는 scipy `approx_derivative`의 선형 연산자다: 만들 때는 부르지 않고 그 점의 기울기를 쓰며, p ≠ 0과의 곱은 (g(x + dx·p) − g)/dx(dx = √u/‖p‖) 또는 (g(x + dx/2·p) − g(x − dx/2·p))/dx(dx = 2u^(1/3)/‖p‖)이고, 그 기울기는 기억을 거치지 않고 부른다(`njev`에 센다). p = 0이면 부르지 않고 0이다. 사용자가 돌려준 행렬은 C 순서로 복사해 두고, 그 행렬을 쥔 부분문제와 같이 쓴다.
+- Newton-CG: scipy의 `_minimize_newtoncg`. 반복마다 Hp = −g를 0에서 공액 기울기로 푼다(20n번까지; Σ|r_i| ≤ min(1/2, √‖g‖₁)·‖g‖₁이거나 곡률 pᵀHp가 [0, 3u]에 들거나 음수이면 멈추고, 첫 걸음의 음의 곡률은 가장 가파른 내리막 (rᵀr/(−pᵀHp))·(−g)다). 그 방향으로 BFGS와 같은 `_line_search_wolfe12`를 scipy의 Newton-CG 인자로 한다: wolfe1의 걸음은 [10⁻⁸, 50], wolfe2는 amax가 없고, 첫 반복은 앞의 값이 없어 첫 걸음이 1이다. 걸음의 ‖·‖₁이 n·xtol 이하이면 멈추고, 선 탐색이 걸음을 못 찾으면 status 2, CG가 20n번 안에 멈추지 않으면 status 3이다. 헤세 곱은 `hess`의 행렬(반복마다 한 번 계산), `hessp`, 차분 연산자, 둘 다 없으면 scipy의 `approx_fhess_p`(기울기의 앞쪽 차분, 간격 `eps`; `ScalarFunction`의 기억을 거치므로 두 번째 곱부터 g(x)를 다시 부른다)다.
+- trust-ncg, trust-exact: scipy의 `_minimize_trust_region`(ρ < 1/4이면 반지름을 1/4로, ρ > 3/4이고 걸음이 경계에 있으면 두 배로(`max_trust_radius`까지), ρ > η이면 걸음을 받아들이고, 예측 감소가 양수가 아니면 status 2)과 부분문제 둘이다. `max_iter=0`이면 반복 없이 x0에서 멈춘다(O75; scipy는 상한을 첫 반복 뒤에 보아 반복 하나를 한다). trust-ncg는 `CGSteihaugSubproblem`(Nocedal–Wright 알고리즘 7.2: 허용오차 min(1/2, √‖g‖)·‖g‖, 양이 아닌 곡률에서는 모형 값이 작은 경계점, 영역을 벗어나는 걸음은 경계점; CG는 20n번까지이고 넘으면 status 3, O67: scipy에는 상한이 없어 비대칭 헤시안에서 끝나지 않을 수 있고, 대칭이면 n번 남짓이다), trust-exact는 `IterativeSubproblem`(Moré–Sorensen: H + λI의 Cholesky, λ의 뉴턴 걸음, 어려운 경우의 Cline–Moler–Stewart–Wilkinson 최소 특이값 추정, Conn–Gould–Toint의 경계(Gershgorin, Frobenius·∞-노름), k_easy 0.1, k_hard 0.2, `subproblem_max_iter`번까지)이다. trust-exact는 새 점의 부분문제를 만들 때 그 점의 헤시안을 f보다 먼저 계산한다(scipy와 같은 호출 순서).
+- 계산은 numpy·scipy.linalg가 부르는 루틴을 같은 배치로 부른다. `np.dot`(벡터 둘)은 원소 하나면 곱이고 아니면 0.0 + cblas_ddot이다: BLAS가 돌려주는 −0.0이 +0.0이 된다. trust-ncg의 경계 교점은 b = 2zᵀd의 부호를 `copysign`으로 보므로 z = 0에서 이 차이가 걸음을 바꾼다. 행렬·벡터 곱은 row-major dgemv, `scipy.linalg.norm`은 dnrm2, H의 ∞-노름은 lange('1', Hᵀ), Frobenius 노름은 √(ddot)이다. Cholesky는 scipy가 potrf('U')에 넘기는 열 우선 복사에 한다(potrf가 위 삼각만 읽으므로 그것만 복사하고, 아래 삼각은 scipy의 래퍼처럼 0으로 둔다). 풀이는 potrs·trtrs이고, scipy가 연속이 아닌 조각(실패한 분해의 앞 블록)을 `solve_triangular`에 넘길 때 전치를 복사해 아래 삼각·전치로 푸는 것도 따른다. 합은 numpy의 쌍별 합, 최대·최소는 Python의 `max`·`min`이다.
+- scipy가 예외를 내는 곳은 `scipy.linalg`의 `check_finite`(받아들인 점의 ‖g‖, trust-exact가 새 점에서 만든 헤시안, 부분문제 안의 벡터)와 `math.sqrt`의 음수다. 여기서는 그 점에서 `ValueError`(`minimize(): 'jac' is not finite at x = [...]`, `'hess' is not finite at x = [...]`, `the trust-region subproblem is not finite at x = [...]`)다(O53, O71). trust-exact의 부분문제가 걸음을 하나도 만들지 못한 채 `subproblem_max_iter`에 닿으면 scipy는 `UnboundLocalError`이고 여기서는 status 3이다(O72).
+- 셈: `nfev`·`njev`는 `ScalarFunction`의 것(scipy와 같다)이다. `nhev`는 사용자 `hess`·`hessp`와 차분 연산자의 곱을 실제로 부른 수다(O68): 호출 가능한 `hess`는 x0의 것을 포함한 호출 수, `hessp`와 차분은 곱의 수이고, trust-ncg가 결과의 `hess`를 위해 끝에 x에서 부른 것(마지막 부분문제가 계산하지 않았을 때, scipy의 `m.hess`)도 센다(O69). scipy와 다른 곳: `hessp`만 준 trust-ncg에서 scipy는 부르지 않은 자리 채움 `hess`의 1을 더하고, trust-ncg의 끝 호출과 newton-cg가 x0에서 처음 부른 `hess`(`max_iter=0`일 때)를 세지 않는다.
+- newton-cg의 결과 `jac`은 돌려주는 x에서의 기울기다(O70). `ScalarFunction`의 기억에 있으면 부르지 않고(마지막 선 탐색이 x에서 기울기를 계산했을 때), 없으면(기울기 차분의 곱이나 wolfe2가 기억을 옮겼을 때) 한 번 더 부르고 `njev`에 센다. scipy의 것은 마지막 반복을 시작한 점의 기울기(`gfk`)다.
+- newton-cg에 `hess`와 `hessp`를 함께 주면 `ValueError`다(O74; scipy는 `hessp`를 버린다). trust-ncg는 함께 받고 scipy처럼 곱에 `hessp`, x0와 결과에 `hess`를 쓴다. 차분 `hess`와 `hessp`는 함께 줄 수 없다.
+- 그래서 여섯 방법 모두 scipy 1.18.1과 호출점이 비트까지 같다(§7). O9는 끝자리 차이를 허용하지만 이 방법들은 차이가 없다. 다른 것은 위에 적은 결정의 자리뿐이다: newton-cg 끝의 기울기 호출 하나(O70), `nhev`(O68, O69), 신뢰 영역의 `max_iter=0`(O75), scipy가 끝나지 않거나 예외를 내는 곳(O67, O71, O72).
 
 ### 3.6 방정식계의 근
 - hybr: MINPACK hybrj(야코비안을 주면)·hybrd(차분). Powell의 dogleg. lm: §3.4의 lmder 커널을 그대로 쓴다.
@@ -196,7 +217,7 @@
 
 ## 6. 층과 파일 (안)
 - `src/stardust/optimize/`: 공개 함수(`_scalar.py`, `_elementwise.py`, `_minimize.py`, `_lsq.py`, `_root.py`, `_diff.py`), 결과 객체(`_result.py`), 입력 정리와 메시지(`_common.py`)
-- `csrc/optimize/`: `scalar.hpp`·`scalar.cpp`(스칼라 근·최솟값), `batch.cpp`(배치 스칼라), `diff.hpp`, `lsq.cpp`(nls에서 옮긴 lmder·trf), `minimize.hpp`, `objective.hpp`(scipy `ScalarFunction`의 기억과 차분), `nelder_mead.cpp`, `bfgs.cpp`(scipy Python 판의 `DCSRCH`와 wolfe2), `lbfgsb.cpp`(C 판의 `dcsrch`), `trust.cpp`, `hybrd.cpp`, `nnls.cpp`; 바인딩 `csrc/bind/optimize_bind.cpp`
+- `csrc/optimize/`: `scalar.hpp`·`scalar.cpp`(스칼라 근·최솟값), `batch.cpp`(배치 스칼라), `diff.hpp`, `lsq.cpp`(nls에서 옮긴 lmder·trf), `minimize.hpp`, `objective.hpp`(scipy `ScalarFunction`의 기억과 차분), `wolfe.hpp`(scipy Python 판의 `DCSRCH`와 wolfe2: BFGS와 Newton-CG의 선 탐색), `hessian.hpp`(헤시안의 기억과 차분 연산자), `nelder_mead.cpp`, `bfgs.cpp`, `lbfgsb.cpp`(C 판의 `dcsrch`), `newton_cg.cpp`, `trust.cpp`(trust-ncg·trust-exact), `hybrd.cpp`, `nnls.cpp`; 바인딩 `csrc/bind/optimize_bind.cpp`
 - `regression.nls`는 `csrc/optimize/lsq.cpp`와 `_diff.py`를 쓴다(O6). `csrc/regression/nls.cpp`는 없앴다(O1).
 - `tests/optimize/`, `bench/optimize/`
 
@@ -276,6 +297,15 @@ O3에서 확인한 것(2026-11-20):
 - scipy에서 찾은 것: L-BFGS-B의 setulb는 f를 값으로 받아 ABNORMAL에서 결과의 `fun`이 되돌린 `x`의 값이 아니다(여기서는 `x`의 값을 준다, O59: 기록과 다른 것은 이 `fun`뿐이다). `hess_inv`는 저장 순서의 쌍을 쓴다. Cauchy 점의 마지막 구간 판정(`nbreak == n`)은 0부터 세는 번호에서 참이 될 수 없다. BFGS의 zoom 보간은 사용자 함수가 Python float과 numpy float 가운데 무엇을 돌려주는지에 따라 넘침의 처리가 다르다.
 - 속도는 `bench/optimize/o3/speed.md`: 작은 n의 반복당 자기 비용이 scipy의 1/2–1/20(BFGS n = 2: 1.0 µs 대 22 µs), 차분의 기울기는 1/3–1/12(L-BFGS-B n = 1000: 0.35 ms 대 4.3 ms), Nelder–Mead n = 1000은 0.14 ms 대 0.76 ms, BFGS n = 1000은 같은 dgemm이라 9.4 ms 대 11.5 ms, L-BFGS-B n = 10⁴는 같은 C 알고리즘이라 0.35 ms 대 0.37 ms다.
 
+O4에서 확인한 것(2026-11-20):
+
+- **scipy 1.18.1과 비트까지 같은 걸음** (O9; `tests/optimize/test_minimize_newton.py`). 기록된 실행(`data/scipy_minimize.json`: MGH 110경우, Rosenbrock n = 2·5, 최대 엔트로피; 헤시안은 `ad.Dual2`의 정확한 값)의 Newton-CG, trust-ncg, trust-exact 113번씩, 339번 모두 결과의 필드(x의 비트, fun, nfev, nit, status, message, success)가 같다. `njev`는 trust의 두 방법이 같고 newton-cg가 같거나 하나 많다(O70의 끝 호출), `nhev`는 실제 호출 수(O68, O69)다. scipy를 실행하며 `fun`·`jac`·`hess`·`hessp`를 부른 점(곱의 p까지)을 차례대로 견주면 열 묶음(Newton-CG의 `hess`·`hessp`·`'2-point'`·`'3-point'`·없음, trust-ncg의 `hess`·`hessp`·`'2-point'`·`'3-point'`, trust-exact) 1,130번이 모두 비트까지 같다(newton-cg는 끝에 x에서 기울기를 한 번 더 부를 수 있다, O70). 결과의 `x`, `fun`, `hess`, `nfev`, `status`, `message`도 같고, `jac`은 trust가 scipy와, newton-cg가 x의 기울기와 같으며, `njev`·`nhev`는 결정대로 센 수다.
+  - 옵션과 가장자리(`jac=True`, trust-ncg의 `hess`와 `hessp`를 함께, `max_iter` 1·3(newton-cg는 0도), `tol`, `xtol`, `eps`, `c1`·`c2`, `gtol`, 반지름, `eta`, `subproblem_max_iter`, 시험점의 inf·NaN(함수값·기울기·헤시안))를 MGH 7문제에서 525번 견주어도 모두 같다. scipy가 `ValueError`를 내는 42번은 같은 점까지 부르고 `ValueError`다. `subproblem_max_iter=1`에서 scipy가 `UnboundLocalError`를 내는 3번은 status 3이다.
+  - 무작위 비볼록 사차 함수 Σa_i x_i⁴ + xᵀBx/2 + cᵀx(n = 2–12, 넷에 하나는 비대칭 헤시안) 300문제 × 7가지(2,100번)와 Rosenbrock n = 64–200 28번도 모두 같다. trust-exact의 실패한 분해(앞 블록 k = 2–12)와 어려운 경우를 지나고, ‖g‖ ≤ n·u·‖H‖∞의 가지는 `gtol=0`의 무작위 60문제 120번에서 지나며 모두 같다.
+  - 비트까지 맞추는 데 둘이 필요했다. numpy의 `np.dot`(벡터 둘)은 0.0 + cblas_ddot이라 BLAS의 −0.0이 +0.0이 된다: cblas_ddot을 그대로 쓰면 z = 0에서 b = 2zᵀd가 −0.0이 되고 `copysign`이 다른 근의 식을 골라 MGH 8경우의 trust-ncg 걸음이 끝자리에서 갈렸다. trust-exact는 실패한 분해의 앞 블록을 scipy처럼 전치해 아래 삼각으로 푼다.
+- **scipy에서 찾은 것**: trust-ncg의 Steihaug CG에는 상한이 없어 비대칭 헤시안에서 끝나지 않는 경우가 있다(무작위 문제 하나가 26번째 부분문제에서 돈다). 대칭 헤시안에서는 CG 걸음이 n번 남짓이므로(MGH에서 많아야 1.2n, 무작위 대칭 400문제에서 n, Rosenbrock n = 1000에서 8번) 여기서는 20n번(Newton-CG의 상한)에서 status 3으로 멈춘다(O67). 그 밖에: newton-cg의 결과 `jac`은 x가 아니라 마지막 반복을 시작한 점의 기울기다. trust-ncg는 `hessp`만 주면 `nhev`에 부르지 않은 자리 채움 `hess`의 1을 더하고, 결과 `hess`를 셈 뒤에 계산해 그 호출을 세지 않는다. trust의 `max_iter=0`은 반복 하나를 한다. trust-exact의 `subproblem_maxiter`가 작으면 걸음 없이 끝나 `UnboundLocalError`가 난다. 받아들인 점의 기울기나 trust-exact가 새 점에서 만든 헤시안이 유한하지 않으면 `scipy.linalg`의 `check_finite`가 `ValueError`를 낸다.
+- 속도는 `bench/optimize/o4/speed.md`: n = 2–100의 반복당 자기 비용이 scipy의 1/3–1/60(trust-exact n = 10: 2.2 µs 대 59 µs), 차분의 헤세 곱은 n = 1000에서도 1/9(Newton-CG '2-point': 0.034 ms 대 0.31 ms), 행렬 `hess`를 쓰는 n = 1000의 Newton-CG·trust-ncg는 같은 dgemv가 대부분이라 비슷하거나 조금 느리고(0.23 대 0.22 ms, 0.17 대 0.13 ms; 사용자의 행렬을 복사해 두는 몫), trust-exact n = 1000은 5.2 ms 대 7.2 ms다.
+
 ---
 
 ## 8. 마일스톤 (안)
@@ -285,7 +315,7 @@ O3에서 확인한 것(2026-11-20):
 | O1 수치 미분과 최소제곱 | `approx_fprime`, `check_grad`, nls 커널을 `least_squares`로 옮기기(nls 비트 동일). 완료(2026-11-20): §3.1, §3.4, §7, `bench/optimize/o1/` |
 | O2 스칼라 | `root_scalar`, `minimize_scalar`, 배치 `find_root bracket_root find_minimum bracket_minimum`. 완료(2026-11-20, 승인 대기): §3.2, §3.3, §7, `bench/optimize/o2/` |
 | O3 최소화 1 | `minimize`: Nelder–Mead, BFGS, L-BFGS-B. 완료(2026-11-20, 승인 대기): §3.5, §7, `bench/optimize/o3/` |
-| O4 최소화 2 | `minimize`: Newton-CG, trust-ncg, trust-exact |
+| O4 최소화 2 | `minimize`: Newton-CG, trust-ncg, trust-exact. 완료(2026-11-20, 승인 대기): §3.5, §7, `bench/optimize/o4/` |
 | O5 방정식계와 선형 최소제곱 | `root`(hybr, lm), `lsq_linear`, `nnls` |
 | O6 최적화와 일관성 점검 | 커널 속도(BFGS의 H를 n²으로 갱신하기, O61), 메시지·시그니처의 영역 간 일관성, 코드 리뷰 |
 
@@ -298,5 +328,5 @@ O3에서 확인한 것(2026-11-20):
 - **O1**: 정했다(2026-11-20, O18–O23, 구현하며 생긴 질문은 O24–O31). 옮기는 순서는 설계대로 먼저 옮기고 비트를 확인한 뒤 공개 함수를 만들었다.
 - **O2**: 정했다(2026-11-20, O32–O38). 구현하며 생긴 질문도 정했다(O39–O49).
 - **O3**: 정했다(2026-11-20, O50–O57, 구현하며 생긴 질문은 O58–O62).
-- **O4**: O3의 결정을 따른다(`callback` 없음, 경계 밖·유한하지 않은 `x0`). 남은 것은 `hess`·`hessp`의 꼴(`LinearOperator`·희소 행렬을 받을지)과 `hess='2-point'`.
+- **O4**: 정했다(2026-11-20, O63–O66, 구현하며 생긴 질문은 O67–O76).
 - **O5**: hybr의 기본 허용오차(scipy 1.49×10⁻⁸), `root`의 다른 방법(broyden 등)을 넣을지.
