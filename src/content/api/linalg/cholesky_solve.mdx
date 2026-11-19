@@ -38,7 +38,7 @@ import Op from '../../../components/fig/Op.astro';
 
 ## 한눈에 보기
 
-`cholesky_solve`는 연립일차방정식 $Ax = b$를 **두 단계로 나눠 풀 때의 둘째 단계**예요.
+`cholesky_solve`는 연립일차방정식 $Ax = b$를 두 단계로 나눠 풀 때의 둘째 단계예요.
 
 1. [cholesky](/api/linalg/cholesky/)로 행렬 `a`를 삼각 행렬 `l`로 분해해요. 시간이 드는 일은 여기서 다 해요.
 2. `cholesky_solve`에 그 `l`과 우변 `b`를 넘겨서 해를 구해요. 이 단계는 가벼워요.
@@ -55,14 +55,14 @@ array([1.0, 2.0], dtype=float64)
 array([ 8.0, 12.0], dtype=float64)
 ```
 
-첫 인자가 **원래 행렬 `a`가 아니라 분해한 결과 `l`** 이라는 점이 [solve](/api/linalg/solve/)와 달라요. 답은 `solve(a, b)`와 같아요.
+[solve](/api/linalg/solve/)와 달리 첫 인자는 원래 행렬 `a`가 아니라 분해한 결과 `l`이에요. 답은 `solve(a, b)`와 같아요.
 
 ```python
 >>> sd.linalg.solve(a, b)
 array([1.0, 2.0], dtype=float64)
 ```
 
-이 방법은 `a`가 **대칭이고 양정치**일 때만 쓸 수 있어요. 무슨 뜻인지는 바로 아래에서 설명해요.
+이 방법은 `a`가 대칭이고 양정치일 때만 쓸 수 있어요. 무슨 뜻인지는 바로 아래에서 설명해요.
 
 <Reference />
 
@@ -76,13 +76,13 @@ array([1.0, 2.0], dtype=float64)
 
 정의는 낯설어도 이런 행렬은 아주 흔해요.
 
-- **공분산 행렬.** 변수들 사이의 분산과 공분산을 모은 행렬([cov](/api/array/cov/))은 대칭이고, 변수들이 서로 겹치지 않으면 양정치예요.
-- **$X^{\mathsf T}X$ 꼴의 행렬.** 데이터 행렬 `X`의 열들이 서로 독립이면 `X.T @ X`는 대칭 양정치예요. 회귀 분석에서 계수를 구하는 식에 나와요.
-- **거리나 유사도로 만든 행렬**, 스프링·전기 회로처럼 에너지가 언제나 양수인 물리 문제의 행렬.
+- 변수 사이의 분산과 공분산을 모은 공분산 행렬([cov](/api/array/cov/))은 대칭이고, 변수끼리 겹치지 않으면 양정치예요.
+- 데이터 행렬 `X`의 열이 서로 독립이면 $X^{\mathsf T}X$ 꼴의 행렬 `X.T @ X`는 대칭 양정치예요. 회귀 분석에서 계수를 구하는 식에 나와요.
+- 거리나 유사도로 만든 행렬, 스프링·전기 회로처럼 에너지가 언제나 양수인 물리 문제의 행렬도 그래요.
 
 ### Cholesky 분해
 
-대칭 양정치 행렬은 **아래 삼각 행렬 $L$과 그 전치의 곱**으로 나눌 수 있어요. 이것이 Cholesky 분해예요. 양수 $a$를 $\sqrt{a} \times \sqrt{a}$로 쓰는 것과 비슷해서, $L$을 행렬의 "제곱근"처럼 생각해도 좋아요.
+대칭 양정치 행렬은 아래 삼각 행렬 $L$과 그 전치의 곱으로 나눌 수 있어요. 이 분해가 **Cholesky 분해**예요. 양수 $a$를 $\sqrt{a} \times \sqrt{a}$로 쓰는 것과 비슷해서, $L$을 행렬의 "제곱근"처럼 생각해도 좋아요.
 
 $$
 A = LL^{\mathsf T}
@@ -115,9 +115,9 @@ array([1.0, 2.0], dtype=float64)
 
 ### 왜 `solve` 대신 이것을 쓰나요
 
-- **더 빨라요.** 대칭이라서 행렬의 절반만 계산하면 되기 때문에, 분해에 드는 계산이 일반 행렬 풀이의 절반쯤이에요.
-- **분해를 다시 쓸 수 있어요.** 같은 `a`로 우변만 바꿔 여러 번 풀어야 하면, `cholesky`는 한 번만 부르고 `cholesky_solve`만 되풀이하면 돼요.
-- **양정치인지 확인이 돼요.** `a`가 양정치가 아니면 `cholesky`가 에러를 내요. 양정치여야 하는 행렬(공분산 행렬 등)이 잘못 만들어졌을 때 바로 알 수 있어요.
+- 더 빨라요. 대칭이라서 행렬의 절반만 계산하면 되기 때문에, 분해에 드는 계산이 일반 행렬 풀이의 절반쯤이에요.
+- 분해를 다시 쓸 수 있어요. 같은 `a`로 우변만 바꿔 여러 번 풀어야 하면, `cholesky`는 한 번만 부르고 `cholesky_solve`만 되풀이하면 돼요.
+- 양정치인지 확인이 돼요. `a`가 양정치가 아니면 `cholesky`가 에러를 내요. 양정치여야 하는 행렬(공분산 행렬 등)이 잘못 만들어졌을 때 바로 알 수 있어요.
 
 `a`가 대칭 양정치가 아니거나, 그런지 확신이 없으면 [solve](/api/linalg/solve/)를 쓰세요.
 
@@ -132,7 +132,7 @@ array([1.0, 1.0], dtype=float64)
 array([-1.0,  2.0], dtype=float64)
 ```
 
-우변이 **처음부터 다 있으면** 열로 묶어서 한 번에 넘기는 쪽이 더 간단해요. `b`를 읽는 방법은 `solve`와 똑같아요. 1차원이면 벡터 하나, 2차원 이상이면 **열마다 우변 하나**예요.
+우변이 처음부터 다 있으면 열로 묶어서 한 번에 넘기는 쪽이 더 간단해요. `b`를 읽는 방법은 `solve`와 똑같아요. 1차원이면 벡터 하나, 2차원 이상이면 열마다 우변 하나예요.
 
 ```python
 >>> bs = sd.asarray([[8.0, 6.0],
@@ -146,7 +146,7 @@ array([[1.0, 1.0],
 
 ## `upper`: `cholesky`를 부를 때와 같은 값으로
 
-Cholesky 분해는 위 삼각 행렬로도 받을 수 있어요. `cholesky(a, upper=True)`는 $A = U^{\mathsf T}U$가 되는 **위 삼각** 행렬 $U$를 돌려줘요. $U$는 $L$의 전치와 같아요.
+Cholesky 분해는 위 삼각 행렬로도 받을 수 있어요. `cholesky(a, upper=True)`는 $A = U^{\mathsf T}U$가 되는 위 삼각 행렬 $U$를 돌려줘요. $U$는 $L$의 전치와 같아요.
 
 ```python
 >>> u = sd.linalg.cholesky(a, upper=True)
@@ -171,7 +171,7 @@ array([1.0, 2.0], dtype=float64)
 
 <Callout type="warn" title="두 곳의 upper가 다르면 에러 없이 틀린 답이 나와요">
 
-`cholesky_solve`는 `upper`가 고른 쪽 삼각만 읽어요. 반대쪽은 들여다보지 않아요. 위 삼각으로 분해한 `u`를 `upper=True` 없이 넘기면 `u`의 **아래쪽 삼각(대각선만 남아요)** 을 읽어서 엉뚱한 문제를 풀어요.
+`cholesky_solve`는 `upper`가 고른 쪽 삼각만 읽어요. 반대쪽은 들여다보지 않아요. 위 삼각으로 분해한 `u`를 `upper=True` 없이 넘기면 `u`의 아래쪽 삼각(대각선만 남아요)을 읽어서 엉뚱한 문제를 풀어요.
 
 </Callout>
 
@@ -186,7 +186,7 @@ array([2.0, 3.0], dtype=float64)
 
 ## 배치: 여러 시스템을 한꺼번에
 
-`cholesky`와 `cholesky_solve`는 모두 3차원 이상의 배열을 **행렬 여러 장**으로 봐요. 마지막 두 축이 행렬 한 장이고, 앞쪽 축은 배치예요.
+`cholesky`와 `cholesky_solve`는 모두 3차원 이상의 배열을 행렬 여러 장으로 봐요. 마지막 두 축이 행렬 한 장이고, 앞쪽 축은 배치예요.
 
 ```python
 >>> stack = sd.asarray([[[4.0, 2.0], [2.0, 5.0]],
@@ -223,7 +223,7 @@ array([(1+0j), (1+0j)], dtype=complex128)
 
 <Callout type="warn" title="첫 인자는 a가 아니라 cholesky(a)예요">
 
-`solve(a, b)`에 익숙하면 `cholesky_solve(a, b)`라고 쓰기 쉬워요. 그러면 `a`의 아래 삼각을 분해 결과인 것처럼 읽어서 **에러 없이 틀린 답**이 나와요. `cholesky_solve`는 받은 삼각 행렬이 정말 `cholesky`에서 나온 것인지 알 수 없어요.
+`solve(a, b)`에 익숙하면 `cholesky_solve(a, b)`라고 쓰기 쉬워요. 그러면 `a`의 아래 삼각을 분해 결과인 것처럼 읽어서 에러 없이 틀린 답이 나와요. `cholesky_solve`는 받은 삼각 행렬이 정말 `cholesky`에서 나온 것인지 알 수 없어요.
 
 </Callout>
 
@@ -241,7 +241,7 @@ array([1.0, 2.0], dtype=float64)
 
 ### 양정치가 아니면 `cholesky`에서 에러가 나요
 
-`a`가 양정치가 아닐 때의 에러는 `cholesky_solve`가 아니라 **그 앞의 `cholesky`** 에서 나요.
+`a`가 양정치가 아닐 때의 에러는 `cholesky_solve`가 아니라 그 앞의 `cholesky`에서 나요.
 
 ```python
 >>> sd.linalg.cholesky(sd.asarray([[1.0, 2.0], [2.0, 1.0]]))
@@ -250,7 +250,7 @@ Traceback (most recent call last):
 stardust.linalg.LinAlgError: cholesky(): matrix is not positive definite
 ```
 
-대칭이지만 양정치는 아닌 행렬은 [solve](/api/linalg/solve/)로 풀어요. 양정치일 수도 아닐 수도 있는 행렬이라면 먼저 Cholesky를 해 보고, 실패하면 `solve`로 넘어가게 쓸 수 있어요.
+대칭이지만 양정치는 아닌 행렬은 [solve](/api/linalg/solve/)로 풀어요. 양정치일 수도 아닐 수도 있는 행렬이라면 먼저 Cholesky 분해를 해 보고, 실패하면 `solve`로 넘어가게 쓸 수 있어요.
 
 ```python
 >>> def solve_spd(a, b):
@@ -264,7 +264,7 @@ array([1.0, 2.0], dtype=float64)
 
 ### `cholesky`는 대칭인지 확인하지 않아요
 
-`cholesky`는 `a`의 **아래 삼각만** 읽어요. 위쪽 삼각에 무엇이 들어 있든 보지 않고, 대칭인지도 검사하지 않아요. 그래서 대칭이 아닌 행렬을 넣으면 "아래 삼각을 위로 접어 올린 대칭 행렬"의 문제를 풀게 돼요.
+`cholesky`는 `a`의 아래 삼각만 읽어요. 위쪽 삼각에 무엇이 들어 있든 보지 않고, 대칭인지도 검사하지 않아요. 그래서 대칭이 아닌 행렬을 넣으면 "아래 삼각을 위로 접어 올린 대칭 행렬"의 문제를 풀게 돼요.
 
 ```python
 >>> sd.linalg.cholesky(sd.asarray([[4.0, 99.0], [2.0, 5.0]]))
@@ -289,7 +289,7 @@ stardust.linalg.LinAlgError: cholesky_solve(): singular matrix
 
 ### NaN·inf는 읽는 쪽에 있을 때만 에러
 
-읽는 쪽 삼각이나 `b`에 NaN이나 무한대가 있으면 `ValueError`예요. 읽지 않는 쪽 삼각에 있는 것은 상관없어요.
+읽는 쪽 삼각이나 `b`에 NaN이나 inf가 있으면 `ValueError`예요. 읽지 않는 쪽 삼각에 있는 것은 상관없어요.
 
 ```python
 >>> sd.linalg.cholesky_solve(sd.asarray([[2.0, 0.0], [sd.nan, 2.0]]), b)
@@ -346,7 +346,7 @@ array([], dtype=float64)
 | [`solve_triangular(l, b, upper=False)`](/api/linalg/solve_triangular/) | 삼각 행렬 | 삼각 행렬 | `l` 자체가 계수인 문제 $Lx = b$를 풀어요. `cholesky_solve`는 $LL^{\mathsf H}x = b$를 풀어요. |
 | [`lstsq(a, b)`](/api/linalg/lstsq/) | 원래 행렬 `a` | 모양이 아무래도 되는 행렬 | 정사각이 아니거나 특이해도 돼요. |
 
-같은 삼각 행렬 `l`을 `solve_triangular`와 `cholesky_solve`에 넘기면 **서로 다른 문제**의 답이 나와요.
+같은 삼각 행렬 `l`을 `solve_triangular`와 `cholesky_solve`에 넘기면 서로 다른 문제의 답이 나와요.
 
 ```python
 >>> sd.linalg.solve_triangular(l, b, upper=False)

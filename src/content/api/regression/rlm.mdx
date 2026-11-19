@@ -14,11 +14,11 @@ params:
   - name: X
     type: ndarray, 실수의 시퀀스, 또는 frame의 Series·DataFrame
     kind: positional-only
-    desc: 설명 변수. 모양 (n, k), (n,)(설명 변수 하나), 또는 배치 (..., n, k)예요. 절편 열은 넣지 않아요(intercept=True가 붙여 줘요).
+    desc: 설명변수. 모양 (n, k), (n,)(설명변수 하나), 또는 배치 (..., n, k)예요. 절편 열은 넣지 않아요(intercept=True가 붙여 줘요).
   - name: method
     type: str
     kind: keyword-only
-    desc: "'M'(기본값)은 최소제곱에서 출발하는 M 추정, 'MM'은 S 추정에서 출발해 bisquare M 추정으로 가는 방식이에요. 'MM'은 지렛대 점(설명 변수 쪽으로 멀리 떨어진 점)까지 견뎌요."
+    desc: "'M'(기본값)은 최소제곱에서 출발하는 M 추정, 'MM'은 S 추정에서 출발해 bisquare M 추정으로 가는 방식이에요. 'MM'은 지렛대 점(설명변수 쪽으로 멀리 떨어진 점)까지 견뎌요."
   - name: norm
     type: str 또는 None
     kind: keyword-only
@@ -26,7 +26,7 @@ params:
   - name: c
     type: float, 수 세 개의 시퀀스, 또는 None
     kind: keyword-only
-    desc: "조율 상수. 작을수록 더 강건하고, 클수록 최소제곱에 가까워요. None이면 표준값이에요: huber 1.345, bisquare 4.685(둘 다 정규분포에서 효율 95%), hampel (2, 4, 8)(효율 99.0%), MM의 bisquare 4.685061. huber·bisquare는 양수 하나, hampel은 0 < a <= b < c인 수 세 개예요."
+    desc: "조율 상수. 작을수록 더 강건하고, 클수록 최소제곱에 가까워요. None이면 표준값으로 huber 1.345, bisquare 4.685(둘 다 정규분포에서 효율 95%), hampel (2, 4, 8)(효율 99.0%), MM의 bisquare 4.685061을 써요. huber·bisquare는 양수 하나, hampel은 0 < a <= b < c인 수 세 개예요."
   - name: scale_est
     type: str 또는 None
     kind: keyword-only
@@ -57,7 +57,7 @@ params:
     desc: "'propagate'(기본값, 모든 값이 NaN), 'omit'(NaN이 든 행을 빼고 맞춤), 'raise'(ValueError) 중 하나예요."
 returns:
   type: RLMResult
-  desc: "계수와 추론(params, bse, tvalues, pvalues, conf_int, cov_params), 적합값과 잔차, 척도 scale(잔차의 퍼짐 σ), 점마다의 가중치 weights, 반복 정보(converged, n_iter), predict·predict_interval과 summary를 담은 결과 객체예요. 이름은 statsmodels RLM의 것을 따라요."
+  desc: "계수와 추론(params, bse, tvalues, pvalues, conf_int, cov_params), 적합값과 잔차, 척도 scale(잔차의 퍼짐 σ), 점마다의 가중치 weights, 반복 정보(converged, n_iter), predict·predict_interval과 summary를 담은 결과 객체예요."
 raises:
   - type: TypeError
     desc: "method='MM'인데 rng가 sd.random.Generator가 아닐 때, c의 형이 틀렸을 때(hampel에 수 하나 등), intercept가 bool이 아닐 때, X나 y가 복소수일 때, 없는 인자(weights, cov_type 등)를 줬을 때."
@@ -78,11 +78,11 @@ export const wHampel = (z) => (z >= 8 ? 0 : z >= 4 ? (2 * (8 - z)) / (z * 4) : z
 
 ## 한눈에 보기
 
-보통의 최소제곱 회귀([`ols`](/api/regression/ols/))는 잔차(실제 값과 직선의 차이)의 **제곱**을 모두 더한 값을 가장 작게 만드는 직선을 골라요. 제곱을 하기 때문에 잔차가 10인 점 하나가 잔차 1인 점 백 개만큼 목소리를 내요. 입력 실수, 측정 장비의 오류, 드문 사건 같은 **이상값** 하나가 직선 전체를 끌고 갈 수 있어요.
+보통의 최소제곱 회귀([`ols`](/api/regression/ols/))는 잔차(실제 값과 직선의 차이)의 제곱을 모두 더한 값을 가장 작게 만드는 직선을 골라요. 제곱을 하기 때문에 잔차가 10인 점 하나가 잔차 1인 점 백 개만큼 목소리를 내요. 입력 실수, 측정 장비의 오류, 드문 사건 같은 **이상값** 하나가 직선 전체를 끌고 갈 수 있어요.
 
-`rlm`(robust linear model)은 잔차가 큰 점의 목소리를 줄여서 이 문제를 피해요. 나머지 점들과 어울리지 않는 점은 가중치를 낮추고, 다른 점들만으로 직선을 정해요.
+`rlm`(robust linear model)은 잔차가 큰 점의 목소리를 줄여서 이 문제를 피해요. 나머지 점과 어울리지 않는 점은 가중치를 낮추고, 주로 다른 점으로 직선을 정해요.
 
-열두 달의 매출을 예로 볼게요. 10월에 입력 실수로 6.3 대신 14.3이 들어갔어요.
+열두 달의 매출이 있어요. 10월에 입력 실수로 6.3 대신 14.3이 들어갔어요.
 
 ```python
 >>> import stardust as sd
@@ -95,7 +95,7 @@ array([ 0.396969696969697, 0.6979020979020979], dtype=float64)
 array([0.9657894736842105, 0.5118421052631579], dtype=float64)
 ```
 
-`params`의 첫 값은 절편(x = 0일 때의 높이), 둘째 값은 기울기예요. 이상값을 고치기 전의 진짜 추세는 기울기 0.5 정도인데, 최소제곱은 0.70으로 끌려갔고 `rlm`은 0.51로 거의 그대로예요.
+`params`의 첫 값은 절편(x = 0일 때의 높이), 둘째 값은 기울기예요. 입력 실수가 없었다면 추세는 기울기 0.5 정도인데, 최소제곱은 0.70으로 끌려갔고 `rlm`은 0.51로 거의 그대로예요.
 
 <Fig caption="이상값 하나(x = 10)가 최소제곱 직선을 위로 끌어올려요. rlm은 그 점의 가중치를 0.03으로 낮춰서 나머지 열한 점의 추세를 따라가요.">
   <Plot
@@ -176,7 +176,7 @@ Notes:
 - `P>|t|`: p값(`pvalues`). 진짜 계수가 0이라면 이만큼 큰 t가 나올 확률이에요. 작을수록 0이 아니라는 증거가 강해요.
 - `[0.025  0.975]`: 95% 신뢰구간(`conf_int()`).
 
-이 말들의 자세한 풀이는 [결과 읽기](/api/regression/results/)에 있어요. 하나씩 꺼낼 수도 있어요.
+이 말의 자세한 풀이는 [결과 객체 읽기](/api/regression/results/)에 있어요. 하나씩 꺼낼 수도 있어요.
 
 ```python
 >>> r.bse
@@ -253,11 +253,11 @@ $s$는 잔차의 **척도**(퍼진 정도)예요. 잔차를 $s$로 나눠서 "�
   />
 </Fig>
 
-- **huber**: 가운데는 최소제곱, 바깥은 절댓값처럼 자라요. 척도를 정하면 목적함수가 볼록해서 해가 하나뿐이고 안정적으로 찾아져요. 대신 아무리 먼 점도 가중치가 0이 되지 않아서, 이상값이 직선을 조금은 끌어요.
-- **bisquare**(Tukey의 biweight): 먼 점의 가중치가 부드럽게 0까지 내려가요. 이상값을 완전히 무시할 수 있지만, 목적함수가 볼록하지 않아서 출발점에 따라 다른 해에 닿을 수 있어요(아래의 MM이 이 문제를 풀어요).
-- **hampel**: 1인 구간, 줄어드는 구간, 0으로 가는 구간을 직선 조각으로 이은 것이에요. bisquare와 성질이 비슷해요.
+- huber: 가운데는 최소제곱, 바깥은 절댓값처럼 자라요. 척도를 정하면 목적함수가 볼록해서 해가 하나뿐이고 안정적으로 찾아져요. 대신 아무리 먼 점도 가중치가 0이 되지 않아서, 이상값이 직선을 조금은 끌어요.
+- bisquare(Tukey의 biweight): 먼 점의 가중치가 부드럽게 0까지 내려가요. 이상값을 완전히 무시할 수 있지만, 목적함수가 볼록하지 않아서 출발점에 따라 다른 해에 닿을 수 있어요(아래의 MM이 이 문제를 풀어요).
+- hampel: 1인 구간, 줄어드는 구간, 0으로 가는 구간을 직선 조각으로 이은 것이에요. bisquare와 성질이 비슷해요.
 
-huber와 bisquare의 기본 상수는 오차가 정규분포일 때 최소제곱 대비 **효율 95%** 가 되도록 고른 표준값이에요. 이상값이 없으면 최소제곱보다 표준오차가 조금(분산으로 5% 정도) 크고, 이상값이 있으면 훨씬 나아요. hampel의 기본 (2, 4, 8)은 가중치가 1인 구간($\lvert z\rvert \le 2$)이 더 넓어서 효율이 99.0%예요.
+huber와 bisquare의 기본 상수는 오차가 정규분포일 때 최소제곱 대비 효율 95%가 되도록 고른 표준값이에요. 이상값이 없으면 최소제곱보다 표준오차가 조금(분산으로 5% 정도) 크고, 이상값이 있으면 훨씬 나아요. hampel의 기본 (2, 4, 8)은 가중치가 1인 구간($\lvert z\rvert \le 2$)이 더 넓어서 효율이 99.0%예요.
 
 ```python
 >>> sd.regression.rlm(y, x, norm='bisquare').params
@@ -288,14 +288,14 @@ hampel은 수 세 개 $(a, b, c)$를 `0 < a <= b < c`로 줘요.
 array([  1.032027809276408, 0.49205061149082835], dtype=float64)
 ```
 
-## `scale_est`: 척도를 어떻게 구할까요
+## `scale_est`: 척도 구하기
 
 가중치는 $z = r/s$로 정하니까 척도 $s$가 중요해요. 척도도 이상값에 끌리면 안 되므로 보통의 표준편차 대신 강건한 척도를 써요. M에서는 반복할 때마다 새 잔차로 척도를 다시 구해요.
 
-- **`'mad'`**(기본값): 잔차의 절댓값의 중앙값을 0.6744897501960817($\Phi^{-1}(3/4)$, 표준정규분포의 3/4 분위수)로 나눈 값이에요.
+- `'mad'`(기본값): 잔차의 절댓값의 중앙값을 0.6744897501960817($\Phi^{-1}(3/4)$, 표준정규분포의 3/4 분위수)로 나눈 값이에요.
   $$s = \operatorname{median}_i \lvert r_i\rvert \,/\, 0.6744897501960817$$
   오차가 정규분포면 표준편차와 같은 크기가 되도록 맞춘 값이에요. 점의 절반 가까이가 이상값이어도 크게 흔들리지 않아요.
-- **`'huber'`**: Huber의 제안 2예요. 다음 방정식을 푸는 $s$예요.
+- `'huber'`: Huber의 제안 2예요. 다음 방정식을 푸는 $s$예요.
   $$\sum_i \chi\!\left(\frac{r_i}{s}\right) = (n - p)\, \mathrm{E}\,\chi(Z), \qquad \chi(z) = \tfrac12\min(z^2, d^2),\ d = 2.5$$
   $Z$는 표준정규분포, $p$는 계수의 수예요. 잔차가 $d$배 안쪽인 점은 제곱으로, 바깥 점은 $d^2$로 잘라서 세는 표준편차라고 보면 돼요. 이상값이 적을 때 MAD보다 효율이 좋지만, 이상값이 많으면 MAD보다 쉽게 부풀어요. $d$는 옵션이 아니에요.
 
@@ -310,7 +310,7 @@ array([  1.032027809276408, 0.49205061149082835], dtype=float64)
 `scale` 필드는 M에서는 마지막 잔차로 구한 척도, MM에서는 S 추정의 척도예요.
 
 <Callout type="note" title="rlm의 scale은 분산이 아니라 퍼짐이에요">
-`rlm`의 `scale`은 잔차의 퍼짐 $s$ 자체(표준편차와 같은 단위, σ)예요. [`ols`](/api/regression/ols/), [`glm`](/api/regression/glm/), [`nls`](/api/regression/nls/)의 `scale`은 분산 $\hat\sigma^2$이라 단위가 달라요. 두 이름은 각각 statsmodels의 RLM과 OLS·GLM을 따른 것이에요. 이상값이 없는 데이터에서 견주려면 `ols`의 `scale`에 제곱근을 씌워요.
+`rlm`의 `scale`은 잔차의 퍼짐 $s$ 자체(표준편차와 같은 단위, σ)예요. [`ols`](/api/regression/ols/), [`glm`](/api/regression/glm/), [`nls`](/api/regression/nls/)의 `scale`은 분산 $\hat\sigma^2$이라 단위가 달라요. 이상값이 없는 데이터에서 견주려면 `ols`의 `scale`에 제곱근을 씌워요.
 
 ```python
 >>> import math
@@ -326,7 +326,7 @@ array([  1.032027809276408, 0.49205061149082835], dtype=float64)
 
 ## `method='MM'`: 지렛대 점까지 견디기
 
-M 추정은 **y 방향의 이상값**에는 강하지만, **x 방향으로 멀리 떨어진 점**(지렛대 점)에는 약해요. 멀리 떨어진 점은 최소제곱 직선을 자기 쪽으로 끌어당겨서 자기 잔차를 작게 만들어 버려요. 그러면 잔차만 보는 M 추정은 그 점을 이상값으로 알아보지 못해요.
+M 추정은 y 방향의 이상값에는 강하지만, x 방향으로 멀리 떨어진 점(지렛대 점)에는 약해요. 멀리 떨어진 점은 최소제곱 직선을 자기 쪽으로 끌어당겨서 자기 잔차를 작게 만들어 버려요. 그러면 잔차만 보는 M 추정은 그 점을 이상값으로 알아보지 못해요.
 
 앞의 데이터에서 이상값을 고치고, 대신 x = 30 근처에 측정 오류인 점 셋을 넣어 볼게요.
 
@@ -378,7 +378,7 @@ M 추정은 huber든 bisquare든 최소제곱과 함께 무너졌어요. MM은 �
   />
 </Fig>
 
-### MM은 어떻게 다른가요
+### MM의 두 단계
 
 **붕괴점**은 데이터의 몇 %를 마음대로 바꿔야 추정값을 얼마든지 멀리 보낼 수 있는지예요. 최소제곱은 점 하나로 충분해서 붕괴점이 사실상 0%예요. M 추정도 지렛대 점 하나에 무너질 수 있어요.
 
@@ -387,7 +387,7 @@ MM은 두 단계예요.
 1. **S 추정**: 무작위로 뽑은 작은 부분집합(계수 수만큼의 점) 500개에서 후보 직선을 만들고, 잔차의 강건한 척도가 가장 작은 직선을 골라 다듬어요. 붕괴점이 50%라서 점의 절반 가까이가 엉망이어도 무너지지 않아요. 이 단계의 척도를 MM의 `scale`로 써요.
 2. **M 단계**: S 추정의 직선에서 출발하고 S의 척도를 고정한 채, bisquare(`c` = 4.685061) M 추정을 해요. 정규분포에서 효율 95%를 되찾아요.
 
-좋은 출발점이 있으니 bisquare가 엉뚱한 해에 빠지지 않아요. 그래서 MM은 붕괴점 50%와 효율 95%를 함께 가져요. 이 방식은 R robustbase 패키지의 `lmrob`과 같아요.
+좋은 출발점이 있으니 bisquare가 엉뚱한 해에 빠지지 않아요. 그래서 MM은 붕괴점 50%와 효율 95%를 함께 얻어요.
 
 MM의 제약이에요.
 
@@ -428,8 +428,8 @@ True
 
 한 회귀는 생성기에서 64비트 수 두 개를 꺼내 써요. 그래서 같은 생성기로 두 번 부르면 두 번째는 다른 부분집합을 봐요. 생성기의 규칙은 [`default_rng`](/api/random/default_rng/)에 있어요.
 
-<Callout type="note" title="언제 MM을 쓰나요">
-설명 변수 쪽에도 이상한 점이 있을 수 있으면(측정 오류, 단위 실수, 다른 집단의 자료가 섞임) MM을 쓰세요. 설명 변수는 믿을 수 있고 반응에만 튀는 값이 있으면 M(huber)이 빠르고, 해가 언제나 하나라 다루기 쉬워요. 설명 변수가 실험에서 정한 값(설계된 x)이면 지렛대 점이 생기지 않으니 M으로 충분해요.
+<Callout type="note" title="MM을 쓸 때">
+설명변수 쪽에도 이상한 점이 있을 수 있으면(측정 오류, 단위 실수, 다른 집단의 자료가 섞임) MM을 쓰세요. 설명변수는 믿을 수 있고 반응에만 튀는 값이 있으면 M(huber)이 빠르고, 해가 언제나 하나라 다루기 쉬워요. 설명변수가 실험에서 정한 값(설계된 x)이면 지렛대 점이 생기지 않으니 M으로 충분해요.
 </Callout>
 
 ## 결과 필드
@@ -486,10 +486,10 @@ AttributeError: property 'norm' of 'RLMResult' object has no setter
 
 `rlm`의 표준오차는 `cov_type` 인자로 고르지 않아요. 방식에 따라 하나로 정해지고, 결과의 `cov_type`이 그 이름을 알려 줘요.
 
-- **`'H1'`**(M): Huber의 H1 공분산이에요. $z_i = r_i/s$, $m = \frac1n\sum_i\psi'(z_i)$라 할 때
+- `'H1'`(M): Huber의 H1 공분산이에요. $z_i = r_i/s$, $m = \frac1n\sum_i\psi'(z_i)$라 할 때
   $$\widehat{\mathrm{Cov}}(\hat\beta) = K^2\,\frac{\sum_i \psi(z_i)^2/(n - p)}{m^2}\, s^2\,(X^\top X)^{-1}, \qquad K = 1 + \frac{p}{n}\,\frac{\operatorname{var}\psi'(z)}{m^2}$$
-  이에요($\operatorname{var}$는 $n$으로 나눠요). 최소제곱의 $s^2 (X^\top X)^{-1}$에, 가중치를 낮춘 만큼 정보가 줄어든 것을 반영하는 보정을 곱한 꼴이에요. statsmodels RLM의 기본값과 같아요.
-- **`'avar1'`**(MM): Croux, Dhaene, Hoorelbeke(2003)의 점근 공분산이에요. M 단계의 불확실성에 S 추정의 척도가 흔들리는 영향까지 넣어요. R robustbase `lmrob`의 기본값과 같아요.
+  이에요($\operatorname{var}$는 $n$으로 나눠요). 최소제곱의 $s^2 (X^\top X)^{-1}$에, 가중치를 낮춘 만큼 정보가 줄어든 것을 반영하는 보정을 곱한 꼴이에요.
+- `'avar1'`(MM): Croux, Dhaene, Hoorelbeke(2003)의 점근 공분산이에요. M 단계의 불확실성에 S 추정의 척도가 흔들리는 영향까지 넣어요.
 
 두 방식 모두 t값의 기준 분포는 자유도 `df_resid`인 [t 분포](/api/stats/student-t/)예요. HC0–HC3, HAC, 군집 같은 다른 표준오차는 `rlm`에 없어요. 그 이야기는 [표준오차의 종류](/api/regression/covariance/)에 있어요.
 
@@ -503,14 +503,14 @@ array([[   0.03382090149615393, -0.0040585081795384715],
 
 ## 예측: `predict`, `predict_interval`
 
-새 설명 변수에서 직선의 값을 구해요. 절편은 알아서 더해요.
+새 설명변수에서 직선의 값을 구해요. 절편은 알아서 더해요.
 
 ```python
 >>> r.predict([13.0, 14.0])
 array([7.619736842105263, 8.131578947368421], dtype=float64)
 ```
 
-`predict_interval`은 그 값의 **신뢰구간**을 줘요. 줄마다 [아래 끝, 위 끝]이고, 기본은 95%(`alpha=0.05`)예요.
+`predict_interval`은 그 값의 신뢰구간을 줘요. 줄마다 [아래 끝, 위 끝]이고, 기본은 95%(`alpha=0.05`)예요.
 
 ```python
 >>> r.predict_interval([13.0, 14.0])
@@ -520,7 +520,7 @@ array([[7.209971860239741, 8.029501823970785],
 array([[7.2864169062947886,  7.953056777915738]], dtype=float64)
 ```
 
-구간은 $x^\top\hat\beta \pm t\cdot\text{se}$, $\text{se}^2 = x^\top C\, x$이에요. $C$는 `cov_params()`, $t$는 자유도 `df_resid`인 t 분포의 분위수예요. 데이터를 다시 모으면 **직선이 그 x에서 지날 높이**가 이 안에 들 것이라는 범위예요.
+구간은 $x^\top\hat\beta \pm t\cdot\text{se}$, $\text{se}^2 = x^\top C\, x$이에요. $C$는 `cov_params()`, $t$는 자유도 `df_resid`인 t 분포의 분위수예요. 데이터를 다시 모으면 직선이 그 x에서 지날 높이가 이 안에 들 것이라는 범위예요.
 
 새 관측 하나가 떨어질 범위(예측 구간)는 주지 않아요. 그 범위에는 오차의 분포가 필요한데, 강건 척도 `scale`은 이상값을 덜 센 퍼짐이라 오차분포의 표준편차가 아니기 때문이에요. 그래서 [`ols`](/api/regression/ols/)의 `predict_interval`과 달리 `kind` 인자가 없어요.
 
@@ -547,7 +547,7 @@ array([7.637499999999999], dtype=float64)
 
 ## 반복과 수렴: `max_iter`, `tol`
 
-M은 최소제곱에서 출발해 가중치와 척도를 고치며 반복해요. 목적함수 $D = \sum_i\rho(r_i/s)$의 상대 변화 $\lvert D - D_\text{old}\rvert / (\lvert D\rvert + 0.1)$가 `tol`보다 작아지면 `converged=True`예요. 판정 뒤에도 계수가 반올림보다 크게 움직이는 동안은 계속 다듬어서, 결과는 `tol`의 정밀도가 아니라 **해에 반올림 수준으로 가까워요**. `tol`을 크게 줘도 계수가 거의 같아요.
+M은 최소제곱에서 출발해 가중치와 척도를 고치며 반복해요. 목적함수 $D = \sum_i\rho(r_i/s)$의 상대 변화 $\lvert D - D_\text{old}\rvert / (\lvert D\rvert + 0.1)$가 `tol`보다 작아지면 `converged=True`예요. 판정 뒤에도 계수가 반올림보다 크게 움직이는 동안은 계속 다듬어서, 결과는 `tol`의 정밀도가 아니라 해에 반올림 수준으로 가까워요. `tol`을 크게 줘도 계수가 거의 같아요.
 
 ```python
 >>> sd.regression.rlm(y, x, norm='bisquare', tol=1e-2).params
@@ -564,7 +564,7 @@ array([ 1.0204972712629068, 0.49456337739014716], dtype=float64)
 array([0.9188298666692064, 0.5262658680938224], dtype=float64)
 ```
 
-`converged=True`는 판정을 통과하고 **그 뒤의 다듬기까지** 끝났다는 뜻이에요. 판정은 통과했어도 다듬는 중에 `max_iter`에 닿으면 `converged=False`예요. 이 예는 25번에 끝나므로 상한이 24 이하면 False이고, 마침 25면 끝까지 돈 적합과 같아서 True예요.
+`converged=True`는 판정을 통과하고 그 뒤의 다듬기까지 끝났다는 뜻이에요. 판정은 통과했어도 다듬는 중에 `max_iter`에 닿으면 `converged=False`예요. 이 예는 25번에 끝나므로 상한이 24 이하면 False이고, 마침 25면 끝까지 돈 적합과 같아서 True예요.
 
 ```python
 >>> [sd.regression.rlm(y, x, max_iter=m).converged for m in (24, 25)]
@@ -602,7 +602,7 @@ ValueError: rlm(): 'y' contains infinity
 
 ### 겹친 열
 
-다른 열의 배수이거나 다른 열들로 만들 수 있는 열은 빼고 맞춰요. 그 계수와 추론은 NaN이고, 나머지는 그 열이 없을 때와 비트까지 같아요.
+다른 열의 배수이거나 다른 열로 만들 수 있는 열은 빼고 맞춰요. 그 계수와 추론은 NaN이고, 나머지는 그 열이 없을 때와 비트까지 같아요.
 
 ```python
 >>> X2 = sd.stack([sd.asarray(x), 2 * sd.asarray(x)], axis=1)
@@ -746,7 +746,7 @@ ValueError: rlm(): 'X' must have 1 row like 'y', not 12 ('y' of shape (12, 1) is
 
 ## 배치
 
-`y`가 (..., n), `X`가 (..., n, k)이면 앞 축마다 따로 회귀를 해요. 결과 필드의 앞에 배치 모양이 붙고, 하나씩 부른 것과 비트까지 같아요. MM은 같은 생성기로 하나씩 차례로 부른 것과 같아요. 공통 규칙은 [기본 개념](/api/regression/basics/)에 있어요.
+`y`가 (..., n), `X`가 (..., n, k)이면 앞 축마다 따로 회귀를 해요. 결과 필드의 앞에 배치 모양이 붙고, 하나씩 부른 것과 비트까지 같아요. MM은 같은 생성기로 하나씩 차례로 부른 것과 같아요. 공통 규칙은 [회귀분석 기본](/api/regression/basics/)에 있어요.
 
 ```python
 >>> Y = sd.asarray([y, y0])
@@ -803,7 +803,7 @@ Traceback (most recent call last):
 ValueError: rlm(): 'X' must have 12 rows like 'y', not 11
 ```
 
-## rlm과 quantreg는 어떻게 다른가요
+## rlm과 quantreg의 차이
 
 [`quantreg`](/api/regression/quantreg/)의 중앙값 회귀(`q=0.5`)도 이상값에 강해요. 잔차의 제곱 대신 절댓값의 합을 가장 작게 하니까 큰 잔차가 제곱만큼 커지지 않아요.
 
@@ -829,7 +829,7 @@ array([1.0, 0.5], dtype=float64)
 array([ 4.72, -0.12], dtype=float64)
 ```
 
-평균 같은 "보통의 값"을 이상값에 흔들리지 않게 구하고 싶으면 `rlm`, 분포의 특정 분위수(가운데, 위쪽, 아래쪽)가 궁금하면 `quantreg`를 쓰세요. 설명 변수가 하나뿐이면 [`theilslopes`](/api/regression/theilslopes/)와 [`siegelslopes`](/api/regression/siegelslopes/)도 있어요.
+평균 같은 "보통의 값"을 이상값에 흔들리지 않게 구하고 싶으면 `rlm`, 분포의 특정 분위수(가운데, 위쪽, 아래쪽)가 궁금하면 `quantreg`를 쓰세요. 설명변수가 하나뿐이면 [`theilslopes`](/api/regression/theilslopes/)와 [`siegelslopes`](/api/regression/siegelslopes/)도 있어요.
 
 ## 정확도
 
@@ -853,16 +853,17 @@ statsmodels의 `RLM`과 대응은 이래요.
 | `fit(cov='H1')` (H2, H3도 있음) | `'H1'`만 (MM은 `'avar1'`) |
 | `res.weights`, `res.scale`, `res.bse` | 같은 이름 |
 
-- **값**: 같은 추정이에요. statsmodels를 `tol=1e-15`로 돌리면 이 페이지의 예에서 계수·척도·표준오차·가중치가 $1.5\times10^{-14}$ 안에서 같아요. statsmodels의 기본 판정(목적함수의 절대 변화 1e-8)에서는 계수가 $10^{-11}$ 정도까지만 맞아요. sd는 판정 뒤에도 해까지 다듬어요.
-- **`scale_est='huber'`**: statsmodels의 `HuberScale()`은 기본으로 고정점 반복을 30번(허용오차 1e-8)까지만 해서 척도가 정확한 해와 조금 달라요. 이 페이지의 예에서 statsmodels 0.3996602, sd 0.3996606이에요. `HuberScale(tol=1e-15, maxiter=10000)`으로 주면 같아져요.
-- **p값과 신뢰구간**: statsmodels는 정규분포(`z`, `P>|z|`)를 쓰고 sd는 t(`df_resid`)를 써요(R의 요약과 같아요). 표준오차는 같지만 p값과 구간은 달라요. 위 예에서 절편의 p값이 statsmodels 1.5e-07, sd 3.7e-04예요.
-- **완전 적합**: 위의 완전 적합 예에서 statsmodels도 직선 [1, 2]에 닿지만, 척도와 표준오차는 0이 아니라 반올림 수준의 값이에요(huber에서 척도 2.6e-15, 절편의 표준오차 2.0e-15). sd는 직선 위의 점이 반올림 수준 안에서 맞으면 척도·표준오차를 0으로 내요. `scale_est='huber'`의 예(척도 18.87)는 `HuberScale(tol=1e-15, maxiter=10000)`로 준 statsmodels와 같아요.
-- **y가 모두 같을 때**: statsmodels는 반복으로 풀어 기울기에 반올림 크기의 값(y = 3이 12개면 −1.2e-16)과 척도 2.6e-15를 남기고, 기울기의 t를 −0.72로 내요. sd는 정확한 답 (3, 0)과 척도 0을 내고 기울기의 t·p는 NaN이에요.
-- **`conf_int`의 `alpha`**: statsmodels는 `conf_int(0.1)`처럼 위치로도 받지만, sd는 `conf_int(alpha=0.1)`처럼 키워드로만 받아요.
-- **`scale`**: statsmodels RLM의 `scale`과 같은 퍼짐 σ예요. statsmodels OLS의 `scale`(σ²)과 단위가 다른 것도 같아요.
-- **예측 구간**: statsmodels의 `RLMResults`에는 `get_prediction`이 없어요. sd의 `predict_interval`은 적합값의 신뢰구간만 줘요.
-- **절편**: statsmodels처럼 `X`의 상수 열을 찾아 절편으로 보지 않아요. `intercept`만 봐요.
-- **MM**: statsmodels의 `RLM`에는 MM이 없어요. statsmodels의 `RLMDetSMM`은 결정적인 출발점을 쓰는 다른 MM 추정이라 sd의 MM과 값이 달라요. sd의 MM은 R robustbase의 `lmrob`을 따라요.
+- 표준오차: M의 `'H1'`은 statsmodels RLM의 기본값이고, MM의 `'avar1'`은 R robustbase `lmrob`의 기본값이에요.
+- 값: 같은 추정이에요. statsmodels를 `tol=1e-15`로 돌리면 이 페이지의 예에서 계수·척도·표준오차·가중치가 $1.5\times10^{-14}$ 안에서 같아요. statsmodels의 기본 판정(목적함수의 절대 변화 1e-8)에서는 계수가 $10^{-11}$ 정도까지만 맞아요. sd는 판정 뒤에도 해까지 다듬어요.
+- `scale_est='huber'`: statsmodels의 `HuberScale()`은 기본으로 고정점 반복을 30번(허용오차 1e-8)까지만 해서 척도가 정확한 해와 조금 달라요. 이 페이지의 예에서 statsmodels 0.3996602, sd 0.3996606이에요. `HuberScale(tol=1e-15, maxiter=10000)`으로 주면 같아져요.
+- p값과 신뢰구간: statsmodels는 정규분포(`z`, `P>|z|`)를 쓰고 sd는 t(`df_resid`)를 써요(R의 요약과 같아요). 표준오차는 같지만 p값과 구간은 달라요. 위 예에서 절편의 p값이 statsmodels 1.5e-07, sd 3.7e-04예요.
+- 완전 적합: 위의 완전 적합 예에서 statsmodels도 직선 [1, 2]에 닿지만, 척도와 표준오차는 0이 아니라 반올림 수준의 값이에요(huber에서 척도 2.6e-15, 절편의 표준오차 2.0e-15). sd는 직선 위의 점이 반올림 수준 안에서 맞으면 척도·표준오차를 0으로 내요. `scale_est='huber'`의 예(척도 18.87)는 `HuberScale(tol=1e-15, maxiter=10000)`로 준 statsmodels와 같아요.
+- y가 모두 같을 때: statsmodels는 반복으로 풀어 기울기에 반올림 크기의 값(y = 3이 12개면 −1.2e-16)과 척도 2.6e-15를 남기고, 기울기의 t를 −0.72로 내요. sd는 정확한 답 (3, 0)과 척도 0을 내고 기울기의 t·p는 NaN이에요.
+- `conf_int`의 `alpha`: statsmodels는 `conf_int(0.1)`처럼 위치로도 받지만, sd는 `conf_int(alpha=0.1)`처럼 키워드로만 받아요.
+- `scale`: statsmodels RLM의 `scale`과 같은 퍼짐 σ예요. statsmodels OLS의 `scale`(σ²)과 단위가 다른 것도 같아요. 두 이름 모두 statsmodels를 따랐어요.
+- 예측 구간: statsmodels의 `RLMResults`에는 `get_prediction`이 없어요. sd의 `predict_interval`은 적합값의 신뢰구간만 줘요.
+- 절편: statsmodels처럼 `X`의 상수 열을 찾아 절편으로 보지 않아요. `intercept`만 봐요.
+- MM: statsmodels의 `RLM`에는 MM이 없어요. statsmodels의 `RLMDetSMM`은 결정적인 출발점을 쓰는 다른 MM 추정이라 sd의 MM과 값이 달라요. sd의 MM은 R robustbase의 `lmrob`을 따라요.
 
 R과의 차이예요.
 

@@ -45,7 +45,7 @@ import Op from '../../../components/fig/Op.astro';
 3
 ```
 
-`axis`를 주면 그 방향으로만 세요. `axis=0`은 **열마다**, `axis=1`은 **행마다**의 개수예요.
+`axis`를 주면 그 방향으로만 세요. `axis=0`이면 열마다, `axis=1`이면 행마다 센 개수가 나와요.
 
 ```python
 >>> sd.count_nonzero(x, axis=0)
@@ -74,7 +74,7 @@ array([[2],
 
 ## 조건에 맞는 원소 세기
 
-`count_nonzero`는 **조건을 만족하는 원소의 개수**를 셀 때 가장 많이 써요. 비교 연산의 결과는 bool 배열이고, bool 배열에서는 `True`가 "0이 아닌 값"이에요. 그래서 `count_nonzero(조건)`은 조건이 참인 원소의 개수예요.
+`count_nonzero`는 조건을 만족하는 원소의 개수를 셀 때 가장 많이 써요. 비교 연산의 결과는 bool 배열이고, bool 배열에서는 `True`가 "0이 아닌 값"이에요. 그래서 `count_nonzero(조건)`은 조건이 참인 원소의 개수예요.
 
 ```python
 >>> scores = sd.asarray([[72, 58, 91], [45, 66, 80]])
@@ -94,7 +94,7 @@ NaN(숫자가 아님)의 개수도 같은 방법으로 세요.
 2
 ```
 
-### `sum`으로 세는 것과 무엇이 다른가요
+### `sum`으로 세는 것과의 차이
 
 bool 배열은 [`sum`](/api/array/sum/)으로도 셀 수 있어요. `True`를 1로 보고 더하기 때문이에요. bool 배열에서는 두 방법의 결과가 같아요.
 
@@ -103,7 +103,7 @@ bool 배열은 [`sum`](/api/array/sum/)으로도 셀 수 있어요. `True`를 1�
 4
 ```
 
-차이는 **bool이 아닌 배열**에서 드러나요. `sum`은 값을 더하고, `count_nonzero`는 0이 아닌 원소의 개수를 세요.
+차이는 bool이 아닌 배열에서 드러나요. `sum`은 값을 더하고, `count_nonzero`는 0이 아닌 원소의 개수를 세요.
 
 ```python
 >>> w = sd.asarray([0, 5, 0, 7])

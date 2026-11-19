@@ -28,7 +28,7 @@ import Layers from '../../../components/fig/Layers.astro';
 
 이 영역의 뼈대는 여섯 가지예요.
 
-1. **입력 정리와 결과 객체는 Python, 회귀 하나의 계산은 C++예요.** `ols(y, X)`의 Python 함수는 인자를 검사하고 frame 컬럼과 NaN 정책을 처리한 뒤 커널을 한 번 불러요. 커널은 계수, 공분산, R, 적합값, 잔차, 쓰인 열 표시, 스칼라 13개를 돌려주고, 결과 객체는 이것을 들고 있다가 표준오차나 p값처럼 파생되는 필드를 처음 읽을 때 계산해요.
+1. **입력 정리와 결과 객체는 Python, 회귀 하나의 계산은 C++예요.** `ols(y, X)`의 Python 함수는 인자를 검사하고 frame 컬럼과 NaN 정책을 처리한 뒤 커널을 한 번 불러요. 커널은 계수, 공분산, R, 적합값, 잔차, 쓰인 열 표시, 스칼라 13개를 돌려줘요. 결과 객체는 이것을 담아 두고, 표준오차나 p값처럼 파생되는 필드는 처음 읽을 때 계산해요.
 2. **최소제곱은 한 곳에서 풀어요.** QR, 겹친 열의 판정, 반복 개선, 공분산을 하는 `lsq::fit_one`(`csrc/regression/lsq.hpp`)을 선형 모형이 쓰고, GLM의 IRLS 반복과 마지막 풀이, `rlm`의 시작점, `quantreg`의 시작점과 겹친 열 판정도 같은 함수를 불러요. 그래서 "어느 열이 겹쳤는가"의 답이 모형마다 같아요.
 3. **행을 도는 합은 double-double이에요.** 잔차, 적합값, 제곱합, 개선의 잔차는 곱을 `fma`로 정확히, 합을 two-sum으로 더하는 Dot2(`csrc/regression/dot2.hpp`)로 구하고 마지막에 한 번 반올림해요.
 4. **회귀 하나가 태스크 하나예요.** 배치는 linalg의 배치 드라이버 `run_batch`로 돌아요. 회귀 하나가 크면 그 안의 행 합을 크기로만 정한 덩어리로 나눠 스레드풀에 보내고, 덩어리의 부분합은 순서대로 더해요. 그래서 결과는 스레드 수와도, 배치 안에서 돌았는지와도 상관없이 같은 비트예요.
@@ -41,18 +41,18 @@ import Layers from '../../../components/fig/Layers.astro';
   <Steps
     steps={[
       { label: 'ols(y, X)', where: 'regression/_linear.py', note: 'intercept, cov_type, maxlags, rtol, nan_policy를 검사해요. rtol=None은 커널에 −1로 넘겨 기본값 max(nobs, k)·eps를 뜻하게 해요.' },
-      { label: '_prepare', where: 'regression/_linear.py', note: 'y, X를 float64 sd.ndarray로 바꾸고 frame이면 컬럼 이름을 들고 가요. X가 1차원이면 (n, 1)로. 모수가 하나도 없는 모형은 여기서 에러예요. nan_policy가 omit이면 inf와 음수 가중치를 먼저 보고 NaN 행을 빼고, raise면 여기서 에러를 내요.' },
+      { label: '_prepare', where: 'regression/_linear.py', note: 'y, X를 float64 sd.ndarray로 바꾸고 frame이면 컬럼 이름도 챙겨요. X가 1차원이면 (n, 1)로. 모수가 하나도 없는 모형은 여기서 에러예요. nan_policy가 omit이면 inf와 음수 가중치를 먼저 보고 NaN 행을 빼고, raise면 여기서 에러를 내요.' },
       { label: '_fit_kernel', where: 'regression/_linear.py', note: 'y와 X의 열마다 최대 절댓값을 보고, [2⁻²⁵⁶, 2²⁵⁶] 밖인 것만 2의 거듭제곱으로 나눠 커널에 줘요. 보통의 자료는 그대로 지나가요.' },
       { label: '_core.regression.fit', where: 'regression/linear.cpp', note: 'y (…, n), X (…, n, p), 가중치의 배치 모양을 linalg의 Batch로 브로드캐스트하고 결과 배열 일곱 개를 할당해요.' },
       { label: 'run_batch', depth: 1, where: 'linalg/batch.hpp', note: '회귀 하나의 추정 시간 element_ns로 태스크를 나눠요. 회귀가 하나뿐이면 호출 스레드에서 돌고, 추정 시간이 10 µs 이상이면 GIL을 놓아요.' },
       { label: 'lsq::fit_one', depth: 2, where: 'regression/linear.cpp', note: '검사, 쓰인 행과 백색화, 꾸리기, geqrf와 겹친 열, 처음 해, 증강 시스템의 반복 개선, 적합값·잔차·제곱합, 공분산.' },
-      { label: 'OLSResult(raw, …)', where: 'regression/_linear.py', note: '커널의 일곱 배열을 그대로 들고(계수의 −0은 +0으로), 커널에 준 입력(y, X, 가중치, 군집 번호)을 들고 있어요. y, X, 가중치는 적합할 때 복사한 것이에요.' },
+      { label: 'OLSResult(raw, …)', where: 'regression/_linear.py', note: '커널이 낸 일곱 배열(계수의 −0은 +0으로 바꿔요)과 커널에 준 입력(y, X, 가중치, 군집 번호)을 보관해요. y, X, 가중치는 적합할 때 복사한 것이에요.' },
       { label: 'r.bse', where: 'regression/_linear.py', note: '적합의 단위로 둔 공분산 _cov_s(척도 scale_s = ssr / df_resid를 곱한 (RᵀR)⁻¹)의 대각의 제곱근이에요. 척도를 바꿔 적합했으면 마지막에 열의 배율을 한 번 곱해요. 계산한 값은 _cache에 남아 다음에는 그대로 돌려줘요.' },
     ]}
   />
 </Fig>
 
-커널을 직접 불러 보면 결과 객체가 무엇을 들고 있는지 보여요.
+커널을 직접 불러 보면 결과 객체가 무엇을 담고 있는지 보여요.
 
 ```python
 >>> y = sd.asarray([1.0, 2.1, 2.9, 4.2, 4.8, 6.1])
@@ -71,9 +71,9 @@ array([ 0.07054680610666837, 0.018633899812498265,  0.06364688465216445], dtype=
 ['bse', 'cov_s', 'df_resid', 'scale_s']
 ```
 
-`bse`를 읽으면 그 재료인 `df_resid`, 적합의 단위의 척도 `scale_s`와 공분산 `cov_s`가 함께 남아요. 공개 필드 `scale`과 `cov_params()`는 이것을 데이터의 단위로 옮긴 값이고, 읽을 때 따로 만들어요. 단위가 둘인 이유는 [최소제곱 풀이](/internals/regression/least-squares/)의 극단적인 척도 절에 있어요.
-
 `fit`의 인자는 차례로 함수 이름(에러 메시지에 쓰여요), y, X, 가중치, GLS의 백색화한 1의 열, 절편, rtol, 공분산 종류의 번호, 개선 횟수의 상한이에요.
+
+`bse`를 읽으면 그 재료인 `df_resid`, 적합의 단위로 잰 척도 `scale_s`와 공분산 `cov_s`가 함께 캐시에 남아요. 공개 필드 `scale`과 `cov_params()`는 이것을 데이터의 단위로 옮긴 값이고, 읽을 때 따로 만들어요. 단위가 둘인 이유는 [최소제곱 풀이](/internals/regression/least-squares/)의 극단적인 척도 절에 있어요.
 
 이 글은 영역 전체의 규칙을 다루고, 모형마다의 수치 방법은 아래 글에 있어요.
 
@@ -145,8 +145,8 @@ array([ 0.07054680610666837, 0.018633899812498265,  0.06364688465216445], dtype=
 
 Python 층의 결과 클래스는 두 갈래예요.
 
-- **추론이 있는 결과**는 `_RegressionResult`를 이어받아요. 계수의 추론(`bse`, `tvalues`, `pvalues`, `conf_int`), 새 X의 설계 검사, 예측 $X_{\text{new}}\beta$와 평균의 구간(`_xbeta`, `_interval`)이 여기 있어서, `predict`와 `predict_interval`이 모든 결과에서 같은 규칙이에요. `OLSResult`, `WLSResult`, `GLSResult`는 그 아래 `_LinearResult`(제곱합, R², 정보 기준, F, 진단, `summary`)를 거치고, `GLMResult`, `RLMResult`, `QuantRegResult`, `NLSResult`는 바로 이어받아요.
-- **예측 중심의 결과**(`RidgeResult`, `LassoResult`, `ElasticNetResult`, 교차검증의 결과, `PenalizedGLMResult`)는 `_PenalizedResult`를 이어받아요. 표준오차와 p값이 없어요.
+- 추론이 있는 결과는 `_RegressionResult`를 이어받아요. 계수의 추론(`bse`, `tvalues`, `pvalues`, `conf_int`), 새 X의 설계 검사, 예측 $X_{\text{new}}\beta$와 평균의 구간(`_xbeta`, `_interval`)이 여기 있어서, `predict`와 `predict_interval`은 모든 결과에서 같은 규칙을 따라요. `OLSResult`, `WLSResult`, `GLSResult`는 그 아래 `_LinearResult`(제곱합, R², 정보 기준, F, 진단, `summary`)를 거치고, `GLMResult`, `RLMResult`, `QuantRegResult`, `NLSResult`는 바로 이어받아요.
+- 예측 중심의 결과(`RidgeResult`, `LassoResult`, `ElasticNetResult`, 교차검증의 결과, `PenalizedGLMResult`)는 `_PenalizedResult`를 이어받아요. 표준오차와 p값이 없어요.
 
 `linregress`, `theilslopes`, `siegelslopes`의 결과와 `jarque_bera()`, `breusch_pagan()`의 결과는 scipy·statsmodels처럼 namedtuple이에요.
 
@@ -174,12 +174,12 @@ def _as_real(x, func, arg, per_row=None):
         return a, names
 ```
 
-- frame은 `to_array(dtype=float64, na_value=NaN)`로 바꾸고 컬럼 이름만 들고 가요. frame의 결측은 여기서 NaN이 되므로 뒤의 NaN 정책을 그대로 따라요. 문자열 열은 `to_array`가 숫자로 읽을 수 있을 때("1", "2.5" 같은)만 받고, 아니면 `TypeError`("'X' must have numeric columns")예요.
+- frame은 `to_array(dtype=float64, na_value=NaN)`로 바꾸고 컬럼 이름만 따로 챙겨요. frame의 결측은 여기서 NaN이 되므로 뒤의 NaN 정책을 그대로 따라요. 문자열 열은 `to_array`가 숫자로 읽을 수 있을 때("1", "2.5" 같은)만 받고, 아니면 `TypeError`("'X' must have numeric columns")예요.
 - bool과 int64는 float64로 바꾸고, complex128은 `TypeError`예요.
 - 숫자가 아닌 원소가 든 리스트는 `TypeError`이고, 메시지에 처음 걸린 원소의 형을 적어요("not list of str"). 리스트 자체는 받는 형이니까요.
 - 행마다 값이 하나씩인 인자(`weights`, GLM의 `offset` 등)에 스칼라를 주면 `per_row`로 무엇이 필요한지 말해요("'weights' must have 4 values like 'y', not a scalar").
 - X가 1차원 (n,)이면 설명변수 하나짜리 (n, 1)로 바꿔요.
-- y가 열 하나짜리 frame `DataFrame`이면 그 열 (n,)으로 읽어요(`_read_y`). 표에서 반응 하나를 골라 내면 흔히 이 꼴이라서요. sd 배열 (n, 1)은 그대로 배치 규칙을 따라 "행 하나짜리 회귀 n개"예요. 그러면 X의 행 수가 맞지 않으므로, 메시지가 그 경우를 짚어 1차원 y를 주라고 적어요.
+- y가 열 하나짜리 frame `DataFrame`이면 그 열 (n,)으로 읽어요(`_read_y`). 표에서 반응 하나를 골라 내면 흔히 이 꼴이라서요. sd 배열 (n, 1)은 그대로 배치 규칙을 따라 "행 하나짜리 회귀 n개"예요. 그러면 대개 X의 행 수와 맞지 않으므로, 에러 메시지가 이 경우를 짚어 1차원 y를 주라고 알려요.
 - X에 열이 없고 `intercept=False`이면 추정할 모수가 없어요. 커널에 가기 전에 `ValueError`("the model has no parameters")예요.
 - 계수 이름은 절편이 있으면 `'const'`가 앞에 오고, 나머지는 frame의 컬럼 이름이거나 `'x1'`, `'x2'`, …예요.
 
@@ -209,7 +209,7 @@ ValueError: ols(): the model has no parameters (no columns in 'X' and intercept=
     };
 ```
 
-`has_u`는 GLS예요. 오차 공분산 $\Sigma = LL^{\mathsf T}$로 백색화하면 1의 열도 $L^{-1}\mathbf 1$이 되므로, 그 열을 절편 자리에 넣어요. 그래서 X를 복사하지 않고, X가 행 우선이든 열 우선이든 strides만 달라져요. 절편이 있는지는 `intercept` 인자만 봐요. X에 상수 열이 있어도 절편으로 보지 않고, 절편과 함께 주면 그 열이 겹친 열이 돼요.
+`has_u`는 GLS일 때 참이에요. 오차 공분산 $\Sigma = LL^{\mathsf T}$로 백색화하면 1의 열도 $L^{-1}\mathbf 1$이 되므로, 그 열을 절편 자리에 넣어요. 그래서 X를 복사하지 않고, X가 행 우선이든 열 우선이든 strides만 달라져요. 절편이 있는지는 `intercept` 인자만 봐요. X에 상수 열이 있어도 절편으로 보지 않고, 절편과 함께 주면 그 열이 겹친 열이 돼요.
 
 ### NaN과 inf
 
@@ -281,7 +281,7 @@ ValueError: ols(): 'X' contains infinity
 
 ### 배치 모양
 
-y (…, n), X (…, n, p), 가중치 (…, n), 군집 번호 (…, n)(GLS는 `sigma` (…, n, n))의 앞 축은 배치이고 서로 브로드캐스트해요. 맞지 않으면 커널에 가기 전에 `_check_batches`가 인자마다의 배치 모양을 적어 `ValueError`를 내요. `linregress`·`theilslopes`·`siegelslopes`(`x`와 `y`), `glm`(행마다 값이 있는 인자와 `groups`), 정규화, `rlm`, `quantreg`도 같은 함수로 검사해요. 커널의 검사는 인자 이름을 모르기 때문이에요.
+y (…, n), X (…, n, p), 가중치 (…, n), 군집 번호 (…, n)(GLS는 `sigma` (…, n, n))의 앞 축은 배치이고 서로 브로드캐스트해요. 맞지 않으면 커널에 가기 전에 `_check_batches`가 인자마다의 배치 모양을 적어 `ValueError`를 내요. 커널도 모양을 검사하지만 인자 이름을 모르기 때문이에요. `linregress`·`theilslopes`·`siegelslopes`(`x`와 `y`), `glm`(행마다 값이 있는 인자와 `groups`), 정규화, `rlm`, `quantreg`도 같은 함수로 검사해요.
 
 ```python
 >>> sd.regression.wls(sd.ones((3, 4)), sd.ones((2, 4, 1)), weights=sd.ones((2, 4)))
@@ -310,9 +310,9 @@ enum Stat : int {
 
 결과 객체의 필드는 세 종류예요.
 
-- **커널이 낸 그대로**: `params`, `fittedvalues`, `resid`, `nobs`, `rank`, `ssr`, `centered_tss`, `uncentered_tss`. 선형 모형을 2의 거듭제곱으로 척도를 바꿔 적합했으면, 계수·적합값·잔차는 결과를 만들 때 데이터의 단위로 돌려놓고, 제곱합은 읽을 때 $f_y^2$를 한 번 곱해요(정확한 곱이에요).
-- **처음 읽을 때 sd 배열 연산과 sd.stats로**: `scale`, `cov_params()`, `bse`, `tvalues`, `pvalues`, `rsquared`, `rsquared_adj`, `llf`, `aic`, `bic`, `fvalue`, `f_pvalue`. `_cached(name, make)`가 계산한 값을 `_cache`에 남겨요(statsmodels의 `cache_readonly`와 같은 방식). p값은 `sd.stats.StudentT`와 `sd.stats.F`의 `ccdf`, 구간은 `iccdf`예요.
-- **처음 읽을 때 커널을 다시 불러서**: `leverage`(지렛대), `durbin_watson`, `jarque_bera()`, `breusch_pagan()`, `condition_number`. 결과는 커널에 준 입력을 `_fitargs`로 들고 있다가 그대로 다시 넘겨요. 그 y, X, 가중치는 적합할 때 복사해 둔 것이라(`_own`), 적합 뒤에 넘긴 배열(이나 그 배열이 가리키는 numpy 배열)을 고쳐도 나중에 읽는 진단이 바뀌지 않아요. 메모리는 X 하나만큼 더 들어요. GLS는 백색화한 y와 X를 새로 만들어 들고 있으므로 따로 복사하지 않아요. 척도를 바꿔 적합했으면 들고 있는 것도 바꾼 y와 X라서, 진단이 커널을 다시 불러도 적합과 같은 단위의 문제예요. 정규화의 결과도 적합값을 읽을 때 쓰는 y, X, 가중치를 같은 방식으로 복사해 둬요. 지렛대는 같은 커널의 `hat_only` 방식이 적합과 같은 열 선택과 같은 QR로 얇은 Q를 만들어 구해요. 적합할 때 늘 Q를 만들면 모든 적합이 QR 한 번 꼴의 비용을 더 내므로 따로 불러요([추론과 진단](/internals/regression/inference/)).
+- 커널이 낸 그대로: `params`, `fittedvalues`, `resid`, `nobs`, `rank`, `ssr`, `centered_tss`, `uncentered_tss`. 선형 모형을 2의 거듭제곱으로 척도를 바꿔 적합했으면, 계수·적합값·잔차는 결과를 만들 때 데이터의 단위로 돌려놓고, 제곱합은 읽을 때 $f_y^2$를 한 번 곱해요(정확한 곱이에요).
+- 처음 읽을 때 sd 배열 연산과 sd.stats로 계산: `scale`, `cov_params()`, `bse`, `tvalues`, `pvalues`, `rsquared`, `rsquared_adj`, `llf`, `aic`, `bic`, `fvalue`, `f_pvalue`. `_cached(name, make)`가 계산한 값을 `_cache`에 남겨요(statsmodels의 `cache_readonly`와 같은 방식). p값은 `sd.stats.StudentT`와 `sd.stats.F`의 `ccdf`, 구간은 `iccdf`예요.
+- 처음 읽을 때 커널을 다시 불러서 계산: `leverage`(지렛대), `durbin_watson`, `jarque_bera()`, `breusch_pagan()`, `condition_number`. 결과는 커널에 준 입력을 `_fitargs`에 보관했다가 그대로 다시 넘겨요. 지렛대는 같은 커널의 `hat_only` 방식이 적합과 같은 열 선택과 같은 QR로 얇은 Q를 만들어 구해요. 적합할 때마다 Q를 만들면 모든 적합이 QR 한 번 꼴의 비용을 더 내므로, 필요할 때 따로 불러요([추론과 진단](/internals/regression/inference/)).
 
 ```python
     def _cached(self, name, make):
@@ -323,6 +323,8 @@ enum Stat : int {
 ```
 
 배치 결과에서는 스칼라 필드가 배치 모양의 배열이고, 회귀 하나면 Python float예요. `_stat(i)`와 `_scalar(v)`가 그 둘을 가려요.
+
+`_fitargs`의 y, X, 가중치는 적합할 때 복사해 둔 것이에요(`_own`). 그래서 적합 뒤에 넘긴 배열(이나 그 배열이 가리키는 numpy 배열)을 고쳐도 나중에 읽는 진단은 바뀌지 않아요. 메모리는 X 하나만큼 더 들어요. GLS는 백색화한 y와 X를 새로 만들어 보관하므로 따로 복사하지 않아요. 척도를 바꿔 적합했으면 보관하는 것도 바꾼 y와 X라서, 진단이 커널을 다시 불러도 적합과 같은 단위의 문제를 풀어요. 정규화의 결과도 적합값을 읽을 때 쓰는 y, X, 가중치를 같은 방식으로 복사해 둬요.
 
 ```python
 >>> y = sd.asarray([1.0, 2.1, 2.9, 4.2, 4.8, 6.1])
@@ -335,7 +337,7 @@ True
 
 적합 뒤에 `y`를 고쳤지만, 처음 읽는 `durbin_watson`은 적합할 때의 값으로 계산돼요.
 
-적합의 설정을 적은 필드(`param_names`, `cov_type`, `family`, `link`, `alpha`, `l1_ratio`, `standardize`, `method`, `norm`, `q`)는 `__slots__`의 밑줄 붙은 자리에 두고 setter 없는 속성으로 내보여요. 지연 계산한 필드는 그 설정으로 만든 값이라, 설정을 나중에 바꿀 수 있으면 캐시와 어긋나기 때문이에요. 바꾸려 하면 `AttributeError`예요. 다만 대입만 막아서는 리스트나 배열 필드의 내용을 고칠 수 있어요(`r.param_names.append(...)`, `r.q[0] = ...`). 그래서 리스트나 배열인 설정 필드(`param_names`, 경로의 배열 `alpha`, 분위 배열 `q`)는 읽을 때마다 `_fresh`가 새 복사본을 만들어 돌려줘요. 돌려받은 것을 고쳐도 결과가 들고 있는 설정은 그대로예요. 넘긴 배열을 적합 뒤에 고쳐도 마찬가지예요(적합할 때 복사해 둬요).
+적합의 설정을 적은 필드(`param_names`, `cov_type`, `family`, `link`, `alpha`, `l1_ratio`, `standardize`, `method`, `norm`, `q`)는 `__slots__`의 밑줄 붙은 자리에 두고 setter 없는 속성으로 내보여요. 지연 계산한 필드는 그 설정으로 만든 값이라, 설정을 나중에 바꿀 수 있으면 캐시와 어긋나기 때문이에요. 바꾸려 하면 `AttributeError`예요. 다만 대입을 막는 것만으로는 리스트나 배열 필드의 내용을 고치는 것(`r.param_names.append(...)`, `r.q[0] = ...`)까지 막지 못해요. 그래서 리스트나 배열인 설정 필드(`param_names`, 경로의 배열 `alpha`, 분위 배열 `q`)는 읽을 때마다 `_fresh`가 새 복사본을 만들어 돌려줘요. 돌려받은 것을 고쳐도 결과가 보관한 설정은 그대로예요. 넘긴 배열을 적합 뒤에 고쳐도 마찬가지예요(적합할 때 복사해 둬요).
 
 ```python
 def _fresh(v):
@@ -366,7 +368,7 @@ array([0.3, 0.6], dtype=float64)
 
 ### 예측의 설계
 
-`predict(X_new)`의 설계 검사는 모든 결과가 `_new_design` 하나를 써요. 열 수가 적합의 X와 같아야 하고(1차원이면 열 하나짜리 적합에서만 받아요), inf가 있으면 `ValueError`예요. 적합의 X가 frame `DataFrame`이었으면 결과가 그 열 이름을 `_columns`에 들고 있다가, `X_new`도 `DataFrame`일 때 열 이름과 순서가 같은지 봐요. 한쪽만 `DataFrame`이면 열을 위치로 맞춰요(경고 없이).
+`predict(X_new)`의 설계 검사는 모든 결과가 `_new_design` 하나를 써요. 열 수가 적합의 X와 같아야 하고(1차원이면 열 하나짜리 적합에서만 받아요), inf가 있으면 `ValueError`예요. 적합의 X가 frame `DataFrame`이었으면 결과가 그 열 이름을 `_columns`에 보관해 두었다가, `X_new`도 `DataFrame`일 때 열 이름과 순서가 같은지 봐요. 한쪽만 `DataFrame`이면 열을 위치로 맞춰요(경고 없이).
 
 ```python
 >>> from stardust import frame as fr
@@ -431,7 +433,7 @@ array([nan], dtype=float64)
 
 ### 최소제곱 핵심: `lsq.hpp`
 
-회귀 하나의 가중 최소제곱은 `lsq::fit_one(pb, d, o, sc)` 하나예요. `Problem`이 문제의 모양과 선택을, `Data`가 입력의 포인터와 stride를, `Dest`가 출력 자리를 들고 있어요.
+회귀 하나의 가중 최소제곱은 `lsq::fit_one(pb, d, o, sc)` 하나예요. `Problem`에는 문제의 모양과 선택이, `Data`에는 입력의 포인터와 stride가, `Dest`에는 출력 자리가 담겨요.
 
 ```cpp
 struct Problem {
@@ -455,7 +457,7 @@ struct Problem {
 };
 ```
 
-누가 어떻게 부르는지가 플래그로 갈려요.
+부르는 곳마다 켜는 플래그가 달라요.
 
 | 부르는 곳 | 플래그 | 쓰는 것 |
 |---|---|---|
@@ -480,7 +482,7 @@ $$
 \operatorname{TwoSum}(a, b):\ s = \operatorname{fl}(a + b),\ b' = s - a,\ e = (a - (s - b')) + (b - b') \quad\Rightarrow\quad s + e = a + b
 $$
 
-곱의 반올림 오차 $e$는 `fma`가 정확히 돌려주고, 합의 오차는 TwoSum이 정확히 돌려줘요. Dot2는 합 $P$는 TwoSum으로 이어 가고, 두 오차를 따로 모은 $S$에 double로 더해요. 결과 $P + S$의 오차는 "double의 반올림 한 번 + 정밀도를 두 배로 한 내적의 오차"예요. $\lvert P + S - x^{\mathsf T}b \rvert \le u \lvert x^{\mathsf T} b \rvert + \gamma_{n}^2 \sum \lvert x_j b_j \rvert$ 꼴이라, 상쇄가 $u^{-1}$배까지 커도 정확한 값을 한 번 반올림한 것에 가까워요.
+곱의 반올림 오차 $e$는 `fma`가 정확히 돌려주고, 합의 오차는 TwoSum이 정확히 돌려줘요. Dot2는 합 $P$를 TwoSum으로 이어 가고, 두 오차를 따로 모은 $S$에 double로 더해요. 결과 $P + S$의 오차는 "double의 반올림 한 번 + 정밀도를 두 배로 한 내적의 오차"예요. $\lvert P + S - x^{\mathsf T}b \rvert \le u \lvert x^{\mathsf T} b \rvert + \gamma_{n}^2 \sum \lvert x_j b_j \rvert$ 꼴이라, 상쇄가 $u^{-1}$배까지 커도 정확한 값을 한 번 반올림한 것에 가까워요.
 
 ```cpp
 // One step of a row's sum: (hp, ep) = two_prod(x, b); (P, q) = two_sum(P, hp); S += q + ep.
@@ -537,7 +539,7 @@ y (…, n), X (…, n, p), 가중치 (…, n), 군집 번호 (…, n)의 앞 축
         if (cov == kHAC) element_ns += nk * (maxlags >= 0 ? double(maxlags) : 4.0 * std::pow(double(n) / 100.0, 2.0 / 9.0));
 ```
 
-`nk`는 n·k예요. 배치 전체의 추정 시간이 10 µs 이상이면 원소들을 약 5 µs짜리 태스크로 묶어 스레드풀에 보내요([배치 드라이버](/internals/linalg/batch/)). 원소 하나는 자기 `Scratch`(태스크마다 하나인 작업 버퍼)에서 어디서 돌든 같은 계산을 하므로, 배치 결과는 회귀를 하나씩 부른 것과 비트까지 같아요.
+`nk`는 n·k예요. 배치 전체의 추정 시간이 10 µs 이상이면 원소를 약 5 µs짜리 태스크로 묶어 스레드풀에 보내요([배치 드라이버](/internals/linalg/batch/)). 원소 하나는 자기 `Scratch`(태스크마다 하나인 작업 버퍼)에서 어디서 돌든 같은 계산을 하므로, 배치 결과는 회귀를 하나씩 부른 것과 비트까지 같아요.
 
 ```python
 >>> rng = sd.random.default_rng(1)
@@ -592,7 +594,7 @@ inline lint chunk_rows(lint k) {
 
 ### 결과가 스레드 수와 상관없는 이유
 
-정리하면 다섯 가지예요.
+이유는 다섯 가지예요.
 
 1. 회귀 하나는 한 태스크에서, 자기 작업 버퍼로 돌아요.
 2. 행을 나누는 덩어리의 크기는 행 수와 열 수로만 정하고, 스레드 수를 보지 않아요.
@@ -604,7 +606,7 @@ LAPACK 호출(`geqrf`, `orgqr`, `trtrs` 등)의 결과도 스레드 수와 상�
 
 ## GIL
 
-규칙은 다른 영역과 같아요. **추정 시간이 10 µs 이상인 일은 스레드 수와 상관없이 GIL을 놓고 돌고, 그보다 작은 일은 GIL을 쥔 채 돌아요.** 작은 회귀는 GIL을 놓고 다시 잡는 비용을 내지 않아요.
+규칙은 다른 영역과 같아요. 추정 시간이 10 µs 이상인 일은 스레드 수와 상관없이 GIL을 놓고 돌고, 그보다 작은 일은 GIL을 쥔 채 돌아요. 작은 회귀는 GIL을 놓고 다시 잡는 비용을 내지 않아요.
 
 - 배치를 나눠 돌 때는 `parallel_for`가 GIL을 놓아요. 태스크가 둘 이상이면 1스레드여도 놓아요.
 - 나누지 않을 때(회귀가 하나, 1스레드, 다른 Python 스레드가 풀을 쓰는 중)는 `run_batch`의 직렬 루프가 `parallel::Unlocked`로 놓아요. 기준은 같은 `element_ns × 원소 수 ≥ 10 µs`예요.

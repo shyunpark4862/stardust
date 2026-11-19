@@ -2,7 +2,7 @@
 title: 오차함수와 감마
 group: 함수별 알고리즘
 order: 1
-summary: 오차함수 계열(erf, erfc, erfcx, erfinv, erfcinv, ndtr, log_ndtr, ndtri, ndtri_exp)과 감마 계열(gamma, rgamma, gammaln, digamma, polygamma, beta, betaln, binom, 복소수 loggamma)이 정의역을 어떻게 나누고 구간마다 무엇으로 계산하는지 설명해요. Cephes의 유리 근사, Wichura의 AS241, Boost.Math의 Lanczos 근사가 안에서 하는 일과 그것이 왜 정확한지, 꼬리와 극점과 영점을 어떻게 다루는지를 측정값과 함께 다뤄요.
+summary: 오차함수 계열(erf, erfc, erfcx, erfinv, erfcinv, ndtr, log_ndtr, ndtri, ndtri_exp)과 감마 계열(gamma, rgamma, gammaln, digamma, polygamma, beta, betaln, binom, 복소수 loggamma)이 정의역을 어떻게 나누고 구간마다 무엇으로 계산하는지 설명해요. Cephes의 유리 근사, Wichura의 AS241, Boost.Math의 Lanczos 근사가 안에서 하는 일과 왜 정확한지, 꼬리와 극점과 영점을 어떻게 다루는지를 측정값과 함께 다뤄요.
 seeAlso: [techniques, engine, incomplete, more-functions, accuracy-performance, overview]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -23,7 +23,7 @@ import Steps from '../../../components/fig/Steps.astro';
 | `ndtri`, `erfinv`, `erfcinv` | Wichura AS241의 유리 근사 셋 | 3 | `ops/erf.hpp` |
 | `ndtri_exp` | ndtri, 아주 깊은 꼬리는 점근식에서 Newton | 2 | `ops/distr.hpp` |
 | `gamma` | Boost.Math의 Lanczos 근사, 깊은 음수는 반사식 | 1–2 | `ops/gamma.hpp`, `boost.hpp` |
-| `rgamma` | Cephes 감마의 역수, 반사식, 크기를 따로 든 Lanczos | 2 | `ops/gamma.hpp`, `gamma_core.hpp` |
+| `rgamma` | Cephes 감마의 역수, 반사식, 지수를 따로 둔 Lanczos | 2 | `ops/gamma.hpp`, `gamma_core.hpp` |
 | `gammaln` | 2 둘레의 Taylor 급수와 Stirling 급수 | 2 | `gamma_core.hpp` |
 | `digamma` | 양수는 Boost.Math(근을 뺀 유리식, 점근급수), 음수는 반사식 | 2 | `ops/gamma.hpp`, `gamma_core.hpp` |
 | `polygamma` | $(-1)^{n+1} n!\,\zeta(n+1, x)$, Hurwitz 제타는 Euler–Maclaurin | 1 | `ops/gamma.hpp`, `ops/zeta.hpp` |
@@ -38,7 +38,7 @@ import Steps from '../../../components/fig/Steps.astro';
 1. **보수 함수는 따로 계산해요.** `erfc(x)`를 `1 - erf(x)`로 만들면 꼬리에서 답이 사라져요. 꼬리 쪽 값을 직접 근사하는 식을 따로 둬요.
 2. **인자를 반올림하지 않아요.** 감마는 인자에 아주 민감해서, $1 - x$나 $a + b$를 한 번 반올림하는 것만으로 수백 ULP를 잃어요. 반사식은 $-x$(정확)를 쓰고, 꼭 만들어야 하는 합은 두 조각(hi + lo)으로 들고 다녀요 [10].
 3. **0이 되는 곳에서는 식의 모양으로 상대 정확도를 지켜요.** $\log\Gamma$는 1과 2에서, $\psi$는 1.4616…에서 0이에요. 그 근처에서는 "큰 수 − 큰 수"가 생기지 않는 식(근을 인수로 뺀 유리식, 영점 둘레의 Taylor 급수)을 써요.
-4. **넘치는 중간값은 크기를 따로 들어요.** $\Gamma(200)$은 float64를 넘지만 $1/\Gamma(175)$나 $B(300, 2.5)$는 보통 수예요. 가수와 이진 지수를 따로 들고 계산한 뒤 마지막에 한 번만 반올림해요.
+4. **넘치는 중간값은 지수를 따로 떼어 계산해요.** $\Gamma(200)$은 float64를 넘지만 $1/\Gamma(175)$나 $B(300, 2.5)$는 보통 수예요. 가수와 이진 지수를 따로 두고 계산한 뒤 마지막에 한 번만 반올림해요.
 
 모든 함수는 원소별 함수예요. 원소 하나의 값만 보고 구간을 고르므로 `f(x)[i] == f(x[i])`이고, 결과는 스레드 수와 무관하게 비트까지 같아요. 원소를 나누는 엔진과 NEON·vForce 커널의 틀은 [원소별 엔진과 병렬화](/internals/special/engine/)에, 유리 근사·Lentz 연분수·double-double 같은 공통 기법은 [공통 수치 기법](/internals/special/techniques/)에 있어요. 여기서는 두 가족에 맞춘 부분을 끝까지 따라가요.
 
@@ -54,7 +54,7 @@ $$
 \kappa_f(x) = \left\lvert \frac{x\, f'(x)}{f(x)} \right\rvert
 $$
 
-이고, 인자에 상대오차 $\delta$가 있으면 결과에는 약 $\kappa_f(x)\,\delta$의 상대오차가 생겨요. 어떤 알고리즘도 이것을 피할 수 없어요. 그래서 "인자를 반올림하지 않는다"가 중요해요. 감마는 $\kappa_\Gamma(x) = \lvert x\,\psi(x) \rvert$라서 $x = 170$에서 약 870이에요. 인자를 float64로 한 번 반올림한 값($\delta \le 2^{-53}$)을 넣으면 그것만으로 수백 ULP가 틀려요.
+이고, 인자에 상대오차 $\delta$가 있으면 결과에는 약 $\kappa_f(x)\,\delta$의 상대오차가 생겨요. 이 증폭은 어떤 알고리즘도 피할 수 없어요. 그래서 인자를 아예 반올림하지 않아야 해요. 감마는 $\kappa_\Gamma(x) = \lvert x\,\psi(x) \rvert$라서 $x = 170$에서 약 870이에요. 인자를 float64로 한 번 반올림한 값($\delta \le 2^{-53}$)을 넣으면 그것만으로 수백 ULP가 틀려요.
 
 ## 오차함수
 
@@ -80,7 +80,7 @@ $$
 \operatorname{erfcinv} z = -\frac{\operatorname{ndtri}\!\left(\frac{z}{2}\right)}{\sqrt2}
 $$
 
-`erf`는 홀함수이고 $\operatorname{erfc}(-x) = 2 - \operatorname{erfc}(x)$예요. 그래서 계산은 $x \ge 0$에서만 하고 음수는 대칭으로 옮겨요. 다만 이 관계식들을 그대로 계산에 쓰면 곳곳에서 답을 잃어요. 아래에서 각 함수가 어느 관계식을 피하고 무엇을 대신 쓰는지 하나씩 봐요.
+`erf`는 홀함수이고 $\operatorname{erfc}(-x) = 2 - \operatorname{erfc}(x)$예요. 그래서 계산은 $x \ge 0$에서만 하고 음수는 대칭으로 옮겨요. 다만 이 관계식들을 그대로 계산에 쓰면 곳곳에서 답을 잃어서, 함수마다 피하는 관계식과 대신 쓰는 식이 따로 있어요.
 
 ### erf와 erfc: 세 구간의 유리 근사
 
@@ -97,11 +97,11 @@ $$
 - `erf`: $\lvert x \rvert \lt 1$이면 $xT/U$, 그 밖은 $\operatorname{sign}(x)\,(1 - \operatorname{erfc}\lvert x \rvert)$
 - `erfc`: $\lvert x \rvert \lt 1$이면 $1 - xT/U$, $x \ge 1$이면 $e^{-x^2}P/Q$나 $e^{-x^2}R/S$, $x \le -1$이면 $2 - \operatorname{erfc}(-x)$
 
-**왜 근사하는 대상을 이렇게 골랐는지.** 유리식은 매끄럽고 천천히 변하는 함수를 잘 근사해요. $\operatorname{erf}(x)$ 자체는 홀함수라서 $x$를 하나 빼면 $\operatorname{erf}(x)/x$가 $x^2$의 매끄러운 함수가 되고, 차수 4/5로 충분해요. $\operatorname{erfc}(x)$는 $x$가 커지면 $e^{-x^2}$처럼 무섭게 줄어서 다항식으로는 따라갈 수 없지만, $e^{-x^2}$을 떼어 낸 $e^{x^2}\operatorname{erfc}(x)$는 $1/(x\sqrt\pi)$처럼 완만하게 줄어드는 함수예요. 그래서 꼬리 식은 이 완만한 부분만 유리식으로 근사하고, 지수 부분은 따로 곱해요.
+**근사하는 대상을 고른 이유.** 유리식은 매끄럽고 천천히 변하는 함수를 잘 근사해요. $\operatorname{erf}(x)$ 자체는 홀함수라서 $x$를 하나 빼면 $\operatorname{erf}(x)/x$가 $x^2$의 매끄러운 함수가 되고, 차수 4/5로 충분해요. $\operatorname{erfc}(x)$는 $x$가 커지면 $e^{-x^2}$처럼 무섭게 줄어서 다항식으로는 따라갈 수 없지만, $e^{-x^2}$을 떼어 낸 $e^{x^2}\operatorname{erfc}(x)$는 $1/(x\sqrt\pi)$처럼 완만하게 줄어드는 함수예요. 그래서 꼬리 식은 이 완만한 부분만 유리식으로 근사하고, 지수 부분은 따로 곱해요.
 
-**왜 1과 8에서 나누는지.** 근사 하나로 $[1, 26.6]$ 전체를 덮으려면 차수가 훨씬 높아야 해요. 함수의 모양이 $[1, 8)$에서는 꽤 휘고, 8 위에서는 거의 $1/x$ 꼴이라서, 둘로 나누면 각 조각을 낮은 차수로 맞출 수 있어요. 위쪽 끝 26.64는 `erfc`가 float64에서 0으로 언더플로하는 곳이고, Cephes는 $R/S$를 거기까지 맞췄어요.
+**1과 8에서 나누는 이유.** 근사 하나로 $[1, 26.6]$ 전체를 덮으려면 차수가 훨씬 높아야 해요. 함수의 모양이 $[1, 8)$에서는 꽤 휘고, 8 위에서는 거의 $1/x$ 꼴이라서, 둘로 나누면 각 조각을 낮은 차수로 맞출 수 있어요. 위쪽 끝 26.64는 `erfc`가 float64에서 0으로 언더플로하는 곳이고, Cephes는 $R/S$를 거기까지 맞췄어요.
 
-**계수가 어디서 왔는지.** 이런 계수는 **minimax** 근사로 만들어요. 정해진 차수 안에서 "구간 위 최대 오차"가 가장 작은 유리식을 고르는 것이에요. Chebyshev의 교대 정리에 따르면 최선의 근사는 오차 곡선이 같은 크기로 부호를 번갈아 바꾸며 정해진 횟수만큼 흔들리고, Remez 알고리즘은 그 흔들리는 점들을 반복해서 옮겨 가며 이 상태를 찾아요. 자세한 설명은 [공통 수치 기법](/internals/special/techniques/)에 있어요. stardust는 계수를 새로 만들지 않고, 공개된 계수를 출처와 함께 그대로 가져와요.
+**계수의 출처.** 이런 계수는 **minimax** 근사로 만들어요. 정해진 차수 안에서 "구간 위 최대 오차"가 가장 작은 유리식을 고르는 방법이에요. Chebyshev의 교대 정리에 따르면 최선의 근사는 오차 곡선이 같은 크기로 부호를 번갈아 바꾸며 정해진 횟수만큼 흔들리고, Remez 알고리즘은 그 흔들리는 점들을 반복해서 옮겨 가며 이 상태를 찾아요. 자세한 설명은 [공통 수치 기법](/internals/special/techniques/)에 있어요. stardust는 계수를 새로 만들지 않고, 공개된 계수를 출처와 함께 그대로 가져와요.
 
 <Fig caption="log₁₀ erfc(x). 세 식의 경계는 x = 1과 8이에요. x = 26.55를 지나면 값이 서브노멀이 되고, 27.23 위에서 0이에요.">
   <Plot
@@ -124,7 +124,7 @@ $$
   />
 </Fig>
 
-**`erfc`의 $\lvert x \rvert \lt 1$ 구간은 왜 $1 - \operatorname{erf}$로 괜찮은지.** 그 구간에서 $\operatorname{erf} x \le 0.843$이라서 $1 - \operatorname{erf} x \ge 0.157$이에요. 소거의 증폭은 $1/0.157 \approx 6.4$배를 넘지 않아요. 반대로 $x = 5$에서 $1 - \operatorname{erf}(5)$를 계산하면 $\operatorname{erf}(5)$가 1에 $1.5 \times 10^{-12}$만큼 모자라는 수라서, 결과의 앞 네 자리만 남아요. `erfc`가 1 위에서 꼬리 식을 따로 쓰는 이유가 이것이에요. 같은 이유로 $x \le -1$의 $2 - \operatorname{erfc}(-x)$는 안전해요. $\operatorname{erfc}(-x) \le 0.157$을 2에서 빼므로 증폭이 1에 가까워요.
+**`erfc`의 $\lvert x \rvert \lt 1$ 구간에서 $1 - \operatorname{erf}$를 써도 되는 이유.** 그 구간에서 $\operatorname{erf} x \le 0.843$이라서 $1 - \operatorname{erf} x \ge 0.157$이에요. 소거의 증폭은 $1/0.157 \approx 6.4$배를 넘지 않아요. 반대로 $x = 5$에서 $1 - \operatorname{erf}(5)$를 계산하면 $\operatorname{erf}(5)$가 1에 $1.5 \times 10^{-12}$만큼 모자라는 수라서, 결과의 앞 네 자리만 남아요. `erfc`가 1 위에서 꼬리 식을 따로 쓰는 것도 이 때문이에요. 같은 이유로 $x \le -1$의 $2 - \operatorname{erfc}(-x)$는 안전해요. $\operatorname{erfc}(-x) \le 0.157$을 2에서 빼므로 증폭이 1에 가까워요.
 
 ### exp(−x²)를 반올림 없이
 
@@ -160,13 +160,13 @@ $$
 
 (Arb 참값 대비. x = 26.0에서 둘이 같은 이유는 $26^2 = 676$이 float64로 정확해서 $\ell = 0$이기 때문이에요.)
 
-Cephes 문서는 `erfc`의 최대 상대오차를 $[0, 26.6417]$에서 $5.7 \times 10^{-14}$로 적어요 [2]. 같은 유리식에 $e^{-x^2}$만 위처럼 만든 stardust의 `erfc`는 최대 7.8 ULP(약 $1.7 \times 10^{-15}$)이므로, 그 차이의 대부분이 지수에서 온다는 것을 알 수 있어요.
+Cephes 문서는 `erfc`의 최대 상대오차를 $[0, 26.6417]$에서 $5.7 \times 10^{-14}$로 적어요 [2]. 같은 유리식에 $e^{-x^2}$만 위처럼 만든 stardust의 `erfc`는 최대 7.8 ULP(약 $1.7 \times 10^{-15}$)이므로, 그 차이는 대부분 지수에서 와요.
 
-### 덩어리 커널: NEON, vForce, 분기
+### 청크 커널: NEON, vForce, 분기
 
-`erf`, `erfc`, `ndtr`, `ndtri`(와 그 핵심을 나눠 쓰는 `erfinv`, `erfcinv`, `log_ndtr`)는 원소 하나씩이 아니라 **1024원소 덩어리** 단위로 계산해요. 덩어리 하나는 세 번 지나가요.
+`erf`, `erfc`, `ndtr`, `ndtri`(와 그 핵심을 나눠 쓰는 `erfinv`, `erfcinv`, `log_ndtr`)는 원소 하나씩이 아니라 **1024원소 묶음** 단위로 계산해요. 묶음 하나는 세 번 지나가요.
 
-<Fig column caption="erfc의 덩어리 하나(원소 최대 1024개). 1단계와 3단계는 원소별 계산이라 원소의 위치나 덩어리 길이와 무관하고, vForce도 원소마다 같은 값을 내므로 스칼라 호출(n = 1인 덩어리)과 비트가 같아요.">
+<Fig column caption="erfc의 묶음 하나(원소 최대 1024개). 1단계와 3단계는 원소별 계산이라 원소의 위치나 묶음 길이와 무관하고, vForce도 원소마다 같은 값을 내므로 스칼라 호출(n = 1인 묶음)과 비트가 같아요.">
   <Steps
     steps={[
       { label: 'square_split', where: 'NEON', note: '두 원소씩 h = x·x와 ℓ = fma(x, x, −h)를 만들어 버퍼에 −h와 ℓ을 적어요.' },
@@ -176,7 +176,7 @@ Cephes 문서는 `erfc`의 최대 상대오차를 $[0, 26.6417]$에서 $5.7 \tim
   />
 </Fig>
 
-`exp`·`log`를 원소마다 libm으로 부르는 대신 덩어리 전체를 vForce(Accelerate의 벡터 수학 함수)에 한 번에 넘기면 호출 비용이 나뉘고 vForce 안의 SIMD 경로를 탈 수 있어요. vForce의 오차(libm 대비 6 ULP 이하)는 정확도 약속 안이에요. 스칼라 입력도, 띄엄띄엄한(strided) 배열도 같은 버퍼 경로를 거치므로 따로 맞출 스칼라 정의가 없어요.
+`exp`·`log`를 원소마다 libm으로 부르는 대신 묶음 전체를 vForce(Accelerate의 벡터 수학 함수)에 한 번에 넘기면 호출 비용이 나뉘고 vForce 안의 SIMD 경로를 탈 수 있어요. vForce의 오차(libm 대비 6 ULP 이하)는 정확도 약속 안이에요. 스칼라 입력도, 띄엄띄엄한(strided) 배열도 같은 버퍼 경로를 거치므로 따로 맞출 스칼라 정의가 없어요.
 
 3단계를 분기 없이 짤 수도 있어요. 두 레인이 서로 다른 구간에 있을 수 있으니 세 유리식을 모두 NEON으로 계산하고 `vbslq`(비트 선택)로 고르는 방식이에요. 두 방식을 재면 이래요(`bench/special/s2/variants.md`, 원소 $10^6$개, 1스레드, 원소당 ns).
 
@@ -194,7 +194,7 @@ Cephes 문서는 `erfc`의 최대 상대오차를 $[0, 26.6417]$에서 $5.7 \tim
 
 ### erfcx: 같은 유리식, 그리고 발산하는 급수
 
-$\operatorname{erfcx}(x) = e^{x^2}\operatorname{erfc}(x)$는 `erfc`가 언더플로하는 큰 x에서도 쓸 수 있게 지수를 떼어 낸 함수예요. 큰 x에서 $1/(x\sqrt\pi)$처럼 줄어요. 마침 `erfc`의 꼬리 식이 근사하는 대상이 바로 이것이라서, 지수를 곱하지 않으면 그대로 `erfcx`예요.
+$\operatorname{erfcx}(x) = e^{x^2}\operatorname{erfc}(x)$는 `erfc`가 언더플로하는 큰 x에서도 쓸 수 있게 지수를 떼어 낸 함수예요. 큰 x에서 $1/(x\sqrt\pi)$처럼 줄어요. 마침 `erfc`의 꼬리 식이 근사하는 대상이 바로 이 함수라서, 지수를 곱하지 않으면 그대로 `erfcx`예요.
 
 | 구간 | 식 |
 |---|---|
@@ -244,7 +244,7 @@ $$
 
 **Faddeeva 패키지의 방식을 쓰지 않는 이유.** S. G. Johnson의 Faddeeva 패키지(scipy가 `erfcx`에 써요)는 실수 `erfcx`를 $0 \le x \le 50$에서 $y = 4/(4 + x)$를 100개의 같은 구간으로 나눈 Chebyshev 다항식 표로, $x \gt 50$에서 연분수로 계산해요 [2]. 정확하지만 구간이 많고 표가 커요. 같은 일을 세 갈래로 할 수 있고 정확도(최대 6.05 ULP)도 충분하므로 여기서는 쓰지 않아요.
 
-`erfcx`는 분기가 많은 함수라 덩어리 커널이 아니라 원소마다 libm `exp`를 부르는 스칼라 정의예요.
+`erfcx`는 분기가 많은 함수라 청크 커널이 아니라 원소마다 libm `exp`를 부르는 스칼라 정의예요.
 
 ### ndtr: t = x/√2를 만들지 않기
 
@@ -254,7 +254,7 @@ $$
 e^{-x^2/2} = e^{-h/2}\, e^{-\ell/2}, \qquad h = \operatorname{fl}(x^2), \quad \ell = \operatorname{fma}(x, x, -h)
 $$
 
-$h/2$와 $\ell/2$는 2로 나누는 것이라 정확해요(언더플로가 아니면). 유리식 $P(\lvert t \rvert)/Q(\lvert t \rvert)$의 인자는 반올림된 $t$를 그대로 써도 돼요. 꼬리에서 $P/Q$는 $1/t$처럼 완만해서 $\frac{d \log(P/Q)}{d \log t} \approx -1$이므로, $t$의 상대오차 $2^{-53}$이 결과에 $2^{-53}$ 정도로만 들어가요. 정리하면
+$h/2$와 $\ell/2$는 2로 나누는 것이라 정확해요(언더플로가 아니면). 유리식 $P(\lvert t \rvert)/Q(\lvert t \rvert)$의 인자는 반올림된 $t$를 그대로 써도 돼요. 꼬리에서 $P/Q$는 $1/t$처럼 완만해서 $\frac{d \log(P/Q)}{d \log t} \approx -1$이므로, $t$의 상대오차 $2^{-53}$이 결과에 $2^{-53}$ 정도로만 들어가요. 식으로 쓰면
 
 $$
 \operatorname{ndtr}(x) = \begin{cases}
@@ -268,7 +268,7 @@ $$
 
 ### log_ndtr: 두 갈래로 충분한 이유
 
-$\log \operatorname{ndtr}(x)$는 정규분포의 로그 가능도에서 많이 써요. `log(ndtr(x))`는 왼쪽 꼬리에서 `ndtr`가 언더플로하면 $-\infty$가 되고, 오른쪽에서는 `ndtr`가 1에 붙어 $\log$가 0이 돼요. stardust는 두 갈래로 나눠요.
+$\log \operatorname{ndtr}(x)$는 정규분포의 로그 우도에서 많이 써요. `log(ndtr(x))`는 왼쪽 꼬리에서 `ndtr`이 언더플로하면 $-\infty$가 되고, 오른쪽에서는 `ndtr`이 1에 붙어 $\log$가 0이 돼요. stardust는 두 갈래로 나눠요.
 
 $$
 \log\operatorname{ndtr}(x) = \begin{cases}
@@ -280,7 +280,7 @@ $$
 - $x \ge 0$: $\operatorname{ndtr}(-x) \le \tfrac12$은 위의 꼬리 식으로 상대 정확하게 나오고, `log1p`는 $\log(1+u)$를 작은 $u$에서도 정확히 계산해요. $x = 38$처럼 $\operatorname{ndtr}(-x)$가 서브노멀이면 결과도 그 서브노멀(음수)이에요.
 - $x \lt 0$: $\operatorname{ndtr}(x) = \tfrac12 e^{-x^2/2}\operatorname{erfcx}(-x/\sqrt2)$에 로그를 씌운 것이에요. 두 항은 모두 음수(또는 0)라 더해도 소거가 없고, `erfcx`는 언더플로하지 않으므로 $x = -10^{100}$에서도 값이 나와요. 그래서 왼쪽 꼬리용 점근급수가 따로 필요 없어요. $x^2$는 $\lvert x \rvert \gt 1.34 \times 10^{154}$에서 넘치므로 $-(0.5x)\,x$ 순서로 곱해요.
 
-덩어리 커널은 `ndtr(-|x|)`를 덩어리째 한 번 계산하고, 원소마다 두 갈래 중 하나를 골라요.
+청크 커널은 `ndtr(-|x|)`를 묶음째 한 번 계산하고, 원소마다 두 갈래 중 하나를 골라요.
 
 ### ndtri: Wichura의 AS241
 
@@ -298,11 +298,11 @@ $$
 
 꼬리는 $q \lt 0$이면 부호를 바꿔요.
 
-**왜 꼬리를 $s = \sqrt{-\log p}$로 재는지.** $p \to 0$에서 정규분포의 꼬리는 $p \approx e^{-x^2/2}/(\lvert x \rvert\sqrt{2\pi})$라서 $x \approx -\sqrt{2(-\log p)}$, 곧 $x$는 $s$에 거의 비례해요. $p$ 자체로 근사하면 $10^{-300}$에서 0.1까지 수백 자릿수를 덮어야 하지만, $s$로 바꾸면 $[1.6, 27]$의 완만한 직선에 가까운 곡선이 되어 차수 7 유리식으로 충분해요. 중심 구간은 $\operatorname{ndtri}$가 홀함수 꼴이라 $q$를 인수로 빼고 $q^2$의 함수로 근사해요. Wichura는 먼 꼬리를 $s \le 27$, 곧 $\min(p, 1-p) \ge 2.5 \times 10^{-317}$까지 맞췄어요. 가장 작은 서브노멀 $5 \times 10^{-324}$의 $s$는 27.3이라 살짝 넘지만, 잰 오차는 계약 안이에요.
+**꼬리를 $s = \sqrt{-\log p}$로 재는 이유.** $p \to 0$에서 정규분포의 꼬리는 $p \approx e^{-x^2/2}/(\lvert x \rvert\sqrt{2\pi})$라서 $x \approx -\sqrt{2(-\log p)}$, 곧 $x$는 $s$에 거의 비례해요. $p$ 자체로 근사하면 $10^{-300}$에서 0.1까지 수백 자릿수를 덮어야 하지만, $s$로 바꾸면 $[1.6, 27]$의 완만한 직선에 가까운 곡선이 되어 차수 7 유리식으로 충분해요. 중심 구간은 $\operatorname{ndtri}$가 홀함수 꼴이라 $q$를 인수로 빼고 $q^2$의 함수로 근사해요. Wichura는 먼 꼬리를 $s \le 27$, 곧 $\min(p, 1-p) \ge 2.5 \times 10^{-317}$까지 맞췄어요. 가장 작은 서브노멀 $5 \times 10^{-324}$의 $s$는 27.3이라 살짝 넘지만, 잰 오차는 계약 안이에요.
 
 **$1 - p$는 정확해요.** $p \ge \tfrac12$이면 $\tfrac12 \le p \le 2 \cdot 1$이므로 Sterbenz 보조정리에 따라 $1 - p$가 반올림 없이 계산돼요(두 수가 두 배 안에 있으면 그 차는 정확히 표현돼요 [9]). 그래서 $p$가 1에 가까운 오른쪽 꼬리도 왼쪽 꼬리와 같은 정확도예요. $q = p - \tfrac12$도 $p \in [\tfrac14, 1]$에서 정확해요. 중심 구간 중 $0.075 \le p \lt \tfrac14$에서는 $q$가 반 ULP 안에서 반올림될 수 있지만, 그곳의 분위수는 $p$의 작은 변화에 둔감해서(상대 조건수 0.5 안팎) 결과에는 1 ULP 안팎만 더해요.
 
-덩어리 커널은 1단계에서 NEON으로 $\min(p, 1-p)$를 만들고, 2단계에서 `vvlog`로 로그를 한 번에 계산하고, 3단계에서 원소마다 구간의 유리식을 계산해요.
+청크 커널은 1단계에서 NEON으로 $\min(p, 1-p)$를 만들고, 2단계에서 `vvlog`로 로그를 한 번에 계산하고, 3단계에서 원소마다 구간의 유리식을 계산해요.
 
 ### erfinv와 erfcinv: (1 + y)/2를 만들지 않기
 
@@ -332,7 +332,7 @@ $\operatorname{ndtri\_exp}(y) = \operatorname{ndtri}(e^y)$는 $y \le 0$인 로�
 2. $-700 \lt y \le \log\tfrac12$: $\operatorname{ndtri}(e^y)$. $e^y$가 보통 수이고, 이 꼬리에서 x는 p의 반올림에 둔감해요($\kappa = \lvert p/(x\,\phi(x)) \rvert$가 작아요).
 3. $y \le -700$: 꼬리의 점근식 $\log\operatorname{ndtr}(x) \approx -\tfrac{x^2}{2} - \log(-x) - \tfrac12\log 2\pi + \log(1 - x^{-2} + 3x^{-4})$를 $x^2$에 대한 고정점 반복으로 다섯 번 풀고, 그 값에서 `log_ndtr(x) = y`를 Newton으로 다듬어요. Newton의 기울기는 $\phi(x)/\operatorname{ndtr}(x) = \exp(-x^2/2 - \tfrac12\log 2\pi - \log\operatorname{ndtr}(x))$로, 이미 계산한 `log_ndtr`에서 나와요. $y \lt -10^8$이면 점근식의 다음 항($15/x^6$)이 마지막 비트보다 작아서 고정점이 곧 답이에요. 그 아래에서 Newton을 계속하면 기울기 계산이 크기 $x^2/2$인 두 수의 차가 되어 오히려 망가져요.
 
-`ndtri`를 원소마다 길이 1의 덩어리로 부르므로, 1024원소를 vForce 한 번에 넘기는 덩어리 커널의 이점이 없어요. 원소당 비용은 ⟦COST ndtri_exp⟧ ns, scipy 대비 ⟦SPEED ndtri_exp ratio1⟧배예요.
+`ndtri`을 원소마다 길이 1의 묶음로 부르므로, 1024원소를 vForce 한 번에 넘기는 청크 커널의 이점이 없어요. 원소당 비용은 ⟦COST ndtri_exp⟧ ns, scipy 대비 ⟦SPEED ndtri_exp ratio1⟧배예요.
 
 ### 오차함수 가족의 정확도와 속도
 
@@ -353,8 +353,8 @@ $\operatorname{ndtri\_exp}(y) = \operatorname{ndtri}(e^y)$는 $y \le 0$인 로�
 (정확도는 지금 빌드로 잰 값이에요. 기준값은 `tests/special/ref`(Arb)이고, scipy 1.18.1의 같은 값을 함께 적었어요.)
 
 - scipy의 최대 오차가 큰 줄(`erfc`, `ndtr`, `log_ndtr`의 $10^{13}$)은 모두 서브노멀 꼬리를 0으로 내는 점이에요. 그 밖에도 위에서 본 $x^2$와 $t$의 반올림 때문에 꼬리에서 수백 ULP가 나요. `erfcx`의 500 ULP는 큰 x의 $R/S$에서, `erfcinv`의 inf는 $z/2$의 언더플로에서 와요.
-- `ndtri`와 `erfinv`는 scipy가 조금 더 정확해요(최대 2.8, 2.0 대 5.4, 4.6 ULP). 둘 다 약속($10^{-14}$, 약 45 ULP)에는 한참 못 미쳐요.
-- 덩어리 커널을 쓰는 여섯 함수는 `erf`, `erfc`, `ndtr`, `ndtri`, `erfinv`, `erfcinv`예요. scipy는 원소마다 libm `exp`·`log`를 불러요. scipy의 `erfcx`는 위에서 본 Faddeeva 패키지 방식이에요.
+- `ndtri`과 `erfinv`는 scipy가 조금 더 정확해요(최대 2.8, 2.0 대 5.4, 4.6 ULP). 둘 다 약속($10^{-14}$, 약 45 ULP)보다 한참 작아요.
+- 청크 커널을 쓰는 일곱 함수는 `erf`, `erfc`, `ndtr`, `log_ndtr`, `ndtri`, `erfinv`, `erfcinv`예요. scipy는 원소마다 libm `exp`·`log`를 불러요. scipy의 `erfcx`는 위에서 본 Faddeeva 패키지 방식이에요.
 
 ## 감마
 
@@ -417,7 +417,7 @@ else if (r < -0.5) r = -1.0 - r;
 return std::sin(kPi * r);              // 반올림은 여기 한 번
 ```
 
-**3. 꼭 만들어야 하는 합은 두 조각으로.** $B(a, b)$의 $a + b$나 `binom`의 $n - k + 1$처럼 피할 수 없는 합은 Knuth의 TwoSum으로 $s + e = a + b$(정확)를 만들어 두 조각으로 들어요 [9, 10]. 그리고 1차 Taylor 보정을 해요.
+**3. 꼭 만들어야 하는 합은 두 조각으로.** $B(a, b)$의 $a + b$나 `binom`의 $n - k + 1$처럼 피할 수 없는 합은 Knuth의 TwoSum으로 $s + e = a + b$(정확)를 만들어 두 조각으로 들고 가요 [9, 10]. 그리고 1차 Taylor 보정을 해요.
 
 $$
 \Gamma(s + e) \approx \Gamma(s)\,\bigl(1 + \psi(s)\,e\bigr), \qquad \lvert e \rvert \le \tfrac12 \operatorname{ulp}(s)
@@ -425,14 +425,14 @@ $$
 
 $e$가 반 ULP 이하라서 2차 항 $\tfrac12(\psi^2 + \psi')e^2$는 버려도 돼요.
 
-### 크기를 따로 든 값
+### 가수와 지수를 따로 둔 값
 
-$\Gamma(x)$는 171.62에서 넘치지만, 그것으로 만드는 많은 값은 보통 수예요. $1/\Gamma(175)$는 $10^{-315}$ 근처의 서브노멀이고, $B(a, b)$나 음수 쪽 `zeta`, `polygamma`의 $n!\,\zeta(n+1, x)$도 그래요. 그래서 공용 코드는 값을 $m \cdot 2^e$(`Scaled`: $\tfrac12 \le \lvert m \rvert \lt 1$인 가수와 64비트 정수 지수)로 들고 곱셈·나눗셈을 해요. 가수끼리 곱하면 다시 `frexp`로 정규화하고, 지수는 정수로 더해요. 마지막에 `ldexp`로 한 번만 float64로 반올림하므로, 결과가 서브노멀이면 서브노멀로 정확히 반올림돼요.
+$\Gamma(x)$는 171.62에서 넘치지만, 그것으로 만드는 많은 값은 보통 수예요. $1/\Gamma(175)$는 $10^{-315}$ 근처의 서브노멀이고, $B(a, b)$나 음수 쪽 `zeta`, `polygamma`의 $n!\,\zeta(n+1, x)$도 그래요. 그래서 공용 코드는 값을 $m \cdot 2^e$(`Scaled`: $\tfrac12 \le \lvert m \rvert \lt 1$인 가수와 64비트 정수 지수)로 나타내 곱셈·나눗셈을 해요. 가수끼리 곱하면 다시 `frexp`로 정규화하고, 지수는 정수로 더해요. 마지막에 `ldexp`로 한 번만 float64로 반올림하므로, 결과가 서브노멀이면 서브노멀로 정확히 반올림돼요.
 
 큰 거듭제곱과 지수도 같은 꼴로 만들어요.
 
-- `exp_scaled(x)`: $x = n \ln 2 + r$로 나눠 $e^x = 2^n e^r$이에요. $\ln 2$를 두 조각(hi + lo)으로 들고 FMA로 $r$을 정확히 만드는 Cody–Waite 방식이에요. $\lvert x\rvert \ge 2^{57}$이면 지수가 어떤 곱으로도 다시 범위 안에 돌아올 수 없을 만큼 커서, 값 자체를 inf나 0으로 내요. 지수를 어떤 값에서 잘라 들고 다니면 inf가 되어야 할 값과 0이 되어야 할 값을 곱했을 때 엉뚱한 보통 수가 나오는데, inf와 0을 곱하면 NaN이라 그런 값이 생기지 않아요.
-- `pow_scaled(a, t)`: $a = m\,2^{e_a}$($m \in [1/\sqrt2, \sqrt2)$)로 나누면 $a^t = m^t \cdot 2^{e_a t}$예요. $e_a t$는 FMA로 정수 부분과 소수 부분을 정확히 가르고, $m^t$는 $t$를 $\lvert t\rvert/2 \le 960$이 될 때까지 $h$번 반으로 나눈 $m^{t/2^h}$를 libm `pow`로 만들고, 조각마다 `pow`의 정확도가 지켜져요. $h \le 10$이면 그 조각을 $2^h$번 곱하고, 그보다 크면($t$가 수십만 넘게 큰 경우) 조각을 $h$번 제곱해요. $\lvert t\rvert$가 유한한 double이면 $h$는 1014를 넘지 않아서 언제나 정해진 횟수에 끝나요. 정수 부분 $e_a t$가 $2^{58}$을 넘거나 제곱 도중 지수가 $\pm 2^{58}$을 넘으면 결과는 inf나 0이에요. $\lvert e_a t\rvert \ge 2^{52}$이면 $e_a t$ 자체가 정수라서, 소수 부분은 곱의 반올림 오차(FMA로 꺼낸 값)에만 있어요. 그 오차의 정수 부분까지 지수로 옮기고 나머지만 `exp2`에 넣어요.
+- `exp_scaled(x)`: $x = n \ln 2 + r$로 나눠 $e^x = 2^n e^r$이에요. $\ln 2$를 두 조각(hi + lo)으로 나눠 두고 FMA로 $r$을 정확히 만드는 Cody–Waite 방식이에요. $\lvert x\rvert \ge 2^{57}$이면 지수가 어떤 곱으로도 다시 범위 안에 돌아올 수 없을 만큼 커서, 값 자체를 inf나 0으로 내요. 지수를 어떤 값에서 잘라 두면 inf가 되어야 할 값과 0이 되어야 할 값을 곱했을 때 엉뚱한 보통 수가 나오는데, inf와 0을 곱하면 NaN이라 그런 값이 생기지 않아요.
+- `pow_scaled(a, t)`: $a = m\,2^{e_a}$($m \in [1/\sqrt2, \sqrt2)$)로 나누면 $a^t = m^t \cdot 2^{e_a t}$예요. $e_a t$는 FMA로 정수 부분과 소수 부분을 정확히 가르고, $m^t$는 $t$를 $\lvert t\rvert/2 \le 960$이 될 때까지 $h$번 반으로 나눈 $m^{t/2^h}$를 libm `pow`로 만들어요. 이러면 조각마다 `pow`의 정확도가 지켜져요. $h \le 10$이면 그 조각을 $2^h$번 곱하고, 그보다 크면($t$가 수십만 넘게 큰 경우) 조각을 $h$번 제곱해요. $\lvert t\rvert$가 유한한 double이면 $h$는 1014를 넘지 않아서 언제나 정해진 횟수에 끝나요. 정수 부분 $e_a t$가 $2^{58}$을 넘거나 제곱 도중 지수가 $\pm 2^{58}$을 넘으면 결과는 inf나 0이에요. $\lvert e_a t\rvert \ge 2^{52}$이면 $e_a t$ 자체가 정수라서, 소수 부분은 곱의 반올림 오차(FMA로 꺼낸 값)에만 있어요. 그 오차의 정수 부분까지 지수로 옮기고 나머지만 `exp2`에 넣어요.
 
 ### gamma: Boost.Math의 Lanczos 근사
 
@@ -449,27 +449,27 @@ $\Gamma(x)$는 171.62에서 넘치지만, 그것으로 만드는 많은 값은 �
       { label: 'Boost tgamma, −20 < x < 0', depth: 1, note: '1씩 올려 (0, 1)로 옮긴 뒤 Lanczos, 그 곱으로 나눠요.' },
       { label: 'Boost tgamma, x ≤ −20', depth: 1, note: '반사식 −π / (Γ(−x)·x sin πx)' },
       { label: '음의 정수, −inf', note: 'NaN' },
-      { label: 'x ≤ −170', where: 'gamma_neg_direct', note: '반사식. Γ(−x)가 넘치면 크기를 따로 든 값으로 계산해 마지막에 한 번 반올림(아주 작으면 부호 있는 0)' },
+      { label: 'x ≤ −170', where: 'gamma_neg_direct', note: '반사식. Γ(−x)가 넘치면 지수를 따로 둔 값으로 계산해 마지막에 한 번 반올림(아주 작으면 부호 있는 0)' },
     ]}
   />
 </Fig>
 
-**Lanczos 근사의 생각.** 큰 z에서 $\Gamma$는 Stirling 공식 $\Gamma(z) \approx \sqrt{2\pi}\, z^{z-1/2} e^{-z}$를 따라요(DLMF 5.11.3 [8]). 하지만 이것은 점근식이라 작은 z에서는 맞지 않고, 보정항을 늘려도 수렴하지 않아요. C. Lanczos(1964)는 밑을 $z$ 대신 $z + g - \tfrac12$로 옮기고, 남은 차이를 **수렴하는** 급수로 메웠어요 [4].
+**Lanczos 근사의 발상.** 큰 z에서 $\Gamma$는 Stirling 공식 $\Gamma(z) \approx \sqrt{2\pi}\, z^{z-1/2} e^{-z}$를 따라요(DLMF 5.11.3 [8]). 하지만 Stirling 공식은 점근식이라 작은 z에서는 맞지 않고, 보정항을 늘려도 수렴하지 않아요. C. Lanczos(1964)는 밑을 $z$ 대신 $z + g - \tfrac12$로 옮기고, 남은 차이를 **수렴하는** 급수로 메웠어요 [4].
 
 $$
 \Gamma(z) = L_g(z)\,\bigl(z + g - \tfrac12\bigr)^{z - 1/2}\, e^{-(z + g - 1/2)}, \qquad
 L_g(z) \approx c_0 + \sum_{k=1}^{N-1} \frac{c_k}{z + k - 1}
 $$
 
-$g$는 사용자가 고르는 상수예요. 잘 고르면 $L_g(z)$가 모든 $z \gt 0$에서 거의 상수인 매끄러운 함수가 되어, 항 몇 개로 정밀도 전체를 덮어요. Stirling처럼 "z가 클 때만" 맞는 것이 아니라 $z \gt 0$ 전체에서 한 식으로 맞는 것이 핵심이에요. 어떤 $(N, g)$ 쌍이 좋은지는 G. R. Pugh의 학위논문(2004)이 자세히 분석했어요 [5]. 그는 $N$마다 최적의 $g$를 찾았고, 오차가 가장 작은 $g$가 처음 버린 항의 부호가 바뀌는 곳과 거의 겹친다는 것을 보였어요. Boost는 이 "좋은 자리"들에서 출발해 float64용 근사 `lanczos13m53`을 만들었어요. $N = 13$, $g = 6.024680040776729583740234375$이고, Boost 문서가 밝힌 절단 오차는 $3.23 \times 10^{-16}$이에요 [6].
+$g$는 사용자가 고르는 상수예요. 잘 고르면 $L_g(z)$가 모든 $z \gt 0$에서 거의 상수인 매끄러운 함수가 되어, 항 몇 개로 정밀도 전체를 덮어요. Stirling처럼 z가 클 때만 맞는 식이 아니라, $z \gt 0$ 전체에서 한 식으로 맞아요. 어떤 $(N, g)$ 쌍이 좋은지는 G. R. Pugh의 학위논문(2004)이 자세히 분석했어요 [5]. 그는 $N$마다 최적의 $g$를 찾았고, 오차가 가장 작은 $g$가 처음 버린 항의 부호가 바뀌는 곳과 거의 겹친다는 것을 보였어요. Boost는 이 "좋은 자리"들에서 출발해 float64용 근사 `lanczos13m53`을 만들었어요. $N = 13$, $g = 6.024680040776729583740234375$이고, Boost 문서가 밝힌 절단 오차는 $3.23 \times 10^{-16}$이에요 [6].
 
-**합을 유리식으로.** $L_g(z)$의 부분분수 합 $\sum c_k/(z+k-1)$은 계수의 부호가 섞여 있어서 소거가 생겨요. Boost는 이것을 통분한 두 다항식의 비로 계산해요.
+**합을 유리식으로.** $L_g(z)$의 부분분수 합 $\sum c_k/(z+k-1)$은 계수의 부호가 섞여 있어서 소거가 생겨요. Boost는 이 합을 통분한 두 다항식의 비로 계산해요.
 
 $$
 L(z) = \frac{\sum_{i=0}^{12} n_i z^i}{\sum_{i=0}^{12} d_i z^i}, \qquad \sum d_i z^i = z(z+1)(z+2)\cdots(z+11)
 $$
 
-분모는 $z(z+1)\cdots(z+11)$을 전개한 정수 계수($d_0 = 0$, $d_1 = 11! = 39916800$, …, $d_{12} = 1$)이고, 분자와 분모의 계수가 **모두 양수**라서 $z \gt 0$에서 더할 때 소거가 없어요. 대신 계수를 두 배로 들어요. 분자의 최고차 계수 $n_{12} = 2.5066\ldots = \sqrt{2\pi}$라서 $z \to \infty$에서 $L \to \sqrt{2\pi}$, 곧 Stirling과 이어져요. 계산은 `tools::evaluate_rational`이 해요. $z \le 1$이면 $z$의 Horner로, $z \gt 1$이면 분자와 분모를 $z^{12}$로 나눈 꼴을 $1/z$의 Horner로 계산해요. $z^{12}$가 넘치거나 큰 항끼리 반올림하는 일을 피하는 방법이에요. stardust의 `lanczos_sum`(`gamma_core.hpp`)도 같은 계수(`coeffs/lanczos13m53.hpp`, Boost에서 십진 표기 그대로)와 같은 방식이에요.
+분모는 $z(z+1)\cdots(z+11)$을 전개한 정수 계수($d_0 = 0$, $d_1 = 11! = 39916800$, …, $d_{12} = 1$)이고, 분자와 분모의 계수가 **모두 양수**라서 $z \gt 0$에서 더할 때 소거가 없어요. 대신 계수가 두 배로 늘어요. 분자의 최고차 계수 $n_{12} = 2.5066\ldots = \sqrt{2\pi}$라서 $z \to \infty$에서 $L \to \sqrt{2\pi}$, 곧 Stirling과 이어져요. 계산은 `tools::evaluate_rational`이 해요. $z \le 1$이면 $z$의 Horner로, $z \gt 1$이면 분자와 분모를 $z^{12}$로 나눈 꼴을 $1/z$의 Horner로 계산해요. $z^{12}$가 넘치거나 큰 항끼리 반올림하는 일을 피하는 방법이에요. stardust의 `lanczos_sum`(`gamma_core.hpp`)도 같은 계수(`coeffs/lanczos13m53.hpp`, Boost에서 십진 표기 그대로)와 같은 방식이에요.
 
 **Boost `tgamma`의 갈래** (`gamma_imp`, `gamma_imp_final`).
 
@@ -485,17 +485,17 @@ $$
 \frac{d}{d\,\text{zgh}}\Bigl[(z - \tfrac12)\log \text{zgh} - \text{zgh}\Bigr]\cdot\delta = \Bigl(\frac{z - \frac12}{\text{zgh}} - 1\Bigr)\delta = -\frac{g}{\text{zgh}}\,\delta
 $$
 
-곧 상대오차 $g \cdot 2^{-53}$, 몇 ULP가 남아요. 여기에 `pow`와 `exp`의 반올림이 더해져요. 잰 최대 오차가 10.2 ULP인 것이 이것과 맞아요. stardust 자체의 Lanczos 경로(`gamma_scaled`, 아래)는 zgh를 hi + lo로 들고 두 인수를 따로 1차 보정해요.
+곧 상대오차 $g \cdot 2^{-53}$, 몇 ULP가 남아요. 여기에 `pow`와 `exp`의 반올림이 더해져요. 잰 최대 오차가 10.2 ULP인 것이 이것과 맞아요. stardust 자체의 Lanczos 경로(`gamma_scaled`, 아래)는 zgh를 hi + lo로 나눠 두고 두 인수를 따로 1차 보정해요.
 
-**Cephes 감마.** Boost 구간 밖에서 크기를 따로 들 필요가 없을 때, 그리고 `rgamma`와 `beta`의 일부 구간에서는 Cephes `gamma.c`를 써요(`gamma_cephes_pos`, 계수는 `coeffs/cephes_gamma.hpp`) [1, 2].
+**Cephes 감마.** Boost 구간 밖에서 지수를 따로 둘 필요가 없을 때, 그리고 `rgamma`와 `beta`의 일부 구간에서는 Cephes `gamma.c`를 써요(`gamma_cephes_pos`, 계수는 `coeffs/cephes_gamma.hpp`) [1, 2].
 
 - $[2, 3)$에서 $\Gamma(2 + x) = P(x)/Q(x)$, 차수 6/7의 유리 근사
 - $3 \le x \lt 33$은 점화식으로 $[2, 3)$까지 내리며 곱하고, $x \lt 2$는 올리며 나눠요($x \lt 10^{-9}$이면 $1/((1 + \gamma x)x)$)
 - $x \ge 33$은 Stirling 공식 $\sqrt{2\pi}\,x^{x - 1/2} e^{-x}\,(1 + \text{STIR}(1/x)/x)$. STIR은 DLMF 5.11.3의 계수 $g_1 = \tfrac1{12}, g_2 = \tfrac1{288}, g_3 = -\tfrac{139}{51840}, \dots$를 $x \ge 33$에 맞게 조금 조정한 차수 4 다항식이에요. $x \gt 143.016$이면 $x^{x - 1/2}$가 넘치므로 $v = x^{x/2 - 1/4}$로 $v \cdot (v / e^x)$를 만들어요.
 
-같은 기준값의 $x \gt 0$ 점에서 잰 최대 오차는 Cephes 감마(scipy의 `gamma`와 같은 Cephes 식)가 4.4 ULP, stardust 자체 Lanczos(`_gamma_lanczos`, 비교용 비공개 함수)가 6.5 ULP예요. 두 경로를 고를 때 1스레드, 원소 $10^6$개로 잰 시간은 Cephes가 3.4배 빨랐어요. 자체 Lanczos는 크기를 따로 드는 계산 때문에 무거워서, 넘치는 결과를 다뤄야 하는 경로에만 써요.
+같은 기준값의 $x \gt 0$ 점에서 잰 최대 오차는 Cephes 감마(scipy의 `gamma`와 같은 Cephes 식)가 4.4 ULP, stardust 자체 Lanczos(`_gamma_lanczos`, 비교용 비공개 함수)가 6.5 ULP예요. 두 경로를 고를 때 1스레드, 원소 $10^6$개로 잰 시간은 Cephes가 3.4배 빨랐어요. 자체 Lanczos는 지수를 따로 두는 계산 때문에 무거워서, 넘치는 결과를 다뤄야 하는 경로에만 써요.
 
-**stardust의 Lanczos: `gamma_scaled`.** 결과를 $m \cdot 2^e$로 내야 하는 곳(171.6 위의 `rgamma`, `beta`, `binom`, 음수 `zeta`, `polygamma`의 $n!$)은 같은 Lanczos 식을 크기를 따로 들고 계산해요.
+**stardust의 Lanczos: `gamma_scaled`.** 결과를 $m \cdot 2^e$로 내야 하는 곳(171.6 위의 `rgamma`, `beta`, `binom`, 음수 `zeta`, `polygamma`의 $n!$)은 같은 Lanczos 식을 지수를 따로 두고 계산해요.
 
 $$
 \Gamma(z) = L(z)\cdot \text{hi}^{\,t}\,\bigl(1 + t\,\tfrac{\text{lo}}{\text{hi}}\bigr)\cdot e^{-\text{hi}}\,(1 - \text{lo}), \qquad \text{hi} + \text{lo} = z + g - \tfrac12, \quad t = z - \tfrac12
@@ -503,7 +503,7 @@ $$
 
 `two_sum`이 hi와 lo를 정확히 만들고($g - \tfrac12$는 float64로 정확해요), 거듭제곱과 지수는 `pow_scaled`, `exp_scaled`로 넘침 없이 계산해요. 23 이하의 정수는 계승 표(22!까지 float64로 정확), $z \lt 2^{-30}$은 $1/z - \gamma$예요.
 
-**깊은 음수.** $x \le -170$은 `gamma_neg_direct`가 반사식을 써요. $-x \le 170$이면 $(-\pi/(x\,\text{sinpi}(x)))/\Gamma_\text{Cephes}(-x)$를 나눗셈 한 번으로 계산해서, 결과가 서브노멀이어도 한 번만 반올림해요. $-x \gt 170$이면 $\Gamma(-x)$가 넘치므로 $-\pi/(x\,\text{sinpi}(x))$와 $\Gamma(-x)$를 모두 크기를 따로 든 값으로 나누고(`gamma_neg`), 마지막에 한 번 반올림해요. 결과가 float64의 바닥보다 작으면 $\text{sinpi}(x)$의 부호를 가진 0이 돼요(`gamma(-1e10 - 0.5)` = −0.0). 크기가 아주 큰 $-x$에서도 일찍 0으로 끊지 않는 이유는 이 값을 `binom`이나 `beta`가 다른 큰 값과 곱하고 나누기 때문이에요. 하나하나는 범위 밖이어도 몫은 범위 안으로 돌아오는 경우가 있어요(`binom(0.1, 1000)`, `beta(-500.5, 1000.5)`). 그래서 크기를 따로 든 값은 끝까지 계산해서 넘겨요. $\lvert x\rvert \lt 2^{-30}$에서는 $x\,\text{sinpi}(x)$가 언더플로하므로 $\Gamma(x) = (1/x)(1 - \gamma x)$로 바로 내요. 그래서 $-184 \lt x \lt -171$에서는 서브노멀 값이 부호와 함께 나와요(`gamma(-175.5)` = 2.1075e-319). scipy는 이 범위를 0으로 내요.
+**깊은 음수.** $x \le -170$은 `gamma_neg_direct`가 반사식을 써요. $-x \le 170$이면 $(-\pi/(x\,\text{sinpi}(x)))/\Gamma_\text{Cephes}(-x)$를 나눗셈 한 번으로 계산해서, 결과가 서브노멀이어도 한 번만 반올림해요. $-x \gt 170$이면 $\Gamma(-x)$가 넘치므로 $-\pi/(x\,\text{sinpi}(x))$와 $\Gamma(-x)$를 모두 지수를 따로 둔 값으로 나누고(`gamma_neg`), 마지막에 한 번 반올림해요. 그래서 $-184 \lt x \lt -171$에서는 서브노멀 값이 부호와 함께 나와요(`gamma(-175.5)` = 2.1075e-319). scipy는 이 범위를 0으로 내요. 결과가 float64의 바닥보다 작으면 $\text{sinpi}(x)$의 부호를 가진 0이 돼요(`gamma(-1e10 - 0.5)` = −0.0). 크기가 아주 큰 $-x$에서도 일찍 0으로 끊지 않는 이유는 이 값을 `binom`이나 `beta`가 다른 큰 값과 곱하고 나누기 때문이에요. 하나하나는 범위 밖이어도 몫은 범위 안으로 돌아오는 경우가 있어요(`binom(0.1, 1000)`, `beta(-500.5, 1000.5)`). 그래서 지수를 따로 둔 값은 끝까지 계산해서 넘겨요. 한편 $\lvert x\rvert \lt 2^{-30}$에서는 $x\,\text{sinpi}(x)$가 언더플로하므로 $\Gamma(x) = (1/x)(1 - \gamma x)$로 바로 내요.
 
 ### rgamma
 
@@ -513,11 +513,11 @@ $1/\Gamma$는 극점에서 0이 되는 전함수(entire function)예요. 그래�
 |---|---|
 | $\lvert x \rvert \lt 2^{-30}$ | $x + \gamma x^2$ (서브노멀 x는 x 그대로: `rgamma(-5e-324)` = −5e-324) |
 | $0 \lt x \le 171.6$ | $1/\Gamma_\text{Cephes}(x)$ |
-| $171.6 \lt x \le 400$ | $1/\Gamma$를 크기를 따로 든 Lanczos로, 177.8까지 서브노멀 값 |
+| $171.6 \lt x \le 400$ | $1/\Gamma$를 지수를 따로 둔 Lanczos로, 177.8까지 서브노멀 값 |
 | $x \gt 400$ | 0 |
 | 음의 정수 | 0 |
 | $-170 \le x \lt 0$ | $\bigl(-x\,\text{sinpi}(x)/\pi\bigr)\cdot\Gamma_\text{Cephes}(-x)$ |
-| $x \lt -170$ | 같은 식을 크기를 따로 들고(`rgamma_neg`). 넘치면 부호 있는 inf |
+| $x \lt -170$ | 같은 식을 지수를 따로 두고(`rgamma_neg`). 넘치면 부호 있는 inf |
 
 음수 쪽 식은 $\Gamma(x)\Gamma(-x) = -\pi/(x \sin\pi x)$를 뒤집은 것이에요. $\text{sinpi}(x)$가 극점에서 정확히 0으로 가므로 극점 근처에서도 상대오차가 유지돼요. Boost `tgamma`의 역수로 계산하면 1스레드, 원소 $10^6$개에서 이 경로보다 16% 느려서 쓰지 않아요.
 
@@ -548,13 +548,13 @@ $\log\lvert\Gamma(x)\rvert$는 $x = 1$과 $x = 2$에서 정확히 0이에요($\G
   />
 </Fig>
 
-stardust의 `gammaln`은 **2를 중심으로 한 Taylor 급수**를 바탕에 둬요. DLMF 5.7.3 [8]의 $\log\Gamma(1+z)$ 급수에 $\log(1+z)$를 더하면 깔끔한 꼴이 돼요.
+stardust의 `gammaln`은 **2를 중심으로 한 Taylor 급수**를 바탕에 둬요. DLMF 5.7.3 [8]의 $\log\Gamma(1+z)$ 급수에 $\log(1+z)$를 더하면 간단한 꼴이 돼요.
 
 $$
 \log\Gamma(2 + e) = (1 - \gamma)\,e + \sum_{k=2}^{\infty} \frac{(-1)^k\,(\zeta(k) - 1)}{k}\, e^k, \qquad \lvert e \rvert \lt 2
 $$
 
-계수는 근사로 맞춘 값이 아니라 급수 자체의 값이에요. Arb로 계산해 가장 가까운 double로 반올림했어요(`coeffs/lgamma_taylor2.hpp`). $\zeta(k) - 1 \approx 2^{-k}$라서 $\lvert e \rvert \le \tfrac12$에서 항은 $4^{-k}/k$로 줄고, 28항이면 나머지가 $2 \times 10^{-19}$ 아래예요. 이 급수의 장점은 **$e = 0$에서 값이 정확히 0이고, 모든 항이 $e$에 비례한다**는 것이에요. 큰 수끼리 빼서 0을 만들지 않으니 상대 정확도가 그대로 남아요. 계산은 $e \cdot \text{horner}(e, \text{계수})$예요.
+계수는 근사로 맞춘 값이 아니라 급수 자체의 값이에요. Arb로 계산해 가장 가까운 double로 반올림했어요(`coeffs/lgamma_taylor2.hpp`). $\zeta(k) - 1 \approx 2^{-k}$라서 $\lvert e \rvert \le \tfrac12$에서 항은 $4^{-k}/k$로 줄고, 28항이면 나머지가 $2 \times 10^{-19}$ 아래예요. 이 급수는 **$e = 0$에서 값이 정확히 0이고, 모든 항이 $e$에 비례해요**. 큰 수끼리 빼서 0을 만들지 않으니 상대 정확도가 그대로 남아요. 계산은 $e \cdot \text{horner}(e, \text{계수})$예요.
 
 나머지 구간은 이 급수로 정확히 옮겨 와요(`lgamma_pos`).
 
@@ -571,7 +571,7 @@ $$
 
 $x \ge 13$의 Stirling 급수(DLMF 5.11.1 [8])는 $\sum B_{2k}/(2k(2k-1)x^{2k-1})$을 Cephes `lgam`의 계수(`kLgamA`, 차수 4)로 계산해요. 계수는 Bernoulli 수에서 오는 $\tfrac1{12}, -\tfrac1{360}, \tfrac1{1260}, \dots$를 $x \ge 13$에 맞게 조금 조정한 값이에요. 이 급수도 발산하지만 $x \ge 13$이면 다섯 항 뒤의 항이 반올림보다 작아요. $x \gt 10^8$이면 보정항을 버리고, $x \gt 2.556 \times 10^{305}$이면 $(x - \tfrac12)\log x$가 넘쳐 inf예요.
 
-음수는 반사식의 로그예요: $\log\lvert\Gamma(x)\rvert = \log\bigl(\pi/\lvert x\,\text{sinpi}(x)\rvert\bigr) - \log\Gamma(-x)$. 음수 쪽 $\log\lvert\Gamma\rvert$는 무한히 많은 곳에서 0을 지나므로, 보장은 상대오차 대신 $\lvert\text{오차}\rvert \le 10^{-14}\max(1, \lvert\text{값}\rvert)$예요.
+음수는 반사식의 로그 $\log\lvert\Gamma(x)\rvert = \log\bigl(\pi/\lvert x\,\text{sinpi}(x)\rvert\bigr) - \log\Gamma(-x)$로 계산해요. 음수 쪽 $\log\lvert\Gamma\rvert$는 무한히 많은 곳에서 0을 지나므로, 보장은 상대오차 대신 $\lvert\text{오차}\rvert \le 10^{-14}\max(1, \lvert\text{값}\rvert)$예요.
 
 Cephes `lgam`은 $x \lt 13$을 $[2, 3]$으로 옮긴 뒤 $(x - 2)P/Q$의 유리식을 써요. 1 근처의 x는 $x + 1$을 거쳐 옮겨지는데, 이 덧셈의 반올림이 $x - 1$의 아래 자리를 지워서 상대 정확도를 잃어요. stardust는 $e = x - 1$을 정확히 만들어 쓰므로 이 손실이 없어요. 같은 점에서 scipy 1.18.1(Cephes)과 비교하면 이래요(Arb 참값 대비).
 
@@ -596,7 +596,7 @@ $\psi(x) = \Gamma'(x)/\Gamma(x)$는 양수 쪽에서 $x_0 = 1.4616321449\ldots$ 
    \psi(x) = (x - x_0)\,\bigl(Y + R(x - 1)\bigr), \qquad Y = 0.99558162689208984, \quad R = P/Q \text{ (차수 5/6)}
    $$
    $Y$는 이 구간의 $\psi(x)/(x - x_0)$ 평균에 가까운 상수이고, $R$은 $Y$에 대한 **절대오차**가 작게 맞춘 작은 보정이에요. 작은 보정의 상대오차는 결과에서 그만큼 희석돼요. Boost가 밝힌 최대 편차는 $1.466 \times 10^{-18}$이에요.
-3. **근의 처리**: $x_0$은 무리수라 float64 하나로 들 수 없어요. 반올림한 근을 빼면 $x$가 $x_0$에 가장 가까운 double일 때 결과가 0이 되어 상대오차가 무한대예요. Boost는 $x_0$을 세 조각 $r_1 + r_2 + r_3$로 들고($r_1 = 1569415565/2^{30}$, $r_2 = 381566830/2^{60}$, $r_3 \approx 9.0 \times 10^{-20}$) 차례로 빼요. 첫 빼기 $x - r_1$은 $x \in [1, 2]$이고 $r_1 \approx 1.46$이라 Sterbenz로 정확하고, 남은 두 조각이 근의 아래 자리를 채워요.
+3. **근의 처리**: $x_0$은 무리수라 float64 하나로 나타낼 수 없어요. 반올림한 근을 빼면 $x$가 $x_0$에 가장 가까운 double일 때 결과가 0이 되어 상대오차가 무한대예요. Boost는 $x_0$을 세 조각 $r_1 + r_2 + r_3$로 나눠 두고($r_1 = 1569415565/2^{30}$, $r_2 = 381566830/2^{60}$, $r_3 \approx 9.0 \times 10^{-20}$) 차례로 빼요. 첫 빼기 $x - r_1$은 $x \in [1, 2]$이고 $r_1 \approx 1.46$이라 Sterbenz로 정확하고, 남은 두 조각이 근의 아래 자리를 채워요.
 4. **$x \ge 10$은 점근급수** (DLMF 5.11.2 [8]): $\psi(x) \sim \log x - \tfrac1{2x} - \sum B_{2k}/(2k\,x^{2k})$. Boost는 한 칸 옮긴 $y = x - 1$로 $\psi(x) = \psi(y) + 1/y = \log y + \tfrac{1}{2y} - \sum_{k=1}^{8} B_{2k}/(2k\,y^{2k})$를 계산해요. $\log$ 앞의 $-\tfrac{1}{2x}$가 $+\tfrac{1}{2y}$로 바뀌어 두 항이 같은 부호가 돼요.
 
 $x_0$에 가장 가까운 double `1.4616321449683622`에서 stardust의 결과는 −9.241265521729427e-17(0.21 ULP)이에요.
@@ -619,11 +619,11 @@ $n \ge 1$이면 $\psi^{(n)}(x) = (-1)^{n+1} n!\,\zeta(n+1, x)$예요(DLMF 25.11.
 `polygamma`가 이 위에 더하는 것은 크기 처리예요.
 
 - $s - 1 = n$을 정확히 넘겨요. 꼬리 적분의 $1/(s - 1)$은 $s = n + 1$을 만든 뒤 1을 빼면 반올림될 수 있어요.
-- $q^{-s}$가 언더플로할 만큼 크면($s \log_2 q \ge 900$) 모든 항을 첫 항 $q^{-s}$에 대한 비 $(a/q)^{-s}$로 더하고, 첫 항은 `pow_scaled`로 크기를 따로 든 채 마지막에 곱해요(`hurwitz_scaled`).
-- $n!$은 `gamma_scaled(n + 1)`이에요. $n \le 22$는 계승 표로 정확하고, 그 위는 크기를 따로 든 Lanczos라 $n!\,\zeta$가 유한한 곳에서는 유한하게 나와요.
+- $q^{-s}$가 언더플로할 만큼 크면($s \log_2 q \ge 900$) 모든 항을 첫 항 $q^{-s}$에 대한 비 $(a/q)^{-s}$로 더하고, 첫 항은 `pow_scaled`로 지수를 따로 둔 채 마지막에 곱해요(`hurwitz_scaled`).
+- $n!$은 `gamma_scaled(n + 1)`이에요. $n \le 22$는 계승 표로 정확하고, 그 위는 지수를 따로 둔 Lanczos라 $n!\,\zeta$가 유한한 곳에서는 유한하게 나와요.
 - $n$은 0 이상의 정수만 받아요. 정수가 아니거나 음수, ±inf이면 NaN이에요(scipy처럼 잘라 쓰지 않아요). $n = 0$은 `digamma`예요.
 
-**큰 차수($n \gt 7000$).** 크기를 따로 든 Lanczos는 인자 7000까지만 써요(그 위는 `pow_scaled`의 조각이 너무 많아져요). 그래서 이 위의 $n!\,\zeta$는 다른 길로 만들어요. $\zeta(n+1, x) = x^{-(n+1)}\,S$이고 합 $S = \sum_k (x/(x+k))^{n+1}$은 1과 $1 + x/n$ 사이예요. 그래서 크기는 지수 하나
+**큰 차수($n \gt 7000$).** 지수를 따로 둔 Lanczos는 인자 7000까지만 써요(그 위는 `pow_scaled`의 조각이 너무 많아져요). 그래서 이 위의 $n!\,\zeta$는 다른 길로 만들어요. $\zeta(n+1, x) = x^{-(n+1)}\,S$이고 합 $S = \sum_k (x/(x+k))^{n+1}$은 1과 $1 + x/n$ 사이예요. 그래서 크기는 지수 하나
 
 $$
 E = \log\Gamma(n+1) - (n+1)\log x
@@ -637,19 +637,19 @@ Boost.Math의 `polygamma`는 같은 기준값에서 최대 556 ULP였고 4.9배 
 
 ### beta와 betaln
 
-$B(a, b) = \Gamma(a)\Gamma(b)/\Gamma(a + b)$(DLMF 5.12.1 [8])는 세 감마의 비라서, 그대로 계산하면 셋 중 하나만 넘쳐도 망가지고 $a + b$의 반올림도 들어가요. 크기에 따라 네 갈래예요.
+$B(a, b) = \Gamma(a)\Gamma(b)/\Gamma(a + b)$(DLMF 5.12.1 [8])는 세 감마의 비라서, 그대로 계산하면 셋 중 하나만 넘쳐도 망가지고 $a + b$의 반올림도 들어가요. 크기에 따라 다섯 갈래예요.
 
 | 갈래 | 조건 | 방법 |
 |---|---|---|
 | Boost | $a, b \gt 0$, $a + b \lt 40$ | Boost `beta`(Lanczos 결합) |
 | Cephes 감마 셋 | $a, b \gt 0$, $a + b \le 170$ | $\Gamma(a)/\Gamma(c)\cdot\Gamma(b)$, $c = a + b$는 hi + lo |
-| 크기를 따로 든 곱 | $\lvert a \rvert, \lvert b \rvert \le 7000$ | 감마 셋을 $m \cdot 2^e$로 |
+| 지수를 따로 둔 곱 | $\lvert a \rvert, \lvert b \rvert \le 7000$ | 감마 셋을 $m \cdot 2^e$로 |
 | Γ 비율 | $a \gt 7000 \ge b \gt 0$ | $\Gamma(a)/\Gamma(a+b)$를 $e^E$ 꼴로 |
-| Γ 비율과 음수 감마 | $a \gt 7000$, $-7000 \le b \lt 0$ | $\Gamma(a)/\Gamma(a+b)$를 $e^E$ 꼴로, $\Gamma(b)$는 크기를 따로 든 반사식 |
+| Γ 비율과 음수 감마 | $a \gt 7000$, $-7000 \le b \lt 0$ | $\Gamma(a)/\Gamma(a+b)$를 $e^E$ 꼴로, $\Gamma(b)$는 지수를 따로 둔 반사식 |
 
 마지막 갈래가 따로 있는 이유는 $\exp(\log\lvert B\rvert)$로 계산하면 $\lvert\log B\rvert$의 절대오차가 그대로 상대오차가 되기 때문이에요($B = 10^{300}$이면 $2.4 \times 10^{-14}$). 인자 하나가 7000 넘게 음수인 혼합 영역만 $\log\lvert\Gamma\rvert$ 셋으로 크기를, 감마 셋의 부호로 부호를 정해요.
 
-`betaln`은 Boost 구간에서 Boost `beta`의 로그, $\lvert a \rvert, \lvert b \rvert \le 7000$은 크기를 따로 든 곱의 로그(`log_abs`), $a \gt 7000$은 Stirling 급수(`lbeta_large`), 음수 인자가 7000을 넘으면 $\log\lvert\Gamma\rvert$ 셋의 합이에요. 0과 음의 정수 인자는 scipy(Cephes `beta.c`)의 규약을 따라요.
+`betaln`은 Boost 구간에서 Boost `beta`의 로그, $\lvert a \rvert, \lvert b \rvert \le 7000$은 지수를 따로 둔 곱의 로그(`log_abs`), $a \gt 7000$은 Stirling 급수(`lbeta_large`), 음수 인자가 7000을 넘으면 $\log\lvert\Gamma\rvert$ 셋의 합이에요. 0과 음의 정수 인자는 scipy(Cephes `beta.c`)의 규약을 따라요.
 
 **Boost의 Lanczos 결합.** 감마 셋에 각각 Lanczos 식을 넣으면 지수 부분이 거의 상쇄돼요. $\text{xgh} = x + g - \tfrac12$로 쓰면 $\text{agh} + \text{bgh} - \text{cgh} = g - \tfrac12$이므로
 
@@ -661,7 +661,7 @@ $$
 
 이 식의 오차는 주로 거듭제곱에서 와요. 밑 $\text{agh}/\text{cgh}$의 반올림 $2^{-53}$이 지수 $a - \tfrac12 - b$배로 커지므로, $a + b \lt 40$에서 수십 ULP까지 날 수 있어요. 잰 최대 오차 52.8 ULP가 이것이에요. 그래도 상대오차는 $10^{-14}$ 안이고(가수가 2에 가까운 값에서는 한 ULP가 상대 $1.1 \times 10^{-16}$이에요), 속도가 같아서(27.6 대 28.3 ns) 이 구간은 Boost예요.
 
-**Cephes 감마 셋.** $40 \le a + b \le 170$에서는 어느 감마도 넘치지 않으므로 Cephes 감마를 세 번 불러요. $\Gamma(a)/\Gamma(c)$를 먼저 나누는 이유는 $c \gt a$면 이 비가 1 이하라 곱하는 순서에서 넘침이 없기 때문이에요. $c$는 `two_sum`으로 hi + lo를 들고 $1/\Gamma(c)$에 $(1 - \psi(\text{hi})\,\text{lo})$를 곱해요.
+**Cephes 감마 셋.** $40 \le a + b \le 170$에서는 어느 감마도 넘치지 않으므로 Cephes 감마를 세 번 불러요. $\Gamma(a)/\Gamma(c)$를 먼저 나누는 이유는 $c \gt a$면 이 비가 1 이하라 곱하는 순서에서 넘침이 없기 때문이에요. $c$는 `two_sum`으로 hi + lo를 만들고 $1/\Gamma(c)$에 $(1 - \psi(\text{hi})\,\text{lo})$를 곱해요.
 
 **Γ 비율.** 한 인자가 7000을 넘으면 `pow_scaled`가 너무 많은 조각을 써야 해서, $\Gamma(a)/\Gamma(a+b)$를 Lanczos 식에서 직접 정리해요. $u = -b/\text{cgh}$로 두면 $\text{agh}/\text{cgh} = 1 + u$이고 $\text{cgh} - \text{agh} = b$(정확)이므로
 
@@ -687,9 +687,9 @@ $\mu$는 Stirling 보정 $A(1/x^2)/x$예요. 이렇게 묶으면 큰 항이 모�
 - **정수 $k \ge 0$**: 모든 실수 n에서 내림차례 곱 $n(n-1)\cdots(n-k+1)/k!$이에요. $k \lt 20$이면 곱을 직접 계산하고(scipy와 같은 순서라 부호 있는 0까지 같아요), 양의 정수 n이면 $k$와 $n - k$ 중 작은 쪽을 써요. 인수는 $n - (k - i)$로 만들어요. $k - i$는 작은 정수라 정확하고, 반올림은 빼기 한 번뿐이에요. $(i + n) - k$ 순서로 만들면 $i + n$에서 먼저 반올림해서, n이 정수에 아주 가까울 때 작은 인수 $n - 1$ 같은 것이 지워져요(`binom(1 - 2^-53, 7)`의 참값 $2.6434 \times 10^{-18}$). 분자가 $10^{50}$을 넘으면 그때까지의 분모로 나눠 넘침을 막아요. $k \ge 20$이고 n이 음의 정수면 $\binom{n}{k} = (-1)^k\binom{k - n - 1}{k}$로 옮겨요. 그래서 `binom(-5, 2)`는 15예요(scipy는 NaN).
 - **음의 정수 k**: 0이에요(음의 정수 n이면 scipy처럼 NaN).
 - **무한대 k**: $k \to -\infty$에서 $\lvert\binom{n}{k}\rvert \approx \Gamma(n+1)\lvert k\rvert^{-(n+1)}/\pi$이고 부호가 오락가락해요. 그래서 유한한 $n \gt -1$이면 극한 0, 그 밖과 $k = +\infty$는 극한이 없어 NaN이에요. 무한대 n은 scipy의 식 $1/((n+1)B(n-k+1, k+1))$ 그대로라 `binom(-inf, 2)`는 inf예요.
-- **그 밖**: $\Gamma(n+1)/\Gamma(k+1)\cdot 1/\Gamma(n - k + 1)$을 크기를 따로 들고 계산해요. $\Gamma(v + 1)$은 $v \cdot \Gamma(v)$로(정확한 인자), $n - k + 1$은 `two_sum`을 두 번 써서 hi + lo로 만들고 `rgamma_dd`로 $1/\Gamma$를 계산해요. `rgamma_dd`는 hi가 음수면 반사식의 사인을 $\text{sinpi}(\text{hi})\,\text{cospi}(\text{lo}) + \text{cospi}(\text{hi})\,\text{sinpi}(\text{lo})$로 만들어서, lo에 소수 부분이 다 들어 있는 경우($-10^{300} + 0.5$)에도 극점까지의 거리를 지켜요.
+- **그 밖**: $\Gamma(n+1)/\Gamma(k+1)\cdot 1/\Gamma(n - k + 1)$을 지수를 따로 두고 계산해요. $\Gamma(v + 1)$은 $v \cdot \Gamma(v)$로(정확한 인자), $n - k + 1$은 `two_sum`을 두 번 써서 hi + lo로 만들고 `rgamma_dd`로 $1/\Gamma$를 계산해요. `rgamma_dd`는 hi가 음수면 반사식의 사인을 $\text{sinpi}(\text{hi})\,\text{cospi}(\text{lo}) + \text{cospi}(\text{hi})\,\text{sinpi}(\text{lo})$로 만들어서, lo에 소수 부분이 다 들어 있는 경우($-10^{300} + 0.5$)에도 극점까지의 거리를 지켜요.
 
-**n ≥ 0이고 n이나 k가 7000을 넘을 때.** 보장 영역($n \ge 0$)의 거대한 인자예요. 여기서는 어느 식도 반올림한 합을 감마에 넣지 않아요. $n + 1$, $k - n$, $n - k + 1$처럼 double이 아닐 수 있는 합은 hi + lo로 들고, 감마의 몫은 hi에서 계산한 뒤 lo는 1차로 보정해요. 몫을 베타 함수 $B(x, y) = \Gamma(x)\Gamma(y)/\Gamma(x+y)$로 쓰면 보정은
+**n ≥ 0이고 n이나 k가 7000을 넘을 때.** 보장 영역($n \ge 0$)의 거대한 인자예요. 여기서는 어느 식도 반올림한 합을 감마에 넣지 않아요. $n + 1$, $k - n$, $n - k + 1$처럼 double이 아닐 수 있는 합은 hi + lo로 두고, 감마의 몫은 hi에서 계산한 뒤 lo는 1차로 보정해요. 몫을 베타 함수 $B(x, y) = \Gamma(x)\Gamma(y)/\Gamma(x+y)$로 쓰면 보정은
 
 $$
 d\log B = \bigl(\psi(x) - \psi(x+y)\bigr)\,dx + \bigl(\psi(y) - \psi(x+y)\bigr)\,dy
@@ -698,7 +698,7 @@ $$
 이에요. 두 digamma의 차는 큰 인자에서 빼기로 만들면 다 지워지므로 $\psi(x+y) - \psi(x)$를 $x \gt 7000$이면 $\operatorname{log1p}(y/x)$, 아니면 $\log(x+y) - \psi(x)$로 어림해요(`psi_step`, 상대 $10^{-4}$면 보정항에는 충분해요). 인자의 상대 반올림 $2^{-53}$이 $B$를 $2^{-53}\,x\log(1 + y/x)$만큼 움직이므로 이 보정이 없으면 $k = 10^{300}$에서 200 ULP, 7000 옆의 $10^7$에서 3000 ULP를 잃어요. 갈래는 셋이에요.
 
 - **$k \lt 0$**: $1/\Gamma(k+1)$을 반사하면 $\binom{n}{k} = -\tfrac{\sin\pi k}{\pi}\,B(n+1, -k)$예요. $\sin(\pi k)/\pi$는 `sinpi`로 정확히 줄이고, $\lvert k\rvert \lt 2^{-30}$이면 $k$ 그대로예요. 그래서 $n \ge 0$에서 큰 음의 비정수 k는 작은 값으로 0에 다가가요(`binom(0.5, -1e7 - 0.5)` = 8.92e-12).
-- **$k \gt n$**: $1/\Gamma(n-k+1)$을 반사해 $\binom{n}{k} = \tfrac{\sin\pi(n-k+1)}{\pi}\,B(n+1, k-n)$이에요. 사인의 인자는 세 조각($n - k + 1$의 hi와 두 반올림 오차)으로 들고, 덧셈정리로 조각마다 정확히 줄인 사인·코사인을 합쳐요. 세 조각을 먼저 더하면 $n = 10^{-10}$ 같은 곳에서 $1 + n$이 n의 자리를 잃어요.
+- **$k \gt n$**: $1/\Gamma(n-k+1)$을 반사해 $\binom{n}{k} = \tfrac{\sin\pi(n-k+1)}{\pi}\,B(n+1, k-n)$이에요. 사인의 인자는 세 조각($n - k + 1$의 hi와 두 반올림 오차)으로 나눠 두고, 덧셈정리로 조각마다 정확히 줄인 사인·코사인을 합쳐요. 세 조각을 먼저 더하면 $n = 10^{-10}$ 같은 곳에서 $1 + n$이 n의 자리를 잃어요.
 - **$0 \le k \le n$**: n이 거대한 쪽이에요. $k$와 $n - k$ 중 작은 쪽이 1100을 넘으면 $\binom{n}{k} \ge \binom{2m}{m} \approx 4^m/\sqrt{\pi m}$이 넘쳐서 inf예요. 그렇지 않으면 작은 쪽은 $\Gamma(\cdot + 1)$로 따로, 큰 쪽은 $\Gamma(n+1)$에 대한 Γ 비율(`gamma_ratio`, 위의 베타 절)로 계산하고 hi + lo의 lo를 1차로 보정해요.
 
 $B(x, y)$는 두 인자 중 작은 쪽이 1100을 넘으면 $B(y, y) \approx 4^{-y}$보다도 작아 0이에요(`beta_big`). 무작위 8000점에서 이 갈래들의 최대 오차는 8 ULP예요.
@@ -721,7 +721,7 @@ $B(x, y)$는 두 인자 중 작은 쪽이 1100을 넘으면 $B(y, y) \approx 4^{
 ("보장"은 상대오차를 ULP로, "혼합"은 음수 쪽과 `betaln`처럼 0이 많은 곳에서 $\lvert\text{오차}\rvert/\max(1, \lvert\text{값}\rvert)$를 $2^{-52}$ 단위로 잰 값이에요. 조건은 오차함수 표와 같아요.)
 
 - scipy의 최대 오차가 inf나 $10^{15}$인 줄은 서브노멀 꼬리(`gamma`의 −184…−171, `rgamma`의 171.6…177.8)를 0으로 내거나, `gammaln(±5e-324)`를 inf로 내는 점이에요. `beta`의 $3 \times 10^8$은 큰 인자에서 $\exp(\log B)$류의 계산이 상대오차를 잃는 점이에요. `beta(300, 2.5)`에서 stardust는 1.4 ULP, scipy는 2.4e3 ULP예요.
-- 원소 하나의 계산량으로 보면, `gamma`의 Boost Lanczos는 차수 12 유리식 둘과 `pow`, `exp`를 써서 scipy(Cephes)의 차수 6/7 유리식 하나보다 무거워요. `beta`와 `binom`은 정수가 아닌 인자에서 크기를 따로 든 계산(`frexp`, `pow_scaled`, Γ 셋)을 해요. scipy.special의 원소별 함수는 1스레드예요.
+- 원소 하나의 계산량으로 보면, `gamma`의 Boost Lanczos는 차수 12 유리식 둘과 `pow`, `exp`를 써서 scipy(Cephes)의 차수 6/7 유리식 하나보다 무거워요. `beta`와 `binom`은 정수가 아닌 인자에서 지수를 따로 둔 계산(`frexp`, `pow_scaled`, Γ 셋)을 해요. scipy.special의 원소별 함수는 1스레드예요.
 - scipy 1.18.1의 `polygamma`는 Python 함수로, `gamma`, `zeta`, `psi`를 따로 부르고 numpy 연산으로 합쳐요. stardust는 한 번의 C++ 호출이에요(스칼라 한 번 ⟦SPEED polygamma scalar⟧ µs).
 
 ## 복소수 loggamma
@@ -756,7 +756,7 @@ $$
 \zeta(k) = \sum_{j=1}^{6} j^{-k} + \zeta(k, 7)
 $$
 
-앞부분은 $j$마다 닫힌 꼴로 더해져요: $\sum_k (-1)^k (w/j)^k/k = \mu(w/j)$, $\mu(t) = t - \log(1 + t)$. 그래서
+앞부분은 $j$마다 $\sum_k (-1)^k (w/j)^k/k = \mu(w/j)$($\mu(t) = t - \log(1 + t)$)라는 닫힌 꼴로 더해져요. 그래서
 
 $$
 \log\Gamma(1 + w) = -\gamma w + \sum_{j=1}^{6}\mu\!\left(\frac wj\right) + \sum_{k=2}^{50} d_k\, w^k, \qquad d_k = \frac{(-1)^k\,\zeta(k, 7)}{k}
@@ -768,7 +768,7 @@ $$
 
 $\log\sin(\pi z)$에는 두 가지를 더 챙겨요(`log_sinpi`). 첫째, $z$가 정수 $n$에 아주 가까우면($\lvert x - n\rvert$와 $\lvert y\rvert$가 모두 $2^{-500}$ 아래) $\sin(\pi z) = (-1)^n\pi d$($d = z - n$)가 반올림 수준까지 맞아서, $\log\sin(\pi z) = \log\pi + \log\bigl((-1)^n d\bigr)$로 계산해요. $\pi$와 서브노멀인 허수부를 곱하면 그 곱이 몇 퍼센트씩 반올림되기 때문이에요. 예를 들어 `loggamma(-34 - 5e-324j)`의 실수부는 655.8592443791837이에요(Arb 참값 655.85924437918358…, scipy 1.18.1은 655.905…). 둘째, 복소 로그 `clog`는 $\lvert z\rvert$가 $2^{1000}$을 넘거나 $2^{-900}$ 아래이면 실수부와 허수부에 2의 거듭제곱($2^{-100}$, $2^{200}$)을 곱해 `hypot`에 넣고, 그 로그($100\log 2$ 등)를 다시 더하거나 빼요. 가장 큰 double 근처에서 크기가 넘치거나, 서브노멀 사이에서 유효숫자가 몇 비트밖에 남지 않는 일을 막는 처리예요. 2의 거듭제곱을 곱하는 것은 정확해요.
 
-**무한대와 극점.** 방향이 극한을 정하는 곳은 그 극한을 내요: $\operatorname{loggamma}(\infty \pm 0i) = \infty \pm 0i$, $\operatorname{loggamma}(x \pm \infty i) = -\infty \pm \infty i$ 등이에요. 극점 $-n \pm 0i$는 $\infty + \text{NaN}\,i$예요(실수부는 무한대, 허수부는 다가가는 방향마다 달라요). scipy는 이 경우들을 모두 NaN으로 내요.
+**무한대와 극점.** 방향이 극한을 정하는 곳은 그 극한을 내요. $\operatorname{loggamma}(\infty \pm 0i) = \infty \pm 0i$, $\operatorname{loggamma}(x \pm \infty i) = -\infty \pm \infty i$ 같은 것이에요. 극점 $-n \pm 0i$는 $\infty + \text{NaN}\,i$예요(실수부는 무한대, 허수부는 다가가는 방향마다 달라요). scipy는 이 경우들을 모두 NaN으로 내요.
 
 **정확도와 속도.** 보장은 $\operatorname{Re} z \gt 0$에서 상대 $10^{-14}$, $\operatorname{Re} z \le 0$에서 $\lvert\text{오차}\rvert \le 10^{-14}\max(1, \lvert\operatorname{loggamma}(z)\rvert)$예요. 잰 최대 오차는 8.21 ULP(99.9% 지점 5.86)이고 scipy 1.18.1은 224 ULP예요. 원소 $10^6$개에 1스레드 ⟦SPEED loggamma_complex t1⟧ ms, 10스레드 ⟦SPEED loggamma_complex t10⟧ ms, scipy 대비 ⟦SPEED loggamma_complex ratio1⟧배예요. 1–2 둘레의 영역에서 복소 로그 여섯 번($\mu$)과 49항 복소 다항식을 계산하므로 Stirling 경로보다 무거워요.
 
@@ -781,10 +781,10 @@ $\log\sin(\pi z)$에는 두 가지를 더 챙겨요(`log_sinpi`). 첫째, $z$가
 | 입력 | stardust | scipy | 까닭 |
 |---|---|---|---|
 | `erfc(x)`, $26.55 \lt x \lt 27.23$ | 서브노멀 값 | x > 26.7에서 0 | 서브노멀도 값이에요 |
-| `ndtr(-x)`, `log_ndtr(x)`, $37.5 \lt x \lt 38.47$ | 서브노멀 값(`log_ndtr`는 음수) | 0, −0.0 | 같아요 |
+| `ndtr(-x)`, `log_ndtr(x)`, $37.5 \lt x \lt 38.47$ | 서브노멀 값(`log_ndtr`은 음수) | 0, −0.0 | 같아요 |
 | `erfinv(-0.0)` | −0.0 | 0.0 | 홀함수의 부호 |
 | `erfcinv(5e-324)` | 27.21 | inf | $z/2$를 만들지 않아요 |
-| `gamma(x)`, $-184 \lt x \lt -171$ | 서브노멀 값과 부호 | 0 | 크기를 따로 든 반사식 |
+| `gamma(x)`, $-184 \lt x \lt -171$ | 서브노멀 값과 부호 | 0 | 지수를 따로 둔 반사식 |
 | `rgamma(x)`, $171.6 \lt x \lt 177.8$ | 서브노멀 값 | 0 | 같아요 |
 | `rgamma(-5e-324)` | −5e-324 | −0.0 | $x + \gamma x^2$ |
 | `gammaln(±5e-324)` | 744.44 | inf | $-\log\lvert x \rvert$ |
@@ -808,5 +808,5 @@ $\log\sin(\pi z)$에는 두 가지를 더 챙겨요(`log_sinpi`). 첫째, $z$가
 7. Boost.Math 소스, 커밋 4682f44: `include/boost/math/special_functions/gamma.hpp`, `lanczos.hpp`, `digamma.hpp`, `beta.hpp`, `include/boost/math/tools/rational.hpp` (Boost Software License 1.0). https://github.com/boostorg/math
 8. NIST Digital Library of Mathematical Functions. 식 5.5.1–5.5.4(점화식과 반사식), 5.7.3–5.7.4(log Γ와 ψ의 급수), 5.11.1–5.11.3(Stirling 급수, ψ의 점근급수), 5.12.1(베타), 7.2.1–7.2.3(오차함수), 7.12.1(erfc의 점근전개와 나머지의 한계), 25.11.1, 25.11.12(Hurwitz 제타와 polygamma). https://dlmf.nist.gov/
 9. J.-M. Muller, N. Brunie, F. de Dinechin, C.-P. Jeannerod, M. Joldes, V. Lefèvre, G. Melquiond, N. Revol, S. Torres, *Handbook of Floating-Point Arithmetic*, 2nd ed., Birkhäuser, 2018. (Sterbenz 보조정리, TwoSum, FMA로 곱의 오차를 정확히 구하기) https://doi.org/10.1007/978-3-319-76526-6
-10. T. J. Dekker, "A floating-point technique for extending the available precision", *Numerische Mathematik* 18(3), 224–242, 1971. (두 조각으로 드는 수) https://doi.org/10.1007/BF01397083
+10. T. J. Dekker, "A floating-point technique for extending the available precision", *Numerische Mathematik* 18(3), 224–242, 1971. (두 조각으로 나타내는 수) https://doi.org/10.1007/BF01397083
 11. D. E. G. Hare, "Computing the Principal Branch of log-Gamma", *Journal of Algorithms* 25(2), 221–236, 1997. https://doi.org/10.1006/jagm.1997.0881

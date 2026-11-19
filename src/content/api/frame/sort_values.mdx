@@ -47,7 +47,7 @@ import Op from '../../../components/fig/Op.astro';
 
 ## 한눈에 보기
 
-`sort_values`는 **값의 크기순으로 행을 다시 늘어놓아요.** 엑셀에서 열 하나를 골라 "오름차순 정렬"을 누르는 것과 같아요. 표의 한 행은 하나의 기록(과일 하나의 이름과 가격)이라서, 정렬할 때 **행이 통째로** 함께 움직여요. 이름과 가격의 짝이 흩어지지 않아요.
+`sort_values`는 값의 크기순으로 행을 다시 늘어놓아요. 엑셀에서 열 하나를 골라 "오름차순 정렬"을 누르는 것과 같아요. 표의 한 행은 하나의 기록(과일 하나의 이름과 가격)이라서, 정렬할 때 행이 통째로 함께 움직여요. 이름과 가격의 짝이 흩어지지 않아요.
 
 이럴 때 써요.
 
@@ -55,7 +55,7 @@ import Op from '../../../components/fig/Op.astro';
 - 점수 순위표를 만들 때
 - 보고서에 낼 표를 이름순, 날짜순으로 정리할 때
 
-DataFrame은 **어느 컬럼을 기준으로 정렬할지** 첫 인자로 알려 줘요.
+DataFrame은 어느 컬럼을 기준으로 정렬할지 첫 인자로 알려 줘요.
 
 ```python
 >>> import stardust as sd
@@ -87,7 +87,7 @@ DataFrame은 **어느 컬럼을 기준으로 정렬할지** 첫 인자로 알려
     colTones={['', 'a']} />
 </Fig>
 
-결과는 **새 DataFrame**이에요. 원래 `df`는 그대로예요. 정렬한 표를 계속 쓰려면 변수에 받아요.
+결과는 새 DataFrame이에요. 원래 `df`는 그대로예요. 정렬한 표를 계속 쓰려면 변수에 담아요.
 
 Series는 값이 한 줄뿐이라 기준을 고를 필요가 없어요. 인자 없이 불러요.
 
@@ -106,14 +106,14 @@ Name: price, dtype: int64
 
 ## 라벨은 행을 따라가요
 
-위 결과의 왼쪽 라벨이 `2, 0, 4, 3, 1`이에요. 행이 움직일 때 라벨도 함께 움직였기 때문이에요. 그래서 정렬한 뒤에도 "이 행은 원래 몇 번 행이었나"를 알 수 있어요. ([라벨이 무엇인지](/api/frame/alignment/))
+위 결과의 왼쪽 라벨이 `2, 0, 4, 3, 1`이에요. 행이 움직일 때 라벨도 함께 움직였기 때문이에요. 그래서 정렬한 뒤에도 "이 행은 원래 몇 번 행이었나"를 알 수 있어요([라벨이 무엇인지](/api/frame/alignment/)).
 
 ```python
 >>> df.sort_values("price").index
 Index([2, 0, 4, 3, 1], dtype=int64)
 ```
 
-이 점은 정렬한 결과에서 행을 꺼낼 때 중요해요. `.loc`은 **라벨**로, `.iloc`은 **위치**로 골라요. 정렬한 뒤에는 둘이 가리키는 행이 달라요. ([loc과 iloc](/api/frame/loc-iloc/))
+이 점은 정렬한 결과에서 행을 꺼낼 때 중요해요. `.loc`은 라벨로, `.iloc`은 위치로 골라요. 정렬한 뒤에는 둘이 가리키는 행이 달라요([loc과 iloc](/api/frame/loc-iloc/)).
 
 ```python
 >>> top = df.sort_values("price", descending=True)
@@ -142,7 +142,7 @@ Index([2, 0, 4, 3, 1], dtype=int64)
 RangeIndex(start=0, stop=5, step=1)
 ```
 
-이제 라벨과 위치가 같아서 `.loc[0]`도 1등이에요.
+이렇게 하면 라벨과 위치가 같아서 `.loc[0]`도 1등이에요.
 
 ## `descending`: 큰 값부터
 
@@ -162,13 +162,13 @@ RangeIndex(start=0, stop=5, step=1)
 
 ## 같은 값의 순서: 언제나 안정 정렬
 
-위 결과에서 `pear`의 두 행은 가격이 800으로 같아요. 이렇게 기준 값이 같은 행들은 **원래 순서(라벨 `0`이 `4`보다 먼저)를 그대로 지켜요.** 이런 정렬을 **안정 정렬**(stable sort)이라고 해요.
+위 결과에서 `pear`의 두 행은 가격이 800으로 같아요. 이렇게 기준 값이 같은 행은 원래 순서(라벨 `0`이 `4`보다 먼저)를 그대로 지켜요. 이런 정렬을 **안정 정렬**(stable sort)이라고 해요.
 
 오름차순이든 내림차순이든 똑같아요. 그래서 내림차순 결과는 오름차순 결과를 거꾸로 뒤집은 것과 달라요. 뒤집으면 같은 값끼리의 순서도 뒤집히지만, `descending=True`는 그 순서를 지켜요.
 
 이 성질 덕분에 결과가 언제나 하나로 정해져요. 같은 데이터를 정렬하면 몇 번을 하든, 스레드 수가 몇이든 같은 결과가 나와요.
 
-`stable=False`도 받지만 결과는 같아요. 배열의 `sd.sort`와 인자를 맞추려고 받는 것이고, "안정이 아니어도 된다"는 허락일 뿐이라 이 영역의 정렬은 그래도 안정 정렬이에요.
+`stable=False`도 받지만 결과는 같아요. 배열의 `sd.sort`와 인자를 맞추려고 받아요. `stable=False`는 "안정 정렬이 아니어도 된다"는 허락일 뿐이라, 정렬은 그래도 안정 정렬이에요.
 
 ```python
 >>> df.sort_values("price", stable=False).index
@@ -177,7 +177,7 @@ Index([2, 0, 4, 3, 1], dtype=int64)
 
 ## 여러 컬럼으로 정렬하기
 
-`by`에 컬럼 이름의 리스트를 주면 **앞의 컬럼부터 차례로** 비교해요. 첫 컬럼이 같은 행들끼리만 둘째 컬럼으로 순서를 정해요. 전화번호부가 성으로 먼저 정렬하고, 성이 같으면 이름으로 정렬하는 것과 같아요.
+`by`에 컬럼 이름의 리스트를 주면 앞의 컬럼부터 차례로 비교해요. 첫 컬럼이 같은 행끼리만 둘째 컬럼으로 순서를 정해요. 전화번호부가 성으로 먼저 정렬하고, 성이 같으면 이름으로 정렬하는 것과 같아요.
 
 ```python
 >>> df.sort_values(["fruit", "price"])
@@ -191,7 +191,7 @@ Index([2, 0, 4, 3, 1], dtype=int64)
 
 `fruit`가 이름순으로 정렬되고, 같은 `apple`끼리는 `price`가 작은 행이 먼저 와요.
 
-`descending`에 **키마다 하나씩** 리스트를 주면 방향을 따로 정할 수 있어요. 과일은 이름순(오름차순), 같은 과일 안에서는 비싼 것부터(내림차순)로 해 볼게요.
+`descending`에 키마다 하나씩 리스트를 주면 방향을 따로 정할 수 있어요. 아래는 과일을 이름순(오름차순)으로, 같은 과일 안에서는 비싼 것부터(내림차순) 늘어놓아요.
 
 ```python
 >>> df.sort_values(["fruit", "price"], descending=[False, True])
@@ -224,10 +224,10 @@ ValueError: sort_values(): 'descending' has 1 values for 2 sort keys
 
 ## NaN과 NA는 어디에 오나요
 
-이 영역에는 "값이 없음"을 나타내는 `NA`와, 실수의 특별한 값 NaN(숫자가 아님)이 따로 있어요. 정렬에서도 둘은 다르게 다뤄져요. ([NA와 NaN](/api/frame/na/))
+데이터프레임에는 "값이 없음"을 나타내는 `NA`와, 실수의 특별한 값 NaN(숫자가 아님)이 따로 있어요. 정렬에서도 둘을 다르게 다뤄요([NA와 NaN](/api/frame/na/)).
 
-- **NaN은 값이에요.** 다른 수와 크기를 비교할 수 없지만 정렬하려면 어딘가 놓아야 하므로, **+inf(무한대)보다도 큰 값**으로 쳐요. 오름차순이면 inf 뒤, 내림차순이면 맨 앞이에요. 배열의 `sd.sort`와 같은 규칙이에요.
-- **NA는 값이 없다는 표시예요.** 크다 작다를 말할 수 없으니 방향과 상관없이 `na_position`이 정한 자리에 와요. 기본은 `"last"`(맨 뒤)예요.
+- NaN은 값이에요. 다른 수와 크기를 비교할 수 없지만 정렬하려면 어딘가 놓아야 하므로, +inf(무한대)보다도 큰 값으로 쳐요. 오름차순이면 inf 뒤, 내림차순이면 맨 앞이에요. 배열의 `sd.sort`와 같은 규칙이에요.
+- NA는 값이 없다는 표시예요. 크다 작다를 말할 수 없으니 방향과 상관없이 `na_position`이 정한 자리에 와요. 기본은 `"last"`(맨 뒤)예요.
 
 ```python
 >>> t = sd.frame.Series([3.0, sd.frame.NA, sd.nan, 1.0, sd.inf], name="t")
@@ -256,16 +256,16 @@ Name: t, dtype: float64
 
 | | 오름차순 | 내림차순 |
 |---|---|---|
-| NaN | 맨 뒤 쪽(inf 다음) | 맨 앞 쪽 |
+| NaN | 뒤쪽(inf 다음) | 맨 앞 |
 | `NA` | `na_position` (기본 맨 뒤) | `na_position` (기본 맨 뒤) |
 
 <Callout type="warn" title="내림차순의 첫 행이 NaN일 수 있어요">
-  `descending=True`로 정렬해서 첫 행을 "가장 큰 값"으로 쓸 때, 컬럼에 NaN이 있으면 NaN이 먼저 나와요. NaN이 섞일 수 있는 데이터라면 `s.isnan()`으로 먼저 걸러 내세요. ([결측값 찾기](/api/frame/isna/))
+  `descending=True`로 정렬해서 첫 행을 "가장 큰 값"으로 쓸 때, 컬럼에 NaN이 있으면 NaN이 먼저 나와요. NaN이 섞일 수 있는 데이터라면 `s.isnan()`으로 먼저 걸러 내세요([결측값 찾기](/api/frame/isna/)).
 </Callout>
 
 ### 키마다 다른 `na_position`
 
-여러 키로 정렬할 때 `na_position`도 `descending`처럼 키마다 하나씩 리스트로 줄 수 있어요. 반 이름이 없는 학생은 맨 앞에, 점수가 없는 학생은 반 안에서 맨 뒤에 두어 볼게요.
+여러 키로 정렬할 때 `na_position`도 `descending`처럼 키마다 하나씩 리스트로 줄 수 있어요. 아래는 반 이름이 없는 학생을 맨 앞에, 점수가 없는 학생을 반 안에서 맨 뒤에 둬요.
 
 ```python
 >>> st = sd.frame.DataFrame({"cls": ["A", None, "B", "A", None],
@@ -279,7 +279,9 @@ Name: t, dtype: float64
 2     B   <NA>
 ```
 
-`None`은 만들 때 `NA`로 읽혀요. 방향과 NA 자리를 모두 키마다 정할 수도 있어요.
+`None`은 DataFrame을 만들 때 `NA`가 돼요.
+
+방향과 NA 자리를 모두 키마다 정할 수도 있어요.
 
 ```python
 >>> st.sort_values(["cls", "score"], descending=[False, True], na_position=["last", "first"])
@@ -295,7 +297,7 @@ Name: t, dtype: float64
 
 ### 기준 컬럼은 이름 없이 넘겨요
 
-`by`는 첫 인자로, 이름을 붙이지 않고 넘겨요. 나머지 옵션은 모두 이름을 붙여요. ([데이터프레임의 기본](/api/frame/basics/))
+`by`는 첫 인자로, 이름을 붙이지 않고 넘겨요. 나머지 옵션은 모두 이름을 붙여요([데이터프레임의 기본](/api/frame/basics/)).
 
 ```python
 >>> df.sort_values(by="price")
@@ -370,6 +372,6 @@ TypeError: Series.sort_values() got an unexpected keyword argument 'ascending'. 
 
 - 방향은 `ascending=True` 대신 `descending=False`예요. 리스트로 키마다 줄 수 있는 것은 같아요.
 - `by`는 위치로만 받아요. `df.sort_values(by="a")`는 `TypeError`예요.
-- **NaN은 결측이 아니라 값이에요.** pandas는 NaN을 결측으로 보고 `na_position`이 정한 자리에 두지만, 여기서는 +inf 뒤(내림차순이면 맨 앞)에 와요. `na_position`은 `NA`에만 적용돼요.
+- NaN은 결측이 아니라 값이에요. pandas는 NaN을 결측으로 보고 `na_position`이 정한 자리에 두지만, 여기서는 +inf 뒤(내림차순이면 맨 앞)에 와요. `na_position`은 `NA`에만 적용돼요.
 - `na_position`도 키마다 리스트로 줄 수 있어요. pandas 3.1.1에서는 `ValueError`예요.
-- **언제나 안정 정렬이에요.** pandas의 기본 `kind="quicksort"`는 키가 하나일 때 같은 값의 순서를 보장하지 않아요(실제로 순서가 섞여요). `kind`, `key`, `inplace`, `axis`는 없어요.
+- 언제나 안정 정렬이에요. pandas의 기본 `kind="quicksort"`는 키가 하나일 때 같은 값의 순서를 보장하지 않아요(실제로 순서가 섞여요). `kind`, `key`, `inplace`, `axis`는 없어요.

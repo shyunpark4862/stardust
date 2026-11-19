@@ -33,7 +33,7 @@ import Op from '../../../components/fig/Op.astro';
 
 `reindex`는 "행 라벨이 이 목록이 되도록" 표를 다시 짜요. 목록에 있고 원래 표에도 있는 라벨은 그 행을 가져오고, 원래 표에 없는 라벨은 빈 값(`NA`) 행을 만들어요. 목록에 없는 원래 행은 빠져요.
 
-가게의 요일별 판매량이 월·화·수만 기록돼 있을 때, 월요일부터 금요일까지 모든 요일이 있는 표로 맞추는 장면을 떠올려 보세요.
+가게의 요일별 판매량이 월·화·수만 기록돼 있다면, 월요일부터 금요일까지 모든 요일이 있는 표로 맞출 수 있어요.
 
 ```python
 >>> import stardust as sd
@@ -66,7 +66,7 @@ Name: sales, dtype: int64
 
 ## 빈 행은 `NA`이고 dtype은 그대로예요
 
-새로 생긴 행은 모든 컬럼이 `NA`예요. `NA`는 어떤 dtype에도 들어갈 수 있어서 **컬럼의 dtype이 바뀌지 않아요.** 위의 판매량도 빈 행이 생겼지만 그대로 int64예요([NA와 NaN](/api/frame/na/) 참고).
+새로 생긴 행은 모든 컬럼이 `NA`예요. `NA`는 어떤 dtype에도 들어갈 수 있어서 컬럼의 dtype이 바뀌지 않아요. 위의 판매량도 빈 행이 생겼지만 그대로 int64예요([NA와 NaN](/api/frame/na/) 참고).
 
 DataFrame은 행만 다시 배열하고, 컬럼은 그대로 둬요.
 
@@ -182,7 +182,7 @@ Traceback (most recent call last):
 ValueError: reindex(): cannot reindex or align from an index with duplicate labels
 ```
 
-반대로 **목록에는** 같은 라벨을 여러 번 적어도 돼요. 그 행이 여러 번 나와요.
+반대로 목록에는 같은 라벨을 여러 번 적어도 돼요. 그 행이 여러 번 나와요.
 
 ```python
 >>> sales.reindex(["mon", "mon"])
@@ -244,11 +244,11 @@ False
 | 컬럼 고르기·순서 바꾸기 | `df[["b", "a"]]` ([대괄호로 고르기](/api/frame/selection/)) | `KeyError` |
 
 - `.loc[labels]`는 "있다고 믿는 라벨"을 고를 때 써요. 오타 같은 실수를 `KeyError`로 바로 알려 줘요. `reindex`는 "없을 수도 있는 라벨"까지 포함한 틀에 맞출 때 써요.
-- 라벨이 고유한 두 Series를 더하면 라벨을 합친 결과가 나오는데, 이것은 양쪽에 `reindex`를 한 다음 위치대로 더한 것과 같아요([라벨과 정렬](/api/frame/alignment/)). 원하는 라벨 목록이 정해져 있으면 `reindex`로 미리 맞춰 둘 수 있어요.
+- 라벨이 고유한 두 Series를 더하면 라벨을 합친 결과가 나와요. 양쪽을 합친 라벨로 `reindex`한 다음 위치대로 더한 것과 같아요([라벨과 정렬](/api/frame/alignment/)). 원하는 라벨 목록이 정해져 있으면 `reindex`로 미리 맞춰 둘 수 있어요.
 
 ## pandas를 아는 분께
 
-- **빈 행이 `NA`이고 dtype이 그대로예요.** pandas 3.1.1은 int64 Series에 없는 라벨이 생기면 float64로 바꾸고 NaN을 넣어요(DataFrame의 int 컬럼도 마찬가지예요).
+- 빈 행이 `NA`이고 dtype이 그대로예요. pandas 3.1.1은 int64 Series에 없는 라벨이 생기면 float64로 바꾸고 NaN을 넣어요(DataFrame의 int 컬럼도 마찬가지예요).
 - `fill_value`, `method`, `limit`, `tolerance`가 없어요. 채우기는 `fillna`로 따로 해요.
 - `columns=`, `axis=`, `index=`가 없어요. `DataFrame.reindex`는 행만 다시 배열하고, 컬럼은 `df[[...]]`로 골라요.
 - 라벨 목록은 위치로만 줘요.

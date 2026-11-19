@@ -309,3 +309,37 @@ mjx-container text {
   margin-bottom: var(--space-1);
   font-size: var(--text-base);
 }
+
+/* Copy button: quiet until the block is hovered or the button focused. */
+.prose .code-wrap {
+  position: relative;
+}
+.prose .code-copy {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  padding: 2px var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  font-family: inherit;
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  color: var(--fg-subtle);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms var(--ease);
+}
+.prose .code-wrap:hover .code-copy,
+.prose .code-copy:focus-visible {
+  opacity: 1;
+}
+.prose .code-copy:hover {
+  color: var(--fg);
+  border-color: var(--line-strong);
+}
+@media (hover: none) {
+  .prose .code-copy {
+    opacity: 1;
+  }
+}

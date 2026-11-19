@@ -45,7 +45,7 @@ import Callout from '../../../components/Callout.astro';
 
 데이터를 처음 받으면 "몇 개인지, 어디서 어디까지인지, 가운데가 어디인지, 얼마나 퍼져 있는지, 모양이 어떤지"부터 보고 싶어요. `describe`는 이 여섯 가지를 한 번에 계산해 줘요.
 
-시험 점수 여덟 개로 볼게요.
+아래는 시험 점수 여덟 개를 요약한 결과예요.
 
 ```python
 >>> import stardust as sd
@@ -54,7 +54,7 @@ import Callout from '../../../components/Callout.astro';
 DescribeResult(nobs=8, minmax=(61.0, 95.0), mean=79.0, variance=141.71428571428572, skewness=-0.22758454097545974, kurtosis=-1.2220018210197712)
 ```
 
-한 줄씩 읽으면 이래요.
+칸마다 뜻은 이래요.
 
 | 칸 | 값 | 뜻 |
 |---|---|---|
@@ -65,7 +65,7 @@ DescribeResult(nobs=8, minmax=(61.0, 95.0), mean=79.0, variance=141.714285714285
 | `skewness` | −0.23 | 왜도. 0보다 조금 작아서 왼쪽(낮은 점수 쪽) 꼬리가 약간 길어요. |
 | `kurtosis` | −1.22 | 초과 첨도. 0보다 작아서 정규분포보다 꼬리가 얇고 고르게 퍼져 있어요. |
 
-리스트를 바로 넣어도 돼요. 정수는 실수로 바꿔서 계산해요. [`sd.mean`](/api/array/mean/) 같은 배열 함수는 `sd.ndarray`만 받지만, 기술통계 함수는 손에 든 데이터를 바로 요약하는 함수라 리스트도 받아요.
+리스트를 바로 넣어도 돼요. 정수는 실수로 바꿔서 계산해요. [`sd.mean`](/api/array/mean/) 같은 배열 함수는 `sd.ndarray`만 받지만, 기술통계 함수는 눈앞의 데이터를 바로 요약하는 함수라 리스트도 받아요.
 
 ```python
 >>> sd.stats.describe([1, 2, 3, 4])
@@ -111,7 +111,7 @@ True
 
 ## 각 값은 어떻게 계산할까요
 
-데이터가 $x_1, \dots, x_n$일 때 평균은 $\bar x = \frac1n\sum_i x_i$이고, 평균에서 떨어진 정도의 $k$제곱 평균을 $m_k = \frac1n\sum_i (x_i - \bar x)^k$라고 쓸게요($k$차 중심 적률). 그러면
+데이터가 $x_1, \dots, x_n$일 때 평균은 $\bar x = \frac1n\sum_i x_i$이고, 평균에서 떨어진 정도의 $k$제곱 평균을 $m_k = \frac1n\sum_i (x_i - \bar x)^k$라고 쓸게요($k$차 중심 모멘트). 그러면
 
 $$
 \text{variance} = \frac{1}{n - c}\sum_i (x_i - \bar x)^2, \qquad
@@ -125,7 +125,7 @@ $$
 - **왜도**는 좌우 대칭이 얼마나 깨졌는지예요. 오른쪽(큰 값 쪽) 꼬리가 길면 양수, 왼쪽이 길면 음수, 대칭이면 0이에요.
 - **첨도**는 꼬리가 얼마나 두꺼운지예요. `describe`는 정규분포를 0으로 맞춘 **초과 첨도**를 줘요. 양수면 정규분포보다 극단값이 자주 나오고, 음수면 덜 나와요.
 
-왜도와 첨도의 자세한 뜻과 그림은 [`skew`와 `kurtosis`](/api/stats/skew-kurtosis/)에 있어요. 다섯 칸은 각각 하나씩 구하는 함수와 같은 값이에요.
+왜도와 첨도의 자세한 뜻과 그림은 [`skew`와 `kurtosis`](/api/stats/skew-kurtosis/)에 있어요. 평균, 분산, 왜도, 첨도는 그 값 하나만 구하는 함수의 결과와 같아요.
 
 ```python
 >>> sd.mean(scores), sd.var(scores, correction=1)
@@ -158,7 +158,7 @@ $$
 ```
 </Callout>
 
-`correction`은 분산에만 쓰여요. 왜도와 첨도는 언제나 $m_k$($n$으로 나눈 적률)로 계산해요.
+`correction`은 분산에만 쓰여요. 왜도와 첨도는 언제나 $m_k$($n$으로 나눈 모멘트)로 계산해요.
 
 ### 왜도·첨도의 `bias`
 
@@ -350,7 +350,7 @@ ValueError: describe(): 'nan_policy' must be 'propagate', 'omit' or 'raise', not
 | 가장 흔한 값 | [`mode`](/api/stats/mode/) | |
 | 분포 객체의 평균·분산·왜도·첨도 | `X.mean()`, `X.variance()`, `X.skewness()`, `X.kurtosis()` | 데이터가 아니라 **분포 자체**의 이론값이에요. |
 
-마지막 줄을 조금 더 볼게요. `sd.stats.Normal(mu=0.0, sigma=1.0)` 같은 분포 객체의 메서드는 수식으로 정해진 참값을 줘요. `describe`는 손에 쥔 데이터에서 그 값을 **어림**해요. 표준정규분포에서 뽑은 표본이라도 표본의 왜도·첨도는 정확히 0이 되지 않아요.
+`sd.stats.Normal(mu=0.0, sigma=1.0)` 같은 분포 객체의 메서드는 수식으로 정해진 참값을 줘요. `describe`는 주어진 데이터에서 그 값을 **어림**해요. 표준정규분포에서 뽑은 표본이라도 표본의 왜도·첨도는 정확히 0이 되지 않아요.
 
 ```python
 >>> X = sd.stats.Normal(mu=0.0, sigma=1.0)

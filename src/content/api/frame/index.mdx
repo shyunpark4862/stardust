@@ -61,7 +61,7 @@ import Op from '../../../components/fig/Op.astro';
 
 ## 한눈에 보기
 
-Series와 DataFrame의 행에는 라벨(이름표)이 붙어 있어요. 그 **라벨들을 순서대로 모은 목록**이 `Index`예요. 엑셀에서 맨 왼쪽의 행 번호 열을 떠올리면 돼요. 다만 번호 대신 `"apple"`, `2024`처럼 의미 있는 값을 쓸 수 있어요.
+Series와 DataFrame의 행에는 라벨(이름표)이 붙어 있어요. 그 **라벨을 순서대로 모은 목록**이 `Index`예요. 엑셀에서 맨 왼쪽의 행 번호 열을 떠올리면 돼요. 다만 번호 대신 `"apple"`, `2024`처럼 의미 있는 값을 쓸 수 있어요.
 
 ```python
 >>> import stardust as sd
@@ -85,7 +85,7 @@ RangeIndex(start=0, stop=3, step=1)
   <FrameFig name="s" index={['apple', 'banana', 'cherry']} data={[1200, 800, 1500]} />
 </Fig>
 
-Index는 직접 만들 일보다 `s.index`, `df.index`, `df.columns`로 **읽을 일이 더 많아요.** DataFrame의 컬럼 이름 목록도 str Index예요. 직접 만들 때는 주로 이름이 있는 라벨을 붙이고 싶을 때예요.
+Index는 직접 만들 일보다 `s.index`, `df.index`, `df.columns`로 읽을 일이 더 많아요. DataFrame의 컬럼 이름 목록도 str Index예요. 직접 만드는 것은 주로 이름이 있는 라벨을 붙이고 싶을 때예요.
 
 ```python
 >>> sd.frame.Index(["kim", "lee"], name="student")
@@ -98,7 +98,7 @@ Index(['kim', 'lee'], dtype=string, name='student')
 
 ## Index 만들기
 
-`Index(data)`의 `data`에는 리스트, 튜플, `range`, 1차원 numpy 배열, `sd.ndarray`, 다른 Index를 줄 수 있어요. 라벨은 **모두 int이거나 모두 str**이어서, dtype은 `int64`나 `string` 둘 중 하나예요.
+`Index(data)`의 `data`에는 리스트, 튜플, `range`, 1차원 numpy 배열, `sd.ndarray`, 다른 Index를 줄 수 있어요. 라벨은 모두 int이거나 모두 str이어야 해서, dtype은 `int64`나 `string` 둘 중 하나예요.
 
 ```python
 >>> sd.frame.Index([2023, 2024, 2025])
@@ -117,7 +117,7 @@ Index([7, 8], dtype=int64)
 Index([], dtype=int64)
 ```
 
-**실수와 bool은 라벨이 될 수 없어요.** **라벨에 `NA`(`None`)도 넣을 수 없어요.** 이런 값은 라벨 대신 컬럼에 두고 써요. 컬럼의 값으로 행을 고르는 법은 [조건으로 행 거르기](/api/frame/mask/)에 있어요.
+실수와 bool은 라벨이 될 수 없고, 라벨에 `NA`(`None`)도 넣을 수 없어요. 이런 값은 라벨 대신 컬럼에 두고 써요. 컬럼의 값으로 행을 고르는 법은 [조건으로 행 거르기](/api/frame/mask/)에 있어요.
 
 ```python
 >>> sd.frame.Index([0.5, 1.5])
@@ -154,7 +154,7 @@ TypeError: Index(): labels must be a list, tuple, range, numpy array, sd.ndarray
 Index([0, 1, 2], dtype=int64)
 ```
 
-**같은 라벨이 여러 번 나와도 괜찮아요.** 한 학생의 시험 기록이 여러 줄인 것처럼 실제 데이터에는 흔해요. 다만 라벨로 두 Series를 맞추는 연산은 라벨이 고유해야 해요([라벨과 정렬](/api/frame/alignment/)). 고유한지는 `is_unique`로 봐요.
+같은 라벨이 여러 번 나와도 괜찮아요. 한 학생의 시험 기록이 여러 줄인 것처럼 실제 데이터에는 흔해요. 다만 라벨로 두 Series를 맞추는 연산은 라벨이 고유해야 해요([라벨과 정렬](/api/frame/alignment/)). 고유한지는 `is_unique`로 봐요.
 
 ```python
 >>> visits = sd.frame.Index(["kim", "lee", "kim"])
@@ -183,7 +183,7 @@ True
 | `RangeIndex(start, stop)` | `start, start+1, …` (stop 앞까지) |
 | `RangeIndex(start, stop, step)` | `start, start+step, …` (stop을 넘기 전까지) |
 
-세 인자는 **위치로만** 줘요. `arange`처럼 첫 인자가 꼭 필요하고, 키워드(`stop=3`)로는 줄 수 없어요.
+세 인자는 위치로만 줘요. `arange`처럼 첫 인자가 꼭 필요하고, 키워드(`stop=3`)로는 줄 수 없어요.
 
 ```python
 >>> sd.frame.RangeIndex(stop=3)
@@ -192,7 +192,7 @@ Traceback (most recent call last):
 TypeError: RangeIndex.__init__() got some positional-only arguments passed as keyword arguments: 'stop'
 ```
 
-세 인자는 모두 **int**예요. Python int와 numpy 정수(`np.int64(3)`)를 받고, `True`나 `3.0`처럼 int가 아닌 값은 `TypeError`예요. `step=0`은 라벨이 끝나지 않으니 `ValueError`, int64 범위 밖은 `OverflowError`예요. 배열 영역의 다른 int 인자와 같은 규칙이에요.
+세 인자는 모두 int예요. Python int와 numpy 정수(`np.int64(3)`)를 받고, `True`나 `3.0`처럼 int가 아닌 값은 `TypeError`예요. `step=0`은 라벨이 끝나지 않으니 `ValueError`, int64 범위 밖은 `OverflowError`예요. 배열 영역의 다른 int 인자와 같은 규칙이에요.
 
 ```python
 >>> sd.frame.RangeIndex(np.int64(3))
@@ -221,7 +221,7 @@ RangeIndex(start=1, stop=3, step=1)
 Index([0, 3], dtype=int64)
 ```
 
-RangeIndex의 라벨은 int64 라벨로 쳐요. 그래서 같은 정수를 담은 Index와 똑같이 행동해요.
+RangeIndex의 라벨은 int64 라벨로 쳐요. 그래서 같은 정수를 담은 Index와 똑같이 동작해요.
 
 ## 속성: `dtype`, `name`, `is_unique`, `start`, `stop`, `step`
 
@@ -289,7 +289,7 @@ array(['apple', 'banana', 'cherry'], dtype=object)
 
 ## 라벨이 있는지: `in`
 
-`x in idx`는 라벨 가운데 `x`와 같은 것이 있는지 봐요. Series의 `in`과 같은 규칙이에요([반복과 in](/api/frame/iteration/)). 값이 라벨의 dtype으로 **손실 없이** 바뀔 수 있을 때만 찾아요. 그래서 `1.0`은 int 라벨 `1`을 찾지만, `1.5`나 `"1"`은 찾지 않아요. bool은 숫자 0, 1로 쳐요.
+`x in idx`는 라벨 가운데 `x`와 같은 것이 있는지 봐요. Series의 `in`과 같은 규칙이에요([반복과 in](/api/frame/iteration/)). 값이 라벨의 dtype으로 손실 없이 바뀔 수 있을 때만 찾아요. 그래서 `1.0`은 int 라벨 `1`을 찾지만, `1.5`나 `"1"`은 찾지 않아요. bool은 숫자 0, 1로 쳐요.
 
 ```python
 >>> "banana" in idx
@@ -303,11 +303,11 @@ False
 True
 ```
 
-`in`은 이렇게 너그럽지만, 라벨로 행을 **꺼내는** `.loc`은 이와 달리 라벨의 타입이 정확히 맞아야 해요. int 라벨에 `2024.0`을 쓰면 `TypeError`예요([loc과 iloc](/api/frame/loc-iloc/)).
+`in`은 이렇게 너그럽지만, 라벨로 행을 꺼내는 `.loc`은 이와 달리 라벨의 타입이 정확히 맞아야 해요. int 라벨에 `2024.0`을 쓰면 `TypeError`예요([loc과 iloc](/api/frame/loc-iloc/)).
 
 ## 두 Index 비교: `equals()`
 
-`a.equals(b)`는 두 Index가 **같은 라벨을 같은 순서로** 가졌는지 봐요. 이름은 보지 않아요. Index와 RangeIndex도 라벨이 같으면 같아요.
+`a.equals(b)`는 두 Index의 라벨이 순서까지 모두 같은지 봐요. 이름은 보지 않아요. Index와 RangeIndex도 라벨이 같으면 같아요.
 
 ```python
 >>> a = sd.frame.Index(["x", "y"], name="left")
@@ -328,7 +328,7 @@ True
 False
 ```
 
-**`==`와 `!=`는 쓸 수 없어요.** Index는 계산하는 값이 아니라 라벨 목록이라서 비교 연산자를 받지 않아요. 목록 전체는 `equals()`로, 라벨마다는 `a.tolist()`를 꺼내서 비교해요.
+`==`와 `!=`는 쓸 수 없어요. Index는 계산하는 값이 아니라 라벨 목록이라서 비교 연산자를 받지 않아요. 목록 전체는 `equals()`로, 라벨마다는 `a.tolist()`를 꺼내서 비교해요.
 
 ```python
 >>> a == a
@@ -370,7 +370,7 @@ Index(['apple', 'banana', 'cherry'], dtype=string, name='item')
 
 바뀌지 않기 때문에 여러 Series와 DataFrame이 같은 Index를 함께 써도 안전해요.
 
-그래도 Index는 **해싱할 수 없어서** dict의 키나 set에 넣을 수 없어요. Series와 같아요. 키가 필요하면 `tuple(idx.tolist())`를 써요.
+다만 Index는 해싱할 수 없어서 dict의 키나 set에 넣을 수 없어요. Series와 같아요. 키가 필요하면 `tuple(idx.tolist())`를 써요.
 
 ```python
 >>> hash(idx)

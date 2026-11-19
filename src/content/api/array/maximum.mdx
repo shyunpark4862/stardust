@@ -35,7 +35,7 @@ import Op from '../../../components/fig/Op.astro';
 
 ## 한눈에 보기
 
-`maximum`은 두 배열을 **같은 자리끼리** 비교해서 큰 값을 골라요. `minimum`은 작은 값을 골라요. 결과는 입력과 같은 모양의 배열이에요.
+`maximum`은 두 배열을 같은 자리끼리 비교해서 큰 값을, `minimum`은 작은 값을 골라요. 결과는 입력과 같은 모양의 배열이에요.
 
 ```python
 >>> import stardust as sd
@@ -80,7 +80,7 @@ array([-3.0,  2.0, -0.5,  5.0], dtype=float64)
 
 ### 모양이 다른 두 배열
 
-모양이 다르면 [브로드캐스팅](/api/array/broadcasting/) 규칙으로 맞춰요. 아래는 행마다 다른 아래 한계(첫 행 3, 둘째 행 5)를 적용한 예예요.
+모양이 다르면 [브로드캐스팅](/api/array/broadcasting/) 규칙으로 맞춰요. 행마다 아래 한계를 다르게(첫 행 3, 둘째 행 5) 준 예예요.
 
 ```python
 >>> m = sd.asarray([[1, 5, 2], [4, 3, 6]])
@@ -102,8 +102,8 @@ ValueError: maximum(): shapes could not be broadcast together: (3,) (2,)
 
 이름이 비슷한 [`max`](/api/array/min-max/)는 다른 일을 해요.
 
-- **`sd.maximum(a, b)`**: **두 배열**을 같은 자리끼리 비교해요. 결과의 크기는 입력과 같아요.
-- **`sd.max(a)`**: **배열 하나** 안에서 가장 큰 값을 찾아요. 결과는 값 하나(또는 축을 줄인 배열)예요.
+- `sd.maximum(a, b)`는 **두 배열**을 같은 자리끼리 비교해요. 결과의 크기는 입력과 같아요.
+- `sd.max(a)`는 **배열 하나** 안에서 가장 큰 값을 찾아요. 결과는 값 하나(또는 축을 줄인 배열)예요.
 
 ```python
 >>> sd.max(m)
@@ -114,7 +114,7 @@ array([4, 5, 6], dtype=int64)
 array([4, 5, 6], dtype=int64)
 ```
 
-둘째와 셋째의 결과가 같은 것은 우연이 아니에요. `max(m, axis=0)`은 "열마다 위아래 원소 중 가장 큰 것"이고, 행이 둘뿐이라면 그것은 "첫 행과 둘째 행을 자리마다 비교한 큰 값"과 같아요. 결과는 같아도 하는 일은 달라요. `max`는 배열 하나를 한 방향으로 줄이고, `maximum`은 두 배열을 같은 자리끼리 비교해요.
+둘째와 셋째의 결과가 같은 것은 우연이 아니에요. `max(m, axis=0)`은 "열마다 위아래 원소 중 가장 큰 것"인데, 행이 둘뿐이면 "첫 행과 둘째 행을 자리마다 비교한 큰 값"과 같아요. 결과는 같아도 하는 일은 달라요. `max`는 배열 하나를 한 방향으로 줄이고, `maximum`은 두 배열을 같은 자리끼리 비교해요.
 
 <Fig caption="max(m, axis=0)은 배열 하나를 열마다 줄여요. 진한 칸이 열마다 가장 큰 값이에요.">
   <ArrayFig name="m" data={[[1, 5, 2], [4, 3, 6]]} tones={[['', 'b', ''], ['b', '', 'b']]} axes />
@@ -151,7 +151,7 @@ TypeError: the truth value of an array is ambiguous; use any() or all()
 
 ## 입력과 결과의 종류
 
-결과의 dtype은 두 입력을 승격한 것이에요. 정수와 실수를 섞으면 실수가 돼요.
+결과의 dtype은 두 입력의 dtype을 승격한 것, 곧 둘을 모두 담을 수 있는 쪽으로 맞춘 것이에요. 정수와 실수를 섞으면 실수가 돼요.
 
 ```python
 >>> sd.maximum(a, 2.5)
@@ -238,7 +238,7 @@ array([2.0, 0.0, 3.0, nan], dtype=float64)
 
 ### `0.0`과 `-0.0`
 
-실수에는 `0.0`과 `-0.0`이 따로 있어요. 값으로는 같지만(`0.0 == -0.0`은 참), 부호가 달라요. stardust는 두 0을 비교할 때 **`-0.0`을 더 작은 쪽으로** 쳐요. 그래서 넣는 순서와 상관없이 `maximum`은 `0.0`, `minimum`은 `-0.0`을 돌려줘요.
+실수에는 `0.0`과 `-0.0`이 따로 있어요. 값으로는 같지만(`0.0 == -0.0`은 참), 부호가 달라요. stardust는 두 0을 비교할 때 `-0.0`을 더 작은 쪽으로 쳐요. 그래서 넣는 순서와 상관없이 `maximum`은 `0.0`, `minimum`은 `-0.0`을 돌려줘요.
 
 ```python
 >>> sd.maximum(0.0, -0.0)
@@ -284,7 +284,7 @@ TypeError: maximum(): 'x2' must be an sd.ndarray or a bool, int, float or comple
 
 ## numpy를 아는 분께
 
-- NaN은 numpy의 `maximum`, `minimum`처럼 결과로 퍼져요. NaN을 무시하는 `fmax`, `fmin`은 없어요. `where`와 `isnan`으로 쓰세요.
+- NaN은 numpy의 `maximum`, `minimum`처럼 결과로 퍼져요. NaN을 무시하는 `fmax`, `fmin`은 없어요. 대신 `where`와 `isnan`을 쓰세요.
 - `maximum(0.0, -0.0)`은 순서와 상관없이 `0.0`, `minimum`은 `-0.0`으로 정해져 있어요.
 - 복소수는 `TypeError`예요. numpy처럼 사전순으로 비교하지 않아요.
 - `maximum.reduce` 같은 ufunc 메서드는 없어요. `sd.max`를 쓰세요.

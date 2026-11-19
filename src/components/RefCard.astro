@@ -28,7 +28,7 @@ const data = Astro.locals.apiEntry;
       {data.raises.length > 0 && (
         <>
           <h3 class="ref__h" id="에러">에러</h3>
-          <ApiFields items={data.raises} />
+          <ApiFields items={data.raises} split />
         </>
       )}
     </section>

@@ -50,7 +50,7 @@ array([40, 10, 10], dtype=int64)
 
 3번 자리의 `40`, 0번 자리의 `10`, 다시 0번 자리의 `10`이에요. 같은 위치를 여러 번 적어도 되고, 순서도 마음대로예요.
 
-<Fig caption="take: indices에 적힌 순서대로 x에서 값을 꺼내 와요.">
+<Fig caption="take는 indices에 적힌 순서대로 x에서 값을 꺼내 와요.">
   <ArrayFig name="x" data={[10, 20, 30, 40]} tones={['a', '', '', 'b']} note="자리 0, 1, 2, 3" />
   <Op note="indices = [3, 0, 0]">→</Op>
   <ArrayFig name="sd.take(x, indices)" data={[40, 10, 10]} tones={['b', 'a', 'a']} />
@@ -63,7 +63,7 @@ array([40, 10, 10], dtype=int64)
 array([40, 10, 10], dtype=int64)
 ```
 
-`take_along_axis`는 2차원 이상에서 **줄마다 다른 위치**를 고를 때 써요. 주로 [`argsort`](/api/array/sort/)나 [`argmax`](/api/array/argmin/)의 결과로 값을 꺼낼 때 써요. [아래](#take_along_axis-줄마다-다른-위치를-고르기)에서 자세히 볼게요.
+`take_along_axis`는 2차원 이상에서 **줄마다 다른 위치**를 고르는 함수로, 주로 [`argsort`](/api/array/sort/)나 [`argmax`](/api/array/argmin/)의 결과로 값을 꺼낼 때 써요. 자세한 것은 [아래](#take_along_axis-줄마다-다른-위치를-고르기)에 있어요.
 
 <Reference />
 
@@ -71,7 +71,7 @@ array([40, 10, 10], dtype=int64)
 
 ### `axis`로 축을 골라요
 
-2차원 이상의 배열에서는 **어느 축의 위치인지** `axis`로 꼭 알려 줘야 해요. `axis=0`이면 행을, `axis=1`이면 열을 골라요.
+2차원 이상의 배열에서는 어느 축의 위치인지 `axis`로 꼭 알려 줘야 해요. `axis=0`이면 행을, `axis=1`이면 열을 골라요.
 
 ```python
 >>> m = sd.asarray([[1, 2, 3], [4, 5, 6]])
@@ -118,7 +118,7 @@ ValueError: take(): 'axis' is required for arrays with more than one dimension
 | `(2, 3)` | 모양 `(2, 2)` 배열 | `0` | `(2, 2, 3)` |
 | `(2, 3)` | int 하나 | `0` | `(3,)` (축이 사라져요) |
 
-1차원 배열에 여러 차원의 `indices`를 쓰면, 그 배열을 "번호 → 값" 대응표로 쓸 수 있어요. 결과는 `indices`와 같은 모양이에요.
+1차원 배열에 여러 차원의 `indices`를 주면, 그 배열을 "번호 → 값" 대응표로 쓸 수 있어요. 결과는 `indices`와 같은 모양이에요.
 
 ```python
 >>> lut = sd.asarray([0.0, 0.5, 1.0])
@@ -175,7 +175,7 @@ array([[1, 2, 3],
   <ArrayFig data={[[1, 2, 3], [0, 1, 7]]} tones={[['a', 'a', 'a'], ['', '', '']]} />
 </Fig>
 
-같은 일을 `take`로 하면 뜻이 달라져요. `take`는 `order`의 모든 원소를 **모든 행에** 적용해서 3차원 결과를 만들어요.
+같은 `order`를 `take`에 주면 전혀 다른 결과가 나와요. `take`는 `order`의 모든 원소를 **모든 행에** 적용해서 3차원 결과를 만들어요.
 
 ```python
 >>> sd.take(s, order, axis=1).shape
@@ -184,7 +184,7 @@ array([[1, 2, 3],
 
 ### 정렬 순서로 다른 배열까지 늘어놓기
 
-`take_along_axis`는 **한 배열의 순서를 다른 배열에 적용할 때** 특히 쓸모가 있어요. 점수 `s`와 같은 자리에 학생 번호 `ids`가 있다고 하고, 행마다 점수가 낮은 순서로 학생 번호를 늘어놓아 볼게요.
+`take_along_axis`는 한 배열의 순서를 다른 배열에 적용할 때 특히 쓸모가 있어요. 점수 `s`와 같은 자리에 학생 번호 `ids`가 있다고 하고, 행마다 점수가 낮은 순서로 학생 번호를 늘어놓아 볼게요.
 
 ```python
 >>> ids = sd.asarray([[100, 200, 300], [400, 500, 600]])
@@ -222,7 +222,7 @@ array([[3],
        [7]], dtype=int64)
 ```
 
-값만 필요하면 `sd.max(s, axis=1)`이 더 간단해요. 위 방법은 "가장 큰 점수를 받은 학생의 번호"처럼 **같은 자리의 다른 배열 값**이 필요할 때 써요.
+값만 필요하면 `sd.max(s, axis=1)`이 더 간단해요. 위 방법은 "가장 큰 점수를 받은 학생의 번호"처럼 같은 자리에 있는 다른 배열의 값이 필요할 때 써요.
 
 ```python
 >>> sd.take_along_axis(ids, best, axis=1)
@@ -280,7 +280,7 @@ IndexError: take_along_axis(): index 5 is out of bounds for axis 1 with size 3
 
 ### 결과는 복사본이에요
 
-`take`와 `take_along_axis`는 언제나 **새 배열**을 만들어요. 결과를 고쳐도 원래 배열은 바뀌지 않아요. 반대로 원래 배열의 그 자리에 값을 쓰려면 `x[idx] = ...`처럼 인덱스 대입을 써야 해요.
+`take`와 `take_along_axis`는 언제나 새 배열을 만들어요. 결과를 고쳐도 원래 배열은 바뀌지 않아요. 반대로 원래 배열의 그 자리에 값을 쓰려면 `x[idx] = ...`처럼 인덱스 대입을 써야 해요.
 
 ```python
 >>> t = sd.take(x, sd.asarray([0, 1]))
@@ -314,7 +314,7 @@ TypeError: take(): 'axis' must be an int, not tuple
 
 ## numpy를 아는 분께
 
-- **`take`의 `axis`를 생략할 수 있는 것은 1차원 배열뿐이에요.** numpy는 `axis=None`이면 배열을 펴서 고르지만, stardust는 2차원 이상에서 `ValueError`예요. 펴서 고르려면 `sd.take(sd.ravel(x), idx)`로 쓰세요.
+- `take`의 `axis`를 생략할 수 있는 것은 1차원 배열뿐이에요. numpy는 `axis=None`이면 배열을 펴서 고르지만, stardust는 2차원 이상에서 `ValueError`예요. 펴서 고르려면 `sd.take(sd.ravel(x), idx)`로 쓰세요.
 - `mode='wrap'`, `mode='clip'`, `out=`은 없어요. 범위 밖은 언제나 `IndexError`예요.
 - `indices`에 리스트와 bool 배열을 받지 않아요. int64 배열이나 int만 돼요.
 - `take_along_axis`의 `axis` 기본값은 `-1`이에요. `axis=None`(펴서 고르기)은 없어요.

@@ -5,7 +5,7 @@ group: 정규화 회귀
 order: 3
 signatures:
   - "sd.regression.elastic_net(y, X, /, *, alpha, l1_ratio=0.5, weights=None, intercept=True, standardize=False, max_iter=1000, tol=0.0001, nan_policy='propagate')"
-summary: 라소의 절댓값 벌점과 릿지의 제곱 벌점을 섞은 엘라스틱 넷이에요. 라소처럼 계수를 정확히 0으로 만들면서도, 서로 비슷한 열들은 하나만 고르지 않고 함께 남겨요. l1_ratio가 섞는 비율이에요.
+summary: 라소의 절댓값 벌점과 릿지의 제곱 벌점을 섞은 엘라스틱 넷이에요. 라소처럼 계수를 정확히 0으로 만들면서도, 서로 비슷한 열은 하나만 고르지 않고 함께 남겨요. l1_ratio가 섞는 비율이에요.
 params:
   - name: y
     type: ndarray, 실수의 시퀀스, Series, 또는 한 열짜리 DataFrame
@@ -72,9 +72,9 @@ export const lassoPath3 = [[-3, 0.15984], [-2.97, 0.15979], [-2.94, 0.15973], [-
 
 ## 한눈에 보기
 
-[`lasso`](/api/regression/lasso/)는 쓸모없는 열을 0으로 만들어 주지만, 서로 비슷한 열이 여럿이면 그 가운데 하나만 골라요. [`ridge`](/api/regression/ridge/)는 비슷한 열에 효과를 고르게 나눠 주지만 어떤 계수도 0으로 만들지 않아요. **엘라스틱 넷**은 두 벌점을 섞어서 둘의 좋은 점을 함께 얻어요. 쓸모없는 열은 0으로 만들고, 비슷한 열들은 함께 남겨요.
+[`lasso`](/api/regression/lasso/)는 쓸모없는 열을 0으로 만들어 주지만, 서로 비슷한 열이 여럿이면 그 가운데 하나만 골라요. [`ridge`](/api/regression/ridge/)는 비슷한 열에 효과를 고르게 나눠 주지만 어떤 계수도 0으로 만들지 않아요. **엘라스틱 넷**은 두 벌점을 섞어서 둘의 좋은 점을 함께 얻어요. 쓸모없는 열은 0으로 만들고, 비슷한 열은 함께 남겨요.
 
-예를 들어 볼게요. `x2`는 `x1`에 작은 잡음을 더한 열이라 둘이 거의 같고, `x3`은 효과가 작아요(참값: 절편 1, `x1`·`x2` 1씩, `x3` 0.5). 여기에 효과가 전혀 없는 잡음 열 둘을 더해요.
+`x2`는 `x1`에 작은 잡음을 더한 열이라 둘이 거의 같고, `x3`은 효과가 작아요(참값: 절편 1, `x1`·`x2` 1씩, `x3` 0.5). 여기에 효과가 전혀 없는 잡음 열 둘을 더해요.
 
 ```python
 >>> import stardust as sd
@@ -182,7 +182,7 @@ True
 [1.1364487002, 0.9011101674, 1.0507462061, 0.1196367354]
 ```
 
-## `l1_ratio`: 얼마나 섞을까요
+## `l1_ratio`: 섞는 비율
 
 `l1_ratio`를 1에서 0으로 줄이면 라소에서 릿지로 옮겨 가요. 거의 같은 `x1`, `x2`의 계수가 점점 고르게 나뉘는 것을 볼 수 있어요.
 
@@ -260,9 +260,9 @@ $Z_A$는 A의 열에서 평균을 뺀 것(`standardize`면 표준화한 것), $\
 
 `alpha`의 경로, `standardize`, `weights`, `intercept`, `max_iter`, `tol`, `nan_policy`는 [`lasso`](/api/regression/lasso/)와 같은 뜻이에요.
 
-- **경로**: `alpha`에 1차원 배열을 주면 큰 값부터 앞의 해에서 시작해 풀고, 결과는 준 순서예요. 각 해는 그 `alpha`로 따로 부른 것과 비트까지 같아요.
-- **수렴**: 수렴한 해를 최적성 조건으로 다듬으므로 계수는 `tol`과 상관없이 정확한 해에 반올림 수준으로 가까워요. `converged=True`는 판정을 통과하고 다듬기까지 마쳤다는 뜻이에요(마침 `max_iter`번째 반복에서 마쳐도 True예요). 판정을 통과하기 전에 `max_iter`에 닿으면 `converged=False`이고 경고는 없어요. `n_iter`는 언제나 `max_iter` 이하예요. `tol`이 아주 크면 다듬기에 실패해 반복을 이어 가므로 `n_iter`가 오히려 클 수 있어요. 그렇게 이어 간 반복이 `max_iter`에 닿아도 다듬지 못한 마지막 반복의 계수와 그 `dual_gap`을 내고 `converged=False`예요. 경로에서는 `alpha`마다 따로 판정해요. `dual_gap`은 목적함수 단위예요. 자세한 것은 [`lasso`](/api/regression/lasso/)의 수렴 절에 있어요.
-- **표준화**: 열의 단위가 서로 다르면 `standardize=True`를 쓰세요. 단위만 바꿔도 고르는 열이 달라지는 것을 막아 줘요.
+- 경로: `alpha`에 1차원 배열을 주면 큰 값부터 앞의 해에서 시작해 풀고, 결과는 준 순서예요. 각 해는 그 `alpha`로 따로 부른 것과 비트까지 같아요.
+- 수렴: 수렴한 해를 최적성 조건으로 다듬으므로 계수는 `tol`과 상관없이 정확한 해에 반올림 수준으로 가까워요. `converged=True`는 판정을 통과하고 다듬기까지 마쳤다는 뜻이에요(마침 `max_iter`번째 반복에서 마쳐도 True예요). 판정을 통과하기 전에 `max_iter`에 닿으면 `converged=False`이고 경고는 없어요. `n_iter`는 언제나 `max_iter` 이하예요. `tol`이 아주 크면 다듬기에 실패해 반복을 이어 가므로 `n_iter`가 오히려 클 수 있어요. 그렇게 이어 간 반복이 `max_iter`에 닿아도 다듬지 못한 마지막 반복의 계수와 그 `dual_gap`을 내고 `converged=False`예요. 경로에서는 `alpha`마다 따로 판정해요. `dual_gap`은 목적함수 단위예요. 자세한 것은 [`lasso`](/api/regression/lasso/)의 수렴 절에 있어요.
+- 표준화: 열의 단위가 서로 다르면 `standardize=True`를 쓰세요. 단위만 바꿔도 고르는 열이 달라지는 것을 막아 줘요.
 
 ```python
 >>> pe = R.elastic_net(y, X, alpha=[1.0, 0.1, 0.01])
@@ -321,7 +321,7 @@ OverflowError: elastic_net(): 'l1_ratio' is out of range
 
 ## scikit-learn·glmnet을 아는 분께
 
-- **목적함수, `alpha`, `l1_ratio`는 scikit-learn의 `ElasticNet`과 같아요.** `l1_ratio`의 기본값 0.5, `tol` 1e-4, `max_iter` 1000도 같아요.
+- 목적함수, `alpha`, `l1_ratio`는 scikit-learn의 `ElasticNet`과 같아요. `l1_ratio`의 기본값 0.5, `tol` 1e-4, `max_iter` 1000도 같아요.
 - scikit-learn은 쌍대 간격이 `tol`에 닿으면 멈추므로, 열끼리 상관이 크면 기본 설정의 계수가 정확한 해와 눈에 띄게 달라요.
 
   ```python
@@ -340,5 +340,5 @@ OverflowError: elastic_net(): 'l1_ratio' is out of range
 
 - `dual_gap`은 scikit-learn 1.9.1의 `dual_gap_`과 같은 단위예요.
 - scikit-learn의 `ElasticNetCV`는 `l1_ratio`를 여러 개 받아 함께 고르지만, 여기의 `elastic_net_cv`는 하나만 받아요.
-- **R의 glmnet은 이름이 엇갈려요.** glmnet의 `lambda`가 여기의 `alpha`, glmnet의 `alpha`가 여기의 `l1_ratio`예요. 또 정규분포에서 glmnet은 `y`를 모표준편차 $s_y$로 나눠 풀고 되돌리므로, glmnet의 (`lambda`, `alpha`)를 $(\lambda, a)$라 하면 L2 쪽 세기가 $\lambda(1 - a)/s_y$가 돼요. 그래서 glmnet의 $(\lambda, a)$는 여기의 `alpha` $= \lambda a + \lambda(1 - a)/s_y$, `l1_ratio` $= \lambda a / (\lambda a + \lambda(1 - a)/s_y)$와 같은 해예요(같은 표준화 설정에서). $s_y = 1$이거나 라소(glmnet의 `alpha = 1`)면 glmnet의 `lambda`와 `alpha`가 그대로 여기의 `alpha`와 `l1_ratio`예요.
+- R의 glmnet은 이름이 엇갈려요. glmnet의 `lambda`가 여기의 `alpha`, glmnet의 `alpha`가 여기의 `l1_ratio`예요. 또 정규분포에서 glmnet은 `y`를 모표준편차 $s_y$로 나눠 풀고 되돌리므로, glmnet의 (`lambda`, `alpha`)를 $(\lambda, a)$라 하면 L2 쪽 세기가 $\lambda(1 - a)/s_y$가 돼요. 그래서 glmnet의 $(\lambda, a)$는 여기의 `alpha` $= \lambda a + \lambda(1 - a)/s_y$, `l1_ratio` $= \lambda a / (\lambda a + \lambda(1 - a)/s_y)$와 같은 해예요(같은 표준화 설정에서). $s_y = 1$이거나 라소(glmnet의 `alpha = 1`)면 glmnet의 `lambda`와 `alpha`가 그대로 여기의 `alpha`와 `l1_ratio`예요.
 - glmnet의 `df`는 0 아닌 계수의 수라서, 엘라스틱 넷에서는 여기 `df_model`보다 크거나 같아요. glmnet은 기본으로 열을 표준화해요(`standardize = TRUE`).

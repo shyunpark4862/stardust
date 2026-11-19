@@ -1,5 +1,6 @@
 ---
 /** A list of documented fields: parameters, the return value, or errors. */
+import { paramId } from '../lib/signature';
 interface Field {
   name?: string;
   kind?: string;
@@ -8,25 +9,53 @@ interface Field {
 }
 interface Props {
   items: Field[];
+  /** Errors: one condition per line instead of one long sentence. */
+  split?: boolean;
 }
-const { items } = Astro.props;
+const { items, split = false } = Astro.props;
 const named = items.some((f) => f.name);
+
+/**
+ * An error description lists its conditions as clauses ending in "때"
+ * ("x가 배열이 아닐 때, axis가 틀렸을 때."). Each clause becomes a line;
+ * a description with one condition stays a sentence.
+ */
+function conditions(desc: string): string[] {
+  const parts = desc
+    .split(/(?<=때)[,;]\s+/)
+    .map((p) => p.replace(/^또는\s+/, '').replace(/[.。]\s*$/, '').trim())
+    .filter(Boolean);
+  return parts.length >= 2 ? parts : [desc];
+}
 ---
 
-<dl class:list={['fields', named && 'fields--named']}>
+<dl class:list={['fields', named && 'fields--named', split && 'fields--split']}>
   {
-    items.map((f) => (
-      <div class="fields__row">
-        {named && (
-          <dt class="fields__key">
-            <code>{f.name}</code>
-            {f.kind && <span class="fields__kind">{f.kind}</span>}
-          </dt>
-        )}
-        <dd class="fields__type">{f.type}</dd>
-        <dd class="fields__text">{f.desc}</dd>
-      </div>
-    ))
+    items.map((f) => {
+      const lines = split ? conditions(f.desc) : [f.desc];
+      return (
+        <div class="fields__row" id={named && f.name ? paramId(f.name.split(',')[0].trim()) : undefined}>
+          {named && (
+            <dt class="fields__key">
+              <code>{f.name}</code>
+              {f.kind && <span class="fields__kind">{f.kind}</span>}
+            </dt>
+          )}
+          <dd class="fields__type">{f.type}</dd>
+          {lines.length > 1 ? (
+            <dd class="fields__text">
+              <ul class="fields__list">
+                {lines.map((l) => (
+                  <li>{l}</li>
+                ))}
+              </ul>
+            </dd>
+          ) : (
+            <dd class="fields__text">{f.desc}</dd>
+          )}
+        </div>
+      );
+    })
   }
 </dl>
 
@@ -74,6 +103,27 @@ const named = items.some((f) => f.name);
   .fields__text {
     margin: 0;
     color: var(--slate-700);
+  }
+  /* A row the signature linked to: a brief tint shows where the jump landed. */
+  .fields__row {
+    scroll-margin-top: calc(var(--header-h) + var(--space-6));
+  }
+  .fields__row:target {
+    background: var(--accent-soft);
+    box-shadow: -12px 0 0 var(--accent-soft), 12px 0 0 var(--accent-soft);
+  }
+  .fields__list {
+    margin: 0;
+    padding-left: 1.1em;
+  }
+  .fields__list li {
+    margin: 0;
+  }
+  .fields__list li + li {
+    margin-top: var(--space-1);
+  }
+  .fields__list li::marker {
+    color: var(--slate-400);
   }
   @media (max-width: 640px) {
     .fields__row,

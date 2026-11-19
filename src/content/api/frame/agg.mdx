@@ -34,7 +34,7 @@ import Op from '../../../components/fig/Op.astro';
 
 ## 한눈에 보기
 
-[그룹 집계](/api/frame/groupby-agg/)의 메서드(`g.sum()`, `g.mean()` …)는 모든 값 컬럼에 **같은 집계 하나**를 해요. 그런데 실제 보고서에는 "판매량은 합계, 가격은 평균"처럼 **컬럼마다 다른 집계**나, "판매량의 합계와 최댓값"처럼 **한 컬럼에 여러 집계**가 필요할 때가 많아요. `agg`는 이런 집계를 **이름(문자열)으로 골라 한 번에** 해 줘요.
+[그룹 집계](/api/frame/groupby-agg/)의 메서드(`g.sum()`, `g.mean()` …)는 모든 값 컬럼에 같은 집계 하나를 해요. 그런데 실제 보고서에는 "판매량은 합계, 가격은 평균"처럼 컬럼마다 다른 집계나, "판매량의 합계와 최댓값"처럼 한 컬럼에 여러 집계가 필요할 때가 많아요. `agg`는 이런 집계를 이름(문자열)으로 골라 한 번에 해 줘요.
 
 ```python
 >>> import stardust as sd
@@ -61,7 +61,7 @@ import Op from '../../../components/fig/Op.astro';
 
 ## 형태 1: 이름 하나
 
-집계 이름 하나를 주면 **모든 값 컬럼**에 그 집계를 해요. 같은 이름의 메서드를 부른 것과 결과가 똑같아요.
+집계 이름 하나를 주면 모든 값 컬럼에 그 집계를 해요. 같은 이름의 메서드를 부른 것과 결과가 똑같아요.
 
 ```python
 >>> g.agg("sum")
@@ -75,7 +75,7 @@ import Op from '../../../components/fig/Op.astro';
 
 ## 형태 2: dict로 컬럼마다
 
-`{컬럼 이름: 집계 이름}` dict를 주면 **컬럼마다 다른 집계**를 해요. 결과에는 **dict에 적은 컬럼만**, **dict에 적은 순서대로** 들어가요. 적지 않은 값 컬럼은 빠져요.
+`{컬럼 이름: 집계 이름}` dict를 주면 컬럼마다 다른 집계를 해요. 결과에는 dict에 적은 컬럼만, 적은 순서대로 들어가요. 적지 않은 값 컬럼은 빠져요.
 
 ```python
 >>> g.agg({"price": "max"})
@@ -85,7 +85,7 @@ import Op from '../../../components/fig/Op.astro';
 2   pear   2.25
 ```
 
-dict의 값은 집계 이름 **하나**예요. 한 컬럼에 여러 집계를 하려면 다음 형태를 써요.
+dict의 값은 집계 이름 하나예요. 한 컬럼에 여러 집계를 하려면 다음 형태를 써요.
 
 ```python
 >>> g.agg({"qty": ["sum", "max"]})
@@ -96,7 +96,7 @@ TypeError: agg(): one function name per column; for several, use named aggregati
 
 ## 형태 3: 이름 붙인 집계
 
-`결과 이름=(컬럼, 집계 이름)` 꼴의 키워드 인자를 원하는 만큼 줘요. 결과 컬럼의 **이름을 직접 정하므로**, 같은 컬럼에 여러 집계를 해도 이름이 겹치지 않아요. 결과 컬럼은 키워드를 쓴 순서대로 와요.
+`결과 이름=(컬럼, 집계 이름)` 꼴의 키워드 인자를 원하는 만큼 줘요. 결과 컬럼의 이름을 직접 정하므로, 같은 컬럼에 여러 집계를 해도 이름이 겹치지 않아요. 결과 컬럼은 키워드를 쓴 순서대로 와요.
 
 ```python
 >>> g.agg(total=("qty", "sum"), best=("qty", "max"),
@@ -117,7 +117,7 @@ TypeError: agg(): one function name per column; for several, use named aggregati
     rowTones={['1', '2', '3']} colTones={['', 'a', 'a', 'a']} />
 </Fig>
 
-결과 이름은 Python 키워드 인자라서 보통은 `total`처럼 영문자와 밑줄로 써요. 빈칸이 든 이름이 필요하면 `g.agg(**{"total qty": ("qty", "sum")})`처럼 dict를 풀어서 넘길 수 있어요.
+결과 이름은 Python 키워드 인자라서 보통은 `total`처럼 영문자와 밑줄로 써요. 공백이 든 이름이 필요하면 `g.agg(**{"total qty": ("qty", "sum")})`처럼 dict를 풀어서 넘길 수 있어요.
 
 튜플은 꼭 `(컬럼, 집계 이름)` 두 칸이에요. 집계 이름만 주면 `TypeError`예요.
 
@@ -130,7 +130,7 @@ TypeError: agg(): a named aggregation is name=(column, function), got n='size'
 
 ## 쓸 수 있는 집계 이름
 
-`agg`는 집계를 **이름으로만** 받아요. 쓸 수 있는 이름은 GroupBy의 집계 메서드와 같은 열 가지예요.
+`agg`는 집계를 이름으로만 받아요. 쓸 수 있는 이름은 GroupBy의 집계 메서드와 같은 열 가지예요.
 
 | 이름 | 뜻 | 같은 메서드 |
 |---|---|---|
@@ -146,7 +146,7 @@ TypeError: agg(): a named aggregation is name=(column, function), got n='size'
 
 ### 인자는 언제나 기본값이에요
 
-이름으로 고른 집계는 **기본 인자**로 계산해요. `"std"`는 `g.std()`와 같아서 `correction=0`(모표준편차)이고, `"sum"`은 `skipna=True`예요. 이름만 주는 방법으로는 인자를 바꿀 수 없어요.
+이름으로 고른 집계는 기본 인자로 계산해요. `"std"`는 `g.std()`와 같아서 `correction=0`(모표준편차)이고, `"sum"`은 `skipna=True`예요. 이름만 주는 방법으로는 인자를 바꿀 수 없어요.
 
 ```python
 >>> g.agg(price_sd=("price", "std"))
@@ -169,10 +169,10 @@ TypeError: agg(): a named aggregation is name=(column, function), got n='size'
 
 ### `"size"`
 
-`"size"`는 다른 집계와 달리 컬럼의 값을 보지 않고 **그룹의 행 수**를 세요. 그래서 쓰는 곳마다 이렇게 나와요.
+`"size"`는 다른 집계와 달리 컬럼의 값을 보지 않고 그룹의 행 수를 세요. 그래서 쓰는 자리에 따라 결과가 이렇게 달라요.
 
 - `g.agg("size")`는 `g.size()`와 같아요. 값 컬럼 대신 `size` 컬럼 하나가 나와요.
-- dict나 이름 붙인 집계에서는 **그 자리에** 행 수가 들어가요. 어느 컬럼을 적든 결과는 같아요.
+- dict나 이름 붙인 집계에서는 그 자리에 행 수가 들어가요. 어느 컬럼을 적든 결과는 같아요.
 
 ```python
 >>> g.agg("size")
@@ -193,7 +193,7 @@ TypeError: agg(): a named aggregation is name=(column, function), got n='size'
 
 ### 리스트와 함수는 받지 않아요
 
-집계 이름의 리스트(`["sum", "mean"]`)는 `TypeError`예요. 한 컬럼에 집계 여러 개를 하면 결과 컬럼 이름이 겹치는데, 이 영역에는 컬럼 이름을 두 층으로 쌓는 기능이 없어서예요. 이름 붙인 집계로 이름을 직접 정해요.
+집계 이름의 리스트(`["sum", "mean"]`)는 `TypeError`예요. 한 컬럼에 집계 여러 개를 하면 결과 컬럼 이름이 겹치는데, 데이터프레임에는 컬럼 이름을 두 층으로 쌓는 기능이 없기 때문이에요. 이름 붙인 집계로 이름을 직접 정해요.
 
 ```python
 >>> g.agg(["sum", "mean"])
@@ -232,7 +232,7 @@ TypeError: agg(): pass either one function name / dict, or named aggregations (n
 
 ### 값 컬럼만 집계할 수 있어요
 
-dict의 키와 이름 붙인 집계의 컬럼은 **값 컬럼**이어야 해요. 없는 컬럼, 키 컬럼, `g[[...]]`로 고를 때 빠진 컬럼은 `KeyError`예요.
+dict의 키와 이름 붙인 집계의 컬럼은 값 컬럼이어야 해요. 없는 컬럼, 키 컬럼, `g[[...]]`로 고를 때 빠진 컬럼은 `KeyError`예요.
 
 ```python
 >>> g.agg({"color": "max"})
@@ -267,7 +267,7 @@ ValueError: agg(): result column 'fruit' would repeat a key column
 ## pandas를 아는 분께
 
 - 이름 붙인 집계(`name=(column, func)`)와 dict 형태는 pandas와 같은 문법이에요.
-- **집계 이름의 리스트는 `TypeError`예요.** pandas는 `agg(["sum", "mean"])`이나 `agg({"qty": ["sum", "max"]})`로 두 층짜리 컬럼(MultiIndex)을 만들지만, 여기는 MultiIndex가 없어요.
-- **Python 함수를 받지 않아요.** pandas의 `agg(lambda s: ...)`, `agg(np.sum)`, `pd.NamedAgg`는 없어요. 집계는 열 가지 이름으로만 골라요.
+- 집계 이름의 리스트는 `TypeError`예요. pandas는 `agg(["sum", "mean"])`이나 `agg({"qty": ["sum", "max"]})`로 두 층짜리 컬럼(MultiIndex)을 만들지만, stardust에는 MultiIndex가 없어요.
+- Python 함수를 받지 않아요. pandas의 `agg(lambda s: ...)`, `agg(np.sum)`, `pd.NamedAgg`는 없어요. 집계는 열 가지 이름으로만 골라요.
 - `agg("std")`는 `correction=0`이에요. pandas의 `agg("std")`는 `ddof=1`이에요.
 - 결과는 키를 보통 컬럼으로 둔 DataFrame이에요(pandas의 `as_index=False` 모양). `agg("size")`도 Series가 아니라 `size` 컬럼이 있는 DataFrame이에요.

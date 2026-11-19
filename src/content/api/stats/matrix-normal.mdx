@@ -15,11 +15,11 @@ params:
   - name: rowcov
     type: ndarray (..., n, n)
     kind: keyword-only
-    desc: 행 사이의 공분산 U. 대칭 양의 정부호여야 하고 아래 삼각만 읽어요. 양의 정부호가 아니면 그 분포의 모든 메서드가 NaN이에요.
+    desc: 행 사이의 공분산 U. 대칭 양정치여야 하고 아래 삼각만 읽어요. 양정치가 아니면 그 분포의 모든 메서드가 NaN이에요.
   - name: colcov
     type: ndarray (..., p, p)
     kind: keyword-only
-    desc: 열 사이의 공분산 V. 대칭 양의 정부호여야 하고 아래 삼각만 읽어요. 양의 정부호가 아니면 그 분포의 모든 메서드가 NaN이에요.
+    desc: 열 사이의 공분산 V. 대칭 양정치여야 하고 아래 삼각만 읽어요. 양정치가 아니면 그 분포의 모든 메서드가 NaN이에요.
 returns:
   type: MatrixNormal
   desc: 분포 객체. 매개변수는 같은 이름의 읽기 전용 속성(mu, rowcov, colcov)으로, 준 값 그대로 남아 있어요.
@@ -34,13 +34,13 @@ import Callout from '../../../components/Callout.astro';
 
 ## 어떤 분포인가요
 
-**행렬 정규분포**(matrix normal distribution)는 값 하나하나가 n × p 행렬이고, 원소들이 함께 정규분포를 따르는 분포예요. 원소가 np개라 그냥 [다변량 정규분포](/api/stats/multivariate-normal/)로 두면 공분산 행렬이 np × np로 커지는데, 행렬 정규분포는 이 상관을 **행끼리의 공분산 U**(n × n)와 **열끼리의 공분산 V**(p × p) 두 개의 곱으로 나타내요.
+**행렬 정규분포**(matrix normal distribution)는 값 하나하나가 n × p 행렬이고, 원소들이 함께 정규분포를 따르는 분포예요. 원소가 np개라 그냥 [다변량 정규분포](/api/stats/multivariate-normal/)로 두면 공분산 행렬이 np × np로 커지는데, 행렬 정규분포는 이 상관을 행끼리의 공분산 U(n × n)와 열끼리의 공분산 V(p × p), 두 행렬의 곱으로 나타내요.
 
 - 지역 n곳에서 p가지 지표를 잰 표: 이웃한 지역끼리 닮은 정도(U)와, 지표끼리 함께 움직이는 정도(V)
 - 여러 시점(행)에서 잰 여러 변수(열): 시점 사이의 상관(U)과 변수 사이의 상관(V)
 - 다변량 회귀의 계수 행렬에 두는 사전분포
 
-원소 $X_{ij}$와 $X_{kl}$의 공분산이 $U_{ik} V_{jl}$이에요. 행과 열의 효과가 곱으로 분리된다는 가정이 이 분포의 핵심이에요.
+원소 $X_{ij}$와 $X_{kl}$의 공분산이 $U_{ik} V_{jl}$이에요. 이 분포는 행과 열의 효과가 이렇게 곱으로 분리된다고 가정해요.
 
 ```python
 >>> import stardust as sd
@@ -62,7 +62,7 @@ import Callout from '../../../components/Callout.astro';
 세 매개변수 모두 키워드로 꼭 줘야 하고, 모두 `sd.ndarray`예요(리스트는 `TypeError`예요). 평균의 이름은 `mu`예요(`mean`은 평균을 돌려주는 메서드 이름이에요).
 
 - `mu`: n × p 평균 행렬
-- `rowcov`: n × n, `colcov`: p × p. 둘 다 대칭 양의 정부호이고 아래 삼각만 읽어요.
+- `rowcov`: n × n, `colcov`: p × p. 둘 다 대칭 양정치이고 아래 삼각만 읽어요.
 
 ```python
 >>> sd.stats.MatrixNormal(mu=sd.zeros((2, 2)), rowcov=sd.eye(2), colcov=sd.eye(2))
@@ -76,7 +76,7 @@ Traceback (most recent call last):
 ValueError: MatrixNormal(): 'rowcov' must be (2, 2) on its last two axes (mu is 2 x 3), not (3, 3)
 ```
 
-양의 정부호가 아닌 공분산이나 NaN·inf가 든 `mu`는 에러가 아니라 그 분포의 모든 메서드가 NaN이에요.
+양정치가 아닌 공분산이나 NaN·inf가 든 `mu`는 에러가 아니라 그 분포의 모든 메서드가 NaN이에요.
 
 ```python
 >>> sd.stats.MatrixNormal(mu=sd.zeros((1, 2)), rowcov=sd.eye(1),
@@ -107,7 +107,7 @@ $$
 f(X) = \frac{\exp\!\left(-\tfrac12 \operatorname{tr}\!\left[V^{-1} (X - M)^{\mathsf T} U^{-1} (X - M)\right]\right)}{(2\pi)^{np/2}\, |V|^{n/2}\, |U|^{p/2}}
 $$
 
-입력 `x`는 마지막 두 축이 (n, p)인 `sd.ndarray`이고, 앞 축은 배치와 브로드캐스트해요. 대칭 행렬이 아니라 일반 행렬이라 **모든 원소를 읽어요.**
+입력 `x`는 마지막 두 축이 (n, p)인 `sd.ndarray`이고, 앞 축은 배치와 브로드캐스트해요. 대칭 행렬이 아니라 일반 행렬이라 모든 원소를 읽어요.
 
 ```python
 >>> MN.pdf(sd.stack([M, X])).shape
@@ -176,7 +176,7 @@ array([[1.0, 2.0, 1.0],
 
 ## 표본
 
-`sample(shape, rng=...)`은 `shape` + 배치 + (n, p) 모양이에요. `shape`를 빼면 분포마다 행렬 하나(배치 + (n, p))예요. 행렬 하나가 표본 하나예요. 공통 규칙은 [표본 뽑기](/api/stats/sample/)에 있어요.
+`sample(shape, rng=...)`은 `shape` + 배치 + (n, p) 모양이에요. 행렬 하나가 표본 하나라서, `shape`를 빼면 분포마다 행렬 하나(배치 + (n, p))가 나와요. 공통 규칙은 [표본 뽑기](/api/stats/sample/)에 있어요.
 
 ```python
 >>> MN.sample(rng=sd.random.default_rng(11))
@@ -192,7 +192,7 @@ array([[1.0068618719434976,  1.992969288638812,  1.004340516427924],
 
 ## 다른 분포와의 관계
 
-- **다변량 정규분포**: 위처럼 vec(X)가 다변량 정규분포예요. 특히 행이 하나(n = 1)이면 그 행 자체가 평균 `mu[0]`, 공분산 $U_{11} V$인 다변량 정규분포예요.
+- 다변량 정규분포: 위처럼 vec(X)가 다변량 정규분포예요. 특히 행이 하나(n = 1)이면 그 행 자체가 평균 `mu[0]`, 공분산 $U_{11} V$인 다변량 정규분포예요.
 
 ```python
 >>> row = sd.stats.MatrixNormal(mu=sd.asarray([[1.0, 2.0]]), rowcov=sd.asarray([[3.0]]),
@@ -204,17 +204,17 @@ array([[1.0068618719434976,  1.992969288638812,  1.004340516427924],
 -3.4593149855182315
 ```
 
-- **Wishart 분포**: 평균이 0인 행렬 정규 X(행 공분산 I, 열 공분산 V)에서 $X^{\mathsf T} X$는 [`Wishart`](/api/stats/wishart/)(df = n, scale = V)를 따라요.
+- Wishart 분포: 평균이 0인 행렬 정규 X(행 공분산 I, 열 공분산 V)에서 $X^{\mathsf T} X$는 [`Wishart`](/api/stats/wishart/)(df = n, scale = V)를 따라요.
 
 ## 정확도와 범위
 
-- `logpdf`와 `entropy`는 κ(rowcov), κ(colcov) ≤ 1e9, n, p ≤ 100에서 |오차| ≤ 1e-14 · max(1, |값|)이에요. 잰 값으로 20 × 15 행렬, 조건수 1e9에서도 반올림 수준이에요.
+- `logpdf`와 `entropy`는 κ(rowcov), κ(colcov) ≤ 1e9, n, p ≤ 100에서 |오차| ≤ 1e-14 · max(1, |값|)이에요. 20 × 15 행렬, 조건수 1e9에서 재 봐도 오차가 반올림 수준이에요.
 - 원소가 아무리 커도 `logpdf`는 NaN이 아니에요(위의 예).
 
 자세한 방법은 [행렬 분포](/internals/stats/matrix/)에 있어요.
 
 ## scipy를 아는 분께
 
-- `scipy.stats.matrix_normal(mean, rowcov, colcov)`에 해당해요. 평균의 이름이 `mean`이 아니라 **`mu`**예요. 모든 매개변수를 키워드로 꼭 줘야 해요(scipy는 `rowcov=1`, `colcov=1`이 기본이에요). scipy는 매개변수와 `x`에 리스트도 받지만, sd는 `sd.ndarray`만 받아요.
+- `scipy.stats.matrix_normal(mean, rowcov, colcov)`에 해당해요. 평균의 이름이 `mean`이 아니라 `mu`예요. 모든 매개변수를 키워드로 꼭 줘야 해요(scipy는 `rowcov=1`, `colcov=1`이 기본이에요). scipy는 매개변수와 `x`에 리스트도 받지만, sd는 `sd.ndarray`만 받아요.
 - 메서드는 scipy와 같이 `pdf`, `logpdf`, `mean`, `entropy`, `sample`(scipy의 `rvs`)이에요. scipy의 `mean`은 속성이고, sd의 `mean()`은 메서드예요.
-- 원소가 아주 큰 `logpdf`가 값을 가져요. 위의 x = 1.5e154를 scipy 1.18.1은 −inf로 계산해요.
+- 원소가 아주 커도 `logpdf`가 값을 내요. 위의 x = 1.5e154에서 scipy 1.18.1은 −inf를 내요.

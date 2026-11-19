@@ -47,7 +47,7 @@ import Op from '../../../components/fig/Op.astro';
 
 ## 한눈에 보기
 
-"어떤 과일이 가장 많이 팔렸나", "설문에서 어떤 답이 몇 번 나왔나"처럼 **값마다 개수를 세는 일**은 데이터를 처음 볼 때 가장 먼저 하는 일 가운데 하나예요. `value_counts()`가 그 일을 해요. 결과는 값과 그 개수가 나란히 있는 표예요. 스프레드시트의 피벗 테이블로 "개수"를 세는 것과 같아요.
+"어떤 과일이 가장 많이 팔렸나", "설문에서 어떤 답이 몇 번 나왔나"처럼 값마다 개수를 세는 일은 데이터를 처음 볼 때 가장 먼저 하는 일 가운데 하나예요. `value_counts()`가 그 일을 해요. 결과는 값과 그 개수가 나란히 있는 표예요. 스프레드시트의 피벗 테이블로 "개수"를 세는 것과 같아요.
 
 ```python
 >>> import stardust as sd
@@ -60,7 +60,7 @@ import Op from '../../../components/fig/Op.astro';
 2  plum       1
 ```
 
-기본으로 **많이 나온 값부터** 늘어놓아요. 맨 윗줄이 가장 많이 나온 값(최빈값)이에요.
+기본으로 많이 나온 값부터 늘어놓아요. 맨 윗줄이 가장 많이 나온 값(최빈값)이에요.
 
 ```python
 >>> vc["fruit"].iloc[0]
@@ -73,10 +73,10 @@ import Op from '../../../components/fig/Op.astro';
 
 ## 결과는 언제나 DataFrame이에요
 
-`value_counts()`는 Series에 쓰든 DataFrame에 쓰든 언제나 **DataFrame**을 돌려줘요. 컬럼은 둘이에요.
+`value_counts()`는 Series에 쓰든 DataFrame에 쓰든 언제나 DataFrame을 돌려줘요. 컬럼은 둘이에요.
 
-- **값 컬럼**: 센 값이에요. 이름은 원래 Series의 이름이고, 이름이 없으면 `values`예요.
-- **`counts` 컬럼**: 그 값이 나온 횟수(int64)예요.
+- 값 컬럼: 센 값이에요. 이름은 원래 Series의 이름이고, 이름이 없으면 `values`예요.
+- `counts` 컬럼: 그 값이 나온 횟수(int64)예요.
 
 ```python
 >>> vc.columns
@@ -95,9 +95,9 @@ Index(['fruit', 'counts'], dtype=string)
 UniqueCountsResult(values=array([1, 2, 3], dtype=int64), counts=array([2, 1, 3], dtype=int64))
 ```
 
-### 왜 값이 라벨이 아니라 컬럼일까요
+### 값을 라벨이 아니라 컬럼에 두는 이유
 
-값을 행 라벨로 삼아 `counts` Series 하나로 돌려주는 방법도 생각할 수 있어요. 하지만 stardust의 라벨([Index](/api/frame/index/))은 int64와 문자열만 될 수 있어요. 실수나 bool은 라벨이 될 수 없어요. 그래서 float 컬럼이나 bool 컬럼의 개수를 셀 수 없게 돼요. 값을 일반 컬럼에 두면 어떤 dtype이든 똑같은 모양으로 셀 수 있어요.
+값을 행 라벨로 삼아 `counts` Series 하나로 돌려주는 방법도 생각할 수 있어요. 하지만 stardust의 라벨([Index](/api/frame/index/))은 int64와 문자열만 될 수 있어요. 실수나 bool은 라벨이 될 수 없으니, 그렇게 하면 float 컬럼이나 bool 컬럼은 셀 수 없게 돼요. 값을 일반 컬럼에 두면 어떤 dtype이든 똑같은 모양으로 셀 수 있어요.
 
 ```python
 >>> paid = sd.frame.Series([True, False, True, True], name="paid")
@@ -147,7 +147,7 @@ UniqueCountsResult(values=array([1, 2, 3], dtype=int64), counts=array([2, 1, 3],
 
 ### 개수가 같으면 처음 나타난 순서
 
-개수가 같은 값끼리는 **데이터에 처음 나타난 순서**를 지켜요. 방향을 바꿔도 마찬가지예요. 그래서 같은 데이터면 언제나 같은 순서가 나와요.
+개수가 같은 값끼리는 데이터에 처음 나타난 순서를 지켜요. 방향을 바꿔도 마찬가지예요. 그래서 같은 데이터면 언제나 같은 순서가 나와요.
 
 ```python
 >>> tie = sd.frame.Series(["kiwi", "pear", "apple", "pear", "kiwi", "plum"])
@@ -167,7 +167,7 @@ UniqueCountsResult(values=array([1, 2, 3], dtype=int64), counts=array([2, 1, 3],
 
 ## 비율로 보기: `normalize`
 
-`normalize=True`를 주면 개수 대신 **전체에서 차지하는 비율**을 `proportion` 컬럼(float64)으로 줘요. 비율을 모두 더하면 1이에요.
+`normalize=True`를 주면 개수 대신 전체에서 차지하는 비율을 `proportion` 컬럼(float64)으로 줘요. 비율을 모두 더하면 1이에요.
 
 ```python
 >>> fruit.value_counts(normalize=True)
@@ -181,7 +181,7 @@ UniqueCountsResult(values=array([1, 2, 3], dtype=int64), counts=array([2, 1, 3],
 
 ## `NA`와 NaN
 
-**`NA`는 기본으로 세지 않아요.** `dropna=True`(기본값)에서는 `NA`를 빼고 세요. **NaN은 언제나 세요.** NaN은 결측값이 아니라 float 값이라서, 여러 NaN이 하나의 값으로 묶여 세어져요([NA와 NaN](/api/frame/na/)).
+`NA`는 기본으로 세지 않아요. `dropna=True`(기본값)에서는 `NA`를 빼고 세요. 반면 NaN은 언제나 세요. NaN은 결측값이 아니라 float 값이라서, 여러 NaN이 하나의 값으로 묶여 세어져요([NA와 NaN](/api/frame/na/)).
 
 ```python
 >>> r = sd.frame.Series([2.5, None, float("nan"), 1.0, float("nan"), None, 2.5, None])
@@ -192,7 +192,7 @@ UniqueCountsResult(values=array([1, 2, 3], dtype=int64), counts=array([2, 1, 3],
 2     1.0       1
 ```
 
-`dropna=False`를 주면 `NA`도 한 종류로 세요. `NA` 줄도 다른 값과 **같은 순서 규칙**을 따라요. 위 데이터에서 `NA`가 세 번으로 가장 많으니 맨 위에 오고, `sort=False`이면 처음 나타난 자리(2.5 다음)에 와요.
+`dropna=False`를 주면 `NA`도 한 종류로 세요. `NA` 줄도 다른 값과 같은 순서 규칙을 따라요. 위 데이터에서 `NA`가 세 번으로 가장 많으니 맨 위에 오고, `sort=False`이면 처음 나타난 자리(2.5 다음)에 와요.
 
 ```python
 >>> r.value_counts(dropna=False)
@@ -223,7 +223,7 @@ UniqueCountsResult(values=array([1, 2, 3], dtype=int64), counts=array([2, 1, 3],
 
 ## DataFrame: 값의 조합을 세기
 
-DataFrame의 `value_counts()`는 **여러 컬럼 값의 조합**마다 개수를 세요. 첫 인자 `subset`에 셀 컬럼을 주고, 주지 않으면 모든 컬럼의 조합을 세요.
+DataFrame의 `value_counts()`는 여러 컬럼 값의 조합마다 개수를 세요. 첫 인자 `subset`에 셀 컬럼을 주고, 주지 않으면 모든 컬럼의 조합을 세요.
 
 ```python
 >>> shop = sd.frame.DataFrame({
@@ -258,7 +258,7 @@ DataFrame의 `value_counts()`는 **여러 컬럼 값의 조합**마다 개수를
 2  Seoul  pear     2
 ```
 
-DataFrame에서 `dropna=True`이면 키 컬럼 가운데 **하나라도** `NA`인 행을 세지 않아요.
+DataFrame에서 `dropna=True`이면 키 컬럼 가운데 하나라도 `NA`인 행을 세지 않아요.
 
 ```python
 >>> d2 = sd.frame.DataFrame({"city": ["Seoul", None, "Seoul", None], "fruit": ["pear", "kiwi", "pear", None]})
@@ -344,9 +344,9 @@ Index: []
 
 ## pandas를 아는 분께
 
-- **결과가 언제나 DataFrame이에요.** pandas는 값을 Index로 삼은 Series를 돌려줘요. stardust의 Index에는 float와 bool을 쓸 수 없어서, 값을 일반 컬럼으로 둬요. DataFrame의 `value_counts()`도 MultiIndex 대신 키 컬럼들과 `counts` 컬럼이에요.
-- **개수 컬럼의 이름이 `counts`예요.** pandas는 `count`예요. 비율은 둘 다 `proportion`이에요. 이름 없는 Series의 값 컬럼은 `values`예요.
+- 결과가 언제나 DataFrame이에요. pandas는 값을 Index로 삼은 Series를 돌려줘요. stardust의 Index에는 float와 bool을 쓸 수 없어서, 값을 일반 컬럼으로 둬요. DataFrame의 `value_counts()`도 MultiIndex 대신 키 컬럼과 `counts` 컬럼이에요.
+- 개수 컬럼의 이름이 `counts`예요. pandas는 `count`예요. 비율은 둘 다 `proportion`이에요. 이름 없는 Series의 값 컬럼은 `values`예요.
 - 정렬 방향은 `ascending` 대신 `descending`이고 기본값은 `True`예요. pandas의 `ascending=True`가 `descending=False`예요.
-- **NaN을 값으로 세요.** pandas는 NaN을 결측으로 보고 기본으로 빼요. 위의 `r`에서 pandas는 `NaN`과 `None`을 함께 빼고, `dropna=False`이면 둘을 합쳐 5로 세요.
-- **`NA` 줄도 같은 순서 규칙을 따라요.** stardust는 개수가 같으면 처음 나타난 순서, `sort=False`면 처음 나타난 자리예요. pandas는 dtype에 따라 달라요. 기본 dtype(float64, object, str)에서는 같은 규칙이지만, nullable dtype(`Int64`, `Float64`, `boolean`)에서는 `dropna=False`일 때 개수가 같은 값들 가운데 NA를 뒤에 두고, `sort=False`여도 NA를 맨 뒤에 둬요.
+- NaN을 값으로 세요. pandas는 NaN을 결측으로 보고 기본으로 빼요. 위의 `r`에서 pandas는 `NaN`과 `None`을 함께 빼고, `dropna=False`이면 둘을 합쳐 5로 세요.
+- `NA` 줄도 같은 순서 규칙을 따라요. stardust는 개수가 같으면 처음 나타난 순서, `sort=False`면 처음 나타난 자리예요. pandas는 dtype에 따라 달라요. 기본 dtype(float64, object, str)에서는 같은 규칙이지만, nullable dtype(`Int64`, `Float64`, `boolean`)에서는 `dropna=False`일 때 개수가 같은 값 가운데 NA를 뒤에 두고, `sort=False`여도 NA를 맨 뒤에 둬요.
 - DataFrame의 `subset`은 positional-only예요. `bins` 인자는 없어요.

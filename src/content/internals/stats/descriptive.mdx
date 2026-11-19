@@ -2,7 +2,7 @@
 title: 기술통계
 group: 기술통계
 order: 1
-summary: 기술통계 함수 11개가 축을 줄(lane)로 바꿔 네이티브 커널에 넘기는 방법, nan_policy 세 가지를 구현하는 방법, 적률을 평균의 두 부분(hi + lo)과 보상 합으로 계산해 평균이 큰 데이터에서도 자릿수를 지키는 방법을 설명해요. 거듭제곱이 넘치거나 사라지는 줄을 2의 거듭제곱으로 다시 스케일하는 방법, NEON으로 벡터화한 보상 합, 스레드 수와 상관없이 같은 결과를 내는 samplesort, rankdata·mode·iqr·entropy의 구현, differential_entropy의 네 추정량(Vasicek, van Es, Ebrahimi, Correa)의 수식과 잰 속도도 다뤄요.
+summary: 기술통계 함수 11개가 축을 줄(lane)로 바꿔 네이티브 커널에 넘기는 방법, nan_policy 세 가지를 구현하는 방법, 모멘트을 평균의 두 부분(hi + lo)과 보상 합으로 계산해 평균이 큰 데이터에서도 자릿수를 지키는 방법을 설명해요. 거듭제곱이 넘치거나 사라지는 줄을 2의 거듭제곱으로 다시 스케일하는 방법, NEON으로 벡터화한 보상 합, 스레드 수와 상관없이 같은 결과를 내는 samplesort, rankdata·mode·iqr·entropy의 구현, differential_entropy의 네 추정량(Vasicek, van Es, Ebrahimi, Correa)의 수식과 잰 속도도 다뤄요.
 seeAlso: [overview, engine, accuracy-performance]
 ---
 import Bench from '../../../components/fig/Bench.astro';
@@ -27,7 +27,7 @@ import Steps from '../../../components/fig/Steps.astro';
 | `iqr` | (없음) | `sd.quantile` 또는 `sd.nanquantile` 두 번 |
 | `entropy` | (없음) | `sd.special.entr`, `rel_entr`와 `sd.sum` |
 
-정렬하는 세 커널은 긴 줄 하나(`axis=None`)도 스레드 풀에서 정렬해요. 적률 커널은 줄을 8192개씩 고정된 블록으로 나눠 계산하고 블록 순서대로 합쳐요. 어느 쪽이든 결과는 스레드 수와 상관없이 같은 비트예요.
+정렬하는 세 커널은 긴 줄 하나(`axis=None`)도 스레드 풀에서 정렬해요. 모멘트 커널은 줄을 8192개씩 고정된 블록으로 나눠 계산하고 블록 순서대로 합쳐요. 어느 쪽이든 결과는 스레드 수와 상관없이 같은 비트예요.
 
 ## 축을 줄로 바꾸기
 
@@ -46,21 +46,21 @@ import Steps from '../../../components/fig/Steps.astro';
   ]} />
 </Fig>
 
-`reshape`가 뷰를 돌려줄 수 있으면 데이터를 복사하지 않아요. C 순서 `(1000, 1000)` 행렬의 `axis=0`이면 `permute_dims`가 전치 뷰를 만들고, 그 뷰의 행(곧 원래 행렬의 열)은 메모리에서 8000바이트씩 떨어진 원소들이에요. 커널은 이 경우를 따로 알아보고 이웃한 줄 여럿을 함께 계산해요(아래 [보상 합](#보상-합-twosum과-neumaier)).
+`reshape`가 뷰를 돌려줄 수 있으면 데이터를 복사하지 않아요. C 순서 `(1000, 1000)` 행렬의 `axis=0`이면 `permute_dims`가 전치 뷰를 만들고, 그 뷰의 행(곧 원래 행렬의 열)은 메모리에서 8000바이트씩 떨어진 원소예요. 커널은 이 경우를 따로 알아보고 이웃한 줄 여럿을 함께 계산해요(아래 [보상 합](#보상-합-twosum과-neumaier)).
 
 `axis`는 배열 영역의 리덕션과 같은 꼴(int, int의 튜플이나 리스트)이고, 에러 문구도 같아요(중복이면 `skew(): repeated axis`). `keepdims=True`면 줄인 축을 길이 1로 남긴 모양(`keep_shape`)으로 돌려줘요. `rankdata`는 `axis=None`일 때 먼저 1차원으로 펴서 축 0을 따라 계산하고(결과가 1차원인 것은 scipy와 같아요), 축은 하나만 받아요. `operator.index`가 받는 값(int, numpy 정수)만 축이고 bool은 아니에요. 그 밖은 튜플이든 float이든 `rankdata(): 'axis' must be an int or None, not float`처럼 이 함수가 받는 것을 말하는 `TypeError`예요. `iqr`과 `entropy`는 `_Lanes`를 쓰지 않아요. `axis`를 `_axes`로 정규화한 튜플로 바꿔 배열 영역의 `quantile`, `sum`에 넘겨서, 축 에러가 다른 기술통계와 같은 이름과 문구로 나와요.
 
-데이터는 `sd.ndarray`가 아니어도 돼요. Python 실수와 실수의 시퀀스(리스트, 튜플)를 `sd.asarray`로 바꿔 받아요(`_as_array`). 배열 함수와 분포의 메서드는 리스트를 받지 않지만, 기술통계는 손에 든 데이터를 바로 요약하는 함수라 scipy.stats처럼 리스트를 그대로 넘기는 쓰임이 흔해서 일부러 받아요.
+데이터는 `sd.ndarray`가 아니어도 돼요. Python 실수와 실수의 시퀀스(리스트, 튜플)를 `sd.asarray`로 바꿔 받아요(`_as_array`). 배열 함수와 분포의 메서드는 리스트를 받지 않지만, 기술통계는 가진 데이터를 바로 요약하는 함수라 scipy.stats처럼 리스트를 그대로 넘기는 쓰임이 흔해서 일부러 받아요.
 
 ### nan_policy
 
 세 정책은 서로 다른 자리에서 처리해요.
 
 - **`'raise'`**: 커널을 부르기 전에 Python에서 `sd.any(sd.isnan(a))`로 배열 전체를 한 번 훑고, NaN이 있으면 `ValueError`예요. 커널은 이 정책을 모르고, 그 뒤에는 `'propagate'`와 같은 길을 가요.
-- **`'propagate'`**: 커널이 줄마다 NaN을 만났는지 기억해요. 적률 커널은 `bad = c == 0 || (nan && !omit)`이면 그 줄의 평균과 적률을 NaN으로 둬요. `rankdata`는 그 줄 전체가 NaN이에요. `mode`만은 scipy처럼 NaN을 하나의 값으로 세요(아래 [mode](#mode)).
-- **`'omit'`**: 줄마다 자기 개수로 계산해요. 적률 커널은 NaN을 0으로 바꿔 더하고 NaN의 개수를 빼서 그 줄의 개수로 나눠요. 정렬하는 커널은 줄을 벡터로 모을 때 NaN을 빼요. `rankdata`는 NaN 자리에 NaN을 두고 나머지끼리 순위를 매겨요. `entropy`는 $p$나 $q$가 NaN인 자리를 둘 다 0으로 바꿔요. `iqr`은 `sd.nanquantile`을 불러요.
+- **`'propagate'`**: 커널이 줄마다 NaN을 만났는지 기억해요. 모멘트 커널은 `bad = c == 0 || (nan && !omit)`이면 그 줄의 평균과 모멘트을 NaN으로 둬요. `rankdata`는 그 줄 전체가 NaN이에요. `mode`만은 scipy처럼 NaN을 하나의 값으로 세요(아래 [mode](#mode)).
+- **`'omit'`**: 줄마다 자기 개수로 계산해요. 모멘트 커널은 NaN을 0으로 바꿔 더하고 NaN의 개수를 빼서 그 줄의 개수로 나눠요. 정렬하는 커널은 줄을 벡터로 모을 때 NaN을 빼요. `rankdata`는 NaN 자리에 NaN을 두고 나머지끼리 순위를 매겨요. `entropy`는 $p$나 $q$가 NaN인 자리를 둘 다 0으로 바꿔요. `iqr`은 `sd.nanquantile`을 불러요.
 
-적률 커널에서 NaN을 0으로 바꾸는 것은 분기가 아니라 비트 마스크예요. NEON의 `vceqq_f64(x, x)`는 NaN이 아닌 원소에서 모든 비트가 1, NaN에서 0인 마스크를 주므로, 이것과 `x`를 AND하면 NaN만 $+0$이 돼요. 같은 마스크를 64비트 정수로 보면 NaN이 아닌 원소에서 $-1$이라, 누적값에서 빼 나가면 NaN이 아닌 원소의 개수가 돼요.
+모멘트 커널에서 NaN을 0으로 바꾸는 것은 분기가 아니라 비트 마스크예요. NEON의 `vceqq_f64(x, x)`는 NaN이 아닌 원소에서 모든 비트가 1, NaN에서 0인 마스크를 주므로, 이것과 `x`를 AND하면 NaN만 $+0$이 돼요. 같은 마스크를 64비트 정수로 보면 NaN이 아닌 원소에서 $-1$이라, 누적값에서 빼 나가면 NaN이 아닌 원소의 개수가 돼요.
 
 ```cpp
 // csrc/bind/stats_desc.cpp, sum_block (발췌)
@@ -153,7 +153,7 @@ TypeError: moment(): 'order' must be an int or a sequence of ints, not NoneType
 
 ### 호출 모양의 에러
 
-모르는 키워드, 빠진 필수 키워드, 너무 많은 위치 인자는 함수 본문에 들어가기 전에 Python이 직접 내는 에러예요. 그대로 두면 `moment() missing 1 required keyword-only argument: 'order'`처럼 앞머리가 `moment()` 뒤에 콜론이 없는 Python의 꼴이라, 함수 자신의 검사가 내는 `moment(): ...`와 모양이 달라요. 그래서 공개 함수 열한 개를 모두 `_library_call_errors`로 감싸요. 분포 생성자의 `_keyword_constructor`([통계 영역의 구조](/internals/stats/overview/#만들-때-형과-모양만))와 같은 생각이에요. `TypeError`의 앞머리가 `moment() `이면 `moment(): `로 바꾸고 `got an `을 떼어 다시 내요. 함수 자신의 검사가 낸 에러는 이미 `moment(): `로 시작하므로 그대로 지나가요.
+모르는 키워드, 빠진 필수 키워드, 너무 많은 위치 인자는 함수 본문에 들어가기 전에 Python이 직접 내는 에러예요. 그대로 두면 `moment() missing 1 required keyword-only argument: 'order'`처럼 앞머리가 `moment()` 뒤에 콜론이 없는 Python의 꼴이라, 함수 자신의 검사가 내는 `moment(): ...`와 모양이 달라요. 그래서 공개 함수 열한 개를 모두 `_library_call_errors`로 감싸요. 분포 생성자의 `_keyword_constructor`([통계 영역의 구조](/internals/stats/overview/#만들-때-형과-모양만))와 같은 방식이에요. `TypeError`의 앞머리가 `moment() `이면 `moment(): `로 바꾸고 `got an `을 떼어 다시 내요. 함수 자신의 검사가 낸 에러는 이미 `moment(): `로 시작하므로 그대로 지나가요.
 
 ```python
 # src/stardust/stats/_descriptive.py
@@ -209,23 +209,23 @@ TypeError: skew(): 'bias' must be True or False, not numpy.bool
 <Signature (x, /, *, axis=None, bias=True, nan_policy='propagate', keepdims=False)>
 ```
 
-## 적률: 평균을 hi + lo로
+## 모멘트: 평균을 hi + lo로
 
 ### 반올림한 평균이 하는 일
 
-표본 $x_1, \ldots, x_n$의 평균을 $\bar x$, 중심 적률을 $m_k = \frac1n\sum (x_i - \bar x)^k$라고 해요. 왜도는 $g_1 = m_3 / m_2^{3/2}$, 첨도는 $m_4/m_2^2$(초과 첨도는 여기서 3을 뺀 값)예요.
+표본 $x_1, \ldots, x_n$의 평균을 $\bar x$, 중심 모멘트을 $m_k = \frac1n\sum (x_i - \bar x)^k$라고 해요. 왜도는 $g_1 = m_3 / m_2^{3/2}$, 첨도는 $m_4/m_2^2$(초과 첨도는 여기서 3을 뺀 값)예요.
 
-교과서의 두 번 훑기는 먼저 평균을 구하고 그 평균을 빼서 거듭제곱을 더해요. 그런데 평균은 double로 반올림된 $\hat m = \bar x + \delta$예요. 편차 $d_i = x_i - \hat m = (x_i - \bar x) - \delta$로 계산한 3차 적률은
+교과서의 두 번 훑기는 먼저 평균을 구하고 그 평균을 빼서 거듭제곱을 더해요. 그런데 평균은 double로 반올림된 $\hat m = \bar x + \delta$예요. 편차 $d_i = x_i - \hat m = (x_i - \bar x) - \delta$로 계산한 3차 모멘트은
 
 $$
 \frac1n\sum d_i^3 = m_3 - 3\delta\, m_2 + 3\delta^2 \cdot 0 - \delta^3 = m_3 - 3\delta\, m_2 - \delta^3
 $$
 
-이에요($\sum (x_i - \bar x) = 0$). 오차 $3\delta m_2$는 데이터의 퍼짐이 아니라 평균의 크기에 비례해요. 평균이 $10^8$이면 그 근처 double의 간격이 $1.5 \times 10^{-8}$이라 $\lvert\delta\rvert$가 $7.5 \times 10^{-9}$까지 가고, 퍼짐이 1 정도인 데이터에서 왜도가 $10^{-8}$ 단위로 틀려요. 2차 적률은 같은 전개에서 1차 항이 사라져서($m_2 - \delta^2$) 이 문제가 없어요.
+이에요($\sum (x_i - \bar x) = 0$). 오차 $3\delta m_2$는 데이터의 퍼짐이 아니라 평균의 크기에 비례해요. 평균이 $10^8$이면 그 근처 double의 간격이 $1.5 \times 10^{-8}$이라 $\lvert\delta\rvert$가 $7.5 \times 10^{-9}$까지 가고, 퍼짐이 1 정도인 데이터에서 왜도가 $10^{-8}$ 단위로 틀려요. 2차 모멘트은 같은 전개에서 1차 항이 사라져서($m_2 - \delta^2$) 이 문제가 없어요.
 
 ### 두 번 훑고 이항 전개로 고치기
 
-`desc_moments`는 평균을 두 부분 $hi + lo$로 들어요.
+`desc_moments`는 평균을 두 부분 $hi + lo$로 나눠 계산해요.
 
 1. **첫 번째 훑기**: 개수, 보상 합, (요청하면) 최솟값과 최댓값, NaN 여부를 구해요. $hi = $ 보상 합 $/\, n$이에요. 보상 합의 결과도 double 하나라 $hi$ 자체는 여전히 반올림된 평균이에요.
 2. **두 번째 훑기**: $d_i = x_i - hi$로 $S_k = \frac1n\sum d_i^k$($k = 1, \ldots, k_{\max}$)를 모두 보상 합으로 한 번에 구해요.
@@ -239,7 +239,7 @@ m_4 &= S_4 - 4\,lo\,S_3 + 6\,lo^2 S_2 - 3\,lo^4.
 \end{aligned}
 $$
 
-전개의 $S_1 = lo$를 넣으면 $m_3$의 $-3lo^2 S_1 + \ldots$ 항들이 정리되어 위 꼴이 돼요. $lo$는 $hi$의 반올림 오차 크기라서 보정항들은 작고, $hi$의 반올림이 적률에 남기던 $3\delta m_2$가 정확히 지워져요.
+전개의 $S_1 = lo$를 넣으면 $m_3$의 $-3lo^2 S_1 + \ldots$ 항이 정리되어 위 꼴이 돼요. $lo$는 $hi$의 반올림 오차 크기라서 보정항은 작고, $hi$의 반올림이 모멘트에 남기던 $3\delta m_2$가 정확히 지워져요.
 
 ```cpp
 // csrc/bind/stats_desc.cpp, moments의 마지막 단계 (발췌)
@@ -255,11 +255,11 @@ p4[r] = kmax >= 4 ? S4 - 4.0 * lo * S3 + 6.0 * l2 * S2 - 3.0 * l2 * l2 : kNaN;
 
 평균으로 돌려주는 값은 $hi + lo$를 반올림한 double이고(`pm`), 그 반올림의 나머지 `pml`도 함께 돌려줘요. `zscore`는 이 둘을 모두 써서 $(x - \text{mean}) - \text{mean\_lo}$로 편차를 만들어요. 평균의 반올림이 모든 $z$를 그 크기/표준편차만큼 한쪽으로 미는 것을 막으려는 거예요.
 
-두 번째 훑기의 뺄셈 $x_i - hi$는 데이터가 평균 근처에 모여 있으면 정확해요. 두 double이 서로 두 배 안에 있으면 그 차는 반올림 없이 double로 나타나기 때문이에요(Sterbenz 보조정리 [2]). 평균이 $10^8$이고 퍼짐이 1이면 모든 $x_i$가 $hi$의 두 배 안이라 $d_i$에는 오차가 없고, 남는 오차는 $d_i^k$의 곱과 합의 반올림뿐이에요. 이것은 퍼짐에 비례하는 오차라서 평균의 크기와 상관없어요.
+두 번째 훑기의 뺄셈 $x_i - hi$는 데이터가 평균 근처에 모여 있으면 정확해요. 두 double이 서로 두 배 안에 있으면 그 차는 반올림 없이 double로 나타나기 때문이에요(Sterbenz 보조정리 [2]). 평균이 $10^8$이고 퍼짐이 1이면 모든 $x_i$가 $hi$의 두 배 안이라 $d_i$에는 오차가 없고, 남는 오차는 $d_i^k$의 곱과 합의 반올림뿐이에요. 이 오차는 퍼짐에 비례해서 평균의 크기와 상관없어요.
 
 ### 정확한 값과 비교하기
 
-평균이 $10^8$이고 퍼짐이 1 정도인 데이터 2000개에서, 유리수 산술(`fractions.Fraction`)로 계산한 정확한 적률과 비교해 볼 수 있어요.
+평균이 $10^8$이고 퍼짐이 1 정도인 데이터 2000개에서, 유리수 산술(`fractions.Fraction`)로 계산한 정확한 모멘트과 비교해 볼 수 있어요.
 
 ```python
 >>> import numpy as np, scipy.stats as st
@@ -282,9 +282,9 @@ p4[r] = kmax >= 4 ? S4 - 4.0 * lo * S3 + 6.0 * l2 * S2 - 3.0 * l2 * l2 : kNaN;
 ('0.0e+00', '0.0e+00')
 ```
 
-scipy 1.18.1은 반올림한 평균을 뺀 채 거듭제곱을 더해서 왜도와 첨도가 $10^{-8}$ 틀리고, 2차 적률은 위의 전개대로 영향이 없어요. 테스트(`tests/stats/test_descriptive.py`)는 같은 데이터에서 `skew`, `kurtosis`, `moment`(2, 3, 4차), 평균, `zscore`를 정확한 값과 상대 $10^{-14}$로 확인해요.
+scipy 1.18.1은 반올림한 평균을 뺀 채 거듭제곱을 더해서 왜도와 첨도가 $10^{-8}$이 틀리고, 2차 모멘트은 위의 전개대로 영향이 없어요. 테스트(`tests/stats/test_descriptive.py`)는 같은 데이터에서 `skew`, `kurtosis`, `moment`(2, 3, 4차), 평균, `zscore`를 정확한 값과 상대 $10^{-14}$로 확인해요.
 
-### 적률에서 요약값으로
+### 모멘트에서 요약값으로
 
 커널이 돌려준 $(n, \bar x, m_2, m_3, m_4)$에서 Python 층이 마지막 식을 계산해요.
 
@@ -298,18 +298,18 @@ scipy 1.18.1은 반올림한 평균을 뺀 채 거듭제곱을 더해서 왜도�
 
 **상수 표본.** 모든 값이 같은 줄은 왜도·첨도·`zscore`가 NaN이에요(scipy와 같아요). 그런데 값이 모두 같아도 반올림 때문에 $m_2$가 정확히 0이 아닐 수 있어요. 그래서 판정은 $m_2 \le (\varepsilon \bar x)^2$($\varepsilon = 2^{-52}$), `zscore`는 $s \le \lvert\varepsilon \bar x\rvert$예요. 퍼짐이 평균의 한 ULP보다 작으면 상수로 봐요.
 
-`moment`는 차수 2, 3, 4이고 `center`가 없으면 위 커널의 결과를 그대로 써요. 그 밖의 차수와 `center`를 준 경우는 `desc_moment`가 줄마다 계산해요. 평균은 같은 $hi + lo$ 방식(`mean_of`: Neumaier 합으로 $hi$, 잔차의 Neumaier 합으로 $lo$)이고, `center`를 주면 $hi = $ center, $lo = 0$이에요. 정수 차수 $\lvert k\rvert \le 64$는 거듭제곱을 제곱 반복으로 계산하고(`ipow`), 그 밖은 `std::pow`예요. 중심 적률의 1차는 정의상 0이고 0차는 1이에요(scipy와 같아요).
+`moment`는 차수 2, 3, 4이고 `center`가 없으면 위 커널의 결과를 그대로 써요. 그 밖의 차수와 `center`를 준 경우는 `desc_moment`가 줄마다 계산해요. 평균은 같은 $hi + lo$ 방식(`mean_of`: Neumaier 합으로 $hi$, 잔차의 Neumaier 합으로 $lo$)이고, `center`를 주면 $hi = $ center, $lo = 0$이에요. 정수 차수 $\lvert k\rvert \le 64$는 거듭제곱을 제곱 반복으로 계산하고(`ipow`), 그 밖은 `std::pow`예요. 중심 모멘트의 1차는 정의상 0이고 0차는 1이에요(scipy와 같아요).
 
 ## 거듭제곱이 넘치는 줄의 재스케일
 
 $d^4$는 $\lvert d\rvert$가 $10^{77}$을 넘으면 double을 넘고, $d^2$는 $10^{154}$에서 넘어요. 반대로 $10^{-77}$ 아래 데이터의 $d^4$는 서브노멀이나 0으로 사라져요. 그대로 두면 $10^{150}$ 크기 데이터의 왜도가 NaN($\infty/\infty$)이고, $10^{-200}$ 크기 데이터의 `sem`이 0이에요.
 
-중심 적률은 위치를 옮겨도 그대로이고 척도에는 거듭제곱으로 따라가요: $y = (x - a)/u$이면 $m_k(x) = u^k m_k(y)$예요. 그래서 커널의 결과를 보고 문제가 있는 줄만 다시 계산해요(`_moments`).
+중심 모멘트은 위치를 옮겨도 그대로이고 척도에는 거듭제곱으로 따라가요. $y = (x - a)/u$이면 $m_k(x) = u^k m_k(y)$예요. 그래서 커널의 결과를 보고 문제가 있는 줄만 다시 계산해요(`_moments`).
 
-1. **문제 있는 줄 찾기.** 평균이 유한하고 $n \ge 2$인데, 가장 높은 차수의 적률이 유한하지 않거나 $m_2 < 2^{-500}$인 줄이에요. 보통의 데이터에서는 이 검사가 두 리덕션(`min(m2)`, `sum(top)`)으로 끝나요. 줄이 하나(`axis=None`)면 Python float 둘을 비교해요.
+1. **문제 있는 줄 찾기.** 평균이 유한하고 $n \ge 2$인데, 가장 높은 차수의 모멘트이 유한하지 않거나 $m_2 < 2^{-500}$인 줄이에요. 보통의 데이터에서는 이 검사가 두 리덕션(`min(m2)`, `sum(top)`)으로 끝나요. 줄이 하나(`axis=None`)면 Python float 둘을 비교해요.
 2. **배율 고르기.** 그 줄의 최솟값 $a$와 최댓값 $b$에서 폭 $b - a$의 절반 아래인 2의 거듭제곱 $u = 2^{\lfloor \log_2 (b - a)\rfloor - 1}$을 골라요. 2의 거듭제곱으로 나누는 것은 지수만 바꾸므로 반올림이 없어요.
-3. **폭 자체가 넘칠 때.** $\max(\lvert a\rvert, \lvert b\rvert) \ge 2^{1000}$이면 $b - a$가 넘칠 수 있어서 먼저 반으로 줄여요: $y = (x/2 - a/2)/u$, 배율에 $f = 2$를 기록해요.
-4. **다시 계산.** 그 줄들만 $y$로 `desc_moments`를 다시 부르고, 결과 적률에 $(uf)^k$를 곱해 돌려줘요. 평균은 처음 계산한 값을 그대로 써요.
+3. **폭 자체가 넘칠 때.** $\max(\lvert a\rvert, \lvert b\rvert) \ge 2^{1000}$이면 $b - a$가 넘칠 수 있어서 먼저 반으로 줄여요($y = (x/2 - a/2)/u$). 배율에는 $f = 2$를 기록해요.
+4. **다시 계산.** 그 줄들만 $y$로 `desc_moments`를 다시 부르고, 결과 모멘트에 $(uf)^k$를 곱해 돌려줘요. 평균은 처음 계산한 값을 그대로 써요.
 
 왜도와 첨도는 척도에 무관한 비라서 $(uf)^k$를 곱할 필요도 없어요. 다시 스케일한 $m_k$로 바로 계산하면 $m_2^{3/2}$, $m_2^2$가 넘치지 않아요. 분산과 `sem`만 단위를 되돌려요(`_in_unit`).
 
@@ -323,7 +323,7 @@ np.float64(nan)
 (1.5478479684172258e-200, np.float64(0.0))
 ```
 
-두 왜도가 마지막 비트에서 다른 것은 재스케일한 줄의 $y$가 원래의 $x$와 다른 double들이라 합의 반올림이 다르기 때문이에요.
+두 왜도가 마지막 비트에서 다른 것은 재스케일한 줄의 $y$가 원래의 $x$와 다른 double이라 합의 반올림이 다르기 때문이에요.
 
 ## 보상 합: TwoSum과 Neumaier
 
@@ -335,7 +335,7 @@ $$
 t = s \oplus x,\quad b = t \ominus s,\quad e = (s \ominus (t \ominus b)) \oplus (x \ominus b),\qquad s + x = t + e \ \text{(정확히)}.
 $$
 
-Neumaier의 방법은 $\lvert s\rvert \ge \lvert x\rvert$인지에 따라 $e = (s - t) + x$ 또는 $(x - t) + s$로 같은 오차를 세 번의 연산과 비교 하나로 구해요[4]. 두 방법 모두 합 $s$와 별도로 오차들을 $c$에 더해 가다가 끝에 $s + c$를 돌려줘요. 이렇게 하면 결과의 오차는 $u\lvert S\rvert + \gamma_{n-1}^2\sum\lvert x_i\rvert$ 정도예요($u = 2^{-53}$, $\gamma_k = ku/(1 - ku)$). 첫 항은 결과를 double로 한 번 반올림한 만큼이고, 두 번째 항은 보통의 합의 오차 $\gamma_{n-1}\sum\lvert x_i\rvert$를 한 번 더 $u$배로 줄인 크기예요(Ogita–Rump–Oishi의 Sum2 [6]). 원소 $10^6$개면 $\gamma_{n-1}^2 \approx 10^{-20}$이라, 항들이 크게 상쇄하지 않는 한 결과는 올바르게 반올림한 값과 거의 같아요.
+Neumaier의 방법은 $\lvert s\rvert \ge \lvert x\rvert$인지에 따라 $e = (s - t) + x$ 또는 $(x - t) + s$로 같은 오차를 세 번의 연산과 비교 하나로 구해요[4]. 두 방법 모두 합 $s$와 별도로 오차를 $c$에 더해 가다가 끝에 $s + c$를 돌려줘요. 이렇게 하면 결과의 오차는 $u\lvert S\rvert + \gamma_{n-1}^2\sum\lvert x_i\rvert$ 정도예요($u = 2^{-53}$, $\gamma_k = ku/(1 - ku)$). 첫 항은 결과를 double로 한 번 반올림한 만큼이고, 두 번째 항은 보통의 합의 오차 $\gamma_{n-1}\sum\lvert x_i\rvert$를 한 번 더 $u$배로 줄인 크기예요(Ogita–Rump–Oishi의 Sum2 [6]). 원소 $10^6$개면 $\gamma_{n-1}^2 \approx 10^{-20}$이라, 항이 크게 상쇄하지 않는 한 결과는 올바르게 반올림한 값과 거의 같아요.
 
 ### 여덟 사슬과 NEON
 
@@ -360,13 +360,13 @@ void add2(int q, float64x2_t x) {
 
 `add2`는 NEON 레지스터 하나(double 두 개)로 사슬 두 개를 함께 갱신해요. 연속인 줄은 원소 여덟 개마다 `add2`를 네 번 부르고, 그 연산은 스칼라 `add`를 원소마다 부른 것과 같은 사슬에 같은 순서로 같은 연산이라 결과의 비트가 같아요. 두 번째 훑기(`moment_block`)는 $d$, $d^2$, $d^3 = d^2 \cdot d$, $d^4 = d^2 \cdot d^2$를 만들어 네 묶음의 사슬에 같은 방식으로 더해요.
 
-**나란한 줄.** 줄일 축이 배열의 마지막 축이 아니면(위의 `axis=0`) 줄 하나의 원소들이 메모리에서 멀리 떨어져 있어, 줄 하나씩 걸으면 원소마다 캐시 줄을 하나씩 건드려요. 그런데 이때 이웃한 줄들의 같은 위치 $j$는 메모리에서 연속이에요(`strides[0] == 8`). 커널은 줄 64개를 묶어서 행 $j$를 한 번에 읽고, 줄들을 벡터의 방향으로 써서 각 줄의 사슬 $j \bmod 8$에 더해요(`side_sum`, `side_moments`). 줄마다 하는 연산은 줄 하나씩 걸을 때와 같아서 비트도 같아요.
+**나란한 줄.** 줄일 축이 배열의 마지막 축이 아니면(위의 `axis=0`) 줄 하나의 원소가 메모리에서 멀리 떨어져 있어, 줄 하나씩 걸으면 원소마다 캐시 줄을 하나씩 건드려요. 그런데 이때 이웃한 줄의 같은 위치 $j$는 메모리에서 연속이에요(`strides[0] == 8`). 커널은 줄 64개를 묶어서 행 $j$를 한 번에 읽고, 줄을 벡터 방향으로 놓아 각 줄의 사슬 $j \bmod 8$에 더해요(`side_sum`, `side_moments`). 줄마다 하는 연산은 줄 하나씩 걸을 때와 같아서 비트도 같아요.
 
 ### 고정된 블록으로 병렬
 
 줄 하나를 원소 8192개짜리 블록으로 나누고(`kBlock`), (줄, 블록) 쌍을 스레드 풀에 나눠 줘요. 블록마다 자기 `Neu4`를 채우고, 줄마다 블록 순서대로 하나의 Neumaier 합에 모아요. 블록의 경계는 데이터의 길이만으로 정해지고 스레드 수와 무관하니, 어떤 스레드가 어떤 블록을 계산하든 합치는 순서와 값이 같아요. 그래서 `axis=None`의 긴 줄 하나도 병렬로 계산하면서 결과는 1스레드와 같은 비트예요.
 
-정렬하는 커널(`rankdata`, `mode`, `differential_entropy`)은 줄 단위로 나눠요(`each_lane`). 줄 하나의 계산은 한 스레드가 하고, 줄들이 독립이라 어떻게 나눠도 같은 비트예요. 줄이 하나뿐이면 아래의 samplesort가 그 안에서 풀을 써요.
+정렬하는 커널(`rankdata`, `mode`, `differential_entropy`)은 줄 단위로 나눠요(`each_lane`). 줄 하나의 계산은 한 스레드가 하고, 줄끼리 독립이라 어떻게 나눠도 같은 비트예요. 줄이 하나뿐이면 아래의 samplesort가 그 안에서 풀을 써요.
 
 ## 정렬: 결정적인 samplesort
 
@@ -392,7 +392,7 @@ for (std::int64_t step = kBuckets / 2; step > 0; step /= 2) lo += split[lo + ste
 id[static_cast<std::size_t>(i)] = static_cast<std::uint8_t>(lo);
 ```
 
-비교가 `<`라서 같은 값은 언제나 같은 버킷에 들어가고, 버킷 $b$의 모든 원소는 버킷 $b + 1$의 모든 원소보다 작거나 같아요. 그래서 버킷들을 각각 정렬해 이어 붙이면 전체가 정렬돼요.
+비교가 `<`라서 같은 값은 언제나 같은 버킷에 들어가고, 버킷 $b$의 모든 원소는 버킷 $b + 1$의 모든 원소보다 작거나 같아요. 그래서 버킷을 각각 정렬해 이어 붙이면 전체가 정렬돼요.
 
 **결정성.** 표본의 위치, 분할자, 조각의 경계는 모두 $n$과 데이터의 값으로만 정해져요. 흩뿌리기는 각 버킷 안에 조각 순서대로, 조각 안에서는 원래 순서대로 원소를 놓으므로 버킷 정렬에 들어가는 순서도 정해져 있어요. 그러면 `std::sort`의 결과도 정해져요. 정렬 결과가 모호한 것은 값이 같은데 비트가 다른 원소($-0.0$과 $0.0$)의 순서뿐인데, 그 순서도 이렇게 고정돼요. `rankdata`는 (값, 위치) 쌍을 정렬하니 같은 쌍이 없어서 애초에 모호함이 없어요.
 
@@ -426,7 +426,7 @@ array([3.0, 1.0, 4.0, 2.0, 5.0], dtype=float64)
 
 `desc_mode`는 줄에서 NaN을 따로 빼 두고 나머지를 정렬한 뒤, 같은 값이 이어지는 길이를 세요. 더 긴 묶음을 만날 때만(`>`) 답을 바꾸므로 동점이면 먼저 나온 값, 곧 가장 작은 값이 남아요.
 
-NaN은 `'propagate'`에서 하나의 값으로 세요. scipy처럼 NaN을 가장 큰 값으로 정렬했다고 보면, NaN의 개수가 지금까지의 최다 개수보다 **클 때만** NaN이 최빈값이에요. 같으면 더 작은 값이 이기기 때문이에요. `'omit'`이면 NaN을 세지 않아요. 빈 줄은 `(NaN, 0)`이에요.
+NaN은 `'propagate'`에서 하나의 값으로 세요. scipy처럼 NaN을 가장 큰 값으로 정렬했다고 보면, NaN의 개수가 지금까지의 최다 개수보다 클 때만 NaN이 최빈값이에요. 같으면 더 작은 값이 이기기 때문이에요. `'omit'`이면 NaN을 세지 않아요. 빈 줄은 `(NaN, 0)`이에요.
 
 ```python
 >>> sd.stats.mode(sd.asarray([2.0, 1.0, 2.0, 1.0, 3.0]))
@@ -441,13 +441,13 @@ ModeResult(mode=nan, count=2)
 
 `iqr`은 커널이 없어요. 분위수 $q_0$, $q_1$(기본 0.25, 0.75)을 [`sd.quantile`](/api/array/quantile/)로 두 번 구해 빼고 `scale`로 나눠요. `'omit'`이면 `sd.nanquantile`이에요. `method`는 그대로 넘기므로 numpy의 13가지 방법을 모두 쓸 수 있어요. 분위수의 위치·보간과 레인을 고르는 방법은 [배열의 통계 함수](/internals/array/statistics/)에 있어요.
 
-`scale='normal'`은 표준정규분포의 사분위 범위
+`scale='normal'`이면 표준정규분포의 사분위범위
 
 $$
 \Phi^{-1}(0.75) - \Phi^{-1}(0.25) = 2\sqrt2\,\operatorname{erfinv}(1/2) = 1.3489795003921634\ldots
 $$
 
-로 나누는 것이에요. 정규 표본이면 그 결과가 표준편차 $\sigma$의 추정값이 돼요. 상수를 코드에 적어 두었어요(`_NORMAL_IQR`). 나눗셈은 IEEE 나눗셈(`sd.divide`)이라 `scale=0`이면 inf, 사분위 범위도 0이면 NaN이에요(scipy와 같아요).
+로 나눠요. 정규 표본이면 그 결과가 표준편차 $\sigma$의 추정값이 돼요. 이 상수는 코드에 `_NORMAL_IQR`로 들어 있어요. 나눗셈은 IEEE 나눗셈(`sd.divide`)이라 `scale=0`이면 inf, 사분위범위도 0이면 NaN이에요(scipy와 같아요).
 
 ```python
 >>> sd.stats.iqr(sd.asarray([1.0, 2.0, 3.0, 4.0, 10.0]))
@@ -482,7 +482,7 @@ $$
 
 ### 네 추정량
 
-커널은 줄을 정렬한 뒤(`sort_long`) 아래 식을 그대로 계산해요. 범위 밖의 순서통계량은 끝값으로 채워요: $i < 1$이면 $X_{(i)} = X_{(1)}$, $i > n$이면 $X_{(n)}$이에요(`X(i)`의 `std::clamp`). 로그의 합은 Neumaier 합이에요.
+커널은 줄을 정렬한 뒤(`sort_long`) 아래 식을 그대로 계산해요. 범위 밖의 순서통계량은 끝값으로 채워요. $i < 1$이면 $X_{(i)} = X_{(1)}$, $i > n$이면 $X_{(n)}$이에요(`X(i)`의 `std::clamp`). 로그의 합은 Neumaier 합이에요.
 
 **Vasicek** [7]:
 
@@ -511,7 +511,7 @@ $$
 
 이에요. 창마다 평균과 두 합을 새로 더하니 비용이 $O(nm)$이에요(나머지 셋은 $O(n)$).
 
-`method='auto'`는 scipy와 같은 규칙으로 골라요: $n \le 10$이면 van Es, $n \le 1000$이면 Ebrahimi, 그 위는 Vasicek이에요. `window_length`의 기본값은 $m = \lfloor\sqrt n + 1/2\rfloor$이고, $2 \le 2m < n$이 아니면 그 줄은 NaN이에요.
+`method='auto'`는 scipy와 같은 규칙으로 골라요. $n \le 10$이면 van Es, $n \le 1000$이면 Ebrahimi, 그 위는 Vasicek이에요. `window_length`의 기본값은 $m = \lfloor\sqrt n + 1/2\rfloor$이고, $2 \le 2m < n$이 아니면 그 줄은 NaN이에요.
 
 **간격이 0이거나 무한한 경우.** 동점이 있으면 어떤 간격이 0이고 그 항은 $\log 0 = -\infty$라 추정값도 $-\infty$예요. 데이터에 inf가 있으면 그 값에 닿는 간격이 inf이고 그 항은 $+\infty$라 추정값도 inf예요. 둘이 함께면 $-\infty + \infty$라 NaN이에요(셋 다 scipy와 같아요). 그런데 보상 합에 무한한 항을 넣으면 보정항에서 $\infty - \infty$가 생겨 NaN이 돼요. 그래서 0이나 inf인 항은 합에 넣지 않고 따로 표시해 두었다가, 마지막에 `result`가 유한한 항으로 계산한 값을 무한대로 바꿔요. 그 값이 이미 NaN이거나 반대쪽 무한대이면 NaN이에요.
 
@@ -598,13 +598,13 @@ scipy 1.18.1과는 크기 5, 9, 50, 2000, 20000인 정규 표본에서 네 방�
 | `differential_entropy` | 30.55 | 15.83 | 1.94 | 1.93 | 15.8 |
 | `skew` omit | 51.59 | 1.32 | 0.29 | 39.13 | 179.4 |
 
-- **적률(`skew`, `kurtosis`, `moment`, `describe`): 1스레드 4.8–7.6배.** stardust는 데이터를 두 번 훑는 동안 중간 배열을 만들지 않고, 보상 합이 NEON 사슬 여덟 개라 원소 $10^6$개에 1–1.6 ms(`describe`는 최솟값·최댓값을 함께 구해서 3.1–4.4 ms)예요.
-- **scipy보다 느린 것은 `sem`뿐이에요(1스레드 0.67배, 0.83배).** stardust는 첫 훑기의 합, 두 번째 훑기의 $S_1$, $S_2$로 보상 합 셋을 계산하고, scipy의 표준편차는 보상하지 않는 합이에요. 10스레드에서는 3.9배 빨라요.
-- **정렬하는 함수(`rankdata`, `mode`, `differential_entropy`): 1스레드 1.0–3.1배, 10스레드 3.2–22.6배.** `axis=None`의 긴 줄 하나는 samplesort가 풀에서 나눠요.
-- **`iqr` 전체의 10스레드(2.0배)**: 분위수 두 번이 각자 긴 줄 하나를 다뤄요. 배열 영역의 `quantile`이 레인 하나를 어떻게 고르고 언제 병렬 정렬로 가는지는 [배열의 통계 함수](/internals/array/statistics/)에 있어요.
+- 모멘트(`skew`, `kurtosis`, `moment`, `describe`)은 1스레드에서 4.8–7.6배예요. stardust는 데이터를 두 번 훑는 동안 중간 배열을 만들지 않고, 보상 합이 NEON 사슬 여덟 개라 원소 $10^6$개에 1–1.6 ms(`describe`는 최솟값·최댓값을 함께 구해서 3.1–4.4 ms)예요.
+- scipy보다 느린 것은 `sem`뿐이에요(1스레드 0.67배, 0.83배). stardust는 첫 훑기의 합, 두 번째 훑기의 $S_1$, $S_2$로 보상 합 셋을 계산하고, scipy의 표준편차는 보상하지 않는 합이에요. 10스레드에서는 3.9배 빨라요.
+- 정렬하는 함수(`rankdata`, `mode`, `differential_entropy`)는 1스레드 1.0–3.1배, 10스레드 3.2–22.6배예요. `axis=None`의 긴 줄 하나는 samplesort가 풀에서 나눠요.
+- `iqr` 전체는 10스레드에서도 1스레드의 2.0배에 그쳐요. 분위수 두 번이 각자 긴 줄 하나를 다루기 때문이에요. 배열 영역의 `quantile`이 레인 하나를 어떻게 고르고 언제 병렬 정렬로 가는지는 [배열의 통계 함수](/internals/array/statistics/)에 있어요.
 
 <Callout>
-기술통계의 결과는 스레드 수와 상관없이 같은 비트예요. 적률은 블록의 경계가, 정렬은 표본과 분할자와 조각의 경계가 데이터만으로 정해지기 때문이에요. `bench/stats/opt/e/`의 `desc_moments.py`, `desc_sort.py`는 크기·NaN 정책·레이아웃·스레드 수(1, 3, 4, 10)를 바꿔 가며 결과의 해시를 만들어, 두 빌드의 결과가 비트까지 같은지 비교하는 도구예요.
+기술통계의 결과는 스레드 수와 상관없이 같은 비트예요. 모멘트은 블록의 경계가, 정렬은 표본과 분할자와 조각의 경계가 데이터만으로 정해지기 때문이에요. `bench/stats/opt/e/`의 `desc_moments.py`, `desc_sort.py`는 크기·NaN 정책·레이아웃·스레드 수(1, 3, 4, 10)를 바꿔 가며 결과의 해시를 만들어, 두 빌드의 결과가 비트까지 같은지 비교하는 도구예요.
 </Callout>
 
 ## 참고 문헌

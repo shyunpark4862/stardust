@@ -65,15 +65,15 @@ export const cvLo = [[0.0214, 4.6837], [-0.0089, 4.6454], [-0.0392, 4.571], [-0.
 
 ## 한눈에 보기
 
-[`ridge`](/api/regression/ridge/), [`lasso`](/api/regression/lasso/), [`elastic_net`](/api/regression/elastic-net/)은 벌점의 세기 `alpha`를 정해 줘야 해요. 너무 작으면 과적합하고, 너무 크면 계수를 지나치게 눌러서 쓸모 있는 효과까지 놓쳐요. 좋은 `alpha`는 **새 데이터에서 예측이 가장 좋은 값**이에요. 새 데이터가 없으니 가진 데이터를 나눠서 흉내 내요. 이것이 **k겹 교차검증**이에요.
+[`ridge`](/api/regression/ridge/), [`lasso`](/api/regression/lasso/), [`elastic_net`](/api/regression/elastic-net/)은 벌점의 세기 `alpha`를 정해 줘야 해요. 너무 작으면 과적합하고, 너무 크면 계수를 지나치게 눌러서 쓸모 있는 효과까지 놓쳐요. 좋은 `alpha`는 새 데이터에서 예측이 가장 좋은 값이에요. 새 데이터가 없으니 가진 데이터를 나눠서 흉내 내요. 이것이 **k겹 교차검증**이에요.
 
 1. 행을 무작위로 k개의 겹(fold)으로 나눠요.
 2. 겹 하나를 떼어 두고, 나머지 k − 1겹으로 `alpha` 격자의 모든 값에서 적합해요.
 3. 떼어 둔 겹에서 예측 오차(평균 제곱오차)를 재요.
 4. 겹마다 되풀이하고, `alpha`마다 k개의 오차를 평균해요. 이것이 `cv_error`예요.
-5. `cv_error`로 `alpha`를 고르고, 그 `alpha`로 **모든 데이터를 다시 적합해요.**
+5. `cv_error`로 `alpha`를 고르고, 그 `alpha`로 모든 데이터를 다시 적합해요.
 
-열 8개 가운데 둘(`x1`, `x2`)만 효과가 있는 데이터로 볼게요.
+열 8개 가운데 둘(`x1`, `x2`)만 효과가 있는 데이터에 써 봐요.
 
 ```python
 >>> import stardust as sd
@@ -87,7 +87,7 @@ export const cvLo = [[0.0214, 4.6837], [-0.0089, 4.6454], [-0.0392, 4.571], [-0.
 [0.866, 1.153, -0.826, 0.0, -0.036, 0.0, 0.0, 0.0, 0.0]
 ```
 
-교차검증이 고른 `alpha`는 0.197이고, 그 `alpha`의 라소는 `x1`, `x2`에 `x4`를 조금 더해 셋을 남겼어요. 결과는 `LassoResult`의 필드를 모두 가지면서 교차검증 필드가 더 있어요.
+교차검증이 고른 `alpha`는 0.197이고, 그 `alpha`의 라소는 `x1`, `x2`에 `x4`를 조금 더해 셋을 남겼어요. 결과에는 `LassoResult`의 필드가 모두 있고, 교차검증 필드가 더 있어요.
 
 ```python
 >>> cv.alphas.shape, cv.cv_error.shape, cv.cv_se.shape
@@ -96,7 +96,7 @@ export const cvLo = [[0.0214, 4.6837], [-0.0089, 4.6454], [-0.0392, 4.571], [-0.
 (0.1968, 0.6011)
 ```
 
-아래 그림이 오차 곡선이에요. 가운데 실선이 `cv_error`이고, 점선은 `cv_error` ± `cv_se`(겹들 사이의 흔들림)예요. 왼쪽(작은 `alpha`)은 과적합으로, 오른쪽(큰 `alpha`)은 지나친 벌점으로 오차가 커요.
+아래 그림이 오차 곡선이에요. 가운데 실선이 `cv_error`이고, 점선은 `cv_error` ± `cv_se`(겹 사이의 흔들림)예요. 왼쪽(작은 `alpha`)은 과적합으로, 오른쪽(큰 `alpha`)은 지나친 벌점으로 오차가 커요.
 
 <Fig caption="라소의 교차검증 오차(5겹). 가로축은 alpha(로그 눈금)예요. alpha_min은 오차가 가장 작은 곳, alpha_1se는 오차가 최솟값 + 그 점의 표준오차 안에 드는 가장 큰 alpha예요.">
   <Plot
@@ -167,7 +167,7 @@ TypeError: lasso_cv(): 'rng' must be an sd.random.Generator (sd.random.default_r
 [0.1968, 0.2111, 0.1968, 0.2427]
 ```
 
-정확히는 행 i의 겹 번호를 0, 1, …, cv − 1, 0, 1, …을 `rng.permutation(n)`으로 섞어 정해요. 그래서 겹의 크기는 서로 많아야 1 차이예요. 겹을 직접 보고 싶으면 이렇게 만들 수 있어요.
+정확히는 겹 번호 0, 1, …, cv − 1, 0, 1, …을 `rng.permutation(n)`으로 섞어 행마다 나눠 줘요. 그래서 겹의 크기는 서로 많아야 1 차이예요. 겹을 직접 보고 싶으면 이렇게 만들 수 있어요.
 
 ```python
 >>> labels = sd.take(sd.asarray([i % 5 for i in range(60)]), sd.random.default_rng(0).permutation(60))
@@ -214,7 +214,7 @@ Traceback (most recent call last):
 TypeError: lasso_cv(): 'alphas' must be an int (the grid's length) or a 1-dimensional array of numbers, not float
 ```
 
-배열을 주면 그 값들을 큰 것부터 정렬해 써요.
+배열을 주면 그 값을 큰 것부터 정렬해 써요.
 
 ```python
 >>> c = sd.regression.lasso_cv(y, X, rng=sd.random.default_rng(0), alphas=[0.01, 1.0, 0.1])
@@ -264,7 +264,7 @@ $$
 \text{MSE}_q(\alpha) = \frac{\sum_{i \in q} w_i\,\bigl(y_i - \hat y_i^{(-q)}(\alpha)\bigr)^2}{\sum_{i \in q} w_i}
 $$
 
-$\hat y^{(-q)}$는 겹 q 없이 적합한 모형의 예측이에요. `cv_error`는 겹 cv개의 평균이고, `cv_se`는 그 평균의 표준오차(겹 오차의 표준편차(자유도 cv − 1)를 $\sqrt{\text{cv}}$로 나눈 것)예요. 둘 다 `alphas`와 같은 순서(큰 `alpha`부터)예요.
+$\hat y^{(-q)}$는 겹 q 없이 적합한 모형의 예측이에요. `cv_error`는 겹 cv개의 평균이고, `cv_se`는 그 평균의 표준오차로 겹 오차의 표준편차(자유도 cv − 1)를 $\sqrt{\text{cv}}$로 나눈 값이에요. 둘 다 `alphas`와 같은 순서(큰 `alpha`부터)예요.
 
 ```python
 >>> i = cv.alphas.tolist().index(cv.alpha_min)
@@ -291,14 +291,14 @@ True
 True
 ```
 
-`cv_se`는 "겹을 다르게 나눴다면 곡선이 이 정도는 흔들렸을 것"이라는 크기예요. 위에서 최솟값 4.08에 비해 0.88이니, 곡선의 바닥 근처 `alpha`들은 서로 뚜렷이 다르다고 보기 어려워요.
+`cv_se`는 "겹을 다르게 나눴다면 곡선이 이 정도는 흔들렸을 것"이라는 크기예요. 위에서 최솟값 4.08에 비해 0.88이니, 곡선의 바닥 근처 `alpha`는 서로 뚜렷이 다르다고 보기 어려워요.
 
 ## 고르기: `select='min'`과 `'1se'`
 
 두 가지 규칙으로 `alpha`를 고르고, 둘 다 결과에 남겨요.
 
 - `alpha_min`: `cv_error`가 가장 작은 `alpha`(같으면 큰 쪽).
-- `alpha_1se`: `cv_error`가 (최솟값 + 그 점의 `cv_se`) 이하인 `alpha` 가운데 **가장 큰 것**. 이것이 **1-SE 규칙**이에요. 오차가 최솟값과 통계적으로 구별되지 않는 범위에서 가장 단순한(벌점이 센) 모형을 고르자는 생각이에요.
+- `alpha_1se`: `cv_error`가 (최솟값 + 그 점의 `cv_se`) 이하인 `alpha` 가운데 가장 큰 것. 이것이 **1-SE 규칙**이에요. 오차가 최솟값과 통계적으로 구별되지 않는 범위에서 가장 단순한(벌점이 센) 모형을 고르자는 생각이에요.
 
 `select`는 어느 쪽으로 다시 적합할지를 정해요. 기본 `'min'`은 `alpha_min`, `'1se'`는 `alpha_1se`예요.
 
@@ -316,7 +316,7 @@ True
 
 ## 다시 적합한 결과
 
-결과의 `alpha`는 고른 값이고, 나머지 필드(`params`, `fittedvalues`, `df_model`, `converged` 등)는 **모든 데이터로 그 `alpha`에서 적합한 것**이에요. 그 `alpha`로 `lasso`를 부른 것과 비트까지 같아요.
+결과의 `alpha`는 고른 값이고, 나머지 필드(`params`, `fittedvalues`, `df_model`, `converged` 등)는 모든 데이터로 그 `alpha`에서 적합한 값이에요. 그 `alpha`로 `lasso`를 부른 것과 비트까지 같아요.
 
 ```python
 >>> one = sd.regression.lasso(y, X, alpha=cv.alpha)
@@ -331,14 +331,14 @@ True
 | 교차검증 필드 | 모양(회귀 하나) | 뜻 |
 |---|---|---|
 | `alphas` | (L,) | 쓴 격자(큰 것부터) |
-| `cv_error` | (L,) | 겹들의 평균 제곱오차의 평균(`cv='gcv'`면 GCV 값) |
+| `cv_error` | (L,) | 겹마다의 평균 제곱오차를 평균한 값(`cv='gcv'`면 GCV 값) |
 | `cv_se` | (L,) | `cv_error`의 표준오차(`cv='gcv'`면 NaN) |
 | `alpha_min` | `float` | `cv_error`가 가장 작은 `alpha` |
 | `alpha_1se` | `float` | 1-SE 규칙의 `alpha`(`cv='gcv'`면 NaN) |
 
 그 밖의 필드는 [`ridge`](/api/regression/ridge/), [`lasso`](/api/regression/lasso/), [`elastic_net`](/api/regression/elastic-net/)의 결과와 같아요. 다시 적합한 결과는 `alpha` 하나의 결과라서 경로 축이 없어요.
 
-`converged`, `n_iter`, `dual_gap`도 다시 적합한 것의 값이에요. 겹마다의 적합은 `max_iter`에 닿아 수렴하지 않아도 그때의 계수로 떼어 둔 겹의 오차를 재서 `cv_error`에 넣어요. 경고는 없고, 겹의 수렴 여부는 결과에 남지 않아요. 아래는 반복을 한 번으로 묶은 예예요. 겹들의 적합도 덜 풀린 채라 `cv_error`가 위와 조금 달라요.
+`converged`, `n_iter`, `dual_gap`도 다시 적합한 것의 값이에요. 겹마다의 적합은 `max_iter`에 닿아 수렴하지 않아도 그때의 계수로 떼어 둔 겹의 오차를 재서 `cv_error`에 넣어요. 경고는 없고, 겹의 수렴 여부는 결과에 남지 않아요. 아래는 반복을 한 번으로 묶은 예예요. 겹마다의 적합도 덜 풀린 채라 `cv_error`가 위와 조금 달라요.
 
 ```python
 >>> c1 = sd.regression.lasso_cv(y, X, rng=sd.random.default_rng(0), max_iter=1)
@@ -429,7 +429,7 @@ nan
 
 ## 배치
 
-`y`나 `X`에 배치 축이 있으면 회귀마다 교차검증을 해요. **배치의 모든 회귀가 같은 겹을 써요.** 배치의 각 결과는 같은 씨앗으로 새로 만든 생성기로 하나씩 부른 것과 비트까지 같아요.
+`y`나 `X`에 배치 축이 있으면 회귀마다 교차검증을 해요. 배치의 모든 회귀가 같은 겹을 써요. 배치의 각 결과는 같은 씨앗으로 새로 만든 생성기로 하나씩 부른 것과 비트까지 같아요.
 
 ```python
 >>> Y = sd.stack([y, y + 3 * X[:, 2]])
@@ -472,7 +472,7 @@ TypeError: ridge_cv(): 'rng' must be an sd.random.Generator (sd.random.default_r
 
 ## scikit-learn·glmnet을 아는 분께
 
-- **기본 겹이 달라요.** scikit-learn의 `LassoCV`·`ElasticNetCV`는 기본으로 섞지 않은 연속 겹(`KFold`)을 써요. 여기는 `rng`로 섞은 겹이에요. 같은 겹을 주고 scikit-learn의 `tol`을 조이면 격자, `alpha_`, `mse_path_`의 평균이 반올림 수준에서 같아요(기본 `tol`에서는 `mse_path_`가 조금 달라요).
+- 기본 겹이 달라요. scikit-learn의 `LassoCV`·`ElasticNetCV`는 기본으로 섞지 않은 연속 겹(`KFold`)을 써요. 여기는 `rng`로 섞은 겹이에요. 같은 겹을 주고 scikit-learn의 `tol`을 조이면 격자, `alpha_`, `mse_path_`의 평균이 반올림 수준에서 같아요(기본 `tol`에서는 `mse_path_`가 조금 달라요).
 
   ```python
   >>> import numpy as np

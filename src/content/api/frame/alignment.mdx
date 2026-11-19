@@ -15,9 +15,9 @@ import Op from '../../../components/fig/Op.astro';
 
 ## 한눈에 보기
 
-Series와 DataFrame의 행에는 **라벨**(label)이 붙어 있어요. 행의 이름표예요. 두 Series를 더하면 **위에서 몇째 행인지가 아니라 라벨이 같은 행끼리** 더해요. 이렇게 라벨로 행을 맞추는 일을 **정렬**(alignment)이라고 해요.
+Series와 DataFrame의 행에는 **라벨**(label)이 붙어 있어요. 행의 이름표예요. 두 Series를 더하면 위에서 몇째 행인지가 아니라 라벨이 같은 행끼리 더해요. 이렇게 라벨로 행을 맞추는 일을 **정렬**(alignment)이라고 해요.
 
-과일 가게의 1월과 2월 판매량을 과일별로 더한다고 해 볼게요. 두 달의 기록은 과일 순서가 다르고, 2월에는 cherry가 없는 대신 durian이 새로 들어왔어요.
+과일 가게의 1월과 2월 판매량을 과일별로 더해요. 두 달의 기록은 과일 순서가 다르고, 2월에는 cherry가 없는 대신 durian이 새로 들어왔어요.
 
 ```python
 >>> import stardust as sd
@@ -44,12 +44,12 @@ apple은 120 + 100, banana는 80 + 30으로, 순서가 달라도 같은 과일�
 엑셀이라면 두 시트의 행 순서를 먼저 맞추고 나서 더해야 해요. 순서가 어긋난 채로 더하면 apple의 1월 판매량에 banana의 2월 판매량이 더해지는 실수가 생겨요. 라벨이 있으면 그런 실수가 생기지 않아요.
 
 <Callout title="두 가지 '정렬'">
-  이 페이지의 정렬은 **라벨끼리 행을 맞추는 일**(alignment)이에요. 값을 크기 순서로 늘어놓는 정렬(sort)은 [sort_values](/api/frame/sort_values/)와 [sort_index](/api/frame/sort_index/)에 있어요.
+  이 페이지의 정렬은 라벨끼리 행을 맞추는 일(alignment)이에요. 값을 크기 순서로 늘어놓는 정렬(sort)은 [sort_values](/api/frame/sort_values/)와 [sort_index](/api/frame/sort_index/)에 있어요.
 </Callout>
 
 ## 라벨은 무엇이고 왜 있나요
 
-라벨은 행을 가리키는 이름이에요. 행의 라벨 목록을 **Index**라고 해요. 라벨을 따로 주지 않으면 0부터 차례로 번호가 붙는데, 이것은 `RangeIndex`라는 Index예요.
+라벨은 행을 가리키는 이름이에요. 행의 라벨 목록을 **Index**라고 해요. 라벨을 따로 주지 않으면 0부터 차례로 번호가 붙는데, 이런 Index를 `RangeIndex`라고 해요.
 
 ```python
 >>> s = sd.frame.Series([10, 20, 30])
@@ -61,7 +61,7 @@ RangeIndex(start=0, stop=3, step=1)
 Index(['apple', 'banana', 'cherry'], dtype=string)
 ```
 
-행은 **라벨**로도, **위치**(위에서 몇째인지, 0부터)로도 가리킬 수 있어요. Series의 `s[x]`는 라벨이고, 위치는 `.iloc`으로 써요([대괄호로 고르기](/api/frame/selection/), [loc과 iloc](/api/frame/loc-iloc/)).
+행은 라벨로도, 위치(위에서 몇째인지, 0부터)로도 가리킬 수 있어요. Series의 `s[x]`는 라벨이고, 위치는 `.iloc`으로 써요([대괄호로 고르기](/api/frame/selection/), [loc과 iloc](/api/frame/loc-iloc/)).
 
 ```python
 >>> jan["banana"]
@@ -70,7 +70,7 @@ Index(['apple', 'banana', 'cherry'], dtype=string)
 80
 ```
 
-라벨의 핵심은 **행을 따라다닌다**는 점이에요. 값을 정렬하거나 행을 걸러서 위치가 바뀌어도, 각 값의 라벨은 그대로예요. 그래서 순서를 바꾼 결과를 원래 Series와 계산해도 같은 과일끼리 계산돼요.
+라벨은 행을 따라다녀요. 값을 정렬하거나 행을 걸러서 위치가 바뀌어도, 각 값의 라벨은 그대로예요. 그래서 순서를 바꾼 결과를 원래 Series와 계산해도 같은 과일끼리 계산돼요.
 
 ```python
 >>> jan.sort_values()
@@ -85,11 +85,11 @@ apple     240
 Name: sales, dtype: int64
 ```
 
-위치는 행의 순서가 바뀌면 다른 행을 가리키지만, 라벨은 언제나 같은 행을 가리켜요. 학생 번호, 상품 코드, 도시 이름처럼 **기록마다 고유한 이름**이 있으면 그것을 라벨로 삼으면 좋아요.
+위치는 행의 순서가 바뀌면 다른 행을 가리키지만, 라벨은 언제나 같은 행을 가리켜요. 학생 번호, 상품 코드, 도시 이름처럼 기록마다 고유한 이름이 있으면 그 값을 라벨로 삼으면 좋아요.
 
 ## 라벨로 쓸 수 있는 것
 
-라벨의 dtype은 **int64와 string 둘**이에요. `RangeIndex`는 int64 라벨로 쳐요. float나 bool 값, 결측값 `NA`는 라벨이 될 수 없어요.
+라벨의 dtype은 int64와 string 둘이에요. `RangeIndex`는 int64 라벨로 쳐요. float나 bool 값, 결측값 `NA`는 라벨이 될 수 없어요.
 
 ```python
 >>> sd.frame.Series([1, 2], index=[1.5, 2.5])
@@ -110,11 +110,11 @@ Traceback (most recent call last):
 TypeError: Series(): str values cannot be mixed with int values (there is no object dtype)
 ```
 
-float나 bool 값, 결측값이 든 데이터는 라벨 대신 보통 열로 두고 써요. [groupby](/api/frame/groupby/)와 [value_counts](/api/frame/value_counts/)가 키를 라벨이 아닌 열로 돌려주는 것도 이 때문이에요. 키를 라벨로 삼으면 float나 bool 키를 담을 수 없어요.
+float나 bool 값, 결측값이 든 데이터는 라벨 대신 보통 열로 두고 써요. [groupby](/api/frame/groupby/)와 [value_counts](/api/frame/value_counts/)가 키를 라벨이 아닌 열로 돌려주는 것도 이 때문이에요. 키를 라벨로 돌려주면 float나 bool 키를 담을 수 없으니까요.
 
 ### 중복 라벨
 
-라벨이 겹쳐도 만들 수 있어요. 겹치는지는 `index.is_unique`로 봐요. 겹치는 라벨을 하나로 고르면 어느 행인지 모호해서 에러이고, 리스트로 고르면 그 라벨의 행이 모두 나와요.
+라벨이 겹쳐도 만들 수 있어요. 겹치는지는 `index.is_unique`로 봐요. 겹친 라벨 하나만 주어 고르면 어느 행인지 모호해서 에러이고, 리스트로 고르면 그 라벨의 행이 모두 나와요.
 
 ```python
 >>> d = sd.frame.Series([10, 20, 30], index=["a", "a", "b"])
@@ -153,13 +153,13 @@ dtype: int64
 
 정렬하지 않는 곳도 있어요.
 
-- **스칼라와의 연산**(`s + 1`): 모든 행에 같은 값을 써요.
-- **[concat](/api/frame/concat/)**: 표를 아래로 이어 붙이고 라벨도 그대로 이어 붙여요. 맞추지 않아요.
-- **[merge](/api/frame/merge/)**: 라벨이 아니라 지정한 열(키)의 값으로 행을 짝지어요. 결과 라벨은 새로 0부터 붙어요.
+- 스칼라와의 연산(`s + 1`)은 모든 행에 같은 값을 써요.
+- [concat](/api/frame/concat/)은 라벨을 맞추지 않고, 표와 라벨을 그대로 아래로 이어 붙여요.
+- [merge](/api/frame/merge/)는 라벨이 아니라 지정한 열(키)의 값으로 행을 짝지어요. 결과 라벨은 새로 0부터 붙어요.
 
 ## 두 Index가 같으면 위치대로
 
-두 객체의 라벨이 **순서까지 완전히 같으면** 맞출 필요가 없으니 위치대로 계산해요. 이때는 라벨이 겹쳐도 괜찮아요. 같은 위치의 행끼리 짝이 분명하니까요. `RangeIndex`와 같은 정수를 담은 `Index`도 라벨이 같으면 같은 Index예요.
+두 객체의 라벨이 순서까지 완전히 같으면 맞출 필요가 없으니 위치대로 계산해요. 이때는 라벨이 겹쳐도 괜찮아요. 같은 위치의 행끼리 짝이 분명하니까요. `RangeIndex`와 같은 정수를 담은 `Index`도 라벨이 같으면 같은 Index예요.
 
 ```python
 >>> d + d
@@ -180,11 +180,11 @@ dtype: int64
 
 두 Index가 다르면 이렇게 계산해요.
 
-1. **결과의 라벨**을 정해요. 왼쪽 피연산자의 라벨을 왼쪽 순서대로 먼저 놓고, 오른쪽에만 있는 라벨을 오른쪽 순서대로 뒤에 붙여요.
+1. 결과의 라벨을 정해요. 왼쪽 피연산자의 라벨을 왼쪽 순서대로 먼저 놓고, 오른쪽에만 있는 라벨을 오른쪽 순서대로 뒤에 붙여요.
 2. 결과의 라벨마다 양쪽에서 같은 라벨의 값을 찾아 계산해요.
 3. 한쪽에 그 라벨이 없으면 그 행의 결과는 `NA`예요. dtype은 바뀌지 않아요.
 
-라벨을 크기 순서로 정렬하지 않아요. 그래서 결과의 순서는 피연산자의 순서를 바꾸면 달라져요. 값은 같아요.
+결과의 라벨은 크기 순서로 정렬하지 않아요. 그래서 피연산자의 순서를 바꾸면 값은 같아도 행의 순서가 달라져요.
 
 ```python
 >>> feb + jan
@@ -307,7 +307,7 @@ TypeError: cannot align int64 labels with string labels
 
 ## DataFrame끼리: 행과 열 모두
 
-DataFrame끼리 계산하면 **행은 라벨로, 열은 이름으로** 맞춰요. 규칙은 Series와 같아요. 결과의 열은 왼쪽의 열 순서를 먼저 따르고, 오른쪽에만 있는 열을 뒤에 붙여요.
+DataFrame끼리 계산하면 행은 라벨로, 열은 이름으로 맞춰요. 규칙은 Series와 같아요. 결과의 열은 왼쪽의 열 순서를 먼저 따르고, 오른쪽에만 있는 열을 뒤에 붙여요.
 
 ```python
 >>> left = sd.frame.DataFrame({"price": [1200, 800], "qty": [3, 5]}, index=["apple", "banana"])
@@ -353,7 +353,7 @@ TypeError: operations between a DataFrame and a Series are not supported
 
 ## 마스크도 라벨로 맞춰요
 
-`s[mask]`처럼 bool Series로 행을 거를 때도 라벨로 맞춰요. 그래서 마스크의 행 순서가 달라도 돼요. 다만 **마스크와 대상의 라벨 집합이 같아야** 해요. 대상의 라벨이 마스크에 없거나 마스크에만 있는 라벨이 있으면 `ValueError`예요. 그래서 다른 Series로 만든 마스크를 잘못 쓰면 에러로 드러나요.
+`s[mask]`처럼 bool Series로 행을 거를 때도 라벨로 맞춰요. 그래서 마스크의 행 순서가 달라도 돼요. 다만 마스크와 대상의 라벨 집합이 같아야 해요. 대상의 라벨이 마스크에 없거나 마스크에만 있는 라벨이 있으면 `ValueError`예요. 덕분에 다른 Series로 만든 마스크를 잘못 쓰면 에러로 드러나요.
 
 ```python
 >>> jan[jan > 60]
@@ -375,7 +375,7 @@ ValueError: the mask's labels must be the index's labels
 
 ## 대입과 생성에서의 정렬
 
-열에 Series를 대입하면 **DataFrame의 라벨에 맞춰** 넣어요. DataFrame에 없는 라벨(아래의 kiwi)은 버리고, Series에 없는 라벨(banana)은 `NA`가 돼요. 결과의 라벨은 DataFrame의 라벨 그대로예요.
+열에 Series를 대입하면 DataFrame의 라벨에 맞춰 넣어요. DataFrame에 없는 라벨(아래의 kiwi)은 버리고, Series에 없는 라벨(banana)은 `NA`가 돼요. 결과의 라벨은 DataFrame의 라벨 그대로예요.
 
 ```python
 >>> shop = sd.frame.DataFrame({"price": [1200, 800, 3000]}, index=["apple", "banana", "cherry"])
@@ -416,7 +416,7 @@ banana   80   30
 
 ## 배열의 브로드캐스팅과 무엇이 다른가요
 
-배열에는 라벨이 없어요. 배열끼리의 연산은 **위치**로 짝을 지어요. 모양이 다르면 길이가 1인 축을 늘려서 맞추는데, 이것을 [브로드캐스팅](/api/array/broadcasting/)이라고 해요. Series끼리의 연산은 **라벨**로 짝을 지어요.
+배열에는 라벨이 없어요. 배열끼리의 연산은 위치로 짝을 지어요. 모양이 다르면 길이가 1인 축을 늘려서 맞추는데, 이것을 [브로드캐스팅](/api/array/broadcasting/)이라고 해요. Series끼리의 연산은 라벨로 짝을 지어요.
 
 같은 숫자를 배열과 Series로 더해 보면 차이가 보여요.
 
@@ -478,10 +478,10 @@ array([150, 180, 140], dtype=int64)
 
 ## pandas를 아는 분께
 
-- **결과의 라벨을 정렬하지 않아요.** pandas는 두 Index가 다르면 합집합을 크기 순서로 정렬해서 `jan + feb`와 `feb + jan`이 같은 순서이고, `s.tail(2) + s.head(2)`의 라벨이 0, 1, 2예요. 여기서는 왼쪽 라벨 다음에 오른쪽에만 있는 라벨이에요.
-- **짝이 없는 행은 dtype을 지킨 채 `NA`예요.** pandas의 기본 dtype은 int64 결과를 float64와 `NaN`으로 바꿔요.
-- **중복 라벨이 있으면 맞추지 않고 에러예요.** pandas는 중복 라벨이 있어도 맞춰서 계산해요.
-- **int 라벨과 string 라벨을 맞추면 `TypeError`예요.** pandas는 두 라벨을 모두 담은 object Index를 만들고 모든 값을 `NaN`으로 채워요.
-- **DataFrame과 Series의 연산이 없어요.** pandas는 Series의 라벨을 DataFrame의 열 이름에 맞춰서 행마다 계산해요.
-- **마스크에만 있는 라벨도 에러예요.** pandas는 대상에 없는 마스크의 라벨을 조용히 무시해요. 대상의 라벨이 마스크에 없으면 pandas도 에러예요.
-- **float와 bool은 라벨이 될 수 없어요.** pandas는 `index=[1.5, 2.5]`, `index=[True, False]`도 받아요.
+- 결과의 라벨을 정렬하지 않아요. pandas는 두 Index가 다르면 합집합을 크기 순서로 정렬해서 `jan + feb`와 `feb + jan`이 같은 순서이고, `s.tail(2) + s.head(2)`의 라벨이 0, 1, 2예요. 여기서는 왼쪽 라벨 다음에 오른쪽에만 있는 라벨이에요.
+- 짝이 없는 행은 dtype을 지킨 채 `NA`예요. pandas의 기본 dtype은 int64 결과를 float64와 `NaN`으로 바꿔요.
+- 중복 라벨이 있으면 맞추지 않고 에러예요. pandas는 중복 라벨이 있어도 맞춰서 계산해요.
+- int 라벨과 string 라벨을 맞추면 `TypeError`예요. pandas는 두 라벨을 모두 담은 object Index를 만들고 모든 값을 `NaN`으로 채워요.
+- DataFrame과 Series의 연산이 없어요. pandas는 Series의 라벨을 DataFrame의 열 이름에 맞춰서 행마다 계산해요.
+- 마스크에만 있는 라벨도 에러예요. pandas는 대상에 없는 마스크의 라벨을 조용히 무시해요. 대상의 라벨이 마스크에 없으면 pandas도 에러예요.
+- float와 bool은 라벨이 될 수 없어요. pandas는 `index=[1.5, 2.5]`, `index=[True, False]`도 받아요.

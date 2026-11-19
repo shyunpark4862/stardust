@@ -79,8 +79,8 @@ Name: sold, dtype: int64
 
 DataFrame에서 행을 지우는 기준은 두 가지예요.
 
-- `how="any"`(기본값): 값이 **하나라도** `NA`이면 지워요. 빈칸 없는 행만 남아요.
-- `how="all"`: 값이 **모두** `NA`일 때만 지워요. 완전히 빈 행만 사라져요.
+- `how="any"`(기본값): 값이 하나라도 `NA`이면 지워요. 빈칸 없는 행만 남아요.
+- `how="all"`: 값이 모두 `NA`일 때만 지워요. 완전히 빈 행만 사라져요.
 
 ```python
 >>> df.dropna(how="all")
@@ -109,7 +109,7 @@ DataFrame에서 행을 지우는 기준은 두 가지예요.
 
 ## `subset`: 어느 컬럼을 볼지
 
-기본으로는 모든 컬럼을 봐요. `subset=`에 컬럼 이름을 주면 **그 컬럼들만 보고** 판단해요. 다른 컬럼에 빈칸이 있어도 상관없어요. 컬럼 하나는 문자열로, 여럿은 list나 tuple로 줘요.
+기본으로는 모든 컬럼을 봐요. `subset=`에 컬럼 이름을 주면 그 컬럼만 보고 판단해요. 다른 컬럼에 빈칸이 있어도 상관없어요. 컬럼 하나는 문자열로, 여럿은 list나 tuple로 줘요.
 
 ```python
 >>> df.dropna(subset="eng")
@@ -214,7 +214,7 @@ Traceback (most recent call last):
 TypeError: DataFrame.dropna() got an unexpected keyword argument 'thresh'
 ```
 
-`thresh`가 필요하면 행마다 값이 있는 칸의 수를 직접 세요. bool은 더하면 int64가 되므로, 컬럼마다 `notna()`를 더하면 행마다 채워진 칸의 수예요([산술 연산](/api/frame/arithmetic/)).
+`thresh`가 필요하면 행마다 값이 있는 칸의 수를 직접 세요. bool은 더하면 int64가 되므로, 컬럼마다 `notna()`를 구해 더하면 행마다 채워진 칸의 수가 나와요([산술 연산](/api/frame/arithmetic/)).
 
 ```python
 >>> filled = df["name"].notna() + df["math"].notna() + df["eng"].notna()
@@ -230,7 +230,7 @@ dtype: int64
 1  bob  <NA>  70.0
 ```
 
-빈칸이 있는 컬럼을 빼고 싶다면, 값이 모두 채워진 컬럼의 이름만 골라 대괄호로 고르세요. `s.count()`는 `NA`가 아닌 값의 개수예요. 아래는 앞의 두 행에서 빈칸이 없는 컬럼만 남겨요.
+빈칸이 있는 컬럼을 빼고 싶다면, 값이 모두 채워진 컬럼의 이름만 모아 대괄호에 넣어요. `s.count()`는 `NA`가 아닌 값의 개수예요. 아래는 앞의 두 행에서 빈칸이 없는 컬럼만 남겨요.
 
 ```python
 >>> top = df.head(2)

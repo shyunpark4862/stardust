@@ -109,7 +109,7 @@ $$
 
 ### `base`: 단위 고르기
 
-기본값 `base=None`은 자연로그를 써요. 단위는 **나트**(nat)예요. `base=2`면 비트, `base=10`이면 하틀리(자릿수)예요. 단위만 다르고 비율은 같아서, 나트 값을 $\ln 2$로 나누면 비트 값이에요.
+기본값 `base=None`은 자연로그를 써요. 단위는 **나트**(nat)예요. `base=2`면 비트, `base=10`이면 하틀리(자릿수)예요. 단위만 다를 뿐이라, 나트 값을 $\ln 2$로 나누면 비트 값이에요.
 
 ```python
 >>> sd.stats.entropy([0.5, 0.5])
@@ -159,7 +159,7 @@ nan
 비율이 같으면 엔트로피도 같아요.
 
 <Callout type="warn" title="데이터 값을 그대로 넣지 마세요">
-`entropy`는 **분포**(범주마다의 확률이나 횟수)를 받아요. 측정값 목록 `[3.2, 5.1, 4.8, …]`을 그대로 넣으면 그 값들을 "횟수"로 보고 계산해서 뜻이 없는 값이 나와요. 값이 범주라면 먼저 [`sd.unique_counts`](/api/array/unique/)로 세어서 횟수를 넣고, 연속적인 측정값의 엔트로피를 어림하려면 [`differential_entropy`](/api/stats/differential-entropy/)를 쓰세요.
+`entropy`는 **분포**(범주마다의 확률이나 횟수)를 받아요. 측정값 목록 `[3.2, 5.1, 4.8, …]`을 그대로 넣으면 그 값을 "횟수"로 보고 계산해서 뜻이 없는 값이 나와요. 값이 범주라면 먼저 [`sd.unique_counts`](/api/array/unique/)로 세어서 횟수를 넣고, 연속적인 측정값의 엔트로피를 어림하려면 [`differential_entropy`](/api/stats/differential-entropy/)를 쓰세요.
 
 ```python
 >>> colors = sd.asarray([1, 2, 2, 3, 1, 2, 2, 2])
@@ -203,7 +203,7 @@ inf
 0.6931471805599453
 ```
 
-`qk`도 합으로 나눠서 확률로 만들어요. `qk`는 **위치로만** 줘요. `qk=`로 이름을 붙이면 `TypeError`예요.
+`qk`도 합으로 나눠서 확률로 만들어요. `qk`는 위치로만 줘요. `qk=`로 이름을 붙이면 `TypeError`예요.
 
 ```python
 >>> sd.stats.entropy(p, qk=q)
@@ -264,7 +264,7 @@ nan
 0.6931471805599453
 ```
 
-`'omit'`은 NaN인 범주를 없는 범주처럼 빼고 나머지를 다시 합으로 나눠요. `qk`가 있으면 `pk`나 `qk` 중 **어느 한쪽이라도** NaN인 범주를 양쪽에서 함께 빼요. `'raise'`는 NaN이 있으면 `ValueError`예요.
+`'omit'`은 NaN인 범주를 없는 범주처럼 빼고 나머지를 다시 합으로 나눠요. `qk`가 있으면 `pk`나 `qk` 중 어느 한쪽이라도 NaN인 범주를 양쪽에서 함께 빼요. `'raise'`는 NaN이 있으면 `ValueError`예요.
 
 ```python
 >>> sd.stats.entropy([0.25, 0.25, 0.5], [0.5, sd.nan, 0.5], nan_policy='omit')
@@ -312,7 +312,7 @@ nan
 1.931470198148569
 ```
 
-연속 분포의 `X.entropy()`는 밀도로 정의하는 **미분 엔트로피**라서 `entropy`와 다른 양이에요. 연속적인 데이터에서 그 값을 어림하는 함수는 [`differential_entropy`](/api/stats/differential-entropy/)예요.
+연속 분포의 `X.entropy()`는 밀도로 정의하는 미분 엔트로피라서 `entropy`와 다른 양이에요. 연속적인 데이터에서 그 값을 어림하는 함수는 [`differential_entropy`](/api/stats/differential-entropy/)예요.
 
 ## 비슷한 함수와의 차이
 

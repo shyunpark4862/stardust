@@ -32,9 +32,9 @@ import Op from '../../../components/fig/Op.astro';
 
 ## 한눈에 보기
 
-`head`는 표의 **맨 앞 몇 행**을, `tail`은 **맨 뒤 몇 행**을 떼어 내요. 몇 행인지 주지 않으면 5행이에요.
+`head`는 표의 맨 앞 몇 행을, `tail`은 맨 뒤 몇 행을 떼어 내요. 몇 행인지 주지 않으면 5행이에요.
 
-파일에서 수천 행짜리 표를 읽었다면, 전부 출력하기 전에 앞의 몇 행만 보고 컬럼이 제대로 읽혔는지, 값이 어떻게 생겼는지 확인하게 돼요. 시간 순서로 쌓인 기록에서 가장 최근 몇 건을 볼 때는 `tail`을 써요. 엿새 동안의 날씨 기록으로 볼게요.
+파일에서 수천 행짜리 표를 읽었다면, 전부 출력하기 전에 앞의 몇 행만 보고 컬럼이 제대로 읽혔는지, 값이 어떻게 생겼는지 확인하게 돼요. 시간 순서로 쌓인 기록에서 가장 최근 몇 건을 볼 때는 `tail`을 써요. 아래는 엿새 동안의 날씨 기록이에요.
 
 ```python
 >>> import stardust as sd
@@ -79,7 +79,7 @@ Name: temp, dtype: float64
 
 ## 행 라벨은 그대로예요
 
-`head`와 `tail`은 행을 골라낼 뿐, 라벨을 새로 매기지 않아요. 위의 `tail(2)`의 라벨이 `0, 1`이 아니라 `4, 5`인 이유예요. 라벨이 문자열이어도 마찬가지예요.
+`head`와 `tail`은 행을 골라낼 뿐, 라벨을 새로 매기지 않아요. 위 `tail(2)` 결과의 라벨이 `0, 1`이 아니라 `4, 5`인 이유예요. 라벨이 문자열이어도 마찬가지예요.
 
 ```python
 >>> df.tail(2).index
@@ -95,7 +95,7 @@ Name: temp, dtype: float64
 
 ## `n`이 음수면: 끝의 몇 행을 빼고 전부
 
-`n`에 음수를 주면 뜻이 뒤집혀요. `head(-2)`는 "맨 뒤 2행을 **뺀** 나머지 전부", `tail(-2)`는 "맨 앞 2행을 **뺀** 나머지 전부"예요.
+`n`에 음수를 주면 뜻이 뒤집혀요. `head(-2)`는 "맨 뒤 2행을 뺀 나머지 전부", `tail(-2)`는 "맨 앞 2행을 뺀 나머지 전부"예요.
 
 ```python
 >>> df.head(-2)
@@ -174,7 +174,7 @@ Name: rain, dtype: int64
 Name: rain, dtype: int64
 ```
 
-결과를 만드는 순간에 값을 모두 복사하지는 않아요. 둘 중 한쪽을 고칠 때 비로소 그쪽만 따로 복사해요. 그래서 큰 표의 `head`도 가볍고, 고쳐도 다른 쪽에 번지지 않아요. 이 방식(Copy-on-Write)은 [대입과 복사](/api/frame/assign/)에 자세히 있어요.
+결과를 만드는 순간에 값을 모두 복사하지는 않아요. 둘 중 한쪽을 고칠 때 비로소 그쪽만 따로 복사해요. 그래서 큰 표의 `head`도 가볍고, 고쳐도 다른 쪽에 번지지 않아요. 이 방식(Copy-on-Write)은 [대입과 복사](/api/frame/assign/)에서 자세히 다뤄요.
 
 ## 조심할 점
 
@@ -212,7 +212,7 @@ OverflowError: head(): 'n' is out of range
 
 ### `tail(n)`과 `iloc[-n:]`은 `n=0`에서 달라요
 
-`head(n)`은 위치 슬라이스 `iloc[:n]`과 같은 행을 골라요. `tail(n)`도 보통은 `iloc[-n:]`과 같지만, `n`이 0이면 달라요. `-0`은 그냥 `0`이라서 `iloc[-0:]`은 `iloc[0:]`, 곧 **전체**예요. `tail(0)`은 빈 표예요.
+`head(n)`은 위치 슬라이스 `iloc[:n]`과 같은 행을 골라요. `tail(n)`도 보통은 `iloc[-n:]`과 같지만, `n`이 0이면 달라요. `-0`은 그냥 `0`이라서 `iloc[-0:]`은 `iloc[0:]`, 곧 전체예요. `tail(0)`은 빈 표예요.
 
 ```python
 >>> n = 0
@@ -240,7 +240,7 @@ OverflowError: head(): 'n' is out of range
 
 ## pandas를 아는 분께
 
-- **`n`은 positional-only예요.** pandas의 `df.head(n=3)`은 `TypeError`예요.
+- `n`은 자리로만 받아요. pandas의 `df.head(n=3)`은 `TypeError`예요.
 - 음수 `n`, 행보다 큰 `n`, `n=0`의 결과는 pandas와 같아요.
 - `head`에 `2.0`이나 `True`를 주면 `TypeError`인 점은 pandas와 같아요. 다만 pandas의 `tail(True)`는 에러 없이 1행을 돌려주고, 여기서는 `tail`도 `TypeError`예요. 메시지는 `head(): 'n' must be an int, not float`처럼 인자를 말해요.
 - `tail(0)`의 Index는 `RangeIndex(start=6, stop=6, step=1)`처럼 끝 위치에 있어요. pandas는 `RangeIndex(start=0, stop=0, step=1)`이에요. 둘 다 빈 범위예요.

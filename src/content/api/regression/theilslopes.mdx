@@ -5,7 +5,7 @@ group: 강건 회귀
 order: 2
 signatures:
   - "sd.regression.theilslopes(y, x=None, /, *, alpha=0.95, method='separate', nan_policy='propagate')"
-summary: 두 점씩 짝지은 모든 쌍의 기울기의 중앙값으로 직선을 맞추는 Theil–Sen 추정이에요. 설명 변수가 하나일 때 쓰고, 점의 30% 가까이가 이상값이어도 기울기가 버텨요. 기울기의 신뢰구간도 함께 줘요.
+summary: 두 점씩 짝지은 모든 쌍의 기울기의 중앙값으로 직선을 맞추는 Theil–Sen 추정이에요. 설명변수가 하나일 때 쓰고, 점의 30% 가까이가 이상값이어도 기울기가 버텨요. 기울기의 신뢰구간도 함께 줘요.
 params:
   - name: y
     type: ndarray, 실수의 시퀀스, 또는 frame의 Series
@@ -14,7 +14,7 @@ params:
   - name: x
     type: ndarray, 실수의 시퀀스, frame의 Series, 또는 None
     kind: positional-only
-    desc: 설명 변수 하나. y와 브로드캐스트되는 (..., n) 모양이에요. None(기본값)이면 0, 1, …, n - 1이에요.
+    desc: 설명변수 하나. y와 브로드캐스트되는 (..., n) 모양이에요. None(기본값)이면 0, 1, …, n - 1이에요.
   - name: alpha
     type: float
     kind: keyword-only
@@ -46,11 +46,11 @@ export const data4 = [[1, 3.1], [2, 5.3], [3, 6.4], [4, 9.0], [5, 11.7], [6, 13.
 
 ## 한눈에 보기
 
-점 두 개를 고르면 그 둘을 잇는 직선의 기울기가 하나 나와요. 점이 $n$개면 이런 쌍이 $n(n-1)/2$개 있어요. **Theil–Sen 추정**은 이 모든 기울기의 **중앙값**을 직선의 기울기로 써요.
+점 두 개를 고르면 그 둘을 잇는 직선의 기울기가 하나 나와요. 점이 $n$개면 이런 쌍이 $n(n-1)/2$개 있어요. **Theil–Sen 추정**은 이 모든 기울기의 중앙값을 직선의 기울기로 써요.
 
-중앙값은 한쪽 끝의 값이 아무리 커져도 움직이지 않아요. 이상값이 섞인 쌍의 기울기는 엉뚱하지만, 그런 쌍이 절반을 넘지 않는 한 중앙값은 멀쩡한 쌍들의 기울기 사이에 남아요. 그래서 계산이 단순한데도 이상값에 강해요.
+중앙값은 한쪽 끝의 값이 아무리 커져도 움직이지 않아요. 이상값이 섞인 쌍의 기울기는 엉뚱하지만, 그런 쌍이 절반을 넘지 않는 한 중앙값은 멀쩡한 쌍의 기울기 사이에 남아요. 그래서 계산이 단순한데도 이상값에 강해요.
 
-스무 개의 측정값 가운데 마지막 넷이 센서 고장으로 2 근처에 찍힌 예를 볼게요.
+스무 개의 측정값 가운데 마지막 넷이 센서 고장으로 2 근처에 찍혔어요.
 
 ```python
 >>> import stardust as sd
@@ -92,11 +92,11 @@ export const data4 = [[1, 3.1], [2, 5.3], [3, 6.4], [4, 9.0], [5, 11.7], [6, 13.
 
 이런 때 써요.
 
-- 설명 변수가 하나이고 이상값이 섞였을 수 있을 때. 시계열의 추세(해마다 얼마나 오르는지), 환경 측정의 장기 경향 같은 곳에 많이 써요.
+- 설명변수가 하나이고 이상값이 섞였을 수 있을 때. 시계열의 추세(해마다 얼마나 오르는지), 환경 측정의 장기 경향 같은 곳에 많이 써요.
 - 오차가 정규분포인지 알 수 없을 때. 순위만 쓰므로 분포를 가정하지 않아요.
 - 설정할 것이 없는 간단한 방법을 원할 때. 조율 상수도 척도도 없어요.
 
-설명 변수가 여럿이면 [`rlm`](/api/regression/rlm/)을 쓰세요.
+설명변수가 여럿이면 [`rlm`](/api/regression/rlm/)을 쓰세요.
 
 <Reference />
 
@@ -111,7 +111,7 @@ TheilslopesResult(slope=1.876388888888889, intercept=-5.152083333333334, low_slo
 
 | 칸 | 뜻 |
 |---|---|
-| `slope` | 기울기: 쌍 기울기의 중앙값 |
+| `slope` | 기울기(쌍 기울기의 중앙값) |
 | `intercept` | 절편. 구하는 방법은 `method`가 정해요. |
 | `low_slope`, `high_slope` | 기울기의 신뢰구간(기본 95%)의 아래·위 끝 |
 
@@ -127,9 +127,9 @@ True
 (True, <class 'float'>)
 ```
 
-이 예에서는 절편이 −5.15로 이상해요. 다음 절의 `method`가 그 이유예요. 신뢰구간도 아래 끝이 0.1까지 넓어졌어요. 이상값 쌍의 기울기가 많아서 기울기가 얼마인지 덜 확실하다는 뜻이에요.
+이 예에서는 절편이 −5.15로 이상해요. 그 이유는 아래 [`method`](#method-절편-구하기) 절에 있어요. 신뢰구간도 아래 끝이 0.1까지 넓어졌어요. 이상값 쌍의 기울기가 많아서 기울기가 얼마인지 덜 확실하다는 뜻이에요.
 
-## 어떻게 계산하나요
+## 계산 방법
 
 $x_i \ne x_j$인 모든 쌍 $i \lt j$의 기울기
 
@@ -169,8 +169,8 @@ $$
 
 기울기를 정한 뒤 절편을 구하는 방법이 둘 있어요.
 
-- **`'separate'`**(기본값): $\operatorname{median}(y) - \text{slope}\cdot\operatorname{median}(x)$. y의 중앙값과 x의 중앙값을 따로 구해서 그 점을 지나게 해요.
-- **`'joint'`**: $\operatorname{median}(y_i - \text{slope}\cdot x_i)$. 기울기를 빼고 남은 높이들의 중앙값이에요.
+- `'separate'`(기본값): $\operatorname{median}(y) - \text{slope}\cdot\operatorname{median}(x)$. y의 중앙값과 x의 중앙값을 따로 구해서 그 점을 지나게 해요.
+- `'joint'`: $\operatorname{median}(y_i - \text{slope}\cdot x_i)$. 기울기를 빼고 남은 높이의 중앙값이에요.
 
 `'separate'`는 y의 중앙값을 그대로 쓰므로, 이상값이 한쪽(여기서는 아래쪽)에 몰리면 중앙값이 끌려가요. `'joint'`는 기울기를 뺀 뒤에 중앙값을 보니 이상값이 한쪽에 몰려도 덜 흔들려요.
 
@@ -183,11 +183,11 @@ $$
 (1.4812500000000028, 1.2062500000000007)
 ```
 
-깨끗한 데이터에서는 둘이 비슷해요. 이상값이 걱정되면 `'joint'`가 안전해요. 기본값이 `'separate'`인 것은 scipy와 같게 하기 위해서예요. `method`는 기울기와 신뢰구간에는 영향을 주지 않아요.
+깨끗한 데이터에서는 둘이 비슷해요. 이상값이 걱정되면 `'joint'`가 안전해요. `method`는 기울기와 신뢰구간에는 영향을 주지 않아요.
 
 ## `alpha`: 기울기의 신뢰구간
 
-`low_slope`와 `high_slope`는 Sen(1968)의 신뢰구간이에요. 기울기의 순위를 이용한 구간이라 오차의 분포를 가정하지 않아요. `alpha`는 **신뢰수준**이에요(보통 쓰는 유의수준과 반대예요). 0.95면 95% 구간이에요. [`ols`](/api/regression/ols/) 같은 다른 회귀 결과의 `conf_int(alpha=0.05)`는 유의수준이라, 같은 95% 구간을 거기서는 `alpha=0.05`, 여기서는 `alpha=0.95`로 써요.
+`low_slope`와 `high_slope`는 Sen(1968)의 신뢰구간이에요. 기울기의 순위를 이용한 구간이라 오차의 분포를 가정하지 않아요. `alpha`는 신뢰수준이에요(보통 쓰는 유의수준과 반대예요). 0.95면 95% 구간이에요. [`ols`](/api/regression/ols/) 같은 다른 회귀 결과의 `conf_int(alpha=0.05)`는 유의수준이라, 같은 95% 구간을 거기서는 `alpha=0.05`, 여기서는 `alpha=0.95`로 써요.
 
 ```python
 >>> r95 = sd.regression.theilslopes(y_clean, x)
@@ -209,14 +209,14 @@ Traceback (most recent call last):
 ValueError: theilslopes(): 'alpha' must be between 0 and 1 (exclusive)
 ```
 
-<Callout type="note" title="구간은 어떻게 정하나요">
+<Callout type="note" title="구간을 정하는 식">
 유한한 쌍 기울기 $N$개를 작은 순으로 $s_{(1)} \le \dots \le s_{(N)}$이라 하고, 신뢰수준 $1 - a$의 표준정규 분위수를 $z = \Phi^{-1}(1 - a/2)$라 할 때
 
 $$
 \sigma^2 = \frac{n(n-1)(2n+5) - \sum_x t(t-1)(2t+5) - \sum_y u(u-1)(2u+5)}{18}
 $$
 
-이에요. $t$는 x에서 값이 같은 묶음마다의 크기, $u$는 y의 그것이에요(Kendall 순위상관의 분산). 그러면
+이에요. $t$는 x에서 값이 같은 묶음마다의 크기, $u$는 y에서 같은 묶음의 크기예요(Kendall 순위상관의 분산). 그러면
 
 $$
 \text{low} = s_{(\operatorname{round}((N - z\sigma)/2))}, \qquad \text{high} = s_{(\operatorname{round}((N + z\sigma)/2) + 1)}
@@ -264,7 +264,7 @@ y가 모두 같으면 기울기는 0이에요. 0은 언제나 +0.0으로 내요.
 TheilslopesResult(slope=0.0, intercept=1.0, low_slope=0.0, high_slope=0.0)
 ```
 
-x와 y가 double의 끝(±1e308 근처)까지 퍼져 있으면 두 점의 차 $x_i - x_j$, $y_i - y_j$가 모두 inf로 넘칠 수 있어요. 그 쌍의 기울기는 inf/inf라 값이 없으니, x가 같은 쌍처럼 빼고 셈해요. 구간의 $N$(유한한 기울기의 수)에도 넣지 않아요.
+x와 y가 float64의 끝(±1e308 근처)까지 퍼져 있으면 두 점의 차 $x_i - x_j$, $y_i - y_j$가 모두 inf로 넘칠 수 있어요. 그 쌍의 기울기는 inf/inf라 값이 없으니, x가 같은 쌍처럼 빼고 셈해요. 구간의 $N$(유한한 기울기의 수)에도 넣지 않아요.
 
 ```python
 >>> xb = [-1e308, 0.0, 1.0, 2.0, 3.0, 1e308]
@@ -347,11 +347,11 @@ Traceback (most recent call last):
 ValueError: theilslopes(): nan_policy='omit' takes one regression, not a batch (the regressions would keep different points)
 ```
 
-배치의 공통 규칙은 [기본 개념](/api/regression/basics/)에 있어요.
+배치의 공통 규칙은 [회귀분석 기본](/api/regression/basics/)에 있어요.
 
 ## 정확도와 큰 데이터
 
-- 중앙값과 구간의 끝은 쌍 기울기 가운데 해당 순위의 값을 **정확히** 골라요. 어림이 없으니 결과는 쌍 기울기 하나(또는 가운데 두 값의 평균)와 정확히 같고, 스레드 수와 상관없이 같은 비트예요.
+- 중앙값과 구간의 끝은 쌍 기울기 가운데 해당 순위의 값을 정확히 골라요. 어림이 없으니 결과는 쌍 기울기 하나(또는 가운데 두 값의 평균)와 정확히 같고, 스레드 수와 상관없이 같은 비트예요.
 - 쌍을 모두 저장하지 않아서 메모리가 n에 비례해 늘어요. n = 10⁵(쌍 약 50억 개)도 다룰 수 있어요. 시간은 쌍의 수만큼, 곧 $n^2$에 비례해요.
 
 구현은 [Theil–Sen과 Siegel의 구현](/internals/regression/slopes/)에 있어요.
@@ -368,7 +368,7 @@ TheilslopesResult(slope=np.float64(1.876388888888889), intercept=np.float64(-5.1
 
 다른 점이에요.
 
-- **0의 부호**: 기울기가 0이면 sd는 +0.0을 내요. scipy는 정렬에서 −0.0과 +0.0 가운데 무엇이 앞에 오는지에 따라 −0.0을 낼 때가 있어요.
+- 0의 부호: 기울기가 0이면 sd는 +0.0을 내요. scipy는 정렬에서 −0.0과 +0.0 가운데 무엇이 앞에 오는지에 따라 −0.0을 낼 때가 있어요.
 
   ```python
   >>> scipy.stats.theilslopes([1.0, 1.0, 1.0]).slope
@@ -377,23 +377,23 @@ TheilslopesResult(slope=np.float64(1.876388888888889), intercept=np.float64(-5.1
   0.0
   ```
 
-- **inf**: scipy는 inf를 받아서 기울기에 ±inf가 섞인 채 계산해요. sd는 `ValueError`예요.
-- **넘친 차의 쌍**: 유한한 x, y의 차가 넘쳐 기울기가 inf/inf인 쌍은 두 라이브러리 모두 빼고 셈해요. 위의 ±1e308 예에서 값이 같아요(scipy는 넘침의 `RuntimeWarning`도 내요).
+- inf: scipy는 inf를 받아서 기울기에 ±inf가 섞인 채 계산해요. sd는 `ValueError`예요.
+- 넘친 차의 쌍: 유한한 x, y의 차가 넘쳐 기울기가 inf/inf인 쌍은 두 라이브러리 모두 빼고 셈해요. 위의 ±1e308 예에서 값이 같아요(scipy는 넘침의 `RuntimeWarning`도 내요).
 
   ```python
   >>> scipy.stats.theilslopes(yb, xb)
   TheilslopesResult(slope=np.float64(1.0), intercept=np.float64(0.5), low_slope=np.float64(0.8999999999999999), high_slope=np.float64(1.05))
   ```
 
-- **`alpha`, `method`는 키워드로만** 받아요. scipy의 `theilslopes(y, x, 0.9)`는 `theilslopes(y, x, alpha=0.9)`로 써요.
-- **배치**: sd는 마지막 축을 점의 축으로 보고 앞 축을 배치로 받아요. scipy는 기본(`axis=None`)이 모든 원소를 한 줄로 펴고, `axis=-1`을 주면 sd와 같아요. sd에는 `axis`, `keepdims`가 없어요.
-- **`x=None`에 `nan_policy='omit'`**: sd는 빼기 전의 위치(0, 1, 3, 4, …)를 x로 써요. scipy는 뺀 뒤의 점에 0, 1, 2, …를 다시 매겨서 값이 달라요.
+- `alpha`, `method`는 키워드로만 받아요. scipy의 `theilslopes(y, x, 0.9)`는 `theilslopes(y, x, alpha=0.9)`로 써요.
+- 배치: sd는 마지막 축을 점의 축으로 보고 앞 축을 배치로 받아요. scipy는 기본(`axis=None`)이 모든 원소를 한 줄로 펴고, `axis=-1`을 주면 sd와 같아요. sd에는 `axis`, `keepdims`가 없어요.
+- `x=None`에 `nan_policy='omit'`: sd는 빼기 전의 위치(0, 1, 3, 4, …)를 x로 써요. scipy는 뺀 뒤의 점에 0, 1, 2, …를 다시 매겨서 값이 달라요.
 
   ```python
   >>> scipy.stats.theilslopes(yn, nan_policy='omit').slope
   np.float64(1.4166666666666665)
   ```
 
-- **점이 2개보다 적을 때**: sd는 `ValueError`예요. scipy는 경고를 내고 NaN을 줘요.
-- **결과의 형**: sd는 Python `float`(배치면 `sd.ndarray`), scipy는 numpy의 `float64`예요.
-- **큰 n**: scipy는 n × n 차 배열을 만들어서 n = 10⁴이면 배열 하나가 800MB예요. sd는 쌍을 저장하지 않아요.
+- 점이 2개보다 적을 때: sd는 `ValueError`예요. scipy는 경고를 내고 NaN을 줘요.
+- 결과의 형: sd는 Python `float`(배치면 `sd.ndarray`), scipy는 numpy의 `float64`예요.
+- 큰 n: scipy는 n × n 차 배열을 만들어서 n = 10⁴이면 배열 하나가 800MB예요. sd는 쌍을 저장하지 않아요.

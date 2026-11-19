@@ -40,7 +40,7 @@ import Op from '../../../components/fig/Op.astro';
 
 ## 한눈에 보기
 
-데이터를 모으다 보면 같은 기록이 두 번 들어가는 일이 흔해요. 주문 시스템이 같은 주문을 두 번 보냈거나, 파일 두 개를 합치면서 겹친 행이 생긴 경우예요. `duplicated()`는 **앞에 이미 나온 값과 같은 행**을 `True`로 표시하고, `drop_duplicates()`는 그런 행을 지워요.
+데이터를 모으다 보면 같은 기록이 두 번 들어가는 일이 흔해요. 주문 시스템이 같은 주문을 두 번 보냈거나, 파일 두 개를 합치면서 겹친 행이 생긴 경우예요. `duplicated()`는 앞에 이미 나온 값과 같은 행을 `True`로 표시하고, `drop_duplicates()`는 그런 행을 지워요.
 
 ```python
 >>> import stardust as sd
@@ -60,7 +60,7 @@ Name: order, dtype: bool
 Name: order, dtype: int64
 ```
 
-2번 행의 `101`은 0번 행에 이미 나왔으니 중복이에요. 처음 나온 행은 원본으로 남고, 그 뒤에 다시 나온 행이 중복으로 표시돼요. `drop_duplicates()`는 표시된 행을 뺀 나머지를 **원래 순서와 원래 라벨 그대로** 돌려줘요.
+2번 행의 `101`은 0번 행에 이미 나왔으니 중복이에요. 처음 나온 행은 원본으로 남고, 그 뒤에 다시 나온 행이 중복으로 표시돼요. `drop_duplicates()`는 표시된 행을 뺀 나머지를 원래 순서와 원래 라벨 그대로 돌려줘요.
 
 <Reference />
 
@@ -94,11 +94,11 @@ Name: order, dtype: int64
 
 `"last"`는 나중 기록이 더 정확할 때 써요. 같은 주문의 상태가 여러 번 기록됐다면 마지막 기록이 최신이에요. `"none"`은 한 번만 나온 값만 남기거나, 반대로 겹친 기록을 모두 찾아서 살펴볼 때 써요.
 
-남은 행은 `keep`과 상관없이 **원래 데이터의 순서**를 지켜요. `"last"`로 남긴 `101`이 맨 뒤에 있는 이유예요.
+남은 행은 `keep`과 상관없이 원래 데이터의 순서를 지켜요. `"last"`로 남긴 `101`이 맨 뒤에 있는 이유예요.
 
 ## DataFrame: 어떤 컬럼을 비교할까요
 
-DataFrame에서는 기본으로 **모든 컬럼의 값이 같은 행**을 중복으로 봐요.
+DataFrame에서는 기본으로 모든 컬럼의 값이 같은 행을 중복으로 봐요.
 
 ```python
 >>> orders = sd.frame.DataFrame({
@@ -142,7 +142,7 @@ dtype: bool
     tones={[['1', '', ''], ['2', '', ''], ['3', '', '']]} />
 </Fig>
 
-`subset`은 여러 컬럼도 받아요. 그 컬럼들의 값이 **모두** 같아야 중복이에요. 리스트 대신 tuple을 줘도 돼요.
+`subset`은 여러 컬럼도 받아요. 그 컬럼의 값이 모두 같아야 중복이에요. 리스트 대신 tuple을 줘도 돼요.
 
 ```python
 >>> orders.drop_duplicates(["order", "qty"])
@@ -202,15 +202,15 @@ Index([0, 1, 3], dtype=int64)
 2    103   kiwi    5
 ```
 
-원래 라벨이 다른 데이터와 맞춰 볼 [라벨](/api/frame/alignment/)이라면 지키고, 단순한 행 번호였다면 `ignore_index=True`가 깔끔해요.
+원래 라벨이 다른 데이터와 맞춰 볼 [라벨](/api/frame/alignment/)이라면 지키고, 단순한 행 번호였다면 `ignore_index=True`로 새로 매기는 편이 다루기 쉬워요.
 
 ## 같은 값으로 치는 규칙
 
 "같은 값인가"는 `==`가 아니라 값을 묶는 규칙으로 정해요. [`unique_values`](/api/frame/unique_values/), [`value_counts`](/api/frame/value_counts/), [`groupby`](/api/frame/groupby/)와 같은 규칙이에요.
 
-- **NaN끼리는 같은 값이에요.** `==`로는 NaN이 자기 자신과도 같지 않지만, 중복을 찾을 때는 같은 값이에요.
-- **`-0.0`과 `0.0`은 같은 값이에요.**
-- **`NA`끼리도 같은 값이에요.** 둘 다 "모르는 값"이지만, 같은 칸이 비어 있는 두 기록은 겹친 기록으로 봐요.
+- NaN끼리는 같은 값이에요. `==`로는 NaN이 자기 자신과도 같지 않지만, 중복을 찾을 때는 같은 값이에요.
+- `-0.0`과 `0.0`은 같은 값이에요.
+- `NA`끼리도 같은 값이에요. 둘 다 "모르는 값"이지만, 같은 칸이 비어 있는 두 기록은 겹친 기록으로 봐요.
 - NaN과 `NA`는 서로 다른 값이에요([NA와 NaN](/api/frame/na/)).
 
 ```python
@@ -232,7 +232,7 @@ dtype: bool
 dtype: float64
 ```
 
-`==`로 비교하면 결과가 다르다는 것을 볼 수 있어요. NaN 행은 `False`, `NA` 행은 `NA`예요.
+`==`로 비교하면 결과가 달라요. NaN 행은 `False`, `NA` 행은 `NA`예요.
 
 ```python
 >>> v == v
@@ -293,7 +293,7 @@ TypeError: duplicated(): 'subset' must be a column name or a list of them, not s
 
 ### 원본은 바뀌지 않아요
 
-`drop_duplicates()`는 새 Series나 DataFrame을 돌려주고 원본은 그대로예요. 결과를 쓰려면 변수에 담아요: `orders = orders.drop_duplicates()`.
+`drop_duplicates()`는 새 Series나 DataFrame을 돌려주고 원본은 그대로예요. 결과를 쓰려면 `orders = orders.drop_duplicates()`처럼 변수에 다시 담아요.
 
 ## 비슷한 함수와의 차이
 
@@ -303,12 +303,12 @@ TypeError: duplicated(): 'subset' must be a column name or a list of them, not s
 | 중복 행 지우기 | `drop_duplicates()` | 처음 나온 순서, 원래 라벨을 지켜요. |
 | 서로 다른 값을 크기순으로 | [`unique_values()`](/api/frame/unique_values/) | 값을 정렬하고 새 라벨을 붙여요. Series에만 있어요. |
 | 값(조합)마다 몇 번 나왔는지 | [`value_counts()`](/api/frame/value_counts/) | 겹친 횟수를 세어 표로 줘요. |
-| 같은 키끼리 묶어서 계산 | [`groupby`](/api/frame/groupby/) | 지우는 대신 묶인 행들로 합·평균 등을 구해요. |
+| 같은 키끼리 묶어서 계산 | [`groupby`](/api/frame/groupby/) | 지우는 대신 묶인 행으로 합·평균 등을 구해요. |
 
 ## pandas를 아는 분께
 
-- **`keep=False` 대신 `keep="none"`이에요.** `keep`은 언제나 문자열이에요. pandas에 `"none"`을 주면 `ValueError`예요.
+- `keep=False` 대신 `keep="none"`이에요. `keep`은 언제나 문자열이에요. pandas에 `"none"`을 주면 `ValueError`예요.
 - DataFrame의 `subset`은 positional-only예요. `subset=["a"]`처럼 키워드로 줄 수 없어요.
-- NaN과 `NA`를 다른 값으로 봐요. pandas는 float 컬럼의 `None`을 NaN으로 읽기 때문에 위 `v`의 NaN과 `None`을 모두 같은 값으로 봐서, `drop_duplicates()`가 세 행만 남겨요.
+- NaN과 `NA`를 다른 값으로 봐요. pandas는 float 컬럼의 `None`을 NaN으로 읽어요. 그래서 위 `v`의 NaN과 `None`을 모두 같은 값으로 보고, `drop_duplicates()`가 세 행만 남겨요.
 - `inplace` 인자는 없어요. 언제나 새 객체를 돌려줘요.
 - `keep`의 뜻, 남은 행의 순서와 라벨, `ignore_index`는 pandas와 같아요.

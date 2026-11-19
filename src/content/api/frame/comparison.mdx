@@ -12,9 +12,9 @@ import Op from '../../../components/fig/Op.astro';
 
 ## 한눈에 보기
 
-비교 연산자는 Series의 **행마다** "이 조건이 맞는가"를 묻고, 그 답(`True` 또는 `False`)을 같은 라벨에 적은 **bool Series**를 돌려줘요. 엑셀에서 `=B2>30` 같은 수식을 열 전체에 채운 것과 같아요.
+비교 연산자는 Series의 행마다 "이 조건이 맞는가"를 묻고, 그 답(`True` 또는 `False`)을 같은 라벨에 적은 **bool Series**를 돌려줘요. 엑셀에서 `=B2>30` 같은 수식을 열 전체에 채운 것과 같아요.
 
-도시별 낮 기온에서 30도가 넘는 곳을 찾아볼게요. 부산은 관측값이 빠져 있어요.
+도시별 낮 기온에서 30도가 넘는 곳을 찾아요. 부산은 관측값이 빠져 있어요.
 
 ```python
 >>> import stardust as sd
@@ -43,7 +43,7 @@ Name: temp, dtype: bool
   <FrameFig name="hot" data={[false, true, null, false]} rowTones={['', 'a', '', '']} note="dtype: bool" />
 </Fig>
 
-이렇게 만든 bool Series는 주로 **조건에 맞는 행만 골라낼 때** 써요. DataFrame에 대괄호로 넣으면 `True`인 행만 남아요. `NA`인 행은 "맞는지 모름"이라 버려요. 자세한 것은 [조건으로 행 거르기](/api/frame/mask/)에 있어요.
+이렇게 만든 bool Series는 주로 조건에 맞는 행만 골라낼 때 써요. DataFrame에 대괄호로 넣으면 `True`인 행만 남아요. `NA`인 행은 "맞는지 모름"이라 버려요. 자세한 것은 [조건으로 행 거르기](/api/frame/mask/)에 있어요.
 
 ```python
 >>> df[hot]
@@ -71,8 +71,10 @@ Name: temp, dtype: bool
 | 왼쪽 | 오른쪽 | 결과 |
 |---|---|---|
 | Series | Series | bool Series. 행 라벨로 맞춰서 비교해요 |
-| Series | 스칼라, 또는 스칼라와 Series | bool Series |
-| DataFrame | 스칼라 (양쪽 어디든) | bool DataFrame |
+| Series | 스칼라 | bool Series |
+| 스칼라 | Series | bool Series |
+| DataFrame | 스칼라 | bool DataFrame |
+| 스칼라 | DataFrame | bool DataFrame |
 | DataFrame | DataFrame | bool DataFrame. 컬럼은 이름으로, 행은 라벨로 맞춰요 |
 | DataFrame | Series | `TypeError` |
 | Series, DataFrame | list, tuple, `None`, 배열 | `TypeError` (`==`, `!=`도) |
@@ -89,7 +91,7 @@ Name: temp, dtype: bool
 Name: temp, dtype: bool
 ```
 
-Series끼리 비교할 때는 **같은 라벨**의 값끼리 비교해요. 아래 두 Series는 순서가 다르지만 `b`는 `b`끼리, `a`는 `a`끼리 비교해서 모두 같아요. 라벨을 맞추는 규칙은 [라벨과 정렬](/api/frame/alignment/)에 있어요.
+Series끼리 비교할 때는 같은 라벨의 값끼리 비교해요. 아래 두 Series는 순서가 다르지만 `b`는 `b`끼리, `a`는 `a`끼리 비교해서 모두 같아요. 라벨을 맞추는 규칙은 [라벨과 정렬](/api/frame/alignment/)에 있어요.
 
 ```python
 >>> left = sd.frame.Series([3, 1], index=["b", "a"])
@@ -114,7 +116,7 @@ DataFrame은 컬럼마다 비교해서 같은 모양의 bool DataFrame을 돌려
 
 비교의 결과는 언제나 bool이에요. 어느 한쪽이 `NA`인 행은 결과도 `NA`예요. 모르는 값과 비교하면 답도 모르기 때문이에요.
 
-이 규칙 때문에 **`NA`를 `==`로 찾을 수는 없어요.** `s == NA`는 모든 행이 `NA`예요. `NA`끼리의 비교도 `NA`예요. 결측값인지는 [`isna`](/api/frame/isna/)로 확인하고, 값 하나가 `NA`인지는 `x is sd.frame.NA`로 확인해요.
+이 규칙 때문에 `NA`를 `==`로 찾을 수는 없어요. `s == NA`는 모든 행이 `NA`예요. `NA`끼리의 비교도 `NA`예요. 결측값인지는 [`isna`](/api/frame/isna/)로 확인하고, 값 하나가 `NA`인지는 `x is sd.frame.NA`로 확인해요.
 
 ```python
 >>> temp == sd.frame.NA
@@ -171,7 +173,7 @@ dtype: bool
 
 ### string은 글자 코드 순서예요
 
-string끼리는 사전처럼 앞 글자부터 비교하는데, 글자의 순서는 유니코드 코드포인트(글자마다 붙은 번호) 순서예요. Python의 문자열 비교와 같아요. 이 순서에서는 **대문자가 소문자보다 앞**이라서 `"Banana" < "apple"`이에요.
+string끼리는 사전처럼 앞 글자부터 비교하는데, 글자의 순서는 유니코드 코드포인트(글자마다 붙은 번호) 순서예요. Python의 문자열 비교와 같아요. 이 순서에서는 대문자가 소문자보다 앞이라서 `"Banana" < "apple"`이에요.
 
 ```python
 >>> fruit = sd.frame.Series(["apple", "Banana", "cherry"])
@@ -184,7 +186,7 @@ dtype: bool
 
 ### 비교할 수 없는 dtype은 `==`도 에러예요
 
-string과 숫자, string과 bool은 비교할 수 없어요. `<`뿐 아니라 **`==`와 `!=`도 `TypeError`**예요. `"1"`과 `1`처럼 겉보기에 같은 값이어도 그래요.
+string과 숫자, string과 bool은 비교할 수 없어요. `<`뿐 아니라 `==`와 `!=`도 `TypeError`예요. `"1"`과 `1`처럼 겉보기에 같은 값이어도 그래요.
 
 ```python
 >>> sd.frame.Series(["1", "2"]) == 1
@@ -197,7 +199,7 @@ Traceback (most recent call last):
 TypeError: unsupported operand dtypes for ==: bool and string (these dtypes cannot be compared)
 ```
 
-그래서 CSV에서 숫자가 문자열로 읽힌 줄 모르고 `== 1`로 거르면, 모든 행이 `False`가 되어 결과가 조용히 비는 대신 그 자리에서 에러가 나요. 값을 숫자로 바꾸려면 [`astype`](/api/frame/astype/)을 써요.
+덕분에 CSV에서 숫자가 문자열로 읽힌 줄 모르고 `== 1`로 걸러도, 모든 행이 `False`가 되어 결과가 조용히 비는 일 없이 그 자리에서 에러가 나요. 값을 숫자로 바꾸려면 [`astype`](/api/frame/astype/)을 써요.
 
 ```python
 >>> sd.frame.Series(["1", "2"]).astype("int64") == 1
@@ -206,7 +208,7 @@ TypeError: unsupported operand dtypes for ==: bool and string (these dtypes cann
 dtype: bool
 ```
 
-dtype끼리 정리하면 이래요.
+dtype 조합별로 보면 이래요.
 
 | 왼쪽 \ 오른쪽 | bool | int64 | float64 | string |
 |---|:---:|:---:|:---:|:---:|
@@ -234,7 +236,7 @@ Series에는 두 Series 전체가 같은지(값, 라벨, dtype)를 한 번에 �
 
 ## NaN은 무엇과도 같지 않아요
 
-NaN("숫자가 아님")은 결측값이 아니라 평범한 실수 값이고, 비교는 실수 계산의 약속(IEEE 754)을 따라요. **`NaN == NaN`은 `False`, `NaN != NaN`은 `True`**예요. 크기 비교도 모두 `False`예요. `NA`와 달리 결과가 `NA`가 되지 않아요.
+NaN("숫자가 아님")은 결측값이 아니라 평범한 실수 값이고, 비교는 실수 계산의 약속(IEEE 754)을 따라요. `NaN == NaN`은 `False`, `NaN != NaN`은 `True`예요. 크기 비교도 모두 `False`예요. `NA`와 달리 결과가 `NA`가 되지 않아요.
 
 ```python
 >>> v = sd.frame.Series([1.0, float("nan"), None])

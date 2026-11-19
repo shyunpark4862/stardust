@@ -122,7 +122,7 @@ array([[0, 1],
   </FigRow>
 </Fig>
 
-같은 값이 없으면 두 결과가 같아요. 그래서 두 결과의 차이는 **그 값이 배열에 몇 개 있는지**와 같아요.
+두 결과의 차이는 **그 값이 배열에 몇 개 있는지**와 같아요. 같은 값이 없으면 차이가 0이라 두 결과가 같아요.
 
 ```python
 >>> v = sd.asarray([5, 20, 35])
@@ -196,7 +196,7 @@ ValueError: searchsorted(): 'sorter' must be a 1-D int64 array as long as 'x1'
 
 ## NaN과 무한대
 
-순서는 [`sort`](/api/array/sort/)와 같아요. **NaN(숫자가 아님)은 무한대보다도 큰 값**으로 쳐요. 그래서 NaN이 섞인 배열을 정렬하면 NaN이 맨 끝에 오고, `searchsorted`도 그 순서를 그대로 따라요.
+크고 작음을 따지는 기준은 [`sort`](/api/array/sort/)와 같아요. **NaN(숫자가 아님)은 무한대보다도 큰 값**으로 쳐요. 그래서 NaN이 섞인 배열을 정렬하면 NaN이 맨 끝에 오고, `searchsorted`도 그 순서를 그대로 따라요.
 
 ```python
 >>> f = sd.asarray([1.0, 2.0, sd.inf, sd.nan])
@@ -206,7 +206,7 @@ array([3, 2, 2], dtype=int64)
 3
 ```
 
-NaN의 자리를 찾으면 NaN들의 앞(`'left'`)이나 맨 뒤(`'right'`)가 나와요. `sd.sort`로 정렬한 배열은 NaN이 있어도 그대로 `x1`로 쓸 수 있어요.
+NaN의 자리를 찾으면 NaN이 모인 구간의 맨 앞(`'left'`)이나 맨 뒤(`'right'`)가 나와요. `sd.sort`로 정렬한 배열은 NaN이 있어도 그대로 `x1`로 쓸 수 있어요.
 
 ## 조심할 점
 

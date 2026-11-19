@@ -31,9 +31,9 @@ import Op from '../../../components/fig/Op.astro';
 
 ## 한눈에 보기
 
-`astype`은 컬럼의 값 종류(dtype)를 바꿔요. 원래 표는 그대로 두고, **종류가 바뀐 새 표**를 돌려줘요. 데이터프레임의 dtype은 `sd.bool`, `sd.int64`, `sd.float64`, `sd.string` 넷이에요([모양, 이름, dtype](/api/frame/attributes/)).
+`astype`은 컬럼의 값 종류(dtype)를 바꿔요. 원래 표는 그대로 두고, 종류가 바뀐 새 표를 돌려줘요. 데이터프레임의 dtype은 `sd.bool`, `sd.int64`, `sd.float64`, `sd.string` 넷이에요([모양, 이름, dtype](/api/frame/attributes/)).
 
-가장 흔한 장면은 **숫자가 문자열로 들어 있을 때**예요. 다른 프로그램에서 받은 데이터나 손으로 만든 표에서는 `"12.5"`처럼 숫자가 글자로 들어 있곤 해요. 이대로는 평균도 덧셈도 할 수 없어요.
+가장 흔한 장면은 숫자가 문자열로 들어 있을 때예요. 다른 프로그램에서 받은 데이터나 손으로 만든 표에서는 `"12.5"`처럼 숫자가 글자로 들어 있곤 해요. 이대로는 평균도 덧셈도 할 수 없어요.
 
 ```python
 >>> import stardust as sd
@@ -65,7 +65,7 @@ TypeError: mean(): cannot compute mean of a string column
 13.75
 ```
 
-비어 있던 `Jeju`의 `temp`는 바뀐 뒤에도 `NA`예요. **`NA`는 어떤 종류로 바꿔도 `NA`로 남아요.**
+비어 있던 `Jeju`의 `temp`는 바뀐 뒤에도 `NA`예요. `NA`는 어떤 종류로 바꿔도 `NA`로 남아요.
 
 Series는 dtype 하나를 받아요. dtype은 객체(`sd.float64`)로 써도, 이름(`"float64"`)으로 써도 돼요.
 
@@ -119,7 +119,7 @@ dtype: int64
 
 ### 실수 → 정수: 버림이에요
 
-실수를 정수로 바꾸면 **소수점 아래를 버려요.** 0 쪽으로 자르기 때문에 양수는 내려가고 음수는 올라가요. 반올림이 아니에요.
+실수를 정수로 바꾸면 소수점 아래를 버려요. 0 쪽으로 자르기 때문에 양수는 내려가고 음수는 올라가요. 반올림이 아니에요.
 
 ```python
 >>> x = sd.frame.Series([1.7, -1.7, 0.5, None])
@@ -137,7 +137,7 @@ dtype: int64
   <FrameFig data={[1, -1, 0, null]} tones={[['a'], ['b'], [''], ['']]} note="dtype: int64" />
 </Fig>
 
-NaN(숫자가 아님)과 무한대는 정수로 나타낼 수 없어요. 이때도 에러를 내지 않아요. NaN은 `0`으로, int64가 담을 수 없을 만큼 크거나 작은 값은 int64의 **최댓값이나 최솟값으로** 바꿔요(포화).
+NaN(숫자가 아님)과 무한대는 정수로 나타낼 수 없어요. 이때도 에러를 내지 않아요. NaN은 `0`으로, int64가 담을 수 없을 만큼 크거나 작은 값은 int64의 최댓값이나 최솟값으로 바꿔요(포화).
 
 ```python
 >>> sd.frame.Series([sd.nan, sd.inf, -sd.inf, 1e300]).astype("int64")
@@ -156,7 +156,7 @@ NaN과 `NA`는 다른 것이에요. `NA`는 "값이 없음"이라서 정수 컬�
 
 ### 숫자 → bool: 0인가 아닌가
 
-bool로 바꾸면 **0이면 `False`, 0이 아니면 `True`** 예요. `-0.0`은 0이라서 `False`, NaN은 0이 아니라서 `True`예요.
+bool로 바꾸면 0이면 `False`, 0이 아니면 `True`예요. `-0.0`은 0이라서 `False`, NaN은 0이 아니라서 `True`예요.
 
 ```python
 >>> sd.frame.Series([0.0, -0.0, sd.nan, 0.1, None]).astype("bool")
@@ -198,7 +198,7 @@ NaN은 글자 `'nan'`이 되고, `NA`는 `NA`로 남아요. `'nan'`은 이제 �
 
 ## 문자열을 숫자로: 엄격하게 읽어요
 
-문자열을 int64나 float64로 바꿀 때는 **정해진 문법에 꼭 맞는 글자만** 숫자로 읽어요. 앞뒤 공백, 천 단위 구분자, 단위 같은 것이 붙어 있으면 에러예요. 그래서 데이터에 섞인 이상한 값이 조용히 숫자가 되지 않고 바로 에러로 드러나요.
+문자열을 int64나 float64로 바꿀 때는 정해진 문법에 꼭 맞는 글자만 숫자로 읽어요. 앞뒤 공백, 천 단위 구분자, 단위 같은 것이 붙어 있으면 에러예요. 그래서 데이터에 섞인 이상한 값이 조용히 숫자가 되지 않고 바로 에러로 드러나요.
 
 같은 문법을 [`read_csv`](/api/frame/read_csv/)가 컬럼 종류를 추론할 때와 `dtype=`으로 읽을 때도 써요. 그래서 파일에서 숫자로 읽히는 값과 `astype`으로 숫자가 되는 값이 같아요.
 
@@ -358,7 +358,7 @@ dtype: bool
 
 ### 하나라도 실패하면 전체가 실패해요
 
-값 하나가 문법에 맞지 않으면 `astype` 전체가 `ValueError`이고, 결과는 없어요. 일부만 바꾸고 나머지를 `NA`로 두는 일은 없어요. 메시지에는 행 순서로 **처음** 실패한 글자가 나와요.
+값 하나가 문법에 맞지 않으면 `astype` 전체가 `ValueError`이고, 결과는 없어요. 일부만 바꾸고 나머지를 `NA`로 두는 일은 없어요. 메시지에는 행 순서로 처음 실패한 글자가 나와요.
 
 ```python
 >>> sd.frame.Series(["12", "x", "y"]).astype("int64")
@@ -371,8 +371,8 @@ ValueError: astype(): cannot convert string 'x' to int64
 
 DataFrame의 `astype`에는 dtype 하나나 dict를 줘요.
 
-- **dtype 하나**: 모든 컬럼을 그 종류로 바꿔요.
-- **`{컬럼 이름: dtype}` dict**: 적은 컬럼만 바꾸고 나머지는 그대로 둬요.
+- dtype 하나를 주면 모든 컬럼을 그 종류로 바꿔요.
+- `{컬럼 이름: dtype}` dict를 주면 적은 컬럼만 바꾸고 나머지는 그대로 둬요.
 
 ```python
 >>> nums = sd.frame.DataFrame({"a": [1, 2], "b": [1.5, 2.5]})
@@ -384,7 +384,7 @@ DataFrame의 `astype`에는 dtype 하나나 dict를 줘요.
 {'a': string, 'b': string}
 ```
 
-dtype 하나를 주면 정말 모든 컬럼에 적용돼요. 위의 `raw`처럼 문자 컬럼(`city`)이 섞인 표를 통째로 float64로 바꾸면 그 컬럼에서 에러가 나요. 그럴 때는 dict로 바꿀 컬럼만 적어요.
+dtype 하나를 주면 정말 모든 컬럼에 적용돼요. 위의 `raw`처럼 문자열 컬럼(`city`)이 섞인 표를 통째로 float64로 바꾸면 그 컬럼에서 에러가 나요. 그럴 때는 dict로 바꿀 컬럼만 적어요.
 
 ```python
 >>> raw.astype("float64")
@@ -409,7 +409,7 @@ KeyError: "astype(): no column 'tmp'"
 - **명시적 변환**: 코드에 바꿀 종류를 직접 적은 것이에요. `astype`, 생성자의 `dtype=`, `read_csv`의 `dtype=`, `to_numpy`와 `to_array`의 `dtype=`이 여기에 들어가요. 직접 요청했으니 값이 달라지는 변환(실수 → 정수)도 해 줘요.
 - **암묵적 변환**: 이미 있는 컬럼에 값을 넣느라 저절로 바뀌는 것이에요. [`fillna`](/api/frame/fillna/)와 행 대입(`s.iloc[0] = ...`, [대입과 복사](/api/frame/assign/))이 여기에 들어가요. 이때는 `bool → int64 → float64` 쪽으로만 바꾸고, 값을 잃을 수 있는 방향은 `TypeError`예요. 값이 아니라 dtype만 보고 판단해서, `2.0`처럼 정수와 같은 값도 정수 컬럼에 넣을 수 없어요.
 
-예를 들어 정수 컬럼의 빈 칸을 평균값 `2.5`로 채우고 싶다면, `fillna`가 거절해요. 컬럼을 먼저 float64로 바꾸면 채울 수 있어요.
+예를 들어 정수 컬럼의 빈칸을 평균값 `2.5`로 채우려 하면 `fillna`가 거절해요. 컬럼을 먼저 float64로 바꾸면 채울 수 있어요.
 
 ```python
 >>> s.fillna(2.5)
@@ -485,7 +485,7 @@ TypeError: Series.astype() got some positional-only arguments passed as keyword 
 
 ### 버림이 필요한 게 맞는지 확인해요
 
-실수 → 정수는 반올림이 아니라 버림이에요. `2.9`는 `2`가 돼요. 반올림한 정수가 필요하면 [`to_array`](/api/frame/to-array/)로 꺼내 배열의 [`round`](/api/array/rounding/)를 쓰는 식으로, 반올림을 먼저 하고 바꿔요.
+실수 → 정수는 반올림이 아니라 버림이에요. `2.9`는 `2`가 돼요. 반올림한 정수가 필요하면 반올림을 먼저 한 뒤 바꿔요. [`to_array`](/api/frame/to-array/)로 꺼내 배열의 [`round`](/api/array/rounding/)를 쓰면 돼요.
 
 ### NaN과 `'nan'` 글자
 
@@ -498,7 +498,7 @@ float → string에서 NaN은 글자 `'nan'`이 되고, string → float에서 `
 | 컬럼의 종류 바꾸기 | `astype` | 해 줘요 |
 | 만들면서 종류 정하기 | 생성자의 `dtype=` ([Series](/api/frame/series/), [DataFrame](/api/frame/dataframe/)) | 해 줘요 (`astype`과 같아요) |
 | 파일을 읽으면서 종류 정하기 | [`read_csv`](/api/frame/read_csv/)의 `dtype=` | 같은 문법으로 읽어요 |
-| 빈 칸 채우기 | [`fillna`](/api/frame/fillna/) | `TypeError` (넓은 쪽으로만) |
+| 빈칸 채우기 | [`fillna`](/api/frame/fillna/) | `TypeError` (넓은 쪽으로만) |
 | 행에 값 넣기 | [대입](/api/frame/assign/) | `TypeError` (넓은 쪽으로만) |
 | numpy 배열로 꺼내면서 바꾸기 | [`to_numpy(dtype=...)`](/api/frame/to-numpy/) | 해 줘요 (`astype`과 같아요) |
 | 배열의 종류 바꾸기 | 배열의 [`astype`](/api/array/astype/) | 해 줘요 (숫자 규칙이 같아요) |
@@ -511,9 +511,9 @@ float → string에서 NaN은 글자 `'nan'`이 되고, string → float에서 `
 
 ## pandas를 아는 분께
 
-- **float → int64에서 NaN은 0, ±inf는 int64의 최댓값·최솟값이에요.** pandas는 `IntCastingNaNError`를 내요.
-- **string → bool은 `"True"`, `"False"`만 받아요.** pandas의 `astype(bool)`은 빈 문자열만 `False`이고 나머지(`"False"`도)는 `True`예요.
-- **문자열을 숫자로 읽는 문법이 엄격해요.** pandas는 `" 1"`, `"1_000"`, `"١٢"`를 int로도 float로도 읽어요. stardust에서는 모두 `ValueError`예요.
+- float → int64에서 NaN은 0, ±inf는 int64의 최댓값·최솟값이에요. pandas는 `IntCastingNaNError`를 내요.
+- string → bool은 `"True"`, `"False"`만 받아요. pandas의 `astype(bool)`은 빈 문자열만 `False`이고 나머지(`"False"`도)는 `True`예요.
+- 문자열을 숫자로 읽는 문법이 엄격해요. pandas는 `" 1"`, `"1_000"`, `"١٢"`를 int로도 float로도 읽어요. stardust에서는 모두 `ValueError`예요.
 - dtype은 네 가지와 그 이름만 받아요. pandas의 `astype(float)`, `astype("Int64")`, `astype("category")`에 해당하는 것은 없어요. 정수 컬럼은 `NA`가 있어도 `int64`예요.
 - `copy=`, `errors=` 인자가 없어요. pandas 3.1도 Copy-on-Write라서 `copy=`를 주면 폐기 예정 경고를 내요.
 - dict에 없는 컬럼은 `KeyError`인 점은 pandas와 같아요.

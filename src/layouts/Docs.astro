@@ -224,6 +224,36 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
 </Base>
 
 <script>
+  // Copy button on every code block. For an interactive session it copies
+  // only what one types (the lines after >>> and ...), ready to paste into
+  // Python; output and prompts stay behind.
+  document.querySelectorAll<HTMLPreElement>('.prose pre:not(.sig__code)').forEach((pre) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'code-wrap';
+    pre.replaceWith(wrap);
+    wrap.append(pre);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'code-copy';
+    btn.textContent = '복사';
+    btn.setAttribute('aria-label', '코드 복사');
+    btn.addEventListener('click', async () => {
+      const inputs = pre.querySelectorAll('.repl-in, .repl-more');
+      const text = inputs.length
+        ? [...inputs].map((l) => l.textContent ?? '').join('\n')
+        : (pre.textContent ?? '').replace(/\n$/, '');
+      try {
+        await navigator.clipboard.writeText(text);
+        btn.textContent = '복사됨';
+      } catch {
+        btn.textContent = '복사 실패';
+      }
+      setTimeout(() => (btn.textContent = '복사'), 1600);
+    });
+    wrap.append(btn);
+  });
+</script>
+<script>
   // Display formulas wider than the text column: scale each one down until
   // it fits, but never below MIN (smaller than that is hard to read); those
   // keep MIN and scroll sideways.

@@ -34,7 +34,7 @@ export const nctPdf = [[0.5, -9.477], [1, -10.458], [1.5, -11.231], [2, -11.854]
 
 ## 지수 꼬리 e^(−t)의 공통 틀
 
-Gumbel, GEV, 레일리, 파레토, 그리고 베이불은 모두 꼬리가 $e^{-t}$ 꼴이에요. 그래서 네 꼬리를 $t$의 double-double에서 만드는 함수 하나를 함께 써요.
+Gumbel, GEV, 레일리, 파레토, 그리고 베이불은 모두 꼬리가 $e^{-t}$ 꼴이에요. 그래서 네 가지 꼬리 값(아래꼬리, 위꼬리와 각각의 log)을 $t$의 double-double에서 만드는 함수 하나를 함께 써요.
 
 $$
 P(X \le x) = e^{-t}\ \text{(Gumbel·GEV)}, \qquad P(X > x) = e^{-t}\ \text{(베이불·레일리·파레토)}
@@ -62,14 +62,14 @@ inline double tail(DD e, bool upper, bool log) {
 }
 ```
 
-입력은 $E = \log t$의 double-double이에요. 네 가지 일을 해요.
+입력은 $E = \log t$의 double-double이고, 이 함수는 네 가지를 맡아요.
 
 - **$t$를 만들 때 exp의 반올림을 접어요.** `exp_t`는 $t = e^{E_{hi}}(1 + E_{lo})$인데, $e^{-t}$는 $t$의 상대오차를 $t$배로 키우므로 $t > 4$이면 $E - \log(e^{E_{hi}})$를 double-double로 구해 낮은 부분에 넣어요(베이불의 `t_of`와 같아요).
 - **$e^{-t}$는 반올림 한 번.** `exp_dd(-t)`예요.
 - **$1 - e^{-t}$는 빼지 않아요.** $-\operatorname{expm1}(-t_{hi}) + e^{-t_{hi}}t_{lo}$예요.
 - **$\log(1 - e^{-t})$는 세 구간이에요.** $t \lt 2^{-60}$이면 $E - t/2$(값을 만들지 않고 $E$에서 바로), $t \lt \log 2$이면 그 값의 log, 그 위는 $\operatorname{log1p}(-e^{-t})$예요.
 
-$-\log(\text{꼬리}) = t$이므로 `logcdf`(Gumbel)나 `logccdf`(베이불)는 $-t$ 그대로라 깊은 꼬리에서도 상대 정확도가 그냥 나와요. 역함수는 거꾸로 $\log t$를 double-double로 만들어 돌아가요. $t = -\log p$이면 $\log t = \log(-\log p)$이고, $p > \tfrac12$이면 $1 - p$가 정확하므로 $\log(-\operatorname{log1p}(-(1-p)))$ 쪽을, $p \lt 2^{-60}$이면 $-\log(1 - p) = p + p^2/2 + \cdots$라서 $\log t = \log p + p/2$를 써요(`lt_neglog`, `lt_neglog1m`).
+$-\log(\text{꼬리}) = t$이므로 `logcdf`(Gumbel)나 `logccdf`(베이불)는 $-t$ 그대로라 깊은 꼬리에서도 상대 정확도가 저절로 나와요. 역함수는 거꾸로 $\log t$를 double-double로 만들어 돌아가요. $t = -\log p$이면 $\log t = \log(-\log p)$이고, $p > \tfrac12$이면 $1 - p$가 정확하므로 $\log(-\operatorname{log1p}(-(1-p)))$ 쪽을, $p \lt 2^{-60}$이면 $-\log(1 - p) = p + p^2/2 + \cdots$라서 $\log t = \log p + p/2$를 써요(`lt_neglog`, `lt_neglog1m`).
 
 ## Gumbel과 GEV
 
@@ -105,7 +105,7 @@ $$
 True
 ```
 
-$c = 10^{-12}$의 값은 Arb 참값과 같고, Gumbel과는 $2 \times 10^{-13}$ 차이 나요(그만큼이 진짜 $O(cz^2)$ 차예요). $c = 0$은 Gumbel과 비트까지 같아요. 배열 경로도 $c = 0$인 원소를 모아 Gumbel의 커널로 계산해요.
+$c = 10^{-12}$의 값은 Arb 참값과 같고, Gumbel과는 $2 \times 10^{-13}$ 차이 나요(이 차이가 실제 $O(cz^2)$ 항이에요). $c = 0$은 Gumbel과 비트까지 같아요. 배열 경로도 $c = 0$인 원소를 모아 Gumbel의 커널로 계산해요.
 
 ### 위가 막힌 끝: 분자를 정확히 더하기
 
@@ -115,7 +115,7 @@ $$
 y = \frac{n}{\sigma}, \qquad n = \sigma - c\,(x - \mu)
 $$
 
-$d = x - \mu$는 TwoSum으로 $d_{hi} + d_{lo}$이고, $cd_{hi}$와 $cd_{lo}$는 TwoProd로 각각 정확한 두 double이에요. 그러면 $n$은 다섯 double $\sigma, -p_{hi}, -p_{lo}, -q_{hi}, -q_{lo}$의 **정확한 합**이에요. 이 다섯을 TwoSum으로 여러 번 훑어(증류) 합을 마지막 원소에, 오차를 앞 원소들에 모은 뒤 더해요.
+$d = x - \mu$는 TwoSum으로 $d_{hi} + d_{lo}$이고, $cd_{hi}$와 $cd_{lo}$는 TwoProd로 각각 정확한 두 double이에요. 그러면 $n$은 다섯 double $\sigma, -p_{hi}, -p_{lo}, -q_{hi}, -q_{lo}$의 정확한 합이에요. 이 다섯을 TwoSum으로 여러 번 훑어(증류) 합을 마지막 원소에, 오차를 앞 원소에 모은 뒤 더해요.
 
 ```cpp
 // csrc/stats/dist/extreme.hpp (GEV::edge_log_y)
@@ -133,7 +133,7 @@ if (!(n.hi > 0.0)) return {{0.0, 0.0}, n.hi == 0.0 ? 0.0 : -1.0};
 return {num::dd::log_pos(n) - ls, 1.0};
 ```
 
-$\sigma$가 아주 작으면 곱의 낮은 부분이 서브노멀이 되므로 $\sigma$와, $c$와 $d$ 중 작은 쪽에 $2^{600}$을 곱해 놓고 해요. 큰 항이 정확히 지워지면 $n$은 마지막 곱 $c\,d_{lo}$ 하나라서 그 log를 바로 만들어요(double 아래일 수도 있어요).
+$\sigma$가 아주 작으면 곱의 낮은 부분이 서브노멀이 되므로 $\sigma$와, $c$와 $d$ 중 작은 쪽에 $2^{600}$을 곱해 놓고 계산해요. 큰 항이 정확히 지워지면 $n$은 마지막 곱 $c\,d_{lo}$ 하나라서 그 log를 바로 만들어요(double 아래일 수도 있어요).
 
 ```python
 >>> sd.stats.GEV(c=0.3).ccdf(3.3333333333)
@@ -168,11 +168,11 @@ $c\log t$의 크기에 따라 네 갈래예요.
 
 ### GEV의 모멘트: 베이불과 같은 D_k
 
-$Y \sim$ 지수(1)이면 $W = Y^c$이고 $Z = (1 - W)/c$예요. $W$는 모양 $1/c$인 베이불이라 $E[W^k] = \Gamma(1 + kc)$예요. 그래서 왜도·첨도는 베이불의 $D_k = \log\Gamma(1 + kx) - k\log\Gamma(1 + x)$ 기계를 $x = c$로 그대로 써요(`weibull_detail::skewness_x`, `kurtosis_x`, [베이불의 중심 모멘트](/internals/stats/continuous/#베이불의-중심-모멘트-d_k)). $Z$는 $W$를 뒤집은 것이라 왜도의 부호만 바뀌어요. 첨도의 분자는 $c^2$ 항까지 정확히 지워져 $O(c^4)$만 남으므로 $\lvert c\rvert \lt 10^{-4}$에서는 $c = 0$ 둘레의 테일러 급수(수렴 반지름 $\tfrac14$)예요.
+$Y \sim$ 지수(1)이면 $W = Y^c$이고 $Z = (1 - W)/c$예요. $W$는 모양 $1/c$인 베이불이라 $E[W^k] = \Gamma(1 + kc)$예요. 그래서 왜도·첨도는 베이불의 $D_k = \log\Gamma(1 + kx) - k\log\Gamma(1 + x)$ 계산을 $x = c$로 놓고 그대로 써요(`weibull_detail::skewness_x`, `kurtosis_x`, [베이불의 중심 모멘트](/internals/stats/continuous/#베이불의-중심-모멘트-d_k)). $Z$는 $W$를 뒤집은 것이라 왜도의 부호만 바뀌어요. 첨도의 분자는 $c^2$ 항까지 정확히 지워져 $O(c^4)$만 남으므로 $\lvert c\rvert \lt 10^{-4}$에서는 $c = 0$ 둘레의 테일러 급수(수렴 반지름 $\tfrac14$)예요.
 
 평균은 $E[Z] = (1 - \Gamma(1 + c))/c = -\operatorname{expm1}(\log\Gamma(1 + c))/c$예요. $\log\Gamma(1 + c)$는 $\zeta$ 급수의 double-double(`lgamma1p`)이라 작은 $c$에서도 상쇄가 없어요. $\lvert c\rvert \lt 2^{-60}$이면 $\log\Gamma(1 + c)$가 서브노멀일 수 있어서 1차 꼴 $\gamma - (\gamma^2/2 + \pi^2/12)c$를 써요. 분산도 같은 방법으로 $\Gamma(1 + c)^2E_2/c^2$이고 $c > 20$에서는 log에서 계산해요.
 
-모멘트가 정의되지 않는 곳은 규칙대로예요. 평균은 $c \le -1$에서 $+\infty$, 분산은 $-1 \lt c \le -\tfrac12$에서 $+\infty$이고 그 아래 NaN, 왜도·첨도는 분산이 유한한 동안 $+\infty$, 분산이 무한하면 NaN이에요.
+모멘트가 발산하거나 정의되지 않는 곳은 공통 규칙을 따라요. 평균은 $c \le -1$에서 $+\infty$, 분산은 $-1 \lt c \le -\tfrac12$에서 $+\infty$이고 그 아래 NaN, 왜도·첨도는 분산이 유한한 동안 $+\infty$, 분산이 무한하면 NaN이에요.
 
 ```python
 >>> sd.stats.GEV(c=1e-5).kurtosis()
@@ -230,9 +230,9 @@ $X = s/Y$, $Y \sim$ 감마$(a, 1)$이에요. 그래서 거의 모든 메서드�
 
 - **cdf.** $P(X \le x) = Q(a, s/x)$, $P(X > x) = P(a, s/x)$예요. 감마의 `ratio_tail(a, s, x, ...)`에 분자와 분모를 바꿔 넘겨서, 몫 $y = s/x$를 double-double로 만들고 1차 보정·유한합·깊은 log 꼬리·서브노멀 모양 처리를 그대로 받아요.
 - **밀도.** $f_X(x) = f_Y(y)\,y^2/s$라서 log 밀도는 감마의 `log_density_std(a, y)`에 $2\log y - \log s$를 더한 거예요. $y \lt 2^{-960}$이면 $(a + 1)\log y - \log\Gamma(a) - \log s$를 log에서 바로 만들어요.
-- **엔트로피.** 감마의 엔트로피(큰 항을 지운 $G(a)$ 묶음)에 $\log s - 2\psi(a)$를 더해요. $E\log\lvert dx/dy\rvert = \log s - 2E\log Y$이기 때문이에요. $a \lt 2^{-1000}$이면 닫힌 꼴 $1/a + \log(s/a) + 1 + \gamma$예요. $\log\Gamma(a) = -\log a - \gamma a + O(a^2)$, $\psi(a) = -1/a - \gamma + O(a)$를 $a + \log(s\,\Gamma(a)) - (1 + a)\psi(a)$에 넣으면 버린 항이 $O(a)$뿐이에요. 값은 double로 $1/a$와 거의 같고, $1/a$가 double을 넘으면 inf예요. 감마의 묶음은 서브노멀 $a$에서 $\Gamma(a)$와 $\psi(a)$가 넘쳐 쓸 수 없어요. Arb 참값과 같아요(`InverseGamma(a=1e-308, scale=1e-308).entropy()`는 1e+308).
+- **엔트로피.** 감마의 엔트로피(큰 항을 지운 $G(a)$ 묶음)에 $\log s - 2\psi(a)$를 더해요. $E\log\lvert dx/dy\rvert = \log s - 2E\log Y$이기 때문이에요. $a \lt 2^{-1000}$이면 닫힌 꼴 $1/a + \log(s/a) + 1 + \gamma$예요. $\log\Gamma(a) = -\log a - \gamma a + O(a^2)$, $\psi(a) = -1/a - \gamma + O(a)$를 $a + \log(s\,\Gamma(a)) - (1 + a)\psi(a)$에 넣으면 버린 항이 $O(a)$뿐이에요. 값은 double로 $1/a$와 거의 같고, $1/a$가 double을 넘으면 inf예요. 서브노멀 $a$에서는 $\Gamma(a)$와 $\psi(a)$가 넘쳐 감마의 묶음을 쓸 수 없어서 이 닫힌 꼴을 따로 둬요. 값은 Arb 참값과 같아요(`InverseGamma(a=1e-308, scale=1e-308).entropy()`는 1e+308).
 - **역함수.** $X$의 아래꼬리는 $Y$의 위꼬리예요. 감마의 역함수로 $y$를 구하고 $x = s/y$예요. $y$가 $[2^{-1000}, 2^{1000}]$ 밖이면(0이나 inf로 넘쳤을 수도 있어요) 척도를 감마 역함수의 척도 인자로 접어 넣어서 다시 풀어요. 먼저 $1/s$를 넣어 $w = y/s$를 받으면 $x = 1/w$이고, 그것도 범위 밖이면 2의 거듭제곱을 넣어요. 작은 $a$의 위꼬리 근은 감마가 $\log y$를 닫힌 꼴로 만들고 척도 인자를 지수에 더하므로([작은 모양의 위꼬리 근](/internals/stats/continuous/#감마-작은-모양의-위꼬리-근)), $y$가 가장 작은 서브노멀보다 작아도 $w = y/s$가 double 안이면 근이 나와요.
-- **double 밖의 근.** 그래도 근을 놓지 못하는 곳이 있어요. 서브노멀 $a$에서는 $Y$의 질량이 $e^{-1/a}$ 근처, 곧 double보다 한참 아래에 몰려서 감마의 근이 모든 배율 밖이에요. $s \lt 2^{-900}$이면 $y$가 $2^{-2000}$ 아래여도 $x = s/y$가 double 너머인지 알 수 없어요. 그러면 두 끝을 봐요(`past_the_ends`). 가장 큰 double에서도 $X$의 아래꼬리가 목표에 못 미치면 근은 그 너머라 inf, 가장 작은 양수에서 이미 넘으면 0이에요. 위꼬리 목표는 방향이 반대예요. 인자 자체가 NaN이거나 목표가 $[0, 1]$ 밖이면 NaN 그대로예요. `median`도 `icdf(0.5)`라 같은 규칙을 따르고, `F(dfn=inf, dfd)`의 작은 `dfd`도 이 극한이라 값을 내요.
+- **double 밖의 근.** 그래도 근의 자리를 정하지 못하는 곳이 있어요. 서브노멀 $a$에서는 $Y$의 질량이 $e^{-1/a}$ 근처, 곧 double보다 한참 아래에 몰려서 감마의 근이 모든 배율 밖이에요. $s \lt 2^{-900}$이면 $y$가 $2^{-2000}$ 아래여도 $x = s/y$가 double 너머인지 알 수 없어요. 그러면 두 끝을 봐요(`past_the_ends`). 가장 큰 double에서도 $X$의 아래꼬리가 목표에 못 미치면 근은 그 너머라 inf, 가장 작은 양수에서 이미 넘으면 0이에요. 위꼬리 목표는 방향이 반대예요. 인자 자체가 NaN이거나 목표가 $[0, 1]$ 밖이면 NaN 그대로예요. `median`도 `icdf(0.5)`라 같은 규칙을 따르고, `F(dfn=inf, dfd)`의 작은 `dfd`도 이 극한이라 값을 내요.
 
 ```cpp
 // csrc/stats/dist/lifetime.hpp, InverseGamma (발췌)
@@ -276,7 +276,7 @@ $P(\tfrac12, y) = \operatorname{erf}(\sqrt y) = 10^{-300}$이라 $y = \pi\cdot10
 
 $nc = 0$이면 모든 메서드가 중심 분포(`ChiSquared`, `StudentT`, `F`)의 함수를 그대로 불러서 결과가 비트까지 같아요. 분포 함수와 역함수, 밀도, 모멘트, 중앙값, 최빈값, 엔트로피, 그리고 같은 `rng` 상태에서 뽑은 표본까지예요. 메서드마다 맨 앞이 이 분기예요(자유도 경계 검사가 있으면 그 바로 뒤, 아래 [아주 작은 자유도](#아주-작은-자유도)).
 
-비중심 식에 $nc = 0$을 넣어도 같은 분포이지만, 식이 달라서 마지막 비트가 달라요. 비중심 F의 분산은 두 인자의 곱을 펼친 합(아래 "비중심 모멘트")이라 $nc = 10^{-300}$에서 1.7072310405643738이고, 중심 F의 닫힌 꼴은 1.707231040564374예요. 중앙값도 중심 F는 잰 모양 범위($10^{-3}$–$10^5$)에서 special의 `fdtri`를 쓰고, 비중심 F는 `icdf(0.5)`를 풀어요. 그래서 모멘트와 중앙값에도 분기를 따로 둬요.
+비중심 식에 $nc = 0$을 넣어도 같은 분포이지만, 식이 달라서 마지막 비트가 달라요. 비중심 F의 분산은 두 인자의 곱을 펼친 합(아래 "비중심 모멘트")이라 $nc = 10^{-300}$에서 1.7072310405643738이고, 중심 F의 닫힌 꼴은 1.707231040564374예요. 중앙값도 중심 F는 잰 모양 범위($10^{-3}$–$10^5$)에서 special의 `fdtri`을 쓰고, 비중심 F는 `icdf(0.5)`를 풀어요. 그래서 모멘트와 중앙값에도 분기를 따로 둬요.
 
 ```cpp
 // csrc/stats/dist/noncentral.hpp, NoncentralF (발췌)
@@ -300,7 +300,7 @@ static double median(double dfn, double dfd, double nc) {
 }
 ```
 
-표본은 비중심 카이제곱과 F가 nc = 0에서 중심 분포의 표본기를 불러요. 비중심 t의 표본 $(Z + \text{nc})R$은 nc = 0에서 t의 표본과 같은 비트예요([표본 뽑기](/internals/stats/sampling/#감마로-만드는-분포)).
+표본은 nc = 0일 때 비중심 카이제곱과 F가 중심 분포의 표본기를 불러요. 비중심 t의 표본 $(Z + \text{nc})R$은 nc = 0에서 t의 표본과 같은 비트예요([표본 뽑기](/internals/stats/sampling/#감마로-만드는-분포)).
 
 ```python
 >>> sd.stats.NoncentralChiSquared(df=3.0, nc=0.0).cdf(2.0) == sd.stats.ChiSquared(df=3.0).cdf(2.0)
@@ -328,7 +328,7 @@ static double pdf(double x, double dfn, double dfd, double nc) {
     ...
 ```
 
-경계 위는 값이에요. `NoncentralT(df=1e-300, nc=1)`의 중앙값 inf는 맞는 값이에요. $T = (Z + \delta)R$에서 $R = \sqrt{\nu/V}$는 $\nu \to 0$에서 무한대로 가므로, $T$의 부호는 $Z + \delta$의 부호이고 크기는 무한대예요. $P(Z + 1 \lt 0) = 0.1587$이라 질량의 절반 넘게가 $+\infty$ 쪽에 있어요.
+경계 위에서는 값을 내요. `NoncentralT(df=1e-300, nc=1)`의 중앙값 inf는 맞는 값이에요. $T = (Z + \delta)R$에서 $R = \sqrt{\nu/V}$는 $\nu \to 0$에서 무한대로 가므로, $T$의 부호는 $Z + \delta$의 부호이고 크기는 무한대예요. $P(Z + 1 \lt 0) = 0.1587$이라 질량의 절반 넘게가 $+\infty$ 쪽에 있어요.
 
 비중심 카이제곱은 일부러 둔 예외예요. nc > 0이면 df가 이 경계 아래여도 값을 내요. 분포가 포아송 혼합 $\sum_j P(N = j)\,\chi^2_{\text{df} + 2j}$이고, $j \ge 1$의 항은 자유도가 $2j$ 근처인 보통 카이제곱이에요. $j = 0$ 항만 퇴화해요. 모양이 서브노멀인 감마라서 질량이 0에 붙어 있어요. 거의 전부가 가장 작은 양의 double보다도 0에 가까워요. 그래서 이 영역은 df = 0의 극한 분포로 계산해요. 0에 질량 $e^{-nc/2}$가 놓이고, 나머지는 $\chi^2_{2j}$($j \ge 1$)의 혼합이에요. nc = 0이면 중심 카이제곱 그 자체라 `ChiSquared`처럼 NaN이에요.
 
@@ -346,7 +346,7 @@ inf
 nan
 ```
 
-`atom`이 이 영역을 알아봐요. 꼬리는 x < 0, x = 0, x > 0의 세 갈래예요. x = 0에서는 질량 그 자체($e^{-nc/2}$, 위꼬리는 `-expm1`로 $1 - e^{-nc/2}$)를 내고, x > 0에서는 special의 `chndtr`·`chndtrc`를 df = 0으로 불러요. special은 df = 0을 0에 $e^{-nc/2}$가 몰린 분포로 받아요([분포 함수](/internals/special/distributions/)).
+`atom`이 이 영역을 알아봐요. 꼬리는 x < 0, x = 0, x > 0의 세 갈래예요. x = 0에서는 질량 그 자체($e^{-nc/2}$, 위꼬리는 `-expm1`로 $1 - e^{-nc/2}$)를 내고, x > 0에서는 special의 `chndtr`·`chndtrc`을 df = 0으로 불러요. special은 df = 0을 0에 $e^{-nc/2}$가 몰린 분포로 받아요([분포 함수](/internals/special/distributions/)).
 
 ```cpp
 // csrc/stats/dist/noncentral.hpp, NoncentralChiSquared (발췌)
@@ -391,7 +391,7 @@ static double entropy(double df, double nc) {
     ...
 ```
 
-모멘트는 닫힌 꼴(평균 df + nc 등)이라 그대로 값이고, 표본은 질량의 비율만큼 0이에요([표본 뽑기](/internals/stats/sampling/)).
+모멘트는 닫힌 꼴(평균 df + nc 등)이라 그대로 값을 내고, 표본은 질량의 비율만큼 0이에요([표본 뽑기](/internals/stats/sampling/)).
 
 special의 `chndtr(df, nc, x)` 자체는 df > 0인 함수라 점질량을 두지 않아요. x = 0에서는 0이에요. 0 < df < $2^{-1021}$이고 x > 0이면 df = 0의 값을 내요. 버린 $j = 0$ 꼬리가 나머지에 비해 $2^{-110}$ 아래라서예요(nc ≥ $2^{-899}$일 때). 그래서 x > 0에서는 분포와 같은 값이에요.
 
@@ -400,7 +400,7 @@ special의 `chndtr(df, nc, x)` 자체는 df > 0인 함수라 점질량을 두지
 (0.0, True)
 ```
 
-비중심 F는 경계 위의 아주 작은 dfn에서도 cdf 계열이 값이에요. dfn·x/dfd가 $2^{-1000}$ 아래이면 special의 `ncfdtr`가 $j = 0$ 항 $e^{-nc/2}\,\text{fdtr}$만 써요. 다음 항과의 비 $\mu w(a + b)/(a + 1)$($\mu = nc/2$, $a = \text{dfn}/2$, $b = \text{dfd}/2$, $w = \text{dfn}\cdot x/\text{dfd}$)가 $2^{-60}$ 아래인지로 그래도 되는지를 판정해요(위꼬리를 위해 $\mu$ 자리에 $\max(1, \mu)$를 써요). $a$가 아무리 작아도 이 비는 작아지기만 해서, dfn = $2^{-1021}$에서도 값이 나와요.
+비중심 F는 경계 위의 아주 작은 dfn에서도 cdf 계열이 값을 내요. dfn·x/dfd가 $2^{-1000}$ 아래이면 special의 `ncfdtr`이 $j = 0$ 항 $e^{-nc/2}\,\text{fdtr}$만 써요. 다음 항과의 비 $\mu w(a + b)/(a + 1)$($\mu = nc/2$, $a = \text{dfn}/2$, $b = \text{dfd}/2$, $w = \text{dfn}\cdot x/\text{dfd}$)가 $2^{-60}$ 아래인지로 그래도 되는지를 판정해요(위꼬리를 위해 $\mu$ 자리에 $\max(1, \mu)$를 써요). $a$가 아무리 작아도 이 비는 작아지기만 해서, dfn = $2^{-1021}$에서도 값이 나와요.
 
 ```python
 >>> sd.stats.NoncentralF(dfn=2**-1021, dfd=5, nc=2).cdf(1.0)
@@ -451,7 +451,7 @@ inline Scaled or_complement(const Sum& sum, bool upper, bool wide) {
 
 ### 넓은 지수의 꼬리
 
-log 메서드와 역함수는 확률을 double로 받으면 안 돼요. `logccdf`의 값이 $-2000$이면 꼬리는 $e^{-2000}$이라 double로는 0이고, $10^{-310}$ 같은 서브노멀 꼬리는 비트가 몇 개뿐이라 역함수의 $\log(F/\text{목표})$가 거칠어요. 그래서 special의 혼합 합이 반올림하기 전의 값을 $m\cdot2^e$(가수 $\tfrac12 \le \lvert m\rvert \lt 1$, **64비트 정수 지수** $e$)로도 돌려줘요(`chndtr_tail`, `nctdtr_tail`, `ncfdtr_tail`). 이것을 위해 special에 셋이 더 들어가 있어요.
+log 메서드와 역함수는 확률을 double로 받으면 안 돼요. `logccdf`의 값이 $-2000$이면 꼬리는 $e^{-2000}$이라 double로는 0이고, $10^{-310}$ 같은 서브노멀 꼬리는 비트가 몇 개뿐이라 역함수의 $\log(F/\text{목표})$가 거칠어요. 그래서 special의 혼합 합이 반올림하기 전의 값을 $m\cdot2^e$(가수 $\tfrac12 \le \lvert m\rvert \lt 1$, 64비트 정수 지수 $e$)로도 돌려줘요(`chndtr_tail`, `nctdtr_tail`, `ncfdtr_tail`). 이를 위해 special에는 장치가 셋 더 있어요.
 
 - **넓은 exp.** $e^x$를 $2^n e^r$($n$은 int64, $r = x - n\log 2$를 FMA로)로 만들어요(`exp_wide`). $\lvert x\rvert \lt 2^{62}$까지 값이 있어요. 보통의 `exp_scaled`는 $\lvert x\rvert = 10^5$에서 자르므로 이 꼬리에 닿지 않아요.
 - **앞 인자의 넓은 판.** 앞 인자의 지수 $E$가 $9 \times 10^4$를 넘으면 `exp_wide(-E)`로 만들어요(`gamma_prefix_w`, `beta_prefix_w`).
@@ -479,24 +479,24 @@ $$
 
 ### 역함수: 뉴턴, 그다음 브래킷과 Brent
 
-역함수는 두 단계예요.
+역함수는 목표와 출발점을 정한 뒤 두 단계로 풀어요.
 
 <Steps
   steps={[
-    { label: '목표', where: 'target_p, target_log', note: 'p와 1 − p 중 작은 쪽(1 − p는 p ≥ 1/2에서 정확)을 그 쪽의 꼬리에 대해 풀어요. iccdf에서 1 − q를 만들지 않아요. log 목표는 log p > −log 2이면 다른 쪽 −expm1(log p)를, 아니면 e^(log p)를 m·2^e(exp_wide)로 들어요. log p ≤ −2⁶²는 NaN이에요.' },
+    { label: '목표', where: 'target_p, target_log', note: 'p와 1 − p 중 작은 쪽(1 − p는 p ≥ 1/2에서 정확)을 그 쪽의 꼬리에 대해 풀어요. iccdf에서 1 − q를 만들지 않아요. log 목표는 log p > −log 2이면 다른 쪽 −expm1(log p)를, 아니면 e^(log p)를 m·2^e(exp_wide)로 나타내요. log p ≤ −2⁶²는 NaN이에요.' },
     { label: '출발점', where: 'ncx2_start, Patnaik', note: '카이제곱·F는 Patnaik 근사: 평균과 분산을 맞춘 c·카이제곱(k′), c = (k + 2λ)/(k + λ), k′ = (k + λ)/c의 분위수. t는 정규 근사를 t에 대해 푼 값, log 목표는 중심 t의 분위수를 nc만큼 옮긴 값이에요.' },
-    { label: '뉴턴(가운데)', where: 'ncd::newton', note: 'special의 j = 0부터 더하는 합(꼬리)과 밀도로 log(꼬리/p)에 대해 걸어요. 양수 변수는 log x에서요. 두 걸음에서 이차 수렴의 상수 K = d/d_prev²를 재어, 다음 오차 K d² + 2⁻³⁰d가 스케일의 2⁻⁵² 아래면 끝이에요. 12걸음 안에 끝나지 않거나 합이 맡지 못하는 점에 가면 다음 단계로요.' },
+    { label: '뉴턴(가운데)', where: 'ncd::newton', note: 'special의 j = 0부터 더하는 합(꼬리)과 밀도로 log(꼬리/p)에 대해 걸어요. 양수 변수는 log x에서 걸어요. 두 걸음에서 이차 수렴의 상수 K = d/d_prev²를 재어, 다음 오차 K d² + 2⁻³⁰d가 스케일의 2⁻⁵² 아래면 끝이에요. 12걸음 안에 끝나지 않거나 합이 맡지 못하는 점에 가면 다음 단계로 넘어가요.' },
     { label: '브래킷과 Brent', where: 'ncd::invert → nc_detail::solve', note: 'g(x) = log(꼬리(x)/목표)를 m·2^e끼리의 비로 만들어 그 근을 찾아요. 양수 근은 log 눈금, t는 asinh 눈금에서 걸음을 두 배씩 키워 브래킷을 찾고(256걸음), Brent의 zeroin으로 좁혀요(200걸음).' },
   ]}
 />
 
-$g$를 m·2^e의 비로 만드는 것이 핵심이에요. 목표가 $e^{-5000}$이어도 0.3과 똑같이 풀리고, $\log F - \log\text{목표}$처럼 큰 두 log의 차로 자릿수를 잃지 않아요. 넓은 합이 어떤 점의 꼬리를 주지 못하면(합을 끝내지 못해 NaN, 또는 $m\cdot2^e$ 아래라 0), 목표가 $2^{-2800}$ 위이고 그 꼬리가 $e^{-2000}$ 아래로 확인될 때만 "목표 아래"로 보고 계속해요. 근의 어느 쪽인지만 알면 되기 때문이에요. 그 밖은 NaN이고 풀이가 거기서 멈춰요. 브래킷과 zeroin 자체는 special의 역함수와 같은 함수예요([분포 함수](/internals/special/distributions/)).
+$g$를 m·2^e의 비로 만들기 때문에, 목표가 $e^{-5000}$이어도 0.3과 똑같이 풀리고 $\log F - \log\text{목표}$처럼 큰 두 log의 차로 자릿수를 잃지 않아요. 넓은 합이 어떤 점의 꼬리를 주지 못하면(합을 끝내지 못해 NaN, 또는 $m\cdot2^e$ 아래라 0), 목표가 $2^{-2800}$ 위이고 그 꼬리가 $e^{-2000}$ 아래로 확인될 때만 "목표 아래"로 보고 계속해요. 근의 어느 쪽인지만 알면 되기 때문이에요. 그 밖은 NaN이고 풀이가 거기서 멈춰요. 브래킷과 zeroin 자체는 special의 역함수와 같은 함수예요([분포 함수](/internals/special/distributions/)).
 
 ## 비중심 카이제곱·F의 밀도: 포아송 혼합
 
 ### 양의 항의 혼합
 
-비중심 카이제곱의 밀도는 자유도가 $df + 2j$인 카이제곱 밀도를 포아송 무게로 섞은 것이에요.
+비중심 카이제곱의 밀도는 자유도가 $df + 2j$인 카이제곱 밀도를 포아송 무게로 섞은 값이에요.
 
 $$
 f(x) = \sum_{j \ge 0}\frac{\mu^j e^{-\mu}}{j!}\,\chi^2(x;\,df + 2j), \qquad \mu = \frac{nc}{2}
@@ -506,7 +506,7 @@ F는 같은 무게로 베타 밀도 $\text{beta}(w;\,d_1/2 + j,\,d_2/2)\,dw/dx$�
 
 ### 가장 큰 항에서 바깥으로
 
-`ncd::log_series`는 항의 **log**(double-double, 비싸요)와 이웃 항의 **비**(double, 싸요)를 받아 합의 log를 내요.
+`ncd::log_series`는 항의 log(double-double, 비싸요)와 이웃 항의 비(double, 싸요)를 받아 합의 log를 내요.
 
 1. **정점 찾기.** 비가 1이 되는 곳이 정점이에요. 카이제곱의 비는 $t_{j+1}/t_j = \mu y/((j + 1)(a + j))$($a = df/2$, $y = x/2$)라서 $(j + 1)(j + a) = \mu y$의 이차방정식 근에서 시작해, 비를 보며 위아래로 64걸음까지 맞춰요. F는 $(j + 1)(j + a_0) = \mu w(j + a_0 + b)$예요.
 2. **바깥으로 더하기.** 정점의 항을 1로 두고 위로, 아래로 비를 곱하며 더해요. 8항마다 그 항의 log를 직접 계산해 비의 곱을 다시 맞춰요. 비를 32항 곱하면 반올림이 $10^{-14}$까지 쌓이기 때문이에요. 합은 보상 합(Kahan)이에요.
@@ -515,7 +515,7 @@ F는 같은 무게로 베타 밀도 $\text{beta}(w;\,d_1/2 + j,\,d_2/2)\,dw/dx$�
 
 항의 log는 카이제곱이면 포아송 무게의 log(모양 $j + 1$인 감마 밀도로 계산)와 감마 밀도의 log $\log g(y;\,a + j) - \log 2$예요. 모양 $a + j$는 TwoSum의 double-double이에요. 모양을 반올림하면 밀도가 $s\varepsilon\lvert\log y - \psi(s)\rvert$만큼 움직이고, $df \approx 7 \times 10^3$의 카이제곱 밀도에서 $2.4 \times 10^{-13}$이 틀리기 때문이에요. 그래서 $s_{hi}$에서 계산하고 $s_{lo}(\log y - \psi(s_{hi}))$로 1차 보정해요. F도 같은 보정을 해요($\partial\log/\partial a = \log w - \psi(a) + \psi(a + b)$).
 
-$x \lt 2^{-1020}$이면 $x/2$와 $d_1x$가 서브노멀에서 반올림돼(밀도가 $10^{-5}$까지 틀려요) 항을 $\log y = \log x - \log 2$에서 바로 만들어요: $(s - 1)\log y - y - \log\Gamma(s)$. 항의 번호 $j$는 double이므로 정점이 $2^{52}$ 이상이면($j + 1$이 정확하지 않아요) 더하지 않고 NaN이에요. 정점이 $2^{24}$ 위이고 $2^{16}$항 뒤의 항이 아직 $2^{-43}$ 위이면 종이 너무 넓은 것이라 더하기 전에 NaN이에요.
+$x \lt 2^{-1020}$이면 $x/2$와 $d_1x$가 서브노멀에서 반올림돼(밀도가 $10^{-5}$까지 틀려요) 항 $(s - 1)\log y - y - \log\Gamma(s)$를 $\log y = \log x - \log 2$에서 바로 만들어요. 항의 번호 $j$는 double이므로 정점이 $2^{52}$ 이상이면($j + 1$이 정확하지 않아요) 더하지 않고 NaN이에요. 정점이 $2^{24}$ 위이고 $2^{16}$항 뒤의 항이 아직 $2^{-43}$ 위이면 종이 너무 넓다는 뜻이라 더하기 전에 NaN이에요.
 
 ### 가운데: j = 0부터
 
@@ -542,7 +542,7 @@ $$
 \log f = -\tfrac32\log 2 - \tfrac12\log\pi + \frac{m - 1}{4}\log x - \frac{m + 1}{4}\log nc - \frac{(\sqrt x - \sqrt{nc})^2}{2} + \log H_m(z)
 $$
 
-로 모두 double-double이에요. $(\sqrt x - \sqrt{nc})^2$에서 두 제곱근은 각자 FMA로 나머지를 꺼낸 double-double이라, $x$가 $nc$ 근처여서 차가 작아도 비트가 남아요. 쓰는 곳은 $z \ge 2^{18}$이고 $(\lvert m\rvert + 2)^2 + 1 \le 16z$일 때예요. 그곳에서 항은 $2^k/k!$ 아래로 줄어 $k = 36$이면 합의 $2^{-90}$ 아래이고(상한은 72항), 남은 꼬리는 Olver의 상한(DLMF 10.40(iii))으로 첫 버린 항의 $10^4$배 안이에요. Arb 참값과 견준 오차는 $4.6 \times 10^{-16}$이었어요. 최빈값이 쓰는 $E[j]$도 $\tfrac{z}{2}I_{\nu+1}(z)/I_\nu(z)$로 같은 전개에서 나와요.
+로 모두 double-double이에요. $(\sqrt x - \sqrt{nc})^2$에서 두 제곱근은 각자 FMA로 나머지를 꺼낸 double-double이라, $x$가 $nc$ 근처여서 차가 작아도 비트가 남아요. 쓰는 곳은 $z \ge 2^{18}$이고 $(\lvert m\rvert + 2)^2 + 1 \le 16z$일 때예요. 그곳에서 항은 $2^k/k!$ 아래로 줄어 $k = 36$이면 합의 $2^{-90}$ 아래이고(상한은 72항), 남은 꼬리는 Olver의 상한(DLMF 10.40(iii))으로 첫 버린 항의 $10^4$배 안이에요. Arb 참값과 견준 최대 오차는 $4.6 \times 10^{-16}$이에요. 최빈값이 쓰는 $E[j]$도 $\tfrac{z}{2}I_{\nu+1}(z)/I_\nu(z)$로 같은 전개에서 나와요.
 
 ```python
 >>> sd.stats.NoncentralChiSquared(df=4.0, nc=1e12).pdf(1.0000001e12)
@@ -594,7 +594,7 @@ $$
   />
 </Fig>
 
-그래서 정의를 급수가 아니라 **적분**으로 둬요. $S = \sqrt{V/\nu}$($V \sim \chi^2_\nu$)이면 $T = (Z + \delta)/S$이고, $T$의 밀도는
+그래서 정의를 급수가 아니라 적분으로 둬요. $S = \sqrt{V/\nu}$($V \sim \chi^2_\nu$)이면 $T = (Z + \delta)/S$이고, $T$의 밀도는
 
 $$
 f(t) = E\big[S\,\varphi(tS - \delta)\big] = \int_0^\infty s\,\varphi(ts - \delta)\,f_S(s)\,ds
@@ -629,7 +629,7 @@ $$
 
 ### 가운데: 두 가족을 지켜보며 더하기
 
-적분은 마디 수십–수백 개라 비싸요. 그래서 급수가 상쇄하지 않거나 조금만 상쇄하는 곳에서는 급수를 먼저 써요(`log_density_bulk`). 짝수·홀수 가족을 $q = u^2/4$의 초기하 급수 $E$, $O$로 더하고 $f = t_\nu(t)e^{-\mu}(E + \operatorname{sign}(\delta t)\,G\lvert u\rvert O)$, $G = \Gamma(c + \tfrac12)/\Gamma(c)$예요. $\delta$와 같은 쪽은 그대로 쓰고, 반대쪽은 $(E + P)/(E - P) \le 2^9$($P = G\lvert u\rvert O$)일 때만 써요. $E$, $O$, $\lvert u\rvert$는 "double + 오차" 산술이고(반대쪽은 자르기를 $2^{-12}$ 더 낮춰요) $G$는 $3 \times 10^{-19}$까지 맞으므로, $2^9$배 상쇄해도 $1.5 \times 10^{-16}$이 남아요. 그 밖(상쇄가 크거나 가장 큰 항의 번호가 250을 넘는 곳, $t = 0$, 먼 꼬리)은 적분이에요.
+적분은 마디 수십–수백 개라 비싸요. 그래서 급수가 상쇄하지 않거나 조금만 상쇄하는 곳에서는 급수를 먼저 써요(`log_density_bulk`). 짝수·홀수 가족을 $q = u^2/4$의 초기하 급수 $E$, $O$로 더하고 $f = t_\nu(t)e^{-\mu}(E + \operatorname{sign}(\delta t)\,G\lvert u\rvert O)$, $G = \Gamma(c + \tfrac12)/\Gamma(c)$예요. $\delta$와 같은 쪽은 그대로 쓰고, 반대쪽은 $(E + P)/(E - P) \le 2^9$($P = G\lvert u\rvert O$)일 때만 써요. $E$, $O$, $\lvert u\rvert$는 "double + 오차" 산술이고(반대쪽은 자르기를 $2^{-12}$ 더 낮춰요) $G$는 $3 \times 10^{-19}$까지 맞으므로, $2^9$배 상쇄해도 $1.5 \times 10^{-16}$이 남아요. 그 밖(상쇄가 크거나 가장 큰 항의 번호가 250을 넘는 곳, $t = 0$, 먼 꼬리)은 적분으로 계산해요.
 
 ### 최빈값: 같은 격자에서 E[z] = 0
 
@@ -652,7 +652,7 @@ $$
 F - ab = b\tilde A + a\tilde B + \tilde A\tilde B
 $$
 
-이고, 이것의 $k$제곱을 $\tilde A^i\tilde B^j$로 펼쳐 독립성으로 $E[\tilde A^i]E[\tilde B^j]$를 곱해 더해요(`product_central`). $a, b > 0$이고 두 인자의 홀수 중심 모멘트가 양수라 **모든 항이 양수**예요.
+이고, 이것의 $k$제곱을 $\tilde A^i\tilde B^j$로 펼쳐 독립성으로 $E[\tilde A^i]E[\tilde B^j]$를 곱해 더해요(`product_central`). $a, b > 0$이고 두 인자의 홀수 중심 모멘트가 양수라 모든 항이 양수예요.
 
 초과 첨도 $m_4/m_2^2 - 3$은 첨도가 0에 가까우면 크기 1인 두 수의 차가 되어 상쇄해요. 그래서 초과분 $m_4 - 3m_2^2$를 두 인자의 큐뮬런트로 다시 펼쳐요. 17개 항이 모두 양수예요($X$는 비중심 카이제곱의 배수, $Y$는 역감마의 배수라 큐뮬런트가 모두 양수예요).
 
@@ -685,7 +685,7 @@ $$
 L_1 = \log E[R], \qquad D_k = \log E[R^k] - k\,L_1 = O(1/x)
 $$
 
-$\log\Gamma(x + a) - \log\Gamma(x) - a\log x$의 점근 급수는 베르누이 다항식으로 $\sum_{n \ge 1}(-1)^{n+1}(B_{n+1}(a) - B_{n+1}(0))/(n(n+1)x^n)$이에요. 여기서 $D_k$를 만들면 $\log x$의 선형 항이 **정확히** 지워져요. 계수는 유리수로 정확히 계산해 double-double로 둔 60개예요(`coeffs/nct_moments.hpp`, `tools/gen_nct_moments.py`). $x \ge 32$에서 이 급수를 써요. 그 아래로 내리면 계수가 항의 $x^{-n}$보다 빨리 커져서 $x = 8.6$에서 자르기 오차가 $2 \times 10^{-13}$이었고, $x = 32$에서는 $10^{-19}$ 아래예요. 그 아래는 double-double $\log\Gamma$의 차예요(작은 $x$에서는 상쇄가 크지 않아요). 중심 모멘트는 베이불처럼 $E_k = e^{D_k} - 1$의 double-double 조합이에요.
+$\log\Gamma(x + a) - \log\Gamma(x) - a\log x$의 점근 급수는 베르누이 다항식으로 $\sum_{n \ge 1}(-1)^{n+1}(B_{n+1}(a) - B_{n+1}(0))/(n(n+1)x^n)$이에요. 여기서 $D_k$를 만들면 $\log x$의 선형 항이 정확히 지워져요. 계수는 유리수로 정확히 계산해 double-double로 둔 60개예요(`coeffs/nct_moments.hpp`, `tools/gen_nct_moments.py`). $x \ge 32$에서 이 급수를 써요. 그 아래로 내리면 계수가 항의 $x^{-n}$보다 빨리 커져서 $x = 8.6$에서 자르기 오차가 $2 \times 10^{-13}$이고, $x = 32$에서는 $10^{-19}$ 아래예요. 그 아래는 double-double $\log\Gamma$의 차예요(작은 $x$에서는 상쇄가 크지 않아요). 중심 모멘트는 베이불처럼 $E_k = e^{D_k} - 1$의 double-double 조합이에요.
 
 $y_3$과 $\kappa_4$는 $E_k$의 차라서 자기 값의 $2^{-104}\nu$, $2^{-104}\nu^2$만 남고, 왜도와 첨도에서 각각 $\delta^2/\nu$, $\delta^4/\nu^2$의 무게를 가져요. 그래서 $\min(\nu, \delta^2) \gt 10^{17}$(왜도), $\min(\nu^2, \delta^4) \gt 10^{17}$(첨도)이면 $10^{-15}$를 지킬 수 없어 NaN이고, $\lvert\delta\rvert \gt 10^{75}$도 거듭제곱이 넘쳐 NaN이에요.
 
@@ -702,10 +702,10 @@ Arb로 $E[(Z + \delta)^k]E[R^k]$에서 직접 만든 참값과의 차는 0과 $3
 
 ## 엔트로피: 적응 구적
 
-비중심 셋의 엔트로피 $-\int f\log f$는 닫힌 꼴이 없어요. 사다리꼴 규칙으로 적분하고, 간격을 반으로 줄여 가며 두 추정이 맞을 때 멈춰요(`ncd::entropy`). 이 메서드의 계약은 **보장하지 않는 느슨한 계약**이에요.
+비중심 셋의 엔트로피 $-\int f\log f$는 닫힌 꼴이 없어요. 사다리꼴 규칙으로 적분하고, 간격을 반으로 줄여 가며 두 추정이 맞을 때 멈춰요(`ncd::entropy`). 이 메서드의 정확도는 계약으로 보장하지 않아요.
 
 - **변수.** 카이제곱·F는 $x = m e^u$($m$은 평균 정도, $dx = me^u\,du$), t는 $t = \text{최빈값} + s\sinh u$($s$는 표준편차, $\nu \le 2$면 $1 + \lvert\delta\rvert$)예요. 거듭제곱 꼬리가 $u$에서 기하급수가 돼요.
-- **한 번 훑기.** $u = 0$에서 양쪽으로 나가며 $-f\log f\,dx/du$를 더해요. 값이 그쪽 최댓값의 $10^{-22}$ 아래로 떨어지면(16마디 이후) 멈춰요. double 범위 끝($x = 0$이나 inf)에 닿으면, 마지막 마디와 31마디 앞에서 잰 감소율로 잘린 꼬리를 어림해 합의 $2^{-40}$ 아래일 때만 받아들여요. 아니면 적분이 $x$의 범위에 들어가지 않는 것이라(F의 $d_2$가 0.08 아래 등) NaN이에요.
+- **한 번 훑기.** $u = 0$에서 양쪽으로 나가며 $-f\log f\,dx/du$를 더해요. 값이 그쪽 최댓값의 $10^{-22}$ 아래로 떨어지면(16마디 이후) 멈춰요. double 범위 끝($x = 0$이나 inf)에 닿으면, 마지막 마디와 31마디 앞에서 잰 감소율로 잘린 꼬리를 어림해 합의 $2^{-40}$ 아래일 때만 받아들여요. 아니면 적분 구간이 double로 나타낼 수 있는 $x$ 범위에 다 들어가지 않는다는 뜻이라(F의 $d_2$가 0.08 아래 등) NaN이에요.
 - **반으로 줄이기.** 간격 $h = \tfrac12$의 격자에서 시작해 중점만 새로 더하며 $h$를 반으로 줄여요. 두 추정이 $2^{-50}$ 안에서 맞으면 끝이에요. 사다리꼴의 오차는 해석적인 피적분 함수에서 반으로 줄일 때마다 제곱으로 줄므로, 12번 안에 $2^{-50}$에 못 닿아도 마지막 두 추정이 $2^{-26}$ 안이면 받아들여요(반올림만이 둘을 떼어 놓는 경우예요).
 - **일의 상한.** 마디 하나에 16 단위와 그 밀도가 쓴 일(급수 한 항에 2, 적분 한 마디에 1)을 세어 $2^{25}$ 단위를 넘으면 NaN이에요. 그래서 밀도가 얼마나 비싸든 끝나는 시간이 정해져요.
 
@@ -733,9 +733,9 @@ Arb로 $E[(Z + \delta)^k]E[R^k]$에서 직접 만든 참값과의 차는 0과 $3
 nan
 ```
 
-엔트로피는 영역 안에서도 NaN일 수 있어요. 질량이 double 범위 밖에 남는 아주 작은 자유도(F의 $d_2 = 0.01$, 카이제곱 $df = 0.01$에 $nc \le 30$ 등)와, 반분 12번에 수렴하지 않는 큰 $nc$(카이제곱 $df = 3.5$에서 약 $7 \times 10^7$부터)예요.
+엔트로피는 영역 안에서도 NaN일 수 있어요. 질량이 double 범위 밖에 남는 아주 작은 자유도(F의 $d_2 = 0.01$, 카이제곱 $df = 0.01$에 $nc \le 30$ 등)와, 반분 12번에 수렴하지 않는 큰 $nc$(카이제곱 $df = 3.5$에서 약 $7 \times 10^7$부터)에서예요.
 
-정확도는 Arb 참값 60만 점과 대조해 재요. 보장 영역 안 최대가 계약 단위로 $4.7 \times 10^{-15}$(`NoncentralT.kurtosis`), 밖도 $1.2 \times 10^{-15}$ 안이고, 같은 점에서 scipy 1.18.1은 `NoncentralF.cdf`가 상대오차 $2.3 \times 10^{95}$, `NoncentralT.cdf`·`GEV.ccdf`·`Pareto.logcdf`가 inf예요(`bench/stats/t6/accuracy.md`, [정확도와 성능](/internals/stats/accuracy-performance/)).
+정확도는 Arb 참값 60만 점과 대조해 재요. 보장 영역 안 최대가 계약 단위로 $4.7 \times 10^{-15}$(`NoncentralT.kurtosis`), 영역 밖도 $1.2 \times 10^{-15}$ 안이고, 같은 점에서 scipy 1.18.1은 `NoncentralF.cdf`가 상대오차 $2.3 \times 10^{95}$, `NoncentralT.cdf`·`GEV.ccdf`·`Pareto.logcdf`가 inf예요(`bench/stats/t6/accuracy.md`, [정확도와 성능](/internals/stats/accuracy-performance/)).
 
 ## 참고 문헌
 

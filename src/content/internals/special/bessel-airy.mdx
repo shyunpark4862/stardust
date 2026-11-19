@@ -14,7 +14,7 @@ import Steps from '../../../components/fig/Steps.astro';
 
 Bessel 함수는 원통이나 원형 막처럼 둥근 대칭이 있는 곳에서 파동·열·확산 방정식을 풀면 나오는 함수예요. 북의 가죽이 떨리는 모양, 원형 도파관 속 전자기파, 원통 속 열의 퍼짐이 모두 Bessel 함수로 적혀요. Airy 함수는 "빛이 꺾이는 경계"의 함수예요. 무지개의 가장자리, 양자역학에서 입자가 고전적으로 갈 수 없는 영역으로 스며드는 모양이 Airy 함수예요. 둘은 친척이라 Airy 함수는 $\tfrac13$, $\tfrac23$차 Bessel 함수로 바로 적혀요.
 
-이 글이 다루는 함수와 계산 방법을 먼저 한 표로 보여 드릴게요. 자세한 이유는 아래 절마다 나와요.
+이 글이 다루는 함수와 계산 방법을 한 표로 모았어요. 그렇게 고른 이유는 절마다 설명해요.
 
 | 함수 | 구간 | 방법 | 계수·코드의 출처 | 코드 |
 |---|---|---|---|---|
@@ -83,7 +83,7 @@ $$
 
 정확도는 보통 **상대오차** $\lvert \hat f - f\rvert / \lvert f\rvert$나 **ULP**로 재요. ULP(unit in the last place)는 그 값 근처에서 float64 두 수 사이의 간격이에요. 1 근처의 간격이 $2^{-52} \approx 2.2 \times 10^{-16}$이고, 값이 두 배가 되면 간격도 두 배가 돼요. "오차가 3 ULP"는 "참값에서 이웃한 float64 세 칸 안"이라는 뜻이에요. 영역 전체의 정확도 목표는 상대오차 $10^{-14}$, ULP로 약 45예요(자세한 것은 [특수함수 영역의 구조](/internals/special/overview/)).
 
-그런데 $J_0$의 영점 $x \approx 2.4048$ 바로 옆에서는 참값이 $10^{-17}$일 수도 있어요. 그 점에서 상대오차를 지키려면 입력의 반올림 $2^{-53}x$가 값을 $J_0'(x) \cdot 2^{-53} x \approx 10^{-16}$만큼 움직이는 것보다 훨씬 작은 오차로 계산해야 해요. 입력 자체가 담고 있지 않은 정밀도를 요구하는 셈이에요. 이것을 **조건수**로 말하면, 영점 근처에서 $\lvert x f'(x)/f(x)\rvert$가 무한대로 가요.
+그런데 $J_0$의 영점 $x \approx 2.4048$ 바로 옆에서는 참값이 $10^{-17}$일 수도 있어요. 그 점에서 상대오차를 지키려면 입력의 반올림 $2^{-53}x$가 값을 $J_0'(x) \cdot 2^{-53} x \approx 10^{-16}$만큼 움직이는 것보다 훨씬 작은 오차로 계산해야 해요. 입력 자체가 담고 있지 않은 정밀도를 요구하는 셈이에요. **조건수**로 말하면, 영점 근처에서 $\lvert x f'(x)/f(x)\rvert$가 무한대로 가요.
 
 그래서 진동 함수(`j0 j1 y0 y1`, `jv yv jve yve`, $x < 0$의 `airy`)는 영점이 시작되는 곳부터 **포락선 기준**을 써요.
 
@@ -107,7 +107,7 @@ $$
 J_0(x) = (z - j_{0,1}^2)(z - j_{0,2}^2) \cdot \frac{P(z)}{Q(z)}, \qquad z = x^2
 $$
 
-$P/Q$는 3차/8차 유리식이에요(분모의 최고차 계수 1은 저장하지 않는 Cephes `p1evl` 꼴). 이 꼴의 장점은 영점이 **식의 모양**에 박혀 있다는 거예요. $x$가 $j_{0,1}$에 가까우면 $z - j_{0,1}^2$가 작아지는데, $z$와 $j_{0,1}^2$가 둘 다 정확한 float64라서 이 빼기는 거의 정확해요(두 수가 두 배 안으로 가까우면 빼기가 정확하다는 Sterbenz 보조정리). 남은 유리식 $P/Q$는 영점 근처에서 0이 아닌 보통 값이라 상대 정확도가 그대로 남아요. $x < 10^{-5}$이면 $1 - z/4$로 끝내요(Taylor 두 항, 다음 항 $z^2/64$가 $2^{-53}$보다 작아요).
+$P/Q$는 3차/8차 유리식이에요(분모의 최고차 계수 1은 저장하지 않는 Cephes `p1evl` 꼴). 이 꼴에서는 영점이 **식의 모양**에 박혀 있어요. $x$가 $j_{0,1}$에 가까우면 $z - j_{0,1}^2$가 작아지는데, $z$와 $j_{0,1}^2$가 둘 다 정확한 float64라서 이 빼기는 거의 정확해요(두 수가 두 배 안으로 가까우면 빼기가 정확하다는 Sterbenz 보조정리). 남은 유리식 $P/Q$는 영점 근처에서 0이 아닌 보통 값이라 상대 정확도가 그대로 남아요. $x < 10^{-5}$이면 $1 - z/4$로 끝내요(Taylor 두 항, 다음 항 $z^2/64$가 $2^{-53}$보다 작아요).
 
 $J_1$은 홀함수라 $x \cdot (z - j_{1,1}^2)(z - j_{1,2}^2) \cdot P(z)/Q(z)$이고, $j_{1,1} \approx 3.8317$, $j_{1,2} \approx 7.0156$이에요.
 
@@ -156,7 +156,7 @@ $P \approx 1$, $Q \approx 0$인 진폭 함수가 천천히 변하고, 빠른 진
   />
 </Fig>
 
-$x = 5$에서는 점근급수만으로 다섯 자리밖에 얻지 못해요. 그래서 Cephes는 급수를 더하지 않고 **진폭 함수 $P_0$, $Q_0$ 자체를 유리식으로 근사**해요. $w = 5/x$, $z = w^2$로 두고 $P_0 \approx PP(z)/PQ(z)$(6차/6차), $x Q_0 / 5 \approx QP(z)/QQ(z)$(7차/7차)예요. $w \in (0, 1)$에서 맞춘 식이라 $x = 5$부터 무한대까지 한 식이 덮어요. 이런 계수는 **minimax** 근사로 만들어요. 구간 전체에서 최대 오차를 가장 작게 하는 근사이고, Remez 교대 정리에 따라 오차 곡선이 같은 크기로 번갈아 오르내릴 때 최적이에요([공통 수치 기법](/internals/special/techniques/)).
+$x = 5$에서는 점근급수만으로 다섯 자리밖에 얻지 못해요. 그래서 Cephes는 급수를 더하지 않고 **진폭 함수 $P_0$, $Q_0$ 자체를 유리식으로 근사**해요. $w = 5/x$, $z = w^2$로 두고 $P_0 \approx PP(z)/PQ(z)$(6차/6차), $x Q_0 / 5 \approx QP(z)/QQ(z)$(7차/7차)예요. $w \in (0, 1)$에서 맞춘 식이라 $x = 5$부터 무한대까지 한 식이 덮어요. 이런 계수는 **minimax** 근사로 만들어요. 구간 전체에서 최대 오차를 가장 작게 하는 근사이고, Chebyshev의 교대 정리에 따라 오차 곡선이 같은 크기로 번갈아 오르내릴 때 최적이에요([공통 수치 기법](/internals/special/techniques/)).
 
 ### 위상을 반올림하지 않기
 
@@ -204,7 +204,7 @@ scipy 1.18.1과 비교하면 차이가 분명해요(진폭 대비 ULP).
 
 `i0 i1 k0 k1`은 결과가 정상 범위(서브노멀도 inf도 아닌 수)인 모든 곳에서 Boost.Math를 직접 불러요(`special/boost.hpp`, 헤더는 `third_party/boost_math`에 커밋 4682f44를 옮긴 것, Boost Software License 1.0). 참값 파일의 모든 점에서 계약을 지키고, 1스레드에서 우리 Cephes 경로보다 2–3.5배 빨랐기 때문이에요(`bench/special/boost/routing.md`). Boost가 double에서 쓰는 식은 이래요(`detail/bessel_i0.hpp` 등의 53비트 판).
 
-**$I_0$** — Holoborodko의 방법 [10]을 따른 근사예요.
+**$I_0$.** Holoborodko의 방법 [10]을 따른 근사예요.
 
 $$
 I_0(x) \approx 1 + a\,P_{14}(a), \quad a = \frac{x^2}{4} \qquad (x < 7.75)
@@ -216,9 +216,9 @@ $$
 
 작은 $x$의 식은 $I_0$의 거듭제곱급수 $\sum a^k/(k!)^2$와 같은 꼴이에요. $P_{14}$의 앞 계수 1, 0.25, 0.027778, …은 급수의 $1/((k+1)!)^2$(1, 1/4, 1/36, …)과 거의 같고, 뒤로 갈수록 14차에서 끊은 오차를 구간 전체에 고르게 퍼뜨리도록 조정된 minimax 계수예요. 큰 $x$의 식은 위의 $I$ 점근전개 $e^x/\sqrt{2\pi x}\,(1 + \tfrac{1}{8x} + \cdots)$의 모양을 따라 $\sqrt x\,e^{-x} I_0$를 $1/x$의 다항식으로 맞춘 것이에요. $x \ge 500$은 같은 다항식(4차)에 $e^{x/2} \cdot (\ldots) \cdot e^{x/2}$로 곱해요. $e^x$를 한 번에 만들면 $x > 709.78$에서 넘치기 때문이에요.
 
-**$I_1$** — 같은 두 구간이에요. 작은 $x$는 $\tfrac{x}{2}(1 + \tfrac{a}{2} + a^2 P(a))$로, 앞 두 항을 정확한 계수로 고정하고 나머지만 맞춰요.
+**$I_1$.** 같은 두 구간이에요. 작은 $x$는 $\tfrac{x}{2}(1 + \tfrac{a}{2} + a^2 P(a))$로, 앞 두 항을 정확한 계수로 고정하고 나머지만 맞춰요.
 
-**$K_0$** — $K_0$에는 $x = 0$의 로그 특이점이 있어요. 수학적으로 $K_0(x) = -(\log(x/2) + \gamma) I_0(x) + (\text{짝수 거듭제곱급수})$이에요. Boost는 이 구조를 그대로 써요.
+**$K_0$.** $K_0$에는 $x = 0$의 로그 특이점이 있어요. 수학적으로 $K_0(x) = -(\log(x/2) + \gamma) I_0(x) + (\text{짝수 거듭제곱급수})$이에요. Boost는 이 구조를 그대로 써요.
 
 $$
 K_0(x) \approx R_2(x^2) - \log x \cdot \bigl(1 + a(Y + R_1(a))\bigr) \qquad (x \le 1)
@@ -226,7 +226,7 @@ $$
 
 괄호 안은 $I_0$의 근사이고($Y$는 상수, $R_1$은 유리식), $R_2$는 남는 매끈한 부분이에요. $x > 1$은 $K_0 \approx (1 + R(1/x))\,e^{-x}/\sqrt x$이고, $x$가 $\log(\text{DBL\_MAX})$를 넘으면 $e^{-x/2}$를 두 번 곱해 중간값의 언더플로를 피해요.
 
-**$K_1$** — $x \le 1$은 $x\,R_2(x^2) + 1/x + \log x \cdot (\ldots)$의 같은 구조, $x > 1$은 같은 지수 꼴이에요.
+**$K_1$.** $x \le 1$은 $x\,R_2(x^2) + 1/x + \log x \cdot (\ldots)$의 같은 구조, $x > 1$은 같은 지수 꼴이에요.
 
 모든 유리식은 Boost가 자기 Remez 도구로 만든 minimax 계수이고, 근사식 자체의 오차(주석의 "Max error in interpolated form")는 $10^{-17}$ 안팎이에요. 반올림을 포함한 잰 오차는 아래 표에 있어요.
 
@@ -251,7 +251,7 @@ Cephes는 $I$, $K$를 **Chebyshev 전개**로 써요. 구간 $[-1, 1]$의 Chebys
 
 ## 점화식과 그 방향
 
-실수 차수로 넘어가기 전에 이 영역에서 가장 중요한 도구를 먼저 볼게요. 네 함수는 모두 차수에 대한 **삼항 점화식**을 만족해요.
+실수 차수의 계산에서 가장 중요한 도구는 차수에 대한 **삼항 점화식**이에요. 네 함수가 모두 이 점화식을 만족해요.
 
 $$
 C_{\nu+1}(x) = \frac{2\nu}{x}\,C_\nu(x) - C_{\nu-1}(x) \quad (C = J, Y), \qquad
@@ -259,7 +259,7 @@ I_{\nu+1} = -\frac{2\nu}{x} I_\nu + I_{\nu-1}, \qquad
 K_{\nu+1} = \frac{2\nu}{x} K_\nu + K_{\nu-1}
 $$
 
-차수 0과 1을 알면 모든 정수 차수가 덧셈 몇 번으로 나와요. 하지만 방향을 잘못 고르면 결과가 쓰레기가 돼요. $x = 1$에서 $J_0$, $J_1$의 정확한 값으로 시작해 위로 올라가 볼게요.
+차수 0과 1을 알면 모든 정수 차수가 덧셈 몇 번으로 나와요. 하지만 방향을 잘못 고르면 결과를 전혀 믿을 수 없게 돼요. $x = 1$에서 $J_0$, $J_1$의 정확한 값으로 시작해 위로 올라가면 이렇게 돼요.
 
 <Fig caption="x = 1에서 log₁₀|J_n|. 정확한 J₀, J₁에서 시작해 위로 점화하면(실선) n = 9까지는 맞다가 갑자기 커져요. 참값(점선 아래쪽)은 계속 줄어들고, 위로 점화가 따라가는 것은 Y_n(위쪽 곡선)의 모양이에요.">
   <Plot
@@ -275,9 +275,9 @@ $$
   />
 </Fig>
 
-이유는 점화식의 해가 두 개라는 데 있어요. 같은 점화식을 $J_n$도 $Y_n$도 만족해요. $n > x$에서 $J_n$은 $n$이 커지면 줄어드는 해(**최소해**)이고 $Y_n$은 커지는 해(**지배해**)예요. 시작값에 반올림 $\varepsilon$이 섞이면 그것은 $Y$ 성분 $\varepsilon Y_n$으로 들어가고, $Y_n$이 커지는 만큼 따라 커져요. 위 그림에서 $n = 9$ 근처에 $\varepsilon Y_n$이 $J_n$을 넘어서요. 반대로 위에서 아래로 내려가면 $J$가 지배해가 되어 오차가 상대적으로 줄어들어요.
+이유는 점화식의 해가 두 개라는 데 있어요. 같은 점화식을 $J_n$도 $Y_n$도 만족해요. $n > x$에서 $J_n$은 $n$이 커지면 줄어드는 해(**최소해**)이고 $Y_n$은 커지는 해(**지배해**)예요. 시작값에 반올림 $\varepsilon$이 섞이면 그 반올림은 $Y$ 성분 $\varepsilon Y_n$으로 들어가고, $Y_n$이 커지는 만큼 따라 커져요. 위 그림에서 $n = 9$ 근처에 $\varepsilon Y_n$이 $J_n$을 넘어서요. 반대로 위에서 아래로 내려가면 $J$가 지배해가 되어 오차가 상대적으로 줄어들어요.
 
-정리하면 이래요.
+네 함수의 안정한 방향은 이래요.
 
 | 해 | $\nu > x$에서의 성격 | 안정한 방향 |
 |---|---|---|
@@ -320,7 +320,7 @@ $$
 f_\nu = \frac{\nu}{x} - \cfrac{1}{\dfrac{2(\nu+1)}{x} - \cfrac{1}{\dfrac{2(\nu+2)}{x} - \cdots}}
 $$
 
-연분수 $b_0 + \frac{a_1}{b_1 + \frac{a_2}{b_2 + \cdots}}$는 뒤에서부터 계산하면 쉽지만 몇 항이 필요한지 미리 모르는 것이 문제예요. **Lentz 방법** [8]은 앞에서부터 근사 분수 $A_n/B_n$의 비 $C_n = A_n/A_{n-1}$, $D_n = B_{n-1}/B_n$만 들고 가서 $f_n = f_{n-1} C_n D_n$로 갱신하고, $C_n D_n$이 1에 충분히 가까우면 멈춰요. 분모가 0이 되는 곳은 아주 작은 수로 바꿔 계속하는 것이 수정 Lentz 방법이에요(Thompson–Barnett [6]). stardust는 Lentz로 **항 수만** 정하고, 값은 그 항 수에 4를 더해 꼬리부터 거꾸로 다시 계산해요(`cf.hpp`의 `cf_backward`). 앞으로 가는 비는 항마다 반올림을 곱해 쌓지만, 뒤에서 오는 계산은 다음 나눗셈이 앞 반올림을 줄여 주기 때문이에요. 불완전 감마의 연분수에서 Lentz 그대로는 60항에 17 ULP, 뒤로 가는 계산은 2 ULP 아래였어요([공통 수치 기법](/internals/special/techniques/)).
+연분수 $b_0 + \frac{a_1}{b_1 + \frac{a_2}{b_2 + \cdots}}$는 뒤에서부터 계산하면 쉽지만 몇 항이 필요한지 미리 모르는 것이 문제예요. **Lentz 방법** [8]은 앞에서부터 근사 분수 $A_n/B_n$의 비 $C_n = A_n/A_{n-1}$, $D_n = B_{n-1}/B_n$만 들고 가서 $f_n = f_{n-1} C_n D_n$로 갱신하고, $C_n D_n$이 1에 충분히 가까우면 멈춰요. 분모가 0이 되는 곳은 아주 작은 수로 바꿔 계속하는 것이 수정 Lentz 방법이에요(Thompson–Barnett [6]). stardust는 Lentz로 **항 수만** 정하고, 값은 그 항 수에 4를 더해 꼬리부터 거꾸로 다시 계산해요(`cf.hpp`의 `cf_backward`). 앞으로 가는 비는 항마다 반올림을 곱해 쌓지만, 뒤에서 오는 계산은 다음 나눗셈이 앞 반올림을 줄여 주기 때문이에요. 불완전 감마의 연분수에서 항이 60개 드는 입력으로 재면 Lentz 그대로는 17 ULP, 뒤로 가는 계산은 2 ULP 아래였어요(다른 입력 집합으로 잰 값은 [공통 수치 기법](/internals/special/techniques/)에 있어요).
 
 이 연분수의 항 $2(\nu+k)/x$는 $k$가 $x$를 넘어서야 1보다 커져요. 그래서 CF1은 $x < \nu$이면 몇 항에 끝나고, $x \gg \nu$이면 약 $x$항이 필요해요. Lentz의 앞으로 가는 걸음은 많아야 $10^7$항까지 돌고, 그 안에 수렴하지 않으면 그 원소는 NaN이에요(아래 [계산 시간의 상한](#계산-시간의-상한)).
 
@@ -389,13 +389,13 @@ $$
 p + iq = \frac{J_\mu' + iY_\mu'}{J_\mu + iY_\mu} = -\frac{1}{2x} + i + \frac{i}{x}\,\cfrac{(1/2)^2 - \mu^2}{2(x + i) + \cfrac{(3/2)^2 - \mu^2}{2(x + 2i) + \cdots}}
 $$
 
-$J + iY$는 Hankel 함수 $H^{(1)}$이고 큰 $x$에서 $e^{ix}$처럼 움직여서, 이 비는 $x$가 크면 빠르게 수렴해요(대략 $x$가 클수록 항이 적어요. $x \ge 2$에서 많아야 수백 항이라 상한은 $10^5$항이에요). 실수부와 허수부를 나눠 쓰면 $J' = pJ - qY$, $Y' = qJ + pY$이고, 이것을 Wronskian에 넣으면 $W = q\,(J^2 + Y^2)$예요. 아래로 점화에서 얻은 쌍 $(j_a, j_b)$와 합치면
+$J + iY$는 Hankel 함수 $H^{(1)}$이고 큰 $x$에서 $e^{ix}$처럼 움직여서, 이 비는 $x$가 크면 빠르게 수렴해요(대략 $x$가 클수록 항이 적어요. $x \ge 2$에서 많아야 수백 항이라 상한은 $10^5$항이에요). 실수부와 허수부를 나눠 쓰면 $J' = pJ - qY$, $Y' = qJ + pY$이고, 이 관계를 Wronskian에 넣으면 $W = q\,(J^2 + Y^2)$예요. 아래로 점화에서 얻은 쌍 $(j_a, j_b)$와 합치면
 
 $$
 y_r = \frac{p\,j_a - j_b}{q}, \qquad c = \sqrt{\frac{W}{q\,(j_a^2 + y_r^2)}}, \qquad J_\mu = c\,j_a, \qquad Y_\mu = c\,y_r, \qquad Y_\mu' = q\,J_\mu + p\,Y_\mu
 $$
 
-로 네 값이 모두 나와요. $c$는 양수이고 부호는 $j_a$, $j_b$가 들고 있어요. 여기에도 $J_\mu$로 나누는 곳이 없어요.
+로 네 값이 모두 나와요. $c$는 양수이고 부호는 $j_a$, $j_b$에 담겨 있어요. 여기에도 $J_\mu$로 나누는 곳이 없어요.
 
 $x \ge 2$에서는 $\mu$를 $\lvert\mu\rvert \le \tfrac12$로 두지 않아요. 내려가는 걸음 수를 $n = \max(0, \lfloor \nu - x + 1.5\rfloor)$로 정해서 $\mu$가 대략 $x$ 근처에 오게 해요(NR과 같아요). CF2는 $\mu \lesssim x$이면 빠르게 수렴하고 CF1은 $\nu$가 $x$보다 크면 빠르게 수렴하니, 두 연분수가 모두 빨리 끝나는 차수에서 만나게 하는 거예요.
 
@@ -465,11 +465,11 @@ if (!want_y && (v >= 0.0 || is_int(a)) && j_underflows(a, x)) return v >= 0.0 ? 
 -0.0
 ```
 
-**$x < 2^{-200}$이면 첫 항.** 이렇게 작은 $x$에서는 모든 급수의 다음 항이 첫 항의 $x^2/4 < 2^{-400}$배라서 첫 항이 곧 값이에요(`tiny_argument`). $J_a = (x/2)^a/\Gamma(a+1)$이고, $Y_a$는 다른 해의 몫 $(x/2)^{2a}$가 $2^{-70}$ 아래이면 $-\Gamma(a)(2/x)^a/\pi$ 하나, 그렇지 않으면($a$가 0에 가까우면) Temme 급수의 첫 항이에요. Temme 급수의 첫 항은 $x^{\pm a}$ 두 거듭제곱을 함께 들어서 $a \to 0$에서 $Y_0 \sim \tfrac{2}{\pi}\log x$로 매끄럽게 이어져요. 이 경로가 따로 있는 이유는 둘이에요. 점화식의 $1/x$는 서브노멀 $x$에서 넘치고, Temme 급수의 $\cosh e$, $\sinh e$($e = a\log(2/x)$)는 $e$ ULP를 실어 $a = 0.49$, $x = 10^{-300}$에서 170 ULP를 잃었어요. `iv`, `kv`도 같은 경로를 써요($K_a = \Gamma(a)(2/x)^a/2$).
+**$x < 2^{-200}$이면 첫 항.** 이렇게 작은 $x$에서는 모든 급수의 다음 항이 첫 항의 $x^2/4 < 2^{-400}$배라서 첫 항이 곧 값이에요(`tiny_argument`). $J_a = (x/2)^a/\Gamma(a+1)$이고, $Y_a$는 다른 해의 몫 $(x/2)^{2a}$가 $2^{-70}$ 아래이면 $-\Gamma(a)(2/x)^a/\pi$ 하나, 그렇지 않으면($a$가 0에 가까우면) Temme 급수의 첫 항이에요. Temme 급수의 첫 항은 $x^{\pm a}$ 두 거듭제곱을 함께 담고 있어서 $a \to 0$에서 $Y_0 \sim \tfrac{2}{\pi}\log x$로 매끄럽게 이어져요. 이 경로가 따로 있는 이유는 둘이에요. 점화식의 $1/x$는 서브노멀 $x$에서 넘치고, Temme 급수의 $\cosh e$, $\sinh e$($e = a\log(2/x)$)는 $e$ ULP를 실어 $a = 0.49$, $x = 10^{-300}$에서 170 ULP를 잃었어요. `iv`, `kv`도 같은 경로를 써요($K_a = \Gamma(a)(2/x)^a/2$).
 
 ### x ≥ 30: Hankel 점근과 위로 점화
 
-$x$가 크면 CF1에 약 $x$항이 들어서 느리고, 진동 영역의 중립적인 연분수가 걸음마다 오차를 쌓아 약 $0.3x$ ULP를 잃어요. 그래서 $x \ge 30$에서는 먼저 Hankel 점근전개를 시도해요(`hankel_pq`). 위 그림에서 보듯 $x = 30$이면 $\nu = 0$의 항이 $10^{-17}$ 아래까지 내려가요. 차수가 크면 $a_k(\nu)$의 분자 $4\nu^2 - (2k-1)^2$ 때문에 항이 처음에는 **커지다가** 줄어들므로, 이렇게 받아들일지 정해요.
+$x$가 크면 CF1에 약 $x$항이 들어서 느리고, 진동 영역의 중립적인 연분수가 걸음마다 오차를 쌓아 약 $0.3x$ ULP를 잃어요. 그래서 $x \ge 30$에서는 먼저 Hankel 점근전개를 시도해요(`hankel_pq`). 위 그림에서 보듯 $x = 30$이면 $\nu = 0$의 항이 $10^{-17}$ 아래까지 내려가요. 차수가 크면 $a_k(\nu)$의 분자 $4\nu^2 - (2k-1)^2$ 때문에 항이 처음에는 **커지다가** 줄어들므로, 다음 규칙으로 받아들일지 정해요.
 
 - 항이 줄어드는 중에 합의 $2^{-56}$ 아래로 내려가면 받아들여요.
 - 줄다가 다시 커지기 시작하면(점근급수의 꼬리) 거절해요.
@@ -531,7 +531,7 @@ Boost가 이 구간에서 하는 일은 우리 Temme 경로와 거의 같은 구
 
 Boost 구간 밖(그리고 $\nu < 30$의 e-스케일 판에서 $x \ge 700$)은 NR의 `bessik` 구조예요. J·Y와 다른 점만 적을게요.
 
-- 모든 값을 **스케일해서** 들고 다녀요: $e^{-x}I$, $e^{x}K$. 그래서 `ive`, `kve`는 계산된 값이 곧 답이고, `iv`, `kv`는 마지막에 $e^{\pm x}$를 $m \cdot 2^e$로 곱해요. $I$의 넘침과 $K$의 언더플로가 중간에 생기지 않아요.
+- 모든 값을 $e^{-x}I$, $e^{x}K$로 **스케일해서** 들고 다녀요. 그래서 `ive`, `kve`는 계산된 값이 곧 답이고, `iv`, `kv`는 마지막에 $e^{\pm x}$를 $m \cdot 2^e$로 곱해요. $I$의 넘침과 $K$의 언더플로가 중간에 생기지 않아요.
 - CF1 $I_\nu'/I_\nu = \tfrac{\nu}{x} + \cfrac{1}{\tfrac{2(\nu+1)}{x} + \cdots}$는 항이 모두 양수라 상쇄가 없어요. Lentz로 항 수를 세고 뒤에서부터 계산해요(`lentz_backward`).
 - $n = \mathrm{round}(\nu)$로 언제나 $\lvert\mu\rvert \le \tfrac12$예요. $x < 2$이면 Temme 급수($c_k = (x^2/4)^k/k!$, $K_\mu = \sum c_k f_k$, $K_{\mu+1} = \tfrac{2}{x}\sum c_k h_k$, $p_0 = \tfrac12(x/2)^{-\mu}\Gamma(1+\mu)$, $q_0 = \tfrac12 (x/2)^{\mu}\Gamma(1-\mu)$), $x \ge 2$이면 Temme가 정리한 Steed의 CF2(Thompson–Barnett [7])로 $e^{x}K_\mu = \sqrt{\pi/(2x)}/S$, $K_{\mu+1} = K_\mu(\mu + x + \tfrac12 - a_1 h)/x$예요.
 - Wronskian $I_\mu K_\mu' - I_\mu' K_\mu = -1/x$에서 $I_\mu = \dfrac{1/x}{f_\mu K_\mu - K_\mu'}$이고, 스케일된 $K$를 넣으면 $e^{-x}I_\mu$가 바로 나와요.
@@ -555,7 +555,7 @@ $$
 
 "균등"이라는 말은 이 전개가 $x/\nu$의 비가 무엇이든(작든 크든, $x \approx \nu$의 전이 영역이든) 같이 맞는다는 뜻이에요. 점근 변수가 $x$가 아니라 차수 $\nu$이고, $x$와 $\nu$의 관계는 $p$와 $\eta$에 모두 들어가요. $U_k(p)$는 $p$의 다항식이고 DLMF 10.41.9의 점화식으로 정의돼요. stardust는 $U_0$–$U_{10}$을 정확한 유리수로 만들어 float64로 반올림해 두었어요(`coeffs/debye_u.hpp`, `tools/gen_debye.py`). $U_k(p) = p^k V_k(p^2)$ 꼴이라 $p^2$의 Horner로 계산해요. $\nu = 30$에서 열한째 다음 항이 상대 $2 \times 10^{-16}$ 아래라 그 차수부터 float64 정밀도예요.
 
-까다로운 곳은 지수 $\nu\eta$예요. $\nu = x = 10^9$이면 $s$와 $\nu\log(\ldots)$가 둘 다 $10^9$ 크기이고 그 차가 수억이에요. 마지막 비트까지 맞으려면 $\nu\eta$의 절대 오차가 $2^{-53}$쯤이어야 하는데, $10^9$짜리 두 수를 float64로 빼면 절대 오차가 $10^{-7}$이에요. 그래서 이 지수를 double-double로 만들어요.
+까다로운 곳은 지수 $\nu\eta$예요. $\nu = x = 10^9$이면 $s$와 $\nu\log(\ldots)$가 둘 다 $10^9$ 크기이고 그 차가 수억이에요. 마지막 비트까지 맞으려면 $\nu\eta$의 절대오차가 $2^{-53}$쯤이어야 하는데, $10^9$짜리 두 수를 float64로 빼면 절대오차가 $10^{-7}$이에요. 그래서 이 지수를 double-double로 만들어요.
 
 ```cpp
 // ops/bessel.hpp, debye_value: 지수를 double-double로, exp는 한 번만
@@ -615,7 +615,7 @@ $x > 0$에서는 $y'' = (\text{양수})\,y$라 지수처럼 커지거나 줄고,
 | 구간 | 방법 | 이유 |
 |---|---|---|
 | $-2 \le x \le 1$ | Maclaurin 급수 | 항이 $x^3/(9k^2)$ 비율로 줄어 상쇄가 없어요 |
-| $1 < x < 200$ | $K_{1/3}$, $K_{2/3}$, $I_{1/3}$, $I_{2/3}$의 관계식 | 모든 항이 양수, $e^{\mp\zeta}$를 따로 들 수 있어요 |
+| $1 < x < 200$ | $K_{1/3}$, $K_{2/3}$, $I_{1/3}$, $I_{2/3}$의 관계식 | 모든 항이 양수, $e^{\mp\zeta}$를 따로 떼어 곱할 수 있어요 |
 | $-9.7 < x < -2$ | $J_{\pm1/3}$, $Y$의 관계식 | 진동이 시작되지만 점근전개는 아직 부족해요 |
 | $-10^{20} \le x \le -9.7$ | 진동 점근전개 | $\zeta \ge 20$이면 가장 작은 항이 $e^{-2\zeta}$ 수준이에요 |
 | $x \ge 200$ | (0, −0, inf, inf) | $\zeta > 1885$라 Ai, Ai′는 float64보다 한참 작고 Bi, Bi′는 한참 커요 |
@@ -743,7 +743,7 @@ scipy가 크게 틀리는 곳은 대부분 위에서 설명한 것들이에요. 
 ## 참고 문헌
 
 1. S. L. Moshier, *Methods and Programs for Mathematical Functions*, Ellis Horwood, 1989. (Cephes: `i0.c`, `i1.c`, `k0.c`, `k1.c`, `j0.c`, `j1.c`. 계수는 scipy 1.15.1에 포함된 판, BSD 3조항)
-2. F. W. J. Olver et al. (eds.), *NIST Digital Library of Mathematical Functions*, https://dlmf.nist.gov/ — 9.6(Airy와 Bessel의 관계), 9.7(Airy 점근전개, 9.7.2·9.7.9–12), 10.14(J의 상한, 10.14.4–5), 10.17(Hankel 점근, 10.17.1–4), 10.40(I·K의 큰 인자 점근), 10.41(Debye 균등 전개, 10.41.3–4·10.41.9)
+2. F. W. J. Olver et al. (eds.), *NIST Digital Library of Mathematical Functions*, https://dlmf.nist.gov/ , 9.6(Airy와 Bessel의 관계), 9.7(Airy 점근전개, 9.7.2·9.7.9–12), 10.14(J의 상한, 10.14.4–5), 10.17(Hankel 점근, 10.17.1–4), 10.40(I·K의 큰 인자 점근), 10.41(Debye 균등 전개, 10.41.3–4·10.41.9)
 3. M. Abramowitz, I. A. Stegun (eds.), *Handbook of Mathematical Functions*, National Bureau of Standards Applied Mathematics Series 55, 1964. (9.7.2, Boost의 K 점근식)
 4. N. M. Temme, "On the numerical evaluation of the modified Bessel function of the third kind", *Journal of Computational Physics* 19, 324–337, 1975. doi:10.1016/0021-9991(75)90082-0
 5. N. M. Temme, "On the numerical evaluation of the ordinary Bessel function of the second kind", *Journal of Computational Physics* 21, 343–350, 1976. doi:10.1016/0021-9991(76)90032-2
@@ -752,5 +752,5 @@ scipy가 크게 틀리는 곳은 대부분 위에서 설명한 것들이에요. 
 8. W. J. Lentz, "Generating Bessel functions in Mie scattering calculations using continued fractions", *Applied Optics* 15(3), 668–671, 1976. doi:10.1364/AO.15.000668
 9. W. H. Press, S. A. Teukolsky, W. T. Vetterling, B. P. Flannery, *Numerical Recipes: The Art of Scientific Computing*, 3rd ed., Cambridge University Press, 2007. (5.2절 연분수, 6.6절 분수 차수 Bessel 함수)
 10. P. Holoborodko, "Rational Approximations for the Modified Bessel Function of the First Kind – I0(x) for Computations with Double Precision", 2015. https://www.advanpix.com/2015/11/11/rational-approximations-for-the-modified-bessel-function-of-the-first-kind-i0-computations-double-precision/
-11. Boost.Math 문서, "Modified Bessel Functions of the First and Second Kinds", https://www.boost.org/doc/libs/release/libs/math/doc/html/math_toolkit/bessel/mbessel.html — 소스는 GitHub `boostorg/math` 커밋 4682f44의 `detail/bessel_i0.hpp`, `bessel_i1.hpp`, `bessel_k0.hpp`, `bessel_k1.hpp`, `bessel_kn.hpp`, `bessel_ik.hpp` (Boost Software License 1.0)
+11. Boost.Math 문서, "Modified Bessel Functions of the First and Second Kinds", https://www.boost.org/doc/libs/release/libs/math/doc/html/math_toolkit/bessel/mbessel.html , 소스는 GitHub `boostorg/math` 커밋 4682f44의 `detail/bessel_i0.hpp`, `bessel_i1.hpp`, `bessel_k0.hpp`, `bessel_k1.hpp`, `bessel_kn.hpp`, `bessel_ik.hpp` (Boost Software License 1.0)
 12. T. J. Dekker, "A floating-point technique for extending the available precision", *Numerische Mathematik* 18, 224–242, 1971. doi:10.1007/BF01397083

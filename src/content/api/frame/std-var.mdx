@@ -8,7 +8,7 @@ signatures:
   - "Series.var(*, skipna=True, correction=0)"
   - "DataFrame.std(*, skipna=True, correction=0)"
   - "DataFrame.var(*, skipna=True, correction=0)"
-summary: 값들이 평균에서 얼마나 퍼져 있는지 재요. var는 분산, std는 그 제곱근인 표준편차예요. 기본은 값의 개수 N으로 나누는 모분산(correction=0)이고, 값이 모자라면 NA예요.
+summary: 값이 평균에서 얼마나 퍼져 있는지 재요. var는 분산, std는 그 제곱근인 표준편차예요. 기본은 값의 개수 N으로 나누는 모분산(correction=0)이고, 값이 모자라면 NA예요.
 params:
   - name: skipna
     type: bool
@@ -35,7 +35,7 @@ import Op from '../../../components/fig/Op.astro';
 
 ## 한눈에 보기
 
-평균이 같아도 값들이 모여 있는 정도는 다를 수 있어요. 두 학생의 네 번 시험 점수를 볼게요. 둘 다 평균은 70점이지만, `a`는 언제나 70점이고 `b`는 55점에서 85점까지 오르내려요.
+평균이 같아도 값이 모여 있는 정도는 다를 수 있어요. 두 학생의 네 번 시험 점수가 있어요. 둘 다 평균은 70점이지만, `a`는 언제나 70점이고 `b`는 55점에서 85점까지 오르내려요.
 
 ```python
 >>> import stardust as sd
@@ -58,7 +58,7 @@ import Op from '../../../components/fig/Op.astro';
 분산은 "평균에서 떨어진 거리의 제곱"의 평균이에요. 표준편차는 그 제곱근이에요.
 
 1. 평균을 구해요. `b`는 70이에요.
-2. 각 값에서 평균을 빼요. 평균에서 얼마나 떨어져 있는지예요.
+2. 각 값에서 평균을 빼서, 평균에서 얼마나 떨어져 있는지 구해요.
 3. 그 차이를 제곱해서 평균을 내면 분산이에요.
 
 ```python
@@ -87,7 +87,7 @@ dtype: float64
 
 ## `correction`: N으로 나눌까요, N - 1로 나눌까요
 
-위에서는 제곱한 차이의 합 `500`을 값의 개수 `4`로 나눴어요. 그런데 **N - 1로 나누는** 방법도 널리 쓰여요. `correction`은 나누는 수를 `N - correction`으로 정하는 옵션이에요.
+위에서는 제곱한 차이의 합 `500`을 값의 개수 `4`로 나눴어요. 그런데 N - 1로 나누는 방법도 널리 쓰여요. `correction`은 나누는 수를 `N - correction`으로 정하는 옵션이에요.
 
 | `correction` | 나누는 수 | 이름 | 이럴 때 |
 |:---:|:---:|---|---|
@@ -102,7 +102,7 @@ dtype: float64
 (4.571428571428571, 2.138089935299395)
 ```
 
-우리 반 학생 모두의 점수라면 그 자체가 전부라서 N으로 나눠요. 전국 학생 가운데 몇 명만 뽑아서 전국의 퍼짐을 짐작하는 것이라면, 뽑힌 사람들의 평균이 그들에게 딱 맞춰져 있어서 퍼짐이 조금 작게 나오는 경향이 있어요. 그래서 N - 1로 나눠 조금 키워 줘요. 데이터가 많을수록 둘의 차이는 작아져요.
+우리 반 학생 모두의 점수라면 그 자체가 전부라서 N으로 나눠요. 전국 학생 가운데 몇 명만 뽑아서 전국의 퍼짐을 짐작한다면 사정이 달라요. 뽑힌 학생의 평균이 그 학생들에게 딱 맞춰져 있어서 퍼짐이 조금 작게 나오는 경향이 있어요. 그래서 N - 1로 나눠 조금 키워 줘요. 데이터가 많을수록 둘의 차이는 작아져요.
 
 `correction`에는 실수도 쓸 수 있어요. 나누는 수가 `N - 1.5`가 될 뿐이에요.
 
@@ -142,7 +142,7 @@ dtype: float64
 
 ## 값이 모자라면 `NA`예요
 
-나누는 수 `N - correction`이 0이거나 음수가 되면 분산을 정할 수 없어요. 이때 결과는 `NA`예요. 가장 흔한 경우는 **값이 하나뿐인데 `correction=1`을 준 때**예요. 값 하나로는 더 큰 집단의 퍼짐을 짐작할 수 없다는 뜻이에요.
+나누는 수 `N - correction`이 0이거나 음수가 되면 분산을 정할 수 없어요. 이때 결과는 `NA`예요. 가장 흔한 경우는 값이 하나뿐인데 `correction=1`을 준 때예요. 값 하나로는 더 큰 집단의 퍼짐을 짐작할 수 없다는 뜻이에요.
 
 ```python
 >>> one = sd.frame.Series([88.0, None])
@@ -167,7 +167,7 @@ dtype: float64
 nan
 ```
 
-왜 다를까요? 배열에는 결측값이 없어서 "구할 수 없음"을 float 값 NaN으로 나타내요. 데이터프레임에는 "값이 없다"는 뜻의 `NA`가 따로 있어서 `NA`로 돌려줘요. 그래서 데이터에 있던 NaN이 퍼져서 나온 결과(NaN)와 값이 모자라서 못 구한 결과(`NA`)가 구별돼요. 모두 `NA`인 컬럼의 `mean()`이 `NA`인 것과 같은 규칙이고, 결과를 [`isna()`](/api/frame/isna/)나 [`dropna()`](/api/frame/dropna/)로 다룰 수 있어요.
+배열에는 결측값이 없어서 "구할 수 없음"을 float 값 NaN으로 나타내요. 데이터프레임에는 "값이 없다"는 뜻의 `NA`가 따로 있어서 `NA`로 돌려줘요. 그래서 데이터에 있던 NaN이 퍼져서 나온 결과(NaN)와 값이 모자라서 못 구한 결과(`NA`)가 구별돼요. 모두 `NA`인 컬럼의 `mean()`이 `NA`인 것과 같은 규칙이고, 결과를 [`isna()`](/api/frame/isna/)나 [`dropna()`](/api/frame/dropna/)로 다룰 수 있어요.
 
 ## NaN은 결과로 퍼져요
 
@@ -191,7 +191,7 @@ NaN을 빼고 계산하려면 `s[~s.isnan()]`처럼 NaN이 아닌 행만 남긴 
 | bool | float64: `True`를 1, `False`를 0으로 보고 계산 |
 | string | `TypeError` |
 
-bool 컬럼의 분산은 배열의 bool 배열에 `sd.var`를 쓴 것과 비트까지 같아요.
+bool 컬럼의 분산은 bool 배열에 `sd.var`를 쓴 것과 비트까지 같아요.
 
 ```python
 >>> sd.frame.Series([True, False, True, True]).var()
@@ -233,7 +233,7 @@ TypeError: std(): cannot compute std of a string column
 
 ## 배열의 `sd.var`와 결과가 같아요
 
-`NA`가 없는 컬럼이면 `s.var()`와 `s.std()`는 배열의 `sd.var`, `sd.std`와 **비트 하나까지** 같아요. 평균을 구하는 덧셈과 차이의 제곱을 더하는 덧셈이 배열과 같은 순서로 이뤄지기 때문이에요. 정수 컬럼도 그래요.
+`NA`가 없는 컬럼이면 `s.var()`와 `s.std()`는 배열의 `sd.var`, `sd.std`와 비트 하나까지 같아요. 평균을 구하는 덧셈과 차이의 제곱을 더하는 덧셈이 배열과 같은 순서로 이뤄지기 때문이에요. 정수 컬럼도 그래요.
 
 ```python
 >>> s = sd.frame.Series([1.5, 2.5, 4.0, 8.0])
@@ -294,9 +294,9 @@ OverflowError: var(): 'correction' is out of range
 
 ## pandas를 아는 분께
 
-- **기본값이 `correction=0`(N으로 나누기)이에요.** pandas의 기본값은 `ddof=1`이에요. 같은 값이 필요하면 `correction=1`을 주세요. 인자 이름도 `ddof`가 아니라 `correction`이고, `ddof=`는 받지 않아요.
+- 기본값이 `correction=0`(N으로 나누기)이에요. pandas의 기본값은 `ddof=1`이에요. 같은 값이 필요하면 `correction=1`을 주세요. 인자 이름도 `ddof`가 아니라 `correction`이고, `ddof=`는 받지 않아요.
 - 값이 모자라면(`N - correction`이 0 이하) `NA`예요. pandas는 float 컬럼에서 `nan`이에요.
-- **NaN을 건너뛰지 않아요.** pandas는 NaN을 건너뛰고 계산하지만 stardust는 결과가 `nan`이에요. `skipna`는 `NA`만 건너뛰어요.
+- NaN을 건너뛰지 않아요. pandas는 NaN을 건너뛰고 계산하지만 stardust는 결과가 `nan`이에요. `skipna`는 `NA`만 건너뛰어요.
 - DataFrame의 결과는 1행짜리 DataFrame이에요. pandas는 Series예요.
 - `NA`도 NaN도 없는 float 컬럼이면 `var(correction=1)`, `std(correction=1)`이 pandas의 `var()`, `std()`와 비트까지 같아요.
 - `axis`, `numeric_only` 인자는 없어요.

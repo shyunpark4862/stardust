@@ -6,7 +6,7 @@ group: 선형 회귀
 order: 2
 signatures:
   - "sd.regression.wls(y, X, /, *, weights, intercept=True, cov_type='nonrobust', maxlags=None, groups=None, rtol=None, nan_policy='propagate')"
-summary: 가중 최소제곱(WLS) 회귀예요. 행마다 가중치를 주어, 오차가 작은(믿을 만한) 행이 적합에 더 큰 몫을 갖게 해요. 결과 WLSResult의 필드는 ols의 OLSResult와 같아요.
+summary: 가중 최소제곱(WLS) 회귀예요. 행마다 가중치를 주어, 오차가 작은(믿을 만한) 행이 적합에 더 크게 반영되게 해요. 결과 WLSResult의 필드는 ols의 OLSResult와 같아요.
 params:
   - name: y
     type: ndarray, 실수의 시퀀스, frame Series, 또는 열 하나의 DataFrame
@@ -76,9 +76,9 @@ $$
 \sum_{i=1}^{n} w_i \bigl(y_i - \beta_0 - \beta_1 x_{i1} - \cdots - \beta_k x_{ik}\bigr)^2
 $$
 
-을 가장 작게 해요. 오차의 표준편차가 $\sigma_i$인 행에 $w_i = 1/\sigma_i^2$을 주면, 정밀한 행일수록 적합에 큰 몫을 가져요. 오차의 크기를 맞게 알려 주면 이것이 가장 정밀한 일차 추정이에요.
+을 가장 작게 해요. 오차의 표준편차가 $\sigma_i$인 행에 $w_i = 1/\sigma_i^2$을 주면, 정밀한 행일수록 적합에 크게 반영돼요. 오차의 크기를 바르게 알려 주면 가중 최소제곱이 가장 정밀한 일차 추정이에요.
 
-아래 그림에서 왼쪽 네 점은 오차 막대가 짧고(±0.5, ±1), 오른쪽 네 점은 길어요(±2, ±3). 가중 최소제곱(실선)은 정밀한 왼쪽 점들을 더 따라가고, 크게 흔들리는 오른쪽 점들에는 덜 끌려가요. 이 데이터에서는 두 직선이 가깝지만, 가중 최소제곱이 정밀한 점의 정보를 더 잘 써서 계수의 표준오차가 작아요([기본 사용](#기본-사용)).
+아래 그림에서 왼쪽 네 점은 오차 막대가 짧고(±0.5, ±1), 오른쪽 네 점은 길어요(±2, ±3). 가중 최소제곱(실선)은 정밀한 왼쪽 점을 더 따라가고, 크게 흔들리는 오른쪽 점에는 덜 끌려가요. 이 데이터에서는 두 직선이 가깝지만, 가중 최소제곱이 정밀한 점의 정보를 더 잘 써서 계수의 표준오차가 작아요([기본 사용](#기본-사용)).
 
 <Fig caption="오차의 크기가 다른 데이터. 세로 막대는 각 점의 ±σ예요. 실선은 w = 1/σ²의 가중 최소제곱, 점선은 보통 최소제곱이에요.">
   <Plot
@@ -122,7 +122,7 @@ WLSResult(nobs=8, rank=2, rsquared=0.97612, params=[0.21726682986942655  1.91890
 (array([0.21726682986942655,  1.9189027327051025], dtype=float64), array([ 0.3192873664823822, 0.12252984288643752], dtype=float64))
 ```
 
-같은 데이터의 보통 최소제곱과 견줘 볼게요.
+같은 데이터를 보통 최소제곱으로 맞추면 이래요.
 
 ```python
 >>> o = sd.regression.ols(y, x)
@@ -224,7 +224,7 @@ True
 ([3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0], [0.0, 0.0, 0.0, 4.0, 0.0, 0.0, 0.0, 0.0])
 ```
 
-가중치가 **모두** 0이면 적합에 쓸 행이 없어요. 에러가 아니라 빈 입력과 같은 NaN 결과예요. `nobs`는 0, `df_model`과 `df_resid`는 NaN이고, 계수를 모르니 적합값과 잔차도 NaN이에요. 배치에서는 그 회귀만 NaN이에요.
+가중치가 모두 0이면 적합에 쓸 행이 없어요. 에러가 아니라 빈 입력과 같은 NaN 결과예요. `nobs`는 0, `df_model`과 `df_resid`는 NaN이고, 계수를 모르니 적합값과 잔차도 NaN이에요. 배치에서는 그 회귀만 NaN이에요.
 
 ```python
 >>> e = sd.regression.wls(y, x, weights=sd.zeros(8))
@@ -326,7 +326,7 @@ array([nan, nan], dtype=float64)
 가중 R²는 "가중치를 준 흩어짐"을 기준으로 한 값이라, 같은 데이터의 보통 R²와 견주지 않아요.
 
 <Callout type="note" title="새 관측의 예측 구간">
-`predict_interval(X_new, kind='observation')`은 **가중치가 1인** 새 관측의 구간이에요. 가중치 $w$인 관측이라면 오차 분산이 `scale / w`예요.
+`predict_interval(X_new, kind='observation')`은 가중치가 1인 새 관측의 구간이에요. 가중치 $w$인 관측이라면 오차 분산이 `scale / w`예요.
 
 ```python
 >>> r.predict_interval(sd.asarray([9.0]))
@@ -373,8 +373,8 @@ ValueError: wls(): the batch shapes of 'y' (3,), 'X' (), 'weights' (2,) do not b
 statsmodels 0.15.0, scikit-learn 1.9.1 기준이에요.
 
 - statsmodels의 `sm.WLS(y, sm.add_constant(X), weights=w).fit()`이 `sd.regression.wls(y, X, weights=w)`예요. 가중치의 뜻(분산의 역수)이 같고, 위 예에서 계수, 표준오차, R², `llf`, `ssr`가 반올림 차이 안에서 같아요.
-- **가중치 0인 행**: statsmodels는 그 행을 `nobs`에 세요. 위의 `w0` 예에서 statsmodels는 `nobs` 8, `df_resid` 6, 표준오차 `[0.912, 0.176]`이고, sd는 7, 5, `[0.9995, 0.1929]`예요. sd는 R의 `lm(..., weights=)`과 같아요(R 4.6에서 `nobs` 7, 같은 표준오차).
-- **가중치가 모두 0일 때**: statsmodels는 에러 없이 계수 `[0, 0]`, 표준오차 `[0, 0]`, `nobs` 8을 내요. sd는 쓸 행이 없다는 뜻으로 NaN 결과(`nobs` 0)를 내요.
+- 가중치가 0인 행을 statsmodels는 `nobs`에 세요. 위의 `w0` 예에서 statsmodels는 `nobs` 8, `df_resid` 6, 표준오차 `[0.912, 0.176]`이고, sd는 7, 5, `[0.9995, 0.1929]`예요. sd는 R의 `lm(..., weights=)`과 같아요(R 4.6에서 `nobs` 7, 같은 표준오차).
+- 가중치가 모두 0이면 statsmodels는 에러 없이 계수 `[0, 0]`, 표준오차 `[0, 0]`, `nobs` 8을 내요. sd는 쓸 행이 없다는 뜻으로 NaN 결과(`nobs` 0)를 내요.
 - statsmodels의 WLS 결과에는 `get_influence()`가 없어요. sd의 `WLSResult`는 `leverage`, 스튜던트화 잔차, Cook 거리를 가중 적합의 식으로 줘요.
 - statsmodels의 `get_prediction`은 새 관측의 가중치를 `weights=`로 받을 수 있어요(기본 1). sd의 `predict_interval`은 가중치 1인 새 관측만 줘요. 기본값끼리는 같은 구간이에요.
 - scikit-learn의 `LinearRegression().fit(X, y, sample_weight=w)`는 같은 계수를 줘요. 표준오차, p값, 구간은 없어요.

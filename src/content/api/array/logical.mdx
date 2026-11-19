@@ -39,7 +39,7 @@ import Op from '../../../components/fig/Op.astro';
 
 ## 한눈에 보기
 
-논리 연산은 참·거짓(`True`·`False`)끼리의 계산이에요. 배열을 넣으면 **같은 자리의 원소끼리** 짝지어 계산해요.
+논리 연산은 참·거짓(`True`·`False`)끼리의 계산이에요. 배열을 넣으면 같은 자리의 원소끼리 짝지어 계산해요.
 
 ```python
 >>> import stardust as sd
@@ -61,7 +61,7 @@ array([False, False,  True,  True], dtype=bool)
 |---|:---:|---|
 | `logical_and(x1, x2)` | `x1 & x2` | 둘 다 참일 때 ("그리고") |
 | `logical_or(x1, x2)` | `x1 \| x2` | 하나라도 참일 때 ("또는") |
-| `logical_xor(x1, x2)` | `x1 ^ x2` | 둘 중 **하나만** 참일 때 |
+| `logical_xor(x1, x2)` | `x1 ^ x2` | 둘 중 하나만 참일 때 |
 | `logical_not(x)` | `~x` | 거짓일 때 ("아니다") |
 
 <Fig caption="p와 q의 같은 자리끼리 계산해요. and는 둘 다 참인 자리만, or는 하나라도 참인 자리가 참이에요.">
@@ -76,7 +76,7 @@ array([False, False,  True,  True], dtype=bool)
 
 ## 조건을 묶을 때 써요
 
-논리 연산이 가장 많이 쓰이는 곳은 **여러 비교를 하나의 조건으로 묶을 때**예요. [비교](/api/array/comparison/)의 결과가 bool 배열이기 때문이에요.
+논리 연산은 여러 비교를 하나의 조건으로 묶을 때 가장 많이 써요. [비교](/api/array/comparison/)의 결과가 bool 배열이기 때문이에요.
 
 ```python
 >>> x = sd.asarray([1, 5, 3, 8])
@@ -109,7 +109,7 @@ array([False,  True,  True, False], dtype=bool)
 
 ### 조건이 셋 이상이면
 
-`logical_and`와 `logical_or`는 인자를 **꼭 두 개만** 받아요. 조건이 셋 이상이면 연산자로 이어 쓰거나 함수를 겹쳐 써요.
+`logical_and`와 `logical_or`는 인자를 꼭 두 개만 받아요. 조건이 셋 이상이면 연산자로 이어 쓰거나 함수를 겹쳐 써요.
 
 ```python
 >>> (x > 2) & (x < 8) & (x != 5)
@@ -155,7 +155,7 @@ Traceback (most recent call last):
 TypeError: logical_and(): not supported for bool and int64
 ```
 
-"0이 아닌 수는 참으로 쳐 주면 되지 않나" 싶을 수 있어요. 하지만 그렇게 하면, 비교를 빠뜨린 코드(예: `x > 0`을 써야 할 자리에 `x`를 쓴 것)가 에러 없이 지나가요. 그래서 숫자를 조건으로 쓰려면 **무엇을 참으로 볼지 비교로 직접 적어야** 해요.
+0이 아닌 수를 참으로 쳐 주면, 비교를 빠뜨린 코드(예: `x > 0`을 써야 할 자리에 `x`를 쓴 것)가 에러 없이 지나가요. 그래서 숫자를 조건으로 쓰려면 무엇을 참으로 볼지 비교로 직접 적어야 해요.
 
 ```python
 >>> counts != 0
@@ -188,7 +188,7 @@ Traceback (most recent call last):
 TypeError: the truth value of an array is ambiguous; use any() or all()
 ```
 
-`and`, `or`, `not`은 양쪽을 먼저 **참·거짓 하나**로 바꾼 다음 계산하는 Python 문법이에요. 원소별로 계산하도록 바꿀 방법이 없어요. 그런데 배열은 참·거짓 하나로 바꿀 수 없어서 에러가 나요. 원소가 여럿인 배열이 "참"이라는 것이 "모두 참"이라는 뜻인지 "하나라도 참"이라는 뜻인지 정할 수 없기 때문이에요. 원소가 하나뿐이어도 마찬가지예요.
+`and`, `or`, `not`은 양쪽을 먼저 참·거짓 하나로 바꾼 다음 계산하는 Python 문법이라, 원소별로 계산하게 바꿀 방법이 없어요. 그리고 배열은 참·거짓 하나로 바꿀 수 없어서 에러가 나요. 원소가 여럿인 배열이 "참"이라는 것이 "모두 참"이라는 뜻인지 "하나라도 참"이라는 뜻인지 정할 수 없기 때문이에요. 원소가 하나뿐이어도 마찬가지예요.
 
 ```python
 >>> bool(sd.asarray([True]))
@@ -215,7 +215,7 @@ TypeError: the truth value of an array is ambiguous; use any() or all()
 
 ## 연산자 우선순위: 괄호를 꼭 쓰세요
 
-`&`, `|`, `^`는 Python에서 비트 연산자라서 **비교 연산자보다 먼저 계산돼요.** 그래서 괄호를 빼먹으면 생각과 다른 식이 돼요.
+`&`, `|`, `^`는 Python에서 비트 연산자라서 비교 연산자보다 먼저 계산돼요. 그래서 괄호를 빼먹으면 생각과 다른 식이 돼요.
 
 ```python
 >>> x > 2 & x < 8
@@ -234,9 +234,9 @@ Traceback (most recent call last):
 TypeError: unsupported operand dtypes for &: int64 and float64
 ```
 
-에러 메시지가 비교와 상관없어 보여서 원인을 찾기 어려워요. **비교를 `&`, `|`, `^`로 묶을 때는 비교마다 괄호를 씌우세요.**
+에러 메시지가 비교와 상관없어 보여서 원인을 찾기 어려워요. 비교를 `&`, `|`, `^`로 묶을 때는 비교마다 괄호를 씌우세요.
 
-Python 연산자가 계산되는 순서를 정리하면 다음과 같아요. 숫자가 작을수록 먼저 계산돼요. `&`, `^`, `|`가 비교보다 위에 있다는 점이 핵심이에요.
+아래 표는 Python 연산자가 계산되는 순서예요. 숫자가 작을수록 먼저 계산되고, `&`, `^`, `|`가 비교보다 위에 있어요.
 
 | 먼저 계산 | 연산자 |
 |:---:|---|
@@ -268,7 +268,7 @@ array([ True, False,  True, False], dtype=bool)
 
 ### 정수 배열에 `&`, `|`, `~`를 쓰면
 
-연산자 `&`, `|`, `^`, `~`는 bool 배열에서만 논리 연산이에요. 정수가 끼면 [**비트 연산**](/api/array/bitwise/)이 돼요. 에러가 나지 않으니 조심하세요.
+연산자 `&`, `|`, `^`, `~`는 bool 배열에서만 논리 연산이에요. 정수가 끼면 [비트 연산](/api/array/bitwise/)이 돼요. 에러가 나지 않으니 조심하세요.
 
 ```python
 >>> ~counts
@@ -288,7 +288,7 @@ array([1, 1, 0, 0], dtype=int64)
 
 ## `out`: 결과를 기존 배열에 쓰기
 
-`out=`에 배열을 주면 새 배열을 만들지 않고 그 배열에 결과를 적은 다음, 그 배열을 돌려줘요. `out`의 dtype은 결과를 손실 없이 담을 수 있어야 해요. bool 결과는 어느 dtype에나 담을 수 있어서, 정수나 실수 배열을 줘도 돼요. 이때 `True`는 `1`, `False`는 `0`이 돼요. 그 밖의 규칙은 [사칙연산의 `out`](/api/array/arithmetic/#out-결과를-기존-배열에-쓰기)과 같아요.
+`out=`에 배열을 주면 새 배열을 만들지 않고 그 배열에 결과를 적어서 돌려줘요. `out`의 dtype은 결과를 손실 없이 담을 수 있어야 해요. bool 결과는 어느 dtype에나 담을 수 있어서, 정수나 실수 배열을 줘도 돼요. 이때 `True`는 `1`, `False`는 `0`이 돼요. 그 밖의 규칙은 [사칙연산의 `out`](/api/array/arithmetic/#out-결과를-기존-배열에-쓰기)과 같아요.
 
 ```python
 >>> buf = sd.zeros(4, dtype=sd.bool)
@@ -303,7 +303,7 @@ array([1, 0, 0, 0], dtype=int64)
 | 함수 | 하는 일 | 논리 함수와 다른 점 |
 |---|---|---|
 | `bitwise_and` 등 (`&`, `\|`, `^`, `~`) | 비트 연산 | bool끼리는 결과가 같지만, 정수도 받아서 비트 단위로 계산해요. |
-| `all`, `any` | 배열 하나를 줄여요 | `logical_and(a, b)`는 **두 배열**을 원소별로 묶고, `all(a)`는 **배열 하나의 원소들**을 하나의 답으로 줄여요. |
+| `all`, `any` | 배열 하나를 줄여요 | `logical_and(a, b)`는 두 배열을 원소별로 묶고, `all(a)`는 배열 하나의 원소를 모두 모아 답 하나로 줄여요. |
 | `where` | 조건에 따라 값 고르기 | 결과가 참·거짓이 아니라 고른 값이에요. |
 | 비교 (`==`, `<` …) | 조건 만들기 | 논리 연산의 재료가 되는 bool 배열을 만들어요. |
 
@@ -318,7 +318,7 @@ True
 
 ## numpy를 아는 분께
 
-- `logical_*`는 **bool만** 받아요. numpy처럼 0이 아닌 수를 참으로 봐 주지 않아요. `sd.logical_and(x != 0, y != 0)`처럼 비교를 직접 쓰세요.
+- `logical_*`는 bool만 받아요. numpy와 달리 0이 아닌 수를 참으로 봐 주지 않아요. `sd.logical_and(x != 0, y != 0)`처럼 비교를 직접 쓰세요.
 - `logical_and.reduce` 같은 ufunc 메서드는 없어요. 배열 하나를 줄일 때는 `sd.all`, `sd.any`를 써요.
 - `out`은 keyword-only이고 `where=` 인자는 없어요.
 - 두 입력이 모두 Python `bool`이면 결과는 `np.bool_`이 아니라 Python `bool`이에요.

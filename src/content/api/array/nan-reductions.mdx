@@ -58,9 +58,9 @@ import Op from '../../../components/fig/Op.astro';
 
 ## 한눈에 보기
 
-NaN(Not a Number, 숫자가 아님)은 실수 배열에서 "값을 모른다"는 표시로 자주 쓰여요. 센서가 꺼져서 기록이 없는 날, 설문에 답하지 않은 칸 같은 것이에요.
+NaN(Not a Number, 숫자가 아님)은 실수 배열에서 "값을 모른다"는 표시로 자주 쓰여요. 센서가 꺼져서 기록이 없는 날이나 설문에 답하지 않은 칸이 그런 예예요.
 
-보통의 집계 함수는 NaN을 하나라도 만나면 결과 전체가 NaN이 돼요. 모르는 값이 섞인 합은 역시 모르는 값이기 때문이에요. 이 페이지의 함수들은 이름 앞에 `nan`이 붙어 있고, **NaN을 없는 것으로 치고 나머지 값만으로** 계산해요.
+보통의 집계 함수는 NaN을 하나라도 만나면 결과 전체가 NaN이 돼요. 모르는 값이 섞인 합은 역시 모르는 값이기 때문이에요. 이 페이지의 함수는 이름 앞에 `nan`이 붙고, NaN을 없는 것으로 치고 나머지 값만으로 계산해요.
 
 ```python
 >>> import stardust as sd
@@ -102,7 +102,7 @@ nan
 | `nancumulative_sum` | [`cumulative_sum`](/api/array/cumulative/) | 누적 합 | 그 자리에서 아무것도 더하지 않아요. |
 | `nancumulative_prod` | [`cumulative_prod`](/api/array/cumulative/) | 누적 곱 | 그 자리에서 아무것도 곱하지 않아요. |
 
-앞에서 본 `nansum`, `nanmean`을 뺀 나머지 함수도 같은 배열로 불러 볼게요.
+`nansum`, `nanmean`을 뺀 나머지 함수에 같은 배열을 넣으면 이래요.
 
 ```python
 >>> sd.nanprod(x)
@@ -155,7 +155,7 @@ array([[0.6236095644623235],
 
 ## 모두 NaN이거나 비어 있으면
 
-어떤 줄의 값이 **전부 NaN**이면 건너뛰고 나서 남는 값이 하나도 없어요. 빈 배열과 같은 처지가 돼요. 이때 무엇을 돌려주는지는 함수마다 달라요.
+어떤 줄의 값이 전부 NaN이면 건너뛰고 나서 남는 값이 하나도 없어요. 빈 배열과 같은 처지가 돼요. 이때 무엇을 돌려주는지는 함수마다 달라요.
 
 | 함수 | 모두 NaN일 때 | 빈 배열일 때 |
 |---|---|---|
@@ -200,7 +200,7 @@ Traceback (most recent call last):
 ValueError: nanargmax(): All-NaN slice encountered
 ```
 
-여러 줄 중 **한 줄만** 모두 NaN이어도 에러예요. 앞의 `temps`에서 셋째 열은 두 값이 모두 NaN이에요.
+여러 줄 중 한 줄만 모두 NaN이어도 에러예요. 앞의 `temps`에서 셋째 열은 두 값이 모두 NaN이에요.
 
 ```python
 >>> sd.nanargmax(temps, axis=1)
@@ -234,7 +234,7 @@ ValueError: nanmin(): undefined for an empty array (or along an empty axis)
 
 ## nanargmin, nanargmax: 위치는 원래 배열 기준
 
-`argmin`, `argmax`는 NaN이 있으면 **첫 NaN의 위치**를 돌려줘요. NaN을 건너뛰는 판은 NaN을 후보에서 빼고 진짜 최솟값·최댓값의 위치를 찾아요.
+`argmin`, `argmax`는 NaN이 있으면 첫 NaN의 위치를 돌려줘요. NaN을 건너뛰는 판은 NaN을 후보에서 빼고 진짜 최솟값·최댓값의 위치를 찾아요.
 
 ```python
 >>> y = sd.asarray([3.0, sd.nan, 1.0])
@@ -260,7 +260,7 @@ ValueError: nanmin(): undefined for an empty array (or along an empty axis)
 
 ## nanvar, nanstd: 개수는 NaN이 아닌 원소 수
 
-분산의 분모는 `N - correction`이에요. 여기서 `N`은 **NaN이 아닌 원소의 수**예요. 기본값 `correction=0`은 모분산, `correction=1`은 표본 분산이에요. 자세한 뜻은 [분산과 표준편차](/api/array/var/) 문서에 있어요.
+분산의 분모는 `N - correction`이에요. 여기서 `N`은 NaN이 아닌 원소의 수예요. 기본값 `correction=0`은 모분산, `correction=1`은 표본 분산이에요. 자세한 뜻은 [분산과 표준편차](/api/array/var/) 문서에 있어요.
 
 ```python
 >>> sd.nanvar(sd.asarray([1.0, sd.nan, 3.0]))
@@ -269,7 +269,7 @@ ValueError: nanmin(): undefined for an empty array (or along an empty axis)
 2.0
 ```
 
-NaN을 빼고 나면 값이 너무 적어서 `N - correction`이 0 이하가 되면 결과는 NaN이에요.
+NaN을 빼고 남은 값이 너무 적어 `N - correction`이 0 이하가 되면 결과는 NaN이에요.
 
 ```python
 >>> sd.nanvar(sd.asarray([1.0, sd.nan]), correction=1)
@@ -278,7 +278,7 @@ nan
 
 ## nancumulative_sum, nancumulative_prod
 
-누적 합은 앞에서부터 차례로 더한 중간 결과를 모두 담은 배열이에요. NaN을 건너뛰는 판에서는 **NaN 자리에 그때까지의 누적값이 그대로 들어가요.** 그 자리에서 아무것도 더하거나 곱하지 않은 셈이에요.
+누적 합은 앞에서부터 차례로 더한 중간 결과를 모두 담은 배열이에요. NaN을 건너뛰는 판에서는 NaN 자리에 그때까지의 누적값이 그대로 들어가요. 그 자리에서 아무것도 더하거나 곱하지 않은 셈이에요.
 
 ```python
 >>> z = sd.asarray([2.0, sd.nan, 3.0, sd.nan])
@@ -331,7 +331,7 @@ NaN은 실수(그리고 복소수)에만 있는 값이에요. 정수나 bool 배
 2
 ```
 
-복소수 배열에서는 **실수부나 허수부 중 하나라도 NaN인 원소**를 건너뛰어요.
+복소수 배열에서는 실수부나 허수부 중 하나라도 NaN인 원소를 건너뛰어요.
 
 ```python
 >>> sd.nansum(sd.asarray([1 + 1j, complex(1, sd.nan)]))
@@ -351,14 +351,14 @@ TypeError: nanmin(): not supported for complex128
 
 ### 계산 중에 새로 생긴 NaN은 막지 못해요
 
-건너뛰는 것은 **입력에 이미 들어 있던 NaN**이에요. 계산하다가 생기는 NaN(예: `inf + (-inf)`)은 건너뛸 수 없어서 결과가 NaN이 돼요.
+건너뛰는 것은 입력에 이미 들어 있던 NaN뿐이에요. 계산하다가 생기는 NaN(예: `inf + (-inf)`)은 건너뛸 수 없어서 결과가 NaN이 돼요.
 
 ```python
 >>> sd.nansum(sd.asarray([sd.inf, -sd.inf, sd.nan]))
 nan
 ```
 
-무한대는 NaN이 아니라서 건너뛰지 않아요. `nanmin`에 `-inf`가 있으면 그것이 최솟값이에요.
+무한대는 NaN이 아니라서 건너뛰지 않아요. `nanmin`에 `-inf`가 있으면 `-inf`가 최솟값이에요.
 
 ```python
 >>> sd.nanmin(sd.asarray([sd.nan, -sd.inf, 2.0]))

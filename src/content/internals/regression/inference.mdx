@@ -12,7 +12,7 @@ import Bench from '../../../components/fig/Bench.astro';
 
 ## 한눈에 보기
 
-적합이 끝나면 커널은 $R$(쓰인 열의 위 삼각 인자), 백색화한 잔차, 그리고 공분산 하나를 내요. 추론과 진단은 모두 이것들과, 필요할 때 다시 만드는 **얇은 Q**에서 나와요. 어디서도 $X^{\mathsf T}X$나 그 역행렬을 만들지 않아요.
+적합이 끝나면 커널은 $R$(쓰인 열의 위 삼각 인자), 백색화한 잔차, 그리고 공분산 하나를 내요. 추론과 진단은 모두 이 셋과, 필요할 때 다시 만드는 **얇은 Q**에서 나와요. 어디서도 $X^{\mathsf T}X$나 그 역행렬을 만들지 않아요.
 
 | 결과 | 무엇에서 | 언제 |
 |---|---|---|
@@ -25,7 +25,7 @@ import Bench from '../../../components/fig/Bench.astro';
 | Durbin–Watson, Jarque–Bera | 백색화한 잔차의 double-double 합 | 처음 읽을 때 커널 `resid_stats` |
 | Breusch–Pagan | 보조 회귀(같은 커널로 적합 한 번) | 처음 부를 때 |
 
-처음 읽을 때 커널을 다시 부르는 진단은 적합할 때 복사해 둔 y, X, 가중치를 읽어요. 그래서 적합 뒤에 넘긴 배열을 고쳐도 진단은 적합한 자료의 값이에요([회귀 영역의 구조](/internals/regression/overview/)).
+처음 읽을 때 커널을 다시 부르는 진단은 적합할 때 복사해 둔 y, X, 가중치를 읽어요. 그래서 적합 뒤에 넘긴 배열을 고쳐도 진단은 적합에 쓴 자료로 계산돼요([회귀 영역의 구조](/internals/regression/overview/)).
 
 자유도는 `df_resid` $= \text{nobs} - \text{rank}$예요. 군집 공분산에서만 t와 F의 분모 자유도가 군집 수 − 1이고, 그 값이 `df_resid_inference`에 있어요. `df_resid`가 0이면 잔차가 늘 0이라 오차의 크기를 추정할 자유도가 없어요. 척도 $\text{SSR}/\text{df\_resid}$가 $0/0$이고, 고전형이든 강건형이든 공분산과 그 뒤의 추론(표준오차, t, p, 구간, F)이 모두 NaN이에요([최소제곱 풀이](/internals/regression/least-squares/)).
 
@@ -70,7 +70,7 @@ $$
         return self._cached("cov_s", make)
 ```
 
-`cov_params()`와 `bse`는 이것을 데이터의 단위로 옮긴 값이에요. 열과 $y$를 2의 거듭제곱 $f_{x_j}$, $f_y$로 옮겨 적합했으면 계수마다의 배율 $g_j = f_y/f_{x_j}$를 곱하고(`_colfactor`), 아니면 그대로예요. 배율을 공분산을 다 만든 뒤 한 번만 곱하므로, 중간의 $(R^{\mathsf T}R)^{-1}$과 척도가 double을 벗어나지 않아요.
+`cov_params()`와 `bse`는 이것을 데이터의 단위로 옮긴 값이에요. 열과 $y$를 2의 거듭제곱 $f_{x_j}$, $f_y$로 옮겨 적합했으면 계수마다의 배율 $g_j = f_y/f_{x_j}$를 곱하고(`_colfactor`), 아니면 그대로예요. 공분산을 다 만든 뒤에 배율을 한 번만 곱하므로, 중간의 $(R^{\mathsf T}R)^{-1}$과 척도가 double을 벗어나지 않아요.
 
 ```python
     def cov_params(self):
@@ -92,7 +92,7 @@ $$
 p_j = 2\,\bar F_{t(\nu)}(\lvert t_j \rvert), \qquad \hat\beta_j \pm \bar F_{t(\nu)}^{-1}(\alpha/2)\cdot\operatorname{se}_j
 $$
 
-열이나 $y$를 2의 거듭제곱으로 옮겨 적합했으면 t는 데이터 단위의 계수와 `bse`로 나누지 않고, 적합의 단위의 계수와 $\sqrt{\operatorname{diag}C'}$로 바로 나눠요. 비는 단위와 상관없는데, 데이터 단위의 계수나 표준오차는 따로 double을 넘치거나 아래로 넘칠 수 있기 때문이에요. 그래서 계수가 inf로 넘친 회귀에서도 t와 p는 유한한 참값이에요([최소제곱 풀이](/internals/regression/least-squares/)의 극단적인 척도). 신뢰구간도 그때는 두 끝을 적합의 단위에서 $\beta'_j \mp q\sqrt{C'_{jj}}$로 구해 계수처럼 되돌려요. 넘친 끝은 제 부호의 $\pm\infty$, 아래로 넘친 끝은 0이고, $\infty - \infty$의 NaN은 나오지 않아요.
+열이나 $y$를 2의 거듭제곱으로 옮겨 적합했으면 t는 데이터 단위의 계수와 `bse`로 나누지 않고, 적합의 단위의 계수와 $\sqrt{\operatorname{diag}C'}$로 바로 나눠요. t는 단위와 상관없는 비인데, 데이터 단위의 계수나 표준오차는 하나만으로도 double을 넘치거나 아래로 넘칠 수 있기 때문이에요. 그래서 계수가 inf로 넘친 회귀에서도 t와 p는 유한한 참값이에요([최소제곱 풀이](/internals/regression/least-squares/)의 극단적인 척도). 신뢰구간도 그때는 두 끝을 적합의 단위에서 $\beta'_j \mp q\sqrt{C'_{jj}}$로 구해 계수처럼 되돌려요. 넘친 끝은 제 부호의 $\pm\infty$, 아래로 넘친 끝은 0이고, $\infty - \infty$의 NaN은 나오지 않아요.
 
 $\bar F$는 위꼬리 확률(`ccdf`), $\bar F^{-1}$은 그 역함수(`iccdf`)예요. $1 - F$(`1 - cdf`)로 구하지 않으므로 아주 작은 p값도 상대 정확도가 있어요. 두 함수는 sd.stats의 보장 영역에서 상대오차 10⁻¹⁴ 안이에요([Student t 분포](/api/stats/student-t/)).
 
@@ -152,7 +152,7 @@ $$
 (R^{\mathsf T}R)^{-1}R^{\mathsf T}Q^{\mathsf T}\,\Omega\,QR\,(R^{\mathsf T}R)^{-1} = R^{-1}\,\big(Q^{\mathsf T}\Omega Q\big)\,R^{-\mathsf T}
 $$
 
-이 돼요. 그래서 고기를 $X$가 아니라 **얇은 Q의 좌표**에서 만들어요. Q는 반올림 수준에서 직교라 조건수가 1이고, 빵 $R^{-1}(\cdot)R^{-\mathsf T}$는 삼각 풀이(`trsm`) 두 번이에요. 고기를 $X^{\mathsf T}\Omega X$로 만들고 $(X^{\mathsf T}X)^{-1}$을 양쪽에 곱하면 조건수 $\kappa^2$인 행렬끼리 곱하게 돼요.
+이 돼요. 그래서 고기를 $X$가 아니라 얇은 Q의 좌표에서 만들어요. Q는 반올림 수준에서 직교라 조건수가 1이고, 빵 $R^{-1}(\cdot)R^{-\mathsf T}$는 삼각 풀이(`trsm`) 두 번이에요. 고기를 $X^{\mathsf T}\Omega X$로 만들고 $(X^{\mathsf T}X)^{-1}$을 양쪽에 곱하면 조건수 $\kappa^2$인 행렬끼리 곱하게 돼요.
 
 모든 강건 공분산은 **점수** $u_t = \tilde e_t\,q_t$(얇은 Q의 행 $q_t$에 백색화한 잔차 $\tilde e_t$를 곱한 것)에서 고기 $S$를 만들어요.
 
@@ -193,7 +193,9 @@ HC는 $\sqrt{\omega_t}$를 Q의 행에 곱해 $U$를 만들고 `syrk`로 $U^{\ma
         if (pb.cov == kHC1) c1 = n_eff / (n_eff - static_cast<double>(kk));
 ```
 
-HC2·HC3만 지렛대가 필요해서, 그때만 `orgqr`로 만든 Q에서 $h_t$를 함께 구해요. `smult`는 GLM의 빈도 가중치 $f_t$가 있을 때의 $1/\sqrt{f_t}$예요. 빈도 $f_t$인 행은 같은 관측 $f_t$개라, 그 행의 지렛대 $h_t$는 사본 $f_t$개가 나눠 가진 합이고 사본 하나의 지렛대는 $h_t/f_t$예요. 그래서 HC2·HC3의 보정에 $h_t/f_t$를 써요. 그러면 행을 $f_t$번 반복한 자료로 적합한 것과 같은 표준오차예요([일반화 선형 모형](/internals/regression/glm/)). 네 가지는 MacKinnon과 White(1985)의 이름이에요. HC0이 White(1980)의 원래 추정량이고, HC1은 자유도 보정, HC2와 HC3은 지렛대가 큰 행의 잔차가 작게 나오는 것($\operatorname{E}\tilde e_t^2 = \sigma^2(1 - h_t)$)을 되돌리는 보정이에요.
+네 이름은 MacKinnon과 White(1985)가 붙였어요. HC0이 White(1980)의 원래 추정량이고, HC1은 자유도 보정, HC2와 HC3은 지렛대가 큰 행의 잔차가 작게 나오는 것($\operatorname{E}\tilde e_t^2 = \sigma^2(1 - h_t)$)을 되돌리는 보정이에요.
+
+HC2·HC3만 지렛대가 필요해서, 그때만 `orgqr`로 만든 Q에서 $h_t$를 함께 구해요. `smult`는 GLM의 빈도 가중치 $f_t$가 있을 때의 $1/\sqrt{f_t}$예요. 빈도 $f_t$인 행은 같은 관측 $f_t$개라, 그 행의 지렛대 $h_t$는 사본 $f_t$개가 나눠 가진 합이고 사본 하나의 지렛대는 $h_t/f_t$예요. 그래서 HC2·HC3의 보정에 $h_t/f_t$를 써요. 그러면 행을 $f_t$번 반복한 자료로 적합한 것과 같은 표준오차가 나와요([일반화 선형 모형](/internals/regression/glm/)).
 
 ### HAC: Newey–West
 
@@ -237,7 +239,7 @@ $V$는 4,096행 덩어리로 만들고(열마다 스레드풀), 덩어리마다�
 
 ### 군집
 
-같은 군집(학교, 회사, 지역) 안에서 오차가 상관이 있고 군집끼리는 독립이면, 군집마다 점수를 더한 $s_g$가 독립인 단위가 돼요. 고기는 $\sum_g s_gs_g^{\mathsf T}$이고, Stata와 statsmodels의 보정 $\tfrac{G}{G-1}\tfrac{n-1}{n-k}$를 곱해요. t와 F의 분모 자유도는 $G - 1$이에요(Stata와 같아요). 군집이 하나뿐이면 점수의 합이 0이고 $G/(G-1)$이 무한이라 공분산이 NaN이에요. $y$가 상수라 점수가 모두 0이어도 이 NaN을 0으로 바꾸지 않아요. 군집 하나로는 군집 사이의 변동을 잴 수 없다는 사실이 먼저예요.
+같은 군집(학교, 회사, 지역) 안에서 오차가 상관이 있고 군집끼리는 독립이면, 군집마다 점수를 더한 $s_g$가 독립인 단위가 돼요. 고기는 $\sum_g s_gs_g^{\mathsf T}$이고, Stata와 statsmodels의 보정 $\tfrac{G}{G-1}\tfrac{n-1}{n-k}$를 곱해요. t와 F의 분모 자유도는 $G - 1$이에요(Stata와 같아요). 군집이 하나뿐이면 점수의 합이 0이고 $G/(G-1)$이 무한이라 공분산이 NaN이에요. $y$가 상수라 점수가 모두 0이어도 이 NaN을 0으로 바꾸지 않아요. 군집이 하나면 군집 사이의 변동을 잴 수 없으니 NaN이 맞는 답이에요.
 
 ```cpp
         lint G = 0;
@@ -321,7 +323,7 @@ $$
     }
 ```
 
-κ = 10⁵인 군집 문제에서 $V_{22}$를 Cholesky로 풀면 F의 상대오차가 2.4×10⁻⁶, 이 식은 2.7×10⁻¹¹이에요(Arb 참값 대비). Cholesky가 실패하면 F는 NaN이에요.
+κ = 10⁵인 군집 문제에서 $V_{22}$를 Cholesky로 풀면 F의 상대오차가 2.4×10⁻⁶, 이 식은 2.7×10⁻¹¹이에요(Arb 참값 대비). Cholesky가 실패하면 F는 NaN이에요. 이 F는 statsmodels가 강건 공분산에서 내는 `fvalue`(`f_test`)와 같은 통계량이에요.
 
 군집의 고기는 랭크가 많아야 $G - 1$이에요. 군집마다 더한 점수 $s_g$를 모두 더하면 $X^{\mathsf T}e = 0$이라, $G$개의 $s_g$가 선형 독립일 수 없기 때문이에요. 그래서 $G - 1 < q$면 $S_{22}$는 특이하고 검정이 정의되지 않아요. 이때 $S_{22}$는 반올림 때문에 Cholesky를 통과할 수도 있어서, Cholesky의 성공에 맡기지 않고 군집 수로 먼저 판정해 F를 NaN으로 둬요. 계수마다의 표준오차는 그대로 나와요.
 
@@ -341,11 +343,11 @@ True
 
 군집 3개에 기울기 3개($q = 3$)라 F가 NaN이고, 군집이 4개면 F가 나와요. statsmodels는 3개에서도 F(4.78)를 내요.
 
-y가 모두 같아 TSS가 정확히 0이면 강건형이든 고전형이든 `fvalue`와 `f_pvalue`가 NaN이에요(`rsquared`와 같은 규칙, [최소제곱 풀이](/internals/regression/least-squares/)). 절편이 있으면 이때 해가 정확한 완전 적합이라 잔차와 점수가 모두 0이고, 강건 공분산도 0이에요(군집이 하나면 위의 NaN 그대로예요). 이 F는 statsmodels가 강건 공분산에서 내는 `fvalue`(`f_test`)와 같은 통계량이에요.
+y가 모두 같아 TSS가 정확히 0이면 강건형이든 고전형이든 `fvalue`와 `f_pvalue`가 NaN이에요(`rsquared`와 같은 규칙, [최소제곱 풀이](/internals/regression/least-squares/)). 절편이 있으면 이때 해가 정확한 완전 적합이라 잔차와 점수가 모두 0이고, 강건 공분산도 0이에요(군집이 하나면 위의 NaN 그대로예요).
 
 ## 지렛대
 
-지렛대 $h_t$는 적합값이 자기 관측값에 얼마나 끌려가는지예요. 모자 행렬 $H = \tilde X(\tilde X^{\mathsf T}\tilde X)^{-1}\tilde X^{\mathsf T}$의 대각이고, $\tilde X = QR$이면 $H = QQ^{\mathsf T}$라서
+지렛대 $h_t$는 적합값이 자기 관측값에 얼마나 끌려가는지를 나타내요. 모자 행렬 $H = \tilde X(\tilde X^{\mathsf T}\tilde X)^{-1}\tilde X^{\mathsf T}$의 대각이고, $\tilde X = QR$이면 $H = QQ^{\mathsf T}$라서
 
 $$
 h_t = \lVert q_t \rVert_2^2, \qquad \sum_t h_t = \text{rank}
@@ -449,7 +451,7 @@ $$
 
 Durbin–Watson $d$는 이웃한 잔차의 차이로 1차 자기상관을 봐요(상관이 없으면 2 근처). Jarque–Bera는 잔차의 왜도 $S = \mu_3/\mu_2^{3/2}$와 첨도 $K = \mu_4/\mu_2^2$($\mu_p = \tfrac1n\sum(\tilde e_t - \bar e)^p$)가 정규분포의 0과 3에서 얼마나 벗어났는지를 χ²(2)로 재요.
 
-분자의 합은 커널 `resid_stats`가 적합에 쓰인 행만 순서대로 모아 double-double로 더해요. 이웃한 잔차의 차는 two-sum으로 정확히 구한 뒤 제곱해요. $\mu_p$의 $d = \tilde e - \bar e$도 double-double 평균에서 빼요.
+분자의 합은 커널 `resid_stats`가 적합에 쓰인 행만 순서대로 모아 double-double로 더해요. 이웃한 잔차의 차는 two-sum으로 정확히 구한 뒤 제곱해요. $\mu_p$의 편차 $\tilde e_t - \bar e$도 double-double 평균에서 빼서 구해요.
 
 ```cpp
             chunks([&](lint c) {
@@ -468,7 +470,7 @@ Durbin–Watson $d$는 이웃한 잔차의 차이로 1차 자기상관을 봐요
             });
 ```
 
-덩어리는 4,096행으로 n만으로 정하고 순서대로 더하므로 스레드 수와 상관없는 비트예요. 덩어리 경계의 차 $\tilde e_{t_0} - \tilde e_{t_0-1}$도 그 덩어리가 맡아요(`t > 0`이면 앞 덩어리의 마지막 행을 읽어요). Durbin–Watson의 분모는 적합의 SSR이에요. 진단은 모두 적합의 단위(척도를 바꿔 적합했으면 바꾼 $y$의 잔차)에서 만들어요. 진단은 잔차끼리의 비라서 단위가 약분되고, 제곱이 double을 벗어나지 않아요.
+덩어리는 n만으로 정한 4,096행이고 순서대로 더하므로, 비트가 스레드 수와 상관없어요. 덩어리 경계의 차 $\tilde e_{t_0} - \tilde e_{t_0-1}$도 그 덩어리가 맡아요(`t > 0`이면 앞 덩어리의 마지막 행을 읽어요). Durbin–Watson의 분모는 적합의 SSR이에요. 진단은 모두 적합의 단위(척도를 바꿔 적합했으면 바꾼 $y$의 잔차)에서 만들어요. 잔차끼리의 비라서 단위가 약분되고, 제곱이 double을 벗어나지 않아요.
 
 이 합들은 적합 안에서 구하지 않고 처음 읽을 때 따로 구해요. (10⁵, 10)·1스레드에서 적합 안에서 더하면 적합이 9.0 ms에서 10.3 ms로 느려지기 때문이에요(`bench/regression/g1b/speed.md`).
 
@@ -529,7 +531,7 @@ statsmodels 0.15.0은 그 행을 `nobs`에 세요. 60행 가운데 2행의 가�
 
 ## summary()
 
-`summary()`는 statsmodels의 OLS 요약과 같은 짜임과 숫자 꼴의 글이에요. 회귀 하나만 받고, 배치면 `ValueError`예요.
+`summary()`는 statsmodels의 OLS 요약과 짜임과 숫자 꼴이 같은 글을 돌려줘요. 회귀 하나만 받고, 배치면 `ValueError`예요.
 
 ```python
 >>> s = sd.regression.ols(y, X, cov_type="HAC", maxlags=2)
@@ -578,7 +580,7 @@ Arb(구간 산술)로 만든 참값과 같은 double 입력에서 비교한 값�
 | Longley | 4.9e9 | 3e-13 | 1e-12 | 3e-12 | 1e-16 | 7e-15 | 1e-12 | 1e-12 | | |
 | Filip | 1.8e15 | 4e-8 | 4e-8 | 4e-8 | 4e-9 | 7e-8 | 2e-8 | 2e-7 | | |
 
-- 조건이 좋은 문제는 모두 $u$의 몇 배예요. 오차는 대략 $\kappa u$를 따라요. 지렛대는 X의 열공간 자체가 $\kappa u$만큼 움직이기 때문이고, 잔차에서 오는 값은 $\beta$의 반올림이 작은 잔차에 $\lvert x\rvert\lvert\beta\rvert u$로 들어가기 때문이에요(Norris 4×10⁻¹⁴).
+- 조건이 좋은 문제는 모두 $u$의 몇 배이고, 조건이 나빠지면 오차가 대략 $\kappa u$를 따라요. 지렛대는 X의 열공간 자체가 $\kappa u$만큼 움직이기 때문이고, 잔차에서 오는 값은 $\beta$의 반올림이 작은 잔차에 $\lvert x\rvert\lvert\beta\rvert u$로 들어가기 때문이에요(Norris 4×10⁻¹⁴).
 - DW와 JB는 잔차의 합을 double-double로 더해서 조건이 나빠도 덜 나빠져요(Longley의 DW 10⁻¹⁶).
 - statsmodels와는 HAC·군집의 bse·p·F, 지렛대, 두 스튜던트화 잔차, Cook 거리, DW, JB, BP가 모두 10⁻¹¹ 안에서 같아요(OLS, WLS, GLS; `tests/regression/test_robust_diagnostics.py`).
 

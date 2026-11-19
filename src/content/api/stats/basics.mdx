@@ -15,7 +15,7 @@ import Op from '../../../components/fig/Op.astro';
 
 **확률분포**는 "어떤 값이 얼마나 자주 나오는가"를 정해 둔 규칙이에요. 성인의 키를 많이 재 보면 170cm 근처가 가장 흔하고, 150cm나 190cm는 드물어요. 이런 모양을 수식 하나로 적어 두면, "키가 180cm 이하일 확률은?", "상위 5%는 몇 cm부터?", "이 분포를 따르는 가짜 데이터 1000개를 만들어 줘" 같은 질문에 바로 답할 수 있어요.
 
-`sd.stats`는 이런 분포들과, 데이터를 몇 개의 숫자로 요약하는 **기술통계** 함수를 담고 있어요. 따로 import할 필요 없이 `sd.stats.이름`으로 불러요.
+`sd.stats`는 이런 분포와, 데이터를 몇 개의 숫자로 요약하는 **기술통계** 함수를 담고 있어요. 따로 import할 필요 없이 `sd.stats.이름`으로 불러요.
 
 ```python
 >>> import stardust as sd
@@ -60,7 +60,7 @@ import Op from '../../../components/fig/Op.astro';
 - **다변량 분포**: 값이 여러 성분의 벡터예요. 키와 몸무게를 함께 재는 것처럼, 성분끼리 서로 관련이 있을 수 있어요.
 - **행렬 분포**: 값이 행렬이에요. 공분산 행렬 자체가 무작위인 경우를 다뤄요.
 
-단변량 분포(연속과 이산)는 모두 같은 메서드를 가지고 있어요. 메서드 하나하나의 뜻은 [분포의 메서드](/api/stats/methods/)에, 표본을 뽑는 규칙은 [표본 뽑기](/api/stats/sample/)에 있어요.
+단변량 분포(연속과 이산)의 메서드는 모두 같아요. 메서드 하나하나의 뜻은 [분포의 메서드](/api/stats/methods/)에, 표본을 뽑는 규칙은 [표본 뽑기](/api/stats/sample/)에 있어요.
 
 **연속 분포**
 
@@ -109,7 +109,7 @@ import Op from '../../../components/fig/Op.astro';
 | [음이항](/api/stats/negative-binomial/) | `NegativeBinomial(n=..., p=...)` | `n`번째 성공 전까지의 실패 횟수 |
 | [초기하](/api/stats/hypergeometric/) | `Hypergeometric(total=..., successes=..., draws=...)` | 되돌려 놓지 않고 뽑을 때 뽑힌 성공의 수 |
 | [이산 균등](/api/stats/discrete-uniform/) | `DiscreteUniform(low=..., high=...)` | `low` 이상 `high` 미만의 정수가 같은 가능성 |
-| [베타이항](/api/stats/beta-binomial/) | `BetaBinomial(n=..., a=..., b=...)` | 성공 확률 자체가 베타분포로 흔들리는 이항 |
+| [베타이항](/api/stats/beta-binomial/) | `BetaBinomial(n=..., a=..., b=...)` | 성공 확률 자체가 베타 분포로 흔들리는 이항 |
 | [로그 급수](/api/stats/log-series/) | `LogSeries(p=...)` | 확률이 $p^k/k$에 비례하는 양의 정수 |
 | [Zipf](/api/stats/zipf/) | `Zipf(a=...)` | 순위가 k인 것의 빈도가 $k^{-a}$에 비례. 단어의 빈도 |
 
@@ -135,11 +135,11 @@ import Op from '../../../components/fig/Op.astro';
 |---|---|
 | 개수, 최솟값·최댓값, 평균, 분산, 왜도, 첨도를 한 번에 | [`describe`](/api/stats/describe/) |
 | 분포가 한쪽으로 기울었는지, 꼬리가 얼마나 두꺼운지 | [`skew`, `kurtosis`](/api/stats/skew-kurtosis/) |
-| k차 적률 | [`moment`](/api/stats/moment/) |
+| k차 모멘트 | [`moment`](/api/stats/moment/) |
 | 평균 0, 표준편차 1로 표준화 | [`zscore`](/api/stats/zscore/) |
 | 순위 매기기(동점 처리 포함) | [`rankdata`](/api/stats/rankdata/) |
 | 평균의 표준오차 | [`sem`](/api/stats/sem/) |
-| 사분위 범위 | [`iqr`](/api/stats/iqr/) |
+| 사분위범위 | [`iqr`](/api/stats/iqr/) |
 | 가장 자주 나온 값 | [`mode`](/api/stats/mode/) |
 | 확률 벡터의 엔트로피, 두 분포의 KL 발산 | [`entropy`](/api/stats/entropy/) |
 | 표본에서 미분 엔트로피 어림 | [`differential_entropy`](/api/stats/differential-entropy/) |
@@ -223,7 +223,7 @@ AttributeError: property 'sigma' of 'Normal' object has no setter
 
 ### 자유도가 inf이면 극한 분포예요
 
-[t분포](/api/stats/student-t/)는 자유도가 커질수록 표준정규분포에 가까워지고, 자유도가 무한대인 극한은 표준정규분포 그 자체예요. 그래서 자유도에 `sd.inf`를 주면 **그 극한 분포**가 돼요. 모든 메서드(밀도, 누적확률, 역함수, 모멘트, 엔트로피, 지지집합, 표본)가 극한 분포의 값을 내고, 그 분포 객체로 계산한 값과 마지막 비트까지 같아요.
+[t 분포](/api/stats/student-t/)는 자유도가 커질수록 표준정규분포에 가까워지고, 자유도가 무한대인 극한은 표준정규분포 그 자체예요. 그래서 자유도에 `sd.inf`를 주면 **그 극한 분포**가 돼요. 모든 메서드(밀도, 누적확률, 역함수, 모멘트, 엔트로피, 지지집합, 표본)가 극한 분포의 값을 내고, 그 값은 극한 분포의 객체(예: `Normal()`)로 계산한 값과 마지막 비트까지 같아요.
 
 ```python
 >>> T = sd.stats.StudentT(df=sd.asarray([1.0, 30.0, sd.inf]))
@@ -241,7 +241,7 @@ array([0.8498285541119834, 0.9703288435519748, 0.9750021048517795], dtype=float6
 | `NoncentralF(dfn=n, dfd=inf, nc=nc)` | 비중심 카이제곱 χ²(n, nc)를 n으로 나눈 것 |
 | `F(dfn=inf, dfd=m)`, `NoncentralF(dfn=inf, dfd=m, nc=nc)` | `InverseGamma(a=m/2, scale=m/2)` |
 
-극한이 확률분포가 아닌 경우는 정의역 밖처럼 NaN이에요. `ChiSquared(df=inf)`와 `NoncentralChiSquared(df=inf)`는 값이 무한대로 달아나고, 두 자유도가 모두 inf인 F와 비중심 F는 1 한 점에 몰려요. 비중심도 `nc`가 무한대이면 NaN이에요.
+극한이 확률분포가 아닌 경우는 정의역 밖처럼 NaN이에요. `ChiSquared(df=inf)`와 `NoncentralChiSquared(df=inf)`는 값이 무한대로 달아나고, 두 자유도가 모두 inf인 F와 비중심 F는 1 한 점에 몰려요. 비중심 모수 `nc`가 무한대이면 역시 NaN이에요.
 
 ```python
 >>> sd.stats.ChiSquared(df=sd.inf).cdf(1.0), sd.stats.F(dfn=sd.inf, dfd=sd.inf).cdf(1.0)

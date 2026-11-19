@@ -18,16 +18,16 @@ import Bench from '../../../components/fig/Bench.astro';
 | 길 | 예 | 규칙 | 구현 |
 |---|---|---|---|
 | **승격** (연산의 dtype 고르기) | `int_arr + 1.5` | 높은 쪽 dtype, 그 연산의 루프가 있는 첫 dtype | `promote`, `select` (`csrc/base/dtype.hpp`, `csrc/array/ops/ufunc.cpp`) |
-| **Python 데이터에서 만들기** | `asarray([[1, 2], [3, 4.5]])` | shape을 찾고, 원소 종류를 승격해 dtype을 정하고, 값을 쓴다 | `csrc/array/ops/asarray.cpp` |
+| **Python 데이터에서 만들기** | `asarray([[1, 2], [3, 4.5]])` | shape 찾기, 원소 종류를 승격해 dtype 정하기, 값 쓰기 | `csrc/array/ops/asarray.cpp` |
 | **다른 라이브러리에서 가져오기** | `asarray(np_arr)`, `from_dlpack(t)` | 저장 타입이 정확히 같으면 공유, 손실 없는 확장이면 복사 | `asarray.cpp`, `csrc/array/ops/dlpack.cpp` |
 | **명시적 변환** | `astype`, `dtype=` | 손실이 있어도 변환. float → int는 0 방향 자르기 + 포화 + NaN → 0 | `cast_value` (`csrc/array/convert.hpp`), `saturate_to_int64` (`csrc/base/saturate.hpp`), `cast_loop` (`csrc/array/kernels/cast.hpp`) |
 | **암묵적 변환** | `x[...] = v`, `out=`, `x += y` | 승격 순서의 위로만. 아래로 가면 TypeError | `check_assignable` (`csrc/array/ops/copy.cpp`) |
 
 이 다섯 길을 꿰는 원칙은 셋이에요.
 
-1. **dtype은 dtype만 보고 정해요.** 값을 보고 결과 dtype이나 에러 여부를 정하는 규칙이 없어요. `uint64` 버퍼는 값이 작아도 거부하고, 암묵적 하향 변환은 `2.0`처럼 손실이 없는 값이어도 거부해요. 예외는 하나, int64 범위를 벗어난 Python int가 int64로 바뀌어야 할 때의 `OverflowError`예요(값 하나를 저장할 수 없으니까요).
-2. **원소 단계의 변환은 실패하지 않아요.** 막아야 할 변환(complex → float 등)은 dtype 단계에서 원소를 하나도 건드리기 전에 막아요. 그래서 변환 커널 안에는 에러 경로가 없고, 컴파일러가 루프를 자유롭게 벡터화해요.
-3. **모든 변환은 정의된 동작이에요.** C++에서 정의되지 않은 동작(undefined behaviour, UB)인 캐스트를 그대로 쓰지 않아요. float → int64를 ARM 명령 하나로 하는 것이 대표적이에요.
+1. dtype은 dtype만 보고 정해요. 값을 보고 결과 dtype이나 에러 여부를 정하는 규칙이 없어요. `uint64` 버퍼는 값이 작아도 거부하고, 암묵적 하향 변환은 `2.0`처럼 손실이 없는 값이어도 거부해요. 예외는 하나뿐인데, int64 범위를 벗어난 Python int를 int64로 바꿔야 할 때 나는 `OverflowError`예요(값 하나를 저장할 수 없으니까요).
+2. 원소 단계의 변환은 실패하지 않아요. 막아야 할 변환(complex → float 등)은 dtype 단계에서 원소를 하나도 건드리기 전에 막아요. 그래서 변환 커널 안에는 에러 경로가 없고, 컴파일러가 루프를 자유롭게 벡터화해요.
+3. 모든 변환은 정의된 동작이에요. C++에서 정의되지 않은 동작(undefined behaviour, UB)인 캐스트를 그대로 쓰지 않아요. 대표적인 예가 float → int64인데, 그대로 캐스트하면 UB가 될 수 있는 이 변환을 ARM 명령 하나로 해요.
 
 ## 승격
 
@@ -46,12 +46,12 @@ $$
 constexpr DType promote(DType a, DType b) { return a > b ? a : b; }
 ```
 
-- **Python 스칼라도 같은 규칙이에요.** `bool` → bool, `int` → int64, `float` → float64, `complex` → complex128로 보고 배열과 똑같이 승격해요. numpy 2의 "약한 스칼라"(Python 스칼라는 배열의 dtype에 맞춰 준다는 NEP 50의 규칙) [1] 같은 예외가 없어요. stardust에는 float32나 int8처럼 "좁은" 타입이 없어서, 약한 스칼라 규칙이 결과를 바꾸는 경우가 거의 남지 않아요. 규칙 하나로 충분해요.
+- Python 스칼라도 같은 규칙이에요. `bool` → bool, `int` → int64, `float` → float64, `complex` → complex128로 보고 배열과 똑같이 승격해요. numpy 2의 "약한 스칼라"(Python 스칼라는 배열의 dtype에 맞춰 준다는 NEP 50의 규칙) [1] 같은 예외가 없어요. stardust에는 float32나 int8처럼 "좁은" 타입이 없어서, 약한 스칼라 규칙이 결과를 바꾸는 경우가 거의 남지 않아요. 규칙 하나로 충분해요.
 - numpy 스칼라(`numpy.float64`, `numpy.int64` …)도 Python 스칼라처럼 받아요. `numpy.float64`와 `numpy.complex128`은 Python `float`, `complex`의 서브클래스라 그대로 통과하고, 나머지는 타입 이름이 `numpy.`으로 시작할 때만 numpy의 추상 타입(`numpy.bool`, `numpy.integer`, `numpy.floating`, `numpy.complexfloating`)과 `isinstance`로 대조해요(`scalar_dtype`, `csrc/array/convert.cpp`). stardust는 numpy를 import하지 않아요. 이미 import된 모듈만 `PyImport_GetModule`로 한 번 찾아 캐시해요. numpy 스칼라가 존재한다면 numpy는 이미 import돼 있으니까요. 타입 이름의 앞 6글자를 `strncmp`로 보는 검사가 먼저라, numpy 스칼라가 아닌 객체는 `isinstance` 호출 없이 바로 걸러져요.
 
 ### 루프 선택: 승격한 dtype부터 위로
 
-연산마다 "어느 dtype의 루프가 있는가"를 적은 표가 있어요. 승격한 dtype부터 **위로** 올라가며 루프가 있는 첫 dtype을 써요. numpy의 루프 선택과 같은 규칙이에요.
+연산마다 "어느 dtype의 루프가 있는가"를 적은 표가 있어요. 승격한 dtype부터 위로 올라가며 루프가 있는 첫 dtype을 써요. numpy의 루프 선택과 같은 규칙이에요.
 
 ```cpp
 // csrc/array/ops/ufunc.cpp (발췌)
@@ -62,7 +62,7 @@ DType select(const LoopTable& table, DType d, std::span<const DType> inputs, con
 }
 ```
 
-비용은 최대 네 칸을 보는 것이라 상수 시간이에요. 아래 규칙들은 따로 코드로 적은 것이 아니라 **이 표에서 저절로** 나와요.
+비용은 최대 네 칸을 보는 것이라 상수 시간이에요. 아래 규칙은 코드로 따로 적지 않았고, 모두 이 표에서 저절로 나와요.
 
 | 연산 | bool | int64 | float64 | complex128 | 결과 |
 |---|:---:|:---:|:---:|:---:|---|
@@ -82,7 +82,7 @@ DType select(const LoopTable& table, DType d, std::span<const DType> inputs, con
 
 - `int_arr / int_arr`: 승격하면 int64예요. `divide`에는 int64 루프가 없으니 위로 올라가 float64 루프를 써요. 입력은 실행 중에 float64로 변환돼요.
 - `bool_arr + bool_arr`: 승격하면 bool인데 `add`에는 bool 루프가 없어요. 위로 올라가 int64 루프를 써요. numpy 2.5.4는 bool끼리 더하면 bool(논리합)이지만, stardust는 int64예요. `sum`, `prod`, 누적 연산도 bool을 int64로 쌓아요.
-- `logical_and(int_arr, int_arr)`: 승격하면 int64예요. `logical_and`는 bool 루프만 있고, 선택은 **위로만** 가므로 bool까지 내려가지 않아요. `TypeError: logical_and(): not supported for int64 and int64`예요(Array API 표준의 규칙과 같아요).
+- `logical_and(int_arr, int_arr)`: 승격하면 int64예요. `logical_and`는 bool 루프만 있고, 선택은 위로만 가므로 bool까지 내려가지 않아요. `TypeError: logical_and(): not supported for int64 and int64`예요(Array API 표준의 규칙과 같아요).
 - 시프트는 루프 표만으로는 bool 입력을 막을 수 없어요. bool은 위로 올라가 int64 루프에 닿기 때문이에요. 그래서 연산 정의에 `no_bool_inputs` 표시를 두고, 디스패치가 bool 입력을 먼저 거부해요.
 
 ### 표를 컴파일 시점에 만드는 방법
@@ -126,16 +126,16 @@ constexpr LoopEntry entry() {
 template <typename Op> inline constexpr LoopTable binary_table = make_table<Op, 2>();
 ```
 
-- `if constexpr`로 루프가 없는 dtype은 **인스턴스화 자체를 하지 않아요.** `Divide::f`에 int64판이 없어도 컴파일 오류가 나지 않는 이유예요.
+- `if constexpr`로 루프가 없는 dtype은 인스턴스화 자체를 하지 않아요. `Divide::f`에 int64판이 없어도 컴파일 오류가 나지 않는 이유예요.
 - 출력 dtype은 `Op::f`의 반환 타입에서 `dtype_of`로 구해요. 비교 연산의 `f`가 `bool`을 반환하므로 출력 dtype이 bool이 되는 식이에요. 손으로 적은 출력 dtype 표가 따로 없으니, 표와 함수가 어긋날 수 없어요.
 - 표는 `inline constexpr` 변수라 컴파일 시점에 채워져 바이너리의 읽기 전용 데이터에 들어가요. 런타임 초기화 비용도, 초기화 순서 문제도 없어요.
-- 시프트의 bool 거부는 C++20 `requires` 식으로 읽어요: `constexpr bool no_bool = requires { Op::no_bool_inputs; };` 이 멤버가 있는 연산만 `true`가 돼요.
+- 시프트의 bool 거부 표시는 C++20 `requires` 식 `constexpr bool no_bool = requires { Op::no_bool_inputs; };`로 읽어요. 이 멤버가 있는 연산만 `true`가 돼요.
 
 ### dtype이 다른 입력
 
 `int_arr + float_arr`은 float64 루프로 계산해요. int64 입력은 실행 중에 4096원소씩 작은 버퍼로 변환한 뒤 루프에 넘겨요(버퍼 단위 캐스팅). 입력 전체를 float64 임시 배열로 바꾸면 메모리를 두 번 더 지나기 때문이에요. 자세한 내용과 버퍼 크기가 4096인 이유는 [연산 엔진](/internals/array/engine/)에 있어요. 원소 100만 개의 `f * i + g`(float64와 int64가 섞임)는 numpy 592µs, stardust 1스레드 426µs, 10스레드 147µs예요.
 
-Python 스칼라 피연산자는 **루프 dtype으로 미리 변환한** 원소 1개짜리 배열이 되고, 이터레이터가 stride 0으로 브로드캐스트해요. 원소마다 변환하지 않아요.
+Python 스칼라 피연산자는 루프 dtype으로 미리 변환한 원소 1개짜리 배열이 되고, 이터레이터가 stride 0으로 브로드캐스트해요. 원소마다 변환하지 않아요.
 
 ### int와 float의 비교
 
@@ -147,16 +147,16 @@ Python 스칼라 피연산자는 **루프 dtype으로 미리 변환한** 원소 
 
 `asarray(obj, dtype=None, copy=None)`(`csrc/array/ops/asarray.cpp`)는 `obj`를 이 순서로 봐요.
 
-1. **ndarray**: 그대로 돌려주거나, `dtype`이 다르거나 `copy=True`이면 변환·복사해요.
-2. **Python 스칼라**: 0차원 배열이 될 것이므로 `ValueError`예요.
-3. **list, tuple**: 아래의 두 패스 알고리즘으로 만들어요.
-4. **range**: `PySequence_List`로 int 리스트를 만든 뒤 3번 길로 보내요. 버퍼가 아니라서 그래요(frame도 range를 받아요).
-5. **버퍼 프로토콜**을 지원하는 객체: 다음 절.
+1. ndarray: 그대로 돌려주거나, `dtype`이 다르거나 `copy=True`이면 변환·복사해요.
+2. Python 스칼라: 0차원 배열이 될 것이므로 `ValueError`예요.
+3. list, tuple: 아래의 두 패스 알고리즘으로 만들어요.
+4. range: 버퍼가 아니라서 `PySequence_List`로 int 리스트를 만든 뒤 3번 길로 보내요(frame도 range를 받아요).
+5. 버퍼 프로토콜을 지원하는 객체: 다음 절에서 다뤄요.
 6. 그 밖은 `TypeError`예요. generator는 받지 않아요.
 
-### 두 패스: shape과 dtype을 먼저, 값은 나중에
+### 두 패스: shape와 dtype을 먼저, 값은 나중에
 
-<Fig caption="[[1, 2.5], [3, True]]의 변환. 1a에서 첫 원소만 따라가 shape을 읽고, 1b에서 모든 원소를 검사하며 종류를 승격하고, 2에서 행 우선으로 값을 써요.">
+<Fig caption="[[1, 2.5], [3, True]]의 변환. 1a에서 첫 원소만 따라가 shape를 읽고, 1b에서 모든 원소를 검사하며 종류를 승격하고, 2에서 행 우선으로 값을 써요.">
   <ArrayFig name="1a: 첫 원소를 따라가기" data={[['[1, 2.5]', '[3, True]'], ['1', '2.5']]} tones={[['b', 'm'], ['b', 'm']]} note="shape (2, 2)" />
   <Op>→</Op>
   <ArrayFig name="1b: 종류 승격" data={[['int', 'float'], ['int', 'bool']]} tones={[['', 'b'], ['', '']]} note="결과 dtype: float64" />
@@ -164,11 +164,11 @@ Python 스칼라 피연산자는 **루프 dtype으로 미리 변환한** 원소 
   <ArrayFig name="2: 메모리에 쓰기" data={[1.0, 2.5, 3.0, 1.0]} tones={['a', 'a', 'a', 'a']} note="C 순서 float64" />
 </Fig>
 
-**패스 1a: shape 찾기** (`discover_shape`). 각 깊이에서 **첫 원소만** 따라 내려가며 길이를 모아요. `[[1, 2.5], [3, True]]`는 바깥 길이 2, 첫 원소 `[1, 2.5]`의 길이 2, 그 첫 원소 `1`은 시퀀스가 아니므로 멈춰서 shape `(2, 2)`예요. 도중에 ndarray를 만나면 그 배열의 shape을 이어 붙여요(`asarray([sd.arange(2), [1.5, 2]])`도 돼요). 깊이가 32를 넘으면 여기서 `ValueError`예요. 비용은 깊이에 비례하는 $O(\text{ndim})$뿐이에요.
+**패스 1a: shape 찾기** (`discover_shape`). 각 깊이에서 첫 원소만 따라 내려가며 길이를 모아요. `[[1, 2.5], [3, True]]`는 바깥 길이 2, 첫 원소 `[1, 2.5]`의 길이 2, 그 첫 원소 `1`은 시퀀스가 아니므로 멈춰서 shape `(2, 2)`예요. 도중에 ndarray를 만나면 그 배열의 shape를 이어 붙여요(`asarray([sd.arange(2), [1.5, 2]])`도 돼요). 깊이가 32를 넘으면 여기서 `ValueError`예요. 비용은 깊이에 비례하는 $O(\text{ndim})$뿐이에요.
 
-**패스 1b: 검사와 종류 승격** (`validate`). 이제 **모든** 원소를 재귀로 돌며 1a의 shape과 맞는지 확인해요.
+**패스 1b: 검사와 종류 승격** (`validate`). 이제 모든 원소를 재귀로 돌며 1a의 shape와 맞는지 확인해요.
 
-- 안쪽 깊이에서는 시퀀스의 길이가 `shape[depth]`와 같아야 해요. ndarray면 남은 shape과 같아야 해요.
+- 안쪽 깊이에서는 시퀀스의 길이가 `shape[depth]`와 같아야 해요. ndarray면 남은 shape와 같아야 해요.
 - 가장 안쪽(`depth == ndim`)에서는 원소가 Python 스칼라여야 해요. `scalar_dtype`으로 종류를 읽어 지금까지의 종류와 승격해요. 시퀀스가 나오면 깊이가 맞지 않는 것이라 ragged(들쭉날쭉한) 에러이고, 스칼라도 시퀀스도 아니면(문자열 등) `TypeError`예요.
 
 ```cpp
@@ -192,15 +192,15 @@ dtype은 `dtype=`이 있으면 그것, 없으면 승격한 종류, 원소가 하
 
 ### 왜 두 패스인가
 
-- **dtype을 알아야 쓸 수 있어요.** `[1, 2, 3.5]`는 마지막 원소를 보기 전까지 int64인지 float64인지 몰라요. 한 패스로 하려면 int64로 쓰다가 다시 변환하거나, 원소를 일단 Python 객체 목록으로 모아야 해요.
-- **shape을 알아야 할당할 수 있어요.** 결과 배열을 한 번에 정확한 크기로 할당하려면 shape이 먼저 필요해요.
-- **검사가 할당보다 먼저예요.** ragged나 지원하지 않는 원소는 메모리를 할당하기 전에 드러나요.
+- dtype을 알아야 쓸 수 있어요. `[1, 2, 3.5]`는 마지막 원소를 보기 전까지 int64인지 float64인지 몰라요. 한 패스로 하려면 int64로 쓰다가 다시 변환하거나, 원소를 일단 Python 객체 목록으로 모아야 해요.
+- shape를 알아야 할당할 수 있어요. 결과 배열을 한 번에 정확한 크기로 할당하려면 shape가 먼저 필요해요.
+- 검사가 할당보다 먼저예요. ragged나 지원하지 않는 원소는 메모리를 할당하기 전에 드러나요.
 
-numpy도 shape과 dtype을 먼저 알아낸 뒤 값을 채우는 방식이에요(`PyArray_DiscoverDTypeAndShape`, `numpy/_core/src/multiarray/array_coercion.c`) [2].
+numpy도 shape와 dtype을 먼저 알아낸 뒤 값을 채우는 방식이에요(`PyArray_DiscoverDTypeAndShape`, `numpy/_core/src/multiarray/array_coercion.c`) [2].
 
-### shape을 첫 원소에서 읽어도 되는 이유
+### shape를 첫 원소에서 읽어도 되는 이유
 
-1a는 첫 원소만 보지만, 1b가 모든 원소를 그 shape과 대조하므로 들쭉날쭉한 입력을 빠짐없이 잡아요. 어긋나면 "기대한 shape"을 에러 메시지에 그대로 적어 줄 수 있어요.
+1a는 첫 원소만 보지만, 1b가 모든 원소를 그 shape와 대조하므로 들쭉날쭉한 입력을 빠짐없이 잡아요. 어긋나면 "기대한 shape"을 에러 메시지에 그대로 적어 줄 수 있어요.
 
 ```python
 >>> sd.asarray([[1, 2], [3]])
@@ -220,11 +220,11 @@ ValueError: asarray(): inhomogeneous nested sequence: expected every level to ma
 - `PyList_GET_ITEM`/`PyTuple_GET_ITEM` 매크로로 원소를 **빌린 참조**로 읽어요. 원소마다 참조 카운트를 올렸다 내리는 일이 없어요. list와 tuple만 받으니 일반 시퀀스 프로토콜(`PySequence_GetItem`)을 쓸 필요가 없어요.
 - 원소의 종류 판정은 `PyBool_Check` → `PyLong_Check` → `PyFloat_Check` → `PyComplex_Check` 순서예요. `bool`은 `int`의 서브클래스라 반드시 먼저 봐야 해요.
 
-원소 1만 개짜리 float 리스트에서 numpy 138µs, stardust 62µs예요(numpy 2.5.4, Apple M4 Pro). 원소 3개짜리는 137ns 대 143ns로 같아요. stardust가 list·tuple과 네 가지 스칼라만 받는 반면, numpy의 같은 경로는 원소마다 더 많은 경우(배열 프로토콜을 가진 객체, 임의의 시퀀스, 문자열과 object dtype 등)를 다뤄야 해요.
+원소 1만 개짜리 float 리스트에서 numpy 138µs, stardust 62µs예요(numpy 2.5.4, Apple M4 Pro). 원소 3개짜리는 137ns 대 143ns로 비슷해요. 큰 리스트에서 차이가 나는 것은 stardust가 list·tuple과 네 가지 스칼라만 받는 반면, numpy의 같은 경로는 원소마다 더 많은 경우(배열 프로토콜을 지원하는 객체, 임의의 시퀀스, 문자열과 object dtype 등)를 다뤄야 하기 때문이에요.
 
 ### 범위 밖의 Python int
 
-int64 범위를 벗어난 Python int는 **int64로 변환되어야 할 때만** `OverflowError`예요.
+int64 범위를 벗어난 Python int는 int64로 바꿔야 할 때만 `OverflowError`가 나요.
 
 ```python
 >>> sd.asarray([2**70, 0.5])
@@ -246,7 +246,7 @@ numpy 배열, `memoryview`, `array.array`처럼 PEP 3118 버퍼 프로토콜 [3]
 먼저 format 문자열을 해석해요(`parse_format`).
 
 - 앞의 바이트 순서 표시: `>`, `!`는 big-endian, `<`, `=`, `@`는 이 기계의 순서(little-endian)예요.
-- 정수 코드는 문자(`b h i l q n`)가 아니라 **`itemsize`로** 크기를 정해요. C의 `long`(`l`)처럼 플랫폼마다 크기가 다른 코드가 있어서예요. 부호 없는 쪽(`B H I L Q N`)도 같아요.
+- 정수 코드는 문자(`b h i l q n`)가 아니라 `itemsize`로 크기를 정해요. C의 `long`(`l`)처럼 플랫폼마다 크기가 다른 코드가 있어서예요. 부호 없는 쪽(`B H I L Q N`)도 같아요.
 - `e f d`는 float16/32/64, `Zf`, `Zd`는 complex64/128, `?`는 bool이에요.
 - 그 밖의 format(구조체, 문자열 등)은 `TypeError`예요.
 
@@ -263,11 +263,11 @@ numpy 배열, `memoryview`, `array.array`처럼 PEP 3118 버퍼 프로토콜 [3]
 | `complex128` | complex128 | ✓ |
 | `complex64` | complex128 | 복사 |
 
-**복사 없이 공유하는 조건**은 다섯 가지가 모두 맞을 때예요.
+복사 없이 공유하려면 다섯 조건이 모두 맞아야 해요.
 
-1. 원천이 stardust의 저장 타입과 **정확히** 같아요(`is_storage_of`).
+1. 원천이 stardust의 저장 타입과 정확히 같아요(`is_storage_of`).
 2. little-endian이에요(바이트를 뒤집을 필요가 없어요).
-3. 원소가 **자연 정렬**돼 있어요: 데이터 주소와 모든 stride가 `alignof(T)`의 배수예요. `alignof(std::complex<double>)`이 8이라 complex128도 8바이트 정렬이면 돼요.
+3. 원소가 **자연 정렬**돼 있어요. 데이터 주소와 모든 stride가 `alignof(T)`의 배수라는 뜻이에요. `alignof(std::complex<double>)`이 8이라 complex128도 8바이트 정렬이면 돼요.
 4. bool이면 모든 바이트가 0 또는 1이에요.
 5. `copy=True`가 아니에요.
 
@@ -288,7 +288,7 @@ True
 
 ### bool 바이트 검사
 
-bool 버퍼에는 0과 1이 아닌 바이트가 들어 있을 수 있어요(예: numpy에서 `uint8` 배열을 `.view(bool)`로 본 것). stardust의 bool 커널은 **바이트를 더해** True를 세요(`sum`, 마스크의 개수 세기). 2라는 바이트가 있으면 True 하나가 2로 세어져요.
+bool 버퍼에는 0과 1이 아닌 바이트가 들어 있을 수 있어요(예: numpy에서 `uint8` 배열을 `.view(bool)`로 본 것). stardust의 bool 커널은 바이트를 더해 True를 세요(`sum`, 마스크의 개수 세기). 2라는 바이트가 있으면 True 하나가 2로 세어져요.
 
 그래서 bool 버퍼를 공유하기 전에 모든 바이트의 OR을 구해 1 이하인지 봐요.
 
@@ -299,9 +299,9 @@ for (std::int64_t i = 0, n = foreign.size(); i < n; ++i) any |= q[i];
 valid = any <= 1;
 ```
 
-모든 바이트가 0 또는 1이면 OR도 0 또는 1이고, 2 이상의 바이트가 하나라도 있으면 OR에 1보다 높은 비트가 켜져요. 원소마다 비교하고 분기하는 대신 OR만 하므로 컴파일러가 16바이트씩 NEON으로 벡터화해요. 원소 100만 개에서 8.3µs예요. 원소마다 비교하고 분기하는 루프는 235µs가 걸려요. 0/1이 아닌 바이트가 있으면 0/1로 정규화해서 복사해요.
+모든 바이트가 0 또는 1이면 OR도 0 또는 1이고, 2 이상의 바이트가 하나라도 있으면 OR에 1보다 높은 비트가 켜져요. 원소마다 비교하고 분기하는 대신 OR만 하므로 컴파일러가 16바이트씩 NEON으로 벡터화해요. 원소 100만 개에서 8.3µs로, 비교하고 분기하는 루프(235µs)보다 훨씬 빨라요. 0/1이 아닌 바이트가 있으면 0/1로 정규화해서 복사해요.
 
-입구 한 곳에서 막으면 모든 bool 커널을 한 번에 지킬 수 있어요. 대신 공유한 **뒤에** 바깥(numpy 쪽)에서 바이트를 바꾸는 경우는 막지 못해요.
+입구 한 곳에서 막으면 모든 bool 커널을 한 번에 지킬 수 있어요. 대신 공유한 뒤에 바깥(numpy 쪽)에서 바이트를 바꾸는 경우는 막지 못해요.
 
 ```python
 >>> b = np.array([0, 2, 1], dtype=np.uint8).view(np.bool_)
@@ -346,28 +346,28 @@ visit_src(src, [&]<typename S>(std::type_identity<S>) {
 });
 ```
 
-- **넓히기는 모두 정확해요.** 32비트 이하의 정수는 int64에, float16과 float32의 모든 값은 float64에, complex64는 complex128에 정확히 들어가요. 그래서 이 변환은 `dtype=` 없이도 자동으로 해요.
-- **`uint64`는 값이 아니라 dtype으로 거부해요.** $2^{63}$ 이상의 값이 하나도 없어도 `TypeError`예요. 값을 보고 판단하면 같은 코드가 데이터에 따라 성공하기도 하고 실패하기도 하고, dtype을 값에 따라 바꾸면 결과 dtype이 데이터에 따라 달라져요. frame도 같은 규칙이에요. `dtype=`을 주어도 거부해요.
-- **big-endian**은 복사하면서 바이트를 뒤집어요(`load_swapped`, 아래 "바이트 뒤집기"). 공유는 하지 않아요.
-- **float16**(`__fp16`)은 저장 전용 타입이라 먼저 `float`로 바꾼 다음(`widen`) 변환해요.
+- 넓히기는 모두 정확해요. 32비트 이하의 정수는 int64에, float16과 float32의 모든 값은 float64에, complex64는 complex128에 정확히 들어가요. 그래서 이 변환은 `dtype=` 없이도 자동으로 해요.
+- `uint64`는 값이 아니라 dtype으로 거부해요. $2^{63}$ 이상의 값이 하나도 없어도 `TypeError`예요. 값을 보고 판단하면 같은 코드가 데이터에 따라 성공하기도 실패하기도 하고, 값에 따라 dtype을 바꾸면 이번에는 결과 dtype이 데이터에 따라 달라져요. `dtype=`을 주어도 거부하고, frame도 같은 규칙이에요.
+- big-endian은 복사하면서 바이트를 뒤집어요(`load_swapped`, 아래 "바이트 뒤집기"). 공유는 하지 않아요.
+- float16(`__fp16`)은 저장 전용 타입이라 먼저 `float`로 바꾼 다음(`widen`) 변환해요.
 - `dtype=`을 주면 넓힌 값에 명시적 변환(`cast_value`, 아래 절)을 한 번 더 해요. `asarray(np_float32, dtype=sd.int64)`는 float32 → float64 → int64(포화)예요.
-- **결과의 레이아웃은 원본의 메모리 축 순서를 따라요.** F 순서 numpy 배열을 가져오면 F 순서 결과가 나와요(int32 `(2, 3)` F 순서 배열의 결과 strides가 `(8, 16)`).
+- 결과의 레이아웃은 원본의 메모리 축 순서를 따라요. F 순서 numpy 배열을 가져오면 F 순서 결과가 나와요(int32 `(2, 3)` F 순서 배열의 결과 strides가 `(8, 16)`).
 - 0차원 버퍼와 32차원을 넘는 버퍼는 `ValueError`예요.
 
 복사 루프는 두 갈래예요.
 
-**평탄한 경로: 루프 하나.** 버퍼가 연속이면(C 순서든 F 순서든, 바이트 순서가 어느 쪽이든), 원본과 결과는 **같은 순서로 놓인 원소 $n$개의 줄 두 개**예요. 결과 배열은 원본의 메모리 축 순서를 따라 만들므로(`new_array_like`), C 연속 버퍼의 결과는 C 연속이고 F 연속 버퍼의 결과는 F 연속이에요. 그러면 shape가 몇 차원이든 메모리 순서로 $i$번째 원소를 읽어 $i$번째 자리에 쓰면 돼요.
+**평탄한 경로: 루프 하나.** 버퍼가 연속이면(C 순서든 F 순서든, 바이트 순서가 어느 쪽이든), 원본과 결과는 같은 순서로 놓인 원소 $n$개의 줄 두 개예요. 결과 배열은 원본의 메모리 축 순서를 따라 만들므로(`new_array_like`), C 연속 버퍼의 결과는 C 연속이고 F 연속 버퍼의 결과는 F 연속이에요. 그러면 shape가 몇 차원이든 메모리 순서로 $i$번째 원소를 읽어 $i$번째 자리에 쓰면 돼요.
 
 $$
 \texttt{dst}[i] = \operatorname{cast}_T\bigl(\texttt{src}[i]\bigr), \qquad i = 0, 1, \dots, n - 1
 $$
 
-- **컴파일러가 벡터화해요.** 원본 주소가 `sp + i * sizeof(S)`라서 원소 간격이 컴파일 시점 상수예요. `load<S>`는 고정 크기 `std::memcpy`라 load 명령 하나로 접히고, 결과 쪽은 `T*` 인덱스 접근이에요. big-endian이면 load 뒤에 바이트 뒤집기 명령이 하나 붙을 뿐 루프의 모양은 같아요. 바이트 순서 분기는 조각마다 한 번, 루프 밖에서 해요. 간격이 런타임 값인 루프는 컴파일러가 연속 접근임을 알 수 없어 벡터화하지 못해요([원소별 커널](/internals/array/elementwise/)의 "바이트 stride 루프는 벡터화되지 않아요"와 같은 문제예요). `S`와 `T`의 조합마다 템플릿이 따로 인스턴스화되므로, 원천 타입마다 손으로 쓴 SIMD 경로 없이 조합마다 맞는 루프가 만들어져요.
-- **정렬되지 않은 버퍼도 이 경로예요.** 읽기가 `memcpy`라서 원본 주소가 원소 크기의 배수가 아니어도 정의된 동작이에요. 정렬이 맞지 않아 공유하지 못한 float64 버퍼가 이 경로로 복사돼요.
-- **풀에 나눠요.** `for_pieces`가 $[0, n)$을 4096원소(`kParallelTask`)짜리 조각으로 자르고, 원소가 $2^{15}$개 이상이면 스레드풀에서 돌려요([연산 엔진](/internals/array/engine/)의 "이터레이터 밖: `for_pieces`"). 조각마다 서로 다른 자리에 쓰고 값은 원소마다 독립이라, 결과는 스레드 수와 무관해요.
+- 컴파일러가 벡터화해요. 원본 주소가 `sp + i * sizeof(S)`라서 원소 간격이 컴파일 시점 상수예요. `load<S>`는 고정 크기 `std::memcpy`라 load 명령 하나로 접히고, 결과 쪽은 `T*` 인덱스 접근이에요. big-endian이면 load 뒤에 바이트 뒤집기 명령이 하나 붙을 뿐 루프의 모양은 같아요. 바이트 순서 분기는 조각마다 한 번, 루프 밖에서 해요. 간격이 런타임 값인 루프는 컴파일러가 연속 접근임을 알 수 없어 벡터화하지 못해요([원소별 커널](/internals/array/elementwise/)의 "바이트 stride 루프는 벡터화되지 않아요"와 같은 문제예요). `S`와 `T`의 조합마다 템플릿이 따로 인스턴스화되므로, 원천 타입마다 손으로 쓴 SIMD 경로 없이 조합마다 맞는 루프가 만들어져요.
+- 정렬되지 않은 버퍼도 이 경로예요. 읽기가 `memcpy`라서 원본 주소가 원소 크기의 배수가 아니어도 정의된 동작이에요. 정렬이 맞지 않아 공유하지 못한 float64 버퍼가 이 경로로 복사돼요.
+- 풀에 나눠요. `for_pieces`가 $[0, n)$을 4096원소(`kParallelTask`)짜리 조각으로 자르고, 원소가 $2^{15}$개 이상이면 스레드풀에서 돌려요([연산 엔진](/internals/array/engine/)의 "이터레이터 밖: `for_pieces`"). 조각마다 서로 다른 자리에 쓰고 값은 원소마다 독립이라, 결과는 스레드 수와 무관해요.
 - 복사에 쓰는 임시 메모리는 없어요. 추가 메모리는 결과 배열뿐이에요.
 
-**일반 경로: 결과의 메모리 순서로, 조각마다 odometer.** 연속이 아닌 버퍼(`np_arr[::2]`, `m[:, 1:]`, 전치한 뷰 등)는 원소 간격이 축마다 달라 평탄한 루프로 쓸 수 없어요. 이 경로는 먼저 축을 **결과 배열의 stride 절댓값이 큰 순서**로 정렬해요. 결과는 원본의 메모리 축 순서를 따라 만들어졌으므로(`new_array_like`), 이 순서는 원본의 메모리 순서이기도 해요. 그 순서로 원소에 $0, 1, \dots, n - 1$번까지 번호를 매기고, 번호 구간을 평탄한 경로와 똑같이 `for_pieces`로 잘라 풀에서 돌려요.
+**일반 경로: 결과의 메모리 순서로, 조각마다 odometer.** 연속이 아닌 버퍼(`np_arr[::2]`, `m[:, 1:]`, 전치한 뷰 등)는 원소 간격이 축마다 달라 평탄한 루프로 쓸 수 없어요. 이 경로는 먼저 축을 결과 배열의 stride 절댓값이 큰 순서로 정렬해요. 결과는 원본의 메모리 축 순서를 따라 만들어졌으므로(`new_array_like`), 이 순서는 원본의 메모리 순서이기도 해요. 그 순서로 원소에 $0, 1, \dots, n - 1$번까지 번호를 매기고, 번호 구간을 평탄한 경로와 똑같이 `for_pieces`로 잘라 풀에서 돌려요.
 
 ```cpp
 // csrc/array/ops/asarray.cpp, 일반 경로 (줄이고 다듬은 발췌)
@@ -411,13 +411,13 @@ for_pieces(n, kParallelTask, n, [&](std::int64_t, std::int64_t i0, std::int64_t 
 });
 ```
 
-- **왜 결과의 메모리 순서인가.** 논리적 C 순서(마지막 축이 가장 빨리 도는 순서)로 걸으면, 전치한 뷰에서는 논리적 마지막 축이 원본과 결과 양쪽에서 메모리상 가장 멀리 뛰는 축이에요. 안쪽 루프가 원소마다 수 KB씩 건너뛰며 읽고 써서 캐시 미스가 시간을 정해요(float32 `m.T` 1000×1000을 그렇게 걸으면 1스레드 870µs). 메모리 순서로 걸으면 안쪽 축이 원본에서 가장 촘촘한 축이 되어 122~128µs예요.
-- **안쪽 축이 붙어 있으면 인덱스 루프예요.** `m[:, 1:1001]`처럼 행 안은 연속이고 행 사이만 떨어진 버퍼는 안쪽 축의 간격이 양쪽 모두 원소 크기와 같아요. 이때는 평탄한 경로처럼 `sp + k * sizeof(S)`로 읽고 `dp[k]`에 쓰는 루프라 컴파일러가 벡터화해요. 간격이 런타임 값인 strided 루프로 돌면 같은 버퍼가 260µs, 인덱스 루프로는 127~131µs예요.
-- **조각의 시작점은 나눗셈으로 구해요.** 번호 $i_0$의 축별 인덱스는 shape을 진법의 밑으로 삼은 자릿수예요. 마지막 축부터 `%`와 `/`로 풀면서, 인덱스에 그 축의 stride를 곱해 더하면 원본과 결과에서의 바이트 오프셋이 나와요. 조각마다 한 번, $O(\text{ndim})$이에요. 그래서 조각은 앞 조각이 어디서 끝났는지 몰라도 혼자 시작할 수 있고, 어느 스레드가 어느 조각을 맡아도 같은 원소를 같은 자리에 써요.
-- **안쪽 루프는 평탄해요.** 안쪽 축을 따라 `len`개를 도는 동안 하는 일은 포인터 이동과 load, 변환, store뿐이에요. 축 인덱스를 올리고 끝을 검사하는 odometer의 일은 안쪽 축 한 줄에 한 번만 해요. 원소마다 odometer를 한 칸씩 돌리면(원소마다 자리올림 검사) 100만 개에 약 420µs가 들어요.
-- **자리올림.** 축 $d$가 끝에 닿으면 인덱스를 0으로 되돌리고 축 $d - 1$을 한 칸 올려요. 오프셋은 `ss[d - 1] - shp[d] * ss[d]`만큼 옮겨요. 축 $d$를 처음으로 되감고(`- shp[d] * ss[d]`) 바깥 축을 한 칸 나아가는(`+ ss[d - 1]`) 것을 한 번에 더한 값이에요.
-- **1차원에서는 odometer가 사라져요.** `nd == 1`이면 자리올림 루프가 돌지 않고, 조각 하나가 strided 루프 하나예요.
-- **결과는 스레드 수와 무관해요.** 조각마다 서로 다른 원소를 쓰고, 값은 원소마다 독립이에요.
+- 결과의 메모리 순서로 걷는 이유: 논리적 C 순서(마지막 축이 가장 빨리 도는 순서)로 걸으면, 전치한 뷰에서는 논리적 마지막 축이 원본과 결과 양쪽에서 메모리상 가장 멀리 뛰는 축이에요. 안쪽 루프가 원소마다 수 KB씩 건너뛰며 읽고 써서 캐시 미스가 시간을 정해요(float32 `m.T` 1000×1000을 그렇게 걸으면 1스레드 870µs). 메모리 순서로 걸으면 안쪽 축이 원본에서 가장 촘촘한 축이 되어 122~128µs예요.
+- 안쪽 축이 붙어 있으면 인덱스 루프예요. `m[:, 1:1001]`처럼 행 안은 연속이고 행 사이만 떨어진 버퍼는 안쪽 축의 간격이 양쪽 모두 원소 크기와 같아요. 이때는 평탄한 경로처럼 `sp + k * sizeof(S)`로 읽고 `dp[k]`에 쓰는 루프라 컴파일러가 벡터화해요. 간격이 런타임 값인 strided 루프로 돌면 같은 버퍼가 260µs, 인덱스 루프로는 127~131µs예요.
+- 조각의 시작점은 나눗셈으로 구해요. 번호 $i_0$의 축별 인덱스는 shape를 진법의 밑으로 삼은 자릿수예요. 마지막 축부터 `%`와 `/`로 풀면서, 인덱스에 그 축의 stride를 곱해 더하면 원본과 결과에서의 바이트 오프셋이 나와요. 조각마다 한 번, $O(\text{ndim})$이에요. 그래서 조각은 앞 조각이 어디서 끝났는지 몰라도 혼자 시작할 수 있고, 어느 스레드가 어느 조각을 맡아도 같은 원소를 같은 자리에 써요.
+- 안쪽 루프는 평탄해요. 안쪽 축을 따라 `len`개를 도는 동안 하는 일은 포인터 이동과 load, 변환, store뿐이에요. 축 인덱스를 올리고 끝을 검사하는 odometer의 일은 안쪽 축 한 줄에 한 번만 해요. 원소마다 odometer를 한 칸씩 돌리면(원소마다 자리올림 검사) 100만 개에 약 420µs가 들어요.
+- 자리올림: 축 $d$가 끝에 닿으면 인덱스를 0으로 되돌리고 축 $d - 1$을 한 칸 올려요. 오프셋은 `ss[d - 1] - shp[d] * ss[d]`만큼 옮겨요. 축 $d$를 처음으로 되감고(`- shp[d] * ss[d]`) 바깥 축을 한 칸 나아가는(`+ ss[d - 1]`) 것을 한 번에 더한 값이에요.
+- 1차원에서는 odometer가 사라져요. `nd == 1`이면 자리올림 루프가 돌지 않고, 조각 하나가 strided 루프 하나예요.
+- 결과는 스레드 수와 무관해요. 조각마다 서로 다른 원소를 쓰고, 값은 원소마다 독립이에요.
 
 안쪽 축이 붙어 있지 않으면(`i32[::2]`, `m[:, ::2]`) 간격 `si`, `di`가 런타임 값이라 컴파일러가 벡터화하지 못해요. 그래서 이 경우의 1스레드 속도는 원소당 약 0.24ns로, 평탄한 루프(약 0.09ns)의 2.5~3배예요. numpy도 원소마다 간격을 건너뛰는 루프라 같은 속도예요. 안쪽 축이 붙어 있는 2차원 버퍼와 전치한 뷰는 평탄한 루프와 같은 속도예요.
 
@@ -444,10 +444,10 @@ S load_swapped(const std::byte* p) {
 }
 ```
 
-- **뒤집기는 명령 하나예요.** `__builtin_bswap16/32/64`는 정수의 바이트 순서를 뒤집는 컴파일러 내장 함수이고, ARM64에서는 `REV` 명령 하나(벡터화되면 `REV16`/`REV32`/`REV64`의 벡터판)로 번역돼요. 바이트를 하나씩 임시 배열에 거꾸로 옮기는 루프보다 빠르고, 평탄한 루프 안에서 벡터화를 막지 않아요.
-- **float도 정수로 뒤집어요.** 바이트를 같은 크기의 부호 없는 정수로 읽어(`memcpy`) 뒤집고, 그 비트를 다시 float로 읽어요(`memcpy`). `memcpy` 두 번은 컴파일하면 사라져요.
-- **complex는 실수부와 허수부를 따로 뒤집어요.** complex128의 16바이트는 double 두 개가 (실수부, 허수부) 순서로 놓인 것이고, big-endian에서도 두 부분의 순서는 같아요. 16바이트를 통째로 뒤집으면 두 부분의 자리가 바뀌어요. 그래서 부분 타입 `P`로 자기 자신을 두 번 불러 8바이트(complex64는 4바이트)씩 뒤집어요.
-- **연속인 big-endian 버퍼는 평탄한 경로예요.** 뒤집기가 load에 붙은 명령 하나라, 평탄한 루프의 벡터화가 그대로 유지돼요. 연속이 아닌 big-endian 버퍼는 일반 경로에서 같은 `load_swapped`를 써요.
+- 뒤집기는 명령 하나예요. `__builtin_bswap16/32/64`는 정수의 바이트 순서를 뒤집는 컴파일러 내장 함수이고, ARM64에서는 `REV` 명령 하나(벡터화되면 `REV16`/`REV32`/`REV64`의 벡터판)로 번역돼요. 바이트를 하나씩 임시 배열에 거꾸로 옮기는 루프보다 빠르고, 평탄한 루프 안에서 벡터화를 막지 않아요.
+- float도 정수로 뒤집어요. 바이트를 같은 크기의 부호 없는 정수로 읽어(`memcpy`) 뒤집고, 그 비트를 다시 float로 읽어요(`memcpy`). `memcpy` 두 번은 컴파일하면 사라져요.
+- complex는 실수부와 허수부를 따로 뒤집어요. complex128의 16바이트는 double 두 개가 (실수부, 허수부) 순서로 놓인 것이고, big-endian에서도 두 부분의 순서는 같아요. 16바이트를 통째로 뒤집으면 두 부분의 자리가 바뀌어요. 그래서 부분 타입 `P`로 자기 자신을 두 번 불러 8바이트(complex64는 4바이트)씩 뒤집어요.
+- 연속인 big-endian 버퍼는 평탄한 경로예요. 뒤집기가 load에 붙은 명령 하나라, 평탄한 루프의 벡터화가 그대로 유지돼요. 연속이 아닌 big-endian 버퍼는 일반 경로에서 같은 `load_swapped`를 써요.
 
 ### 복사하는 경로의 속도
 
@@ -474,10 +474,10 @@ S load_swapped(const std::byte* p) {
 | `sd.asarray(i64, copy=True)` (int64 → int64) | 87µs | 36µs | 97µs (`copy`) | 평탄한 루프 |
 | `sd.asarray(F, copy=True)` (stardust 배열의 복사) | 101µs | 40µs | 101µs (`copy`) | 엔진의 캐스트 커널 |
 
-- **넓히든 안 넓히든 같은 시간이에요.** 100만 원소에 90µs 안팎, 원소당 약 0.09ns예요. 8MB(int32는 4MB)를 읽고 8MB를 새 메모리에 쓰는 일이라, 시간을 정하는 것은 변환이 아니라 메모리 왕복이에요. numpy의 연속 캐스트 루프, stardust 배열끼리의 복사(엔진의 캐스트 커널, 아래 "캐스트 커널 표")와도 같은 속도예요.
-- **10스레드에서 2.7~2.9배예요.** 메모리에 묶인 연산이라 코어 수만큼 빨라지지는 않아요. stardust 배열의 복사(1스레드 101µs, 10스레드 40µs)와 같은 비율이에요.
+- 넓히든 안 넓히든 같은 시간이에요. 100만 원소에 90µs 안팎, 원소당 약 0.09ns예요. 8MB(int32는 4MB)를 읽고 8MB를 새 메모리에 쓰는 일이라, 시간을 정하는 것은 변환이 아니라 메모리 왕복이에요. numpy의 연속 캐스트 루프, stardust 배열끼리의 복사(엔진의 캐스트 커널, 아래 "캐스트 커널 표")와도 같은 속도예요.
+- 10스레드에서 2.4~2.8배예요. 메모리에 묶인 연산이라 코어 수만큼 빨라지지는 않아요. stardust 배열의 복사(1스레드 101µs, 10스레드 40µs, 2.5배)와 비슷한 비율이에요.
 
-big-endian 버퍼와 연속이 아닌 버퍼예요(전체 측정, 원소 100만 개). `m`은 float32 (2000, 2000) 배열이고, 결과는 모두 원소 100만 개예요.
+big-endian 버퍼와 연속이 아닌 버퍼도 전체 측정(원소 100만 개)에서 가져왔어요. `m`은 float32 (2000, 2000) 배열이고, 결과는 모두 원소 100만 개예요.
 
 <Bench
   rows={[
@@ -490,11 +490,11 @@ big-endian 버퍼와 연속이 아닌 버퍼예요(전체 측정, 원소 100만 
   caption="첫 줄은 연속인 big-endian 버퍼(평탄한 경로), 나머지는 연속이 아닌 버퍼(일반 경로)예요. 마지막 줄의 numpy는 결과를 C 순서로 만드는 np.ascontiguousarray예요."
 />
 
-- **연속인 big-endian은 numpy와 같아요.** 뒤집기가 벡터화된 평탄한 루프 안의 명령 하나라, 기계 바이트 순서의 복사와 같은 시간이에요.
-- **행 안이 연속인 2차원 버퍼도 numpy와 같아요.** `m[:, 1:1001]`과 `>f8`의 `[::2]`(행을 한 칸 건너)는 안쪽 축이 양쪽에서 붙어 있어 인덱스 루프가 벡터화돼요. 10스레드에서는 3.5~4.8배예요.
-- **전치한 뷰도 numpy와 같아요.** 결과의 메모리 순서(= 원본의 메모리 순서)로 걸으므로 안쪽 축이 원본에서 붙어 있는 축이에요. numpy도 `np.asarray(…, dtype=…)`는 원본의 축 순서(F 순서)를 지키는 결과를 만들어 같은 일을 해요(133µs). 결과를 C 순서로 만들게 하면(`np.ascontiguousarray`) numpy는 444µs가 들어요. stardust의 결과는 원본처럼 F 순서이고, 이후 연산의 엔진이 이 레이아웃을 그대로 따라가요.
+- 연속인 big-endian은 numpy와 같아요. 뒤집기가 벡터화된 평탄한 루프 안의 명령 하나라, 기계 바이트 순서의 복사와 같은 시간이에요.
+- 행 안이 연속인 2차원 버퍼도 numpy와 같아요. `m[:, 1:1001]`과 `>f8`의 `[::2]`(행을 한 칸 건너)는 안쪽 축이 양쪽에서 붙어 있어 인덱스 루프가 벡터화돼요. 10스레드에서는 3.5~4.8배예요.
+- 전치한 뷰도 numpy와 같아요. 결과의 메모리 순서(= 원본의 메모리 순서)로 걸으므로 안쪽 축이 원본에서 붙어 있는 축이에요. numpy도 `np.asarray(…, dtype=…)`는 원본의 축 순서(F 순서)를 지키는 결과를 만들어 같은 일을 해요(133µs). 결과를 C 순서로 만들게 하면(`np.ascontiguousarray`) numpy는 444µs가 들어요. stardust의 결과는 원본처럼 F 순서이고, 이후 연산의 엔진이 이 레이아웃을 그대로 따라가요.
 
-같은 방법으로 따로 잰 다른 dtype과 원소마다 건너뛰는 버퍼예요. numpy 쪽은 같은 변환을 하는 `astype`이에요.
+다른 dtype과 원소마다 건너뛰는 버퍼는 같은 방법으로 따로 쟀어요. numpy 쪽은 같은 변환을 하는 `astype`이에요.
 
 | 연산 | numpy (`astype`) | 1스레드 | 10스레드 | 지나는 경로 |
 |---|---:|---:|---:|---|
@@ -505,8 +505,8 @@ big-endian 버퍼와 연속이 아닌 버퍼예요(전체 측정, 원소 100만 
 | `sd.asarray(i32[::2])` (1차원, 한 칸 건너) → int64 | 250µs | 241µs | 34µs | 일반 경로, strided 루프 |
 | `sd.asarray(m[:1000, ::2])` (float32, 열을 한 칸 건너) | 240µs | 250µs | 37µs | 일반 경로, strided 루프 |
 
-- **정수와 complex의 big-endian은 numpy의 `astype`보다 1.8~3.5배 빨라요.** stardust에서는 원천 타입이 무엇이든 뒤집기가 평탄한 루프 안의 명령 하나예요.
-- **안쪽 축이 떨어져 있는 버퍼는 1스레드에서 numpy와 같아요.** `i32[::2]`와 `m[:, ::2]`는 두 라이브러리 모두 원소마다 간격을 건너뛰는 스칼라 루프라 원소당 약 0.24ns로 같아요. 10스레드에서는 조각으로 나뉘어 6.5~7.3배예요.
+- 정수와 complex의 big-endian은 numpy의 `astype`보다 1.8~3.5배 빨라요. stardust에서는 원천 타입이 무엇이든 뒤집기가 평탄한 루프 안의 명령 하나예요.
+- 안쪽 축이 떨어져 있는 버퍼는 1스레드에서 numpy와 같아요. `i32[::2]`와 `m[:, ::2]`는 두 라이브러리 모두 원소마다 간격을 건너뛰는 스칼라 루프라 원소당 약 0.24ns로 같아요. 10스레드에서는 조각으로 나뉘어 6.5~7.3배예요.
 - 결과 배열을 새로 할당하는 비용은 두 라이브러리 모두 같은 조건이에요(numpy의 `astype`과 `copy`도 새 배열을 만들어요).
 - numpy 배열이 아닌 버퍼도 같은 경로예요. 8000바이트 `bytearray`의 `asarray`(uint8 → int64 8000개)가 0.72µs예요.
 
@@ -518,11 +518,11 @@ big-endian 버퍼와 연속이 아닌 버퍼예요(전체 측정, 원소 100만 
 |---|---:|---:|
 | `asarray(numpy float64 배열)` | 12ns (`np.asarray`) | 139ns (`sd.asarray`) |
 
-이 두 수치는 **같은 일을 비교한 것이 아니에요.** `np.asarray(ndarray)`는 이미 numpy 배열이면 같은 객체를 그대로 돌려줘요. 하는 일이 인자 확인뿐이에요. stardust에 맞는 비교 대상은 `sd.asarray(sd 배열)`이고, 이것은 20ns예요(같은 객체를 돌려줘요). `sd.asarray(numpy 배열)`은 다른 라이브러리의 객체를 받아 새 Python 객체를 만드는 일이에요. strided 뷰(134ns)나 전치한 뷰(147ns)도 복사 없이 공유하므로 비슷한 시간이에요.
+이 두 수치는 같은 일을 비교한 것이 아니에요. `np.asarray(ndarray)`는 이미 numpy 배열이면 같은 객체를 그대로 돌려줘요. 하는 일이 인자 확인뿐이에요. stardust에서 이에 맞는 비교 대상은 `sd.asarray(sd 배열)`이고, 같은 객체를 돌려주며 20ns예요. `sd.asarray(numpy 배열)`은 다른 라이브러리의 객체를 받아 새 Python 객체를 만드는 일이에요. strided 뷰(134ns)나 전치한 뷰(147ns)도 복사 없이 공유하므로 비슷한 시간이에요.
 
 그 시간이 어디에 쓰이는지 코드 순서대로 보면 이래요(`asarray` → `from_buffer`).
 
-1. `is_ndarray`가 아니므로 `scalar_dtype(obj)`로 Python·numpy 스칼라인지 봐요. Python의 `bool`, `int`, `float`, `complex`는 타입 검사 네 번이고, 그다음 `numpy_scalar_dtype`이 타입 이름(`tp_name`) 문자열을 봐요. `numpy.`으로 시작하지 않으면 numpy 스칼라가 아니고, 정확히 `numpy.ndarray`이면 배열이지 스칼라가 아니므로 바로 돌아와요. 문자열 비교 두 번이에요. numpy의 스칼라 타입 넷(`np.bool`, `np.integer`, `np.floating`, `np.complexfloating`)에 대한 `PyObject_IsInstance`는 그 밖의 `numpy.*` 타입에만 불러요. `PyObject_IsInstance` 네 번은 약 37ns가 드는 일이라, 가장 흔한 입력인 numpy 배열이 그것을 치르지 않게 이름으로 먼저 걸러요.
+1. `is_ndarray`가 아니므로 `scalar_dtype(obj)`로 Python·numpy 스칼라인지 봐요. Python의 `bool`, `int`, `float`, `complex`는 타입 검사 네 번이고, 그다음 `numpy_scalar_dtype`이 타입 이름(`tp_name`) 문자열을 봐요. `numpy.`으로 시작하지 않으면 numpy 스칼라가 아니고, 정확히 `numpy.ndarray`이면 배열이지 스칼라가 아니므로 바로 돌아와요. 문자열 비교 두 번이에요. numpy의 스칼라 타입 넷(`np.bool`, `np.integer`, `np.floating`, `np.complexfloating`)에 대한 `PyObject_IsInstance`는 그 밖의 `numpy.*` 타입에만 불러요. `PyObject_IsInstance` 네 번은 약 37ns가 드는 일이라, 가장 흔한 입력인 numpy 배열이 그 비용을 치르지 않게 이름으로 먼저 걸러요.
 2. `PyObject_GetBuffer`: numpy가 format, shape, strides를 채운 `Py_buffer`를 내줘요.
 3. format 해석, `NDArray` 채우기, 정렬 검사.
 4. `Buffer::adopt(view)`로 `Py_buffer`를 넘겨받는 Buffer(`shared_ptr`, 할당 1번)와 `wrap`으로 nanobind 인스턴스(할당 1번)를 만들어요.
@@ -536,9 +536,9 @@ big-endian 버퍼와 연속이 아닌 버퍼예요(전체 측정, 원소 100만 
 | numpy 배열의 Python 서브클래스(타입 이름이 `numpy.`으로 시작하지 않음) | 140ns | 1단계의 두 번째 문자열 비교가 없어요. 측정 흔들림 안에서 같아요 |
 | 같은 메모리의 `memoryview` | 109ns | numpy의 버퍼 내보내기 대신 `memoryview`의 내보내기 |
 
-- **1단계는 측정되지 않을 만큼 작아요.** 스칼라 검사를 아예 건너뛰는 것과 다름없는 서브클래스 입력이 numpy 배열과 같은 시간이에요.
-- **약 30~40ns는 numpy의 버퍼 내보내기 비용이에요.** Python에서 `memoryview(f)`가 69ns, `memoryview(memoryview)`가 33ns로 같은 크기의 차이가 나요. 버퍼 프로토콜로 numpy 배열을 받는 한 줄일 수 없는 몫이에요.
-- **남은 약 110ns**는 함수 호출과 인자 해석, `NDArray` 구성, 할당 두 번, 해제예요. 그중 15~20ns는 배열 객체가 512바이트를 넘어 시스템 `malloc`으로 할당되는 비용이에요([작은 배열의 호출 비용](/internals/array/small-arrays/)). numpy도 `np.asarray(memoryview)`로 외부 버퍼를 받으면 90ns가 걸리니, 외부 객체로 새 배열 객체를 만드는 일 자체의 비용은 두 라이브러리가 비슷한 크기예요.
+- 1단계는 측정되지 않을 만큼 작아요. 스칼라 검사를 아예 건너뛰는 것과 다름없는 서브클래스 입력이 numpy 배열과 같은 시간이에요.
+- 약 30~40ns는 numpy의 버퍼 내보내기 비용이에요. Python에서 `memoryview(f)`가 69ns, `memoryview(memoryview)`가 33ns로 같은 크기의 차이가 나요. 버퍼 프로토콜로 numpy 배열을 받는 한 줄일 수 없는 몫이에요.
+- 남은 약 110ns는 함수 호출과 인자 해석, `NDArray` 구성, 할당 두 번, 해제예요. 그중 15~20ns는 배열 객체가 512바이트를 넘어 시스템 `malloc`으로 할당되는 비용이에요([작은 배열의 호출 비용](/internals/array/small-arrays/)). numpy도 `np.asarray(memoryview)`로 외부 버퍼를 받으면 90ns가 걸리니, 외부 객체로 새 배열 객체를 만드는 일 자체의 비용은 두 라이브러리가 비슷한 크기예요.
 
 반대 방향(stardust 배열을 numpy가 읽는 것)은 `bf_getbuffer` 슬롯으로 복사 없이 내보내요. format은 `?`, `q`, `d`, `Zd`예요. 자세한 내용은 [데이터 모델](/internals/array/data-model/)과 [Python과 C++의 경계](/internals/core/python-boundary/)에 있어요.
 
@@ -554,23 +554,23 @@ DLPack 1.0의 C 구조체(`DLTensor`, `DLManagedTensor`, `DLManagedTensorVersion
 
 1. `x.__dlpack__(max_version=(1, 0), copy=...)`을 불러요. 생산자가 키워드를 모르는 옛 구현이라 `TypeError`가 나면 인자 없이 다시 불러요. 속성 이름, 키워드 이름, 버전 tuple은 처음 한 번 만들어 두고, 속성은 한 번씩만 찾고, 호출은 vectorcall이에요. 일반 속성 조회와 키워드 호출로 하면 가져오기 한 번이 252ns, 이렇게 하면 229ns예요([Python과 C++의 경계](/internals/core/python-boundary/)).
 2. capsule 이름을 `"used_dltensor_versioned"`(또는 `"used_dltensor"`)로 바꿔요. 규약상 이것이 "소비자가 가져갔다"는 표시예요.
-3. **곧바로 소유권을 가져와요.** 텐서 포인터를 담은 새 capsule(`"sd_dlpack_owner"`)을 만들고, 그 capsule의 소멸자가 생산자의 `deleter`를 부르게 해요. capsule을 만들지 못하면 그 자리에서 `deleter`를 부르고 에러를 내요.
-4. 그다음에 검사해요: 버전의 major가 1보다 크면 `BufferError`, 장치가 CPU가 아니면 `BufferError`, dtype이 넷 중 하나가 아니면 `TypeError`, 0차원이나 32차원 초과면 `ValueError`.
+3. 곧바로 소유권을 가져와요. 텐서 포인터를 담은 새 capsule(`"sd_dlpack_owner"`)을 만들고, 그 capsule의 소멸자가 생산자의 `deleter`를 부르게 해요. capsule을 만들지 못하면 그 자리에서 `deleter`를 부르고 에러를 내요.
+4. 그다음에 검사해요. 버전의 major가 1보다 크거나 장치가 CPU가 아니면 `BufferError`, dtype이 넷 중 하나가 아니면 `TypeError`, 0차원이거나 32차원을 넘으면 `ValueError`예요.
 
-**검사보다 소유권이 먼저**인 이유는 누수 때문이에요. 이름을 바꾼 뒤에는 텐서를 놓아 줄 책임이 소비자에게 있어요. 검사를 먼저 하고 에러를 던지면 그 텐서는 아무도 놓지 않아요. 소유권을 먼저 owner capsule에 넘겨 두면, 어느 검사에서 예외가 나든 owner가 소멸하면서 `deleter`가 불려요.
+소유권을 검사보다 먼저 가져오는 이유는 누수를 막기 위해서예요. 이름을 바꾼 뒤에는 텐서를 놓아 줄 책임이 소비자에게 있어요. 검사를 먼저 하고 에러를 던지면 그 텐서는 아무도 놓지 않아요. 소유권을 먼저 owner capsule에 넘겨 두면, 어느 검사에서 예외가 나든 owner가 소멸하면서 `deleter`가 불려요.
 
 ### 배열로 바꾸기
 
-- DLPack의 strides는 **원소 단위**이고, stardust는 바이트 단위라 itemsize를 곱해요. strides가 null이면 C 연속이라는 뜻이라 직접 계산해요.
+- DLPack의 strides는 원소 단위이고, stardust는 바이트 단위라 itemsize를 곱해요. strides가 null이면 C 연속이라는 뜻이라 직접 계산해요.
 - `data`에 `byte_offset`을 더한 곳이 첫 원소예요.
-- 만든 배열의 `buffer`는 **비어 있고**, `base`가 owner capsule이에요. 메모리는 owner capsule이 살아 있는 동안 유지되고, 배열이 사라지면 capsule이 사라지며 생산자의 `deleter`가 불려요.
+- 만든 배열의 `buffer`는 비어 있고, `base`가 owner capsule이에요. 메모리는 owner capsule이 살아 있는 동안 유지되고, 배열이 사라지면 capsule이 사라지며 생산자의 `deleter`가 불려요.
 - 버전 있는 형식의 `READ_ONLY` 표시는 `writeable = false`가 돼요.
-- 정렬과 bool 바이트 규칙은 버퍼 프로토콜과 같아요. 어긋나면 복사하는데, 이 경우의 복사본은 원본의 메모리 순서가 아니라 **C 순서**로 만들어요(바이트 단위 복사, bool은 0/1로 정규화).
+- 정렬과 bool 바이트 규칙은 버퍼 프로토콜과 같아요. 어긋나면 복사하는데, 이 경우의 복사본은 원본의 메모리 순서가 아니라 C 순서로 만들어요(바이트 단위 복사, bool은 0/1로 정규화).
 - `copy=True`: 생산자가 "복사했음"(`IS_COPIED`) 표시를 달았으면 다시 복사하지 않아요. 표시가 없으면(옛 형식 등) stardust가 복사해요.
 
 ### 내보내기
 
-`ndarray.__dlpack__`은 배열의 뷰(Buffer와 base를 붙잡아요)와 원소 단위 shape·strides 벡터를 담은 `Export` 구조체를 `manager_ctx`에 넣어요. `deleter`는 소비자가 어느 스레드에서든 부를 수 있어서, GIL을 잡은 뒤 `Export`를 지워요(뷰가 Python 참조를 갖고 있으니까요). 아무도 가져가지 않은 capsule은 capsule 소멸자가 `deleter`를 불러요.
+`ndarray.__dlpack__`은 배열의 뷰(Buffer와 base를 붙잡아요)와 원소 단위 shape·strides 벡터를 담은 `Export` 구조체를 `manager_ctx`에 넣어요. `deleter`는 소비자가 어느 스레드에서든 부를 수 있어서, GIL을 잡은 뒤 `Export`를 지워요(뷰가 Python 참조를 붙잡고 있으니까요). 아무도 가져가지 않은 capsule은 capsule 소멸자가 `deleter`를 불러요.
 
 쓰기 금지 배열은 버전 있는 형식의 `READ_ONLY` 표시로 내보내요. 옛 형식에는 그 표시를 담을 자리가 없어서 `BufferError`예요(numpy도 같은 이유로 거부해요). `copy=True`로 내보내면 복사본에 `IS_COPIED` 표시를 달아요.
 
@@ -613,7 +613,7 @@ To cast_value(From v) {
 ```
 
 - `From`은 배열의 저장 타입 넷뿐 아니라 버퍼 가져오기에서 만나는 `int16`, `float` 같은 좁은 타입도 될 수 있어요. 그래서 템플릿이에요.
-- **complex → 실수는 dtype 단계에서 막아요**(`check_castable`, `TypeError: cannot convert complex128 to float64: the imaginary part would be lost`). 실수부가 필요하면 `real(x)`를 쓰면 돼요. 원소 단계의 함수는 실패하지 않으므로, 루프에 에러 검사가 들어가지 않아요.
+- complex → 실수는 dtype 단계에서 막아요(`check_castable`, `TypeError: cannot convert complex128 to float64: the imaginary part would be lost`). 실수부가 필요하면 `real(x)`를 쓰면 돼요. 원소 단계의 함수는 실패하지 않으므로, 루프에 에러 검사가 들어가지 않아요.
 - `__builtin_unreachable()`은 "이 가지는 실행되지 않는다"고 컴파일러에 알려 줘요. `cast_loop<complex128, double>` 같은 표의 칸은 표를 꽉 채우려고 인스턴스화되지만 실제로 선택되지 않아요.
 - int64 → float64는 `static_cast<double>`이에요. $|x| \le 2^{53}$이면 정확하고, 그보다 크면 가장 가까운 float64로 반올림돼요(ARM의 `SCVTF` 명령이 기본 반올림 모드인 round-to-nearest-even으로 바꿔요). C++에서 이 변환은 정의된 동작이에요. numpy와 비트가 같아요.
 - X → bool은 `x != 0`이에요. NaN은 0과 같지 않으므로 True예요. `-0.0`은 0과 같으므로 False예요.
@@ -647,16 +647,16 @@ void cast_loop(std::byte* const* args, std::int64_t n, const std::int64_t* strid
 }
 ```
 
-- **연속 구간**은 인덱스로 접근하는 루프라 컴파일러가 벡터화할 수 있어요. 바이트 stride를 더해 가는 루프는 벡터화되지 않아요([원소별 커널](/internals/array/elementwise/)).
-- **같은 타입의 연속 복사**(표의 대각선, `x.copy()`)는 `memcpy`예요. OS가 칩에 맞춰 튜닝한 함수라 가장 넓은 load/store를 써요. 원소 100만 개의 `x.copy()`가 원소별 대입 루프로는 118µs, `memcpy`로는 94µs이고, numpy와 같아요.
-- **float → int64**만 NEON intrinsic을 직접 써요. 다음 절에서 이유를 설명해요.
+- 연속 구간은 인덱스로 접근하는 루프라 컴파일러가 벡터화할 수 있어요. 바이트 stride를 더해 가는 루프는 벡터화되지 않아요([원소별 커널](/internals/array/elementwise/)).
+- 같은 타입의 연속 복사(표의 대각선, `x.copy()`)는 `memcpy`예요. OS가 칩에 맞춰 튜닝한 함수라 가장 넓은 load/store를 써요. 원소 100만 개의 `x.copy()`가 원소별 대입 루프로는 118µs, `memcpy`로는 94µs이고, numpy와 같아요.
+- float → int64만 NEON intrinsic을 직접 써요. 다음 절에서 이유를 설명해요.
 - 표는 `cast_row<From>`을 넷 쌓은 `inline constexpr` 배열이고, `cast_kernel(from, to)`가 인덱스 두 개로 꺼내요.
 
-`astype`은 같은 dtype이고 `copy`가 `True`가 아니면 같은 객체를 그대로 돌려주고, 그 밖에는 `new_array_like`로 원본의 메모리 축 순서를 따르는 새 배열을 만들어 이 커널로 채워요. 기본값은 `copy=True`라 항상 복사해요.
+`astype`은 같은 dtype이고 `copy`가 `True`가 아니면 같은 객체를 그대로 돌려주고, 그 밖에는 `new_array_like`로 원본의 메모리 축 순서를 따르는 새 배열을 만들어 이 커널로 채워요. 기본값이 `copy=True`라서 따로 지정하지 않으면 항상 복사해요.
 
 ### float → int64: 정의된 동작이면서 빠르게
 
-규칙은 **0 방향으로 자르고, 범위를 벗어나면 포화시키고, NaN은 0**이에요.
+규칙은 0 방향으로 자르고, 범위를 벗어나면 포화시키고, NaN은 0으로 바꾸는 거예요.
 
 $$
 \operatorname{cvt}(x) =
@@ -674,11 +674,11 @@ array([                   1,                   -2,                    0,
         9223372036854775807, -9223372036854775808], dtype=int64)
 ```
 
-**평범한 C++ 캐스트를 쓸 수 없는 이유.** `static_cast<std::int64_t>(x)`는 C++ 표준에서 "자른 값이 대상 타입으로 표현될 수 없으면 동작이 정의되지 않는다"고 정해져 있어요(`[conv.fpint]`) [6]. NaN, $\pm\infty$, $|x| \ge 2^{63}$이 모두 여기에 해당해요. 정의되지 않은 동작이면 컴파일러는 그런 입력이 없다고 가정해도 되고, 결과는 플랫폼과 최적화 수준에 따라 달라질 수 있어요. 실제로 x86의 `CVTTSD2SI` 명령은 이런 입력에 모두 $-2^{63}$("integer indefinite" 값)을 내요 [7]. numpy는 이 캐스트를 C로 하고, 잘못된 값이면 `RuntimeWarning: invalid value encountered in cast`를 내요. arm64 macOS의 numpy 2.5.4에서는 위 예와 같은 값이 나오지만 경고가 함께 떠요.
+평범한 C++ 캐스트는 쓸 수 없어요. `static_cast<std::int64_t>(x)`는 C++ 표준에서 "자른 값이 대상 타입으로 표현될 수 없으면 동작이 정의되지 않는다"고 정해져 있어요(`[conv.fpint]`) [6]. NaN, $\pm\infty$, $|x| \ge 2^{63}$이 모두 여기에 해당해요. 정의되지 않은 동작이면 컴파일러는 그런 입력이 없다고 가정해도 되고, 결과는 플랫폼과 최적화 수준에 따라 달라질 수 있어요. 실제로 x86의 `CVTTSD2SI` 명령은 이런 입력에 모두 $-2^{63}$("integer indefinite" 값)을 내요 [7]. numpy는 이 캐스트를 C로 하고, 잘못된 값이면 `RuntimeWarning: invalid value encountered in cast`를 내요. arm64 macOS의 numpy 2.5.4에서는 위 예와 같은 값이 나오지만 경고가 함께 떠요.
 
 stardust는 이런 입력에도 값을 하나로 정해요. NaN → 0, 포화예요. 원소 단계의 변환이 실패하거나 경고를 내지 않아야 변환 커널에 에러 경로가 없어서 컴파일러가 루프를 벡터화할 수 있고, 같은 입력이 플랫폼과 최적화 수준에 상관없이 같은 값을 내요.
 
-**규칙을 분기 셋으로 쓰면 느려요.** 규칙을 그대로 코드로 적으면 이래요.
+규칙을 그대로 코드로 옮기면 분기가 셋 생기고, 이 코드는 느려요.
 
 ```cpp
 // 규칙을 그대로 적은 코드 (설명용으로 줄임): 정의된 동작이지만 벡터화되지 않는다
@@ -690,7 +690,7 @@ return static_cast<std::int64_t>(x);   // 여기서는 범위 안이라 정의�
 
 정의된 동작이지만 clang은 이 루프를 벡터화하지 못해요. 이렇게 짜면 원소 100만 개 `astype` float → int64가 1스레드 464µs로, numpy(264µs)보다 1.8배 느려요.
 
-**ARM에는 이 규칙 자체인 명령이 있어요.** AArch64의 `FCVTZS`(Floating-point Convert to Signed integer, rounding toward Zero)는 0 방향으로 자르고, 범위를 벗어나면 가장 가까운 표현 가능한 값으로 포화시키고, NaN이면 0을 내요 [8]. 규칙이 정확히 같으니 명령을 직접 불러요.
+ARM에는 이 규칙을 그대로 수행하는 명령이 있어요. AArch64의 `FCVTZS`(Floating-point Convert to Signed integer, rounding toward Zero)는 0 방향으로 자르고, 범위를 벗어나면 가장 가까운 표현 가능한 값으로 포화시키고, NaN이면 0을 내요 [8]. 규칙이 정확히 같으니 명령을 직접 불러요.
 
 ```cpp
 // csrc/base/saturate.hpp
@@ -698,8 +698,8 @@ return static_cast<std::int64_t>(x);   // 여기서는 범위 안이라 정의�
 inline std::int64_t saturate_to_int64(double x) { return vcvtd_s64_f64(x); }
 ```
 
-- `vcvtd_s64_f64`는 스칼라 `FCVTZS` 하나로 컴파일되는 ACLE(Arm C Language Extensions) intrinsic이에요 [9]. intrinsic은 C++ 함수처럼 보이지만 명령 하나로 바뀌므로, C++의 캐스트 규칙이 아니라 **명령의 정의**를 따라요. 그래서 NaN과 범위 밖 값에서도 정의된 결과예요.
-- 이 함수를 원소마다 부르는 루프는 컴파일러가 벡터 `FCVTZS`(128비트 레지스터에 두 개씩)로 바꿔요. 분기가 없으니 막을 것이 없어요.
+- `vcvtd_s64_f64`는 스칼라 `FCVTZS` 하나로 컴파일되는 ACLE(Arm C Language Extensions) intrinsic이에요 [9]. intrinsic은 C++ 함수처럼 보이지만 명령 하나로 바뀌므로, C++의 캐스트 규칙이 아니라 명령의 정의를 따라요. 그래서 NaN과 범위 밖 값에서도 정의된 결과예요.
+- 이 함수를 원소마다 부르는 루프는 컴파일러가 벡터 `FCVTZS`(128비트 레지스터에 두 개씩)로 바꿔요. 분기가 없으니 벡터화를 막는 것이 없어요.
 - 연속 캐스트 루프는 벡터판 `vcvtq_s64_f64`를 직접 쓰고, 한 번에 레지스터 두 개(원소 4개)씩 처리해 load를 더 많이 겹쳐 띄워요.
 - 이 함수는 배열, linalg, frame이 함께 써요. frame의 `astype`도 같은 규칙(포화, NaN → 0)을 따르므로 공통 기반(`csrc/base/`)에 있어요.
 
@@ -720,7 +720,7 @@ inline std::int64_t saturate_to_int64(double x) { return vcvtd_s64_f64(x); }
 
 ### 위로만
 
-대입(`x[...] = v`), `out=`, 제자리 연산자(`x += y`), `dtype=` 없는 `full_like`의 채움 값, `clip`의 `min`/`max`는 승격 순서의 **위로만** 변환해요. 아래로 가면 `TypeError`예요.
+대입(`x[...] = v`), `out=`, 제자리 연산자(`x += y`), `dtype=` 없는 `full_like`의 채움 값, `clip`의 `min`/`max`는 승격 순서의 위로만 변환해요. 아래로 가면 `TypeError`예요.
 
 ```cpp
 // csrc/array/ops/copy.cpp
@@ -738,8 +738,8 @@ Traceback (most recent call last):
 TypeError: cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
 ```
 
-- **dtype만 보고 판정해요.** `int_arr[0] = 2.0`도 `TypeError`예요. 값을 보고 판단하면(2.0은 되고 1.5는 안 되고) 같은 코드가 데이터에 따라 성공하기도 하고 실패하기도 해요. 비용은 enum 비교 한 번이에요. frame도 같은 규칙이에요.
-- `out=`에서는 **루프의 출력 dtype**과 `out`의 dtype을 비교해요. `sd.add(int_arr, int_arr, out=float_arr)`는 int64 결과를 float64로 올리는 것이라 괜찮아요.
+- dtype만 보고 판정해요. `int_arr[0] = 2.0`도 `TypeError`예요. 값을 보고 판단하면(2.0은 되고 1.5는 안 되고) 같은 코드가 데이터에 따라 성공하기도 하고 실패하기도 해요. 비용은 enum 비교 한 번이에요. frame도 같은 규칙이에요.
+- `out=`에서는 루프의 출력 dtype과 `out`의 dtype을 비교해요. `sd.add(int_arr, int_arr, out=float_arr)`는 int64 결과를 float64로 올리는 것이라 괜찮아요.
 - `full_like(int_arr, 1.5)`는 `int_arr[...] = 1.5`와 같은 일이라 `TypeError`예요. `dtype=`을 주면 `full`처럼 명시적 변환이에요.
 - `clip`은 x의 dtype을 유지해요(Array API). 그래서 `min`/`max`가 x의 dtype으로 암묵적으로 변환될 수 있어야 해요.
 - 쓰기 금지 배열 검사(`ValueError`)도 같은 자리에서 해요(`assign_checked`).
@@ -752,7 +752,7 @@ TypeError: cannot implicitly convert float64 to int64 (that would lose informati
 
 ### 언제 검사하나
 
-Python int는 크기 제한이 없지만 int64는 $[-2^{63}, 2^{63}-1]$이에요. 규칙은 하나예요. **int64로 변환되어야 할 때만** `OverflowError`예요.
+Python int는 크기 제한이 없지만 int64는 $[-2^{63}, 2^{63}-1]$이에요. 규칙은 하나예요. int64로 바꿔야 할 때만 `OverflowError`가 나요.
 
 | 식 | 결과 | 이유 |
 |---|---|---|
@@ -765,7 +765,7 @@ Python int는 크기 제한이 없지만 int64는 $[-2^{63}, 2^{63}-1]$이에요
 | `asarray([10**400, 0.5])` | `OverflowError` | float64로도 담을 수 없어요 |
 | `float_arr * 10**400` | `OverflowError` | 같은 이유(연산자라 메시지에 함수 이름이 없어요) |
 
-ufunc에서는 **루프 dtype이 아니라 승격한 피연산자 dtype**으로 판정해요(`check_int_scalars`). 루프 dtype으로 판정하면 `divide`의 루프가 float64라서 `divide(int_arr, 2**64)`만 정상이 되고, 다른 이항 함수(`add`, `multiply` …)와 어긋나요. 그래서 승격한 dtype이 bool이나 int64이면 어느 루프로 계산하든 int를 int64로 봐요. frame도 같은 규칙이에요.
+ufunc에서는 루프 dtype이 아니라 승격한 피연산자 dtype으로 판정해요(`check_int_scalars`). 루프 dtype으로 판정하면 `divide`의 루프가 float64라서 `divide(int_arr, 2**64)`만 정상이 되고, 다른 이항 함수(`add`, `multiply` …)와 어긋나요. 그래서 승격한 dtype이 bool이나 int64이면 어느 루프로 계산하든 int를 int64로 봐요. frame도 같은 규칙이에요.
 
 ```cpp
 // csrc/array/ops/ufunc.cpp (발췌)
@@ -790,7 +790,7 @@ std::int64_t py_to_int64(PyObject* p) {
 }
 ```
 
-- CPython의 `PyLong_AsLongLongAndOverflow` [10]는 범위를 벗어나면 **예외를 설정하지 않고** `overflow` 플래그만 ±1로 돌려줘요. 정상 경로에서 예외 객체를 만들었다 지우는 비용이 없고, 범위 밖일 때 stardust의 메시지로 된 `OverflowError`를 바로 던질 수 있어요. `std::overflow_error`는 nanobind가 Python의 `OverflowError`로 바꿔요.
+- CPython의 `PyLong_AsLongLongAndOverflow` [10]는 범위를 벗어나면 예외를 설정하지 않고 `overflow` 플래그만 ±1로 돌려줘요. 정상 경로에서 예외 객체를 만들었다 지우는 비용이 없고, 범위 밖일 때 stardust의 메시지로 된 `OverflowError`를 바로 던질 수 있어요. `std::overflow_error`는 nanobind가 Python의 `OverflowError`로 바꿔요.
 - float로 읽을 때는 `PyFloat_AsDouble`(int에도 동작)을 써요. float64로도 표현할 수 없을 만큼 큰 int(약 $1.8 \times 10^{308}$ 이상)이면 CPython이 이름 없는 `OverflowError`를 설정하는데, `py_to_double`이 그것을 지우고 `std::overflow_error("Python int too large to convert to float64")`를 던져요. int64 쪽과 같은 꼴이라 바인딩이 함수 이름을 붙여요(`asarray(): Python int too large to convert to float64`).
 
 ```cpp
@@ -842,17 +842,17 @@ double py_to_double(PyObject* p) {
 
 ## 정확도
 
-- **넓히기**(int8–uint32 → int64, float16/32 → float64, complex64 → complex128, bool → 무엇이든)는 모두 정확해요.
-- **int64 → float64**는 round-to-nearest-even 한 번이에요. $|x| \le 2^{53}$이면 정확해요. numpy와 비트가 같아요.
-- **float64 → int64**는 위 식 그대로예요. 범위 안의 유한한 값은 numpy와 같은 값이에요(둘 다 0 방향 자르기). NaN, $\pm\infty$, 범위 밖 값은 stardust에서 NaN → 0, 포화이고, numpy는 C에서 정의되지 않은 동작이라 플랫폼에 따라 값이 다르고 경고를 내요.
-- **X → bool**은 `x != 0`이라 반올림이 없어요. NaN은 True, `-0.0`은 False예요.
-- **Python 스칼라**: int → float64는 CPython의 변환(`PyFloat_AsDouble`)을 그대로 써요. float → float64는 그대로 복사예요.
+- 넓히기(int8–uint32 → int64, float16/32 → float64, complex64 → complex128, bool → 무엇이든)는 모두 정확해요.
+- int64 → float64는 round-to-nearest-even 한 번이에요. $|x| \le 2^{53}$이면 정확해요. numpy와 비트가 같아요.
+- float64 → int64는 위 식 그대로예요. 범위 안의 유한한 값은 numpy와 같은 값이에요(둘 다 0 방향 자르기). NaN, $\pm\infty$, 범위 밖 값은 stardust에서 NaN → 0, 포화이고, numpy는 C에서 정의되지 않은 동작이라 플랫폼에 따라 값이 다르고 경고를 내요.
+- X → bool은 `x != 0`이라 반올림이 없어요. NaN은 True, `-0.0`은 False예요.
+- Python 스칼라: int → float64는 CPython의 변환(`PyFloat_AsDouble`)을 그대로 써요. float → float64는 그대로 복사예요.
 - 버퍼 단위 캐스팅으로 변환한 값은 같은 `cast_value`를 거치므로, 미리 전체를 변환한 경우와 비트가 같아요.
 
 ## 참고 문헌
 
 1. S. Berg, NEP 50 — Promotion rules for Python scalars, NumPy Enhancement Proposals. https://numpy.org/neps/nep-0050-scalar-promotion.html
-2. numpy 소스의 `PyArray_DiscoverDTypeAndShape` (`numpy/_core/src/multiarray/array_coercion.c`). 중첩 시퀀스에서 shape과 dtype을 찾는 단계.
+2. numpy 소스의 `PyArray_DiscoverDTypeAndShape` (`numpy/_core/src/multiarray/array_coercion.c`). 중첩 시퀀스에서 shape와 dtype을 찾는 단계.
 3. T. Oliphant, C. Banks, PEP 3118 — Revising the buffer protocol, 2006. https://peps.python.org/pep-3118/
 4. DLPack: Open In Memory Tensor Structure (DLPack 1.0의 `dlpack.h`와 Python 명세). https://github.com/dmlc/dlpack
 5. Python array API standard, `from_dlpack`, `__dlpack__`, `__dlpack_device__`. https://data-apis.org/array-api/latest/

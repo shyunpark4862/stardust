@@ -42,7 +42,7 @@ import Op from '../../../components/fig/Op.astro';
 
 stardust에는 표를 다루는 데이터프레임 영역(`sd.frame`) 말고도, 숫자 배열을 계산하는 배열 영역(`sd`)과 행렬 계산을 하는 선형대수 영역(`sd.linalg`)이 있어요. `to_array()`는 표의 값을 **stardust 배열**(`sd.ndarray`)로 꺼내서 이 두 영역의 함수에 넘길 수 있게 해 줘요.
 
-표에서 데이터를 고르고 정리하는 일은 데이터프레임이, 정리된 숫자로 수학 계산을 하는 일은 배열과 선형대수가 잘해요. `to_array`는 그 사이의 다리예요. 학생 넷의 점수로 볼게요.
+표에서 데이터를 고르고 정리하는 일은 데이터프레임이, 정리된 숫자로 수학 계산을 하는 일은 배열과 선형대수가 잘해요. `to_array`는 그 사이의 다리예요.
 
 ```python
 >>> import stardust as sd
@@ -109,9 +109,9 @@ array([75.0, 75.0], dtype=float64)
 
 ## `sd.linalg`로 넘기기
 
-DataFrame의 숫자 컬럼들을 2차원 배열로 꺼내면 바로 행렬이에요. [선형대수 영역](/api/linalg/basics/)의 함수는 이 행렬을 그대로 받아요.
+DataFrame의 숫자 컬럼을 2차원 배열로 꺼내면 바로 행렬이에요. [선형대수 영역](/api/linalg/basics/)의 함수는 이 행렬을 그대로 받아요.
 
-과일 가게 영수증 네 장이 있다고 해 볼게요. 사과와 배를 몇 개씩 사고 얼마를 냈는지 적혀 있는데, 한 개 값은 적혀 있지 않아요. "사과 수 × 사과 값 + 배 수 × 배 값 = 낸 돈"이 영수증마다 성립하므로, 이 식들을 가장 잘 맞추는 값을 [`lstsq`](/api/linalg/lstsq/)(최소제곱)로 구해요.
+과일 가게 영수증 네 장이 있어요. 사과와 배를 몇 개씩 사고 얼마를 냈는지 적혀 있는데, 한 개 값은 적혀 있지 않아요. "사과 수 × 사과 값 + 배 수 × 배 값 = 낸 돈"이 영수증마다 성립하므로, 네 식을 가장 잘 맞추는 값을 [`lstsq`](/api/linalg/lstsq/)(최소제곱)로 구해요.
 
 ```python
 >>> receipts = sd.frame.DataFrame({
@@ -138,7 +138,7 @@ array([1200.0,  800.0], dtype=float64)
 
 ## 공통 종류로 맞춰요
 
-DataFrame의 `to_array()`는 컬럼들의 종류를 `bool < int64 < float64` 순서에서 가장 넓은 쪽으로 맞춰요. 배열 영역의 승격과 같은 규칙이에요([dtype](/api/array/dtypes/)). 규칙은 [`DataFrame.to_numpy`](/api/frame/to-numpy/)와 같아요.
+DataFrame의 `to_array()`는 컬럼의 종류를 `bool < int64 < float64` 순서에서 가장 넓은 쪽으로 맞춰요. 배열 영역의 승격과 같은 규칙이고([dtype](/api/array/dtypes/)), [`DataFrame.to_numpy`](/api/frame/to-numpy/)도 이 규칙을 따라요.
 
 ```python
 >>> sd.frame.DataFrame({"fresh": [True, False], "qty": [1, 2]}).to_array()
@@ -188,7 +188,7 @@ array([3, 0, 5], dtype=int64)
 array([3.0, nan, 5.0], dtype=float64)
 ```
 
-NaN으로 채운 배열을 배열 함수에 넘기면, 평범한 NaN처럼 다뤄져요. 예를 들어 `sd.mean`은 NaN을 결과로 전파하고, [`sd.nanmean`](/api/array/nan-reductions/)은 NaN을 건너뛰어요. 데이터프레임의 `mean`이 `NA`를 건너뛰는 것과 비슷한 결과를 배열에서 얻는 방법이에요. 두 결측의 차이는 [NA와 NaN](/api/frame/na/)에 있어요.
+NaN으로 채운 배열을 배열 함수에 넘기면 평범한 NaN으로 다뤄요. 예를 들어 `sd.mean`은 NaN을 결과로 전파하고, [`sd.nanmean`](/api/array/nan-reductions/)은 NaN을 건너뛰어요. 데이터프레임의 `mean`이 `NA`를 건너뛰는 것과 비슷한 결과를 배열에서 얻는 방법이에요. 두 결측의 차이는 [NA와 NaN](/api/frame/na/)에 있어요.
 
 ```python
 >>> sd.nanmean(qty.to_array(dtype="float64", na_value=sd.nan))
@@ -199,7 +199,7 @@ NaN으로 채운 배열을 배열 함수에 넘기면, 평범한 NaN처럼 다�
 
 ## 읽기 전용 뷰와 `copy`
 
-Series에 `NA`가 없고 종류도 바꾸지 않으면, `to_array()`는 값을 복사하지 않고 **컬럼의 메모리를 그대로 보여 주는 배열**을 돌려줘요. 이런 배열을 [뷰](/api/array/views/)라고 해요. 복사가 없으니 큰 컬럼도 바로 꺼내요.
+Series에 `NA`가 없고 종류도 바꾸지 않으면, `to_array()`는 값을 복사하지 않고 컬럼의 메모리를 그대로 보여 주는 배열을 돌려줘요. 이런 배열을 [뷰](/api/array/views/)라고 해요. 복사가 없으니 큰 컬럼도 바로 꺼내요.
 
 이 뷰는 **읽기 전용**이에요. 고칠 수 있다면 표의 값이 몰래 바뀌기 때문이에요. 대입이나 `+=` 같은 제자리 연산은 `ValueError`예요.
 
@@ -211,7 +211,7 @@ Traceback (most recent call last):
 ValueError: assignment destination is read-only
 ```
 
-뷰로 계산하는 것은 문제없어요. `v * 2`처럼 새 배열을 만드는 연산은 결과가 새 배열이에요.
+뷰로 계산하는 것은 문제없어요. `v * 2` 같은 연산은 새 배열을 만들어 돌려줘요.
 
 ```python
 >>> v * 2
@@ -272,7 +272,7 @@ Traceback (most recent call last):
 ValueError: DataFrame(): 'columns' is required to name the columns of row or 2-D array data
 ```
 
-배열에서 표를 만들 때는 **언제나 복사해요.** 배열은 다른 뷰를 통해 언제든 바뀔 수 있어서, 메모리를 함께 쓰면 표가 모르는 사이에 값이 바뀔 수 있기 때문이에요. 그래서 만든 뒤에 배열을 고쳐도 표는 그대로예요.
+배열에서 표를 만들 때는 언제나 복사해요. 배열은 다른 뷰를 통해 언제든 바뀔 수 있어서, 메모리를 함께 쓰면 표가 모르는 사이에 값이 바뀔 수 있기 때문이에요. 그래서 만든 뒤에 배열을 고쳐도 표는 그대로예요.
 
 ```python
 >>> arr = sd.asarray([1.0, 2.0, 3.0])

@@ -10,7 +10,7 @@ params:
   - name: y
     type: ndarray, 실수의 시퀀스, frame Series, 또는 열이 하나인 frame DataFrame
     kind: positional-only
-    desc: "반응. 모양은 (..., n)이에요(열이 하나인 DataFrame은 그 열로 읽어요). 값의 범위는 분포족이 정해요: binomial은 0 또는 1(trials가 있으면 [0, 1]의 비율), poisson은 0 이상, gamma는 0보다 커야 하고, gaussian은 실수 무엇이든 돼요."
+    desc: "반응. 모양은 (..., n)이에요(열이 하나인 DataFrame은 그 열로 읽어요). 값의 범위는 분포족이 정해요. binomial은 0 또는 1(trials가 있으면 [0, 1]의 비율), poisson은 0 이상, gamma는 0보다 커야 하고, gaussian은 실수 무엇이든 돼요."
   - name: X
     type: ndarray, 실수의 시퀀스, 또는 frame DataFrame·Series
     kind: positional-only
@@ -103,19 +103,19 @@ export const fitHi = [[0.0,0.3484],[0.1,0.3565],[0.2,0.3648],[0.3,0.3734],[0.4,0
 
 [`ols`](/api/regression/ols/)는 반응 $y$가 "설명변수의 일차식 + 고르게 퍼진 정규 잡음"이라고 보고 직선(평면)을 맞춰요. 그런데 실제 데이터에는 이 가정이 처음부터 맞지 않는 반응이 많아요.
 
-- **예/아니오**: 시험에 붙었는지, 고객이 떠났는지. 값이 0과 1뿐이고, 확률은 0과 1 사이에 머물러야 해요.
-- **횟수**: 하루 사고 건수, 페이지당 오타 수. 음수가 없고, 평균이 클수록 흩어짐도 커요.
-- **양수인 양**: 보험금, 대기 시간. 0보다 크고 오른쪽 꼬리가 길어요.
+- 예/아니오: 시험에 붙었는지, 고객이 떠났는지. 값이 0과 1뿐이고, 확률은 0과 1 사이에 머물러야 해요.
+- 횟수: 하루 사고 건수, 페이지당 오타 수. 음수가 없고, 평균이 클수록 흩어짐도 커요.
+- 양수인 양: 보험금, 대기 시간. 0보다 크고 오른쪽 꼬리가 길어요.
 
 이런 반응에 직선을 그대로 맞추면 확률이 1을 넘거나 횟수가 음수로 예측돼요. **일반화 선형 모형**(GLM)은 일차식은 그대로 두고, 그 일차식과 평균 사이에 함수 하나를 끼워 넣어서 이 문제를 풀어요. 세 부분으로 이뤄져요.
 
 1. **선형 예측값** $\eta = \beta_0 + \beta_1 x_1 + \dots + \beta_k x_k$. `ols`의 일차식과 같아요. 실수 전체를 오갈 수 있어요.
 2. **링크 함수** $g$: 평균 $\mu$와 $\eta$를 $g(\mu) = \eta$로 이어요. 확률이면 $\mu = 1/(1 + e^{-\eta})$처럼 실수 전체를 (0, 1)로 접어 넣는 함수를 써서, 예측이 언제나 범위 안에 있게 해요.
-3. **분포족**(family): 평균 둘레에서 $y$가 어떻게 흩어지는지예요. 분포족이 **분산 함수** $V(\mu)$를 정하고, 분산은 $\operatorname{Var}(y) = \phi\, V(\mu)$예요($\phi$는 척도). 이항분포는 $V = \mu(1-\mu)$, 포아송은 $V = \mu$, 감마는 $V = \mu^2$, 정규는 $V = 1$이에요.
+3. **분포족**(family): 평균 둘레에서 $y$가 어떻게 흩어지는지예요. 분포족이 **분산 함수** $V(\mu)$를 정하고, 분산은 $\operatorname{Var}(y) = \phi\, V(\mu)$예요($\phi$는 척도). 이항 분포는 $V = \mu(1-\mu)$, 포아송은 $V = \mu$, 감마는 $V = \mu^2$, 정규는 $V = 1$이에요.
 
 계수는 이 모형에서 데이터가 나올 가능성(우도)을 가장 크게 만드는 값, 곧 **최대우도 추정값**이에요. 정규분포·항등 링크에서는 최소제곱과 같은 답이고, 다른 분포족에서는 반복해서 찾아요.
 
-아래 그림은 공부 시간(`hours`)과 시험 합격(`passed`, 0 또는 1) 20명의 자료에 로지스틱 회귀(`family='binomial'`)를 맞춘 것이에요. 일차식 $\eta$는 직선이지만, 링크를 거친 합격 확률은 0과 1 사이의 S자 곡선이에요.
+아래 그림은 공부 시간(`hours`)과 시험 합격(`passed`, 0 또는 1) 20명의 자료에 로지스틱 회귀(`family='binomial'`)를 맞춘 결과예요. 일차식 $\eta$는 직선이지만, 링크를 거친 합격 확률은 0과 1 사이의 S자 곡선이에요.
 
 ```python
 >>> import stardust as sd
@@ -177,7 +177,7 @@ array([0.020581515512458518,  0.01670280734036792], dtype=float64)
 - **표준오차**(`bse`): 계수가 데이터의 우연에 따라 얼마나 흔들릴 수 있는지의 크기예요.
 - **p값**(`pvalues`): 참 계수가 0이라면 지금만큼 큰 계수가 우연히 나올 확률이에요. 작을수록 0이 아니라는 근거가 강해요.
 
-이 말들의 자세한 뜻과 읽는 법은 [결과 읽기](/api/regression/results/)에 있어요. `summary()`는 한눈에 보는 표를 글로 만들어요.
+이 말의 자세한 뜻과 읽는 법은 [결과 객체 읽기](/api/regression/results/)에 있어요. `summary()`는 한눈에 보는 표를 글로 만들어요.
 
 ```python
 >>> print(r.summary())
@@ -202,7 +202,7 @@ Notes:
 [1] Standard errors are from the expected (Fisher) information.
 ```
 
-위쪽은 모형(분포족, 링크, 관측 수, 자유도, 척도, 로그우도, 편차, Pearson χ², Cox–Snell 의사 R²)이고, 가운데는 계수 표예요. 이항분포라 검정 통계량의 머리가 `z`예요(아래 [검정 분포](#검정-분포-z와-t)). 날짜와 시각은 넣지 않아요. 한 줄 요약은 `repr`로 봐요.
+위쪽은 모형(분포족, 링크, 관측 수, 자유도, 척도, 로그우도, 편차, Pearson χ², Cox–Snell 의사 R²)이고, 가운데는 계수 표예요. 이항 분포라 검정 통계량의 머리가 `z`예요(아래 [검정 분포](#검정-분포-z와-t)). 날짜와 시각은 넣지 않아요. 한 줄 요약은 `repr`로 봐요.
 
 ```python
 >>> r
@@ -211,7 +211,7 @@ GLMResult(family='binomial', link='logit', nobs=20, rank=2, deviance=16.0598, pa
 
 ## 분포족과 링크
 
-`family`와 `link`는 문자열로 줘요. `link`를 주지 않으면 그 분포족의 **정준 링크**(표의 맨 앞)예요. 정준 링크는 분포족의 수식에서 자연스럽게 나오는 링크라 계산과 해석이 가장 단순해요.
+`family`와 `link`는 문자열로 줘요. `link`를 주지 않으면 그 분포족의 **정준 링크**(표의 맨 앞)예요. 정준 링크는 분포족의 수식에서 바로 나오는 링크라 계산과 해석이 가장 단순해요.
 
 | `family` | `link` (맨 앞이 기본) | 분산 $V(\mu)$ | 척도의 기본 | `y` |
 |---|---|---|---|---|
@@ -232,7 +232,7 @@ GLMResult(family='binomial', link='logit', nobs=20, rank=2, deviance=16.0598, pa
 | `'sqrt'` | $\eta^2$ | 횟수 |
 | `'inverse'` | $1/\eta$ | 감마의 정준 링크 |
 
-이항분포의 링크 고르기는 [로지스틱 회귀](/api/regression/logistic/), 포아송·감마의 링크는 [셈 자료와 양수 자료](/api/regression/poisson-gamma/)에 예제와 함께 있어요.
+이항 분포의 링크 고르기는 [로지스틱 회귀](/api/regression/logistic/), 포아송·감마의 링크는 [셈 자료와 양수 자료](/api/regression/poisson-gamma/)에 예제와 함께 있어요.
 
 분포족에 없는 링크 이름이나 범위 밖의 `y`는 `ValueError`예요. 범위 검사는 가중치와 상관없이 모든 행에 해요.
 
@@ -258,7 +258,7 @@ ValueError: glm(): 'y' must be > 0 for the gamma family
 
 ### `family='gaussian'`과 `ols`
 
-정규분포에 항등 링크인 GLM은 최소제곱 회귀와 같은 모형이에요. `glm(y, X, family='gaussian')`은 `ols(y, X)`와 계수, 표준오차, p값, 척도, 로그우도, AIC가 비트까지 같아요. 편차는 잔차 제곱합이고, 척도를 추정하니 검정은 t분포예요.
+정규분포에 항등 링크인 GLM은 최소제곱 회귀와 같은 모형이에요. `glm(y, X, family='gaussian')`은 `ols(y, X)`와 계수, 표준오차, p값, 척도, 로그우도, AIC가 비트까지 같아요. 편차는 잔차 제곱합이고, 척도를 추정하니 검정은 t 분포예요.
 
 ```python
 >>> y = [2.1, 3.9, 6.2, 7.8, 10.1, 12.2, 13.8, 16.1]
@@ -274,7 +274,7 @@ ValueError: glm(): 'y' must be > 0 for the gamma family
 6.0
 ```
 
-그래도 선형 회귀라면 `ols`를 쓰세요. `ols`에는 R², F 검정, 관측의 예측구간(`kind='observation'`), 회귀 진단(지렛대, Cook 거리, Durbin–Watson, Jarque–Bera, Breusch–Pagan)이 있고, `glm`에는 없어요. `glm`의 gaussian이 쓸모 있는 것은 `link='log'`처럼 평균이 곱셈으로 변하지만 흩어짐은 고른 자료예요.
+그래도 선형 회귀라면 `ols`를 쓰세요. `ols`에는 R², F 검정, 관측의 예측구간(`kind='observation'`), 회귀 진단(지렛대, Cook 거리, Durbin–Watson, Jarque–Bera, Breusch–Pagan)이 있고, `glm`에는 없어요. `glm`의 gaussian은 `link='log'`처럼 평균은 곱셈으로 변하지만 흩어짐은 고른 자료에 쓸모 있어요.
 
 ## 인자
 
@@ -285,7 +285,7 @@ ValueError: glm(): 'y' must be > 0 for the gamma family
 - `var_weights`: 행 i의 분산이 $\phi V(\mu)/w_i$라는 뜻이에요. 평균 여러 개를 낸 행(그 행의 값이 $w_i$개 관측의 평균)이나, 측정의 정밀도가 행마다 다를 때 써요. 행 수는 그대로예요.
 - `freq_weights`: 그 행과 똑같은 관측이 $f_i$개 있다는 뜻이에요. 행을 $f_i$번 반복한 적합과 같아서 `nobs`, `df_resid`, `llf`, `aic`, `bic`, 강건 표준오차가 모두 반복한 자료의 값이에요.
 
-두 가중치는 계수가 같지만 자유도와 척도, 그래서 표준오차가 달라요.
+두 가중치로 맞춘 계수는 같지만, 자유도와 척도가 달라서 표준오차도 달라요.
 
 ```python
 >>> xw = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
@@ -326,11 +326,11 @@ array([ 0.12805355743458674, 0.035932694707592625], dtype=float64)
 
 ### `trials`: 이항 반응의 비율
 
-`family='binomial'`에서 행마다 시행이 여러 번이면 `trials`에 시행 수를 주고 `y`에 성공의 **비율**을 줘요. 시행 수는 분산과 편차에 곱해지고, `llf`에는 $\log\binom{n}{ny}$ 항이 들어가요. 0/1 행으로 펼친 자료와 계수가 같아요. 예제는 [로지스틱 회귀](/api/regression/logistic/#비율-자료-trials)에 있어요. 다른 분포족에 주면 `ValueError`예요.
+`family='binomial'`에서 행마다 시행이 여러 번이면 `trials`에 시행 수를 주고 `y`에 성공의 비율을 줘요. 시행 수는 분산과 편차에 곱해지고, `llf`에는 $\log\binom{n}{ny}$ 항이 들어가요. 0/1 행으로 펼친 자료와 계수가 같아요. 예제는 [로지스틱 회귀](/api/regression/logistic/#비율-자료-trials)에 있어요. 다른 분포족에 주면 `ValueError`예요.
 
 ### `offset`과 `exposure`
 
-`offset`은 선형 예측값에 계수 1로 더하는 열이에요: $\eta = X\beta + \text{offset}$. `exposure`는 노출량(관찰 기간, 인구, 면적)이고 $\log(\text{exposure})$를 더해요. 그래서 log 링크에서 $\mu = \text{exposure} \times e^{X\beta}$, 곧 계수가 **단위 노출당 비율**을 설명해요. `exposure`는 log 링크에서만 받아요. 예제는 [셈 자료와 양수 자료](/api/regression/poisson-gamma/#노출과-오프셋)에 있어요.
+`offset`은 선형 예측값에 계수 1로 더하는 열이라 $\eta = X\beta + \text{offset}$이에요. `exposure`는 노출량(관찰 기간, 인구, 면적)이고 $\log(\text{exposure})$를 더해요. 그래서 log 링크에서 $\mu = \text{exposure} \times e^{X\beta}$, 곧 계수가 단위 노출당 비율을 설명해요. `exposure`는 log 링크에서만 받아요. 예제는 [셈 자료와 양수 자료](/api/regression/poisson-gamma/#노출과-오프셋)에 있어요.
 
 ### `intercept`
 
@@ -338,7 +338,7 @@ array([ 0.12805355743458674, 0.035932694707592625], dtype=float64)
 
 ### `scale`: 척도
 
-척도 $\phi$는 분산 $\phi V(\mu)$의 배수예요. 이항분포와 포아송은 이론상 $\phi = 1$이고, 정규와 감마는 데이터에서 추정해야 해요.
+척도 $\phi$는 분산 $\phi V(\mu)$의 배수예요. 이항 분포와 포아송은 이론상 $\phi = 1$이고, 정규와 감마는 데이터에서 추정해야 해요.
 
 | `scale` | 척도 | 검정 분포 |
 |---|---|---|
@@ -370,7 +370,7 @@ array([1.8149198915788247, 1.8149198915788247], dtype=float64)
 inf
 ```
 
-`llf`, `aic`, `bic`는 그 척도로 계산한 로그우도예요. 그래서 `scale`을 바꾸면 로그우도도 바뀌어요. 다른 척도로 맞춘 모형끼리 AIC를 견주지 마세요. 틀린 값은 이래요.
+`llf`, `aic`, `bic`는 그 척도로 계산한 로그우도예요. 그래서 `scale`을 바꾸면 로그우도도 바뀌어요. 다른 척도로 맞춘 모형끼리 AIC를 견주지 마세요. `scale`에 받지 않는 값을 주면 `ValueError`예요.
 
 ```python
 >>> sd.regression.glm(yp, xp, family='poisson', scale='x')
@@ -419,11 +419,11 @@ array([  0.0716518519323937, 0.019983628749113837], dtype=float64)
 array([ 0.09451981417852001, 0.024456534060647375], dtype=float64)
 ```
 
-`'HAC'`만은 반복한 자료와 달라요. HAC는 행 순서에서 이웃한 행끼리의 상관을 세는데, 빈도 가중치의 행 하나는 그대로 한 시점으로 보고 지연을 행 단위로 세요(반복한 자료에서는 같은 행의 사본끼리가 이웃이 돼요). statsmodels의 빈도 가중치 HAC와 같은 관례예요. `maxlags`를 주지 않을 때의 기본 지연 수만 `nobs`(빈도의 합)로 정해요.
+`'HAC'`만은 반복한 자료와 달라요. HAC는 행 순서에서 이웃한 행끼리의 상관을 세는데, 빈도 가중치의 행 하나는 그대로 한 시점으로 보고 지연을 행 단위로 세요(반복한 자료에서는 같은 행의 사본끼리 이웃이 돼요). statsmodels의 빈도 가중치 HAC와 같은 관례예요. `maxlags`를 주지 않을 때의 기본 지연 수만 `nobs`(빈도의 합)로 정해요.
 
 ### `max_iter`와 `tol`: 수렴
 
-정규·항등 링크가 아니면 계수를 반복해서 찾아요. 반복마다 편차 $D$를 계산하고, 상대 변화 $|D - D_\text{old}| / (|D| + 0.1)$이 `tol`보다 작으면 수렴으로 봐요. 그 뒤에도 계수가 반올림보다 크게 움직이는 동안 몇 번 더 다듬어요. 그래서 **계수는 `tol`과 상관없이 최대우도 추정값에 반올림 수준으로 가까워요.** `tol`을 느슨하게 줘도 결과가 거의 같아요.
+정규·항등 링크가 아니면 계수를 반복해서 찾아요. 반복마다 편차 $D$를 계산하고, 상대 변화 $|D - D_\text{old}| / (|D| + 0.1)$이 `tol`보다 작으면 수렴으로 봐요. 그 뒤에도 계수가 반올림보다 크게 움직이는 동안 몇 번 더 다듬어요. 그래서 계수는 `tol`과 상관없이 최대우도 추정값에 반올림 수준으로 가까워요. `tol`을 느슨하게 줘도 결과가 거의 같아요.
 
 ```python
 >>> r.n_iter, r.converged
@@ -447,7 +447,7 @@ array([ 0.7277373765839296, 0.23126465505291435], dtype=float64)
 array([  0.668284190716704, 0.23758513873909173], dtype=float64)
 ```
 
-반복 두 번으로는 아직 덜 갔어요. 기본값 100이면 보통 20번 안에서 끝나요.
+반복 두 번으로는 아직 해에 닿지 못했어요. 기본값 100이면 보통 20번 안에서 끝나요.
 
 `converged=True`는 편차의 판정을 통과하고 그 뒤의 다듬기까지 끝났다는 뜻이에요. 편차의 판정만 통과한 계수는 `tol`의 제곱근쯤까지만 맞으니, 다듬기가 상한에 잘리면 판정을 통과했어도 `converged=False`예요. 앞의 로지스틱 회귀(7번에 끝나요)를 5번에서 자르면 계수가 1e-10쯤 남아 있어요.
 
@@ -461,6 +461,8 @@ array([1.7919177253133967e-10, -7.529687984231259e-11], dtype=float64)
 >>> e7.converged, e7.n_iter
 (True, 7)
 ```
+
+`max_iter`는 1 이상, `tol`은 0보다 커야 해요.
 
 ```python
 >>> sd.regression.glm(yp, xp, family='poisson', max_iter=0)
@@ -509,7 +511,9 @@ ValueError: glm(): 'tol' must be a finite number > 0
 | `converged`, `n_iter` | 수렴했는지, 반복 횟수. |
 | `separation` | 최대우도 추정값이 없는 분리인지(아래). |
 | `param_names` | 계수 이름. 절편 `'const'`, frame이면 컬럼 이름, 그 밖에는 `'x1'`…`'xk'`. |
-| `family`, `link`, `cov_type` | 적합에 쓴 이름들. |
+| `family`, `link`, `cov_type` | 적합에 쓴 이름. |
+
+표에서 $m$은 `var_weights` × `trials`(없으면 1)이고, $d(y, \mu)$는 분포족의 **단위 편차**예요(정규 $(y-\mu)^2$, 포아송 $2[y\log(y/\mu) - (y - \mu)]$ 등). `ols`의 `resid`, `ssr`, `rsquared`, `fvalue`는 `glm`에 없어요. GLM에서는 잔차가 한 가지로 정해지지 않고, 편차가 잔차 제곱합의 자리를 차지해요.
 
 `param_names`, `family`, `link`, `cov_type`은 적합의 설정이라 읽기만 해요. 대입하면 `AttributeError`예요. `param_names`는 읽을 때마다 새 리스트를 돌려줘서, 돌려받은 리스트를 고쳐도 결과는 그대로예요. 결과의 메서드에 옵션을 위치로 주는 등 호출의 꼴이 틀리면 `TypeError`이고, 메시지는 메서드 이름으로 시작해요.
 
@@ -519,8 +523,6 @@ Traceback (most recent call last):
     ...
 AttributeError: property 'link' of 'GLMResult' object has no setter
 ```
-
-여기서 $m$은 `var_weights` × `trials`(없으면 1)이고, $d(y, \mu)$는 분포족의 **단위 편차**예요(정규 $(y-\mu)^2$, 포아송 $2[y\log(y/\mu) - (y - \mu)]$ 등). `ols`의 `resid`, `ssr`, `rsquared`, `fvalue`는 `glm`에 없어요. GLM에서는 잔차가 한 가지로 정해지지 않고, 편차가 잔차 제곱합의 자리를 차지해요.
 
 ### 적합값과 잔차
 
@@ -552,7 +554,7 @@ array([0.02517465156209572,                -1.0,  0.5935806161906121], dtype=flo
 (28.6618440559, 28.6618440559)
 ```
 
-`trials`가 있는 이항분포에서 `resid_response`는 비율의 척도($y - \mu$, 둘 다 비율)예요.
+`trials`가 있는 이항 분포에서 `resid_response`는 비율의 척도($y - \mu$, 둘 다 비율)예요.
 
 ### 편차와 귀무 모형
 
@@ -577,8 +579,8 @@ array([0.02517465156209572,                -1.0,  0.5935806161906121], dtype=flo
 
 GLM에는 `ols`의 R²가 없어요. 그 자리에 모형의 로그우도를 귀무 모형의 것과 견주는 **의사 R²** `pseudo_rsquared(*, kind='cs')`가 있어요. 0이면 설명변수가 귀무 모형보다 나을 게 없고, 클수록 나아요.
 
-- `kind='cs'`(기본): **Cox–Snell** $1 - \exp\big(2(\text{llnull} - \text{llf})/\text{nobs}\big)$. `summary()`의 `Pseudo R-squ. (CS)`가 이 값이에요. 0/1 자료에서는 모형이 완벽히 맞아도 1에 닿지 않아요(위 합격 자료의 상한은 0.75예요).
-- `kind='mcf'`: **McFadden** $1 - \text{llf}/\text{llnull}$. 로그우도가 귀무 모형에서 몇 할 줄었는지예요.
+- `kind='cs'`(기본): Cox–Snell $1 - \exp\big(2(\text{llnull} - \text{llf})/\text{nobs}\big)$. `summary()`의 `Pseudo R-squ. (CS)`가 이 값이에요. 0/1 자료에서는 모형이 완벽히 맞아도 1에 닿지 않아요(위 합격 자료의 상한은 0.75예요).
+- `kind='mcf'`: McFadden $1 - \text{llf}/\text{llnull}$. 로그우도가 귀무 모형에서 몇 할 줄었는지예요.
 
 ```python
 >>> r.pseudo_rsquared(), r.pseudo_rsquared(kind='mcf')
@@ -614,7 +616,7 @@ array([[  0.10217693789606096, -0.013992310046130477],
 
 ### 검정 분포: z와 t
 
-p값과 신뢰구간을 어느 분포로 계산할지는 척도를 추정했는지에 달려 있어요. 척도를 데이터에서 추정하면 그 불확실성만큼 꼬리가 두꺼운 [t분포](/api/stats/student-t/)를, 고정이면 [정규분포](/api/stats/normal/)를 써요.
+p값과 신뢰구간을 어느 분포로 계산할지는 척도를 추정했는지에 달려 있어요. 척도를 데이터에서 추정하면 그 불확실성만큼 꼬리가 두꺼운 [t 분포](/api/stats/student-t/)를, 고정이면 [정규분포](/api/stats/normal/)를 써요.
 
 | `cov_type` | 척도가 고정(binomial·poisson의 기본, 수로 준 `scale`) | 척도를 추정(gaussian·gamma의 기본, `'X2'`, `'dev'`) |
 |---|---|---|
@@ -677,7 +679,7 @@ array([3.137588364969129,               nan], dtype=float64)
 
 ### `predict_interval`
 
-`predict_interval(X_new, /, *, offset=None, exposure=None, alpha=0.05, which='mean')`은 **평균의 신뢰구간**이에요(모양 (m, 2): 아래·위 끝). 먼저 $\eta$의 구간 $\eta \pm q\cdot\mathrm{se}(\eta)$를 만들고($q$는 검정 분포의 분위수), `which='mean'`이면 양 끝을 역링크로 옮겨요. 그래서 평균의 구간은 범위를 벗어나지 않지만 대칭은 아니에요.
+`predict_interval(X_new, /, *, offset=None, exposure=None, alpha=0.05, which='mean')`은 평균의 신뢰구간이에요(모양 (m, 2): 아래·위 끝). 먼저 $\eta$의 구간 $\eta \pm q\cdot\mathrm{se}(\eta)$를 만들고($q$는 검정 분포의 분위수), `which='mean'`이면 양 끝을 역링크로 옮겨요. 그래서 평균의 구간은 범위를 벗어나지 않지만 대칭은 아니에요.
 
 ```python
 >>> p.predict_interval(sd.asarray([2.0, 10.0]))
@@ -710,7 +712,7 @@ array([[ 1.016614064937593, 1.1904090447001583]], dtype=float64)
 
 ### 분리
 
-이항분포에서 어떤 직선(평면)이 0인 행과 1인 행을 완전히 가르면(**완전 분리**), 계수를 키울수록 우도가 계속 커져서 최대우도 추정값이 없어요. 경계에서 0과 1이 섞인 **준완전 분리**, 포아송 log 링크에서 어떤 군의 횟수가 모두 0인 경우도 마찬가지예요. 이때 `glm`은 계수를 무한히 키우는 대신 이 사실을 알려요.
+이항 분포에서 어떤 직선(평면)이 0인 행과 1인 행을 완전히 가르면(**완전 분리**), 계수를 키울수록 우도가 계속 커져서 최대우도 추정값이 없어요. 경계에서 0과 1이 섞인 **준완전 분리**, 포아송 log 링크에서 어떤 군의 횟수가 모두 0인 경우도 마찬가지예요. 이때 `glm`은 계수를 무한히 키우는 대신 이 사실을 알려요.
 
 - `separation=True`이고 `params`, `bse`, `tvalues`, `pvalues`, `cov_params()`는 NaN이에요.
 - 경계로 가는 행의 `fittedvalues`는 $y$(0 또는 1, 포아송은 0), `linear_predictor`는 ±inf, 잔차는 0이에요.
@@ -742,7 +744,7 @@ array([-10.428383402116154,  1.8960697094756642], dtype=float64)
 
 ### 겹친 열
 
-어떤 열이 앞의 열들의 일차결합이면(예: `x`와 `2x`), 그 열의 효과를 따로 가를 수 없어요. 그 열을 빼고 적합하고, 그 열의 계수와 추론은 NaN이에요. `rank`, `df_model`, `df_resid`, `aic`, `bic`는 남은 열로 세고, 나머지 값은 그 열을 뺀 적합과 같아요. 예측에서 그 열은 쓰지 않아요. 판정 규칙과 `rtol`은 [겹친 열과 완전 적합](/api/regression/collinearity/)에 있어요.
+어떤 열이 앞의 열의 일차결합이면(예: `x`와 `2x`), 그 열의 효과를 따로 가를 수 없어요. 그 열을 빼고 적합하고, 그 열의 계수와 추론은 NaN이에요. `rank`, `df_model`, `df_resid`, `aic`, `bic`는 남은 열로 세고, 나머지 값은 그 열을 뺀 적합과 같아요. 예측에서 그 열은 쓰지 않아요. 판정 규칙과 `rtol`은 [겹친 열과 완전 적합](/api/regression/collinearity/)에 있어요.
 
 ```python
 >>> X2 = sd.asarray([[v, 2 * v] for v in xp])
@@ -772,8 +774,8 @@ array([20.991877519299344,                nan], dtype=float64)
 
 절편이 있고 `offset`·`exposure`가 없을 때, 적합에 쓰인 행의 `y`가 모두 같은 값 $y_0$이면 답은 정확히 $(g(y_0), 0, \dots, 0)$이에요. $g$는 링크이고, 적합값은 모두 $y_0$예요. 링크로 옮긴 값 $g(y_0)$가 유한하고 $y_0$가 분포족의 범위 안(분산 함수 $V(y_0) > 0$)이면 분포족과 링크에 상관없이 그래요. 반복이 남기는 아주 작은 기울기 없이 그 답을 그대로 내요. 쓰인 행의 잔차는 모두 0이고, 편차·Pearson χ²·`null_deviance`가 0이에요. 귀무 모형(절편만)이 이 적합과 같으니 `llnull`은 `llf`와 같아요. 기울기의 t와 p는 척도를 어떻게 정하는지에 따라 달라요.
 
-- **척도를 추정하면**(gaussian, gamma, `scale='X2'`·`'dev'`) 척도가 0이라 표준오차가 0이에요. 기울기의 t는 0/0이라 NaN이고 p도 NaN, 절편의 t는 inf예요(절편이 0이면 NaN). `llf`와 `llnull`은 모두 +inf라서, 그 차이와 비로 만드는 `llr`, `llr_pvalue`, 의사 R²는 값이 정해지지 않아 NaN이에요.
-- **척도가 1로 고정이면**(binomial, poisson) 표준오차는 그 척도로 계산한 보통의 값이에요. 기울기는 정확히 0이라 t가 0, p가 1이에요. 효과가 없다는 뜻 그대로예요. `llf`와 `llnull`은 유한한 같은 값이고, `llr`과 의사 R²는 0, `llr_pvalue`는 1이에요.
+- 척도를 추정하면(gaussian, gamma, `scale='X2'`·`'dev'`) 척도가 0이라 표준오차가 0이에요. 기울기의 t는 0/0이라 NaN이고 p도 NaN, 절편의 t는 inf예요(절편이 0이면 NaN). `llf`와 `llnull`은 모두 +inf라서, 그 차이와 비로 만드는 `llr`, `llr_pvalue`, 의사 R²는 값이 정해지지 않아 NaN이에요.
+- 척도가 1로 고정이면(binomial, poisson) 표준오차는 그 척도로 계산한 보통의 값이에요. 기울기는 정확히 0이라 t가 0, p가 1이에요. 효과가 없다는 뜻 그대로예요. `llf`와 `llnull`은 유한한 같은 값이고, `llr`과 의사 R²는 0, `llr_pvalue`는 1이에요.
 
 ```python
 >>> c = sd.regression.glm([3.0] * 8, x, family='gaussian')
@@ -813,7 +815,7 @@ array([0.0, 0.0], dtype=float64)
 
 $g(y_0)$가 무한하면(이항에서 모두 0, logit·probit·cloglog 링크의 이항에서 모두 1, log 링크의 포아송에서 모두 0) 이 규칙이 아니라 [분리](#분리)의 규칙이에요.
 
-`y`가 상수가 아니어도 모형이 자료를 정확히 지나가면 **완전 적합**이에요. 척도를 추정하는 분포족(gaussian, gamma, `scale='X2'`·`'dev'`)에서는 척도가 0이 되어 표준오차가 0, t가 ±inf(계수가 정확히 0이면 NaN), p가 0이고, `llf`는 +inf(`aic`, `bic`는 −inf)예요. 정규분포의 잔차가 반올림 수준이면 0으로 보는 기준은 `ols`와 같아요([완전 적합](/api/regression/collinearity/#완전-적합)).
+`y`가 상수가 아니어도 모형이 자료를 정확히 지나가면 완전 적합이에요. 척도를 추정하는 분포족(gaussian, gamma, `scale='X2'`·`'dev'`)에서는 척도가 0이 되어 표준오차가 0, t가 ±inf(계수가 정확히 0이면 NaN), p가 0이고, `llf`는 +inf(`aic`, `bic`는 −inf)예요. 정규분포의 잔차가 반올림 수준이면 0으로 보는 기준은 `ols`와 같아요([완전 적합](/api/regression/collinearity/#완전-적합)).
 
 ```python
 >>> pf = sd.regression.glm([1 + 2 * v for v in x], x, family='gaussian')
@@ -944,7 +946,7 @@ array([  0.668284190716704, 0.23758513873909173], dtype=float64)
 
 ## 정확도
 
-- 계수는 Arb(구간 산술)로 만든 참값과 견줘, 분포족·링크 12가지와 가중치·시행 수·노출·절편 없음·`scale='dev'`의 문제들에서 상대오차(노름)가 1.1e-16 이하예요. 표준오차·편차·Pearson χ²·로그우도·강건 표준오차는 1e-15 안, p값은 2e-13 안이에요.
+- 계수는 Arb(구간 산술)로 만든 참값과 견줘, 분포족·링크 12가지와 가중치·시행 수·노출·절편 없음·`scale='dev'`의 문제에서 상대오차(노름)가 1.1e-16 이하예요. 표준오차·편차·Pearson χ²·로그우도·강건 표준오차는 1e-15 안, p값은 2e-13 안이에요.
 - 설계가 나쁜 조건일 때(가중한 설계 $\sqrt{W}X$의 조건수 κ): 정준 링크(로지스틱, 포아송 log)는 κ ≤ 10¹⁰에서 1.3e-15, 10¹²에서 9e-12예요. 정준이 아닌 링크(probit, cloglog, 이항 log, 포아송 identity·sqrt, 감마 log·identity, 정규 log)는 κ ≤ 10⁸에서 3.5e-15, 10¹⁰에서 4e-14예요.
 - 표준오차는 상대오차가 κ × 2.2e-16 정도예요.
 - 계수는 `tol`이 아니라 최대우도 추정값 자체에 반올림 수준으로 가까워요(위의 `tol=1e-3` 예).
@@ -954,8 +956,8 @@ array([  0.668284190716704, 0.23758513873909173], dtype=float64)
 
 ## statsmodels·R을 아는 분께
 
-- **부르는 법**: statsmodels의 `sm.GLM(y, sm.add_constant(X), family=sm.families.Binomial(link=sm.families.links.Probit())).fit()`은 `glm(y, X, family='binomial', link='probit')`이에요. 분포족과 링크는 문자열로만 받고, 절편은 기본으로 들어가요. 필드 이름(`params`, `bse`, `deviance`, `null_deviance`, `pearson_chi2`, `llnull`, `resid_pearson` 등)은 statsmodels와 같아요. statsmodels에 없는 `llr`, `llr_pvalue`, `separation`이 있고, `resid_anscombe`는 없어요.
-- **계수와 표준오차**: 정준 링크의 계수는 statsmodels와 1e-10 안에서 같아요. statsmodels는 기본 판정에서 멈춘 반복의 앞 가중치로 표준오차를 만들어서, 아래 예에서 표준오차가 6e-6 상대만큼 달라요. `tol=1e-14`로 맞추면 같아요.
+- 부르는 법: statsmodels의 `sm.GLM(y, sm.add_constant(X), family=sm.families.Binomial(link=sm.families.links.Probit())).fit()`은 `glm(y, X, family='binomial', link='probit')`이에요. 분포족과 링크는 문자열로만 받고, 절편은 기본으로 들어가요. 필드 이름(`params`, `bse`, `deviance`, `null_deviance`, `pearson_chi2`, `llnull`, `resid_pearson` 등)은 statsmodels와 같아요. statsmodels에 없는 `llr`, `llr_pvalue`, `separation`이 있고, `resid_anscombe`는 없어요.
+- 계수와 표준오차: 정준 링크의 계수는 statsmodels와 1e-10 안에서 같아요. statsmodels는 기본 판정에서 멈춘 반복의 앞 가중치로 표준오차를 만들어서, 아래 예에서 표준오차가 6e-6 상대만큼 달라요. `tol=1e-14`로 맞추면 같아요.
 
 ```python
 >>> import numpy as np
@@ -970,7 +972,7 @@ array([1.7609943141564703, 0.6287208459453858], dtype=float64)
 array([1.76099431, 0.62872085])
 ```
 
-- **의사 R²**: `pseudo_rsquared`의 이름과 기본(`kind='cs'`, Cox–Snell)과 `kind='mcf'`(McFadden)는 statsmodels GLM과 같고, 값도 같아요. statsmodels `Logit`의 `prsquared`는 `kind='mcf'`의 값이에요.
+- 의사 R²: `pseudo_rsquared`의 이름과 기본(`kind='cs'`, Cox–Snell)과 `kind='mcf'`(McFadden)는 statsmodels GLM과 같고, 값도 같아요. statsmodels `Logit`의 `prsquared`는 `kind='mcf'`의 값이에요.
 
 ```python
 >>> float(m.pseudo_rsquared()), float(m.pseudo_rsquared(kind='mcf'))
@@ -979,14 +981,14 @@ array([1.76099431, 0.62872085])
 (0.44194988828117465, 0.42076670802744265)
 ```
 
-- **검정 분포**: statsmodels GLM은 기본(`use_t=False`)이 언제나 정규분포라, gaussian·gamma와 `scale='X2'`에서도 z로 p값을 내요. 여기서는 척도를 추정하면 t(`df_resid`)예요(R의 `summary.glm`과 같아요). 위 8행 gaussian 예의 절편 p값이 statsmodels 0.799, 여기 0.808(`ols`와 같아요)이에요.
-- **강건 표준오차**: statsmodels GLM의 `cov_type='HC1'`·`'HC2'`·`'HC3'`는 모두 `'HC0'`과 같은 값을 내요. 여기서는 `ols`와 같은 뜻의 보정이에요(위 포아송 예의 HC1이 0.4948, statsmodels는 HC0과 같은 0.4426). `freq_weights`의 `'HAC'`는 statsmodels와 같은 관례라 값이 같아요(위 감마 예의 `maxlags=1`에서 0.07165, 0.01998).
-- **`nobs`**: statsmodels의 `nobs`는 행 수라 `freq_weights`가 있어도 행 수이고(그 합은 `model.wnobs`), `var_weights`가 0인 행도 세요. 그래서 0인 가중치가 있으면 척도와 표준오차가 달라요. 여기는 둘 다 적합에 쓰인 관측의 수예요.
-- **`resid_response`**: `trials`가 있으면 statsmodels(두 열 반응)는 성공 수의 척도, 여기는 비율의 척도예요.
-- **절편 없는 모형**: statsmodels는 `llnull`에 상수를 맞추고 `df_model`을 rank − 1로 세요. 여기는 귀무 모형이 $\eta = \text{offset}$이고 `df_model`이 rank예요(R의 `glm`과 같아요).
-- **`get_prediction`**: statsmodels는 감마 inverse 링크에서 구간의 아래·위가 뒤바뀌고 정규분포를 써요. 여기는 언제나 아래·위 순서이고 검정 분포(감마는 t)를 써요. statsmodels의 `predict`는 `offset`의 inf를 받아 inf를 내고, 여기는 `ValueError`예요.
-- **상수 y와 완전 적합**: statsmodels GLM은 `y`가 상수인 gaussian에서 `ValueError`("The first guess on the deviance function returned a nan")를 내요. 위의 완전 적합 `1 + 2x`에서는 표준오차 1.6e-15, 3.1e-16, 척도 4.1e-30, `llf` 261.2처럼 반올림이 남긴 값을 내고, 의사 R²는 Cox–Snell과 McFadden이 모두 1.0이에요(`llnull` −2.0e31). 여기는 표준오차 0과 `llf` +inf이고, 의사 R²는 1과 NaN이에요. 감마 log 링크의 상수 `y`에도 statsmodels는 같은 `ValueError`예요. `y`가 모두 3인 포아송에서는 `PerfectSeparationWarning`과 함께 기울기 7.6e-17, 그 p 0.9999999999999993을 내요. 여기는 경고 없이 기울기가 정확히 0이고 t 0, p 1이에요. 포아송 identity·sqrt 링크의 `y`가 모두 0일 때도 statsmodels는 같은 `ValueError`이고, 여기는 정확한 해 (0, 0)이에요.
-- **자유도 0과 빈 입력**: `df_resid`가 0이면 statsmodels는 척도와 표준오차가 inf이고, 여기는 NaN이에요. 행이 0개인 입력에 statsmodels는 numpy의 `ValueError`("zero-size array to reduction operation maximum which has no identity")를 내고, 여기는 `nobs` 0의 NaN 결과예요.
-- **`bic`**: statsmodels 0.15의 `bic`(= `bic_llf`)와 같아요. 편차로 만든 `bic_deviance`는 없어요.
-- **분리**: statsmodels는 `PerfectSeparationWarning`을 내고 큰 계수를 돌려줘요(위 완전 분리 예에서 계수 (−223.8, 40.7), 표준오차 (1.2e5, 2.3e4), `converged=True`). 여기는 `separation=True`와 NaN 계수예요.
-- **R**: R `glm`의 `weights`는 `var_weights`, 비율 반응에 `weights=n`을 주는 꼴은 `trials`, `quasipoisson`·`quasibinomial`은 `scale='X2'`예요(위 준포아송의 p값 0.2826, 0.0240이 R과 같아요). R의 `AIC`는 gaussian·gamma에서 척도를 모수로 하나 더 세서 여기보다 2 커요. 완전 분리에서 R은 경고와 함께 큰 계수(−245.8, 44.7)를 내고 `converged`가 FALSE예요.
+- 검정 분포: statsmodels GLM은 기본(`use_t=False`)이 언제나 정규분포라, gaussian·gamma와 `scale='X2'`에서도 z로 p값을 내요. 여기서는 척도를 추정하면 t(`df_resid`)예요(R의 `summary.glm`과 같아요). 위 8행 gaussian 예의 절편 p값이 statsmodels 0.799, 여기 0.808(`ols`와 같아요)이에요.
+- 강건 표준오차: statsmodels GLM의 `cov_type='HC1'`·`'HC2'`·`'HC3'`는 모두 `'HC0'`과 같은 값을 내요. 여기서는 `ols`와 같은 뜻의 보정이에요(위 포아송 예의 HC1이 0.4948, statsmodels는 HC0과 같은 0.4426). `freq_weights`의 `'HAC'`는 statsmodels와 같은 관례라 값이 같아요(위 감마 예의 `maxlags=1`에서 0.07165, 0.01998).
+- `nobs`: statsmodels의 `nobs`는 행 수라 `freq_weights`가 있어도 행 수이고(그 합은 `model.wnobs`), `var_weights`가 0인 행도 세요. 그래서 0인 가중치가 있으면 척도와 표준오차가 달라요. 여기는 둘 다 적합에 쓰인 관측의 수예요.
+- `resid_response`: `trials`가 있으면 statsmodels(두 열 반응)는 성공 수의 척도, 여기는 비율의 척도예요.
+- 절편 없는 모형: statsmodels는 `llnull`에 상수를 맞추고 `df_model`을 rank − 1로 세요. 여기는 귀무 모형이 $\eta = \text{offset}$이고 `df_model`이 rank예요(R의 `glm`과 같아요).
+- `get_prediction`: statsmodels는 감마 inverse 링크에서 구간의 아래·위가 뒤바뀌고 정규분포를 써요. 여기는 언제나 아래·위 순서이고 검정 분포(감마는 t)를 써요. statsmodels의 `predict`는 `offset`의 inf를 받아 inf를 내고, 여기는 `ValueError`예요.
+- 상수 y와 완전 적합: statsmodels GLM은 `y`가 상수인 gaussian에서 `ValueError`("The first guess on the deviance function returned a nan")를 내요. 위의 완전 적합 `1 + 2x`에서는 표준오차 1.6e-15, 3.1e-16, 척도 4.1e-30, `llf` 261.2처럼 반올림이 남긴 값을 내고, 의사 R²는 Cox–Snell과 McFadden이 모두 1.0이에요(`llnull` −2.0e31). 여기는 표준오차 0과 `llf` +inf이고, 의사 R²는 1과 NaN이에요. 감마 log 링크의 상수 `y`에도 statsmodels는 같은 `ValueError`예요. `y`가 모두 3인 포아송에서는 `PerfectSeparationWarning`과 함께 기울기 7.6e-17, 그 p 0.9999999999999993을 내요. 여기는 경고 없이 기울기가 정확히 0이고 t 0, p 1이에요. 포아송 identity·sqrt 링크의 `y`가 모두 0일 때도 statsmodels는 같은 `ValueError`이고, 여기는 정확한 해 (0, 0)이에요.
+- 자유도 0과 빈 입력: `df_resid`가 0이면 statsmodels는 척도와 표준오차가 inf이고, 여기는 NaN이에요. 행이 0개인 입력에 statsmodels는 numpy의 `ValueError`("zero-size array to reduction operation maximum which has no identity")를 내고, 여기는 `nobs` 0의 NaN 결과예요.
+- `bic`: statsmodels 0.15의 `bic`(= `bic_llf`)와 같아요. 편차로 만든 `bic_deviance`는 없어요.
+- 분리: statsmodels는 `PerfectSeparationWarning`을 내고 큰 계수를 돌려줘요(위 완전 분리 예에서 계수 (−223.8, 40.7), 표준오차 (1.2e5, 2.3e4), `converged=True`). 여기는 `separation=True`와 NaN 계수예요.
+- R: R `glm`의 `weights`는 `var_weights`, 비율 반응에 `weights=n`을 주는 꼴은 `trials`, `quasipoisson`·`quasibinomial`은 `scale='X2'`예요(위 준포아송의 p값 0.2826, 0.0240이 R과 같아요). R의 `AIC`는 gaussian·gamma에서 척도를 모수로 하나 더 세서 여기보다 2 커요. 완전 분리에서 R은 경고와 함께 큰 계수(−245.8, 44.7)를 내고 `converged`가 FALSE예요.

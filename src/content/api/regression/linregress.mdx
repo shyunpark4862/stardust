@@ -34,7 +34,7 @@ import Callout from '../../../components/Callout.astro';
 
 ## 무엇을 하나요
 
-점들 $(x_i, y_i)$에 직선 $y = a + bx$ 하나를 맞추는 가장 흔한 일을 함수 하나로 해요. 직선은 [`ols`](/api/regression/ols/)와 같이 세로 거리 제곱합이 가장 작은 직선이에요.
+점 $(x_i, y_i)$에 직선 $y = a + bx$ 하나를 맞추는 가장 흔한 일을 함수 하나로 해요. 직선은 [`ols`](/api/regression/ols/)와 같이 세로 거리 제곱합이 가장 작은 직선이에요.
 
 $$
 \hat b = \frac{\sum_i (x_i - \bar x)(y_i - \bar y)}{\sum_i (x_i - \bar x)^2}, \qquad \hat a = \bar y - \hat b\,\bar x
@@ -64,7 +64,7 @@ LinregressResult(slope=4.052631578947368, intercept=47.973684210526315, rvalue=0
 | `slope` | 4.05 | 기울기. `x`가 1 늘 때 `y`가 늘어나는 양 |
 | `intercept` | 47.97 | 절편. `x = 0`에서의 직선 높이 |
 | `rvalue` | 0.970 | 피어슨 상관계수. −1에서 1 사이이고 부호는 기울기와 같아요. |
-| `pvalue` | 3.5e-6 | 참 기울기가 0이라면 이만큼 가파른 기울기가 나올 확률(두 꼬리, 자유도 n − 2의 t분포) |
+| `pvalue` | 3.5e-6 | 참 기울기가 0이라면 이만큼 가파른 기울기가 나올 확률(두 꼬리, 자유도 n − 2의 t 분포) |
 | `stderr` | 0.361 | 기울기의 표준오차 |
 | `intercept_stderr` | 1.73 | 절편의 표준오차 |
 
@@ -98,7 +98,7 @@ LinregressResult(slope=0.23204419889502761, intercept=-10.875690607734807, rvalu
 <class 'float'>
 ```
 
-기울기의 신뢰구간이 필요하면 `stderr`와 t분포의 분위수로 만들어요. 자유도는 n − 2예요.
+기울기의 신뢰구간이 필요하면 `stderr`와 t 분포의 분위수로 만들어요. 자유도는 n − 2예요.
 
 ```python
 >>> q = sd.stats.StudentT(df=len(hours) - 2).iccdf(0.025)
@@ -106,7 +106,7 @@ LinregressResult(slope=0.23204419889502761, intercept=-10.875690607734807, rvalu
 (3.2207545439599543, 4.884508613934782)
 ```
 
-[`ols`](/api/regression/ols/)의 `conf_int()`와 같은 구간이에요. 실제로 `linregress`의 값은 같은 데이터의 `ols`와 비트까지 같아요.
+[`ols`](/api/regression/ols/)의 `conf_int()`와 같은 구간이에요. `linregress`의 값은 같은 데이터의 `ols`와 비트까지 같아요.
 
 ```python
 >>> o = sd.regression.ols(score, hours)
@@ -120,7 +120,7 @@ array([3.2207545439599543,  4.884508613934782], dtype=float64)
 
 ### `x`가 모두 같을 때
 
-세로로 선 점들에는 기울기가 없어요. 모든 칸이 NaN이에요.
+세로로 늘어선 점에는 기울기가 없어요. 모든 칸이 NaN이에요.
 
 ```python
 >>> sd.regression.linregress([2.0, 2.0, 2.0, 2.0], [1.0, 2.0, 3.0, 4.0])
@@ -180,7 +180,7 @@ ValueError: linregress(): 'x' and 'y' must have length at least 2
 [`ols`](/api/regression/ols/#nan_policy-nan이-있을-때)와 같은 세 가지예요.
 
 - `'propagate'`(기본값): `x`나 `y`에 NaN이 하나라도 있으면 그 직선의 모든 칸이 NaN이에요. 모르는 사이에 점이 빠지는 일이 없어요.
-- `'omit'`: `x`나 `y`가 NaN인 점을 빼고 맞춰요. 뺀 점이 없는 데이터로 맞춘 것과 같은 값이에요. 배치에서는 직선마다 남는 점이 달라질 수 있어서 쓸 수 없어요.
+- `'omit'`: `x`나 `y`가 NaN인 점을 빼고 맞춰요. 그 점을 지운 데이터로 맞춘 것과 같은 값이에요. 배치에서는 직선마다 남는 점이 달라질 수 있어서 쓸 수 없어요.
 - `'raise'`: `ValueError`예요.
 
 ```python
@@ -313,7 +313,7 @@ array([1.5, nan], dtype=float64)
 
 ## 정확도
 
-`ols`와 같은 계산이라 같은 약속이에요. 조건수가 $10^{11}$ 이하이면 기울기와 절편의 상대오차가 1e-14 이하예요([`ols`의 정확도](/api/regression/ols/#정확도)). `x`가 0에서 멀리 떨어져 있어도(예: 연도 2000, 2001, …) 자릿수를 잃지 않아요. `x`와 `y`를 1e-300에서 1e300 사이의 수로 곱해도 `rvalue`와 `pvalue`는 그대로예요. 곱한 비율 때문에 기울기나 표준오차 자체가 double의 범위를 넘으면 그 칸만 inf(아래로 넘치면 0)이에요. 기울기가 0으로 아래로 넘쳐도 `rvalue`의 부호는 맞아요.
+`ols`와 같은 계산이라 같은 약속이에요. 조건수가 $10^{11}$ 이하이면 기울기와 절편의 상대오차가 1e-14 이하예요([`ols`의 정확도](/api/regression/ols/#정확도)). `x`가 0에서 멀리 떨어져 있어도(예: 연도 2000, 2001, …) 자릿수를 잃지 않아요. `x`와 `y`를 1e-300에서 1e300 사이의 수로 곱해도 `rvalue`와 `pvalue`는 그대로예요. 곱한 비율 때문에 기울기나 표준오차 자체가 float64의 범위를 넘으면 그 칸만 inf(아래로 넘치면 0)이에요. 기울기가 0으로 아래로 넘쳐도 `rvalue`의 부호는 맞아요.
 
 ```python
 >>> years = [2000.0, 2001.0, 2002.0, 2003.0, 2004.0]

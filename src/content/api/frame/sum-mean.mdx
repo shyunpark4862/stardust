@@ -31,13 +31,13 @@ import Op from '../../../components/fig/Op.astro';
 
 ## 한눈에 보기
 
-컬럼 하나에 들어 있는 여러 값을 **값 하나로 줄이는** 계산을 리덕션이라고 해요. 스프레드시트에서 열 아래에 `SUM`, `AVERAGE`, `COUNT`를 쓰는 것과 같은 일이에요. 이 페이지의 세 메서드가 가장 자주 쓰이는 리덕션이에요.
+컬럼 하나에 들어 있는 여러 값을 값 하나로 줄이는 계산을 **리덕션**이라고 해요. 스프레드시트에서 열 아래에 `SUM`, `AVERAGE`, `COUNT`를 쓰는 것과 같은 일이에요. 이 페이지의 세 메서드가 가장 자주 쓰이는 리덕션이에요.
 
 - `sum()`: 값을 모두 더해요.
 - `mean()`: 평균을 내요.
-- `count()`: 결측이 **아닌** 값이 몇 개인지 세요.
+- `count()`: 결측이 아닌 값이 몇 개인지 세요.
 
-과일 가게에서 나흘 동안 판 개수를 적었는데, 셋째 날 기록이 빠졌다고 해 볼게요. 빠진 기록은 결측값 `NA`로 들어가요.
+과일 가게에서 나흘 동안 판 개수를 적었는데, 셋째 날 기록이 빠졌어요. 빠진 기록은 결측값 `NA`로 들어가요.
 
 ```python
 >>> import stardust as sd
@@ -56,9 +56,9 @@ Name: qty, dtype: int64
 10.0
 ```
 
-세 메서드 모두 `NA`를 **없는 셈 치고** 계산했어요. 합은 `12 + 8 + 10`, 개수는 3, 평균은 `30 / 3`이에요. 행이 4개라고 4로 나누지 않아요.
+세 메서드 모두 `NA`를 없는 셈 치고 계산했어요. 합은 `12 + 8 + 10`, 개수는 3, 평균은 `30 / 3`이에요. 행이 4개라고 4로 나누지 않아요.
 
-DataFrame(여러 컬럼을 가진 표)에 쓰면 컬럼마다 따로 계산해서 **1행짜리 DataFrame**으로 돌려줘요.
+DataFrame(컬럼이 여럿인 표)에 쓰면 컬럼마다 따로 계산해서 1행짜리 DataFrame으로 돌려줘요.
 
 ```python
 >>> sales = sd.frame.DataFrame({
@@ -115,7 +115,7 @@ count      4    3      4         4
 
 ## NaN은 건너뛰지 않아요
 
-stardust의 데이터프레임에서 결측값은 `NA` 하나뿐이에요. 실수의 NaN(Not a Number, 숫자가 아님)은 결측이 아니라 `0.0 / 0.0` 같은 계산에서 나오는 **평범한 float 값**이에요. 그래서 `skipna`는 NaN을 건너뛰지 않고, NaN이 하나라도 있으면 합과 평균이 NaN이 돼요. 배열의 [`sd.sum`](/api/array/sum/)에서 NaN이 퍼지는 것과 같아요.
+stardust의 데이터프레임에서 결측값은 `NA` 하나뿐이에요. 실수의 NaN(Not a Number, 숫자가 아님)은 결측이 아니라 `0.0 / 0.0` 같은 계산에서 나오는 평범한 float 값이에요. 그래서 `skipna`는 NaN을 건너뛰지 않고, NaN이 하나라도 있으면 합과 평균이 NaN이 돼요. 배열의 [`sd.sum`](/api/array/sum/)에서 NaN이 퍼지는 것과 같아요.
 
 ```python
 >>> temp = sd.frame.Series([21.5, float("nan"), None, 23.0])
@@ -127,7 +127,7 @@ nan
 3
 ```
 
-`count()`가 3인 것도 같은 이유예요. NaN은 값이므로 세고, `NA`만 빼요. 두 결측 표시의 차이는 [NA와 NaN](/api/frame/na/)에 자세히 있어요.
+`count()`가 3인 것도 같은 이유예요. NaN은 값이므로 세고, `NA`만 빼요. `NA`와 NaN의 차이는 [NA와 NaN](/api/frame/na/)에 자세히 있어요.
 
 NaN도 빼고 계산하고 싶다면 [`isnan()`](/api/frame/isna/)으로 NaN이 아닌 행만 남긴 뒤 계산해요. `NA` 행은 `isnan()`의 결과가 `NA`라서 마스크에서 함께 빠져요.
 
@@ -163,7 +163,7 @@ dtype: bool
 0.0
 ```
 
-아무것도 더하지 않은 합은 0이라고 하는 것이 자연스러워요. 장바구니가 비었으면 합계는 0원이에요. 하지만 평균은 0으로 나눠야 해서 정할 수 없어요. 그래서 "값이 없다"는 뜻의 `NA`를 돌려줘요.
+아무것도 더하지 않은 합은 0으로 보는 것이 맞아요. 장바구니가 비었으면 합계는 0원이에요. 하지만 평균은 0으로 나눠야 해서 정할 수 없어요. 그래서 "값이 없다"는 뜻의 `NA`를 돌려줘요.
 
 배열의 [`sd.mean`](/api/array/mean/)은 빈 배열에서 NaN을 돌려줘요. 배열에는 `NA`가 없어서 "정할 수 없음"을 float 값 NaN으로 나타낼 수밖에 없기 때문이에요. 데이터프레임에는 `NA`가 있으니, NaN은 데이터에서 계산된 값에만 남겨 두고 "값이 없어서 못 구함"은 `NA`로 구별해요. 그래서 결과를 [`isna()`](/api/frame/isna/)로 걸러 낼 수 있어요.
 
@@ -215,7 +215,7 @@ TypeError: sum(): cannot compute sum of a string column
 
 ## DataFrame은 1행짜리 DataFrame을 돌려줘요
 
-DataFrame의 리덕션은 컬럼마다 값 하나씩을 구해서, **행 라벨이 리덕션 이름인 1행짜리 표**로 돌려줘요.
+DataFrame의 리덕션은 컬럼마다 값 하나씩을 구해서, 행 라벨이 리덕션 이름인 1행짜리 표로 돌려줘요.
 
 ```python
 >>> num = sales[["qty", "price", "sold_out"]]
@@ -236,7 +236,7 @@ mean  10.0   1.25       0.5
     data={[[30, '5.0', 2]]} index={['sum']} rowTones={['b']} />
 </Fig>
 
-왜 Series(값이 한 줄로 늘어선 것)가 아니라 DataFrame일까요? 컬럼마다 결과의 종류가 달라요. `qty`의 합은 정수, `price`의 합은 실수예요. 이 결과들을 Series 하나에 담으려면 dtype을 하나로 맞춰야 해서, 정수가 실수로 바뀌거나 문자열(`min`의 결과)과 숫자가 섞일 자리가 없어요. 1행짜리 DataFrame이면 컬럼마다 자기 dtype을 그대로 지킬 수 있어요.
+Series(값이 한 줄로 늘어선 것)가 아니라 DataFrame을 돌려주는 까닭은 컬럼마다 결과의 종류가 다르기 때문이에요. `qty`의 합은 정수, `price`의 합은 실수예요. 이 결과를 Series 하나에 담으려면 dtype을 하나로 맞춰야 해요. 그러면 정수가 실수로 바뀌고, 문자열(`min`의 결과)과 숫자는 함께 담을 수 없어요. 1행짜리 DataFrame이면 컬럼마다 자기 dtype을 그대로 지킬 수 있어요.
 
 ```python
 >>> r = num.sum()
@@ -274,7 +274,7 @@ sum   30    5.0
 
 ## 배열의 `sd.sum`과 결과가 같아요
 
-컬럼의 합은 배열의 [`sd.sum`](/api/array/sum/)과 **같은 순서로 더해요.** 실수의 덧셈은 순서에 따라 마지막 자리가 달라질 수 있는데, 순서가 같으니 결과는 비트 하나까지 같아요. 같은 데이터를 Series로 들고 있든 배열로 들고 있든 같은 답을 얻어요.
+컬럼의 합은 배열의 [`sd.sum`](/api/array/sum/)과 같은 순서로 더해요. 실수의 덧셈은 순서에 따라 마지막 자리가 달라질 수 있는데, 순서가 같으니 결과는 비트 하나까지 같아요. 같은 데이터를 Series에 담았든 배열에 담았든 같은 답이 나와요.
 
 ```python
 >>> w = sd.frame.Series([0.1, 0.2, 0.3, 0.4, 0.5])
@@ -306,7 +306,7 @@ True
 
 ### 정수 합이 너무 커지면
 
-int64 컬럼의 합은 int64예요. 약 ±9.2 × 10¹⁸을 넘으면 에러 없이 **반대쪽 끝으로 넘어가요.** 배열의 `sd.sum`과 같아요.
+int64 컬럼의 합은 int64예요. 약 ±9.2 × 10¹⁸을 넘으면 에러 없이 반대쪽 끝으로 넘어가요. 배열의 `sd.sum`과 같아요.
 
 ```python
 >>> big = sd.frame.Series([2**62, 2**62])
@@ -369,8 +369,8 @@ Series는 값을 하나씩 꺼낼 수 있어서 Python 내장 `sum(qty)`도 동�
 
 ## pandas를 아는 분께
 
-- **NaN을 건너뛰지 않아요.** pandas의 `skipna`는 NaN도 결측으로 보고 건너뛰지만, stardust의 `skipna`는 `NA`만 건너뛰어요. `pd.Series([1.0, nan, 3.0]).sum()`은 `4.0`이고 stardust는 `nan`이에요. 같은 이유로 `count()`도 NaN을 세요.
-- **DataFrame의 결과가 1행짜리 DataFrame이에요.** pandas는 컬럼 이름을 라벨로 하는 Series를 돌려주고, dtype이 섞이면 공통 dtype(int64와 float64 컬럼이면 float64)이나 object로 바꿔요.
+- NaN을 건너뛰지 않아요. pandas의 `skipna`는 NaN도 결측으로 보고 건너뛰지만, stardust의 `skipna`는 `NA`만 건너뛰어요. `pd.Series([1.0, nan, 3.0]).sum()`은 `4.0`이고 stardust는 `nan`이에요. 같은 이유로 `count()`도 NaN을 세요.
+- DataFrame의 결과가 1행짜리 DataFrame이에요. pandas는 컬럼 이름을 라벨로 하는 Series를 돌려주고, dtype이 섞이면 공통 dtype(int64와 float64 컬럼이면 float64)이나 object로 바꿔요.
 - 결과가 numpy 스칼라(`np.int64`)가 아니라 Python `int`·`float`예요. 모두 `NA`인 컬럼의 평균은 `NA`예요(pandas의 nullable dtype과 같아요).
 - 문자열 컬럼의 `sum()`은 `TypeError`예요. pandas는 문자열을 이어 붙여요. DataFrame에 string 컬럼이 있으면 `sum()` 전체가 에러예요.
 - `axis`, `min_count`, `numeric_only` 인자는 없어요. 옵션은 keyword-only예요.

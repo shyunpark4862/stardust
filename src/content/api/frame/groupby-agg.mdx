@@ -23,7 +23,7 @@ params:
   - name: correction
     type: int 또는 float
     kind: keyword-only, std·var만
-    desc: 편차 제곱의 합을 (개수 - correction)으로 나눠요. 기본값 0은 모분산, 1은 표본분산이에요.
+    desc: 편차 제곱의 합을 (개수 - correction)으로 나눠요. 기본값 0은 모분산, 1은 표본 분산이에요.
 returns:
   type: DataFrame
   desc: 키 컬럼이 먼저, 그다음 값 컬럼마다 그룹의 결과가 오는 표. 그룹 하나가 한 행이고 라벨은 RangeIndex예요. size는 값 컬럼 대신 size 컬럼 하나예요.
@@ -39,7 +39,7 @@ import Op from '../../../components/fig/Op.astro';
 
 ## 한눈에 보기
 
-[`groupby`](/api/frame/groupby/)로 행을 그룹으로 묶은 다음에는 **그룹마다 무엇을 구할지** 메서드로 골라요. 각 메서드는 그룹 하나를 작은 표로 보고, 그 표의 컬럼마다 Series의 같은 이름 메서드를 부른 것과 같아요. `g.sum()`은 그룹마다 `sum()`, `g.mean()`은 그룹마다 `mean()`이에요.
+[`groupby`](/api/frame/groupby/)로 행을 그룹으로 묶은 다음에는 그룹마다 무엇을 구할지 메서드로 골라요. 메서드마다 그룹 하나를 작은 표로 보고, 그 표의 컬럼마다 Series의 같은 이름 메서드를 불러요. `g.sum()`은 그룹마다 `sum()`, `g.mean()`은 그룹마다 `mean()`이에요.
 
 ```python
 >>> import stardust as sd
@@ -86,7 +86,7 @@ import Op from '../../../components/fig/Op.astro';
 
 ## Series의 리덕션과 같은 규칙
 
-그룹 집계의 인자와 결과는 Series·DataFrame의 같은 이름 메서드와 똑같아요. ([합, 평균, 개수](/api/frame/sum-mean/), [최솟값과 최댓값](/api/frame/min-max/), [표준편차와 분산](/api/frame/std-var/))
+그룹 집계의 인자와 결과는 Series·DataFrame의 같은 이름 메서드와 똑같아요([합, 평균, 개수](/api/frame/sum-mean/), [최솟값과 최댓값](/api/frame/min-max/), [표준편차와 분산](/api/frame/std-var/)).
 
 - `sum`, `mean`, `min`, `max`, `first`, `last`는 `skipna`를 받아요. `std`, `var`는 `skipna`와 `correction`을 받아요. `count`와 `size`는 인자가 없어요.
 - dtype별 결과도 같아요. int64의 합은 int64, 평균은 float64예요. bool 컬럼의 합은 `True`의 개수, 평균은 `True`의 비율이에요.
@@ -106,11 +106,11 @@ import Op from '../../../components/fig/Op.astro';
 
 - 문자열 컬럼은 `min`, `max`, `first`, `last`, `count`만 돼요. 글자의 코드 순서로 크기를 비교해요. `sum`, `mean`, `std`, `var`는 `TypeError`라서, 이럴 때는 숫자 컬럼만 [골라서](/api/frame/groupby/) 집계해요.
 
-### 그룹의 합은 그 행들만 골라낸 Series의 합과 같아요
+### 그룹의 합은 그 행만 골라낸 Series의 합과 같아요
 
-실수의 덧셈은 더하는 순서에 따라 마지막 자리가 달라질 수 있어요. 예를 들어 `0.1 + 0.2 + 0.3`은 정확히 `0.6`이 아니라 `0.6000000000000001`이에요. 그래서 "같은 값들의 합"이라도 계산 방법이 다르면 결과가 조금씩 다를 수 있어요.
+실수의 덧셈은 더하는 순서에 따라 마지막 자리가 달라질 수 있어요. 예를 들어 `0.1 + 0.2 + 0.3`은 정확히 `0.6`이 아니라 `0.6000000000000001`이에요. 그래서 "같은 값의 합"이라도 계산 방법이 다르면 결과가 조금씩 다를 수 있어요.
 
-그룹 합은 이런 차이가 생기지 않게 정해져 있어요. **한 그룹의 합은, 그 그룹의 행만 골라 만든 Series의 `sum()`과 마지막 비트까지 같아요.** 그룹의 행을 원래 순서대로 Series와 같은 방법으로 더하기 때문이에요.
+그룹 합은 이런 차이가 생기지 않게 정해져 있어요. 한 그룹의 합은 그 그룹의 행만 골라 만든 Series의 `sum()`과 마지막 비트까지 같아요. 그룹의 행을 원래 순서대로 Series와 같은 방법으로 더하기 때문이에요.
 
 ```python
 >>> x = sd.frame.DataFrame({"k": ["a", "b", "a", "a"], "v": [0.1, 5.0, 0.2, 0.3]})
@@ -120,17 +120,17 @@ import Op from '../../../components/fig/Op.astro';
 0.6000000000000001
 ```
 
-그래서 "그룹별로 집계한 값"과 "그 그룹만 걸러서 직접 계산한 값"을 비교하는 검산이 언제나 정확히 맞아요. float64 컬럼은 평균, 표준편차, 분산도 그 행들만 골라낸 Series의 `mean()`, `std()`, `var()`와 같은 값이 나와요. 이 결과는 스레드 수와도 상관없어요.
+그래서 "그룹별로 집계한 값"과 "그 그룹만 걸러서 직접 계산한 값"을 비교하는 검산이 언제나 정확히 맞아요. float64 컬럼은 평균, 표준편차, 분산도 그 행만 골라낸 Series의 `mean()`, `std()`, `var()`와 같은 값이 나와요. 이 결과는 스레드 수와도 상관없어요.
 
 <Callout title="값이 아주 큰 int 그룹의 평균">
-  int64 컬럼의 평균(과 표준편차·분산 안의 평균)은 그룹의 값을 float64로 바꿔 더한 뒤 개수로 나눠요. 값의 절댓값을 모두 더해도 2⁵³(약 9 × 10¹⁵)보다 작으면 중간 합이 모두 정확해서, 그 행들만 골라낸 Series의 `mean()`과 언제나 같아요. 값이 그보다 크고 그룹이 아주 크면(수천 행 이상) 마지막 자리가 다를 수 있어요.
+  int64 컬럼의 평균(과 표준편차·분산 안의 평균)은 그룹의 값을 float64로 바꿔 더한 뒤 개수로 나눠요. 값의 절댓값을 모두 더해도 2⁵³(약 9 × 10¹⁵)보다 작으면 중간 합이 모두 정확해서, 그 행만 골라낸 Series의 `mean()`과 언제나 같아요. 값이 그보다 크고 그룹이 아주 크면(수천 행 이상) 마지막 자리가 다를 수 있어요.
 </Callout>
 
 ## NA와 NaN
 
-이 영역에서 `NA`는 "값이 없음", NaN은 "실수의 특별한 값"이에요. 집계에서도 둘은 다르게 다뤄져요. ([NA와 NaN](/api/frame/na/))
+데이터프레임에서 `NA`는 "값이 없음", NaN은 "실수의 특별한 값"이에요. 집계에서도 둘을 다르게 다뤄요([NA와 NaN](/api/frame/na/)).
 
-**NA**는 기본값 `skipna=True`면 **건너뛰어요.** 없는 값을 빼고 남은 값으로 계산해요.
+NA는 기본값 `skipna=True`면 건너뛰어요. 없는 값을 빼고 남은 값으로 계산해요.
 
 ```python
 >>> team = sd.frame.DataFrame({"team": ["red", "blue", "red", "red"],
@@ -155,7 +155,7 @@ import Op from '../../../components/fig/Op.astro';
 1   red   <NA>
 ```
 
-그룹의 값이 **모두 NA**면 `sum`은 `0`, `count`는 `0`이고, 나머지(`mean`, `min`, `max`, `std`, `var`, `first`, `last`)는 `NA`예요. Series의 리덕션과 같아요. "더할 것이 없으면 합은 0"이지만 "값이 없으면 평균도 없다"는 뜻이에요.
+그룹의 값이 모두 NA면 `sum`은 `0`, `count`는 `0`이고, 나머지(`mean`, `min`, `max`, `std`, `var`, `first`, `last`)는 `NA`예요. Series의 리덕션과 같아요. "더할 것이 없으면 합은 0"이지만 "값이 없으면 평균도 없다"는 뜻이에요.
 
 ```python
 >>> team.groupby("team")["note"].count()
@@ -168,7 +168,7 @@ import Op from '../../../components/fig/Op.astro';
 1   red     c
 ```
 
-**NaN**은 값이라서 `skipna`와 상관없이 **결과로 번져요.** 그룹에 NaN이 하나라도 있으면 합, 평균, 최댓값이 NaN이에요.
+NaN은 값이라서 `skipna`와 상관없이 결과로 번져요. 그룹에 NaN이 하나라도 있으면 합, 평균, 최댓값이 NaN이에요.
 
 ```python
 >>> nn = sd.frame.DataFrame({"k": ["a", "a", "b"], "v": [1.0, sd.nan, 2.0]})
@@ -182,14 +182,14 @@ import Op from '../../../components/fig/Op.astro';
 1  b  2.0
 ```
 
-NaN을 빼고 계산하고 싶으면 먼저 `s.isnan()`으로 NaN이 있는 행을 걸러 내요. ([결측값 찾기](/api/frame/isna/))
+NaN을 빼고 계산하고 싶으면 먼저 `s.isnan()`으로 NaN이 있는 행을 걸러 내요([결측값 찾기](/api/frame/isna/)).
 
 ## `size` 대 `count`
 
 둘 다 "개수"지만 세는 것이 달라요.
 
-- **`size()`는 그룹의 행 수**예요. NA가 있든 없든 행을 모두 세요. 컬럼과 상관없는 값이라 결과에는 키 컬럼과 `size` 컬럼 하나만 있어요.
-- **`count()`는 값 컬럼마다 NA가 아닌 값의 개수**예요. 그래서 컬럼마다 다를 수 있어요.
+- `size()`는 그룹의 행 수예요. NA가 있든 없든 행을 모두 세요. 컬럼과 상관없는 값이라 결과에는 키 컬럼과 `size` 컬럼 하나만 있어요.
+- `count()`는 값 컬럼마다 NA가 아닌 값의 개수예요. 그래서 컬럼마다 다를 수 있어요.
 
 ```python
 >>> team.groupby("team").size()
@@ -218,7 +218,7 @@ NaN을 빼고 계산하고 싶으면 먼저 `s.isnan()`으로 NaN이 있는 행�
 
 ## `first`와 `last`
 
-`first()`는 그룹에서 **NA가 아닌 처음 값**을, `last()`는 **NA가 아닌 마지막 값**을 컬럼마다 골라요. 값을 계산하지 않고 고르기만 하므로 컬럼의 dtype이 그대로 남아요.
+`first()`는 그룹에서 NA가 아닌 처음 값을, `last()`는 NA가 아닌 마지막 값을 컬럼마다 골라요. 값을 계산하지 않고 고르기만 하므로 컬럼의 dtype이 그대로 남아요.
 
 ```python
 >>> team.groupby("team").first()
@@ -231,9 +231,9 @@ NaN을 빼고 계산하고 싶으면 먼저 `s.isnan()`으로 NaN이 있는 행�
 1   red     12     c
 ```
 
-`red`의 `first`를 보면 `score`는 10(2번 행), `note`는 `a`(0번 행)예요. 컬럼마다 따로 NA를 건너뛰어서, **결과의 한 행이 서로 다른 원래 행에서 올 수 있어요.** `blue`의 `note`처럼 값이 모두 NA면 결과도 `NA`예요.
+`red`의 `first`를 보면 `score`는 10(2번 행), `note`는 `a`(0번 행)예요. 컬럼마다 따로 NA를 건너뛰어서, 결과의 한 행이 서로 다른 원래 행에서 올 수 있어요. `blue`의 `note`처럼 값이 모두 NA면 결과도 `NA`예요.
 
-`skipna=False`면 NA를 건너뛰지 않고 **그룹의 처음(마지막) 행의 값 그대로**예요. 그 값이 NA일 수도 있어요.
+`skipna=False`면 NA를 건너뛰지 않고 그룹의 처음(마지막) 행의 값 그대로예요. 그 값이 NA일 수도 있어요.
 
 ```python
 >>> team.groupby("team").first(skipna=False)
@@ -243,7 +243,7 @@ NaN을 빼고 계산하고 싶으면 먼저 `s.isnan()`으로 NaN이 있는 행�
 ```
 
 <Callout type="tip" title="그룹마다 첫 행을 통째로">
-  `first()`는 컬럼마다 따로 골라요. 그룹마다 **처음 나온 행을 모든 컬럼 그대로** 원하면 키로 [`drop_duplicates`](/api/frame/duplicated/)를 써요. `team.drop_duplicates("team")`은 `red`의 0번 행과 `blue`의 1번 행을 원래 값 그대로(NA 포함) 남겨요. 어떤 기준으로 "첫 행"을 고르고 싶으면 그 기준으로 먼저 [`sort_values`](/api/frame/sort_values/)를 해요.
+  `first()`는 컬럼마다 따로 골라요. 그룹마다 처음 나온 행을 모든 컬럼 그대로 원하면 키로 [`drop_duplicates`](/api/frame/duplicated/)를 써요. `team.drop_duplicates("team")`은 `red`의 0번 행과 `blue`의 1번 행을 원래 값 그대로(NA 포함) 남겨요. 어떤 기준으로 "첫 행"을 고르고 싶으면 그 기준으로 먼저 [`sort_values`](/api/frame/sort_values/)를 해요.
 </Callout>
 
 ```python
@@ -255,10 +255,10 @@ NaN을 빼고 계산하고 싶으면 먼저 `s.isnan()`으로 NaN이 있는 행�
 
 ## `std`와 `var`: 기본은 `correction=0`
 
-`var()`는 분산(값들이 평균에서 얼마나 흩어져 있는지), `std()`는 그 제곱근인 표준편차예요. 편차 제곱의 합을 `개수 - correction`으로 나눠요.
+`var()`는 분산(값이 평균에서 얼마나 흩어져 있는지), `std()`는 그 제곱근인 표준편차예요. 편차 제곱의 합을 `개수 - correction`으로 나눠요.
 
 - 기본값 `correction=0`은 **모분산**이에요(개수로 나눔). 배열의 [`sd.var`](/api/array/var/), Series의 `var()`와 같은 기본값이에요.
-- 표본에서 모집단의 분산을 어림하는 **표본분산**은 `correction=1`이에요(개수 - 1로 나눔).
+- 표본에서 모집단의 분산을 어림하는 **표본 분산**은 `correction=1`이에요(개수 - 1로 나눔).
 
 ```python
 >>> g.var()
@@ -273,7 +273,7 @@ NaN을 빼고 계산하고 싶으면 먼저 `s.isnan()`으로 NaN이 있는 행�
 2   pear  4.500000  0.031250
 ```
 
-`kiwi`는 1행뿐이라 `correction=1`이면 `1 - 1 = 0`으로 나눠야 해요. 이렇게 **NA가 아닌 값의 개수가 `correction` 이하면 결과가 `NA`**예요. 배열의 `sd.var`는 이럴 때 NaN을 주지만, 이 영역에는 "값이 없음"을 나타내는 NA가 있어서 NA로 알려 줘요. 자세한 이야기는 [표준편차와 분산](/api/frame/std-var/)에 있어요.
+`kiwi`는 1행뿐이라 `correction=1`이면 `1 - 1 = 0`으로 나눠야 해요. 이렇게 NA가 아닌 값의 개수가 `correction` 이하면 결과가 `NA`예요. 배열의 `sd.var`는 이럴 때 NaN을 주지만, 데이터프레임에는 "값이 없음"을 나타내는 NA가 있어서 NA로 알려 줘요. 자세한 내용은 [표준편차와 분산](/api/frame/std-var/)에 있어요.
 
 ## 조심할 점
 
@@ -346,8 +346,8 @@ int64 컬럼의 합이 int64 범위를 넘으면 경고 없이 반대쪽 끝으�
 ## pandas를 아는 분께
 
 - 결과는 키를 보통 컬럼으로 둔 DataFrame이에요(라벨은 RangeIndex). pandas의 `as_index=False` 모양이에요. `size()`도 Series가 아니라 `size` 컬럼이 있는 DataFrame이에요.
-- **그룹 합은 그 행들만 골라낸 Series의 `sum()`과 비트까지 같아요.** pandas의 그룹 합은 다른 방법으로 더해서, 위 예제의 `0.1, 0.2, 0.3` 그룹을 `0.6`으로 내고 같은 행의 Series `sum()`은 `0.6000000000000001`을 내요.
-- **NaN은 건너뛰지 않아요.** pandas는 NaN을 결측으로 보고 건너뛰지만, 여기서는 `skipna`가 NA만 건너뛰고 NaN은 결과로 번져요.
-- `std`, `var`의 기본값이 `correction=0`이에요. pandas는 `ddof=1`이라, 1행짜리 그룹이 pandas에서는 NaN, 여기서는 `0.0`이에요. 표본분산은 `correction=1`이고, 값이 모자라면 NaN이 아니라 `NA`예요.
+- 그룹 합은 그 행만 골라낸 Series의 `sum()`과 비트까지 같아요. pandas의 그룹 합은 다른 방법으로 더해서, 위 예제의 `0.1, 0.2, 0.3` 그룹을 `0.6`으로 내고 같은 행의 Series `sum()`은 `0.6000000000000001`을 내요.
+- NaN은 건너뛰지 않아요. pandas는 NaN을 결측으로 보고 건너뛰지만, 여기서는 `skipna`가 NA만 건너뛰고 NaN은 결과로 번져요.
+- `std`, `var`의 기본값이 `correction=0`이에요. pandas는 `ddof=1`이라, 1행짜리 그룹이 pandas에서는 NaN, 여기서는 `0.0`이에요. 표본 분산은 `correction=1`이고, 값이 모자라면 NaN이 아니라 `NA`예요.
 - 문자열 컬럼의 `sum`은 `TypeError`예요. pandas는 문자열을 이어 붙여요.
 - `numeric_only`, `min_count`, `engine`은 없어요. `first`, `last`의 `skipna`는 pandas와 같은 뜻이에요.

@@ -34,8 +34,12 @@ const strengths = [
   },
 ] as const;
 
+// Counted in Korean for the section title ("일곱 영역"); the list itself
+// comes from the area table, so a new area updates both.
+const countWord = ['영', '한', '두', '세', '네', '다섯', '여섯', '일곱', '여덟', '아홉', '열'][areas.length] ?? String(areas.length);
+
 const layers = [
-  { name: 'Python API', role: '사용자가 만나는 면', items: ['sd', 'sd.linalg', 'sd.frame', 'sd.special', 'sd.stats', 'sd.random'] },
+  { name: 'Python API', role: '사용자가 만나는 면', items: areas.map((a) => a.ns) },
   { name: '바인딩', role: '확장 모듈 하나', items: ['nanobind', 'stardust._core'] },
   { name: 'C++20 코어', role: '계산이 일어나는 곳', items: ['커널', '연산', '스레드풀'] },
   { name: '하드웨어', role: 'Apple Silicon', items: ['NEON', 'BLAS', 'LAPACK', 'vForce'] },
@@ -63,7 +67,7 @@ beta = sd.linalg.lstsq(X, y).solution
   <Section
     id="strengths"
     eyebrow="Why stardust"
-    title="다시 만들었기에 지킬 수 있는 것들"
+    title="다시 만들었기에 지킬 수 있는 것"
     lead="처음부터 직접 만들면 모든 층을 원하는 대로 정할 수 있어요. stardust는 그 자유로 네 가지를 골랐어요."
   >
     <ol class="strengths">
@@ -86,13 +90,13 @@ beta = sd.linalg.lstsq(X, y).solution
     id="areas"
     tone="subtle"
     eyebrow="Composition"
-    title="여섯 영역, 하나의 라이브러리"
-    lead="import stardust as sd 한 줄이면 돼요. 영역은 이름공간으로 나뉘지만 규칙은 함께 써요. 통계는 연속 분포부터 구현하고 있어요."
+    title={`${countWord} 영역, 하나의 라이브러리`}
+    lead="import stardust as sd 한 줄이면 돼요. 영역은 이름공간으로 나뉘지만 규칙은 함께 써요."
   >
     <div class="areas">
       {
         areas.map((a, i) => (
-          <div data-reveal style={`--reveal-i:${i % 3}`}>
+          <div class:list={['areas__cell', `areas__cell--${a.key}`]} data-reveal style={`--reveal-i:${i % 3}`}>
             <LinkCard
               href={documented.includes(a.key) ? `/api/${a.key}/` : undefined}
               title={a.name}
@@ -207,6 +211,12 @@ beta = sd.linalg.lstsq(X, y).solution
   }
   .areas > div {
     display: grid;
+  }
+  /* Seven cards on a three-column grid: the first and the sixth take two
+     columns, so every row is full (2+1, 1+1+1, 2+1). */
+  .areas__cell--array,
+  .areas__cell--regression {
+    grid-column: span 2;
   }
 
   /* ---- Layer stack ---- */
@@ -380,11 +390,18 @@ beta = sd.linalg.lstsq(X, y).solution
     .areas {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+    /* Two columns: only the first card is wide (2, 1+1, 1+1, 1+1). */
+    .areas__cell--regression {
+      grid-column: auto;
+    }
   }
   @media (max-width: 640px) {
     .strengths,
     .areas {
       grid-template-columns: minmax(0, 1fr);
+    }
+    .areas__cell--array {
+      grid-column: auto;
     }
     .strength__title {
       margin-top: var(--space-4);

@@ -2,7 +2,7 @@
 title: 라벨, 조회, 선택
 group: 구조
 order: 3
-summary: 행 라벨(RangeIndex와 Index)을 어떻게 들고 다니고, 라벨을 위치로 바꾸는 조회 엔진 LabelTable, 두 라벨 집합을 맞추는 정렬(alignment), .loc·.iloc·[]의 키를 세 모양으로 바꾸는 선택, 그리고 그 밑의 take·마스크 필터·대입 커널을 설명해요. pandas·Polars가 같은 일을 어떻게 하는지도 비교해요.
+summary: 행 라벨(RangeIndex와 Index)을 어떻게 저장하는지, 라벨을 위치로 바꾸는 조회 엔진 LabelTable, 두 라벨 집합을 맞추는 정렬(alignment), .loc·.iloc·[]의 키를 네 모양으로 바꾸는 선택, 그리고 그 밑의 take·마스크 필터·대입 커널을 설명해요. pandas·Polars가 같은 일을 어떻게 하는지도 비교해요.
 seeAlso: [columns, hashing, merge-concat, elementwise, parallel]
 ---
 import Fig from '../../../components/fig/Fig.astro';
@@ -14,7 +14,7 @@ import Steps from '../../../components/fig/Steps.astro';
 
 ## 한눈에 보기
 
-Series와 DataFrame의 행에는 **라벨**이 붙어 있어요. 라벨은 두 가지 일을 해요. 하나는 `s.loc["b"]`처럼 라벨로 행을 고르는 것(조회)이고, 다른 하나는 `a + b`처럼 두 Series를 더할 때 같은 라벨끼리 짝짓는 것(정렬, alignment)이에요. 이 글은 그 두 일과, 그 결과로 행을 실제로 옮기는 커널들을 다뤄요.
+Series와 DataFrame의 행에는 **라벨**이 붙어 있어요. 라벨은 두 가지 일을 해요. 하나는 `s.loc["b"]`처럼 라벨로 행을 고르는 것(조회)이고, 다른 하나는 `a + b`처럼 두 Series를 더할 때 같은 라벨끼리 짝짓는 것(정렬, alignment)이에요. 이 글은 그 두 일과, 그 결과로 행을 실제로 옮기는 커널을 다뤄요.
 
 | 하는 일 | 어디서 | 핵심 |
 |---|---|---|
@@ -26,7 +26,7 @@ Series와 DataFrame의 행에는 **라벨**이 붙어 있어요. 라벨은 두 �
 
 설계의 뼈대는 네 가지예요.
 
-- **라벨 조회는 factorize 위에 있어요.** "두 라벨이 같은가"를 정하는 코드는 unique, groupby, merge가 쓰는 factorize 하나뿐이에요. 조회 엔진은 라벨 컬럼을 factorize한 결과를 들고 있을 뿐이에요. 해시 테이블 자체는 [해시 테이블과 factorize](/internals/frame/hashing/)가 자세히 다뤄요.
+- **라벨 조회는 factorize 위에 있어요.** "두 라벨이 같은가"를 정하는 코드는 unique, groupby, merge가 쓰는 factorize 하나뿐이에요. 조회 엔진은 라벨 컬럼을 factorize한 결과를 저장해 둘 뿐이에요. 해시 테이블 자체는 [해시 테이블과 factorize](/internals/frame/hashing/)가 자세히 다뤄요.
 - **결과의 모양은 키의 모양으로 정해요.** 슬라이스로 고르면 버퍼를 공유하고 RangeIndex가 RangeIndex로 남아요. 리스트나 마스크로 고르면 복사이고 결과 라벨은 Index예요. 마스크가 우연히 연속된 행을 골라도, 남은 라벨이 우연히 등차수열이어도 마찬가지예요.
 - **데이터를 보고 경로를 고르지 않아요.** 정렬된 Index에서 이진 탐색을 하거나, 고유한 Index에서 빠른 길로 가는 일이 없어요. 같은 코드는 데이터와 상관없이 같은 타입의 결과를 같은 방식으로 내요.
 - **행을 옮기는 커널은 셋뿐이에요.** 위치로 모으는 `take`, 마스크로 압축하는 `filter`, 위치에 쓰는 `set_rows`예요. reindex, 정렬, merge, sort, groupby의 `first`/`last`가 모두 `take` 위에 있어서, 그 연산들은 dtype마다 따로 코드를 갖지 않아요.
@@ -37,11 +37,11 @@ Series와 DataFrame의 행에는 **라벨**이 붙어 있어요. 라벨은 두 �
 
 ### RangeIndex: 정수 셋
 
-라벨을 따로 주지 않으면 행 라벨은 `0, 1, 2, …`예요. 이런 라벨을 실제로 배열에 담아 두면 1M 행이면 8MB예요. 그래서 `RangeIndex`는 `(start, stop, step)` 세 정수만 들어요. Python의 `range` 객체 하나예요.
+라벨을 따로 주지 않으면 행 라벨은 `0, 1, 2, …`예요. 이런 라벨을 실제로 배열에 담아 두면 1M 행이면 8MB예요. 그래서 `RangeIndex`는 `(start, stop, step)` 세 정수만 저장해요. Python의 `range` 객체 하나예요.
 
-- **스칼라 조회와 `in`은 산술이에요.** `5 in idx`는 `range`의 `in`(나눗셈 한 번)이고, `idx._position_of(5)`는 `range.index(5)`예요. 라벨 배열도 해시 테이블도 만들지 않아요. `5 in RangeIndex(30_000_000)`을 해시 테이블로 답하면 라벨 3천만 개와 테이블을 만드는 데 158ms가 들어요.
-- **라벨을 한꺼번에 봐야 할 때만 라벨 배열을 만들어요.** 정렬(alignment), 여러 라벨 조회, 두 Index 비교(`equals`)가 그래요. 이때 `_column()`이 `arange(start, step, n)` 커널로 int64 Column을 만들고, 조회 엔진이 필요하면 그 위에 만들어 캐시해요.
-- **위치로 고른 결과의 라벨은 산술로 만들어요.** `_take(positions)`는 `positions × step + start`를 원소별 커널 두 번으로 계산해요. 그리고 기본 RangeIndex(`start = 0`, `step = 1`)라면 **위치 배열 자체가 라벨**이에요. 곱하고 더할 필요도 없이, 위치 Column을 그대로 결과 Index의 라벨로 써요. Column은 불변으로 다루므로 공유해도 안전해요.
+- 스칼라 조회와 `in`은 산술이에요. `5 in idx`는 `range`의 `in`(나눗셈 한 번)이고, `idx._position_of(5)`는 `range.index(5)`예요. 라벨 배열도 해시 테이블도 만들지 않아요. `5 in RangeIndex(30_000_000)`을 해시 테이블로 답하면 라벨 3천만 개와 테이블을 만드는 데 158ms가 들어요.
+- 라벨을 한꺼번에 봐야 할 때만 라벨 배열을 만들어요. 정렬(alignment), 여러 라벨 조회, 두 Index 비교(`equals`)가 그래요. 이때 `_column()`이 `arange(start, step, n)` 커널로 int64 Column을 만들고, 조회 엔진이 필요하면 그 위에 만들어 캐시해요.
+- 위치로 고른 결과의 라벨은 산술로 만들어요. `_take(positions)`는 `positions × step + start`를 원소별 커널 두 번으로 계산해요. 기본 RangeIndex(`start = 0`, `step = 1`)라면 위치 배열 자체가 라벨이에요. 곱하고 더할 필요도 없이, 위치 Column을 그대로 결과 Index의 라벨로 써요. Column은 불변으로 다루므로 공유해도 안전해요.
 
 ```python
 >>> s = sd.frame.Series([10, 20, 30, 40])
@@ -53,7 +53,7 @@ Index([1, 2, 3], dtype=int64)
 Index([1, 2, 3], dtype=int64)
 ```
 
-슬라이스로 고른 결과는 RangeIndex로 남지만, 리스트나 마스크로 고른 결과는 남은 라벨이 `1, 2, 3`으로 등차수열이어도 Index예요. 결과 타입을 남은 라벨이 등차수열인지 보고 정하면, 같은 코드가 어떤 날은 RangeIndex를 돌려주고 어떤 날은 Index를 돌려줘요. 그 차이는 다음 연산(슬라이스가 복사인지, 조회가 산술인지)으로 번지고 성능까지 바꿔요. 그래서 결과 타입은 **키의 모양**으로만 정해요.
+슬라이스로 고른 결과는 RangeIndex로 남지만, 리스트나 마스크로 고른 결과는 남은 라벨이 `1, 2, 3`으로 등차수열이어도 Index예요. 결과 타입을 남은 라벨이 등차수열인지 보고 정하면, 같은 코드가 어떤 날은 RangeIndex를 돌려주고 어떤 날은 Index를 돌려줘요. 그 차이는 다음 연산(슬라이스가 복사인지, 조회가 산술인지)으로 번지고 성능까지 바꿔요. 그래서 결과 타입은 키의 모양으로만 정해요.
 
 슬라이스의 결과 라벨은 위치에서 산술로 만들어요. 위치 슬라이스는 `slice.indices(n)`이 `(start, stop, step)` 위치로 바꿔 주는데(아래 "위치 키"), 0번 위치까지 내려가는 역순 슬라이스 `::-1`이면 `stop`이 `-1`이에요. 여기서 `-1`은 "0번 앞"이라는 뜻이에요. 이것을 `range`의 슬라이스에 그대로 넣으면 Python은 `-1`을 "마지막 원소"로 읽어서, 길이 4에서 `range(0, 4)[3:-1:-1]`이 빈 `range(3, 3, -1)`이 돼요. 그래서 `_slice`는 `range`를 다시 자르지 않고 개수와 첫 라벨로 새 `range`를 만들어요.
 
@@ -76,12 +76,12 @@ RangeIndex(start=3, stop=-1, step=-1)
 
 ### Index: 불변 Column 하나
 
-`Index`는 int64나 string Column 하나와 이름을 들어요. Column은 [컬럼과 메모리](/internals/frame/columns/)에서 설명한 그 Column이고, Index에서는 NA가 없어요.
+`Index`는 int64나 string Column 하나와 이름으로 이뤄져요. Column은 [컬럼과 메모리](/internals/frame/columns/)에서 설명한 그 Column이고, Index에서는 NA가 없어요.
 
-- **float와 bool은 Index가 될 수 없어요.** 라벨로 고를 때 라벨의 타입이 Index의 dtype과 맞아야 해요(`int` Index에 `10.0`이나 `True`는 TypeError). 같은 키의 규칙이 dtype마다 다르기 때문이에요. int64 키는 비트가 같으면 같고, float 키는 NaN끼리, `-0.0`과 `0.0`이 같아요. 라벨 dtype을 int64와 string으로 묶어 두면 조회가 언제나 "같은 dtype의 키를 같은 dtype의 테이블에서 찾기"가 되어 변환 규칙이 끼어들 틈이 없어요.
-- **Index는 불변이에요.** 라벨을 바꾸는 메서드가 없고, 안의 Column을 고치는 경로도 없어요. 그래서 조회 엔진을 한 번 만들어 Index에 매달아 두면 **무효화할 일이 없어요.**
-- **Index는 값이 아니에요.** `==`, `!=`는 TypeError이고 라벨 비교는 `equals()`로 해요. `equals`는 RangeIndex끼리면 `range` 비교(세 정수), 그 밖에는 두 Column을 원소별로 비교하는 `equals` 커널이에요(청크 병렬, 다른 원소를 찾으면 일찍 멈춤).
-- `in`은 Series의 `in`과 같은 규칙이에요. 값을 그 dtype으로 **손실 없이** 바꿀 수 있을 때만 찾아요. 그래서 `1.0 in Index([1, 2])`는 True예요. 반면 `.loc[1.0]`은 TypeError예요. `in`은 "이 값과 같은 라벨이 있는가"라는 질문이라 타입이 달라도 True나 False로 답할 수 있지만, `.loc`은 행을 고르는 일이라 타입이 맞지 않는 라벨은 대부분 실수이기 때문이에요.
+- float와 bool은 Index가 될 수 없어요. 라벨로 고를 때 라벨의 타입이 Index의 dtype과 맞아야 해요(`int` Index에 `10.0`이나 `True`는 TypeError). 같은 키의 규칙이 dtype마다 다르기 때문이에요. int64 키는 비트가 같으면 같고, float 키는 NaN끼리, `-0.0`과 `0.0`이 같아요. 라벨 dtype을 int64와 string으로 묶어 두면 조회가 언제나 "같은 dtype의 키를 같은 dtype의 테이블에서 찾기"가 되어 변환 규칙이 끼어들 틈이 없어요.
+- Index는 불변이에요. 라벨을 바꾸는 메서드가 없고, 안의 Column을 고치는 경로도 없어요. 그래서 조회 엔진을 한 번 만들어 Index에 매달아 두면 무효화할 일이 없어요.
+- Index는 값이 아니에요. `==`, `!=`는 TypeError이고 라벨 비교는 `equals()`로 해요. `equals`는 RangeIndex끼리면 `range` 비교(세 정수), 그 밖에는 두 Column을 원소별로 비교하는 `equals` 커널이에요(청크 병렬, 다른 원소를 찾으면 일찍 멈춤).
+- `in`은 Series의 `in`과 같은 규칙이에요. 값을 그 dtype으로 손실 없이 바꿀 수 있을 때만 찾아요. 그래서 `1.0 in Index([1, 2])`는 True예요. 반면 `.loc[1.0]`은 TypeError예요. `in`은 "이 값과 같은 라벨이 있는가"라는 질문이라 타입이 달라도 True나 False로 답할 수 있지만, `.loc`은 행을 고르는 일이라 타입이 맞지 않는 라벨은 대부분 실수이기 때문이에요.
 
 ```python
 >>> 1.0 in sd.frame.Index([1, 2])
@@ -111,15 +111,15 @@ Traceback (most recent call last):
 KeyError: "label 'a' is not unique; select with a list (['a']) to get every row"
 ```
 
-pandas 3.1.1의 `s.loc["a"]`는 라벨이 하나면 스칼라, 여럿이면 Series를 돌려줘요. 결과 타입이 데이터(라벨이 몇 번 나오는가)에 따라 바뀌어요. stardust는 이것을 피하려고 "하나는 스칼라, 리스트는 Series"로 키의 모양에 묶어 두었어요.
+pandas 3.1.1의 `s.loc["a"]`는 라벨이 하나면 스칼라, 여럿이면 Series를 돌려줘요. 결과 타입이 데이터(라벨이 몇 번 나오는가)에 따라 바뀌어요. stardust는 이것을 피하려고 "하나는 스칼라, 리스트는 Series"로 키의 모양에 묶어 둬요.
 
 ## 조회 엔진: LabelTable
 
-### 라벨을 factorize해서 들고 있기
+### 라벨을 factorize해 두기
 
 라벨로 위치를 찾는 가장 단순한 방법은 Index를 처음부터 훑는 거예요. 라벨 $n$개에서 한 번 찾는 데 $O(n)$이에요. 라벨 $k$개를 찾으면 $O(nk)$라서 정렬(alignment)처럼 라벨 수만큼 찾는 연산은 $O(n^2)$가 돼요.
 
-그래서 처음 조회할 때 **라벨 → 위치** 해시 테이블을 만들어 두고 그 뒤로는 $O(1)$에 찾아요. stardust는 이 테이블을 따로 만들지 않고, **라벨 컬럼을 factorize한 결과**를 그대로 써요. factorize는 값마다 "처음 나타난 순서의 정수 코드"를 주는 연산이에요.
+그래서 처음 조회할 때 **라벨 → 위치** 해시 테이블을 만들어 두고 그 뒤로는 $O(1)$에 찾아요. stardust는 이 테이블을 따로 만들지 않고, 라벨 컬럼을 factorize한 결과를 그대로 써요. factorize는 값마다 "처음 나타난 순서의 정수 코드"를 주는 연산이에요.
 
 <Fig caption="라벨 [a, b, a, c]의 LabelTable. factorize가 라벨마다 코드를 주고(a는 0, b는 1, c는 2), 코드마다 처음 나온 위치(first)를 적어요. 중복 라벨을 모두 찾을 때만 코드별 위치 목록(CSR)을 더 만들어요. 코드 0(a)의 위치는 rows[start[0] : start[1]] = rows[0:2] = [0, 2]예요.">
   <ArrayFig name="labels" data={['a', 'b', 'a', 'c']} tones={['a', '', 'a', '']} note="Index의 Column" />
@@ -129,7 +129,7 @@ pandas 3.1.1의 `s.loc["a"]`는 라벨이 하나면 스칼라, 여럿이면 Seri
   <ArrayFig name="rows" data={[0, 2, 1, 3]} tones={['a', 'a', '', '']} note="CSR: 코드별 위치" />
 </Fig>
 
-`LabelTable`(`ops/hash.hpp`, `ops/hash.cpp`)이 드는 것은 이래요.
+`LabelTable`(`ops/hash.hpp`, `ops/hash.cpp`)의 멤버예요.
 
 ```cpp
 // csrc/frame/ops/hash.hpp, LabelTable (멤버만 줄인 발췌)
@@ -149,13 +149,13 @@ public:
 };
 ```
 
-- **테이블은 factorize가 만든 그 테이블이에요.** 생성자는 라벨 dtype에 따라 `Partitioned<uint64_t, Fmix64>`(int64) 또는 `Partitioned<string_view, HashBytes>`(string)의 `build`를 불러 `codes_`와 `first_`를 얻어요. `Partitioned`는 Swiss table 위의 factorize로, 라벨이 2¹⁷개 이상이고 풀을 쓸 수 있으면 해시의 위쪽 8비트로 256개 파티션에 나눠 병렬로 만들어요. 결과 코드는 직렬로 만든 것과 정확히 같아요. 이 부분은 [해시 테이블과 factorize](/internals/frame/hashing/)에 있어요.
-- **`is_unique`는 공짜예요.** 서로 다른 라벨 수(`ngroups_`)가 라벨 수와 같으면 고유해요. 엔진을 만들면서 얻으므로 따로 훑지 않아요.
-- **라벨과 같은 키 규칙을 공유해요.** 조회의 "같은 라벨"은 unique, groupby, merge의 "같은 키"와 같은 코드에서 나와요. 그래서 두 규칙이 어긋날 수 없어요.
+- 테이블은 factorize가 만든 그 테이블이에요. 생성자는 라벨 dtype에 따라 `Partitioned<uint64_t, Fmix64>`(int64) 또는 `Partitioned<string_view, HashBytes>`(string)의 `build`를 불러 `codes_`와 `first_`를 얻어요. `Partitioned`는 Swiss table 위의 factorize로, 라벨이 2¹⁷개 이상이고 풀을 쓸 수 있으면 해시의 위쪽 8비트로 256개 파티션에 나눠 병렬로 만들어요. 결과 코드는 직렬로 만든 것과 정확히 같아요. 이 부분은 [해시 테이블과 factorize](/internals/frame/hashing/)에 있어요.
+- `is_unique`는 공짜예요. 서로 다른 라벨 수(`ngroups_`)가 라벨 수와 같으면 고유해요. 엔진을 만들면서 얻으므로 따로 훑지 않아요.
+- 라벨과 같은 키 규칙을 공유해요. 조회의 "같은 라벨"은 unique, groupby, merge의 "같은 키"와 같은 코드에서 나와요. 그래서 두 규칙이 어긋날 수 없어요.
 
 ### 언제 만들고 어디에 두나
 
-엔진은 **처음 조회할 때** 만들어서 Index 객체의 `_labels` 칸에 둬요(`_index.py`의 `_table()`).
+엔진은 처음 조회할 때 만들어서 Index 객체의 `_labels` 칸에 둬요(`_index.py`의 `_table()`).
 
 ```python
 # src/stardust/frame/_index.py, Index._table
@@ -182,7 +182,7 @@ def _table(self):
 
 **`lookup`**은 [해시 테이블과 factorize](/internals/frame/hashing/)의 `find_rows`를 불러요. 대상 dtype이 라벨 dtype과 다르면 TypeError예요. `find_rows`는 dtype과 "대상에 NA가 있는가"를 호출마다 한 번 골라서, 행 루프에는 "찾고 쓰기"만 남겨요. 대상 행 $k$개를 16,384행 청크로 나눠 병렬로 찾는데, 비용 가중치를 8로 줘서(조회 하나가 덧셈 하나보다 훨씬 비싸요) 대상이 2¹⁷ / 8 = 16,384개 이상이면 나눠요.
 
-**`first_positions`**는 `lookup`의 결과에 `first_`를 한 번 더 거쳐요: `o[i] = first_[o[i]]`(-1은 그대로).
+**`first_positions`**는 `lookup`의 결과에 `first_`를 한 번 더 거쳐요(`o[i] = first_[o[i]]`, -1은 그대로).
 
 **`all_positions`**는 CSR을 써요. CSR(compressed sparse row)은 "코드 $g$의 위치들"을 한 배열 `rows`에 코드 순서로 모아 두고, `start[g]`부터 `start[g+1]` 직전까지가 코드 $g$의 몫이라고 적는 방식이에요. 처음 부를 때 counting sort로 만들어요.
 
@@ -221,7 +221,7 @@ if (group_start_.empty()) {
 
 pandas 3.1.1의 조회 엔진(`pandas/_libs/index.pyx`의 `IndexEngine`)[5]도 처음 조회할 때 해시 테이블을 만들어 캐시해요. 라벨 dtype에 따라 `Int64HashTable`, `Float64HashTable`, `PyObjectHashTable`(pandas 3의 기본 `str` Index가 쓰는 `StringObjectEngine`) 등을 써요. 같은 점은 거기까지예요. `get_loc`에는 데이터를 보는 갈림길이 있어요.
 
-- 라벨이 `_SIZE_CUTOFF` = 1,000,000개 이상이고 **단조 증가**(정렬되어 있음)면 해시 테이블을 만들지 않고 이진 탐색(`searchsorted`)으로 찾아요. 그보다 작거나 정렬되어 있지 않으면 해시 테이블을 만들어요.
+- 라벨이 `_SIZE_CUTOFF` = 1,000,000개 이상이고 단조 증가(정렬되어 있음)면 해시 테이블을 만들지 않고 이진 탐색(`searchsorted`)으로 찾아요. 그보다 작거나 정렬되어 있지 않으면 해시 테이블을 만들어요.
 - 중복 라벨이면 단조 증가일 때는 `slice`를, 아닐 때는 bool 마스크를 돌려줘요. `Index(["a", "b", "b", "c"]).get_loc("b")`는 `slice(1, 3)`, `Index(["b", "a", "b", "c"]).get_loc("b")`는 `[True, False, True, False]`예요.
 - `get_indexer`(여러 라벨 조회)도 테이블이 아직 없고, 크고, 단조 증가이고, 고유하고, 찾을 라벨이 적으면 이진 탐색으로 가요.
 
@@ -242,8 +242,8 @@ Polars 2.1.0에는 행 라벨이 없어요. 사용자 안내서는 "Polars는 in
 | `("take", 위치 Column)` | 라벨 리스트, 정수 리스트, 배열 | Series | `take`로 복사 | Index |
 | `("mask", bool Column)` | bool Series | Series | 컬럼마다 `filter`로 바로 압축 | Index |
 
-- **DataFrame에서 행 하나**를 고르면 `("one", p)`를 `("slice", p, p + 1, 1)`로 바꿔 1행 DataFrame을 만들어요. object dtype이 없으니 dtype이 섞인 행을 Series 하나로 담을 방법이 없고, 1행 DataFrame은 컬럼마다 dtype을 지켜요. 행 하나와 열 하나를 함께 고르면(`df.loc["r", "a"]`) 스칼라예요.
-- **step이 1인 슬라이스는 복사하지 않아요.** `Column.slice`가 `offset`과 `length`만 바꾸고 Buffer를 공유해요. NA 개수는 그 범위의 비트를 popcount로 다시 세고, 0이면 비트맵을 떼어 내요. `head`, `tail`, repr의 행 생략도 이 길이에요. 1M 행 DataFrame의 `head()`가 656ns예요. 슬라이스와 null 개수는 [컬럼과 메모리](/internals/frame/columns/)에 있어요.
+- DataFrame에서 행 하나를 고르면 `("one", p)`를 `("slice", p, p + 1, 1)`로 바꿔 1행 DataFrame을 만들어요. object dtype이 없으니 dtype이 섞인 행을 Series 하나로 담을 방법이 없고, 1행 DataFrame은 컬럼마다 dtype을 지켜요. 행 하나와 열 하나를 함께 고르면(`df.loc["r", "a"]`) 스칼라예요.
+- step이 1인 슬라이스는 복사하지 않아요. `Column.slice`가 `offset`과 `length`만 바꾸고 Buffer를 공유해요. NA 개수는 그 범위의 비트를 popcount로 다시 세고, 0이면 비트맵을 떼어 내요. `head`, `tail`, repr의 행 생략도 이 길이에요. 1M 행 DataFrame의 `head()`가 656ns예요. 슬라이스와 null 개수는 [컬럼과 메모리](/internals/frame/columns/)에 있어요.
 - step이 1이 아니면 `arange`로 위치를 만들어 `take`해요. 띄엄띄엄 놓인 행을 공유로 표현하려면 Column에 stride가 있어야 하는데, Column은 1차원 연속 배열로만 두었어요(stride가 있으면 모든 커널이 그 경우를 다뤄야 해요).
 - 스칼라 하나는 `col.slice(p, 1).to_list(NA)[0]`이에요. 1행 슬라이스(복사 없음)에서 Python 객체 하나를 꺼내요. `.iloc[i]`가 435ns, `.iloc[a:b]`가 837ns예요.
 
@@ -257,7 +257,7 @@ Polars 2.1.0에는 행 라벨이 없어요. 사용자 안내서는 "Polars는 in
 
 - **라벨 하나**: `index._position_of(label)`. Index면 위의 `all_positions` 흐름이고, RangeIndex면 산술이에요.
 - **라벨 리스트**: `_positions_of(labels)`가 라벨을 Index dtype의 Column으로 바꾼 뒤 두 번 조회해요. 먼저 `first_positions`로 -1(없는 라벨)이 있는지 보고, 하나라도 있으면 그 라벨들을 메시지에 담아 KeyError를 내요. 모두 있으면 `all_positions`로 라벨마다 모든 위치를 얻어요. 결과는 "라벨 순서대로, 한 라벨 안에서는 위치 순서대로"예요.
-- **라벨 슬라이스** `a:b`: 양 끝 라벨의 위치를 `_position_of`로 찾아 위치 슬라이스로 바꿔요. 끝 라벨도 포함해요(`stop = 끝 위치 + 1`). 그래서 양 끝 라벨은 **있어야 하고 고유해야 해요.**
+- **라벨 슬라이스** `a:b`: 양 끝 라벨의 위치를 `_position_of`로 찾아 위치 슬라이스로 바꿔요. 끝 라벨도 포함해요(`stop = 끝 위치 + 1`). 그래서 양 끝 라벨은 있어야 하고 고유해야 해요.
 
 ```python
 >>> s = sd.frame.Series([1, 2, 3], index=["a", "c", "e"])
@@ -272,7 +272,7 @@ Traceback (most recent call last):
 KeyError: 'b'
 ```
 
-pandas 3.1.1은 `get_slice_bound`[5]에서 끝 라벨을 찾지 못하면 Index가 단조일 때 `searchsorted`로 "들어갈 자리"를 찾아요. 그래서 정렬된 Index에서는 `s.loc["b":"d"]`가 `c` 하나를 돌려주고, 정렬되지 않은 Index에서는 같은 호출이 KeyError예요. 같은 코드가 데이터의 순서에 따라 성공하거나 실패하는 셈이에요. stardust는 정렬 여부를 보지 않으므로 없는 끝 라벨은 언제나 KeyError예요. 범위로 고르고 싶으면 라벨 대신 그 값을 든 컬럼을 비교해 마스크로 골라요.
+pandas 3.1.1은 `get_slice_bound`[5]에서 끝 라벨을 찾지 못하면 Index가 단조일 때 `searchsorted`로 "들어갈 자리"를 찾아요. 그래서 정렬된 Index에서는 `s.loc["b":"d"]`가 `c` 하나를 돌려주고, 정렬되지 않은 Index에서는 같은 호출이 KeyError예요. 같은 코드가 데이터의 순서에 따라 성공하거나 실패하는 셈이에요. stardust는 정렬 여부를 보지 않으므로 없는 끝 라벨은 언제나 KeyError예요. 범위로 고르고 싶으면 라벨 대신 그 값이 든 컬럼을 비교해 마스크로 골라요.
 
 ### 마스크 키와 라벨 맞추기
 
@@ -283,7 +283,7 @@ bool Series로 행을 고를 때(`s[mask]`, `df[mask]`, `.loc[mask]`) 마스크�
 3. `mask.index._get_indexer(index)`로 대상 라벨마다 마스크에서의 위치를 찾아요(마스크 라벨도 고유해야 해요). 하나라도 -1이면 ValueError예요.
 4. 그 위치로 마스크 값을 `take`해 대상 순서로 바꿔요.
 
-**길이가 같고, 대상 라벨이 고유하고, 대상의 모든 라벨이 마스크에 있으면**(마스크 라벨도 고유) 두 라벨 집합은 같아요. 원소 수가 같은 두 집합에서 한쪽이 다른 쪽에 다 들어 있기 때문이에요. 대상에 중복이 있으면 이 논리가 깨지므로(길이가 같아도 마스크에만 있는 라벨이 있을 수 있어요) 대상의 고유성을 먼저 요구해요.
+길이가 같고, 대상 라벨이 고유하고, 대상의 모든 라벨이 마스크에 있으면(마스크 라벨도 고유) 두 라벨 집합은 같아요. 원소 수가 같은 두 집합에서 한쪽이 다른 쪽에 다 들어 있기 때문이에요. 대상에 중복이 있으면 이 논리가 깨지므로(길이가 같아도 마스크에만 있는 라벨이 있을 수 있어요) 대상의 고유성을 먼저 요구해요.
 
 <Fig caption='라벨 순서가 다른 마스크. 마스크를 대상의 라벨 순서(a, c, e)로 다시 늘어놓은 뒤 True인 행만 남겨요. NA인 마스크 행은 값 자리가 0이라 False로 읽혀요.'>
   <FrameFig name="s" index={['a', 'c', 'e']} data={[1, 2, 3]} rowTones={['a', '', 'a']} />
@@ -306,13 +306,13 @@ Traceback (most recent call last):
 ValueError: the mask's labels must be the index's labels
 ```
 
-pandas 3.1.1(`pandas/core/indexing.py`의 `check_bool_indexer`)[5]도 라벨이 다르면 `get_indexer_for`로 맞추는데, 대상 라벨이 마스크에 없으면 에러를 내고 **마스크에만 있는 라벨은 조용히 버려요.** 위의 마지막 예가 pandas에서는 `a`, `e` 두 행을 돌려줘요(DataFrame이면 경고 하나와 함께). stardust가 두 라벨 집합이 같기를 요구하는 이유는, 마스크에만 있는 라벨은 대개 마스크를 다른 데이터에서 만들었다는 신호이기 때문이에요. 조용히 버리면 그 실수가 결과에 묻혀요.
+pandas 3.1.1(`pandas/core/indexing.py`의 `check_bool_indexer`)[5]도 라벨이 다르면 `get_indexer_for`로 맞추는데, 대상 라벨이 마스크에 없으면 에러를 내고 마스크에만 있는 라벨은 조용히 버려요. 위의 마지막 예가 pandas에서는 `a`, `e` 두 행을 돌려줘요(DataFrame이면 경고 하나와 함께). stardust가 두 라벨 집합이 같기를 요구하는 이유는, 마스크에만 있는 라벨은 대개 마스크를 다른 데이터에서 만들었다는 신호이기 때문이에요. 조용히 버리면 그 실수가 결과에 묻혀요.
 
 ## 정렬(alignment)
 
 ### 무엇을 하나
 
-`a + b`에서 `a`와 `b`의 라벨이 다르면, 같은 라벨끼리 더하고 한쪽에만 있는 라벨은 NA로 둬요. 결과의 라벨은 두 라벨 집합의 합집합이에요. 순서는 **왼쪽 라벨 순서, 그다음 오른쪽에만 있는 라벨을 오른쪽 순서대로**예요. merge의 outer 조인이 행을 늘어놓는 규칙과 같아요([merge와 concat](/internals/frame/merge-concat/)).
+`a + b`에서 `a`와 `b`의 라벨이 다르면, 같은 라벨끼리 더하고 한쪽에만 있는 라벨은 NA로 둬요. 결과의 라벨은 두 라벨 집합의 합집합이에요. 순서는 왼쪽 라벨 순서, 그다음 오른쪽에만 있는 라벨을 오른쪽 순서대로예요. merge의 outer 조인이 행을 늘어놓는 규칙과 같아요([merge와 concat](/internals/frame/merge-concat/)).
 
 <Fig caption="a + b의 정렬. 합집합은 a의 라벨(b, a) 뒤에 b에만 있는 라벨(c)을 붙인 것이에요. 위치 배열의 -1 자리는 take가 NA로 채워요.">
   <FrameFig name="a" index={['b', 'a']} data={[1, 2]} rowTones={['', '1']} />
@@ -334,7 +334,7 @@ c    <NA>
 dtype: int64
 ```
 
-결과가 int64로 남는 것도 눈여겨볼 만해요. 결측은 비트맵으로 들고 있으므로 NA가 생겨도 int가 float로 바뀌지 않아요.
+결과는 int64로 남아요. 결측을 비트맵으로 표시하므로 NA가 생겨도 int가 float로 바뀌지 않아요.
 
 ### 알고리즘 (`_select.align`)
 
@@ -352,10 +352,10 @@ def align(a, b, func=None):
     return union, a_pos, b_pos
 ```
 
-1. **같은 Index면 위치대로 계산해요.** `is`로 먼저 보고, 아니면 `equals`로 원소를 비교해요. 같은 DataFrame에서 꺼낸 두 컬럼(`df["x"] + df["y"]`)은 같은 Index 객체를 들고 있어서 `is`에서 끝나요. 이것은 "같은 라벨 순서면 위치가 곧 짝"이라는 의미 규칙이에요. 데이터를 보고 빠른 길로 가는 휴리스틱이 아니라, 두 Index가 같은지라는 입력의 정의 자체를 묻는 것이라서 중복 라벨이 있어도 성립해요.
+1. **같은 Index면 위치대로 계산해요.** `is`로 먼저 보고, 아니면 `equals`로 원소를 비교해요. 같은 DataFrame에서 꺼낸 두 컬럼(`df["x"] + df["y"]`)은 같은 Index 객체를 공유해서 `is`에서 끝나요. 이것은 "같은 라벨 순서면 위치가 곧 짝"이라는 의미 규칙이에요. 데이터를 보고 빠른 길로 가는 휴리스틱이 아니라, 두 Index가 같은지라는 입력의 정의 자체를 묻는 것이라서 중복 라벨이 있어도 성립해요.
 2. **dtype과 고유성을 검사해요.** int 라벨과 string 라벨은 맞출 수 없어요(RangeIndex는 int64로 쳐요). 같은 Index가 아니면서 중복이 있으면 ValueError예요.
-3. **`a._get_indexer(b)`** — `b`의 라벨마다 `a`에서의 첫 위치(`first_positions`)를 구하고, -1인 자리(`a`에 없는 라벨)만 `nonzero`로 골라요. 합집합은 `a`의 라벨 뒤에 그 라벨들을 이어 붙인 것이에요(`concat` 커널). `a`의 위치 배열은 `[0, 1, …, len(a)-1]` 뒤에 -1을 그만큼 붙인 것이에요. 붙일 것이 없으면 `None`을 돌려줘서 `a`의 컬럼을 `take` 없이 그대로 써요.
-4. **`b._get_indexer(union)`** — 합집합의 라벨마다 `b`에서의 위치예요. `b`에 없는 라벨은 -1이에요.
+3. **`a._get_indexer(b)`**는 `b`의 라벨마다 `a`에서의 첫 위치(`first_positions`)를 구하고, -1인 자리(`a`에 없는 라벨)만 `nonzero`로 골라요. 합집합은 `a`의 라벨 뒤에 그 라벨들을 이어 붙인 것이에요(`concat` 커널). `a`의 위치 배열은 `[0, 1, …, len(a)-1]` 뒤에 -1을 그만큼 붙인 것이에요. 붙일 것이 없으면 `None`을 돌려줘서 `a`의 컬럼을 `take` 없이 그대로 써요.
+4. **`b._get_indexer(union)`**은 합집합의 라벨마다 `b`에서의 위치를 구해요. `b`에 없는 라벨은 -1이에요.
 
 그 뒤 각 컬럼은 `take(positions)`로 다시 배열되고, 위치 -1은 NA 행이 돼요.
 
@@ -371,13 +371,13 @@ def align(a, b, func=None):
 - `df["c"] = Series`, 행 대입의 값이 Series일 때, `Series(series, index=...)`, `reindex`: `reindexed(col, index, target)`이 같은 Index면 그대로, 아니면 `take(index._get_indexer(target))`이에요. 원래 라벨은 고유해야 해요.
 - 마스크: 위의 `aligned_mask`
 
-어느 경우든 int64 라벨과 string 라벨이 만나면 TypeError이고, 메시지는 한 함수(`_index.py`의 `mixed_labels`)가 만들어요: `cannot align int64 labels with string labels`. 앞은 라벨을 찾아보는 쪽 Index(`reindex`의 원래 Index, 마스크나 대입할 Series의 Index, 연산자의 왼쪽), 뒤는 그 안에서 찾을 라벨의 dtype이에요. 연산자, `reindex`, 마스크, 대입, 생성자가 모두 같은 꼴이에요.
+어느 경우든 int64 라벨과 string 라벨이 만나면 TypeError이고, 메시지는 한 함수(`_index.py`의 `mixed_labels`)가 만들어요(`cannot align int64 labels with string labels`). 앞은 라벨을 찾아보는 쪽 Index(`reindex`의 원래 Index, 마스크나 대입할 Series의 Index, 연산자의 왼쪽), 뒤는 그 안에서 찾을 라벨의 dtype이에요. 연산자, `reindex`, 마스크, 대입, 생성자가 모두 같은 꼴이에요.
 
 `reindex([])`처럼 라벨이 하나도 없으면 맞지 않을 라벨도 없어요. 그런데 빈 list는 그대로 Index로 만들면 값이 없어서 int64로 추론돼요([리스트에서 dtype 추론](/api/frame/series/)). 그래서 `ensure_index(labels, func, like)`가 빈 list나 tuple을 받으면 원래 Index(`like`)의 dtype으로 빈 Index를 만들고, `label_column`도 dtype이 다른 빈 Index는 원래 dtype의 빈 Column으로 읽어요. string 라벨 Series의 `reindex([])`는 `.loc[[]]`처럼 string 라벨의 빈 결과예요.
 
 ### 합집합을 정렬하지 않는 이유
 
-pandas 3.1.1은 두 Index가 다르면 합집합을 **정렬**해요. `Series._align_for_op` → `NDFrame._align_series` → `Index.join(how="outer")`로 가는데, `Index.join`이 `sort = sort or how == "outer"`로 outer 조인에서 정렬을 강제해요[5]. 그래서 `pd.Series([1, 2], index=["b", "a"]) + pd.Series([10, 20], index=["a", "c"])`의 라벨은 `["a", "b", "c"]`예요. 두 Index의 라벨이 같고 순서만 달라도 결과는 정렬된 순서예요. 두 Index가 같으면(`equals`) pandas도 정렬하지 않고 위치대로 계산해요.
+pandas 3.1.1은 두 Index가 다르면 합집합을 정렬해요. `Series._align_for_op` → `NDFrame._align_series` → `Index.join(how="outer")`로 가는데, `Index.join`이 `sort = sort or how == "outer"`로 outer 조인에서 정렬을 강제해요[5]. 그래서 `pd.Series([1, 2], index=["b", "a"]) + pd.Series([10, 20], index=["a", "c"])`의 라벨은 `["a", "b", "c"]`예요. 두 Index의 라벨이 같고 순서만 달라도 결과는 정렬된 순서예요. 두 Index가 같으면(`equals`) pandas도 정렬하지 않고 위치대로 계산해요.
 
 stardust가 정렬하지 않는 이유는 두 가지예요.
 
@@ -409,9 +409,9 @@ Polars 2.1.0에는 정렬이 없어요. 두 Series의 연산은 위치대로이�
 
 ### 정의
 
-`take(col, positions)`는 결과의 행 $i$에 `col`의 행 `positions[i]`를 두는 gather 연산이에요. 위치 **-1은 NA 행**이에요. 이 규칙 하나로 정렬(alignment)의 "없는 라벨", merge의 "짝 없는 행", groupby의 "값이 없는 그룹"이 모두 같은 커널로 처리돼요.
+`take(col, positions)`는 결과의 행 $i$에 `col`의 행 `positions[i]`를 두는 gather 연산이에요. 위치 -1은 NA 행이에요. 이 규칙 하나로 정렬(alignment)의 "없는 라벨", merge의 "짝 없는 행", groupby의 "값이 없는 그룹"이 모두 같은 커널로 처리돼요.
 
-`take`를 쓰는 곳: reindex, 정렬, 라벨 리스트와 위치 리스트 선택, step이 1이 아닌 슬라이스, merge의 모든 결과 컬럼, `sort_values`/`sort_index`, groupby의 `min`/`max`/`first`/`last`, `dropna`, `drop_duplicates`, `unique_values`, 문자열 마스크 필터.
+`take`는 reindex, 정렬, 라벨 리스트와 위치 리스트 선택, step이 1이 아닌 슬라이스, merge의 모든 결과 컬럼, `sort_values`/`sort_index`, groupby의 `min`/`max`/`first`/`last`, `dropna`, `drop_duplicates`, `unique_values`, 문자열 마스크 필터에 쓰여요.
 
 ### 고정폭 dtype
 
@@ -442,16 +442,16 @@ void gather(const Column& col, const std::int64_t* pos, std::int64_t n, Column& 
 }
 ```
 
-- **결측이 없는 입력에 -1이 없으면 비트맵을 아예 만들지 않아요.** 그러면 `bits`가 null이라 행마다 원본 비트를 읽지 않아요. "결측이 없으면 비트맵이 없다"는 컬럼의 속성으로 고르는 것이에요.
-- **행 루프에 남은 분기는 "위치가 -1인가"예요.** 데이터에 따라 달라지는 분기이지만, -1은 대개 드물거나(reindex에서 없는 라벨 몇 개) 한 구간에 몰려(정렬의 합집합 뒤쪽, outer merge의 끝) 예측이 잘 맞아요. `take`의 시간은 주로 `in[p]`의 무작위 읽기, 곧 메모리 지연이 정해요. 위치가 섞여 있으면 행마다 캐시 미스가 날 수 있어요.
-- **청크는 16,384행이고 64의 배수예요.** 두 태스크가 같은 비트맵 바이트를 고치지 않아요. 위치 배열의 길이로만 청크를 나누므로 결과는 스레드 수와 무관해요([병렬화와 결정성](/internals/frame/parallel/)).
+- 결측이 없는 입력에 -1이 없으면 비트맵을 아예 만들지 않아요. 그러면 `bits`가 null이라 행마다 원본 비트를 읽지 않아요. "결측이 없으면 비트맵이 없다"는 컬럼의 속성으로 고르는 거예요.
+- 행 루프에 남은 분기는 "위치가 -1인가"예요. 데이터에 따라 달라지는 분기이지만, -1은 대개 드물거나(reindex에서 없는 라벨 몇 개) 한 구간에 몰려(정렬의 합집합 뒤쪽, outer merge의 끝) 예측이 잘 맞아요. `take`의 시간은 주로 `in[p]`의 무작위 읽기, 곧 메모리 지연이 정해요. 위치가 섞여 있으면 행마다 캐시 미스가 날 수 있어요.
+- 청크는 16,384행이고 64의 배수예요. 두 태스크가 같은 비트맵 바이트를 고치지 않아요. 위치 배열의 길이로만 청크를 나누므로 결과는 스레드 수와 무관해요([병렬화와 결정성](/internals/frame/parallel/)).
 - 마지막 `finish_fixed`가 NA 행의 값 자리를 0으로 지워요(NA 자리의 값은 언제나 0이라는 규칙, [컬럼과 메모리](/internals/frame/columns/)). `p < 0`인 행은 이미 `T{}`(0)이고, 원본이 NA인 행은 원본 값 자리가 0이라 0이 들어와 있어요. `finish_fixed`는 그 규칙을 한 번 더 확실히 하면서 NA 개수를 세요.
 
 ### 문자열
 
 문자열은 길이가 제각각이라 결과의 바이트 위치를 미리 알 수 없어요. 두 번 훑어요.
 
-1. 청크마다 고른 문자열들의 바이트 수를 더해요. 청크 순서로 누적합을 내면 청크마다 바이트를 쓰기 시작할 자리가 나와요(`chunk_starts`).
+1. 청크마다 고른 문자열의 바이트 수를 더해요. 청크 순서로 누적합을 내면 청크마다 바이트를 쓰기 시작할 자리가 나와요(`chunk_starts`).
 2. 청크마다 자기 자리부터 바이트를 `memcpy`하고, 행마다 끝 위치를 offsets에 적어요.
 
 <Fig caption='문자열 컬럼의 take([3, -1, 0]). 결과 offsets는 0부터 새로 시작하고, -1 행은 길이 0(빈 구간)에 비트 0이에요.'>
@@ -480,7 +480,7 @@ for (i = 0; i < n; ++i)
     if (keep[i]) out[k++] = in[i];
 ```
 
-마스크가 무작위(예: `f > 0`, 정규분포 값이면 절반이 True)면 `if`가 어느 쪽으로 갈지 CPU가 예측할 수 없어요. 현대 CPU는 분기의 결과를 기다리지 않고 예측한 쪽으로 미리 명령을 실행하다가, 틀리면 그 일을 버리고 다시 시작해요. 무작위 마스크에서는 절반 가까이 틀리고, 틀릴 때마다 파이프라인에 미리 들어간 일을 버려요. 이 비용이 8바이트 복사 하나보다 훨씬 커요. 데이터베이스의 선택 연산에서 분기 예측 실패가 시간을 크게 좌우하고, 같은 결과를 내면서 분기 동작만 다른 계획을 고를 수 있다는 것은 Ross가 정리했어요[1].
+마스크가 무작위(예: `f > 0`, 정규분포 값이면 절반이 True)면 `if`가 어느 쪽으로 갈지 CPU가 예측할 수 없어요. 현대 CPU는 분기의 결과를 기다리지 않고 예측한 쪽으로 미리 명령을 실행하다가, 틀리면 그 일을 버리고 다시 시작해요. 무작위 마스크에서는 절반 가까이 틀리고, 틀릴 때마다 파이프라인에 미리 들어간 일을 버려요. 이 비용이 8바이트 복사 하나보다 훨씬 커요. Ross는 데이터베이스의 선택 연산에서 분기 예측 실패가 시간을 크게 좌우한다는 것과, 같은 결과를 내면서 분기 동작만 다른 계획을 고를 수 있다는 것을 정리했어요[1].
 
 ### 항상 쓰고, 남길 때만 전진
 
@@ -501,7 +501,7 @@ void compact_rows(const std::uint8_t* keep, std::int64_t lo, std::int64_t hi, Ge
 ```
 
 - 모든 행을 `out[k]`에 쓰고, 남길 행이면 `k`를 1 늘려요. 버릴 행은 다음 행이 같은 칸에 덮어써요. 루프에 데이터에 따라 갈리는 분기가 없어서 마스크가 아무리 무작위여도 예측 실패가 없어요.
-- `keep[i]`를 그대로 더할 수 있는 것은 bool 컬럼이 **행마다 1바이트(0 또는 1)**이기 때문이에요. 마스크가 NA인 행은 값 자리가 0이라서 저절로 False예요. NA 검사가 필요 없어요.
+- `keep[i]`를 그대로 더할 수 있는 것은 bool 컬럼이 행마다 1바이트(0 또는 1)이기 때문이에요. 마스크가 NA인 행은 값 자리가 0이라서 저절로 False예요. NA 검사가 필요 없어요.
 
 <Fig caption='in = [5, 8, 1, 7, 3, 9], keep = [1, 0, 0, 1, 1, 0]의 압축. 행마다 out[k]에 쓰고 keep만큼 k가 늘어요. 버린 8과 1은 out[1]에 썼다가 7이 덮어써요. 마지막으로 남길 행(4) 뒤의 9는 쓰지 않아요.'>
   <ArrayFig name="in" data={[5, 8, 1, 7, 3, 9]} tones={['a', 'm', 'm', 'a', 'a', 'm']} />
@@ -513,18 +513,18 @@ void compact_rows(const std::uint8_t* keep, std::int64_t lo, std::int64_t hi, Ge
 
 ### 병렬로 압축하기
 
-결과의 어디부터 써야 할지는 앞쪽 청크들이 몇 행을 남기는지에 달렸어요. 그래서 두 단계로 해요.
+결과의 어디부터 써야 할지는 앞쪽 청크가 몇 행을 남기는지에 달렸어요. 그래서 두 단계로 해요.
 
 1. **청크마다 남길 행 수를 세요**(`kept_starts`: `keep` 바이트의 합). 청크 순서로 누적합을 내면 청크마다 출력을 시작할 자리가 나와요.
 2. **청크마다 자기 자리부터 압축해요.**
 
-"항상 쓰기"에는 함정이 하나 있어요. 마지막으로 남길 행 **다음** 행도 `out[k]`에 쓰는데, 그 칸은 이미 다음 청크가 쓰는 첫 칸이에요. 두 태스크가 같은 칸을 쓰면 경쟁이 생겨 결과가 스레드 일정에 달려요. 그래서 `compact_rows`는 **자기 청크에서 마지막으로 남길 행까지만** 돌아요(`last`를 먼저 찾는 이유). 그러면 모든 쓰기가 자기 청크의 출력 범위 안에 떨어져요. 그 뒤의 버릴 행들은 어차피 결과에 들어가지 않아요. 같은 이유로 출력 Buffer를 한 칸 크게 잡을 필요도 없어요.
+"항상 쓰기"에는 함정이 하나 있어요. 마지막으로 남길 행 다음 행도 `out[k]`에 쓰는데, 그 칸은 이미 다음 청크가 쓰는 첫 칸이에요. 두 태스크가 같은 칸을 쓰면 경쟁이 생겨 결과가 스레드 일정에 달려요. 그래서 `compact_rows`는 자기 청크에서 마지막으로 남길 행까지만 돌아요(`last`를 먼저 찾는 이유). 그러면 모든 쓰기가 자기 청크의 출력 범위 안에 떨어져요. 그 뒤의 버릴 행들은 어차피 결과에 들어가지 않아요. 같은 이유로 출력 Buffer를 한 칸 크게 잡을 필요도 없어요.
 
 청크는 행 수로만 정하고 누적합도 청크 순서로 내므로 결과의 배치는 스레드 수와 무관해요.
 
-**결측이 있는 컬럼**은 값과 함께 validity도 압축해야 해요. 비트를 하나씩 꺼내 옮기는 대신, 비트맵을 행마다 0/1 바이트로 펼치고(`valid_bytes`, 256칸 표로 8행씩), 그 바이트 배열을 같은 `compact`로 압축한 뒤, 8개씩 모아 비트로 다시 접어요(`pack_bits`). 마지막에 `finish_fixed`가 NA 개수를 세요.
+결측이 있는 컬럼은 값과 함께 validity도 압축해야 해요. 비트를 하나씩 꺼내 옮기는 대신, 비트맵을 행마다 0/1 바이트로 펼치고(`valid_bytes`, 256칸 표로 8행씩), 그 바이트 배열을 같은 `compact`로 압축한 뒤, 8개씩 모아 비트로 다시 접어요(`pack_bits`). 마지막에 `finish_fixed`가 NA 개수를 세요.
 
-**`nonzero(mask)`**(True인 위치)도 같은 `compact_rows`에 `get(i) = i`를 넘긴 것이에요.
+`nonzero(mask)`(True인 위치)도 같은 `compact_rows`에 `get(i) = i`를 넘긴 것이에요.
 
 ### 문자열은 take(nonzero(mask))
 
@@ -571,7 +571,7 @@ def _assign(self, sel, value):
 ```
 
 1. **값 맞추기**: 스칼라는 `implicit_scalar`로, list는 추론한 뒤 `implicit`로 컬럼 dtype에 맞춰요. list와 tuple은 추론하기 전에 bool과 수(int, float, numpy 정수·실수)가 섞였는지 봐요(`_check_no_bool_mix`). 원소마다 값을 보지 않고 타입의 집합(`set(map(type, values))`, C 안에서 한 번 훑기)만 봐요. 섞였으면 TypeError예요. 생성자의 추론처럼 `[True, 2]`를 int64 `[1, 2]`로 승격하면 int 컬럼에 넣을 때 `True`가 아무 말 없이 `1`이 되기 때문이에요. 컬럼을 통째로 새로 만드는 `df["c"] = [True, 2]`는 이 길이 아니라서 생성과 같이 int64예요. 규칙은 dtype만 보고 위로만(`bool → int64 → float64`)이에요. int 컬럼에 `2.0`은 값과 상관없이 TypeError예요. 값이 Series면 고른 행의 라벨로 `reindexed`(정렬)한 뒤 같은 규칙을 적용해요. 마스크로 골랐으면 `select_index`가 남은 행의 라벨을 만들어 그 라벨로 맞춰요.
-2. **자기 Column 객체 갖기**: Python 객체 둘이 같은 C++ Column 객체를 들 수 있어요(`df["a"]`로 꺼낸 Series와 DataFrame). 그 객체를 고치면 둘 다 바뀌므로, 쓰는 쪽이 먼저 `share()`(Buffer를 공유하는 새 Column 객체, `shared_ptr` 셋의 복사)로 자기 객체를 가져요. 이전 객체를 아무도 들고 있지 않으면 이 대입으로 해제되고, Buffer의 참조 수가 함께 줄어요.
+2. **자기 Column 객체 갖기**: Python 객체 둘이 같은 C++ Column 객체를 가리킬 수 있어요(`df["a"]`로 꺼낸 Series와 DataFrame). 그 객체를 고치면 둘 다 바뀌므로, 쓰는 쪽이 먼저 `share()`(Buffer를 공유하는 새 Column 객체, `shared_ptr` 셋의 복사)로 자기 객체를 만들어요. 이전 객체를 쥔 다른 주인이 없으면 이 대입으로 해제되고, Buffer의 참조 수가 함께 줄어요.
 3. **`set_rows`**가 Buffer의 참조 수를 보고 필요할 때만 복사해요.
 
 DataFrame의 `df.loc[rows, "c"] = v`는 그 컬럼으로 임시 Series를 만들어 `_assign`한 뒤 `df._cols["c"] = target._col`로 되돌려 놓아요. 없는 라벨에 대입하면 KeyError예요. pandas처럼 행을 늘리지 않아요(행을 늘리면 모든 컬럼의 Buffer를 다시 만들어야 해서, 대입 한 번의 비용이 데이터에 따라 크게 달라져요).
@@ -595,8 +595,8 @@ void detach(Column& col, bool need_validity) {
 }
 ```
 
-- **`use_count()`가 1이면 그 자리에서 써요.** values와 validity Buffer를 가리키는 `shared_ptr`이 이 Column 하나뿐이라는 뜻이에요.
-- **다른 주인이 있으면 복사해요.** 주인은 다른 Series나 DataFrame의 Column, 같은 Buffer를 공유하는 슬라이스, `to_numpy`·`to_array`가 내준 읽기 전용 뷰(그 뷰의 capsule이 `shared_ptr` 복사본을 들고 있어요), 그리고 진행 중인 다른 연산이 인자로 잡은 옛 Column이에요. 복사는 **자기 행 범위만**이에요. 1M 행 컬럼의 10행짜리 슬라이스에 쓰면 10행만 복사하고 `offset`을 0으로 맞춰요.
+- `use_count()`가 1이면 그 자리에서 써요. values와 validity Buffer를 가리키는 `shared_ptr`이 이 Column 하나뿐이라는 뜻이에요.
+- 다른 주인이 있으면 복사해요. 주인은 다른 Series나 DataFrame의 Column, 같은 Buffer를 공유하는 슬라이스, `to_numpy`·`to_array`가 내준 읽기 전용 뷰(그 뷰의 capsule이 `shared_ptr` 복사본을 쥐고 있어요), 그리고 진행 중인 다른 연산이 인자로 잡은 옛 Column이에요. 복사는 자기 행 범위만 해요. 1M 행 컬럼의 10행짜리 슬라이스에 쓰면 10행만 복사하고 `offset`을 0으로 맞춰요.
 - 대입할 값에 NA가 있는데 컬럼에 비트맵이 없으면 비트맵을 새로 달아요. `add_validity`는 `offset == 0`일 때만 쓸 수 있으므로(비트 0이 행 0), 공유되지 않았어도 `offset`이 0이 아니면 복사 경로로 가서 0부터 다시 맞춰요.
 
 <Fig column caption="s = df['a'] 뒤의 s.iloc[0] = 99. s가 share()로 자기 Column 객체(B)를 가져도 Buffer는 아직 A와 함께 써요(use_count 2). 그래서 set_rows가 먼저 복사하고, df의 컬럼은 그대로예요.">
@@ -623,7 +623,7 @@ void detach(Column& col, bool need_validity) {
 
 ### 쓰기와 NA 개수
 
-detach 뒤의 쓰기는 위치마다 차례로 해요. 값이 있으면 `memcpy`하고 비트를 세우고, NA면 값 자리를 0으로 지우고 비트를 내려요. 같은 위치가 여러 번 나오면 **마지막 쓰기가 이겨요**. 끝에서 NA 개수를 popcount로 다시 세고, 0이면 비트맵을 떼어 내요.
+detach 뒤의 쓰기는 위치마다 차례로 해요. 값이 있으면 `memcpy`하고 비트를 세우고, NA면 값 자리를 0으로 지우고 비트를 내려요. 같은 위치가 여러 번 나오면 마지막 쓰기가 이겨요. 끝에서 NA 개수를 popcount로 다시 세고, 0이면 비트맵을 떼어 내요.
 
 ### 문자열은 언제나 새 Buffer
 
@@ -636,16 +636,16 @@ detach 뒤의 쓰기는 위치마다 차례로 해요. 값이 있으면 `memcpy`
 
 ### GIL을 쥔 채 쓰는 이유
 
-frame의 커널은 일이 크면 GIL을 놓고 돌아요. 그러면 다른 Python 스레드가 그 사이에 대입할 수 있어요. 연산은 **호출 시점의 값**을 봐야 해요(스냅샷 규칙). 이것이 지켜지는 이유는 둘이에요.
+frame의 커널은 일이 크면 GIL을 놓고 돌아요. 그러면 다른 Python 스레드가 그 사이에 대입할 수 있어요. 연산은 호출 시점의 값을 봐야 해요(스냅샷 규칙). 이것이 지켜지는 이유는 둘이에요.
 
 - 진행 중인 연산은 인자로 옛 Column 객체를 잡고 있고, 대입은 `share()`로 새 Column 객체를 만든 뒤 쓰므로, 그 사이 Buffer의 참조 수가 2 이상이라 대입이 복사해요.
-- 남은 틈은 "`set_rows`가 Buffer를 제자리에서 고치는 도중에 다른 스레드의 연산이 시작되는 경우" 하나예요. 그래서 **`set_rows`는 크기와 상관없이 GIL을 쥔 채 돌아요.** GIL을 쥐고 있는 한 다른 스레드의 연산은 쓰기 전이나 쓴 뒤의 컬럼만 봐요.
+- 남은 틈은 "`set_rows`가 Buffer를 제자리에서 고치는 도중에 다른 스레드의 연산이 시작되는 경우" 하나예요. 그래서 `set_rows`는 크기와 상관없이 GIL을 쥔 채 돌아요. GIL을 쥐고 있는 한 다른 스레드의 연산은 쓰기 전이나 쓴 뒤의 컬럼만 봐요.
 
 10행 Series의 `s.iloc[3] = 1`이 0.94µs예요. 스냅샷 규칙과 그 테스트는 [컬럼과 메모리](/internals/frame/columns/)에 있어요.
 
 ### pandas와 Polars의 Copy-on-Write
 
-- **pandas 3.1.1**은 Copy-on-Write를 끌 수 없어요. 공유 여부를 Block 단위로 추적해요: `BlockValuesRefs`(`pandas/_libs/internals.pyx`)가 같은 메모리를 보는 Block들의 약한 참조(weakref) 목록을 들고, `has_reference()`가 죽은 참조를 걷어낸 뒤 둘 이상 남았는지 봐요[5]. 대입(`BlockManager.setitem`, `SingleBlockManager.setitem_inplace`)은 참조가 있으면 Block을 깊은 복사한 뒤 써요. Block은 같은 dtype 컬럼 여럿을 합친 2차원 배열이라서(BlockManager의 consolidation), 공유와 복사의 단위가 컬럼 하나보다 클 수 있어요.
+- **pandas 3.1.1**은 Copy-on-Write를 끌 수 없어요. 공유 여부를 Block 단위로 추적해요. `BlockValuesRefs`(`pandas/_libs/internals.pyx`)가 같은 메모리를 보는 Block의 약한 참조(weakref) 목록을 관리하고, `has_reference()`가 죽은 참조를 걷어낸 뒤 둘 이상 남았는지 봐요[5]. 대입(`BlockManager.setitem`, `SingleBlockManager.setitem_inplace`)은 참조가 있으면 Block을 깊은 복사한 뒤 써요. Block은 같은 dtype 컬럼 여럿을 합친 2차원 배열이라서(BlockManager의 consolidation), 공유와 복사의 단위가 컬럼 하나보다 클 수 있어요.
 - **Polars 2.1.0**의 `Series.scatter`는 같은 Python 객체를 고쳐요. Rust 쪽(`crates/polars-python/src/series/scatter.rs`)은 참조 수를 1로 만들려고 Series를 잠시 꺼내 두고, `PrimitiveArray::with_values_mut`가 버퍼의 참조 수가 1이면 제자리에서, 아니면 복사본에 써요[4]. stardust의 `use_count()` 검사와 같은 생각이에요.
 
 stardust는 Buffer를 가리키는 `shared_ptr`의 참조 수 하나로 판단해요. 약한 참조 목록이 없고, 단위는 언제나 컬럼 하나예요(2차원 블록이 없어요).

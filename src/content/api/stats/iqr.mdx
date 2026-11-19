@@ -73,7 +73,7 @@ import Callout from '../../../components/Callout.astro';
 
 ## 왜 쓰나요: 튀는 값에 강한 퍼짐
 
-표준편차도 퍼진 정도를 재지만, 평균에서 떨어진 거리를 제곱해서 쓰기 때문에 **멀리 튄 값 하나**에 크게 흔들려요. 사분위범위는 순서로 정한 두 지점만 보므로, 양 끝의 값이 얼마나 크든 상관없어요.
+표준편차도 퍼진 정도를 재지만, 평균에서 떨어진 거리를 제곱해서 쓰기 때문에 멀리 튄 값 하나에 크게 흔들려요. 사분위범위는 순서로 정한 두 지점만 보므로, 양 끝의 값이 얼마나 크든 상관없어요.
 
 마지막 값 12를 120으로 잘못 적었다고 해 볼게요.
 
@@ -155,7 +155,7 @@ TypeError: iqr(): 'q' must be a pair of numbers in [0, 1]
 1.3489795003921634
 ```
 
-그래서 사분위범위를 1.349로 나누면 **정규분포 데이터의 표준편차를 어림하는 값**이 돼요. 튀는 값에 강한 표준편차라고 생각하면 돼요. `scale='normal'`이 이 일을 해요.
+그래서 사분위범위를 1.349로 나누면 정규분포 데이터의 표준편차를 어림하는 값이 돼요. 튀는 값에 강한 표준편차라고 생각하면 돼요. `scale='normal'`이 이 일을 해요.
 
 ```python
 >>> X = sd.stats.Normal(mu=0.0, sigma=2.0)
@@ -198,7 +198,7 @@ array([[ 1.5],
        [15.0]], dtype=float64)
 ```
 
-NaN이 있으면 기본은 NaN, `'omit'`은 NaN을 빼고(`sd.nanquantile`처럼) 계산, `'raise'`는 `ValueError`예요.
+NaN이 있으면 기본값에서는 결과가 NaN이에요. `'omit'`은 NaN을 빼고(`sd.nanquantile`처럼) 계산하고, `'raise'`는 `ValueError`를 내요.
 
 ```python
 >>> sd.stats.iqr([1.0, sd.nan, 3.0, 4.0])
@@ -244,6 +244,6 @@ inf
 ## scipy를 아는 분께
 
 - `rng=(25, 75)`(백분율)는 `q=(0.25, 0.75)`(비율)이고, `interpolation`은 `method`예요. 둘 다 `sd.quantile`과 같은 이름과 뜻이에요.
-- `axis`의 기본값이 `None`(전체)이에요. scipy도 `iqr`는 `axis=None`이 기본이에요.
+- `axis`의 기본값은 `None`(전체)이에요. scipy의 `iqr`도 `axis=None`이 기본이에요.
 - `scale='normal'`의 값(1.3489795003921634), `scale=0`의 inf, `nan_policy`의 동작은 scipy와 같아요.
 - 결과는 numpy 스칼라가 아니라 Python `float`예요.

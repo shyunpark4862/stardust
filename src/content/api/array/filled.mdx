@@ -35,9 +35,9 @@ returns:
   desc: 새로 만든 배열. 다른 배열과 메모리를 함께 쓰지 않고, 값을 자유롭게 고칠 수 있어요.
 raises:
   - type: TypeError
-    desc: shape이 int나 int의 tuple이 아닐 때(리스트, 실수, bool), fill_value가 숫자 하나가 아닐 때, x가 stardust 배열이 아닐 때, dtype이 틀렸을 때, 복소수 fill_value를 실수·정수 dtype으로 바꾸려 할 때, full_like에서 dtype 없이 fill_value가 x의 dtype에 담기지 않을 때.
+    desc: shape가 int나 int의 tuple이 아닐 때(리스트, 실수, bool), fill_value가 숫자 하나가 아닐 때, x가 stardust 배열이 아닐 때, dtype이 틀렸을 때, 복소수 fill_value를 실수·정수 dtype으로 바꾸려 할 때, full_like에서 dtype 없이 fill_value가 x의 dtype에 담기지 않을 때.
   - type: ValueError
-    desc: 길이가 음수일 때, shape이 ()일 때(0차원), 차원이 32개를 넘거나 전체 크기가 너무 클 때.
+    desc: 길이가 음수일 때, shape가 ()일 때(0차원), 차원이 32개를 넘거나 전체 크기가 너무 클 때.
   - type: OverflowError
     desc: shape의 길이가 int64 범위를 벗어날 때, 정수 배열을 만드는데 fill_value가 int64에 담기지 않을 만큼 클 때, fill_value가 float64에도 담기지 않을 만큼 큰 정수일 때.
   - type: MemoryError
@@ -51,7 +51,7 @@ import Op from '../../../components/fig/Op.astro';
 
 ## 한눈에 보기
 
-이 페이지의 여덟 함수는 **모든 칸이 같은 값인 새 배열**을 만들어요. 계산 결과를 채워 넣을 그릇이 필요할 때, 처음 값이 모두 0이거나 1인 배열이 필요할 때 써요.
+이 페이지의 여덟 함수는 모든 칸이 같은 값인 새 배열을 만들어요. 계산 결과를 채워 넣을 그릇이 필요할 때, 처음 값이 모두 0이거나 1인 배열이 필요할 때 써요.
 
 ```python
 >>> import stardust as sd
@@ -71,7 +71,7 @@ array([[7, 7, 7],
   <ArrayFig name="sd.full((2, 3), 7)" data={[[7, 7, 7], [7, 7, 7]]} tones={[['a', 'a', 'a'], ['a', 'a', 'a']]} note="shape (2, 3)" />
 </Fig>
 
-여덟 함수는 두 갈래로 나뉘어요. 한쪽은 **모양을 직접** 받고, 이름이 `_like`로 끝나는 다른 쪽은 **배열을 받아서** 그것과 같은 모양으로 만들어요.
+여덟 함수는 두 갈래로 나뉘어요. 한쪽은 모양을 직접 받고, 이름이 `_like`로 끝나는 다른 쪽은 배열을 받아서 그 배열과 같은 모양으로 만들어요.
 
 | 채울 값 | 모양을 직접 줄 때 | 다른 배열의 모양을 따를 때 |
 |---|---|---|
@@ -84,7 +84,7 @@ array([[7, 7, 7],
 
 ## 모양은 어떻게 주나요
 
-첫 인자 `shape`은 **정수 하나** 또는 **정수의 tuple**이에요.
+첫 인자 `shape`는 정수 하나나 정수의 tuple이에요.
 
 - 정수 하나 `n`: 길이 `n`인 1차원 배열이에요. `(n,)`이라고 쓴 것과 같아요.
 - tuple: 차원마다 길이를 차례로 적어요. `(2, 3)`은 2행 3열, `(2, 3, 4)`는 2행 3열짜리가 2개 쌓인 3차원이에요.
@@ -103,7 +103,7 @@ array([[0.0],
 `3`과 `(3, 1)`은 원소 수는 같지만 다른 모양이에요. 앞의 것은 1차원, 뒤의 것은 세로로 긴 2차원이에요. 다른 배열과 계산할 때 이 차이가 결과를 바꾸므로([브로드캐스팅](/api/array/broadcasting/) 참고) 원하는 모양을 정확히 적어 주세요.
 
 <Callout type="warn" title="모양은 괄호로 묶어서 하나로">
-  2행 3열을 만들려고 `sd.zeros(2, 3)`이라고 쓰기 쉬워요. 모양은 **인자 하나**로 받기 때문에 `sd.zeros((2, 3))`처럼 tuple로 묶어야 해요. 괄호를 빠뜨리면 `TypeError`가 나요.
+  2행 3열을 만들려고 `sd.zeros(2, 3)`이라고 쓰기 쉬워요. 모양은 인자 하나로 받기 때문에 `sd.zeros((2, 3))`처럼 tuple로 묶어야 해요. 괄호를 빠뜨리면 `TypeError`가 나요.
 </Callout>
 
 ```python
@@ -143,7 +143,7 @@ array([], shape=(2, 0), dtype=float64)
 | `full` | `fill_value`의 종류를 따라요 |
 | `zeros_like`, `ones_like`, `empty_like`, `full_like` | `x`의 dtype |
 
-`zeros`와 `ones`가 정수가 아니라 **실수** 배열을 만든다는 점을 기억해 두세요. 계산 결과를 담는 그릇으로 쓰는 일이 많아서 실수가 기본이에요. 다른 종류가 필요하면 `dtype=`으로 정해요. dtype 객체(`sd.int64`)나 그 이름(`"int64"`)을 쓸 수 있어요. `dtype`에는 반드시 이름을 붙여야 해요. `sd.zeros(3, sd.int64)`처럼 자리로 넘기면 `TypeError`예요.
+`zeros`와 `ones`는 정수가 아니라 실수 배열을 만든다는 점을 기억해 두세요. 계산 결과를 담는 그릇으로 쓰는 일이 많아서 실수가 기본이에요. 다른 종류가 필요하면 `dtype=`으로 정해요. dtype 객체(`sd.int64`)나 그 이름(`"int64"`)을 쓸 수 있어요. `dtype`에는 반드시 이름을 붙여야 해요. `sd.zeros(3, sd.int64)`처럼 자리로 넘기면 `TypeError`예요.
 
 ```python
 >>> sd.ones((2, 2), dtype=sd.int64)
@@ -206,7 +206,7 @@ array([(1+2j), (1+2j), (1+2j)], dtype=complex128)
 
 ### dtype을 주면 fill_value를 그 종류로 바꿔요
 
-`dtype=`을 직접 주면 "이 종류로 만들어 달라"는 분명한 요청이라서, **값이 조금 달라지더라도** `fill_value`를 그 종류로 바꿔요. 실수를 정수로 바꿀 때는 소수점 아래를 버려요(0에 가까운 쪽으로).
+`dtype=`을 직접 주면 "이 종류로 만들어 달라"는 분명한 요청이라서, 값이 조금 달라지더라도 `fill_value`를 그 종류로 바꿔요. 실수를 정수로 바꿀 때는 소수점 아래를 버려요(0에 가까운 쪽으로).
 
 ```python
 >>> sd.full(3, 7, dtype=sd.float64)
@@ -255,7 +255,7 @@ array([1.1805916207174113e+21, 1.1805916207174113e+21], dtype=float64)
 
 ## empty: 값을 채우지 않은 배열
 
-`empty`는 모양과 dtype만 정하고 **값은 채우지 않은** 배열을 만들어요. 칸에는 그 메모리에 우연히 남아 있던 무언가가 들어 있어요. 0일 수도 있고, 엉뚱한 큰 수나 NaN일 수도 있고, 실행할 때마다 달라요.
+`empty`는 모양과 dtype만 정하고 값은 채우지 않은 배열을 만들어요. 칸에는 그 메모리에 우연히 남아 있던 무언가가 들어 있어요. 0일 수도 있고, 엉뚱한 큰 수나 NaN일 수도 있고, 실행할 때마다 달라요.
 
 ```python
 >>> e = sd.empty((2, 3))
@@ -265,7 +265,7 @@ array([1.1805916207174113e+21, 1.1805916207174113e+21], dtype=float64)
 float64
 ```
 
-그래서 `empty`는 **모든 칸을 곧바로 다른 값으로 덮어쓸 때만** 써요. 0으로 채우는 일을 건너뛰므로 아주 큰 배열에서는 조금 빨라요.
+그래서 `empty`는 모든 칸을 곧바로 다른 값으로 덮어쓸 때만 써요. 0으로 채우는 일을 건너뛰므로 아주 큰 배열에서는 조금 빨라요.
 
 ```python
 >>> out = sd.empty(4)
@@ -280,7 +280,7 @@ array([1.0, 2.0, 3.0, 4.0], dtype=float64)
 
 ## _like: 다른 배열과 같은 모양으로
 
-이름이 `_like`로 끝나는 네 함수는 모양 대신 **배열 `x`를 받아서**, 그 배열과 **같은 모양, 같은 dtype**인 새 배열을 만들어요. `x`의 값은 쓰지 않아요.
+이름이 `_like`로 끝나는 네 함수는 모양 대신 배열 `x`를 받아서, 그 배열과 모양도 dtype도 같은 새 배열을 만들어요. `x`의 값은 쓰지 않아요.
 
 ```python
 >>> x = sd.asarray([[1, 2, 3], [4, 5, 6]])
@@ -327,8 +327,8 @@ TypeError: zeros_like(): 'x' must be an sd.ndarray, not list
 
 `full_like(x, fill_value)`는 `x`와 같은 모양, 같은 dtype의 배열을 `fill_value`로 채워요. 여기서 `full`과 다른 점이 하나 있어요.
 
-- **`dtype=`을 주지 않으면** 결과의 dtype은 `x`의 것으로 이미 정해져 있어요. 그래서 `fill_value`가 그 dtype에 **값을 잃지 않고** 들어갈 수 있어야 해요. 배열의 칸에 값을 대입하는 `x[...] = fill_value`와 같은 규칙이에요([원소 종류(dtype)](/api/array/dtypes/)의 암묵적 변환).
-- **`dtype=`을 주면** `full`과 같아요. 분명한 요청이므로 값을 잃더라도 바꿔요.
+- `dtype=`을 주지 않으면 결과의 dtype은 `x`의 것으로 이미 정해져 있어요. 그래서 `fill_value`가 그 dtype에 값을 잃지 않고 들어갈 수 있어야 해요. 배열의 칸에 값을 대입하는 `x[...] = fill_value`와 같은 규칙이에요([원소 종류(dtype)](/api/array/dtypes/)의 암묵적 변환).
+- `dtype=`을 주면 `full`과 같아요. 분명한 요청이므로 값을 잃더라도 바꿔요.
 
 ```python
 >>> ints = sd.asarray([1, 2, 3])
@@ -346,7 +346,7 @@ array([1.5, 1.5, 1.5], dtype=float64)
 
 정수 배열에 `1.5`를 조용히 `1`로 넣어 버리면 알아채기 어려운 실수가 되기 때문에 에러로 알려 줘요. 정말 `1`로 채우려는 것이면 `dtype=sd.int64`를, 실수 배열을 원했던 것이면 `dtype=sd.float64`를 주세요.
 
-값을 잃지 않는 방향, 즉 `bool < int64 < float64 < complex128`에서 **오른쪽으로 가는** 변환은 언제나 돼요. 왼쪽으로 가는 변환은 값이 실제로 딱 맞아도(`2.0`처럼) 에러예요. 값이 아니라 종류만 보고 판단하기 때문이에요.
+`bool < int64 < float64 < complex128`에서 오른쪽으로 가는 변환은 값을 잃지 않으므로 언제나 돼요. 왼쪽으로 가는 변환은 값이 실제로 딱 맞아도(`2.0`처럼) 에러예요. 값이 아니라 종류만 보고 판단하기 때문이에요.
 
 | `x`의 dtype | `fill_value` | `dtype=` 없음 |
 |---|---|---|
@@ -461,9 +461,9 @@ array([5, 5, 5], dtype=int64)
 
 ## numpy를 아는 분께
 
-- 모양에 **리스트를 받지 않아요.** `np.zeros([2, 3])`은 되지만 `sd.zeros([2, 3])`은 `TypeError`예요. tuple로 쓰세요.
+- 모양에 리스트를 받지 않아요. `np.zeros([2, 3])`은 되지만 `sd.zeros([2, 3])`은 `TypeError`예요. tuple로 쓰세요.
 - `zeros(())`처럼 0차원 배열을 만들 수 없어요.
-- **`full_like`는 dtype 없이 값을 잃는 변환을 하지 않아요.** `np.full_like(정수 배열, 1.5)`는 조용히 1로 채우지만 stardust는 `TypeError`예요. `dtype=`을 주면 numpy처럼 바꿔요.
+- `full_like`는 dtype 없이 값을 잃는 변환을 하지 않아요. `np.full_like(정수 배열, 1.5)`는 조용히 1로 채우지만 stardust는 `TypeError`예요. `dtype=`을 주면 numpy처럼 바꿔요.
 - `fill_value`에 배열을 줄 수 없어요. 숫자 하나만 받아요.
 - `order=`, `like=`, `subok=` 인자와 `_like` 함수의 `shape=` 인자는 없어요.
 - dtype은 넷뿐이에요. `dtype=float`처럼 Python 타입을 쓸 수 없어요.
