@@ -104,8 +104,10 @@ inline double skewness_x(DD x) {
 // 1/4, the next term below 1e-22 at |x| = 1e-4).
 inline double kurtosis_x(DD x) {
     if (std::fabs(x.hi) < 1e-4) {
+        // clang-format off
         constexpr double k[7] = {2.4, -28.917688340799625, 152.61603300554222, -666.448329815961,
                                  2877.87676765926, -12120.830749353447, 50326.42880216044};
+        // clang-format on
         double r = k[6];
         for (int i = 5; i >= 0; --i) r = r * x.hi + k[i];
         return r;

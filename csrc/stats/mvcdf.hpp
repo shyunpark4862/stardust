@@ -66,6 +66,7 @@ inline double mills_lower(double t) { return kSqrt2OverPi / special::Erfcx::f(-t
 // Piessens, de Doncker, Ueberhuber, Kahaner, "QUADPACK", 1983): the nodes in
 // (0, 1) from the outside in, then 0; the Gauss nodes are xgk[1], xgk[3], ..., xgk[9].
 namespace gk {
+// clang-format off
 inline constexpr double xgk[11] = {
     0.995657163025808080735527280689003, 0.973906528517171720077964012084452, 0.930157491355708226001207180059508,
     0.865063366688984510732096688423493, 0.780817726586416897063717578345042, 0.679409568299024406234327365114874,
@@ -79,6 +80,7 @@ inline constexpr double wgk[11] = {
 inline constexpr double wg[5] = {0.066671344308688137593568809893332, 0.149451349150580593145776339657697,
                                  0.219086362515982043995534934228163, 0.269266719309996355091226921569469,
                                  0.295524224714752870173892994651244};
+// clang-format on
 }  // namespace gk
 
 struct Panel {

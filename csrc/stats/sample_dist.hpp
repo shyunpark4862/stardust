@@ -259,7 +259,13 @@ inline double gamma_draw(Words& w, const GammaPrep& g) {
 // log k! for an integer k >= 0 in plain double, for the discrete rejections' first test: a
 // table below 16, then Stirling's series to 1 / (1260 k^5) (the next term, 1 / (1680 k^7), is
 // below 2.3e-12 from 16 on).
-inline constexpr double kLogFactSmall[16] = {0.0, 0.0, 0.693147180559945, 1.791759469228055, 3.1780538303479444, 4.787491742782047, 6.579251212010101, 8.525161361065415, 10.60460290274525, 12.801827480081467, 15.104412573075514, 17.502307845873887, 19.987214495661885, 22.55216385312342, 25.191221182738683, 27.89927138384089};
+// clang-format off
+inline constexpr double kLogFactSmall[16] = {
+    0.0, 0.0, 0.693147180559945, 1.791759469228055,
+    3.1780538303479444, 4.787491742782047, 6.579251212010101, 8.525161361065415,
+    10.60460290274525, 12.801827480081467, 15.104412573075514, 17.502307845873887,
+    19.987214495661885, 22.55216385312342, 25.191221182738683, 27.89927138384089};
+// clang-format on
 inline double log_fact(double k) {
     if (k < 16.0) return kLogFactSmall[static_cast<int>(k)];
     const double r = 1.0 / k, r2 = r * r;

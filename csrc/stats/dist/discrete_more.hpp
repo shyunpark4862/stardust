@@ -773,10 +773,12 @@ inline double exp_e1(double x) {
 }
 
 // B_2j / (2j)!, j = 1..10.
+// clang-format off
 inline constexpr double kBernoulliOverFactorial[10] = {
     1.0 / 12.0, -1.0 / 720.0, 1.0 / 30240.0, -1.0 / 1209600.0, 1.0 / 47900160.0,
     -691.0 / 1307674368000.0, 1.0 / 74724249600.0, -3617.0 / 10670622842880000.0,
     43867.0 / 5109094217170944000.0, -174611.0 / 802857662698291200000.0};
+// clang-format on
 
 // Phi(p, 1, v) = sum_{m >= 0} p^m / (v + m) for lw = -log p <= 0.1 by Euler-Maclaurin: the
 // first terms directly until V = v + M >= 20, then with f(x) = e^(-lw x) / (V + x)

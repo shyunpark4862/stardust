@@ -59,6 +59,7 @@ constexpr double kTheta9 = 2.097847961257068e0;
 constexpr double kTheta13 = 4.25;
 
 // The Padé coefficients b_0 .. b_m (b_j proportional to (2m-j)! / (j! (m-j)!), b_m = 1).
+// clang-format off
 constexpr double kB3[] = {120., 60., 12., 1.};
 constexpr double kB5[] = {30240., 15120., 3360., 420., 30., 1.};
 constexpr double kB7[] = {17297280., 8648640., 1995840., 277200., 25200., 1512., 56., 1.};
@@ -68,6 +69,7 @@ constexpr double kB13[] = {64764752532480000., 32382376266240000., 7771770303897
                            129060195264000.,   10559470521600.,    670442572800.,    33522128640.,
                            1323241920.,        40840800.,          960960.,          16380.,
                            182.,               1.};
+// clang-format on
 
 // log2 |c_(2m+1)|, the leading coefficient of r_m's backward error series:
 // (m!)^2 / ((2m)! (2m+1)!).
