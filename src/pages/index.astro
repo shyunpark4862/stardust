@@ -6,10 +6,27 @@ import Section from '../components/Section.astro';
 import LinkCard from '../components/LinkCard.astro';
 import Button from '../components/Button.astro';
 import Glyph from '../components/Glyph.astro';
+import AreaArt from '../components/AreaArt.astro';
+import { getCollection } from 'astro:content';
 import { areas } from '../data/nav';
 import { documentedAreas } from '../data/api';
 
 const documented = await documentedAreas();
+
+// The trust strip: how much there is, and that every example ran. An example
+// is one `>>> ` line, the unit the example checker counts.
+const apiPages = await getCollection('api');
+const articles = await getCollection('internals');
+const examples = [...apiPages, ...articles].reduce(
+  (n, e) => n + ((e.body ?? '').match(/^[ \t]*>>> /gm)?.length ?? 0),
+  0,
+);
+const facts = [
+  { value: apiPages.length, label: 'API 문서' },
+  { value: articles.length, label: '구현 글' },
+  { value: examples, label: '실행해서 맞춰 본 예제' },
+  { value: areas.length, label: '영역, 하나의 규칙' },
+];
 
 const strengths = [
   {
@@ -93,6 +110,17 @@ beta = sd.linalg.lstsq(X, y).solution
     title={`${countWord} 영역, 하나의 라이브러리`}
     lead="import stardust as sd 한 줄이면 돼요. 영역은 이름공간으로 나뉘지만 규칙은 함께 써요."
   >
+    <ul class="facts" data-reveal>
+      {
+        facts.map((f) => (
+          <li class="fact">
+            <span class="fact__value">{f.value.toLocaleString('ko-KR')}</span>
+            <span class="fact__label">{f.label}</span>
+          </li>
+        ))
+      }
+    </ul>
+
     <div class="areas">
       {
         areas.map((a, i) => (
@@ -101,9 +129,11 @@ beta = sd.linalg.lstsq(X, y).solution
               href={documented.includes(a.key) ? `/api/${a.key}/` : undefined}
               title={a.name}
               meta={a.ns}
+              area={a.key}
               badge={a.status === 'done' ? '구현 완료' : '구현 중'}
               badgeTone={a.status === 'done' ? 'ok' : 'neutral'}
             >
+              <AreaArt slot="art" area={a.key} />
               {a.desc}
             </LinkCard>
           </div>
@@ -200,6 +230,36 @@ beta = sd.linalg.lstsq(X, y).solution
     margin-top: var(--space-3);
     font-size: var(--text-base);
     line-height: 1.75;
+    color: var(--fg-muted);
+  }
+
+  /* ---- Facts strip ---- */
+  .facts {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin: 0 0 var(--space-10);
+    padding: 0;
+    list-style: none;
+    border-block: 1px solid var(--line);
+  }
+  .fact {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-5) var(--space-6);
+  }
+  .fact + .fact {
+    border-left: 1px solid var(--line);
+  }
+  .fact__value {
+    font-size: var(--text-3xl);
+    font-weight: 650;
+    letter-spacing: var(--tracking-display);
+    font-variant-numeric: tabular-nums;
+    color: var(--fg);
+  }
+  .fact__label {
+    font-size: var(--text-sm);
     color: var(--fg-muted);
   }
 
@@ -389,6 +449,15 @@ beta = sd.linalg.lstsq(X, y).solution
     }
     .areas {
       grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .facts {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .fact:nth-child(3) {
+      border-left: 0;
+    }
+    .fact:nth-child(n + 3) {
+      border-top: 1px solid var(--line);
     }
     /* Two columns: only the first card is wide (2, 1+1, 1+1, 1+1). */
     .areas__cell--regression {

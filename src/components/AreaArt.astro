@@ -1,0 +1,114 @@
+---
+/**
+ * A small line drawing for an area card on the landing page: what the area
+ * works with, in the area's colour. Decorative only.
+ */
+interface Props {
+  area: string;
+}
+const { area } = Astro.props;
+
+// Bell curve and gamma-like curve, sampled once at build time.
+const pts = (f: (x: number) => number, x0: number, x1: number, n = 48) =>
+  Array.from({ length: n + 1 }, (_, i) => {
+    const x = x0 + ((x1 - x0) * i) / n;
+    return [x, f(x)] as const;
+  });
+const path = (p: readonly (readonly [number, number])[]) =>
+  p.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join(' ');
+const bell = pts((x) => 56 - 44 * Math.exp(-(((x - 80) / 18) ** 2)), 20, 140);
+const gamma = pts((x) => {
+  const t = (x - 16) / 22;
+  return 58 - 46 * (t > 0 ? t * Math.exp(1 - t) : 0);
+}, 16, 150);
+// Fixed pseudo-random points so every build draws the same picture.
+const rand = (seed: number) => () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+const r1 = rand(7);
+const dots = Array.from({ length: 34 }, () => [16 + r1() * 136, 8 + r1() * 50, 0.35 + r1() * 0.65]);
+const r2 = rand(3);
+const scatter = Array.from({ length: 16 }, (_, i) => {
+  const x = 20 + i * 8 + r2() * 4;
+  return [x, 54 - (x - 20) * 0.3 + (r2() - 0.5) * 14];
+});
+---
+
+<svg class="art" viewBox="0 0 168 64" preserveAspectRatio="xMinYMid meet" aria-hidden="true">
+  {
+    area === 'array' &&
+      [0, 1, 2].map((r) =>
+        [0, 1, 2, 3, 4, 5].map((c) => (
+          <rect x={16 + c * 22} y={6 + r * 19} width="17" height="15" rx="3" fill="var(--area)" opacity={0.12 + ((r * 6 + c) % 7) * 0.11} />
+        )),
+      )
+  }
+  {
+    area === 'linalg' && (
+      <g fill="none" stroke="var(--area)" stroke-width="1.6" stroke-linecap="round">
+        <path d="M22 6h-6v52h6M98 6h6v52h-6" />
+        {[0, 1, 2, 3].map((i) =>
+          [0, 1, 2, 3].map((j) => (
+            <circle cx={30 + j * 20} cy={13 + i * 13} r={i === j ? 4 : j > i ? 2.4 : 1.4} fill="var(--area)" stroke="none" opacity={i === j ? 1 : j > i ? 0.5 : 0.25} />
+          )),
+        )}
+        <path d="M118 32h18m-6-6 6 6-6 6" />
+        <path d="M148 10v44" opacity="0.4" />
+      </g>
+    )
+  }
+  {
+    area === 'frame' && (
+      <g>
+        <rect x="16" y="6" width="136" height="12" rx="3" fill="var(--area)" opacity="0.85" />
+        {[0, 1, 2].map((r) => (
+          <g>
+            {[0, 1, 2, 3].map((c) => (
+              <rect x={16 + c * 35} y={24 + r * 13} width={c === 0 ? 22 : 30} height="8" rx="2" fill="var(--area)" opacity={r === 1 && c === 2 ? 0.08 : 0.22} />
+            ))}
+          </g>
+        ))}
+        <text x="92" y="44" font-size="7" font-family="var(--font-mono)" fill="var(--area)">NA</text>
+      </g>
+    )
+  }
+  {
+    area === 'special' && (
+      <g fill="none" stroke-linecap="round">
+        <path d="M16 58H156M16 58V6" stroke="var(--line-strong)" stroke-width="1" />
+        <path d={path(gamma)} stroke="var(--area)" stroke-width="2" />
+        <path d={path(gamma.map(([x, y]) => [x, 58 - (58 - y) * 0.55]))} stroke="var(--area)" stroke-width="1.4" opacity="0.45" />
+      </g>
+    )
+  }
+  {
+    area === 'stats' && (
+      <g>
+        <path d={`${path(bell.filter(([x]) => x <= 92))} L92 56 L20 56 Z`} fill="var(--area)" opacity="0.16" />
+        <path d={path(bell)} fill="none" stroke="var(--area)" stroke-width="2" stroke-linecap="round" />
+        <path d="M16 56H148" stroke="var(--line-strong)" stroke-width="1" />
+      </g>
+    )
+  }
+  {
+    area === 'regression' && (
+      <g>
+        {scatter.map(([x, y]) => (
+          <circle cx={x} cy={y} r="2.6" fill="var(--area)" opacity="0.45" />
+        ))}
+        <path d="M16 56L156 14" stroke="var(--area)" stroke-width="2" stroke-linecap="round" />
+      </g>
+    )
+  }
+  {
+    area === 'random' &&
+      dots.map(([x, y, o]) => <circle cx={x} cy={y} r={1 + o * 1.8} fill="var(--area)" opacity={o * 0.8} />)
+  }
+</svg>
+
+<style>
+  .art {
+    display: block;
+    width: 100%;
+    height: 64px;
+    margin-bottom: var(--space-5);
+  }
+</style>

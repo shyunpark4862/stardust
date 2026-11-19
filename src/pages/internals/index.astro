@@ -31,6 +31,7 @@ const groups: NavGroup[] = [
           href={written.includes(a.key) ? `/internals/${a.key}/` : undefined}
           title={a.name}
           meta={a.ns}
+          area={a.key}
           badge={written.includes(a.key) ? `글 ${count(a.key)}편` : '준비 중'}
           badgeTone={written.includes(a.key) ? 'accent' : 'neutral'}
         >

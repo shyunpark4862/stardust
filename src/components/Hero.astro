@@ -210,7 +210,7 @@ import Button from './Button.astro';
   .hero__lead,
   .hero__actions,
   .hero__foot {
-    animation: rise 1100ms var(--ease) both;
+    animation: rise 1100ms var(--ease) backwards;
   }
   .hero__eyebrow {
     animation-delay: 150ms;
@@ -231,15 +231,18 @@ import Button from './Button.astro';
     animation-name: fade;
     animation-delay: 1200ms;
   }
+  /* The entrance starts from a faint, not an invisible, state: where
+     animations never run (a background tab, print, some readers) the text
+     is still there to read. */
   @keyframes rise {
     from {
-      opacity: 0;
+      opacity: 0.25;
       transform: translateY(18px);
     }
   }
   @keyframes fade {
     from {
-      opacity: 0;
+      opacity: 0.25;
     }
   }
 

@@ -154,3 +154,55 @@
   --btn-secondary-bg: rgb(255 255 255 / 0.04);
   --btn-secondary-bg-hover: rgb(255 255 255 / 0.1);
 }
+
+/* ---- Area colours ----
+ * Each area has one hue for wayfinding: the area name in the sidebar, the
+ * current page, the path above the title, the table of contents and the
+ * cards that lead to it. Text stops are 4.5:1 or better on white. Anything
+ * outside an area (and code) keeps the site blue. */
+:root,
+[data-area] {
+  --area: var(--accent);
+  --area-soft: var(--accent-soft);
+  --area-line: var(--accent-soft-line);
+}
+[data-area='core'] {
+  --area: #4b566c;
+  --area-soft: #f1f3f8;
+  --area-line: #cbd3e1;
+}
+[data-area='array'] {
+  --area: #2558e0;
+  --area-soft: #eef3ff;
+  --area-line: #cbdcff;
+}
+[data-area='linalg'] {
+  --area: #6a3fd1;
+  --area-soft: #f4f0ff;
+  --area-line: #d9ccfb;
+}
+[data-area='frame'] {
+  --area: #0b7a6d;
+  --area-soft: #e8f6f3;
+  --area-line: #b3e0d7;
+}
+[data-area='special'] {
+  --area: #b0500a;
+  --area-soft: #fff3e6;
+  --area-line: #f6d2ad;
+}
+[data-area='stats'] {
+  --area: #23793c;
+  --area-soft: #ebf6ee;
+  --area-line: #bfe2c9;
+}
+[data-area='regression'] {
+  --area: #bf325c;
+  --area-soft: #fdedf2;
+  --area-line: #f5c3d2;
+}
+[data-area='random'] {
+  --area: #0c6f8c;
+  --area-soft: #e7f5f9;
+  --area-line: #b2dce8;
+}

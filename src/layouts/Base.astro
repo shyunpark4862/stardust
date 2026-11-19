@@ -35,18 +35,26 @@ const fullTitle = title ? `${title} · stardust` : 'stardust';
     <main id="main"><slot /></main>
     <Footer />
     <script>
-      const items = document.querySelectorAll<HTMLElement>('[data-reveal]');
-      const io = new IntersectionObserver(
-        (entries) => {
-          for (const e of entries) {
-            if (!e.isIntersecting) continue;
-            e.target.classList.add('is-in');
-            io.unobserve(e.target);
-          }
-        },
-        { rootMargin: '0px 0px -10% 0px' },
-      );
-      items.forEach((el) => io.observe(el));
+      // Hide only what starts below the fold, and only in a visible tab with
+      // motion allowed; IntersectionObserver brings each one back.
+      const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (!calm && !document.hidden && 'IntersectionObserver' in window) {
+        const io = new IntersectionObserver(
+          (entries) => {
+            for (const e of entries) {
+              if (!e.isIntersecting) continue;
+              e.target.classList.remove('reveal-wait');
+              io.unobserve(e.target);
+            }
+          },
+          { rootMargin: '0px 0px -10% 0px' },
+        );
+        document.querySelectorAll<HTMLElement>('[data-reveal]').forEach((el) => {
+          if (el.getBoundingClientRect().top < innerHeight * 0.9) return;
+          el.classList.add('reveal-wait');
+          io.observe(el);
+        });
+      }
     </script>
   </body>
 </html>

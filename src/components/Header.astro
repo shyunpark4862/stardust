@@ -1,5 +1,6 @@
 ---
 import Logo from './Logo.astro';
+import Search from './Search.astro';
 import { topNav } from '../data/nav';
 
 interface Props {
@@ -14,6 +15,7 @@ const path = Astro.url.pathname;
   <div class="container header__inner">
     <Logo />
     <nav class="header__nav" aria-label="주 메뉴">
+      <Search />
       {
         topNav.map((item) => (
           <a class="header__link" href={item.href} aria-current={path.startsWith(item.href) ? 'page' : undefined}>

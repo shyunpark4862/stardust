@@ -37,6 +37,7 @@ const groups: NavGroup[] = [
             href={has ? `/api/${a.key}/` : undefined}
             title={a.name}
             meta={a.ns}
+            area={a.key}
             badge={!has ? '준비 중' : sample(a.key) ? '샘플' : `문서 ${count(a.key)}개`}
             badgeTone={has && !sample(a.key) ? 'accent' : 'neutral'}
           >

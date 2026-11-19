@@ -127,26 +127,28 @@ samp {
   white-space: nowrap;
 }
 
-/* ---- Scroll reveal (progressive: content is visible without JS) ---- */
-.js [data-reveal] {
-  opacity: 0;
-  transform: translateY(12px);
+/* ---- Scroll reveal ----
+ * Content is visible by default. The script hides only elements that start
+ * below the fold (.reveal-wait) and shows them as they scroll in, so a page
+ * whose script or animations never run still shows everything. */
+[data-reveal] {
   transition:
     opacity 700ms var(--ease),
     transform 700ms var(--ease);
   transition-delay: calc(var(--reveal-i, 0) * 70ms);
 }
 
-.js [data-reveal].is-in {
-  opacity: 1;
-  transform: none;
+[data-reveal].reveal-wait {
+  opacity: 0;
+  transform: translateY(12px);
 }
 
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
   }
-  .js [data-reveal] {
+  [data-reveal],
+  [data-reveal].reveal-wait {
     opacity: 1;
     transform: none;
     transition: none;

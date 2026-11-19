@@ -32,11 +32,15 @@ interface Props {
   area?: AreaNav;
   /** Set the title in the code font (function pages). */
   monoTitle?: boolean;
+  /** Articles: the head becomes a dark band in the area's colour. */
+  band?: boolean;
+  /** Short facts under the lead (reading time, sections). */
+  meta?: string[];
 }
 const fm = Astro.props.frontmatter ?? (Astro.props as Required<Props>['frontmatter']);
 const { title, description, section, sample = false } = fm;
 const groups = Astro.props.groups ?? sidebars[section] ?? [];
-const { area, monoTitle = false } = Astro.props;
+const { area, monoTitle = false, band = false, meta = [] } = Astro.props;
 // Table of contents as a tree: each h2 with the h3s under it.
 const labels = new Map<string, string>();
 for (const h of Astro.props.headings ?? []) if (h.parts) labels.set(h.slug, await tocLabel(h));
@@ -53,7 +57,7 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
 
 <Base title={title} description={description && plainText(description)}>
   <Fragment set:html={`<style>${mathCss()}</style>`} />
-  <div class:list={['container', 'docs', toc.length === 0 && 'docs--wide']}>
+  <div class:list={['container', 'docs', toc.length === 0 && 'docs--wide']} data-area={area?.current.key}>
     <aside class="docs__side">
       <button class="side-toggle" type="button" aria-expanded="false" aria-controls="side-nav">
         <span>메뉴</span>
@@ -79,8 +83,8 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
                   {area.all.map((a) => (
                     <li>
                       {a.href ? (
-                        <a class="area__item" href={a.href} aria-current={a.key === area.current.key ? 'true' : undefined}>
-                          <span>{a.name}</span>
+                        <a class="area__item" href={a.href} data-area={a.key} aria-current={a.key === area.current.key ? 'true' : undefined}>
+                          <span class="area__dot-name"><i class="area__dot" aria-hidden="true"></i>{a.name}</span>
                           <code>{a.ns}</code>
                         </a>
                       ) : (
@@ -157,7 +161,7 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
     </aside>
 
     <article class="docs__main">
-      <header class="page-head">
+      <header class:list={['page-head', band && 'page-head--band']}>
         {
           crumbs.length > 0 && (
             <nav class="crumbs" aria-label="현재 위치">
@@ -171,6 +175,16 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
         }
         <h1 class:list={['page-head__title', monoTitle && 'page-head__title--mono']}>{title}</h1>
         {description && <p class="page-head__lead" set:html={inlineHtml(description)} />}
+        {
+          meta.length > 0 && (
+            <ul class="page-head__meta">
+              {area && <li class="page-head__ns">{area.current.ns}</li>}
+              {meta.map((m) => (
+                <li>{m}</li>
+              ))}
+            </ul>
+          )
+        }
         <slot name="head" />
         {
           sample && (
@@ -474,13 +488,13 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
     background: var(--bg-subtle);
   }
   .area__home[aria-current='page'] {
-    background: var(--accent-soft);
+    background: var(--area-soft);
   }
   .area__ns {
     font-family: var(--font-mono);
     font-size: var(--text-sm);
     font-weight: 600;
-    color: var(--accent);
+    color: var(--area);
   }
   .area__name {
     font-size: var(--text-md);
@@ -547,8 +561,19 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
     color: var(--fg);
   }
   .area__item[aria-current='true'] {
-    color: var(--accent);
+    color: var(--area);
     font-weight: 600;
+  }
+  .area__dot-name {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .area__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: var(--radius-full);
+    background: var(--area);
   }
   .area__item--off {
     color: var(--fg-subtle);
@@ -741,8 +766,8 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
     background: var(--bg-subtle);
   }
   .side__link[aria-current='page'] {
-    background: var(--accent-soft);
-    color: var(--accent);
+    background: var(--area-soft);
+    color: var(--area);
     font-weight: 600;
   }
 
@@ -776,10 +801,10 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
     transition: color var(--dur-fast) var(--ease);
   }
   .crumbs a:hover {
-    color: var(--accent);
+    color: var(--area);
   }
   .crumbs li:last-child a {
-    color: var(--accent);
+    color: var(--area);
     font-weight: 600;
   }
 
@@ -862,6 +887,56 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
     line-height: 1.65;
     color: var(--fg-muted);
   }
+
+  /* Article head: a light band in the area's colour with a faint scatter of
+     stars, so an article reads apart from a reference page at a glance
+     without weighing on the white page. */
+  .page-head--band {
+    position: relative;
+    overflow: hidden;
+    padding: var(--space-8);
+    border: 1px solid var(--area-line);
+    border-radius: var(--radius-lg);
+    background:
+      radial-gradient(1.5px 1.5px at 78% 24%, color-mix(in srgb, var(--area) 55%, transparent), transparent),
+      radial-gradient(1px 1px at 86% 58%, color-mix(in srgb, var(--area) 45%, transparent), transparent),
+      radial-gradient(1px 1px at 66% 40%, color-mix(in srgb, var(--area) 35%, transparent), transparent),
+      radial-gradient(1.5px 1.5px at 93% 34%, color-mix(in srgb, var(--area) 40%, transparent), transparent),
+      radial-gradient(1px 1px at 72% 80%, color-mix(in srgb, var(--area) 30%, transparent), transparent),
+      radial-gradient(90% 120% at 100% 0%, color-mix(in srgb, var(--area) 14%, transparent), transparent 60%),
+      linear-gradient(180deg, var(--area-soft), var(--bg));
+  }
+  .page-head--band .page-head__title {
+    color: var(--fg);
+  }
+  .page-head__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-4);
+    margin: var(--space-6) 0 0;
+    padding: 0;
+    list-style: none;
+    font-size: var(--text-sm);
+    color: var(--fg-subtle);
+  }
+  .page-head__meta li + li::before {
+    content: '·';
+    margin-right: var(--space-4);
+    color: var(--fg-subtle);
+  }
+  .page-head__ns {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    color: var(--area);
+  }
+  .page-head--band + .prose {
+    margin-top: var(--space-10);
+  }
+  @media (max-width: 640px) {
+    .page-head--band {
+      padding: var(--space-6) var(--space-5);
+    }
+  }
   .page-head__sample {
     display: flex;
     align-items: center;
@@ -906,8 +981,8 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
     color: var(--fg);
   }
   .toc__link.is-active {
-    border-left-color: var(--accent);
-    color: var(--accent);
+    border-left-color: var(--area);
+    color: var(--area);
     font-weight: 600;
   }
 

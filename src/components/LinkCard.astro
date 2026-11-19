@@ -7,14 +7,17 @@ interface Props {
   meta?: string;
   badge?: string;
   badgeTone?: 'neutral' | 'accent' | 'ok' | 'warn';
+  /** Area key: the card takes that area's colour (see tokens.css). */
+  area?: string;
 }
-const { href, title, meta, badge, badgeTone = 'neutral' } = Astro.props;
+const { href, title, meta, badge, badgeTone = 'neutral', area } = Astro.props;
 const Tag = href ? 'a' : 'div';
 ---
 
-<Tag class:list={['card', href && 'card--link']} href={href}>
+<Tag class:list={['card', href && 'card--link', area && 'card--area']} href={href} data-area={area}>
+  <slot name="art" />
   <div class="card__top">
-    {meta && <span class="card__meta">{meta}</span>}
+    {meta && <span class="card__meta">{area && <i class="card__dot" aria-hidden="true" />}{meta}</span>}
     {badge && <Badge tone={badgeTone}>{badge}</Badge>}
   </div>
   <p class="card__title">{title}</p>
@@ -35,7 +38,7 @@ const Tag = href ? 'a' : 'div';
       transform var(--dur) var(--ease);
   }
   .card--link:hover {
-    border-color: var(--accent-soft-line);
+    border-color: var(--area-line, var(--accent-soft-line));
     box-shadow: var(--shadow-md);
     transform: translateY(-2px);
   }
@@ -46,9 +49,18 @@ const Tag = href ? 'a' : 'div';
     min-height: 22px;
   }
   .card__meta {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
     font-family: var(--font-mono);
     font-size: var(--text-sm);
-    color: var(--accent);
+    color: var(--area, var(--accent));
+  }
+  .card__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: var(--radius-full);
+    background: var(--area);
   }
   .card__title {
     margin-top: var(--space-4);
