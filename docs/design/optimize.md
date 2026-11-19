@@ -1,6 +1,6 @@
 # 최적화 영역 설계 (sd.optimize)
 
-> 상태: **설계 초안** (2026-11-20). 큰 결정(§1.1 O1–O8)은 사용자가 정했다. 나머지는 안이고, 시작 전에 정할 것은 §9에 있다.
+> 상태: **설계 초안** (2026-11-20). 큰 결정(§1.1 O1–O17)은 사용자가 정했다. 나머지는 안이고, 시작 전에 정할 것은 §9에 있다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -25,6 +25,15 @@
 | O6 nls 옮기기 | `regression.nls`의 LM·TRF 커널과 정확한 야코비안을 `sd.optimize`로 옮긴다. `nls`는 그것을 쓰고 추론만 맡는다. 옮기기이므로 `nls`의 결과는 비트까지 같다 |
 | O7 전용 풀이는 그대로 | special·stats 역함수의 근 찾기(`csrc/special/halley.hpp` 등), glm·rlm의 IRLS, 정규화의 좌표 하강, quantreg의 내부점법·단체법, MM의 S 단계 뉴턴은 바꾸지 않는다. 문제의 구조를 쓰는 풀이라 범용 최적화로 바꾸면 느려지고 정확도를 잃는다 |
 | O8 확률적 최적화 | 이번 영역에 넣지 않는다. 자동 미분이 없어 쓸 곳이 적고, 결정론적 부분과 공유하는 코드도 거의 없다. 쓸 곳(회귀의 SGD 모형, 머신러닝·자동 미분 영역)이 생기면 그때 정한다 |
+| O9 scipy와 같은 걸음 (O0) | 각 방법은 scipy 1.18.1과 같은 걸음이다: 같은 문제에서 반복점, `nfev`·`njev`, 멈춘 이유가 같다. 반올림의 순서가 다른 곳(합, 노름)은 끝자리가 다를 수 있다. 비트까지 같게 하지는 않는다 (사용자 결정 2026-11-20) |
+| O10 통합 함수만 (O0) | `root_scalar`, `minimize_scalar`, `minimize`, `root`, `least_squares`만 두고 scipy의 개별 함수(`brentq`, `toms748`, `bisect`, `newton`, `fminbound`, `fmin`, `fmin_bfgs`, `fsolve`, `leastsq` 등)는 두지 않는다. 방법은 `method=`로 고른다 (사용자 결정 2026-11-20) |
+| O11 curve_fit (O0) | 두지 않는다. 곡선 적합은 `regression.nls`가 한다 (사용자 결정 2026-11-20) |
+| O12 args (O0) | 사용자 함수의 추가 인자 `args=()`·`kwargs`는 두지 않는다(nls와 같다). 클로저나 lambda로 넘긴다 (사용자 결정 2026-11-20) |
+| O13 시험 문제와 대조 (O0) | Moré–Garbow–Hillstrom 35개와 scipy의 시험 함수로 문제 모음을 만들고 scipy 1.18.1과 비교한다. MINPACK(netlib)과 L-BFGS-B 3.0의 Fortran 원본을 gfortran으로 돌린 결과도 고정 데이터로 둔다(scipy가 옮긴 판과 원본을 둘 다 확인한다) (사용자 결정 2026-11-20) |
+| O14 반복 상한의 이름 (O0) | 반복 상한은 어디서나 `max_iter`(반복 수)와 `max_nfev`(함수 계산 수)다. regression(`glm`·`lasso`의 `max_iter`, `nls`의 `max_nfev`)과 같다. scipy의 `maxiter`·`maxfev`·`maxfun`은 함수의 키워드에서도 `options`의 키에서도 쓰지 않는다 (사용자 결정 2026-11-20) |
+| O15 방법 이름 (O0) | `method`는 소문자 이름만 받는다(`'bfgs'`, `'l-bfgs-b'`, `'nelder-mead'` …). 다른 대소문자는 소문자 꼴을 짚는 `ValueError`다 (사용자 결정 2026-11-20) |
+| O16 방법마다의 옵션 (O0) | scipy처럼 `options=`의 dict로 받는다. 방법이 모르는 키는 `ValueError`다(scipy는 경고만 낸다) (사용자 결정 2026-11-20) |
+| O17 `status`와 `message` (O0) | 방법마다 scipy의 번호와 글을 그대로 쓴다 (사용자 결정 2026-11-20) |
 
 ### 1.2 범위 (안)
 | 덩어리 | 공개 함수 | 방법 |
@@ -37,8 +46,8 @@
 | 방정식계의 근 | `root` | hybr(MINPACK hybrj·hybrd), lm |
 | 수치 미분 | `approx_fprime`, `check_grad` | 모수마다 간격을 고르는 5점 차분(nls의 것, O6) |
 
-- `curve_fit`은 두지 않는다: 같은 일을 `regression.nls`가 추론까지 해서 한다(§9 O0 질문 3).
-- `brentq` 같은 개별 함수 이름(scipy에 있는 `brentq`, `toms748`, `newton`, `fmin`, `fsolve` 등)을 따로 둘지는 §9 O0 질문 2다.
+- `curve_fit`은 두지 않는다: 같은 일을 `regression.nls`가 추론까지 해서 한다(O11).
+- `brentq` 같은 scipy의 개별 함수 이름은 두지 않는다(O10).
 
 ### 1.3 공통 원칙 (다른 영역에서 이어받는 것)
 - 입력은 위치로(`fun`, `x0`), 옵션은 키워드로만. 별칭이 없다. float64 실수로 계산한다(bool·int64는 바꿔서). complex는 `TypeError`다.
@@ -55,7 +64,7 @@
 ### 2.1 사용자 함수
 - 사용자 함수는 Python이다. 반복은 C++ 커널이 돌고 함수값은 Python 콜백으로 받는다(nls와 같다, regression §3.7). 콜백을 부르는 동안 GIL을 쥔다. 무거운 선형대수(QR·SVD)만 linalg의 10 µs 규칙으로 GIL을 놓는다.
 - 콜백에 넘기는 x는 `sd.ndarray`(float64, 1차원; 스칼라 함수는 Python float)다. 돌려받는 값은 `sd.ndarray`나 숫자 시퀀스를 받는다(nls의 `_values`와 같은 규칙). numpy 배열을 돌려줘도 받는다.
-- 추가 인자를 넘기는 `args=()`를 둘지는 §9 O0 질문 4다(nls에는 없다).
+- 추가 인자를 넘기는 `args=()`는 두지 않는다(O12, nls와 같다).
 - 배치 스칼라 함수(O5)의 콜백은 모양이 (...)인 `sd.ndarray`를 받아 같은 모양을 돌려준다. 이미 수렴한 원소는 다음 호출에서 뺀다(scipy `elementwise`와 같다).
 
 ### 2.2 결과 객체 `OptimizeResult`
@@ -101,7 +110,7 @@
 - hybr: MINPACK hybrj(야코비안을 주면)·hybrd(차분). Powell의 dogleg. lm: §3.4의 lmder 커널을 그대로 쓴다.
 
 ### 3.7 scipy와 같은 걸음
-- 각 방법은 scipy와 같은 순서의 계산을 목표로 한다. 그래서 같은 문제에서 반복점, `nfev`, 멈춘 이유가 scipy와 같다(반올림의 순서가 다른 곳은 끝자리가 다를 수 있다). 비트까지 같게 할지는 §9 O0 질문 1이다.
+- 각 방법은 scipy와 같은 순서의 계산을 목표로 한다. 그래서 같은 문제에서 반복점, `nfev`, 멈춘 이유가 scipy와 같다(반올림의 순서가 다른 곳은 끝자리가 다를 수 있다). 비트까지 같게 하지는 않는다(O9).
 
 ---
 
@@ -128,18 +137,43 @@
 
 ---
 
-## 7. 참값과 검증 (안)
-- **시험 문제**: Moré–Garbow–Hillstrom(1981)의 35개(최소제곱·최소화·방정식계; MINPACK의 시험 드라이버와 같은 시작점과 배수), NIST StRD 비선형 27개(이미 `tests/regression/data/nls/`), scipy의 시험 모음(`scipy/optimize/tests`의 Rosenbrock 등). CUTEst는 쓰지 않는다(§9 O0 질문 5).
-- **대조**: scipy 1.18.1(이미 설치됨)과 같은 문제에서 반복점·`nfev`·결과를 비교한다. MINPACK·L-BFGS-B는 원래의 Fortran 결과를 한 번 만들어 고정 데이터로 둘지 §9 O0 질문 5다.
-- **근의 참값**: 구간법의 근은 Arb로 f의 부호를 확정해 1 ULP 구간을 구한다(`tools/`에 도구).
-- nls를 옮긴 뒤 G6의 테스트 전부와 골든 출력(NIST 27개 × 시작점 2개, 두 방법)이 비트까지 같아야 한다.
+## 7. 참값과 검증
+O0에서 만든 것(2026-11-20). 문제 모음은 `tests/optimize/`, 고정 데이터는 `tests/optimize/data/`(1.8 MB), 만드는 도구는 `tools/`에 있다.
+
+- **시험 문제** (O13)
+  - `mgh.py`: Moré–Garbow–Hillstrom(1981)의 35개. 잔차 F: Rⁿ → Rᵐ와 해석적 야코비안을 한 번 쓰고 최소제곱(½ΣF²), 최소화(f = ΣF², 기울기 2JᵀF, 헤시안은 `ad.Dual2`), m = n인 방정식계에 함께 쓴다. 경우는 110개다: MINPACK 최소제곱 드라이버(file17·file19, 자료 file22)의 53개와, 드라이버에 없는 17개 문제를 논문의 크기에서 x0·10x0·100x0으로 57개. 시작점의 배수는 MINPACK `INITPT`의 규칙(0인 시작점은 배수의 벡터)이고, 논문이 열어 둔 것은 MINPACK을 따랐다(나선 골짜기의 x1 = 0에서 θ = sign(x2)/4). Gulf의 m은 99로 정했다(논문은 3 ≤ m ≤ 100). 논문의 최적값(`KNOWN`, 6자리)과 정확한 최소점(`MINIMIZERS`)이 함께 있다.
+  - `systems.py`: HYBRD·HYBRJ 드라이버(file15·file16, 자료 file21)의 14개 방정식계, 55개 경우. 넷(로젠브록의 식 순서, Wood·Watson·가변 차원은 최소제곱 문제의 기울기)이 MGH의 잔차와 다르다.
+  - MINPACK 드라이버에 있는 문제는 `SSQFCN`·`SSQJAC`·`VECFCN`·`VECJAC`의 연산 순서 그대로 썼다. 그래서 gfortran(`-ffp-contract=off`)으로 계산한 값과 비트까지 같다(드라이버의 시작점과 둘째 점, 216점; `data/minpack_functions.json`).
+  - `functions.py`: scipy의 시험 함수. Rosenbrock(`rosen`과 도함수·헤시안·곱), scipy `CheckOptimize`의 최대 엔트로피 문제, L-BFGS-B 3.0 driver1의 경계 있는 문제(n = 25); 스칼라 근 204개(scipy `_tstutils`의 original 5, Alefeld–Potra–Shi 154, Chandrupatla 45); 스칼라 최솟값 57개(scipy 2, Chandrupatla 최소화 논문 55와 그 구간 찾기); 선형 최소제곱 12개(scipy `test_lsq_linear`·`test_nnls`의 것과 결정적인 행렬 셋).
+  - scipy `_tstutils`의 이계도함수 셋이 틀렸다: `aps02_fpp`(부호), `aps09_fpp`(−12n(1 − nx)², 맞는 것은 −12n²(1 − nx)²), `aps10_fpp`(지수 인자의 −n 자리에 −nx). 모음에는 고친 식을 쓴다.
+  - `ad.py`: 같은 식을 세 가지 수로 계산한다. `FLOAT`(libm 함수, IEEE 특수값: 넘침은 inf, 0으로 나누기는 inf), `ARB`(python-flint), `Dual2`(2차 전진 자동 미분: 정확한 기울기와 헤시안).
+  - 검사(`tests/optimize/test_problems.py`): 모든 야코비안·기울기·헤시안·도함수를 Arb 320비트 중앙 차분(간격 2⁻⁸⁰)과 `Dual2`로 비교한다(상대 10⁻¹² 안; 실제 최대 2.4×10⁻¹⁵). 논문의 최소점에서 최적값, Fortran 값과 비트, scipy의 정의와 같음(위의 세 이계도함수 빼고)을 확인한다. Chandrupatla의 두 논문이 적은 횟수(근 45개의 함수 계산 수, 최소화 55개의 반복 수)를 scipy `elementwise`가 논문의 허용오차로 그대로 낸다: 옮겨 쓴 문제와 구간이 맞다는 증거다.
+- **근의 참값** (`tools/optimize_ref.py` → `data/scalar_roots.json`): 근 문제 204개마다, 코드에 적힌 함수(상수는 코드의 double)의 근을 1 ULP로 찾는다. double x에서 f의 부호를 Arb로 정밀도를 올리며 확정하고, double의 비트 순서로 이분한다(64번 안). 154개는 이웃한 두 double, 50개는 f가 정확히 0인 double이다(x⁴ − 1의 1, 코드가 0을 돌려주는 가지 등). scipy의 brentq·toms748·bisect가 수렴한 근은 모두 이 구간에서 xtol + rtol·|x| 안이거나, double로 계산한 f가 정확히 0인 점이다(Chandrupatla 7번 x·exp(−x⁻²)는 |x| < 0.037에서 double로 0이 된다).
+- **scipy 1.18.1 대조** (`tools/gen_optimize_scipy.py` → `data/scipy_*.json`, 3,781번): §1.2의 모든 방법을 scipy의 기본값으로 돌린 결과(x, fun 또는 cost, nfev·njev·nhev·nit, status, success, message, 또는 낸 예외). `least_squares` 'trf'·'lm' × 해석적·'2-point' 야코비안 × 110경우와 x0 둘레의 상자 경계, `minimize` 6방법(BFGS·L-BFGS-B는 차분도) × 110경우와 Rosenbrock·최대 엔트로피·driver1, `root` hybr·lm × 야코비안 유무 × 55계, `root_scalar` 6방법, `minimize_scalar` 3방법, `elementwise` 넷(scipy의 허용오차와 논문의 것), `lsq_linear`·`nnls`, `approx_fprime`·`check_grad`. 테스트는 표본을 다시 돌려 설치된 scipy가 기록과 같은지도 본다.
+- **Fortran 원본** (`tools/gen_optimize_fortran.py`): netlib의 MINPACK(file05)과 드라이버 넷, L-BFGS-B 3.0을 gfortran 16.2(`-O2 -ffp-contract=off`)로 빌드했다. 원본은 저장소에 넣지 않고 결과만 넣었다: 드라이버를 그대로 돌린 요약표(`minpack_drivers.txt`, `lbfgsb_drivers.txt`), 같은 루틴(LMDER1, LMDIF1, HYBRJ1, HYBRD1)을 같은 경우에서 돌리며 모든 계산점을 기록한 결과(`fortran_minpack.json`), scipy의 드라이버 고리(`_minimize_lbfgsb`)를 흉내 낸 setulb를 MINPACK 18문제(f = ΣF², 경계 없음과 x0 둘레의 상자)와 driver1에 돌린 결과(`fortran_lbfgsb.json`). driver1(m = 5)은 원본 드라이버와 같은 23반복, 28계산, f = 1.0834900834300615×10⁻⁹이다.
+- **scipy의 옮긴 판과 원본** (`data/fortran_vs_scipy.json`; scipy는 드라이버와 같은 옵션: `leastsq`(ftol = xtol = √u, gtol = 0, maxfev), `fsolve`(diag = 1, 즉 mode 2), `minimize(method='L-BFGS-B')`(같은 m, factr, pgtol)):
+
+  | 루틴 | 경우 | 계산점이 비트까지 같은 순서 | 같은 호출 수 | 같은 info | 마지막 x 상대 차이 ≤ 10⁻¹² | ≤ 10⁻⁶ |
+  |---|---:|---:|---:|---:|---:|---:|
+  | LMDER1 / `leastsq(Dfun=)` | 53 | 2 | 47 | 44 | 37 | 45 |
+  | LMDIF1 / `leastsq` | 53 | 1 | 34 | 52 | 13 | 31 |
+  | HYBRJ1 / `fsolve(fprime=)` | 55 | 4 | 42 | 50 | 37 | 44 |
+  | HYBRD1 / `fsolve` | 55 | 4 | 41 | 48 | 33 | 44 |
+  | setulb / L-BFGS-B | 83 | 7 | 74 (nfev와 nit) | | 62 | 79 |
+
+  - scipy 1.15부터의 C 판은 원본과 같은 알고리즘이지만 계산의 반올림이 다르다. 같은 x0에서 시작해 첫 시험점이 이미 끝자리 몇 ULP 다르다(LMDER1에서 53경우 가운데 47경우가 첫 시험점에서 갈린다). 함수값은 두 쪽이 같은 비트이므로(위의 216점) 차이는 루틴 안에서 생긴다. Fortran을 FMA로 빌드해도(`-ffp-contract=fast`) 같은 정도로 다르다.
+  - 그 차이가 잘 조건화된 문제에서는 커지지 않는다: Bard, Osborne 1·2 등은 info가 같고 마지막 x가 10⁻¹³ 안이다(Meyer는 멈춘 판정이 2와 3으로 갈리지만 x는 1.4×10⁻¹⁰ 안이다). 해가 특이하거나 유일하지 않은 문제(Powell 특이 함수의 x → 0, 랭크 1 선형, Chebyquad의 여러 근, Brown–Dennis)는 경로가 갈려 다른 점에서 멈추고 멈춘 이유도 다를 수 있다. 눈에 띄는 것: HYBRJ1·HYBRD1에서 Brown almost-linear n = 30·40은 Fortran이 info 1(수렴)인데 scipy는 info 5(진전 없음)이고, LMDER1의 Powell 특이 함수는 Fortran info 4, scipy info 8이다.
+  - scipy의 MINPACK 감싸개는 MINPACK이 시작하기 전에 x0에서 fun을 한 번 더 부른다(모양 확인 호출과 별개로; MINPACK의 nfev에는 들어가지 않는다).
+  - L-BFGS-B의 멈춤 글이 다르다: 원본 `CONVERGENCE: REL_REDUCTION_OF_F_<=_FACTR*EPSMCH`, scipy `CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH`(사이 띄어쓰기). 83경우 가운데 1경우는 멈춘 판정도 다르다.
+  - 그래서 O9("scipy와 같은 걸음")의 대상은 scipy 1.18.1이다. 이 라이브러리의 커널은 scipy의 C 판을 옮기므로, O1–O5의 대조는 `scipy_*.json`이 기준이고 Fortran의 결과는 원본에서 얼마나 떨어지는지를 보는 데 쓴다.
+- nls를 옮긴 뒤 G6의 테스트 전부와 골든 출력(NIST 27개 × 시작점 2개, 두 방법)이 비트까지 같아야 한다(O1). NIST StRD 비선형 27개는 이미 `tests/regression/data/nls/`에 있다. CUTEst는 쓰지 않는다.
 
 ---
 
 ## 8. 마일스톤 (안)
 | 마일스톤 | 내용 |
 |---|---|
-| O0 준비 | API 문서 초안, 결과 객체의 틀, 시험 문제 모음(MGH 35, scipy 시험 함수), 대조 도구, 벤치마크 기준선(scipy) |
+| O0 준비 | API 문서 초안, 결과 객체의 틀, 시험 문제 모음(MGH 35, scipy 시험 함수), 대조 도구, 벤치마크 기준선(scipy). 완료(2026-11-20): §7, docs/api/optimize.md, `bench/optimize/o0/` |
 | O1 수치 미분과 최소제곱 | `approx_fprime`, `check_grad`, nls 커널을 `least_squares`로 옮기기(nls 비트 동일) |
 | O2 스칼라 | `root_scalar`, `minimize_scalar`, 배치 `find_root bracket_root find_minimum bracket_minimum` |
 | O3 최소화 1 | `minimize`: Nelder–Mead, BFGS, L-BFGS-B |
@@ -152,12 +186,7 @@
 ---
 
 ## 9. 마일스톤을 시작하기 전에 물을 것
-- **O0**
-  1. scipy와 같은 걸음의 정도: 반복점과 `nfev`가 같은 것(끝자리는 다를 수 있음)으로 할지, 비트까지 같게 할지.
-  2. 개별 함수 이름(`brentq`, `toms748`, `bisect`, `newton`, `fmin`, `fminbound`, `fsolve`, `leastsq` 등)을 `root_scalar`·`minimize`와 따로 둘지.
-  3. `curve_fit`을 둘지(지금 안: 두지 않고 `regression.nls`를 쓴다).
-  4. 사용자 함수의 추가 인자 `args=()`를 둘지(nls에는 없다; 클로저로 대신할 수 있다).
-  5. 시험 문제와 대조: MGH 35개와 scipy 시험 함수로 충분한지, MINPACK·L-BFGS-B Fortran 원본의 결과를 고정 데이터로 만들지.
+- **O0**: 정했다(2026-11-20, O9–O13). O0에서 API 초안을 쓰며 생긴 질문 가운데 모든 마일스톤에 걸친 넷(반복 상한의 이름, 방법 이름의 대소문자, `options` dict, `status`·`message`)도 정했다(O14–O17). 마일스톤별로 남은 질문은 docs/api/optimize.md §9에 있다(`nfev`가 차분을 세는지, `least_squares`의 `bounds` 기본값, `root_scalar`의 결과 이름, `nnls`의 결과 등).
 - **O1**: 반복 안의 차분 꼴(2점 기본, 3·5점 선택), `least_squares`의 다듬기 옵션, `loss`·`x_scale`·`lsmr`·`jac_sparsity`를 넣을지, nls를 옮기는 순서(먼저 옮기고 비트 확인 뒤 공개 함수).
 - **O2**: 구간법의 기본 허용오차(scipy 값 또는 반올림까지), 근을 끼지 않는 구간의 결과(ValueError 또는 NaN과 `converged=False`), 배치의 콜백 규약(남은 원소만 넘기기).
 - **O3–O4**: 기본 방법(scipy: 경계가 없으면 BFGS, 있으면 L-BFGS-B), `callback`을 둘지, `hess_inv`를 결과에 둘지, 유한하지 않은 함수값의 처리(걸음 거절 또는 멈춤).

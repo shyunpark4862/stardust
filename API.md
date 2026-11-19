@@ -15,6 +15,7 @@
 | 통계 | `sd.stats` | [docs/api/stats.md](docs/api/stats.md) (검정은 나중에 따로) |
 | 회귀 | `sd.regression` | [docs/api/regression.md](docs/api/regression.md) (G1: `ols wls gls linregress`, G2: `glm`, G3: `ridge lasso elastic_net ridge_cv lasso_cv elastic_net_cv penalized_glm`, G4: `rlm theilslopes siegelslopes`, G5: `quantreg`, G6: `nls`) |
 | 난수 | `sd.random` | [docs/api/random.md](docs/api/random.md) (T3: Philox4×64-10, `default_rng`, `random`·`integers`·`choice`·`permutation`·`spawn`·`state`) |
+| 최적화 | `sd.optimize` | [docs/api/optimize.md](docs/api/optimize.md) (초안. O0: 결과 객체 `OptimizeResult`만; 풀이 함수 `root_scalar minimize_scalar find_root bracket_root find_minimum bracket_minimum least_squares lsq_linear nnls minimize root approx_fprime check_grad`는 O1–O5) |
 
 - 설계의 근거와 측정은 `docs/design/<영역>.md`, 통합의 결정은 [DESIGN.md](DESIGN.md)에 있다.
 

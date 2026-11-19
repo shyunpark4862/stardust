@@ -1,0 +1,1522 @@
+{
+ "scipy": "1.18.1",
+ "numpy": "2.5.4",
+ "rows": {
+  "1": [
+   {
+    "group": "root_scalar",
+    "method": "brentq",
+    "size": "aps.01",
+    "ms": 0.00837500556372106,
+    "nfev": 9,
+    "nit": 8
+   },
+   {
+    "group": "root_scalar",
+    "method": "toms748",
+    "size": "aps.01",
+    "ms": 0.17245899653062224,
+    "nfev": 10,
+    "nit": 5
+   },
+   {
+    "group": "root_scalar",
+    "method": "bisect",
+    "size": "aps.01",
+    "ms": 0.022709020413458347,
+    "nfev": 42,
+    "nit": 40
+   },
+   {
+    "group": "root_scalar",
+    "method": "newton",
+    "size": "aps.01",
+    "ms": 0.034791999496519566,
+    "nfev": 10,
+    "nit": 5
+   },
+   {
+    "group": "root_scalar",
+    "method": "halley",
+    "size": "aps.01",
+    "ms": 0.029499991796910763,
+    "nfev": 12,
+    "nit": 4
+   },
+   {
+    "group": "root_scalar",
+    "method": "secant",
+    "size": "aps.01",
+    "ms": 0.04600000102072954,
+    "nfev": 8,
+    "nit": 7
+   },
+   {
+    "group": "root_scalar",
+    "method": "brentq",
+    "size": "chandrupatla.1",
+    "ms": 0.0077500008046627045,
+    "nfev": 8,
+    "nit": 7
+   },
+   {
+    "group": "root_scalar",
+    "method": "toms748",
+    "size": "chandrupatla.1",
+    "ms": 0.1948749995790422,
+    "nfev": 11,
+    "nit": 5
+   },
+   {
+    "group": "root_scalar",
+    "method": "bisect",
+    "size": "chandrupatla.1",
+    "ms": 0.0179160269908607,
+    "nfev": 41,
+    "nit": 39
+   },
+   {
+    "group": "root_scalar",
+    "method": "newton",
+    "size": "chandrupatla.1",
+    "ms": 0.033249991247430444,
+    "nfev": 10,
+    "nit": 5
+   },
+   {
+    "group": "root_scalar",
+    "method": "halley",
+    "size": "chandrupatla.1",
+    "ms": 0.029291986720636487,
+    "nfev": 12,
+    "nit": 4
+   },
+   {
+    "group": "root_scalar",
+    "method": "secant",
+    "size": "chandrupatla.1",
+    "ms": 0.035667006159201264,
+    "nfev": 7,
+    "nit": 6
+   },
+   {
+    "group": "minimize_scalar",
+    "method": "brent",
+    "size": "chandrupatla_min.3",
+    "ms": 0.020166015019640326,
+    "nfev": 13,
+    "nit": 10
+   },
+   {
+    "group": "minimize_scalar",
+    "method": "golden",
+    "size": "chandrupatla_min.3",
+    "ms": 0.01812499249354005,
+    "nfev": 43,
+    "nit": 38
+   },
+   {
+    "group": "minimize_scalar",
+    "method": "bounded",
+    "size": "chandrupatla_min.3",
+    "ms": 0.02462498378008604,
+    "nfev": 10,
+    "nit": 10
+   },
+   {
+    "group": "elementwise",
+    "method": "find_root",
+    "size": "1e3",
+    "ms": 0.84695901023224,
+    "nfev": 11,
+    "nit": 9
+   },
+   {
+    "group": "elementwise",
+    "method": "bracket_root",
+    "size": "1e3",
+    "ms": 0.33666699891909957,
+    "nfev": 6,
+    "nit": 2
+   },
+   {
+    "group": "elementwise",
+    "method": "find_minimum",
+    "size": "1e3",
+    "ms": 2.142916986485943,
+    "nfev": 27,
+    "nit": 24
+   },
+   {
+    "group": "elementwise",
+    "method": "bracket_minimum",
+    "size": "1e3",
+    "ms": 0.31162501545622945,
+    "nfev": 6,
+    "nit": 3
+   },
+   {
+    "group": "elementwise",
+    "method": "loop of brentq",
+    "size": "1e3",
+    "ms": 5.555125011596829
+   },
+   {
+    "group": "elementwise",
+    "method": "loop of minimize_scalar(brent)",
+    "size": "1e3",
+    "ms": 21.99599999585189
+   },
+   {
+    "group": "elementwise",
+    "method": "find_root",
+    "size": "1e4",
+    "ms": 3.6002919950988144,
+    "nfev": 11,
+    "nit": 9
+   },
+   {
+    "group": "elementwise",
+    "method": "bracket_root",
+    "size": "1e4",
+    "ms": 1.3371660024859011,
+    "nfev": 6,
+    "nit": 2
+   },
+   {
+    "group": "elementwise",
+    "method": "find_minimum",
+    "size": "1e4",
+    "ms": 8.050666016060859,
+    "nfev": 27,
+    "nit": 24
+   },
+   {
+    "group": "elementwise",
+    "method": "bracket_minimum",
+    "size": "1e4",
+    "ms": 0.9368750033900142,
+    "nfev": 6,
+    "nit": 3
+   },
+   {
+    "group": "elementwise",
+    "method": "loop of brentq",
+    "size": "1e4",
+    "ms": 55.23770800209604
+   },
+   {
+    "group": "elementwise",
+    "method": "loop of minimize_scalar(brent)",
+    "size": "1e4",
+    "ms": 220.3258750087116
+   },
+   {
+    "group": "elementwise",
+    "method": "find_root",
+    "size": "1e5",
+    "ms": 29.593749990453944,
+    "nfev": 11,
+    "nit": 9
+   },
+   {
+    "group": "elementwise",
+    "method": "bracket_root",
+    "size": "1e5",
+    "ms": 9.855458018137142,
+    "nfev": 6,
+    "nit": 2
+   },
+   {
+    "group": "elementwise",
+    "method": "find_minimum",
+    "size": "1e5",
+    "ms": 61.92620799993165,
+    "nfev": 27,
+    "nit": 24
+   },
+   {
+    "group": "elementwise",
+    "method": "bracket_minimum",
+    "size": "1e5",
+    "ms": 6.7595420114230365,
+    "nfev": 6,
+    "nit": 3
+   },
+   {
+    "group": "elementwise",
+    "method": "find_root",
+    "size": "1e6",
+    "ms": 300.28550000861287,
+    "nfev": 11,
+    "nit": 9
+   },
+   {
+    "group": "elementwise",
+    "method": "bracket_root",
+    "size": "1e6",
+    "ms": 100.99254100350663,
+    "nfev": 6,
+    "nit": 2
+   },
+   {
+    "group": "elementwise",
+    "method": "find_minimum",
+    "size": "1e6",
+    "ms": 614.4108750158921,
+    "nfev": 28,
+    "nit": 25
+   },
+   {
+    "group": "elementwise",
+    "method": "bracket_minimum",
+    "size": "1e6",
+    "ms": 64.55054198158905,
+    "nfev": 6,
+    "nit": 3
+   },
+   {
+    "group": "minimize",
+    "method": "Nelder-Mead",
+    "size": "n=10",
+    "ms": 18.350875005126,
+    "nfev": 2000,
+    "nit": 1432
+   },
+   {
+    "group": "minimize",
+    "method": "BFGS",
+    "size": "n=10",
+    "ms": 2.4967500066850334,
+    "nfev": 83,
+    "njev": 83,
+    "nit": 73
+   },
+   {
+    "group": "minimize",
+    "method": "BFGS/fd",
+    "size": "n=10",
+    "ms": 9.926999977324158,
+    "nfev": 913,
+    "njev": 83,
+    "nit": 72
+   },
+   {
+    "group": "minimize",
+    "method": "L-BFGS-B",
+    "size": "n=10",
+    "ms": 1.4584999880753458,
+    "nfev": 88,
+    "njev": 88,
+    "nit": 71
+   },
+   {
+    "group": "minimize",
+    "method": "L-BFGS-B/fd",
+    "size": "n=10",
+    "ms": 8.285791001981124,
+    "nfev": 924,
+    "njev": 84,
+    "nit": 72
+   },
+   {
+    "group": "minimize",
+    "method": "Newton-CG",
+    "size": "n=10",
+    "ms": 7.248790992889553,
+    "nfev": 133,
+    "njev": 133,
+    "nhev": 401,
+    "nit": 127
+   },
+   {
+    "group": "minimize",
+    "method": "trust-ncg",
+    "size": "n=10",
+    "ms": 5.2534159913193434,
+    "nfev": 86,
+    "njev": 76,
+    "nhev": 370,
+    "nit": 85
+   },
+   {
+    "group": "minimize",
+    "method": "trust-exact",
+    "size": "n=10",
+    "ms": 2.5606249982956797,
+    "nfev": 30,
+    "njev": 26,
+    "nhev": 30,
+    "nit": 29
+   },
+   {
+    "group": "minimize",
+    "method": "BFGS",
+    "size": "n=100",
+    "ms": 46.88070798874833,
+    "nfev": 645,
+    "njev": 645,
+    "nit": 538
+   },
+   {
+    "group": "minimize",
+    "method": "BFGS/fd",
+    "size": "n=100",
+    "ms": 526.974334003171,
+    "nfev": 65852,
+    "njev": 652,
+    "nit": 565
+   },
+   {
+    "group": "minimize",
+    "method": "L-BFGS-B",
+    "size": "n=100",
+    "ms": 11.676583002554253,
+    "nfev": 610,
+    "njev": 610,
+    "nit": 514
+   },
+   {
+    "group": "minimize",
+    "method": "L-BFGS-B/fd",
+    "size": "n=100",
+    "ms": 111.67562499758787,
+    "nfev": 15049,
+    "njev": 149,
+    "nit": 124
+   },
+   {
+    "group": "minimize",
+    "method": "Newton-CG",
+    "size": "n=100",
+    "ms": 24.61925000534393,
+    "nfev": 252,
+    "njev": 252,
+    "nhev": 1775,
+    "nit": 219
+   },
+   {
+    "group": "minimize",
+    "method": "trust-ncg",
+    "size": "n=100",
+    "ms": 32.967208011541516,
+    "nfev": 444,
+    "njev": 382,
+    "nhev": 2305,
+    "nit": 443
+   },
+   {
+    "group": "minimize",
+    "method": "trust-exact",
+    "size": "n=100",
+    "ms": 38.984374987194315,
+    "nfev": 206,
+    "njev": 179,
+    "nhev": 206,
+    "nit": 205
+   },
+   {
+    "group": "minimize",
+    "method": "Nelder-Mead",
+    "size": "n=100",
+    "ms": 414.14787498069927,
+    "nfev": 20000,
+    "nit": 18540
+   },
+   {
+    "group": "minimize",
+    "method": "BFGS",
+    "size": "n=1000",
+    "ms": 59027.27820799919,
+    "nfev": 6335,
+    "njev": 6335,
+    "nit": 4842
+   },
+   {
+    "group": "minimize",
+    "method": "L-BFGS-B",
+    "size": "n=1000",
+    "ms": 376.8265839898959,
+    "nfev": 5736,
+    "njev": 5736,
+    "nit": 4944
+   },
+   {
+    "group": "minimize",
+    "method": "L-BFGS-B/fd",
+    "size": "n=1000",
+    "ms": 175.66212499514222,
+    "nfev": 16016,
+    "njev": 16,
+    "nit": 12
+   },
+   {
+    "group": "minimize",
+    "method": "Newton-CG",
+    "size": "n=1000",
+    "ms": 388.6353340058122,
+    "nfev": 1816,
+    "njev": 1816,
+    "nhev": 17040,
+    "nit": 1598
+   },
+   {
+    "group": "minimize",
+    "method": "trust-ncg",
+    "size": "n=1000",
+    "ms": 549.9976249993779,
+    "nfev": 4085,
+    "njev": 3477,
+    "nhev": 22240,
+    "nit": 4086
+   },
+   {
+    "group": "minimize",
+    "method": "trust-exact",
+    "size": "n=1000",
+    "ms": 12982.851541019045,
+    "nfev": 1942,
+    "njev": 1696,
+    "nhev": 1942,
+    "nit": 1941
+   },
+   {
+    "group": "minimize",
+    "method": "L-BFGS-B",
+    "size": "n=10000",
+    "ms": 6113.358375005191,
+    "nfev": 15001,
+    "njev": 15001,
+    "nit": 12794
+   },
+   {
+    "group": "minimize",
+    "method": "L-BFGS-B/fd",
+    "size": "n=10000",
+    "ms": 1346.2326250155456,
+    "nfev": 30003,
+    "njev": 3,
+    "nit": 1
+   },
+   {
+    "group": "least_squares",
+    "method": "trf/analytic",
+    "size": "(1000, 10)",
+    "ms": 0.6950840179342777,
+    "nfev": 5,
+    "njev": 5
+   },
+   {
+    "group": "least_squares",
+    "method": "trf/2-point",
+    "size": "(1000, 10)",
+    "ms": 1.341083989245817,
+    "nfev": 5,
+    "njev": 5
+   },
+   {
+    "group": "least_squares",
+    "method": "lm/analytic",
+    "size": "(1000, 10)",
+    "ms": 0.44470798457041383,
+    "nfev": 5,
+    "njev": 4
+   },
+   {
+    "group": "least_squares",
+    "method": "lm/2-point",
+    "size": "(1000, 10)",
+    "ms": 1.061249990016222,
+    "nfev": 5
+   },
+   {
+    "group": "lsq_linear",
+    "method": "trf",
+    "size": "(1000, 10)",
+    "ms": 0.6794589862693101,
+    "nit": 7
+   },
+   {
+    "group": "lsq_linear",
+    "method": "bvls",
+    "size": "(1000, 10)",
+    "ms": 0.15337500371970236,
+    "nit": 2
+   },
+   {
+    "group": "nnls",
+    "method": "nnls",
+    "size": "(1000, 10)",
+    "ms": 0.08233400876633823
+   },
+   {
+    "group": "least_squares",
+    "method": "trf/analytic",
+    "size": "(100000, 10)",
+    "ms": 37.45745899504982,
+    "nfev": 5,
+    "njev": 5
+   },
+   {
+    "group": "least_squares",
+    "method": "trf/2-point",
+    "size": "(100000, 10)",
+    "ms": 65.37412499892525,
+    "nfev": 5,
+    "njev": 5
+   },
+   {
+    "group": "least_squares",
+    "method": "lm/analytic",
+    "size": "(100000, 10)",
+    "ms": 37.8557080111932,
+    "nfev": 5,
+    "njev": 4
+   },
+   {
+    "group": "least_squares",
+    "method": "lm/2-point",
+    "size": "(100000, 10)",
+    "ms": 69.68549999874085,
+    "nfev": 5
+   },
+   {
+    "group": "lsq_linear",
+    "method": "trf",
+    "size": "(100000, 10)",
+    "ms": 16.034625004976988,
+    "nit": 8
+   },
+   {
+    "group": "lsq_linear",
+    "method": "bvls",
+    "size": "(100000, 10)",
+    "ms": 9.951541986083612,
+    "nit": 3
+   },
+   {
+    "group": "nnls",
+    "method": "nnls",
+    "size": "(100000, 10)",
+    "ms": 5.838624987518415
+   },
+   {
+    "group": "least_squares",
+    "method": "trf/analytic",
+    "size": "(10000, 100)",
+    "ms": 118.68012501508929,
+    "nfev": 6,
+    "njev": 6
+   },
+   {
+    "group": "least_squares",
+    "method": "trf/2-point",
+    "size": "(10000, 100)",
+    "ms": 157.71241698530503,
+    "nfev": 6,
+    "njev": 6
+   },
+   {
+    "group": "least_squares",
+    "method": "lm/analytic",
+    "size": "(10000, 100)",
+    "ms": 161.70454100938514,
+    "nfev": 5,
+    "njev": 4
+   },
+   {
+    "group": "least_squares",
+    "method": "lm/2-point",
+    "size": "(10000, 100)",
+    "ms": 196.98508299188688,
+    "nfev": 5
+   },
+   {
+    "group": "lsq_linear",
+    "method": "trf",
+    "size": "(10000, 100)",
+    "ms": 36.46724999998696,
+    "nit": 12
+   },
+   {
+    "group": "lsq_linear",
+    "method": "bvls",
+    "size": "(10000, 100)",
+    "ms": 28.802749991882592,
+    "nit": 5
+   },
+   {
+    "group": "nnls",
+    "method": "nnls",
+    "size": "(10000, 100)",
+    "ms": 43.92799999914132
+   },
+   {
+    "group": "root",
+    "method": "hybr/analytic",
+    "size": "n=10",
+    "ms": 0.042041996493935585,
+    "nfev": 13,
+    "njev": 1
+   },
+   {
+    "group": "root",
+    "method": "hybr/none",
+    "size": "n=10",
+    "ms": 0.05224999040365219,
+    "nfev": 23
+   },
+   {
+    "group": "root",
+    "method": "lm/analytic",
+    "size": "n=10",
+    "ms": 0.0675409974064678,
+    "nfev": 8,
+    "njev": 5
+   },
+   {
+    "group": "root",
+    "method": "lm/none",
+    "size": "n=10",
+    "ms": 0.13200001558288932,
+    "nfev": 58
+   },
+   {
+    "group": "root",
+    "method": "hybr/analytic",
+    "size": "n=100",
+    "ms": 0.5343329976312816,
+    "nfev": 13,
+    "njev": 1
+   },
+   {
+    "group": "root",
+    "method": "hybr/none",
+    "size": "n=100",
+    "ms": 0.7007920066826046,
+    "nfev": 113
+   },
+   {
+    "group": "root",
+    "method": "lm/analytic",
+    "size": "n=100",
+    "ms": 0.9239170176442713,
+    "nfev": 8,
+    "njev": 5
+   },
+   {
+    "group": "root",
+    "method": "lm/none",
+    "size": "n=100",
+    "ms": 1.9617920042946935,
+    "nfev": 508
+   },
+   {
+    "group": "root",
+    "method": "hybr/analytic",
+    "size": "n=1000",
+    "ms": 538.1392090057489,
+    "nfev": 13,
+    "njev": 1
+   },
+   {
+    "group": "root",
+    "method": "hybr/none",
+    "size": "n=1000",
+    "ms": 540.0367499969434,
+    "nfev": 1013
+   },
+   {
+    "group": "root",
+    "method": "lm/analytic",
+    "size": "n=1000",
+    "ms": 1072.2083750006277,
+    "nfev": 8,
+    "njev": 5
+   },
+   {
+    "group": "root",
+    "method": "lm/none",
+    "size": "n=1000",
+    "ms": 1082.3311249841936,
+    "nfev": 5008
+   },
+   {
+    "group": "approx_fprime",
+    "method": "approx_fprime",
+    "size": "n=10",
+    "ms": 0.08320799679495394
+   },
+   {
+    "group": "approx_fprime",
+    "method": "approx_fprime",
+    "size": "n=100",
+    "ms": 0.6972080154810101
+   },
+   {
+    "group": "approx_fprime",
+    "method": "approx_fprime",
+    "size": "n=1000",
+    "ms": 10.11404098244384
+   }
+  ],
+  "10": [
+   {
+    "group": "root_scalar",
+    "method": "brentq",
+    "size": "aps.01",
+    "ms": 0.008584000170230865,
+    "nfev": 9,
+    "nit": 8
+   },
+   {
+    "group": "root_scalar",
+    "method": "toms748",
+    "size": "aps.01",
+    "ms": 0.16095800674520433,
+    "nfev": 10,
+    "nit": 5
+   },
+   {
+    "group": "root_scalar",
+    "method": "bisect",
+    "size": "aps.01",
+    "ms": 0.022499996703118086,
+    "nfev": 42,
+    "nit": 40
+   },
+   {
+    "group": "root_scalar",
+    "method": "newton",
+    "size": "aps.01",
+    "ms": 0.03283401019871235,
+    "nfev": 10,
+    "nit": 5
+   },
+   {
+    "group": "root_scalar",
+    "method": "halley",
+    "size": "aps.01",
+    "ms": 0.02679199678823352,
+    "nfev": 12,
+    "nit": 4
+   },
+   {
+    "group": "root_scalar",
+    "method": "secant",
+    "size": "aps.01",
+    "ms": 0.039457983803004026,
+    "nfev": 8,
+    "nit": 7
+   },
+   {
+    "group": "root_scalar",
+    "method": "brentq",
+    "size": "chandrupatla.1",
+    "ms": 0.0077500008046627045,
+    "nfev": 8,
+    "nit": 7
+   },
+   {
+    "group": "root_scalar",
+    "method": "toms748",
+    "size": "chandrupatla.1",
+    "ms": 0.19729201449081302,
+    "nfev": 11,
+    "nit": 5
+   },
+   {
+    "group": "root_scalar",
+    "method": "bisect",
+    "size": "chandrupatla.1",
+    "ms": 0.018207996618002653,
+    "nfev": 41,
+    "nit": 39
+   },
+   {
+    "group": "root_scalar",
+    "method": "newton",
+    "size": "chandrupatla.1",
+    "ms": 0.030875002266839147,
+    "nfev": 10,
+    "nit": 5
+   },
+   {
+    "group": "root_scalar",
+    "method": "halley",
+    "size": "chandrupatla.1",
+    "ms": 0.02649999805726111,
+    "nfev": 12,
+    "nit": 4
+   },
+   {
+    "group": "root_scalar",
+    "method": "secant",
+    "size": "chandrupatla.1",
+    "ms": 0.03399999695830047,
+    "nfev": 7,
+    "nit": 6
+   },
+   {
+    "group": "minimize_scalar",
+    "method": "brent",
+    "size": "chandrupatla_min.3",
+    "ms": 0.020041014067828655,
+    "nfev": 13,
+    "nit": 10
+   },
+   {
+    "group": "minimize_scalar",
+    "method": "golden",
+    "size": "chandrupatla_min.3",
+    "ms": 0.01812499249354005,
+    "nfev": 43,
+    "nit": 38
+   },
+   {
+    "group": "minimize_scalar",
+    "method": "bounded",
+    "size": "chandrupatla_min.3",
+    "ms": 0.02274999860674143,
+    "nfev": 10,
+    "nit": 10
+   },
+   {
+    "group": "elementwise",
+    "method": "find_root",
+    "size": "1e3",
+    "ms": 0.8488750027026981,
+    "nfev": 11,
+    "nit": 9
+   },
+   {
+    "group": "elementwise",
+    "method": "bracket_root",
+    "size": "1e3",
+    "ms": 0.33145901397801936,
+    "nfev": 6,
+    "nit": 2
+   },
+   {
+    "group": "elementwise",
+    "method": "find_minimum",
+    "size": "1e3",
+    "ms": 2.051791991107166,
+    "nfev": 27,
+    "nit": 24
+   },
+   {
+    "group": "elementwise",
+    "method": "bracket_minimum",
+    "size": "1e3",
+    "ms": 0.293583027087152,
+    "nfev": 6,
+    "nit": 3
+   },
+   {
+    "group": "elementwise",
+    "method": "loop of brentq",
+    "size": "1e3",
+    "ms": 5.634375003864989
+   },
+   {
+    "group": "elementwise",
+    "method": "loop of minimize_scalar(brent)",
+    "size": "1e3",
+    "ms": 22.43620899389498
+   },
+   {
+    "group": "elementwise",
+    "method": "find_root",
+    "size": "1e4",
+    "ms": 3.78420899505727,
+    "nfev": 11,
+    "nit": 9
+   },
+   {
+    "group": "elementwise",
+    "method": "bracket_root",
+    "size": "1e4",
+    "ms": 1.2706670095212758,
+    "nfev": 6,
+    "nit": 2
+   },
+   {
+    "group": "elementwise",
+    "method": "find_minimum",
+    "size": "1e4",
+    "ms": 8.09866699273698,
+    "nfev": 27,
+    "nit": 24
+   },
+   {
+    "group": "elementwise",
+    "method": "bracket_minimum",
+    "size": "1e4",
+    "ms": 0.9365829755552113,
+    "nfev": 6,
+    "nit": 3
+   },
+   {
+    "group": "elementwise",
+    "method": "loop of brentq",
+    "size": "1e4",
+    "ms": 55.922791972989216
+   },
+   {
+    "group": "elementwise",
+    "method": "loop of minimize_scalar(brent)",
+    "size": "1e4",
+    "ms": 222.4796249938663
+   },
+   {
+    "group": "elementwise",
+    "method": "find_root",
+    "size": "1e5",
+    "ms": 29.540083021856844,
+    "nfev": 11,
+    "nit": 9
+   },
+   {
+    "group": "elementwise",
+    "method": "bracket_root",
+    "size": "1e5",
+    "ms": 9.936459013260901,
+    "nfev": 6,
+    "nit": 2
+   },
+   {
+    "group": "elementwise",
+    "method": "find_minimum",
+    "size": "1e5",
+    "ms": 62.598457996500656,
+    "nfev": 27,
+    "nit": 24
+   },
+   {
+    "group": "elementwise",
+    "method": "bracket_minimum",
+    "size": "1e5",
+    "ms": 6.688583001960069,
+    "nfev": 6,
+    "nit": 3
+   },
+   {
+    "group": "elementwise",
+    "method": "find_root",
+    "size": "1e6",
+    "ms": 302.82358298427425,
+    "nfev": 11,
+    "nit": 9
+   },
+   {
+    "group": "elementwise",
+    "method": "bracket_root",
+    "size": "1e6",
+    "ms": 100.72029198636301,
+    "nfev": 6,
+    "nit": 2
+   },
+   {
+    "group": "elementwise",
+    "method": "find_minimum",
+    "size": "1e6",
+    "ms": 622.8102919994853,
+    "nfev": 28,
+    "nit": 25
+   },
+   {
+    "group": "elementwise",
+    "method": "bracket_minimum",
+    "size": "1e6",
+    "ms": 66.13991700578481,
+    "nfev": 6,
+    "nit": 3
+   },
+   {
+    "group": "minimize",
+    "method": "Nelder-Mead",
+    "size": "n=10",
+    "ms": 19.15387500775978,
+    "nfev": 2000,
+    "nit": 1432
+   },
+   {
+    "group": "minimize",
+    "method": "BFGS",
+    "size": "n=10",
+    "ms": 2.7032500074710697,
+    "nfev": 83,
+    "njev": 83,
+    "nit": 73
+   },
+   {
+    "group": "minimize",
+    "method": "BFGS/fd",
+    "size": "n=10",
+    "ms": 10.412540985271335,
+    "nfev": 913,
+    "njev": 83,
+    "nit": 72
+   },
+   {
+    "group": "minimize",
+    "method": "L-BFGS-B",
+    "size": "n=10",
+    "ms": 1.493167015723884,
+    "nfev": 88,
+    "njev": 88,
+    "nit": 71
+   },
+   {
+    "group": "minimize",
+    "method": "L-BFGS-B/fd",
+    "size": "n=10",
+    "ms": 8.802416996331885,
+    "nfev": 924,
+    "njev": 84,
+    "nit": 72
+   },
+   {
+    "group": "minimize",
+    "method": "Newton-CG",
+    "size": "n=10",
+    "ms": 7.421749993227422,
+    "nfev": 133,
+    "njev": 133,
+    "nhev": 401,
+    "nit": 127
+   },
+   {
+    "group": "minimize",
+    "method": "trust-ncg",
+    "size": "n=10",
+    "ms": 5.536959011806175,
+    "nfev": 86,
+    "njev": 76,
+    "nhev": 370,
+    "nit": 85
+   },
+   {
+    "group": "minimize",
+    "method": "trust-exact",
+    "size": "n=10",
+    "ms": 2.6627079932950437,
+    "nfev": 30,
+    "njev": 26,
+    "nhev": 30,
+    "nit": 29
+   },
+   {
+    "group": "minimize",
+    "method": "BFGS",
+    "size": "n=100",
+    "ms": 47.72116700769402,
+    "nfev": 645,
+    "njev": 645,
+    "nit": 538
+   },
+   {
+    "group": "minimize",
+    "method": "BFGS/fd",
+    "size": "n=100",
+    "ms": 534.5432080212049,
+    "nfev": 65852,
+    "njev": 652,
+    "nit": 565
+   },
+   {
+    "group": "minimize",
+    "method": "L-BFGS-B",
+    "size": "n=100",
+    "ms": 11.662000004434958,
+    "nfev": 610,
+    "njev": 610,
+    "nit": 514
+   },
+   {
+    "group": "minimize",
+    "method": "L-BFGS-B/fd",
+    "size": "n=100",
+    "ms": 112.40120799629949,
+    "nfev": 15049,
+    "njev": 149,
+    "nit": 124
+   },
+   {
+    "group": "minimize",
+    "method": "Newton-CG",
+    "size": "n=100",
+    "ms": 24.69416699022986,
+    "nfev": 252,
+    "njev": 252,
+    "nhev": 1775,
+    "nit": 219
+   },
+   {
+    "group": "minimize",
+    "method": "trust-ncg",
+    "size": "n=100",
+    "ms": 33.226250001462176,
+    "nfev": 444,
+    "njev": 382,
+    "nhev": 2305,
+    "nit": 443
+   },
+   {
+    "group": "minimize",
+    "method": "trust-exact",
+    "size": "n=100",
+    "ms": 38.73204198316671,
+    "nfev": 206,
+    "njev": 179,
+    "nhev": 206,
+    "nit": 205
+   },
+   {
+    "group": "minimize",
+    "method": "Nelder-Mead",
+    "size": "n=100",
+    "ms": 420.5696249846369,
+    "nfev": 20000,
+    "nit": 18540
+   },
+   {
+    "group": "minimize",
+    "method": "BFGS",
+    "size": "n=1000",
+    "ms": 36574.64366601198,
+    "nfev": 6335,
+    "njev": 6335,
+    "nit": 4842
+   },
+   {
+    "group": "minimize",
+    "method": "L-BFGS-B",
+    "size": "n=1000",
+    "ms": 377.8511249984149,
+    "nfev": 5736,
+    "njev": 5736,
+    "nit": 4944
+   },
+   {
+    "group": "minimize",
+    "method": "L-BFGS-B/fd",
+    "size": "n=1000",
+    "ms": 172.42183300550096,
+    "nfev": 16016,
+    "njev": 16,
+    "nit": 12
+   },
+   {
+    "group": "minimize",
+    "method": "Newton-CG",
+    "size": "n=1000",
+    "ms": 386.5803749940824,
+    "nfev": 1816,
+    "njev": 1816,
+    "nhev": 17040,
+    "nit": 1598
+   },
+   {
+    "group": "minimize",
+    "method": "trust-ncg",
+    "size": "n=1000",
+    "ms": 556.2442080117762,
+    "nfev": 4085,
+    "njev": 3477,
+    "nhev": 22240,
+    "nit": 4086
+   },
+   {
+    "group": "minimize",
+    "method": "trust-exact",
+    "size": "n=1000",
+    "ms": 12542.654666991439,
+    "nfev": 1942,
+    "njev": 1696,
+    "nhev": 1942,
+    "nit": 1941
+   },
+   {
+    "group": "minimize",
+    "method": "L-BFGS-B",
+    "size": "n=10000",
+    "ms": 6045.603250007844,
+    "nfev": 15001,
+    "njev": 15001,
+    "nit": 12794
+   },
+   {
+    "group": "minimize",
+    "method": "L-BFGS-B/fd",
+    "size": "n=10000",
+    "ms": 1259.1997080016881,
+    "nfev": 30003,
+    "njev": 3,
+    "nit": 1
+   },
+   {
+    "group": "least_squares",
+    "method": "trf/analytic",
+    "size": "(1000, 10)",
+    "ms": 0.6928329821676016,
+    "nfev": 5,
+    "njev": 5
+   },
+   {
+    "group": "least_squares",
+    "method": "trf/2-point",
+    "size": "(1000, 10)",
+    "ms": 1.2653329758904874,
+    "nfev": 5,
+    "njev": 5
+   },
+   {
+    "group": "least_squares",
+    "method": "lm/analytic",
+    "size": "(1000, 10)",
+    "ms": 0.4514169995673001,
+    "nfev": 5,
+    "njev": 4
+   },
+   {
+    "group": "least_squares",
+    "method": "lm/2-point",
+    "size": "(1000, 10)",
+    "ms": 1.0545409750193357,
+    "nfev": 5
+   },
+   {
+    "group": "lsq_linear",
+    "method": "trf",
+    "size": "(1000, 10)",
+    "ms": 0.6435410177800804,
+    "nit": 7
+   },
+   {
+    "group": "lsq_linear",
+    "method": "bvls",
+    "size": "(1000, 10)",
+    "ms": 0.1538749784231186,
+    "nit": 2
+   },
+   {
+    "group": "nnls",
+    "method": "nnls",
+    "size": "(1000, 10)",
+    "ms": 0.07941699004732072
+   },
+   {
+    "group": "least_squares",
+    "method": "trf/analytic",
+    "size": "(100000, 10)",
+    "ms": 34.239041997352615,
+    "nfev": 5,
+    "njev": 5
+   },
+   {
+    "group": "least_squares",
+    "method": "trf/2-point",
+    "size": "(100000, 10)",
+    "ms": 62.428625009488314,
+    "nfev": 5,
+    "njev": 5
+   },
+   {
+    "group": "least_squares",
+    "method": "lm/analytic",
+    "size": "(100000, 10)",
+    "ms": 37.49579199939035,
+    "nfev": 5,
+    "njev": 4
+   },
+   {
+    "group": "least_squares",
+    "method": "lm/2-point",
+    "size": "(100000, 10)",
+    "ms": 68.21466601104476,
+    "nfev": 5
+   },
+   {
+    "group": "lsq_linear",
+    "method": "trf",
+    "size": "(100000, 10)",
+    "ms": 15.502916008699685,
+    "nit": 8
+   },
+   {
+    "group": "lsq_linear",
+    "method": "bvls",
+    "size": "(100000, 10)",
+    "ms": 9.457584004849195,
+    "nit": 3
+   },
+   {
+    "group": "nnls",
+    "method": "nnls",
+    "size": "(100000, 10)",
+    "ms": 5.367709003621712
+   },
+   {
+    "group": "least_squares",
+    "method": "trf/analytic",
+    "size": "(10000, 100)",
+    "ms": 116.12612500903197,
+    "nfev": 6,
+    "njev": 6
+   },
+   {
+    "group": "least_squares",
+    "method": "trf/2-point",
+    "size": "(10000, 100)",
+    "ms": 158.00204197876155,
+    "nfev": 6,
+    "njev": 6
+   },
+   {
+    "group": "least_squares",
+    "method": "lm/analytic",
+    "size": "(10000, 100)",
+    "ms": 159.49287501280196,
+    "nfev": 5,
+    "njev": 4
+   },
+   {
+    "group": "least_squares",
+    "method": "lm/2-point",
+    "size": "(10000, 100)",
+    "ms": 195.87049999972805,
+    "nfev": 5
+   },
+   {
+    "group": "lsq_linear",
+    "method": "trf",
+    "size": "(10000, 100)",
+    "ms": 37.41095899022184,
+    "nit": 12
+   },
+   {
+    "group": "lsq_linear",
+    "method": "bvls",
+    "size": "(10000, 100)",
+    "ms": 29.673124983673915,
+    "nit": 5
+   },
+   {
+    "group": "nnls",
+    "method": "nnls",
+    "size": "(10000, 100)",
+    "ms": 43.78645800170489
+   },
+   {
+    "group": "root",
+    "method": "hybr/analytic",
+    "size": "n=10",
+    "ms": 0.046999979531392455,
+    "nfev": 13,
+    "njev": 1
+   },
+   {
+    "group": "root",
+    "method": "hybr/none",
+    "size": "n=10",
+    "ms": 0.059125013649463654,
+    "nfev": 23
+   },
+   {
+    "group": "root",
+    "method": "lm/analytic",
+    "size": "n=10",
+    "ms": 0.06316701183095574,
+    "nfev": 8,
+    "njev": 5
+   },
+   {
+    "group": "root",
+    "method": "lm/none",
+    "size": "n=10",
+    "ms": 0.14212500536814332,
+    "nfev": 58
+   },
+   {
+    "group": "root",
+    "method": "hybr/analytic",
+    "size": "n=100",
+    "ms": 0.5576249968726188,
+    "nfev": 13,
+    "njev": 1
+   },
+   {
+    "group": "root",
+    "method": "hybr/none",
+    "size": "n=100",
+    "ms": 0.7479169871658087,
+    "nfev": 113
+   },
+   {
+    "group": "root",
+    "method": "lm/analytic",
+    "size": "n=100",
+    "ms": 1.0130000009667128,
+    "nfev": 8,
+    "njev": 5
+   },
+   {
+    "group": "root",
+    "method": "lm/none",
+    "size": "n=100",
+    "ms": 1.997667015530169,
+    "nfev": 508
+   },
+   {
+    "group": "root",
+    "method": "hybr/analytic",
+    "size": "n=1000",
+    "ms": 541.9343750108965,
+    "nfev": 13,
+    "njev": 1
+   },
+   {
+    "group": "root",
+    "method": "hybr/none",
+    "size": "n=1000",
+    "ms": 536.5932499989867,
+    "nfev": 1013
+   },
+   {
+    "group": "root",
+    "method": "lm/analytic",
+    "size": "n=1000",
+    "ms": 1082.3273340065498,
+    "nfev": 8,
+    "njev": 5
+   },
+   {
+    "group": "root",
+    "method": "lm/none",
+    "size": "n=1000",
+    "ms": 1099.7328749799635,
+    "nfev": 5008
+   },
+   {
+    "group": "approx_fprime",
+    "method": "approx_fprime",
+    "size": "n=10",
+    "ms": 0.09937499999068677
+   },
+   {
+    "group": "approx_fprime",
+    "method": "approx_fprime",
+    "size": "n=100",
+    "ms": 0.6513330154120922
+   },
+   {
+    "group": "approx_fprime",
+    "method": "approx_fprime",
+    "size": "n=1000",
+    "ms": 10.00433400622569
+   }
+  ]
+ }
+}
