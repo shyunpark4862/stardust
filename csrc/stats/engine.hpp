@@ -185,13 +185,16 @@ inline constexpr bool kNonNegative = std::is_same_v<M, method::Pdf> || std::is_s
 template <class D, class M, class = std::make_index_sequence<D::params.size()>>
 struct DistOp;
 
-// ---- limits at a parameter outside the domain (docs/api/stats.md §2, user decision 2026-11-19) --
+// ---- limits at a parameter (docs/api/stats.md §2, user decisions 2026-11-19) -----------------
 //
-// A distribution may be another one at a parameter value that valid() leaves out, the limit
-// of an infinite parameter (the t at df = inf is the normal) or a point mass (the negative
-// binomial's n = 0): it then says where, and gives every method's value there,
+// A distribution may be another one at some parameter values: the limit of an infinite
+// parameter that valid() leaves out (the t at df = inf is the normal), a point mass (the
+// negative binomial's n = 0), or, inside valid(), a shape too small for the distribution's
+// own functions (Beta's and BetaBinomial's below 2^-1021: two atoms, T50; the engine asks
+// at_limit first, so valid() need not leave them out). It then says where, and gives every
+// method's value there,
 //
-//     static bool at_limit(double df);                           // outside valid(), as inf is
+//     static bool at_limit(double df);                           // inf, a point mass, a tiny shape
 //     template <class M> static double limit_in(double x, double df);   // methods with an input
 //     template <class M> static double limit_par(double df);            // the others
 //

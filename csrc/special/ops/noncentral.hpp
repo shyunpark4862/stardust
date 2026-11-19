@@ -1386,8 +1386,9 @@ inline bool ncx2_edge(double df, double nc, double x, bool upper, double& out) {
         if (!ncx2_edge(0.0, nc, x, upper, o)) o = nc_detail::ncx2(0.0, nc, x, upper);
         if (upper) {
             const double y = 0.5 * x;
-            // (a scaled by 2^1000 while the product is formed: a subnormal a keeps its bits)
-            const double j0 = std::exp(-0.5 * nc) * ((0.5 * df * 0x1p1000) * expint_detail::en(1.0, y)) * 0x1p-1000;
+            // (a = df/2 formed after the scaling by 2^1000, so that a subnormal df's half keeps its
+            // bits: 0.5 * df first rounded it, chndtrc(5e-324, 5e-324, 1e-300) was 0; 2026-11-19)
+            const double j0 = std::exp(-0.5 * nc) * ((df * 0x1p1000 * 0.5) * expint_detail::en(1.0, y)) * 0x1p-1000;
             o = o + j0;
         }
         out = o;
@@ -1524,6 +1525,14 @@ struct Nctdtrit : Real {
 
 // ------------------------------------------------------------------ F
 
+namespace nc_detail {
+// The smallest subnormal dfn has no half (0.5 * 5e-324 rounds to 0, and the mixture's first
+// beta shape a = 0 gave NaN for f ~ 1e23-1e173, where w is not tiny; 2026-11-19): the next
+// one, 1e-323. The values move by the j = 0 term's 1 - I_w(a, b) ~ a |log w| alone, below
+// 2^-1063 absolute.
+inline double halvable_dfn(double dfn) { return dfn == 0x1p-1074 ? 0x1p-1073 : dfn; }
+}  // namespace nc_detail
+
 // ncfdtr(dfn, dfd, nc, f) = sum_j Poisson(j; nc/2) I_w(dfn/2 + j, dfd/2),
 // w = dfn f / (dfn f + dfd). dfd = inf: dfn F -> noncentral chi-square(dfn, nc);
 // dfn = inf: the numerator chi-square / dfn -> 1, as the central F.
@@ -1555,6 +1564,7 @@ struct Ncfdtr : Real {
     static constexpr std::array<const char*, 4> args{"dfn", "dfd", "nc", "f"};
     static constexpr double cost_ns = cost::kNcfdtr;
     static double f(double dfn, double dfd, double nc, double x) {
+        dfn = nc_detail::halvable_dfn(dfn);
         double out;
         if (ncf_edge(dfn, dfd, nc, x, false, out)) return out;
         return nc_detail::ncf(dfn, dfd, nc, x, false);
@@ -1567,6 +1577,7 @@ struct Ncfdtrc : Real {
     static constexpr std::array<const char*, 4> args{"dfn", "dfd", "nc", "f"};
     static constexpr double cost_ns = cost::kNcfdtrc;
     static double f(double dfn, double dfd, double nc, double x) {
+        dfn = nc_detail::halvable_dfn(dfn);
         double out;
         if (ncf_edge(dfn, dfd, nc, x, true, out)) return out;
         return nc_detail::ncf(dfn, dfd, nc, x, true);
@@ -1579,6 +1590,7 @@ struct Ncfdtri : Real {
     static constexpr std::array<const char*, 4> args{"dfn", "dfd", "nc", "p"};
     static constexpr double cost_ns = cost::kNcfdtri;
     static double f(double dfn, double dfd, double nc, double p) {
+        dfn = nc_detail::halvable_dfn(dfn);
         if (std::isnan(dfn) || std::isnan(dfd) || std::isnan(nc) || std::isnan(p) || !(dfn > 0.0) || !(dfd > 0.0) ||
             nc < 0.0 || p < 0.0 || p > 1.0)
             return kNaN;
@@ -1623,6 +1635,7 @@ inline Scaled nctdtr_tail(double df, double nc, double t, bool upper, bool wide 
     return nct_s(df, nc, t, upper, wide);
 }
 inline Scaled ncfdtr_tail(double dfn, double dfd, double nc, double x, bool upper, bool wide = true) {
+    dfn = nc_detail::halvable_dfn(dfn);
     double out;
     if (ncf_edge(dfn, dfd, nc, x, upper, out)) return scaled(out);
     return clamp01(ncf_s(dfn, dfd, nc, x, upper, wide));

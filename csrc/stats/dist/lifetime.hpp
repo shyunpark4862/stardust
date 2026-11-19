@@ -567,20 +567,40 @@ struct InverseGamma {
         if (y < 1.0) return s >= 0x1p-900 ? kInf : kNaN;
         return s <= 0x1p900 ? 0.0 : kNaN;
     }
+    // A root that invert() cannot place (the gamma's y below every scaling, as for a subnormal a,
+    // where Y sits below e^(-1/a); or a scale below 2^-900): the ends decide where they can.
+    // X's lower tail at the largest double still below the target: the root is beyond it,
+    // inf; at the smallest positive double already above: 0 (user decision 2026-11-19, T51).
+    // lt is the target of X's lower tail (upper: of its upper tail), as a log.
+    static double past_the_ends(double r, double lt, double a, double s, bool upper) {
+        // (a NaN of the arguments' own, a target outside [0, 1] or past the shapes' range, stays)
+        if (r == r || !(lt <= 0.0) || a > gamma_detail::kMaxShape) return r;
+        constexpr double kMax = std::numeric_limits<double>::max(), kMin = std::numeric_limits<double>::denorm_min();
+        const double at_max = tail(kMax, a, s, upper, true), at_min = tail(kMin, a, s, upper, true);
+        // the lower tail grows with x, the upper one falls
+        if (upper ? at_max > lt : at_max < lt) return kInf;
+        if (upper ? at_min < lt : at_min > lt) return 0.0;
+        return r;
+    }
     // P(X <= x) = p: Q(a, y) = p (y's upper inverse); the smaller of p and 1 - p is solved.
     static double icdf(double p, double a, double s) {
         if (!(p >= 0.0 && p <= 1.0) || a > gamma_detail::kMaxShape) return kNaN;
         if (p == 0.0 || p == 1.0) return p == 0.0 ? 0.0 : kInf;
-        if (p > 0.5) return invert(s, [&](double k) { return gamma_detail::lower_inverse_checked(a, k, 1.0 - p, num::log_dd(1.0 - p)); });
-        return invert(s, [&](double k) { return gamma_detail::upper_inverse_checked(a, k, p, num::log_dd(p)); });
+        const double r = p > 0.5 ? invert(s, [&](double k) { return gamma_detail::lower_inverse_checked(a, k, 1.0 - p, num::log_dd(1.0 - p)); })
+                                 : invert(s, [&](double k) { return gamma_detail::upper_inverse_checked(a, k, p, num::log_dd(p)); });
+        return past_the_ends(r, std::log(p), a, s, false);
     }
     static double iccdf(double p, double a, double s) {
         if (!(p >= 0.0 && p <= 1.0) || a > gamma_detail::kMaxShape) return kNaN;
         if (p == 0.0 || p == 1.0) return p == 0.0 ? kInf : 0.0;
-        if (p > 0.5) return invert(s, [&](double k) { return gamma_detail::upper_inverse_checked(a, k, 1.0 - p, num::log_dd(1.0 - p)); });
-        return invert(s, [&](double k) { return gamma_detail::lower_inverse_checked(a, k, p, num::log_dd(p)); });
+        const double r = p > 0.5 ? invert(s, [&](double k) { return gamma_detail::upper_inverse_checked(a, k, 1.0 - p, num::log_dd(1.0 - p)); })
+                                 : invert(s, [&](double k) { return gamma_detail::lower_inverse_checked(a, k, p, num::log_dd(p)); });
+        return past_the_ends(r, std::log(p), a, s, true);
     }
     static double from_log(double lp, double a, double s, bool upper) {
+        return past_the_ends(from_log_raw(lp, a, s, upper), lp, a, s, upper);
+    }
+    static double from_log_raw(double lp, double a, double s, bool upper) {
         if (!(lp <= 0.0) || a > gamma_detail::kMaxShape) return kNaN;
         if (lp == 0.0) return upper ? 0.0 : kInf;
         if (lp == -kInf) return upper ? kInf : 0.0;
@@ -621,8 +641,11 @@ struct InverseGamma {
         return 6.0 * (5.0 * a - 11.0) / ((a - 3.0) * (a - 4.0));
     }
     static double mode(double a, double s) { return s / (a + 1.0); }
-    // The gamma's entropy + log s - 2 psi(a) (E log |dx/dy| = log s - 2 E log Y).
+    // The gamma's entropy + log s - 2 psi(a) (E log |dx/dy| = log s - 2 E log Y). Below 2^-1000:
+    // 1/a + log(s/a) + 1 + euler + O(a) (log Gamma(a) = -log a - euler a, psi(a) = -1/a - euler
+    // + O(a)), which is 1/a to the doubles, inf past 1/a's range (T51; it was NaN below 2^-1021).
     static double entropy(double a, double s) {
+        if (a < 0x1p-1000) return 1.0 / a + ((std::log(s) - std::log(a)) + 1.5772156649015329);
         const num::DD h = gamma_detail::entropy_std(a) + num::log_dd(s) - 2.0 * special::Digamma::f(a);
         return h.hi + h.lo;
     }

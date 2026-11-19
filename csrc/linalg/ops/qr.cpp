@@ -116,8 +116,10 @@ nb::object lstsq(nb::handle ao, nb::handle bo, nb::handle rtol_o) {
             const lint nrhs = std::max<lint>(r.k, 1);
             // B where numpy has it (numpy and scipy's buffer: A, then B, then S in one malloc):
             // 8 m n bytes past a 16-byte boundary. Accelerate's dgelsd gives other last bits
-            // for a B off 16 bytes on its underdetermined path (9 x 11: 34 of 40 random
-            // systems differed from numpy), so B keeps numpy's offset (2026-11-19).
+            // for a B off 16 bytes on its underdetermined path (the same routine called with
+            // only B moved by 8 bytes: 35 of 40 random 9 x 11 systems and 34 of 40 5 x 7 ones
+            // changed bits, 3 x 8 and 11 x 9 none), so B keeps numpy's offset (2026-11-19; the
+            // one array here not 16-byte aligned on purpose, docs/design/linalg.md §6.4).
             T* B = s.get<T>(static_cast<std::size_t>(ldb * nrhs) + 1, 1);
             if constexpr (std::is_same_v<T, double>) B += (m * n) % 2;
             if (r.k == 0) std::fill(B, B + ldb, T(0));

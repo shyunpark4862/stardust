@@ -456,6 +456,7 @@ ncfdtri(dfn, dfd, nc, p, /, *, out=None)
   | `chndtr(0, nc, 0)` | NaN | `chdtr(0, 0)`과 같다 |
   | `chndtrix(0, nc, p)`, p ≤ e^(−nc/2) | 0 | 점질량 안 |
   | `chndtr(df, nc, x)`, 0 < df < 2⁻⁹⁶⁰, x > 0 | df = 0의 값(`chndtrc`는 거기에 j = 0 항의 꼬리 e^(−nc/2)·(df/2)·E₁(x/2)를 더한다) | 모양 j와 df/2 + j의 차이는 상대 2⁻⁹⁵⁰ 아래다. x = 0은 0(df > 0에는 점질량이 없다). 2026-11-19, 전에는 df ≲ 1e-305의 작은 x와 df < 2⁻¹⁰²¹·nc < 2⁻⁸⁹⁹에서 `chndtrc`가 NaN(`chndtrc(1e-307, 1, 1e-300)`) |
+  | `ncfdtr(5e-324, dfd, nc, f)` | `ncfdtr(1e-323, dfd, nc, f)`의 값 | dfn/2가 0으로 반올림된다. 차이는 절대 2⁻¹⁰⁶³ 아래. 2026-11-19, 전에는 f ≈ 1e23–1e173에서 NaN |
   | `ncfdtri`, `chndtrix`, 근이 double 밖 | inf(꼬리가 가장 큰 double에서도 목표에 못 미칠 때), 0(가장 작은 양수에서 이미 넘을 때) | 2026-11-19, 전에는 NaN: `ncfdtri(5e-324, 5, 2, 0.5)` = inf |
   | `ncfdtr(dfn, dfd, nc, f)`, dfn이 아주 작다(w < 2⁻¹⁰⁰⁰) | j = 0 항의 값(e^(−nc/2)·`fdtr`) | 2026-11-19, 전에는 dfn ≲ 2⁻⁹⁹⁷에서 NaN: `ncfdtr(2**-1021, 5, 2, 1)` = 0.36788 |
   | **`chndtr(inf, nc, x)`**, **`chndtr(df, inf, x)`** | 0 (`chndtrc`는 1) | 분포가 무한대로 간다. **scipy는 NaN**. x도 inf이면 NaN |

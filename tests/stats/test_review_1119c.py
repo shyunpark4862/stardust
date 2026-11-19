@@ -166,3 +166,69 @@ def test_descriptive_call_shape_errors():
     with pytest.raises(TypeError, match=r"^describe\(\): takes 1 positional argument but 2 were given$"):
         S.describe([1.0, 2.0], 0)
     assert S.moment.__name__ == "moment" and str(inspect.signature(S.moment)).startswith("(x, /, *, order")
+
+
+# ---- R82, R83, R87 (2026-11-19, fifth pass)
+
+def _arb_q(a, y):
+    ctx.prec = 4000
+    try:
+        return arb(y).gamma_upper(arb(a), 1)
+    finally:
+        ctx.prec = 53
+
+
+def test_ncfdtr_smallest_dfn():
+    # R82: dfn = 5e-324 halves to 0; NaN for f ~ 1e23-1e173
+    for f in (1e10, 1e23, 1e100, 1e173, 1e200):
+        assert sp.ncfdtr(5e-324, 5.0, 2.0, f) == pytest.approx(math.exp(-1.0), rel=1e-15)
+        assert sp.ncfdtrc(5e-324, 5.0, 2.0, f) == pytest.approx(-math.expm1(-1.0), rel=1e-15)
+        assert sp.ncfdtr(5e-324, 5.0, 2.0, f) == sp.ncfdtr(1e-323, 5.0, 2.0, f)
+
+
+@pytest.mark.parametrize("df,nc,x", [(5e-324, 5e-324, 1e-300), (1.5e-323, 1e-300, 1e-300), (1e-310, 1e-310, 1e-20),
+                                     (2.0**-1022, 1e-300, 1e-300)])
+def test_chndtrc_subnormal_df_against_arb(df, nc, x):
+    # R83: the j = 0 term's half after the scaling (0.5 * df rounded first: 0 for 1.71e-321)
+    ctx.prec = 4000
+    try:
+        a, mu, y = arb(df) / 2, arb(nc) / 2, arb(x) / 2
+        want, p = arb(0), (-mu).exp()
+        for j in range(60):
+            want += p * y.gamma_upper(a + j, 1)
+            p = p * mu / (j + 1)
+        want = float(want)
+    finally:
+        ctx.prec = 53
+    assert abs(sp.chndtrc(df, nc, x) - want) <= max(2.0**-1074, 1e-14 * want)
+
+
+@pytest.mark.parametrize("v,x", [(1.5e-323, 1e-300), (5e-324, 1e-300), (2.5e-323, 1.0), (1e-310, 1e-300)])
+def test_chdtrc_odd_subnormal_df(v, x):
+    want = float(_arb_q(arb(v) / 2, arb(x) / 2))
+    assert abs(sp.chdtrc(v, x) - want) <= 2.0**-1074
+
+
+def test_inverse_gamma_subnormal_shape():
+    # R87 (T51): the roots beyond the doubles are inf (were NaN), the finite ones solve the tail
+    for a in (5e-324, 5e-311, 1e-308):
+        X = S.InverseGamma(a=a, scale=a)
+        assert X.median() == math.inf and X.icdf(0.9) == math.inf and X.iccdf(0.5) == math.inf
+        assert X.ilogcdf(-1.0) == math.inf and X.iccdf(1.0) == 0.0
+    for a, s, p in ((5e-311, 5e-311, 1e-310), (1e-308, 1e-308, 1e-310), (1e-320, 1.0, 1e-319)):
+        x = S.InverseGamma(a=a, scale=s).icdf(p)
+        assert 0.0 < x < math.inf and float(_arb_q(a, arb(s) / arb(x))) == pytest.approx(p, rel=1e-13)
+    # the entropy 1/a + log(s/a) + 1 + euler below 2^-1000, against Arb
+    ctx.prec = 4000
+    try:
+        for a, s in ((1e-308, 1e-308), (2.0**-1000, 1.0), (1e-200, 3.0)):
+            A, Sv = arb(a), arb(s)
+            want = float(A + (Sv * A.gamma()).log() - (1 + A) * A.digamma())
+            assert S.InverseGamma(a=a, scale=s).entropy() == pytest.approx(want, rel=1e-15)
+    finally:
+        ctx.prec = 53
+    assert S.InverseGamma(a=1e-310, scale=1e-310).entropy() == math.inf
+    # F's dfn = inf limit is that inverse gamma
+    F = S.F(dfn=math.inf, dfd=1e-310)
+    assert F.median() == math.inf and F.icdf(0.9) == math.inf and F.entropy() == math.inf
+    assert F.cdf(1.0) == pytest.approx(3.5695865517192284e-308, rel=1e-14)

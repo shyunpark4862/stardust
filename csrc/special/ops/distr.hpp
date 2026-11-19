@@ -339,9 +339,10 @@ struct Chdtrc : Real {
     static constexpr double cost_ns = cost::kGammaincc;
     static double f(double v, double x) {
         if (distr_detail::chi2_subnormal(v, x)) return distr_detail::chi2_tiny_upper(v, x);
-        // v the smallest double: its half is not one, and Q(a, x) is linear in a -> 0
-        // (chdtrc(5e-324, 1e-300) was 0 for 1.7e-321)
-        if (0.5 * v == 0.0 && v > 0.0) [[unlikely]] return 0.5 * Gammaincc::f(v, 0.5 * x);
+        // v subnormal with an odd last bit: its half is not a double, and Q(a, x) is linear in
+        // a -> 0 (to a relative O(a)): half of Q(v, x/2) (chdtrc(5e-324, 1e-300) was 0 for
+        // 1.7e-321; chdtrc(1.5e-323, 1e-300) 6.8e-321 for 5.2e-321, the half rounded up, 2026-11-19)
+        if (v > 0.0 && v < 0x1p-1021 && 2.0 * (0.5 * v) != v) [[unlikely]] return 0.5 * Gammaincc::f(v, 0.5 * x);
         return Gammaincc::f(0.5 * v, 0.5 * x);
     }
 };
