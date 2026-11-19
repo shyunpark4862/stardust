@@ -178,6 +178,29 @@ constexpr double cost_of() {
     else return 20.0;
 }
 
+// Whether the per-thread memo of values at integers (stats/discrete.hpp, KMemo) will answer
+// most elements of a call with these scalar parameters: the central 99.8% of the
+// distribution spans at most kMemoSpan integers (a quarter of the memo's 1024 slots, so keys
+// rarely collide). The answer for the last parameters is kept per thread: a distribution
+// object calls with the same ones again and again.
+inline constexpr double kMemoSpan = 256.0;
+template <class D, class... P>
+bool memo_narrow(P... p) {
+    thread_local double last[sizeof...(P)];
+    thread_local bool have = false, narrow = false;
+    const double cur[] = {static_cast<double>(p)...};
+    if (have && std::memcmp(last, cur, sizeof cur) == 0) return narrow;
+    bool r = false;
+    if (D::valid(p...)) {
+        const double lo = D::icdf(1e-3, p...), hi = D::icdf(1.0 - 1e-3, p...);
+        r = std::isfinite(lo) && std::isfinite(hi) && hi - lo <= kMemoSpan;
+    }
+    std::memcpy(last, cur, sizeof cur);
+    have = true;
+    narrow = r;
+    return r;
+}
+
 // A probability or a density (pdf, pmf, cdf, ccdf) is never negative, so never -0.0 either:
 // a formula may round to it (-(tiny) * (tiny), a product with a negative factor that
 // underflows). v + 0.0 turns -0.0 into +0.0 and changes no other value. The log methods keep
@@ -323,6 +346,19 @@ struct DistOp<D, M, std::index_sequence<I...>> : Real {
         return a;
     }();
     static constexpr double cost_ns = cost_of<D, M>();
+    // The cost when the memo of values at integers answers the call (a memo row of
+    // cost_table: a discrete distribution on a narrow support; negative without one), and
+    // the cost for scalar parameters p (nary_bind picks the weight per call with it: a
+    // narrow call costs 1-2 ns per element, a wide one up to tens of us, and one weight for
+    // both made the narrow calls split into tasks so small that 10 threads ran slower).
+    static constexpr std::size_t kParams = sizeof...(I);
+    static constexpr double memo_cost_ns = cost_table::find(D::name, M::name, true);
+    static double cost_for(const double* p) {
+        if constexpr (memo_cost_ns > 0.0) {
+            if (memo_narrow<D>(p[I]...)) return memo_cost_ns;
+        }
+        return cost_ns;
+    }
     // the method's chunk kernel, when the distribution has one (nary_bind::table_of)
     static constexpr const LoopTable* table = []() -> const LoopTable* {
         if constexpr (M::input) {

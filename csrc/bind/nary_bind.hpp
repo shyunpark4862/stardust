@@ -12,6 +12,7 @@
 #include <nanobind/nanobind.h>
 
 #include <cstddef>
+#include <cstdint>
 #include <span>
 #include <utility>
 
@@ -31,9 +32,37 @@ constexpr const LoopTable& table_of() {
     else return nary_table<Op>;
 }
 
+// The weight of a call: the Op's cost, or, for an Op whose cost depends on its scalar
+// parameters (stats' discrete distributions on a narrow support: Op::cost_for), the cost for
+// the parameters given, when every parameter is a Python float or int.
+template <typename Op>
+std::int64_t weight_for(std::span<const nb::handle> objs) {
+    if constexpr (requires {
+                      Op::memo_cost_ns;
+                      Op::kParams;
+                  }) {
+        if constexpr (Op::memo_cost_ns > 0.0) {
+            double p[Op::kParams];
+            for (std::size_t k = 0; k < Op::kParams; ++k) {
+                PyObject* o = objs[k].ptr();
+                if (PyFloat_CheckExact(o)) p[k] = PyFloat_AS_DOUBLE(o);
+                else if (PyLong_CheckExact(o)) {
+                    p[k] = PyLong_AsDouble(o);
+                    if (p[k] == -1.0 && PyErr_Occurred()) {
+                        PyErr_Clear();
+                        return special::weight_of(Op::cost_ns);
+                    }
+                } else return special::weight_of(Op::cost_ns);
+            }
+            return special::weight_of(Op::cost_for(p));
+        }
+    }
+    return special::weight_of(Op::cost_ns);
+}
+
 template <typename Op>
 nb::object call(std::span<const nb::handle> objs, nb::handle out) {
-    return run_nary(table_of<Op>(), Op::nout, Op::args, objs, out, special::weight_of(Op::cost_ns));
+    return run_nary(table_of<Op>(), Op::nout, Op::args, objs, out, weight_for<Op>(objs));
 }
 
 // m.def(Op::name, ...): the inputs, then out= when there is one result.

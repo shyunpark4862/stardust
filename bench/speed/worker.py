@@ -8,12 +8,17 @@ stream is a copy of the original stdout, taken before fd 1 is redirected.
 
 Requests:
     {"cmd": "env", "r_packages": [...]}         -> {"env": {...}}
-    {"cmd": "case", "id": ..., "threads": [..] | null, "use_r": bool}
+    {"cmd": "case", "id": ..., "threads": [..] | null, "use_r": bool, "fixed": bool}
         -> {"id": ..., "samples": [[label, lib, threads, times, calls], ...],
             "errors": [[label, threads, text], ...], "setup_error": text | null, "seconds": s}
     {"cmd": "quit"}
 
     python -m bench.speed.worker AREA [AREA ...] [--smoke]
+
+The supervisor starts one worker per BLAS thread setting: Accelerate (numpy's, scipy's and
+sd's BLAS/LAPACK) reads VECLIB_MAXIMUM_THREADS once per process, and threadpoolctl cannot
+change it. A request names the sd thread counts this worker measures (with the "follow"
+comparators at the same counts) and whether it also measures the "fixed" comparators and R.
 """
 
 from __future__ import annotations
@@ -81,18 +86,18 @@ class Worker:
         except Exception as e:  # noqa: BLE001  (one failing call must not stop the case)
             return None, f"{type(e).__name__}: {e}".strip()[:500]
 
-    def case(self, cid, threads, use_r) -> dict:
+    def case(self, cid, threads, use_r, fixed=True) -> dict:
         """One round of one case. numpy's error state is restored afterwards and the
         case's teardown(data) runs, so a case's global settings do not leak into the next."""
         import numpy as np
 
         err = np.geterr()
         try:
-            return self._case(cid, threads, use_r)
+            return self._case(cid, threads, use_r, fixed)
         finally:
             np.seterr(**err)
 
-    def _case(self, cid, threads, use_r) -> dict:
+    def _case(self, cid, threads, use_r, fixed) -> dict:
         case = self.cases[cid]
         t0 = time.perf_counter()
         out = {"id": cid, "samples": [], "errors": [], "setup_error": None}
@@ -117,7 +122,7 @@ class Worker:
                 if ref.threads == "follow" and not isinstance(ref, RRef):
                     add(ref.label, ref.library, t, self._one(case, ref.label, t, ref.make, data, t))
         for ref in case.refs:
-            if ref.threads != "fixed":
+            if ref.threads != "fixed" or not fixed:
                 continue
             if isinstance(ref, RRef):
                 if use_r:
@@ -154,7 +159,7 @@ def main(argv) -> None:
             if req["cmd"] == "env":
                 reply = {"env": w.env(req.get("r_packages") or [])}
             elif req["cmd"] == "case":
-                reply = w.case(req["id"], req.get("threads"), req.get("use_r", True))
+                reply = w.case(req["id"], req.get("threads"), req.get("use_r", True), req.get("fixed", True))
             else:
                 reply = {"error": f"unknown command {req['cmd']!r}"}
             proto.write(json.dumps(reply) + "\n")

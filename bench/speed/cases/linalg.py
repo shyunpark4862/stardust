@@ -1,14 +1,23 @@
-"""sd.linalg against numpy and scipy: every function on the fixed shapes of the old
-baseline (single small and large matrices, batches, long vectors and long structured
-systems). From bench/linalg/baseline.py (matrix_rows, long_rows), timed by
-bench/linalg/stage_compare.py and summed up by bench/linalg/final_table.py; after the
-merge rerun through bench/merge/rerun.sh (bench/merge/m8/final/).
+"""sd.linalg against numpy and scipy. The base set is the old baseline's (bench/linalg/
+baseline.py matrix_rows and long_rows, timed by bench/linalg/stage_compare.py, summed up
+by bench/linalg/final_table.py, rerun after the merge through bench/merge/rerun.sh):
+every function on single small and large matrices, batches, long vectors and long
+banded systems. On top of it: rectangular matrices, several right-hand sides, batches
+near the split threshold (linalg.md §7), complex matrices, batched banded systems, and
+inputs that take sd's own paths (a triangular or small-norm expm, the generalized
+eigvalsh, cond with ord=1).
 
 The comparator is numpy where numpy has the function, else scipy, at their default
-threads (their BLAS on its default pool), as stage_compare.py --ref did; none where
-neither takes the input (a batch for lu_solve, ldl, the banded solvers). Every call is
-a functools.partial over the prepared arrays where the call allows it, so the timed
-callable adds no Python frame of its own on either side."""
+threads (their BLAS on its default pool), as stage_compare.py --ref did. scipy 1.18
+takes batches for lu_factor / lu_solve, ldl, cho_solve, solve_banded and lstsq, so every
+row has a comparator. Every comparator does sd's work: numpy's full_matrices and mode
+follow sd's mode, scipy's cho_solve gets cho_factor's factor as sd gets its cholesky.
+Every call is a functools.partial over the prepared arrays where the call allows it, so
+the timed callable adds no Python frame of its own on either side.
+
+A single small matrix has nothing to split (the batch split is the only parallel path
+below the BLAS), so (3,3) and (32,32) run at one thread only, except solve_sylvester and
+two rows that catch a misuse of the pool at 10 threads."""
 
 from __future__ import annotations
 
@@ -17,7 +26,7 @@ import importlib
 
 from ..registry import Case, Ref
 
-MATRIX_SHAPES = [(3, 3), (32, 32), (300, 300), (1000, 1000), (1000, 3, 3), (100, 32, 32)]
+MATRIX_SHAPES = [(3, 3), (32, 32), (300, 300), (1000, 1000), (1000, 3, 3), (100, 32, 32), (16, 3, 3), (8, 300, 300)]
 KIND = {
     (3, 3): "작은 행렬",
     (32, 32): "작은 행렬",
@@ -25,10 +34,19 @@ KIND = {
     (1000, 1000): "큰 행렬",
     (1000, 3, 3): "행렬 묶음",
     (100, 32, 32): "행렬 묶음",
+    (16, 3, 3): "행렬 묶음",
+    (8, 300, 300): "행렬 묶음",
 }
+COMPLEX_GROUP = "복소 행렬"
+COMPLEX_SHAPES = [(300, 300), (100, 32, 32)]
+RECT_GROUP = "직사각 행렬"
 LONG_GROUP = "긴 벡터·띠 행렬"
 LONG_N = 1_000_000
 BAND_N = 100_000
+BAND_BATCH = (100, 128)  # batched banded systems: 100 systems of 128 unknowns
+
+# Single small matrices that still run at 10 threads: the pool must stay out of the way.
+POOL_CHECK = {("solve(a, b)", (3, 3)), ("svd(a)", (32, 32))}
 
 
 def _resolve(path: str):
@@ -80,10 +98,34 @@ def P(path, *keys, **kw):  # a scipy.linalg call
 
 # ---------------------------------------------------------------- data
 
+# numpy keys that have an sd copy under the upper-case name.
+_SD_COPIES = (
+    "a",
+    "b",
+    "b16",
+    "c",
+    "h",
+    "spd",
+    "t",
+    "tf",
+    "ut",
+    "a001",
+    "x0",
+    "dl",
+    "dd",
+    "du",
+    "ab5",
+    "ab_tri",
+    "k3",
+    "v3",
+    "w3",
+)
 
-def _matrix_data(shape, keys, quiet=False):
-    """The inputs of baseline.py's matrix_rows at one shape; only `keys` (and what they
-    need) are built. Lower case: numpy, upper case: the sd copy.
+
+def _matrix_data(shape, keys, quiet=False, cplx=False):
+    """The inputs of baseline.py's matrix_rows at one shape (m, n or batch, m, n); only
+    `keys` (and what they need) are built. Lower case: numpy, upper case: the sd copy.
+    cplx: complex128 a, b, c and what is built from them (h Hermitian, spd = a·aᴴ + n·I).
 
     quiet: numpy's det and slogdet raise spurious floating-point warnings on Accelerate
     (baseline.py silenced them with np.seterr for the whole run); each warning costs
@@ -98,11 +140,11 @@ def _matrix_data(shape, keys, quiet=False):
     else:
         np.seterr(divide="warn", over="warn", under="ignore", invalid="warn")
 
-    n = shape[-1]
+    m, n = shape[-2], shape[-1]
     batch = shape[:-2]
     rng = np.random.default_rng(0)
     a = rng.standard_normal(shape)
-    b = rng.standard_normal((*batch, n, 1))
+    b = rng.standard_normal((*batch, m, 1))
     c = rng.standard_normal(shape)
     tri = [
         rng.standard_normal((*batch, n - 1)),
@@ -112,19 +154,38 @@ def _matrix_data(shape, keys, quiet=False):
     ab5 = rng.standard_normal((*batch, 5, n))
     ab5[..., 2, :] += 10  # kl = ku = 2, a dominant diagonal
     k3 = rng.standard_normal((3, 3))  # kron's second operand: (..., 3n, 3n) results
+    if cplx:
+        a = a + 1j * rng.standard_normal(a.shape)
+        b = b + 1j * rng.standard_normal(b.shape)
+        c = c + 1j * rng.standard_normal(c.shape)
     memo = {"a": a, "b": b, "c": c, "dl": tri[0], "dd": tri[1], "du": tri[2], "ab5": ab5, "k3": k3}
+
+    def ct(x):
+        return np.swapaxes(x, -1, -2).conj()
 
     def get(k):
         if k in memo:
             return memo[k]
         if k == "h":
-            v = (a + np.swapaxes(a, -1, -2)) / 2
+            v = (a + ct(a)) / 2
         elif k == "spd":
-            v = a @ np.swapaxes(a, -1, -2) + n * np.eye(n)
+            v = a @ ct(a) + n * np.eye(n)
         elif k == "t":
             v = np.triu(a) + n * np.eye(n)
-        elif k == "chol":
-            v = np.linalg.cholesky(get("spd"))
+        elif k == "tf":
+            v = np.asfortranarray(get("t"))
+        elif k == "ut":
+            v = np.triu(a)  # expm of a triangular matrix (no shift: exp(n) would overflow)
+        elif k == "a001":
+            v = 0.01 * a
+        elif k == "b16":
+            v = np.random.default_rng(1).standard_normal((*batch, m, 16))
+        elif k == "cho_f":
+            import scipy.linalg as sl
+
+            v = sl.cho_factor(get("spd"), lower=True)
+        elif k == "CHOL":
+            v = sd.linalg.cholesky(get("SPD"))  # sd's own output (column-major per matrix)
         elif k == "x0":
             v = a[..., 0, :]
         elif k == "v3":
@@ -142,24 +203,7 @@ def _matrix_data(shape, keys, quiet=False):
             r = sd.linalg.lu(get("A"))
             memo["LU_L"], memo["LU_U"], memo["LU_P"] = r
             return memo[k]
-        elif k[0].isupper() and k.lower() in (
-            "a",
-            "b",
-            "c",
-            "h",
-            "spd",
-            "t",
-            "chol",
-            "x0",
-            "dl",
-            "dd",
-            "du",
-            "ab5",
-            "ab_tri",
-            "k3",
-            "v3",
-            "w3",
-        ):
+        elif k[0].isupper() and k.lower() in _SD_COPIES:
             v = sd.asarray(get(k.lower()))
         else:
             raise KeyError(k)
@@ -170,7 +214,7 @@ def _matrix_data(shape, keys, quiet=False):
 
 
 def _long_data(keys):
-    """baseline.py's long_rows inputs."""
+    """baseline.py's long_rows inputs, and the batched banded systems."""
     import numpy as np
 
     import stardust as sd
@@ -188,6 +232,21 @@ def _long_data(keys):
     b = rng.standard_normal(n)
     p3, q3 = rng.standard_normal((LONG_N, 3)), rng.standard_normal((LONG_N, 3))
     base = {"v": v, "dl": tri[0], "dd": tri[1], "du": tri[2], "ab_tri": ab_tri, "ab5": ab5, "b": b, "p3": p3, "q3": q3}
+    if any(k.lower().startswith("q_") for k in keys):
+        nb, m = BAND_BATCH
+        qtri = [rng.standard_normal((nb, m - 1)), rng.standard_normal((nb, m)) + 10, rng.standard_normal((nb, m - 1))]
+        qab_tri = np.zeros((nb, 3, m))
+        qab_tri[:, 0, 1:], qab_tri[:, 1], qab_tri[:, 2, :-1] = qtri[2], qtri[1], qtri[0]
+        qab5 = rng.standard_normal((nb, 5, m))
+        qab5[:, 2] += 10
+        base.update(
+            q_dl=qtri[0],
+            q_dd=qtri[1],
+            q_du=qtri[2],
+            q_ab_tri=qab_tri,
+            q_ab5=qab5,
+            q_b=rng.standard_normal((nb, m, 1)),  # scipy's batched solve_banded wants b as (…, n, k)
+        )
     return {k: base[k] if k in base else sd.asarray(base[k.lower()]) for k in keys}
 
 
@@ -204,22 +263,18 @@ def _diagonal(a):
     return lambda: np.linalg.diagonal(a).copy()
 
 
-def _cho_solve(chol, b):
-    import scipy.linalg as sl
-
-    return functools.partial(sl.cho_solve, (chol, True), b)
-
-
 def _kron_batch(a, k3):
     batch, m, n = a.shape[:-2], a.shape[-2], a.shape[-1]
     return lambda: (a[..., :, None, :, None] * k3[:, None, :]).reshape(*batch, 3 * m, 3 * n)
 
 
 def matrix_rows(shape):
-    """(name, sd call, (lib, ref call) or None, note) at one shape, as baseline.py."""
+    """(name, sd call, (lib, ref call), note) at one square shape: baseline.py's rows and
+    the ones added since. ROW_SHAPES limits a row to some shapes."""
     single = len(shape) == 2
     return [
         ("solve(a, b)", S("solve", "A", "B"), N("linalg.solve", "a", "b"), ""),
+        ("solve(a, b16)", S("solve", "A", "B16"), N("linalg.solve", "a", "b16"), "오른쪽 변 16개"),
         ("inv(a)", S("inv", "A"), N("linalg.inv", "a"), ""),
         ("det(a)", S("det", "A"), N("linalg.det", "a"), ""),
         ("slogdet(a)", S("slogdet", "A"), N("linalg.slogdet", "a"), ""),
@@ -238,48 +293,73 @@ def matrix_rows(shape):
             P("solve_triangular", "t", "b", lower=False),
             "",
         ),
-        ("cholesky(spd)", S("cholesky", "SPD"), N("linalg.cholesky", "spd"), ""),
-        ("cholesky_solve(l, b)", S("cholesky_solve", "CHOL", "B"), ("scipy", Expr("chol b", _cho_solve)), ""),
-        ("lu(a)", S("lu", "A"), P("lu", "a", p_indices=True), ""),
         (
-            "lu_solve(l, u, perm, b)",
-            S("lu_solve", "LU_L", "LU_U", "LU_P", "B"),
-            P("lu_solve", "lu_f", "b") if single else None,
-            "",
+            "solve_triangular(tF, b, upper=True)",
+            S("solve_triangular", "TF", "B", upper=True),
+            P("solve_triangular", "tf", "b", lower=False),
+            "t는 F 순서",
+        ),
+        (
+            "solve_triangular(t, b16, upper=True)",
+            S("solve_triangular", "T", "B16", upper=True),
+            P("solve_triangular", "t", "b16", lower=False),
+            "오른쪽 변 16개",
+        ),
+        ("cholesky(spd)", S("cholesky", "SPD"), N("linalg.cholesky", "spd"), ""),
+        (
+            "cholesky_solve(l, b)",
+            S("cholesky_solve", "CHOL", "B"),
+            P("cho_solve", "cho_f", "b"),
+            "l은 각자의 cholesky 결과",
+        ),
+        (
+            "cholesky_solve(l, b16)",
+            S("cholesky_solve", "CHOL", "B16"),
+            P("cho_solve", "cho_f", "b16"),
+            "오른쪽 변 16개",
+        ),
+        ("lu(a)", S("lu", "A"), P("lu", "a", p_indices=True), ""),
+        ("lu_solve(l, u, perm, b)", S("lu_solve", "LU_L", "LU_U", "LU_P", "B"), P("lu_solve", "lu_f", "b"), ""),
+        (
+            "lu_solve(l, u, perm, b16)",
+            S("lu_solve", "LU_L", "LU_U", "LU_P", "B16"),
+            P("lu_solve", "lu_f", "b16"),
+            "오른쪽 변 16개",
         ),
         ("qr(a)", S("qr", "A"), N("linalg.qr", "a"), ""),
-        ('qr(a, mode="complete")', S("qr", "A", mode="complete"), N("linalg.qr", "a", mode="complete"), ""),
         ("qr_pivoted(a)", S("qr_pivoted", "A"), P("qr", "a", mode="economic", pivoting=True), ""),
         ("lstsq(a, b)", S("lstsq", "A", "B"), N("linalg.lstsq", "a", "b") if single else P("lstsq", "a", "b"), ""),
         ("eigh(h)", S("eigh", "H"), N("linalg.eigh", "h"), ""),
         ("eigvalsh(h)", S("eigvalsh", "H"), N("linalg.eigvalsh", "h"), ""),
         ("eigh(h, spd)", S("eigh", "H", "SPD"), P("eigh", "h", "spd"), ""),
+        ("eigvalsh(h, spd)", S("eigvalsh", "H", "SPD"), P("eigh", "h", "spd", eigvals_only=True), ""),
         ("svd(a)", S("svd", "A"), N("linalg.svd", "a", full_matrices=False), ""),
         ("svdvals(a)", S("svdvals", "A"), N("linalg.svdvals", "a"), ""),
         ("matrix_rank(a)", S("matrix_rank", "A"), N("linalg.matrix_rank", "a"), ""),
         ("pinv(a)", S("pinv", "A"), N("linalg.pinv", "a"), ""),
         ("cond(a)", S("cond", "A"), N("linalg.cond", "a"), ""),
+        ("cond(a, ord=1)", S("cond", "A", ord=1), N("linalg.cond", "a", 1), ""),
         ("eig(a)", S("eig", "A"), N("linalg.eig", "a"), ""),
         ("eigvals(a)", S("eigvals", "A"), N("linalg.eigvals", "a"), ""),
         ("schur(a)", S("schur", "A"), P("schur", "a"), ""),
         ("hessenberg(a)", S("hessenberg", "A"), P("hessenberg", "a", calc_q=True), ""),
-        ("ldl(h)", S("ldl", "H"), P("ldl", "h") if single else None, ""),
+        ("ldl(h)", S("ldl", "H"), P("ldl", "h"), ""),
         (
             "solve_tridiagonal(dl, d, du, b)",
             S("solve_tridiagonal", "DL", "DD", "DU", "B"),
-            P("solve_banded", (1, 1), "ab_tri", "b") if single else None,
-            "scipy는 solve_banded((1, 1), ...)" if single else "",
+            P("solve_banded", (1, 1), "ab_tri", "b"),
+            "scipy는 solve_banded((1, 1), ...)",
         ),
         (
             "solve_banded(ab, b, lower_bandwidth=2, upper_bandwidth=2)",
             S("solve_banded", "AB5", "B", lower_bandwidth=2, upper_bandwidth=2),
-            P("solve_banded", (2, 2), "ab5", "b") if single else None,
+            P("solve_banded", (2, 2), "ab5", "b"),
             "",
         ),
         (
             "solve_banded(ab, b, lower_bandwidth=1, upper_bandwidth=1)",
             S("solve_banded", "AB_TRI", "B", lower_bandwidth=1, upper_bandwidth=1),
-            P("solve_banded", (1, 1), "ab_tri", "b") if single else None,
+            P("solve_banded", (1, 1), "ab_tri", "b"),
             "",
         ),
         ("solve_sylvester(a, a, c)", S("solve_sylvester", "A", "A", "C"), P("solve_sylvester", "a", "a", "c"), ""),
@@ -291,12 +371,90 @@ def matrix_rows(shape):
         ),
         ("cross(v, w)", S("cross", "V3", "W3"), N("cross", "v3", "w3"), "행마다 앞 세 원소"),
         ("expm(a)", S("expm", "A"), P("expm", "a"), ""),
+        ("expm(t)", S("expm", "UT"), P("expm", "ut"), "위 삼각 행렬"),
+        ("expm(0.01·a)", S("expm", "A001"), P("expm", "a001"), "노름이 작은 행렬"),
+    ]
+
+
+_BASE_SHAPES = {(3, 3), (32, 32), (300, 300), (1000, 1000), (1000, 3, 3), (100, 32, 32)}
+_SPLIT = {
+    (16, 3, 3): {
+        "solve(a, b)",
+        "inv(a)",
+        "det(a)",
+        "cholesky(spd)",
+        "qr(a)",
+        "eigh(h)",
+        "svd(a)",
+        "eig(a)",
+        "expm(a)",
+    },
+    (8, 300, 300): {"solve(a, b)", "inv(a)", "eigh(h)", "svd(a)"},
+}
+_RHS16 = {(100, 32, 32), (1000, 1000)}
+_SVALS = {(3, 3), (1000, 3, 3)}  # rows that share svdvals' kernel
+# Rows limited to some shapes; a row not named here runs at every base shape.
+ROW_SHAPES = {
+    "solve(a, b16)": _RHS16,
+    "solve_triangular(t, b16, upper=True)": _RHS16,
+    "cholesky_solve(l, b16)": _RHS16,
+    "lu_solve(l, u, perm, b16)": _RHS16,
+    "solve_triangular(tF, b, upper=True)": {(1000, 1000)},
+    "matrix_rank(a)": _SVALS,
+    "cond(a)": _SVALS,
+    "matrix_norm(a, ord=2)": _SVALS,
+    # the same LAPACK on both sides at 1000² (ratio about 1.00) and 18 s a round
+    "eig(a)": _BASE_SHAPES - {(1000, 1000)},
+    "eigvals(a)": _BASE_SHAPES - {(1000, 1000)},
+    "schur(a)": _BASE_SHAPES - {(1000, 1000)},
+    "solve_banded(ab, b, lower_bandwidth=1, upper_bandwidth=1)": {(100, 32, 32)},
+}
+COMPLEX_ROWS = {"solve(a, b)", "inv(a)", "cholesky(spd)", "qr(a)", "eigh(h)", "svd(a)", "eig(a)", "expm(a)"}
+
+
+def _wanted(name, shape):
+    if shape in _SPLIT:
+        return name in _SPLIT[shape]
+    return shape in ROW_SHAPES.get(name, _BASE_SHAPES)
+
+
+def rect_rows():
+    """(name, shape, sd call, (lib, ref call), note) on rectangular matrices."""
+    tall, wide = (10_000, 100), (200, 1000)
+    return [
+        ("lstsq(a, b)", tall, S("lstsq", "A", "B"), N("linalg.lstsq", "a", "b"), ""),
+        ("lstsq(a, b)", wide, S("lstsq", "A", "B"), N("linalg.lstsq", "a", "b"), "식보다 미지수가 많다"),
+        ("lstsq(a, b)", (1000, 10, 3), S("lstsq", "A", "B"), P("lstsq", "a", "b"), ""),
+        ("qr(a)", tall, S("qr", "A"), N("linalg.qr", "a"), ""),
+        (
+            'qr(a, mode="complete")',
+            (2000, 100),
+            S("qr", "A", mode="complete"),
+            N("linalg.qr", "a", mode="complete"),
+            "",
+        ),
+        ("qr_pivoted(a)", tall, S("qr_pivoted", "A"), P("qr", "a", mode="economic", pivoting=True), ""),
+        ("svd(a)", (2000, 200), S("svd", "A"), N("linalg.svd", "a", full_matrices=False), ""),
+        (
+            'svd(a, mode="complete")',
+            (2000, 200),
+            S("svd", "A", mode="complete"),
+            N("linalg.svd", "a", full_matrices=True),
+            "",
+        ),
+        ("svd(a)", wide, S("svd", "A"), N("linalg.svd", "a", full_matrices=False), ""),
+        ("pinv(a)", (2000, 200), S("pinv", "A"), N("linalg.pinv", "a"), ""),
+        ("matrix_rank(a)", (2000, 200), S("matrix_rank", "A"), N("linalg.matrix_rank", "a"), ""),
+        ("svdvals(a)", (2000, 200), S("svdvals", "A"), N("linalg.svdvals", "a"), ""),
     ]
 
 
 def long_rows():
-    """(name, size, n, sd call, (lib, ref call), note), as baseline.py's long_rows."""
+    """(name, size, n, sd call, (lib, ref call), note), as baseline.py's long_rows, and
+    the batched banded systems."""
     band = "n=10^5"
+    qsize = f"({BAND_BATCH[0]}, n={BAND_BATCH[1]})"
+    qn = BAND_BATCH[0] * BAND_BATCH[1]
     return [
         ("vecdot(v, v)", "(10^6,)", LONG_N, S("vecdot", "V", "V"), N("vecdot", "v", "v"), ""),
         ("vector_norm(v)", "(10^6,)", LONG_N, S("vector_norm", "V"), N("linalg.vector_norm", "v"), ""),
@@ -324,11 +482,28 @@ def long_rows():
             P("solve_banded", (2, 2), "ab5", "b"),
             "",
         ),
+        (
+            "solve_tridiagonal(dl, d, du, b)",
+            qsize,
+            qn,
+            S("solve_tridiagonal", "Q_DL", "Q_DD", "Q_DU", "Q_B"),
+            P("solve_banded", (1, 1), "q_ab_tri", "q_b"),
+            "연립 100개, scipy는 solve_banded((1, 1), ...)",
+        ),
+        (
+            "solve_banded(ab, b, lower_bandwidth=2, upper_bandwidth=2)",
+            qsize,
+            qn,
+            S("solve_banded", "Q_AB5", "Q_B", lower_bandwidth=2, upper_bandwidth=2),
+            P("solve_banded", (2, 2), "q_ab5", "q_b"),
+            "연립 100개",
+        ),
         ("cross(p, q)", "(10^6,3)", LONG_N, S("cross", "P3", "Q3"), N("cross", "p3", "q3"), ""),
     ]
 
 
-# The representative rows of bench/linalg/final_table.py (PICK), less the slowest.
+# The representative rows of bench/linalg/final_table.py (PICK), less the slowest, and
+# one rectangular and one complex row: (name, shape or size).
 QUICK = {
     ("solve(a, b)", (3, 3)),
     ("solve(a, b)", (1000, 1000)),
@@ -344,8 +519,9 @@ QUICK = {
     ("expm(a)", (1000, 3, 3)),
     ("expm(a)", (300, 300)),
     ("vecdot(v, v)", "(10^6,)"),
-    ("vector_norm(v)", "(10^6,)"),
 }
+QUICK_RECT = {("lstsq(a, b)", (10_000, 100))}
+QUICK_COMPLEX = {("solve(a, b)", (300, 300))}
 
 
 def _keys(*calls):
@@ -359,26 +535,48 @@ def _ref(r):
     return (Ref(lib, call.make),)
 
 
+def _size(shape):
+    return "(" + ",".join(map(str, shape)) + ")"
+
+
+def _matrix_case(group, shape, name, sdc, ref, note, quick, cplx=False, threads=(1, 10)):
+    keys = _keys(sdc, ref[1] if ref else None)
+    quiet = name.startswith(("det(", "slogdet("))
+    return Case(
+        area="linalg",
+        group=group,
+        name=name,
+        size=_size(shape),
+        setup=lambda: _matrix_data(shape, keys, quiet, cplx),
+        sd=sdc.make,
+        refs=_ref(ref),
+        note=note,
+        quick=quick,
+        threads=threads,
+    )
+
+
 def cases() -> list[Case]:
     out = []
     for shape in MATRIX_SHAPES:
-        size = "(" + ",".join(map(str, shape)) + ")"
         for name, sdc, ref, note in matrix_rows(shape):
-            keys = _keys(sdc, ref[1] if ref else None)
-            quiet = name.startswith(("det(", "slogdet("))
-            out.append(
-                Case(
-                    area="linalg",
-                    group=KIND[shape],
-                    name=name,
-                    size=size,
-                    setup=lambda shape=shape, keys=keys, quiet=quiet: _matrix_data(shape, keys, quiet),
-                    sd=sdc.make,
-                    refs=_ref(ref),
-                    note=note,
-                    quick=(name, shape) in QUICK,
-                )
+            if not _wanted(name, shape):
+                continue
+            small = len(shape) == 2 and shape[0] <= 32
+            threads = (
+                (1,)
+                if small and not name.startswith("solve_sylvester") and (name, shape) not in POOL_CHECK
+                else (1, 10)
             )
+            out.append(_matrix_case(KIND[shape], shape, name, sdc, ref, note, (name, shape) in QUICK, threads=threads))
+    for shape in COMPLEX_SHAPES:
+        for name, sdc, ref, note in matrix_rows(shape):
+            if name in COMPLEX_ROWS:
+                out.append(
+                    _matrix_case(COMPLEX_GROUP, shape, name, sdc, ref, note, (name, shape) in QUICK_COMPLEX, cplx=True)
+                )
+    for name, shape, sdc, ref, note in rect_rows():
+        out.append(_matrix_case(RECT_GROUP, shape, name, sdc, ref, note, (name, shape) in QUICK_RECT))
     for name, size, n, sdc, ref, note in long_rows():
         keys = _keys(sdc, ref[1])
         out.append(

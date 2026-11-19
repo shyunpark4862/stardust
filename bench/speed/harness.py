@@ -106,6 +106,31 @@ def measure(
     return Sample(times, n)
 
 
+def rotate(calls: Sequence[Callable[[], object]]) -> Callable[[], object]:
+    """One callable that calls `calls` in turn: time a branchy kernel on several inputs of
+    one shape, so the branch predictor and the caches cannot learn one input (repeating
+    one input made numpy's argsort of 10^3 elements 3.8x faster; docs/design/frame.md
+    §12.1). The turn costs about 30-40 ns per call, the same on both sides of a ratio."""
+    calls = list(calls)
+    if len(calls) == 1:
+        return calls[0]
+    k = [0]
+    n = len(calls)
+
+    def call():
+        i = k[0]
+        k[0] = i + 1 if i + 1 < n else 0
+        return calls[i]()
+
+    return call
+
+
+def fresh_count(n: int) -> int:
+    """How many inputs to rotate for a branchy case of n elements: many small ones, a
+    few big ones (about 4·10^6 elements in all, at least 4, at most 64)."""
+    return min(64, max(4, 4_000_000 // max(n, 1)))
+
+
 # ---------------------------------------------------------------- threads
 
 
@@ -170,7 +195,7 @@ def machine_info() -> dict:
     }
 
 
-PY_LIBS = ("stardust", "numpy", "scipy", "pandas", "statsmodels", "sklearn", "threadpoolctl")
+PY_LIBS = ("stardust", "numpy", "scipy", "pandas", "pyarrow", "statsmodels", "sklearn", "threadpoolctl")
 
 
 def library_versions(libs: Sequence[str] = PY_LIBS) -> dict:

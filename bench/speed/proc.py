@@ -103,6 +103,15 @@ def _ps_tree(pid: int) -> tuple[list[int], int]:
     return pids, sum(rss.get(p, 0) for p in pids)
 
 
+def perf_cores() -> int | None:
+    """The number of performance cores (macOS), the default thread count of sd's pool."""
+    try:
+        out = subprocess.run(["sysctl", "-n", "hw.perflevel0.physicalcpu"], capture_output=True, text=True, timeout=10)
+        return int(out.stdout.strip())
+    except OSError, subprocess.SubprocessError, ValueError:
+        return None
+
+
 def load1() -> float:
     """The 1-minute load average."""
     return os.getloadavg()[0]

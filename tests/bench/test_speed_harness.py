@@ -194,15 +194,17 @@ def test_cost_tables_merge_measured_rows(tmp_path, monkeypatch):
     run_cases = [
         _rec("Normal.cdf a", 100e-9 * 1000, n=1000, cost_key=("stats", "normal.cdf"), area="stats"),
         _rec("Normal.cdf b", 400e-9 * 1000, n=1000, cost_key=("stats", "normal.cdf"), area="stats"),
+        _rec("Binomial.cdf narrow", 2e-9 * 1000, n=1000, cost_key=("stats", "binomial.cdf@memo"), area="stats"),
         _rec("erf", 6e-9 * 10**6, n=10**6, cost_key=("special", "erf"), area="special"),
     ]
     results.promote(_run_data("r1", run_cases), known_ids=[c["id"] for c in run_cases])
     out = cost.generate()
-    assert [(p.name, changed, n) for p, changed, n in out] == [("stats.hpp", True, 1), ("special.hpp", True, 1)]
+    assert [(p.name, changed, n) for p, changed, n in out] == [("stats.hpp", True, 2), ("special.hpp", True, 1)]
     st = stats_out.read_text()
-    assert '{"normal", "cdf", 200},' in st  # geometric mean of 100 and 400
-    assert '{"normal", "pdf", 3},' in st  # kept
-    assert "kRows[2]" in st
+    assert '{"normal", "cdf", 200, false},' in st  # geometric mean of 100 and 400
+    assert '{"normal", "pdf", 3, false},' in st  # kept
+    assert '{"binomial", "cdf", 2, true},' in st  # a memo row of its own
+    assert "kRows[3]" in st and "bool memo = false" in st
     sp = special_out.read_text()
     assert '{"erf", 6},' in sp and '{"_add", 0.19},' in sp and "consteval double ns" in sp
     # nothing new measured: no change
@@ -211,7 +213,7 @@ def test_cost_tables_merge_measured_rows(tmp_path, monkeypatch):
 
 def test_real_cost_headers_parse():
     """The checked-in headers are readable by the generator (rows are kept on regeneration)."""
-    assert len(cost._old_rows(cost.STATS_OUT, cost._STATS_ROW)) > 200
+    assert len(cost._old_stats_rows(cost.STATS_OUT)) > 200
     sp = cost._old_rows(cost.SPECIAL_OUT, cost._SPECIAL_ROW)
     assert ("_add",) in sp and ("erf",) in sp
 

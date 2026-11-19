@@ -8,23 +8,33 @@ The distribution methods (t4-t6) take 10^5 points spread over the distribution b
 quantiles: scipy's own ppf for the continuous ones (t4), sd's icdf for the discrete ones
 (scipy's zipf ppf stops with "endless loop") and for t6 (scipy's noncentral ppf takes
 minutes for 10^5). scipy is timed in its classic form (scipy.stats.<name>.<method> on a
-frozen distribution) with the matching names (sf for ccdf, ppf for icdf, isf for iccdf).
-Every array case feeds csrc/stats/cost_table.hpp (cost tag "<class>.<method>"); the
-discrete distributions' small and wide parameter sets share a key (geometric mean).
+frozen distribution) with the matching names (sf for ccdf, ppf for icdf, isf for iccdf),
+and in its new form (scipy.stats.Normal, Uniform, Logistic, Binomial: NEW) where the class
+exists; the scalar cdf rows also against one scipy.special function where there is one.
+
+Every array case of a distribution feeds csrc/stats/cost_table.hpp with the tag
+"<class>.<method>", the geometric mean of its cases: the wide discrete set, the continuous
+other-parameter group (OTHER) and the rows above. The small-support discrete rows (where the engine's
+memo applies) have their own key "<class>.<method>@memo".
+The parameter-array and mid-size groups are not in the table.
 
 The wide discrete set (nearly every k different) takes 20,000 points (2,000 for the
 hypergeometric and beta-binomial, whose cdf sums run to thousands of terms). Where
 scipy's call over all of them would take more than about 2 s, the old script timed it
-on the first N/50 points: those comparators carry that n. scipy is left out where it
-fails or does not return (zipf ppf "endless loop", zipf cdf at k ~ 1e20, logser ppf).
+on the first N/50 points: those comparators carry that n (SMALL_SAMPLED and OTHER_SAMPLED
+do the same with 2,000 points). scipy is left out where it fails or does not return (zipf
+ppf "endless loop", zipf cdf at k ~ 1e20, logser ppf).
 
-The scalar groups time one Python float per call (cdf; one sample in t7), one thread.
+The scalar groups time one Python float per call (cdf, a few logpdf and icdf; one sample
+in t7), one thread. The small inputs (10^3, 10^4 points; 100 for the descriptive
+statistics) rotate fresh inputs (harness.rotate), so the branch predictor cannot learn one.
 """
 
 from __future__ import annotations
 
 import math
 
+from ..harness import fresh_count, rotate
 from ..registry import Case, Ref
 
 N = 100_000
@@ -130,26 +140,128 @@ QUICK_DIST = {
     ("이산 분포", "Zipf.icdf"),
     ("이산 분포(넓은 지지)", "Hypergeometric.cdf"),
     ("이산 분포(넓은 지지)", "BetaBinomial.icdf"),
+    ("연속 분포(다른 매개변수)", "Gamma(a=0.3).cdf"),
+    ("매개변수 배열", "Binomial.cdf"),
 }
+
+# The inverses of the log probabilities, for a subset (their cost keys "<class>.ilogcdf").
+ILOG = ("ilogcdf", "ilogccdf")
+ILOG_DISTS = {"Normal", "Gamma", "Binomial", "Poisson"}
+
+# scipy's new-style distributions (scipy.stats.Normal, ...), built from sd's parameters
+# (scalars or arrays): a second comparator column wherever the class exists.
+NEW_LABEL = "scipy 새 방식"
+NEW = {
+    "Normal": lambda st, kw: st.Normal(mu=kw["mu"], sigma=kw["sigma"]),
+    "Uniform": lambda st, kw: st.Uniform(a=kw["a"], b=kw["b"]),
+    "Logistic": lambda st, kw: kw["sigma"] * st.Logistic() + kw["mu"],
+    "Binomial": lambda st, kw: st.Binomial(n=kw["n"], p=kw["p"]),
+}
+
+# The scalar cdf as one plain scipy.special function, where there is one (the
+# negative binomial's nbdtr rounds a non-integer n down, so it is left out).
+SPECIAL_LABEL = "scipy.special"
+SPECIAL_CDF = {
+    "Normal": lambda sc, kw: lambda v: sc.ndtr((v - kw["mu"]) / kw["sigma"]),
+    "LogNormal": lambda sc, kw: lambda v: sc.ndtr((math.log(v) - kw["mu"]) / kw["sigma"]),
+    "StudentT": lambda sc, kw: lambda v: sc.stdtr(kw["df"], v),
+    "ChiSquared": lambda sc, kw: lambda v: sc.chdtr(kw["df"], v),
+    "F": lambda sc, kw: lambda v: sc.fdtr(kw["dfn"], kw["dfd"], v),
+    "Gamma": lambda sc, kw: lambda v: sc.gdtr(1.0 / kw.get("scale", 1.0), kw["a"], v),
+    "Beta": lambda sc, kw: lambda v: sc.betainc(kw["a"], kw["b"], v),
+    "Logistic": lambda sc, kw: lambda v: sc.expit((v - kw["mu"]) / kw["sigma"]),
+    "InverseGamma": lambda sc, kw: lambda v: sc.gammaincc(kw["a"], kw.get("scale", 1.0) / v),
+    "NoncentralChiSquared": lambda sc, kw: lambda v: sc.chndtr(v, kw["df"], kw["nc"]),
+    "NoncentralT": lambda sc, kw: lambda v: sc.nctdtr(kw["df"], kw["nc"], v),
+    "NoncentralF": lambda sc, kw: lambda v: sc.ncfdtr(kw["dfn"], kw["dfd"], kw["nc"], v),
+    "Binomial": lambda sc, kw: lambda v: sc.bdtr(v, kw["n"], kw["p"]),
+    "Poisson": lambda sc, kw: lambda v: sc.pdtr(v, kw["mu"]),
+}
+
+# More scalar methods than the cdf for a few distributions.
+SCALAR_MORE = {
+    "Normal": ("logpdf", "icdf"),
+    "Gamma": ("logpdf", "icdf"),
+    "Beta": ("logpdf", "icdf"),
+    "Binomial": ("logpmf", "icdf"),
+    "Poisson": ("logpmf", "icdf"),
+}
+
+# Small-support rows whose scipy call takes seconds over all N points: timed on the first
+# SAMPLE_N points, as WIDE_SAMPLED.
+SAMPLE_N = 2000
+SMALL_SAMPLED = {
+    ("Hypergeometric", "logcdf"),
+    ("Hypergeometric", "logccdf"),
+    ("Hypergeometric", "icdf"),
+    ("Hypergeometric", "iccdf"),
+    ("BetaBinomial", "icdf"),
+    ("BetaBinomial", "iccdf"),
+    ("LogSeries", "icdf"),
+    ("LogSeries", "iccdf"),
+}
+
+# Other parameters of the continuous distributions (the bulk and the edges of a shape):
+# cdf, icdf, logpdf on N points from sd's icdf. They feed the same cost keys as the rows
+# above, so the table's cost is the geometric mean over the parameter sets.
+OTHER = [
+    ("Gamma", {"a": 2.3}, lambda st: st.gamma(2.3)),
+    ("Gamma", {"a": 0.3}, lambda st: st.gamma(0.3)),
+    ("Gamma", {"a": 50.0}, lambda st: st.gamma(50.0)),
+    ("InverseGamma", {"a": 4.3}, lambda st: st.invgamma(4.3)),
+    ("StudentT", {"df": 30.0}, lambda st: st.t(30.0)),
+    ("Beta", {"a": 0.5, "b": 0.5}, lambda st: st.beta(0.5, 0.5)),
+    ("Beta", {"a": 20.0, "b": 30.0}, lambda st: st.beta(20.0, 30.0)),
+    ("F", {"dfn": 5.0, "dfd": 40.0}, lambda st: st.f(5.0, 40.0)),
+    ("NoncentralT", {"df": 9.0, "nc": 20.0}, lambda st: st.nct(9.0, 20.0)),
+    ("NoncentralChiSquared", {"df": 3.5, "nc": 200.0}, lambda st: st.ncx2(3.5, 200.0)),
+]
+OTHER_METHODS = ("cdf", "icdf", "logpdf")
+OTHER_SAMPLED = {("NoncentralT", "icdf"), ("NoncentralChiSquared", "icdf")}  # scipy's noncentral ppf: seconds
+
+
+def _label(name, params):
+    return f"{name}({', '.join(f'{k}={v:g}' for k, v in params.items())})" if params else name
 
 
 # ---------------------------------------------------------------- t4-t6: distribution methods
 
 
-def _dist_setup(name, params, scipy_ref, points):
-    """points: "scipy" (the reference's own ppf, t4) or "sd" (sd's icdf, t5 and t6)."""
+def _dist_data(name, params, scipy_ref, p, points):
+    """The case data for points p (uniform in (0, 1)): points "scipy" (the reference's own
+    ppf, t4) or "sd" (sd's icdf, t5, t6 and the other groups)."""
+    import numpy as np
+    import scipy.special as sc
+    import scipy.stats as st
 
+    import stardust as sd
+
+    X = getattr(sd.stats, name)(**params)
+    ref = scipy_ref(st)
+    x = ref.ppf(p) if points == "scipy" else np.asarray(X.icdf(sd.asarray(p)))
+    lp = np.log(p)
+    n = len(p)
+    return {
+        "X": X,
+        "ref": ref,
+        "new": NEW[name](st, params) if name in NEW else None,
+        "special": SPECIAL_CDF[name](sc, params) if name in SPECIAL_CDF else None,
+        "p": p,
+        "x": x,
+        "lp": lp,
+        "sp": sd.asarray(p),
+        "sx": sd.asarray(x),
+        "slp": sd.asarray(lp),
+        "v": float(x[n // 3]),
+        "pv": float(p[n // 3]),
+    }
+
+
+def _dist_setup(name, params, scipy_ref, points):
     def setup():
         import numpy as np
-        import scipy.stats as st
 
-        import stardust as sd
-
-        p = np.random.default_rng(0).uniform(0, 1, N)
-        X = getattr(sd.stats, name)(**params)
-        ref = scipy_ref(st)
-        x = ref.ppf(p) if points == "scipy" else np.asarray(X.icdf(sd.asarray(p)))
-        return {"X": X, "ref": ref, "p": p, "x": x, "sp": sd.asarray(p), "sx": sd.asarray(x), "v": float(x[N // 3])}
+        return _dist_data(name, params, scipy_ref, np.random.default_rng(0).uniform(0, 1, N), points)
 
     return setup
 
@@ -159,26 +271,11 @@ def _wide_setup(index):
 
     def setup():
         import numpy as np
-        import scipy.stats as st
-
-        import stardust as sd
 
         rng = np.random.default_rng(0)  # one generator over the distributions in order, as the old script
         for nm, _, _ in T5_WIDE[: index + 1]:
             p = rng.uniform(0, 1, _wide_n(nm))
-        X = getattr(sd.stats, name)(**params)
-        x = np.asarray(X.icdf(sd.asarray(p)))
-        n = len(p)
-        return {
-            "X": X,
-            "ref": scipy_ref(st),
-            "p": p,
-            "x": x,
-            "sp": sd.asarray(p),
-            "sx": sd.asarray(x),
-            "p_small": p[: max(1, n // 50)].copy(),
-            "x_small": x[: max(1, n // 50)].copy(),
-        }
+        return _dist_data(name, params, scipy_ref, p, "sd")
 
     return setup
 
@@ -187,22 +284,64 @@ def _wide_n(name):
     return 2000 if name in WIDE_SHORT else 20_000
 
 
-def _method_call(m):
-    """sd's call and scipy's call of method m on the case data (the points, or p for the inverses)."""
-    inv = m in ("icdf", "iccdf")
-    sd_arg, np_arg = ("sp", "p") if inv else ("sx", "x")
-    sdf = lambda d: lambda f=getattr(d["X"], m), a=d[sd_arg]: f(a)  # noqa: E731
-    npf = lambda d, key=np_arg: lambda g=getattr(d["ref"], SCIPY[m]), a=d[key]: g(a)  # noqa: E731
-    return sdf, npf, inv
+def _arg_keys(m):
+    """(sd's data key, numpy's data key) of method m's argument: the points, p for the
+    inverses, log p for the inverses of the log probabilities."""
+    if m in ILOG:
+        return "slp", "lp"
+    if m in ("icdf", "iccdf"):
+        return "sp", "p"
+    return "sx", "x"
 
 
-def _dist_cases(group, specs, methods, points, no_scipy=frozenset()):
+def _sd_call(m):
+    key = _arg_keys(m)[0]
+    return lambda d: lambda f=getattr(d["X"], m), a=d[key]: f(a)
+
+
+def _ref_call(obj, m, k=None):
+    """obj's method m (scipy's classic name for obj "ref") on the case data, on its first k
+    points when k is given (sliced outside the timing)."""
+    key = _arg_keys(m)[1]
+    meth = SCIPY[m] if obj == "ref" else m
+
+    def make(d):
+        a = d[key] if k is None else d[key][:k].copy()
+        return lambda g=getattr(d[obj], meth), a=a: g(a)
+
+    return make
+
+
+def _refs(name, m, *, no_scipy=False, sampled=None, new_sampled=None):
+    """scipy's classic call (not for the ilog methods, which it has not) and the new-style
+    one where the class exists; sampled / new_sampled: their point counts when timed on a
+    sample."""
+    refs = []
+    if not no_scipy and m not in ILOG:
+        refs.append(Ref("scipy", _ref_call("ref", m, sampled), n=sampled))
+    if name in NEW:
+        refs.append(Ref(NEW_LABEL, _ref_call("new", m, new_sampled), n=new_sampled, lib="scipy"))
+    return tuple(refs)
+
+
+def _methods(name, methods):
+    return methods + ILOG if name in ILOG_DISTS else methods
+
+
+def _ilog_note(name, m):
+    return "scipy에 맞는 함수가 없다" if m in ILOG and name not in NEW else ""
+
+
+def _dist_cases(group, specs, methods, points, *, no_scipy=frozenset(), sampled=frozenset(), memo=False):
+    """memo: the small-support discrete rows, whose cost key is "<class>.<method>@memo"."""
     out = []
     for name, params, scipy_ref in specs:
         setup = _dist_setup(name, params, scipy_ref, points)
-        for m in methods:
-            sdf, npf, _ = _method_call(m)
-            refs = () if (name, m) in no_scipy else (Ref("scipy", npf),)
+        for m in _methods(name, methods):
+            k = SAMPLE_N if (name, m) in sampled else None
+            note = _ilog_note(name, m)
+            if (name, m) in no_scipy:
+                note = "scipy의 ppf가 'endless loop'로 멈춘다"
             out.append(
                 Case(
                     area="stats",
@@ -211,25 +350,40 @@ def _dist_cases(group, specs, methods, points, no_scipy=frozenset()):
                     size="10^5",
                     n=N,
                     setup=setup,
-                    sd=sdf,
-                    refs=refs,
-                    cost=("stats", f"{name.lower()}.{m}"),
+                    sd=_sd_call(m),
+                    refs=_refs(name, m, no_scipy=(name, m) in no_scipy, sampled=k),
+                    cost=("stats", f"{name.lower()}.{m}" + ("@memo" if memo else "")),
                     quick=(group, f"{name}.{m}") in QUICK_DIST,
-                    note="scipy의 ppf가 'endless loop'로 멈춘다" if (name, m) in no_scipy else "",
+                    note=note,
                 )
             )
-        # one Python float per call (cdf), one thread
-        sgroup = f"{group}(스칼라)"
+        out += _scalar_cases(f"{group}(스칼라)", name, params, setup)
+    return out
+
+
+def _scalar_cases(group, name, params, setup):
+    """One Python float per call, one thread: the cdf (with scipy.special where it has the
+    function) and, for a few distributions, SCALAR_MORE."""
+    out = []
+    for m in ("cdf", *SCALAR_MORE.get(name, ())):
+        key = "pv" if m in ("icdf", "iccdf") else "v"
+        refs = [Ref("scipy", lambda d, m=m, key=key: lambda g=getattr(d["ref"], SCIPY[m]), v=d[key]: g(v))]
+        if name in NEW:
+            refs.append(
+                Ref(NEW_LABEL, lambda d, m=m, key=key: lambda g=getattr(d["new"], m), v=d[key]: g(v), lib="scipy")
+            )
+        if m == "cdf" and name in SPECIAL_CDF:
+            refs.append(Ref(SPECIAL_LABEL, lambda d: lambda g=d["special"], v=d["v"]: g(v), lib="scipy"))
         out.append(
             Case(
                 area="stats",
-                group=sgroup,
-                name=f"{name}.cdf",
+                group=group,
+                name=f"{name}.{m}",
                 setup=setup,
-                sd=lambda d: lambda f=d["X"].cdf, v=d["v"]: f(v),
-                refs=(Ref("scipy", lambda d: lambda g=d["ref"].cdf, v=d["v"]: g(v)),),
+                sd=lambda d, m=m, key=key: lambda f=getattr(d["X"], m), v=d[key]: f(v),
+                refs=tuple(refs),
                 threads=(1,),
-                quick=(sgroup, f"{name}.cdf") in QUICK_DIST,
+                quick=(group, f"{name}.{m}") in QUICK_DIST,
             )
         )
     return out
@@ -241,27 +395,17 @@ def _wide_cases():
     for i, (name, _, _) in enumerate(T5_WIDE):
         setup = _wide_setup(i)
         n = _wide_n(name)
-        for m in DISC:
-            sdf, npf, inv = _method_call(m)
-            note = ""
-            if (name, m) in WIDE_NO_SCIPY:
-                refs = ()
+        for m in _methods(name, DISC):
+            no_scipy = (name, m) in WIDE_NO_SCIPY
+            note = _ilog_note(name, m)
+            if no_scipy:
                 note = (
                     "scipy의 ppf가 실패한다"
                     if m in ("icdf", "iccdf")
                     else "scipy의 zipf cdf는 k ~ 1e20에서 끝나지 않는다"
                 )
-            elif (name, m) in WIDE_SAMPLED:
-                key = "p_small" if inv else "x_small"
-                refs = (
-                    Ref(
-                        "scipy",
-                        lambda d, m=m, key=key: lambda g=getattr(d["ref"], SCIPY[m]), a=d[key]: g(a),
-                        n=max(1, n // 50),
-                    ),
-                )
-            else:
-                refs = (Ref("scipy", npf),)
+            sampled = max(1, n // 50) if (name, m) in WIDE_SAMPLED else None
+            new_sampled = max(1, n // 100) if m in ILOG else None  # scipy.stats.Binomial's ilogcdf: 2 ms a point
             out.append(
                 Case(
                     area="stats",
@@ -270,11 +414,185 @@ def _wide_cases():
                     size=f"{n:,}",
                     n=n,
                     setup=setup,
-                    sd=sdf,
-                    refs=refs,
+                    sd=_sd_call(m),
+                    refs=_refs(name, m, no_scipy=no_scipy, sampled=sampled, new_sampled=new_sampled),
                     cost=("stats", f"{name.lower()}.{m}"),
                     quick=(group, f"{name}.{m}") in QUICK_DIST,
                     note=note,
+                )
+            )
+    return out
+
+
+def _other_cases():
+    group = "연속 분포(다른 매개변수)"
+    out = []
+    for name, params, scipy_ref in OTHER:
+        setup = _dist_setup(name, params, scipy_ref, "sd")
+        label = _label(name, params)
+        for m in OTHER_METHODS:
+            k = SAMPLE_N if (name, m) in OTHER_SAMPLED else None
+            out.append(
+                Case(
+                    area="stats",
+                    group=group,
+                    name=f"{label}.{m}",
+                    size="10^5",
+                    n=N,
+                    setup=setup,
+                    sd=_sd_call(m),
+                    refs=_refs(name, m, sampled=k),
+                    cost=("stats", f"{name.lower()}.{m}"),
+                    quick=(group, f"{label}.{m}") in QUICK_DIST,
+                )
+            )
+    return out
+
+
+# ---------------------------------------------------------------- parameter arrays
+
+# (class, scipy classic name, rng -> sd's parameters as arrays of N, the scipy frozen
+# distribution of those arrays, note); one parameter set per point, the points from sd's icdf.
+PARAM_ARRAY = [
+    (
+        "Normal",
+        lambda rng: {"mu": rng.uniform(-2, 2, N), "sigma": rng.uniform(0.5, 3, N)},
+        lambda st, kw: st.norm(kw["mu"], kw["sigma"]),
+        "mu는 −2–2, sigma는 0.5–3에서 점마다 균등하게 뽑는다",
+    ),
+    (
+        "Gamma",
+        lambda rng: {"a": rng.uniform(0.5, 20, N)},
+        lambda st, kw: st.gamma(kw["a"]),
+        "a는 0.5–20에서 점마다 균등하게 뽑는다",
+    ),
+    (
+        "StudentT",
+        lambda rng: {"df": rng.uniform(1, 30, N)},
+        lambda st, kw: st.t(kw["df"]),
+        "df는 1–30에서 점마다 균등하게 뽑는다",
+    ),
+    (
+        "Beta",
+        lambda rng: {"a": rng.uniform(0.5, 20, N), "b": rng.uniform(0.5, 20, N)},
+        lambda st, kw: st.beta(kw["a"], kw["b"]),
+        "a, b는 0.5–20에서 점마다 균등하게 뽑는다",
+    ),
+    (
+        "Poisson",
+        lambda rng: {"mu": rng.uniform(0.5, 50, N)},
+        lambda st, kw: st.poisson(kw["mu"]),
+        "mu는 0.5–50에서 점마다 균등하게 뽑는다",
+    ),
+    (
+        "Binomial",
+        lambda rng: {"n": rng.integers(1, 201, N).astype(float), "p": rng.uniform(0.05, 0.95, N)},
+        lambda st, kw: st.binom(kw["n"], kw["p"]),
+        "n은 1–200의 정수, p는 0.05–0.95에서 점마다 균등하게 뽑는다",
+    ),
+]
+PARAM_ARRAY_METHODS = {
+    "Normal": ("logpdf", "cdf"),
+    "Gamma": ("logpdf", "cdf"),
+    "StudentT": ("cdf",),
+    "Beta": ("cdf",),
+    "Poisson": ("logpmf", "cdf"),
+    "Binomial": ("logpmf", "cdf"),
+}
+
+
+def _param_array_setup(name, draw, scipy_ref):
+    def setup():
+        import numpy as np
+        import scipy.stats as st
+
+        import stardust as sd
+
+        rng = np.random.default_rng(0)
+        kw = draw(rng)
+        p = rng.uniform(0, 1, N)
+        X = getattr(sd.stats, name)(**{k: sd.asarray(v) for k, v in kw.items()})
+        x = np.asarray(X.icdf(sd.asarray(p)))
+        return {
+            "X": X,
+            "ref": scipy_ref(st, kw),
+            "new": NEW[name](st, kw) if name in NEW else None,
+            "x": x,
+            "sx": sd.asarray(x),
+        }
+
+    return setup
+
+
+def _param_array_cases():
+    group = "매개변수 배열"
+    out = []
+    for name, draw, scipy_ref, note in PARAM_ARRAY:
+        setup = _param_array_setup(name, draw, scipy_ref)
+        for m in PARAM_ARRAY_METHODS[name]:
+            out.append(
+                Case(
+                    area="stats",
+                    group=group,
+                    name=f"{name}.{m}",
+                    size="10^5",
+                    n=N,
+                    setup=setup,
+                    sd=_sd_call(m),
+                    refs=_refs(name, m),
+                    quick=(group, f"{name}.{m}") in QUICK_DIST,
+                    note=note,
+                )
+            )
+    return out
+
+
+# ---------------------------------------------------------------- mid sizes
+
+MID = [
+    ("Normal", {"mu": 1.5, "sigma": 2.0}, lambda st: st.norm(1.5, 2.0), "cdf"),
+    ("Normal", {"mu": 1.5, "sigma": 2.0}, lambda st: st.norm(1.5, 2.0), "logpdf"),
+    ("Gamma", {"a": 2.3}, lambda st: st.gamma(2.3), "cdf"),
+    ("Binomial", {"n": 40, "p": 0.3}, lambda st: st.binom(40, 0.3), "cdf"),
+    ("StudentT", {"df": 3.5}, lambda st: st.t(3.5), "icdf"),
+]
+MID_SIZES = ((1000, "10^3"), (10_000, "10^4"))
+
+
+def _mid_setup(name, params, scipy_ref, n):
+    """fresh_count(n) point sets of n, called in turn (harness.rotate)."""
+
+    def setup():
+        import numpy as np
+
+        rng = np.random.default_rng(0)
+        sets = [_dist_data(name, params, scipy_ref, rng.uniform(0, 1, n), "sd") for _ in range(fresh_count(n))]
+        return {"sets": sets}
+
+    return setup
+
+
+def _mid_cases():
+    group = "점 10^3·10^4개"
+    out = []
+    for name, params, scipy_ref, m in MID:
+        for n, size in MID_SIZES:
+            refs = [Ref("scipy", lambda d, m=m: rotate([_ref_call("ref", m)(s) for s in d["sets"]]))]
+            if name in NEW:
+                refs.append(
+                    Ref(NEW_LABEL, lambda d, m=m: rotate([_ref_call("new", m)(s) for s in d["sets"]]), lib="scipy")
+                )
+            out.append(
+                Case(
+                    area="stats",
+                    group=group,
+                    name=f"{_label(name, params)}.{m}",
+                    size=size,
+                    n=n,
+                    setup=_mid_setup(name, params, scipy_ref, n),
+                    sd=lambda d, m=m: rotate([_sd_call(m)(s) for s in d["sets"]]),
+                    refs=tuple(refs),
+                    note=f"점 {fresh_count(n)}벌을 돌려 쓴다",
                 )
             )
     return out
@@ -326,17 +644,38 @@ T7 = [
 ]
 T7_N = 10**6
 T7_QUICK = {"Normal.sample", "Gamma(a=0.5).sample", "Binomial(n=10000, p=0.3).sample"}
+# The rows numpy's Generator has no sampler for: scipy's rvs, drawing from a Generator.
+T7_SCIPY = {
+    "GEV": lambda st, kw: st.genextreme(kw["c"]),
+    "InverseGamma": lambda st, kw: st.invgamma(kw["a"]),
+    "NoncentralT": lambda st, kw: st.nct(kw["df"], kw["nc"]),
+    "BetaBinomial": lambda st, kw: st.betabinom(int(kw["n"]), kw["a"], kw["b"]),
+}
 
 
 def _sample_setup(name, kw):
     def setup():
         import numpy as np
+        import scipy.stats as st
 
         import stardust as sd
 
-        return {"D": getattr(sd.stats, name)(**kw), "rng": sd.random.default_rng(1), "g": np.random.default_rng(1)}
+        return {
+            "D": getattr(sd.stats, name)(**kw),
+            "rng": sd.random.default_rng(1),
+            "g": np.random.default_rng(1),
+            "ref": T7_SCIPY[name](st, kw) if name in T7_SCIPY else None,
+        }
 
     return setup
+
+
+def _sample_refs(name, npf, size):
+    if npf:
+        return (Ref("numpy", lambda d: lambda g=d["g"]: npf(g, size)),)
+    if name in T7_SCIPY:
+        return (Ref("scipy", lambda d: lambda r=d["ref"], g=d["g"]: r.rvs(size=size, random_state=g)),)
+    return ()
 
 
 def _sample_cases():
@@ -345,7 +684,7 @@ def _sample_cases():
         params = ", ".join(f"{k}={v:g}" for k, v in kw.items())
         label = f"{name}({params}).sample" if params else f"{name}.sample"
         setup = _sample_setup(name, kw)
-        refs = (Ref("numpy", lambda d, f=npf: lambda g=d["g"]: f(g, T7_N)),) if npf else ()
+        refs = _sample_refs(name, npf, T7_N)
         out.append(
             Case(
                 area="stats",
@@ -359,7 +698,7 @@ def _sample_cases():
                 quick=label in T7_QUICK,
             )
         )
-        refs1 = (Ref("numpy", lambda d, f=npf: lambda g=d["g"]: f(g, None)),) if npf else ()
+        refs1 = _sample_refs(name, npf, None)
         out.append(
             Case(
                 area="stats",
@@ -398,52 +737,107 @@ T8 = [
         lambda st, x, ax: st.skew(x, axis=ax, nan_policy="omit"),
     ),
 ]
-T8_QUICK = {("skew", None), ("rankdata", 0), ("iqr", None), ("describe", 0)}
+T8_QUICK = {
+    ("skew", None, "10^6"),
+    ("rankdata", 0, "(1000, 1000)"),
+    ("iqr", None, "10^6"),
+    ("describe", 0, "(1000, 1000)"),
+}
+# (axis, shape, size label): the whole array, down the columns, along short rows
+T8_SHAPES = ((None, (10**6,), "10^6"), (0, (1000, 1000), "(1000, 1000)"), (1, (100_000, 10), "(100000, 10)"))
+T8_SMALL = ("skew", "describe", "zscore", "iqr")  # also on 100 elements (fresh inputs in turn)
+T8_SMALL_N = 100
+T8_ROWS_SCIPY = 10_000  # skew omit along short rows: scipy loops over the rows with a NaN; timed on these first rows
 
 
-def _describe_setup(fname, ax):
+def _describe_data(fname, shape, seed=0):
+    import numpy as np
+
+    n = math.prod(shape)
+    x1 = np.random.default_rng(seed).gamma(2.0, size=n)
+    x = x1.reshape(shape)
+    if fname == "mode":
+        x = np.round(x1 * 4).reshape(shape)  # repeated values
+    if fname == "skew omit":
+        x = x.copy()
+        x.reshape(-1)[::1000] = np.nan
+    return x
+
+
+def _describe_setup(fname, shape):
     def setup():
-        import numpy as np
         import scipy.stats as st
 
         import stardust as sd
 
-        x1 = np.random.default_rng(0).gamma(2.0, size=10**6)
-        x = x1 if ax is None else x1.reshape(1000, 1000)
-        if fname == "mode":
-            xm = np.round(x1 * 4).reshape(1000, 1000)  # repeated values
-            x = xm.reshape(-1) if ax is None else xm
-        if fname == "skew omit":
-            x = x.copy()
-            x.reshape(-1)[::1000] = np.nan
+        x = _describe_data(fname, shape)
         return {"S": sd.stats, "st": st, "x": x, "X": sd.asarray(x)}
 
     return setup
 
 
+def _describe_small_setup(fname):
+    def setup():
+        import scipy.stats as st
+
+        import stardust as sd
+
+        xs = [_describe_data(fname, (T8_SMALL_N,), seed=i) for i in range(fresh_count(T8_SMALL_N))]
+        return {"S": sd.stats, "st": st, "xs": xs, "Xs": [sd.asarray(x) for x in xs]}
+
+    return setup
+
+
+def _describe_ref(g, ax, sampled=False):
+    if not sampled:
+        return Ref("scipy", lambda d: lambda: g(d["st"], d["x"], ax))
+    return Ref(
+        "scipy",
+        lambda d: lambda x=d["x"][:T8_ROWS_SCIPY].copy(): g(d["st"], x, ax),
+        n=T8_ROWS_SCIPY * 10,
+    )
+
+
 def _describe_cases():
     out = []
     for fname, f, g in T8:
-        for ax, size in ((None, "10^6"), (0, "(1000, 1000)")):
-            base, _, omit = fname.partition(" ")
-            args = (
+        base, _, omit = fname.partition(" ")
+
+        def call(ax):
+            return (
                 ["x"]
                 + (["order=3"] if base == "moment" else [])
-                + ([] if ax is None else ["axis=0"])
+                + ([] if ax is None else [f"axis={ax}"])
                 + (['nan_policy="omit"'] if omit else [])
             )
+
+        for ax, shape, size in T8_SHAPES:
             out.append(
                 Case(
                     area="stats",
                     group="기술 통계",
-                    name=f"{base}({', '.join(args)})",
+                    name=f"{base}({', '.join(call(ax))})",
                     size=size,
                     n=10**6,
-                    setup=_describe_setup(fname, ax),
+                    setup=_describe_setup(fname, shape),
                     sd=lambda d, f=f, ax=ax: lambda: f(d["S"], d["X"], ax),
-                    refs=(Ref("scipy", lambda d, g=g, ax=ax: lambda: g(d["st"], d["x"], ax)),),
-                    quick=(fname, ax) in T8_QUICK,
+                    refs=(_describe_ref(g, ax, sampled=bool(omit) and ax == 1),),
+                    quick=(fname, ax, size) in T8_QUICK,
                     note="원소 1000개마다 NaN" if omit else "",
+                )
+            )
+        if fname in T8_SMALL:
+            out.append(
+                Case(
+                    area="stats",
+                    group="기술 통계",
+                    name=f"{base}({', '.join(call(None))})",
+                    size=str(T8_SMALL_N),
+                    n=T8_SMALL_N,
+                    setup=_describe_small_setup(fname),
+                    sd=lambda d, f=f: rotate([lambda X=X: f(d["S"], X, None) for X in d["Xs"]]),
+                    refs=(Ref("scipy", lambda d, g=g: rotate([lambda x=x: g(d["st"], x, None) for x in d["xs"]])),),
+                    note=f"입력 {fresh_count(T8_SMALL_N)}벌을 돌려 쓴다",
                 )
             )
     return out
@@ -538,7 +932,7 @@ def _mv_cases():
                 n=T9_N,
                 setup=lambda setup=setup: _with_rng(setup()),
                 sd=lambda d: lambda D=d["D"], r=d["rng"]: D.sample(T9_N, rng=r),
-                refs=(Ref("scipy", lambda d: lambda r=d["ref"]: r.rvs(size=T9_N, random_state=1)),),
+                refs=(Ref("scipy", lambda d: lambda r=d["ref"], g=d["g"]: r.rvs(size=T9_N, random_state=g)),),
                 quick=f"{label}.sample" in quick,
             )
         )
@@ -546,9 +940,14 @@ def _mv_cases():
 
 
 def _with_rng(d):
+    """sd's generator and, for scipy's rvs, a numpy Generator: an int random_state would
+    seed a new one on every call."""
+    import numpy as np
+
     import stardust as sd
 
     d["rng"] = sd.random.default_rng(1)
+    d["g"] = np.random.default_rng(1)
     return d
 
 
@@ -621,6 +1020,8 @@ def _mvcdf_cases():
         note = "정확한 공식" if d <= 3 else ""
         if slow:
             note = "sd 1스레드 한 번에 5초가 넘는다"
+        if not math.isinf(df):
+            note = ", ".join(filter(None, (note, "scipy의 mvt cdf에는 허용오차 인자가 없다")))
         out.append(
             Case(
                 area="stats",
@@ -630,7 +1031,7 @@ def _mvcdf_cases():
                 n=n_ours,
                 setup=_mvcdf_setup(d, df),
                 sd=lambda dd, atol=atol: lambda D=dd["D"], X=dd["X"]: D.cdf(X, atol=atol),
-                refs=(Ref("scipy", _scipy_mvn_cdf_factory if math.isinf(df) else _scipy_mvt_cdf, n=n_sc),),
+                refs=(_mvcdf_ref(d, df, atol, n_sc),),
                 quick=(d, df, atol) in quick,
                 note=note,
             )
@@ -638,12 +1039,28 @@ def _mvcdf_cases():
     return out
 
 
-def _scipy_mvn_cdf_factory(d):
-    import numpy as np
+MVN_LABEL = "scipy abseps=atol"
+# scipy's mvn cdf at abseps=1e-6 takes about 18 ms a point at d=3 (even): 100 points. At
+# d=10 it takes 4 ms to 3.5 s a point (the hard ones run to maxpts), so no sample of the 40
+# is representative: all 40 (about 22 s a call, timed once a round).
+MVN_SCIPY_N = {(3, 1e-6): 100}
 
-    st, xs, S, dim = d["st"], d["xs"], d["S"], d["d"]
-    mu = np.zeros(dim)
-    return lambda: st.multivariate_normal.cdf(xs, mu, S, rng=0)
+
+def _mvcdf_ref(dim, df, atol, n_sc):
+    """scipy's mvn cdf at sd's accuracy (abseps=atol, releps=0); its mvt cdf takes no
+    tolerance and runs at its own."""
+    if not math.isinf(df):
+        return Ref("scipy", _scipy_mvt_cdf, n=n_sc)
+    k = MVN_SCIPY_N.get((dim, atol), n_sc)
+
+    def make(d):
+        import numpy as np
+
+        st, xs, S = d["st"], d["xs"][:k].copy(), d["S"]
+        mu = np.zeros(d["d"])
+        return lambda: st.multivariate_normal.cdf(xs, mu, S, abseps=atol, releps=0, rng=0)
+
+    return Ref(MVN_LABEL, make, n=k, lib="scipy")
 
 
 # ---------------------------------------------------------------- t10: matrix distributions
@@ -736,7 +1153,7 @@ def _matrix_cases():
                 n=T10_N,
                 setup=lambda setup=setup: _with_rng(setup()),
                 sd=lambda d: lambda D=d["D"], r=d["rng"]: D.sample(T10_N, rng=r),
-                refs=(Ref("scipy", lambda d: lambda r=d["ref"]: r.rvs(T10_N, random_state=1)),),
+                refs=(Ref("scipy", lambda d: lambda r=d["ref"], g=d["g"]: r.rvs(T10_N, random_state=g)),),
             )
         )
     return out
@@ -748,9 +1165,12 @@ def _matrix_cases():
 def cases() -> list[Case]:
     return [
         *_dist_cases("연속 분포", T4, CONT, "scipy"),
-        *_dist_cases("이산 분포", T5, DISC, "sd", no_scipy=T5_NO_SCIPY),
+        *_other_cases(),
+        *_dist_cases("이산 분포", T5, DISC, "sd", no_scipy=T5_NO_SCIPY, sampled=SMALL_SAMPLED, memo=True),
         *_wide_cases(),
         *_dist_cases("극값·수명·비중심 분포", T6, CONT, "sd"),
+        *_param_array_cases(),
+        *_mid_cases(),
         *_sample_cases(),
         *_describe_cases(),
         *_mv_cases(),

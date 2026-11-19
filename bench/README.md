@@ -1,6 +1,6 @@
 # 벤치마크
 
-속도는 `bench/speed/` 하나로 잰다. 정확도 측정(`accuracy.md`와 그 스크립트)은 영역 폴더에 따로 있고 이 체계에 들지 않는다.
+벤치마크는 두 체계로 나뉜다. 속도는 `bench/speed/`(`python -m bench.speed`)가 재고, 정확도는 `bench/accuracy/`(`python -m bench.accuracy`)가 잰다. 둘 다 결과에서 영역마다 표를 만든다. 속도는 `bench/<영역>/speed.md`, 정확도는 `bench/<영역>/accuracy.md`다. 이 문서는 속도 체계를 다룬다.
 
 `bench/<영역>/` 아래의 마일스톤 폴더(`t4/`, `g5/`, `m3_views.py` 등)는 그때의 기록이다. 그 표의 숫자는 그 커밋의 것이라 지금과 다를 수 있다. 지금 상태의 속도는 영역마다 생성되는 `bench/<영역>/speed.md` 하나다.
 
@@ -49,7 +49,7 @@ Case(area="stats", group="연속 분포", name="Normal.cdf", size="10^5", n=100_
 ```
 
 - `threads`: sd의 스레드 수들. 기본 `(1, 10)`(10은 이 기계의 성능 코어 수이자 sd의 기본값).
-- `Ref(label, make, threads=...)`: Python 비교 대상. `"fixed"`(기본)는 라운드마다 한 번, 그 라이브러리의 기본 스레드로 잰다(numpy·scipy의 원소별 계산은 1스레드, BLAS는 기본 스레드). `"follow"`는 sd의 스레드 수마다 BLAS 스레드를 같게 묶어(threadpoolctl) 잰다. 회귀처럼 BLAS가 일의 대부분인 비교에 쓴다.
+- `Ref(label, make, threads=...)`: Python 비교 대상. `"fixed"`(기본)는 라운드마다 한 번, 그 라이브러리의 기본 스레드로 잰다(numpy·scipy의 원소별 계산은 1스레드, BLAS는 기본 스레드). `"follow"`는 sd의 스레드 수마다 BLAS 스레드를 같게 묶어 잰다. 회귀처럼 BLAS가 일의 대부분인 비교에 쓴다.
 - `RRef(label, expr, data, setup, packages)`: R 비교 대상. 실행 전체가 R 프로세스 하나를 쓰고, 꾸러미는 한 번만 불러온다. `data`의 배열은 float64 원시 파일로 넘어가고 시간은 R 안에서 같은 규칙으로 잰다. R은 1스레드다.
 - `Ref.n`: 비교 대상이 너무 느려 입력의 일부만 재는 경우 그 원소 수. 표는 사례의 크기로 환산하고 `*`를 붙인다.
 - `quick`: 빠른 묶음. 영역마다 1–3분 안에 도는 대표 사례들이다.
@@ -62,7 +62,9 @@ Case(area="stats", group="연속 분포", name="Normal.cdf", size="10^5", n=100_
 - 배치 하나가 20 ms 이상이 되도록 배치 크기를 1부터 두 배씩 늘린다. 그다음 배치를 7번(한 측정에 2초를 넘으면 줄이되 3번 이상) 재고 배치마다 한 번 부른 시간을 남긴다. 한 번에 5초가 넘는 호출은 라운드마다 한 번만 잰다.
 - 라운드마다 모든 사례를 돌고, 사례 안에서 sd와 비교 대상을 잇달아 잰다. 기계가 느려진 때가 비율의 양쪽에 같이 걸린다.
 - 보고하는 시간은 모든 라운드의 모든 배치 중 최솟값이다. OS가 가장 덜 방해한 값이다. 잡음 폭은 (중앙값 ÷ 최솟값 − 1)이다.
-- 배치 안에서는 Python의 쓰레기 수집을 끈다.
+- 배치 안에서는 Python의 쓰레기 수집을 끈다. 측정마다 그 전에 한 번 모은다(statsmodels의 결과는 순환 참조로 GB 단위를 남긴다).
+- **같은 입력을 되풀이하지 않는다**: 가지가 많은 계산(정렬, argsort, 고유값, searchsorted, 마스크로 걸러내기, groupby, merge 등)은 같은 모양의 입력 여럿을 미리 만들어 차례로 부른다(`harness.rotate`, 입력 수는 `fresh_count(n)`: 원소 10⁶이면 4개, 작으면 최대 64개). 한 입력만 되풀이하면 분기 예측기와 캐시가 그 입력을 배워 실제보다 빨라진다(numpy argsort 10³: 7.6 µs, 새 입력이면 29 µs). 원소별 계산은 한 입력을 쓴다.
+- **스레드**: Accelerate(numpy·scipy와 sd의 BLAS·LAPACK)는 스레드 수를 프로세스가 뜰 때 `VECLIB_MAXIMUM_THREADS`로만 읽고 threadpoolctl로는 바뀌지 않는다. 그래서 감독은 BLAS 스레드 설정마다 작업 프로세스를 따로 띄운다. sd의 1스레드 측정과 `"follow"` 비교 대상의 1스레드 측정은 `VECLIB_MAXIMUM_THREADS=1`인 프로세스에서, sd의 기본 스레드(성능 코어 수, 10) 측정과 `"fixed"` 비교 대상과 R은 그 변수 없이 띄운 프로세스(Accelerate 기본)에서 잰다. scikit-learn의 OpenMP는 threadpoolctl로 같이 묶는다. 사례의 데이터는 프로세스마다 만든다.
 
 ## 결과
 
@@ -78,7 +80,7 @@ Case(area="stats", group="연속 분포", name="Normal.cdf", size="10^5", n=100_
 
 병렬 분할은 원소마다 잰 1스레드 비용으로 일의 양을 센다. 두 표가 기준선에서 생성된다.
 
-- `csrc/stats/cost_table.hpp`: 키 `분포.메서드`(예: `normal.cdf`). stats의 연속·이산·극값 분포 사례가 채운다. 같은 키의 사례가 여럿이면(이산 분포의 좁은·넓은 지지) 기하평균이다.
+- `csrc/stats/cost_table.hpp`: 키 `분포.메서드`(예: `normal.cdf`). stats의 연속·이산·극값 분포 사례가 채운다. 같은 키의 사례가 여럿이면(매개변수 묶음이 여럿) 기하평균이다. 이산 분포의 좁은 지지 사례는 키 `분포.메서드@memo`로 따로 잰다. 스칼라 매개변수에서 정수점 기억 표가 답하는 호출(원소당 1–2 ns)의 비용이고, 표에서 `memo = true`인 줄이 된다. 넓은 지지의 계산(수백 ns–수십 µs)과 섞으면 좁은 지지 호출이 무거운 가중치를 받아 10스레드가 1스레드보다 느려진다.
 - `csrc/special/cost_table.hpp`: 키는 함수 이름(예: `erf`, `erf_complex`, `_add`). special의 10⁶ 원소 사례가 채운다. `csrc/special/cost.hpp`는 연산마다 이 표의 어느 이름을 쓰는지만 적는다. 표에 없는 이름은 컴파일되지 않는다.
 
 `cost`는 기준선에 있는 키만 바꾸고 나머지 줄은 지금 파일의 값을 둔다. `cost --check`는 쓰지 않고 바뀔지만 알린다(바뀌면 종료 코드 1). 헤더가 바뀌면 다음 `import stardust`에서 C++가 다시 빌드된다.

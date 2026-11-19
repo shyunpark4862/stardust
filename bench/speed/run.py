@@ -51,6 +51,10 @@ class Limits:
     rss_bytes: int = 16 * 2**30  # the worker and its children (R)
     poll_s: float = 2.0
     restart_every: int = 40  # cases per worker
+    # An idle worker holding more than this is closed before another worker measures:
+    # macOS keeps large freed blocks resident, so after a case at n = 10^6 a worker may sit
+    # on GBs that would count against rss_bytes while the next worker runs.
+    idle_rss_bytes: int = 2 * 2**30
     startup_timeout_s: float = 30 * 60  # importing stardust may rebuild the C++ core
     load_warn: float = 3.0  # without CPU counters: warn when the 1-minute load is above this
     quiet_cores: float = 1.0  # before the run: other processes may keep at most this many cores busy
@@ -61,20 +65,37 @@ class Limits:
     notify_after_s: float = 60.0  # a notification only for runs at least this long
 
 
+# sd's default thread count (the performance cores): measured in the worker that leaves
+# Accelerate at its default, next to the "fixed" comparators.
+DEFAULT_THREADS = int(proc.perf_cores() or 10)
+
+
 # ---------------------------------------------------------------- the worker handle
 
 
 class WorkerHandle:
-    def __init__(self, areas, log, limits: Limits, smoke: bool = False):
+    """A worker process. blas_threads: VECLIB_MAXIMUM_THREADS for it (None: Accelerate's
+    default, all cores)."""
+
+    live: set[int] = set()  # pids of the workers alive, whose memory counts against the limit
+
+    def __init__(self, areas, log, limits: Limits, smoke: bool = False, blas_threads: int | None = None):
         self.limits = limits
+        self.blas_threads = blas_threads
+        env = dict(os.environ)
+        env.pop("VECLIB_MAXIMUM_THREADS", None)
+        if blas_threads is not None:
+            env["VECLIB_MAXIMUM_THREADS"] = str(blas_threads)
         self.p = subprocess.Popen(
             [sys.executable, "-m", "bench.speed.worker", *areas, *(["--smoke"] if smoke else [])],
             cwd=str(results.ROOT),
+            env=env,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=log,
             start_new_session=True,
         )
+        WorkerHandle.live.add(self.p.pid)
         self.buf = b""
         self.served = 0
         _, status, _ = self._read(limits.startup_timeout_s)
@@ -88,7 +109,7 @@ class WorkerHandle:
         peak = 0
         fd = self.p.stdout.fileno()
         while b"\n" not in self.buf:
-            rss = proc.tree_rss(self.p.pid)
+            rss = sum(proc.tree_rss(pid) for pid in list(WorkerHandle.live))  # every worker (idle ones too) and R
             peak = max(peak, rss)
             if rss > self.limits.rss_bytes:
                 return None, "memory", peak
@@ -119,6 +140,7 @@ class WorkerHandle:
                 self.p.wait(timeout=30)
             except OSError, subprocess.SubprocessError:
                 self.kill()
+        WorkerHandle.live.discard(self.p.pid)
 
     def kill(self):
         """Kill the worker's process group: the worker and the R session it started."""
@@ -130,6 +152,7 @@ class WorkerHandle:
             self.p.wait(timeout=30)
         except subprocess.SubprocessError:
             pass
+        WorkerHandle.live.discard(self.p.pid)
 
 
 # ---------------------------------------------------------------- run state
@@ -490,7 +513,54 @@ def run(
         results.save(data, out)
         return data
 
-    worker = None
+    workers: dict = {}  # BLAS thread setting (None: default) -> WorkerHandle
+    by_id = {c.id: c for c in cases}
+    env["blas_control"] = (
+        "one worker per BLAS thread count: sd at 1 thread and the 'follow' comparators at 1 run with "
+        "VECLIB_MAXIMUM_THREADS=1; sd at its default thread count, 'fixed' comparators and R run "
+        "without it (Accelerate's default)"
+    )
+
+    def worker_for(key):
+        w = workers.get(key)
+        if w is not None and (w.served >= limits.restart_every or w.p.poll() is not None):
+            w.close()
+            w = None
+        if w is None:
+            w = WorkerHandle(areas, log, limits, smoke=smoke, blas_threads=key)
+            workers[key] = w
+            if key is None and "versions" not in env:
+                pkgs = sorted({p for c in cases for r in c.refs if isinstance(r, RRef) for p in r.packages})
+                reply, status, _ = w.request(
+                    {"cmd": "env", "r_packages": pkgs if state.use_r else []}, limits.startup_timeout_s
+                )
+                if status == "ok":
+                    env.update(reply["env"])
+        return w
+
+    def kill_worker(key):
+        w = workers.pop(key, None)
+        if w is not None:
+            w.kill()
+
+    def trim_idle(active):
+        """Close the idle workers that hold much memory (they start again when needed)."""
+        for key in [k for k in workers if k != active]:
+            if proc.tree_rss(workers[key].p.pid) > limits.idle_rss_bytes:
+                workers.pop(key).close()
+
+    def parts(case):
+        """(BLAS key, sd thread counts, measure the fixed comparators) per worker, in order."""
+        ths = [t for t in case.threads if threads is None or t in threads]
+        out = {}
+        for t in ths:
+            out.setdefault(None if t == DEFAULT_THREADS else t, []).append(t)
+        has_fixed = any(r.threads == "fixed" for r in case.refs)
+        keys = sorted(k for k in out if k is not None)
+        if None in out or has_fixed:
+            keys.append(None)
+        return [(k, out.get(k, []), k is None) for k in keys]
+
     data = None
     failures = 0
     interrupted = False
@@ -498,17 +568,6 @@ def run(
     try:
         while i < len(pairs):
             rnd, cid = pairs[i]
-            if worker is None or worker.served >= limits.restart_every or worker.p.poll() is not None:
-                if worker is not None:
-                    worker.close()
-                worker = WorkerHandle(areas, log, limits, smoke=smoke)
-                if "versions" not in env:
-                    pkgs = sorted({p for c in cases for r in c.refs if isinstance(r, RRef) for p in r.packages})
-                    reply, status, _ = worker.request(
-                        {"cmd": "env", "r_packages": pkgs if state.use_r else []}, limits.startup_timeout_s
-                    )
-                    if status == "ok":
-                        env.update(reply["env"])
             left = eta.remaining(pairs[i:])
             say(
                 f"[{rnd + 1}/{rounds}] {i % len(cases) + 1}/{len(cases)} {cid}  "
@@ -518,26 +577,34 @@ def run(
             state.load[cid] = max(state.load[cid], proc.load1())
             meter = proc.CpuMeter().start()
             t0 = time.monotonic()
-            reply, status, peak = worker.request(
-                {"cmd": "case", "id": cid, "threads": list(threads) if threads else None, "use_r": state.use_r},
-                limits.case_timeout_s,
-            )
-            worker.served += 1
+            status, seconds = "ok", 0.0
+            for key, ths, fixed in parts(by_id[cid]):
+                budget = limits.case_timeout_s - (time.monotonic() - t0)
+                trim_idle(key)
+                worker = worker_for(key)
+                reply, status, peak = worker.request(
+                    {"cmd": "case", "id": cid, "threads": ths, "use_r": state.use_r, "fixed": fixed},
+                    max(budget, 1.0),
+                )
+                worker.served += 1
+                state.rss[cid] = max(state.rss[cid], peak)
+                if status != "ok":
+                    break
+                state.add_reply(reply)
+                seconds += reply.get("seconds", 0.0)
+                if reply.get("setup_error"):
+                    say(f"  준비 실패: {reply['setup_error'].strip().splitlines()[-1]}")
+                for label_, t, err in reply["errors"]:
+                    say(f"  {label_} ({t if t is not None else '기본'} 스레드) 실패: {err}")
             dt = time.monotonic() - t0
-            state.rss[cid] = max(state.rss[cid], peak)
             other = meter.stop() if status == "ok" else None
             if other is not None:
                 state.other[cid] = max(state.other.get(cid, 0.0), other)
                 if other > limits.busy_cores:
                     say(f"  바빴다: 다른 프로세스가 평균 {other:.1f}코어를 썼다 (--rerun-busy로 다시 잴 수 있다)")
             if status == "ok":
-                state.add_reply(reply)
-                state.seconds[cid] += reply.get("seconds", dt)
+                state.seconds[cid] += seconds or dt
                 state.rounds_done[cid] += 1
-                if reply.get("setup_error"):
-                    say(f"  준비 실패: {reply['setup_error'].strip().splitlines()[-1]}")
-                for label_, t, err in reply["errors"]:
-                    say(f"  {label_} ({t if t is not None else '기본'} 스레드) 실패: {err}")
             else:
                 why = {
                     "timeout": f"제한 시간 {fmt_duration(limits.case_timeout_s)} 초과",
@@ -547,22 +614,20 @@ def run(
                 state.failure[cid] = why
                 failures += 1
                 say(f"  중단: {why}. 작업 프로세스를 새로 띄운다")
-                worker.kill()
-                worker = None
+                kill_worker(key)
             eta.done(cid, dt)
             i += 1
             data = snapshot(*divmod(i, len(cases)))
     except KeyboardInterrupt:
         interrupted = True
-        if worker is not None:
-            worker.kill()
-            worker = None
+        for key in list(workers):
+            kill_worker(key)
         nxt = divmod(i, len(cases))
         data = snapshot(*nxt)
         say(f"중단했다. 이어 달리기: .venv/bin/python -m bench.speed run --resume {out}")
     finally:
-        if worker is not None:
-            worker.close()
+        for w in workers.values():
+            w.close()
         if caff is not None:
             caff.terminate()
     if data is None:
