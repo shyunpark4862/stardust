@@ -135,7 +135,7 @@
     render();
   };
 
-  document.querySelectorAll('.search-btn, [data-search-open]').forEach((b) => b.addEventListener('click', open));
+  document.querySelectorAll('.search-btn').forEach((b) => b.addEventListener('click', open));
   addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
       e.preventDefault();

@@ -28,7 +28,7 @@ interface Props {
   groups?: NavGroup[];
   /** Path above the title. Defaults to the section name. */
   crumbs?: Crumb[];
-  /** Reference pages: the area header, name filter and collapsible groups. */
+  /** Reference pages: the area header and collapsible groups. */
   area?: AreaNav;
   /** Set the title in the code font (function pages). */
   monoTitle?: boolean;
@@ -96,14 +96,6 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
                 </ul>
               </details>
             </div>
-            <button class="filter" type="button" data-search-open aria-label="문서 검색 (/)">
-              <svg class="filter__icon" width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                <circle cx="6" cy="6" r="4.25" stroke="currentColor" stroke-width="1.5" />
-                <path d="m9.25 9.25 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-              </svg>
-              <span class="filter__label">이름으로 찾기</span>
-              <kbd class="filter__key" aria-hidden="true">/</kbd>
-            </button>
           </div>
         )}
         <nav aria-label="문서 메뉴">
@@ -306,8 +298,7 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
 </script>
 
 <script>
-  // Reference sidebar: bring the current page into view. (Finding a page by
-  // name is the site search; the sidebar box opens it.)
+  // Reference sidebar: bring the current page into view.
   const side = document.querySelector<HTMLElement>('.docs__side');
   const current = side?.querySelector<HTMLElement>('.side__link[aria-current="page"]');
   if (side && current && side.scrollHeight > side.clientHeight) {
@@ -406,7 +397,7 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
     padding-block: var(--space-10) var(--space-24);
   }
 
-  /* The area header and filter stay put while the list scrolls under them. */
+  /* The area header stays put while the list scrolls under it. */
   .side__head {
     position: sticky;
     top: calc(var(--space-10) * -1);
@@ -423,7 +414,7 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
     display: flex;
     align-items: stretch;
     gap: var(--space-1);
-    /* Same left and right edges as the filter box and the link highlights. */
+    /* Same left and right edges as the link highlights. */
     margin: 0 calc(var(--space-3) * -1) var(--space-2);
   }
   .area__home {
@@ -541,52 +532,6 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
     color: var(--fg-subtle);
   }
 
-  /* The sidebar's search box: a button that opens the site search with
-     this area's pages first. */
-  .filter {
-    position: relative;
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    width: calc(100% + var(--space-3) * 2);
-    height: 36px;
-    margin-inline: calc(var(--space-3) * -1);
-    padding: 0 var(--space-2) 0 var(--space-3);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-md);
-    background: var(--bg-subtle);
-    font: inherit;
-    font-size: var(--text-sm);
-    color: var(--fg-subtle);
-    text-align: left;
-    cursor: pointer;
-    transition:
-      border-color var(--dur-fast) var(--ease),
-      color var(--dur-fast) var(--ease);
-  }
-  .filter:hover {
-    border-color: var(--line-strong);
-    color: var(--fg);
-  }
-  .filter__icon {
-    flex: none;
-  }
-  .filter__label {
-    flex: 1;
-  }
-  .filter__key {
-    display: grid;
-    place-items: center;
-    width: 20px;
-    height: 20px;
-    border: 1px solid var(--line);
-    border-radius: 4px;
-    background: var(--bg);
-    font-family: var(--font-sans);
-    font-size: var(--text-xs);
-    line-height: 1;
-    color: var(--fg-subtle);
-  }
 
   /* Pages without a table of contents (section indexes) use that column. */
   .docs--wide {
@@ -961,10 +906,6 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
       box-shadow: none;
     }
     .area {
-      margin-inline: 0;
-    }
-    .filter {
-      width: 100%;
       margin-inline: 0;
     }
     .side__group--fold > .side__title {
