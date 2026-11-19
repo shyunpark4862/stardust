@@ -456,7 +456,13 @@ struct Solver {
             const double g = cov ? c[j] - Gb[j] : cblas_ddot(static_cast<int>(m), Z.data() + j * m, 1, r.data(), 1);
             const double tmp = g + dj * bj;
             const double a = std::fabs(tmp) - l1;
-            const double nb = a > 0.0 ? std::copysign(a, tmp) / (dj + l2) : 0.0;
+            // the threshold within the gradient's rounding: g = c_j - (G b)_j (or z_j^T r) carries
+            // a few u sqrt(d_j v'v) (|c_j| <= sqrt(d_j v'v)), so |tmp| - l1 at that size is the
+            // threshold itself and the coefficient stays exactly 0 (a copy of an active column
+            // has its gradient on l1 exactly; rounding left 1e-15 there). The KKT test's margin
+            // (kKktAbs): the polish accepts every column this leaves at 0
+            const double cut = l1 > 0.0 ? kKktAbs * std::sqrt(dj * vv) : 0.0;
+            const double nb = a > cut ? std::copysign(a, tmp) / (dj + l2) : 0.0;
             if (nb != bj) {
                 const double dl = nb - bj;
                 if (cov) cblas_daxpy(static_cast<int>(pc), dl, G.data() + j * pc, 1, Gb.data(), 1);
@@ -971,12 +977,27 @@ int enet_one(const Opts& op, const Src& src, const double* alphas, std::int64_t 
         return 0;
     }
     Solver s;
-    build(src, P, op, s);
+    bool descent = false;  // an alpha > 0 (alpha = 0 is not solved here, below)
+    for (lint l = 0; l < L && !descent; ++l) descent = rd(reinterpret_cast<const std::byte*>(alphas) + l * as) != 0.0;
+    if (descent) build(src, P, op, s);
     const double rho = op.l1_ratio;
-    const double tss = s.vv * P.sw;
+    const double tss = descent ? s.vv * P.sw : kNaN;
     for (const lint l : path_order(alphas, as, L)) {
         const double alpha = rd(reinterpret_cast<const std::byte*>(alphas) + l * as);
         const double l1 = alpha * rho, l2 = alpha * (1.0 - rho);
+        if (alpha == 0.0) {
+            // the minimum-norm least squares solution, ridge's at alpha = 0, which the Python layer
+            // puts here (G110): no coordinate descent (the path's zeros come last, so no warm
+            // start depends on it)
+            double* st = stats + l * pNStat;
+            std::fill(st, st + pNStat, kNaN);
+            st[pNobs] = double(P.m);
+            st[pSumW] = P.sw;
+            st[pIsNaN] = 0.0;
+            st[pTss] = tss;
+            std::fill(params + l * k, params + (l + 1) * k, kNaN);
+            continue;
+        }
         PolishOut po;
         const std::function<bool()> try_polish = [&]() {
             po = polish(s, src, P, op.intercept, l1, l2, op.refine_cond);

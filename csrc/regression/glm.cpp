@@ -1042,12 +1042,38 @@ int glm_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64_t ys
     }
     Model M{op.fam, op.link, n, p, k, op.intercept, op.rtol, y, v, f, tr, m, pw, off, Xb, xrs, xcs};
 
+    // y exactly constant over the fit's rows (y0) with an intercept and no offset, g(y0) finite:
+    // the exact solution (g(y0), 0, ..., 0) for every family and link (G92, G94, G111). With y0
+    // inside the family's range (V(y0) > 0) the iterations run and their result is replaced (§5);
+    // with y0 on its boundary (V(y0) = 0: poisson identity or sqrt with y = 0, binomial log with
+    // y = 1) the iterations only creep towards it (mu -> 0 at a linear rate) and are skipped:
+    // the final solve at the start's weights gives the columns, the inference is NaN (G114)
+    bool yconst = op.intercept && !has_offset;
+    double y0 = kNaN;
+    for (lint i = 0; i < n && yconst; ++i) {
+        if (!(pw[i] > 0.0)) continue;
+        if (std::isnan(y0)) y0 = y[i];
+        else yconst = y[i] == y0;
+    }
+    double etac = kNaN, muc0 = kNaN, d10 = kNaN, V0 = kNaN;
+    if (yconst) {
+        double m0 = y0, mt, mct;
+        muc0 = op.fam == fBinomial ? 1.0 - y0 : 0.0;
+        link_fun(M, &m0, &etac, 0, 1);
+        link_eval(M, &etac, &mt, &mct, &d10, 0, 1);
+        V0 = variance(op.fam, y0, muc0);
+        yconst = std::isfinite(etac);
+    }
+    const bool bconst = yconst && V0 == 0.0;  // on the boundary
+
     // ---- 2. IRLS
     Work W(n, k);
     if (!start(M, W.cur, W.part)) return eNoStart;
     int total_iters = 0;
     IrlsOut ir;
-    if (W.cur.valid) {
+    if (bconst) {
+        ir.ok = false;  // no iterate: the final solve below is all there is
+    } else if (W.cur.valid) {
         ir = irls(M, W, std::max(op.max_iter - 1, 0), op.tol, op.inner_steps, op.inner_chol, sc, op.newton);
     } else {
         ir.ok = false;  // the start itself is not valid (cannot happen for R's starts)
@@ -1243,33 +1269,38 @@ int glm_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64_t ys
     }
     double D = dev.hi, P = pear.hi;
     if (gid && use_final && !separated) D = P = fstats[kSsr];  // the least squares' own sum (as ols)
-    // the gaussian family's identity link with an intercept and no offset, y exactly constant
-    // over the fit's rows (y0): the exact solution (y0, 0, ..., 0), as ols (G92, G94). The
-    // least squares leave rounding there (a slope of 1e-32, a scale of 1e-66 and a spurious t)
-    // y exactly constant over the fit's rows (y0) with an intercept and no offset: the exact
-    // solution (g(y0), 0, ..., 0) for every family and link where g(y0) is finite and y0 inside
-    // the family's range (V(y0) > 0; else the boundary's rules), as ols (G92, G94, G111). The
-    // iterations leave rounding there (a slope of 1e-32, a scale of 1e-66 and a spurious t)
-    bool gconst = op.intercept && !has_offset && !separated && have_beta && o.kept[0];
-    double y0 = kNaN;
-    for (lint i = 0; i < n && gconst; ++i) {
-        if (!(pw[i] > 0.0)) continue;
-        if (std::isnan(y0)) y0 = y[i];
-        else gconst = y[i] == y0;
-    }
-    double etac = kNaN, muc0 = kNaN, d10 = kNaN;
-    if (gconst) {
-        double m0 = y0, mt, mct;
-        muc0 = op.fam == fBinomial ? 1.0 - y0 : 0.0;
-        link_fun(M, &m0, &etac, 0, 1);
-        link_eval(M, &etac, &mt, &mct, &d10, 0, 1);
-        gconst = std::isfinite(etac) && variance(op.fam, y0, muc0) > 0.0 && row_valid(M, etac, y0, muc0) &&
-                 std::isfinite(d10) && d10 != 0.0;
-    }
-    if (gconst) {
+    // y constant inside the family's range (see bconst above): the iterations leave rounding
+    // in place of the exact solution (a slope of 1e-32, a scale of 1e-66 and a spurious t)
+    const bool gconst = (yconst && !bconst && !separated && have_beta && o.kept[0] && V0 > 0.0 &&
+                         row_valid(M, etac, y0, muc0) && std::isfinite(d10) && d10 != 0.0) ||
+                        bconst;
+    if (bconst) {
+        // on the boundary: every row of the fit at mu = y0 (residuals 0, as a separated row's);
+        // V(y0) = 0 leaves no information, so the covariance is NaN (G114)
         o.params[0] = etac;
         for (lint c = 1; c < k; ++c) o.params[c] = o.kept[c] ? 0.0 : kNaN;
-        const double V0 = variance(op.fam, y0, muc0);
+        std::fill(o.cov, o.cov + k * k, kNaN);
+        for (lint i = 0; i < n; ++i) {
+            const double r = y_minus_mu(op.fam, y[i], y0, muc0);
+            o.mu[i] = y0;
+            o.eta[i] = etac;
+            if (r == 0.0) {
+                o.rresp[i] = o.rpear[i] = o.rdev[i] = o.rwork[i] = 0.0;
+                continue;
+            }
+            // a row out of the fit off the boundary: the limits (its unit deviance is +inf, the
+            // Pearson residual +-inf, the working one too where mu' is 0)
+            o.rresp[i] = r;
+            o.rwork[i] = r / d10;
+            o.rpear[i] = std::sqrt(m[i]) * r / std::sqrt(V0);
+            o.rdev[i] = std::copysign(std::sqrt(m[i] * kInf), r);
+        }
+        D = P = 0.0;
+        converged = true;
+        total_iters = 0;  // the exact solution: no iteration (the final solve only finds the columns)
+    } else if (gconst) {
+        o.params[0] = etac;
+        for (lint c = 1; c < k; ++c) o.params[c] = o.kept[c] ? 0.0 : kNaN;
         for (lint i = 0; i < n; ++i) {
             const double r = y_minus_mu(op.fam, y[i], y0, muc0);
             o.mu[i] = y0;

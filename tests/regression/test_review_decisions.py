@@ -857,7 +857,8 @@ def test_nls_predict_interval_nan_rows():
 
 def test_lasso_alpha_zero_is_ridges():
     """G110: lasso and elastic_net at alpha = 0 give ridge(alpha=0)'s minimum-norm solution bit
-    for bit (p > n too, and in a path), converged, n_iter 0, dual_gap 0."""
+    for bit (p > n too, and in a path), converged, n_iter 0, dual_gap 0; df_model the number
+    of nonzero coefficients (G115)."""
     rng = np.random.default_rng(1)
     for n, p in ((30, 4), (10, 15)):
         Xw = rng.normal(size=(n, p))
@@ -867,7 +868,8 @@ def test_lasso_alpha_zero_is_ridges():
         for fit in (lambda **k: R.lasso(y, Xw, **k), lambda **k: R.elastic_net(y, Xw, l1_ratio=0.4, **k)):
             r = fit(alpha=0.0)
             assert a(r.params).tolist() == a(rr.params).tolist()
-            assert r.converged and r.n_iter == 0 and r.dual_gap == 0.0 and r.df_model == rr.df_model
+            assert r.converged and r.n_iter == 0 and r.dual_gap == 0.0
+            assert r.df_model == float(np.count_nonzero(a(rr.params)[1:]))
             path = fit(alpha=[0.3, 0.0, 0.05])
             assert a(path.params)[1].tolist() == a(rr.params).tolist() and a(path.n_iter)[1] == 0
             assert a(fit(alpha=[0.3, 0.0, 0.05]).params)[0].tolist() == a(fit(alpha=0.3).params).tolist()
@@ -917,3 +919,120 @@ def test_mcfadden_nan_for_infinite_llf():
     r = R.glm(1.0 + 2.0 * x, x, family="gaussian")
     assert r.llf == math.inf
     assert math.isnan(r.pseudo_rsquared(kind="mcf")) and r.pseudo_rsquared(kind="cs") == 1.0
+
+
+# ---- R103-R112 (2026-11-20) and G114-G116
+
+def test_conf_int_ends_overflow_with_their_signs():
+    """R103: conf_int's ends in the fitted units, then scaled as the parameter: an overflowing
+    coefficient's interval is [inf, inf] (or [-inf, -inf]), never NaN from inf - inf."""
+    s = np.array([1.1, 1.9, 3.2, 3.8, 5.1, 6.3])
+    h = np.arange(1.0, 7.0)
+    W = np.array([1.0, 2.0, 1.0, 2.0, 1.0, 2.0])
+    S = np.diag(W) + 0.1
+    fits = (lambda y, x: R.ols(y, x), lambda y, x: R.ols(y, x, cov_type="HC1"),
+            lambda y, x: R.wls(y, x, weights=W), lambda y, x: R.gls(y, x, sigma=S))
+    for fit in fits:
+        b = a(fit(s, h).conf_int())
+        for sy, sx in ((1e300, 1e-300), (-1e300, 1e-300), (1e300, -1e-300)):
+            ci = a(fit(s * sy, h * sx).conf_int())
+            assert not np.any(np.isnan(ci))
+            sign = math.copysign(1.0, sy * sx)
+            assert ci[1].tolist() == [sign * math.inf] * 2
+            # the intercept's ends: the reference's, scaled exactly by sy
+            np.testing.assert_allclose(ci[0], np.sort(b[0] * sy), rtol=1e-13)
+        # an underflowing slope: both ends 0 (the interval is positive)
+        ci = a(fit(s * 1e-300, h * 1e300).conf_int())
+        assert ci[1].tolist() == [0.0, 0.0] and not np.any(np.isnan(ci))
+    # a batch keeps each regression's own ends
+    r = R.ols(np.stack([s * 1e300, s]), h * 1e-300)
+    ci = a(r.conf_int())
+    assert ci[0, 1].tolist() == [math.inf, math.inf] and np.all(np.isfinite(ci[1]))
+
+
+@pytest.mark.parametrize("fam,link,y0,kw", [
+    ("poisson", "identity", 0.0, {}), ("poisson", "sqrt", 0.0, {}),
+    ("binomial", "log", 1.0, {}), ("binomial", "log", 1.0, {"trials": 3.0})])
+def test_glm_constant_y_on_the_boundary_is_exact(fam, link, y0, kw):
+    """G114: y constant at the boundary of the family's range with g(y0) finite: the exact
+    solution (0, ..., 0) without iterations, converged, no separation, llf 0; the inference NaN
+    (V(y0) = 0)."""
+    x = np.arange(1.0, 9.0)
+    kw = {k: np.full(8, v) for k, v in kw.items()}
+    for X_ in (x, np.column_stack([x, x])):  # an aliased column stays NaN (G9)
+        r = R.glm(np.full(8, y0), X_, family=fam, link=link, **kw)
+        k = a(r.params).shape[0]
+        assert a(r.params)[:2].tolist() == [0.0, 0.0] and (k == 2 or math.isnan(float(r.params[2])))
+        assert r.converged and r.n_iter == 0 and not r.separation
+        assert r.llf == 0.0 and r.llnull == 0.0 and r.deviance == 0.0 and r.null_deviance == 0.0
+        assert r.pearson_chi2 == 0.0 and np.all(a(r.fittedvalues) == y0)
+        for res in (r.resid_response, r.resid_pearson, r.resid_deviance, r.resid_working):
+            assert np.all(a(res) == 0.0)
+        assert np.all(np.isnan(a(r.bse))) and np.all(np.isnan(a(r.pvalues))) and np.all(np.isnan(a(r.conf_int())))
+        assert np.all(np.isnan(a(r.predict_interval(np.full((2, k - 1), 2.0)))))
+    # a robust covariance is NaN too; an estimated scale is 0 (G97's +inf llf)
+    assert np.all(np.isnan(a(R.glm(np.zeros(8), x, family="poisson", link="identity", cov_type="HC0").bse)))
+    rx = R.glm(np.zeros(8), x, family="poisson", link="sqrt", scale="X2")
+    assert rx.scale == 0.0 and rx.llf == math.inf
+    # the log link's zeros stay separation (G33)
+    assert R.glm(np.zeros(8), x, family="poisson").separation
+
+
+def test_lasso_df_model_counts_nonzero_at_alpha_zero():
+    """G115: df_model at alpha = 0 is the number of nonzero coefficients (a column and its copy
+    both count), in a path, a CV refit and a batch with a grid containing 0."""
+    rng = np.random.default_rng(5)
+    Xd = rng.normal(size=(40, 3))
+    Xd = np.column_stack([Xd, Xd[:, 1]])
+    y = Xd @ np.array([1.0, 2.0, -1.0, 0.0]) + 0.01 * rng.normal(size=40)
+    rr = R.ridge(y, Xd, alpha=0.0)
+    assert rr.df_model == pytest.approx(3.0)  # ridge's: the rank
+    for fit in (lambda **k: R.lasso(y, Xd, **k), lambda **k: R.elastic_net(y, Xd, l1_ratio=0.3, **k)):
+        assert fit(alpha=0.0).df_model == 4.0
+        assert a(fit(alpha=[0.1, 0.0]).df_model)[1] == 4.0
+    cv = R.lasso_cv(np.stack([y, -y]), Xd, rng=gen(), cv=4, alphas=[1.0, 0.1, 0.0])
+    assert a(cv.alpha).tolist() == [0.0, 0.0] and a(cv.df_model).tolist() == [4.0, 4.0]
+    assert a(cv.n_iter).tolist() == [0, 0] and a(cv.params)[0].tolist() == a(rr.params).tolist()
+
+
+def test_lasso_alpha_zero_runs_no_descent():
+    """R111: alpha = 0 goes straight to ridge's solve: its time is ridge(alpha=0)'s, not the
+    coordinate descent's (X 200 x 400, where the descent took 4 ms more than the solve)."""
+    import time
+    rng = np.random.default_rng(2)
+    Xw, y = rng.normal(size=(200, 400)), rng.normal(size=200)
+
+    def best(f):
+        f()
+        ts = []
+        for _ in range(5):
+            t0 = time.perf_counter()
+            f()
+            ts.append(time.perf_counter() - t0)
+        return min(ts)
+    t_ridge = best(lambda: R.ridge(y, Xw, alpha=0.0))
+    t_lasso = best(lambda: R.lasso(y, Xw, alpha=0.0))
+    assert t_lasso < 1.3 * t_ridge + 1e-3
+    assert a(R.lasso(y, Xw, alpha=0.0).params).tolist() == a(R.ridge(y, Xw, alpha=0.0).params).tolist()
+
+
+def test_lasso_copy_of_an_active_column_is_exactly_zero():
+    """G116: a column whose gradient sits on l1 (a copy of an active one) stays exactly 0 in
+    single fits and on a warm-started path, with standardize too; df_model counts it out."""
+    rng = np.random.default_rng(0)
+    Xz = np.column_stack([np.arange(10.0), np.arange(10.0), rng.standard_normal(10)])
+    yz = 2 * Xz[:, 0] + Xz[:, 2] + 0.01 * rng.standard_normal(10)
+    path = [0.1, 1e-2, 1e-3, 1e-4]
+    for std in (False, True):
+        P = a(R.lasso(yz, Xz, alpha=path, standardize=std).params)
+        assert np.all(P[:, 2] == 0.0) and np.all(P[:, 1] != 0.0), P
+        assert a(R.lasso(yz, Xz, alpha=path, standardize=std).df_model).tolist() == [2.0] * 4
+        for i, al in enumerate(path):
+            r = R.lasso(yz, Xz, alpha=al, standardize=std)
+            assert float(r.params[2]) == 0.0 and r.df_model == 2.0
+            if not std:  # the path and the single fit agree on A and the signs: the same bits
+                assert a(r.params).tolist() == P[i].tolist()
+    # the penalized GLM's inner descent shares the threshold
+    yb = (yz > np.median(yz)).astype(float)
+    g = a(R.penalized_glm(yb, Xz, family="binomial", alpha=[0.05, 0.01], l1_ratio=1.0).params)
+    assert np.all(g[:, 1] * g[:, 2] == 0.0)

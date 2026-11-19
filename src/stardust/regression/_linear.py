@@ -850,6 +850,22 @@ class _LinearResult(_RegressionResult):
             return (self._extra["beff_params_s"] + 0.0) / _sd.sqrt(_linalg.diagonal(self._cov_s()))
         return self._cached("tvalues", make)
 
+    def conf_int(self, *, alpha=0.05):
+        """(..., k, 2): the lower and upper bounds of the 1 - alpha confidence intervals
+        (alpha keyword-only, G99)."""
+        if "beff_params_s" not in self._extra:
+            return super().conf_int(alpha=alpha)
+        alpha = _check_alpha(alpha, "conf_int")
+        # the ends in the fit's own units, beta' -+ q sqrt(C'), then scaled as the parameter is:
+        # each end keeps its sign and may overflow to +-inf, never inf - inf = NaN
+        q = self._dist().iccdf(alpha / 2)
+        b = self._extra["beff_params_s"]
+        half = q * _sd.sqrt(_linalg.diagonal(self._cov_s()))
+        fy = self._fy()
+        fy1 = _expand(fy, 1) if isinstance(fy, _sd.ndarray) else fy
+        fxk = self._extra["fx"]
+        return _sd.stack([(b - half) * fy1 / fxk, (b + half) * fy1 / fxk], axis=-1)
+
     def predict(self, X_new, /):
         """X_new @ params (the intercept added), summed in double-double. Aliased columns take
         no part; a NaN in a column of the model gives NaN."""

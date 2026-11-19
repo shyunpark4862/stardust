@@ -174,9 +174,10 @@ class _PenalizedResult:
     def df_model(self):
         """The effective degrees of freedom of the coefficients (the intercept not counted):
         tr Z_A (Z_A^T W Z_A + sw alpha (1 - l1_ratio) I)^-1 Z_A^T W (sw the sum of the weights, n
-        without them) over the nonzero
-        coefficients A (standardized coordinates under standardize); ridge's sum s^2/(s^2 +
-        alpha), the lasso's number of nonzero coefficients."""
+        without them) over the nonzero coefficients A (standardized coordinates under
+        standardize); ridge's sum s^2/(s^2 + alpha), the lasso's number of nonzero coefficients.
+        At alpha = 0 the lasso's and the elastic net's are the number of nonzero coefficients
+        too (G115), not ridge's (the rank: a column and its copy share one)."""
         return self._stat(_DF)
 
     def _shape_X(self, Xn):
@@ -427,10 +428,11 @@ def _run(func, kind, y, X, w, alphas, l1_ratio, family, intercept, standardize, 
     aux = _aux(w, tw, y.shape[-1])
     P, S = _k.penalized_path(func, kind, y, X, aux, w is not None, tw is not None, alphas, l1_ratio,
                              _FAMILY_CODE[family], intercept, standardize, max_iter, tol)
-    if kind == _ENET and alphas.ndim == 1 and bool(_sd.any(alphas == 0.0)):
+    if kind == _ENET and bool(_sd.any(alphas == 0.0)):
         # alpha = 0 (G110): the minimum-norm least squares solution, ridge's at alpha = 0 bit for
         # bit (its SVD; coordinate descent would stop at one of the minimizers of an aliased
-        # design, and needs no iterations here): converged, n_iter 0, dual_gap 0
+        # design, and needs no iterations here; the kernel skips it): converged, n_iter 0,
+        # dual_gap 0, df_model the number of nonzero coefficients (G115)
         P0, S0 = _k.penalized_path(func, _RIDGE, y, X, aux, w is not None, tw is not None, _sd.asarray([0.0]),
                                    0.0, _FAMILY_CODE[family], intercept, standardize, 1, 1.0)
         ok = S0[..., _ISNAN] == 0.0
@@ -439,6 +441,8 @@ def _run(func, kind, y, X, w, alphas, l1_ratio, family, intercept, standardize, 
         cols[_NITER] = _sd.where(ok, 0.0, math.nan)
         cols[_GAP] = _sd.where(ok, 0.0, math.nan)
         cols[_POLISHED] = _sd.where(ok, 0.0, math.nan)
+        nonzero = _sd.where(P0[..., (1 if intercept else 0):] != 0.0, 1.0, 0.0)
+        cols[_DF] = _sd.where(ok, _sd.sum(nonzero, axis=-1), math.nan)
         S0 = _sd.stack(cols, axis=-1)
         z = _sd.expand_dims(alphas == 0.0, axis=-1)
         P = _sd.where(z, P0, P)
