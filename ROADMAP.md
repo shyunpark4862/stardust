@@ -1,6 +1,6 @@
 # stardust 로드맵
 
-> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6, 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3–O6 시작 전)이다.
+> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6, 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4–O6 시작 전)이다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -371,7 +371,7 @@
 
 # 최적화 영역 (sd.optimize)
 
-> 상태: **O0 완료·승인**, **O1 완료·승인**, **O2 완료·승인** (2026-11-20). 설계는 [docs/design/optimize.md](docs/design/optimize.md), API의 초안은 [docs/api/optimize.md](docs/api/optimize.md)다.
+> 상태: **O0 완료·승인**, **O1 완료·승인**, **O2 완료·승인**, **O3 완료·승인 대기** (2026-11-20). 설계는 [docs/design/optimize.md](docs/design/optimize.md), API의 초안은 [docs/api/optimize.md](docs/api/optimize.md)다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -381,6 +381,7 @@
 - O0의 결정(사용자, 2026-11-20): scipy 1.18.1과 같은 걸음(비트까지는 아님), 통합 함수만(개별 함수 없음), `curve_fit` 없음, `args` 없음, MGH 35와 scipy 시험 함수, Fortran 원본 대조 (docs/design/optimize.md §1.1 O9–O13). API 초안 뒤의 결정(2026-11-20): 반복 상한은 `max_iter`·`max_nfev`, 방법 이름은 소문자만, 방법마다의 옵션은 `options` dict(모르는 키는 `ValueError`), `status`·`message`는 scipy의 것 (O14–O17).
 - O1의 결정(사용자, 2026-11-20): `nfev`는 차분의 호출도 센다, `bounds=None`이 기본, 유한하지 않은 마지막 cost는 `converged=False`, 반복 안의 차분은 `'2-point'`·`'3-point'`·`diff_step`(`'cs'` 없음), `loss`·`x_scale`·`lsmr`·`jac_sparsity`·`callback`·`workers`·다듬기는 미룬다, `max_nfev`의 기본은 nls의 규칙 (O18–O23). 구현 뒤의 결정(2026-11-20): 'lm'의 마지막 야코비안을 센다, 3점 차분의 `max_nfev` 기본은 100n(2n + 1), 유한하지 않은 야코비안과 3점의 한쪽 값은 `ValueError`, 빈 입력과 `diff_step`+호출 가능한 `jac`은 `ValueError`, `approx_fprime`의 모양·잡음 열·유한하지 않은 값, `check_grad`의 `rng` 에러 꼴 (O24–O31).
 - O2의 결정(사용자, 2026-11-20): 근을 끼지 않는 구간은 `ValueError`(배치는 status −1), 허용오차의 기본은 scipy의 것(`xtol=0`이면 더 간다), `fprime=True` 없음, 배치 결과는 `fun`, 배치의 허용오차는 키워드, `callback` 없음, 배치는 남은 원소만 1차원으로 부른다 (O32–O38). 구현 뒤의 결정(2026-11-20): 배치 함수만 scipy의 `args`(남은 원소로 함께 줄인다), `root_scalar`는 `fun` 없이 f·f′·f″를 따로 센다, scipy 경고의 글을 `message`로, brent·golden의 status 3·4, toms748의 유한하지 않은 값은 status −3(scipy와 다름), 구간의 끝과 배치 입력의 규칙 (O39–O49).
+- O3의 결정(사용자, 2026-11-20): 기본 방법은 scipy의 것, `bounds`는 `(lower, upper)` 하나, 경계 밖의 `x0`는 `ValueError`, 반복 중의 유한하지 않은 값은 scipy의 처리(`x0`에서는 `ValueError`), `callback` 없음, L-BFGS-B의 `hess_inv`는 처음 읽을 때 만드는 (n, n) 행렬, `final_simplex`는 scipy처럼, 선 탐색 상한은 `max_ls` (O50–O57). 구현 뒤의 결정(2026-11-20): 고정 변수는 scipy처럼(뺀 변수가 있으면 `hess_inv` 필드 없음), ABNORMAL의 `fun`은 `x`의 값(scipy와 다름), `hess_inv`는 scipy의 순서, BFGS의 n³ 갱신은 O6에서 다시, 옵션 검사는 그대로 (O58–O62).
 - 기존 영역의 결과는 비트까지 같아야 한다(nls를 옮겨도).
 
 ## 진행 상태
@@ -389,10 +390,10 @@
 | O0 준비: API 문서, 결과 객체, 시험 문제(MGH 35), 대조 도구, 기준선 | 완료·승인 (2026-11-20) |
 | O1 수치 미분과 최소제곱: `approx_fprime check_grad least_squares`, nls 옮기기 | 완료·승인 (2026-11-20) |
 | O2 스칼라: `root_scalar minimize_scalar`, 배치 `find_root bracket_root find_minimum bracket_minimum` | 완료·승인 (2026-11-20) |
-| O3 최소화 1: Nelder–Mead, BFGS, L-BFGS-B | 시작 전 |
+| O3 최소화 1: Nelder–Mead, BFGS, L-BFGS-B | 완료·승인 (2026-11-20) |
 | O4 최소화 2: Newton-CG, trust-ncg, trust-exact | 시작 전 |
 | O5 방정식계와 선형 최소제곱: `root`(hybr, lm), `lsq_linear`, `nnls` | 시작 전 |
-| O6 최적화와 일관성 점검 | 시작 전 |
+| O6 최적화와 일관성 점검(BFGS의 n² 갱신, O61) | 시작 전 |
 
 ## 마일스톤
 
@@ -415,3 +416,10 @@
 - 결과: csrc/optimize/(scalar.hpp, scalar.cpp, batch.cpp), csrc/bind/optimize_bind.cpp, src/stardust/optimize/(`_scalar.py`, `_elementwise.py`, `_common.py`); docs/api/optimize.md §4–§6·§9, docs/design/optimize.md §3.2·§3.3·§7; 측정 bench/optimize/o2/(speed.py, speed.md); 테스트 tests/optimize/(test_scalar.py, test_elementwise.py, test_api_surface.py).
 - 결과 수치: 시험 문제(근 204, 최솟값 57)의 모든 실행에서 scipy 1.18.1과 f를 부른 점이 차례대로 비트까지 같다(`root_scalar` 1,244번, `minimize_scalar` 399번, 배치의 원소 하나 621번, 2,000원소 배치 7가지; 기록과 다른 것은 newton·secant의 `message` 62번). 기본 허용오차의 구간법 근은 모두 Arb 근에서 xtol + rtol·|x| 안, `xtol=0`이면 brentq 3, toms748 1, bisect 4 ULP 안. 스칼라 방법의 자기 비용은 호출 하나에 0.2–1.5 µs(scipy C 구현의 1/1.5–1/2.8, Python 구현의 1/2–1/38), 배치는 함수값 하나에 6–12 ns(10⁶ 원소 1스레드에서 find_root 143 ms 대 scipy 330 ms, find_minimum 250 ms 대 649 ms).
 - 찾은 것: scipy의 C brentq는 FMA로 빌드되어 있어(clang 기본) 외삽의 분자를 `std::fma`로 적어야 같은 걸음이다(아니면 204문제 가운데 12문제의 호출점이 갈린다). 남은 원소만 받는 배치 함수는 `args` 없이는 원소마다 다른 상수를 쓸 수 없어 배치 함수에만 `args`를 두었다(O39).
+
+### O3. 최소화 1
+- `minimize`: Nelder–Mead, BFGS, L-BFGS-B(해석적·`jac=True`·'2-point'·'3-point'·절대 간격 차분, 경계, 고정 변수). Newton-CG·trust-ncg·trust-exact는 O4(지금은 `NotImplementedError`).
+- 결정(사용자, 2026-11-20): docs/design/optimize.md §1.1 O50–O57. 구현 뒤에 O58–O62.
+- 결과: csrc/optimize/(minimize.hpp, objective.hpp, nelder_mead.cpp, bfgs.cpp, lbfgsb.cpp), csrc/bind/optimize_bind.cpp, CMakeLists.txt, src/stardust/optimize/(`_minimize.py`, `_result.py`의 처음 읽을 때 계산하는 필드, `_common.py`, `__init__.py`); docs/api/optimize.md §1·§7·§9, docs/design/optimize.md §1.1·§3.5·§6·§7·§8·§9; 측정 bench/optimize/o3/(speed.py, speed.md); 테스트 tests/optimize/(test_minimize.py, test_api_surface.py).
+- 결과 수치: 세 방법 모두 scipy 1.18.1과 호출점이 비트까지 같다: 기록된 실행 568번의 모든 필드, 실행하며 견준 MGH·시험 함수 721번(상자 경계 153번 포함)과 옵션·가장자리 328번의 모든 호출점. BFGS의 `hess_inv`는 비트까지, L-BFGS-B의 것은 scipy `todense()`와 2.8×10⁻¹⁴ 안. L-BFGS-B Fortran 원본 83번은 scipy의 기록과 같아 원본과의 거리도 scipy와 같다(호출 수 74, x 10⁻¹² 안 62, 10⁻⁶ 안 79). 반복당 자기 비용은 작은 n에서 scipy의 1/2–1/20, 차분 기울기는 1/3–1/12, Nelder–Mead n = 1000은 1/5, BFGS n = 1000(같은 dgemm)과 L-BFGS-B n = 10⁴(같은 C 알고리즘)는 비슷하다.
+- 찾은 것: scipy의 C 판 L-BFGS-B는 FMA 축약으로 빌드되어 있고, Accelerate의 ddot은 둘째 인자의 16바이트 정렬에 따라 끝자리가 다르다: 둘 다 맞춰야 비트까지 같다. scipy의 L-BFGS-B는 ABNORMAL에서 `fun`이 되돌린 `x`의 값이 아니고(여기서는 `x`의 값, O59), `hess_inv`는 저장 순서의 쌍을 쓴다(그대로 따름, O60).

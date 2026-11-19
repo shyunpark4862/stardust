@@ -1,6 +1,6 @@
 # 최적화 영역 설계 (sd.optimize)
 
-> 상태: **설계 초안** (2026-11-20). 큰 결정(§1.1 O1–O49)은 사용자가 정했다. O0·O1·O2를 구현했다(§8). 나머지는 안이고, 시작 전에 정할 것은 §9에 있다.
+> 상태: **설계 초안** (2026-11-20). 큰 결정(§1.1 O1–O62)은 사용자가 정했다. O0·O1·O2·O3을 구현했다(§8). 나머지는 안이고, 시작 전에 정할 것은 §9에 있다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -66,6 +66,19 @@
 | O47 구간의 끝 (O2) | 끝은 유한해야 한다. brentq·bisect는 (b, a)를 받고 toms748은 a < b여야 한다. a == b는 `ValueError`다(근을 끼지 않는다). `minimize_scalar`의 `bounds`는 lower == upper를 받는다 (사용자 결정 2026-11-20) |
 | O48 배치의 실수 입력 (O2) | 입력이 모두 실수이면 결과의 필드는 Python 수다. 첫 호출도 1차원 배열이다 (사용자 결정 2026-11-20) |
 | O49 배치 입력의 NaN·inf (O2) | 그 원소만 status −3 또는 −5이고 나머지는 풀린다 (사용자 결정 2026-11-20) |
+| O50 기본 방법 (O3) | scipy를 따른다: `bounds`가 없으면 `'bfgs'`, 있으면 `'l-bfgs-b'` (사용자 결정 2026-11-20) |
+| O51 `bounds`의 꼴 (O3) | `(lower, upper)` 하나뿐이다(각각 수 하나 또는 n개, ±inf는 경계 없음; `least_squares`·nls와 같다). 변수마다의 쌍의 시퀀스와 `Bounds` 객체는 받지 않는다. `'l-bfgs-b'`와 `'nelder-mead'`만 받는다 (사용자 결정 2026-11-20) |
+| O52 경계 밖의 `x0` (O3) | `ValueError`다(scipy는 말없이 경계 안으로 옮긴다) (사용자 결정 2026-11-20) |
+| O53 유한하지 않은 값 (O3) | 반복 중의 함수값·기울기가 유한하지 않으면 scipy의 처리를 따른다(O9: 선 탐색이 걸음을 줄이거나 실패하고, scipy의 `status`·`message`, `converged=False`). `x0`에서 유한하지 않으면 `ValueError`다 (사용자 결정 2026-11-20) |
+| O54 `callback` (O3) | 두지 않는다 (사용자 결정 2026-11-20) |
+| O55 `hess_inv` (O3) | L-BFGS-B는 저장된 쌍으로 만든 (n, n) 행렬이고 처음 읽을 때 계산한다. BFGS는 그 (n, n) 행렬이다 (사용자 결정 2026-11-20) |
+| O56 `final_simplex` (O3) | Nelder–Mead는 scipy처럼 마지막 꼭짓점들과 그 함수값을 준다 (사용자 결정 2026-11-20) |
+| O57 `max_ls` (O3) | L-BFGS-B의 선 탐색 상한은 `max_ls`다(scipy `maxls`; O14와 같은 꼴). `maxcor`는 상한이 아니므로 이름을 그대로 둔다 (사용자 결정 2026-11-20) |
+| O58 고정 변수 (O3) | `minimize`는 lower = upper를 scipy처럼 받는다: 모두 고정이면 `fun`을 한 번 부르고 끝내고, 일부가 고정이고 기울기가 차분이면 그 변수를 빼고 푼다. 뺀 변수가 있으면 결과에 `hess_inv` 필드가 없다(None이 아니다; 다른 없는 필드처럼 `AttributeError`). `least_squares`는 그대로 lower < upper다 (사용자 결정 2026-11-20) |
+| O59 L-BFGS-B ABNORMAL의 `fun` (O3) | 돌려주는 `x`에서의 값이다(scipy는 마지막 시험점의 값). 걸음은 scipy와 같다 (사용자 결정 2026-11-20) |
+| O60 L-BFGS-B `hess_inv`의 순서 (O3) | scipy처럼 저장된 쌍을 저장 순서로 쓴다(scipy의 `todense()`와 같은 행렬) (사용자 결정 2026-11-20) |
+| O61 BFGS의 H 갱신 (O3) | 지금은 scipy의 n³ 갱신(행렬곱 두 번)을 둔다. n²의 갱신은 O6에서 다시 본다 (사용자 결정 2026-11-20) |
+| O62 옵션의 검사 (O3) | 그대로 둔다: `eps`·`finite_diff_rel_step`을 쓰이지 않는 `jac`과 주면 `ValueError`(O29를 넓힘), `c1`·`c2`는 반복 전에 검사, `tol`과 같은 옵션 키를 함께 주면 `ValueError` (사용자 결정 2026-11-20) |
 
 ### 1.2 범위 (안)
 | 덩어리 | 공개 함수 | 방법 |
@@ -144,12 +157,19 @@
 - nls에만 있는 것(다듬기 G73, 정확한 야코비안의 공분산, 겹친 모수 G76)은 `nls` 쪽에 남겼다. scipy의 `loss`, `x_scale`, `f_scale`, `tr_solver='lsmr'`, `jac_sparsity`, `callback`, `workers`, 다듬기 옵션은 넣지 않았다(O22).
 - `lsq_linear`: trf(scipy의 경계 있는 선형 최소제곱)와 bvls(Stark–Parker). `nnls`: Lawson–Hanson(scipy 1.18.1의 구현과 같은 걸음). 바닥은 linalg의 QR이다.
 
-### 3.5 다변수 최소화
-- Nelder–Mead: scipy의 `_minimize_neldermead`(적응 계수 옵션 `adaptive` 포함)와 같은 걸음.
-- BFGS: scipy의 BFGS(Wolfe 선 탐색은 MINPACK-2 `dcsrch`, scipy의 `line_search_wolfe1`).
-- L-BFGS-B: L-BFGS-B 3.0(Morales–Nocedal 2011, BSD). scipy 1.15부터 C로 옮긴 구현과 같은 걸음이 목표다.
-- Newton-CG, trust-ncg(Steihaug–Toint CG), trust-exact(Moré–Sorensen): scipy의 구현과 같은 걸음. 헤세 곱은 사용자 `hess`·`hessp`나 기울기의 차분.
-- 기울기를 주지 않으면 §3.1의 차분이다(scipy는 2점 차분).
+### 3.5 다변수 최소화 (O3에서 Nelder–Mead, BFGS, L-BFGS-B를 구현)
+- 커널은 `csrc/optimize/nelder_mead.cpp`, `bfgs.cpp`, `lbfgsb.cpp`(`stardust._core.optimize.nelder_mead_solve`, `bfgs_solve`, `lbfgsb_solve`)이고 Python 층은 `src/stardust/optimize/_minimize.py`다. 사용자 함수는 새 float64 `sd.ndarray` x를 받고, 커널은 콜백을 부르는 동안 GIL을 쥔다. 큰 선형대수(BFGS의 행렬곱, L-BFGS-B의 방향 계산과 메모리 갱신, Nelder–Mead의 무게중심)만 10 µs 규칙으로 GIL을 놓는다.
+- 기울기는 scipy 1.18.1의 `ScalarFunction`과 같다(`csrc/optimize/objective.hpp`): 마지막 점과 그 점의 f·g를 기억하고, 다른 점(`np.array_equal`: NaN은 같지 않고 −0.0과 0.0은 같다)이거나 아직 계산하지 않았을 때만 계산한다. 사용자 `jac`, `jac=True`(fun이 (f, g)를 돌려준다; scipy의 `MemoizeJac`처럼 x로 기억한다), 차분(`jac=None`은 `approx_derivative`의 '2-point'에 절대 간격 `eps`, `'2-point'`·`'3-point'`는 상대 간격 `finite_diff_rel_step` 또는 기본; 경계에 맞춘 조정은 §3.1의 diff.hpp)이다. `nfev`는 차분의 호출을 센다: scipy의 `ScalarFunction.nfev`도 세므로 O18의 셈이 scipy의 셈과 같다.
+- Nelder–Mead: scipy의 `_minimize_neldermead`. 처음 단체(x0와 x0[k]를 1.05배, 0이면 0.00025), `initial_simplex`, `adaptive`(Gao–Han의 계수), 경계(위 경계 너머의 꼭짓점을 반사하고 자르기, 새 점마다 자르기), `xatol`·`fatol`, `max_nfev`를 넘는 호출은 하지 않고 그 반복을 멈추기, 정렬은 numpy `argsort`의 introsort(17개 미만은 삽입 정렬이라 같은 값의 순서가 그대로이고, 그 위는 아니다)를 그대로 옮겼다. 무게중심은 numpy처럼 +0.0에서 행을 차례로 더한다. 정렬은 행을 옮기지 않고 행 번호를 옮긴다.
+- BFGS: scipy의 `_minimize_bfgs`와 `_line_search_wolfe12`: `line_search_wolfe1`(scipy의 Python `DCSRCH`·`dcstep`, c1·c2, xtol 10⁻¹⁴, 걸음 [10⁻¹⁰⁰, 10¹⁰⁰], 100번)이 걸음을 못 찾으면 `line_search_wolfe2`(두 배로 넓히기와 3차·2차 보간의 zoom, 10번씩), 둘 다 못 찾으면 status 2. H는 scipy처럼 (I − ρsyᵀ)H(I − ρysᵀ) + ρssᵀ를 두 번의 행렬곱(BLAS dgemm)으로 만든다. scipy의 Python 코드는 FMA가 없으므로 이 파일은 축약 없이 빌드한다. zoom의 보간은 scipy가 `np.errstate(divide, over, invalid='raise')` 안에서 하고 그 에러에서 보간을 버린다: 여기서는 연산마다 numpy의 규칙(유한한 0 아닌 수를 0으로 나누기, 유한한 값에서의 넘침, NaN이 아닌 값에서 NaN)으로 같은 판정을 한다(2 × 2 곱은 numpy처럼 dgemv). 사용자 함수가 Python float을 돌려줄 때 scipy는 Python의 곱셈 넘침을 에러로 보지 않으므로 그런 경계의 경우만 다를 수 있다.
+- L-BFGS-B: scipy 1.15부터의 C 판(`scipy/optimize/src/lbfgsb.c`, L-BFGS-B 3.0의 setulb·mainlb와 하위 루틴: cauchy, hpsolb, bmv, freev, formk, cmprlb, subsm, lnsrlb, dcsrch, dcstep, matupd, formt, projgr)과 scipy의 드라이버 고리(`_minimize_lbfgsb`: NEW_X마다 반복을 세고 `max_iter`·`max_nfev`(> 비교)로 멈춤)를 계산 순서까지 옮겼다. scipy가 원본과 다른 곳(2-노름을 dnrm2로, 0부터 세는 번호에서 결코 참이 되지 않는 Cauchy 점의 마지막 구간 판정 `nleft == -1 && nbreak == n`)도 그대로다.
+  - scipy는 이 C 파일을 clang의 기본(`-ffp-contract=on`)으로 빌드하여 한 식 안의 a·b + c를 FMA 하나로 계산한다. 그래서 이 파일은 `#pragma clang fp contract(on)`으로 같은 축약을 하고 식을 scipy의 꼴 그대로 적었다(축약을 끄면 경계 없는 114경우 가운데 13경우만 호출점이 비트까지 같다).
+  - Accelerate의 ddot은 둘째 인자가 16바이트 정렬인지에 따라 합의 순서가 다르다(길이 5 이상에서 끝자리가 달라진다). scipy의 작업 배열 `wa`는 numpy 배열 하나를 setulb가 나눠 쓰므로 부분마다 정렬이 다르다: 여기서도 작업 공간 하나를 scipy와 같은 위치로 나눈다(그래야 경계 있는 문제의 호출점이 비트까지 같다).
+  - scipy의 setulb는 f를 값으로 받으므로 ABNORMAL(선 탐색 실패)에서 x와 g는 앞의 반복점으로 되돌려도 결과의 `fun`은 마지막 시험점의 값이다. 여기서는 되돌린 `x`의 값(앞의 반복점의 f)을 준다(O59; 걸음은 같다).
+  - `hess_inv`(O55)는 scipy의 `LbfgsInvHessProduct(s[:k], y[:k]).todense()`와 같은 행렬이다: 저장된 쌍을 저장 순서로(메모리가 한 바퀴 돈 뒤에는 시간 순서가 아니다; scipy와 같다, O60), H₀ = I로 두 고리 재귀를 단위 행렬에 적용한다. 처음 읽을 때 계산하고 결과에 둔다(n²의 메모리: n = 10⁴이면 800 MB).
+  - 모든 변수가 고정된 경계(lower = upper)면 scipy처럼 fun을 한 번 부르고 끝낸다(`'All independent variables were fixed by bounds.'`). 일부가 고정되고 기울기가 차분이면 scipy처럼 그 변수를 빼고 푼다(결과의 `jac`은 그 자리가 NaN, `hess_inv` 필드는 없다; O58).
+- 그래서 세 방법 모두 scipy 1.18.1과 호출점이 비트까지 같다(§7). O9는 끝자리 차이를 허용하지만 이 세 방법은 차이가 없다.
+- Newton-CG, trust-ncg(Steihaug–Toint CG), trust-exact(Moré–Sorensen)는 O4다: scipy의 구현과 같은 걸음, 헤세 곱은 사용자 `hess`·`hessp`나 기울기의 차분. 지금은 `NotImplementedError`다.
 
 ### 3.6 방정식계의 근
 - hybr: MINPACK hybrj(야코비안을 주면)·hybrd(차분). Powell의 dogleg. lm: §3.4의 lmder 커널을 그대로 쓴다.
@@ -176,7 +196,7 @@
 
 ## 6. 층과 파일 (안)
 - `src/stardust/optimize/`: 공개 함수(`_scalar.py`, `_elementwise.py`, `_minimize.py`, `_lsq.py`, `_root.py`, `_diff.py`), 결과 객체(`_result.py`), 입력 정리와 메시지(`_common.py`)
-- `csrc/optimize/`: `scalar.hpp`·`scalar.cpp`(스칼라 근·최솟값), `batch.cpp`(배치 스칼라), `diff.hpp`, `lsq.cpp`(nls에서 옮긴 lmder·trf), `nelder_mead.cpp`, `bfgs.cpp`(+ `dcsrch`), `lbfgsb.cpp`, `trust.cpp`, `hybrd.cpp`, `nnls.cpp`; 바인딩 `csrc/bind/optimize_bind.cpp`
+- `csrc/optimize/`: `scalar.hpp`·`scalar.cpp`(스칼라 근·최솟값), `batch.cpp`(배치 스칼라), `diff.hpp`, `lsq.cpp`(nls에서 옮긴 lmder·trf), `minimize.hpp`, `objective.hpp`(scipy `ScalarFunction`의 기억과 차분), `nelder_mead.cpp`, `bfgs.cpp`(scipy Python 판의 `DCSRCH`와 wolfe2), `lbfgsb.cpp`(C 판의 `dcsrch`), `trust.cpp`, `hybrd.cpp`, `nnls.cpp`; 바인딩 `csrc/bind/optimize_bind.cpp`
 - `regression.nls`는 `csrc/optimize/lsq.cpp`와 `_diff.py`를 쓴다(O6). `csrc/regression/nls.cpp`는 없앴다(O1).
 - `tests/optimize/`, `bench/optimize/`
 
@@ -246,6 +266,16 @@ O2에서 확인한 것(2026-11-20):
 - **배치와 원소 하나**: 2,000원소의 `find_root`·`bracket_root` 배치는 원소마다 그 원소 하나로 부른 결과와 필드가 모두 같다. 근은 `root_scalar`(toms748)와 10⁻⁹ 안이다.
 - 속도는 `bench/optimize/o2/speed.md`: 스칼라 방법 자체의 비용이 호출 하나에 0.2–1.5 µs(scipy의 C 구현의 1/1.5–1/2.8, Python 구현의 1/2–1/38), 배치(O0의 문제, c는 `args`)는 함수값 하나에 6–12 ns(scipy 7–105 ns): 10⁶ 원소 1스레드에서 find_root 143 ms 대 330 ms, find_minimum 250 ms 대 649 ms, bracket_minimum 64 ms 대 66 ms(10스레드는 사용자 함수의 sd 연산이 나뉘어 99, 129, 39 ms).
 
+O3에서 확인한 것(2026-11-20):
+
+- **scipy 1.18.1과 비트까지 같은 걸음** (O9; `tests/optimize/test_minimize.py`). 기록된 실행(`data/scipy_minimize.json`: MGH 110경우, Rosenbrock n = 2·5, 최대 엔트로피, driver1)의 Nelder–Mead 114, BFGS 113, BFGS 차분 113, L-BFGS-B 114, L-BFGS-B 차분 114번에서 결과의 모든 필드(x의 비트, fun, nfev, njev, nit, status, message, success)가 같다. scipy를 실행하며 `fun`·`jac`을 부른 점을 차례대로 견주면 여덟 묶음(위의 다섯과 x0 둘레의 상자 경계에서 Nelder–Mead 51, L-BFGS-B 해석적·차분 51씩)이 모두 비트까지 같다. 옵션과 가장자리(`jac=True`·`'2-point'`·`'3-point'`, `eps`, `finite_diff_rel_step`, `norm`, `xrtol`, `c1`·`c2`, `hess_inv0`, `maxcor`, `max_ls` 1·2(재시작과 ABNORMAL), `max_iter`, `max_nfev`, `tol`, 고정 변수, 반쪽 경계, `adaptive`, `initial_simplex`, 시험점에서 inf·NaN)를 MGH 7문제와 Rosenbrock에서 41가지씩(328번) 견주어도 모두 같다(테스트는 4문제, 164번).
+  - L-BFGS-B를 비트까지 맞추는 데 둘이 필요했다: scipy의 C 판이 clang 기본의 FMA 축약으로 빌드된 것(같은 축약 없이는 경계 없는 114경우 가운데 13경우만 같다)과, Accelerate의 ddot이 둘째 인자의 16바이트 정렬에 따라 합의 순서를 바꾸는 것(scipy의 작업 배열과 같은 위치로 나누기 전에는 상자 경계 51경우 가운데 43경우만 같았다). scipy의 lbfgsb.c를 같은 clang으로 빌드한 것이 scipy의 바이너리와 51경우 모두 같다는 것도 확인했다.
+  - BFGS의 `hess_inv`는 scipy와 비트까지 같고(MGH 110경우), L-BFGS-B의 것은 scipy의 `LbfgsInvHessProduct.todense()`와 상대 2.8×10⁻¹⁴ 안이다(`maxcor` 10·3, 220번, 메모리가 한 바퀴 돈 185번 포함).
+- **L-BFGS-B 3.0의 Fortran 원본** (`data/fortran_lbfgsb.json`, 83번): 모든 실행이 scipy의 기록(`fortran_vs_scipy.json`)과 x의 비트, nfev, nit, message까지 같다. 그래서 원본과의 거리도 scipy와 같다: 호출 수와 반복 수가 같은 것 74, x가 10⁻¹² 안 62, 10⁻⁶ 안 79, 같은 멈춤 판정 82번. driver1(m = 5)은 원본 드라이버처럼 23반복, 28계산이다.
+- O18의 셈과 scipy의 셈이 같다: scipy의 `minimize`는 `ScalarFunction.nfev`로 차분의 호출을 센다(`least_squares`와 다르다).
+- scipy에서 찾은 것: L-BFGS-B의 setulb는 f를 값으로 받아 ABNORMAL에서 결과의 `fun`이 되돌린 `x`의 값이 아니다(여기서는 `x`의 값을 준다, O59: 기록과 다른 것은 이 `fun`뿐이다). `hess_inv`는 저장 순서의 쌍을 쓴다. Cauchy 점의 마지막 구간 판정(`nbreak == n`)은 0부터 세는 번호에서 참이 될 수 없다. BFGS의 zoom 보간은 사용자 함수가 Python float과 numpy float 가운데 무엇을 돌려주는지에 따라 넘침의 처리가 다르다.
+- 속도는 `bench/optimize/o3/speed.md`: 작은 n의 반복당 자기 비용이 scipy의 1/2–1/20(BFGS n = 2: 1.0 µs 대 22 µs), 차분의 기울기는 1/3–1/12(L-BFGS-B n = 1000: 0.35 ms 대 4.3 ms), Nelder–Mead n = 1000은 0.14 ms 대 0.76 ms, BFGS n = 1000은 같은 dgemm이라 9.4 ms 대 11.5 ms, L-BFGS-B n = 10⁴는 같은 C 알고리즘이라 0.35 ms 대 0.37 ms다.
+
 ---
 
 ## 8. 마일스톤 (안)
@@ -254,10 +284,10 @@ O2에서 확인한 것(2026-11-20):
 | O0 준비 | API 문서 초안, 결과 객체의 틀, 시험 문제 모음(MGH 35, scipy 시험 함수), 대조 도구, 벤치마크 기준선(scipy). 완료(2026-11-20): §7, docs/api/optimize.md, `bench/optimize/o0/` |
 | O1 수치 미분과 최소제곱 | `approx_fprime`, `check_grad`, nls 커널을 `least_squares`로 옮기기(nls 비트 동일). 완료(2026-11-20): §3.1, §3.4, §7, `bench/optimize/o1/` |
 | O2 스칼라 | `root_scalar`, `minimize_scalar`, 배치 `find_root bracket_root find_minimum bracket_minimum`. 완료(2026-11-20, 승인 대기): §3.2, §3.3, §7, `bench/optimize/o2/` |
-| O3 최소화 1 | `minimize`: Nelder–Mead, BFGS, L-BFGS-B |
+| O3 최소화 1 | `minimize`: Nelder–Mead, BFGS, L-BFGS-B. 완료(2026-11-20, 승인 대기): §3.5, §7, `bench/optimize/o3/` |
 | O4 최소화 2 | `minimize`: Newton-CG, trust-ncg, trust-exact |
 | O5 방정식계와 선형 최소제곱 | `root`(hybr, lm), `lsq_linear`, `nnls` |
-| O6 최적화와 일관성 점검 | 커널 속도, 메시지·시그니처의 영역 간 일관성, 코드 리뷰 |
+| O6 최적화와 일관성 점검 | 커널 속도(BFGS의 H를 n²으로 갱신하기, O61), 메시지·시그니처의 영역 간 일관성, 코드 리뷰 |
 
 진행 원칙은 다른 영역과 같다: 마일스톤마다 시작 전에 §9의 질문을 묻고, 구현하고, 정확도·속도를 재고, 커밋하고, 결과를 전달하고, 승인받으면 다음으로 간다. 해설과 안내서는 쓰지 않는다.
 
@@ -267,5 +297,6 @@ O2에서 확인한 것(2026-11-20):
 - **O0**: 정했다(2026-11-20, O9–O13). O0에서 API 초안을 쓰며 생긴 질문 가운데 모든 마일스톤에 걸친 넷(반복 상한의 이름, 방법 이름의 대소문자, `options` dict, `status`·`message`)도 정했다(O14–O17). 마일스톤별로 남은 질문은 docs/api/optimize.md §9에 있다(`nfev`가 차분을 세는지, `least_squares`의 `bounds` 기본값, `root_scalar`의 결과 이름, `nnls`의 결과 등).
 - **O1**: 정했다(2026-11-20, O18–O23, 구현하며 생긴 질문은 O24–O31). 옮기는 순서는 설계대로 먼저 옮기고 비트를 확인한 뒤 공개 함수를 만들었다.
 - **O2**: 정했다(2026-11-20, O32–O38). 구현하며 생긴 질문도 정했다(O39–O49).
-- **O3–O4**: 기본 방법(scipy: 경계가 없으면 BFGS, 있으면 L-BFGS-B), `callback`을 둘지, `hess_inv`를 결과에 둘지, 유한하지 않은 함수값의 처리(걸음 거절 또는 멈춤).
+- **O3**: 정했다(2026-11-20, O50–O57, 구현하며 생긴 질문은 O58–O62).
+- **O4**: O3의 결정을 따른다(`callback` 없음, 경계 밖·유한하지 않은 `x0`). 남은 것은 `hess`·`hessp`의 꼴(`LinearOperator`·희소 행렬을 받을지)과 `hess='2-point'`.
 - **O5**: hybr의 기본 허용오차(scipy 1.49×10⁻⁸), `root`의 다른 방법(broyden 등)을 넣을지.

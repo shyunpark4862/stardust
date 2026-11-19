@@ -36,6 +36,12 @@ def _check_method(v, func, choices):
     return _check_choice(v, func, "method", choices)
 
 
+def _check_bool(v, func, arg):
+    if v is not True and v is not False:
+        raise TypeError(f"{func}(): '{arg}' must be True or False, not {_type_name(v)}")
+    return v
+
+
 def _real(v, func, arg):
     """v (an int or a float; numpy's too) as a float: TypeError for anything else, OverflowError
     'out of range' for an int beyond the doubles (API.md §2)."""
@@ -132,9 +138,10 @@ def _real_vector(v, func, arg, n, positive=False, like="'x0'"):
     return out
 
 
-def _bounds(bounds, func, n):
+def _bounds(bounds, func, n, allow_equal=False):
     """None (no bounds) or a pair (lower, upper) of a number or n numbers each (regression.nls's
-    form): lists of floats, +-inf for none."""
+    form): lists of floats, +-inf for none. allow_equal: a lower bound may equal its upper bound
+    (minimize: the variable is fixed, as in scipy)."""
     if bounds is None:
         return [-math.inf] * n, [math.inf] * n
     if isinstance(bounds, (str, bytes)) or not hasattr(bounds, "__len__"):
@@ -163,7 +170,10 @@ def _bounds(bounds, func, n):
     lb, ub = sides
     if any(math.isnan(v) for v in lb + ub):
         raise ValueError(f"{func}(): 'bounds' contains NaN")
-    if not all(a < b for a, b in zip(lb, ub)):
+    if allow_equal:
+        if not all(a <= b for a, b in zip(lb, ub)):
+            raise ValueError(f"{func}(): each lower bound must not be greater than its upper bound")
+    elif not all(a < b for a, b in zip(lb, ub)):
         raise ValueError(f"{func}(): each lower bound must be less than its upper bound")
     return lb, ub
 
@@ -182,6 +192,8 @@ def _check_options(options, func, method, known):
                 hint = " (the iteration cap is 'max_iter')"
             elif key in ("maxfev", "maxfun"):
                 hint = " (the cap on function evaluations is 'max_nfev')"
+            elif key == "maxls":
+                hint = " (the cap on line-search steps is 'max_ls')"
             raise ValueError(f"{func}(): method={method!r} has no option {key!r}{hint}")
     return dict(options)
 

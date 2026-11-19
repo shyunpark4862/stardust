@@ -2,6 +2,7 @@
 #include "bind/optimize_bind.hpp"
 
 #include "optimize/lsq.hpp"
+#include "optimize/minimize.hpp"
 #include "optimize/scalar.hpp"
 
 namespace nb = nanobind;
@@ -13,6 +14,9 @@ void bind_optimize(nb::module_& core) {
     optimize::bind_lsq(m);
     optimize::bind_scalar(m);
     optimize::bind_batch(m);
+    optimize::bind_nelder_mead(m);
+    optimize::bind_bfgs(m);
+    optimize::bind_lbfgsb(m);
 }
 
 }  // namespace sd

@@ -46,6 +46,15 @@ FIELDS = (
 _FIELD_SET = frozenset(FIELDS)
 
 
+class _Lazy:
+    """A field computed when first read: make() gives its value."""
+
+    __slots__ = ("make",)
+
+    def __init__(self, make):
+        self.make = make
+
+
 def _fresh(v):
     """An array field as the result gives it: a new array (or a tuple of new arrays)."""
     if isinstance(v, _core.ndarray):
@@ -63,6 +72,8 @@ def _field(name):
             raise AttributeError(
                 f"'OptimizeResult' object has no attribute '{name}' (its method does not give it)"
             ) from None
+        if isinstance(v, _Lazy):
+            v = self._fields[name] = v.make()
         return _fresh(v)
 
     get.__name__ = name

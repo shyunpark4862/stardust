@@ -12,13 +12,13 @@ from .._api_doc import signature_blocks
 
 API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "optimize.md"
 
-# Documented, not implemented yet (docs/design/optimize.md §8): O3-O4 minimize; O5 root lsq_linear
-# nnls. (O1's approx_fprime check_grad least_squares and O2's root_scalar minimize_scalar find_root
-# bracket_root find_minimum bracket_minimum are exported.)
+# Documented, not implemented yet (docs/design/optimize.md §8): O5 root lsq_linear nnls. (O1's
+# approx_fprime check_grad least_squares, O2's root_scalar minimize_scalar find_root bracket_root
+# find_minimum bracket_minimum and O3's minimize are exported; minimize's O4 methods raise
+# NotImplementedError.)
 PLANNED = {
     "lsq_linear",
     "nnls",
-    "minimize",
     "root",
 }
 RESULTS = {"OptimizeResult"}
@@ -96,10 +96,19 @@ def test_iteration_caps_are_max_iter_and_max_nfev():
 
 
 def test_batch_functions_take_tolerance_keywords_and_no_callback():
-    # O36, O37: xatol xrtol fatol frtol instead of scipy's tolerances dict; no callback anywhere in O2
+    # O36, O37: xatol xrtol fatol frtol instead of scipy's tolerances dict; no callback anywhere in
+    # O2, nor in minimize (O54)
     doc = documented()
     for name in ("find_root", "find_minimum"):
         params = [p.strip().split("=")[0] for p in doc[name].split(",")]
         assert {"xatol", "xrtol", "fatol", "frtol"} <= set(params) and "tolerances" not in params, name
-    for name in ("root_scalar", "minimize_scalar", "find_root", "bracket_root", "find_minimum", "bracket_minimum"):
+    for name in (
+        "root_scalar",
+        "minimize_scalar",
+        "find_root",
+        "bracket_root",
+        "find_minimum",
+        "bracket_minimum",
+        "minimize",
+    ):
         assert "callback" not in doc[name], name

@@ -1,6 +1,6 @@
 # sd.optimize API
 
-> 상태: **초안** (O0, 2026-11-20; O1·O2 2026-11-20). 지금 공개된 것은 결과 객체 `OptimizeResult`(§1.3), 수치 미분 `approx_fprime`·`check_grad`(§2), 비선형 최소제곱 `least_squares`(§3)(O1), 스칼라 근 `root_scalar`(§4), 스칼라 최솟값 `minimize_scalar`(§5), 배치 스칼라 `find_root`·`bracket_root`·`find_minimum`·`bracket_minimum`(§6)(O2)다. 나머지 풀이 함수는 O3–O5에서 구현한다(docs/design/optimize.md §8). 아래 시그니처는 scipy 1.18.1의 이름과 인자 이름(O3, O10–O12)에 stardust의 규칙을 입힌 안이다. 마일스톤을 시작할 때 정할 것은 본문에 "(O1에서 정한다)"처럼 적고 §9에 모았다.
+> 상태: **초안** (O0, 2026-11-20; O1·O2·O3 2026-11-20). 지금 공개된 것은 결과 객체 `OptimizeResult`(§1.3), 수치 미분 `approx_fprime`·`check_grad`(§2), 비선형 최소제곱 `least_squares`(§3)(O1), 스칼라 근 `root_scalar`(§4), 스칼라 최솟값 `minimize_scalar`(§5), 배치 스칼라 `find_root`·`bracket_root`·`find_minimum`·`bracket_minimum`(§6)(O2), 다변수 최소화 `minimize`의 Nelder–Mead·BFGS·L-BFGS-B(§7)(O3)다. 나머지 풀이 함수는 O4–O5에서 구현한다(docs/design/optimize.md §8). 아래 시그니처는 scipy 1.18.1의 이름과 인자 이름(O3, O10–O12)에 stardust의 규칙을 입힌 안이다. 마일스톤을 시작할 때 정할 것은 본문에 "(O1에서 정한다)"처럼 적고 §9에 모았다.
 
 ## §1. 공통 규칙
 
@@ -21,7 +21,7 @@
 - 다변수 함수에 넘기는 x는 float64 `sd.ndarray`(1차원, 길이 n)이고, 함수가 고쳐도 반복에는 영향이 없다(새 배열이다). 스칼라 함수(`root_scalar`, `minimize_scalar`)에는 Python `float`를 넘긴다.
 - 돌려받는 값: 스칼라 함수와 `minimize`의 `fun`은 실수 하나(Python·numpy의 수, 0차원 numpy 배열; 아니면 `root_scalar(): 'f' must return a real number, not shape (1,)`), `least_squares`·`root`의 `fun`은 길이 m의 1차원 값, 야코비안은 (m, n)이다. 배열은 `sd.ndarray`, 실수의 시퀀스, numpy 배열을 받는다(nls의 규칙).
 - 사용자 함수가 낸 에러는 그대로 나간다.
-- 유한하지 않은 함수값의 처리(걸음을 거절하고 신뢰 영역을 줄일지, 멈출지)는 방법마다 정한다(§9). 스칼라 근과 최솟값은 scipy의 처리를 따른다(§4, §5). `least_squares`는 nls의 규칙(G74)을 옮겼다: 시험점에서 유한하지 않으면 걸음을 거절하고 신뢰 영역을 줄이며, `x0`에서 유한하지 않으면 `ValueError`(`least_squares(): 'fun' is not finite at 'x0'`)다.
+- 유한하지 않은 함수값의 처리(걸음을 거절하고 신뢰 영역을 줄일지, 멈출지)는 방법마다 정한다. 스칼라 근과 최솟값, `minimize`(O53)는 scipy의 처리를 따른다(§4, §5, §7). `least_squares`는 nls의 규칙(G74)을 옮겼다: 시험점에서 유한하지 않으면 걸음을 거절하고 신뢰 영역을 줄이며, `x0`에서 유한하지 않으면 `ValueError`(`least_squares(): 'fun' is not finite at 'x0'`)다.
 - 배치 스칼라 함수(§6)의 사용자 함수는 아직 끝나지 않은 원소만 모은 새 float64 `sd.ndarray` (k,)를 받아 k개 값((k,)의 `sd.ndarray`, 실수의 시퀀스, numpy 배열)을 돌려준다(O38, scipy `elementwise`와 같다). 원소는 입력의 순서(배치 모양을 C 순서로 편 것)이고 끝난 원소는 다음 호출에서 빠진다. 시작점에서의 계산(find_root 둘, find_minimum·bracket_minimum 셋, bracket_root 둘)도 모든 원소를 1차원으로 받는다(O48; scipy는 그 호출에 입력의 모양 그대로 넘긴다). 원소마다 다른 상수는 `args`로 넘긴다(O39): 사용자 함수는 `f(x, *args)`로 불리고, args의 배열마다 x와 같은 원소만 모은 새 1차원 배열 (k,)을 받는다.
 
 ### §1.3 결과 `OptimizeResult`
@@ -40,10 +40,10 @@ OptimizeResult
 | `fun` | 해에서의 함수값: 스칼라 목적함수는 `float`, `least_squares`·`root`·`lsq_linear`는 잔차 (m,) | 모두(`root_scalar`·`bracket_root`·`bracket_minimum` 빼고) |
 | `jac` | 해에서의 기울기(최소화) 또는 야코비안 (m, n)(최소제곱) | `minimize`의 기울기를 쓰는 방법, `least_squares` |
 | `hess` | 해에서의 헤시안 | `minimize`의 trust-ncg·trust-exact(`hess`를 줄 때) |
-| `hess_inv` | 헤시안 역행렬의 근사 | `minimize`의 BFGS, L-BFGS-B (꼴은 O3에서 정한다) |
+| `hess_inv` | 헤시안 역행렬의 근사 (n, n): BFGS는 반복의 행렬, L-BFGS-B는 저장된 쌍으로 처음 읽을 때 만든다(O55) | `minimize`의 BFGS, L-BFGS-B |
 | `grad`, `cost`, `optimality`, `active_mask` | scipy `least_squares`와 같은 뜻: Jᵀf, ½‖f‖², 1차 최적성의 척도, 경계에 걸린 변수(−1 아래, 0 안, 1 위) | `least_squares`, `lsq_linear` |
 | `bracket`, `f_bracket` | 마지막 구간과 그 끝의 함수값(배열의 튜플) | 배치 스칼라(§6) |
-| `final_simplex` | 마지막 단체와 그 꼭짓점의 함수값 | `minimize`의 Nelder–Mead (O3에서 정한다) |
+| `final_simplex` | 마지막 단체와 그 꼭짓점의 함수값: 튜플 ((N + 1, N), (N + 1,)), 값의 순서(O56) | `minimize`의 Nelder–Mead |
 | `converged` | 방법의 멈춤 판정을 통과했는지(bool, 배치면 bool 배열) | 모두 |
 | `status` | 멈춘 이유의 번호(scipy의 번호, O17) | 모두 |
 | `message` | 멈춘 이유의 글(scipy의 글, O17) | 모두(배치 빼고) |
@@ -52,7 +52,7 @@ OptimizeResult
 | `method` | 쓴 방법의 이름 | 모두(배치 빼고) |
 
 - 스칼라 문제의 숫자 필드는 Python 수다(`converged`는 `bool`, `status`·`n_iter`·`nfev`는 `int`, `fun`은 `float`). 배치 스칼라는 필드마다 배치 모양의 `sd.ndarray`다(`x` float64, `converged` bool, `status`·`nfev`·`n_iter` int64).
-- `nfev`는 사용자 함수를 부른 수 전부다. 차분 야코비안의 호출도 센다(O18, nls와 같다). scipy 1.18.1의 `least_squares`는 두 방법 모두, `minimize`도 차분의 호출을 세지 않으므로 차분을 쓰면 scipy의 `nfev`와 다르다(scipy의 수는 `nfev − (차분 한 번의 호출 수)·njev`다). `njev`는 야코비안(기울기)을 계산한 수다: 사용자 함수의 호출 수, 또는 차분 야코비안의 수.
+- `nfev`는 사용자 함수를 부른 수 전부다. 차분 야코비안의 호출도 센다(O18, nls와 같다). scipy 1.18.1의 `least_squares`는 두 방법 모두 차분의 호출을 세지 않으므로 차분을 쓰면 scipy의 `nfev`와 다르다(scipy의 수는 `nfev − (차분 한 번의 호출 수)·njev`다). scipy의 `minimize`는 차분의 호출을 세므로(`ScalarFunction.nfev`) `minimize`의 `nfev`는 scipy와 같다. `njev`는 야코비안(기울기)을 계산한 수다: 사용자 함수의 호출 수, 또는 차분 야코비안의 수.
 - `root_scalar`의 결과도 이 클래스다: scipy `RootResults`의 `root`·`iterations`·`function_calls`·`flag` 대신 `x`·`n_iter`·`nfev`(와 `njev`·`nhev`)·`message`다(O4, §4).
 
 ### §1.4 멈춤, 상한, 경고
@@ -154,24 +154,30 @@ bracket_minimum(f, xm0, /, *, xl0=None, xr0=None, xmin=None, xmax=None, factor=N
 
 ## §7. 다변수 최소화 (O3, O4)
 ```
-minimize(fun, x0, /, *, method=None, jac=None, hess=None, hessp=None, bounds=None, tol=None, callback=None, options=None)
+minimize(fun, x0, /, *, method=None, jac=None, hess=None, hessp=None, bounds=None, tol=None, options=None)
 ```
-- `method`: `'nelder-mead'`, `'bfgs'`, `'l-bfgs-b'`(O3), `'newton-cg'`, `'trust-ncg'`, `'trust-exact'`(O4). None이면 scipy처럼 `bounds`가 없으면 `'bfgs'`, 있으면 `'l-bfgs-b'`다. scipy의 제약 최적화(`constraints`, SLSQP·trust-constr·COBYLA)와 Powell·CG·TNC·dogleg·trust-krylov는 없다(O2).
-- `jac`: 기울기 함수, `True`(fun이 (f, g)를 돌려준다), `'2-point'`, `'3-point'`, None(2점 차분). `hess`: 헤시안 함수 또는 `'2-point'`·`'3-point'`(기울기의 차분), `hessp`: 헤시안·벡터 곱 함수. scipy의 `HessianUpdateStrategy`(BFGS·SR1 객체)는 받지 않는다.
-- `bounds=(lower, upper)`(nls·`least_squares`와 같은 꼴)는 `'l-bfgs-b'`·`'nelder-mead'`만 받는다. scipy의 변수마다 (min, max) 쌍의 시퀀스와 `Bounds` 객체를 받을지는 O3에서 정한다.
-- 방법마다의 `options`(scipy 1.18.1의 이름과 기본값, 반복 상한은 O14의 이름; n은 변수 수):
+- `fun(x)`의 지역 최솟값을 `x0`에서 시작해 찾는다. x는 새 float64 `sd.ndarray` (n,)이고 `fun`은 실수 하나를 돌려준다(§1.2).
+- `method`: `'nelder-mead'`(scipy의 `_minimize_neldermead`), `'bfgs'`(scipy의 `_minimize_bfgs`와 Wolfe 선 탐색), `'l-bfgs-b'`(scipy 1.15부터의 C 판 L-BFGS-B 3.0과 scipy의 드라이버)(O3). 세 방법 모두 scipy 1.18.1과 사용자 함수를 부르는 점이 차례대로 비트까지 같다(O9; docs/design/optimize.md §7). None이면 scipy처럼 `bounds`가 없으면 `'bfgs'`, 있으면 `'l-bfgs-b'`다(O50). `'newton-cg'`, `'trust-ncg'`, `'trust-exact'`는 O4이고 지금은 `NotImplementedError`(`minimize(): method='newton-cg' is not implemented yet`)다. scipy의 제약 최적화(`constraints`, SLSQP·trust-constr·COBYLA)와 Powell·CG·TNC·dogleg·trust-krylov는 없다(O2).
+- `jac`(BFGS, L-BFGS-B): 기울기 함수(n개를 돌려준다; n = 1이면 실수 하나도), `True`(`fun`이 (f, g)를 돌려준다; scipy의 `MemoizeJac`처럼 마지막 x의 g를 쓴다), `'2-point'`·`'3-point'`(scipy `approx_derivative`의 상대 간격, `finite_diff_rel_step`), None(scipy처럼 절대 간격 `eps`의 앞쪽 차분). 차분은 경계 안에서 한다(§3의 차분과 같은 조정). `'cs'`는 없다(O21과 같다). `'nelder-mead'`는 `jac`를 받지 않는다(`minimize(): method='nelder-mead' takes no 'jac'`; scipy는 경고하고 무시한다).
+- `hess`, `hessp`: O4의 방법만 받는다. O3의 방법에 주면 `ValueError`(`minimize(): method='bfgs' takes no 'hess'`)다. scipy의 `HessianUpdateStrategy`는 받지 않는다.
+- `bounds`(O51): `None` 또는 `(lower, upper)`, 각각 수 하나 또는 n개, ±inf는 경계 없음(`least_squares`·nls와 같은 꼴). 변수마다의 (min, max) 쌍의 시퀀스와 scipy의 `Bounds` 객체는 받지 않는다. `'l-bfgs-b'`와 `'nelder-mead'`만 받는다(`minimize(): method='bfgs' takes no bounds (method='l-bfgs-b' and method='nelder-mead' do)`). lower > upper, NaN은 `ValueError`다. lower = upper는 scipy처럼 받는다(그 변수를 고정한다; O58, `least_squares`는 lower < upper): `'l-bfgs-b'`에서 모든 변수가 고정이면 `fun`을 한 번 부르고 끝낸다(`message`는 `All independent variables were fixed by bounds.`, `n_iter` 0, `njev` 0), 일부가 고정이고 기울기가 차분이면 scipy처럼 그 변수를 빼고 푼다(`jac`의 그 자리는 NaN, 결과에 `hess_inv` 필드가 없다).
+- `x0`가 경계 밖이면 `ValueError`(`minimize(): 'x0' must be within 'bounds'`)다(O52; scipy는 말없이 경계 안으로 옮긴다). 경계 위는 안이다. Nelder–Mead의 처음 단체는 scipy처럼 위 경계 너머의 꼭짓점을 반사하고 경계로 자른다.
+- 방법마다의 `options`(scipy 1.18.1의 이름과 기본값, 반복 상한은 O14의 이름, 선 탐색 상한은 O57의 `max_ls`; n은 변수 수):
 
   | 방법 | 옵션 |
   |---|---|
-  | nelder-mead | `max_iter`·`max_nfev`(둘 다 None이면 200n; scipy의 `maxiter`·`maxfev`), `xatol=0.0001`, `fatol=0.0001`, `adaptive=False`, `initial_simplex=None` |
-  | bfgs | `gtol=1e-05`, `norm=inf`, `eps=1.4901161193847656e-08`, `max_iter=None`(200n), `finite_diff_rel_step=None`, `xrtol=0`, `c1=0.0001`, `c2=0.9`, `hess_inv0=None` |
-  | l-bfgs-b | `maxcor=10`, `ftol=2.220446049250313e-09`, `gtol=1e-05`, `eps=1e-08`, `max_nfev=15000`(scipy의 `maxfun`), `max_iter=15000`, `maxls=20`, `finite_diff_rel_step=None` |
-  | newton-cg | `xtol=1e-05`, `eps=1.4901161193847656e-08`, `max_iter=None`(200n), `c1=0.0001`, `c2=0.9` |
-  | trust-ncg, trust-exact | `initial_trust_radius=1.0`, `max_trust_radius=1000.0`, `eta=0.15`, `gtol=0.0001`, `max_iter=None`(200n) |
+  | nelder-mead | `max_iter`·`max_nfev`(둘 다 None이면 200n씩, 하나만 주면 다른 것은 상한 없음; scipy의 `maxiter`·`maxfev`), `xatol=0.0001`, `fatol=0.0001`, `adaptive=False`(Gao–Han의 차원에 맞춘 계수), `initial_simplex=None`((N + 1, N)의 유한한 값) |
+  | bfgs | `gtol=1e-05`, `norm=inf`(기울기의 노름: inf는 가장 큰 \|g_i\|, −inf는 가장 작은 것, 그 밖의 p는 p-노름), `eps=1.4901161193847656e-08`(`jac=None`일 때만), `max_iter=None`(200n), `finite_diff_rel_step=None`(`jac`이 `'2-point'`·`'3-point'`일 때만), `xrtol=0`, `c1=0.0001`, `c2=0.9`(0 < c1 < c2 < 1), `hess_inv0=None`(대칭 양정치 (n, n)) |
+  | l-bfgs-b | `maxcor=10`, `ftol=2.220446049250313e-09`, `gtol=1e-05`, `eps=1e-08`(`jac=None`일 때만), `max_nfev=15000`(scipy의 `maxfun`), `max_iter=15000`, `max_ls=20`(scipy의 `maxls`, O57), `finite_diff_rel_step=None` |
+  | newton-cg (O4) | `xtol=1e-05`, `eps=1.4901161193847656e-08`, `max_iter=None`(200n), `c1=0.0001`, `c2=0.9` |
+  | trust-ncg, trust-exact (O4) | `initial_trust_radius=1.0`, `max_trust_radius=1000.0`, `eta=0.15`, `gtol=0.0001`, `max_iter=None`(200n) |
 
-  `tol`은 scipy처럼 방법의 주된 허용오차(nelder-mead `xatol`·`fatol`, bfgs·l-bfgs-b·trust `gtol`, newton-cg `xtol`, l-bfgs-b는 `ftol`도)를 정한다. scipy의 `disp`, `return_all`, `iprint`, `workers`는 없다.
-- 결과: `x fun jac converged status message n_iter nfev njev method`, 방법에 따라 `hess_inv`(BFGS는 (n, n); L-BFGS-B는 scipy가 `LinearOperator`를 준다: 행렬로 줄지 O3에서 정한다), `hess`·`nhev`(newton-cg, trust), `final_simplex`(Nelder–Mead).
-- `callback`(scipy의 `callback(intermediate_result)`, `StopIteration`으로 멈춤)을 둘지, `x0`가 L-BFGS-B의 경계 밖일 때 scipy처럼 경계 안으로 옮길지 `ValueError`로 할지는 O3에서 정한다.
+  scipy의 이름(`maxiter`, `maxfev`, `maxfun`, `maxls`)은 이름을 짚는 `ValueError`다(`minimize(): method='l-bfgs-b' has no option 'maxls' (the cap on line-search steps is 'max_ls')`). `eps`와 `finite_diff_rel_step`은 쓰이는 `jac`에서만 받는다(O62; `least_squares`의 `diff_step`, O29와 같다; scipy는 무시한다). `c1`·`c2`는 반복 전에 검사한다(scipy는 선 탐색 때). `tol`은 scipy처럼 방법의 주된 허용오차(nelder-mead `xatol`·`fatol`, bfgs `gtol`, l-bfgs-b `ftol`·`gtol`)를 정하고, 같은 키를 `options`에도 주면 `ValueError`(`minimize(): give 'tol' or options['gtol'], not both`; `minimize_scalar`와 같다)다. scipy의 `disp`, `return_all`, `iprint`, `workers`는 없다. `callback`도 없다(O54).
+- 멈춤(scipy의 판정): Nelder–Mead는 모든 꼭짓점이 가장 좋은 꼭짓점과 좌표마다 `xatol`, 값이 `fatol` 안일 때, BFGS는 기울기의 노름이 `gtol` 이하이거나 걸음이 `xrtol`·(\|x\| + `xrtol`)보다 작을 때, L-BFGS-B는 투영된 기울기의 가장 큰 값이 `gtol` 이하이거나 (f_k − f_k+1)/max(\|f_k\|, \|f_k+1\|, 1) ≤ `ftol`일 때다. L-BFGS-B의 `max_nfev`는 반복이 끝날 때 넘었는지 본다(그래서 조금 넘을 수 있다; scipy와 같다).
+- 유한하지 않은 값(O53): `x0`에서 `fun`이나 기울기가 유한하지 않으면 `ValueError`(`minimize(): 'fun' is not finite at 'x0'`, `'jac' is not finite at 'x0'`, 차분이면 `the differences of 'fun' are not finite at 'x0'`; Nelder–Mead는 처음 꼭짓점)다. 반복 중에는 scipy처럼 계산을 이어 간다: 선 탐색이 걸음을 줄이거나 실패하고(BFGS status 2, L-BFGS-B `ABNORMAL`), Nelder–Mead는 그 꼭짓점을 가장 나쁜 것으로 정렬한다. 마지막 `fun`이 유한하지 않으면 `status`·`message`는 scipy의 것 그대로이고 `converged=False`다(O20과 같다).
+- 결과: Nelder–Mead는 `x fun final_simplex converged status message n_iter nfev method`, BFGS·L-BFGS-B는 `x fun jac hess_inv converged status message n_iter nfev njev method`다. `fun`, `jac`은 `x`에서의 값과 기울기다(L-BFGS-B의 `ABNORMAL`에서도 그렇다: `x`와 `jac`을 앞의 반복점으로 되돌리고 `fun`도 그 점의 값이다(O59). scipy는 이때 `fun`이 마지막 시험점의 값이다; 걸음은 같다). `hess_inv`(O55): BFGS는 반복이 만든 (n, n) 행렬(반복이 없으면 단위 행렬), L-BFGS-B는 scipy의 `LbfgsInvHessProduct(...).todense()`와 같은 (n, n) 행렬이다(저장된 `maxcor`개까지의 쌍을 scipy의 저장 순서로(O60; 메모리가 한 바퀴 돈 뒤에는 시간 순서가 아니다), H₀ = I의 두 고리 재귀). L-BFGS-B의 것은 처음 읽을 때 계산한다(n²개의 수: n = 10⁴이면 800 MB). `final_simplex`(O56)는 (꼭짓점 (N + 1, N), 값 (N + 1,))의 튜플이고 값의 순서다(`x`는 첫 꼭짓점, `fun`은 값의 최솟값).
+- 셈: `nfev`는 `fun`을 부른 수(차분의 호출 포함; scipy의 셈과 같다), `njev`는 기울기를 계산한 수(사용자 `jac`의 호출, 차분 하나, `jac=True`면 기울기를 요청한 수), `n_iter`는 반복 수다(Nelder–Mead는 scipy처럼 1에서 센다). scipy의 `ScalarFunction`처럼 같은 점의 값은 다시 계산하지 않는다.
+- **`status`와 `message`** (O17, scipy의 번호와 글): Nelder–Mead 0 `Optimization terminated successfully.`, 1 `Maximum number of function evaluations has been exceeded.`, 2 `Maximum number of iterations has been exceeded.`. BFGS 0 같은 성공의 글, 1 `max_iter`(위의 글), 2 `Desired error not necessarily achieved due to precision loss.`(선 탐색이 걸음을 못 찾거나 f가 유한하지 않다), 3 `NaN result encountered.`. L-BFGS-B 0 수렴(`CONVERGENCE: NORM OF PROJECTED GRADIENT <= PGTOL`, `CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH`), 1 상한(`STOP: TOTAL NO. OF ITERATIONS REACHED LIMIT`, `STOP: TOTAL NO. OF F,G EVALUATIONS EXCEEDS LIMIT`), 2 그 밖(`ABNORMAL: `: 메모리가 빈 채로 선 탐색이 `max_ls`번 안에 걸음을 못 찾음). `converged`는 `status == 0`이고 `fun`이 유한할 때다.
 
 ## §8. 방정식계의 근 (O5)
 ```
@@ -188,7 +194,8 @@ O0에서 본문에 남긴 질문을 마일스톤별로 모았다. docs/design/op
 - 모든 마일스톤에 걸친 질문(반복 상한의 이름, 방법 이름의 대소문자, `options` dict, `status`·`message`)은 정했다(O14–O17, §1.1).
 - **O1**: 정했다(2026-11-20, docs/design/optimize.md §1.1 O18–O31).
 - **O2**: 정했다(2026-11-20, docs/design/optimize.md §1.1 O32–O38, 구현하며 생긴 질문은 O39–O49).
-- **O3–O4**: 기본 방법, `callback`, `hess_inv`의 꼴(L-BFGS-B), `bounds`의 꼴(쌍의 시퀀스, `Bounds`), 경계 밖의 `x0`, 유한하지 않은 함수값, `final_simplex`, L-BFGS-B의 `maxls`(선 탐색 상한)도 O14처럼 `max_ls` 꼴로 바꿀지.
+- **O3**: 정했다(2026-11-20, docs/design/optimize.md §1.1 O50–O57, 구현하며 생긴 질문은 O58–O62).
+- **O4**: O3의 결정을 따른다. 남은 것은 `hess`·`hessp`의 꼴(`LinearOperator`·희소 행렬을 받을지)과 `hess='2-point'`·`'3-point'`.
 - **O5**: hybr의 기본 허용오차, `root`의 다른 방법, `fjac`·`r`·`qtf`, `nnls`의 결과(§3), `lsq_linear`의 `unbounded_sol`과 `lsmr`.
 
 ## §10. 다른 라이브러리와의 대응 (안)
