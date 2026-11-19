@@ -1001,6 +1001,9 @@ int enet_one(const Opts& op, const Src& src, const double* alphas, std::int64_t 
                 const CDResult more = cd_solve(s, l1, l2, op.max_iter - cd.n_iter, t * s.vv, t);
                 cd.n_iter += more.n_iter;
                 cd.gap = more.gap;
+                // the tighter sweeps reached max_iter: the last iterate, unpolished, and not
+                // converged (G32), though the first gap test had passed
+                cd.converged = more.converged;
                 if (!more.converged) break;
                 po = polish(s, src, P, op.intercept, l1, l2, op.refine_cond);
             }
@@ -1541,7 +1544,23 @@ int glm_one(const Opts& op, const Src& src, const double* alphas, std::int64_t a
     double b0 = eta0;
     GlmState g, gn;
     glm_eval(src, P, fam, beta.data(), b0, g);
-    const double null_dev = g.dev;
+    // the null deviance at mu = ybar itself (exp(log ybar) or expit(logit ybar) round away
+    // from it), with ybar the value of a constant y exactly: then it is 0 and deviance_ratio
+    // 0/0, NaN (G85); without the intercept the null model eta = 0 above
+    double null_dev = g.dev;
+    if (op.intercept) {
+        bool constant = true;
+        const double y0 = m > 0 ? src.yv(P.idx[0]) : 0.0;
+        for (lint t = 1; t < m && constant; ++t) constant = src.yv(P.idx[t]) == y0;
+        const double mu0 = constant ? y0 : ybar;
+        const DD nd = dd_chunk_sum(m, [&](lint t) {
+            const double y = src.yv(P.idx[t]);
+            const double dv = fam == fBinomial ? (y == 1.0 ? -2.0 * std::log(mu0) : -2.0 * std::log1p(-mu0))
+                                               : poisson_dev(y, mu0);
+            return DD{P.wt[t] * dv, 0.0};
+        });
+        null_dev = nd.hi;
+    }
     Solver s;
     WG wg;
     std::vector<double> cw(static_cast<std::size_t>(p), 0.0);

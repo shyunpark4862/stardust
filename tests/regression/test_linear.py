@@ -646,3 +646,36 @@ def test_predict_columns_and_inf():
         ra.predict_interval(np.c_[[1.0], [math.inf]])
     with pytest.raises(ValueError, match=r"^predict\(\): 'X_new' must have 1 column like the fit's 'X', not 2$"):
         R.ols(y, arr[:, 0]).predict(arr)
+
+
+def test_constant_y_exact_solution():
+    """G92: an intercept and y exactly constant over the fit's rows: (y0, 0, ..., 0) exactly,
+    fitted y0, residuals y - y0, a perfect fit (G22) with the G85 NaNs. Without the intercept
+    nothing changes."""
+    x = np.arange(1.0, 9.0)
+    X = np.c_[x, x * x]
+    fits = [R.ols([3.0] * 8, x), R.ols([0.1] * 8, X), R.ols([0.1] * 8, X, cov_type="HC1"),
+            R.wls([0.1] * 7 + [5.0], X, weights=[1.0] * 7 + [0.0]), R.gls([0.1] * 8, X, sigma=np.eye(8) + 0.3)]
+    for r in fits:
+        p = a(r.params)
+        assert p[0] in (3.0, 0.1) and p[1:].tolist() == [0.0] * (len(p) - 1)
+        assert np.all(a(r.fittedvalues) == p[0]) and np.all(a(r.resid)[:7] == 0.0)
+        assert r.ssr == 0.0 and r.scale == 0.0 and np.all(a(r.bse) == 0.0) and r.llf == math.inf
+        assert math.isnan(r.rsquared) and math.isnan(r.fvalue)
+        assert np.all(np.isnan(a(r.resid_studentized_internal)[:7]))
+    assert float(fits[3].resid[7]) == 4.9
+    # aliased columns stay NaN; batches per regression; GLS batches too
+    al = R.ols([0.1] * 8, np.c_[x, 2 * x])
+    assert a(al.params)[:2].tolist() == [0.1, 0.0] and math.isnan(a(al.params)[2])
+    rb = R.ols(np.vstack([[0.1] * 8, x + np.r_[0.1, 0, 0, 0, 0, 0, 0, 0.2]]), X)
+    one = R.ols(x + np.r_[0.1, 0, 0, 0, 0, 0, 0, 0.2], X)
+    assert a(rb.params)[0].tolist() == [0.1, 0.0, 0.0] and a(rb.params)[1].tolist() == a(one.params).tolist()
+    gb = R.gls(np.vstack([[0.1] * 8, [0.2] * 8]), X, sigma=np.eye(8) * 2.0)
+    assert a(gb.params).tolist() == [[0.1, 0.0, 0.0], [0.2, 0.0, 0.0]]
+    assert not a(R.ols([3.0] * 8, x, intercept=False).params).tolist() == [0.0]
+    with pytest.raises(ValueError, match=r"^linregress\(\): the batch shapes of 'x' \(2,\), 'y' \(3,\) do not broadcast$"):
+        R.linregress(np.ones((2, 5)), np.ones((3, 5)))
+    with pytest.raises(ValueError, match=r"^theilslopes\(\): the batch shapes of 'y' \(3,\), 'x' \(2,\) do not broadcast$"):
+        R.theilslopes(np.ones((3, 5)), np.ones((2, 5)))
+    with pytest.raises(ValueError, match=r"^glm\(\): the batch shapes of 'y' \(3,\), 'X' \(2,\) do not broadcast$"):
+        R.glm(np.ones((3, 5)), np.ones((2, 5, 1)), family="poisson")

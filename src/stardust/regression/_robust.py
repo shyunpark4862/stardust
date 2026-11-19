@@ -281,6 +281,7 @@ def _slopes_input(func, y, x, nan_policy):
             raise ValueError(f"{func}(): 'x' must have at least 1 dimension")
         if xx.shape[-1] != n:
             raise ValueError(f"{func}(): 'x' must have {n} values like 'y', not {xx.shape[-1]}")
+    _check_batches(func, [("y", yy.shape[:-1]), ("x", xx.shape[:-1])])
     batch = yy.ndim > 1 or xx.ndim > 1
     if nan_policy == "raise":
         if _has_nan(yy, xx):

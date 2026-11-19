@@ -573,3 +573,28 @@ def test_ridge_cv_default_grid_and_copies():
     assert a(f.fittedvalues).tolist() == want.tolist()
     c = R.ridge(np.ones(10), np.arange(10.0), alpha=0.1)
     assert math.isnan(c.rsquared)
+
+
+def test_polish_retry_at_max_iter_is_not_converged():
+    """G32: the gap test passed, the KKT polish failed and the tighter sweeps reached max_iter:
+    the last (unpolished) iterate with converged=False (it said True)."""
+    ra = sd.random.default_rng(1)
+    Za = sd.stats.Normal().sample((40, 3), rng=ra)
+    Xa = sd.stack([Za[:, 0], Za[:, 0] + 0.05 * Za[:, 1], Za[:, 2]], axis=1)
+    ya = 1.0 + Xa[:, 0] + Xa[:, 1] + 0.5 * Xa[:, 2] + sd.stats.Normal().sample(40, rng=ra)
+    r = R.lasso(ya, Xa, alpha=0.001, tol=0.1)
+    assert not r.converged and r.n_iter == 1000
+    path = R.lasso(ya, Xa, alpha=sd.asarray([0.1, 0.01, 0.001]), tol=0.1)
+    assert a(path.converged).tolist() == [True, True, False]
+    assert R.lasso(ya, Xa, alpha=0.001).converged
+
+
+def test_constant_y_null_deviance():
+    """G85: the null deviance at mu = ybar itself is exactly 0 for a constant y, so
+    deviance_ratio is NaN (exp(log 3) left 5e-31 and a ratio of 0)."""
+    x = np.arange(8.0)
+    for v in (1.0, 2.0, 3.0, 5.0, 0.7, 1e5):
+        for w in (None, np.arange(1.0, 9.0)):
+            p = R.penalized_glm([v] * 8, x, family="poisson", alpha=0.1, weights=w)
+            assert p.null_deviance == 0.0 and math.isnan(p.deviance_ratio)
+        assert R.glm([v] * 8, x, family="poisson").null_deviance == 0.0

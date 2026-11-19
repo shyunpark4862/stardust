@@ -102,6 +102,7 @@
 | G89 nls의 넘친 ssr (G6) | 판정을 통과했어도 `ssr`이 유한하지 않으면 `converged=False`다([scipy와 다름]) (사용자 결정 2026-11-19) |
 | G90 DataFrame의 예측 (전체) | 적합과 예측이 모두 `DataFrame`이면 열 이름과 순서가 같아야 하고, 아니면 `ValueError`(scikit-learn과 같다). 한쪽만 `DataFrame`이면 위치로 맞춘다(scikit-learn은 경고; 여기는 경고 없음) (사용자 결정 2026-11-19) |
 | G91 예측의 inf (전체) | `X_new`에 inf가 있으면 `ValueError`(`'X_new' contains infinity`, 적합의 입력과 같은 규칙). NaN은 그 행의 예측이 NaN (사용자 결정 2026-11-19) |
+| G92 상수 y (G1) | 절편이 있고 y가 적합에 쓰인 행(가중치 > 0)에서 정확히 모두 같으면 ols·wls·gls(배치 포함)는 정확한 해 (y₀, 0, …, 0)를 낸다(겹친 열은 G9·G21대로 NaN). 적합값 y₀, 잔차 y − y₀, SSR·TSS·ESS 0이라 완전 적합(G22: `bse` 0)이고 R²·F는 G85의 NaN이다. GLS는 절편 열이 모형에 있어 백색화한 문제에서도 같은 해다. 절편이 없으면 해가 자명하지 않아 하지 않는다 (사용자 결정 2026-11-19) |
 | G16 NaN (G1) | `nan_policy`의 기본은 'propagate'(결과 값이 모두 NaN). 'omit'은 NaN이 있는 행을 빼고, 'raise'는 `ValueError` |
 | G17 진단 (G1) | 지렛대(hat), 스튜던트화 잔차, Cook 거리와 Durbin–Watson, Jarque–Bera, Breusch–Pagan. `summary()`에는 Durbin–Watson과 Jarque–Bera를 넣는다(statsmodels와 같다) |
 | G18 linregress (G1) | scipy와 같은 꼴: `linregress(x, y)`(인자 순서도 scipy), 결과는 `slope intercept rvalue pvalue stderr intercept_stderr` namedtuple |

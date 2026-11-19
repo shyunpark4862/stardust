@@ -19,8 +19,8 @@ from ..stats import ChiSquared as _ChiSquared
 from ..stats import Normal as _Normal
 from ..stats import StudentT as _StudentT
 from ._linear import (_COV_TYPES, _RegressionResult, _arg, _as_real, _check_alpha, _check_bool, _check_choice,
-                      _check_maxlags, _check_policy, _check_rtol, _count, _div, _expand, _forg, _frame_columns, _groups,
-                      _has_nan, _log, _names, _pairs, _quantile_label, _WIDTH, _COV_NOTES)
+                      _check_batches, _check_maxlags, _check_policy, _check_rtol, _count, _div, _expand, _forg,
+                      _frame_columns, _groups, _has_nan, _log, _names, _pairs, _quantile_label, _WIDTH, _COV_NOTES)
 
 _k = _sd.regression
 
@@ -442,6 +442,10 @@ def glm(y, X, /, *, family, link=None, var_weights=None, freq_weights=None, tria
         if bool(_sd.any(_sd.isinf(e))):
             raise ValueError(f"{func}(): 'exposure' contains infinity")
     codes, gtot, gmiss = _groups(groups, func, n, cov_type)
+    named = [("y", yy.shape[:-1]), ("X", XX.shape[:-2])] + [(k, a.shape[:-1]) for k, a in rows.items()]
+    if codes is not None:
+        named.append(("groups", codes.shape[:-1]))
+    _check_batches(func, named)
     batch = yy.ndim > 1 or XX.ndim > 2 or any(a.ndim > 1 for a in rows.values()) or \
         (codes is not None and codes.ndim > 1)
     if nan_policy == "raise":

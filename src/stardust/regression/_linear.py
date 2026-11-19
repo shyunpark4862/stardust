@@ -969,6 +969,67 @@ def _check_options(func, intercept, cov_type, maxlags, rtol, nan_policy):
     return lags, tol
 
 
+def _exact_constant(raw, y, w, intercept, robust, original_scale=True):
+    """G92: a regression with an intercept whose y is exactly constant over the fit's rows
+    (weight > 0) has the exact solution (y0, 0, ..., 0) (aliased columns stay NaN), whatever
+    the design and, for GLS, the whitening (the intercept's column is in the model, so y0 times
+    it reproduces y exactly): params, the fit's sums (SSR, TSS and ESS 0), a robust covariance
+    (0: the scores vanish) and, original_scale, the fitted values (y0) and residuals (y - y0)
+    are set to it in raw (a list, changed in place). The QR leaves rounding there (a slope of
+    6e-32). Returns the mask of those regressions (batch shape), or None."""
+    if not intercept:
+        return None
+    params, cov, kept, st = raw[0], raw[1], raw[5], raw[6]
+    batch = tuple(params.shape[:-1])
+    if w is None:
+        hi, lo = _sd.max(y, axis=-1), _sd.min(y, axis=-1)
+    else:
+        used = w > 0
+        hi = _sd.max(_sd.where(used, y, -math.inf), axis=-1)
+        lo = _sd.min(_sd.where(used, y, math.inf), axis=-1)
+    if not batch:
+        hi, lo = float(hi), float(lo)
+        const = hi == lo and math.isfinite(hi) and float(st[_ISNAN]) == 0 and bool(kept[0])
+        if not const:
+            return None
+        k = params.shape[-1]
+        target = [hi] + [0.0 if bool(kept[j]) else math.nan for j in range(1, k)]
+        raw[0] = _sd.asarray(target)
+        if robust:
+            both = _sd.logical_and(_sd.expand_dims(kept, axis=-1), _sd.expand_dims(kept, axis=-2))
+            raw[1] = _sd.where(both, 0.0, cov)
+        s = st.tolist()
+        s[_SSR] = s[_CTSS] = s[_ESSC] = 0.0
+        raw[6] = _sd.asarray(s)
+        if original_scale:
+            raw[3] = _sd.full(tuple(raw[3].shape), hi)
+            raw[4] = y - hi
+        return True
+    # a 1-D y (the batch from X or w alone) gives Python floats
+    hi = _sd.broadcast_to(hi, batch) if isinstance(hi, _sd.ndarray) else _sd.full(batch, float(hi))
+    lo = _sd.broadcast_to(lo, batch) if isinstance(lo, _sd.ndarray) else _sd.full(batch, float(lo))
+    const = _sd.logical_and(_sd.logical_and(hi == lo, _sd.isfinite(hi)),
+                            _sd.logical_and(st[..., _ISNAN] == 0.0, kept[..., 0]))
+    if not bool(_sd.any(const)):
+        return None
+    k = params.shape[-1]
+    c1 = _sd.expand_dims(const, axis=-1)
+    first = _sd.arange(k) == 0
+    target = _sd.where(first, _sd.expand_dims(hi, axis=-1), _sd.where(kept, 0.0, math.nan))
+    raw[0] = _sd.where(c1, target, params)
+    if robust:
+        both = _sd.logical_and(_sd.expand_dims(kept, axis=-1), _sd.expand_dims(kept, axis=-2))
+        raw[1] = _sd.where(_sd.logical_and(_sd.expand_dims(c1, axis=-1), both), 0.0, cov)
+    zero_cols = _sd.logical_or(_sd.logical_or(_sd.arange(st.shape[-1]) == _SSR, _sd.arange(st.shape[-1]) == _CTSS),
+                               _sd.arange(st.shape[-1]) == _ESSC)
+    raw[6] = _sd.where(_sd.logical_and(c1, zero_cols), 0.0, st)
+    if original_scale:
+        h1 = _sd.expand_dims(hi, axis=-1)
+        raw[3] = _sd.where(c1, _sd.broadcast_to(h1, tuple(raw[3].shape)), raw[3])
+        raw[4] = _sd.where(c1, _sd.broadcast_to(y - h1, tuple(raw[4].shape)), raw[4])
+    return const
+
+
 def _linear(func, cls, y, X, weights, intercept, cov_type, maxlags, groups, rtol, nan_policy):
     lags, tol = _check_options(func, intercept, cov_type, maxlags, rtol, nan_policy)
     columns = _frame_columns(X)
@@ -976,8 +1037,9 @@ def _linear(func, cls, y, X, weights, intercept, cov_type, maxlags, groups, rtol
     # the diagnostics read y, X and w later: copies (G86), so that changing the caller's
     # arrays (or the numpy arrays they view) does not change the result
     y, X, w = _own(y), _own(X), _own(w)
-    raw = _k.fit(func, y, X, w, None, intercept, tol, _COV_TYPES.index(cov_type), _REFINE_STEPS, codes, gtot, lags,
-                 False)
+    raw = list(_k.fit(func, y, X, w, None, intercept, tol, _COV_TYPES.index(cov_type), _REFINE_STEPS, codes, gtot,
+                      lags, False))
+    _exact_constant(raw, y, w, intercept, cov_type != "nonrobust")
     return cls(raw, param_names=_names(names, X.shape[-1], intercept), intercept=intercept, cov_type=cov_type,
                batch=_batch_shape(raw), fitargs=(func, y, X, w, None, tol, codes, gtot), columns=columns)
 
@@ -1057,6 +1119,9 @@ def gls(y, X, /, *, sigma, intercept=True, cov_type="nonrobust", maxlags=None, g
     ones = _linalg.solve_triangular(L, _sd.ones((m, 1)), upper=False)[..., 0]
     raw = list(_k.fit(func, yt, Xt, None, ones, intercept, tol, _COV_TYPES.index(cov_type), _REFINE_STEPS, codes,
                       gtot, lags, False))
+    # the whitened problem's constant: y itself (L^-1 y = y0 L^-1 1 holds exactly only in exact
+    # arithmetic); the original-scale fit below then gives fitted y0, residuals y - y0 exactly
+    const = _exact_constant(raw, y, None, intercept, cov_type != "nonrobust", original_scale=False)
     res = GLSResult(raw, param_names=_names(names, X.shape[-1], intercept), intercept=intercept, cov_type=cov_type,
                     batch=_batch_shape(raw), fitargs=(func, yt, Xt, None, ones, tol, codes, gtot), columns=columns)
     # fitted values and residuals on the original scale (statsmodels' fittedvalues and resid)
@@ -1064,6 +1129,10 @@ def gls(y, X, /, *, sigma, intercept=True, cov_type="nonrobust", maxlags=None, g
     if raw[3].shape != fitted.shape:  # sigma's batch axes added to y's
         fitted, resid = _sd.broadcast_to(fitted, raw[3].shape), _sd.broadcast_to(resid, raw[3].shape)
     raw[3], raw[4] = fitted, resid
+    if const is not None:  # the whitened residuals L^-1 (y - y0 1) are exactly 0 there
+        wr = res._wresid()
+        res._cache["wresid"] = (_sd.where(_sd.expand_dims(const, axis=-1), 0.0, wr) if res._batch
+                                else _sd.zeros(tuple(wr.shape)))
     logdet = 2.0 * _sd.sum(_sd.log(_linalg.diagonal(L)), axis=-1)
     if res._batch:
         logdet = _sd.broadcast_to(logdet, res._batch) if isinstance(logdet, _sd.ndarray) else logdet
@@ -1092,6 +1161,7 @@ def linregress(x, y, /):
         raise ValueError(f"{func}(): 'x' and 'y' must have at least 1 dimension")
     if xa.shape[-1] != ya.shape[-1]:
         raise ValueError(f"{func}(): 'x' must have {ya.shape[-1]} values like 'y', not {xa.shape[-1]}")
+    _check_batches(func, [("x", xa.shape[:-1]), ("y", ya.shape[:-1])])
     if ya.shape[-1] == 0:
         raise ValueError(f"{func}(): 'x' and 'y' must not be empty")
     for a, nm in ((xa, "x"), (ya, "y")):
