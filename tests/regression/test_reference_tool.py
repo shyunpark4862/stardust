@@ -79,8 +79,10 @@ def test_robust_and_diagnostics_against_statsmodels():
     assert close(cl.fvalue, ref["fvalue_cluster"], 1e-10) and close(cl.f_pvalue, ref["f_pvalue_cluster"], 1e-10)
     r = sm.OLS(y, Xc).fit()
     inf = r.get_influence()
-    for name, theirs in (("resid_studentized_internal", inf.resid_studentized_internal),
-                         ("resid_studentized_external", inf.resid_studentized_external)):
+    for name, theirs in (
+        ("resid_studentized_internal", inf.resid_studentized_internal),
+        ("resid_studentized_external", inf.resid_studentized_external),
+    ):
         assert all(close(a, b) for a, b in zip(theirs, ref[name])), name
     lm, lmp, f, fp = het_breuschpagan(r.resid, Xc)
     for a, name in ((lm, "bp_lm"), (lmp, "bp_lm_pvalue"), (f, "bp_fvalue"), (fp, "bp_f_pvalue")):

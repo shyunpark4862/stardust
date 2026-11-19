@@ -31,8 +31,15 @@ def pd_index_repr(idx):
 
 @pytest.mark.parametrize(
     "labels,name",
-    [([], None), (["a"], None), (["a", "b"], "n"), (list("abcdefghijklmnopqrstuvwxyz") * 5, None),
-     (["it's", "tab\there"], "k"), ([3, 1, 2], "x"), (list(range(150)), "long name")],
+    [
+        ([], None),
+        (["a"], None),
+        (["a", "b"], "n"),
+        (list("abcdefghijklmnopqrstuvwxyz") * 5, None),
+        (["it's", "tab\there"], "k"),
+        ([3, 1, 2], "x"),
+        (list(range(150)), "long name"),
+    ],
 )
 def test_index_repr_matches_pandas(labels, name):
     ours = sd.frame.Index(labels, name=name)
@@ -180,7 +187,11 @@ def test_slices_keep_range_index_and_share_buffers():
 def test_frame_selection():
     df = sd.frame.DataFrame({"a": [1, 2, 3], "b": ["x", "y", "z"], "c": [0.5, 1.5, 2.5]}, index=["r1", "r2", "r3"])
     row = df.loc["r2"]
-    assert isinstance(row, sd.frame.DataFrame) and row.shape == (1, 3) and [str(d) for d in row.dtypes.values()] == ["int64", "string", "float64"]
+    assert (
+        isinstance(row, sd.frame.DataFrame)
+        and row.shape == (1, 3)
+        and [str(d) for d in row.dtypes.values()] == ["int64", "string", "float64"]
+    )
     assert df.loc["r2", "b"] == "y" and df.iloc[2, 0] == 3 and df.iloc[-1, -1] == 2.5
     assert df.loc[["r3", "r1"], "a"].tolist() == [3, 1]
     assert df.loc[:, "b":"c"].columns.tolist() == ["b", "c"]
@@ -256,7 +267,10 @@ def test_mask_alignment():
     dup = sd.frame.Series([10, 20, 30], index=[1, 1, 2])
     with pytest.raises(ValueError):
         dup[sd.frame.Series([True, False, True], index=[1, 2, 3])]  # 3 is not a label of dup
-    assert dup[sd.frame.Series([True, False, True], index=[1, 1, 2])].tolist() == [10, 30]  # the same index: by position
+    assert dup[sd.frame.Series([True, False, True], index=[1, 1, 2])].tolist() == [
+        10,
+        30,
+    ]  # the same index: by position
 
 
 def test_reindex():
@@ -295,7 +309,11 @@ def test_series_assignment():
     assert s.tolist() == [0, 20, 7, 7]
     s.loc[["d", "a"]] = sd.frame.Series([1, 2], index=["a", "d"])  # matched by label
     assert s.tolist() == [1, 20, 7, 2]
-    for bad in (1.5, 7.0, "x"):  # by dtype only: float64 into int64 is down, whatever the value (docs/api/frame.md §5.7)
+    for bad in (
+        1.5,
+        7.0,
+        "x",
+    ):  # by dtype only: float64 into int64 is down, whatever the value (docs/api/frame.md §5.7)
         with pytest.raises(TypeError):
             s.loc["a"] = bad
     with pytest.raises(KeyError):
@@ -388,9 +406,13 @@ def test_repr_with_string_and_named_index(n, name):
     ours = sd.frame.Series(list(range(n)), index=sd.frame.Index(labels, name=name), name="v")
     theirs = pd.Series(list(range(n)), index=pd.Index(labels, name=name, dtype="str"), name="v")
     assert repr(ours) == repr(theirs)
-    df = sd.frame.DataFrame({"a": list(range(n)), "b": [str(i) for i in range(n)]}, index=sd.frame.Index(labels, name=name))
-    pdf = pd.DataFrame({"a": list(range(n)), "b": pd.array([str(i) for i in range(n)], dtype="string[python]")},
-                       index=pd.Index(labels, name=name, dtype="str"))
+    df = sd.frame.DataFrame(
+        {"a": list(range(n)), "b": [str(i) for i in range(n)]}, index=sd.frame.Index(labels, name=name)
+    )
+    pdf = pd.DataFrame(
+        {"a": list(range(n)), "b": pd.array([str(i) for i in range(n)], dtype="string[python]")},
+        index=pd.Index(labels, name=name, dtype="str"),
+    )
     assert repr(df) == pdf.to_string(**LABEL_OPTS)
     ints = sd.frame.DataFrame({"a": [1.5] * n}, index=sd.frame.Index(list(range(100, 100 + n)), name=name))
     pints = pd.DataFrame({"a": [1.5] * n}, index=pd.Index(list(range(100, 100 + n)), name=name))
@@ -432,8 +454,19 @@ def test_label_type_messages_use_not():
 # --- backward slices, column keys, empty label lists ---------------------------
 
 
-@pytest.mark.parametrize("key", [slice(None, None, -1), slice(4, None, -1), slice(None, None, -2), slice(3, 0, -1),
-                                 slice(1, None, -1), slice(None, None, 2), slice(0, None, -1), slice(2, 2, -1)])
+@pytest.mark.parametrize(
+    "key",
+    [
+        slice(None, None, -1),
+        slice(4, None, -1),
+        slice(None, None, -2),
+        slice(3, 0, -1),
+        slice(1, None, -1),
+        slice(None, None, 2),
+        slice(0, None, -1),
+        slice(2, 2, -1),
+    ],
+)
 @pytest.mark.parametrize("index", [None, sd.frame.RangeIndex(10, 0, -2), sd.frame.RangeIndex(3, 18, 3)])
 def test_range_index_slices_backwards_down_to_position_zero(key, index):
     values = [10, 20, 30, 40, 50]
@@ -508,12 +541,20 @@ def test_int_and_string_labels_say_the_same_thing_everywhere():  # docs/api/fram
     i, t = sd.frame.Series([1, 2]), sd.frame.Series([1, 2], index=["a", "b"])
     df = sd.frame.DataFrame({"a": [1, 2]})
     cases = {
-        "": [lambda: i + t, lambda: t + i, lambda: df + sd.frame.DataFrame({"a": [1, 2]}, index=["a", "b"]),
-             lambda: i[sd.frame.Series([True, False], index=["a", "b"])], lambda: df.__setitem__("c", t),
-             lambda: i.__setitem__(slice(None), t)],
+        "": [
+            lambda: i + t,
+            lambda: t + i,
+            lambda: df + sd.frame.DataFrame({"a": [1, 2]}, index=["a", "b"]),
+            lambda: i[sd.frame.Series([True, False], index=["a", "b"])],
+            lambda: df.__setitem__("c", t),
+            lambda: i.__setitem__(slice(None), t),
+        ],
         r"reindex\(\): ": [lambda: i.reindex(t.index), lambda: t.reindex([0, 1]), lambda: df.reindex(["a"])],
         r"Series\(\): ": [lambda: sd.frame.Series(i, index=["a", "b"])],
-        r"DataFrame\(\): ": [lambda: sd.frame.DataFrame({"a": i, "b": t}), lambda: sd.frame.DataFrame(df, index=["a", "b"])],
+        r"DataFrame\(\): ": [
+            lambda: sd.frame.DataFrame({"a": i, "b": t}),
+            lambda: sd.frame.DataFrame(df, index=["a", "b"]),
+        ],
     }
     for prefix, calls in cases.items():
         for call in calls:

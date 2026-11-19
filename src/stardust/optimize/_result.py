@@ -17,15 +17,29 @@ from .. import _core
 # Python numbers; a batched scalar function (find_root, ...) gives arrays of the batch shape.
 FIELDS = (
     # the solution
-    "x", "fun", "jac", "hess", "hess_inv", "grad", "cost", "optimality", "active_mask",
+    "x",
+    "fun",
+    "jac",
+    "hess",
+    "hess_inv",
+    "grad",
+    "cost",
+    "optimality",
+    "active_mask",
     # batched scalar functions: the final bracket and the function there
-    "bracket", "f_bracket",
+    "bracket",
+    "f_bracket",
     # Nelder-Mead
     "final_simplex",
     # how it stopped
-    "converged", "status", "message",
+    "converged",
+    "status",
+    "message",
     # counts
-    "n_iter", "nfev", "njev", "nhev",
+    "n_iter",
+    "nfev",
+    "njev",
+    "nhev",
     # the method that ran
     "method",
 )
@@ -46,9 +60,11 @@ def _field(name):
         try:
             v = self._fields[name]
         except KeyError:
-            raise AttributeError(f"'OptimizeResult' object has no attribute '{name}' (its method does not give "
-                                 f"it)") from None
+            raise AttributeError(
+                f"'OptimizeResult' object has no attribute '{name}' (its method does not give it)"
+            ) from None
         return _fresh(v)
+
     get.__name__ = name
     return property(get, doc=f"The result's '{name}' (read-only; arrays are new copies).")
 
@@ -78,8 +94,11 @@ class OptimizeResult:
             for s in self._batch:
                 n *= s
             done = f" {int(_core.count_nonzero(conv))} of {n} converged" if conv is not None else ""
-            return f"OptimizeResult(batch shape {self._batch},{done})" if done else \
-                f"OptimizeResult(batch shape {self._batch})"
+            return (
+                f"OptimizeResult(batch shape {self._batch},{done})"
+                if done
+                else f"OptimizeResult(batch shape {self._batch})"
+            )
         parts = []
         if "method" in f:
             parts.append(f"method={f['method']!r}")
@@ -100,7 +119,7 @@ class OptimizeResult:
 def _num(v):
     try:
         v = float(v)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return repr(v)
     return f"{v:.6g}" if math.isfinite(v) else repr(v)
 

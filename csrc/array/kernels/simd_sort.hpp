@@ -68,12 +68,25 @@ inline void sort_block16(typename Tr::T* p) {
     for (int i = 0; i < 8; ++i) v[i] = Tr::load(p + 2 * i);
     // The optimal 19-comparator network for 8 inputs (checked exhaustively
     // with the 0-1 principle: it sorts all 256 inputs of zeros and ones).
-    cmpx<Tr>(v[0], v[2]); cmpx<Tr>(v[1], v[3]); cmpx<Tr>(v[4], v[6]); cmpx<Tr>(v[5], v[7]);
-    cmpx<Tr>(v[0], v[4]); cmpx<Tr>(v[1], v[5]); cmpx<Tr>(v[2], v[6]); cmpx<Tr>(v[3], v[7]);
-    cmpx<Tr>(v[0], v[1]); cmpx<Tr>(v[2], v[3]); cmpx<Tr>(v[4], v[5]); cmpx<Tr>(v[6], v[7]);
-    cmpx<Tr>(v[2], v[4]); cmpx<Tr>(v[3], v[5]);
-    cmpx<Tr>(v[1], v[4]); cmpx<Tr>(v[3], v[6]);
-    cmpx<Tr>(v[1], v[2]); cmpx<Tr>(v[3], v[4]); cmpx<Tr>(v[5], v[6]);
+    cmpx<Tr>(v[0], v[2]);
+    cmpx<Tr>(v[1], v[3]);
+    cmpx<Tr>(v[4], v[6]);
+    cmpx<Tr>(v[5], v[7]);
+    cmpx<Tr>(v[0], v[4]);
+    cmpx<Tr>(v[1], v[5]);
+    cmpx<Tr>(v[2], v[6]);
+    cmpx<Tr>(v[3], v[7]);
+    cmpx<Tr>(v[0], v[1]);
+    cmpx<Tr>(v[2], v[3]);
+    cmpx<Tr>(v[4], v[5]);
+    cmpx<Tr>(v[6], v[7]);
+    cmpx<Tr>(v[2], v[4]);
+    cmpx<Tr>(v[3], v[5]);
+    cmpx<Tr>(v[1], v[4]);
+    cmpx<Tr>(v[3], v[6]);
+    cmpx<Tr>(v[1], v[2]);
+    cmpx<Tr>(v[3], v[4]);
+    cmpx<Tr>(v[5], v[6]);
     // Lane 0 of v[0..7] is now a sorted column, and so is lane 1: transpose.
     for (int i = 0; i < 4; ++i) {
         Tr::store(p + 2 * i, Tr::zip1(v[2 * i], v[2 * i + 1]));
@@ -109,8 +122,9 @@ inline void merge4x4(typename Tr::V& a0, typename Tr::V& a1, typename Tr::V& b0,
 
 // Merges sorted runs a[0, na) and b[0, nb) (lengths multiples of 4) into out.
 template <typename Tr>
-inline void merge_runs(const typename Tr::T* a, std::int64_t na, const typename Tr::T* b, std::int64_t nb,
-                       typename Tr::T* out) {
+inline void merge_runs(
+    const typename Tr::T* a, std::int64_t na, const typename Tr::T* b, std::int64_t nb, typename Tr::T* out
+) {
     if (na == 0 || nb == 0) {
         std::copy(a, a + na, out);
         std::copy(b, b + nb, out + na);

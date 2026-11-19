@@ -50,8 +50,12 @@ def main():
         cf = sl.cho_factor(s, lower=True)
         lf = sl.lu_factor(a)
         rows = [
-            ("solve_triangular", lambda: sdla.solve_triangular(T, B, upper=True), None,
-             lambda: sl.solve_triangular(t, b, lower=False)),
+            (
+                "solve_triangular",
+                lambda: sdla.solve_triangular(T, B, upper=True),
+                None,
+                lambda: sl.solve_triangular(t, b, lower=False),
+            ),
             ("cholesky", lambda: sdla.cholesky(S), lambda: np.linalg.cholesky(s), lambda: sl.cholesky(s, lower=True)),
             ("cholesky_solve", lambda: sdla.cholesky_solve(L, B), None, lambda: sl.cho_solve(cf, b)),
             ("lu", lambda: sdla.lu(A), None, lambda: sl.lu(a, p_indices=True)),
@@ -61,7 +65,9 @@ def main():
             t_sd = best_us(f_sd)
             t_np = best_us(f_np) if f_np else nan
             t_sp = best_us(f_sp) if f_sp else nan
-            emit(f"{name:16} {str(shape):>14} {t_sd:10.2f} {t_np:10.2f} {t_sp:10.2f} {t_np / t_sd:8.2f} {t_sp / t_sd:8.2f}")
+            emit(
+                f"{name:16} {str(shape):>14} {t_sd:10.2f} {t_np:10.2f} {t_sp:10.2f} {t_np / t_sd:8.2f} {t_sp / t_sd:8.2f}"
+            )
     path = pathlib.Path(__file__).parent / "results" / "m3_factor.txt"
     path.write_text("\n".join(out) + "\n")
 

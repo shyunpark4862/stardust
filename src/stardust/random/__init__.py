@@ -144,8 +144,9 @@ def _seed_entropy(seed, name, arg="seed"):
         try:
             iv = operator.index(item)
         except TypeError:
-            raise TypeError(f"{name}(): '{arg}' must be an int, a sequence of ints or None, "
-                            f"not a sequence of {_type_name(item)}") from None
+            raise TypeError(
+                f"{name}(): '{arg}' must be an int, a sequence of ints or None, not a sequence of {_type_name(item)}"
+            ) from None
         if iv < 0:
             raise ValueError(f"{name}(): '{arg}' must be non-negative")
         out.append(iv)
@@ -312,7 +313,9 @@ class Generator:
         try:
             entropy = _seed_entropy(value["entropy"], ".state", "entropy")
             if isinstance(value["spawn_key"], (str, bytes)) or not hasattr(value["spawn_key"], "__iter__"):
-                raise TypeError(f".state(): 'spawn_key' must be a sequence of ints, not {_type_name(value['spawn_key'])}")
+                raise TypeError(
+                    f".state(): 'spawn_key' must be a sequence of ints, not {_type_name(value['spawn_key'])}"
+                )
             spawn_key = tuple(_count(v, ".state", "spawn_key") for v in value["spawn_key"])
             n_spawned = _count(value["n_children_spawned"], ".state", "n_children_spawned")
         except (TypeError, ValueError, OverflowError) as e:  # the helpers write "name(): "
@@ -382,9 +385,14 @@ class Generator:
         if _size(shp) > 0:
             # on the bounds as given (not broadcast to the result: a pass over 10^6 elements)
             if arrays:
-                lo_b, hi_b = sd.broadcast_arrays(sd.asarray(lo) if not isinstance(lo, sd.ndarray) else lo,
-                                                 sd.asarray(hi) if not isinstance(hi, sd.ndarray) else hi) \
-                    if all(isinstance(v, sd.ndarray) for v in (lo, hi)) else (lo, hi)
+                lo_b, hi_b = (
+                    sd.broadcast_arrays(
+                        sd.asarray(lo) if not isinstance(lo, sd.ndarray) else lo,
+                        sd.asarray(hi) if not isinstance(hi, sd.ndarray) else hi,
+                    )
+                    if all(isinstance(v, sd.ndarray) for v in (lo, hi))
+                    else (lo, hi)
+                )
                 bad = bool(sd.any(lo_b > hi_b)) if endpoint else bool(sd.any(lo_b >= hi_b))
             else:
                 bad = lo > hi if endpoint else lo >= hi

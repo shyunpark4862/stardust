@@ -121,7 +121,8 @@ Pick pick(Method m, std::int64_t count, double q) {
     switch (m) {
         case Method::Lower: return take(static_cast<std::int64_t>(std::floor((n - 1) * q)));
         case Method::Higher: return take(static_cast<std::int64_t>(std::ceil((n - 1) * q)));
-        case Method::Nearest: return take(static_cast<std::int64_t>(std::nearbyint((n - 1) * q)));  // half to even, as np.around
+        case Method::Nearest:
+            return take(static_cast<std::int64_t>(std::nearbyint((n - 1) * q)));  // half to even, as np.around
         case Method::InvertedCdf: return take(to_boundary(n * q - 1, false));
         case Method::ClosestObservation: return take(to_boundary(n * q - 1 - 0.5, true));
         case Method::AveragedInvertedCdf: v = n * q - 1; break;
@@ -284,8 +285,15 @@ std::vector<double> parse_q(nb::handle o, bool& scalar) {
     return qs;
 }
 
-nb::object compute(nb::handle x_obj, const std::vector<double>* qs, bool q_scalar, nb::handle axis_obj, Method method,
-                   bool skip_nan, bool keepdims) {
+nb::object compute(
+    nb::handle x_obj,
+    const std::vector<double>* qs,
+    bool q_scalar,
+    nb::handle axis_obj,
+    Method method,
+    bool skip_nan,
+    bool keepdims
+) {
     const NDArray& x = require_ndarray(x_obj);
     if (x.dtype == DType::Complex128) throw nb::type_error("not supported for complex128");
     std::array<bool, kMaxNdim> reduced{};
@@ -334,14 +342,18 @@ nb::object compute(nb::handle x_obj, const std::vector<double>* qs, bool q_scala
     };
     // Each lane is independent and selected in its own row: any split gives
     // the same bits.
-    for_pieces(lanes, kParallelTask / std::max<std::int64_t>(n, 1), lanes * n,
-               [&](std::int64_t, std::int64_t begin, std::int64_t end) { lane_range(begin, end); });
+    for_pieces(
+        lanes, kParallelTask / std::max<std::int64_t>(n, 1), lanes * n,
+        [&](std::int64_t, std::int64_t begin, std::int64_t end) { lane_range(begin, end); }
+    );
     if (scalar_result) return to_python(res[0]);
     return wrap(std::move(out));
 }
 
 template <bool SkipNan>
-nb::object quantile_impl(nb::handle x, nb::handle q_obj, nb::handle axis, nb::handle method_obj, nb::handle keepdims_obj) {
+nb::object quantile_impl(
+    nb::handle x, nb::handle q_obj, nb::handle axis, nb::handle method_obj, nb::handle keepdims_obj
+) {
     require_ndarray(x);
     bool q_scalar = true;
     const std::vector<double> qs = parse_q(q_obj, q_scalar);
@@ -364,10 +376,14 @@ void bind_quantile(nb::module_& m) {
     const auto axis = arg("axis").none() = nb::none();
     const auto keepdims = arg("keepdims").none() = false;
     const auto method = arg("method").none() = "linear";
-    m.def("quantile", named("quantile", &quantile_impl<false>), arg().none(), arg().none(), nb::kw_only(), axis, method,
-          keepdims);
-    m.def("nanquantile", named("nanquantile", &quantile_impl<true>), arg().none(), arg().none(), nb::kw_only(), axis,
-          method, keepdims);
+    m.def(
+        "quantile", named("quantile", &quantile_impl<false>), arg().none(), arg().none(), nb::kw_only(), axis, method,
+        keepdims
+    );
+    m.def(
+        "nanquantile", named("nanquantile", &quantile_impl<true>), arg().none(), arg().none(), nb::kw_only(), axis,
+        method, keepdims
+    );
     m.def("median", named("median", &median_impl<false>), arg().none(), nb::kw_only(), axis, keepdims);
     m.def("nanmedian", named("nanmedian", &median_impl<true>), arg().none(), nb::kw_only(), axis, keepdims);
 }

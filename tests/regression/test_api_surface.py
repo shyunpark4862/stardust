@@ -14,10 +14,27 @@ API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "regression.md"
 
 # Documented, not implemented yet (docs/design/regression.md §7).
 PLANNED = set()
-RESULTS = {"OLSResult", "WLSResult", "GLSResult", "GLMResult", "LinregressResult", "JarqueBeraResult",
-           "BreuschPaganResult", "RidgeResult", "LassoResult", "ElasticNetResult", "RidgeCVResult", "LassoCVResult",
-           "ElasticNetCVResult", "PenalizedGLMResult", "RLMResult", "TheilslopesResult", "SiegelslopesResult",
-           "QuantRegResult", "NLSResult"}
+RESULTS = {
+    "OLSResult",
+    "WLSResult",
+    "GLSResult",
+    "GLMResult",
+    "LinregressResult",
+    "JarqueBeraResult",
+    "BreuschPaganResult",
+    "RidgeResult",
+    "LassoResult",
+    "ElasticNetResult",
+    "RidgeCVResult",
+    "LassoCVResult",
+    "ElasticNetCVResult",
+    "PenalizedGLMResult",
+    "RLMResult",
+    "TheilslopesResult",
+    "SiegelslopesResult",
+    "QuantRegResult",
+    "NLSResult",
+}
 
 
 def documented():

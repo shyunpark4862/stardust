@@ -80,8 +80,11 @@ def test_t_family_below_the_half_boundary(df):
         assert all(math.isnan(v) for v in D.sample(2, rng=sd.random.default_rng(1)).tolist()), D
     # either df below: the noncentral F's values and samples (user decision 2026-11-19), nc = 0 too
     for nc in (1.0, 0.0):
-        for D in (S.NoncentralF(dfn=df, dfd=3.0, nc=nc), S.NoncentralF(dfn=3.0, dfd=df, nc=nc),
-                  S.NoncentralF(dfn=df, dfd=df, nc=nc)):
+        for D in (
+            S.NoncentralF(dfn=df, dfd=3.0, nc=nc),
+            S.NoncentralF(dfn=3.0, dfd=df, nc=nc),
+            S.NoncentralF(dfn=df, dfd=df, nc=nc),
+        ):
             for m in _IN:
                 assert math.isnan(getattr(D, m)(1.0)), (D, m)
             assert math.isnan(D.icdf(0.3)) and math.isnan(D.ilogccdf(-1.0)) and math.isnan(D.median()), D
@@ -129,18 +132,27 @@ def test_rankdata_axis_message():
         S.skew(x, axis=1.5)
 
 
-@pytest.mark.parametrize("call,msg", [
-    (lambda: S.Normal(cool=1), r"Normal\(\): unexpected keyword argument 'cool'"),
-    (lambda: S.Normal(1), r"Normal\(\): takes no positional arguments but 1 was given"),
-    (lambda: S.Normal(1, 2), r"Normal\(\): takes no positional arguments but 2 were given"),
-    (lambda: S.Gamma(), r"Gamma\(\): missing 1 required keyword-only argument: 'a'"),
-    (lambda: S.Binomial(n=3, p=0.5, k=2), r"Binomial\(\): unexpected keyword argument 'k'"),
-    (lambda: S.MultivariateNormal(mu=A([0.0, 0.0])), r"MultivariateNormal\(\): missing 1 required keyword-only argument: 'cov'"),
-    (lambda: S.Dirichlet(A([1.0, 1.0])), r"Dirichlet\(\): takes no positional arguments but 1 was given"),
-    (lambda: S.Wishart(df=3.0, scale=A(np.eye(2)), q=1), r"Wishart\(\): unexpected keyword argument 'q'"),
-    (lambda: S.InverseWishart(df=3.0), r"InverseWishart\(\): missing 1 required keyword-only argument: 'scale'"),
-    (lambda: S.MatrixNormal(mu=A(np.zeros((2, 2)))), r"MatrixNormal\(\): missing 2 required keyword-only arguments"),
-])
+@pytest.mark.parametrize(
+    "call,msg",
+    [
+        (lambda: S.Normal(cool=1), r"Normal\(\): unexpected keyword argument 'cool'"),
+        (lambda: S.Normal(1), r"Normal\(\): takes no positional arguments but 1 was given"),
+        (lambda: S.Normal(1, 2), r"Normal\(\): takes no positional arguments but 2 were given"),
+        (lambda: S.Gamma(), r"Gamma\(\): missing 1 required keyword-only argument: 'a'"),
+        (lambda: S.Binomial(n=3, p=0.5, k=2), r"Binomial\(\): unexpected keyword argument 'k'"),
+        (
+            lambda: S.MultivariateNormal(mu=A([0.0, 0.0])),
+            r"MultivariateNormal\(\): missing 1 required keyword-only argument: 'cov'",
+        ),
+        (lambda: S.Dirichlet(A([1.0, 1.0])), r"Dirichlet\(\): takes no positional arguments but 1 was given"),
+        (lambda: S.Wishart(df=3.0, scale=A(np.eye(2)), q=1), r"Wishart\(\): unexpected keyword argument 'q'"),
+        (lambda: S.InverseWishart(df=3.0), r"InverseWishart\(\): missing 1 required keyword-only argument: 'scale'"),
+        (
+            lambda: S.MatrixNormal(mu=A(np.zeros((2, 2)))),
+            r"MatrixNormal\(\): missing 2 required keyword-only arguments",
+        ),
+    ],
+)
 def test_constructor_call_shape(call, msg):
     with pytest.raises(TypeError, match="^" + msg):
         call()
@@ -175,10 +187,12 @@ def test_descriptive_numeric_options():
     assert S.entropy(x, base=np.int64(2)) == S.entropy(x, base=2)
     assert S.iqr(x, scale=np.int64(2)) == S.iqr(x, scale=2)
     assert S.moment(x, order=2, center=np.int64(2)) == S.moment(x, order=2, center=2)
-    for f, arg in ((lambda v: S.sem(x, correction=v), "sem(): 'correction'"),
-                   (lambda v: S.entropy(x, base=v), "entropy(): 'base'"),
-                   (lambda v: S.iqr(x, scale=v), "iqr(): 'scale'"),
-                   (lambda v: S.moment(x, order=2, center=v), "moment(): 'center'")):
+    for f, arg in (
+        (lambda v: S.sem(x, correction=v), "sem(): 'correction'"),
+        (lambda v: S.entropy(x, base=v), "entropy(): 'base'"),
+        (lambda v: S.iqr(x, scale=v), "iqr(): 'scale'"),
+        (lambda v: S.moment(x, order=2, center=v), "moment(): 'center'"),
+    ):
         with pytest.raises(OverflowError, match="^" + re.escape(arg) + " is out of range$"):
             f(10**400)
 

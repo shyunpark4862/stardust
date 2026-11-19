@@ -96,7 +96,20 @@ constexpr double kU = 0x1p-53;
 // and the weight sum over the rows of the test weights (cross-validation); pGcv: ridge's
 // generalized cross-validation; pPolished: 1 when the KKT polish was taken.
 enum PStat : int {
-    pNobs = 0, pSumW, pNIter, pGap, pConv, pDf, pIsNaN, pRss, pTss, pTestSse, pTestSw, pPolished, pGcv, pNStat
+    pNobs = 0,
+    pSumW,
+    pNIter,
+    pGap,
+    pConv,
+    pDf,
+    pIsNaN,
+    pRss,
+    pTss,
+    pTestSse,
+    pTestSw,
+    pPolished,
+    pGcv,
+    pNStat
 };
 
 // Failure codes of one regression.
@@ -201,8 +214,10 @@ void gram(lint m, lint q, double* G, Pack&& pack) {
         for (lint c = s; c < nch; c += S) {
             const lint t0 = c * rows, t1 = std::min(m, t0 + rows), len = t1 - t0;
             pack(t0, t1, buf.data());
-            cblas_dsyrk(CblasColMajor, CblasUpper, CblasNoTrans, static_cast<int>(q), static_cast<int>(len), 1.0,
-                        buf.data(), static_cast<int>(q), 1.0, slot, static_cast<int>(q));
+            cblas_dsyrk(
+                CblasColMajor, CblasUpper, CblasNoTrans, static_cast<int>(q), static_cast<int>(len), 1.0, buf.data(),
+                static_cast<int>(q), 1.0, slot, static_cast<int>(q)
+            );
         }
     };
     for_chunks(S, double(m) * double(q) * double(q) / 16.0, run);
@@ -426,7 +441,8 @@ struct Solver {
         if (cov) {
             for (lint j = 0; j < pc; ++j) d[j] = G[j * pc + j];
         } else {
-            for (lint j = 0; j < pc; ++j) d[j] = cblas_ddot(static_cast<int>(m), Z.data() + j * m, 1, Z.data() + j * m, 1);
+            for (lint j = 0; j < pc; ++j)
+                d[j] = cblas_ddot(static_cast<int>(m), Z.data() + j * m, 1, Z.data() + j * m, 1);
         }
         if (b.size() != static_cast<std::size_t>(pc)) b.assign(static_cast<std::size_t>(pc), 0.0);
         xta.assign(static_cast<std::size_t>(pc), 0.0);
@@ -486,8 +502,10 @@ struct Solver {
         } else {
             R2 = cblas_ddot(static_cast<int>(m), r.data(), 1, r.data(), 1);
             if (pc > 0)
-                cblas_dgemv(CblasColMajor, CblasTrans, static_cast<int>(m), static_cast<int>(pc), 1.0, Z.data(),
-                            static_cast<int>(m), r.data(), 1, 0.0, xta.data(), 1);
+                cblas_dgemv(
+                    CblasColMajor, CblasTrans, static_cast<int>(m), static_cast<int>(pc), 1.0, Z.data(),
+                    static_cast<int>(m), r.data(), 1, 0.0, xta.data(), 1
+                );
         }
         D = 0.0;
         for (lint j = 0; j < pc; ++j) D += b[j] * xta[j];
@@ -536,8 +554,15 @@ struct CDResult {
 // coefficient as the previous one did (the active set has settled) also tries the polish, once
 // per sign pattern: when it succeeds and its gap passes, that is the solution (coordinate
 // descent converges only linearly on an ill-conditioned active set; the polish solves it).
-CDResult cd_solve(Solver& s, double l1, double l2, int max_iter, double gap_tol, double dtol,
-                  const std::function<bool()>* polish_fn = nullptr) {
+CDResult cd_solve(
+    Solver& s,
+    double l1,
+    double l2,
+    int max_iter,
+    double gap_tol,
+    double dtol,
+    const std::function<bool()>* polish_fn = nullptr
+) {
     CDResult out;
     out.gap = s.gap(l1, l2);
     if (out.gap <= gap_tol) {
@@ -622,8 +647,10 @@ void active_gram(const Solver& s, const std::vector<lint>& A, double l2, std::ve
     } else {
         std::vector<double> ZA(static_cast<std::size_t>(s.m * a));
         for (lint q = 0; q < a; ++q) std::copy_n(s.Z.data() + A[q] * s.m, s.m, ZA.data() + q * s.m);
-        cblas_dsyrk(CblasColMajor, CblasLower, CblasTrans, static_cast<int>(a), static_cast<int>(s.m), 1.0, ZA.data(),
-                    static_cast<int>(s.m), 0.0, H.data(), static_cast<int>(a));
+        cblas_dsyrk(
+            CblasColMajor, CblasLower, CblasTrans, static_cast<int>(a), static_cast<int>(s.m), 1.0, ZA.data(),
+            static_cast<int>(s.m), 0.0, H.data(), static_cast<int>(a)
+        );
         for (lint q = 0; q < a; ++q)
             for (lint u = q + 1; u < a; ++u) H[u * a + q] = H[q * a + u];  // H[col u, row q] from lower
     }
@@ -650,8 +677,9 @@ double effective_df(std::vector<double> H, lint a, double l2) {
 // and every product and sum in double-double, rounded once at the end. The refinement's fixed
 // point is then the solution of the exact problem (to the final rounding), not of the design
 // rounded to doubles: its accuracy no longer degrades with the solution's condition number.
-void residual_pass_dd(const Src& s, const Prep& P, const std::vector<lint>& Acols, const double* bA, double g0,
-                      std::vector<double>& out) {
+void residual_pass_dd(
+    const Src& s, const Prep& P, const std::vector<lint>& Acols, const double* bA, double g0, std::vector<double>& out
+) {
     const lint a = static_cast<lint>(Acols.size());
     const lint len = a + 3;
     out.assign(static_cast<std::size_t>(len), 0.0);
@@ -762,10 +790,13 @@ PolishOut polish(Solver& s, const Src& src, const Prep& P, bool intercept, doubl
         }
     } else {
         std::vector<double> r = s.rv;
-        for (lint q = 0; q < a; ++q) cblas_daxpy(static_cast<int>(s.m), -bA[q], s.Z.data() + A[q] * s.m, 1, r.data(), 1);
+        for (lint q = 0; q < a; ++q)
+            cblas_daxpy(static_cast<int>(s.m), -bA[q], s.Z.data() + A[q] * s.m, 1, r.data(), 1);
         if (s.pc > 0)
-            cblas_dgemv(CblasColMajor, CblasTrans, static_cast<int>(s.m), static_cast<int>(s.pc), 1.0, s.Z.data(),
-                        static_cast<int>(s.m), r.data(), 1, 0.0, grad.data(), 1);
+            cblas_dgemv(
+                CblasColMajor, CblasTrans, static_cast<int>(s.m), static_cast<int>(s.pc), 1.0, s.Z.data(),
+                static_cast<int>(s.m), r.data(), 1, 0.0, grad.data(), 1
+            );
     }
     for (lint j = 0; j < s.pc; ++j) {
         if (in[j] || !(s.d[j] > 0.0)) continue;
@@ -826,15 +857,17 @@ void test_errors(const Src& s, bool intercept, lint L, const double* params, dou
     std::vector<double> tot(static_cast<std::size_t>(len));
     chunk_sum(nt, len, tot.data(), double(p) * double(L), [&](lint t0, lint t1, double* part) {
         const lint cnt = t1 - t0;
-        std::vector<double> Xc(static_cast<std::size_t>(cnt * std::max<lint>(p, 1))), Pm(static_cast<std::size_t>(cnt * L));
+        std::vector<double> Xc(static_cast<std::size_t>(cnt * std::max<lint>(p, 1))),
+            Pm(static_cast<std::size_t>(cnt * L));
         for (lint t = t0; t < t1; ++t)
             for (lint j = 0; j < p; ++j) Xc[j * cnt + (t - t0)] = s.x(rows[t], j);
         if (p > 0)
-            cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, static_cast<int>(cnt), static_cast<int>(L),
-                        static_cast<int>(p), 1.0, Xc.data(), static_cast<int>(cnt), B.data(), static_cast<int>(p), 0.0,
-                        Pm.data(), static_cast<int>(cnt));
-        else
-            std::fill(Pm.begin(), Pm.end(), 0.0);
+            cblas_dgemm(
+                CblasColMajor, CblasNoTrans, CblasNoTrans, static_cast<int>(cnt), static_cast<int>(L),
+                static_cast<int>(p), 1.0, Xc.data(), static_cast<int>(cnt), B.data(), static_cast<int>(p), 0.0,
+                Pm.data(), static_cast<int>(cnt)
+            );
+        else std::fill(Pm.begin(), Pm.end(), 0.0);
         for (lint t = t0; t < t1; ++t) {
             const lint i = rows[t];
             const double tw = s.twv(i), y = s.yv(i);
@@ -855,9 +888,10 @@ void test_errors(const Src& s, bool intercept, lint L, const double* params, dou
 std::vector<lint> path_order(const double* alphas, std::int64_t as, lint L) {
     std::vector<lint> ord(static_cast<std::size_t>(L));
     std::iota(ord.begin(), ord.end(), lint(0));
-    std::stable_sort(ord.begin(), ord.end(),
-                     [&](lint a, lint b) { return rd(reinterpret_cast<const std::byte*>(alphas) + a * as) >
-                                                  rd(reinterpret_cast<const std::byte*>(alphas) + b * as); });
+    std::stable_sort(ord.begin(), ord.end(), [&](lint a, lint b) {
+        return rd(reinterpret_cast<const std::byte*>(alphas) + a * as) >
+               rd(reinterpret_cast<const std::byte*>(alphas) + b * as);
+    });
     return ord;
 }
 
@@ -951,7 +985,8 @@ void build(const Src& src, Prep& P, const Opts& op, Solver& s) {
             for (lint t = t0; t < t1; ++t) {
                 const lint i = P.idx[t];
                 const double r = std::sqrt(f[t]);
-                for (lint a = 0; a < pc; ++a) s.Z[a * m + t] = r * ((src.x(i, cols[a]) - P.cx[cols[a]]) / P.sc[cols[a]]);
+                for (lint a = 0; a < pc; ++a)
+                    s.Z[a * m + t] = r * ((src.x(i, cols[a]) - P.cx[cols[a]]) / P.sc[cols[a]]);
                 s.rv[t] = r * (src.yv(i) - P.cy);
             }
         });
@@ -961,8 +996,9 @@ void build(const Src& src, Prep& P, const Opts& op, Solver& s) {
 }
 
 // One regression's elastic net path.
-int enet_one(const Opts& op, const Src& src, const double* alphas, std::int64_t as, lint L, double* params,
-             double* stats) {
+int enet_one(
+    const Opts& op, const Src& src, const double* alphas, std::int64_t as, lint L, double* params, double* stats
+) {
     const lint p = src.p, k = p + (op.intercept ? 1 : 0);
     const int chk = check(src, fGaussian);
     if (chk > 0) return chk;
@@ -1104,8 +1140,16 @@ void tsqr(lint m, lint pc, double* A, double* v, double* R, double* d1, DD& acc)
 }
 
 
-int ridge_one(const Opts& op, const Src& src, const double* alphas, std::int64_t as, lint L, double* params,
-              double* stats, Scratch& sc) {
+int ridge_one(
+    const Opts& op,
+    const Src& src,
+    const double* alphas,
+    std::int64_t as,
+    lint L,
+    double* params,
+    double* stats,
+    Scratch& sc
+) {
     const lint p = src.p, k = p + (op.intercept ? 1 : 0);
     const int chk = check(src, fGaussian);
     if (chk > 0) return chk;
@@ -1169,8 +1213,8 @@ int ridge_one(const Opts& op, const Src& src, const double* alphas, std::int64_t
     double* rv = Z.data() + pc * m;
     // rss_perp: the part of v outside the columns' span; e = U^T v; the singular values and V^T
     const lint r = std::min(m, pc);
-    std::vector<double> sv(static_cast<std::size_t>(std::max<lint>(r, 1))), e(static_cast<std::size_t>(std::max<lint>(r, 1))),
-        Vt(static_cast<std::size_t>(std::max<lint>(r * pc, 1)));
+    std::vector<double> sv(static_cast<std::size_t>(std::max<lint>(r, 1))),
+        e(static_cast<std::size_t>(std::max<lint>(r, 1))), Vt(static_cast<std::size_t>(std::max<lint>(r * pc, 1)));
     double rss_perp = 0.0;
     double vv = 0.0;
     chunk_sum(m, 1, &vv, 1.0, [&](lint t0, lint t1, double* part) {
@@ -1324,8 +1368,10 @@ void glm_eval(const Src& src, const Prep& P, int fam, const double* beta, double
         DD acc{0.0, 0.0};
         const lint t0 = c * kRowChunk, t1 = std::min(m, (c + 1) * kRowChunk);
         // eta = b0 + x beta (Dot2, four rows at a time): the two parts in mu and var for now
-        dot2::dot2_rows(nz.data(), bz.data(), static_cast<lint>(nz.size()), t1 - t0,
-                        [&](lint t) { return P.idx[t0 + t]; }, g.mu.data() + t0, g.var.data() + t0, b0);
+        dot2::dot2_rows(
+            nz.data(), bz.data(), static_cast<lint>(nz.size()), t1 - t0, [&](lint t) { return P.idx[t0 + t]; },
+            g.mu.data() + t0, g.var.data() + t0, b0
+        );
         for (lint t = t0; t < t1; ++t) g.eta[t] = g.mu[t] + g.var[t];
         if (fam == fBinomial) {
             // mu = expit(eta) and 1 - mu = expit(-eta) by sd.special's kernel, as glm's logit
@@ -1382,8 +1428,9 @@ double penalty(const Prep& P, const double* beta, double l1, double l2) {
 
 // The working weights' (W = w var) means of the fit's columns and of z = eta + (y - mu)/var;
 // returns sum W.
-double working_means(const Src& src, const Prep& P, const GlmState& g, bool intercept, std::vector<double>& cw,
-                     double& zbar) {
+double working_means(
+    const Src& src, const Prep& P, const GlmState& g, bool intercept, std::vector<double>& cw, double& zbar
+) {
     const lint pc = static_cast<lint>(P.cols.size());
     std::vector<double> sums(static_cast<std::size_t>(pc + 2));
     chunk_sum(P.m, pc + 2, sums.data(), double(pc), [&](lint t0, lint t1, double* part) {
@@ -1407,8 +1454,9 @@ double working_means(const Src& src, const Prep& P, const GlmState& g, bool inte
 }
 
 // Fills the solver with the IRLS quadratic model at g: Z = sqrt(W/sW) (x - cw)/s, v = z - zbar.
-void glm_subproblem(const Src& src, const Prep& P, const GlmState& g, const std::vector<double>& cw, double zbar,
-                    double sW, Solver& s) {
+void glm_subproblem(
+    const Src& src, const Prep& P, const GlmState& g, const std::vector<double>& cw, double zbar, double sW, Solver& s
+) {
     const lint m = P.m, pc = static_cast<lint>(P.cols.size());
     std::vector<double> f(static_cast<std::size_t>(m)), z(static_cast<std::size_t>(src.n), 0.0);
     for (lint t = 0; t < m; ++t) {
@@ -1543,8 +1591,9 @@ void wvec(const Src& src, const Prep& P, const GlmState& g, const std::vector<li
     });
 }
 
-int glm_one(const Opts& op, const Src& src, const double* alphas, std::int64_t as, lint L, double* params,
-            double* stats) {
+int glm_one(
+    const Opts& op, const Src& src, const double* alphas, std::int64_t as, lint L, double* params, double* stats
+) {
     const lint p = src.p, k = p + (op.intercept ? 1 : 0);
     const int fam = op.family;
     const int chk = check(src, fam);
@@ -1598,7 +1647,7 @@ int glm_one(const Opts& op, const Src& src, const double* alphas, std::int64_t a
             // the null model mu = ybar is y itself: null deviance 0 (glm's)
             for (lint l = 0; l < L; ++l)
                 stats[l * pNStat + pIsNaN] = 0.0, stats[l * pNStat + pConv] = 0.0, stats[l * pNStat + pTss] = 0.0,
-                stats[l * pNStat + pSumW] = P.sw;
+                                   stats[l * pNStat + pSumW] = P.sw;
             return 0;
         }
         eta0 = fam == fBinomial ? std::log(ybar) - std::log1p(-ybar) : std::log(ybar);
@@ -1618,8 +1667,8 @@ int glm_one(const Opts& op, const Src& src, const double* alphas, std::int64_t a
         const double mu0 = constant ? y0 : ybar;
         const DD nd = dd_chunk_sum(m, [&](lint t) {
             const double y = src.yv(P.idx[t]);
-            const double dv = fam == fBinomial ? (y == 1.0 ? -2.0 * std::log(mu0) : -2.0 * std::log1p(-mu0))
-                                               : poisson_dev(y, mu0);
+            const double dv =
+                fam == fBinomial ? (y == 1.0 ? -2.0 * std::log(mu0) : -2.0 * std::log1p(-mu0)) : poisson_dev(y, mu0);
             return DD{P.wt[t] * dv, 0.0};
         });
         null_dev = nd.hi;
@@ -1825,11 +1874,16 @@ int glm_one(const Opts& op, const Src& src, const double* alphas, std::int64_t a
                 for (const lint a_ : A) in[a_] = 1;
                 for (lint a_ = 0; a_ < pc; ++a_) {
                     if (in[a_]) continue;
-                    const double gj = (full ? (op.intercept ? w.gc(a_) : w.at(a_, w.u()))
-                                            : (op.intercept ? wv.gc(a_) : wv.gu(a_))) / P.sw;
-                    const double dj = std::max(0.0, full ? (op.intercept ? w.Hc(a_, a_) : w.at(a_, a_))
-                                                         : (op.intercept ? wv.Hcd(a_) : wv.daa(a_))) / P.sw;
-                    if (!(std::fabs(gj) <= l1 * (1.0 + kKktRel) + kKktAbs * std::sqrt(dj * gp.dev / P.sw))) return false;
+                    const double gj =
+                        (full ? (op.intercept ? w.gc(a_) : w.at(a_, w.u())) : (op.intercept ? wv.gc(a_) : wv.gu(a_))) /
+                        P.sw;
+                    const double dj = std::max(
+                                          0.0, full ? (op.intercept ? w.Hc(a_, a_) : w.at(a_, a_))
+                                                    : (op.intercept ? wv.Hcd(a_) : wv.daa(a_))
+                                      ) /
+                                      P.sw;
+                    if (!(std::fabs(gj) <= l1 * (1.0 + kKktRel) + kKktAbs * std::sqrt(dj * gp.dev / P.sw)))
+                        return false;
                 }
             }
             beta = nbeta;
@@ -1897,8 +1951,9 @@ int glm_one(const Opts& op, const Src& src, const double* alphas, std::int64_t a
             std::vector<lint> A, Acols;
             for (lint a_ = 0; a_ < pc; ++a_) {
                 s.b[a_] = beta[P.cols[a_]] * P.sc[P.cols[a_]];
-                s.xta[a_] = (full ? (op.intercept ? wg.gc(a_) : wg.at(a_, wg.u()))
-                                  : (op.intercept ? wv.gc(a_) : wv.gu(a_))) / sW;
+                s.xta[a_] =
+                    (full ? (op.intercept ? wg.gc(a_) : wg.at(a_, wg.u())) : (op.intercept ? wv.gc(a_) : wv.gu(a_))) /
+                    sW;
                 if (s.b[a_] != 0.0) A.push_back(a_), Acols.push_back(P.cols[a_]);
             }
             double gam = b0 - zbar;
@@ -1916,7 +1971,8 @@ int glm_one(const Opts& op, const Src& src, const double* alphas, std::int64_t a
                 for (lint q = 0; q < na; ++q) {
                     for (lint r_ = 0; r_ < na; ++r_)
                         H[r_ * na + q] = (full ? (op.intercept ? wg.Hc(A[q], A[r_]) : wg.at(A[q], A[r_]))
-                                               : (op.intercept ? wa.Hc(q, r_) : wa.at(q, r_))) / P.sw;
+                                               : (op.intercept ? wa.Hc(q, r_) : wa.at(q, r_))) /
+                                         P.sw;
                     H[q * na + q] += l2;
                 }
                 st[pDf] = effective_df(H, na, l2);
@@ -1989,7 +2045,8 @@ int alpha_max_one(const Opts& op, const Src& src, double* out) {
         case eInfW: what = "'weights' contains infinity"; break;
         case eNegW: what = "'weights' must be >= 0"; break;
         case eBadY:
-            what = fam == fBinomial ? "'y' must be 0 or 1 for the binomial family" : "'y' must be >= 0 for the poisson family";
+            what = fam == fBinomial ? "'y' must be 0 or 1 for the binomial family"
+                                    : "'y' must be >= 0 for the poisson family";
             break;
         default: what = "the SVD did not converge"; break;
     }
@@ -2006,9 +2063,24 @@ std::vector<std::int64_t> with(std::vector<std::int64_t> shape, std::initializer
 //      has_w, has_t, alphas (..., L), l1_ratio, family, intercept, standardize, max_iter, tol, polish)
 // -> (params (..., L, k), stats (..., L, S)). The test weights (cross-validation) mark the
 // rows whose error is summed into stats[pTestSse].
-nb::object path(const std::string& func, int kind, nb::handle yo, nb::handle xo, nb::handle auxo, bool has_w,
-                bool has_t, nb::handle ao, double l1_ratio, int family, bool intercept, bool standardize, int max_iter,
-                double tol, bool polish, double refine) {
+nb::object path(
+    const std::string& func,
+    int kind,
+    nb::handle yo,
+    nb::handle xo,
+    nb::handle auxo,
+    bool has_w,
+    bool has_t,
+    nb::handle ao,
+    double l1_ratio,
+    int family,
+    bool intercept,
+    bool standardize,
+    int max_iter,
+    double tol,
+    bool polish,
+    double refine
+) {
     const char* fn = func.c_str();
     return call_named(fn, [&]() -> nb::object {
         Input y(yo, fn, "y"), X(xo, fn, "X"), A(ao, fn, "alpha");
@@ -2016,23 +2088,36 @@ nb::object path(const std::string& func, int kind, nb::handle yo, nb::handle xo,
         std::optional<Input> aux;
         if (has_aux) aux.emplace(auxo, fn, "weights");
         const linalg::BatchOperand none{};
-        Batch b({{y.batch_shape(1), y.batch_strides(1)},
-                 {X.batch_shape(2), X.batch_strides(2)},
-                 has_aux ? linalg::BatchOperand{aux->batch_shape(2), aux->batch_strides(2)} : none,
-                 {A.batch_shape(1), A.batch_strides(1)}},
-                fn);
+        Batch b(
+            {{y.batch_shape(1), y.batch_strides(1)},
+             {X.batch_shape(2), X.batch_strides(2)},
+             has_aux ? linalg::BatchOperand{aux->batch_shape(2), aux->batch_strides(2)} : none,
+             {A.batch_shape(1), A.batch_strides(1)}},
+            fn
+        );
         const lint n = X.shape(-2), p = X.shape(-1), k = p + (intercept ? 1 : 0), L = A.shape(-1);
         Opts op{l1_ratio, intercept, standardize, max_iter, tol, polish, family, refine};
         Out po = linalg::alloc_c(with(b.shape(), {L, k}), DType::Float64);
         Out so = linalg::alloc_c(with(b.shape(), {L, pNStat}), DType::Float64);
         const double nk = double(n) * double(std::max<lint>(p, 1));
-        const double element_ns = 5000.0 + nk * (2.0 * double(std::min<lint>(p, kCovMaxCols)) + 20.0 * double(L)) *
-                                               (kind == 2 ? 10.0 : 1.0);
+        const double element_ns =
+            5000.0 + nk * (2.0 * double(std::min<lint>(p, kCovMaxCols)) + 20.0 * double(L)) * (kind == 2 ? 10.0 : 1.0);
         const Failure f = linalg::run_batch(b, element_ns, [&](std::int64_t i, const std::int64_t* off, Scratch& sc) {
             const std::byte* ab = has_aux ? aux->data() + off[2] : nullptr;
             const std::int64_t rs = has_aux ? aux->stride(-2) : 0, cs = has_aux ? aux->stride(-1) : 0;
-            Src s{n, p, y.data() + off[0], y.stride(-1), X.data() + off[1], X.stride(-2), X.stride(-1),
-                  has_w ? ab : nullptr, cs, has_t ? ab + rs : nullptr, cs};
+            Src s{
+                n,
+                p,
+                y.data() + off[0],
+                y.stride(-1),
+                X.data() + off[1],
+                X.stride(-2),
+                X.stride(-1),
+                has_w ? ab : nullptr,
+                cs,
+                has_t ? ab + rs : nullptr,
+                cs
+            };
             const double* al = reinterpret_cast<const double*>(A.data() + off[3]);
             const std::int64_t as = A.stride(-1);
             double* pr = po.as<double>() + i * L * k;
@@ -2049,8 +2134,16 @@ nb::object path(const std::string& func, int kind, nb::handle yo, nb::handle xo,
 }
 
 // alpha_max(func, y, X, w | None, l1_ratio, family, intercept, standardize) -> (...)
-nb::object alpha_max(const std::string& func, nb::handle yo, nb::handle xo, nb::handle wo, double l1_ratio, int family,
-                     bool intercept, bool standardize) {
+nb::object alpha_max(
+    const std::string& func,
+    nb::handle yo,
+    nb::handle xo,
+    nb::handle wo,
+    double l1_ratio,
+    int family,
+    bool intercept,
+    bool standardize
+) {
     const char* fn = func.c_str();
     return call_named(fn, [&]() -> nb::object {
         Input y(yo, fn, "y"), X(xo, fn, "X");
@@ -2058,19 +2151,34 @@ nb::object alpha_max(const std::string& func, nb::handle yo, nb::handle xo, nb::
         std::optional<Input> w;
         if (has_w) w.emplace(wo, fn, "weights");
         const linalg::BatchOperand none{};
-        Batch b({{y.batch_shape(1), y.batch_strides(1)},
-                 {X.batch_shape(2), X.batch_strides(2)},
-                 has_w ? linalg::BatchOperand{w->batch_shape(1), w->batch_strides(1)} : none},
-                fn);
+        Batch b(
+            {{y.batch_shape(1), y.batch_strides(1)},
+             {X.batch_shape(2), X.batch_strides(2)},
+             has_w ? linalg::BatchOperand{w->batch_shape(1), w->batch_strides(1)} : none},
+            fn
+        );
         const lint n = X.shape(-2), p = X.shape(-1);
         Opts op{l1_ratio, intercept, standardize, 0, 0.0, false, family, 0.0};
         Out oo = linalg::alloc_c(b.shape(), DType::Float64);
-        const Failure f = linalg::run_batch(b, 2000.0 + 4.0 * double(n) * double(std::max<lint>(p, 1)),
-                                            [&](std::int64_t i, const std::int64_t* off, Scratch&) {
-            Src s{n, p, y.data() + off[0], y.stride(-1), X.data() + off[1], X.stride(-2), X.stride(-1),
-                  has_w ? w->data() + off[2] : nullptr, has_w ? w->stride(-1) : 0, nullptr, 0};
-            return alpha_max_one(op, s, oo.as<double>() + i);
-        });
+        const Failure f = linalg::run_batch(
+            b, 2000.0 + 4.0 * double(n) * double(std::max<lint>(p, 1)),
+            [&](std::int64_t i, const std::int64_t* off, Scratch&) {
+                Src s{
+                    n,
+                    p,
+                    y.data() + off[0],
+                    y.stride(-1),
+                    X.data() + off[1],
+                    X.stride(-2),
+                    X.stride(-1),
+                    has_w ? w->data() + off[2] : nullptr,
+                    has_w ? w->stride(-1) : 0,
+                    nullptr,
+                    0
+                };
+                return alpha_max_one(op, s, oo.as<double>() + i);
+            }
+        );
         if (f) raise_failure(b, f, fn, family);
         return b.ndim() == 0 ? nb::cast(oo.as<double>()[0]) : linalg::to_array(oo);
     });
@@ -2079,13 +2187,16 @@ nb::object alpha_max(const std::string& func, nb::handle yo, nb::handle xo, nb::
 }  // namespace
 
 void bind_penalized(nb::module_& m) {
-    m.def("penalized_path", &path, nb::arg("func"), nb::arg("kind"), nb::arg("y").none(), nb::arg("X").none(),
-          nb::arg("aux").none(), nb::arg("has_w"), nb::arg("has_t"), nb::arg("alphas").none(), nb::arg("l1_ratio"),
-          nb::arg("family"),
-          nb::arg("intercept"), nb::arg("standardize"), nb::arg("max_iter"), nb::arg("tol"), nb::arg("polish") = true,
-          nb::arg("refine") = kRefineCond);
-    m.def("alpha_max", &alpha_max, nb::arg("func"), nb::arg("y").none(), nb::arg("X").none(), nb::arg("w").none(),
-          nb::arg("l1_ratio"), nb::arg("family"), nb::arg("intercept"), nb::arg("standardize"));
+    m.def(
+        "penalized_path", &path, nb::arg("func"), nb::arg("kind"), nb::arg("y").none(), nb::arg("X").none(),
+        nb::arg("aux").none(), nb::arg("has_w"), nb::arg("has_t"), nb::arg("alphas").none(), nb::arg("l1_ratio"),
+        nb::arg("family"), nb::arg("intercept"), nb::arg("standardize"), nb::arg("max_iter"), nb::arg("tol"),
+        nb::arg("polish") = true, nb::arg("refine") = kRefineCond
+    );
+    m.def(
+        "alpha_max", &alpha_max, nb::arg("func"), nb::arg("y").none(), nb::arg("X").none(), nb::arg("w").none(),
+        nb::arg("l1_ratio"), nb::arg("family"), nb::arg("intercept"), nb::arg("standardize")
+    );
 }
 
 }  // namespace sd::regression

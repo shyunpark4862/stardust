@@ -16,8 +16,8 @@ PyObject* g_dtype_objects[kNumDTypes] = {};
 
 void register_dtypes(nb::module_& m) {
     auto cls = nb::class_<PyDType>(m, "DType")
-        .def("__repr__", [](const PyDType& d) { return dtype_name(d.value); })
-        .def("__str__", [](const PyDType& d) { return dtype_name(d.value); });
+                   .def("__repr__", [](const PyDType& d) { return dtype_name(d.value); })
+                   .def("__str__", [](const PyDType& d) { return dtype_name(d.value); });
     use_short_type_name(cls);
 
     for (DType d : {DType::Bool, DType::Int64, DType::Float64, DType::Complex128, DType::String}) {
@@ -172,7 +172,8 @@ std::int64_t parse_int(nb::handle o, const char* what) {
 int normalize_axis(std::int64_t axis, int ndim) {
     if (axis < -ndim || axis >= ndim)
         throw nb::value_error(("axis " + std::to_string(axis) + " is out of bounds for an array of dimension " +
-                               std::to_string(ndim)).c_str());
+                               std::to_string(ndim))
+                                  .c_str());
     return static_cast<int>(axis < 0 ? axis + ndim : axis);
 }
 
@@ -186,7 +187,8 @@ std::vector<int> parse_axes(nb::handle o, int ndim, const char* what) {
             case IndexResult::NotInt: break;
         }
         throw nb::type_error(
-            (std::string("'") + what + "' must be an int or a tuple or list of ints, not " + py_type_name(item)).c_str());
+            (std::string("'") + what + "' must be an int or a tuple or list of ints, not " + py_type_name(item)).c_str()
+        );
     };
     std::vector<int> axes;
     if (PyTuple_Check(o.ptr()) || PyList_Check(o.ptr())) {
@@ -256,7 +258,8 @@ std::vector<std::int64_t> parse_shape(nb::handle o) {
     for (nb::handle item : nb::borrow<nb::tuple>(o)) {
         if (!one(item, v))
             throw nb::type_error(
-                ("'shape' must be an int or a tuple of ints, not a tuple holding " + py_type_name(item)).c_str());
+                ("'shape' must be an int or a tuple of ints, not a tuple holding " + py_type_name(item)).c_str()
+            );
         shape.push_back(v);
     }
     return shape;

@@ -48,7 +48,9 @@ namespace {
 
 bool is_seq(PyObject* p) { return PyList_Check(p) || PyTuple_Check(p); }
 Py_ssize_t seq_len(PyObject* p) { return PyList_Check(p) ? PyList_GET_SIZE(p) : PyTuple_GET_SIZE(p); }
-PyObject* seq_item(PyObject* p, Py_ssize_t i) { return PyList_Check(p) ? PyList_GET_ITEM(p, i) : PyTuple_GET_ITEM(p, i); }
+PyObject* seq_item(PyObject* p, Py_ssize_t i) {
+    return PyList_Check(p) ? PyList_GET_ITEM(p, i) : PyTuple_GET_ITEM(p, i);
+}
 
 [[noreturn]] void ragged(const std::vector<std::int64_t>& shape) {
     std::string s = "(";
@@ -84,7 +86,8 @@ void validate(PyObject* o, size_t depth, const std::vector<std::int64_t>& shape,
         if (auto d = scalar_dtype(o)) return merge(*d);
         if (is_seq(o) || is_ndarray(o)) ragged(shape);
         throw nb::type_error(("cannot store an object of type '" + py_type_name(nb::handle(o)) +
-                              "' in an array (only bool, int, float and complex)").c_str());
+                              "' in an array (only bool, int, float and complex)")
+                                 .c_str());
     }
     if (is_ndarray(o)) {
         const NDArray& a = as_ndarray(o);
@@ -107,8 +110,9 @@ void fill_nested(PyObject* o, size_t depth, size_t ndim, T*& out) {
     if (is_ndarray(o)) {
         const NDArray& a = as_ndarray(o);
         visit_dtype(a.dtype, [&]<typename S>(std::type_identity<S>) {
-            for_each_element<1>(a.shape_span(), {a.data}, {a.strides.data()},
-                                [&](std::byte* p) { *out++ = cast_value<T>(load<S>(p)); });
+            for_each_element<1>(a.shape_span(), {a.data}, {a.strides.data()}, [&](std::byte* p) {
+                *out++ = cast_value<T>(load<S>(p));
+            });
         });
         return;
     }
@@ -147,9 +151,7 @@ Src parse_format(const char* format, Py_ssize_t itemsize, bool& swapped) {
     }
     if (!fmt.empty() && (fmt[0] == '@' || fmt[0] == '=' || fmt[0] == '<')) i = 1;
     const std::string code = fmt.substr(i);
-    auto unsupported = [&]() -> Src {
-        throw nb::type_error(("unsupported buffer format '" + fmt + "'").c_str());
-    };
+    auto unsupported = [&]() -> Src { throw nb::type_error(("unsupported buffer format '" + fmt + "'").c_str()); };
     if (code == "?") return Src::Bool;
     if (code.size() == 1 && std::strchr("bhilqn", code[0])) {
         switch (itemsize) {
@@ -184,11 +186,19 @@ Src parse_format(const char* format, Py_ssize_t itemsize, bool& swapped) {
 DType natural_dtype(Src s) {
     switch (s) {
         case Src::Bool: return DType::Bool;
-        case Src::I8: case Src::I16: case Src::I32: case Src::I64:
-        case Src::U8: case Src::U16: case Src::U32: return DType::Int64;
+        case Src::I8:
+        case Src::I16:
+        case Src::I32:
+        case Src::I64:
+        case Src::U8:
+        case Src::U16:
+        case Src::U32: return DType::Int64;
         case Src::U64: throw nb::type_error("uint64 buffers cannot be converted to int64 without loss");
-        case Src::F16: case Src::F32: case Src::F64: return DType::Float64;
-        case Src::C64: case Src::C128: return DType::Complex128;
+        case Src::F16:
+        case Src::F32:
+        case Src::F64: return DType::Float64;
+        case Src::C64:
+        case Src::C128: return DType::Complex128;
     }
     __builtin_unreachable();
 }
@@ -225,7 +235,8 @@ template <typename S>
 S load_swapped(const std::byte* p) {
     constexpr bool cplx = std::is_same_v<S, std::complex<float>> || std::is_same_v<S, std::complex<double>>;
     if constexpr (!cplx && (sizeof(S) == 2 || sizeof(S) == 4 || sizeof(S) == 8)) {  // one part: a byte swap instruction
-        using U = std::conditional_t<sizeof(S) == 2, std::uint16_t, std::conditional_t<sizeof(S) == 4, std::uint32_t, std::uint64_t>>;
+        using U = std::conditional_t<
+            sizeof(S) == 2, std::uint16_t, std::conditional_t<sizeof(S) == 4, std::uint32_t, std::uint64_t>>;
         U u;
         std::memcpy(&u, p, sizeof u);
         if constexpr (sizeof(S) == 2) u = __builtin_bswap16(u);
@@ -303,8 +314,10 @@ nb::object from_buffer(nb::handle obj, std::optional<DType> dtype, std::optional
             const auto* q = static_cast<const std::uint8_t*>(view.buf);
             for (std::int64_t i = 0, n = foreign.size(); i < n; ++i) any |= q[i];
         } else {
-            for_each_element<1>(foreign.shape_span(), {static_cast<std::byte*>(view.buf)}, {foreign.strides.data()},
-                                [&](std::byte* p) { any |= *reinterpret_cast<const std::uint8_t*>(p); });
+            for_each_element<1>(
+                foreign.shape_span(), {static_cast<std::byte*>(view.buf)}, {foreign.strides.data()},
+                [&](std::byte* p) { any |= *reinterpret_cast<const std::uint8_t*>(p); }
+            );
         }
         valid = any <= 1;
     }
@@ -319,8 +332,10 @@ nb::object from_buffer(nb::handle obj, std::optional<DType> dtype, std::optional
         return wrap(std::move(foreign));
     }
     if (copy == false)
-        throw nb::value_error(valid ? "copy=False, but this buffer can only be converted by copying"
-                                    : "copy=False, but this bool buffer holds bytes other than 0 and 1");
+        throw nb::value_error(
+            valid ? "copy=False, but this buffer can only be converted by copying"
+                  : "copy=False, but this bool buffer holds bytes other than 0 and 1"
+        );
 
     NDArray dst = new_array_like(foreign, target);  // keeps the source's memory order
     visit_src(src, [&]<typename S>(std::type_identity<S>) {
@@ -338,7 +353,8 @@ nb::object from_buffer(nb::handle obj, std::optional<DType> dtype, std::optional
                 constexpr std::int64_t w = static_cast<std::int64_t>(sizeof(S));
                 for_pieces(n, kParallelTask, n, [&](std::int64_t, std::int64_t i0, std::int64_t i1) {
                     if (swapped) {  // byte-reversed (a big-endian buffer): the same flat loop
-                        for (std::int64_t i = i0; i < i1; ++i) dp[i] = cast_value<T>(widen(load_swapped<S>(sp + i * w)));
+                        for (std::int64_t i = i0; i < i1; ++i)
+                            dp[i] = cast_value<T>(widen(load_swapped<S>(sp + i * w)));
                     } else {
                         for (std::int64_t i = i0; i < i1; ++i) dp[i] = cast_value<T>(widen(load<S>(sp + i * w)));
                     }
@@ -380,14 +396,16 @@ nb::object from_buffer(nb::handle obj, std::optional<DType> dtype, std::optional
                         dof += idx[d] * ds[d];
                     }
                     const std::int64_t inner = shp[nd - 1], si = ss[nd - 1], di = ds[nd - 1];
-                    const bool dense = si == static_cast<std::int64_t>(sizeof(S)) && di == static_cast<std::int64_t>(sizeof(T));
+                    const bool dense =
+                        si == static_cast<std::int64_t>(sizeof(S)) && di == static_cast<std::int64_t>(sizeof(T));
                     for (std::int64_t i = i0; i < i1;) {
                         const std::int64_t len = std::min(inner - idx[nd - 1], i1 - i);
                         const std::byte* ps = sbase + so;
                         std::byte* pd = dbase + dof;
                         if (dense) {
                             T* dp = reinterpret_cast<T*>(pd);
-                            for (std::int64_t k = 0; k < len; ++k) dp[k] = cast_value<T>(widen(load_one(ps + k * static_cast<std::int64_t>(sizeof(S)))));
+                            for (std::int64_t k = 0; k < len; ++k)
+                                dp[k] = cast_value<T>(widen(load_one(ps + k * static_cast<std::int64_t>(sizeof(S)))));
                         } else {
                             for (std::int64_t k = 0; k < len; ++k, ps += si, pd += di)
                                 store(pd, cast_value<T>(widen(load_one(ps))));
@@ -434,8 +452,7 @@ nb::object asarray(nb::handle obj, nb::handle dtype_obj, nb::handle copy_obj) {
         return from_nested(items, dtype);
     }
     if (PyObject_CheckBuffer(obj.ptr())) return from_buffer(obj, dtype, copy);
-    throw nb::type_error(("cannot convert an object of type '" + py_type_name(obj) +
-                          "' to an array").c_str());
+    throw nb::type_error(("cannot convert an object of type '" + py_type_name(obj) + "' to an array").c_str());
 }
 
 }  // namespace sd

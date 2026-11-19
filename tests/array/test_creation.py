@@ -89,6 +89,7 @@ def test_full_like_converts_implicitly_unless_dtype_is_given():
 
 # ------------------------------------------------------------- arange ----
 
+
 @pytest.mark.parametrize(
     "args",
     [(5,), (2, 9), (9, 2), (2, 9, 3), (9, 2, -3), (-5, 5, 2), (0,), (3, 3), (True, 4), (0, 10**12, 10**11)],
@@ -121,14 +122,21 @@ def test_arange_dtype_and_errors():
     with pytest.raises(TypeError):
         sd.arange(0, 5, dtype=float)
     # NaN or inf anywhere: no length can be computed (numpy raises too)
-    for args in [(math.nan,), (0, math.nan), (0, 1, math.nan), (math.inf,), (0, -math.inf, -1), (0, 1, math.inf),
-                 (-math.inf, 0)]:
+    for args in [
+        (math.nan,),
+        (0, math.nan),
+        (0, 1, math.nan),
+        (math.inf,),
+        (0, -math.inf, -1),
+        (0, 1, math.inf),
+        (-math.inf, 0),
+    ]:
         with pytest.raises(ValueError, match="finite"):
             sd.arange(*args)
         with pytest.raises(ValueError, match="finite"):
             sd.arange(*args, dtype=sd.int64)
     # more than 2**63 - 1 elements: not a "negative dimensions" error
-    for args in [(-2**63, 2**63 - 1), (2**63 - 1, -2**63, -1)]:
+    for args in [(-(2**63), 2**63 - 1), (2**63 - 1, -(2**63), -1)]:
         with pytest.raises(ValueError, match="too many elements"):
             sd.arange(*args)
 
@@ -167,7 +175,9 @@ def test_numpy_integers_are_int_arguments():
             sd.zeros(bad)
         with pytest.raises(TypeError, match=rf"^eye\(\): 'n_rows' must be an int, not {shown}$"):
             sd.eye(bad)
-    with pytest.raises(TypeError, match=r"^zeros\(\): 'shape' must be an int or a tuple of ints, not a tuple holding numpy.bool$"):
+    with pytest.raises(
+        TypeError, match=r"^zeros\(\): 'shape' must be an int or a tuple of ints, not a tuple holding numpy.bool$"
+    ):
         sd.zeros((np.True_,))
     with pytest.raises(OverflowError, match=r"^zeros\(\): 'shape' is out of range$"):
         sd.zeros(np.uint64(2**63))
@@ -182,10 +192,21 @@ def test_bool_options_take_true_or_false():
 
 # ----------------------------------------------------------- linspace ----
 
+
 @pytest.mark.parametrize(
     "start,stop,num,endpoint",
-    [(0, 1, 5, True), (0, 1, 5, False), (-3, 7.5, 11, True), (1, 0, 4, True), (2, 2, 3, True),
-     (0, 1, 1, True), (0, 1, 1, False), (0, 1, 0, True), (0, 1e-320, 3, True), (5, -5, 100, False)],
+    [
+        (0, 1, 5, True),
+        (0, 1, 5, False),
+        (-3, 7.5, 11, True),
+        (1, 0, 4, True),
+        (2, 2, 3, True),
+        (0, 1, 1, True),
+        (0, 1, 1, False),
+        (0, 1, 0, True),
+        (0, 1e-320, 3, True),
+        (5, -5, 100, False),
+    ],
 )
 def test_linspace_matches_numpy_bitwise(start, stop, num, endpoint):
     assert_same(sd.linspace(start, stop, num, endpoint=endpoint), np.linspace(start, stop, num, endpoint=endpoint))
@@ -205,6 +226,7 @@ def test_linspace_complex_and_dtype():
 
 
 # ---------------------------------------------------------------- eye ----
+
 
 @pytest.mark.parametrize("n,m,k", [(3, None, 0), (3, 5, 1), (4, 2, -1), (3, 3, 5), (3, 3, -5), (0, 2, 0)])
 def test_eye(n, m, k, dtype):

@@ -130,8 +130,9 @@ def load(areas: Iterable[str] | None = None) -> list[Case]:
     return out
 
 
-def select(cases: Sequence[Case], *, match: Sequence[str] = (), quick: bool = False,
-           groups: Sequence[str] = ()) -> list[Case]:
+def select(
+    cases: Sequence[Case], *, match: Sequence[str] = (), quick: bool = False, groups: Sequence[str] = ()
+) -> list[Case]:
     """Filter cases: `match` patterns (a glob if it contains * or ?, else a regular
     expression searched in the case id; any pattern may match), `groups` (exact group
     names), `quick` (the quick subset only)."""

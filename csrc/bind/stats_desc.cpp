@@ -76,11 +76,13 @@ NDArray vec(std::int64_t n, DType t = DType::Float64) {
 
 template <class F>
 void each_lane(std::int64_t lanes, std::int64_t n, F&& f) {
-    for_pieces(lanes, std::max<std::int64_t>(1, kParallelTask / std::max<std::int64_t>(n, 1)), lanes * n,
-               [&](std::int64_t, std::int64_t b, std::int64_t e) {
-                   std::vector<double> v;
-                   for (std::int64_t r = b; r < e; ++r) f(r, v);
-               });
+    for_pieces(
+        lanes, std::max<std::int64_t>(1, kParallelTask / std::max<std::int64_t>(n, 1)), lanes * n,
+        [&](std::int64_t, std::int64_t b, std::int64_t e) {
+            std::vector<double> v;
+            for (std::int64_t r = b; r < e; ++r) f(r, v);
+        }
+    );
 }
 
 // std::sort of a long vector on the pool (a single lane, axis=None, is otherwise one thread:
@@ -99,7 +101,8 @@ void sort_long(std::vector<T>& v) {
         return;
     }
     std::vector<T> sample(static_cast<std::size_t>(kBuckets * kOver));
-    for (std::int64_t i = 0; i < kBuckets * kOver; ++i) sample[i] = v[static_cast<std::size_t>(i * (n / (kBuckets * kOver)))];
+    for (std::int64_t i = 0; i < kBuckets * kOver; ++i)
+        sample[i] = v[static_cast<std::size_t>(i * (n / (kBuckets * kOver)))];
     std::sort(sample.begin(), sample.end());
     T split[kBuckets - 1];
     for (std::int64_t b = 1; b < kBuckets; ++b) split[b - 1] = sample[static_cast<std::size_t>(b * kOver)];
@@ -269,11 +272,20 @@ inline void side_add1(double* S, double* C, std::int64_t L, int k, double x, std
     sv = t;
 }
 // rows j0..j1 of lanes r0..r0+L: the sums of x (NaN as 0) into S, C and the NaN counts into bad
-void side_sum(const NDArray& a, std::int64_t r0, std::int64_t L, std::int64_t j0, std::int64_t j1, double* S, double* C,
-              std::int64_t* bad) {
+void side_sum(
+    const NDArray& a,
+    std::int64_t r0,
+    std::int64_t L,
+    std::int64_t j0,
+    std::int64_t j1,
+    double* S,
+    double* C,
+    std::int64_t* bad
+) {
     std::vector<std::uint64_t> okc(static_cast<std::size_t>(L + 1), 0);
     for (std::int64_t j = j0; j < j1; ++j) {
-        const double* row = reinterpret_cast<const double*>(reinterpret_cast<const char*>(a.data) + r0 * 8 + j * a.strides[1]);
+        const double* row =
+            reinterpret_cast<const double*>(reinterpret_cast<const char*>(a.data) + r0 * 8 + j * a.strides[1]);
         const int k = static_cast<int>(j & 7);
         std::int64_t l = 0;
         for (; l + 2 <= L; l += 2) {
@@ -292,16 +304,27 @@ void side_sum(const NDArray& a, std::int64_t r0, std::int64_t L, std::int64_t j0
     for (std::int64_t l = 0; l < L; ++l) bad[l] = (j1 - j0) - static_cast<std::int64_t>(okc[l]);
 }
 // d = x - h[lane] (0 for a NaN), d^k into S[k - 1], C[k - 1] (each 8 x L), k = 1..kmax
-void side_moments(const NDArray& a, std::int64_t r0, std::int64_t L, std::int64_t j0, std::int64_t j1, const double* h,
-                  int kmax, double* const* S, double* const* C) {
+void side_moments(
+    const NDArray& a,
+    std::int64_t r0,
+    std::int64_t L,
+    std::int64_t j0,
+    std::int64_t j1,
+    const double* h,
+    int kmax,
+    double* const* S,
+    double* const* C
+) {
     for (std::int64_t j = j0; j < j1; ++j) {
-        const double* row = reinterpret_cast<const double*>(reinterpret_cast<const char*>(a.data) + r0 * 8 + j * a.strides[1]);
+        const double* row =
+            reinterpret_cast<const double*>(reinterpret_cast<const char*>(a.data) + r0 * 8 + j * a.strides[1]);
         const int k = static_cast<int>(j & 7);
         std::int64_t l = 0;
         for (; l + 2 <= L; l += 2) {
             const float64x2_t x = vld1q_f64(row + l);
             const uint64x2_t ok = vceqq_f64(x, x);
-            const float64x2_t d = vreinterpretq_f64_u64(vandq_u64(vreinterpretq_u64_f64(vsubq_f64(x, vld1q_f64(h + l))), ok));
+            const float64x2_t d =
+                vreinterpretq_f64_u64(vandq_u64(vreinterpretq_u64_f64(vsubq_f64(x, vld1q_f64(h + l))), ok));
             const float64x2_t d2 = vmulq_f64(d, d);
             side_add(S[0], C[0], L, k, &d, l), side_add(S[1], C[1], L, k, &d2, l);
             if (kmax >= 3) {
@@ -350,14 +373,16 @@ nb::tuple moments(nb::handle rows_obj, bool omit, int kmax, bool minmax) {
     std::vector<double> his(static_cast<std::size_t>(lanes));
     const std::int64_t s1 = a.strides[1];
     auto run = [&](auto&& body) {
-        for_pieces(items, std::max<std::int64_t>(1, (1 << 16) / kBlock), lanes * n,
-                   [&](std::int64_t, std::int64_t b0, std::int64_t b1) {
-                       for (std::int64_t it = b0; it < b1; ++it) {
-                           const std::int64_t r = it / nb_, b = it % nb_;
-                           const char* base = reinterpret_cast<const char*>(a.data) + r * a.strides[0];
-                           body(it, r, base, b * kBlock, std::min(n, (b + 1) * kBlock));
-                       }
-                   });
+        for_pieces(
+            items, std::max<std::int64_t>(1, (1 << 16) / kBlock), lanes * n,
+            [&](std::int64_t, std::int64_t b0, std::int64_t b1) {
+                for (std::int64_t it = b0; it < b1; ++it) {
+                    const std::int64_t r = it / nb_, b = it % nb_;
+                    const char* base = reinterpret_cast<const char*>(a.data) + r * a.strides[0];
+                    body(it, r, base, b * kBlock, std::min(n, (b + 1) * kBlock));
+                }
+            }
+        );
     };
     // lanes side by side (see side_sum): groups of kSideLanes lanes x blocks on the pool
     bool side = false;
@@ -390,13 +415,13 @@ nb::tuple moments(nb::handle rows_obj, bool omit, int kmax, bool minmax) {
             });
         else
 #endif
-        run([&](std::int64_t it, std::int64_t, const char* base, std::int64_t j0, std::int64_t j1) {
-            P1& q = p1[static_cast<std::size_t>(it)];
-            if (s1 == 8 && !minmax) {  // contiguous: NaNs counted, summed as 0 (selects, no branch)
-                const double* xs = reinterpret_cast<const double*>(base);
-                std::int64_t bad = 0;
+            run([&](std::int64_t it, std::int64_t, const char* base, std::int64_t j0, std::int64_t j1) {
+                P1& q = p1[static_cast<std::size_t>(it)];
+                if (s1 == 8 && !minmax) {  // contiguous: NaNs counted, summed as 0 (selects, no branch)
+                    const double* xs = reinterpret_cast<const double*>(base);
+                    std::int64_t bad = 0;
 #if defined(__aarch64__)
-                bad = sum_block(q.s, xs, j0, j1);
+                    bad = sum_block(q.s, xs, j0, j1);
 #else
                 for (std::int64_t j = j0; j < j1; ++j) {
                     const bool nan = std::isnan(xs[j]);
@@ -404,21 +429,21 @@ nb::tuple moments(nb::handle rows_obj, bool omit, int kmax, bool minmax) {
                     q.s.add(j, nan ? 0.0 : xs[j]);
                 }
 #endif
-                q.nan = bad != 0;
-                q.cnt = (j1 - j0) - bad;
-                return;
-            }
-            for (std::int64_t j = j0; j < j1; ++j) {
-                const double x = *reinterpret_cast<const double*>(base + j * s1);
-                if (std::isnan(x)) {
-                    q.nan = true;
-                    continue;
+                    q.nan = bad != 0;
+                    q.cnt = (j1 - j0) - bad;
+                    return;
                 }
-                q.s.add(j, x);
-                ++q.cnt;
-                if (minmax) q.lo = std::min(q.lo, x), q.hi = std::max(q.hi, x);
-            }
-        });
+                for (std::int64_t j = j0; j < j1; ++j) {
+                    const double x = *reinterpret_cast<const double*>(base + j * s1);
+                    if (std::isnan(x)) {
+                        q.nan = true;
+                        continue;
+                    }
+                    q.s.add(j, x);
+                    ++q.cnt;
+                    if (minmax) q.lo = std::min(q.lo, x), q.hi = std::max(q.hi, x);
+                }
+            });
         for (std::int64_t r = 0; r < lanes; ++r) {
             Neumaier t;
             std::int64_t c = 0;
@@ -440,7 +465,8 @@ nb::tuple moments(nb::handle rows_obj, bool omit, int kmax, bool minmax) {
             run_side([&](std::int64_t r0, std::int64_t L, std::int64_t b, std::int64_t j0, std::int64_t j1) {
                 std::vector<double> buf(static_cast<std::size_t>(8 * 8 * L), 0.0);
                 double *S[4], *C[4];
-                for (int k = 0; k < 4; ++k) S[k] = buf.data() + (2 * k) * 8 * L, C[k] = buf.data() + (2 * k + 1) * 8 * L;
+                for (int k = 0; k < 4; ++k)
+                    S[k] = buf.data() + (2 * k) * 8 * L, C[k] = buf.data() + (2 * k + 1) * 8 * L;
                 side_moments(a, r0, L, j0, j1, his.data() + r0, kmax, S, C);
                 for (std::int64_t l = 0; l < L; ++l) {
                     P2& q = p2v[static_cast<std::size_t>((r0 + l) * nb_ + b)];
@@ -450,14 +476,14 @@ nb::tuple moments(nb::handle rows_obj, bool omit, int kmax, bool minmax) {
             });
         else
 #endif
-        run([&](std::int64_t it, std::int64_t r, const char* base, std::int64_t j0, std::int64_t j1) {
-            const double h = his[static_cast<std::size_t>(r)];
-            if (!std::isfinite(h)) return;
-            P2& q = p2v[static_cast<std::size_t>(it)];
-            if (s1 == 8) {
-                const double* xs = reinterpret_cast<const double*>(base);
+            run([&](std::int64_t it, std::int64_t r, const char* base, std::int64_t j0, std::int64_t j1) {
+                const double h = his[static_cast<std::size_t>(r)];
+                if (!std::isfinite(h)) return;
+                P2& q = p2v[static_cast<std::size_t>(it)];
+                if (s1 == 8) {
+                    const double* xs = reinterpret_cast<const double*>(base);
 #if defined(__aarch64__)
-                moment_block(q.s, xs, j0, j1, h, kmax);
+                    moment_block(q.s, xs, j0, j1, h, kmax);
 #else
                 for (std::int64_t j = j0; j < j1; ++j) {
                     const bool nan = std::isnan(xs[j]);
@@ -467,17 +493,17 @@ nb::tuple moments(nb::handle rows_obj, bool omit, int kmax, bool minmax) {
                     if (kmax >= 4) q.s[3].add(j, d2 * d2);
                 }
 #endif
-                return;
-            }
-            for (std::int64_t j = j0; j < j1; ++j) {
-                const double x = *reinterpret_cast<const double*>(base + j * s1);
-                if (std::isnan(x)) continue;
-                const double d = x - h, d2 = d * d;
-                q.s[0].add(j, d), q.s[1].add(j, d2);
-                if (kmax >= 3) q.s[2].add(j, d2 * d);
-                if (kmax >= 4) q.s[3].add(j, d2 * d2);
-            }
-        });
+                    return;
+                }
+                for (std::int64_t j = j0; j < j1; ++j) {
+                    const double x = *reinterpret_cast<const double*>(base + j * s1);
+                    if (std::isnan(x)) continue;
+                    const double d = x - h, d2 = d * d;
+                    q.s[0].add(j, d), q.s[1].add(j, d2);
+                    if (kmax >= 3) q.s[2].add(j, d2 * d);
+                    if (kmax >= 4) q.s[3].add(j, d2 * d2);
+                }
+            });
         for (std::int64_t r = 0; r < lanes; ++r) {
             const double h = his[static_cast<std::size_t>(r)];
             if (std::isnan(h)) {
@@ -501,8 +527,10 @@ nb::tuple moments(nb::handle rows_obj, bool omit, int kmax, bool minmax) {
             p4[r] = kmax >= 4 ? S4 - 4.0 * lo * S3 + 6.0 * l2 * S2 - 3.0 * l2 * l2 : kNaN;
         }
     }
-    return nb::make_tuple(wrap(std::move(cnt)), wrap(std::move(mean)), wrap(std::move(m2)), wrap(std::move(m3)),
-                          wrap(std::move(m4)), wrap(std::move(mn)), wrap(std::move(mx)), wrap(std::move(ml)));
+    return nb::make_tuple(
+        wrap(std::move(cnt)), wrap(std::move(mean)), wrap(std::move(m2)), wrap(std::move(m3)), wrap(std::move(m4)),
+        wrap(std::move(mn)), wrap(std::move(mx)), wrap(std::move(ml))
+    );
 }
 
 // d^k for an integer k (repeated squaring: exact as the products go), else pow
@@ -615,7 +643,9 @@ NDArray rank_rows(const NDArray& a, int method, bool omit) {
     }
     return out;
 }
-nb::object rank(nb::handle rows_obj, int method, bool omit) { return wrap(rank_rows(lanes_arg(rows_obj), method, omit)); }
+nb::object rank(nb::handle rows_obj, int method, bool omit) {
+    return wrap(rank_rows(lanes_arg(rows_obj), method, omit));
+}
 
 // (mode, count) per lane: the most frequent value, the smallest among ties. NaN counts as a
 // value (all NaNs equal) unless omit (scipy); an empty lane is (NaN, 0).

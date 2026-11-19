@@ -39,8 +39,8 @@ inline void vf_atan2(double* o, const double* a, const double* b, const int* n) 
 
 namespace vforce_detail {
 
-inline constexpr std::int64_t kChunk = 1024;        // stack buffer, in elements (8 KB)
-inline constexpr std::int64_t kMaxCall = 1 << 24;   // vForce takes an int count
+inline constexpr std::int64_t kChunk = 1024;  // stack buffer, in elements (8 KB)
+inline constexpr std::int64_t kMaxCall = 1 << 24;  // vForce takes an int count
 
 // Operand i of a chunk as a contiguous pointer: in place when it already is,
 // else gathered into `buf` (a stride-0 scalar fills it).
@@ -57,8 +57,9 @@ inline void scatter(const double* buf, std::byte* p, std::int64_t stride, std::i
 }  // namespace vforce_detail
 
 // The kernel bodies: any strides, n elements.
-inline void vforce_unary_run(VUnary f, const std::byte* x, std::int64_t sx, std::byte* o, std::int64_t so,
-                             std::int64_t n) {
+inline void vforce_unary_run(
+    VUnary f, const std::byte* x, std::int64_t sx, std::byte* o, std::int64_t so, std::int64_t n
+) {
     using namespace vforce_detail;
     if (sx == sizeof(double) && so == sizeof(double)) {  // contiguous: straight to vForce
         for (std::int64_t off = 0; off < n; off += kMaxCall) {
@@ -78,8 +79,16 @@ inline void vforce_unary_run(VUnary f, const std::byte* x, std::int64_t sx, std:
     }
 }
 
-inline void vforce_binary_run(VBinary f, const std::byte* a, std::int64_t sa, const std::byte* b, std::int64_t sb,
-                              std::byte* o, std::int64_t so, std::int64_t n) {
+inline void vforce_binary_run(
+    VBinary f,
+    const std::byte* a,
+    std::int64_t sa,
+    const std::byte* b,
+    std::int64_t sb,
+    std::byte* o,
+    std::int64_t so,
+    std::int64_t n
+) {
     using namespace vforce_detail;
     double ba[kChunk], bb[kChunk], out[kChunk];
     for (std::int64_t off = 0; off < n; off += kChunk) {

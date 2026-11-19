@@ -143,11 +143,26 @@ int main() {
     }
     std::vector<std::uint8_t> o(n);
     std::printf("rule 3: int64 < float64, 1M elements (us)\n");
-    std::printf("  rounded (now)                 %8.1f\n", best_us([&] { less_rounded(small.data(), f.data(), o.data(), n); bsink = o[n / 2]; }));
-    std::printf("  exact, ints within 2^53       %8.1f\n", best_us([&] { less_exact(small.data(), f.data(), o.data(), n); bsink = o[n / 2]; }));
-    std::printf("  exact 2-pass, within 2^53     %8.1f\n", best_us([&] { less_exact2(small.data(), f.data(), o.data(), n); bsink = o[n / 2]; }));
-    std::printf("  exact 2-pass, mostly outside  %8.1f\n", best_us([&] { less_exact2(big.data(), f.data(), o.data(), n); bsink = o[n / 2]; }));
-    std::printf("  exact, ints mostly outside    %8.1f\n", best_us([&] { less_exact(big.data(), f.data(), o.data(), n); bsink = o[n / 2]; }));
+    std::printf("  rounded (now)                 %8.1f\n", best_us([&] {
+                    less_rounded(small.data(), f.data(), o.data(), n);
+                    bsink = o[n / 2];
+                }));
+    std::printf("  exact, ints within 2^53       %8.1f\n", best_us([&] {
+                    less_exact(small.data(), f.data(), o.data(), n);
+                    bsink = o[n / 2];
+                }));
+    std::printf("  exact 2-pass, within 2^53     %8.1f\n", best_us([&] {
+                    less_exact2(small.data(), f.data(), o.data(), n);
+                    bsink = o[n / 2];
+                }));
+    std::printf("  exact 2-pass, mostly outside  %8.1f\n", best_us([&] {
+                    less_exact2(big.data(), f.data(), o.data(), n);
+                    bsink = o[n / 2];
+                }));
+    std::printf("  exact, ints mostly outside    %8.1f\n", best_us([&] {
+                    less_exact(big.data(), f.data(), o.data(), n);
+                    bsink = o[n / 2];
+                }));
     std::printf("rule 11: mean(int64), 1M elements (us)\n");
     std::printf("  double pairwise (now)         %8.1f\n", best_us([&] { sink = mean_double(small.data(), n); }));
     std::printf("  int128 scalar (frame)         %8.1f\n", best_us([&] { sink = mean_int128(small.data(), n); }));
@@ -157,6 +172,12 @@ int main() {
     std::vector<I> hi;
     std::vector<std::uint64_t> lo;
     std::printf("rule 11: mean(int64, axis=0) of (1000, 1000) (us)\n");
-    std::printf("  double accumulators (now)     %8.1f\n", best_us([&] { axis0_double(small.data(), rows, cols, out.data()); sink = out[7]; }));
-    std::printf("  int64 hi/lo accumulators      %8.1f\n", best_us([&] { axis0_split(small.data(), rows, cols, out.data(), hi, lo); sink = out[7]; }));
+    std::printf("  double accumulators (now)     %8.1f\n", best_us([&] {
+                    axis0_double(small.data(), rows, cols, out.data());
+                    sink = out[7];
+                }));
+    std::printf("  int64 hi/lo accumulators      %8.1f\n", best_us([&] {
+                    axis0_split(small.data(), rows, cols, out.data(), hi, lo);
+                    sink = out[7];
+                }));
 }

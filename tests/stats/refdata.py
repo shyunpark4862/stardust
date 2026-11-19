@@ -25,15 +25,39 @@ SUBNORMAL_ABS = 45 * 2.0**-1074
 MIXED = {"logpdf", "entropy"}
 MIXED_FILES = {"weibull_skewness", "weibull_kurtosis", "gev_skewness", "gev_kurtosis"}  # GEV's W = Y^c is a Weibull
 
-CLASSES = {"binomial": "Binomial", "bernoulli": "Bernoulli", "poisson": "Poisson", "geometric": "Geometric",
-           "negativebinomial": "NegativeBinomial", "hypergeometric": "Hypergeometric", "discreteuniform": "DiscreteUniform",
-           "betabinomial": "BetaBinomial", "logseries": "LogSeries", "zipf": "Zipf",
-           "normal": "Normal", "exponential": "Exponential", "uniform": "Uniform", "laplace": "Laplace",
-           "cauchy": "Cauchy", "lognormal": "LogNormal", "weibull": "Weibull", "studentt": "StudentT",
-           "chisquared": "ChiSquared", "f": "F", "gamma": "Gamma", "beta": "Beta",
-           "logistic": "Logistic", "gumbel": "Gumbel", "gev": "GEV", "pareto": "Pareto", "rayleigh": "Rayleigh",
-           "inversegamma": "InverseGamma", "noncentralchisquared": "NoncentralChiSquared",
-           "noncentralt": "NoncentralT", "noncentralf": "NoncentralF"}
+CLASSES = {
+    "binomial": "Binomial",
+    "bernoulli": "Bernoulli",
+    "poisson": "Poisson",
+    "geometric": "Geometric",
+    "negativebinomial": "NegativeBinomial",
+    "hypergeometric": "Hypergeometric",
+    "discreteuniform": "DiscreteUniform",
+    "betabinomial": "BetaBinomial",
+    "logseries": "LogSeries",
+    "zipf": "Zipf",
+    "normal": "Normal",
+    "exponential": "Exponential",
+    "uniform": "Uniform",
+    "laplace": "Laplace",
+    "cauchy": "Cauchy",
+    "lognormal": "LogNormal",
+    "weibull": "Weibull",
+    "studentt": "StudentT",
+    "chisquared": "ChiSquared",
+    "f": "F",
+    "gamma": "Gamma",
+    "beta": "Beta",
+    "logistic": "Logistic",
+    "gumbel": "Gumbel",
+    "gev": "GEV",
+    "pareto": "Pareto",
+    "rayleigh": "Rayleigh",
+    "inversegamma": "InverseGamma",
+    "noncentralchisquared": "NoncentralChiSquared",
+    "noncentralt": "NoncentralT",
+    "noncentralf": "NoncentralF",
+}
 
 
 def names():
@@ -44,7 +68,7 @@ def split(name):
     """('normal', 'cdf') from 'normal_cdf' (the method may hold underscores)."""
     for dist in sorted(CLASSES, key=len, reverse=True):
         if name.startswith(dist + "_"):
-            return dist, name[len(dist) + 1:]
+            return dist, name[len(dist) + 1 :]
     raise KeyError(name)
 
 

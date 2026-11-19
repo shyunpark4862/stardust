@@ -105,19 +105,23 @@ NB_MODULE(_core, m) {
     m.def("_pool_smoke_test", &pool_smoke_test, nb::arg("ntasks"));
     // API.md §3. Results never depend on the thread count
     // (docs/design/array.md §10.5).
-    m.def("set_num_threads", [](nb::handle n) {
-        sd::call_named("set_num_threads", [&] {
-            constexpr const char* kRange = "'n' must be between 1 and 1024";
-            std::int64_t v = 0;
-            try {
-                v = sd::parse_int(n, "n");
-            } catch (const std::overflow_error&) {  // out of 1..1024 like any other int: ValueError (API.md §3)
-                throw nb::value_error(kRange);
-            }
-            if (v < 1 || v > 1024) throw nb::value_error(kRange);
-            sd::parallel::set_num_threads(static_cast<int>(v));
-        });
-    }, nb::arg().none());
+    m.def(
+        "set_num_threads",
+        [](nb::handle n) {
+            sd::call_named("set_num_threads", [&] {
+                constexpr const char* kRange = "'n' must be between 1 and 1024";
+                std::int64_t v = 0;
+                try {
+                    v = sd::parse_int(n, "n");
+                } catch (const std::overflow_error&) {  // out of 1..1024 like any other int: ValueError (API.md §3)
+                    throw nb::value_error(kRange);
+                }
+                if (v < 1 || v > 1024) throw nb::value_error(kRange);
+                sd::parallel::set_num_threads(static_cast<int>(v));
+            });
+        },
+        nb::arg().none()
+    );
     m.def("get_num_threads", &sd::parallel::num_threads);
     // the type name messages show for a value (`not list`, `not numpy.bool`): bind/errors.cpp
     m.def("_type_name", [](nb::handle v) { return sd::py_type_name(v); }, nb::arg().none());

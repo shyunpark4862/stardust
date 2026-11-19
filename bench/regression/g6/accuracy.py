@@ -41,26 +41,34 @@ import regref  # noqa: E402
 RSCRIPT = "/opt/homebrew/bin/Rscript"
 
 R_FORMULAS = {
-    "Misra1a": "y ~ b1*(1-exp(-b2*x))", "BoxBOD": "y ~ b1*(1-exp(-b2*x))",
-    "Chwirut1": "y ~ exp(-b1*x)/(b2+b3*x)", "Chwirut2": "y ~ exp(-b1*x)/(b2+b3*x)",
+    "Misra1a": "y ~ b1*(1-exp(-b2*x))",
+    "BoxBOD": "y ~ b1*(1-exp(-b2*x))",
+    "Chwirut1": "y ~ exp(-b1*x)/(b2+b3*x)",
+    "Chwirut2": "y ~ exp(-b1*x)/(b2+b3*x)",
     "Lanczos1": "y ~ b1*exp(-b2*x) + b3*exp(-b4*x) + b5*exp(-b6*x)",
     "Lanczos2": "y ~ b1*exp(-b2*x) + b3*exp(-b4*x) + b5*exp(-b6*x)",
     "Lanczos3": "y ~ b1*exp(-b2*x) + b3*exp(-b4*x) + b5*exp(-b6*x)",
     "Gauss1": "y ~ b1*exp(-b2*x) + b3*exp(-(x-b4)^2/b5^2) + b6*exp(-(x-b7)^2/b8^2)",
     "Gauss2": "y ~ b1*exp(-b2*x) + b3*exp(-(x-b4)^2/b5^2) + b6*exp(-(x-b7)^2/b8^2)",
     "Gauss3": "y ~ b1*exp(-b2*x) + b3*exp(-(x-b4)^2/b5^2) + b6*exp(-(x-b7)^2/b8^2)",
-    "DanWood": "y ~ b1*x^b2", "Misra1b": "y ~ b1*(1-(1+b2*x/2)^(-2))",
+    "DanWood": "y ~ b1*x^b2",
+    "Misra1b": "y ~ b1*(1-(1+b2*x/2)^(-2))",
     "Kirby2": "y ~ (b1 + b2*x + b3*x^2)/(1 + b4*x + b5*x^2)",
     "Hahn1": "y ~ (b1+b2*x+b3*x^2+b4*x^3)/(1+b5*x+b6*x^2+b7*x^3)",
     "Thurber": "y ~ (b1+b2*x+b3*x^2+b4*x^3)/(1+b5*x+b6*x^2+b7*x^3)",
-    "Nelson": "log(y) ~ b1 - b2*x1*exp(-b3*x2)", "MGH17": "y ~ b1 + b2*exp(-x*b4) + b3*exp(-x*b5)",
-    "Misra1c": "y ~ b1*(1-(1+2*b2*x)^(-.5))", "Misra1d": "y ~ b1*b2*x*((1+b2*x)^(-1))",
+    "Nelson": "log(y) ~ b1 - b2*x1*exp(-b3*x2)",
+    "MGH17": "y ~ b1 + b2*exp(-x*b4) + b3*exp(-x*b5)",
+    "Misra1c": "y ~ b1*(1-(1+2*b2*x)^(-.5))",
+    "Misra1d": "y ~ b1*b2*x*((1+b2*x)^(-1))",
     "Roszman1": "y ~ b1 - b2*x - atan(b3/(x-b4))/pi",
     "ENSO": "y ~ b1 + b2*cos(2*pi*x/12) + b3*sin(2*pi*x/12) + b5*cos(2*pi*x/b4) + b6*sin(2*pi*x/b4) + "
-            "b8*cos(2*pi*x/b7) + b9*sin(2*pi*x/b7)",
-    "MGH09": "y ~ b1*(x^2+x*b2)/(x^2+x*b3+b4)", "Rat42": "y ~ b1/(1+exp(b2-b3*x))",
-    "MGH10": "y ~ b1*exp(b2/(x+b3))", "Eckerle4": "y ~ (b1/b2)*exp(-0.5*((x-b3)/b2)^2)",
-    "Rat43": "y ~ b1/((1+exp(b2-b3*x))^(1/b4))", "Bennett5": "y ~ b1*(b2+x)^(-1/b3)",
+    "b8*cos(2*pi*x/b7) + b9*sin(2*pi*x/b7)",
+    "MGH09": "y ~ b1*(x^2+x*b2)/(x^2+x*b3+b4)",
+    "Rat42": "y ~ b1/(1+exp(b2-b3*x))",
+    "MGH10": "y ~ b1*exp(b2/(x+b3))",
+    "Eckerle4": "y ~ (b1/b2)*exp(-0.5*((x-b3)/b2)^2)",
+    "Rat43": "y ~ b1/((1+exp(b2-b3*x))^(1/b4))",
+    "Bennett5": "y ~ b1*(b2+x)^(-1/b3)",
 }
 METHODS = ["sd", "sd jac", "sd no polish", "scipy lm", "scipy trf", "R nls", "R nlsLM"]
 
@@ -68,8 +76,7 @@ METHODS = ["sd", "sd jac", "sd no polish", "scipy lm", "scipy trf", "R nls", "R 
 def lre_pair(d, params, bse):
     if params is None or bse is None or not all(math.isfinite(v) for v in list(params) + list(bse)):
         return None
-    return (min(N.lre(v, c) for v, c in zip(params, d["params"])),
-            min(N.lre(v, c) for v, c in zip(bse, d["bse"])))
+    return (min(N.lre(v, c) for v, c in zip(params, d["params"])), min(N.lre(v, c) for v, c in zip(bse, d["bse"])))
 
 
 def run_sd(d, st, jac, polish=True):
@@ -90,13 +97,14 @@ def run_sd(d, st, jac, polish=True):
 
 def run_scipy(d, st, method):
     from scipy.optimize import curve_fit
+
     x, y = N.data(d, np)
     f, _ = N.model(d["name"], np)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         try:
             popt, pcov, info, _, _ = curve_fit(f, x, y, p0=[float(v) for v in d[st]], method=method, full_output=True)
-        except (RuntimeError, ValueError, FloatingPointError, OverflowError):
+        except RuntimeError, ValueError, FloatingPointError, OverflowError:
             return None, None
     return lre_pair(d, popt, np.sqrt(np.diag(pcov))), info["nfev"]
 
@@ -106,11 +114,15 @@ def r_script():
     for name in N.NAMES:
         d = N.load(name)
         if name == "Nelson":
-            lines.append(f"y <- c({', '.join(d['y'])}); x1 <- c({', '.join(r[0] for r in d['x'])}); "
-                         f"x2 <- c({', '.join(r[1] for r in d['x'])}); dat <- data.frame(y = y, x1 = x1, x2 = x2)")
+            lines.append(
+                f"y <- c({', '.join(d['y'])}); x1 <- c({', '.join(r[0] for r in d['x'])}); "
+                f"x2 <- c({', '.join(r[1] for r in d['x'])}); dat <- data.frame(y = y, x1 = x1, x2 = x2)"
+            )
         else:
-            lines.append(f"y <- c({', '.join(d['y'])}); x <- c({', '.join(r[0] for r in d['x'])}); "
-                         "dat <- data.frame(y = y, x = x)")
+            lines.append(
+                f"y <- c({', '.join(d['y'])}); x <- c({', '.join(r[0] for r in d['x'])}); "
+                "dat <- data.frame(y = y, x = x)"
+            )
         for st in ("start1", "start2"):
             start = ", ".join(f"b{j + 1} = {v}" for j, v in enumerate(d[st]))
             for fn in ("nls", "nlsLM"):
@@ -119,7 +131,8 @@ def r_script():
                     "error = function(e) NULL)\n"
                     f"if (is.null(r)) cat('RES {name} {st} {fn} fail\\n') else {{ s <- summary(r)$coefficients; "
                     f"cat('RES {name} {st} {fn} ok', paste(sprintf('%.17g', s[, 1]), collapse = ','), "
-                    "paste(sprintf('%.17g', s[, 2]), collapse = ','), '\\n') }")
+                    "paste(sprintf('%.17g', s[, 2]), collapse = ','), '\\n') }"
+                )
     return "\n".join(lines) + "\n"
 
 
@@ -187,6 +200,7 @@ def fd_table():
         def err(Jd):
             Jd = np.asarray(Jd.tolist())
             return max(np.max(np.abs(Jd[:, j] - Ja[:, j])) / np.max(np.abs(Ja[:, j])) for j in range(len(th)))
+
         fixed = []
         for e in (-8, -10, -12, -14):
             cols = []
@@ -229,14 +243,19 @@ def main():
         for m in METHODS:
             vals = [res.get((name, st, m)) for name in N.NAMES]
             ok = [v for v in vals if v is not None]
-            summ.append(f"{m}: fail {len(vals) - len(ok)}, min params {min(v[0] for v in ok):.1f}, "
-                        f"median params {np.median([v[0] for v in ok]):.1f}, min bse {min(v[1] for v in ok):.1f}, "
-                        f"median bse {np.median([v[1] for v in ok]):.1f}")
+            summ.append(
+                f"{m}: fail {len(vals) - len(ok)}, min params {min(v[0] for v in ok):.1f}, "
+                f"median params {np.median([v[0] for v in ok]):.1f}, min bse {min(v[1] for v in ok):.1f}, "
+                f"median bse {np.median([v[1] for v in ok]):.1f}"
+            )
         print("\n".join(summ))
         print()
     print("## calls of f (nfev)")
-    print("| problem | " + " | ".join(f"{m} {s}" for s in ("1", "2") for m in ("sd", "sd no polish", "scipy lm",
-                                                                                  "scipy trf")) + " |")
+    print(
+        "| problem | "
+        + " | ".join(f"{m} {s}" for s in ("1", "2") for m in ("sd", "sd no polish", "scipy lm", "scipy trf"))
+        + " |"
+    )
     print("|---|" + "---:|" * 8)
     for name in N.NAMES:
         cells = []
@@ -257,8 +276,10 @@ def main():
                 allc[k].append(c)
     for k, lab in enumerate(("differences start1", "jac start1", "differences start2", "jac start2")):
         v = allc[k]
-        print(f"{lab}: max params {max(c[0] for c in v):.1e}, median {np.median([c[0] for c in v]):.1e}; "
-              f"max bse {max(c[1] for c in v):.1e}, median {np.median([c[1] for c in v]):.1e}")
+        print(
+            f"{lab}: max params {max(c[0] for c in v):.1e}, median {np.median([c[0] for c in v]):.1e}; "
+            f"max bse {max(c[1] for c in v):.1e}, median {np.median([c[1] for c in v]):.1e}"
+        )
     print()
     print("## accurate differences vs the analytic Jacobian (certified parameters)")
     print("| problem | 2^-8 | 2^-10 | 2^-12 | 2^-14 | chosen | calls | chosen exponents |")

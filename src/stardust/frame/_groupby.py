@@ -86,8 +86,7 @@ class GroupBy(Reductions):
                 raise ValueError(f"{k!r} is a key column, not a value column")
         if len(set(names)) != len(names):
             raise ValueError("value columns must be unique")
-        return GroupBy(self._df, self._by, sort=self._sort, dropna=self._dropna, values=names,
-                       grouping=self._grouping)
+        return GroupBy(self._df, self._by, sort=self._sort, dropna=self._dropna, values=names, grouping=self._grouping)
 
     # No iteration over groups (docs/api/frame.md §7): without this, Python
     # would iterate through __getitem__ with 0, 1, ...
@@ -131,7 +130,9 @@ class GroupBy(Reductions):
         """agg("sum") for every value column, agg({"c": "sum"}) per column, or
         agg(out=("c", "sum")) with chosen result names (docs/api/frame.md §7.4)."""
         if (func is None) == (not named):
-            raise TypeError("agg(): pass either one function name / dict, or named aggregations (name=(column, function))")
+            raise TypeError(
+                "agg(): pass either one function name / dict, or named aggregations (name=(column, function))"
+            )
         if isinstance(func, str):
             if func == "size":  # agg("size") is size(): one "size" column (docs/api/frame.md §7.4)
                 return self._result({"size": self._apply("size", None, "agg")}, "agg")
@@ -140,14 +141,18 @@ class GroupBy(Reductions):
             plan = {}
             for col, f in func.items():
                 if not isinstance(f, str):
-                    raise TypeError(f"agg(): one function name per column; for several, use named aggregations (got {f!r})")
+                    raise TypeError(
+                        f"agg(): one function name per column; for several, use named aggregations (got {f!r})"
+                    )
                 plan[col] = (col, f)
         elif isinstance(func, (list, tuple)):
             raise TypeError("agg(): a list of functions is not supported (no MultiIndex); use named aggregations")
         elif func is not None:
             what = "a callable is not supported" if callable(func) else f"{type_name(func)} is not supported"
-            raise TypeError(f"agg(): {what}; pass a function name (a str such as 'sum'), a dict of "
-                            "{column: function name}, or named aggregations (name=(column, function name))")
+            raise TypeError(
+                f"agg(): {what}; pass a function name (a str such as 'sum'), a dict of "
+                "{column: function name}, or named aggregations (name=(column, function name))"
+            )
         else:
             plan = {}
             for out, spec in named.items():

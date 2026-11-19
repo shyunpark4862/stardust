@@ -70,21 +70,29 @@ nb::object det(nb::handle xo) {
     return with_type(computes_complex(x.dtype()), [&]<class T>(std::type_identity<T>) -> nb::object {
         if (b.ndim() == 0) {
             T d{};
-            const Failure f = run_batch(b, cost(kLU, double(n) * n), [&](std::int64_t, const std::int64_t* off, Scratch& s) {
-                return det_body<T>(x, n, off[0], s, [&](const T* lu, const lint* ipiv, bool sing) {
-                    d = det_of(lu, ipiv, n, sing);
-                });
-            }, lu_task_cap(n, 0, true));
+            const Failure f = run_batch(
+                b, cost(kLU, double(n) * n),
+                [&](std::int64_t, const std::int64_t* off, Scratch& s) {
+                    return det_body<T>(x, n, off[0], s, [&](const T* lu, const lint* ipiv, bool sing) {
+                        d = det_of(lu, ipiv, n, sing);
+                    });
+                },
+                lu_task_cap(n, 0, true)
+            );
             if (f) raise(b, f, "det", "x");
             return py_scalar(d);
         }
         Out out = alloc_c(b.shape(), dtype_of<T>());
         T* res = out.as<T>();
-        const Failure f = run_batch(b, cost(kLU, double(n) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
-            return det_body<T>(x, n, off[0], s, [&](const T* lu, const lint* ipiv, bool sing) {
-                res[i] = det_of(lu, ipiv, n, sing);
-            });
-        }, lu_task_cap(n, 0, true));
+        const Failure f = run_batch(
+            b, cost(kLU, double(n) * n),
+            [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+                return det_body<T>(x, n, off[0], s, [&](const T* lu, const lint* ipiv, bool sing) {
+                    res[i] = det_of(lu, ipiv, n, sing);
+                });
+            },
+            lu_task_cap(n, 0, true)
+        );
         if (f) raise(b, f, "det", "x");
         return to_array(out);
     });
@@ -100,11 +108,15 @@ nb::object slogdet(nb::handle xo) {
         if (b.ndim() == 0) {
             T sign{};
             double logabs = 0;
-            const Failure f = run_batch(b, cost(kLU, double(n) * n), [&](std::int64_t, const std::int64_t* off, Scratch& s) {
-                return det_body<T>(x, n, off[0], s, [&](const T* lu, const lint* ipiv, bool sing) {
-                    sign_logabs(lu, ipiv, n, sing, sign, logabs);
-                });
-            }, lu_task_cap(n, 0, true));
+            const Failure f = run_batch(
+                b, cost(kLU, double(n) * n),
+                [&](std::int64_t, const std::int64_t* off, Scratch& s) {
+                    return det_body<T>(x, n, off[0], s, [&](const T* lu, const lint* ipiv, bool sing) {
+                        sign_logabs(lu, ipiv, n, sing, sign, logabs);
+                    });
+                },
+                lu_task_cap(n, 0, true)
+            );
             if (f) raise(b, f, "slogdet", "x");
             return make_slogdet(py_scalar(sign), py_scalar(logabs));
         }
@@ -112,11 +124,15 @@ nb::object slogdet(nb::handle xo) {
         Out logabs_out = alloc_c(b.shape(), DType::Float64);
         T* sign = sign_out.as<T>();
         double* logabs = logabs_out.as<double>();
-        const Failure f = run_batch(b, cost(kLU, double(n) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
-            return det_body<T>(x, n, off[0], s, [&](const T* lu, const lint* ipiv, bool sing) {
-                sign_logabs(lu, ipiv, n, sing, sign[i], logabs[i]);
-            });
-        }, lu_task_cap(n, 0, true));
+        const Failure f = run_batch(
+            b, cost(kLU, double(n) * n),
+            [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+                return det_body<T>(x, n, off[0], s, [&](const T* lu, const lint* ipiv, bool sing) {
+                    sign_logabs(lu, ipiv, n, sing, sign[i], logabs[i]);
+                });
+            },
+            lu_task_cap(n, 0, true)
+        );
         if (f) raise(b, f, "slogdet", "x");
         return make_slogdet(to_array(sign_out), to_array(logabs_out));
     });
@@ -130,14 +146,18 @@ nb::object inv(nb::handle xo) {
     return with_type(computes_complex(x.dtype()), [&]<class T>(std::type_identity<T>) -> nb::object {
         Out out = alloc_matrices(b.shape(), n, n, dtype_of<T>());
         T* res = out.as<T>();
-        const Failure f = run_batch(b, cost(kLU, double(n) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
-            T* a;
-            lint* ipiv;
-            if (const int code = lu_factor<T>(x, off[0], n, s, a, ipiv)) return code;
-            LapackSlot<T> rs(res + i * n * n, n * n, s, Scratch::kAlign0);
-            lu_inverse(a, ipiv, n, rs.get());  // this element's slot, filled in place
-            return 0;
-        }, lu_task_cap(n, n, true));
+        const Failure f = run_batch(
+            b, cost(kLU, double(n) * n),
+            [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+                T* a;
+                lint* ipiv;
+                if (const int code = lu_factor<T>(x, off[0], n, s, a, ipiv)) return code;
+                LapackSlot<T> rs(res + i * n * n, n * n, s, Scratch::kAlign0);
+                lu_inverse(a, ipiv, n, rs.get());  // this element's slot, filled in place
+                return 0;
+            },
+            lu_task_cap(n, n, true)
+        );
         if (f) raise(b, f, "inv", "x");
         return to_array(out);
     });
@@ -155,16 +175,20 @@ nb::object solve(nb::handle ao, nb::handle bo) {
     return with_type(complex, [&]<class T>(std::type_identity<T>) -> nb::object {
         Out out = r.vec ? alloc_vectors(b.shape(), n, dtype_of<T>()) : alloc_matrices(b.shape(), n, k, dtype_of<T>());
         T* res = out.as<T>();
-        const Failure f = run_batch(b, cost(kLU, double(n) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
-            T* lu;
-            lint* ipiv;
-            if (const int code = lu_factor<T>(a, off[0], n, s, lu, ipiv)) return code;
-            LapackSlot<T> xs(res + i * n * k, n * k, s, Scratch::kAlign0);
-            T* x = xs.get();  // b is packed straight into the output slot (docs/design/linalg.md §5.2)
-            if (!pack(y.dtype(), y.data() + off[1], n, k, r.rs, r.cs, x, n, true)) return kNonFiniteB;
-            if (n > 0 && k > 0) lapack::getrs('N', n, k, lu, n, ipiv, x, n);
-            return 0;
-        }, lu_task_cap(n, k, true));
+        const Failure f = run_batch(
+            b, cost(kLU, double(n) * n),
+            [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+                T* lu;
+                lint* ipiv;
+                if (const int code = lu_factor<T>(a, off[0], n, s, lu, ipiv)) return code;
+                LapackSlot<T> xs(res + i * n * k, n * k, s, Scratch::kAlign0);
+                T* x = xs.get();  // b is packed straight into the output slot (docs/design/linalg.md §5.2)
+                if (!pack(y.dtype(), y.data() + off[1], n, k, r.rs, r.cs, x, n, true)) return kNonFiniteB;
+                if (n > 0 && k > 0) lapack::getrs('N', n, k, lu, n, ipiv, x, n);
+                return 0;
+            },
+            lu_task_cap(n, k, true)
+        );
         if (f) raise(b, f, "solve", "a");
         return to_array(out);
     });

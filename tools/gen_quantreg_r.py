@@ -36,7 +36,7 @@ OUT = ROOT / "tests" / "regression" / "ref" / "quantreg_r.json"
 
 from refdata_robust import STACKLOSS_X, STACKLOSS_Y  # noqa: E402
 
-R_SCRIPT = r'''
+R_SCRIPT = r"""
 suppressMessages(library(quantreg))
 args <- commandArgs(TRUE)
 A <- as.matrix(read.csv(args[1], header=FALSE)); taus <- scan(args[2], quiet=TRUE); icpt <- as.integer(args[3])
@@ -77,13 +77,21 @@ for (j in seq_along(taus)) {
   v <- b$f; v$coefficients[] <- SD[j, ]; v$residuals[] <- y - model.matrix(v) %*% SD[j, ]
   for (type in c("iid", "ker")) out(paste0(tag, "sdv_se_", type), se(v, type, TRUE))
 }
-'''
+"""
 
 
 def engel():
-    res = subprocess.run(["Rscript", "-e", 'suppressMessages(library(quantreg)); data(engel); '
-                          'cat(sprintf("%.17g %.17g", engel$income, engel$foodexp), sep="\\n")'],
-                         capture_output=True, text=True, check=True)
+    res = subprocess.run(
+        [
+            "Rscript",
+            "-e",
+            "suppressMessages(library(quantreg)); data(engel); "
+            'cat(sprintf("%.17g %.17g", engel$income, engel$foodexp), sep="\\n")',
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
     rows = [[float(v) for v in line.split()] for line in res.stdout.splitlines() if line.strip()]
     return [r[1] for r in rows], [[r[0]] for r in rows]
 
@@ -93,8 +101,12 @@ def problems():
     out = {}
     y, X = engel()
     out["engel"] = dict(y=y, X=X, q=[0.1, 0.25, 0.5, 0.75, 0.9], intercept=True)
-    out["stackloss"] = dict(y=[float(v) for v in STACKLOSS_Y], X=[[float(v) for v in r] for r in STACKLOSS_X],
-                            q=[0.25, 0.5, 0.75], intercept=True)
+    out["stackloss"] = dict(
+        y=[float(v) for v in STACKLOSS_Y],
+        X=[[float(v) for v in r] for r in STACKLOSS_X],
+        q=[0.25, 0.5, 0.75],
+        intercept=True,
+    )
     n = 200
     X = rng.standard_normal((n, 2))
     y = X @ np.array([2.0, 3.0]) + 1.0 + rng.standard_normal(n)
@@ -116,8 +128,9 @@ def problems():
     y = X @ np.array([1.5, -0.5]) + rng.exponential(1.0, n)
     out["noint300"] = dict(y=y.tolist(), X=X.tolist(), q=[0.3, 0.5], intercept=False)
     # non-unique: the median of an even sample, integer outcomes on dummies, a grid
-    out["median10"] = dict(y=[float(v) for v in rng.permutation(np.arange(1, 11))], X=[[] for _ in range(10)],
-                           q=[0.5, 0.3], intercept=True)
+    out["median10"] = dict(
+        y=[float(v) for v in rng.permutation(np.arange(1, 11))], X=[[] for _ in range(10)], q=[0.5, 0.3], intercept=True
+    )
     g = np.repeat([0.0, 1.0, 2.0], 20)
     D = np.column_stack([(g == 1).astype(float), (g == 2).astype(float)])
     y = rng.poisson(3.0 + g, g.size).astype(float)
@@ -139,9 +152,19 @@ def run(prob):
         np.savetxt(d / "taus.txt", np.array(prob["q"]), fmt="%.17g")
         np.savetxt(d / "sd.csv", np.array(sdv).reshape(len(prob["q"]), -1), delimiter=",", fmt="%.17g")
         (d / "run.R").write_text(R_SCRIPT)
-        res = subprocess.run(["Rscript", str(d / "run.R"), str(d / "data.csv"), str(d / "taus.txt"),
-                              "1" if prob["intercept"] else "0", str(d / "sd.csv")], capture_output=True, text=True,
-                             check=True)
+        res = subprocess.run(
+            [
+                "Rscript",
+                str(d / "run.R"),
+                str(d / "data.csv"),
+                str(d / "taus.txt"),
+                "1" if prob["intercept"] else "0",
+                str(d / "sd.csv"),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
     vals = {}
     for line in res.stdout.splitlines():
         parts = line.split()
@@ -151,8 +174,12 @@ def run(prob):
 
 
 def main():
-    ver = subprocess.run(["Rscript", "-e", 'cat(R.version.string, "|", "quantreg", format(packageVersion("quantreg")))'],
-                         capture_output=True, text=True, check=True).stdout
+    ver = subprocess.run(
+        ["Rscript", "-e", 'cat(R.version.string, "|", "quantreg", format(packageVersion("quantreg")))'],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
     data = {"_versions": ver.strip()}
     for name, prob in problems().items():
         data[name] = run(prob)

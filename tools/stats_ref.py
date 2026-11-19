@@ -209,9 +209,15 @@ def _p_values(rng, n):
     """Probabilities for icdf and iccdf: uniform, both tails down to 1e-300 and the
     subnormals, and around 1/2."""
     k = n // 8
-    p = np.concatenate([rng.uniform(0, 1, 2 * k), loguniform(rng, 1e-300, 0.5, 2 * k),
-                        1 - loguniform(rng, 2**-53, 0.5, 2 * k), loguniform(rng, 1e-320, 1e-300, k),
-                        0.5 + rng.uniform(-1e-6, 1e-6, n - 7 * k)])
+    p = np.concatenate(
+        [
+            rng.uniform(0, 1, 2 * k),
+            loguniform(rng, 1e-300, 0.5, 2 * k),
+            1 - loguniform(rng, 2**-53, 0.5, 2 * k),
+            loguniform(rng, 1e-320, 1e-300, k),
+            0.5 + rng.uniform(-1e-6, 1e-6, n - 7 * k),
+        ]
+    )
     return p
 
 
@@ -260,8 +266,13 @@ def _location_scale(rng, n):
 def _z(rng, n, far):
     """Standardized points: the body, then out to +-far."""
     t = n // 3
-    return np.concatenate([rng.uniform(-8, 8, t), loguniform(rng, 1e-8, 40, t, signed=True),
-                           loguniform(rng, 40, far, n - 2 * t, signed=True)])
+    return np.concatenate(
+        [
+            rng.uniform(-8, 8, t),
+            loguniform(rng, 1e-8, 40, t, signed=True),
+            loguniform(rng, 40, far, n - 2 * t, signed=True),
+        ]
+    )
 
 
 class Normal(Distribution):
@@ -318,7 +329,9 @@ class Exponential(Distribution):
 
     @staticmethod
     def _params(rng, n):
-        s = np.concatenate([np.ones(n // 4), loguniform(rng, 1e-3, 1e3, n - n // 4 - 20), around([np.exp(-1.0)], 9)[:20]])
+        s = np.concatenate(
+            [np.ones(n // 4), loguniform(rng, 1e-3, 1e3, n - n // 4 - 20), around([np.exp(-1.0)], 9)[:20]]
+        )
         return (s,)
 
     @staticmethod
@@ -522,9 +535,13 @@ class Weibull(Distribution):
     @classmethod
     def param_sets(cls, rng):
         (c, s), g = super().param_sets(rng)
-        zeros = np.concatenate([around([3.6023494], 6), around([2.2520], 6), around([5.7734], 6)])  # near the skewness and kurtosis zeros
-        return (np.concatenate([c, zeros, loguniform(rng, 1e3, 1e8, 50)]),
-                np.concatenate([s, np.ones(zeros.size + 50)])), np.ones(c.size + zeros.size + 50, dtype=bool)
+        zeros = np.concatenate(
+            [around([3.6023494], 6), around([2.2520], 6), around([5.7734], 6)]
+        )  # near the skewness and kurtosis zeros
+        return (
+            np.concatenate([c, zeros, loguniform(rng, 1e3, 1e8, 50)]),
+            np.concatenate([s, np.ones(zeros.size + 50)]),
+        ), np.ones(c.size + zeros.size + 50, dtype=bool)
 
 
 # ---- T6: extreme value and lifetime (docs/design/stats.md T26)
@@ -685,8 +702,14 @@ class GEV(Distribution):
     @staticmethod
     def _params(rng, n):
         k = n // 6
-        c = np.concatenate([np.zeros(k // 2), loguniform(rng, 1e-12, 1e-3, k, signed=True), rng.uniform(-2, 2, 2 * k),
-                            loguniform(rng, 1e-3, 20, n - 3 * k - k // 2, signed=True)])
+        c = np.concatenate(
+            [
+                np.zeros(k // 2),
+                loguniform(rng, 1e-12, 1e-3, k, signed=True),
+                rng.uniform(-2, 2, 2 * k),
+                loguniform(rng, 1e-3, 20, n - 3 * k - k // 2, signed=True),
+            ]
+        )
         rng.shuffle(c)
         mu, sigma = _location_scale(rng, n)
         return c, mu, sigma
@@ -708,8 +731,11 @@ class GEV(Distribution):
         # W = Y^c is the Weibull of shape 1/c
         zeros = np.concatenate([around([1 / 3.6023494], 6), around([1 / 5.7734], 6), around([1 / 2.2520], 6)])
         k = zeros.size
-        return (np.concatenate([c, zeros]), np.concatenate([mu, np.zeros(k)]), np.concatenate([s, np.ones(k)])), \
-            np.ones(c.size + k, dtype=bool)
+        return (
+            np.concatenate([c, zeros]),
+            np.concatenate([mu, np.zeros(k)]),
+            np.concatenate([s, np.ones(k)]),
+        ), np.ones(c.size + k, dtype=bool)
 
 
 class Pareto(Distribution):
@@ -722,10 +748,12 @@ class Pareto(Distribution):
     mean = staticmethod(lambda b, s: s * b / (b - 1) if b > 1 else INF)
     variance = staticmethod(lambda b, s: s * s * b / ((b - 1) ** 2 * (b - 2)) if b > 2 else (INF if b > 1 else NAN))
     standard_deviation = staticmethod(lambda b, s: _sqrt(Pareto.variance(b, s)) if b > 1 else NAN)
-    skewness = staticmethod(lambda b, s: 2 * (1 + b) / (b - 3) * ((b - 2) / b).sqrt() if b > 3 else
-                            (INF if b > 2 else NAN))
-    kurtosis = staticmethod(lambda b, s: 6 * (b**3 + b**2 - 6 * b - 2) / (b * (b - 3) * (b - 4)) if b > 4 else
-                            (INF if b > 2 else NAN))
+    skewness = staticmethod(
+        lambda b, s: 2 * (1 + b) / (b - 3) * ((b - 2) / b).sqrt() if b > 3 else (INF if b > 2 else NAN)
+    )
+    kurtosis = staticmethod(
+        lambda b, s: 6 * (b**3 + b**2 - 6 * b - 2) / (b * (b - 3) * (b - 4)) if b > 4 else (INF if b > 2 else NAN)
+    )
     median = staticmethod(lambda b, s: s * (LN2() / b).exp())
     mode = staticmethod(lambda b, s: s)
     entropy = staticmethod(lambda b, s: (s / b).log() + 1 / b + 1)
@@ -836,7 +864,9 @@ def _own_quantiles(cls_name, params, p):
 
 def _nc_probs(rng, n):
     k = n // 4
-    return np.concatenate([rng.uniform(0, 1, 2 * k), loguniform(rng, 1e-300, 0.5, k), 1 - loguniform(rng, 1e-16, 0.5, n - 3 * k)])
+    return np.concatenate(
+        [rng.uniform(0, 1, 2 * k), loguniform(rng, 1e-300, 0.5, k), 1 - loguniform(rng, 1e-16, 0.5, n - 3 * k)]
+    )
 
 
 class _Weights:
@@ -925,6 +955,7 @@ def _mixture(W, mf, values, lower, vratio=None):
 def _lower_values(first, T, down):
     """L_J, L_(J-1), ..., L_j0 of a decreasing family with L_{j-1} = L_j + T_{j-1}:
     first(J) = L_J, T(J - 1) direct, T_{m-1} = T_m down(m)."""
+
     def values(j0, J):
         L = first(J)
         yield L
@@ -934,12 +965,14 @@ def _lower_values(first, T, down):
             yield L
             if j - 1 > j0:
                 t = t * down(j - 1)
+
     return values
 
 
 def _upper_values(first, T, up):
     """U_j0, ..., U_J of an increasing family with U_{j+1} = U_j + T_j: first(j0) = U_j0,
     T(j0) direct, T_{j+1} = T_j up(j)."""
+
     def values(j0, J):
         U = first(j0)
         yield U
@@ -948,6 +981,7 @@ def _upper_values(first, T, up):
             U = U + t
             yield U
             t = t * up(j)
+
     return values
 
 
@@ -989,7 +1023,7 @@ def _ncf_pair(dfn, dfd, nc, f, upper):
 def _ncx2_logpdf(df, nc, x):
     """log of e^(-(x+nc)/2) (x/nc)^(df/4-1/2) I_(df/2-1)(sqrt(nc x)) / 2 (Arb's scaled Bessel I)."""
     z = (nc * x).sqrt()
-    return (-LN2() - (x + nc) / 2 + (df / 4 - arb(0.5)) * (x / nc).log() + z.bessel_i(df / 2 - 1, scaled=True).log() + z)
+    return -LN2() - (x + nc) / 2 + (df / 4 - arb(0.5)) * (x / nc).log() + z.bessel_i(df / 2 - 1, scaled=True).log() + z
 
 
 def _hyp1f1(al, be, z):
@@ -1058,8 +1092,12 @@ class NoncentralChiSquared(Distribution):
             return arb(0) if (x < 0 or df > 2) else (INF if df < 2 else (-nc / 2).exp() / 2)
         return _ncx2_logpdf(df, nc, x).exp()
 
-    cdf = staticmethod(lambda x, df, nc: (ChiSquared.cdf(x, df) if nc == 0 else _ncx2_pair(df, nc, x, False)) if x > 0 else arb(0))
-    ccdf = staticmethod(lambda x, df, nc: (ChiSquared.ccdf(x, df) if nc == 0 else _ncx2_pair(df, nc, x, True)) if x > 0 else arb(1))
+    cdf = staticmethod(
+        lambda x, df, nc: (ChiSquared.cdf(x, df) if nc == 0 else _ncx2_pair(df, nc, x, False)) if x > 0 else arb(0)
+    )
+    ccdf = staticmethod(
+        lambda x, df, nc: (ChiSquared.ccdf(x, df) if nc == 0 else _ncx2_pair(df, nc, x, True)) if x > 0 else arb(1)
+    )
     mean = staticmethod(lambda df, nc: df + nc)
     variance = staticmethod(lambda df, nc: 2 * (df + 2 * nc))
     standard_deviation = staticmethod(lambda df, nc: (2 * (df + 2 * nc)).sqrt())
@@ -1093,8 +1131,12 @@ class NoncentralChiSquared(Distribution):
     @staticmethod
     def _params(rng, n):
         k = n // 3
-        df = np.concatenate([loguniform(rng, 1e-2, 1e4, k), loguniform(rng, 1e-2, 10, k), loguniform(rng, 1e-2, 1e4, n - 2 * k)])
-        nc = np.concatenate([loguniform(rng, 1e-3, 1e4, k), loguniform(rng, 1e-3, 50, k), loguniform(rng, 1e-3, 1e4, n - 2 * k)])
+        df = np.concatenate(
+            [loguniform(rng, 1e-2, 1e4, k), loguniform(rng, 1e-2, 10, k), loguniform(rng, 1e-2, 1e4, n - 2 * k)]
+        )
+        nc = np.concatenate(
+            [loguniform(rng, 1e-3, 1e4, k), loguniform(rng, 1e-3, 50, k), loguniform(rng, 1e-3, 1e4, n - 2 * k)]
+        )
         nc[: n // 50] = 0.0
         rng.shuffle(nc)
         return df, nc
@@ -1132,8 +1174,8 @@ def _solve(g, x0, increasing, positive):
                     if abs(du) <= arb(2) ** (-prec + 16) * max(arb(1), abs(u)):
                         break
                 x = (u.exp() if positive else u).mid()
-                return ar.certify_root(g, x, 2.0 ** -ar.TARGET_BITS, increasing)
-            except (NotSettled, ZeroDivisionError, ValueError, ArithmeticError):
+                return ar.certify_root(g, x, 2.0**-ar.TARGET_BITS, increasing)
+            except NotSettled, ZeroDivisionError, ValueError, ArithmeticError:
                 pass
         prec *= 2
     raise NotSettled("root")
@@ -1180,7 +1222,7 @@ def _integral(fn, a, b, analytic=False, **kw):
                 with precision(64):  # bits, as tight there, where Arb's Bessel I takes 0.2 s at 128
                     return fn(v, an) if analytic else fn(v)
             return fn(v, an) if analytic else fn(v)
-        except (NotSettled, ArithmeticError, ValueError):  # not on this box (too wide): subdivide
+        except NotSettled, ArithmeticError, ValueError:  # not on this box (too wide): subdivide
             return acb(NAN)
         except BaseException as e:  # noqa: B036 (the alarm's _Timeout, or a SystemError around it)
             timed_out.append(e)
@@ -1213,7 +1255,7 @@ def _phi_max(t, d, s_lo, s_hi):
         m = (-hi_).lower()
     else:
         return arb(1)
-    return (-arb(m) ** 2 / 2).exp().upper()
+    return (-(arb(m) ** 2) / 2).exp().upper()
 
 
 def _nct_integral(df, d, t, k=None):
@@ -1248,8 +1290,11 @@ def _nct_integral(df, d, t, k=None):
     with precision(64):
         tt, dd, dff = arb(t.mid()), arb(d.mid()), arb(df.mid())
         A2, B1 = tt * tt + dff, -dd * tt
-        s0 = 2 * (dff + (k or 0)) / (B1 + (B1 * B1 + 4 * A2 * (dff + (k or 0))).sqrt()) if B1 >= 0 else \
-            (-B1 + (B1 * B1 + 4 * A2 * (dff + (k or 0))).sqrt()) / (2 * A2)
+        s0 = (
+            2 * (dff + (k or 0)) / (B1 + (B1 * B1 + 4 * A2 * (dff + (k or 0))).sqrt())
+            if B1 >= 0
+            else (-B1 + (B1 * B1 + 4 * A2 * (dff + (k or 0))).sqrt()) / (2 * A2)
+        )
         if k is None:
             aa = -dd
             s0 = 2 * dff / (aa * tt + (aa * aa * tt * tt + 4 * dff * (tt * tt + dff)).sqrt())
@@ -1416,9 +1461,16 @@ class NoncentralT(Distribution):
     @staticmethod
     def _params(rng, n):
         k = n // 3
-        df = np.concatenate([loguniform(rng, 1e-1, 1e5, k), loguniform(rng, 1e-1, 10, k), loguniform(rng, 1, 1e5, n - 2 * k)])
-        d = np.concatenate([loguniform(rng, 1e-3, 100, k, signed=True), loguniform(rng, 1e-3, 10, k, signed=True),
-                            loguniform(rng, 1e-3, 100, n - 2 * k, signed=True)])
+        df = np.concatenate(
+            [loguniform(rng, 1e-1, 1e5, k), loguniform(rng, 1e-1, 10, k), loguniform(rng, 1, 1e5, n - 2 * k)]
+        )
+        d = np.concatenate(
+            [
+                loguniform(rng, 1e-3, 100, k, signed=True),
+                loguniform(rng, 1e-3, 10, k, signed=True),
+                loguniform(rng, 1e-3, 100, n - 2 * k, signed=True),
+            ]
+        )
         d[: n // 50] = 0.0
         rng.shuffle(d)
         return df, d
@@ -1441,8 +1493,13 @@ def _nct_raw(df, d, r):
 
 def _ncf_raw(dfn, dfd, nc, r):
     k, l = dfn, nc
-    x = [arb(1), k + l, (k + l) ** 2 + 2 * (k + 2 * l), (k + l) ** 3 + 6 * (k + l) * (k + 2 * l) + 8 * (k + 3 * l),
-         (k + l) ** 4 + 12 * (k + l) ** 2 * (k + 2 * l) + 4 * (11 * k * k + 44 * k * l + 36 * l * l) + 48 * (k + 4 * l)][r]
+    x = [
+        arb(1),
+        k + l,
+        (k + l) ** 2 + 2 * (k + 2 * l),
+        (k + l) ** 3 + 6 * (k + l) * (k + 2 * l) + 8 * (k + 3 * l),
+        (k + l) ** 4 + 12 * (k + l) ** 2 * (k + 2 * l) + 4 * (11 * k * k + 44 * k * l + 36 * l * l) + 48 * (k + 4 * l),
+    ][r]
     inv = ((dfd / 2 - r).lgamma() - (dfd / 2).lgamma()).exp() / arb(2) ** r
     return (dfd / dfn) ** r * x * inv
 
@@ -1470,8 +1527,16 @@ class NoncentralF(Distribution):
             return arb(0) if (x < 0 or dfn > 2) else (INF if dfn < 2 else (-nc / 2).exp())
         return _ncf_logpdf(dfn, dfd, nc, x).exp()
 
-    cdf = staticmethod(lambda x, dfn, dfd, nc: (F.cdf(x, dfn, dfd) if nc == 0 else _ncf_pair(dfn, dfd, nc, x, False)) if x > 0 else arb(0))
-    ccdf = staticmethod(lambda x, dfn, dfd, nc: (F.ccdf(x, dfn, dfd) if nc == 0 else _ncf_pair(dfn, dfd, nc, x, True)) if x > 0 else arb(1))
+    cdf = staticmethod(
+        lambda x, dfn, dfd, nc: (
+            (F.cdf(x, dfn, dfd) if nc == 0 else _ncf_pair(dfn, dfd, nc, x, False)) if x > 0 else arb(0)
+        )
+    )
+    ccdf = staticmethod(
+        lambda x, dfn, dfd, nc: (
+            (F.ccdf(x, dfn, dfd) if nc == 0 else _ncf_pair(dfn, dfd, nc, x, True)) if x > 0 else arb(1)
+        )
+    )
     mean = staticmethod(lambda dfn, dfd, nc: _ncf_raw(dfn, dfd, nc, 1) if dfd > 2 else INF)
 
     @staticmethod
@@ -1532,9 +1597,15 @@ class NoncentralF(Distribution):
     @staticmethod
     def _params(rng, n):
         k = n // 3
-        dfn = np.concatenate([loguniform(rng, 1e-2, 1e4, k), loguniform(rng, 1e-2, 10, k), loguniform(rng, 1e-1, 1e4, n - 2 * k)])
-        dfd = np.concatenate([loguniform(rng, 1e-2, 1e4, k), loguniform(rng, 1e-2, 10, k), loguniform(rng, 3, 1e4, n - 2 * k)])
-        nc = np.concatenate([loguniform(rng, 1e-3, 1e4, k), loguniform(rng, 1e-3, 50, k), loguniform(rng, 1e-3, 1e4, n - 2 * k)])
+        dfn = np.concatenate(
+            [loguniform(rng, 1e-2, 1e4, k), loguniform(rng, 1e-2, 10, k), loguniform(rng, 1e-1, 1e4, n - 2 * k)]
+        )
+        dfd = np.concatenate(
+            [loguniform(rng, 1e-2, 1e4, k), loguniform(rng, 1e-2, 10, k), loguniform(rng, 3, 1e4, n - 2 * k)]
+        )
+        nc = np.concatenate(
+            [loguniform(rng, 1e-3, 1e4, k), loguniform(rng, 1e-3, 50, k), loguniform(rng, 1e-3, 1e4, n - 2 * k)]
+        )
         nc[: n // 50] = 0.0
         rng.shuffle(nc)
         return dfn, dfd, nc
@@ -1575,8 +1646,14 @@ def _entropy_window(logF, u_lo, u_hi, lower_bound, upper_bound, upper_step=None)
     exponentially in x) until its bound is below the last bits."""
     mid = (u_lo + u_hi) / 2
     while True:
-        I = _integral(lambda u, an: _ent_integrand(logF, u, an), arb(u_lo), arb(u_hi), analytic=True,
-                      rel_tol=arb(2) ** (-ctx.prec - 4), abs_tol=arb(2) ** (-ctx.prec - 20)).real
+        I = _integral(
+            lambda u, an: _ent_integrand(logF, u, an),
+            arb(u_lo),
+            arb(u_hi),
+            analytic=True,
+            rel_tol=arb(2) ** (-ctx.prec - 4),
+            abs_tol=arb(2) ** (-ctx.prec - 20),
+        ).real
         if not I.is_finite():
             raise NotSettled("entropy integral")
         bl, bu = lower_bound(arb(u_lo).exp()), upper_bound(arb(u_hi).exp())
@@ -1733,7 +1810,7 @@ def _nct_G(df, d, e2):
         u0 = arb(yl).exp()
         lo_, hi_ = -d, u0 - d
         m = lo_.lower() if lo_ > 0 else ((-hi_).lower() if hi_ < 0 else 0)
-        return (e * yl).exp() / e * (-arb(m) ** 2 / 2).exp()
+        return (e * yl).exp() / e * (-(arb(m) ** 2) / 2).exp()
 
     def bound_right(yh):
         u1 = arb(yh).exp()
@@ -1825,6 +1902,7 @@ def _quantile_points(rng, n, ppf, isf, extra):
     """x spread over a distribution: ppf/isf (scipy, a sampler only) of p from the body to
     1e-300 in both tails, plus `extra(rng, k)` points beyond."""
     import warnings
+
     k = n // 5
     p = np.concatenate([rng.uniform(0.01, 0.99, k), loguniform(rng, 1e-300, 0.01, k)])
     q = loguniform(rng, 1e-300, 0.01, k)
@@ -1876,9 +1954,15 @@ class Gamma(Distribution):
     @staticmethod
     def _x(rng, ps):
         import scipy.stats as st
+
         a, s = ps
-        y = _quantile_points(rng, a.size, lambda p, i: st.gamma.ppf(p, a[i]), lambda q, i: st.gamma.isf(q, a[i]),
-                             lambda rng, k: loguniform(rng, 1e-300, 1e5, k))
+        y = _quantile_points(
+            rng,
+            a.size,
+            lambda p, i: st.gamma.ppf(p, a[i]),
+            lambda q, i: st.gamma.isf(q, a[i]),
+            lambda rng, k: loguniform(rng, 1e-300, 1e5, k),
+        )
         return y * s
 
 
@@ -1905,9 +1989,15 @@ class ChiSquared(Distribution):
     @staticmethod
     def _x(rng, ps):
         import scipy.stats as st
+
         (df,) = ps
-        return _quantile_points(rng, df.size, lambda p, i: st.chi2.ppf(p, df[i]), lambda q, i: st.chi2.isf(q, df[i]),
-                                lambda rng, k: loguniform(rng, 1e-300, 1e5, k))
+        return _quantile_points(
+            rng,
+            df.size,
+            lambda p, i: st.chi2.ppf(p, df[i]),
+            lambda q, i: st.chi2.isf(q, df[i]),
+            lambda rng, k: loguniform(rng, 1e-300, 1e5, k),
+        )
 
 
 class Beta(Distribution):
@@ -1931,7 +2021,9 @@ class Beta(Distribution):
     variance = staticmethod(lambda a, b: a * b / ((a + b) ** 2 * (a + b + 1)))
     standard_deviation = staticmethod(lambda a, b: (a * b / ((a + b) ** 2 * (a + b + 1))).sqrt())
     skewness = staticmethod(lambda a, b: 2 * (b - a) * (a + b + 1).sqrt() / ((a + b + 2) * (a * b).sqrt()))
-    kurtosis = staticmethod(lambda a, b: 6 * ((a - b) ** 2 * (a + b + 1) - a * b * (a + b + 2)) / (a * b * (a + b + 2) * (a + b + 3)))
+    kurtosis = staticmethod(
+        lambda a, b: 6 * ((a - b) ** 2 * (a + b + 1) - a * b * (a + b + 2)) / (a * b * (a + b + 2) * (a + b + 3))
+    )
 
     @staticmethod
     def mode(a, b):
@@ -1957,16 +2049,23 @@ class Beta(Distribution):
     @staticmethod
     def _x(rng, ps):
         import scipy.stats as st
+
         a, b = ps
-        return _quantile_points(rng, a.size, lambda p, i: st.beta.ppf(p, a[i], b[i]),
-                                lambda q, i: st.beta.isf(q, a[i], b[i]),
-                                lambda rng, k: np.concatenate([loguniform(rng, 1e-300, 0.5, k // 2),
-                                                               1 - loguniform(rng, 2**-53, 0.5, k - k // 2)]))
+        return _quantile_points(
+            rng,
+            a.size,
+            lambda p, i: st.beta.ppf(p, a[i], b[i]),
+            lambda q, i: st.beta.isf(q, a[i], b[i]),
+            lambda rng, k: np.concatenate(
+                [loguniform(rng, 1e-300, 0.5, k // 2), 1 - loguniform(rng, 2**-53, 0.5, k - k // 2)]
+            ),
+        )
 
 
 def _t_pdf(t, df):
-    return (((df + 1) / 2).lgamma() - (df / 2).lgamma() - (df * PI()).log() / 2
-            - (df + 1) / 2 * (t * t / df).log1p()).exp()
+    return (
+        ((df + 1) / 2).lgamma() - (df / 2).lgamma() - (df * PI()).log() / 2 - (df + 1) / 2 * (t * t / df).log1p()
+    ).exp()
 
 
 def _t_lower(t, df):
@@ -2003,15 +2102,28 @@ class StudentT(Distribution):
 
     @staticmethod
     def _params(rng, n):
-        return (np.concatenate([loguniform(rng, 1e-1, 1e6, n - 60), loguniform(rng, 1e-2, 1e-1, 20),
-                                np.array([1.0, 2.0, 3.0, 4.0] * 10)]),)
+        return (
+            np.concatenate(
+                [
+                    loguniform(rng, 1e-1, 1e6, n - 60),
+                    loguniform(rng, 1e-2, 1e-1, 20),
+                    np.array([1.0, 2.0, 3.0, 4.0] * 10),
+                ]
+            ),
+        )
 
     @staticmethod
     def _x(rng, ps):
         import scipy.stats as st
+
         (df,) = ps
-        return _quantile_points(rng, df.size, lambda p, i: st.t.ppf(p, df[i]), lambda q, i: st.t.isf(q, df[i]),
-                                lambda rng, k: loguniform(rng, 1e-300, 1e300, k, signed=True))
+        return _quantile_points(
+            rng,
+            df.size,
+            lambda p, i: st.t.ppf(p, df[i]),
+            lambda q, i: st.t.isf(q, df[i]),
+            lambda rng, k: loguniform(rng, 1e-300, 1e300, k, signed=True),
+        )
 
     @classmethod
     def param_sets(cls, rng):
@@ -2051,20 +2163,32 @@ class F(Distribution):
         return _ibeta(n / s, n / 2, m / 2, m * x / s)
 
     mean = staticmethod(lambda m, n: n / (n - 2) if n > 2 else INF)
-    variance = staticmethod(lambda m, n: 2 * n * n * (m + n - 2) / (m * (n - 2) ** 2 * (n - 4)) if n > 4 else
-                            (INF if n > 2 else NAN))
+    variance = staticmethod(
+        lambda m, n: 2 * n * n * (m + n - 2) / (m * (n - 2) ** 2 * (n - 4)) if n > 4 else (INF if n > 2 else NAN)
+    )
     standard_deviation = staticmethod(lambda m, n: _sqrt(F.variance(m, n)) if n > 2 else NAN)
-    skewness = staticmethod(lambda m, n: (2 * m + n - 2) * (8 * (n - 4)).sqrt() / ((n - 6) * (m * (m + n - 2)).sqrt())
-                            if n > 6 else (INF if n > 4 else NAN))
-    kurtosis = staticmethod(lambda m, n: 12 * (m * (5 * n - 22) * (m + n - 2) + (n - 4) * (n - 2) ** 2)
-                            / (m * (n - 6) * (n - 8) * (m + n - 2)) if n > 8 else (INF if n > 4 else NAN))
+    skewness = staticmethod(
+        lambda m, n: (
+            (2 * m + n - 2) * (8 * (n - 4)).sqrt() / ((n - 6) * (m * (m + n - 2)).sqrt())
+            if n > 6
+            else (INF if n > 4 else NAN)
+        )
+    )
+    kurtosis = staticmethod(
+        lambda m, n: (
+            12 * (m * (5 * n - 22) * (m + n - 2) + (n - 4) * (n - 2) ** 2) / (m * (n - 6) * (n - 8) * (m + n - 2))
+            if n > 8
+            else (INF if n > 4 else NAN)
+        )
+    )
     mode = staticmethod(lambda m, n: (m - 2) / m * n / (n + 2) if m > 2 else arb(0))
 
     @staticmethod
     def entropy(m, n):
         a, b = m / 2, n / 2
-        return ((n / m).log() + _lbeta(a, b) + (1 - a) * a.digamma() - (1 + b) * b.digamma()
-                + (a + b) * (a + b).digamma())
+        return (
+            (n / m).log() + _lbeta(a, b) + (1 - a) * a.digamma() - (1 + b) * b.digamma() + (a + b) * (a + b).digamma()
+        )
 
     @staticmethod
     def _params(rng, n):
@@ -2075,17 +2199,24 @@ class F(Distribution):
     @staticmethod
     def _x(rng, ps):
         import scipy.stats as st
+
         m, d = ps
-        x = _quantile_points(rng, m.size, lambda p, i: st.f.ppf(p, m[i], d[i]), lambda q, i: st.f.isf(q, m[i], d[i]),
-                             lambda rng, k: loguniform(rng, 1e-300, 1e300, k))
+        x = _quantile_points(
+            rng,
+            m.size,
+            lambda p, i: st.f.ppf(p, m[i], d[i]),
+            lambda q, i: st.f.isf(q, m[i], d[i]),
+            lambda rng, k: loguniform(rng, 1e-300, 1e300, k),
+        )
         return np.where(np.isfinite(x) & (x > 0), x, loguniform(rng, 1e-300, 1e300, x.size))
 
     @classmethod
     def param_sets(cls, rng):
         (m, d), g = super().param_sets(rng)
         edges = np.concatenate([around([2.0, 4.0, 6.0, 8.0], 3), loguniform(rng, 1e5, 1e12, 30)])
-        return (np.concatenate([m, loguniform(rng, 1e-1, 1e3, edges.size)]), np.concatenate([d, edges])), \
-            np.ones(m.size + edges.size, dtype=bool)
+        return (np.concatenate([m, loguniform(rng, 1e-1, 1e3, edges.size)]), np.concatenate([d, edges])), np.ones(
+            m.size + edges.size, dtype=bool
+        )
 
 
 # ---------------------------------------------------------------- discrete (T5)
@@ -2113,6 +2244,7 @@ def _quantile_ints(rng, n, ppf, isf, extra):
     """Integers spread over a discrete distribution (scipy's ppf/isf as a sampler), a few
     non-integers (k + 1/2: the cdfs at floor(x)), and extra points."""
     import warnings
+
     k = n // 5
     p = np.concatenate([rng.uniform(0.01, 0.99, k), loguniform(rng, 1e-300, 0.01, k)])
     q = loguniform(rng, 1e-300, 0.01, k)
@@ -2271,23 +2403,43 @@ class Binomial(Discrete):
         if pf == 0 or pf == 1:
             return arb(0)
         r = lambda k: (n - k + 1) * p / (k * (1 - p))
-        return _entropy_sum(lambda k: Binomial.pmf(arb(k), n, p), r, 0, int(nf), nf * pf,
-                            16 * math.sqrt(nf * pf * (1 - pf)) + 40, lambda b: r(b + 1), lambda a: 1 / r(a))
+        return _entropy_sum(
+            lambda k: Binomial.pmf(arb(k), n, p),
+            r,
+            0,
+            int(nf),
+            nf * pf,
+            16 * math.sqrt(nf * pf * (1 - pf)) + 40,
+            lambda b: r(b + 1),
+            lambda a: 1 / r(a),
+        )
 
     @staticmethod
     def _params(rng, n):
         q = n // 4
         nn = np.concatenate([np.floor(loguniform(rng, 1, 1e4, n - q)), np.floor(loguniform(rng, 1e4, 1e6, q))])
-        p = np.concatenate([rng.uniform(0, 1, n // 2), loguniform(rng, 1e-8, 0.5, n // 4), 1 - loguniform(rng, 1e-8, 0.5, n - n // 2 - n // 4)])
+        p = np.concatenate(
+            [
+                rng.uniform(0, 1, n // 2),
+                loguniform(rng, 1e-8, 0.5, n // 4),
+                1 - loguniform(rng, 1e-8, 0.5, n - n // 2 - n // 4),
+            ]
+        )
         rng.shuffle(nn)
         return nn, p
 
     @staticmethod
     def _x(rng, ps):
         import scipy.stats as st
+
         nn, p = ps
-        return _quantile_ints(rng, nn.size, lambda q, i: st.binom.ppf(q, nn[i], p[i]), lambda q, i: st.binom.isf(q, nn[i], p[i]),
-                              lambda rng, k: np.floor(rng.uniform(0, 1, k) * nn[:k]))
+        return _quantile_ints(
+            rng,
+            nn.size,
+            lambda q, i: st.binom.ppf(q, nn[i], p[i]),
+            lambda q, i: st.binom.isf(q, nn[i], p[i]),
+            lambda rng, k: np.floor(rng.uniform(0, 1, k) * nn[:k]),
+        )
 
     @classmethod
     def param_sets(cls, rng):
@@ -2315,8 +2467,15 @@ class Bernoulli(Discrete):
 
     @staticmethod
     def _params(rng, n):
-        return (np.concatenate([rng.uniform(0, 1, n // 2), loguniform(rng, 1e-300, 0.5, n // 4),
-                                1 - loguniform(rng, 2**-53, 0.5, n - n // 2 - n // 4)]),)
+        return (
+            np.concatenate(
+                [
+                    rng.uniform(0, 1, n // 2),
+                    loguniform(rng, 1e-300, 0.5, n // 4),
+                    1 - loguniform(rng, 2**-53, 0.5, n - n // 2 - n // 4),
+                ]
+            ),
+        )
 
     @staticmethod
     def _x(rng, ps):
@@ -2345,8 +2504,16 @@ class Poisson(Discrete):
     @staticmethod
     def entropy(mu):
         m = _fl(mu)
-        return _entropy_sum(lambda k: Poisson.pmf(arb(k), mu), lambda k: mu / k, 0, INF, m, 16 * math.sqrt(m) + 40,
-                            lambda b: mu / (b + 1), lambda a: a / mu)
+        return _entropy_sum(
+            lambda k: Poisson.pmf(arb(k), mu),
+            lambda k: mu / k,
+            0,
+            INF,
+            m,
+            16 * math.sqrt(m) + 40,
+            lambda b: mu / (b + 1),
+            lambda a: a / mu,
+        )
 
     @staticmethod
     def _params(rng, n):
@@ -2355,9 +2522,15 @@ class Poisson(Discrete):
     @staticmethod
     def _x(rng, ps):
         import scipy.stats as st
+
         (mu,) = ps
-        return _quantile_ints(rng, mu.size, lambda q, i: st.poisson.ppf(q, mu[i]), lambda q, i: st.poisson.isf(q, mu[i]),
-                              lambda rng, k: np.floor(loguniform(rng, 1, 1e6, k)))
+        return _quantile_ints(
+            rng,
+            mu.size,
+            lambda q, i: st.poisson.ppf(q, mu[i]),
+            lambda q, i: st.poisson.isf(q, mu[i]),
+            lambda rng, k: np.floor(loguniform(rng, 1, 1e6, k)),
+        )
 
     @classmethod
     def param_sets(cls, rng):
@@ -2382,15 +2555,28 @@ class Geometric(Discrete):
 
     @staticmethod
     def _params(rng, n):
-        return (np.concatenate([rng.uniform(0.001, 0.999, n // 2), loguniform(rng, 1e-9, 0.5, n // 4),
-                                1 - loguniform(rng, 1e-9, 0.5, n - n // 2 - n // 4)]),)
+        return (
+            np.concatenate(
+                [
+                    rng.uniform(0.001, 0.999, n // 2),
+                    loguniform(rng, 1e-9, 0.5, n // 4),
+                    1 - loguniform(rng, 1e-9, 0.5, n - n // 2 - n // 4),
+                ]
+            ),
+        )
 
     @staticmethod
     def _x(rng, ps):
         import scipy.stats as st
+
         (p,) = ps
-        return _quantile_ints(rng, p.size, lambda q, i: st.geom.ppf(q, p[i]), lambda q, i: st.geom.isf(q, p[i]),
-                              lambda rng, k: np.floor(loguniform(rng, 1, 1e12, k)))
+        return _quantile_ints(
+            rng,
+            p.size,
+            lambda q, i: st.geom.ppf(q, p[i]),
+            lambda q, i: st.geom.isf(q, p[i]),
+            lambda rng, k: np.floor(loguniform(rng, 1, 1e12, k)),
+        )
 
 
 class NegativeBinomial(Discrete):
@@ -2411,8 +2597,11 @@ class NegativeBinomial(Discrete):
         if n != int(n) or k > 4000:
             return None
         n, P = int(n), Fraction(p)
-        return sum((math.comb(j + n - 1, j) * P**n * (1 - P) ** j for j in range(0, k + 1)), Fraction(0)) if k >= 0 \
+        return (
+            sum((math.comb(j + n - 1, j) * P**n * (1 - P) ** j for j in range(0, k + 1)), Fraction(0))
+            if k >= 0
             else Fraction(0)
+        )
 
     ratio_exact = staticmethod(lambda k, n, p: (k - 1 + Fraction(n)) * (1 - Fraction(p)) / k)
     mean = staticmethod(lambda n, p: n * (1 - p) / p)
@@ -2424,8 +2613,9 @@ class NegativeBinomial(Discrete):
     @staticmethod
     def mode(n, p):
         nf, pf = _fl(n), _fl(p)
-        return _mode_by_ratio(lambda k: NegativeBinomial.ratio_exact(k, nf, pf), 0, INF,
-                              (nf - 1) * (1 - pf) / pf if nf > 1 else 0)
+        return _mode_by_ratio(
+            lambda k: NegativeBinomial.ratio_exact(k, nf, pf), 0, INF, (nf - 1) * (1 - pf) / pf if nf > 1 else 0
+        )
 
     @staticmethod
     def entropy(n, p):
@@ -2433,24 +2623,46 @@ class NegativeBinomial(Discrete):
         # the exponential tail
         nf, pf = _fl(n), _fl(p)
         r = lambda k: (k - 1 + n) * (1 - p) / k
-        right = (lambda b: r(b + 1)) if nf >= 1 else (lambda b: 1 - p)  # the ratios fall to 1 - p (n >= 1) or rise to it
+        right = (
+            (lambda b: r(b + 1)) if nf >= 1 else (lambda b: 1 - p)
+        )  # the ratios fall to 1 - p (n >= 1) or rise to it
         left = (lambda a: 1 / r(a)) if nf >= 1 else None
-        return _entropy_sum(lambda k: NegativeBinomial.pmf(arb(k), n, p), r, 0, INF, nf * (1 - pf) / pf,
-                            (16 * math.sqrt(nf * (1 - pf)) + 40) / pf + 40, right, left)
+        return _entropy_sum(
+            lambda k: NegativeBinomial.pmf(arb(k), n, p),
+            r,
+            0,
+            INF,
+            nf * (1 - pf) / pf,
+            (16 * math.sqrt(nf * (1 - pf)) + 40) / pf + 40,
+            right,
+            left,
+        )
 
     @staticmethod
     def _params(rng, n):
         nn = np.concatenate([loguniform(rng, 0.1, 1e4, n - n // 8), np.floor(loguniform(rng, 1, 100, n // 8))])
-        p = np.concatenate([rng.uniform(0.01, 0.99, n // 2), loguniform(rng, 1e-4, 0.5, n // 4), 1 - loguniform(rng, 1e-6, 0.5, n - n // 2 - n // 4)])
+        p = np.concatenate(
+            [
+                rng.uniform(0.01, 0.99, n // 2),
+                loguniform(rng, 1e-4, 0.5, n // 4),
+                1 - loguniform(rng, 1e-6, 0.5, n - n // 2 - n // 4),
+            ]
+        )
         rng.shuffle(nn)
         return nn, p
 
     @staticmethod
     def _x(rng, ps):
         import scipy.stats as st
+
         nn, p = ps
-        return _quantile_ints(rng, nn.size, lambda q, i: st.nbinom.ppf(q, nn[i], p[i]), lambda q, i: st.nbinom.isf(q, nn[i], p[i]),
-                              lambda rng, k: np.floor(loguniform(rng, 1, 1e8, k)))
+        return _quantile_ints(
+            rng,
+            nn.size,
+            lambda q, i: st.nbinom.ppf(q, nn[i], p[i]),
+            lambda q, i: st.nbinom.isf(q, nn[i], p[i]),
+            lambda rng, k: np.floor(loguniform(rng, 1, 1e8, k)),
+        )
 
     @classmethod
     def param_sets(cls, rng):
@@ -2513,7 +2725,9 @@ class Hypergeometric(Discrete):
             return cm / c2 ** (m // 2)
         return _arbq(cm) / _arbq(c2) ** (arb(m) / 2)
 
-    ratio_exact = staticmethod(lambda k, N, K, n: Fraction((int(K) - k + 1) * (int(n) - k + 1), k * (int(N) - int(K) - int(n) + k)))
+    ratio_exact = staticmethod(
+        lambda k, N, K, n: Fraction((int(K) - k + 1) * (int(n) - k + 1), k * (int(N) - int(K) - int(n) + k))
+    )
     mean = staticmethod(lambda N, K, n: n * K / N)
     variance = staticmethod(lambda N, K, n: _arbq(Hypergeometric._central(N, K, n, 2)))
     standard_deviation = staticmethod(lambda N, K, n: _arbq(Hypergeometric._central(N, K, n, 2)).sqrt())
@@ -2561,9 +2775,19 @@ class DiscreteUniform(Discrete):
     params = ("low", "high")
     support = staticmethod(lambda lo, hi: (int(lo), int(hi) - 1))
     pmf = staticmethod(lambda k, lo, hi: 1 / (hi - lo) if k.is_integer() and lo <= k < hi else arb(0))
-    cdf = staticmethod(lambda x, lo, hi: arb(0) if x.floor() < lo else (arb(1) if x.floor() >= hi - 1 else (x.floor() - lo + 1) / (hi - lo)))
-    ccdf = staticmethod(lambda x, lo, hi: arb(1) if x.floor() < lo else (arb(0) if x.floor() >= hi - 1 else (hi - 1 - x.floor()) / (hi - lo)))
-    cdf_exact = staticmethod(lambda k, lo, hi: Fraction(min(max(k - int(lo) + 1, 0), int(hi) - int(lo)), int(hi) - int(lo)))
+    cdf = staticmethod(
+        lambda x, lo, hi: (
+            arb(0) if x.floor() < lo else (arb(1) if x.floor() >= hi - 1 else (x.floor() - lo + 1) / (hi - lo))
+        )
+    )
+    ccdf = staticmethod(
+        lambda x, lo, hi: (
+            arb(1) if x.floor() < lo else (arb(0) if x.floor() >= hi - 1 else (hi - 1 - x.floor()) / (hi - lo))
+        )
+    )
+    cdf_exact = staticmethod(
+        lambda k, lo, hi: Fraction(min(max(k - int(lo) + 1, 0), int(hi) - int(lo)), int(hi) - int(lo))
+    )
     mean = staticmethod(lambda lo, hi: (lo + hi - 1) / 2)
     variance = staticmethod(lambda lo, hi: ((hi - lo) ** 2 - 1) / 12)
     standard_deviation = staticmethod(lambda lo, hi: (((hi - lo) ** 2 - 1) / 12).sqrt())
@@ -2574,7 +2798,9 @@ class DiscreteUniform(Discrete):
 
     @staticmethod
     def _params(rng, n):
-        lo = np.floor(np.concatenate([rng.uniform(-100, 100, n // 2), loguniform(rng, 1, 1e12, n - n // 2, signed=True)]))
+        lo = np.floor(
+            np.concatenate([rng.uniform(-100, 100, n // 2), loguniform(rng, 1, 1e12, n - n // 2, signed=True)])
+        )
         w = np.floor(loguniform(rng, 2, 1e9, n))
         return lo, lo + w
 
@@ -2593,7 +2819,9 @@ class BetaBinomial(Discrete):
     def pmf(k, n, a, b):
         if not k.is_integer() or k < 0 or k > n:
             return arb(0)
-        return ((n + 1).lgamma() - (k + 1).lgamma() - (n - k + 1).lgamma() + _lbeta(k + a, n - k + b) - _lbeta(a, b)).exp()
+        return (
+            (n + 1).lgamma() - (k + 1).lgamma() - (n - k + 1).lgamma() + _lbeta(k + a, n - k + b) - _lbeta(a, b)
+        ).exp()
 
     @staticmethod
     def _ratio(j, n, a, b):
@@ -2654,8 +2882,14 @@ class BetaBinomial(Discrete):
     variance = staticmethod(lambda n, a, b: n * a * b * (a + b + n) / ((a + b) ** 2 * (a + b + 1)))
     standard_deviation = staticmethod(lambda n, a, b: (n * a * b * (a + b + n) / ((a + b) ** 2 * (a + b + 1))).sqrt())
     # a = b is symmetric about n / 2: the skewness is exactly 0
-    skewness = staticmethod(lambda n, a, b: arb(0) if a == b else BetaBinomial._central(n, a, b, 3) / BetaBinomial._central(n, a, b, 2) ** arb(1.5))
-    kurtosis = staticmethod(lambda n, a, b: BetaBinomial._central(n, a, b, 4) / BetaBinomial._central(n, a, b, 2) ** 2 - 3)
+    skewness = staticmethod(
+        lambda n, a, b: (
+            arb(0) if a == b else BetaBinomial._central(n, a, b, 3) / BetaBinomial._central(n, a, b, 2) ** arb(1.5)
+        )
+    )
+    kurtosis = staticmethod(
+        lambda n, a, b: BetaBinomial._central(n, a, b, 4) / BetaBinomial._central(n, a, b, 2) ** 2 - 3
+    )
 
     @staticmethod
     def mode(n, a, b):
@@ -2706,8 +2940,11 @@ class BetaBinomial(Discrete):
     @classmethod
     def param_sets(cls, rng):
         nn, a, b = cls._params(rng, 400)
-        return (np.concatenate([nn, [10.0, 10.0, 5.0]]), np.concatenate([a, [1.0, 0.5, 2.0]]),
-                np.concatenate([b, [1.0, 0.5, 3.0]])), np.ones(nn.size + 3, dtype=bool)
+        return (
+            np.concatenate([nn, [10.0, 10.0, 5.0]]),
+            np.concatenate([a, [1.0, 0.5, 2.0]]),
+            np.concatenate([b, [1.0, 0.5, 3.0]]),
+        ), np.ones(nn.size + 3, dtype=bool)
 
 
 def _logser_l(p):
@@ -2771,18 +3008,30 @@ class LogSeries(Discrete):
 
     @staticmethod
     def _params(rng, n):
-        return (np.concatenate([rng.uniform(0.001, 0.999, n // 2), loguniform(rng, 1e-8, 0.5, n // 4),
-                                1 - loguniform(rng, 1e-6, 0.5, n - n // 2 - n // 4)]),)
+        return (
+            np.concatenate(
+                [
+                    rng.uniform(0.001, 0.999, n // 2),
+                    loguniform(rng, 1e-8, 0.5, n // 4),
+                    1 - loguniform(rng, 1e-6, 0.5, n - n // 2 - n // 4),
+                ]
+            ),
+        )
 
     @staticmethod
     def _x(rng, ps):
         import scipy.stats as st  # noqa: F401
+
         (p,) = ps
         import stardust as sd  # scipy's logser.ppf is slow in the far tail: our own icdf as the sampler
 
-        return _quantile_ints(rng, p.size, lambda q, i: np.asarray(sd.stats.LogSeries(p=sd.asarray(p[i])).icdf(sd.asarray(q))),
-                              lambda q, i: np.asarray(sd.stats.LogSeries(p=sd.asarray(p[i])).iccdf(sd.asarray(q))),
-                              lambda rng, k: np.floor(loguniform(rng, 1, 1e7, k)))
+        return _quantile_ints(
+            rng,
+            p.size,
+            lambda q, i: np.asarray(sd.stats.LogSeries(p=sd.asarray(p[i])).icdf(sd.asarray(q))),
+            lambda q, i: np.asarray(sd.stats.LogSeries(p=sd.asarray(p[i])).iccdf(sd.asarray(q))),
+            lambda rng, k: np.floor(loguniform(rng, 1, 1e7, k)),
+        )
 
     @classmethod
     def param_sets(cls, rng):
@@ -2816,8 +3065,12 @@ class Zipf(Discrete):
 
     variance = staticmethod(lambda a: Zipf._central(a, 2) if a > 3 else (INF if a > 2 else NAN))
     standard_deviation = staticmethod(lambda a: Zipf._central(a, 2).sqrt() if a > 3 else (INF if a > 2 else NAN))
-    skewness = staticmethod(lambda a: Zipf._central(a, 3) / Zipf._central(a, 2) ** arb(1.5) if a > 4 else (INF if a > 3 else NAN))
-    kurtosis = staticmethod(lambda a: Zipf._central(a, 4) / Zipf._central(a, 2) ** 2 - 3 if a > 5 else (INF if a > 3 else NAN))
+    skewness = staticmethod(
+        lambda a: Zipf._central(a, 3) / Zipf._central(a, 2) ** arb(1.5) if a > 4 else (INF if a > 3 else NAN)
+    )
+    kurtosis = staticmethod(
+        lambda a: Zipf._central(a, 4) / Zipf._central(a, 2) ** 2 - 3 if a > 5 else (INF if a > 3 else NAN)
+    )
     mode = staticmethod(lambda a: arb(1))
 
     @staticmethod
@@ -2833,12 +3086,17 @@ class Zipf(Discrete):
     @staticmethod
     def _x(rng, ps):
         import scipy.stats as st  # noqa: F401
+
         (a,) = ps
         import stardust as sd  # scipy's zipf.ppf runs out of memory for a near 1 and a tiny q
 
-        return _quantile_ints(rng, a.size, lambda q, i: np.asarray(sd.stats.Zipf(a=sd.asarray(a[i])).icdf(sd.asarray(q))),
-                              lambda q, i: np.asarray(sd.stats.Zipf(a=sd.asarray(a[i])).iccdf(sd.asarray(q))),
-                              lambda rng, k: np.floor(loguniform(rng, 1, 1e12, k)))
+        return _quantile_ints(
+            rng,
+            a.size,
+            lambda q, i: np.asarray(sd.stats.Zipf(a=sd.asarray(a[i])).icdf(sd.asarray(q))),
+            lambda q, i: np.asarray(sd.stats.Zipf(a=sd.asarray(a[i])).iccdf(sd.asarray(q))),
+            lambda rng, k: np.floor(loguniform(rng, 1, 1e12, k)),
+        )
 
     @classmethod
     def param_sets(cls, rng):
@@ -2846,15 +3104,39 @@ class Zipf(Discrete):
         return (a,), np.ones(a.size, dtype=bool)
 
 
-DISTRIBUTIONS = {"normal": Normal, "exponential": Exponential, "uniform": Uniform, "laplace": Laplace,
-                 "cauchy": Cauchy, "lognormal": LogNormal, "weibull": Weibull, "gamma": Gamma,
-                 "chisquared": ChiSquared, "beta": Beta, "studentt": StudentT, "f": F,
-                 "binomial": Binomial, "bernoulli": Bernoulli, "poisson": Poisson, "geometric": Geometric,
-                 "negativebinomial": NegativeBinomial, "hypergeometric": Hypergeometric,
-                 "discreteuniform": DiscreteUniform, "betabinomial": BetaBinomial, "logseries": LogSeries, "zipf": Zipf,
-                 "logistic": Logistic, "gumbel": Gumbel, "gev": GEV, "pareto": Pareto, "rayleigh": Rayleigh,
-                 "inversegamma": InverseGamma, "noncentralchisquared": NoncentralChiSquared,
-                 "noncentralt": NoncentralT, "noncentralf": NoncentralF}
+DISTRIBUTIONS = {
+    "normal": Normal,
+    "exponential": Exponential,
+    "uniform": Uniform,
+    "laplace": Laplace,
+    "cauchy": Cauchy,
+    "lognormal": LogNormal,
+    "weibull": Weibull,
+    "gamma": Gamma,
+    "chisquared": ChiSquared,
+    "beta": Beta,
+    "studentt": StudentT,
+    "f": F,
+    "binomial": Binomial,
+    "bernoulli": Bernoulli,
+    "poisson": Poisson,
+    "geometric": Geometric,
+    "negativebinomial": NegativeBinomial,
+    "hypergeometric": Hypergeometric,
+    "discreteuniform": DiscreteUniform,
+    "betabinomial": BetaBinomial,
+    "logseries": LogSeries,
+    "zipf": Zipf,
+    "logistic": Logistic,
+    "gumbel": Gumbel,
+    "gev": GEV,
+    "pareto": Pareto,
+    "rayleigh": Rayleigh,
+    "inversegamma": InverseGamma,
+    "noncentralchisquared": NoncentralChiSquared,
+    "noncentralt": NoncentralT,
+    "noncentralf": NoncentralF,
+}
 DISCRETE_INPUT_METHODS = ("pmf", "logpmf") + INPUT_METHODS[2:]
 
 
@@ -2877,8 +3159,16 @@ def method_value(D, m, args):
     *p, x = args
     if not x.is_finite():  # x = +-inf: beyond every support
         up = x > 0
-        return {"pdf": arb(0), "pmf": arb(0), "logpdf": -INF, "logpmf": -INF, "cdf": arb(int(up)),
-                "ccdf": arb(int(not up)), "logcdf": arb(0) if up else -INF, "logccdf": -INF if up else arb(0)}[m]
+        return {
+            "pdf": arb(0),
+            "pmf": arb(0),
+            "logpdf": -INF,
+            "logpmf": -INF,
+            "cdf": arb(int(up)),
+            "ccdf": arb(int(not up)),
+            "logcdf": arb(0) if up else -INF,
+            "logccdf": -INF if up else arb(0),
+        }[m]
     if m in ("pdf", "pmf"):
         return D.pmf(x, *p) if m == "pmf" else D.pdf(x, *p)
     if m == "logpmf":
@@ -2970,8 +3260,8 @@ def _newton_root(D, p, upper, logtarget, x0):
                     if abs(du) <= arb(2) ** (-prec + 12) * (abs(u) if not (unit or positive) else max(arb(1), abs(u))):
                         break
                 x = to_x(u).mid()
-                return ar.certify_root(g, x, 2.0 ** -ar.TARGET_BITS, increasing=not upper)
-            except (NotSettled, ZeroDivisionError, ValueError, ArithmeticError):
+                return ar.certify_root(g, x, 2.0**-ar.TARGET_BITS, increasing=not upper)
+            except NotSettled, ZeroDivisionError, ValueError, ArithmeticError:
                 pass
         prec *= 2
     raise NotSettled("root")
@@ -3016,7 +3306,7 @@ def inverse_value(D, m, args, x0):
     elif x0 == 0 or not np.isfinite(x0) or (getattr(D, "unit", False) and x0 == 1):
         try:
             return _beyond_range(D, m, pf, t, x0), 1.0
-        except (ValueError, NotSettled, ArithmeticError):
+        except ValueError, NotSettled, ArithmeticError:
             # our 0 or inf is wrong (the root is inside the range), or the side cannot be
             # evaluated at the range's edge: the certified root from the distribution's centre
             if np.isnan(x0) or not hasattr(D, "start"):
@@ -3051,7 +3341,7 @@ def _kappa(D, m, pf, t, x):
                 k = arb(t) / (f * abs(xx)) if m in ("icdf", "iccdf") else abs(arb(t)) * arb(t).exp() / (f * abs(xx))
                 if k.is_finite() and k.rel_accuracy_bits() > 20:
                     return abs(float(k.mid()))
-            except (NotSettled, ZeroDivisionError, ValueError):
+            except NotSettled, ZeroDivisionError, ValueError:
                 pass
         prec *= 2
     return 1.0
@@ -3250,8 +3540,10 @@ def add_intervals(targets, jobs):
             data[key] = data[key][keep]
         data["kmin"], data["kmax"] = kmin[keep], kmax[keep]
         np.savez_compressed(path, **data)
-        print(f"{dist}_{m}: {int(keep.sum())} intervals" + (f", {n - int(keep.sum())} dropped" if n > keep.sum() else ""),
-              flush=True)
+        print(
+            f"{dist}_{m}: {int(keep.sum())} intervals" + (f", {n - int(keep.sum())} dropped" if n > keep.sum() else ""),
+            flush=True,
+        )
 
 
 # ---------------------------------------------------------------- building
@@ -3280,7 +3572,9 @@ def _point(task):
             sc = max(1.0, k)
             v = x
         else:
-            v = rigorous(lambda: method_value(D, m, [arb(a) for a in args]), max_prec=getattr(D, "max_prec", ar.MAX_PREC))
+            v = rigorous(
+                lambda: method_value(D, m, [arb(a) for a in args]), max_prec=getattr(D, "max_prec", ar.MAX_PREC)
+            )
         hi, lo = to_dd(v)
         return i, (hi, lo, sc)
     except Exception:  # a point Arb cannot settle (timeout, no root, an infinite ball) is dropped
@@ -3346,7 +3640,9 @@ def _nc_outside(dist, m, xs):
 
 
 def refdata_class(dist):
-    return {"noncentralchisquared": "NoncentralChiSquared", "noncentralt": "NoncentralT", "noncentralf": "NoncentralF"}[dist]
+    return {"noncentralchisquared": "NoncentralChiSquared", "noncentralt": "NoncentralT", "noncentralf": "NoncentralF"}[
+        dist
+    ]
 
 
 def corner(dist, m, xs):
@@ -3364,7 +3660,7 @@ def region(dist, D, xs, guaranteed, m=None):
     without the documented corners."""
     g = np.asarray(guaranteed, dtype=bool)
     if dist in PARAM_RANGE:
-        g = g & PARAM_RANGE[dist](*xs[:len(D.params)])
+        g = g & PARAM_RANGE[dist](*xs[: len(D.params)])
     if m is not None:
         g = g & ~corner(dist, m, xs)
     return g
@@ -3442,10 +3738,18 @@ def _save(dist, m, xs, guaranteed, results):
             keep[i] = True
     extra = {"kmin": kmin[keep], "kmax": kmax[keep]} if interval else {}
     OUT.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(OUT / f"{dist}_{m}.npz", nin=len(xs), hi=hi[keep], lo=lo[keep], scale=scale[keep],
-                        guaranteed=np.asarray(guaranteed, dtype=bool)[keep],
-                        **{f"x{k}": x[keep] for k, x in enumerate(xs)}, **extra, arb=flint.__version__,
-                        target_bits=ar.TARGET_BITS)
+    np.savez_compressed(
+        OUT / f"{dist}_{m}.npz",
+        nin=len(xs),
+        hi=hi[keep],
+        lo=lo[keep],
+        scale=scale[keep],
+        guaranteed=np.asarray(guaranteed, dtype=bool)[keep],
+        **{f"x{k}": x[keep] for k, x in enumerate(xs)},
+        **extra,
+        arb=flint.__version__,
+        target_bits=ar.TARGET_BITS,
+    )
     return int(keep.sum()), int(n - keep.sum())
 
 
@@ -3509,8 +3813,11 @@ def build_all(targets, jobs):
         count += 1
         if count % step == 0:
             el = time.monotonic() - start
-            print(f"  progress {count}/{total} points ({100 * count // total}%), {el / 60:.1f} min, "
-                  f"~{el / count * (total - count) / 60:.1f} min left", flush=True)
+            print(
+                f"  progress {count}/{total} points ({100 * count // total}%), {el / 60:.1f} min, "
+                f"~{el / count * (total - count) / 60:.1f} min left",
+                flush=True,
+            )
 
     tasks = ((int(k), int(i)) for k, i in zip(fk, fi))
     if jobs > 1:

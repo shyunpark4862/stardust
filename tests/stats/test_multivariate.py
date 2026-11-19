@@ -50,7 +50,9 @@ def _ref_logpdf(mu, cov, xs, df=None):
     def fn():
         A = arb_mat(cov.tolist())
         ld = A.det().log()
-        R = arb_mat([[float(x[i]) for x in xs] for i in range(d)]) - arb_mat([[float(mu[i])] * len(xs) for i in range(d)])
+        R = arb_mat([[float(x[i]) for x in xs] for i in range(d)]) - arb_mat(
+            [[float(mu[i])] * len(xs) for i in range(d)]
+        )
         Y = A.solve(R)
         pi = arb.pi()
         out = []
@@ -60,15 +62,25 @@ def _ref_logpdf(mu, cov, xs, df=None):
                 out.append(-(d * (2 * pi).log() + ld + q) / 2)
             else:
                 nu = arb(df)
-                out.append(((nu + d) / 2).lgamma() - (nu / 2).lgamma() - arb(d) / 2 * (nu * pi).log() - ld / 2
-                           - (nu + d) / 2 * (q / nu).log1p())
+                out.append(
+                    ((nu + d) / 2).lgamma()
+                    - (nu / 2).lgamma()
+                    - arb(d) / 2 * (nu * pi).log()
+                    - ld / 2
+                    - (nu + d) / 2 * (q / nu).log1p()
+                )
         if df is None:
             h = arb(d) / 2 * (1 + (2 * pi).log()) + ld / 2
         else:
             nu = arb(df)
             a, hh = nu / 2, arb(d) / 2
-            h = (ld / 2 + a.lgamma() - (a + hh).lgamma() + hh * (nu * pi).log()
-                 + (a + hh) * ((a + hh).digamma() - a.digamma()))
+            h = (
+                ld / 2
+                + a.lgamma()
+                - (a + hh).lgamma()
+                + hh * (nu * pi).log()
+                + (a + hh) * ((a + hh).digamma() - a.digamma())
+            )
         return (*out, h)
 
     *out, h = _settled(fn)
@@ -98,10 +110,14 @@ def test_matches_scipy_on_easy_cases():
     mu = rng.normal(size=3)
     xs = rng.normal(size=(7, 3))
     _close = lambda a, b: np.testing.assert_allclose(np.asarray(a, float), b, rtol=1e-13, atol=1e-14)
-    _close(S.MultivariateNormal(mu=sd.asarray(mu), cov=sd.asarray(cov)).logpdf(sd.asarray(xs)),
-           st.multivariate_normal(mu, cov).logpdf(xs))
-    _close(S.MultivariateT(mu=sd.asarray(mu), shape=sd.asarray(cov), df=3.0).logpdf(sd.asarray(xs)),
-           st.multivariate_t(mu, cov, df=3.0).logpdf(xs))
+    _close(
+        S.MultivariateNormal(mu=sd.asarray(mu), cov=sd.asarray(cov)).logpdf(sd.asarray(xs)),
+        st.multivariate_normal(mu, cov).logpdf(xs),
+    )
+    _close(
+        S.MultivariateT(mu=sd.asarray(mu), shape=sd.asarray(cov), df=3.0).logpdf(sd.asarray(xs)),
+        st.multivariate_t(mu, cov, df=3.0).logpdf(xs),
+    )
     p = np.array([0.2, 0.3, 0.5])
     x = np.array([[2, 3, 5], [0, 0, 10], [10, 0, 0], [1, 1, 8]], float)
     _close(S.Multinomial(n=10.0, p=sd.asarray(p)).logpmf(sd.asarray(x)), st.multinomial(10, p).logpmf(x))
@@ -145,15 +161,24 @@ def test_multinomial_and_dirichlet_against_arb():
     def dirichlet_entropy():
         a = [arb(1e6), arb(2e6), arb(3e6)]
         a0 = sum(a, arb(0))
-        return (sum((x.lgamma() for x in a), arb(0)) - a0.lgamma() + (a0 - 3) * a0.digamma()
-                - sum(((x - 1) * x.digamma() for x in a), arb(0)),)
+        return (
+            sum((x.lgamma() for x in a), arb(0))
+            - a0.lgamma()
+            + (a0 - 3) * a0.digamma()
+            - sum(((x - 1) * x.digamma() for x in a), arb(0)),
+        )
 
     (hd,) = _settled(dirichlet_entropy)
     assert abs(S.Dirichlet(alpha=sd.asarray([1e6, 2e6, 3e6])).entropy() - float(hd)) <= 1e-14 * abs(float(hd))
     # a large-count log pmf: n p_i summing to a value far from 1 in log terms
     x = [20000.0, 30000.0, 50000.0]
-    (lp,) = _settled(lambda: (arb(n + 1).lgamma() - sum((arb(v + 1).lgamma() for v in x), arb(0))
-                              + sum((v * arb(q).log() for v, q in zip(x, pf)), arb(0)),))
+    (lp,) = _settled(
+        lambda: (
+            arb(n + 1).lgamma()
+            - sum((arb(v + 1).lgamma() for v in x), arb(0))
+            + sum((v * arb(q).log() for v, q in zip(x, pf)), arb(0)),
+        )
+    )
     got = S.Multinomial(n=float(n), p=sd.asarray(pf)).logpmf(sd.asarray(x))
     assert abs(got - float(lp)) <= 1e-14 * max(1.0, abs(float(lp)))
 
@@ -170,8 +195,9 @@ def test_batching():
     assert np.asarray(D.entropy()).shape == (3,)
     assert np.asarray(D.mean()).shape == (3, 2) and np.asarray(D.covariance()).shape == (3, 2, 2)
     assert np.asarray(D.sample(4, rng=sd.random.default_rng(1))).shape == (4, 3, 2)
-    assert isinstance(S.MultivariateNormal(mu=sd.asarray([0.0, 0.0]), cov=sd.asarray(np.eye(2))).logpdf(
-        sd.asarray([1.0, 1.0])), float)
+    assert isinstance(
+        S.MultivariateNormal(mu=sd.asarray([0.0, 0.0]), cov=sd.asarray(np.eye(2))).logpdf(sd.asarray([1.0, 1.0])), float
+    )
     T = S.MultivariateT(mu=sd.asarray([0.0, 0.0]), shape=sd.asarray(np.eye(2)), df=sd.asarray([1.0, 5.0, np.inf]))
     assert np.asarray(T.logpdf(sd.asarray([0.5, 0.5]))).shape == (3,)
     M = S.Multinomial(n=sd.asarray([5.0, 10.0]), p=sd.asarray([0.5, 0.5]))
@@ -185,9 +211,13 @@ def test_batching():
 def test_invalid_parameters_give_nan():
     bad = S.MultivariateNormal(mu=sd.asarray([0.0, 0.0]), cov=sd.asarray([[1.0, 2.0], [2.0, 1.0]]))
     assert math.isnan(bad.logpdf(sd.asarray([0.0, 0.0]))) and math.isnan(bad.entropy())
-    assert np.isnan(np.asarray(bad.mean())).all() and np.isnan(np.asarray(bad.sample(2, rng=sd.random.default_rng(1)))).all()
-    assert math.isnan(S.MultivariateNormal(mu=sd.asarray([np.nan, 0.0]), cov=sd.asarray(np.eye(2))).logpdf(
-        sd.asarray([0.0, 0.0])))
+    assert (
+        np.isnan(np.asarray(bad.mean())).all()
+        and np.isnan(np.asarray(bad.sample(2, rng=sd.random.default_rng(1)))).all()
+    )
+    assert math.isnan(
+        S.MultivariateNormal(mu=sd.asarray([np.nan, 0.0]), cov=sd.asarray(np.eye(2))).logpdf(sd.asarray([0.0, 0.0]))
+    )
     assert math.isnan(S.MultivariateT(mu=sd.asarray([0.0]), shape=sd.asarray([[1.0]]), df=-1.0).entropy())
     assert math.isnan(S.Multinomial(n=2.5, p=sd.asarray([0.5, 0.5])).pmf(sd.asarray([1.0, 1.5])))
     assert math.isnan(S.Multinomial(n=2.0, p=sd.asarray([0.5, 0.6])).entropy())  # p sums to 1.1
@@ -211,12 +241,13 @@ def test_support_rules():
 
 
 def test_moments():
-    T = S.MultivariateT(mu=sd.asarray([1.0, 2.0]), shape=sd.asarray([[2.0, 0.5], [0.5, 1.0]]),
-                        df=sd.asarray([0.5, 1.5, 4.0, np.inf]))
+    T = S.MultivariateT(
+        mu=sd.asarray([1.0, 2.0]), shape=sd.asarray([[2.0, 0.5], [0.5, 1.0]]), df=sd.asarray([0.5, 1.5, 4.0, np.inf])
+    )
     m = np.asarray(T.mean())
     assert np.isnan(m[0]).all() and np.allclose(m[1:], [1.0, 2.0])
     c = np.asarray(T.covariance())
-    assert np.isnan(c[0]).all() and np.isinf(c[1]).all() and np.allclose(c[2], np.array([[2, .5], [.5, 1]]) * 2.0)
+    assert np.isnan(c[0]).all() and np.isinf(c[1]).all() and np.allclose(c[2], np.array([[2, 0.5], [0.5, 1]]) * 2.0)
     assert np.allclose(c[3], [[2, 0.5], [0.5, 1]])
     p = np.array([0.2, 0.3, 0.5])
     M = S.Multinomial(n=10.0, p=sd.asarray(p))
@@ -305,7 +336,9 @@ def test_cdf_through_the_classes():
     v, e = N.cdf(sd.asarray(x), return_error=True)
     assert np.all(np.asarray(e) == 0.0)  # d = 2: the exact formula
     assert isinstance(N.cdf(sd.asarray([1.0, 1.0])), float)
-    B = S.MultivariateNormal(mu=sd.asarray(np.zeros((3, 2))), cov=sd.asarray(np.eye(2) * np.array([1.0, 2.0, 3.0])[:, None, None]))
+    B = S.MultivariateNormal(
+        mu=sd.asarray(np.zeros((3, 2))), cov=sd.asarray(np.eye(2) * np.array([1.0, 2.0, 3.0])[:, None, None])
+    )
     assert B.cdf(sd.asarray([[0.0, 0.0]])).shape == (3,)
     assert np.allclose(np.asarray(B.cdf(sd.asarray([0.0, 0.0]))), 0.25)
     T = S.MultivariateT(mu=sd.asarray(np.zeros(5)), shape=sd.asarray(np.eye(5) + 0.3), df=6.0)
@@ -322,8 +355,11 @@ def test_cdf_through_the_classes():
 def _mv_kernel(D, x, fast, pdf=False):
     k = sd._core.stats
     rows, idx, _ = D._points(sd.asarray(x), "logpdf")
-    return np.asarray(k.mv_logpdf(rows, idx, D._mu, D._L, D._Ll, D._ldh, D._ldl, D._ok, D._df, D._ih, D._il,
-                                  D._fast if fast else None, pdf))
+    return np.asarray(
+        k.mv_logpdf(
+            rows, idx, D._mu, D._L, D._Ll, D._ldh, D._ldl, D._ok, D._df, D._ih, D._il, D._fast if fast else None, pdf
+        )
+    )
 
 
 @pytest.mark.parametrize("d", [1, 2, 3, 8, 9, 20, 50])
@@ -338,10 +374,17 @@ def test_fast_path_agrees_with_the_double_double_path(d, kappa):
     cov = (cov + cov.T) / 2
     mu = rng.normal(size=d)
     L = np.linalg.cholesky(cov)
-    x = np.concatenate([mu + rng.normal(size=(600, d)) @ L.T, mu + rng.normal(size=(600, d)),
-                        mu + 50.0 * rng.normal(size=(300, d)) @ L.T])
-    for D in (S.MultivariateNormal(mu=sd.asarray(mu), cov=sd.asarray(cov)),
-              S.MultivariateT(mu=sd.asarray(mu), shape=sd.asarray(cov), df=4.5)):
+    x = np.concatenate(
+        [
+            mu + rng.normal(size=(600, d)) @ L.T,
+            mu + rng.normal(size=(600, d)),
+            mu + 50.0 * rng.normal(size=(300, d)) @ L.T,
+        ]
+    )
+    for D in (
+        S.MultivariateNormal(mu=sd.asarray(mu), cov=sd.asarray(cov)),
+        S.MultivariateT(mu=sd.asarray(mu), shape=sd.asarray(cov), df=4.5),
+    ):
         got = np.asarray(D.logpdf(sd.asarray(x)))
         fast, precise = _mv_kernel(D, x, True), _mv_kernel(D, x, False)
         assert np.array_equal(got, fast)
@@ -418,10 +461,13 @@ def test_multivariate_samples_split_and_threads():
     rng = np.random.default_rng(2)
     a = rng.normal(size=(9, 9))
     cov = a @ a.T + np.eye(9)
-    dists = [S.MultivariateNormal(mu=sd.asarray(np.arange(9.0)), cov=sd.asarray(cov)),
-             S.MultivariateT(mu=sd.asarray(np.arange(9.0)), shape=sd.asarray(cov), df=0.7),
-             S.Multinomial(n=500.0, p=sd.asarray([0.1, 0.2, 0.3, 0.4])),
-             S.Dirichlet(alpha=sd.asarray([0.5, 2.0, 3.0, 1.5])), S.Dirichlet(alpha=sd.asarray([1e-3, 0.01, 2.0]))]
+    dists = [
+        S.MultivariateNormal(mu=sd.asarray(np.arange(9.0)), cov=sd.asarray(cov)),
+        S.MultivariateT(mu=sd.asarray(np.arange(9.0)), shape=sd.asarray(cov), df=0.7),
+        S.Multinomial(n=500.0, p=sd.asarray([0.1, 0.2, 0.3, 0.4])),
+        S.Dirichlet(alpha=sd.asarray([0.5, 2.0, 3.0, 1.5])),
+        S.Dirichlet(alpha=sd.asarray([1e-3, 0.01, 2.0])),
+    ]
     before = sd.get_num_threads()
     try:
         for D in dists:
@@ -444,11 +490,12 @@ def test_dirichlet_density_keeps_alpha_minus_one_exactly():
     # (3.8e-14 relative). Truth: Arb at 128 bits, the alphas and x exact.
     D = S.Dirichlet(alpha=sd.asarray([0.3, 0.6]))
     x = sd.asarray([[1e-300, 1.0]])
-    assert float(np.asarray(D.pdf(x))[0]) == pytest.approx(2.398706130865886e+209, rel=2e-15)
+    assert float(np.asarray(D.pdf(x))[0]) == pytest.approx(2.398706130865886e209, rel=2e-15)
     assert float(np.asarray(D.logpdf(x))[0]) == pytest.approx(482.11521391559705, rel=2e-15)
 
 
 # ---- extreme arguments (docs/design/stats.md §3.5)
+
 
 def test_logpdf_where_the_quadratic_form_overflows():
     # the normal: -Q / 2 below every double is -inf (NaN before: inf - inf in the substitution)
@@ -461,12 +508,23 @@ def test_logpdf_where_the_quadratic_form_overflows():
     # the t's log density falls like log |x|: finite at every finite x, against Arb
     ctx.prec = 300
     for df in (0.5, 3.0, 1e9, 1e300):
-        for d, x0, scale in ((1, 1e308, 1.0), (2, 1e308, 1.0), (3, -1e308, 1.0), (2, 1e200, 1e-300), (2, 1e-100, 1e-300),
-                             (3, 1e308, 1e300)):
+        for d, x0, scale in (
+            (1, 1e308, 1.0),
+            (2, 1e308, 1.0),
+            (3, -1e308, 1.0),
+            (2, 1e200, 1e-300),
+            (2, 1e-100, 1e-300),
+            (3, 1e308, 1e300),
+        ):
             T = S.MultivariateT(mu=sd.asarray(np.zeros(d)), shape=sd.asarray(np.eye(d) * scale), df=df)
             nu, q = arb(df), d * arb(x0) ** 2 / arb(scale)
-            ref = (((nu + d) / 2).lgamma() - (nu / 2).lgamma() - arb(d) / 2 * (nu * arb.pi()).log()
-                   - arb(d) / 2 * arb(scale).log() - (nu + d) / 2 * (q / nu).log1p())
+            ref = (
+                ((nu + d) / 2).lgamma()
+                - (nu / 2).lgamma()
+                - arb(d) / 2 * (nu * arb.pi()).log()
+                - arb(d) / 2 * arb(scale).log()
+                - (nu + d) / 2 * (q / nu).log1p()
+            )
             got = T.logpdf(sd.asarray(np.full(d, x0)))
             ref = float(ref.mid())
             assert got == ref or abs(got - ref) <= 1e-14 * max(1.0, abs(ref)), (df, d, x0, scale, got, ref)
@@ -474,7 +532,11 @@ def test_logpdf_where_the_quadratic_form_overflows():
     N = S.MultivariateNormal(mu=sd.asarray([-1e308, -1e308]), cov=sd.asarray(np.eye(2)))
     assert N.logpdf(sd.asarray([1e308, 1e308])) == -math.inf
     T = S.MultivariateT(mu=sd.asarray([-1e308]), shape=sd.asarray([[1.0]]), df=2.0)
-    ref = float((arb(1.5).lgamma() - arb(1).lgamma() - (2 * arb.pi()).log() / 2 - arb(1.5) * ((arb(2e308)) ** 2 / 2).log1p()).mid())
+    ref = float(
+        (
+            arb(1.5).lgamma() - arb(1).lgamma() - (2 * arb.pi()).log() / 2 - arb(1.5) * ((arb(2e308)) ** 2 / 2).log1p()
+        ).mid()
+    )
     assert abs(T.logpdf(sd.asarray([1e308])) - ref) <= 1e-14 * abs(ref)
 
 

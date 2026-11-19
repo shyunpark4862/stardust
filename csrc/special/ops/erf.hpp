@@ -225,18 +225,14 @@ struct ErfcSelect : Real {
     static constexpr int nin = 1, nout = 1;
     static constexpr std::array<const char*, 1> args{"x"};
     static constexpr double cost_ns = cost::kErfc;
-    static void chunk(const double* x, double* o, int n) {
-        erf_detail::erfc_select_chunk<erf_detail::Horner>(x, o, n);
-    }
+    static void chunk(const double* x, double* o, int n) { erf_detail::erfc_select_chunk<erf_detail::Horner>(x, o, n); }
 };
 struct ErfcEstrin : Real {
     static constexpr const char* name = "_erfc_estrin";
     static constexpr int nin = 1, nout = 1;
     static constexpr std::array<const char*, 1> args{"x"};
     static constexpr double cost_ns = cost::kErfc;
-    static void chunk(const double* x, double* o, int n) {
-        erf_detail::erfc_select_chunk<erf_detail::Estrin>(x, o, n);
-    }
+    static void chunk(const double* x, double* o, int n) { erf_detail::erfc_select_chunk<erf_detail::Estrin>(x, o, n); }
 };
 
 // ndtr(x) = erfc(-x / sqrt 2) / 2, with t = x / sqrt 2:

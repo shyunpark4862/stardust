@@ -73,7 +73,8 @@ double parse_rtol(nb::handle o, std::int64_t m, std::int64_t n, const char* func
     const std::optional<double> r = real_value(o, "rtol");
     if (!r)
         throw nb::type_error(
-            (std::string(func) + "(): 'rtol' must be None, an int or a float, not " + py_type_name(o)).c_str());
+            (std::string(func) + "(): 'rtol' must be None, an int or a float, not " + py_type_name(o)).c_str()
+        );
     const double v = *r;
     if (!(v >= 0) || std::isinf(v))
         throw nb::value_error((std::string(func) + "(): 'rtol' must be a finite number >= 0").c_str());

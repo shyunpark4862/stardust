@@ -48,14 +48,19 @@ def main():
             row = best.setdefault(name, {})
             for k, v in rows.items():
                 row[k] = min(row.get(k, float("inf")), v)
-    lines = [f"Machine: {common.machine()}. 10^6 elements in ms, one scalar call in us; best of {a.rounds} rounds.", "",
-             "| function | compared with | sd 1 thread | sd 10 threads | it | it / sd 1 | it / sd 10 | sd scalar | its scalar |",
-             "|---|---|---:|---:|---:|---:|---:|---:|---:|"]
+    lines = [
+        f"Machine: {common.machine()}. 10^6 elements in ms, one scalar call in us; best of {a.rounds} rounds.",
+        "",
+        "| function | compared with | sd 1 thread | sd 10 threads | it | it / sd 1 | it / sd 10 | sd scalar | its scalar |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|",
+    ]
     for name, r in best.items():
         s = r.get("scipy")
         ratio = (f"{s / r['sd1']:.2f} | {s / r['sd10']:.2f}") if s else "- | -"
-        lines.append(f"| `{name}` | `{common.counterpart(name)}` | {r['sd1'] / 1e6:.3f} | {r['sd10'] / 1e6:.3f} | {s / 1e6 if s else float('nan'):.3f} | {ratio} | "
-                     f"{r['sd_scalar'] / 1e3:.3f} | {r.get('scipy_scalar', float('nan')) / 1e3:.3f} |")
+        lines.append(
+            f"| `{name}` | `{common.counterpart(name)}` | {r['sd1'] / 1e6:.3f} | {r['sd10'] / 1e6:.3f} | {s / 1e6 if s else float('nan'):.3f} | {ratio} | "
+            f"{r['sd_scalar'] / 1e3:.3f} | {r.get('scipy_scalar', float('nan')) / 1e3:.3f} |"
+        )
     text = "\n".join(lines)
     print(text)
     if a.out:

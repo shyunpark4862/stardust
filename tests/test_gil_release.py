@@ -142,8 +142,9 @@ CALLS = {
     "regression.glm one fit": lambda: sd.regression.glm(D.binary, D.design, family="binomial").params,
     "regression.glm batch": lambda: sd.regression.glm(D.binaries, D.designs, family="binomial").params,
     # nls: the model runs in Python; the kernel's QR and the model's large operations let go
-    "regression.nls one fit": lambda: sd.regression.nls(lambda x, a, b: a + b * sd.exp(-x * x), D.design[:, 0],
-                                                        D.response, p0=[0.5, 0.5]).params,
+    "regression.nls one fit": lambda: (
+        sd.regression.nls(lambda x, a, b: a + b * sd.exp(-x * x), D.design[:, 0], D.response, p0=[0.5, 0.5]).params
+    ),
 }
 
 

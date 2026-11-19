@@ -91,7 +91,7 @@ class Series(Reductions):
         matches NaN, NA matches NA). Labels: `label in s.index`."""
         try:
             probe = Column.from_list([None], NA, self._dtype) if value is NA else _column.exact(value, self._dtype)
-        except (TypeError, ValueError, OverflowError):
+        except TypeError, ValueError, OverflowError:
             return False  # a value of another type is in no row
         return self._col.contains_key(probe)
 
@@ -119,8 +119,9 @@ class Series(Reductions):
         to_numpy: without NA and a dtype conversion, a read-only view sharing
         the column's memory; copy=, na_value= and dtype= as there. A string
         column is a TypeError (the array area has no string dtype)."""
-        return _column.to_array(self._col, resolve(dtype, "to_array") if dtype is not None else None, copy, na_value,
-                                "to_array")
+        return _column.to_array(
+            self._col, resolve(dtype, "to_array") if dtype is not None else None, copy, na_value, "to_array"
+        )
 
     def __array__(self, dtype=None, copy=None):
         arr = self._to_numpy(None, copy, _NO_VALUE, None)  # numpy's protocol: no function name
@@ -356,7 +357,9 @@ def _check_no_bool_mix(values):
     if np is not None:
         bools, numbers = (bool, np.bool_), (int, float, np.integer, np.floating)
     kinds = set(map(type, values))  # the types, not the values: one pass in C
-    if any(issubclass(k, bools) for k in kinds) and any(issubclass(k, numbers) and not issubclass(k, bools) for k in kinds):
+    if any(issubclass(k, bools) for k in kinds) and any(
+        issubclass(k, numbers) and not issubclass(k, bools) for k in kinds
+    ):
         raise TypeError("cannot assign a list that mixes bool values with int or float values")
 
 

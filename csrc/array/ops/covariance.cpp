@@ -77,7 +77,10 @@ NDArray cov_matrix(nb::handle x_obj, bool rowvar, double correction) {
                 // syrk wins or ties while n <= 4p (p = 2000, n = 200: 2.4x),
                 // gemm from there on.
                 if (n <= 4 * p) blas::syrk_upper<T>(p, n, xp, n, cp, p);
-                else blas::gemm<T>(CblasNoTrans, ops::is_cplx<T> ? CblasConjTrans : CblasTrans, p, p, n, xp, n, xp, n, cp, p);
+                else
+                    blas::gemm<T>(
+                        CblasNoTrans, ops::is_cplx<T> ? CblasConjTrans : CblasTrans, p, p, n, xp, n, xp, n, cp, p
+                    );
             } else {
                 std::fill(cp, cp + p * p, T(0));
             }
@@ -169,8 +172,10 @@ nb::object corrcoef(nb::handle x, nb::handle rowvar_obj) {
 
 void bind_covariance(nb::module_& m) {
     using nb::arg;
-    m.def("cov", named("cov", &cov), arg().none(), nb::kw_only(), arg("rowvar").none() = true,
-          arg("correction").none() = 0);
+    m.def(
+        "cov", named("cov", &cov), arg().none(), nb::kw_only(), arg("rowvar").none() = true,
+        arg("correction").none() = 0
+    );
     m.def("corrcoef", named("corrcoef", &corrcoef), arg().none(), nb::kw_only(), arg("rowvar").none() = true);
 }
 

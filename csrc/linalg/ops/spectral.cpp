@@ -60,32 +60,39 @@ nb::object eigh_impl(nb::handle ao, nb::handle bo, bool vectors) {
         Out vo;
         if (vectors) vo = alloc_matrices(b.shape(), n, n, dtype_of<T>());
         double* W = wo.as<double>();
-        const Failure f = run_batch(b, cost(kEigh, double(n) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
-            // With vectors, `a` is packed straight into the eigenvector slot; LAPACK
-            // overwrites it with the eigenvectors (docs/design/linalg.md §5.2).
-            LapackSlot<T> vs(vectors ? vo.as<T>() + i * n * n : s.get<T>(static_cast<std::size_t>(n * n)), n * n, s,
-                             Scratch::kAlign0);
-            T* av = vs.get();
-            // Lower triangles only (docs/api/linalg.md §1.4), checked as read
-            // (docs/design/linalg.md §5.4).
-            if (!pack_triangle(a.dtype(), a.data() + off[0], n, a.stride(-2), a.stride(-1), av, n, true, true, true))
-                return kNonFinite;
-            T* bv = nullptr;
-            if (gen) {
-                bv = s.get<T>(static_cast<std::size_t>(n * n), 1);
-                if (!pack_triangle(bin->dtype(), bin->data() + off[1], n, bin->stride(-2), bin->stride(-1), bv, n,
-                                   true, true, true))
-                    return kNonFiniteB;
-            }
-            if (n == 0) return 0;
-            const char jobz = vectors ? 'V' : 'N';
-            LapackSlot<double> ws(W + i * n, n, s, Scratch::kAlign1);
-            double* w = ws.get();
-            if (!gen) return lapack::syevd(jobz, n, av, n, w, s) > 0 ? kNoConvergenceEig : 0;
-            const lint info = lapack::sygv(vectors, jobz, n, av, n, bv, n, w, s);
-            if (info > n) return kNotPD;  // b is not positive definite
-            return info > 0 ? kNoConvergenceEig : 0;
-        });
+        const Failure f =
+            run_batch(b, cost(kEigh, double(n) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+                // With vectors, `a` is packed straight into the eigenvector slot; LAPACK
+                // overwrites it with the eigenvectors (docs/design/linalg.md §5.2).
+                LapackSlot<T> vs(
+                    vectors ? vo.as<T>() + i * n * n : s.get<T>(static_cast<std::size_t>(n * n)), n * n, s,
+                    Scratch::kAlign0
+                );
+                T* av = vs.get();
+                // Lower triangles only (docs/api/linalg.md §1.4), checked as read
+                // (docs/design/linalg.md §5.4).
+                if (!pack_triangle(
+                        a.dtype(), a.data() + off[0], n, a.stride(-2), a.stride(-1), av, n, true, true, true
+                    ))
+                    return kNonFinite;
+                T* bv = nullptr;
+                if (gen) {
+                    bv = s.get<T>(static_cast<std::size_t>(n * n), 1);
+                    if (!pack_triangle(
+                            bin->dtype(), bin->data() + off[1], n, bin->stride(-2), bin->stride(-1), bv, n, true, true,
+                            true
+                        ))
+                        return kNonFiniteB;
+                }
+                if (n == 0) return 0;
+                const char jobz = vectors ? 'V' : 'N';
+                LapackSlot<double> ws(W + i * n, n, s, Scratch::kAlign1);
+                double* w = ws.get();
+                if (!gen) return lapack::syevd(jobz, n, av, n, w, s) > 0 ? kNoConvergenceEig : 0;
+                const lint info = lapack::sygv(vectors, jobz, n, av, n, bv, n, w, s);
+                if (info > n) return kNotPD;  // b is not positive definite
+                return info > 0 ? kNoConvergenceEig : 0;
+            });
         if (f) raise(b, f, func, "a");
         if (vectors) return make_result(Result::Eigh, {to_array(wo), to_array(vo)});
         return to_array(wo);
@@ -116,26 +123,28 @@ nb::object svd(nb::handle xo, nb::handle mode_o) {
         Out uo = alloc_matrices(b.shape(), m, ucols, dtype_of<T>());
         Out so = alloc_vectors(b.shape(), k, DType::Float64);
         Out vo = alloc_matrices(b.shape(), vrows, n, dtype_of<T>());
-        const Failure f = run_batch(b, cost(kSVD, double(m) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
-            T* a = s.get<T>(static_cast<std::size_t>(lda * n));
-            if (!pack(x.dtype(), x.data() + off[0], m, n, x.stride(-2), x.stride(-1), a, lda, true)) return kNonFinite;
-            LapackSlot<T> us(uo.as<T>() + i * m * ucols, m * ucols, s, Scratch::kAlign0);
-            LapackSlot<T> vs(vo.as<T>() + i * vrows * n, vrows * n, s, Scratch::kAlign1);
-            LapackSlot<double> ss(so.as<double>() + i * k, k, s, Scratch::kAlign2);
-            T* u = us.get();
-            T* vh = vs.get();
-            if (k == 0) {  // no singular values; complete U and Vh are identities
-                if (complete) {
-                    set_identity(u, m);
-                    set_identity(vh, n);
+        const Failure f =
+            run_batch(b, cost(kSVD, double(m) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+                T* a = s.get<T>(static_cast<std::size_t>(lda * n));
+                if (!pack(x.dtype(), x.data() + off[0], m, n, x.stride(-2), x.stride(-1), a, lda, true))
+                    return kNonFinite;
+                LapackSlot<T> us(uo.as<T>() + i * m * ucols, m * ucols, s, Scratch::kAlign0);
+                LapackSlot<T> vs(vo.as<T>() + i * vrows * n, vrows * n, s, Scratch::kAlign1);
+                LapackSlot<double> ss(so.as<double>() + i * k, k, s, Scratch::kAlign2);
+                T* u = us.get();
+                T* vh = vs.get();
+                if (k == 0) {  // no singular values; complete U and Vh are identities
+                    if (complete) {
+                        set_identity(u, m);
+                        set_identity(vh, n);
+                    }
+                    return 0;
                 }
-                return 0;
-            }
-            // gesdd writes U and Vh straight into their output slots.
-            return lapack::gesdd(complete ? 'A' : 'S', m, n, a, lda, ss.get(), u, m, vh, vrows, s) > 0
-                       ? kNoConvergence
-                       : 0;
-        });
+                // gesdd writes U and Vh straight into their output slots.
+                return lapack::gesdd(complete ? 'A' : 'S', m, n, a, lda, ss.get(), u, m, vh, vrows, s) > 0
+                           ? kNoConvergence
+                           : 0;
+            });
         if (f) raise(b, f, "svd", "x");
         return make_result(Result::SVD, {to_array(uo), to_array(so), to_array(vo)});
     });
@@ -148,10 +157,11 @@ nb::object svdvals(nb::handle xo) {
     Batch b({{x.batch_shape(2), x.batch_strides(2)}}, "svdvals");
     return with_type(computes_complex(x.dtype()), [&]<class T>(std::type_identity<T>) -> nb::object {
         Out so = alloc_vectors(b.shape(), k, DType::Float64);
-        const Failure f = run_batch(b, cost(kSVD, double(m) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
-            LapackSlot<double> ss(so.as<double>() + i * k, k, s, Scratch::kAlign0);
-            return singular_values<T>(x, off[0], m, n, s, ss.get());
-        });
+        const Failure f =
+            run_batch(b, cost(kSVD, double(m) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+                LapackSlot<double> ss(so.as<double>() + i * k, k, s, Scratch::kAlign0);
+                return singular_values<T>(x, off[0], m, n, s, ss.get());
+            });
         if (f) raise(b, f, "svdvals", "x");
         return to_array(so);
     });
@@ -168,18 +178,19 @@ nb::object matrix_rank(nb::handle xo, nb::handle rtol_o) {
     return with_type(computes_complex(x.dtype()), [&]<class T>(std::type_identity<T>) -> nb::object {
         Out ro = alloc_c(b.shape(), DType::Int64);
         std::int64_t* R = ro.as<std::int64_t>();
-        const Failure f = run_batch(b, cost(kSVD, double(m) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
-            double* sv = s.get<double>(static_cast<std::size_t>(std::max<lint>(k, 1)), 1);
-            if (const int code = singular_values<T>(x, off[0], m, n, s, sv)) return code;
-            // Singular values <= rtol * the largest count as zero (docs/api/linalg.md §3,
-            // docs/design/linalg.md §10.5);
-            // with rtol >= 1 that is all of them.
-            const double tol = k > 0 ? rtol * sv[0] : 0.0;
-            std::int64_t r = 0;
-            for (lint j = 0; j < k; ++j) r += sv[j] > tol;
-            R[i] = r;
-            return 0;
-        });
+        const Failure f =
+            run_batch(b, cost(kSVD, double(m) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+                double* sv = s.get<double>(static_cast<std::size_t>(std::max<lint>(k, 1)), 1);
+                if (const int code = singular_values<T>(x, off[0], m, n, s, sv)) return code;
+                // Singular values <= rtol * the largest count as zero (docs/api/linalg.md §3,
+                // docs/design/linalg.md §10.5);
+                // with rtol >= 1 that is all of them.
+                const double tol = k > 0 ? rtol * sv[0] : 0.0;
+                std::int64_t r = 0;
+                for (lint j = 0; j < k; ++j) r += sv[j] > tol;
+                R[i] = r;
+                return 0;
+            });
         if (f) raise(b, f, "matrix_rank", "x");
         return b.ndim() == 0 ? py_scalar(R[0]) : to_array(ro);
     });
@@ -195,46 +206,48 @@ nb::object pinv(nb::handle xo, nb::handle rtol_o) {
     Batch b({{x.batch_shape(2), x.batch_strides(2)}}, "pinv");
     return with_type(computes_complex(x.dtype()), [&]<class T>(std::type_identity<T>) -> nb::object {
         Out po = alloc_matrices(b.shape(), n, m, dtype_of<T>());
-        const Failure f = run_batch(b, cost(kSVD, double(m) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
-            LapackSlot<T> os(po.as<T>() + i * n * m, n * m, s, Scratch::kAlign0);
-            T* out = os.get();
-            T* a = s.get<T>(static_cast<std::size_t>(lda * n));
-            if (!pack(x.dtype(), x.data() + off[0], m, n, x.stride(-2), x.stride(-1), a, lda, true)) return kNonFinite;
-            if (k == 0) {
-                std::fill(out, out + n * m, T(0));
-                return 0;
-            }
-            // x = U S Vh, so pinv(x) = Vh^H S^+ U^H with S^+ inverting only the
-            // singular values above rtol * the largest (the same rule as matrix_rank).
-            T* u = s.get<T>(static_cast<std::size_t>(m * k), 1);
-            T* vh = s.get<T>(static_cast<std::size_t>(k * n), 2);
-            double* sv = s.get<double>(static_cast<std::size_t>(k), 3);
-            if (lapack::gesdd('S', m, n, a, lda, sv, u, m, vh, k, s) > 0) return kNoConvergence;
-            const double tol = rtol * sv[0];
-            lint rank = 0;
-            for (lint j = 0; j < k; ++j) rank += sv[j] > tol;
-            // the kept values below 2^-1022 (no double reciprocal) apart: svals.hpp
-            const lint rn = normal_rank(sv, rank);
-            constexpr char h = std::is_same_v<T, cplx> ? 'C' : 'T';
-            // W = Vh^H S^+ (n x k), built in `a`'s storage (no longer needed).
-            T* w = a;
-            for (lint j = 0; j < k; ++j) {
-                const double inv = sv[j] > tol && sv[j] >= kTinySingular ? 1.0 / sv[j] : 0.0;
-                for (lint r = 0; r < n; ++r) w[j * n + r] = conj_if_complex(vh[r * k + j]) * inv;
-            }
-            lapack::gemm<T>('N', h, n, m, k, w, n, u, m, out, n);
-            if (rank > rn) {  // rare: a kept singular value in the subnormals
-                const lint nh = rank - rn;
-                std::vector<T> wh(static_cast<std::size_t>(n * nh)), oh(static_cast<std::size_t>(n * m));
-                for (lint jj = 0; jj < nh; ++jj) {
-                    const double inv = 1.0 / (sv[rn + jj] * kSingularShift);
-                    for (lint r = 0; r < n; ++r) wh[jj * n + r] = conj_if_complex(vh[r * k + rn + jj]) * inv;
+        const Failure f =
+            run_batch(b, cost(kSVD, double(m) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+                LapackSlot<T> os(po.as<T>() + i * n * m, n * m, s, Scratch::kAlign0);
+                T* out = os.get();
+                T* a = s.get<T>(static_cast<std::size_t>(lda * n));
+                if (!pack(x.dtype(), x.data() + off[0], m, n, x.stride(-2), x.stride(-1), a, lda, true))
+                    return kNonFinite;
+                if (k == 0) {
+                    std::fill(out, out + n * m, T(0));
+                    return 0;
                 }
-                lapack::gemm<T>('N', h, n, m, nh, wh.data(), n, u + rn * m, m, oh.data(), n);
-                add_shifted(out, oh.data(), n * m);
-            }
-            return 0;
-        });
+                // x = U S Vh, so pinv(x) = Vh^H S^+ U^H with S^+ inverting only the
+                // singular values above rtol * the largest (the same rule as matrix_rank).
+                T* u = s.get<T>(static_cast<std::size_t>(m * k), 1);
+                T* vh = s.get<T>(static_cast<std::size_t>(k * n), 2);
+                double* sv = s.get<double>(static_cast<std::size_t>(k), 3);
+                if (lapack::gesdd('S', m, n, a, lda, sv, u, m, vh, k, s) > 0) return kNoConvergence;
+                const double tol = rtol * sv[0];
+                lint rank = 0;
+                for (lint j = 0; j < k; ++j) rank += sv[j] > tol;
+                // the kept values below 2^-1022 (no double reciprocal) apart: svals.hpp
+                const lint rn = normal_rank(sv, rank);
+                constexpr char h = std::is_same_v<T, cplx> ? 'C' : 'T';
+                // W = Vh^H S^+ (n x k), built in `a`'s storage (no longer needed).
+                T* w = a;
+                for (lint j = 0; j < k; ++j) {
+                    const double inv = sv[j] > tol && sv[j] >= kTinySingular ? 1.0 / sv[j] : 0.0;
+                    for (lint r = 0; r < n; ++r) w[j * n + r] = conj_if_complex(vh[r * k + j]) * inv;
+                }
+                lapack::gemm<T>('N', h, n, m, k, w, n, u, m, out, n);
+                if (rank > rn) {  // rare: a kept singular value in the subnormals
+                    const lint nh = rank - rn;
+                    std::vector<T> wh(static_cast<std::size_t>(n * nh)), oh(static_cast<std::size_t>(n * m));
+                    for (lint jj = 0; jj < nh; ++jj) {
+                        const double inv = 1.0 / (sv[rn + jj] * kSingularShift);
+                        for (lint r = 0; r < n; ++r) wh[jj * n + r] = conj_if_complex(vh[r * k + rn + jj]) * inv;
+                    }
+                    lapack::gemm<T>('N', h, n, m, nh, wh.data(), n, u + rn * m, m, oh.data(), n);
+                    add_shifted(out, oh.data(), n * m);
+                }
+                return 0;
+            });
         if (f) raise(b, f, "pinv", "x");
         return to_array(po);
     });
@@ -258,9 +271,7 @@ CondOrd parse_cond_ord(nb::handle o) {
         if (p == kInf) return CondOrd::Inf;
         if (p == -kInf) return CondOrd::NegInf;
     } else {  // a wrong type: TypeError, as in vector_norm (docs/api/linalg.md §3)
-        throw nb::type_error(("cond(): 'ord' must be a str, an int or a float, not " +
-                              py_type_name(o))
-                                 .c_str());
+        throw nb::type_error(("cond(): 'ord' must be a str, an int or a float, not " + py_type_name(o)).c_str());
     }
     throw nb::value_error("cond(): 'ord' must be 'fro', 'nuc', 1, -1, 2, -2, inf or -inf");
 }
@@ -297,8 +308,9 @@ int square_norm(CondOrd ord, const T* a, lint n, Scratch& s, double& out) {
     double best = max ? 0.0 : kInf;
     for (lint l = 0; l < n; ++l) {
         // column l: (0..n-1, l), step 1 element; row l: (l, 0..n-1), step n elements
-        auto w = make_walk<T>(base + (cols ? l * n * sz : l * sz), {n}, {cols ? sz : n * sz},
-                              [](T v) { return magnitude(v); });
+        auto w = make_walk<T>(base + (cols ? l * n * sz : l * sz), {n}, {cols ? sz : n * sz}, [](T v) {
+            return magnitude(v);
+        });
         const double sum = vnorm({Ord::One, 1.0}, n, w);
         best = max ? std::max(best, sum) : std::min(best, sum);
     }
@@ -318,37 +330,41 @@ nb::object cond(nb::handle xo, nb::handle ord_o) {
     return with_type(computes_complex(x.dtype()), [&]<class T>(std::type_identity<T>) -> nb::object {
         Out co = alloc_c(b.shape(), DType::Float64);
         double* C = co.as<double>();
-        const Failure f = run_batch(b, cost(kSVD, double(m) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
-            if (by_svd) {
-                double* sv = s.get<double>(static_cast<std::size_t>(k), 1);
-                if (const int code = singular_values<T>(x, off[0], m, n, s, sv)) return code;
-                // A singular matrix has an infinite condition number (docs/design/linalg.md §10.5);
-                // ord=-2 is its reciprocal, 0. (sv[0] = 0 means x = 0: singular too.)
-                const double hi = sv[0], lo = sv[k - 1];
-                if (ord == CondOrd::Two) C[i] = lo == 0 ? kInf : hi / lo;
-                else C[i] = lo == 0 ? 0.0 : lo / hi;
+        const Failure f = run_batch(
+            b, cost(kSVD, double(m) * n),
+            [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+                if (by_svd) {
+                    double* sv = s.get<double>(static_cast<std::size_t>(k), 1);
+                    if (const int code = singular_values<T>(x, off[0], m, n, s, sv)) return code;
+                    // A singular matrix has an infinite condition number (docs/design/linalg.md §10.5);
+                    // ord=-2 is its reciprocal, 0. (sv[0] = 0 means x = 0: singular too.)
+                    const double hi = sv[0], lo = sv[k - 1];
+                    if (ord == CondOrd::Two) C[i] = lo == 0 ? kInf : hi / lo;
+                    else C[i] = lo == 0 ? 0.0 : lo / hi;
+                    return 0;
+                }
+                // norm(x) * norm(inv(x)); the inverse as inv() computes it.
+                T* lu;
+                lint* ipiv;
+                const int code = lu_factor<T>(x, off[0], n, s, lu, ipiv);
+                if (code == kNonFinite) return code;
+                if (code == kSingular) {
+                    C[i] = kInf;
+                    return 0;
+                }
+                // x itself again (lu_factor overwrote its copy), then its inverse.
+                T* xa = s.get<T>(static_cast<std::size_t>(n * n), 2);
+                pack(x.dtype(), x.data() + off[0], n, n, x.stride(-2), x.stride(-1), xa, n, false);
+                double nx = 0, ni = 0;
+                if (const int c = square_norm(ord, xa, n, s, nx)) return c;
+                T* xi = s.get<T>(static_cast<std::size_t>(n * n), 2);
+                lu_inverse(lu, ipiv, n, xi);
+                if (const int c = square_norm(ord, xi, n, s, ni)) return c;
+                C[i] = nx * ni;
                 return 0;
-            }
-            // norm(x) * norm(inv(x)); the inverse as inv() computes it.
-            T* lu;
-            lint* ipiv;
-            const int code = lu_factor<T>(x, off[0], n, s, lu, ipiv);
-            if (code == kNonFinite) return code;
-            if (code == kSingular) {
-                C[i] = kInf;
-                return 0;
-            }
-            // x itself again (lu_factor overwrote its copy), then its inverse.
-            T* xa = s.get<T>(static_cast<std::size_t>(n * n), 2);
-            pack(x.dtype(), x.data() + off[0], n, n, x.stride(-2), x.stride(-1), xa, n, false);
-            double nx = 0, ni = 0;
-            if (const int c = square_norm(ord, xa, n, s, nx)) return c;
-            T* xi = s.get<T>(static_cast<std::size_t>(n * n), 2);
-            lu_inverse(lu, ipiv, n, xi);
-            if (const int c = square_norm(ord, xi, n, s, ni)) return c;
-            C[i] = nx * ni;
-            return 0;
-        }, by_svd ? 0 : lu_task_cap(n, n, true));  // the other ords invert like inv
+            },
+            by_svd ? 0 : lu_task_cap(n, n, true)
+        );  // the other ords invert like inv
         if (f) raise(b, f, "cond", "x");
         return b.ndim() == 0 ? py_scalar(C[0]) : to_array(co);
     });
@@ -361,7 +377,10 @@ void bind_spectral(nb::module_& m) {
     m.def("eigvalsh", named("eigvalsh", &eigvalsh), nb::arg().none(), nb::arg().none() = nb::none());
     m.def("svd", named("svd", &svd), nb::arg().none(), nb::kw_only(), nb::arg("mode").none() = "reduced");
     m.def("svdvals", named("svdvals", &svdvals), nb::arg().none());
-    m.def("matrix_rank", named("matrix_rank", &matrix_rank), nb::arg().none(), nb::kw_only(), nb::arg("rtol").none() = nb::none());
+    m.def(
+        "matrix_rank", named("matrix_rank", &matrix_rank), nb::arg().none(), nb::kw_only(),
+        nb::arg("rtol").none() = nb::none()
+    );
     m.def("pinv", named("pinv", &pinv), nb::arg().none(), nb::kw_only(), nb::arg("rtol").none() = nb::none());
     m.def("cond", named("cond", &cond), nb::arg().none(), nb::kw_only(), nb::arg("ord").none() = 2);
 }

@@ -42,6 +42,7 @@ def _double(k):
 def sign(f, x):
     """The sign of f at the double x: -1, 0 (exactly zero) or 1."""
     from tests.optimize.ad import ARB
+
     old = ctx.prec
     try:
         prec = 64
@@ -86,6 +87,7 @@ def root_ulp(f, a, b):
 
 def main():
     from tests.optimize import functions as fn
+
     out = {}
     for c in fn.ROOT_CASES:
         out[c.id] = root_ulp(c.f, *c.bracket)

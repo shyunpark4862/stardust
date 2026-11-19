@@ -21,7 +21,19 @@ enum Cov : int { kNonrobust = 0, kHC0 = 1, kHC1 = 2, kHC2 = 3, kHC3 = 4, kHAC = 
 // kNGroups: the clusters among the fit's rows (cluster), kLags: the lags used (HAC); NaN
 // for the other covariances.
 enum Stat : int {
-    kNobs = 0, kRank, kSsr, kCtss, kUtss, kEssC, kEssU, kSumLogW, kWaldF, kWaldQ, kIsNaN, kNGroups, kLags,
+    kNobs = 0,
+    kRank,
+    kSsr,
+    kCtss,
+    kUtss,
+    kEssC,
+    kEssU,
+    kSumLogW,
+    kWaldF,
+    kWaldQ,
+    kIsNaN,
+    kNGroups,
+    kLags,
     kNStat
 };
 

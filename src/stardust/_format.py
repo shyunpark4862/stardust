@@ -48,8 +48,7 @@ def _render(node, depth, ndim, width, sep, indent):
         lines.append(line)
         return "[" + ("\n" + " " * (indent + 1)).join(lines) + "]"
     row_sep = sep.rstrip() + "\n" * (ndim - depth - 1) + " " * (indent + 1)
-    rows = ["..." if child is Ellipsis else _render(child, depth + 1, ndim, width, sep, indent + 1)
-            for child in node]
+    rows = ["..." if child is Ellipsis else _render(child, depth + 1, ndim, width, sep, indent + 1) for child in node]
     return "[" + row_sep.join(rows) + "]"
 
 

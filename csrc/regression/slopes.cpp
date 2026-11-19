@@ -141,8 +141,9 @@ struct Pts {
 
 // The order statistics of ranks `want` (ascending, distinct) among the N non-NaN pairwise
 // slopes; also counts the infinite ones (ninf).
-std::vector<double> select_slopes(const Pts& P, std::int64_t N, const std::vector<std::int64_t>& want, std::int64_t& ninf,
-                                  const Limits& lim) {
+std::vector<double> select_slopes(
+    const Pts& P, std::int64_t N, const std::vector<std::int64_t>& want, std::int64_t& ninf, const Limits& lim
+) {
     const lint n = P.n;
     const std::int64_t kDirect = lim.direct, kCollectMax = lim.collect;
     std::vector<double> out(want.size(), kNaN);
@@ -174,9 +175,13 @@ std::vector<double> select_slopes(const Pts& P, std::int64_t N, const std::vecto
     samp.reserve(kSample);
     for (std::uint64_t e = 0; e < 4 * std::uint64_t(kSample) && std::int64_t(samp.size()) < kSample; ++e) {
         const std::uint64_t w = st.first(e);
-        const lint i = static_cast<lint>(random::bounded(w, static_cast<std::uint64_t>(n), [&](std::uint64_t q) { return st.extra(e, 2 * q); }));
-        const lint j = static_cast<lint>(random::bounded(st.extra(e, 1), static_cast<std::uint64_t>(n),
-                                                         [&](std::uint64_t q) { return st.extra(e, 2 * q + 3); }));
+        const lint i = static_cast<lint>(random::bounded(w, static_cast<std::uint64_t>(n), [&](std::uint64_t q) {
+            return st.extra(e, 2 * q);
+        }));
+        const lint j =
+            static_cast<lint>(random::bounded(st.extra(e, 1), static_cast<std::uint64_t>(n), [&](std::uint64_t q) {
+                return st.extra(e, 2 * q + 3);
+            }));
         if (i == j) continue;
         const double dx = P.x[i] - P.x[j];
         if (dx == 0.0) continue;
@@ -219,9 +224,11 @@ std::vector<double> select_slopes(const Pts& P, std::int64_t N, const std::vecto
         for (auto& t : T) any = any || !t.done;
         if (!any) break;
         // counts per block and target: <lo, ==lo, between, ==hi; kept values
-        std::vector<std::int64_t> cnt(static_cast<std::size_t>(nbk) * nt * 4, 0), infs(static_cast<std::size_t>(nbk), 0);
-        std::vector<std::vector<std::vector<std::int64_t>>> kept(static_cast<std::size_t>(nbk),
-                                                                 std::vector<std::vector<std::int64_t>>(nt));
+        std::vector<std::int64_t> cnt(static_cast<std::size_t>(nbk) * nt * 4, 0),
+            infs(static_cast<std::size_t>(nbk), 0);
+        std::vector<std::vector<std::vector<std::int64_t>>> kept(
+            static_cast<std::size_t>(nbk), std::vector<std::vector<std::int64_t>>(nt)
+        );
         // per target #(key < lo), #(key <= lo), #(key < hi), #(key <= hi), counted branch-free
         // over a row's keys (a slope with x_i = x_j, NaN, has the key kKeyMax); the values
         // strictly between a target's pivots are rare and go to a slow path
@@ -268,7 +275,8 @@ std::vector<double> select_slopes(const Pts& P, std::int64_t N, const std::vecto
                         const std::int64_t q = kq[j];
                         if (!(q > l && q < h)) continue;
                         if (g.collect ||
-                            double(mix(std::uint64_t(i) * std::uint64_t(n) + std::uint64_t(j)) >> 11) * 0x1p-53 < g.rate)
+                            double(mix(std::uint64_t(i) * std::uint64_t(n) + std::uint64_t(j)) >> 11) * 0x1p-53 <
+                                g.rate)
                             kv[t].push_back(q);
                     }
                 }
@@ -370,7 +378,9 @@ void theil_one(const Pts& P, bool joint, double z, const Limits& lim, double* o)
     const double sigsq = 1 / 18. * ((ny * (ny - 1) * (2 * ny + 5) - double(sx)) - double(sy));
     const double sigma = std::sqrt(std::max(sigsq, 0.0));
     auto ci_ranks = [&](double nt, std::int64_t& rl, std::int64_t& ru) {
-        ru = std::min(static_cast<std::int64_t>(std::nearbyint((nt - z * sigma) / 2.)), static_cast<std::int64_t>(nt) - 1);
+        ru = std::min(
+            static_cast<std::int64_t>(std::nearbyint((nt - z * sigma) / 2.)), static_cast<std::int64_t>(nt) - 1
+        );
         rl = std::max(static_cast<std::int64_t>(std::nearbyint((nt + z * sigma) / 2.)) - 1, std::int64_t(0));
     };
     std::vector<std::int64_t> want;
@@ -469,8 +479,16 @@ std::vector<std::int64_t> with(std::vector<std::int64_t> shape, std::initializer
 // slopes(func, y (..., n), x (..., n), kind (0 Theil-Sen, 1 Siegel), alt (Theil-Sen: joint;
 // Siegel: separate), z) -> (..., 4) Theil-Sen, (..., 2) Siegel. NaN in a regression's data
 // gives NaN; infinity is an error.
-nb::object slopes(const std::string& func, nb::handle yo, nb::handle xo, int kind, bool alt, double z,
-                  std::int64_t direct_max, std::int64_t collect_max) {
+nb::object slopes(
+    const std::string& func,
+    nb::handle yo,
+    nb::handle xo,
+    int kind,
+    bool alt,
+    double z,
+    std::int64_t direct_max,
+    std::int64_t collect_max
+) {
     const char* fn = func.c_str();
     const Limits lim{direct_max >= 0 ? direct_max : kDirectDefault, collect_max >= 0 ? collect_max : kCollectDefault};
     return call_named(fn, [&]() -> nb::object {
@@ -503,7 +521,9 @@ nb::object slopes(const std::string& func, nb::handle yo, nb::handle xo, int kin
         });
         if (f) {
             const char* what = f.code == 1 ? "'y' contains infinity" : "'x' contains infinity";
-            throw nb::value_error(linalg::failure_message(b, f.index, (std::string(fn) + "(): " + what).c_str()).c_str());
+            throw nb::value_error(
+                linalg::failure_message(b, f.index, (std::string(fn) + "(): " + what).c_str()).c_str()
+            );
         }
         return linalg::to_array(oo);
     });
@@ -512,8 +532,10 @@ nb::object slopes(const std::string& func, nb::handle yo, nb::handle xo, int kin
 }  // namespace
 
 void bind_slopes(nb::module_& m) {
-    m.def("slopes", &slopes, nb::arg("func"), nb::arg("y").none(), nb::arg("x").none(), nb::arg("kind"), nb::arg("alt"),
-          nb::arg("z"), nb::arg("direct_max") = -1, nb::arg("collect_max") = -1);
+    m.def(
+        "slopes", &slopes, nb::arg("func"), nb::arg("y").none(), nb::arg("x").none(), nb::arg("kind"), nb::arg("alt"),
+        nb::arg("z"), nb::arg("direct_max") = -1, nb::arg("collect_max") = -1
+    );
 }
 
 }  // namespace sd::regression

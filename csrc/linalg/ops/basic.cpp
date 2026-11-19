@@ -74,16 +74,23 @@ nb::object vecdot(nb::handle x1o, nb::handle x2o, nb::handle axis_o) {
                         auto fill = [&](std::int64_t b0, std::int64_t k, T* out) {
                             const std::byte* pp = p + b0 * sx;
                             const std::byte* qq = q + b0 * sy;
-                            if (sx == static_cast<std::int64_t>(sizeof(SX)) && sy == static_cast<std::int64_t>(sizeof(SY))) {
+                            if (sx == static_cast<std::int64_t>(sizeof(SX)) &&
+                                sy == static_cast<std::int64_t>(sizeof(SY))) {
                                 for (std::int64_t i = 0; i < k; ++i)
-                                    out[i] = mul(conj_if_complex(convert<T>(load<SX>(pp + i * static_cast<std::int64_t>(sizeof(SX))))),
-                                                 convert<T>(load<SY>(qq + i * static_cast<std::int64_t>(sizeof(SY)))));
+                                    out[i] =
+                                        mul(conj_if_complex(
+                                                convert<T>(load<SX>(pp + i * static_cast<std::int64_t>(sizeof(SX))))
+                                            ),
+                                            convert<T>(load<SY>(qq + i * static_cast<std::int64_t>(sizeof(SY)))));
                             } else {
                                 for (std::int64_t i = 0; i < k; ++i)
-                                    out[i] = mul(conj_if_complex(convert<T>(load<SX>(pp + i * sx))), convert<T>(load<SY>(qq + i * sy)));
+                                    out[i] =
+                                        mul(conj_if_complex(convert<T>(load<SX>(pp + i * sx))),
+                                            convert<T>(load<SY>(qq + i * sy)));
                             }
                         };
-                        if constexpr (std::is_same_v<T, double> && std::is_same_v<SX, double> && std::is_same_v<SY, double>) {
+                        if constexpr (std::is_same_v<T, double> && std::is_same_v<SX, double> &&
+                                      std::is_same_v<SY, double>) {
                             if (sx == 8 && sy == 8 && len < kSumParallelMin) {
                                 // Contiguous float64: the products computed inside the leaf,
                                 // no buffer in between -- the same terms in the same order,
@@ -92,8 +99,10 @@ nb::object vecdot(nb::handle x1o, nb::handle x2o, nb::handle axis_o) {
                                 const double* a = reinterpret_cast<const double*>(p);
                                 const double* c = reinterpret_cast<const double*>(q);
                                 return 0. + pairwise::tree(0, len, [&](std::int64_t b0, std::int64_t m) {
-                                    return pairwise::leaf(m, [&](std::int64_t i) { return a[b0 + i] * c[b0 + i]; });
-                                });
+                                           return pairwise::leaf(m, [&](std::int64_t i) {
+                                               return a[b0 + i] * c[b0 + i];
+                                           });
+                                       });
                             }
                         }
                         return pairwise_sum_mt<T>(len, fill);  // on the pool when long (docs/design/linalg.md §8.3)
@@ -263,51 +272,55 @@ nb::object matrix_power(nb::handle xo, nb::handle n_o) {
         Out out = alloc_matrices(b.shape(), m, m, dtype_of<T>());
         T* res = out.as<T>();
         const std::size_t mm = static_cast<std::size_t>(m * m);
-        const Failure f = run_batch(b, cost(kLU, double(m) * m), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
-            T* o = res + i * m * m;
-            if (m == 0) return 0;
-            if (e == 0) {  // x^0 = I, whatever x holds
-                std::fill(o, o + mm, T(0));
-                for (lint d = 0; d < m; ++d) o[d * m + d] = T(1);
+        const Failure f = run_batch(
+            b, cost(kLU, double(m) * m),
+            [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+                T* o = res + i * m * m;
+                if (m == 0) return 0;
+                if (e == 0) {  // x^0 = I, whatever x holds
+                    std::fill(o, o + mm, T(0));
+                    for (lint d = 0; d < m; ++d) o[d * m + d] = T(1);
+                    return 0;
+                }
+                T* base = s.get<T>(mm, 1);
+                if (n < 0) {
+                    // x^-e = (x^-1)^e. The inverse goes through LAPACK, so it is checked like inv.
+                    T* lu;
+                    lint* ipiv;
+                    if (const int code = lu_factor<T>(x, off[0], m, s, lu, ipiv)) return code;
+                    lu_inverse(lu, ipiv, m, base);
+                } else {
+                    pack(x.dtype(), x.data() + off[0], m, m, x.stride(-2), x.stride(-1), base, m, false);
+                }
+                // Binary powering, most significant bit first: r = base; for each further bit,
+                // r = r*r, then r = r*base if the bit is set. log2(e) squarings + popcount(e)-1 products.
+                // The products ping-pong between two scratch buffers and the last one goes
+                // straight to the output slot (no copies of r, docs/design/linalg.md §9).
+                int top = 63;
+                while (!((e >> top) & 1)) --top;
+                if (top == 0) {  // x^1 and x^-1: base itself
+                    std::copy(base, base + mm, o);
+                    return 0;
+                }
+                const int total = top + std::popcount(e) - 1;  // gemm calls
+                LapackSlot<T> os(o, static_cast<std::int64_t>(mm), s, Scratch::kAlign0);
+                T* buf[2] = {s.get<T>(mm, 2), s.get<T>(mm, 3)};
+                const T* r = base;
+                int done = 0, next = 0;
+                auto product = [&](const T* lhs, const T* rhs) {
+                    T* dst = ++done == total ? os.get() : buf[next];
+                    lapack::gemm_square(m, lhs, rhs, dst);
+                    next ^= 1;
+                    r = dst;
+                };
+                for (int bit = top - 1; bit >= 0; --bit) {
+                    product(r, r);
+                    if ((e >> bit) & 1) product(r, base);
+                }
                 return 0;
-            }
-            T* base = s.get<T>(mm, 1);
-            if (n < 0) {
-                // x^-e = (x^-1)^e. The inverse goes through LAPACK, so it is checked like inv.
-                T* lu;
-                lint* ipiv;
-                if (const int code = lu_factor<T>(x, off[0], m, s, lu, ipiv)) return code;
-                lu_inverse(lu, ipiv, m, base);
-            } else {
-                pack(x.dtype(), x.data() + off[0], m, m, x.stride(-2), x.stride(-1), base, m, false);
-            }
-            // Binary powering, most significant bit first: r = base; for each further bit,
-            // r = r*r, then r = r*base if the bit is set. log2(e) squarings + popcount(e)-1 products.
-            // The products ping-pong between two scratch buffers and the last one goes
-            // straight to the output slot (no copies of r, docs/design/linalg.md §9).
-            int top = 63;
-            while (!((e >> top) & 1)) --top;
-            if (top == 0) {  // x^1 and x^-1: base itself
-                std::copy(base, base + mm, o);
-                return 0;
-            }
-            const int total = top + std::popcount(e) - 1;  // gemm calls
-            LapackSlot<T> os(o, static_cast<std::int64_t>(mm), s, Scratch::kAlign0);
-            T* buf[2] = {s.get<T>(mm, 2), s.get<T>(mm, 3)};
-            const T* r = base;
-            int done = 0, next = 0;
-            auto product = [&](const T* lhs, const T* rhs) {
-                T* dst = ++done == total ? os.get() : buf[next];
-                lapack::gemm_square(m, lhs, rhs, dst);
-                next ^= 1;
-                r = dst;
-            };
-            for (int bit = top - 1; bit >= 0; --bit) {
-                product(r, r);
-                if ((e >> bit) & 1) product(r, base);
-            }
-            return 0;
-        }, n < 0 ? lu_task_cap(m, m, true) : 0);  // x^-1 is getrf + getrs(I)
+            },
+            n < 0 ? lu_task_cap(m, m, true) : 0
+        );  // x^-1 is getrf + getrs(I)
         if (f) raise(b, f, "matrix_power", "x");
         return to_array(out);
     });
@@ -407,10 +420,18 @@ nb::object cross(nb::handle x1o, nb::handle x2o, nb::handle axis_o) {
 
 void bind_basic(nb::module_& m) {
     m.def("kron", named("kron", &kron), nb::arg().none(), nb::arg().none());
-    m.def("cross", named("cross", &cross), nb::arg().none(), nb::arg().none(), nb::kw_only(), nb::arg("axis").none() = -1);
-    m.def("vecdot", named("vecdot", &vecdot), nb::arg().none(), nb::arg().none(), nb::kw_only(), nb::arg("axis").none() = -1);
+    m.def(
+        "cross", named("cross", &cross), nb::arg().none(), nb::arg().none(), nb::kw_only(), nb::arg("axis").none() = -1
+    );
+    m.def(
+        "vecdot", named("vecdot", &vecdot), nb::arg().none(), nb::arg().none(), nb::kw_only(),
+        nb::arg("axis").none() = -1
+    );
     m.def("outer", named("outer", &outer), nb::arg().none(), nb::arg().none());
-    m.def("trace", named("trace", &trace), nb::arg().none(), nb::kw_only(), nb::arg("k").none() = 0, nb::arg("dtype").none() = nb::none());
+    m.def(
+        "trace", named("trace", &trace), nb::arg().none(), nb::kw_only(), nb::arg("k").none() = 0,
+        nb::arg("dtype").none() = nb::none()
+    );
     m.def("diagonal", named("diagonal", &diagonal), nb::arg().none(), nb::kw_only(), nb::arg("k").none() = 0);
     m.def("matrix_power", named("matrix_power", &matrix_power), nb::arg().none(), nb::arg().none());
 }

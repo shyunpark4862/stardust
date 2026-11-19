@@ -34,7 +34,9 @@ def test_f_samples_at_the_boundary_and_the_inverse_gamma_limit():
     assert not any(math.isnan(u) for u in v)
     # dfn = inf with a small dfd is InverseGamma(dfd/2, dfd/2), which has values and samples
     X = S.F(dfn=math.inf, dfd=T)
-    assert math.isfinite(X.pdf(0.5)) and not any(math.isnan(u) for u in X.sample(3, rng=sd.random.default_rng(1)).tolist())
+    assert math.isfinite(X.pdf(0.5)) and not any(
+        math.isnan(u) for u in X.sample(3, rng=sd.random.default_rng(1)).tolist()
+    )
 
 
 @pytest.mark.parametrize("a,b,q", [(5e-324, 2.0, 0.0), (5e-324, 1e10, 0.0), (2.0, 5e-324, 1.0), (1e10, 5e-324, 1.0)])
@@ -72,7 +74,9 @@ def test_beta_tiny_second_atom_and_the_boundary():
     assert S.Beta(a=below, b=2 * at).mean() == pytest.approx(S.Beta(a=at, b=2 * at).mean(), rel=1e-15)
     Y = S.BetaBinomial(n=6, a=T, b=2.0**-1021)
     assert Y.pmf(6) == pytest.approx(1 / 3, rel=1e-15) and Y.mean() == pytest.approx(2.0, rel=1e-15)
-    assert S.BetaBinomial(n=6, a=below, b=2 * at).pmf(6) == pytest.approx(S.BetaBinomial(n=6, a=at, b=2 * at).pmf(6), rel=1e-15)
+    assert S.BetaBinomial(n=6, a=below, b=2 * at).pmf(6) == pytest.approx(
+        S.BetaBinomial(n=6, a=at, b=2 * at).pmf(6), rel=1e-15
+    )
 
 
 @pytest.mark.parametrize("a,b", [(1e-310, 3e-310), (5e-324, 1.5e-323), (T, 1e-310), (3e-320, T), (5e-324, 5e-324)])

@@ -63,8 +63,10 @@ def ref_section(title, ref, new):
         return
     r = [ref[k] / new[k] for k in keys]
     print(f"## {title}\n")
-    print(f"- {len(keys)}줄: 통합판이 10% 넘게 빠름 {sum(x > BAND for x in r)}, 비슷 {sum(1 / BAND <= x <= BAND for x in r)}, "
-          f"느림 {sum(x < 1 / BAND for x in r)}. ref/new 기하평균 {gmean(r):.2f}\n")
+    print(
+        f"- {len(keys)}줄: 통합판이 10% 넘게 빠름 {sum(x > BAND for x in r)}, 비슷 {sum(1 / BAND <= x <= BAND for x in r)}, "
+        f"느림 {sum(x < 1 / BAND for x in r)}. ref/new 기하평균 {gmean(r):.2f}\n"
+    )
 
 
 section("배열, 기본 스레드", best("array-legacy-r*.json", "times"), best("array-new-r*.json", "times"), True)

@@ -20,8 +20,12 @@ namespace {
 // Stable sort of `order` (positions into `key`) by `key`.
 // `order` split into rows with a value and NA rows, each in its order. In
 // parallel: per chunk, count; then each chunk copies to its own places.
-void split_na(const Column& key, const std::vector<std::int64_t>& order, std::vector<std::int64_t>& valid_rows,
-              std::vector<std::int64_t>& na_rows) {
+void split_na(
+    const Column& key,
+    const std::vector<std::int64_t>& order,
+    std::vector<std::int64_t>& valid_rows,
+    std::vector<std::int64_t>& na_rows
+) {
     const auto n = static_cast<std::int64_t>(order.size());
     if (!key.validity) {
         valid_rows = order;

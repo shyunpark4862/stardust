@@ -819,7 +819,7 @@ inline double iv_or_kv(double v, double x, bool want_k, bool scaled_out) {
     const double a = std::fabs(v);
     if (std::isinf(v)) {
         if (want_k) return kInf;  // K_-v = K_v
-        return 0.0;               // scipy: iv(+-inf, x) = 0
+        return 0.0;  // scipy: iv(+-inf, x) = 0
     }
     if (std::isinf(x)) {
         if (want_k) return 0.0;
@@ -896,13 +896,13 @@ inline double kve_route(double v, double x) {
 
 }  // namespace bessel_detail
 
-#define SD_BESSEL_OP(Struct, Name, Cost, Body)                                 \
-    struct Struct : Real {                                                     \
-        static constexpr const char* name = Name;                              \
-        static constexpr int nin = 2, nout = 1;                                \
-        static constexpr std::array<const char*, 2> args{"v", "x"};            \
-        static constexpr double cost_ns = cost::Cost;                          \
-        static double f(double v, double x) { return Body; }                   \
+#define SD_BESSEL_OP(Struct, Name, Cost, Body)                      \
+    struct Struct : Real {                                          \
+        static constexpr const char* name = Name;                   \
+        static constexpr int nin = 2, nout = 1;                     \
+        static constexpr std::array<const char*, 2> args{"v", "x"}; \
+        static constexpr double cost_ns = cost::Cost;               \
+        static double f(double v, double x) { return Body; }        \
     };
 
 SD_BESSEL_OP(Jv, "jv", kJv, bessel_detail::jv_or_yv(v, x, false))

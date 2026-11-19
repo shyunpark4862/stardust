@@ -53,17 +53,25 @@ def arrays():
     rng = np.random.default_rng(0)
     n = 1_000_000
     return {
-        "f": rng.random(n) + 0.5, "g": rng.random(n) + 0.5, "i": rng.integers(-1000, 1000, n),
-        "ft": rng.random((1000, 1000)).T, "m": rng.random((1000, 1000)), "idx": rng.integers(0, n, n),
-        "s": rng.random((2000, 1000)), "ia": rng.integers(-100, 100, (300, 300)),
-        "s1": np.array([1.0, 2.0, 3.0]), "s2": np.array([4.0, 5.0, 6.0]), "s3": np.arange(12.0).reshape(3, 4),
+        "f": rng.random(n) + 0.5,
+        "g": rng.random(n) + 0.5,
+        "i": rng.integers(-1000, 1000, n),
+        "ft": rng.random((1000, 1000)).T,
+        "m": rng.random((1000, 1000)),
+        "idx": rng.integers(0, n, n),
+        "s": rng.random((2000, 1000)),
+        "ia": rng.integers(-100, 100, (300, 300)),
+        "s1": np.array([1.0, 2.0, 3.0]),
+        "s2": np.array([4.0, 5.0, 6.0]),
+        "s3": np.arange(12.0).reshape(3, 4),
     }
 
 
 def measure(mod, convert):
     ns = {k: convert(v.copy()) for k, v in arrays().items()} | {"M": mod}
-    return {name: min(timeit.repeat(stmt, globals=ns, number=number, repeat=7)) / number
-            for name, stmt, number in CASES}
+    return {
+        name: min(timeit.repeat(stmt, globals=ns, number=number, repeat=7)) / number for name, stmt, number in CASES
+    }
 
 
 def fmt(t):

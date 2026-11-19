@@ -44,6 +44,7 @@ def max_rel(got, ref):
 
 # ---- Arb references
 
+
 @pytest.mark.parametrize("name", RANDOM)
 def test_random_against_arb(name):
     p, ref, meta = REFS[name], REFS[name]["ref"], REFS[name]["meta"]
@@ -114,6 +115,7 @@ def test_nist_certified():
 
 # ---- statsmodels and scipy
 
+
 def _problem(n=40, k=3, seed=0):
     rng = np.random.default_rng(seed)
     X = rng.standard_normal((n, k))
@@ -131,8 +133,24 @@ def test_ols_against_statsmodels(cov_type, intercept):
     s = sm.OLS(y, sm.add_constant(X) if intercept else X).fit(cov_type=cov_type, use_t=True)
     for name in ("params", "bse", "tvalues", "pvalues", "fittedvalues", "resid"):
         np.testing.assert_allclose(a(getattr(r, name)), getattr(s, name), rtol=1e-11, err_msg=name)
-    for name in ("nobs", "df_model", "df_resid", "ssr", "ess", "centered_tss", "uncentered_tss", "rsquared",
-                 "rsquared_adj", "fvalue", "f_pvalue", "llf", "aic", "bic", "scale", "condition_number"):
+    for name in (
+        "nobs",
+        "df_model",
+        "df_resid",
+        "ssr",
+        "ess",
+        "centered_tss",
+        "uncentered_tss",
+        "rsquared",
+        "rsquared_adj",
+        "fvalue",
+        "f_pvalue",
+        "llf",
+        "aic",
+        "bic",
+        "scale",
+        "condition_number",
+    ):
         assert getattr(r, name) == pytest.approx(getattr(s, name), rel=1e-11), name
     np.testing.assert_allclose(a(r.conf_int(alpha=0.1)), s.conf_int(0.1), rtol=1e-11)
     np.testing.assert_allclose(a(r.cov_params()), s.cov_params(), rtol=1e-11)
@@ -177,7 +195,7 @@ def test_wls_zero_weights_rule():
     for name in ("ssr", "rsquared", "llf", "fvalue"):
         assert getattr(r, name) == pytest.approx(getattr(sub, name), rel=1e-11)
     np.testing.assert_allclose(a(r.params), full.params, rtol=1e-11)  # the same estimate
-    assert not np.allclose(a(r.bse), full.bse, rtol=1e-3)            # other degrees of freedom
+    assert not np.allclose(a(r.bse), full.bse, rtol=1e-3)  # other degrees of freedom
     fv = a(r.fittedvalues)
     np.testing.assert_allclose(fv, sm.add_constant(X) @ a(r.params), rtol=1e-12)
     np.testing.assert_allclose(a(r.resid), y - fv, atol=1e-13)
@@ -306,6 +324,7 @@ def test_linregress_batch():
 
 # ---- rank deficiency (G9, G21)
 
+
 def test_aliased_column_like_r():
     y, X = _problem(seed=12)
     X2 = np.column_stack([X[:, 0], X[:, 1], X[:, 0] - 2 * X[:, 1], X[:, 2]])  # column 3 = c1 - 2 c2
@@ -386,6 +405,7 @@ def test_intercept_only():
 
 # ---- NaN policies (G16)
 
+
 def test_nan_policies():
     y, X = _problem(seed=17)
     y2 = y.copy()
@@ -417,6 +437,7 @@ def test_nan_policies():
 
 # ---- batches (G14)
 
+
 def _batch_equal(res, i, one):
     for name in ("params", "bse", "pvalues", "fittedvalues", "resid", "cov_params"):
         got = getattr(res, name)
@@ -426,7 +447,8 @@ def _batch_equal(res, i, one):
         np.testing.assert_array_equal(a(got)[i], a(want), err_msg=name)
     for name in ("ssr", "rsquared", "fvalue", "f_pvalue", "llf", "aic", "nobs", "df_resid", "condition_number"):
         assert float(getattr(res, name)[i]) == getattr(one, name) or (
-            math.isnan(getattr(one, name)) and math.isnan(float(getattr(res, name)[i]))), name
+            math.isnan(getattr(one, name)) and math.isnan(float(getattr(res, name)[i]))
+        ), name
     assert int(res.rank[i]) == one.rank
 
 
@@ -444,8 +466,11 @@ def test_batch_equals_loop(cov_type):
         res = R.ols(y, X, cov_type=cov_type) if kind == "ols" else R.wls(y, X, weights=w, cov_type=cov_type)
         assert a(res.params).shape == (B, k + 1) and a(res.nobs).shape == (B,)
         for i in range(B):
-            one = R.ols(y[i], X[i], cov_type=cov_type) if kind == "ols" else R.wls(
-                y[i], X[i], weights=w[i], cov_type=cov_type)
+            one = (
+                R.ols(y[i], X[i], cov_type=cov_type)
+                if kind == "ols"
+                else R.wls(y[i], X[i], weights=w[i], cov_type=cov_type)
+            )
             _batch_equal(res, i, one)
     # broadcasting: one X for many y
     res = R.ols(y[:3], X[0])
@@ -475,9 +500,12 @@ def test_threads_bit_identical():
 
 # ---- frames, types, names (G19)
 
+
 def test_frame_inputs():
     y, X = _problem(seed=20)
-    df = sd.frame.DataFrame({"age": X[:, 0].tolist(), "income": X[:, 1].tolist(), "flag": [bool(v > 0) for v in X[:, 2]]})
+    df = sd.frame.DataFrame(
+        {"age": X[:, 0].tolist(), "income": X[:, 1].tolist(), "flag": [bool(v > 0) for v in X[:, 2]]}
+    )
     ys = sd.frame.Series(y.tolist(), name="spend")
     r = R.ols(ys, df)
     assert r.param_names == ["const", "age", "income", "flag"]
@@ -503,6 +531,7 @@ def test_int_bool_inputs():
 
 # ---- errors
 
+
 def test_errors():
     y, X = _problem(n=10)
     with pytest.raises(ValueError, match=r"^ols\(\): 'X' must have 10 rows like 'y', not 9$"):
@@ -517,7 +546,10 @@ def test_errors():
         R.ols(1.0, X)
     with pytest.raises(TypeError, match=r"^ols\(\): 'intercept' must be True or False, not int$"):
         R.ols(y, X, intercept=1)
-    with pytest.raises(ValueError, match=r"^ols\(\): 'cov_type' must be 'nonrobust', 'HC0', 'HC1', 'HC2', 'HC3', 'HAC' or 'cluster', not 'hac'$"):
+    with pytest.raises(
+        ValueError,
+        match=r"^ols\(\): 'cov_type' must be 'nonrobust', 'HC0', 'HC1', 'HC2', 'HC3', 'HAC' or 'cluster', not 'hac'$",
+    ):
         R.ols(y, X, cov_type="hac")
     with pytest.raises(TypeError, match=r"^ols\(\): 'cov_type' must be .* not NoneType$"):
         R.ols(y, X, cov_type=None)
@@ -543,7 +575,9 @@ def test_errors():
         R.ols(yb, X)
     with pytest.raises(ValueError, match=r"^ols\(\): the batch shapes of 'y' \(2,\), 'X' \(3,\) do not broadcast$"):
         R.ols(np.ones((2, 10)), np.ones((3, 10, 2)))
-    with pytest.raises(ValueError, match=r"^wls\(\): the batch shapes of 'y' \(3,\), 'X' \(\), 'weights' \(2,\) do not broadcast$"):
+    with pytest.raises(
+        ValueError, match=r"^wls\(\): the batch shapes of 'y' \(3,\), 'X' \(\), 'weights' \(2,\) do not broadcast$"
+    ):
         R.wls(np.ones((3, 10)), np.ones((10, 1)), weights=np.ones((2, 10)))
     with pytest.raises(ValueError, match=r"^wls\(\): 'weights' must have 10 values like 'y', not a scalar$"):
         R.wls(y, X, weights=2.0)
@@ -572,12 +606,17 @@ def test_contract_edge_kappa_1e11():
 
 # ---- decisions G84-G86, G90, G91 (2026-11-19)
 
+
 def test_constant_y_is_zero_over_zero():
     """TSS exactly 0 (G85): R^2, adjusted R^2 and the F test are 0/0, NaN; ESS is 0. statsmodels
     gives R^2 -inf and F -4 from the rounding."""
     x = np.arange(6.0)
-    for r in (R.ols(np.ones(6), x), R.wls(np.ones(6), x, weights=np.arange(1.0, 7.0)),
-              R.ols(np.ones(6), x, cov_type="HC1"), R.gls(np.ones(6), x, sigma=np.eye(6) * 2.0)):
+    for r in (
+        R.ols(np.ones(6), x),
+        R.wls(np.ones(6), x, weights=np.arange(1.0, 7.0)),
+        R.ols(np.ones(6), x, cov_type="HC1"),
+        R.gls(np.ones(6), x, sigma=np.eye(6) * 2.0),
+    ):
         assert math.isnan(r.rsquared) and math.isnan(r.rsquared_adj)
         assert math.isnan(r.fvalue) and math.isnan(r.f_pvalue) and r.ess == 0.0
         assert abs(float(r.params[1])) < 1e-15
@@ -624,7 +663,9 @@ def test_inputs_are_copied():
         for f, (lev, cook, bp, jb) in zip(fits, want):
             assert a(f.leverage).tolist() == lev.tolist() and a(f.cooks_distance).tolist() == cook.tolist()
             assert f.breusch_pagan().lm == bp and f.jarque_bera().statistic == jb
-    assert abs(float(R.ols(y0, np.c_[np.asarray(x.tolist()), np.asarray(x.tolist()) ** 2]).leverage[0]) - 0.70833) < 1e-5
+    assert (
+        abs(float(R.ols(y0, np.c_[np.asarray(x.tolist()), np.asarray(x.tolist()) ** 2]).leverage[0]) - 0.70833) < 1e-5
+    )
 
 
 def test_predict_columns_and_inf():
@@ -640,11 +681,17 @@ def test_predict_columns_and_inf():
     for fit in (R.ols(y, F), R.glm(y, F, family="poisson"), R.rlm(y, F), R.quantreg(y, F), R.ridge(y, F, alpha=0.1)):
         want = a(fit.predict(np.c_[[1.0, 2], [10.0, 20]]))
         assert a(fit.predict(good)).tolist() == want.tolist()
-        with pytest.raises(ValueError, match=r"^predict\(\): 'X_new' must have the columns \['a', 'b'\] in the "
-                                             r"fit's order, not \['b', 'a'\]$"):
+        with pytest.raises(
+            ValueError,
+            match=r"^predict\(\): 'X_new' must have the columns \['a', 'b'\] in the "
+            r"fit's order, not \['b', 'a'\]$",
+        ):
             fit.predict(fr.DataFrame({"b": [10.0, 20], "a": [1.0, 2]}))
-        with pytest.raises(ValueError, match=r"^predict\(\): 'X_new' must have the columns \['a', 'b'\] like the "
-                                             r"fit's 'X', not \['a', 'c'\]$"):
+        with pytest.raises(
+            ValueError,
+            match=r"^predict\(\): 'X_new' must have the columns \['a', 'b'\] like the "
+            r"fit's 'X', not \['a', 'c'\]$",
+        ):
             fit.predict(fr.DataFrame({"a": [1.0, 2], "c": [10.0, 20]}))
         with pytest.raises(ValueError, match=r"^predict\(\): 'X_new' contains infinity$"):
             fit.predict(np.c_[[1.0, 2], [10.0, math.inf]])
@@ -652,7 +699,10 @@ def test_predict_columns_and_inf():
         assert math.isnan(nanp[1]) and nanp[0] == want[0]
     # an array fit takes a DataFrame by position
     ra = R.ols(y, arr)
-    assert a(ra.predict(fr.DataFrame({"b": [1.0, 2], "a": [10.0, 20]}))).tolist() == a(ra.predict(np.c_[[1.0, 2], [10.0, 20]])).tolist()
+    assert (
+        a(ra.predict(fr.DataFrame({"b": [1.0, 2], "a": [10.0, 20]}))).tolist()
+        == a(ra.predict(np.c_[[1.0, 2], [10.0, 20]])).tolist()
+    )
     with pytest.raises(ValueError, match=r"^predict_interval\(\): 'X_new' contains infinity$"):
         ra.predict_interval(np.c_[[1.0], [math.inf]])
     with pytest.raises(ValueError, match=r"^predict\(\): 'X_new' must have 1 column like the fit's 'X', not 2$"):
@@ -665,8 +715,13 @@ def test_constant_y_exact_solution():
     nothing changes."""
     x = np.arange(1.0, 9.0)
     X = np.c_[x, x * x]
-    fits = [R.ols([3.0] * 8, x), R.ols([0.1] * 8, X), R.ols([0.1] * 8, X, cov_type="HC1"),
-            R.wls([0.1] * 7 + [5.0], X, weights=[1.0] * 7 + [0.0]), R.gls([0.1] * 8, X, sigma=np.eye(8) + 0.3)]
+    fits = [
+        R.ols([3.0] * 8, x),
+        R.ols([0.1] * 8, X),
+        R.ols([0.1] * 8, X, cov_type="HC1"),
+        R.wls([0.1] * 7 + [5.0], X, weights=[1.0] * 7 + [0.0]),
+        R.gls([0.1] * 8, X, sigma=np.eye(8) + 0.3),
+    ]
     for r in fits:
         p = a(r.params)
         assert p[0] in (3.0, 0.1) and p[1:].tolist() == [0.0] * (len(p) - 1)
@@ -684,9 +739,13 @@ def test_constant_y_exact_solution():
     gb = R.gls(np.vstack([[0.1] * 8, [0.2] * 8]), X, sigma=np.eye(8) * 2.0)
     assert a(gb.params).tolist() == [[0.1, 0.0, 0.0], [0.2, 0.0, 0.0]]
     assert not a(R.ols([3.0] * 8, x, intercept=False).params).tolist() == [0.0]
-    with pytest.raises(ValueError, match=r"^linregress\(\): the batch shapes of 'x' \(2,\), 'y' \(3,\) do not broadcast$"):
+    with pytest.raises(
+        ValueError, match=r"^linregress\(\): the batch shapes of 'x' \(2,\), 'y' \(3,\) do not broadcast$"
+    ):
         R.linregress(np.ones((2, 5)), np.ones((3, 5)))
-    with pytest.raises(ValueError, match=r"^theilslopes\(\): the batch shapes of 'y' \(3,\), 'x' \(2,\) do not broadcast$"):
+    with pytest.raises(
+        ValueError, match=r"^theilslopes\(\): the batch shapes of 'y' \(3,\), 'x' \(2,\) do not broadcast$"
+    ):
         R.theilslopes(np.ones((3, 5)), np.ones((2, 5)))
     with pytest.raises(ValueError, match=r"^glm\(\): the batch shapes of 'y' \(3,\), 'X' \(2,\) do not broadcast$"):
         R.glm(np.ones((3, 5)), np.ones((2, 5, 1)), family="poisson")

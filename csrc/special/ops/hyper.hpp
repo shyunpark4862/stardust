@@ -109,7 +109,8 @@ inline Series m_series_positive(double a, double b, double y, double a_lo, bool 
             }
         }
         const double fs = fsum.total();
-        if (done && weighted <= kFastSeries * std::fabs(fs)) return {scaled(fs), fs == 0.0 ? kInf : fabs_sum / std::fabs(fs)};
+        if (done && weighted <= kFastSeries * std::fabs(fs))
+            return {scaled(fs), fs == 0.0 ? kInf : fabs_sum / std::fabs(fs)};
     }
     // The long series, compensated (as f_series2 below: the roundings of the product
     // and the quotient by fma, to first order; the term and the sum as hi + lo).
@@ -161,8 +162,16 @@ inline Series m_series_positive(double a, double b, double y, double a_lo, bool 
 // instead of the long loop when the series needs more terms than max_terms, or when the float64
 // pass already proves the cancellation above max_cancel.
 // precise: the long series at once, for a caller that wants the sum beyond float64 (lo).
-inline Series m_series(double a, double b, double y, double a_lo = 0.0, bool positive_only = false,
-                       int max_terms = kMaxSeriesTerms, double max_cancel = kInf, bool precise = false) {
+inline Series m_series(
+    double a,
+    double b,
+    double y,
+    double a_lo = 0.0,
+    bool positive_only = false,
+    int max_terms = kMaxSeriesTerms,
+    double max_cancel = kInf,
+    bool precise = false
+) {
     if (a >= 0.0 && b > 0.0 && y > 0.0 && !precise) {
         const Series r = m_series_positive(a, b, y, a_lo, positive_only);
         if (!std::isnan(r.s.m)) return r;  // (NaN: a subnormal b, below)
@@ -191,13 +200,15 @@ inline Series m_series(double a, double b, double y, double a_lo = 0.0, bool pos
             weighted += (k + 2.0) * at;
             if (!(at < 0x1p600)) break;
             if (at < 0x1p-700 && k < -b) break;  // (the long series keeps such terms scaled)
-            if (ft == 0.0 || (k > std::fabs(y) && k > -b && std::fabs(ratio) < 1.0 && at <= 0x1p-56 * std::fabs(fsum.hi))) {
+            if (ft == 0.0 ||
+                (k > std::fabs(y) && k > -b && std::fabs(ratio) < 1.0 && at <= 0x1p-56 * std::fabs(fsum.hi))) {
                 done = true;
                 break;
             }
         }
         const double fs = fsum.total();
-        if (done && weighted <= kFastSeries * std::fabs(fs)) return {scaled(fs), fs == 0.0 ? kInf : fabs_sum / std::fabs(fs)};
+        if (done && weighted <= kFastSeries * std::fabs(fs))
+            return {scaled(fs), fs == 0.0 ? kInf : fabs_sum / std::fabs(fs)};
         // |fs - sum| <= 2^-51 weighted (the bound above), so |sum| <= |fs| + that
         if (done && fabs_sum > max_cancel * (std::fabs(fs) + 0x1p-51 * weighted)) return kNoSeries;
     }
@@ -270,7 +281,11 @@ inline Series m_series(double a, double b, double y, double a_lo = 0.0, bool pos
     const double total = sum.total();
     int te = 0;
     const double tm = std::frexp(total, &te);
-    return {{tm, te + e}, total == 0.0 ? zero_sum_cancel(abssum) : abssum / std::fabs(total), std::ldexp((sum.hi - total) + sum.lo, -te)};
+    return {
+        {tm, te + e},
+        total == 0.0 ? zero_sum_cancel(abssum) : abssum / std::fabs(total),
+        std::ldexp((sum.hi - total) + sum.lo, -te)
+    };
 }
 
 // Gamma(b) / Gamma(a) with its sign, as m 2^e (Cephes Gamma up to 170; beyond it each Gamma
@@ -341,7 +356,7 @@ inline bool m_negative_asymptotic(double a, double b, double x, double& out) {
 }
 
 inline double hyp1f1(double a, double b, double x);
-inline constexpr double kReach = 1e6;       // |a|, |b|, |x| the loose region is computed for
+inline constexpr double kReach = 1e6;  // |a|, |b|, |x| the loose region is computed for
 inline constexpr double kMaxCancel = 1e13;  // sum|terms| / |sum| a loose-region series may have
 
 // Tricomi's expansion in Bessel functions for a -> -inf, b and x > 0 fixed (A&S 13.3.7):
@@ -431,7 +446,7 @@ inline bool m_a_recurrence(double a_hi, double a_lo, double b, double x, Scaled&
     const dd::DD bmx = dd::two_sum(b, -x);
     const double c0 = b - x;
     double dprev = 0.0, dcur = 1.0;  // D at top, top - 1, on M's scale there
-    std::int64_t ed = e;             // M is cur 2^e, D is dcur 2^ed
+    std::int64_t ed = e;  // M is cur 2^e, D is dcur 2^ed
     const std::int64_t count = static_cast<std::int64_t>(top - a_hi);
     for (std::int64_t k = 1; k < count; ++k) {
         const double ak = top - static_cast<double>(k);  // exact; the parameter is ak + a_lo
@@ -493,8 +508,8 @@ inline double m_loose_series(double a, double b, double x) {
     }
     const double y = -x;
     // far out: the large-argument expansion (the e^x of Kummer's form cancelled analytically)
-    if (y > 600.0 + 2.0 * (std::fabs(a) + std::fabs(b)) && (b > 0.0 || b > -170.0) && m_negative_asymptotic(a, b, x, out) &&
-        std::isfinite(out))
+    if (y > 600.0 + 2.0 * (std::fabs(a) + std::fabs(b)) && (b > 0.0 || b > -170.0) &&
+        m_negative_asymptotic(a, b, x, out) && std::isfinite(out))
         return out;
     const Series k = m_series(bma.hi, b, y, bma.lo, false, kOwnTerms, kMaxCancel);
     if (accept(k, exp_scaled(x) * k.s, out)) return out;
@@ -502,8 +517,8 @@ inline double m_loose_series(double a, double b, double x) {
     return accept(direct, direct.s, out) ? out : kNaN;
 }
 
-inline constexpr double kBoostX = 16.0;       // x below which Boost is used in the guaranteed region
-inline constexpr double kBoostA = 100.0;      // a up to which Boost is used in the guaranteed region
+inline constexpr double kBoostX = 16.0;  // x below which Boost is used in the guaranteed region
+inline constexpr double kBoostA = 100.0;  // a up to which Boost is used in the guaranteed region
 inline constexpr double kBoostLoose = 100.0;  // |a|, |b| up to which Boost is used in the loose region
 
 // The loose region with |a|, |b|, |x| <= kReach. Every value comes from a form whose loss is
@@ -541,7 +556,8 @@ inline double m_loose(double a, double b, double x) {
         const Series k = m_series(bma.hi, b, -x, bma.lo);
         return kept(k, exp_scaled(x) * k.s);
     }
-    if (x < -(600.0 + 2.0 * (std::fabs(a) + std::fabs(b))) && std::fabs(b) < 170.0 && m_negative_asymptotic(a, b, x, t)) return t;
+    if (x < -(600.0 + 2.0 * (std::fabs(a) + std::fabs(b))) && std::fabs(b) < 170.0 && m_negative_asymptotic(a, b, x, t))
+        return t;
     const Series kummer = m_nonneg(bma.hi, b, -x, bma.lo);
     if (kummer.cancel <= kMaxCancel) return kept(kummer, exp_scaled(x) * kummer.s);
     const Series direct = m_series(a, b, x);
@@ -565,7 +581,8 @@ inline double m_beyond(double a, double b, double x) {
         const Series k = m_series(bma.hi, b, -x, bma.lo);
         return kept(k, exp_scaled(x) * k.s);
     }
-    if (x < -(600.0 + 2.0 * (std::fabs(a) + std::fabs(b))) && std::fabs(b) < 170.0 && m_negative_asymptotic(a, b, x, t)) return t;
+    if (x < -(600.0 + 2.0 * (std::fabs(a) + std::fabs(b))) && std::fabs(b) < 170.0 && m_negative_asymptotic(a, b, x, t))
+        return t;
     const Series kummer = m_nonneg(bma.hi, b, -x, bma.lo);
     if (kummer.cancel <= kMaxCancel) return kept(kummer, exp_scaled(x) * kummer.s);
     const Series direct = m_series(a, b, x);
@@ -684,7 +701,8 @@ inline PlainSum f_series_positive(double a, double b, double c, double z) {
         th = tn;
         sum.add(th, tl);
         abssum += std::fabs(th);
-        if (th == 0.0 || (k > 2 && k > -c && std::fabs(th) <= 0x1p-56 * std::fabs(sum.hi) && q < 1.0)) {  // past c + k = 0
+        if (th == 0.0 ||
+            (k > 2 && k > -c && std::fabs(th) <= 0x1p-56 * std::fabs(sum.hi) && q < 1.0)) {  // past c + k = 0
             ended = true;
             break;
         }
@@ -736,7 +754,8 @@ inline FSum f_series2(double a, double b, double c, double z, const Lows& low = 
             }
         }
         const double fs = fsum.total();
-        if (done && weighted <= kFastSeries * std::fabs(fs)) return {scaled(fs), fs == 0.0 ? kInf : fabs_sum / std::fabs(fs)};
+        if (done && weighted <= kFastSeries * std::fabs(fs))
+            return {scaled(fs), fs == 0.0 ? kInf : fabs_sum / std::fabs(fs)};
     }
     // The long series: each term from the last by one division, the roundings of the
     // products and of the quotient recovered by fma and carried to first order (the
@@ -915,7 +934,8 @@ inline double f_one_minus_integer(double a, double b, double c, double y) {
             const double term = t * (ly - (hn - kEuler) - (hm - kEuler) + psi(pa + n) + psi(pb + n));
             sum += term;
             abs_sum += std::fabs(term);
-            if (n > 2 && std::fabs(term) <= 0x1p-56 * std::fabs(sum)) return abs_sum <= kMaxPlainCancel * std::fabs(sum) ? sum : kNaN;
+            if (n > 2 && std::fabs(term) <= 0x1p-56 * std::fabs(sum))
+                return abs_sum <= kMaxPlainCancel * std::fabs(sum) ? sum : kNaN;
             t *= (a0 + n) * (b0 + n) / ((n + 1.0) * (n + m + 1.0)) * y;
             if (t == 0.0) return abs_sum <= kMaxPlainCancel * std::fabs(sum) ? sum : kNaN;
             hn += 1.0 / (n + 1.0);
@@ -938,7 +958,8 @@ inline double f_one_minus_integer(double a, double b, double c, double y) {
             }
             hn += 1.0 / (n + 1.0);
         }
-        if (!ended || !(abs_sum <= kMaxPlainCancel * std::fabs(sum))) return kNaN;  // huge a b y, or cancelled: no value
+        if (!ended || !(abs_sum <= kMaxPlainCancel * std::fabs(sum)))
+            return kNaN;  // huge a b y, or cancelled: no value
         return kept(gam(a + b) * rgam(a) * rgam(b) * sum);
     }
     // finite part: sum_{n<m} (p)_n (q)_n / (n! (1-m)_n) y^n
@@ -1019,8 +1040,8 @@ inline double hyp2f1(double a, double b, double c, double z) {
         if (lo > 0.0) return 0.0;
         if (lo == hi) return kNaN;
         // dominant (-z)^-lo with Gamma(c) Gamma(hi - lo) / (Gamma(hi) Gamma(c - lo))
-        const double sg = gamma_detail::gamma_sign(c) * gamma_detail::gamma_sign(hi - lo) * gamma_detail::gamma_sign(hi) *
-                          gamma_detail::gamma_sign(c - lo);
+        const double sg = gamma_detail::gamma_sign(c) * gamma_detail::gamma_sign(hi - lo) *
+                          gamma_detail::gamma_sign(hi) * gamma_detail::gamma_sign(c - lo);
         if (nonpos_int(hi) || nonpos_int(c - lo)) return 0.0;
         return sg > 0.0 ? kInf : -kInf;
     }
@@ -1051,7 +1072,7 @@ inline double hyp2f1(double a, double b, double c, double z) {
         const double sum = f_series_positive(A, c - B, c, w).s;
         if (bst::normal(power) && bst::normal(sum)) return power * sum;
     }
-    const dd::DD cb = dd::two_sum(c, -B);     // c - b, exact
+    const dd::DD cb = dd::two_sum(c, -B);  // c - b, exact
     // (1 - z)^-a = hi^-a (1 + lo/hi)^-a: to first order while a lo/hi is small, else by exp
     // (a = 1e100 with z = -1e-100: the first order gave 0 for e^-1)
     const double tilt = A * omz.lo / omz.hi;

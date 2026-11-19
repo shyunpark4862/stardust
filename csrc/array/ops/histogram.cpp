@@ -130,7 +130,7 @@ nb::object bincount(nb::handle x_obj, nb::handle weights_obj, nb::handle minleng
 // ----------------------------------------------------------- histogram
 
 struct Edges {
-    NDArray edges;           // float64 (uniform), or the given array
+    NDArray edges;  // float64 (uniform), or the given array
     bool uniform = false;
     double first = 0, last = 0;
     std::int64_t bins = 0;
@@ -171,7 +171,8 @@ std::pair<double, double> outer_edges(const double* a, std::int64_t n, nb::handl
         });
         first = *std::min_element(mins.begin(), mins.end());
         last = *std::max_element(maxs.begin(), maxs.end());
-        if (std::any_of(nan.begin(), nan.end(), [](char c) { return c != 0; })) first = std::numeric_limits<double>::quiet_NaN();
+        if (std::any_of(nan.begin(), nan.end(), [](char c) { return c != 0; }))
+            first = std::numeric_limits<double>::quiet_NaN();
         if (!std::isfinite(first) || !std::isfinite(last))
             throw nb::value_error("the data's range is not finite (NaN or inf); pass 'range'");
     }
@@ -192,7 +193,8 @@ Edges make_edges(const double* a, std::int64_t n, nb::handle bins, nb::handle ra
         e.first = first;
         e.last = last;
         e.bins = nb_;
-        const nb::object lin = linspace(nb::float_(first), nb::float_(last), nb::int_(nb_ + 1), nb::none(), nb::bool_(true));
+        const nb::object lin =
+            linspace(nb::float_(first), nb::float_(last), nb::int_(nb_ + 1), nb::none(), nb::bool_(true));
         e.edges = as_ndarray(lin);
         const double* p = reinterpret_cast<const double*>(e.edges.data);
         for (std::int64_t i = 0; i < nb_; ++i)
@@ -202,7 +204,8 @@ Edges make_edges(const double* a, std::int64_t n, nb::handle bins, nb::handle ra
                                           .c_str());
         return e;
     }
-    if (!is_ndarray(bins)) throw nb::type_error(("'bins' must be an int or a 1-D array, not " + py_type_name(bins)).c_str());
+    if (!is_ndarray(bins))
+        throw nb::type_error(("'bins' must be an int or a 1-D array, not " + py_type_name(bins)).c_str());
     const NDArray& b = as_ndarray(bins);
     if (b.ndim != 1) throw nb::value_error("'bins' must be 1-D, when an array");
     if (b.dtype != DType::Int64 && b.dtype != DType::Float64)
@@ -244,8 +247,9 @@ std::int64_t edges_bin(double v, const double* edge, std::int64_t bins) {
     return (std::upper_bound(edge, edge + bins + 1, v) - edge) - 1;
 }
 
-nb::object histogram(nb::handle x_obj, nb::handle bins_obj, nb::handle range_obj, nb::handle weights_obj,
-                     nb::handle density_obj) {
+nb::object histogram(
+    nb::handle x_obj, nb::handle bins_obj, nb::handle range_obj, nb::handle weights_obj, nb::handle density_obj
+) {
     const NDArray& x = require_ndarray(x_obj);
     if (x.dtype == DType::Complex128) throw nb::type_error("not supported for complex128");
     const bool density = parse_bool(density_obj, "density");
@@ -257,15 +261,19 @@ nb::object histogram(nb::handle x_obj, nb::handle bins_obj, nb::handle range_obj
     const double* edge = reinterpret_cast<const double*>(ef.data);
     const std::int64_t bins = e.bins;
     const UniformBins ub{e.first, e.last, static_cast<double>(e.bins), e.bins, edge};
-    auto bin_of = [ub, edge, bins, uniform = e.uniform](double v) { return uniform ? ub(v) : edges_bin(v, edge, bins); };
+    auto bin_of = [ub, edge, bins, uniform = e.uniform](double v) {
+        return uniform ? ub(v) : edges_bin(v, edge, bins);
+    };
 
     const std::int64_t hshape[] = {bins};
     NDArray hist;
     if (bins == 0) {  // an edges array of length 0 or 1: nothing to count (and edge[] may be empty)
-        hist = new_array(weights_obj.is_none() || require_ndarray(weights_obj, "weights").dtype == DType::Bool
-                             ? DType::Int64
-                             : require_ndarray(weights_obj, "weights").dtype,
-                         hshape);
+        hist = new_array(
+            weights_obj.is_none() || require_ndarray(weights_obj, "weights").dtype == DType::Bool
+                ? DType::Int64
+                : require_ndarray(weights_obj, "weights").dtype,
+            hshape
+        );
     } else if (weights_obj.is_none()) {
         hist = new_array(DType::Int64, hshape, /*zeroed=*/true);
         count_into(reinterpret_cast<std::int64_t*>(hist.data), bins, n, [&](std::int64_t i) { return bin_of(a[i]); });
@@ -303,7 +311,8 @@ nb::object histogram(nb::handle x_obj, nb::handle bins_obj, nb::handle range_obj
                     };
                     auto add_block = [&](const Acc* blk) {
                         for (std::int64_t i = 0; i < bins; ++i) {
-                            if constexpr (std::is_same_v<T, complex128>) h[i] = {h[i].real() + blk[i].real(), h[i].imag() + blk[i].imag()};
+                            if constexpr (std::is_same_v<T, complex128>)
+                                h[i] = {h[i].real() + blk[i].real(), h[i].imag() + blk[i].imag()};
                             else h[i] = h[i] + static_cast<T>(blk[i]);
                         }
                     };
@@ -347,12 +356,14 @@ nb::object histogram(nb::handle x_obj, nb::handle bins_obj, nb::handle range_obj
                             const auto at = j < bins ? std::lower_bound(sorted.begin(), sorted.end(), edge[j], less)
                                                      : std::upper_bound(sorted.begin(), sorted.end(), edge[j], less);
                             const T add = cw[at - sorted.begin()];
-                            if constexpr (std::is_same_v<T, complex128>) cum[j] = {cum[j].real() + add.real(), cum[j].imag() + add.imag()};
+                            if constexpr (std::is_same_v<T, complex128>)
+                                cum[j] = {cum[j].real() + add.real(), cum[j].imag() + add.imag()};
                             else cum[j] = cum[j] + add;
                         }
                     }
                     for (std::int64_t i = 0; i < bins; ++i) {
-                        if constexpr (std::is_same_v<T, complex128>) h[i] = {cum[i + 1].real() - cum[i].real(), cum[i + 1].imag() - cum[i].imag()};
+                        if constexpr (std::is_same_v<T, complex128>)
+                            h[i] = {cum[i + 1].real() - cum[i].real(), cum[i + 1].imag() - cum[i].imag()};
                         else h[i] = cum[i + 1] - cum[i];
                     }
                 }
@@ -378,7 +389,8 @@ nb::object histogram(nb::handle x_obj, nb::handle bins_obj, nb::handle range_obj
                 } else {
                     const double t = nb::cast<double>(total);
                     double* o = reinterpret_cast<double*>(out.data);
-                    for (std::int64_t i = 0; i < bins; ++i) o[i] = static_cast<double>(h[i]) / (edge[i + 1] - edge[i]) / t;
+                    for (std::int64_t i = 0; i < bins; ++i)
+                        o[i] = static_cast<double>(h[i]) / (edge[i + 1] - edge[i]) / t;
                 }
             }
         });
@@ -391,10 +403,14 @@ nb::object histogram(nb::handle x_obj, nb::handle bins_obj, nb::handle range_obj
 
 void bind_histogram(nb::module_& m) {
     using nb::arg;
-    m.def("bincount", named("bincount", &bincount), arg().none(), nb::kw_only(), arg("weights").none() = nb::none(),
-          arg("minlength").none() = 0);
-    m.def("histogram", named("histogram", &histogram), arg().none(), nb::kw_only(), arg("bins").none() = 10,
-          arg("range").none() = nb::none(), arg("weights").none() = nb::none(), arg("density").none() = false);
+    m.def(
+        "bincount", named("bincount", &bincount), arg().none(), nb::kw_only(), arg("weights").none() = nb::none(),
+        arg("minlength").none() = 0
+    );
+    m.def(
+        "histogram", named("histogram", &histogram), arg().none(), nb::kw_only(), arg("bins").none() = 10,
+        arg("range").none() = nb::none(), arg("weights").none() = nb::none(), arg("density").none() = false
+    );
 }
 
 }  // namespace sd

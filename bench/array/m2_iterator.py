@@ -53,8 +53,10 @@ def main():
         times = {m: best_ms(lambda m=m: copy_with(src, m)) for m in ("naive", "reorder", "full")}
         t_np = best_ms(lambda: src_np.copy(order="K"))
         p = plan([src, src.copy()])
-        print(f"{name:32} {times['naive']:7.1f}ms {times['reorder']:7.1f}ms {times['full']:7.1f}ms "
-              f"{t_np:7.1f}ms   shape={p['shape']}")
+        print(
+            f"{name:32} {times['naive']:7.1f}ms {times['reorder']:7.1f}ms {times['full']:7.1f}ms "
+            f"{t_np:7.1f}ms   shape={p['shape']}"
+        )
 
 
 if __name__ == "__main__":

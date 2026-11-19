@@ -19,13 +19,20 @@ N = 1_000_000
 
 # name -> input generator (inside each function's domain, plus a few specials)
 UNARY = {
-    "exp": lambda r: r.uniform(-700, 700, N), "log": lambda r: r.uniform(1e-300, 1e300, N) * r.random(N),
-    "log2": lambda r: r.random(N) * 1e10, "log10": lambda r: r.random(N) * 1e10,
-    "sin": lambda r: r.uniform(-1e4, 1e4, N), "asin": lambda r: r.uniform(-1, 1, N),
-    "acos": lambda r: r.uniform(-1, 1, N), "atan": lambda r: r.uniform(-1e6, 1e6, N),
-    "sinh": lambda r: r.uniform(-700, 700, N), "cosh": lambda r: r.uniform(-700, 700, N),
-    "tanh": lambda r: r.uniform(-20, 20, N), "asinh": lambda r: r.uniform(-1e10, 1e10, N),
-    "acosh": lambda r: 1 + r.random(N) * 1e6, "atanh": lambda r: r.uniform(-1, 1, N),
+    "exp": lambda r: r.uniform(-700, 700, N),
+    "log": lambda r: r.uniform(1e-300, 1e300, N) * r.random(N),
+    "log2": lambda r: r.random(N) * 1e10,
+    "log10": lambda r: r.random(N) * 1e10,
+    "sin": lambda r: r.uniform(-1e4, 1e4, N),
+    "asin": lambda r: r.uniform(-1, 1, N),
+    "acos": lambda r: r.uniform(-1, 1, N),
+    "atan": lambda r: r.uniform(-1e6, 1e6, N),
+    "sinh": lambda r: r.uniform(-700, 700, N),
+    "cosh": lambda r: r.uniform(-700, 700, N),
+    "tanh": lambda r: r.uniform(-20, 20, N),
+    "asinh": lambda r: r.uniform(-1e10, 1e10, N),
+    "acosh": lambda r: 1 + r.random(N) * 1e6,
+    "atanh": lambda r: r.uniform(-1, 1, N),
 }
 BINARY = {
     "pow": lambda r: (r.random(N) * 100, r.uniform(-50, 50, N)),

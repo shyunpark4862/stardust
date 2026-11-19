@@ -309,12 +309,14 @@ struct Binomial {
     static void pmf_kernel(const Chunk<2>& c, double* out) {
         saddle::pmf_kernel(
             c.n, out, [&](int i) { return saddle::binomial(c.x[i], c.p[0][i], c.p[1][i]); },
-            [&](int i) { return precise_at(c, i, &Binomial::pmf); });
+            [&](int i) { return precise_at(c, i, &Binomial::pmf); }
+        );
     }
     static void logpmf_kernel(const Chunk<2>& c, double* out) {
         saddle::logpmf_kernel(
             c.n, out, [&](int i) { return saddle::binomial(c.x[i], c.p[0][i], c.p[1][i]); },
-            [&](int i) { return precise_at(c, i, &Binomial::logpmf); });
+            [&](int i) { return precise_at(c, i, &Binomial::logpmf); }
+        );
     }
     SD_DISC_MEMO_KERNEL(Binomial, 2, pmf, false)
     SD_DISC_MEMO_KERNEL(Binomial, 2, logpmf, false)
@@ -333,7 +335,11 @@ struct Binomial {
                 lower = r.i, higher = r.ic;
                 return true;
             },
-            [&](int i) { return valid(c.p[0][i], c.p[1][i]) && c.x[i] == c.x[i] ? log_tail(c.x[i], c.p[0][i], c.p[1][i], upper) : kNaN; });
+            [&](int i) {
+                return valid(c.p[0][i], c.p[1][i]) && c.x[i] == c.x[i] ? log_tail(c.x[i], c.p[0][i], c.p[1][i], upper)
+                                                                       : kNaN;
+            }
+        );
     }
     static void logcdf_kernel(const Chunk<2>& c, double* out) { log_tail_kernel(c, out, false); }
     static void logccdf_kernel(const Chunk<2>& c, double* out) { log_tail_kernel(c, out, true); }
@@ -380,8 +386,10 @@ struct Binomial {
             std::floor((n + 1.0) * p), 0.0, n, [&](double k) { return binom_detail::log_pmf(k, n, p, q); },
             // pmf(k + 1) / pmf(k) = (n - k) p / ((k + 1) q); one step down, its reciprocal at k - 1
             [&](double k, double dir) {
-                return dir > 0.0 ? (num::DD{n - k, 0.0} * p) / (q * (k + 1.0)) : (q * k) / (num::DD{n - k + 1.0, 0.0} * p);
-            });
+                return dir > 0.0 ? (num::DD{n - k, 0.0} * p) / (q * (k + 1.0))
+                                 : (q * k) / (num::DD{n - k + 1.0, 0.0} * p);
+            }
+        );
     }
     static double support_lo(double, double) { return 0.0; }
     static double support_hi(double n, double) { return n; }
@@ -395,9 +403,7 @@ struct Bernoulli {
     static bool valid(double p) { return p >= 0.0 && p <= 1.0; }
     // Closed forms: 1 - p is exact for p >= 1/2 and relative to within an ULP below.
     static double pmf(double k, double p) { return k == 0.0 ? 1.0 - p : (k == 1.0 ? p : 0.0); }
-    static double logpmf(double k, double p) {
-        return k == 0.0 ? std::log1p(-p) : (k == 1.0 ? std::log(p) : -kInf);
-    }
+    static double logpmf(double k, double p) { return k == 0.0 ? std::log1p(-p) : (k == 1.0 ? std::log(p) : -kInf); }
     static double cdf(double x, double p) { return x < 0.0 ? 0.0 : (x < 1.0 ? 1.0 - p : 1.0); }
     static double ccdf(double x, double p) { return x < 0.0 ? 1.0 : (x < 1.0 ? p : 0.0); }
     static double logcdf(double x, double p) { return x < 0.0 ? -kInf : (x < 1.0 ? std::log1p(-p) : 0.0); }
@@ -517,12 +523,14 @@ struct Poisson {
     static void pmf_kernel(const Chunk<1>& c, double* out) {
         saddle::pmf_kernel(
             c.n, out, [&](int i) { return saddle::poisson(c.x[i], c.p[0][i]); },
-            [&](int i) { return precise_at(c, i, &Poisson::pmf); });
+            [&](int i) { return precise_at(c, i, &Poisson::pmf); }
+        );
     }
     static void logpmf_kernel(const Chunk<1>& c, double* out) {
         saddle::logpmf_kernel(
             c.n, out, [&](int i) { return saddle::poisson(c.x[i], c.p[0][i]); },
-            [&](int i) { return precise_at(c, i, &Poisson::logpmf); });
+            [&](int i) { return precise_at(c, i, &Poisson::logpmf); }
+        );
     }
     SD_DISC_MEMO_KERNEL(Poisson, 1, pmf, false)
     SD_DISC_MEMO_KERNEL(Poisson, 1, logpmf, false)
@@ -539,7 +547,8 @@ struct Poisson {
                 lower = r.q, higher = r.p;  // P(X <= k) = Q(k + 1, mu)
                 return true;
             },
-            [&](int i) { return valid(c.p[0][i]) && c.x[i] == c.x[i] ? log_tail(c.x[i], c.p[0][i], upper) : kNaN; });
+            [&](int i) { return valid(c.p[0][i]) && c.x[i] == c.x[i] ? log_tail(c.x[i], c.p[0][i], upper) : kNaN; }
+        );
     }
     static void logcdf_kernel(const Chunk<1>& c, double* out) { log_tail_kernel(c, out, false); }
     static void logccdf_kernel(const Chunk<1>& c, double* out) { log_tail_kernel(c, out, true); }
@@ -568,7 +577,8 @@ struct Poisson {
         return disc::entropy_sum(
             std::floor(mu), 0.0, kInf, [&](double k) { return log_pmf_dd(k, mu); },
             // pmf(k + 1) / pmf(k) = mu / (k + 1)
-            [&](double k, double dir) { return dir > 0.0 ? num::DD{mu, 0.0} / (k + 1.0) : num::DD{k, 0.0} / mu; });
+            [&](double k, double dir) { return dir > 0.0 ? num::DD{mu, 0.0} / (k + 1.0) : num::DD{k, 0.0} / mu; }
+        );
     }
     static double support_lo(double) { return 0.0; }
     static double support_hi(double) { return kInf; }  // (the family's: mu = 0 too)
@@ -648,7 +658,9 @@ struct Geometric {
     };
     static Fns fns(double p) { return {p, 1.0, kInf, std::floor(1.0 / p)}; }  // (p = 1 too: the family's support)
     // The search starts at the closed form ceil(log P(X > k) / log q) (q^k <= the upper tail).
-    static Fns at(double p, double log_upper) { return disc::with_guess(fns(p), std::ceil(log_upper / std::log1p(-p))); }
+    static Fns at(double p, double log_upper) {
+        return disc::with_guess(fns(p), std::ceil(log_upper / std::log1p(-p)));
+    }
     static double icdf(double t, double p) { return disc::icdf(t, at(p, std::log1p(-t))); }
     static double iccdf(double t, double p) { return disc::iccdf(t, at(p, std::log(t))); }
     static double ilogcdf(double t, double p) { return disc::ilogcdf(t, at(p, std::log(-std::expm1(t)))); }
@@ -813,9 +825,13 @@ struct NegativeBinomial {
     // method is that of the point mass p = 1 (the family's support [0, inf) included).
     static bool at_limit(double n, double p) { return n == 0.0 && p > 0.0 && p <= 1.0; }
     template <class M>
-    static double limit_in(double x, double, double) { return method_of<NegativeBinomial, M>(x, 1.0, 1.0); }
+    static double limit_in(double x, double, double) {
+        return method_of<NegativeBinomial, M>(x, 1.0, 1.0);
+    }
     template <class M>
-    static double limit_par(double, double) { return method_of<NegativeBinomial, M>(1.0, 1.0); }
+    static double limit_par(double, double) {
+        return method_of<NegativeBinomial, M>(1.0, 1.0);
+    }
 
     // The smallest n with a pmf. The prefix's exponent holds log n to an ULP, so the pmf's
     // relative error grows like 5e-17 |log n| (1.1e-14 at n = 1e-100, measured against Arb),
@@ -869,7 +885,8 @@ struct NegativeBinomial {
         // Past the range of the incomplete beta's exponent: the upper tail is pmf(k + 1) / p,
         // the later ratios (k + j + n) q / (k + j + 1) being q to n / k. That is used where the
         // n / (p k) it leaves out is below 2^-60 of the result (which is at least k p in size).
-        if (v != v && upper && n <= 0x1p-60 * (p * k) * std::fmax(1.0, p * k)) return logpmf(k + 1.0, n, p) - std::log(p);
+        if (v != v && upper && n <= 0x1p-60 * (p * k) * std::fmax(1.0, p * k))
+            return logpmf(k + 1.0, n, p) - std::log(p);
         return k < 0x1p53 ? v : disc::checked_log_past_counts(v, pmf(k, n, p));
     }
     static double logcdf(double x, double n, double p) { return log_tail(x, n, p, false); }
@@ -897,12 +914,14 @@ struct NegativeBinomial {
     static void pmf_kernel(const Chunk<2>& c, double* out) {
         saddle::pmf_kernel(
             c.n, out, [&](int i) { return saddle::negative_binomial(c.x[i], c.p[0][i], c.p[1][i]); },
-            [&](int i) { return precise_at(c, i, &NegativeBinomial::pmf); });
+            [&](int i) { return precise_at(c, i, &NegativeBinomial::pmf); }
+        );
     }
     static void logpmf_kernel(const Chunk<2>& c, double* out) {
         saddle::logpmf_kernel(
             c.n, out, [&](int i) { return saddle::negative_binomial(c.x[i], c.p[0][i], c.p[1][i]); },
-            [&](int i) { return precise_at(c, i, &NegativeBinomial::logpmf); });
+            [&](int i) { return precise_at(c, i, &NegativeBinomial::logpmf); }
+        );
     }
     SD_DISC_MEMO_KERNEL(NegativeBinomial, 2, pmf, false)
     SD_DISC_MEMO_KERNEL(NegativeBinomial, 2, logpmf, false)
@@ -921,7 +940,11 @@ struct NegativeBinomial {
                 lower = r.i, higher = r.ic;
                 return true;
             },
-            [&](int i) { return valid(c.p[0][i], c.p[1][i]) && c.x[i] == c.x[i] ? log_tail(c.x[i], c.p[0][i], c.p[1][i], upper) : kNaN; });
+            [&](int i) {
+                return valid(c.p[0][i], c.p[1][i]) && c.x[i] == c.x[i] ? log_tail(c.x[i], c.p[0][i], c.p[1][i], upper)
+                                                                       : kNaN;
+            }
+        );
     }
     static void logcdf_kernel(const Chunk<2>& c, double* out) { log_tail_kernel(c, out, false); }
     static void logccdf_kernel(const Chunk<2>& c, double* out) { log_tail_kernel(c, out, true); }
@@ -969,7 +992,8 @@ struct NegativeBinomial {
             [&](double k, double dir) {
                 return dir > 0.0 ? (num::dd::two_sum(k, n) * q) / (k + 1.0)
                                  : num::DD{k, 0.0} / (num::dd::two_sum(k - 1.0, n) * q);
-            });
+            }
+        );
     }
     static double support_lo(double, double) { return 0.0; }
     static double support_hi(double, double) { return kInf; }  // (the family's: p = 1 too)

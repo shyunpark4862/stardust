@@ -251,8 +251,9 @@ void arg_lane(const std::byte* x, std::byte* o, const LaneCtx& c) {
 // piece with a NaN wins, otherwise the best value, earlier piece on a tie --
 // so the answer is the serial one exactly.
 // skip_nan (nanargmin/nanargmax): a NaN compares as -inf/+inf instead of winning.
-std::int64_t arg_whole(const std::byte* p, std::int64_t n, std::int64_t item, DType dtype, ArgFn lane, bool max,
-                       bool skip_nan = false) {
+std::int64_t arg_whole(
+    const std::byte* p, std::int64_t n, std::int64_t item, DType dtype, ArgFn lane, bool max, bool skip_nan = false
+) {
     if (n < kParallelThreshold || !parallel::available()) {
         const parallel::Unlocked unlocked(n >= kParallelThreshold);
         return lane(p, n, item);
@@ -270,7 +271,8 @@ std::int64_t arg_whole(const std::byte* p, std::int64_t n, std::int64_t item, DT
             auto value = [&](std::int64_t k) {
                 T v = load_as<T>(p + k * item);
                 if constexpr (ops::is_float<T>) {
-                    if (skip_nan && v != v) v = max ? -std::numeric_limits<double>::infinity() : std::numeric_limits<double>::infinity();
+                    if (skip_nan && v != v)
+                        v = max ? -std::numeric_limits<double>::infinity() : std::numeric_limits<double>::infinity();
                 }
                 return v;
             };
@@ -579,8 +581,9 @@ nb::object nan_extreme(nb::handle x_obj, nb::handle axis, nb::handle keepdims_ob
     const Axes ax = parse_reduce_axes(x, axis);
     require_nonempty(x, ax);
     // Starts from NaN, which any number replaces: an all-NaN lane stays NaN.
-    return fold<Op>(x, ax, DType::Float64, keepdims,
-                    []<typename T>(std::type_identity<T>) { return std::numeric_limits<double>::quiet_NaN(); });
+    return fold<Op>(x, ax, DType::Float64, keepdims, []<typename T>(std::type_identity<T>) {
+        return std::numeric_limits<double>::quiet_NaN();
+    });
 }
 
 }  // namespace
@@ -590,16 +593,18 @@ nb::object sum(nb::handle x_obj, nb::handle axis, nb::handle dtype, nb::handle k
     const bool keepdims = parse_bool(keepdims_obj, "keepdims");
     const Axes ax = parse_reduce_axes(x, axis);
     // Starts from +0, so an empty sum is 0 (and sum([-0.0]) is +0.0, as in numpy).
-    return fold<ops::Add>(x, ax, accumulate_dtype(x, dtype), keepdims,
-                          []<typename T>(std::type_identity<T>) { return T(0); });
+    return fold<ops::Add>(x, ax, accumulate_dtype(x, dtype), keepdims, []<typename T>(std::type_identity<T>) {
+        return T(0);
+    });
 }
 
 nb::object prod(nb::handle x_obj, nb::handle axis, nb::handle dtype, nb::handle keepdims_obj) {
     const NDArray& x = require_ndarray(x_obj);
     const bool keepdims = parse_bool(keepdims_obj, "keepdims");
     const Axes ax = parse_reduce_axes(x, axis);
-    return fold<ops::Multiply>(x, ax, accumulate_dtype(x, dtype), keepdims,
-                               []<typename T>(std::type_identity<T>) { return T(1); });
+    return fold<ops::Multiply>(x, ax, accumulate_dtype(x, dtype), keepdims, []<typename T>(std::type_identity<T>) {
+        return T(1);
+    });
 }
 
 // max starts from the lowest value of the dtype, min from the highest: then
@@ -632,15 +637,17 @@ nb::object min(nb::handle x_obj, nb::handle axis, nb::handle keepdims_obj) {
 nb::object any(nb::handle x_obj, nb::handle axis, nb::handle keepdims_obj) {
     const NDArray& x = require_ndarray(x_obj);
     const bool keepdims = parse_bool(keepdims_obj, "keepdims");
-    return fold<ops::LogicalOr>(x, parse_reduce_axes(x, axis), DType::Bool, keepdims,
-                                []<typename T>(std::type_identity<T>) { return T(false); });
+    return fold<ops::LogicalOr>(
+        x, parse_reduce_axes(x, axis), DType::Bool, keepdims, []<typename T>(std::type_identity<T>) { return T(false); }
+    );
 }
 
 nb::object all(nb::handle x_obj, nb::handle axis, nb::handle keepdims_obj) {
     const NDArray& x = require_ndarray(x_obj);
     const bool keepdims = parse_bool(keepdims_obj, "keepdims");
-    return fold<ops::LogicalAnd>(x, parse_reduce_axes(x, axis), DType::Bool, keepdims,
-                                 []<typename T>(std::type_identity<T>) { return T(true); });
+    return fold<ops::LogicalAnd>(
+        x, parse_reduce_axes(x, axis), DType::Bool, keepdims, []<typename T>(std::type_identity<T>) { return T(true); }
+    );
 }
 
 nb::object mean(nb::handle x_obj, nb::handle axis, nb::handle keepdims_obj) {
@@ -668,8 +675,12 @@ nb::object stddev(nb::handle x, nb::handle axis, nb::handle correction, nb::hand
     return finish(std::move(v), ax, keepdims);
 }
 
-nb::object argmin(nb::handle x, nb::handle axis, nb::handle keepdims) { return arg_extreme_impl<false>(x, axis, keepdims); }
-nb::object argmax(nb::handle x, nb::handle axis, nb::handle keepdims) { return arg_extreme_impl<true>(x, axis, keepdims); }
+nb::object argmin(nb::handle x, nb::handle axis, nb::handle keepdims) {
+    return arg_extreme_impl<false>(x, axis, keepdims);
+}
+nb::object argmax(nb::handle x, nb::handle axis, nb::handle keepdims) {
+    return arg_extreme_impl<true>(x, axis, keepdims);
+}
 
 namespace {
 
@@ -677,8 +688,14 @@ namespace {
 // (no dtype=, or the same one); a converting dtype= replaces the NaNs in a
 // copy first, then converts (the plain function's path).
 template <typename Op>
-nb::object nan_fold(nb::handle x_obj, nb::handle axis, nb::handle dtype, nb::handle keepdims_obj, double identity,
-                    nb::object (*plain)(nb::handle, nb::handle, nb::handle, nb::handle)) {
+nb::object nan_fold(
+    nb::handle x_obj,
+    nb::handle axis,
+    nb::handle dtype,
+    nb::handle keepdims_obj,
+    double identity,
+    nb::object (*plain)(nb::handle, nb::handle, nb::handle, nb::handle)
+) {
     const NDArray& x = require_ndarray(x_obj);
     if (!holds_nan(x.dtype)) return plain(x_obj, axis, dtype, keepdims_obj);
     const std::optional<DType> d = dtype.is_none() ? std::nullopt : parse_dtype(dtype);
@@ -739,8 +756,12 @@ nb::object nanstd(nb::handle x, nb::handle axis, nb::handle correction, nb::hand
     return finish(std::move(v), ax, keepdims);
 }
 
-nb::object nanargmin(nb::handle x, nb::handle axis, nb::handle keepdims) { return nan_arg_extreme<false>(x, axis, keepdims); }
-nb::object nanargmax(nb::handle x, nb::handle axis, nb::handle keepdims) { return nan_arg_extreme<true>(x, axis, keepdims); }
+nb::object nanargmin(nb::handle x, nb::handle axis, nb::handle keepdims) {
+    return nan_arg_extreme<false>(x, axis, keepdims);
+}
+nb::object nanargmax(nb::handle x, nb::handle axis, nb::handle keepdims) {
+    return nan_arg_extreme<true>(x, axis, keepdims);
+}
 
 template <typename Op>
 nb::object nan_cumulative(nb::handle x_obj, nb::handle axis, nb::handle dtype, nb::handle include_initial) {
@@ -772,10 +793,14 @@ void bind_reductions(nb::module_& m) {
     m.def("argmax", named("argmax", &argmax), arg().none(), nb::kw_only(), axis, keepdims);
     m.def("any", named("any", &any), arg().none(), nb::kw_only(), axis, keepdims);
     m.def("all", named("all", &all), arg().none(), nb::kw_only(), axis, keepdims);
-    m.def("cumulative_sum", named("cumulative_sum", &cumulative<ops::Add>), arg().none(), nb::kw_only(), axis, dtype,
-          arg("include_initial").none() = false);
-    m.def("cumulative_prod", named("cumulative_prod", &cumulative<ops::Multiply>), arg().none(), nb::kw_only(), axis, dtype,
-          arg("include_initial").none() = false);
+    m.def(
+        "cumulative_sum", named("cumulative_sum", &cumulative<ops::Add>), arg().none(), nb::kw_only(), axis, dtype,
+        arg("include_initial").none() = false
+    );
+    m.def(
+        "cumulative_prod", named("cumulative_prod", &cumulative<ops::Multiply>), arg().none(), nb::kw_only(), axis,
+        dtype, arg("include_initial").none() = false
+    );
 
     // NaN-skipping forms (docs/api/array.md §7.9): the same signatures.
     m.def("nansum", named("nansum", &nansum), arg().none(), nb::kw_only(), axis, dtype, keepdims);
@@ -787,10 +812,14 @@ void bind_reductions(nb::module_& m) {
     m.def("nanstd", named("nanstd", &nanstd), arg().none(), nb::kw_only(), axis, correction, keepdims);
     m.def("nanargmin", named("nanargmin", &nanargmin), arg().none(), nb::kw_only(), axis, keepdims);
     m.def("nanargmax", named("nanargmax", &nanargmax), arg().none(), nb::kw_only(), axis, keepdims);
-    m.def("nancumulative_sum", named("nancumulative_sum", &nan_cumulative<ops::Add>), arg().none(), nb::kw_only(), axis,
-          dtype, arg("include_initial").none() = false);
-    m.def("nancumulative_prod", named("nancumulative_prod", &nan_cumulative<ops::Multiply>), arg().none(), nb::kw_only(),
-          axis, dtype, arg("include_initial").none() = false);
+    m.def(
+        "nancumulative_sum", named("nancumulative_sum", &nan_cumulative<ops::Add>), arg().none(), nb::kw_only(), axis,
+        dtype, arg("include_initial").none() = false
+    );
+    m.def(
+        "nancumulative_prod", named("nancumulative_prod", &nan_cumulative<ops::Multiply>), arg().none(), nb::kw_only(),
+        axis, dtype, arg("include_initial").none() = false
+    );
 }
 
 }  // namespace sd

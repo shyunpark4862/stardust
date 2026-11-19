@@ -35,7 +35,9 @@ LDLResult = namedtuple("LDLResult", ["L", "D", "perm"])
 AiryResult = namedtuple("AiryResult", ["ai", "aip", "bi", "bip"])
 
 # regression: linregress (scipy.stats' fields and order, docs/api/regression.md §2)
-LinregressResult = namedtuple("LinregressResult", ["slope", "intercept", "rvalue", "pvalue", "stderr", "intercept_stderr"])
+LinregressResult = namedtuple(
+    "LinregressResult", ["slope", "intercept", "rvalue", "pvalue", "stderr", "intercept_stderr"]
+)
 # regression: the linear models' diagnostics (docs/api/regression.md §2; statsmodels' het_breuschpagan
 # fields and order)
 JarqueBeraResult = namedtuple("JarqueBeraResult", ["statistic", "pvalue"])
@@ -45,5 +47,16 @@ TheilslopesResult = namedtuple("TheilslopesResult", ["slope", "intercept", "low_
 SiegelslopesResult = namedtuple("SiegelslopesResult", ["slope", "intercept"])
 
 # The order the C++ core expects in _core.linalg._setup (csrc/linalg/pyrefs.hpp, enum Result).
-LINALG = (SlogdetResult, LUResult, QRResult, QRPivotedResult, LstsqResult, EighResult, SVDResult,
-          EigResult, SchurResult, HessenbergResult, LDLResult)
+LINALG = (
+    SlogdetResult,
+    LUResult,
+    QRResult,
+    QRPivotedResult,
+    LstsqResult,
+    EighResult,
+    SVDResult,
+    EigResult,
+    SchurResult,
+    HessenbergResult,
+    LDLResult,
+)

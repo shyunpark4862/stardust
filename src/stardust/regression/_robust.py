@@ -17,9 +17,31 @@ from .. import random as _random
 from .. import special as _special
 from .._results import SiegelslopesResult, TheilslopesResult
 from ._glm import _broadcast_shape, _check_int, _check_positive
-from ._linear import (_call_errors, _RegressionResult, _as_real, _check_alpha, _check_batches, _check_bool, _check_choice, _expand,
-                      _check_rows, _prepare, _read_y, _rows_message,
-                      _check_policy, _check_rtol, _frame_columns, _count, _forg, _has_nan, _names, _pairs, _quantile_label, _type_name, _WIDTH)
+from ._linear import (
+    _call_errors,
+    _RegressionResult,
+    _as_real,
+    _check_alpha,
+    _check_batches,
+    _check_bool,
+    _check_choice,
+    _expand,
+    _check_rows,
+    _prepare,
+    _read_y,
+    _rows_message,
+    _check_policy,
+    _check_rtol,
+    _frame_columns,
+    _count,
+    _forg,
+    _has_nan,
+    _names,
+    _pairs,
+    _quantile_label,
+    _type_name,
+    _WIDTH,
+)
 
 _k = _sd.regression
 
@@ -78,7 +100,9 @@ class RLMResult(_RegressionResult):
 
     @property
     def df_model(self):
-        return self._cached("df_model", lambda: self._nan_where(self._stat(_R_RANK) - (1.0 if self._intercept else 0.0)))
+        return self._cached(
+            "df_model", lambda: self._nan_where(self._stat(_R_RANK) - (1.0 if self._intercept else 0.0))
+        )
 
     @property
     def df_resid(self):
@@ -87,12 +111,14 @@ class RLMResult(_RegressionResult):
     def cov_params(self):
         """The covariance of the parameters (k x k); rows and columns of aliased parameters are
         NaN, and all of it with no degree of freedom left (n = rank: 0/0, G95)."""
+
         def make():
             c = self._raw[1]
             df = self.df_resid
             if self._batch:
                 return _sd.where(_expand(df == 0.0, 2), math.nan, c)
             return c * math.nan if df == 0 else c
+
         return self._cached("cov_params", make)
 
     @property
@@ -132,17 +158,29 @@ class RLMResult(_RegressionResult):
         name = type(self).__name__
         if self._batch:
             return f"{name}(batch shape {tuple(self._batch)}, {self.params.shape[-1]} parameters)"
-        return (f"{name}(method={self.method!r}, norm={self.norm!r}, nobs={self.nobs:g}, rank={self.rank}, "
-                f"scale={self.scale:.6g}, params={self.params})")
+        return (
+            f"{name}(method={self.method!r}, norm={self.norm!r}, nobs={self.nobs:g}, rank={self.rank}, "
+            f"scale={self.scale:.6g}, params={self.params})"
+        )
 
 
 def _summary(r, alpha):
     stars = "=" * _WIDTH
     lines = ["Robust linear Model Regression Results".center(_WIDTH).rstrip(), stars]
-    left = [("Model:", "RLM"), ("Method:", "IRLS" if r.method == "M" else "MM"), ("Norm:", _NORM_NAME[r.norm]),
-            ("Scale Est.:", r._scale_est), ("Covariance Type:", r.cov_type), ("No. Iterations:", str(r.n_iter))]
-    right = [("No. Observations:", _count(r.nobs)), ("Df Residuals:", _count(r.df_resid)),
-             ("Df Model:", _count(r.df_model)), ("Scale:", f"{r.scale:#8.5g}".strip())]
+    left = [
+        ("Model:", "RLM"),
+        ("Method:", "IRLS" if r.method == "M" else "MM"),
+        ("Norm:", _NORM_NAME[r.norm]),
+        ("Scale Est.:", r._scale_est),
+        ("Covariance Type:", r.cov_type),
+        ("No. Iterations:", str(r.n_iter)),
+    ]
+    right = [
+        ("No. Observations:", _count(r.nobs)),
+        ("Df Residuals:", _count(r.df_resid)),
+        ("Df Model:", _count(r.df_model)),
+        ("Scale:", f"{r.scale:#8.5g}".strip()),
+    ]
     lines += _pairs(left, right)
     lines.append(stars)
     names = [str(v) for v in r.param_names]
@@ -157,16 +195,24 @@ def _summary(r, alpha):
     lines.append(head)
     lines.append("-" * width)
     for j, nm in enumerate(names):
-        vals = [_forg(float(params[j]), 4), _forg(float(bse[j])), _forg(float(tv[j])), f"{float(pv[j]):#.3f}",
-                _forg(float(ci[j, 0])), _forg(float(ci[j, 1]))]
+        vals = [
+            _forg(float(params[j]), 4),
+            _forg(float(bse[j])),
+            _forg(float(tv[j])),
+            f"{float(pv[j]):#.3f}",
+            _forg(float(ci[j, 0])),
+            _forg(float(ci[j, 1])),
+        ]
         lines.append(nm.ljust(wname) + "".join(v.rjust(11) for v in vals))
     lines.append("=" * width)
     notes = []
     if r.method == "M":
         notes.append("Standard errors are Huber's H1 (statsmodels' default); t uses df_resid degrees of freedom.")
     else:
-        notes.append("MM estimate: S start (500 elemental subsets, bisquare, 50% breakdown), bisquare M step with "
-                     "the S scale; standard errors are robustbase's .vcov.avar1; t uses df_resid degrees of freedom.")
+        notes.append(
+            "MM estimate: S start (500 elemental subsets, bisquare, 50% breakdown), bisquare M step with "
+            "the S scale; standard errors are robustbase's .vcov.avar1; t uses df_resid degrees of freedom."
+        )
     if not r._isnan():
         aliased = [nm for nm, k in zip(names, r._raw[5].tolist()) if not k]
         if aliased:
@@ -182,10 +228,12 @@ def _summary(r, alpha):
 
 # ---- the fit
 
+
 def _check_rng(rng, func):
     if not isinstance(rng, _random.Generator):
-        raise TypeError(f"{func}(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), "
-                        f"not {_type_name(rng)}")
+        raise TypeError(
+            f"{func}(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not {_type_name(rng)}"
+        )
     return rng
 
 
@@ -220,8 +268,22 @@ def _check_c(c, func, norm, method):
     return (v, 0.0, 0.0) if norm == "huber" else (0.0, 0.0, v)
 
 
-def rlm(y, X, /, *, method="M", norm=None, c=None, scale_est=None, intercept=True, max_iter=50, tol=1e-8, rng=None,
-        rtol=None, nan_policy="propagate"):
+def rlm(
+    y,
+    X,
+    /,
+    *,
+    method="M",
+    norm=None,
+    c=None,
+    scale_est=None,
+    intercept=True,
+    max_iter=50,
+    tol=1e-8,
+    rng=None,
+    rtol=None,
+    nan_policy="propagate",
+):
     """Robust linear model of y (..., n) on X (..., n, k) or (n,), an intercept column first
     (docs/api/regression.md §5). method='M': IRLS from least squares with the MAD (or
     Huber's proposal 2) scale updated each iteration, statsmodels' RLM; method='MM': the
@@ -257,18 +319,42 @@ def rlm(y, X, /, *, method="M", norm=None, c=None, scale_est=None, intercept=Tru
     if method == "MM":
         shape = _broadcast_shape(func, tuple(yy.shape[:-1]), tuple(XX.shape[:-2]))
         # two 64-bit words per regression, in the batch's C order (docs/api/regression.md §5)
-        keys = rng.integers(-2**63, 2**63 - 1, endpoint=True, shape=shape + (2,))
-    raw = _k.rlm_fit(func, yy, XX, keys, intercept, rt, _METHODS.index(method), _NORM_CODE[norm], cc[0], cc[1], cc[2],
-                     _SCALES.index(scale_est) if method == "M" else 2, max_iter, tol, _NRESAMPLE)
+        keys = rng.integers(-(2**63), 2**63 - 1, endpoint=True, shape=shape + (2,))
+    raw = _k.rlm_fit(
+        func,
+        yy,
+        XX,
+        keys,
+        intercept,
+        rt,
+        _METHODS.index(method),
+        _NORM_CODE[norm],
+        cc[0],
+        cc[1],
+        cc[2],
+        _SCALES.index(scale_est) if method == "M" else 2,
+        max_iter,
+        tol,
+        _NRESAMPLE,
+    )
     est = scale_est if method == "M" else "S"
     if est == "huber":
         est = "Huber"
-    return RLMResult(raw, method=method, norm=norm, scale_est=est, param_names=_names(names, XX.shape[-1], intercept),
-                     intercept=intercept, cov_type="H1" if method == "M" else "avar1", batch=tuple(raw[0].shape[:-1]),
-                     columns=columns)
+    return RLMResult(
+        raw,
+        method=method,
+        norm=norm,
+        scale_est=est,
+        param_names=_names(names, XX.shape[-1], intercept),
+        intercept=intercept,
+        cov_type="H1" if method == "M" else "avar1",
+        batch=tuple(raw[0].shape[:-1]),
+        columns=columns,
+    )
 
 
 # ---- Theil-Sen and Siegel (G56): scipy.stats' signatures and results
+
 
 def _slopes_input(func, y, x, nan_policy):
     yy = _read_y(y, func)
@@ -290,8 +376,10 @@ def _slopes_input(func, y, x, nan_policy):
             raise ValueError(f"{func}(): the input contains NaN (nan_policy='raise')")
     elif nan_policy == "omit":
         if batch:
-            raise ValueError(f"{func}(): nan_policy='omit' takes one regression, not a batch "
-                             "(the regressions would keep different points)")
+            raise ValueError(
+                f"{func}(): nan_policy='omit' takes one regression, not a batch "
+                "(the regressions would keep different points)"
+            )
         _check_rows(func, [("y", yy), ("x", xx)])  # inf stays an error in a row with a NaN (G24)
         bad = _sd.logical_or(_sd.isnan(yy), _sd.isnan(xx))
         if bool(_sd.any(bad)):

@@ -62,9 +62,9 @@ Column scalar(DType dt, T v) {
 // The value of a row as double for float sums (NA rows hold 0, docs/design/frame.md §4.5).
 double as_double(const Column& c, std::int64_t i) {
     switch (c.dtype) {
-    case DType::Int64: return static_cast<double>(c.data<std::int64_t>()[i]);
-    case DType::Float64: return c.data<double>()[i];
-    default: return static_cast<double>(c.data<std::uint8_t>()[i]);
+        case DType::Int64: return static_cast<double>(c.data<std::int64_t>()[i]);
+        case DType::Float64: return c.data<double>()[i];
+        default: return static_cast<double>(c.data<std::uint8_t>()[i]);
     }
 }
 
@@ -82,7 +82,8 @@ double mean_of(const Column& c, std::int64_t count) {
                 for (std::int64_t i = lo; i < hi; ++i) t += v[i];
                 return t;
             },
-            [](std::int64_t a, std::int64_t b) { return a + b; });
+            [](std::int64_t a, std::int64_t b) { return a + b; }
+        );
         return static_cast<double>(trues) / static_cast<double>(count);
     }
     const double* v = c.data<double>();
@@ -128,7 +129,8 @@ double float_minmax_range(const double* v, const std::uint8_t* m, std::int64_t l
         std::int64_t k = 0;
         for (; k + 8 <= len; k += 8)  // four accumulators: four independent chains
             for (int a = 0; a < 4; ++a)
-                acc[a] = Max ? vmaxq_f64(acc[a], vld1q_f64(buf + k + 2 * a)) : vminq_f64(acc[a], vld1q_f64(buf + k + 2 * a));
+                acc[a] =
+                    Max ? vmaxq_f64(acc[a], vld1q_f64(buf + k + 2 * a)) : vminq_f64(acc[a], vld1q_f64(buf + k + 2 * a));
         for (; k < len; ++k) acc[0] = vsetq_lane_f64(ieee_minmax<Max>(vgetq_lane_f64(acc[0], 0), buf[k]), acc[0], 0);
     }
     for (auto& a : acc) best = ieee_minmax<Max>(ieee_minmax<Max>(best, vgetq_lane_f64(a, 0)), vgetq_lane_f64(a, 1));
@@ -145,7 +147,8 @@ Column float_minmax(const Column& c) {
     const double best = over_chunks<double>(
         n, Max ? -INFINITY : INFINITY,
         [&](std::int64_t lo, std::int64_t hi) { return float_minmax_range<Max>(v, mp, lo, hi); },
-        [](double a, double b) { return ieee_minmax<Max>(a, b); });
+        [](double a, double b) { return ieee_minmax<Max>(a, b); }
+    );
     return scalar(DType::Float64, best);
 }
 
@@ -170,25 +173,27 @@ Column plain_minmax(const Column& c) {
             Best b{false, T{}};
             if (!c.validity) {
                 b = {true, v[lo]};
-                for (std::int64_t i = lo + 1; i < hi; ++i) b.value = Max ? (v[i] > b.value ? v[i] : b.value) : (v[i] < b.value ? v[i] : b.value);
+                for (std::int64_t i = lo + 1; i < hi; ++i)
+                    b.value = Max ? (v[i] > b.value ? v[i] : b.value) : (v[i] < b.value ? v[i] : b.value);
             } else {
                 for (std::int64_t i = lo; i < hi; ++i)
                     if (c.is_valid(i)) b = pick(b, Best{true, v[i]});
             }
             return b;
         },
-        pick);
+        pick
+    );
     return scalar(c.dtype, best.value);
 }
 
 template <bool Max>
 Column min_max(const Column& c) {
     switch (c.dtype) {
-    case DType::Float64: return float_minmax<Max>(c);
-    case DType::Int64: return plain_minmax<Max, std::int64_t>(c);
-    case DType::Bool: return plain_minmax<Max, std::uint8_t>(c);
-    case DType::String: break;
-    case DType::Complex128: break;  // not a frame dtype
+        case DType::Float64: return float_minmax<Max>(c);
+        case DType::Int64: return plain_minmax<Max, std::int64_t>(c);
+        case DType::Bool: return plain_minmax<Max, std::uint8_t>(c);
+        case DType::String: break;
+        case DType::Complex128: break;  // not a frame dtype
     }
     // Strings: the winning row (the first of equal ones), returned as a
     // slice of the column.
@@ -205,7 +210,8 @@ Column min_max(const Column& c) {
                 if (c.is_valid(i)) w = better(w, i);
             return w;
         },
-        better);
+        better
+    );
     if (at < 0) return na_value(c.dtype);
     return c.slice(at, 1);
 }
@@ -223,7 +229,8 @@ DType reduction_dtype(std::string_view op, DType dt) {
     const bool keeps = op == "min" || op == "max" || op == "first" || op == "last";
     if (keeps) return dt;
     const bool is_var = op == "var" || op == "std";
-    if (op != "sum" && op != "mean" && !is_var) throw nb::value_error(("unknown reduction '" + std::string(op) + "'").c_str());
+    if (op != "sum" && op != "mean" && !is_var)
+        throw nb::value_error(("unknown reduction '" + std::string(op) + "'").c_str());
     if (dt == DType::String) unsupported(op, dt);  // bool's std/var are of 0 and 1, as sd.std on bool
     if (op == "sum") return dt == DType::Float64 ? DType::Float64 : DType::Int64;
     return DType::Float64;
@@ -261,7 +268,8 @@ Column reduce(std::string_view op, const Column& c, bool skipna, double correcti
                     for (std::int64_t i = lo; i < hi; ++i) t += vb[i];
                 return t;
             },
-            [](std::uint64_t a, std::uint64_t b) { return a + b; });
+            [](std::uint64_t a, std::uint64_t b) { return a + b; }
+        );
         return scalar(DType::Int64, static_cast<std::int64_t>(total));
     }
     if (is_min || is_max) return is_max ? min_max<true>(c) : min_max<false>(c);
@@ -269,14 +277,19 @@ Column reduce(std::string_view op, const Column& c, bool skipna, double correcti
     const double mean = mean_of(c, count);
     if (is_mean) return scalar(DType::Float64, mean);
 
-    if (static_cast<double>(count) - correction <= 0) return na_value(DType::Float64);  // too few values (docs/api/frame.md §6.4)
+    if (static_cast<double>(count) - correction <= 0)
+        return na_value(DType::Float64);  // too few values (docs/api/frame.md §6.4)
     // NA rows add 0.0. The validity is a byte per row (docs/design/frame.md §4.4), so this is a
     // select, not a branch; the sum's order and bits are as before.
     const std::vector<std::uint8_t> m = valid_bytes(c);
-    const double ssd = float_sum(c.length, [&](std::int64_t i) {
-        const double d = as_double(c, i) - mean;
-        return m[i] ? d * d : 0.0;
-    }, 4);
+    const double ssd = float_sum(
+        c.length,
+        [&](std::int64_t i) {
+            const double d = as_double(c, i) - mean;
+            return m[i] ? d * d : 0.0;
+        },
+        4
+    );
     const double var = ssd / (static_cast<double>(count) - correction);
     return scalar(DType::Float64, op == "std" ? std::sqrt(var) : var);
 }

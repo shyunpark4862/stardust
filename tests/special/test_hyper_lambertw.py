@@ -85,7 +85,9 @@ def test_review_fixes_hyper():
         n = int(-a)
         sign = np.prod([(a + k) / (b + k) for k in range(n)]) * np.sign(x) ** n
         assert S.hyp1f1(a, b, x) == np.copysign(np.inf, sign), (a, b, x)
-    assert S.hyp2f1(-3.0, 1.5, 2.0, -np.inf) == np.copysign(np.inf, np.prod([(-3 + k) * (1.5 + k) / (2 + k) for k in range(3)]) * -1)
+    assert S.hyp2f1(-3.0, 1.5, 2.0, -np.inf) == np.copysign(
+        np.inf, np.prod([(-3 + k) * (1.5 + k) / (2 + k) for k in range(3)]) * -1
+    )
     # hyp2f1 with c far beyond a and b near z = 1: the series (it was NaN)
     assert abs(S.hyp2f1(1.0, 1.0, 1e20, 0.95) - 1.0) < 1e-15
     assert abs(S.hyp2f1(0.5, 0.5, 1e8 + 0.5, 0.95) - (1 + 0.25 * 0.95 / (1e8 + 0.5))) < 1e-15

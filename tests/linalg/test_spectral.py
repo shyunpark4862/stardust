@@ -163,8 +163,9 @@ def test_svd(seed, batch, m, n, mode, dtype, layout):
     assert U.dtype == ct and S.dtype == np.float64 and Vh.dtype == ct
     assert np.all(np.diff(S, axis=-1) <= 0) and np.all(S >= 0)
     scale = max(np.abs(x).max(initial=0), 1)
-    np.testing.assert_allclose((U[..., :, :k] * S[..., None, :]) @ Vh[..., :k, :], x.astype(ct),
-                               atol=20 * max(m, n, 1) * EPS * scale)
+    np.testing.assert_allclose(
+        (U[..., :, :k] * S[..., None, :]) @ Vh[..., :k, :], x.astype(ct), atol=20 * max(m, n, 1) * EPS * scale
+    )
     np.testing.assert_allclose(mH(U) @ U, np.broadcast_to(np.eye(uc), (*batch, uc, uc)), atol=20 * max(m, 1) * EPS)
     np.testing.assert_allclose(Vh @ mH(Vh), np.broadcast_to(np.eye(vr), (*batch, vr, vr)), atol=20 * max(n, 1) * EPS)
     if k:

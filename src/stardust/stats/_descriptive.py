@@ -42,7 +42,9 @@ def _as_array(x, name, arg="x"):
         try:
             a = sd.asarray(x)
         except (TypeError, ValueError) as e:
-            raise TypeError(f"{name}(): '{arg}' must be an sd.ndarray or a sequence of numbers, not {_type_name(x)}") from e
+            raise TypeError(
+                f"{name}(): '{arg}' must be an sd.ndarray or a sequence of numbers, not {_type_name(x)}"
+            ) from e
     if a.dtype == sd.complex128:
         raise TypeError(f"{name}(): '{arg}' must be real, not a complex128 array")
     return a if a.dtype == sd.float64 else a.astype(sd.float64)
@@ -97,8 +99,9 @@ def _axes(axis, ndim, name):
         try:
             i = operator.index(ax)
         except TypeError:
-            raise TypeError(f"{name}(): 'axis' must be an int or a tuple or list of ints, not {_type_name(ax)}") \
-                from None
+            raise TypeError(
+                f"{name}(): 'axis' must be an int or a tuple or list of ints, not {_type_name(ax)}"
+            ) from None
         if not -ndim <= i < ndim:
             raise ValueError(f"{name}(): axis {i} is out of bounds for an array of dimension {ndim}")
         out.append(i % ndim)
@@ -296,10 +299,14 @@ def describe(x, /, *, axis=None, correction=1, bias=True, nan_policy="propagate"
         nobs = lanes.out(n)
     else:
         nobs = lanes.n
-    return DescribeResult(nobs, (lanes.out(lo), lanes.out(hi)), lanes.out(mean),
-                          lanes.out(_in_unit(_var_of(n, m2, corr), unit, 2)),
-                          lanes.out(_skew_of(n, mean_u, m2, m3, bias)),
-                          lanes.out(_kurt_of(n, mean_u, m2, m4, True, bias)))
+    return DescribeResult(
+        nobs,
+        (lanes.out(lo), lanes.out(hi)),
+        lanes.out(mean),
+        lanes.out(_in_unit(_var_of(n, m2, corr), unit, 2)),
+        lanes.out(_skew_of(n, mean_u, m2, m3, bias)),
+        lanes.out(_kurt_of(n, mean_u, m2, m4, True, bias)),
+    )
 
 
 def _orders(order, name):
@@ -346,11 +353,15 @@ def moment(x, /, *, order, center=None, axis=None, nan_policy="propagate", keepd
             centers = sd.full((lanes_count,), cv)
         else:
             try:
-                centers = sd.reshape(sd.broadcast_to(c, lanes.kept_shape), (lanes_count,)) if lanes.kept_shape \
+                centers = (
+                    sd.reshape(sd.broadcast_to(c, lanes.kept_shape), (lanes_count,))
+                    if lanes.kept_shape
                     else sd.reshape(c, (1,))
+                )
             except ValueError:
-                raise ValueError(f"{name}(): 'center' cannot be broadcast to the result's shape {lanes.kept_shape}") \
-                    from None
+                raise ValueError(
+                    f"{name}(): 'center' cannot be broadcast to the result's shape {lanes.kept_shape}"
+                ) from None
     omit = nan_policy == "omit"
     central = None
     if centers is None and any(o in (2.0, 3.0, 4.0) for o in orders):  # the moments kernel (parallel blocks)
@@ -447,7 +458,7 @@ def iqr(x, /, *, axis=None, q=(0.25, 0.75), scale=1.0, method="linear", nan_poli
     _policy(nan_policy, name), _bool(keepdims, name, "keepdims")
     try:
         q0, q1 = (float(v) for v in q)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         raise TypeError("iqr(): 'q' must be a pair of numbers in [0, 1]") from None
     if not (0.0 <= q0 <= 1.0 and 0.0 <= q1 <= 1.0):
         raise ValueError("iqr(): 'q' must be a pair of numbers in [0, 1]")
@@ -512,8 +523,9 @@ def entropy(pk, qk=None, /, *, base=None, axis=None, nan_policy="propagate", kee
 _DE_METHODS = {"vasicek": 0, "van es": 1, "ebrahimi": 2, "correa": 3, "auto": -1}
 
 
-def differential_entropy(x, /, *, window_length=None, base=None, axis=None, method="auto", nan_policy="propagate",
-                         keepdims=False):
+def differential_entropy(
+    x, /, *, window_length=None, base=None, axis=None, method="auto", nan_policy="propagate", keepdims=False
+):
     """An estimate of the differential entropy of the distribution x is a sample of, from its
     spacings (scipy's methods: 'vasicek', 'van es', 'ebrahimi', 'correa'; 'auto' picks van Es
     for n <= 10, Ebrahimi for n <= 1000, else Vasicek). window_length m: default
@@ -530,8 +542,9 @@ def differential_entropy(x, /, *, window_length=None, base=None, axis=None, meth
         try:
             m = operator.index(window_length)
         except TypeError:
-            raise TypeError(f"differential_entropy(): 'window_length' must be an int or None, not "
-                            f"{_type_name(window_length)}") from None
+            raise TypeError(
+                f"differential_entropy(): 'window_length' must be an int or None, not {_type_name(window_length)}"
+            ) from None
         if m < 1:
             raise ValueError("differential_entropy(): 'window_length' must be positive")
     _base(base, name)
@@ -559,9 +572,9 @@ def _library_call_errors(fn):
             msg = str(e)
             if not msg.startswith(head):
                 raise
-            rest = msg[len(head):]
+            rest = msg[len(head) :]
             if rest.startswith("got an unexpected"):
-                rest = rest[len("got an "):]
+                rest = rest[len("got an ") :]
             raise TypeError(f"{fn.__name__}(): {rest}") from None
 
     return call

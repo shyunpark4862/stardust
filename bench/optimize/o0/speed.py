@@ -66,54 +66,117 @@ def cases():
     f1 = lambda x: np.sin(x) - x / 2  # noqa: E731
     f1d = lambda x: np.cos(x) - 0.5  # noqa: E731
     f1dd = lambda x: -np.sin(x)  # noqa: E731
-    f2 = lambda x: x ** 3 - 2 * x - 5  # noqa: E731
-    f2d = lambda x: 3 * x ** 2 - 2  # noqa: E731
+    f2 = lambda x: x**3 - 2 * x - 5  # noqa: E731
+    f2d = lambda x: 3 * x**2 - 2  # noqa: E731
     f2dd = lambda x: 6 * x  # noqa: E731
-    for name, f, d, dd, br, x0 in (("aps.01", f1, f1d, f1dd, (np.pi / 2, np.pi), 3.0),
-                                   ("chandrupatla.1", f2, f2d, f2dd, (2.0, 3.0), 2.5)):
+    for name, f, d, dd, br, x0 in (
+        ("aps.01", f1, f1d, f1dd, (np.pi / 2, np.pi), 3.0),
+        ("chandrupatla.1", f2, f2d, f2dd, (2.0, 3.0), 2.5),
+    ):
         for m in ("brentq", "toms748", "bisect"):
-            add("root_scalar", m, name, lambda m=m, f=f, br=br: so.root_scalar(f, bracket=br, method=m),
-                lambda r: {"nfev": r.function_calls, "nit": r.iterations})
-        add("root_scalar", "newton", name, lambda f=f, d=d, x0=x0: so.root_scalar(f, x0=x0, fprime=d, method="newton"),
-            lambda r: {"nfev": r.function_calls, "nit": r.iterations})
-        add("root_scalar", "halley", name,
+            add(
+                "root_scalar",
+                m,
+                name,
+                lambda m=m, f=f, br=br: so.root_scalar(f, bracket=br, method=m),
+                lambda r: {"nfev": r.function_calls, "nit": r.iterations},
+            )
+        add(
+            "root_scalar",
+            "newton",
+            name,
+            lambda f=f, d=d, x0=x0: so.root_scalar(f, x0=x0, fprime=d, method="newton"),
+            lambda r: {"nfev": r.function_calls, "nit": r.iterations},
+        )
+        add(
+            "root_scalar",
+            "halley",
+            name,
             lambda f=f, d=d, dd=dd, x0=x0: so.root_scalar(f, x0=x0, fprime=d, fprime2=dd, method="halley"),
-            lambda r: {"nfev": r.function_calls, "nit": r.iterations})
-        add("root_scalar", "secant", name, lambda f=f, x0=x0: so.root_scalar(f, x0=x0, method="secant"),
-            lambda r: {"nfev": r.function_calls, "nit": r.iterations})
+            lambda r: {"nfev": r.function_calls, "nit": r.iterations},
+        )
+        add(
+            "root_scalar",
+            "secant",
+            name,
+            lambda f=f, x0=x0: so.root_scalar(f, x0=x0, method="secant"),
+            lambda r: {"nfev": r.function_calls, "nit": r.iterations},
+        )
     g3 = lambda x: np.exp(x) - 5 * x  # noqa: E731
     for m in ("brent", "golden"):
-        add("minimize_scalar", m, "chandrupatla_min.3", lambda m=m: so.minimize_scalar(g3, bracket=(0, 1, 3), method=m), nf)
-    add("minimize_scalar", "bounded", "chandrupatla_min.3", lambda: so.minimize_scalar(g3, bounds=(0, 3), method="bounded"),
-        nf)
+        add(
+            "minimize_scalar",
+            m,
+            "chandrupatla_min.3",
+            lambda m=m: so.minimize_scalar(g3, bracket=(0, 1, 3), method=m),
+            nf,
+        )
+    add(
+        "minimize_scalar",
+        "bounded",
+        "chandrupatla_min.3",
+        lambda: so.minimize_scalar(g3, bounds=(0, 3), method="bounded"),
+        nf,
+    )
 
     # batched scalars
     for k in (3, 4, 5, 6):
-        c = np.linspace(1.0, 10.0, 10 ** k)
-        add("elementwise", "find_root", f"1e{k}", lambda c=c: ew.find_root(lambda x, c: x ** 3 - 2 * x - c, (0.0, 3.0),
-                                                                            args=(c,)),
-            lambda r: {"nfev": int(np.max(r.nfev)), "nit": int(np.max(r.nit))})
-        add("elementwise", "bracket_root", f"1e{k}", lambda c=c: ew.bracket_root(lambda x, c: x ** 3 - 2 * x - c, 0.0,
-                                                                                  args=(c,)),
-            lambda r: {"nfev": int(np.max(r.nfev)), "nit": int(np.max(r.nit))})
-        add("elementwise", "find_minimum", f"1e{k}",
-            lambda c=c: ew.find_minimum(lambda x, c: (x - c) ** 2 + 0.01 * c * x ** 4, (-1.0, 0.5, 11.0), args=(c,)),
-            lambda r: {"nfev": int(np.max(r.nfev)), "nit": int(np.max(r.nit))})
-        add("elementwise", "bracket_minimum", f"1e{k}",
-            lambda c=c: ew.bracket_minimum(lambda x, c: (x - c) ** 2 + 0.01 * c * x ** 4, 0.0, args=(c,)),
-            lambda r: {"nfev": int(np.max(r.nfev)), "nit": int(np.max(r.nit))})
+        c = np.linspace(1.0, 10.0, 10**k)
+        add(
+            "elementwise",
+            "find_root",
+            f"1e{k}",
+            lambda c=c: ew.find_root(lambda x, c: x**3 - 2 * x - c, (0.0, 3.0), args=(c,)),
+            lambda r: {"nfev": int(np.max(r.nfev)), "nit": int(np.max(r.nit))},
+        )
+        add(
+            "elementwise",
+            "bracket_root",
+            f"1e{k}",
+            lambda c=c: ew.bracket_root(lambda x, c: x**3 - 2 * x - c, 0.0, args=(c,)),
+            lambda r: {"nfev": int(np.max(r.nfev)), "nit": int(np.max(r.nit))},
+        )
+        add(
+            "elementwise",
+            "find_minimum",
+            f"1e{k}",
+            lambda c=c: ew.find_minimum(lambda x, c: (x - c) ** 2 + 0.01 * c * x**4, (-1.0, 0.5, 11.0), args=(c,)),
+            lambda r: {"nfev": int(np.max(r.nfev)), "nit": int(np.max(r.nit))},
+        )
+        add(
+            "elementwise",
+            "bracket_minimum",
+            f"1e{k}",
+            lambda c=c: ew.bracket_minimum(lambda x, c: (x - c) ** 2 + 0.01 * c * x**4, 0.0, args=(c,)),
+            lambda r: {"nfev": int(np.max(r.nfev)), "nit": int(np.max(r.nit))},
+        )
         if k <= 4:
-            add("elementwise", "loop of brentq", f"1e{k}",
-                lambda c=c: [so.brentq(lambda x, cc=cc: x ** 3 - 2 * x - cc, 0.0, 3.0) for cc in c], lambda r: {})
-            add("elementwise", "loop of minimize_scalar(brent)", f"1e{k}",
-                lambda c=c: [so.minimize_scalar(lambda x, cc=cc: (x - cc) ** 2 + 0.01 * cc * x ** 4, bracket=(-1.0, 0.5, 11.0))
-                             for cc in c], lambda r: {})
+            add(
+                "elementwise",
+                "loop of brentq",
+                f"1e{k}",
+                lambda c=c: [so.brentq(lambda x, cc=cc: x**3 - 2 * x - cc, 0.0, 3.0) for cc in c],
+                lambda r: {},
+            )
+            add(
+                "elementwise",
+                "loop of minimize_scalar(brent)",
+                f"1e{k}",
+                lambda c=c: [
+                    so.minimize_scalar(lambda x, cc=cc: (x - cc) ** 2 + 0.01 * cc * x**4, bracket=(-1.0, 0.5, 11.0))
+                    for cc in c
+                ],
+                lambda r: {},
+            )
 
     # minimize on the extended Rosenbrock function
     for n in (10, 100, 1000, 10000):
         x0 = np.tile([-1.2, 1.0], n // 2)
-        meths = ["L-BFGS-B", "L-BFGS-B/fd"] if n == 10000 else \
-            ["Nelder-Mead", "BFGS", "BFGS/fd", "L-BFGS-B", "L-BFGS-B/fd", "Newton-CG", "trust-ncg", "trust-exact"]
+        meths = (
+            ["L-BFGS-B", "L-BFGS-B/fd"]
+            if n == 10000
+            else ["Nelder-Mead", "BFGS", "BFGS/fd", "L-BFGS-B", "L-BFGS-B/fd", "Newton-CG", "trust-ncg", "trust-exact"]
+        )
         if n == 1000:
             meths = [m for m in meths if m not in ("Nelder-Mead", "BFGS/fd")]
         if n == 100:
@@ -127,7 +190,13 @@ def cases():
                 kw["hessp"] = so.rosen_hess_prod
             if meth == "trust-exact":
                 kw["hess"] = so.rosen_hess
-            add("minimize", m, f"n={n}", lambda meth=meth, kw=kw, x0=x0: so.minimize(so.rosen, x0, method=meth, **kw), nf)
+            add(
+                "minimize",
+                m,
+                f"n={n}",
+                lambda meth=meth, kw=kw, x0=x0: so.minimize(so.rosen, x0, method=meth, **kw),
+                nf,
+            )
 
     # least squares: y - exp(X theta)
     rng = np.random.default_rng(0)
@@ -138,14 +207,25 @@ def cases():
         J = lambda t, X=X: -np.exp(X @ t)[:, None] * X  # noqa: E731
         for meth in ("trf", "lm"):
             for jac in ("analytic", "2-point"):
-                add("least_squares", f"{meth}/{jac}", f"({m_}, {n})",
-                    lambda F=F, J=J, meth=meth, jac=jac, n=n: so.least_squares(F, np.zeros(n), jac=J if jac == "analytic"
-                                                                               else "2-point", method=meth), nf)
+                add(
+                    "least_squares",
+                    f"{meth}/{jac}",
+                    f"({m_}, {n})",
+                    lambda F=F, J=J, meth=meth, jac=jac, n=n: so.least_squares(
+                        F, np.zeros(n), jac=J if jac == "analytic" else "2-point", method=meth
+                    ),
+                    nf,
+                )
         A = rng.standard_normal((m_, n))
         b = A @ np.linspace(-1.0, 1.0, n) + rng.standard_normal(m_)
         for meth in ("trf", "bvls"):
-            add("lsq_linear", meth, f"({m_}, {n})", lambda A=A, b=b, meth=meth: so.lsq_linear(A, b, bounds=(-0.5, 0.5),
-                                                                                              method=meth), nf)
+            add(
+                "lsq_linear",
+                meth,
+                f"({m_}, {n})",
+                lambda A=A, b=b, meth=meth: so.lsq_linear(A, b, bounds=(-0.5, 0.5), method=meth),
+                nf,
+            )
         add("nnls", "nnls", f"({m_}, {n})", lambda A=A, b=b: so.nnls(A, b), lambda r: {})
 
     # root on the Broyden tridiagonal system
@@ -161,12 +241,19 @@ def cases():
         j[np.arange(1, n), np.arange(n - 1)] = -1.0
         j[np.arange(n - 1), np.arange(1, n)] = -2.0
         return j
+
     for n in (10, 100, 1000):
         for meth in ("hybr", "lm"):
             for jac in ("analytic", "none"):
-                add("root", f"{meth}/{jac}", f"n={n}",
-                    lambda n=n, meth=meth, jac=jac: so.root(broyden, -np.ones(n), method=meth,
-                                                            jac=broyden_jac if jac == "analytic" else None), nf)
+                add(
+                    "root",
+                    f"{meth}/{jac}",
+                    f"n={n}",
+                    lambda n=n, meth=meth, jac=jac: so.root(
+                        broyden, -np.ones(n), method=meth, jac=broyden_jac if jac == "analytic" else None
+                    ),
+                    nf,
+                )
     for n in (10, 100, 1000):
         x = np.tile([-1.2, 1.0], n // 2)
         add("approx_fprime", "approx_fprime", f"n={n}", lambda x=x: so.approx_fprime(x, so.rosen), lambda r: {})
@@ -176,6 +263,7 @@ def cases():
 def worker():
     warnings.simplefilter("ignore")
     import numpy as np
+
     np.seterr(all="ignore")
     print(json.dumps(cases()))
 
@@ -183,20 +271,29 @@ def worker():
 def main():
     import numpy
     import scipy
+
     results = {}
     for t in (1, 10):
         env = dict(os.environ, VECLIB_MAXIMUM_THREADS=str(t), OMP_NUM_THREADS=str(t), OPENBLAS_NUM_THREADS=str(t))
-        out = subprocess.run([sys.executable, __file__, "--worker"], env=env, capture_output=True, text=True, check=True)
+        out = subprocess.run(
+            [sys.executable, __file__, "--worker"], env=env, capture_output=True, text=True, check=True
+        )
         results[t] = json.loads(out.stdout.strip().splitlines()[-1])
-    (HERE / "speed.json").write_text(json.dumps({"scipy": scipy.__version__, "numpy": numpy.__version__,
-                                                 "rows": results}, indent=1) + "\n")
-    lines = [f"scipy {scipy.__version__}, numpy {numpy.__version__}", "",
-             "| group | method | size | 1 thread (ms) | 10 threads (ms) | nfev | njev | nhev | nit |",
-             "|---|---|---|---:|---:|---:|---:|---:|---:|"]
+    (HERE / "speed.json").write_text(
+        json.dumps({"scipy": scipy.__version__, "numpy": numpy.__version__, "rows": results}, indent=1) + "\n"
+    )
+    lines = [
+        f"scipy {scipy.__version__}, numpy {numpy.__version__}",
+        "",
+        "| group | method | size | 1 thread (ms) | 10 threads (ms) | nfev | njev | nhev | nit |",
+        "|---|---|---|---:|---:|---:|---:|---:|---:|",
+    ]
     for a, b in zip(results[1], results[10]):
         cell = lambda k: str(a.get(k, "")) if a.get(k, "") == b.get(k, "") else f"{a.get(k, '')}/{b.get(k, '')}"  # noqa: E731
-        lines.append(f"| {a['group']} | {a['method']} | {a['size']} | {a['ms']:.3g} | {b['ms']:.3g} | {cell('nfev')} | "
-                     f"{cell('njev')} | {cell('nhev')} | {cell('nit')} |")
+        lines.append(
+            f"| {a['group']} | {a['method']} | {a['size']} | {a['ms']:.3g} | {b['ms']:.3g} | {cell('nfev')} | "
+            f"{cell('njev')} | {cell('nhev')} | {cell('nit')} |"
+        )
     text = "\n".join(lines) + "\n"
     (HERE / "speed.log").write_text(text)
     print(text)

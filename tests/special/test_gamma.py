@@ -14,8 +14,28 @@ import stardust as sd
 
 S = sd.special
 
-EDGES = [0.0, -0.0, 1.0, -1.0, 2.0, -2.0, 0.5, -0.5, -2.5, np.inf, -np.inf, np.nan, 1e-300, -1e-300, 1e300, -1e300,
-         171.7, -171.5, -180.5, 23.0]
+EDGES = [
+    0.0,
+    -0.0,
+    1.0,
+    -1.0,
+    2.0,
+    -2.0,
+    0.5,
+    -0.5,
+    -2.5,
+    np.inf,
+    -np.inf,
+    np.nan,
+    1e-300,
+    -1e-300,
+    1e300,
+    -1e300,
+    171.7,
+    -171.5,
+    -180.5,
+    23.0,
+]
 
 
 def same_bits(a, b):
@@ -60,6 +80,7 @@ def test_special_values_binary(name):
 
 
 # ---- the S3 user decisions (docs/design/special.md §2.4)
+
 
 def test_log_gamma_of_the_smallest_subnormal_is_finite():
     assert S.gammaln(5e-324) == pytest.approx(744.4400719213812, rel=1e-15)
@@ -113,6 +134,7 @@ def test_binom_negative_integer_n():
 
 # ---- conventions
 
+
 def test_integers_are_exact():
     for n in range(1, 24):
         assert S.gamma(float(n)) == float(np.prod(np.arange(1, n, dtype=object))) if n > 1 else S.gamma(1.0) == 1.0
@@ -143,12 +165,33 @@ def test_zeta_forms():
 
 # zeta(2), zeta(4), ..., zeta(52) rounded to the nearest double (Arb)
 ZETA_EVEN = [
-    1.6449340668482264, 1.0823232337111381, 1.0173430619844492, 1.0040773561979444, 1.000994575127818,
-    1.000246086553308, 1.0000612481350588, 1.0000152822594086, 1.000003817293265, 1.0000009539620338,
-    1.0000002384505027, 1.000000059608189, 1.0000000149015549, 1.000000003725334, 1.0000000009313275,
-    1.000000000232831, 1.0000000000582077, 1.000000000014552, 1.000000000003638, 1.0000000000009095,
-    1.0000000000002274, 1.0000000000000568, 1.0000000000000142, 1.0000000000000036, 1.0000000000000009,
-    1.0000000000000002]
+    1.6449340668482264,
+    1.0823232337111381,
+    1.0173430619844492,
+    1.0040773561979444,
+    1.000994575127818,
+    1.000246086553308,
+    1.0000612481350588,
+    1.0000152822594086,
+    1.000003817293265,
+    1.0000009539620338,
+    1.0000002384505027,
+    1.000000059608189,
+    1.0000000149015549,
+    1.000000003725334,
+    1.0000000009313275,
+    1.000000000232831,
+    1.0000000000582077,
+    1.000000000014552,
+    1.000000000003638,
+    1.0000000000009095,
+    1.0000000000002274,
+    1.0000000000000568,
+    1.0000000000000142,
+    1.0000000000000036,
+    1.0000000000000009,
+    1.0000000000000002,
+]
 
 
 def test_zeta_even_integers():
@@ -162,8 +205,17 @@ def test_zeta_even_integers():
 def test_zeta_large_argument_is_one_plus_two_to_minus_x():
     # zeta(x) = 1 + 2^-x + 3^-x + ...: never below 1, and from x = 20 the terms up to 8^-x are
     # the value to rounding (9^-20 is 2^-63)
-    x = np.unique(np.concatenate([np.arange(20.0, 201.0), np.arange(20.5, 200.0), np.linspace(20.0, 200.0, 20001),
-                                  np.nextafter(np.arange(20.0, 60.0), 0), np.nextafter(np.arange(20.0, 60.0), 99)]))
+    x = np.unique(
+        np.concatenate(
+            [
+                np.arange(20.0, 201.0),
+                np.arange(20.5, 200.0),
+                np.linspace(20.0, 200.0, 20001),
+                np.nextafter(np.arange(20.0, 60.0), 0),
+                np.nextafter(np.arange(20.0, 60.0), 99),
+            ]
+        )
+    )
     got = np.asarray(S.zeta(sd.asarray(x)))
     assert np.all(got >= 1.0) and np.all(got[x > 54.0] == 1.0)
     # the sum from its small end, each term exact to rounding: within 1 ULP of the truth
@@ -177,8 +229,8 @@ def test_zeta_large_argument_is_one_plus_two_to_minus_x():
 # before Gamma and a rounded 2 pi raised to x cost the most (65 ULP at -31.8), the neighbours of
 # trivial zeros, and half-integers
 ZETA_NEGATIVE = [
-    (-58.95316528549029, 3.2015956501837933e+32),
-    (-49.657591587200635, -2.999410762012745e+23),
+    (-58.95316528549029, 3.2015956501837933e32),
+    (-49.657591587200635, -2.999410762012745e23),
     (-37.96167526092215, -4362222533570.371),
     (-31.803887378059255, 528796592.41541994),
     (-28.582168565967354, -8349832.126892958),
@@ -187,9 +239,9 @@ ZETA_NEGATIVE = [
     (-1.1407067491725131, -0.06236808058755063),
     (-31.999999999999996, 1.3425985448140925e-05),
     (-32.00000000000001, -2.685197089628232e-05),
-    (-57.99999999999999, -4.239351536427316e+17),
+    (-57.99999999999999, -4.239351536427316e17),
     (-2.0000000000000004, 1.3521831236215423e-17),
-    (-57.5, -8.820928901118726e+30),
+    (-57.5, -8.820928901118726e30),
     (-28.5, -6571686.491569958),
     (-10.5, 0.011146122473942813),
 ]
@@ -213,9 +265,23 @@ def test_same_bits_for_any_thread_count():
         runs = []
         for t in (1, 3, 10):
             sd.set_num_threads(t)
-            runs.append([np.asarray(r).view(np.uint64) for r in
-                         (S.gamma(x), S.rgamma(x), S.gammaln(x), S.digamma(x), S.polygamma(2.0, y), S.beta(y, y),
-                          S.betaln(x, y), S.binom(y, x), S.zeta(x), S.zeta(y + 1.0, y))])
+            runs.append(
+                [
+                    np.asarray(r).view(np.uint64)
+                    for r in (
+                        S.gamma(x),
+                        S.rgamma(x),
+                        S.gammaln(x),
+                        S.digamma(x),
+                        S.polygamma(2.0, y),
+                        S.beta(y, y),
+                        S.betaln(x, y),
+                        S.binom(y, x),
+                        S.zeta(x),
+                        S.zeta(y + 1.0, y),
+                    )
+                ]
+            )
     finally:
         sd.set_num_threads(before)
     for r in runs[1:]:

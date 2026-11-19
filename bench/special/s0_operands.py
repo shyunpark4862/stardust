@@ -79,14 +79,24 @@ def main():
     best = {"base": {}, "new": {}}
     for r in range(a.rounds):
         for label, site in (("base", a.base), ("new", "current")):
-            res = json.loads(subprocess.run([sys.executable, __file__, a.base, "--measure", site, "--only", a.only], check=True,
-                                            capture_output=True, text=True).stdout)
+            res = json.loads(
+                subprocess.run(
+                    [sys.executable, __file__, a.base, "--measure", site, "--only", a.only],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout
+            )
             if r == 0:
                 print(label, res["core"], file=sys.stderr)
             for k, v in res["ns"].items():
                 best[label][k] = min(best[label].get(k, float("inf")), v)
-    lines = [f"Machine: {common.machine()}. ns per call, best of {a.rounds} alternating rounds.", "",
-             "| call | before S0 (4 operands) | S0 (5 operands) | S0 / before |", "|---|---:|---:|---:|"]
+    lines = [
+        f"Machine: {common.machine()}. ns per call, best of {a.rounds} alternating rounds.",
+        "",
+        "| call | before S0 (4 operands) | S0 (5 operands) | S0 / before |",
+        "|---|---:|---:|---:|",
+    ]
     for k in best["base"]:
         b, n = best["base"][k], best["new"][k]
         lines.append(f"| {k} | {b:.0f} | {n:.0f} | {n / b:.3f} |")

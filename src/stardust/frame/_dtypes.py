@@ -32,7 +32,9 @@ def resolve(dtype, func):
             what = dtype.__qualname__ if dtype.__module__ == "builtins" else f"{dtype.__module__}.{dtype.__qualname__}"
         else:
             what = type_name(dtype)
-    raise TypeError(named(func, f"'dtype' must be sd.bool, sd.int64, sd.float64 or sd.string (or their names), not {what}"))
+    raise TypeError(
+        named(func, f"'dtype' must be sd.bool, sd.int64, sd.float64 or sd.string (or their names), not {what}")
+    )
 
 
 def obj(name):

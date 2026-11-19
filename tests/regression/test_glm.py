@@ -20,8 +20,15 @@ REFS = refdata_glm.load()
 NAMES = list(REFS)
 
 SM_FAMILY = {"gaussian": "Gaussian", "binomial": "Binomial", "poisson": "Poisson", "gamma": "Gamma"}
-SM_LINK = {"identity": "Identity", "log": "Log", "logit": "Logit", "probit": "Probit", "cloglog": "CLogLog",
-           "sqrt": "Sqrt", "inverse": "InversePower"}
+SM_LINK = {
+    "identity": "Identity",
+    "log": "Log",
+    "logit": "Logit",
+    "probit": "Probit",
+    "cloglog": "CLogLog",
+    "sqrt": "Sqrt",
+    "inverse": "InversePower",
+}
 CANONICAL = {("gaussian", "identity"), ("binomial", "logit"), ("poisson", "log"), ("gamma", "inverse")}
 
 
@@ -46,6 +53,7 @@ def sm_family(family, link):
 
 # ---- Arb references
 
+
 @pytest.mark.parametrize("name", NAMES)
 def test_against_arb(name):
     p, ref, meta = REFS[name], REFS[name]["ref"], REFS[name]["meta"]
@@ -61,8 +69,13 @@ def test_against_arb(name):
     for s in ("deviance", "pearson_chi2", "scale", "llf", "null_deviance", "llnull", "aic", "bic"):
         assert refdata.rel_err(getattr(r, s), ref[s]) <= 1e-14, s
     mu = a(r.fittedvalues)
-    assert max(abs(mu[i] - refdata.value(ref["fittedvalues"][i])) / abs(refdata.value(ref["fittedvalues"][i]))
-               for i in range(len(mu))) <= 1e-14
+    assert (
+        max(
+            abs(mu[i] - refdata.value(ref["fittedvalues"][i])) / abs(refdata.value(ref["fittedvalues"][i]))
+            for i in range(len(mu))
+        )
+        <= 1e-14
+    )
     rp = a(r.resid_pearson)
     assert np.max(np.abs(rp - [refdata.value(v) for v in ref["resid_pearson"]])) <= 1e-14 * np.max(np.abs(rp))
     for ct in ("HC0", "HC1", "HC2", "HC3", "HAC"):
@@ -76,6 +89,7 @@ def test_against_arb(name):
 
 
 # ---- statsmodels
+
 
 def _data(family, link, n=200, seed=0):
     rng = np.random.default_rng(seed)
@@ -94,8 +108,9 @@ def _compare(r, s, rtol, *, fixed):
     # residuals near 0: statsmodels' y log(y/mu) - (y - mu) cancels, so absolute to the largest
     for name in ("resid_pearson", "resid_deviance", "resid_response"):
         got = a(getattr(r, name))
-        np.testing.assert_allclose(got, np.asarray(getattr(s, name)), rtol=rtol, atol=rtol * np.max(np.abs(got)),
-                                   err_msg=name)
+        np.testing.assert_allclose(
+            got, np.asarray(getattr(s, name)), rtol=rtol, atol=rtol * np.max(np.abs(got)), err_msg=name
+        )
     for name in ("bse", "tvalues"):
         np.testing.assert_allclose(a(getattr(r, name)), np.asarray(getattr(s, name)), rtol=rcov, err_msg=name)
     np.testing.assert_allclose(a(r.pvalues), np.asarray(s.pvalues), rtol=10 * rcov)  # |t|^2 times bse's
@@ -115,8 +130,7 @@ def test_families_against_statsmodels(family, link):
     fixed = family in ("binomial", "poisson")
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        s = sm.GLM(y, sm.add_constant(X), family=sm_family(family, link)).fit(tol=1e-14, maxiter=1000,
-                                                                                 use_t=not fixed)
+        s = sm.GLM(y, sm.add_constant(X), family=sm_family(family, link)).fit(tol=1e-14, maxiter=1000, use_t=not fixed)
     # statsmodels stops on an absolute change of the deviance, which settles the coefficients
     # to about sqrt(u) for a non-canonical link (here measured to Arb: glm's are u-accurate)
     rtol = 1e-11 if (family, link) in CANONICAL else 1e-6
@@ -128,8 +142,9 @@ def test_families_against_statsmodels(family, link):
         warnings.simplefilter("ignore")  # statsmodels' inverse power link at its bounds
         pr = s.get_prediction(sm.add_constant(Xn, has_constant="add")).summary_frame(alpha=0.1)
     np.testing.assert_allclose(a(r.predict(Xn)), pr["mean"], rtol=rtol)
-    np.testing.assert_allclose(a(r.predict(Xn, which="linear")), np.asarray(sm.add_constant(Xn) @ s.params),
-                               rtol=max(rtol, 1e-12))
+    np.testing.assert_allclose(
+        a(r.predict(Xn, which="linear")), np.asarray(sm.add_constant(Xn) @ s.params), rtol=max(rtol, 1e-12)
+    )
     # statsmodels maps the linear predictor's bounds without ordering them (a decreasing
     # inverse link gives lower > upper); here they are in order
     pi = a(r.predict_interval(Xn, alpha=0.1))
@@ -153,8 +168,9 @@ def test_gaussian_identity_equals_ols():
     ow = R.wls(y, X, weights=w)
     assert np.array_equal(a(rw.params), a(ow.params)) and np.array_equal(a(rw.bse), a(ow.bse))
     for ct in ("HC0", "HC1", "HC2", "HC3", "HAC"):
-        np.testing.assert_allclose(a(R.glm(y, X, family="gaussian", cov_type=ct).bse), a(R.ols(y, X, cov_type=ct).bse),
-                                   rtol=1e-14)
+        np.testing.assert_allclose(
+            a(R.glm(y, X, family="gaussian", cov_type=ct).bse), a(R.ols(y, X, cov_type=ct).bse), rtol=1e-14
+        )
 
 
 def test_var_weights_against_statsmodels():
@@ -181,8 +197,11 @@ def test_freq_weights_are_replication():
     np.testing.assert_allclose(a(r.bse), a(rr.bse), rtol=1e-13)
     for name in ("nobs", "df_resid", "deviance", "llf", "aic", "bic", "null_deviance", "pearson_chi2"):
         assert getattr(r, name) == pytest.approx(getattr(rr, name), rel=1e-13), name
-    np.testing.assert_allclose(a(R.glm(y, X, family="binomial", freq_weights=f, cov_type="HC0").bse),
-                               a(R.glm(y[rep], X[rep], family="binomial", cov_type="HC0").bse), rtol=1e-12)
+    np.testing.assert_allclose(
+        a(R.glm(y, X, family="binomial", freq_weights=f, cov_type="HC0").bse),
+        a(R.glm(y[rep], X[rep], family="binomial", cov_type="HC0").bse),
+        rtol=1e-12,
+    )
     s = sm.GLM(y, sm.add_constant(X), family=sm_family("binomial", "logit"), freq_weights=f).fit(tol=1e-14)
     np.testing.assert_allclose(a(r.params), s.params, rtol=1e-11)
     np.testing.assert_allclose(a(r.bse), s.bse, rtol=1e-11)
@@ -222,15 +241,18 @@ def test_offset_and_exposure_against_statsmodels():
     np.testing.assert_allclose(a(r.linear_predictor), np.asarray(s.predict(which="linear")), rtol=1e-12)
     Xn = rng.standard_normal((4, 2))
     e2, o2 = rng.uniform(1, 2, 4), rng.standard_normal(4) * 0.1
-    np.testing.assert_allclose(a(r.predict(Xn, offset=o2, exposure=e2)),
-                               s.predict(sm.add_constant(Xn), offset=o2, exposure=e2), rtol=1e-12)
+    np.testing.assert_allclose(
+        a(r.predict(Xn, offset=o2, exposure=e2)), s.predict(sm.add_constant(Xn), offset=o2, exposure=e2), rtol=1e-12
+    )
     # exposure is log(exposure) in the offset
     r2 = R.glm(y, X, family="poisson", offset=off + np.log(expo))
     np.testing.assert_allclose(a(r2.params), a(r.params), rtol=1e-14)
 
 
-@pytest.mark.parametrize("family,link", [("binomial", "logit"), ("binomial", "probit"), ("poisson", "log"),
-                                         ("gamma", "log"), ("gaussian", "log")])
+@pytest.mark.parametrize(
+    "family,link",
+    [("binomial", "logit"), ("binomial", "probit"), ("poisson", "log"), ("gamma", "log"), ("gaussian", "log")],
+)
 def test_robust_against_statsmodels(family, link):
     sm = pytest.importorskip("statsmodels.api")
     y, X = _data(family, link, seed=10)
@@ -284,8 +306,9 @@ def test_inference_distribution():
     for ct, kw in (("HC0", {}), ("HC3", {}), ("HAC", {"maxlags": 2})):
         rh = R.glm(y, X, family="poisson", cov_type=ct, **kw)
         assert rh.df_resid_inference == math.inf and "P>|z|" in rh.summary(), ct
-        np.testing.assert_allclose(a(rh.pvalues), 2 * a(sd.stats.Normal().ccdf(sd.asarray(np.abs(a(rh.tvalues))))),
-                                   rtol=1e-15)
+        np.testing.assert_allclose(
+            a(rh.pvalues), 2 * a(sd.stats.Normal().ccdf(sd.asarray(np.abs(a(rh.tvalues))))), rtol=1e-15
+        )
     rqh = R.glm(y, X, family="poisson", scale="X2", cov_type="HC0")
     assert rqh.df_resid_inference == rqh.df_resid and "P>|t|" in rqh.summary()
     rgh = R.glm(yg, Xg, family="gamma", link="log", cov_type="HC1")
@@ -310,6 +333,7 @@ def test_llr_and_null_model():
 
 
 # ---- separation, convergence, edge cases
+
 
 def test_complete_separation():
     x = np.arange(10.0)
@@ -457,7 +481,7 @@ def test_batch_equals_loop():
     B, n = 6, 40
     X = rng.standard_normal((B, n, 2))
     Y = (rng.uniform(size=(B, n)) < 1 / (1 + np.exp(-X[..., 0]))).astype(float)
-    Y[2, :] = (X[2, :, 0] > 0)  # one separated regression in the batch
+    Y[2, :] = X[2, :, 0] > 0  # one separated regression in the batch
     tr = rng.integers(1, 5, (B, n)).astype(float)
     for cov in ("nonrobust", "HC0"):
         rb = R.glm(Y, X, family="binomial", cov_type=cov, freq_weights=tr)
@@ -522,9 +546,14 @@ def test_frame_inputs_and_names():
 
 def test_errors():
     y, X = _data("binomial", "logit", n=20, seed=21)
-    with pytest.raises(ValueError, match=r"glm\(\): 'family' must be 'gaussian', 'binomial', 'poisson' or 'gamma', not 'x'"):
+    with pytest.raises(
+        ValueError, match=r"glm\(\): 'family' must be 'gaussian', 'binomial', 'poisson' or 'gamma', not 'x'"
+    ):
         R.glm(y, X, family="x")
-    with pytest.raises(ValueError, match=r"'link' must be None, 'logit', 'probit', 'cloglog' or 'log' for the binomial family, not 'identity'"):
+    with pytest.raises(
+        ValueError,
+        match=r"'link' must be None, 'logit', 'probit', 'cloglog' or 'log' for the binomial family, not 'identity'",
+    ):
         R.glm(y, X, family="binomial", link="identity")
     with pytest.raises(TypeError, match="family"):
         R.glm(y, X, family=None)
@@ -586,8 +615,20 @@ def test_summary_layout():
     s = R.glm(y, X, family="binomial").summary()
     lines = s.splitlines()
     assert lines[0].strip() == "Generalized Linear Model Regression Results"
-    for label in ("Model Family:", "Binomial", "Link Function:", "Logit", "Method:", "IRLS", "No. Iterations:",
-                  "Deviance:", "Pearson chi2:", "Pseudo R-squ. (CS):", "Scale:", "Log-Likelihood:"):
+    for label in (
+        "Model Family:",
+        "Binomial",
+        "Link Function:",
+        "Logit",
+        "Method:",
+        "IRLS",
+        "No. Iterations:",
+        "Deviance:",
+        "Pearson chi2:",
+        "Pseudo R-squ. (CS):",
+        "Scale:",
+        "Log-Likelihood:",
+    ):
         assert label in s
     assert "[0.025" in s and "0.975]" in s
     s90 = R.glm(y, X, family="binomial").summary(alpha=0.1)
@@ -597,14 +638,39 @@ def test_summary_layout():
 def _kernel(y, X, fam, link, chol, rtol=-1.0):
     n = len(y)
     aux = np.r_[np.ones((3, n)), np.zeros((1, n))]
-    raw = sd._core.regression.glm_fit("glm", sd.asarray(y), sd.asarray(X), sd.asarray(aux), None, 0, fam, link,
-                                      False, False, False, False, True, rtol, 0, -1, 100, 1e-8, 0, 0.0, 0, 3, chol)
+    raw = sd._core.regression.glm_fit(
+        "glm",
+        sd.asarray(y),
+        sd.asarray(X),
+        sd.asarray(aux),
+        None,
+        0,
+        fam,
+        link,
+        False,
+        False,
+        False,
+        False,
+        True,
+        rtol,
+        0,
+        -1,
+        100,
+        1e-8,
+        0,
+        0.0,
+        0,
+        3,
+        chol,
+    )
     st = a(raw[6])
     return a(raw[0]), np.sqrt(np.diag(a(raw[1])) * st[5]), st
 
 
-@pytest.mark.parametrize("fam,link,family,lname", [(1, 2, "binomial", "logit"), (1, 3, "binomial", "probit"),
-                                                   (2, 1, "poisson", "log"), (3, 1, "gamma", "log")])
+@pytest.mark.parametrize(
+    "fam,link,family,lname",
+    [(1, 2, "binomial", "logit"), (1, 3, "binomial", "probit"), (2, 1, "poisson", "log"), (3, 1, "gamma", "log")],
+)
 @pytest.mark.parametrize("kappa", [1.0, 1e5, 1e9])
 def test_inner_normal_equations(fam, link, family, lname, kappa):
     # G40: the iterations before the deviance's convergence by Cholesky (QR when it is too
@@ -617,9 +683,11 @@ def test_inner_normal_equations(fam, link, family, lname, kappa):
     X = (U * s) @ V.T * np.sqrt(n)
     beta = V @ (rng.standard_normal(k) * 0.3 / s)
     y = np.array(refdata_glm._response(rng, family, lname, np.c_[X[:, 0], X[:, 1]]))
-    y = {"binomial": (rng.uniform(size=n) < 1 / (1 + np.exp(-(X @ beta)))).astype(float),
-         "poisson": rng.poisson(np.exp(0.3 + X @ beta)).astype(float),
-         "gamma": rng.gamma(3.0, np.exp(0.3 + X @ beta) / 3.0)}[family]
+    y = {
+        "binomial": (rng.uniform(size=n) < 1 / (1 + np.exp(-(X @ beta)))).astype(float),
+        "poisson": rng.poisson(np.exp(0.3 + X @ beta)).astype(float),
+        "gamma": rng.gamma(3.0, np.exp(0.3 + X @ beta) / 3.0),
+    }[family]
     pc, sc, stc = _kernel(y, X, fam, link, True)
     pq, sq, stq = _kernel(y, X, fam, link, False)
     # both are about kappa u from the MLE (Arb: probit at kappa 1e5 3e-14 and 7e-14), and their
@@ -642,13 +710,15 @@ def test_inner_normal_equations_aliasing():
     np.testing.assert_allclose(pc[:3], pq[:3], rtol=1e-13)
 
 
-@pytest.mark.parametrize("family,link", [("binomial", "logit"), ("binomial", "probit"), ("poisson", "log"),
-                                         ("gamma", "log")])
+@pytest.mark.parametrize(
+    "family,link", [("binomial", "logit"), ("binomial", "probit"), ("poisson", "log"), ("gamma", "log")]
+)
 @pytest.mark.parametrize("kappa", [1.0, 1e4, 1e8])
 def test_inner_normal_equations_against_arb(family, link, kappa):
     # G40 on problems large enough for the normal equations (n k = 1200): the coefficients stay
     # u-accurate against Arb (bench/regression/g2/refine.md)
     import sys
+
     sys.path.insert(0, str(refdata_glm.REF.parents[3] / "tools"))
     import regref
 
@@ -661,12 +731,15 @@ def test_inner_normal_equations_against_arb(family, link, kappa):
     c = rng.standard_normal(k)
     c *= 0.8 / np.linalg.norm(U @ c)
     eta = X @ (V @ (c / s))
-    y = {"binomial": (rng.uniform(size=n) < 1 / (1 + np.exp(-eta))).astype(float),
-         "poisson": rng.poisson(np.exp(0.5 + eta)).astype(float),
-         "gamma": rng.gamma(3.0, np.exp(0.5 + eta) / 3.0)}[family]
+    y = {
+        "binomial": (rng.uniform(size=n) < 1 / (1 + np.exp(-eta))).astype(float),
+        "poisson": rng.poisson(np.exp(0.5 + eta)).astype(float),
+        "gamma": rng.gamma(3.0, np.exp(0.5 + eta) / 3.0),
+    }[family]
     r = R.glm(y, X, family=family, link=link, intercept=False)
-    ref, _ = regref.glm(y.tolist(), X.tolist(), family=family, link=link, intercept=False,
-                        beta0=[float(v) for v in r.params.tolist()])
+    ref, _ = regref.glm(
+        y.tolist(), X.tolist(), family=family, link=link, intercept=False, beta0=[float(v) for v in r.params.tolist()]
+    )
     # canonical links u; non-canonical ones (Newton's polishing and final step through the thin
     # Q, G42) a few u
     canonical = (family, link) in CANONICAL
@@ -674,9 +747,16 @@ def test_inner_normal_equations_against_arb(family, link, kappa):
     assert max_rel(r.bse, ref["bse"]) <= max(1e-13, 10 * kappa * 2.0**-52)
 
 
-NONCANONICAL = [("binomial", "probit", 0.3, 1.0), ("binomial", "cloglog", -0.5, 1.0), ("binomial", "log", -1.5, 0.4),
-                ("poisson", "identity", 5.0, 2.0), ("poisson", "sqrt", 2.0, 0.5), ("gamma", "log", 0.5, 1.0),
-                ("gamma", "identity", 4.0, 1.5), ("gaussian", "log", 0.8, 0.5)]
+NONCANONICAL = [
+    ("binomial", "probit", 0.3, 1.0),
+    ("binomial", "cloglog", -0.5, 1.0),
+    ("binomial", "log", -1.5, 0.4),
+    ("poisson", "identity", 5.0, 2.0),
+    ("poisson", "sqrt", 2.0, 0.5),
+    ("gamma", "log", 0.5, 1.0),
+    ("gamma", "identity", 4.0, 1.5),
+    ("gaussian", "log", 0.8, 0.5),
+]
 
 
 @pytest.mark.parametrize("family,link,base,scale", NONCANONICAL)
@@ -686,6 +766,7 @@ def test_noncanonical_against_arb(family, link, base, scale, kappa):
     # (bench/regression/g2/noncanonical.md): the canonical links' level up to kappa 1e8, about
     # 10 u at 1e10 (the canonical links there: 1e-15)
     import sys
+
     sys.path.insert(0, str(refdata_glm.REF.parents[3] / "tools"))
     import regref
     from scipy.stats import norm
@@ -698,10 +779,19 @@ def test_noncanonical_against_arb(family, link, base, scale, kappa):
     X = (U * s) @ V.T * np.sqrt(n)
     c = rng.standard_normal(k)
     eta = base + U @ c * (scale / np.linalg.norm(U @ c)) * np.sqrt(n) / 4
-    mu = {"probit": norm.cdf, "cloglog": lambda e: -np.expm1(-np.exp(e)), "log": np.exp, "identity": lambda e: e,
-          "sqrt": lambda e: e * e}[link](eta)
-    y = {"binomial": lambda: (rng.uniform(size=n) < mu).astype(float), "poisson": lambda: rng.poisson(mu).astype(float),
-         "gamma": lambda: rng.gamma(3.0, mu / 3.0), "gaussian": lambda: mu + 0.3 * rng.standard_normal(n)}[family]()
+    mu = {
+        "probit": norm.cdf,
+        "cloglog": lambda e: -np.expm1(-np.exp(e)),
+        "log": np.exp,
+        "identity": lambda e: e,
+        "sqrt": lambda e: e * e,
+    }[link](eta)
+    y = {
+        "binomial": lambda: (rng.uniform(size=n) < mu).astype(float),
+        "poisson": lambda: rng.poisson(mu).astype(float),
+        "gamma": lambda: rng.gamma(3.0, mu / 3.0),
+        "gaussian": lambda: mu + 0.3 * rng.standard_normal(n),
+    }[family]()
     r = R.glm(y, X, family=family, link=link)
     assert r.converged
     ref, _ = regref.glm(y.tolist(), X.tolist(), family=family, link=link, beta0=[float(v) for v in r.params.tolist()])
@@ -714,6 +804,7 @@ def test_slow_fisher_switches_to_newton():
     # a few iterations at the Arb level. With Fisher's steps throughout it does not converge
     # in 100 iterations (statsmodels needs more than 500).
     import sys
+
     sys.path.insert(0, str(refdata_glm.REF.parents[3] / "tools"))
     import regref
 
@@ -728,22 +819,50 @@ def test_slow_fisher_switches_to_newton():
     y = rng.gamma(3.0, np.exp(0.5 + X @ (V @ (c / s))) / 3.0)
     r = R.glm(y, X, family="gamma", link="log", intercept=False)
     assert r.converged and r.n_iter <= 15
-    ref, _ = regref.glm(y.tolist(), X.tolist(), family="gamma", link="log", intercept=False,
-                        beta0=[float(v) for v in r.params.tolist()])
+    ref, _ = regref.glm(
+        y.tolist(), X.tolist(), family="gamma", link="log", intercept=False, beta0=[float(v) for v in r.params.tolist()]
+    )
     assert norm_err(r.params, ref["params"]) <= 1e-15
     # without the switch the deviance flattens before the coefficients settle: Fisher's steps
     # throughout meet the deviance's criterion far from the MLE (kernel newton=0), and
     # Newton's polishing after it (newton=1) gets there in many more iterations
     aux = np.r_[np.ones((3, n)), np.zeros((1, n))]
-    raws = [sd._core.regression.glm_fit("glm", sd.asarray(y), sd.asarray(X), sd.asarray(aux), None, 0, 3, 1, False,
-                                        False, False, False, False, -1.0, 0, -1, 100, 1e-8, 0, 0.0, 0, 3, True, mode)
-            for mode in (0, 1)]
+    raws = [
+        sd._core.regression.glm_fit(
+            "glm",
+            sd.asarray(y),
+            sd.asarray(X),
+            sd.asarray(aux),
+            None,
+            0,
+            3,
+            1,
+            False,
+            False,
+            False,
+            False,
+            False,
+            -1.0,
+            0,
+            -1,
+            100,
+            1e-8,
+            0,
+            0.0,
+            0,
+            3,
+            True,
+            mode,
+        )
+        for mode in (0, 1)
+    ]
     assert norm_err(raws[0][0], ref["params"]) > 1e-8
     assert a(raws[1][6])[8] >= 2 * r.n_iter
 
 
-@pytest.mark.parametrize("family,link", [("binomial", "probit"), ("binomial", "cloglog"), ("gamma", "log"),
-                                         ("poisson", "identity")])
+@pytest.mark.parametrize(
+    "family,link", [("binomial", "probit"), ("binomial", "cloglog"), ("gamma", "log"), ("poisson", "identity")]
+)
 def test_slow_switch_not_triggered_on_fast_fits(family, link):
     # the switch never fires where Fisher scoring converges at a usual rate: the fits with
     # and without it (the kernel's newton=1) are the same bits, iterations included
@@ -751,9 +870,35 @@ def test_slow_switch_not_triggered_on_fast_fits(family, link):
     aux = np.r_[np.ones((3, len(y))), np.zeros((1, len(y)))]
     fam = {"binomial": 1, "poisson": 2, "gamma": 3}[family]
     lk = {"probit": 3, "cloglog": 4, "log": 1, "identity": 0}[link]
-    out = [sd._core.regression.glm_fit("glm", sd.asarray(y), sd.asarray(X), sd.asarray(aux), None, 0, fam, lk, False,
-                                       False, False, False, True, -1.0, 0, -1, 100, 1e-8, 0, 0.0, 0, 3, True, mode)
-           for mode in (1, 2)]
+    out = [
+        sd._core.regression.glm_fit(
+            "glm",
+            sd.asarray(y),
+            sd.asarray(X),
+            sd.asarray(aux),
+            None,
+            0,
+            fam,
+            lk,
+            False,
+            False,
+            False,
+            False,
+            True,
+            -1.0,
+            0,
+            -1,
+            100,
+            1e-8,
+            0,
+            0.0,
+            0,
+            3,
+            True,
+            mode,
+        )
+        for mode in (1, 2)
+    ]
     assert np.array_equal(a(out[0][0]), a(out[1][0])) and np.array_equal(a(out[0][6]), a(out[1][6]), equal_nan=True)
 
 

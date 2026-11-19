@@ -247,8 +247,9 @@ struct Logistic {
             const double zi = upper ? -z[i] : z[i];
             out[i] = std::fma(sigma, zi, mu);
             const bool central = p >= 0.25 && p <= 0.75;
-            fast[i] = p >= 0x1p-1000 && p < 1.0 &&
-                      (central || (2.0 + ck::kVfLog * std::fabs(zi)) * sigma <= (kFastBudget - 1.0) * std::fabs(out[i]));
+            fast[i] =
+                p >= 0x1p-1000 && p < 1.0 &&
+                (central || (2.0 + ck::kVfLog * std::fabs(zi)) * sigma <= (kFastBudget - 1.0) * std::fabs(out[i]));
         }
         ck::fallback(c.n, fast, out, [&](int i) {
             return upper ? iccdf(c.x[i], c.p[0][i], c.p[1][i]) : icdf(c.x[i], c.p[0][i], c.p[1][i]);
@@ -360,10 +361,18 @@ struct Gumbel {
         ckd::retry(c, out, fast, [&](const Chunk<2>& s, double* o, bool* f) { tail_kernel(s, o, f, kind, 1); });
         ck::fallback(c.n, fast, out, [&](int i) { return tail(c.x[i], c.p[0][i], c.p[1][i], upper, log); });
     }
-    static void cdf_chunk(const Chunk<2>& c, double* out) { tail_run(c, out, weibull_detail::Tail::kExp, false, false); }
-    static void ccdf_chunk(const Chunk<2>& c, double* out) { tail_run(c, out, weibull_detail::Tail::kOneExp, true, false); }
-    static void logcdf_chunk(const Chunk<2>& c, double* out) { tail_run(c, out, weibull_detail::Tail::kLogExp, false, true); }
-    static void logccdf_chunk(const Chunk<2>& c, double* out) { tail_run(c, out, weibull_detail::Tail::kLogOne, true, true); }
+    static void cdf_chunk(const Chunk<2>& c, double* out) {
+        tail_run(c, out, weibull_detail::Tail::kExp, false, false);
+    }
+    static void ccdf_chunk(const Chunk<2>& c, double* out) {
+        tail_run(c, out, weibull_detail::Tail::kOneExp, true, false);
+    }
+    static void logcdf_chunk(const Chunk<2>& c, double* out) {
+        tail_run(c, out, weibull_detail::Tail::kLogExp, false, true);
+    }
+    static void logccdf_chunk(const Chunk<2>& c, double* out) {
+        tail_run(c, out, weibull_detail::Tail::kLogOne, true, true);
+    }
     // E - t - log sigma in the scalar definition's double-doubles: absolute error t tau and the
     // last bit; logpdf against its mixed bound (T20), pdf with exp's kVfExp + 1 more. The pdf's
     // grade 0 is t e^-t / sigma in double instead: t's error (tau = kVfExp + 1) reaches it
@@ -595,7 +604,8 @@ struct GEV {
                 return {num::div(g.ly, c), g.ly, true, false};
             }
         }
-        if (u.hi < -1.0 || (u.hi == -1.0 && u.lo <= 0.0)) return {{0.0, 0.0}, {0.0, 0.0}, false, u.hi == -1.0 && u.lo == 0.0};
+        if (u.hi < -1.0 || (u.hi == -1.0 && u.lo <= 0.0))
+            return {{0.0, 0.0}, {0.0, 0.0}, false, u.hi == -1.0 && u.lo == 0.0};
         if (std::fabs(u.hi) < 0x1p-60) {
             // log(1 + u) / c = -z (1 - u/2 + ...): the Gumbel's E to first order in u (the
             // quotient by a tiny c would divide a rounded u)
@@ -675,7 +685,8 @@ struct GEV {
         ckd::pow_dd(th, yh, yl, tl, c.n);
         for (int i = 0; i < c.n; ++i) {
             const double ac = std::fabs(c.p[0][i]);
-            const bool ok = ac >= 0x1p-30 && yh[i] >= 0x1p-999 && yh[i] <= 0x1p999 && th[i] >= 0x1p-999 && th[i] <= 0x1p999;
+            const bool ok =
+                ac >= 0x1p-30 && yh[i] >= 0x1p-999 && yh[i] <= 0x1p999 && th[i] >= 0x1p-999 && th[i] <= 0x1p999;
             tau[i] = ok ? ckd::kPowDd + (std::fabs(yh[i] - 1.0) / std::min(1.0, yh[i]) + kYErr / yh[i]) / ac : kNaN;
             th[i] = ok ? th[i] : kNaN;
             tl[i] = 0.0;
@@ -752,10 +763,18 @@ struct GEV {
         gumbel_part(c, out, fast, gumbel);
         ck::fallback(c.n, fast, out, [&](int i) { return tail(c.x[i], c.p[0][i], c.p[1][i], c.p[2][i], upper, log); });
     }
-    static void cdf_chunk(const Chunk<3>& c, double* out) { tail_run(c, out, weibull_detail::Tail::kExp, false, false); }
-    static void ccdf_chunk(const Chunk<3>& c, double* out) { tail_run(c, out, weibull_detail::Tail::kOneExp, true, false); }
-    static void logcdf_chunk(const Chunk<3>& c, double* out) { tail_run(c, out, weibull_detail::Tail::kLogExp, false, true); }
-    static void logccdf_chunk(const Chunk<3>& c, double* out) { tail_run(c, out, weibull_detail::Tail::kLogOne, true, true); }
+    static void cdf_chunk(const Chunk<3>& c, double* out) {
+        tail_run(c, out, weibull_detail::Tail::kExp, false, false);
+    }
+    static void ccdf_chunk(const Chunk<3>& c, double* out) {
+        tail_run(c, out, weibull_detail::Tail::kOneExp, true, false);
+    }
+    static void logcdf_chunk(const Chunk<3>& c, double* out) {
+        tail_run(c, out, weibull_detail::Tail::kLogExp, false, true);
+    }
+    static void logccdf_chunk(const Chunk<3>& c, double* out) {
+        tail_run(c, out, weibull_detail::Tail::kLogOne, true, true);
+    }
     // The density.
     //   0: pdf = t e^-t / (y sigma) in double (y^(1/c - 1) = t / y): t's error reaches it times
     //      |1 - t|, y's own is kYErr / y, then exp and three operations: tau |1 - t| +
@@ -780,7 +799,8 @@ struct GEV {
             if (log) ck::log(out, out, c.n);
             for (int i = 0; i < c.n; ++i) {
                 const double v = std::fabs(out[i]);
-                fast[i] = fast[i] && (log ? tau[i] + ck::kVfLog * v <= kFastBudget * std::max(1.0, v) : tau[i] <= kFastBudget);
+                fast[i] = fast[i] &&
+                          (log ? tau[i] + ck::kVfLog * v <= kFastBudget * std::max(1.0, v) : tau[i] <= kFastBudget);
             }
             return;
         }
@@ -790,8 +810,10 @@ struct GEV {
         double kl[kChunkSize];
         ckd::constant(c, kh, kl, [&](int i) { return num::log_dd(c.p[2][i]); });
         for (int i = 0; i < c.n; ++i) {
-            const num::DD l = num::DD{eh[i], el[i]} - num::DD{lh[i], ll[i]} - num::DD{th[i], tl[i]} - num::DD{kh[i], kl[i]};
-            const double abs = th[i] * tau[i] + tau[i] * (1.0 + std::fabs(c.p[0][i])) + ckd::kLq * std::fabs(lh[i]) + 1.0;
+            const num::DD l =
+                num::DD{eh[i], el[i]} - num::DD{lh[i], ll[i]} - num::DD{th[i], tl[i]} - num::DD{kh[i], kl[i]};
+            const double abs =
+                th[i] * tau[i] + tau[i] * (1.0 + std::fabs(c.p[0][i])) + ckd::kLq * std::fabs(lh[i]) + 1.0;
             if (log) {
                 out[i] = l.hi + l.lo;
                 fast[i] = out[i] == out[i] && abs <= kFastBudget * std::max(1.0, std::fabs(out[i]));
@@ -870,7 +892,9 @@ struct GEV {
     // p)), so that is the error in units of the contract's max(1, kappa) (§2.3; r e^-a <
     // sigma / |x| when kappa < 1). c = 0 is the Gumbel's kernel (gumbel_all, gumbel_part).
     static void quantile_chunk(const Chunk<3>& c, double* out, bool upper) {
-        const auto gumbel = [&](const Chunk<2>& g, double* o) { upper ? Gumbel::iccdf_chunk(g, o) : Gumbel::icdf_chunk(g, o); };
+        const auto gumbel = [&](const Chunk<2>& g, double* o) {
+            upper ? Gumbel::iccdf_chunk(g, o) : Gumbel::icdf_chunk(g, o);
+        };
         if (gumbel_all(c, out, gumbel)) return;
         double t[kChunkSize];
         bool fast[kChunkSize];
@@ -895,7 +919,8 @@ struct GEV {
         ckd::retry(c, out, fast, [&](const Chunk<3>& s, double* o, bool* f) { quantile_dd_kernel(s, o, f, upper); });
         gumbel_part(c, out, fast, gumbel);
         ck::fallback(c.n, fast, out, [&](int i) {
-            return upper ? iccdf(c.x[i], c.p[0][i], c.p[1][i], c.p[2][i]) : icdf(c.x[i], c.p[0][i], c.p[1][i], c.p[2][i]);
+            return upper ? iccdf(c.x[i], c.p[0][i], c.p[1][i], c.p[2][i])
+                         : icdf(c.x[i], c.p[0][i], c.p[1][i], c.p[2][i]);
         });
     }
     // The quantile's second grade, for a cancelling mu + sigma z outside the first one's reach:
@@ -967,7 +992,8 @@ struct GEV {
     static double mean(double c, double mu, double sigma) {
         if (c == 0.0) return extreme_detail::affine(mu, sigma, extreme_detail::kEuler);
         if (!(c > -1.0)) return kInf;
-        if (std::fabs(c) < 0x1p-60) {  // euler - (euler^2 / 2 + pi^2 / 12) c: log Gamma(1 + c) is subnormal for a tiny c
+        if (std::fabs(c) <
+            0x1p-60) {  // euler - (euler^2 / 2 + pi^2 / 12) c: log Gamma(1 + c) is subnormal for a tiny c
             return extreme_detail::affine(mu, sigma, extreme_detail::kEuler + (-0.9890559953279725 * c));
         }
         if (c > 1e17) return -kInf;  // -sigma Gamma(1 + c) / c beyond the range for every sigma

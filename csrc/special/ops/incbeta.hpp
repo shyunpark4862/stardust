@@ -67,9 +67,7 @@ struct IB {
     double i, ic, xderiv;
 };
 
-inline Scaled prefix_of(double a, double b, dd::DD x, dd::DD y) {
-    return beta_prefix(a, b, beta_exponent(a, b, x, y));
-}
+inline Scaled prefix_of(double a, double b, dd::DD x, dd::DD y) { return beta_prefix(a, b, beta_exponent(a, b, x, y)); }
 
 // BPSER: I_x(a, b) = (B y^-b / a) sum_n (1-b)_n / n! a/(a+n) x^n, B the
 // prefix of (a, b) at x. The low part of x enters to first order (dS/dx).
@@ -132,7 +130,8 @@ inline BgratArgs bgrat_args(double a, double b, dd::DD x, dd::DD y) {
 inline double bgrat_g(double a, double b, double nu) {
     const double c = a + b;
     const double mu = dd::log1pmx_neg(dd::DD{b / a, 0.0}).hi;
-    return std::sqrt(a / c) * gamma_star(c) / gamma_star(a) * std::exp(-a * mu + b * std::log1p((b + 1.0) / (2.0 * nu)));
+    return std::sqrt(a / c) * gamma_star(c) / gamma_star(a) *
+           std::exp(-a * mu + b * std::log1p((b + 1.0) / (2.0 * nu)));
 }
 // Q + sum_n d_n J_n from Q and r (both in any one scale; linear in the pair), tail the
 // part already summed over G in that scale (for the stopping test).
@@ -206,8 +205,8 @@ inline double bfrac_fraction(double a, double b, dd::DD x, dd::DD y) {
         const double den = a + 2.0 * md - 1.0;
         // (... x)(... x): with b = 1e300 the products of the parameters overflow and x^2 underflows
         const double an = ((a + md - 1.0) * (a + b + md - 1.0) * xh) * (md * (b - md) * xh) / (den * den);
-        const double bn = md + md * (b - md) * xh / den +
-                          (a + md) * (a * yh - b * xh + 1.0 + md * (2.0 - xh)) / (a + 2.0 * md + 1.0);
+        const double bn =
+            md + md * (b - md) * xh / den + (a + md) * (a * yh - b * xh + 1.0 + md * (2.0 - xh)) / (a + 2.0 * md + 1.0);
         return std::pair{an, bn};
     };
     const CfResult r = lentz_backward(gen(0).second, gen, 100000);
@@ -519,7 +518,8 @@ inline IB ibeta(double a, double b, double x, bool deriv = false) {
 // subnormal x) and BGRAT's z = nu x, a subnormal product that had lost up to half its bits
 // (NaN from its low part's correction at most of them).
 inline IB ibeta_tiny(double a, double b, dd::DD lx, bool deriv) {
-    if (!(lx.hi > -kInf)) return {0.0, 1.0, 0.0};  // x = 0 to the caller (-inf, or the NaN double-double sums make of it)
+    if (!(lx.hi > -kInf))
+        return {0.0, 1.0, 0.0};  // x = 0 to the caller (-inf, or the NaN double-double sums make of it)
     return power_down(ibeta(a, b, dd::DD{kTinyX, 0.0}, dd::DD{1.0, -kTinyX}, deriv), a, lx);
 }
 
@@ -594,7 +594,7 @@ inline UV as109(double p, double q, double t) {
     // q = 0.0058, t = 0.088 -- which used to be read as an underflowing root
     // (betaincinv returned 0 for 8% of a, b < 1; T1 review). A value outside
     // [0, 1) falls back to the other end, then to the middle.
-    auto lower_end = [&] { return std::exp((std::log(t * p) + lbeta) / p); };              // x
+    auto lower_end = [&] { return std::exp((std::log(t * p) + lbeta) / p); };  // x
     auto upper_end = [&] { return std::exp((std::log1p(-t) + std::log(q) + lbeta) / q); };  // 1 - x
     auto from_lower = [&](double x) -> std::optional<UV> {
         if (x >= 0.0 && x < 1.0) return UV{x, 1.0 - x};
@@ -672,7 +672,8 @@ inline double ibeta_inverse(double a, double b, double t, bool upper) {
                 const double h = (sa - 1.0) / v - (sb - 1.0) / (1.0 - v);
                 return std::array<double, 3>{inc ? r.i : r.ic, inc ? r.xderiv : -r.xderiv, h};
             },
-            0.0, 1.0);
+            0.0, 1.0
+        );
     };
     double w = solve(w0);
     if (w > 0.5) {
@@ -850,7 +851,8 @@ struct Betainccinv : Real {
     static double f(double a, double b, double q) {
         double out;
         if (ibeta_inverse_edge(a, b, q, true, out)) return out;
-        if (a >= 1.0 && b >= 1.0 && a <= kBoostInverseShape && b <= kBoostInverseShape && q >= 1e-300) {  // Boost (special/boost.hpp)
+        if (a >= 1.0 && b >= 1.0 && a <= kBoostInverseShape && b <= kBoostInverseShape &&
+            q >= 1e-300) {  // Boost (special/boost.hpp)
             const double r = bst::ibetac_inv(a, b, q);
             if (bst::normal(r)) return r;
         }

@@ -97,8 +97,12 @@ def test_lm_diagnostics(name):
     rr = p["R"]
     f = lm_fit(p)
     keep = a(p.get("w", np.ones(len(p["y"])))) > 0  # R's lm.influence drops zero-weight rows; sd gives 0 (G30)
-    for got, key in ((f.leverage, "hat"), (f.resid_studentized_internal, "rstandard"),
-                     (f.resid_studentized_external, "rstudent"), (f.cooks_distance, "cooks")):
+    for got, key in (
+        (f.leverage, "hat"),
+        (f.resid_studentized_internal, "rstandard"),
+        (f.resid_studentized_external, "rstudent"),
+        (f.cooks_distance, "cooks"),
+    ):
         assert obs_err(a(got)[keep], rr[key]) < 1e-13, key
         assert np.all(a(got)[~keep] == 0)
     if "dw" in rr:
@@ -136,8 +140,14 @@ GLM = REF["glm"]
 
 
 def glm_kwargs(p, cov_type="nonrobust", **extra):
-    kw = dict(family=p["family"], link=p["link"], intercept=p.get("intercept", True), scale=p.get("scale"),
-              cov_type=cov_type, **extra)
+    kw = dict(
+        family=p["family"],
+        link=p["link"],
+        intercept=p.get("intercept", True),
+        scale=p.get("scale"),
+        cov_type=cov_type,
+        **extra,
+    )
     for k in ("trials", "offset", "var_weights"):
         if k in p:
             kw[k] = p[k]
@@ -183,12 +193,19 @@ def test_glm_loglik_conventions(name):
 
 
 def _mu_eta(link, eta):
-    return {"identity": np.ones_like(eta), "log": np.exp(eta), "logit": np.exp(-np.logaddexp(0, eta) - np.logaddexp(0, -eta)),
-            "probit": st.norm.pdf(eta), "cloglog": np.exp(eta - np.exp(eta)), "sqrt": 2 * eta, "inverse": -1 / eta ** 2}[link]
+    return {
+        "identity": np.ones_like(eta),
+        "log": np.exp(eta),
+        "logit": np.exp(-np.logaddexp(0, eta) - np.logaddexp(0, -eta)),
+        "probit": st.norm.pdf(eta),
+        "cloglog": np.exp(eta - np.exp(eta)),
+        "sqrt": 2 * eta,
+        "inverse": -1 / eta**2,
+    }[link]
 
 
 def _variance(family, mu):
-    return {"gaussian": np.ones_like(mu), "binomial": mu * (1 - mu), "poisson": mu, "gamma": mu ** 2}[family]
+    return {"gaussian": np.ones_like(mu), "binomial": mu * (1 - mu), "poisson": mu, "gamma": mu**2}[family]
 
 
 @pytest.mark.parametrize("name", [n for n, p in GLM.items() if "se_HC0" in p["R"] or "se_HC0_expected" in p["R"]])
@@ -265,8 +282,9 @@ def test_glmnet(case):
         assert rel(dev_ratio, rr[f"dev_ratio{i}"]) < 1e-9
 
 
-@pytest.mark.parametrize("case", [c for c in GN["cases"] if c["family"] == "gaussian" and c["l1"] == 1],
-                         ids=lambda c: c["name"])
+@pytest.mark.parametrize(
+    "case", [c for c in GN["cases"] if c["family"] == "gaussian" and c["l1"] == 1], ids=lambda c: c["name"]
+)
 def test_glmnet_lambda_max(case):
     rr = case["R"]
     y = GD[case["y"]]

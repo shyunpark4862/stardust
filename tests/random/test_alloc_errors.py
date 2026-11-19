@@ -26,6 +26,8 @@ def test_memory_error_named_and_stream_untouched(i):
     rng = sd.random.default_rng(1)
     rng.random(3)
     before = rng.state["position"]
-    with pytest.raises(MemoryError, match=rf"^{name}\(\): cannot allocate \d+ bytes: more than this machine's physical memory$"):
+    with pytest.raises(
+        MemoryError, match=rf"^{name}\(\): cannot allocate \d+ bytes: more than this machine's physical memory$"
+    ):
         call(rng)
     assert rng.state["position"] == before

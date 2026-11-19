@@ -78,6 +78,7 @@ def test_matrix_ord_too_large_for_float(func, ord_):
 
 # ---- 2026-11-18: lstsq(rtol=0), the error's module path, the bits of matrix_norm ----
 
+
 def test_lstsq_rtol_zero_counts_every_positive_singular_value():
     # xLALSD replaces rcond <= 0 by machine epsilon; rtol = 0 must mean what it means in
     # matrix_rank (only exact zeros are zero)

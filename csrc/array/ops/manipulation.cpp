@@ -166,8 +166,9 @@ nb::object repeat(nb::handle x, nb::handle repeats_obj, nb::handle axis_obj) {
     } else if (is_ndarray(repeats_obj)) {
         const NDArray& r = as_ndarray(repeats_obj);
         if (r.dtype != DType::Int64)
-            throw nb::type_error(("'repeats' must be an int or an int64 array, not " + std::string(dtype_name(r.dtype)))
-                                     .c_str());
+            throw nb::type_error(
+                ("'repeats' must be an int or an int64 array, not " + std::string(dtype_name(r.dtype))).c_str()
+            );
         if (r.ndim != 1) throw nb::value_error("'repeats' must be 1-D");
         NDArray rc = new_array(DType::Int64, r.shape_span());
         assign(rc, r);
@@ -182,7 +183,8 @@ nb::object repeat(nb::handle x, nb::handle repeats_obj, nb::handle axis_obj) {
         throw nb::type_error(("'repeats' must be an int or an int64 array, not " + py_type_name(repeats_obj)).c_str());
     }
     std::int64_t total = 0;
-    if (one_kind == IndexResult::Ok && __builtin_mul_overflow(n, one, &total)) throw nb::value_error("array is too big");
+    if (one_kind == IndexResult::Ok && __builtin_mul_overflow(n, one, &total))
+        throw nb::value_error("array is too big");
     for (std::int64_t c : counts) {
         if (c < 0) throw nb::value_error("'repeats' must be non-negative");
         if (__builtin_add_overflow(total, c, &total)) throw nb::value_error("array is too big");  // (as new_array says)
@@ -244,11 +246,15 @@ nb::object repeat(nb::handle x, nb::handle repeats_obj, nb::handle axis_obj) {
             }
         };
         if (outer > 1) {
-            for_pieces(outer, kParallelTask / std::max<std::int64_t>(total * inner, 1), out.size(),
-                       [&](std::int64_t, std::int64_t o0, std::int64_t o1) { piece(o0, o1, 0, n); });
+            for_pieces(
+                outer, kParallelTask / std::max<std::int64_t>(total * inner, 1), out.size(),
+                [&](std::int64_t, std::int64_t o0, std::int64_t o1) { piece(o0, o1, 0, n); }
+            );
         } else {
-            for_pieces(n, kParallelTask / std::max<std::int64_t>(inner, 1), out.size(),
-                       [&](std::int64_t, std::int64_t i0, std::int64_t i1) { piece(0, 1, i0, i1); });
+            for_pieces(
+                n, kParallelTask / std::max<std::int64_t>(inner, 1), out.size(),
+                [&](std::int64_t, std::int64_t i0, std::int64_t i1) { piece(0, 1, i0, i1); }
+            );
         }
     });
     return wrap(std::move(out));
@@ -277,7 +283,8 @@ std::vector<std::int64_t> parse_reps(nb::handle o) {
         for (nb::handle h : o) {
             if (!one(h, v))
                 throw nb::type_error(
-                    ("'repetitions' must be an int or a tuple of ints, not a tuple holding " + py_type_name(h)).c_str());
+                    ("'repetitions' must be an int or a tuple of ints, not a tuple holding " + py_type_name(h)).c_str()
+                );
             reps.push_back(v);
         }
     }
@@ -291,7 +298,8 @@ nb::object tile(nb::handle x, nb::handle reps_obj) {
     std::vector<std::int64_t> reps = parse_reps(reps_obj);
     // Align: missing leading entries of either side count as 1.
     const int nd = std::max<int>(a.ndim, static_cast<int>(reps.size()));
-    if (nd > kMaxNdim) throw nb::value_error(("arrays may have at most " + std::to_string(kMaxNdim) + " dimensions").c_str());
+    if (nd > kMaxNdim)
+        throw nb::value_error(("arrays may have at most " + std::to_string(kMaxNdim) + " dimensions").c_str());
     reps.insert(reps.begin(), nd - reps.size(), 1);
     NDArray cur = a;
     {
@@ -396,7 +404,8 @@ nb::tuple meshgrid(nb::args arrays, nb::handle indexing_obj) {
     const std::string indexing = parse_choice(indexing_obj, "indexing", {"xy", "ij"});
     std::vector<std::int64_t> shape;
     for (nb::handle h : arrays) {
-        if (!is_ndarray(h)) throw nb::type_error(("every argument must be an sd.ndarray, not " + py_type_name(h)).c_str());
+        if (!is_ndarray(h))
+            throw nb::type_error(("every argument must be an sd.ndarray, not " + py_type_name(h)).c_str());
         const NDArray& a = as_ndarray(h);
         if (a.ndim != 1) throw nb::value_error("every array must be 1-D");
         shape.push_back(a.shape[0]);
@@ -423,7 +432,8 @@ nb::tuple meshgrid(nb::args arrays, nb::handle indexing_obj) {
                 auto at = [&](std::int64_t k) { return *reinterpret_cast<const T*>(a.data + k * a.strides[0]); };
                 if (inner == 1) {  // the input itself is the last axis: copy it once, then whole rows
                     for (std::int64_t k = 0; k < len; ++k) dst[k] = at(k);
-                    for (std::int64_t r = 1; r < outer; ++r) std::memcpy(dst + r * len, dst, static_cast<size_t>(len) * sizeof(T));
+                    for (std::int64_t r = 1; r < outer; ++r)
+                        std::memcpy(dst + r * len, dst, static_cast<size_t>(len) * sizeof(T));
                 } else {
                     for (std::int64_t r = 0; r < outer; ++r)
                         for (std::int64_t k = 0; k < len; ++k, dst += inner) std::fill_n(dst, inner, at(k));
@@ -480,18 +490,21 @@ nb::object edge(nb::handle v, const NDArray& a, int axis, const char* what) {
     if (is_ndarray(v)) {
         const NDArray& e = as_ndarray(v);
         if (e.ndim != a.ndim)
-            throw nb::value_error((name + " must have as many dimensions as 'x' (" + std::to_string(a.ndim) + "), not " +
-                                   std::to_string(e.ndim))
+            throw nb::value_error((name + " must have as many dimensions as 'x' (" + std::to_string(a.ndim) +
+                                   "), not " + std::to_string(e.ndim))
                                       .c_str());
         for (int d = 0; d < a.ndim; ++d)
             if (d != axis && e.shape[d] != a.shape[d])
                 throw nb::value_error((name + " must have the shape of 'x' " + shape_str(a.shape_span()) +
-                                       " except along axis " + std::to_string(axis) + ", not " + shape_str(e.shape_span()))
+                                       " except along axis " + std::to_string(axis) + ", not " +
+                                       shape_str(e.shape_span()))
                                           .c_str());
         return nb::borrow(v);
     }
     if (!scalar_dtype(v))
-        throw nb::type_error((name + " must be an sd.ndarray or a bool, int, float or complex, not " + py_type_name(v)).c_str());
+        throw nb::type_error(
+            (name + " must be an sd.ndarray or a bool, int, float or complex, not " + py_type_name(v)).c_str()
+        );
     std::vector<std::int64_t> shape = shape_of(a);
     shape[axis] = 1;
     nb::list s;
@@ -531,16 +544,22 @@ void bind_manipulation(nb::module_& m) {
     using nb::arg;
     m.def("flip", named("flip", &flip), arg().none(), nb::kw_only(), arg("axis").none() = nb::none());
     // nanobind prints no "/" before a named positional argument; x is positional-only all the same.
-    m.def("roll", named("roll", &roll), arg().none(), arg("shift").none(), nb::kw_only(), arg("axis").none() = nb::none(),
-          nb::sig("def roll(arg0: object | None, /, shift: object | None, *, axis: object | None = None) -> object"));
-    m.def("repeat", named("repeat", &repeat), arg().none(), arg().none(), nb::kw_only(), arg("axis").none() = nb::none());
+    m.def(
+        "roll", named("roll", &roll), arg().none(), arg("shift").none(), nb::kw_only(), arg("axis").none() = nb::none(),
+        nb::sig("def roll(arg0: object | None, /, shift: object | None, *, axis: object | None = None) -> object")
+    );
+    m.def(
+        "repeat", named("repeat", &repeat), arg().none(), arg().none(), nb::kw_only(), arg("axis").none() = nb::none()
+    );
     m.def("tile", named("tile", &tile), arg().none(), arg().none());
     m.def("unstack", named("unstack", &unstack), arg().none(), nb::kw_only(), arg("axis").none() = 0);
     m.def("meshgrid", named("meshgrid", &meshgrid), arg("arrays"), nb::kw_only(), arg("indexing").none() = "xy");
     m.def("tril", named("tril", &triangle<true>), arg().none(), nb::kw_only(), arg("k").none() = 0);
     m.def("triu", named("triu", &triangle<false>), arg().none(), nb::kw_only(), arg("k").none() = 0);
-    m.def("diff", named("diff", &diff), arg().none(), nb::kw_only(), arg("axis").none() = -1, arg("n").none() = 1,
-          arg("prepend").none() = nb::none(), arg("append").none() = nb::none());
+    m.def(
+        "diff", named("diff", &diff), arg().none(), nb::kw_only(), arg("axis").none() = -1, arg("n").none() = 1,
+        arg("prepend").none() = nb::none(), arg("append").none() = nb::none()
+    );
 }
 
 }  // namespace sd

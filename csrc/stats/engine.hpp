@@ -89,19 +89,21 @@ constexpr std::array<char, A + B> join_name(const char (&a)[A], const char (&b)[
 
 namespace method {
 
-#define SD_STATS_INPUT_METHOD(Tag, fname, argname)                                \
-    struct Tag {                                                                  \
-        static constexpr char name[] = #fname;                                    \
-        static constexpr bool input = true;                                       \
-        static constexpr const char* arg = argname;                               \
-        template <class D, class... P>                                            \
-        static double call(double x, P... p) { return D::fname(x, p...); }        \
-        template <class D, class C>                                               \
+#define SD_STATS_INPUT_METHOD(Tag, fname, argname)                                                   \
+    struct Tag {                                                                                     \
+        static constexpr char name[] = #fname;                                                       \
+        static constexpr bool input = true;                                                          \
+        static constexpr const char* arg = argname;                                                  \
+        template <class D, class... P>                                                               \
+        static double call(double x, P... p) {                                                       \
+            return D::fname(x, p...);                                                                \
+        }                                                                                            \
+        template <class D, class C>                                                                  \
         static constexpr bool chunked = requires(const C& c, double* o) { D::fname##_chunk(c, o); }; \
-        template <class D, class C>                                               \
-        static void run_chunk(const C& c, double* o) {                            \
-            if constexpr (chunked<D, C>) D::fname##_chunk(c, o);                  \
-        }                                                                         \
+        template <class D, class C>                                                                  \
+        static void run_chunk(const C& c, double* o) {                                               \
+            if constexpr (chunked<D, C>) D::fname##_chunk(c, o);                                     \
+        }                                                                                            \
     };
 
 SD_STATS_INPUT_METHOD(Pdf, pdf, "x")
@@ -118,12 +120,14 @@ SD_STATS_INPUT_METHOD(Ilogcdf, ilogcdf, "logp")
 SD_STATS_INPUT_METHOD(Ilogccdf, ilogccdf, "logp")
 #undef SD_STATS_INPUT_METHOD
 
-#define SD_STATS_PARAM_METHOD(Tag, fname)                                         \
-    struct Tag {                                                                  \
-        static constexpr char name[] = #fname;                                    \
-        static constexpr bool input = false;                                      \
-        template <class D, class... P>                                            \
-        static double call(P... p) { return D::fname(p...); }                     \
+#define SD_STATS_PARAM_METHOD(Tag, fname)      \
+    struct Tag {                               \
+        static constexpr char name[] = #fname; \
+        static constexpr bool input = false;   \
+        template <class D, class... P>         \
+        static double call(P... p) {           \
+            return D::fname(p...);             \
+        }                                      \
     };
 
 SD_STATS_PARAM_METHOD(Mean, mean)
@@ -214,8 +218,12 @@ void chunk_loop_impl(std::byte* const* args, std::int64_t n, const std::int64_t*
     double xb[kChunk], ob[kChunk], pb[NP][kChunk];
     for (std::int64_t off = 0; off < n; off += kChunk) {
         const int m = static_cast<int>(std::min<std::int64_t>(kChunk, n - off));
-        Chunk<NP> c{m, gather(args[NP] + off * s[NP], s[NP], m, xb), {gather(args[I] + off * s[I], s[I], m, pb[I])...},
-                    {(s[I] == 0)...}};
+        Chunk<NP> c{
+            m,
+            gather(args[NP] + off * s[NP], s[NP], m, xb),
+            {gather(args[I] + off * s[I], s[I], m, pb[I])...},
+            {(s[I] == 0)...}
+        };
         M::template run_chunk<D, Chunk<NP>>(c, ob);
         // the NaNs, and for a probability or a density + 0.0 (kNonNegative) in the same pass
         constexpr double zero = kNonNegative<M> ? 0.0 : -0.0;  // v + -0.0 is v for every v
@@ -244,8 +252,9 @@ void chunk_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, v
     chunk_loop_impl<D, M>(args, n, s, std::make_index_sequence<D::params.size()>{});
 }
 template <class D, class M>
-inline constexpr LoopTable chunk_table = {LoopEntry{}, LoopEntry{}, LoopEntry{&chunk_loop<D, M>, DType::Float64},
-                                          LoopEntry{}};
+inline constexpr LoopTable chunk_table = {
+    LoopEntry{}, LoopEntry{}, LoopEntry{&chunk_loop<D, M>, DType::Float64}, LoopEntry{}
+};
 
 // Method M of distribution T at one point, with the bits T's own method gives a Python
 // float: through its chunk kernel (a chunk of one) when it has one, else its Op.
@@ -315,7 +324,7 @@ struct DistOp<D, M, std::index_sequence<I...>> : Real {
     }();
     static constexpr double cost_ns = cost_of<D, M>();
     // the method's chunk kernel, when the distribution has one (nary_bind::table_of)
-    static constexpr const LoopTable* table = [] () -> const LoopTable* {
+    static constexpr const LoopTable* table = []() -> const LoopTable* {
         if constexpr (M::input) {
             if constexpr (M::template chunked<D, Chunk<sizeof...(I)>>) return &chunk_table<D, M>;
         }

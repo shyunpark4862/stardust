@@ -57,6 +57,7 @@ def _problem(n=60, k=3, seed=0, ar=0.0):
 
 # ---- Arb references
 
+
 @pytest.mark.parametrize("name", RANDOM + NIST)
 def test_diagnostics_against_arb(name):
     ref = REFS[name]["ref"]
@@ -100,6 +101,7 @@ def test_cluster_against_arb(name):
 
 
 # ---- statsmodels
+
 
 @pytest.mark.parametrize("maxlags", [None, 0, 1, 4, 200])
 @pytest.mark.parametrize("intercept", [True, False])
@@ -204,7 +206,8 @@ def test_diagnostics_against_statsmodels():
         Z = sm.add_constant(X)
         for stud in (True, False):
             assert tuple(r.breusch_pagan(studentize=stud)) == pytest.approx(
-                het_breuschpagan(s.resid, Z, robust=stud), rel=1e-12)
+                het_breuschpagan(s.resid, Z, robust=stud), rel=1e-12
+            )
     # WLS: the transformed model's (statsmodels' wresid on a constant and wexog)
     w = np.random.default_rng(9).uniform(0.3, 3.0, len(y))
     r = R.wls(y, X, weights=w)
@@ -219,6 +222,7 @@ def test_diagnostics_against_statsmodels():
 
 
 # ---- zero weights, aliased columns, exact fits, NaN
+
 
 def test_zero_weights_out_of_robust_sums():
     # G20: a WLS with zero-weight rows equals, bit for bit, the WLS without them; the HAC lags
@@ -335,10 +339,15 @@ def test_cluster_f_needs_groups():
     h = np.arange(1.0, 9.0)
     y = np.array([51.0, 58, 57, 66, 64, 73, 75, 80])
     X = np.c_[h, h * h]
-    for groups, intercept in (([1, 1, 1, 1, 2, 2, 2, 2], True), ([1, 1, 1, 1, 2, 2, 2, 2], False),
-                              ([1, 1, 1, 2, 2, 2, 2, 2], True)):
-        for fit in (R.ols(y, X, cov_type="cluster", groups=groups, intercept=intercept),
-                    R.wls(y, X, weights=np.full(8, 2.0), cov_type="cluster", groups=groups, intercept=intercept)):
+    for groups, intercept in (
+        ([1, 1, 1, 1, 2, 2, 2, 2], True),
+        ([1, 1, 1, 1, 2, 2, 2, 2], False),
+        ([1, 1, 1, 2, 2, 2, 2, 2], True),
+    ):
+        for fit in (
+            R.ols(y, X, cov_type="cluster", groups=groups, intercept=intercept),
+            R.wls(y, X, weights=np.full(8, 2.0), cov_type="cluster", groups=groups, intercept=intercept),
+        ):
             assert math.isnan(fit.fvalue) and math.isnan(fit.f_pvalue)
             assert np.all(np.isfinite(a(fit.bse)))
     g3 = np.array([1, 1, 1, 2, 2, 2, 3, 3])
@@ -375,6 +384,7 @@ def test_many_clusters_path():
 
 # ---- batches and threads
 
+
 @pytest.mark.parametrize("cov_type", ["HAC", "cluster"])
 def test_batch_equals_loop(cov_type):
     rng = np.random.default_rng(18)
@@ -383,8 +393,8 @@ def test_batch_equals_loop(cov_type):
     y = rng.standard_normal((B, n))
     y[2, 5] = np.nan
     X[3, :, 2] = X[3, :, 0]
-    g1 = rng.integers(0, 7, n)          # one set of labels for every regression
-    gB = rng.integers(0, 7, (B, n))     # labels per regression (an int64 array with batch axes)
+    g1 = rng.integers(0, 7, n)  # one set of labels for every regression
+    gB = rng.integers(0, 7, (B, n))  # labels per regression (an int64 array with batch axes)
     kws = [{"maxlags": 2}, {}] if cov_type == "HAC" else [{"groups": g1}, {"groups": gB}]
     for kw in kws:
         res = R.ols(y, X, cov_type=cov_type, **{k2: (sd.asarray(v) if k2 == "groups" else v) for k2, v in kw.items()})
@@ -427,6 +437,7 @@ def test_threads_bit_identical():
 
 # ---- errors
 
+
 def test_errors():
     y, X = _problem(n=20, seed=20)
     g = np.arange(20) % 4
@@ -448,8 +459,11 @@ def test_errors():
         R.ols(y, X, cov_type="cluster", groups=g[:19])
     with pytest.raises(ValueError, match=r"^ols\(\): 'groups' must have 20 values like 'y', not 19$"):
         R.ols(y, X, cov_type="cluster", groups=["a"] * 19)
-    with pytest.raises(TypeError, match=r"^ols\(\): 'groups' must be an sd.ndarray, a sequence of labels or a frame "
-                                        r"Series, not DataFrame$"):
+    with pytest.raises(
+        TypeError,
+        match=r"^ols\(\): 'groups' must be an sd.ndarray, a sequence of labels or a frame "
+        r"Series, not DataFrame$",
+    ):
         R.ols(y, X, cov_type="cluster", groups=sd.frame.DataFrame({"g": g.tolist()}))
     with pytest.raises(TypeError, match=r"^ols\(\): 'groups' must be .*, not str$"):
         R.ols(y, X, cov_type="cluster", groups="abc")
@@ -465,9 +479,12 @@ def test_errors():
 
 # ---- summary (G13)
 
+
 def test_summary():
     y, X = _problem(seed=21)
-    df = sd.frame.DataFrame({"price": X[:, 0].tolist(), "advertising_spend": X[:, 1].tolist(), "rate": X[:, 2].tolist()})
+    df = sd.frame.DataFrame(
+        {"price": X[:, 0].tolist(), "advertising_spend": X[:, 1].tolist(), "rate": X[:, 2].tolist()}
+    )
     r = R.ols(y, df)
     text = r.summary()
     assert isinstance(text, str)
@@ -479,18 +496,27 @@ def test_summary():
     rules = [i for i, line in enumerate(lines) if set(line) == {"="}]
     assert len(rules) == 4
     # the top block: numbers formatted from the fields
-    top = "\n".join(lines[rules[0]:rules[1]])
-    for label, value in (("No. Observations:", "60"), ("Df Residuals:", "56"), ("Df Model:", "3"),
-                         ("Covariance Type:", "nonrobust"), ("R-squared:", f"{r.rsquared:#.3f}"),
-                         ("Adj. R-squared:", f"{r.rsquared_adj:#.3f}"), ("F-statistic:", f"{r.fvalue:#.4g}"),
-                         ("Prob (F-statistic):", f"{r.f_pvalue:#.3g}"), ("Log-Likelihood:", f"{r.llf:#.5g}"),
-                         ("AIC:", f"{r.aic:#.4g}"), ("BIC:", f"{r.bic:#.4g}"), ("Model:", "OLS"),
-                         ("Method:", "Least Squares")):
+    top = "\n".join(lines[rules[0] : rules[1]])
+    for label, value in (
+        ("No. Observations:", "60"),
+        ("Df Residuals:", "56"),
+        ("Df Model:", "3"),
+        ("Covariance Type:", "nonrobust"),
+        ("R-squared:", f"{r.rsquared:#.3f}"),
+        ("Adj. R-squared:", f"{r.rsquared_adj:#.3f}"),
+        ("F-statistic:", f"{r.fvalue:#.4g}"),
+        ("Prob (F-statistic):", f"{r.f_pvalue:#.3g}"),
+        ("Log-Likelihood:", f"{r.llf:#.5g}"),
+        ("AIC:", f"{r.aic:#.4g}"),
+        ("BIC:", f"{r.bic:#.4g}"),
+        ("Model:", "OLS"),
+        ("Method:", "Least Squares"),
+    ):
         assert re.search(re.escape(label) + r"\s+" + re.escape(value) + r"(\s|$)", top), label
     # the coefficient table: one row per parameter, in param_names order
     head = lines[rules[1] + 1].split()
     assert head == ["coef", "std", "err", "t", "P>|t|", "[0.025", "0.975]"]
-    rows = lines[rules[1] + 3:rules[2]]
+    rows = lines[rules[1] + 3 : rules[2]]
     assert [row.split()[0] for row in rows] == r.param_names
     ci = a(r.conf_int())
     for j, row in enumerate(rows):
@@ -500,10 +526,14 @@ def test_summary():
         assert float(f[2]) == pytest.approx(float(r.tvalues[j]), abs=5e-4)
         assert float(f[3]) == pytest.approx(float(r.pvalues[j]), abs=5e-4)
         assert float(f[4]) == pytest.approx(ci[j, 0], abs=5e-4) and float(f[5]) == pytest.approx(ci[j, 1], abs=5e-4)
-    bottom = "\n".join(lines[rules[2]:rules[3]])
+    bottom = "\n".join(lines[rules[2] : rules[3]])
     jb = r.jarque_bera()
-    for label, value in (("Durbin-Watson:", f"{r.durbin_watson:#.3f}"), ("Jarque-Bera (JB):", f"{jb.statistic:#.3f}"),
-                         ("Prob(JB):", f"{jb.pvalue:#.3g}"), ("Cond. No.", f"{r.condition_number:#.3g}")):
+    for label, value in (
+        ("Durbin-Watson:", f"{r.durbin_watson:#.3f}"),
+        ("Jarque-Bera (JB):", f"{jb.statistic:#.3f}"),
+        ("Prob(JB):", f"{jb.pvalue:#.3g}"),
+        ("Cond. No.", f"{r.condition_number:#.3g}"),
+    ):
         assert re.search(re.escape(label) + r"\s+" + re.escape(value) + r"(\s|$)", bottom), label
     flat = lambda t: " ".join(t.split())  # the notes wrap at the table's width
     assert "Notes:" in text and "correctly specified" in flat(text)
@@ -530,8 +560,11 @@ def test_gls_diagnostics_are_the_whitened_problems():
     assert gl.jarque_bera() == pytest.approx(wl.jarque_bera(), rel=1e-12)
     assert gl.breusch_pagan() == pytest.approx(wl.breusch_pagan(), rel=1e-12)
     for ct, kw in (("HAC", {"maxlags": 3}), ("cluster", {"groups": g})):
-        np.testing.assert_allclose(a(R.gls(y, X, sigma=np.diag(d), cov_type=ct, **kw).bse),
-                                   a(R.wls(y, X, weights=1 / d, cov_type=ct, **kw).bse), rtol=1e-12)
+        np.testing.assert_allclose(
+            a(R.gls(y, X, sigma=np.diag(d), cov_type=ct, **kw).bse),
+            a(R.wls(y, X, weights=1 / d, cov_type=ct, **kw).bse),
+            rtol=1e-12,
+        )
 
 
 def test_inference_df_and_summary_alpha():

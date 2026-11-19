@@ -78,9 +78,16 @@ for name, fn in CASES:
     data["times"].setdefault(name, {})[step] = t
     print(f"{name}: {fmt_ns(t)}", flush=True)
 store.write_text(json.dumps(data, indent=1))
-lines = ["# M10: single-core optimization steps", "", "Environment: " + ", ".join(f"{k} {v}" for k, v in env_info().items()), "",
-         "1M rows. Minimum per-call time. Single thread. Each column is the state after that step.", "",
-         "| case | " + " | ".join(data["steps"]) + " |", "|---|" + "---:|" * len(data["steps"])]
+lines = [
+    "# M10: single-core optimization steps",
+    "",
+    "Environment: " + ", ".join(f"{k} {v}" for k, v in env_info().items()),
+    "",
+    "1M rows. Minimum per-call time. Single thread. Each column is the state after that step.",
+    "",
+    "| case | " + " | ".join(data["steps"]) + " |",
+    "|---|" + "---:|" * len(data["steps"]),
+]
 for name, _ in CASES:
     row = data["times"].get(name, {})
     lines.append(f"| {name} | " + " | ".join(fmt_ns(row[s]) if s in row else "" for s in data["steps"]) + " |")

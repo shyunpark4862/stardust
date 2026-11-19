@@ -15,7 +15,8 @@ namespace sd::frame {
 // unmatched right rows in right order; right is the mirror image. Keys
 // match as factorize says (NaN = NaN, 0.0 = -0.0); a key holding NA matches
 // nothing.
-std::pair<Column, Column> join_indices(const std::vector<Column>& left, const std::vector<Column>& right,
-                                       std::string_view how);
+std::pair<Column, Column> join_indices(
+    const std::vector<Column>& left, const std::vector<Column>& right, std::string_view how
+);
 
 }  // namespace sd::frame

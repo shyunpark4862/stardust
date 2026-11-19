@@ -21,8 +21,23 @@ from .. import random as _random
 from .. import special as _special
 from . import _glm as _glm_mod
 from ._glm import _broadcast_shape
-from ._linear import (_call_errors, _check_bool, _check_choice, _check_params, _check_pred_batch, _fresh, _check_policy, _div, _frame_columns, _names,
-                      _new_design, _number_or_1d, _own, _prepare, _real)
+from ._linear import (
+    _call_errors,
+    _check_bool,
+    _check_choice,
+    _check_params,
+    _check_pred_batch,
+    _fresh,
+    _check_policy,
+    _div,
+    _frame_columns,
+    _names,
+    _new_design,
+    _number_or_1d,
+    _own,
+    _prepare,
+    _real,
+)
 
 _k = _sd.regression
 
@@ -44,6 +59,7 @@ def _type_name(v):
 
 
 # ---- argument checks
+
 
 def _check_alpha(v, func, arg="alpha", scalar="a number"):
     """(alphas as a 1-D float64 sd.ndarray, is_path, the echo): a number, or a 1-D array or
@@ -88,12 +104,14 @@ def _check_eps(v, func):
 
 def _check_rng(rng, func):
     if not isinstance(rng, _random.Generator):
-        raise TypeError(f"{func}(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), "
-                        f"not {_type_name(rng)}")
+        raise TypeError(
+            f"{func}(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not {_type_name(rng)}"
+        )
     return rng
 
 
 # ---- results
+
 
 def _scalar_or(v):
     return float(v) if not isinstance(v, _sd.ndarray) else v
@@ -110,13 +128,25 @@ class _PenalizedResult:
     """What the penalized fits share: the kernel's params (..., L, k) and per-alpha scalars,
     the alpha axis kept for a path and dropped for one alpha. The intercept is params[0]."""
 
-    __slots__ = ("_P", "_S", "_cache", "_param_names", "_alpha", "_l1_ratio", "_standardize", "_intercept", "_batch",
-                 "_path", "_fit", "_columns")
+    __slots__ = (
+        "_P",
+        "_S",
+        "_cache",
+        "_param_names",
+        "_alpha",
+        "_l1_ratio",
+        "_standardize",
+        "_intercept",
+        "_batch",
+        "_path",
+        "_fit",
+        "_columns",
+    )
 
     def __init__(self, P, S, *, alpha, l1_ratio, path, param_names, intercept, standardize, fit, columns=None):
-        self._P = P + 0.0      # params (batch..., L, k); exact zeros are +0 (G84)
+        self._P = P + 0.0  # params (batch..., L, k); exact zeros are +0 (G84)
         self._columns = columns  # the fit's DataFrame column names, or None
-        self._S = S            # stats (batch..., L, nstat)
+        self._S = S  # stats (batch..., L, nstat)
         self._cache = {}
         self._alpha = alpha
         self._l1_ratio = l1_ratio
@@ -125,7 +155,7 @@ class _PenalizedResult:
         self._intercept = intercept
         self._path = path
         self._batch = tuple(P.shape[:-2])
-        self._fit = fit        # (y, X, weights or None) of the fit, after nan_policy='omit'
+        self._fit = fit  # (y, X, weights or None) of the fit, after nan_policy='omit'
 
     # the fit's configuration: read-only (G98)
     @property
@@ -200,6 +230,7 @@ class _PenalizedResult:
             y, X, _ = self._fit
             yy = _sd.reshape(y, tuple(y.shape[:-1]) + (1, y.shape[-1])) if self._path else y
             return _k.apply("fittedvalues", self._shape_X(X), self.params, self._intercept, yy)
+
         return self._cached("fitted_resid", make)
 
     def __repr__(self):
@@ -227,6 +258,7 @@ class _LinearPenalized(_PenalizedResult):
     @property
     def ssr(self):
         """sum w (y - fitted)^2 over the fit's rows (from resid, whose terms are in double-double)."""
+
         def make():
             r = self.resid
             w = self._fit[2]
@@ -235,6 +267,7 @@ class _LinearPenalized(_PenalizedResult):
                 ww = _sd.reshape(w, tuple(w.shape[:-1]) + (1, w.shape[-1])) if self._path else w
                 rr = rr * ww
             return _scalar_or(_sd.sum(rr, axis=-1))
+
         return self._cached("ssr", make)
 
     @property
@@ -249,6 +282,7 @@ class _LinearPenalized(_PenalizedResult):
 
 class _Iterative:
     """converged, n_iter, dual_gap (the coordinate descent fits)."""
+
     __slots__ = ()
 
     @property
@@ -271,22 +305,26 @@ class _Iterative:
 
 class RidgeResult(_LinearPenalized):
     """The result of sd.regression.ridge."""
+
     __slots__ = ()
 
 
 class LassoResult(_Iterative, _LinearPenalized):
     """The result of sd.regression.lasso."""
+
     __slots__ = ()
 
 
 class ElasticNetResult(_Iterative, _LinearPenalized):
     """The result of sd.regression.elastic_net."""
+
     __slots__ = ()
 
 
 class _CV:
     """The cross-validation's fields of ridge_cv, lasso_cv, elastic_net_cv: the grid, the curve
     and its standard errors, the two choices."""
+
     __slots__ = ()
 
     def _cv(self, name):
@@ -321,28 +359,32 @@ class _CV:
 
 class RidgeCVResult(_CV, RidgeResult):
     """The result of sd.regression.ridge_cv: the refit at the chosen alpha and the curve."""
+
     __slots__ = ("_cv_fields",)
 
 
 class LassoCVResult(_CV, LassoResult):
     """The result of sd.regression.lasso_cv: the refit at the chosen alpha and the curve."""
+
     __slots__ = ("_cv_fields",)
 
 
 class ElasticNetCVResult(_CV, ElasticNetResult):
     """The result of sd.regression.elastic_net_cv: the refit at the chosen alpha and the curve."""
+
     __slots__ = ("_cv_fields",)
 
 
 class PenalizedGLMResult(_Iterative, _PenalizedResult):
     """The result of sd.regression.penalized_glm."""
+
     __slots__ = ("_family", "_sep", "_glm0")
 
     def __init__(self, *a, family, sep, glm0, **kw):
         super().__init__(*a, **kw)
         self._family = family
-        self._sep = sep      # (batch..., L) 1.0 where alpha = 0 and glm found separation
-        self._glm0 = glm0    # (mask of the alphas that are 0, glm's result) or None
+        self._sep = sep  # (batch..., L) 1.0 where alpha = 0 and glm found separation
+        self._glm0 = glm0  # (mask of the alphas that are 0, glm's result) or None
 
     @property
     def family(self):
@@ -362,6 +404,7 @@ class PenalizedGLMResult(_Iterative, _PenalizedResult):
     @property
     def linear_predictor(self):
         """eta = X params; at alpha = 0 glm's (+-inf at the boundary under separation)."""
+
         def make():
             eta = self._fitted_resid()[0]
             if self._glm0 is None:
@@ -371,6 +414,7 @@ class PenalizedGLMResult(_Iterative, _PenalizedResult):
             if not self._path:
                 return e0
             return _sd.where(_sd.expand_dims(mask, axis=-1), _sd.expand_dims(e0, axis=-2), eta)
+
         return self._cached("linear_predictor", make)
 
     @property
@@ -381,10 +425,12 @@ class PenalizedGLMResult(_Iterative, _PenalizedResult):
     @property
     def resid_response(self):
         """y - mu."""
+
         def make():
             y = self._fit[0]
             yy = _sd.reshape(y, tuple(y.shape[:-1]) + (1, y.shape[-1])) if self._path else y
             return yy - self.fittedvalues
+
         return self._cached("resid_response", make)
 
     @property
@@ -399,8 +445,9 @@ class PenalizedGLMResult(_Iterative, _PenalizedResult):
     @property
     def deviance_ratio(self):
         """1 - deviance / null_deviance (glmnet's dev.ratio)."""
-        return self._cached("deviance_ratio",
-                            lambda: _zero_total(1.0 - _div(self.deviance, self.null_deviance), self.null_deviance))
+        return self._cached(
+            "deviance_ratio", lambda: _zero_total(1.0 - _div(self.deviance, self.null_deviance), self.null_deviance)
+        )
 
     def predict(self, X_new, /, *, which="mean"):
         """The mean g^-1(eta) (which='mean') or eta (which='linear') at the rows of X_new."""
@@ -411,6 +458,7 @@ class PenalizedGLMResult(_Iterative, _PenalizedResult):
 
 
 # ---- the fits
+
 
 def _aux(w, tw, n):
     """The kernel's (..., 2, n) block of the weights and test weights, or None."""
@@ -426,22 +474,50 @@ def _aux(w, tw, n):
 
 def _run(func, kind, y, X, w, alphas, l1_ratio, family, intercept, standardize, max_iter, tol, tw=None):
     aux = _aux(w, tw, y.shape[-1])
-    P, S = _k.penalized_path(func, kind, y, X, aux, w is not None, tw is not None, alphas, l1_ratio,
-                             _FAMILY_CODE[family], intercept, standardize, max_iter, tol)
+    P, S = _k.penalized_path(
+        func,
+        kind,
+        y,
+        X,
+        aux,
+        w is not None,
+        tw is not None,
+        alphas,
+        l1_ratio,
+        _FAMILY_CODE[family],
+        intercept,
+        standardize,
+        max_iter,
+        tol,
+    )
     if kind == _ENET and bool(_sd.any(alphas == 0.0)):
         # alpha = 0 (G110): the minimum-norm least squares solution, ridge's at alpha = 0 bit for
         # bit (its SVD; coordinate descent would stop at one of the minimizers of an aliased
         # design, and needs no iterations here; the kernel skips it): converged, n_iter 0,
         # dual_gap 0, df_model the number of nonzero coefficients (G115)
-        P0, S0 = _k.penalized_path(func, _RIDGE, y, X, aux, w is not None, tw is not None, _sd.asarray([0.0]),
-                                   0.0, _FAMILY_CODE[family], intercept, standardize, 1, 1.0)
+        P0, S0 = _k.penalized_path(
+            func,
+            _RIDGE,
+            y,
+            X,
+            aux,
+            w is not None,
+            tw is not None,
+            _sd.asarray([0.0]),
+            0.0,
+            _FAMILY_CODE[family],
+            intercept,
+            standardize,
+            1,
+            1.0,
+        )
         ok = S0[..., _ISNAN] == 0.0
         cols = [S0[..., j] for j in range(S0.shape[-1])]
         cols[_CONV] = _sd.where(ok, 1.0, 0.0)
         cols[_NITER] = _sd.where(ok, 0.0, math.nan)
         cols[_GAP] = _sd.where(ok, 0.0, math.nan)
         cols[_POLISHED] = _sd.where(ok, 0.0, math.nan)
-        nonzero = _sd.where(P0[..., (1 if intercept else 0):] != 0.0, 1.0, 0.0)
+        nonzero = _sd.where(P0[..., (1 if intercept else 0) :] != 0.0, 1.0, 0.0)
         cols[_DF] = _sd.where(ok, _sd.sum(nonzero, axis=-1), math.nan)
         S0 = _sd.stack(cols, axis=-1)
         z = _sd.expand_dims(alphas == 0.0, axis=-1)
@@ -461,15 +537,41 @@ def _common(func, y, X, weights, intercept, standardize, nan_policy):
     return _own(y), _own(X), _own(w), _names(names, X.shape[-1], intercept), columns
 
 
-def _fit(func, cls, kind, y, X, alpha, l1_ratio, weights, intercept, standardize, max_iter, tol, nan_policy,
-         family="gaussian", **extra):
+def _fit(
+    func,
+    cls,
+    kind,
+    y,
+    X,
+    alpha,
+    l1_ratio,
+    weights,
+    intercept,
+    standardize,
+    max_iter,
+    tol,
+    nan_policy,
+    family="gaussian",
+    **extra,
+):
     y, X, w, names, columns = _common(func, y, X, weights, intercept, standardize, nan_policy)
     alphas, path, echo = _check_alpha(alpha, func)
     P, S = _run(func, kind, y, X, w, alphas, l1_ratio, family, intercept, standardize, max_iter, tol)
     if kind == _GLMNET:
         extra["family"] = family
-    return cls(P, S, alpha=echo, l1_ratio=l1_ratio, path=path, param_names=names, intercept=intercept,
-               standardize=standardize, fit=(y, X, w), columns=columns, **extra)
+    return cls(
+        P,
+        S,
+        alpha=echo,
+        l1_ratio=l1_ratio,
+        path=path,
+        param_names=names,
+        intercept=intercept,
+        standardize=standardize,
+        fit=(y, X, w),
+        columns=columns,
+        **extra,
+    )
 
 
 def ridge(y, X, /, *, alpha, weights=None, intercept=True, standardize=False, nan_policy="propagate"):
@@ -479,8 +581,9 @@ def ridge(y, X, /, *, alpha, weights=None, intercept=True, standardize=False, na
     return _fit("ridge", RidgeResult, _RIDGE, y, X, alpha, 0.0, weights, intercept, standardize, 1, 1.0, nan_policy)
 
 
-def lasso(y, X, /, *, alpha, weights=None, intercept=True, standardize=False, max_iter=1000, tol=1e-4,
-          nan_policy="propagate"):
+def lasso(
+    y, X, /, *, alpha, weights=None, intercept=True, standardize=False, max_iter=1000, tol=1e-4, nan_policy="propagate"
+):
     """The lasso: minimizes (1/(2 sw)) sum w (y - b0 - X beta)^2 + alpha ||S beta||_1 by
     coordinate descent (scikit-learn's Lasso objective and tolerance)."""
     func = "lasso"
@@ -489,8 +592,20 @@ def lasso(y, X, /, *, alpha, weights=None, intercept=True, standardize=False, ma
     return _fit(func, LassoResult, _ENET, y, X, alpha, 1.0, weights, intercept, standardize, max_iter, tol, nan_policy)
 
 
-def elastic_net(y, X, /, *, alpha, l1_ratio=0.5, weights=None, intercept=True, standardize=False, max_iter=1000,
-                tol=1e-4, nan_policy="propagate"):
+def elastic_net(
+    y,
+    X,
+    /,
+    *,
+    alpha,
+    l1_ratio=0.5,
+    weights=None,
+    intercept=True,
+    standardize=False,
+    max_iter=1000,
+    tol=1e-4,
+    nan_policy="propagate",
+):
     """The elastic net: minimizes (1/(2 sw)) sum w (y - b0 - X beta)^2 + alpha (l1_ratio
     ||S beta||_1 + (1 - l1_ratio)/2 ||S beta||^2) by coordinate descent (scikit-learn's
     ElasticNet objective and tolerance)."""
@@ -498,12 +613,26 @@ def elastic_net(y, X, /, *, alpha, l1_ratio=0.5, weights=None, intercept=True, s
     l1_ratio = _check_ratio(l1_ratio, func)
     max_iter = _check_int(max_iter, func, "max_iter", 1)
     tol = _check_tol(tol, func)
-    return _fit(func, ElasticNetResult, _ENET, y, X, alpha, l1_ratio, weights, intercept, standardize, max_iter, tol,
-                nan_policy)
+    return _fit(
+        func, ElasticNetResult, _ENET, y, X, alpha, l1_ratio, weights, intercept, standardize, max_iter, tol, nan_policy
+    )
 
 
-def penalized_glm(y, X, /, *, family, alpha, l1_ratio=0.5, weights=None, intercept=True, standardize=False,
-                   max_iter=100, tol=1e-8, nan_policy="propagate"):
+def penalized_glm(
+    y,
+    X,
+    /,
+    *,
+    family,
+    alpha,
+    l1_ratio=0.5,
+    weights=None,
+    intercept=True,
+    standardize=False,
+    max_iter=100,
+    tol=1e-8,
+    nan_policy="propagate",
+):
     """The penalized GLM (binomial with the logit link, poisson with the log link): minimizes
     deviance / (2 sw) + alpha (l1_ratio ||S beta||_1 + (1 - l1_ratio)/2 ||S beta||^2), the
     deviance weighted by w (glmnet's objective). IRLS outside, coordinate descent inside."""
@@ -534,19 +663,37 @@ def penalized_glm(y, X, /, *, family, alpha, l1_ratio=0.5, weights=None, interce
         cols = [S[..., j] for j in range(S.shape[-1])]
         n_iter = g.n_iter.astype(_sd.float64) if isinstance(g.n_iter, _sd.ndarray) else float(g.n_iter)
         conv = g.converged.astype(_sd.float64) if isinstance(g.converged, _sd.ndarray) else float(g.converged)
-        for j, v in ((_NITER, n_iter), (_CONV, conv), (_RSS, g.deviance), (_TSS, g.null_deviance),
-                     (_DF, g.df_model), (_POLISHED, 0.0)):
+        for j, v in (
+            (_NITER, n_iter),
+            (_CONV, conv),
+            (_RSS, g.deviance),
+            (_TSS, g.null_deviance),
+            (_DF, g.df_model),
+            (_POLISHED, 0.0),
+        ):
             cols[j] = _sd.where(mask, per(v), cols[j])
         cols[_GAP] = _sd.where(_sd.logical_and(mask, per(gsep) == 1.0), math.nan, cols[_GAP])
         S = _sd.stack(cols, axis=-1)
         sep = _sd.where(mask, per(gsep), sep)
-    return PenalizedGLMResult(P, S, alpha=echo, l1_ratio=l1_ratio, path=path, param_names=names, intercept=intercept,
-                              standardize=standardize, fit=(y, X, w), family=family, sep=sep, glm0=glm0,
-                              columns=columns)
-
+    return PenalizedGLMResult(
+        P,
+        S,
+        alpha=echo,
+        l1_ratio=l1_ratio,
+        path=path,
+        param_names=names,
+        intercept=intercept,
+        standardize=standardize,
+        fit=(y, X, w),
+        family=family,
+        sep=sep,
+        glm0=glm0,
+        columns=columns,
+    )
 
 
 # ---- cross-validation (G46)
+
 
 def _grid(func, y, X, w, l1_ratio, intercept, standardize, alphas, eps, ratio):
     """(grid (..., L) largest first): scikit-learn's default (alpha_max eps^(i/(L-1)), alpha_max
@@ -554,8 +701,9 @@ def _grid(func, y, X, w, l1_ratio, intercept, standardize, alphas, eps, ratio):
     form = "an int (the grid's length)"
     if isinstance(alphas, bool) or (isinstance(alphas, numbers.Number) and not isinstance(alphas, numbers.Integral)):
         # the grid's length or the alphas themselves: a float (or a bool) is neither
-        raise TypeError(f"{func}(): 'alphas' must be {form} or a 1-dimensional array of numbers, "
-                        f"not {_type_name(alphas)}")
+        raise TypeError(
+            f"{func}(): 'alphas' must be {form} or a 1-dimensional array of numbers, not {_type_name(alphas)}"
+        )
     if isinstance(alphas, numbers.Integral) and not isinstance(alphas, bool):
         L = _check_int(alphas, func, "alphas", 1)
         amax = _k.alpha_max(func, y, X, w, ratio, 0, intercept, standardize)
@@ -571,8 +719,26 @@ def _grid(func, y, X, w, l1_ratio, intercept, standardize, alphas, eps, ratio):
     return _sd.flip(_sd.sort(a))
 
 
-def _cv(func, cls, kind, y, X, *, rng, cv, alphas, eps, select, l1_ratio, weights, intercept, standardize, max_iter,
-        tol, nan_policy):
+def _cv(
+    func,
+    cls,
+    kind,
+    y,
+    X,
+    *,
+    rng,
+    cv,
+    alphas,
+    eps,
+    select,
+    l1_ratio,
+    weights,
+    intercept,
+    standardize,
+    max_iter,
+    tol,
+    nan_policy,
+):
     y, X, w, names, columns = _common(func, y, X, weights, intercept, standardize, nan_policy)
     gcv = cv == "gcv" and kind == _RIDGE
     if not gcv:
@@ -594,13 +760,24 @@ def _cv(func, cls, kind, y, X, *, rng, cv, alphas, eps, select, l1_ratio, weight
     nan = math.nan
     if n == 0:
         # no rows (or none left after nan_policy='omit'): a NaN result with nobs 0 (G96)
-        P, S = _run(func, kind, y, X, w, _sd.asarray([0.0]), l1_ratio, "gaussian", intercept, standardize, max_iter,
-                    tol)
+        P, S = _run(
+            func, kind, y, X, w, _sd.asarray([0.0]), l1_ratio, "gaussian", intercept, standardize, max_iter, tol
+        )
         batch = tuple(S.shape[:-2])
         err = _sd.broadcast_to(grid, batch + (grid.shape[-1],)) * nan if batch else grid * nan
         amin = _sd.full(batch, nan) if batch else nan
-        r = cls(P, S, alpha=amin, l1_ratio=l1_ratio, path=False, param_names=names, intercept=intercept,
-                standardize=standardize, fit=(y, X, w), columns=columns)
+        r = cls(
+            P,
+            S,
+            alpha=amin,
+            l1_ratio=l1_ratio,
+            path=False,
+            param_names=names,
+            intercept=intercept,
+            standardize=standardize,
+            fit=(y, X, w),
+            columns=columns,
+        )
         r._cv_fields = {"alphas": grid, "cv_error": err, "cv_se": err, "alpha_min": amin, "alpha_1se": amin}
         return r
     if gcv:
@@ -612,8 +789,11 @@ def _cv(func, cls, kind, y, X, *, rng, cv, alphas, eps, select, l1_ratio, weight
             raise ValueError(f"{func}(): 'cv' must be <= the number of rows ({n}), not {cv}")
         labels = _sd.asarray([i % cv for i in range(n)], dtype=_sd.int64)
         fold = _sd.take(labels, rng.permutation(n))
-        batch = _broadcast_shape(func, _broadcast_shape(func, tuple(y.shape[:-1]), tuple(X.shape[:-2])),
-                                 tuple(w.shape[:-1]) if w is not None else ())
+        batch = _broadcast_shape(
+            func,
+            _broadcast_shape(func, tuple(y.shape[:-1]), tuple(X.shape[:-2])),
+            tuple(w.shape[:-1]) if w is not None else (),
+        )
         base = w if w is not None else _sd.ones((n,))
         base = _sd.broadcast_to(base, batch + (n,))
         ks = _sd.reshape(_sd.arange(cv, dtype=_sd.int64), (cv,) + (1,) * len(batch) + (1,))
@@ -653,8 +833,9 @@ def _cv(func, cls, kind, y, X, *, rng, cv, alphas, eps, select, l1_ratio, weight
         imin = _sd.expand_dims(_sd.argmin(err, axis=-1), axis=-1)
         pick = imin
         emin = _sd.take_along_axis(err, imin, axis=-1)
-        amin = _sd.take_along_axis(grid if grid.ndim == err.ndim else _sd.broadcast_to(grid, tuple(err.shape)),
-                                   imin, axis=-1)[..., 0]
+        amin = _sd.take_along_axis(
+            grid if grid.ndim == err.ndim else _sd.broadcast_to(grid, tuple(err.shape)), imin, axis=-1
+        )[..., 0]
         if gcv:
             a1se = amin * nan
         else:
@@ -675,7 +856,7 @@ def _cv(func, cls, kind, y, X, *, rng, cv, alphas, eps, select, l1_ratio, weight
     if gcv and pick is not None:
         # the grid's fits are the refit (each alpha from the same SVD, as ridge at that alpha)
         if isinstance(pick, int):
-            P, S = Pg[pick:pick + 1], Sg[pick:pick + 1]
+            P, S = Pg[pick : pick + 1], Sg[pick : pick + 1]
         else:
             P = _sd.take_along_axis(Pg, _sd.expand_dims(pick, axis=-1), axis=-2)
             S = _sd.take_along_axis(Sg, _sd.expand_dims(pick, axis=-1), axis=-2)
@@ -691,37 +872,123 @@ def _cv(func, cls, kind, y, X, *, rng, cv, alphas, eps, select, l1_ratio, weight
     elif bad:
         P = P * nan
         S = _sd.where(keep_cols, S, nan)
-    r = cls(P, S, alpha=chosen, l1_ratio=l1_ratio, path=False, param_names=names, intercept=intercept,
-            standardize=standardize, fit=(y, X, w), columns=columns)
+    r = cls(
+        P,
+        S,
+        alpha=chosen,
+        l1_ratio=l1_ratio,
+        path=False,
+        param_names=names,
+        intercept=intercept,
+        standardize=standardize,
+        fit=(y, X, w),
+        columns=columns,
+    )
     r._cv_fields = {"alphas": grid, "cv_error": err, "cv_se": se, "alpha_min": amin, "alpha_1se": a1se}
     return r
 
 
-def ridge_cv(y, X, /, *, rng=None, cv=5, alphas=100, eps=1e-6, select="min", weights=None, intercept=True,
-             standardize=False, nan_policy="propagate"):
+def ridge_cv(
+    y,
+    X,
+    /,
+    *,
+    rng=None,
+    cv=5,
+    alphas=100,
+    eps=1e-6,
+    select="min",
+    weights=None,
+    intercept=True,
+    standardize=False,
+    nan_policy="propagate",
+):
     """ridge with alpha chosen by k-fold cross-validation (folds from `rng`) or, cv='gcv', by
     generalized cross-validation; refit on all the data at the chosen alpha. The default grid
     reaches eps = 1e-6 of its alpha_max (G87): one SVD serves every alpha, so a wide grid costs
     nothing, and 1e-3 stopped at the lasso's alpha_max, often above a clear signal's optimum."""
-    return _cv("ridge_cv", RidgeCVResult, _RIDGE, y, X, rng=rng, cv=cv, alphas=alphas, eps=eps, select=select,
-               l1_ratio=0.0, weights=weights, intercept=intercept, standardize=standardize, max_iter=1, tol=1.0,
-               nan_policy=nan_policy)
+    return _cv(
+        "ridge_cv",
+        RidgeCVResult,
+        _RIDGE,
+        y,
+        X,
+        rng=rng,
+        cv=cv,
+        alphas=alphas,
+        eps=eps,
+        select=select,
+        l1_ratio=0.0,
+        weights=weights,
+        intercept=intercept,
+        standardize=standardize,
+        max_iter=1,
+        tol=1.0,
+        nan_policy=nan_policy,
+    )
 
 
-def lasso_cv(y, X, /, *, rng, cv=5, alphas=100, eps=1e-3, select="min", weights=None, intercept=True,
-             standardize=False, max_iter=1000, tol=1e-4, nan_policy="propagate"):
+def lasso_cv(
+    y,
+    X,
+    /,
+    *,
+    rng,
+    cv=5,
+    alphas=100,
+    eps=1e-3,
+    select="min",
+    weights=None,
+    intercept=True,
+    standardize=False,
+    max_iter=1000,
+    tol=1e-4,
+    nan_policy="propagate",
+):
     """lasso with alpha chosen by k-fold cross-validation (folds from `rng`); refit on all the
     data at the chosen alpha."""
     func = "lasso_cv"
     max_iter = _check_int(max_iter, func, "max_iter", 1)
     tol = _check_tol(tol, func)
-    return _cv(func, LassoCVResult, _ENET, y, X, rng=rng, cv=cv, alphas=alphas, eps=eps, select=select, l1_ratio=1.0,
-               weights=weights, intercept=intercept, standardize=standardize, max_iter=max_iter, tol=tol,
-               nan_policy=nan_policy)
+    return _cv(
+        func,
+        LassoCVResult,
+        _ENET,
+        y,
+        X,
+        rng=rng,
+        cv=cv,
+        alphas=alphas,
+        eps=eps,
+        select=select,
+        l1_ratio=1.0,
+        weights=weights,
+        intercept=intercept,
+        standardize=standardize,
+        max_iter=max_iter,
+        tol=tol,
+        nan_policy=nan_policy,
+    )
 
 
-def elastic_net_cv(y, X, /, *, rng, l1_ratio=0.5, cv=5, alphas=100, eps=1e-3, select="min", weights=None,
-                   intercept=True, standardize=False, max_iter=1000, tol=1e-4, nan_policy="propagate"):
+def elastic_net_cv(
+    y,
+    X,
+    /,
+    *,
+    rng,
+    l1_ratio=0.5,
+    cv=5,
+    alphas=100,
+    eps=1e-3,
+    select="min",
+    weights=None,
+    intercept=True,
+    standardize=False,
+    max_iter=1000,
+    tol=1e-4,
+    nan_policy="propagate",
+):
     """elastic_net with alpha chosen by k-fold cross-validation (folds from `rng`); refit on all
     the data at the chosen alpha."""
     func = "elastic_net_cv"
@@ -730,9 +997,25 @@ def elastic_net_cv(y, X, /, *, rng, l1_ratio=0.5, cv=5, alphas=100, eps=1e-3, se
         raise ValueError(f"{func}(): the default grid needs l1_ratio > 0 (give 'alphas' for l1_ratio = 0)")
     max_iter = _check_int(max_iter, func, "max_iter", 1)
     tol = _check_tol(tol, func)
-    return _cv(func, ElasticNetCVResult, _ENET, y, X, rng=rng, cv=cv, alphas=alphas, eps=eps, select=select,
-               l1_ratio=l1_ratio, weights=weights, intercept=intercept, standardize=standardize, max_iter=max_iter,
-               tol=tol, nan_policy=nan_policy)
+    return _cv(
+        func,
+        ElasticNetCVResult,
+        _ENET,
+        y,
+        X,
+        rng=rng,
+        cv=cv,
+        alphas=alphas,
+        eps=eps,
+        select=select,
+        l1_ratio=l1_ratio,
+        weights=weights,
+        intercept=intercept,
+        standardize=standardize,
+        max_iter=max_iter,
+        tol=tol,
+        nan_policy=nan_policy,
+    )
 
 
 # the methods' call-shape errors in the library's form (R89)

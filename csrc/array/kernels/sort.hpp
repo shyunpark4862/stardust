@@ -66,8 +66,10 @@ void intro_sort(T* a, std::int64_t n, Less less, int depth) {
         const T pivot = *mid;
         std::int64_t i = -1, j = n;
         for (;;) {
-            do ++i; while (less(a[i], pivot));
-            do --j; while (less(pivot, a[j]));
+            do ++i;
+            while (less(a[i], pivot));
+            do --j;
+            while (less(pivot, a[j]));
             if (i >= j) break;
             std::swap(a[i], a[j]);
         }

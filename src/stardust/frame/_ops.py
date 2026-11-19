@@ -15,7 +15,15 @@ Column = _core.Column
 
 # Python operator -> kernel name. The reflected forms (1 - s) swap operands;
 # comparisons need none, since Python itself turns `1 < s` into `s > 1`.
-ARITH = {"add": "add", "sub": "sub", "mul": "mul", "truediv": "truediv", "floordiv": "floordiv", "mod": "mod", "pow": "pow"}
+ARITH = {
+    "add": "add",
+    "sub": "sub",
+    "mul": "mul",
+    "truediv": "truediv",
+    "floordiv": "floordiv",
+    "mod": "mod",
+    "pow": "pow",
+}
 # & | ^ are Kleene logic on bool and bitwise on int64; << >> take int64 only
 # (docs/api/frame.md §3.4). The kernel picks by dtype.
 BITWISE = {"and": "and", "or": "or", "xor": "xor", "lshift": "lshift", "rshift": "rshift"}
@@ -24,7 +32,9 @@ COMPARE = ("eq", "ne", "lt", "le", "gt", "ge")
 
 def is_operand_scalar(value):
     np = sys.modules.get("numpy")
-    return value is NA or isinstance(value, (bool, int, float, str)) or (np is not None and isinstance(value, np.generic))
+    return (
+        value is NA or isinstance(value, (bool, int, float, str)) or (np is not None and isinstance(value, np.generic))
+    )
 
 
 def scalar_column(value, like):
@@ -55,14 +65,17 @@ def make_binary(op, reflected, defer):
     """The method for operator `op`. `defer`: the types to leave the operation
     to (NotImplemented), so their reflected method answers."""
     if op in SYMBOLS:
+
         def method(self, other):
             result = self._binary(other, op, reflected)
             if result is NotImplemented and not isinstance(other, defer()):
                 raise not_supported(op, self, other)
             return result
     else:
+
         def method(self, other):
             return self._binary(other, op, reflected)
+
     return method
 
 

@@ -7,9 +7,20 @@ import stardust as sd
 from .conftest import NP_DTYPE, assert_same
 
 SHAPES = [
-    ((3, 4), (4, 5)), ((4,), (4, 5)), ((3, 4), (4,)), ((4,), (4,)), ((1, 4), (4, 1)), ((5, 1), (1, 6)),
-    ((2, 3, 4), (4, 2)), ((3, 4), (2, 4, 5)), ((2, 1, 3, 4), (5, 4, 2)), ((2, 3, 4), (2, 4, 6)),
-    ((0, 4), (4, 3)), ((3, 0), (0, 2)), ((2, 0, 3), (3, 4)), ((3,), (2, 3, 4)),
+    ((3, 4), (4, 5)),
+    ((4,), (4, 5)),
+    ((3, 4), (4,)),
+    ((4,), (4,)),
+    ((1, 4), (4, 1)),
+    ((5, 1), (1, 6)),
+    ((2, 3, 4), (4, 2)),
+    ((3, 4), (2, 4, 5)),
+    ((2, 1, 3, 4), (5, 4, 2)),
+    ((2, 3, 4), (2, 4, 6)),
+    ((0, 4), (4, 3)),
+    ((3, 0), (0, 2)),
+    ((2, 0, 3), (3, 4)),
+    ((3,), (2, 3, 4)),
 ]
 
 
@@ -59,8 +70,11 @@ def test_operand_layouts(layout, dtype):
     want = views[0].astype(np.int64) @ views[1].astype(np.int64) if dtype is sd.bool else views[0] @ views[1]
     check(sd.asarray(views[0]) @ sd.asarray(views[1]), want, dtype)
     v = views[0][:, 0]  # a strided vector
-    check(sd.asarray(v) @ sd.asarray(views[0]), (v.astype(np.int64) if dtype is sd.bool else v) @
-          (views[0].astype(np.int64) if dtype is sd.bool else views[0]), dtype)
+    check(
+        sd.asarray(v) @ sd.asarray(views[0]),
+        (v.astype(np.int64) if dtype is sd.bool else v) @ (views[0].astype(np.int64) if dtype is sd.bool else views[0]),
+        dtype,
+    )
 
 
 def test_mixed_dtypes_and_c13():
@@ -115,8 +129,13 @@ def test_small_batches_on_the_pool_match_numpy():
     # Batches of matrices up to 256^3 multiply-adds run on the pool, each
     # still one BLAS call (docs/design/array.md §9.4).
     rng = np.random.default_rng(5)
-    for shape_a, shape_b in [((1000, 8, 8), (1000, 8, 8)), ((3, 50, 4, 7), (50, 7, 5)), ((40, 128, 64), (64, 32)),
-                             ((300, 1, 6), (300, 6, 1)), ((4, 300, 300), (4, 300, 300))]:
+    for shape_a, shape_b in [
+        ((1000, 8, 8), (1000, 8, 8)),
+        ((3, 50, 4, 7), (50, 7, 5)),
+        ((40, 128, 64), (64, 32)),
+        ((300, 1, 6), (300, 6, 1)),
+        ((4, 300, 300), (4, 300, 300)),
+    ]:
         a, b = rng.random(shape_a), rng.random(shape_b)
         got = np.asarray(sd.asarray(a) @ sd.asarray(b))
         assert got.shape == (a @ b).shape

@@ -16,9 +16,14 @@ import stardust_numpy as sdnp
 N = 1_000_000
 r = np.random.default_rng(0)
 data = {
-    "iw": r.integers(-10**15, 10**15, N), "i": r.integers(-1000, 1000, N), "f": r.random(N) + 0.5,
-    "iv": r.integers(0, 1000, N), "iu": r.integers(-10**12, 10**12, N), "im": r.integers(-1000, 1000, (1000, 1000)),
-    "bm": r.random((1000, 8, 8)), "bm32": r.random((200, 32, 32)),
+    "iw": r.integers(-(10**15), 10**15, N),
+    "i": r.integers(-1000, 1000, N),
+    "f": r.random(N) + 0.5,
+    "iv": r.integers(0, 1000, N),
+    "iu": r.integers(-(10**12), 10**12, N),
+    "im": r.integers(-1000, 1000, (1000, 1000)),
+    "bm": r.random((1000, 8, 8)),
+    "bm32": r.random((200, 32, 32)),
 }
 S = {k: sdnp.asarray(v) for k, v in data.items()}
 

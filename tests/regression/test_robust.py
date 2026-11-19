@@ -68,6 +68,7 @@ def leverage(n=300, frac=0.35, seed=1):
 
 # ---- Arb references
 
+
 @pytest.mark.parametrize("name", list(REFS))
 def test_against_arb(name):
     p = REFS[name]
@@ -86,6 +87,7 @@ def test_against_arb(name):
 
 
 # ---- statsmodels
+
 
 def _sm_norm(norm):
     from statsmodels.robust import norms
@@ -106,8 +108,9 @@ def test_against_statsmodels(norm, scale_est, seed):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         s = sm.RLM(y, sm.add_constant(X), M=_sm_norm(norm)).fit(scale_est=est, tol=1e-15, maxiter=1000)
-        d = sm.RLM(y, sm.add_constant(X), M=_sm_norm(norm)).fit(scale_est=est if scale_est == "mad" else
-                                                                 scale.HuberScale())
+        d = sm.RLM(y, sm.add_constant(X), M=_sm_norm(norm)).fit(
+            scale_est=est if scale_est == "mad" else scale.HuberScale()
+        )
     assert r.converged
     assert np.max(np.abs(a(r.params) - s.params)) <= 1e-13 * np.max(np.abs(s.params))
     assert r.scale == pytest.approx(s.scale, rel=1e-13)
@@ -129,14 +132,22 @@ def test_against_statsmodels(norm, scale_est, seed):
 def test_summary():
     r = R.rlm(*contaminated(), norm="bisquare")
     txt = r.summary()
-    for s in ("Robust linear Model Regression Results", "TukeyBiweight", "Scale Est.:", "mad", "H1", "P>|t|",
-              "No. Iterations:"):
+    for s in (
+        "Robust linear Model Regression Results",
+        "TukeyBiweight",
+        "Scale Est.:",
+        "mad",
+        "H1",
+        "P>|t|",
+        "No. Iterations:",
+    ):
         assert s in txt
     assert "x3" in txt and "const" in txt
     mm = R.rlm(*leverage(), method="MM", rng=sd.random.default_rng(1)).summary()
     assert "avar1" in mm and "MM" in mm
-    assert "summary(): takes one regression" in _err(lambda: R.rlm(sd.asarray(np.ones((2, 30))),
-                                                                   sd.asarray(np.arange(30.0))).summary())
+    assert "summary(): takes one regression" in _err(
+        lambda: R.rlm(sd.asarray(np.ones((2, 30))), sd.asarray(np.arange(30.0))).summary()
+    )
     assert repr(r).startswith("RLMResult(method='M', norm='bisquare'")
 
 
@@ -197,6 +208,7 @@ def test_against_lmrob(name):
 
 # ---- MM: breakdown, determinism
 
+
 @pytest.mark.parametrize("frac", [0.3, 0.4])
 def test_mm_breakdown(frac):
     y, X = leverage(n=400, frac=frac, seed=3)
@@ -204,9 +216,9 @@ def test_mm_breakdown(frac):
     m = R.rlm(y, X, norm="huber")
     mm = R.rlm(y, X, method="MM", rng=sd.random.default_rng(0))
     ls = R.ols(y, X)
-    assert np.max(np.abs(a(m.params) - truth)) > 1.0      # M from least squares is pulled away
+    assert np.max(np.abs(a(m.params) - truth)) > 1.0  # M from least squares is pulled away
     assert np.max(np.abs(a(ls.params) - truth)) > 1.0
-    assert np.max(np.abs(a(mm.params) - truth)) < 0.15    # MM finds the clean line
+    assert np.max(np.abs(a(mm.params) - truth)) < 0.15  # MM finds the clean line
     w = a(mm.weights)
     nbad = int(frac * 400)
     assert np.all(w[:nbad] == 0.0) and np.mean(w[nbad:]) > 0.8
@@ -222,7 +234,7 @@ def test_mm_rng_determinism():
     g = sd.random.default_rng(42)
     R.rlm(y, X, method="MM", rng=g)
     h = sd.random.default_rng(42)
-    h.integers(-2**63, 2**63 - 1, endpoint=True, shape=(2,))
+    h.integers(-(2**63), 2**63 - 1, endpoint=True, shape=(2,))
     assert g.state == h.state
     # another seed: other subsets, the same estimate to the S refinement's precision
     r3 = R.rlm(y, X, method="MM", rng=sd.random.default_rng(7))
@@ -237,7 +249,7 @@ def test_mm_large_n(frac):
     y, X = leverage(n=6000, frac=frac, seed=4)
     ys, Xs = sd.asarray(y), sd.asarray(X)
     r = R.rlm(ys, Xs, method="MM", rng=sd.random.default_rng(5))
-    keys = sd.random.default_rng(5).integers(-2**63, 2**63 - 1, endpoint=True, shape=(2,))
+    keys = sd.random.default_rng(5).integers(-(2**63), 2**63 - 1, endpoint=True, shape=(2,))
     small = K.rlm_fit("rlm", ys, Xs, keys, True, -1.0, 1, 1, 0.0, 0.0, 4.685061, 2, 50, 1e-8, 500, False)
     assert r.scale == pytest.approx(float(small[6][2]), rel=1e-10)
     assert a(r.params) == pytest.approx(a(small[0]), abs=1e-9)
@@ -283,14 +295,16 @@ def test_threads_bit_identical():
             m = R.rlm(y, X, norm="bisquare")
             h = R.rlm(y, X, scale_est="huber")
             mm = R.rlm(yl, Xl, method="MM", rng=sd.random.default_rng(3))
-            out.append([v.tolist() for v in (m.params, m.bse, m.weights, h.params, h.bse, mm.params, mm.bse,
-                                             mm.weights)])
+            out.append(
+                [v.tolist() for v in (m.params, m.bse, m.weights, h.params, h.bse, mm.params, mm.bse, mm.weights)]
+            )
     finally:
         sd.set_num_threads(old)
     assert out[0] == out[1]
 
 
 # ---- inputs, edge cases
+
 
 def test_nan_policies_and_frames():
     y, X = contaminated(n=80, seed=4)
@@ -348,7 +362,7 @@ def test_exact_fit_and_iteration_cap():
     rng = np.random.default_rng(8)
     X = rng.integers(-5, 6, (40, 2)).astype(float)
     y = 1.0 + X @ [2.0, -1.0]
-    y[:10] += rng.integers(20, 40, 10)   # 30 of 40 rows exactly on the line
+    y[:10] += rng.integers(20, 40, 10)  # 30 of 40 rows exactly on the line
     for r in (R.rlm(y, X, norm="bisquare"), R.rlm(y, X, method="MM", rng=sd.random.default_rng(0))):
         assert r.scale == 0.0 and r.converged
         assert r.params.tolist() == [1.0, 2.0, -1.0]
@@ -368,7 +382,7 @@ def _check_exact_or_root(r, y, x, line, norm, c):
     if r.scale == 0.0:
         assert np.max(np.abs(p - line)) <= 1e-15 * (1 + np.max(np.abs(line)))
         assert np.all(a(r.bse) == 0.0)
-        on = np.abs(y - X @ line) < 1e-9   # the rows off the line are 5 or more off
+        on = np.abs(y - X @ line) < 1e-9  # the rows off the line are 5 or more off
         assert a(r.weights).tolist() == on.astype(float).tolist()
         return
     z = (y - X @ p) / r.scale
@@ -390,7 +404,7 @@ def test_exact_fit_to_rounding():
     y[3] = 50, y[7] = -20 gave [1.971, 1.820], scale 0.936, converged=True (statsmodels
     gives [1, 2])."""
     x = np.arange(1.0, 11.0)
-    for line in ([1.0, 2.0], [0.1, 0.3]):     # exact in double, and rounded
+    for line in ([1.0, 2.0], [0.1, 0.3]):  # exact in double, and rounded
         for out in ({3: 50.0, 7: -20.0}, {3: 50.0}):
             y = line[0] + line[1] * x
             for i, v in out.items():
@@ -398,7 +412,7 @@ def test_exact_fit_to_rounding():
             kws = [dict(norm=nm) for nm in ("huber", "hampel", "bisquare")]
             kws += [dict(method="MM", rng=sd.random.default_rng(s)) for s in range(3)]
             kws += [dict(max_iter=m) for m in (36, 38, 40)]
-            if len(out) == 1:   # with two of ten off the line proposal 2 has a root away from it
+            if len(out) == 1:  # with two of ten off the line proposal 2 has a root away from it
                 kws += [dict(norm=nm, scale_est="huber") for nm in ("huber", "hampel", "bisquare")]
             for kw in kws:
                 r = R.rlm(y, x, **kw)
@@ -438,8 +452,11 @@ def test_tuning_constants():
     from statsmodels.robust import norms
 
     y, X = contaminated(seed=10)
-    for norm, c, M in (("huber", 2.0, norms.HuberT(t=2.0)), ("bisquare", 3.0, norms.TukeyBiweight(c=3.0)),
-                       ("hampel", (1.5, 3.5, 8.0), norms.Hampel(1.5, 3.5, 8.0))):
+    for norm, c, M in (
+        ("huber", 2.0, norms.HuberT(t=2.0)),
+        ("bisquare", 3.0, norms.TukeyBiweight(c=3.0)),
+        ("hampel", (1.5, 3.5, 8.0), norms.Hampel(1.5, 3.5, 8.0)),
+    ):
         r = R.rlm(y, X, norm=norm, c=c)
         s = sm.RLM(y, sm.add_constant(X), M=M).fit(tol=1e-15, maxiter=1000)
         assert np.max(np.abs(a(r.params) - s.params)) <= 1e-13 * np.max(np.abs(s.params))
@@ -464,36 +481,70 @@ def test_errors():
     y, X = contaminated(n=30, seed=0)
     g = sd.random.default_rng(0)
     cases = [
-        (TypeError, "rlm(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not NoneType",
-         lambda: R.rlm(y, X, method="MM")),
-        (TypeError, "rlm(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not int",
-         lambda: R.rlm(y, X, method="MM", rng=3)),
+        (
+            TypeError,
+            "rlm(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not NoneType",
+            lambda: R.rlm(y, X, method="MM"),
+        ),
+        (
+            TypeError,
+            "rlm(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not int",
+            lambda: R.rlm(y, X, method="MM", rng=3),
+        ),
         (ValueError, "rlm(): 'rng' is only used with method='MM'", lambda: R.rlm(y, X, rng=g)),
         (ValueError, "rlm(): 'method' must be 'M' or 'MM', not 'S'", lambda: R.rlm(y, X, method="S")),
-        (ValueError, "rlm(): 'norm' must be 'huber', 'bisquare' or 'hampel', not 'andrew'",
-         lambda: R.rlm(y, X, norm="andrew")),
-        (ValueError, "rlm(): method='MM' takes the bisquare norm, not 'huber'",
-         lambda: R.rlm(y, X, method="MM", norm="huber", rng=g)),
-        (ValueError, "rlm(): 'scale_est' is only used with method='M'",
-         lambda: R.rlm(y, X, method="MM", scale_est="mad", rng=g)),
+        (
+            ValueError,
+            "rlm(): 'norm' must be 'huber', 'bisquare' or 'hampel', not 'andrew'",
+            lambda: R.rlm(y, X, norm="andrew"),
+        ),
+        (
+            ValueError,
+            "rlm(): method='MM' takes the bisquare norm, not 'huber'",
+            lambda: R.rlm(y, X, method="MM", norm="huber", rng=g),
+        ),
+        (
+            ValueError,
+            "rlm(): 'scale_est' is only used with method='M'",
+            lambda: R.rlm(y, X, method="MM", scale_est="mad", rng=g),
+        ),
         (ValueError, "rlm(): 'scale_est' must be 'mad' or 'huber', not 'iqr'", lambda: R.rlm(y, X, scale_est="iqr")),
         (ValueError, "rlm(): 'c' must be None or a finite number > 0 for the huber norm", lambda: R.rlm(y, X, c=-1.0)),
-        (ValueError, "rlm(): 'c' must be None or a finite number > 0 for the bisquare norm",
-         lambda: R.rlm(y, X, norm="bisquare", c=math.inf)),
-        (TypeError, "rlm(): 'c' must be None or a finite number > 0 for the huber norm, not str",
-         lambda: R.rlm(y, X, c="a")),
-        (TypeError, "rlm(): 'c' must be None or a finite number > 0 for the huber norm, not tuple",
-         lambda: R.rlm(y, X, c=(1, 2))),
-        (ValueError, "rlm(): 'c' must be three numbers 0 < a <= b < c for the hampel norm",
-         lambda: R.rlm(y, X, norm="hampel", c=(2, 8, 4))),
-        (TypeError, "rlm(): 'c' must be three numbers 0 < a <= b < c for the hampel norm, not float",
-         lambda: R.rlm(y, X, norm="hampel", c=2.0)),
+        (
+            ValueError,
+            "rlm(): 'c' must be None or a finite number > 0 for the bisquare norm",
+            lambda: R.rlm(y, X, norm="bisquare", c=math.inf),
+        ),
+        (
+            TypeError,
+            "rlm(): 'c' must be None or a finite number > 0 for the huber norm, not str",
+            lambda: R.rlm(y, X, c="a"),
+        ),
+        (
+            TypeError,
+            "rlm(): 'c' must be None or a finite number > 0 for the huber norm, not tuple",
+            lambda: R.rlm(y, X, c=(1, 2)),
+        ),
+        (
+            ValueError,
+            "rlm(): 'c' must be three numbers 0 < a <= b < c for the hampel norm",
+            lambda: R.rlm(y, X, norm="hampel", c=(2, 8, 4)),
+        ),
+        (
+            TypeError,
+            "rlm(): 'c' must be three numbers 0 < a <= b < c for the hampel norm, not float",
+            lambda: R.rlm(y, X, norm="hampel", c=2.0),
+        ),
         (ValueError, "rlm(): 'max_iter' must be >= 1", lambda: R.rlm(y, X, max_iter=0)),
         (ValueError, "rlm(): 'tol' must be a finite number > 0", lambda: R.rlm(y, X, tol=0.0)),
         (ValueError, "rlm(): 'X' must have 30 rows like 'y', not 29", lambda: R.rlm(y, X[:29])),
         (ValueError, "rlm(): the model has no parameters", lambda: R.rlm(y, np.zeros((30, 0)), intercept=False)),
         (TypeError, "rlm(): 'X' must be real, not a complex128 array", lambda: R.rlm(y, sd.asarray(X) * 1j)),
-        (ValueError, "rlm(): 'nan_policy' must be 'propagate', 'omit' or 'raise', not 'drop'", lambda: R.rlm(y, X, nan_policy="drop")),
+        (
+            ValueError,
+            "rlm(): 'nan_policy' must be 'propagate', 'omit' or 'raise', not 'drop'",
+            lambda: R.rlm(y, X, nan_policy="drop"),
+        ),
     ]
     for exc, msg, f in cases:
         with pytest.raises(exc) as e:
@@ -502,6 +553,7 @@ def test_errors():
 
 
 # ---- Theil-Sen and Siegel
+
 
 def _same(u, v):
     return all((float(p) == float(q)) or (math.isnan(p) and math.isnan(q)) for p, q in zip(u, v))
@@ -513,7 +565,7 @@ def _points(n, seed, kind):
     y = 2.0 * x + rng.standard_normal(n)
     if kind == "ties":
         x[: n // 4] = x[n // 4]
-        y[n // 3: n // 2] = y[0]
+        y[n // 3 : n // 2] = y[0]
     elif kind == "grid":
         x = np.round(x, 1)
         y = np.round(y, 1)
@@ -538,8 +590,9 @@ def test_slopes_against_scipy(n, kind):
     assert _same(R.theilslopes(y), st.theilslopes(y)) and _same(R.siegelslopes(y), st.siegelslopes(y))
 
 
-@pytest.mark.parametrize("n,direct,collect", [(200, 0, 10**9), (300, 0, 100), (700, 0, 40), (3000, 0, 5000),
-                                              (2500, 10**5, 3000)])
+@pytest.mark.parametrize(
+    "n,direct,collect", [(200, 0, 10**9), (300, 0, 100), (700, 0, 40), (3000, 0, 5000), (2500, 10**5, 3000)]
+)
 def test_theil_passes(n, direct, collect):
     """The pass algorithm (beyond 2^23 slopes) on small problems: forced by its limits."""
     z = float(sd.special.ndtri(0.025))

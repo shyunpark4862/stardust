@@ -44,7 +44,9 @@ nb::object gather_named(nb::handle x, nb::handle key) {
 void check_indices(nb::handle o, const char* what) {
     std::int64_t v = 0;
     if (!is_ndarray(o) && index_value(o, v) == IndexResult::NotInt)
-        throw nb::type_error(("'" + std::string(what) + "' must be an int or an int64 array, not " + py_type_name(o)).c_str());
+        throw nb::type_error(
+            ("'" + std::string(what) + "' must be an int or an int64 array, not " + py_type_name(o)).c_str()
+        );
     if (is_ndarray(o) && as_ndarray(o).dtype != DType::Int64)
         throw nb::type_error(("'" + std::string(what) + "' must be an int64 array, not " +
                               std::string(dtype_name(as_ndarray(o).dtype)))
@@ -93,7 +95,8 @@ void along_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, v
 
 nb::object take_along_axis(nb::handle x, nb::handle indices, nb::handle axis_obj) {
     const NDArray& a = require_ndarray(x);
-    if (!is_ndarray(indices)) throw nb::type_error(("'indices' must be an int64 array, not " + py_type_name(indices)).c_str());
+    if (!is_ndarray(indices))
+        throw nb::type_error(("'indices' must be an int64 array, not " + py_type_name(indices)).c_str());
     check_indices(indices, "indices");
     const NDArray& ix = as_ndarray(indices);
     if (ix.ndim != a.ndim)
@@ -112,9 +115,12 @@ nb::object take_along_axis(nb::handle x, nb::handle indices, nb::handle axis_obj
         } else if (a.shape[d] == 1) {
             shape[d] = ix.shape[d];
         } else {
-            std::vector<std::int64_t> xs(a.shape_span().begin(), a.shape_span().end()), is(ix.shape_span().begin(), ix.shape_span().end());
+            std::vector<std::int64_t> xs(a.shape_span().begin(), a.shape_span().end()),
+                is(ix.shape_span().begin(), ix.shape_span().end());
             xs[axis] = is[axis] = 1;
-            throw nb::value_error(("shapes could not be broadcast together: " + shape_str(xs) + " " + shape_str(is)).c_str());
+            throw nb::value_error(
+                ("shapes could not be broadcast together: " + shape_str(xs) + " " + shape_str(is)).c_str()
+            );
         }
     }
     NDArray out = new_array(a.dtype, shape);
@@ -151,7 +157,8 @@ nb::object take_along_axis(nb::handle x, nb::handle indices, nb::handle axis_obj
     auto spread = [&](const NDArray& v, bool zero_axis) {
         NDArray b = v;
         for (int d = 0; d < nd; ++d)
-            if ((d == axis && zero_axis) || (d != axis && v.shape[d] != shape[d]) || (d == axis && v.shape[d] != shape[d])) {
+            if ((d == axis && zero_axis) || (d != axis && v.shape[d] != shape[d]) ||
+                (d == axis && v.shape[d] != shape[d])) {
                 b.shape[d] = shape[d];
                 b.strides[d] = 0;
             }
@@ -272,7 +279,9 @@ nb::object searchsorted(nb::handle x1, nb::handle x2, nb::handle side_obj, nb::h
     if (is_ndarray(x2)) v_dtype = as_ndarray(x2).dtype;
     else v_dtype = scalar_dtype(x2);
     if (!v_dtype)
-        throw nb::type_error(("'x2' must be an sd.ndarray or a bool, int, float or complex, not " + py_type_name(x2)).c_str());
+        throw nb::type_error(
+            ("'x2' must be an sd.ndarray or a bool, int, float or complex, not " + py_type_name(x2)).c_str()
+        );
     const DType d = promote(a.dtype, *v_dtype);
     if (d == DType::Complex128) throw nb::type_error("not supported for complex128");  // no order (§2.6)
 
@@ -338,13 +347,19 @@ nb::object searchsorted(nb::handle x1, nb::handle x2, nb::handle side_obj, nb::h
 void bind_searching(nb::module_& m) {
     using nb::arg;
     m.def("take", named("take", &take), arg().none(), arg().none(), nb::kw_only(), arg("axis").none() = nb::none());
-    m.def("take_along_axis", named("take_along_axis", &take_along_axis), arg().none(), arg().none(), nb::kw_only(),
-          arg("axis").none() = -1);
+    m.def(
+        "take_along_axis", named("take_along_axis", &take_along_axis), arg().none(), arg().none(), nb::kw_only(),
+        arg("axis").none() = -1
+    );
     m.def("nonzero", named("nonzero", &nonzero), arg().none());
-    m.def("count_nonzero", named("count_nonzero", &count_nonzero), arg().none(), nb::kw_only(),
-          arg("axis").none() = nb::none(), arg("keepdims").none() = false);
-    m.def("searchsorted", named("searchsorted", &searchsorted), arg().none(), arg().none(), nb::kw_only(),
-          arg("side").none() = "left", arg("sorter").none() = nb::none());
+    m.def(
+        "count_nonzero", named("count_nonzero", &count_nonzero), arg().none(), nb::kw_only(),
+        arg("axis").none() = nb::none(), arg("keepdims").none() = false
+    );
+    m.def(
+        "searchsorted", named("searchsorted", &searchsorted), arg().none(), arg().none(), nb::kw_only(),
+        arg("side").none() = "left", arg("sorter").none() = nb::none()
+    );
 }
 
 }  // namespace sd

@@ -37,11 +37,24 @@ def main():
     r = np.random.default_rng(0)
     n = 1_000_000
     m = r.random((1000, 1000))
-    arrays = {"m": m, "m2": m.copy(), "mT": np.asfortranarray(m), "t3": r.random((100, 100, 100)),
-              "rows": r.integers(0, 1000, 1000), "idx3": r.integers(-100, 100, 50), "p3": r.random((n, 3)),
-              "idx": r.integers(0, n, 300_000), "v": r.random((1000, 1000)), "f": r.random(n), "f2": r.random(n),
-              "b": r.random(n) > 0.5, "s": r.random(n) > 0.99, "mb": m > 0.5, "sm": r.random((4, 5)),
-              "sv": r.random(3)}
+    arrays = {
+        "m": m,
+        "m2": m.copy(),
+        "mT": np.asfortranarray(m),
+        "t3": r.random((100, 100, 100)),
+        "rows": r.integers(0, 1000, 1000),
+        "idx3": r.integers(-100, 100, 50),
+        "p3": r.random((n, 3)),
+        "idx": r.integers(0, n, 300_000),
+        "v": r.random((1000, 1000)),
+        "f": r.random(n),
+        "f2": r.random(n),
+        "b": r.random(n) > 0.5,
+        "s": r.random(n) > 0.99,
+        "mb": m > 0.5,
+        "sm": r.random((4, 5)),
+        "sv": r.random(3),
+    }
     lines = ["| case | 1 thread | 10 threads | numpy |", "|---|---:|---:|---:|"]
 
     def fmt(t):

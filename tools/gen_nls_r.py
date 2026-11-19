@@ -30,8 +30,13 @@ MODELS = {
     "puromycin": ("Vm*x/(K+x)", ["Vm", "K"], [200.0, 0.1], ["x"], ""),
     "twod": ("a*x1^b*exp(c*x2)", ["a", "b", "c"], [1.0, 1.0, 0.0], ["x1", "x2"], ""),
     "logistic": ("Asym/(1+exp((xmid-x)/scal))", ["Asym", "xmid", "scal"], [10.0, 5.0, 1.0], ["x"], ""),
-    "decay_bounded": ("a*exp(-b*x) + c", ["a", "b", "c"], [1.0, 1.0, 1.0], ["x"],
-                      'algorithm = "port", lower = c(0, 0, 0.6), upper = c(10, 10, 10)'),
+    "decay_bounded": (
+        "a*exp(-b*x) + c",
+        ["a", "b", "c"],
+        [1.0, 1.0, 1.0],
+        ["x"],
+        'algorithm = "port", lower = c(0, 0, 0.6), upper = c(10, 10, 10)',
+    ),
 }
 
 PUROMYCIN_CONC = [0.02, 0.02, 0.06, 0.06, 0.11, 0.11, 0.22, 0.22, 0.56, 0.56, 1.10, 1.10]
@@ -49,7 +54,7 @@ def problems():
     out["decay_weighted"] = dict(x=x.tolist(), y=y.tolist(), w=w.tolist())
     out["puromycin"] = dict(x=PUROMYCIN_CONC, y=[float(v) for v in PUROMYCIN_RATE], w=None)
     x1, x2 = rng.uniform(1.0, 3.0, 60), rng.uniform(0.0, 1.0, 60)
-    y = 2.0 * x1 ** 0.7 * np.exp(-0.5 * x2) + 0.05 * rng.standard_normal(60)
+    y = 2.0 * x1**0.7 * np.exp(-0.5 * x2) + 0.05 * rng.standard_normal(60)
     out["twod"] = dict(x=np.column_stack([x1, x2]).tolist(), y=y.tolist(), w=None)
     x = np.linspace(0.0, 10.0, 30)
     y = 12.0 / (1.0 + np.exp((4.5 - x) / 1.3)) + 0.3 * rng.standard_normal(30)
@@ -74,8 +79,9 @@ def r_script(name, prob):
     st = ", ".join(f"{a} = {v:.17g}" for a, v in zip(pn, start))
     ex = (", " + extra) if extra else ""
     tol = "1e-8" if name == "twod" else "1e-10"  # twod: R stops on its step factor at 1e-10
-    lines.append(f"f <- nls(y ~ fm({args}), start = list({st}), control = nls.control(tol = {tol}, maxiter = 1000)"
-                 f"{ex})")
+    lines.append(
+        f"f <- nls(y ~ fm({args}), start = list({st}), control = nls.control(tol = {tol}, maxiter = 1000){ex})"
+    )
     lines.append("s <- summary(f); cf <- s$coefficients")
     lines.append('out <- function(nm, v) cat(nm, sprintf("%.17g", v), "\\n")')
     lines.append('out("coef", cf[, 1]); out("se", cf[, 2]); out("t", cf[, 3]); out("p", cf[, 4])')
@@ -100,8 +106,7 @@ def run(name, prob):
 
 
 def main():
-    ver = subprocess.run(["Rscript", "-e", "cat(R.version.string)"], capture_output=True, text=True,
-                         check=True).stdout
+    ver = subprocess.run(["Rscript", "-e", "cat(R.version.string)"], capture_output=True, text=True, check=True).stdout
     data = {"_versions": ver.strip()}
     for name, prob in problems().items():
         data[name] = run(name, prob)

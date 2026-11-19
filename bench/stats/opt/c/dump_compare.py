@@ -46,7 +46,9 @@ def main():
             worst[key] = (d, f"{c0} {x0}: {a!r} -> {b!r}")
     for key in sorted(count):
         d, where = worst[key]
-        print(f"{key[0]:10s} {key[1]:9s} n={count[key]:6d} differing inverses={differ[key]:4d} max diff={d:.2e} {where}")
+        print(
+            f"{key[0]:10s} {key[1]:9s} n={count[key]:6d} differing inverses={differ[key]:4d} max diff={d:.2e} {where}"
+        )
     for k, v in differ.items():
         if k[1] == "inputs":
             print(f"{k[0]}: {v} rows skipped (their input, an inverse, changed)")

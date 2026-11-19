@@ -74,11 +74,21 @@ def ref_wishart(df, V, xs, inverse):
                 tr = trace_solve(X, Vm)  # tr(V X^-1) = tr(X^-1 V)
                 out.append(n / 2 * ldv - n * p / 2 * arb(2).log() - mvlgamma(p, n / 2) - (n + p + 1) / 2 * ldx - tr / 2)
         if not inverse:
-            h = (p + 1) / arb(2) * ldv + p * (p + 1) / arb(2) * arb(2).log() + mvlgamma(p, n / 2) \
-                - (n - p - 1) / 2 * mvdigamma(p, n / 2) + n * p / 2
+            h = (
+                (p + 1) / arb(2) * ldv
+                + p * (p + 1) / arb(2) * arb(2).log()
+                + mvlgamma(p, n / 2)
+                - (n - p - 1) / 2 * mvdigamma(p, n / 2)
+                + n * p / 2
+            )
         else:
-            h = (p + 1) / arb(2) * ldv - p * (p + 1) / arb(2) * arb(2).log() + mvlgamma(p, n / 2) \
-                - (n + p + 1) / 2 * mvdigamma(p, n / 2) + n * p / 2
+            h = (
+                (p + 1) / arb(2) * ldv
+                - p * (p + 1) / arb(2) * arb(2).log()
+                + mvlgamma(p, n / 2)
+                - (n + p + 1) / 2 * mvdigamma(p, n / 2)
+                + n * p / 2
+            )
         return (*out, h)
 
     *out, h = settled(fn)
@@ -137,8 +147,11 @@ def main():
                     e3 = err(D.entropy(), href)
                     e4 = err(Sd.entropy(), href)
                     name = "InverseWishart" if inverse else "Wishart"
-                    print(f"| {name} | {p} | {df:g} | {kappa:.0e} | {e1:.1e} | {e2:.1e} | {e3:.1e} | {e4:.1e} |", flush=True)
-    for (n, p) in ((2, 3), (4, 4), (10, 6)):
+                    print(
+                        f"| {name} | {p} | {df:g} | {kappa:.0e} | {e1:.1e} | {e2:.1e} | {e3:.1e} | {e4:.1e} |",
+                        flush=True,
+                    )
+    for n, p in ((2, 3), (4, 4), (10, 6)):
         for kappa in (1.0, 1e4, 1e8):
             M = rng.normal(size=(n, p))
             U, V = spd(rng, n, kappa), spd(rng, p, kappa)
@@ -146,9 +159,11 @@ def main():
             xs = S.rvs(3, random_state=2).reshape((-1, n, p))
             ref, href = ref_matnorm(M, U, V, xs)
             D = sd.stats.MatrixNormal(mu=sd.asarray(M), rowcov=sd.asarray(U), colcov=sd.asarray(V))
-            print(f"| MatrixNormal | {n}x{p} | - | {kappa:.0e} | {err(D.logpdf(sd.asarray(xs)), ref):.1e} | "
-                  f"{err(S.logpdf(xs), ref):.1e} | {err(D.entropy(), href):.1e} | {err(S.entropy(), href):.1e} |",
-                  flush=True)
+            print(
+                f"| MatrixNormal | {n}x{p} | - | {kappa:.0e} | {err(D.logpdf(sd.asarray(xs)), ref):.1e} | "
+                f"{err(S.logpdf(xs), ref):.1e} | {err(D.entropy(), href):.1e} | {err(S.entropy(), href):.1e} |",
+                flush=True,
+            )
 
 
 if __name__ == "__main__":

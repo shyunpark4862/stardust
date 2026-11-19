@@ -35,8 +35,16 @@ SCIPY = {
     "laplace": lambda mu, s: st.laplace(mu, s),
     "weibull": lambda c, s: st.weibull_min(c, scale=s),
 }
-METHOD = {"pdf": "pdf", "logpdf": "logpdf", "cdf": "cdf", "logcdf": "logcdf", "ccdf": "sf", "logccdf": "logsf",
-          "icdf": "ppf", "iccdf": "isf"}
+METHOD = {
+    "pdf": "pdf",
+    "logpdf": "logpdf",
+    "cdf": "cdf",
+    "logcdf": "logcdf",
+    "ccdf": "sf",
+    "logccdf": "logsf",
+    "icdf": "ppf",
+    "iccdf": "isf",
+}
 
 
 def fmt(v):
@@ -66,12 +74,12 @@ def main():
                 ref = SCIPY[dist](*xs[:nparams])
                 try:
                     v = getattr(ref, METHOD[method])(xs[-1])
-                except (OverflowError, ValueError):  # scipy raises on some points: per point then
+                except OverflowError, ValueError:  # scipy raises on some points: per point then
                     v = np.empty(xs[-1].size)
                     for i in range(v.size):
                         try:
                             v[i] = getattr(SCIPY[dist](*(x[i] for x in xs[:nparams])), METHOD[method])(xs[-1][i])
-                        except (OverflowError, ValueError):
+                        except OverflowError, ValueError:
                             v[i] = np.nan
             es = refdata.contract_error(name, np.asarray(v, dtype=np.float64), hi, lo, sc)
             es = np.where(np.isnan(es), np.inf, es)

@@ -58,9 +58,7 @@ def test_incompatible_broadcast_raises(shapes):
         plan([sd.zeros(s) for s in shapes])
 
 
-@pytest.mark.parametrize(
-    "shapes", [[(5, 1, 4), (3, 1)], [(1,), (2, 3)], [(2, 1, 3), (4, 1), (1, 3)], [(0, 3), (1, 3)]]
-)
+@pytest.mark.parametrize("shapes", [[(5, 1, 4), (3, 1)], [(1,), (2, 3)], [(2, 1, 3), (4, 1), (1, 3)], [(0, 3), (1, 3)]])
 def test_broadcast_shape_matches_numpy(shapes):
     arrays = [sd.zeros(s) for s in shapes]
     want = np.broadcast_shapes(*shapes)

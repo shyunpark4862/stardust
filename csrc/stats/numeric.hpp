@@ -178,8 +178,8 @@ inline DD expm1_full(DD d) {
 // logs, which the callers sum in double-double. Below z = 12 the pieces come
 // from log_gamma (double-double) and psi directly: no term is large there.
 
-inline constexpr std::array<double, 8> kBernoulli2k = {1.0 / 6.0,  -1.0 / 30.0, 1.0 / 42.0,      -1.0 / 30.0,
-                                                       5.0 / 66.0, -691.0 / 2730.0, 7.0 / 6.0, -3617.0 / 510.0};
+inline constexpr std::array<double, 8> kBernoulli2k = {1.0 / 6.0,  -1.0 / 30.0,     1.0 / 42.0, -1.0 / 30.0,
+                                                       5.0 / 66.0, -691.0 / 2730.0, 7.0 / 6.0,  -3617.0 / 510.0};
 
 // S(z), z T(z) and T(z) for z >= 12.
 struct Stirling {

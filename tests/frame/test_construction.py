@@ -477,7 +477,9 @@ def test_head_shares_the_buffer_and_recounts_na():
 def test_frame_from_dict():
     df = sd.frame.DataFrame({"a": [1, 2], "b": np.array([0.5, 1.5]), "c": sd.frame.Series(["x", None])})
     assert df.columns.tolist() == ["a", "b", "c"]
-    assert [str(d) for d in df.dtypes.values()] == ["int64", "float64", "string"] and list(df.dtypes) == df.columns.tolist()
+    assert [str(d) for d in df.dtypes.values()] == ["int64", "float64", "string"] and list(
+        df.dtypes
+    ) == df.columns.tolist()
     assert df.shape == (2, 3) and len(df) == 2
     assert df["c"].tolist() == ["x", NA] and df["c"].name == "c"
 
@@ -583,9 +585,26 @@ def test_na_singleton():
 
 
 SCALARS = [0, 1, -3, 2.5, math.nan, True, False, "a", "", np.int32(2), np.float64(0.5), np.True_]
-OPERATORS = [operator.add, operator.sub, operator.mul, operator.truediv, operator.floordiv, operator.mod, operator.pow,
-             operator.eq, operator.ne, operator.lt, operator.le, operator.gt, operator.ge,
-             operator.and_, operator.or_, operator.xor, operator.lshift, operator.rshift]
+OPERATORS = [
+    operator.add,
+    operator.sub,
+    operator.mul,
+    operator.truediv,
+    operator.floordiv,
+    operator.mod,
+    operator.pow,
+    operator.eq,
+    operator.ne,
+    operator.lt,
+    operator.le,
+    operator.gt,
+    operator.ge,
+    operator.and_,
+    operator.or_,
+    operator.xor,
+    operator.lshift,
+    operator.rshift,
+]
 
 
 def _one_row(op, x, na_left):
@@ -617,7 +636,7 @@ def test_na_scalar_logic_is_kleene():
     assert (NA | True) is True and (True | NA) is True and (NA | False) is NA
     assert (NA & False) is False and (False & NA) is False and (NA & True) is NA
     assert (NA ^ True) is NA and (NA | 1) is NA  # | with an int is bitwise: NA
-    assert (NA == NA) is NA and (NA != 1) is NA and (1 < NA) is NA and (NA + "a") is NA and (NA ** 0) is NA
+    assert (NA == NA) is NA and (NA != 1) is NA and (1 < NA) is NA and (NA + "a") is NA and (NA**0) is NA
     for f in (operator.neg, operator.pos, abs, operator.invert):
         assert f(NA) is NA
     for bad in (lambda: NA - "a", lambda: NA & 1.5, lambda: NA << 0.5, lambda: NA + 2**70):
@@ -674,8 +693,13 @@ def test_construction_messages_name_the_problem():
     with pytest.raises(KeyError, match=r"fillna\(\): no column 'zz'"):
         df.fillna({"a": 0, "zz": 1})
     # column names: one message everywhere
-    for call in (lambda: df[1], lambda: df.__setitem__(1, [1, 2]), lambda: sd.frame.DataFrame({1: [1]}),
-                 lambda: df.groupby("a")[1], lambda: sd.frame.merge(df, df, on=[1])):
+    for call in (
+        lambda: df[1],
+        lambda: df.__setitem__(1, [1, 2]),
+        lambda: sd.frame.DataFrame({1: [1]}),
+        lambda: df.groupby("a")[1],
+        lambda: sd.frame.merge(df, df, on=[1]),
+    ):
         with pytest.raises(TypeError, match=r"column names must be str, not int$"):
             call()
 
@@ -683,8 +707,12 @@ def test_construction_messages_name_the_problem():
 def test_complex_values_are_values_the_frame_cannot_store():
     msg = r"cannot store an object of type 'complex' in a column \(only bool, int, float, str and None\)$"
     df = sd.frame.DataFrame({"a": [1, 2]})
-    for call in (lambda: sd.frame.Series([1j]), lambda: sd.frame.DataFrame({"a": [1], "b": 1j}),
-                 lambda: df.__setitem__("c", 1j), lambda: sd.frame.Series([1, 2]).iloc.__setitem__(0, 1j)):
+    for call in (
+        lambda: sd.frame.Series([1j]),
+        lambda: sd.frame.DataFrame({"a": [1], "b": 1j}),
+        lambda: df.__setitem__("c", 1j),
+        lambda: sd.frame.Series([1, 2]).iloc.__setitem__(0, 1j),
+    ):
         with pytest.raises(TypeError, match=msg):
             call()
     with pytest.raises(TypeError, match=r"^fillna\(\): 'value' must be None, a bool, int, float or str, not complex$"):
@@ -703,9 +731,13 @@ def test_dropna_of_a_frame_without_columns():
 def test_int_beyond_float_names_the_function():
     # the same message as the array area gives, with the public function in front (API.md §2.1).
     big = 10**400
-    for call, name in ((lambda: sd.frame.Series([big, 0.5]), "Series"), (lambda: sd.frame.Series([big], dtype="float64"), "Series"),
-                       (lambda: sd.frame.DataFrame({"a": [big, 0.5]}), "DataFrame"), (lambda: sd.frame.Index([big, 0.5]), "Index"),
-                       (lambda: sd.frame.Series([1.0, None]).fillna(big), "fillna")):
+    for call, name in (
+        (lambda: sd.frame.Series([big, 0.5]), "Series"),
+        (lambda: sd.frame.Series([big], dtype="float64"), "Series"),
+        (lambda: sd.frame.DataFrame({"a": [big, 0.5]}), "DataFrame"),
+        (lambda: sd.frame.Index([big, 0.5]), "Index"),
+        (lambda: sd.frame.Series([1.0, None]).fillna(big), "fillna"),
+    ):
         with pytest.raises(OverflowError, match=rf"^{name}\(\): Python int too large to convert to float64$"):
             call()
     with pytest.raises(OverflowError, match="^Python int too large to convert to float64$"):  # an operator: no name
@@ -728,11 +760,19 @@ def test_to_numpy_of_a_converted_column_is_writable():
     assert arr.tolist() == [2, 3]
 
 
-@pytest.mark.parametrize("values,na_value,expected", [
-    ([1, None], np.int64(-1), [1, -1]), ([1, None], np.int8(-1), [1, -1]), ([1, None], np.uint16(7), [1, 7]),
-    ([1.5, None], np.float64(0.5), [1.5, 0.5]), ([1.5, None], np.float32(0.5), [1.5, 0.5]), ([1.5, None], np.int64(2), [1.5, 2.0]),
-    ([True, None], np.bool_(False), [True, False]), ([True, None], np.True_, [True, True]),
-])
+@pytest.mark.parametrize(
+    "values,na_value,expected",
+    [
+        ([1, None], np.int64(-1), [1, -1]),
+        ([1, None], np.int8(-1), [1, -1]),
+        ([1, None], np.uint16(7), [1, 7]),
+        ([1.5, None], np.float64(0.5), [1.5, 0.5]),
+        ([1.5, None], np.float32(0.5), [1.5, 0.5]),
+        ([1.5, None], np.int64(2), [1.5, 2.0]),
+        ([True, None], np.bool_(False), [True, False]),
+        ([True, None], np.True_, [True, True]),
+    ],
+)
 def test_na_value_takes_numpy_scalars(values, na_value, expected):  # as fillna reads them
     s = sd.frame.Series(values)
     assert s.to_numpy(na_value=na_value).tolist() == expected

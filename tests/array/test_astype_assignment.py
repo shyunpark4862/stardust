@@ -90,8 +90,9 @@ def test_copy_is_independent_and_writeable():
 )
 def test_astype_on_strided_views_matches_numpy(base, target, data):
     # Take an arbitrary strided view: reversed and/or stepped axes, maybe transposed.
-    index = tuple(data.draw(st.sampled_from([slice(None), slice(None, None, -1), slice(None, None, 2)]))
-                  for _ in range(base.ndim))
+    index = tuple(
+        data.draw(st.sampled_from([slice(None), slice(None, None, -1), slice(None, None, 2)])) for _ in range(base.ndim)
+    )
     view = base[index]
     if data.draw(st.booleans()):
         view = view.T

@@ -169,8 +169,9 @@ class _Batched:
         from .. import random as _random
 
         if not isinstance(rng, _random.Generator):
-            raise TypeError(f"sample(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), "
-                            f"not {_type_name(rng)}")
+            raise TypeError(
+                f"sample(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not {_type_name(rng)}"
+            )
         shp = _random._sample_shape(shape)
         N = math.prod(shp) * self._B
         return shp, N, rng._take(N, "sample", 8 * N * self._row_size())
@@ -196,8 +197,10 @@ class _Gaussian(_Batched):
         cov = _param(cov, cls, self._names[1], 2)
         d = mu.shape[-1]
         if cov.shape[-1] != cov.shape[-2] or cov.shape[-1] != d:
-            raise ValueError(f"{cls}(): '{self._names[1]}' must be ({d}, {d}) on its last two axes (mu has {d} "
-                             f"components), not {tuple(cov.shape[-2:])}")
+            raise ValueError(
+                f"{cls}(): '{self._names[1]}' must be ({d}, {d}) on its last two axes (mu has {d} "
+                f"components), not {tuple(cov.shape[-2:])}"
+            )
         batch = _broadcast(tuple(mu.shape[:-1]), tuple(cov.shape[:-2]), _shape_of(df), what=f"{cls}(): the parameters")
         self._batch, self._B, self._d = batch, math.prod(batch), d
         self._mu = _rows(mu, batch, (d,))
@@ -214,8 +217,21 @@ class _Gaussian(_Batched):
         rows, idx, out = self._points(x, name)
         if self._fast is None:  # the inverse factors of the densities' fast path, on first use
             self._fast = _fast_factors(self._L, self._Ll, self._ok)
-        v = _k.mv_logpdf(rows, idx, self._mu, self._L, self._Ll, self._ldh, self._ldl, self._ok, self._df, self._ih,
-                         self._il, None if self._fast is False else self._fast, as_pdf)
+        v = _k.mv_logpdf(
+            rows,
+            idx,
+            self._mu,
+            self._L,
+            self._Ll,
+            self._ldh,
+            self._ldl,
+            self._ok,
+            self._df,
+            self._ih,
+            self._il,
+            None if self._fast is False else self._fast,
+            as_pdf,
+        )
         return self._result(v, out)
 
     def pdf(self, x, /):
@@ -363,8 +379,13 @@ class Multinomial(_Batched):
         self._n = _rows(n_v, batch, ())
         self._pp = _rows(p_v, batch, (K,))
         s = sd.sum(self._pp, axis=1)
-        good = (sd.all(self._pp >= 0.0, axis=1) & (sd.abs(s - 1.0) <= _SQRT_EPS)
-                & (self._n >= 0.0) & (sd.floor(self._n) == self._n) & sd.isfinite(self._n))
+        good = (
+            sd.all(self._pp >= 0.0, axis=1)
+            & (sd.abs(s - 1.0) <= _SQRT_EPS)
+            & (self._n >= 0.0)
+            & (sd.floor(self._n) == self._n)
+            & sd.isfinite(self._n)
+        )
         self._ok = sd.where(good, 1.0, 0.0)
 
     @property

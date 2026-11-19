@@ -23,7 +23,9 @@
 namespace sd {
 
 template <typename T>
-inline T load_as(const std::byte* p) { return *reinterpret_cast<const T*>(p); }
+inline T load_as(const std::byte* p) {
+    return *reinterpret_cast<const T*>(p);
+}
 
 template <typename Op, typename T>
 using unary_result_t = decltype(Op::f(std::declval<T>()));
@@ -68,7 +70,8 @@ void unary_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, v
                 return;
             }
         }
-        if constexpr ((std::is_same_v<Op, ops::IsInf> || std::is_same_v<Op, ops::IsFinite>) && std::is_same_v<T, double>) {
+        if constexpr ((std::is_same_v<Op, ops::IsInf> || std::is_same_v<Op, ops::IsFinite>) &&
+                      std::is_same_v<T, double>) {
             // One absolute compare per vector (FACGE |x| >= inf, FACGT inf > |x|; NaN
             // false either way), narrowed to bytes. The loop is bound by its
             // instruction count, not memory: masking the sign first cost a second
@@ -84,7 +87,9 @@ void unary_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, v
             for (; i + 16 <= n; i += 16) {
                 uint32x4_t w[4];
                 for (int k = 0; k < 4; ++k)
-                    w[k] = vuzp1q_u32(vreinterpretq_u32_u64(test(x + i + 4 * k)), vreinterpretq_u32_u64(test(x + i + 4 * k + 2)));
+                    w[k] = vuzp1q_u32(
+                        vreinterpretq_u32_u64(test(x + i + 4 * k)), vreinterpretq_u32_u64(test(x + i + 4 * k + 2))
+                    );
                 const uint16x8_t h0 = vuzp1q_u16(vreinterpretq_u16_u32(w[0]), vreinterpretq_u16_u32(w[1]));
                 const uint16x8_t h1 = vuzp1q_u16(vreinterpretq_u16_u32(w[2]), vreinterpretq_u16_u32(w[3]));
                 const uint8x16_t b8 = vuzp1q_u8(vreinterpretq_u8_u16(h0), vreinterpretq_u8_u16(h1));
@@ -100,8 +105,12 @@ void unary_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, v
             std::int64_t i = 0;
             for (; i + 4 <= n; i += 4) {
                 const int64x2_t v0 = vld1q_s64(x + i), v1 = vld1q_s64(x + i + 2);
-                vst1q_s64(o + i, vsubq_s64(vreinterpretq_s64_u64(vcltzq_s64(v0)), vreinterpretq_s64_u64(vcgtzq_s64(v0))));
-                vst1q_s64(o + i + 2, vsubq_s64(vreinterpretq_s64_u64(vcltzq_s64(v1)), vreinterpretq_s64_u64(vcgtzq_s64(v1))));
+                vst1q_s64(
+                    o + i, vsubq_s64(vreinterpretq_s64_u64(vcltzq_s64(v0)), vreinterpretq_s64_u64(vcgtzq_s64(v0)))
+                );
+                vst1q_s64(
+                    o + i + 2, vsubq_s64(vreinterpretq_s64_u64(vcltzq_s64(v1)), vreinterpretq_s64_u64(vcgtzq_s64(v1)))
+                );
             }
             for (; i < n; ++i) o[i] = Op::f(x[i]);
             return;
@@ -128,8 +137,7 @@ void unary_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, v
     }
     const std::byte* x = args[0];
     std::byte* o = args[1];
-    for (std::int64_t i = 0; i < n; ++i, x += s[0], o += s[1])
-        *reinterpret_cast<R*>(o) = Op::f(load_as<T>(x));
+    for (std::int64_t i = 0; i < n; ++i, x += s[0], o += s[1]) *reinterpret_cast<R*>(o) = Op::f(load_as<T>(x));
 }
 
 // x ** e for int64 x and one exponent e >= 0 (x ** 2, the usual call): the
@@ -151,7 +159,7 @@ inline void int_pow_scalar(const std::int64_t* a, std::int64_t e, std::int64_t* 
         const std::int64_t m = std::min(kBlock, n - i0);
         std::int64_t base[kBlock], res[kBlock];
         for (std::int64_t k = 0; k < m; ++k) base[k] = a[i0 + k], res[k] = 1;
-        for (std::int64_t x = e; x; ) {
+        for (std::int64_t x = e; x;) {
             if (x & 1)
                 for (std::int64_t k = 0; k < m; ++k) res[k] = ops::wrap_mul(res[k], base[k]);
             x >>= 1;
@@ -186,8 +194,15 @@ inline void pow_exact_run(const std::byte* a, std::int64_t sa, std::byte* o, std
 // special values; numpy's fast paths). A broadcast scalar exponent of those takes its own
 // loop; otherwise each element is ops::Pow::f, so the bits do not depend on the exponent's
 // stride (array, broadcast or scalar).
-inline void pow_float_run(const std::byte* a, std::int64_t sa, const std::byte* b, std::int64_t sb, std::byte* o,
-                          std::int64_t so, std::int64_t n) {
+inline void pow_float_run(
+    const std::byte* a,
+    std::int64_t sa,
+    const std::byte* b,
+    std::int64_t sb,
+    std::byte* o,
+    std::int64_t so,
+    std::int64_t n
+) {
     if (sb == 0) {
         switch (ops::pow_kind(load_as<double>(b))) {
             case ops::PowKind::kSquare: return pow_exact_run<ops::PowKind::kSquare>(a, sa, o, so, n);
@@ -227,7 +242,8 @@ void binary_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, 
                     same = static_cast<const void*>(o) == static_cast<const void*>(a) ||
                            static_cast<const void*>(o) == static_cast<const void*>(b);
                 if (same) in_place_blocks(o, n, [](T u, T v) { return Op::f(u, v); }, a, b);
-                else for (std::int64_t i = 0; i < n; ++i) o[i] = Op::f(a[i], b[i]);
+                else
+                    for (std::int64_t i = 0; i < n; ++i) o[i] = Op::f(a[i], b[i]);
             }
             return;
         }
@@ -285,10 +301,14 @@ void where_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, v
                 return (x & m) | (y & ~m);
             };
             const std::uint64_t x0 = ap[0], y0 = bp[0];
-            if (sa && sb) for (std::int64_t i = 0; i < n; ++i) op[i] = sel(cp[i], ap[i], bp[i]);
-            else if (sa) for (std::int64_t i = 0; i < n; ++i) op[i] = sel(cp[i], ap[i], y0);
-            else if (sb) for (std::int64_t i = 0; i < n; ++i) op[i] = sel(cp[i], x0, bp[i]);
-            else for (std::int64_t i = 0; i < n; ++i) op[i] = sel(cp[i], x0, y0);
+            if (sa && sb)
+                for (std::int64_t i = 0; i < n; ++i) op[i] = sel(cp[i], ap[i], bp[i]);
+            else if (sa)
+                for (std::int64_t i = 0; i < n; ++i) op[i] = sel(cp[i], ap[i], y0);
+            else if (sb)
+                for (std::int64_t i = 0; i < n; ++i) op[i] = sel(cp[i], x0, bp[i]);
+            else
+                for (std::int64_t i = 0; i < n; ++i) op[i] = sel(cp[i], x0, y0);
             return;
         }
     }
@@ -342,8 +362,7 @@ void clip_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, vo
     const std::byte* hi = args[2];
     std::byte* o = args[3];
     for (std::int64_t i = 0; i < n; ++i, x += s[0], lo += s[1], hi += s[2], o += s[3])
-        *reinterpret_cast<T*>(o) =
-            ops::Minimum::f(ops::Maximum::f(load_as<T>(x), load_as<T>(lo)), load_as<T>(hi));
+        *reinterpret_cast<T*>(o) = ops::Minimum::f(ops::Maximum::f(load_as<T>(x), load_as<T>(lo)), load_as<T>(hi));
 }
 
 // ---- n inputs, m outputs (docs/design/special.md §3.1) ---------------------
@@ -366,8 +385,14 @@ struct NaryResult<Op, T, std::index_sequence<I...>> {
     using type = decltype(Op::f(((void)I, std::declval<T>())...));
 };
 
-template <typename R> struct NaryOut { using type = R; static constexpr int n = 1; };
-template <typename R, std::size_t N> struct NaryOut<std::array<R, N>> { using type = R; static constexpr int n = N; };
+template <typename R> struct NaryOut {
+    using type = R;
+    static constexpr int n = 1;
+};
+template <typename R, std::size_t N> struct NaryOut<std::array<R, N>> {
+    using type = R;
+    static constexpr int n = N;
+};
 
 }  // namespace detail
 
@@ -388,7 +413,8 @@ void nary_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, vo
     for (int j = 0; j < nout; ++j) contiguous = contiguous && s[nin + j] == sizeof(R);
     auto store = [&](auto&& out_at, const Ret& r) {
         if constexpr (nout == 1) out_at(0) = r;
-        else for (int j = 0; j < nout; ++j) out_at(j) = r[static_cast<std::size_t>(j)];
+        else
+            for (int j = 0; j < nout; ++j) out_at(j) = r[static_cast<std::size_t>(j)];
     };
     if (contiguous) {
         [&]<std::size_t... I>(std::index_sequence<I...>) {
@@ -403,8 +429,10 @@ void nary_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, vo
         std::array<std::byte*, nin + nout> p;
         for (int k = 0; k < nin + nout; ++k) p[static_cast<std::size_t>(k)] = args[k];
         for (std::int64_t i = 0; i < n; ++i) {
-            store([&](int j) -> R& { return *reinterpret_cast<R*>(p[static_cast<std::size_t>(nin + j)]); },
-                  Op::f(load_as<T>(p[I])...));
+            store(
+                [&](int j) -> R& { return *reinterpret_cast<R*>(p[static_cast<std::size_t>(nin + j)]); },
+                Op::f(load_as<T>(p[I])...)
+            );
             for (int k = 0; k < nin + nout; ++k) p[static_cast<std::size_t>(k)] += s[k];
         }
     }(std::make_index_sequence<nin>{});
@@ -443,8 +471,10 @@ constexpr LoopEntry nary_entry() {
 
 template <typename Op, int Arity>
 constexpr LoopTable make_table() {
-    return {entry<Op, bool, Arity>(), entry<Op, std::int64_t, Arity>(), entry<Op, double, Arity>(),
-            entry<Op, complex128, Arity>()};
+    return {
+        entry<Op, bool, Arity>(), entry<Op, std::int64_t, Arity>(), entry<Op, double, Arity>(),
+        entry<Op, complex128, Arity>()
+    };
 }
 
 }  // namespace detail
@@ -452,7 +482,9 @@ constexpr LoopTable make_table() {
 template <typename Op> inline constexpr LoopTable unary_table = detail::make_table<Op, 1>();
 template <typename Op> inline constexpr LoopTable binary_table = detail::make_table<Op, 2>();
 template <typename Op>
-inline constexpr LoopTable nary_table = {detail::nary_entry<Op, bool>(), detail::nary_entry<Op, std::int64_t>(),
-                                         detail::nary_entry<Op, double>(), detail::nary_entry<Op, complex128>()};
+inline constexpr LoopTable nary_table = {
+    detail::nary_entry<Op, bool>(), detail::nary_entry<Op, std::int64_t>(), detail::nary_entry<Op, double>(),
+    detail::nary_entry<Op, complex128>()
+};
 
 }  // namespace sd

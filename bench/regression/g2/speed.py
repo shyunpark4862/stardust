@@ -74,6 +74,7 @@ def main():
             for threads in (1, 10):
                 sd.set_num_threads(threads)
                 with threadpool_limits(limits=threads):
+
                     def sd_fit():
                         r = R.glm(ys, Xs, family=fam)
                         return r.params, r.bse, r.pvalues, r.n_iter
@@ -84,9 +85,31 @@ def main():
 
                     def sd_qr():
                         # the same fit with the inner iterations by QR (G2 before G40)
-                        raw = sd._core.regression.glm_fit("glm", ys, Xs, aux, None, 0, fcode, lcode, False, False,
-                                                          False, False, True, -1.0, 0, -1, 100, 1e-8, 0, 0.0, 0, 3,
-                                                          False)
+                        raw = sd._core.regression.glm_fit(
+                            "glm",
+                            ys,
+                            Xs,
+                            aux,
+                            None,
+                            0,
+                            fcode,
+                            lcode,
+                            False,
+                            False,
+                            False,
+                            False,
+                            True,
+                            -1.0,
+                            0,
+                            -1,
+                            100,
+                            1e-8,
+                            0,
+                            0.0,
+                            0,
+                            3,
+                            False,
+                        )
                         return raw[0]
 
                     def sm_fit():
@@ -107,8 +130,22 @@ def main():
                     t_l, v_l = best(sk_lbfgs, reps)
                     t_n, v_n = best(sk_newton, reps)
                     p = np.asarray(v_sd[0])
-                    rows.append((f"({n:,}, {k})", fam, threads, int(v_sd[3]), t_sd, t_qr, t_sm, t_l, t_n,
-                                 rel(v_sm[0], p), rel(v_l, p), rel(v_n, p)))
+                    rows.append(
+                        (
+                            f"({n:,}, {k})",
+                            fam,
+                            threads,
+                            int(v_sd[3]),
+                            t_sd,
+                            t_qr,
+                            t_sm,
+                            t_l,
+                            t_n,
+                            rel(v_sm[0], p),
+                            rel(v_l, p),
+                            rel(v_n, p),
+                        )
+                    )
                     print(rows[-1], flush=True)
                 gc.collect()
         del X, Xc, Xs
@@ -124,6 +161,7 @@ def main():
     for threads in (1, 10):
         sd.set_num_threads(threads)
         with threadpool_limits(limits=threads):
+
             def sd_batch():
                 r = R.glm(Ybs, Xbs, family="binomial")
                 return r.params, r.bse, r.pvalues, r.separation
@@ -146,14 +184,20 @@ def main():
             print(brows[-1], flush=True)
 
     print()
-    print("| (n, k) | family | threads | sd (iterations) | sd, QR inner | statsmodels | ratio | scikit-learn lbfgs | "
-          "ratio | scikit-learn newton-cholesky | ratio |")
+    print(
+        "| (n, k) | family | threads | sd (iterations) | sd, QR inner | statsmodels | ratio | scikit-learn lbfgs | "
+        "ratio | scikit-learn newton-cholesky | ratio |"
+    )
     print("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
     for size, fam, th, it, t_sd, t_qr, t_sm, t_l, t_n, e_sm, e_l, e_n in rows:
-        print(f"| {size} | {fam} | {th} | {ms(t_sd)} ({it}) | {ms(t_qr)} | {ms(t_sm)} | {t_sm / t_sd:.2g} | {ms(t_l)} | "
-              f"{t_l / t_sd:.2g} | {ms(t_n)} | {t_n / t_sd:.2g} |")
+        print(
+            f"| {size} | {fam} | {th} | {ms(t_sd)} ({it}) | {ms(t_qr)} | {ms(t_sm)} | {t_sm / t_sd:.2g} | {ms(t_l)} | "
+            f"{t_l / t_sd:.2g} | {ms(t_n)} | {t_n / t_sd:.2g} |"
+        )
     print()
-    print("| (n, k) | family | statsmodels | lbfgs | newton-cholesky |  (largest relative difference of the coefficients to sd)")
+    print(
+        "| (n, k) | family | statsmodels | lbfgs | newton-cholesky |  (largest relative difference of the coefficients to sd)"
+    )
     for size, fam, th, it, t_sd, t_qr, t_sm, t_l, t_n, e_sm, e_l, e_n in rows:
         if th == 1:
             print(f"| {size} | {fam} | {e_sm:.1e} | {e_l:.1e} | {e_n:.1e} |")

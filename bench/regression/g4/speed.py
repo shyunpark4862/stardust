@@ -75,8 +75,11 @@ def rlm_m():
                     tm, s = best(lambda: sm.RLM(y, Xc, M=M).fit(), reps)
                 p = np.asarray(r.params.tolist())
                 d = np.max(np.abs(p - s.params)) / np.max(np.abs(p))
-                print(f"| ({n:,}, {k}) | {norm} | {th} | {ms(ts)} | {ms(tm)} | {tm / ts:.1f} | {r.n_iter} | "
-                      f"{s.fit_history['iteration']} | {d:.1e} |", flush=True)
+                print(
+                    f"| ({n:,}, {k}) | {norm} | {th} | {ms(ts)} | {ms(tm)} | {tm / ts:.1f} | {r.n_iter} | "
+                    f"{s.fit_history['iteration']} | {d:.1e} |",
+                    flush=True,
+                )
     sd.set_num_threads(10)
 
 
@@ -87,10 +90,12 @@ def lmrob_run(y, X):
         return None
     with tempfile.TemporaryDirectory() as d:
         np.savetxt(f"{d}/a.csv", np.column_stack([y, X]), delimiter=",", fmt="%.17g")
-        script = (f'suppressMessages(library(robustbase)); A <- as.matrix(read.csv("{d}/a.csv", header=FALSE)); '
-                  'y <- A[,1]; X <- A[,-1]; invisible(lmrob(y ~ X)); '
-                  't <- system.time(f <- lmrob(y ~ X))[["elapsed"]]; '
-                  'cat(t, sprintf("%.17g", f$scale), sprintf("%.17g", coef(f)))')
+        script = (
+            f'suppressMessages(library(robustbase)); A <- as.matrix(read.csv("{d}/a.csv", header=FALSE)); '
+            "y <- A[,1]; X <- A[,-1]; invisible(lmrob(y ~ X)); "
+            't <- system.time(f <- lmrob(y ~ X))[["elapsed"]]; '
+            'cat(t, sprintf("%.17g", f$scale), sprintf("%.17g", coef(f)))'
+        )
         out = subprocess.run(["Rscript", "-e", script], capture_output=True, text=True)
         try:
             v = [float(w) for w in out.stdout.split()]
@@ -100,10 +105,14 @@ def lmrob_run(y, X):
 
 
 def rlm_mm():
-    print("\n## rlm(method='MM') (ms): the large-n fast-S beyond n = 2000 (G58), the small-n search on all rows "
-          "for comparison, R's lmrob (its defaults)")
-    print("| (n, k) | threads | sd | sd, small-n search | S steps | M steps | lmrob (R) | coef diff to lmrob | "
-          "S scale: sd / lmrob |")
+    print(
+        "\n## rlm(method='MM') (ms): the large-n fast-S beyond n = 2000 (G58), the small-n search on all rows "
+        "for comparison, R's lmrob (its defaults)"
+    )
+    print(
+        "| (n, k) | threads | sd | sd, small-n search | S steps | M steps | lmrob (R) | coef diff to lmrob | "
+        "S scale: sd / lmrob |"
+    )
     print("|---|---:|---:|---:|---:|---:|---:|---:|---|")
     K = sd._core.regression
     for n, k in ((10_000, 5), (100_000, 10), (1_000_000, 10)):
@@ -116,17 +125,27 @@ def rlm_mm():
             ts, r = best(lambda: sd.regression.rlm(ys, Xs, method="MM", rng=sd.random.default_rng(1)), reps)
             small = ""
             if n <= 100_000:
-                keys = sd.random.default_rng(1).integers(-2**63, 2**63 - 1, endpoint=True, shape=(2,))
-                tsm, _ = best(lambda: K.rlm_fit("rlm", ys, Xs, keys, True, -1.0, 1, 1, 0.0, 0.0, 4.685061, 2, 50, 1e-8,
-                                                500, False), reps)
+                keys = sd.random.default_rng(1).integers(-(2**63), 2**63 - 1, endpoint=True, shape=(2,))
+                tsm, _ = best(
+                    lambda: K.rlm_fit(
+                        "rlm", ys, Xs, keys, True, -1.0, 1, 1, 0.0, 0.0, 4.685061, 2, 50, 1e-8, 500, False
+                    ),
+                    reps,
+                )
                 small = ms(tsm)
             siter = int(float(r._raw[6].tolist()[6]))
             if lr is None:
                 lt = dc = sc = ""
             else:
                 p = np.asarray(r.params.tolist())
-                lt, dc, sc = ms(lr[0]), f"{np.max(np.abs(p - lr[1])) / np.max(np.abs(p)):.1e}", f"{r.scale:.10g} / {lr[2]:.10g}"
-            print(f"| ({n:,}, {k}) | {th} | {ms(ts)} | {small} | {siter} | {r.n_iter} | {lt} | {dc} | {sc} |", flush=True)
+                lt, dc, sc = (
+                    ms(lr[0]),
+                    f"{np.max(np.abs(p - lr[1])) / np.max(np.abs(p)):.1e}",
+                    f"{r.scale:.10g} / {lr[2]:.10g}",
+                )
+            print(
+                f"| ({n:,}, {k}) | {th} | {ms(ts)} | {small} | {siter} | {r.n_iter} | {lt} | {dc} | {sc} |", flush=True
+            )
     sd.set_num_threads(10)
 
 
@@ -141,8 +160,10 @@ def slopes():
         x = rng.standard_normal(n)
         y = 2.0 * x + rng.standard_normal(n)
         reps = 5 if n <= 1000 else (2 if n <= 10_000 else 1)
-        for name, f, g in (("theilslopes", sd.regression.theilslopes, st.theilslopes),
-                           ("siegelslopes", sd.regression.siegelslopes, st.siegelslopes)):
+        for name, f, g in (
+            ("theilslopes", sd.regression.theilslopes, st.theilslopes),
+            ("siegelslopes", sd.regression.siegelslopes, st.siegelslopes),
+        ):
             if n > 10_000 and name == "siegelslopes":
                 reps = 1
             tg = None
@@ -152,8 +173,11 @@ def slopes():
                 sd.set_num_threads(th)
                 ts, v = best(lambda: f(y, x), reps)
                 same = "" if tg is None else str(all(float(a) == float(b) + 0.0 for a, b in zip(v, sv)))
-                print(f"| {n:,} | {name} | {th} | {ms(ts)} | {'' if tg is None else ms(tg)} | "
-                      f"{'' if tg is None else f'{tg / ts:.1f}'} | {same} |", flush=True)
+                print(
+                    f"| {n:,} | {name} | {th} | {ms(ts)} | {'' if tg is None else ms(tg)} | "
+                    f"{'' if tg is None else f'{tg / ts:.1f}'} | {same} |",
+                    flush=True,
+                )
     sd.set_num_threads(10)
 
 

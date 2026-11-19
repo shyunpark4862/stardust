@@ -183,13 +183,15 @@ inline void log_dd_two(const double* xh, const double* xl, double* oh, double* o
     const uint64x2_t bits0 = vreinterpretq_u64_f64(vld1q_f64(xh));
     const uint64x2_t e = vshrq_n_u64(bits0, 52);
     const uint64x2_t ok = vandq_u64(vcgtq_u64(e, vdupq_n_u64(23)), vcltq_u64(e, vdupq_n_u64(2023)));
-    const uint64x2_t mb = vorrq_u64(vandq_u64(bits0, vdupq_n_u64(0x000fffffffffffffULL)), vdupq_n_u64(0x3ff0000000000000ULL));
+    const uint64x2_t mb =
+        vorrq_u64(vandq_u64(bits0, vdupq_n_u64(0x000fffffffffffffULL)), vdupq_n_u64(0x3ff0000000000000ULL));
     float64x2_t m = vreinterpretq_f64_u64(mb);
     const uint64x2_t up = vcgeq_f64(m, f(1.5));
     m = vbslq_f64(up, vmulq_f64(f(0.5), m), m);
     // k = e - 1023 + up (up is all ones = -1 where set)
     const int64x2_t k = vsubq_s64(vsubq_s64(vreinterpretq_s64_u64(e), vdupq_n_s64(1023)), vreinterpretq_s64_u64(up));
-    const uint64x2_t sb = vshlq_n_u64(vandq_u64(vreinterpretq_u64_s64(vsubq_s64(vdupq_n_s64(1023), k)), vdupq_n_u64(0x7ff)), 52);
+    const uint64x2_t sb =
+        vshlq_n_u64(vandq_u64(vreinterpretq_u64_s64(vsubq_s64(vdupq_n_s64(1023), k)), vdupq_n_u64(0x7ff)), 52);
     const float64x2_t scale = vreinterpretq_f64_u64(sb);
     const int64x2_t j = vcvtq_s64_f64(vaddq_f64(vmulq_f64(m, f(128.0)), f(0.5)));  // truncates: 96 .. 192
     const dd::LogPoint& c0 = dd::kLogTable[static_cast<std::size_t>(vgetq_lane_s64(j, 0) - 96)];
@@ -225,8 +227,10 @@ inline void log_dd_two(const double* xh, const double* xl, double* oh, double* o
     const float64x2_t s3 = vaddq_f64(s2, h2);
     const float64x2_t b3 = vsubq_f64(s3, s2);
     const float64x2_t e3 = vaddq_f64(vsubq_f64(s2, vsubq_f64(s3, b3)), vsubq_f64(h2, b3));
-    const float64x2_t lo = vaddq_f64(vaddq_f64(vaddq_f64(kl, clo), vaddq_f64(e1, e2)),
-                                     vaddq_f64(vaddq_f64(e3, vsubq_f64(rl, vmulq_f64(f(0.5), r2l))), vmulq_f64(vmulq_f64(r2, rh), poly)));
+    const float64x2_t lo = vaddq_f64(
+        vaddq_f64(vaddq_f64(kl, clo), vaddq_f64(e1, e2)),
+        vaddq_f64(vaddq_f64(e3, vsubq_f64(rl, vmulq_f64(f(0.5), r2l))), vmulq_f64(vmulq_f64(r2, rh), poly))
+    );
     const float64x2_t h = vaddq_f64(s3, lo);
     vst1q_f64(oh, vbslq_f64(ok, h, f(kNaN)));
     vst1q_f64(ol, vbslq_f64(ok, vsubq_f64(lo, vsubq_f64(h, s3)), f(0.0)));

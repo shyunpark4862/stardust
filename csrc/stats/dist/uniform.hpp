@@ -61,7 +61,8 @@ struct Uniform {
         const double v = tail(x, a, b, upper);
         if (v > 0.5) return std::log1p(-tail(x, a, b, !upper));
         // (v is 0 at and beyond the end too: x inside is asked only for a tiny v)
-        if (v < 0x1p-1000 && x > a && x < b) [[unlikely]] return log_tail_tiny(x, a, b, upper);
+        if (v < 0x1p-1000 && x > a && x < b) [[unlikely]]
+            return log_tail_tiny(x, a, b, upper);
         return std::log(v);
     }
     static double logcdf(double x, double a, double b) { return log_tail(x, a, b, false); }

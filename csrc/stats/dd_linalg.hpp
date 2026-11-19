@@ -181,8 +181,16 @@ inline double dotn(const double* a, const double* b, std::int64_t n) {
 // row alone: two per fma; four rows share b's: 0.11 ns per fma of two terms, the load ports'
 // limit). With half, the rows' last four terms of the last block are known to be zero and
 // skipped (adding them changes nothing). Each out[q] has the bits of dot8(a_q, b, blocks + half).
-inline void dot8x4(const double* a0, const double* a1, const double* a2, const double* a3, const double* b,
-                   std::int64_t blocks, bool half, double* out) {
+inline void dot8x4(
+    const double* a0,
+    const double* a1,
+    const double* a2,
+    const double* a3,
+    const double* b,
+    std::int64_t blocks,
+    bool half,
+    double* out
+) {
 #if defined(__aarch64__)
     const float64x2_t zero = vdupq_n_f64(0.0);
     float64x2_t s00 = zero, s01 = zero, s02 = zero, s03 = zero, s10 = zero, s11 = zero, s12 = zero, s13 = zero;
@@ -289,7 +297,8 @@ inline void fast_solve(const double* f, std::int64_t d, const double* r, const d
             se += dot8(er + i0, er + i0, 1);
             const double ne = std::sqrt(se) * kBoundSlack;
             for (int j = 0; j < 8; ++j)
-                eo[j] = g[j] * (rr[j] * nr + w[j] * std::fabs(ri[j])) + (rr[j] * ne + w[j] * (er[i0 + j] * kBoundSlack));
+                eo[j] =
+                    g[j] * (rr[j] * nr + w[j] * std::fabs(ri[j])) + (rr[j] * ne + w[j] * (er[i0 + j] * kBoundSlack));
         } else {
             for (int j = 0; j < 8; ++j) eo[j] = g[j] * (rr[j] * nr + w[j] * std::fabs(ri[j]));
         }

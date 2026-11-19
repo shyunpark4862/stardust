@@ -46,9 +46,17 @@ constexpr int kCloseEigenvalues = 11; // Sylvester: a and -b share an eigenvalue
 // Turns a batch failure into the Python exception. `arg` names the first
 // matrix argument; the right-hand side is always 'b'. `arg2`, `arg3` name the
 // arguments of kNonFinite2 / kNonFinite3, for functions with more inputs.
-[[noreturn]] inline void raise(const Batch& b, const Failure& f, const char* func, const char* arg,
-                               const char* arg2 = nullptr, const char* arg3 = nullptr) {
-    auto msg = [&](const std::string& what) { return failure_message(b, f.index, (std::string(func) + "(): " + what).c_str()); };
+[[noreturn]] inline void raise(
+    const Batch& b,
+    const Failure& f,
+    const char* func,
+    const char* arg,
+    const char* arg2 = nullptr,
+    const char* arg3 = nullptr
+) {
+    auto msg = [&](const std::string& what) {
+        return failure_message(b, f.index, (std::string(func) + "(): " + what).c_str());
+    };
     switch (f.code) {
         case kNonFinite: throw nb::value_error(msg(std::string("'") + arg + "' contains NaN or infinity").c_str());
         case kNonFinite2: throw nb::value_error(msg(std::string("'") + arg2 + "' contains NaN or infinity").c_str());
@@ -77,8 +85,8 @@ inline Rhs rhs_of(const Input& y, lint n, const char* func, const char* aname, b
     const bool vec = y.ndim() == 1;
     const lint rows = vec ? y.shape(0) : y.shape(-2);
     if (rows != n) {
-        const std::string what = square ? "is " + std::to_string(n) + "x" + std::to_string(n)
-                                        : "has " + std::to_string(n) + " rows";
+        const std::string what =
+            square ? "is " + std::to_string(n) + "x" + std::to_string(n) : "has " + std::to_string(n) + " rows";
         throw nb::value_error((std::string(func) + "(): '" + aname + "' " + what + " but 'b' has " +
                                std::to_string(rows) + " rows")
                                   .c_str());
@@ -105,7 +113,9 @@ template <class T>
 class LapackSlot {
 public:
     LapackSlot(T* slot, std::int64_t count, Scratch& s, int scratch_slot)
-        : slot_(slot), n_(count), p_(aligned16(slot) ? slot : s.get<T>(static_cast<std::size_t>(count), scratch_slot)) {}
+        : slot_(slot),
+          n_(count),
+          p_(aligned16(slot) ? slot : s.get<T>(static_cast<std::size_t>(count), scratch_slot)) {}
     ~LapackSlot() {
         if (p_ != slot_) std::copy(p_, p_ + n_, slot_);
     }
@@ -125,8 +135,9 @@ private:
 // is checked (docs/design/linalg.md §5.5); otherwise it is packed into `buf`.
 // The arithmetic, and so the result, is the same either way. Returns false on NaN/inf.
 template <class T>
-bool triangle_operand(const Input& x, std::int64_t off, lint n, bool lower, bool with_diag, T* buf, const T*& a,
-                      lint& lda) {
+bool triangle_operand(
+    const Input& x, std::int64_t off, lint n, bool lower, bool with_diag, T* buf, const T*& a, lint& lda
+) {
     constexpr std::int64_t sz = sizeof(T);
     const std::byte* p = x.data() + off;
     // in place only when 16-byte aligned, every column too (see aligned16)
@@ -179,12 +190,14 @@ inline bool parse_mode(nb::handle o, const char* func) {
     // A string option: the frame's check_choice format (API.md §2.1).
     if (!PyUnicode_Check(o.ptr()))
         throw nb::type_error(
-            (std::string(func) + "(): 'mode' must be 'reduced' or 'complete', not " + py_type_name(o)).c_str());
+            (std::string(func) + "(): 'mode' must be 'reduced' or 'complete', not " + py_type_name(o)).c_str()
+        );
     const std::string s = nb::cast<std::string>(o);
     if (s == "reduced") return false;
     if (s == "complete") return true;
     throw nb::value_error(
-        (std::string(func) + "(): 'mode' must be 'reduced' or 'complete', not " + nb::repr(o).c_str()).c_str());
+        (std::string(func) + "(): 'mode' must be 'reduced' or 'complete', not " + nb::repr(o).c_str()).c_str()
+    );
 }
 
 }  // namespace sd::linalg

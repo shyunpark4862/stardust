@@ -46,10 +46,24 @@ def assert_values(series, expected):
 
 # --- arithmetic ---------------------------------------------------------------
 
-ARITH = {"+": operator.add, "-": operator.sub, "*": operator.mul, "/": operator.truediv,
-         "//": operator.floordiv, "%": operator.mod, "**": operator.pow}
-NP_ARITH = {"+": np.add, "-": np.subtract, "*": np.multiply, "/": np.true_divide,
-            "//": np.floor_divide, "%": np.remainder, "**": np.power}
+ARITH = {
+    "+": operator.add,
+    "-": operator.sub,
+    "*": operator.mul,
+    "/": operator.truediv,
+    "//": operator.floordiv,
+    "%": operator.mod,
+    "**": operator.pow,
+}
+NP_ARITH = {
+    "+": np.add,
+    "-": np.subtract,
+    "*": np.multiply,
+    "/": np.true_divide,
+    "//": np.floor_divide,
+    "%": np.remainder,
+    "**": np.power,
+}
 
 
 def numpy_oracle(op, x, y, dtx, dty):
@@ -85,10 +99,12 @@ def test_arithmetic_matches_numpy(data):
     op = data.draw(st.sampled_from(list(ARITH)))
     dtx, dty = data.draw(st.sampled_from(["int64", "float64"])), data.draw(st.sampled_from(["int64", "float64"]))
     n = data.draw(st.integers(0, 20))
+
     def elems(dt):
         if dt == "float64":
             return FLOATS
         return SMALL if op == "**" else (I64 | SMALL)
+
     xs = data.draw(st.lists(with_na(elems(dtx)), min_size=n, max_size=n))
     ys = data.draw(st.lists(with_na(elems(dty)), min_size=n, max_size=n))
     a, b = sd.frame.Series(xs, dtype=dtx), sd.frame.Series(ys, dtype=dty)
@@ -111,13 +127,19 @@ def test_power_is_the_array_kernel():
     e[::5] = rng.choice([2.0, 0.0, -0.0, 1.0, -1.0, 0.5], 400)
     xs, es = sd.asarray(x), sd.asarray(e)
     s, t = sd.frame.Series(x), sd.frame.Series(e)
-    assert np.asarray((s ** t).to_array()).tobytes() == np.asarray(xs ** es).tobytes()
+    assert np.asarray((s**t).to_array()).tobytes() == np.asarray(xs**es).tobytes()
     for b in (2.0, 0.0, 1.0, -1.0, 0.5, 3.0, -2.5, 0.25, math.nan, math.inf):
-        assert np.asarray((s ** b).to_array()).tobytes() == np.asarray(xs ** b).tobytes()
-        assert np.asarray((b ** s).to_array()).tobytes() == np.asarray(b ** xs).tobytes()
+        assert np.asarray((s**b).to_array()).tobytes() == np.asarray(xs**b).tobytes()
+        assert np.asarray((b**s).to_array()).tobytes() == np.asarray(b**xs).tobytes()
     i = rng.integers(-5, 6, 2000)
-    assert np.asarray((sd.frame.Series(i) ** t).to_array()).tobytes() == np.asarray(sd.asarray(i.astype(float)) ** es).tobytes()
-    assert np.asarray((s ** sd.frame.Series(i)).to_array()).tobytes() == np.asarray(xs ** sd.asarray(i.astype(float))).tobytes()
+    assert (
+        np.asarray((sd.frame.Series(i) ** t).to_array()).tobytes()
+        == np.asarray(sd.asarray(i.astype(float)) ** es).tobytes()
+    )
+    assert (
+        np.asarray((s ** sd.frame.Series(i)).to_array()).tobytes()
+        == np.asarray(xs ** sd.asarray(i.astype(float))).tobytes()
+    )
     na = sd.frame.Series([2.0, None, 3.0]) ** sd.frame.Series([0.5, 2.0, None])
     assert na.tolist()[1:] == [NA, NA] and na.tolist()[0] == math.sqrt(2.0)
 
@@ -125,7 +147,7 @@ def test_power_is_the_array_kernel():
 def test_result_dtypes():
     i, f = sd.frame.Series([1, 2]), sd.frame.Series([1.5, 2.5])
     assert (i + i).dtype is sd.int64 and (i / i).dtype is sd.float64 and (i + f).dtype is sd.float64
-    assert (i // i).dtype is sd.int64 and (i ** i).dtype is sd.int64 and (i + 1.5).dtype is sd.float64
+    assert (i // i).dtype is sd.int64 and (i**i).dtype is sd.int64 and (i + 1.5).dtype is sd.float64
 
 
 def test_int_edge_cases():
@@ -143,8 +165,8 @@ def test_int_edge_cases():
 
 def test_na_propagates_without_exceptions():
     s = sd.frame.Series([1, None])
-    assert (s ** 0).tolist() == [1, NA]  # pandas gives 1 for NA ** 0 (docs/api/frame.md §3.2)
-    assert (1 ** s).tolist() == [1, NA]
+    assert (s**0).tolist() == [1, NA]  # pandas gives 1 for NA ** 0 (docs/api/frame.md §3.2)
+    assert (1**s).tolist() == [1, NA]
     assert (s + NA).tolist() == [NA, NA] and (s + NA).dtype is sd.int64
     assert (s / NA).dtype is sd.float64
 
@@ -214,7 +236,14 @@ def test_operands_with_different_indexes_align():
 
 # --- comparison ---------------------------------------------------------------
 
-COMPARE = {"==": operator.eq, "!=": operator.ne, "<": operator.lt, "<=": operator.le, ">": operator.gt, ">=": operator.ge}
+COMPARE = {
+    "==": operator.eq,
+    "!=": operator.ne,
+    "<": operator.lt,
+    "<=": operator.le,
+    ">": operator.gt,
+    ">=": operator.ge,
+}
 NEAR_2_53 = st.sampled_from([2**53, 2**53 + 1, -(2**53) - 1, 2**63 - 1, -(2**63), 0]) | I64
 
 
@@ -314,16 +343,28 @@ def test_kleene_logic_matches_pandas_boolean(data):
 
 # --- int bitwise operators ------------------------------------------------------
 
-BITWISE = {"&": (operator.and_, "bitwise_and"), "|": (operator.or_, "bitwise_or"), "^": (operator.xor, "bitwise_xor"),
-           "<<": (operator.lshift, "bitwise_left_shift"), ">>": (operator.rshift, "bitwise_right_shift")}
-SHIFTS = st.sampled_from([-(2**63), -65, -64, -63, -1, 0, 1, 2, 31, 62, 63, 64, 65, 100, 2**63 - 1]) | st.integers(-130, 130)
+BITWISE = {
+    "&": (operator.and_, "bitwise_and"),
+    "|": (operator.or_, "bitwise_or"),
+    "^": (operator.xor, "bitwise_xor"),
+    "<<": (operator.lshift, "bitwise_left_shift"),
+    ">>": (operator.rshift, "bitwise_right_shift"),
+}
+SHIFTS = st.sampled_from([-(2**63), -65, -64, -63, -1, 0, 1, 2, 31, 62, 63, 64, 65, 100, 2**63 - 1]) | st.integers(
+    -130, 130
+)
 
 
 def array_oracle(fn, xs, ys):
     """The array area on the rows where neither side is NA; NA elsewhere (docs/api/frame.md §3.4)."""
     rows = [i for i, (x, y) in enumerate(zip(xs, ys)) if x is not None and y is not None]
-    got = getattr(sd, fn)(sd.asarray([xs[i] for i in rows], dtype=sd.int64),
-                          sd.asarray([ys[i] for i in rows], dtype=sd.int64)).tolist() if rows else []
+    got = (
+        getattr(sd, fn)(
+            sd.asarray([xs[i] for i in rows], dtype=sd.int64), sd.asarray([ys[i] for i in rows], dtype=sd.int64)
+        ).tolist()
+        if rows
+        else []
+    )
     out = [NA] * len(xs)
     for i, v in zip(rows, got):
         out[i] = v
@@ -346,7 +387,10 @@ def test_int_bitwise_matches_the_array_area(data):
         assert f(a, y).tolist() == array_oracle(fn, xs, [y] * n)
         assert f(y, a).tolist() == array_oracle(fn, [y] * n, xs)
     inv = (~a).tolist()
-    assert inv == [NA if x is None else v for x, v in zip(xs, sd.bitwise_invert(sd.asarray([x or 0 for x in xs], dtype=sd.int64)).tolist())]
+    assert inv == [
+        NA if x is None else v
+        for x, v in zip(xs, sd.bitwise_invert(sd.asarray([x or 0 for x in xs], dtype=sd.int64)).tolist())
+    ]
 
 
 def test_shift_edge_cases():
@@ -402,7 +446,9 @@ def test_frame_bitwise_operators():
 @settings(max_examples=EXAMPLES, deadline=None)
 @given(st.lists(with_na(st.floats())))
 def test_float_to_string_is_python_str(values):
-    assert sd.frame.Series(values, dtype="float64").astype("string").tolist() == [NA if v is None else str(v) for v in values]
+    assert sd.frame.Series(values, dtype="float64").astype("string").tolist() == [
+        NA if v is None else str(v) for v in values
+    ]
 
 
 @settings(max_examples=EXAMPLES, deadline=None)
@@ -420,9 +466,9 @@ def test_float_string_round_trip(values):
     assert all(same(v, b) for v, b in zip(values, back))
 
 
-GOOD_FLOATS = st.from_regex(r"\A[+-]?([0-9]{1,5}(\.[0-9]{0,4})?|\.[0-9]{1,4})([eE][+-]?[0-9]{1,3})?\Z") | st.sampled_from(
-    ["nan", "-NaN", "inf", "+Infinity", "-iNf", "1e400", "-1e400", "1e-400", "4.9e-324", "2.5e-310"]
-)
+GOOD_FLOATS = st.from_regex(
+    r"\A[+-]?([0-9]{1,5}(\.[0-9]{0,4})?|\.[0-9]{1,4})([eE][+-]?[0-9]{1,3})?\Z"
+) | st.sampled_from(["nan", "-NaN", "inf", "+Infinity", "-iNf", "1e400", "-1e400", "1e-400", "4.9e-324", "2.5e-310"])
 
 
 @settings(max_examples=EXAMPLES, deadline=None)
@@ -581,16 +627,32 @@ def test_frame_filter():
 def test_index_basics():
     idx = sd.frame.Index([3, 1, 2])
     assert idx.tolist() == [3, 1, 2] and idx.dtype is sd.int64 and len(idx) == 3
-    assert sd.frame.Index([0, 1]).equals(sd.frame.RangeIndex(2)) and sd.frame.RangeIndex(2).equals(sd.frame.Index([0, 1]))
+    assert sd.frame.Index([0, 1]).equals(sd.frame.RangeIndex(2)) and sd.frame.RangeIndex(2).equals(
+        sd.frame.Index([0, 1])
+    )
     with pytest.raises(ValueError):
         sd.frame.Index([1, None])
 
 
-@pytest.mark.parametrize("values", [[], [7], [0, 2, 5], list(range(30)), [x * 1000 for x in range(30)],
-                                     list(range(0, 400, 2)), list(range(101)), list(range(100)), [-5, 10**15, 3]])
+@pytest.mark.parametrize(
+    "values",
+    [
+        [],
+        [7],
+        [0, 2, 5],
+        list(range(30)),
+        [x * 1000 for x in range(30)],
+        list(range(0, 400, 2)),
+        list(range(101)),
+        list(range(100)),
+        [-5, 10**15, 3],
+    ],
+)
 def test_index_repr_matches_pandas(values):
     # but dtype=int64, as the array's repr (DESIGN.md §10.2) [pandas: dtype='int64']
-    assert repr(sd.frame.Index(values)) == repr(pd.Index(np.array(values, dtype=np.int64))).replace("dtype='int64'", "dtype=int64")
+    assert repr(sd.frame.Index(values)) == repr(pd.Index(np.array(values, dtype=np.int64))).replace(
+        "dtype='int64'", "dtype=int64"
+    )
 
 
 @pytest.mark.parametrize("n", [5, 70])
@@ -599,7 +661,9 @@ def test_filtered_repr_matches_pandas(n):
     p = pd.Series([float(i) / 3 for i in range(n)], name="x")
     assert repr(s[s * 3 % 2 == 0]) == repr(p[p * 3 % 2 == 0])
     df, pdf = sd.frame.DataFrame({"x": list(range(n))}), pd.DataFrame({"x": range(n)})
-    assert repr(df[df["x"] % 3 == 1]) == pdf[pdf["x"] % 3 == 1].to_string(max_rows=60, min_rows=10, show_dimensions="truncate")
+    assert repr(df[df["x"] % 3 == 1]) == pdf[pdf["x"] % 3 == 1].to_string(
+        max_rows=60, min_rows=10, show_dimensions="truncate"
+    )
 
 
 # --- DataFrame operators ------------------------------------------------------
@@ -626,20 +690,46 @@ def test_frame_operators():
 
 # --- the Eisel-Lemire float parser (docs/design/frame.md §10.4) -----------------
 
-HARD_FLOATS = ["0", "-0", "0.0", "1e22", "1e23", "9007199254740993", "9007199254740992.5",
-               "2.2250738585072011e-308", "2.2250738585072014e-308", "4.9406564584124654e-324",
-               "2.4703282292062327e-324", "2.4703282292062328e-324", "1.7976931348623157e308",
-               "1.7976931348623158e308", "1.7976931348623159e308", "1e-400", "1e400", "123456789012345678",
-               "1234567890123456789", "12345678901234567890", ".5", "5.", "7.2057594037927933e16",
-               "0.000000000000000000000000000001", "9007199254740991.4999999999999999999"]
+HARD_FLOATS = [
+    "0",
+    "-0",
+    "0.0",
+    "1e22",
+    "1e23",
+    "9007199254740993",
+    "9007199254740992.5",
+    "2.2250738585072011e-308",
+    "2.2250738585072014e-308",
+    "4.9406564584124654e-324",
+    "2.4703282292062327e-324",
+    "2.4703282292062328e-324",
+    "1.7976931348623157e308",
+    "1.7976931348623158e308",
+    "1.7976931348623159e308",
+    "1e-400",
+    "1e400",
+    "123456789012345678",
+    "1234567890123456789",
+    "12345678901234567890",
+    ".5",
+    "5.",
+    "7.2057594037927933e16",
+    "0.000000000000000000000000000001",
+    "9007199254740991.4999999999999999999",
+]
 
 
 @settings(max_examples=EXAMPLES, deadline=None)
-@given(st.lists(
-    st.integers(0, 2**64 - 1).map(lambda b: repr(np.frombuffer(np.uint64(b).tobytes(), dtype=np.float64)[0].item()))
-    | st.builds(lambda m, e: f"{m}e{e}", st.integers(0, 10**19), st.integers(-345, 310))
-    | st.builds(lambda a, b, e: f"{a}.{b}e{e}", st.integers(0, 10**10), st.integers(0, 10**12), st.integers(-30, 30)),
-    max_size=50))
+@given(
+    st.lists(
+        st.integers(0, 2**64 - 1).map(lambda b: repr(np.frombuffer(np.uint64(b).tobytes(), dtype=np.float64)[0].item()))
+        | st.builds(lambda m, e: f"{m}e{e}", st.integers(0, 10**19), st.integers(-345, 310))
+        | st.builds(
+            lambda a, b, e: f"{a}.{b}e{e}", st.integers(0, 10**10), st.integers(0, 10**12), st.integers(-30, 30)
+        ),
+        max_size=50,
+    )
+)
 def test_float_parsing_is_correctly_rounded(texts):
     texts = [t for t in texts if "nan" not in t and "inf" not in t] + HARD_FLOATS
     got = sd.frame.Series(texts).astype("float64").tolist()

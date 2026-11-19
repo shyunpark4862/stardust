@@ -44,6 +44,7 @@ def _agree(X, Y, xs, rel):
 
 # ---- S4: an infinite degree of freedom is the limit (user decision 2026-11-19)
 
+
 def test_t_inf_is_the_normal():
     _agree(S.StudentT(df=inf), S.Normal(), (-40.0, -1.5, 0.0, 0.3, 7.0), 0.0)
     assert S.StudentT(df=inf).cdf(1.3) == sp.stdtr(inf, 1.3)
@@ -75,8 +76,13 @@ def test_f_one_infinite_df():
 
 
 def test_not_distributions_stay_nan():
-    for X in (S.F(dfn=inf, dfd=inf), S.NoncentralF(dfn=inf, dfd=inf, nc=1.0), S.ChiSquared(df=inf),
-              S.NoncentralChiSquared(df=inf, nc=1.0), S.NoncentralT(df=inf, nc=inf)):
+    for X in (
+        S.F(dfn=inf, dfd=inf),
+        S.NoncentralF(dfn=inf, dfd=inf, nc=1.0),
+        S.ChiSquared(df=inf),
+        S.NoncentralChiSquared(df=inf, nc=1.0),
+        S.NoncentralT(df=inf, nc=inf),
+    ):
         assert math.isnan(X.cdf(1.0)) and math.isnan(X.mean())
 
 
@@ -98,10 +104,15 @@ def test_infinite_df_samples_and_arrays():
 
 # ---- S3, S5, S7b, S19
 
+
 def test_subnormal_df_samples_and_median():
     rng = sd.random.default_rng(0)
-    for X in (S.StudentT(df=1e-310), S.StudentT(df=5e-324), S.NoncentralT(df=1e-310, nc=1.0),
-              S.NoncentralF(dfn=1e-310, dfd=1e-310, nc=1.0)):
+    for X in (
+        S.StudentT(df=1e-310),
+        S.StudentT(df=5e-324),
+        S.NoncentralT(df=1e-310, nc=1.0),
+        S.NoncentralF(dfn=1e-310, dfd=1e-310, nc=1.0),
+    ):
         assert np.isnan(np.asarray(X.sample(8, rng=rng))).all()
     assert math.isnan(S.StudentT(df=1e-310).median())
     assert S.StudentT(df=1e-300).median() == 0.0
@@ -122,16 +133,27 @@ def test_binomial_mode_at_2_52():
 def test_noncentral_chi_square_nc0_moments_are_the_central_ones():
     for df in (0.5, 3.0, 17.0):
         X, Y = S.NoncentralChiSquared(df=df, nc=0.0), S.ChiSquared(df=df)
-        assert (X.skewness(), X.kurtosis(), X.mean(), X.variance()) == (Y.skewness(), Y.kurtosis(), Y.mean(),
-                                                                        Y.variance())
+        assert (X.skewness(), X.kurtosis(), X.mean(), X.variance()) == (
+            Y.skewness(),
+            Y.kurtosis(),
+            Y.mean(),
+            Y.variance(),
+        )
 
 
 # ---- S6: the family's support; S7a: NegativeBinomial(n=0)
 
+
 def test_support_is_the_familys():
-    cases = [(S.Binomial(n=10, p=0.0), (0.0, 10.0)), (S.Binomial(n=10, p=1.0), (0.0, 10.0)),
-             (S.Bernoulli(p=0.0), (0.0, 1.0)), (S.Poisson(mu=0.0), (0.0, inf)), (S.Geometric(p=1.0), (1.0, inf)),
-             (S.NegativeBinomial(n=3.0, p=1.0), (0.0, inf)), (S.NegativeBinomial(n=0.0, p=0.4), (0.0, inf))]
+    cases = [
+        (S.Binomial(n=10, p=0.0), (0.0, 10.0)),
+        (S.Binomial(n=10, p=1.0), (0.0, 10.0)),
+        (S.Bernoulli(p=0.0), (0.0, 1.0)),
+        (S.Poisson(mu=0.0), (0.0, inf)),
+        (S.Geometric(p=1.0), (1.0, inf)),
+        (S.NegativeBinomial(n=3.0, p=1.0), (0.0, inf)),
+        (S.NegativeBinomial(n=0.0, p=0.4), (0.0, inf)),
+    ]
     for X, sup in cases:
         assert X.support() == sup
         assert X.icdf(1.0) == sup[1] and X.iccdf(0.0) == sup[1]
@@ -157,6 +179,7 @@ def test_negative_binomial_n0_is_the_point_mass():
 
 # ---- S2: the noncentral NaN boundaries (docs/api/stats.md §2.4)
 
+
 def test_noncentral_chi_square_large_nc():
     for nc in (1.5e9, 2.2e9):
         X = S.NoncentralChiSquared(df=3.0, nc=nc)
@@ -170,6 +193,7 @@ def test_noncentral_chi_square_large_nc():
 
 
 # ---- S8, S9
+
 
 def test_summaries_read_the_lower_triangle():
     C = A([[1.0, 99.0], [0.5, 1.0]])
@@ -189,25 +213,33 @@ def test_multinomial_point_mass_entropy_and_tiny_inverse_wishart():
     assert S.Multinomial(n=0, p=A([0.2, 0.3, 0.5])).entropy() == 0.0
     x = A([[1e-310, 0.0], [0.0, 1.0]])
     assert S.InverseWishart(df=3.0, scale=A([[1.0, 0.0], [0.0, 1.0]])).logpdf(x) == -inf
-    assert S.InverseWishart(df=2.0, scale=A([[2.0]])).logpdf(A([[1e-310]])) == S.InverseGamma(a=1.0, scale=1.0).logpdf(1e-310)
+    assert S.InverseWishart(df=2.0, scale=A([[2.0]])).logpdf(A([[1e-310]])) == S.InverseGamma(a=1.0, scale=1.0).logpdf(
+        1e-310
+    )
 
 
-@pytest.mark.parametrize("make", [
-    lambda: S.MultivariateNormal(mu=[0.0, 0.0], cov=A([[1.0, 0.0], [0.0, 1.0]])),
-    lambda: S.MultivariateNormal(mu=A([0.0, 0.0]), cov=[[1.0, 0.0], [0.0, 1.0]]),
-    lambda: S.MultivariateT(mu=A([0.0]), shape=A([[1.0]]), df=[3.0]),
-    lambda: S.Multinomial(n=3, p=[0.5, 0.5]),
-    lambda: S.Dirichlet(alpha=[1.0, 2.0]),
-    lambda: S.Wishart(df=3.0, scale=[[1.0]]),
-    lambda: S.InverseWishart(df=3.0, scale=np.eye(2)),
-    lambda: S.MatrixNormal(mu=[[0.0]], rowcov=A([[1.0]]), colcov=A([[1.0]])),
-])
+@pytest.mark.parametrize(
+    "make",
+    [
+        lambda: S.MultivariateNormal(mu=[0.0, 0.0], cov=A([[1.0, 0.0], [0.0, 1.0]])),
+        lambda: S.MultivariateNormal(mu=A([0.0, 0.0]), cov=[[1.0, 0.0], [0.0, 1.0]]),
+        lambda: S.MultivariateT(mu=A([0.0]), shape=A([[1.0]]), df=[3.0]),
+        lambda: S.Multinomial(n=3, p=[0.5, 0.5]),
+        lambda: S.Dirichlet(alpha=[1.0, 2.0]),
+        lambda: S.Wishart(df=3.0, scale=[[1.0]]),
+        lambda: S.InverseWishart(df=3.0, scale=np.eye(2)),
+        lambda: S.MatrixNormal(mu=[[0.0]], rowcov=A([[1.0]]), colcov=A([[1.0]])),
+    ],
+)
 def test_matrix_and_multivariate_parameters_refuse_lists(make):
-    with pytest.raises(TypeError, match=r"^[A-Za-z]+\(\): '\w+' must be (a real number or )?an sd.ndarray, not (list|numpy.ndarray)$"):
+    with pytest.raises(
+        TypeError, match=r"^[A-Za-z]+\(\): '\w+' must be (a real number or )?an sd.ndarray, not (list|numpy.ndarray)$"
+    ):
         make()
 
 
 # ---- S10: Wishart and the inverse Wishart at a large df
+
 
 def _wishart_ref(df, V, X, inverse):
     ctx.prec = 400
@@ -253,6 +285,7 @@ def test_wishart_p1_is_gamma(df):
 
 
 # ---- S12: messages
+
 
 def test_constructor_messages_name_the_class():
     with pytest.raises(ValueError, match=r"^Normal\(\): shapes could not be broadcast together: \(2,\) \(3,\)$"):
@@ -316,6 +349,7 @@ def test_large_int_input_overflows_as_special(x):
 
 # ---- S13: descriptive statistics
 
+
 def test_descriptive_edges_as_scipy():
     x = A([1.0, 2.0, 3.0, 4.0, 5.0])
     assert S.iqr(x, scale=0) == inf
@@ -329,7 +363,10 @@ def test_descriptive_edges_as_scipy():
         S.moment(x, order=[])
     with pytest.raises(TypeError, match=r"^entropy\(\): 'base' must be a positive number or None, not str$"):
         S.entropy(A([0.2, 0.8]), base="e")
-    with pytest.raises(ValueError, match=r"^differential_entropy\(\): 'method' must be 'vasicek', 'van es', 'ebrahimi', 'correa' or 'auto', not 'VASICEK'$"):
+    with pytest.raises(
+        ValueError,
+        match=r"^differential_entropy\(\): 'method' must be 'vasicek', 'van es', 'ebrahimi', 'correa' or 'auto', not 'VASICEK'$",
+    ):
         S.differential_entropy(x, method="VASICEK")
 
 
@@ -354,6 +391,7 @@ def test_axis_lists_and_repeated_axis_as_the_array():
 
 # ---- S14: the beta family's deep inverse ends in bounded time
 
+
 def test_beta_deep_inverse_converges_fast():
     X = S.Beta(a=1.16e5, b=0.063)
     t0 = time.perf_counter()
@@ -368,6 +406,7 @@ def test_beta_deep_inverse_converges_fast():
 
 # ---- S15, S20
 
+
 def test_entropy_doc_and_sample_shape():
     assert "Shannon" in S.Poisson.entropy.__doc__ and "differential" in S.Normal.entropy.__doc__
     rng = sd.random.default_rng(0)
@@ -376,8 +415,13 @@ def test_entropy_doc_and_sample_shape():
     assert S.Normal(mu=A([0.0, 1.0])).sample(rng=rng).shape == (2,)
     assert S.Normal(mu=A([0.0, 1.0])).sample(3, rng=rng).shape == (3, 2)
     msg = r"^sample\(\): 'shape' must not be \(\) \(stardust has no 0-d arrays; None gives one sample\)$"
-    for X in (S.Normal(), S.Poisson(mu=2.0), S.MultivariateNormal(mu=A([0.0]), cov=A([[1.0]])),
-              S.Wishart(df=3.0, scale=A([[1.0]])), S.Dirichlet(alpha=A([1.0, 1.0]))):
+    for X in (
+        S.Normal(),
+        S.Poisson(mu=2.0),
+        S.MultivariateNormal(mu=A([0.0]), cov=A([[1.0]])),
+        S.Wishart(df=3.0, scale=A([[1.0]])),
+        S.Dirichlet(alpha=A([1.0, 1.0])),
+    ):
         with pytest.raises(ValueError, match=msg):
             X.sample((), rng=rng)
     M = S.MultivariateNormal(mu=A([0.0, 0.0]), cov=A([[1.0, 0.0], [0.0, 1.0]]))
@@ -389,6 +433,7 @@ def test_entropy_doc_and_sample_shape():
 
 
 # ---- 2026-11-19 follow-up: T39 (multivariate inputs), T41 (string options), T42 (t's deep corner)
+
 
 @pytest.mark.parametrize("x", [[0.1, 0.2], (0.1, 0.2), np.array([0.1, 0.2])])
 def test_multivariate_and_matrix_inputs_refuse_lists(x):
@@ -410,9 +455,14 @@ def test_string_option_messages():
     x = A([1.0, 2.0, 3.0])
     with pytest.raises(ValueError, match=r"^skew\(\): 'nan_policy' must be 'propagate', 'omit' or 'raise', not 'x'$"):
         S.skew(x, nan_policy="x")
-    with pytest.raises(TypeError, match=r"^skew\(\): 'nan_policy' must be 'propagate', 'omit' or 'raise', not NoneType$"):
+    with pytest.raises(
+        TypeError, match=r"^skew\(\): 'nan_policy' must be 'propagate', 'omit' or 'raise', not NoneType$"
+    ):
         S.skew(x, nan_policy=None)
-    with pytest.raises(ValueError, match=r"^rankdata\(\): 'method' must be 'average', 'min', 'max', 'dense' or 'ordinal', not 'Average'$"):
+    with pytest.raises(
+        ValueError,
+        match=r"^rankdata\(\): 'method' must be 'average', 'min', 'max', 'dense' or 'ordinal', not 'Average'$",
+    ):
         S.rankdata(x, method="Average")
     with pytest.raises(TypeError, match=r"^differential_entropy\(\): 'method' must be .* or 'auto', not int$"):
         S.differential_entropy(x, method=1)

@@ -28,13 +28,20 @@ def main():
     warnings.simplefilter("ignore")
     rng = np.random.default_rng(0)
     arrays = dict(
-        v=rng.standard_normal(1_000_000), w=rng.standard_normal(1_000_000),
+        v=rng.standard_normal(1_000_000),
+        w=rng.standard_normal(1_000_000),
         z=rng.standard_normal(1_000_000) + 1j * rng.standard_normal(1_000_000),
-        m=rng.standard_normal((1000, 1000)), s=np.sort(rng.standard_normal(100_000)),
-        idx=rng.integers(0, 1_000_000, 1_000_000), am=np.argsort(rng.standard_normal((1000, 1000)), axis=1),
-        nz=(rng.random(1_000_000) < 0.3).astype(np.float64), big=rng.standard_normal(10_000_000),
-        ints=rng.integers(0, 1000, 1_000_000), a3=rng.standard_normal((100, 100, 100)),
-        b2=rng.standard_normal((100, 100, 50)), x1=rng.standard_normal(1000), y1=rng.standard_normal(1000),
+        m=rng.standard_normal((1000, 1000)),
+        s=np.sort(rng.standard_normal(100_000)),
+        idx=rng.integers(0, 1_000_000, 1_000_000),
+        am=np.argsort(rng.standard_normal((1000, 1000)), axis=1),
+        nz=(rng.random(1_000_000) < 0.3).astype(np.float64),
+        big=rng.standard_normal(10_000_000),
+        ints=rng.integers(0, 1000, 1_000_000),
+        a3=rng.standard_normal((100, 100, 100)),
+        b2=rng.standard_normal((100, 100, 50)),
+        x1=rng.standard_normal(1000),
+        y1=rng.standard_normal(1000),
         small=rng.standard_normal(10),
     )
     cases = [

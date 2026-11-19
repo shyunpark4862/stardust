@@ -72,8 +72,9 @@ def _one(item):
 
     k = len(X[0]) + (1 if intercept else 0)
     m = sum(1 for v in w if v > 0) if w is not None else len(y)
-    ref, meta = regref.ols(y, X, weights=w, intercept=intercept, t_guess=float(st.t.ppf(0.975, max(m - k, 1))),
-                           groups=groups)
+    ref, meta = regref.ols(
+        y, X, weights=w, intercept=intercept, t_guess=float(st.t.ppf(0.975, max(m - k, 1))), groups=groups
+    )
     vals = {key: ([list(p) for p in v] if isinstance(v, list) else list(v)) for key, v in ref.items()}
     return name, {"y": y, "X": X, "weights": w, "intercept": intercept, "groups": groups, "meta": meta, "ref": vals}
 

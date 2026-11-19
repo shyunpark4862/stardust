@@ -51,7 +51,8 @@ const NDArray& f64(nb::handle o, int ndim, const char* what) {
     const NDArray& a = require_ndarray(o);
     if (a.dtype != DType::Float64 || a.ndim != ndim)
         throw nb::type_error((std::string("mv: '") + what + "' must be a float64 array of " + std::to_string(ndim) +
-                              " dimensions").c_str());
+                              " dimensions")
+                                 .c_str());
     return a;
 }
 const NDArray& i64(nb::handle o, const char* what) {
@@ -64,11 +65,14 @@ inline double el(const NDArray& a, std::int64_t i) {
     return *reinterpret_cast<const double*>(reinterpret_cast<const char*>(a.data) + i * a.strides[0]);
 }
 inline double el(const NDArray& a, std::int64_t i, std::int64_t j) {
-    return *reinterpret_cast<const double*>(reinterpret_cast<const char*>(a.data) + i * a.strides[0] + j * a.strides[1]);
+    return *reinterpret_cast<const double*>(
+        reinterpret_cast<const char*>(a.data) + i * a.strides[0] + j * a.strides[1]
+    );
 }
 inline double el(const NDArray& a, std::int64_t b, std::int64_t i, std::int64_t j) {
-    return *reinterpret_cast<const double*>(reinterpret_cast<const char*>(a.data) + b * a.strides[0] +
-                                            i * a.strides[1] + j * a.strides[2]);
+    return *reinterpret_cast<const double*>(
+        reinterpret_cast<const char*>(a.data) + b * a.strides[0] + i * a.strides[1] + j * a.strides[2]
+    );
 }
 inline std::int64_t eli(const NDArray& a, std::int64_t i) {
     return *reinterpret_cast<const std::int64_t*>(reinterpret_cast<const char*>(a.data) + i * a.strides[0]);
@@ -108,29 +112,34 @@ nb::tuple chol(nb::handle cov_obj) {
            *pok = reinterpret_cast<double*>(ok.data);
     {
         nb::gil_scoped_release release;
-        for_pieces(B, std::max<std::int64_t>(1, 4096 / std::max<std::int64_t>(1, d * d * d)), B * d * d * d,
-                   [&](std::int64_t, std::int64_t b0, std::int64_t b1) {
-                       std::vector<DD> L;
-                       for (std::int64_t b = b0; b < b1; ++b) {
-                           DD logdet;
-                           const bool good =
-                               stats::ddla::cholesky(d, [&](std::int64_t i, std::int64_t j) { return el(c, b, i, j); }, L, logdet);
-                           pok[b] = good ? 1.0 : 0.0;
-                           pdh[b] = good ? logdet.hi : kNaN;
-                           pdl[b] = good ? logdet.lo : kNaN;
-                           for (std::int64_t i = 0; i < d; ++i) {
-                               for (std::int64_t j = 0; j <= i; ++j) {
-                                   ph[(b * d + i) * d + j] = good ? L[i * d + j].hi : kNaN;
-                                   pl[(b * d + i) * d + j] = good ? L[i * d + j].lo : kNaN;
-                               }
-                               const DD inv = good ? DD{1.0, 0.0} / L[i * d + i] : DD{kNaN, 0.0};
-                               pih[b * d + i] = inv.hi, pil[b * d + i] = inv.lo;
-                           }
-                       }
-                   });
+        for_pieces(
+            B, std::max<std::int64_t>(1, 4096 / std::max<std::int64_t>(1, d * d * d)), B * d * d * d,
+            [&](std::int64_t, std::int64_t b0, std::int64_t b1) {
+                std::vector<DD> L;
+                for (std::int64_t b = b0; b < b1; ++b) {
+                    DD logdet;
+                    const bool good = stats::ddla::cholesky(
+                        d, [&](std::int64_t i, std::int64_t j) { return el(c, b, i, j); }, L, logdet
+                    );
+                    pok[b] = good ? 1.0 : 0.0;
+                    pdh[b] = good ? logdet.hi : kNaN;
+                    pdl[b] = good ? logdet.lo : kNaN;
+                    for (std::int64_t i = 0; i < d; ++i) {
+                        for (std::int64_t j = 0; j <= i; ++j) {
+                            ph[(b * d + i) * d + j] = good ? L[i * d + j].hi : kNaN;
+                            pl[(b * d + i) * d + j] = good ? L[i * d + j].lo : kNaN;
+                        }
+                        const DD inv = good ? DD{1.0, 0.0} / L[i * d + i] : DD{kNaN, 0.0};
+                        pih[b * d + i] = inv.hi, pil[b * d + i] = inv.lo;
+                    }
+                }
+            }
+        );
     }
-    return nb::make_tuple(wrap(std::move(Lh)), wrap(std::move(Ll)), wrap(std::move(ldh)), wrap(std::move(ldl)),
-                          wrap(std::move(ok)), wrap(std::move(ih)), wrap(std::move(il)));
+    return nb::make_tuple(
+        wrap(std::move(Lh)), wrap(std::move(Ll)), wrap(std::move(ldh)), wrap(std::move(ldl)), wrap(std::move(ok)),
+        wrap(std::move(ih)), wrap(std::move(il))
+    );
 }
 
 // L hi/lo (B, d, d), ok (B,) -> (B, fast_size(d)): the fast path's inverse factor and bound
@@ -145,19 +154,21 @@ nb::object fast_prep(nb::handle lh_obj, nb::handle ll_obj, nb::handle ok_obj) {
     double* po = reinterpret_cast<double*>(out.data);
     {
         nb::gil_scoped_release release;
-        for_pieces(B, std::max<std::int64_t>(1, 4096 / std::max<std::int64_t>(1, d * d * d)), B * d * d * d,
-                   [&](std::int64_t, std::int64_t b0, std::int64_t b1) {
-                       std::vector<DD> L(static_cast<std::size_t>(d * d));
-                       for (std::int64_t b = b0; b < b1; ++b) {
-                           bool good = el(ok, b) != 0.0 && d <= kFastMaxDim;
-                           if (good) {
-                               for (std::int64_t i = 0; i < d; ++i)
-                                   for (std::int64_t j = 0; j <= i; ++j) L[i * d + j] = DD{el(Lh, b, i, j), el(Ll, b, i, j)};
-                               good = stats::ddla::fast_prep(L, d, po + b * fs);
-                           }
-                           if (!good) std::fill(po + b * fs, po + (b + 1) * fs, kNaN);
-                       }
-                   });
+        for_pieces(
+            B, std::max<std::int64_t>(1, 4096 / std::max<std::int64_t>(1, d * d * d)), B * d * d * d,
+            [&](std::int64_t, std::int64_t b0, std::int64_t b1) {
+                std::vector<DD> L(static_cast<std::size_t>(d * d));
+                for (std::int64_t b = b0; b < b1; ++b) {
+                    bool good = el(ok, b) != 0.0 && d <= kFastMaxDim;
+                    if (good) {
+                        for (std::int64_t i = 0; i < d; ++i)
+                            for (std::int64_t j = 0; j <= i; ++j) L[i * d + j] = DD{el(Lh, b, i, j), el(Ll, b, i, j)};
+                        good = stats::ddla::fast_prep(L, d, po + b * fs);
+                    }
+                    if (!good) std::fill(po + b * fs, po + (b + 1) * fs, kNaN);
+                }
+            }
+        );
     }
     return wrap(std::move(out));
 }
@@ -166,9 +177,19 @@ nb::object fast_prep(nb::handle lh_obj, nb::handle ll_obj, nb::handle ok_obj) {
 // as Ogita, Rump and Oishi's Dot2 (an exact product by fma, the sum's errors gathered in one
 // double: as accurate as double-double arithmetic for these sums, at a third of its cost) and
 // the pivots multiplied by their reciprocals. L is the kernel's own contiguous (B, d, d).
-DD quad_form(const double* lh, const double* ll, const double* ih, const double* il, const NDArray& x,
-             std::int64_t m, const NDArray& mu, std::int64_t b, std::int64_t d, std::vector<double>& zh,
-             std::vector<double>& zl) {
+DD quad_form(
+    const double* lh,
+    const double* ll,
+    const double* ih,
+    const double* il,
+    const NDArray& x,
+    std::int64_t m,
+    const NDArray& mu,
+    std::int64_t b,
+    std::int64_t d,
+    std::vector<double>& zh,
+    std::vector<double>& zl
+) {
     double qh = 0.0, ql = 0.0;
     for (std::int64_t i = 0; i < d; ++i) {
         const DD r = dd::two_sum(el(x, m, i), -el(mu, b, i));
@@ -196,9 +217,20 @@ DD quad_form(const double* lh, const double* ll, const double* ih, const double*
 // z 2^-E and Q 4^-E, the residual scaled exactly by 2^-E before the substitution. E is the
 // exponent of the largest |x_i|, |mu_i| plus that of the largest reciprocal pivot, so the
 // scaled z are of order one (times the growth of the substitution).
-DD quad_form_scaled(const double* lh, const double* ll, const double* ih, const double* il, const NDArray& x,
-                    std::int64_t m, const NDArray& mu, std::int64_t b, std::int64_t d, std::vector<double>& zh,
-                    std::vector<double>& zl, int& E) {
+DD quad_form_scaled(
+    const double* lh,
+    const double* ll,
+    const double* ih,
+    const double* il,
+    const NDArray& x,
+    std::int64_t m,
+    const NDArray& mu,
+    std::int64_t b,
+    std::int64_t d,
+    std::vector<double>& zh,
+    std::vector<double>& zl,
+    int& E
+) {
     double big = 0.0, pinv = 0.0;
     for (std::int64_t i = 0; i < d; ++i) {
         big = std::max({big, std::fabs(el(x, m, i)), std::fabs(el(mu, b, i))});
@@ -261,9 +293,21 @@ DD lgamma_diff(double a, double h) {
 // The log density of the normal (df = inf) or t (df finite > 0) at the points:
 // x (M, d), batch (M,), mu (B, d), L_hi/L_lo (B, d, d), logdet hi/lo (B,), ok (B,), df (B,).
 // as_pdf: exp of it (once, from the double-double).
-nb::object logpdf(nb::handle x_obj, nb::handle batch_obj, nb::handle mu_obj, nb::handle lh_obj, nb::handle ll_obj,
-                  nb::handle ldh_obj, nb::handle ldl_obj, nb::handle ok_obj, nb::handle df_obj, nb::handle ih_obj,
-                  nb::handle il_obj, nb::handle fast_obj, bool as_pdf) {
+nb::object logpdf(
+    nb::handle x_obj,
+    nb::handle batch_obj,
+    nb::handle mu_obj,
+    nb::handle lh_obj,
+    nb::handle ll_obj,
+    nb::handle ldh_obj,
+    nb::handle ldl_obj,
+    nb::handle ok_obj,
+    nb::handle df_obj,
+    nb::handle ih_obj,
+    nb::handle il_obj,
+    nb::handle fast_obj,
+    bool as_pdf
+) {
     const NDArray &x = f64(x_obj, 2, "x"), &mu = f64(mu_obj, 2, "mu"), &Lh = f64(lh_obj, 3, "L"),
                   &Ll = f64(ll_obj, 3, "L"), &ldh = f64(ldh_obj, 1, "logdet"), &ldl = f64(ldl_obj, 1, "logdet"),
                   &ok = f64(ok_obj, 1, "ok"), &dfa = f64(df_obj, 1, "df"), &ih = f64(ih_obj, 2, "inv"),
@@ -294,7 +338,8 @@ nb::object logpdf(nb::handle x_obj, nb::handle batch_obj, nb::handle mu_obj, nb:
             cst[b] = -half_logdet - num::kLogSqrt2Pi * static_cast<double>(d);
         } else {
             const double a = 0.5 * df;
-            const DD lg = a >= 12.0 ? lgamma_diff(a, hd) : num::log_gamma(dd::two_sum(a, hd)) - num::log_gamma(DD{a, 0.0});
+            const DD lg =
+                a >= 12.0 ? lgamma_diff(a, hd) : num::log_gamma(dd::two_sum(a, hd)) - num::log_gamma(DD{a, 0.0});
             cst[b] = lg - (num::log_dd(df) + num::kLogPi) * hd - half_logdet;
         }
     }
@@ -306,101 +351,106 @@ nb::object logpdf(nb::handle x_obj, nb::handle batch_obj, nb::handle mu_obj, nb:
         nb::gil_scoped_release release;
         // pieces of a few us at least (a point of the fast path is ~0.1 ns per entry of the
         // factor, and a piece allocates its buffers)
-        for_pieces(M, std::clamp<std::int64_t>(16384 / std::max<std::int64_t>(1, d * d), 16, 2048), M * d * d,
-                   [&](std::int64_t, std::int64_t m0, std::int64_t m1) {
-                       std::vector<double> zh(static_cast<std::size_t>(d)), zl(static_cast<std::size_t>(d));
-                       // the fast path's r, z and its bounds (zero past d), and the batch element's mu
-                       std::vector<double> buf(static_cast<std::size_t>(3 * dp + d), 0.0);
-                       double *r = buf.data(), *z = r + dp, *e = z + dp, *mub = e + dp;
-                       const std::int64_t xs1 = x.strides[1];
-                       std::int64_t last = -1;
-                       double df = kNaN;
-                       bool bad = true;  // the batch element's parameters are invalid
-                       for (std::int64_t m = m0; m < m1; ++m) {
-                           const std::int64_t b = eli(bi, m);
-                           if (b != last) {
-                               last = b, df = el(dfa, b);
-                               bad = el(ok, b) == 0.0 || std::isnan(df);
-                               for (std::int64_t i = 0; i < d; ++i) mub[i] = el(mu, b, i);
-                           }
-                           if (bad) {
-                               po[m] = kNaN;
-                               continue;
-                           }
-                           // r = x - mu (rounded: the fast path's) and whether x is all finite, one pass
-                           const char* xb = reinterpret_cast<const char*>(x.data) + m * x.strides[0];
-                           bool finite = true;
-                           for (std::int64_t i = 0; i < d; ++i) {
-                               const double xi = *reinterpret_cast<const double*>(xb + i * xs1);
-                               finite = finite & (std::fabs(xi) < kInf);
-                               r[i] = xi - mub[i];
-                           }
-                           if (!finite) {  // a NaN: NaN; else an infinite component: density 0
-                               bool nan = false;
-                               for (std::int64_t i = 0; i < d; ++i) nan = nan || std::isnan(el(x, m, i));
-                               po[m] = nan ? kNaN : (as_pdf ? 0.0 : -kInf);
-                               continue;
-                           }
-                           if (pf) {
-                               // Q to within err (ddla::fast_norm2), then the same formula in plain
-                               // double. c = cst[b] is exact to the double-double; l = c.hi - t (its
-                               // error exactly, by TwoSum) + c.lo rounds once: u |l| + u^2 |c.hi|.
-                               // Normal: t = Q / 2, off by
-                               // err / 2. t: t = a log1p(Q / df), a = (df + d) / 2 the same double as
-                               // below; log1p moves by at most err / (df + Q - err), the quotient,
-                               // log1p (libm, 2 u allowed) and the product by 4 u t in all. The
-                               // density is exp(l), relative error the bound on l, so its budget is
-                               // absolute: exp(hi) (1 + lo) rounds three times (libm's exp allowed
-                               // 2 u): 4 u.
-                               // Anything non-finite fails the test.
-                               stats::ddla::fast_solve(pf + b * fs, d, r, nullptr, z, e);
-                               double err;
-                               const double q = stats::ddla::fast_norm2(z, e, d, err);
-                               const DD c = cst[b];
-                               double t, bound;
-                               if (std::isinf(df)) {
-                                   t = 0.5 * q;
-                                   bound = 0.5 * err;
-                               } else {
-                                   const double a = 0.5 * df + hd;
-                                   const double den = df + q - err;
-                                   t = a * std::log1p(q / df);
-                                   bound = den > 0.0 ? a * err / den + 4.5 * kU * t : kInf;
-                               }
-                               const DD s = dd::two_sum(c.hi, -t);
-                               const double lo = s.lo + c.lo;
-                               if (as_pdf) {
-                                   if (bound + kU * (4.0 + kU * std::fabs(c.hi)) <= kQuadBudget && std::fabs(s.hi) <= 700.0) {
-                                       po[m] = std::exp(s.hi) * (1.0 + lo);
-                                       continue;
-                                   }
-                               } else {
-                                   const double l = s.hi + lo;
-                                   if (bound + kU * (std::fabs(l) + kU * std::fabs(c.hi)) <=
-                                       kQuadBudget * std::max(1.0, std::fabs(l))) {
-                                       po[m] = l;
-                                       continue;
-                                   }
-                               }
-                           }
-                           const DD q = quad_form(plh + b * d * d, pll + b * d * d, pih + b * d, pil + b * d, x, m, mu,
-                                                  b, d, zh, zl);
-                           if (!(std::isfinite(q.hi) && std::isfinite(q.lo) && std::isfinite(q.hi / df))) [[unlikely]] {
-                               // Q or Q / df overflowed: rescaled, in logs
-                               int E = 0;
-                               const DD qs = std::isfinite(q.hi) && std::isfinite(q.lo)
-                                                 ? q
-                                                 : quad_form_scaled(plh + b * d * d, pll + b * d * d, pih + b * d,
-                                                                    pil + b * d, x, m, mu, b, d, zh, zl, E);
-                               const double l = log_density_scaled(cst[b], qs, E, df, hd);
-                               po[m] = as_pdf ? std::exp(l) : l;
-                               continue;
-                           }
-                           const DD l = std::isinf(df) ? cst[b] - q * 0.5
-                                                       : cst[b] - dd_log1p(q / df) * (0.5 * df + hd);  // - (df+d)/2 log1p(Q/df)
-                           po[m] = as_pdf ? num::exp_dd(l) : l.hi + l.lo;
-                       }
-                   });
+        for_pieces(
+            M, std::clamp<std::int64_t>(16384 / std::max<std::int64_t>(1, d * d), 16, 2048), M * d * d,
+            [&](std::int64_t, std::int64_t m0, std::int64_t m1) {
+                std::vector<double> zh(static_cast<std::size_t>(d)), zl(static_cast<std::size_t>(d));
+                // the fast path's r, z and its bounds (zero past d), and the batch element's mu
+                std::vector<double> buf(static_cast<std::size_t>(3 * dp + d), 0.0);
+                double *r = buf.data(), *z = r + dp, *e = z + dp, *mub = e + dp;
+                const std::int64_t xs1 = x.strides[1];
+                std::int64_t last = -1;
+                double df = kNaN;
+                bool bad = true;  // the batch element's parameters are invalid
+                for (std::int64_t m = m0; m < m1; ++m) {
+                    const std::int64_t b = eli(bi, m);
+                    if (b != last) {
+                        last = b, df = el(dfa, b);
+                        bad = el(ok, b) == 0.0 || std::isnan(df);
+                        for (std::int64_t i = 0; i < d; ++i) mub[i] = el(mu, b, i);
+                    }
+                    if (bad) {
+                        po[m] = kNaN;
+                        continue;
+                    }
+                    // r = x - mu (rounded: the fast path's) and whether x is all finite, one pass
+                    const char* xb = reinterpret_cast<const char*>(x.data) + m * x.strides[0];
+                    bool finite = true;
+                    for (std::int64_t i = 0; i < d; ++i) {
+                        const double xi = *reinterpret_cast<const double*>(xb + i * xs1);
+                        finite = finite & (std::fabs(xi) < kInf);
+                        r[i] = xi - mub[i];
+                    }
+                    if (!finite) {  // a NaN: NaN; else an infinite component: density 0
+                        bool nan = false;
+                        for (std::int64_t i = 0; i < d; ++i) nan = nan || std::isnan(el(x, m, i));
+                        po[m] = nan ? kNaN : (as_pdf ? 0.0 : -kInf);
+                        continue;
+                    }
+                    if (pf) {
+                        // Q to within err (ddla::fast_norm2), then the same formula in plain
+                        // double. c = cst[b] is exact to the double-double; l = c.hi - t (its
+                        // error exactly, by TwoSum) + c.lo rounds once: u |l| + u^2 |c.hi|.
+                        // Normal: t = Q / 2, off by
+                        // err / 2. t: t = a log1p(Q / df), a = (df + d) / 2 the same double as
+                        // below; log1p moves by at most err / (df + Q - err), the quotient,
+                        // log1p (libm, 2 u allowed) and the product by 4 u t in all. The
+                        // density is exp(l), relative error the bound on l, so its budget is
+                        // absolute: exp(hi) (1 + lo) rounds three times (libm's exp allowed
+                        // 2 u): 4 u.
+                        // Anything non-finite fails the test.
+                        stats::ddla::fast_solve(pf + b * fs, d, r, nullptr, z, e);
+                        double err;
+                        const double q = stats::ddla::fast_norm2(z, e, d, err);
+                        const DD c = cst[b];
+                        double t, bound;
+                        if (std::isinf(df)) {
+                            t = 0.5 * q;
+                            bound = 0.5 * err;
+                        } else {
+                            const double a = 0.5 * df + hd;
+                            const double den = df + q - err;
+                            t = a * std::log1p(q / df);
+                            bound = den > 0.0 ? a * err / den + 4.5 * kU * t : kInf;
+                        }
+                        const DD s = dd::two_sum(c.hi, -t);
+                        const double lo = s.lo + c.lo;
+                        if (as_pdf) {
+                            if (bound + kU * (4.0 + kU * std::fabs(c.hi)) <= kQuadBudget && std::fabs(s.hi) <= 700.0) {
+                                po[m] = std::exp(s.hi) * (1.0 + lo);
+                                continue;
+                            }
+                        } else {
+                            const double l = s.hi + lo;
+                            if (bound + kU * (std::fabs(l) + kU * std::fabs(c.hi)) <=
+                                kQuadBudget * std::max(1.0, std::fabs(l))) {
+                                po[m] = l;
+                                continue;
+                            }
+                        }
+                    }
+                    const DD q =
+                        quad_form(plh + b * d * d, pll + b * d * d, pih + b * d, pil + b * d, x, m, mu, b, d, zh, zl);
+                    if (!(std::isfinite(q.hi) && std::isfinite(q.lo) && std::isfinite(q.hi / df))) [[unlikely]] {
+                        // Q or Q / df overflowed: rescaled, in logs
+                        int E = 0;
+                        const DD qs = std::isfinite(q.hi) && std::isfinite(q.lo)
+                                          ? q
+                                          : quad_form_scaled(
+                                                plh + b * d * d, pll + b * d * d, pih + b * d, pil + b * d, x, m, mu, b,
+                                                d, zh, zl, E
+                                            );
+                        const double l = log_density_scaled(cst[b], qs, E, df, hd);
+                        po[m] = as_pdf ? std::exp(l) : l;
+                        continue;
+                    }
+                    const DD l = std::isinf(df)
+                                     ? cst[b] - q * 0.5
+                                     : cst[b] - dd_log1p(q / df) * (0.5 * df + hd);  // - (df+d)/2 log1p(Q/df)
+                    po[m] = as_pdf ? num::exp_dd(l) : l.hi + l.lo;
+                }
+            }
+        );
     }
     return wrap(std::move(out));
 }
@@ -433,8 +483,8 @@ nb::object entropy(nb::handle ldh_obj, nb::handle ldl_obj, nb::handle ok_obj, nb
         DD v;
         if (a >= 12.0) {
             const double dpsi = num::digamma_diff_asym(a, h);
-            const double br = (a + h) * dpsi - (a + h - 0.5) * std::log1p(h / a) -
-                              (num::stirling(a + h).s - num::stirling(a).s);
+            const double br =
+                (a + h) * dpsi - (a + h - 0.5) * std::log1p(h / a) - (num::stirling(a + h).s - num::stirling(a).s);
             v = normal + br;
         } else {
             const double dpsi = special::Digamma::f(a + h) - special::Digamma::f(a);
@@ -449,8 +499,16 @@ nb::object entropy(nb::handle ldh_obj, nb::handle ldl_obj, nb::handle ok_obj, nb
 // Samples: row i of the (N, d) result is stream element pos + i, its batch i mod B (the
 // result's shape is sample shape + batch + (d,)): mu + L z, z standard normal (the
 // ziggurat, stats/sample_dist.hpp), times sqrt(df / V), V = 2 G(df/2), for the t.
-nb::object sample(std::uint64_t k0, std::uint64_t k1, std::uint64_t pos, std::int64_t N, nb::handle mu_obj,
-                  nb::handle lh_obj, nb::handle ok_obj, nb::handle df_obj) {
+nb::object sample(
+    std::uint64_t k0,
+    std::uint64_t k1,
+    std::uint64_t pos,
+    std::int64_t N,
+    nb::handle mu_obj,
+    nb::handle lh_obj,
+    nb::handle ok_obj,
+    nb::handle df_obj
+) {
     const NDArray &mu = f64(mu_obj, 2, "mu"), &Lh = f64(lh_obj, 3, "L"), &ok = f64(ok_obj, 1, "ok"),
                   &dfa = f64(df_obj, 1, "df");
     const std::int64_t B = mu.shape[0], d = mu.shape[1];
@@ -465,40 +523,44 @@ nb::object sample(std::uint64_t k0, std::uint64_t k1, std::uint64_t pos, std::in
         // (one chain is latency-bound, 0.7 ns a term: 2/3 of a row at d = 50)
         const bool dense = Lh.strides[2] == 8 && mu.strides[1] == 8;
         const std::uint64_t nb = static_cast<std::uint64_t>(d / 4 + 2);
-        for_pieces(N, std::max<std::int64_t>(4, 4096 / std::max<std::int64_t>(1, d * d)), N * d * (d + 8),
-                   [&](std::int64_t, std::int64_t i0, std::int64_t i1) {
-                       random::Stream s(key);
-                       std::vector<double> z(static_cast<std::size_t>(d));
-                       std::vector<std::uint64_t> buf;
-                       stats::smp::each_words(s, pos, i0, i1, nb, buf, [&](std::int64_t i, stats::smp::Words& w) {
-                           const std::int64_t b = i % B;
-                           double* o = po + i * d;
-                           const double df = el(dfa, b);
-                           if (el(ok, b) == 0.0 || std::isnan(df)) {
-                               for (std::int64_t j = 0; j < d; ++j) o[j] = kNaN;
-                               return;
-                           }
-                           for (std::int64_t j = 0; j < d; ++j) z[j] = stats::smp::std_normal(w);
-                           double scale = 1.0;
-                           if (std::isfinite(df)) {
-                               const auto g = stats::smp::gamma_prep(0.5 * df);
-                               scale = std::exp(0.5 * (std::log(0.5 * df) - stats::smp::log_gamma_draw(w, g)));
-                           }
-                           if (dense) {
-                               const char* L = reinterpret_cast<const char*>(Lh.data) + b * Lh.strides[0];
-                               const double* m = reinterpret_cast<const double*>(reinterpret_cast<const char*>(mu.data) + b * mu.strides[0]);
-                               for (std::int64_t r = 0; r < d; ++r)
-                                   o[r] = m[r] + stats::ddla::dotn(reinterpret_cast<const double*>(L + r * Lh.strides[1]),
-                                                                   z.data(), r + 1) * scale;
-                               return;
-                           }
-                           for (std::int64_t r = 0; r < d; ++r) {
-                               double acc = 0.0;
-                               for (std::int64_t k = 0; k <= r; ++k) acc += el(Lh, b, r, k) * z[k];
-                               o[r] = el(mu, b, r) + acc * scale;
-                           }
-                       });
-                   });
+        for_pieces(
+            N, std::max<std::int64_t>(4, 4096 / std::max<std::int64_t>(1, d * d)), N * d * (d + 8),
+            [&](std::int64_t, std::int64_t i0, std::int64_t i1) {
+                random::Stream s(key);
+                std::vector<double> z(static_cast<std::size_t>(d));
+                std::vector<std::uint64_t> buf;
+                stats::smp::each_words(s, pos, i0, i1, nb, buf, [&](std::int64_t i, stats::smp::Words& w) {
+                    const std::int64_t b = i % B;
+                    double* o = po + i * d;
+                    const double df = el(dfa, b);
+                    if (el(ok, b) == 0.0 || std::isnan(df)) {
+                        for (std::int64_t j = 0; j < d; ++j) o[j] = kNaN;
+                        return;
+                    }
+                    for (std::int64_t j = 0; j < d; ++j) z[j] = stats::smp::std_normal(w);
+                    double scale = 1.0;
+                    if (std::isfinite(df)) {
+                        const auto g = stats::smp::gamma_prep(0.5 * df);
+                        scale = std::exp(0.5 * (std::log(0.5 * df) - stats::smp::log_gamma_draw(w, g)));
+                    }
+                    if (dense) {
+                        const char* L = reinterpret_cast<const char*>(Lh.data) + b * Lh.strides[0];
+                        const double* m =
+                            reinterpret_cast<const double*>(reinterpret_cast<const char*>(mu.data) + b * mu.strides[0]);
+                        for (std::int64_t r = 0; r < d; ++r)
+                            o[r] = m[r] + stats::ddla::dotn(
+                                              reinterpret_cast<const double*>(L + r * Lh.strides[1]), z.data(), r + 1
+                                          ) * scale;
+                        return;
+                    }
+                    for (std::int64_t r = 0; r < d; ++r) {
+                        double acc = 0.0;
+                        for (std::int64_t k = 0; k <= r; ++k) acc += el(Lh, b, r, k) * z[k];
+                        o[r] = el(mu, b, r) + acc * scale;
+                    }
+                });
+            }
+        );
     }
     return wrap(std::move(out));
 }
@@ -525,9 +587,11 @@ inline DD log_factorial(double k) {
 //     log n! - sum log x_i! + sum x_i log p_i - n log(sum p)
 // in double-double (the p as given: dividing by their sum would move every log p_i by an
 // ULP, n eps in all). x not non-negative integers summing to n: -inf (pmf 0).
-nb::object multinomial_logpmf(nb::handle x_obj, nb::handle batch_obj, nb::handle n_obj, nb::handle p_obj,
-                              nb::handle ok_obj, bool as_pmf) {
-    const NDArray &x = f64(x_obj, 2, "x"), &na = f64(n_obj, 1, "n"), &p = f64(p_obj, 2, "p"), &ok = f64(ok_obj, 1, "ok");
+nb::object multinomial_logpmf(
+    nb::handle x_obj, nb::handle batch_obj, nb::handle n_obj, nb::handle p_obj, nb::handle ok_obj, bool as_pmf
+) {
+    const NDArray &x = f64(x_obj, 2, "x"), &na = f64(n_obj, 1, "n"), &p = f64(p_obj, 2, "p"),
+                  &ok = f64(ok_obj, 1, "ok");
     const NDArray& bi = i64(batch_obj, "batch");
     const std::int64_t M = x.shape[0], K = x.shape[1], B = p.shape[0];
     NDArray out = out_vec(M);
@@ -609,8 +673,15 @@ nb::object multinomial_logpmf(nb::handle x_obj, nb::handle batch_obj, nb::handle
 // Samples by conditional binomials: X_1 ~ Bin(n, p_1), X_i ~ Bin(n - X_1 - ..., p_i / (p_i + ... + p_K)),
 // the remaining mass p_i + ... + p_K summed from the end (no cancellation), the last X_K
 // the rest. Row i is stream element pos + i, batch i mod B.
-nb::object multinomial_sample(std::uint64_t k0, std::uint64_t k1, std::uint64_t pos, std::int64_t N, nb::handle n_obj,
-                              nb::handle p_obj, nb::handle ok_obj) {
+nb::object multinomial_sample(
+    std::uint64_t k0,
+    std::uint64_t k1,
+    std::uint64_t pos,
+    std::int64_t N,
+    nb::handle n_obj,
+    nb::handle p_obj,
+    nb::handle ok_obj
+) {
     const NDArray &na = f64(n_obj, 1, "n"), &p = f64(p_obj, 2, "p"), &ok = f64(ok_obj, 1, "ok");
     const std::int64_t B = p.shape[0], K = p.shape[1];
     const std::int64_t s2[] = {N, K};
@@ -826,7 +897,8 @@ nb::object dirichlet_logpdf(nb::handle x_obj, nb::handle batch_obj, nb::handle a
                         continue;
                     }
                     const double l = sh + sl;
-                    const double bound = kU * (2.0 * mag + kU * static_cast<double>(K + 1) * (mag + std::fabs(cst[b].hi)));
+                    const double bound =
+                        kU * (2.0 * mag + kU * static_cast<double>(K + 1) * (mag + std::fabs(cst[b].hi)));
                     if (as_pdf) {
                         if (bound + 4.0 * kU <= kFastBudget && std::fabs(l) <= 700.0) {
                             const DD s2 = dd::quick_two_sum(sh, sl);
@@ -884,8 +956,9 @@ nb::object dirichlet_entropy(nb::handle a_obj, nb::handle ok_obj) {
 
 // Samples: G_i = Gamma(a_i) in logs (tiny shapes underflow), X = G / sum G. Row i is stream
 // element pos + i, batch i mod B.
-nb::object dirichlet_sample(std::uint64_t k0, std::uint64_t k1, std::uint64_t pos, std::int64_t N, nb::handle a_obj,
-                            nb::handle ok_obj) {
+nb::object dirichlet_sample(
+    std::uint64_t k0, std::uint64_t k1, std::uint64_t pos, std::int64_t N, nb::handle a_obj, nb::handle ok_obj
+) {
     const NDArray &al = f64(a_obj, 2, "alpha"), &ok = f64(ok_obj, 1, "ok");
     const std::int64_t B = al.shape[0], K = al.shape[1];
     const std::int64_t s2[] = {N, K};
@@ -944,9 +1017,11 @@ nb::object dirichlet_sample(std::uint64_t k0, std::uint64_t k1, std::uint64_t po
 void bind_stats_mv(nb::module_& m) {
     m.def("mv_chol", &chol);
     m.def("mv_fast_prep", &fast_prep);
-    m.def("mv_logpdf", &logpdf, nb::arg("x"), nb::arg("batch"), nb::arg("mu"), nb::arg("lh"), nb::arg("ll"),
-          nb::arg("ldh"), nb::arg("ldl"), nb::arg("ok"), nb::arg("df"), nb::arg("ih"), nb::arg("il"),
-          nb::arg("fast").none(), nb::arg("as_pdf"));
+    m.def(
+        "mv_logpdf", &logpdf, nb::arg("x"), nb::arg("batch"), nb::arg("mu"), nb::arg("lh"), nb::arg("ll"),
+        nb::arg("ldh"), nb::arg("ldl"), nb::arg("ok"), nb::arg("df"), nb::arg("ih"), nb::arg("il"),
+        nb::arg("fast").none(), nb::arg("as_pdf")
+    );
     m.def("mv_entropy", &entropy);
     m.def("mv_sample", &sample);
     m.def("multinomial_logpmf", &multinomial_logpmf);

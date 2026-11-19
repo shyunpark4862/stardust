@@ -37,9 +37,16 @@ def main():
     r = np.random.default_rng(0)
     n = 1_000_000
     b = r.random(n) > 0.5
-    arrays = {"f": r.random(n) + 0.5, "i": r.integers(-1000, 1000, n), "b": b, "z": np.zeros(n, bool),
-              "m": r.random((1000, 1000)), "t3": r.random((100, 100, 100)), "p": 1 + (r.random(n) - 0.5) * 1e-6,
-              "pm": 1 + (r.random((1000, 1000)) - 0.5) * 1e-6}
+    arrays = {
+        "f": r.random(n) + 0.5,
+        "i": r.integers(-1000, 1000, n),
+        "b": b,
+        "z": np.zeros(n, bool),
+        "m": r.random((1000, 1000)),
+        "t3": r.random((100, 100, 100)),
+        "p": 1 + (r.random(n) - 0.5) * 1e-6,
+        "pm": 1 + (r.random((1000, 1000)) - 0.5) * 1e-6,
+    }
     lines = ["| case | 1 thread | 10 threads | numpy |", "|---|---:|---:|---:|"]
     fmt = lambda t: f"{t * 1e6:.1f}µs"  # noqa: E731
     for label, sd_stmt, np_stmt, number in CASES:

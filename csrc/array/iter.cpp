@@ -20,7 +20,10 @@ int broadcast_into(std::span<const std::span<const std::int64_t>> shapes, Dims& 
         for (size_t d = 0; d < s.size(); ++d) {
             std::int64_t& o = out[offset + d];
             if (s[d] == o || s[d] == 1) continue;
-            if (o == 1) { o = s[d]; continue; }
+            if (o == 1) {
+                o = s[d];
+                continue;
+            }
             std::string msg = "shapes could not be broadcast together:";
             for (auto t : shapes) msg += " " + shape_str(t);
             throw nb::value_error(msg.c_str());
@@ -52,8 +55,9 @@ NdIter::NdIter(std::span<const std::int64_t> shape, std::span<const IterOperand>
             } else if (ops[k].shape[od] == shape[d]) {
                 strides_[k][d] = ops[k].strides[od];
             } else {
-                throw nb::value_error(("operand of shape " + shape_str(ops[k].shape) +
-                                       " cannot be broadcast to " + shape_str(shape)).c_str());
+                throw nb::value_error(("operand of shape " + shape_str(ops[k].shape) + " cannot be broadcast to " +
+                                       shape_str(shape))
+                                          .c_str());
             }
         }
     }
@@ -96,7 +100,8 @@ NdIter::NdIter(std::span<const std::int64_t> shape, std::span<const IterOperand>
         Dims shape_p;  // copies of the live part only
         std::array<Dims, kMaxOperands> strides_p;
         std::copy(shape_.begin(), shape_.begin() + ndim_, shape_p.begin());
-        for (int k = 0; k < nop_; ++k) std::copy(strides_[k].begin(), strides_[k].begin() + ndim_, strides_p[k].begin());
+        for (int k = 0; k < nop_; ++k)
+            std::copy(strides_[k].begin(), strides_[k].begin() + ndim_, strides_p[k].begin());
         for (int d = 0; d < ndim_; ++d) {
             shape_[d] = shape_p[perm[d]];
             for (int k = 0; k < nop_; ++k) strides_[k][d] = strides_p[k][perm[d]];
@@ -109,8 +114,7 @@ NdIter::NdIter(std::span<const std::int64_t> shape, std::span<const IterOperand>
             int out = 0;
             for (int d = 1; d < ndim_; ++d) {
                 bool mergeable = true;
-                for (int k = 0; k < nop_; ++k)
-                    mergeable = mergeable && strides_[k][out] == strides_[k][d] * shape_[d];
+                for (int k = 0; k < nop_; ++k) mergeable = mergeable && strides_[k][out] == strides_[k][d] * shape_[d];
                 if (mergeable) {
                     shape_[out] *= shape_[d];
                     for (int k = 0; k < nop_; ++k) strides_[k][out] = strides_[k][d];
@@ -141,8 +145,7 @@ NdIter::Plan NdIter::plan(Split split, std::int64_t weight) const {
     // (b & b with 4096-bool tasks ran 1.2x slower on 10 threads than on
     // one, docs/design/array.md §10.4). Wider or strided steps count as 8.
     std::int64_t bytes = 0;
-    for (int k = 0; k < nop_; ++k)
-        bytes = std::max(bytes, std::min<std::int64_t>(std::abs(strides_[k][ndim_ - 1]), 8));
+    for (int k = 0; k < nop_; ++k) bytes = std::max(bytes, std::min<std::int64_t>(std::abs(strides_[k][ndim_ - 1]), 8));
     p.work = weight * (bytes ? bytes : 8);
     for (int d = 0; d < ndim_; ++d) p.work *= shape_[d];
     const int axis = p.work >= 8 * kParallelThreshold ? split_axis(split) : -1;
@@ -214,7 +217,8 @@ void NdIter::run_serial(Loop kernel, void* ctx) const {
         // kTileCols lines (16 KB) stay in L1. (Row by row: 1000 x 1000 x.T + y
         // 552 us, numpy 480.)
         bool across = false;
-        for (int k = 0; k < nop_; ++k) across |= std::llabs(strides_[k][1]) > std::llabs(strides_[k][0]) && strides_[k][0] != 0;
+        for (int k = 0; k < nop_; ++k)
+            across |= std::llabs(strides_[k][1]) > std::llabs(strides_[k][0]) && strides_[k][0] != 0;
         constexpr std::int64_t kTileRows = 16, kTileCols = 128;
         if (across && shape_[0] >= kTileRows && shape_[1] >= 2 * kTileCols) {
             std::array<std::byte*, kMaxOperands> p;

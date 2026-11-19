@@ -31,10 +31,14 @@ PART = {"airy_ai": ("airy", 0), "airy_aip": ("airy", 1), "airy_bi": ("airy", 2),
 # is complex: its real part for the real files
 KW = {
     "lambertw_m1": ("lambertw", {"k": -1}),
-    "erf_complex": ("erf", {}), "erfc_complex": ("erfc", {}), "erfcx_complex": ("erfcx", {}),
+    "erf_complex": ("erf", {}),
+    "erfc_complex": ("erfc", {}),
+    "erfcx_complex": ("erfcx", {}),
     "loggamma_complex": ("loggamma", {}),
-    "lambertw_c0": ("lambertw", {"k": 0}), "lambertw_cm1": ("lambertw", {"k": -1}),
-    "lambertw_c1": ("lambertw", {"k": 1}), "lambertw_c4": ("lambertw", {"k": 4}),
+    "lambertw_c0": ("lambertw", {"k": 0}),
+    "lambertw_cm1": ("lambertw", {"k": -1}),
+    "lambertw_c1": ("lambertw", {"k": 1}),
+    "lambertw_c4": ("lambertw", {"k": 4}),
 }
 
 
@@ -57,17 +61,27 @@ def sd_function(name):
 # scipy.special.<name>. None: nothing to compare with.
 COUNTERPART = {
     "_cf_tan": "numpy.tan",
-    "airy_ai": "scipy.special.airy[0]", "airy_aip": "scipy.special.airy[1]",
-    "airy_bi": "scipy.special.airy[2]", "airy_bip": "scipy.special.airy[3]",
-    "lambertw_m1": "scipy.special.lambertw(k=-1).real", "lambertw": "scipy.special.lambertw.real",
+    "airy_ai": "scipy.special.airy[0]",
+    "airy_aip": "scipy.special.airy[1]",
+    "airy_bi": "scipy.special.airy[2]",
+    "airy_bip": "scipy.special.airy[3]",
+    "lambertw_m1": "scipy.special.lambertw(k=-1).real",
+    "lambertw": "scipy.special.lambertw.real",
     "zeta_hurwitz": "scipy.special.zeta",
-    "erf_complex": "scipy.special.erf", "erfc_complex": "scipy.special.erfc", "erfcx_complex": "scipy.special.erfcx",
+    "erf_complex": "scipy.special.erf",
+    "erfc_complex": "scipy.special.erfc",
+    "erfcx_complex": "scipy.special.erfcx",
     "loggamma_complex": "scipy.special.loggamma",
-    "lambertw_c0": "scipy.special.lambertw(k=0)", "lambertw_cm1": "scipy.special.lambertw(k=-1)",
-    "lambertw_c1": "scipy.special.lambertw(k=1)", "lambertw_c4": "scipy.special.lambertw(k=4)",
+    "lambertw_c0": "scipy.special.lambertw(k=0)",
+    "lambertw_cm1": "scipy.special.lambertw(k=-1)",
+    "lambertw_c1": "scipy.special.lambertw(k=1)",
+    "lambertw_c4": "scipy.special.lambertw(k=4)",
     # T2: scipy's chndtr takes x first; the upper tails exist only as scipy.stats sf
-    "chndtr": "scipy.special.chndtr(x, df, nc)", "chndtrix": "scipy.special.chndtrix(p, df, nc)",
-    "chndtrc": "scipy.stats.ncx2.sf", "nctdtrc": "scipy.stats.nct.sf", "ncfdtrc": "scipy.stats.ncf.sf",
+    "chndtr": "scipy.special.chndtr(x, df, nc)",
+    "chndtrix": "scipy.special.chndtrix(p, df, nc)",
+    "chndtrc": "scipy.stats.ncx2.sf",
+    "nctdtrc": "scipy.stats.nct.sf",
+    "ncfdtrc": "scipy.stats.ncf.sf",
 }
 
 
@@ -138,7 +152,9 @@ def sample_inputs(name, n, seed=0):
     """n inputs drawn (with replacement) from the guaranteed-region reference inputs:
     the distribution the function is measured on."""
     xs, _, _, guaranteed = ref_load(name)
-    pool = np.flatnonzero(guaranteed) if guaranteed.any() else np.arange(guaranteed.size)  # betaln: no guaranteed region
+    pool = (
+        np.flatnonzero(guaranteed) if guaranteed.any() else np.arange(guaranteed.size)
+    )  # betaln: no guaranteed region
     idx = np.random.default_rng(seed).choice(pool, n)
     return tuple(np.ascontiguousarray(x[idx]) for x in xs)
 

@@ -49,7 +49,9 @@ def reference(mu, cov, xs, df=None):
     def fn():
         A = arb_mat(cov.tolist())
         ld = A.det().log()
-        R = arb_mat([[float(x[i]) for x in xs] for i in range(d)]) - arb_mat([[float(mu[i])] * len(xs) for i in range(d)])
+        R = arb_mat([[float(x[i]) for x in xs] for i in range(d)]) - arb_mat(
+            [[float(mu[i])] * len(xs) for i in range(d)]
+        )
         Y = A.solve(R)
         pi = arb.pi()
         out = []
@@ -59,15 +61,25 @@ def reference(mu, cov, xs, df=None):
                 out.append(-(d * (2 * pi).log() + ld + q) / 2)
             else:
                 nu = arb(df)
-                out.append(((nu + d) / 2).lgamma() - (nu / 2).lgamma() - arb(d) / 2 * (nu * pi).log() - ld / 2
-                           - (nu + d) / 2 * (q / nu).log1p())
+                out.append(
+                    ((nu + d) / 2).lgamma()
+                    - (nu / 2).lgamma()
+                    - arb(d) / 2 * (nu * pi).log()
+                    - ld / 2
+                    - (nu + d) / 2 * (q / nu).log1p()
+                )
         if df is None:
             h = arb(d) / 2 * (1 + (2 * pi).log()) + ld / 2
         else:
             nu = arb(df)
             a, hh = nu / 2, arb(d) / 2
-            h = (ld / 2 + a.lgamma() - (a + hh).lgamma() + hh * (nu * pi).log()
-                 + (a + hh) * ((a + hh).digamma() - a.digamma()))
+            h = (
+                ld / 2
+                + a.lgamma()
+                - (a + hh).lgamma()
+                + hh * (nu * pi).log()
+                + (a + hh) * ((a + hh).digamma() - a.digamma())
+            )
         return (*out, h)
 
     *out, h = settled(fn)

@@ -77,8 +77,12 @@ def cases():
         d = {k: f[k] for k in f.files}
     for c in range(d["start"].size - 1):
         sl = slice(d["start"][c], d["start"][c + 1])
-        yield (d["x"][sl], (d["lse_hi"][c], d["lse_lo"][c]), (d["softmax_hi"][sl], d["softmax_lo"][sl]),
-               (d["log_softmax_hi"][sl], d["log_softmax_lo"][sl]))
+        yield (
+            d["x"][sl],
+            (d["lse_hi"][c], d["lse_lo"][c]),
+            (d["softmax_hi"][sl], d["softmax_lo"][sl]),
+            (d["log_softmax_hi"][sl], d["log_softmax_lo"][sl]),
+        )
 
 
 def test_reductions_accuracy():
@@ -92,7 +96,9 @@ def test_reductions_accuracy():
         rel = refdata.rel_error(got, sh, sl)
         absolute = np.abs((got - sh) - sl) / SUBNORMAL_ABS * 1e-14
         worst["softmax"] = max(worst["softmax"], float(np.where(sub, absolute, rel).max()))
-        worst["log_softmax"] = max(worst["log_softmax"], float(refdata.mixed_error(np.asarray(S.log_softmax(a)), gh, gl).max()))
+        worst["log_softmax"] = max(
+            worst["log_softmax"], float(refdata.mixed_error(np.asarray(S.log_softmax(a)), gh, gl).max())
+        )
     for name, w in worst.items():
         assert w <= 1e-14, (name, w)
 
@@ -109,15 +115,24 @@ def test_reduction_axes_and_shapes():
             assert np.allclose(np.asarray(got), want, rtol=1e-14, atol=0)
             assert np.shape(np.asarray(got)) == np.shape(want)
         assert np.allclose(np.asarray(S.softmax(a, axis=axis)), sp.softmax(x, axis=np_axis), rtol=1e-13, atol=0)
-        assert np.allclose(np.asarray(S.log_softmax(a, axis=axis)), sp.log_softmax(x, axis=np_axis), rtol=1e-13,
-                           atol=1e-15)
+        assert np.allclose(
+            np.asarray(S.log_softmax(a, axis=axis)), sp.log_softmax(x, axis=np_axis), rtol=1e-13, atol=1e-15
+        )
     assert isinstance(S.logsumexp(a), float)  # a 0-d result is a Python float
 
 
 @pytest.mark.filterwarnings("ignore:invalid value")  # scipy's own inf - inf
 def test_reduction_infinities_match_scipy():
-    for v in [[-np.inf, -np.inf], [np.inf, 1.0], [np.inf, -np.inf], [np.nan, 1.0], [np.inf, np.inf], [1e308, 1e308],
-              [-1e308, 0.0], [5.0]]:
+    for v in [
+        [-np.inf, -np.inf],
+        [np.inf, 1.0],
+        [np.inf, -np.inf],
+        [np.nan, 1.0],
+        [np.inf, np.inf],
+        [1e308, 1e308],
+        [-1e308, 0.0],
+        [5.0],
+    ]:
         x = np.array(v)
         a = sd.asarray(x)
         assert same_bits(S.logsumexp(a), sp.logsumexp(x)), v

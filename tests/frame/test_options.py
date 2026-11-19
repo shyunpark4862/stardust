@@ -70,8 +70,14 @@ def test_bool_options_take_true_or_false(owner, name, option, tmp_path):
 def test_int_arguments(obj, name):
     f = getattr(obj, name)
     assert len(f(2)) == 2 and len(f(-1)) == 2 and len(f(2**63 - 1)) == 3 and len(f(-(2**63))) == 0
-    for bad, shown in ((True, "bool"), (2.0, "float"), ("2", "str"), (None, "NoneType"), (np.True_, "numpy.bool"),
-                       (np.float64(2), "numpy.float64")):
+    for bad, shown in (
+        (True, "bool"),
+        (2.0, "float"),
+        ("2", "str"),
+        (None, "NoneType"),
+        (np.True_, "numpy.bool"),
+        (np.float64(2), "numpy.float64"),
+    ):
         with pytest.raises(TypeError, match=rf"^{name}\(\): 'n' must be an int, not {shown}$"):
             f(bad)
     assert len(f(np.int64(2))) == 2 and len(f(np.uint8(1))) == 1  # numpy integers (DESIGN.md §10.1 #13)
@@ -82,16 +88,19 @@ def test_int_arguments(obj, name):
             f(big)
 
 
-@pytest.mark.parametrize(("call", "option", "choices"), [
-    (lambda v: S.duplicated(keep=v), "keep", "'first', 'last' or 'none'"),
-    (lambda v: DF.drop_duplicates(keep=v), "keep", "'first', 'last' or 'none'"),
-    (lambda v: DF.dropna(how=v), "how", "'any' or 'all'"),
-    (lambda v: sd.frame.merge(DF, DF, on="a", how=v), "how", "'inner', 'left', 'right' or 'outer'"),
-    (lambda v: DF.merge(DF, on="a", how=v), "how", "'inner', 'left', 'right' or 'outer'"),
-    (lambda v: sd.frame.concat([S], join=v), "join", "'outer' or 'inner'"),
-    (lambda v: S.sort_values(na_position=v), "na_position", "'first' or 'last'"),
-    (lambda v: DF.sort_values(["a", "b"], na_position=["first", v]), "na_position", "'first' or 'last'"),
-])
+@pytest.mark.parametrize(
+    ("call", "option", "choices"),
+    [
+        (lambda v: S.duplicated(keep=v), "keep", "'first', 'last' or 'none'"),
+        (lambda v: DF.drop_duplicates(keep=v), "keep", "'first', 'last' or 'none'"),
+        (lambda v: DF.dropna(how=v), "how", "'any' or 'all'"),
+        (lambda v: sd.frame.merge(DF, DF, on="a", how=v), "how", "'inner', 'left', 'right' or 'outer'"),
+        (lambda v: DF.merge(DF, on="a", how=v), "how", "'inner', 'left', 'right' or 'outer'"),
+        (lambda v: sd.frame.concat([S], join=v), "join", "'outer' or 'inner'"),
+        (lambda v: S.sort_values(na_position=v), "na_position", "'first' or 'last'"),
+        (lambda v: DF.sort_values(["a", "b"], na_position=["first", v]), "na_position", "'first' or 'last'"),
+    ],
+)
 def test_string_options(call, option, choices):
     # not a str: TypeError; a str that is not a choice: ValueError, as in linalg (API.md §2)
     for bad, shown in ((0, "int"), (None, "NoneType"), (False, "bool"), (b"any", "bytes")):
@@ -101,20 +110,23 @@ def test_string_options(call, option, choices):
         call("x")
 
 
-@pytest.mark.parametrize("call", [
-    lambda g: DF.sort_values(g),
-    lambda g: DF.groupby(g),
-    lambda g: DF.duplicated(g),
-    lambda g: DF.drop_duplicates(g),
-    lambda g: DF.value_counts(g),
-    lambda g: DF.dropna(subset=g),
-    lambda g: sd.frame.merge(DF, DF, on=g),
-    lambda g: sd.frame.merge(DF, DF, left_on=g, right_on=["a"]),
-    lambda g: sd.frame.DataFrame({"a": [1]}, columns=g),
-    lambda g: sd.frame.concat(g),
-    lambda g: sd.frame.Index(g),
-    lambda g: S.reindex(g),
-])
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda g: DF.sort_values(g),
+        lambda g: DF.groupby(g),
+        lambda g: DF.duplicated(g),
+        lambda g: DF.drop_duplicates(g),
+        lambda g: DF.value_counts(g),
+        lambda g: DF.dropna(subset=g),
+        lambda g: sd.frame.merge(DF, DF, on=g),
+        lambda g: sd.frame.merge(DF, DF, left_on=g, right_on=["a"]),
+        lambda g: sd.frame.DataFrame({"a": [1]}, columns=g),
+        lambda g: sd.frame.concat(g),
+        lambda g: sd.frame.Index(g),
+        lambda g: S.reindex(g),
+    ],
+)
 def test_list_arguments_take_no_generators(call):
     # a list or a tuple, as sd.concat and the array area's list arguments (DESIGN.md §10.1 #12)
     with pytest.raises(TypeError, match="not generator"):

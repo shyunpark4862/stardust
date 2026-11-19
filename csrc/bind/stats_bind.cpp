@@ -40,16 +40,18 @@ void def_methods(nb::module_& m) {
 template <class D>
 void def_continuous(nb::module_& m) {
     using namespace stats::method;
-    def_methods<D, Pdf, Logpdf, Cdf, Logcdf, Ccdf, Logccdf, Icdf, Iccdf, Ilogcdf, Ilogccdf, Mean, Variance,
-                StandardDeviation, Skewness, Kurtosis, Median, Mode, Entropy, SupportLo, SupportHi>(m);
+    def_methods<
+        D, Pdf, Logpdf, Cdf, Logcdf, Ccdf, Logccdf, Icdf, Iccdf, Ilogcdf, Ilogccdf, Mean, Variance, StandardDeviation,
+        Skewness, Kurtosis, Median, Mode, Entropy, SupportLo, SupportHi>(m);
 }
 
 // Every method of a discrete distribution: pmf and logpmf in place of pdf and logpdf (T25).
 template <class D>
 void def_discrete(nb::module_& m) {
     using namespace stats::method;
-    def_methods<D, Pmf, Logpmf, Cdf, Logcdf, Ccdf, Logccdf, Icdf, Iccdf, Ilogcdf, Ilogccdf, Mean, Variance,
-                StandardDeviation, Skewness, Kurtosis, Median, Mode, Entropy, SupportLo, SupportHi>(m);
+    def_methods<
+        D, Pmf, Logpmf, Cdf, Logcdf, Ccdf, Logccdf, Icdf, Iccdf, Ilogcdf, Ilogccdf, Mean, Variance, StandardDeviation,
+        Skewness, Kurtosis, Median, Mode, Entropy, SupportLo, SupportHi>(m);
 }
 
 }  // namespace

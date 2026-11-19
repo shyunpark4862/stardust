@@ -20,7 +20,7 @@ _INT64_MIN, _INT64_MAX = -(2**63), 2**63 - 1
 
 
 def named(func, msg):
-    """"func(): msg", or msg alone when func is None."""
+    """ "func(): msg", or msg alone when func is None."""
     return msg if func is None else f"{func}(): {msg}"
 
 

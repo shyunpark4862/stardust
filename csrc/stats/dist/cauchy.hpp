@@ -39,7 +39,8 @@ struct Cauchy {
         const double z = std::fabs(num::standardize(x, mu, sigma).hi);
         if (std::isinf(z)) {  // sigma / (pi (x - mu)^2)
             const double d = x - mu;
-            const special::Scaled sd = std::isfinite(d) ? scaled(std::fabs(d)) : scaled(std::fabs(0.5 * x - 0.5 * mu)) * scaled(2.0);
+            const special::Scaled sd =
+                std::isfinite(d) ? scaled(std::fabs(d)) : scaled(std::fabs(0.5 * x - 0.5 * mu)) * scaled(2.0);
             return special::value(scaled(num::kInvPi.hi) * scaled(sigma) / (sd * sd));
         }
         // 1 / (pi sigma t), t = 1 + z^2, every factor as m 2^e: no over- or underflow on the way
@@ -114,7 +115,8 @@ struct Cauchy {
             const double z = zh[i], sigma = c.p[1][i];
             const double d = sigma * (1.0 + z * z);
             out[i] = num::kInvPi.hi / d;
-            fast[i] = std::fabs(z) < 1e150 && sigma >= 0x1p-900 && d <= 0x1p1000 && out[i] >= 0x1p-1000 && out[i] <= 0x1p1000;
+            fast[i] =
+                std::fabs(z) < 1e150 && sigma >= 0x1p-900 && d <= 0x1p1000 && out[i] >= 0x1p-1000 && out[i] <= 0x1p1000;
         }
         ck::fallback(c.n, fast, out, [&](int i) { return pdf(c.x[i], c.p[0][i], c.p[1][i]); });
     }
@@ -132,7 +134,8 @@ struct Cauchy {
             const num::DD l = -(num::DD{kh[i], kl[i]} + zl[i]);
             out[i] = l.hi + l.lo;
             const double v = std::fabs(out[i]);
-            fast[i] = std::fabs(zh[i]) < 1e150 && 4.0 + ck::kVfLog * zl[i] + v <= kFastBudget * std::max(1.0, v);  // false for NaN
+            fast[i] = std::fabs(zh[i]) < 1e150 &&
+                      4.0 + ck::kVfLog * zl[i] + v <= kFastBudget * std::max(1.0, v);  // false for NaN
         }
         ck::fallback(c.n, fast, out, [&](int i) { return logpdf(c.x[i], c.p[0][i], c.p[1][i]); });
     }

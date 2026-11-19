@@ -15,8 +15,9 @@ Out alloc(const std::vector<std::int64_t>& shape, std::vector<std::int64_t> stri
     return out;
 }
 
-std::int64_t fill_c_strides(const std::vector<std::int64_t>& shape, std::size_t count,
-                            std::vector<std::int64_t>& strides, std::int64_t block) {
+std::int64_t fill_c_strides(
+    const std::vector<std::int64_t>& shape, std::size_t count, std::vector<std::int64_t>& strides, std::int64_t block
+) {
     std::int64_t s = block;
     for (std::size_t d = count; d-- > 0;) {
         strides[d] = s;

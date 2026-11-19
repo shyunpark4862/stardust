@@ -48,7 +48,9 @@ void fminmax(const double* a, std::int64_t sa, const double* b, std::int64_t sb,
 template <>
 struct neon_binary<ops::Maximum, double> {
     static constexpr bool available = true;
-    static void run(const double* a, const double* b, double* o, std::int64_t n) { detail::fminmax<true>(a, 1, b, 1, o, n); }
+    static void run(const double* a, const double* b, double* o, std::int64_t n) {
+        detail::fminmax<true>(a, 1, b, 1, o, n);
+    }
     // One operand a broadcast scalar (maximum(x, 0.0), clip with one bound).
     static void run_scalar_b(const double* a, const double* b, double* o, std::int64_t n) {
         detail::fminmax<true>(a, 1, b, 0, o, n);
@@ -61,7 +63,9 @@ struct neon_binary<ops::Maximum, double> {
 template <>
 struct neon_binary<ops::Minimum, double> {
     static constexpr bool available = true;
-    static void run(const double* a, const double* b, double* o, std::int64_t n) { detail::fminmax<false>(a, 1, b, 1, o, n); }
+    static void run(const double* a, const double* b, double* o, std::int64_t n) {
+        detail::fminmax<false>(a, 1, b, 1, o, n);
+    }
     static void run_scalar_b(const double* a, const double* b, double* o, std::int64_t n) {
         detail::fminmax<false>(a, 1, b, 0, o, n);
     }
@@ -71,8 +75,9 @@ struct neon_binary<ops::Minimum, double> {
 };
 
 // clip = minimum(maximum(x, lo), hi) in one pass; lo/hi strides 0 or 1 (in elements).
-inline void neon_clip(const double* x, const double* lo, std::int64_t slo, const double* hi, std::int64_t shi, double* o,
-                      std::int64_t n) {
+inline void neon_clip(
+    const double* x, const double* lo, std::int64_t slo, const double* hi, std::int64_t shi, double* o, std::int64_t n
+) {
     std::int64_t i = 0;
     if (slo == 0 && shi == 0) {  // the usual clip(x, min=a, max=b): bounds splatted once
         const float64x2_t l = vld1q_dup_f64(lo), h = vld1q_dup_f64(hi);

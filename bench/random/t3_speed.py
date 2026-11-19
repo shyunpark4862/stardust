@@ -1,6 +1,6 @@
 """T3: sd.random against numpy's Generator (PCG64, the default, and Philox), 10^6 elements.
 
-    .venv/bin/python bench/random/t3_speed.py > bench/random/t3_speed.md
+.venv/bin/python bench/random/t3_speed.py > bench/random/t3_speed.md
 """
 
 import timeit
@@ -26,11 +26,18 @@ def main():
     cases = [
         ("random(10^6)", lambda: r.random(N), lambda g: g.random(N)),
         ("integers(0, 1000, shape=10^6)", lambda: r.integers(0, 1000, shape=N), lambda g: g.integers(0, 1000, N)),
-        ("integers(-2^62, 2^62, shape=10^6)", lambda: r.integers(-2**62, 2**62, shape=N), lambda g: g.integers(-2**62, 2**62, N)),
+        (
+            "integers(-2^62, 2^62, shape=10^6)",
+            lambda: r.integers(-(2**62), 2**62, shape=N),
+            lambda g: g.integers(-(2**62), 2**62, N),
+        ),
         ("choice(1000, shape=10^6)", lambda: r.choice(1000, shape=N), lambda g: g.choice(1000, N)),
         ("choice(1000, shape=10^6, p=...)", lambda: r.choice(1000, shape=N, p=p), lambda g: g.choice(1000, N, p=pn)),
-        ("choice(10^6, shape=1000, replace=False)", lambda: r.choice(N, shape=1000, replace=False),
-         lambda g: g.choice(N, 1000, replace=False)),
+        (
+            "choice(10^6, shape=1000, replace=False)",
+            lambda: r.choice(N, shape=1000, replace=False),
+            lambda g: g.choice(N, 1000, replace=False),
+        ),
         ("permutation(10^6)", lambda: r.permutation(N), lambda g: g.permutation(N)),
         ("permutation(float64 array 10^6)", lambda: r.permutation(x), lambda g: g.permutation(xn)),
     ]
@@ -44,7 +51,10 @@ def main():
             sd.set_num_threads(10)
             t10 = best(f)
             tp, tx = best(lambda: g(pcg)), best(lambda: g(phx))
-            print(f"| `{name}` | {t1:.2f} | {t10:.2f} | {tp:.2f} | {tx:.2f} | {tp / t1:.2f} | {tp / t10:.1f} |", flush=True)
+            print(
+                f"| `{name}` | {t1:.2f} | {t10:.2f} | {tp:.2f} | {tx:.2f} | {tp / t1:.2f} | {tp / t10:.1f} |",
+                flush=True,
+            )
     finally:
         sd.set_num_threads(before)
 

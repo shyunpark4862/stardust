@@ -112,7 +112,9 @@ def test_norm_layouts_agree():
         sq = x[:29, :29] + 40 * np.eye(29)
         for o in ("fro", 1, math.inf):
             inv = npy(sd.linalg.inv(as_sd(sq)))
-            assert sd.linalg.cond(as_sd(sq), ord=o) == sd.linalg.matrix_norm(as_sd(sq), ord=o) * sd.linalg.matrix_norm(as_sd(inv), ord=o)
+            assert sd.linalg.cond(as_sd(sq), ord=o) == sd.linalg.matrix_norm(as_sd(sq), ord=o) * sd.linalg.matrix_norm(
+                as_sd(inv), ord=o
+            )
 
 
 # ------------------------------------------------- workspace once per batch --

@@ -34,8 +34,10 @@ inline double norm1(cplx a) { return std::fabs(a.real()) + std::fabs(a.imag()); 
 inline cplx clog(cplx z) {
     const double x = z.real(), y = z.imag();
     const double m = std::max(std::fabs(x), std::fabs(y));
-    if (m > 0x1p1000 && m < kInf) return {std::log(std::hypot(x * 0x1p-100, y * 0x1p-100)) + 100.0 * 0.69314718055994530942, std::atan2(y, x)};
-    if (m < 0x1p-900 && m > 0.0) return {std::log(std::hypot(x * 0x1p200, y * 0x1p200)) - 200.0 * 0.69314718055994530942, std::atan2(y, x)};
+    if (m > 0x1p1000 && m < kInf)
+        return {std::log(std::hypot(x * 0x1p-100, y * 0x1p-100)) + 100.0 * 0.69314718055994530942, std::atan2(y, x)};
+    if (m < 0x1p-900 && m > 0.0)
+        return {std::log(std::hypot(x * 0x1p200, y * 0x1p200)) - 200.0 * 0.69314718055994530942, std::atan2(y, x)};
     return {std::log(std::hypot(x, y)), std::atan2(y, x)};
 }
 // log(1 + w) for small w: Re = log1p(2 Re w + |w|^2) / 2, Im = atan2(Im w, 1 + Re w)

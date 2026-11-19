@@ -172,16 +172,30 @@ def test_infinite_and_zero_limits():
 
 def test_nan_where_no_value():
     # J, Y past the recurrences' reach; airy past the phase's; the loose hypergeometric regions
-    for v in (S.jv(1e100, 1e100), S.jv(1e10, 1e12), S.yv(1e10, 1e16), S.airy(-1e21)[0], S.hyp1f1(-1e12 - 0.5, -2.5, -1e12 - 0.5),
-              S.hyp2f1(10.0, -100.5, 1e-10, 0.9), S.hyp2f1(1e5, 1e5, 10.0, -100.5)):
+    for v in (
+        S.jv(1e100, 1e100),
+        S.jv(1e10, 1e12),
+        S.yv(1e10, 1e16),
+        S.airy(-1e21)[0],
+        S.hyp1f1(-1e12 - 0.5, -2.5, -1e12 - 0.5),
+        S.hyp2f1(10.0, -100.5, 1e-10, 0.9),
+        S.hyp2f1(1e5, 1e5, 10.0, -100.5),
+    ):
         assert math.isnan(v)
     # hyp1f1 where no form with a known loss applies (|a| or |b| above 100 with b < 0; Boost's
     # values there were wrong by orders of magnitude: 2.4e187 for 2.5e67 at the third point)
-    for a, b, x in ((137.5, -33.5, -4.3177496217381481), (-11224.0, -102.60187231307339, 1.0), (8534.5, -102.5, -3.8173757356474955)):
+    for a, b, x in (
+        (137.5, -33.5, -4.3177496217381481),
+        (-11224.0, -102.60187231307339, 1.0),
+        (8534.5, -102.5, -3.8173757356474955),
+    ):
         assert math.isnan(S.hyp1f1(a, b, x)), (a, b, x)
     # hyp2f1 sums that lost every digit to cancellation (they were 2.0 - 1e-10 off, 0 and 5e-12 off)
-    for a, b, c, z in ((2.0, -1e-300, 1e-300, -1e5), (-0.065882317250010827, -293.0, -1.5726074559891865, 0.30391397664010666),
-                       (20.0, 20.0, 0.5, -10.0)):
+    for a, b, c, z in (
+        (2.0, -1e-300, 1e-300, -1e5),
+        (-0.065882317250010827, -293.0, -1.5726074559891865, 0.30391397664010666),
+        (20.0, 20.0, 0.5, -10.0),
+    ):
         assert math.isnan(S.hyp2f1(a, b, c, z)), (a, b, c, z)
     # the noncentral F's small side as the complement of a side within 1/64 of 1 (they were
     # 2.2e-16 for 3.4e-298, 0 for 3.5e-298 and 4e7 ULP off)
@@ -206,15 +220,36 @@ def test_complex_ends():
 
 # calls that did not return (or took seconds, or crashed the process): each is now well under a second
 BOUNDED = [
-    ("airy", (1e250,)), ("polygamma", (1e300, 100.5)), ("polygamma", (1e10, 1e5)), ("jv", (MAXD, 1e300)), ("jv", (1e10, 1e12)),
-    ("jv", (1e100, 1e100)), ("yv", (MAXD, 0.5)), ("yv", (1e10, 1e16)), ("iv", (2.0, 1e300)), ("iv", (-0.5, 1e12)),
-    ("kv", (0.5, 5e-324)), ("hyp1f1", (MAXD, -100.5, -1e16)), ("hyp1f1", (1e300, 2.0, MAXD)), ("hyp1f1", (1e-300, -100.5, 2.0)),
-    ("hyp1f1", (-1e5, -MAXD, -1e300)), ("hyp1f1", (1e12, -1e5 - 0.5, -1e12 - 0.5)), ("hyp2f1", (1e300, 1e300, 1e5, -1e300)),
-    ("hyp2f1", (1e5, 1e5, 10.0, -100.5)), ("hyp2f1", (1e16, 1e16, 3.0, -1e5)), ("zeta", (3.0, -1e15 - 0.5)),
-    ("betaincinv", (1e100, 2.5, 0.3)), ("betaincinv", (1e300, 1e200, 1e-10)), ("gammaincinv", (1e300, 1e-200)),
+    ("airy", (1e250,)),
+    ("polygamma", (1e300, 100.5)),
+    ("polygamma", (1e10, 1e5)),
+    ("jv", (MAXD, 1e300)),
+    ("jv", (1e10, 1e12)),
+    ("jv", (1e100, 1e100)),
+    ("yv", (MAXD, 0.5)),
+    ("yv", (1e10, 1e16)),
+    ("iv", (2.0, 1e300)),
+    ("iv", (-0.5, 1e12)),
+    ("kv", (0.5, 5e-324)),
+    ("hyp1f1", (MAXD, -100.5, -1e16)),
+    ("hyp1f1", (1e300, 2.0, MAXD)),
+    ("hyp1f1", (1e-300, -100.5, 2.0)),
+    ("hyp1f1", (-1e5, -MAXD, -1e300)),
+    ("hyp1f1", (1e12, -1e5 - 0.5, -1e12 - 0.5)),
+    ("hyp2f1", (1e300, 1e300, 1e5, -1e300)),
+    ("hyp2f1", (1e5, 1e5, 10.0, -100.5)),
+    ("hyp2f1", (1e16, 1e16, 3.0, -1e5)),
+    ("zeta", (3.0, -1e15 - 0.5)),
+    ("betaincinv", (1e100, 2.5, 0.3)),
+    ("betaincinv", (1e300, 1e200, 1e-10)),
+    ("gammaincinv", (1e300, 1e-200)),
     ("gammainccinv", (1e100, 5e-324)),
-    ("hyp1f1", (-1e6, 2.5, 0.9)), ("hyp1f1", (-999999.5, 2.5, 0.9)), ("hyp1f1", (1e6, 0.5, 1e6)), ("hyp2f1", (1e5, 1e5, 0.5, 0.8999)),
-    ("binom", (1e300, 1e299)), ("binom", (1e300, -1e299 - 0.5)),
+    ("hyp1f1", (-1e6, 2.5, 0.9)),
+    ("hyp1f1", (-999999.5, 2.5, 0.9)),
+    ("hyp1f1", (1e6, 0.5, 1e6)),
+    ("hyp2f1", (1e5, 1e5, 0.5, 0.8999)),
+    ("binom", (1e300, 1e299)),
+    ("binom", (1e300, -1e299 - 0.5)),
 ]
 
 

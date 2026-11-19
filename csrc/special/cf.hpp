@@ -84,7 +84,8 @@ CfResult lentz_backward(double b0, Term&& term, int max_terms) {
             if (n <= kKept) as[n] = ab.first, bs[n] = ab.second;
             return ab;
         },
-        max_terms);
+        max_terms
+    );
     const int last = r.terms + 4;
     double t = 0.0;
     for (int k = last; k >= 1; --k) {

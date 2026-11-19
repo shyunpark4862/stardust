@@ -87,8 +87,7 @@ class FirstRow {
 public:
     void offer(std::int64_t row) {
         std::int64_t cur = row_.load(std::memory_order_relaxed);
-        while (row < cur && !row_.compare_exchange_weak(cur, row, std::memory_order_relaxed)) {
-        }
+        while (row < cur && !row_.compare_exchange_weak(cur, row, std::memory_order_relaxed)) {}
     }
     // True when an index before `row` already failed: a task past it can stop.
     bool failed_before(std::int64_t row) const { return row_.load(std::memory_order_relaxed) < row; }

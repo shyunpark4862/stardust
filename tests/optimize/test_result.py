@@ -10,8 +10,18 @@ R = sd.optimize.OptimizeResult
 
 
 def one():
-    return R(x=sd.asarray([1.0, 2.0]), fun=0.5, jac=sd.asarray([1e-9, -2e-9]), converged=True, status=0,
-             message="Optimization terminated successfully.", n_iter=3, nfev=5, njev=4, method="bfgs")
+    return R(
+        x=sd.asarray([1.0, 2.0]),
+        fun=0.5,
+        jac=sd.asarray([1e-9, -2e-9]),
+        converged=True,
+        status=0,
+        message="Optimization terminated successfully.",
+        n_iter=3,
+        nfev=5,
+        njev=4,
+        method="bfgs",
+    )
 
 
 def test_exported_from_sd_optimize():

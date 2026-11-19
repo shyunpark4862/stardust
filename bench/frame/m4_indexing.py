@@ -36,9 +36,16 @@ def first_lookup(make):
     return best
 
 
-lines = ["# M4: indexing", "", "Environment: " + ", ".join(f"{k} {v}" for k, v in env_info().items()), "",
-         "1M rows with unique string labels in random order. Minimum per-call time. Single thread.", "",
-         "| case | ours | pandas |", "|---|---:|---:|"]
+lines = [
+    "# M4: indexing",
+    "",
+    "Environment: " + ", ".join(f"{k} {v}" for k, v in env_info().items()),
+    "",
+    "1M rows with unique string labels in random order. Minimum per-call time. Single thread.",
+    "",
+    "| case | ours | pandas |",
+    "|---|---:|---:|",
+]
 
 
 def row(name, t_ours, t_pd):
@@ -46,9 +53,11 @@ def row(name, t_ours, t_pd):
     print(lines[-1], flush=True)
 
 
-row("first .loc[label] (builds the lookup table)",
+row(
+    "first .loc[label] (builds the lookup table)",
     first_lookup(lambda: sdpd.Series(values, index=labels)),
-    first_lookup(lambda: pd.Series(values, index=pd.Index(labels, dtype="str"))))
+    first_lookup(lambda: pd.Series(values, index=pd.Index(labels, dtype="str"))),
+)
 for name, fo, fp in [
     (".loc[label] (table built)", lambda: o.loc[labels[123]], lambda: p.loc[labels[123]]),
     (".loc[1,000 labels]", lambda: o.loc[some], lambda: p.loc[some]),
@@ -98,6 +107,9 @@ def mask_assign_p():
     df_p.loc[mask_p, "a"] = 0
 
 
-row("df.loc[mask, 'a'] = 0 (~50% rows)", per_call_ns(mask_assign_o, target_s=0.2, repeats=5),
-    per_call_ns(mask_assign_p, target_s=0.2, repeats=5))
+row(
+    "df.loc[mask, 'a'] = 0 (~50% rows)",
+    per_call_ns(mask_assign_o, target_s=0.2, repeats=5),
+    per_call_ns(mask_assign_p, target_s=0.2, repeats=5),
+)
 (pathlib.Path(__file__).parent / "results" / "m4-indexing.md").write_text("\n".join(lines) + "\n")

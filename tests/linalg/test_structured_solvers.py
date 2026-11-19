@@ -116,7 +116,9 @@ def test_tridiagonal_rules():
     x = npy(sd.linalg.solve_tridiagonal(as_sd(np.stack([dl, dl])), as_sd(d), as_sd(du), as_sd(np.ones(5))))
     assert x.shape == (2, 5)
     # empty: n = 0 takes length-0 off-diagonals
-    assert npy(sd.linalg.solve_tridiagonal(as_sd(np.zeros(0)), as_sd(np.zeros(0)), as_sd(np.zeros(0)), as_sd(np.ones((0, 2))))).shape == (0, 2)
+    assert npy(
+        sd.linalg.solve_tridiagonal(as_sd(np.zeros(0)), as_sd(np.zeros(0)), as_sd(np.zeros(0)), as_sd(np.ones((0, 2))))
+    ).shape == (0, 2)
     with pytest.raises(ValueError, match=r"'dl' must have length 4 \(one less than 'd'\), got 5"):
         sd.linalg.solve_tridiagonal(as_sd(np.zeros(5)), as_sd(d), as_sd(du), as_sd(np.ones(5)))
     with pytest.raises(ValueError, match=r"'du' must have length 4"):
@@ -146,7 +148,14 @@ def test_tridiagonal_rules():
 def band_parts(rng, batch, n, kl, ku, dtype):
     """Band storage of a safely nonsingular band matrix (bool: unit lower band);
     ab's corners outside the matrix are NaN (float) or junk (int, bool)."""
-    a = well_conditioned(rng, batch, n, dtype) if n else np.zeros((*batch, 0, 0), {"bool": np.bool_, "int64": np.int64, "float64": np.float64, "complex128": np.complex128}[dtype])
+    a = (
+        well_conditioned(rng, batch, n, dtype)
+        if n
+        else np.zeros(
+            (*batch, 0, 0),
+            {"bool": np.bool_, "int64": np.int64, "float64": np.float64, "complex128": np.complex128}[dtype],
+        )
+    )
     i, j = np.indices((n, n))
     a = np.where((i - j <= kl) & (j - i <= ku), a, np.zeros((), a.dtype))
     if dtype in ("float64", "complex128"):
@@ -220,8 +229,12 @@ def test_banded_rules():
     ab_wide = np.full((9, 2), np.nan)
     ab_wide[4] = [2.0, 4.0]  # the diagonal
     ab_wide[3, 1] = ab_wide[5, 0] = 0.0  # a[0, 1], a[1, 0]: the only other elements inside the matrix
-    assert npy(sd.linalg.solve_banded(as_sd(ab_wide), as_sd(np.array([2.0, 8.0])), lower_bandwidth=4, upper_bandwidth=4)).tolist() == [1.0, 2.0]
-    with pytest.raises(ValueError, match=r"'ab' must have lower_bandwidth \+ upper_bandwidth \+ 1 rows \(2 \+ 1 \+ 1\), got 3"):
+    assert npy(
+        sd.linalg.solve_banded(as_sd(ab_wide), as_sd(np.array([2.0, 8.0])), lower_bandwidth=4, upper_bandwidth=4)
+    ).tolist() == [1.0, 2.0]
+    with pytest.raises(
+        ValueError, match=r"'ab' must have lower_bandwidth \+ upper_bandwidth \+ 1 rows \(2 \+ 1 \+ 1\), got 3"
+    ):
         sd.linalg.solve_banded(as_sd(ab), as_sd(b), lower_bandwidth=2, upper_bandwidth=1)
     with pytest.raises(ValueError, match="must have lower_bandwidth"):  # no overflow in the sum
         sd.linalg.solve_banded(as_sd(ab), as_sd(b), lower_bandwidth=2**62, upper_bandwidth=2**62)
@@ -248,7 +261,9 @@ def test_banded_rules():
     abs_ = np.stack([np.ones((1, 6)), np.zeros((1, 6))])
     with pytest.raises(sd.linalg.LinAlgError, match=r"singular matrix \(at batch index \(1,\)\)"):
         sd.linalg.solve_banded(as_sd(abs_), as_sd(np.ones(6)), lower_bandwidth=0, upper_bandwidth=0)
-    assert npy(sd.linalg.solve_banded(as_sd(np.zeros((3, 0))), as_sd(np.zeros(0)), lower_bandwidth=1, upper_bandwidth=1)).shape == (0,)
+    assert npy(
+        sd.linalg.solve_banded(as_sd(np.zeros((3, 0))), as_sd(np.zeros(0)), lower_bandwidth=1, upper_bandwidth=1)
+    ).shape == (0,)
 
 
 # --------------------------------------------------------- solve_sylvester --
@@ -286,7 +301,9 @@ def test_sylvester_rules():
     rng = np.random.default_rng(2)
     a, b, c = rng.standard_normal((3, 3)), rng.standard_normal((2, 2)), rng.standard_normal((3, 2))
     # the scalar case: x = c / (a + b)
-    assert npy(sd.linalg.solve_sylvester(as_sd(np.array([[2.0]])), as_sd(np.array([[3.0]])), as_sd(np.array([[10.0]])))).tolist() == [[2.0]]
+    assert npy(
+        sd.linalg.solve_sylvester(as_sd(np.array([[2.0]])), as_sd(np.array([[3.0]])), as_sd(np.array([[10.0]])))
+    ).tolist() == [[2.0]]
     # a and -b with a common eigenvalue: no solution (or infinitely many)
     with pytest.raises(sd.linalg.LinAlgError, match="a and -b have a common or close eigenvalue"):
         sd.linalg.solve_sylvester(as_sd(np.eye(2)), as_sd(-np.eye(2)), as_sd(np.ones((2, 2))))

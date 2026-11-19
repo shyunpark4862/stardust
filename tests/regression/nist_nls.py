@@ -11,13 +11,33 @@ DATA = os.path.join(os.path.dirname(__file__), "data", "nls")
 
 # name -> (difficulty, number of parameters); the order of NIST's table
 PROBLEMS = {
-    "Misra1a": ("lower", 2), "Chwirut2": ("lower", 3), "Chwirut1": ("lower", 3), "Lanczos3": ("lower", 6),
-    "Gauss1": ("lower", 8), "Gauss2": ("lower", 8), "DanWood": ("lower", 2), "Misra1b": ("lower", 2),
-    "Kirby2": ("average", 5), "Hahn1": ("average", 7), "Nelson": ("average", 3), "MGH17": ("average", 5),
-    "Lanczos1": ("average", 6), "Lanczos2": ("average", 6), "Gauss3": ("average", 8), "Misra1c": ("average", 2),
-    "Misra1d": ("average", 2), "Roszman1": ("average", 4), "ENSO": ("average", 9),
-    "MGH09": ("higher", 4), "Thurber": ("higher", 7), "BoxBOD": ("higher", 2), "Rat42": ("higher", 3),
-    "MGH10": ("higher", 3), "Eckerle4": ("higher", 3), "Rat43": ("higher", 4), "Bennett5": ("higher", 3),
+    "Misra1a": ("lower", 2),
+    "Chwirut2": ("lower", 3),
+    "Chwirut1": ("lower", 3),
+    "Lanczos3": ("lower", 6),
+    "Gauss1": ("lower", 8),
+    "Gauss2": ("lower", 8),
+    "DanWood": ("lower", 2),
+    "Misra1b": ("lower", 2),
+    "Kirby2": ("average", 5),
+    "Hahn1": ("average", 7),
+    "Nelson": ("average", 3),
+    "MGH17": ("average", 5),
+    "Lanczos1": ("average", 6),
+    "Lanczos2": ("average", 6),
+    "Gauss3": ("average", 8),
+    "Misra1c": ("average", 2),
+    "Misra1d": ("average", 2),
+    "Roszman1": ("average", 4),
+    "ENSO": ("average", 9),
+    "MGH09": ("higher", 4),
+    "Thurber": ("higher", 7),
+    "BoxBOD": ("higher", 2),
+    "Rat42": ("higher", 3),
+    "MGH10": ("higher", 3),
+    "Eckerle4": ("higher", 3),
+    "Rat43": ("higher", 4),
+    "Bennett5": ("higher", 3),
 }
 NAMES = list(PROBLEMS)
 
@@ -29,10 +49,10 @@ def load(name):
         lines = fh.read().replace("\r", "").splitlines()
     head = "\n".join(lines[:12])
     a, b = map(int, re.search(r"Data\s+\(lines (\d+) to (\d+)\)", head).groups())
-    rows = [ln.split() for ln in lines[a - 1:b] if ln.strip()]
+    rows = [ln.split() for ln in lines[a - 1 : b] if ln.strip()]
     start1, start2, params, bse = [], [], [], []
     ssr = rsd = None
-    for ln in lines[:a - 1]:
+    for ln in lines[: a - 1]:
         m = re.match(r"\s*b(\d+)\s*=\s*(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s*$", ln)
         if m:
             start1.append(m.group(2))
@@ -46,8 +66,17 @@ def load(name):
         if m:
             rsd = m.group(1)
     assert len(params) == PROBLEMS[name][1], name
-    return {"name": name, "y": [r[0] for r in rows], "x": [r[1:] for r in rows], "start1": start1,
-            "start2": start2, "params": params, "bse": bse, "ssr": ssr, "rsd": rsd}
+    return {
+        "name": name,
+        "y": [r[0] for r in rows],
+        "x": [r[1:] for r in rows],
+        "start1": start1,
+        "start2": start2,
+        "params": params,
+        "bse": bse,
+        "ssr": ssr,
+        "rsd": rsd,
+    }
 
 
 def data(d, xp):
@@ -63,7 +92,7 @@ def data(d, xp):
 
 def _rational(x, b, k, xp):
     """(N, D, powers): N = b1 + ... + b_{k} x^(k-1), D = 1 + b_{k+1} x + ..."""
-    pw = [x ** 0 * 1.0]
+    pw = [x**0 * 1.0]
     for _ in range(max(k, len(b) - k + 1)):
         pw.append(pw[-1] * x)
     N = sum(b[i] * pw[i] for i in range(k))
@@ -94,18 +123,27 @@ def model(name, xp):
             e2, e4, e6 = exp(-b2 * x), exp(-b4 * x), exp(-b6 * x)
             return J(e2, -b1 * x * e2, e4, -b3 * x * e4, e6, -b5 * x * e6)
     elif name.startswith("Gauss"):
+
         def f(x, b1, b2, b3, b4, b5, b6, b7, b8):
-            return b1 * exp(-b2 * x) + b3 * exp(-(x - b4) ** 2 / b5 ** 2) + b6 * exp(-(x - b7) ** 2 / b8 ** 2)
+            return b1 * exp(-b2 * x) + b3 * exp(-((x - b4) ** 2) / b5**2) + b6 * exp(-((x - b7) ** 2) / b8**2)
 
         def jac(x, b1, b2, b3, b4, b5, b6, b7, b8):
             e1 = exp(-b2 * x)
-            g1 = exp(-(x - b4) ** 2 / b5 ** 2)
-            g2 = exp(-(x - b7) ** 2 / b8 ** 2)
-            return J(e1, -b1 * x * e1, g1, b3 * g1 * 2 * (x - b4) / b5 ** 2, b3 * g1 * 2 * (x - b4) ** 2 / b5 ** 3,
-                     g2, b6 * g2 * 2 * (x - b7) / b8 ** 2, b6 * g2 * 2 * (x - b7) ** 2 / b8 ** 3)
+            g1 = exp(-((x - b4) ** 2) / b5**2)
+            g2 = exp(-((x - b7) ** 2) / b8**2)
+            return J(
+                e1,
+                -b1 * x * e1,
+                g1,
+                b3 * g1 * 2 * (x - b4) / b5**2,
+                b3 * g1 * 2 * (x - b4) ** 2 / b5**3,
+                g2,
+                b6 * g2 * 2 * (x - b7) / b8**2,
+                b6 * g2 * 2 * (x - b7) ** 2 / b8**3,
+            )
     elif name == "DanWood":
-        f = lambda x, b1, b2: b1 * x ** b2
-        jac = lambda x, b1, b2: J(x ** b2, b1 * x ** b2 * log(x))
+        f = lambda x, b1, b2: b1 * x**b2
+        jac = lambda x, b1, b2: J(x**b2, b1 * x**b2 * log(x))
     elif name == "Misra1b":
         f = lambda x, b1, b2: b1 * (1 - (1 + b2 * x / 2) ** -2)
         jac = lambda x, b1, b2: J(1 - (1 + b2 * x / 2) ** -2, b1 * x * (1 + b2 * x / 2) ** -3)
@@ -118,7 +156,7 @@ def model(name, xp):
 
         def jac(x, *b):
             N, D, pw = _rational(x, b, k, xp)
-            return J(*([pw[i] / D for i in range(k)] + [-N * pw[i + 1] / D ** 2 for i in range(len(b) - k)]))
+            return J(*([pw[i] / D for i in range(k)] + [-N * pw[i + 1] / D**2 for i in range(len(b) - k)]))
     elif name == "Nelson":
         f = lambda x, b1, b2, b3: b1 - b2 * x[:, 0] * exp(-b3 * x[:, 1])
 
@@ -144,22 +182,39 @@ def model(name, xp):
             a = b3 / (x - b4)
             return J(one(x), -x, -(1 / (x - b4)) / (1 + a * a) / pi, -(b3 / (x - b4) ** 2) / (1 + a * a) / pi)
     elif name == "ENSO":
+
         def f(x, b1, b2, b3, b4, b5, b6, b7, b8, b9):
             t = 2 * pi * x
-            return (b1 + b2 * cos(t / 12) + b3 * sin(t / 12) + b5 * cos(t / b4) + b6 * sin(t / b4)
-                    + b8 * cos(t / b7) + b9 * sin(t / b7))
+            return (
+                b1
+                + b2 * cos(t / 12)
+                + b3 * sin(t / 12)
+                + b5 * cos(t / b4)
+                + b6 * sin(t / b4)
+                + b8 * cos(t / b7)
+                + b9 * sin(t / b7)
+            )
 
         def jac(x, b1, b2, b3, b4, b5, b6, b7, b8, b9):
             t = 2 * pi * x
             c4, s4, c7, s7 = cos(t / b4), sin(t / b4), cos(t / b7), sin(t / b7)
-            return J(one(x), cos(t / 12), sin(t / 12), (t / b4 ** 2) * (b5 * s4 - b6 * c4), c4, s4,
-                     (t / b7 ** 2) * (b8 * s7 - b9 * c7), c7, s7)
+            return J(
+                one(x),
+                cos(t / 12),
+                sin(t / 12),
+                (t / b4**2) * (b5 * s4 - b6 * c4),
+                c4,
+                s4,
+                (t / b7**2) * (b8 * s7 - b9 * c7),
+                c7,
+                s7,
+            )
     elif name == "MGH09":
-        f = lambda x, b1, b2, b3, b4: b1 * (x ** 2 + x * b2) / (x ** 2 + x * b3 + b4)
+        f = lambda x, b1, b2, b3, b4: b1 * (x**2 + x * b2) / (x**2 + x * b3 + b4)
 
         def jac(x, b1, b2, b3, b4):
-            N, D = x ** 2 + x * b2, x ** 2 + x * b3 + b4
-            return J(N / D, b1 * x / D, -b1 * N * x / D ** 2, -b1 * N / D ** 2)
+            N, D = x**2 + x * b2, x**2 + x * b3 + b4
+            return J(N / D, b1 * x / D, -b1 * N * x / D**2, -b1 * N / D**2)
     elif name == "Rat42":
         f = lambda x, b1, b2, b3: b1 / (1 + exp(b2 - b3 * x))
 
@@ -178,7 +233,7 @@ def model(name, xp):
         def jac(x, b1, b2, b3):
             z = (x - b3) / b2
             g = exp(-0.5 * z * z)
-            return J(g / b2, (b1 / b2 ** 2) * g * (z * z - 1), b1 * g * z / b2 ** 2)
+            return J(g / b2, (b1 / b2**2) * g * (z * z - 1), b1 * g * z / b2**2)
     elif name == "Rat43":
         f = lambda x, b1, b2, b3, b4: b1 / ((1 + exp(b2 - b3 * x)) ** (1 / b4))
 
@@ -186,13 +241,13 @@ def model(name, xp):
             e = exp(b2 - b3 * x)
             u = 1 + e
             v = u ** (-1 / b4)
-            return J(v, -b1 / b4 * v / u * e, b1 / b4 * v / u * e * x, b1 * v * log(u) / b4 ** 2)
+            return J(v, -b1 / b4 * v / u * e, b1 / b4 * v / u * e * x, b1 * v * log(u) / b4**2)
     elif name == "Bennett5":
         f = lambda x, b1, b2, b3: b1 * (b2 + x) ** (-1 / b3)
 
         def jac(x, b1, b2, b3):
             v = (b2 + x) ** (-1 / b3)
-            return J(v, -b1 / b3 * v / (b2 + x), b1 * v * log(b2 + x) / b3 ** 2)
+            return J(v, -b1 / b3 * v / (b2 + x), b1 * v * log(b2 + x) / b3**2)
     else:
         raise KeyError(name)
     return f, jac

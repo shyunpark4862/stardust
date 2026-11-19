@@ -119,7 +119,8 @@ private:
                 if (want < kSmall) {
                     const std::size_t size = (want + kLine - 1) / kLine * kLine;
                     p = std::unique_ptr<std::byte[], Free>(
-                        static_cast<std::byte*>(::operator new[](size, std::align_val_t{kLine})), Free{true});
+                        static_cast<std::byte*>(::operator new[](size, std::align_val_t{kLine})), Free{true}
+                    );
                     n = size;
                 } else {
                     p = std::unique_ptr<std::byte[], Free>(new std::byte[want], Free{false});
@@ -189,8 +190,7 @@ Failure run_batch(const Batch& b, double element_ns, F&& body, int max_tasks = 0
                 if (const int code = body(i, static_cast<const std::int64_t*>(offs), scratch)) {
                     fails[static_cast<std::size_t>(t)] = {i, code};
                     std::int64_t cur = first.load(std::memory_order_relaxed);
-                    while (i < cur && !first.compare_exchange_weak(cur, i, std::memory_order_relaxed)) {
-                    }
+                    while (i < cur && !first.compare_exchange_weak(cur, i, std::memory_order_relaxed)) {}
                     return;
                 }
             }

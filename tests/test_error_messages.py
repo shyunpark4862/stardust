@@ -23,51 +23,100 @@ def message(call):
 NAMED = [
     # array: functions, the same function as a method, a property
     (lambda: sd.zeros(-1), ValueError, "zeros(): negative dimensions are not allowed"),
-    (lambda: sd.sum(sd.ones(3), axis=1.5), TypeError, "sum(): 'axis' must be an int or a tuple or list of ints, not float"),
+    (
+        lambda: sd.sum(sd.ones(3), axis=1.5),
+        TypeError,
+        "sum(): 'axis' must be an int or a tuple or list of ints, not float",
+    ),
     (lambda: sd.ones(3).sum(axis=1.5), TypeError, "sum(): 'axis' must be an int or a tuple or list of ints, not float"),
-    (lambda: sd.ones(3).astype("float32"), TypeError,
-     "astype(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names), not 'float32'"),
+    (
+        lambda: sd.ones(3).astype("float32"),
+        TypeError,
+        "astype(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names), not 'float32'",
+    ),
     (lambda: sd.add(sd.ones(2), sd.ones(3)), ValueError, "add(): shapes could not be broadcast together: (2,) (3,)"),
     (lambda: sd.less(sd.ones(1, dtype=sd.complex128), 1), TypeError, "less(): not supported for complex128 and int64"),
     (lambda: sd.ones((2, 2, 2)).T, ValueError, r".T: the array must have 2 dimensions, got 3"),
     (lambda: sd.ones(3).mT, ValueError, ".mT: the array must have at least 2 dimensions, got 1"),
     (lambda: sd.set_num_threads(0), ValueError, "set_num_threads(): 'n' must be between 1 and 1024"),
     # functions built on indexing or on other public functions still name themselves
-    (lambda: sd.take(sd.ones(3), sd.asarray([5])), IndexError, "take(): index 5 is out of bounds for axis 0 with size 3"),
+    (
+        lambda: sd.take(sd.ones(3), sd.asarray([5])),
+        IndexError,
+        "take(): index 5 is out of bounds for axis 0 with size 3",
+    ),
     (lambda: sd.searchsorted(sd.asarray([1, 2]), 2**70), OverflowError, "searchsorted(): "),
-    (lambda: sd.meshgrid(sd.ones(2), indexing=None), TypeError, "meshgrid(): 'indexing' must be 'xy' or 'ij', not NoneType"),
-    (lambda: sd.finfo(sd.int64), TypeError,
-     "finfo(): 'type' must be sd.float64 or sd.complex128 (or their names) or an sd.ndarray of those dtypes, not sd.int64"),
+    (
+        lambda: sd.meshgrid(sd.ones(2), indexing=None),
+        TypeError,
+        "meshgrid(): 'indexing' must be 'xy' or 'ij', not NoneType",
+    ),
+    (
+        lambda: sd.finfo(sd.int64),
+        TypeError,
+        "finfo(): 'type' must be sd.float64 or sd.complex128 (or their names) or an sd.ndarray of those dtypes, not sd.int64",
+    ),
     # no constructor: the class name, as a constructor would say (docs/api/array.md §10)
     (lambda: sd.ndarray(), TypeError, "ndarray(): there is no constructor; use asarray() or another creation function"),
     (lambda: sd.ndarray([1.0]), TypeError, "ndarray(): there is no constructor"),
     # linalg: LinAlgError too
     (lambda: sd.linalg.inv(sd.zeros((2, 2))), sd.linalg.LinAlgError, "inv(): singular matrix"),
-    (lambda: sd.linalg.trace(sd.eye(2), dtype=sd.bool), TypeError, "trace(): cannot accumulate in bool; use any() or all()"),
+    (
+        lambda: sd.linalg.trace(sd.eye(2), dtype=sd.bool),
+        TypeError,
+        "trace(): cannot accumulate in bool; use any() or all()",
+    ),
     # frame: constructors, methods shared by Series/DataFrame/GroupBy, kernels named by the caller
-    (lambda: S([1], dtype=float), TypeError,
-     "Series(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.string (or their names), not float"),
+    (
+        lambda: S([1], dtype=float),
+        TypeError,
+        "Series(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.string (or their names), not float",
+    ),
     (lambda: S([{}]), TypeError, "Series(): cannot store an object of type 'dict' in a column"),
     (lambda: F.RangeIndex(0, 3, 0), ValueError, "RangeIndex(): 'step' must not be zero"),
     (lambda: S(["a"]).astype("int64"), ValueError, "astype(): cannot convert string 'a' to int64"),
     (lambda: S(["a"]).sum(), TypeError, "sum(): cannot compute sum of a string column"),
-    (lambda: DF({"k": [1], "v": ["a"]}).groupby("k").agg("sum"), TypeError, "agg(): cannot compute sum of a string column"),
-    (lambda: DF({"a": [1]}).drop_duplicates(keep="x"), ValueError,
-     "drop_duplicates(): 'keep' must be 'first', 'last' or 'none', not 'x'"),
+    (
+        lambda: DF({"k": [1], "v": ["a"]}).groupby("k").agg("sum"),
+        TypeError,
+        "agg(): cannot compute sum of a string column",
+    ),
+    (
+        lambda: DF({"a": [1]}).drop_duplicates(keep="x"),
+        ValueError,
+        "drop_duplicates(): 'keep' must be 'first', 'last' or 'none', not 'x'",
+    ),
     (lambda: DF({"a": [1]}).sort_values("zz"), KeyError, "sort_values(): no column 'zz'"),
-    (lambda: DF({"a": [1]}).sort_values(1), TypeError, "sort_values(): 'by' must be a column name or a list of them, not int"),
-    (lambda: F.merge(DF({"a": [1]}), DF({"a": [1.0]}), on="a"), TypeError,
-     "merge(): join keys must have one dtype, got int64 and float64"),
+    (
+        lambda: DF({"a": [1]}).sort_values(1),
+        TypeError,
+        "sort_values(): 'by' must be a column name or a list of them, not int",
+    ),
+    (
+        lambda: F.merge(DF({"a": [1]}), DF({"a": [1.0]}), on="a"),
+        TypeError,
+        "merge(): join keys must have one dtype, got int64 and float64",
+    ),
     (lambda: F.read_csv("/nonexistent", header=False), ValueError, "read_csv(): 'names' is required when header=False"),
     # frame options: one check per kind, the array's wording (API.md §2.1, DESIGN.md §10.1 #4)
     (lambda: S([1]).head(True), TypeError, "head(): 'n' must be an int, not bool"),
     (lambda: S([1]).tail(2**64), OverflowError, "tail(): 'n' is out of range"),
     (lambda: S([1]).dropna(ignore_index=1), TypeError, "dropna(): 'ignore_index' must be True or False, not int"),
-    (lambda: DF({"a": [1]}).groupby("a", sort=None), TypeError, "groupby(): 'sort' must be True or False, not NoneType"),
-    (lambda: F.merge(DF({"a": [1]}), DF({"a": [1]}), on="a", how=None), TypeError,
-     "merge(): 'how' must be 'inner', 'left', 'right' or 'outer', not NoneType"),
-    (lambda: F.concat(x for x in [S([1])]), TypeError,
-     "concat(): 'objs' must be a list or tuple of DataFrames or Series, not generator"),
+    (
+        lambda: DF({"a": [1]}).groupby("a", sort=None),
+        TypeError,
+        "groupby(): 'sort' must be True or False, not NoneType",
+    ),
+    (
+        lambda: F.merge(DF({"a": [1]}), DF({"a": [1]}), on="a", how=None),
+        TypeError,
+        "merge(): 'how' must be 'inner', 'left', 'right' or 'outer', not NoneType",
+    ),
+    (
+        lambda: F.concat(x for x in [S([1])]),
+        TypeError,
+        "concat(): 'objs' must be a list or tuple of DataFrames or Series, not generator",
+    ),
     (lambda: F.read_csv("/nonexistent", nrows=True), TypeError, "read_csv(): 'nrows' must be an int, not bool"),
 ]
 
@@ -81,7 +130,11 @@ def test_public_functions_name_themselves(call, kind, text):
 
 PYTHON_FORM = [
     (lambda: sd.ones(1, dtype=sd.complex128) < 1, TypeError, "unsupported operand dtypes for <: complex128 and int64"),
-    (lambda: sd.ones(1, dtype=sd.complex128) // 1, TypeError, "unsupported operand dtypes for //: complex128 and int64"),
+    (
+        lambda: sd.ones(1, dtype=sd.complex128) // 1,
+        TypeError,
+        "unsupported operand dtypes for //: complex128 and int64",
+    ),
     (lambda: ~sd.ones(1), TypeError, "unsupported operand dtype for unary ~: float64"),
     (lambda: sd.ones(2) + sd.ones(3), ValueError, "shapes could not be broadcast together: (2,) (3,)"),
     (lambda: sd.ones(2) == [1, 2], TypeError, "'==' not supported between instances of"),
@@ -106,12 +159,21 @@ PYTHON_FORM = [
     (lambda: iter(sd.ones(1)).foo, AttributeError, "'_ArrayIterator' object has no attribute 'foo'"),
     (lambda: sd.ones(1).__delitem__(0), TypeError, "'ndarray' object doesn't support item deletion"),
     # indexing and its assignment: one strict-broadcast message for basic and advanced keys
-    (lambda: sd.ones((2, 2)).__setitem__(slice(None), sd.ones((2, 2, 2))), ValueError,
-     "cannot broadcast a value of shape (2, 2, 2) to the indexed shape (2, 2)"),
-    (lambda: sd.ones((2, 2)).__setitem__([0, 1], sd.ones((2, 2, 2))), ValueError,
-     "cannot broadcast a value of shape (2, 2, 2) to the indexed shape (2, 2)"),
-    (lambda: sd.ones((2, 2))[[0, 1], [0, 1, 0]], IndexError,
-     "shape mismatch: indexing arrays could not be broadcast together with shapes (2,) (3,)"),
+    (
+        lambda: sd.ones((2, 2)).__setitem__(slice(None), sd.ones((2, 2, 2))),
+        ValueError,
+        "cannot broadcast a value of shape (2, 2, 2) to the indexed shape (2, 2)",
+    ),
+    (
+        lambda: sd.ones((2, 2)).__setitem__([0, 1], sd.ones((2, 2, 2))),
+        ValueError,
+        "cannot broadcast a value of shape (2, 2, 2) to the indexed shape (2, 2)",
+    ),
+    (
+        lambda: sd.ones((2, 2))[[0, 1], [0, 1, 0]],
+        IndexError,
+        "shape mismatch: indexing arrays could not be broadcast together with shapes (2,) (3,)",
+    ),
 ]
 
 
@@ -148,7 +210,10 @@ SAME_MISTAKE = [
     (lambda: sd.argsort(X3, descending=None), "argsort(): 'descending' must be True or False, not NoneType"),
     (lambda: sd.sum(X3, keepdims=np.True_), "sum(): 'keepdims' must be True or False, not numpy.bool"),
     (lambda: X3.mean(keepdims="no"), "mean(): 'keepdims' must be True or False, not str"),
-    (lambda: sd.cumulative_sum(X3, include_initial=1), "cumulative_sum(): 'include_initial' must be True or False, not int"),
+    (
+        lambda: sd.cumulative_sum(X3, include_initial=1),
+        "cumulative_sum(): 'include_initial' must be True or False, not int",
+    ),
     (lambda: sd.linspace(0, 1, 3, endpoint=0), "linspace(): 'endpoint' must be True or False, not int"),
     (lambda: sd.linalg.cholesky(M2, upper=1), "cholesky(): 'upper' must be True or False, not int"),
     (lambda: sd.linalg.matrix_norm(M2, keepdims=None), "matrix_norm(): 'keepdims' must be True or False, not NoneType"),
@@ -156,13 +221,18 @@ SAME_MISTAKE = [
     (lambda: DF({"a": [1]}).groupby("a", dropna=None), "groupby(): 'dropna' must be True or False, not NoneType"),
     # None where None is not a value of the option
     (lambda: sd.linalg.svd(M2, mode=None), "svd(): 'mode' must be 'reduced' or 'complete', not NoneType"),
-    (lambda: sd.linalg.matrix_norm(M2, ord=None), "matrix_norm(): 'ord' must be a str, an int or a float, not NoneType"),
+    (
+        lambda: sd.linalg.matrix_norm(M2, ord=None),
+        "matrix_norm(): 'ord' must be a str, an int or a float, not NoneType",
+    ),
     (lambda: sd.std(X3, correction=None), "std(): 'correction' must be an int or a float, not NoneType"),
     (lambda: S([1.0]).std(correction=None), "std(): 'correction' must be an int or a float, not NoneType"),
     (lambda: sd.linalg.vecdot(X3, X3, axis=None), "vecdot(): 'axis' must be an int, not NoneType"),
     (lambda: sd.sort(X3, axis=None), "sort(): 'axis' must be an int, not NoneType"),
-    (lambda: sd.astype(X3, None),
-     "astype(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names), not NoneType"),
+    (
+        lambda: sd.astype(X3, None),
+        "astype(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names), not NoneType",
+    ),
     (lambda: sd.zeros(None), "zeros(): 'shape' must be an int or a tuple of ints, not NoneType"),
     (lambda: sd.sin(None), "sin(): 'x' must be an sd.ndarray or a bool, int, float or complex, not NoneType"),
     (lambda: sd.matmul(None, X3), "matmul(): "),
@@ -172,19 +242,27 @@ SAME_MISTAKE = [
     # decision 2026-11-19, API.md §2.1)
     (lambda: sd.zeros(sd.ones(1)), "zeros(): 'shape' must be an int or a tuple of ints, not ndarray"),
     (lambda: sd.zeros(np.float64(2)), "zeros(): 'shape' must be an int or a tuple of ints, not numpy.float64"),
-    (lambda: sd.zeros(2, dtype=np.dtype("int64")),
-     "zeros(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names), not numpy.dtypes.Int64DType"),
-    (lambda: sd.zeros(2, dtype=np.int64),
-     "zeros(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names), not numpy.int64"),
-    (lambda: S([1]).astype(np.int64),
-     "astype(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.string (or their names), not numpy.int64"),
+    (
+        lambda: sd.zeros(2, dtype=np.dtype("int64")),
+        "zeros(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names), not numpy.dtypes.Int64DType",
+    ),
+    (
+        lambda: sd.zeros(2, dtype=np.int64),
+        "zeros(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names), not numpy.int64",
+    ),
+    (
+        lambda: S([1]).astype(np.int64),
+        "astype(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.string (or their names), not numpy.int64",
+    ),
     (lambda: sd.linalg.det(np.eye(2)), "det(): 'x' must be an sd.ndarray, not numpy.ndarray"),
     (lambda: sd.concat(X3), "concat(): 'arrays' must be a list or tuple of sd.ndarray, not ndarray"),
     (lambda: sd.arange(X3), "arange(): 'start' must be a bool, int or float, not ndarray"),
     # wrong messages fixed (DESIGN.md §10.3)
     (lambda: sd.arange("a"), "arange(): 'start' must be a bool, int or float, not str"),
-    (lambda: sd.linalg.vector_norm(X3, axis=1.0),
-     "vector_norm(): 'axis' must be an int or a tuple or list of ints, not float"),
+    (
+        lambda: sd.linalg.vector_norm(X3, axis=1.0),
+        "vector_norm(): 'axis' must be an int or a tuple or list of ints, not float",
+    ),
     (lambda: S([1.0, None]).fillna(1j), "fillna(): 'value' must be None, a bool, int, float or str, not complex"),
     (lambda: S([1]).to_array(dtype=sd.string), "to_array(): 'dtype' must be sd.bool, sd.int64 or sd.float64"),
     (lambda: F.Index([None]), "Index(): an index cannot hold NA"),
@@ -197,13 +275,18 @@ SAME_MISTAKE = [
 
 @pytest.mark.parametrize(("call", "text"), SAME_MISTAKE)
 def test_the_same_mistake_has_the_same_message(call, text):
-    with pytest.raises(TypeError if "cannot hold NA" not in text and "with NA" not in text and "no column" not in text
-                       else (ValueError, KeyError)):
+    with pytest.raises(
+        TypeError
+        if "cannot hold NA" not in text and "with NA" not in text and "no column" not in text
+        else (ValueError, KeyError)
+    ):
         call()
     assert message(call).startswith(text)
 
 
-DUMP = re.compile(r"incompatible function arguments|stardust\._core|nanobind")  # (numpy's types are named with their module: API.md §2.1)
+DUMP = re.compile(
+    r"incompatible function arguments|stardust\._core|nanobind"
+)  # (numpy's types are named with their module: API.md §2.1)
 
 
 def test_array_types_keep_their_module():
@@ -224,14 +307,18 @@ def _calls(module, names):
             continue
         head = sigs[0][0].split("(", 1)[1].rsplit(")", 1)[0]
         params = [p.strip() for p in head.split(",") if p.strip() not in ("", "/")]
-        kw_only = params[params.index("*") + 1:] if "*" in params else []
+        kw_only = params[params.index("*") + 1 :] if "*" in params else []
         npos = len(params) - len(kw_only) - ("*" in params)
-        base_kw = {"solve_triangular": {"upper": True}, "squeeze": {"axis": 0}, "expand_dims": {"axis": 0},
-                   "solve_banded": {"lower_bandwidth": 0, "upper_bandwidth": 0}}.get(name, {})
+        base_kw = {
+            "solve_triangular": {"upper": True},
+            "squeeze": {"axis": 0},
+            "expand_dims": {"axis": 0},
+            "solve_banded": {"lower_bandwidth": 0, "upper_bandwidth": 0},
+        }.get(name, {})
         good = [M2] * npos
         for i in range(npos):
             for b in bad_values:
-                yield name, good[:i] + [b] + good[i + 1:], dict(base_kw)
+                yield name, good[:i] + [b] + good[i + 1 :], dict(base_kw)
         for p in kw_only:
             for b in bad_values:
                 yield name, good, {**base_kw, p.split(":")[0].strip(): b}
@@ -253,21 +340,43 @@ def test_no_argument_value_shows_nanobinds_dump_or_a_module_path():
 
 # numpy's types keep their public module in "not <type>" (user decision 2026-11-19, API.md §2.1):
 # a numpy.bool for a bool option is still a TypeError, but not shown as Python's bool
-@pytest.mark.parametrize("call,text", [
-    (lambda: sd.sort(sd.ones(3), stable=np.True_), "sort(): 'stable' must be True or False, not numpy.bool"),
-    (lambda: sd.frame.Series([1.0]).sum(skipna=np.True_), "sum(): 'skipna' must be True or False, not numpy.bool"),
-    (lambda: sd.linalg.cholesky(sd.eye(2), upper=np.True_), "cholesky(): 'upper' must be True or False, not numpy.bool"),
-    (lambda: sd.stats.skew([1.0, 2.0, 3.0], bias=np.True_), "skew(): 'bias' must be True or False, not numpy.bool"),
-    (lambda: sd.regression.ols(sd.ones((5, 2)), sd.arange(5.0), intercept=np.True_),
-     "ols(): 'intercept' must be True or False, not numpy.bool"),
-    (lambda: sd.random.default_rng(1).random(np.float64(3)), "random(): 'shape' must be an int or a tuple of ints, not numpy.float64"),
-    (lambda: sd.special.erf(np.ones(2)), "erf(): 'x' must be an sd.ndarray or a bool, int, float or complex, not numpy.ndarray"),
-    (lambda: sd.stats.Normal(mu=np.ones(2)), "Normal(): 'mu' must be a real number or an sd.ndarray, not numpy.ndarray"),
-    (lambda: sd.stats.Normal().sample(rng=np.random.default_rng(1)),
-     "sample(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not numpy.random.Generator"),
-    (lambda: sd.stats.rankdata([1.0, 2.0], axis=np.float64(0)), "rankdata(): 'axis' must be an int or None, not numpy.float64"),
-    (lambda: sd.frame.Series([1.0]).head(np.float32(1)), "head(): 'n' must be an int, not numpy.float32"),
-])
+@pytest.mark.parametrize(
+    "call,text",
+    [
+        (lambda: sd.sort(sd.ones(3), stable=np.True_), "sort(): 'stable' must be True or False, not numpy.bool"),
+        (lambda: sd.frame.Series([1.0]).sum(skipna=np.True_), "sum(): 'skipna' must be True or False, not numpy.bool"),
+        (
+            lambda: sd.linalg.cholesky(sd.eye(2), upper=np.True_),
+            "cholesky(): 'upper' must be True or False, not numpy.bool",
+        ),
+        (lambda: sd.stats.skew([1.0, 2.0, 3.0], bias=np.True_), "skew(): 'bias' must be True or False, not numpy.bool"),
+        (
+            lambda: sd.regression.ols(sd.ones((5, 2)), sd.arange(5.0), intercept=np.True_),
+            "ols(): 'intercept' must be True or False, not numpy.bool",
+        ),
+        (
+            lambda: sd.random.default_rng(1).random(np.float64(3)),
+            "random(): 'shape' must be an int or a tuple of ints, not numpy.float64",
+        ),
+        (
+            lambda: sd.special.erf(np.ones(2)),
+            "erf(): 'x' must be an sd.ndarray or a bool, int, float or complex, not numpy.ndarray",
+        ),
+        (
+            lambda: sd.stats.Normal(mu=np.ones(2)),
+            "Normal(): 'mu' must be a real number or an sd.ndarray, not numpy.ndarray",
+        ),
+        (
+            lambda: sd.stats.Normal().sample(rng=np.random.default_rng(1)),
+            "sample(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not numpy.random.Generator",
+        ),
+        (
+            lambda: sd.stats.rankdata([1.0, 2.0], axis=np.float64(0)),
+            "rankdata(): 'axis' must be an int or None, not numpy.float64",
+        ),
+        (lambda: sd.frame.Series([1.0]).head(np.float32(1)), "head(): 'n' must be an int, not numpy.float32"),
+    ],
+)
 def test_numpy_types_keep_their_module(call, text):
     with pytest.raises(TypeError) as e:
         call()

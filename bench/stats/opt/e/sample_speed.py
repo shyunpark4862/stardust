@@ -7,7 +7,10 @@ samples, one thread, against numpy's Generator(PCG64) (the cases of bench/stats/
 
 import sys, hashlib, numpy as np, importlib.util, timeit
 import stardust as sd
-spec = importlib.util.spec_from_file_location("t7speed", "bench/stats/t7/speed.py"); t7 = importlib.util.module_from_spec(spec); spec.loader.exec_module(t7)
+
+spec = importlib.util.spec_from_file_location("t7speed", "bench/stats/t7/speed.py")
+t7 = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(t7)
 S = sd.stats
 mode = sys.argv[1]
 if mode == "hash":
@@ -25,7 +28,8 @@ else:
     sd.set_num_threads(1)
     g = np.random.Generator(np.random.PCG64(1))
     for name, kw, f in t7.CASES:
-        D = getattr(S, name)(**kw); r = sd.random.default_rng(1)
+        D = getattr(S, name)(**kw)
+        r = sd.random.default_rng(1)
         t1 = min(timeit.repeat(lambda: D.sample(10**6, rng=r), number=1, repeat=7))
-        tn = min(timeit.repeat(lambda: f(g, 10**6), number=1, repeat=5)) if f else float('nan')
-        print(f"{name:22s} {str(kw):45s} sd {t1*1e3:7.2f}  numpy {tn*1e3:7.2f}  ratio {tn/t1:5.2f}")
+        tn = min(timeit.repeat(lambda: f(g, 10**6), number=1, repeat=5)) if f else float("nan")
+        print(f"{name:22s} {str(kw):45s} sd {t1 * 1e3:7.2f}  numpy {tn * 1e3:7.2f}  ratio {tn / t1:5.2f}")

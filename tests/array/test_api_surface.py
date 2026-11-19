@@ -11,8 +11,23 @@ from .._api_doc import signature_blocks
 # The array names are in docs/api/array.md; the library-wide ones (thread count) in API.md.
 ROOT = Path(__file__).parents[2]
 API = (ROOT / "API.md").read_text() + "\n" + (ROOT / "docs" / "api" / "array.md").read_text()
-METHODS = {"reshape", "astype", "copy", "tolist", "sum", "prod", "min", "max", "mean", "var", "std",
-           "argmin", "argmax", "any", "all"}
+METHODS = {
+    "reshape",
+    "astype",
+    "copy",
+    "tolist",
+    "sum",
+    "prod",
+    "min",
+    "max",
+    "mean",
+    "var",
+    "std",
+    "argmin",
+    "argmax",
+    "any",
+    "all",
+}
 ATTRIBUTES = {"dtype", "shape", "ndim", "size", "strides", "itemsize", "nbytes", "base", "T", "mT"}
 CONSTANTS = {"e", "pi", "inf", "nan", "newaxis", "bool", "int64", "float64", "complex128", "string", "ndarray"}
 

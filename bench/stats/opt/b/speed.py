@@ -14,8 +14,16 @@ import scipy.stats as st
 import stardust as sd
 
 S = sd.stats
-SCIPY = {"pdf": "pdf", "logpdf": "logpdf", "cdf": "cdf", "logcdf": "logcdf", "ccdf": "sf", "logccdf": "logsf",
-         "icdf": "ppf", "iccdf": "isf"}
+SCIPY = {
+    "pdf": "pdf",
+    "logpdf": "logpdf",
+    "cdf": "cdf",
+    "logcdf": "logcdf",
+    "ccdf": "sf",
+    "logccdf": "logsf",
+    "icdf": "ppf",
+    "iccdf": "isf",
+}
 CASES = [
     (S.Gamma, {"a": 2.5, "scale": 3.0}, st.gamma(2.5, scale=3.0)),
     (S.Gamma, {"a": 7.3, "scale": 1.0}, st.gamma(7.3)),

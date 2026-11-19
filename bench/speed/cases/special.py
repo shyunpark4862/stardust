@@ -21,23 +21,70 @@ COST_GROUP = "비용표 단위"
 
 # Argument names (scipy's) of the functions that take more than one argument.
 ARGS = {
-    "bdtr": "k, n, p", "bdtrc": "k, n, p", "nbdtr": "k, n, p", "nbdtrc": "k, n, p",
-    "beta": "a, b", "betaln": "a, b",
-    "betainc": "a, b, x", "betaincc": "a, b, x", "betaincinv": "a, b, y", "betainccinv": "a, b, y",
-    "binom": "n, k", "chdtr": "v, x", "chdtrc": "v, x", "chdtri": "v, p",
-    "chndtr": "df, nc, x", "chndtrc": "df, nc, x", "chndtrix": "df, nc, p",
-    "expn": "n, x", "fdtr": "dfn, dfd, x", "fdtrc": "dfn, dfd, x", "fdtri": "dfn, dfd, p",
-    "gammainc": "a, x", "gammaincc": "a, x", "gammaincinv": "a, y", "gammainccinv": "a, y",
-    "hyp1f1": "a, b, x", "hyp2f1": "a, b, c, x",
-    "iv": "v, x", "ive": "v, x", "jv": "v, x", "kv": "v, x", "kve": "v, x", "yv": "v, x",
-    "ncfdtr": "dfn, dfd, nc, f", "ncfdtrc": "dfn, dfd, nc, f", "ncfdtri": "dfn, dfd, nc, p",
-    "nctdtr": "df, nc, t", "nctdtrc": "df, nc, t", "nctdtrit": "df, nc, p",
-    "pdtr": "k, m", "pdtrc": "k, m", "polygamma": "n, x", "rel_entr": "x, y", "stdtr": "df, t",
-    "stdtrit": "df, p", "xlogy": "x, y", "xlog1py": "x, y", "zeta_hurwitz": "x, q",
+    "bdtr": "k, n, p",
+    "bdtrc": "k, n, p",
+    "nbdtr": "k, n, p",
+    "nbdtrc": "k, n, p",
+    "beta": "a, b",
+    "betaln": "a, b",
+    "betainc": "a, b, x",
+    "betaincc": "a, b, x",
+    "betaincinv": "a, b, y",
+    "betainccinv": "a, b, y",
+    "binom": "n, k",
+    "chdtr": "v, x",
+    "chdtrc": "v, x",
+    "chdtri": "v, p",
+    "chndtr": "df, nc, x",
+    "chndtrc": "df, nc, x",
+    "chndtrix": "df, nc, p",
+    "expn": "n, x",
+    "fdtr": "dfn, dfd, x",
+    "fdtrc": "dfn, dfd, x",
+    "fdtri": "dfn, dfd, p",
+    "gammainc": "a, x",
+    "gammaincc": "a, x",
+    "gammaincinv": "a, y",
+    "gammainccinv": "a, y",
+    "hyp1f1": "a, b, x",
+    "hyp2f1": "a, b, c, x",
+    "iv": "v, x",
+    "ive": "v, x",
+    "jv": "v, x",
+    "kv": "v, x",
+    "kve": "v, x",
+    "yv": "v, x",
+    "ncfdtr": "dfn, dfd, nc, f",
+    "ncfdtrc": "dfn, dfd, nc, f",
+    "ncfdtri": "dfn, dfd, nc, p",
+    "nctdtr": "df, nc, t",
+    "nctdtrc": "df, nc, t",
+    "nctdtrit": "df, nc, p",
+    "pdtr": "k, m",
+    "pdtrc": "k, m",
+    "polygamma": "n, x",
+    "rel_entr": "x, y",
+    "stdtr": "df, t",
+    "stdtrit": "df, p",
+    "xlogy": "x, y",
+    "xlog1py": "x, y",
+    "zeta_hurwitz": "x, q",
 }
 
-QUICK = {"erf", "erf_complex", "gamma", "gammaln", "gammainc", "betainc", "jv", "kv", "hyp2f1", "ndtri",
-         "lambertw", "zeta_hurwitz"}
+QUICK = {
+    "erf",
+    "erf_complex",
+    "gamma",
+    "gammaln",
+    "gammainc",
+    "betainc",
+    "jv",
+    "kv",
+    "hyp2f1",
+    "ndtri",
+    "lambertw",
+    "zeta_hurwitz",
+}
 SCALAR_QUICK = {"erf", "jv"}
 
 # Engine test kernels without a reference file (cost.py EXTRA): number of normal inputs.
@@ -72,8 +119,13 @@ def call_name(name):
 def _note(name):
     common = _common()
     c = common.counterpart(name)
-    if (c is None or c == f"scipy.special.{name}" or name.endswith("_complex") or name in common.PART
-            or name.startswith("lambertw_c")):  # the call name already says which branch
+    if (
+        c is None
+        or c == f"scipy.special.{name}"
+        or name.endswith("_complex")
+        or name in common.PART
+        or name.startswith("lambertw_c")
+    ):  # the call name already says which branch
         return ""
     return f"비교 대상 {c}"
 
@@ -88,8 +140,12 @@ def _setup(name):
 
     common = _common()
     xs = common.sample_inputs(name, N)
-    return {"f": common.sd_function(name), "ref": common.scipy_function(name),
-            "xs": xs, "sxs": tuple(sd.asarray(x) for x in xs)}
+    return {
+        "f": common.sd_function(name),
+        "ref": common.scipy_function(name),
+        "xs": xs,
+        "sxs": tuple(sd.asarray(x) for x in xs),
+    }
 
 
 def _scalar_setup(name):
@@ -99,8 +155,11 @@ def _scalar_setup(name):
 
     common = _common()
     xs = common.sample_inputs(name, 1)
-    return {"f": common.sd_function(name), "ref": common.scipy_function(name),
-            "one": tuple(complex(x[0]) if np.iscomplexobj(x) else float(x[0]) for x in xs)}
+    return {
+        "f": common.sd_function(name),
+        "ref": common.scipy_function(name),
+        "one": tuple(complex(x[0]) if np.iscomplexobj(x) else float(x[0]) for x in xs),
+    }
 
 
 def _extra_setup(name):
@@ -117,7 +176,7 @@ def _extra_setup(name):
 
 
 def _call(fkey, xkey):
-    return lambda d: (lambda f=d[fkey], a=d[xkey]: f(*a))
+    return lambda d: lambda f=d[fkey], a=d[xkey]: f(*a)
 
 
 def cases() -> list[Case]:
@@ -127,28 +186,52 @@ def cases() -> list[Case]:
     for name in names:
         lib = _lib(name)
         refs = (Ref(lib, _call("ref", "xs")),) if lib else ()
-        out.append(Case(
-            area="special", group=GROUP, name=call_name(name), size="10^6", n=N,
-            setup=lambda name=name: _setup(name),
-            sd=_call("f", "sxs"), refs=refs, threads=(1, 10),
-            quick=name in QUICK, cost=("special", name), note=_note(name),
-        ))
+        out.append(
+            Case(
+                area="special",
+                group=GROUP,
+                name=call_name(name),
+                size="10^6",
+                n=N,
+                setup=lambda name=name: _setup(name),
+                sd=_call("f", "sxs"),
+                refs=refs,
+                threads=(1, 10),
+                quick=name in QUICK,
+                cost=("special", name),
+                note=_note(name),
+            )
+        )
     for name in ("_add", *EXTRA):
-        out.append(Case(
-            area="special", group=COST_GROUP,
-            name="add(x, y)" if name == "_add" else f"{name}({EXTRA_ARGS[name]})", size="10^6", n=N,
-            setup=lambda name=name: _extra_setup(name),
-            sd=_call("f", "sxs"), threads=(1,),
-            quick=name == "_add", cost=("special", name),
-            note="비용표의 단위(float64 두 배열의 덧셈)" if name == "_add" else "엔진 시험용 커널, 정규분포 입력",
-        ))
+        out.append(
+            Case(
+                area="special",
+                group=COST_GROUP,
+                name="add(x, y)" if name == "_add" else f"{name}({EXTRA_ARGS[name]})",
+                size="10^6",
+                n=N,
+                setup=lambda name=name: _extra_setup(name),
+                sd=_call("f", "sxs"),
+                threads=(1,),
+                quick=name == "_add",
+                cost=("special", name),
+                note="비용표의 단위(float64 두 배열의 덧셈)" if name == "_add" else "엔진 시험용 커널, 정규분포 입력",
+            )
+        )
     for name in names:
         lib = _lib(name)
         refs = (Ref(lib, _call("ref", "one")),) if lib else ()
-        out.append(Case(
-            area="special", group=SCALAR_GROUP, name=call_name(name),
-            setup=lambda name=name: _scalar_setup(name),
-            sd=_call("f", "one"), refs=refs, threads=(1,),
-            quick=name in SCALAR_QUICK, note=_note(name),
-        ))
+        out.append(
+            Case(
+                area="special",
+                group=SCALAR_GROUP,
+                name=call_name(name),
+                setup=lambda name=name: _scalar_setup(name),
+                sd=_call("f", "one"),
+                refs=refs,
+                threads=(1,),
+                quick=name in SCALAR_QUICK,
+                note=_note(name),
+            )
+        )
     return out

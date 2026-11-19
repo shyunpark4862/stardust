@@ -1,6 +1,7 @@
 """The rows the M6 table flagged, timed in a fresh process (ROADMAP: flagged
 rows are checked over several processes). Prints min/median µs of 15 runs.
     python bench/merge/m6/procs.py   (old packages, or stardust through bench/merge/shim)"""
+
 import statistics
 import time
 

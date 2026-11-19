@@ -31,7 +31,8 @@ def main():
         "#pragma once\n\n#include <array>\n\nnamespace sd::special {\n\n"
         f"inline constexpr int kZetaEvenLast = {LAST};\n"
         f"inline constexpr std::array<double, {LAST // 2}> kZetaEven = {{\n"
-        + "\n".join(rows) + "\n};\n\n}  // namespace sd::special\n"
+        + "\n".join(rows)
+        + "\n};\n\n}  // namespace sd::special\n"
     )
     print(f"wrote {OUT}")
 

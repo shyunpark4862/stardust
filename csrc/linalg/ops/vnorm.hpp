@@ -100,8 +100,12 @@ private:
 };
 
 template <class S, class Mag>
-Walk<S, Mag> make_walk(const std::byte* base, std::initializer_list<std::int64_t> shape,
-                       std::initializer_list<std::int64_t> strides, Mag mag) {
+Walk<S, Mag> make_walk(
+    const std::byte* base,
+    std::initializer_list<std::int64_t> shape,
+    std::initializer_list<std::int64_t> strides,
+    Mag mag
+) {
     return Walk<S, Mag>(base, static_cast<int>(shape.size()), shape.begin(), strides.begin(), mag);
 }
 
@@ -198,8 +202,7 @@ inline double vnorm_serial(VecOrd ord, std::int64_t count, Fill&& fill) {
             });
             return static_cast<double>(c);
         }
-        case Ord::One:
-            return pairwise_sum<double>(count, fill);
+        case Ord::One: return pairwise_sum<double>(count, fill);
         case Ord::Two:
         case Ord::P: {
             const bool two = ord.kind == Ord::Two;
@@ -289,8 +292,7 @@ inline double vnorm(VecOrd ord, std::int64_t count, Fill&& fill) {
             for (const Side& sd : side) c += sd.nonzero;
             return static_cast<double>(c);
         }
-        case Ord::One:
-            return pairwise_sum_mt<double>(count, fill);
+        case Ord::One: return pairwise_sum_mt<double>(count, fill);
         case Ord::Two:
         case Ord::P: {
             const bool two = ord.kind == Ord::Two;

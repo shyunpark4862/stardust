@@ -44,17 +44,27 @@ def main():
         mode_sp = "economic"
         rows = [
             ("qr", lambda: sdla.qr(A), lambda: np.linalg.qr(a), lambda: sl.qr(a, mode=mode_sp)),
-            ("qr complete", lambda: sdla.qr(A, mode="complete"), lambda: np.linalg.qr(a, mode="complete"),
-             lambda: sl.qr(a)),
+            (
+                "qr complete",
+                lambda: sdla.qr(A, mode="complete"),
+                lambda: np.linalg.qr(a, mode="complete"),
+                lambda: sl.qr(a),
+            ),
             ("qr_pivoted", lambda: sdla.qr_pivoted(A), None, lambda: sl.qr(a, mode=mode_sp, pivoting=True)),
-            ("lstsq", lambda: sdla.lstsq(A, B), None if batched else (lambda: np.linalg.lstsq(a, b)),
-             lambda: sl.lstsq(a, b)),
+            (
+                "lstsq",
+                lambda: sdla.lstsq(A, B),
+                None if batched else (lambda: np.linalg.lstsq(a, b)),
+                lambda: sl.lstsq(a, b),
+            ),
         ]
         for name, f_sd, f_np, f_sp in rows:
             t_sd = best_us(f_sd)
             t_np = best_us(f_np) if f_np else nan
             t_sp = best_us(f_sp) if f_sp else nan
-            emit(f"{name:18} {str(shape):>14} {t_sd:10.2f} {t_np:10.2f} {t_sp:10.2f} {t_np / t_sd:8.2f} {t_sp / t_sd:8.2f}")
+            emit(
+                f"{name:18} {str(shape):>14} {t_sd:10.2f} {t_np:10.2f} {t_sp:10.2f} {t_np / t_sd:8.2f} {t_sp / t_sd:8.2f}"
+            )
     path = pathlib.Path(__file__).parent / "results" / "m4_qr.txt"
     path.write_text("\n".join(out) + "\n")
 

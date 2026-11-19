@@ -81,6 +81,7 @@ def main():
     for threads in (1, 10):
         sd.set_num_threads(threads)
         with threadpool_limits(limits=threads):
+
             def sd_batch():
                 r = sd.regression.ols(ys, Xs)
                 return r.params, r.bse, r.pvalues, r.rsquared
@@ -106,7 +107,9 @@ def main():
     for size, th, a, b, c, d, e in rows:
         print(f"| {size} | {th} | {ms(a)} | {ms(b)} | {ms(c)} | {ms(d)} | {ms(e)} |")
     print()
-    print("| batch 10,000 x (50, 3), fit + inference | threads | sd one call | sd Python loop | statsmodels Python loop |")
+    print(
+        "| batch 10,000 x (50, 3), fit + inference | threads | sd one call | sd Python loop | statsmodels Python loop |"
+    )
     print("|---|---:|---:|---:|---:|")
     for th, a, b, c in batch:
         print(f"| | {th} | {ms(a)} | {ms(b)} | {ms(c)} |")

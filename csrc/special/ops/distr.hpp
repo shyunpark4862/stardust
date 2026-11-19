@@ -94,8 +94,8 @@ inline double t_tail(double df, double t) {
         // from the logs there -- stdtr(1e-300, -1.7e308) was 0 for 0.5)
         const double r = std::sqrt(df) / std::fabs(t);
         // (the exponent as hi + lo: it reaches -700, and its rounding would enter that many times)
-        const double xa = r >= 0x1p-1000 ? std::pow(r, df)
-                                         : exp_dd((dd::log_pos(df) * 0.5 - dd::log_pos(std::fabs(t))) * df);
+        const double xa =
+            r >= 0x1p-1000 ? std::pow(r, df) : exp_dd((dd::log_pos(df) * 0.5 - dd::log_pos(std::fabs(t))) * df);
         return 0.5 * xa / (a * Beta::f(a, 0.5));
     }
     if (a <= 6.0) {
@@ -195,7 +195,8 @@ inline bool t_quantile(double df, double q2, double& out) {
             y = (((((0.4 * y + 6.3) * y + 36.0) * y + 94.5) / c - y - 3.0) / b + 1.0) * x;
             y = std::expm1(a * y * y);
         } else {
-            y = ((1.0 / (((df + 6.0) / (df * y) - 0.089 * d - 0.822) * (df + 2.0) * 3.0) + 0.5 / (df + 4.0)) * y - 1.0) *
+            y = ((1.0 / (((df + 6.0) / (df * y) - 0.089 * d - 0.822) * (df + 2.0) * 3.0) + 0.5 / (df + 4.0)) * y -
+                 1.0) *
                     (df + 1.0) / (df + 2.0) +
                 1.0 / y;
         }
@@ -342,7 +343,8 @@ struct Chdtrc : Real {
         // v subnormal with an odd last bit: its half is not a double, and Q(a, x) is linear in
         // a -> 0 (to a relative O(a)): half of Q(v, x/2) (chdtrc(5e-324, 1e-300) was 0 for
         // 1.7e-321; chdtrc(1.5e-323, 1e-300) 6.8e-321 for 5.2e-321, the half rounded up, 2026-11-19)
-        if (v > 0.0 && v < 0x1p-1021 && 2.0 * (0.5 * v) != v) [[unlikely]] return 0.5 * Gammaincc::f(v, 0.5 * x);
+        if (v > 0.0 && v < 0x1p-1021 && 2.0 * (0.5 * v) != v) [[unlikely]]
+            return 0.5 * Gammaincc::f(v, 0.5 * x);
         return Gammaincc::f(0.5 * v, 0.5 * x);
     }
 };
@@ -436,15 +438,17 @@ struct Fdtri : Real {
             const double w = Betaincinv::f(a, b, p);
             // p = w^a / (a B) (1 + O((b + 1) w)): x = (dfd/dfn) w from logs in double-double
             if (w < 0x1p-60 && w * b < 0x1p-56)
-                return distr_detail::exp_dd(distr_detail::log_product(p, a * Beta::f(a, b)) / a + dd::log(dfd) -
-                                            dd::log(dfn));
+                return distr_detail::exp_dd(
+                    distr_detail::log_product(p, a * Beta::f(a, b)) / a + dd::log(dfd) - dd::log(dfn)
+                );
             return (w / (1.0 - w)) * (dfd / dfn);
         }
         const double v = Betainccinv::f(b, a, p);  // 1 - I_v(b, a) = p, i.e. I_w(a, b) = p
         // 1 - p = v^b / (b B) (1 + O((a + 1) v)), 1 - p exact here: x = (dfd/dfn) / v
         if (v < 0x1p-60 && v * a < 0x1p-56 && p >= 0.5)
-            return distr_detail::exp_dd(dd::log(dfd) - dd::log(dfn) -
-                                        distr_detail::log_product(1.0 - p, b * Beta::f(a, b)) / b);
+            return distr_detail::exp_dd(
+                dd::log(dfd) - dd::log(dfn) - distr_detail::log_product(1.0 - p, b * Beta::f(a, b)) / b
+            );
         return ((1.0 - v) / v) * (dfd / dfn);
     }
 };

@@ -30,8 +30,16 @@ def best(f, n=1):
     return min([first] + timeit.repeat(f, number=n, repeat=4)) / n * 1e3
 
 
-SCIPY = {"pdf": "pdf", "logpdf": "logpdf", "cdf": "cdf", "logcdf": "logcdf", "ccdf": "sf", "logccdf": "logsf",
-         "icdf": "ppf", "iccdf": "isf"}
+SCIPY = {
+    "pdf": "pdf",
+    "logpdf": "logpdf",
+    "cdf": "cdf",
+    "logcdf": "logcdf",
+    "ccdf": "sf",
+    "logccdf": "logsf",
+    "icdf": "ppf",
+    "iccdf": "isf",
+}
 
 # (class, parameters, scipy frozen classic distribution)
 CASES = [
@@ -72,8 +80,10 @@ def main():
                 t10 = best(lambda: f(arg))
                 g = getattr(ref, SCIPY[m])
                 ts = best(lambda: g(npa))
-                print(f"| {cls.__name__} | `{m}` | {t1:.2f} | {t10:.2f} | {ts:.2f} | {ts / t1:.2f} | {ts / t10:.1f} |",
-                      flush=True)
+                print(
+                    f"| {cls.__name__} | `{m}` | {t1:.2f} | {t10:.2f} | {ts:.2f} | {ts / t1:.2f} | {ts / t10:.1f} |",
+                    flush=True,
+                )
             v = float(x[N // 3])
             ts1 = best(lambda: X.cdf(v), 2000)
             tsc = best(lambda: ref.cdf(v), 2000)

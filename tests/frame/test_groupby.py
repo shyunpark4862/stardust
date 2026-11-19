@@ -37,8 +37,12 @@ def key_of(v):  # the sort key of docs/api/frame.md §7.2 (NA last, NaN after +i
     return (0, v)
 
 
-KEYS = {"int64": st.integers(-3, 3), "float64": st.sampled_from([0.0, -0.0, 1.5, -2.0, math.nan, math.inf]),
-        "string": st.sampled_from(["", "a", "b", "é"]), "bool": st.booleans()}
+KEYS = {
+    "int64": st.integers(-3, 3),
+    "float64": st.sampled_from([0.0, -0.0, 1.5, -2.0, math.nan, math.inf]),
+    "string": st.sampled_from(["", "a", "b", "é"]),
+    "bool": st.booleans(),
+}
 
 
 @settings(max_examples=EXAMPLES, deadline=None)
@@ -48,11 +52,18 @@ def test_groups_match_reductions_of_their_rows(data):
     nkeys = data.draw(st.integers(1, 2))
     kdts = [data.draw(st.sampled_from(list(KEYS))) for _ in range(nkeys)]
     keys = {f"k{j}": data.draw(st.lists(KEYS[dt] | st.none(), min_size=n, max_size=n)) for j, dt in enumerate(kdts)}
-    f = data.draw(st.lists(st.floats(-1e6, 1e6) | st.sampled_from([math.nan, -0.0]) | st.none(), min_size=n, max_size=n))
+    f = data.draw(
+        st.lists(st.floats(-1e6, 1e6) | st.sampled_from([math.nan, -0.0]) | st.none(), min_size=n, max_size=n)
+    )
     i = data.draw(st.lists(st.integers(-(2**62), 2**62) | st.none(), min_size=n, max_size=n))
     sort, dropna = data.draw(st.booleans()), data.draw(st.booleans())
-    df = sd.frame.DataFrame({**{k: sd.frame.Series(v, dtype=dt) for (k, v), dt in zip(keys.items(), kdts)},
-                         "f": sd.frame.Series(f, dtype="float64"), "i": sd.frame.Series(i, dtype="int64")})
+    df = sd.frame.DataFrame(
+        {
+            **{k: sd.frame.Series(v, dtype=dt) for (k, v), dt in zip(keys.items(), kdts)},
+            "f": sd.frame.Series(f, dtype="float64"),
+            "i": sd.frame.Series(i, dtype="int64"),
+        }
+    )
     by = list(keys)
     g = df.groupby(by, sort=sort, dropna=dropna)
 
@@ -224,8 +235,10 @@ def test_groupby_is_not_iterable():  # docs/api/frame.md §7.1
 
 def test_agg_with_a_callable_names_what_agg_takes():  # docs/api/frame.md §7.4
     g = sd.frame.DataFrame({"q": ["x", "y"], "v": [1, 2]}).groupby("q")
-    accepted = (r"; pass a function name \(a str such as 'sum'\), a dict of \{column: function name\}, "
-                r"or named aggregations \(name=\(column, function name\)\)$")
+    accepted = (
+        r"; pass a function name \(a str such as 'sum'\), a dict of \{column: function name\}, "
+        r"or named aggregations \(name=\(column, function name\)\)$"
+    )
     for func in (sum, lambda x: x, max):
         with pytest.raises(TypeError, match=r"^agg\(\): a callable is not supported" + accepted):
             g.agg(func)

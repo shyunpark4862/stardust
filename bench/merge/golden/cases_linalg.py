@@ -132,8 +132,12 @@ def cases(L):
     yield C("vecdot/long batch", LA.vecdot, vals(14, (3, 40_000), "float64"), vals(15, (3, 40_000), "float64"))
     yield C("vecdot/long axis=0", LA.vecdot, vals(14, (40_000, 3), "float64"), vals(15, (40_000, 3), "float64"), axis=0)
     for lo in ("strided", "reversed"):
-        yield C(f"vecdot/long {lo}", LA.vecdot, vlay(vals(16, (50_000,), "complex128"), lo),
-                vlay(vals(17, (50_000,), "complex128"), lo))
+        yield C(
+            f"vecdot/long {lo}",
+            LA.vecdot,
+            vlay(vals(16, (50_000,), "complex128"), lo),
+            vlay(vals(17, (50_000,), "complex128"), lo),
+        )
     yield C("vecdot/many short", LA.vecdot, vals(18, (20_000, 4), "float64"), vals(19, (20_000, 4), "float64"))
     yield C("vecdot/empty len 0", LA.vecdot, np.zeros(0), np.zeros(0))
     yield C("vecdot/empty (3,0)", LA.vecdot, np.zeros((3, 0)), np.zeros((3, 0)))
@@ -152,8 +156,12 @@ def cases(L):
         yield C(f"outer/{dt}", LA.outer, vals(30, (4,), dt), vals(31, (5,), dt))
     yield C("outer/mixed bool complex", LA.outer, vals(32, (3,), "bool"), vals(33, (6,), "complex128"))
     yield C("outer/batch broadcast", LA.outer, vals(34, (2, 1, 3), "float64"), vals(35, (4, 5), "float64"))
-    yield C("outer/strided reversed", LA.outer, vlay(vals(36, (7,), "float64"), "strided"),
-            vlay(vals(37, (6,), "float64"), "reversed"))
+    yield C(
+        "outer/strided reversed",
+        LA.outer,
+        vlay(vals(36, (7,), "float64"), "strided"),
+        vlay(vals(37, (6,), "float64"), "reversed"),
+    )
     yield C("outer/large", LA.outer, vals(38, (600,), "float64"), vals(39, (500,), "float64"))
     yield C("outer/empty", LA.outer, np.zeros(0), np.ones(3))
     yield C("outer/nan", LA.outer, with_nan(np.ones(3), 1), np.ones(2))
@@ -183,8 +191,11 @@ def cases(L):
     long_view = np.lib.stride_tricks.as_strided(base, shape=(40_000, 40_000), strides=(8, 8))
     yield C("trace/long diagonal 40000 float", LA.trace, long_view)
     cbase = vals(48, (80_000,), "complex128")
-    yield C("trace/long diagonal 40000 complex", LA.trace,
-            np.lib.stride_tricks.as_strided(cbase, shape=(40_000, 40_000), strides=(16, 16)))
+    yield C(
+        "trace/long diagonal 40000 complex",
+        LA.trace,
+        np.lib.stride_tricks.as_strided(cbase, shape=(40_000, 40_000), strides=(16, 16)),
+    )
     yield C("trace/long diagonal 40000 k=7", LA.trace, long_view, k=7)
     yield C("trace/empty 0x0", LA.trace, np.zeros((0, 0)))
     yield C("trace/empty batch", LA.trace, np.zeros((0, 3, 3)))
@@ -245,7 +256,9 @@ def cases(L):
     yield C("kron/batch broadcast", LA.kron, vals(74, (3, 2, 2), "float64"), vals(75, (2, 2), "float64"))
     yield C("kron/batch broadcast 4d", LA.kron, vals(76, (2, 1, 2, 3), "float64"), vals(77, (4, 2, 2), "float64"))
     for lo in ("F", "strided", "reversed"):
-        yield C(f"kron/layout {lo}", LA.kron, lay(vals(78, (3, 4), "complex128"), lo), lay(vals(79, (2, 3), "float64"), lo))
+        yield C(
+            f"kron/layout {lo}", LA.kron, lay(vals(78, (3, 4), "complex128"), lo), lay(vals(79, (2, 3), "float64"), lo)
+        )
     yield C("kron/large", LA.kron, vals(80, (30, 40), "float64"), vals(81, (20, 15), "float64"))
     yield C("kron/empty", LA.kron, np.zeros((0, 3)), np.ones((2, 2)))
     yield C("kron/nan", LA.kron, with_nan(np.ones((2, 2)), (0, 1)), np.ones((2, 2)))
@@ -259,8 +272,12 @@ def cases(L):
     yield C("cross/axis=0", LA.cross, vals(89, (3, 4), "float64"), vals(90, (3, 4), "float64"), axis=0)
     yield C("cross/axis=-2 3d", LA.cross, vals(89, (2, 3, 4), "float64"), vals(90, (2, 3, 4), "float64"), axis=-2)
     yield C("cross/broadcast", LA.cross, vals(91, (4, 1, 3), "float64"), vals(92, (5, 3), "float64"))
-    yield C("cross/strided reversed", LA.cross, lay(vals(93, (6, 3), "float64"), "strided"),
-            lay(vals(94, (6, 3), "float64"), "reversed"))
+    yield C(
+        "cross/strided reversed",
+        LA.cross,
+        lay(vals(93, (6, 3), "float64"), "strided"),
+        lay(vals(94, (6, 3), "float64"), "reversed"),
+    )
     yield C("cross/large batch", LA.cross, vals(95, (100_000, 3), "float64"), vals(96, (100_000, 3), "float64"))
     yield C("cross/empty batch", LA.cross, np.zeros((0, 3)), np.zeros((0, 3)))
     yield C("cross/nan", LA.cross, with_nan(np.ones(3), 0), np.arange(3.0))
@@ -338,7 +355,9 @@ def cases(L):
             yield C(f"matrix_norm/layout {lo} ord={o}", LA.matrix_norm, lay(vals(126, (3, 5, 4), "float64"), lo), ord=o)
     for lo in ("C", "F"):
         for o in ("fro", 1, -1, INF, -INF, 2):
-            yield C(f"matrix_norm/large 512 {lo} ord={o}", LA.matrix_norm, lay(vals(127, (512, 512), "float64"), lo), ord=o)
+            yield C(
+                f"matrix_norm/large 512 {lo} ord={o}", LA.matrix_norm, lay(vals(127, (512, 512), "float64"), lo), ord=o
+            )
     yield C("matrix_norm/large 300x700 complex fro", LA.matrix_norm, vals(128, (300, 700), "complex128"))
     yield C("matrix_norm/overflow fro", LA.matrix_norm, np.full((3, 3), 1e200))
     yield C("matrix_norm/overflow 1", LA.matrix_norm, np.full((3, 3), 1e308), ord=1)
@@ -430,8 +449,9 @@ def cases(L):
     low = vals(162, (6, 3), "float64") @ vals(163, (3, 6), "float64")
     for rt in (None, 0, 0.0, 1e-20, 0.1, 0.999, 1, 1.0, 2.5):
         yield C(f"matrix_rank/rank 3 rtol={rt}", LA.matrix_rank, low, rtol=rt)
-    yield C("matrix_rank/complex rank 2", LA.matrix_rank,
-            vals(164, (5, 2), "complex128") @ vals(165, (2, 7), "complex128"))
+    yield C(
+        "matrix_rank/complex rank 2", LA.matrix_rank, vals(164, (5, 2), "complex128") @ vals(165, (2, 7), "complex128")
+    )
     yield C("matrix_rank/zeros", LA.matrix_rank, np.zeros((3, 4)))
     bm = vals(166, (1000, 3, 3), "float64")
     bm[::3, 2] = bm[::3, 0]
@@ -441,8 +461,11 @@ def cases(L):
     for lo in LAYOUTS:
         yield C(f"matrix_rank/layout {lo}", LA.matrix_rank, lay(vals(168, (3, 5, 4), "float64"), lo))
     yield C("matrix_rank/large 300", LA.matrix_rank, vals(169, (300, 300), "float64"))
-    yield C("matrix_rank/large 512 C rank-deficient", LA.matrix_rank,
-            vals(170, (512, 100), "float64") @ vals(171, (100, 512), "float64"))
+    yield C(
+        "matrix_rank/large 512 C rank-deficient",
+        LA.matrix_rank,
+        vals(170, (512, 100), "float64") @ vals(171, (100, 512), "float64"),
+    )
     yield C("matrix_rank/empty 0x0", LA.matrix_rank, np.zeros((0, 0)))
     yield C("matrix_rank/empty 0x3", LA.matrix_rank, np.zeros((0, 3)))
     yield C("matrix_rank/empty batch", LA.matrix_rank, np.zeros((0, 3, 3)))
@@ -466,28 +489,60 @@ def cases(L):
         for dt in FC:
             yield C(f"solve/n={n} {dt}", LA.solve, wc(205 + n, (n, n), dt), vals(206 + n, (n, 3), dt))
     for lo in LAYOUTS:
-        yield C(f"solve/layout {lo}", LA.solve, lay(wc(210, (6, 4, 4), "float64"), lo), lay(vals(211, (6, 4, 2), "float64"), lo))
-        yield C(f"solve/layout {lo} complex", LA.solve, lay(wc(210, (6, 4, 4), "complex128"), lo),
-                lay(vals(211, (6, 4, 2), "complex128"), lo))
-    yield C("solve/broadcast a (3,1,4,4) b (5,4,2)", LA.solve, wc(212, (3, 1, 4, 4), "float64"), vals(213, (5, 4, 2), "float64"))
+        yield C(
+            f"solve/layout {lo}",
+            LA.solve,
+            lay(wc(210, (6, 4, 4), "float64"), lo),
+            lay(vals(211, (6, 4, 2), "float64"), lo),
+        )
+        yield C(
+            f"solve/layout {lo} complex",
+            LA.solve,
+            lay(wc(210, (6, 4, 4), "complex128"), lo),
+            lay(vals(211, (6, 4, 2), "complex128"), lo),
+        )
+    yield C(
+        "solve/broadcast a (3,1,4,4) b (5,4,2)",
+        LA.solve,
+        wc(212, (3, 1, 4, 4), "float64"),
+        vals(213, (5, 4, 2), "float64"),
+    )
     yield C("solve/broadcast a (4,4) b (7,4,2)", LA.solve, wc(212, (4, 4), "float64"), vals(213, (7, 4, 2), "float64"))
     yield C("solve/broadcast a (6,4,4) b vec", LA.solve, wc(212, (6, 4, 4), "float64"), vals(213, (4,), "float64"))
     yield C("solve/b (6,4) as matrix", LA.solve, wc(212, (6, 6), "float64"), vals(213, (6, 4), "float64"))
     yield C("solve/batch 1000x3x3", LA.solve, wc(214, (1000, 3, 3), "float64"), vals(215, (1000, 3, 1), "float64"))
-    yield C("solve/batch 1000x3x3 complex vec", LA.solve, wc(214, (1000, 3, 3), "complex128"), vals(215, (3,), "complex128"))
+    yield C(
+        "solve/batch 1000x3x3 complex vec", LA.solve, wc(214, (1000, 3, 3), "complex128"), vals(215, (3,), "complex128")
+    )
     yield C("solve/batch 100x32x32", LA.solve, wc(216, (100, 32, 32), "float64"), vals(217, (100, 32, 4), "float64"))
     for lo in ("C", "F", "reversed"):
-        yield C(f"solve/large 300 {lo}", LA.solve, lay(vals(218, (300, 300), "float64"), lo), vals(219, (300, 5), "float64"))
-        yield C(f"solve/large 512 {lo}", LA.solve, lay(vals(220, (512, 512), "float64"), lo), lay(vals(221, (512, 512), "float64"), lo))
+        yield C(
+            f"solve/large 300 {lo}", LA.solve, lay(vals(218, (300, 300), "float64"), lo), vals(219, (300, 5), "float64")
+        )
+        yield C(
+            f"solve/large 512 {lo}",
+            LA.solve,
+            lay(vals(220, (512, 512), "float64"), lo),
+            lay(vals(221, (512, 512), "float64"), lo),
+        )
     yield C("solve/large 300 complex", LA.solve, vals(222, (300, 300), "complex128"), vals(223, (300,), "complex128"))
     yield C("solve/large 512 C int", LA.solve, vals(224, (512, 512), "int64"), vals(225, (512, 2), "int64"))
     yield C("solve/err singular", LA.solve, np.ones((3, 3)), np.ones(3))
     yield C("solve/err singular batch", LA.solve, singular_batch(226, 1000, 3, bad=(7, 900)), np.ones(3))
-    yield C("solve/err singular broadcast batch", LA.solve, singular_batch(227, 4, 3, bad=(2,)).reshape(4, 1, 3, 3),
-            np.ones((5, 3, 1)))
+    yield C(
+        "solve/err singular broadcast batch",
+        LA.solve,
+        singular_batch(227, 4, 3, bad=(2,)).reshape(4, 1, 3, 3),
+        np.ones((5, 3, 1)),
+    )
     yield C("solve/err nan a", LA.solve, with_nan(np.eye(3), (1, 0)), np.ones(3))
     yield C("solve/err nan b", LA.solve, np.eye(3), with_nan(np.ones(3), 1))
-    yield C("solve/err inf b batch", LA.solve, wc(228, (50, 3, 3), "float64"), with_nan(np.ones((50, 3, 1)), (33, 0, 0), np.inf))
+    yield C(
+        "solve/err inf b batch",
+        LA.solve,
+        wc(228, (50, 3, 3), "float64"),
+        with_nan(np.ones((50, 3, 1)), (33, 0, 0), np.inf),
+    )
     yield C("solve/empty 0x0 vec", LA.solve, np.zeros((0, 0)), np.zeros(0))
     yield C("solve/empty batch", LA.solve, np.zeros((0, 3, 3)), np.zeros((0, 3, 2)))
     yield C("solve/empty rhs", LA.solve, np.eye(3), np.zeros((3, 0)))
@@ -505,39 +560,96 @@ def cases(L):
         for up in (False, True):
             t = wc(230, (4, 4), dt)
             yield C(f"solve_triangular/{dt} upper={up}", LA.solve_triangular, t, vals(231, (4, 2), dt), upper=up)
-            yield C(f"solve_triangular/{dt} upper={up} unit", LA.solve_triangular, t, vals(231, (4,), dt), upper=up,
-                    unit_diagonal=True)
+            yield C(
+                f"solve_triangular/{dt} upper={up} unit",
+                LA.solve_triangular,
+                t,
+                vals(231, (4,), dt),
+                upper=up,
+                unit_diagonal=True,
+            )
     for up in (False, True):
         g = wc(232, (5, 5), "complex128")
         idx = np.triu_indices(5, 1) if not up else np.tril_indices(5, -1)
         g[idx] = np.nan  # the unread triangle
-        yield C(f"solve_triangular/nan in unread triangle upper={up}", LA.solve_triangular, g, vals(233, (5, 2), "complex128"), upper=up)
+        yield C(
+            f"solve_triangular/nan in unread triangle upper={up}",
+            LA.solve_triangular,
+            g,
+            vals(233, (5, 2), "complex128"),
+            upper=up,
+        )
         z = wc(234, (4, 4), "float64")
         z[2, 2] = 0
         yield C(f"solve_triangular/err zero diagonal upper={up}", LA.solve_triangular, z, np.ones(4), upper=up)
-        yield C(f"solve_triangular/zero diagonal unit upper={up}", LA.solve_triangular, z, np.ones(4), upper=up, unit_diagonal=True)
+        yield C(
+            f"solve_triangular/zero diagonal unit upper={up}",
+            LA.solve_triangular,
+            z,
+            np.ones(4),
+            upper=up,
+            unit_diagonal=True,
+        )
         nd = with_nan(np.eye(4), (2, 2))
-        yield C(f"solve_triangular/nan diagonal unit upper={up}", LA.solve_triangular, nd, np.ones(4), upper=up, unit_diagonal=True)
+        yield C(
+            f"solve_triangular/nan diagonal unit upper={up}",
+            LA.solve_triangular,
+            nd,
+            np.ones(4),
+            upper=up,
+            unit_diagonal=True,
+        )
         yield C(f"solve_triangular/err nan diagonal upper={up}", LA.solve_triangular, nd, np.ones(4), upper=up)
         rd = with_nan(np.eye(4), (3, 0) if not up else (0, 3))
         yield C(f"solve_triangular/err nan read triangle upper={up}", LA.solve_triangular, rd, np.ones(4), upper=up)
         for lo in LAYOUTS:
-            yield C(f"solve_triangular/layout {lo} upper={up}", LA.solve_triangular, lay(wc(235, (3, 5, 5), "float64"), lo),
-                    lay(vals(236, (3, 5, 3), "float64"), lo), upper=up)
+            yield C(
+                f"solve_triangular/layout {lo} upper={up}",
+                LA.solve_triangular,
+                lay(wc(235, (3, 5, 5), "float64"), lo),
+                lay(vals(236, (3, 5, 3), "float64"), lo),
+                upper=up,
+            )
         for lo in ("C", "F", "reversed"):
-            yield C(f"solve_triangular/large 512 {lo} upper={up}", LA.solve_triangular, lay(wc(237, (512, 512), "float64"), lo),
-                    vals(238, (512, 4), "float64"), upper=up)
-        yield C(f"solve_triangular/large 300 upper={up}", LA.solve_triangular, wc(237, (300, 300), "complex128"),
-                vals(238, (300,), "complex128"), upper=up)
-        yield C(f"solve_triangular/batch 1000x3x3 upper={up}", LA.solve_triangular, wc(239, (1000, 3, 3), "float64"),
-                vals(240, (1000, 3, 2), "float64"), upper=up)
-        yield C(f"solve_triangular/batch 100x32x32 upper={up}", LA.solve_triangular, wc(241, (100, 32, 32), "float64"),
-                vals(242, (32,), "float64"), upper=up)
+            yield C(
+                f"solve_triangular/large 512 {lo} upper={up}",
+                LA.solve_triangular,
+                lay(wc(237, (512, 512), "float64"), lo),
+                vals(238, (512, 4), "float64"),
+                upper=up,
+            )
+        yield C(
+            f"solve_triangular/large 300 upper={up}",
+            LA.solve_triangular,
+            wc(237, (300, 300), "complex128"),
+            vals(238, (300,), "complex128"),
+            upper=up,
+        )
+        yield C(
+            f"solve_triangular/batch 1000x3x3 upper={up}",
+            LA.solve_triangular,
+            wc(239, (1000, 3, 3), "float64"),
+            vals(240, (1000, 3, 2), "float64"),
+            upper=up,
+        )
+        yield C(
+            f"solve_triangular/batch 100x32x32 upper={up}",
+            LA.solve_triangular,
+            wc(241, (100, 32, 32), "float64"),
+            vals(242, (32,), "float64"),
+            upper=up,
+        )
     zb = wc(243, (1000, 3, 3), "float64")
     zb[7, 1, 1] = 0
     zb[900, 0, 0] = 0
     yield C("solve_triangular/err zero diagonal batch", LA.solve_triangular, zb, np.ones(3), upper=True)
-    yield C("solve_triangular/mixed int complex", LA.solve_triangular, wc(244, (3, 3), "int64"), vals(245, (3,), "complex128"), upper=False)
+    yield C(
+        "solve_triangular/mixed int complex",
+        LA.solve_triangular,
+        wc(244, (3, 3), "int64"),
+        vals(245, (3,), "complex128"),
+        upper=False,
+    )
     yield C("solve_triangular/empty", LA.solve_triangular, np.zeros((0, 0)), np.zeros((0, 2)), upper=True)
     yield C("solve_triangular/empty batch", LA.solve_triangular, np.zeros((0, 2, 2)), np.zeros(2), upper=False)
     yield C("solve_triangular/err nan b", LA.solve_triangular, np.eye(3), with_nan(np.ones(3), 0), upper=True)
@@ -553,9 +665,13 @@ def cases(L):
                 yield C(f"cholesky/{dt} n={n} upper={up}", LA.cholesky, spd(250 + n, (n, n), dt), upper=up)
     for up in (False, True):
         for lo in LAYOUTS:
-            yield C(f"cholesky/layout {lo} upper={up}", LA.cholesky, lay(spd(255, (3, 5, 5), "complex128"), lo), upper=up)
+            yield C(
+                f"cholesky/layout {lo} upper={up}", LA.cholesky, lay(spd(255, (3, 5, 5), "complex128"), lo), upper=up
+            )
         for lo in ("C", "F", "reversed"):
-            yield C(f"cholesky/large 512 {lo} upper={up}", LA.cholesky, lay(spd(256, (512, 512), "float64"), lo), upper=up)
+            yield C(
+                f"cholesky/large 512 {lo} upper={up}", LA.cholesky, lay(spd(256, (512, 512), "float64"), lo), upper=up
+            )
         yield C(f"cholesky/large 300 complex upper={up}", LA.cholesky, spd(257, (300, 300), "complex128"), upper=up)
         yield C(f"cholesky/batch 1000x3x3 upper={up}", LA.cholesky, spd(258, (1000, 3, 3), "float64"), upper=up)
         yield C(f"cholesky/batch 100x32x32 upper={up}", LA.cholesky, spd(259, (100, 32, 32), "complex128"), upper=up)
@@ -588,7 +704,13 @@ def cases(L):
         for lo in LAYOUTS:
             t = wc(272, (3, 5, 5), "complex128")
             t = np.triu(t) if up else np.tril(t)
-            yield C(f"cholesky_solve/layout {lo} upper={up}", LA.cholesky_solve, lay(t, lo), lay(vals(273, (3, 5, 2), "complex128"), lo), upper=up)
+            yield C(
+                f"cholesky_solve/layout {lo} upper={up}",
+                LA.cholesky_solve,
+                lay(t, lo),
+                lay(vals(273, (3, 5, 2), "complex128"), lo),
+                upper=up,
+            )
         g = wc(274, (4, 4), "float64")
         g[np.tril_indices(4, -1) if up else np.triu_indices(4, 1)] = np.nan
         yield C(f"cholesky_solve/nan unread triangle upper={up}", LA.cholesky_solve, g, np.ones(4), upper=up)
@@ -598,16 +720,39 @@ def cases(L):
         for lo in ("C", "F"):
             t = wc(275, (512, 512), "float64")
             t = np.triu(t) if up else np.tril(t)
-            yield C(f"cholesky_solve/large 512 {lo} upper={up}", LA.cholesky_solve, lay(t, lo), vals(276, (512, 3), "float64"), upper=up)
-        yield C(f"cholesky_solve/batch 1000x3x3 upper={up}", LA.cholesky_solve, wc(277, (1000, 3, 3), "float64"),
-                vals(278, (3,), "float64"), upper=up)
-        yield C(f"cholesky_solve/batch 100x32x32 upper={up}", LA.cholesky_solve, wc(279, (100, 32, 32), "complex128"),
-                vals(280, (100, 32, 2), "complex128"), upper=up)
-    yield C("cholesky_solve/from cholesky", lambda: LA.cholesky_solve(LA.cholesky(L.arr(spd(281, (6, 6), "float64"))),
-                                                                        L.arr(vals(282, (6,), "float64"))))
-    yield ("cholesky_solve/from cholesky upper",
-           lambda: LA.cholesky_solve(LA.cholesky(L.arr(spd(281, (6, 6), "complex128")), upper=True),
-                                     L.arr(vals(282, (6, 2), "complex128")), upper=True))
+            yield C(
+                f"cholesky_solve/large 512 {lo} upper={up}",
+                LA.cholesky_solve,
+                lay(t, lo),
+                vals(276, (512, 3), "float64"),
+                upper=up,
+            )
+        yield C(
+            f"cholesky_solve/batch 1000x3x3 upper={up}",
+            LA.cholesky_solve,
+            wc(277, (1000, 3, 3), "float64"),
+            vals(278, (3,), "float64"),
+            upper=up,
+        )
+        yield C(
+            f"cholesky_solve/batch 100x32x32 upper={up}",
+            LA.cholesky_solve,
+            wc(279, (100, 32, 32), "complex128"),
+            vals(280, (100, 32, 2), "complex128"),
+            upper=up,
+        )
+    yield C(
+        "cholesky_solve/from cholesky",
+        lambda: LA.cholesky_solve(LA.cholesky(L.arr(spd(281, (6, 6), "float64"))), L.arr(vals(282, (6,), "float64"))),
+    )
+    yield (
+        "cholesky_solve/from cholesky upper",
+        lambda: LA.cholesky_solve(
+            LA.cholesky(L.arr(spd(281, (6, 6), "complex128")), upper=True),
+            L.arr(vals(282, (6, 2), "complex128")),
+            upper=True,
+        ),
+    )
     yield C("cholesky_solve/err nan read", LA.cholesky_solve, with_nan(np.eye(3), (2, 1)), np.ones(3))
     yield C("cholesky_solve/err nan b", LA.cholesky_solve, np.eye(3), with_nan(np.ones(3), 2))
     yield C("cholesky_solve/empty", LA.cholesky_solve, np.zeros((0, 0)), np.zeros(0))
@@ -645,9 +790,15 @@ def cases(L):
         yield f"lu_solve/{dt} via lu", lu_then_solve(wc(300, (4, 4), dt), vals(301, (4, 2), dt))
         yield f"lu_solve/{dt} via lu vec", lu_then_solve(wc(300, (4, 4), dt), vals(301, (4,), dt))
     yield "lu_solve/batch 1000x3x3", lu_then_solve(wc(302, (1000, 3, 3), "float64"), vals(303, (1000, 3, 2), "float64"))
-    yield "lu_solve/batch 100x32x32 complex", lu_then_solve(wc(304, (100, 32, 32), "complex128"), vals(305, (32,), "complex128"))
+    yield (
+        "lu_solve/batch 100x32x32 complex",
+        lu_then_solve(wc(304, (100, 32, 32), "complex128"), vals(305, (32,), "complex128")),
+    )
     yield "lu_solve/large 512", lu_then_solve(vals(306, (512, 512), "float64"), vals(307, (512, 3), "float64"))
-    yield "lu_solve/large 300 complex", lu_then_solve(vals(308, (300, 300), "complex128"), vals(309, (300,), "complex128"))
+    yield (
+        "lu_solve/large 300 complex",
+        lu_then_solve(vals(308, (300, 300), "complex128"), vals(309, (300,), "complex128")),
+    )
     yield "lu_solve/err singular via lu", lu_then_solve(np.ones((3, 3)), np.ones(3))
     yield "lu_solve/err singular batch via lu", lu_then_solve(singular_batch(310, 1000, 3, bad=(7, 900)), np.ones(3))
     lmat = np.tril(vals(311, (4, 4), "float64"), -1) + np.diag([np.nan, 5.0, -2.0, 0.0])  # diagonal not read
@@ -655,21 +806,43 @@ def cases(L):
     perm = np.array([2, 0, 3, 1], dtype=np.int64)
     yield C("lu_solve/explicit with garbage l diagonal", LA.lu_solve, lmat, umat, perm, vals(313, (4, 2), "float64"))
     for lo in LAYOUTS:
-        yield C(f"lu_solve/layout {lo}", LA.lu_solve, lay(np.broadcast_to(lmat, (3, 4, 4)), lo),
-                lay(np.broadcast_to(umat, (3, 4, 4)), lo), perm, lay(vals(314, (3, 4, 2), "float64"), lo))
+        yield C(
+            f"lu_solve/layout {lo}",
+            LA.lu_solve,
+            lay(np.broadcast_to(lmat, (3, 4, 4)), lo),
+            lay(np.broadcast_to(umat, (3, 4, 4)), lo),
+            perm,
+            lay(vals(314, (3, 4, 2), "float64"), lo),
+        )
     yield C("lu_solve/perm reversed", LA.lu_solve, lmat, umat, perm[::-1], vals(313, (4,), "float64"))
-    yield C("lu_solve/perm batch", LA.lu_solve, lmat, umat, np.array([[0, 1, 2, 3], [3, 2, 1, 0]], dtype=np.int64),
-            vals(315, (2, 4, 1), "float64"))
+    yield C(
+        "lu_solve/perm batch",
+        LA.lu_solve,
+        lmat,
+        umat,
+        np.array([[0, 1, 2, 3], [3, 2, 1, 0]], dtype=np.int64),
+        vals(315, (2, 4, 1), "float64"),
+    )
     yield C("lu_solve/mixed complex b", LA.lu_solve, lmat, umat, perm, vals(316, (4,), "complex128"))
-    yield C("lu_solve/mixed int l u", LA.lu_solve, np.tril(vals(317, (3, 3), "int64")), np.triu(wc(318, (3, 3), "int64")),
-            np.array([1, 2, 0], dtype=np.int64), vals(319, (3,), "float64"))
+    yield C(
+        "lu_solve/mixed int l u",
+        LA.lu_solve,
+        np.tril(vals(317, (3, 3), "int64")),
+        np.triu(wc(318, (3, 3), "int64")),
+        np.array([1, 2, 0], dtype=np.int64),
+        vals(319, (3,), "float64"),
+    )
     yield C("lu_solve/err nan u", LA.lu_solve, lmat, with_nan(umat, (0, 3)), perm, np.ones(4))
     yield C("lu_solve/nan unread u", LA.lu_solve, lmat, with_nan(umat, (3, 0)), perm, np.ones(4))
     uz = umat.copy()
     uz[2, 2] = 0
     yield C("lu_solve/err zero u diagonal", LA.lu_solve, lmat, uz, perm, np.ones(4))
-    yield C("lu_solve/err perm not permutation", LA.lu_solve, lmat, umat, np.array([0, 0, 1, 2], dtype=np.int64), np.ones(4))
-    yield C("lu_solve/err perm out of range", LA.lu_solve, lmat, umat, np.array([0, 1, 2, 4], dtype=np.int64), np.ones(4))
+    yield C(
+        "lu_solve/err perm not permutation", LA.lu_solve, lmat, umat, np.array([0, 0, 1, 2], dtype=np.int64), np.ones(4)
+    )
+    yield C(
+        "lu_solve/err perm out of range", LA.lu_solve, lmat, umat, np.array([0, 1, 2, 4], dtype=np.int64), np.ones(4)
+    )
     yield C("lu_solve/err perm negative", LA.lu_solve, lmat, umat, np.array([0, 1, 2, -1], dtype=np.int64), np.ones(4))
     yield C("lu_solve/err perm float", LA.lu_solve, lmat, umat, perm.astype(np.float64), np.ones(4))
     yield C("lu_solve/err perm wrong length", LA.lu_solve, lmat, umat, perm[:3], np.ones(4))
@@ -687,14 +860,25 @@ def cases(L):
     rd[:, 3] = rd[:, 0] + rd[:, 1]
     for rt in (None, 0, 1e-12, 0.5, 1.0, 2.0):
         yield C(f"lstsq/rank-deficient rtol={rt}", LA.lstsq, rd, vals(327, (6, 2), "float64"), rtol=rt)
-    yield C("lstsq/complex rank-deficient", LA.lstsq, vals(328, (6, 2), "complex128") @ vals(329, (2, 5), "complex128"),
-            vals(330, (6,), "complex128"))
+    yield C(
+        "lstsq/complex rank-deficient",
+        LA.lstsq,
+        vals(328, (6, 2), "complex128") @ vals(329, (2, 5), "complex128"),
+        vals(330, (6,), "complex128"),
+    )
     yield C("lstsq/mixed int complex", LA.lstsq, vals(331, (5, 3), "int64"), vals(332, (5,), "complex128"))
     for lo in LAYOUTS:
-        yield C(f"lstsq/layout {lo}", LA.lstsq, lay(vals(333, (3, 7, 4), "float64"), lo), lay(vals(334, (3, 7, 2), "float64"), lo))
+        yield C(
+            f"lstsq/layout {lo}",
+            LA.lstsq,
+            lay(vals(333, (3, 7, 4), "float64"), lo),
+            lay(vals(334, (3, 7, 2), "float64"), lo),
+        )
     yield C("lstsq/batch 100x6x3", LA.lstsq, vals(335, (100, 6, 3), "float64"), vals(336, (100, 6, 2), "float64"))
     yield C("lstsq/batch 1000x3x3", LA.lstsq, vals(337, (1000, 3, 3), "float64"), vals(338, (3,), "float64"))
-    yield C("lstsq/batch broadcast", LA.lstsq, vals(339, (4, 1, 5, 3), "complex128"), vals(340, (2, 5, 1), "complex128"))
+    yield C(
+        "lstsq/batch broadcast", LA.lstsq, vals(339, (4, 1, 5, 3), "complex128"), vals(340, (2, 5, 1), "complex128")
+    )
     yield C("lstsq/large 300x200", LA.lstsq, vals(341, (300, 200), "float64"), vals(342, (300, 3), "float64"))
     yield C("lstsq/large 512 C", LA.lstsq, vals(343, (512, 512), "float64"), vals(344, (512,), "float64"))
     yield C("lstsq/empty 0x3", LA.lstsq, np.zeros((0, 3)), np.zeros(0))
@@ -777,7 +961,9 @@ def cases(L):
             yield C(f"{fn}/large 512 C {mode}", f, vals(406, (512, 512), "float64"), mode=mode)
             yield C(f"{fn}/large 512 F {mode}", f, lay(vals(406, (512, 512), "float64"), "F"), mode=mode)
             yield C(f"{fn}/large 400x300 {mode}", f, vals(407, (400, 300), "float64"), mode=mode)
-            yield C(f"{fn}/rank-deficient {mode}", f, vals(408, (6, 2), "float64") @ vals(409, (2, 4), "float64"), mode=mode)
+            yield C(
+                f"{fn}/rank-deficient {mode}", f, vals(408, (6, 2), "float64") @ vals(409, (2, 4), "float64"), mode=mode
+            )
             yield C(f"{fn}/zeros {mode}", f, np.zeros((4, 3)), mode=mode)
             for shp in ((0, 0), (0, 3), (3, 0), (0, 4, 2)):
                 yield C(f"{fn}/empty {shp} {mode}", f, np.zeros(shp), mode=mode)
@@ -836,14 +1022,24 @@ def cases(L):
         yield C(f"{fn}/gen mixed float complex", f, herm(454, (4, 4), "float64"), spd(455, (4, 4), "complex128"))
         yield C(f"{fn}/gen mixed complex int", f, herm(454, (4, 4), "complex128"), spd(455, (4, 4), "int64"))
         for lo in LAYOUTS:
-            yield C(f"{fn}/gen layout {lo}", f, lay(herm(456, (3, 5, 5), "float64"), lo), lay(spd(457, (3, 5, 5), "float64"), lo))
+            yield C(
+                f"{fn}/gen layout {lo}",
+                f,
+                lay(herm(456, (3, 5, 5), "float64"), lo),
+                lay(spd(457, (3, 5, 5), "float64"), lo),
+            )
         gb = spd(458, (5, 5), "float64")
         gb[np.triu_indices(5, 1)] = np.nan
         yield C(f"{fn}/gen nan in b upper triangle", f, herm(459, (5, 5), "float64"), gb)
         yield C(f"{fn}/gen broadcast a batch", f, herm(460, (10, 4, 4), "float64"), spd(461, (4, 4), "float64"))
         yield C(f"{fn}/gen broadcast b batch", f, herm(460, (4, 4), "complex128"), spd(461, (2, 3, 4, 4), "complex128"))
         yield C(f"{fn}/gen batch 1000x3x3", f, herm(462, (1000, 3, 3), "float64"), spd(463, (1000, 3, 3), "float64"))
-        yield C(f"{fn}/gen batch 100x32x32", f, herm(464, (100, 32, 32), "complex128"), spd(465, (100, 32, 32), "complex128"))
+        yield C(
+            f"{fn}/gen batch 100x32x32",
+            f,
+            herm(464, (100, 32, 32), "complex128"),
+            spd(465, (100, 32, 32), "complex128"),
+        )
         yield C(f"{fn}/gen large 300", f, herm(466, (300, 300), "float64"), spd(467, (300, 300), "float64"))
         yield C(f"{fn}/gen large 512", f, herm(468, (512, 512), "float64"), spd(469, (512, 512), "float64"))
         yield C(f"{fn}/gen b=None", f, herm(470, (3, 3), "float64"), None)
@@ -942,15 +1138,36 @@ def cases(L):
         yield C(f"solve_tridiagonal/{dt} mat", LA.solve_tridiagonal, dl, d, du, vals(523, (6, 3), dt))
     dl, d, du = tri(524, (), 5, "float64")
     yield C("solve_tridiagonal/mixed complex b", LA.solve_tridiagonal, dl, d, du, vals(527, (5,), "complex128"))
-    yield C("solve_tridiagonal/mixed complex dl", LA.solve_tridiagonal, dl.astype(complex) * 1j, d, du, vals(527, (5,), "float64"))
+    yield C(
+        "solve_tridiagonal/mixed complex dl",
+        LA.solve_tridiagonal,
+        dl.astype(complex) * 1j,
+        d,
+        du,
+        vals(527, (5,), "float64"),
+    )
     for lo in ("strided", "reversed"):
-        yield C(f"solve_tridiagonal/layout {lo}", LA.solve_tridiagonal, vlay(dl, lo), vlay(d, lo), vlay(du, lo),
-                vlay(vals(528, (5,), "float64"), lo))
-        yield C(f"solve_tridiagonal/b layout {lo}", LA.solve_tridiagonal, dl, d, du, lay(vals(528, (5, 3), "float64"), lo))
+        yield C(
+            f"solve_tridiagonal/layout {lo}",
+            LA.solve_tridiagonal,
+            vlay(dl, lo),
+            vlay(d, lo),
+            vlay(du, lo),
+            vlay(vals(528, (5,), "float64"), lo),
+        )
+        yield C(
+            f"solve_tridiagonal/b layout {lo}", LA.solve_tridiagonal, dl, d, du, lay(vals(528, (5, 3), "float64"), lo)
+        )
     yield C("solve_tridiagonal/b F", LA.solve_tridiagonal, dl, d, du, lay(vals(528, (5, 3), "float64"), "F"))
     yield C("solve_tridiagonal/n=1", LA.solve_tridiagonal, np.zeros(0), np.array([4.0]), np.zeros(0), np.array([2.0]))
-    yield C("solve_tridiagonal/pivoting", LA.solve_tridiagonal, np.array([5.0, 5.0]), np.array([1e-3, 1e-3, 1e-3]),
-            np.array([1.0, 1.0]), np.ones(3))
+    yield C(
+        "solve_tridiagonal/pivoting",
+        LA.solve_tridiagonal,
+        np.array([5.0, 5.0]),
+        np.array([1e-3, 1e-3, 1e-3]),
+        np.array([1.0, 1.0]),
+        np.ones(3),
+    )
     bdl, bd, bdu = tri(529, (4,), 5, "float64")
     yield C("solve_tridiagonal/broadcast", LA.solve_tridiagonal, bdl, d, du, vals(532, (3, 1, 5, 2), "float64"))
     yield C("solve_tridiagonal/broadcast b vec", LA.solve_tridiagonal, bdl, bd, bdu, vals(532, (5,), "float64"))
@@ -971,7 +1188,14 @@ def cases(L):
     yield C("solve_tridiagonal/err nan d", LA.solve_tridiagonal, dl, with_nan(d, 2), du, np.ones(5))
     yield C("solve_tridiagonal/err nan b", LA.solve_tridiagonal, dl, d, du, with_nan(np.ones(5), 4))
     yield C("solve_tridiagonal/empty n=0", LA.solve_tridiagonal, np.zeros(0), np.zeros(0), np.zeros(0), np.zeros(0))
-    yield C("solve_tridiagonal/empty batch", LA.solve_tridiagonal, np.zeros((0, 2)), np.zeros((0, 3)), np.zeros((0, 2)), np.zeros(3))
+    yield C(
+        "solve_tridiagonal/empty batch",
+        LA.solve_tridiagonal,
+        np.zeros((0, 2)),
+        np.zeros((0, 3)),
+        np.zeros((0, 2)),
+        np.zeros(3),
+    )
     yield C("solve_tridiagonal/err dl length", LA.solve_tridiagonal, np.ones(5), d, du, np.ones(5))
     yield C("solve_tridiagonal/err b length", LA.solve_tridiagonal, dl, d, du, np.ones(4))
     yield C("solve_tridiagonal/err numpy arg", LA.solve_tridiagonal, dl, Raw(d), du, np.ones(5))
@@ -997,71 +1221,205 @@ def cases(L):
     for kl, ku in ((1, 1), (0, 0), (2, 1), (0, 3), (3, 0), (2, 2), (7, 7), (5, 0)):
         for dt in FC:
             ab = band(banded_dense(550, (6, 6), kl, ku, dt), kl, ku)
-            yield C(f"solve_banded/{dt} kl={kl} ku={ku}", LA.solve_banded, ab, vals(551, (6, 2), dt),
-                    lower_bandwidth=kl, upper_bandwidth=ku)
+            yield C(
+                f"solve_banded/{dt} kl={kl} ku={ku}",
+                LA.solve_banded,
+                ab,
+                vals(551, (6, 2), dt),
+                lower_bandwidth=kl,
+                upper_bandwidth=ku,
+            )
     for dt in ("bool", "int64"):
         ab = band(banded_dense(552, (5, 5), 1, 2, dt), 1, 2)
         yield C(f"solve_banded/{dt}", LA.solve_banded, ab, vals(553, (5,), dt), lower_bandwidth=1, upper_bandwidth=2)
     # same as solve_tridiagonal
     tdl, td, tdu = tri(554, (), 6, "float64")
     tab = np.stack([np.concatenate([[np.nan], tdu]), td, np.concatenate([tdl, [np.nan]])])
-    yield C("solve_banded/tridiagonal 1 1", LA.solve_banded, tab, vals(557, (6,), "float64"), lower_bandwidth=1, upper_bandwidth=1)
+    yield C(
+        "solve_banded/tridiagonal 1 1",
+        LA.solve_banded,
+        tab,
+        vals(557, (6,), "float64"),
+        lower_bandwidth=1,
+        upper_bandwidth=1,
+    )
     yield C("solve_banded/tridiagonal reference", LA.solve_tridiagonal, tdl, td, tdu, vals(557, (6,), "float64"))
     for lo in ("F", "strided", "reversed"):
         ab = band(banded_dense(558, (3, 7, 7), 2, 1, "float64"), 2, 1)
-        yield C(f"solve_banded/layout {lo}", LA.solve_banded, lay(ab, lo), lay(vals(559, (3, 7, 2), "float64"), lo),
-                lower_bandwidth=2, upper_bandwidth=1)
-    yield C("solve_banded/batch 1000 n=3", LA.solve_banded, band(banded_dense(560, (1000, 3, 3), 1, 1, "float64"), 1, 1),
-            vals(561, (1000, 3, 1), "float64"), lower_bandwidth=1, upper_bandwidth=1)
-    yield C("solve_banded/batch 100 n=32", LA.solve_banded, band(banded_dense(562, (100, 32, 32), 3, 2, "complex128"), 3, 2),
-            vals(563, (100, 32, 2), "complex128"), lower_bandwidth=3, upper_bandwidth=2)
-    yield C("solve_banded/broadcast b", LA.solve_banded, band(banded_dense(564, (6, 6), 2, 2, "float64"), 2, 2),
-            vals(565, (4, 6, 1), "float64"), lower_bandwidth=2, upper_bandwidth=2)
+        yield C(
+            f"solve_banded/layout {lo}",
+            LA.solve_banded,
+            lay(ab, lo),
+            lay(vals(559, (3, 7, 2), "float64"), lo),
+            lower_bandwidth=2,
+            upper_bandwidth=1,
+        )
+    yield C(
+        "solve_banded/batch 1000 n=3",
+        LA.solve_banded,
+        band(banded_dense(560, (1000, 3, 3), 1, 1, "float64"), 1, 1),
+        vals(561, (1000, 3, 1), "float64"),
+        lower_bandwidth=1,
+        upper_bandwidth=1,
+    )
+    yield C(
+        "solve_banded/batch 100 n=32",
+        LA.solve_banded,
+        band(banded_dense(562, (100, 32, 32), 3, 2, "complex128"), 3, 2),
+        vals(563, (100, 32, 2), "complex128"),
+        lower_bandwidth=3,
+        upper_bandwidth=2,
+    )
+    yield C(
+        "solve_banded/broadcast b",
+        LA.solve_banded,
+        band(banded_dense(564, (6, 6), 2, 2, "float64"), 2, 2),
+        vals(565, (4, 6, 1), "float64"),
+        lower_bandwidth=2,
+        upper_bandwidth=2,
+    )
     lab = vals(566, (4, 50_000), "float64")
     lab[1] += 10
-    yield C("solve_banded/long n=50000 kl=2 ku=1", LA.solve_banded, lab, vals(567, (50_000,), "float64"),
-            lower_bandwidth=2, upper_bandwidth=1)
+    yield C(
+        "solve_banded/long n=50000 kl=2 ku=1",
+        LA.solve_banded,
+        lab,
+        vals(567, (50_000,), "float64"),
+        lower_bandwidth=2,
+        upper_bandwidth=1,
+    )
     tl = vals(568, (3, 50_000), "float64")
     tl[1] += 10
-    yield C("solve_banded/long n=50000 tridiagonal", LA.solve_banded, tl, vals(569, (50_000, 2), "float64"),
-            lower_bandwidth=1, upper_bandwidth=1)
-    yield C("solve_banded/err singular", LA.solve_banded, np.zeros((3, 4)), np.ones(4), lower_bandwidth=1, upper_bandwidth=1)
-    yield C("solve_banded/err singular kl=2", LA.solve_banded, np.zeros((4, 4)), np.ones(4), lower_bandwidth=2, upper_bandwidth=1)
+    yield C(
+        "solve_banded/long n=50000 tridiagonal",
+        LA.solve_banded,
+        tl,
+        vals(569, (50_000, 2), "float64"),
+        lower_bandwidth=1,
+        upper_bandwidth=1,
+    )
+    yield C(
+        "solve_banded/err singular", LA.solve_banded, np.zeros((3, 4)), np.ones(4), lower_bandwidth=1, upper_bandwidth=1
+    )
+    yield C(
+        "solve_banded/err singular kl=2",
+        LA.solve_banded,
+        np.zeros((4, 4)),
+        np.ones(4),
+        lower_bandwidth=2,
+        upper_bandwidth=1,
+    )
     sb = band(banded_dense(570, (1000, 3, 3), 1, 1, "float64"), 1, 1)
     sb[[7, 900]] = 0
     yield C("solve_banded/err singular batch", LA.solve_banded, sb, np.ones(3), lower_bandwidth=1, upper_bandwidth=1)
     nab = band(banded_dense(571, (5, 5), 1, 1, "float64"), 1, 1)
     nab[1, 2] = np.nan
     yield C("solve_banded/err nan in band", LA.solve_banded, nab, np.ones(5), lower_bandwidth=1, upper_bandwidth=1)
-    yield C("solve_banded/err nan b", LA.solve_banded, band(banded_dense(571, (5, 5), 1, 1, "float64"), 1, 1),
-            with_nan(np.ones(5), 0), lower_bandwidth=1, upper_bandwidth=1)
-    yield C("solve_banded/empty n=0", LA.solve_banded, np.zeros((3, 0)), np.zeros(0), lower_bandwidth=1, upper_bandwidth=1)
-    yield C("solve_banded/err rows mismatch", LA.solve_banded, np.ones((3, 4)), np.ones(4), lower_bandwidth=1, upper_bandwidth=2)
-    yield C("solve_banded/err b length", LA.solve_banded, np.ones((3, 4)), np.ones(5), lower_bandwidth=1, upper_bandwidth=1)
-    yield C("solve_banded/err negative bandwidth", LA.solve_banded, np.ones((1, 4)), np.ones(4), lower_bandwidth=-1, upper_bandwidth=1)
+    yield C(
+        "solve_banded/err nan b",
+        LA.solve_banded,
+        band(banded_dense(571, (5, 5), 1, 1, "float64"), 1, 1),
+        with_nan(np.ones(5), 0),
+        lower_bandwidth=1,
+        upper_bandwidth=1,
+    )
+    yield C(
+        "solve_banded/empty n=0", LA.solve_banded, np.zeros((3, 0)), np.zeros(0), lower_bandwidth=1, upper_bandwidth=1
+    )
+    yield C(
+        "solve_banded/err rows mismatch",
+        LA.solve_banded,
+        np.ones((3, 4)),
+        np.ones(4),
+        lower_bandwidth=1,
+        upper_bandwidth=2,
+    )
+    yield C(
+        "solve_banded/err b length", LA.solve_banded, np.ones((3, 4)), np.ones(5), lower_bandwidth=1, upper_bandwidth=1
+    )
+    yield C(
+        "solve_banded/err negative bandwidth",
+        LA.solve_banded,
+        np.ones((1, 4)),
+        np.ones(4),
+        lower_bandwidth=-1,
+        upper_bandwidth=1,
+    )
     yield C("solve_banded/err bandwidth missing", LA.solve_banded, np.ones((3, 4)), np.ones(4), lower_bandwidth=1)
-    yield C("solve_banded/err bandwidth float", LA.solve_banded, np.ones((3, 4)), np.ones(4), lower_bandwidth=1.0, upper_bandwidth=1)
+    yield C(
+        "solve_banded/err bandwidth float",
+        LA.solve_banded,
+        np.ones((3, 4)),
+        np.ones(4),
+        lower_bandwidth=1.0,
+        upper_bandwidth=1,
+    )
     yield C("solve_banded/err ndim 1", LA.solve_banded, np.ones(4), np.ones(4), lower_bandwidth=0, upper_bandwidth=0)
-    yield C("solve_banded/err numpy arg", LA.solve_banded, Raw(np.ones((3, 4))), np.ones(4), lower_bandwidth=1, upper_bandwidth=1)
+    yield C(
+        "solve_banded/err numpy arg",
+        LA.solve_banded,
+        Raw(np.ones((3, 4))),
+        np.ones(4),
+        lower_bandwidth=1,
+        upper_bandwidth=1,
+    )
 
     # solve_sylvester
     for dt in DTYPES:
-        yield C(f"solve_sylvester/{dt}", LA.solve_sylvester, wc(580, (4, 4), dt), wc(581, (3, 3), dt), vals(582, (4, 3), dt))
-    yield C("solve_sylvester/mixed", LA.solve_sylvester, wc(583, (3, 3), "int64"), wc(584, (2, 2), "complex128"), vals(585, (3, 2), "float64"))
+        yield C(
+            f"solve_sylvester/{dt}", LA.solve_sylvester, wc(580, (4, 4), dt), wc(581, (3, 3), dt), vals(582, (4, 3), dt)
+        )
+    yield C(
+        "solve_sylvester/mixed",
+        LA.solve_sylvester,
+        wc(583, (3, 3), "int64"),
+        wc(584, (2, 2), "complex128"),
+        vals(585, (3, 2), "float64"),
+    )
     for lo in LAYOUTS:
-        yield C(f"solve_sylvester/layout {lo}", LA.solve_sylvester, lay(wc(586, (3, 4, 4), "float64"), lo),
-                lay(wc(587, (3, 5, 5), "float64"), lo), lay(vals(588, (3, 4, 5), "float64"), lo))
-    yield C("solve_sylvester/broadcast", LA.solve_sylvester, wc(589, (5, 4, 4), "float64"), wc(590, (3, 3), "float64"),
-            vals(591, (4, 3), "float64"))
-    yield C("solve_sylvester/batch 1000x3x3", LA.solve_sylvester, wc(592, (1000, 3, 3), "float64"), wc(593, (1000, 3, 3), "float64"),
-            vals(594, (1000, 3, 3), "float64"))
-    yield C("solve_sylvester/batch 100x32x32", LA.solve_sylvester, wc(595, (100, 32, 32), "complex128"),
-            wc(596, (32, 32), "complex128"), vals(597, (100, 32, 32), "complex128"))
+        yield C(
+            f"solve_sylvester/layout {lo}",
+            LA.solve_sylvester,
+            lay(wc(586, (3, 4, 4), "float64"), lo),
+            lay(wc(587, (3, 5, 5), "float64"), lo),
+            lay(vals(588, (3, 4, 5), "float64"), lo),
+        )
+    yield C(
+        "solve_sylvester/broadcast",
+        LA.solve_sylvester,
+        wc(589, (5, 4, 4), "float64"),
+        wc(590, (3, 3), "float64"),
+        vals(591, (4, 3), "float64"),
+    )
+    yield C(
+        "solve_sylvester/batch 1000x3x3",
+        LA.solve_sylvester,
+        wc(592, (1000, 3, 3), "float64"),
+        wc(593, (1000, 3, 3), "float64"),
+        vals(594, (1000, 3, 3), "float64"),
+    )
+    yield C(
+        "solve_sylvester/batch 100x32x32",
+        LA.solve_sylvester,
+        wc(595, (100, 32, 32), "complex128"),
+        wc(596, (32, 32), "complex128"),
+        vals(597, (100, 32, 32), "complex128"),
+    )
     yield C("solve_sylvester/n=1", LA.solve_sylvester, np.array([[2.0]]), np.array([[3.0]]), np.array([[10.0]]))
-    yield C("solve_sylvester/large 300", LA.solve_sylvester, vals(598, (300, 300), "float64"), vals(599, (300, 300), "float64") + 50 * np.eye(300),
-            vals(600, (300, 300), "float64"))
-    yield C("solve_sylvester/large 512x40", LA.solve_sylvester, wc(601, (512, 512), "float64"), wc(602, (40, 40), "float64"),
-            vals(603, (512, 40), "float64"))
+    yield C(
+        "solve_sylvester/large 300",
+        LA.solve_sylvester,
+        vals(598, (300, 300), "float64"),
+        vals(599, (300, 300), "float64") + 50 * np.eye(300),
+        vals(600, (300, 300), "float64"),
+    )
+    yield C(
+        "solve_sylvester/large 512x40",
+        LA.solve_sylvester,
+        wc(601, (512, 512), "float64"),
+        wc(602, (40, 40), "float64"),
+        vals(603, (512, 40), "float64"),
+    )
     yield C("solve_sylvester/err common eigenvalue", LA.solve_sylvester, np.eye(2), -np.eye(2), np.ones((2, 2)))
     sa = wc(604, (1000, 3, 3), "float64")
     sb2 = wc(605, (1000, 3, 3), "float64")
@@ -1096,8 +1454,11 @@ def cases(L):
         yield C(f"expm/layout {lo}", LA.expm, lay(vals(619, (3, 5, 5), "float64"), lo))
     yield C("expm/batch 1000x3x3", LA.expm, vals(620, (1000, 3, 3), "float64"))
     yield C("expm/batch 100x32x32", LA.expm, vals(621, (100, 32, 32), "complex128") / 5)
-    yield C("expm/batch mixed diagonal", LA.expm, np.concatenate([vals(622, (5, 3, 3), "float64"),
-                                                                  np.broadcast_to(np.diag([1.0, 2.0, 3.0]), (5, 3, 3))]))
+    yield C(
+        "expm/batch mixed diagonal",
+        LA.expm,
+        np.concatenate([vals(622, (5, 3, 3), "float64"), np.broadcast_to(np.diag([1.0, 2.0, 3.0]), (5, 3, 3))]),
+    )
     yield C("expm/large 300", LA.expm, vals(623, (300, 300), "float64") / 17)
     yield C("expm/large 512 C", LA.expm, vals(624, (512, 512), "float64") / 23)
     yield C("expm/large 512 F", LA.expm, lay(vals(624, (512, 512), "float64") / 23, "F"))

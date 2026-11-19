@@ -184,8 +184,7 @@ REDUCTIONS = {
     f"{op} {name}": (lambda op=op, key=key: getattr(getattr(D, key), op)())
     for op in ["sum", "mean", "min", "max", "std", "var", "count"]
     for name, key in [("int", "I"), ("float", "F"), ("bool", "B"), ("string", "S")]
-    if not (name == "string" and op not in ("min", "max", "count"))
-    and not (name == "bool" and op in ("std", "var"))
+    if not (name == "string" and op not in ("min", "max", "count")) and not (name == "bool" and op in ("std", "var"))
 }
 
 
@@ -219,8 +218,12 @@ HASHING = {
     # 8.1 million); both sides stay above the parallel threshold
     "merge inner": lambda: sd.frame.merge(D.DF, D.DF[["s", "i"]].drop_duplicates(), on=["s", "i"], how="inner"),
     "merge outer": lambda: sd.frame.merge(D.DF[["i", "f"]], D.DF[["i", "b"]].head(5000), on="i", how="outer"),
-    "merge left two keys": lambda: sd.frame.merge(D.DF[["i", "b", "f"]], D.DF[["i", "b", "s"]].head(30_000), on=["i", "b"], how="left"),
-    "merge right": lambda: sd.frame.merge(D.DF[["s", "f"]].head(40_000), D.DF[["s", "i"]].head(60_000), on="s", how="right"),
+    "merge left two keys": lambda: sd.frame.merge(
+        D.DF[["i", "b", "f"]], D.DF[["i", "b", "s"]].head(30_000), on=["i", "b"], how="left"
+    ),
+    "merge right": lambda: sd.frame.merge(
+        D.DF[["s", "f"]].head(40_000), D.DF[["s", "i"]].head(60_000), on="s", how="right"
+    ),
     "loc labels": lambda: sd.frame.Series(range(N), index=[f"r{k}" for k in range(N)]).loc[["r5", "r199999", "r77"]],
 }
 rng_hi = np.random.default_rng(5).integers(0, N, N)
@@ -271,7 +274,9 @@ def big_rows(seed, nrows, kinds):
     cols = []
     for k in kinds:
         if k == "int":
-            vals = [(str(int(v)), bool(q)) for v, q in zip(r.integers(-10**12, 10**12, nrows), r.random(nrows) < 0.05)]
+            vals = [
+                (str(int(v)), bool(q)) for v, q in zip(r.integers(-(10**12), 10**12, nrows), r.random(nrows) < 0.05)
+            ]
         elif k == "float":
             vals = [(repr(float(v)), False) for v in r.standard_normal(nrows)]
         elif k == "bool":
@@ -363,8 +368,14 @@ def test_gil_is_released_by_chunked_kernels_with_one_thread():
     k = sd.frame.Series(np.random.default_rng(5).integers(0, 1000, n))
     g = sd.frame.DataFrame({"k": k, "v": s}).groupby("k")
     g.size()  # the grouping, computed before the timed calls
-    calls = {"s + s": lambda: s + s, "sum": lambda: s.sum(), "min": lambda: s.min(), "var": lambda: s.var(),
-             "filter": lambda: s[mask], "groupby sum": lambda: g.sum()}
+    calls = {
+        "s + s": lambda: s + s,
+        "sum": lambda: s.sum(),
+        "min": lambda: s.min(),
+        "var": lambda: s.var(),
+        "filter": lambda: s[mask],
+        "groupby sum": lambda: g.sum(),
+    }
     count, stop, during = [0], threading.Event(), {}
 
     def counter():

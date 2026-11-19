@@ -39,20 +39,22 @@ template <class T>
 void gather(const Column& col, const std::int64_t* pos, std::int64_t n, Column& out, std::uint8_t* bits) {
     const T* in_ = col.data<T>();
     T* o_ = reinterpret_cast<T*>(out.values->data());
-    for_chunks(n, [&](std::int64_t lo, std::int64_t hi) {  // chunks are multiples of 64 rows: tasks never share a bitmap byte
-        const T* in = in_;  // locals: see isna
-        T* o = o_;
-        for (std::int64_t i = lo; i < hi; ++i) {
-            const std::int64_t p = pos[i];
-            if (p < 0) {
-                o[i] = T{};
-                bitmap::clear(bits, i);
-            } else {
-                o[i] = in[p];
-                if (bits && !col.is_valid(p)) bitmap::clear(bits, i);
+    for_chunks(
+        n, [&](std::int64_t lo, std::int64_t hi) {  // chunks are multiples of 64 rows: tasks never share a bitmap byte
+            const T* in = in_;  // locals: see isna
+            T* o = o_;
+            for (std::int64_t i = lo; i < hi; ++i) {
+                const std::int64_t p = pos[i];
+                if (p < 0) {
+                    o[i] = T{};
+                    bitmap::clear(bits, i);
+                } else {
+                    o[i] = in[p];
+                    if (bits && !col.is_valid(p)) bitmap::clear(bits, i);
+                }
             }
         }
-    });
+    );
 }
 
 }  // namespace
@@ -83,7 +85,9 @@ Column take(const Column& col, const Column& positions) {
         out.offsets = Buffer::allocate((n + 1) * 8, /*zeroed=*/false);
         make_bits();
         auto* offs = reinterpret_cast<std::int64_t*>(out.offsets->data());
-        auto size = [&](std::int64_t i) { return pos[i] < 0 ? 0 : static_cast<std::int64_t>(col.string_at(pos[i]).size()); };
+        auto size = [&](std::int64_t i) {
+            return pos[i] < 0 ? 0 : static_cast<std::int64_t>(col.string_at(pos[i]).size());
+        };
         const std::vector<std::int64_t> start = chunk_starts(n, [&](std::int64_t lo, std::int64_t hi) {
             std::int64_t t = 0;
             for (std::int64_t i = lo; i < hi; ++i) t += size(i);
@@ -113,11 +117,11 @@ Column take(const Column& col, const Column& positions) {
     out.values = Buffer::allocate(n * itemsize(col.dtype), /*zeroed=*/false);
     make_bits();
     switch (col.dtype) {
-    case DType::Bool: gather<std::uint8_t>(col, pos, n, out, bits); break;
-    case DType::Int64: gather<std::int64_t>(col, pos, n, out, bits); break;
-    case DType::Float64: gather<double>(col, pos, n, out, bits); break;
-    case DType::String: break;
-    case DType::Complex128: break;  // not a frame dtype
+        case DType::Bool: gather<std::uint8_t>(col, pos, n, out, bits); break;
+        case DType::Int64: gather<std::int64_t>(col, pos, n, out, bits); break;
+        case DType::Float64: gather<double>(col, pos, n, out, bits); break;
+        case DType::String: break;
+        case DType::Complex128: break;  // not a frame dtype
     }
     finish_fixed(out);
     return out;
@@ -162,7 +166,8 @@ void pack_bits(const std::uint8_t* bytes, std::int64_t n, std::uint8_t* bits) {
     for_chunks(n, [&](std::int64_t lo, std::int64_t hi) {
         for (std::int64_t j = lo / 8; j < bitmap::num_bytes(hi); ++j) {
             unsigned b = 0;
-            for (std::int64_t i = j * 8; i < std::min(hi, j * 8 + 8); ++i) b |= static_cast<unsigned>(bytes[i]) << (i & 7);
+            for (std::int64_t i = j * 8; i < std::min(hi, j * 8 + 8); ++i)
+                b |= static_cast<unsigned>(bytes[i]) << (i & 7);
             bits[j] = static_cast<std::uint8_t>(b);
         }
     });
@@ -184,7 +189,8 @@ Column nonzero(const Column& mask) {
 }
 
 Column filter(const Column& col, const Column& mask) {
-    if (mask.dtype != DType::Bool || mask.length != col.length) throw nb::type_error("filter: a bool mask of the column's length");
+    if (mask.dtype != DType::Bool || mask.length != col.length)
+        throw nb::type_error("filter: a bool mask of the column's length");
     // Strings: take() copies only the kept rows. Two branch-free string
     // compactions were measured and lost (docs/design/frame.md §7.3).
     if (col.dtype == DType::String) return take(col, nonzero(mask));
@@ -194,11 +200,17 @@ Column filter(const Column& col, const Column& mask) {
     const std::int64_t count = start.back();
     Column out = make_fixed(col.dtype, count);
     switch (col.dtype) {
-    case DType::Bool: compact(col.data<std::uint8_t>(), keep, n, start, reinterpret_cast<std::uint8_t*>(out.values->data())); break;
-    case DType::Int64: compact(col.data<std::int64_t>(), keep, n, start, reinterpret_cast<std::int64_t*>(out.values->data())); break;
-    case DType::Float64: compact(col.data<double>(), keep, n, start, reinterpret_cast<double*>(out.values->data())); break;
-    case DType::String: break;
-    case DType::Complex128: break;  // not a frame dtype
+        case DType::Bool:
+            compact(col.data<std::uint8_t>(), keep, n, start, reinterpret_cast<std::uint8_t*>(out.values->data()));
+            break;
+        case DType::Int64:
+            compact(col.data<std::int64_t>(), keep, n, start, reinterpret_cast<std::int64_t*>(out.values->data()));
+            break;
+        case DType::Float64:
+            compact(col.data<double>(), keep, n, start, reinterpret_cast<double*>(out.values->data()));
+            break;
+        case DType::String: break;
+        case DType::Complex128: break;  // not a frame dtype
     }
     if (col.validity) {  // compact the validity as bytes, then pack it into bits
         std::vector<std::uint8_t> valid = valid_bytes(col), kept(static_cast<std::size_t>(count));
@@ -303,8 +315,10 @@ bool equals(const Column& a, const Column& b) {
         if (!a.is_valid(i)) return true;
         if (a.dtype == DType::String) return a.string_at(i) == b.string_at(i);
         const std::int64_t size = itemsize(a.dtype);
-        return std::memcmp(a.values->data() + (a.offset + i) * size, b.values->data() + (b.offset + i) * size,
-                           static_cast<std::size_t>(size)) == 0;
+        return std::memcmp(
+                   a.values->data() + (a.offset + i) * size, b.values->data() + (b.offset + i) * size,
+                   static_cast<std::size_t>(size)
+               ) == 0;
     };
     std::atomic<bool> differ{false};
     for_chunks(a.length, [&](std::int64_t lo, std::int64_t hi) {
@@ -446,8 +460,10 @@ Column concat(const std::vector<Column>& cols) {
         out.values = Buffer::allocate(n * size, /*zeroed=*/false);
         std::int64_t row = 0;
         for (const Column& c : cols) {
-            std::memcpy(out.values->data() + row * size, c.values->data() + c.offset * size,
-                        static_cast<std::size_t>(c.length * size));
+            std::memcpy(
+                out.values->data() + row * size, c.values->data() + c.offset * size,
+                static_cast<std::size_t>(c.length * size)
+            );
             row += c.length;
         }
     }

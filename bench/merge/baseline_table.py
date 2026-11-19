@@ -59,8 +59,16 @@ REFS = {"array": ["numpy"], "linalg": ["ref"], "frame": ["pandas", "polars-1", "
 
 
 def baseline_md(data, env):
-    lines = ["# 벤치마크 기준선 (M0)", "", "옛 세 패키지를 마지막 커밋에서 빌드해 한자리에서 잰 값이다 (M7부터 동결한 옛 저장소 `../stardust-{numpy,linalg,pandas}`에 있다). 행마다 여러 라운드 중 가장 빠른 값.", "",
-             "```", env.strip(), "```", ""]
+    lines = [
+        "# 벤치마크 기준선 (M0)",
+        "",
+        "옛 세 패키지를 마지막 커밋에서 빌드해 한자리에서 잰 값이다 (M7부터 동결한 옛 저장소 `../stardust-{numpy,linalg,pandas}`에 있다). 행마다 여러 라운드 중 가장 빠른 값.",
+        "",
+        "```",
+        env.strip(),
+        "```",
+        "",
+    ]
     for area, cols in data.items():
         if not cols:
             continue
@@ -73,10 +81,14 @@ def baseline_md(data, env):
                 r = [cols[ref][k] / cols["legacy"][k] for k in ks]
                 faster = sum(x > BAND for x in r)
                 slower = sum(x < 1 / BAND for x in r)
-                lines.append(f"- {ref} / legacy: 기하평균 {gmean(r):.2f}배, {len(ks)}줄 중 legacy가 빠름 {faster}, 비슷 {len(ks) - faster - slower}, 느림 {slower}")
+                lines.append(
+                    f"- {ref} / legacy: 기하평균 {gmean(r):.2f}배, {len(ks)}줄 중 legacy가 빠름 {faster}, 비슷 {len(ks) - faster - slower}, 느림 {slower}"
+                )
         lines += ["", "| 행 | " + " | ".join(names) + " |", "|---|" + "---:|" * len(names)]
         for k in rows:
-            lines.append(f"| {label(k)} | " + " | ".join(fmt(cols[c][k]) if k in cols[c] else "-" for c in names) + " |")
+            lines.append(
+                f"| {label(k)} | " + " | ".join(fmt(cols[c][k]) if k in cols[c] else "-" for c in names) + " |"
+            )
         lines.append("")
     return "\n".join(lines)
 
@@ -90,10 +102,15 @@ def compare_md(old, new):
             ks = [k for k in old[area][col] if k in new[area][col]]
             r = {k: new[area][col][k] / old[area][col][k] for k in ks}
             slow = [k for k in ks if r[k] > BAND]
-            lines += [f"## {area}, {col}: 기하평균 {gmean(list(r.values())):.3f}, {BAND}배 넘게 느려진 줄 {len(slow)}/{len(ks)}", ""]
+            lines += [
+                f"## {area}, {col}: 기하평균 {gmean(list(r.values())):.3f}, {BAND}배 넘게 느려진 줄 {len(slow)}/{len(ks)}",
+                "",
+            ]
             lines += ["| 행 | legacy | new | 비율 |", "|---|---:|---:|---:|"]
             for k in ks:
-                lines.append(f"| {label(k)} | {fmt(old[area][col][k])} | {fmt(new[area][col][k])} | {r[k]:.2f}{' ✱' if r[k] > BAND else ''} |")
+                lines.append(
+                    f"| {label(k)} | {fmt(old[area][col][k])} | {fmt(new[area][col][k])} | {r[k]:.2f}{' ✱' if r[k] > BAND else ''} |"
+                )
             lines.append("")
     return "\n".join(lines)
 

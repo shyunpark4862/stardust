@@ -78,6 +78,7 @@ class _Arb:
     @staticmethod
     def _a(x):
         from flint import arb
+
         return x if isinstance(x, arb) else arb(x)
 
     def exp(self, x):
@@ -152,8 +153,7 @@ class Dual2:
     def __mul__(self, o):
         if isinstance(o, Dual2):
             gg = np.outer(self.g, o.g)
-            return Dual2(self.v * o.v, self.v * o.g + o.v * self.g,
-                         self.v * o.h + o.v * self.h + gg + gg.T)
+            return Dual2(self.v * o.v, self.v * o.g + o.v * self.g, self.v * o.h + o.v * self.h + gg + gg.T)
         return Dual2(self.v * o, self.g * o, self.h * o)
 
     __rmul__ = __mul__
@@ -178,11 +178,11 @@ class Dual2:
             return self._lift(1.0)
         if float(p).is_integer():
             k = int(p)
-            f0 = v ** k
+            f0 = v**k
             f1 = k * v ** (k - 1)
             f2 = k * (k - 1) * v ** (k - 2) if k != 1 else 0.0
             return self._chain(f0, f1, f2)
-        return self._chain(v ** p, p * v ** (p - 1), p * (p - 1) * v ** (p - 2))
+        return self._chain(v**p, p * v ** (p - 1), p * (p - 1) * v ** (p - 2))
 
     def __rpow__(self, c):
         return (self * _ieee(math.log, c)).exp()

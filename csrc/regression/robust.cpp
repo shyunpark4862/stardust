@@ -319,12 +319,31 @@ void resid_dd(const Design& D, const double* y, const double* beta, double* r, d
 // One weighted least squares solve through the least squares core (QR, G21's aliased
 // columns with these weights, `steps` refinements): beta (NaN for aliased columns), kept,
 // fit = X beta (Dot2). Returns the rank.
-lint qr_wls(const Design& D, const double* y, const double* w, double* beta, std::uint8_t* kept, double* fit, int steps,
-            Scratch& sc) {
+lint qr_wls(
+    const Design& D,
+    const double* y,
+    const double* w,
+    double* beta,
+    std::uint8_t* kept,
+    double* fit,
+    int steps,
+    Scratch& sc
+) {
     Problem pb{D.n, D.p, D.k, D.intercept, true, false, false, D.rtol, kNonrobust, steps, -1, 0, false};
     pb.lean = true;
-    Data d{reinterpret_cast<const std::byte*>(y), 8, D.X, D.xrs, D.xcs, reinterpret_cast<const std::byte*>(w), 8,
-           nullptr, 0, nullptr, 0};
+    Data d{
+        reinterpret_cast<const std::byte*>(y),
+        8,
+        D.X,
+        D.xrs,
+        D.xcs,
+        reinterpret_cast<const std::byte*>(w),
+        8,
+        nullptr,
+        0,
+        nullptr,
+        0
+    };
     double st[kNStat];
     Dest o{beta, nullptr, nullptr, fit, nullptr, kept, st, nullptr};
     fit_one(pb, d, o, sc);
@@ -339,8 +358,15 @@ lint qr_wls(const Design& D, const double* y, const double* w, double* beta, std
 constexpr double kCholMaxErr = 1e-4;
 constexpr double kCholMinWork = 512;
 
-bool chol_wls(const Design& D, const double* y, const double* w, const std::uint8_t* keep, double* beta,
-              std::uint8_t* kept, double* fit) {
+bool chol_wls(
+    const Design& D,
+    const double* y,
+    const double* w,
+    const std::uint8_t* keep,
+    double* beta,
+    std::uint8_t* kept,
+    double* fit
+) {
     const lint n = D.n, k = D.k;
     if (double(n) * double(k) < kCholMinWork) return false;
     std::vector<lint> K;
@@ -451,7 +477,8 @@ double huber_scale(const double* r, lint n, double T) {
         });
         DD A{0.0, 0.0};
         lint nout = 0;
-        for (lint c = 0; c < nc; ++c) A = A + part[static_cast<std::size_t>(c)], nout += outs[static_cast<std::size_t>(c)];
+        for (lint c = 0; c < nc; ++c)
+            A = A + part[static_cast<std::size_t>(c)], nout += outs[static_cast<std::size_t>(c)];
         const double num = T - static_cast<double>(nout) * d2 * 0.5;
         const double den = 0.5 * (A.hi + A.lo);
         // the rows inside are all exactly 0: f stays n_out d^2/2 for every larger t, so below
@@ -494,7 +521,8 @@ double mscale(const double* r, lint n, double c, double T, double s0, bool exact
             pg[static_cast<std::size_t>(ch)] = a, pd[static_cast<std::size_t>(ch)] = b;
         });
         DD A{0.0, 0.0}, B{0.0, 0.0};
-        for (lint ch = 0; ch < nc; ++ch) A = A + pg[static_cast<std::size_t>(ch)], B = B + pd[static_cast<std::size_t>(ch)];
+        for (lint ch = 0; ch < nc; ++ch)
+            A = A + pg[static_cast<std::size_t>(ch)], B = B + pd[static_cast<std::size_t>(ch)];
         g = (A.hi - T) + A.lo;
         dg = -(B.hi + B.lo) / s;  // d/ds sum rho~(r/s) = -sum rho~'(u) u / s
     };
@@ -527,8 +555,11 @@ struct Buffers {
     std::vector<double> w, fit, buf, beta_new;
     std::vector<std::uint8_t> kept_new;
     Buffers(lint n, lint k)
-        : w(static_cast<std::size_t>(std::max<lint>(n, 1))), fit(w.size()), buf(w.size()),
-          beta_new(static_cast<std::size_t>(std::max<lint>(k, 1))), kept_new(beta_new.size()) {}
+        : w(static_cast<std::size_t>(std::max<lint>(n, 1))),
+          fit(w.size()),
+          buf(w.size()),
+          beta_new(static_cast<std::size_t>(std::max<lint>(k, 1))),
+          kept_new(beta_new.size()) {}
 };
 
 struct ScaleRule {
@@ -648,8 +679,9 @@ struct IrlsOut {
 // |r| < d s; the S estimator's M-scale (sum rho~(r_i/s) = T, differentiated: sum rho~'(z_i)
 // (x_i + z_i ds) = 0), ds = -sum psi(z_i) x_i / sum psi(z_i) z_i (psi proportional to rho~';
 // 0 at the fixed point, where the first sum is F); a fixed scale, 0. Over the columns K.
-void scale_grad(const Design& D, const ScaleRule& sr, const double* r, double s, const std::vector<lint>& K,
-                std::vector<double>& g) {
+void scale_grad(
+    const Design& D, const ScaleRule& sr, const double* r, double s, const std::vector<lint>& K, std::vector<double>& g
+) {
     const lint n = D.n, kk = static_cast<lint>(K.size());
     g.assign(static_cast<std::size_t>(kk), 0.0);
     if (sr.mode == sFixed) return;
@@ -698,8 +730,9 @@ void scale_grad(const Design& D, const ScaleRule& sr, const double* r, double s,
 
 // The estimating equations F = sum psi(r_i/s) x_i over the columns K (double-double per
 // column, chunks added in order) and their 2-norm.
-double estimating(const Design& D, const NormF& nf, const double* r, double s, const std::vector<lint>& K,
-                  std::vector<double>& F) {
+double estimating(
+    const Design& D, const NormF& nf, const double* r, double s, const std::vector<lint>& K, std::vector<double>& F
+) {
     const lint n = D.n, kk = static_cast<lint>(K.size());
     const lint nc = row_chunks(n);
     std::vector<DD> part(static_cast<std::size_t>(nc * kk), DD{0.0, 0.0});
@@ -729,8 +762,17 @@ double estimating(const Design& D, const NormF& nf, const double* r, double s, c
 // Newton's step for F(beta) = sum psi(r_i/s(beta)) x_i = 0 with the scale's dependence on
 // beta: F' = -(1/s) [X^T Psi' X + (X^T Psi' z) (grad s)^T], so beta_new = beta + s M^-1 F.
 // False when M is singular.
-bool newton_step(const Design& D, const NormF& nf, const ScaleRule& sr, const double* beta, const double* r, double s,
-                 const std::vector<lint>& K, const std::vector<double>& F, double* beta_new) {
+bool newton_step(
+    const Design& D,
+    const NormF& nf,
+    const ScaleRule& sr,
+    const double* beta,
+    const double* r,
+    double s,
+    const std::vector<lint>& K,
+    const std::vector<double>& F,
+    double* beta_new
+) {
     const lint n = D.n, kk = static_cast<lint>(K.size());
     if (kk == 0) return false;
     const lint nc = row_chunks(n);
@@ -789,8 +831,20 @@ constexpr int kSlowRuns = 3;
 // scale within kNewtonScaleFactor (else the refined weighted least squares). A scale whose
 // rows are 0 to rounding (zero_scale) is set to 0: the iterations stop there as at an exact
 // fit, converged. On return beta, kept, r (Dot2) and s are the last iterate's.
-IrlsOut irls(const Design& D, const double* y, const NormF& nf, const ScaleRule& sr, int max_iter, double tol,
-             double* beta, std::uint8_t* kept, double* r, double& s, Buffers& B, Scratch& sc) {
+IrlsOut irls(
+    const Design& D,
+    const double* y,
+    const NormF& nf,
+    const ScaleRule& sr,
+    int max_iter,
+    double tol,
+    double* beta,
+    std::uint8_t* kept,
+    double* r,
+    double& s,
+    Buffers& B,
+    Scratch& sc
+) {
     IrlsOut out;
     const lint n = D.n, k = D.k;
     DD dold{kInf, 0.0};
@@ -835,8 +889,12 @@ IrlsOut irls(const Design& D, const double* y, const NormF& nf, const ScaleRule&
                 for (lint i = i0; i < i1; ++i) B.w[i] = nf.weight(r[i] / s);
             });
             const bool fine = conv || newton_mode;
-            const bool by_chol = !fine && chol_wls(D, y, B.w.data(), kept, B.beta_new.data(), B.kept_new.data(), B.fit.data());
-            if (!by_chol) qr_wls(D, y, B.w.data(), B.beta_new.data(), B.kept_new.data(), B.fit.data(), fine ? kRefineSteps : 0, sc);
+            const bool by_chol =
+                !fine && chol_wls(D, y, B.w.data(), kept, B.beta_new.data(), B.kept_new.data(), B.fit.data());
+            if (!by_chol)
+                qr_wls(
+                    D, y, B.w.data(), B.beta_new.data(), B.kept_new.data(), B.fit.data(), fine ? kRefineSteps : 0, sc
+                );
             if (by_chol) {
                 for (lint i = 0; i < n; ++i) r[i] = y[i] - B.fit[i];
             } else {
@@ -949,8 +1007,19 @@ void resid_plain(const double* Xr, lint n, lint p, const double* y, const double
 // through it and one local improvement step (k.fast.s = 1) from robustbase's initial scale
 // 1.4826 median |r|. beta: the improved coefficients, s0 the step's scale. False when no
 // subset or step is found.
-bool candidate(const Design& Dk, const double* Xr, const double* y, random::Key key, std::int64_t j, double T,
-               double* beta, double& s0, Buffers& B, std::vector<double>& r, Scratch& sc) {
+bool candidate(
+    const Design& Dk,
+    const double* Xr,
+    const double* y,
+    random::Key key,
+    std::int64_t j,
+    double T,
+    double* beta,
+    double& s0,
+    Buffers& B,
+    std::vector<double>& r,
+    Scratch& sc
+) {
     const lint n = Dk.n, p = Dk.k;
     random::Stream st(key);
     std::vector<lint> rows;
@@ -958,7 +1027,8 @@ bool candidate(const Design& Dk, const double* Xr, const double* y, random::Key 
     for (int t = 0; t < kMts && static_cast<lint>(rows.size()) < p; ++t) {
         const std::uint64_t e = (static_cast<std::uint64_t>(j) << 32) | static_cast<std::uint64_t>(t);
         const lint i = static_cast<lint>(
-            random::bounded(st.first(e), static_cast<std::uint64_t>(n), [&](std::uint64_t q) { return st.extra(e, q); }));
+            random::bounded(st.first(e), static_cast<std::uint64_t>(n), [&](std::uint64_t q) { return st.extra(e, q); })
+        );
         if (std::find(rows.begin(), rows.end(), i) != rows.end()) continue;
         double nx = 0.0;
         for (lint c = 0; c < p; ++c) v[c] = Xr[i * p + c], nx += v[c] * v[c];
@@ -1007,8 +1077,9 @@ struct Cand {
 
 // The candidates jbase .. jbase + nres - 1 on the design (Dk, Xr, y; T = (n - p) b) and
 // robustbase's selection of the kBestR best among them.
-std::vector<Cand> best_candidates(const Design& Dk, const double* Xr, const double* y, random::Key key,
-                                  std::int64_t jbase, int nres, double T) {
+std::vector<Cand> best_candidates(
+    const Design& Dk, const double* Xr, const double* y, random::Key key, std::int64_t jbase, int nres, double T
+) {
     const lint n = Dk.n, p = Dk.k;
     // 1. the candidates, each on its own (in parallel for a large regression)
     std::vector<double> cb(static_cast<std::size_t>(nres * p), kNaN), c0(static_cast<std::size_t>(nres), kNaN);
@@ -1026,8 +1097,7 @@ std::vector<Cand> best_candidates(const Design& Dk, const double* Xr, const doub
             c0[static_cast<std::size_t>(j)] = s0;
         }
     };
-    if (ntasks >= 2 && double(n) * double(p) * double(nres) >= 1e5)
-        parallel::parallel_for(ntasks, task);
+    if (ntasks >= 2 && double(n) * double(p) * double(nres) >= 1e5) parallel::parallel_for(ntasks, task);
     else
         for (std::int64_t t = 0; t < ntasks; ++t) task(t);
     // 2. robustbase's selection, in candidate order: a candidate whose residuals give
@@ -1082,8 +1152,10 @@ SOut fast_s(const Design& Dk, const double* Xr, const double* y, random::Key key
         std::vector<lint> rows(static_cast<std::size_t>(m));
         for (lint t = 0; t < m; ++t) {
             const std::uint64_t e = (std::uint64_t(1) << 63) | static_cast<std::uint64_t>(t);
-            const lint u = t + static_cast<lint>(random::bounded(st.first(e), static_cast<std::uint64_t>(n - t),
-                                                                 [&](std::uint64_t q) { return st.extra(e, q); }));
+            const lint u =
+                t + static_cast<lint>(random::bounded(
+                        st.first(e), static_cast<std::uint64_t>(n - t), [&](std::uint64_t q) { return st.extra(e, q); }
+                    ));
             const auto at = [&](lint i) {
                 const auto it = moved.find(i);
                 return it == moved.end() ? i : it->second;
@@ -1102,16 +1174,20 @@ SOut fast_s(const Design& Dk, const double* Xr, const double* y, random::Key key
         std::vector<Cand> pool;
         for (lint g = 0; g < kGroups; ++g) {
             const double* Xg = Xm.data() + g * kNGroup * p;
-            Design Dg{kNGroup, p, p, false, Dk.rtol, reinterpret_cast<const std::byte*>(Xg), static_cast<std::int64_t>(p * 8),
-                      8};
+            Design Dg{
+                kNGroup, p, p, false, Dk.rtol, reinterpret_cast<const std::byte*>(Xg), static_cast<std::int64_t>(p * 8),
+                8
+            };
             const double Tg = (static_cast<double>(kNGroup) - static_cast<double>(p)) * kSB;
             std::vector<Cand> bg = best_candidates(Dg, Xg, ym.data() + g * kNGroup, key, g * nres, nres, Tg);
             for (auto& c : bg) pool.push_back(std::move(c));
         }
         // one local step on the merged rows from each group's scale; the best kBestR by the
         // merged rows' M-scale (the earlier on a tie)
-        Design Dm{m, p, p, false, Dk.rtol, reinterpret_cast<const std::byte*>(Xm.data()), static_cast<std::int64_t>(p * 8),
-                  8};
+        Design Dm{
+            m, p, p, false, Dk.rtol, reinterpret_cast<const std::byte*>(Xm.data()), static_cast<std::int64_t>(p * 8),
+            8
+        };
         const double Tm = (static_cast<double>(m) - static_cast<double>(p)) * kSB;
         Buffers Bm(m, p);
         std::vector<double> rm(static_cast<std::size_t>(m));
@@ -1256,8 +1332,15 @@ SOut fast_s(const Design& Dk, const double* Xr, const double* y, random::Key key
 // With Rk (kk x kk upper triangular, row-major: the least squares start's R of the columns
 // K), each row is first mapped to q = Rk^-T x (the thin Q's row), so the sums are those of
 // Q^T diag(f) Q, whose condition does not carry kappa(X)^2.
-void gram_sums(const Design& D, const std::vector<lint>& K, const std::vector<double>& f, const std::vector<double>* g,
-               std::vector<double>& G, std::vector<double>& v, const double* Rk = nullptr) {
+void gram_sums(
+    const Design& D,
+    const std::vector<lint>& K,
+    const std::vector<double>& f,
+    const std::vector<double>* g,
+    std::vector<double>& G,
+    std::vector<double>& v,
+    const double* Rk = nullptr
+) {
     const lint kk = static_cast<lint>(K.size()), n = D.n;
     const lint nc = row_chunks(n);
     const std::size_t slot = static_cast<std::size_t>(kk * kk + kk);
@@ -1294,8 +1377,17 @@ void gram_sums(const Design& D, const std::vector<lint>& K, const std::vector<do
 // Rk: the least squares start's R over K (row-major), or null: the sums are then formed in
 // the coordinates of the thin Q and mapped back, V = Rk^-1 V_Q Rk^-T (accuracy kappa(X) u
 // rather than kappa(X)^2 u).
-void avar1(const Design& D, const std::vector<lint>& K, const double* r, const double* r0, double s, double cpsi,
-           const double* Rk, double* V, Scratch& sc) {
+void avar1(
+    const Design& D,
+    const std::vector<lint>& K,
+    const double* r,
+    const double* r0,
+    double s,
+    double cpsi,
+    const double* Rk,
+    double* V,
+    Scratch& sc
+) {
     const lint n = D.n, kk = static_cast<lint>(K.size());
     if (kk == 0) return;  // V stays as the caller filled it (NaN)
     NormF bis{nBisquare, 0.0, 0.0, cpsi};
@@ -1411,8 +1503,20 @@ void fill_nan(lint n, lint k, const Outs& o) {
     o.stats[rIsNaN] = 1;
 }
 
-int rlm_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64_t ys, const std::byte* Xb, std::int64_t xrs,
-            std::int64_t xcs, const std::byte* keyb, std::int64_t keys, const Outs& o, Scratch& sc) {
+int rlm_one(
+    const Opts& op,
+    lint n,
+    lint p,
+    const std::byte* yb,
+    std::int64_t ys,
+    const std::byte* Xb,
+    std::int64_t xrs,
+    std::int64_t xcs,
+    const std::byte* keyb,
+    std::int64_t keys,
+    const Outs& o,
+    Scratch& sc
+) {
     const lint k = p + (op.intercept ? 1 : 0);
     // ---- 1. checks and the least squares start
     bool nan = false;
@@ -1436,7 +1540,8 @@ int rlm_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64_t ys
         return 0;
     }
     Design D{n, p, k, op.intercept, op.rtol, Xb, xrs, xcs};
-    std::vector<double> cov0(static_cast<std::size_t>(std::max<lint>(k * k, 1))), r(static_cast<std::size_t>(std::max<lint>(n, 1)));
+    std::vector<double> cov0(static_cast<std::size_t>(std::max<lint>(k * k, 1))),
+        r(static_cast<std::size_t>(std::max<lint>(n, 1)));
     std::vector<double> beta(static_cast<std::size_t>(std::max<lint>(k, 1)));
     std::vector<std::uint8_t> kept(beta.size());
     double st0[kNStat];
@@ -1480,8 +1585,9 @@ int rlm_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64_t ys
         if (exact) {
             s = 0.0;
         } else if (op.method == mM) {  // no column: the residuals' scale, nothing to iterate
-            const double ech = kHuberD * kHuberD + (1.0 - kHuberD * kHuberD) * (0.5 * std::erfc(-kHuberD / std::sqrt(2.0))) -
-                               0.5 - kHuberD / std::sqrt(2.0 * M_PI) * std::exp(-0.5 * kHuberD * kHuberD);
+            const double ech = kHuberD * kHuberD +
+                               (1.0 - kHuberD * kHuberD) * (0.5 * std::erfc(-kHuberD / std::sqrt(2.0))) - 0.5 -
+                               kHuberD / std::sqrt(2.0 * M_PI) * std::exp(-0.5 * kHuberD * kHuberD);
             s = op.scale_est == sHuber ? huber_scale(r.data(), n, df * ech) : mad0(r.data(), n, B.buf.data());
         } else {  // MM without a column: the S scale of y itself
             s = mscale(r.data(), n, kSChi, dn * kSB, kRbMad * mad0(r.data(), n, B.buf.data()) * kMadC, true);
@@ -1509,8 +1615,10 @@ int rlm_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64_t ys
         std::vector<double> Xr(static_cast<std::size_t>(std::max<lint>(n * pk, 1)));
         for (lint i = 0; i < n; ++i)
             for (lint a = 0; a < pk; ++a) Xr[i * pk + a] = D.at(i, K[a]);
-        Design Dk{n, pk, pk, false, op.rtol, reinterpret_cast<const std::byte*>(Xr.data()),
-                  static_cast<std::int64_t>(pk * 8), 8};
+        Design Dk{
+            n, pk, pk, false, op.rtol, reinterpret_cast<const std::byte*>(Xr.data()), static_cast<std::int64_t>(pk * 8),
+            8
+        };
         std::uint64_t k0, k1;
         std::memcpy(&k0, keyb, 8);
         std::memcpy(&k1, keyb + keys, 8);
@@ -1617,9 +1725,24 @@ std::vector<std::int64_t> with(std::vector<std::int64_t> shape, std::initializer
 //         c0, c1, c2, scale_est, max_iter, tol, nresample)
 // -> (params, cov, R, fitted, resid, kept, stats, weights, init_params). cov is the final
 // covariance (H1 or avar1); R is the least squares start's; init_params the S estimate (MM).
-nb::object rlm_fit(const std::string& func, nb::handle yo, nb::handle xo, nb::handle ko, bool intercept, double rtol,
-                   int method, int norm, double c0, double c1, double c2, int scale_est, int max_iter, double tol,
-                   int nres, bool large_n) {
+nb::object rlm_fit(
+    const std::string& func,
+    nb::handle yo,
+    nb::handle xo,
+    nb::handle ko,
+    bool intercept,
+    double rtol,
+    int method,
+    int norm,
+    double c0,
+    double c1,
+    double c2,
+    int scale_est,
+    int max_iter,
+    double tol,
+    int nres,
+    bool large_n
+) {
     const char* fn = func.c_str();
     return call_named(fn, [&]() -> nb::object {
         Input y(yo, fn, "y"), X(xo, fn, "X");
@@ -1628,10 +1751,12 @@ nb::object rlm_fit(const std::string& func, nb::handle yo, nb::handle xo, nb::ha
         if (has_k) key.emplace(ko, fn, "keys");
         if (method == mMM && !has_k) throw nb::value_error("rlm_fit(): MM needs keys");
         const linalg::BatchOperand none{};
-        Batch b({{y.batch_shape(1), y.batch_strides(1)},
-                 {X.batch_shape(2), X.batch_strides(2)},
-                 has_k ? linalg::BatchOperand{key->batch_shape(1), key->batch_strides(1)} : none},
-                fn);
+        Batch b(
+            {{y.batch_shape(1), y.batch_strides(1)},
+             {X.batch_shape(2), X.batch_strides(2)},
+             has_k ? linalg::BatchOperand{key->batch_shape(1), key->batch_strides(1)} : none},
+            fn
+        );
         const lint n = X.shape(-2), p = X.shape(-1), k = p + (intercept ? 1 : 0);
         Opts op{method, norm, scale_est, max_iter, nres, c0, c1, c2, tol, rtol, intercept, large_n};
         Out po = linalg::alloc_c(with(b.shape(), {k}), DType::Float64);
@@ -1648,28 +1773,36 @@ nb::object rlm_fit(const std::string& func, nb::handle yo, nb::handle xo, nb::ha
         if (method == mMM) element_ns += double(nres) * nk * 30.0;
         const Failure f = linalg::run_batch(b, element_ns, [&](std::int64_t i, const std::int64_t* off, Scratch& sc) {
             Outs o{po.as<double>() + i * k, co.as<double>() + i * k * k, ro.as<double>() + i * k * k,
-                   fo.as<double>() + i * n, eo.as<double>() + i * n, so.as<double>() + i * rNStat,
-                   wo.as<double>() + i * n, io.as<double>() + i * k, kpo.as<std::uint8_t>() + i * k};
-            return rlm_one(op, n, p, y.data() + off[0], y.stride(-1), X.data() + off[1], X.stride(-2), X.stride(-1),
-                           has_k ? key->data() + off[2] : nullptr, has_k ? key->stride(-1) : 0, o, sc);
+                   fo.as<double>() + i * n, eo.as<double>() + i * n,     so.as<double>() + i * rNStat,
+                   wo.as<double>() + i * n, io.as<double>() + i * k,     kpo.as<std::uint8_t>() + i * k};
+            return rlm_one(
+                op, n, p, y.data() + off[0], y.stride(-1), X.data() + off[1], X.stride(-2), X.stride(-1),
+                has_k ? key->data() + off[2] : nullptr, has_k ? key->stride(-1) : 0, o, sc
+            );
         });
         if (f) {
             const char* what = f.code == eInfY ? "'y' contains infinity" : "'X' contains infinity";
-            throw nb::value_error(linalg::failure_message(b, f.index, (std::string(fn) + "(): " + what).c_str()).c_str());
+            throw nb::value_error(
+                linalg::failure_message(b, f.index, (std::string(fn) + "(): " + what).c_str()).c_str()
+            );
         }
-        return nb::make_tuple(linalg::to_array(po), linalg::to_array(co), linalg::to_array(ro), linalg::to_array(fo),
-                              linalg::to_array(eo), linalg::to_array(kpo), linalg::to_array(so), linalg::to_array(wo),
-                              linalg::to_array(io));
+        return nb::make_tuple(
+            linalg::to_array(po), linalg::to_array(co), linalg::to_array(ro), linalg::to_array(fo),
+            linalg::to_array(eo), linalg::to_array(kpo), linalg::to_array(so), linalg::to_array(wo),
+            linalg::to_array(io)
+        );
     });
 }
 
 }  // namespace
 
 void bind_robust(nb::module_& m) {
-    m.def("rlm_fit", &rlm_fit, nb::arg("func"), nb::arg("y").none(), nb::arg("X").none(), nb::arg("keys").none(),
-          nb::arg("intercept"), nb::arg("rtol"), nb::arg("method"), nb::arg("norm"), nb::arg("c0"), nb::arg("c1"),
-          nb::arg("c2"), nb::arg("scale_est"), nb::arg("max_iter"), nb::arg("tol"), nb::arg("nresample"),
-          nb::arg("large_n") = true);
+    m.def(
+        "rlm_fit", &rlm_fit, nb::arg("func"), nb::arg("y").none(), nb::arg("X").none(), nb::arg("keys").none(),
+        nb::arg("intercept"), nb::arg("rtol"), nb::arg("method"), nb::arg("norm"), nb::arg("c0"), nb::arg("c1"),
+        nb::arg("c2"), nb::arg("scale_est"), nb::arg("max_iter"), nb::arg("tol"), nb::arg("nresample"),
+        nb::arg("large_n") = true
+    );
     bind_slopes(m);
 }
 

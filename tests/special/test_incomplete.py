@@ -99,8 +99,9 @@ def test_pairs_add_to_one():
     assert np.max(np.abs(s - 1)) <= 4e-16
     b = np.exp(rng.uniform(-5, 9, 2000))
     y = rng.uniform(0, 1, 2000)
-    s = np.asarray(S.betainc(sd.asarray(a), sd.asarray(b), sd.asarray(y))) + \
-        np.asarray(S.betaincc(sd.asarray(a), sd.asarray(b), sd.asarray(y)))
+    s = np.asarray(S.betainc(sd.asarray(a), sd.asarray(b), sd.asarray(y))) + np.asarray(
+        S.betaincc(sd.asarray(a), sd.asarray(b), sd.asarray(y))
+    )
     # a, b <= 6 go to Boost (special/boost.hpp), which computes the two apart, each within the
     # contract (against Arb up to 9 ULP for a, b < 1) and at times off the same way: over 50
     # seeds of 1e5 draws of this distribution the sum was off by at most 1.0e-15 (a = 2.886,
@@ -158,8 +159,15 @@ def test_a_zero_result_is_positive_zero_review_regression():
     # The prefix e^-E (1 - E.lo): from E = 2^53 the low part is no longer below 1, and the
     # factor turned the sign (gammainc(1e17, 1) was -0.0; scipy +0.0) or, from 1e300, made NaN.
     for a in [1e16, 1e17, 1e18, 1e100, 1e300]:
-        got = [S.gammainc(a, 1.0), S.gammaincc(1.0, a), S.betainc(a, 2.0, 0.5), S.betaincc(2.0, a, 0.5),
-               S.betainc(a, a, 0.25), S.betainc(a, 0.5, 0.5), S.betaincc(0.5, a, 0.5)]
+        got = [
+            S.gammainc(a, 1.0),
+            S.gammaincc(1.0, a),
+            S.betainc(a, 2.0, 0.5),
+            S.betaincc(2.0, a, 0.5),
+            S.betainc(a, a, 0.25),
+            S.betainc(a, 0.5, 0.5),
+            S.betaincc(0.5, a, 0.5),
+        ]
         assert all(same_bits(v, 0.0) for v in got), (a, got)
         assert S.gammaincc(a, 1.0) == 1.0 and S.betaincc(a, 2.0, 0.5) == 1.0
     rng = np.random.default_rng(8)
@@ -174,9 +182,11 @@ def test_a_zero_result_is_positive_zero_review_regression():
 def test_betainc_where_one_shape_is_past_2_900():
     # The beta distribution's gamma limit, I_x(a, b) = P(a, b x): BRATIO's methods made NaN
     # of the first point. Values: the series of I_x in Arb (3000 bits).
-    for a, b, x, lo, up in [(8.2, 3.7e277, 1.3e-276, 0.9999999999997419, 2.58155456806891e-13),
-                            (0.3, 1e300, 1e-301, 0.5459128495917965, 0.45408715040820347),
-                            (2.0, 1e290, 1e-310, 4.99999999999997e-41, 1.0)]:
+    for a, b, x, lo, up in [
+        (8.2, 3.7e277, 1.3e-276, 0.9999999999997419, 2.58155456806891e-13),
+        (0.3, 1e300, 1e-301, 0.5459128495917965, 0.45408715040820347),
+        (2.0, 1e290, 1e-310, 4.99999999999997e-41, 1.0),
+    ]:
         assert abs(S.betainc(a, b, x) / lo - 1) < 2e-15, (a, b, x)
         assert abs(S.betaincc(a, b, x) / up - 1) < 2e-15, (a, b, x)
         assert abs(S.betaincc(b, a, 1.0 - x) / lo - 1) < 2e-15 or x < 1e-16  # (1 - x rounds to 1 below that)
@@ -186,10 +196,12 @@ def test_betainc_where_one_shape_is_past_2_900():
 def test_betaincc_small_shapes_on_the_side_boost_subtracts():
     # a, b <= 1, x < 0.02 and x^a in (0.6, 0.9]: Boost gives 1 - I as 1 minus a series near 1
     # (6.8e-15 off at the first point); that side is ibeta's own. Values from Arb.
-    for a, b, x, lo, up in [(0.00039, 0.322, 1.54e-119, 0.8978643168072409, 0.10213568319275908),
-                            (0.00027, 0.014, 1.4e-188, 0.872943608883056, 0.127056391116944),
-                            (0.00636, 0.458, 2.36e-21, 0.7318146749103045, 0.26818532508969556),
-                            (0.0861, 0.514, 0.0228, 0.6517547885654456, 0.3482452114345544)]:
+    for a, b, x, lo, up in [
+        (0.00039, 0.322, 1.54e-119, 0.8978643168072409, 0.10213568319275908),
+        (0.00027, 0.014, 1.4e-188, 0.872943608883056, 0.127056391116944),
+        (0.00636, 0.458, 2.36e-21, 0.7318146749103045, 0.26818532508969556),
+        (0.0861, 0.514, 0.0228, 0.6517547885654456, 0.3482452114345544),
+    ]:
         assert abs(S.betainc(a, b, x) / lo - 1) < 2.5e-15, (a, b, x)
         assert abs(S.betaincc(a, b, x) / up - 1) < 2.5e-15, (a, b, x)
         assert abs(S.betainc(b, a, 1.0 - x) / up - 1) < 2.5e-15 or x < 1e-16, (a, b, x)
@@ -214,6 +226,7 @@ def test_gammainccinv_tiny_shape_against_arb(a):
     q / a in one division: Q at the root within 1e-15 of the target for c in 5-700 (the root's
     relative error is then about kappa u, kappa ~ c)."""
     from flint import arb, ctx
+
     ctx.prec = 3000
     try:
         for c in (5.0, 39.0, 300.0, 700.0):

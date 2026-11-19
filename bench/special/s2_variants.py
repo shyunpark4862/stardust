@@ -29,8 +29,11 @@ def main():
 
     sd.set_num_threads(1)
     C = sd.special._core
-    variants = {"erfc (branch, shipped)": sd.special.erfc, "NEON, every region, select": C._erfc_select,
-                "NEON Estrin, every region, select": C._erfc_estrin}
+    variants = {
+        "erfc (branch, shipped)": sd.special.erfc,
+        "NEON, every region, select": C._erfc_select,
+        "NEON Estrin, every region, select": C._erfc_estrin,
+    }
     rng = np.random.default_rng(0)
     inputs = {
         "|x| < 1": rng.uniform(-1, 1, N),
@@ -46,12 +49,17 @@ def main():
             for vname, f in variants.items():
                 t = common.best_ns(lambda: f(x), repeat=3) / N
                 best[(iname, vname)] = min(best.get((iname, vname), float("inf")), t)
-    lines = [f"Machine: {common.machine()}. ns per element, 1 thread, 10^6 elements, best of {a.rounds} rounds.", "",
-             "| inputs | " + " | ".join(variants) + " |", "|---|" + "---:|" * len(variants)]
+    lines = [
+        f"Machine: {common.machine()}. ns per element, 1 thread, 10^6 elements, best of {a.rounds} rounds.",
+        "",
+        "| inputs | " + " | ".join(variants) + " |",
+        "|---|" + "---:|" * len(variants),
+    ]
     for iname in inputs:
         lines.append(f"| {iname} | " + " | ".join(f"{best[(iname, v)]:.2f}" for v in variants) + " |")
     xs, hi, lo, _ = common.ref_load("erfc")
     import sys
+
     sys.path.insert(0, str(common.ROOT))
     from tests.special import refdata
 

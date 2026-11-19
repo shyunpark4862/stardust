@@ -39,7 +39,9 @@ def main(argv):
         f = common.sd_function(name)
         sxs = tuple(sd.asarray(v) for v in xs)
         ns = common.best_ns(lambda: f(*sxs), repeat=7) / N
-        print(f"| `{name}` | {ns:.2f} | {max(1, round(ns / add_ns))} | {sd.special._core._weight(common.PART.get(name, (name,))[0])} |")
+        print(
+            f"| `{name}` | {ns:.2f} | {max(1, round(ns / add_ns))} | {sd.special._core._weight(common.PART.get(name, (name,))[0])} |"
+        )
 
 
 if __name__ == "__main__":

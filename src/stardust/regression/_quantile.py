@@ -12,10 +12,28 @@ import textwrap
 from .. import _core as _sd
 from .. import special as _special
 from ._glm import _check_int, _check_positive
-from ._linear import (_call_errors, _RegressionResult, _check_alpha, _check_bool, _check_choice,
-                      _check_pred_batch, _fresh, _new_design, _prepare,
-                      _check_policy, _check_rtol, _frame_columns, _count, _div, _forg, _names,
-                      _number_or_1d, _pairs, _quantile_label, _WIDTH)
+from ._linear import (
+    _call_errors,
+    _RegressionResult,
+    _check_alpha,
+    _check_bool,
+    _check_choice,
+    _check_pred_batch,
+    _fresh,
+    _new_design,
+    _prepare,
+    _check_policy,
+    _check_rtol,
+    _frame_columns,
+    _count,
+    _div,
+    _forg,
+    _names,
+    _number_or_1d,
+    _pairs,
+    _quantile_label,
+    _WIDTH,
+)
 
 _k = _sd.regression
 
@@ -24,14 +42,15 @@ _BANDWIDTHS = ("hall-sheather", "bofinger")
 _BW_ALPHA = 0.05  # bandwidth.rq's alpha (the Hall-Sheather rule's interval level)
 
 # the kernel's per-(regression, quantile) scalars (csrc/regression/quantile.cpp, enum QStat)
-(_Q_NOBS, _Q_RANK, _Q_OBJ, _Q_NULL, _Q_NITER, _Q_NPIV, _Q_CONV, _Q_NONUNIQUE, _Q_ISNAN, _Q_BW, _Q_NGROUPS,
- _Q_LAGS) = range(12)
+(_Q_NOBS, _Q_RANK, _Q_OBJ, _Q_NULL, _Q_NITER, _Q_NPIV, _Q_CONV, _Q_NONUNIQUE, _Q_ISNAN, _Q_BW, _Q_NGROUPS, _Q_LAGS) = (
+    range(12)
+)
 
 _COV_NOTES = {
     "iid": "Standard errors assume iid errors (Koenker-Bassett: the sparsity from a median regression on the "
-           "residuals' order statistics around q, as R's summary.rq se='iid').",
+    "residuals' order statistics around q, as R's summary.rq se='iid').",
     "nid": "Standard errors are the Hendricks-Koenker sandwich (the sparsity from the fits at q +- bandwidth, as "
-           "R's summary.rq se='nid').",
+    "R's summary.rq se='nid').",
     "ker": "Standard errors are Powell's kernel sandwich (R's summary.rq se='ker').",
 }
 
@@ -60,7 +79,9 @@ class QuantRegResult(_RegressionResult):
 
     @property
     def df_model(self):
-        return self._cached("df_model", lambda: self._nan_where(self._stat(_Q_RANK) - (1.0 if self._intercept else 0.0)))
+        return self._cached(
+            "df_model", lambda: self._nan_where(self._stat(_Q_RANK) - (1.0 if self._intercept else 0.0))
+        )
 
     @property
     def df_resid(self):
@@ -163,18 +184,29 @@ class QuantRegResult(_RegressionResult):
         name = type(self).__name__
         if self._batch:
             return f"{name}({self._shape_text()}, {self.params.shape[-1]} parameters)"
-        return (f"{name}(q={self.q:g}, nobs={self.nobs:g}, rank={self.rank}, objective={self.objective:.6g}, "
-                f"params={self.params})")
+        return (
+            f"{name}(q={self.q:g}, nobs={self.nobs:g}, rank={self.rank}, objective={self.objective:.6g}, "
+            f"params={self.params})"
+        )
 
 
 def _summary(r, alpha):
     stars = "=" * _WIDTH
     lines = ["QuantReg Regression Results".center(_WIDTH).rstrip(), stars]
-    left = [("Model:", "QuantReg"), ("Method:", "Frisch-Newton"), ("Quantile:", f"{r.q:g}"),
-            ("Covariance Type:", r.cov_type), ("Bandwidth rule:", r._bw_rule)]
-    right = [("Pseudo R-squared:", f"{r.prsquared:#8.4g}".strip()), ("Bandwidth:", f"{r.bandwidth:#8.4g}".strip()),
-             ("No. Observations:", _count(r.nobs)), ("Df Residuals:", _count(r.df_resid)),
-             ("Df Model:", _count(r.df_model))]
+    left = [
+        ("Model:", "QuantReg"),
+        ("Method:", "Frisch-Newton"),
+        ("Quantile:", f"{r.q:g}"),
+        ("Covariance Type:", r.cov_type),
+        ("Bandwidth rule:", r._bw_rule),
+    ]
+    right = [
+        ("Pseudo R-squared:", f"{r.prsquared:#8.4g}".strip()),
+        ("Bandwidth:", f"{r.bandwidth:#8.4g}".strip()),
+        ("No. Observations:", _count(r.nobs)),
+        ("Df Residuals:", _count(r.df_resid)),
+        ("Df Model:", _count(r.df_model)),
+    ]
     lines += _pairs(left, right)
     lines.append(stars)
     names = [str(v) for v in r.param_names]
@@ -189,15 +221,23 @@ def _summary(r, alpha):
     lines.append(head)
     lines.append("-" * width)
     for j, nm in enumerate(names):
-        vals = [_forg(float(params[j]), 4), _forg(float(bse[j])), _forg(float(tv[j])), f"{float(pv[j]):#.3f}",
-                _forg(float(ci[j, 0])), _forg(float(ci[j, 1]))]
+        vals = [
+            _forg(float(params[j]), 4),
+            _forg(float(bse[j])),
+            _forg(float(tv[j])),
+            f"{float(pv[j]):#.3f}",
+            _forg(float(ci[j, 0])),
+            _forg(float(ci[j, 1])),
+        ]
         lines.append(nm.ljust(wname) + "".join(v.rjust(11) for v in vals))
     lines.append("=" * width)
     notes = [_COV_NOTES[r.cov_type] + " t uses df_resid degrees of freedom."]
     if not r._isnan():
         if r.nonunique:
-            notes.append("The solution is not unique: params is the lexicographically smallest minimizer "
-                         f"(objective {r.objective:.6g}).")
+            notes.append(
+                "The solution is not unique: params is the lexicographically smallest minimizer "
+                f"(objective {r.objective:.6g})."
+            )
         aliased = [nm for nm, k in zip(names, r._raw[5].tolist()) if not k]
         if aliased:
             notes.append("Aliased (linearly dependent on earlier columns), not estimated: " + ", ".join(aliased) + ".")
@@ -212,6 +252,7 @@ def _summary(r, alpha):
 
 # ---- the fit
 
+
 def _normal_pdf(x):
     return math.exp(-0.5 * x * x) / math.sqrt(2.0 * math.pi)
 
@@ -223,7 +264,7 @@ def _bandwidth(q, n, hall_sheather):
     if hall_sheather:
         z = float(_special.ndtri(1.0 - _BW_ALPHA / 2.0))
         return n ** (-1.0 / 3.0) * z ** (2.0 / 3.0) * ((1.5 * f0 * f0) / (2.0 * x0 * x0 + 1.0)) ** (1.0 / 3.0)
-    return n ** -0.2 * ((4.5 * f0 ** 4) / (2.0 * x0 * x0 + 1.0) ** 2) ** 0.2
+    return n**-0.2 * ((4.5 * f0**4) / (2.0 * x0 * x0 + 1.0) ** 2) ** 0.2
 
 
 def _check_q(q, func):
@@ -232,13 +273,24 @@ def _check_q(q, func):
     a, qaxis = _number_or_1d(q, func, "q")
     vals = [float(v) for v in a.tolist()]
     if not all(0.0 < v < 1.0 for v in vals):
-        raise ValueError(f"{func}(): 'q' must be a number or a 1-dimensional array of numbers strictly between 0 "
-                         "and 1")
+        raise ValueError(f"{func}(): 'q' must be a number or a 1-dimensional array of numbers strictly between 0 and 1")
     return vals, (a.copy() if qaxis else vals[0]), qaxis
 
 
-def quantreg(y, X, /, *, q=0.5, intercept=True, cov_type="nid", bandwidth="hall-sheather", max_iter=100, tol=1e-05,
-             rtol=None, nan_policy="propagate"):
+def quantreg(
+    y,
+    X,
+    /,
+    *,
+    q=0.5,
+    intercept=True,
+    cov_type="nid",
+    bandwidth="hall-sheather",
+    max_iter=100,
+    tol=1e-05,
+    rtol=None,
+    nan_policy="propagate",
+):
     """Linear quantile regression of y (..., n) on X (..., n, k) or (n,), an intercept column
     first: minimizes sum rho_q(y_i - x_i b), rho_q(r) = r (q - [r < 0]) (Koenker and Bassett
     1978). q is a number or a 1-dimensional array (a quantile axis after the batch axes)
@@ -265,11 +317,20 @@ def quantreg(y, X, /, *, q=0.5, intercept=True, cov_type="nid", bandwidth="hall-
             h /= 2.0
         hhalf.append(h)
         kerc.append(float(_special.ndtri(v + h)) - float(_special.ndtri(v - h)) if math.isfinite(h) else math.nan)
-    raw = _k.quantreg_fit(func, yy, XX, qs, intercept, rt, _COV_TYPES.index(cov_type), hraw, hhalf, kerc, max_iter,
-                          tol, qaxis)
-    return QuantRegResult(raw, q=qkeep, bw_rule=bandwidth, qaxis=qaxis,
-                          param_names=_names(names, XX.shape[-1], intercept), intercept=intercept, cov_type=cov_type,
-                          batch=tuple(raw[0].shape[:-1]), columns=columns)
+    raw = _k.quantreg_fit(
+        func, yy, XX, qs, intercept, rt, _COV_TYPES.index(cov_type), hraw, hhalf, kerc, max_iter, tol, qaxis
+    )
+    return QuantRegResult(
+        raw,
+        q=qkeep,
+        bw_rule=bandwidth,
+        qaxis=qaxis,
+        param_names=_names(names, XX.shape[-1], intercept),
+        intercept=intercept,
+        cov_type=cov_type,
+        batch=tuple(raw[0].shape[:-1]),
+        columns=columns,
+    )
 
 
 # the methods' call-shape errors in the library's form (R89)

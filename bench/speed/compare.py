@@ -44,9 +44,17 @@ def compare(new: dict, base: dict[str, dict], *, threshold: float = 0.10) -> dic
             continue
         band = max(t.get("noise") or 0.0, bt.get("noise") or 0.0)
         busy = bool(c.get("busy") or base[c["id"]].get("busy"))
-        row = {"id": c["id"], "threads": t["threads"], "new": t["min"], "base": bt["min"], "ratio": ratio,
-               "band": band, "beyond_noise": ratio - 1 > band and not busy, "busy": busy,
-               "base_run": bt.get("run") or base[c["id"]].get("run")}
+        row = {
+            "id": c["id"],
+            "threads": t["threads"],
+            "new": t["min"],
+            "base": bt["min"],
+            "ratio": ratio,
+            "band": band,
+            "beyond_noise": ratio - 1 > band and not busy,
+            "busy": busy,
+            "base_run": bt.get("run") or base[c["id"]].get("run"),
+        }
         if ratio > 1 + threshold:
             slower.append(row)
         elif ratio < 1 / (1 + threshold):
@@ -55,34 +63,49 @@ def compare(new: dict, base: dict[str, dict], *, threshold: float = 0.10) -> dic
             same += 1
     slower.sort(key=lambda r: -r["ratio"])
     faster.sort(key=lambda r: r["ratio"])
-    return {"slower": slower, "faster": faster, "same": same,
-            "refs_drift": statistics.median(ref_ratios) if ref_ratios else None,
-            "missing": sum(1 for c in new["cases"] if c["id"] not in compared)}
+    return {
+        "slower": slower,
+        "faster": faster,
+        "same": same,
+        "refs_drift": statistics.median(ref_ratios) if ref_ratios else None,
+        "missing": sum(1 for c in new["cases"] if c["id"] not in compared),
+    }
 
 
 def report(res: dict, *, threshold: float = 0.10, show_faster: bool = False) -> str:
     lines = []
     n_slow = len(res["slower"])
     real = sum(r["beyond_noise"] for r in res["slower"])
-    lines.append(f"기준선보다 {threshold * 100:.0f}% 넘게 느린 sd 측정: {n_slow}개 (잡음 폭 밖 {real}개), "
-                 f"빠른 것 {len(res['faster'])}개, 비슷한 것 {res['same']}개.")
+    lines.append(
+        f"기준선보다 {threshold * 100:.0f}% 넘게 느린 sd 측정: {n_slow}개 (잡음 폭 밖 {real}개), "
+        f"빠른 것 {len(res['faster'])}개, 비슷한 것 {res['same']}개."
+    )
     if res["refs_drift"] is not None:
         d = res["refs_drift"]
-        lines.append(f"비교 대상 라이브러리 시간의 변화(새 ÷ 기준선, 중앙값): {fmt_ratio(d)}배"
-                     + (" — 기계 상태가 달라졌을 수 있다." if abs(d - 1) > threshold else "."))
+        lines.append(
+            f"비교 대상 라이브러리 시간의 변화(새 ÷ 기준선, 중앙값): {fmt_ratio(d)}배"
+            + (" — 기계 상태가 달라졌을 수 있다." if abs(d - 1) > threshold else ".")
+        )
     if res["missing"]:
         lines.append(f"기준선에 없는 사례 {res['missing']}개는 비교하지 않았다.")
 
     def table(rows, title):
-        out = ["", f"## {title}", "", "| 사례 | 스레드 | 기준선 | 새 측정 | 새 ÷ 기준선 | 잡음 폭 | 판단 |",
-               "|---|---:|---:|---:|---:|---:|---|"]
+        out = [
+            "",
+            f"## {title}",
+            "",
+            "| 사례 | 스레드 | 기준선 | 새 측정 | 새 ÷ 기준선 | 잡음 폭 | 판단 |",
+            "|---|---:|---:|---:|---:|---:|---|",
+        ]
         for r in rows:
             if r.get("busy"):
                 verdict = "바쁠 때 잼"
             else:
                 verdict = ("느려짐" if r["beyond_noise"] else "잡음 안") if r["ratio"] > 1 else "빨라짐"
-            out.append(f"| `{r['id']}` | {r['threads']} | {fmt_time(r['base'])} | {fmt_time(r['new'])} | "
-                       f"{fmt_ratio(r['ratio'])} | {r['band'] * 100:.0f}% | {verdict} |")
+            out.append(
+                f"| `{r['id']}` | {r['threads']} | {fmt_time(r['base'])} | {fmt_time(r['new'])} | "
+                f"{fmt_ratio(r['ratio'])} | {r['band'] * 100:.0f}% | {verdict} |"
+            )
         return out
 
     if res["slower"]:

@@ -191,7 +191,9 @@ def test_expm_exact_cases():
     # 2x2 triangular: [[a, t], [0, c]] -> [[e^a, t (e^c - e^a) / (c - a)], [0, e^c]]
     for a_, c_, t in [(1.0, -1.0, 1e8), (0.3, 0.3 + 1e-10, 2.0), (-50.0, 40.0, 1.0), (2.0, 2.0, 3.0)]:
         r = npy(sd.linalg.expm(as_sd(np.array([[a_, t], [0.0, c_]]))))
-        want12 = t * math.exp(a_) if a_ == c_ else t * math.exp((a_ + c_) / 2) * math.sinh((c_ - a_) / 2) / ((c_ - a_) / 2)
+        want12 = (
+            t * math.exp(a_) if a_ == c_ else t * math.exp((a_ + c_) / 2) * math.sinh((c_ - a_) / 2) / ((c_ - a_) / 2)
+        )
         assert r[1, 0] == 0 and r[0, 0] == math.exp(a_) and r[1, 1] == math.exp(c_)
         assert abs(r[0, 1] - want12) <= 4 * EPS * abs(want12)
     # a rotation generator -> the rotation

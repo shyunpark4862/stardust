@@ -87,7 +87,10 @@ struct ShapeArg {
     std::array<std::int64_t, kMaxNdim> small;
     std::vector<std::int64_t> big;
     std::size_t n = 0;
-    std::span<const std::int64_t> span() const { return big.empty() && n <= small.size() ? std::span<const std::int64_t>(small.data(), n) : std::span<const std::int64_t>(big); }
+    std::span<const std::int64_t> span() const {
+        return big.empty() && n <= small.size() ? std::span<const std::int64_t>(small.data(), n)
+                                                : std::span<const std::int64_t>(big);
+    }
 };
 ShapeArg parse_shape_arg(nb::handle o);
 

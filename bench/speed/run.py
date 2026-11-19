@@ -69,7 +69,10 @@ class WorkerHandle:
         self.limits = limits
         self.p = subprocess.Popen(
             [sys.executable, "-m", "bench.speed.worker", *areas, *(["--smoke"] if smoke else [])],
-            cwd=str(results.ROOT), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log,
+            cwd=str(results.ROOT),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=log,
             start_new_session=True,
         )
         self.buf = b""
@@ -104,7 +107,7 @@ class WorkerHandle:
         try:
             self.p.stdin.write((json.dumps(obj) + "\n").encode())
             self.p.stdin.flush()
-        except (BrokenPipeError, OSError):
+        except BrokenPipeError, OSError:
             return None, "died", 0
         return self._read(timeout_s)
 
@@ -114,14 +117,14 @@ class WorkerHandle:
                 self.p.stdin.write(b'{"cmd": "quit"}\n')
                 self.p.stdin.flush()
                 self.p.wait(timeout=30)
-            except (OSError, subprocess.SubprocessError):
+            except OSError, subprocess.SubprocessError:
                 self.kill()
 
     def kill(self):
         """Kill the worker's process group: the worker and the R session it started."""
         try:
             os.killpg(self.p.pid, signal.SIGKILL)
-        except (ProcessLookupError, PermissionError):
+        except ProcessLookupError, PermissionError:
             pass
         try:
             self.p.wait(timeout=30)
@@ -183,19 +186,35 @@ class State:
             s = self.samples[cid].get((label, t))
             rec = {"label": label, "lib": lib, "threads": t, "n": n}
             if s is not None:
-                rec.update(min=s.min, median=s.median, noise=round(s.noise, 4), batches=len(s.times),
-                           calls=s.calls, times=s.times)
+                rec.update(
+                    min=s.min,
+                    median=s.median,
+                    noise=round(s.noise, 4),
+                    batches=len(s.times),
+                    calls=s.calls,
+                    times=s.times,
+                )
             else:
                 rec.update(min=None, error=self.errors[cid].get((label, t)) or self.failure.get(cid) or "not measured")
             timings.append(rec)
         rd = self.rounds_done[cid]
-        out = {"id": cid, "area": case.area, "group": case.group, "name": case.name, "size": case.size,
-               "n": case.n, "cost": list(case.cost) if case.cost else None, "note": case.note,
-               "rounds": rd, "seconds_per_round": round(self.seconds[cid] / rd, 2) if rd else None,
-               "load1": round(self.load[cid], 2), "peak_rss_mb": round(self.rss[cid] / 2**20),
-               "other_cpu": round(self.other[cid], 2) if cid in self.other else None,
-               "busy": self.other.get(cid, 0.0) > self.busy_cores,
-               "timings": timings}
+        out = {
+            "id": cid,
+            "area": case.area,
+            "group": case.group,
+            "name": case.name,
+            "size": case.size,
+            "n": case.n,
+            "cost": list(case.cost) if case.cost else None,
+            "note": case.note,
+            "rounds": rd,
+            "seconds_per_round": round(self.seconds[cid] / rd, 2) if rd else None,
+            "load1": round(self.load[cid], 2),
+            "peak_rss_mb": round(self.rss[cid] / 2**20),
+            "other_cpu": round(self.other[cid], 2) if cid in self.other else None,
+            "busy": self.other.get(cid, 0.0) > self.busy_cores,
+            "timings": timings,
+        }
         if cid in self.failure:
             out["failure"] = self.failure[cid]
         if cid in self.setup_error:
@@ -204,8 +223,11 @@ class State:
 
     @classmethod
     def from_file(cls, data, cases):
-        st = cls(cases, tuple(data["options"]["threads"]) if data["options"].get("threads") else None,
-                 data["options"].get("r", True))
+        st = cls(
+            cases,
+            tuple(data["options"]["threads"]) if data["options"].get("threads") else None,
+            data["options"].get("r", True),
+        )
         for c in data["cases"]:
             cid = c["id"]
             if cid not in st.samples:
@@ -297,8 +319,10 @@ def wait_for_quiet(say, limits: Limits, mode: str = "wait") -> dict | None:
     if other <= limits.quiet_cores:
         say(f"CPU: 다른 프로세스가 {other:.1f}코어를 쓴다(기준 {limits.quiet_cores:g}코어 이하). 시작한다")
         return {"other_cores": round(other, 2), "busiest": top, "waited_s": 0, "quiet": True, "stopped": False}
-    say(f"경고: 다른 프로세스가 CPU {other:.1f}코어를 쓴다(기준 {limits.quiet_cores:g}코어). "
-        f"바쁜 프로세스: {', '.join(top) or '(읽을 수 없는 프로세스)'}")
+    say(
+        f"경고: 다른 프로세스가 CPU {other:.1f}코어를 쓴다(기준 {limits.quiet_cores:g}코어). "
+        f"바쁜 프로세스: {', '.join(top) or '(읽을 수 없는 프로세스)'}"
+    )
     if mode == "no":
         return {"other_cores": round(other, 2), "busiest": top, "waited_s": 0, "quiet": False, "stopped": False}
     say(f"조용해질 때까지 최대 {fmt_duration(limits.wait_quiet_s)} 기다린다(--no-wait: 바로 시작)")
@@ -309,17 +333,31 @@ def wait_for_quiet(say, limits: Limits, mode: str = "wait") -> dict | None:
         if other is not None and other <= limits.quiet_cores:
             waited = time.monotonic() - t0
             say(f"CPU: 다른 프로세스 {other:.1f}코어로 조용해졌다({fmt_duration(waited)} 기다림). 시작한다")
-            return {"other_cores": round(other, 2), "busiest": top, "waited_s": round(waited), "quiet": True,
-                    "stopped": False, "at_first": round(first[0], 2)}
+            return {
+                "other_cores": round(other, 2),
+                "busiest": top,
+                "waited_s": round(waited),
+                "quiet": True,
+                "stopped": False,
+                "at_first": round(first[0], 2),
+            }
         if time.monotonic() - last_report >= 60:
             say(f"  아직 바쁘다: {other:.1f}코어 ({', '.join(top[:3])})")
             last_report = time.monotonic()
     waited = time.monotonic() - t0
     stopped = mode == "strict"
-    say(f"{fmt_duration(waited)} 기다렸지만 바쁘다({other:.1f}코어). "
-        + ("멈춘다(--strict)." if stopped else "경고를 남기고 시작한다. 결과의 잡음이 클 수 있다."))
-    return {"other_cores": round(other, 2), "busiest": top, "waited_s": round(waited), "quiet": False,
-            "stopped": stopped, "at_first": round(first[0], 2)}
+    say(
+        f"{fmt_duration(waited)} 기다렸지만 바쁘다({other:.1f}코어). "
+        + ("멈춘다(--strict)." if stopped else "경고를 남기고 시작한다. 결과의 잡음이 클 수 있다.")
+    )
+    return {
+        "other_cores": round(other, 2),
+        "busiest": top,
+        "waited_s": round(waited),
+        "quiet": False,
+        "stopped": stopped,
+        "at_first": round(first[0], 2),
+    }
 
 
 # ---------------------------------------------------------------- the run
@@ -332,9 +370,22 @@ def _notify(title, text):
     subprocess.run(["osascript", "-e", script], capture_output=True, timeout=10, check=False)
 
 
-def run(cases: list[Case], *, rounds: int = 1, threads: tuple[int, ...] | None = None, use_r: bool = True,
-        out=None, label: str = "", limits: Limits | None = None, notify: bool = True, resume=None,
-        progress: bool = True, keep_awake: bool = True, smoke: bool = False, quiet: str = "wait") -> dict:
+def run(
+    cases: list[Case],
+    *,
+    rounds: int = 1,
+    threads: tuple[int, ...] | None = None,
+    use_r: bool = True,
+    out=None,
+    label: str = "",
+    limits: Limits | None = None,
+    notify: bool = True,
+    resume=None,
+    progress: bool = True,
+    keep_awake: bool = True,
+    smoke: bool = False,
+    quiet: str = "wait",
+) -> dict:
     """Time `cases` over `rounds` rounds; write and return the results dict.
 
     threads: restrict each case's thread counts to these (None: the case's own).
@@ -418,12 +469,22 @@ def run(cases: list[Case], *, rounds: int = 1, threads: tuple[int, ...] | None =
 
     def snapshot(next_round, next_index):
         data = {
-            "schema": results.SCHEMA, "run": run_id, "env": env,
-            "options": {"rounds": rounds, "threads": list(threads) if threads else None, "r": state.use_r,
-                        "label": label, "smoke": smoke, "started": started.isoformat(timespec="seconds"),
-                        "elapsed_s": round(elapsed_before + time.monotonic() - t_run, 1),
-                        "next": [next_round, next_index], "complete": next_round >= rounds,
-                        "limits": dataclasses.asdict(limits), "case_ids": [c.id for c in cases]},
+            "schema": results.SCHEMA,
+            "run": run_id,
+            "env": env,
+            "options": {
+                "rounds": rounds,
+                "threads": list(threads) if threads else None,
+                "r": state.use_r,
+                "label": label,
+                "smoke": smoke,
+                "started": started.isoformat(timespec="seconds"),
+                "elapsed_s": round(elapsed_before + time.monotonic() - t_run, 1),
+                "next": [next_round, next_index],
+                "complete": next_round >= rounds,
+                "limits": dataclasses.asdict(limits),
+                "case_ids": [c.id for c in cases],
+            },
             "cases": [state.record(c) for c in cases],
         }
         results.save(data, out)
@@ -443,19 +504,24 @@ def run(cases: list[Case], *, rounds: int = 1, threads: tuple[int, ...] | None =
                 worker = WorkerHandle(areas, log, limits, smoke=smoke)
                 if "versions" not in env:
                     pkgs = sorted({p for c in cases for r in c.refs if isinstance(r, RRef) for p in r.packages})
-                    reply, status, _ = worker.request({"cmd": "env", "r_packages": pkgs if state.use_r else []},
-                                                      limits.startup_timeout_s)
+                    reply, status, _ = worker.request(
+                        {"cmd": "env", "r_packages": pkgs if state.use_r else []}, limits.startup_timeout_s
+                    )
                     if status == "ok":
                         env.update(reply["env"])
             left = eta.remaining(pairs[i:])
-            say(f"[{rnd + 1}/{rounds}] {i % len(cases) + 1}/{len(cases)} {cid}  "
+            say(
+                f"[{rnd + 1}/{rounds}] {i % len(cases) + 1}/{len(cases)} {cid}  "
                 f"(경과 {fmt_duration(elapsed_before + time.monotonic() - t_run)}, "
-                f"남은 예상 {fmt_duration(left) if left is not None else '?'})")
+                f"남은 예상 {fmt_duration(left) if left is not None else '?'})"
+            )
             state.load[cid] = max(state.load[cid], proc.load1())
             meter = proc.CpuMeter().start()
             t0 = time.monotonic()
-            reply, status, peak = worker.request({"cmd": "case", "id": cid, "threads": list(threads) if threads else None,
-                                                  "use_r": state.use_r}, limits.case_timeout_s)
+            reply, status, peak = worker.request(
+                {"cmd": "case", "id": cid, "threads": list(threads) if threads else None, "use_r": state.use_r},
+                limits.case_timeout_s,
+            )
             worker.served += 1
             dt = time.monotonic() - t0
             state.rss[cid] = max(state.rss[cid], peak)
@@ -473,9 +539,11 @@ def run(cases: list[Case], *, rounds: int = 1, threads: tuple[int, ...] | None =
                 for label_, t, err in reply["errors"]:
                     say(f"  {label_} ({t if t is not None else '기본'} 스레드) 실패: {err}")
             else:
-                why = {"timeout": f"제한 시간 {fmt_duration(limits.case_timeout_s)} 초과",
-                       "memory": f"메모리 {limits.rss_bytes / 2**30:.0f} GB 초과(최대 {peak / 2**30:.1f} GB)",
-                       "died": "작업 프로세스가 죽었다"}[status]
+                why = {
+                    "timeout": f"제한 시간 {fmt_duration(limits.case_timeout_s)} 초과",
+                    "memory": f"메모리 {limits.rss_bytes / 2**30:.0f} GB 초과(최대 {peak / 2**30:.1f} GB)",
+                    "died": "작업 프로세스가 죽었다",
+                }[status]
                 state.failure[cid] = why
                 failures += 1
                 say(f"  중단: {why}. 작업 프로세스를 새로 띄운다")

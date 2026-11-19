@@ -35,7 +35,7 @@ from refdata_robust import STACKLOSS_X, STACKLOSS_Y  # noqa: E402
 sys.path.insert(0, str(ROOT / "tools"))
 import regref  # noqa: E402
 
-R_SCRIPT = r'''
+R_SCRIPT = r"""
 suppressMessages({library(MASS); library(robustbase)})
 args <- commandArgs(TRUE)
 A <- as.matrix(read.csv(args[1], header=FALSE)); st <- scan(args[2], quiet=TRUE)
@@ -59,7 +59,7 @@ obj <- list(control=ctrl, init=list(resid=drop(y - x %*% bS)), residuals=m$resid
             coefficients=m$coefficients, rank=p)
 out("mstep_coef", m$coefficients); out("mstep_se", sqrt(diag(robustbase:::.vcov.avar1(obj, x=x))))
 out("mstep_conv", as.numeric(m$converged))
-'''
+"""
 
 
 def problems():
@@ -101,8 +101,12 @@ def run(prob):
         np.savetxt(d / "data.csv", np.column_stack([prob["y"], prob["X"]]), delimiter=",", fmt="%.17g")
         np.savetxt(d / "start.txt", np.array(bS + [sS]), fmt="%.17g")
         (d / "run.R").write_text(R_SCRIPT)
-        res = subprocess.run(["Rscript", str(d / "run.R"), str(d / "data.csv"), str(d / "start.txt")],
-                             capture_output=True, text=True, check=True)
+        res = subprocess.run(
+            ["Rscript", str(d / "run.R"), str(d / "data.csv"), str(d / "start.txt")],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
     vals = {}
     for line in res.stdout.splitlines():
         parts = line.split()
@@ -112,9 +116,17 @@ def run(prob):
 
 
 def main():
-    ver = subprocess.run(["Rscript", "-e", 'cat(R.version.string, "|", "MASS", format(packageVersion("MASS")), '
-                          '"| robustbase", format(packageVersion("robustbase")))'], capture_output=True, text=True,
-                         check=True).stdout
+    ver = subprocess.run(
+        [
+            "Rscript",
+            "-e",
+            'cat(R.version.string, "|", "MASS", format(packageVersion("MASS")), '
+            '"| robustbase", format(packageVersion("robustbase")))',
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
     data = {"_versions": ver.strip()}
     for name, prob in problems().items():
         data[name] = run(prob)

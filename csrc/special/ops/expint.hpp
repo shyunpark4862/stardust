@@ -70,7 +70,8 @@ inline double en(double n, double x) {
             const double kd = k;
             return std::pair{-kd * (nm1 + kd), x + n + 2.0 * kd};
         },
-        100000);
+        100000
+    );
     return value(exp_scaled(-x) * scaled(1.0 / tail));
 }
 

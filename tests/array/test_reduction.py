@@ -101,6 +101,7 @@ def test_methods_are_the_functions():
 
 # ----------------------------------------------------------- result dtypes
 
+
 def test_result_dtypes():
     b, i, f, c = (sd.asarray(data(d)) for d in ALL_DTYPES)
     assert sd.sum(b, axis=0).dtype is sd.int64  # docs/api/array.md §1.4
@@ -133,6 +134,7 @@ def test_integer_sum_wraps():
 
 # ------------------------------------------------------------- empty arrays
 
+
 def test_empty_rules():
     e = sd.zeros((0,))
     assert sd.sum(e) == 0 and sd.prod(e) == 1
@@ -159,6 +161,7 @@ def test_sum_signed_zero_like_numpy():
 
 
 # ---------------------------------------------------------------- NaN rules
+
 
 def test_nan_rules():
     x = sd.asarray([1.0, math.nan, 3.0, math.nan])
@@ -198,6 +201,7 @@ def test_argmax_axis_must_be_int():
 
 # ------------------------------------------------------------- var details
 
+
 def test_var_degrees_of_freedom():
     one = sd.asarray([5.0])
     assert sd.var(one) == 0.0
@@ -219,6 +223,7 @@ def test_var_complex_is_mean_squared_modulus():
 
 
 # --------------------------------------------------------------- cumulative
+
 
 @pytest.mark.parametrize("name,np_name", [("cumulative_sum", "cumulative_sum"), ("cumulative_prod", "cumulative_prod")])
 @pytest.mark.parametrize("axis", [0, 1, 2, -1])
@@ -247,6 +252,7 @@ def test_cumulative_axis_rules():
 
 
 # --------------------------------------------------------- axes and inputs
+
 
 def test_axis_errors_and_inputs():
     x = sd.zeros((2, 3))
@@ -282,13 +288,21 @@ def test_deterministic():
 def test_random_shapes_and_axes(data_):
     shape = data_.draw(hnp.array_shapes(min_dims=1, max_dims=4, min_side=0, max_side=4))
     n = data_.draw(hnp.arrays(np.int64, shape, elements=st.integers(-100, 100)))
-    axis = data_.draw(st.one_of(st.none(), st.integers(-len(shape), len(shape) - 1),
-                                st.lists(st.integers(0, len(shape) - 1), unique=True).map(tuple)))
+    axis = data_.draw(
+        st.one_of(
+            st.none(),
+            st.integers(-len(shape), len(shape) - 1),
+            st.lists(st.integers(0, len(shape) - 1), unique=True).map(tuple),
+        )
+    )
     keepdims = data_.draw(st.booleans())
     x = sd.asarray(n)
     for name in ("sum", "prod", "any", "all"):
-        compare(getattr(sd, name)(x, axis=axis, keepdims=keepdims),
-                getattr(np, name)(n, axis=axis, keepdims=keepdims), exact=True)
+        compare(
+            getattr(sd, name)(x, axis=axis, keepdims=keepdims),
+            getattr(np, name)(n, axis=axis, keepdims=keepdims),
+            exact=True,
+        )
     ax = axis if axis is None or isinstance(axis, tuple) else (axis,)
     reduced = range(len(shape)) if ax is None else [a % len(shape) for a in ax]
     if all(shape[a] > 0 for a in reduced):
@@ -296,6 +310,7 @@ def test_random_shapes_and_axes(data_):
 
 
 # ------------------------------------------------------ vector kernel paths
+
 
 @given(st.lists(st.sampled_from([0.0, -0.0, 1.0, 2.0, -3.0, math.inf, -math.inf, math.nan]), min_size=1, max_size=40))
 def test_vector_folds_match_numpy(values):
@@ -307,7 +322,9 @@ def test_vector_folds_match_numpy(values):
         assert getattr(sd, name)(x) == getattr(np, name)(n)
     for name in ("max", "min"):
         got, want = getattr(sd, name)(x), getattr(np, name)(n)
-        assert (math.isnan(got) and math.isnan(want)) or (got == want and math.copysign(1, got) == math.copysign(1, want))
+        assert (math.isnan(got) and math.isnan(want)) or (
+            got == want and math.copysign(1, got) == math.copysign(1, want)
+        )
 
 
 def test_pairwise_sum_accuracy():
@@ -327,7 +344,9 @@ def test_any_all_stop_early_but_stay_right(where):
     for arr in (z, z[::-1], z.reshape(400, 250), z.reshape(400, 250).T):
         assert sd.any(sd.asarray(arr)) is True
         assert sd.all(sd.asarray(~arr)) is False
-        assert np.array_equal(np.asarray(sd.any(sd.asarray(z.reshape(400, 250)), axis=1)), z.reshape(400, 250).any(axis=1))
+        assert np.array_equal(
+            np.asarray(sd.any(sd.asarray(z.reshape(400, 250)), axis=1)), z.reshape(400, 250).any(axis=1)
+        )
     assert sd.any(sd.asarray(np.zeros(5000, bool))) is False and sd.all(sd.asarray(o | True)) is True
     assert sd.any(sd.asarray(np.where(z, 2.5, 0.0))) is True  # non-bool input: through the cast
 
@@ -348,6 +367,7 @@ def test_int_min_max_vector_fold_finds_every_position(n):
 # (docs/design/array.md §6.6, §6.7); the results are compared with numpy
 # within rounding, and must not depend on the layout of the same lane's
 # memory more than rounding does.
+
 
 @pytest.mark.parametrize("n", [0, 1, 7, 8, 9, 15, 16, 17, 4095, 4096, 4097, 8191, 8192, 8193, 40_000])
 def test_blocked_float_prod_is_close(n):
@@ -403,10 +423,19 @@ def test_blocked_scan_keeps_the_first_element():
 # not a value, is a TypeError in the frame's format; never nanobind's argument dump.
 
 BOOL_OPTIONS = [
-    (sd.sum, "keepdims"), (sd.prod, "keepdims"), (sd.min, "keepdims"), (sd.max, "keepdims"),
-    (sd.mean, "keepdims"), (sd.var, "keepdims"), (sd.std, "keepdims"), (sd.argmin, "keepdims"),
-    (sd.argmax, "keepdims"), (sd.any, "keepdims"), (sd.all, "keepdims"),
-    (sd.cumulative_sum, "include_initial"), (sd.cumulative_prod, "include_initial"),
+    (sd.sum, "keepdims"),
+    (sd.prod, "keepdims"),
+    (sd.min, "keepdims"),
+    (sd.max, "keepdims"),
+    (sd.mean, "keepdims"),
+    (sd.var, "keepdims"),
+    (sd.std, "keepdims"),
+    (sd.argmin, "keepdims"),
+    (sd.argmax, "keepdims"),
+    (sd.any, "keepdims"),
+    (sd.all, "keepdims"),
+    (sd.cumulative_sum, "include_initial"),
+    (sd.cumulative_prod, "include_initial"),
 ]
 
 

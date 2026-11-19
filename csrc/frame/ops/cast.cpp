@@ -119,13 +119,17 @@ Column to_string(const Column& col, F format) {
     const std::int64_t nchunks = num_chunks(col.length);
     std::vector<std::string> text(static_cast<std::size_t>(nchunks));
     const From* in = col.data<From>();
-    for_chunks(col.length, [&](std::int64_t lo, std::int64_t hi) {
-        std::string& bytes = text[static_cast<std::size_t>(lo / kChunkRows)];
-        for (std::int64_t i = lo; i < hi; ++i) {
-            if (col.is_valid(i)) bytes += format(in[i]);
-            offs[i + 1] = static_cast<std::int64_t>(bytes.size());
-        }
-    }, 16);
+    for_chunks(
+        col.length,
+        [&](std::int64_t lo, std::int64_t hi) {
+            std::string& bytes = text[static_cast<std::size_t>(lo / kChunkRows)];
+            for (std::int64_t i = lo; i < hi; ++i) {
+                if (col.is_valid(i)) bytes += format(in[i]);
+                offs[i + 1] = static_cast<std::int64_t>(bytes.size());
+            }
+        },
+        16
+    );
     std::vector<std::int64_t> start(static_cast<std::size_t>(nchunks) + 1, 0);
     for (std::size_t c = 0; c < text.size(); ++c) start[c + 1] = start[c] + static_cast<std::int64_t>(text[c].size());
     out.values = Buffer::allocate(start.back(), /*zeroed=*/false);
@@ -153,17 +157,21 @@ Column from_string(const Column& col, DType target, Parse parse) {
     out.null_count = col.null_count;
     To* o = reinterpret_cast<To*>(out.values->data());
     parallel::FirstRow bad;
-    for_chunks(col.length, [&](std::int64_t lo, std::int64_t hi) {
-        if (bad.failed_before(lo)) return;
-        for (std::int64_t i = lo; i < hi; ++i) {
-            To v{};
-            if (col.is_valid(i) && !parse(col.string_at(i), v)) {
-                bad.offer(i);
-                return;
+    for_chunks(
+        col.length,
+        [&](std::int64_t lo, std::int64_t hi) {
+            if (bad.failed_before(lo)) return;
+            for (std::int64_t i = lo; i < hi; ++i) {
+                To v{};
+                if (col.is_valid(i) && !parse(col.string_at(i), v)) {
+                    bad.offer(i);
+                    return;
+                }
+                o[i] = v;
             }
-            o[i] = v;
-        }
-    }, 8);
+        },
+        8
+    );
     if (bad.any()) cannot_parse(col.string_at(bad.row()), target);
     return out;
 }
@@ -185,24 +193,26 @@ Column astype(const Column& col, DType target) {
     const DType from = col.dtype;
     if (from == target) return col;
     switch (target) {
-    case DType::Float64:
-        if (from == DType::Int64) return convert_fixed<double, I>(col, target, [](I x) { return static_cast<double>(x); });
-        if (from == DType::Bool) return convert_fixed<double, B>(col, target, [](B x) { return x ? 1.0 : 0.0; });
-        return from_string<double>(col, target, [](std::string_view t, double& v) { return parse_float(t, v); });
-    case DType::Int64:
-        if (from == DType::Float64)  // the array's rule: truncate, saturate, NaN -> 0 (docs/api/frame.md §3.5)
-            return convert_fixed<I, double>(col, target, [](double x) { return saturate_to_int64(x); });
-        if (from == DType::Bool) return convert_fixed<I, B>(col, target, [](B x) { return static_cast<I>(x); });
-        return from_string<I>(col, target, [](std::string_view t, I& v) { return parse_int(t, v); });
-    case DType::Bool:
-        if (from == DType::Int64) return convert_fixed<B, I>(col, target, [](I x) -> B { return x != 0; });
-        if (from == DType::Float64) return convert_fixed<B, double>(col, target, [](double x) -> B { return x != 0; });
-        return from_string<B>(col, target, [](std::string_view t, B& v) { return parse_bool(t, v); });
-    case DType::String:
-        if (from == DType::Int64) return to_string<I>(col, [](I x) { return std::to_string(x); });
-        if (from == DType::Float64) return to_string<double>(col, python_float_str);
-        return to_string<B>(col, [](B x) { return std::string(x ? "True" : "False"); });
-    case DType::Complex128: break;  // not a frame dtype
+        case DType::Float64:
+            if (from == DType::Int64)
+                return convert_fixed<double, I>(col, target, [](I x) { return static_cast<double>(x); });
+            if (from == DType::Bool) return convert_fixed<double, B>(col, target, [](B x) { return x ? 1.0 : 0.0; });
+            return from_string<double>(col, target, [](std::string_view t, double& v) { return parse_float(t, v); });
+        case DType::Int64:
+            if (from == DType::Float64)  // the array's rule: truncate, saturate, NaN -> 0 (docs/api/frame.md §3.5)
+                return convert_fixed<I, double>(col, target, [](double x) { return saturate_to_int64(x); });
+            if (from == DType::Bool) return convert_fixed<I, B>(col, target, [](B x) { return static_cast<I>(x); });
+            return from_string<I>(col, target, [](std::string_view t, I& v) { return parse_int(t, v); });
+        case DType::Bool:
+            if (from == DType::Int64) return convert_fixed<B, I>(col, target, [](I x) -> B { return x != 0; });
+            if (from == DType::Float64)
+                return convert_fixed<B, double>(col, target, [](double x) -> B { return x != 0; });
+            return from_string<B>(col, target, [](std::string_view t, B& v) { return parse_bool(t, v); });
+        case DType::String:
+            if (from == DType::Int64) return to_string<I>(col, [](I x) { return std::to_string(x); });
+            if (from == DType::Float64) return to_string<double>(col, python_float_str);
+            return to_string<B>(col, [](B x) { return std::string(x ? "True" : "False"); });
+        case DType::Complex128: break;  // not a frame dtype
     }
     throw nb::value_error("unknown dtype");
 }

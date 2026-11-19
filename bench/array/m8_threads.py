@@ -21,9 +21,14 @@ def main():
     rng = np.random.default_rng(0)
     n = 4_000_000
     arrays = {
-        "f": rng.random(n) + 0.5, "g": rng.random(n), "i": rng.integers(-1000, 1000, n),
-        "m": rng.random((3000, 3000)), "w": rng.random((300, 30000)), "s": rng.random((2000, 1000)),
-        "ia": rng.integers(-100, 100, (500, 500)), "t3": rng.random((200, 200, 100)).transpose(2, 0, 1),
+        "f": rng.random(n) + 0.5,
+        "g": rng.random(n),
+        "i": rng.integers(-1000, 1000, n),
+        "m": rng.random((3000, 3000)),
+        "w": rng.random((300, 30000)),
+        "s": rng.random((2000, 1000)),
+        "ia": rng.integers(-100, 100, (500, 500)),
+        "t3": rng.random((200, 200, 100)).transpose(2, 0, 1),
     }
     cases = [
         ("f + g          memory-bound", "f + g", 10),

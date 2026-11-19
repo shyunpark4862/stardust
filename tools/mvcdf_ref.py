@@ -76,6 +76,7 @@ class _Timeout(Exception):
 
 # ---------------------------------------------------------------- Arb pieces
 
+
 def _Phi(x):
     """Phi(x) for an arb or acb x: erfc(-x / sqrt 2) / 2 (entire)."""
     return (-x / arb(2).sqrt()).erfc() / 2
@@ -165,6 +166,7 @@ def _settle(fn):
 
 # ---------------------------------------------------------------- the sets
 
+
 def _corr3(rng, kind):
     """A random 3x3 correlation matrix (positive definite)."""
     while True:
@@ -200,8 +202,28 @@ def _corr3(rng, kind):
 def points_bvn():
     rng = np.random.default_rng(20261116)
     H = [-37.0, -25.0, -15.0, -10.0, -7.0, -5.0, -3.0, -2.0, -1.0, -0.5, 0.0, 0.5, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0]
-    Rs = [-0.999999, -0.999, -0.99, -0.95, -0.9, -0.75, -0.5, -0.3, -0.1, -0.01,
-          0.01, 0.1, 0.3, 0.5, 0.75, 0.9, 0.95, 0.99, 0.999, 0.999999]
+    Rs = [
+        -0.999999,
+        -0.999,
+        -0.99,
+        -0.95,
+        -0.9,
+        -0.75,
+        -0.5,
+        -0.3,
+        -0.1,
+        -0.01,
+        0.01,
+        0.1,
+        0.3,
+        0.5,
+        0.75,
+        0.9,
+        0.95,
+        0.99,
+        0.999,
+        0.999999,
+    ]
     pts, region = [], []
     for a in range(len(H)):
         for b in range(a, len(H)):
@@ -224,8 +246,13 @@ def points_bvn():
 def points_tvn():
     rng = np.random.default_rng(20261117)
     pts, region = [], []
-    plan = [("random", 1500, (-7, 5), 0), ("random", 400, (-20, -5), 1), ("negative3", 400, (-6, 4), 2),
-            ("negative2", 400, (-6, 4), 3), ("singular", 300, (-6, 4), 4)]
+    plan = [
+        ("random", 1500, (-7, 5), 0),
+        ("random", 400, (-20, -5), 1),
+        ("negative3", 400, (-6, 4), 2),
+        ("negative2", 400, (-6, 4), 3),
+        ("singular", 300, (-6, 4), 4),
+    ]
     for kind, n, (lo, hi), reg in plan:
         for _ in range(n):
             R = _corr3(rng, kind)
@@ -284,8 +311,13 @@ def _tcdf(v, a, analytic):
         if analytic and not (z.real < 1):
             return acb(math.nan)
         c = (a + arb(0.5)).lgamma() - (a + 1).lgamma() - arb.pi().log() / 2
-        tail = ((a * (nu.log() - s2.log(analytic=analytic)) + c).exp() * (-w) / s2.sqrt(analytic=analytic)
-                * z.hypgeom_2f1(a + arb(0.5), 1, a + 1) / 2)
+        tail = (
+            (a * (nu.log() - s2.log(analytic=analytic)) + c).exp()
+            * (-w)
+            / s2.sqrt(analytic=analytic)
+            * z.hypgeom_2f1(a + arb(0.5), 1, a + 1)
+            / 2
+        )
         return tail if neg else 1 - tail
     x = -v * v / nu
     if analytic and not (x.real < 1):
@@ -368,9 +400,11 @@ def _tmix(h, R, nu, guess, keep=(0, 1)):
         RR = [[1, R[0], R[1]], [R[0], 1, R[2]], [R[1], R[2], 1]]
         i, j = keep
         k = 3 - i - j
-        J = (_t_plackett(h[i], h[j], a, RR[i][j], (h[k], None, None))
-             + _t_plackett(h[i], h[k], a, RR[i][k], (h[j], RR[i][j], RR[j][k]))
-             + _t_plackett(h[j], h[k], a, RR[j][k], (h[i], RR[i][j], RR[i][k])))
+        J = (
+            _t_plackett(h[i], h[j], a, RR[i][j], (h[k], None, None))
+            + _t_plackett(h[i], h[k], a, RR[i][k], (h[j], RR[i][j], RR[j][k]))
+            + _t_plackett(h[j], h[k], a, RR[j][k], (h[i], RR[i][j], RR[i][k]))
+        )
     return P + J / (2 * arb.pi())
 
 
@@ -390,7 +424,7 @@ def _w_tmix(p):
             with precision(MAX_PREC):  # the intersection rounds to the working precision
                 v = intersect(v1, v2)
         return to_dd(v)
-    except (NotSettled, _Timeout):
+    except NotSettled, _Timeout:
         return (math.nan, math.nan)
     finally:
         _DEADLINE[0] = math.inf
@@ -408,18 +442,25 @@ def _guess(h, R, nu):
     else:
         for q, (i, j) in enumerate(((0, 1), (0, 2), (1, 2))):
             S[i, j] = S[j, i] = R[q]
-    v, _ = C.mv_cdf(sd.asarray(S[None]), sd.asarray(np.array([h])), sd.asarray(np.zeros(1, np.int64)),
-                    sd.asarray(np.array([nu])), 1e-6, 0)
+    v, _ = C.mv_cdf(
+        sd.asarray(S[None]),
+        sd.asarray(np.array([h])),
+        sd.asarray(np.zeros(1, np.int64)),
+        sd.asarray(np.array([nu])),
+        1e-6,
+        0,
+    )
     return max(float(np.asarray(v)[0]), 1e-300)
 
 
 # ---------------------------------------------------------------- workers
 
+
 def _run(fn):
     _DEADLINE[0] = time.monotonic() + POINT_SECONDS
     try:
         return to_dd(_settle(fn))
-    except (NotSettled, _Timeout):
+    except NotSettled, _Timeout:
         return (math.nan, math.nan)
     finally:
         _DEADLINE[0] = math.inf
@@ -443,7 +484,7 @@ def _w_tvn_check(p):
     try:
         a = _settle(lambda: _tvn(h, R, (0, 1)))
         b = _settle(lambda: _tvn(h, R, (0, 2)))
-    except (NotSettled, _Timeout):
+    except NotSettled, _Timeout:
         return None  # not checked
     finally:
         _DEADLINE[0] = math.inf
@@ -469,8 +510,9 @@ def _w_factor_t(p):
     chi = stats.chi(nu)
     dens = lambda r: chi.pdf(r * math.sqrt(nu)) * math.sqrt(nu)
     hi = chi.ppf(1 - 1e-16) / math.sqrt(nu)
-    v = integrate.quad(lambda r: dens(r) * inner(r), 0, hi, epsabs=1e-13, epsrel=1e-12, limit=400,
-                       points=[1.0] if hi > 1 else None)[0]
+    v = integrate.quad(
+        lambda r: dens(r) * inner(r), 0, hi, epsabs=1e-13, epsrel=1e-12, limit=400, points=[1.0] if hi > 1 else None
+    )[0]
     return (v, 0.0)
 
 
@@ -493,8 +535,11 @@ def build(name, jobs):
         bad = [10 * i for i, c in enumerate(checks) if c is False]
         if bad:
             raise SystemExit(f"tvn: the two paths disagree at {bad}")
-        print(f"tvn: {sum(c is True for c in checks)} points agree along two paths "
-              f"({sum(c is None for c in checks)} unchecked: timeout)", flush=True)
+        print(
+            f"tvn: {sum(c is True for c in checks)} points agree along two paths "
+            f"({sum(c is None for c in checks)} unchecked: timeout)",
+            flush=True,
+        )
         res = _pool_map(_w_tvn, pts, jobs)
         out = dict(h=np.array([p[0] for p in pts]), r=np.array([p[1] for p in pts]), region=np.array(region))
     elif name in ("factor_n", "factor_t"):

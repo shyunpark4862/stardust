@@ -63,8 +63,9 @@ inline void col_step(float64x2_t& hi, float64x2_t& lo, float64x2_t ah, float64x2
 // x beta over the columns c[0 .. nc) for the rows row(t), t in [0, nt): P[t] + S[t], each
 // row's sum from (p0, 0) over the columns in order (four rows at a time).
 template <class Row>
-inline void dot2_rows(const ColRef* c, const double* b, lint nc, lint nt, Row&& row, double* P, double* S,
-                      double p0 = 0.0) {
+inline void dot2_rows(
+    const ColRef* c, const double* b, lint nc, lint nt, Row&& row, double* P, double* S, double p0 = 0.0
+) {
     lint t = 0;
     for (; t + 4 <= nt; t += 4) {
         const lint i0 = row(t), i1 = row(t + 1), i2 = row(t + 2), i3 = row(t + 3);

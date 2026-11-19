@@ -40,14 +40,18 @@ struct Column {
     std::shared_ptr<Buffer> offsets;
 
     template <class T>
-    const T* data() const { return reinterpret_cast<const T*>(values->data()) + offset; }
+    const T* data() const {
+        return reinterpret_cast<const T*>(values->data()) + offset;
+    }
 
     const std::uint8_t* validity_bits() const {
         return validity ? reinterpret_cast<const std::uint8_t*>(validity->data()) : nullptr;
     }
     bool is_valid(std::int64_t i) const { return !validity || bitmap::get(validity_bits(), offset + i); }
 
-    const std::int64_t* string_offsets() const { return reinterpret_cast<const std::int64_t*>(offsets->data()) + offset; }
+    const std::int64_t* string_offsets() const {
+        return reinterpret_cast<const std::int64_t*>(offsets->data()) + offset;
+    }
     std::string_view string_at(std::int64_t i) const {
         const std::int64_t* o = string_offsets();
         return {reinterpret_cast<const char*>(values->data()) + o[i], static_cast<std::size_t>(o[i + 1] - o[i])};
@@ -110,7 +114,8 @@ inline bool int_is_exact_double(std::int64_t v) {
 
 // True when the double `d` is integral and fits int64 (NaN and inf do not).
 inline bool double_is_exact_int(double d) {
-    return d >= -9223372036854775808.0 && d < 9223372036854775808.0 && static_cast<double>(static_cast<std::int64_t>(d)) == d;
+    return d >= -9223372036854775808.0 && d < 9223372036854775808.0 &&
+           static_cast<double>(static_cast<std::int64_t>(d)) == d;
 }
 
 }  // namespace sd::frame

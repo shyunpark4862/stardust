@@ -21,18 +21,50 @@ from .. import frame as _frame
 from .. import linalg as _linalg
 from ..optimize._diff import Differences as _Differences
 from ._glm import _check_int
-from ._linear import (_call_errors, _RegressionResult, _as_real, _check_alpha, _check_choice, _check_policy, _check_rows,
-                      _check_rtol, _count, _div0, _frame_columns, _read_y, _real, _rows_message,
-                      _div, _forg, _log, _pairs, _quantile_label, _type_name, _WIDTH)
+from ._linear import (
+    _call_errors,
+    _RegressionResult,
+    _as_real,
+    _check_alpha,
+    _check_choice,
+    _check_policy,
+    _check_rows,
+    _check_rtol,
+    _count,
+    _div0,
+    _frame_columns,
+    _read_y,
+    _real,
+    _rows_message,
+    _div,
+    _forg,
+    _log,
+    _pairs,
+    _quantile_label,
+    _type_name,
+    _WIDTH,
+)
 
 _k = _sd.regression
 
 _METHODS = ("lm", "trf")
-_EPS = 2.0 ** -52
+_EPS = 2.0**-52
 
 # the result's scalars (NLSResult._raw[6])
-(_S_NOBS, _S_RANK, _S_SSR, _S_ISNAN, _S_NGROUPS, _S_LAGS, _S_NFEV, _S_NJEV, _S_NITER, _S_STATUS,
- _S_NPOLISH, _S_SUMLOGW) = range(12)
+(
+    _S_NOBS,
+    _S_RANK,
+    _S_SSR,
+    _S_ISNAN,
+    _S_NGROUPS,
+    _S_LAGS,
+    _S_NFEV,
+    _S_NJEV,
+    _S_NITER,
+    _S_STATUS,
+    _S_NPOLISH,
+    _S_SUMLOGW,
+) = range(12)
 _NSTAT = 12
 _LOG_2PI = math.log(2 * math.pi)
 
@@ -51,19 +83,19 @@ _STATUS_TEXT = {
 # below that, or a step does not shrink (or shrinks by less than half below 2^-40: the
 # rounding floor)
 _POLISH_STEPS = 10
-_POLISH_TOL = 2.0 ** -50
-_POLISH_FLOOR = 2.0 ** -40
+_POLISH_TOL = 2.0**-50
+_POLISH_FLOOR = 2.0**-40
 # rtol's default (G21's aliased columns) for a difference Jacobian: its columns are accurate to
 # about 1e-12 - 1e-11 relative, so an exactly dependent column shows |R_jj| of that size; the
 # default with a user jac is the linear models' max(nobs, p) eps
-_FD_RTOL = 2.0 ** -30
+_FD_RTOL = 2.0**-30
 
 
 def _param_names(f, p):
     """f's parameter names after x when it has exactly p plain positional ones, else b1 .. bp."""
     try:
         sig = inspect.signature(f)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         sig = None
     if sig is not None:
         ps = list(sig.parameters.values())
@@ -84,10 +116,10 @@ class NLSResult(_RegressionResult):
         super().__init__(raw, intercept=False, cov_type="nonrobust", batch=(), **kw)
         self._method = method
         self._f = f
-        self._xshape = xshape      # x's shape after the first axis
+        self._xshape = xshape  # x's shape after the first axis
         self._jac_kind = jac_kind  # 'jac' or 'differences'
-        self._active = active      # parameters at a bound (trf), by index
-        self._model = model        # the fit's _Model (jac, bounds, the differences' steps)
+        self._active = active  # parameters at a bound (trf), by index
+        self._model = model  # the fit's _Model (jac, bounds, the differences' steps)
         self._polish_cut = polish_cut  # max_nfev stopped the polish before rounding (G93)
 
     @property
@@ -115,11 +147,13 @@ class NLSResult(_RegressionResult):
         """params / bse; NaN for a perfect fit (ssr exactly 0 with df_resid > 0: bse is 0, and
         theta / 0 would show a significance the fit cannot have, as the slopes of rounding size
         a model like a + b x keeps for a constant y; G109)."""
+
         def make():
             t = self.params / self.bse
             if self.ssr == 0.0 and self.df_resid > 0:
                 return t * math.nan
             return t
+
         return self._cached("tvalues", make)
 
     @property
@@ -127,9 +161,11 @@ class NLSResult(_RegressionResult):
         """The Gaussian log-likelihood at its maximum over sigma, as ols / wls:
         -nobs/2 (log 2 pi + log(ssr / nobs) + 1) + 1/2 sum log w_i (the rows used; R's
         logLik.nls)."""
+
         def make():
             n = self.nobs
             return -n / 2 * (_LOG_2PI + _log(_div(self.ssr, n)) + 1.0) + self._stat(_S_SUMLOGW) / 2
+
         return self._cached("llf", make)
 
     @property
@@ -258,19 +294,30 @@ class NLSResult(_RegressionResult):
         return _summary(self, alpha)
 
     def __repr__(self):
-        return (f"NLSResult(method={self.method!r}, nobs={self.nobs:g}, ssr={self.ssr:.6g}, "
-                f"converged={self.converged}, params={self.params})")
+        return (
+            f"NLSResult(method={self.method!r}, nobs={self.nobs:g}, ssr={self.ssr:.6g}, "
+            f"converged={self.converged}, params={self.params})"
+        )
 
 
 def _summary(r, alpha):
     stars = "=" * _WIDTH
     lines = ["Nonlinear Least Squares Results".center(_WIDTH).rstrip(), stars]
     method = "Levenberg-Marquardt" if r.method == "lm" else "Trust Region Reflective"
-    left = [("Model:", "NLS"), ("Method:", method), ("No. Observations:", _count(r.nobs)),
-            ("Df Residuals:", _count(r.df_resid)), ("Df Model:", _count(r.df_model))]
-    right = [("Residual Std. Error:", f"{math.sqrt(r.scale) if r.scale >= 0 else math.nan:#.4g}"),
-             ("Sum of Squares:", f"{r.ssr:#.6g}"), ("Converged:", str(r.converged)),
-             ("No. Iterations:", str(r.n_iter)), ("Function Evals:", str(r.nfev))]
+    left = [
+        ("Model:", "NLS"),
+        ("Method:", method),
+        ("No. Observations:", _count(r.nobs)),
+        ("Df Residuals:", _count(r.df_resid)),
+        ("Df Model:", _count(r.df_model)),
+    ]
+    right = [
+        ("Residual Std. Error:", f"{math.sqrt(r.scale) if r.scale >= 0 else math.nan:#.4g}"),
+        ("Sum of Squares:", f"{r.ssr:#.6g}"),
+        ("Converged:", str(r.converged)),
+        ("No. Iterations:", str(r.n_iter)),
+        ("Function Evals:", str(r.nfev)),
+    ]
     lines += _pairs(left, right)
     lines.append(stars)
     names = [str(v) for v in r.param_names]
@@ -285,21 +332,32 @@ def _summary(r, alpha):
     lines.append(head)
     lines.append("-" * width)
     for j, nm in enumerate(names):
-        vals = [_forg(float(params[j]), 4), _forg(float(bse[j])), _forg(float(tv[j])), f"{float(pv[j]):#.3f}",
-                _forg(float(ci[j, 0])), _forg(float(ci[j, 1]))]
+        vals = [
+            _forg(float(params[j]), 4),
+            _forg(float(bse[j])),
+            _forg(float(tv[j])),
+            f"{float(pv[j]):#.3f}",
+            _forg(float(ci[j, 0])),
+            _forg(float(ci[j, 1])),
+        ]
         lines.append(nm.ljust(wname) + "".join(v.rjust(11) for v in vals))
     lines.append("=" * width)
     jac = "the user's jac" if r._jac_kind == "jac" else "5-point differences"
-    notes = [f"Standard errors are sigma^2 (J^T W J)^-1 with J from {jac} at the solution; t uses df_resid "
-             "degrees of freedom."]
+    notes = [
+        f"Standard errors are sigma^2 (J^T W J)^-1 with J from {jac} at the solution; t uses df_resid "
+        "degrees of freedom."
+    ]
     if not r._isnan():
-        notes.append(_STATUS_TEXT.get(r._count_stat(_S_STATUS), "") .capitalize() + ".")
+        notes.append(_STATUS_TEXT.get(r._count_stat(_S_STATUS), "").capitalize() + ".")
         if r._count_stat(_S_STATUS) > 0 and not math.isfinite(r.ssr):
             notes.append("The sum of squares overflows there: not converged.")
         aliased = [nm for nm, k in zip(names, r._raw[5].tolist()) if not k]
         if aliased:
-            notes.append("Aliased (the Jacobian's column is linearly dependent on earlier ones), no inference: "
-                         + ", ".join(aliased) + ".")
+            notes.append(
+                "Aliased (the Jacobian's column is linearly dependent on earlier ones), no inference: "
+                + ", ".join(aliased)
+                + "."
+            )
         if r._active:
             notes.append("At a bound: " + ", ".join(names[j] for j in r._active) + ".")
     lines.append("")
@@ -311,21 +369,24 @@ def _summary(r, alpha):
 
 # ---- inputs
 
+
 def _values(v, n, func, what, rows="'x'"):
     """What f (or jac with p columns) returned, as a float64 sd.ndarray of shape (n,)."""
     if not isinstance(v, _sd.ndarray):
         if isinstance(v, numbers.Number) and not isinstance(v, complex):
             raise ValueError(f"{func}(): '{what}' must return {n} values (one per row of {rows}), not a scalar")
         if isinstance(v, (str, bytes)) or v is None:
-            raise TypeError(f"{func}(): '{what}' must return an sd.ndarray or a sequence of numbers, "
-                            f"not {_type_name(v)}")
+            raise TypeError(
+                f"{func}(): '{what}' must return an sd.ndarray or a sequence of numbers, not {_type_name(v)}"
+            )
         try:
             v = _sd.asarray(v)
         except OverflowError:
             raise OverflowError(f"{func}(): Python int too large to convert to float64") from None
-        except (TypeError, ValueError):
-            raise TypeError(f"{func}(): '{what}' must return an sd.ndarray or a sequence of numbers, "
-                            f"not {_type_name(v)}") from None
+        except TypeError, ValueError:
+            raise TypeError(
+                f"{func}(): '{what}' must return an sd.ndarray or a sequence of numbers, not {_type_name(v)}"
+            ) from None
     if v.dtype == _sd.complex128:
         raise TypeError(f"{func}(): '{what}' must return real values, not a complex128 array")
     if v.dtype != _sd.float64:
@@ -398,6 +459,7 @@ def _strictly_feasible(x, lb, ub, rstep=1e-10):
 
 # ---- the model
 
+
 class _Model:
     """Calls of f and jac on the full x, the residuals of the rows used, and the accurate
     Jacobian (counted)."""
@@ -442,9 +504,11 @@ class _Model:
         if not isinstance(J, _sd.ndarray):
             try:
                 J = _sd.asarray(J)
-            except (TypeError, ValueError):
-                raise TypeError(f"{self.func}(): 'jac' must return an sd.ndarray or a nested sequence of numbers, "
-                                f"not {_type_name(J)}") from None
+            except TypeError, ValueError:
+                raise TypeError(
+                    f"{self.func}(): 'jac' must return an sd.ndarray or a nested sequence of numbers, "
+                    f"not {_type_name(J)}"
+                ) from None
         if J.dtype == _sd.complex128:
             raise TypeError(f"{self.func}(): 'jac' must return real values, not a complex128 array")
         if J.dtype != _sd.float64:
@@ -467,8 +531,10 @@ class _Model:
             return self.user_jac(theta)
         J, bad = self.diff.jacobian(theta, self._rows(v0), zero_noise=True)
         if J is None:
-            raise ValueError(f"{self.func}(): the model is not finite near the parameters {list(theta)} "
-                             "(the differences for the Jacobian)")
+            raise ValueError(
+                f"{self.func}(): the model is not finite near the parameters {list(theta)} "
+                "(the differences for the Jacobian)"
+            )
         return J
 
     def second(self, theta, v0, c, idx):
@@ -510,8 +576,10 @@ def _newton_step(d, cols, C, S):
     """Newton's step from the Gauss-Newton one: (J^T J + S) dn = J^T J d, that is
     (I + (J^T J)^-1 S) dn = d on the free columns. None when singular."""
     q = len(cols)
-    A = [[(1.0 if a == b else 0.0) + sum(C[a][c] * S[cols[c]][cols[b]] for c in range(q)) for b in range(q)]
-         for a in range(q)]
+    A = [
+        [(1.0 if a == b else 0.0) + sum(C[a][c] * S[cols[c]][cols[b]] for c in range(q)) for b in range(q)]
+        for a in range(q)
+    ]
     try:
         z = _linalg.solve(_sd.asarray(A), _sd.asarray([d[j] for j in cols])).tolist()
     except _linalg.LinAlgError:
@@ -531,8 +599,9 @@ def _newton_pays(M, size, q, left):
         return False
     p = M.p
     rest = size * q / (1 - q) if q < 1 else math.inf
-    need = math.log(rest / _POLISH_TOL) / math.log(1 / q) if q < 1 and rest > _POLISH_TOL else (
-        0.0 if q < 1 else math.inf)
+    need = (
+        math.log(rest / _POLISH_TOL) / math.log(1 / q) if q < 1 and rest > _POLISH_TOL else (0.0 if q < 1 else math.inf)
+    )
     step = 2.0 if M.jac is not None else 4.0 * p + 1
     cost_s = 2.0 * p * p if M.jac is not None else 2.0 * p * (p - 1)
     return need > left or need * step > cost_s + 2 * step
@@ -586,7 +655,7 @@ def _polish(M, func, theta, v, r, J, rt, free, budget=math.inf):
         if ok:
             vn = M.values(tn)
             rn = M.resid_of(vn)
-            ok = bool(_sd.all(_sd.isfinite(rn))) and (_ssr(rn) <= _ssr(r) * (1 + 2.0 ** -4) or size <= 2.0 ** -30)
+            ok = bool(_sd.all(_sd.isfinite(rn))) and (_ssr(rn) <= _ssr(r) * (1 + 2.0**-4) or size <= 2.0**-30)
         if not ok:
             if S is not None:  # Newton's step failed: back to Gauss-Newton
                 S = None
@@ -600,14 +669,19 @@ def _polish(M, func, theta, v, r, J, rt, free, budget=math.inf):
         if prev is not None and not done:
             # the predicted rest is below 2^-50, or the steps stopped shrinking at rounding level
             done = (q < 1 and size * q / (1 - q) <= _POLISH_TOL) or (q > 0.5 and size <= _POLISH_FLOOR)
-        if done and size <= 2.0 ** -45:
+        if done and size <= 2.0**-45:
             break
         J = M.accurate_jac(theta, v)
         if done:
             break
         prev = size
-        if (S is None and not tried and C is not None and _newton_pays(M, size, q, _POLISH_STEPS - steps)
-                and afford(2 * M.p * M.p)):
+        if (
+            S is None
+            and not tried
+            and C is not None
+            and _newton_pays(M, size, q, _POLISH_STEPS - steps)
+            and afford(2 * M.p * M.p)
+        ):
             tried = True
             c = r * M.sw if M.sw is not None else r
             S = M.second(theta, v, c, cols)
@@ -636,14 +710,38 @@ def _nan_result(f, n, p, names, method, xshape, jac_kind, nobs=math.nan, columns
     stats[_S_ISNAN] = 1.0
     stats[_S_NFEV] = stats[_S_NJEV] = stats[_S_NITER] = stats[_S_NPOLISH] = 0.0
     stats[_S_STATUS] = 0.0
-    raw = [_sd.full((p,), nan), _sd.full((p, p), nan), _sd.full((p, p), nan), _sd.full((n,), nan),
-           _sd.full((n,), nan), _sd.ones((p,), dtype=_sd.bool), _sd.asarray(stats)]
-    return NLSResult(raw, method=method, f=f, xshape=xshape, jac_kind=jac_kind, active=[], param_names=names,
-                     columns=columns)
+    raw = [
+        _sd.full((p,), nan),
+        _sd.full((p, p), nan),
+        _sd.full((p, p), nan),
+        _sd.full((n,), nan),
+        _sd.full((n,), nan),
+        _sd.ones((p,), dtype=_sd.bool),
+        _sd.asarray(stats),
+    ]
+    return NLSResult(
+        raw, method=method, f=f, xshape=xshape, jac_kind=jac_kind, active=[], param_names=names, columns=columns
+    )
 
 
-def nls(f, x, y, /, *, p0, jac=None, bounds=None, method=None, weights=None, ftol=1e-08, xtol=1e-08, gtol=1e-08,
-        max_nfev=None, rtol=None, nan_policy="propagate"):
+def nls(
+    f,
+    x,
+    y,
+    /,
+    *,
+    p0,
+    jac=None,
+    bounds=None,
+    method=None,
+    weights=None,
+    ftol=1e-08,
+    xtol=1e-08,
+    gtol=1e-08,
+    max_nfev=None,
+    rtol=None,
+    nan_policy="propagate",
+):
     """Nonlinear least squares: minimizes sum w_i (y_i - f(x_i, theta))^2 over theta from p0.
     f(x, *theta) gets x (an sd.ndarray (n,) or (n, d)) and the parameters as floats and
     returns n values (scipy's curve_fit form, G68). Without bounds the Levenberg-Marquardt
@@ -673,8 +771,9 @@ def nls(f, x, y, /, *, p0, jac=None, bounds=None, method=None, weights=None, fto
     xtol = _check_tol(xtol, func, "xtol")
     gtol = _check_tol(gtol, func, "gtol")
     if ftol < _EPS and xtol < _EPS and gtol < _EPS:
-        raise ValueError(f"{func}(): at least one of 'ftol', 'xtol' and 'gtol' must be >= 2.2e-16 "
-                         "(the machine epsilon)")
+        raise ValueError(
+            f"{func}(): at least one of 'ftol', 'xtol' and 'gtol' must be >= 2.2e-16 (the machine epsilon)"
+        )
     if max_nfev is None:
         max_nfev = 100 * p if jac is not None else 100 * p * (p + 1)
     else:
@@ -740,8 +839,25 @@ def nls(f, x, y, /, *, p0, jac=None, bounds=None, method=None, weights=None, fto
     x0 = _strictly_feasible(theta0, lb, ub) if method == "trf" else theta0
     kjac = M.user_jac if jac is not None else None
     xs, status, nfev, njev, n_iter, _, _ = _sd.optimize.lsq_solve(
-        func, M.residuals, kjac, None, x0, lb, ub, _METHODS.index(method), ftol, xtol, gtol, max_nfev, nobs, 0, [],
-        False, None, False)
+        func,
+        M.residuals,
+        kjac,
+        None,
+        x0,
+        lb,
+        ub,
+        _METHODS.index(method),
+        ftol,
+        xtol,
+        gtol,
+        max_nfev,
+        nobs,
+        0,
+        [],
+        False,
+        None,
+        False,
+    )
     if status == _ST_START:
         raise ValueError(f"{func}(): 'f' is not finite at 'p0' (rows used)")
     if status == _ST_JAC:
@@ -763,7 +879,7 @@ def nls(f, x, y, /, *, p0, jac=None, bounds=None, method=None, weights=None, fto
                 tn[j] = b
             vn = M.values(tn)
             rn = M.resid_of(vn)
-            if bool(_sd.all(_sd.isfinite(rn))) and _ssr(rn) <= _ssr(r) * (1 + 2.0 ** -4):
+            if bool(_sd.all(_sd.isfinite(rn))) and _ssr(rn) <= _ssr(r) * (1 + 2.0**-4):
                 theta, v, r = tn, vn, rn
                 J = M.accurate_jac(theta, v)
             for j, _b in act:
@@ -790,8 +906,18 @@ def nls(f, x, y, /, *, p0, jac=None, bounds=None, method=None, weights=None, fto
     stats[_S_NPOLISH] = float(npolish)
     stats[_S_SUMLOGW] = float(_sd.sum(_sd.log(w[mask] if mask is not None else w))) if w is not None else 0.0
     out = [_sd.asarray(theta), raw[1], raw[2], v, yy - v, raw[5], _sd.asarray(stats)]
-    return NLSResult(out, method=method, f=f, xshape=xshape, jac_kind=jac_kind, active=active, param_names=names,
-                     model=M, polish_cut=cut, columns=columns)
+    return NLSResult(
+        out,
+        method=method,
+        f=f,
+        xshape=xshape,
+        jac_kind=jac_kind,
+        active=active,
+        param_names=names,
+        model=M,
+        polish_cut=cut,
+        columns=columns,
+    )
 
 
 # the methods' call-shape errors in the library's form (R89)

@@ -21,8 +21,11 @@ def is_ndarray(obj):
 def is_scalar(obj):
     np = sys.modules.get("numpy")
     # complex too: a scalar the frame cannot store, so its message says that (not "cannot make a column")
-    return obj is None or obj is NA or isinstance(obj, (bool, int, float, complex, str)) or (
-        np is not None and isinstance(obj, np.generic)
+    return (
+        obj is None
+        or obj is NA
+        or isinstance(obj, (bool, int, float, complex, str))
+        or (np is not None and isinstance(obj, np.generic))
     )
 
 
@@ -41,8 +44,12 @@ def column_from(data, dtype=None, func=None):
         return _from_ndarray(data, dtype, func)
     if isinstance(data, (list, tuple, range)):
         return Column.from_list(data, NA, dtype, func=func)
-    raise TypeError(named(func, f"cannot make a column from {type_name(data)}; "
-                                "expected a list, tuple, range, numpy array or sd.ndarray"))
+    raise TypeError(
+        named(
+            func,
+            f"cannot make a column from {type_name(data)}; expected a list, tuple, range, numpy array or sd.ndarray",
+        )
+    )
 
 
 def _from_ndarray(arr, dtype, func):
@@ -77,8 +84,13 @@ def implicit(col, dtype, func=None):
     if (col.dtype, dtype) in _UPCAST:
         return col.astype(dtype)
     if col.dtype != "string" and dtype != "string":
-        raise TypeError(named(func, f"cannot implicitly convert {col.dtype} to {dtype} (that would lose information); "
-                                    "convert explicitly with astype"))
+        raise TypeError(
+            named(
+                func,
+                f"cannot implicitly convert {col.dtype} to {dtype} (that would lose information); "
+                "convert explicitly with astype",
+            )
+        )
     raise TypeError(named(func, f"cannot store {col.dtype} values in a column of dtype {dtype}"))
 
 
@@ -139,8 +151,12 @@ def _check_na_value(na_value, dtype, func):
     int64 for an int64 array is an OverflowError, as when any int must become
     an int64 (API.md §2)."""
     shown, na_value = na_value, _plain(na_value)
-    if dtype == "int64" and isinstance(na_value, int) and not isinstance(na_value, bool) \
-            and not -(2**63) <= na_value < 2**63:
+    if (
+        dtype == "int64"
+        and isinstance(na_value, int)
+        and not isinstance(na_value, bool)
+        and not -(2**63) <= na_value < 2**63
+    ):
         raise OverflowError(named(func, "'na_value' is out of range for int64"))
     ok = {
         "bool": isinstance(na_value, bool),
@@ -186,8 +202,11 @@ def to_numpy(col, dtype, copy, na_value, func):
     if na_value is not _NO_VALUE:
         _check_na_value(na_value, col.dtype, func)
     elif col.null_count > 0:
-        raise ValueError(named(func, f"cannot convert {article(col.dtype)} column with NA to numpy; "
-                                     "pass na_value= to fill the NA rows"))
+        raise ValueError(
+            named(
+                func, f"cannot convert {article(col.dtype)} column with NA to numpy; pass na_value= to fill the NA rows"
+            )
+        )
 
     if col.dtype == "string":
         if copy is False:
@@ -214,8 +233,13 @@ def array_column(col, dtype, copy, na_value, func):
     The checks of to_numpy (docs/api/frame.md §2.8)."""
     fresh = False
     if dtype == "string":  # the dtype argument, before any conversion (the column need not be string)
-        raise TypeError(named(func, "'dtype' must be sd.bool, sd.int64 or sd.float64 (or their names), not sd.string "
-                                    "(the array area has no string dtype)"))
+        raise TypeError(
+            named(
+                func,
+                "'dtype' must be sd.bool, sd.int64 or sd.float64 (or their names), not sd.string "
+                "(the array area has no string dtype)",
+            )
+        )
     if dtype is not None and dtype != col.dtype:
         if copy is False:
             raise ValueError(named(func, "copy=False, but a dtype conversion requires a copy"))
@@ -225,8 +249,12 @@ def array_column(col, dtype, copy, na_value, func):
     if na_value is not _NO_VALUE:
         _check_na_value(na_value, col.dtype, func)
     elif col.null_count > 0:
-        raise ValueError(named(func, f"cannot convert {article(col.dtype)} column with NA to an array; "
-                                     "pass na_value= to fill the NA rows"))
+        raise ValueError(
+            named(
+                func,
+                f"cannot convert {article(col.dtype)} column with NA to an array; pass na_value= to fill the NA rows",
+            )
+        )
     if col.null_count > 0:
         if copy is False:
             raise ValueError(named(func, "copy=False, but filling the NA rows requires a copy"))

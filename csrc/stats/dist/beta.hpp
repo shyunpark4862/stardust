@@ -172,8 +172,8 @@ inline DD log_beta_dd(double a, double b) {
     if (!(a > 0.0 && b > 0.0 && a <= gamma_detail::kPlainMax && b <= gamma_detail::kPlainMax)) return {kNaN, 0.0};
     const DD one{1.0, 0.0};
     const DD c = dd::two_sum(a, b);
-    return gamma_detail::log_gamma_dd(one + a) - num::log_dd(a) + (gamma_detail::log_gamma_dd(one + b) - num::log_dd(b)) -
-           (gamma_detail::log_gamma_dd(c + 1.0) - dd::log(c));
+    return gamma_detail::log_gamma_dd(one + a) - num::log_dd(a) +
+           (gamma_detail::log_gamma_dd(one + b) - num::log_dd(b)) - (gamma_detail::log_gamma_dd(c + 1.0) - dd::log(c));
 }
 
 // ---- the inverse for small shapes ----------------------------------------------------------------
@@ -305,7 +305,8 @@ struct Beta {
             [&](int i) {
                 if (!(c.x[i] == c.x[i] && valid(a[i], b[i]))) return kNaN;
                 return log ? logpdf_dd(c.x[i], a[i], b[i]) : pdf_dd(c.x[i], a[i], b[i]);
-            });
+            }
+        );
     }
     static void pdf_chunk(const Chunk<2>& c, double* out) { density_chunk(c, out, false); }
     static void logpdf_chunk(const Chunk<2>& c, double* out) { density_chunk(c, out, true); }
@@ -449,7 +450,8 @@ struct Beta {
         const double c = a + b, ab = a * b;
         if (std::isinf(c)) return 0.0;  // 2 (b - a) / (c sqrt(a b / c)) is below 2 / sqrt(c)
         if (ab >= 0x1p-900 && ab <= 0x1p900) return 2.0 * (b - a) * std::sqrt(c + 1.0) / ((c + 2.0) * std::sqrt(ab));
-        return 2.0 * ((b - a) / std::sqrt(a)) / std::sqrt(b) * (std::sqrt(c + 1.0) / (c + 2.0));  // a b leaves the range
+        return 2.0 * ((b - a) / std::sqrt(a)) / std::sqrt(b) *
+               (std::sqrt(c + 1.0) / (c + 2.0));  // a b leaves the range
     }
     // 6 ((a - b)^2 (c + 1) - a b (c + 2)) / (a b (c + 2) (c + 3)): the numerator crosses 0,
     // so it is formed in double-double.
@@ -460,7 +462,8 @@ struct Beta {
             // in double (the numerator's crossing of 0 is not near such shapes)
             const double cs = a + b;
             if (std::isinf(cs)) return 0.0;  // O(1 / c)
-            const double d = cs + 3.0;  // (a/b + b/a - 2) / d term by term: the sum may overflow where the quotient does not
+            const double d =
+                cs + 3.0;  // (a/b + b/a - 2) / d term by term: the sum may overflow where the quotient does not
             // (the quotient first where it is a double: a / d rounds to nothing for a subnormal
             // a, and the kurtosis of Beta(5e-324, 5e-324) was -4 for -2)
             auto over = [d](double x, double y) {

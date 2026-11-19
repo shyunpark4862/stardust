@@ -1,6 +1,6 @@
 """S5: logsumexp, softmax, log_softmax against scipy (docs/design/special.md §3.5).
 
-    .venv/bin/python bench/special/s5_reduce.py > bench/special/s5/reduce.md
+.venv/bin/python bench/special/s5_reduce.py > bench/special/s5/reduce.md
 """
 
 import numpy as np

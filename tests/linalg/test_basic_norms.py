@@ -6,7 +6,17 @@ import os
 import numpy as np
 import pytest
 import stardust as sd
-from .conftest import DTYPES, LAYOUTS, batch_shapes, compute_dtype, npy, random_values, as_sd, well_conditioned, with_layout
+from .conftest import (
+    DTYPES,
+    LAYOUTS,
+    batch_shapes,
+    compute_dtype,
+    npy,
+    random_values,
+    as_sd,
+    well_conditioned,
+    with_layout,
+)
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
@@ -270,7 +280,9 @@ def test_vector_norm_matches_numpy(seed, shape, dtype, ord_, keepdims, axis_kind
 def test_vector_norm_no_overflow_or_underflow():
     for v, want in [(1e200, 1e200 * math.sqrt(2)), (1e-200, 1e-200 * math.sqrt(2)), (1e-160, 1e-160 * math.sqrt(2))]:
         assert sd.linalg.vector_norm(as_sd(np.array([v, v]))) == pytest.approx(want, rel=1e-15)
-    assert sd.linalg.vector_norm(as_sd(np.array([1e150, 1e150])), ord=3) == pytest.approx(1e150 * 2 ** (1 / 3), rel=1e-15)
+    assert sd.linalg.vector_norm(as_sd(np.array([1e150, 1e150])), ord=3) == pytest.approx(
+        1e150 * 2 ** (1 / 3), rel=1e-15
+    )
     assert sd.linalg.vector_norm(as_sd(np.array([3e200j, 4e200]))) == pytest.approx(5e200, rel=1e-15)
     assert sd.linalg.matrix_norm(as_sd(np.full((2, 2), 1e200))) == pytest.approx(2e200, rel=1e-15)
 
@@ -320,11 +332,14 @@ def test_vector_norm_axis_list_is_a_tuple():
         sd.linalg.vector_norm(x, axis=[0.0])
 
 
-@pytest.mark.parametrize("call", [
-    lambda o: sd.linalg.vector_norm(sd.ones((2, 2)), ord=o),
-    lambda o: sd.linalg.matrix_norm(sd.ones((2, 2)), ord=o),
-    lambda o: sd.linalg.cond(sd.eye(2), ord=o),
-])
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda o: sd.linalg.vector_norm(sd.ones((2, 2)), ord=o),
+        lambda o: sd.linalg.matrix_norm(sd.ones((2, 2)), ord=o),
+        lambda o: sd.linalg.cond(sd.eye(2), ord=o),
+    ],
+)
 def test_ord_of_a_wrong_type_is_a_type_error_everywhere(call):
     # The same error kind in the three functions (DESIGN.md §9.6).
     for bad in (True, False, [2], (1,), 1j, b"fro"):
@@ -332,16 +347,19 @@ def test_ord_of_a_wrong_type_is_a_type_error_everywhere(call):
             call(bad)
 
 
-@pytest.mark.parametrize("call", [
-    lambda v: sd.linalg.trace(sd.eye(2), k=v),
-    lambda v: sd.linalg.diagonal(sd.eye(2), k=v),
-    lambda v: sd.linalg.matrix_power(sd.eye(2), v),
-    lambda v: sd.linalg.vecdot(sd.ones(2), sd.ones(2), axis=v),
-    lambda v: sd.linalg.cross(sd.ones(3), sd.ones(3), axis=v),
-    lambda v: sd.linalg.vector_norm(sd.ones(2), axis=v),
-    lambda v: sd.linalg.vector_norm(sd.ones(2), axis=(v,)),
-    lambda v: sd.linalg.solve_banded(sd.ones((1, 2)), sd.ones(2), lower_bandwidth=v, upper_bandwidth=0),
-])
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda v: sd.linalg.trace(sd.eye(2), k=v),
+        lambda v: sd.linalg.diagonal(sd.eye(2), k=v),
+        lambda v: sd.linalg.matrix_power(sd.eye(2), v),
+        lambda v: sd.linalg.vecdot(sd.ones(2), sd.ones(2), axis=v),
+        lambda v: sd.linalg.cross(sd.ones(3), sd.ones(3), axis=v),
+        lambda v: sd.linalg.vector_norm(sd.ones(2), axis=v),
+        lambda v: sd.linalg.vector_norm(sd.ones(2), axis=(v,)),
+        lambda v: sd.linalg.solve_banded(sd.ones((1, 2)), sd.ones(2), lower_bandwidth=v, upper_bandwidth=0),
+    ],
+)
 def test_int_argument_outside_int64_is_overflow_error(call):
     # API.md §2: an int that must become an int64 (was ValueError).
     for big in (2**63, -(2**63) - 1, 2**100):

@@ -33,7 +33,9 @@ public:
     // The leading `ndim() - core` axes: the batch part when the last `core`
     // axes are one matrix (core = 2) or one vector (core = 1).
     std::span<const std::int64_t> batch_shape(int core) const { return {x_->shape.data(), size_t(x_->ndim - core)}; }
-    std::span<const std::int64_t> batch_strides(int core) const { return {x_->strides.data(), size_t(x_->ndim - core)}; }
+    std::span<const std::int64_t> batch_strides(int core) const {
+        return {x_->strides.data(), size_t(x_->ndim - core)};
+    }
 
     std::span<const std::int64_t> shape_span() const { return x_->shape_span(); }
     std::span<const std::int64_t> strides_span() const { return x_->strides_span(); }

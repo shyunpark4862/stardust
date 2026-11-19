@@ -107,7 +107,7 @@ class RSession:
         path.unlink(missing_ok=True)
         for ln in out:
             if ln.startswith("SDRESULT ERROR"):
-                raise RuntimeError(ln[len("SDRESULT ERROR "):].strip())
+                raise RuntimeError(ln[len("SDRESULT ERROR ") :].strip())
         return out
 
     def version(self) -> dict:
@@ -127,9 +127,18 @@ class RSession:
                     out[p] = ln.split()[1]
         return out
 
-    def time(self, expr: str, data: dict[str, np.ndarray], *, setup: str = "", packages=(),
-             target_s: float = harness.TARGET_S, batches: int = harness.BATCHES,
-             min_batches: int = harness.MIN_BATCHES, budget_s: float = harness.BUDGET_S) -> harness.Sample:
+    def time(
+        self,
+        expr: str,
+        data: dict[str, np.ndarray],
+        *,
+        setup: str = "",
+        packages=(),
+        target_s: float = harness.TARGET_S,
+        batches: int = harness.BATCHES,
+        min_batches: int = harness.MIN_BATCHES,
+        budget_s: float = harness.BUDGET_S,
+    ) -> harness.Sample:
         """Time the R expression `expr` (a call, evaluated each time) after loading the
         arrays in `data` under their names and running `setup`."""
         lines = []
@@ -149,7 +158,9 @@ class RSession:
             lines.append(f'{name} <- .sd_read("{path}", c({dims}))')
         lines.append(setup)
         lines.append(f".sd_f <- function() {{ {expr} }}")
-        lines.append(f".sd_r <- .sd_time(.sd_f, {target_s}, {batches}, {min_batches}, {budget_s}, {harness.SLOW_CALL_S})")
+        lines.append(
+            f".sd_r <- .sd_time(.sd_f, {target_s}, {batches}, {min_batches}, {budget_s}, {harness.SLOW_CALL_S})"
+        )
         lines.append('cat("SDRESULT", .sd_r$calls, .sd_r$times, "\\n")')
         try:
             out = self._source("\n".join(lines) + "\n")
@@ -170,7 +181,7 @@ class RSession:
                 self._proc.stdin.write("quit\n")
                 self._proc.stdin.flush()
                 self._proc.wait(timeout=10)
-            except (OSError, subprocess.SubprocessError):
+            except OSError, subprocess.SubprocessError:
                 self._proc.kill()
         self._stderr.close()
         shutil.rmtree(self._dir, ignore_errors=True)

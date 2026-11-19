@@ -363,8 +363,8 @@ inline double tvn_term(double hi, double hk, double hj, double a, double c1, dou
     };
     // t from T = sqrt(1 - |c1|) (as hi + lo) to 1: sigma_ik from c1 to 0
     const DD T = dd_sqrt(dd::two_sum(1.0, -std::fabs(c1)));
-    const double J = path_integral(f, T.hi, 1.0, true, base * kTwoPi, 0.5 * std::fabs(minus ? hi + hk : hi - hk)) -
-                     end_part(f, T);
+    const double J =
+        path_integral(f, T.hi, 1.0, true, base * kTwoPi, 0.5 * std::fabs(minus ? hi + hk : hi - hk)) - end_part(f, T);
     return minus ? -J : J;
 }
 
@@ -519,7 +519,8 @@ inline double tvn_condition(const Tri& T) {
         if (found) {
             const double top = E(pk, 0) + 2.0;
             // left of the peak E decreases toward it; right of it E increases
-            const double wl = E(pk - 320.0, 0) < top ? 320.0 : pk - bisect(pk - 320.0, pk, [&](double m) { return E(m, 0) >= top; });
+            const double wl =
+                E(pk - 320.0, 0) < top ? 320.0 : pk - bisect(pk - 320.0, pk, [&](double m) { return E(m, 0) >= top; });
             const double wr = !(E(hk, 0) >= top) ? kInf : bisect(pk, hk, [&](double m) { return E(m, 0) < top; }) - pk;
             feature(pk, std::min(wl, wr));
         }
@@ -581,8 +582,7 @@ inline double tvn(const Tri& T) {
         int best = -1;
         for (int q = 0; q < 3; ++q) {
             const double v = T.r[kPairs[q][0]][kPairs[q][1]];
-            if (negs == 2 ? v >= 0.0
-                          : (best < 0 || std::fabs(v) > std::fabs(T.r[kPairs[best][0]][kPairs[best][1]])))
+            if (negs == 2 ? v >= 0.0 : (best < 0 || std::fabs(v) > std::fabs(T.r[kPairs[best][0]][kPairs[best][1]])))
                 best = q;
         }
         i = kPairs[best][0], j = kPairs[best][1];
@@ -635,8 +635,11 @@ inline double tvn(const Tri& T) {
 inline DD stirling_c(double a) {
     if (a < 10.0) return dd::log(a) * a - a - dd::loggamma(DD{a, 0.0});
     const double r = 1.0 / a, r2 = r * r;
-    const double s = r * (1.0 / 12 + r2 * (-1.0 / 360 + r2 * (1.0 / 1260 + r2 * (-1.0 / 1680 + r2 * (1.0 / 1188 +
-                                                                                                     r2 * (-691.0 / 360360 + r2 * (1.0 / 156)))))));
+    const double s =
+        r *
+        (1.0 / 12 +
+         r2 * (-1.0 / 360 +
+               r2 * (1.0 / 1260 + r2 * (-1.0 / 1680 + r2 * (1.0 / 1188 + r2 * (-691.0 / 360360 + r2 * (1.0 / 156)))))));
     return dd::log(a) * 0.5 - dd::kLogSqrt2Pi - s;
 }
 
@@ -690,12 +693,12 @@ double t_mixture(double nu, double p0, double habs, const double* hs, int nh, G&
     if (!(vhi < kInf)) vhi = std::log(a + 40.0 * std::sqrt(a) + 750.0) - std::log(a);  // the quotient overflowed
     const double rc = 1e-17 * p0 / (0.4 * habs);
     constexpr double kTiny = std::numeric_limits<double>::min(), kHuge = std::numeric_limits<double>::max();
-    const double vc = rc >= kTiny ? 2.0 * std::log(rc)
-                                  : 2.0 * (std::log(1e-17 * p0 / 0.4) - std::log(std::min(habs, kHuge)));
+    const double vc =
+        rc >= kTiny ? 2.0 * std::log(rc) : 2.0 * (std::log(1e-17 * p0 / 0.4) - std::log(std::min(habs, kHuge)));
     if (!(vc < vhi)) return p0;
     const double yc = a * std::exp(vc);
-    const double left = yc >= kTiny ? p0 * special::Gammainc::f(a, yc)
-                                    : p0 * std::exp(a * (std::log(a) + vc) - std::lgamma(a + 1.0));
+    const double left =
+        yc >= kTiny ? p0 * special::Gammainc::f(a, yc) : p0 * std::exp(a * (std::log(a) + vc) - std::lgamma(a + 1.0));
     const bool big = a > kMixBigA;
     auto f = [&](const double* v, double* o, int n) {
         for (int i = 0; i < n; ++i) {
@@ -973,12 +976,14 @@ inline double tvt_condition(const Tri& T, double nu) {
     if (b1 != 0.0) feature(-b0 / b1, tau(-b0 / b1) / std::fabs(b1));
     {
         const double slope = rho.hi < 0.0 ? a1 + b1 : a1 - b1, off = rho.hi < 0.0 ? a0 + b0 : a0 - b0;
-        if (slope != 0.0 && omr >= 0.0) feature(-off / slope, std::max(std::sqrt(omr), 0x1p-52) * tau(-off / slope) / std::fabs(slope));
+        if (slope != 0.0 && omr >= 0.0)
+            feature(-off / slope, std::max(std::sqrt(omr), 0x1p-52) * tau(-off / slope) / std::fabs(slope));
     }
     std::sort(cuts, cuts + nc);
     const double I = integrate_at(f, 0.0, umax, cuts, nc, 0.0);
     const double far = special::Stdtr::f(nu, hk - X);
-    const double rest = far > 0.0 ? far * bvt(rik * isi.hi * std::sqrt(nu1), rjk * isj.hi * std::sqrt(nu1), rho, nu1) : 0.0;
+    const double rest =
+        far > 0.0 ? far * bvt(rik * isi.hi * std::sqrt(nu1), rjk * isj.hi * std::sqrt(nu1), rho, nu1) : 0.0;
     return cap1(I + rest);
 }
 
@@ -994,19 +999,20 @@ inline double tvt(const Tri& T, double nu) {
     const double p0 = orthant3(T);
     if (!(p0 > 0.0)) return kNaN;  // not positive definite to working precision
     std::int64_t budget = kTvtBudget;
-    const double v = t_mixture(nu, p0, std::fabs(T.h[0]) + std::fabs(T.h[1]) + std::fabs(T.h[2]), T.h, 3, [&](const MixNode& nd) {
-        Tri U = T;
-        U.budget = &budget;
-        if (!nd.far) {
-            const double s = std::sqrt(nd.x.hi);
-            for (double& v : U.h) v = std::clamp(v * s, -1e100, 1e100);
-        } else {
-            for (double& v : U.h) v = std::clamp(nd.times(v), -1e100, 1e100);
-        }
-        MixTerm t;
-        t.f = tvn(U);
-        return t;
-    });
+    const double v =
+        t_mixture(nu, p0, std::fabs(T.h[0]) + std::fabs(T.h[1]) + std::fabs(T.h[2]), T.h, 3, [&](const MixNode& nd) {
+            Tri U = T;
+            U.budget = &budget;
+            if (!nd.far) {
+                const double s = std::sqrt(nd.x.hi);
+                for (double& v : U.h) v = std::clamp(v * s, -1e100, 1e100);
+            } else {
+                for (double& v : U.h) v = std::clamp(nd.times(v), -1e100, 1e100);
+            }
+            MixTerm t;
+            t.f = tvn(U);
+            return t;
+        });
     return budget < 0 ? tvt_condition(T, nu) : v;
 }
 
@@ -1265,7 +1271,8 @@ struct Cheb {  // a piecewise Chebyshev series on [x0, x0 + pieces / inv_h]
                 }
             }
             for (int k = 0; k < p && ok; ++k)
-                for (int m = 0; m <= kChiNodes && ok; ++m) ok = check(x0 + (k + 0.5 * (std::cos(kPi * m / N) + 1.0)) * h);
+                for (int m = 0; m <= kChiNodes && ok; ++m)
+                    ok = check(x0 + (k + 0.5 * (std::cos(kPi * m / N) + 1.0)) * h);
             if (ok) return true;
         }
         return false;
@@ -1294,17 +1301,23 @@ inline ChiTable chi_table(double nu) {
         [&](double y) {
             const double w = std::clamp(std::exp(y), kChiLo, T.wsplit);
             return good(std::exp(T.left.eval(std::log(w))), T.exact_r(w));
-        });
-    const bool okr = okl && T.right.fit(
-        z0, z1,
-        [&](double z) {
-            return 0.5 * std::log((z <= 0.0 ? special::Gammaincinv::f(a, Phi(z))
-                                            : special::Gammainccinv::f(a, std::max(Phi(-z), 1.0 - kChiHi))) / a);
-        },
-        [&](double z) {
-            const double w = std::clamp(Phi(z), T.wsplit, kChiHi);
-            return good(std::exp(T.right.eval(ndtri(w))), T.exact_r(w));
-        });
+        }
+    );
+    const bool okr =
+        okl && T.right.fit(
+                   z0, z1,
+                   [&](double z) {
+                       return 0.5 * std::log(
+                                        (z <= 0.0 ? special::Gammaincinv::f(a, Phi(z))
+                                                  : special::Gammainccinv::f(a, std::max(Phi(-z), 1.0 - kChiHi))) /
+                                        a
+                                    );
+                   },
+                   [&](double z) {
+                       const double w = std::clamp(Phi(z), T.wsplit, kChiHi);
+                       return good(std::exp(T.right.eval(ndtri(w))), T.exact_r(w));
+                   }
+               );
     T.exact = !(okl && okr);
     return T;
 }
@@ -1384,8 +1397,15 @@ struct QmcWork {
 };
 
 // The integrand summed over the points [i0, i1) of the N-point rule z shifted by Dm.
-inline double qmc_sum(const Problem& P, const std::int64_t* z, std::int64_t N, const double* Dm, std::int64_t i0,
-                      std::int64_t i1, QmcWork& w) {
+inline double qmc_sum(
+    const Problem& P,
+    const std::int64_t* z,
+    std::int64_t N,
+    const double* Dm,
+    std::int64_t i0,
+    std::int64_t i1,
+    QmcWork& w
+) {
     const int n = P.n;
     const bool t = std::isfinite(P.nu);
     const int D = t ? n : n - 1;  // the t's coordinate 0 is the chi variable
@@ -1495,7 +1515,8 @@ inline Estimate qmc(const Problem& P, double atol, std::int64_t max_evals) {
     bool hard = false;
     for (int i = 1; i < n; ++i) {
         double s2 = 0.0;
-        for (int k = 0; k <= i; ++k) s2 += P.L[static_cast<std::size_t>(i) * n + k] * P.L[static_cast<std::size_t>(i) * n + k];
+        for (int k = 0; k <= i; ++k)
+            s2 += P.L[static_cast<std::size_t>(i) * n + k] * P.L[static_cast<std::size_t>(i) * n + k];
         hard = hard || P.L[static_cast<std::size_t>(i) * n + i] < kQmcHardRatio * std::sqrt(s2);
     }
     double lvar[kQmcMaxLevels], lmean[kQmcMaxLevels], lN[kQmcMaxLevels];
@@ -1511,9 +1532,12 @@ inline Estimate qmc(const Problem& P, double atol, std::int64_t max_evals) {
         for (int m = 0; m < kShifts; ++m)
             for (int j = 0; j < D; j += 4) {
                 const random::Block blk = random::philox(
-                    {static_cast<std::uint64_t>(m), static_cast<std::uint64_t>(j >> 2), static_cast<std::uint64_t>(level), 0},
-                    key);
-                for (int q = 0; q < 4 && j + q < D; ++q) shifts[static_cast<std::size_t>(m) * D + j + q] = random::to_unit(blk[q]);
+                    {static_cast<std::uint64_t>(m), static_cast<std::uint64_t>(j >> 2),
+                     static_cast<std::uint64_t>(level), 0},
+                    key
+                );
+                for (int q = 0; q < 4 && j + q < D; ++q)
+                    shifts[static_cast<std::size_t>(m) * D + j + q] = random::to_unit(blk[q]);
             }
         const std::int64_t per = (N + kQmcItem - 1) / kQmcItem;
         const std::int64_t items = kShifts * per;

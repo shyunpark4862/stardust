@@ -49,8 +49,11 @@ class Worker:
     def env(self, r_packages) -> dict:
         import stardust as sd
 
-        env = {"versions": harness.library_versions(), "blas": harness.blas_info(),
-               "sd_default_threads": sd.get_num_threads()}
+        env = {
+            "versions": harness.library_versions(),
+            "blas": harness.blas_info(),
+            "sd_default_threads": sd.get_num_threads(),
+        }
         if r_packages:
             r = self.r_session()
             if r is not None:

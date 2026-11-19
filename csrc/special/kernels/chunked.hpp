@@ -40,7 +40,8 @@ void chunked_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s,
 // The loop table of such an Op: float64 only (bool and int64 inputs are
 // converted on the way in, ufunc.cpp).
 template <typename Op>
-inline constexpr LoopTable chunked_table = {LoopEntry{}, LoopEntry{}, LoopEntry{&chunked_loop<Op>, DType::Float64},
-                                            LoopEntry{}};
+inline constexpr LoopTable chunked_table = {
+    LoopEntry{}, LoopEntry{}, LoopEntry{&chunked_loop<Op>, DType::Float64}, LoopEntry{}
+};
 
 }  // namespace sd::special

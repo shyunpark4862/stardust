@@ -34,8 +34,16 @@ def norm_err(got, ref):
 
 
 def amax(y, X, *, l1_ratio=1.0, family=0, intercept=True, standardize=False, w=None):
-    return K.alpha_max("t", sd.asarray(y), sd.asarray(X), None if w is None else sd.asarray(w), l1_ratio, family,
-                       intercept, standardize)
+    return K.alpha_max(
+        "t",
+        sd.asarray(y),
+        sd.asarray(X),
+        None if w is None else sd.asarray(w),
+        l1_ratio,
+        family,
+        intercept,
+        standardize,
+    )
 
 
 def data(n=120, p=6, seed=0, offset=2.0):
@@ -52,6 +60,7 @@ def sk_params(m):
 
 
 # ---- Arb references
+
 
 @pytest.mark.parametrize("name", list(REFS))
 def test_against_arb(name):
@@ -76,6 +85,7 @@ def test_against_arb(name):
 
 # ---- scikit-learn at a tight tolerance
 
+
 @pytest.mark.parametrize("weighted", [False, True])
 def test_lasso_enet_against_sklearn(weighted):
     lm = pytest.importorskip("sklearn.linear_model")
@@ -86,8 +96,11 @@ def test_lasso_enet_against_sklearn(weighted):
     for alpha in (0.005, 0.05, 0.3):
         for rho in (1.0, 0.7, 0.2):
             m = lm.ElasticNet(alpha=alpha, l1_ratio=rho, tol=1e-14, max_iter=10**6).fit(X, y, sample_weight=w)
-            r = R.elastic_net(y, X, alpha=alpha, l1_ratio=rho, weights=w) if rho < 1 else \
-                R.lasso(y, X, alpha=alpha, weights=w)
+            r = (
+                R.elastic_net(y, X, alpha=alpha, l1_ratio=rho, weights=w)
+                if rho < 1
+                else R.lasso(y, X, alpha=alpha, weights=w)
+            )
             np.testing.assert_allclose(a(r.params), sk_params(m), rtol=1e-9, atol=1e-11)
             assert np.array_equal(a(r.params)[1:] == 0, m.coef_ == 0)
             assert r.rsquared == pytest.approx(m.score(X, y, sample_weight=w), rel=1e-9)
@@ -126,8 +139,11 @@ def test_ridge_against_sklearn():
             m = lm.Ridge(alpha=alpha * sw, solver="svd").fit(X, y, sample_weight=ww)
             r = R.ridge(y, X, alpha=alpha, weights=ww)
             np.testing.assert_allclose(a(r.params), sk_params(m), rtol=1e-12, atol=1e-13)
-            e = lm.ElasticNet(alpha=alpha, l1_ratio=0.0, tol=1e-15, max_iter=10**6).fit(X, y, sample_weight=ww) \
-                if alpha >= 0.1 else None
+            e = (
+                lm.ElasticNet(alpha=alpha, l1_ratio=0.0, tol=1e-15, max_iter=10**6).fit(X, y, sample_weight=ww)
+                if alpha >= 0.1
+                else None
+            )
             if e is not None:
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
@@ -138,8 +154,7 @@ def test_enet_path_against_sklearn():
     lm = pytest.importorskip("sklearn.linear_model")
     y, X = data(seed=5)
     grid = amax(y, X, l1_ratio=0.5) * np.geomspace(1, 1e-3, 30)
-    alphas, coefs, _ = lm.enet_path(X - X.mean(0), y - y.mean(), l1_ratio=0.5, alphas=grid, tol=1e-14,
-                                    max_iter=10**6)
+    alphas, coefs, _ = lm.enet_path(X - X.mean(0), y - y.mean(), l1_ratio=0.5, alphas=grid, tol=1e-14, max_iter=10**6)
     r = R.elastic_net(y, X, alpha=grid, l1_ratio=0.5)
     np.testing.assert_allclose(a(r.params)[:, 1:], coefs.T, rtol=1e-8, atol=1e-11)
     assert r.params.shape == (30, X.shape[1] + 1) and r.n_iter.shape == (30,)
@@ -171,8 +186,9 @@ def test_lasso_cv_against_sklearn():
     y, X = data(n=150, seed=7)
     r = R.lasso_cv(y, X, rng=sd.random.default_rng(8))
     # the same folds and grid
-    fold = a(sd.take(sd.asarray([i % 5 for i in range(150)], dtype=sd.int64),
-                     sd.random.default_rng(8).permutation(150)))
+    fold = a(
+        sd.take(sd.asarray([i % 5 for i in range(150)], dtype=sd.int64), sd.random.default_rng(8).permutation(150))
+    )
     splits = [(np.nonzero(fold != k)[0], np.nonzero(fold == k)[0]) for k in range(5)]
     m = lm.LassoCV(alphas=a(r.alphas), cv=splits, tol=1e-14, max_iter=10**6).fit(X, y)
     np.testing.assert_allclose(a(r.alphas), m.alphas_, rtol=1e-15)
@@ -186,11 +202,15 @@ def test_lasso_cv_against_sklearn():
 
 # ---- paths and warm starts
 
+
 def test_path_equals_single_fits():
     y, X = data(seed=9)
     grid = amax(y, X) * np.geomspace(1, 1e-3, 25)
-    for fit in (lambda al: R.lasso(y, X, alpha=al), lambda al: R.elastic_net(y, X, alpha=al, l1_ratio=0.4),
-                lambda al: R.ridge(y, X, alpha=al)):
+    for fit in (
+        lambda al: R.lasso(y, X, alpha=al),
+        lambda al: R.elastic_net(y, X, alpha=al, l1_ratio=0.4),
+        lambda al: R.ridge(y, X, alpha=al),
+    ):
         path = fit(grid)
         single = np.stack([a(fit(float(v)).params) for v in grid])
         # the polished solution depends on the active set and signs alone: the same bits
@@ -214,14 +234,17 @@ def test_warm_start_invariance_glm():
 
 # ---- standardize
 
+
 def test_standardize_semantics():
     y, X = data(seed=11)
     w = np.random.default_rng(12).uniform(0.5, 2.0, len(y))
     mean = (w[:, None] * X).sum(0) / w.sum()
     s = np.sqrt((w[:, None] * (X - mean) ** 2).sum(0) / w.sum())  # population sd (glmnet's)
-    for fit in (lambda Z, **k: R.lasso(y, Z, alpha=0.05, weights=w, **k),
-                lambda Z, **k: R.elastic_net(y, Z, alpha=0.05, l1_ratio=0.3, weights=w, **k),
-                lambda Z, **k: R.ridge(y, Z, alpha=0.05, weights=w, **k)):
+    for fit in (
+        lambda Z, **k: R.lasso(y, Z, alpha=0.05, weights=w, **k),
+        lambda Z, **k: R.elastic_net(y, Z, alpha=0.05, l1_ratio=0.3, weights=w, **k),
+        lambda Z, **k: R.ridge(y, Z, alpha=0.05, weights=w, **k),
+    ):
         r = fit(X, standardize=True)
         z = fit(X / s)  # the penalty on the standardized coefficients
         np.testing.assert_allclose(a(r.params)[1:], a(z.params)[1:] / s, rtol=1e-12)
@@ -234,6 +257,7 @@ def test_standardize_semantics():
 
 
 # ---- cross-validation
+
 
 def test_cv_determinism_and_rng():
     y, X = data(seed=13)
@@ -289,13 +313,16 @@ def test_cv_batch_equals_loop():
 
 # ---- batches, threads, edge cases
 
+
 def test_batch_equals_loop():
     y, X = data(seed=16)
     Y = np.stack([y, y + 1, -y])
     Xb = np.stack([X, X * 2, X[::-1]])
-    for fit in (lambda yy, XX: R.lasso(yy, XX, alpha=[0.2, 0.02]),
-                lambda yy, XX: R.ridge(yy, XX, alpha=0.1),
-                lambda yy, XX: R.elastic_net(yy, XX, alpha=0.05)):
+    for fit in (
+        lambda yy, XX: R.lasso(yy, XX, alpha=[0.2, 0.02]),
+        lambda yy, XX: R.ridge(yy, XX, alpha=0.1),
+        lambda yy, XX: R.elastic_net(yy, XX, alpha=0.05),
+    ):
         b = fit(Y, Xb)
         for i in range(3):
             s = fit(Y[i], Xb[i])
@@ -319,9 +346,14 @@ def test_threads_bit_identical():
     try:
         for th in (1, 10):
             sd.set_num_threads(th)
-            out.append([a(R.lasso(y, X, alpha=grid).params), a(R.ridge(y, X, alpha=[1.0, 0.01]).params),
-                        a(R.lasso_cv(y, X, rng=sd.random.default_rng(1), alphas=8).cv_error),
-                        a(GLMNET(yb, X, family="binomial", alpha=1e-3).params)])
+            out.append(
+                [
+                    a(R.lasso(y, X, alpha=grid).params),
+                    a(R.ridge(y, X, alpha=[1.0, 0.01]).params),
+                    a(R.lasso_cv(y, X, rng=sd.random.default_rng(1), alphas=8).cv_error),
+                    a(GLMNET(yb, X, family="binomial", alpha=1e-3).params),
+                ]
+            )
     finally:
         sd.set_num_threads(old)
     for u, v in zip(*out):
@@ -365,9 +397,11 @@ def test_edge_cases():
     w = np.random.default_rng(1).uniform(0.5, 2.0, len(y))
     w[[2, 30]] = 0.0
     keep = w > 0
-    for fit in (lambda yy, XX, ww: R.lasso(yy, XX, alpha=0.05, weights=ww),
-                lambda yy, XX, ww: R.ridge(yy, XX, alpha=0.05, weights=ww),
-                lambda yy, XX, ww: R.lasso_cv(yy, XX, rng=sd.random.default_rng(2), weights=ww, alphas=10)):
+    for fit in (
+        lambda yy, XX, ww: R.lasso(yy, XX, alpha=0.05, weights=ww),
+        lambda yy, XX, ww: R.ridge(yy, XX, alpha=0.05, weights=ww),
+        lambda yy, XX, ww: R.lasso_cv(yy, XX, rng=sd.random.default_rng(2), weights=ww, alphas=10),
+    ):
         r1, r2 = fit(y, X, w), fit(y[keep], X[keep], w[keep])
         if hasattr(r1, "cv_error"):
             continue  # the folds are drawn over all the rows
@@ -459,7 +493,7 @@ def test_fields():
     rr = R.ridge(y, X, alpha=0.05)
     Zc = X - X.mean(0)
     s = np.linalg.svd(Zc / np.sqrt(n), compute_uv=False)
-    assert rr.df_model == pytest.approx(np.sum(s ** 2 / (s ** 2 + 0.05)), rel=1e-12)
+    assert rr.df_model == pytest.approx(np.sum(s**2 / (s**2 + 0.05)), rel=1e-12)
     assert not hasattr(rr, "n_iter")
     # a path's fields
     pth = R.lasso(y, X, alpha=[0.1, 0.01])
@@ -562,7 +596,7 @@ def test_ridge_cv_default_grid_and_copies():
     r = R.ridge_cv(y, X, cv="gcv")
     g = a(r.alphas)
     assert g[-1] / g[0] == pytest.approx(1e-6, rel=1e-12)
-    assert g[-1] < r.alpha < g[0]   # a clear signal's optimum inside the grid
+    assert g[-1] < r.alpha < g[0]  # a clear signal's optimum inside the grid
     lc = R.lasso_cv(y, X, rng=sd.random.default_rng(0))
     assert a(lc.alphas)[-1] / a(lc.alphas)[0] == pytest.approx(1e-3, rel=1e-12)
     Xs, ys = sd.asarray(X), sd.asarray(y)

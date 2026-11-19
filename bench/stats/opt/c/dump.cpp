@@ -24,16 +24,20 @@ static double tail_p() {
 
 template <class D, class... P>
 void values(const char* name, double x, P... p) {
-    std::printf("%s x=%a cdf %a\n%s x=%a ccdf %a\n%s x=%a logcdf %a\n%s x=%a logccdf %a\n", name, x, D::cdf(x, p...), name, x,
-                D::ccdf(x, p...), name, x, D::logcdf(x, p...), name, x, D::logccdf(x, p...));
+    std::printf(
+        "%s x=%a cdf %a\n%s x=%a ccdf %a\n%s x=%a logcdf %a\n%s x=%a logccdf %a\n", name, x, D::cdf(x, p...), name, x,
+        D::ccdf(x, p...), name, x, D::logcdf(x, p...), name, x, D::logccdf(x, p...)
+    );
 }
 template <class D, class... P>
 void inverses(const char* name, double t, P... p) {
     const double a = D::icdf(t, p...), b = D::iccdf(t, p...);
     const double lt = std::log(t);
     std::printf("%s t=%a icdf %a %a\n%s t=%a iccdf %a %a\n", name, t, a, D::cdf(a, p...), name, t, b, D::ccdf(b, p...));
-    std::printf("%s t=%a ilogcdf %a %a\n%s t=%a ilogccdf %a %a\n", name, lt, D::ilogcdf(lt, p...), 0.0, name, lt,
-                D::ilogccdf(lt, p...), 0.0);
+    std::printf(
+        "%s t=%a ilogcdf %a %a\n%s t=%a ilogccdf %a %a\n", name, lt, D::ilogcdf(lt, p...), 0.0, name, lt,
+        D::ilogccdf(lt, p...), 0.0
+    );
 }
 
 int main(int argc, char** argv) {

@@ -381,7 +381,7 @@ def extract(text, name, rename=None):
     lines = text.splitlines()
     start = next(i for i, ln in enumerate(lines) if re.match(rf"^      SUBROUTINE {name}\(", ln))
     end = next(i for i in range(start + 1, len(lines)) if re.match(r"^      END\s*$", lines[i]))
-    body = "\n".join(lines[start:end + 1]) + "\n"
+    body = "\n".join(lines[start : end + 1]) + "\n"
     return body.replace(f"SUBROUTINE {name}(", f"SUBROUTINE {rename}(") if rename else body
 
 
@@ -400,8 +400,12 @@ def build(src, out):
     # test functions of the drivers; INITPT is renamed per driver
     (out / "lsqfun.f").write_text(extract(f17, "SSQFCN") + extract(f17, "SSQJAC") + extract(f17, "INITPT", "INITLS"))
     (out / "sysfun.f").write_text(extract(f16, "VECFCN") + extract(f16, "VECJAC") + extract(f16, "INITPT", "INITSY"))
-    for name, text in (("lsqdrv.f90", LSQ_DRIVER), ("sysdrv.f90", SYS_DRIVER), ("evaldrv.f90", EVAL_DRIVER),
-                       ("lbdrv.f90", LBFGSB_DRIVER)):
+    for name, text in (
+        ("lsqdrv.f90", LSQ_DRIVER),
+        ("sysdrv.f90", SYS_DRIVER),
+        ("evaldrv.f90", EVAL_DRIVER),
+        ("lbdrv.f90", LBFGSB_DRIVER),
+    ):
         (out / name).write_text(text)
     sh([FC, *FFLAGS, "-x", "f77", "-c", str(src / "file05"), "-o", "minpack.o"], out)
     sh([FC, *FFLAGS, "-c", "dpmpar.f", "lsqfun.f", "sysfun.f"], out)
@@ -428,9 +432,18 @@ def parse_runs(text):
     for ln in text.splitlines():
         if ln.startswith("RUN"):
             v = ln.split()
-            cur = {"ic": int(v[1]), "nprob": int(v[2]), "n": int(v[3]), "m": int(v[4]), "info": int(v[5]),
-                   "factor": float(v[6]), "calls_f": int(v[7]), "calls_d": int(v[8]), "calls_j": int(v[9]),
-                   "fnorm": float(v[11])}
+            cur = {
+                "ic": int(v[1]),
+                "nprob": int(v[2]),
+                "n": int(v[3]),
+                "m": int(v[4]),
+                "info": int(v[5]),
+                "factor": float(v[6]),
+                "calls_f": int(v[7]),
+                "calls_d": int(v[8]),
+                "calls_j": int(v[9]),
+                "fnorm": float(v[11]),
+            }
             runs.append(cur)
         elif ln.startswith("X"):
             cur["x"] = floats(ln)
@@ -456,8 +469,15 @@ def parse_eval(text):
         tag = ln.split()[0]
         if tag in ("LSQ", "SYS"):
             v = ln.split()
-            cur = {"set": tag.lower(), "ic": int(v[1]), "nprob": int(v[2]), "n": int(v[3]), "m": int(v[4]),
-                   "point": int(v[5]), "factor": float(v[6])}
+            cur = {
+                "set": tag.lower(),
+                "ic": int(v[1]),
+                "nprob": int(v[2]),
+                "n": int(v[3]),
+                "m": int(v[4]),
+                "point": int(v[5]),
+                "factor": float(v[6]),
+            }
             out.append(cur)
         elif tag == "P":
             cur["x"] = floats(ln)
@@ -472,8 +492,10 @@ def parse_eval(text):
 
 # ---- the L-BFGS-B runs: (id, kind, nprob, n, m residuals, factor, maxcor, x0, nbd, l, u)
 
+
 def lbfgsb_runs():
     from tests.optimize import functions, mgh
+
     runs = []
     for c in mgh.MINPACK_LSQ_CASES:
         p = c.problem
@@ -490,7 +512,7 @@ def lbfgsb_runs():
     return runs
 
 
-FTOL_SCIPY = 2.220446049250313e-09   # minimize(method='L-BFGS-B')'s default ftol
+FTOL_SCIPY = 2.220446049250313e-09  # minimize(method='L-BFGS-B')'s default ftol
 GTOL_SCIPY = 1e-05
 
 
@@ -524,6 +546,7 @@ def parse_lbfgsb(text):
 
 # ---- scipy on the same runs
 
+
 class Recorder:
     """Wraps numpy functions to record each evaluation point (kind, x)."""
 
@@ -534,6 +557,7 @@ class Recorder:
         def g(x, *a):
             self.trace.append((kind, tuple(float(v) for v in x)))
             return fn(x, *a)
+
         return g
 
 
@@ -564,6 +588,7 @@ def scipy_minpack(kind, case, warn_ok=True):
     from scipy.optimize import fsolve, leastsq
 
     from tests.optimize import mgh, systems
+
     rec = Recorder()
     if kind in ("lmder", "lmdif"):
         F, J, _, _ = mgh.as_numpy(case)
@@ -572,11 +597,27 @@ def scipy_minpack(kind, case, warn_ok=True):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             if kind == "lmder":
-                x, cov, info, msg, ier = leastsq(rec.wrap("f", F), x0, Dfun=rec.wrap("j", J), full_output=True,
-                                                 ftol=TOL, xtol=TOL, gtol=0.0, maxfev=100 * (n + 1))
+                x, cov, info, msg, ier = leastsq(
+                    rec.wrap("f", F),
+                    x0,
+                    Dfun=rec.wrap("j", J),
+                    full_output=True,
+                    ftol=TOL,
+                    xtol=TOL,
+                    gtol=0.0,
+                    maxfev=100 * (n + 1),
+                )
             else:
-                x, cov, info, msg, ier = leastsq(rec.wrap("f", F), x0, full_output=True, ftol=TOL, xtol=TOL,
-                                                 gtol=0.0, maxfev=200 * (n + 1), epsfcn=None)
+                x, cov, info, msg, ier = leastsq(
+                    rec.wrap("f", F),
+                    x0,
+                    full_output=True,
+                    ftol=TOL,
+                    xtol=TOL,
+                    gtol=0.0,
+                    maxfev=200 * (n + 1),
+                    epsfcn=None,
+                )
         fnorm = float(np.sqrt(np.sum(F(x) ** 2)))
     else:
         F, J = systems.as_numpy(case)
@@ -585,11 +626,20 @@ def scipy_minpack(kind, case, warn_ok=True):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             if kind == "hybrj":
-                x, info, ier, msg = fsolve(rec.wrap("f", F), x0, fprime=rec.wrap("j", J), full_output=True, xtol=TOL,
-                                           maxfev=100 * (n + 1), diag=np.ones(n), factor=100)
+                x, info, ier, msg = fsolve(
+                    rec.wrap("f", F),
+                    x0,
+                    fprime=rec.wrap("j", J),
+                    full_output=True,
+                    xtol=TOL,
+                    maxfev=100 * (n + 1),
+                    diag=np.ones(n),
+                    factor=100,
+                )
             else:
-                x, info, ier, msg = fsolve(rec.wrap("f", F), x0, full_output=True, xtol=TOL, maxfev=200 * (n + 1),
-                                           diag=np.ones(n), factor=100)
+                x, info, ier, msg = fsolve(
+                    rec.wrap("f", F), x0, full_output=True, xtol=TOL, maxfev=200 * (n + 1), diag=np.ones(n), factor=100
+                )
         fnorm = float(np.sqrt(np.sum(F(x) ** 2)))
     # scipy's wrappers evaluate fun (and the Jacobian, when given) once at x0 to check their
     # shapes before MINPACK starts: drop those calls
@@ -603,8 +653,15 @@ def scipy_minpack(kind, case, warn_ok=True):
     while len(trace) > 1 and trace[0] == trace[1] == ("f", x0t):
         trace = trace[1:]
         extra += 1
-    return {"x": [float(v) for v in x], "info": int(ier), "nfev": int(info["nfev"]),
-            "njev": int(info.get("njev", 0)), "fnorm": fnorm, "calls": len(trace), "extra_calls_at_x0": extra}, trace
+    return {
+        "x": [float(v) for v in x],
+        "info": int(ier),
+        "nfev": int(info["nfev"]),
+        "njev": int(info.get("njev", 0)),
+        "fnorm": fnorm,
+        "calls": len(trace),
+        "extra_calls_at_x0": extra,
+    }, trace
 
 
 def scipy_lbfgsb(run):
@@ -613,6 +670,7 @@ def scipy_lbfgsb(run):
     from scipy.optimize import minimize
 
     from tests.optimize import functions, mgh
+
     rid, kind, nprob, n, mres, factor, maxcor, x0, nbd, lo, hi = run
     if kind == 1:
         case = mgh.Case(mgh.MINPACK_LSQ[nprob], n, mres, factor)
@@ -632,18 +690,32 @@ def scipy_lbfgsb(run):
                 g.append(2.0 * s)
             return f, np.array(g)
     else:
+
         def fg(x):
             xl = [np.float64(v) for v in x]
             return functions.lbfgsb_driver1(xl), np.array(functions.lbfgsb_driver1_der(xl))
+
     rec = Recorder()
     bounds = None if nbd[0] == 0 else list(zip(lo, hi))
     ftol = 1e7 * EPS if rid.startswith("driver1") else FTOL_SCIPY
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        r = minimize(rec.wrap("f", fg), np.array(x0, dtype=float), jac=True, method="L-BFGS-B", bounds=bounds,
-                     options=dict(maxcor=maxcor, ftol=ftol, gtol=GTOL_SCIPY, maxiter=15000, maxfun=15000, maxls=20))
-    return {"x": [float(v) for v in r.x], "fun": float(r.fun), "n_iter": int(r.nit), "nfev": int(r.nfev),
-            "status": int(r.status), "message": str(r.message)}, rec.trace
+        r = minimize(
+            rec.wrap("f", fg),
+            np.array(x0, dtype=float),
+            jac=True,
+            method="L-BFGS-B",
+            bounds=bounds,
+            options=dict(maxcor=maxcor, ftol=ftol, gtol=GTOL_SCIPY, maxiter=15000, maxfun=15000, maxls=20),
+        )
+    return {
+        "x": [float(v) for v in r.x],
+        "fun": float(r.fun),
+        "n_iter": int(r.nit),
+        "nfev": int(r.nfev),
+        "status": int(r.status),
+        "message": str(r.message),
+    }, rec.trace
 
 
 def main(src, out):
@@ -658,7 +730,7 @@ def main(src, out):
     for drv, data in (("file15", "file21"), ("file16", "file21"), ("file17", "file22"), ("file19", "file22")):
         t = sh([f"./orig_{drv}"], out, stdin=src / data)
         k = t.index("SUMMARY OF")
-        texts.append(f"== {drv} < {data}\n" + t[k - 1:].rstrip() + "\n")
+        texts.append(f"== {drv} < {data}\n" + t[k - 1 :].rstrip() + "\n")
     (DATA / "minpack_drivers.txt").write_text("".join(texts))
     lbt = []
     for k in (1, 2, 3):
@@ -673,11 +745,14 @@ def main(src, out):
 
     # this script's drivers at full precision, and scipy on the same runs
     from tests.optimize import mgh, systems
+
     results, compare = {}, {}
-    for kind, prog, data, cases in (("lmder", "lsqdrv", "lsq.dat", mgh.MINPACK_LSQ_CASES),
-                                    ("lmdif", "lsqdrv", "lsq.dat", mgh.MINPACK_LSQ_CASES),
-                                    ("hybrj", "sysdrv", "sys.dat", systems.CASES),
-                                    ("hybrd", "sysdrv", "sys.dat", systems.CASES)):
+    for kind, prog, data, cases in (
+        ("lmder", "lsqdrv", "lsq.dat", mgh.MINPACK_LSQ_CASES),
+        ("lmdif", "lsqdrv", "lsq.dat", mgh.MINPACK_LSQ_CASES),
+        ("hybrj", "sysdrv", "sys.dat", systems.CASES),
+        ("hybrd", "sysdrv", "sys.dat", systems.CASES),
+    ):
         runs = parse_runs(sh([f"./{prog}", kind], out, stdin=out / data))
         traces = parse_trace(out / f"trace_{kind}.txt")
         assert len(runs) == len(cases)
@@ -690,14 +765,25 @@ def main(src, out):
             ftrace = traces[run["ic"]]
             first, worst = first_difference(ftrace, strace, kinds=kind in ("lmder", "hybrj"))
             fx, sx = np.array(run["x"]), np.array(sres["x"])
-            compare[kind].append({
-                "id": case.id, "fortran": {"info": run["info"], "calls": len(ftrace), "fnorm": run["fnorm"]},
-                "scipy": {"info": sres["info"], "calls": sres["calls"], "nfev": sres["nfev"], "njev": sres["njev"],
-                          "extra_calls_at_x0": sres["extra_calls_at_x0"], "fnorm": sres["fnorm"],
-                          "x": sres["x"]},
-                "first_difference": first, "max_rel_point_difference": worst,
-                "x_rel_difference": float(np.max(np.abs(fx - sx)) / max(np.max(np.abs(fx)), 1e-300)),
-                "same_trace": first is None})
+            compare[kind].append(
+                {
+                    "id": case.id,
+                    "fortran": {"info": run["info"], "calls": len(ftrace), "fnorm": run["fnorm"]},
+                    "scipy": {
+                        "info": sres["info"],
+                        "calls": sres["calls"],
+                        "nfev": sres["nfev"],
+                        "njev": sres["njev"],
+                        "extra_calls_at_x0": sres["extra_calls_at_x0"],
+                        "fnorm": sres["fnorm"],
+                        "x": sres["x"],
+                    },
+                    "first_difference": first,
+                    "max_rel_point_difference": worst,
+                    "x_rel_difference": float(np.max(np.abs(fx - sx)) / max(np.max(np.abs(fx)), 1e-300)),
+                    "same_trace": first is None,
+                }
+            )
     (DATA / "fortran_minpack.json").write_text(json.dumps(results, indent=1) + "\n")
 
     runs = lbfgsb_runs()
@@ -711,12 +797,19 @@ def main(src, out):
         sres, strace = scipy_lbfgsb(run)
         first, worst = first_difference(ltr[rid], strace)
         fr = lres[rid]
-        compare["lbfgsb"].append({
-            "id": rid, "fortran": {"n_iter": fr["n_iter"], "nfev": fr["nfev"], "fun": fr["fun"], "task": fr["task"]},
-            "scipy": sres, "first_difference": first, "max_rel_point_difference": worst,
-            "x_rel_difference": float(np.max(np.abs(np.array(fr["x"]) - np.array(sres["x"])))
-                                      / max(np.max(np.abs(fr["x"])), 1e-300)),
-            "same_trace": first is None})
+        compare["lbfgsb"].append(
+            {
+                "id": rid,
+                "fortran": {"n_iter": fr["n_iter"], "nfev": fr["nfev"], "fun": fr["fun"], "task": fr["task"]},
+                "scipy": sres,
+                "first_difference": first,
+                "max_rel_point_difference": worst,
+                "x_rel_difference": float(
+                    np.max(np.abs(np.array(fr["x"]) - np.array(sres["x"]))) / max(np.max(np.abs(fr["x"])), 1e-300)
+                ),
+                "same_trace": first is None,
+            }
+        )
     (DATA / "fortran_vs_scipy.json").write_text(json.dumps(compare, indent=1) + "\n")
     for kind, rows in compare.items():
         same = sum(r["same_trace"] for r in rows)

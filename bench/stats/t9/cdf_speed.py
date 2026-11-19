@@ -37,8 +37,14 @@ def case(d, seed):
 
 def ours(S, X, df, atol, threads):
     sd.set_num_threads(threads)
-    args = (sd.asarray(S[None]), sd.asarray(X), sd.asarray(np.zeros(len(X), np.int64)),
-            sd.asarray(np.array([df])), atol, 0)
+    args = (
+        sd.asarray(S[None]),
+        sd.asarray(X),
+        sd.asarray(np.zeros(len(X), np.int64)),
+        sd.asarray(np.array([df])),
+        atol,
+        0,
+    )
     C.mv_cdf(*args)  # warm
     t = time.perf_counter()
     v, e = C.mv_cdf(*args)
@@ -61,10 +67,12 @@ def fmt(t):
 
 
 def main():
-    out = ["# Multivariate normal and t cdf: speed (bench/stats/t9/cdf_speed.py)\n",
-           "Per point; ours 1 / 10 threads vs scipy (single-threaded, its defaults). Apple M4 Pro.\n",
-           "| case | atol | points | ours 1 thr | ours 10 thr | scipy | scipy / ours 1 thr | max error estimate | max abs(ours - scipy) |",
-           "|---|---|---|---|---|---|---|---|---|"]
+    out = [
+        "# Multivariate normal and t cdf: speed (bench/stats/t9/cdf_speed.py)\n",
+        "Per point; ours 1 / 10 threads vs scipy (single-threaded, its defaults). Apple M4 Pro.\n",
+        "| case | atol | points | ours 1 thr | ours 10 thr | scipy | scipy / ours 1 thr | max error estimate | max abs(ours - scipy) |",
+        "|---|---|---|---|---|---|---|---|---|",
+    ]
     for d in (2, 3, 5, 10):
         S, rng = case(d, d)
         for df in (math.inf, 4.0):
@@ -73,13 +81,15 @@ def main():
             n_sc = 400 if exact or not math.isinf(df) else 40
             X = rng.normal(size=(n_ours, d)) + 0.5
             ts, vs = theirs(S, X[:n_sc], df)
-            for atol in ((1e-6,) if exact else (1e-6, 1e-5, 1e-4)):
+            for atol in (1e-6,) if exact else (1e-6, 1e-5, 1e-4):
                 t1, v, e = ours(S, X, df, atol, 1)
                 t10, v10, _ = ours(S, X, df, atol, 10)
                 assert np.array_equal(v, v10)
                 name = f"{'normal' if math.isinf(df) else 't df=4'} d={d}"
-                out.append(f"| {name} | {atol:.0e} | {n_ours} | {fmt(t1)} | {fmt(t10)} | {fmt(ts)} | {ts / t1:.1f} | "
-                           f"{e.max():.1e} | {np.abs(v[:n_sc] - vs).max():.1e} |")
+                out.append(
+                    f"| {name} | {atol:.0e} | {n_ours} | {fmt(t1)} | {fmt(t10)} | {fmt(ts)} | {ts / t1:.1f} | "
+                    f"{e.max():.1e} | {np.abs(v[:n_sc] - vs).max():.1e} |"
+                )
                 sys.stdout.write(out[-1] + "\n")
                 sys.stdout.flush()
     sd.set_num_threads(10)

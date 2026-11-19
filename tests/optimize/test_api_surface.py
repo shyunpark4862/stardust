@@ -15,8 +15,18 @@ API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "optimize.md"
 # Documented, not implemented yet (docs/design/optimize.md §8): O2 root_scalar minimize_scalar
 # and the batched four; O3-O4 minimize; O5 root lsq_linear nnls. (O1's approx_fprime check_grad
 # least_squares are exported.)
-PLANNED = {"lsq_linear", "nnls", "root_scalar", "minimize_scalar", "find_root", "bracket_root", "find_minimum",
-           "bracket_minimum", "minimize", "root"}
+PLANNED = {
+    "lsq_linear",
+    "nnls",
+    "root_scalar",
+    "minimize_scalar",
+    "find_root",
+    "bracket_root",
+    "find_minimum",
+    "bracket_minimum",
+    "minimize",
+    "root",
+}
 RESULTS = {"OptimizeResult"}
 
 
@@ -49,8 +59,22 @@ def test_signatures_match_api_md():
 
 def test_no_scipy_individual_functions():
     # O10, O11: only the unified functions; no curve_fit
-    for name in ("brentq", "toms748", "bisect", "newton", "fminbound", "brent", "golden", "fmin", "fmin_bfgs",
-                 "fmin_l_bfgs_b", "fmin_ncg", "fsolve", "leastsq", "curve_fit"):
+    for name in (
+        "brentq",
+        "toms748",
+        "bisect",
+        "newton",
+        "fminbound",
+        "brent",
+        "golden",
+        "fmin",
+        "fmin_bfgs",
+        "fmin_l_bfgs_b",
+        "fmin_ncg",
+        "fsolve",
+        "leastsq",
+        "curve_fit",
+    ):
         assert not hasattr(sd.optimize, name)
         assert name not in documented()
 

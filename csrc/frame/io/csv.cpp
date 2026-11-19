@@ -99,8 +99,10 @@ public:
                 // holding the open quote does not start with one, the mistake is
                 // the same as with an even count: a quote inside an unquoted field.
                 if (inside_)
-                    csv_error(line_at(p_, record), p_[field_start_] == '"' ? "a quoted field is never closed"
-                                                                           : "a quote inside an unquoted field");
+                    csv_error(
+                        line_at(p_, record),
+                        p_[field_start_] == '"' ? "a quoted field is never closed" : "a quote inside an unquoted field"
+                    );
                 sink(count, field(field_start_, n_, record, false));
                 field_start_ = n_;
                 done_ = true;
@@ -175,7 +177,9 @@ private:
         for (std::int64_t i = from + 1; i < to - 1; ++i) {
             if (p_[i] != '"') continue;
             if (i + 1 >= to - 1 || p_[i + 1] != '"')
-                csv_error(line_at(p_, record), "a closing quote must be followed by the separator or the end of the line");
+                csv_error(
+                    line_at(p_, record), "a closing quote must be followed by the separator or the end of the line"
+                );
             flags |= kEscaped;  // "" is one quote
             ++i;
         }
@@ -262,14 +266,20 @@ std::int64_t first_record(const char* p, std::int64_t size, std::int64_t from, b
 
 struct Chunk {
     std::vector<std::vector<Field>> fields;  // per output column, one per record
-    std::vector<std::int64_t> starts;        // the byte where each record starts
-    std::string error;                       // the chunk's tokenizing error, if any
+    std::vector<std::int64_t> starts;  // the byte where each record starts
+    std::string error;  // the chunk's tokenizing error, if any
 };
 
 class ColumnReader {
 public:
-    ColumnReader(const char* base, const std::vector<Chunk>& chunks, const std::vector<std::int64_t>& row0,
-                 std::size_t column, const std::unordered_set<std::string>& na, const std::string& name)
+    ColumnReader(
+        const char* base,
+        const std::vector<Chunk>& chunks,
+        const std::vector<std::int64_t>& row0,
+        std::size_t column,
+        const std::unordered_set<std::string>& na,
+        const std::string& name
+    )
         : base_(base), chunks_(chunks), row0_(row0), j_(column), na_(na), name_(name), n_(row0.back()) {}
 
     // docs/api/frame.md §10.4: the column inferred (int64, then float64, then bool, then
@@ -320,7 +330,8 @@ public:
             }
             kinds[c] = kind;
         });
-        if (std::find(any.begin(), any.end(), 1) == any.end()) return build(DType::Float64);  // all NA: float64 (docs/api/frame.md §10.4)
+        if (std::find(any.begin(), any.end(), 1) == any.end())
+            return build(DType::Float64);  // all NA: float64 (docs/api/frame.md §10.4)
         Kind kind = Int;
         for (std::uint8_t k : kinds) kind = std::max(kind, static_cast<Kind>(k));
         if (kind == Float) {  // chunks of ints become doubles, rounded
@@ -377,7 +388,8 @@ private:
         for_chunks(n_, [&](std::int64_t lo, std::int64_t hi) {
             for (std::int64_t b = lo / 8; b < bitmap::num_bytes(hi); ++b) {
                 unsigned v = 0;
-                for (std::int64_t i = b * 8; i < std::min(hi, b * 8 + 8); ++i) v |= static_cast<unsigned>(valid[i]) << (i & 7);
+                for (std::int64_t i = b * 8; i < std::min(hi, b * 8 + 8); ++i)
+                    v |= static_cast<unsigned>(valid[i]) << (i & 7);
                 bits[b] = static_cast<std::uint8_t>(v);
             }
         });
@@ -400,14 +412,18 @@ private:
                 const std::string_view s = text_of(base_, f[i], scratch);
                 bool ok = true;
                 switch (dt) {
-                case DType::Int64: ok = text::parse_int64(s, reinterpret_cast<std::int64_t*>(col.values->data())[row]) == 1; break;
-                case DType::Float64: ok = text::parse_double(s, reinterpret_cast<double*>(col.values->data())[row]); break;
-                case DType::Bool:
-                    ok = s == "True" || s == "False";
-                    reinterpret_cast<std::uint8_t*>(col.values->data())[row] = s == "True";
-                    break;
-                case DType::String: break;
-                case DType::Complex128: break;  // not a frame dtype
+                    case DType::Int64:
+                        ok = text::parse_int64(s, reinterpret_cast<std::int64_t*>(col.values->data())[row]) == 1;
+                        break;
+                    case DType::Float64:
+                        ok = text::parse_double(s, reinterpret_cast<double*>(col.values->data())[row]);
+                        break;
+                    case DType::Bool:
+                        ok = s == "True" || s == "False";
+                        reinterpret_cast<std::uint8_t*>(col.values->data())[row] = s == "True";
+                        break;
+                    case DType::String: break;
+                    case DType::Complex128: break;  // not a frame dtype
                 }
                 if (!ok) {
                     bad.offer(row);
@@ -482,7 +498,8 @@ private:
         for_chunks(n_, [&](std::int64_t lo, std::int64_t hi) {
             for (std::int64_t b = lo / 8; b < bitmap::num_bytes(hi); ++b) {
                 unsigned v = 0;
-                for (std::int64_t i = b * 8; i < std::min(hi, b * 8 + 8); ++i) v |= static_cast<unsigned>(valid[i]) << (i & 7);
+                for (std::int64_t i = b * 8; i < std::min(hi, b * 8 + 8); ++i)
+                    v |= static_cast<unsigned>(valid[i]) << (i & 7);
                 bits[b] = static_cast<std::uint8_t>(v);
             }
         });
@@ -502,8 +519,9 @@ private:
 
 }  // namespace
 
-std::pair<std::vector<std::string>, std::vector<Column>> read_csv(const char* data, std::size_t size,
-                                                                   const CsvOptions& opt) {
+std::pair<std::vector<std::string>, std::vector<Column>> read_csv(
+    const char* data, std::size_t size, const CsvOptions& opt
+) {
     // Nothing below touches Python objects: other Python threads run
     // meanwhile (docs/design/frame.md §10.6).
     Unlocked unlocked(static_cast<std::int64_t>(size));
@@ -519,7 +537,9 @@ std::pair<std::vector<std::string>, std::vector<Column>> read_csv(const char* da
         if (names.empty()) {
             for (const Field& f : rec) names.emplace_back(text_of(data, f, scratch));
         } else if (names.size() != rec.size()) {
-            csv_error(line, std::to_string(names.size()) + " names for a header of " + std::to_string(rec.size()) + " fields");
+            csv_error(
+                line, std::to_string(names.size()) + " names for a header of " + std::to_string(rec.size()) + " fields"
+            );
         }
     }
     if (names.empty()) throw nb::value_error("'names' is required when header=False");
@@ -534,7 +554,8 @@ std::pair<std::vector<std::string>, std::vector<Column>> read_csv(const char* da
     std::vector<std::int64_t> source(out_names.size());
     for (std::size_t j = 0; j < out_names.size(); ++j) {
         auto it = std::find(names.begin(), names.end(), out_names[j]);
-        if (it == names.end()) throw nb::key_error(("'usecols' names a column that is not in the file: '" + out_names[j] + "'").c_str());
+        if (it == names.end())
+            throw nb::key_error(("'usecols' names a column that is not in the file: '" + out_names[j] + "'").c_str());
         source[j] = it - names.begin();
     }
     const std::size_t ncols = names.size();
@@ -554,7 +575,9 @@ std::pair<std::vector<std::string>, std::vector<Column>> read_csv(const char* da
     auto chunk_end = [&](std::int64_t c) { return c + 1 == nchunks ? n : chunk_begin(c + 1); };
     std::vector<std::uint8_t> odd(static_cast<std::size_t>(nchunks));
     if (nchunks > 1)
-        parallel::parallel_for(nchunks, [&](std::int64_t c) { odd[c] = odd_quotes(data, chunk_begin(c), chunk_end(c)); });
+        parallel::parallel_for(nchunks, [&](std::int64_t c) {
+            odd[c] = odd_quotes(data, chunk_begin(c), chunk_end(c));
+        });
     std::vector<std::uint8_t> inside(static_cast<std::size_t>(nchunks), 0);  // inside quotes where chunk c starts
     for (std::int64_t c = 1; c < nchunks; ++c) inside[c] = inside[c - 1] ^ odd[c - 1];
 
@@ -576,17 +599,19 @@ std::pair<std::vector<std::string>, std::vector<Column>> read_csv(const char* da
                 const std::int64_t count = t.next(place);
                 if (count < 0) break;
                 if (count != width)
-                    csv_error(line_at(data, start), "expected " + std::to_string(ncols) + " fields, got " + std::to_string(count));
+                    csv_error(
+                        line_at(data, start),
+                        "expected " + std::to_string(ncols) + " fields, got " + std::to_string(count)
+                    );
                 ch.starts.push_back(start);
             }
-        } catch (const std::exception& e) {
-            ch.error = e.what();
-        }
+        } catch (const std::exception& e) { ch.error = e.what(); }
     });
     for (const Chunk& ch : chunks)  // the first error in file order
         if (!ch.error.empty()) throw nb::value_error(ch.error.c_str());
     std::vector<std::int64_t> row0(static_cast<std::size_t>(nchunks) + 1, 0);
-    for (std::int64_t c = 0; c < nchunks; ++c) row0[c + 1] = row0[c] + static_cast<std::int64_t>(chunks[c].starts.size());
+    for (std::int64_t c = 0; c < nchunks; ++c)
+        row0[c + 1] = row0[c] + static_cast<std::int64_t>(chunks[c].starts.size());
 
     const std::unordered_set<std::string> na(opt.na_values.begin(), opt.na_values.end());
     std::vector<Column> cols;

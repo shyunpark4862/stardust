@@ -12,8 +12,12 @@ import scipy.stats as st
 import stardust as sd
 
 S = sd.stats
-CASES = [(S.Beta(a=2.5, b=0.7), st.beta(2.5, 0.7)), (S.F(dfn=3.0, dfd=11.0), st.f(3.0, 11.0)),
-         (S.Beta(a=0.3, b=0.9), st.beta(0.3, 0.9)), (S.Beta(a=2.0, b=3.0), st.beta(2.0, 3.0))]
+CASES = [
+    (S.Beta(a=2.5, b=0.7), st.beta(2.5, 0.7)),
+    (S.F(dfn=3.0, dfd=11.0), st.f(3.0, 11.0)),
+    (S.Beta(a=0.3, b=0.9), st.beta(0.3, 0.9)),
+    (S.Beta(a=2.0, b=3.0), st.beta(2.0, 3.0)),
+]
 NAMES = ["Beta(2.5, 0.7)", "F(3, 11)", "Beta(0.3, 0.9)", "Beta(2, 3)"]
 
 

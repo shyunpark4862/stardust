@@ -64,7 +64,7 @@ def _probe(label, dtype):
         return None
     try:
         return exact(label, dtype)
-    except (TypeError, ValueError, OverflowError):
+    except TypeError, ValueError, OverflowError:
         return None
 
 
@@ -110,12 +110,16 @@ class _IndexBase:
     __hash__ = None
 
     def __eq__(self, other):
-        raise TypeError(f"'==' not supported between instances of {type_name(self)!r} and {type_name(other)!r}; "
-                        "compare labels with equals()")
+        raise TypeError(
+            f"'==' not supported between instances of {type_name(self)!r} and {type_name(other)!r}; "
+            "compare labels with equals()"
+        )
 
     def __ne__(self, other):
-        raise TypeError(f"'!=' not supported between instances of {type_name(self)!r} and {type_name(other)!r}; "
-                        "compare labels with equals()")
+        raise TypeError(
+            f"'!=' not supported between instances of {type_name(self)!r} and {type_name(other)!r}; "
+            "compare labels with equals()"
+        )
 
     def __bool__(self):
         raise TypeError(f"the truth value of {_an_obj(self)} is ambiguous")
@@ -353,8 +357,12 @@ def _labels_from(data, func):
         col = data._column()
     else:
         if not isinstance(data, (list, tuple, range)) and not is_ndarray(data) and not is_sdarray(data):
-            raise TypeError(named(func, "labels must be a list, tuple, range, numpy array, sd.ndarray or Index, "
-                                        f"not {type_name(data)}"))
+            raise TypeError(
+                named(
+                    func,
+                    f"labels must be a list, tuple, range, numpy array, sd.ndarray or Index, not {type_name(data)}",
+                )
+            )
         data = list(data) if isinstance(data, range) else data
         # No labels to infer from: int64, since float64 (the empty list's dtype) cannot label.
         col = column_from(data, "int64" if len(data) == 0 else None, func)

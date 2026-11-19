@@ -51,7 +51,9 @@ nb::object result_type(nb::args args) {
         } else if (const std::optional<DType> s = scalar_dtype(h)) {
             r = promote(r, *s);
         } else {
-            throw nb::type_error(("'arrays_and_dtypes' must be sd.ndarray, dtypes or Python scalars, not " + py_type_name(h)).c_str());
+            throw nb::type_error(
+                ("'arrays_and_dtypes' must be sd.ndarray, dtypes or Python scalars, not " + py_type_name(h)).c_str()
+            );
         }
     }
     return nb::borrow(dtype_object(r));
@@ -74,7 +76,8 @@ bool is_kind(DType d, nb::handle kind) {
     if (s == "complex floating") return d == DType::Complex128;
     if (s == "numeric") return d != DType::Bool;
     throw nb::value_error(("'kind' must be 'bool', 'signed integer', 'unsigned integer', 'integral', 'real floating', "
-                           "'complex floating' or 'numeric', not '" + s + "'")
+                           "'complex floating' or 'numeric', not '" +
+                           s + "'")
                               .c_str());
 }
 
@@ -115,8 +118,10 @@ nb::handle cached(PyObject*& slot, auto&& make) {
 
 // finfo of float64; complex128 describes its float64 parts (Array API).
 nb::object finfo(nb::handle type) {
-    info_arg(type, {DType::Float64, DType::Complex128},
-             "sd.float64 or sd.complex128 (or their names) or an sd.ndarray of those dtypes");
+    info_arg(
+        type, {DType::Float64, DType::Complex128},
+        "sd.float64 or sd.complex128 (or their names) or an sd.ndarray of those dtypes"
+    );
     static PyObject* obj = nullptr;
     return nb::borrow(cached(obj, [] {
         return results("FinfoResult")(64, DBL_EPSILON, DBL_MAX, -DBL_MAX, DBL_MIN, dtype_object(DType::Float64));
@@ -126,7 +131,9 @@ nb::object finfo(nb::handle type) {
 nb::object iinfo(nb::handle type) {
     info_arg(type, {DType::Int64}, "sd.int64 (or its name) or an sd.ndarray of int64");
     static PyObject* obj = nullptr;
-    return nb::borrow(cached(obj, [] { return results("IinfoResult")(64, INT64_MAX, INT64_MIN, dtype_object(DType::Int64)); }));
+    return nb::borrow(cached(obj, [] {
+        return results("IinfoResult")(64, INT64_MAX, INT64_MIN, dtype_object(DType::Int64));
+    }));
 }
 
 // ------------------------------------------------------------- tensordot
@@ -175,8 +182,8 @@ nb::object tensordot(nb::handle x1, nb::handle x2, nb::handle axes_obj) {
     for (size_t i = 0; i < ca.size(); ++i)
         if (a.shape[ca[i]] != b.shape[cb[i]])
             throw nb::value_error(("shape mismatch: axis " + std::to_string(ca[i]) + " of 'x1' has length " +
-                                   std::to_string(a.shape[ca[i]]) + ", axis " + std::to_string(cb[i]) + " of 'x2' has " +
-                                   std::to_string(b.shape[cb[i]]))
+                                   std::to_string(a.shape[ca[i]]) + ", axis " + std::to_string(cb[i]) +
+                                   " of 'x2' has " + std::to_string(b.shape[cb[i]]))
                                       .c_str());
     // x1 -> (free..., contracted...) as (M, K); x2 -> (contracted..., free...) as (K, N); one matmul.
     auto is_in = [](const std::vector<int>& v, int d) { return std::find(v.begin(), v.end(), d) != v.end(); };
@@ -230,7 +237,9 @@ void bind_dtype_info(nb::module_& m) {
     m.def("isdtype", named("isdtype", &isdtype), arg().none(), arg().none());
     m.def("finfo", named("finfo", &finfo), arg().none());
     m.def("iinfo", named("iinfo", &iinfo), arg().none());
-    m.def("tensordot", named("tensordot", &tensordot), arg().none(), arg().none(), nb::kw_only(), arg("axes").none() = 2);
+    m.def(
+        "tensordot", named("tensordot", &tensordot), arg().none(), arg().none(), nb::kw_only(), arg("axes").none() = 2
+    );
 }
 
 }  // namespace sd

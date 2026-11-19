@@ -15,8 +15,10 @@ def _a(x):
     return sd.asarray(x)
 
 
-@pytest.mark.parametrize("a,rtol", [([[1.0, 0.0], [0.0, 5e-324]], 0), ([[1.0, 0.0], [0.0, 1e-310]], 0),
-                                    ([[1.0, 0.0], [0.0, 1e-310]], 1e-320)])
+@pytest.mark.parametrize(
+    "a,rtol",
+    [([[1.0, 0.0], [0.0, 5e-324]], 0), ([[1.0, 0.0], [0.0, 1e-310]], 0), ([[1.0, 0.0], [0.0, 1e-310]], 1e-320)],
+)
 def test_diagonal(a, rtol):
     a = _a(a)
     r = L.lstsq(a, sd.ones(2), rtol=rtol)
@@ -31,7 +33,11 @@ def test_finite_results_and_shapes():
     assert x[0] == 1.0 and x[1] == pytest.approx(1e-20 / 1e-310, rel=1e-15)
     # rectangular, several right-hand sides, a batch, complex
     assert L.lstsq(_a([[1.0, 0.0], [0.0, 5e-324], [0.0, 0.0]]), sd.ones(3), rtol=0).solution.tolist() == [1.0, math.inf]
-    assert L.pinv(_a([[1.0, 0.0, 0.0], [0.0, 5e-324, 0.0]]), rtol=0).tolist() == [[1.0, 0.0], [0.0, math.inf], [0.0, 0.0]]
+    assert L.pinv(_a([[1.0, 0.0, 0.0], [0.0, 5e-324, 0.0]]), rtol=0).tolist() == [
+        [1.0, 0.0],
+        [0.0, math.inf],
+        [0.0, 0.0],
+    ]
     x = L.lstsq(_a([[1.0, 0.0], [0.0, 5e-324]]), _a([[1.0, 0.0], [0.0, 1.0]]), rtol=0).solution.tolist()
     assert x == [[1.0, 0.0], [0.0, math.inf]]
     p = L.pinv(_a([[[1.0, 0.0], [0.0, 5e-324]], [[2.0, 0.0], [0.0, 1.0]]]), rtol=0).tolist()

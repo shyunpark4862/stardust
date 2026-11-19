@@ -14,8 +14,33 @@ import stardust as sd
 
 S = sd.special
 
-EDGES = [0.0, -0.0, 1.0, -1.0, 0.5, 0.25, 0.75, 2.0, -2.0, 1e-300, -1e-300, 5e-324, -5e-324,
-         np.inf, -np.inf, np.nan, 709.78, -709.78, -745.2, 36.7, -36.7, 1 - 2**-53, 2**-53, 1e300, -1e300]
+EDGES = [
+    0.0,
+    -0.0,
+    1.0,
+    -1.0,
+    0.5,
+    0.25,
+    0.75,
+    2.0,
+    -2.0,
+    1e-300,
+    -1e-300,
+    5e-324,
+    -5e-324,
+    np.inf,
+    -np.inf,
+    np.nan,
+    709.78,
+    -709.78,
+    -745.2,
+    36.7,
+    -36.7,
+    1 - 2**-53,
+    2**-53,
+    1e300,
+    -1e300,
+]
 UNARY = ["expit", "logit", "log_expit", "entr"]
 BINARY = ["xlogy", "xlog1py", "rel_entr"]
 
@@ -107,9 +132,20 @@ def test_same_bits_for_any_thread_count():
         runs = []
         for t in (1, 3, 10):
             sd.set_num_threads(t)
-            runs.append([np.asarray(r).view(np.uint64) for r in
-                         (S.expit(x), S.logit(p), S.log_expit(x), S.xlogy(x, p), S.xlog1py(x, p), S.entr(p),
-                          S.rel_entr(p, x * x))])
+            runs.append(
+                [
+                    np.asarray(r).view(np.uint64)
+                    for r in (
+                        S.expit(x),
+                        S.logit(p),
+                        S.log_expit(x),
+                        S.xlogy(x, p),
+                        S.xlog1py(x, p),
+                        S.entr(p),
+                        S.rel_entr(p, x * x),
+                    )
+                ]
+            )
     finally:
         sd.set_num_threads(before)
     for r in runs[1:]:

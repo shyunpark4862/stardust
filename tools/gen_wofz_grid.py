@@ -28,7 +28,9 @@ def main():
     for i in range(NX):
         for j in range(NY):
             z = acb(i * STEP, j * STEP)  # i * 0.1 in float64, then exact in Arb
-            w = arbref.rigorous(lambda z=z: (-(z * z)).exp() * (acb(0, -1) * z).erfc(), target=200, floor=arbref.DOUBLE_TINY)
+            w = arbref.rigorous(
+                lambda z=z: (-(z * z)).exp() * (acb(0, -1) * z).erfc(), target=200, floor=arbref.DOUBLE_TINY
+            )
             rh, rl = arbref.to_dd(w.real)
             ih, il = arbref.to_dd(w.imag)
             rows.append(f"    {{{rh!r}, {rl!r}, {ih!r}, {il!r}}},  // ({i}, {j})")

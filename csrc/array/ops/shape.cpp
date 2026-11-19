@@ -46,15 +46,16 @@ std::vector<std::int64_t> resolve_shape(std::vector<std::int64_t> shape, const N
     }
     const std::int64_t size = a.size();
     auto fail = [&] {
-        return nb::value_error(("cannot reshape array of size " + std::to_string(size) + " into shape " +
-                                shape_str(shape))
-                                   .c_str());
+        return nb::value_error(
+            ("cannot reshape array of size " + std::to_string(size) + " into shape " + shape_str(shape)).c_str()
+        );
     };
     if (unknown >= 0) {
         if (overflow || known == 0 || size % known != 0) throw fail();
         shape[unknown] = size / known;
     }
-    if (checked_size(shape, a.dtype) != size) throw fail();  // also: no 0-d (docs/design/array.md §2.2), no negative extents
+    if (checked_size(shape, a.dtype) != size)
+        throw fail();  // also: no 0-d (docs/design/array.md §2.2), no negative extents
     return shape;
 }
 
@@ -122,7 +123,9 @@ nb::object permute_dims(nb::handle x, nb::handle axes_obj) {
     const NDArray& a = require_ndarray(x);
     const std::vector<int> axes = parse_axes(axes_obj, a.ndim, "axes");
     if (static_cast<int>(axes.size()) != a.ndim)
-        throw nb::value_error(("'axes' must list each of the " + std::to_string(a.ndim) + " axes exactly once").c_str());
+        throw nb::value_error(
+            ("'axes' must list each of the " + std::to_string(a.ndim) + " axes exactly once").c_str()
+        );
     return permuted(x, axes);
 }
 
@@ -170,7 +173,9 @@ nb::object squeeze(nb::handle x, nb::handle axis_obj) {
 
 nb::object expand_dims(nb::handle x, nb::handle axis_obj) {
     const NDArray& a = require_ndarray(x);
-    const int added = PyTuple_Check(axis_obj.ptr()) || PyList_Check(axis_obj.ptr()) ? static_cast<int>(PySequence_Size(axis_obj.ptr())) : 1;
+    const int added = PyTuple_Check(axis_obj.ptr()) || PyList_Check(axis_obj.ptr())
+                          ? static_cast<int>(PySequence_Size(axis_obj.ptr()))
+                          : 1;
     const int out_ndim = a.ndim + added;
     if (out_ndim > kMaxNdim)
         throw nb::value_error(("arrays may have at most " + std::to_string(kMaxNdim) + " dimensions").c_str());
@@ -383,9 +388,9 @@ nb::object imag(nb::handle x, nb::handle out);
 nb::object scalar_part(nb::handle x, nb::handle out, nb::object (*part)(nb::handle, nb::handle)) {
     const std::optional<DType> kind = scalar_dtype(x);
     if (!kind)
-        throw nb::type_error((std::string("'x' must be an sd.ndarray or a bool, int, float or complex, not ") +
-                              py_type_name(x))
-                                 .c_str());
+        throw nb::type_error(
+            (std::string("'x' must be an sd.ndarray or a bool, int, float or complex, not ") + py_type_name(x)).c_str()
+        );
     const std::int64_t one[] = {1};
     NDArray a = new_array(*kind, one);
     visit_dtype(*kind, [&]<typename T>(std::type_identity<T>) {
@@ -463,14 +468,20 @@ nb::object concat_arrays(nb::handle arrays, nb::handle axis) { return concat(arr
 
 void bind_shape(nb::module_& m) {
     using nb::arg;
-    m.def("reshape", named("reshape", nb::overload_cast<nb::handle, nb::handle, nb::handle>(&reshape)), arg().none(), arg().none(),
-          nb::kw_only(), arg("copy").none() = nb::none());
-    m.def("ravel", [](nb::handle x) {
-        return call_named("ravel", [&] {
-            const std::int64_t flat[] = {-1};
-            return reshape(x, flat, std::nullopt);
-        });
-    }, arg().none());
+    m.def(
+        "reshape", named("reshape", nb::overload_cast<nb::handle, nb::handle, nb::handle>(&reshape)), arg().none(),
+        arg().none(), nb::kw_only(), arg("copy").none() = nb::none()
+    );
+    m.def(
+        "ravel",
+        [](nb::handle x) {
+            return call_named("ravel", [&] {
+                const std::int64_t flat[] = {-1};
+                return reshape(x, flat, std::nullopt);
+            });
+        },
+        arg().none()
+    );
     m.def("permute_dims", named("permute_dims", &permute_dims), arg().none(), arg().none());
     m.def("matrix_transpose", named("matrix_transpose", &matrix_transpose), arg().none());
     m.def("moveaxis", named("moveaxis", &moveaxis), arg().none(), arg().none(), arg().none());

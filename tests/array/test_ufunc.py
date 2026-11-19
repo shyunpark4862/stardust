@@ -28,42 +28,123 @@ _CF = [0.0, -0.0, 1.5, -2.5, math.inf, -math.inf, math.nan, 0.7, 1e-8, 2.0]
 VALUES = {
     B: np.array([True, False]),
     I: np.array([0, 1, -1, 2, -7, 3, 5, INT_MAX, INT_MIN, 12345678901, 63, 64, -64]),
-    F: np.array([0.0, -0.0, 1.5, -2.5, 0.5, 3.0, math.inf, -math.inf, math.nan, 1e308, 5e-324, -1e-310,
-                 2.0, 100.0, 0.7, -0.3, 710.0, 1e-8, -1.0, 1.0]),
+    F: np.array(
+        [
+            0.0,
+            -0.0,
+            1.5,
+            -2.5,
+            0.5,
+            3.0,
+            math.inf,
+            -math.inf,
+            math.nan,
+            1e308,
+            5e-324,
+            -1e-310,
+            2.0,
+            100.0,
+            0.7,
+            -0.3,
+            710.0,
+            1e-8,
+            -1.0,
+            1.0,
+        ]
+    ),
     C: np.array([complex(r, i) for r in _CF for i in _CF]),
 }
 
 # Which dtypes each function has a loop for (the spec; mirrors scalar_ops.hpp).
 ALL, NUM, INEXACT, REAL, INT_FLOAT, BOOL_INT = set(ORDER), {I, F, C}, {F, C}, {B, I, F}, {I, F}, {B, I}
 UNARY = {
-    "negative": NUM, "positive": NUM, "abs": NUM, "square": NUM, "sign": NUM,
-    "sqrt": INEXACT, "exp": INEXACT, "expm1": INEXACT, "log": INEXACT, "log1p": INEXACT, "log2": INEXACT,
-    "log10": INEXACT, "sin": INEXACT, "cos": INEXACT, "tan": INEXACT, "asin": INEXACT, "acos": INEXACT,
-    "atan": INEXACT, "sinh": INEXACT, "cosh": INEXACT, "tanh": INEXACT, "asinh": INEXACT, "acosh": INEXACT,
+    "negative": NUM,
+    "positive": NUM,
+    "abs": NUM,
+    "square": NUM,
+    "sign": NUM,
+    "sqrt": INEXACT,
+    "exp": INEXACT,
+    "expm1": INEXACT,
+    "log": INEXACT,
+    "log1p": INEXACT,
+    "log2": INEXACT,
+    "log10": INEXACT,
+    "sin": INEXACT,
+    "cos": INEXACT,
+    "tan": INEXACT,
+    "asin": INEXACT,
+    "acos": INEXACT,
+    "atan": INEXACT,
+    "sinh": INEXACT,
+    "cosh": INEXACT,
+    "tanh": INEXACT,
+    "asinh": INEXACT,
+    "acosh": INEXACT,
     "atanh": INEXACT,
-    "floor": REAL, "ceil": REAL, "trunc": REAL, "round": ALL,
-    "isnan": ALL, "isinf": ALL, "isfinite": ALL, "conj": ALL,
-    "logical_not": {B}, "bitwise_invert": BOOL_INT,
+    "floor": REAL,
+    "ceil": REAL,
+    "trunc": REAL,
+    "round": ALL,
+    "isnan": ALL,
+    "isinf": ALL,
+    "isfinite": ALL,
+    "conj": ALL,
+    "logical_not": {B},
+    "bitwise_invert": BOOL_INT,
 }
 BINARY = {
-    "add": NUM, "subtract": NUM, "multiply": NUM, "divide": INEXACT, "pow": NUM,
-    "floor_divide": INT_FLOAT, "remainder": INT_FLOAT, "atan2": {F},
-    "maximum": REAL, "minimum": REAL,
-    "equal": ALL, "not_equal": ALL, "less": REAL, "less_equal": REAL, "greater": REAL, "greater_equal": REAL,
-    "logical_and": {B}, "logical_or": {B}, "logical_xor": {B},
-    "bitwise_and": BOOL_INT, "bitwise_or": BOOL_INT, "bitwise_xor": BOOL_INT,
-    "bitwise_left_shift": {I}, "bitwise_right_shift": {I},
+    "add": NUM,
+    "subtract": NUM,
+    "multiply": NUM,
+    "divide": INEXACT,
+    "pow": NUM,
+    "floor_divide": INT_FLOAT,
+    "remainder": INT_FLOAT,
+    "atan2": {F},
+    "maximum": REAL,
+    "minimum": REAL,
+    "equal": ALL,
+    "not_equal": ALL,
+    "less": REAL,
+    "less_equal": REAL,
+    "greater": REAL,
+    "greater_equal": REAL,
+    "logical_and": {B},
+    "logical_or": {B},
+    "logical_xor": {B},
+    "bitwise_and": BOOL_INT,
+    "bitwise_or": BOOL_INT,
+    "bitwise_xor": BOOL_INT,
+    "bitwise_left_shift": {I},
+    "bitwise_right_shift": {I},
 }
 # float64 functions that run on vForce: accurate to 8 ULP by contract
 # (docs/api/array.md §6.4); and pow (libm, whose exact forms for the exponents 2, -1 and
 # 0.5 are correctly rounded where numpy's libm is not, docs/design/array.md §5.4).
 # Everything else must match numpy bit for bit.
-VFORCE = {"exp", "log", "log2", "log10", "sin", "asin", "acos", "atan", "atan2", "sinh", "cosh", "tanh",
-          "asinh", "acosh", "atanh", "pow"}
+VFORCE = {
+    "exp",
+    "log",
+    "log2",
+    "log10",
+    "sin",
+    "asin",
+    "acos",
+    "atan",
+    "atan2",
+    "sinh",
+    "cosh",
+    "tanh",
+    "asinh",
+    "acosh",
+    "atanh",
+    "pow",
+}
 
 
 def loop_dtype(loops, d):
-    return next((k for k in ORDER[ORDER.index(d):] if k in loops), None)
+    return next((k for k in ORDER[ORDER.index(d) :] if k in loops), None)
 
 
 def wrap(v):
@@ -158,9 +239,8 @@ def test_random_strided_broadcast_operands(data):
     da, db = data.draw(st.sampled_from(ORDER)), data.draw(st.sampled_from(ORDER))
     shape = data.draw(hnp.array_shapes(min_dims=1, max_dims=3, max_side=4))
     a = data.draw(hnp.arrays(NP_DTYPE[da], shape, elements=None if da in (B, I) else _ELEMENTS))
-    b = data.draw(hnp.arrays(NP_DTYPE[db], shape[data.draw(st.integers(0, len(shape) - 1)):]))
-    a = a[tuple(data.draw(st.sampled_from([slice(None), slice(None, None, -1), slice(None, None, 2)]))
-                for _ in shape)]
+    b = data.draw(hnp.arrays(NP_DTYPE[db], shape[data.draw(st.integers(0, len(shape) - 1)) :]))
+    a = a[tuple(data.draw(st.sampled_from([slice(None), slice(None, None, -1), slice(None, None, 2)])) for _ in shape)]
     b = b.T if data.draw(st.booleans()) and b.ndim > 1 and len(set(b.shape)) == 1 else b
     if not all(x == y or x == 1 or y == 1 for x, y in zip(a.shape[::-1], b.shape[::-1])):
         return
@@ -190,6 +270,7 @@ def test_complex_arithmetic_on_random_values():
 
 
 # ----------------------------------- integer division and bool arithmetic
+
 
 def test_integer_division_never_fails():
     a = sd.asarray([7, -7, 0, INT_MIN, INT_MIN])
@@ -225,7 +306,7 @@ def _exact_power(x, e):
         if e == -1:
             return 1.0 / x
         r = np.sqrt(x)
-        r[x == 0] = 0.0          # pow(-0, 0.5) = +0 (sqrt keeps -0)
+        r[x == 0] = 0.0  # pow(-0, 0.5) = +0 (sqrt keeps -0)
         r[x == -math.inf] = math.inf  # pow(-inf, 0.5) = +inf (sqrt gives NaN)
         return r
 
@@ -241,8 +322,22 @@ def test_float_power_exact_exponents(e):
     # values, subnormals and overflow included.
     rng = np.random.default_rng(7)
     x = rng.standard_normal(5000) * 10.0 ** rng.integers(-170, 170, 5000)
-    x[:14] = [math.nan, math.inf, -math.inf, -0.0, 0.0, 5e-324, -5e-324, 1e-160, 1e200, -1e200, 1.5e154, 2.0**-537,
-              -1.0, 1.0]
+    x[:14] = [
+        math.nan,
+        math.inf,
+        -math.inf,
+        -0.0,
+        0.0,
+        5e-324,
+        -5e-324,
+        1e-160,
+        1e200,
+        -1e200,
+        1.5e154,
+        2.0**-537,
+        -1.0,
+        1.0,
+    ]
     want = _exact_power(x, e).tobytes()
     if e != 0.5:  # numpy's scalar fast paths agree (its 0.5 keeps sqrt's -0 and NaN)
         with np.errstate(all="ignore"):
@@ -318,8 +413,17 @@ def test_integer_power_untouched_by_float_fast_paths():
 
 def test_bool_arithmetic_is_int64():
     t = sd.asarray([True, False])
-    for got, want in [(t + t, [2, 0]), (t - t, [0, 0]), (t * t, [1, 0]), (-t, [-1, 0]), (+t, [1, 0]),
-                      (abs(t), [1, 0]), (sd.square(t), [1, 0]), (sd.sign(t), [1, 0]), (t**t, [1, 1])]:
+    for got, want in [
+        (t + t, [2, 0]),
+        (t - t, [0, 0]),
+        (t * t, [1, 0]),
+        (-t, [-1, 0]),
+        (+t, [1, 0]),
+        (abs(t), [1, 0]),
+        (sd.square(t), [1, 0]),
+        (sd.sign(t), [1, 0]),
+        (t**t, [1, 1]),
+    ]:
         assert got.dtype is sd.int64 and got.tolist() == want
     assert (t / t).dtype is sd.float64
     # ... but logic and bit operations keep bool (docs/api/array.md §1.4)
@@ -367,6 +471,7 @@ def test_maximum_minimum_signed_zero_and_nan():
 
 # ----------------------------------------------------------- Python scalars
 
+
 def test_python_scalar_promotion():
     i = sd.asarray([1, 2])
     assert (i + 1).dtype is sd.int64
@@ -380,8 +485,24 @@ def test_python_scalar_promotion():
         i < 2**70
 
 
-@pytest.mark.parametrize("name", ["add", "subtract", "multiply", "divide", "floor_divide", "remainder", "pow",
-                                  "atan2", "maximum", "minimum", "equal", "less", "bitwise_and"])
+@pytest.mark.parametrize(
+    "name",
+    [
+        "add",
+        "subtract",
+        "multiply",
+        "divide",
+        "floor_divide",
+        "remainder",
+        "pow",
+        "atan2",
+        "maximum",
+        "minimum",
+        "equal",
+        "less",
+        "bitwise_and",
+    ],
+)
 def test_big_python_int_one_rule_for_every_binary_function(name):
     # A Python int becomes an int64 when the promoted operand dtype is bool or
     # int64, whatever loop runs: divide and atan2 compute in float64 but still
@@ -446,10 +567,21 @@ def test_equality_with_a_rejected_operand_is_a_type_error(bad):
     assert (x == x).tolist() == [True, True] and (x != 2).tolist() == [True, False]
 
 
-@pytest.mark.parametrize("scalar, dtype", [
-    (np.int64(3), sd.int64), (np.int8(-3), sd.int64), (np.uint32(3), sd.int64), (np.uint64(3), sd.int64),
-    (np.bool_(True), sd.bool), (np.float32(0.5), sd.float64), (np.float16(0.5), sd.float64),
-    (np.float64(0.5), sd.float64), (np.complex64(1j), sd.complex128), (np.complex128(1j), sd.complex128)])
+@pytest.mark.parametrize(
+    "scalar, dtype",
+    [
+        (np.int64(3), sd.int64),
+        (np.int8(-3), sd.int64),
+        (np.uint32(3), sd.int64),
+        (np.uint64(3), sd.int64),
+        (np.bool_(True), sd.bool),
+        (np.float32(0.5), sd.float64),
+        (np.float16(0.5), sd.float64),
+        (np.float64(0.5), sd.float64),
+        (np.complex64(1j), sd.complex128),
+        (np.complex128(1j), sd.complex128),
+    ],
+)
 def test_numpy_scalars_are_operands_like_python_scalars(scalar, dtype):
     # numpy's bool, integer, floating and complexfloating scalars count as the
     # Python scalar of their kind (docs/api/array.md §6.2), wherever a Python
@@ -481,6 +613,7 @@ def test_numpy_scalars_follow_the_python_rules():
 
 
 # ------------------------------------------------------------------- out=
+
 
 def test_out_basic_and_upcast():
     a, b = sd.asarray([1, 2, 3]), sd.asarray([10, 20, 30])
@@ -522,15 +655,29 @@ def test_out_overlapping_inputs():
 
 # ------------------------------------------------------------- operators
 
+
 def test_operators_match_functions():
     x = sd.asarray([[5, -3], [7, 2]])
     y = sd.asarray([2, 3])
     pairs = [
-        (x + y, sd.add), (x - y, sd.subtract), (x * y, sd.multiply), (x / y, sd.divide),
-        (x // y, sd.floor_divide), (x % y, sd.remainder), (x**y, sd.pow), (x & y, sd.bitwise_and),
-        (x | y, sd.bitwise_or), (x ^ y, sd.bitwise_xor), (x << y, sd.bitwise_left_shift),
-        (x >> y, sd.bitwise_right_shift), (x == y, sd.equal), (x != y, sd.not_equal), (x < y, sd.less),
-        (x <= y, sd.less_equal), (x > y, sd.greater), (x >= y, sd.greater_equal),
+        (x + y, sd.add),
+        (x - y, sd.subtract),
+        (x * y, sd.multiply),
+        (x / y, sd.divide),
+        (x // y, sd.floor_divide),
+        (x % y, sd.remainder),
+        (x**y, sd.pow),
+        (x & y, sd.bitwise_and),
+        (x | y, sd.bitwise_or),
+        (x ^ y, sd.bitwise_xor),
+        (x << y, sd.bitwise_left_shift),
+        (x >> y, sd.bitwise_right_shift),
+        (x == y, sd.equal),
+        (x != y, sd.not_equal),
+        (x < y, sd.less),
+        (x <= y, sd.less_equal),
+        (x > y, sd.greater),
+        (x >= y, sd.greater_equal),
     ]
     for got, fn in pairs:
         assert_same(got, np.asarray(fn(x, y)))
@@ -576,6 +723,7 @@ def test_result_layout_follows_input():
 
 # ------------------------------------------------------------ where, clip
 
+
 def test_where():
     c = sd.asarray([True, False, True])
     assert_same(sd.where(c, sd.asarray([1, 2, 3]), 0.5), np.array([1.0, 0.5, 3.0]))
@@ -599,11 +747,17 @@ def test_clip():
     # An array min/max broadcasts to x, never x to it: the result has x's shape (docs/api/array.md §6.4).
     m = sd.asarray([[-5, 0, 5, 10], [1, 2, 3, 4]])
     assert sd.clip(m, min=sd.asarray([0, 1, 2, 3]), max=sd.asarray([[4], [2]])).tolist() == [[0, 1, 4, 4], [1, 2, 2, 2]]
-    with pytest.raises(ValueError, match=r"^clip\(\): 'min' of shape \(2, 4\) cannot be broadcast to the shape of "
-                                         r"'x' \(4,\)$"):
+    with pytest.raises(
+        ValueError,
+        match=r"^clip\(\): 'min' of shape \(2, 4\) cannot be broadcast to the shape of "
+        r"'x' \(4,\)$",
+    ):
         sd.clip(x, min=sd.zeros((2, 4), dtype=sd.int64))
-    with pytest.raises(ValueError, match=r"^clip\(\): 'max' of shape \(3,\) cannot be broadcast to the shape of "
-                                         r"'x' \(4,\)$"):
+    with pytest.raises(
+        ValueError,
+        match=r"^clip\(\): 'max' of shape \(3,\) cannot be broadcast to the shape of "
+        r"'x' \(4,\)$",
+    ):
         sd.clip(x, max=sd.asarray([1, 2, 3]))
     assert sd.clip(x, min=5, max=1).tolist() == [1, 1, 1, 1]  # min > max: max wins, like numpy
     f = sd.asarray([math.nan, 1.0, 3.0, -0.0])

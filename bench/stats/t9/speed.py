@@ -29,10 +29,24 @@ def main():
         cov = a @ a.T + d * np.eye(d)
         mu = rng.normal(size=d)
         x = rng.normal(size=(N, d))
-        rows.append((f"MultivariateNormal d={d}", S.MultivariateNormal(mu=sd.asarray(mu), cov=sd.asarray(cov)),
-                     st.multivariate_normal(mu, cov), x, "logpdf"))
-        rows.append((f"MultivariateT d={d}", S.MultivariateT(mu=sd.asarray(mu), shape=sd.asarray(cov), df=5.0),
-                     st.multivariate_t(mu, cov, df=5.0), x, "logpdf"))
+        rows.append(
+            (
+                f"MultivariateNormal d={d}",
+                S.MultivariateNormal(mu=sd.asarray(mu), cov=sd.asarray(cov)),
+                st.multivariate_normal(mu, cov),
+                x,
+                "logpdf",
+            )
+        )
+        rows.append(
+            (
+                f"MultivariateT d={d}",
+                S.MultivariateT(mu=sd.asarray(mu), shape=sd.asarray(cov), df=5.0),
+                st.multivariate_t(mu, cov, df=5.0),
+                x,
+                "logpdf",
+            )
+        )
     p = np.array([0.1, 0.2, 0.3, 0.4])
     xm = rng.multinomial(20, p, size=N).astype(float)
     rows.append(("Multinomial K=4 n=20", S.Multinomial(n=20.0, p=sd.asarray(p)), st.multinomial(20, p), xm, "logpmf"))
@@ -53,16 +67,20 @@ def main():
             sd.set_num_threads(10)
             t10 = best(lambda: f(X))
             ts = best(g)
-            print(f"| {name} | {meth} | {t1 * 1e3:.2f} | {t10 * 1e3:.2f} | {ts * 1e3:.2f} | {ts / t1:.2f} | {ts / t10:.1f} |",
-                  flush=True)
+            print(
+                f"| {name} | {meth} | {t1 * 1e3:.2f} | {t10 * 1e3:.2f} | {ts * 1e3:.2f} | {ts / t1:.2f} | {ts / t10:.1f} |",
+                flush=True,
+            )
             r = sd.random.default_rng(1)
             sd.set_num_threads(1)
             t1 = best(lambda: D.sample(N, rng=r))
             sd.set_num_threads(10)
             t10 = best(lambda: D.sample(N, rng=r))
             ts = best(lambda: Ssp.rvs(size=N, random_state=1))
-            print(f"| {name} | sample | {t1 * 1e3:.2f} | {t10 * 1e3:.2f} | {ts * 1e3:.2f} | {ts / t1:.2f} | {ts / t10:.1f} |",
-                  flush=True)
+            print(
+                f"| {name} | sample | {t1 * 1e3:.2f} | {t10 * 1e3:.2f} | {ts * 1e3:.2f} | {ts / t1:.2f} | {ts / t10:.1f} |",
+                flush=True,
+            )
     finally:
         sd.set_num_threads(before)
 

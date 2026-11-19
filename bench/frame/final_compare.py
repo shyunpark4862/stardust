@@ -52,16 +52,25 @@ def write_csvs(d, n, data_dir, seed=0):
         import pandas as pd
 
         pd.DataFrame({"x": d["f"]}).to_csv(fpath, index=False)
-        pd.DataFrame({"id": np.arange(n), "x": d["f"], "name": d["strs"], "flag": d["f"] > 0}).to_csv(mpath, index=False)
+        pd.DataFrame({"id": np.arange(n), "x": d["f"], "name": d["strs"], "flag": d["f"] > 0}).to_csv(
+            mpath, index=False
+        )
     return fpath, mpath
 
 
 def sdpd_cases(d, fpath, mpath):
     import stardust_pandas as sdpd
 
-    o = {"f": sdpd.Series(d["f"]), "g": sdpd.Series(d["g"]), "low": sdpd.Series(d["low"]), "high": sdpd.Series(d["high"]),
-         "str": sdpd.Series(d["strs"]), "df": sdpd.DataFrame({"k": d["low"], "kh": d["high"], "ks": d["strs"], "f": d["f"]}),
-         "L": sdpd.DataFrame({"k": d["lk"], "a": d["f"]}), "R": sdpd.DataFrame({"k": d["rk"], "b": d["rb"]})}
+    o = {
+        "f": sdpd.Series(d["f"]),
+        "g": sdpd.Series(d["g"]),
+        "low": sdpd.Series(d["low"]),
+        "high": sdpd.Series(d["high"]),
+        "str": sdpd.Series(d["strs"]),
+        "df": sdpd.DataFrame({"k": d["low"], "kh": d["high"], "ks": d["strs"], "f": d["f"]}),
+        "L": sdpd.DataFrame({"k": d["lk"], "a": d["f"]}),
+        "R": sdpd.DataFrame({"k": d["rk"], "b": d["rb"]}),
+    }
     return o, {
         "float + float": lambda: o["f"] + o["g"],
         "float sum": lambda: o["f"].sum(),
@@ -84,9 +93,16 @@ def sdpd_cases(d, fpath, mpath):
 def pandas_cases(d, fpath, mpath):
     import pandas as pd
 
-    p = {"f": pd.Series(d["f"]), "g": pd.Series(d["g"]), "low": pd.Series(d["low"]), "high": pd.Series(d["high"]),
-         "str": pd.Series(d["strs"]), "df": pd.DataFrame({"k": d["low"], "kh": d["high"], "ks": d["strs"], "f": d["f"]}),
-         "L": pd.DataFrame({"k": d["lk"], "a": d["f"]}), "R": pd.DataFrame({"k": d["rk"], "b": d["rb"]})}
+    p = {
+        "f": pd.Series(d["f"]),
+        "g": pd.Series(d["g"]),
+        "low": pd.Series(d["low"]),
+        "high": pd.Series(d["high"]),
+        "str": pd.Series(d["strs"]),
+        "df": pd.DataFrame({"k": d["low"], "kh": d["high"], "ks": d["strs"], "f": d["f"]}),
+        "L": pd.DataFrame({"k": d["lk"], "a": d["f"]}),
+        "R": pd.DataFrame({"k": d["rk"], "b": d["rb"]}),
+    }
     return p, {
         "float + float": lambda: p["f"] + p["g"],
         "float sum": lambda: p["f"].sum(),
@@ -109,9 +125,16 @@ def pandas_cases(d, fpath, mpath):
 def polars_cases(d, fpath, mpath):
     import polars as pl
 
-    q = {"f": pl.Series(d["f"]), "g": pl.Series(d["g"]), "low": pl.Series(d["low"]), "high": pl.Series(d["high"]),
-         "str": pl.Series(d["strs"]), "df": pl.DataFrame({"k": d["low"], "kh": d["high"], "ks": d["strs"], "f": d["f"]}),
-         "L": pl.DataFrame({"k": d["lk"], "a": d["f"]}), "R": pl.DataFrame({"k": d["rk"], "b": d["rb"]})}
+    q = {
+        "f": pl.Series(d["f"]),
+        "g": pl.Series(d["g"]),
+        "low": pl.Series(d["low"]),
+        "high": pl.Series(d["high"]),
+        "str": pl.Series(d["strs"]),
+        "df": pl.DataFrame({"k": d["low"], "kh": d["high"], "ks": d["strs"], "f": d["f"]}),
+        "L": pl.DataFrame({"k": d["lk"], "a": d["f"]}),
+        "R": pl.DataFrame({"k": d["rk"], "b": d["rb"]}),
+    }
     # groupby: ours and pandas return the groups sorted by key, so Polars sorts too.
     # merge: ours and pandas keep the left order, so Polars is asked to.
     return q, {

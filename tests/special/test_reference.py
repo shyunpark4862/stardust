@@ -67,8 +67,11 @@ def test_accuracy(name):
     got = np.asarray(function(name)(*(sd.asarray(x) for x in xs)))
     err = contract_error(got, hi, lo) / refdata.scale(name)  # the inverses: max(1, kappa) (S4)
     if guaranteed.any():
-        assert err[guaranteed].max() <= GUARANTEED, (name, [x[guaranteed][np.argmax(err[guaranteed])] for x in xs],
-                                                     err[guaranteed].max())
+        assert err[guaranteed].max() <= GUARANTEED, (
+            name,
+            [x[guaranteed][np.argmax(err[guaranteed])] for x in xs],
+            err[guaranteed].max(),
+        )
     if (~guaranteed).any():
         if name in MIXED:
             m = mixed_error(got, hi, lo)[~guaranteed]
@@ -87,4 +90,7 @@ def test_scalar_path_gives_the_same_bits(name):
     scalar = complex if np.iscomplexobj(xs[0]) else float
     for i in idx:
         v = f(*(scalar(x[i]) for x in xs))
-        assert np.array([v], dtype=got.dtype).view(np.uint64).tolist() == got[i:i + 1].view(np.uint64).tolist(), (name, i)
+        assert np.array([v], dtype=got.dtype).view(np.uint64).tolist() == got[i : i + 1].view(np.uint64).tolist(), (
+            name,
+            i,
+        )

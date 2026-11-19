@@ -70,14 +70,23 @@ def _ref_wishart(df, V, xs, inverse):
             ldx = X.det().log()
             if inverse:
                 tr = _trace_solve(X, Vm)  # tr(V X^-1) = tr(X^-1 V)
-                out.append(n / 2 * ldv - n * p / 2 * arb(2).log() - _mvlgamma(p, n / 2) - (n + p + 1) / 2 * ldx - tr / 2)
+                out.append(
+                    n / 2 * ldv - n * p / 2 * arb(2).log() - _mvlgamma(p, n / 2) - (n + p + 1) / 2 * ldx - tr / 2
+                )
             else:
                 tr = _trace_solve(Vm, X)
-                out.append((n - p - 1) / 2 * ldx - tr / 2 - n * p / 2 * arb(2).log() - n / 2 * ldv - _mvlgamma(p, n / 2))
+                out.append(
+                    (n - p - 1) / 2 * ldx - tr / 2 - n * p / 2 * arb(2).log() - n / 2 * ldv - _mvlgamma(p, n / 2)
+                )
         s = -1 if inverse else 1
         k = (n + p + 1) if inverse else (n - p - 1)
-        h = (p + 1) / arb(2) * ldv + s * p * (p + 1) / arb(2) * arb(2).log() + _mvlgamma(p, n / 2) \
-            - k / 2 * _mvdigamma(p, n / 2) + n * p / 2
+        h = (
+            (p + 1) / arb(2) * ldv
+            + s * p * (p + 1) / arb(2) * arb(2).log()
+            + _mvlgamma(p, n / 2)
+            - k / 2 * _mvdigamma(p, n / 2)
+            + n * p / 2
+        )
         return (*out, h)
 
     *out, h = _settled(fn)
@@ -90,8 +99,9 @@ def _mixed(a, b):
 
 
 @pytest.mark.parametrize("inverse", [False, True])
-@pytest.mark.parametrize(("p", "extra", "kappa"), [(1, 0.5, 1.0), (2, 0.5, 1e4), (3, 7.0, 1e8), (5, 1e8, 1e4),
-                                                     (8, 3.0, 1e6)])
+@pytest.mark.parametrize(
+    ("p", "extra", "kappa"), [(1, 0.5, 1.0), (2, 0.5, 1e4), (3, 7.0, 1e8), (5, 1e8, 1e4), (8, 3.0, 1e6)]
+)
 def test_wishart_against_arb(inverse, p, extra, kappa):
     rng = np.random.default_rng(p * 13 + int(math.log10(kappa)))
     V = spd(rng, p, kappa)
@@ -188,8 +198,9 @@ def test_support_and_nan_rules():
     assert math.isnan(S.Wishart(df=0.5, scale=sd.asarray(np.eye(2))).entropy())  # df <= p - 1
     assert math.isnan(S.Wishart(df=3.0, scale=sd.asarray([[1.0, 2.0], [2.0, 1.0]])).logpdf(sd.asarray(np.eye(2))))
     assert np.isnan(np.asarray(S.InverseWishart(df=0.9, scale=sd.asarray(np.eye(2))).mean())).all()
-    assert math.isnan(S.MatrixNormal(mu=sd.asarray([[np.nan]]), rowcov=sd.asarray([[1.0]]),
-                                     colcov=sd.asarray([[1.0]])).entropy())
+    assert math.isnan(
+        S.MatrixNormal(mu=sd.asarray([[np.nan]]), rowcov=sd.asarray([[1.0]]), colcov=sd.asarray([[1.0]])).entropy()
+    )
 
 
 def test_batching():
@@ -199,7 +210,8 @@ def test_batching():
     assert np.asarray(W.logpdf(sd.asarray(np.tile(np.eye(2), (4, 1, 1, 1))))).shape == (4, 3)
     for j, (df, s) in enumerate(((3.0, 1.0), (4.0, 2.0), (5.0, 3.0))):
         assert np.asarray(W.logpdf(sd.asarray(np.eye(2))))[j] == pytest.approx(
-            st.wishart(df, np.eye(2) * s).logpdf(np.eye(2)), rel=1e-13)
+            st.wishart(df, np.eye(2) * s).logpdf(np.eye(2)), rel=1e-13
+        )
     assert np.asarray(W.entropy()).shape == (3,)
     assert np.asarray(W.mean()).shape == (3, 2, 2)
     assert np.asarray(W.sample(5, rng=sd.random.default_rng(1))).shape == (5, 3, 2, 2)
@@ -228,8 +240,11 @@ def test_samples():
     assert st.kstest(x[:, 0, 0], st.invgamma((6.5 - 3 + 1) / 2, scale=V[0, 0] / 2).cdf).pvalue > 1e-4
     M = rng.normal(size=(2, 3))
     U, Vc = spd(rng, 2, 3.0), spd(rng, 3, 3.0)
-    xm = np.asarray(S.MatrixNormal(mu=sd.asarray(M), rowcov=sd.asarray(U), colcov=sd.asarray(Vc)).sample(
-        N, rng=sd.random.default_rng(4)))
+    xm = np.asarray(
+        S.MatrixNormal(mu=sd.asarray(M), rowcov=sd.asarray(U), colcov=sd.asarray(Vc)).sample(
+            N, rng=sd.random.default_rng(4)
+        )
+    )
     assert st.kstest((xm[:, 1, 2] - M[1, 2]) / math.sqrt(U[1, 1] * Vc[2, 2]), st.norm.cdf).pvalue > 1e-4
     c = np.cov(xm.reshape(N, -1).T)
     np.testing.assert_allclose(c, np.kron(U, Vc), atol=0.05)

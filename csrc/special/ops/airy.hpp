@@ -86,9 +86,11 @@ inline Airy positive(double x) {
     const double i23 = value(b.i) + zl * (value(b.ip) - value(b.i));
     const Scaled em = exp_scaled(-zh) * scaled(1.0 - zl), ep = exp_scaled(zh) * scaled(1.0 + zl);
     const double r = std::sqrt(x / 3.0);
-    return {value(em * scaled(r * k13 / kPi)), value(em * scaled(-x * k23 / (kPi * kSqrt3))),
-            value(ep * scaled(r * 2.0 * i13)) + value(em * scaled(r * kSqrt3 * k13 / kPi)),
-            value(ep * scaled(x / kSqrt3 * 2.0 * i23)) + value(em * scaled(x * k23 / kPi))};
+    return {
+        value(em * scaled(r * k13 / kPi)), value(em * scaled(-x * k23 / (kPi * kSqrt3))),
+        value(ep * scaled(r * 2.0 * i13)) + value(em * scaled(r * kSqrt3 * k13 / kPi)),
+        value(ep * scaled(x / kSqrt3 * 2.0 * i23)) + value(em * scaled(x * k23 / kPi))
+    };
 }
 
 // -9.7 < x < -2: the J, Y form at zeta for z = -x.
@@ -100,8 +102,10 @@ inline Airy negative_bessel(double z) {
     const double j13 = value(a.j) + zl * value(a.jp), y13 = value(a.y) + zl * value(a.yp);
     const double j23 = value(b.j) + zl * value(b.jp), y23 = value(b.y) + zl * value(b.yp);
     const double sz = std::sqrt(z);
-    return {0.5 * sz * (j13 - y13 / kSqrt3), 0.5 * z * (j23 + y23 / kSqrt3), -0.5 * sz * (j13 / kSqrt3 + y13),
-            0.5 * z * (j23 / kSqrt3 - y23)};
+    return {
+        0.5 * sz * (j13 - y13 / kSqrt3), 0.5 * z * (j23 + y23 / kSqrt3), -0.5 * sz * (j13 / kSqrt3 + y13),
+        0.5 * z * (j23 / kSqrt3 - y23)
+    };
 }
 
 // x <= -9.7: the oscillatory expansions in 1/zeta with u_k, v_k (DLMF 9.7.2)

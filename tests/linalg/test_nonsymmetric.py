@@ -202,8 +202,13 @@ def test_ldl_rules():
 
 @pytest.mark.parametrize(
     "call",
-    [lambda z: sd.linalg.eig(z), lambda z: sd.linalg.eigvals(z), lambda z: sd.linalg.schur(z), lambda z: sd.linalg.hessenberg(z),
-     lambda z: sd.linalg.ldl(z)],
+    [
+        lambda z: sd.linalg.eig(z),
+        lambda z: sd.linalg.eigvals(z),
+        lambda z: sd.linalg.schur(z),
+        lambda z: sd.linalg.hessenberg(z),
+        lambda z: sd.linalg.ldl(z),
+    ],
 )
 @pytest.mark.parametrize("bad", [[[1.0]], np.eye(2), None])
 def test_only_sd_arrays(call, bad):

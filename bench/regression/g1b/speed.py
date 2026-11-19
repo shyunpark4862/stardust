@@ -68,6 +68,7 @@ def main():
         for threads in (1, 10):
             sd.set_num_threads(threads)
             with threadpool_limits(limits=threads):
+
                 def sd_fit():
                     r = R.ols(ys, Xs)
                     return r.bse, r.pvalues
@@ -94,8 +95,14 @@ def main():
 
                 def sd_diag():
                     r = R.ols(ys, Xs)
-                    return (r.leverage, r.resid_studentized_internal, r.cooks_distance, r.durbin_watson,
-                            r.jarque_bera(), r.breusch_pagan())
+                    return (
+                        r.leverage,
+                        r.resid_studentized_internal,
+                        r.cooks_distance,
+                        r.durbin_watson,
+                        r.jarque_bera(),
+                        r.breusch_pagan(),
+                    )
 
                 def sd_diag_ext():
                     r = R.ols(ys, Xs)
@@ -104,8 +111,14 @@ def main():
                 def sm_diag():
                     r = sm.OLS(y, Xc).fit()
                     inf = OLSInfluence(r)
-                    return (inf.hat_matrix_diag, inf.resid_studentized_internal, inf.cooks_distance,
-                            durbin_watson(r.wresid), jarque_bera(r.wresid), het_breuschpagan(r.resid, Xc))
+                    return (
+                        inf.hat_matrix_diag,
+                        inf.resid_studentized_internal,
+                        inf.cooks_distance,
+                        durbin_watson(r.wresid),
+                        jarque_bera(r.wresid),
+                        het_breuschpagan(r.resid, Xc),
+                    )
 
                 def sd_sum():
                     return R.ols(ys, Xs).summary()
@@ -113,10 +126,22 @@ def main():
                 def sm_sum():
                     return str(sm.OLS(y, Xc).fit().summary())
 
-                t = {name: best(f, reps) for name, f in (
-                    ("sd_fit", sd_fit), ("sm_fit", sm_fit), ("sd_hac", sd_hac), ("sm_hac", sm_hac),
-                    ("sd_cl", sd_cl), ("sm_cl", sm_cl), ("sd_diag", sd_diag), ("sd_ext", sd_diag_ext),
-                    ("sm_diag", sm_diag), ("sd_sum", sd_sum), ("sm_sum", sm_sum))}
+                t = {
+                    name: best(f, reps)
+                    for name, f in (
+                        ("sd_fit", sd_fit),
+                        ("sm_fit", sm_fit),
+                        ("sd_hac", sd_hac),
+                        ("sm_hac", sm_hac),
+                        ("sd_cl", sd_cl),
+                        ("sm_cl", sm_cl),
+                        ("sd_diag", sd_diag),
+                        ("sd_ext", sd_diag_ext),
+                        ("sm_diag", sm_diag),
+                        ("sd_sum", sd_sum),
+                        ("sm_sum", sm_sum),
+                    )
+                }
                 gc.collect()
             rows.append((f"({n:,}, {k})", threads, L, t))
             print(rows[-1], flush=True)
@@ -126,9 +151,13 @@ def main():
     print("| (n, k) | threads | case | sd | statsmodels | ratio |")
     print("|---|---:|---|---:|---:|---:|")
     for size, th, L, t in rows:
-        for label, a, b in (("fit (nonrobust)", "sd_fit", "sm_fit"), (f"HAC ({L} lags)", "sd_hac", "sm_hac"),
-                            ("cluster (1,000)", "sd_cl", "sm_cl"), ("fit + diagnostics", "sd_diag", "sm_diag"),
-                            ("fit + summary()", "sd_sum", "sm_sum")):
+        for label, a, b in (
+            ("fit (nonrobust)", "sd_fit", "sm_fit"),
+            (f"HAC ({L} lags)", "sd_hac", "sm_hac"),
+            ("cluster (1,000)", "sd_cl", "sm_cl"),
+            ("fit + diagnostics", "sd_diag", "sm_diag"),
+            ("fit + summary()", "sd_sum", "sm_sum"),
+        ):
             print(f"| {size} | {th} | {label} | {ms(t[a])} | {ms(t[b])} | {t[b] / t[a]:.2g} |")
         print(f"| {size} | {th} | fit + external studentized | {ms(t['sd_ext'])} | (n refits) | |")
 

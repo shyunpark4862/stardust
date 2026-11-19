@@ -13,8 +13,16 @@ import scipy.stats as st
 import stardust as sd
 
 S = sd.stats
-SCIPY = {"pdf": "pdf", "logpdf": "logpdf", "cdf": "cdf", "logcdf": "logcdf", "ccdf": "sf", "logccdf": "logsf",
-         "icdf": "ppf", "iccdf": "isf"}
+SCIPY = {
+    "pdf": "pdf",
+    "logpdf": "logpdf",
+    "cdf": "cdf",
+    "logcdf": "logcdf",
+    "ccdf": "sf",
+    "logccdf": "logsf",
+    "icdf": "ppf",
+    "iccdf": "isf",
+}
 CASES = [
     (S.NoncentralChiSquared, {"df": 3.5, "nc": 2.0}, st.ncx2(3.5, 2.0)),
     (S.NoncentralT, {"df": 9.0, "nc": 1.5}, st.nct(9.0, 1.5)),

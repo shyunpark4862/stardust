@@ -14,8 +14,9 @@ namespace nb = nanobind;
 
 namespace sd::frame {
 
-std::pair<Column, Column> join_indices(const std::vector<Column>& left, const std::vector<Column>& right,
-                                       std::string_view how) {
+std::pair<Column, Column> join_indices(
+    const std::vector<Column>& left, const std::vector<Column>& right, std::string_view how
+) {
     if (how != "inner" && how != "left" && how != "right" && how != "outer")
         throw nb::value_error(("how must be inner, left, right or outer, got '" + std::string(how) + "'").c_str());
     if (left.empty() || left.size() != right.size()) throw nb::value_error("one right key per left key");
@@ -119,7 +120,8 @@ std::pair<Column, Column> join_indices(const std::vector<Column>& left, const st
         std::int64_t t = 0;
         for (std::int64_t p = lo; p < hi; ++p) {
             const std::int64_t m = matches(p);
-            if (keep_build && pcode[p] >= 0) std::atomic_ref<std::uint8_t>(probed[pcode[p]]).store(1, std::memory_order_relaxed);
+            if (keep_build && pcode[p] >= 0)
+                std::atomic_ref<std::uint8_t>(probed[pcode[p]]).store(1, std::memory_order_relaxed);
             t += m > 0 ? m : (keep_probe ? 1 : 0);
         }
         pstart[lo / kChunkRows + 1] = t;

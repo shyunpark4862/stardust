@@ -10,7 +10,7 @@ import pathlib
 
 rows = []
 for q in range(-342, 0):
-    power5 = 5 ** -q
+    power5 = 5**-q
     z = 0
     while (1 << z) < power5:
         z += 1
@@ -22,7 +22,7 @@ for q in range(-342, 0):
             c //= 2
     rows.append(c)
 for q in range(0, 308 + 1):
-    power5 = 5 ** q
+    power5 = 5**q
     while power5 < (1 << 127):
         power5 *= 2
     while power5 >= (1 << 128):

@@ -29,7 +29,8 @@ struct CsvOptions {
 };
 
 // (column names, columns) of the CSV text in [data, data + size).
-std::pair<std::vector<std::string>, std::vector<Column>> read_csv(const char* data, std::size_t size,
-                                                                   const CsvOptions& opt);
+std::pair<std::vector<std::string>, std::vector<Column>> read_csv(
+    const char* data, std::size_t size, const CsvOptions& opt
+);
 
 }  // namespace sd::frame

@@ -29,12 +29,14 @@ def sample(dtype, shape=(4, 37), seed=0):
 
 def reference_argsort(lane, descending):
     """Stable, NaN the largest value (last ascending, first descending), ties in original order."""
+
     def key(i):
         v = lane[i]
         nan = isinstance(v, float) and math.isnan(v)
         if descending:
             return (not nan, 0 if nan else -v)
         return (nan, 0 if nan else v)
+
     return sorted(range(len(lane)), key=key)
 
 
@@ -71,9 +73,13 @@ def test_unstable_sort_gives_sorted_values(dtype, descending):
 @pytest.mark.parametrize("pattern", ["sorted", "reversed", "equal", "sawtooth", "random"])
 @pytest.mark.parametrize("stable", [True, False])
 def test_adversarial_inputs(pattern, stable):
-    n = {"sorted": np.arange(5000.0), "reversed": np.arange(5000.0)[::-1].copy(), "equal": np.ones(5000),
-         "sawtooth": np.tile(np.arange(50.0), 100),
-         "random": np.random.default_rng(2).standard_normal(5000)}[pattern]
+    n = {
+        "sorted": np.arange(5000.0),
+        "reversed": np.arange(5000.0)[::-1].copy(),
+        "equal": np.ones(5000),
+        "sawtooth": np.tile(np.arange(50.0), 100),
+        "random": np.random.default_rng(2).standard_normal(5000),
+    }[pattern]
     assert_same(sd.sort(sd.asarray(n), stable=stable), np.sort(n))
 
 
@@ -111,6 +117,7 @@ def test_descending_keeps_tie_order_and_puts_nan_first():
 def test_descending_matches_the_frame():
     # One rule for the two areas (DESIGN.md §9.1 #9).
     from stardust import frame as F
+
     v = [2.0, math.nan, -0.0, 0.0, 2.0, math.nan, -1.0]
     s = F.Series(v)
     for desc in (False, True):
@@ -121,6 +128,7 @@ def test_descending_matches_the_frame():
 
 # ------------------------------------------------------------------ unique
 
+
 def _is_nan(v):
     if isinstance(v, complex):
         return math.isnan(v.real) or math.isnan(v.imag)
@@ -129,6 +137,7 @@ def _is_nan(v):
 
 def reference_unique(flat):
     """Sorted distinct values; all NaNs one value, the last; first occurrences."""
+
     def key(i):
         v = flat[i]
         if _is_nan(v):
@@ -136,6 +145,7 @@ def reference_unique(flat):
         if isinstance(v, complex):
             return (False, v.real, v.imag)
         return (False, v, 0)
+
     order = sorted(range(len(flat)), key=key)
     groups = []
     for i in order:
@@ -188,17 +198,23 @@ def test_unique_shows_the_first_nan_bits_and_matches_the_frame():
     a = np.array([np.nan, 1.0, np.nan, 1.0])
     a.view(np.int64)[0] |= 7  # a NaN with a payload, first
     a.view(np.int64)[2] ^= np.int64(-(2**63))  # a negative NaN
-    for fn in (sd.unique_values, lambda x: sd.unique_all(x).values, lambda x: sd.unique_counts(x).values,
-               lambda x: sd.unique_inverse(x).values):
+    for fn in (
+        sd.unique_values,
+        lambda x: sd.unique_all(x).values,
+        lambda x: sd.unique_counts(x).values,
+        lambda x: sd.unique_inverse(x).values,
+    ):
         got = np.asarray(fn(sd.asarray(a)))
         assert got.view(np.int64).tolist() == [a.view(np.int64)[1], a.view(np.int64)[0]]
     from stardust import frame as F
+
     v = [np.nan, 0.0, -0.0, 2.0, np.nan, -1.0]
     want = F.Series(v).unique_values().tolist()
     got = sd.unique_values(sd.asarray(v)).tolist()
     assert len(got) == len(want) and all(
         (math.isnan(g) and math.isnan(w)) or (g == w and math.copysign(1, g) == math.copysign(1, w))
-        for g, w in zip(got, want))
+        for g, w in zip(got, want)
+    )
 
 
 def test_unique_complex_nan_is_one_value():
@@ -215,16 +231,22 @@ def test_unique_complex_nan_is_one_value():
     assert r.inverse_indices.tolist() == w_inverse.tolist()
 
 
-@given(hnp.arrays(np.float64, hnp.array_shapes(min_dims=1, max_dims=2, max_side=8),
-                  elements=st.sampled_from([np.nan, -np.nan, 0.0, -0.0, 1.5, -2.0, np.inf, -np.inf])))
+@given(
+    hnp.arrays(
+        np.float64,
+        hnp.array_shapes(min_dims=1, max_dims=2, max_side=8),
+        elements=st.sampled_from([np.nan, -np.nan, 0.0, -0.0, 1.5, -2.0, np.inf, -np.inf]),
+    )
+)
 def test_unique_matches_numpy_equal_nan_on_floats(n):
     # numpy 2's np.unique defaults to equal_nan=True (np.unique_all does not:
     # it follows the Array API): the same groups, counts and first indices.
     # Which of -0.0 / 0.0 numpy shows depends on its sort, so values are
     # compared as numbers.
     r = sd.unique_all(sd.asarray(n))
-    values, index, inverse, counts = np.unique(n, return_index=True, return_inverse=True, return_counts=True,
-                                               equal_nan=True)
+    values, index, inverse, counts = np.unique(
+        n, return_index=True, return_inverse=True, return_counts=True, equal_nan=True
+    )
     assert np.array_equal(np.asarray(r.values), values, equal_nan=True)
     assert r.counts.tolist() == counts.tolist()
     assert r.indices.tolist() == index.tolist()
@@ -243,6 +265,7 @@ def test_unique_matches_numpy_on_integers(n):
 
 
 # ---------------------------------------------------- the NEON sorting path
+
 
 @pytest.mark.parametrize("n", [31, 32, 33, 47, 48, 64, 100, 1000, 4097])
 @pytest.mark.parametrize("kind", ["int", "float", "float-ties", "extremes"])
@@ -298,18 +321,22 @@ def test_many_lanes_short_and_long():
         assert_same(sd.sort(x, axis=1, descending=True), np.sort(n, axis=1)[:, ::-1])  # NaN first
 
 
-
 @pytest.mark.parametrize("n", [127, 128, 1023, 1024, 5000, 70_000])
 @pytest.mark.parametrize("kind", ["wide", "narrow", "extremes", "equal", "one-digit"])
 def test_int64_radix_sort_matches_stable_numpy(n, kind):
     # int64 lanes from 128 (pairs) / 1024 (values) elements are radix
     # sorted, relative to the smallest key (docs/design/array.md §8.4).
     rng = np.random.default_rng(n)
-    lo, hi = {"wide": (-2**63, 2**63 - 1), "narrow": (-1000, 1000), "extremes": (-2**63, 2**63 - 1),
-              "equal": (7, 8), "one-digit": (-100, 100)}[kind]
+    lo, hi = {
+        "wide": (-(2**63), 2**63 - 1),
+        "narrow": (-1000, 1000),
+        "extremes": (-(2**63), 2**63 - 1),
+        "equal": (7, 8),
+        "one-digit": (-100, 100),
+    }[kind]
     a = rng.integers(lo, hi, n, endpoint=True)
     if kind == "extremes":
-        a[::3] = -2**63
+        a[::3] = -(2**63)
         a[1::5] = 2**63 - 1
     x = sd.asarray(a)
     assert_same(sd.sort(x), np.sort(a, kind="stable"))
@@ -329,7 +356,7 @@ def test_long_lane_parallel_sort_is_the_stable_result(n):
     f[::101] = np.nan
     f[::7] = 0.0
     f[3::7] = -0.0
-    i = rng.integers(-2**40, 2**40, n)
+    i = rng.integers(-(2**40), 2**40, n)
     for a in (f, i):
         x = sd.asarray(a)
         assert_same(sd.sort(x), np.sort(a, kind="stable"))

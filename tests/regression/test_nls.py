@@ -26,8 +26,12 @@ import regref  # noqa: E402
 R_REF = json.loads((pathlib.Path(__file__).parent / "ref" / "nls_r.json").read_text())
 
 # fits from NIST's start 1 that do not reach the certified minimum: (problem, jac given)
-NOT_REACHED = {("BoxBOD", False): "another stationary point (b2 large, the Jacobian singular)",
-               ("Bennett5", False): "max_nfev", ("Bennett5", True): "max_nfev", ("MGH09", True): "max_nfev"}
+NOT_REACHED = {
+    ("BoxBOD", False): "another stationary point (b2 large, the Jacobian singular)",
+    ("Bennett5", False): "max_nfev",
+    ("Bennett5", True): "max_nfev",
+    ("MGH09", True): "max_nfev",
+}
 
 _ARB = {}
 
@@ -67,6 +71,7 @@ def decay_jac(x, a, b, c):
 
 # ---- NIST StRD
 
+
 @pytest.mark.parametrize("name", N.NAMES)
 @pytest.mark.parametrize("start", ["start1", "start2"])
 @pytest.mark.parametrize("use_jac", [False, True], ids=["differences", "jac"])
@@ -91,8 +96,9 @@ def test_nist(name, start, use_jac):
     assert rel(bse, ref["bse"]) <= (1e-3 if name == "Lanczos1" else (1e-10 if use_jac else 3e-9))
     # the sum of squares: f's rounding moves it by about 2 u ||f|| ||r||
     ynorm = math.sqrt(sum(v * v for v in y.tolist()))
-    assert abs(r.ssr - ref["ssr"]) <= (1e-12 if use_jac else 1e-9) * ref["ssr"] + 8 * 2.0 ** -52 * ynorm * math.sqrt(
-        ref["ssr"])
+    assert abs(r.ssr - ref["ssr"]) <= (1e-12 if use_jac else 1e-9) * ref["ssr"] + 8 * 2.0**-52 * ynorm * math.sqrt(
+        ref["ssr"]
+    )
     assert r.nobs == len(d["y"]) and r.df_resid == len(d["y"]) - len(params) and r.rank == len(params)
 
 
@@ -162,9 +168,15 @@ def test_llf_aic_bic_are_the_linear_models():
 
 # ---- bounds (trust region reflective) against scipy
 
-@pytest.mark.parametrize("bounds, p0", [(([0, 0, 0.5], [10, 10, 10]), [1.0, 1.0, 1.0]),
-                                        (([0, 0.9, -1], [2.8, 10, 10]), [1.0, 1.0, 1.0]),
-                                        (([-np.inf, 0, -np.inf], [np.inf, 0.5, np.inf]), [1.0, 0.4, 1.0])])
+
+@pytest.mark.parametrize(
+    "bounds, p0",
+    [
+        (([0, 0, 0.5], [10, 10, 10]), [1.0, 1.0, 1.0]),
+        (([0, 0.9, -1], [2.8, 10, 10]), [1.0, 1.0, 1.0]),
+        (([-np.inf, 0, -np.inf], [np.inf, 0.5, np.inf]), [1.0, 0.4, 1.0]),
+    ],
+)
 def test_bounds_against_scipy(bounds, p0):
     rng = np.random.default_rng(1)
     xn = np.linspace(0, 5, 40)
@@ -200,10 +212,14 @@ def test_inactive_bounds_give_the_unconstrained_minimum():
 def test_scalar_bounds_and_p0_on_a_bound():
     xn, yn = decay_data()
     r = sd.regression.nls(decay, xn, yn, p0=[1.0, 0.0, 1.0], bounds=(0, 10))
-    assert r.converged and rel(r.params.tolist(), sd.regression.nls(decay, xn, yn, p0=[1.0, 1.0, 1.0]).params.tolist()) <= 1e-12
+    assert (
+        r.converged
+        and rel(r.params.tolist(), sd.regression.nls(decay, xn, yn, p0=[1.0, 1.0, 1.0]).params.tolist()) <= 1e-12
+    )
 
 
 # ---- weights (G72)
+
 
 def test_unit_weights_are_the_unweighted_fit():
     xn, yn = decay_data()
@@ -234,7 +250,7 @@ def test_zero_weights_are_the_rows_left_out():
 def test_weights_are_scipy_sigma():
     xn, yn = decay_data()
     sigma = np.linspace(0.5, 2.0, len(yn))
-    r = sd.regression.nls(decay, xn, yn, p0=[1.0, 1.0, 1.0], weights=1 / sigma ** 2)
+    r = sd.regression.nls(decay, xn, yn, p0=[1.0, 1.0, 1.0], weights=1 / sigma**2)
     popt, pcov = curve_fit(decay_np, xn, yn, p0=[1.0, 1.0, 1.0], sigma=sigma)
     assert rel(r.params.tolist(), popt) <= 1e-6
     assert rel(r.bse.tolist(), np.sqrt(np.diag(pcov))) <= 1e-6
@@ -252,8 +268,10 @@ def test_weight_errors():
         sd.regression.nls(decay, xn, yn, p0=[1.0, 1.0, 1.0], weights=w[:-1])
     with pytest.raises(ValueError, match=r"^wls\(\): 'weights' must have 40 values like 'y', not 39$"):
         sd.regression.wls(yn, xn, weights=w[:-1])
-    for fn in (lambda: sd.regression.nls(decay, xn, yn, p0=[1.0, 1.0, 1.0], weights=2.0),
-               lambda: sd.regression.wls(yn, xn, weights=2.0)):
+    for fn in (
+        lambda: sd.regression.nls(decay, xn, yn, p0=[1.0, 1.0, 1.0], weights=2.0),
+        lambda: sd.regression.wls(yn, xn, weights=2.0),
+    ):
         with pytest.raises(ValueError, match=r"\(\): 'weights' must have 40 values like 'y', not a scalar$"):
             fn()
     # a negative weight is an error also in a row whose y is NaN, under every policy (as wls)
@@ -261,13 +279,16 @@ def test_weight_errors():
     yb[3] = np.nan
     wb = np.where(np.arange(len(w)) == 3, -1.0, w)
     for pol in ("propagate", "omit"):
-        for fn in (lambda: sd.regression.nls(decay, xn, yb, p0=[1.0, 1.0, 1.0], weights=wb, nan_policy=pol),
-                   lambda: sd.regression.wls(yb, xn, weights=wb, nan_policy=pol)):
+        for fn in (
+            lambda: sd.regression.nls(decay, xn, yb, p0=[1.0, 1.0, 1.0], weights=wb, nan_policy=pol),
+            lambda: sd.regression.wls(yb, xn, weights=wb, nan_policy=pol),
+        ):
             with pytest.raises(ValueError, match=r"\(\): 'weights' must be >= 0$"):
                 fn()
 
 
 # ---- NaN (G75)
+
 
 def test_nan_policy():
     xn, yn = decay_data()
@@ -280,6 +301,7 @@ def test_nan_policy():
     def f(x, a, b, c):
         calls.append(1)
         return decay(x, a, b, c)
+
     r = sd.regression.nls(f, xn, y2, p0=[1.0, 1.0, 1.0])
     assert not calls
     assert all(math.isnan(v) for v in r.params.tolist() + r.bse.tolist() + r.fittedvalues.tolist())
@@ -304,6 +326,7 @@ def test_nan_policy():
 
 
 # ---- non-finite values (G74)
+
 
 def test_non_finite_trial_points_are_rejected():
     # log(b - x) is NaN for b < 4: steps from b = 4.05 that cross it are rejected
@@ -332,6 +355,7 @@ def test_non_finite_at_p0_is_an_error():
 
 
 # ---- the Jacobian (G70)
+
 
 def test_jac_and_differences_agree():
     xn, yn = decay_data()
@@ -363,6 +387,7 @@ def test_aliased_parameters():
 
 
 # ---- the stopping (G73, G32)
+
 
 def test_max_nfev_returns_the_last_iterate():
     d = N.load("MGH09")
@@ -402,6 +427,7 @@ def test_same_bits_with_1_and_10_threads():
 
 # ---- the result
 
+
 def test_result_fields():
     xn, yn = decay_data()
     r = sd.regression.nls(decay, xn, yn, p0=[1.0, 1.0, 1.0])
@@ -421,16 +447,22 @@ def test_result_fields():
     ci = np.asarray(r.conf_int().tolist())
     assert np.allclose(ci[:, 1] - ci[:, 0], 2 * t * bse, rtol=1e-14)
     p = np.asarray(r.params.tolist())
-    assert np.allclose(np.asarray(r.pvalues.tolist()), 2 * np.asarray(
-        sd.stats.StudentT(df=37).ccdf(sd.asarray(np.abs(p / bse))).tolist()), rtol=1e-15)
+    assert np.allclose(
+        np.asarray(r.pvalues.tolist()),
+        2 * np.asarray(sd.stats.StudentT(df=37).ccdf(sd.asarray(np.abs(p / bse))).tolist()),
+        rtol=1e-15,
+    )
     assert np.allclose(np.asarray(r.resid.tolist()), yn - decay_np(xn, *p), rtol=0, atol=1e-15)
     xs = np.array([0.5, 1.5, 7.0])
     assert r.predict(xs).tolist() == decay(sd.asarray(xs), *p.tolist()).tolist()
     text = r.summary()
     assert "Nonlinear Least Squares Results" in text and "Levenberg-Marquardt" in text and "5-point" in text
     assert repr(r).startswith("NLSResult(method='lm'")
-    with pytest.raises(ValueError, match=r"^predict\(\): 'x_new' must be 1-dimensional like the fit's 'x', "
-                                         r"not shape \(3, 2\)$"):
+    with pytest.raises(
+        ValueError,
+        match=r"^predict\(\): 'x_new' must be 1-dimensional like the fit's 'x', "
+        r"not shape \(3, 2\)$",
+    ):
         r.predict(np.ones((3, 2)))
     with pytest.raises(ValueError, match=r"^summary\(\): 'alpha' must be between 0 and 1 \(exclusive\)$"):
         r.summary(alpha=1.5)
@@ -440,7 +472,7 @@ def test_parameter_names_and_x_forms():
     xn, yn = decay_data()
     r = sd.regression.nls(lambda x, *t: t[0] * sd.exp(-t[1] * x) + t[2], list(xn), list(yn), p0=[1, 1, 1])
     assert r.param_names == ["b1", "b2", "b3"]
-    x2 = np.column_stack([xn, xn ** 2])
+    x2 = np.column_stack([xn, xn**2])
     f2 = lambda x, a, b, c: a * sd.exp(-b * x[:, 0]) + c * x[:, 1] * 0.0 + c
     r2 = sd.regression.nls(f2, x2, yn, p0=[1.0, 1.0, 1.0])
     assert rel(r2.params.tolist(), r.params.tolist()) <= 1e-12
@@ -457,11 +489,13 @@ def test_the_model_gets_an_sd_array_and_floats():
     def f(x, a, b, c):
         seen.append((type(x), x.dtype, type(a), type(b), type(c)))
         return decay(x, a, b, c).tolist()  # a sequence is taken
+
     sd.regression.nls(f, xn.astype(np.int64) * 1.0, yn, p0=[1, 1, 1])
     assert set(seen) == {(sd.ndarray, sd.float64, float, float, float)}
 
 
 # ---- errors
+
 
 def test_errors():
     xn, yn = decay_data()
@@ -489,15 +523,21 @@ def test_errors():
         nls(decay, xn, yn, p0=p0, bounds=([0, 0], [10, 10]))
     with pytest.raises(TypeError, match=r"^nls\(\): 'bounds' must be None or a pair \(lower, upper\), not int$"):
         nls(decay, xn, yn, p0=p0, bounds=3)
-    with pytest.raises(ValueError, match=r"^nls\(\): 'y' must be 1-dimensional \(nls fits one regression, not a "
-                                         r"batch\)$"):
+    with pytest.raises(
+        ValueError,
+        match=r"^nls\(\): 'y' must be 1-dimensional \(nls fits one regression, not a "
+        r"batch\)$",
+    ):
         nls(decay, xn, np.stack([yn, yn]), p0=p0)
     with pytest.raises(ValueError, match=r"^nls\(\): 'x' must have 40 rows like 'y', not 39$"):
         nls(decay, xn[:-1], yn, p0=p0)
     with pytest.raises(ValueError, match=r"^nls\(\): 'x' must be 1-dimensional \(n,\) or 2-dimensional \(n, d\)$"):
         nls(decay, np.ones((40, 2, 2)), yn, p0=p0)
-    with pytest.raises(ValueError, match=r"^nls\(\): 'f' must return 40 values \(one per row of 'x'\), not shape "
-                                         r"\(39,\)$"):
+    with pytest.raises(
+        ValueError,
+        match=r"^nls\(\): 'f' must return 40 values \(one per row of 'x'\), not shape "
+        r"\(39,\)$",
+    ):
         nls(lambda x, a, b, c: decay(x, a, b, c)[:-1], xn, yn, p0=p0)
     with pytest.raises(ValueError, match=r"^nls\(\): 'f' must return 40 values \(one per row of 'x'\), not a scalar$"):
         nls(lambda x, a, b, c: a, xn, yn, p0=p0)
@@ -515,8 +555,11 @@ def test_errors():
         nls(decay, xn, yn, p0=p0, max_nfev=0)
     with pytest.raises(ValueError, match=r"^nls\(\): 'p0' has 3 parameters, more than the 2 observations used$"):
         nls(decay, xn[:2], yn[:2], p0=p0)
-    with pytest.raises(ValueError, match=r"^nls\(\): 'nan_policy' must be 'propagate', 'omit' or 'raise', "
-                                         r"not 'x'$"):
+    with pytest.raises(
+        ValueError,
+        match=r"^nls\(\): 'nan_policy' must be 'propagate', 'omit' or 'raise', "
+        r"not 'x'$",
+    ):
         nls(decay, xn, yn, p0=p0, nan_policy="x")
     with pytest.raises(ZeroDivisionError):  # the model's own errors pass through
         nls(lambda x, a, b, c: 1 / 0, xn, yn, p0=p0)

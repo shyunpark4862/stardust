@@ -137,7 +137,9 @@ bool cpu_device(nb::handle dev) {
     return nb::cast<std::int64_t>(dev[0]) == kDLCPU && nb::cast<std::int64_t>(dev[1]) == 0;
 }
 
-nb::object dlpack(nb::handle self, nb::handle stream, nb::handle max_version, nb::handle dl_device, nb::handle copy_obj) {
+nb::object dlpack(
+    nb::handle self, nb::handle stream, nb::handle max_version, nb::handle dl_device, nb::handle copy_obj
+) {
     const NDArray& a = as_ndarray(self);
     if (!stream.is_none()) throw nb::buffer_error("'stream' must be None for CPU arrays");
     if (!cpu_device(dl_device)) throw nb::buffer_error("only the CPU device (1, 0) is supported");
@@ -167,7 +169,9 @@ nb::object dlpack(nb::handle self, nb::handle stream, nb::handle max_version, nb
     // The legacy struct cannot say "read-only" (numpy refuses the same way).
     if (read_only) {
         delete e;
-        throw nb::buffer_error("cannot export a read-only array with the legacy DLPack format; pass max_version=(1, 0)");
+        throw nb::buffer_error(
+            "cannot export a read-only array with the legacy DLPack format; pass max_version=(1, 0)"
+        );
     }
     auto* m = new DLManagedTensor{};
     m->manager_ctx = e;
@@ -196,7 +200,8 @@ void owner_legacy(PyObject* cap) {
 
 nb::object from_dlpack(nb::handle x, nb::handle device, nb::handle copy_obj) {
     const std::optional<bool> copy = parse_copy(copy_obj);
-    if (!device.is_none() && !cpu_device(device)) throw nb::value_error("'device' must be None or the CPU device (1, 0)");
+    if (!device.is_none() && !cpu_device(device))
+        throw nb::value_error("'device' must be None or the CPU device (1, 0)");
     // Each attribute looked up once, the names, the keyword names and the version
     // tuple made once, and the call a vectorcall (the generic attribute and keyword
     // path: 252 ns per import of a numpy array, numpy's own from_dlpack 114).
@@ -206,7 +211,8 @@ nb::object from_dlpack(nb::handle x, nb::handle device, nb::handle copy_obj) {
     static PyObject* const s_version = Py_BuildValue("(ii)", kMajor, kMinor);
     PyObject* raw = nullptr;
     if (PyObject_GetOptionalAttr(x.ptr(), s_dlpack, &raw) < 0) throw nb::python_error();
-    if (!raw) throw nb::type_error(("'x' must support the DLPack protocol (__dlpack__), not " + py_type_name(x)).c_str());
+    if (!raw)
+        throw nb::type_error(("'x' must support the DLPack protocol (__dlpack__), not " + py_type_name(x)).c_str());
     const nb::object method = nb::steal(raw);
     if (PyObject_GetOptionalAttr(x.ptr(), s_device, &raw) < 0) throw nb::python_error();
     if (raw) {
@@ -266,7 +272,10 @@ nb::object from_dlpack(nb::handle x, nb::handle device, nb::handle copy_obj) {
 
     if (t->device.device_type != kDLCPU) throw nb::buffer_error("only CPU arrays can be imported");
     const std::optional<DType> d = from_dl(t->dtype);
-    if (!d) throw nb::type_error(("DLPack dtype " + dl_name(t->dtype) + " is not an array dtype (bool, int64, float64, complex128)").c_str());
+    if (!d)
+        throw nb::type_error(
+            ("DLPack dtype " + dl_name(t->dtype) + " is not an array dtype (bool, int64, float64, complex128)").c_str()
+        );
     if (t->ndim == 0) throw nb::value_error("0-dimensional arrays are not supported (stardust has no 0-d arrays)");
     if (t->ndim > kMaxNdim)
         throw nb::value_error(("arrays may have at most " + std::to_string(kMaxNdim) + " dimensions").c_str());
@@ -311,8 +320,10 @@ nb::object from_dlpack(nb::handle x, nb::handle device, nb::handle copy_obj) {
     }
     if (!aligned || !valid) {
         if (copy == false)
-            throw nb::value_error(valid ? "copy=False, but this tensor is not aligned and can only be copied"
-                                        : "copy=False, but this bool tensor holds bytes other than 0 and 1");
+            throw nb::value_error(
+                valid ? "copy=False, but this tensor is not aligned and can only be copied"
+                      : "copy=False, but this bool tensor holds bytes other than 0 and 1"
+            );
         NDArray c = new_array(a.dtype, a.shape_span());
         const std::int64_t item = a.itemsize();
         for_each([&](std::int64_t i, const std::byte* p) {
@@ -329,11 +340,14 @@ nb::object from_dlpack(nb::handle x, nb::handle device, nb::handle copy_obj) {
 
 void bind_dlpack(nb::module_& m, nb::class_<NDArray>& cls) {
     using nb::arg;
-    m.def("from_dlpack", named("from_dlpack", &from_dlpack), arg().none(), nb::kw_only(), arg("device").none() = nb::none(),
-          arg("copy").none() = nb::none());
-    cls.def("__dlpack__", named("__dlpack__", &dlpack), nb::kw_only(), arg("stream").none() = nb::none(),
-            arg("max_version").none() = nb::none(), arg("dl_device").none() = nb::none(),
-            arg("copy").none() = nb::none());
+    m.def(
+        "from_dlpack", named("from_dlpack", &from_dlpack), arg().none(), nb::kw_only(),
+        arg("device").none() = nb::none(), arg("copy").none() = nb::none()
+    );
+    cls.def(
+        "__dlpack__", named("__dlpack__", &dlpack), nb::kw_only(), arg("stream").none() = nb::none(),
+        arg("max_version").none() = nb::none(), arg("dl_device").none() = nb::none(), arg("copy").none() = nb::none()
+    );
     cls.def("__dlpack_device__", [](const NDArray&) { return nb::make_tuple(kDLCPU, 0); });
 }
 

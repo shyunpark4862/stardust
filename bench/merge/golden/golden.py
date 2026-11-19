@@ -267,10 +267,14 @@ def main():
         for i, (rx, reason) in enumerate(patterns):
             cases = sorted({name for name, _, _ in hits[i]})
             if not cases:
-                print(f"STALE    expected {label}pattern {rx.pattern!r} ({reason}) matched no "
-                      f"{'message-only difference' if label else 'mismatch'}")
+                print(
+                    f"STALE    expected {label}pattern {rx.pattern!r} ({reason}) matched no "
+                    f"{'message-only difference' if label else 'mismatch'}"
+                )
                 continue
-            print(f"EXPECTED {label}{reason}: {len(cases)} cases ({', '.join(cases[:4])}{', ...' if len(cases) > 4 else ''})")
+            print(
+                f"EXPECTED {label}{reason}: {len(cases)} cases ({', '.join(cases[:4])}{', ...' if len(cases) > 4 else ''})"
+            )
             if args.verbose:
                 for name, n, why in hits[i]:
                     print(f"           {name} [threads {n}]: {why}")
@@ -282,8 +286,10 @@ def main():
         print(f"MISSING  {name}")
     total = len(golden)
     nexp = len({name for name, _ in covered | covered_msgs})
-    print(f"{args.area}: {total} golden cases, {len(bad)} mismatches, {len(msg_only)} message-only, {len(missing)} missing"
-          f", {nexp} expected differences")
+    print(
+        f"{args.area}: {total} golden cases, {len(bad)} mismatches, {len(msg_only)} message-only, {len(missing)} missing"
+        f", {nexp} expected differences"
+    )
     sys.exit(1 if bad or missing else 0)
 
 

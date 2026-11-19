@@ -66,8 +66,9 @@ template <typename T, typename SumLeaf>
 T pairwise_parallel(std::int64_t n, std::int64_t leaf, const SumLeaf& sum_leaf) {
     const pairwise::Leaves leaves = pairwise::plan(n, leaf, std::is_same_v<T, complex128>);
     std::vector<T> part(leaves.size());
-    parallel::parallel_for(static_cast<std::int64_t>(leaves.size()),
-                           [&](std::int64_t t) { part[t] = sum_leaf(leaves[t].first, leaves[t].second); });
+    parallel::parallel_for(static_cast<std::int64_t>(leaves.size()), [&](std::int64_t t) {
+        part[t] = sum_leaf(leaves[t].first, leaves[t].second);
+    });
     return pairwise::combine(n, leaf, part);
 }
 
@@ -80,8 +81,9 @@ double pairwise_sum_mt(std::int64_t n, const Get& get) {
 template <typename Get>
 complex128 pairwise_sum_complex_mt(std::int64_t n, const Get& get) {
     if (n < kParallelThreshold || !parallel::available()) return pairwise_sum_complex(0, n, get);
-    return pairwise_parallel<complex128>(n, kLeaf / 2,
-                                         [&](std::int64_t b, std::int64_t m) { return pairwise_sum_complex(b, m, get); });
+    return pairwise_parallel<complex128>(n, kLeaf / 2, [&](std::int64_t b, std::int64_t m) {
+        return pairwise_sum_complex(b, m, get);
+    });
 }
 
 // ---- float and complex products in fixed blocks ---------------------------
@@ -133,11 +135,10 @@ T product_mt(std::int64_t n, const Get& get) {
 // max/min, and/or -- are cut into fixed pieces, folded in parallel, and the
 // piece results folded in order.
 template <typename Op, typename T>
-inline constexpr bool order_free = std::is_same_v<Op, ops::Maximum> || std::is_same_v<Op, ops::Minimum> ||
-                                   std::is_same_v<Op, ops::NanMaximum> || std::is_same_v<Op, ops::NanMinimum> ||
-                                   std::is_same_v<Op, ops::LogicalOr> || std::is_same_v<Op, ops::LogicalAnd> ||
-                                   ((std::is_same_v<Op, ops::Add> || std::is_same_v<Op, ops::Multiply>) &&
-                                    (ops::is_int<T> || ops::is_bool<T>));
+inline constexpr bool order_free =
+    std::is_same_v<Op, ops::Maximum> || std::is_same_v<Op, ops::Minimum> || std::is_same_v<Op, ops::NanMaximum> ||
+    std::is_same_v<Op, ops::NanMinimum> || std::is_same_v<Op, ops::LogicalOr> || std::is_same_v<Op, ops::LogicalAnd> ||
+    ((std::is_same_v<Op, ops::Add> || std::is_same_v<Op, ops::Multiply>) && (ops::is_int<T> || ops::is_bool<T>));
 
 // ---- max/min of a contiguous run with NEON ---------------------------------
 
@@ -272,7 +273,10 @@ void reduce_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, 
             // A typed contiguous read lets the NaN select vectorize (2x on 1e7).
             if (s[0] == sizeof(T)) {
                 const T* xp = reinterpret_cast<const T*>(x);
-                acc = acc + pairwise_sum_mt(n, [xp](std::int64_t i) { const T v = xp[i]; return v != v ? T(0) : v; });
+                acc = acc + pairwise_sum_mt(n, [xp](std::int64_t i) {
+                          const T v = xp[i];
+                          return v != v ? T(0) : v;
+                      });
             } else {
                 acc = acc + pairwise_sum_mt(n, at);
             }
@@ -290,13 +294,16 @@ void reduce_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, 
             }
         } else if constexpr ((std::is_same_v<Op, ops::Maximum> || std::is_same_v<Op, ops::Minimum>) &&
                              ops::is_float<T>) {
-            if (s[0] == sizeof(T)) acc = neon_fold<std::is_same_v<Op, ops::Maximum>>(reinterpret_cast<const T*>(x), n, acc);
-            else for (std::int64_t i = 0; i < n; ++i) acc = Op::f(acc, at(i));
+            if (s[0] == sizeof(T))
+                acc = neon_fold<std::is_same_v<Op, ops::Maximum>>(reinterpret_cast<const T*>(x), n, acc);
+            else
+                for (std::int64_t i = 0; i < n; ++i) acc = Op::f(acc, at(i));
         } else if constexpr (std::is_same_v<Op, ops::NanMaximum> || std::is_same_v<Op, ops::NanMinimum>) {
-            if (s[0] == sizeof(T)) acc = neon_fold<std::is_same_v<Op, ops::NanMaximum>, true>(reinterpret_cast<const T*>(x), n, acc);
-            else for (std::int64_t i = 0; i < n; ++i) acc = Op::f(acc, at(i));
-        } else if constexpr ((std::is_same_v<Op, ops::Maximum> || std::is_same_v<Op, ops::Minimum>) &&
-                             ops::is_int<T>) {
+            if (s[0] == sizeof(T))
+                acc = neon_fold<std::is_same_v<Op, ops::NanMaximum>, true>(reinterpret_cast<const T*>(x), n, acc);
+            else
+                for (std::int64_t i = 0; i < n; ++i) acc = Op::f(acc, at(i));
+        } else if constexpr ((std::is_same_v<Op, ops::Maximum> || std::is_same_v<Op, ops::Minimum>) && ops::is_int<T>) {
             if (s[0] == sizeof(T)) {
                 acc = neon_fold_int<std::is_same_v<Op, ops::Maximum>>(reinterpret_cast<const T*>(x), n, acc);
             } else {
@@ -315,7 +322,8 @@ void reduce_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, 
         T* op = reinterpret_cast<T*>(o);
         const T* xp = reinterpret_cast<const T*>(x);
         if constexpr (neon_binary<Op, T>::available && !SkipNan) neon_binary<Op, T>::run(op, xp, op, n);
-        else for (std::int64_t i = 0; i < n; ++i) op[i] = Op::f(op[i], value(xp[i]));
+        else
+            for (std::int64_t i = 0; i < n; ++i) op[i] = Op::f(op[i], value(xp[i]));
         return;
     }
     for (std::int64_t i = 0; i < n; ++i, x += s[0], o += s[1])
@@ -386,7 +394,9 @@ void count_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, v
         if (n >= kParallelThreshold && parallel::available()) {
             const std::int64_t pieces = (n + kParallelTask - 1) / kParallelTask;
             std::vector<std::int64_t> part(pieces);
-            parallel::parallel_for(pieces, [&](std::int64_t t) { part[t] = run(t * kParallelTask, std::min(n, (t + 1) * kParallelTask)); });
+            parallel::parallel_for(pieces, [&](std::int64_t t) {
+                part[t] = run(t * kParallelTask, std::min(n, (t + 1) * kParallelTask));
+            });
             for (std::int64_t v : part) acc += v;
         } else {
             acc = run(0, n);
@@ -520,12 +530,15 @@ std::int64_t neon_arg_extreme_i64(const std::int64_t* x, std::int64_t n) {
 template <typename T, bool Max, bool SkipNan = false>
 std::int64_t arg_extreme(const std::byte* p, std::int64_t n, std::int64_t stride) {
     if constexpr (ops::is_float<T>) {
-        if (stride == sizeof(double) && n >= 2) return neon_arg_extreme<Max, SkipNan>(reinterpret_cast<const double*>(p), n);
+        if (stride == sizeof(double) && n >= 2)
+            return neon_arg_extreme<Max, SkipNan>(reinterpret_cast<const double*>(p), n);
     }
     if constexpr (std::is_same_v<T, std::int64_t>) {
-        if (stride == sizeof(std::int64_t) && n >= 8) return neon_arg_extreme_i64<Max>(reinterpret_cast<const std::int64_t*>(p), n);
+        if (stride == sizeof(std::int64_t) && n >= 8)
+            return neon_arg_extreme_i64<Max>(reinterpret_cast<const std::int64_t*>(p), n);
     }
-    [[maybe_unused]] const double far = Max ? -std::numeric_limits<double>::infinity() : std::numeric_limits<double>::infinity();
+    [[maybe_unused]] const double far =
+        Max ? -std::numeric_limits<double>::infinity() : std::numeric_limits<double>::infinity();
     auto load = [&](const std::byte* q) {
         T v = load_as<T>(q);
         if constexpr (SkipNan && ops::is_float<T>) {
@@ -593,8 +606,15 @@ inline constexpr std::int64_t kScanGroup = 4;  // blocks interleaved in one loop
 // Contig: both strides are sizeof(T), known to the compiler (a runtime
 // stride made the loop 2.3x slower, measured).
 template <typename Op, typename T, bool Contig, bool SkipNan = false>
-void scan_group(const std::byte* x, std::int64_t xs, std::byte* o, std::int64_t os, std::int64_t first,
-                std::int64_t blocks, std::int64_t n) {
+void scan_group(
+    const std::byte* x,
+    std::int64_t xs,
+    std::byte* o,
+    std::int64_t os,
+    std::int64_t first,
+    std::int64_t blocks,
+    std::int64_t n
+) {
     if constexpr (Contig) xs = os = sizeof(T);
     std::int64_t b = first;
     if (blocks == kScanGroup && (first + kScanGroup) * kScanBlock <= n) {  // four full blocks side by side
@@ -645,8 +665,8 @@ void scan_group(const std::byte* x, std::int64_t xs, std::byte* o, std::int64_t 
 
 template <typename Op, typename T, bool SkipNan = false>
 void scan_lane(const std::byte* x, std::int64_t xs, std::byte* o, std::int64_t os, std::int64_t n) {
-    const bool blocked = (ops::is_float<T> || ops::is_cplx<T>) ? n >= 2 * kScanBlock
-                                                                 : n >= kParallelThreshold && parallel::available();
+    const bool blocked =
+        (ops::is_float<T> || ops::is_cplx<T>) ? n >= 2 * kScanBlock : n >= kParallelThreshold && parallel::available();
     if (!blocked) {
         scan_serial<Op, T, SkipNan>(x, xs, o, os, n);
         return;
@@ -664,7 +684,8 @@ void scan_lane(const std::byte* x, std::int64_t xs, std::byte* o, std::int64_t o
     carry[1] = at(kScanBlock - 1);
     for (std::int64_t b = 2; b < blocks; ++b) carry[b] = Op::f(carry[b - 1], at(b * kScanBlock - 1));
     parallel::parallel_for(groups, [&](std::int64_t g) {
-        for (std::int64_t b = std::max<std::int64_t>(g * kScanGroup, 1); b < std::min(blocks, (g + 1) * kScanGroup); ++b) {
+        for (std::int64_t b = std::max<std::int64_t>(g * kScanGroup, 1); b < std::min(blocks, (g + 1) * kScanGroup);
+             ++b) {
             const T c = carry[b];
             const std::int64_t end = std::min(n, (b + 1) * kScanBlock);
             if (os == sizeof(T)) {

@@ -30,8 +30,10 @@ struct Worst {
         }
     }
     void print(const char* name) const {
-        std::printf("%-28s bulk share %5.1f%%  worst %.3g  at %.17g %.17g %.17g %.17g\n", name,
-                    total ? 100.0 * fast / total : 0.0, e, a[0], a[1], a[2], a[3]);
+        std::printf(
+            "%-28s bulk share %5.1f%%  worst %.3g  at %.17g %.17g %.17g %.17g\n", name,
+            total ? 100.0 * fast / total : 0.0, e, a[0], a[1], a[2], a[3]
+        );
     }
 };
 static double rel(double f, double r) { return std::fabs(f - r) / std::fabs(r); }
@@ -72,9 +74,17 @@ int main(int argc, char** argv) {
                     if (r >= 1e-300) c[up].see(rel(v, r), a);
                     double lv;
                     ++lc[up].total;
-                    if (ncd::log_tail_bulk([&](bool u_, double& w) { return nd::ncx2_lite(df, nc, a[2], u_, w); }, up, lv)) {
+                    if (ncd::log_tail_bulk(
+                            [&](bool u_, double& w) { return nd::ncx2_lite(df, nc, a[2], u_, w); }, up, lv
+                        )) {
                         ++lc[up].fast;
-                        lc[up].see(mixed1(lv, ncd::log_tail([&](bool u_) { return NoncentralChiSquared::tail(a[2], df, nc, u_); }, up)), a);
+                        lc[up].see(
+                            mixed1(
+                                lv,
+                                ncd::log_tail([&](bool u_) { return NoncentralChiSquared::tail(a[2], df, nc, u_); }, up)
+                            ),
+                            a
+                        );
                     }
                 }
                 num::DD l;
@@ -92,11 +102,15 @@ int main(int argc, char** argv) {
                 double x;
                 ++ic[up].total;
                 if (!(p > 0.0 && p < 1.0) ||
-                    !ncd::newton([&](double x_, bool s, double& v, double& d) { return nd::ncx2_lite(df, nc, x_, s, v, &d); }, tg, x0,
-                                 true, x))
+                    !ncd::newton(
+                        [&](double x_, bool s, double& v, double& d) { return nd::ncx2_lite(df, nc, x_, s, v, &d); },
+                        tg, x0, true, x
+                    ))
                     continue;
                 ++ic[up].fast;
-                const double r = ncd::invert([&](double x_, bool s) { return NoncentralChiSquared::tail(x_, df, nc, s); }, tg, x0, true);
+                const double r = ncd::invert(
+                    [&](double x_, bool s) { return NoncentralChiSquared::tail(x_, df, nc, s); }, tg, x0, true
+                );
                 const double kappa = std::min(p, 1.0 - p) / (r * NoncentralChiSquared::pdf(r, df, nc));
                 ic[up].see(rel(x, r) / std::max(1.0, kappa), b);
             }
@@ -116,9 +130,17 @@ int main(int argc, char** argv) {
                     if (r >= 1e-300) f[up].see(rel(v, r), a);
                     double lv;
                     ++lf[up].total;
-                    if (ncd::log_tail_bulk([&](bool u_, double& w) { return nd::ncf_lite(dfn, dfd, nc, a[3], u_, w); }, up, lv)) {
+                    if (ncd::log_tail_bulk(
+                            [&](bool u_, double& w) { return nd::ncf_lite(dfn, dfd, nc, a[3], u_, w); }, up, lv
+                        )) {
                         ++lf[up].fast;
-                        lf[up].see(mixed1(lv, ncd::log_tail([&](bool u_) { return NoncentralF::tail(a[3], dfn, dfd, nc, u_); }, up)), a);
+                        lf[up].see(
+                            mixed1(
+                                lv,
+                                ncd::log_tail([&](bool u_) { return NoncentralF::tail(a[3], dfn, dfd, nc, u_); }, up)
+                            ),
+                            a
+                        );
                     }
                 }
                 double pv;
@@ -142,12 +164,17 @@ int main(int argc, char** argv) {
                 const double x0 = cc * k / dfn * sd::special::Fdtri::f(k, dfd, up ? 1.0 - p : p);
                 double x;
                 ++jf[up].total;
-                if (!(p > 0.0 && p < 1.0) ||
-                    !ncd::newton([&](double x_, bool s, double& v, double& d) { return nd::ncf_lite(dfn, dfd, nc, x_, s, v, &d); }, tg,
-                                 x0, true, x))
+                if (!(p > 0.0 && p < 1.0) || !ncd::newton(
+                                                 [&](double x_, bool s, double& v, double& d) {
+                                                     return nd::ncf_lite(dfn, dfd, nc, x_, s, v, &d);
+                                                 },
+                                                 tg, x0, true, x
+                                             ))
                     continue;
                 ++jf[up].fast;
-                const double r = ncd::invert([&](double x_, bool s) { return NoncentralF::tail(x_, dfn, dfd, nc, s); }, tg, x0, true);
+                const double r = ncd::invert(
+                    [&](double x_, bool s) { return NoncentralF::tail(x_, dfn, dfd, nc, s); }, tg, x0, true
+                );
                 const double kappa = std::min(p, 1.0 - p) / (r * NoncentralF::pdf(r, dfn, dfd, nc));
                 jf[up].see(rel(x, r) / std::max(1.0, kappa), b);
             }
@@ -174,9 +201,13 @@ int main(int argc, char** argv) {
                     if (r >= 1e-300) t[up].see(rel(v, r), a);
                     double lv;
                     ++lt[up].total;
-                    if (ncd::log_tail_bulk([&](bool u_, double& w) { return nd::nct_lite(df, nc, x, u_, w); }, up, lv)) {
+                    if (ncd::log_tail_bulk(
+                            [&](bool u_, double& w) { return nd::nct_lite(df, nc, x, u_, w); }, up, lv
+                        )) {
                         ++lt[up].fast;
-                        lt[up].see(mixed1(lv, ncd::log_tail([&](bool u_) { return NoncentralT::tail(x, df, nc, u_); }, up)), a);
+                        lt[up].see(
+                            mixed1(lv, ncd::log_tail([&](bool u_) { return NoncentralT::tail(x, df, nc, u_); }, up)), a
+                        );
                     }
                 }
                 num::DD l;

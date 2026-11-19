@@ -47,8 +47,11 @@ def ms(t):
 def models(xp):
     exp = xp.exp
     m = {}
-    m[2] = (lambda x, a, b: a * exp(-b * x),
-            lambda x, a, b: xp.stack([exp(-b * x), -a * x * exp(-b * x)], axis=1), [2.0, 0.8])
+    m[2] = (
+        lambda x, a, b: a * exp(-b * x),
+        lambda x, a, b: xp.stack([exp(-b * x), -a * x * exp(-b * x)], axis=1),
+        [2.0, 0.8],
+    )
 
     def f4(x, a, b, c, d):
         return d + (a - d) / (1 + (x / c) ** b)
@@ -57,19 +60,21 @@ def models(xp):
         u = (x / c) ** b
         den = 1 + u
         lg = xp.log(x / c)
-        return xp.stack([1 / den, -(a - d) * u * lg / den ** 2, (a - d) * u * b / c / den ** 2, 1 - 1 / den], axis=1)
+        return xp.stack([1 / den, -(a - d) * u * lg / den**2, (a - d) * u * b / c / den**2, 1 - 1 / den], axis=1)
+
     m[4] = (f4, j4, [0.2, 2.5, 1.8, 3.0])
 
     def f10(x, *t):
-        return sum(t[2 * k] * exp(-((x - t[2 * k + 1]) / 0.4) ** 2) for k in range(5))
+        return sum(t[2 * k] * exp(-(((x - t[2 * k + 1]) / 0.4) ** 2)) for k in range(5))
 
     def j10(x, *t):
         cols = []
         for k in range(5):
             a, c = t[2 * k], t[2 * k + 1]
-            g = exp(-((x - c) / 0.4) ** 2)
+            g = exp(-(((x - c) / 0.4) ** 2))
             cols += [g, a * g * 2 * (x - c) / 0.16]
         return xp.stack(cols, axis=1)
+
     m[10] = (f10, j10, [1.0, CENTRES[0], 1.5, CENTRES[1], 0.8, CENTRES[2], 1.2, CENTRES[3], 0.6, CENTRES[4]])
     return m
 
@@ -77,8 +82,10 @@ def models(xp):
 R_FORMULA = {
     2: ("y ~ a*exp(-b*x)", ["a", "b"]),
     4: ("y ~ d + (a - d)/(1 + (x/c)^b)", ["a", "b", "c", "d"]),
-    10: ("y ~ " + " + ".join(f"a{k}*exp(-((x - c{k})/0.4)^2)" for k in range(5)),
-         [v for k in range(5) for v in (f"a{k}", f"c{k}")]),
+    10: (
+        "y ~ " + " + ".join(f"a{k}*exp(-((x - c{k})/0.4)^2)" for k in range(5)),
+        [v for k in range(5) for v in (f"a{k}", f"c{k}")],
+    ),
 }
 
 
@@ -110,13 +117,16 @@ def run_r(cases):
             reps = 100 if n <= 100 else (10 if n <= 10_000 else 1)
             lines.append(f"A <- read.csv('{path}', header = FALSE); dat <- data.frame(y = A[, 1], x = A[, 2])")
             lines.append(f"f <- tryCatch(nls({form}, data = dat, start = list({st})), error = function(e) NULL)")
-            lines.append(f"if (!is.null(f)) {{ tt <- min(sapply(1:3, function(i) system.time(for (j in 1:{reps}) "
-                         f"nls({form}, data = dat, start = list({st})))[['elapsed']])) / {reps}; "
-                         f"cat('RES', '{n}', '{p}', tt, f$convInfo$finIter, sprintf('%.17g', coef(f)), '\\n') }}")
+            lines.append(
+                f"if (!is.null(f)) {{ tt <- min(sapply(1:3, function(i) system.time(for (j in 1:{reps}) "
+                f"nls({form}, data = dat, start = list({st})))[['elapsed']])) / {reps}; "
+                f"cat('RES', '{n}', '{p}', tt, f$convInfo$finIter, sprintf('%.17g', coef(f)), '\\n') }}"
+            )
         script = d / "run.R"
         script.write_text("\n".join(lines) + "\n")
-        out = subprocess.run(["/opt/homebrew/bin/Rscript", str(script)], capture_output=True, text=True,
-                             check=True).stdout
+        out = subprocess.run(
+            ["/opt/homebrew/bin/Rscript", str(script)], capture_output=True, text=True, check=True
+        ).stdout
     res = {}
     for ln in out.splitlines():
         if ln.startswith("RES"):
@@ -132,8 +142,10 @@ def main():
     r_res = run_r(cases)
     msd = models(sd)
     mnp = models(np)
-    print("| n | p | sd 1 thread | sd 10 threads | sd jac (10) | sd nfev (iterations, GN steps) | sd jac nfev | scipy | "
-          "scipy nfev | scipy jac | scipy jac nfev | R nls | R iterations | max rel. diff sd - scipy |")
+    print(
+        "| n | p | sd 1 thread | sd 10 threads | sd jac (10) | sd nfev (iterations, GN steps) | sd jac nfev | scipy | "
+        "scipy nfev | scipy jac | scipy jac nfev | R nls | R iterations | max rel. diff sd - scipy |"
+    )
     print("|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
     for (n, p), (x, y, truth) in cases.items():
         p0 = p0_of(p, truth)
@@ -153,9 +165,11 @@ def main():
         diff = max(abs(a - b) / abs(b) for a, b in zip(r.params.tolist(), popt))
         rt, rit, _ = r_res.get((n, p), (float("nan"), 0, None))
         it_nfev = r.nfev
-        print(f"| {n:,} | {p} | {ms(times[1])} | {ms(times[10])} | {ms(tj)} | {it_nfev} ({r.n_iter} it., "
-              f"{int(r._raw[6].tolist()[10])} GN) | {rj.nfev} | {ms(ts)} | {info['nfev']} | {ms(tsj)} | "
-              f"{infoj['nfev']} | {ms(rt)} | {rit} | {diff:.1e} |")
+        print(
+            f"| {n:,} | {p} | {ms(times[1])} | {ms(times[10])} | {ms(tj)} | {it_nfev} ({r.n_iter} it., "
+            f"{int(r._raw[6].tolist()[10])} GN) | {rj.nfev} | {ms(ts)} | {info['nfev']} | {ms(tsj)} | "
+            f"{infoj['nfev']} | {ms(rt)} | {rit} | {diff:.1e} |"
+        )
     sd.set_num_threads(10)
 
 

@@ -42,9 +42,7 @@ template <class F>
 decltype(auto) call_named(const char* func, F&& f) {
     try {
         return std::forward<F>(f)();
-    } catch (...) {
-        rethrow_named(func);
-    }
+    } catch (...) { rethrow_named(func); }
 }
 
 // A function pointer bound as the public function `func`: same signature, its
@@ -54,9 +52,7 @@ auto named(const char* func, R (*f)(A...)) {
     return [func, f](A... args) -> R {
         try {
             return f(std::forward<A>(args)...);
-        } catch (...) {
-            rethrow_named(func);
-        }
+        } catch (...) { rethrow_named(func); }
     };
 }
 

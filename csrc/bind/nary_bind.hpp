@@ -26,7 +26,8 @@ template <std::size_t> using handle_t = nb::handle;
 template <typename Op>
 constexpr const LoopTable& table_of() {
     if constexpr (requires { &Op::chunk; }) return special::chunked_table<Op>;
-    else if constexpr (requires { Op::table; }) return Op::table != nullptr ? *Op::table : nary_table<Op>;  // stats' chunk kernels
+    else if constexpr (requires { Op::table; })
+        return Op::table != nullptr ? *Op::table : nary_table<Op>;  // stats' chunk kernels
     else return nary_table<Op>;
 }
 
@@ -48,7 +49,8 @@ void def(nb::module_& m) {
                         return call<Op>(objs, out);
                     });
                 },
-                ((void)I, nb::arg().none())..., nb::kw_only(), nb::arg("out").none() = nb::none());
+                ((void)I, nb::arg().none())..., nb::kw_only(), nb::arg("out").none() = nb::none()
+            );
         } else {
             m.def(
                 Op::name,
@@ -58,7 +60,8 @@ void def(nb::module_& m) {
                         return call<Op>(objs, nb::none());
                     });
                 },
-                ((void)I, nb::arg().none())...);
+                ((void)I, nb::arg().none())...
+            );
         }
     }(std::make_index_sequence<Op::nin>{});
 }

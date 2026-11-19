@@ -55,7 +55,7 @@ def diff(a, b):
 
 
 def main():
-    from sklearn.linear_model import (ElasticNet, Lasso, LassoCV, LogisticRegression, Ridge, RidgeCV, lasso_path)
+    from sklearn.linear_model import ElasticNet, Lasso, LassoCV, LogisticRegression, Ridge, RidgeCV, lasso_path
     from threadpoolctl import threadpool_limits
 
     warnings.simplefilter("ignore")
@@ -73,8 +73,9 @@ def main():
         grid = amax * np.geomspace(1, 1e-3, 100)
         gs = sd.asarray(grid)
         a20 = amax / 20
-        fold = np.asarray(sd.take(sd.asarray([i % 5 for i in range(n)], dtype=sd.int64),
-                                  sd.random.default_rng(1).permutation(n)))
+        fold = np.asarray(
+            sd.take(sd.asarray([i % 5 for i in range(n)], dtype=sd.int64), sd.random.default_rng(1).permutation(n))
+        )
         splits = [(np.nonzero(fold != q)[0], np.nonzero(fold == q)[0]) for q in range(5)]
         rgrid = np.geomspace(10.0, 1e-4, 100)
         reps = 5 if n * k <= 10**6 else 3
@@ -85,8 +86,16 @@ def main():
                 t, r = best(lambda: R.ridge(ys, Xs, alpha=0.1), reps)
                 t1, m = best(lambda: Ridge(alpha=0.1 * n).fit(X, y), reps)
                 t2, m2 = best(lambda: Ridge(alpha=0.1 * n, solver="svd").fit(X, y), reps)
-                rows.append(("ridge", t, [(t1, diff(r.params, np.r_[m.intercept_, m.coef_])),
-                                          (t2, diff(r.params, np.r_[m2.intercept_, m2.coef_]))]))
+                rows.append(
+                    (
+                        "ridge",
+                        t,
+                        [
+                            (t1, diff(r.params, np.r_[m.intercept_, m.coef_])),
+                            (t2, diff(r.params, np.r_[m2.intercept_, m2.coef_])),
+                        ],
+                    )
+                )
                 t, r = best(lambda: R.lasso(ys, Xs, alpha=a20), reps)
                 t1, m = best(lambda: Lasso(alpha=a20).fit(X, y), reps)
                 rows.append((f"lasso ({r.n_iter})", t, [(t1, diff(r.params, np.r_[m.intercept_, m.coef_]))]))
@@ -95,8 +104,13 @@ def main():
                 rows.append((f"elastic net ({r.n_iter})", t, [(t1, diff(r.params, np.r_[m.intercept_, m.coef_]))]))
                 t, r = best(lambda: R.lasso(ys, Xs, alpha=gs), reps)
                 t1, (al, co, _) = best(lambda: lasso_path(X - X.mean(0), y - y.mean(), alphas=grid), reps)
-                rows.append((f"path, 100 alphas ({int(np.sum(np.asarray(r.n_iter)))})", t,
-                             [(t1, diff(np.asarray(r.params)[:, 1:], co.T))]))
+                rows.append(
+                    (
+                        f"path, 100 alphas ({int(np.sum(np.asarray(r.n_iter)))})",
+                        t,
+                        [(t1, diff(np.asarray(r.params)[:, 1:], co.T))],
+                    )
+                )
                 t, r = best(lambda: R.lasso_cv(ys, Xs, rng=sd.random.default_rng(1), alphas=gs), 2)
                 t1, m = best(lambda: LassoCV(alphas=grid, cv=splits).fit(X, y), 2)
                 rows.append(("lasso_cv, 5 folds x 100", t, [(t1, diff(r.params, np.r_[m.intercept_, m.coef_]))]))
@@ -107,15 +121,29 @@ def main():
                 t, r = best(lambda: GLMNET(ybs, Xs, family="binomial", alpha=1e-3, l1_ratio=1.0), 2)
                 t1, m = best(lambda: LogisticRegression(C=C, l1_ratio=1.0, solver="saga").fit(X, yb), 1)
                 t2, m2 = best(lambda: LogisticRegression(C=C, l1_ratio=1.0, solver="liblinear").fit(X, yb), 2)
-                rows.append((f"logistic L1 ({r.n_iter})", t,
-                             [(t1, diff(r.params, np.r_[m.intercept_, m.coef_.ravel()])),
-                              (t2, diff(r.params, np.r_[m2.intercept_, m2.coef_.ravel()]))]))
+                rows.append(
+                    (
+                        f"logistic L1 ({r.n_iter})",
+                        t,
+                        [
+                            (t1, diff(r.params, np.r_[m.intercept_, m.coef_.ravel()])),
+                            (t2, diff(r.params, np.r_[m2.intercept_, m2.coef_.ravel()])),
+                        ],
+                    )
+                )
                 t, r = best(lambda: GLMNET(ybs, Xs, family="binomial", alpha=1e-3, l1_ratio=0.0), 2)
                 t1, m = best(lambda: LogisticRegression(C=C).fit(X, yb), 2)
                 t2, m2 = best(lambda: LogisticRegression(C=C, solver="newton-cholesky").fit(X, yb), 2)
-                rows.append((f"logistic L2 ({r.n_iter})", t,
-                             [(t1, diff(r.params, np.r_[m.intercept_, m.coef_.ravel()])),
-                              (t2, diff(r.params, np.r_[m2.intercept_, m2.coef_.ravel()]))]))
+                rows.append(
+                    (
+                        f"logistic L2 ({r.n_iter})",
+                        t,
+                        [
+                            (t1, diff(r.params, np.r_[m.intercept_, m.coef_.ravel()])),
+                            (t2, diff(r.params, np.r_[m2.intercept_, m2.coef_.ravel()])),
+                        ],
+                    )
+                )
                 for name, t, comp in rows:
                     cells = " | ".join(f"{ms(tc)} | {tc / t:.2g} | {d:.1e}" for tc, d in comp)
                     print(f"| ({n:,}, {k}) | {th} | {name} | {ms(t)} | {cells} |", flush=True)

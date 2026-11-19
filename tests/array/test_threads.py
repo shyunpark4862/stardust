@@ -75,31 +75,62 @@ def battery():
         # Blocked over a reduced axis / multi-accumulator / blocked scans
         # (docs/design/array.md §6.9). Not numpy's bits, but still the same for
         # every thread count.
-        "reduced-axis blocks": lambda: (sd.mean(M, axis=0), sd.var(M, axis=0), sd.prod(M, axis=0),
-                                        sd.max(M, axis=0), sd.sum(B, axis=0), sd.sum(I, axis=0)),
-        "prod float/complex": lambda: (sd.prod(P), sd.prod(P[::3]), sd.prod(S(c[:200_000] / abs(c[:200_000]))),
-                                       sd.prod(M[:, :400] * 0.001 + 1.0, axis=1)),
-        "long scans": lambda: (sd.cumulative_sum(clean), sd.cumulative_prod(P), sd.cumulative_sum(C),
-                               sd.cumulative_sum(F[::-2]), sd.cumulative_sum(I.reshape(-1)[:100_003]),
-                               sd.cumulative_sum(S(m.reshape(-1)[:90_000].reshape(30_000, 3)), axis=0),
-                               sd.cumulative_prod(P, include_initial=True)),
+        "reduced-axis blocks": lambda: (
+            sd.mean(M, axis=0),
+            sd.var(M, axis=0),
+            sd.prod(M, axis=0),
+            sd.max(M, axis=0),
+            sd.sum(B, axis=0),
+            sd.sum(I, axis=0),
+        ),
+        "prod float/complex": lambda: (
+            sd.prod(P),
+            sd.prod(P[::3]),
+            sd.prod(S(c[:200_000] / abs(c[:200_000]))),
+            sd.prod(M[:, :400] * 0.001 + 1.0, axis=1),
+        ),
+        "long scans": lambda: (
+            sd.cumulative_sum(clean),
+            sd.cumulative_prod(P),
+            sd.cumulative_sum(C),
+            sd.cumulative_sum(F[::-2]),
+            sd.cumulative_sum(I.reshape(-1)[:100_003]),
+            sd.cumulative_sum(S(m.reshape(-1)[:90_000].reshape(30_000, 3)), axis=0),
+            sd.cumulative_prod(P, include_initial=True),
+        ),
         # Take along one axis, masks in chunks (docs/design/array.md §7.3, §7.4).
         "take with blocks": lambda: (M[:, S(idx[:500] % 900)], T3[:, :, S(idx[:40] % 70)], M[S(idx[:300] % 700)]),
         "mask gather": lambda: (F[S(f > 0.3)], F[S(f > 2.5)], M[S(m > 0)], M[:, S(m[0] > 0)]),
         "mask scatter": lambda: masked_assign(F, S(f > 0.3)),
         # Small batched BLAS matmuls on the pool (docs/design/array.md §9.4)
-        "batched small matmul": lambda: (S(m[:640].reshape(10, 64, 900)[:, :, :64]) @ S(m[:640, :64].reshape(10, 64, 64)),
-                                         S(m.reshape(-1)[:64_000].reshape(1000, 8, 8)) @ M[:8, :8],
-                                         S(c[:32_000].reshape(500, 8, 8)) @ S(c[:32_000].reshape(500, 8, 8))),
+        "batched small matmul": lambda: (
+            S(m[:640].reshape(10, 64, 900)[:, :, :64]) @ S(m[:640, :64].reshape(10, 64, 64)),
+            S(m.reshape(-1)[:64_000].reshape(1000, 8, 8)) @ M[:8, :8],
+            S(c[:32_000].reshape(500, 8, 8)) @ S(c[:32_000].reshape(500, 8, 8)),
+        ),
         # One long lane sorted in pieces and merged (docs/design/array.md §8.5)
-        "long 1-D sort": lambda: (sd.sort(F), sd.argsort(F), sd.sort(F, stable=False),
-                                  sd.argsort(S(idx), descending=True), sd.unique_all(S(idx % 5000)),
-                                  sd.argsort(S(b.reshape(-1)), stable=False), sd.argsort(S(i.reshape(-1) % 50.0),
-                                                                                       stable=False)),
+        "long 1-D sort": lambda: (
+            sd.sort(F),
+            sd.argsort(F),
+            sd.sort(F, stable=False),
+            sd.argsort(S(idx), descending=True),
+            sd.unique_all(S(idx % 5000)),
+            sd.argsort(S(b.reshape(-1)), stable=False),
+            sd.argsort(S(i.reshape(-1) % 50.0), stable=False),
+        ),
         # Full reductions with a cast, blocked (docs/design/array.md §6.5)
-        "full reductions with a cast": lambda: (sd.sum(B), sd.mean(I), sd.mean(B), sd.sum(I, dtype=sd.float64),
-                                                sd.var(I), sd.any(M), sd.all(F), sd.prod(B[:, :5]),
-                                                sd.sum(S(c), dtype=sd.complex128), sd.mean(S(t3 > 0))),
+        "full reductions with a cast": lambda: (
+            sd.sum(B),
+            sd.mean(I),
+            sd.mean(B),
+            sd.sum(I, dtype=sd.float64),
+            sd.var(I),
+            sd.any(M),
+            sd.all(F),
+            sd.prod(B[:, :5]),
+            sd.sum(S(c), dtype=sd.complex128),
+            sd.mean(S(t3 > 0)),
+        ),
     }
     return ops
 
@@ -156,8 +187,13 @@ def test_set_and_get_num_threads():
 def test_default_is_the_performance_cores():
     import subprocess
     import sys
-    out = subprocess.run([sys.executable, "-c", "import stardust as s; print(s.get_num_threads())"],
-                         capture_output=True, text=True, check=True).stdout
+
+    out = subprocess.run(
+        [sys.executable, "-c", "import stardust as s; print(s.get_num_threads())"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
     perf = int(subprocess.run(["sysctl", "-n", "hw.perflevel0.physicalcpu"], capture_output=True, text=True).stdout)
     assert int(out) == perf
 
@@ -169,8 +205,7 @@ def test_several_python_threads_at_once():
     rng = np.random.default_rng(2)
     data = [rng.standard_normal(400_000) for _ in range(6)]
     sd.set_num_threads(1)  # the reference: computed alone, on one thread
-    want = [(sd.sum(sd.asarray(d)), sd.max(sd.asarray(d)), sd.exp(sd.asarray(d)).tolist()[:1000])
-            for d in data]
+    want = [(sd.sum(sd.asarray(d)), sd.max(sd.asarray(d)), sd.exp(sd.asarray(d)).tolist()[:1000]) for d in data]
     sd.set_num_threads(10)
     errors = []
 
@@ -217,7 +252,7 @@ def test_full_reductions_with_a_cast_are_exact_or_close():
     # within rounding of numpy (not its bits: docs/api/array.md §7.8).
     rng = np.random.default_rng(2)
     b = rng.random(3_000_001) < 0.3
-    i = rng.integers(-10**6, 10**6, (1500, 2001))
+    i = rng.integers(-(10**6), 10**6, (1500, 2001))
     for n in (1, 10):
         sd.set_num_threads(n)
         assert sd.sum(sd.asarray(b)) == np.sum(b)
@@ -225,4 +260,3 @@ def test_full_reductions_with_a_cast_are_exact_or_close():
         assert sd.sum(sd.asarray(i), dtype=sd.float64) == pytest.approx(np.sum(i, dtype=np.float64), rel=1e-15)
         assert sd.mean(sd.asarray(i)) == pytest.approx(np.mean(i), rel=1e-12)
         assert sd.mean(sd.asarray(b)) == np.mean(b)  # an integer-valued sum is exact
-

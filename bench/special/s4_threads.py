@@ -36,7 +36,9 @@ def main():
     a, b, x, expensive = inputs(n, rng)
     order = np.argsort(~expensive, kind="stable")  # expensive first, then cheap
     cases = {"shuffled": (a, b, x), "sorted": (a[order], b[order], x[order])}
-    gammas = {"shuffled": (a, a * (1 + np.where(expensive, rng.normal(0, 3, n) / np.sqrt(a), 0.5))),}
+    gammas = {
+        "shuffled": (a, a * (1 + np.where(expensive, rng.normal(0, 3, n) / np.sqrt(a), 0.5))),
+    }
     gammas["sorted"] = tuple(v[order] for v in gammas["shuffled"])
     print(f"machine: {common.machine()}\n")
     print("| function | inputs | 1 thread (ms) | 10 threads (ms) | speed-up |")

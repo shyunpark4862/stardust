@@ -58,8 +58,10 @@ def cond(ev, cols):
 def cond_line(out, rel, c, mask):
     m = mask & np.isfinite(c) & np.isfinite(rel)
     q = rel[m] / (2.0**-53 * np.maximum(c[m], 1.0))
-    out.append(f"\nerr / (u cond): max {q.max():.1f}, 99th percentile {np.percentile(q, 99):.1f} "
-               f"({m.sum()} points with a finite cond); cond up to {c[m].max():.1e}.")
+    out.append(
+        f"\nerr / (u cond): max {q.max():.1f}, 99th percentile {np.percentile(q, 99):.1f} "
+        f"({m.sum()} points with a finite cond); cond up to {c[m].max():.1e}."
+    )
 
 
 BINS = [(0, 1), (1, 5), (5, 10), (10, 18), (18, 30), (30, 50), (50, 100), (100, 200), (200, 308)]
@@ -72,7 +74,9 @@ def table_by_size(out, v, hi, lo, masks):
     rel[norm] = np.abs((v[norm] - hi[norm]) - lo[norm]) / hi[norm]
     lp = np.full(len(hi), np.inf)
     lp[norm] = -np.log10(hi[norm])
-    out.append("| -log10 P | " + " | ".join(f"{name}: n, max rel, max rel / (eps max(1, -ln P))" for name in masks) + " |")
+    out.append(
+        "| -log10 P | " + " | ".join(f"{name}: n, max rel, max rel / (eps max(1, -ln P))" for name in masks) + " |"
+    )
     out.append("|---|" + "---|" * len(masks))
     for a, b in BINS:
         cells = []
@@ -101,8 +105,10 @@ def bvn_section(out):
     v, _ = mv(S, np.c_[h, k], INF)
     t = time.perf_counter() - t
     out.append(f"## d = 2 ({M} points, {t / M * 1e6:.2f} us per point on one thread)\n")
-    out.append("Regions: the grid h, k in {-37, ..., 10} x 20 values of r in (-1, 1); random h, k in "
-               "[-10, 6], r in (-1, 1); h + k within 1e-12..1 of 0 with r < 0; |r| = 1 - 1e-12..1e-2.\n")
+    out.append(
+        "Regions: the grid h, k in {-37, ..., 10} x 20 values of r in (-1, 1); random h, k in "
+        "[-10, 6], r in (-1, 1); h + k within 1e-12..1 of 0 with r < 0; |r| = 1 - 1e-12..1e-2.\n"
+    )
     masks = {"r >= 0": r >= 0, "r < 0": r < 0, "h + k ~ 0, r < 0": reg == 2, "|r| ~ 1": reg == 3}
     rel = table_by_size(out, v, hi, lo, masks)
     for t in (1e-10, 1e-15, 1e-18):
@@ -130,14 +136,17 @@ def tvn_section(out):
     t = time.perf_counter() - t
     negs = (R < 0).sum(axis=1)
     out.append(f"\n## d = 3 ({M} points, {t / M * 1e6:.2f} us per point on one thread)\n")
-    out.append("Regions: random correlation matrices with h in [-7, 5]; the same with h in [-20, -5]; "
-               "three negative correlations; two negative; smallest eigenvalue 1e-9..1e-3.\n")
-    masks = {"<= 1 negative r": negs <= 1, "2 negative": negs == 2, "3 negative": negs == 3,
-             "near-singular": reg == 4}
+    out.append(
+        "Regions: random correlation matrices with h in [-7, 5]; the same with h in [-20, -5]; "
+        "three negative correlations; two negative; smallest eigenvalue 1e-9..1e-3.\n"
+    )
+    masks = {"<= 1 negative r": negs <= 1, "2 negative": negs == 2, "3 negative": negs == 3, "near-singular": reg == 4}
     rel = table_by_size(out, v, hi, lo, masks)
     norm = hi >= 1e-300
-    out.append(f"\nMax relative error, at most one negative r, P >= 1e-15: "
-               f"{np.nanmax(rel[norm & (negs <= 1) & (hi >= 1e-15)]):.2e}")
+    out.append(
+        f"\nMax relative error, at most one negative r, P >= 1e-15: "
+        f"{np.nanmax(rel[norm & (negs <= 1) & (hi >= 1e-15)]):.2e}"
+    )
 
     def ev(H1, H2, H3, R1, R2, R3):
         S3 = np.tile(np.eye(3), (len(H1), 1, 1))
@@ -146,16 +155,20 @@ def tvn_section(out):
         return mv(S3, np.c_[H1, H2, H3], INF)[0]
 
     c = cond(ev, [h[:, 0], h[:, 1], h[:, 2], R[:, 0], R[:, 1], R[:, 2]])
-    out.append(f"\nMax relative error, any r, P >= 1e-10 and cond <= 100: "
-               f"{np.nanmax(rel[norm & (hi >= 1e-10) & (c <= 100)]):.2e}")
+    out.append(
+        f"\nMax relative error, any r, P >= 1e-10 and cond <= 100: "
+        f"{np.nanmax(rel[norm & (hi >= 1e-10) & (c <= 100)]):.2e}"
+    )
     cond_line(out, rel, c, norm)
     for name, m in masks.items():
         s = m & norm
         if s.any():
             ab = np.abs(v[s] - hi[s])
-            out.append(f"\n{name}: max relative {np.nanmax(rel[s]):.1e}, where P >= 1e-18 "
-                       f"{np.nanmax(rel[s & (hi >= 1e-18)]) if (s & (hi >= 1e-18)).any() else math.nan:.1e}; "
-                       f"max absolute {ab.max():.1e}")
+            out.append(
+                f"\n{name}: max relative {np.nanmax(rel[s]):.1e}, where P >= 1e-18 "
+                f"{np.nanmax(rel[s & (hi >= 1e-18)]) if (s & (hi >= 1e-18)).any() else math.nan:.1e}; "
+                f"max absolute {ab.max():.1e}"
+            )
     return rel
 
 
@@ -185,8 +198,10 @@ def t_section(out):
             assert e[0] == 0
             rel.append(abs((v[0] - hi[i]) - lo[i]) / hi[i])
         rel, ts = np.array(rel), np.array(ts)
-        out.append(f"| {name} | {len(h)} | {rel.max():.1e} | {rel[hi >= 1e-15].max():.1e} | "
-                   f"{ts.mean() * 1e6:.0f} | {ts.max() * 1e6:.0f} |")
+        out.append(
+            f"| {name} | {len(h)} | {rel.max():.1e} | {rel[hi >= 1e-15].max():.1e} | "
+            f"{ts.mean() * 1e6:.0f} | {ts.max() * 1e6:.0f} |"
+        )
         rows[name] = (nu, rel)
     for name, (nu, rel) in rows.items():
         out.append(f"\n{name} by df: " + ", ".join(f"{v:g}: {rel[nu == v].max():.1e}" for v in np.unique(nu)))
@@ -218,22 +233,28 @@ def qmc_section(out):
             for n in np.unique(r[:, 1]):
                 s = (r[:, 0] == atol) & (r[:, 1] == n)
                 a, e = r[s, 2], r[s, 3]
-                out.append(f"| {atol:.0e} | {int(n)} | {s.sum()} | {a.max():.1e} | {e.max():.1e} | "
-                           f"{int((a > e).sum())} | {a.max() / atol:.2f} |")
+                out.append(
+                    f"| {atol:.0e} | {int(n)} | {s.sum()} | {a.max():.1e} | {e.max():.1e} | "
+                    f"{int((a > e).sum())} | {a.max() / atol:.2f} |"
+                )
 
 
 def main():
-    out = ["# Multivariate normal and t cdf: accuracy (bench/stats/t9/cdf_accuracy.py)\n",
-           "Generated by bench/stats/t9/cdf_accuracy.py against tests/stats/ref_mvcdf/ "
-           "(tools/mvcdf_ref.py). eps = 2^-52.\n"]
+    out = [
+        "# Multivariate normal and t cdf: accuracy (bench/stats/t9/cdf_accuracy.py)\n",
+        "Generated by bench/stats/t9/cdf_accuracy.py against tests/stats/ref_mvcdf/ "
+        "(tools/mvcdf_ref.py). eps = 2^-52.\n",
+    ]
     bvn_section(out)
     tvn_section(out)
     t_section(out)
     qmc_section(out)
-    out.append("\nThe t's chi tables (csrc/stats/mvcdf.hpp ChiTable) against the exact inverse "
-               "(gammaincinv) on the same lattice, 2e5 evaluations, d = 4..100, df = 1..30: "
-               "max |difference| 8.3e-17 (a C++ harness linking the header; r itself is within "
-               "1.4e-14 relative over 512k dense samples).")
+    out.append(
+        "\nThe t's chi tables (csrc/stats/mvcdf.hpp ChiTable) against the exact inverse "
+        "(gammaincinv) on the same lattice, 2e5 evaluations, d = 4..100, df = 1..30: "
+        "max |difference| 8.3e-17 (a C++ harness linking the header; r itself is within "
+        "1.4e-14 relative over 512k dense samples)."
+    )
     text = "\n".join(out) + "\n"
     (Path(__file__).with_suffix(".md")).write_text(text)
     sys.stdout.write(text)

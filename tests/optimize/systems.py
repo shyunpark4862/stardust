@@ -39,8 +39,12 @@ def j3(x, M=FLOAT):
 def f4(x, M=FLOAT):
     t1 = x[1] - _sq(x[0])
     t2 = x[3] - _sq(x[2])
-    return [-200.0 * x[0] * t1 - (1.0 - x[0]), 200.0 * t1 + 20.2 * (x[1] - 1.0) + 19.8 * (x[3] - 1.0),
-            -180.0 * x[2] * t2 - (1.0 - x[2]), 180.0 * t2 + 20.2 * (x[3] - 1.0) + 19.8 * (x[1] - 1.0)]
+    return [
+        -200.0 * x[0] * t1 - (1.0 - x[0]),
+        200.0 * t1 + 20.2 * (x[1] - 1.0) + 19.8 * (x[3] - 1.0),
+        -180.0 * x[2] * t2 - (1.0 - x[2]),
+        180.0 * t2 + 20.2 * (x[3] - 1.0) + 19.8 * (x[1] - 1.0),
+    ]
 
 
 def j4(x, M=FLOAT):
@@ -253,10 +257,31 @@ class SystemCase:
 
 def _cases():
     # file21, the data of the HYBRD/HYBRJ drivers: (problem, n, number of starts)
-    rows = [(1, 2, 3), (2, 4, 3), (3, 2, 2), (4, 4, 3), (5, 3, 3), (6, 6, 2), (6, 9, 2), (7, 5, 3), (7, 6, 3),
-            (7, 7, 3), (7, 8, 1), (7, 9, 1), (8, 10, 3), (8, 30, 1), (8, 40, 1), (9, 10, 3), (10, 1, 3), (10, 10, 3),
-            (11, 10, 3), (12, 10, 3), (13, 10, 3), (14, 10, 3)]
-    return [SystemCase(p, n, 10.0 ** k) for p, n, tries in rows for k in range(tries)]
+    rows = [
+        (1, 2, 3),
+        (2, 4, 3),
+        (3, 2, 2),
+        (4, 4, 3),
+        (5, 3, 3),
+        (6, 6, 2),
+        (6, 9, 2),
+        (7, 5, 3),
+        (7, 6, 3),
+        (7, 7, 3),
+        (7, 8, 1),
+        (7, 9, 1),
+        (8, 10, 3),
+        (8, 30, 1),
+        (8, 40, 1),
+        (9, 10, 3),
+        (10, 1, 3),
+        (10, 10, 3),
+        (11, 10, 3),
+        (12, 10, 3),
+        (13, 10, 3),
+        (14, 10, 3),
+    ]
+    return [SystemCase(p, n, 10.0**k) for p, n, tries in rows for k in range(tries)]
 
 
 # The HYBRD/HYBRJ driver runs, in their order (52 runs)
@@ -274,4 +299,3 @@ def as_numpy(case):
         return np.array(case.jac([np.float64(v) for v in x]), dtype=float).reshape(case.n, case.n)
 
     return F, J
-

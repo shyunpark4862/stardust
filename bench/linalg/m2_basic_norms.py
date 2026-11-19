@@ -41,7 +41,10 @@ def main():
     v3, v1m = rng.standard_normal(3), rng.standard_normal(1_000_000)
     rows = rng.standard_normal((1000, 3))
     x1k = rng.standard_normal(1000)
-    S = {k: sdnp.asarray(v) for k, v in dict(s3=s3, b3=b3, m256=m256, m1k=m1k, v3=v3, v1m=v1m, rows=rows, x1k=x1k).items()}
+    S = {
+        k: sdnp.asarray(v)
+        for k, v in dict(s3=s3, b3=b3, m256=m256, m1k=m1k, v3=v3, v1m=v1m, rows=rows, x1k=x1k).items()
+    }
     cases = [
         ("vecdot", "(3,)", lambda: sdla.vecdot(S["v3"], S["v3"]), lambda: np.vecdot(v3, v3)),
         ("vecdot", "(1e6,)", lambda: sdla.vecdot(S["v1m"], S["v1m"]), lambda: np.vecdot(v1m, v1m)),
@@ -54,17 +57,52 @@ def main():
         ("diagonal", "(1000,3,3)", lambda: sdla.diagonal(S["b3"]), lambda: np.linalg.diagonal(b3).copy()),
         ("matrix_power", "3x3, n=5", lambda: sdla.matrix_power(S["s3"], 5), lambda: np.linalg.matrix_power(s3, 5)),
         ("matrix_power", "3x3, n=-1", lambda: sdla.matrix_power(S["s3"], -1), lambda: np.linalg.matrix_power(s3, -1)),
-        ("matrix_power", "(1000,3,3), n=3", lambda: sdla.matrix_power(S["b3"], 3), lambda: np.linalg.matrix_power(b3, 3)),
-        ("matrix_power", "256x256, n=10", lambda: sdla.matrix_power(S["m256"], 10), lambda: np.linalg.matrix_power(m256, 10)),
+        (
+            "matrix_power",
+            "(1000,3,3), n=3",
+            lambda: sdla.matrix_power(S["b3"], 3),
+            lambda: np.linalg.matrix_power(b3, 3),
+        ),
+        (
+            "matrix_power",
+            "256x256, n=10",
+            lambda: sdla.matrix_power(S["m256"], 10),
+            lambda: np.linalg.matrix_power(m256, 10),
+        ),
         ("vector_norm", "(3,)", lambda: sdla.vector_norm(S["v3"]), lambda: np.linalg.vector_norm(v3)),
         ("vector_norm", "(1e6,) ord=2", lambda: sdla.vector_norm(S["v1m"]), lambda: np.linalg.vector_norm(v1m)),
-        ("vector_norm", "(1e6,) ord=inf", lambda: sdla.vector_norm(S["v1m"], ord=math.inf), lambda: np.linalg.vector_norm(v1m, ord=math.inf)),
-        ("vector_norm", "(1e6,) ord=3", lambda: sdla.vector_norm(S["v1m"], ord=3), lambda: np.linalg.vector_norm(v1m, ord=3)),
-        ("vector_norm", "(1000,3) axis=-1", lambda: sdla.vector_norm(S["rows"], axis=-1), lambda: np.linalg.vector_norm(rows, axis=-1)),
+        (
+            "vector_norm",
+            "(1e6,) ord=inf",
+            lambda: sdla.vector_norm(S["v1m"], ord=math.inf),
+            lambda: np.linalg.vector_norm(v1m, ord=math.inf),
+        ),
+        (
+            "vector_norm",
+            "(1e6,) ord=3",
+            lambda: sdla.vector_norm(S["v1m"], ord=3),
+            lambda: np.linalg.vector_norm(v1m, ord=3),
+        ),
+        (
+            "vector_norm",
+            "(1000,3) axis=-1",
+            lambda: sdla.vector_norm(S["rows"], axis=-1),
+            lambda: np.linalg.vector_norm(rows, axis=-1),
+        ),
         ("matrix_norm", "3x3 fro", lambda: sdla.matrix_norm(S["s3"]), lambda: np.linalg.matrix_norm(s3)),
         ("matrix_norm", "1000x1000 fro", lambda: sdla.matrix_norm(S["m1k"]), lambda: np.linalg.matrix_norm(m1k)),
-        ("matrix_norm", "1000x1000 ord=1", lambda: sdla.matrix_norm(S["m1k"], ord=1), lambda: np.linalg.matrix_norm(m1k, ord=1)),
-        ("matrix_norm", "1000x1000 ord=inf", lambda: sdla.matrix_norm(S["m1k"], ord=math.inf), lambda: np.linalg.matrix_norm(m1k, ord=math.inf)),
+        (
+            "matrix_norm",
+            "1000x1000 ord=1",
+            lambda: sdla.matrix_norm(S["m1k"], ord=1),
+            lambda: np.linalg.matrix_norm(m1k, ord=1),
+        ),
+        (
+            "matrix_norm",
+            "1000x1000 ord=inf",
+            lambda: sdla.matrix_norm(S["m1k"], ord=math.inf),
+            lambda: np.linalg.matrix_norm(m1k, ord=math.inf),
+        ),
         ("matrix_norm", "(1000,3,3) fro", lambda: sdla.matrix_norm(S["b3"]), lambda: np.linalg.matrix_norm(b3)),
     ]
     emit(f"numpy {np.__version__}, sdnp threads {sdnp.get_num_threads()}")

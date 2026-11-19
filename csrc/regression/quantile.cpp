@@ -84,8 +84,19 @@ enum CovType : int { cIid = 0, cNid, cKer };
 // The per-(regression, quantile) scalars, in this order (stardust/regression/_quantile.py
 // reads them). qNGroups and qLags are NaN (the shared result code asks for them).
 enum QStat : int {
-    qNobs = 0, qRank, qObjective, qNullObjective, qNIter, qNPivots, qConverged, qNonunique, qIsNaN, qBandwidth,
-    qNGroups, qLags, qNStat
+    qNobs = 0,
+    qRank,
+    qObjective,
+    qNullObjective,
+    qNIter,
+    qNPivots,
+    qConverged,
+    qNonunique,
+    qIsNaN,
+    qBandwidth,
+    qNGroups,
+    qLags,
+    qNStat
 };
 
 constexpr int eInfY = 1, eInfX = 2;
@@ -194,9 +205,9 @@ struct QP {
     const double* y = nullptr;
     const double* m = nullptr;
     bool icept = false;          // column 0 is the intercept's
-    double itol = 0.0;           // a row is independent of others when its part orthogonal to them exceeds itol ||x_i||
-    std::vector<Sum2> sall;      // sum_i m_i x_i
-    std::vector<double> l1;      // ||x_i||_1
+    double itol = 0.0;  // a row is independent of others when its part orthogonal to them exceeds itol ||x_i||
+    std::vector<Sum2> sall;  // sum_i m_i x_i
+    std::vector<double> l1;  // ||x_i||_1
     const double* row(lint i) const { return X + i * k; }
 };
 
@@ -366,7 +377,8 @@ struct Indep {
     double tol;
     std::vector<double> Q, v;
     lint m = 0;
-    Indep(lint k_, double tol_) : k(k_), tol(tol_), Q(static_cast<std::size_t>(k_ * k_)), v(static_cast<std::size_t>(k_)) {}
+    Indep(lint k_, double tol_)
+        : k(k_), tol(tol_), Q(static_cast<std::size_t>(k_ * k_)), v(static_cast<std::size_t>(k_)) {}
     bool add(const double* x) {
         double nx = 0.0;
         for (lint c = 0; c < k; ++c) nx += x[c] * x[c];
@@ -501,7 +513,8 @@ int ipm(const QP& P, double tau, int max_iter, double tol, double* beta) {
     const double* m = P.m;
     std::vector<double> x(static_cast<std::size_t>(n)), s(x.size()), z(x.size()), w(x.size()), q(x.size()), r(x.size()),
         dx(x.size()), dz(x.size()), dw(x.size()), xinv(x.size()), sinv(x.size());
-    std::vector<double> yl(static_cast<std::size_t>(k)), b(yl.size()), dy(yl.size()), M(static_cast<std::size_t>(k * k));
+    std::vector<double> yl(static_cast<std::size_t>(k)), b(yl.size()), dy(yl.size()),
+        M(static_cast<std::size_t>(k * k));
     for (lint c = 0; c < k; ++c) {
         yl[c] = -beta[c];
         b[c] = (1.0 - tau) * P.sall[c].value();
@@ -617,7 +630,7 @@ int ipm(const QP& P, double tau, int max_iter, double tol, double* beta) {
         const lint ncc = row_chunks(n);
         std::vector<double> mn(static_cast<std::size_t>(ncc * 4));
         std::vector<double>&dxv = dx, &dzv = dz, &dwv = dw, &xv = x, &sv = s, &zv = z, &wv = w, &qv = q, &rv = r,
-                            &xinvv = xinv, &sinvv = sinv;
+        &xinvv = xinv, &sinvv = sinv;
         auto direction = [&](bool corr, double mu_c, double& fp, double& fd) {
             std::fill(mn.begin(), mn.end(), kInf);
             for_row_chunks(n, [&](lint ci, lint i0, lint i1) {
@@ -730,17 +743,17 @@ int ipm(const QP& P, double tau, int max_iter, double tol, double* beta) {
 enum Allow : std::uint8_t { aPlus = 1, aMinus = 2 };  // face phase: the directions a basis row may leave by
 
 struct State {
-    bool valid = false;                // B is a basis (a warm start may use it)
-    std::vector<lint> B;               // the basis rows (k)
-    std::vector<std::int8_t> side;     // per row: 0 basis, +1 residual >= 0, -1 residual <= 0
-    std::vector<std::uint8_t> allow;   // per basis position (face phase)
+    bool valid = false;  // B is a basis (a warm start may use it)
+    std::vector<lint> B;  // the basis rows (k)
+    std::vector<std::int8_t> side;  // per row: 0 basis, +1 residual >= 0, -1 residual <= 0
+    std::vector<std::uint8_t> allow;  // per basis position (face phase)
 };
 
 struct Work {
-    std::vector<double> r;    // residuals at the current vertex (0 on the basis and snapped rows)
+    std::vector<double> r;  // residuals at the current vertex (0 on the basis and snapped rows)
     std::vector<double> beta, lam;
-    std::vector<Sum2> neg;    // sum of m_i x_i over the rows of side -1 (kept up to date by the simplex)
-    std::vector<double> av, vv;   // row products (scratch of the passes)
+    std::vector<Sum2> neg;  // sum of m_i x_i over the rows of side -1 (kept up to date by the simplex)
+    std::vector<double> av, vv;  // row products (scratch of the passes)
     Basis F;
 };
 
@@ -976,8 +989,7 @@ std::uint64_t state_hash(const State& S) {
     const std::size_t n = S.side.size();
     for (std::size_t i = 0; i < n; i += 8) {
         std::uint64_t word = 0;
-        for (std::size_t j = i; j < std::min(n, i + 8); ++j)
-            word = (word << 8) | static_cast<std::uint8_t>(S.side[j]);
+        for (std::size_t j = i; j < std::min(n, i + 8); ++j) word = (word << 8) | static_cast<std::uint8_t>(S.side[j]);
         h = mix64(h ^ word);
     }
     return h;
@@ -1049,7 +1061,8 @@ bool simplex(const QP& P, double tau, State& S, Work& W, lint cap, lint& pivots,
             seen.clear();
         }
         if (flips)
-            for (std::size_t j = 0; j < p; ++j) set_side(P, S, W, blk[j].i, static_cast<std::int8_t>(-S.side[blk[j].i]), true);
+            for (std::size_t j = 0; j < p; ++j)
+                set_side(P, S, W, blk[j].i, static_cast<std::int8_t>(-S.side[blk[j].i]), true);
         set_side(P, S, W, S.B[ba], static_cast<std::int8_t>(bs > 0 ? -1 : 1), true);
         set_side(P, S, W, enter, 0, true);
         S.B[ba] = enter;
@@ -1072,8 +1085,18 @@ int lexsign(const double* d, lint k) {
 // directions of the basis rows) towards its lexicographic minimum (dir = 1) or maximum
 // (dir = -1), Bland's rule. moved: a pivot of positive length was taken; with stop_on_move
 // the walk ends there. Returns false at the cap or a singular basis.
-bool face(const QP& P, double tau, State& S, Work& W, int dir, bool stop_on_move, bool& moved, lint cap, lint& pivots,
-          Scratch& sc) {
+bool face(
+    const QP& P,
+    double tau,
+    State& S,
+    Work& W,
+    int dir,
+    bool stop_on_move,
+    bool& moved,
+    lint cap,
+    lint& pivots,
+    Scratch& sc
+) {
     const lint k = P.k;
     std::vector<Blk> blk;
     std::vector<double> d(static_cast<std::size_t>(k)), dbest(d.size());
@@ -1202,7 +1225,9 @@ QOut solve_q(const QP& P, double tau, State& S, Work& W, bool warm, const QOpts&
             std::vector<Blk> v(static_cast<std::size_t>(P.n));
             std::vector<double> av(static_cast<std::size_t>(P.n));
             double tw = 0.0;
-            for_row_chunks(P.n, [&](lint, lint i0, lint i1) { dots(P, i0, i1, b.data(), nullptr, av.data() + i0, nullptr); });
+            for_row_chunks(P.n, [&](lint, lint i0, lint i1) {
+                dots(P, i0, i1, b.data(), nullptr, av.data() + i0, nullptr);
+            });
             for (lint i = 0; i < P.n; ++i) {
                 v[i] = {P.y[i] - av[i], i, P.m[i]};
                 tw += P.m[i];
@@ -1346,7 +1371,7 @@ struct Outs {
 // Packs a problem (rows duplicated merged) from row-major X (n x k) and y.
 struct Packed {
     std::vector<double> X, y, m;
-    std::vector<lint> map;   // original row -> packed row
+    std::vector<lint> map;  // original row -> packed row
     std::vector<lint> orig;  // packed row -> its first original row
     QP P;
 };
@@ -1391,8 +1416,9 @@ void pack(Packed& pk, lint n, lint k, std::vector<double>&& X, std::vector<doubl
 
 // A small dense quantile regression (iid's sparsity): the slope of the q = 1/2 regression of
 // v on (1, t).
-double median_slope(const std::vector<double>& v, const std::vector<double>& t, double itol, const QOpts& op,
-                    Scratch& sc) {
+double median_slope(
+    const std::vector<double>& v, const std::vector<double>& t, double itol, const QOpts& op, Scratch& sc
+) {
     const lint n = static_cast<lint>(v.size());
     std::vector<double> X(static_cast<std::size_t>(2 * n)), y(v);
     for (lint i = 0; i < n; ++i) X[2 * i] = 1.0, X[2 * i + 1] = t[i];
@@ -1433,8 +1459,18 @@ void fill_nan(lint n, lint k, lint L, const Outs& o) {
     }
 }
 
-int quantreg_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64_t ys, const std::byte* Xb,
-                 std::int64_t xrs, std::int64_t xcs, const Outs& o, Scratch& sc) {
+int quantreg_one(
+    const Opts& op,
+    lint n,
+    lint p,
+    const std::byte* yb,
+    std::int64_t ys,
+    const std::byte* Xb,
+    std::int64_t xrs,
+    std::int64_t xcs,
+    const Outs& o,
+    Scratch& sc
+) {
     const lint k = p + (op.intercept ? 1 : 0);
     const lint L = static_cast<lint>(op.qs.size());
     bool nan = false;
@@ -1461,7 +1497,8 @@ int quantreg_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64
     Design D{n, p, k, op.intercept, Xb, xrs, xcs};
     // ---- 1. least squares: the aliased columns, R, (R^T R)^-1, the start
     std::vector<double> cov0(static_cast<std::size_t>(std::max<lint>(k * k, 1))), R0(cov0.size()),
-        r0(static_cast<std::size_t>(std::max<lint>(n, 1))), f0(r0.size()), bols(static_cast<std::size_t>(std::max<lint>(k, 1)));
+        r0(static_cast<std::size_t>(std::max<lint>(n, 1))), f0(r0.size()),
+        bols(static_cast<std::size_t>(std::max<lint>(k, 1)));
     std::vector<std::uint8_t> kept(bols.size());
     double st0[kNStat];
     {
@@ -1514,7 +1551,8 @@ int quantreg_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64
             for (lint a = 0; a < kk; ++a) dyh += D.at(i, K[a]) * (bh[a] - bl[a]);
             f[i] = std::max(0.0, (2.0 * h) / (dyh - eps_y));
         }
-        std::vector<double> Rf(static_cast<std::size_t>(kk * kk)), V(static_cast<std::size_t>(std::max<lint>(kk * kk, 1)));
+        std::vector<double> Rf(static_cast<std::size_t>(kk * kk)),
+            V(static_cast<std::size_t>(std::max<lint>(kk * kk, 1)));
         if (!weighted_r(D, K, f.data(), Rf.data(), scr)) return;
         sandwich(kk, R0k.data(), Rf.data(), tau, V.data());
         double* cov = o.cov + l * k * k;
@@ -1551,7 +1589,8 @@ int quantreg_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64
             res[static_cast<std::size_t>(t)] = std::move(U.beta);
         });
         for (std::size_t q = 0; q < jobs.size(); ++q)
-            if (conv[2 * q] && conv[2 * q + 1]) nid_cov(jobs[q].l, jobs[q].tau, jobs[q].h, res[2 * q], res[2 * q + 1], sc);
+            if (conv[2 * q] && conv[2 * q + 1])
+                nid_cov(jobs[q].l, jobs[q].tau, jobs[q].h, res[2 * q], res[2 * q + 1], sc);
         jobs.clear();
     };
     for (lint l = 0; l < L; ++l) {
@@ -1723,8 +1762,9 @@ int quantreg_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64
     return 0;
 }
 
-std::vector<std::int64_t> with(std::vector<std::int64_t> shape, bool qaxis, lint L,
-                               std::initializer_list<std::int64_t> tail) {
+std::vector<std::int64_t> with(
+    std::vector<std::int64_t> shape, bool qaxis, lint L, std::initializer_list<std::int64_t> tail
+) {
     if (qaxis) shape.push_back(L);
     shape.insert(shape.end(), tail);
     return shape;
@@ -1735,10 +1775,21 @@ std::vector<std::int64_t> with(std::vector<std::int64_t> shape, bool qaxis, lint
 // -> (params, cov, R, fitted, resid, kept, stats, basis): per regression and quantile (an
 // axis of length L after the batch axes when qaxis). cov is the final covariance; R the least
 // squares R (k x k); basis the canonical basis rows (-1 for aliased columns' places).
-nb::object quantreg_fit(const std::string& func, nb::handle yo, nb::handle xo, const std::vector<double>& qs,
-                        bool intercept, double rtol, int cov, const std::vector<double>& hraw,
-                        const std::vector<double>& hhalf, const std::vector<double>& kerc, int max_iter, double tol,
-                        bool qaxis) {
+nb::object quantreg_fit(
+    const std::string& func,
+    nb::handle yo,
+    nb::handle xo,
+    const std::vector<double>& qs,
+    bool intercept,
+    double rtol,
+    int cov,
+    const std::vector<double>& hraw,
+    const std::vector<double>& hhalf,
+    const std::vector<double>& kerc,
+    int max_iter,
+    double tol,
+    bool qaxis
+) {
     const char* fn = func.c_str();
     return call_named(fn, [&]() -> nb::object {
         Input y(yo, fn, "y"), X(xo, fn, "X");
@@ -1758,27 +1809,35 @@ nb::object quantreg_fit(const std::string& func, nb::handle yo, nb::handle xo, c
         const double nk = double(n) * double(std::max<lint>(k, 1));
         const double element_ns = 2000.0 + double(L) * nk * (double(k) + 20.0) * 40.0 * (cov == cNid ? 2.0 : 1.0);
         const Failure f = linalg::run_batch(b, element_ns, [&](std::int64_t i, const std::int64_t* off, Scratch& sc) {
-            Outs o{po.as<double>() + i * L * k, co.as<double>() + i * L * k * k, ro.as<double>() + i * L * k * k,
-                   fo.as<double>() + i * L * n, eo.as<double>() + i * L * n, so.as<double>() + i * L * qNStat,
+            Outs o{po.as<double>() + i * L * k,        co.as<double>() + i * L * k * k,
+                   ro.as<double>() + i * L * k * k,    fo.as<double>() + i * L * n,
+                   eo.as<double>() + i * L * n,        so.as<double>() + i * L * qNStat,
                    kpo.as<std::uint8_t>() + i * L * k, bo.as<std::int64_t>() + i * L * k};
-            return quantreg_one(op, n, p, y.data() + off[0], y.stride(-1), X.data() + off[1], X.stride(-2),
-                                X.stride(-1), o, sc);
+            return quantreg_one(
+                op, n, p, y.data() + off[0], y.stride(-1), X.data() + off[1], X.stride(-2), X.stride(-1), o, sc
+            );
         });
         if (f) {
             const char* what = f.code == eInfY ? "'y' contains infinity" : "'X' contains infinity";
-            throw nb::value_error(linalg::failure_message(b, f.index, (std::string(fn) + "(): " + what).c_str()).c_str());
+            throw nb::value_error(
+                linalg::failure_message(b, f.index, (std::string(fn) + "(): " + what).c_str()).c_str()
+            );
         }
-        return nb::make_tuple(linalg::to_array(po), linalg::to_array(co), linalg::to_array(ro), linalg::to_array(fo),
-                              linalg::to_array(eo), linalg::to_array(kpo), linalg::to_array(so), linalg::to_array(bo));
+        return nb::make_tuple(
+            linalg::to_array(po), linalg::to_array(co), linalg::to_array(ro), linalg::to_array(fo),
+            linalg::to_array(eo), linalg::to_array(kpo), linalg::to_array(so), linalg::to_array(bo)
+        );
     });
 }
 
 }  // namespace
 
 void bind_quantile(nb::module_& m) {
-    m.def("quantreg_fit", &quantreg_fit, nb::arg("func"), nb::arg("y").none(), nb::arg("X").none(), nb::arg("qs"),
-          nb::arg("intercept"), nb::arg("rtol"), nb::arg("cov"), nb::arg("hraw"), nb::arg("hhalf"), nb::arg("kerc"),
-          nb::arg("max_iter"), nb::arg("tol"), nb::arg("qaxis"));
+    m.def(
+        "quantreg_fit", &quantreg_fit, nb::arg("func"), nb::arg("y").none(), nb::arg("X").none(), nb::arg("qs"),
+        nb::arg("intercept"), nb::arg("rtol"), nb::arg("cov"), nb::arg("hraw"), nb::arg("hhalf"), nb::arg("kerc"),
+        nb::arg("max_iter"), nb::arg("tol"), nb::arg("qaxis")
+    );
 }
 
 }  // namespace sd::regression

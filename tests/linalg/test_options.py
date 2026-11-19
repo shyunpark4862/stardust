@@ -29,24 +29,38 @@ def test_bool_options_take_true_or_false(call, name, option):
     call(**{option: False})
 
 
-@pytest.mark.parametrize(("call", "message"), [
-    (lambda: LA.svd(A, mode=None), r"^svd\(\): 'mode' must be 'reduced' or 'complete', not NoneType$"),
-    (lambda: LA.qr(A, mode=1), r"^qr\(\): 'mode' must be 'reduced' or 'complete', not int$"),
-    (lambda: LA.qr_pivoted(A, mode=None), r"^qr_pivoted\(\): 'mode' must be 'reduced' or 'complete', not NoneType$"),
-    (lambda: LA.matrix_norm(A, ord=None), r"^matrix_norm\(\): 'ord' must be a str, an int or a float, not NoneType$"),
-    (lambda: LA.cond(A, ord=None), r"^cond\(\): 'ord' must be a str, an int or a float, not NoneType$"),
-    (lambda: LA.vector_norm(V, ord=None), r"^vector_norm\(\): 'ord' must be an int or a float, not NoneType$"),
-    (lambda: LA.vector_norm(V, axis=1.0), r"^vector_norm\(\): 'axis' must be an int or a tuple or list of ints, not float$"),
-    (lambda: LA.vecdot(V, V, axis=None), r"^vecdot\(\): 'axis' must be an int, not NoneType$"),
-    (lambda: LA.cross(V, V, axis=None), r"^cross\(\): 'axis' must be an int, not NoneType$"),
-    (lambda: LA.trace(A, k=None), r"^trace\(\): 'k' must be an int, not NoneType$"),
-    (lambda: LA.diagonal(A, k=1.0), r"^diagonal\(\): 'k' must be an int, not float$"),
-    (lambda: LA.matrix_power(A, None), r"^matrix_power\(\): 'n' must be an int, not NoneType$"),
-    (lambda: LA.solve_banded(A, V, lower_bandwidth=None, upper_bandwidth=0),
-     r"^solve_banded\(\): 'lower_bandwidth' must be an int, not NoneType$"),
-    (lambda: LA.lstsq(A, V, rtol="a"), r"^lstsq\(\): 'rtol' must be None, an int or a float, not str$"),
-    (lambda: LA.inv(np.eye(2)), r"^inv\(\): 'x' must be an sd\.ndarray, not numpy\.ndarray$"),
-])
+@pytest.mark.parametrize(
+    ("call", "message"),
+    [
+        (lambda: LA.svd(A, mode=None), r"^svd\(\): 'mode' must be 'reduced' or 'complete', not NoneType$"),
+        (lambda: LA.qr(A, mode=1), r"^qr\(\): 'mode' must be 'reduced' or 'complete', not int$"),
+        (
+            lambda: LA.qr_pivoted(A, mode=None),
+            r"^qr_pivoted\(\): 'mode' must be 'reduced' or 'complete', not NoneType$",
+        ),
+        (
+            lambda: LA.matrix_norm(A, ord=None),
+            r"^matrix_norm\(\): 'ord' must be a str, an int or a float, not NoneType$",
+        ),
+        (lambda: LA.cond(A, ord=None), r"^cond\(\): 'ord' must be a str, an int or a float, not NoneType$"),
+        (lambda: LA.vector_norm(V, ord=None), r"^vector_norm\(\): 'ord' must be an int or a float, not NoneType$"),
+        (
+            lambda: LA.vector_norm(V, axis=1.0),
+            r"^vector_norm\(\): 'axis' must be an int or a tuple or list of ints, not float$",
+        ),
+        (lambda: LA.vecdot(V, V, axis=None), r"^vecdot\(\): 'axis' must be an int, not NoneType$"),
+        (lambda: LA.cross(V, V, axis=None), r"^cross\(\): 'axis' must be an int, not NoneType$"),
+        (lambda: LA.trace(A, k=None), r"^trace\(\): 'k' must be an int, not NoneType$"),
+        (lambda: LA.diagonal(A, k=1.0), r"^diagonal\(\): 'k' must be an int, not float$"),
+        (lambda: LA.matrix_power(A, None), r"^matrix_power\(\): 'n' must be an int, not NoneType$"),
+        (
+            lambda: LA.solve_banded(A, V, lower_bandwidth=None, upper_bandwidth=0),
+            r"^solve_banded\(\): 'lower_bandwidth' must be an int, not NoneType$",
+        ),
+        (lambda: LA.lstsq(A, V, rtol="a"), r"^lstsq\(\): 'rtol' must be None, an int or a float, not str$"),
+        (lambda: LA.inv(np.eye(2)), r"^inv\(\): 'x' must be an sd\.ndarray, not numpy\.ndarray$"),
+    ],
+)
 def test_wrong_values_name_the_argument(call, message):
     with pytest.raises(TypeError, match=message):
         call()

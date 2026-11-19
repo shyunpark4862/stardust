@@ -29,7 +29,7 @@ CASES = [(name, j) for name, p in PROBS.items() for j in range(len(p["q"]))]
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "tools"))
 regref = pytest.importorskip("regref")
 
-U = 2.0 ** -53
+U = 2.0**-53
 
 
 def a(x):
@@ -98,6 +98,7 @@ def lexmin(y, X, q, fstar, intercept=True):
 
 # ---- exactness: the vertex of the basis, in rationals
 
+
 @pytest.mark.parametrize("name,j", CASES)
 def test_exact_vertex_and_certificate(name, j):
     p = PROBS[name]
@@ -127,8 +128,13 @@ def test_exact_vertex_and_certificate(name, j):
 
 def certify(y, X, q, intercept=True, **kw):
     r = R.quantreg(y, X, q=q, intercept=intercept, **kw)
-    ref = regref.quantreg(np.asarray(y, float).tolist(), np.asarray(X, float).reshape(len(y), -1).tolist(), basis(r),
-                          q, intercept=intercept)
+    ref = regref.quantreg(
+        np.asarray(y, float).tolist(),
+        np.asarray(X, float).reshape(len(y), -1).tolist(),
+        basis(r),
+        q,
+        intercept=intercept,
+    )
     return r, ref
 
 
@@ -136,7 +142,7 @@ def test_exact_ill_conditioned_and_wide():
     rng = np.random.default_rng(11)
     n = 400
     t = rng.uniform(0, 1, n)
-    X = np.column_stack([t, t ** 2, t ** 3, t ** 4, t ** 5])  # kappa ~ 1e5 with the intercept
+    X = np.column_stack([t, t**2, t**3, t**4, t**5])  # kappa ~ 1e5 with the intercept
     y = np.sin(3 * t) + 0.1 * rng.standard_normal(n)
     for q in (0.1, 0.5, 0.9):
         r, ref = certify(y, X, q)
@@ -176,6 +182,7 @@ def test_exact_duplicates_and_ties():
 
 # ---- R
 
+
 @pytest.mark.parametrize("name,j", CASES)
 def test_against_r_fits(name, j):
     p = PROBS[name]
@@ -205,13 +212,13 @@ def inner_unique(p, q, r, bw):
     y, _ = design(p)
     n, kk = len(y), r.rank
     res = a(r.resid)
-    eps = 2.0 ** -26 * (np.max(np.abs(y)) or 1.0)  # summary.rq's eps relative to y (G67)
+    eps = 2.0**-26 * (np.max(np.abs(y)) or 1.0)  # summary.rq's eps relative to y (G67)
     pz = int(np.sum(np.abs(res) < eps))
     h = max(kk + 1, math.ceil(n * _bandwidth(q, n, bw == "hall-sheather")))
     if h + pz + 1 > n:
         return False
     o = np.argsort(np.abs(res), kind="stable")
-    w = np.sort(res[o][pz:h + pz + 1])
+    w = np.sort(res[o][pz : h + pz + 1])
     return not R.quantreg(w, np.arange(pz + 1, h + pz + 2) / (n - kk), q=0.5).nonunique
 
 
@@ -253,6 +260,7 @@ def test_iid_differs_from_r_only_by_the_inner_vertex():
 
 # ---- the vertex rule of non-unique solutions (G63)
 
+
 @pytest.mark.parametrize("name,j", [c for c in CASES if c[0] in ("median10", "dummies60", "grid40", "stackloss")])
 def test_vertex_rule_lexicographic_minimum(name, j):
     p = PROBS[name]
@@ -283,6 +291,7 @@ def test_median_of_a_sample():
 
 # ---- statsmodels (its QuantReg is an IRLS approximation)
 
+
 def test_against_statsmodels():
     import statsmodels.api as sm
 
@@ -296,11 +305,13 @@ def test_against_statsmodels():
                 f = sm.QuantReg(y, sm.add_constant(X)).fit(q=q)
             assert rho(y - sm.add_constant(X) @ f.params, q) >= r.objective * (1 - 4e-16)
             assert np.max(np.abs(f.params - a(r.params))) <= 1e-3 * np.max(np.abs(a(r.params)))
-            assert r.prsquared == pytest.approx(1 - r.objective / rho(y - np.sort(y)[math.ceil(len(y) * q) - 1], q),
-                                                rel=1e-14)
+            assert r.prsquared == pytest.approx(
+                1 - r.objective / rho(y - np.sort(y)[math.ceil(len(y) * q) - 1], q), rel=1e-14
+            )
 
 
 # ---- quantile arrays (G62), batches, threads
+
 
 def problems_for_paths():
     rng = np.random.default_rng(5)
@@ -374,6 +385,7 @@ def test_duplicate_rows_merge_to_the_same_bits():
 
 
 # ---- options, edge cases
+
 
 def test_extreme_quantiles():
     rng = np.random.default_rng(9)
@@ -449,13 +461,15 @@ def test_errors():
         with pytest.raises(ValueError, match="'q' must be a number or a 1-dimensional array of numbers strictly"):
             R.quantreg(y, X, q=q)
     # the forms and messages of ridge's alpha (the same mistake, the same message)
-    for q, err, msg in (([[0.5]], ValueError, "'q' must be a number or a 1-dimensional array, not 2-dimensional"),
-                        (np.array(0.5), ValueError, "'q' must be a number or a 1-dimensional array, not 0-dimensional"),
-                        ([], ValueError, "'q' must not be empty"),
-                        ("0.5", TypeError, "'q' must be a number or a 1-dimensional array of numbers, not str"),
-                        (None, TypeError, "'q' must be a number or a 1-dimensional array of numbers, not NoneType"),
-                        (np.array([True]), TypeError, "of numbers, not a bool array"),
-                        ([10**400], OverflowError, "'q' is out of range")):
+    for q, err, msg in (
+        ([[0.5]], ValueError, "'q' must be a number or a 1-dimensional array, not 2-dimensional"),
+        (np.array(0.5), ValueError, "'q' must be a number or a 1-dimensional array, not 0-dimensional"),
+        ([], ValueError, "'q' must not be empty"),
+        ("0.5", TypeError, "'q' must be a number or a 1-dimensional array of numbers, not str"),
+        (None, TypeError, "'q' must be a number or a 1-dimensional array of numbers, not NoneType"),
+        (np.array([True]), TypeError, "of numbers, not a bool array"),
+        ([10**400], OverflowError, "'q' is out of range"),
+    ):
         with pytest.raises(err, match=msg):
             R.quantreg(y, X, q=q)
         with pytest.raises(err, match=msg.replace("'q'", "'alpha'")):
@@ -525,7 +539,7 @@ def test_scale_equivariance(cov_type):
             r = R.quantreg(y, Z, q=q, cov_type=cov_type)
             assert np.all(np.isfinite(a(r.bse)))
             if cov_type == "iid" and y is yp and q == 0.5:
-                assert np.sum(np.abs(a(r.resid)) < 2.0 ** -26 * np.max(np.abs(y))) >= 100
+                assert np.sum(np.abs(a(r.resid)) < 2.0**-26 * np.max(np.abs(y))) >= 100
             for c in (1e-9, 1e-3, 1e3, 1e9):
                 rc = R.quantreg(c * y, Z, q=q, cov_type=cov_type)
                 assert np.max(np.abs(a(rc.params) - c * a(r.params))) <= 1e-13 * c * np.max(np.abs(a(r.params)))

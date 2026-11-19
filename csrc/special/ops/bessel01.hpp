@@ -83,13 +83,17 @@ struct Hankel {
 };
 inline Hankel hankel0(double x) {
     const double w = 5.0 / x, z = w * w;
-    return {horner(z, cephes::kJ0Pp) / horner(z, cephes::kJ0Pq), horner(z, cephes::kJ0Qp) / p1evl(z, cephes::kJ0Qq), w,
-            std::sin(x), std::cos(x)};
+    return {
+        horner(z, cephes::kJ0Pp) / horner(z, cephes::kJ0Pq), horner(z, cephes::kJ0Qp) / p1evl(z, cephes::kJ0Qq), w,
+        std::sin(x), std::cos(x)
+    };
 }
 inline Hankel hankel1(double x) {
     const double w = 5.0 / x, z = w * w;
-    return {horner(z, cephes::kJ1Pp) / horner(z, cephes::kJ1Pq), horner(z, cephes::kJ1Qp) / p1evl(z, cephes::kJ1Qq), w,
-            std::sin(x), std::cos(x)};
+    return {
+        horner(z, cephes::kJ1Pp) / horner(z, cephes::kJ1Pq), horner(z, cephes::kJ1Qp) / p1evl(z, cephes::kJ1Qq), w,
+        std::sin(x), std::cos(x)
+    };
 }
 // sqrt(2/pi)/sqrt(x) times p cos(chi) - w q sin(chi), with chi = x - pi/4 or x - 3pi/4 written out:
 //   x - pi/4:  cos = (c + s)/sqrt2, sin = (s - c)/sqrt2   ->  1/sqrt(pi x) [p (c + s) - w q (s - c)]
@@ -141,13 +145,13 @@ inline double j1(double x) {
 
 }  // namespace bessel01_detail
 
-#define SD_BESSEL01_OP(Struct, Name, Cost)                                     \
-    struct Struct : Real {                                                     \
-        static constexpr const char* name = Name;                              \
-        static constexpr int nin = 1, nout = 1;                                \
-        static constexpr std::array<const char*, 1> args{"x"};                 \
-        static constexpr double cost_ns = cost::Cost;                          \
-        static double f(double x);                                             \
+#define SD_BESSEL01_OP(Struct, Name, Cost)                     \
+    struct Struct : Real {                                     \
+        static constexpr const char* name = Name;              \
+        static constexpr int nin = 1, nout = 1;                \
+        static constexpr std::array<const char*, 1> args{"x"}; \
+        static constexpr double cost_ns = cost::Cost;          \
+        static double f(double x);                             \
     };
 
 SD_BESSEL01_OP(I0, "i0", kI0)
@@ -262,7 +266,8 @@ inline double Y1::f(double x) {
     if (std::isinf(x)) return 0.0;
     if (x > 5.0) return y1_large(x);
     const double z = x * x;
-    return x * (horner(z, cephes::kJ1Yp) / p1evl(z, cephes::kJ1Yq)) + kTwoOverPi * (j1_small(x) * std::log(x) - 1.0 / x);
+    return x * (horner(z, cephes::kJ1Yp) / p1evl(z, cephes::kJ1Yq)) +
+           kTwoOverPi * (j1_small(x) * std::log(x) - 1.0 / x);
 }
 
 }  // namespace sd::special

@@ -101,7 +101,8 @@ double par(const Law& t) {
     else if constexpr (std::is_same_v<M, Skewness>) return point ? kNaN : (t.qc - t.q) / std::sqrt(t.q * t.qc);
     else if constexpr (std::is_same_v<M, Kurtosis>) return point ? kNaN : (1.0 - 6.0 * (t.q * t.qc)) / (t.q * t.qc);
     else if constexpr (std::is_same_v<M, Median>) return in<Icdf>(0.5, t);
-    else if constexpr (std::is_same_v<M, Mode>) return t.mode; else if constexpr (std::is_same_v<M, Entropy>) {
+    else if constexpr (std::is_same_v<M, Mode>) return t.mode;
+    else if constexpr (std::is_same_v<M, Entropy>) {
         // no density for an atom: -inf (T47); the Shannon entropy of the masses, exactly 0 for one
         if (!t.discrete) return -kInf;
         if (point) return 0.0;

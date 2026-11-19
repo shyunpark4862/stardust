@@ -20,9 +20,21 @@ from multiprocessing import Pool
 
 import numpy as np
 
-TINY = 2.0 ** -1022
-METHODS = ["beta_cdf", "beta_ccdf", "beta_logcdf", "beta_logccdf", "f_cdf", "f_ccdf", "f_logcdf", "f_logccdf",
-           "betainc", "betaincc", "fdtr", "fdtrc"]
+TINY = 2.0**-1022
+METHODS = [
+    "beta_cdf",
+    "beta_ccdf",
+    "beta_logcdf",
+    "beta_logccdf",
+    "f_cdf",
+    "f_ccdf",
+    "f_logcdf",
+    "f_logccdf",
+    "betainc",
+    "betaincc",
+    "fdtr",
+    "fdtrc",
+]
 
 
 def points(n, seed):
@@ -40,15 +52,26 @@ def points(n, seed):
     with np.errstate(all="ignore"):
         xb = np.select(
             [k == 0, k == 1, k == 2, k == 3, k == 4],
-            [logu(1e-300, 1.0, n), 1.0 - logu(1e-17, 1.0, n), rng.uniform(0.0, 1.0, n),
-             np.exp(np.log(rng.uniform(0.3, 1.0, n)) / a), 1.0 - np.exp(np.log(rng.uniform(0.3, 1.0, n)) / b)],
-            logu(1e-12, 1.0, n))
+            [
+                logu(1e-300, 1.0, n),
+                1.0 - logu(1e-17, 1.0, n),
+                rng.uniform(0.0, 1.0, n),
+                np.exp(np.log(rng.uniform(0.3, 1.0, n)) / a),
+                1.0 - np.exp(np.log(rng.uniform(0.3, 1.0, n)) / b),
+            ],
+            logu(1e-12, 1.0, n),
+        )
         # F: the same arguments mapped back (x = (b / a) w / (1 - w)), and x over the whole range
         xf = np.select(
             [k == 0, k == 1, k == 3, k == 4],
-            [logu(1e-300, 1e300, n), logu(1e-12, 1e12, n), (b / a) * np.exp(np.log(rng.uniform(0.3, 1.0, n)) / a),
-             (b / a) * np.exp(-np.log(rng.uniform(0.3, 1.0, n)) / b)],
-            (b / a) * xb / (1.0 - xb))
+            [
+                logu(1e-300, 1e300, n),
+                logu(1e-12, 1e12, n),
+                (b / a) * np.exp(np.log(rng.uniform(0.3, 1.0, n)) / a),
+                (b / a) * np.exp(-np.log(rng.uniform(0.3, 1.0, n)) / b),
+            ],
+            (b / a) * xb / (1.0 - xb),
+        )
     okb = (xb > 0.0) & (xb < 1.0)
     okf = (xf > 0.0) & np.isfinite(xf)
     return (a[okb], b[okb], xb[okb]), (a[okf], b[okf], xf[okf])
@@ -61,12 +84,30 @@ def evaluate(beta_pts, f_pts):
     A = sd.asarray
     a, b, x = (A(v) for v in beta_pts)
     X = S.Beta(a=a, b=b)
-    vb = [np.asarray(v) for v in (X.cdf(x), X.ccdf(x), X.logcdf(x), X.logccdf(x), sd.special.betainc(a, b, x),
-                                  sd.special.betaincc(a, b, x))]
+    vb = [
+        np.asarray(v)
+        for v in (
+            X.cdf(x),
+            X.ccdf(x),
+            X.logcdf(x),
+            X.logccdf(x),
+            sd.special.betainc(a, b, x),
+            sd.special.betaincc(a, b, x),
+        )
+    ]
     d1, d2, xf = A(2.0 * f_pts[0]), A(2.0 * f_pts[1]), A(f_pts[2])
     Y = S.F(dfn=d1, dfd=d2)
-    vf = [np.asarray(v) for v in (Y.cdf(xf), Y.ccdf(xf), Y.logcdf(xf), Y.logccdf(xf), sd.special.fdtr(d1, d2, xf),
-                                  sd.special.fdtrc(d1, d2, xf))]
+    vf = [
+        np.asarray(v)
+        for v in (
+            Y.cdf(xf),
+            Y.ccdf(xf),
+            Y.logcdf(xf),
+            Y.logccdf(xf),
+            sd.special.fdtr(d1, d2, xf),
+            sd.special.fdtrc(d1, d2, xf),
+        )
+    ]
     return vb, vf
 
 
@@ -125,7 +166,7 @@ def _errors(args):
 def judge(pts, vals, is_f, pool):
     rows = np.column_stack([*pts, *vals]).tolist()
     step = 500
-    chunks = [(is_f, rows[i:i + step]) for i in range(0, len(rows), step)]
+    chunks = [(is_f, rows[i : i + step]) for i in range(0, len(rows), step)]
     return np.vstack(pool.map(_errors, chunks, chunksize=1))
 
 
@@ -138,20 +179,35 @@ def main():
     with Pool(procs, maxtasksperchild=20) as pool:
         eb = judge(beta_pts, vb, False, pool)
         ef = judge(f_pts, vf, True, pool)
-    print("| method | points judged | max error | max error, x normal | above 5e-15 | worst point (x, a or dfn, b or dfd) |")
+    print(
+        "| method | points judged | max error | max error, x normal | above 5e-15 | worst point (x, a or dfn, b or dfd) |"
+    )
     print("|---|---:|---:|---:|---:|---|")
-    cols = {"beta_cdf": (eb, 0, beta_pts, 1), "beta_ccdf": (eb, 1, beta_pts, 1), "beta_logcdf": (eb, 2, beta_pts, 1),
-            "beta_logccdf": (eb, 3, beta_pts, 1), "f_cdf": (ef, 0, f_pts, 2), "f_ccdf": (ef, 1, f_pts, 2),
-            "f_logcdf": (ef, 2, f_pts, 2), "f_logccdf": (ef, 3, f_pts, 2), "betainc": (eb, 4, beta_pts, 1),
-            "betaincc": (eb, 5, beta_pts, 1), "fdtr": (ef, 4, f_pts, 2), "fdtrc": (ef, 5, f_pts, 2)}
+    cols = {
+        "beta_cdf": (eb, 0, beta_pts, 1),
+        "beta_ccdf": (eb, 1, beta_pts, 1),
+        "beta_logcdf": (eb, 2, beta_pts, 1),
+        "beta_logccdf": (eb, 3, beta_pts, 1),
+        "f_cdf": (ef, 0, f_pts, 2),
+        "f_ccdf": (ef, 1, f_pts, 2),
+        "f_logcdf": (ef, 2, f_pts, 2),
+        "f_logccdf": (ef, 3, f_pts, 2),
+        "betainc": (eb, 4, beta_pts, 1),
+        "betaincc": (eb, 5, beta_pts, 1),
+        "fdtr": (ef, 4, f_pts, 2),
+        "fdtrc": (ef, 5, f_pts, 2),
+    }
     for m in METHODS:
         e, j, pts, scale = cols[m]
         col = e[:, j]
         ok = ~np.isnan(col)
         w = int(np.nanargmax(col))
         normal = np.nanmax(np.where(pts[2] >= TINY, col, 0.0))
-        print(f"| `{m}` | {int(ok.sum())} | {col[w]:.3g} | {normal:.3g} | {int((col[ok] > 5e-15).sum())} | "
-              f"({float(pts[2][w])!r}, {float(scale * pts[0][w])!r}, {float(scale * pts[1][w])!r}) |", flush=True)
+        print(
+            f"| `{m}` | {int(ok.sum())} | {col[w]:.3g} | {normal:.3g} | {int((col[ok] > 5e-15).sum())} | "
+            f"({float(pts[2][w])!r}, {float(scale * pts[0][w])!r}, {float(scale * pts[1][w])!r}) |",
+            flush=True,
+        )
 
 
 if __name__ == "__main__":

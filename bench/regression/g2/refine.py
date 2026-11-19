@@ -38,8 +38,31 @@ def fit(y, X, family, inner, final, intercept=False, chol=True):
     n = y.shape[-1]
     aux = np.zeros((4, n))
     aux[:3] = 1.0
-    raw = K.glm_fit("glm", sd.asarray(y), sd.asarray(X), sd.asarray(aux), None, 0, FAM[family], LINK[family], False,
-                    False, False, False, intercept, -1.0, 0, -1, 100, 1e-8, 0, 0.0, inner, final, chol)
+    raw = K.glm_fit(
+        "glm",
+        sd.asarray(y),
+        sd.asarray(X),
+        sd.asarray(aux),
+        None,
+        0,
+        FAM[family],
+        LINK[family],
+        False,
+        False,
+        False,
+        False,
+        intercept,
+        -1.0,
+        0,
+        -1,
+        100,
+        1e-8,
+        0,
+        0.0,
+        inner,
+        final,
+        chol,
+    )
     st = np.asarray(raw[6])
     return np.asarray(raw[0]), np.sqrt(np.diag(np.asarray(raw[1])) * st[5]), int(st[8])
 
@@ -86,11 +109,21 @@ def main():
                 b3, _, _ = fit(y, X, family, 3, 3, chol=False)
                 bn, _, _ = fit(y, X, family, 0, 0)
                 its.add(it0)
-                ref, _ = regref.glm(y.tolist(), X.tolist(), family=family, link="logit" if family == "binomial" else "log",
-                                    intercept=False, beta0=b0.tolist())
-                for key, v in (("0/3", nerr(b0, ref["params"])), ("qr", nerr(bq, ref["params"])),
-                               ("3/3", nerr(b3, ref["params"])),
-                               ("0/0", nerr(bn, ref["params"])), ("bse", rerr(se0, ref["bse"]))):
+                ref, _ = regref.glm(
+                    y.tolist(),
+                    X.tolist(),
+                    family=family,
+                    link="logit" if family == "binomial" else "log",
+                    intercept=False,
+                    beta0=b0.tolist(),
+                )
+                for key, v in (
+                    ("0/3", nerr(b0, ref["params"])),
+                    ("qr", nerr(bq, ref["params"])),
+                    ("3/3", nerr(b3, ref["params"])),
+                    ("0/0", nerr(bn, ref["params"])),
+                    ("bse", rerr(se0, ref["bse"])),
+                ):
                     worst[key] = max(worst.get(key, 0.0), v)
             rows.append((family, kappa, worst, sorted(its)))
             print(rows[-1], flush=True)
@@ -98,8 +131,10 @@ def main():
     print("| family | kappa | glm | QR inner | every | no final | bse (glm) | iterations |")
     print("|---|---:|---:|---:|---:|---:|---|")
     for family, kappa, w, its in rows:
-        print(f"| {family} | {kappa:.0e} | {w['0/3']:.1e} | {w['qr']:.1e} | {w['3/3']:.1e} | {w['0/0']:.1e} | {w['bse']:.1e} | "
-              f"{', '.join(map(str, its))} |")
+        print(
+            f"| {family} | {kappa:.0e} | {w['0/3']:.1e} | {w['qr']:.1e} | {w['3/3']:.1e} | {w['0/0']:.1e} | {w['bse']:.1e} | "
+            f"{', '.join(map(str, its))} |"
+        )
 
     sd.set_num_threads(1)
     rng = np.random.default_rng(0)
@@ -116,8 +151,31 @@ def main():
             best = []
             for _ in range(3):
                 t0 = time.perf_counter()
-                K.glm_fit("glm", ys, Xs, aux, None, 0, 1, 2, False, False, False, False, True, -1.0, 0, -1, 100, 1e-8,
-                          0, 0.0, inner, 3, chol)
+                K.glm_fit(
+                    "glm",
+                    ys,
+                    Xs,
+                    aux,
+                    None,
+                    0,
+                    1,
+                    2,
+                    False,
+                    False,
+                    False,
+                    False,
+                    True,
+                    -1.0,
+                    0,
+                    -1,
+                    100,
+                    1e-8,
+                    0,
+                    0.0,
+                    inner,
+                    3,
+                    chol,
+                )
                 best.append(time.perf_counter() - t0)
             t[key] = min(best)
         print(f"| ({n:,}, {k}) | {t['glm'] * 1e3:.0f} | {t['qr'] * 1e3:.0f} | {t['every'] * 1e3:.0f} |", flush=True)

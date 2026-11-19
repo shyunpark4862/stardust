@@ -19,9 +19,12 @@ from ..registry import Case, Ref
 
 MATRIX_SHAPES = [(3, 3), (32, 32), (300, 300), (1000, 1000), (1000, 3, 3), (100, 32, 32)]
 KIND = {
-    (3, 3): "작은 행렬", (32, 32): "작은 행렬",
-    (300, 300): "큰 행렬", (1000, 1000): "큰 행렬",
-    (1000, 3, 3): "행렬 묶음", (100, 32, 32): "행렬 묶음",
+    (3, 3): "작은 행렬",
+    (32, 32): "작은 행렬",
+    (300, 300): "큰 행렬",
+    (1000, 1000): "큰 행렬",
+    (1000, 3, 3): "행렬 묶음",
+    (100, 32, 32): "행렬 묶음",
 }
 LONG_GROUP = "긴 벡터·띠 행렬"
 LONG_N = 1_000_000
@@ -48,8 +51,9 @@ class Call:
         self.path, self.keys, self.kw = path, keys, kw
 
     def make(self, d):
-        return functools.partial(_resolve(self.path), *(d[k] if isinstance(k, str) else k for k in self.keys),
-                                 **self.kw)
+        return functools.partial(
+            _resolve(self.path), *(d[k] if isinstance(k, str) else k for k in self.keys), **self.kw
+        )
 
 
 class Expr:
@@ -100,8 +104,11 @@ def _matrix_data(shape, keys, quiet=False):
     a = rng.standard_normal(shape)
     b = rng.standard_normal((*batch, n, 1))
     c = rng.standard_normal(shape)
-    tri = [rng.standard_normal((*batch, n - 1)), rng.standard_normal((*batch, n)) + 10,
-           rng.standard_normal((*batch, n - 1))]
+    tri = [
+        rng.standard_normal((*batch, n - 1)),
+        rng.standard_normal((*batch, n)) + 10,
+        rng.standard_normal((*batch, n - 1)),
+    ]
     ab5 = rng.standard_normal((*batch, 5, n))
     ab5[..., 2, :] += 10  # kl = ku = 2, a dominant diagonal
     k3 = rng.standard_normal((3, 3))  # kron's second operand: (..., 3n, 3n) results
@@ -135,8 +142,24 @@ def _matrix_data(shape, keys, quiet=False):
             r = sd.linalg.lu(get("A"))
             memo["LU_L"], memo["LU_U"], memo["LU_P"] = r
             return memo[k]
-        elif k[0].isupper() and k.lower() in ("a", "b", "c", "h", "spd", "t", "chol", "x0", "dl", "dd", "du",
-                                               "ab5", "ab_tri", "k3", "v3", "w3"):
+        elif k[0].isupper() and k.lower() in (
+            "a",
+            "b",
+            "c",
+            "h",
+            "spd",
+            "t",
+            "chol",
+            "x0",
+            "dl",
+            "dd",
+            "du",
+            "ab5",
+            "ab_tri",
+            "k3",
+            "v3",
+            "w3",
+        ):
             v = sd.asarray(get(k.lower()))
         else:
             raise KeyError(k)
@@ -164,8 +187,7 @@ def _long_data(keys):
     ab5[2] += 10
     b = rng.standard_normal(n)
     p3, q3 = rng.standard_normal((LONG_N, 3)), rng.standard_normal((LONG_N, 3))
-    base = {"v": v, "dl": tri[0], "dd": tri[1], "du": tri[2], "ab_tri": ab_tri, "ab5": ab5, "b": b,
-            "p3": p3, "q3": q3}
+    base = {"v": v, "dl": tri[0], "dd": tri[1], "du": tri[2], "ab_tri": ab_tri, "ab5": ab5, "b": b, "p3": p3, "q3": q3}
     return {k: base[k] if k in base else sd.asarray(base[k.lower()]) for k in keys}
 
 
@@ -205,19 +227,26 @@ def matrix_rows(shape):
         ("outer(x, x)", S("outer", "X0", "X0"), ("numpy", Expr("x0", _outer)), "numpy는 브로드캐스트 곱"),
         ("trace(a)", S("trace", "A"), N("linalg.trace", "a"), ""),
         ("diagonal(a)", S("diagonal", "A"), ("numpy", Expr("a", _diagonal)), "numpy는 뷰를 복사"),
-        ("matrix_power(a, 3)", S("matrix_power", "A", 3),
-         N("linalg.matrix_power", "a", 3), ""),
+        ("matrix_power(a, 3)", S("matrix_power", "A", 3), N("linalg.matrix_power", "a", 3), ""),
         ("vector_norm(a, axis=-1)", S("vector_norm", "A", axis=-1), N("linalg.vector_norm", "a", axis=-1), ""),
         ("matrix_norm(a)", S("matrix_norm", "A"), N("linalg.matrix_norm", "a"), ""),
         ("matrix_norm(a, ord=1)", S("matrix_norm", "A", ord=1), N("linalg.matrix_norm", "a", ord=1), ""),
         ("matrix_norm(a, ord=2)", S("matrix_norm", "A", ord=2), N("linalg.matrix_norm", "a", ord=2), ""),
-        ("solve_triangular(t, b, upper=True)", S("solve_triangular", "T", "B", upper=True),
-         P("solve_triangular", "t", "b", lower=False), ""),
+        (
+            "solve_triangular(t, b, upper=True)",
+            S("solve_triangular", "T", "B", upper=True),
+            P("solve_triangular", "t", "b", lower=False),
+            "",
+        ),
         ("cholesky(spd)", S("cholesky", "SPD"), N("linalg.cholesky", "spd"), ""),
         ("cholesky_solve(l, b)", S("cholesky_solve", "CHOL", "B"), ("scipy", Expr("chol b", _cho_solve)), ""),
         ("lu(a)", S("lu", "A"), P("lu", "a", p_indices=True), ""),
-        ("lu_solve(l, u, perm, b)", S("lu_solve", "LU_L", "LU_U", "LU_P", "B"),
-         P("lu_solve", "lu_f", "b") if single else None, ""),
+        (
+            "lu_solve(l, u, perm, b)",
+            S("lu_solve", "LU_L", "LU_U", "LU_P", "B"),
+            P("lu_solve", "lu_f", "b") if single else None,
+            "",
+        ),
         ("qr(a)", S("qr", "A"), N("linalg.qr", "a"), ""),
         ('qr(a, mode="complete")', S("qr", "A", mode="complete"), N("linalg.qr", "a", mode="complete"), ""),
         ("qr_pivoted(a)", S("qr_pivoted", "A"), P("qr", "a", mode="economic", pivoting=True), ""),
@@ -235,19 +264,31 @@ def matrix_rows(shape):
         ("schur(a)", S("schur", "A"), P("schur", "a"), ""),
         ("hessenberg(a)", S("hessenberg", "A"), P("hessenberg", "a", calc_q=True), ""),
         ("ldl(h)", S("ldl", "H"), P("ldl", "h") if single else None, ""),
-        ("solve_tridiagonal(dl, d, du, b)", S("solve_tridiagonal", "DL", "DD", "DU", "B"),
-         P("solve_banded", (1, 1), "ab_tri", "b") if single else None,
-         "scipy는 solve_banded((1, 1), ...)" if single else ""),
-        ("solve_banded(ab, b, lower_bandwidth=2, upper_bandwidth=2)",
-         S("solve_banded", "AB5", "B", lower_bandwidth=2, upper_bandwidth=2),
-         P("solve_banded", (2, 2), "ab5", "b") if single else None, ""),
-        ("solve_banded(ab, b, lower_bandwidth=1, upper_bandwidth=1)",
-         S("solve_banded", "AB_TRI", "B", lower_bandwidth=1, upper_bandwidth=1),
-         P("solve_banded", (1, 1), "ab_tri", "b") if single else None, ""),
+        (
+            "solve_tridiagonal(dl, d, du, b)",
+            S("solve_tridiagonal", "DL", "DD", "DU", "B"),
+            P("solve_banded", (1, 1), "ab_tri", "b") if single else None,
+            "scipy는 solve_banded((1, 1), ...)" if single else "",
+        ),
+        (
+            "solve_banded(ab, b, lower_bandwidth=2, upper_bandwidth=2)",
+            S("solve_banded", "AB5", "B", lower_bandwidth=2, upper_bandwidth=2),
+            P("solve_banded", (2, 2), "ab5", "b") if single else None,
+            "",
+        ),
+        (
+            "solve_banded(ab, b, lower_bandwidth=1, upper_bandwidth=1)",
+            S("solve_banded", "AB_TRI", "B", lower_bandwidth=1, upper_bandwidth=1),
+            P("solve_banded", (1, 1), "ab_tri", "b") if single else None,
+            "",
+        ),
         ("solve_sylvester(a, a, c)", S("solve_sylvester", "A", "A", "C"), P("solve_sylvester", "a", "a", "c"), ""),
-        ("kron(a, k)", S("kron", "A", "K3"),
-         N("kron", "a", "k3") if single else ("numpy", Expr("a k3", _kron_batch)),
-         "k는 3×3" if single else "k는 3×3, numpy는 브로드캐스트 곱을 reshape"),
+        (
+            "kron(a, k)",
+            S("kron", "A", "K3"),
+            N("kron", "a", "k3") if single else ("numpy", Expr("a k3", _kron_batch)),
+            "k는 3×3" if single else "k는 3×3, numpy는 브로드캐스트 곱을 reshape",
+        ),
         ("cross(v, w)", S("cross", "V3", "W3"), N("cross", "v3", "w3"), "행마다 앞 세 원소"),
         ("expm(a)", S("expm", "A"), P("expm", "a"), ""),
     ]
@@ -259,26 +300,51 @@ def long_rows():
     return [
         ("vecdot(v, v)", "(10^6,)", LONG_N, S("vecdot", "V", "V"), N("vecdot", "v", "v"), ""),
         ("vector_norm(v)", "(10^6,)", LONG_N, S("vector_norm", "V"), N("linalg.vector_norm", "v"), ""),
-        ("vector_norm(v, ord=inf)", "(10^6,)", LONG_N, S("vector_norm", "V", ord=float("inf")),
-         N("linalg.vector_norm", "v", ord=float("inf")), ""),
-        ("solve_tridiagonal(dl, d, du, b)", band, BAND_N, S("solve_tridiagonal", "DL", "DD", "DU", "B"),
-         P("solve_banded", (1, 1), "ab_tri", "b"), "scipy는 solve_banded((1, 1), ...)"),
-        ("solve_banded(ab, b, lower_bandwidth=2, upper_bandwidth=2)", band, BAND_N,
-         S("solve_banded", "AB5", "B", lower_bandwidth=2, upper_bandwidth=2),
-         P("solve_banded", (2, 2), "ab5", "b"), ""),
+        (
+            "vector_norm(v, ord=inf)",
+            "(10^6,)",
+            LONG_N,
+            S("vector_norm", "V", ord=float("inf")),
+            N("linalg.vector_norm", "v", ord=float("inf")),
+            "",
+        ),
+        (
+            "solve_tridiagonal(dl, d, du, b)",
+            band,
+            BAND_N,
+            S("solve_tridiagonal", "DL", "DD", "DU", "B"),
+            P("solve_banded", (1, 1), "ab_tri", "b"),
+            "scipy는 solve_banded((1, 1), ...)",
+        ),
+        (
+            "solve_banded(ab, b, lower_bandwidth=2, upper_bandwidth=2)",
+            band,
+            BAND_N,
+            S("solve_banded", "AB5", "B", lower_bandwidth=2, upper_bandwidth=2),
+            P("solve_banded", (2, 2), "ab5", "b"),
+            "",
+        ),
         ("cross(p, q)", "(10^6,3)", LONG_N, S("cross", "P3", "Q3"), N("cross", "p3", "q3"), ""),
     ]
 
 
 # The representative rows of bench/linalg/final_table.py (PICK), less the slowest.
 QUICK = {
-    ("solve(a, b)", (3, 3)), ("solve(a, b)", (1000, 1000)), ("matrix_norm(a, ord=1)", (1000, 3, 3)),
-    ("matrix_power(a, 3)", (100, 32, 32)), ("solve_triangular(t, b, upper=True)", (1000, 1000)),
-    ("lu_solve(l, u, perm, b)", (1000, 1000)), ("qr(a)", (1000, 3, 3)), ("eigh(h)", (1000, 3, 3)),
-    ("svd(a)", (100, 32, 32)), ("eig(a)", (100, 32, 32)),
+    ("solve(a, b)", (3, 3)),
+    ("solve(a, b)", (1000, 1000)),
+    ("matrix_norm(a, ord=1)", (1000, 3, 3)),
+    ("matrix_power(a, 3)", (100, 32, 32)),
+    ("solve_triangular(t, b, upper=True)", (1000, 1000)),
+    ("lu_solve(l, u, perm, b)", (1000, 1000)),
+    ("qr(a)", (1000, 3, 3)),
+    ("eigh(h)", (1000, 3, 3)),
+    ("svd(a)", (100, 32, 32)),
+    ("eig(a)", (100, 32, 32)),
     ("solve_banded(ab, b, lower_bandwidth=2, upper_bandwidth=2)", (1000, 3, 3)),
-    ("expm(a)", (1000, 3, 3)), ("expm(a)", (300, 300)),
-    ("vecdot(v, v)", "(10^6,)"), ("vector_norm(v)", "(10^6,)"),
+    ("expm(a)", (1000, 3, 3)),
+    ("expm(a)", (300, 300)),
+    ("vecdot(v, v)", "(10^6,)"),
+    ("vector_norm(v)", "(10^6,)"),
 }
 
 
@@ -300,18 +366,33 @@ def cases() -> list[Case]:
         for name, sdc, ref, note in matrix_rows(shape):
             keys = _keys(sdc, ref[1] if ref else None)
             quiet = name.startswith(("det(", "slogdet("))
-            out.append(Case(
-                area="linalg", group=KIND[shape], name=name, size=size,
-                setup=lambda shape=shape, keys=keys, quiet=quiet: _matrix_data(shape, keys, quiet),
-                sd=sdc.make, refs=_ref(ref), note=note,
-                quick=(name, shape) in QUICK,
-            ))
+            out.append(
+                Case(
+                    area="linalg",
+                    group=KIND[shape],
+                    name=name,
+                    size=size,
+                    setup=lambda shape=shape, keys=keys, quiet=quiet: _matrix_data(shape, keys, quiet),
+                    sd=sdc.make,
+                    refs=_ref(ref),
+                    note=note,
+                    quick=(name, shape) in QUICK,
+                )
+            )
     for name, size, n, sdc, ref, note in long_rows():
         keys = _keys(sdc, ref[1])
-        out.append(Case(
-            area="linalg", group=LONG_GROUP, name=name, size=size, n=n,
-            setup=lambda keys=keys: _long_data(keys),
-            sd=sdc.make, refs=_ref(ref), note=note,
-            quick=(name, size) in QUICK,
-        ))
+        out.append(
+            Case(
+                area="linalg",
+                group=LONG_GROUP,
+                name=name,
+                size=size,
+                n=n,
+                setup=lambda keys=keys: _long_data(keys),
+                sd=sdc.make,
+                refs=_ref(ref),
+                note=note,
+                quick=(name, size) in QUICK,
+            )
+        )
     return out

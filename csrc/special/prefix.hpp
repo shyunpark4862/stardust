@@ -128,9 +128,7 @@ inline dd::DD beta_term(double a, double b, dd::DD x) {
 
 // E = a mu(x c/a - 1) + b mu(y c/b - 1), y = 1 - x; both double-doubles with
 // x + y = 1 exactly.
-inline dd::DD beta_exponent(double a, double b, dd::DD x, dd::DD y) {
-    return beta_term(a, b, x) + beta_term(b, a, y);
-}
+inline dd::DD beta_exponent(double a, double b, dd::DD x, dd::DD y) { return beta_term(a, b, x) + beta_term(b, a, y); }
 
 // sqrt(ab / (2 pi c)) Gamma*(c) / (Gamma*(a) Gamma*(b)), c = a + b:
 // ab / c = min / (1 + min / max) and Gamma*(c) at c rounded (its

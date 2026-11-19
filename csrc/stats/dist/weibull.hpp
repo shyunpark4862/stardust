@@ -139,8 +139,9 @@ inline double kurtosis_x(DD x) {
 //           is gone and tau = eu + kLq |E| + 1/2 (log_dd's error, and the rounding of r and
 //           th r, terms below 2^-51 of t).
 // NaN (th and tau, and so every bound) where th leaves [2^-999, 2^999].
-inline void t_chunk(const double* eh, const double* el, const double* eu, bool fold, double* th, double* tl,
-                    double* tau, int n) {
+inline void t_chunk(
+    const double* eh, const double* el, const double* eu, bool fold, double* th, double* tl, double* tau, int n
+) {
     ck::exp(th, eh, n);
     if (!fold) {
         for (int i = 0; i < n; ++i) {
@@ -178,8 +179,9 @@ inline void t_chunk(const double* eh, const double* el, const double* eu, bool f
 //             log1p(-e), e = exp(-th) (1 - tl) (t tau + 3) times e / ((1 - e) |log1p(-e)|) <=
 //             1 / (1 - e).
 enum class Tail { kExp, kOneExp, kLogExp, kLogOne };
-inline void tail_chunk(Tail kind, const double* th, const double* tl, const double* tau, double* out,
-                       double* bound, int n) {
+inline void tail_chunk(
+    Tail kind, const double* th, const double* tl, const double* tau, double* out, double* bound, int n
+) {
     if (kind == Tail::kLogExp) {
         for (int i = 0; i < n; ++i) {
             out[i] = -(th[i] + tl[i]);
@@ -321,8 +323,8 @@ struct Weibull {
         ckd::ratio(c.x, c.p[1], yh, yl, c.n);
         ckd::pow_dd(th, yh, yl, c.p[0], c.n);
         for (int i = 0; i < c.n; ++i) {
-            const bool ok = yh[i] >= 0x1p-999 && yh[i] <= 0x1p999 && th[i] >= 0x1p-999 && th[i] <= 0x1p999 &&
-                            c.p[0][i] <= 0x1p30;
+            const bool ok =
+                yh[i] >= 0x1p-999 && yh[i] <= 0x1p999 && th[i] >= 0x1p-999 && th[i] <= 0x1p999 && c.p[0][i] <= 0x1p30;
             th[i] = ok ? th[i] : kNaN;
             tl[i] = 0.0;
             tau[i] = ok ? ckd::kPowDd : kNaN;
@@ -368,8 +370,12 @@ struct Weibull {
     }
     static void cdf_chunk(const Chunk<2>& c, double* out) { tail_run(c, out, weibull_detail::Tail::kOneExp, cdf); }
     static void ccdf_chunk(const Chunk<2>& c, double* out) { tail_run(c, out, weibull_detail::Tail::kExp, ccdf); }
-    static void logcdf_chunk(const Chunk<2>& c, double* out) { tail_run(c, out, weibull_detail::Tail::kLogOne, logcdf); }
-    static void logccdf_chunk(const Chunk<2>& c, double* out) { tail_run(c, out, weibull_detail::Tail::kLogExp, logccdf); }
+    static void logcdf_chunk(const Chunk<2>& c, double* out) {
+        tail_run(c, out, weibull_detail::Tail::kLogOne, logcdf);
+    }
+    static void logccdf_chunk(const Chunk<2>& c, double* out) {
+        tail_run(c, out, weibull_detail::Tail::kLogExp, logccdf);
+    }
 
     // The density in the same grades (k = log c - log s, a double-double per parameters).
     //   0: pdf = c t e^-t / x in double, t by pow: t's error reaches it times |1 - t|, then exp
@@ -395,7 +401,8 @@ struct Weibull {
             if (log) ck::log(out, out, c.n);
             for (int i = 0; i < c.n; ++i) {
                 const double v = std::fabs(out[i]);
-                fast[i] = fast[i] && (log ? tau[i] + ck::kVfLog * v <= kFastBudget * std::max(1.0, v) : tau[i] <= kFastBudget);
+                fast[i] = fast[i] &&
+                          (log ? tau[i] + ck::kVfLog * v <= kFastBudget * std::max(1.0, v) : tau[i] <= kFastBudget);
             }
             return;
         }
@@ -405,7 +412,8 @@ struct Weibull {
         double kl[kChunkSize];
         ckd::constant(c, kh, kl, [&](int i) { return num::log_dd(c.p[0][i]) - num::log_dd(c.p[1][i]); });
         for (int i = 0; i < c.n; ++i) {
-            const num::DD l = num::DD{kh[i], kl[i]} + num::DD{eh[i], el[i]} - num::DD{lh[i], ll[i]} - num::DD{th[i], tl[i]};
+            const num::DD l =
+                num::DD{kh[i], kl[i]} + num::DD{eh[i], el[i]} - num::DD{lh[i], ll[i]} - num::DD{th[i], tl[i]};
             const double abs = th[i] * tau[i] + ckd::kLq * (std::fabs(eh[i]) + std::fabs(lh[i])) + 1.0;
             if (log) {
                 out[i] = l.hi + l.lo;

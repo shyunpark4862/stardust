@@ -18,10 +18,37 @@ from .. import special as _special
 from ..stats import ChiSquared as _ChiSquared
 from ..stats import Normal as _Normal
 from ..stats import StudentT as _StudentT
-from ._linear import (_call_errors, _COV_TYPES, _RegressionResult, _arg, _as_real, _check_alpha, _check_bool, _check_choice,
-                      _check_batches, _check_maxlags, _check_params, _check_policy, _check_rows, _check_rtol, _count,
-                      _div, _expand, _forg, _frame_columns, _groups, _has_nan, _log, _names, _pairs, _quantile_label,
-                      _read_y, _rows_message, _WIDTH, _COV_NOTES)
+from ._linear import (
+    _call_errors,
+    _COV_TYPES,
+    _RegressionResult,
+    _arg,
+    _as_real,
+    _check_alpha,
+    _check_bool,
+    _check_choice,
+    _check_batches,
+    _check_maxlags,
+    _check_params,
+    _check_policy,
+    _check_rows,
+    _check_rtol,
+    _count,
+    _div,
+    _expand,
+    _forg,
+    _frame_columns,
+    _groups,
+    _has_nan,
+    _log,
+    _names,
+    _pairs,
+    _quantile_label,
+    _read_y,
+    _rows_message,
+    _WIDTH,
+    _COV_NOTES,
+)
 
 _k = _sd.regression
 
@@ -38,12 +65,34 @@ _FAMILY_CODE = {"gaussian": 0, "binomial": 1, "poisson": 2, "gamma": 3}
 _LINK_CODE = {"identity": 0, "log": 1, "logit": 2, "probit": 3, "cloglog": 4, "sqrt": 5, "inverse": 6}
 # summary(): statsmodels' class names
 _FAMILY_NAME = {"gaussian": "Gaussian", "binomial": "Binomial", "poisson": "Poisson", "gamma": "Gamma"}
-_LINK_NAME = {"identity": "Identity", "log": "Log", "logit": "Logit", "probit": "Probit", "cloglog": "CLogLog",
-              "sqrt": "Sqrt", "inverse": "InversePower"}
+_LINK_NAME = {
+    "identity": "Identity",
+    "log": "Log",
+    "logit": "Logit",
+    "probit": "Probit",
+    "cloglog": "CLogLog",
+    "sqrt": "Sqrt",
+    "inverse": "InversePower",
+}
 
 # the kernel's per-regression scalars (csrc/regression/glm.cpp, enum GStat)
-(_G_NOBS, _G_RANK, _G_DEV, _G_NULLDEV, _G_PEARSON, _G_SCALE, _G_LLF, _G_LLNULL, _G_NITER, _G_CONV, _G_SEP,
- _G_ISNAN, _G_NGROUPS, _G_LAGS) = range(14)
+(
+    _G_NOBS,
+    _G_RANK,
+    _G_DEV,
+    _G_NULLDEV,
+    _G_PEARSON,
+    _G_SCALE,
+    _G_LLF,
+    _G_LLNULL,
+    _G_NITER,
+    _G_CONV,
+    _G_SEP,
+    _G_ISNAN,
+    _G_NGROUPS,
+    _G_LAGS,
+) = range(14)
+
 
 def _inverse_link(link, eta):
     """mu = g^-1(eta) through sd.special and the array functions."""
@@ -135,7 +184,9 @@ class GLMResult(_RegressionResult):
 
     @property
     def df_model(self):
-        return self._cached("df_model", lambda: self._nan_where(self._stat(_G_RANK) - (1.0 if self._intercept else 0.0)))
+        return self._cached(
+            "df_model", lambda: self._nan_where(self._stat(_G_RANK) - (1.0 if self._intercept else 0.0))
+        )
 
     @property
     def df_resid(self):
@@ -144,6 +195,7 @@ class GLMResult(_RegressionResult):
     def cov_params(self):
         """The covariance of the parameters (k x k); rows and columns of aliased parameters are
         NaN, and all of it when an estimated scale has no degree of freedom (0/0, G95)."""
+
         def make():
             c = self._raw[1]
             if not self._robust:
@@ -154,6 +206,7 @@ class GLMResult(_RegressionResult):
             if self._batch:
                 return _sd.where(_expand(df == 0.0, 2), math.nan, c)
             return c * math.nan if df == 0 else c
+
         return self._cached("cov_params", make)
 
     @property
@@ -190,11 +243,13 @@ class GLMResult(_RegressionResult):
                 elif math.isinf(llf) or lln == 0.0:
                     v = math.nan
             return self._nan_where(v)
+
         return self._cached(("pseudo_rsquared", kind), make)
 
     @property
     def llr_pvalue(self):
         """llr against chi-square with df_model degrees of freedom."""
+
         def make():
             df = self.df_model
             if self._batch:
@@ -202,6 +257,7 @@ class GLMResult(_RegressionResult):
             elif not df > 0:
                 df = math.nan
             return self._scalar(_ChiSquared(df=_arg(df)).ccdf(_arg(self.llr)))
+
         return self._cached("llr_pvalue", make)
 
     @property
@@ -309,8 +365,10 @@ class GLMResult(_RegressionResult):
         name = type(self).__name__
         if self._batch:
             return f"{name}(batch shape {tuple(self._batch)}, {self.params.shape[-1]} parameters)"
-        return (f"{name}(family={self.family!r}, link={self.link!r}, nobs={self.nobs:g}, rank={self.rank}, "
-                f"deviance={self.deviance:.6g}, params={self.params})")
+        return (
+            f"{name}(family={self.family!r}, link={self.link!r}, nobs={self.nobs:g}, rank={self.rank}, "
+            f"deviance={self.deviance:.6g}, params={self.params})"
+        )
 
 
 def _summary(r, alpha):
@@ -318,12 +376,24 @@ def _summary(r, alpha):
     lines = ["Generalized Linear Model Regression Results".center(_WIDTH).rstrip(), stars]
     nan = r._isnan()
     prsq = r.pseudo_rsquared()  # Cox-Snell: 1 - exp((llnull - llf) 2/n)
-    left = [("Model:", "GLM"), ("Model Family:", _FAMILY_NAME[r.family]), ("Link Function:", _LINK_NAME[r.link]),
-            ("Method:", "IRLS"), ("No. Iterations:", str(r.n_iter)), ("Covariance Type:", r.cov_type)]
-    right = [("No. Observations:", _count(r.nobs)), ("Df Residuals:", _count(r.df_resid)),
-             ("Df Model:", _count(r.df_model)), ("Scale:", f"{r.scale:#8.5g}".strip()),
-             ("Log-Likelihood:", f"{r.llf:#8.5g}".strip()), ("Deviance:", f"{r.deviance:#8.5g}".strip()),
-             ("Pearson chi2:", f"{r.pearson_chi2:#6.3g}".strip()), ("Pseudo R-squ. (CS):", f"{prsq:#6.4g}".strip())]
+    left = [
+        ("Model:", "GLM"),
+        ("Model Family:", _FAMILY_NAME[r.family]),
+        ("Link Function:", _LINK_NAME[r.link]),
+        ("Method:", "IRLS"),
+        ("No. Iterations:", str(r.n_iter)),
+        ("Covariance Type:", r.cov_type),
+    ]
+    right = [
+        ("No. Observations:", _count(r.nobs)),
+        ("Df Residuals:", _count(r.df_resid)),
+        ("Df Model:", _count(r.df_model)),
+        ("Scale:", f"{r.scale:#8.5g}".strip()),
+        ("Log-Likelihood:", f"{r.llf:#8.5g}".strip()),
+        ("Deviance:", f"{r.deviance:#8.5g}".strip()),
+        ("Pearson chi2:", f"{r.pearson_chi2:#6.3g}".strip()),
+        ("Pseudo R-squ. (CS):", f"{prsq:#6.4g}".strip()),
+    ]
     lines += _pairs(left, right)
     lines.append(stars)
     names = [str(v) for v in r.param_names]
@@ -331,7 +401,14 @@ def _summary(r, alpha):
     params, bse, tv, pv = (r.params, r.bse, r.tvalues, r.pvalues)
     stat = "z" if r._normal() else "t"
     wname = max([len(v) for v in names] + [9]) + 1
-    cols = ["coef", "std err", stat, f"P>|{stat}|", "[" + _quantile_label(alpha / 2), _quantile_label(1 - alpha / 2) + "]"]
+    cols = [
+        "coef",
+        "std err",
+        stat,
+        f"P>|{stat}|",
+        "[" + _quantile_label(alpha / 2),
+        _quantile_label(1 - alpha / 2) + "]",
+    ]
     head = " " * wname + "".join(c.rjust(11) for c in cols)
     width = max(_WIDTH, len(head))
     lines[1] = "=" * width
@@ -339,22 +416,34 @@ def _summary(r, alpha):
     lines.append(head)
     lines.append("-" * width)
     for j, nm in enumerate(names):
-        vals = [_forg(float(params[j]), 4), _forg(float(bse[j])), _forg(float(tv[j])), f"{float(pv[j]):#.3f}",
-                _forg(float(ci[j, 0])), _forg(float(ci[j, 1]))]
+        vals = [
+            _forg(float(params[j]), 4),
+            _forg(float(bse[j])),
+            _forg(float(tv[j])),
+            f"{float(pv[j]):#.3f}",
+            _forg(float(ci[j, 0])),
+            _forg(float(ci[j, 1])),
+        ]
         lines.append(nm.ljust(wname) + "".join(v.rjust(11) for v in vals))
     lines.append("=" * width)
     notes = []
     ct = r.cov_type
     if ct == "HAC":
-        notes.append(f"Standard errors are heteroscedasticity and autocorrelation robust (HAC) using "
-                     f"{_count(r._stat(_G_LAGS))} lags (Bartlett kernel) and without small sample correction.")
+        notes.append(
+            f"Standard errors are heteroscedasticity and autocorrelation robust (HAC) using "
+            f"{_count(r._stat(_G_LAGS))} lags (Bartlett kernel) and without small sample correction."
+        )
     elif ct == "cluster":
         g = r._stat(_G_NGROUPS)
-        notes.append(f"Standard errors are robust to cluster correlation (cluster) with {_count(g)} groups; "
-                     f"t uses {_count(g - 1)} degrees of freedom.")
+        notes.append(
+            f"Standard errors are robust to cluster correlation (cluster) with {_count(g)} groups; "
+            f"t uses {_count(g - 1)} degrees of freedom."
+        )
     elif ct == "nonrobust":
-        notes.append("Standard errors are from the expected (Fisher) information"
-                     + ("." if r._scale_fixed else " and the estimated scale."))
+        notes.append(
+            "Standard errors are from the expected (Fisher) information"
+            + ("." if r._scale_fixed else " and the estimated scale.")
+        )
     else:
         notes.append(_COV_NOTES[ct])
     if not nan:
@@ -362,8 +451,10 @@ def _summary(r, alpha):
         if aliased:
             notes.append("Aliased (linearly dependent on earlier columns), not estimated: " + ", ".join(aliased) + ".")
         if r.separation:
-            notes.append("Separation: the maximum likelihood estimate does not exist (some fitted values are at the "
-                         "boundary); the coefficients and their inference are NaN, the fit is its limit.")
+            notes.append(
+                "Separation: the maximum likelihood estimate does not exist (some fitted values are at the "
+                "boundary); the coefficients and their inference are NaN, the fit is its limit."
+            )
         if not r.converged:
             notes.append(f"The IRLS did not converge in {r.n_iter} iterations.")
     lines.append("")
@@ -374,6 +465,7 @@ def _summary(r, alpha):
 
 
 # ---- the fit
+
 
 def _check_int(v, func, arg, lo):
     if isinstance(v, bool) or not isinstance(v, numbers.Integral):
@@ -432,9 +524,28 @@ def _broadcast_shape(func, a, b):
     return tuple(out)
 
 
-def glm(y, X, /, *, family, link=None, var_weights=None, freq_weights=None, trials=None, offset=None, exposure=None,
-        intercept=True, scale=None, cov_type="nonrobust", maxlags=None, groups=None, max_iter=100, tol=1e-8,
-        rtol=None, nan_policy="propagate"):
+def glm(
+    y,
+    X,
+    /,
+    *,
+    family,
+    link=None,
+    var_weights=None,
+    freq_weights=None,
+    trials=None,
+    offset=None,
+    exposure=None,
+    intercept=True,
+    scale=None,
+    cov_type="nonrobust",
+    maxlags=None,
+    groups=None,
+    max_iter=100,
+    tol=1e-8,
+    rtol=None,
+    nan_policy="propagate",
+):
     """Generalized linear model of y (..., n) on X (..., n, k) or (n,), an intercept column
     first, fitted by IRLS (docs/api/regression.md §3)."""
     func = "glm"
@@ -474,8 +585,13 @@ def glm(y, X, /, *, family, link=None, var_weights=None, freq_weights=None, tria
         raise ValueError(_rows_message(func, "X", n, XX.shape[-2], yy.shape))
     _check_params(func, XX.shape[-1], intercept)
     rows = {}
-    for name, v in (("var_weights", var_weights), ("freq_weights", freq_weights), ("trials", trials),
-                    ("offset", offset), ("exposure", exposure)):
+    for name, v in (
+        ("var_weights", var_weights),
+        ("freq_weights", freq_weights),
+        ("trials", trials),
+        ("offset", offset),
+        ("exposure", exposure),
+    ):
         if v is None:
             continue
         a, _ = _as_real(v, func, name, per_row=f"{n} value{'' if n == 1 else 's'} like 'y'")
@@ -493,15 +609,18 @@ def glm(y, X, /, *, family, link=None, var_weights=None, freq_weights=None, tria
     if codes is not None:
         named.append(("groups", codes.shape[:-1]))
     _check_batches(func, named)
-    batch = yy.ndim > 1 or XX.ndim > 2 or any(a.ndim > 1 for a in rows.values()) or \
-        (codes is not None and codes.ndim > 1)
+    batch = (
+        yy.ndim > 1 or XX.ndim > 2 or any(a.ndim > 1 for a in rows.values()) or (codes is not None and codes.ndim > 1)
+    )
     if nan_policy == "raise":
         if _has_nan(yy, XX, *rows.values()) or gmiss is not None:
             raise ValueError(f"{func}(): the input contains NaN (nan_policy='raise')")
     elif nan_policy == "omit":
         if batch:
-            raise ValueError(f"{func}(): nan_policy='omit' takes one regression, not a batch "
-                             "(the regressions would keep different rows)")
+            raise ValueError(
+                f"{func}(): nan_policy='omit' takes one regression, not a batch "
+                "(the regressions would keep different rows)"
+            )
         # inf and invalid weights stay errors in a row that also has a NaN (G24)
         _check_rows(func, [("y", yy), ("X", XX)] + list(rows.items()), nonneg=("var_weights", "freq_weights"))
         if "trials" in rows and bool(_sd.any(rows["trials"] <= 0)):
@@ -528,15 +647,44 @@ def glm(y, X, /, *, family, link=None, var_weights=None, freq_weights=None, tria
         if a is not None:
             shape = _broadcast_shape(func, shape, tuple(a.shape[:-1]))
     fills = (1.0, 1.0, 1.0, 0.0)
-    aux = _sd.stack([_sd.broadcast_to(a if a is not None else _sd.full((n,), fills[i]), shape + (n,))
-                     for i, a in enumerate(parts)], axis=-2)
-    raw = _k.glm_fit(func, yy, XX, aux, codes, gtot, _FAMILY_CODE[family], _LINK_CODE[link],
-                     parts[0] is not None, parts[1] is not None, parts[2] is not None, off is not None, intercept,
-                     rt, _COV_TYPES.index(cov_type), lags, max_iter, tol, smode, svalue)
+    aux = _sd.stack(
+        [_sd.broadcast_to(a if a is not None else _sd.full((n,), fills[i]), shape + (n,)) for i, a in enumerate(parts)],
+        axis=-2,
+    )
+    raw = _k.glm_fit(
+        func,
+        yy,
+        XX,
+        aux,
+        codes,
+        gtot,
+        _FAMILY_CODE[family],
+        _LINK_CODE[link],
+        parts[0] is not None,
+        parts[1] is not None,
+        parts[2] is not None,
+        off is not None,
+        intercept,
+        rt,
+        _COV_TYPES.index(cov_type),
+        lags,
+        max_iter,
+        tol,
+        smode,
+        svalue,
+    )
     fixed = smode == 3 or (smode == 0 and family in ("binomial", "poisson"))
-    return GLMResult(raw, family=family, link=link, scale_fixed=fixed,
-                     param_names=_names(names, XX.shape[-1], intercept), intercept=intercept, cov_type=cov_type,
-                     batch=tuple(raw[0].shape[:-1]), columns=columns)
+    return GLMResult(
+        raw,
+        family=family,
+        link=link,
+        scale_fixed=fixed,
+        param_names=_names(names, XX.shape[-1], intercept),
+        intercept=intercept,
+        cov_type=cov_type,
+        batch=tuple(raw[0].shape[:-1]),
+        columns=columns,
+    )
 
 
 # the methods' call-shape errors in the library's form (R89)

@@ -19,8 +19,16 @@ import scipy.stats as st
 import stardust as sd
 
 S = sd.stats
-SCIPY = {"pmf": "pmf", "logpmf": "logpmf", "cdf": "cdf", "logcdf": "logcdf", "ccdf": "sf", "logccdf": "logsf",
-         "icdf": "ppf", "iccdf": "isf"}
+SCIPY = {
+    "pmf": "pmf",
+    "logpmf": "logpmf",
+    "cdf": "cdf",
+    "logcdf": "logcdf",
+    "ccdf": "sf",
+    "logccdf": "logsf",
+    "icdf": "ppf",
+    "iccdf": "isf",
+}
 
 SETS = {
     "t5": [
@@ -40,8 +48,11 @@ SETS = {
         (S.Poisson, {"mu": 3e8}, st.poisson(3e8)),
         (S.Geometric, {"p": 1e-6}, st.geom(1e-6)),
         (S.NegativeBinomial, {"n": 2.5e6, "p": 1e-3}, st.nbinom(2.5e6, 1e-3)),
-        (S.Hypergeometric, {"total": 5 * 10**6, "successes": 12 * 10**5, "draws": 2 * 10**6},
-         st.hypergeom(5 * 10**6, 12 * 10**5, 2 * 10**6)),
+        (
+            S.Hypergeometric,
+            {"total": 5 * 10**6, "successes": 12 * 10**5, "draws": 2 * 10**6},
+            st.hypergeom(5 * 10**6, 12 * 10**5, 2 * 10**6),
+        ),
         (S.DiscreteUniform, {"low": 2, "high": 10**9}, st.randint(2, 10**9)),
         (S.BetaBinomial, {"n": 20000, "a": 2.5, "b": 1.7}, st.betabinom(20000, 2.5, 1.7)),
         (S.LogSeries, {"p": 1 - 1e-7}, st.logser(1 - 1e-7)),

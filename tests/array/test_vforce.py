@@ -16,9 +16,20 @@ import stardust as sd
 from .conftest import assert_ulp
 
 UNARY = {
-    "exp": (-745, 710), "log": (1e-300, 1e300), "log2": (1e-300, 1e300), "log10": (1e-300, 1e300),
-    "sin": (-1e5, 1e5), "asin": (-1, 1), "acos": (-1, 1), "atan": (-1e8, 1e8), "sinh": (-710, 710),
-    "cosh": (-710, 710), "tanh": (-30, 30), "asinh": (-1e300, 1e300), "acosh": (1, 1e300), "atanh": (-1, 1),
+    "exp": (-745, 710),
+    "log": (1e-300, 1e300),
+    "log2": (1e-300, 1e300),
+    "log10": (1e-300, 1e300),
+    "sin": (-1e5, 1e5),
+    "asin": (-1, 1),
+    "acos": (-1, 1),
+    "atan": (-1e8, 1e8),
+    "sinh": (-710, 710),
+    "cosh": (-710, 710),
+    "tanh": (-30, 30),
+    "asinh": (-1e300, 1e300),
+    "acosh": (1, 1e300),
+    "atanh": (-1, 1),
 }
 SPECIAL = [0.0, -0.0, math.inf, -math.inf, math.nan, 1.0, -1.0, 5e-324, -5e-324, 2.0, 0.5, -0.5, 1e308]
 

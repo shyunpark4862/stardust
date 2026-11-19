@@ -197,7 +197,9 @@ def test_lstsq_rules():
     assert r.solution.shape == (0, 2) and r.rank == 0
 
 
-@pytest.mark.parametrize("call", [lambda z: sd.linalg.qr(z), lambda z: sd.linalg.qr_pivoted(z), lambda z: sd.linalg.lstsq(z, z)])
+@pytest.mark.parametrize(
+    "call", [lambda z: sd.linalg.qr(z), lambda z: sd.linalg.qr_pivoted(z), lambda z: sd.linalg.lstsq(z, z)]
+)
 @pytest.mark.parametrize("bad", [[[1.0]], np.eye(2), None])
 def test_only_sd_arrays(call, bad):
     with pytest.raises(TypeError, match=r"^\w+\(\): '\w+' must be an sd\.ndarray, not "):

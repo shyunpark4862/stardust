@@ -85,7 +85,7 @@ def tree_rss(pid: int) -> int:
 def _ps_tree(pid: int) -> tuple[list[int], int]:
     try:
         out = subprocess.run(["ps", "-A", "-o", "pid=,ppid=,rss="], capture_output=True, text=True, timeout=10).stdout
-    except (OSError, subprocess.SubprocessError):
+    except OSError, subprocess.SubprocessError:
         return [pid], 0
     kids: dict[int, list[int]] = {}
     rss: dict[int, int] = {}
@@ -112,7 +112,7 @@ def busy_processes(limit: int = 5, min_cpu: float = 20.0) -> list[str]:
     """The processes using the most CPU right now (for a warning before a run)."""
     try:
         out = subprocess.run(["ps", "-A", "-o", "%cpu=,pid=,comm="], capture_output=True, text=True, timeout=10).stdout
-    except (OSError, subprocess.SubprocessError):
+    except OSError, subprocess.SubprocessError:
         return []
     rows = []
     for line in out.splitlines():
@@ -152,11 +152,15 @@ if _libproc is not None:
         _libc.mach_host_self.restype = ctypes.c_uint32
         _libc.mach_task_self.restype = ctypes.c_uint32
         _libc.host_processor_info.argtypes = [
-            ctypes.c_uint32, ctypes.c_int, ctypes.POINTER(ctypes.c_uint32),
-            ctypes.POINTER(ctypes.POINTER(ctypes.c_int32)), ctypes.POINTER(ctypes.c_uint32)]
+            ctypes.c_uint32,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_uint32),
+            ctypes.POINTER(ctypes.POINTER(ctypes.c_int32)),
+            ctypes.POINTER(ctypes.c_uint32),
+        ]
         _libc.vm_deallocate.argtypes = [ctypes.c_uint32, ctypes.c_size_t, ctypes.c_size_t]
         _HOST = _libc.mach_host_self()
-    except (OSError, AttributeError):
+    except OSError, AttributeError:
         _libc = None
 
 
@@ -173,12 +177,18 @@ def machine_busy_s() -> float | None:
         busy = 0
         for c in range(ncpu.value):
             base = c * 4
-            busy += (info[base + _CPU_STATE_USER] & 0xFFFFFFFF) + (info[base + _CPU_STATE_SYSTEM] & 0xFFFFFFFF) \
+            busy += (
+                (info[base + _CPU_STATE_USER] & 0xFFFFFFFF)
+                + (info[base + _CPU_STATE_SYSTEM] & 0xFFFFFFFF)
                 + (info[base + _CPU_STATE_NICE] & 0xFFFFFFFF)
+            )
         return busy / _CLK_TCK
     finally:
-        _libc.vm_deallocate(_libc.mach_task_self(), ctypes.cast(info, ctypes.c_void_p).value,
-                            count.value * ctypes.sizeof(ctypes.c_int32))
+        _libc.vm_deallocate(
+            _libc.mach_task_self(),
+            ctypes.cast(info, ctypes.c_void_p).value,
+            count.value * ctypes.sizeof(ctypes.c_int32),
+        )
 
 
 def proc_cpu_s(pid: int) -> float:

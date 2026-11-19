@@ -22,8 +22,18 @@ import scipy.stats as st
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
 from tests.stats import refdata  # noqa: E402
 
-DISCRETE = ("binomial", "bernoulli", "poisson", "geometric", "negativebinomial", "hypergeometric",
-            "discreteuniform", "betabinomial", "logseries", "zipf")
+DISCRETE = (
+    "binomial",
+    "bernoulli",
+    "poisson",
+    "geometric",
+    "negativebinomial",
+    "hypergeometric",
+    "discreteuniform",
+    "betabinomial",
+    "logseries",
+    "zipf",
+)
 
 # scipy's classic form of each distribution from the native parameter arrays
 SCIPY = {
@@ -38,8 +48,16 @@ SCIPY = {
     "logseries": lambda p: st.logser(p),
     "zipf": lambda a: st.zipf(a),
 }
-METHOD = {"pmf": "pmf", "logpmf": "logpmf", "cdf": "cdf", "logcdf": "logcdf", "ccdf": "sf", "logccdf": "logsf",
-          "icdf": "ppf", "iccdf": "isf"}
+METHOD = {
+    "pmf": "pmf",
+    "logpmf": "logpmf",
+    "cdf": "cdf",
+    "logcdf": "logcdf",
+    "ccdf": "sf",
+    "logccdf": "logsf",
+    "icdf": "ppf",
+    "iccdf": "isf",
+}
 # scipy's ppf for these runs out of memory or time far in the tail (it steps k up one by one)
 NO_SCIPY_INVERSE = {"zipf", "logseries"}
 # scipy's zipf cdf and sf sum the pmf over 1..k (an array of k terms): past this k scipy is
@@ -69,12 +87,12 @@ def scipy_values(dist, method, xs):
     with np.errstate(all="ignore"):
         try:
             return np.asarray(getattr(SCIPY[dist](*xs[:nparams]), METHOD[method])(xs[-1]), dtype=np.float64)
-        except (OverflowError, ValueError, MemoryError):  # per point then
+        except OverflowError, ValueError, MemoryError:  # per point then
             v = np.empty(xs[-1].size)
             for i in range(v.size):
                 try:
                     v[i] = getattr(SCIPY[dist](*(x[i] for x in xs[:nparams])), METHOD[method])(xs[-1][i])
-                except (OverflowError, ValueError, MemoryError):
+                except OverflowError, ValueError, MemoryError:
                     v[i] = np.nan
             return v
 

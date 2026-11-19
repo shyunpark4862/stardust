@@ -1,6 +1,6 @@
 """T1: speed of the distribution functions against scipy (1e6 points, 1 and 10 threads).
 
-    .venv/bin/python bench/special/t1/speed.py > bench/special/t1/speed.md
+.venv/bin/python bench/special/t1/speed.py > bench/special/t1/speed.md
 """
 
 import timeit
@@ -30,9 +30,23 @@ def main():
     n = k + np.floor(np.exp(rng.uniform(0, 4, N)))
     pp = rng.uniform(0, 1, N)
     y = -np.exp(rng.uniform(-5, 5, N))
-    cases = [("stdtr", (df, t)), ("stdtrit", (df, p)), ("chdtr", (v, x)), ("chdtrc", (v, x)), ("chdtri", (v, p)),
-             ("fdtr", (d1, d2, fx)), ("fdtrc", (d1, d2, fx)), ("fdtri", (d1, d2, p)), ("pdtr", (k, m)), ("pdtrc", (k, m)),
-             ("bdtr", (k, n, pp)), ("bdtrc", (k, n, pp)), ("nbdtr", (k, n, pp)), ("nbdtrc", (k, n, pp)), ("ndtri_exp", (y,))]
+    cases = [
+        ("stdtr", (df, t)),
+        ("stdtrit", (df, p)),
+        ("chdtr", (v, x)),
+        ("chdtrc", (v, x)),
+        ("chdtri", (v, p)),
+        ("fdtr", (d1, d2, fx)),
+        ("fdtrc", (d1, d2, fx)),
+        ("fdtri", (d1, d2, p)),
+        ("pdtr", (k, m)),
+        ("pdtrc", (k, m)),
+        ("bdtr", (k, n, pp)),
+        ("bdtrc", (k, n, pp)),
+        ("nbdtr", (k, n, pp)),
+        ("nbdtrc", (k, n, pp)),
+        ("ndtri_exp", (y,)),
+    ]
     print("| function | sd 1T (ms) | sd 10T (ms) | scipy (ms) | scipy / sd 1T | scipy / sd 10T |")
     print("|---|---:|---:|---:|---:|---:|")
     before = sd.get_num_threads()

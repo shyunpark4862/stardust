@@ -23,9 +23,29 @@ REF = pathlib.Path(__file__).parent / "ref" / "robust.json"
 
 # Brownlee's stack loss (statsmodels' datasets.stackloss): air flow, water temperature, acid
 # concentration; stack loss
-STACKLOSS_X = [[80, 27, 89], [80, 27, 88], [75, 25, 90], [62, 24, 87], [62, 22, 87], [62, 23, 87], [62, 24, 93],
-               [62, 24, 93], [58, 23, 87], [58, 18, 80], [58, 18, 89], [58, 17, 88], [58, 18, 82], [58, 19, 93],
-               [50, 18, 89], [50, 18, 86], [50, 19, 72], [50, 19, 79], [50, 20, 80], [56, 20, 82], [70, 20, 91]]
+STACKLOSS_X = [
+    [80, 27, 89],
+    [80, 27, 88],
+    [75, 25, 90],
+    [62, 24, 87],
+    [62, 22, 87],
+    [62, 23, 87],
+    [62, 24, 93],
+    [62, 24, 93],
+    [58, 23, 87],
+    [58, 18, 80],
+    [58, 18, 89],
+    [58, 17, 88],
+    [58, 18, 82],
+    [58, 19, 93],
+    [50, 18, 89],
+    [50, 18, 86],
+    [50, 19, 72],
+    [50, 19, 79],
+    [50, 20, 80],
+    [56, 20, 82],
+    [70, 20, 91],
+]
 STACKLOSS_Y = [42, 37, 37, 28, 18, 18, 19, 20, 15, 14, 14, 13, 11, 12, 8, 7, 8, 8, 9, 15, 15]
 
 C_REF = {"huber": (1.345,), "bisquare": (4.685,), "hampel": (2.0, 4.0, 8.0)}
@@ -54,8 +74,14 @@ def problems():
     yb, Xb = outliers(400, 4, 0.05)
     out["bisquare_mad_400"] = dict(method="M", norm="bisquare", scale_est="mad", intercept=True, y=yb, X=Xb)
     for norm in ("huber", "bisquare", "hampel"):
-        out[f"stackloss_{norm}"] = dict(method="M", norm=norm, scale_est="mad", intercept=True,
-                                        y=[float(v) for v in STACKLOSS_Y], X=[[float(v) for v in r] for r in STACKLOSS_X])
+        out[f"stackloss_{norm}"] = dict(
+            method="M",
+            norm=norm,
+            scale_est="mad",
+            intercept=True,
+            y=[float(v) for v in STACKLOSS_Y],
+            X=[[float(v) for v in r] for r in STACKLOSS_X],
+        )
     # MM: 20% leverage outliers
     n, p = 120, 2
     X = rng.standard_normal((n, p))
@@ -64,8 +90,14 @@ def problems():
     X[:m] = rng.normal(5.0, 0.5, (m, p))
     y[:m] = rng.normal(-10.0, 1.0, m)
     out["mm_leverage"] = dict(method="MM", norm="bisquare", intercept=True, seed=7, y=y.tolist(), X=X.tolist())
-    out["mm_stackloss"] = dict(method="MM", norm="bisquare", intercept=True, seed=11,
-                               y=[float(v) for v in STACKLOSS_Y], X=[[float(v) for v in r] for r in STACKLOSS_X])
+    out["mm_stackloss"] = dict(
+        method="MM",
+        norm="bisquare",
+        intercept=True,
+        seed=11,
+        y=[float(v) for v in STACKLOSS_Y],
+        X=[[float(v) for v in r] for r in STACKLOSS_X],
+    )
     return out
 
 
@@ -74,8 +106,9 @@ def fit(p):
     import stardust as sd
 
     if p["method"] == "MM":
-        return sd.regression.rlm(p["y"], p["X"], method="MM", intercept=p["intercept"],
-                                 rng=sd.random.default_rng(p["seed"]))
+        return sd.regression.rlm(
+            p["y"], p["X"], method="MM", intercept=p["intercept"], rng=sd.random.default_rng(p["seed"])
+        )
     return sd.regression.rlm(p["y"], p["X"], norm=p["norm"], scale_est=p["scale_est"], intercept=p["intercept"])
 
 
@@ -89,15 +122,35 @@ def _one(item):
     if p["method"] == "MM":
         # the S estimate: the certified fixed point near sd's (regref.s_estimate), rounded;
         # the M step's reference starts from it
-        S = regref.s_estimate(p["y"], p["X"], beta0=[float(v) for v in r._raw[8].tolist()], scale0=float(r.scale),
-                              intercept=p["intercept"])
+        S = regref.s_estimate(
+            p["y"],
+            p["X"],
+            beta0=[float(v) for v in r._raw[8].tolist()],
+            scale0=float(r.scale),
+            intercept=p["intercept"],
+        )
         init = [float(h) for h, _ in S["params"]]
         p = dict(p, init_params=init, s_scale=float(S["scale"][0]))
-        ref = regref.rlm(p["y"], p["X"], beta0=beta0, norm="bisquare", c=(4.685061,), intercept=p["intercept"],
-                         scale=p["s_scale"], init_params=init)
+        ref = regref.rlm(
+            p["y"],
+            p["X"],
+            beta0=beta0,
+            norm="bisquare",
+            c=(4.685061,),
+            intercept=p["intercept"],
+            scale=p["s_scale"],
+            init_params=init,
+        )
     else:
-        ref = regref.rlm(p["y"], p["X"], beta0=beta0, norm=p["norm"], c=C_REF[p["norm"]], scale_est=p["scale_est"],
-                         intercept=p["intercept"])
+        ref = regref.rlm(
+            p["y"],
+            p["X"],
+            beta0=beta0,
+            norm=p["norm"],
+            c=C_REF[p["norm"]],
+            scale_est=p["scale_est"],
+            intercept=p["intercept"],
+        )
     vals = {key: ([list(v) for v in x] if isinstance(x, list) else list(x)) for key, x in ref.items()}
     return name, dict(p, ref=vals)
 

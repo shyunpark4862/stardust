@@ -79,8 +79,9 @@ def _builders(np):
         "srt": lambda r, get: np.sort(r.random(N)),
         "keys": lambda r, get: r.random(100_000),
         "q5": lambda r, get: np.array([0.1, 0.25, 0.5, 0.75, 0.9]),
-        "zh": lambda r, get: (np.where(r.random(N) < 0.5, 0.0, r.standard_normal(N))
-                              * np.where(r.random(N) < 0.5, 1, -1)),
+        "zh": lambda r, get: (
+            np.where(r.random(N) < 0.5, 0.0, r.standard_normal(N)) * np.where(r.random(N) < 0.5, 1, -1)
+        ),
         "fm": lambda r, get: r.random(MID) + 0.5,
         "gm": lambda r, get: r.random(MID) + 0.5,
         "s3": lambda r, get: np.array([1.0, 2.0, 3.0]),
@@ -159,6 +160,7 @@ def _make_setup(names, alias):
                     v = get(key)
                     per[lib_name][key] = v.copy() if lib_name == "np" else sd.asarray(v, copy=True)
                 return per[lib_name][key]
+
             return at
 
         for name in sorted(names):
@@ -251,12 +253,32 @@ def _specs() -> list[dict]:
     S: list[dict] = []
 
     def add(group, stmt, size, np=None, name=None, note="", quick=False, alias=None, extra=()):
-        S.append({"group": group, "stmt": stmt, "size": size, "np": np, "name": name or _strip(stmt),
-                  "note": note, "quick": quick, "alias": alias or {}, "extra": extra})
+        S.append(
+            {
+                "group": group,
+                "stmt": stmt,
+                "size": size,
+                "np": np,
+                "name": name or _strip(stmt),
+                "note": note,
+                "quick": quick,
+                "alias": alias or {},
+                "extra": extra,
+            }
+        )
 
     # creation
-    for s in ["zeros(N)", "ones(N)", "empty(N)", "full(N, 2.5)", "zeros_like(f)", "ones_like(f)", "empty_like(f)",
-              "full_like(f, 2.5)", "arange(N)"]:
+    for s in [
+        "zeros(N)",
+        "ones(N)",
+        "empty(N)",
+        "full(N, 2.5)",
+        "zeros_like(f)",
+        "ones_like(f)",
+        "empty_like(f)",
+        "full_like(f, 2.5)",
+        "arange(N)",
+    ]:
         add(G_CREATE, "M." + s, M6)
     add(G_CREATE, "M.linspace(0.0, 1.0, N)", M6, quick=True)
     add(G_CREATE, "M.eye(1000)", SQ)
@@ -276,9 +298,13 @@ def _specs() -> list[dict]:
     conv("sd.asarray(np_fst)", "np.asarray(np_fst)", M6, "f64 stride 2")
     conv("sd.asarray(np_ft)", "np.asarray(np_ft)", SQ, "f64 전치")
     conv("sd.asarray(np_f32)", "np.asarray(np_f32, dtype=np.float64)", M6, "f32 → f64", quick=True)
-    conv("sd.asarray(np_f32t)", "np.asarray(np_f32t, dtype=np.float64)", SQ,
-         "f32 전치 → f64; numpy는 F 순서를 지키고, 'numpy C 순서'는 C 순서로 만든다",
-         extra=(("numpy C 순서", "np.ascontiguousarray(np_f32t, dtype=np.float64)"),))
+    conv(
+        "sd.asarray(np_f32t)",
+        "np.asarray(np_f32t, dtype=np.float64)",
+        SQ,
+        "f32 전치 → f64; numpy는 F 순서를 지키고, 'numpy C 순서'는 C 순서로 만든다",
+        extra=(("numpy C 순서", "np.ascontiguousarray(np_f32t, dtype=np.float64)"),),
+    )
     conv("sd.asarray(np_f32r)", "np.asarray(np_f32r, dtype=np.float64)", SQ, "f32 행의 일부 m[:, 1:1001] → f64")
     conv("sd.asarray(np_be)", "np.asarray(np_be, dtype=np.float64)", M6, ">f8 → f64")
     conv("sd.asarray(np_be2)", "np.asarray(np_be2, dtype=np.float64)", SQ, ">f8 2-D 한 줄 걸러 → f64")
@@ -290,14 +316,28 @@ def _specs() -> list[dict]:
 
     # manipulation
     for s, size, note in [
-        ("reshape(f, (1000, 1000))", M6, "뷰"), ("reshape(ft, (N,))", SQ, "전치라 복사"),
-        ("permute_dims(t3, (2, 0, 1))", T3, ""), ("matrix_transpose(f2)", SQ, ""), ("moveaxis(t3, 0, -1)", T3, ""),
-        ("squeeze(M.reshape(f, (1, N)), axis=0)", M6, ""), ("expand_dims(f, axis=0)", M6, ""),
-        ("broadcast_to(v, (1000, 1000))", SQ, ""), ("broadcast_arrays(f2, v)", SQ, ""),
-        ("concat([f, g])", M6, ""), ("concat([f2, g2], axis=1)", SQ, ""), ("stack([f, g])", M6, ""),
-        ("flip(f)", M6, ""), ("roll(f, 1)", M6, ""), ("roll(f2, 1, axis=1)", SQ, ""), ("repeat(f, 2)", M6, ""),
-        ("tile(v, (1000,))", "1000", "결과 10^6"), ("unstack(f2)", SQ, ""), ("astype(f, M.int64)", M6, ""),
-        ("astype(i, M.float64)", M6, ""), ("astype(f, M.complex128)", M6, ""), ("astype(b, M.float64)", M6, ""),
+        ("reshape(f, (1000, 1000))", M6, "뷰"),
+        ("reshape(ft, (N,))", SQ, "전치라 복사"),
+        ("permute_dims(t3, (2, 0, 1))", T3, ""),
+        ("matrix_transpose(f2)", SQ, ""),
+        ("moveaxis(t3, 0, -1)", T3, ""),
+        ("squeeze(M.reshape(f, (1, N)), axis=0)", M6, ""),
+        ("expand_dims(f, axis=0)", M6, ""),
+        ("broadcast_to(v, (1000, 1000))", SQ, ""),
+        ("broadcast_arrays(f2, v)", SQ, ""),
+        ("concat([f, g])", M6, ""),
+        ("concat([f2, g2], axis=1)", SQ, ""),
+        ("stack([f, g])", M6, ""),
+        ("flip(f)", M6, ""),
+        ("roll(f, 1)", M6, ""),
+        ("roll(f2, 1, axis=1)", SQ, ""),
+        ("repeat(f, 2)", M6, ""),
+        ("tile(v, (1000,))", "1000", "결과 10^6"),
+        ("unstack(f2)", SQ, ""),
+        ("astype(f, M.int64)", M6, ""),
+        ("astype(i, M.float64)", M6, ""),
+        ("astype(f, M.complex128)", M6, ""),
+        ("astype(b, M.float64)", M6, ""),
         ("astype(ft, M.float64)", SQ, "전치"),
     ]:
         add(G_MANIP, "M." + s, size, note=note, quick=(s == "concat([f2, g2], axis=1)"))
@@ -305,13 +345,39 @@ def _specs() -> list[dict]:
     add(G_MANIP, "M.diff(f)", M6)
 
     # elementwise: binary
-    for op in ["add", "subtract", "multiply", "divide", "floor_divide", "remainder", "pow", "atan2", "maximum", "minimum",
-               "copysign", "hypot", "logaddexp", "nextafter", "equal", "less", "greater_equal"]:
+    for op in [
+        "add",
+        "subtract",
+        "multiply",
+        "divide",
+        "floor_divide",
+        "remainder",
+        "pow",
+        "atan2",
+        "maximum",
+        "minimum",
+        "copysign",
+        "hypot",
+        "logaddexp",
+        "nextafter",
+        "equal",
+        "less",
+        "greater_equal",
+    ]:
         add(G_BIN_F, f"M.{op}(f, g)", M6, quick=(op == "add"))
     for op in ["logical_and", "logical_or", "logical_xor"]:
         add(G_BIN_B, f"M.{op}(b, b2)", M6)
-    for op in ["add", "multiply", "floor_divide", "remainder", "maximum", "equal", "bitwise_and", "bitwise_or",
-               "bitwise_xor"]:
+    for op in [
+        "add",
+        "multiply",
+        "floor_divide",
+        "remainder",
+        "maximum",
+        "equal",
+        "bitwise_and",
+        "bitwise_or",
+        "bitwise_xor",
+    ]:
         add(G_BIN_I, f"M.{op}(i, j)", M6)
     add(G_BIN_I, "M.bitwise_left_shift(i, sh)", M6)
     add(G_BIN_I, "M.bitwise_right_shift(i, sh)", M6)
@@ -333,9 +399,37 @@ def _specs() -> list[dict]:
     add(G_BIN_MID, "fm * 2.0", "10^4")
 
     # elementwise: unary
-    for op in ["negative", "positive", "abs", "square", "sqrt", "sign", "exp", "expm1", "log", "log1p", "log2", "log10",
-               "sin", "cos", "tan", "atan", "sinh", "cosh", "tanh", "asinh", "floor", "ceil", "trunc", "round",
-               "isnan", "isinf", "isfinite", "signbit", "reciprocal"]:
+    for op in [
+        "negative",
+        "positive",
+        "abs",
+        "square",
+        "sqrt",
+        "sign",
+        "exp",
+        "expm1",
+        "log",
+        "log1p",
+        "log2",
+        "log10",
+        "sin",
+        "cos",
+        "tan",
+        "atan",
+        "sinh",
+        "cosh",
+        "tanh",
+        "asinh",
+        "floor",
+        "ceil",
+        "trunc",
+        "round",
+        "isnan",
+        "isinf",
+        "isfinite",
+        "signbit",
+        "reciprocal",
+    ]:
         add(G_UN_F, f"M.{op}(f)", M6, quick=(op == "exp"))
     for op in ["asin", "acos", "atanh"]:
         add(G_UN_F, f"M.{op}(u)", M6, note="(-1, 1)")
@@ -471,25 +565,69 @@ def _specs() -> list[dict]:
     # the same operations across sizes (cache-resident to memory-bound; 10^7 is 80 MB),
     # a, b (float64 in [0.5, 1.5)) and i, j (int64 in [-1000, 1000)) standing for that
     # size's arrays
-    for s in ["a + b", "a * 2.0", "M.exp(a)", "M.sin(a)", "M.sum(a)", "M.max(a)", "M.var(a)", "M.cumulative_sum(a)",
-              "a < b", "a[a > 1.0]", "M.where(a > 1.0, a, b)", "M.sort(a)", "M.argsort(a)", "M.astype(a, M.int64)",
-              "M.asarray(a, copy=True)", "i + j", "M.sum(i)", "M.sort(i)", "M.median(a)", "M.unique_values(i)"]:
+    for s in [
+        "a + b",
+        "a * 2.0",
+        "M.exp(a)",
+        "M.sin(a)",
+        "M.sum(a)",
+        "M.max(a)",
+        "M.var(a)",
+        "M.cumulative_sum(a)",
+        "a < b",
+        "a[a > 1.0]",
+        "M.where(a > 1.0, a, b)",
+        "M.sort(a)",
+        "M.argsort(a)",
+        "M.astype(a, M.int64)",
+        "M.asarray(a, copy=True)",
+        "i + j",
+        "M.sum(i)",
+        "M.sort(i)",
+        "M.median(a)",
+        "M.unique_values(i)",
+    ]:
         for nm in SIZES:
             alias = {k: k + nm for k in ("a", "b", "i", "j")}
             add(G_SIZE, s, "10^" + nm[2:], alias=alias, quick=(s == "a + b" and nm == "1e7"))
 
     # per-call overhead (tiny arrays)
     for s, size in [
-        ("M.zeros(3)", "3"), ("M.empty(3)", "3"), ("M.asarray(s3)", "3"), ("s3 + t3s", "3"), ("s3 * 2.0", "3"),
-        ("i3 + 1", "3"), ("M.sqrt(s3)", "3"), ("M.exp(s3)", "3"), ("s3 < t3s", "3"), ("M.sum(s3)", "3"),
-        ("M.max(s3)", "3"), ("M.mean(s3)", "3"), ("M.sum(sm, axis=0)", "(3, 4)"), ("M.sort(s3)", "3"),
-        ("M.reshape(sm, (4, 3))", "(3, 4)"), ("sm.T", "(3, 4)"), ("sm[1]", "(3, 4)"), ("sm[1:, ::2]", "(3, 4)"),
-        ("M.concat([s3, t3s])", "3"), ("M.where(s3 > 1.5, s3, t3s)", "3"), ("M.matmul(sm.T, sm)", "(3, 4)"),
-        ("M.result_type(f, i)", ""), ("M.can_cast(M.int64, M.float64)", ""), ("M.finfo(M.float64)", ""),
-        ("s3.shape", "3"), ("len(s3)", "3"), ("float(s3[0])", "3"),
+        ("M.zeros(3)", "3"),
+        ("M.empty(3)", "3"),
+        ("M.asarray(s3)", "3"),
+        ("s3 + t3s", "3"),
+        ("s3 * 2.0", "3"),
+        ("i3 + 1", "3"),
+        ("M.sqrt(s3)", "3"),
+        ("M.exp(s3)", "3"),
+        ("s3 < t3s", "3"),
+        ("M.sum(s3)", "3"),
+        ("M.max(s3)", "3"),
+        ("M.mean(s3)", "3"),
+        ("M.sum(sm, axis=0)", "(3, 4)"),
+        ("M.sort(s3)", "3"),
+        ("M.reshape(sm, (4, 3))", "(3, 4)"),
+        ("sm.T", "(3, 4)"),
+        ("sm[1]", "(3, 4)"),
+        ("sm[1:, ::2]", "(3, 4)"),
+        ("M.concat([s3, t3s])", "3"),
+        ("M.where(s3 > 1.5, s3, t3s)", "3"),
+        ("M.matmul(sm.T, sm)", "(3, 4)"),
+        ("M.result_type(f, i)", ""),
+        ("M.can_cast(M.int64, M.float64)", ""),
+        ("M.finfo(M.float64)", ""),
+        ("s3.shape", "3"),
+        ("len(s3)", "3"),
+        ("float(s3[0])", "3"),
     ]:
-        add(G_TINY, s, size, quick=(s == "s3 + t3s"), note={
-            "M.asarray(s3)": "이미 배열(복사 없음)", "M.result_type(f, i)": "dtype만 봄"}.get(s, ""))
+        add(
+            G_TINY,
+            s,
+            size,
+            quick=(s == "s3 + t3s"),
+            note={"M.asarray(s3)": "이미 배열(복사 없음)", "M.result_type(f, i)": "dtype만 봄"}.get(s, ""),
+        )
     return S
 
 
@@ -509,11 +647,18 @@ def cases() -> list[Case]:
         names = _names(s["stmt"], np_stmt, *extra_stmts)
         refs = [Ref("numpy", _np_factory(np_stmt))]
         refs += [Ref(label, _np_factory(st), lib="numpy") for label, st in s["extra"]]
-        out.append(Case(
-            area="array", group=s["group"], name=s["name"], size=s["size"], n=_n(s["size"]),
-            setup=_make_setup(frozenset(names), dict(s["alias"])),
-            sd=_sd_factory(s["stmt"]),
-            refs=tuple(refs),
-            quick=s["quick"], note=s["note"],
-        ))
+        out.append(
+            Case(
+                area="array",
+                group=s["group"],
+                name=s["name"],
+                size=s["size"],
+                n=_n(s["size"]),
+                setup=_make_setup(frozenset(names), dict(s["alias"])),
+                sd=_sd_factory(s["stmt"]),
+                refs=tuple(refs),
+                quick=s["quick"],
+                note=s["note"],
+            )
+        )
     return out

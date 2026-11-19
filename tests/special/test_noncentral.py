@@ -29,42 +29,70 @@ def eq(got, want):
         assert got == want, (got, want)
 
 
-@pytest.mark.parametrize("call,want", [
-    # nc = 0: the central function, bit for bit
-    (lambda: S.chndtr(2.5, 0.0, 3.0), S.chdtr(2.5, 3.0)), (lambda: S.chndtrc(2.5, 0.0, 3.0), S.chdtrc(2.5, 3.0)),
-    (lambda: S.chndtrix(2.5, 0.0, 0.3), 2.0 * S.gammaincinv(1.25, 0.3)),
-    (lambda: S.nctdtr(3.0, 0.0, 1.5), S.stdtr(3.0, 1.5)), (lambda: S.nctdtrc(3.0, 0.0, 1.5), S.stdtr(3.0, -1.5)),
-    (lambda: S.nctdtrit(3.0, 0.0, 0.8), S.stdtrit(3.0, 0.8)),
-    (lambda: S.ncfdtr(2.0, 3.0, 0.0, 1.5), S.fdtr(2.0, 3.0, 1.5)), (lambda: S.ncfdtrc(2.0, 3.0, 0.0, 1.5), S.fdtrc(2.0, 3.0, 1.5)),
-    (lambda: S.ncfdtri(2.0, 3.0, 0.0, 0.4), S.fdtri(2.0, 3.0, 0.4)),
-    # chi-square: domain ends, infinite parameters (the distribution runs off to infinity)
-    (lambda: S.chndtr(2.0, 3.0, 0.0), 0.0), (lambda: S.chndtrc(2.0, 3.0, 0.0), 1.0),
-    (lambda: S.chndtr(2.0, 3.0, INF), 1.0), (lambda: S.chndtrc(2.0, 3.0, INF), 0.0),
-    (lambda: S.chndtr(INF, 3.0, 2.0), 0.0), (lambda: S.chndtr(2.0, INF, 2.0), 0.0), (lambda: S.chndtrc(2.0, INF, 2.0), 1.0),
-    (lambda: S.chndtr(2.0, INF, INF), NAN), (lambda: S.chndtr(0.0, 3.0, 0.0), NAN),  # as chdtr(0, 0)
-    (lambda: S.chndtr(-1.0, 3.0, 2.0), NAN), (lambda: S.chndtr(2.0, -1.0, 2.0), NAN), (lambda: S.chndtr(2.0, 3.0, -1.0), NAN),
-    (lambda: S.chndtr(NAN, 3.0, 2.0), NAN),
-    (lambda: S.chndtrix(2.0, 3.0, 0.0), 0.0), (lambda: S.chndtrix(2.0, 3.0, 1.0), INF), (lambda: S.chndtrix(2.0, 3.0, 1.5), NAN),
-    (lambda: S.chndtrix(0.0, 3.0, 0.1), 0.0),  # inside the point mass e^-1.5 at 0
-    (lambda: S.chndtrix(2.0, INF, 0.3), INF),
-    # t: df = inf is the shifted normal; nc = +-inf
-    (lambda: S.nctdtr(INF, 1.0, 0.5), S.ndtr(-0.5)), (lambda: S.nctdtrc(INF, 1.0, 0.5), S.ndtr(0.5)),
-    (lambda: S.nctdtr(3.0, INF, 1.0), 0.0), (lambda: S.nctdtr(3.0, -INF, 1.0), 1.0),
-    (lambda: S.nctdtr(3.0, 1.0, INF), 1.0), (lambda: S.nctdtr(3.0, 1.0, -INF), 0.0),
-    (lambda: S.nctdtr(3.0, INF, INF), NAN), (lambda: S.nctdtr(3.0, INF, -INF), 0.0),
-    (lambda: S.nctdtr(3.0, 2.0, 0.0), S.ndtr(-2.0)), (lambda: S.nctdtrc(3.0, 2.0, 0.0), S.ndtr(2.0)),
-    (lambda: S.nctdtr(0.0, 1.0, 1.0), NAN), (lambda: S.nctdtr(-1.0, 1.0, 1.0), NAN),
-    (lambda: S.nctdtrit(3.0, 2.0, 0.0), -INF), (lambda: S.nctdtrit(3.0, 2.0, 1.0), INF),
-    (lambda: S.nctdtrit(INF, 2.0, 0.3), 2.0 + S.ndtri(0.3)), (lambda: S.nctdtrit(3.0, INF, 0.3), INF),
-    (lambda: S.nctdtrit(3.0, -INF, 0.3), -INF),
-    # F: dfd = inf is the noncentral chi-square of dfn F; dfn = inf the central F's limit
-    (lambda: S.ncfdtr(2.0, INF, 1.0, 1.5), S.chndtr(2.0, 1.0, 3.0)), (lambda: S.ncfdtr(INF, 3.0, 1.0, 1.5), S.fdtr(INF, 3.0, 1.5)),
-    (lambda: S.ncfdtr(2.0, 3.0, INF, 1.0), 0.0), (lambda: S.ncfdtrc(2.0, 3.0, INF, 1.0), 1.0),
-    (lambda: S.ncfdtr(2.0, 3.0, 1.0, 0.0), 0.0), (lambda: S.ncfdtr(2.0, 3.0, 1.0, INF), 1.0),
-    (lambda: S.ncfdtr(2.0, 3.0, INF, INF), NAN), (lambda: S.ncfdtr(0.0, 3.0, 1.0, 1.0), NAN),
-    (lambda: S.ncfdtri(2.0, 3.0, 1.0, 0.0), 0.0), (lambda: S.ncfdtri(2.0, 3.0, 1.0, 1.0), INF),
-    (lambda: S.ncfdtri(2.0, 3.0, INF, 0.3), INF),
-])
+@pytest.mark.parametrize(
+    "call,want",
+    [
+        # nc = 0: the central function, bit for bit
+        (lambda: S.chndtr(2.5, 0.0, 3.0), S.chdtr(2.5, 3.0)),
+        (lambda: S.chndtrc(2.5, 0.0, 3.0), S.chdtrc(2.5, 3.0)),
+        (lambda: S.chndtrix(2.5, 0.0, 0.3), 2.0 * S.gammaincinv(1.25, 0.3)),
+        (lambda: S.nctdtr(3.0, 0.0, 1.5), S.stdtr(3.0, 1.5)),
+        (lambda: S.nctdtrc(3.0, 0.0, 1.5), S.stdtr(3.0, -1.5)),
+        (lambda: S.nctdtrit(3.0, 0.0, 0.8), S.stdtrit(3.0, 0.8)),
+        (lambda: S.ncfdtr(2.0, 3.0, 0.0, 1.5), S.fdtr(2.0, 3.0, 1.5)),
+        (lambda: S.ncfdtrc(2.0, 3.0, 0.0, 1.5), S.fdtrc(2.0, 3.0, 1.5)),
+        (lambda: S.ncfdtri(2.0, 3.0, 0.0, 0.4), S.fdtri(2.0, 3.0, 0.4)),
+        # chi-square: domain ends, infinite parameters (the distribution runs off to infinity)
+        (lambda: S.chndtr(2.0, 3.0, 0.0), 0.0),
+        (lambda: S.chndtrc(2.0, 3.0, 0.0), 1.0),
+        (lambda: S.chndtr(2.0, 3.0, INF), 1.0),
+        (lambda: S.chndtrc(2.0, 3.0, INF), 0.0),
+        (lambda: S.chndtr(INF, 3.0, 2.0), 0.0),
+        (lambda: S.chndtr(2.0, INF, 2.0), 0.0),
+        (lambda: S.chndtrc(2.0, INF, 2.0), 1.0),
+        (lambda: S.chndtr(2.0, INF, INF), NAN),
+        (lambda: S.chndtr(0.0, 3.0, 0.0), NAN),  # as chdtr(0, 0)
+        (lambda: S.chndtr(-1.0, 3.0, 2.0), NAN),
+        (lambda: S.chndtr(2.0, -1.0, 2.0), NAN),
+        (lambda: S.chndtr(2.0, 3.0, -1.0), NAN),
+        (lambda: S.chndtr(NAN, 3.0, 2.0), NAN),
+        (lambda: S.chndtrix(2.0, 3.0, 0.0), 0.0),
+        (lambda: S.chndtrix(2.0, 3.0, 1.0), INF),
+        (lambda: S.chndtrix(2.0, 3.0, 1.5), NAN),
+        (lambda: S.chndtrix(0.0, 3.0, 0.1), 0.0),  # inside the point mass e^-1.5 at 0
+        (lambda: S.chndtrix(2.0, INF, 0.3), INF),
+        # t: df = inf is the shifted normal; nc = +-inf
+        (lambda: S.nctdtr(INF, 1.0, 0.5), S.ndtr(-0.5)),
+        (lambda: S.nctdtrc(INF, 1.0, 0.5), S.ndtr(0.5)),
+        (lambda: S.nctdtr(3.0, INF, 1.0), 0.0),
+        (lambda: S.nctdtr(3.0, -INF, 1.0), 1.0),
+        (lambda: S.nctdtr(3.0, 1.0, INF), 1.0),
+        (lambda: S.nctdtr(3.0, 1.0, -INF), 0.0),
+        (lambda: S.nctdtr(3.0, INF, INF), NAN),
+        (lambda: S.nctdtr(3.0, INF, -INF), 0.0),
+        (lambda: S.nctdtr(3.0, 2.0, 0.0), S.ndtr(-2.0)),
+        (lambda: S.nctdtrc(3.0, 2.0, 0.0), S.ndtr(2.0)),
+        (lambda: S.nctdtr(0.0, 1.0, 1.0), NAN),
+        (lambda: S.nctdtr(-1.0, 1.0, 1.0), NAN),
+        (lambda: S.nctdtrit(3.0, 2.0, 0.0), -INF),
+        (lambda: S.nctdtrit(3.0, 2.0, 1.0), INF),
+        (lambda: S.nctdtrit(INF, 2.0, 0.3), 2.0 + S.ndtri(0.3)),
+        (lambda: S.nctdtrit(3.0, INF, 0.3), INF),
+        (lambda: S.nctdtrit(3.0, -INF, 0.3), -INF),
+        # F: dfd = inf is the noncentral chi-square of dfn F; dfn = inf the central F's limit
+        (lambda: S.ncfdtr(2.0, INF, 1.0, 1.5), S.chndtr(2.0, 1.0, 3.0)),
+        (lambda: S.ncfdtr(INF, 3.0, 1.0, 1.5), S.fdtr(INF, 3.0, 1.5)),
+        (lambda: S.ncfdtr(2.0, 3.0, INF, 1.0), 0.0),
+        (lambda: S.ncfdtrc(2.0, 3.0, INF, 1.0), 1.0),
+        (lambda: S.ncfdtr(2.0, 3.0, 1.0, 0.0), 0.0),
+        (lambda: S.ncfdtr(2.0, 3.0, 1.0, INF), 1.0),
+        (lambda: S.ncfdtr(2.0, 3.0, INF, INF), NAN),
+        (lambda: S.ncfdtr(0.0, 3.0, 1.0, 1.0), NAN),
+        (lambda: S.ncfdtri(2.0, 3.0, 1.0, 0.0), 0.0),
+        (lambda: S.ncfdtri(2.0, 3.0, 1.0, 1.0), INF),
+        (lambda: S.ncfdtri(2.0, 3.0, INF, 0.3), INF),
+    ],
+)
 def test_special_values(call, want):
     eq(call(), float(want))
 
@@ -111,13 +139,19 @@ def test_against_scipy_where_scipy_is_right():
 def test_the_two_tails_add_to_one():
     df, nc = np.exp(RNG.uniform(-2, 6, N)), np.exp(RNG.uniform(-3, 6, N))
     x = (df + nc) * np.exp(RNG.uniform(-2, 2, N))
-    assert np.all(np.abs(call("chndtr", df, nc, x) + call("chndtrc", df, nc, x) - 1) < 1e-14)  # each tail within 1e-14 (the contract)
+    assert np.all(
+        np.abs(call("chndtr", df, nc, x) + call("chndtrc", df, nc, x) - 1) < 1e-14
+    )  # each tail within 1e-14 (the contract)
     tdf, tnc = np.exp(RNG.uniform(-2, 6, N)), RNG.normal(0, 10, N)
     t = tnc * np.exp(RNG.uniform(-1, 1, N)) + RNG.normal(0, 2, N)
-    assert np.all(np.abs(call("nctdtr", tdf, tnc, t) + call("nctdtrc", tdf, tnc, t) - 1) < 1e-14)  # each tail within 1e-14 (the contract)
+    assert np.all(
+        np.abs(call("nctdtr", tdf, tnc, t) + call("nctdtrc", tdf, tnc, t) - 1) < 1e-14
+    )  # each tail within 1e-14 (the contract)
     d1, d2 = np.exp(RNG.uniform(-2, 6, N)), np.exp(RNG.uniform(-2, 6, N))
     f = np.exp(RNG.uniform(-3, 3, N))
-    assert np.all(np.abs(call("ncfdtr", d1, d2, nc, f) + call("ncfdtrc", d1, d2, nc, f) - 1) < 1e-14)  # each tail within 1e-14 (the contract)
+    assert np.all(
+        np.abs(call("ncfdtr", d1, d2, nc, f) + call("ncfdtrc", d1, d2, nc, f) - 1) < 1e-14
+    )  # each tail within 1e-14 (the contract)
 
 
 def test_inverses_round_trip():
@@ -134,16 +168,24 @@ def test_inverses_beyond_the_double_range():
     # A root returned as 0 lies within the subnormal bound: F(45 * 2^-1074) >= p
     # (these points have no reference value, T1 and T2).
     rng = np.random.default_rng(3)
-    df, nc, p = np.exp(rng.uniform(-4.6, 1, 3000)), np.exp(rng.uniform(-7, 2, 3000)), np.exp(rng.uniform(-690, -1, 3000))
+    df, nc, p = (
+        np.exp(rng.uniform(-4.6, 1, 3000)),
+        np.exp(rng.uniform(-7, 2, 3000)),
+        np.exp(rng.uniform(-690, -1, 3000)),
+    )
     x = call("chndtrix", df, nc, p)
     zero = x == 0
     assert zero.any()
-    assert np.all(call("chndtr", df[zero], nc[zero], np.full(zero.sum(), 2e-322)) >= p[zero])  # within 45 subnormal units
+    assert np.all(
+        call("chndtr", df[zero], nc[zero], np.full(zero.sum(), 2e-322)) >= p[zero]
+    )  # within 45 subnormal units
     d2 = np.exp(rng.uniform(-4.6, 4, 3000))
     x = call("ncfdtri", df, d2, nc, p)
     zero = x == 0
     assert zero.any()
-    assert np.all(call("ncfdtr", df[zero], d2[zero], nc[zero], np.full(zero.sum(), 2e-322)) >= p[zero])  # within 45 subnormal units
+    assert np.all(
+        call("ncfdtr", df[zero], d2[zero], nc[zero], np.full(zero.sum(), 2e-322)) >= p[zero]
+    )  # within 45 subnormal units
 
 
 def test_the_tail_away_from_the_noncentrality():
@@ -162,7 +204,10 @@ def test_fdtr_with_x_near_one_from_a_division_regression():
 
 
 def test_x_last_and_python_scalars():
-    assert S.chndtr(4.0, 3.0, 2.0) == float(sc.chndtr(2.0, 4.0, 3.0)) or abs(S.chndtr(4.0, 3.0, 2.0) / sc.chndtr(2.0, 4.0, 3.0) - 1) < 1e-13
+    assert (
+        S.chndtr(4.0, 3.0, 2.0) == float(sc.chndtr(2.0, 4.0, 3.0))
+        or abs(S.chndtr(4.0, 3.0, 2.0) / sc.chndtr(2.0, 4.0, 3.0) - 1) < 1e-13
+    )
     assert type(S.ncfdtr(2, 3, 1, 1)) is float
 
 
@@ -180,8 +225,12 @@ def test_tiny_noncentrality_and_tiny_argument_review_regression():
     # (s + 1) / y overflowed the scaled G, the sum became NaN and chndtr returned 1.0 for any
     # nc below about 1e-155 at a tiny x; a subnormal mu made 1 / mu infinite. Values from Arb
     # (the Poisson mixture's first terms at 700 bits).
-    for df, nc, x, want in [(2.0, 1e-200, 1e-160, 5e-161), (0.5, 1e-200, 1e-160, 9.277296085790009e-41),
-                            (3.5, 1e-320, 1e-160, 1.8484784848877647e-281), (1.0, 1e-155, 1e-160, 7.978845608028654e-81)]:
+    for df, nc, x, want in [
+        (2.0, 1e-200, 1e-160, 5e-161),
+        (0.5, 1e-200, 1e-160, 9.277296085790009e-41),
+        (3.5, 1e-320, 1e-160, 1.8484784848877647e-281),
+        (1.0, 1e-155, 1e-160, 7.978845608028654e-81),
+    ]:
         assert abs(S.chndtr(df, nc, x) / want - 1) < 2e-15, (df, nc, x)
         assert S.chndtrc(df, nc, x) == 1.0
     assert abs(S.chndtr(0.0, 1e-200, 1e-160) - 1.0) <= 2.3e-16  # the point mass e^(-nc/2)
@@ -192,19 +241,36 @@ def test_tiny_noncentrality_and_tiny_argument_review_regression():
     assert S.nctdtr(3.0, 1e-200, 1e-160) == 0.5 and S.nctdtrc(3.0, 1e-200, 1e-160) == 0.5
     assert abs(S.nctdtr(3.0, -1e-170, 0.5) / 0.6742760175759245 - 1) < 2e-15
     # nc^2 / 2 below the doubles on the side away from the noncentrality (these were NaN)
-    assert abs(S.nctdtrc(0.2632616250534453, -2.276129563279541e-158, -2426.8530463003194) / 0.9540086053194111 - 1) < 2e-15
-    assert abs(S.nctdtrc(26.849635091450086, -5.963356455454383e-159, -0.5917525269167969) / 0.7205167625224951 - 1) < 2e-15
+    assert (
+        abs(S.nctdtrc(0.2632616250534453, -2.276129563279541e-158, -2426.8530463003194) / 0.9540086053194111 - 1)
+        < 2e-15
+    )
+    assert (
+        abs(S.nctdtrc(26.849635091450086, -5.963356455454383e-159, -0.5917525269167969) / 0.7205167625224951 - 1)
+        < 2e-15
+    )
 
 
 def test_every_call_returns_and_an_unfinished_sum_is_nan():
     # Every loop has a fixed most count of steps. A sum that would need more is NaN, never the
     # part summed so far: chndtr(3.5, 1e15, x) was 2.28e-9 at every x (1e8 of its 4e8 terms,
     # 1.7 s), and nc = 1e100 did not return (a bisection between neighbouring doubles).
-    for f, args in [(S.chndtr, (3.5, 1e15, 1e15)), (S.chndtrc, (3.5, 1e15, 1e15)), (S.chndtr, (3.5, 1e100, 1.0)),
-                    (S.chndtrc, (3.5, 1e100, 1e308)), (S.chndtrix, (3.5, 1e15, 0.5)), (S.chndtrix, (3.5, 1e100, 0.01)),
-                    (S.nctdtr, (9.0, 1e100, 0.5)), (S.nctdtrc, (9.0, 1e100, 1e30)), (S.nctdtr, (9.0, -1e8, -50.0)),
-                    (S.nctdtrit, (9.0, -1e8, 0.5)), (S.nctdtrit, (9.0, 1e100, 0.99)),
-                    (S.ncfdtr, (4.0, 13.0, 1e100, 1.0)), (S.ncfdtrc, (4.0, 13.0, 1e15, 1e16)), (S.ncfdtri, (4.0, 13.0, 1e100, 0.5))]:
+    for f, args in [
+        (S.chndtr, (3.5, 1e15, 1e15)),
+        (S.chndtrc, (3.5, 1e15, 1e15)),
+        (S.chndtr, (3.5, 1e100, 1.0)),
+        (S.chndtrc, (3.5, 1e100, 1e308)),
+        (S.chndtrix, (3.5, 1e15, 0.5)),
+        (S.chndtrix, (3.5, 1e100, 0.01)),
+        (S.nctdtr, (9.0, 1e100, 0.5)),
+        (S.nctdtrc, (9.0, 1e100, 1e30)),
+        (S.nctdtr, (9.0, -1e8, -50.0)),
+        (S.nctdtrit, (9.0, -1e8, 0.5)),
+        (S.nctdtrit, (9.0, 1e100, 0.99)),
+        (S.ncfdtr, (4.0, 13.0, 1e100, 1.0)),
+        (S.ncfdtrc, (4.0, 13.0, 1e15, 1e16)),
+        (S.ncfdtri, (4.0, 13.0, 1e100, 0.5)),
+    ]:
         assert math.isnan(f(*args)), (f.__name__, args)
     # the side near 1 that runs out of terms is 1 minus the other side where that one is
     # summed (here 0: x far beyond the bulk)

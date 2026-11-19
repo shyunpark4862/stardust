@@ -21,10 +21,21 @@ def grid(*shape):
 
 # --------------------------------------------------------------------- reshape
 
-@pytest.mark.parametrize("src,dst", [
-    ((12,), (3, 4)), ((3, 4), (12,)), ((3, 4), (2, 6)), ((2, 3, 4), (6, 4)),
-    ((2, 3, 4), (2, -1)), ((3, 4), (-1,)), ((1, 12, 1), (3, 1, 4)), ((0, 3), (3, 0)), ((0, 3), (-1, 5)),
-])
+
+@pytest.mark.parametrize(
+    "src,dst",
+    [
+        ((12,), (3, 4)),
+        ((3, 4), (12,)),
+        ((3, 4), (2, 6)),
+        ((2, 3, 4), (6, 4)),
+        ((2, 3, 4), (2, -1)),
+        ((3, 4), (-1,)),
+        ((1, 12, 1), (3, 1, 4)),
+        ((0, 3), (3, 0)),
+        ((0, 3), (-1, 5)),
+    ],
+)
 def test_reshape_contiguous_is_a_view(src, dst):
     n, a = grid(*src)
     r = sd.reshape(a, dst)
@@ -56,10 +67,18 @@ def test_reshape_copy_true_always_copies():
     assert not shares(r, n)
 
 
-@pytest.mark.parametrize("bad,exc", [
-    ((5,), ValueError), ((-1, -1), ValueError), ((-1, 5), ValueError), ((), ValueError), ((-2, 6), ValueError),
-    (3.0, TypeError), ([3, 4], TypeError),
-])
+@pytest.mark.parametrize(
+    "bad,exc",
+    [
+        ((5,), ValueError),
+        ((-1, -1), ValueError),
+        ((-1, 5), ValueError),
+        ((), ValueError),
+        ((-2, 6), ValueError),
+        (3.0, TypeError),
+        ([3, 4], TypeError),
+    ],
+)
 def test_reshape_errors(bad, exc):
     _, a = grid(3, 4)
     with pytest.raises(exc):
@@ -85,8 +104,10 @@ def test_reshape_method_and_signature():
 @given(st.data())
 def test_reshape_matches_numpy_on_random_views(data):
     base = np.arange(2 * 3 * 4 * 5, dtype=np.int64).reshape(2, 3, 4, 5)
-    index = tuple(data.draw(st.sampled_from([slice(None), slice(None, None, -1), slice(None, None, 2), slice(1, 2)]))
-                  for _ in range(4))
+    index = tuple(
+        data.draw(st.sampled_from([slice(None), slice(None, None, -1), slice(None, None, 2), slice(1, 2)]))
+        for _ in range(4)
+    )
     view = base[index]
     if data.draw(st.booleans()):
         view = view.transpose(data.draw(st.permutations(range(4))))
@@ -122,6 +143,7 @@ def test_ravel():
 
 # ----------------------------------------------------------------- transposes
 
+
 def test_T_and_mT():
     n, a = grid(3, 4)
     assert_same(a.T, n.T)
@@ -149,7 +171,9 @@ def test_permute_dims():
     assert_same(sd.permute_dims(a, [2, 1, 0]), n.transpose((2, 1, 0)))
     assert_same(sd.moveaxis(a, [0], (1,)), np.moveaxis(n, [0], (1,)))
     assert_same(sd.sum(a, axis=[0, 2]), np.sum(n, axis=(0, 2)))
-    with pytest.raises(TypeError, match=r"^permute_dims\(\): 'axes' must be an int or a tuple or list of ints, not float$"):
+    with pytest.raises(
+        TypeError, match=r"^permute_dims\(\): 'axes' must be an int or a tuple or list of ints, not float$"
+    ):
         sd.permute_dims(a, (2, 1.0, 0))
     with pytest.raises(TypeError, match=r"^sum\(\): 'axis' must be an int or a tuple or list of ints, not float$"):
         sd.sum(a, axis=1.5)
@@ -162,7 +186,7 @@ def test_moveaxis(src, dst):
     n, a = grid(2, 3, 4)
     assert_same(sd.moveaxis(a, src, dst), np.moveaxis(n, src, dst))
     # source and destination are axes: lists work like tuples (docs/api/array.md §1.3, §4.1)
-    as_list = (lambda v: list(v) if isinstance(v, tuple) else v)
+    as_list = lambda v: list(v) if isinstance(v, tuple) else v
     assert_same(sd.moveaxis(a, as_list(src), as_list(dst)), np.moveaxis(n, src, dst))
 
 
@@ -177,6 +201,7 @@ def test_moveaxis_errors():
 
 
 # --------------------------------------------------- adding and removing axes
+
 
 def test_squeeze():
     n, a = grid(1, 3, 1, 4)
@@ -204,6 +229,7 @@ def test_expand_dims():
 
 
 # --------------------------------------------------------------- broadcasting
+
 
 def test_broadcast_to_is_a_readonly_view():
     n = np.arange(3.0)
@@ -244,6 +270,7 @@ def test_broadcast_arrays():
 
 # --------------------------------------------------------------- real / imag
 
+
 def test_real_imag_of_complex_are_writeable_views():
     n = np.array([1 + 2j, 3 - 4j, -0.0 + 5j])
     a = sd.asarray(n)
@@ -272,13 +299,15 @@ def test_real_imag_of_real_dtypes(dtype):
     assert not im._flags()["writeable"]
 
 
-@pytest.mark.parametrize("value", [True, False, 3, -7, 2.5, -0.0, 3 - 4j, complex(0, -0.0), np.int64(3),
-                                   np.float32(2.5), np.bool_(True)])
+@pytest.mark.parametrize(
+    "value", [True, False, 3, -7, 2.5, -0.0, 3 - 4j, complex(0, -0.0), np.int64(3), np.float32(2.5), np.bool_(True)]
+)
 def test_real_imag_conj_take_python_scalars(value):
     # Like conj (docs/api/array.md §6.4): the result is the Python scalar of the dtype in §6.3.
     def py(fn):
         r = fn(sd.asarray([value]))
         return r.tolist()[0]
+
     for fn in (sd.real, sd.imag, sd.conj):
         got = fn(value)
         want = py(fn)
@@ -287,7 +316,9 @@ def test_real_imag_conj_take_python_scalars(value):
     assert sd.imag(value, out=out) is out and out.tolist() == [[complex(value).imag] * 2] * 2
     with pytest.raises(TypeError):
         sd.real([value])
-    with pytest.raises(TypeError, match=r"^imag\(\): 'x' must be an sd\.ndarray or a bool, int, float or complex, not str$"):
+    with pytest.raises(
+        TypeError, match=r"^imag\(\): 'x' must be an sd\.ndarray or a bool, int, float or complex, not str$"
+    ):
         sd.imag("1")
 
 
@@ -311,6 +342,7 @@ def test_real_imag_out():
 
 
 # ------------------------------------------------------------------- base
+
 
 def test_base_is_the_final_owner():
     a = sd.zeros((4, 4))

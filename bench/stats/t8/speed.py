@@ -30,10 +30,16 @@ CASES = [
     ("iqr", lambda X, ax: S.iqr(X, axis=ax), lambda x, ax: st.iqr(x, axis=ax)),
     ("mode", lambda X, ax: S.mode(X, axis=ax), lambda x, ax: st.mode(x, axis=ax)),
     ("entropy", lambda X, ax: S.entropy(X, axis=ax), lambda x, ax: st.entropy(x, axis=ax)),
-    ("differential_entropy", lambda X, ax: S.differential_entropy(X, axis=ax),
-     lambda x, ax: st.differential_entropy(x, axis=ax)),
-    ("skew omit", lambda X, ax: S.skew(X, axis=ax, nan_policy="omit"),
-     lambda x, ax: st.skew(x, axis=ax, nan_policy="omit")),
+    (
+        "differential_entropy",
+        lambda X, ax: S.differential_entropy(X, axis=ax),
+        lambda x, ax: st.differential_entropy(x, axis=ax),
+    ),
+    (
+        "skew omit",
+        lambda X, ax: S.skew(X, axis=ax, nan_policy="omit"),
+        lambda x, ax: st.skew(x, axis=ax, nan_policy="omit"),
+    ),
 ]
 
 
@@ -61,8 +67,11 @@ def main():
                 sd.set_num_threads(10)
                 t10 = best(lambda: f(X, ax))
                 ts = best(lambda: g(x, ax), repeat=3)
-                print(f"| {name} | {label} | {t1 * 1e3:.2f} | {t10 * 1e3:.2f} | {ts * 1e3:.2f} | {ts / t1:.2f} | "
-                      f"{ts / t10:.1f} |", flush=True)
+                print(
+                    f"| {name} | {label} | {t1 * 1e3:.2f} | {t10 * 1e3:.2f} | {ts * 1e3:.2f} | {ts / t1:.2f} | "
+                    f"{ts / t10:.1f} |",
+                    flush=True,
+                )
     finally:
         sd.set_num_threads(before)
 

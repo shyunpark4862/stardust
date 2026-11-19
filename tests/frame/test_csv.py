@@ -66,7 +66,9 @@ def same(a, b):
 FIELD = st.one_of(
     st.integers(-(2**64), 2**64).map(lambda v: (str(v), False)),
     st.floats().map(lambda v: (repr(v), False)),
-    st.sampled_from(["True", "False", "nan", "-inf", "1e400", "+5", "007", ".5", " 1", "1_0", "true"]).map(lambda t: (t, False)),
+    st.sampled_from(["True", "False", "nan", "-inf", "1e400", "+5", "007", ".5", " 1", "1_0", "true"]).map(
+        lambda t: (t, False)
+    ),
     st.text(st.characters(codec="utf-8", exclude_categories=["Cs"]), max_size=6).map(lambda t: (t, True)),
     st.just((None, False)),  # NA: an unquoted empty field
     st.just(("", True)),  # a quoted empty field: the empty string
@@ -80,7 +82,8 @@ def test_inference_and_values_follow_the_rules(tmp_path_factory, data):
     nrows = data.draw(st.integers(0, 12))
     kinds = [data.draw(st.sampled_from(["int", "float", "bool", "any"])) for _ in range(ncols)]
     pools = {
-        "int": st.integers(-(2**63), 2**63 - 1).map(lambda v: (str(v), data.draw(st.booleans()))) | st.just((None, False)),
+        "int": st.integers(-(2**63), 2**63 - 1).map(lambda v: (str(v), data.draw(st.booleans())))
+        | st.just((None, False)),
         "float": st.floats().map(lambda v: (repr(v), False)) | st.just((None, False)),
         "bool": st.sampled_from([("True", False), ("False", True), (None, False)]),
         "any": FIELD,
@@ -182,24 +185,38 @@ def test_an_open_quote_is_never_closed(tmp_path):
 
 def test_path_must_be_a_path():
     for bad, shown in ((1, "int"), (None, "NoneType"), (["a.csv"], "list")):
-        with pytest.raises(TypeError, match=rf"^read_csv\(\): 'path' must be a str or a path-like object, not {shown}$"):
+        with pytest.raises(
+            TypeError, match=rf"^read_csv\(\): 'path' must be a str or a path-like object, not {shown}$"
+        ):
             sd.frame.read_csv(bad)
 
 
-@pytest.mark.parametrize("values", [
-    [2**53 + 1, 0.5], [2**63, 1], [-(2**63) - 1, 2], [2**70, 3.25, None], [12345678901234567890123, 1.0],
-    [2**63 - 1, 1.5], [-(2**63), 0.5], [9007199254740993, 9007199254740995, 1e300],
-])
+@pytest.mark.parametrize(
+    "values",
+    [
+        [2**53 + 1, 0.5],
+        [2**63, 1],
+        [-(2**63) - 1, 2],
+        [2**70, 3.25, None],
+        [12345678901234567890123, 1.0],
+        [2**63 - 1, 1.5],
+        [-(2**63), 0.5],
+        [9007199254740993, 9007199254740995, 1e300],
+    ],
+)
 def test_big_ints_round_as_list_inference(tmp_path, values):
     # an int beyond int64, or beyond 2**53 next to a float, makes a float64 column, rounded as
     # Series(list) rounds it (DESIGN.md §10.1 #3, docs/api/frame.md §10.4); it used to stay a string
     p = tmp_path / "t.csv"
-    p.write_text("x\n" + "".join(("" if v is None else repr(v) if isinstance(v, float) else str(v)) + "\n" for v in values))
+    p.write_text(
+        "x\n" + "".join(("" if v is None else repr(v) if isinstance(v, float) else str(v)) + "\n" for v in values)
+    )
     got = sd.frame.read_csv(p)["x"]
     want = sd.frame.Series([float(v) if isinstance(v, int) and not -(2**63) <= v < 2**63 else v for v in values])
     assert got.dtype is sd.float64 and want.dtype is sd.float64
-    assert [np.float64(v).tobytes() if v is not NA else None for v in got.tolist()] == \
-        [np.float64(v).tobytes() if v is not NA else None for v in want.tolist()]
+    assert [np.float64(v).tobytes() if v is not NA else None for v in got.tolist()] == [
+        np.float64(v).tobytes() if v is not NA else None for v in want.tolist()
+    ]
 
 
 def test_options(tmp_path):

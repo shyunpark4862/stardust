@@ -18,9 +18,20 @@ import sys
 
 REF = pathlib.Path(__file__).parent / "ref" / "glm.json"
 
-LINKS = [("gaussian", "identity"), ("gaussian", "log"), ("binomial", "logit"), ("binomial", "probit"),
-         ("binomial", "cloglog"), ("binomial", "log"), ("poisson", "log"), ("poisson", "identity"),
-         ("poisson", "sqrt"), ("gamma", "inverse"), ("gamma", "log"), ("gamma", "identity")]
+LINKS = [
+    ("gaussian", "identity"),
+    ("gaussian", "log"),
+    ("binomial", "logit"),
+    ("binomial", "probit"),
+    ("binomial", "cloglog"),
+    ("binomial", "log"),
+    ("poisson", "log"),
+    ("poisson", "identity"),
+    ("poisson", "sqrt"),
+    ("gamma", "inverse"),
+    ("gamma", "log"),
+    ("gamma", "identity"),
+]
 
 
 def _response(rng, family, link, X):
@@ -38,11 +49,17 @@ def _response(rng, family, link, X):
             p = 1 / (1 + np.exp(-(0.3 + 0.8 * x1 - 0.5 * x2)))
         return (rng.uniform(size=n) < p).astype(float)
     if family == "poisson":
-        mean = {"log": np.exp(0.4 + 0.5 * x1 - 0.3 * x2), "identity": 4.0 + 0.8 * x1 - 0.5 * x2,
-                "sqrt": (2.0 + 0.4 * x1 - 0.3 * x2) ** 2}[link]
+        mean = {
+            "log": np.exp(0.4 + 0.5 * x1 - 0.3 * x2),
+            "identity": 4.0 + 0.8 * x1 - 0.5 * x2,
+            "sqrt": (2.0 + 0.4 * x1 - 0.3 * x2) ** 2,
+        }[link]
         return rng.poisson(mean).astype(float)
-    mean = {"inverse": 1 / (1.0 + 0.1 * x1 ** 2 + 0.05 * x2 ** 2), "log": np.exp(0.5 + 0.4 * x1 - 0.3 * x2),
-            "identity": 4.0 + 0.6 * x1 - 0.4 * x2}[link]
+    mean = {
+        "inverse": 1 / (1.0 + 0.1 * x1**2 + 0.05 * x2**2),
+        "log": np.exp(0.5 + 0.4 * x1 - 0.3 * x2),
+        "identity": 4.0 + 0.6 * x1 - 0.4 * x2,
+    }[link]
     return rng.gamma(3.0, mean / 3.0)
 
 
@@ -72,16 +89,25 @@ def problems():
     off = 0.1 * rng.standard_normal(n)
     y = rng.poisson(expo * np.exp(off + 0.3 + 0.4 * X[:, 0] - 0.2 * X[:, 1])).astype(float)
     tot = sd.asarray(off) + sd.log(sd.asarray(expo))
-    out["poisson_exposure"] = dict(base, y=y.tolist(), X=X.tolist(), family="poisson", link="log",
-                                   offset=[float(v) for v in tot.tolist()], _offset=off.tolist(), _exposure=expo.tolist())
+    out["poisson_exposure"] = dict(
+        base,
+        y=y.tolist(),
+        X=X.tolist(),
+        family="poisson",
+        link="log",
+        offset=[float(v) for v in tot.tolist()],
+        _offset=off.tolist(),
+        _exposure=expo.tolist(),
+    )
     # gamma with var_weights (one zero) and freq_weights
     X = rng.standard_normal((n, 2))
     y = rng.gamma(3.0, np.exp(0.5 + 0.4 * X[:, 0] - 0.3 * X[:, 1]) / 3.0)
     vw = rng.uniform(0.5, 2.0, n)
     vw[7] = 0.0
     fw = rng.integers(1, 4, n).astype(float)
-    out["gamma_weights"] = dict(base, y=y.tolist(), X=X.tolist(), family="gamma", link="log", var_weights=vw.tolist(),
-                                freq_weights=fw.tolist())
+    out["gamma_weights"] = dict(
+        base, y=y.tolist(), X=X.tolist(), family="gamma", link="log", var_weights=vw.tolist(), freq_weights=fw.tolist()
+    )
     # no intercept; scale from the deviance
     X = rng.standard_normal((n, 2))
     y = (rng.uniform(size=n) < 1 / (1 + np.exp(-(0.9 * X[:, 0] - 0.6 * X[:, 1])))).astype(float)
@@ -101,9 +127,19 @@ def fit(p, **kw):
         extra = dict(offset=p["_offset"], exposure=p["_exposure"])
     elif p["offset"] is not None:
         extra = dict(offset=p["offset"])
-    return sd.regression.glm(p["y"], p["X"], family=p["family"], link=p["link"], var_weights=p["var_weights"],
-                             freq_weights=p["freq_weights"], trials=p["trials"], intercept=p["intercept"],
-                             scale=p["scale"], **extra, **kw)
+    return sd.regression.glm(
+        p["y"],
+        p["X"],
+        family=p["family"],
+        link=p["link"],
+        var_weights=p["var_weights"],
+        freq_weights=p["freq_weights"],
+        trials=p["trials"],
+        intercept=p["intercept"],
+        scale=p["scale"],
+        **extra,
+        **kw,
+    )
 
 
 def _one(item):
@@ -116,9 +152,21 @@ def _one(item):
     nb0 = 0.0
     if p["offset"] is not None and p["link"] == "log":  # the intercept-only fit's start
         nb0 = math.log(sum(p["y"]) / sum(math.exp(o) for o in p["offset"]))
-    ref, meta = regref.glm(p["y"], p["X"], family=p["family"], link=p["link"], var_weights=p["var_weights"],
-                           freq_weights=p["freq_weights"], trials=p["trials"], offset=p["offset"],
-                           intercept=p["intercept"], scale=p["scale"], beta0=beta0, groups=p["groups"], null_beta0=nb0)
+    ref, meta = regref.glm(
+        p["y"],
+        p["X"],
+        family=p["family"],
+        link=p["link"],
+        var_weights=p["var_weights"],
+        freq_weights=p["freq_weights"],
+        trials=p["trials"],
+        offset=p["offset"],
+        intercept=p["intercept"],
+        scale=p["scale"],
+        beta0=beta0,
+        groups=p["groups"],
+        null_beta0=nb0,
+    )
     vals = {key: ([list(v) for v in x] if isinstance(x, list) else list(x)) for key, x in ref.items()}
     return name, dict(p, meta=meta, ref=vals)
 

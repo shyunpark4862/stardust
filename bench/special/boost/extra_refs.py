@@ -31,7 +31,9 @@ for i in range(n):
     try:
         v = R.evaluate(lambda a_, b_, x_: x_.hypgeom_1f1(a_, b_), (float(a[i]), float(b[i]), float(x[i])))
         h, l = R.double_double(v)
-        keep.append(i); hi.append(h); lo.append(l)
+        keep.append(i)
+        hi.append(h)
+        lo.append(l)
         print(f"{i}: a={a[i]:.4g} b={b[i]:.3g} x={x[i]:.4g} -> {h:.6g} ({time.time() - t:.1f} s)", flush=True)
     except R._DROPS as e:
         print(f"{i}: a={a[i]:.4g} dropped ({type(e).__name__})", flush=True)

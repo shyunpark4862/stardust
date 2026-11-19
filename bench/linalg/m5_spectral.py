@@ -34,7 +34,9 @@ def main():
 
     nan = float("nan")
     emit(f"numpy {np.__version__}, scipy {__import__('scipy').__version__}")
-    emit(f"{'func':14} {'shape':>14} {'sdla us':>10} {'other us':>10} {'other/sdla':>11}  (other = numpy, or scipy for eigh(a, b))")
+    emit(
+        f"{'func':14} {'shape':>14} {'sdla us':>10} {'other us':>10} {'other/sdla':>11}  (other = numpy, or scipy for eigh(a, b))"
+    )
     for shape in [(3, 3), (32, 32), (300, 300), (1000, 1000), (1000, 3, 3), (100, 32, 32)]:
         n = shape[-1]
         a = rng.standard_normal(shape)

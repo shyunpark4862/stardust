@@ -12,10 +12,16 @@ def arrays(*shapes, dtype=np.float64):
     return ns, [sd.asarray(n) for n in ns]
 
 
-@pytest.mark.parametrize("shapes,axis", [
-    ([(2, 3), (4, 3)], 0), ([(2, 3), (2, 1), (2, 0)], 1), ([(2, 3), (2, 2)], -1), ([(5,)], 0),
-    ([(2, 2, 2), (2, 3, 2)], 1),
-])
+@pytest.mark.parametrize(
+    "shapes,axis",
+    [
+        ([(2, 3), (4, 3)], 0),
+        ([(2, 3), (2, 1), (2, 0)], 1),
+        ([(2, 3), (2, 2)], -1),
+        ([(5,)], 0),
+        ([(2, 2, 2), (2, 3, 2)], 1),
+    ],
+)
 def test_concat(shapes, axis):
     ns, xs = arrays(*shapes)
     assert_same(sd.concat(xs, axis=axis), np.concatenate(ns, axis=axis))
@@ -39,15 +45,20 @@ def test_concat_promotes():
 def test_concat_from_strided_views():
     n = np.arange(24.0).reshape(4, 6)
     a = sd.asarray(n)
-    assert_same(sd.concat([a[::2, ::-1], a.T[:2, :2]], axis=1),
-                np.concatenate([n[::2, ::-1], n.T[:2, :2]], axis=1))
+    assert_same(sd.concat([a[::2, ::-1], a.T[:2, :2]], axis=1), np.concatenate([n[::2, ::-1], n.T[:2, :2]], axis=1))
 
 
-@pytest.mark.parametrize("bad,exc", [
-    ([], ValueError), ([sd.zeros((2, 3)), sd.zeros((2, 4))], ValueError),
-    ([sd.zeros((2, 3)), sd.zeros(3)], ValueError), ([sd.zeros(2), [1, 2]], TypeError),
-    (sd.zeros(2), TypeError), ([np.zeros(2)], TypeError),
-])
+@pytest.mark.parametrize(
+    "bad,exc",
+    [
+        ([], ValueError),
+        ([sd.zeros((2, 3)), sd.zeros((2, 4))], ValueError),
+        ([sd.zeros((2, 3)), sd.zeros(3)], ValueError),
+        ([sd.zeros(2), [1, 2]], TypeError),
+        (sd.zeros(2), TypeError),
+        ([np.zeros(2)], TypeError),
+    ],
+)
 def test_concat_errors(bad, exc):
     with pytest.raises(exc):
         sd.concat(bad)

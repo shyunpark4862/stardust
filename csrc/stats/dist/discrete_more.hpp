@@ -319,8 +319,9 @@ struct Hypergeometric {
             return disc::Ratio4{DD{j, 0.0}, DD{N - K - n + j, 0.0}, DD{K - j + 1.0, 0.0}, DD{n - j + 1.0, 0.0}};
         };
         auto side = [&](bool u) {
-            return disc_sum::log_side(k, u, mode_point(N, K, n), lo, hi, [&](double j) { return log_pmf(j, N, K, n); }, up,
-                                      down);
+            return disc_sum::log_side(
+                k, u, mode_point(N, K, n), lo, hi, [&](double j) { return log_pmf(j, N, K, n); }, up, down
+            );
         };
         return disc_sum::prob(upper, log, (k < mean(N, K, n)) != upper, side);
     }
@@ -369,13 +370,14 @@ struct Hypergeometric {
         const saddle::Parts a = saddle::binomial(k, K, p), b = saddle::binomial(n - k, N - K, p);
         const num::DD s1 = num::dd::two_sum(a.xh, b.xh), s2 = num::dd::two_sum(s1.hi, -c.xh);
         const double xl = (s1.lo + s2.lo) + (a.xl + b.xl - c.xl);
-        const double r = (K * (N - K)) * (n * (N - n)) /
-                         (2.0 * special::kPi * N * ((k * (K - k)) * ((n - k) * (N - K - n + k))));
+        const double r =
+            (K * (N - K)) * (n * (N - n)) / (2.0 * special::kPi * N * ((k * (K - k)) * ((n - k) * (N - K - n + k))));
         return {s2.hi, xl, r, a.e + b.e + c.e, a.ok && b.ok && c.ok && N > kExactN && r <= 0.5};
     }
     template <class F>
     static double scalar_at(const Chunk<3>& c, int i, F&& f) {
-        return valid(c.p[0][i], c.p[1][i], c.p[2][i]) && c.x[i] == c.x[i] ? f(c.x[i], c.p[0][i], c.p[1][i], c.p[2][i]) : kNaN;
+        return valid(c.p[0][i], c.p[1][i], c.p[2][i]) && c.x[i] == c.x[i] ? f(c.x[i], c.p[0][i], c.p[1][i], c.p[2][i])
+                                                                          : kNaN;
     }
     template <class Run, class F>
     static void fast_kernel(const Chunk<3>& c, double* out, Run&& run, F&& scalar) {
@@ -387,15 +389,21 @@ struct Hypergeometric {
                 if (!same) t = third(c.p[0][i], c.p[2][i]);
                 return fast_parts(c.x[i], c.p[0][i], c.p[1][i], c.p[2][i], t);
             },
-            [&](int i) { return scalar_at(c, i, scalar); });
+            [&](int i) { return scalar_at(c, i, scalar); }
+        );
     }
     static void pmf_kernel(const Chunk<3>& c, double* out) {
-        fast_kernel(c, out, [](int n, double* o, auto&& parts, auto&& precise) { saddle::pmf_kernel(n, o, parts, precise, 2.5); },
-                    &Hypergeometric::pmf);
+        fast_kernel(
+            c, out,
+            [](int n, double* o, auto&& parts, auto&& precise) { saddle::pmf_kernel(n, o, parts, precise, 2.5); },
+            &Hypergeometric::pmf
+        );
     }
     static void logpmf_kernel(const Chunk<3>& c, double* out) {
-        fast_kernel(c, out, [](int n, double* o, auto&& parts, auto&& precise) { saddle::logpmf_kernel(n, o, parts, precise); },
-                    &Hypergeometric::logpmf);
+        fast_kernel(
+            c, out, [](int n, double* o, auto&& parts, auto&& precise) { saddle::logpmf_kernel(n, o, parts, precise); },
+            &Hypergeometric::logpmf
+        );
     }
     SD_DISC_MEMO_KERNEL(Hypergeometric, 3, pmf, false)
     SD_DISC_MEMO_KERNEL(Hypergeometric, 3, logpmf, false)
@@ -410,8 +418,9 @@ struct Hypergeometric {
         return n * (K / N) * ((N - K) / N) * ((N - n) / (N - 1.0));
     }
     static disc_sum::Central central(double N, double K, double n) {
-        return disc_sum::central(mean(N, K, n), mode_point(N, K, n), lo_of(N, K, n), hi_of(N, K, n),
-                                 [&](double j) { return log_pmf(j, N, K, n); });
+        return disc_sum::central(mean(N, K, n), mode_point(N, K, n), lo_of(N, K, n), hi_of(N, K, n), [&](double j) {
+            return log_pmf(j, N, K, n);
+        });
     }
     // (N - 2K) (N - 2n) sqrt(N - 1) / ((N - 2) sqrt(n K (N - K) (N - n))): exactly 0 when
     // N = 2K or N = 2n (a sum of the central moments would leave 1e-16).
@@ -462,7 +471,8 @@ struct Hypergeometric {
                 using num::dd::two_prod;
                 return dir > 0.0 ? two_prod(K - j, n - j) / two_prod(j + 1.0, N - K - n + j + 1.0)
                                  : two_prod(j, N - K - n + j) / two_prod(K - j + 1.0, n - j + 1.0);
-            });
+            }
+        );
     }
     static double support_lo(double N, double K, double n) { return lo_of(N, K, n); }
     static double support_hi(double N, double K, double n) { return hi_of(N, K, n); }
@@ -578,7 +588,8 @@ struct BetaBinomial {
             },
             [&](double j) {
                 return disc::Ratio4{DD{j, 0.0}, two_sum(n - j, b), DD{n - j + 1.0, 0.0}, two_sum(j - 1.0, a)};
-            });
+            }
+        );
     }
     // log sum_j pmf(j) / pmf(k) over every j from k to `end`: the ratio recurrence in
     // double-double (disc::tail_sum_dd); where a term underflows below 1e-200, the rounded
@@ -602,7 +613,8 @@ struct BetaBinomial {
         } else {
             // every term is needed: not formed for more than the bound, or past 2^53, where
             // the next integer is not a float64 and j would not move
-            if (!(std::fabs(end - k) <= disc::kMaxTailTerms && std::fabs(k) < 0x1p53 && std::fabs(end) < 0x1p53)) return kNone;
+            if (!(std::fabs(end - k) <= disc::kMaxTailTerms && std::fabs(k) < 0x1p53 && std::fabs(end) < 0x1p53))
+                return kNone;
             const num::DD l0 = lp(k);
             double sum = 1.0, t = 1.0, j = k;
             for (int i = 1; (dir > 0.0 ? j < end : j > end); ++i) {
@@ -639,7 +651,8 @@ struct BetaBinomial {
             const bool log = which == disc::Inv::ilogcdf || which == disc::Inv::ilogccdf;
             const bool upper = which == disc::Inv::iccdf || which == disc::Inv::ilogccdf;
             const double pr = log ? std::exp(t) : t;
-            const double g = std::floor(n * (upper ? special::Betainccinv::f(a, b, pr) : special::Betaincinv::f(a, b, pr)));
+            const double g =
+                std::floor(n * (upper ? special::Betainccinv::f(a, b, pr) : special::Betaincinv::f(a, b, pr)));
             if (g >= 0.0 && g <= n) f.guess = g;
         }
         return f;
@@ -766,7 +779,8 @@ inline double exp_e1(double x) {
                 const double kd = k;
                 return std::pair{-kd * kd, x + 1.0 + 2.0 * kd};
             },
-            kExpE1Terms);
+            kExpE1Terms
+        );
         return r.converged ? 1.0 / r.value : kNaN;
     }
     return std::exp(x) * special::Expn::f(1.0, x);
@@ -1013,8 +1027,10 @@ struct LogSeries {
                 1.0, 1.0, kInf, [&](double j) { return log_pmf(j, p); },
                 // pmf(k + 1) / pmf(k) = p k / (k + 1)
                 [&](double k, double dir) {
-                    return dir > 0.0 ? num::dd::two_prod(p, k) / (k + 1.0) : num::DD{k, 0.0} / (num::dd::two_prod(p, k - 1.0));
-                });
+                    return dir > 0.0 ? num::dd::two_prod(p, k) / (k + 1.0)
+                                     : num::DD{k, 0.0} / (num::dd::two_prod(p, k - 1.0));
+                }
+            );
         }
         constexpr double kEuler = 0.5772156649015329, kC = 0.9162401498442958;
         // zeta'(0), -zeta'(-1) / 2!, zeta'(-2) / 3!, -zeta'(-3) / 4!, zeta'(-4) / 5!
@@ -1223,7 +1239,8 @@ struct Zipf {
         const double integral = K * pk * (lk / (a - 1.0) + 1.0 / ((a - 1.0) * (a - 1.0)));
         const double f = lk * pk;
         const double f1 = pk / K * (1.0 - a * lk);
-        const double f3 = pk / (K * K * K) * (a * (a + 1.0) + (a + 2.0) * (2.0 * a + 1.0) - a * (a + 1.0) * (a + 2.0) * lk);
+        const double f3 =
+            pk / (K * K * K) * (a * (a + 1.0) + (a + 2.0) * (2.0 * a + 1.0) - a * (a + 1.0) * (a + 2.0) * lk);
         s += integral + 0.5 * f - f1 / 12.0 + f3 / 720.0;  // sum_{k >= K} = int + f(K)/2 - f'(K)/12 + f'''(K)/720
         const double z = zipf_detail::zeta(a);
         return std::log(z) + a * s / z;

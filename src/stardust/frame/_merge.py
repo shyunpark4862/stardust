@@ -93,8 +93,10 @@ def _promoted(cols, what):
     area's concat; DESIGN.md §10.1 #2). Strings join only strings."""
     dtype = _dtypes.common(c.dtype for c in cols)
     if dtype is None:
-        raise TypeError(f"concat(): {what} dtypes {sorted({c.dtype for c in cols})} cannot be joined; "
-                        "a string column joins only string columns")
+        raise TypeError(
+            f"concat(): {what} dtypes {sorted({c.dtype for c in cols})} cannot be joined; "
+            "a string column joins only string columns"
+        )
     return [c if c.dtype == dtype else c.astype(dtype) for c in cols]
 
 

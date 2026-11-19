@@ -88,8 +88,10 @@ def _summary(cases, fixed, follow, ths) -> list[str]:
             if rs:
                 slow = sum(r < 1 for r in rs)
                 gm = math.exp(sum(map(math.log, rs)) / len(rs))
-                parts.append(f"{th}{THREADS_WORD} 중앙값 {fmt_ratio(statistics.median(rs))}배"
-                             f"(기하평균 {fmt_ratio(gm)}배, sd가 느린 줄 {slow}/{len(rs)})")
+                parts.append(
+                    f"{th}{THREADS_WORD} 중앙값 {fmt_ratio(statistics.median(rs))}배"
+                    f"(기하평균 {fmt_ratio(gm)}배, sd가 느린 줄 {slow}/{len(rs)})"
+                )
         if parts:
             lines.append(f"- {label} ÷ sd: " + ", ".join(parts))
     return lines
@@ -108,11 +110,17 @@ def group_table(cases: list[dict]) -> list[str]:
         for label in fixed:
             head += [label] + [f"÷ sd {t}" for t in ths]
         head += ["잡음"] + (["비고"] if notes else [])
-        out += ["| " + " | ".join(head) + " |",
-                "|" + "|".join(["---"] * (1 + sizes) + ["---:"] * (len(head) - 1 - sizes - notes) + ["---"] * notes) + "|"]
+        out += [
+            "| " + " | ".join(head) + " |",
+            "|" + "|".join(["---"] * (1 + sizes) + ["---:"] * (len(head) - 1 - sizes - notes) + ["---"] * notes) + "|",
+        ]
         for c in cases:
             sds = [results.timing(c, "sd", t) for t in ths]
-            row = [_name_cell(c, foot)] + ([c.get("size", "")] if sizes else []) + [_cell(t, c.get("n"), foot) for t in sds]
+            row = (
+                [_name_cell(c, foot)]
+                + ([c.get("size", "")] if sizes else [])
+                + [_cell(t, c.get("n"), foot) for t in sds]
+            )
             used = list(sds)
             for label in fixed:
                 ref = results.timing(c, label, None)
@@ -130,21 +138,26 @@ def group_table(cases: list[dict]) -> list[str]:
         for label in follow + fixed:
             head += [label, "÷ sd"]
         head += ["잡음"] + (["비고"] if notes else [])
-        out += ["| " + " | ".join(head) + " |",
-                "|" + "|".join(["---"] * (1 + sizes) + ["---:"] * (len(head) - 1 - sizes - notes) + ["---"] * notes) + "|"]
+        out += [
+            "| " + " | ".join(head) + " |",
+            "|" + "|".join(["---"] * (1 + sizes) + ["---:"] * (len(head) - 1 - sizes - notes) + ["---"] * notes) + "|",
+        ]
         for c in cases:
             for th in ths:
                 sd = results.timing(c, "sd", th)
                 if sd is None:
                     continue
-                row = [_name_cell(c, foot)] + ([c.get("size", "")] if sizes else []) + [str(th), _cell(sd, c.get("n"), foot)]
+                row = (
+                    [_name_cell(c, foot)]
+                    + ([c.get("size", "")] if sizes else [])
+                    + [str(th), _cell(sd, c.get("n"), foot)]
+                )
                 used = [sd]
                 for label in follow + fixed:
                     ref = results.timing(c, label, th if label in follow else None)
                     used.append(ref)
                     v, _ = _scaled(ref, c.get("n"))
-                    row += [_cell(ref, c.get("n"), foot),
-                            _ratio_cell(v / sd["min"] if v and sd.get("min") else None)]
+                    row += [_cell(ref, c.get("n"), foot), _ratio_cell(v / sd["min"] if v and sd.get("min") else None)]
                 row.append(_noise(used))
                 if notes:
                     row.append(c.get("note", ""))
@@ -215,8 +228,12 @@ def render(area: str, data: dict, registry_cases: list[Case], source: str) -> st
         lines += ["", f"## {group}", "", *group_table(cases)]
     if missing:
         lines += ["", f"등록부의 사례 중 {missing}개는 아직 결과가 없다."]
-    fails = [(c["id"], t["label"], t.get("threads"), t.get("error") or c.get("failure"))
-             for c in shown for t in c["timings"] if t.get("min") is None and t.get("error") != "not measured"]
+    fails = [
+        (c["id"], t["label"], t.get("threads"), t.get("error") or c.get("failure"))
+        for c in shown
+        for t in c["timings"]
+        if t.get("min") is None and t.get("error") != "not measured"
+    ]
     if fails:
         lines += ["", "## 측정 실패", "", "| 사례 | 대상 | 스레드 | 오류 |", "|---|---|---:|---|"]
         for cid, label, th, err in fails:

@@ -33,13 +33,16 @@ void fill_one(NDArray& a) {
 }
 
 void fill_scalar(NDArray& a, nb::handle value, DType value_dtype) {
-    visit_dtype(a.dtype, [&]<typename T>(std::type_identity<T>) { fill_flat(a, scalar_from_python<T>(value, value_dtype)); });
+    visit_dtype(a.dtype, [&]<typename T>(std::type_identity<T>) {
+        fill_flat(a, scalar_from_python<T>(value, value_dtype));
+    });
 }
 
 DType require_scalar(nb::handle o, const char* what) {
     if (auto d = scalar_dtype(o)) return *d;
     throw nb::type_error(
-        (std::string("'") + what + "' must be a bool, int, float or complex, not " + py_type_name(o)).c_str());
+        (std::string("'") + what + "' must be a bool, int, float or complex, not " + py_type_name(o)).c_str()
+    );
 }
 
 // arange's arguments: real numbers only (docs/api/array.md §3.1).
@@ -148,7 +151,8 @@ nb::object arange(nb::handle start_obj, nb::handle stop_obj, nb::handle step_obj
         visit_dtype(out.dtype, [&]<typename T>(std::type_identity<T>) {
             T* p = reinterpret_cast<T*>(out.data);
             const parallel::Unlocked unlocked(n >= kParallelThreshold);
-            for (std::int64_t i = 0; i < n; ++i) p[i] = cast_value<T>(static_cast<std::int64_t>(a + static_cast<__int128>(i) * s));
+            for (std::int64_t i = 0; i < n; ++i)
+                p[i] = cast_value<T>(static_cast<std::int64_t>(a + static_cast<__int128>(i) * s));
         });
         return wrap(std::move(out));
     }
@@ -173,7 +177,9 @@ nb::object arange(nb::handle start_obj, nb::handle stop_obj, nb::handle step_obj
 
 // Same arithmetic as numpy (y = i*step + start, last element pinned to stop)
 // so that results agree bit for bit.
-nb::object linspace(nb::handle start, nb::handle stop, nb::handle num_obj, nb::handle dtype_obj, nb::handle endpoint_obj) {
+nb::object linspace(
+    nb::handle start, nb::handle stop, nb::handle num_obj, nb::handle dtype_obj, nb::handle endpoint_obj
+) {
     const DType ks = require_scalar(start, "start");
     const DType ke = require_scalar(stop, "stop");
     const std::int64_t num = parse_int(num_obj, "num");
@@ -217,27 +223,45 @@ nb::object eye(nb::handle n_rows_obj, nb::handle n_cols_obj, nb::handle k_obj, n
     NDArray out = new_array(parse_dtype(dtype_obj).value_or(DType::Float64), std::vector<std::int64_t>{n, m}, true);
     visit_dtype(out.dtype, [&]<typename T>(std::type_identity<T>) {
         T* p = reinterpret_cast<T*>(out.data);
-        for (std::int64_t i = std::max<std::int64_t>(0, -k); i < n && i + k < m; ++i) p[i * m + i + k] = cast_value<T>(true);
+        for (std::int64_t i = std::max<std::int64_t>(0, -k); i < n && i + k < m; ++i)
+            p[i * m + i + k] = cast_value<T>(true);
     });
     return wrap(std::move(out));
 }
 
 void bind_creation(nb::module_& m) {
     using nb::arg;
-    m.def("asarray", named("asarray", &asarray), arg().none(), nb::kw_only(), arg("dtype").none() = nb::none(), arg("copy").none() = nb::none());
+    m.def(
+        "asarray", named("asarray", &asarray), arg().none(), nb::kw_only(), arg("dtype").none() = nb::none(),
+        arg("copy").none() = nb::none()
+    );
     m.def("zeros", named("zeros", &zeros), arg().none(), nb::kw_only(), arg("dtype").none() = nb::none());
     m.def("ones", named("ones", &ones), arg().none(), nb::kw_only(), arg("dtype").none() = nb::none());
     m.def("empty", named("empty", &empty), arg().none(), nb::kw_only(), arg("dtype").none() = nb::none());
     m.def("full", named("full", &full), arg().none(), arg().none(), nb::kw_only(), arg("dtype").none() = nb::none());
-    m.def("zeros_like", named("zeros_like", &zeros_like), arg().none(), nb::kw_only(), arg("dtype").none() = nb::none());
+    m.def(
+        "zeros_like", named("zeros_like", &zeros_like), arg().none(), nb::kw_only(), arg("dtype").none() = nb::none()
+    );
     m.def("ones_like", named("ones_like", &ones_like), arg().none(), nb::kw_only(), arg("dtype").none() = nb::none());
-    m.def("empty_like", named("empty_like", &empty_like), arg().none(), nb::kw_only(), arg("dtype").none() = nb::none());
-    m.def("full_like", named("full_like", &full_like), arg().none(), arg().none(), nb::kw_only(), arg("dtype").none() = nb::none());
-    m.def("arange", named("arange", &arange), arg().none(), arg().none() = nb::none(), arg().none() = 1, nb::kw_only(),
-          arg("dtype").none() = nb::none());
-    m.def("linspace", named("linspace", &linspace), arg().none(), arg().none(), arg().none(), nb::kw_only(), arg("dtype").none() = nb::none(),
-          arg("endpoint").none() = true);
-    m.def("eye", named("eye", &eye), arg().none(), arg().none() = nb::none(), nb::kw_only(), arg("k").none() = 0, arg("dtype").none() = nb::none());
+    m.def(
+        "empty_like", named("empty_like", &empty_like), arg().none(), nb::kw_only(), arg("dtype").none() = nb::none()
+    );
+    m.def(
+        "full_like", named("full_like", &full_like), arg().none(), arg().none(), nb::kw_only(),
+        arg("dtype").none() = nb::none()
+    );
+    m.def(
+        "arange", named("arange", &arange), arg().none(), arg().none() = nb::none(), arg().none() = 1, nb::kw_only(),
+        arg("dtype").none() = nb::none()
+    );
+    m.def(
+        "linspace", named("linspace", &linspace), arg().none(), arg().none(), arg().none(), nb::kw_only(),
+        arg("dtype").none() = nb::none(), arg("endpoint").none() = true
+    );
+    m.def(
+        "eye", named("eye", &eye), arg().none(), arg().none() = nb::none(), nb::kw_only(), arg("k").none() = 0,
+        arg("dtype").none() = nb::none()
+    );
 }
 
 }  // namespace sd

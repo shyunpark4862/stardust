@@ -45,8 +45,10 @@ def main(argv):
                 e = refdata.mixed_error(got, hi, lo) / 2.0**-52
                 se = refdata.mixed_error(ref(*xs), hi, lo) / 2.0**-52 if ref is not None else None
             s = stats(se[m]) if se is not None else ("-", "-")
-            print(f"| `{name}` | {m.sum()} | {label} | {' | '.join(stats(e[m]))} | `{common.counterpart(name)}` | "
-                  f"{' | '.join(s)} |")
+            print(
+                f"| `{name}` | {m.sum()} | {label} | {' | '.join(stats(e[m]))} | `{common.counterpart(name)}` | "
+                f"{' | '.join(s)} |"
+            )
 
 
 if __name__ == "__main__":

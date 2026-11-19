@@ -190,7 +190,8 @@ public:
     // The same with the key's hash already computed (the partitioned
     // factorize hashes every row once, up front; docs/design/frame.md §8.7).
     std::pair<std::int64_t, bool> insert(Key k, std::uint64_t h, std::int64_t new_code) {
-        if (!ctrl_) [[unlikely]] allocate(32);
+        if (!ctrl_) [[unlikely]]
+            allocate(32);
         const std::uint8_t tag = tag_of(h);
         for (std::uint64_t g = (h >> 7) & gmask_;; g = (g + 1) & gmask_) {
             const uint8x16_t ctrl = vld1q_u8(ctrl_.get() + g * 16);
@@ -252,7 +253,9 @@ private:
     static std::uint64_t nibbles(uint8x16_t cmp) {
         return vget_lane_u64(vreinterpret_u64_u8(vshrn_n_u16(vreinterpretq_u16_u8(cmp), 4)), 0);
     }
-    static std::uint64_t clear_nibble(std::uint64_t m) { return m & ~(std::uint64_t{0xF} << (__builtin_ctzll(m) & ~3u)); }
+    static std::uint64_t clear_nibble(std::uint64_t m) {
+        return m & ~(std::uint64_t{0xF} << (__builtin_ctzll(m) & ~3u));
+    }
 
     static std::uint64_t word_of(Key k, std::uint64_t h) {
         if constexpr (kInline) return k;
@@ -340,7 +343,9 @@ private:
 
 template <class Key, class Hash>
 template <class KeyOf, class Valid>
-std::vector<std::int64_t> Partitioned<Key, Hash>::build(std::int64_t n, KeyOf key_of, Valid valid, std::int64_t* codes) {
+std::vector<std::int64_t> Partitioned<Key, Hash>::build(
+    std::int64_t n, KeyOf key_of, Valid valid, std::int64_t* codes
+) {
     // 8-byte keys are their own word and rehashing one is a few cycles;
     // strings keep their hash, computed once (rehashing would read the bytes again).
     constexpr bool kInline = std::is_same_v<Key, std::uint64_t>;
@@ -381,7 +386,9 @@ std::vector<std::int64_t> Partitioned<Key, Hash>::build(std::int64_t n, KeyOf ke
         ngroups_ = static_cast<std::int64_t>(first.size());
         return first;
     }
-    auto part_of = [this](std::uint64_t h) -> std::size_t { return shift_ == 64 ? 0 : static_cast<std::size_t>(h >> shift_); };
+    auto part_of = [this](std::uint64_t h) -> std::size_t {
+        return shift_ == 64 ? 0 : static_cast<std::size_t>(h >> shift_);
+    };
     const std::size_t C = static_cast<std::size_t>(num_chunks(n));
     auto chunk = [](std::int64_t lo) { return static_cast<std::size_t>(lo / kChunkRows); };
 
@@ -389,20 +396,24 @@ std::vector<std::int64_t> Partitioned<Key, Hash>::build(std::int64_t n, KeyOf ke
     std::vector<std::uint64_t> hashes(kInline ? 0 : static_cast<std::size_t>(n));
     std::vector<std::int64_t> count(C * P, 0);
     parallel::FirstRow first_na;
-    for_chunks(n, [&](std::int64_t lo, std::int64_t hi) {
-        std::int64_t* cnt = count.data() + chunk(lo) * P;
-        std::int64_t na = -1;
-        for (std::int64_t i = lo; i < hi; ++i) {
-            if (!valid(i)) {
-                if (na < 0) na = i;
-                continue;
+    for_chunks(
+        n,
+        [&](std::int64_t lo, std::int64_t hi) {
+            std::int64_t* cnt = count.data() + chunk(lo) * P;
+            std::int64_t na = -1;
+            for (std::int64_t i = lo; i < hi; ++i) {
+                if (!valid(i)) {
+                    if (na < 0) na = i;
+                    continue;
+                }
+                const std::uint64_t h = Hash{}(key_of(i));
+                if constexpr (!kInline) hashes[static_cast<std::size_t>(i)] = h;
+                ++cnt[part_of(h)];
             }
-            const std::uint64_t h = Hash{}(key_of(i));
-            if constexpr (!kInline) hashes[static_cast<std::size_t>(i)] = h;
-            ++cnt[part_of(h)];
-        }
-        if (na >= 0) first_na.offer(na);
-    }, 4);
+            if (na >= 0) first_na.offer(na);
+        },
+        4
+    );
     // 2. Where each (partition, chunk) starts: partition by partition, and
     // within one, chunk by chunk, so every partition lists its rows in row
     // order -- the order a serial pass would meet them.
@@ -502,35 +513,40 @@ std::vector<std::int64_t> Partitioned<Key, Hash>::build(std::int64_t n, KeyOf ke
     ngroups_ = fstart[C];
     std::vector<std::int64_t> first(static_cast<std::size_t>(ngroups_));
     for (std::size_t p = 0; p < P; ++p) global_[p].resize(firsts[p].size());
-    for_chunks(n, [&](std::int64_t lo, std::int64_t hi) {
-        // rank[i - lo]: 1 + the code of first row i, 0 for other rows
-        std::vector<std::int64_t> rank(static_cast<std::size_t>(hi - lo), 0);
-        for (std::size_t p = 0; p < P; ++p) {
-            auto [a, b] = slice(p, lo, hi);
-            for (auto l = a; l < b; ++l) rank[static_cast<std::size_t>(firsts[p][static_cast<std::size_t>(l)] - lo)] = 1;
-        }
-        if (na_first >= lo && na_first < hi) rank[static_cast<std::size_t>(na_first - lo)] = 1;
-        // Branch-free numbering: first rows are often too dense and too
-        // random for a branch to predict.
-        std::int64_t g = fstart[chunk(lo)];
-        std::int64_t* rk = rank.data();
-        for (std::int64_t i = 0, len = hi - lo; i < len; ++i) {
-            const std::int64_t is = rk[i];
-            g += is;
-            rk[i] = g & -is;
-        }
-        for (std::size_t p = 0; p < P; ++p) {
-            auto [a, b] = slice(p, lo, hi);
-            for (auto l = a; l < b; ++l) {
-                const std::int64_t row = firsts[p][static_cast<std::size_t>(l)];
-                const std::int64_t code = rk[row - lo] - 1;
-                global_[p][static_cast<std::size_t>(l)] = code;
-                first[static_cast<std::size_t>(code)] = row;
+    for_chunks(
+        n,
+        [&](std::int64_t lo, std::int64_t hi) {
+            // rank[i - lo]: 1 + the code of first row i, 0 for other rows
+            std::vector<std::int64_t> rank(static_cast<std::size_t>(hi - lo), 0);
+            for (std::size_t p = 0; p < P; ++p) {
+                auto [a, b] = slice(p, lo, hi);
+                for (auto l = a; l < b; ++l)
+                    rank[static_cast<std::size_t>(firsts[p][static_cast<std::size_t>(l)] - lo)] = 1;
             }
-        }
-        if (na_first >= lo && na_first < hi) first[static_cast<std::size_t>(rk[na_first - lo] - 1)] = na_first;
-        if (na_first >= lo && na_first < hi) na_code_ = rank[static_cast<std::size_t>(na_first - lo)] - 1;
-    }, 4);
+            if (na_first >= lo && na_first < hi) rank[static_cast<std::size_t>(na_first - lo)] = 1;
+            // Branch-free numbering: first rows are often too dense and too
+            // random for a branch to predict.
+            std::int64_t g = fstart[chunk(lo)];
+            std::int64_t* rk = rank.data();
+            for (std::int64_t i = 0, len = hi - lo; i < len; ++i) {
+                const std::int64_t is = rk[i];
+                g += is;
+                rk[i] = g & -is;
+            }
+            for (std::size_t p = 0; p < P; ++p) {
+                auto [a, b] = slice(p, lo, hi);
+                for (auto l = a; l < b; ++l) {
+                    const std::int64_t row = firsts[p][static_cast<std::size_t>(l)];
+                    const std::int64_t code = rk[row - lo] - 1;
+                    global_[p][static_cast<std::size_t>(l)] = code;
+                    first[static_cast<std::size_t>(code)] = row;
+                }
+            }
+            if (na_first >= lo && na_first < hi) first[static_cast<std::size_t>(rk[na_first - lo] - 1)] = na_first;
+            if (na_first >= lo && na_first < hi) na_code_ = rank[static_cast<std::size_t>(na_first - lo)] - 1;
+        },
+        4
+    );
     // 6. Entries' local codes -> codes (each partition reads its own entries
     // front to back), then each row reads its entry, in row order.
     parallel::parallel_for(static_cast<std::int64_t>(P), [&](std::int64_t pt) {
@@ -543,7 +559,8 @@ std::vector<std::int64_t> Partitioned<Key, Hash>::build(std::int64_t n, KeyOf ke
     });
     for_chunks(n, [&](std::int64_t lo, std::int64_t hi) {
         for (std::int64_t i = lo; i < hi; ++i)
-            codes[i] = codes[i] < 0 ? na_code_ : static_cast<std::int64_t>(entries[static_cast<std::size_t>(codes[i])].word);
+            codes[i] =
+                codes[i] < 0 ? na_code_ : static_cast<std::int64_t>(entries[static_cast<std::size_t>(codes[i])].word);
     });
     return first;
 }

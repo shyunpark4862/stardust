@@ -69,8 +69,17 @@ bool copy_run(const std::byte* src, std::int64_t n, T* dst, bool check) {
 // writes stay within a few cache lines). The result is the same for every
 // path: element (i, j) goes to dst[j * ld + i].
 template <class T, class S>
-bool pack_loop(const std::byte* p, std::int64_t m, std::int64_t j0, std::int64_t j1, std::int64_t rs, std::int64_t cs,
-               T* dst, std::int64_t ld, bool check) {
+bool pack_loop(
+    const std::byte* p,
+    std::int64_t m,
+    std::int64_t j0,
+    std::int64_t j1,
+    std::int64_t rs,
+    std::int64_t cs,
+    T* dst,
+    std::int64_t ld,
+    bool check
+) {
     constexpr std::int64_t sz = sizeof(S);
     bool ok = true;
     if (rs == sz) {
@@ -90,8 +99,10 @@ bool pack_loop(const std::byte* p, std::int64_t m, std::int64_t j0, std::int64_t
         if constexpr (std::is_same_v<S, double> || std::is_same_v<S, cplx>) {
             if (check)
                 for (std::int64_t j = j0; j < j1; ++j)
-                    ok &= all_finite(reinterpret_cast<const double*>(dst + j * ld),
-                                     m * static_cast<std::int64_t>(sizeof(T) / sizeof(double)));
+                    ok &= all_finite(
+                        reinterpret_cast<const double*>(dst + j * ld),
+                        m * static_cast<std::int64_t>(sizeof(T) / sizeof(double))
+                    );
         }
         return ok;
     }
@@ -144,8 +155,17 @@ template <class Block>
 // Only the transpose gained from the pool (strided inputs got slower,
 // docs/design/linalg.md §5.6).
 template <class T>
-[[gnu::noinline]] bool pack_large(DType src, const std::byte* p, std::int64_t m, std::int64_t n, std::int64_t rs,
-                                  std::int64_t cs, T* dst, std::int64_t ld, bool check) {
+[[gnu::noinline]] bool pack_large(
+    DType src,
+    const std::byte* p,
+    std::int64_t m,
+    std::int64_t n,
+    std::int64_t rs,
+    std::int64_t cs,
+    T* dst,
+    std::int64_t ld,
+    bool check
+) {
     return visit_storage(src, [&]<class S>(std::type_identity<S>) {
         if constexpr (std::is_same_v<S, cplx> && !std::is_same_v<T, cplx>) {
             return false;  // unreachable
@@ -169,8 +189,17 @@ template <class T>
 // T is double or cplx; a complex source never meets a double destination,
 // because the destination type comes from promoting all inputs (docs/api/linalg.md §1.5).
 template <class T>
-bool pack(DType src, const std::byte* p, std::int64_t m, std::int64_t n, std::int64_t rs, std::int64_t cs, T* dst,
-          std::int64_t ld, bool check) {
+bool pack(
+    DType src,
+    const std::byte* p,
+    std::int64_t m,
+    std::int64_t n,
+    std::int64_t rs,
+    std::int64_t cs,
+    T* dst,
+    std::int64_t ld,
+    bool check
+) {
     // A large matrix goes to the out-of-line entry before anything else, so the
     // small-matrix path below stays as it was (the test inside the dispatch
     // cost small calls ~2.5 ns each, docs/design/linalg.md §5.6).
@@ -186,15 +215,26 @@ namespace detail {
 
 // pack_triangle's loop for one source type S, destination columns [j0, j1).
 template <class T, class S>
-bool pack_triangle_loop(const std::byte* p, std::int64_t n, std::int64_t j0, std::int64_t j1, std::int64_t rs,
-                        std::int64_t cs, T* dst, std::int64_t ld, bool lower, bool with_diag, bool check) {
+bool pack_triangle_loop(
+    const std::byte* p,
+    std::int64_t n,
+    std::int64_t j0,
+    std::int64_t j1,
+    std::int64_t rs,
+    std::int64_t cs,
+    T* dst,
+    std::int64_t ld,
+    bool lower,
+    bool with_diag,
+    bool check
+) {
     bool ok = true;
-    if (rs == static_cast<std::int64_t>(sizeof(S))) {  // columns contiguous: a run per column (docs/design/linalg.md §5.3)
+    if (rs ==
+        static_cast<std::int64_t>(sizeof(S))) {  // columns contiguous: a run per column (docs/design/linalg.md §5.3)
         for (std::int64_t j = j0; j < j1; ++j) {
             const std::int64_t i0 = lower ? (with_diag ? j : j + 1) : 0;
             const std::int64_t i1 = lower ? n : (with_diag ? j + 1 : j);
-            if (i1 > i0)
-                ok &= detail::copy_run<T, S>(p + j * cs + i0 * rs, i1 - i0, dst + j * ld + i0, check);
+            if (i1 > i0) ok &= detail::copy_run<T, S>(p + j * cs + i0 * rs, i1 - i0, dst + j * ld + i0, check);
         }
         return ok;
     }
@@ -210,8 +250,7 @@ bool pack_triangle_loop(const std::byte* p, std::int64_t n, std::int64_t j0, std
                     // this column's rows of the triangle, clipped to the tile
                     const std::int64_t a = std::max(r0, lower ? (with_diag ? j : j + 1) : 0);
                     const std::int64_t e = std::min(r1, lower ? n : (with_diag ? j + 1 : j));
-                    for (std::int64_t i = a; i < e; ++i)
-                        dst[j * ld + i] = convert<T>(load<S>(p + i * rs + j * cs));
+                    for (std::int64_t i = a; i < e; ++i) dst[j * ld + i] = convert<T>(load<S>(p + i * rs + j * cs));
                 }
             }
         }
@@ -221,8 +260,10 @@ bool pack_triangle_loop(const std::byte* p, std::int64_t n, std::int64_t j0, std
                     const std::int64_t i0 = lower ? (with_diag ? j : j + 1) : 0;
                     const std::int64_t i1 = lower ? n : (with_diag ? j + 1 : j);
                     if (i1 > i0)
-                        ok &= detail::all_finite(reinterpret_cast<const double*>(dst + j * ld + i0),
-                                                 (i1 - i0) * static_cast<std::int64_t>(sizeof(T) / sizeof(double)));
+                        ok &= detail::all_finite(
+                            reinterpret_cast<const double*>(dst + j * ld + i0),
+                            (i1 - i0) * static_cast<std::int64_t>(sizeof(T) / sizeof(double))
+                        );
                 }
         }
         return ok;
@@ -244,9 +285,18 @@ bool pack_triangle_loop(const std::byte* p, std::int64_t n, std::int64_t j0, std
 
 // pack_triangle() for a large matrix, out of line (as pack_large).
 template <class T>
-[[gnu::noinline]] bool pack_triangle_large(DType src, const std::byte* p, std::int64_t n, std::int64_t rs,
-                                           std::int64_t cs, T* dst, std::int64_t ld, bool lower, bool with_diag,
-                                           bool check) {
+[[gnu::noinline]] bool pack_triangle_large(
+    DType src,
+    const std::byte* p,
+    std::int64_t n,
+    std::int64_t rs,
+    std::int64_t cs,
+    T* dst,
+    std::int64_t ld,
+    bool lower,
+    bool with_diag,
+    bool check
+) {
     return visit_storage(src, [&]<class S>(std::type_identity<S>) {
         if constexpr (std::is_same_v<S, cplx> && !std::is_same_v<T, cplx>) {
             return false;  // unreachable
@@ -267,8 +317,18 @@ template <class T>
 // elements are copied and checked (docs/design/linalg.md §5.4); the rest of
 // `dst` is left as it was, since the LAPACK routine that follows does not read it.
 template <class T>
-bool pack_triangle(DType src, const std::byte* p, std::int64_t n, std::int64_t rs, std::int64_t cs, T* dst,
-                   std::int64_t ld, bool lower, bool with_diag, bool check) {
+bool pack_triangle(
+    DType src,
+    const std::byte* p,
+    std::int64_t n,
+    std::int64_t rs,
+    std::int64_t cs,
+    T* dst,
+    std::int64_t ld,
+    bool lower,
+    bool with_diag,
+    bool check
+) {
     if (n * n >= detail::kPackParallelMin) [[unlikely]]  // as in pack()
         return detail::pack_triangle_large(src, p, n, rs, cs, dst, ld, lower, with_diag, check);
     return visit_storage(src, [&]<class S>(std::type_identity<S>) {
@@ -287,8 +347,10 @@ bool triangle_finite(const T* a, std::int64_t n, std::int64_t ld, bool lower, bo
         const std::int64_t i0 = lower ? (with_diag ? j : j + 1) : 0;
         const std::int64_t i1 = lower ? n : (with_diag ? j + 1 : j);
         if (i1 > i0)
-            ok &= detail::all_finite(reinterpret_cast<const double*>(a + j * ld + i0),
-                                     (i1 - i0) * static_cast<std::int64_t>(sizeof(T) / sizeof(double)));
+            ok &= detail::all_finite(
+                reinterpret_cast<const double*>(a + j * ld + i0),
+                (i1 - i0) * static_cast<std::int64_t>(sizeof(T) / sizeof(double))
+            );
     }
     return ok;
 }

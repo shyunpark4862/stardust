@@ -19,11 +19,27 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DOCS = {
-    "API.md": "API.md", "DESIGN.md": "DESIGN.md", "ARCHITECTURE.md": "ARCHITECTURE.md", "ROADMAP.md": "ROADMAP.md",
+    "API.md": "API.md",
+    "DESIGN.md": "DESIGN.md",
+    "ARCHITECTURE.md": "ARCHITECTURE.md",
+    "ROADMAP.md": "ROADMAP.md",
     **{f"docs/{k}/{a}.md": f"docs/{k}/{a}.md" for k in ("api", "design") for a in ("array", "linalg", "frame")},
 }
-SCAN = ["csrc", "src", "tests", "tools", "docs/api", "docs/design", "bench/merge",
-        "API.md", "DESIGN.md", "ARCHITECTURE.md", "ROADMAP.md", "README.md", "CMakeLists.txt"]
+SCAN = [
+    "csrc",
+    "src",
+    "tests",
+    "tools",
+    "docs/api",
+    "docs/design",
+    "bench/merge",
+    "API.md",
+    "DESIGN.md",
+    "ARCHITECTURE.md",
+    "ROADMAP.md",
+    "README.md",
+    "CMakeLists.txt",
+]
 SUFFIXES = {".cpp", ".hpp", ".py", ".md", ".txt", ".sh"}
 NAME = r"(?<![\w/.-])((?:docs/(?:api|design)/)?(?:array|linalg|frame)\.md|API\.md|DESIGN(?:\.md)?|ARCHITECTURE(?:\.md)?|ROADMAP\.md)"
 REF = re.compile(NAME + r"((?:(?:[ ,]|and|및|와|과)+§\d+(?:\.\d+)*)+)")

@@ -34,13 +34,15 @@ ENTRY = [
 def main(src):
     src = pathlib.Path(src).resolve()
     inc = src / "include"
-    commit = subprocess.run(["git", "-C", str(src), "rev-parse", "--short", "HEAD"], capture_output=True,
-                            text=True).stdout.strip()
+    commit = subprocess.run(
+        ["git", "-C", str(src), "rev-parse", "--short", "HEAD"], capture_output=True, text=True
+    ).stdout.strip()
     with tempfile.TemporaryDirectory() as tmp:
         tu = pathlib.Path(tmp) / "need.cpp"
         tu.write_text("#define BOOST_MATH_STANDALONE\n" + "".join(f"#include <{h}>\n" for h in ENTRY))
-        deps = subprocess.run(["clang++", "-std=c++20", f"-I{inc}", "-MM", str(tu)], capture_output=True,
-                              text=True, check=True).stdout
+        deps = subprocess.run(
+            ["clang++", "-std=c++20", f"-I{inc}", "-MM", str(tu)], capture_output=True, text=True, check=True
+        ).stdout
     files = sorted({pathlib.Path(p) for p in deps.replace("\\\n", " ").split() if p.startswith(str(inc))})
     if (OUT / "include").exists():
         shutil.rmtree(OUT / "include")

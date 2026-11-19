@@ -75,16 +75,35 @@ inline c128 cdiv(c128 a, c128 b) {
 // <complex.h>; `__extension__` marks the C99 _Complex type as intentional.
 __extension__ typedef double _Complex c99_t;
 extern "C" {
-c99_t cexp(c99_t); c99_t clog(c99_t); c99_t csqrt(c99_t); c99_t cpow(c99_t, c99_t);
-c99_t csin(c99_t); c99_t ccos(c99_t); c99_t ctan(c99_t);
-c99_t casin(c99_t); c99_t cacos(c99_t); c99_t catan(c99_t);
-c99_t csinh(c99_t); c99_t ccosh(c99_t); c99_t ctanh(c99_t);
-c99_t casinh(c99_t); c99_t cacosh(c99_t); c99_t catanh(c99_t);
+c99_t cexp(c99_t);
+c99_t clog(c99_t);
+c99_t csqrt(c99_t);
+c99_t cpow(c99_t, c99_t);
+c99_t csin(c99_t);
+c99_t ccos(c99_t);
+c99_t ctan(c99_t);
+c99_t casin(c99_t);
+c99_t cacos(c99_t);
+c99_t catan(c99_t);
+c99_t csinh(c99_t);
+c99_t ccosh(c99_t);
+c99_t ctanh(c99_t);
+c99_t casinh(c99_t);
+c99_t cacosh(c99_t);
+c99_t catanh(c99_t);
 }
 
 // std::complex<double> and double _Complex are both laid out as double[2].
-inline c99_t to_c99(c128 z) { c99_t r; std::memcpy(&r, &z, sizeof r); return r; }
-inline c128 from_c99(c99_t z) { c128 r; std::memcpy(&r, &z, sizeof r); return r; }
+inline c99_t to_c99(c128 z) {
+    c99_t r;
+    std::memcpy(&r, &z, sizeof r);
+    return r;
+}
+inline c128 from_c99(c99_t z) {
+    c128 r;
+    std::memcpy(&r, &z, sizeof r);
+    return r;
+}
 inline c128 call(c99_t (*f)(c99_t), c128 z) { return from_c99(f(to_c99(z))); }
 
 // ---- comparison helpers ---------------------------------------------------
@@ -273,8 +292,10 @@ inline double pow_exact(PowKind k, double x) {
         case PowKind::kOne: return 1.0;
         case PowKind::kSame: return x;
         case PowKind::kRecip: return 1.0 / x;
-        default: return x == 0.0 ? 0.0 : (x == -std::numeric_limits<double>::infinity()
-                                              ? std::numeric_limits<double>::infinity() : std::sqrt(x));
+        default:
+            return x == 0.0 ? 0.0
+                            : (x == -std::numeric_limits<double>::infinity() ? std::numeric_limits<double>::infinity()
+                                                                             : std::sqrt(x));
     }
 }
 
@@ -558,12 +579,12 @@ struct Sign {
 // ============================================================ unary: floating-point math
 // No integer loops: integers are computed in float64.
 
-#define SD_FLOAT_FN(Name, pyname, real_expr, cplx_expr)                     \
-    struct Name {                                                           \
-        static constexpr const char* name = pyname;                         \
+#define SD_FLOAT_FN(Name, pyname, real_expr, cplx_expr)                             \
+    struct Name {                                                                   \
+        static constexpr const char* name = pyname;                                 \
         template <typename T> static constexpr bool ok = is_float<T> || is_cplx<T>; \
-        static double f(double x) { return real_expr; }                     \
-        static c128 f(c128 z) { return cplx_expr; }                         \
+        static double f(double x) { return real_expr; }                             \
+        static c128 f(c128 z) { return cplx_expr; }                                 \
     };
 
 // numpy's formulas for the complex functions C99 does not have.
@@ -608,12 +629,12 @@ SD_FLOAT_FN(Atanh, "atanh", std::atanh(x), call(catanh, z))
 // Integers are already whole: their loops are the identity, and the dtype is
 // kept. No complex loops, except round (each part separately).
 
-#define SD_ROUND_FN(Name, pyname, expr)                                      \
-    struct Name {                                                           \
-        static constexpr const char* name = pyname;                         \
-        template <typename T> static constexpr bool ok = !is_cplx<T>;      \
-        static double f(double x) { return expr; }                          \
-        template <typename T> static T f(T x) { return x; }                 \
+#define SD_ROUND_FN(Name, pyname, expr)                               \
+    struct Name {                                                     \
+        static constexpr const char* name = pyname;                   \
+        template <typename T> static constexpr bool ok = !is_cplx<T>; \
+        static double f(double x) { return expr; }                    \
+        template <typename T> static T f(T x) { return x; }           \
     };
 
 SD_ROUND_FN(Floor, "floor", std::floor(x))

@@ -34,7 +34,10 @@ void run(F f) {
 int main() {
     for (int mode = 0; mode < 4; ++mode) {
         for (int i = 0; i < N; ++i)
-            x[i] = mode == 0 ? std::exp(-30 + 60 * U(g)) : mode == 1 ? 0.5 + 1.5 * U(g) : mode == 2 ? std::exp(-700 + 1400 * U(g)) : 0.9 + 0.2 * U(g);
+            x[i] = mode == 0   ? std::exp(-30 + 60 * U(g))
+                   : mode == 1 ? 0.5 + 1.5 * U(g)
+                   : mode == 2 ? std::exp(-700 + 1400 * U(g))
+                               : 0.9 + 0.2 * U(g);
         run([](double* out, const double* a, const double*, int n) { vvlog(out, a, &n); });
         double mv = 0, ml = 0;
         for (int i = 0; i < N; ++i) {
@@ -56,7 +59,9 @@ int main() {
         for (int i = 0; i < N; ++i) {
             const double u = U(g), v = U(g);
             if (mode == 0) x[i] = 0.05 + 0.95 * u, y[i] = 0.05 + 10 * v;
-            else if (mode == 1) x[i] = std::exp(-5 + 10 * u), y[i] = std::fabs(std::log(x[i])) * std::exp(-7 + 14 * v) > 700 ? 1.0 : std::exp(-7 + 14 * v);
+            else if (mode == 1)
+                x[i] = std::exp(-5 + 10 * u),
+                y[i] = std::fabs(std::log(x[i])) * std::exp(-7 + 14 * v) > 700 ? 1.0 : std::exp(-7 + 14 * v);
             else if (mode == 2) x[i] = 1 + (u - 0.5) * 1e-3, y[i] = std::exp(14 * v);
             else if (mode == 3) x[i] = std::exp(-600 + 1200 * u), y[i] = (v - 0.5) * 2.0;
             else if (mode == 4) x[i] = 0.2 + 0.8 * u, y[i] = 3.0;
@@ -107,10 +112,14 @@ int main() {
     for (int mode = 0; mode < 4; ++mode) {
         for (int i = 0; i < N; ++i) {
             const double u = U(g);
-            x[i] = (i % 2 ? -1 : 1) * (mode == 0 ? std::exp(-690 + 1380 * u) : mode == 1 ? 10 * u : mode == 2 ? std::exp(-5 + 10 * u) : 1 + (u - 0.5) * 0.5);
+            x[i] = (i % 2 ? -1 : 1) * (mode == 0   ? std::exp(-690 + 1380 * u)
+                                       : mode == 1 ? 10 * u
+                                       : mode == 2 ? std::exp(-5 + 10 * u)
+                                                   : 1 + (u - 0.5) * 0.5);
         }
         run([](double* out, const double* a, const double*, int n) { vvatan(out, a, &n); });
-        for (int i = 0; i < N; ++i) ma = std::max(ma, std::fabs(o[i] - std::atan(x[i])) / (std::fabs(std::atan(x[i])) * 0x1p-53));
+        for (int i = 0; i < N; ++i)
+            ma = std::max(ma, std::fabs(o[i] - std::atan(x[i])) / (std::fabs(std::atan(x[i])) * 0x1p-53));
     }
     std::printf("atan: vForce within %.3f of libm's\n", ma);
 }

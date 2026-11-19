@@ -74,6 +74,7 @@ def test_mgh_hessian_is_the_jacobian_of_the_gradient(case):
         r = case.problem.fun(v, case.m, M)
         j = case.problem.jac(v, case.m, M)
         return [2.0 * sum(j[i][c] * r[i] for i in range(case.m)) for c in range(case.n)]
+
     h = mgh.hessian(case, x)
     ha = ad.arb_jacobian(grad, x)
     assert _close(h, ha, rtol=1e-11), case.id
@@ -118,14 +119,16 @@ def test_functions_agree_with_fortran():
 
 # ---- scipy's functions
 
+
 def test_rosen_family_against_scipy():
     from scipy.optimize import rosen, rosen_der, rosen_hess, rosen_hess_prod
+
     for x in ([1.3, 0.7, 0.8, 1.9, 1.2], [-1.2, 1.0], [0.5, -0.25, 2.0]):
         xa = np.array(x)
         assert math.isclose(functions.rosen(x), rosen(xa), rel_tol=1e-15)
         assert np.allclose(functions.rosen_der(x), rosen_der(xa), rtol=1e-15, atol=0)
         assert np.allclose(np.array(functions.rosen_hess(x)), rosen_hess(xa), rtol=1e-15, atol=0)
-        p = [0.3, -1.0, 2.0, 0.5, 1.5][:len(x)]
+        p = [0.3, -1.0, 2.0, 0.5, 1.5][: len(x)]
         assert np.allclose(functions.rosen_hess_prod(x, p), rosen_hess_prod(xa, np.array(p)), rtol=1e-14)
         assert _close(functions.rosen_der(x), ad.arb_jacobian(lambda v, M: [functions.rosen(v, M)], x)[0])
         assert _close(np.array(functions.rosen_hess(x)), ad.value_grad_hess(functions.rosen, x)[2])
@@ -135,8 +138,7 @@ def test_maxent_and_driver1():
     x = [0.1, -0.4, 0.3]
     assert _close(functions.maxent_der(x), ad.arb_jacobian(lambda v, M: [functions.maxent(v, M)], x)[0])
     y = [3.0 - 0.1 * i for i in range(25)]
-    assert _close(functions.lbfgsb_driver1_der(y),
-                  ad.arb_jacobian(lambda v, M: [functions.lbfgsb_driver1(v, M)], y)[0])
+    assert _close(functions.lbfgsb_driver1_der(y), ad.arb_jacobian(lambda v, M: [functions.lbfgsb_driver1(v, M)], y)[0])
     # scipy's CheckOptimize problem
     f0 = math.log(5.0)
     assert functions.maxent(functions.MAXENT_X0) == f0
@@ -144,6 +146,7 @@ def test_maxent_and_driver1():
 
 def test_scalar_root_cases_against_scipy():
     from scipy.optimize import _tstutils
+
     sc = {d["ID"]: d for d in _tstutils.get_tests("aps")}
     assert len(functions.APS) == len(sc) == 154
     for c in functions.APS:
@@ -166,8 +169,9 @@ def test_scalar_root_cases_against_scipy():
             assert abs(c.f(float(x)) - d["f"](np.float64(x))) <= 1e-14 * abs(d["f"](np.float64(x))) + 1e-300
 
 
-@pytest.mark.parametrize("case", [c for c in functions.ROOT_CASES if c.fprime is not None and c.smooth],
-                         ids=lambda c: c.id)
+@pytest.mark.parametrize(
+    "case", [c for c in functions.ROOT_CASES if c.fprime is not None and c.smooth], ids=lambda c: c.id
+)
 def test_scalar_derivatives(case):
     a, b = case.bracket
     for x in (a + 0.3 * (b - a), a + 0.71 * (b - a)):

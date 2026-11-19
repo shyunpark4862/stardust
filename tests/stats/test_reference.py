@@ -41,4 +41,4 @@ def test_scalar_path_gives_the_same_bits(name):
     idx = np.linspace(0, got.size - 1, 100).astype(int)
     for i in idx:
         v = refdata.call(name, tuple(float(x[i]) for x in xs))
-        assert np.array([v]).view(np.uint64).tolist() == got[i:i + 1].view(np.uint64).tolist(), (name, i)
+        assert np.array([v]).view(np.uint64).tolist() == got[i : i + 1].view(np.uint64).tolist(), (name, i)

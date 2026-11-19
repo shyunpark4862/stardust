@@ -9,9 +9,17 @@ DATA = os.path.join(os.path.dirname(__file__), "data")
 
 # name -> (degree of the polynomial in x, or None for the columns as given; intercept)
 MODELS = {
-    "Norris": (1, True), "Pontius": (2, True), "NoInt1": (1, False), "NoInt2": (1, False),
-    "Filip": (10, True), "Longley": (None, True),
-    "Wampler1": (5, True), "Wampler2": (5, True), "Wampler3": (5, True), "Wampler4": (5, True), "Wampler5": (5, True),
+    "Norris": (1, True),
+    "Pontius": (2, True),
+    "NoInt1": (1, False),
+    "NoInt2": (1, False),
+    "Filip": (10, True),
+    "Longley": (None, True),
+    "Wampler1": (5, True),
+    "Wampler2": (5, True),
+    "Wampler3": (5, True),
+    "Wampler4": (5, True),
+    "Wampler5": (5, True),
 }
 NAMES = list(MODELS)
 
@@ -23,7 +31,7 @@ def load(name):
         lines = fh.read().splitlines()
     head = "\n".join(lines[:10])
     a, b = map(int, re.search(r"Data\s+\(lines (\d+) to (\d+)\)", head).groups())
-    rows = [ln.split() for ln in lines[a - 1:b] if ln.strip()]
+    rows = [ln.split() for ln in lines[a - 1 : b] if ln.strip()]
     y = [r[0] for r in rows]
     x = [r[1:] for r in rows]
     params, bse = [], []
@@ -40,8 +48,16 @@ def load(name):
         if m:
             rsq = m.group(1)
     degree, intercept = MODELS[name]
-    return {"y": y, "x": x, "degree": degree, "intercept": intercept,
-            "params": params, "bse": bse, "rsd": rsd, "rsquared": rsq}
+    return {
+        "y": y,
+        "x": x,
+        "degree": degree,
+        "intercept": intercept,
+        "params": params,
+        "bse": bse,
+        "rsd": rsd,
+        "rsquared": rsq,
+    }
 
 
 def design_strings(d):

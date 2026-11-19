@@ -135,7 +135,8 @@ inline PQ cf_upper(double a, double x) {
                 const double k = n;
                 return std::pair{-k * (k - a), x + 2.0 * k + 1.0 - a};
             },
-            kMaxTerms);
+            kMaxTerms
+        );
         if (std::isnan(tail)) return {kNaN, kNaN, kNaN};
     }
     const double dv = value(d);
@@ -252,7 +253,8 @@ inline std::array<double, 2> log_tail(double a, double x, bool lower, dd::DD lt)
             const double k = n;
             return std::pair{-k * (k - a), x + 2.0 * k + 1.0 - a};
         },
-        kMaxTerms);
+        kMaxTerms
+    );
     // (a / tail below the normal range has lost bits, or is 0: the logs apart)
     const double r = a / tail;
     return {ld + (r >= 0x1p-1022 ? std::log(r) : std::log(a) - std::log(tail)), -tail / x};
@@ -284,7 +286,8 @@ inline double igam_inverse(double a, double p, bool upper) {
         // The next term is 9 z^5 / (38880 a^(3/2)): below 2e-20 a for every |z| <= 38.5. (The
         // iterations below would sum ~sqrt(a) terms a step.)
         const double z = lower ? ndtri1(t) : -ndtri1(t), z2 = z * z, sa = std::sqrt(a);
-        return a + (z * sa + ((z2 - 1.0) / 3.0 + (z * (z2 - 7.0) / (36.0 * sa) - (3.0 * z2 * z2 + 7.0 * z2 - 16.0) / (810.0 * a))));
+        return a + (z * sa + ((z2 - 1.0) / 3.0 +
+                              (z * (z2 - 7.0) / (36.0 * sa) - (3.0 * z2 * z2 + 7.0 * z2 - 16.0) / (810.0 * a))));
     }
     const double lga1 = lgamma_pos(a + 1.0);
     const double c = 1.0 / (9.0 * a);
@@ -446,7 +449,8 @@ struct Gammainccinv : Real {
     static double f(double a, double q) {
         double out;
         if (igam_inverse_edge(a, q, true, out)) return out;
-        if (a < 0x1p-900) [[unlikely]] return tiny_shape_upper_root(a, q);
+        if (a < 0x1p-900) [[unlikely]]
+            return tiny_shape_upper_root(a, q);
         if (q >= 1e-300 && a < igam_detail::kNormalShape) {  // Boost (special/boost.hpp); as gammaincinv
             const double r = bst::gamma_q_inv(a, q);
             if (bst::normal(r)) return igam_detail::igam_polish(a, q, true, r);

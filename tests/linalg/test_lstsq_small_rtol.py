@@ -47,8 +47,9 @@ def test_rectangular_and_complex_agree_with_pinv():
         b = rng.normal(size=(m, 2))
         r = sd.linalg.lstsq(sd.asarray(a), sd.asarray(b), rtol=0)
         assert r.rank == sd.linalg.matrix_rank(sd.asarray(a), rtol=0)
-        np.testing.assert_allclose(np.asarray(r.solution), np.asarray(sd.linalg.pinv(sd.asarray(a), rtol=0)) @ b,
-                                   rtol=1e-9, atol=1e-9)
+        np.testing.assert_allclose(
+            np.asarray(r.solution), np.asarray(sd.linalg.pinv(sd.asarray(a), rtol=0)) @ b, rtol=1e-9, atol=1e-9
+        )
     c = rng.normal(size=(30, 30)) + 1j * rng.normal(size=(30, 30))
     c[:, 2] = 0.0
     rc = sd.linalg.lstsq(sd.asarray(c), sd.asarray(np.ones(30) + 0j), rtol=0)

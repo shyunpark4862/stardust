@@ -40,8 +40,10 @@ struct Item {
 Item array_item(nb::handle o, nb::object arr) {
     const DType d = as_ndarray(arr).dtype;
     if (d != DType::Int64 && d != DType::Bool)
-        raise(PyExc_IndexError, std::string("arrays used as indices must be of integer or boolean type, not ") +
-                                    dtype_name(d));
+        raise(
+            PyExc_IndexError,
+            std::string("arrays used as indices must be of integer or boolean type, not ") + dtype_name(d)
+        );
     Item it(Kind::Array, o);
     it.array = std::move(arr);
     it.mask = d == DType::Bool;
@@ -76,9 +78,11 @@ Item classify(nb::handle o) {
         if (overflow != 0) raise(PyExc_IndexError, "index is out of bounds");
         return Item(Kind::Int, o, v);
     }
-    raise(PyExc_IndexError,
-          "only integers, slices (`:`), ellipsis (`...`), newaxis (`None`) and integer or boolean arrays are "
-          "valid indices");
+    raise(
+        PyExc_IndexError,
+        "only integers, slices (`:`), ellipsis (`...`), newaxis (`None`) and integer or boolean arrays are "
+        "valid indices"
+    );
 }
 
 // The items of one key, stored in place: a key has at most 32 axis-consuming
@@ -131,8 +135,9 @@ struct Plan {
 // (in C order: what numpy's nonzero gives).
 std::vector<NDArray> mask_positions(const NDArray& m) {
     std::int64_t count = 0;
-    for_each_element<1>(m.shape_span(), {m.data}, {m.strides.data()},
-                        [&](std::byte* p) { count += *reinterpret_cast<const bool*>(p); });
+    for_each_element<1>(m.shape_span(), {m.data}, {m.strides.data()}, [&](std::byte* p) {
+        count += *reinterpret_cast<const bool*>(p);
+    });
     std::vector<NDArray> out;
     const std::int64_t shape[] = {count};
     for (int d = 0; d < m.ndim; ++d) out.push_back(new_array(DType::Int64, shape));
@@ -171,8 +176,10 @@ Plan make_plan(nb::handle x, nb::handle key) {
     }
     if (ellipses > 1) raise(PyExc_IndexError, "an index can only have a single ellipsis ('...')");
     if (consumed > a.ndim)
-        raise(PyExc_IndexError, "too many indices for array: array is " + std::to_string(a.ndim) +
-                                    "-dimensional, but " + std::to_string(consumed) + " were indexed");
+        raise(
+            PyExc_IndexError, "too many indices for array: array is " + std::to_string(a.ndim) + "-dimensional, but " +
+                                  std::to_string(consumed) + " were indexed"
+        );
 
     // Next to an array, an int is an advanced index too (numpy's rule). The
     // advanced items must sit side by side: numpy moves the index dimensions
@@ -187,9 +194,11 @@ Plan make_plan(nb::handle x, nb::handle key) {
         }
     for (int i = first_item; any_array && i <= last_item; ++i)
         if (!advanced(items[i]))
-            raise(PyExc_IndexError,
-                  "advanced indices (arrays, and ints next to them) separated by a slice, newaxis or ellipsis are "
-                  "not supported; index in two steps, e.g. x[0][:, idx]");
+            raise(
+                PyExc_IndexError,
+                "advanced indices (arrays, and ints next to them) separated by a slice, newaxis or ellipsis are "
+                "not supported; index in two steps, e.g. x[0][:, idx]"
+            );
 
     int n_advanced = 0;
     for (const Item& it : items) n_advanced += advanced(it);
@@ -230,11 +239,12 @@ Plan make_plan(nb::handle x, nb::handle key) {
                 const NDArray& m = as_ndarray(it.array);
                 for (int d = 0; d < m.ndim; ++d)
                     if (m.shape[d] != a.shape[src + d])
-                        raise(PyExc_IndexError, "boolean index did not match indexed array along axis " +
-                                                    std::to_string(src + d) + "; size of axis is " +
-                                                    std::to_string(a.shape[src + d]) +
-                                                    " but size of corresponding boolean axis is " +
-                                                    std::to_string(m.shape[d]));
+                        raise(
+                            PyExc_IndexError,
+                            "boolean index did not match indexed array along axis " + std::to_string(src + d) +
+                                "; size of axis is " + std::to_string(a.shape[src + d]) +
+                                " but size of corresponding boolean axis is " + std::to_string(m.shape[d])
+                        );
                 if (n_advanced == 1) {
                     plan.mask_only = true;
                     plan.mask = m;
@@ -250,8 +260,10 @@ Plan make_plan(nb::handle x, nb::handle key) {
                 const std::int64_t n = a.shape[src];
                 const std::int64_t i = it.value < 0 ? it.value + n : it.value;
                 if (i < 0 || i >= n)
-                    raise(PyExc_IndexError, "index " + std::to_string(it.value) + " is out of bounds for axis " +
-                                                std::to_string(src) + " with size " + std::to_string(n));
+                    raise(
+                        PyExc_IndexError, "index " + std::to_string(it.value) + " is out of bounds for axis " +
+                                              std::to_string(src) + " with size " + std::to_string(n)
+                    );
                 data += i * a.strides[src];
                 ++src;
                 break;
@@ -267,14 +279,11 @@ Plan make_plan(nb::handle x, nb::handle key) {
                 ++src;
                 break;
             }
-            case Kind::NewAxis:
-                push(1, 0);
-                break;
+            case Kind::NewAxis: push(1, 0); break;
             case Kind::Ellipsis:
                 for (int k = 0; k < a.ndim - consumed; ++k) keep_axis();
                 break;
-            case Kind::Array:
-                break;  // handled above
+            case Kind::Array: break;  // handled above
         }
     }
     while (src < a.ndim) keep_axis();  // unindexed trailing axes are kept whole
@@ -316,8 +325,9 @@ std::vector<std::int64_t> index_shape(const Plan& plan) {
 // right away, so they never make a full pass through memory
 // (docs/design/array.md §7.3).
 template <typename Emit>
-void for_each_offset_chunk(const Plan& plan, std::span<const std::int64_t> bshape, const std::int64_t* w_strides,
-                           Emit&& emit) {
+void for_each_offset_chunk(
+    const Plan& plan, std::span<const std::int64_t> bshape, const std::int64_t* w_strides, Emit&& emit
+) {
     constexpr std::int64_t kChunk = 1024;
     const NDArray& v = plan.view;
     const int k = static_cast<int>(plan.indices.size());
@@ -332,8 +342,7 @@ void for_each_offset_chunk(const Plan& plan, std::span<const std::int64_t> bshap
     for (int j = 0; j < k; ++j) {
         const NDArray& ix = plan.indices[j];
         const int offset = bd - ix.ndim;
-        for (int d = 0; d < bd; ++d)
-            st[j][d] = d < offset || ix.shape[d - offset] == 1 ? 0 : ix.strides[d - offset];
+        for (int d = 0; d < bd; ++d) st[j][d] = d < offset || ix.shape[d - offset] == 1 ? 0 : ix.strides[d - offset];
         ptr[j] = ix.data;
     }
     std::array<std::int64_t, kMaxNdim> bidx{};
@@ -347,8 +356,10 @@ void for_each_offset_chunk(const Plan& plan, std::span<const std::int64_t> bshap
         const std::int64_t n = v.shape[axis];
         const std::int64_t i = raw < 0 ? raw + n : raw;
         if (i < 0 || i >= n) [[unlikely]]
-            raise(PyExc_IndexError, "index " + std::to_string(raw) + " is out of bounds for axis " +
-                                        std::to_string(axis) + " with size " + std::to_string(n));
+            raise(
+                PyExc_IndexError, "index " + std::to_string(raw) + " is out of bounds for axis " +
+                                      std::to_string(axis) + " with size " + std::to_string(n)
+            );
         return i;
     };
     for (std::int64_t done = 0; done < nb; done += run) {
@@ -471,8 +482,10 @@ void check_indices(const NDArray& ix, std::int64_t len, int axis) {
     for_each_element<1>(ix.shape_span(), {ix.data}, {ix.strides.data()}, [&](std::byte* p) {
         const std::int64_t raw = load_as<std::int64_t>(p);
         if (static_cast<std::uint64_t>(wrap_index(raw, len)) >= static_cast<std::uint64_t>(len))
-            raise(PyExc_IndexError, "index " + std::to_string(raw) + " is out of bounds for axis " +
-                                        std::to_string(axis) + " with size " + std::to_string(len));
+            raise(
+                PyExc_IndexError, "index " + std::to_string(raw) + " is out of bounds for axis " +
+                                      std::to_string(axis) + " with size " + std::to_string(len)
+            );
     });
 }
 
@@ -578,9 +591,9 @@ nb::object gather_take(const Plan& plan) {
         }
     }
     const auto rshape = out.shape_span();
-    const IterOperand ops[] = {{v.data, rshape, {vs.data(), rshape.size()}},
-                               {ix.data, rshape, {is.data(), rshape.size()}},
-                               operand(out)};
+    const IterOperand ops[] = {
+        {v.data, rshape, {vs.data(), rshape.size()}}, {ix.data, rshape, {is.data(), rshape.size()}}, operand(out)
+    };
     Take c{v.shape[plan.first], v.strides[plan.first]};
     visit_dtype(v.dtype, [&]<typename T>(std::type_identity<T>) { NdIter(rshape, ops).run(&take_loop<T>, &c); });
     return wrap(std::move(out));
@@ -610,8 +623,10 @@ void with_block_copy(const NDArray& src_block, const NDArray& dst_block, Visit&&
         return;
     }
     visit([&](const std::byte* s, std::byte* d) {
-        const IterOperand ops[] = {{const_cast<std::byte*>(s), src_block.shape_span(), src_block.strides_span()},
-                                   {d, dst_block.shape_span(), dst_block.strides_span()}};
+        const IterOperand ops[] = {
+            {const_cast<std::byte*>(s), src_block.shape_span(), src_block.strides_span()},
+            {d, dst_block.shape_span(), dst_block.strides_span()}
+        };
         NdIter(dst_block.shape_span(), ops).run(loop);
     });
 }
@@ -697,17 +712,19 @@ MaskChunks count_mask(const Plan& plan) {
     const std::int64_t* vs = plan.view.strides.data() + plan.first;
     parallel::parallel_for(mc.chunks, [&](std::int64_t c) {
         std::int64_t count = 0;
-        mask_runs(m, vs, c * kMaskChunk, std::min(mc.size, (c + 1) * kMaskChunk),
-                  [&](const std::byte* mp, std::int64_t ms, std::int64_t, std::int64_t, std::int64_t n) {
-                      if (ms == 1) {
-                          const std::uint8_t* q = reinterpret_cast<const std::uint8_t*>(mp);
-                          std::uint32_t part = 0;  // a run never exceeds kMaskChunk elements
-                          for (std::int64_t t = 0; t < n; ++t) part += q[t];
-                          count += part;
-                      } else {
-                          for (std::int64_t t = 0; t < n; ++t) count += *reinterpret_cast<const bool*>(mp + t * ms);
-                      }
-                  });
+        mask_runs(
+            m, vs, c * kMaskChunk, std::min(mc.size, (c + 1) * kMaskChunk),
+            [&](const std::byte* mp, std::int64_t ms, std::int64_t, std::int64_t, std::int64_t n) {
+                if (ms == 1) {
+                    const std::uint8_t* q = reinterpret_cast<const std::uint8_t*>(mp);
+                    std::uint32_t part = 0;  // a run never exceeds kMaskChunk elements
+                    for (std::int64_t t = 0; t < n; ++t) part += q[t];
+                    count += part;
+                } else {
+                    for (std::int64_t t = 0; t < n; ++t) count += *reinterpret_cast<const bool*>(mp + t * ms);
+                }
+            }
+        );
         mc.start[c + 1] = count;
     });
     for (std::int64_t c = 0; c < mc.chunks; ++c) mc.start[c + 1] += mc.start[c];
@@ -720,10 +737,12 @@ MaskChunks count_mask(const Plan& plan) {
 template <typename F>
 void walk_chunk(const Plan& plan, const MaskChunks& mc, std::int64_t c, F&& on_true) {
     std::int64_t b = mc.start[c];
-    mask_runs(plan.mask, plan.view.strides.data() + plan.first, c * kMaskChunk, std::min(mc.size, (c + 1) * kMaskChunk),
-              [&](const std::byte* mp, std::int64_t ms, std::int64_t vo, std::int64_t vstep, std::int64_t n) {
-                  for_true(mp, ms, vo, vstep, n, [&](std::int64_t off) { on_true(b++, off); });
-              });
+    mask_runs(
+        plan.mask, plan.view.strides.data() + plan.first, c * kMaskChunk, std::min(mc.size, (c + 1) * kMaskChunk),
+        [&](const std::byte* mp, std::int64_t ms, std::int64_t vo, std::int64_t vstep, std::int64_t n) {
+            for_true(mp, ms, vo, vstep, n, [&](std::int64_t off) { on_true(b++, off); });
+        }
+    );
 }
 
 // The pieces of chunk c for compress_chunk and expand_chunk. A contiguous
@@ -739,19 +758,21 @@ void walk_chunk(const Plan& plan, const MaskChunks& mc, std::int64_t c, F&& on_t
 template <typename Sparse, typename Dense>
 void mask_pieces(const Plan& plan, const MaskChunks& mc, std::int64_t c, Sparse&& sparse, Dense&& dense) {
     constexpr std::int64_t kPiece = 256;
-    mask_runs(plan.mask, plan.view.strides.data() + plan.first, c * kMaskChunk, std::min(mc.size, (c + 1) * kMaskChunk),
-              [&](const std::byte* mp, std::int64_t ms, std::int64_t vo, std::int64_t vstep, std::int64_t n) {
-                  if (ms != 1) return sparse(mp, ms, vo, vstep, n);
-                  const std::uint8_t* q = reinterpret_cast<const std::uint8_t*>(mp);
-                  for (std::int64_t t0 = 0; t0 < n; t0 += kPiece) {
-                      const std::int64_t m = std::min(kPiece, n - t0);
-                      std::uint32_t trues = 0;  // bytes are 0/1: asarray normalizes foreign bool buffers
-                      for (std::int64_t t = 0; t < m; ++t) trues += q[t0 + t];
-                      if (trues == 0) continue;
-                      if (trues < 32) sparse(mp + t0, 1, vo + t0 * vstep, vstep, m);
-                      else dense(q + t0, vo + t0 * vstep, vstep, m, trues);
-                  }
-              });
+    mask_runs(
+        plan.mask, plan.view.strides.data() + plan.first, c * kMaskChunk, std::min(mc.size, (c + 1) * kMaskChunk),
+        [&](const std::byte* mp, std::int64_t ms, std::int64_t vo, std::int64_t vstep, std::int64_t n) {
+            if (ms != 1) return sparse(mp, ms, vo, vstep, n);
+            const std::uint8_t* q = reinterpret_cast<const std::uint8_t*>(mp);
+            for (std::int64_t t0 = 0; t0 < n; t0 += kPiece) {
+                const std::int64_t m = std::min(kPiece, n - t0);
+                std::uint32_t trues = 0;  // bytes are 0/1: asarray normalizes foreign bool buffers
+                for (std::int64_t t = 0; t < m; ++t) trues += q[t0 + t];
+                if (trues == 0) continue;
+                if (trues < 32) sparse(mp + t0, 1, vo + t0 * vstep, vstep, m);
+                else dense(q + t0, vo + t0 * vstep, vstep, m, trues);
+            }
+        }
+    );
 }
 
 // x[mask] for single elements of one dtype, chunk c. A dense piece copies
@@ -766,8 +787,9 @@ void compress_chunk(const Plan& plan, const MaskChunks& mc, std::int64_t c, std:
     mask_pieces(
         plan, mc, c,
         [&](const std::byte* mp, std::int64_t ms, std::int64_t vo, std::int64_t vstep, std::int64_t n) {
-            for_true(mp, ms, vo, vstep, n,
-                     [&](std::int64_t off) { *reinterpret_cast<T*>(out + b++ * step) = load_as<T>(src + off); });
+            for_true(mp, ms, vo, vstep, n, [&](std::int64_t off) {
+                *reinterpret_cast<T*>(out + b++ * step) = load_as<T>(src + off);
+            });
         },
         [&](const std::uint8_t* q, std::int64_t vo, std::int64_t vstep, std::int64_t m, std::uint32_t) {
             T buf[256];
@@ -778,9 +800,11 @@ void compress_chunk(const Plan& plan, const MaskChunks& mc, std::int64_t c, std:
                 cnt += q[t];
             }
             if (step == sizeof(T)) std::memcpy(out + b * step, buf, static_cast<size_t>(cnt) * sizeof(T));
-            else for (std::int64_t j = 0; j < cnt; ++j) *reinterpret_cast<T*>(out + (b + j) * step) = buf[j];
+            else
+                for (std::int64_t j = 0; j < cnt; ++j) *reinterpret_cast<T*>(out + (b + j) * step) = buf[j];
             b += cnt;
-        });
+        }
+    );
 }
 
 // x[mask] = w for single elements of one dtype, chunk c (w: the value laid
@@ -793,41 +817,43 @@ void expand_chunk(const Plan& plan, const MaskChunks& mc, std::int64_t c, const 
     std::byte* dst = plan.view.data;
     std::int64_t b = mc.start[c];
     auto sparse = [&](const std::byte* mp, std::int64_t ms, std::int64_t vo, std::int64_t vstep, std::int64_t n) {
-        for_true(mp, ms, vo, vstep, n,
-                 [&](std::int64_t off) { *reinterpret_cast<T*>(dst + off) = load_as<T>(w + b++ * step); });
+        for_true(mp, ms, vo, vstep, n, [&](std::int64_t off) {
+            *reinterpret_cast<T*>(dst + off) = load_as<T>(w + b++ * step);
+        });
     };
-    mask_pieces(plan, mc, c, sparse,
-                [&](const std::uint8_t* q, std::int64_t vo, std::int64_t vstep, std::int64_t m, std::uint32_t trues) {
-                    std::byte* p = dst + vo;
-                    if (step == 0) {
-                        // A broadcast scalar: a select on the raw words with a
-                        // mask made from the mask byte. Written as `q ? val : *e`
-                        // the compiler turned it back into a branch around the
-                        // store (2.2 ms per 1M, measured).
-                        using W = std::conditional_t<sizeof(T) % 8 == 0, std::uint64_t, std::uint8_t>;
-                        constexpr int kWords = sizeof(T) / sizeof(W);
-                        W val[kWords];
-                        std::memcpy(val, w, sizeof(T));
-                        for (std::int64_t t = 0; t < m; ++t) {
-                            W* e = reinterpret_cast<W*>(p + t * vstep);
-                            const W keep = static_cast<W>(q[t]) - 1;  // all ones where false
-                            for (int j = 0; j < kWords; ++j) e[j] = (e[j] & keep) | (val[j] & ~keep);
-                        }
-                        b += trues;
-                        return;
-                    }
-                    // The loop below loads w[b] for false elements too; after
-                    // the selection's last true that is w[total], one past the
-                    // end, so the piece holding it goes the sparse way.
-                    if (b + trues == mc.total)
-                        return sparse(reinterpret_cast<const std::byte*>(q), 1, vo, vstep, m);
-                    for (std::int64_t t = 0; t < m; ++t) {
-                        T* e = reinterpret_cast<T*>(p + t * vstep);
-                        const T val = load_as<T>(w + b * step);  // b < total (see above)
-                        *e = q[t] ? val : *e;
-                        b += q[t];
-                    }
-                });
+    mask_pieces(
+        plan, mc, c, sparse,
+        [&](const std::uint8_t* q, std::int64_t vo, std::int64_t vstep, std::int64_t m, std::uint32_t trues) {
+            std::byte* p = dst + vo;
+            if (step == 0) {
+                // A broadcast scalar: a select on the raw words with a
+                // mask made from the mask byte. Written as `q ? val : *e`
+                // the compiler turned it back into a branch around the
+                // store (2.2 ms per 1M, measured).
+                using W = std::conditional_t<sizeof(T) % 8 == 0, std::uint64_t, std::uint8_t>;
+                constexpr int kWords = sizeof(T) / sizeof(W);
+                W val[kWords];
+                std::memcpy(val, w, sizeof(T));
+                for (std::int64_t t = 0; t < m; ++t) {
+                    W* e = reinterpret_cast<W*>(p + t * vstep);
+                    const W keep = static_cast<W>(q[t]) - 1;  // all ones where false
+                    for (int j = 0; j < kWords; ++j) e[j] = (e[j] & keep) | (val[j] & ~keep);
+                }
+                b += trues;
+                return;
+            }
+            // The loop below loads w[b] for false elements too; after
+            // the selection's last true that is w[total], one past the
+            // end, so the piece holding it goes the sparse way.
+            if (b + trues == mc.total) return sparse(reinterpret_cast<const std::byte*>(q), 1, vo, vstep, m);
+            for (std::int64_t t = 0; t < m; ++t) {
+                T* e = reinterpret_cast<T*>(p + t * vstep);
+                const T val = load_as<T>(w + b * step);  // b < total (see above)
+                *e = q[t] ? val : *e;
+                b += q[t];
+            }
+        }
+    );
 }
 
 // x[mask]: count, allocate, then copy the selected blocks chunk by chunk.
@@ -846,7 +872,9 @@ nb::object gather_mask(const Plan& plan, const MaskChunks& mc) {
     }
     with_block_copy(src, dst, [&](auto copy) {
         parallel::parallel_for(mc.chunks, [&](std::int64_t c) {
-            walk_chunk(plan, mc, c, [&](std::int64_t b, std::int64_t off) { copy(src.data + off, dst.data + b * step); });
+            walk_chunk(plan, mc, c, [&](std::int64_t b, std::int64_t off) {
+                copy(src.data + off, dst.data + b * step);
+            });
         });
     });
     return wrap(std::move(out));
@@ -864,10 +892,11 @@ nb::object gather(const Plan& plan) {
     const std::int64_t step = out.strides[plan.first + bd - 1];
     const NDArray src = block_of(plan.view, plan.first, k), dst = block_of(out, plan.first, bd);
     with_block_copy(src, dst, [&](auto copy) {
-        for_each_offset_chunk(plan, bshape, nullptr, [&](const std::int64_t* voff, const std::int64_t*, std::int64_t n,
-                                                        std::int64_t b0) {
-            for (std::int64_t i = 0; i < n; ++i) copy(src.data + voff[i], dst.data + (b0 + i) * step);
-        });
+        for_each_offset_chunk(
+            plan, bshape, nullptr, [&](const std::int64_t* voff, const std::int64_t*, std::int64_t n, std::int64_t b0) {
+                for (std::int64_t i = 0; i < n; ++i) copy(src.data + voff[i], dst.data + (b0 + i) * step);
+            }
+        );
     });
     return wrap(std::move(out));
 }
@@ -1012,14 +1041,17 @@ void scatter(nb::handle x, Plan& plan, nb::handle value) {
         const std::int64_t step = w.strides[plan.first];
         if (from.ndim == 0 && from.dtype == to.dtype) {
             visit_dtype(to.dtype, [&]<typename T>(std::type_identity<T>) {
-                parallel::parallel_for(mc.chunks, [&](std::int64_t c) { expand_chunk<T>(plan, mc, c, from.data, step); });
+                parallel::parallel_for(mc.chunks, [&](std::int64_t c) {
+                    expand_chunk<T>(plan, mc, c, from.data, step);
+                });
             });
             return;
         }
         with_block_copy(from, to, [&](auto copy) {  // every element is written once: chunks are independent
             parallel::parallel_for(mc.chunks, [&](std::int64_t c) {
-                walk_chunk(plan, mc, c,
-                           [&](std::int64_t b, std::int64_t off) { copy(from.data + b * step, to.data + off); });
+                walk_chunk(plan, mc, c, [&](std::int64_t b, std::int64_t off) {
+                    copy(from.data + b * step, to.data + off);
+                });
             });
         });
         return;
@@ -1028,10 +1060,12 @@ void scatter(nb::handle x, Plan& plan, nb::handle value) {
     const int bd = nd - (plan.view.ndim - k);
     const NDArray from = block_of(w, plan.first, bd), to = block_of(plan.view, plan.first, k);
     with_block_copy(from, to, [&](auto copy) {  // in order: with repeated indices the last write wins
-        for_each_offset_chunk(plan, std::span(shape).subspan(plan.first, bd), w.strides.data(),
-                              [&](const std::int64_t* voff, const std::int64_t* woff, std::int64_t n, std::int64_t) {
-                                  for (std::int64_t i = 0; i < n; ++i) copy(from.data + woff[i], to.data + voff[i]);
-                              });
+        for_each_offset_chunk(
+            plan, std::span(shape).subspan(plan.first, bd), w.strides.data(),
+            [&](const std::int64_t* voff, const std::int64_t* woff, std::int64_t n, std::int64_t) {
+                for (std::int64_t i = 0; i < n; ++i) copy(from.data + woff[i], to.data + voff[i]);
+            }
+        );
     });
 }
 
@@ -1052,9 +1086,9 @@ void setitem(nb::handle x, nb::handle key, nb::handle value) {
         // needed either -- convert the value and store it.
         // A wrong type of value: TypeError, like x[0] = 1j into a float array (docs/api/array.md §5).
         if (!kind)
-            throw nb::type_error(
-                ("only a bool, int, float or complex can be assigned to a single element, not " + py_type_name(value))
-                    .c_str());
+            throw nb::type_error(("only a bool, int, float or complex can be assigned to a single element, not " +
+                                  py_type_name(value))
+                                     .c_str());
         check_assignable(*kind, dst.dtype);
         visit_dtype(dst.dtype, [&]<typename T>(std::type_identity<T>) {
             const T v = scalar_from_python<T>(value, *kind);

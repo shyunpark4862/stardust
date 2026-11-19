@@ -54,8 +54,11 @@ def _ibeta(x, a, b, y):
 
 
 def _t_pdf(t, df):
-    return ((df + 1) / 2).lgamma().exp() / ((df * arb.pi()).sqrt() * (df / 2).lgamma().exp()) * \
-        (1 + t * t / df) ** (-(df + 1) / 2)
+    return (
+        ((df + 1) / 2).lgamma().exp()
+        / ((df * arb.pi()).sqrt() * (df / 2).lgamma().exp())
+        * (1 + t * t / df) ** (-(df + 1) / 2)
+    )
 
 
 def _t_quantile_upper(q, df, guess):
@@ -120,9 +123,18 @@ def _fit(y, X, w, intercept, alpha, t_guess, groups=None, maxlags=None):
         # which no finite precision certifies; the fit is taken as exact, and the quantities
         # that divide by the residual scale (t, p, intervals, HC, diagnostics) do not exist
         zero = arb(0)
-        return ({"params": beta, "fittedvalues": fitted, "resid": [zero] * n, "ssr": zero, "scale": zero,
-                 "bse": [zero] * k, "rsquared": arb(1)},
-                {"nobs": m, "df_model": df_model, "df_resid": df_resid, "exact_fit": True})
+        return (
+            {
+                "params": beta,
+                "fittedvalues": fitted,
+                "resid": [zero] * n,
+                "ssr": zero,
+                "scale": zero,
+                "bse": [zero] * k,
+                "rsquared": arb(1),
+            },
+            {"nobs": m, "df_model": df_model, "df_resid": df_resid, "exact_fit": True},
+        )
     scale = ssr / df_resid
     bse = [(scale * Ginv[a, a]).sqrt() for a in range(k)]
     tval = [beta[a] / bse[a] for a in range(k)]
@@ -145,12 +157,18 @@ def _fit(y, X, w, intercept, alpha, t_guess, groups=None, maxlags=None):
     aic = -2 * llf + 2 * (k + 0)  # statsmodels: df_model + const, i.e. k parameters
     bic = -2 * llf + arb(m).log() * k
     # hat values and the HC covariances (sandwiches on G^-1)
-    hat = [W[i] * sum((A[i][a] * Ginv[a, b] * A[i][b] for a in range(k) for b in range(k)), arb(0))
-           if not W[i].is_zero() else arb(0) for i in range(n)]
+    hat = [
+        W[i] * sum((A[i][a] * Ginv[a, b] * A[i][b] for a in range(k) for b in range(k)), arb(0))
+        if not W[i].is_zero()
+        else arb(0)
+        for i in range(n)
+    ]
 
     def sandwich(omega):
-        M = [[sum((omega[i] * W[i] * W[i] * A[i][a] * A[i][b] for i in used), arb(0)) for b in range(k)]
-             for a in range(k)]
+        M = [
+            [sum((omega[i] * W[i] * W[i] * A[i][a] * A[i][b] for i in used), arb(0)) for b in range(k)]
+            for a in range(k)
+        ]
         S = Ginv * arb_mat(M) * Ginv
         return [S[a, a].sqrt() for a in range(k)]
 
@@ -170,8 +188,9 @@ def _fit(y, X, w, intercept, alpha, t_guess, groups=None, maxlags=None):
         wl = 1 - arb(lag) / (L + 1)
         for a in range(k):
             for b in range(k):
-                S[a][b] += wl * sum((score[t][a] * score[t - lag][b] + score[t - lag][a] * score[t][b]
-                                     for t in range(lag, m)), arb(0))
+                S[a][b] += wl * sum(
+                    (score[t][a] * score[t - lag][b] + score[t - lag][a] * score[t][b] for t in range(lag, m)), arb(0)
+                )
     V = Ginv * arb_mat(S) * Ginv
     hc["bse_HAC"] = [V[a, a].sqrt() for a in range(k)]
     hc_meta = {"maxlags": L}
@@ -203,11 +222,16 @@ def _fit(y, X, w, intercept, alpha, t_guess, groups=None, maxlags=None):
             hc["f_pvalue_cluster"] = _f_upper(fc, arb(q), dfc)
         hc_meta["n_groups"] = G
     # studentized residuals (weighted: sqrt(w) e / (s sqrt(1 - h)); 0 at zero weights)
-    st_int = [W[i].sqrt() * resid[i] / (scale * (1 - hat[i])).sqrt() if not W[i].is_zero() else arb(0)
-              for i in range(n)]
+    st_int = [
+        W[i].sqrt() * resid[i] / (scale * (1 - hat[i])).sqrt() if not W[i].is_zero() else arb(0) for i in range(n)
+    ]
     # external: the scale without row i, (ssr - w e^2 / (1 - h)) / (df - 1), from its definition
-    st_ext = [W[i].sqrt() * resid[i] / ((ssr - W[i] * resid[i] ** 2 / (1 - hat[i])) / (dfr - 1) * (1 - hat[i])).sqrt()
-              if not W[i].is_zero() else arb(0) for i in range(n)]
+    st_ext = [
+        W[i].sqrt() * resid[i] / ((ssr - W[i] * resid[i] ** 2 / (1 - hat[i])) / (dfr - 1) * (1 - hat[i])).sqrt()
+        if not W[i].is_zero()
+        else arb(0)
+        for i in range(n)
+    ]
     # Breusch-Pagan: e~^2 on a constant and the whitened design's columns (the intercept
     # column sqrt(w) is the constant itself for OLS)
     ones_w = w is None or all(W[i] == 1 for i in used)
@@ -217,7 +241,7 @@ def _fit(y, X, w, intercept, alpha, t_guess, groups=None, maxlags=None):
         row = [arb(1)]
         if intercept and not ones_w:
             row.append(sw)
-        row += [sw * v for v in A[i][(1 if intercept else 0):]]
+        row += [sw * v for v in A[i][(1 if intercept else 0) :]]
         Z.append(row)
     v = [W[i] * resid[i] ** 2 for i in used]
     _, fz = _solve_ls(Z, v)
@@ -230,16 +254,23 @@ def _fit(y, X, w, intercept, alpha, t_guess, groups=None, maxlags=None):
     s2 = ssr / m
     bp_lm0 = ess_a / (2 * s2 * s2)
     bp_f = (ess_a / qa) / (ssr_a / (m - qa - 1))
-    bp = {"bp_lm": bp_lm, "bp_lm_pvalue": _chi2_upper(bp_lm, arb(qa)), "bp_fvalue": bp_f,
-          "bp_f_pvalue": _f_upper(bp_f, arb(qa), arb(m - qa - 1)),
-          "bp_lm_nonstudentized": bp_lm0, "bp_lm_nonstudentized_pvalue": _chi2_upper(bp_lm0, arb(qa))}
+    bp = {
+        "bp_lm": bp_lm,
+        "bp_lm_pvalue": _chi2_upper(bp_lm, arb(qa)),
+        "bp_fvalue": bp_f,
+        "bp_f_pvalue": _f_upper(bp_f, arb(qa), arb(m - qa - 1)),
+        "bp_lm_nonstudentized": bp_lm0,
+        "bp_lm_nonstudentized_pvalue": _chi2_upper(bp_lm0, arb(qa)),
+    }
     # confidence intervals: beta -+ t_{1 - alpha/2} bse
     tq = _t_quantile_upper(arb(alpha) / 2, dfr, t_guess)
     ci_lo = [beta[a] - tq * bse[a] for a in range(k)]
     ci_hi = [beta[a] + tq * bse[a] for a in range(k)]
     # influence and residual diagnostics
-    cooks = [W[i] * resid[i] ** 2 / (k * scale) * hat[i] / (1 - hat[i]) ** 2 if not W[i].is_zero() else arb(0)
-             for i in range(n)]
+    cooks = [
+        W[i] * resid[i] ** 2 / (k * scale) * hat[i] / (1 - hat[i]) ** 2 if not W[i].is_zero() else arb(0)
+        for i in range(n)
+    ]
     sw_resid = [W[i].sqrt() * resid[i] for i in used]
     dw = sum(((sw_resid[j] - sw_resid[j - 1]) ** 2 for j in range(1, m)), arb(0)) / ssr
     # central moments (statsmodels' jarque_bera centers; the mean is 0 with an intercept)
@@ -248,18 +279,36 @@ def _fit(y, X, w, intercept, alpha, t_guess, groups=None, maxlags=None):
     mu3 = sum(((r - rbar) ** 3 for r in sw_resid), arb(0)) / m
     mu4 = sum(((r - rbar) ** 4 for r in sw_resid), arb(0)) / m
     skew = mu3 / mu2 ** arb(1.5)
-    kurt = mu4 / mu2 ** 2
-    jb = arb(m) / 6 * (skew ** 2 + (kurt - 3) ** 2 / 4)
+    kurt = mu4 / mu2**2
+    jb = arb(m) / 6 * (skew**2 + (kurt - 3) ** 2 / 4)
     jb_p = (-jb / 2).exp()  # chi-square with 2 degrees of freedom
     out = {
-        "params": beta, "bse": bse, "tvalues": tval, "pvalues": pval,
-        "conf_int_lower": ci_lo, "conf_int_upper": ci_hi,
-        "fittedvalues": fitted, "resid": resid, "hat": hat, "cooks_distance": cooks,
-        "ssr": ssr, "ess": ess, "centered_tss": tss, "rsquared": rsq, "rsquared_adj": rsq_adj,
-        "scale": scale, "llf": llf, "aic": aic, "bic": bic,
-        "durbin_watson": dw, "jarque_bera": jb, "jarque_bera_pvalue": jb_p,
-        "resid_studentized_internal": st_int, "resid_studentized_external": st_ext,
-        **hc, **bp,
+        "params": beta,
+        "bse": bse,
+        "tvalues": tval,
+        "pvalues": pval,
+        "conf_int_lower": ci_lo,
+        "conf_int_upper": ci_hi,
+        "fittedvalues": fitted,
+        "resid": resid,
+        "hat": hat,
+        "cooks_distance": cooks,
+        "ssr": ssr,
+        "ess": ess,
+        "centered_tss": tss,
+        "rsquared": rsq,
+        "rsquared_adj": rsq_adj,
+        "scale": scale,
+        "llf": llf,
+        "aic": aic,
+        "bic": bic,
+        "durbin_watson": dw,
+        "jarque_bera": jb,
+        "jarque_bera_pvalue": jb_p,
+        "resid_studentized_internal": st_int,
+        "resid_studentized_external": st_ext,
+        **hc,
+        **bp,
     }
     if fval is not None:
         out["fvalue"], out["f_pvalue"] = fval, fp
@@ -269,7 +318,7 @@ def _fit(y, X, w, intercept, alpha, t_guess, groups=None, maxlags=None):
 
 def _all_settled(d):
     for v in d.values():
-        for x in (v if isinstance(v, list) else [v]):
+        for x in v if isinstance(v, list) else [v]:
             if not (x.is_exact() and x.is_zero()) and not ar.settled(x):
                 return False
     return True
@@ -288,7 +337,7 @@ def ols(y, X, *, weights=None, intercept=True, alpha=0.05, t_guess=2.0, groups=N
         with ar.precision(p):
             try:
                 vals, meta = _fit(y, X, weights, intercept, alpha, t_guess, groups, maxlags)
-            except (ar.NotSettled, ValueError):
+            except ar.NotSettled, ValueError:
                 vals = None
             if vals is not None and _all_settled(vals):
                 conv = {k: ([ar.to_dd(x) for x in v] if isinstance(v, list) else ar.to_dd(v)) for k, v in vals.items()}
@@ -385,8 +434,9 @@ def _normal_upper(z):
     return (z / arb(2).sqrt()).erfc() / 2
 
 
-def _glm_fit(y, X, family, link, vw, fw, tr, off, intercept, scale, beta0, alpha, groups, maxlags, null_beta0,
-             full=True):
+def _glm_fit(
+    y, X, family, link, vw, fw, tr, off, intercept, scale, beta0, alpha, groups, maxlags, null_beta0, full=True
+):
     n = len(y)
     A = [([arb(1)] if intercept else []) + [arb(v) for v in r] for r in X]
     k = len(A[0])
@@ -470,8 +520,10 @@ def _glm_fit(y, X, family, link, vw, fw, tr, off, intercept, scale, beta0, alpha
     def loglike(mus, mucs):
         if gid:
             ssr = sum((PW[i] * (Y[i] - mus[i]) ** 2 for i in used), arb(0))
-            return -nobs / 2 * ((2 * arb.pi()).log() + (ssr / nobs).log() + 1) + \
-                sum((F[i] * V[i].log() for i in used), arb(0)) / 2
+            return (
+                -nobs / 2 * ((2 * arb.pi()).log() + (ssr / nobs).log() + 1)
+                + sum((F[i] * V[i].log() for i in used), arb(0)) / 2
+            )
         return sum((F[i] * _loglike_obs(family, Y[i], mus[i], mucs[i], V[i], T[i], phi) for i in used), arb(0))
 
     llf = loglike(mu, muc)
@@ -481,8 +533,24 @@ def _glm_fit(y, X, family, link, vw, fw, tr, off, intercept, scale, beta0, alpha
         m0 = sum((PW[i] * Y[i] for i in used), arb(0)) / sw
         mu0, muc0 = [m0] * n, [1 - m0] * n
     elif intercept:
-        sub, _ = _glm_fit(y, [[] for _ in range(n)], family, link, vw, fw, tr, off, True, scale, [null_beta0], alpha,
-                          None, None, null_beta0, full=False)
+        sub, _ = _glm_fit(
+            y,
+            [[] for _ in range(n)],
+            family,
+            link,
+            vw,
+            fw,
+            tr,
+            off,
+            True,
+            scale,
+            [null_beta0],
+            alpha,
+            None,
+            None,
+            null_beta0,
+            full=False,
+        )
         mu0, muc0 = sub["_mu"], sub["_muc"]
     else:
         L0 = [_link(link, O[i]) for i in range(n)]
@@ -520,10 +588,23 @@ def _glm_fit(y, X, family, link, vw, fw, tr, off, intercept, scale, beta0, alpha
         return [(C[a, a] * factor).sqrt() for a in range(k)]
 
     sq = [[x * fu[j].sqrt() for x in u[j]] for j in range(len(used))]
-    out = {"params": beta, "bse": bse, "tvalues": zval, "pvalues": pval, "deviance": dev, "pearson_chi2": pear,
-           "scale": phi, "llf": llf, "null_deviance": dev0, "llnull": llnull,
-           "aic": -2 * llf + 2 * k, "bic": -2 * llf + nobs.log() * k,
-           "fittedvalues": mu, "_mu": mu, "_muc": muc}
+    out = {
+        "params": beta,
+        "bse": bse,
+        "tvalues": zval,
+        "pvalues": pval,
+        "deviance": dev,
+        "pearson_chi2": pear,
+        "scale": phi,
+        "llf": llf,
+        "null_deviance": dev0,
+        "llnull": llnull,
+        "aic": -2 * llf + 2 * k,
+        "bic": -2 * llf + nobs.log() * k,
+        "fittedvalues": mu,
+        "_mu": mu,
+        "_muc": muc,
+    }
     out["bse_HC0"] = sand(sq)
     out["bse_HC1"] = sand(sq, nobs / (nobs - k))
     # a row of frequency f stands for f copies, each with the leverage h / f (decision 2026-11-19)
@@ -537,8 +618,9 @@ def _glm_fit(y, X, family, link, vw, fw, tr, off, intercept, scale, beta0, alpha
         wl = 1 - arb(lag) / (Lg + 1)
         for a in range(k):
             for b in range(k):
-                S[a][b] += wl * sum((sq[t][a] * sq[t - lag][b] + sq[t - lag][a] * sq[t][b] for t in range(lag, len(used))),
-                                    arb(0))
+                S[a][b] += wl * sum(
+                    (sq[t][a] * sq[t - lag][b] + sq[t - lag][a] * sq[t][b] for t in range(lag, len(used))), arb(0)
+                )
     C = Binv * arb_mat(S) * Binv
     out["bse_HAC"] = [C[a, a].sqrt() for a in range(k)]
     meta = {"nobs": float(nobs.mid()), "df_resid": float(df_resid.mid()), "maxlags": Lg, "rank": k}
@@ -559,8 +641,24 @@ def _glm_fit(y, X, family, link, vw, fw, tr, off, intercept, scale, beta0, alpha
     return out, meta
 
 
-def glm(y, X, *, family, link, var_weights=None, freq_weights=None, trials=None, offset=None, intercept=True,
-        scale=None, beta0, alpha=0.05, groups=None, maxlags=None, null_beta0=0.0):
+def glm(
+    y,
+    X,
+    *,
+    family,
+    link,
+    var_weights=None,
+    freq_weights=None,
+    trials=None,
+    offset=None,
+    intercept=True,
+    scale=None,
+    beta0,
+    alpha=0.05,
+    groups=None,
+    maxlags=None,
+    null_beta0=0.0,
+):
     """References for the GLM fit of y on X (rows without the constant column; intercept puts
     it first) with statsmodels' definitions: the MLE (Newton on the score equations from the
     double start beta0, then certified by Krawczyk's test: the interval Newton operator maps a
@@ -581,10 +679,11 @@ def glm(y, X, *, family, link, var_weights=None, freq_weights=None, trials=None,
     while p <= ar.MAX_PREC:
         with ar.precision(p):
             try:
-                vals, meta = _glm_fit(y, X, family, link, vw, fw, tr, off, intercept, scale, beta0, alpha, groups,
-                                      maxlags, null_beta0)
+                vals, meta = _glm_fit(
+                    y, X, family, link, vw, fw, tr, off, intercept, scale, beta0, alpha, groups, maxlags, null_beta0
+                )
                 vals = {key: v for key, v in vals.items() if not key.startswith("_")}
-            except (ar.NotSettled, ValueError, ZeroDivisionError):
+            except ar.NotSettled, ValueError, ZeroDivisionError:
                 vals = None
             if vals is not None and _all_settled(vals):
                 conv = {k: ([ar.to_dd(x) for x in v] if isinstance(v, list) else ar.to_dd(v)) for k, v in vals.items()}
@@ -624,6 +723,7 @@ def _penalized_fit(y, X, w, alpha, l1_ratio, family, intercept, standardize, bet
         return ([arb(1)] if intercept else []) + [Xa[i][j] for j in act]
 
     D = {i: design(i) for i in used}
+
     # the penalty's gradient (beyond the data term) of each unknown: 0 for the intercept
     def pen_grad(theta):
         return [arb(0)] * off + [l2 * sc[j] ** 2 * theta[off + q] + l1 * sc[j] * sg[j] for q, j in enumerate(act)]
@@ -672,8 +772,9 @@ def _penalized_fit(y, X, w, alpha, l1_ratio, family, intercept, standardize, bet
             g, H = grad_hess(theta)
             step = arb_mat([[H[u][v].mid() for v in range(k)] for u in range(k)]).solve(arb_mat([[x.mid()] for x in g]))
             theta = [(theta[u] + step[u, 0]).mid() for u in range(k)]
-            if all(abs(step[u, 0].mid()) <= (abs(theta[u]) + arb(2) ** -60) * arb(2) ** (-ctx.prec + 12)
-                   for u in range(k)):
+            if all(
+                abs(step[u, 0].mid()) <= (abs(theta[u]) + arb(2) ** -60) * arb(2) ** (-ctx.prec + 12) for u in range(k)
+            ):
                 break
         # Krawczyk's test on a box around the point (as glm): the unique stationary point
         g, H = grad_hess(theta)
@@ -738,7 +839,7 @@ def penalized(y, X, *, alpha, l1_ratio, beta0, family="gaussian", weights=None, 
         with ar.precision(p):
             try:
                 vals = _penalized_fit(y, X, w, alpha, l1_ratio, family, intercept, standardize, beta0)
-            except (ar.NotSettled, ZeroDivisionError):
+            except ar.NotSettled, ZeroDivisionError:
                 vals = None
             if vals is not None and _all_settled(vals):
                 return {k: ([ar.to_dd(x) for x in v] if isinstance(v, list) else ar.to_dd(v)) for k, v in vals.items()}
@@ -749,8 +850,8 @@ def penalized(y, X, *, alpha, l1_ratio, beta0, family="gaussian", weights=None, 
 # ---- robust regression (docs/design/regression.md §3.6)
 
 _MAD_C = 0.6744897501960817  # the double the kernel divides |r| by (statsmodels' Gaussian.ppf(3/4))
-_HUBER_D = 2.5               # statsmodels' HuberScale() d
-_S_CHI = 1.54764             # robustbase's tuning.chi (bisquare, 50% breakdown)
+_HUBER_D = 2.5  # statsmodels' HuberScale() d
+_S_CHI = 1.54764  # robustbase's tuning.chi (bisquare, 50% breakdown)
 _S_B = 0.5
 
 
@@ -804,8 +905,10 @@ def _rlm_fit(y, X, intercept, norm, c, scale_est, beta0, s_fixed, init_params, d
     k = len(A[0])
     Y = [arb(v) for v in y]
     b0 = [arb(v) for v in beta0]
+
     def resid(beta):
         return [Y[i] - sum((A[i][a] * beta[a] for a in range(k)), arb(0)) for i in range(n)]
+
     r0 = [float(v.mid()) for v in resid(b0)]
     # the double solution's pattern: the scale rule's rows and each row's piece of the norm
     if scale_est == "mad":
@@ -815,20 +918,24 @@ def _rlm_fit(y, X, intercept, norm, c, scale_est, beta0, s_fixed, init_params, d
         s_d = (sum(abs(r0[i]) for i in mids) / len(mids)) / _MAD_C
     elif scale_est == "huber":
         d = arb(_HUBER_D)
-        E = d * d + (1 - d * d) * (arb(1) - (d / arb(2).sqrt()).erfc() / 2) - arb(0.5) \
+        E = (
+            d * d
+            + (1 - d * d) * (arb(1) - (d / arb(2).sqrt()).erfc() / 2)
+            - arb(0.5)
             - d / (2 * arb.pi()).sqrt() * (-d * d / 2).exp()
+        )
         T = (n - df_rank) * E
         # the split |r| < d s from the double scale (the kernel's equation)
         Tm = float(T.mid())
         q = sorted(v * v for v in r0)
         s_d = None
         for j in range(n, -1, -1):  # j rows inside
-            den = 2 * Tm - (n - j) * _HUBER_D ** 2
+            den = 2 * Tm - (n - j) * _HUBER_D**2
             if den <= 0:
                 continue
             s2 = sum(q[:j]) / den
-            if (j == 0 or q[j - 1] < _HUBER_D ** 2 * s2) and (j == n or q[j] >= _HUBER_D ** 2 * s2):
-                s_d = s2 ** 0.5
+            if (j == 0 or q[j - 1] < _HUBER_D**2 * s2) and (j == n or q[j] >= _HUBER_D**2 * s2):
+                s_d = s2**0.5
                 break
         inside = [i for i in range(n) if r0[i] ** 2 < (_HUBER_D * s_d) ** 2]
         outside = [i for i in range(n) if i not in set(inside)]
@@ -934,6 +1041,7 @@ def _rlm_fit(y, X, intercept, norm, c, scale_est, beta0, s_fixed, init_params, d
         bS = [arb(v) for v in init_params]
         rS = resid(bS)
         cchi = arb(_S_CHI)
+
         def chi(u):
             if bool(abs(u) < cchi):
                 v = u / cchi
@@ -942,10 +1050,15 @@ def _rlm_fit(y, X, intercept, norm, c, scale_est, beta0, s_fixed, init_params, d
             if bool(abs(u) > cchi):
                 return arb(1), arb(0)
             raise ar.NotSettled("chi piece")
+
         z0 = [rS[i] / s for i in range(n)]
         ch = [chi(u) for u in z0]
-        G1 = arb_mat([[sum((pd[i][1] * A[i][a] * A[i][b] for i in range(n)), arb(0)) for b in range(k)] for a in range(k)])
-        G2 = arb_mat([[sum((pd[i][0] ** 2 * A[i][a] * A[i][b] for i in range(n)), arb(0)) for b in range(k)] for a in range(k)])
+        G1 = arb_mat(
+            [[sum((pd[i][1] * A[i][a] * A[i][b] for i in range(n)), arb(0)) for b in range(k)] for a in range(k)]
+        )
+        G2 = arb_mat(
+            [[sum((pd[i][0] ** 2 * A[i][a] * A[i][b] for i in range(n)), arb(0)) for b in range(k)] for a in range(k)]
+        )
         Am = G1.inv() * s
         v1 = arb_mat([[sum((A[i][a] * pd[i][1] * z[i] for i in range(n)), arb(0))] for a in range(k)])
         v2 = arb_mat([[sum((A[i][a] * pd[i][0] * ch[i][0] for i in range(n)), arb(0))] for a in range(k)])
@@ -954,8 +1067,13 @@ def _rlm_fit(y, X, intercept, norm, c, scale_est, beta0, s_fixed, init_params, d
         av = Am * v1 * (1 / mw0)
         Av2 = Am * v2
         V = Am * G2 * Am
-        cov = [[V[a, b] + (-(av[a, 0] * Av2[b, 0]) - Av2[a, 0] * av[b, 0] + mu4 * av[a, 0] * av[b, 0]) / n for b in range(k)]
-               for a in range(k)]
+        cov = [
+            [
+                V[a, b] + (-(av[a, 0] * Av2[b, 0]) - Av2[a, 0] * av[b, 0] + mu4 * av[a, 0] * av[b, 0]) / n
+                for b in range(k)
+            ]
+            for a in range(k)
+        ]
     out["bse"] = [cov[a][a].sqrt() for a in range(k)]
     return out
 
@@ -975,12 +1093,15 @@ def rlm(y, X, *, beta0, norm, c, scale_est="mad", intercept=True, scale=None, in
     while p <= 2048:
         with ar.precision(p):
             try:
-                vals = _rlm_fit(y, X, intercept, norm, c, scale_est if scale is None else "fixed", beta0, scale,
-                                init_params, k)
-            except (ar.NotSettled, ZeroDivisionError):
+                vals = _rlm_fit(
+                    y, X, intercept, norm, c, scale_est if scale is None else "fixed", beta0, scale, init_params, k
+                )
+            except ar.NotSettled, ZeroDivisionError:
                 vals = None
             if vals is not None and _all_settled(vals):
-                return {kk: ([ar.to_dd(x) for x in v] if isinstance(v, list) else ar.to_dd(v)) for kk, v in vals.items()}
+                return {
+                    kk: ([ar.to_dd(x) for x in v] if isinstance(v, list) else ar.to_dd(v)) for kk, v in vals.items()
+                }
         p *= 2
     raise ar.NotSettled("rlm")
 
@@ -1074,15 +1195,18 @@ def s_estimate(y, X, *, beta0, scale0, intercept=True):
         with ar.precision(p):
             try:
                 vals = _s_fit(y, X, intercept, beta0, scale0)
-            except (ar.NotSettled, ZeroDivisionError):
+            except ar.NotSettled, ZeroDivisionError:
                 vals = None
             if vals is not None and _all_settled(vals):
-                return {kk: ([ar.to_dd(x) for x in v] if isinstance(v, list) else ar.to_dd(v)) for kk, v in vals.items()}
+                return {
+                    kk: ([ar.to_dd(x) for x in v] if isinstance(v, list) else ar.to_dd(v)) for kk, v in vals.items()
+                }
         p *= 2
     raise ar.NotSettled("s_estimate")
 
 
 # ---- quantile regression (G60-G63): the exact vertex of a basis and its certificate
+
 
 def _q(v):
     """A double as an exact rational."""
@@ -1175,8 +1299,10 @@ def quantreg(y, X, basis, q, *, intercept=True):
     from flint import fmpq, fmpq_mat
 
     n = len(y)
-    rows = [([fmpq(1)] if intercept else []) + [_q(v) for v in (X[i] if hasattr(X[i], "__len__") else [X[i]])]
-            for i in range(n)]
+    rows = [
+        ([fmpq(1)] if intercept else []) + [_q(v) for v in (X[i] if hasattr(X[i], "__len__") else [X[i]])]
+        for i in range(n)
+    ]
     k = len(rows[0])
     yq = [_q(v) for v in y]
     tau = _q(q)
@@ -1231,11 +1357,18 @@ def quantreg(y, X, basis, q, *, intercept=True):
         margin = _exact_lp_max(A, bvec, cvec)
         optimal = margin is not None
         unique = optimal and margin > 0
-    return dict(params=[_q_dd(v) for v in beta], objective=_q_dd(obj), optimal=bool(optimal), unique=bool(unique),
-                n_zero=len(zero), margin=float(margin) if margin is not None else None)
+    return dict(
+        params=[_q_dd(v) for v in beta],
+        objective=_q_dd(obj),
+        optimal=bool(optimal),
+        unique=bool(unique),
+        n_zero=len(zero),
+        margin=float(margin) if margin is not None else None,
+    )
 
 
 # ---- nonlinear least squares (sd.regression.nls, docs/design/regression.md §3.7)
+
 
 class ArbVec:
     """A vector of arbs with elementwise arithmetic, so model functions written for an array
@@ -1265,7 +1398,7 @@ class ArbVec:
     __rmul__ = lambda s, o: s._rop(o, lambda a, b: a * b)
     __truediv__ = lambda s, o: s._op(o, lambda a, b: a / b)
     __rtruediv__ = lambda s, o: s._rop(o, lambda a, b: a / b)
-    __pow__ = lambda s, o: s._op(o, lambda a, b: a ** b)
+    __pow__ = lambda s, o: s._op(o, lambda a, b: a**b)
     __neg__ = lambda s: ArbVec(-a for a in s.v)
 
     def __getitem__(self, key):
@@ -1330,7 +1463,7 @@ def nls(f, jac, x, y, theta0, *, weights=None, prec=320, tol_bits=120, max_iter=
             d = (At * A).solve(At * arb_mat([[v] for v in r]))
             step = max(abs(float(d[j, 0].mid())) / max(abs(float(th[j].mid())), 1e-300) for j in range(p))
             th = [arb((th[j] + d[j, 0]).mid()) for j in range(p)]
-            if step < 2.0 ** -tol_bits:
+            if step < 2.0**-tol_bits:
                 break
         r, J = system(th)
         A = arb_mat(J)
@@ -1339,8 +1472,13 @@ def nls(f, jac, x, y, theta0, *, weights=None, prec=320, tol_bits=120, max_iter=
         scale = ssr / (n - p)
         C = (A.transpose() * A).inv()
         bse = [(scale * C[j, j]).sqrt() for j in range(p)]
-        return dict(params=[float(t.mid()) for t in th], bse=[float(b.mid()) for b in bse], ssr=float(ssr.mid()),
-                    scale=float(scale.mid()), iterations=it)
+        return dict(
+            params=[float(t.mid()) for t in th],
+            bse=[float(b.mid()) for b in bse],
+            ssr=float(ssr.mid()),
+            scale=float(scale.mid()),
+            iterations=it,
+        )
 
 
 def dd_value(hl):
@@ -1360,14 +1498,22 @@ if __name__ == "__main__":  # a self-check against statsmodels on a random probl
     r = sm.OLS(y, sm.add_constant(X)).fit()
     rel = lambda a, b: abs(a - b) / max(abs(b), 1e-300)
     worst = {}
-    for name, ours in (("params", r.params), ("bse", r.bse), ("pvalues", r.pvalues), ("hat", r.get_influence().hat_matrix_diag),
-                       ("bse_HC3", r.HC3_se), ("cooks_distance", r.get_influence().cooks_distance[0])):
+    for name, ours in (
+        ("params", r.params),
+        ("bse", r.bse),
+        ("pvalues", r.pvalues),
+        ("hat", r.get_influence().hat_matrix_diag),
+        ("bse_HC3", r.HC3_se),
+        ("cooks_distance", r.get_influence().cooks_distance[0]),
+    ):
         worst[name] = max(rel(o, dd_value(t)) for o, t in zip(ours, ref[name]))
     for name, ours in (("rsquared", r.rsquared), ("fvalue", r.fvalue), ("llf", r.llf), ("aic", r.aic), ("bic", r.bic)):
         worst[name] = rel(ours, dd_value(ref[name]))
     ci = r.conf_int(0.05)
-    worst["conf_int"] = max(max(rel(ci[i][0], dd_value(ref["conf_int_lower"][i])), rel(ci[i][1], dd_value(ref["conf_int_upper"][i])))
-                            for i in range(4))
+    worst["conf_int"] = max(
+        max(rel(ci[i][0], dd_value(ref["conf_int_lower"][i])), rel(ci[i][1], dd_value(ref["conf_int_upper"][i])))
+        for i in range(4)
+    )
     for k, v in worst.items():
         print(f"{k:16s} statsmodels vs Arb: {v:.2e}")
     print(meta)

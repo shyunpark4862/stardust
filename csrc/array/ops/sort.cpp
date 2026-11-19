@@ -105,8 +105,9 @@ private:
 // largest value). Returns how many are NaN; the rest -- buf[0, n - nans) or
 // buf[nans, n) -- still needs sorting.
 template <typename T, typename E, typename Make>
-std::int64_t load_split_nans(const std::byte* x, std::int64_t stride, std::int64_t n, E* buf, bool nans_first,
-                             Make make) {
+std::int64_t load_split_nans(
+    const std::byte* x, std::int64_t stride, std::int64_t n, E* buf, bool nans_first, Make make
+) {
     if constexpr (!ops::is_float<T> && !ops::is_cplx<T>) {
         for (std::int64_t i = 0; i < n; ++i) buf[i] = make(i, load_as<T>(x + i * stride));
         return 0;
@@ -470,8 +471,10 @@ void sort_keyed(Keyed<T>* a, std::int64_t n, bool stable, bool descending) {
     if (ops::is_int<T> || (ops::is_float<T> && n >= kRadixMinPairs) || !use_pieces(n, !stable))
         return sort_keyed_serial(a, n, stable, descending);
     const Order<T> order{descending};
-    sort_long(a, n, [&](Keyed<T>* p, std::int64_t m) { sort_keyed_serial(p, m, stable, descending); },
-              [order](const Keyed<T>& x, const Keyed<T>& y) { return order(x.value, y.value); });
+    sort_long(
+        a, n, [&](Keyed<T>* p, std::int64_t m) { sort_keyed_serial(p, m, stable, descending); },
+        [order](const Keyed<T>& x, const Keyed<T>& y) { return order(x.value, y.value); }
+    );
 }
 
 // ------------------------------------------------------------ sort lanes
@@ -484,8 +487,8 @@ template <typename T>
 void sort_lane(const std::byte* x, std::byte* o, const LaneCtx& c) {
     const SortCfg& cfg = *static_cast<const SortCfg*>(c.user);
     const LaneBuffer<T> buf(c.n, 0);
-    const std::int64_t nans = load_split_nans<T>(x, c.x_stride, c.n, buf.get(), cfg.descending,
-                                                 [](std::int64_t, T v) { return v; });
+    const std::int64_t nans =
+        load_split_nans<T>(x, c.x_stride, c.n, buf.get(), cfg.descending, [](std::int64_t, T v) { return v; });
     sort_values(buf.get() + (cfg.descending ? nans : 0), c.n - nans, cfg.stable, cfg.descending);
     for (std::int64_t i = 0; i < c.n; ++i) *reinterpret_cast<T*>(o + i * c.o_stride) = buf[i];
 }
@@ -494,8 +497,9 @@ template <typename T>
 void argsort_lane(const std::byte* x, std::byte* o, const LaneCtx& c) {
     const SortCfg& cfg = *static_cast<const SortCfg*>(c.user);
     const LaneBuffer<Keyed<T>> buf(c.n, 0);
-    const std::int64_t nans = load_split_nans<T>(x, c.x_stride, c.n, buf.get(), cfg.descending,
-                                                 [](std::int64_t i, T v) { return Keyed<T>{v, i}; });
+    const std::int64_t nans = load_split_nans<T>(
+        x, c.x_stride, c.n, buf.get(), cfg.descending, [](std::int64_t i, T v) { return Keyed<T>{v, i}; }
+    );
     sort_keyed(buf.get() + (cfg.descending ? nans : 0), c.n - nans, cfg.stable, cfg.descending);
     for (std::int64_t i = 0; i < c.n; ++i) *reinterpret_cast<std::int64_t*>(o + i * c.o_stride) = buf[i].index;
 }
@@ -548,8 +552,10 @@ UniqueParts unique_parts(const NDArray& x) {
     std::vector<std::int64_t> order(n);
     visit_dtype(x.dtype, [&]<typename T>(std::type_identity<T>) {
         auto buf = buffer<Keyed<T>>(n);
-        const std::int64_t m = n - load_split_nans<T>(flat.data, flat.itemsize(), n, buf.get(), /*nans_first=*/false,
-                                                      [](std::int64_t i, T v) { return Keyed<T>{v, i}; });
+        const std::int64_t m = n - load_split_nans<T>(
+                                       flat.data, flat.itemsize(), n, buf.get(), /*nans_first=*/false,
+                                       [](std::int64_t i, T v) { return Keyed<T>{v, i}; }
+                                   );
         {
             // A long sort runs without the GIL, as the lanes of sort() do (docs/design/array.md §10.2).
             const parallel::Unlocked unlocked(m >= kParallelThreshold);
@@ -596,8 +602,10 @@ nb::object unique_values(nb::handle x_obj) {
     }
     return visit_dtype(x.dtype, [&]<typename T>(std::type_identity<T>) {
         auto buf = buffer<T>(n);
-        const std::int64_t m = n - load_split_nans<T>(flat.data, flat.itemsize(), n, buf.get(), /*nans_first=*/false,
-                                                      [](std::int64_t, T v) { return v; });
+        const std::int64_t m =
+            n - load_split_nans<T>(
+                    flat.data, flat.itemsize(), n, buf.get(), /*nans_first=*/false, [](std::int64_t, T v) { return v; }
+                );
         {
             const parallel::Unlocked unlocked(m >= kParallelThreshold);  // as in unique_parts
             sort_values(buf.get(), m, /*stable=*/true, /*descending=*/false);
@@ -625,8 +633,9 @@ nb::object unique_inverse(nb::handle x) {
 
 nb::object unique_all(nb::handle x) {
     UniqueParts p = unique_parts(require_ndarray(x));
-    return result_type("UniqueAllResult")(wrap(std::move(p.values)), wrap(std::move(p.indices)),
-                                          wrap(std::move(p.inverse)), wrap(std::move(p.counts)));
+    return result_type("UniqueAllResult")(
+        wrap(std::move(p.values)), wrap(std::move(p.indices)), wrap(std::move(p.inverse)), wrap(std::move(p.counts))
+    );
 }
 
 }  // namespace
@@ -634,10 +643,14 @@ nb::object unique_all(nb::handle x) {
 void bind_sort(nb::module_& m) {
     using nb::arg;
     // .none() on every argument: None reaches the checks, which name the argument (API.md §2.1).
-    m.def("sort", named("sort", &sort_impl<false>), arg().none(), nb::kw_only(), arg("axis").none() = -1,
-          arg("descending").none() = false, arg("stable").none() = true);
-    m.def("argsort", named("argsort", &sort_impl<true>), arg().none(), nb::kw_only(), arg("axis").none() = -1,
-          arg("descending").none() = false, arg("stable").none() = true);
+    m.def(
+        "sort", named("sort", &sort_impl<false>), arg().none(), nb::kw_only(), arg("axis").none() = -1,
+        arg("descending").none() = false, arg("stable").none() = true
+    );
+    m.def(
+        "argsort", named("argsort", &sort_impl<true>), arg().none(), nb::kw_only(), arg("axis").none() = -1,
+        arg("descending").none() = false, arg("stable").none() = true
+    );
     m.def("unique_values", named("unique_values", &unique_values), arg().none());
     m.def("unique_counts", named("unique_counts", &unique_counts), arg().none());
     m.def("unique_inverse", named("unique_inverse", &unique_inverse), arg().none());

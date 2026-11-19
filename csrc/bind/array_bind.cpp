@@ -103,9 +103,11 @@ Py_ssize_t array_len(PyObject* self) { return static_cast<Py_ssize_t>(self_array
 
 // Read-only, with the message of the other attributes (Python properties).
 int read_only(PyObject*, PyObject* value, void* name) {
-    PyErr_Format(PyExc_AttributeError, value ? "property '%s' of 'ndarray' object has no setter"
-                                             : "property '%s' of 'ndarray' object has no deleter",
-                 static_cast<const char*>(name));
+    PyErr_Format(
+        PyExc_AttributeError,
+        value ? "property '%s' of 'ndarray' object has no setter" : "property '%s' of 'ndarray' object has no deleter",
+        static_cast<const char*>(name)
+    );
     return -1;
 }
 
@@ -189,23 +191,41 @@ nb::object op_equality(nb::handle self, nb::handle other) {
 // function name (bind/errors.hpp): "unsupported operand dtypes for <: ...".
 template <typename Op>
 void def_compare(nb::class_<NDArray>& cls, const char* method, const char* symbol) {
-    cls.def(method, [symbol](nb::handle self, nb::handle other) {
-        return is_operand(other) ? binary<Op>(self, other, nb::none(), symbol) : not_implemented();
-    }, nb::arg().none());
+    cls.def(
+        method,
+        [symbol](nb::handle self, nb::handle other) {
+            return is_operand(other) ? binary<Op>(self, other, nb::none(), symbol) : not_implemented();
+        },
+        nb::arg().none()
+    );
 }
 
 // x op= y is op(x, y, out=x): same rules as out= (upward conversion only,
 // overlap-safe: docs/design/array.md §12.2), same object back.
 template <typename Op>
-void def_arith(nb::class_<NDArray>& cls, const char* fwd, const char* refl, const char* inplace, const char* symbol,
-               const char* inplace_symbol) {
+void def_arith(
+    nb::class_<NDArray>& cls,
+    const char* fwd,
+    const char* refl,
+    const char* inplace,
+    const char* symbol,
+    const char* inplace_symbol
+) {
     def_compare<Op>(cls, fwd, symbol);
-    cls.def(refl, [symbol](nb::handle self, nb::handle other) {  // other <op> self
-        return is_operand(other) ? binary<Op>(other, self, nb::none(), symbol) : not_implemented();
-    }, nb::arg().none());
-    cls.def(inplace, [inplace_symbol](nb::handle self, nb::handle other) {
-        return is_operand(other) ? binary<Op>(self, other, self, inplace_symbol) : not_implemented();
-    }, nb::arg().none());
+    cls.def(
+        refl,
+        [symbol](nb::handle self, nb::handle other) {  // other <op> self
+            return is_operand(other) ? binary<Op>(other, self, nb::none(), symbol) : not_implemented();
+        },
+        nb::arg().none()
+    );
+    cls.def(
+        inplace,
+        [inplace_symbol](nb::handle self, nb::handle other) {
+            return is_operand(other) ? binary<Op>(self, other, self, inplace_symbol) : not_implemented();
+        },
+        nb::arg().none()
+    );
 }
 
 template <typename Op>
@@ -220,72 +240,130 @@ nb::object format_call(const char* fn, nb::handle self) {
 }  // namespace
 
 void bind_ndarray(nb::module_& m) {
-    auto cls = nb::class_<NDArray>(m, "ndarray", nb::type_slots(ndarray_slots))
-        .def_prop_ro("T", named(".T", &transpose_2d))
-        .def_prop_ro("mT", named(".mT", &matrix_transpose))
-        .def("tolist", [](const NDArray& a) { return tolist(a, 0, a.data); })
-        .def("astype", named("astype", &astype),
-             nb::arg().none(), nb::kw_only(), nb::arg("copy").none() = true)
-        .def("copy", [](const NDArray& a) { return wrap(cast_copy(a, a.dtype)); })
-        .def("reshape", named("reshape", nb::overload_cast<nb::handle, nb::handle, nb::handle>(&reshape)), nb::arg().none(),
-             nb::kw_only(), nb::arg("copy").none() = nb::none())
-        // .none(): x[None] is newaxis, and nanobind rejects None by default.
-        // Reductions as methods (docs/design/array.md §12.2): the same functions, x as self.
-        .def("sum", named("sum", &sum), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("dtype").none() = nb::none(),
-             nb::arg("keepdims").none() = false)
-        .def("prod", named("prod", &prod), nb::kw_only(), nb::arg("axis").none() = nb::none(),
-             nb::arg("dtype").none() = nb::none(), nb::arg("keepdims").none() = false)
-        .def("min", named("min", &min), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims").none() = false)
-        .def("max", named("max", &max), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims").none() = false)
-        .def("mean", named("mean", &mean), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims").none() = false)
-        .def("var", named("var", &var), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("correction").none() = 0,
-             nb::arg("keepdims").none() = false)
-        .def("std", named("std", &stddev), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("correction").none() = 0,
-             nb::arg("keepdims").none() = false)
-        .def("argmin", named("argmin", &argmin), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims").none() = false)
-        .def("argmax", named("argmax", &argmax), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims").none() = false)
-        .def("any", named("any", &any), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims").none() = false)
-        .def("all", named("all", &all), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims").none() = false)
-        // There is no constructor (docs/api/array.md §10). Without this
-        // __init__, nanobind says "stardust._core.ndarray: no constructor defined!".
-        .def("__init__", [](NDArray*, nb::args, nb::kwargs) {
-            throw nb::type_error("ndarray(): there is no constructor; use asarray() or another creation function");
-        })
-        .def("__getitem__", &getitem, nb::arg().none())
-        .def("__setitem__", &setitem, nb::arg().none(), nb::arg().none())
-        // Python's message for a container without deletion, as for a tuple
-        // (docs/api/array.md §5.3). Without it, `del x[0]` said "AttributeError: __delitem__".
-        .def("__delitem__", [](const NDArray&, nb::handle) {
-            throw nb::type_error("'ndarray' object doesn't support item deletion");
-        }, nb::arg().none())
-        .def("__iter__", [](nb::handle self) { return ArrayIterator{nb::borrow(self), 0, as_ndarray(self).shape[0]}; })
-        // Without this, `v in x` would quietly fall back to iterating x.
-        .def("__contains__", [](const NDArray&, nb::handle) -> bool {
-            throw nb::type_error("`in` is not supported for arrays; compare with == and use any()");
-        })
-        .def("_summary", [](const NDArray& a, std::int64_t edge) { return summary(a, 0, a.data, edge); })
-        .def("_flags", [](const NDArray& a) {
-            nb::dict d;
-            d["c_contiguous"] = a.c_contiguous;
-            d["f_contiguous"] = a.f_contiguous;
-            d["writeable"] = a.writeable;
-            return d;
-        })
-        .def("__repr__", [](nb::handle self) { return format_call("array_repr", self); })
-        .def("__str__", [](nb::handle self) { return format_call("array_str", self); })
-        // An array is never a scalar, whatever its size
-        // (docs/design/array.md §12.2). All four hooks must exist: without
-        // __int__/__float__, int()/float() fall back to the buffer protocol
-        // and try to parse the raw bytes as text.
-        .def("__bool__", [](const NDArray&) -> bool {
-            throw nb::type_error("the truth value of an array is ambiguous; use any() or all()");
-        })
-        .def("__int__", [](const NDArray&) -> int { throw nb::type_error("an array cannot be converted to int"); })
-        .def("__float__", [](const NDArray&) -> double { throw nb::type_error("an array cannot be converted to float"); })
-        .def("__complex__", [](const NDArray&) -> double {
-            throw nb::type_error("an array cannot be converted to complex");
-        })
-        .def("__index__", [](const NDArray&) -> int { throw nb::type_error("an array cannot be used as an index"); });
+    auto cls =
+        nb::class_<NDArray>(m, "ndarray", nb::type_slots(ndarray_slots))
+            .def_prop_ro("T", named(".T", &transpose_2d))
+            .def_prop_ro("mT", named(".mT", &matrix_transpose))
+            .def("tolist", [](const NDArray& a) { return tolist(a, 0, a.data); })
+            .def("astype", named("astype", &astype), nb::arg().none(), nb::kw_only(), nb::arg("copy").none() = true)
+            .def("copy", [](const NDArray& a) { return wrap(cast_copy(a, a.dtype)); })
+            .def(
+                "reshape", named("reshape", nb::overload_cast<nb::handle, nb::handle, nb::handle>(&reshape)),
+                nb::arg().none(), nb::kw_only(), nb::arg("copy").none() = nb::none()
+            )
+            // .none(): x[None] is newaxis, and nanobind rejects None by default.
+            // Reductions as methods (docs/design/array.md §12.2): the same functions, x as self.
+            .def(
+                "sum", named("sum", &sum), nb::kw_only(), nb::arg("axis").none() = nb::none(),
+                nb::arg("dtype").none() = nb::none(), nb::arg("keepdims").none() = false
+            )
+            .def(
+                "prod", named("prod", &prod), nb::kw_only(), nb::arg("axis").none() = nb::none(),
+                nb::arg("dtype").none() = nb::none(), nb::arg("keepdims").none() = false
+            )
+            .def(
+                "min", named("min", &min), nb::kw_only(), nb::arg("axis").none() = nb::none(),
+                nb::arg("keepdims").none() = false
+            )
+            .def(
+                "max", named("max", &max), nb::kw_only(), nb::arg("axis").none() = nb::none(),
+                nb::arg("keepdims").none() = false
+            )
+            .def(
+                "mean", named("mean", &mean), nb::kw_only(), nb::arg("axis").none() = nb::none(),
+                nb::arg("keepdims").none() = false
+            )
+            .def(
+                "var", named("var", &var), nb::kw_only(), nb::arg("axis").none() = nb::none(),
+                nb::arg("correction").none() = 0, nb::arg("keepdims").none() = false
+            )
+            .def(
+                "std", named("std", &stddev), nb::kw_only(), nb::arg("axis").none() = nb::none(),
+                nb::arg("correction").none() = 0, nb::arg("keepdims").none() = false
+            )
+            .def(
+                "argmin", named("argmin", &argmin), nb::kw_only(), nb::arg("axis").none() = nb::none(),
+                nb::arg("keepdims").none() = false
+            )
+            .def(
+                "argmax", named("argmax", &argmax), nb::kw_only(), nb::arg("axis").none() = nb::none(),
+                nb::arg("keepdims").none() = false
+            )
+            .def(
+                "any", named("any", &any), nb::kw_only(), nb::arg("axis").none() = nb::none(),
+                nb::arg("keepdims").none() = false
+            )
+            .def(
+                "all", named("all", &all), nb::kw_only(), nb::arg("axis").none() = nb::none(),
+                nb::arg("keepdims").none() = false
+            )
+            // There is no constructor (docs/api/array.md §10). Without this
+            // __init__, nanobind says "stardust._core.ndarray: no constructor defined!".
+            .def(
+                "__init__",
+                [](NDArray*, nb::args, nb::kwargs) {
+                    throw nb::type_error(
+                        "ndarray(): there is no constructor; use asarray() or another creation function"
+                    );
+                }
+            )
+            .def("__getitem__", &getitem, nb::arg().none())
+            .def("__setitem__", &setitem, nb::arg().none(), nb::arg().none())
+            // Python's message for a container without deletion, as for a tuple
+            // (docs/api/array.md §5.3). Without it, `del x[0]` said "AttributeError: __delitem__".
+            .def(
+                "__delitem__",
+                [](const NDArray&, nb::handle) {
+                    throw nb::type_error("'ndarray' object doesn't support item deletion");
+                },
+                nb::arg().none()
+            )
+            .def(
+                "__iter__",
+                [](nb::handle self) { return ArrayIterator{nb::borrow(self), 0, as_ndarray(self).shape[0]}; }
+            )
+            // Without this, `v in x` would quietly fall back to iterating x.
+            .def(
+                "__contains__",
+                [](const NDArray&, nb::handle) -> bool {
+                    throw nb::type_error("`in` is not supported for arrays; compare with == and use any()");
+                }
+            )
+            .def("_summary", [](const NDArray& a, std::int64_t edge) { return summary(a, 0, a.data, edge); })
+            .def(
+                "_flags",
+                [](const NDArray& a) {
+                    nb::dict d;
+                    d["c_contiguous"] = a.c_contiguous;
+                    d["f_contiguous"] = a.f_contiguous;
+                    d["writeable"] = a.writeable;
+                    return d;
+                }
+            )
+            .def("__repr__", [](nb::handle self) { return format_call("array_repr", self); })
+            .def("__str__", [](nb::handle self) { return format_call("array_str", self); })
+            // An array is never a scalar, whatever its size
+            // (docs/design/array.md §12.2). All four hooks must exist: without
+            // __int__/__float__, int()/float() fall back to the buffer protocol
+            // and try to parse the raw bytes as text.
+            .def(
+                "__bool__",
+                [](const NDArray&) -> bool {
+                    throw nb::type_error("the truth value of an array is ambiguous; use any() or all()");
+                }
+            )
+            .def("__int__", [](const NDArray&) -> int { throw nb::type_error("an array cannot be converted to int"); })
+            .def(
+                "__float__",
+                [](const NDArray&) -> double { throw nb::type_error("an array cannot be converted to float"); }
+            )
+            .def(
+                "__complex__",
+                [](const NDArray&) -> double { throw nb::type_error("an array cannot be converted to complex"); }
+            )
+            .def("__index__", [](const NDArray&) -> int {
+                throw nb::type_error("an array cannot be used as an index");
+            });
     using namespace ops;
     def_arith<Add>(cls, "__add__", "__radd__", "__iadd__", "+", "+=");
     def_arith<Subtract>(cls, "__sub__", "__rsub__", "__isub__", "-", "-=");
@@ -309,21 +387,29 @@ void bind_ndarray(nb::module_& m) {
     // @ takes arrays only (no Python scalars). x @= y needs the result to
     // have x's shape and converts upward only, like every in-place operator
     // (docs/design/array.md §9.1).
-    cls.def("__matmul__", [](nb::handle self, nb::handle other) {
-        return is_ndarray(other) ? matmul(self, other) : not_implemented();
-    }, nb::arg().none());
-    cls.def("__rmatmul__", [](nb::handle self, nb::handle other) {
-        return is_ndarray(other) ? matmul(other, self) : not_implemented();
-    }, nb::arg().none());
-    cls.def("__imatmul__", [](nb::handle self, nb::handle other) -> nb::object {
-        if (!is_ndarray(other)) return not_implemented();
-        nb::object r = matmul(self, other);
-        NDArray& x = as_ndarray(self);
-        if (!is_ndarray(r) || !std::ranges::equal(as_ndarray(r).shape_span(), x.shape_span()))
-            throw nb::value_error("x @= y needs a result with the shape of x");
-        assign_checked(x, as_ndarray(r));
-        return nb::borrow(self);
-    }, nb::arg().none());
+    cls.def(
+        "__matmul__",
+        [](nb::handle self, nb::handle other) { return is_ndarray(other) ? matmul(self, other) : not_implemented(); },
+        nb::arg().none()
+    );
+    cls.def(
+        "__rmatmul__",
+        [](nb::handle self, nb::handle other) { return is_ndarray(other) ? matmul(other, self) : not_implemented(); },
+        nb::arg().none()
+    );
+    cls.def(
+        "__imatmul__",
+        [](nb::handle self, nb::handle other) -> nb::object {
+            if (!is_ndarray(other)) return not_implemented();
+            nb::object r = matmul(self, other);
+            NDArray& x = as_ndarray(self);
+            if (!is_ndarray(r) || !std::ranges::equal(as_ndarray(r).shape_span(), x.shape_span()))
+                throw nb::value_error("x @= y needs a result with the shape of x");
+            assign_checked(x, as_ndarray(r));
+            return nb::borrow(self);
+        },
+        nb::arg().none()
+    );
     def_unary<Negative>(cls, "__neg__", "unary -");
     def_unary<Positive>(cls, "__pos__", "unary +");
     def_unary<Abs>(cls, "__abs__", "abs()");
@@ -341,17 +427,16 @@ void bind_ndarray(nb::module_& m) {
 
     // nanobind's properties have no name, so assigning one said "property ''
     // of 'ndarray' object has no setter". __set_name__ gives each its name.
-    for (const char* name : {"T", "mT"})
-        cls.attr(name).attr("__set_name__")(cls, name);
+    for (const char* name : {"T", "mT"}) cls.attr(name).attr("__set_name__")(cls, name);
 
     bind_dlpack(m, cls);  // from_dlpack, __dlpack__, __dlpack_device__
 
     auto it_cls = nb::class_<ArrayIterator>(m, "_ArrayIterator")
-        .def("__iter__", [](nb::handle self) { return nb::borrow(self); })
-        .def("__next__", [](ArrayIterator& it) {
-            if (it.next >= it.stop) throw nb::stop_iteration();
-            return item_along_axis0(it.array, it.next++);
-        });
+                      .def("__iter__", [](nb::handle self) { return nb::borrow(self); })
+                      .def("__next__", [](ArrayIterator& it) {
+                          if (it.next >= it.stop) throw nb::stop_iteration();
+                          return item_along_axis0(it.array, it.next++);
+                      });
     use_short_type_name(it_cls);
 }
 

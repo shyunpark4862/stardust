@@ -15,17 +15,16 @@ std::string where(const Input& x) { return std::string(x.func()) + "(): '" + x.a
 
 Input::Input(nb::handle obj, const char* func, const char* arg) : func_(func), arg_(arg) {
     if (!is_ndarray(obj)) {
-        throw nb::type_error((std::string(func) + "(): '" + arg + "' must be an sd.ndarray, not " +
-                              py_type_name(obj))
-                                 .c_str());
+        throw nb::type_error(
+            (std::string(func) + "(): '" + arg + "' must be an sd.ndarray, not " + py_type_name(obj)).c_str()
+        );
     }
     x_ = &as_ndarray(obj);
 }
 
 void require_matrix(const Input& x) {
     if (x.ndim() < 2)
-        throw nb::value_error(
-            (where(x) + " must have at least 2 dimensions, got " + std::to_string(x.ndim())).c_str());
+        throw nb::value_error((where(x) + " must have at least 2 dimensions, got " + std::to_string(x.ndim())).c_str());
 }
 
 void require_square(const Input& x) {

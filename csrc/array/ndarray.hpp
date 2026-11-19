@@ -106,8 +106,9 @@ NDArray new_array_like(const NDArray& proto, DType dtype, bool zeroed = false);
 // none negative) address elements inside `nbytes` of fresh, uninitialized
 // memory. For results whose producer dictates the layout, such as LAPACK's
 // column-major matrices in sd.linalg (docs/design/linalg.md §4).
-NDArray new_array_strided(DType dtype, std::span<const std::int64_t> shape, std::span<const std::int64_t> strides,
-                          std::int64_t nbytes);
+NDArray new_array_strided(
+    DType dtype, std::span<const std::int64_t> shape, std::span<const std::int64_t> strides, std::int64_t nbytes
+);
 
 // Visits every element in row-major index order, with N arrays of the same
 // shape walked in lockstep: f(p0, p1, ...) receives the element pointers.
@@ -117,9 +118,12 @@ NDArray new_array_strided(DType dtype, std::span<const std::int64_t> shape, std:
 // The nd iterator (iter.hpp) replaces most uses; this simple form is enough
 // for conversions and tolist.
 template <std::size_t N, typename F>
-void for_each_element(std::span<const std::int64_t> shape,
-                      std::array<std::byte*, N> ptrs,
-                      std::array<const std::int64_t*, N> strides, F&& f) {
+void for_each_element(
+    std::span<const std::int64_t> shape,
+    std::array<std::byte*, N> ptrs,
+    std::array<const std::int64_t*, N> strides,
+    F&& f
+) {
     const int ndim = static_cast<int>(shape.size());
     for (std::int64_t extent : shape)
         if (extent == 0) return;

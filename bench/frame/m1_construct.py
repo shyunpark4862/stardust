@@ -30,7 +30,12 @@ cases = [
     ("list[float] -> float64", lambda: sdpd.Series(floats), lambda: pd.Series(floats), lambda: pl.Series(floats)),
     ("list[str] -> string", lambda: sdpd.Series(strs), lambda: pd.Series(strs), lambda: pl.Series(strs)),
     ("numpy int64 (copy)", lambda: sdpd.Series(arr_i64), lambda: pd.Series(arr_i64), lambda: pl.Series(arr_i64)),
-    ("numpy int32 -> int64", lambda: sdpd.Series(arr_i32), lambda: pd.Series(arr_i32, dtype="int64"), lambda: pl.Series(arr_i32).cast(pl.Int64)),
+    (
+        "numpy int32 -> int64",
+        lambda: sdpd.Series(arr_i32),
+        lambda: pd.Series(arr_i32, dtype="int64"),
+        lambda: pl.Series(arr_i32).cast(pl.Int64),
+    ),
 ]
 s_ours, s_pd, s_pl = sdpd.Series(ints), pd.Series(ints), pl.Series(ints)
 s_str = (sdpd.Series(strs), pd.Series(strs), pl.Series(strs))
@@ -49,13 +54,24 @@ cases += [
 small = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 cases += [
     ("Series(10 ints)", lambda: sdpd.Series(small), lambda: pd.Series(small), lambda: pl.Series(small)),
-    ("DataFrame(3 cols x 10)", lambda: sdpd.DataFrame({"a": small, "b": small, "c": small}),
-     lambda: pd.DataFrame({"a": small, "b": small, "c": small}), lambda: pl.DataFrame({"a": small, "b": small, "c": small})),
+    (
+        "DataFrame(3 cols x 10)",
+        lambda: sdpd.DataFrame({"a": small, "b": small, "c": small}),
+        lambda: pd.DataFrame({"a": small, "b": small, "c": small}),
+        lambda: pl.DataFrame({"a": small, "b": small, "c": small}),
+    ),
 ]
 
-lines = ["# M1: construction and conversion", "", "Environment: " + ", ".join(f"{k} {v}" for k, v in env_info().items()), "",
-         f"1M rows unless stated. Minimum per-call time over 7 batches.", "",
-         "| case | ours | pandas | Polars |", "|---|---:|---:|---:|"]
+lines = [
+    "# M1: construction and conversion",
+    "",
+    "Environment: " + ", ".join(f"{k} {v}" for k, v in env_info().items()),
+    "",
+    f"1M rows unless stated. Minimum per-call time over 7 batches.",
+    "",
+    "| case | ours | pandas | Polars |",
+    "|---|---:|---:|---:|",
+]
 for name, *fns in cases:
     t = [per_call_ns(f, target_s=0.2, repeats=5) for f in fns]
     lines.append(f"| {name} | {fmt_ns(t[0])} | {fmt_ns(t[1])} | {fmt_ns(t[2])} |")

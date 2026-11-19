@@ -25,6 +25,7 @@ from .ad import FLOAT
 
 # ---- multivariate
 
+
 def rosen(x, M=FLOAT):
     """sum 100 (x_{i+1} - x_i^2)^2 + (1 - x_i)^2 (scipy.optimize.rosen)."""
     s = 0.0
@@ -127,6 +128,7 @@ def lbfgsb_driver1_der(x, M=FLOAT):
 
 # ---- scalar roots: the 'original' functions of scipy's _tstutils
 
+
 def orig1(x, M=FLOAT):
     return x * (x - 1.0)
 
@@ -156,11 +158,11 @@ def orig3(x, M=FLOAT):
 
 
 def orig3_d(x, M=FLOAT):
-    return 4.0 * x ** 3 - 18.0 * x ** 2 + 22.0 * x - 6.0
+    return 4.0 * x**3 - 18.0 * x**2 + 22.0 * x - 6.0
 
 
 def orig3_dd(x, M=FLOAT):
-    return 12.0 * x ** 2 - 36.0 * x + 22.0
+    return 12.0 * x**2 - 36.0 * x + 22.0
 
 
 def orig4(x, M=FLOAT):
@@ -205,6 +207,7 @@ ORIGINAL = [
 
 # ---- Alefeld, Potra and Shi (1995): fifteen families, with first and second derivatives
 
+
 def _aps01(x, M):
     return M.sin(x) - x / 2.0
 
@@ -223,6 +226,7 @@ def _aps02(k):
         for i in range(1, 21):
             s = s + (2 * i - 5) ** 2 / (x - i * i) ** k
         return s
+
     return f
 
 
@@ -244,13 +248,13 @@ def _aps02dd(x, M):
 
 def _p(f):
     """Bind a family's parameters: f(x, M, *params) -> f(x, M)."""
-    return lambda *params: (lambda x, M=FLOAT: f(x, M, *params))
+    return lambda *params: lambda x, M=FLOAT: f(x, M, *params)
 
 
 aps03 = _p(lambda x, M, a, b: a * x * M.exp(b * x))
 aps03d = _p(lambda x, M, a, b: a * (b * x + 1.0) * M.exp(b * x))
 aps03dd = _p(lambda x, M, a, b: a * (b * (b * x + 1.0) + b) * M.exp(b * x))
-aps04 = _p(lambda x, M, n, a: x ** n - a)
+aps04 = _p(lambda x, M, n, a: x**n - a)
 aps04d = _p(lambda x, M, n, a: n * x ** (n - 1))
 aps04dd = _p(lambda x, M, n, a: n * (n - 1) * x ** (n - 2))
 aps06 = _p(lambda x, M, n: 2.0 * x * M.exp(-n) - 2.0 * M.exp(-n * x) + 1.0)
@@ -265,12 +269,14 @@ aps08dd = _p(lambda x, M, n: 2.0 - n * (n - 1) * (1.0 - x) ** (n - 2))
 aps09 = _p(lambda x, M, n: (1.0 + (1 - n) ** 4) * x - (1.0 - n * x) ** 4)
 aps09d = _p(lambda x, M, n: (1.0 + (1 - n) ** 4) + 4.0 * n * (1.0 - n * x) ** 3)
 aps09dd = _p(lambda x, M, n: -12.0 * n * n * (1.0 - n * x) ** 2)  # scipy's aps09_fpp has one n
-aps10 = _p(lambda x, M, n: M.exp(-n * x) * (x - 1.0) + x ** n)
+aps10 = _p(lambda x, M, n: M.exp(-n * x) * (x - 1.0) + x**n)
 aps10d = _p(lambda x, M, n: M.exp(-n * x) * (-n * (x - 1.0) + 1.0) + n * x ** (n - 1))
-aps10dd = _p(lambda x, M, n: M.exp(-n * x) * (-n * (-n * (x - 1.0) + 1.0) - n) + n * (n - 1) * x ** (n - 2))  # scipy: -n x
+aps10dd = _p(
+    lambda x, M, n: M.exp(-n * x) * (-n * (-n * (x - 1.0) + 1.0) - n) + n * (n - 1) * x ** (n - 2)
+)  # scipy: -n x
 aps11 = _p(lambda x, M, n: (n * x - 1.0) / ((n - 1) * x))
-aps11d = _p(lambda x, M, n: 1.0 / (n - 1) / x ** 2)
-aps11dd = _p(lambda x, M, n: -2.0 / (n - 1) / x ** 3)
+aps11d = _p(lambda x, M, n: 1.0 / (n - 1) / x**2)
+aps11dd = _p(lambda x, M, n: -2.0 / (n - 1) / x**3)
 aps12 = _p(lambda x, M, n: x ** (1.0 / n) - float(n) ** (1.0 / n))
 aps12d = _p(lambda x, M, n: x ** ((1.0 - n) / n) / n)
 aps12dd = _p(lambda x, M, n: x ** ((1.0 - 2 * n) / n) * (1.0 / n) * (1.0 - n) / n)
@@ -282,7 +288,7 @@ def _aps13(x, M=FLOAT):
     """x exp(-1/x^2): every derivative is 0 at the root 0 (0 where 1/x^2 overflows exp)."""
     if x == 0:
         return 0.0
-    y = 1.0 / x ** 2
+    y = 1.0 / x**2
     if y > _MAX_EXPABLE:
         return 0.0
     return x / M.exp(y)
@@ -291,19 +297,19 @@ def _aps13(x, M=FLOAT):
 def _aps13d(x, M=FLOAT):
     if x == 0:
         return 0.0
-    y = 1.0 / x ** 2
+    y = 1.0 / x**2
     if y > _MAX_EXPABLE:
         return 0.0
-    return (1.0 + 2.0 / x ** 2) / M.exp(y)
+    return (1.0 + 2.0 / x**2) / M.exp(y)
 
 
 def _aps13dd(x, M=FLOAT):
     if x == 0:
         return 0.0
-    y = 1.0 / x ** 2
+    y = 1.0 / x**2
     if y > _MAX_EXPABLE:
         return 0.0
-    return 2.0 * (2.0 - x ** 2) / x ** 5 / M.exp(y)
+    return 2.0 * (2.0 - x**2) / x**5 / M.exp(y)
 
 
 def _aps14(x, M, n):
@@ -351,20 +357,50 @@ def _aps_cases():
     def add(fam, k, f, d, dd, bracket, x0, root, smooth=True):
         out.append(RootCase(f"aps.{fam:02d}.{k:02d}", f, d, dd, bracket, x0, root, smooth))
 
-    add(1, 0, lambda x, M=FLOAT: _aps01(x, M), lambda x, M=FLOAT: _aps01d(x, M),
-        lambda x, M=FLOAT: _aps01dd(x, M), (pi / 2, pi), 3.0, 1.89549426703398094e+00)
-    roots02 = (3.02291534727305677e+00, 6.68375356080807848e+00, 1.12387016550022114e+01, 1.96760000806234103e+01,
-               2.98282273265047557e+01, 4.19061161952894139e+01, 5.59535958001430913e+01, 7.19856655865877997e+01,
-               9.00088685391666701e+01, 1.10026532748330197e+02)
+    add(
+        1,
+        0,
+        lambda x, M=FLOAT: _aps01(x, M),
+        lambda x, M=FLOAT: _aps01d(x, M),
+        lambda x, M=FLOAT: _aps01dd(x, M),
+        (pi / 2, pi),
+        3.0,
+        1.89549426703398094e00,
+    )
+    roots02 = (
+        3.02291534727305677e00,
+        6.68375356080807848e00,
+        1.12387016550022114e01,
+        1.96760000806234103e01,
+        2.98282273265047557e01,
+        4.19061161952894139e01,
+        5.59535958001430913e01,
+        7.19856655865877997e01,
+        9.00088685391666701e01,
+        1.10026532748330197e02,
+    )
     x02 = (2, 5, 10, 17, 26, 37, 50, 65, 82, 101)
     for k in range(10):
         a, b = (k + 1) ** 2, (k + 2) ** 2
-        add(2, k, lambda x, M=FLOAT: _aps02f(x, M), lambda x, M=FLOAT: _aps02d(x, M),
-            lambda x, M=FLOAT: _aps02dd(x, M), (a + 1e-9, b - 1e-9), float(x02[k]), roots02[k])
+        add(
+            2,
+            k,
+            lambda x, M=FLOAT: _aps02f(x, M),
+            lambda x, M=FLOAT: _aps02d(x, M),
+            lambda x, M=FLOAT: _aps02dd(x, M),
+            (a + 1e-9, b - 1e-9),
+            float(x02[k]),
+            roots02[k],
+        )
     for k, (a, b) in enumerate(((-40, -1), (-100, -2), (-200, -3))):
         add(3, k, aps03(a, b), aps03d(a, b), aps03dd(a, b), (-9, 31), -2.0, 0.0)
-    roots04 = (6.68740304976422006e-01, 7.64724491331730039e-01, 8.17765433957942545e-01, 8.51339922520784609e-01,
-               8.74485272221167897e-01)
+    roots04 = (
+        6.68740304976422006e-01,
+        7.64724491331730039e-01,
+        8.17765433957942545e-01,
+        8.51339922520784609e-01,
+        8.74485272221167897e-01,
+    )
     k = 0
     for n, r in zip((4, 6, 8, 10, 12), roots04):
         add(4, k, aps04(n, 0.2), aps04d(n, 0.2), aps04dd(n, 0.2), (0, 5), 2.5, r)
@@ -375,28 +411,65 @@ def _aps_cases():
     for n in (8, 10, 12, 14):
         add(4, k, aps04(n, 1), aps04d(n, 1), aps04dd(n, 1), (-0.95, 4.05), 1.5, 1.0)
         k += 1
-    add(5, 0, lambda x, M=FLOAT: M.sin(x) - 0.5, lambda x, M=FLOAT: M.cos(x), lambda x, M=FLOAT: -M.sin(x),
-        (0, 1.5), 1.3, pi / 6)
-    rows06 = ((1, 0.5, 4.22477709641236709e-01), (2, 0.5, 3.06699410483203705e-01), (3, 0.5, 2.23705457654662959e-01),
-              (4, 0.5, 1.71719147519508369e-01), (5, 0.4, 1.38257155056824066e-01), (20, 0.1, 3.46573590208538521e-02),
-              (40, 5e-02, 1.73286795139986315e-02), (60, 1.0 / 30, 1.15524530093324210e-02),
-              (80, 2.5e-02, 8.66433975699931573e-03), (100, 2e-02, 6.93147180559945415e-03))
+    add(
+        5,
+        0,
+        lambda x, M=FLOAT: M.sin(x) - 0.5,
+        lambda x, M=FLOAT: M.cos(x),
+        lambda x, M=FLOAT: -M.sin(x),
+        (0, 1.5),
+        1.3,
+        pi / 6,
+    )
+    rows06 = (
+        (1, 0.5, 4.22477709641236709e-01),
+        (2, 0.5, 3.06699410483203705e-01),
+        (3, 0.5, 2.23705457654662959e-01),
+        (4, 0.5, 1.71719147519508369e-01),
+        (5, 0.4, 1.38257155056824066e-01),
+        (20, 0.1, 3.46573590208538521e-02),
+        (40, 5e-02, 1.73286795139986315e-02),
+        (60, 1.0 / 30, 1.15524530093324210e-02),
+        (80, 2.5e-02, 8.66433975699931573e-03),
+        (100, 2e-02, 6.93147180559945415e-03),
+    )
     for k, (n, x0, r) in enumerate(rows06):
         add(6, k, aps06(n), aps06d(n), aps06dd(n), (0, 1), x0, r)
-    for k, (n, r) in enumerate(((5, 3.84025518406218985e-02), (10, 9.90000999800049949e-03),
-                                (20, 2.49375003906201174e-03))):
+    for k, (n, r) in enumerate(
+        ((5, 3.84025518406218985e-02), (10, 9.90000999800049949e-03), (20, 2.49375003906201174e-03))
+    ):
         add(7, k, aps07(n), aps07d(n), aps07dd(n), (0, 1), 0.4, r)
-    for k, (n, r) in enumerate(((2, 0.5), (5, 3.45954815848242059e-01), (10, 2.45122333753307220e-01),
-                                (15, 1.95547623536565629e-01), (20, 1.64920957276440960e-01))):
+    for k, (n, r) in enumerate(
+        (
+            (2, 0.5),
+            (5, 3.45954815848242059e-01),
+            (10, 2.45122333753307220e-01),
+            (15, 1.95547623536565629e-01),
+            (20, 1.64920957276440960e-01),
+        )
+    ):
         add(8, k, aps08(n), aps08d(n), aps08dd(n), (0, 1), 0.9, r)
-    for k, (n, r) in enumerate(((1, 2.75508040999484394e-01), (2, 1.37754020499742197e-01),
-                                (4, 1.03052837781564422e-02), (5, 3.61710817890406339e-03),
-                                (8, 4.10872918496395375e-04), (15, 2.59895758929076292e-05),
-                                (20, 7.66859512218533719e-06))):
+    for k, (n, r) in enumerate(
+        (
+            (1, 2.75508040999484394e-01),
+            (2, 1.37754020499742197e-01),
+            (4, 1.03052837781564422e-02),
+            (5, 3.61710817890406339e-03),
+            (8, 4.10872918496395375e-04),
+            (15, 2.59895758929076292e-05),
+            (20, 7.66859512218533719e-06),
+        )
+    ):
         add(9, k, aps09(n), aps09d(n), aps09dd(n), (0, 1), 0.5, r)
-    for k, (n, r) in enumerate(((1, 4.01058137541547011e-01), (5, 5.16153518757933583e-01),
-                                (10, 5.39522226908415781e-01), (15, 5.48182294340655241e-01),
-                                (20, 5.52704666678487833e-01))):
+    for k, (n, r) in enumerate(
+        (
+            (1, 4.01058137541547011e-01),
+            (5, 5.16153518757933583e-01),
+            (10, 5.39522226908415781e-01),
+            (15, 5.48182294340655241e-01),
+            (20, 5.52704666678487833e-01),
+        )
+    ):
         add(10, k, aps10(n), aps10d(n), aps10dd(n), (0, 1), 0.9, r)
     for k, n in enumerate((2, 5, 15, 20)):
         add(11, k, aps11(n), aps11d(n), aps11dd(n), (0.01, 1), 1e-02, 1.0 / n)
@@ -404,16 +477,50 @@ def _aps_cases():
         add(12, k, aps12(n), aps12d(n), aps12dd(n), (1, 100), 1.1, float(n))
     add(13, 0, _aps13, _aps13d, _aps13dd, (-1, 4), 1.5, 0.0)
     for k, n in enumerate(range(1, 41)):
-        add(14, k, _p(_aps14)(n), _p(_aps14d)(n), _p(_aps14dd)(n), (-1000, pi / 2), 1.0,
-            6.23806518961612433e-01, smooth=False)
-    roots15 = (5.90513055942197166e-05, 5.63671553399369967e-05, 5.39164094555919196e-05, 5.16698923949422470e-05,
-               4.96030966991445609e-05, 4.76952852876389951e-05, 4.59287932399486662e-05, 4.42884791956647841e-05,
-               4.27612902578832391e-05, 4.13359139159538030e-05, 4.00024973380198076e-05, 3.87524192962066869e-05,
-               3.75781035599579910e-05, 3.64728652199592355e-05, 3.54307833565318273e-05, 3.44465949299614980e-05,
-               3.35156058778003705e-05, 3.26336162494372125e-05, 3.17968568584260013e-05, 3.10019354369653455e-05,
-               3.02457906702100968e-05, 1.22779942324615231e-05, 6.16953939044086617e-06, 4.11985852982928163e-06,
-               3.09246238772721682e-06, 2.47520442610501789e-06, 2.06335676785127107e-06, 1.76901200781542651e-06,
-               1.54816156988591016e-06, 1.37633453660223511e-06, 1.23883857889971403e-06)
+        add(
+            14,
+            k,
+            _p(_aps14)(n),
+            _p(_aps14d)(n),
+            _p(_aps14dd)(n),
+            (-1000, pi / 2),
+            1.0,
+            6.23806518961612433e-01,
+            smooth=False,
+        )
+    roots15 = (
+        5.90513055942197166e-05,
+        5.63671553399369967e-05,
+        5.39164094555919196e-05,
+        5.16698923949422470e-05,
+        4.96030966991445609e-05,
+        4.76952852876389951e-05,
+        4.59287932399486662e-05,
+        4.42884791956647841e-05,
+        4.27612902578832391e-05,
+        4.13359139159538030e-05,
+        4.00024973380198076e-05,
+        3.87524192962066869e-05,
+        3.75781035599579910e-05,
+        3.64728652199592355e-05,
+        3.54307833565318273e-05,
+        3.44465949299614980e-05,
+        3.35156058778003705e-05,
+        3.26336162494372125e-05,
+        3.17968568584260013e-05,
+        3.10019354369653455e-05,
+        3.02457906702100968e-05,
+        1.22779942324615231e-05,
+        6.16953939044086617e-06,
+        4.11985852982928163e-06,
+        3.09246238772721682e-06,
+        2.47520442610501789e-06,
+        2.06335676785127107e-06,
+        1.76901200781542651e-06,
+        1.54816156988591016e-06,
+        1.37633453660223511e-06,
+        1.23883857889971403e-06,
+    )
     ns15 = list(range(20, 41)) + list(range(100, 1001, 100))
     for k, (n, r) in enumerate(zip(ns15, roots15)):
         add(15, k, _p(_aps15)(n), _p(_aps15d)(n), _p(_aps15dd)(n), (-1000, 1e-4), -2.0, r, smooth=False)
@@ -425,12 +532,13 @@ APS = _aps_cases()
 
 # ---- Chandrupatla (1997): nine functions, five brackets each, with the paper's counts
 
+
 def ch1(x, M=FLOAT):
-    return x ** 3 - 2.0 * x - 5.0
+    return x**3 - 2.0 * x - 5.0
 
 
 def ch2(x, M=FLOAT):
-    return 1.0 - 1.0 / x ** 2
+    return 1.0 - 1.0 / x**2
 
 
 def ch3(x, M=FLOAT):
@@ -442,15 +550,15 @@ def ch4(x, M=FLOAT):
 
 
 def ch5(x, M=FLOAT):
-    return x ** 9
+    return x**9
 
 
 def ch6(x, M=FLOAT):
-    return x ** 19
+    return x**19
 
 
 def ch7(x, M=FLOAT):
-    return 0.0 if abs(x) < 3.8e-4 else x * M.exp(-x ** (-2))
+    return 0.0 if abs(x) < 3.8e-4 else x * M.exp(-(x ** (-2)))
 
 
 def ch8(x, M=FLOAT):
@@ -459,7 +567,7 @@ def ch8(x, M=FLOAT):
 
 
 def ch9(x, M=FLOAT):
-    return M.exp(x) - 2.0 - 0.01 / x ** 2 + 0.000002 / x ** 3
+    return M.exp(x) - 2.0 - 0.01 / x**2 + 0.000002 / x**3
 
 
 _CH = [
@@ -470,14 +578,14 @@ _CH = [
     (ch5, 0.0, [((-1, 4), 21), ((-2, 5), 22), ((-1, 10), 23), ((-5, 50), 25), ((-10, 100), 26)]),
     (ch6, 0.0, [((-1, 4), 21), ((-2, 5), 22), ((-1, 10), 23), ((-5, 50), 25), ((-10, 100), 26)]),
     (ch7, 0.0, [((-1, 4), 8), ((-2, 5), 8), ((-1, 10), 11), ((-5, 50), 18), ((-10, 100), 19)]),
-    (ch8, 1.0375360332870405, [((2e-4, 2), 9), ((2e-4, 3), 10), ((2e-4, 9), 11), ((2e-4, 27), 12),
-                               ((2e-4, 81), 14)]),
-    (ch9, 0.7032048403631358, [((2e-4, 1), 7), ((2e-4, 3), 8), ((2e-4, 9), 10), ((2e-4, 27), 11),
-                               ((2e-4, 81), 13)]),
+    (ch8, 1.0375360332870405, [((2e-4, 2), 9), ((2e-4, 3), 10), ((2e-4, 9), 11), ((2e-4, 27), 12), ((2e-4, 81), 14)]),
+    (ch9, 0.7032048403631358, [((2e-4, 1), 7), ((2e-4, 3), 8), ((2e-4, 9), 10), ((2e-4, 27), 11), ((2e-4, 81), 13)]),
 ]
-CHANDRUPATLA = [RootCase(f"chandrupatla.{i + 1}.{k + 1}", f, None, None, br, None, root, smooth=(f is not ch7),
-                         nfev_paper=nf)
-                for i, (f, root, rows) in enumerate(_CH) for k, (br, nf) in enumerate(rows)]
+CHANDRUPATLA = [
+    RootCase(f"chandrupatla.{i + 1}.{k + 1}", f, None, None, br, None, root, smooth=(f is not ch7), nfev_paper=nf)
+    for i, (f, root, rows) in enumerate(_CH)
+    for k, (br, nf) in enumerate(rows)
+]
 
 ROOT_CASES = ORIGINAL + APS + CHANDRUPATLA
 ROOTS_BY_ID = {c.id: c for c in ROOT_CASES}
@@ -485,13 +593,14 @@ ROOTS_BY_ID = {c.id: c for c in ROOT_CASES}
 
 # ---- scalar minimization
 
+
 def scipy_scalar(x, M=FLOAT):
     """scipy test_optimize.TestOptimizeScalar: (x - 1.5)^2 - 0.8, minimum at 1.5."""
     return (x - 1.5) ** 2 - 0.8
 
 
 def chm1(x, M=FLOAT):
-    return 100.0 * (1.0 - x ** 3.0) ** 2 + (1.0 - x ** 2.0) + 2.0 * (1.0 - x) ** 2.0
+    return 100.0 * (1.0 - x**3.0) ** 2 + (1.0 - x**2.0) + 2.0 * (1.0 - x) ** 2.0
 
 
 def chm2(x, M=FLOAT):
@@ -503,11 +612,11 @@ def chm3(x, M=FLOAT):
 
 
 def chm4(x, M=FLOAT):
-    return x ** 5.0 - 5.0 * x ** 3.0 - 20.0 * x + 5.0
+    return x**5.0 - 5.0 * x**3.0 - 20.0 * x + 5.0
 
 
 def chm5(x, M=FLOAT):
-    return 8.0 * x ** 3 - 2.0 * x ** 2 - 7.0 * x + 3.0
+    return 8.0 * x**3 - 2.0 * x**2 - 7.0 * x + 3.0
 
 
 def chandrupatla_bracket(f, x1, x2):
@@ -542,27 +651,102 @@ class MinCase:
         return self.id
 
 
-_CHM = [(chm1, [(-1, 11), (-2, 13), (-4, 13), (-8, 15), (-16, 16), (-32, 19), (-64, 20), (-128, 21), (-256, 21),
-                (-512, 19), (-1024, 24)]),
-        (chm2, [(-1, 8), (-2, 6), (-4, 6), (-8, 7), (-16, 8), (-32, 8), (-64, 9), (-128, 11), (-256, 13),
-                (-512, 12), (-1024, 13)]),
-        (chm3, [(-1, 11), (-2, 11), (-4, 11), (-8, 10), (-16, 14), (-32, 12), (-64, 15), (-128, 18), (-256, 18),
-                (-512, 19), (-1024, 19)]),
-        (chm4, [(-0.05, 9), (-0.10, 11), (-0.15, 11), (-0.20, 11), (-0.25, 11), (-0.30, 9), (-0.35, 9), (-0.40, 9),
-                (-0.45, 10), (-0.50, 10), (-0.55, 10)]),
-        (chm5, [(-0.05, 6), (-0.10, 7), (-0.15, 8), (-0.20, 10), (-0.25, 9), (-0.30, 8), (-0.35, 7), (-0.40, 7),
-                (-0.45, 9), (-0.50, 9), (-0.55, 8)])]
+_CHM = [
+    (
+        chm1,
+        [
+            (-1, 11),
+            (-2, 13),
+            (-4, 13),
+            (-8, 15),
+            (-16, 16),
+            (-32, 19),
+            (-64, 20),
+            (-128, 21),
+            (-256, 21),
+            (-512, 19),
+            (-1024, 24),
+        ],
+    ),
+    (
+        chm2,
+        [
+            (-1, 8),
+            (-2, 6),
+            (-4, 6),
+            (-8, 7),
+            (-16, 8),
+            (-32, 8),
+            (-64, 9),
+            (-128, 11),
+            (-256, 13),
+            (-512, 12),
+            (-1024, 13),
+        ],
+    ),
+    (
+        chm3,
+        [
+            (-1, 11),
+            (-2, 11),
+            (-4, 11),
+            (-8, 10),
+            (-16, 14),
+            (-32, 12),
+            (-64, 15),
+            (-128, 18),
+            (-256, 18),
+            (-512, 19),
+            (-1024, 19),
+        ],
+    ),
+    (
+        chm4,
+        [
+            (-0.05, 9),
+            (-0.10, 11),
+            (-0.15, 11),
+            (-0.20, 11),
+            (-0.25, 11),
+            (-0.30, 9),
+            (-0.35, 9),
+            (-0.40, 9),
+            (-0.45, 10),
+            (-0.50, 10),
+            (-0.55, 10),
+        ],
+    ),
+    (
+        chm5,
+        [
+            (-0.05, 6),
+            (-0.10, 7),
+            (-0.15, 8),
+            (-0.20, 10),
+            (-0.25, 9),
+            (-0.30, 8),
+            (-0.35, 7),
+            (-0.40, 7),
+            (-0.45, 9),
+            (-0.50, 9),
+            (-0.55, 8),
+        ],
+    ),
+]
 
 
 def _min_cases():
-    out = [MinCase("scipy.scalar.0", scipy_scalar, (-3.0, -2.0), bounds=(1.0, 5.0), xmin=1.5),
-           MinCase("scipy.scalar.1", scipy_scalar, (-15.0, -1.0, 15.0), bounds=(0.0, 1.0), xmin=1.5)]
+    out = [
+        MinCase("scipy.scalar.0", scipy_scalar, (-3.0, -2.0), bounds=(1.0, 5.0), xmin=1.5),
+        MinCase("scipy.scalar.1", scipy_scalar, (-15.0, -1.0, 15.0), bounds=(0.0, 1.0), xmin=1.5),
+    ]
     for i, (f, rows) in enumerate(_CHM):
         for k, (x1, nit) in enumerate(rows):
             br = chandrupatla_bracket(f, float(x1), float(x1) + 0.2)
             lo, hi = min(br[0], br[2]), max(br[0], br[2])
-            out.append(MinCase(f"chandrupatla_min.{i + 1}.{k + 1}", f, tuple(sorted(br)), bounds=(lo, hi),
-                               nit_paper=nit))
+            out.append(
+                MinCase(f"chandrupatla_min.{i + 1}.{k + 1}", f, tuple(sorted(br)), bounds=(lo, hi), nit_paper=nit)
+            )
     return out
 
 
@@ -571,6 +755,7 @@ MINS_BY_ID = {c.id: c for c in MIN_CASES}
 
 
 # ---- linear least squares (lsq_linear, nnls): (A rows, b, bounds or None)
+
 
 def _lsq_problems():
     inf = math.inf
@@ -583,8 +768,11 @@ def _lsq_problems():
         "scipy.dense.lbm1": (A1, b1, ([-1.0, 0.0], [inf, inf])),
         "scipy.dense.ubm5": (A1, b1, ([-inf, -inf], [inf, -5.0])),
         "scipy.nnls.3x3": ([[1.0, 0.5, -1.0], [1.0, 0.5, 0.0], [-1.0, 0.0, 1.0]], [-1.0, 2.0, 2.0], None),
-        "scipy.nnls.arange": ([[float(5 * i + j) for j in range(5)] for i in range(5)],
-                              [float(sum((5 * i + j) * j for j in range(5))) for i in range(5)], None),
+        "scipy.nnls.arange": (
+            [[float(5 * i + j) for j in range(5)] for i in range(5)],
+            [float(sum((5 * i + j) * j for j in range(5))) for i in range(5)],
+            None,
+        ),
     }
     # deterministic dense problems: a smooth tall matrix, a Hilbert block, a wide one
     A = [[math.cos(0.7 * (i + 1) * (j + 1) + 0.3 * i) for j in range(8)] for i in range(30)]

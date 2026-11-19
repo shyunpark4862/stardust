@@ -18,12 +18,34 @@ def grid(*shape, dtype=np.float64):
 
 # ------------------------------------------------------------------ getitem
 
-@pytest.mark.parametrize("key", [
-    0, -1, slice(None), slice(1, 3), slice(None, None, -1), slice(None, None, 2), slice(5, 1, -2), slice(10, 20),
-    (1, slice(None)), (slice(None), 2), (Ellipsis, 1), (1, Ellipsis), (None,), (None, 1, None),
-    (Ellipsis, None), (slice(None), None, slice(1, None)), (), Ellipsis, None, (-1, -1, slice(None, None, -1)),
-    (slice(0, 0),), (slice(3, 0, 1),),
-])
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        0,
+        -1,
+        slice(None),
+        slice(1, 3),
+        slice(None, None, -1),
+        slice(None, None, 2),
+        slice(5, 1, -2),
+        slice(10, 20),
+        (1, slice(None)),
+        (slice(None), 2),
+        (Ellipsis, 1),
+        (1, Ellipsis),
+        (None,),
+        (None, 1, None),
+        (Ellipsis, None),
+        (slice(None), None, slice(1, None)),
+        (),
+        Ellipsis,
+        None,
+        (-1, -1, slice(None, None, -1)),
+        (slice(0, 0),),
+        (slice(3, 0, 1),),
+    ],
+)
 def test_getitem_views_match_numpy(key):
     n, a = grid(3, 4, 5)
     got, want = a[key], n[key]
@@ -40,11 +62,20 @@ def test_full_integer_index_gives_python_scalars(dtype):
     assert type(a[1, ..., 2]) is type(v)  # never a 0-d array (docs/api/array.md §1.2)
 
 
-@pytest.mark.parametrize("key,exc", [
-    (3, IndexError), (-4, IndexError), ((0, 0, 0), IndexError), ((Ellipsis, Ellipsis), IndexError),
-    (1.0, IndexError), ("a", IndexError), (slice(None, None, 0), ValueError), (2**70, IndexError),
-    (True, IndexError),  # no 0-d masks (docs/api/array.md §5.1)
-])
+@pytest.mark.parametrize(
+    "key,exc",
+    [
+        (3, IndexError),
+        (-4, IndexError),
+        ((0, 0, 0), IndexError),
+        ((Ellipsis, Ellipsis), IndexError),
+        (1.0, IndexError),
+        ("a", IndexError),
+        (slice(None, None, 0), ValueError),
+        (2**70, IndexError),
+        (True, IndexError),  # no 0-d masks (docs/api/array.md §5.1)
+    ],
+)
 def test_getitem_errors(key, exc):
     _, a = grid(3, 4)
     with pytest.raises(exc):
@@ -69,6 +100,7 @@ def test_random_basic_indices_match_numpy(data):
     n = np.arange(int(np.prod(shape)), dtype=np.int64).reshape(shape)
     a = sd.asarray(n)
     bound = st.one_of(st.none(), st.integers(-6, 6))
+
     def item(extent):
         if extent and data.draw(st.booleans()):
             return data.draw(st.integers(-extent, extent - 1))
@@ -80,7 +112,7 @@ def test_random_basic_indices_match_numpy(data):
     items = [item(e) for e in shape[:lead]]
     if data.draw(st.booleans()):
         trail = data.draw(st.integers(0, len(shape) - lead))
-        items += [Ellipsis] + [item(e) for e in shape[len(shape) - trail:]]
+        items += [Ellipsis] + [item(e) for e in shape[len(shape) - trail :]]
     for _ in range(data.draw(st.integers(0, 2))):  # newaxis entries anywhere
         items.insert(data.draw(st.integers(0, len(items))), None)
     key = tuple(items)
@@ -93,6 +125,7 @@ def test_random_basic_indices_match_numpy(data):
 
 
 # ------------------------------------------------------------------ setitem
+
 
 def test_setitem_scalar_and_broadcast():
     n, a = grid(3, 4)
@@ -164,7 +197,8 @@ def test_setitem_strict_broadcasting():
     with pytest.raises(TypeError, match=msg + "str$"):
         a[0, 0] = "a"
     with pytest.raises(TypeError, match=msg + "NoneType$"):
-        a[1] = sd.zeros(3); a[1, 2] = None
+        a[1] = sd.zeros(3)
+        a[1, 2] = None
     with pytest.raises(ValueError):
         a[:] = sd.asarray([1.0, 2.0])
 
@@ -183,6 +217,7 @@ def test_setitem_nan_and_complex():
 
 
 # ------------------------------------------------------- len and iteration
+
 
 def test_len_and_iteration():
     n, a = grid(3, 2)

@@ -135,7 +135,7 @@ def special_header(rows: dict[str, float], n_measured: int) -> str:
         "// The row's cost; a name without a row does not compile.",
         "consteval double ns(std::string_view name) {",
         "    const double v = find(name);",
-        "    if (v < 0.0) throw \"special/cost_table.hpp has no row for this name\";",
+        '    if (v < 0.0) throw "special/cost_table.hpp has no row for this name";',
         "    return v;",
         "}",
         "",
@@ -159,7 +159,10 @@ def generate(check: bool = False) -> list[tuple[pathlib.Path, bool, int]]:
     """Write (or with check=True only compare) both headers. A header counts as changed
     when its rows differ, not its comments. Returns (path, changed, rows measured)."""
     out = []
-    for path, pattern, (rows, n) in ((STATS_OUT, _STATS_ROW, stats_rows()), (SPECIAL_OUT, _SPECIAL_ROW, special_rows())):
+    for path, pattern, (rows, n) in (
+        (STATS_OUT, _STATS_ROW, stats_rows()),
+        (SPECIAL_OUT, _SPECIAL_ROW, special_rows()),
+    ):
         text = stats_header(rows, n) if path is STATS_OUT else special_header(rows, n)
         old = path.read_text() if path.exists() else ""
         changed = _rows_of(old, pattern) != _rows_of(text, pattern)

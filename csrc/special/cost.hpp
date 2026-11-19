@@ -85,9 +85,12 @@ inline constexpr double kBetaincc = cost_table::ns("betaincc");
 inline constexpr double kBetaincinv = cost_table::ns("betaincinv");
 inline constexpr double kBetainccinv = cost_table::ns("betainccinv");
 // T2's noncentral distributions (all capped at kMaxWeight)
-inline constexpr double kChndtr = cost_table::ns("chndtr"), kChndtrc = cost_table::ns("chndtrc"), kChndtrix = cost_table::ns("chndtrix");
-inline constexpr double kNctdtr = cost_table::ns("nctdtr"), kNctdtrc = cost_table::ns("nctdtrc"), kNctdtrit = cost_table::ns("nctdtrit");
-inline constexpr double kNcfdtr = cost_table::ns("ncfdtr"), kNcfdtrc = cost_table::ns("ncfdtrc"), kNcfdtri = cost_table::ns("ncfdtri");
+inline constexpr double kChndtr = cost_table::ns("chndtr"), kChndtrc = cost_table::ns("chndtrc"),
+                        kChndtrix = cost_table::ns("chndtrix");
+inline constexpr double kNctdtr = cost_table::ns("nctdtr"), kNctdtrc = cost_table::ns("nctdtrc"),
+                        kNctdtrit = cost_table::ns("nctdtrit");
+inline constexpr double kNcfdtr = cost_table::ns("ncfdtr"), kNcfdtrc = cost_table::ns("ncfdtrc"),
+                        kNcfdtri = cost_table::ns("ncfdtri");
 // S5 (special/ops/expint.hpp, ellip.hpp)
 inline constexpr double kExpi = cost_table::ns("expi");  // Boost for x >= -700
 inline constexpr double kExpn = cost_table::ns("expn");
@@ -96,17 +99,26 @@ inline constexpr double kEllipe = cost_table::ns("ellipe");
 inline constexpr double kEllipkAgm = 30;   // the comparison variants (not in the speed cases)
 inline constexpr double kEllipeCarlson = 65;
 // S6 (special/ops/bessel01.hpp, bessel.hpp, airy.hpp)
-inline constexpr double kI0 = cost_table::ns("i0"), kI0e = cost_table::ns("i0e"), kI1 = cost_table::ns("i1"), kI1e = cost_table::ns("i1e");  // Boost (and its value times e^-+x, S11)
-inline constexpr double kK0 = cost_table::ns("k0"), kK0e = cost_table::ns("k0e"), kK1 = cost_table::ns("k1"), kK1e = cost_table::ns("k1e");
-inline constexpr double kJ0 = cost_table::ns("j0"), kJ1 = cost_table::ns("j1"), kY0 = cost_table::ns("y0"), kY1 = cost_table::ns("y1");
-inline constexpr double kJv = cost_table::ns("jv"), kYv = cost_table::ns("yv"), kIv = cost_table::ns("iv"), kKv = cost_table::ns("kv");  // the reference mix: |v| up to 1000 (Debye from 30, S11)
+inline constexpr double kI0 = cost_table::ns("i0"), kI0e = cost_table::ns("i0e"), kI1 = cost_table::ns("i1"),
+                        kI1e = cost_table::ns("i1e");  // Boost (and its value times e^-+x, S11)
+inline constexpr double kK0 = cost_table::ns("k0"), kK0e = cost_table::ns("k0e"), kK1 = cost_table::ns("k1"),
+                        kK1e = cost_table::ns("k1e");
+inline constexpr double kJ0 = cost_table::ns("j0"), kJ1 = cost_table::ns("j1"), kY0 = cost_table::ns("y0"),
+                        kY1 = cost_table::ns("y1");
+inline constexpr double kJv = cost_table::ns("jv"), kYv = cost_table::ns("yv"), kIv = cost_table::ns("iv"),
+                        kKv = cost_table::ns("kv");  // the reference mix: |v| up to 1000 (Debye from 30, S11)
 inline constexpr double kAiry = cost_table::ns("airy_ai");
 // S7 (special/ops/lambertw.hpp, hyper.hpp)
-inline constexpr double kLambertw = cost_table::ns("lambertw"), kLambertwM1 = cost_table::ns("lambertw_m1");  // Boost away from the branch point
-inline constexpr double kHyp1f1 = cost_table::ns("hyp1f1"), kHyp2f1 = cost_table::ns("hyp2f1");  // the reference mix (weight capped at kMaxWeight)
+inline constexpr double kLambertw = cost_table::ns("lambertw"),
+                        kLambertwM1 = cost_table::ns("lambertw_m1");  // Boost away from the branch point
+inline constexpr double kHyp1f1 = cost_table::ns("hyp1f1"),
+                        kHyp2f1 = cost_table::ns("hyp2f1");  // the reference mix (weight capped at kMaxWeight)
 // S8 (special/ops/wofz.hpp, loggamma.hpp, lambertw.hpp)
-inline constexpr double kWofz = cost_table::ns("wofz"), kErfC = cost_table::ns("erf_complex"), kErfcC = cost_table::ns("erfc_complex"), kErfcxC = cost_table::ns("erfcx_complex");  // the reference mix
-inline constexpr double kLoggammaC = cost_table::ns("loggamma_complex"), kLambertwC = cost_table::ns("lambertw_c0");  // (all capped at kMaxWeight)
+inline constexpr double kWofz = cost_table::ns("wofz"), kErfC = cost_table::ns("erf_complex"),
+                        kErfcC = cost_table::ns("erfc_complex"),
+                        kErfcxC = cost_table::ns("erfcx_complex");  // the reference mix
+inline constexpr double kLoggammaC = cost_table::ns("loggamma_complex"),
+                        kLambertwC = cost_table::ns("lambertw_c0");  // (all capped at kMaxWeight)
 }  // namespace cost
 
 }  // namespace sd::special

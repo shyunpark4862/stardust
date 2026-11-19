@@ -70,10 +70,14 @@ def _objects(lib, raw, keys):
 
         Series, DataFrame = pd.Series, pd.DataFrame
     make = {
-        "f": lambda: Series(raw.f), "g": lambda: Series(raw.g),
-        "low": lambda: Series(raw.low), "high": lambda: Series(raw.high), "str": lambda: Series(raw.strs),
+        "f": lambda: Series(raw.f),
+        "g": lambda: Series(raw.g),
+        "low": lambda: Series(raw.low),
+        "high": lambda: Series(raw.high),
+        "str": lambda: Series(raw.strs),
         "df": lambda: DataFrame({"k": raw.low, "kh": raw.high, "ks": raw.strs, "f": raw.f}),
-        "L": lambda: DataFrame({"k": raw.lk, "a": raw.f}), "R": lambda: DataFrame({"k": raw.rk, "b": raw.rb}),
+        "L": lambda: DataFrame({"k": raw.lk, "a": raw.f}),
+        "R": lambda: DataFrame({"k": raw.rk, "b": raw.rb}),
     }
     return {k: make[k]() for k in keys}
 
@@ -116,24 +120,66 @@ def _sd_merge(o):
 CALLS = [
     ("f + g", "f g", lambda o: functools.partial(operator.add, o["f"], o["g"]), None, False, ""),
     ("f.sum()", "f", lambda o: o["f"].sum, None, False, ""),
-    ("f[f > 0]", "f", lambda o: (lambda f=o["f"]: f[f > 0]), None, False, ""),
+    ("f[f > 0]", "f", lambda o: lambda f=o["f"]: f[f > 0], None, False, ""),
     ("low.nunique()", "low", lambda o: o["low"].nunique, None, True, "정수 키 1,000가지"),
     ("high.nunique()", "high", lambda o: o["high"].nunique, None, True, "정수 키 약 n가지"),
     ("strs.nunique()", "str", lambda o: o["str"].nunique, None, True, "문자열 키 n/10가지"),
-    ('df.groupby("k")["f"].sum()', "df", lambda o: (lambda df=o["df"]: df.groupby("k")["f"].sum()), None, True,
-     "정수 키 1,000가지"),
-    ('df.groupby("kh")["f"].sum()', "df", lambda o: (lambda df=o["df"]: df.groupby("kh")["f"].sum()), None, True,
-     "정수 키 약 n가지"),
-    ('df.groupby("ks")["f"].sum()', "df", lambda o: (lambda df=o["df"]: df.groupby("ks")["f"].sum()), None, True,
-     "문자열 키 n/10가지"),
-    ('df.groupby(["k", "ks"])["f"].sum()', "df", lambda o: (lambda df=o["df"]: df.groupby(["k", "ks"])["f"].sum()),
-     None, True, "정수 1,000가지 × 문자열"),
-    ('merge(left, right, on="k")', "L R", _sd_merge, lambda o: functools.partial(o["L"].merge, o["R"], on="k"), True,
-     "오른쪽 n/10행, inner"),
-    ("high.sort_values()", "high", lambda o: o["high"].sort_values,
-     lambda o: functools.partial(o["high"].sort_values, kind="stable"), True, 'pandas는 kind="stable"'),
-    ("strs.sort_values()", "str", lambda o: o["str"].sort_values,
-     lambda o: functools.partial(o["str"].sort_values, kind="stable"), True, 'pandas는 kind="stable"'),
+    (
+        'df.groupby("k")["f"].sum()',
+        "df",
+        lambda o: lambda df=o["df"]: df.groupby("k")["f"].sum(),
+        None,
+        True,
+        "정수 키 1,000가지",
+    ),
+    (
+        'df.groupby("kh")["f"].sum()',
+        "df",
+        lambda o: lambda df=o["df"]: df.groupby("kh")["f"].sum(),
+        None,
+        True,
+        "정수 키 약 n가지",
+    ),
+    (
+        'df.groupby("ks")["f"].sum()',
+        "df",
+        lambda o: lambda df=o["df"]: df.groupby("ks")["f"].sum(),
+        None,
+        True,
+        "문자열 키 n/10가지",
+    ),
+    (
+        'df.groupby(["k", "ks"])["f"].sum()',
+        "df",
+        lambda o: lambda df=o["df"]: df.groupby(["k", "ks"])["f"].sum(),
+        None,
+        True,
+        "정수 1,000가지 × 문자열",
+    ),
+    (
+        'merge(left, right, on="k")',
+        "L R",
+        _sd_merge,
+        lambda o: functools.partial(o["L"].merge, o["R"], on="k"),
+        True,
+        "오른쪽 n/10행, inner",
+    ),
+    (
+        "high.sort_values()",
+        "high",
+        lambda o: o["high"].sort_values,
+        lambda o: functools.partial(o["high"].sort_values, kind="stable"),
+        True,
+        'pandas는 kind="stable"',
+    ),
+    (
+        "strs.sort_values()",
+        "str",
+        lambda o: o["str"].sort_values,
+        lambda o: functools.partial(o["str"].sort_values, kind="stable"),
+        True,
+        'pandas는 kind="stable"',
+    ),
 ]
 CSV_CALLS = [
     ("read_csv(floats.csv)", "floats", "float 열 하나"),
@@ -141,11 +187,18 @@ CSV_CALLS = [
 ]
 
 QUICK = {
-    ("strs.nunique()", 1_000), ('df.groupby("k")["f"].sum()', 1_000),
-    ("f[f > 0]", 100_000), ("high.nunique()", 100_000), ('df.groupby("ks")["f"].sum()', 100_000),
-    ("strs.sort_values()", 100_000), ("read_csv(mixed.csv)", 100_000),
-    ("f + g", 1_000_000), ("f.sum()", 1_000_000), ('df.groupby("k")["f"].sum()', 1_000_000),
-    ('merge(left, right, on="k")', 1_000_000), ("high.sort_values()", 1_000_000),
+    ("strs.nunique()", 1_000),
+    ('df.groupby("k")["f"].sum()', 1_000),
+    ("f[f > 0]", 100_000),
+    ("high.nunique()", 100_000),
+    ('df.groupby("ks")["f"].sum()', 100_000),
+    ("strs.sort_values()", 100_000),
+    ("read_csv(mixed.csv)", 100_000),
+    ("f + g", 1_000_000),
+    ("f.sum()", 1_000_000),
+    ('df.groupby("k")["f"].sum()', 1_000_000),
+    ('merge(left, right, on="k")', 1_000_000),
+    ("high.sort_values()", 1_000_000),
 }
 
 
@@ -190,15 +243,17 @@ def _small_setup():
     import stardust as sd
 
     a = np.random.default_rng(0).standard_normal(SMALL)
-    return {"sd": (sd.frame.Series(a), sd.frame.DataFrame({"a": a, "b": a})),
-            "pandas": (pd.Series(a), pd.DataFrame({"a": a, "b": a}))}
+    return {
+        "sd": (sd.frame.Series(a), sd.frame.DataFrame({"a": a, "b": a})),
+        "pandas": (pd.Series(a), pd.DataFrame({"a": a, "b": a})),
+    }
 
 
 SMALL_CALLS = [
     ("s + s", lambda s, df: functools.partial(operator.add, s, s)),
     ("s.sum()", lambda s, df: s.sum),
     ('df["a"]', lambda s, df: functools.partial(operator.getitem, df, "a")),
-    ('df[df["a"] > 0]', lambda s, df: (lambda df=df: df[df["a"] > 0])),
+    ('df[df["a"] > 0]', lambda s, df: lambda df=df: df[df["a"] > 0]),
 ]
 SMALL_QUICK = {"s + s", 'df[df["a"] > 0]'}
 
@@ -206,31 +261,48 @@ SMALL_QUICK = {"s + s", 'df[df["a"] > 0]'}
 def cases() -> list[Case]:
     out = []
     for name, call in SMALL_CALLS:
-        out.append(Case(
-            area="frame", group=SMALL_GROUP, name=name, n=SMALL,
-            setup=_small_setup,
-            sd=lambda d, call=call: call(*d["sd"]),
-            refs=(Ref("pandas", lambda d, call=call: call(*d["pandas"])),),
-            quick=name in SMALL_QUICK,
-        ))
+        out.append(
+            Case(
+                area="frame",
+                group=SMALL_GROUP,
+                name=name,
+                n=SMALL,
+                setup=_small_setup,
+                sd=lambda d, call=call: call(*d["sd"]),
+                refs=(Ref("pandas", lambda d, call=call: call(*d["pandas"])),),
+                quick=name in SMALL_QUICK,
+            )
+        )
     for n in SIZES:
         for name, keys, sdc, pdc, hashy, note in CALLS:
             k = fresh(n) if hashy and n < FRESH_BELOW else 1
             if k > 1:
                 note = f"{note}; 새 입력 {k}개를 돌려 가며 부른다" if note else f"새 입력 {k}개를 돌려 가며 부른다"
-            out.append(Case(
-                area="frame", group=GROUP[n], name=name, n=n,
-                setup=lambda n=n, keys=tuple(keys.split()), k=k: _setup(n, keys, k),
-                sd=_factory(sdc, "sd"),
-                refs=(Ref("pandas", _factory(pdc or sdc, "pandas")),),
-                note=note, quick=(name, n) in QUICK,
-            ))
+            out.append(
+                Case(
+                    area="frame",
+                    group=GROUP[n],
+                    name=name,
+                    n=n,
+                    setup=lambda n=n, keys=tuple(keys.split()), k=k: _setup(n, keys, k),
+                    sd=_factory(sdc, "sd"),
+                    refs=(Ref("pandas", _factory(pdc or sdc, "pandas")),),
+                    note=note,
+                    quick=(name, n) in QUICK,
+                )
+            )
         for name, which, note in CSV_CALLS:
-            out.append(Case(
-                area="frame", group=GROUP[n], name=name, n=n,
-                setup=lambda n=n: _csv_setup(n),
-                sd=_read_csv("sd", which),
-                refs=(Ref("pandas", _read_csv("pandas", which)),),
-                note=note, quick=(name, n) in QUICK,
-            ))
+            out.append(
+                Case(
+                    area="frame",
+                    group=GROUP[n],
+                    name=name,
+                    n=n,
+                    setup=lambda n=n: _csv_setup(n),
+                    sd=_read_csv("sd", which),
+                    refs=(Ref("pandas", _read_csv("pandas", which)),),
+                    note=note,
+                    quick=(name, n) in QUICK,
+                )
+            )
     return out

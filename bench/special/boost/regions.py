@@ -25,21 +25,37 @@ EM = -np.exp(-1.0)
 
 # name: [(label, predicate on the input tuple)]
 REGIONS = {
-    "hyp1f1": [("guaranteed", None), ("loose: a < 0, x > 0", lambda a, b, x: (a < 0) & (x > 0)),
-               ("loose: other", lambda a, b, x: ~((a < 0) & (x > 0)))],
+    "hyp1f1": [
+        ("guaranteed", None),
+        ("loose: a < 0, x > 0", lambda a, b, x: (a < 0) & (x > 0)),
+        ("loose: other", lambda a, b, x: ~((a < 0) & (x > 0))),
+    ],
     "k0": [("x < 2", lambda x: x < 2), ("2 <= x < 8", lambda x: (x >= 2) & (x < 8)), ("x >= 8", lambda x: x >= 8)],
     "k1": [("x < 2", lambda x: x < 2), ("2 <= x < 8", lambda x: (x >= 2) & (x < 8)), ("x >= 8", lambda x: x >= 8)],
     "i0": [("|x| < 8", lambda x: np.abs(x) < 8), ("|x| >= 8", lambda x: np.abs(x) >= 8)],
     "i1": [("|x| < 8", lambda x: np.abs(x) < 8), ("|x| >= 8", lambda x: np.abs(x) >= 8)],
-    "iv": [("|v| < 5", lambda v, x: np.abs(v) < 5), ("5 <= |v| < 50", lambda v, x: (np.abs(v) >= 5) & (np.abs(v) < 50)),
-           ("|v| >= 50", lambda v, x: np.abs(v) >= 50)],
-    "kv": [("|v| < 5", lambda v, x: np.abs(v) < 5), ("5 <= |v| < 50", lambda v, x: (np.abs(v) >= 5) & (np.abs(v) < 50)),
-           ("|v| >= 50", lambda v, x: np.abs(v) >= 50)],
+    "iv": [
+        ("|v| < 5", lambda v, x: np.abs(v) < 5),
+        ("5 <= |v| < 50", lambda v, x: (np.abs(v) >= 5) & (np.abs(v) < 50)),
+        ("|v| >= 50", lambda v, x: np.abs(v) >= 50),
+    ],
+    "kv": [
+        ("|v| < 5", lambda v, x: np.abs(v) < 5),
+        ("5 <= |v| < 50", lambda v, x: (np.abs(v) >= 5) & (np.abs(v) < 50)),
+        ("|v| >= 50", lambda v, x: np.abs(v) >= 50),
+    ],
     "zeta": [("x > 1", lambda x: x > 1), ("0 <= x < 1", lambda x: (x >= 0) & (x < 1)), ("x < 0", lambda x: x < 0)],
-    "expi": [("x < -700", lambda x: x < -700), ("-700 <= x < 0", lambda x: (x >= -700) & (x < 0)),
-             ("0 < x <= 709", lambda x: (x > 0) & (x <= 709)), ("x > 709", lambda x: x > 709)],
+    "expi": [
+        ("x < -700", lambda x: x < -700),
+        ("-700 <= x < 0", lambda x: (x >= -700) & (x < 0)),
+        ("0 < x <= 709", lambda x: (x > 0) & (x <= 709)),
+        ("x > 709", lambda x: x > 709),
+    ],
     "lambertw": [("|x + 1/e| < 0.3", lambda x: np.abs(x - EM) < 0.3), ("elsewhere", lambda x: np.abs(x - EM) >= 0.3)],
-    "lambertw_m1": [("|x + 1/e| < 0.3", lambda x: np.abs(x - EM) < 0.3), ("elsewhere", lambda x: np.abs(x - EM) >= 0.3)],
+    "lambertw_m1": [
+        ("|x + 1/e| < 0.3", lambda x: np.abs(x - EM) < 0.3),
+        ("elsewhere", lambda x: np.abs(x - EM) >= 0.3),
+    ],
 }
 EXTRA = {"hyp1f1": "hyp1f1_bigneg"}  # extra reference sets (bench/special/boost/extra_refs.py)
 
@@ -59,7 +75,9 @@ def boost_eval(name, xs):
 
 def boost_ns(name, xs):
     write(D / "in.bin", xs)
-    out = subprocess.run([EXE, "time", name, str(D / "in.bin")], timeout=600, capture_output=True, text=True, check=True)
+    out = subprocess.run(
+        [EXE, "time", name, str(D / "in.bin")], timeout=600, capture_output=True, text=True, check=True
+    )
     return float(out.stdout)
 
 
@@ -96,10 +114,14 @@ def rows(name, label, xs, hi, lo, sc, m, timing=True):
 
 
 def main():
-    print("Boost.Math (boostorg/math develop 4682f44) vs sd.special by region. ULP of the reference "
-          "(divided by the file's scale: envelope or kappa); 'over 45' counts points above 45 ULP. "
-          "ns per element, one thread, 2e5 points of the region; Boost / sd > 1: sd faster.\n")
-    print("| function | region | points | sd max | sd over 45 | Boost max | Boost over 45 | sd ns | Boost ns | Boost / sd |")
+    print(
+        "Boost.Math (boostorg/math develop 4682f44) vs sd.special by region. ULP of the reference "
+        "(divided by the file's scale: envelope or kappa); 'over 45' counts points above 45 ULP. "
+        "ns per element, one thread, 2e5 points of the region; Boost / sd > 1: sd faster.\n"
+    )
+    print(
+        "| function | region | points | sd max | sd over 45 | Boost max | Boost over 45 | sd ns | Boost ns | Boost / sd |"
+    )
     print("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|")
     for name, regions in REGIONS.items():
         xs, hi, lo, g = refdata.load(name)
@@ -116,8 +138,19 @@ def main():
                 with np.load(p) as f:
                     xs2 = tuple(f[f"x{k}"] for k in range(3))
                     hi2, lo2 = f["hi"], f["lo"]
-                print(rows(name, "large |a|, a < 0 (extra set)", xs2, hi2, lo2, np.ones(hi2.size),
-                           np.ones(hi2.size, dtype=bool), timing=False), flush=True)
+                print(
+                    rows(
+                        name,
+                        "large |a|, a < 0 (extra set)",
+                        xs2,
+                        hi2,
+                        lo2,
+                        np.ones(hi2.size),
+                        np.ones(hi2.size, dtype=bool),
+                        timing=False,
+                    ),
+                    flush=True,
+                )
 
 
 if __name__ == "__main__":

@@ -458,9 +458,10 @@ nb::object expm(nb::handle xo) {
     return with_type(computes_complex(x.dtype()), [&]<class T>(std::type_identity<T>) -> nb::object {
         Out out = alloc_matrices(b.shape(), n, n, dtype_of<T>());
         T* res = out.as<T>();
-        const Failure f = run_batch(b, cost(kExpm, double(n) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
-            return expm_one<T>(x, off[0], n, res + i * n * n, s);
-        });
+        const Failure f =
+            run_batch(b, cost(kExpm, double(n) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+                return expm_one<T>(x, off[0], n, res + i * n * n, s);
+            });
         if (f) raise(b, f, "expm", "x");
         return to_array(out);
     });

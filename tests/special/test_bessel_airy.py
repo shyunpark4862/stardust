@@ -75,8 +75,18 @@ def test_real_order_true_values():
 
 
 def test_real_order_scipy_conventions():
-    pts = [(0.0, 0.0), (1.0, 0.0), (0.5, 0.0), (-1.0, 0.0), (2.0, -1.0), (2.5, -1.0), (3.0, -2.0), (0.0, np.nan),
-           (np.nan, 1.0), (1.0, -0.0)]
+    pts = [
+        (0.0, 0.0),
+        (1.0, 0.0),
+        (0.5, 0.0),
+        (-1.0, 0.0),
+        (2.0, -1.0),
+        (2.5, -1.0),
+        (3.0, -2.0),
+        (0.0, np.nan),
+        (np.nan, 1.0),
+        (1.0, -0.0),
+    ]
     for name in ["jv", "iv", "kv"]:
         f, g = getattr(S, name), getattr(sp, name)
         for v, x in pts:
@@ -268,8 +278,12 @@ def test_real_order_zeros_same_bits_for_any_thread_count():
         runs = []
         for t in (1, 3, 10):
             sd.set_num_threads(t)
-            runs.append([np.asarray(getattr(S, n)(sd.asarray(vs), sd.asarray(xs))).view(np.uint64)
-                         for n in ("jv", "yv", "jve", "yve")])
+            runs.append(
+                [
+                    np.asarray(getattr(S, n)(sd.asarray(vs), sd.asarray(xs))).view(np.uint64)
+                    for n in ("jv", "yv", "jve", "yve")
+                ]
+            )
     finally:
         sd.set_num_threads(before)
     for r in runs[1:]:

@@ -14,11 +14,30 @@ N = np.arange(60).reshape(3, 4, 5)
 def keys():
     m = N > 30
     return [
-        [0, 2], [-1, 0, -1], np.array([[0, 1], [2, 0]]), (slice(None), [1, 3]), ([0, 1], [1, 2]),
-        ([[0], [2]], [1, 3]), (Ellipsis, [0, -1]), ([0, 2], Ellipsis), (1, [0, 2]), ([1, 2], 3),
-        (slice(1, None), [0, 0], [4, 1]), (None, [0, 1]), ([0, 1], slice(None), slice(None)),
-        m, (0, m[0]), (slice(None), m[0]), (m[:, :, 0],), (m[:, :, 0], slice(None)), ([0, 2], N[0, :, 0] > 6),
-        [], ([], slice(None)), np.array([], dtype=np.int64), [True, False, True], (2, 3, [0, 4]),
+        [0, 2],
+        [-1, 0, -1],
+        np.array([[0, 1], [2, 0]]),
+        (slice(None), [1, 3]),
+        ([0, 1], [1, 2]),
+        ([[0], [2]], [1, 3]),
+        (Ellipsis, [0, -1]),
+        ([0, 2], Ellipsis),
+        (1, [0, 2]),
+        ([1, 2], 3),
+        (slice(1, None), [0, 0], [4, 1]),
+        (None, [0, 1]),
+        ([0, 1], slice(None), slice(None)),
+        m,
+        (0, m[0]),
+        (slice(None), m[0]),
+        (m[:, :, 0],),
+        (m[:, :, 0], slice(None)),
+        ([0, 2], N[0, :, 0] > 6),
+        [],
+        ([], slice(None)),
+        np.array([], dtype=np.int64),
+        [True, False, True],
+        (2, 3, [0, 4]),
     ]
 
 
@@ -26,8 +45,11 @@ def keys():
 def test_getitem_matches_numpy(key):
     x = sd.asarray(N)
     want = N[key]
-    sd_key = tuple(sd.asarray(k) if isinstance(k, np.ndarray) else k for k in key) if isinstance(key, tuple) \
+    sd_key = (
+        tuple(sd.asarray(k) if isinstance(k, np.ndarray) else k for k in key)
+        if isinstance(key, tuple)
         else (sd.asarray(key) if isinstance(key, np.ndarray) else key)
+    )
     got = x[sd_key]
     assert_same(got, want)
     assert not np.shares_memory(np.asarray(got), N)  # always a copy
@@ -42,20 +64,39 @@ def test_strided_source_and_indices():
     assert_same(sd.asarray(view)[:, sd.asarray([2, 0])], view[:, [2, 0]])
 
 
-@pytest.mark.parametrize("key", [
-    (0, slice(None), [0, 1]),          # int and array separated by a slice (docs/api/array.md §5.2)
-    ([0, 1], slice(None), 0),
-    ([0, 1], slice(None), [0, 1]),
-    ([0, 1], None, [0, 1]),
-    ([0, 1], Ellipsis, [0, 1]),
-], ids=repr)
+@pytest.mark.parametrize(
+    "key",
+    [
+        (0, slice(None), [0, 1]),  # int and array separated by a slice (docs/api/array.md §5.2)
+        ([0, 1], slice(None), 0),
+        ([0, 1], slice(None), [0, 1]),
+        ([0, 1], None, [0, 1]),
+        ([0, 1], Ellipsis, [0, 1]),
+    ],
+    ids=repr,
+)
 def test_separated_advanced_indices_are_refused(key):
     with pytest.raises(IndexError):
         sd.asarray(N)[key]
 
 
-@pytest.mark.parametrize("key", [True, False, (0, True), [1.0, 2.0], sd.asarray([0.5]), [0, 3], ([0], [9]),
-                                 [-4], N[0] > 0, np.ones((3, 5), bool), "a"], ids=repr)
+@pytest.mark.parametrize(
+    "key",
+    [
+        True,
+        False,
+        (0, True),
+        [1.0, 2.0],
+        sd.asarray([0.5]),
+        [0, 3],
+        ([0], [9]),
+        [-4],
+        N[0] > 0,
+        np.ones((3, 5), bool),
+        "a",
+    ],
+    ids=repr,
+)
 def test_index_errors(key):
     with pytest.raises(IndexError):
         sd.asarray(N)[key]
@@ -82,14 +123,18 @@ def test_item_deletion_is_not_supported():
     assert x.tolist() == [1.0, 2.0]
 
 
-@pytest.mark.parametrize("key", [slice(None), (slice(None), slice(0, 2)), Ellipsis, [0, 1], (slice(None), [0, 1])],
-                         ids=repr)
+@pytest.mark.parametrize(
+    "key", [slice(None), (slice(None), slice(0, 2)), Ellipsis, [0, 1], (slice(None), [0, 1])], ids=repr
+)
 def test_value_shape_message_is_the_same_for_basic_and_advanced_keys(key):
     # strict broadcasting (docs/api/array.md §5.3), one message
     x = sd.zeros((2, 2))
     for v in [sd.ones((2, 2, 2)), sd.ones((3,)), sd.ones((1, 2, 2))]:
-        with pytest.raises(ValueError, match=r"^cannot broadcast a value of shape \(\d+(, \d+)*,?\) to the indexed "
-                                             r"shape \(2, 2\)$"):
+        with pytest.raises(
+            ValueError,
+            match=r"^cannot broadcast a value of shape \(\d+(, \d+)*,?\) to the indexed "
+            r"shape \(2, 2\)$",
+        ):
             x[key] = v
     with pytest.raises(TypeError):  # the dtype is checked first, for both kinds of key
         sd.zeros((2, 2), dtype=sd.int64)[key] = sd.ones((3,))
@@ -97,10 +142,15 @@ def test_value_shape_message_is_the_same_for_basic_and_advanced_keys(key):
 
 # ------------------------------------------------------------------ scatter
 
+
 def test_setitem_matches_numpy():
     cases = [
-        ([0, 2], 7), ((slice(None), [1, 3]), np.arange(30).reshape(3, 2, 5) * -1),
-        (N > 40, -1), ((N[:, :, 0] > 20,), np.arange(5)), ([[0], [2]], 0), ((1, [0, 3]), [[9] * 5, [8] * 5]),
+        ([0, 2], 7),
+        ((slice(None), [1, 3]), np.arange(30).reshape(3, 2, 5) * -1),
+        (N > 40, -1),
+        ((N[:, :, 0] > 20,), np.arange(5)),
+        ([[0], [2]], 0),
+        ((1, [0, 3]), [[9] * 5, [8] * 5]),
     ]
     for key, value in cases:
         want = N.copy()
@@ -149,9 +199,18 @@ def test_random_integer_indices(data):
     ishape = data.draw(st.lists(st.integers(0, 3), min_size=1, max_size=2))
     key = [slice(None)] * lead
     for axis in range(lead, lead + run):
-        key.append(np.array(data.draw(st.lists(st.integers(-shape[axis], shape[axis] - 1),
-                                               min_size=int(np.prod(ishape)), max_size=int(np.prod(ishape)))),
-                            dtype=np.int64).reshape(ishape))
+        key.append(
+            np.array(
+                data.draw(
+                    st.lists(
+                        st.integers(-shape[axis], shape[axis] - 1),
+                        min_size=int(np.prod(ishape)),
+                        max_size=int(np.prod(ishape)),
+                    )
+                ),
+                dtype=np.int64,
+            ).reshape(ishape)
+        )
     key = tuple(key)
     assert_same(sd.asarray(n)[key], n[key])
     value = data.draw(st.integers(-9, 9))
@@ -163,6 +222,7 @@ def test_random_integer_indices(data):
 
 
 # ------------------- the fused one-index path (docs/design/array.md §7.3)
+
 
 def test_failed_assignment_writes_nothing():
     # Every index is checked before the first write (numpy behaves the same).
@@ -186,10 +246,16 @@ def test_first_bad_index_in_c_order_is_reported():
         x[np.array([[0, 30], [-11, 2]]).T]  # C order of the transposed view: 0, -11, 30, 2
 
 
-@pytest.mark.parametrize("idx", [
-    np.array([3, -1, 0, 3, -10]), np.array([[1, 2, 3], [-4, -5, -6]]).T, np.arange(10)[::-3],
-    np.zeros((0,), np.int64), np.array([[[7]]]),
-])
+@pytest.mark.parametrize(
+    "idx",
+    [
+        np.array([3, -1, 0, 3, -10]),
+        np.array([[1, 2, 3], [-4, -5, -6]]).T,
+        np.arange(10)[::-3],
+        np.zeros((0,), np.int64),
+        np.array([[[7]]]),
+    ],
+)
 def test_one_index_layouts(idx):
     n = np.arange(10.0) * 1.5
     assert_same(sd.asarray(n)[sd.asarray(idx)], n[idx])
@@ -224,14 +290,24 @@ def test_one_index_mixed_dtype_value_and_threads():
 # boolean masks in fixed chunks (docs/design/array.md §7.3, §7.4). Results
 # must equal numpy exactly.
 
+
 @pytest.mark.parametrize("layout", ["C", "F", "reversed", "strided"])
 def test_take_along_one_axis_layouts(layout):
     base = np.arange(6 * 7 * 8, dtype=np.float64).reshape(6, 7, 8) * 0.5
-    a = {"C": base, "F": np.asfortranarray(base), "reversed": base[::-1, :, ::-1],
-         "strided": np.arange(12 * 7 * 16.0).reshape(12, 7, 16)[::2, :, ::2]}[layout]
+    a = {
+        "C": base,
+        "F": np.asfortranarray(base),
+        "reversed": base[::-1, :, ::-1],
+        "strided": np.arange(12 * 7 * 16.0).reshape(12, 7, 16)[::2, :, ::2],
+    }[layout]
     x = sd.asarray(a)
-    for key in [(slice(None), [3, -1, 0, 3]), (Ellipsis, np.array([[1, -8], [7, 0]])), ([5, -6, 2],),
-                (slice(None), slice(None), [2]), (slice(None), [6] * 3, slice(1, 5))]:
+    for key in [
+        (slice(None), [3, -1, 0, 3]),
+        (Ellipsis, np.array([[1, -8], [7, 0]])),
+        ([5, -6, 2],),
+        (slice(None), slice(None), [2]),
+        (slice(None), [6] * 3, slice(1, 5)),
+    ]:
         sd_key = tuple(sd.asarray(np.asarray(k)) if isinstance(k, (list, np.ndarray)) else k for k in key)
         assert_same(x[sd_key], a[key])
     with pytest.raises(IndexError, match="index 7 is out of bounds for axis 1"):
@@ -299,8 +375,13 @@ def test_leading_int_fast_path_keeps_the_rules():
     assert v.base is not None
     v[0, 0] = -5.0
     assert x[1, 0, 0] == -5.0  # a view, not a copy
-    for bad, exc in [((2, 0, 0), IndexError), ((0, -4), IndexError), ((0, 0, 0, 0), IndexError),
-                     ((2**70,), IndexError), ((0, 0, 1.0), IndexError)]:
+    for bad, exc in [
+        ((2, 0, 0), IndexError),
+        ((0, -4), IndexError),
+        ((0, 0, 0, 0), IndexError),
+        ((2**70,), IndexError),
+        ((0, 0, 1.0), IndexError),
+    ]:
         with pytest.raises(exc):
             x[bad]
     b = sd.asarray(np.arange(3))
@@ -335,11 +416,14 @@ def test_advanced_results_follow_the_input_layout():
 
 # ---------------------------------------------------------- regression tests
 
+
 def test_scatter_with_indices_inside_the_target():
     # The indices are read as they were before the assignment.
-    for n0, key_of in [(np.array([1, 2, 3, 0]), lambda a: a),
-                       (np.array([1, 0]), lambda a: a),
-                       (np.arange(6)[::-1].copy(), lambda a: a[::2])]:
+    for n0, key_of in [
+        (np.array([1, 2, 3, 0]), lambda a: a),
+        (np.array([1, 0]), lambda a: a),
+        (np.arange(6)[::-1].copy(), lambda a: a[::2]),
+    ]:
         for value in (2, 10**12):
             n, x = n0.copy(), sd.asarray(n0.copy())
             n[key_of(n).copy()] = value

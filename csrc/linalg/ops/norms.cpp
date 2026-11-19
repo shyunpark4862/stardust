@@ -33,7 +33,9 @@ namespace {
 VecOrd parse_vector_ord(nb::handle o, const char* func) {
     const std::optional<double> r = real_value(o, "ord");  // numpy integers too (API.md §2)
     if (!r)
-        throw nb::type_error((std::string(func) + "(): 'ord' must be an int or a float, not " + py_type_name(o)).c_str());
+        throw nb::type_error(
+            (std::string(func) + "(): 'ord' must be an int or a float, not " + py_type_name(o)).c_str()
+        );
     const double p = *r;
     if (std::isnan(p)) throw nb::value_error((std::string(func) + "(): 'ord' must not be NaN").c_str());
     if (p == kInf) return {Ord::Inf, p};
@@ -48,8 +50,9 @@ VecOrd parse_vector_ord(nb::handle o, const char* func) {
 // (bytes), walked in logical C order. For the 2-norm of complex values the
 // real and imaginary parts are separate terms (|z|^2 = re^2 + im^2, no hypot):
 // an extra innermost axis of length 2 over the two doubles.
-double region_norm(VecOrd ord, const Input& x, const std::byte* base, int nd, const std::int64_t* shape,
-                   const std::int64_t* strides) {
+double region_norm(
+    VecOrd ord, const Input& x, const std::byte* base, int nd, const std::int64_t* shape, const std::int64_t* strides
+) {
     if (ord.kind == Ord::Two && x.dtype() == DType::Complex128) {
         std::int64_t sh[kMaxWalkDims], st[kMaxWalkDims];
         std::copy(shape, shape + nd, sh);
@@ -89,7 +92,8 @@ nb::object vector_norm(nb::handle xo, nb::handle axis_o, nb::handle keepdims_o, 
             out_shape.push_back(x.shape(d));
         }
     }
-    const std::vector<std::int64_t> rsh(red_shape.begin(), red_shape.end()), rst(red_strides.begin(), red_strides.end());
+    const std::vector<std::int64_t> rsh(red_shape.begin(), red_shape.end()),
+        rst(red_strides.begin(), red_strides.end());
     auto norm_at = [&](std::int64_t off) {
         return region_norm(ord, x, x.data() + off, static_cast<int>(rsh.size()), rsh.data(), rst.data());
     };
@@ -124,9 +128,7 @@ MatOrd parse_matrix_ord(nb::handle o) {
         if (p == 2) return MatOrd::Two;
         if (p == -2) return MatOrd::NegTwo;
     } else {  // a wrong type: TypeError, as in vector_norm (docs/api/linalg.md §3)
-        throw nb::type_error(("matrix_norm(): 'ord' must be a str, an int or a float, not " +
-                              py_type_name(o))
-                                 .c_str());
+        throw nb::type_error(("matrix_norm(): 'ord' must be a str, an int or a float, not " + py_type_name(o)).c_str());
     }
     throw nb::value_error("matrix_norm(): 'ord' must be 'fro', 'nuc', 1, -1, 2, -2, inf or -inf");
 }
@@ -139,21 +141,22 @@ nb::object matrix_norm_svd(const Input& x, MatOrd ord, const std::vector<std::in
     return with_type(computes_complex(x.dtype()), [&]<class T>(std::type_identity<T>) -> nb::object {
         Out out = alloc_c(out_shape, DType::Float64);
         double* res = out.as<double>();
-        const Failure f = run_batch(b, cost(kSVD, double(m) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
-            double* sv = s.get<double>(static_cast<std::size_t>(std::max<lint>(k, 1)), 1);
-            if (const int code = singular_values<T>(x, off[0], m, n, s, sv)) return code;
-            double v = 0;  // empty matrices: 0 (docs/design/linalg.md §2.5)
-            if (k > 0) {
-                if (ord == MatOrd::Two) v = sv[0];
-                else if (ord == MatOrd::NegTwo) v = sv[k - 1];
-                else
-                    v = pairwise_sum<double>(k, [&](std::int64_t b0, std::int64_t len, double* out) {
-                        std::copy(sv + b0, sv + b0 + len, out);
-                    });
-            }
-            res[i] = v;
-            return 0;
-        });
+        const Failure f =
+            run_batch(b, cost(kSVD, double(m) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+                double* sv = s.get<double>(static_cast<std::size_t>(std::max<lint>(k, 1)), 1);
+                if (const int code = singular_values<T>(x, off[0], m, n, s, sv)) return code;
+                double v = 0;  // empty matrices: 0 (docs/design/linalg.md §2.5)
+                if (k > 0) {
+                    if (ord == MatOrd::Two) v = sv[0];
+                    else if (ord == MatOrd::NegTwo) v = sv[k - 1];
+                    else
+                        v = pairwise_sum<double>(k, [&](std::int64_t b0, std::int64_t len, double* out) {
+                            std::copy(sv + b0, sv + b0 + len, out);
+                        });
+                }
+                res[i] = v;
+                return 0;
+            });
         if (f) raise(b, f, "matrix_norm", "x");
         return out_shape.empty() ? py_scalar(res[0]) : to_array(out);
     });
@@ -227,10 +230,14 @@ nb::object matrix_norm(nb::handle xo, nb::handle keepdims_o, nb::handle ord_o) {
 }  // namespace
 
 void bind_norms(nb::module_& m) {
-    m.def("vector_norm", named("vector_norm", &vector_norm), nb::arg().none(), nb::kw_only(), nb::arg("axis").none() = nb::none(),
-          nb::arg("keepdims").none() = false, nb::arg("ord").none() = 2);
-    m.def("matrix_norm", named("matrix_norm", &matrix_norm), nb::arg().none(), nb::kw_only(), nb::arg("keepdims").none() = false,
-          nb::arg("ord").none() = "fro");
+    m.def(
+        "vector_norm", named("vector_norm", &vector_norm), nb::arg().none(), nb::kw_only(),
+        nb::arg("axis").none() = nb::none(), nb::arg("keepdims").none() = false, nb::arg("ord").none() = 2
+    );
+    m.def(
+        "matrix_norm", named("matrix_norm", &matrix_norm), nb::arg().none(), nb::kw_only(),
+        nb::arg("keepdims").none() = false, nb::arg("ord").none() = "fro"
+    );
 }
 
 }  // namespace sd::linalg

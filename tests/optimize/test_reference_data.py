@@ -25,10 +25,19 @@ def load(name):
 
 # ---- scipy
 
-SCIPY = {name: load(name) for name in ("scipy_least_squares.json", "scipy_minimize.json", "scipy_root.json",
-                                       "scipy_root_scalar.json", "scipy_minimize_scalar.json",
-                                       "scipy_elementwise.json", "scipy_lsq_linear.json",
-                                       "scipy_approx_fprime.json")}
+SCIPY = {
+    name: load(name)
+    for name in (
+        "scipy_least_squares.json",
+        "scipy_minimize.json",
+        "scipy_root.json",
+        "scipy_root_scalar.json",
+        "scipy_minimize_scalar.json",
+        "scipy_elementwise.json",
+        "scipy_lsq_linear.json",
+        "scipy_approx_fprime.json",
+    )
+}
 
 
 def test_scipy_data_cover_the_collection():
@@ -37,8 +46,16 @@ def test_scipy_data_cover_the_collection():
     ls, mn = SCIPY["scipy_least_squares.json"], SCIPY["scipy_minimize.json"]
     for c in mgh.CASES:
         assert set(ls[c.id]) == {"trf/analytic", "trf/2-point", "lm/analytic", "lm/2-point"}
-        assert set(mn[c.id]) == {"Nelder-Mead", "BFGS", "BFGS/fd", "L-BFGS-B", "L-BFGS-B/fd", "Newton-CG",
-                                 "trust-ncg", "trust-exact"}
+        assert set(mn[c.id]) == {
+            "Nelder-Mead",
+            "BFGS",
+            "BFGS/fd",
+            "L-BFGS-B",
+            "L-BFGS-B/fd",
+            "Newton-CG",
+            "trust-ncg",
+            "trust-exact",
+        }
     rt = SCIPY["scipy_root.json"]
     for c in systems.CASES:
         assert set(rt[c.id]) == {"hybr/analytic", "hybr/none", "lm/analytic", "lm/none"}
@@ -113,6 +130,7 @@ def test_arb_root_references_spot_check():
 def test_scipy_reproduces_its_reference():
     # a sample of runs again: the installed scipy gives the recorded values exactly
     import scipy
+
     if scipy.__version__ != "1.18.1":
         pytest.skip("the reference is scipy 1.18.1's")
     sys.path.insert(0, str(TOOLS))
@@ -121,20 +139,26 @@ def test_scipy_reproduces_its_reference():
     finally:
         sys.path.remove(str(TOOLS))
     rnd = random.Random(20261120)
-    jobs = [("scipy_least_squares.json", gen._lsq_task, gen.least_squares_tasks()),
-            ("scipy_minimize.json", gen._min_task, gen.minimize_tasks()),
-            ("scipy_root.json", gen._root_task, gen.root_tasks()),
-            ("scipy_root_scalar.json", gen._scalar_root_task, gen.root_scalar_tasks()),
-            ("scipy_elementwise.json", gen._elementwise_task, gen.elementwise_tasks())]
+    jobs = [
+        ("scipy_least_squares.json", gen._lsq_task, gen.least_squares_tasks()),
+        ("scipy_minimize.json", gen._min_task, gen.minimize_tasks()),
+        ("scipy_root.json", gen._root_task, gen.root_tasks()),
+        ("scipy_root_scalar.json", gen._scalar_root_task, gen.root_scalar_tasks()),
+        ("scipy_elementwise.json", gen._elementwise_task, gen.elementwise_tasks()),
+    ]
     for name, fn, tasks in jobs:
         for t in rnd.sample(tasks, 6):
             (cid, method), res = fn(t)
             # as text: NaN fields compare equal
-            assert json.dumps(res, sort_keys=True) == json.dumps(SCIPY[name][cid][method], sort_keys=True), \
-                (name, cid, method)
+            assert json.dumps(res, sort_keys=True) == json.dumps(SCIPY[name][cid][method], sort_keys=True), (
+                name,
+                cid,
+                method,
+            )
 
 
 # ---- the Fortran originals
+
 
 def _summary_rows(text, driver):
     block = text.split(f"== {driver}")[1].split("== ")[0]
@@ -155,20 +179,38 @@ def test_original_drivers_match_the_full_precision_runs():
         assert len(rows) == len(runs) == (53 if kind.startswith("lm") else 55)
         for v, r in zip(rows, runs):
             if kind.startswith("lm"):  # NPROB N M NFEV NJEV INFO FNORM
-                nprob, n, m, nfev, njev, info, fnorm = int(v[0]), int(v[1]), int(v[2]), int(v[3]), int(v[4]), \
-                    int(v[5]), float(v[6].replace("D", "E"))
+                nprob, n, m, nfev, njev, info, fnorm = (
+                    int(v[0]),
+                    int(v[1]),
+                    int(v[2]),
+                    int(v[3]),
+                    int(v[4]),
+                    int(v[5]),
+                    float(v[6].replace("D", "E")),
+                )
                 assert (nprob, n, m) == (r["nprob"], r["n"], r["m"])
                 assert nfev == r["calls_f"]
                 assert njev == (r["calls_j"] if kind == "lmder" else r["calls_d"] // n)
             else:  # NPROB N NFEV INFO FNORM (HYBRJ: NPROB N NFEV NJEV INFO FNORM)
                 if kind == "hybrj":
-                    nprob, n, nfev, njev, info, fnorm = int(v[0]), int(v[1]), int(v[2]), int(v[3]), int(v[4]), \
-                        float(v[5].replace("D", "E"))
+                    nprob, n, nfev, njev, info, fnorm = (
+                        int(v[0]),
+                        int(v[1]),
+                        int(v[2]),
+                        int(v[3]),
+                        int(v[4]),
+                        float(v[5].replace("D", "E")),
+                    )
                     assert njev == r["calls_j"]
                     assert nfev == r["calls_f"]
                 else:
-                    nprob, n, nfev, info, fnorm = int(v[0]), int(v[1]), int(v[2]), int(v[3]), \
-                        float(v[4].replace("D", "E"))
+                    nprob, n, nfev, info, fnorm = (
+                        int(v[0]),
+                        int(v[1]),
+                        int(v[2]),
+                        int(v[3]),
+                        float(v[4].replace("D", "E")),
+                    )
                     assert nfev == r["calls_f"] + r["calls_d"]
                 assert (nprob, n) == (r["nprob"], r["n"])
             assert info == r["info"]
@@ -223,4 +265,3 @@ def test_fortran_vs_scipy_records():
     good = [r for r in d["lmder"] if r["id"].startswith(("mgh17", "mgh19", "mgh08-n3-m15-x1", "mgh10"))]
     good = [r for r in good if r["fortran"]["info"] == r["scipy"]["info"] and 1 <= r["fortran"]["info"] <= 4]
     assert len(good) >= 5 and all(r["x_rel_difference"] < 1e-10 for r in good)
-

@@ -229,7 +229,8 @@ struct Normal {
             for (int i = 0; i < c.n; ++i) {
                 const double k = num::kInvSqrt2Pi / c.p[1][i];
                 out[i] *= k;
-                fast[i] = 2.5 * el[i] + ck::kVfExp + 3.5 <= kFastBudget && k >= 0x1p-1000 && k <= 0x1p1000;  // false for NaN
+                fast[i] =
+                    2.5 * el[i] + ck::kVfExp + 3.5 <= kFastBudget && k >= 0x1p-1000 && k <= 0x1p1000;  // false for NaN
             }
             return;
         }

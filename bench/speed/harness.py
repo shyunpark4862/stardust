@@ -143,7 +143,7 @@ def _run(cmd: Sequence[str], cwd: str | None = None, strip: bool = True) -> str:
     try:
         out = subprocess.run(list(cmd), capture_output=True, text=True, cwd=cwd, timeout=30).stdout
         return out.strip() if strip else out
-    except (OSError, subprocess.SubprocessError):
+    except OSError, subprocess.SubprocessError:
         return ""
 
 

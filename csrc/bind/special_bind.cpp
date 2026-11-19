@@ -55,7 +55,9 @@ std::map<std::string, std::int64_t>& weights() {
     return w;
 }
 template <typename Op>
-void record(const std::string& name) { weights()[name] = special::weight_of(Op::cost_ns); }
+void record(const std::string& name) {
+    weights()[name] = special::weight_of(Op::cost_ns);
+}
 
 // One elementwise function (bind/nary_bind.hpp), its weight recorded.
 template <typename Op>
@@ -65,7 +67,9 @@ void def_nary(nb::module_& m) {
 }
 
 template <typename... Ops>
-void def_naries(nb::module_& m) { (def_nary<Ops>(m), ...); }
+void def_naries(nb::module_& m) {
+    (def_nary<Ops>(m), ...);
+}
 
 // A complex128 operand: a complex sd.ndarray or a Python complex (S8: the functions
 // that take complex choose their complex loop by the input, not by promotion).
@@ -87,7 +91,8 @@ void def_real_complex(nb::module_& m) {
                 return is_complex_operand(x) ? call<Complex>(objs, out) : call<Real>(objs, out);
             });
         },
-        nb::arg().none(), nb::kw_only(), nb::arg("out").none() = nb::none());
+        nb::arg().none(), nb::kw_only(), nb::arg("out").none() = nb::none()
+    );
 }
 
 // For tests: how many tasks the iterator cuts a contiguous float64
@@ -115,8 +120,9 @@ void bind_special(nb::module_& core) {
     def_naries<Gamma, Rgamma, Gammaln, Digamma, Polygamma, Beta, Betaln, Binom>(m);  // S3, §3
     def_naries<Gammainc, Gammaincc, Gammaincinv, Gammainccinv>(m);  // S4, §3
     def_naries<Betainc, Betaincc, Betaincinv, Betainccinv>(m);  // S4, §3
-    def_naries<Stdtr, Stdtrit, Chdtr, Chdtrc, Chdtri, Fdtr, Fdtrc, Fdtri, Pdtr, Pdtrc, Bdtr, Bdtrc, Nbdtr, Nbdtrc,
-               NdtriExp>(m);  // T1, §13
+    def_naries<
+        Stdtr, Stdtrit, Chdtr, Chdtrc, Chdtri, Fdtr, Fdtrc, Fdtri, Pdtr, Pdtrc, Bdtr, Bdtrc, Nbdtr, Nbdtrc,
+        NdtriExp>(m);  // T1, §13
     def_naries<Chndtr, Chndtrc, Chndtrix, Nctdtr, Nctdtrc, Nctdtrit, Ncfdtr, Ncfdtrc, Ncfdtri>(m);  // T2, §14
     def_naries<Expi, Expn, Ellipk, Ellipe>(m);  // S5, §7, §10
     def_naries<EllipkAgm, EllipeCarlson>(m);  // S5 measurement variants (the design's methods)
@@ -144,12 +150,14 @@ void bind_special(nb::module_& core) {
                 }
                 int overflow = 0;  // a k beyond long is neither 0 nor -1 (not -1 by PyLong_AsLong's error value)
                 const long kv = PyLong_AsLongAndOverflow(k.ptr(), &overflow);
-                if (overflow != 0 || (kv != 0 && kv != -1)) throw nb::value_error("'k' must be 0 or -1 for a real argument");
+                if (overflow != 0 || (kv != 0 && kv != -1))
+                    throw nb::value_error("'k' must be 0 or -1 for a real argument");
                 const nb::handle objs[] = {x};
                 return kv == 0 ? call<Lambertw0>(objs, out) : call<LambertwM1>(objs, out);
             });
         },
-        nb::arg().none(), nb::kw_only(), nb::arg("k").none() = 0, nb::arg("out").none() = nb::none());
+        nb::arg().none(), nb::kw_only(), nb::arg("k").none() = 0, nb::arg("out").none() = nb::none()
+    );
     // airy(x, /) -> AiryResult(ai, aip, bi, bip) (§9; stardust._results)
     record<Airy>("airy");
     m.def(
@@ -159,11 +167,13 @@ void bind_special(nb::module_& core) {
                 const nb::handle objs[] = {x};
                 const nb::object t = call<Airy>(objs, nb::none());
                 // the namedtuple type, looked up once (kept for the module's lifetime)
-                static const nb::handle cls = nb::object(nb::module_::import_("stardust._results").attr("AiryResult")).release();
+                static const nb::handle cls =
+                    nb::object(nb::module_::import_("stardust._results").attr("AiryResult")).release();
                 return cls(*t);
             });
         },
-        nb::arg().none());
+        nb::arg().none()
+    );
     def_naries<GammaLanczos>(m);  // S3 measurement variant (gamma candidate A)
     // zeta(x, q=None, /, *, out=None): Riemann with one argument, Hurwitz with two (§7)
     record<Zeta>("zeta");
@@ -180,21 +190,26 @@ void bind_special(nb::module_& core) {
                 return call<Hurwitz>(objs, out);
             });
         },
-        nb::arg().none(), nb::arg().none() = nb::none(), nb::kw_only(), nb::arg("out").none() = nb::none());
+        nb::arg().none(), nb::arg().none() = nb::none(), nb::kw_only(), nb::arg("out").none() = nb::none()
+    );
     // S5 reductions (§6): the array's max and pairwise sum (special/reduce.cpp)
     m.def(
         "logsumexp",
         [](nb::handle x, nb::handle axis, nb::handle keepdims) {
             return call_named("logsumexp", [&] { return logsumexp(x, axis, keepdims); });
         },
-        nb::arg().none(), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims").none() = false);
+        nb::arg().none(), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims").none() = false
+    );
     m.def(
-        "softmax", [](nb::handle x, nb::handle axis) { return call_named("softmax", [&] { return softmax(x, axis); }); },
-        nb::arg().none(), nb::kw_only(), nb::arg("axis").none() = nb::none());
+        "softmax",
+        [](nb::handle x, nb::handle axis) { return call_named("softmax", [&] { return softmax(x, axis); }); },
+        nb::arg().none(), nb::kw_only(), nb::arg("axis").none() = nb::none()
+    );
     m.def(
         "log_softmax",
         [](nb::handle x, nb::handle axis) { return call_named("log_softmax", [&] { return log_softmax(x, axis); }); },
-        nb::arg().none(), nb::kw_only(), nb::arg("axis").none() = nb::none());
+        nb::arg().none(), nb::kw_only(), nb::arg("axis").none() = nb::none()
+    );
     def_naries<Fma3, Sum4, Powers4, CfTan>(m);  // engine tests (special/ops/testing.hpp)
     m.def("_parallel_tasks", &parallel_tasks, nb::arg("n"), nb::arg("weight"));
     m.def(
@@ -205,7 +220,8 @@ void bind_special(nb::module_& core) {
             if (name.rfind("lambertw_c", 0) == 0) return w.at("lambertw_c");  // lambertw_c0, lambertw_cm1, ...
             throw nb::key_error(name.c_str());
         },
-        nb::arg("name"));
+        nb::arg("name")
+    );
 }
 
 }  // namespace sd

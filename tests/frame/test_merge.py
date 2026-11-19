@@ -17,8 +17,12 @@ import stardust as sd
 
 NA = sd.frame.NA
 EXAMPLES = int(os.environ.get("SDPD_EXAMPLES", 300))
-KEYS = {"int64": st.integers(-2, 2), "float64": st.sampled_from([0.0, -0.0, 1.5, math.nan]),
-        "string": st.sampled_from(["a", "b", ""]), "bool": st.booleans()}
+KEYS = {
+    "int64": st.integers(-2, 2),
+    "float64": st.sampled_from([0.0, -0.0, 1.5, math.nan]),
+    "string": st.sampled_from(["a", "b", ""]),
+    "bool": st.booleans(),
+}
 
 
 def norm(v):
@@ -27,6 +31,7 @@ def norm(v):
 
 def oracle(lk, rk, how):
     """(left row, right row) pairs in the order of docs/api/frame.md §9.1; None = no row."""
+
     def matches(a, b):
         return all(x is not NA and y is not NA and norm(x) == norm(y) for x, y in zip(a, b))
 
@@ -54,10 +59,19 @@ def test_merge_rows_and_order(data):
     lk = [tuple(data.draw(KEYS[dt] | st.none()) for dt in dts) for _ in range(nl)]
     rk = [tuple(data.draw(KEYS[dt] | st.none()) for dt in dts) for _ in range(nr)]
     names = [f"k{j}" for j in range(nkeys)]
-    left = sd.frame.DataFrame({**{k: sd.frame.Series([t[j] for t in lk], dtype=dt) for j, (k, dt) in enumerate(zip(names, dts))},
-                           "lid": list(range(nl))}, dtype=None)
-    right = sd.frame.DataFrame({**{k: sd.frame.Series([t[j] for t in rk], dtype=dt) for j, (k, dt) in enumerate(zip(names, dts))},
-                            "rid": list(range(nr))})
+    left = sd.frame.DataFrame(
+        {
+            **{k: sd.frame.Series([t[j] for t in lk], dtype=dt) for j, (k, dt) in enumerate(zip(names, dts))},
+            "lid": list(range(nl)),
+        },
+        dtype=None,
+    )
+    right = sd.frame.DataFrame(
+        {
+            **{k: sd.frame.Series([t[j] for t in rk], dtype=dt) for j, (k, dt) in enumerate(zip(names, dts))},
+            "rid": list(range(nr)),
+        }
+    )
     lk = [tuple(left[k].tolist()[i] for k in names) for i in range(nl)]  # as stored (None -> NA)
     rk = [tuple(right[k].tolist()[i] for k in names) for i in range(nr)]
     how = data.draw(st.sampled_from(["inner", "left", "right", "outer"]))

@@ -93,8 +93,14 @@ NDArray new_result(std::span<const nb::handle> objs, std::span<const std::int64_
 // (`in_types`) are converted through small buffers on the way in. `weight`
 // is the loop's work per element in units of an add (the iterator's
 // parallel threshold, docs/design/special.md §3.3); 1 for the array's own.
-void run_loop(std::span<const NDArray> ins, std::span<const DType> in_types, std::span<const NDArray> outs,
-              std::span<const std::int64_t> shape, Loop loop, std::int64_t weight) {
+void run_loop(
+    std::span<const NDArray> ins,
+    std::span<const DType> in_types,
+    std::span<const NDArray> outs,
+    std::span<const std::int64_t> shape,
+    Loop loop,
+    std::int64_t weight
+) {
     std::array<IterOperand, kMaxOperands> ops;
     BufferedLoop buffered;
     buffered.inner = loop;
@@ -116,8 +122,9 @@ void run_loop(std::span<const NDArray> ins, std::span<const DType> in_types, std
 // buffers (n = 1), with no arrays and no iterator. The same loop the array path
 // runs, on the same converted values: the same bits (f(x)[i] == f(x[i])); about
 // 90 ns less per call.
-nb::object launch_scalars(std::span<const nb::handle> objs, std::span<const DType> in_types, DType result, Loop loop,
-                          int nout) {
+nb::object launch_scalars(
+    std::span<const nb::handle> objs, std::span<const DType> in_types, DType result, Loop loop, int nout
+) {
     const size_t nin = objs.size();
     alignas(16) std::byte buf[kMaxOperands][16];
     std::array<std::byte*, kMaxOperands> args;
@@ -154,8 +161,14 @@ nb::object launch_scalars(std::span<const nb::handle> objs, std::span<const DTyp
 // would (NdIter::plan: weight x bytes x elements, docs/design/array.md §10.2).
 inline constexpr std::int64_t kOverlapChunk = 1024;  // 16 KB per buffered input (complex)
 
-bool overlap_in_chunks(std::span<const NDArray> ins, std::span<const DType> in_types, const std::array<bool, kMaxInputs>& overlaps,
-                       NDArray& out, Loop loop, std::int64_t weight) {
+bool overlap_in_chunks(
+    std::span<const NDArray> ins,
+    std::span<const DType> in_types,
+    const std::array<bool, kMaxInputs>& overlaps,
+    NDArray& out,
+    Loop loop,
+    std::int64_t weight
+) {
     if (out.ndim != 1 || parallel::available()) return false;
     const std::int64_t n = out.shape[0], st = out.strides[0], w = out.itemsize();
     if (st == 0 || n < 2 * kOverlapChunk) return false;
@@ -206,8 +219,15 @@ bool overlap_in_chunks(std::span<const NDArray> ins, std::span<const DType> in_t
 // Steps 3 and 4 (see ufunc.hpp): convert, then run into out= or a new array.
 // With nout > 1 the loop writes nout results of dtype `result`, returned as
 // a tuple; there is no out= then (the caller passes None).
-nb::object launch(std::span<const nb::handle> objs, std::span<const DType> in_types, DType result, Loop loop,
-                  nb::handle out_obj, int nout = 1, std::int64_t weight = 1) {
+nb::object launch(
+    std::span<const nb::handle> objs,
+    std::span<const DType> in_types,
+    DType result,
+    Loop loop,
+    nb::handle out_obj,
+    int nout = 1,
+    std::int64_t weight = 1
+) {
     const size_t nin = objs.size();
     if (out_obj.is_none() && std::ranges::none_of(objs, [](nb::handle o) { return is_ndarray(o); }))
         return launch_scalars(objs, in_types, result, loop, nout);
@@ -240,7 +260,8 @@ nb::object launch(std::span<const nb::handle> objs, std::span<const DType> in_ty
                 overlaps[k] = may_share_memory(ins[k], out) && !same_view(ins[k], out);
                 any_overlap |= overlaps[k];
             }
-            if (any_overlap && overlap_in_chunks(inputs, in_types, overlaps, out, loop, weight)) return nb::borrow(out_obj);
+            if (any_overlap && overlap_in_chunks(inputs, in_types, overlaps, out, loop, weight))
+                return nb::borrow(out_obj);
             for (size_t k = 0; k < nin; ++k)
                 if (overlaps[k]) ins[k] = cast_copy(ins[k], ins[k].dtype);
             run_loop(inputs, in_types, std::span(&out, 1), out.shape_span(), loop, weight);
@@ -274,7 +295,8 @@ nb::object launch(std::span<const nb::handle> objs, std::span<const DType> in_ty
 
 template <typename T> constexpr Loop where_entry = &where_loop<T>;
 constexpr std::array<Loop, kNumArrayDTypes> where_loops = {
-    where_entry<bool>, where_entry<std::int64_t>, where_entry<double>, where_entry<complex128>};
+    where_entry<bool>, where_entry<std::int64_t>, where_entry<double>, where_entry<complex128>
+};
 
 nb::object where(nb::handle cond, nb::handle x1, nb::handle x2, nb::handle out) {
     const DType dc = operand_dtype(cond, "condition");
@@ -293,7 +315,8 @@ nb::object where(nb::handle cond, nb::handle x1, nb::handle x2, nb::handle out) 
 // (docs/design/array.md §2.6).
 template <typename T> constexpr Loop clip_entry = &clip_loop<T>;
 constexpr std::array<Loop, kNumArrayDTypes> clip_loops = {
-    clip_entry<bool>, clip_entry<std::int64_t>, clip_entry<double>, nullptr};
+    clip_entry<bool>, clip_entry<std::int64_t>, clip_entry<double>, nullptr
+};
 
 // An array min/max broadcasts to x, never x to it: the result has x's shape
 // (docs/api/array.md §6.4).
@@ -348,12 +371,14 @@ nb::object run_unary(const LoopTable& table, nb::handle x, nb::handle out, const
     const DType loop = select(table, d, std::span(&d, 1), symbol);
     const nb::handle objs[] = {x};
     check_int_scalars(objs, d);
-    return launch(objs, std::span(&loop, 1), table[static_cast<int>(loop)].out, table[static_cast<int>(loop)].loop,
-                  out);
+    return launch(
+        objs, std::span(&loop, 1), table[static_cast<int>(loop)].out, table[static_cast<int>(loop)].loop, out
+    );
 }
 
-nb::object run_binary(const LoopTable& table, bool no_bool_inputs, nb::handle a, nb::handle b, nb::handle out,
-                      const char* symbol) {
+nb::object run_binary(
+    const LoopTable& table, bool no_bool_inputs, nb::handle a, nb::handle b, nb::handle out, const char* symbol
+) {
     const DType dtypes[] = {operand_dtype(a, "x1"), operand_dtype(b, "x2")};
     if (no_bool_inputs && (dtypes[0] == DType::Bool || dtypes[1] == DType::Bool)) no_loop(dtypes, symbol);
     const DType promoted = promote(dtypes[0], dtypes[1]);
@@ -364,8 +389,14 @@ nb::object run_binary(const LoopTable& table, bool no_bool_inputs, nb::handle a,
     return launch(objs, types, table[static_cast<int>(loop)].out, table[static_cast<int>(loop)].loop, out);
 }
 
-nb::object run_nary(const LoopTable& table, int nout, std::span<const char* const> names,
-                    std::span<const nb::handle> objs, nb::handle out, std::int64_t weight) {
+nb::object run_nary(
+    const LoopTable& table,
+    int nout,
+    std::span<const char* const> names,
+    std::span<const nb::handle> objs,
+    nb::handle out,
+    std::int64_t weight
+) {
     const size_t nin = objs.size();
     std::array<DType, kMaxInputs> dtypes;
     for (size_t k = 0; k < nin; ++k) dtypes[k] = operand_dtype(objs[k], names[k]);
@@ -383,35 +414,56 @@ namespace {
 
 template <typename Op>
 void def_unary(nb::module_& m) {
-    m.def(Op::name, named(Op::name, +[](nb::handle x, nb::handle out) { return unary<Op>(x, out); }), nb::arg().none(),
-          nb::kw_only(), nb::arg("out").none() = nb::none());
+    m.def(
+        Op::name,
+        named(
+            Op::name, +[](nb::handle x, nb::handle out) { return unary<Op>(x, out); }
+        ),
+        nb::arg().none(), nb::kw_only(), nb::arg("out").none() = nb::none()
+    );
 }
 
 template <typename Op>
 void def_binary(nb::module_& m) {
-    m.def(Op::name, named(Op::name, +[](nb::handle a, nb::handle b, nb::handle out) { return binary<Op>(a, b, out); }),
-          nb::arg().none(), nb::arg().none(), nb::kw_only(), nb::arg("out").none() = nb::none());
+    m.def(
+        Op::name,
+        named(
+            Op::name, +[](nb::handle a, nb::handle b, nb::handle out) { return binary<Op>(a, b, out); }
+        ),
+        nb::arg().none(), nb::arg().none(), nb::kw_only(), nb::arg("out").none() = nb::none()
+    );
 }
 
 template <typename... Ops>
-void def_unaries(nb::module_& m) { (def_unary<Ops>(m), ...); }
+void def_unaries(nb::module_& m) {
+    (def_unary<Ops>(m), ...);
+}
 
 template <typename... Ops>
-void def_binaries(nb::module_& m) { (def_binary<Ops>(m), ...); }
+void def_binaries(nb::module_& m) {
+    (def_binary<Ops>(m), ...);
+}
 
 }  // namespace
 
 void bind_ufuncs(nb::module_& m) {
     using namespace ops;
-    def_binaries<Add, Subtract, Multiply, Divide, FloorDivide, Remainder, Pow, Atan2, Maximum, Minimum,
-                 Equal, NotEqual, Less, LessEqual, Greater, GreaterEqual, LogicalAnd, LogicalOr, LogicalXor,
-                 BitwiseAnd, BitwiseOr, BitwiseXor, LeftShift, RightShift, Copysign, Hypot, Logaddexp, Nextafter>(m);
-    def_unaries<Negative, Positive, Abs, Square, Sqrt, Sign, Exp, Expm1, Log, Log1p, Log2, Log10, Sin, Cos, Tan,
-                Asin, Acos, Atan, Sinh, Cosh, Tanh, Asinh, Acosh, Atanh, Floor, Ceil, Trunc, Round, IsNan, IsInf,
-                IsFinite, LogicalNot, BitwiseInvert, Conj, Reciprocal, Signbit>(m);
-    m.def("where", named("where", &where), nb::arg().none(), nb::arg().none(), nb::arg().none(), nb::kw_only(), nb::arg("out").none() = nb::none());
-    m.def("clip", named("clip", &clip), nb::arg().none(), nb::kw_only(), nb::arg("min").none() = nb::none(),
-          nb::arg("max").none() = nb::none(), nb::arg("out").none() = nb::none());
+    def_binaries<
+        Add, Subtract, Multiply, Divide, FloorDivide, Remainder, Pow, Atan2, Maximum, Minimum, Equal, NotEqual, Less,
+        LessEqual, Greater, GreaterEqual, LogicalAnd, LogicalOr, LogicalXor, BitwiseAnd, BitwiseOr, BitwiseXor,
+        LeftShift, RightShift, Copysign, Hypot, Logaddexp, Nextafter>(m);
+    def_unaries<
+        Negative, Positive, Abs, Square, Sqrt, Sign, Exp, Expm1, Log, Log1p, Log2, Log10, Sin, Cos, Tan, Asin, Acos,
+        Atan, Sinh, Cosh, Tanh, Asinh, Acosh, Atanh, Floor, Ceil, Trunc, Round, IsNan, IsInf, IsFinite, LogicalNot,
+        BitwiseInvert, Conj, Reciprocal, Signbit>(m);
+    m.def(
+        "where", named("where", &where), nb::arg().none(), nb::arg().none(), nb::arg().none(), nb::kw_only(),
+        nb::arg("out").none() = nb::none()
+    );
+    m.def(
+        "clip", named("clip", &clip), nb::arg().none(), nb::kw_only(), nb::arg("min").none() = nb::none(),
+        nb::arg("max").none() = nb::none(), nb::arg("out").none() = nb::none()
+    );
 }
 
 }  // namespace sd

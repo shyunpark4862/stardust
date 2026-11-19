@@ -94,8 +94,7 @@ def by_position(n, key, what="rows"):
             if not -n <= p < n:
                 raise IndexError(f"position {p} is out of range for {n} {what}")
         return ("take", Column.from_list([int(p) + n if p < 0 else int(p) for p in positions], None, "int64"))
-    raise IndexError(f"cannot select {what} by position with {type_name(key)}; "
-                     "use an int, a slice or a list of ints")
+    raise IndexError(f"cannot select {what} by position with {type_name(key)}; use an int, a slice or a list of ints")
 
 
 def positions_column(sel):
@@ -195,4 +194,3 @@ def reindexed(col, index, target, func=None):
     if same_index(index, target):
         return col
     return col.take(index._get_indexer(target, func))
-

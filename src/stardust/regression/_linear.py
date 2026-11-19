@@ -44,6 +44,7 @@ def _type_name(v):
 
 # ---- argument checks (the message forms of API.md §2.1 and of sd.stats / sd.linalg)
 
+
 def _check_bool(v, func, arg):
     if v is not True and v is not False:
         raise TypeError(f"{func}(): '{arg}' must be True or False, not {_type_name(v)}")
@@ -132,7 +133,7 @@ def _groups(groups, func, n, cov_type):
             a = _sd.asarray(groups)  # numbers (a batch of them too)
         except OverflowError:
             raise OverflowError(f"{func}(): Python int too large to convert to int64") from None
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             a = None
         if a is None:
             # strings (or mixed labels): numbered in order of first appearance
@@ -147,8 +148,9 @@ def _groups(groups, func, n, cov_type):
                 try:
                     out.append(seen.setdefault(v, len(seen)))
                 except TypeError:
-                    raise TypeError(f"{func}(): the labels in 'groups' must be strings or numbers, "
-                                    f"not {_type_name(v)}") from None
+                    raise TypeError(
+                        f"{func}(): the labels in 'groups' must be strings or numbers, not {_type_name(v)}"
+                    ) from None
             codes = _sd.asarray(out, dtype=_sd.int64)
             miss = codes < 0
             return codes, len(seen), (miss if bool(_sd.any(miss)) else None)
@@ -210,7 +212,7 @@ def _number_or_1d(v, func, arg, scalar="a number"):
         a = v if isinstance(v, _sd.ndarray) else _sd.asarray(v)
     except OverflowError:
         raise OverflowError(f"{func}(): '{arg}' is out of range") from None
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         raise TypeError(f"{what}, not {_seq_name(v)}") from None
     if a.dtype == _sd.complex128:
         raise TypeError(f"{func}(): '{arg}' must be real, not a complex128 array")
@@ -235,7 +237,7 @@ def _as_real(x, func, arg, per_row=None):
             names = [str(c) for c in x.columns]
         try:
             a = x.to_array(dtype=_sd.float64, na_value=math.nan)
-        except (TypeError, ValueError):  # a string column is a ValueError of to_array
+        except TypeError, ValueError:  # a string column is a ValueError of to_array
             raise TypeError(f"{func}(): '{arg}' must have numeric columns") from None
         return a, names
     if isinstance(x, _sd.ndarray):
@@ -251,9 +253,11 @@ def _as_real(x, func, arg, per_row=None):
             a = _sd.asarray(x)
         except OverflowError:
             raise OverflowError(f"{func}(): Python int too large to convert to float64") from None
-        except (TypeError, ValueError):
-            raise TypeError(f"{func}(): '{arg}' must be an sd.ndarray, a sequence of numbers or a frame "
-                            f"Series or DataFrame, not {_seq_name(x)}") from None
+        except TypeError, ValueError:
+            raise TypeError(
+                f"{func}(): '{arg}' must be an sd.ndarray, a sequence of numbers or a frame "
+                f"Series or DataFrame, not {_seq_name(x)}"
+            ) from None
     if a.dtype == _sd.complex128:
         raise TypeError(f"{func}(): '{arg}' must be real, not a complex128 array")
     if a.dtype != _sd.float64:
@@ -342,13 +346,24 @@ def _expand(v, nd):
 
 # ---- the result object
 
+
 class _RegressionResult:
     """What every regression result shares (the linear models' and the GLM's): the kernel's
     raw output (params, cov, R, ., ., kept, stats, ...), the cached fields, the coefficients'
     inference and the design checks of predictions. statsmodels' names (G10); the intercept
     is params[0]."""
 
-    __slots__ = ("_raw", "_cache", "_param_names", "_cov_type", "_intercept", "_batch", "_extra", "_fitargs", "_columns")
+    __slots__ = (
+        "_raw",
+        "_cache",
+        "_param_names",
+        "_cov_type",
+        "_intercept",
+        "_batch",
+        "_extra",
+        "_fitargs",
+        "_columns",
+    )
     # the positions of the shared scalars in the kernel's stats
     _I_NOBS, _I_RANK, _I_ISNAN, _I_NGROUPS, _I_LAGS = _NOBS, _RANK, _ISNAN, _NGROUPS, _LAGS
 
@@ -357,13 +372,13 @@ class _RegressionResult:
         if not isinstance(raw, list):
             raw = list(raw)
         raw[0] = raw[0] + 0.0
-        self._raw = raw          # params, cov, R, fitted, resid, kept, stats
+        self._raw = raw  # params, cov, R, fitted, resid, kept, stats
         self._columns = columns  # the fit's DataFrame column names, or None
         self._cache = {}
         self._param_names = param_names
         self._cov_type = cov_type
         self._intercept = intercept
-        self._batch = batch      # the batch shape, () for one regression
+        self._batch = batch  # the batch shape, () for one regression
         self._extra = extra or {}
         # what the kernel was given (func, y, X, w, u, rtol, group codes, their count): the
         # diagnostics refactor or refit the same whitened problem
@@ -442,11 +457,13 @@ class _RegressionResult:
     # -- inference
     def cov_params(self):
         """The covariance of the parameters (k x k); rows and columns of aliased parameters are NaN."""
+
         def make():
             c = self._raw[1]
             if self._robust:
                 return c
             return self._per(self.scale, 2) * c
+
         return self._cached("cov_params", make)
 
     @property
@@ -491,9 +508,11 @@ class _RegressionResult:
     # -- prediction
     def _beff(self):
         """params with 0 for the aliased columns: the fit's own (finite) design times it."""
+
         def make():
             keep = _sd.logical_or(self._raw[5], self._per(self._isnan(), 1))
             return _sd.where(keep, self.params, 0.0)
+
         return self._cached("beff", make)
 
     def _pred_args(self):
@@ -501,9 +520,11 @@ class _RegressionResult:
         the model, whatever their coefficient (a NaN in X_new there gives NaN, also under a
         coefficient 0), and 0.0 for the aliased ones, which take no part (R's predict.lm); every
         column of a NaN regression, whose NaN params give NaN."""
+
         def make():
             keep = _sd.logical_or(self._raw[5], self._per(self._isnan(), 1))
             return self.params, _sd.where(keep, 1.0, 0.0)
+
         return self._cached("pred_args", make)
 
     def _shape_X(self, Xn):
@@ -566,8 +587,10 @@ class _RegressionResult:
         return _sd.stack([mean - half, mean + half], axis=-1)
 
 
-_TAKES = re.compile(r"takes (from (\d+) to )?(\d+) positional arguments? but (\d+)( positional arguments?)?(.*) "
-                    r"(was|were) given")
+_TAKES = re.compile(
+    r"takes (from (\d+) to )?(\d+) positional arguments? but (\d+)( positional arguments?)?(.*) "
+    r"(was|were) given"
+)
 
 
 def _call_message(name, rest):
@@ -585,7 +608,7 @@ def _call_message(name, rest):
             tail = f" positional argument{'' if got == 1 else 's'}{tail}"
         rest = f"takes {span} positional {noun} but {got}{tail} {was} given"
     elif rest.startswith("got an unexpected"):
-        rest = rest[len("got an "):]
+        rest = rest[len("got an ") :]
     return f"{name}(): {rest}"
 
 
@@ -610,9 +633,11 @@ def _call_errors(cls):
                     # only the call's own binding error (no frame of fn beneath this one)
                     if not msg.startswith(head) or e.__traceback__.tb_next is not None:
                         raise
-                    raise TypeError(_call_message(name, msg[len(head):])) from None
+                    raise TypeError(_call_message(name, msg[len(head) :])) from None
+
             method._call_errors = True
             return method
+
         setattr(cls, name, make())
     return cls
 
@@ -709,12 +734,14 @@ class _LinearResult(_RegressionResult):
     def _ess_s(self):
         """The explained sum of squares in the fit's units: summed directly where it is the
         smaller part of the total (R^2 < 1/2, where tss - ssr would cancel), else tss - ssr."""
+
         def make():
             e, s, t = self._ess_direct(), self._ssr_s(), self._tss()
             # a constant y (TSS exactly 0) leaves nothing to explain: ESS 0 (G85)
             if self._batch:
                 return _sd.where(t == 0.0, 0.0, _sd.where(e < s, e, t - s))
             return 0.0 if t == 0.0 else (e if e < s else t - s)
+
         return self._cached("ess_s", make)
 
     @property
@@ -741,6 +768,7 @@ class _LinearResult(_RegressionResult):
             if self._batch:
                 return self._no_tss(_sd.where(e < s, e / t, 1.0 - s / t))
             return self._no_tss(_div(e, t) if e < s else 1.0 - _div(s, t))
+
         return self._cached("rsquared", make)
 
     @property
@@ -748,6 +776,7 @@ class _LinearResult(_RegressionResult):
         def make():
             c = 1.0 if self._intercept else 0.0
             return 1.0 - _div(self.nobs - c, self.df_resid) * self._one_minus_r2()
+
         return self._cached("rsquared_adj", make)
 
     def _scale_s(self):
@@ -771,6 +800,7 @@ class _LinearResult(_RegressionResult):
             if "logdet" in self._extra:
                 v = v - self._extra["logdet"] / 2
             return v
+
         return self._cached("llf", make)
 
     @property
@@ -792,6 +822,7 @@ class _LinearResult(_RegressionResult):
             if self._batch:
                 return self._no_tss(_sd.where(dfm == 0.0, math.nan, f))
             return self._no_tss(math.nan if dfm == 0 else f)
+
         return self._cached("fvalue", make)
 
     @property
@@ -799,6 +830,7 @@ class _LinearResult(_RegressionResult):
         def make():
             dfn = self._stat(_WALDQ) if self._robust else self.df_model
             return self._scalar(_F(dfn=_arg(dfn), dfd=_arg(self._df_inference())).ccdf(_arg(self.fvalue)))
+
         return self._cached("f_pvalue", make)
 
     # -- the covariance (in the fit's units, then scaled once)
@@ -812,6 +844,7 @@ class _LinearResult(_RegressionResult):
                     return _sd.where(_expand(df == 0.0, 2), math.nan, c)
                 return c * math.nan if df == 0 else c
             return self._per(self._scale_s(), 2) * c
+
         return self._cached("cov_s", make)
 
     def _colfactor(self):
@@ -824,12 +857,14 @@ class _LinearResult(_RegressionResult):
 
     def cov_params(self):
         """The covariance of the parameters (k x k); rows and columns of aliased parameters are NaN."""
+
         def make():
             g = self._colfactor()
             c = self._cov_s()
             if g is None:
                 return c
             return c * (_sd.expand_dims(g, axis=-1) * _sd.expand_dims(g, axis=-2))
+
         return self._cached("cov_params", make)
 
     @property
@@ -838,6 +873,7 @@ class _LinearResult(_RegressionResult):
             b = _sd.sqrt(_linalg.diagonal(self._cov_s()))
             g = self._colfactor()
             return b if g is None else b * g
+
         return self._cached("bse", make)
 
     @property
@@ -848,6 +884,7 @@ class _LinearResult(_RegressionResult):
             # the fit's own units, beta' / sqrt(C'): neither can leave the doubles there, while a
             # parameter or its standard error in the data's units may overflow or underflow
             return (self._extra["beff_params_s"] + 0.0) / _sd.sqrt(_linalg.diagonal(self._cov_s()))
+
         return self._cached("tvalues", make)
 
     def conf_int(self, *, alpha=0.05):
@@ -889,6 +926,7 @@ class _LinearResult(_RegressionResult):
     def _wresid(self):
         """The whitened residuals e~ in the fit's units: resid (OLS), sqrt(w) resid (WLS), L^-1
         resid (GLS); 0 for a perfect fit (ssr 0: residuals within rounding, G95)."""
+
         def make():
             func, y, X, w, u, tol, codes, gtot = self._fitargs
             r = self._extra.get("resid_s", self.resid)
@@ -911,49 +949,60 @@ class _LinearResult(_RegressionResult):
             if self._batch:
                 return _sd.where(_expand(zero, 1), 0.0, e)
             return _sd.zeros(tuple(e.shape)) if zero else e
+
         return self._cached("wresid", make)
 
     @property
     def leverage(self):
         """The hat values h_t (..., n): the diagonal of the hat matrix, ||q_t||^2 from the thin Q
         of the fit's QR (no X^T X is formed). 0 for rows with weight 0."""
+
         def make():
             func, y, X, w, u, tol, codes, gtot = self._fitargs
             return _k.fit(func, y, X, w, u, self._intercept, tol, 0, 0, codes, gtot, -1, True)
+
         return self._cached("leverage", make)
 
     @property
     def resid_studentized_internal(self):
         """e~_t / (s sqrt(1 - h_t)), s^2 = scale (statsmodels' resid_studentized_internal, R's rstandard)."""
+
         def make():
             return self._wresid() / _sd.sqrt(self._per(self._scale_s()) * (1.0 - self.leverage))
+
         return self._cached("resid_studentized_internal", make)
 
     @property
     def resid_studentized_external(self):
         """e~_t / (s_(t) sqrt(1 - h_t)) with s_(t) the residual scale without row t (statsmodels'
         resid_studentized_external, R's rstudent): r sqrt((df - 1) / (df - r^2)), r the internal one."""
+
         def make():
             r = self.resid_studentized_internal
             df = self._per(self.df_resid)
             return r * _sd.sqrt((df - 1.0) / (df - r * r))
+
         return self._cached("resid_studentized_external", make)
 
     @property
     def cooks_distance(self):
         """Cook's distance r_t^2 / rank * h_t / (1 - h_t), r the internal studentized residual
         (R's cooks.distance; statsmodels' cooks_distance[0])."""
+
         def make():
             r, h = self.resid_studentized_internal, self.leverage
             return r * r / self._per(self._stat(_RANK)) * (h / (1.0 - h))
+
         return self._cached("cooks_distance", make)
 
     def _resid_stat(self, i):
         """The whitened residuals' sums over the fit's rows (the kernel's resid_stats, double-
         double): 0 Durbin-Watson's numerator, 1-3 the central sums of powers 2, 3, 4."""
+
         def make():
             w = self._fitargs[3]
             return _k.resid_stats(self._wresid(), w)
+
         v = self._cached("resid_stats", make)[..., i]
         return float(v) if not self._batch else v
 
@@ -966,6 +1015,7 @@ class _LinearResult(_RegressionResult):
         """JarqueBeraResult(statistic, pvalue): n/6 (S^2 + (K - 3)^2 / 4) with the skewness S and
         kurtosis K of the whitened residuals (central moments over n, summed in double-double),
         against chi-square with 2 degrees of freedom (statsmodels' jarque_bera of wresid)."""
+
         def make():
             n = self.nobs
             mu2 = _div(self._resid_stat(1), n)
@@ -975,6 +1025,7 @@ class _LinearResult(_RegressionResult):
             jb = n / 6.0 * (skew * skew + ek * ek / 4.0)
             p = self._scalar(_ChiSquared(df=2.0).ccdf(_arg(jb)))
             return _results.JarqueBeraResult(jb, p)
+
         return self._cached("jarque_bera", make)
 
     def breusch_pagan(self, *, studentize=True):
@@ -1020,6 +1071,7 @@ class _LinearResult(_RegressionResult):
                 df = math.nan
             p = self._scalar(_ChiSquared(df=_arg(df)).ccdf(_arg(lm)))
             return _results.BreuschPaganResult(lm, p, a.fvalue, a.f_pvalue)
+
         return self._cached(("breusch_pagan", studentize), make)
 
     # -- summary (G13)
@@ -1045,16 +1097,19 @@ _call_errors(_LinearResult)
 
 class OLSResult(_LinearResult):
     """The result of sd.regression.ols."""
+
     __slots__ = ()
 
 
 class WLSResult(_LinearResult):
     """The result of sd.regression.wls."""
+
     __slots__ = ()
 
 
 class GLSResult(_LinearResult):
     """The result of sd.regression.gls."""
+
     __slots__ = ()
 
 
@@ -1140,11 +1195,23 @@ def _summary(r, alpha=0.05):
     name = type(r).__name__[:3]
     stars = "=" * _WIDTH
     lines = [f"{name} Regression Results".center(_WIDTH).rstrip(), stars]
-    left = [("Model:", name), ("Method:", "Least Squares"), ("No. Observations:", _count(r.nobs)),
-            ("Df Residuals:", _count(r.df_resid)), ("Df Model:", _count(r.df_model)), ("Covariance Type:", r.cov_type)]
-    right = [("R-squared:", f"{r.rsquared:#.3f}"), ("Adj. R-squared:", f"{r.rsquared_adj:#.3f}"),
-             ("F-statistic:", f"{r.fvalue:#.4g}"), ("Prob (F-statistic):", f"{r.f_pvalue:#.3g}"),
-             ("Log-Likelihood:", f"{r.llf:#.5g}"), ("AIC:", f"{r.aic:#.4g}"), ("BIC:", f"{r.bic:#.4g}")]
+    left = [
+        ("Model:", name),
+        ("Method:", "Least Squares"),
+        ("No. Observations:", _count(r.nobs)),
+        ("Df Residuals:", _count(r.df_resid)),
+        ("Df Model:", _count(r.df_model)),
+        ("Covariance Type:", r.cov_type),
+    ]
+    right = [
+        ("R-squared:", f"{r.rsquared:#.3f}"),
+        ("Adj. R-squared:", f"{r.rsquared_adj:#.3f}"),
+        ("F-statistic:", f"{r.fvalue:#.4g}"),
+        ("Prob (F-statistic):", f"{r.f_pvalue:#.3g}"),
+        ("Log-Likelihood:", f"{r.llf:#.5g}"),
+        ("AIC:", f"{r.aic:#.4g}"),
+        ("BIC:", f"{r.bic:#.4g}"),
+    ]
     lines += _pairs(left, right)
     lines.append(stars)
     names = [str(v) for v in r.param_names]
@@ -1152,7 +1219,14 @@ def _summary(r, alpha=0.05):
     params, bse, tv, pv = (r.params, r.bse, r.tvalues, r.pvalues)
     stat = "t"
     wname = max([len(v) for v in names] + [9]) + 1
-    cols = ["coef", "std err", stat, f"P>|{stat}|", "[" + _quantile_label(alpha / 2), _quantile_label(1 - alpha / 2) + "]"]
+    cols = [
+        "coef",
+        "std err",
+        stat,
+        f"P>|{stat}|",
+        "[" + _quantile_label(alpha / 2),
+        _quantile_label(1 - alpha / 2) + "]",
+    ]
     head = " " * wname + "".join(c.rjust(11) for c in cols)
     width = max(_WIDTH, len(head))
     lines[1] = "=" * width
@@ -1160,23 +1234,35 @@ def _summary(r, alpha=0.05):
     lines.append(head)
     lines.append("-" * width)
     for j, nm in enumerate(names):
-        vals = [_forg(float(params[j]), 4), _forg(float(bse[j])), _forg(float(tv[j])), f"{float(pv[j]):#.3f}",
-                _forg(float(ci[j, 0])), _forg(float(ci[j, 1]))]
+        vals = [
+            _forg(float(params[j]), 4),
+            _forg(float(bse[j])),
+            _forg(float(tv[j])),
+            f"{float(pv[j]):#.3f}",
+            _forg(float(ci[j, 0])),
+            _forg(float(ci[j, 1])),
+        ]
         lines.append(nm.ljust(wname) + "".join(v.rjust(11) for v in vals))
     lines.append("=" * width)
     jb = r.jarque_bera()
-    lines += _pairs([("Durbin-Watson:", f"{r.durbin_watson:#.3f}"), ("Prob(JB):", f"{jb.pvalue:#.3g}")],
-                    [("Jarque-Bera (JB):", f"{jb.statistic:#.3f}"), ("Cond. No.", f"{r.condition_number:#.3g}")])
+    lines += _pairs(
+        [("Durbin-Watson:", f"{r.durbin_watson:#.3f}"), ("Prob(JB):", f"{jb.pvalue:#.3g}")],
+        [("Jarque-Bera (JB):", f"{jb.statistic:#.3f}"), ("Cond. No.", f"{r.condition_number:#.3g}")],
+    )
     lines.append("=" * width)
     notes = []
     ct = r.cov_type
     if ct == "HAC":
-        notes.append(f"Standard errors are heteroscedasticity and autocorrelation robust (HAC) using "
-                     f"{_count(r._stat(_LAGS))} lags (Bartlett kernel) and without small sample correction.")
+        notes.append(
+            f"Standard errors are heteroscedasticity and autocorrelation robust (HAC) using "
+            f"{_count(r._stat(_LAGS))} lags (Bartlett kernel) and without small sample correction."
+        )
     elif ct == "cluster":
         g = r._stat(_NGROUPS)
-        notes.append(f"Standard errors are robust to cluster correlation (cluster) with {_count(g)} groups; "
-                     f"t and F use {_count(g - 1)} degrees of freedom.")
+        notes.append(
+            f"Standard errors are robust to cluster correlation (cluster) with {_count(g)} groups; "
+            f"t and F use {_count(g - 1)} degrees of freedom."
+        )
     else:
         notes.append(_COV_NOTES[ct])
     aliased = [nm for nm, k in zip(names, r._raw[5].tolist()) if not k] if not r._isnan() else []
@@ -1196,15 +1282,18 @@ def _arg(v):
 
 # ---- the fits
 
+
 def _rows_message(func, arg, n, got, yshape, unit="rows"):
-    """"'X' must have 5 rows like 'y', not 4" (1 row, 1 value), and for a y of shape (..., m, 1)
+    """ "'X' must have 5 rows like 'y', not 4" (1 row, 1 value), and for a y of shape (..., m, 1)
     (one row per regression: a column vector read under the batch rules) what to give
     instead (decision 2026-11-19, G105)."""
     noun = unit[:-1] if n == 1 else unit
     msg = f"{func}(): '{arg}' must have {n} {noun} like 'y', not {got}"
     if n == 1 and len(yshape) >= 2 and got != 1:
-        msg += (f" ('y' of shape {tuple(yshape)} is a batch of regressions with 1 row each; give a "
-                "1-dimensional 'y' for one regression)")
+        msg += (
+            f" ('y' of shape {tuple(yshape)} is a batch of regressions with 1 row each; give a "
+            "1-dimensional 'y' for one regression)"
+        )
     return msg
 
 
@@ -1266,8 +1355,10 @@ def _prepare(func, y, X, weights, nan_policy, extra_rows=None, groups=None, cov_
             raise ValueError(f"{func}(): the input contains NaN (nan_policy='raise')")
     elif nan_policy == "omit":
         if batch:
-            raise ValueError(f"{func}(): nan_policy='omit' takes one regression, not a batch "
-                             "(the regressions would keep different rows)")
+            raise ValueError(
+                f"{func}(): nan_policy='omit' takes one regression, not a batch "
+                "(the regressions would keep different rows)"
+            )
         _check_rows(func, [("y", y), ("X", X), ("weights", w)], nonneg=("weights",))
         bad = _sd.logical_or(_sd.isnan(y), _sd.any(_sd.isnan(X), axis=1))
         if w is not None:
@@ -1359,8 +1450,9 @@ def _exact_constant(raw, y, w, intercept, cov_type, original_scale=True):
     # a 1-D y (the batch from X or w alone) gives Python floats
     hi = _sd.broadcast_to(hi, batch) if isinstance(hi, _sd.ndarray) else _sd.full(batch, float(hi))
     lo = _sd.broadcast_to(lo, batch) if isinstance(lo, _sd.ndarray) else _sd.full(batch, float(lo))
-    const = _sd.logical_and(_sd.logical_and(hi == lo, _sd.isfinite(hi)),
-                            _sd.logical_and(st[..., _ISNAN] == 0.0, kept[..., 0]))
+    const = _sd.logical_and(
+        _sd.logical_and(hi == lo, _sd.isfinite(hi)), _sd.logical_and(st[..., _ISNAN] == 0.0, kept[..., 0])
+    )
     if not bool(_sd.any(const)):
         return None
     k = params.shape[-1]
@@ -1372,8 +1464,10 @@ def _exact_constant(raw, y, w, intercept, cov_type, original_scale=True):
         both = _sd.logical_and(_sd.expand_dims(kept, axis=-1), _sd.expand_dims(kept, axis=-2))
         zc = c1 if zero_cov else _sd.logical_and(c1, _sd.expand_dims(st[..., _NGROUPS] >= 2.0, axis=-1))
         raw[1] = _sd.where(_sd.logical_and(_sd.expand_dims(zc, axis=-1), both), 0.0, cov)
-    zero_cols = _sd.logical_or(_sd.logical_or(_sd.arange(st.shape[-1]) == _SSR, _sd.arange(st.shape[-1]) == _CTSS),
-                               _sd.arange(st.shape[-1]) == _ESSC)
+    zero_cols = _sd.logical_or(
+        _sd.logical_or(_sd.arange(st.shape[-1]) == _SSR, _sd.arange(st.shape[-1]) == _CTSS),
+        _sd.arange(st.shape[-1]) == _ESSC,
+    )
     raw[6] = _sd.where(_sd.logical_and(c1, zero_cols), 0.0, st)
     if original_scale:
         h1 = _sd.expand_dims(hi, axis=-1)
@@ -1384,7 +1478,7 @@ def _exact_constant(raw, y, w, intercept, cov_type, original_scale=True):
 
 # Data whose magnitude leaves [2^-256, 2^256] is fitted in power-of-two units (exact): their
 # squares (sums of squares) and the covariance's (R^T R)^-1 would leave the doubles otherwise.
-_SAFE_HI, _SAFE_LO = 2.0 ** 256, 2.0 ** -256
+_SAFE_HI, _SAFE_LO = 2.0**256, 2.0**-256
 
 
 def _pow2(m):
@@ -1406,6 +1500,7 @@ def _pow2(m):
         if math.isfinite(v) and v > 0.0 and (v > _SAFE_HI or v < _SAFE_LO):
             return math.ldexp(1.0, math.frexp(v)[1])
         return 1.0
+
     return _sd.asarray(f(m.tolist())) if isinstance(m, _sd.ndarray) else f(m)
 
 
@@ -1459,28 +1554,45 @@ def _unscale(raw, extra):
 def _linear(func, cls, y, X, weights, intercept, cov_type, maxlags, groups, rtol, nan_policy):
     lags, tol = _check_options(func, intercept, cov_type, maxlags, rtol, nan_policy)
     columns = _frame_columns(X)
-    y, X, w, names, _, _, (codes, gtot) = _prepare(func, y, X, weights, nan_policy, groups=groups, cov_type=cov_type,
-                                                   intercept=intercept)
+    y, X, w, names, _, _, (codes, gtot) = _prepare(
+        func, y, X, weights, nan_policy, groups=groups, cov_type=cov_type, intercept=intercept
+    )
     # the diagnostics read y, X and w later: copies (G86), so that changing the caller's
     # arrays (or the numpy arrays they view) does not change the result
     y, X, w = _own(y), _own(X), _own(w)
-    raw, extra, ys, Xs = _fit_kernel(func, y, X, w, None, intercept, tol, _COV_TYPES.index(cov_type), codes, gtot,
-                                     lags)
+    raw, extra, ys, Xs = _fit_kernel(func, y, X, w, None, intercept, tol, _COV_TYPES.index(cov_type), codes, gtot, lags)
     _exact_constant(raw, ys, w, intercept, cov_type)
     _unscale(raw, extra)
-    return cls(raw, param_names=_names(names, X.shape[-1], intercept), intercept=intercept, cov_type=cov_type,
-               batch=_batch_shape(raw), extra=extra, fitargs=(func, ys, Xs, w, None, tol, codes, gtot),
-               columns=columns)
+    return cls(
+        raw,
+        param_names=_names(names, X.shape[-1], intercept),
+        intercept=intercept,
+        cov_type=cov_type,
+        batch=_batch_shape(raw),
+        extra=extra,
+        fitargs=(func, ys, Xs, w, None, tol, codes, gtot),
+        columns=columns,
+    )
 
 
-def ols(y, X, /, *, intercept=True, cov_type="nonrobust", maxlags=None, groups=None, rtol=None,
-        nan_policy="propagate"):
+def ols(y, X, /, *, intercept=True, cov_type="nonrobust", maxlags=None, groups=None, rtol=None, nan_policy="propagate"):
     """Ordinary least squares of y (..., n) on X (..., n, k) or (n,), an intercept column first."""
     return _linear("ols", OLSResult, y, X, None, intercept, cov_type, maxlags, groups, rtol, nan_policy)
 
 
-def wls(y, X, /, *, weights, intercept=True, cov_type="nonrobust", maxlags=None, groups=None, rtol=None,
-        nan_policy="propagate"):
+def wls(
+    y,
+    X,
+    /,
+    *,
+    weights,
+    intercept=True,
+    cov_type="nonrobust",
+    maxlags=None,
+    groups=None,
+    rtol=None,
+    nan_policy="propagate",
+):
     """Weighted least squares: minimizes sum w_i (y_i - x_i b)^2. Rows with weight 0 take no
     part in the fit, nobs or the degrees of freedom (R's lm); their fitted values and
     residuals are computed."""
@@ -1489,8 +1601,19 @@ def wls(y, X, /, *, weights, intercept=True, cov_type="nonrobust", maxlags=None,
     return _linear("wls", WLSResult, y, X, weights, intercept, cov_type, maxlags, groups, rtol, nan_policy)
 
 
-def gls(y, X, /, *, sigma, intercept=True, cov_type="nonrobust", maxlags=None, groups=None, rtol=None,
-        nan_policy="propagate"):
+def gls(
+    y,
+    X,
+    /,
+    *,
+    sigma,
+    intercept=True,
+    cov_type="nonrobust",
+    maxlags=None,
+    groups=None,
+    rtol=None,
+    nan_policy="propagate",
+):
     """Generalized least squares with the known error covariance sigma (..., n, n): the fit of
     L^-1 y on L^-1 X for sigma = L L^T (Cholesky; its lower triangle is read). Fitted values
     and residuals are on the original scale."""
@@ -1505,16 +1628,18 @@ def gls(y, X, /, *, sigma, intercept=True, cov_type="nonrobust", maxlags=None, g
     if nan_policy == "raise" and _has_nan(S):
         raise ValueError(f"{func}(): the input contains NaN (nan_policy='raise')")
     if nan_policy == "omit" and S.ndim > 2:
-        raise ValueError(f"{func}(): nan_policy='omit' takes one regression, not a batch "
-                         "(the regressions would keep different rows)")
+        raise ValueError(
+            f"{func}(): nan_policy='omit' takes one regression, not a batch (the regressions would keep different rows)"
+        )
     nan_rows = None
     if nan_policy == "omit" and _has_nan(S):
         # observation i has NaN when sigma's row or column i has one
         nanS = _sd.isnan(S)
         nan_rows = _sd.logical_or(_sd.any(nanS, axis=1), _sd.any(nanS, axis=0))
     columns = _frame_columns(X)
-    y, X, _, names, _, keep, (codes, gtot) = _prepare(func, yy, X, None, nan_policy, extra_rows=nan_rows,
-                                                      groups=groups, cov_type=cov_type, intercept=intercept)
+    y, X, _, names, _, keep, (codes, gtot) = _prepare(
+        func, yy, X, None, nan_policy, extra_rows=nan_rows, groups=groups, cov_type=cov_type, intercept=intercept
+    )
     # inf before the whitening, which would turn it into NaN or another column's inf
     _check_rows(func, [("y", y), ("X", X)])
     if keep is not None:
@@ -1528,9 +1653,13 @@ def gls(y, X, /, *, sigma, intercept=True, cov_type="nonrobust", maxlags=None, g
     if nan_policy == "propagate" and _has_nan(y, X, S):
         bad_s = _sd.any(_sd.isnan(S), axis=(-2, -1), keepdims=True)
         S = _sd.where(bad_s, _sd.eye(m), S)
-        bad = _sd.logical_or(_sd.logical_or(_sd.any(_sd.isnan(y), axis=-1, keepdims=True),
-                                             _sd.any(_sd.isnan(X), axis=(-2, -1), keepdims=True)[..., 0]),
-                             bad_s[..., 0])
+        bad = _sd.logical_or(
+            _sd.logical_or(
+                _sd.any(_sd.isnan(y), axis=-1, keepdims=True),
+                _sd.any(_sd.isnan(X), axis=(-2, -1), keepdims=True)[..., 0],
+            ),
+            bad_s[..., 0],
+        )
         y = _sd.where(_sd.isnan(y), 0.0, y)
         X = _sd.where(_sd.isnan(X), 0.0, X)
     if S.size and bool(_sd.any(_sd.isinf(S))):
@@ -1539,15 +1668,16 @@ def gls(y, X, /, *, sigma, intercept=True, cov_type="nonrobust", maxlags=None, g
         L = _linalg.cholesky(S)
     except _linalg.LinAlgError as e:
         msg = str(e)
-        at = msg[msg.find(" (at batch index"):] if " (at batch index" in msg else ""
+        at = msg[msg.find(" (at batch index") :] if " (at batch index" in msg else ""
         raise _linalg.LinAlgError(f"gls(): 'sigma' is not positive definite{at}") from None
     yt = _linalg.solve_triangular(L, _sd.expand_dims(y, axis=-1), upper=False)[..., 0]
     if bad is not None:
         yt = _sd.where(bad, math.nan, yt)
     Xt = _linalg.solve_triangular(L, X, upper=False)
     ones = _linalg.solve_triangular(L, _sd.ones((m, 1)), upper=False)[..., 0]
-    raw, extra, ys, Xs = _fit_kernel(func, yt, Xt, None, ones, intercept, tol, _COV_TYPES.index(cov_type), codes, gtot,
-                                     lags)
+    raw, extra, ys, Xs = _fit_kernel(
+        func, yt, Xt, None, ones, intercept, tol, _COV_TYPES.index(cov_type), codes, gtot, lags
+    )
     # the whitened problem's constant: y itself (L^-1 y = y0 L^-1 1 holds exactly only in exact
     # arithmetic); the original-scale fit below then gives fitted y0, residuals y - y0 exactly
     yc = y
@@ -1556,9 +1686,16 @@ def gls(y, X, /, *, sigma, intercept=True, cov_type="nonrobust", maxlags=None, g
         yc = y / (_sd.expand_dims(fy, axis=-1) if isinstance(fy, _sd.ndarray) else fy)
     const = _exact_constant(raw, yc, None, intercept, cov_type, original_scale=False)
     _unscale(raw, extra)
-    res = GLSResult(raw, param_names=_names(names, X.shape[-1], intercept), intercept=intercept, cov_type=cov_type,
-                    batch=_batch_shape(raw), extra=extra, fitargs=(func, ys, Xs, None, ones, tol, codes, gtot),
-                    columns=columns)
+    res = GLSResult(
+        raw,
+        param_names=_names(names, X.shape[-1], intercept),
+        intercept=intercept,
+        cov_type=cov_type,
+        batch=_batch_shape(raw),
+        extra=extra,
+        fitargs=(func, ys, Xs, None, ones, tol, codes, gtot),
+        columns=columns,
+    )
     # fitted values and residuals on the original scale (statsmodels' fittedvalues and resid)
     fitted, resid = _k.apply(func, X, res._beff(), intercept, y)
     if raw[3].shape != fitted.shape:  # sigma's batch axes added to y's
@@ -1566,8 +1703,9 @@ def gls(y, X, /, *, sigma, intercept=True, cov_type="nonrobust", maxlags=None, g
     raw[3], raw[4] = fitted, resid
     if const is not None:  # the whitened residuals L^-1 (y - y0 1) are exactly 0 there
         wr = res._wresid()
-        res._cache["wresid"] = (_sd.where(_sd.expand_dims(const, axis=-1), 0.0, wr) if res._batch
-                                else _sd.zeros(tuple(wr.shape)))
+        res._cache["wresid"] = (
+            _sd.where(_sd.expand_dims(const, axis=-1), 0.0, wr) if res._batch else _sd.zeros(tuple(wr.shape))
+        )
     logdet = 2.0 * _sd.sum(_sd.log(_linalg.diagonal(L)), axis=-1)
     if res._batch:
         logdet = _sd.broadcast_to(logdet, res._batch) if isinstance(logdet, _sd.ndarray) else logdet
@@ -1606,8 +1744,10 @@ def linregress(x, y, /, *, nan_policy="propagate"):
             raise ValueError(f"{func}(): the input contains NaN (nan_policy='raise')")
     elif nan_policy == "omit":
         if batch:
-            raise ValueError(f"{func}(): nan_policy='omit' takes one regression, not a batch "
-                             "(the regressions would keep different points)")
+            raise ValueError(
+                f"{func}(): nan_policy='omit' takes one regression, not a batch "
+                "(the regressions would keep different points)"
+            )
         bad = _sd.logical_or(_sd.isnan(xa), _sd.isnan(ya))
         if bool(_sd.any(bad)):
             keep = _sd.logical_not(bad)
@@ -1618,8 +1758,9 @@ def linregress(x, y, /, *, nan_policy="propagate"):
     # only an exactly constant x is degenerate here (scipy): rtol 0
     raw, extra, _, _ = _fit_kernel(func, ya, X, None, None, True, 0.0, 0, None, 0, -1)
     _unscale(raw, extra)
-    r = OLSResult(raw, param_names=["const", "x1"], intercept=True, cov_type="nonrobust", batch=_batch_shape(raw),
-                  extra=extra)
+    r = OLSResult(
+        raw, param_names=["const", "x1"], intercept=True, cov_type="nonrobust", batch=_batch_shape(raw), extra=extra
+    )
     nan = math.nan
     if not r._batch:
         b0, b1 = float(r.params[0]), float(r.params[1])
@@ -1657,6 +1798,11 @@ def linregress(x, y, /, *, nan_policy="propagate"):
     b1 = _sd.where(yconst, 0.0, b1)
     y0 = _sd.full(r._batch, float(ya[0])) if ya.ndim == 1 else _sd.broadcast_to(ya[..., 0], r._batch)
     b0 = _sd.where(yconst, y0, b0)
-    return _results.LinregressResult(_sd.where(xconst, nan, b1) + 0.0, _sd.where(xconst, nan, b0) + 0.0,
-                                     _sd.where(degen, nan, rvalue), _sd.where(degen, nan, pvalue),
-                                     _sd.where(degen, nan, se1), _sd.where(degen, nan, se0))
+    return _results.LinregressResult(
+        _sd.where(xconst, nan, b1) + 0.0,
+        _sd.where(xconst, nan, b0) + 0.0,
+        _sd.where(degen, nan, rvalue),
+        _sd.where(degen, nan, pvalue),
+        _sd.where(degen, nan, se1),
+        _sd.where(degen, nan, se0),
+    )

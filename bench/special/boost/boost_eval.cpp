@@ -5,10 +5,15 @@
 #define BOOST_MATH_STANDALONE
 #include <boost/math/policies/policy.hpp>
 namespace bp = boost::math::policies;
-using Pol = bp::policy<bp::domain_error<bp::ignore_error>, bp::pole_error<bp::ignore_error>,
-                       bp::overflow_error<bp::ignore_error>, bp::underflow_error<bp::ignore_error>,
-                       bp::evaluation_error<bp::ignore_error>, bp::rounding_error<bp::ignore_error>,
-                       bp::indeterminate_result_error<bp::ignore_error>, bp::promote_double<false>>;
+using Pol = bp::policy<
+    bp::domain_error<bp::ignore_error>,
+    bp::pole_error<bp::ignore_error>,
+    bp::overflow_error<bp::ignore_error>,
+    bp::underflow_error<bp::ignore_error>,
+    bp::evaluation_error<bp::ignore_error>,
+    bp::rounding_error<bp::ignore_error>,
+    bp::indeterminate_result_error<bp::ignore_error>,
+    bp::promote_double<false>>;
 #include <boost/math/special_functions.hpp>
 #include <boost/math/special_functions/hypergeometric_1F1.hpp>
 #include <boost/math/special_functions/lambert_w.hpp>
@@ -47,7 +52,10 @@ static std::map<std::string, std::pair<int, F>> table() {
     t["gamma"] = {1, [](const double* a) { return bm::tgamma(a[0], pol); }};
     t["gammaln"] = {1, [](const double* a) { return bm::lgamma(a[0], pol); }};
     t["digamma"] = {1, [](const double* a) { return bm::digamma(a[0], pol); }};
-    t["polygamma"] = {2, [](const double* a) { int n = as_int(a[0]); return n < 0 ? NaN : bm::polygamma(n, a[1], pol); }};
+    t["polygamma"] = {2, [](const double* a) {
+                          int n = as_int(a[0]);
+                          return n < 0 ? NaN : bm::polygamma(n, a[1], pol);
+                      }};
     t["beta"] = {2, [](const double* a) { return bm::beta(a[0], a[1], pol); }};
     t["zeta"] = {1, [](const double* a) { return bm::zeta(a[0], pol); }};
     t["gammainc"] = {2, [](const double* a) { return bm::gamma_p(a[0], a[1], pol); }};
@@ -59,7 +67,10 @@ static std::map<std::string, std::pair<int, F>> table() {
     t["betaincinv"] = {3, [](const double* a) { return bm::ibeta_inv(a[0], a[1], a[2], pol); }};
     t["betainccinv"] = {3, [](const double* a) { return bm::ibetac_inv(a[0], a[1], a[2], pol); }};
     t["expi"] = {1, [](const double* a) { return bm::expint(a[0], pol); }};
-    t["expn"] = {2, [](const double* a) { int n = as_int(a[0]); return n < 0 ? NaN : bm::expint(n, a[1], pol); }};
+    t["expn"] = {2, [](const double* a) {
+                     int n = as_int(a[0]);
+                     return n < 0 ? NaN : bm::expint(n, a[1], pol);
+                 }};
     t["ellipk"] = {1, [](const double* a) { return ek(a[0], false); }};
     t["ellipe"] = {1, [](const double* a) { return ek(a[0], true); }};
     t["j0"] = {1, [](const double* a) { return bm::cyl_bessel_j(0, a[0], pol); }};
@@ -85,7 +96,9 @@ static std::map<std::string, std::pair<int, F>> table() {
 }
 
 static double safe(const F& f, const double* a) {
-    try { return f(a); } catch (...) { return NaN; }
+    try {
+        return f(a);
+    } catch (...) { return NaN; }
 }
 
 int main(int argc, char** argv) {

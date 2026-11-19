@@ -46,9 +46,29 @@ PARAM_METHODS = ["mean", "variance", "standard_deviation", "skewness", "kurtosis
 
 
 def test_exports():
-    names = {"Normal", "StudentT", "ChiSquared", "F", "Gamma", "Beta", "Exponential", "LogNormal", "Uniform", "Cauchy",
-             "Laplace", "Weibull", "Logistic", "Gumbel", "GEV", "Pareto", "Rayleigh", "InverseGamma",
-             "NoncentralChiSquared", "NoncentralT", "NoncentralF"}
+    names = {
+        "Normal",
+        "StudentT",
+        "ChiSquared",
+        "F",
+        "Gamma",
+        "Beta",
+        "Exponential",
+        "LogNormal",
+        "Uniform",
+        "Cauchy",
+        "Laplace",
+        "Weibull",
+        "Logistic",
+        "Gumbel",
+        "GEV",
+        "Pareto",
+        "Rayleigh",
+        "InverseGamma",
+        "NoncentralChiSquared",
+        "NoncentralT",
+        "NoncentralF",
+    }
     assert names <= set(S.__all__)
     for n in names:
         assert issubclass(getattr(S, n), S.ContinuousDistribution)
@@ -163,7 +183,9 @@ def test_support_conventions(cls, params, _, support):
     assert (X.ilogcdf(0.0), X.ilogcdf(-math.inf)) == (hi, lo)
     assert (X.ilogccdf(0.0), X.ilogccdf(-math.inf)) == (lo, hi)
     for m in ("icdf", "iccdf"):
-        assert math.isnan(getattr(X, m)(-0.1)) and math.isnan(getattr(X, m)(1.1)) and math.isnan(getattr(X, m)(math.nan))
+        assert (
+            math.isnan(getattr(X, m)(-0.1)) and math.isnan(getattr(X, m)(1.1)) and math.isnan(getattr(X, m)(math.nan))
+        )
     for m in ("ilogcdf", "ilogccdf"):
         assert math.isnan(getattr(X, m)(0.1)) and math.isnan(getattr(X, m)(math.nan))
     assert (X.cdf(-math.inf), X.cdf(math.inf)) == (0.0, 1.0)
@@ -257,11 +279,15 @@ def test_t6_conventions():
     # GEV at c = 0 is the Gumbel; nc = 0 the central distributions, to the bit
     x = sd.asarray([-3.0, 0.2, 5.0])
     for m in ("pdf", "cdf", "logccdf"):
-        assert np.asarray(getattr(S.GEV(c=0.0, mu=1.0, sigma=2.0), m)(x)).tolist() == \
-            np.asarray(getattr(S.Gumbel(mu=1.0, sigma=2.0), m)(x)).tolist()
-    for nc_cls, cen, kw in ((S.NoncentralChiSquared, S.ChiSquared(df=3.0), {"df": 3.0}),
-                            (S.NoncentralT, S.StudentT(df=3.0), {"df": 3.0}),
-                            (S.NoncentralF, S.F(dfn=3.0, dfd=7.0), {"dfn": 3.0, "dfd": 7.0})):
+        assert (
+            np.asarray(getattr(S.GEV(c=0.0, mu=1.0, sigma=2.0), m)(x)).tolist()
+            == np.asarray(getattr(S.Gumbel(mu=1.0, sigma=2.0), m)(x)).tolist()
+        )
+    for nc_cls, cen, kw in (
+        (S.NoncentralChiSquared, S.ChiSquared(df=3.0), {"df": 3.0}),
+        (S.NoncentralT, S.StudentT(df=3.0), {"df": 3.0}),
+        (S.NoncentralF, S.F(dfn=3.0, dfd=7.0), {"dfn": 3.0, "dfd": 7.0}),
+    ):
         X = nc_cls(**kw, nc=0.0)
         y = sd.asarray([0.3, 1.7, 9.0])
         for m in ("pdf", "logcdf", "ccdf", "icdf"):
@@ -269,7 +295,9 @@ def test_t6_conventions():
             assert np.asarray(getattr(X, m)(arg)).tolist() == np.asarray(getattr(cen, m)(arg)).tolist(), (nc_cls, m)
     # modes at the ends (T21) and densities there
     assert S.GEV(c=1.5).mode() == S.GEV(c=1.5).support()[1] and S.GEV(c=0.0, mu=2.0).mode() == 2.0
-    assert S.NoncentralChiSquared(df=1.5, nc=3.0).mode() == 0.0 and S.NoncentralF(dfn=1.5, dfd=9.0, nc=3.0).mode() == 0.0
+    assert (
+        S.NoncentralChiSquared(df=1.5, nc=3.0).mode() == 0.0 and S.NoncentralF(dfn=1.5, dfd=9.0, nc=3.0).mode() == 0.0
+    )
     assert S.NoncentralChiSquared(df=2.0, nc=1.0).mode() == 0.0 and S.NoncentralChiSquared(df=2.0, nc=5.0).mode() > 0.0
     assert (S.GEV(c=0.5).pdf(2.0), S.GEV(c=1.0).pdf(1.0), S.GEV(c=2.0).pdf(0.5)) == (0.0, 1.0, math.inf)
     assert S.Pareto(b=3.0, scale=2.0).pdf(2.0) == 1.5 and S.Rayleigh().pdf(0.0) == 0.0
@@ -288,8 +316,13 @@ def test_same_bits_on_any_thread_count():
         sd.set_num_threads(n)
         try:
             X = S.Gamma(a=a, scale=1.5)
-            results.append([np.asarray(X.cdf(x)).tobytes(), np.asarray(X.icdf(p)).tobytes(),
-                            np.asarray(S.StudentT(df=a).logpdf(x)).tobytes()])
+            results.append(
+                [
+                    np.asarray(X.cdf(x)).tobytes(),
+                    np.asarray(X.icdf(p)).tobytes(),
+                    np.asarray(S.StudentT(df=a).logpdf(x)).tobytes(),
+                ]
+            )
         finally:
             sd.set_num_threads(10)
     assert results[0] == results[1] == results[2]
@@ -303,8 +336,12 @@ def test_noncentral_bulk_paths_same_bits_and_continuous():
     rng = np.random.default_rng(7)
     n = 3000
     u = rng.uniform(size=n)
-    cases = [(S.NoncentralChiSquared, {"df": 3.5, "nc": 2.0}), (S.NoncentralT, {"df": 9.0, "nc": 1.5}),
-             (S.NoncentralT, {"df": 4.0, "nc": -0.75}), (S.NoncentralF, {"dfn": 4.0, "dfd": 13.0, "nc": 3.0})]
+    cases = [
+        (S.NoncentralChiSquared, {"df": 3.5, "nc": 2.0}),
+        (S.NoncentralT, {"df": 9.0, "nc": 1.5}),
+        (S.NoncentralT, {"df": 4.0, "nc": -0.75}),
+        (S.NoncentralF, {"dfn": 4.0, "dfd": 13.0, "nc": 3.0}),
+    ]
     methods = ("pdf", "logpdf", "cdf", "ccdf", "logcdf", "logccdf", "icdf", "iccdf")
     for cls, params in cases:
         X = cls(**params)
@@ -330,6 +367,7 @@ def test_noncentral_bulk_paths_same_bits_and_continuous():
             finally:
                 sd.set_num_threads(10)
         assert runs[0] == runs[1] == runs[2], cls.__name__
+
     # across the hand-over: a walk along x through the bulk's limits (x / 2 = 340 for the
     # chi-square's sums, the series' term count for the densities)
     def smooth(v, tol):  # no step: third differences at the values' rounding
@@ -356,11 +394,19 @@ def test_noncentral_bulk_paths_same_bits_and_continuous():
 # ---- the chunk kernels of the closed-form distributions (docs/design/stats.md §3.4)
 
 CLOSED_FORM = [
-    (S.Normal, {"mu": 1.5, "sigma": 2.0}), (S.LogNormal, {"mu": 0.5, "sigma": 0.8}), (S.Exponential, {"scale": 2.0}),
-    (S.Uniform, {"a": -1.0, "b": 3.0}), (S.Laplace, {"mu": 0.5, "sigma": 2.0}), (S.Cauchy, {"mu": 0.5, "sigma": 2.0}),
-    (S.Weibull, {"c": 1.7, "scale": 2.0}), (S.Logistic, {"mu": 0.5, "sigma": 2.0}), (S.Gumbel, {"mu": 0.5, "sigma": 2.0}),
-    (S.GEV, {"c": 0.25, "mu": 1.0, "sigma": 2.0}), (S.GEV, {"c": -0.4, "mu": 0.0, "sigma": 1.0}),
-    (S.Pareto, {"b": 3.0, "scale": 1.5}), (S.Rayleigh, {"scale": 2.0}),
+    (S.Normal, {"mu": 1.5, "sigma": 2.0}),
+    (S.LogNormal, {"mu": 0.5, "sigma": 0.8}),
+    (S.Exponential, {"scale": 2.0}),
+    (S.Uniform, {"a": -1.0, "b": 3.0}),
+    (S.Laplace, {"mu": 0.5, "sigma": 2.0}),
+    (S.Cauchy, {"mu": 0.5, "sigma": 2.0}),
+    (S.Weibull, {"c": 1.7, "scale": 2.0}),
+    (S.Logistic, {"mu": 0.5, "sigma": 2.0}),
+    (S.Gumbel, {"mu": 0.5, "sigma": 2.0}),
+    (S.GEV, {"c": 0.25, "mu": 1.0, "sigma": 2.0}),
+    (S.GEV, {"c": -0.4, "mu": 0.0, "sigma": 1.0}),
+    (S.Pareto, {"b": 3.0, "scale": 1.5}),
+    (S.Rayleigh, {"scale": 2.0}),
 ]
 
 
@@ -374,7 +420,7 @@ def test_closed_form_kernels_same_bits_for_any_layout_and_thread_count():
     rng = np.random.default_rng(11)
     n = 60_000
     u = rng.uniform(size=n)
-    u[::7] = 10.0 ** rng.uniform(-300, 0, size=u[::7].size)        # the lower tail
+    u[::7] = 10.0 ** rng.uniform(-300, 0, size=u[::7].size)  # the lower tail
     u[3::7] = 1.0 - 10.0 ** rng.uniform(-16, 0, size=u[3::7].size)  # the upper tail
     u[:6] = [0.0, 1.0, 0.5, 0.25, 0.75, 5e-324]
     even = np.arange(n) % 2 == 0
@@ -415,12 +461,29 @@ def test_closed_form_kernels_agree_with_scipy_in_the_bulk_and_keep_special_value
     Arb references of test_reference.py are the contract), and the values outside them."""
     rng = np.random.default_rng(12)
     p = rng.uniform(0.01, 0.99, size=5000)
-    refs = {S.Normal: st.norm(1.5, 2.0), S.LogNormal: st.lognorm(0.8, scale=math.exp(0.5)), S.Exponential: st.expon(scale=2.0),
-            S.Uniform: st.uniform(-1.0, 4.0), S.Laplace: st.laplace(0.5, 2.0), S.Cauchy: st.cauchy(0.5, 2.0),
-            S.Weibull: st.weibull_min(1.7, scale=2.0), S.Logistic: st.logistic(0.5, 2.0), S.Gumbel: st.gumbel_r(0.5, 2.0),
-            S.Pareto: st.pareto(3.0, scale=1.5), S.Rayleigh: st.rayleigh(scale=2.0)}
-    names = {"pdf": "pdf", "logpdf": "logpdf", "cdf": "cdf", "logcdf": "logcdf", "ccdf": "sf", "logccdf": "logsf",
-             "icdf": "ppf", "iccdf": "isf"}
+    refs = {
+        S.Normal: st.norm(1.5, 2.0),
+        S.LogNormal: st.lognorm(0.8, scale=math.exp(0.5)),
+        S.Exponential: st.expon(scale=2.0),
+        S.Uniform: st.uniform(-1.0, 4.0),
+        S.Laplace: st.laplace(0.5, 2.0),
+        S.Cauchy: st.cauchy(0.5, 2.0),
+        S.Weibull: st.weibull_min(1.7, scale=2.0),
+        S.Logistic: st.logistic(0.5, 2.0),
+        S.Gumbel: st.gumbel_r(0.5, 2.0),
+        S.Pareto: st.pareto(3.0, scale=1.5),
+        S.Rayleigh: st.rayleigh(scale=2.0),
+    }
+    names = {
+        "pdf": "pdf",
+        "logpdf": "logpdf",
+        "cdf": "cdf",
+        "logcdf": "logcdf",
+        "ccdf": "sf",
+        "logccdf": "logsf",
+        "icdf": "ppf",
+        "iccdf": "isf",
+    }
     for cls, params in CLOSED_FORM:
         if cls not in refs or (cls is S.GEV):
             continue
@@ -446,7 +509,10 @@ def test_closed_form_kernels_agree_with_scipy_in_the_bulk_and_keep_special_value
         if math.isfinite(lo):
             below = sd.asarray([lo - 1.0, lo - 1e-9])
             assert np.asarray(X.pdf(below)).tolist() == [0.0, 0.0] and np.asarray(X.cdf(below)).tolist() == [0.0, 0.0]
-            assert np.asarray(X.logpdf(below)).tolist() == [-math.inf] * 2 and np.asarray(X.ccdf(below)).tolist() == [1.0, 1.0]
+            assert np.asarray(X.logpdf(below)).tolist() == [-math.inf] * 2 and np.asarray(X.ccdf(below)).tolist() == [
+                1.0,
+                1.0,
+            ]
         ends = sd.asarray([-math.inf, math.inf])
         assert np.asarray(X.cdf(ends)).tolist() == [0.0, 1.0] and np.asarray(X.ccdf(ends)).tolist() == [1.0, 0.0]
         assert np.asarray(X.pdf(ends)).tolist() == [0.0, 0.0]
@@ -475,11 +541,20 @@ def test_exponential_where_x_over_scale_overflows():
 
 
 GB_CASES = [
-    (S.Gamma, {"a": 2.5, "scale": 3.0}), (S.Gamma, {"a": 7.3, "scale": 0.4}), (S.Gamma, {"a": 300.0, "scale": 1.0}),
-    (S.ChiSquared, {"df": 4.5}), (S.ChiSquared, {"df": 7.0}), (S.ChiSquared, {"df": 1.0}),
-    (S.InverseGamma, {"a": 4.5, "scale": 2.0}), (S.Beta, {"a": 2.5, "b": 0.7}), (S.Beta, {"a": 2.0, "b": 3.0}),
-    (S.Beta, {"a": 40.0, "b": 7.5}), (S.StudentT, {"df": 3.5}), (S.StudentT, {"df": 400.0}),
-    (S.F, {"dfn": 3.0, "dfd": 11.0}), (S.F, {"dfn": 30.0, "dfd": 5.0}),
+    (S.Gamma, {"a": 2.5, "scale": 3.0}),
+    (S.Gamma, {"a": 7.3, "scale": 0.4}),
+    (S.Gamma, {"a": 300.0, "scale": 1.0}),
+    (S.ChiSquared, {"df": 4.5}),
+    (S.ChiSquared, {"df": 7.0}),
+    (S.ChiSquared, {"df": 1.0}),
+    (S.InverseGamma, {"a": 4.5, "scale": 2.0}),
+    (S.Beta, {"a": 2.5, "b": 0.7}),
+    (S.Beta, {"a": 2.0, "b": 3.0}),
+    (S.Beta, {"a": 40.0, "b": 7.5}),
+    (S.StudentT, {"df": 3.5}),
+    (S.StudentT, {"df": 400.0}),
+    (S.F, {"dfn": 3.0, "dfd": 11.0}),
+    (S.F, {"dfn": 30.0, "dfd": 5.0}),
 ]
 GB_METHODS = ("pdf", "logpdf", "cdf", "ccdf", "logcdf", "logccdf", "icdf", "iccdf", "ilogcdf", "ilogccdf")
 
@@ -518,7 +593,7 @@ def test_gamma_beta_families_same_bits_for_any_layout_and_thread_count():
                     assert whole[even].tobytes() == mixed[even].tobytes(), (cls.__name__, params, m, threads)
                     for i in (0, 1, 2, 3, 4, 5, 7, 10, n // 2, n - 1):
                         one = getattr(X, m)(float(arg[i]))
-                        assert np.array([one]).tobytes() == whole[i:i + 1].tobytes(), (cls.__name__, params, m, i)
+                        assert np.array([one]).tobytes() == whole[i : i + 1].tobytes(), (cls.__name__, params, m, i)
                     run.append((whole.tobytes() + mixed.tobytes(), arg))
                 runs.append(run)
             finally:
@@ -530,18 +605,27 @@ def test_gamma_beta_families_same_bits_for_any_layout_and_thread_count():
 def test_density_kernels_agree_with_closed_forms_and_scipy():
     x = np.array([1e-300, 1e-8, 0.03, 0.4, 1.0, 2.5, 9.0, 40.0, 300.0])
     # exponential and half-normal-square special cases, to the last bits
-    np.testing.assert_allclose(np.asarray(S.Gamma(a=1.0, scale=2.0).pdf(sd.asarray(x))), np.exp(-x / 2.0) / 2.0, rtol=3e-15)
-    np.testing.assert_allclose(np.asarray(S.ChiSquared(df=2.0).logpdf(sd.asarray(x))), -x / 2.0 - math.log(2.0),
-                               rtol=3e-15, atol=3e-15)
+    np.testing.assert_allclose(
+        np.asarray(S.Gamma(a=1.0, scale=2.0).pdf(sd.asarray(x))), np.exp(-x / 2.0) / 2.0, rtol=3e-15
+    )
+    np.testing.assert_allclose(
+        np.asarray(S.ChiSquared(df=2.0).logpdf(sd.asarray(x))), -x / 2.0 - math.log(2.0), rtol=3e-15, atol=3e-15
+    )
     xb = np.array([1e-300, 1e-9, 0.01, 0.3, 0.5, 0.9, 1.0 - 1e-12])
-    np.testing.assert_allclose(np.asarray(S.Beta(a=2.0, b=3.0).pdf(sd.asarray(xb))), 12.0 * xb * (1.0 - xb) ** 2, rtol=3e-15)
+    np.testing.assert_allclose(
+        np.asarray(S.Beta(a=2.0, b=3.0).pdf(sd.asarray(xb))), 12.0 * xb * (1.0 - xb) ** 2, rtol=3e-15
+    )
     t = np.array([0.0, 1e-200, 0.3, -2.0, 15.0, 1e6])
-    np.testing.assert_allclose(np.asarray(S.StudentT(df=1.0).pdf(sd.asarray(t))), 1.0 / (math.pi * (1.0 + t * t)), rtol=3e-15)
+    np.testing.assert_allclose(
+        np.asarray(S.StudentT(df=1.0).pdf(sd.asarray(t))), 1.0 / (math.pi * (1.0 + t * t)), rtol=3e-15
+    )
     # large shapes (the second tier and the double-double definition) against scipy
-    for X, ref, pts in ((S.Gamma(a=300.0, scale=1.0), st.gamma(300.0), np.array([150.0, 280.0, 300.0, 330.0, 500.0])),
-                        (S.Beta(a=40.0, b=7.5), st.beta(40.0, 7.5), np.array([0.3, 0.7, 0.85, 0.95, 0.999])),
-                        (S.F(dfn=30.0, dfd=5.0), st.f(30.0, 5.0), np.array([0.05, 0.5, 1.0, 3.0, 80.0])),
-                        (S.InverseGamma(a=25.0, scale=2.0), st.invgamma(25.0, scale=2.0), np.array([0.03, 0.07, 0.09, 0.2, 2.0]))):
+    for X, ref, pts in (
+        (S.Gamma(a=300.0, scale=1.0), st.gamma(300.0), np.array([150.0, 280.0, 300.0, 330.0, 500.0])),
+        (S.Beta(a=40.0, b=7.5), st.beta(40.0, 7.5), np.array([0.3, 0.7, 0.85, 0.95, 0.999])),
+        (S.F(dfn=30.0, dfd=5.0), st.f(30.0, 5.0), np.array([0.05, 0.5, 1.0, 3.0, 80.0])),
+        (S.InverseGamma(a=25.0, scale=2.0), st.invgamma(25.0, scale=2.0), np.array([0.03, 0.07, 0.09, 0.2, 2.0])),
+    ):
         np.testing.assert_allclose(np.asarray(X.pdf(sd.asarray(pts))), ref.pdf(pts), rtol=1e-11)
         np.testing.assert_allclose(np.asarray(X.logpdf(sd.asarray(pts))), ref.logpdf(pts), rtol=1e-11)
 
@@ -567,8 +651,11 @@ def test_gamma_finite_sums():
     or above a, against the closed forms."""
     x = np.array([1.0, 1.5, 3.0, 10.0, 80.0, 600.0])
     np.testing.assert_allclose(np.asarray(S.Gamma(a=1.0, scale=1.0).ccdf(sd.asarray(x))), np.exp(-x), rtol=2e-15)
-    np.testing.assert_allclose(np.asarray(S.Gamma(a=3.0, scale=1.0).ccdf(sd.asarray(x[2:]))),
-                               np.exp(-x[2:]) * (1.0 + x[2:] + 0.5 * x[2:] ** 2), rtol=2e-15)
+    np.testing.assert_allclose(
+        np.asarray(S.Gamma(a=3.0, scale=1.0).ccdf(sd.asarray(x[2:]))),
+        np.exp(-x[2:]) * (1.0 + x[2:] + 0.5 * x[2:] ** 2),
+        rtol=2e-15,
+    )
     # erfc(sqrt x): squares, so the reference's own square root is exact
     z = np.array([1.0, 1.25, 1.5, 3.0, 9.0, 25.0])
     erfc = np.array([math.erfc(v) for v in z])
@@ -604,6 +691,7 @@ def test_beta_family_small_shapes():
         for x in (1e-250, 1e-30, 0.02, 0.5, 0.97, 1.0 - 1e-10):
             for m in ("cdf", "ccdf", "logcdf", "logccdf"):
                 assert getattr(lo, m)(x) == pytest.approx(getattr(hi, m)(x), rel=1e-6), (a, b, x, m)
+
         def close(got, want):  # (pytest.approx adds an absolute 1e-12: no test for a tiny p)
             return abs(got - want) <= 1e-12 * abs(want)
 
@@ -640,34 +728,111 @@ def test_beta_family_small_shapes():
 # the F argument dfn x / (dfn x + dfd) below the doubles altogether), and a result just above
 # the subnormals (Boost: 2e-13). (x, a, b, cdf, ccdf, logcdf, logccdf): true values from Arb.
 BETA_TINY = [
-    (2.5577760077856607e-36, 0.0012901596489084573, 0.5449374823701244,
-     0.8982974005410846, 0.10170259945891533, -0.10725408450482585, -2.2857024161862785),
-    (0.9999999999999957, 0.5485563366642973, 0.0037738739150651214,
-     0.12119467925889547, 0.8788053207411045, -2.110357106814741, -0.1291918839370924),
-    (1.4262239968790307e-188, 0.00027128344102526805, 0.014207970097647911,
-     0.872627967604178, 0.12737203239582193, -0.1362459679190381, -2.060643085878883),
+    (
+        2.5577760077856607e-36,
+        0.0012901596489084573,
+        0.5449374823701244,
+        0.8982974005410846,
+        0.10170259945891533,
+        -0.10725408450482585,
+        -2.2857024161862785,
+    ),
+    (
+        0.9999999999999957,
+        0.5485563366642973,
+        0.0037738739150651214,
+        0.12119467925889547,
+        0.8788053207411045,
+        -2.110357106814741,
+        -0.1291918839370924,
+    ),
+    (
+        1.4262239968790307e-188,
+        0.00027128344102526805,
+        0.014207970097647911,
+        0.872627967604178,
+        0.12737203239582193,
+        -0.1362459679190381,
+        -2.060643085878883,
+    ),
     (0.0172, 0.04, 0.7, 0.8293472759952524, 0.17065272400474765, -0.18711630204111349, -1.768124641232662),
-    (1e-323, 0.0013100809860233137, 4.633908918194403,
-     0.37841975016239504, 0.621580249837605, -0.9717512492912156, -0.47549025353900126),
-    (4.4748450513e-313, 0.0007423607384228735, 3.7530915798634688,
-     0.5870724424560937, 0.4129275575439063, -0.5326070554294219, -0.8844831068691381),
-    (2.088498046372631e-53, 5.856991998430899, 5.7812750757189955,
-     1.027714430495751e-306, 1.0, -704.5637011190827, -1.027714430495751e-306),
+    (
+        1e-323,
+        0.0013100809860233137,
+        4.633908918194403,
+        0.37841975016239504,
+        0.621580249837605,
+        -0.9717512492912156,
+        -0.47549025353900126,
+    ),
+    (
+        4.4748450513e-313,
+        0.0007423607384228735,
+        3.7530915798634688,
+        0.5870724424560937,
+        0.4129275575439063,
+        -0.5326070554294219,
+        -0.8844831068691381,
+    ),
+    (
+        2.088498046372631e-53,
+        5.856991998430899,
+        5.7812750757189955,
+        1.027714430495751e-306,
+        1.0,
+        -704.5637011190827,
+        -1.027714430495751e-306,
+    ),
 ]
 # (x, dfn, dfd, cdf, ccdf, logcdf, logccdf)
 F_TINY = [
-    (3.6676358459647984e-299, 0.0002713527552604415, 3.6912760173190287,
-     0.9099158920823638, 0.0900841079176362, -0.09440311002593013, -2.407011512637245),
-    (8.848448094366578e+22, 0.6201762912142642, 0.0037809344523372207,
-     0.10846838008096853, 0.8915316199190315, -2.2212965763001384, -0.11481437408691324),
-    (7.582839393594999e-298, 2.1494246133543263e-05, 10.390877909021208,
-     0.9925574288272209, 0.007442571172779163, -0.007470405296571315, -4.90053890209969),
-    (1.3365244111007632e+299, 0.013321077854721223, 2.5936018609059427e-05,
-     0.0108979635112521, 0.989102036488748, -4.519179341032736, -0.01095778130736473),
+    (
+        3.6676358459647984e-299,
+        0.0002713527552604415,
+        3.6912760173190287,
+        0.9099158920823638,
+        0.0900841079176362,
+        -0.09440311002593013,
+        -2.407011512637245,
+    ),
+    (
+        8.848448094366578e22,
+        0.6201762912142642,
+        0.0037809344523372207,
+        0.10846838008096853,
+        0.8915316199190315,
+        -2.2212965763001384,
+        -0.11481437408691324,
+    ),
+    (
+        7.582839393594999e-298,
+        2.1494246133543263e-05,
+        10.390877909021208,
+        0.9925574288272209,
+        0.007442571172779163,
+        -0.007470405296571315,
+        -4.90053890209969,
+    ),
+    (
+        1.3365244111007632e299,
+        0.013321077854721223,
+        2.5936018609059427e-05,
+        0.0108979635112521,
+        0.989102036488748,
+        -4.519179341032736,
+        -0.01095778130736473,
+    ),
     (1e-320, 2e-05, 6.0, 0.9925485131681745, 0.007451486831825489, -0.0074793878489457484, -4.899341691761382),
     (1e-320, 10.0, 3.0, 0.0, 1.0, -3677.1204878785297, -0.0),
-    (1.647e-320, 5.2389704897305405e-05, 5.868791808107427e-05,
-     0.5182557867505337, 0.4817442132494663, -0.6572863617844793, -0.7303419836965642),
+    (
+        1.647e-320,
+        5.2389704897305405e-05,
+        5.868791808107427e-05,
+        0.5182557867505337,
+        0.4817442132494663,
+        -0.6572863617844793,
+        -0.7303419836965642,
+    ),
 ]
 
 
@@ -708,15 +873,24 @@ def test_f_where_one_shape_is_past_2_900_review_regression():
     # The F distribution with dfd (or dfn) from 1.7e271 up is its chi-square limit; cdf was 1.0
     # at F(2, 1e308), x = 1 (true: 1 - 1/e) and the log forms NaN. Values: the incomplete beta
     # series in Arb. (x, dfn, dfd, cdf, ccdf, logcdf, logccdf)
-    rows = [(1.0, 2.0, 1e308, 0.6321205588285577, 0.36787944117144233, -0.4586751453870819, -1.0),
-            (1.0, 200.0, 1e308, 0.5132987982791487, 0.48670120172085135, -0.6668971505852894, -0.720104893025474),
-            (1e-320, 2e-5, 1e300, 0.992550258327848, 0.007449741672151913, -0.007477629589156729, -4.899575922070794),
-            (40.0, 0.5, 1e305, 0.9999979169695914, 2.083030408649431e-06, -2.0830325781602858e-06, -13.081686797304512),
-            (1.0, 1e308, 2.0, 0.36787944117144233, 0.6321205588285577, -1.0, -0.4586751453870819),
-            (1e305, 1e300, 2e-5, 0.007106867638463068, 0.992893132361537, -4.9466936894190034, -0.007132241713878829),
-            (1e-05, 7.0, 1e300, 2.1806304891469145e-17, 1.0, -38.36433253070743, -2.1806304891469148e-17),
-            (5.776808771711861, 16.419704325584377, 7.37960052026974e277, 0.9999999999995333, 4.667669003019092e-13,
-             -4.667669003020181e-13, -28.3929464046775)]
+    rows = [
+        (1.0, 2.0, 1e308, 0.6321205588285577, 0.36787944117144233, -0.4586751453870819, -1.0),
+        (1.0, 200.0, 1e308, 0.5132987982791487, 0.48670120172085135, -0.6668971505852894, -0.720104893025474),
+        (1e-320, 2e-5, 1e300, 0.992550258327848, 0.007449741672151913, -0.007477629589156729, -4.899575922070794),
+        (40.0, 0.5, 1e305, 0.9999979169695914, 2.083030408649431e-06, -2.0830325781602858e-06, -13.081686797304512),
+        (1.0, 1e308, 2.0, 0.36787944117144233, 0.6321205588285577, -1.0, -0.4586751453870819),
+        (1e305, 1e300, 2e-5, 0.007106867638463068, 0.992893132361537, -4.9466936894190034, -0.007132241713878829),
+        (1e-05, 7.0, 1e300, 2.1806304891469145e-17, 1.0, -38.36433253070743, -2.1806304891469148e-17),
+        (
+            5.776808771711861,
+            16.419704325584377,
+            7.37960052026974e277,
+            0.9999999999995333,
+            4.667669003019092e-13,
+            -4.667669003020181e-13,
+            -28.3929464046775,
+        ),
+    ]
     for x, dfn, dfd, *want in rows:
         X = S.F(dfn=dfn, dfd=dfd)
         for m, w in zip(("cdf", "ccdf", "logcdf", "logccdf"), want):
@@ -744,10 +918,16 @@ def test_noncentral_far_arguments_have_true_values():
     # Inside the guaranteed parameters every finite x has its value. The chi-square's density
     # far out did not return (its series peaks at index sqrt(nc x) / 2: from 1e100 the loop
     # never ended): now its closed form. Arb (tools/stats_ref.py's _ncx2_logpdf).
-    for df, nc, x, want in [(3.5, 2.0, 3.45e10, -17249737321.501545), (3.5, 2.0, 1e30, -4.999999999999986e29),
-                            (3.5, 2.0, 1e100, -5e99), (3.5, 2.0, 1e300, -5e299), (1e4, 1e4, 1e10, -4989970479.051994),
-                            (1e4, 1e4, 1e30, -4.999999999999e29), (0.01, 1e-3, 1e100, -5e99),
-                            (40.0, 900.0, 1e16, -4999997000000177.0)]:
+    for df, nc, x, want in [
+        (3.5, 2.0, 3.45e10, -17249737321.501545),
+        (3.5, 2.0, 1e30, -4.999999999999986e29),
+        (3.5, 2.0, 1e100, -5e99),
+        (3.5, 2.0, 1e300, -5e299),
+        (1e4, 1e4, 1e10, -4989970479.051994),
+        (1e4, 1e4, 1e30, -4.999999999999e29),
+        (0.01, 1e-3, 1e100, -5e99),
+        (40.0, 900.0, 1e16, -4999997000000177.0),
+    ]:
         X = S.NoncentralChiSquared(df=df, nc=nc)
         assert _within(float(X.logpdf(x)), want, 2e-15), (df, nc, x)
         v = float(X.pdf(x))
@@ -756,9 +936,14 @@ def test_noncentral_far_arguments_have_true_values():
     # Its tails there: cdf 1, ccdf 0, logcdf -0 (it was NaN), and the upper tail's log, which the
     # sum does not reach (it was -inf, or -36.7 at nc = 1e-10): between log(2 f (1 - 2 / x)) and
     # log(2 f / (1 - eps)), the same double here. Arb.
-    for df, nc, x, want in [(3.5, 2.0, 3e16, -1.4999999755051024e16), (3.5, 2.0, 1e30, -4.999999999999986e29),
-                            (1e4, 1e4, 1e13, -4999683725446.925), (0.01, 1e-3, 1e21, -4.99999999999e20),
-                            (40.0, 900.0, 1e14, -49999700000219.055), (0.01, 1e-10, 1e100, -5e99)]:
+    for df, nc, x, want in [
+        (3.5, 2.0, 3e16, -1.4999999755051024e16),
+        (3.5, 2.0, 1e30, -4.999999999999986e29),
+        (1e4, 1e4, 1e13, -4999683725446.925),
+        (0.01, 1e-3, 1e21, -4.99999999999e20),
+        (40.0, 900.0, 1e14, -49999700000219.055),
+        (0.01, 1e-10, 1e100, -5e99),
+    ]:
         X = S.NoncentralChiSquared(df=df, nc=nc)
         assert _within(float(X.logccdf(x)), want, 2e-15), (df, nc, x)
         assert float(X.ccdf(x)) == 0.0 and abs(float(X.cdf(x)) - 1.0) <= 2.3e-16 and float(X.logcdf(x)) == 0.0
@@ -787,12 +972,33 @@ def test_noncentral_methods_return_outside_the_guaranteed_region():
 
     start = time.perf_counter()
     nan = [
-        (S.NoncentralChiSquared(df=3.5, nc=1e15), ("cdf", 1e15), ("ccdf", 1e15), ("logcdf", 1e15), ("icdf", 0.5), ("entropy",)),
-        (S.NoncentralChiSquared(df=3.5, nc=1e100), ("cdf", 1.0), ("ccdf", 1e308), ("icdf", 0.01), ("ilogcdf", -1.0), ("median",)),
+        (
+            S.NoncentralChiSquared(df=3.5, nc=1e15),
+            ("cdf", 1e15),
+            ("ccdf", 1e15),
+            ("logcdf", 1e15),
+            ("icdf", 0.5),
+            ("entropy",),
+        ),
+        (
+            S.NoncentralChiSquared(df=3.5, nc=1e100),
+            ("cdf", 1.0),
+            ("ccdf", 1e308),
+            ("icdf", 0.01),
+            ("ilogcdf", -1.0),
+            ("median",),
+        ),
         (S.NoncentralChiSquared(df=1e100, nc=2.0), ("pdf", 1e300), ("logpdf", 1e300)),
         (S.NoncentralT(df=9.0, nc=1e100), ("cdf", 0.5), ("logccdf", 1e30), ("icdf", 0.5), ("median",)),
         (S.NoncentralT(df=9.0, nc=-1e8), ("cdf", -50.0), ("ccdf", -1e100), ("iccdf", 0.01)),
-        (S.NoncentralF(dfn=4.0, dfd=13.0, nc=1e100), ("pdf", 1.0), ("cdf", 1.0), ("icdf", 0.5), ("mode",), ("entropy",)),
+        (
+            S.NoncentralF(dfn=4.0, dfd=13.0, nc=1e100),
+            ("pdf", 1.0),
+            ("cdf", 1.0),
+            ("icdf", 0.5),
+            ("mode",),
+            ("entropy",),
+        ),
         (S.NoncentralF(dfn=4.0, dfd=13.0, nc=1e15), ("pdf", 50.0), ("cdf", 1e16), ("iccdf", 0.5), ("mode",)),
         (S.NoncentralF(dfn=4.0, dfd=1e100, nc=3.0), ("pdf", 1e100), ("logpdf", 1e300)),
         # in the region, an integral that does not fit the range of x (it took 86 s)
@@ -804,7 +1010,9 @@ def test_noncentral_methods_return_outside_the_guaranteed_region():
     # ... and values where they are right: the density's closed form, the mode from it, a tail
     # beyond every term (Arb for the density; the mode is nc + df - 3 to 1e-15 here)
     X = S.NoncentralChiSquared(df=3.5, nc=1e15)
-    assert _within(float(X.pdf(1e15)), 6.307831305050399e-09) and _within(float(X.logpdf(1.0000001e15)), -20.131473836219964)
+    assert _within(float(X.pdf(1e15)), 6.307831305050399e-09) and _within(
+        float(X.logpdf(1.0000001e15)), -20.131473836219964
+    )
     assert _within(float(X.mode()), 1e15 + 0.5, 1e-15)
     assert float(S.NoncentralChiSquared(df=3.5, nc=2.0).ccdf(1e300)) == 0.0
     # Degrees of freedom far beyond the region: the limit distributions (the t's normal, the
@@ -820,9 +1028,15 @@ def test_noncentral_methods_return_outside_the_guaranteed_region():
     # moments whose products pass the doubles, and the t's mode beyond what its equation resolves
     assert _within(float(S.NoncentralChiSquared(df=3.5, nc=1e300).skewness()), 3e-150)
     assert _within(float(S.NoncentralT(df=1e300, nc=-1e300).variance()), 5e299)
-    assert math.isnan(float(S.NoncentralT(df=1e10, nc=-1e5).kurtosis())) and math.isnan(float(S.NoncentralT(df=9.0, nc=1e15).mode()))
+    assert math.isnan(float(S.NoncentralT(df=1e10, nc=-1e5).kurtosis())) and math.isnan(
+        float(S.NoncentralT(df=9.0, nc=1e15).mode())
+    )
     assert math.isnan(float(S.NoncentralF(dfn=1e100, dfd=1e100, nc=1e100).kurtosis()))
-    for X in (S.NoncentralChiSquared(df=1e300, nc=1e300), S.NoncentralT(df=1e300, nc=1e300), S.NoncentralF(dfn=1e300, dfd=1e300, nc=1e300)):
+    for X in (
+        S.NoncentralChiSquared(df=1e300, nc=1e300),
+        S.NoncentralT(df=1e300, nc=1e300),
+        S.NoncentralF(dfn=1e300, dfd=1e300, nc=1e300),
+    ):
         for m in ("pdf", "logpdf", "cdf", "ccdf", "logcdf", "logccdf"):
             for x in (1e-300, 1.0, 1e300):
                 float(getattr(X, m)(x))
@@ -841,100 +1055,100 @@ def test_central_extreme_arguments():
     # NaN), a product with a subnormal shape, moments whose factors leave the range, the F
     # density with a beta argument below the doubles (F(13, 1e5).logpdf(5e-324) was +774.7).
     points = [
-        ("Normal", "ilogcdf", dict(mu=0.0, sigma=1.0), -1e+300, -1.4142135623730951e+150),
-        ("Normal", "ilogccdf", dict(mu=1e+300, sigma=1e+100), -1e+300, 1e+300),
-        ("Normal", "icdf", dict(mu=1.0, sigma=1.7e+308), 1e-300, -math.inf),
+        ("Normal", "ilogcdf", dict(mu=0.0, sigma=1.0), -1e300, -1.4142135623730951e150),
+        ("Normal", "ilogccdf", dict(mu=1e300, sigma=1e100), -1e300, 1e300),
+        ("Normal", "icdf", dict(mu=1.0, sigma=1.7e308), 1e-300, -math.inf),
         ("Laplace", "logcdf", dict(mu=0.0, sigma=5e-324), -1.0, -math.inf),
-        ("Laplace", "pdf", dict(mu=1e-10, sigma=1e-100), 1e+300, 0.0),
-        ("Laplace", "logccdf", dict(mu=-1e-100, sigma=1e-10), 1.7e+308, -math.inf),
+        ("Laplace", "pdf", dict(mu=1e-10, sigma=1e-100), 1e300, 0.0),
+        ("Laplace", "logccdf", dict(mu=-1e-100, sigma=1e-10), 1.7e308, -math.inf),
         ("Logistic", "logcdf", dict(mu=1.0, sigma=5e-324), -1e-10, -math.inf),
-        ("Logistic", "pdf", dict(mu=1e+300, sigma=1e-100), 0.0, 0.0),
-        ("Gumbel", "logccdf", dict(mu=-1.0, sigma=1e-100), 1.7e+308, -math.inf),
-        ("Gumbel", "ccdf", dict(mu=1e-10, sigma=1e+100), -1.7e+308, 1.0),
-        ("Gumbel", "logpdf", dict(mu=-10000000000.0, sigma=1e-300), 1e+16, -math.inf),
-        ("Cauchy", "logcdf", dict(mu=-1e+300, sigma=1e-300), -2e+300, -1382.695785682277),
-        ("Cauchy", "logccdf", dict(mu=-1e+300, sigma=1e-300), 1000.0, -1382.695785682277),
-        ("Cauchy", "cdf", dict(mu=1e-10, sigma=1e-300), -1e+16, 3.183099e-317),
-        ("Cauchy", "logpdf", dict(mu=1e-10, sigma=5e-324), -1e+100, -1206.10182040604),
+        ("Logistic", "pdf", dict(mu=1e300, sigma=1e-100), 0.0, 0.0),
+        ("Gumbel", "logccdf", dict(mu=-1.0, sigma=1e-100), 1.7e308, -math.inf),
+        ("Gumbel", "ccdf", dict(mu=1e-10, sigma=1e100), -1.7e308, 1.0),
+        ("Gumbel", "logpdf", dict(mu=-10000000000.0, sigma=1e-300), 1e16, -math.inf),
+        ("Cauchy", "logcdf", dict(mu=-1e300, sigma=1e-300), -2e300, -1382.695785682277),
+        ("Cauchy", "logccdf", dict(mu=-1e300, sigma=1e-300), 1000.0, -1382.695785682277),
+        ("Cauchy", "cdf", dict(mu=1e-10, sigma=1e-300), -1e16, 3.183099e-317),
+        ("Cauchy", "logpdf", dict(mu=1e-10, sigma=5e-324), -1e100, -1206.10182040604),
         ("Cauchy", "icdf", dict(mu=0.0, sigma=5e-324), 5e-324, -0.3183098861837907),
-        ("Cauchy", "ilogccdf", dict(mu=0.0, sigma=1.0), -1e+300, math.inf),
-        ("LogNormal", "ilogccdf", dict(mu=1e-300, sigma=1e-100), -1e+300, math.inf),
-        ("LogNormal", "variance", dict(mu=1e+300, sigma=1e-300), None, math.inf),
+        ("Cauchy", "ilogccdf", dict(mu=0.0, sigma=1.0), -1e300, math.inf),
+        ("LogNormal", "ilogccdf", dict(mu=1e-300, sigma=1e-100), -1e300, math.inf),
+        ("LogNormal", "variance", dict(mu=1e300, sigma=1e-300), None, math.inf),
         ("LogNormal", "skewness", dict(mu=0.0, sigma=1e-300), None, 3e-300),
-        ("LogNormal", "mean", dict(mu=-1e+300, sigma=10000000000.0), None, 0.0),
+        ("LogNormal", "mean", dict(mu=-1e300, sigma=10000000000.0), None, 0.0),
         ("LogNormal", "kurtosis", dict(mu=0.0, sigma=10000000000.0), None, math.inf),
-        ("LogNormal", "logpdf", dict(mu=-1e+100, sigma=1e-100), 1.0, -math.inf),
-        ("LogNormal", "mode", dict(mu=1e+300, sigma=1e-300), None, math.inf),
-        ("Uniform", "logccdf", dict(a=-1.7e+308, b=1e-100), -1e-10, -732.7526878231687),
-        ("Uniform", "ilogcdf", dict(a=-1e+300, b=0.0), -745.0, -1e+300),
-        ("Exponential", "logcdf", dict(scale=1e+100), 2.822350730471937e-224, -745.0),
+        ("LogNormal", "logpdf", dict(mu=-1e100, sigma=1e-100), 1.0, -math.inf),
+        ("LogNormal", "mode", dict(mu=1e300, sigma=1e-300), None, math.inf),
+        ("Uniform", "logccdf", dict(a=-1.7e308, b=1e-100), -1e-10, -732.7526878231687),
+        ("Uniform", "ilogcdf", dict(a=-1e300, b=0.0), -745.0, -1e300),
+        ("Exponential", "logcdf", dict(scale=1e100), 2.822350730471937e-224, -745.0),
         ("Weibull", "pdf", dict(c=10000000000.0, scale=1e-300), 1.000000000152718e-300, math.inf),
-        ("Weibull", "skewness", dict(c=1e+100, scale=1.7e+308), None, -1.1395470994046486),
-        ("Weibull", "kurtosis", dict(c=10000000000.0, scale=1e+300), None, 2.3999999971082313),
+        ("Weibull", "skewness", dict(c=1e100, scale=1.7e308), None, -1.1395470994046486),
+        ("Weibull", "kurtosis", dict(c=10000000000.0, scale=1e300), None, 2.3999999971082313),
         ("Weibull", "mean", dict(c=1e-300, scale=1.0), None, math.inf),
-        ("Weibull", "variance", dict(c=1e+100, scale=1.0), None, 1.6449340668482265e-200),
+        ("Weibull", "variance", dict(c=1e100, scale=1.0), None, 1.6449340668482265e-200),
         ("Weibull", "iccdf", dict(c=1e-100, scale=5e-324), 0.01, math.inf),
-        ("Weibull", "logcdf", dict(c=1.7e+308, scale=1e+100), 1.0, -math.inf),
+        ("Weibull", "logcdf", dict(c=1.7e308, scale=1e100), 1.0, -math.inf),
         ("Weibull", "entropy", dict(c=5e-324, scale=1.0), None, -math.inf),
         ("Pareto", "ilogcdf", dict(b=5e-324, scale=1e-300), -745.0, 1.7704790283768383e-300),
-        ("Pareto", "skewness", dict(b=1.7e+308, scale=1.0), None, 2.0),
-        ("Pareto", "kurtosis", dict(b=1e+300, scale=1.0), None, 6.0),
-        ("Pareto", "variance", dict(b=1e+200, scale=1e+300), None, 1.0000000000000001e+200),
-        ("Pareto", "logccdf", dict(b=1.7e+308, scale=1e-10), 3.0, -math.inf),
+        ("Pareto", "skewness", dict(b=1.7e308, scale=1.0), None, 2.0),
+        ("Pareto", "kurtosis", dict(b=1e300, scale=1.0), None, 6.0),
+        ("Pareto", "variance", dict(b=1e200, scale=1e300), None, 1.0000000000000001e200),
+        ("Pareto", "logccdf", dict(b=1.7e308, scale=1e-10), 3.0, -math.inf),
         ("Rayleigh", "cdf", dict(scale=5e-324), 0.5, 1.0),
-        ("Rayleigh", "logpdf", dict(scale=1e-100), 1.7e+308, -math.inf),
-        ("Rayleigh", "logccdf", dict(scale=1e-10), 1.7e+308, -math.inf),
+        ("Rayleigh", "logpdf", dict(scale=1e-100), 1.7e308, -math.inf),
+        ("Rayleigh", "logccdf", dict(scale=1e-10), 1.7e308, -math.inf),
         ("GEV", "mean", dict(c=5e-324, mu=0.0, sigma=1.0), None, 0.5772156649015329),
         ("GEV", "iccdf", dict(c=-5e-324, mu=1e-300, sigma=1.0), 1e-10, 23.025850929890456),
-        ("GEV", "mode", dict(c=-1e-300, mu=1.0, sigma=1e+300), None, -7.756385209041318e-17),
-        ("GEV", "cdf", dict(c=1.7e+308, mu=0.0, sigma=1.7e+308), 0.9999999999999999, 0.36787944117144233),
-        ("GEV", "logccdf", dict(c=1.0, mu=1e-300, sigma=1e+300), 1e+300, -1381.5510557964274),
-        ("GEV", "ilogccdf", dict(c=1.0, mu=-1e+300, sigma=1e+300), -745.0, -2.8223507304719374e-24),
+        ("GEV", "mode", dict(c=-1e-300, mu=1.0, sigma=1e300), None, -7.756385209041318e-17),
+        ("GEV", "cdf", dict(c=1.7e308, mu=0.0, sigma=1.7e308), 0.9999999999999999, 0.36787944117144233),
+        ("GEV", "logccdf", dict(c=1.0, mu=1e-300, sigma=1e300), 1e300, -1381.5510557964274),
+        ("GEV", "ilogccdf", dict(c=1.0, mu=-1e300, sigma=1e300), -745.0, -2.8223507304719374e-24),
         ("GEV", "variance", dict(c=100.0, mu=0.0, sigma=1e-300), None, 7.886578673647905e-230),
         ("GEV", "mean", dict(c=1.0000001, mu=0.0, sigma=1.0), None, -4.227843342509175e-08),
-        ("GEV", "standard_deviation", dict(c=-1e-300, mu=1.0, sigma=1e+300), None, 1.2825498301618642e+300),
+        ("GEV", "standard_deviation", dict(c=-1e-300, mu=1.0, sigma=1e300), None, 1.2825498301618642e300),
         ("GEV", "skewness", dict(c=-1e-300, mu=1.0, sigma=1.0), None, 1.1395470994046486),
-        ("GEV", "logpdf", dict(c=-1e+300, mu=1e-300, sigma=1.7e+308), -169999999.99999997, -673.7441552867782),
-        ("GEV", "cdf", dict(c=-0.5, mu=1.7e+308, sigma=1.7e+308), -1.1390447050961305e+308, 1.1102230246251546e-16),
-        ("GEV", "logccdf", dict(c=1e-300, mu=1e-300, sigma=1e-300), 1.0, -6.907755278982137e+302),
-        ("GEV", "cdf", dict(c=1.7e+308, mu=1.7e+308, sigma=1e+300), 1e+100, 0.36787944117144233),
-        ("Gamma", "pdf", dict(a=0.5, scale=1e+100), 5e-324, 2.538240300160582e+111),
-        ("Gamma", "cdf", dict(a=1e-10, scale=1e+300), 5e-324, 0.9999998565361718),
-        ("Gamma", "logccdf", dict(a=1e-10, scale=1e+300), 5e-324, -15.757182902339945),
-        ("Gamma", "ccdf", dict(a=3.7, scale=1e-10), 1e+300, 0.0),
-        ("Gamma", "logpdf", dict(a=1e-10, scale=1.7e+308), 5e-324, 721.4142208460819),
-        ("Gamma", "logcdf", dict(a=1000.0, scale=1e+300), 5e-324, -1441127.7279980832),
+        ("GEV", "logpdf", dict(c=-1e300, mu=1e-300, sigma=1.7e308), -169999999.99999997, -673.7441552867782),
+        ("GEV", "cdf", dict(c=-0.5, mu=1.7e308, sigma=1.7e308), -1.1390447050961305e308, 1.1102230246251546e-16),
+        ("GEV", "logccdf", dict(c=1e-300, mu=1e-300, sigma=1e-300), 1.0, -6.907755278982137e302),
+        ("GEV", "cdf", dict(c=1.7e308, mu=1.7e308, sigma=1e300), 1e100, 0.36787944117144233),
+        ("Gamma", "pdf", dict(a=0.5, scale=1e100), 5e-324, 2.538240300160582e111),
+        ("Gamma", "cdf", dict(a=1e-10, scale=1e300), 5e-324, 0.9999998565361718),
+        ("Gamma", "logccdf", dict(a=1e-10, scale=1e300), 5e-324, -15.757182902339945),
+        ("Gamma", "ccdf", dict(a=3.7, scale=1e-10), 1e300, 0.0),
+        ("Gamma", "logpdf", dict(a=1e-10, scale=1.7e308), 5e-324, 721.4142208460819),
+        ("Gamma", "logcdf", dict(a=1000.0, scale=1e300), 5e-324, -1441127.7279980832),
         ("ChiSquared", "cdf", dict(df=1.0), 5e-324, 1.7735048886036274e-162),
         ("ChiSquared", "logcdf", dict(df=2.0), 1e-323, -744.4400719213812),
-        ("InverseGamma", "ccdf", dict(a=1e-10, scale=5e-324), 1e+300, 0.9999998565361718),
-        ("InverseGamma", "pdf", dict(a=0.5, scale=5e-324), 1e+100, 1.2540573332e-312),
-        ("InverseGamma", "logcdf", dict(a=3.7, scale=1e+300), 5e-324, -math.inf),
+        ("InverseGamma", "ccdf", dict(a=1e-10, scale=5e-324), 1e300, 0.9999998565361718),
+        ("InverseGamma", "pdf", dict(a=0.5, scale=5e-324), 1e100, 1.2540573332e-312),
+        ("InverseGamma", "logcdf", dict(a=3.7, scale=1e300), 5e-324, -math.inf),
         # (a below 2^-1021: the limit's two atoms, P(1) = a / (a + b) = 1e-323, sd sqrt(q (1 - q)),
         # T50; the Beta's own value is 2.57e-162, sqrt(1 + b) apart)
         ("Beta", "standard_deviation", dict(a=5e-324, b=0.5), None, 3.1434555694052576e-162),
         ("Beta", "entropy", dict(a=5e-324, b=1.0), None, -math.inf),
-        ("Beta", "skewness", dict(a=1e-300, b=1e-100), None, 1e+100),
-        ("Beta", "mean", dict(a=1.7e+308, b=1.7e+308), None, 0.5),
-        ("StudentT", "cdf", dict(df=1e-300), -1.7e+308, 0.5),
-        ("StudentT", "ccdf", dict(df=1e-50), -1e+300, 0.5),
-        ("StudentT", "logccdf", dict(df=1e-100), 1e+300, -0.6931471805599453),
+        ("Beta", "skewness", dict(a=1e-300, b=1e-100), None, 1e100),
+        ("Beta", "mean", dict(a=1.7e308, b=1.7e308), None, 0.5),
+        ("StudentT", "cdf", dict(df=1e-300), -1.7e308, 0.5),
+        ("StudentT", "ccdf", dict(df=1e-50), -1e300, 0.5),
+        ("StudentT", "logccdf", dict(df=1e-100), 1e300, -0.6931471805599453),
         ("F", "logpdf", dict(dfn=13.0, dfd=100000.0), 5e-324, -4087.915885991893),
-        ("F", "pdf", dict(dfn=0.5, dfd=13.0), 1e-320, 1.922065934334491e+239),
-        ("F", "logpdf", dict(dfn=1e+100, dfd=13.0), 1e+300, -5174.3123071466),
-        ("F", "pdf", dict(dfn=1e+100, dfd=13.0), 1e+300, 0.0),
-        ("F", "logpdf", dict(dfn=100000.0, dfd=13.0), 1.7e+308, -5316.446767123508),
-        ("F", "logcdf", dict(dfn=2.2e+281, dfd=49.0), 1.8e-292, -3.0628413525357505e+282),
-        ("F", "logpdf", dict(dfn=13.0, dfd=1e+100), 1e-300, -3792.761251350172),
+        ("F", "pdf", dict(dfn=0.5, dfd=13.0), 1e-320, 1.922065934334491e239),
+        ("F", "logpdf", dict(dfn=1e100, dfd=13.0), 1e300, -5174.3123071466),
+        ("F", "pdf", dict(dfn=1e100, dfd=13.0), 1e300, 0.0),
+        ("F", "logpdf", dict(dfn=100000.0, dfd=13.0), 1.7e308, -5316.446767123508),
+        ("F", "logcdf", dict(dfn=2.2e281, dfd=49.0), 1.8e-292, -3.0628413525357505e282),
+        ("F", "logpdf", dict(dfn=13.0, dfd=1e100), 1e-300, -3792.761251350172),
         # moments whose factors leave the range (a subnormal shape; dfn, dfd next to the ends)
         ("Beta", "kurtosis", dict(a=5e-324, b=5e-324), None, -2.0),
-        ("F", "kurtosis", dict(dfn=0.5, dfd=1.7e+308), None, 24.0),
-        ("F", "kurtosis", dict(dfn=10000000000.0, dfd=1.7e+308), None, 1.2e-09),
-        ("F", "kurtosis", dict(dfn=1.7e+308, dfd=1.7e+308), None, 3.8823529411764706e-307),
-        ("F", "kurtosis", dict(dfn=1e-10, dfd=1e+300), None, 120000000000.0),
-        ("F", "skewness", dict(dfn=1e-300, dfd=1e+300), None, 2.82842712474619e+150),
-        ("F", "skewness", dict(dfn=5e-324, dfd=1.7e+308), None, 1.2724849808380786e+162),
-        ("F", "skewness", dict(dfn=1e+300, dfd=13.0), None, 2.424366106925306),
-        ("F", "skewness", dict(dfn=1e+300, dfd=100000.0), None, 0.017889259401108203),
+        ("F", "kurtosis", dict(dfn=0.5, dfd=1.7e308), None, 24.0),
+        ("F", "kurtosis", dict(dfn=10000000000.0, dfd=1.7e308), None, 1.2e-09),
+        ("F", "kurtosis", dict(dfn=1.7e308, dfd=1.7e308), None, 3.8823529411764706e-307),
+        ("F", "kurtosis", dict(dfn=1e-10, dfd=1e300), None, 120000000000.0),
+        ("F", "skewness", dict(dfn=1e-300, dfd=1e300), None, 2.82842712474619e150),
+        ("F", "skewness", dict(dfn=5e-324, dfd=1.7e308), None, 1.2724849808380786e162),
+        ("F", "skewness", dict(dfn=1e300, dfd=13.0), None, 2.424366106925306),
+        ("F", "skewness", dict(dfn=1e300, dfd=100000.0), None, 0.017889259401108203),
     ]
     start = time.perf_counter()
     for name, method, params, x, want in points:
@@ -954,16 +1168,29 @@ def test_central_extreme_arguments():
     # .logccdf(40) was +105), the F density with both shapes huge and a beta argument below the
     # doubles, a deep beta tail next to 1 with b far below the measured shapes (9e-4 off).
     nans = [
-        S.Gamma(a=1e100, scale=1e-300).cdf(1e-200), S.Gamma(a=1e100).icdf(0.5), S.Gamma(a=1.7e308).iccdf(5e-324),
-        S.InverseGamma(a=1e300, scale=1e-300).ccdf(1e-100), S.ChiSquared(df=1e31).cdf(1e31), S.ChiSquared(df=5e-324).cdf(1.0),
-        S.StudentT(df=5e-324).logccdf(40.0), S.F(dfn=5e-324, dfd=1.0).cdf(1.0), S.F(dfn=1.7e308, dfd=1.7e308).cdf(0.5),
-        S.F(dfn=1e100, dfd=1e100).logpdf(1e-310), S.Beta(a=1e300, b=1e300).icdf(0.5), S.Beta(a=1.0, b=1e-300).logcdf(0.9999999999),
+        S.Gamma(a=1e100, scale=1e-300).cdf(1e-200),
+        S.Gamma(a=1e100).icdf(0.5),
+        S.Gamma(a=1.7e308).iccdf(5e-324),
+        S.InverseGamma(a=1e300, scale=1e-300).ccdf(1e-100),
+        S.ChiSquared(df=1e31).cdf(1e31),
+        S.ChiSquared(df=5e-324).cdf(1.0),
+        S.StudentT(df=5e-324).logccdf(40.0),
+        S.F(dfn=5e-324, dfd=1.0).cdf(1.0),
+        S.F(dfn=1.7e308, dfd=1.7e308).cdf(0.5),
+        S.F(dfn=1e100, dfd=1e100).logpdf(1e-310),
+        S.Beta(a=1e300, b=1e300).icdf(0.5),
+        S.Beta(a=1.0, b=1e-300).logcdf(0.9999999999),
     ]
     assert all(math.isnan(float(v)) for v in nans), [float(v) for v in nans]
     # an inverse outside the measured shapes is returned only if the forward tail reproduces
     # the target: inside the support, or NaN (Beta(1e-300, 1e-300).icdf(0.5) was 2.8e283)
-    for X, lo, hi in ((S.Beta(a=1e-300, b=1e-300), 0.0, 1.0), (S.Beta(a=1e-10, b=1e-10), 0.0, 1.0), (S.F(dfn=1.0, dfd=1e-300), 0.0, math.inf),
-                      (S.Gamma(a=1e-100), 0.0, math.inf), (S.ChiSquared(df=1e15), 9e14, 1.1e15)):
+    for X, lo, hi in (
+        (S.Beta(a=1e-300, b=1e-300), 0.0, 1.0),
+        (S.Beta(a=1e-10, b=1e-10), 0.0, 1.0),
+        (S.F(dfn=1.0, dfd=1e-300), 0.0, math.inf),
+        (S.Gamma(a=1e-100), 0.0, math.inf),
+        (S.ChiSquared(df=1e15), 9e14, 1.1e15),
+    ):
         for p in (1e-300, 0.5, 1 - 1e-10):
             v = float(X.icdf(p))
             assert math.isnan(v) or lo <= v <= hi, (X, p, v)
@@ -971,8 +1198,15 @@ def test_central_extreme_arguments():
                 assert abs(float(X.cdf(v)) - p) <= 1e-6 * p, (X, p, v)
     # bounded time and sane ranges at the far corners (special's inverses at shapes of 1e308
     # take up to 0.25 s a call: one of each here)
-    for X in (S.Gamma(a=1.7e308), S.Beta(a=5e-324, b=1e300), S.StudentT(df=1e-300), S.F(dfn=1e-300, dfd=1.7e308),
-              S.GEV(c=1.7e308, mu=1.7e308, sigma=5e-324), S.Weibull(c=5e-324, scale=1.7e308), S.LogNormal(mu=-1.7e308, sigma=1.7e308)):
+    for X in (
+        S.Gamma(a=1.7e308),
+        S.Beta(a=5e-324, b=1e300),
+        S.StudentT(df=1e-300),
+        S.F(dfn=1e-300, dfd=1.7e308),
+        S.GEV(c=1.7e308, mu=1.7e308, sigma=5e-324),
+        S.Weibull(c=5e-324, scale=1.7e308),
+        S.LogNormal(mu=-1.7e308, sigma=1.7e308),
+    ):
         for x in (5e-324, 1.0, 1.7e308, -1.7e308):
             c, cc, f = float(X.cdf(x)), float(X.ccdf(x)), float(X.pdf(x))
             assert math.isnan(c) or 0.0 <= c <= 1.0, (X, x, c)
@@ -1002,26 +1236,26 @@ def test_gamma_family_inverses_outside_the_measured_shapes():
     points = [
         ("Gamma", "ilogccdf", dict(a=5e-324, scale=1.0), -10000000000.0, 9999999232.534077),
         ("Gamma", "ilogccdf", dict(a=5e-324, scale=1e-300), -10000000000.0, 9.999999232534077e-291),
-        ("Gamma", "ilogccdf", dict(a=5e-324, scale=1e+100), -745.0, 4.906714973236744e+99),
-        ("Gamma", "ilogccdf", dict(a=5e-324, scale=1.0), -1e+200, 1e+200),
+        ("Gamma", "ilogccdf", dict(a=5e-324, scale=1e100), -745.0, 4.906714973236744e99),
+        ("Gamma", "ilogccdf", dict(a=5e-324, scale=1.0), -1e200, 1e200),
         ("Gamma", "iccdf", dict(a=1e-320, scale=1.0), 1e-322, 3.2200095811354794),
         ("Gamma", "ilogccdf", dict(a=1e-310, scale=1e-300), -100000.0, 9.92746929651357e-296),
         ("InverseGamma", "ilogcdf", dict(a=5e-324, scale=1.0), -745.0, 2.038023413738956),
         ("InverseGamma", "ilogcdf", dict(a=5e-324, scale=1e-100), -10000000000.0, 1.0000000767465982e-110),
-        ("InverseGamma", "ilogcdf", dict(a=5e-324, scale=1.7e+308), -10000000000.0, 1.7000001304692168e+298),
-        ("InverseGamma", "icdf", dict(a=1e-320, scale=1e+300), 1e-322, 3.105580821431493e+299),
-        ("Gamma", "ilogccdf", dict(a=2.3e-308, scale=1.0), -1e+20, 1e+20),
-        ("Gamma", "ilogccdf", dict(a=1e-300, scale=1.0), -1e+50, 1e+50),
-        ("InverseGamma", "ilogcdf", dict(a=1e-300, scale=1e+300), -1e+100, 1e+200),
-        ("ChiSquared", "ilogccdf", dict(df=2e-300), -1e+50, 2e+50),
-        ("ChiSquared", "ilogccdf", dict(df=4.6e-308), -1e+200, 2e+200),
+        ("InverseGamma", "ilogcdf", dict(a=5e-324, scale=1.7e308), -10000000000.0, 1.7000001304692168e298),
+        ("InverseGamma", "icdf", dict(a=1e-320, scale=1e300), 1e-322, 3.105580821431493e299),
+        ("Gamma", "ilogccdf", dict(a=2.3e-308, scale=1.0), -1e20, 1e20),
+        ("Gamma", "ilogccdf", dict(a=1e-300, scale=1.0), -1e50, 1e50),
+        ("InverseGamma", "ilogcdf", dict(a=1e-300, scale=1e300), -1e100, 1e200),
+        ("ChiSquared", "ilogccdf", dict(df=2e-300), -1e50, 2e50),
+        ("ChiSquared", "ilogccdf", dict(df=4.6e-308), -1e200, 2e200),
         # roots beyond the doubles: a target Q above a E1(y) for every double s y; P(a, y) = p
         # at log y = log(p) / a
-        ("Gamma", "ilogccdf", dict(a=1e-200, scale=1e+300), -1e+200, math.inf),
+        ("Gamma", "ilogccdf", dict(a=1e-200, scale=1e300), -1e200, math.inf),
         ("Gamma", "ilogccdf", dict(a=2.3e-308, scale=1.0), -700.0, 0.0),
-        ("Gamma", "ilogccdf", dict(a=5e-324, scale=1e+300), -700.0, 0.0),
+        ("Gamma", "ilogccdf", dict(a=5e-324, scale=1e300), -700.0, 0.0),
         ("Gamma", "iccdf", dict(a=5e-324, scale=1.0), 0.01, 0.0),
-        ("Gamma", "icdf", dict(a=5e-324, scale=1.7e+308), 0.5, 0.0),
+        ("Gamma", "icdf", dict(a=5e-324, scale=1.7e308), 0.5, 0.0),
         ("InverseGamma", "icdf", dict(a=5e-324, scale=1.0), 0.01, math.inf),
         ("InverseGamma", "ilogcdf", dict(a=2.3e-308, scale=1.0), -700.0, math.inf),
         # the forward tails the check reads
@@ -1034,11 +1268,11 @@ def test_gamma_family_inverses_outside_the_measured_shapes():
         ("Gamma", "logcdf", dict(a=1e-310, scale=1.0), 1e-05, -1.093571980004366e-309),
         ("Gamma", "cdf", dict(a=5e-324, scale=1.0), 1e-300, 1.0),
         ("InverseGamma", "logcdf", dict(a=5e-324, scale=1.0), 0.01, -849.0550962718867),
-        ("Gamma", "logccdf", dict(a=1e-200, scale=1.0), 1e+150, -1e+150),
-        ("Gamma", "logccdf", dict(a=1e-100, scale=1.0), 1e+250, -1e+250),
+        ("Gamma", "logccdf", dict(a=1e-200, scale=1.0), 1e150, -1e150),
+        ("Gamma", "logccdf", dict(a=1e-100, scale=1.0), 1e250, -1e250),
         ("Gamma", "logccdf", dict(a=1e-300, scale=1.0), 10000000000.0, -10000000713.801378),
-        ("InverseGamma", "logcdf", dict(a=1e-200, scale=1.0), 1e-150, -1e+150),
-        ("ChiSquared", "logccdf", dict(df=2e-200), 2e+150, -1e+150),
+        ("InverseGamma", "logcdf", dict(a=1e-200, scale=1.0), 1e-150, -1e150),
+        ("ChiSquared", "logccdf", dict(df=2e-200), 2e150, -1e150),
     ]
     start = time.perf_counter()
     for name, method, params, x, want in points:

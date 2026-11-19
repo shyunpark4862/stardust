@@ -16,30 +16,70 @@ N = 20000
 P_MIN = 1e-4  # fixed seeds: a pass or a fail is the same on every run
 
 CONTINUOUS = [
-    ("Normal", dict(mu=1.0, sigma=2.0)), ("LogNormal", dict(mu=0.5, sigma=1.5)), ("Exponential", dict(scale=2.0)),
-    ("Uniform", dict(a=-1.0, b=3.0)), ("Laplace", dict(mu=0.5, sigma=2.0)), ("Cauchy", dict(mu=0.0, sigma=1.0)),
-    ("Logistic", dict(mu=0.0, sigma=1.0)), ("Gumbel", dict(mu=1.0, sigma=2.0)), ("GEV", dict(c=0.3)),
-    ("GEV", dict(c=-0.4)), ("GEV", dict(c=0.0)), ("Weibull", dict(c=0.7)), ("Pareto", dict(b=2.5)),
-    ("Rayleigh", dict(scale=1.5)), ("Gamma", dict(a=3.0, scale=2.0)), ("Gamma", dict(a=0.3)), ("Gamma", dict(a=1e6)),
-    ("ChiSquared", dict(df=0.5)), ("ChiSquared", dict(df=7.0)), ("InverseGamma", dict(a=0.5)),
-    ("InverseGamma", dict(a=4.0, scale=3.0)), ("Beta", dict(a=0.2, b=0.3)), ("Beta", dict(a=2.0, b=5.0)), ("Beta", dict(a=0.5, b=3.0)),
-    ("StudentT", dict(df=0.5)), ("StudentT", dict(df=5.0)), ("StudentT", dict(df=1e4)), ("F", dict(dfn=0.7, dfd=3.0)),
-    ("F", dict(dfn=10.0, dfd=20.0)), ("NoncentralChiSquared", dict(df=0.5, nc=3.0)),
-    ("NoncentralChiSquared", dict(df=4.0, nc=50.0)), ("NoncentralChiSquared", dict(df=4.0, nc=0.0)),
-    ("NoncentralT", dict(df=3.0, nc=-2.0)), ("NoncentralT", dict(df=30.0, nc=5.0)),
+    ("Normal", dict(mu=1.0, sigma=2.0)),
+    ("LogNormal", dict(mu=0.5, sigma=1.5)),
+    ("Exponential", dict(scale=2.0)),
+    ("Uniform", dict(a=-1.0, b=3.0)),
+    ("Laplace", dict(mu=0.5, sigma=2.0)),
+    ("Cauchy", dict(mu=0.0, sigma=1.0)),
+    ("Logistic", dict(mu=0.0, sigma=1.0)),
+    ("Gumbel", dict(mu=1.0, sigma=2.0)),
+    ("GEV", dict(c=0.3)),
+    ("GEV", dict(c=-0.4)),
+    ("GEV", dict(c=0.0)),
+    ("Weibull", dict(c=0.7)),
+    ("Pareto", dict(b=2.5)),
+    ("Rayleigh", dict(scale=1.5)),
+    ("Gamma", dict(a=3.0, scale=2.0)),
+    ("Gamma", dict(a=0.3)),
+    ("Gamma", dict(a=1e6)),
+    ("ChiSquared", dict(df=0.5)),
+    ("ChiSquared", dict(df=7.0)),
+    ("InverseGamma", dict(a=0.5)),
+    ("InverseGamma", dict(a=4.0, scale=3.0)),
+    ("Beta", dict(a=0.2, b=0.3)),
+    ("Beta", dict(a=2.0, b=5.0)),
+    ("Beta", dict(a=0.5, b=3.0)),
+    ("StudentT", dict(df=0.5)),
+    ("StudentT", dict(df=5.0)),
+    ("StudentT", dict(df=1e4)),
+    ("F", dict(dfn=0.7, dfd=3.0)),
+    ("F", dict(dfn=10.0, dfd=20.0)),
+    ("NoncentralChiSquared", dict(df=0.5, nc=3.0)),
+    ("NoncentralChiSquared", dict(df=4.0, nc=50.0)),
+    ("NoncentralChiSquared", dict(df=4.0, nc=0.0)),
+    ("NoncentralT", dict(df=3.0, nc=-2.0)),
+    ("NoncentralT", dict(df=30.0, nc=5.0)),
     ("NoncentralF", dict(dfn=3.0, dfd=8.0, nc=4.0)),
 ]
 DISCRETE = [
-    ("Bernoulli", dict(p=0.3)), ("DiscreteUniform", dict(low=-3.0, high=7.0)), ("Geometric", dict(p=0.2)),
-    ("Geometric", dict(p=1e-6)), ("Poisson", dict(mu=0.7)), ("Poisson", dict(mu=9.9)), ("Poisson", dict(mu=10.0)),
-    ("Poisson", dict(mu=1234.5)), ("Poisson", dict(mu=1e12)), ("Binomial", dict(n=20.0, p=0.3)),
-    ("Binomial", dict(n=20.0, p=0.9)), ("Binomial", dict(n=1e4, p=0.3)), ("Binomial", dict(n=1e9, p=0.7)),
-    ("Binomial", dict(n=1e6, p=1e-5)), ("NegativeBinomial", dict(n=5.0, p=0.3)),
-    ("NegativeBinomial", dict(n=0.3, p=0.01)), ("Hypergeometric", dict(total=1000.0, successes=300.0, draws=100.0)),
+    ("Bernoulli", dict(p=0.3)),
+    ("DiscreteUniform", dict(low=-3.0, high=7.0)),
+    ("Geometric", dict(p=0.2)),
+    ("Geometric", dict(p=1e-6)),
+    ("Poisson", dict(mu=0.7)),
+    ("Poisson", dict(mu=9.9)),
+    ("Poisson", dict(mu=10.0)),
+    ("Poisson", dict(mu=1234.5)),
+    ("Poisson", dict(mu=1e12)),
+    ("Binomial", dict(n=20.0, p=0.3)),
+    ("Binomial", dict(n=20.0, p=0.9)),
+    ("Binomial", dict(n=1e4, p=0.3)),
+    ("Binomial", dict(n=1e9, p=0.7)),
+    ("Binomial", dict(n=1e6, p=1e-5)),
+    ("NegativeBinomial", dict(n=5.0, p=0.3)),
+    ("NegativeBinomial", dict(n=0.3, p=0.01)),
+    ("Hypergeometric", dict(total=1000.0, successes=300.0, draws=100.0)),
     ("Hypergeometric", dict(total=50.0, successes=45.0, draws=40.0)),
-    ("Hypergeometric", dict(total=1e7, successes=4e6, draws=5e5)), ("BetaBinomial", dict(n=20.0, a=2.0, b=3.0)),
-    ("BetaBinomial", dict(n=100.0, a=0.3, b=0.2)), ("LogSeries", dict(p=0.9)), ("LogSeries", dict(p=0.999)),
-    ("LogSeries", dict(p=1e-3)), ("Zipf", dict(a=2.0)), ("Zipf", dict(a=1.3)), ("Zipf", dict(a=6.0)),
+    ("Hypergeometric", dict(total=1e7, successes=4e6, draws=5e5)),
+    ("BetaBinomial", dict(n=20.0, a=2.0, b=3.0)),
+    ("BetaBinomial", dict(n=100.0, a=0.3, b=0.2)),
+    ("LogSeries", dict(p=0.9)),
+    ("LogSeries", dict(p=0.999)),
+    ("LogSeries", dict(p=1e-3)),
+    ("Zipf", dict(a=2.0)),
+    ("Zipf", dict(a=1.3)),
+    ("Zipf", dict(a=6.0)),
 ]
 ALL_NAMES = sorted({n for n, _ in CONTINUOUS + DISCRETE})
 
@@ -243,8 +283,13 @@ def test_rejections_first_test_keeps_the_exact_decision():
     double-double log pmf otherwise: their samples follow the pmf across the switch points and
     for huge parameters (where the margin always defers)."""
     r = sd.random.default_rng(31)
-    for D, lo in ((S.Poisson(mu=10.0), 0), (S.Poisson(mu=250.5), 150), (S.Binomial(n=40.0, p=0.25), 0),
-                  (S.Binomial(n=3000.0, p=0.97), 2850), (S.NegativeBinomial(n=7.0, p=0.2), 0)):
+    for D, lo in (
+        (S.Poisson(mu=10.0), 0),
+        (S.Poisson(mu=250.5), 150),
+        (S.Binomial(n=40.0, p=0.25), 0),
+        (S.Binomial(n=3000.0, p=0.97), 2850),
+        (S.NegativeBinomial(n=7.0, p=0.2), 0),
+    ):
         x = np.asarray(D.sample(400000, rng=r))
         ks = np.arange(lo, lo + 120.0)
         pm = np.asarray(D.pmf(sd.asarray(ks)))
@@ -252,7 +297,7 @@ def test_rejections_first_test_keeps_the_exact_decision():
         obs = np.array([(x == k).sum() for k in ks[keep]])
         chi2 = ((obs - pm[keep] * len(x)) ** 2 / (pm[keep] * len(x))).sum()
         assert st.chi2.sf(chi2, keep.sum()) > 1e-6, D
-    for D, m, s in ((S.Poisson(mu=1e15), 1e15, 10**7.5), (S.Binomial(n=1e15, p=0.5), 5e14, 2.5e14 ** 0.5)):
+    for D, m, s in ((S.Poisson(mu=1e15), 1e15, 10**7.5), (S.Binomial(n=1e15, p=0.5), 5e14, 2.5e14**0.5)):
         x = np.asarray(D.sample(20000, rng=r))
         assert abs(x.mean() - m) < 6 * s / 20000**0.5 and 0.97 < x.std() / s < 1.03
 
@@ -261,12 +306,25 @@ def test_reworked_samplers_follow_their_distributions():
     """Gamma and beta below shape 1 (powers of uniforms as exponentials), the noncentral
     chi-square as a gamma and a shifted normal square, and the noncentral F on top of it."""
     r = sd.random.default_rng(32)
-    cases = [S.Gamma(a=0.5), S.Gamma(a=0.07, scale=3.0), S.Gamma(a=0.01), S.Beta(a=0.5, b=0.5), S.Beta(a=0.07, b=0.9),
-             S.Beta(a=0.05, b=0.9), S.Beta(a=0.3, b=4.0), S.NoncentralChiSquared(df=5.0, nc=2.0),
-             S.NoncentralChiSquared(df=1.0, nc=3.0), S.NoncentralChiSquared(df=0.4, nc=3.0),
-             S.NoncentralChiSquared(df=7.5, nc=0.0), S.NoncentralF(dfn=5.0, dfd=7.0, nc=2.0),
-             S.NoncentralF(dfn=0.5, dfd=1.5, nc=1.0), S.ChiSquared(df=0.3), S.InverseGamma(a=0.4),
-             S.NegativeBinomial(n=0.5, p=0.4), S.StudentT(df=0.8)]
+    cases = [
+        S.Gamma(a=0.5),
+        S.Gamma(a=0.07, scale=3.0),
+        S.Gamma(a=0.01),
+        S.Beta(a=0.5, b=0.5),
+        S.Beta(a=0.07, b=0.9),
+        S.Beta(a=0.05, b=0.9),
+        S.Beta(a=0.3, b=4.0),
+        S.NoncentralChiSquared(df=5.0, nc=2.0),
+        S.NoncentralChiSquared(df=1.0, nc=3.0),
+        S.NoncentralChiSquared(df=0.4, nc=3.0),
+        S.NoncentralChiSquared(df=7.5, nc=0.0),
+        S.NoncentralF(dfn=5.0, dfd=7.0, nc=2.0),
+        S.NoncentralF(dfn=0.5, dfd=1.5, nc=1.0),
+        S.ChiSquared(df=0.3),
+        S.InverseGamma(a=0.4),
+        S.NegativeBinomial(n=0.5, p=0.4),
+        S.StudentT(df=0.8),
+    ]
     for D in cases:
         x = np.asarray(D.sample(200000, rng=r))
         if isinstance(D, S.NegativeBinomial):
@@ -289,8 +347,13 @@ def test_extreme_parameters_return_in_bounded_time():
     assert np.all(np.asarray(S.Zipf(a=2000.0).sample(1000, rng=rng)) == 1.0)
     # hypergeometric: the walk from the mode is bounded (a standard deviation above 65536,
     # or a population beyond 2^53: NaN); below, samples as before
-    for total, succ, draws in ((1e17, 5e16, 5e16), (1e100, 5e99, 5e99), (1e300, 1e299, 1e299), (1e15, 5e14, 5e14),
-                               (2.0**53, 9007199.0, 2.0**52)):
+    for total, succ, draws in (
+        (1e17, 5e16, 5e16),
+        (1e100, 5e99, 5e99),
+        (1e300, 1e299, 1e299),
+        (1e15, 5e14, 5e14),
+        (2.0**53, 9007199.0, 2.0**52),
+    ):
         v = np.asarray(S.Hypergeometric(total=total, successes=succ, draws=draws).sample(2000, rng=rng))
         assert np.isnan(v).all(), (total, succ, draws)
     v = np.asarray(S.Hypergeometric(total=1e15, successes=1e6, draws=5e14).sample(2000, rng=rng))

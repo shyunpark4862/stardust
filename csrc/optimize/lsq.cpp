@@ -365,8 +365,9 @@ void qrfac(lint n, double* a, lint* ipvt, double* rdiag, double* acnorm, double*
 // qrsolv: solves min || [A; D] x - [b; 0] || given the pivoted QR of A (r's upper triangle,
 // ipvt, qtb = Q^T b); the strict lower triangle of r receives S's strict upper triangle
 // (transposed), sdiag S's diagonal.
-void qrsolv(lint n, double* r, const lint* ipvt, const double* diag, const double* qtb, double* x, double* sdiag,
-            double* wa) {
+void qrsolv(
+    lint n, double* r, const lint* ipvt, const double* diag, const double* qtb, double* x, double* sdiag, double* wa
+) {
     auto R = [&](lint i, lint j) -> double& { return r[i + j * n]; };
     for (lint j = 0; j < n; ++j) {
         for (lint i = j; i < n; ++i) R(i, j) = R(j, i);
@@ -421,8 +422,19 @@ void qrsolv(lint n, double* r, const lint* ipvt, const double* diag, const doubl
 
 // lmpar: the Levenberg-Marquardt parameter par whose step x has ||D x|| within 10% of delta
 // (or the Gauss-Newton step when it is inside), r and ipvt from qrfac.
-void lmpar(lint n, double* r, const lint* ipvt, const double* diag, const double* qtb, double delta, double& par,
-           double* x, double* sdiag, double* wa1, double* wa2) {
+void lmpar(
+    lint n,
+    double* r,
+    const lint* ipvt,
+    const double* diag,
+    const double* qtb,
+    double delta,
+    double& par,
+    double* x,
+    double* sdiag,
+    double* wa1,
+    double* wa2
+) {
     auto R = [&](lint i, lint j) -> double& { return r[i + j * n]; };
     lint nsing = n;
     for (lint j = 0; j < n; ++j) {
@@ -499,8 +511,18 @@ void lmpar(lint n, double* r, const lint* ipvt, const double* diag, const double
 }
 
 // lmder's loop (factor 100, mode 1: the scaling from the Jacobian's column norms).
-int levenberg_marquardt(Model& M, vec& x, vec& fvec, bool have_f0, double ftol, double xtol, double gtol,
-                        lint maxfev, lint& n_iter, Final& fin) {
+int levenberg_marquardt(
+    Model& M,
+    vec& x,
+    vec& fvec,
+    bool have_f0,
+    double ftol,
+    double xtol,
+    double gtol,
+    lint maxfev,
+    lint& n_iter,
+    Final& fin
+) {
     const lint m = M.m, n = M.p;
     const auto un = static_cast<std::size_t>(n), um = static_cast<std::size_t>(m);
     vec wa4(um), J(um * un), R0(un * un), qtf0(un), fjac(un * un), diag(un), qtf(un), wa1(un), wa2(un), wa3(un),
@@ -553,8 +575,10 @@ int levenberg_marquardt(Model& M, vec& x, vec& fvec, bool have_f0, double ftol, 
         for (lint j = 0; j < n; ++j) diag[j] = std::max(diag[j], wa2[j]);
         double ratio = 0;
         do {
-            lmpar(n, fjac.data(), ipvt.data(), diag.data(), qtf.data(), delta, par, wa1.data(), wa2.data(),
-                  wa3.data(), wa5.data());
+            lmpar(
+                n, fjac.data(), ipvt.data(), diag.data(), qtf.data(), delta, par, wa1.data(), wa2.data(), wa3.data(),
+                wa5.data()
+            );
             for (lint j = 0; j < n; ++j) {
                 wa1[j] = -wa1[j];
                 xt[j] = x[j] + wa1[j];
@@ -613,10 +637,13 @@ int levenberg_marquardt(Model& M, vec& x, vec& fvec, bool have_f0, double ftol, 
         fin.fresh = true;
     }
     switch (info) {
-        case 1: case 6: return sFtol;
-        case 2: case 7: return sXtol;
+        case 1:
+        case 6: return sFtol;
+        case 2:
+        case 7: return sXtol;
         case 3: return sBoth;
-        case 4: case 8: return sGtol;
+        case 4:
+        case 8: return sGtol;
         default: return sMaxNfev;
     }
 }
@@ -803,8 +830,20 @@ vec solve_lsq_trust_region(lint p, lint m, const vec& uf, const vec& s, const ve
 
 // select_step: the best of the trust-region step (scaled back from the bound it crosses),
 // its reflection and the gradient step. Returns the predicted reduction.
-double select_step(const vec& x, const Quad& Q, const vec& gh, vec pp, vec ph, const vec& d, double Delta,
-                   const vec& lb, const vec& ub, double theta, vec& step, vec& step_h) {
+double select_step(
+    const vec& x,
+    const Quad& Q,
+    const vec& gh,
+    vec pp,
+    vec ph,
+    const vec& d,
+    double Delta,
+    const vec& lb,
+    const vec& ub,
+    double theta,
+    vec& step,
+    vec& step_h
+) {
     const std::size_t p = x.size();
     vec xp(p);
     for (std::size_t i = 0; i < p; ++i) xp[i] = x[i] + pp[i];
@@ -881,12 +920,24 @@ double select_step(const vec& x, const Quad& Q, const vec& gh, vec pp, vec ph, c
     return -ag_value;
 }
 
-int trust_region_reflective(Model& M, vec& x, vec& f, bool have_f0, const vec& lb, const vec& ub, double ftol,
-                            double xtol, double gtol, lint max_nfev, lint& n_iter, Final& fin) {
+int trust_region_reflective(
+    Model& M,
+    vec& x,
+    vec& f,
+    bool have_f0,
+    const vec& lb,
+    const vec& ub,
+    double ftol,
+    double xtol,
+    double gtol,
+    lint max_nfev,
+    lint& n_iter,
+    Final& fin
+) {
     const lint m = M.m, p = M.p;
     const auto up = static_cast<std::size_t>(p), um = static_cast<std::size_t>(m);
-    vec fnew(um), wa(um), J(um * up), R0(up * up), qtf(up), g(up), v(up), dv(up), d(up), dh(up), gh(up),
-        Rh(up * up), A(2 * up * up), U(2 * up * up), s(up), Vt(up * up), uf(up), step, step_h;
+    vec fnew(um), wa(um), J(um * up), R0(up * up), qtf(up), g(up), v(up), dv(up), d(up), dh(up), gh(up), Rh(up * up),
+        A(2 * up * up), U(2 * up * up), s(up), Vt(up * up), uf(up), step, step_h;
     if (!have_f0 && !M.eval(x, f.data())) return sStartNonfinite;
     auto refresh = [&]() {  // J, its QR and the gradient g = J^T f = R0^T Q0^T f at x
         if (!M.jacobian(x, f.data(), J.data(), wa.data())) return false;
@@ -1013,10 +1064,26 @@ nb::object matrix_out(const vec& Jc, lint m, lint p) {  // column-major m x p ->
 // (lb, ub: the bounds, +-inf for none). f0: the residuals at x0 when the caller has them (its
 // call counts in nfev). final: return the last iterate's residuals and Jacobian (lm
 // evaluates the Jacobian there when its last one is elsewhere).
-nb::object lsq_solve(const std::string& func, nb::callable fun, nb::object jac, nb::object check, const vec& x0,
-                     const vec& lb, const vec& ub, int method, double ftol, double xtol, double gtol,
-                     std::int64_t max_nfev, std::int64_t m, int diff, const vec& diff_step, bool array_x,
-                     nb::object f0, bool final) {
+nb::object lsq_solve(
+    const std::string& func,
+    nb::callable fun,
+    nb::object jac,
+    nb::object check,
+    const vec& x0,
+    const vec& lb,
+    const vec& ub,
+    int method,
+    double ftol,
+    double xtol,
+    double gtol,
+    std::int64_t max_nfev,
+    std::int64_t m,
+    int diff,
+    const vec& diff_step,
+    bool array_x,
+    nb::object f0,
+    bool final
+) {
     const char* fn = func.c_str();
     return call_named(fn, [&]() -> nb::object {
         Model M;
@@ -1054,18 +1121,22 @@ nb::object lsq_solve(const std::string& func, nb::callable fun, nb::object jac, 
             fo = vector_out(f);
             Jo = matrix_out(fin.J, M.m, M.p);
         }
-        return nb::make_tuple(xs, status, static_cast<std::int64_t>(M.nfev), static_cast<std::int64_t>(M.njev),
-                              static_cast<std::int64_t>(n_iter), fo, Jo);
+        return nb::make_tuple(
+            xs, status, static_cast<std::int64_t>(M.nfev), static_cast<std::int64_t>(M.njev),
+            static_cast<std::int64_t>(n_iter), fo, Jo
+        );
     });
 }
 
 }  // namespace
 
 void bind_lsq(nb::module_& m) {
-    m.def("lsq_solve", &lsq_solve, nb::arg("func"), nb::arg("fun"), nb::arg("jac").none(), nb::arg("check").none(),
-          nb::arg("x0"), nb::arg("lb"), nb::arg("ub"), nb::arg("method"), nb::arg("ftol"), nb::arg("xtol"),
-          nb::arg("gtol"), nb::arg("max_nfev"), nb::arg("m"), nb::arg("diff"), nb::arg("diff_step"),
-          nb::arg("array_x"), nb::arg("f0").none(), nb::arg("final"));
+    m.def(
+        "lsq_solve", &lsq_solve, nb::arg("func"), nb::arg("fun"), nb::arg("jac").none(), nb::arg("check").none(),
+        nb::arg("x0"), nb::arg("lb"), nb::arg("ub"), nb::arg("method"), nb::arg("ftol"), nb::arg("xtol"),
+        nb::arg("gtol"), nb::arg("max_nfev"), nb::arg("m"), nb::arg("diff"), nb::arg("diff_step"), nb::arg("array_x"),
+        nb::arg("f0").none(), nb::arg("final")
+    );
 }
 
 }  // namespace sd::optimize

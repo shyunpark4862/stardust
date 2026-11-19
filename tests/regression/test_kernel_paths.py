@@ -132,17 +132,28 @@ def test_penalized_packing(n):
     g, X = design(n, 40, 4)
     y = X[:, :5].sum(1) + g.standard_normal(n)
     w = g.uniform(0.5, 2.0, n)
-    check_layouts_threads(lambda XX: R.ridge(sd.asarray(y), sd.asarray(XX), alpha=sd.asarray([1e-6, 0.1, 10.0]),
-                                             weights=sd.asarray(w), standardize=True), X, ["params", "ssr", "df_model"])
+    check_layouts_threads(
+        lambda XX: R.ridge(
+            sd.asarray(y), sd.asarray(XX), alpha=sd.asarray([1e-6, 0.1, 10.0]), weights=sd.asarray(w), standardize=True
+        ),
+        X,
+        ["params", "ssr", "df_model"],
+    )
     g, X = design(n, 1030, 5)
     b = np.zeros(1030)
     b[:5] = 1.0
     y = X @ b + g.standard_normal(n)
-    check_layouts_threads(lambda XX: R.lasso(sd.asarray(y), sd.asarray(XX), alpha=0.05, weights=sd.asarray(w[:n])),
-                          X, ["params", "n_iter", "dual_gap"])
+    check_layouts_threads(
+        lambda XX: R.lasso(sd.asarray(y), sd.asarray(XX), alpha=0.05, weights=sd.asarray(w[:n])),
+        X,
+        ["params", "n_iter", "dual_gap"],
+    )
     yb = (g.random(n) < 1 / (1 + np.exp(-(X @ b) / 2))).astype(float)
-    check_layouts_threads(lambda XX: R.penalized_glm(sd.asarray(yb), sd.asarray(XX), family="binomial", alpha=0.02,
-                                                     l1_ratio=1.0), X, ["params", "deviance", "n_iter"])
+    check_layouts_threads(
+        lambda XX: R.penalized_glm(sd.asarray(yb), sd.asarray(XX), family="binomial", alpha=0.02, l1_ratio=1.0),
+        X,
+        ["params", "deviance", "n_iter"],
+    )
 
 
 @pytest.mark.parametrize("n", [4096, 8192])
@@ -153,12 +164,25 @@ def test_penalized_glm_eval(n, family):
     b = np.zeros(12)
     b[:4] = 0.4
     eta = X @ b
-    y = (g.random(n) < 1 / (1 + np.exp(-eta))).astype(float) if family == "binomial" else g.poisson(np.exp(eta / 2)).astype(float)
+    y = (
+        (g.random(n) < 1 / (1 + np.exp(-eta))).astype(float)
+        if family == "binomial"
+        else g.poisson(np.exp(eta / 2)).astype(float)
+    )
     w = g.uniform(0.5, 2.0, n)
     for l1 in (1.0, 0.5, 0.0):
-        check_layouts_threads(lambda XX: R.penalized_glm(sd.asarray(y), sd.asarray(XX), family=family,
-                                                         alpha=sd.asarray([0.05, 0.005]), l1_ratio=l1,
-                                                         weights=sd.asarray(w)), X, ["params", "deviance", "dual_gap"])
+        check_layouts_threads(
+            lambda XX: R.penalized_glm(
+                sd.asarray(y),
+                sd.asarray(XX),
+                family=family,
+                alpha=sd.asarray([0.05, 0.005]),
+                l1_ratio=l1,
+                weights=sd.asarray(w),
+            ),
+            X,
+            ["params", "deviance", "dual_gap"],
+        )
 
 
 @pytest.mark.parametrize("n", [4096, 8192])

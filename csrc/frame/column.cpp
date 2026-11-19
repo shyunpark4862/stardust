@@ -143,7 +143,8 @@ Column convert_values(const Column& src, DType target, Exact exact, const char* 
             std::string v = std::is_same_v<From, double> ? nb::repr(nb::float_(in[i])).c_str()
                                                          : std::to_string(static_cast<std::int64_t>(in[i]));
             throw nb::value_error((std::string(what) + " " + v + " cannot be converted to " + dtype_name(target) +
-                                   " without loss").c_str());
+                                   " without loss")
+                                      .c_str());
         }
         o[i] = static_cast<To>(in[i]);
     }

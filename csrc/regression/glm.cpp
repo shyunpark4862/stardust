@@ -78,7 +78,7 @@ namespace {
 
 constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 constexpr double kInf = std::numeric_limits<double>::infinity();
-constexpr int kPolishSteps = 3;                  // refinement steps of the polishing iterations
+constexpr int kPolishSteps = 3;  // refinement steps of the polishing iterations
 // G44's test: Fisher scoring converges linearly near the maximum, its steps shrinking by the
 // rate rho = ||I - I_E^-1 I_O|| each; a step not below half the one before means rho >= 1/2,
 // i.e. more than 50 iterations to rounding. Three such steps in a row: a single large ratio
@@ -87,7 +87,7 @@ constexpr int kPolishSteps = 3;                  // refinement steps of the poli
 // never trigger it).
 constexpr double kSlowRatio = 0.5;
 constexpr int kSlowRuns = 3;
-constexpr double kSqrtEps = 0x1p-26;               // sqrt(2^-52): the direction test's margin
+constexpr double kSqrtEps = 0x1p-26;  // sqrt(2^-52): the direction test's margin
 constexpr double kInvSqrt2Pi = 0.39894228040143267794;
 
 // The Python layer maps the names (stardust/regression/_glm.py).
@@ -98,13 +98,26 @@ enum ScaleMode : int { sDefault = 0, sX2, sDev, sFixed };
 
 // The per-regression scalars, in this order (stardust/regression/_glm.py reads them).
 enum GStat : int {
-    gNobs = 0, gRank, gDev, gNullDev, gPearson, gScale, gLlf, gLlnull, gNIter, gConverged, gSeparation, gIsNaN,
-    gNGroups, gLags, gNStat
+    gNobs = 0,
+    gRank,
+    gDev,
+    gNullDev,
+    gPearson,
+    gScale,
+    gLlf,
+    gLlnull,
+    gNIter,
+    gConverged,
+    gSeparation,
+    gIsNaN,
+    gNGroups,
+    gLags,
+    gNStat
 };
 
 // Failure codes of one regression.
-constexpr int eInfY = 1, eInfX = 2, eInfVar = 3, eNegVar = 4, eInfFreq = 5, eNegFreq = 6, eTrials = 7,
-              eInfOffset = 8, eBadY = 9, eNoStart = 10;
+constexpr int eInfY = 1, eInfX = 2, eInfVar = 3, eNegVar = 4, eInfFreq = 5, eNegFreq = 6, eTrials = 7, eInfOffset = 8,
+              eBadY = 9, eNoStart = 10;
 
 inline double rd(const std::byte* p) {
     double v;
@@ -217,8 +230,7 @@ inline double unit_dev(int fam, double y, double mu, double muc) {
         case fPoisson:
             if (y == 0.0) return 2.0 * mu;
             return 2.0 * mu * phi_fn((y - mu) / mu, y / mu);
-        case fGamma:
-            return 2.0 * mu_fn((y - mu) / mu, y / mu);
+        case fGamma: return 2.0 * mu_fn((y - mu) / mu, y / mu);
         default:  // binomial
             if (y == 0.0) return -2.0 * log_muc(mu, muc);
             if (y == 1.0) return -2.0 * log_mu(mu, muc);
@@ -233,12 +245,12 @@ struct Model {
     bool intercept;
     double rtol;
     const double* y;
-    const double* v;    // var_weights
-    const double* f;    // freq_weights
-    const double* tr;   // trials
-    const double* m;    // v * trials: the unit deviance's weight
-    const double* pw;   // f * m: the fit's prior weight (0: out of the fit)
-    const double* o;    // offset (+ log exposure)
+    const double* v;  // var_weights
+    const double* f;  // freq_weights
+    const double* tr;  // trials
+    const double* m;  // v * trials: the unit deviance's weight
+    const double* pw;  // f * m: the fit's prior weight (0: out of the fit)
+    const double* o;  // offset (+ log exposure)
     const std::byte* X;
     std::int64_t xrs, xcs;
 };
@@ -304,12 +316,20 @@ void link_fun(const Model& M, const double* mu, double* eta, lint i0, lint i1) {
         double* e = eta + b;
         switch (M.link) {
             case lIdentity: std::copy(u, u + len, e); break;
-            case lLog: for (int i = 0; i < len; ++i) e[i] = std::log(u[i]); break;
+            case lLog:
+                for (int i = 0; i < len; ++i) e[i] = std::log(u[i]);
+                break;
             case lLogit: special::Logit::chunk(u, e, len); break;
             case lProbit: special::Ndtri::chunk(u, e, len); break;
-            case lCloglog: for (int i = 0; i < len; ++i) e[i] = std::log(-std::log1p(-u[i])); break;
-            case lSqrt: for (int i = 0; i < len; ++i) e[i] = std::sqrt(u[i]); break;
-            default: for (int i = 0; i < len; ++i) e[i] = 1.0 / u[i]; break;
+            case lCloglog:
+                for (int i = 0; i < len; ++i) e[i] = std::log(-std::log1p(-u[i]));
+                break;
+            case lSqrt:
+                for (int i = 0; i < len; ++i) e[i] = std::sqrt(u[i]);
+                break;
+            default:
+                for (int i = 0; i < len; ++i) e[i] = 1.0 / u[i];
+                break;
         }
     }
 }
@@ -419,13 +439,35 @@ void xbeta_all(const Model& M, const double* beta, double* eta) {
 
 // One inner weighted least squares fit (no refinement unless steps > 0): beta (NaN for
 // aliased columns), kept, eta = X beta + offset for every row. Returns the rank.
-lint solve_lean(const Model& M, const double* z, const double* w, double* beta, std::uint8_t* kept, double* eta,
-                int steps, Scratch& sc, double* R = nullptr, const double* hdiff = nullptr,
-                const double* newton_b0 = nullptr, const double* newton_eta0 = nullptr) {
+lint solve_lean(
+    const Model& M,
+    const double* z,
+    const double* w,
+    double* beta,
+    std::uint8_t* kept,
+    double* eta,
+    int steps,
+    Scratch& sc,
+    double* R = nullptr,
+    const double* hdiff = nullptr,
+    const double* newton_b0 = nullptr,
+    const double* newton_eta0 = nullptr
+) {
     Problem pb{M.n, M.p, M.k, M.intercept, true, false, false, M.rtol, kNonrobust, steps, -1, 0, false};
     pb.lean = true;
-    Data d{reinterpret_cast<const std::byte*>(z), 8, M.X, M.xrs, M.xcs, reinterpret_cast<const std::byte*>(w), 8,
-           nullptr, 0, nullptr, 0};
+    Data d{
+        reinterpret_cast<const std::byte*>(z),
+        8,
+        M.X,
+        M.xrs,
+        M.xcs,
+        reinterpret_cast<const std::byte*>(w),
+        8,
+        nullptr,
+        0,
+        nullptr,
+        0
+    };
     double st[kNStat];
     d.hdiff = hdiff;
     d.newton_b0 = newton_b0;
@@ -500,7 +542,6 @@ void obs_correction(const Model& M, const State& s, const double* w, double* c) 
 }
 
 
-
 // An inner iteration by the normal equations (G40): X_K^T W X_K b = X_K^T W z over the
 // columns K kept by the last QR (all columns before any QR), Cholesky (potrf) and two
 // triangular solves. Aliasing stays G21's: a column the rule would drop makes this return
@@ -528,9 +569,18 @@ constexpr double kCholPolishMaxErr = 1e-10;
 // 18.7 us by QR, 19.9 us by Cholesky; (200, 3) the same; (500, 5) 13% faster by Cholesky)
 constexpr double kCholMinWork = 512;
 
-bool solve_chol(const Model& M, const double* z, const double* w, const std::uint8_t* keep, double* beta,
-                std::uint8_t* kept, double* eta, double max_err = kCholMaxErr, const double* base = nullptr,
-                const double* rho = nullptr) {
+bool solve_chol(
+    const Model& M,
+    const double* z,
+    const double* w,
+    const std::uint8_t* keep,
+    double* beta,
+    std::uint8_t* kept,
+    double* eta,
+    double max_err = kCholMaxErr,
+    const double* base = nullptr,
+    const double* rho = nullptr
+) {
     const lint n = M.n, k = M.k;
     std::vector<lint> K;
     for (lint j = 0; j < k; ++j)
@@ -632,8 +682,9 @@ inline bool settled(const DD& a, const DD& b, double tol) {  // |b - a|/(|b| + 0
 
 // IRLS from the evaluated state W.cur (with coefficients W.beta when W.have_beta), at most
 // max_lean iterations. On return W.cur is the last iterate and W.beta its coefficients.
-IrlsOut irls(const Model& M, Work& W, int max_lean, double tol, int inner_steps, bool inner_chol, Scratch& sc,
-             int newton = 2) {
+IrlsOut irls(
+    const Model& M, Work& W, int max_lean, double tol, int inner_steps, bool inner_chol, Scratch& sc, int newton = 2
+) {
     IrlsOut out;
     const lint k = M.k;
     bool conv = false;
@@ -662,20 +713,22 @@ IrlsOut irls(const Model& M, Work& W, int max_lean, double tol, int inner_steps,
         // accurate enough (G80); the QR otherwise
         const bool by_chol = (!conv || canonical(M)) && !polish_newton && inner_chol &&
                              double(M.n) * double(M.k) >= kCholMinWork &&
-                             solve_chol(M, W.z, W.w, W.kept, W.beta_new, W.kept_new, W.nxt.eta,
-                                        conv ? kCholPolishMaxErr : kCholMaxErr, conv ? W.beta : nullptr, W.rho);
+                             solve_chol(
+                                 M, W.z, W.w, W.kept, W.beta_new, W.kept_new, W.nxt.eta,
+                                 conv ? kCholPolishMaxErr : kCholMaxErr, conv ? W.beta : nullptr, W.rho
+                             );
         if (!by_chol) {
             // the polishing iterations refine as the final solve does: their iterate's error is
             // what the final step starts from
-            solve_lean(M, W.z, W.w, W.beta_new, W.kept_new, W.nxt.eta, conv ? kPolishSteps : inner_steps, sc, W.R,
-                       polish_newton ? W.nxt.mu : nullptr, polish_newton ? W.beta : nullptr,
-                       polish_newton ? W.nxt.muc : nullptr);
+            solve_lean(
+                M, W.z, W.w, W.beta_new, W.kept_new, W.nxt.eta, conv ? kPolishSteps : inner_steps, sc, W.R,
+                polish_newton ? W.nxt.mu : nullptr, polish_newton ? W.beta : nullptr,
+                polish_newton ? W.nxt.muc : nullptr
+            );
             W.have_kept = true;
         }
         evaluate(M, W.nxt, W.part);
-        auto ok_state = [&](bool first) {
-            return W.nxt.valid && !(!first && rises(W.cur.dev, W.nxt.dev, tol));
-        };
+        auto ok_state = [&](bool first) { return W.nxt.valid && !(!first && rises(W.cur.dev, W.nxt.dev, tol)); };
         const bool first = !W.have_beta;
         bool eta_only = false;
         bool halved = false;
@@ -890,8 +943,9 @@ inline int boundary(const Model& M, double y) {
 // Rows of the fit that fail the existence certificate of the Fisher step d taken from the
 // state (rho, w) (deta = X d, X^T W X d = score): a boundary row passes when it was in the
 // fit's least squares and |deta_i| < |rho_i|/2.
-std::vector<lint> failing(const Model& M, const double* w, const double* rho, const double* eta_from,
-                          const double* eta_to) {
+std::vector<lint> failing(
+    const Model& M, const double* w, const double* rho, const double* eta_from, const double* eta_to
+) {
     std::vector<lint> S;
     for (lint i = 0; i < M.n; ++i) {
         if (!(M.pw[i] > 0.0) || boundary(M, M.y[i]) == 0) continue;
@@ -910,7 +964,8 @@ std::vector<lint> failing(const Model& M, const double* w, const double* rho, co
 std::vector<lint> direction(const Model& M, const double* bdir, std::vector<lint> S, Scratch& sc) {
     const lint n = M.n, k = M.k;
     std::vector<double> b(static_cast<std::size_t>(k)), c(static_cast<std::size_t>(std::max<lint>(k, 1)));
-    std::vector<double> v(static_cast<std::size_t>(std::max<lint>(n, 1))), w1(static_cast<std::size_t>(std::max<lint>(n, 1)));
+    std::vector<double> v(static_cast<std::size_t>(std::max<lint>(n, 1))),
+        w1(static_cast<std::size_t>(std::max<lint>(n, 1)));
     std::vector<double> e(static_cast<std::size_t>(std::max<lint>(n, 1)));
     std::vector<std::uint8_t> kept(static_cast<std::size_t>(std::max<lint>(k, 1)));
     std::vector<double> zero(static_cast<std::size_t>(std::max<lint>(n, 1)), 0.0);
@@ -959,9 +1014,23 @@ std::vector<lint> direction(const Model& M, const double* bdir, std::vector<lint
     return {};
 }
 
-int glm_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64_t ys, const std::byte* Xb,
-            std::int64_t xrs, std::int64_t xcs, const std::byte* ab, std::int64_t ars, std::int64_t acs,
-            const std::byte* gb, std::int64_t gs, const Outs& o, Scratch& sc) {
+int glm_one(
+    const Opts& op,
+    lint n,
+    lint p,
+    const std::byte* yb,
+    std::int64_t ys,
+    const std::byte* Xb,
+    std::int64_t xrs,
+    std::int64_t xcs,
+    const std::byte* ab,
+    std::int64_t ars,
+    std::int64_t acs,
+    const std::byte* gb,
+    std::int64_t gs,
+    const Outs& o,
+    Scratch& sc
+) {
     const lint k = p + (op.intercept ? 1 : 0);
     // ---- 1. checks
     bool nan = false;
@@ -1105,8 +1174,19 @@ int glm_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64_t ys
         pb.steps = op.final_steps;
         pb.glm = true;
         pb.checked = true;  // X was scanned above; z and w are finite (w >= 0) by construction
-        Data d{reinterpret_cast<const std::byte*>(W.z), 8, Xb, xrs, xcs, reinterpret_cast<const std::byte*>(W.w), 8,
-               nullptr, 0, gb, gs};
+        Data d{
+            reinterpret_cast<const std::byte*>(W.z),
+            8,
+            Xb,
+            xrs,
+            xcs,
+            reinterpret_cast<const std::byte*>(W.w),
+            8,
+            nullptr,
+            0,
+            gb,
+            gs
+        };
         d.smult = smult.empty() ? nullptr : smult.data();
         d.hdiff = hdiff.empty() ? nullptr : hdiff.data();
         d.nobs_eff = nobs.hi;
@@ -1377,9 +1457,7 @@ int glm_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64_t ys
                         l = -0.5 * (v[i] * d * d / phi + std::log(phi / v[i]) + std::log(2.0 * M_PI));
                         break;
                     }
-                    case fPoisson:
-                        l = (v[i] * ((yy == 0.0 ? 0.0 : yy * std::log(mu)) - mu) - aux[i]) / phi;
-                        break;
+                    case fPoisson: l = (v[i] * ((yy == 0.0 ? 0.0 : yy * std::log(mu)) - mu) - aux[i]) / phi; break;
                     case fGamma: {
                         const double ws = v[i] / phi;
                         l = ws * std::log(ws * yy / mu) - ws * yy / mu - aux[i] - std::log(yy);
@@ -1476,8 +1554,9 @@ int glm_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64_t ys
             if (gconst) Dnull = sn.hi = 0.0;  // the null model is the fit itself
             if (gconst) llnull = llf;
             else if (gid) llnull = llf_at(nullptr, nullptr, 0, 0, nullptr, true, sn.hi);
-            else llnull = const_mu ? llf_at(nullptr, nullptr, mc, mcc, nullptr, false, 0, Dnull)
-                                   : llf_at(mun.data(), mucn.data(), 0, 0, nullptr, false, 0, Dnull);
+            else
+                llnull = const_mu ? llf_at(nullptr, nullptr, mc, mcc, nullptr, false, 0, Dnull)
+                                  : llf_at(mun.data(), mucn.data(), 0, 0, nullptr, false, 0, Dnull);
         }
     }
 
@@ -1509,8 +1588,9 @@ int glm_one(const Opts& op, lint n, lint p, const std::byte* yb, std::int64_t ys
         case eTrials: what = "'trials' must be finite and > 0"; break;
         case eInfOffset: what = "'offset' contains infinity"; break;
         case eNoStart:
-            what = "cannot find valid starting values: the log link of the gaussian family needs a positive mean "
-                   "of 'y'";
+            what =
+                "cannot find valid starting values: the log link of the gaussian family needs a positive mean "
+                "of 'y'";
             break;
         default:
             switch (fam) {
@@ -1541,10 +1621,32 @@ std::vector<std::int64_t> with(std::vector<std::int64_t> shape, std::initializer
 // for a non-canonical link: 2 Newton's polishing and final steps and the switch of slow
 // Fisher scoring (G42, G44), 1 the former only, 0 Fisher's steps throughout.
 // Only the benchmarks (bench/regression/g2/) change them.
-nb::object fit(const std::string& func, nb::handle yo, nb::handle xo, nb::handle ao, nb::handle go, std::int64_t gtot,
-               int family, int link, bool has_var, bool has_freq, bool has_trials, bool has_offset, bool intercept,
-               double rtol, int cov, std::int64_t maxlags, int max_iter, double tol, int scale_mode, double scale_value,
-               int inner_steps, int final_steps, bool inner_chol, int newton) {
+nb::object fit(
+    const std::string& func,
+    nb::handle yo,
+    nb::handle xo,
+    nb::handle ao,
+    nb::handle go,
+    std::int64_t gtot,
+    int family,
+    int link,
+    bool has_var,
+    bool has_freq,
+    bool has_trials,
+    bool has_offset,
+    bool intercept,
+    double rtol,
+    int cov,
+    std::int64_t maxlags,
+    int max_iter,
+    double tol,
+    int scale_mode,
+    double scale_value,
+    int inner_steps,
+    int final_steps,
+    bool inner_chol,
+    int newton
+) {
     const char* fn = func.c_str();
     return call_named(fn, [&]() -> nb::object {
         Input y(yo, fn, "y"), X(xo, fn, "X"), A(ao, fn, "aux");
@@ -1552,14 +1654,17 @@ nb::object fit(const std::string& func, nb::handle yo, nb::handle xo, nb::handle
         std::optional<Input> g;
         if (has_g) g.emplace(go, fn, "groups");
         if (cov == kCluster && !has_g) throw nb::value_error("fit(): cluster needs groups");
-        Opts op{family, link, intercept, rtol, cov, maxlags, gtot, max_iter, tol, scale_mode, scale_value,
-                has_var, has_freq, has_trials, has_offset, inner_steps, final_steps, inner_chol, newton};
+        Opts op{family,     link,        intercept,   rtol,        cov,     maxlags,  gtot,
+                max_iter,   tol,         scale_mode,  scale_value, has_var, has_freq, has_trials,
+                has_offset, inner_steps, final_steps, inner_chol,  newton};
         const linalg::BatchOperand none{};
-        Batch b({{y.batch_shape(1), y.batch_strides(1)},
-                 {X.batch_shape(2), X.batch_strides(2)},
-                 {A.batch_shape(2), A.batch_strides(2)},
-                 has_g ? linalg::BatchOperand{g->batch_shape(1), g->batch_strides(1)} : none},
-                fn);
+        Batch b(
+            {{y.batch_shape(1), y.batch_strides(1)},
+             {X.batch_shape(2), X.batch_strides(2)},
+             {A.batch_shape(2), A.batch_strides(2)},
+             has_g ? linalg::BatchOperand{g->batch_shape(1), g->batch_strides(1)} : none},
+            fn
+        );
         const lint n = X.shape(-2), p = X.shape(-1), k = p + (intercept ? 1 : 0);
         Out po = linalg::alloc_c(with(b.shape(), {k}), DType::Float64);
         Out co = linalg::alloc_c(with(b.shape(), {k, k}), DType::Float64);
@@ -1576,30 +1681,36 @@ nb::object fit(const std::string& func, nb::handle yo, nb::handle xo, nb::handle
         const double nk = double(n) * double(std::max<lint>(k, 1));
         const double element_ns = 3000.0 + 6.0 * (nk * (0.6 * double(k) + 12.0)) + (cov ? 2.0 * nk * k : 0.0);
         const Failure f = linalg::run_batch(b, element_ns, [&](std::int64_t i, const std::int64_t* off, Scratch& sc) {
-            Outs o{po.as<double>() + i * k, co.as<double>() + i * k * k, ro.as<double>() + i * k * k,
-                   mo.as<double>() + i * n, eo.as<double>() + i * n, r1.as<double>() + i * n, r2.as<double>() + i * n,
-                   r3.as<double>() + i * n, r4.as<double>() + i * n, so.as<double>() + i * gNStat,
-                   ko.as<std::uint8_t>() + i * k};
-            return glm_one(op, n, p, y.data() + off[0], y.stride(-1), X.data() + off[1], X.stride(-2), X.stride(-1),
-                           A.data() + off[2], A.stride(-2), A.stride(-1), has_g ? g->data() + off[3] : nullptr,
-                           has_g ? g->stride(-1) : 0, o, sc);
+            Outs o{po.as<double>() + i * k,      co.as<double>() + i * k * k,  ro.as<double>() + i * k * k,
+                   mo.as<double>() + i * n,      eo.as<double>() + i * n,      r1.as<double>() + i * n,
+                   r2.as<double>() + i * n,      r3.as<double>() + i * n,      r4.as<double>() + i * n,
+                   so.as<double>() + i * gNStat, ko.as<std::uint8_t>() + i * k};
+            return glm_one(
+                op, n, p, y.data() + off[0], y.stride(-1), X.data() + off[1], X.stride(-2), X.stride(-1),
+                A.data() + off[2], A.stride(-2), A.stride(-1), has_g ? g->data() + off[3] : nullptr,
+                has_g ? g->stride(-1) : 0, o, sc
+            );
         });
         if (f) raise_failure(b, f, fn, family, has_trials);
-        return nb::make_tuple(linalg::to_array(po), linalg::to_array(co), linalg::to_array(ro), linalg::to_array(mo),
-                              linalg::to_array(eo), linalg::to_array(ko), linalg::to_array(so), linalg::to_array(r1),
-                              linalg::to_array(r2), linalg::to_array(r3), linalg::to_array(r4));
+        return nb::make_tuple(
+            linalg::to_array(po), linalg::to_array(co), linalg::to_array(ro), linalg::to_array(mo),
+            linalg::to_array(eo), linalg::to_array(ko), linalg::to_array(so), linalg::to_array(r1),
+            linalg::to_array(r2), linalg::to_array(r3), linalg::to_array(r4)
+        );
     });
 }
 
 }  // namespace
 
 void bind_glm(nb::module_& m) {
-    m.def("glm_fit", &fit, nb::arg("func"), nb::arg("y").none(), nb::arg("X").none(), nb::arg("aux").none(),
-          nb::arg("groups").none(), nb::arg("gtot"), nb::arg("family"), nb::arg("link"), nb::arg("has_var"),
-          nb::arg("has_freq"), nb::arg("has_trials"), nb::arg("has_offset"), nb::arg("intercept"), nb::arg("rtol"),
-          nb::arg("cov"), nb::arg("maxlags"), nb::arg("max_iter"), nb::arg("tol"), nb::arg("scale_mode"),
-          nb::arg("scale_value"), nb::arg("inner_steps") = 0, nb::arg("final_steps") = 3,
-          nb::arg("inner_chol") = true, nb::arg("newton") = 2);
+    m.def(
+        "glm_fit", &fit, nb::arg("func"), nb::arg("y").none(), nb::arg("X").none(), nb::arg("aux").none(),
+        nb::arg("groups").none(), nb::arg("gtot"), nb::arg("family"), nb::arg("link"), nb::arg("has_var"),
+        nb::arg("has_freq"), nb::arg("has_trials"), nb::arg("has_offset"), nb::arg("intercept"), nb::arg("rtol"),
+        nb::arg("cov"), nb::arg("maxlags"), nb::arg("max_iter"), nb::arg("tol"), nb::arg("scale_mode"),
+        nb::arg("scale_value"), nb::arg("inner_steps") = 0, nb::arg("final_steps") = 3, nb::arg("inner_chol") = true,
+        nb::arg("newton") = 2
+    );
 }
 
 }  // namespace sd::regression

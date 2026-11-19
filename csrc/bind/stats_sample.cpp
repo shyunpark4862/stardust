@@ -96,68 +96,68 @@ struct Sampler<D, std::index_sequence<I...>> {
         constexpr bool has_prep = requires(double x) { C::prep((static_cast<void>(I), x)...); };
         const random::Key key{k0, k1};
         {
-        nb::gil_scoped_release release;
-        for_pieces(n, kParallelTask, n * sample_work<D>(), [&](std::int64_t, std::int64_t i0, std::int64_t i1) {
-            random::Stream s(key);
-            auto at = [&](std::int64_t i) { return pos + static_cast<std::uint64_t>(i); };
-            if (scalar) {  // one parameter set: checked (and prepared) once
-                const std::array<double, sizeof...(I)> v{param(p, 0)...};
-                if (!in_domain<D>(v[I]...)) {
-                    for (std::int64_t i = i0; i < i1; ++i) o[i] = stats::kNaN;
-                    return;
-                }
-                if constexpr (has_prep) {
-                    const auto st = C::prep(v[I]...);
-                    bool extra = false;  // the method draws extra words (for this parameter set)
-                    if constexpr (requires { C::kExtra; }) extra = true;
-                    if constexpr (requires { C::extra(st); }) extra = C::extra(st);
-                    if (extra) {
-                        // their first extra blocks four elements at a time
-                        std::array<std::uint64_t, 16> blk;
-                        std::uint64_t es[4], fw[4];
-                        std::int64_t at4 = 0;
-                        int have = 0;
-                        stats::smp::each_first(key, pos, i0, i1, [&](std::int64_t i, std::uint64_t first) {
-                            if (have == 0) at4 = i;
-                            es[have] = at(i), fw[have] = first;
-                            if (++have < 4) return;
-                            random::philox4(es, key, blk, 1);
-                            for (int q = 0; q < 4; ++q) {
-                                stats::smp::Words w(s, es[q], fw[q], blk.data() + 4 * q);
+            nb::gil_scoped_release release;
+            for_pieces(n, kParallelTask, n * sample_work<D>(), [&](std::int64_t, std::int64_t i0, std::int64_t i1) {
+                random::Stream s(key);
+                auto at = [&](std::int64_t i) { return pos + static_cast<std::uint64_t>(i); };
+                if (scalar) {  // one parameter set: checked (and prepared) once
+                    const std::array<double, sizeof...(I)> v{param(p, 0)...};
+                    if (!in_domain<D>(v[I]...)) {
+                        for (std::int64_t i = i0; i < i1; ++i) o[i] = stats::kNaN;
+                        return;
+                    }
+                    if constexpr (has_prep) {
+                        const auto st = C::prep(v[I]...);
+                        bool extra = false;  // the method draws extra words (for this parameter set)
+                        if constexpr (requires { C::kExtra; }) extra = true;
+                        if constexpr (requires { C::extra(st); }) extra = C::extra(st);
+                        if (extra) {
+                            // their first extra blocks four elements at a time
+                            std::array<std::uint64_t, 16> blk;
+                            std::uint64_t es[4], fw[4];
+                            std::int64_t at4 = 0;
+                            int have = 0;
+                            stats::smp::each_first(key, pos, i0, i1, [&](std::int64_t i, std::uint64_t first) {
+                                if (have == 0) at4 = i;
+                                es[have] = at(i), fw[have] = first;
+                                if (++have < 4) return;
+                                random::philox4(es, key, blk, 1);
+                                for (int q = 0; q < 4; ++q) {
+                                    stats::smp::Words w(s, es[q], fw[q], blk.data() + 4 * q);
+                                    o[at4 + q] = C::draw(w, st);
+                                }
+                                have = 0;
+                            });
+                            for (int q = 0; q < have; ++q) {
+                                stats::smp::Words w(s, es[q], fw[q]);
                                 o[at4 + q] = C::draw(w, st);
                             }
-                            have = 0;
-                        });
-                        for (int q = 0; q < have; ++q) {
-                            stats::smp::Words w(s, es[q], fw[q]);
-                            o[at4 + q] = C::draw(w, st);
+                        } else {
+                            stats::smp::each_first(key, pos, i0, i1, [&](std::int64_t i, std::uint64_t first) {
+                                stats::smp::Words w(s, at(i), first);
+                                o[i] = C::draw(w, st);
+                            });
                         }
                     } else {
                         stats::smp::each_first(key, pos, i0, i1, [&](std::int64_t i, std::uint64_t first) {
                             stats::smp::Words w(s, at(i), first);
-                            o[i] = C::draw(w, st);
+                            o[i] = stats::smp::sample<D>(w, v[I]...);
                         });
                     }
-                } else {
-                    stats::smp::each_first(key, pos, i0, i1, [&](std::int64_t i, std::uint64_t first) {
-                        stats::smp::Words w(s, at(i), first);
-                        o[i] = stats::smp::sample<D>(w, v[I]...);
-                    });
-                }
-                return;
-            }
-            stats::smp::each_first(key, pos, i0, i1, [&](std::int64_t i, std::uint64_t first) {
-                const std::int64_t j = i % np;
-                const std::array<double, sizeof...(I)> v{param(p, j)...};
-                if (!in_domain<D>(v[I]...)) {
-                    o[i] = stats::kNaN;
                     return;
                 }
-                stats::smp::Words w(s, at(i), first);
-                if constexpr (has_prep) o[i] = C::draw(w, C::prep(v[I]...));
-                else o[i] = stats::smp::sample<D>(w, v[I]...);
+                stats::smp::each_first(key, pos, i0, i1, [&](std::int64_t i, std::uint64_t first) {
+                    const std::int64_t j = i % np;
+                    const std::array<double, sizeof...(I)> v{param(p, j)...};
+                    if (!in_domain<D>(v[I]...)) {
+                        o[i] = stats::kNaN;
+                        return;
+                    }
+                    stats::smp::Words w(s, at(i), first);
+                    if constexpr (has_prep) o[i] = C::draw(w, C::prep(v[I]...));
+                    else o[i] = stats::smp::sample<D>(w, v[I]...);
+                });
             });
-        });
         }
         return wrap(std::move(out));
     }
@@ -186,10 +186,11 @@ void def_samples(nb::module_& m) {
 
 void bind_stats_sample(nb::module_& m) {
     using namespace stats;
-    def_samples<Normal, StudentT, ChiSquared, F, Gamma, Beta, Exponential, Uniform, Laplace, Cauchy, LogNormal,
-                Weibull, Logistic, Gumbel, GEV, Pareto, Rayleigh, InverseGamma, NoncentralChiSquared, NoncentralT,
-                NoncentralF, Binomial, Poisson, Geometric, NegativeBinomial, Hypergeometric, Bernoulli,
-                DiscreteUniform, BetaBinomial, LogSeries, Zipf>(m);
+    def_samples<
+        Normal, StudentT, ChiSquared, F, Gamma, Beta, Exponential, Uniform, Laplace, Cauchy, LogNormal, Weibull,
+        Logistic, Gumbel, GEV, Pareto, Rayleigh, InverseGamma, NoncentralChiSquared, NoncentralT, NoncentralF, Binomial,
+        Poisson, Geometric, NegativeBinomial, Hypergeometric, Bernoulli, DiscreteUniform, BetaBinomial, LogSeries,
+        Zipf>(m);
 }
 
 }  // namespace sd

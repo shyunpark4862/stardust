@@ -52,7 +52,7 @@ def data(n, k, seed=0):
     return y, X
 
 
-R_SCRIPT = r'''
+R_SCRIPT = r"""
 suppressMessages(library(quantreg))
 args <- commandArgs(TRUE)
 n <- as.integer(args[1]); k <- as.integer(args[2]); reps <- as.integer(args[5])
@@ -70,7 +70,7 @@ if (n == 100000) {
   cat("br9", system.time(for (t in taus) rq.fit(x, y, tau=t, method="br"))[["elapsed"]], "\n")
 }
 cat("nit", rq.fit.fnb(x, y, tau=0.5)$nit[1], "\n")
-'''
+"""
 
 
 def r_times(y, X, reps):
@@ -81,8 +81,12 @@ def r_times(y, X, reps):
         X.astype(np.float64).tofile(d / "X.bin")
         y.astype(np.float64).tofile(d / "y.bin")
         (d / "t.R").write_text(R_SCRIPT)
-        out = subprocess.run(["Rscript", str(d / "t.R"), str(len(y)), str(X.shape[1]), str(d / "X.bin"),
-                              str(d / "y.bin"), str(reps)], capture_output=True, text=True, check=True).stdout
+        out = subprocess.run(
+            ["Rscript", str(d / "t.R"), str(len(y)), str(X.shape[1]), str(d / "X.bin"), str(d / "y.bin"), str(reps)],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
     return {ln.split()[0]: float(ln.split()[1]) for ln in out.splitlines() if ln.strip()}
 
 
@@ -95,8 +99,10 @@ def main():
     from threadpoolctl import threadpool_limits
 
     print("## one quantile (q = 0.5), ms")
-    print("| (n, k) | threads | sd iid | sd nid | sd n_iter / pivots | R fn | R fn + nid | R br | R fn n_iter | "
-          "statsmodels | sm iterations | sm objective excess |")
+    print(
+        "| (n, k) | threads | sd iid | sd nid | sd n_iter / pivots | R fn | R fn + nid | R br | R fn n_iter | "
+        "statsmodels | sm iterations | sm objective excess |"
+    )
     print("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
     for n, k in CASES:
         y, X = data(n, k)
@@ -113,13 +119,18 @@ def main():
                 tm, s = best(lambda: sm.QuantReg(y, Xc).fit(q=0.5), 1 if n >= 1_000_000 else reps)
             ex = rho(y - Xc @ s.params, 0.5) / r.objective - 1
             rbr = ms(rt["br"]) if "br" in rt else ""
-            print(f"| ({n:,}, {k}) | {th} | {ms(ti)} | {ms(tn)} | {r.n_iter} / {r.n_pivots} | {ms(rt.get('fn', np.nan))} | "
-                  f"{ms(rt.get('fn_nid', np.nan))} | {rbr} | {int(rt.get('nit', 0))} | {ms(tm)} | {s.iterations} | "
-                  f"{ex:.1e} |", flush=True)
+            print(
+                f"| ({n:,}, {k}) | {th} | {ms(ti)} | {ms(tn)} | {r.n_iter} / {r.n_pivots} | {ms(rt.get('fn', np.nan))} | "
+                f"{ms(rt.get('fn_nid', np.nan))} | {rbr} | {int(rt.get('nit', 0))} | {ms(tm)} | {s.iterations} | "
+                f"{ex:.1e} |",
+                flush=True,
+            )
     print()
     print("## nine quantiles 0.1, ..., 0.9 at (100,000, 10), ms")
-    print("| threads | sd q array (warm) | sd one call per q | pivots per q (warm) | R fn, 9 calls | R br, 9 calls | "
-          "statsmodels, 9 calls |")
+    print(
+        "| threads | sd q array (warm) | sd one call per q | pivots per q (warm) | R fn, 9 calls | R br, 9 calls | "
+        "statsmodels, 9 calls |"
+    )
     print("|---:|---:|---:|---|---:|---:|---:|")
     y, X = data(100_000, 10)
     ys, Xs = sd.asarray(y), sd.asarray(X)
@@ -133,8 +144,11 @@ def main():
             warnings.simplefilter("ignore")
             tm, _ = best(lambda: [sm.QuantReg(y, Xc).fit(q=q) for q in QS9], 1)
         piv = "/".join(str(v) for v in r.n_pivots.tolist())
-        print(f"| {th} | {ms(tw)} | {ms(tc)} | {piv} | {ms(rt.get('fn9', np.nan))} | {ms(rt.get('br9', np.nan))} | "
-              f"{ms(tm)} |", flush=True)
+        print(
+            f"| {th} | {ms(tw)} | {ms(tc)} | {piv} | {ms(rt.get('fn9', np.nan))} | {ms(rt.get('br9', np.nan))} | "
+            f"{ms(tm)} |",
+            flush=True,
+        )
     sd.set_num_threads(10)
 
 

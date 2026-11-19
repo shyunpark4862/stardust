@@ -83,10 +83,11 @@ V estrin_level(V x, const std::array<V, N>& t) {  // t: lowest power first
         constexpr std::size_t M = (N + 1) / 2;
         std::array<V, M> u;
         [&]<std::size_t... I>(std::index_sequence<I...>) {
-            ((u[I] = [&] {
-                 if constexpr (2 * I + 1 < N) return t[2 * I] + t[2 * I + 1] * x;
-                 else return t[2 * I];
-             }()),
+            ((u[I] =
+                  [&] {
+                      if constexpr (2 * I + 1 < N) return t[2 * I] + t[2 * I + 1] * x;
+                      else return t[2 * I];
+                  }()),
              ...);
         }(std::make_index_sequence<M>{});
         return estrin_level<V, M>(x * x, u);
@@ -97,13 +98,17 @@ V estrin_level(V x, const std::array<V, N>& t) {  // t: lowest power first
 template <class V, std::size_t N>
 V estrin(V x, const std::array<double, N>& c) {
     std::array<V, N> t;
-    [&]<std::size_t... I>(std::index_sequence<I...>) { ((t[I] = cst<V>(c[N - 1 - I])), ...); }(std::make_index_sequence<N>{});
+    [&]<std::size_t... I>(std::index_sequence<I...>) {
+        ((t[I] = cst<V>(c[N - 1 - I])), ...);
+    }(std::make_index_sequence<N>{});
     return detail::estrin_level<V, N>(x, t);
 }
 template <class V, std::size_t N>
 V estrin1(V x, const std::array<double, N>& c) {
     std::array<V, N + 1> t;
-    [&]<std::size_t... I>(std::index_sequence<I...>) { ((t[I] = cst<V>(c[N - 1 - I])), ...); }(std::make_index_sequence<N>{});
+    [&]<std::size_t... I>(std::index_sequence<I...>) {
+        ((t[I] = cst<V>(c[N - 1 - I])), ...);
+    }(std::make_index_sequence<N>{});
     t[N] = cst<V>(1.0);
     return detail::estrin_level<V, N + 1>(x, t);
 }

@@ -21,14 +21,14 @@ namespace sd::frame {
 // classic map from IEEE order to unsigned integer order.
 inline std::uint64_t radix_key(const Column& c, std::int64_t i) {
     switch (c.dtype) {
-    case DType::Int64: return static_cast<std::uint64_t>(c.data<std::int64_t>()[i]) ^ (std::uint64_t{1} << 63);
-    case DType::Bool: return c.data<std::uint8_t>()[i];
-    case DType::Float64: {
-        const std::uint64_t bits = float_key(c.data<double>()[i]);  // NaN and -0.0 normalized (hash.hpp)
-        return (bits >> 63) ? ~bits : bits | (std::uint64_t{1} << 63);
-    }
-    case DType::String: break;
-    case DType::Complex128: break;  // not a frame dtype
+        case DType::Int64: return static_cast<std::uint64_t>(c.data<std::int64_t>()[i]) ^ (std::uint64_t{1} << 63);
+        case DType::Bool: return c.data<std::uint8_t>()[i];
+        case DType::Float64: {
+            const std::uint64_t bits = float_key(c.data<double>()[i]);  // NaN and -0.0 normalized (hash.hpp)
+            return (bits >> 63) ? ~bits : bits | (std::uint64_t{1} << 63);
+        }
+        case DType::String: break;
+        case DType::Complex128: break;  // not a frame dtype
     }
     return 0;
 }
@@ -119,22 +119,26 @@ inline void radix_sort(std::vector<std::uint64_t>& keys, std::vector<std::int64_
                 at[c * 256 + b] = pos;
                 pos += t;
             }
-        for_chunks(n, [&](std::int64_t lo, std::int64_t hi) {
-            // A local copy of this chunk's places: the int64 row stores below
-            // could alias an array on the heap, which would make every
-            // increment wait for the stores before it.
-            std::int64_t next[256];
-            std::copy_n(at.data() + lo / kChunkRows * 256, 256, next);
-            const std::uint64_t* k = keys.data();
-            const std::int64_t* r = rows.data();
-            std::uint64_t* k2 = keys2.data();
-            std::int64_t* r2 = rows2.data();
-            for (std::int64_t j = lo; j < hi; ++j) {
-                const std::int64_t to = next[(k[j] >> shift) & 0xff]++;
-                k2[to] = k[j];
-                r2[to] = r[j];
-            }
-        }, 2);
+        for_chunks(
+            n,
+            [&](std::int64_t lo, std::int64_t hi) {
+                // A local copy of this chunk's places: the int64 row stores below
+                // could alias an array on the heap, which would make every
+                // increment wait for the stores before it.
+                std::int64_t next[256];
+                std::copy_n(at.data() + lo / kChunkRows * 256, 256, next);
+                const std::uint64_t* k = keys.data();
+                const std::int64_t* r = rows.data();
+                std::uint64_t* k2 = keys2.data();
+                std::int64_t* r2 = rows2.data();
+                for (std::int64_t j = lo; j < hi; ++j) {
+                    const std::int64_t to = next[(k[j] >> shift) & 0xff]++;
+                    k2[to] = k[j];
+                    r2[to] = r[j];
+                }
+            },
+            2
+        );
         keys.swap(keys2);
         rows.swap(rows2);
     }
@@ -156,24 +160,33 @@ inline void order_rows(const Column& c, std::vector<std::int64_t>& rows) {
         radix_sort(keys, rows);
         return;
     }
-    for_chunks(n, [&](std::int64_t lo, std::int64_t hi) {
-        for (std::int64_t j = lo; j < hi; ++j) keys[j] = string_prefix(c.string_at(rows[j]));
-    }, 4);
+    for_chunks(
+        n,
+        [&](std::int64_t lo, std::int64_t hi) {
+            for (std::int64_t j = lo; j < hi; ++j) keys[j] = string_prefix(c.string_at(rows[j]));
+        },
+        4
+    );
     radix_sort(keys, rows);
     // Runs of equal prefixes: the rest of the bytes decides. A run is sorted
     // by the chunk where it starts (runs are independent of each other).
-    for_chunks(n, [&](std::int64_t lo, std::int64_t hi) {
-        std::int64_t a = lo;
-        while (a > 0 && a < n && keys[a] == keys[a - 1]) ++a;  // a run that started in an earlier chunk is not ours
-        while (a < hi) {
-            std::int64_t b = a + 1;
-            while (b < n && keys[b] == keys[a]) ++b;
-            if (b - a > 1)
-                std::stable_sort(rows.begin() + a, rows.begin() + b,
-                                 [&](std::int64_t x, std::int64_t y) { return c.string_at(x) < c.string_at(y); });
-            a = b;
-        }
-    }, 8);
+    for_chunks(
+        n,
+        [&](std::int64_t lo, std::int64_t hi) {
+            std::int64_t a = lo;
+            while (a > 0 && a < n && keys[a] == keys[a - 1]) ++a;  // a run that started in an earlier chunk is not ours
+            while (a < hi) {
+                std::int64_t b = a + 1;
+                while (b < n && keys[b] == keys[a]) ++b;
+                if (b - a > 1)
+                    std::stable_sort(rows.begin() + a, rows.begin() + b, [&](std::int64_t x, std::int64_t y) {
+                        return c.string_at(x) < c.string_at(y);
+                    });
+                a = b;
+            }
+        },
+        8
+    );
 }
 
 // Positions 0 .. n-1 stably sorted by key[i] in [0, nkeys): perm lists them
@@ -189,8 +202,13 @@ inline void order_rows(const Column& c, std::vector<std::int64_t>& rows) {
 //  2. Each bucket then counting-sorts its own positions by key, on its own.
 // The result is the one a serial counting sort gives, so with one thread
 // it is just that.
-inline void counting_sort(const std::int64_t* key, std::int64_t n, std::int64_t nkeys, std::vector<std::int64_t>& start,
-                   std::vector<std::int64_t>& perm) {
+inline void counting_sort(
+    const std::int64_t* key,
+    std::int64_t n,
+    std::int64_t nkeys,
+    std::vector<std::int64_t>& start,
+    std::vector<std::int64_t>& perm
+) {
     start.assign(static_cast<std::size_t>(nkeys + 1), 0);
     perm.resize(static_cast<std::size_t>(n));
     if (n == 0) return;
@@ -200,9 +218,11 @@ inline void counting_sort(const std::int64_t* key, std::int64_t n, std::int64_t 
         // §11.5).
         Unlocked unlocked(n);
         for (std::int64_t i = 0; i < n; ++i) ++start[static_cast<std::size_t>(key[i]) + 1];
-        for (std::int64_t k = 0; k < nkeys; ++k) start[static_cast<std::size_t>(k) + 1] += start[static_cast<std::size_t>(k)];
+        for (std::int64_t k = 0; k < nkeys; ++k)
+            start[static_cast<std::size_t>(k) + 1] += start[static_cast<std::size_t>(k)];
         std::vector<std::int64_t> fill(start.begin(), start.end() - 1);
-        for (std::int64_t i = 0; i < n; ++i) perm[static_cast<std::size_t>(fill[static_cast<std::size_t>(key[i])]++)] = i;
+        for (std::int64_t i = 0; i < n; ++i)
+            perm[static_cast<std::size_t>(fill[static_cast<std::size_t>(key[i])]++)] = i;
         return;
     }
     // `width` is a power of two, so a key's bucket is a shift (a division
@@ -241,7 +261,8 @@ inline void counting_sort(const std::int64_t* key, std::int64_t n, std::int64_t 
         // Local counts: start[k0] belongs to the bucket before (it ends
         // there), so a bucket writes start only at (k0, k1].
         std::vector<std::int64_t> fill(static_cast<std::size_t>(k1 - k0), 0);
-        for (std::int64_t j = r0; j < r1; ++j) ++fill[static_cast<std::size_t>(key[by_bucket[static_cast<std::size_t>(j)]] - k0)];
+        for (std::int64_t j = r0; j < r1; ++j)
+            ++fill[static_cast<std::size_t>(key[by_bucket[static_cast<std::size_t>(j)]] - k0)];
         std::int64_t at_pos = r0;
         for (std::int64_t k = k0; k < k1; ++k) {
             const std::int64_t c = fill[static_cast<std::size_t>(k - k0)];
@@ -251,7 +272,8 @@ inline void counting_sort(const std::int64_t* key, std::int64_t n, std::int64_t 
         }
         for (std::int64_t j = r0; j < r1; ++j) {
             const std::int64_t i = by_bucket[static_cast<std::size_t>(j)];
-            perm[static_cast<std::size_t>(fill[static_cast<std::size_t>(key[i] - k0)]++)] = i;  // stable: order within a key
+            perm[static_cast<std::size_t>(fill[static_cast<std::size_t>(key[i] - k0)]++)] =
+                i;  // stable: order within a key
         }
     });
 }

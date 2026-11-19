@@ -105,8 +105,10 @@ inline const ZigNormal& zig_normal() { return kZigNormal; }
         r >>= 8;
         neg = r & 1;
         const std::uint64_t rabs = (r >> 1) & 0x000fffffffffffffULL;
-        x = std::bit_cast<double>(std::bit_cast<std::uint64_t>(static_cast<double>(rabs) * z.wi[idx]) |
-                                  (static_cast<std::uint64_t>(neg) << 63));
+        x = std::bit_cast<double>(
+            std::bit_cast<std::uint64_t>(static_cast<double>(rabs) * z.wi[idx]) |
+            (static_cast<std::uint64_t>(neg) << 63)
+        );
         if (rabs < z.ki[idx]) return x;
     }
 }
@@ -119,9 +121,11 @@ inline double std_normal(Words& w) {
     const bool neg = r & 1;
     const std::uint64_t rabs = (r >> 1) & 0x000fffffffffffffULL;
     // the sign by its bit (a branch on a random bit mispredicts half the time: 3 ns)
-    const double x = std::bit_cast<double>(std::bit_cast<std::uint64_t>(static_cast<double>(rabs) * z.wi[idx]) |
-                                           (static_cast<std::uint64_t>(neg) << 63));
-    if (rabs < z.ki[idx]) [[likely]] return x;  // inside the layer's rectangle (~99%)
+    const double x = std::bit_cast<double>(
+        std::bit_cast<std::uint64_t>(static_cast<double>(rabs) * z.wi[idx]) | (static_cast<std::uint64_t>(neg) << 63)
+    );
+    if (rabs < z.ki[idx]) [[likely]]
+        return x;  // inside the layer's rectangle (~99%)
     return std_normal_rest(w, idx, neg, x);
 }
 
@@ -175,7 +179,8 @@ inline double std_exp(Words& w) {
     const int idx = static_cast<int>(r & 0xff);
     r >>= 8;
     const double x = static_cast<double>(r) * z.we[idx];
-    if (r < z.ke[idx]) [[likely]] return x;  // ~99%
+    if (r < z.ke[idx]) [[likely]]
+        return x;  // ~99%
     return std_exp_rest(w, idx, x);
 }
 
@@ -212,7 +217,8 @@ inline double gamma_mt(Words& w, double d, double c) {
     const double x = std_normal(w), v1 = 1.0 + c * x;
     if (v1 > 0.0) [[likely]] {
         const double v = v1 * v1 * v1, u = w.u01(), x2 = x * x;
-        if (u < 1.0 - 0.0331 * x2 * x2) [[likely]] return d * v;
+        if (u < 1.0 - 0.0331 * x2 * x2) [[likely]]
+            return d * v;
         if (std::log(u) < 0.5 * x2 + d * (1.0 - v + std::log(v))) return d * v;
     }
     return gamma_mt_loop(w, d, c);
@@ -240,7 +246,8 @@ inline double log_gamma_diff(Words& w, const GammaPrep& g1, const GammaPrep& g2)
     const double m1 = std::log(gamma_mt(w, g1.d, g1.c)), e1 = g1.small ? std_exp(w) : 0.0;
     const double m2 = std::log(gamma_mt(w, g2.d, g2.c)), e2 = g2.small ? std_exp(w) : 0.0;
     const double l1 = g1.small ? m1 - e1 / g1.a : m1, l2 = g2.small ? m2 - e2 / g2.a : m2;
-    if (!(std::isinf(l1) && std::isinf(l2))) [[likely]] return l1 - l2;
+    if (!(std::isinf(l1) && std::isinf(l2))) [[likely]]
+        return l1 - l2;
     const double m = std::min(g1.a, g2.a), s1 = e1 * (m / g1.a), s2 = e2 * (m / g2.a);
     const double inf = std::numeric_limits<double>::infinity();
     return s1 > s2 ? -inf : (s1 < s2 ? inf : 0.0);
@@ -252,7 +259,8 @@ inline double log_ratio(double x, double y) {
     return r >= 0x1p-1000 && r <= 0x1p1000 ? std::log(r) : std::log(x) - std::log(y);
 }
 inline double gamma_draw(Words& w, const GammaPrep& g) {
-    if (!g.small) [[likely]] return gamma_mt(w, g.d, g.c);
+    if (!g.small) [[likely]]
+        return gamma_mt(w, g.d, g.c);
     return gamma_draw_small(w, g);
 }
 
@@ -269,7 +277,8 @@ inline constexpr double kLogFactSmall[16] = {
 inline double log_fact(double k) {
     if (k < 16.0) return kLogFactSmall[static_cast<int>(k)];
     const double r = 1.0 / k, r2 = r * r;
-    return (k + 0.5) * std::log(k) - k + 0.9189385332046728 + r * (1.0 / 12.0 - r2 * (1.0 / 360.0 - r2 * (1.0 / 1260.0)));
+    return (k + 0.5) * std::log(k) - k + 0.9189385332046728 +
+           r * (1.0 / 12.0 - r2 * (1.0 / 360.0 - r2 * (1.0 / 1260.0)));
 }
 // The acceptance test v <= l of a discrete rejection, l a log pmf (ratio) whose plain-double
 // value ld is within 1e-11 + 2^-48 mag of it (mag the sum of the magnitudes of the terms
@@ -450,11 +459,17 @@ inline constexpr double kModeReach = 1048576.0;  // 2^20
 // nl and nh are the pmfs of the mode's two neighbours (first_down, first_up below): they do not
 // depend on u, so the caller computes them once for all its draws (two quotients a draw).
 template <class Down>
-double first_down(double mode, double lo, double pmode, Down&& down) { return mode > lo ? pmode * down(mode) : 0.0; }
+double first_down(double mode, double lo, double pmode, Down&& down) {
+    return mode > lo ? pmode * down(mode) : 0.0;
+}
 template <class Up>
-double first_up(double mode, double hi, double pmode, Up&& up) { return mode < hi ? pmode * up(mode) : 0.0; }
+double first_up(double mode, double hi, double pmode, Up&& up) {
+    return mode < hi ? pmode * up(mode) : 0.0;
+}
 template <class Up, class Down>
-double from_mode(double u, double mode, double lo, double hi, double pmode, double nl, double nh, Up&& up, Down&& down) {
+double from_mode(
+    double u, double mode, double lo, double hi, double pmode, double nl, double nh, Up&& up, Down&& down
+) {
     double s = pmode;
     if (u < s) return mode;
     double kl = mode, kh = mode, pl = pmode, ph = pmode;
@@ -560,7 +575,8 @@ struct Custom<Gamma> {
     };
     static State prep(double a, double scale) { return {gamma_prep(a), scale}; }
     static double draw(Words& w, const State& s) {
-        if (!s.g.small) [[likely]] return s.scale * gamma_mt(w, s.g.d, s.g.c);
+        if (!s.g.small) [[likely]]
+            return s.scale * gamma_mt(w, s.g.d, s.g.c);
         if (s.g.a >= kDirectShape) return s.scale * gamma_draw_small(w, s.g);
         return std::exp(log_gamma_draw(w, s.g) + std::log(s.scale));
     }
@@ -680,8 +696,10 @@ struct Custom<F> {
     static State prep(double dfn, double dfd) {
         const bool tiny = dfn < kMinSampleDf || dfd < kMinSampleDf;
         const int lim = dfd == kInf ? (tiny ? 3 : 1) : (dfn == kInf ? 2 : (tiny ? 3 : 0));
-        return {gamma_prep(lim == 2 ? 1.0 : 0.5 * dfn), gamma_prep(lim == 1 ? 1.0 : 0.5 * dfd),
-                lim == 0 ? log_ratio(dfd, dfn) : 0.0, lim};
+        return {
+            gamma_prep(lim == 2 ? 1.0 : 0.5 * dfn), gamma_prep(lim == 1 ? 1.0 : 0.5 * dfd),
+            lim == 0 ? log_ratio(dfd, dfn) : 0.0, lim
+        };
     }
     static double draw(Words& w, const State& s) {
         if (s.lim == 3) return std::numeric_limits<double>::quiet_NaN();
@@ -707,8 +725,14 @@ struct Custom<NoncentralChiSquared> {
         GammaPrep g1;  // (df - 1) / 2 (df > 1)
     };
     static State prep(double df, double nc) {
-        return {0.5 * df, df, std::sqrt(nc), poisson_prep(0.5 * nc), gamma_prep(0.5 * df),
-                gamma_prep(df > 1.0 ? 0.5 * (df - 1.0) : 1.0)};
+        return {
+            0.5 * df,
+            df,
+            std::sqrt(nc),
+            poisson_prep(0.5 * nc),
+            gamma_prep(0.5 * df),
+            gamma_prep(df > 1.0 ? 0.5 * (df - 1.0) : 1.0)
+        };
     }
     static double draw(Words& w, const State& s) {
         if (s.snc == 0.0) return Custom<ChiSquared>::draw(w, {s.g0, s.df < kMinSampleDf});
@@ -763,9 +787,15 @@ struct Custom<NoncentralF> {
     static State prep(double dfn, double dfd, double nc) {
         const int lim = dfd == kInf ? 1 : (dfn == kInf ? 2 : (dfn < kMinSampleDf || dfd < kMinSampleDf ? 3 : 0));
         const int kind = nc == 0.0 && lim != 3 ? 4 : lim;
-        return {Custom<NoncentralChiSquared>::prep(lim == 2 ? 1.0 : dfn, nc), gamma_prep(lim == 1 ? 1.0 : 0.5 * dfd),
-                lim == 0 ? log_ratio(dfd, dfn) : 0.0, dfd / dfn, dfn, kind,
-                kind == 4 ? Custom<F>::prep(dfn, dfd) : Custom<F>::State{}};
+        return {
+            Custom<NoncentralChiSquared>::prep(lim == 2 ? 1.0 : dfn, nc),
+            gamma_prep(lim == 1 ? 1.0 : 0.5 * dfd),
+            lim == 0 ? log_ratio(dfd, dfn) : 0.0,
+            dfd / dfn,
+            dfn,
+            kind,
+            kind == 4 ? Custom<F>::prep(dfn, dfd) : Custom<F>::State{}
+        };
     }
     static double draw(Words& w, const State& s) {
         if (s.lim == 4) return Custom<F>::draw(w, s.central);
@@ -888,8 +918,12 @@ struct Custom<Hypergeometric> {
         double nl, nh;                        // the pmfs next to the mode (from_mode)
     };
     // P(k+1)/P(k) = (K-k)(n-k) / ((k+1)(N-K-n+k+1)) and P(k-1)/P(k)
-    static double up(double k, double N, double K, double n) { return (K - k) * (n - k) / ((k + 1.0) * (N - K - n + k + 1.0)); }
-    static double down(double k, double N, double K, double n) { return k * (N - K - n + k) / ((K - k + 1.0) * (n - k + 1.0)); }
+    static double up(double k, double N, double K, double n) {
+        return (K - k) * (n - k) / ((k + 1.0) * (N - K - n + k + 1.0));
+    }
+    static double down(double k, double N, double K, double n) {
+        return k * (N - K - n + k) / ((K - k + 1.0) * (n - k + 1.0));
+    }
     // The walk from the mode reaches the quantile of u within |z| <= 8.3 standard deviations
     // (u is a multiple of 2^-53): it is cut at kModeReach = 16 kMaxSd from the mode (2^21
     // steps at most), and a standard deviation above kMaxSd, or a mode without a pmf (the
@@ -908,13 +942,24 @@ struct Custom<Hypergeometric> {
         if (lo == hi) return {N, K, n, lo, hi, lo, inf, 0.0, 0.0};
         if (nan) return {N, K, n, lo, hi, std::numeric_limits<double>::quiet_NaN(), inf, 0.0, 0.0};
         const double wl = std::max(lo, m - kModeReach), wh = std::min(hi, m + kModeReach);
-        return {N, K, n, wl, wh, m, pm, first_down(m, wl, pm, [&](double k) { return down(k, N, K, n); }),
-                first_up(m, wh, pm, [&](double k) { return up(k, N, K, n); })};
+        return {
+            N,
+            K,
+            n,
+            wl,
+            wh,
+            m,
+            pm,
+            first_down(m, wl, pm, [&](double k) { return down(k, N, K, n); }),
+            first_up(m, wh, pm, [&](double k) { return up(k, N, K, n); })
+        };
     }
     static double draw(Words& w, const State& s) {
         const double N = s.N, K = s.K, n = s.n;
-        return from_mode(w.u01(), s.mode, s.lo, s.hi, s.pmode, s.nl, s.nh, [&](double k) { return up(k, N, K, n); },
-                         [&](double k) { return down(k, N, K, n); });
+        return from_mode(
+            w.u01(), s.mode, s.lo, s.hi, s.pmode, s.nl, s.nh, [&](double k) { return up(k, N, K, n); },
+            [&](double k) { return down(k, N, K, n); }
+        );
     }
 };
 // Kemp's LK algorithm (1981; numpy's random_logseries)

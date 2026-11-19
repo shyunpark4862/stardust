@@ -42,7 +42,7 @@ def problems():
     rng = np.random.default_rng(20261118)
     n, k = 100, 8
     for kappa_exp in KAPPA_EXPS:
-        kappa = 10.0 ** kappa_exp
+        kappa = 10.0**kappa_exp
         for rho in RHOS:
             for seed in range(SEEDS):
                 U, _ = np.linalg.qr(rng.standard_normal((n, n)))
@@ -64,8 +64,12 @@ def reference(item):
     name, y, X, intercept = item
     k = len(X[0]) + (1 if intercept else 0)
     ref, meta = regref.ols(y, X, intercept=intercept, t_guess=float(st.t.ppf(0.975, max(len(y) - k, 1))))
-    return name, {"params": [a + b for a, b in ref["params"]], "bse": [a + b for a, b in ref["bse"]],
-                  "params_dd": ref["params"], "exact_fit": meta["exact_fit"]}
+    return name, {
+        "params": [a + b for a, b in ref["params"]],
+        "bse": [a + b for a, b in ref["bse"]],
+        "params_dd": ref["params"],
+        "exact_fit": meta["exact_fit"],
+    }
 
 
 def measure(items, refs):
@@ -112,6 +116,9 @@ if __name__ == "__main__":
     with open(out, "w") as fh:
         json.dump(rows, fh, indent=1)
     for row in rows:
-        print(f"{row['name']:22s} kappa {row['kappa']:8.1e} rank(default) {row['rank_default_rtol']}/{row['k']}  " +
-              "  ".join(f"s{s}: {row[f's{s}']['norm']:.1e}/{row[f's{s}']['comp']:.1e}/{row[f's{s}']['bse']:.1e}"
-                        for s in STEPS))
+        print(
+            f"{row['name']:22s} kappa {row['kappa']:8.1e} rank(default) {row['rank_default_rtol']}/{row['k']}  "
+            + "  ".join(
+                f"s{s}: {row[f's{s}']['norm']:.1e}/{row[f's{s}']['comp']:.1e}/{row[f's{s}']['bse']:.1e}" for s in STEPS
+            )
+        )

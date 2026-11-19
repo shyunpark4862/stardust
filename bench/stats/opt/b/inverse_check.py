@@ -60,7 +60,9 @@ def main():
                 r[3], r[5] = en, (p, p0, p1)
             if eo is not None:
                 r[4] = max(r[4], eo)
-    print("| method | points | changed | max rel change of x | backward error, new (changed points) | old | new's worst (p, p0, p1) |")
+    print(
+        "| method | points | changed | max rel change of x | backward error, new (changed points) | old | new's worst (p, p0, p1) |"
+    )
     print("|---|---:|---:|---:|---:|---:|---|")
     for m, (n, ch, d, en, eo, pt) in w.items():
         print(f"| `{m}` | {n} | {ch} | {d:.3g} | {en:.3g} | {eo:.3g} | {pt} |")

@@ -34,18 +34,38 @@ def _setup():
 # (name, sd call, numpy call on a Generator g, quick)
 CALLS = [
     ("random(10^6)", lambda d: d["sd"].random(N), lambda d, g: g.random(N), True),
-    ("integers(0, 1000, shape=10^6)", lambda d: d["sd"].integers(0, 1000, shape=N),
-     lambda d, g: g.integers(0, 1000, N), False),
-    ("integers(-2^62, 2^62, shape=10^6)", lambda d: d["sd"].integers(-2**62, 2**62, shape=N),
-     lambda d, g: g.integers(-2**62, 2**62, N), False),
+    (
+        "integers(0, 1000, shape=10^6)",
+        lambda d: d["sd"].integers(0, 1000, shape=N),
+        lambda d, g: g.integers(0, 1000, N),
+        False,
+    ),
+    (
+        "integers(-2^62, 2^62, shape=10^6)",
+        lambda d: d["sd"].integers(-(2**62), 2**62, shape=N),
+        lambda d, g: g.integers(-(2**62), 2**62, N),
+        False,
+    ),
     ("choice(1000, shape=10^6)", lambda d: d["sd"].choice(1000, shape=N), lambda d, g: g.choice(1000, N), False),
-    ("choice(1000, shape=10^6, p=...)", lambda d: d["sd"].choice(1000, shape=N, p=d["sp"]),
-     lambda d, g: g.choice(1000, N, p=d["p"]), True),
-    ("choice(10^6, shape=1000, replace=False)", lambda d: d["sd"].choice(N, shape=1000, replace=False),
-     lambda d, g: g.choice(N, 1000, replace=False), False),
+    (
+        "choice(1000, shape=10^6, p=...)",
+        lambda d: d["sd"].choice(1000, shape=N, p=d["sp"]),
+        lambda d, g: g.choice(1000, N, p=d["p"]),
+        True,
+    ),
+    (
+        "choice(10^6, shape=1000, replace=False)",
+        lambda d: d["sd"].choice(N, shape=1000, replace=False),
+        lambda d, g: g.choice(N, 1000, replace=False),
+        False,
+    ),
     ("permutation(10^6)", lambda d: d["sd"].permutation(N), lambda d, g: g.permutation(N), False),
-    ("permutation(float64 array 10^6)", lambda d: d["sd"].permutation(d["sx"]), lambda d, g: g.permutation(d["x"]),
-     False),
+    (
+        "permutation(float64 array 10^6)",
+        lambda d: d["sd"].permutation(d["sx"]),
+        lambda d, g: g.permutation(d["x"]),
+        False,
+    ),
 ]
 
 
@@ -54,18 +74,25 @@ def _bind(f, d):
 
 
 def _bind_g(f, key):
-    return lambda d: (lambda: f(d, d[key]))
+    return lambda d: lambda: f(d, d[key])
 
 
 def cases() -> list[Case]:
     out = []
     for name, sdf, npf, quick in CALLS:
-        out.append(Case(
-            area="random", group="Generator 메서드", name=name, n=N,
-            setup=_setup,
-            sd=lambda d, f=sdf: _bind(f, d),
-            refs=(Ref("numpy PCG64", _bind_g(npf, "pcg"), lib="numpy"),
-                  Ref("numpy Philox", _bind_g(npf, "philox"), lib="numpy")),
-            quick=quick,
-        ))
+        out.append(
+            Case(
+                area="random",
+                group="Generator 메서드",
+                name=name,
+                n=N,
+                setup=_setup,
+                sd=lambda d, f=sdf: _bind(f, d),
+                refs=(
+                    Ref("numpy PCG64", _bind_g(npf, "pcg"), lib="numpy"),
+                    Ref("numpy Philox", _bind_g(npf, "philox"), lib="numpy"),
+                ),
+                quick=quick,
+            )
+        )
     return out

@@ -46,20 +46,27 @@ def test_moments_match_scipy(axis, pol):
     for bias in (True, False):
         _close(S.skew(X, axis=axis, bias=bias, nan_policy=pol), st.skew(x, axis=axis, bias=bias, nan_policy=pol))
         for fisher in (True, False):
-            _close(S.kurtosis(X, axis=axis, fisher=fisher, bias=bias, nan_policy=pol),
-                   st.kurtosis(x, axis=axis, fisher=fisher, bias=bias, nan_policy=pol))
+            _close(
+                S.kurtosis(X, axis=axis, fisher=fisher, bias=bias, nan_policy=pol),
+                st.kurtosis(x, axis=axis, fisher=fisher, bias=bias, nan_policy=pol),
+            )
     for corr in (0, 1, 2):
         _close(S.sem(X, axis=axis, correction=corr, nan_policy=pol), st.sem(x, axis=axis, ddof=corr, nan_policy=pol))
     for order in (0, 1, 2, 3, 4, 5):
-        _close(S.moment(X, order=order, axis=axis, nan_policy=pol), st.moment(x, order=order, axis=axis, nan_policy=pol))
-    _close(S.moment(X, order=[2, 3], center=1.5, axis=axis, nan_policy=pol),
-           st.moment(x, order=[2, 3], center=1.5, axis=axis, nan_policy=pol))
+        _close(
+            S.moment(X, order=order, axis=axis, nan_policy=pol), st.moment(x, order=order, axis=axis, nan_policy=pol)
+        )
+    _close(
+        S.moment(X, order=[2, 3], center=1.5, axis=axis, nan_policy=pol),
+        st.moment(x, order=[2, 3], center=1.5, axis=axis, nan_policy=pol),
+    )
     _close(S.iqr(X, axis=axis, nan_policy=pol), st.iqr(x, axis=axis, nan_policy=pol))
-    _close(S.iqr(X, axis=axis, q=(0.1, 0.6), scale="normal", method="nearest", nan_policy=pol),
-           st.iqr(x, axis=axis, rng=(10, 60), scale="normal", interpolation="nearest", nan_policy=pol))
+    _close(
+        S.iqr(X, axis=axis, q=(0.1, 0.6), scale="normal", method="nearest", nan_policy=pol),
+        st.iqr(x, axis=axis, rng=(10, 60), scale="normal", interpolation="nearest", nan_policy=pol),
+    )
     _close(S.entropy(X, axis=axis, nan_policy=pol), st.entropy(x, axis=axis, nan_policy=pol))
-    _close(S.differential_entropy(X, axis=axis, nan_policy=pol),
-           st.differential_entropy(x, axis=axis, nan_policy=pol))
+    _close(S.differential_entropy(X, axis=axis, nan_policy=pol), st.differential_entropy(x, axis=axis, nan_policy=pol))
 
 
 @pytest.mark.parametrize(("axis", "pol"), list(itertools.product([None, 0, 1, -1], POLICIES)))
@@ -67,13 +74,16 @@ def test_zscore_rankdata_mode_match_scipy(axis, pol):
     x = _data((40, 6))
     X = sd.asarray(x)
     for corr in (0, 1):
-        _close(S.zscore(X, axis=axis, correction=corr, nan_policy=pol),
-               st.zscore(x, axis=axis, ddof=corr, nan_policy=pol))
+        _close(
+            S.zscore(X, axis=axis, correction=corr, nan_policy=pol), st.zscore(x, axis=axis, ddof=corr, nan_policy=pol)
+        )
     xi = np.round(x * 2)
     Xi = sd.asarray(xi)
     for method in ("average", "min", "max", "dense", "ordinal"):
-        _close(S.rankdata(Xi, method=method, axis=axis, nan_policy=pol),
-               st.rankdata(xi, method=method, axis=axis, nan_policy=pol))
+        _close(
+            S.rankdata(Xi, method=method, axis=axis, nan_policy=pol),
+            st.rankdata(xi, method=method, axis=axis, nan_policy=pol),
+        )
     a, b = S.mode(Xi, axis=axis, nan_policy=pol), st.mode(xi, axis=axis, nan_policy=pol)
     _close(a.mode, b.mode)
     _close(a.count, b.count)
@@ -103,8 +113,11 @@ def test_differential_entropy_methods(method, n):
     for m in (None, 1, 2):
         if m is not None and not 2 * m < n:
             continue
-        _close(S.differential_entropy(sd.asarray(y), method=method, window_length=m, base=2.0),
-               st.differential_entropy(y, method=method, window_length=m, base=2.0), rtol=1e-12)
+        _close(
+            S.differential_entropy(sd.asarray(y), method=method, window_length=m, base=2.0),
+            st.differential_entropy(y, method=method, window_length=m, base=2.0),
+            rtol=1e-12,
+        )
 
 
 def _exact_moments(xs):
@@ -226,14 +239,23 @@ def test_long_lane_sorts_on_any_thread_count():
     before = sd.get_num_threads()
     try:
         for n in (65535, 65536, 200003):
-            for x in (rng.normal(size=n), rng.integers(0, 40, n).astype(float), np.zeros(n),
-                      np.where(rng.random(n) < 0.3, -0.0, 0.0), np.sort(rng.normal(size=n))[::-1].copy()):
+            for x in (
+                rng.normal(size=n),
+                rng.integers(0, 40, n).astype(float),
+                np.zeros(n),
+                np.where(rng.random(n) < 0.3, -0.0, 0.0),
+                np.sort(rng.normal(size=n))[::-1].copy(),
+            ):
                 want = None
                 for th in (1, 3, 10):
                     sd.set_num_threads(th)
                     X = sd.asarray(x)
-                    got = (np.asarray(S.rankdata(X)), np.asarray(S.rankdata(X, method="ordinal")), tuple(S.mode(X)),
-                           S.differential_entropy(X))
+                    got = (
+                        np.asarray(S.rankdata(X)),
+                        np.asarray(S.rankdata(X, method="ordinal")),
+                        tuple(S.mode(X)),
+                        S.differential_entropy(X),
+                    )
                     if want is None:
                         want = got
                         np.testing.assert_array_equal(got[0], st.rankdata(x))
@@ -260,16 +282,19 @@ def test_lanes_side_by_side_match_lanes_alone():
     try:
         for pol in ("propagate", "omit"):
             sd.set_num_threads(1)
-            alone = [np.array([f(sd.asarray(np.ascontiguousarray(x[:, j])), nan_policy=pol) for j in range(131)])
-                     for f in (S.sem, S.skew, S.kurtosis)]
+            alone = [
+                np.array([f(sd.asarray(np.ascontiguousarray(x[:, j])), nan_policy=pol) for j in range(131)])
+                for f in (S.sem, S.skew, S.kurtosis)
+            ]
             for th in (1, 3, 10):
                 sd.set_num_threads(th)
                 for f, want in zip((S.sem, S.skew, S.kurtosis), alone):
                     np.testing.assert_array_equal(np.asarray(f(X, axis=0, nan_policy=pol)), want)
                 z = np.asarray(S.zscore(X, axis=0, nan_policy=pol))
                 for j in (0, 7, 64, 130):
-                    np.testing.assert_array_equal(z[:, j], np.asarray(S.zscore(sd.asarray(np.ascontiguousarray(x[:, j])),
-                                                                                nan_policy=pol)))
+                    np.testing.assert_array_equal(
+                        z[:, j], np.asarray(S.zscore(sd.asarray(np.ascontiguousarray(x[:, j])), nan_policy=pol))
+                    )
     finally:
         sd.set_num_threads(before)
 
@@ -284,13 +309,23 @@ def test_moments_of_tiny_and_huge_data(c):
     for axis in (None, 0, 1):
         for pol in ("propagate", "omit"):
             kw = dict(axis=axis, nan_policy=pol)
-            for f in (S.skew, S.kurtosis, S.zscore, lambda v, **k: S.skew(v, bias=False, **k),
-                      lambda v, **k: S.describe(v, **k).kurtosis, lambda v, **k: S.describe(v, **k).skewness):
+            for f in (
+                S.skew,
+                S.kurtosis,
+                S.zscore,
+                lambda v, **k: S.skew(v, bias=False, **k),
+                lambda v, **k: S.describe(v, **k).kurtosis,
+                lambda v, **k: S.describe(v, **k).skewness,
+            ):
                 np.testing.assert_allclose(np.asarray(f(b, **kw)), np.asarray(f(a, **kw)), rtol=1e-12)
             np.testing.assert_allclose(np.asarray(S.sem(b, **kw)), np.asarray(S.sem(a, **kw)) * c, rtol=1e-12)
             for order in (2, 3):
                 with np.errstate(over="ignore", under="ignore"):
-                    want = np.asarray(S.moment(a, order=order, **kw)) * c**order if abs(math.log10(c)) * order < 300 else None
+                    want = (
+                        np.asarray(S.moment(a, order=order, **kw)) * c**order
+                        if abs(math.log10(c)) * order < 300
+                        else None
+                    )
                 if want is not None:
                     np.testing.assert_allclose(np.asarray(S.moment(b, order=order, **kw)), want, rtol=1e-12)
 

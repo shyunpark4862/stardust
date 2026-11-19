@@ -27,17 +27,22 @@ def rerr(got, ref):
 
 def main():
     refs = refdata_glm.load()
-    print("| problem | n_iter | params | bse | pvalues | deviance, pearson_chi2, scale | llf, llnull, null_deviance | "
-          "robust bse |")
+    print(
+        "| problem | n_iter | params | bse | pvalues | deviance, pearson_chi2, scale | llf, llnull, null_deviance | "
+        "robust bse |"
+    )
     print("|---|---:|---:|---:|---:|---:|---:|---:|")
     worst = {}
     for name, p in refs.items():
         ref = p["ref"]
         r = refdata_glm.fit(p)
-        e = {"params": nerr(r.params, ref["params"]), "bse": rerr(r.bse, ref["bse"]),
-             "pvalues": rerr(r.pvalues, ref["pvalues"]),
-             "fit": max(refdata.rel_err(getattr(r, s), ref[s]) for s in ("deviance", "pearson_chi2", "scale")),
-             "llf": max(refdata.rel_err(getattr(r, s), ref[s]) for s in ("llf", "llnull", "null_deviance"))}
+        e = {
+            "params": nerr(r.params, ref["params"]),
+            "bse": rerr(r.bse, ref["bse"]),
+            "pvalues": rerr(r.pvalues, ref["pvalues"]),
+            "fit": max(refdata.rel_err(getattr(r, s), ref[s]) for s in ("deviance", "pearson_chi2", "scale")),
+            "llf": max(refdata.rel_err(getattr(r, s), ref[s]) for s in ("llf", "llnull", "null_deviance")),
+        }
         rob = 0.0
         for ct in ("HC0", "HC1", "HC2", "HC3", "HAC"):
             rob = max(rob, rerr(refdata_glm.fit(p, cov_type=ct).bse, ref["bse_" + ct]))
@@ -45,10 +50,14 @@ def main():
         e["robust"] = rob
         for k, v in e.items():
             worst[k] = max(worst.get(k, 0.0), v)
-        print(f"| {name} | {r.n_iter} | {e['params']:.1e} | {e['bse']:.1e} | {e['pvalues']:.1e} | {e['fit']:.1e} | "
-              f"{e['llf']:.1e} | {e['robust']:.1e} |")
-    print(f"| largest | | {worst['params']:.1e} | {worst['bse']:.1e} | {worst['pvalues']:.1e} | {worst['fit']:.1e} | "
-          f"{worst['llf']:.1e} | {worst['robust']:.1e} |")
+        print(
+            f"| {name} | {r.n_iter} | {e['params']:.1e} | {e['bse']:.1e} | {e['pvalues']:.1e} | {e['fit']:.1e} | "
+            f"{e['llf']:.1e} | {e['robust']:.1e} |"
+        )
+    print(
+        f"| largest | | {worst['params']:.1e} | {worst['bse']:.1e} | {worst['pvalues']:.1e} | {worst['fit']:.1e} | "
+        f"{worst['llf']:.1e} | {worst['robust']:.1e} |"
+    )
 
 
 if __name__ == "__main__":

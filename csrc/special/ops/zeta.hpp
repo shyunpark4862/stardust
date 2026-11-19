@@ -93,7 +93,8 @@ inline double hurwitz(double s, double sm1, double q) {
         if (d == 0.5 && sgn < 0.0) return hurwitz(s, sm1, 1.0 - q);
         // Far below 0 the direct sum would take |q| terms.
         if (q < -kDirectBelow)
-            return (euler_maclaurin(s, sm1, d) + sgn * euler_maclaurin(s, sm1, 1.0 - d)) - sgn * hurwitz(s, sm1, 1.0 - q);
+            return (euler_maclaurin(s, sm1, d) + sgn * euler_maclaurin(s, sm1, 1.0 - d)) -
+                   sgn * hurwitz(s, sm1, 1.0 - q);
     }
     return euler_maclaurin(s, sm1, q);
 }

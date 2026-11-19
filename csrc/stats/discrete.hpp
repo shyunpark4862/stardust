@@ -113,7 +113,9 @@ struct KMemo {
         clear();
     }
     static int slot(double k) {
-        return std::fabs(k) < 0x1p62 ? static_cast<int>(static_cast<std::uint64_t>(static_cast<std::int64_t>(k)) & (kSlots - 1)) : 0;
+        return std::fabs(k) < 0x1p62
+                   ? static_cast<int>(static_cast<std::uint64_t>(static_cast<std::int64_t>(k)) & (kSlots - 1))
+                   : 0;
     }
     bool find(double k, double& v) const {
         const int s = slot(k);
@@ -170,8 +172,7 @@ void scalar_kernel_impl(const Chunk<NP>& c, double* out, F&& f, std::index_seque
         for (int i = 0; i < c.n; ++i) out[i] = c.x[i] != c.x[i] ? kNaN : f(c.x[i], c.p[I][0]...);
         return;
     }
-    for (int i = 0; i < c.n; ++i)
-        out[i] = !D::valid(c.p[I][i]...) || c.x[i] != c.x[i] ? kNaN : f(c.x[i], c.p[I][i]...);
+    for (int i = 0; i < c.n; ++i) out[i] = !D::valid(c.p[I][i]...) || c.x[i] != c.x[i] ? kNaN : f(c.x[i], c.p[I][i]...);
 }
 template <class D, std::size_t NP, class F>
 void scalar_kernel(const Chunk<NP>& c, double* out, F&& f) {
@@ -579,8 +580,9 @@ struct EntropySums {
 // `left`: the terms the bound still allows, counted down; false when the run would pass it
 // (or a ratio is NaN), and the sum is then not formed.
 template <class Step>
-bool entropy_run(EntropySums& sums, int& left, double from, double dir, double end, num::DD l, double mode, bool full,
-                 Step&& step) {
+bool entropy_run(
+    EntropySums& sums, int& left, double from, double dir, double end, num::DD l, double mode, bool full, Step&& step
+) {
     const double lf = l.hi + l.lo;
     num::DD t{1.0, 0.0};
     double prev = std::fabs(lf);  // the term of h at `from`
@@ -669,34 +671,33 @@ F with_guess(F f, double g) {
 // with NP parameters): the scalar definition behind its memo, and one whose misses go to a
 // kernel `fname##_kernel(const Chunk<NP>&, double*)` (a fast path with its own fallback).
 // floored: the method reads only floor(x) (the cdfs).
-#define SD_DISC_MEMO_SCALAR(Self, NP, fname, floored)                                              \
-    static void fname##_chunk(const Chunk<NP>& c, double* out) {                                   \
-        struct Tag {};                                                                             \
-        disc::memoized<Tag>(c, out, floored, [](const Chunk<NP>& s, double* o) {                   \
+#define SD_DISC_MEMO_SCALAR(Self, NP, fname, floored)                                                  \
+    static void fname##_chunk(const Chunk<NP>& c, double* out) {                                       \
+        struct Tag {};                                                                                 \
+        disc::memoized<Tag>(c, out, floored, [](const Chunk<NP>& s, double* o) {                       \
             disc::scalar_kernel<Self>(s, o, [](double x, auto... p) { return Self::fname(x, p...); }); \
-        });                                                                                        \
+        });                                                                                            \
     }
 // The four inverses of Self from `searcher(which, t, memo, params...)` (the Fns to search,
 // with its start): the scalar definition and the chunk kernel that gives the search the memo.
-#define SD_DISC_INVERSE(Self, NP, fname)                                                           \
-    template <class... P>                                                                          \
-    static double fname(double t, P... p) {                                                        \
+#define SD_DISC_INVERSE(Self, NP, fname)                                                               \
+    template <class... P>                                                                              \
+    static double fname(double t, P... p) {                                                            \
         return disc::inverse(disc::Inv::fname, t, Self::searcher(disc::Inv::fname, t, nullptr, p...)); \
-    }                                                                                              \
-    static void fname##_chunk(const Chunk<NP>& c, double* out) {                                   \
-        disc::InvMemo* m = disc::inv_memo_for<Self>(c);                                            \
-        disc::scalar_kernel<Self>(c, out, [m](double t, auto... p) {                               \
-            return disc::inverse(disc::Inv::fname, t, Self::searcher(disc::Inv::fname, t, m, p...)); \
-        });                                                                                        \
+    }                                                                                                  \
+    static void fname##_chunk(const Chunk<NP>& c, double* out) {                                       \
+        disc::InvMemo* m = disc::inv_memo_for<Self>(c);                                                \
+        disc::scalar_kernel<Self>(c, out, [m](double t, auto... p) {                                   \
+            return disc::inverse(disc::Inv::fname, t, Self::searcher(disc::Inv::fname, t, m, p...));   \
+        });                                                                                            \
     }
-#define SD_DISC_INVERSES(Self, NP)                                                                 \
-    SD_DISC_INVERSE(Self, NP, icdf)                                                                \
-    SD_DISC_INVERSE(Self, NP, iccdf)                                                               \
-    SD_DISC_INVERSE(Self, NP, ilogcdf)                                                             \
+#define SD_DISC_INVERSES(Self, NP)     \
+    SD_DISC_INVERSE(Self, NP, icdf)    \
+    SD_DISC_INVERSE(Self, NP, iccdf)   \
+    SD_DISC_INVERSE(Self, NP, ilogcdf) \
     SD_DISC_INVERSE(Self, NP, ilogccdf)
-#define SD_DISC_MEMO_KERNEL(Self, NP, fname, floored)                                              \
-    static void fname##_chunk(const Chunk<NP>& c, double* out) {                                   \
-        struct Tag {};                                                                             \
-        disc::memoized<Tag>(c, out, floored,                                                       \
-                            [](const Chunk<NP>& s, double* o) { Self::fname##_kernel(s, o); });    \
+#define SD_DISC_MEMO_KERNEL(Self, NP, fname, floored)                                                            \
+    static void fname##_chunk(const Chunk<NP>& c, double* out) {                                                 \
+        struct Tag {};                                                                                           \
+        disc::memoized<Tag>(c, out, floored, [](const Chunk<NP>& s, double* o) { Self::fname##_kernel(s, o); }); \
     }

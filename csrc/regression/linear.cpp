@@ -341,17 +341,19 @@ int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
         return at;
     };
     const std::size_t o_s = reserve(mm), o_A = reserve(mm * kk0), o_tau = reserve(kk0), o_nrm = reserve(kk0),
-                      o_beta = reserve(kk0), o_c = reserve(mm), o_f = reserve(mm), o_r = reserve(mm),
-                      o_P = reserve(mm), o_S = reserve(mm), o_h = reserve(kk0), o_g = reserve(kk0), o_AH = reserve(newton ? mm : 0), o_AL = reserve(newton ? mm : 0),
+                      o_beta = reserve(kk0), o_c = reserve(mm), o_f = reserve(mm), o_r = reserve(mm), o_P = reserve(mm),
+                      o_S = reserve(mm), o_h = reserve(kk0), o_g = reserve(kk0), o_AH = reserve(newton ? mm : 0),
+                      o_AL = reserve(newton ? mm : 0),
                       o_part = reserve(std::max<lint>(nchunks, 1) * 2 * (kk0 + kAccInit + kAccFinal)),
-                      o_work = reserve(kk0), o_RR = reserve(kk0 * kk0), o_M = reserve(robust ? kk0 * kk0 : 0), o_W2 = reserve(robust ? kk0 * kk0 : 0),
-                      o_Q = reserve(needQ ? mm * kk0 : 0), o_hat = reserve(needQ ? mm : 0),
-                      o_refl = reserve(mm / kReflChunk + 1);
+                      o_work = reserve(kk0), o_RR = reserve(kk0 * kk0), o_M = reserve(robust ? kk0 * kk0 : 0),
+                      o_W2 = reserve(robust ? kk0 * kk0 : 0), o_Q = reserve(needQ ? mm * kk0 : 0),
+                      o_hat = reserve(needQ ? mm : 0), o_refl = reserve(mm / kReflChunk + 1);
     double* base = sc.get<double>(total);
     double *s = base + o_s, *A = base + o_A, *tau = base + o_tau, *nrm = base + o_nrm, *beta = base + o_beta,
            *cv = base + o_c, *f = base + o_f, *r = base + o_r, *P = base + o_P, *S = base + o_S, *h = base + o_h,
-           *g = base + o_g, *part = base + o_part, *work = base + o_work, *RR = base + o_RR, *M = base + o_M, *work2 = base + o_W2,
-           *Q = base + o_Q, *hat = base + o_hat, *refl = base + o_refl, *AH = base + o_AH, *AL = base + o_AL;
+           *g = base + o_g, *part = base + o_part, *work = base + o_work, *RR = base + o_RR, *M = base + o_M,
+           *work2 = base + o_W2, *Q = base + o_Q, *hat = base + o_hat, *refl = base + o_refl, *AH = base + o_AH,
+           *AL = base + o_AL;
     for (lint t = 0; t < m; ++t) s[t] = pb.has_w ? std::sqrt(weight(idx[t])) : 1.0;
 
     // ---- 2. QR with aliased columns dropped
@@ -479,9 +481,12 @@ int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
             const lint t0 = c * kTChunk, t1 = std::min(m, t0 + kTChunk), len = t1 - t0;
             std::vector<double> Bc(static_cast<std::size_t>(len * kk));
             for (lint jj = 0; jj < kk; ++jj)
-                for (lint t = t0; t < t1; ++t) Bc[jj * len + (t - t0)] = Q[jj * m + t] * (d.hdiff[idx[t]] / (s[t] * s[t]));
-            cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, kk, kk, len, 1.0, Q + t0, m, Bc.data(), len, 0.0,
-                        parts.data() + static_cast<std::size_t>(c) * slot, kk);
+                for (lint t = t0; t < t1; ++t)
+                    Bc[jj * len + (t - t0)] = Q[jj * m + t] * (d.hdiff[idx[t]] / (s[t] * s[t]));
+            cblas_dgemm(
+                CblasColMajor, CblasTrans, CblasNoTrans, kk, kk, len, 1.0, Q + t0, m, Bc.data(), len, 0.0,
+                parts.data() + static_cast<std::size_t>(c) * slot, kk
+            );
         };
         if (ntc >= 2 && double(m) * double(kk) >= kPassParallelMin) {
             parallel::parallel_for(ntc, [&](std::int64_t c) { chunkT(static_cast<lint>(c)); });
@@ -493,7 +498,8 @@ int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
             for (std::size_t e = 0; e < slot; ++e) Tk[e] += q[e];
         }
         for (lint jj = 0; jj < kk; ++jj)
-            for (lint ii = 0; ii < jj; ++ii) Tk[jj * kk + ii] = Tk[ii * kk + jj] = 0.5 * (Tk[jj * kk + ii] + Tk[ii * kk + jj]);
+            for (lint ii = 0; ii < jj; ++ii)
+                Tk[jj * kk + ii] = Tk[ii * kk + jj] = 0.5 * (Tk[jj * kk + ii] + Tk[ii * kk + jj]);
     };
     auto copy_T = [&]() {
         std::fill(o.T, o.T + k * k, 0.0);
@@ -565,16 +571,20 @@ int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
                 AL[t] = a.lo;
             }
             // each column's sum over the rows in order (NEON lanes over columns)
-            dot2::dot2_cols(CK.data(), kk, t1 - t0, [&](lint t) { return idx[t0 + t]; },
-                            [&](lint t, double& ah, double& al) { ah = AH[t0 + t], al = AL[t0 + t]; }, gp);
+            dot2::dot2_cols(
+                CK.data(), kk, t1 - t0, [&](lint t) { return idx[t0 + t]; },
+                [&](lint t, double& ah, double& al) { ah = AH[t0 + t], al = AL[t0 + t]; }, gp
+            );
             return;
         }
-        dot2::dot2_cols(CK.data(), kk, t1 - t0, [&](lint t) { return idx[t0 + t]; },
-                        [&](lint t, double& ah, double& al) {
-                            ah = r[t0 + t], al = 0.0;
-                            if (pb.has_w) two_prod(weight(idx[t0 + t]), r[t0 + t], ah, al);
-                        },
-                        gp);
+        dot2::dot2_cols(
+            CK.data(), kk, t1 - t0, [&](lint t) { return idx[t0 + t]; },
+            [&](lint t, double& ah, double& al) {
+                ah = r[t0 + t], al = 0.0;
+                if (pb.has_w) two_prod(weight(idx[t0 + t]), r[t0 + t], ah, al);
+            },
+            gp
+        );
     };
     auto gcombine = [&]() {
         for (lint jj = 0; jj < kk; ++jj) {
@@ -922,16 +932,18 @@ int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
         // u_{t-l} (a filter down each column), formed in chunks of rows and added in order.
         // the default from nobs: the rows used, or the GLM's sum of frequency weights (with
         // frequency weights the lags stay those of the rows, statsmodels' convention)
-        const std::int64_t L =
-            pb.maxlags >= 0 ? pb.maxlags
-                            : static_cast<std::int64_t>(std::floor(4.0 * std::pow(n_eff / 100.0, 2.0 / 9.0)));
+        const std::int64_t L = pb.maxlags >= 0
+                                   ? pb.maxlags
+                                   : static_cast<std::int64_t>(std::floor(4.0 * std::pow(n_eff / 100.0, 2.0 / 9.0)));
         st[kLags] = static_cast<double>(L);
         cblas_dsyrk(CblasColMajor, CblasUpper, CblasTrans, kk, m, 1.0, Q, m, 0.0, M, kk);
         const lint Le = static_cast<lint>(std::min<std::int64_t>(L, m - 1));  // lags with a pair of rows
         if (Le > 0) {
-            double* wl = sc.get<double>(static_cast<std::size_t>(Le + 1) + static_cast<std::size_t>(kHacChunk * kk) +
-                                            static_cast<std::size_t>(kk * kk),
-                                        3);
+            double* wl = sc.get<double>(
+                static_cast<std::size_t>(Le + 1) + static_cast<std::size_t>(kHacChunk * kk) +
+                    static_cast<std::size_t>(kk * kk),
+                3
+            );
             double* Vc = wl + Le + 1;
             double* C = Vc + kHacChunk * kk;
             for (lint l = 1; l <= Le; ++l) wl[l] = 1.0 - static_cast<double>(l) / (static_cast<double>(L) + 1.0);
@@ -952,8 +964,9 @@ int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
                 } else {
                     for (lint jj = 0; jj < kk; ++jj) column(jj);
                 }
-                cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, kk, kk, len, 1.0, Q + t0, m, Vc, kHacChunk, 1.0, C,
-                            kk);
+                cblas_dgemm(
+                    CblasColMajor, CblasTrans, CblasNoTrans, kk, kk, len, 1.0, Q + t0, m, Vc, kHacChunk, 1.0, C, kk
+                );
             }
             for (lint jj = 0; jj < kk; ++jj)
                 for (lint ii = 0; ii <= jj; ++ii) M[jj * kk + ii] += C[jj * kk + ii] + C[ii * kk + jj];
@@ -967,7 +980,8 @@ int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
         // the codes are first made dense by sorting this regression's own (O(m log m)). Either
         // way the local numbers are in order of first appearance (the same sums, the same bits).
         const bool dense = pb.gtot > m;
-        const std::size_t gt = dense ? static_cast<std::size_t>(mm) : static_cast<std::size_t>(std::max<std::int64_t>(pb.gtot, 1));
+        const std::size_t gt =
+            dense ? static_cast<std::size_t>(mm) : static_cast<std::size_t>(std::max<std::int64_t>(pb.gtot, 1));
         // ints: the codes' local numbers, each row's group, G + 1 offsets (G <= m), a permutation
         lint* loc = sc.get<lint>(gt + 3 * static_cast<std::size_t>(mm) + 1, 2);
         lint* lab = loc + gt;
@@ -1082,8 +1096,12 @@ int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
             std::fill(M, M + kk * kk, kNaN);  // not a maximum: no sandwich
         } else {
             cblas_dtrsm(CblasColMajor, CblasLeft, CblasUpper, CblasTrans, CblasNonUnit, kk, kk, 1.0, work2, kk, M, kk);
-            cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit, kk, kk, 1.0, work2, kk, M, kk);
-            cblas_dtrsm(CblasColMajor, CblasLeft, CblasUpper, CblasNoTrans, CblasNonUnit, kk, kk, 1.0, work2, kk, M, kk);
+            cblas_dtrsm(
+                CblasColMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit, kk, kk, 1.0, work2, kk, M, kk
+            );
+            cblas_dtrsm(
+                CblasColMajor, CblasLeft, CblasUpper, CblasNoTrans, CblasNonUnit, kk, kk, 1.0, work2, kk, M, kk
+            );
             cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasTrans, CblasNonUnit, kk, kk, 1.0, work2, kk, M, kk);
         }
     }
@@ -1123,8 +1141,21 @@ std::vector<std::int64_t> with(std::vector<std::int64_t> shape, std::initializer
 // Inputs are float64 sd.ndarrays (the Python layer converts); u is GLS's whitened column of
 // ones (it replaces the intercept column and centers the sums of squares); groups are int64
 // codes 0 .. gtot - 1, -1 for a missing label (cov = cluster).
-nb::object fit(const std::string& func, nb::handle yo, nb::handle xo, nb::handle wo, nb::handle uo, bool intercept,
-               double rtol, int cov, int steps, nb::handle go, std::int64_t gtot, std::int64_t maxlags, bool hat_only) {
+nb::object fit(
+    const std::string& func,
+    nb::handle yo,
+    nb::handle xo,
+    nb::handle wo,
+    nb::handle uo,
+    bool intercept,
+    double rtol,
+    int cov,
+    int steps,
+    nb::handle go,
+    std::int64_t gtot,
+    std::int64_t maxlags,
+    bool hat_only
+) {
     const char* fn = func.c_str();
     return call_named(fn, [&]() -> nb::object {
         Input y(yo, fn, "y"), X(xo, fn, "X");
@@ -1150,27 +1181,39 @@ nb::object fit(const std::string& func, nb::handle yo, nb::handle xo, nb::handle
         if (cov == kCluster && !has_g) throw nb::value_error("fit(): cluster needs groups");
         if (has_w && has_u) throw nb::value_error("fit(): weights and sigma together");
         const linalg::BatchOperand none{};
-        Batch b({{y.batch_shape(1), y.batch_strides(1)},
-                 {X.batch_shape(2), X.batch_strides(2)},
-                 // the weights (WLS) and the whitened ones (GLS) never come together: one operand
-                 has_w   ? linalg::BatchOperand{w->batch_shape(1), w->batch_strides(1)}
-                 : has_u ? linalg::BatchOperand{u->batch_shape(1), u->batch_strides(1)}
-                         : none,
-                 has_g ? linalg::BatchOperand{g->batch_shape(1), g->batch_strides(1)} : none},
-                fn);
+        Batch b(
+            {{y.batch_shape(1), y.batch_strides(1)},
+             {X.batch_shape(2), X.batch_strides(2)},
+             // the weights (WLS) and the whitened ones (GLS) never come together: one operand
+             has_w   ? linalg::BatchOperand{w->batch_shape(1), w->batch_strides(1)}
+             : has_u ? linalg::BatchOperand{u->batch_shape(1), u->batch_strides(1)}
+                     : none,
+             has_g ? linalg::BatchOperand{g->batch_shape(1), g->batch_strides(1)} : none},
+            fn
+        );
         const lint n = pb.n, k = pb.k;
         const double nk = double(n) * double(std::max<lint>(k, 1));
         if (hat_only) {
             Out ho = linalg::alloc_c(with(b.shape(), {n}), DType::Float64);
             const double element_ns = 1500.0 + nk * (1.2 * double(k) + 3.0);
-            const Failure f = linalg::run_batch(b, element_ns, [&](std::int64_t i, const std::int64_t* off, Scratch& sc) {
-                Data d{y.data() + off[0], y.stride(-1), X.data() + off[1], X.stride(-2), X.stride(-1),
-                       has_w ? w->data() + off[2] : nullptr, has_w ? w->stride(-1) : 0,
-                       has_u ? u->data() + off[2] : nullptr, has_u ? u->stride(-1) : 0,
-                       has_g ? g->data() + off[3] : nullptr, has_g ? g->stride(-1) : 0};
-                Dest o{nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, ho.as<double>() + i * n};
-                return fit_one(pb, d, o, sc);
-            });
+            const Failure f =
+                linalg::run_batch(b, element_ns, [&](std::int64_t i, const std::int64_t* off, Scratch& sc) {
+                    Data d{
+                        y.data() + off[0],
+                        y.stride(-1),
+                        X.data() + off[1],
+                        X.stride(-2),
+                        X.stride(-1),
+                        has_w ? w->data() + off[2] : nullptr,
+                        has_w ? w->stride(-1) : 0,
+                        has_u ? u->data() + off[2] : nullptr,
+                        has_u ? u->stride(-1) : 0,
+                        has_g ? g->data() + off[3] : nullptr,
+                        has_g ? g->stride(-1) : 0
+                    };
+                    Dest o{nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, ho.as<double>() + i * n};
+                    return fit_one(pb, d, o, sc);
+                });
             if (f) raise_failure(b, f, fn);
             return linalg::to_array(ho);
         }
@@ -1183,20 +1226,33 @@ nb::object fit(const std::string& func, nb::handle yo, nb::handle xo, nb::handle
         Out so = linalg::alloc_c(with(b.shape(), {kNStat}), DType::Float64);
         // estimated serial ns of one regression: the QR, the passes and the fixed cost
         double element_ns = 1500.0 + nk * (0.6 * double(k) + 3.0 * (2 + steps)) + (cov ? 2.0 * nk * k : 0.0);
-        if (cov == kHAC) element_ns += nk * (maxlags >= 0 ? double(maxlags) : 4.0 * std::pow(double(n) / 100.0, 2.0 / 9.0));
+        if (cov == kHAC)
+            element_ns += nk * (maxlags >= 0 ? double(maxlags) : 4.0 * std::pow(double(n) / 100.0, 2.0 / 9.0));
         const Failure f = linalg::run_batch(b, element_ns, [&](std::int64_t i, const std::int64_t* off, Scratch& sc) {
-            Data d{y.data() + off[0], y.stride(-1), X.data() + off[1], X.stride(-2), X.stride(-1),
-                   has_w ? w->data() + off[2] : nullptr, has_w ? w->stride(-1) : 0,
-                   has_u ? u->data() + off[2] : nullptr, has_u ? u->stride(-1) : 0,
-                   has_g ? g->data() + off[3] : nullptr, has_g ? g->stride(-1) : 0};
-            Dest o{po.as<double>() + i * k, co.as<double>() + i * k * k, ro.as<double>() + i * k * k,
-                   fo.as<double>() + i * n, eo.as<double>() + i * n, ko.as<std::uint8_t>() + i * k,
+            Data d{
+                y.data() + off[0],
+                y.stride(-1),
+                X.data() + off[1],
+                X.stride(-2),
+                X.stride(-1),
+                has_w ? w->data() + off[2] : nullptr,
+                has_w ? w->stride(-1) : 0,
+                has_u ? u->data() + off[2] : nullptr,
+                has_u ? u->stride(-1) : 0,
+                has_g ? g->data() + off[3] : nullptr,
+                has_g ? g->stride(-1) : 0
+            };
+            Dest o{po.as<double>() + i * k,      co.as<double>() + i * k * k,
+                   ro.as<double>() + i * k * k,  fo.as<double>() + i * n,
+                   eo.as<double>() + i * n,      ko.as<std::uint8_t>() + i * k,
                    so.as<double>() + i * kNStat, nullptr};
             return fit_one(pb, d, o, sc);
         });
         if (f) raise_failure(b, f, fn);
-        return nb::make_tuple(linalg::to_array(po), linalg::to_array(co), linalg::to_array(ro), linalg::to_array(fo),
-                              linalg::to_array(eo), linalg::to_array(ko), linalg::to_array(so));
+        return nb::make_tuple(
+            linalg::to_array(po), linalg::to_array(co), linalg::to_array(ro), linalg::to_array(fo),
+            linalg::to_array(eo), linalg::to_array(ko), linalg::to_array(so)
+        );
     });
 }
 
@@ -1206,8 +1262,7 @@ nb::object fit(const std::string& func, nb::handle yo, nb::handle xo, nb::handle
 // the columns in the model, 0.0 for the aliased ones, which take no part (R: a NaN in X_new
 // there does not reach the prediction); None: every column. A column in the model takes part
 // whatever its coefficient (a NaN in X_new under a coefficient 0 gives NaN).
-nb::object apply(const std::string& func, nb::handle xo, nb::handle bo, bool intercept, nb::handle yo,
-                 nb::handle mo) {
+nb::object apply(const std::string& func, nb::handle xo, nb::handle bo, bool intercept, nb::handle yo, nb::handle mo) {
     const char* fn = func.c_str();
     return call_named(fn, [&]() -> nb::object {
         Input X(xo, fn, "X"), be(bo, fn, "params");
@@ -1217,10 +1272,13 @@ nb::object apply(const std::string& func, nb::handle xo, nb::handle bo, bool int
         if (has_m) mk.emplace(mo, fn, "mask");
         const lint m = X.shape(-2), p = X.shape(-1), k = be.shape(-1);
         const linalg::BatchOperand none{};
-        Batch b({{X.batch_shape(2), X.batch_strides(2)}, {be.batch_shape(1), be.batch_strides(1)},
-                 has_y ? linalg::BatchOperand{y->batch_shape(1), y->batch_strides(1)} : none,
-                 has_m ? linalg::BatchOperand{mk->batch_shape(1), mk->batch_strides(1)} : none},
-                fn);
+        Batch b(
+            {{X.batch_shape(2), X.batch_strides(2)},
+             {be.batch_shape(1), be.batch_strides(1)},
+             has_y ? linalg::BatchOperand{y->batch_shape(1), y->batch_strides(1)} : none,
+             has_m ? linalg::BatchOperand{mk->batch_shape(1), mk->batch_strides(1)} : none},
+            fn
+        );
         Out fo = linalg::alloc_c(with(b.shape(), {m}), DType::Float64);
         Out eo;
         if (has_y) eo = linalg::alloc_c(with(b.shape(), {m}), DType::Float64);
@@ -1236,7 +1294,9 @@ nb::object apply(const std::string& func, nb::handle xo, nb::handle bo, bool int
                 for (lint c = 0; c < k; ++c) {
                     if (mb && rd(mb + c * mk->stride(-1)) == 0.0) continue;  // aliased: no term (nor in the fit)
                     const double bj = rd(bb + c * be.stride(-1));
-                    const double x = (intercept && c == 0) ? 1.0 : rd(xb + t * X.stride(-2) + (c - (intercept ? 1 : 0)) * X.stride(-1));
+                    const double x = (intercept && c == 0)
+                                         ? 1.0
+                                         : rd(xb + t * X.stride(-2) + (c - (intercept ? 1 : 0)) * X.stride(-1));
                     double hp, ep, q;
                     two_prod(x, bj, hp, ep);
                     two_sum(Pv, hp, Pv, q);
@@ -1272,16 +1332,19 @@ nb::object resid_stats(nb::handle eo, nb::handle wo) {
         if (has_w) w.emplace(wo, fn, "weights");
         const lint n = e.shape(-1);
         const linalg::BatchOperand none{};
-        Batch b({{e.batch_shape(1), e.batch_strides(1)},
-                 has_w ? linalg::BatchOperand{w->batch_shape(1), w->batch_strides(1)} : none},
-                fn);
+        Batch b(
+            {{e.batch_shape(1), e.batch_strides(1)},
+             has_w ? linalg::BatchOperand{w->batch_shape(1), w->batch_strides(1)} : none},
+            fn
+        );
         Out so = linalg::alloc_c(with(b.shape(), {4}), DType::Float64);
         constexpr lint kChunk = 4096;
         const double element_ns = 100.0 + 40.0 * double(n);
         linalg::run_batch(b, element_ns, [&](std::int64_t i, const std::int64_t* off, Scratch& sc) {
             const lint nch = (n + kChunk - 1) / kChunk;
-            double* x = sc.get<double>(static_cast<std::size_t>(std::max<lint>(n, 1)) +
-                                       static_cast<std::size_t>(std::max<lint>(nch, 1)) * 8);
+            double* x = sc.get<double>(
+                static_cast<std::size_t>(std::max<lint>(n, 1)) + static_cast<std::size_t>(std::max<lint>(nch, 1)) * 8
+            );
             double* part = x + std::max<lint>(n, 1);
             lint m = 0;  // the rows of the fit, compacted
             for (lint t = 0; t < n; ++t) {
@@ -1393,12 +1456,15 @@ nb::object cond(nb::handle ro, nb::handle ko) {
 }  // namespace
 
 void bind_linear(nb::module_& m) {
-    m.def("fit", &fit, nb::arg("func"), nb::arg("y").none(), nb::arg("X").none(), nb::arg("w").none(),
-          nb::arg("u").none(), nb::arg("intercept"), nb::arg("rtol"), nb::arg("cov"), nb::arg("steps"),
-          nb::arg("groups").none() = nb::none(), nb::arg("gtot") = 0, nb::arg("maxlags") = -1,
-          nb::arg("hat_only") = false);
-    m.def("apply", &apply, nb::arg("func"), nb::arg("X").none(), nb::arg("beta").none(), nb::arg("intercept"),
-          nb::arg("y").none(), nb::arg("mask").none() = nb::none());
+    m.def(
+        "fit", &fit, nb::arg("func"), nb::arg("y").none(), nb::arg("X").none(), nb::arg("w").none(),
+        nb::arg("u").none(), nb::arg("intercept"), nb::arg("rtol"), nb::arg("cov"), nb::arg("steps"),
+        nb::arg("groups").none() = nb::none(), nb::arg("gtot") = 0, nb::arg("maxlags") = -1, nb::arg("hat_only") = false
+    );
+    m.def(
+        "apply", &apply, nb::arg("func"), nb::arg("X").none(), nb::arg("beta").none(), nb::arg("intercept"),
+        nb::arg("y").none(), nb::arg("mask").none() = nb::none()
+    );
     m.def("cond", &cond, nb::arg("R").none(), nb::arg("kept").none());
     m.def("resid_stats", &resid_stats, nb::arg("e").none(), nb::arg("w").none());
 }

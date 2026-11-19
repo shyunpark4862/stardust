@@ -43,8 +43,11 @@ CASES = [
     ("Binomial", dict(n=20.0, p=0.3), lambda g, n: g.binomial(20, 0.3, n)),
     ("Binomial", dict(n=1e4, p=0.3), lambda g, n: g.binomial(10000, 0.3, n)),
     ("NegativeBinomial", dict(n=5.0, p=0.3), lambda g, n: g.negative_binomial(5.0, 0.3, n)),
-    ("Hypergeometric", dict(total=1000.0, successes=300.0, draws=100.0),
-     lambda g, n: g.hypergeometric(300, 700, 100, n)),
+    (
+        "Hypergeometric",
+        dict(total=1000.0, successes=300.0, draws=100.0),
+        lambda g, n: g.hypergeometric(300, 700, 100, n),
+    ),
     ("BetaBinomial", dict(n=20.0, a=2.0, b=3.0), None),
     ("LogSeries", dict(p=0.9), lambda g, n: g.logseries(0.9, n)),
     ("Zipf", dict(a=2.0), lambda g, n: g.zipf(2.0, n)),

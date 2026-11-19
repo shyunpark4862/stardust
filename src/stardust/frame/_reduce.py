@@ -42,11 +42,19 @@ class Reductions:
 
     def std(self, *, skipna=True, correction=0):
         """Standard deviation with divisor (count - correction); NA when that is <= 0."""
-        return self._reduce("std", (skipna if skipna is True or skipna is False else _skipna(skipna, "std")), _check_correction(correction, "std"))
+        return self._reduce(
+            "std",
+            (skipna if skipna is True or skipna is False else _skipna(skipna, "std")),
+            _check_correction(correction, "std"),
+        )
 
     def var(self, *, skipna=True, correction=0):
         """Variance with divisor (count - correction); NA when that is <= 0."""
-        return self._reduce("var", (skipna if skipna is True or skipna is False else _skipna(skipna, "var")), _check_correction(correction, "var"))
+        return self._reduce(
+            "var",
+            (skipna if skipna is True or skipna is False else _skipna(skipna, "var")),
+            _check_correction(correction, "var"),
+        )
 
     def count(self):
         """How many values are not NA."""
@@ -61,7 +69,14 @@ def own_reductions(cls):
     for name in ("sum", "mean", "min", "max", "std", "var", "count"):
         f = getattr(Reductions, name)
         qualname = f"{cls.__qualname__}.{name}"
-        g = types.FunctionType(f.__code__.replace(co_qualname=qualname), f.__globals__, name, f.__defaults__, f.__closure__)
-        g.__kwdefaults__, g.__doc__, g.__qualname__, g.__module__ = f.__kwdefaults__, f.__doc__, qualname, cls.__module__
+        g = types.FunctionType(
+            f.__code__.replace(co_qualname=qualname), f.__globals__, name, f.__defaults__, f.__closure__
+        )
+        g.__kwdefaults__, g.__doc__, g.__qualname__, g.__module__ = (
+            f.__kwdefaults__,
+            f.__doc__,
+            qualname,
+            cls.__module__,
+        )
         setattr(cls, name, g)
     return cls

@@ -33,11 +33,19 @@ FRAME_OPTS = dict(max_rows=60, min_rows=10, max_cols=20, max_colwidth=50, show_d
 def pandas_column(values, dtype):
     has_na = any(v is NA for v in values)
     if dtype == "int64":
-        return pd.array([None if v is NA else v for v in values], dtype="Int64") if has_na else np.array(values, dtype=np.int64)
+        return (
+            pd.array([None if v is NA else v for v in values], dtype="Int64")
+            if has_na
+            else np.array(values, dtype=np.int64)
+        )
     if dtype == "float64":
         return np.array([math.nan if v is NA else v for v in values], dtype=np.float64)
     if dtype == "bool":
-        return pd.array([None if v is NA else v for v in values], dtype="boolean") if has_na else np.array(values, dtype=bool)
+        return (
+            pd.array([None if v is NA else v for v in values], dtype="boolean")
+            if has_na
+            else np.array(values, dtype=bool)
+        )
     return pd.array([None if v is NA else v for v in values], dtype="string[python]")
 
 
@@ -51,8 +59,14 @@ def fix_dtype_names(text):
 
 finite = st.floats(allow_nan=False, allow_infinity=False)
 special = st.sampled_from([0.0, -0.0, 1e-7, -3e-9, 1e6, 1.5e6, 1e15, 123456789.0, 0.1, 2.5, math.inf, -math.inf])
-float_values = st.one_of(finite, special, st.floats(min_value=-1e3, max_value=1e3), st.integers(-10**6, 10**6).map(float))
-text = st.text(st.characters(codec="utf-8", exclude_categories=["Cs", "Cc", "Zl", "Zp", "Cf", "Mn", "Me"]) | st.sampled_from("\t\n\r"), max_size=60)
+float_values = st.one_of(
+    finite, special, st.floats(min_value=-1e3, max_value=1e3), st.integers(-(10**6), 10**6).map(float)
+)
+text = st.text(
+    st.characters(codec="utf-8", exclude_categories=["Cs", "Cc", "Zl", "Zp", "Cf", "Mn", "Me"])
+    | st.sampled_from("\t\n\r"),
+    max_size=60,
+)
 
 
 @st.composite
@@ -99,7 +113,9 @@ def test_frame_repr_matches_pandas(data):
         is_str = [dt == "string" for dt, _ in columns]
         assume(all(is_str[p] == is_str[i] for i, p in enumerate(shown)))
     ours = sd.frame.DataFrame({k: sd.frame.Series(v, dtype=dt) for k, (dt, v) in zip(names, columns)})
-    theirs = pd.DataFrame({k: pandas_column(v, dt) for k, (dt, v) in zip(names, columns)}, index=pd.RangeIndex(n if names else 0))
+    theirs = pd.DataFrame(
+        {k: pandas_column(v, dt) for k, (dt, v) in zip(names, columns)}, index=pd.RangeIndex(n if names else 0)
+    )
     # na_rep only reaches float columns; they never mix NaN and NA here.
     na_rep = "<NA>" if any(dt == "float64" and any(x is NA for x in v) for dt, v in columns) else "NaN"
     if na_rep == "<NA>" and any(dt == "float64" and any(x is not NA and x != x for x in v) for dt, v in columns):
@@ -108,12 +124,11 @@ def test_frame_repr_matches_pandas(data):
 
 
 def test_example_from_api_md():
-    df = sd.frame.DataFrame({"a": [1, None, 3], "b": [1.5, math.nan, 3.0], "c": ["x", None, "zz"], "d": [True, None, False]})
+    df = sd.frame.DataFrame(
+        {"a": [1, None, 3], "b": [1.5, math.nan, 3.0], "c": ["x", None, "zz"], "d": [True, None, False]}
+    )
     assert repr(df) == (
-        "      a    b     c      d\n"
-        "0     1  1.5     x   True\n"
-        "1  <NA>  NaN  <NA>   <NA>\n"
-        "2     3  3.0    zz  False"
+        "      a    b     c      d\n0     1  1.5     x   True\n1  <NA>  NaN  <NA>   <NA>\n2     3  3.0    zz  False"
     )
     assert repr(sd.frame.Series([0.1, 1e10, 123.456], name="v")) == (
         "0    1.000000e-01\n1    1.000000e+10\n2    1.234560e+02\nName: v, dtype: float64"

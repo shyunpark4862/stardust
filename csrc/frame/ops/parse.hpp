@@ -127,7 +127,8 @@ inline bool eisel_lemire(std::uint64_t w, std::int64_t q, std::uint64_t& bits) {
         return true;
     }
     // Exactly halfway between two doubles: round half to even, not up.
-    if (lo <= 1 && q >= -4 && q <= 23 && (mantissa & 3) == 1 && (mantissa << shift) == hi) mantissa &= ~std::uint64_t{1};
+    if (lo <= 1 && q >= -4 && q <= 23 && (mantissa & 3) == 1 && (mantissa << shift) == hi)
+        mantissa &= ~std::uint64_t{1};
     mantissa += mantissa & 1;
     mantissa >>= 1;
     if (mantissa >= (std::uint64_t{2} << kMantissa)) {  // rounding carried into a new bit
@@ -152,8 +153,11 @@ inline bool eight_digits(std::uint64_t v) {
 inline std::uint64_t parse_eight(std::uint64_t v) {
     v -= 0x3030303030303030ULL;
     v = (v * 10) + (v >> 8);  // pairs of digits
-    return ((((v & 0x000000FF000000FFULL) * 0x000F424000000064ULL) +
-             (((v >> 16) & 0x000000FF000000FFULL) * 0x0000271000000001ULL)) >> 32);
+    return (
+        (((v & 0x000000FF000000FFULL) * 0x000F424000000064ULL) +
+         (((v >> 16) & 0x000000FF000000FFULL) * 0x0000271000000001ULL)) >>
+        32
+    );
 }
 
 // Digits from p while they last, into w (8 at a time while 8 remain).
@@ -273,9 +277,9 @@ inline double to_double(std::string_view s) {
 // float_grammar and to_double in one pass: false when `s` is not a float.
 inline bool parse_double(std::string_view s, double& out) {
     switch (detail::parse_decimal(s, out)) {
-    case detail::Parsed::Ok: return true;
-    case detail::Parsed::Bad: return false;
-    case detail::Parsed::Slow: break;
+        case detail::Parsed::Ok: return true;
+        case detail::Parsed::Bad: return false;
+        case detail::Parsed::Slow: break;
     }
     if (!float_grammar(s)) return false;
     out = detail::slow_double(s);

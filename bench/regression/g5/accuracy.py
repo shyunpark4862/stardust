@@ -29,7 +29,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "tools"))
 import regref  # noqa: E402
 
-U = 2.0 ** -53
+U = 2.0**-53
 
 
 def a(x):
@@ -50,19 +50,31 @@ def problems():
             e = {"normal": rng.standard_normal(n), "t2": rng.standard_t(2, n), "exp": rng.exponential(1.0, n)}[noise]
             yield f"random ({n}, {k}) {noise}", X @ rng.standard_normal(k) + e, X, [0.05, 0.25, 0.5, 0.75, 0.95], True
     t = rng.uniform(0, 1, 400)
-    yield "polynomial degree 5", np.sin(3 * t) + 0.1 * rng.standard_normal(400), np.column_stack(
-        [t ** j for j in range(1, 6)]), [0.1, 0.5, 0.9], True
+    yield (
+        "polynomial degree 5",
+        np.sin(3 * t) + 0.1 * rng.standard_normal(400),
+        np.column_stack([t**j for j in range(1, 6)]),
+        [0.1, 0.5, 0.9],
+        True,
+    )
     g = rng.integers(0, 4, 500).astype(float)
-    yield "poisson on dummies", rng.poisson(2 + g).astype(float), np.column_stack(
-        [(g == v).astype(float) for v in (1, 2, 3)]), [0.2, 0.5, 0.8], True
+    yield (
+        "poisson on dummies",
+        rng.poisson(2 + g).astype(float),
+        np.column_stack([(g == v).astype(float) for v in (1, 2, 3)]),
+        [0.2, 0.5, 0.8],
+        True,
+    )
 
 
 def main():
     import statsmodels.api as sm
 
     print("## exactness and statsmodels")
-    print("| problem | fits | certified optimal | nonunique (sd / exact) | params error | objective error | "
-          "basis residual | statsmodels params | statsmodels objective excess |")
+    print(
+        "| problem | fits | certified optimal | nonunique (sd / exact) | params error | objective error | "
+        "basis residual | statsmodels params | statsmodels objective excess |"
+    )
     print("|---|---:|---:|---|---:|---:|---:|---:|---:|")
     tot = dict(pe=0.0, oe=0.0, br=0.0)
     for name, y, X, qs, icpt in problems():
@@ -92,8 +104,10 @@ def main():
             res = y - Z @ f.params
             sme = max(sme, float(np.sum(res * (q - (res < 0)))) / obj - 1 if obj else 0.0)
         tot["pe"], tot["oe"], tot["br"] = max(tot["pe"], pe), max(tot["oe"], oe), max(tot["br"], br)
-        print(f"| {name} | {len(qs)} | {nopt} | {nus} / {nue} | {pe:.1e} | {oe:.1e} | {br:.1e} | {smd:.1e} | {sme:.1e} |",
-              flush=True)
+        print(
+            f"| {name} | {len(qs)} | {nopt} | {nus} / {nue} | {pe:.1e} | {oe:.1e} | {br:.1e} | {smd:.1e} | {sme:.1e} |",
+            flush=True,
+        )
     print(f"\nmax: params {tot['pe']:.1e}, objective {tot['oe']:.1e}, basis residual {tot['br']:.1e}")
 
     print("\n## R (quantreg 6.1): largest relative differences")
@@ -120,14 +134,19 @@ def main():
                 ref = np.array(Rv[t + "br"])
                 vals["br"] = max(vals["br"], np.linalg.norm(a(r.params) - ref) / np.linalg.norm(ref))
             vals["nid"] = max(vals["nid"], rel(r.bse, Rv[t + "se_nid"]))
-            vals["nidb"] = max(vals["nidb"], rel(sd.regression.quantreg(y, X, bandwidth="bofinger", **kw).bse,
-                                                 Rv[t + "se_nid_bof"]))
-            vals["iid"] = max(vals["iid"], rel(sd.regression.quantreg(y, X, cov_type="iid", **kw).bse,
-                                               Rv[t + "sdv_se_iid"]))
-            vals["ker"] = max(vals["ker"], rel(sd.regression.quantreg(y, X, cov_type="ker", **kw).bse,
-                                               Rv[t + "sdv_se_ker"]))
-        print(f"| {name} | {vals['br']:.1e} | {vals['nid']:.1e} | {vals['nidb']:.1e} | {vals['iid']:.1e} | "
-              f"{vals['ker']:.1e} |")
+            vals["nidb"] = max(
+                vals["nidb"], rel(sd.regression.quantreg(y, X, bandwidth="bofinger", **kw).bse, Rv[t + "se_nid_bof"])
+            )
+            vals["iid"] = max(
+                vals["iid"], rel(sd.regression.quantreg(y, X, cov_type="iid", **kw).bse, Rv[t + "sdv_se_iid"])
+            )
+            vals["ker"] = max(
+                vals["ker"], rel(sd.regression.quantreg(y, X, cov_type="ker", **kw).bse, Rv[t + "sdv_se_ker"])
+            )
+        print(
+            f"| {name} | {vals['br']:.1e} | {vals['nid']:.1e} | {vals['nidb']:.1e} | {vals['iid']:.1e} | "
+            f"{vals['ker']:.1e} |"
+        )
 
 
 if __name__ == "__main__":

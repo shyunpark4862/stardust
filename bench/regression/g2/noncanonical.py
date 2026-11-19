@@ -29,19 +29,36 @@ import regref  # noqa: E402
 K = sd._core.regression
 FAM = {"gaussian": 0, "binomial": 1, "poisson": 2, "gamma": 3}
 LINK = {"identity": 0, "log": 1, "logit": 2, "probit": 3, "cloglog": 4, "sqrt": 5, "inverse": 6}
-LINKS = [("binomial", "probit", 0.3, 1.0), ("binomial", "cloglog", -0.5, 1.0), ("binomial", "log", -1.5, 0.4),
-         ("poisson", "identity", 5.0, 2.0), ("poisson", "sqrt", 2.0, 0.5), ("gamma", "log", 0.5, 1.0),
-         ("gamma", "identity", 4.0, 1.5), ("gaussian", "log", 0.8, 0.5), ("binomial", "logit", 0.2, 1.0),
-         ("poisson", "log", 0.5, 1.0)]
-INV = {"probit": norm.cdf, "cloglog": lambda e: -np.expm1(-np.exp(e)), "log": np.exp, "identity": lambda e: e,
-       "sqrt": lambda e: e * e, "logit": lambda e: 1 / (1 + np.exp(-e))}
+LINKS = [
+    ("binomial", "probit", 0.3, 1.0),
+    ("binomial", "cloglog", -0.5, 1.0),
+    ("binomial", "log", -1.5, 0.4),
+    ("poisson", "identity", 5.0, 2.0),
+    ("poisson", "sqrt", 2.0, 0.5),
+    ("gamma", "log", 0.5, 1.0),
+    ("gamma", "identity", 4.0, 1.5),
+    ("gaussian", "log", 0.8, 0.5),
+    ("binomial", "logit", 0.2, 1.0),
+    ("poisson", "log", 0.5, 1.0),
+]
+INV = {
+    "probit": norm.cdf,
+    "cloglog": lambda e: -np.expm1(-np.exp(e)),
+    "log": np.exp,
+    "identity": lambda e: e,
+    "sqrt": lambda e: e * e,
+    "logit": lambda e: 1 / (1 + np.exp(-e)),
+}
 
 
 def draw(rng, family, mu):
     n = mu.shape[0]
-    return {"binomial": lambda: (rng.uniform(size=n) < mu).astype(float),
-            "poisson": lambda: rng.poisson(mu).astype(float), "gamma": lambda: rng.gamma(3.0, mu / 3.0),
-            "gaussian": lambda: mu + 0.3 * rng.standard_normal(n)}[family]()
+    return {
+        "binomial": lambda: (rng.uniform(size=n) < mu).astype(float),
+        "poisson": lambda: rng.poisson(mu).astype(float),
+        "gamma": lambda: rng.gamma(3.0, mu / 3.0),
+        "gaussian": lambda: mu + 0.3 * rng.standard_normal(n),
+    }[family]()
 
 
 def problem(family, link, base, scale, kappa, seed):
@@ -72,9 +89,32 @@ def slow_problem(kappa, seed):
 def fit(y, X, family, link, newton, threads_aux=None, intercept=True):
     n = y.shape[-1]
     aux = threads_aux if threads_aux is not None else sd.asarray(np.r_[np.ones((3, n)), np.zeros((1, n))])
-    raw = K.glm_fit("glm", sd.asarray(y) if not isinstance(y, sd.ndarray) else y,
-                    sd.asarray(X) if not isinstance(X, sd.ndarray) else X, aux, None, 0, FAM[family], LINK[link],
-                    False, False, False, False, intercept, -1.0, 0, -1, 100, 1e-8, 0, 0.0, 0, 3, True, 2 if newton else 0)
+    raw = K.glm_fit(
+        "glm",
+        sd.asarray(y) if not isinstance(y, sd.ndarray) else y,
+        sd.asarray(X) if not isinstance(X, sd.ndarray) else X,
+        aux,
+        None,
+        0,
+        FAM[family],
+        LINK[link],
+        False,
+        False,
+        False,
+        False,
+        intercept,
+        -1.0,
+        0,
+        -1,
+        100,
+        1e-8,
+        0,
+        0.0,
+        0,
+        3,
+        True,
+        2 if newton else 0,
+    )
     st = np.asarray(raw[6])
     return np.asarray(raw[0]), int(st[8]), bool(st[9])
 
@@ -111,8 +151,11 @@ def main():
             ref, _ = regref.glm(y.tolist(), X.tolist(), family="gamma", link="log", intercept=False, beta0=bg.tolist())
             hi = np.array([v[0] + v[1] for v in ref["params"]])
             e = lambda b: np.linalg.norm(b - hi) / np.linalg.norm(hi)
-            print(f"| {kappa:.0e} | {seed} | {e(bg):.1e} ({ig}{'' if cg else ', not converged'}) | "
-                  f"{e(bf):.1e} ({i_f}{'' if cf else ', not converged'}) |", flush=True)
+            print(
+                f"| {kappa:.0e} | {seed} | {e(bg):.1e} ({ig}{'' if cg else ', not converged'}) | "
+                f"{e(bf):.1e} ({i_f}{'' if cf else ', not converged'}) |",
+                flush=True,
+            )
 
     print()
     print("| (n, k) | family, link | threads | glm (ms, iterations) | Fisher's polishing (ms, iterations) | added |")
@@ -124,8 +167,12 @@ def main():
         eta = X @ beta
         Xs = sd.asarray(X)
         aux = sd.asarray(np.r_[np.ones((3, n)), np.zeros((1, n))])
-        for family, link, base in (("binomial", "probit", 0.1), ("gamma", "log", 0.5), ("binomial", "logit", 0.2),
-                                   ("poisson", "log", 0.3)):
+        for family, link, base in (
+            ("binomial", "probit", 0.1),
+            ("gamma", "log", 0.5),
+            ("binomial", "logit", 0.2),
+            ("poisson", "log", 0.3),
+        ):
             y = sd.asarray(draw(rng, family, INV[link](base + eta * (0.5 if family == "poisson" else 1.0))))
             for threads in (1, 10):
                 sd.set_num_threads(threads)
@@ -138,8 +185,11 @@ def main():
                         best.append(time.perf_counter() - t0)
                     t[newton] = (min(best), it)
                 (a, ia), (b, ib) = t[True], t[False]
-                print(f"| ({n:,}, {k}) | {family} {link} | {threads} | {a * 1e3:,.1f} ({ia}) | {b * 1e3:,.1f} ({ib}) | "
-                      f"{(a / b - 1) * 100:+.0f}% |", flush=True)
+                print(
+                    f"| ({n:,}, {k}) | {family} {link} | {threads} | {a * 1e3:,.1f} ({ia}) | {b * 1e3:,.1f} ({ib}) | "
+                    f"{(a / b - 1) * 100:+.0f}% |",
+                    flush=True,
+                )
 
 
 if __name__ == "__main__":

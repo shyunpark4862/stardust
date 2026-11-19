@@ -20,11 +20,17 @@
 
 namespace sd::special::bst {
 namespace bp = boost::math::policies;
-using Policy = bp::policy<bp::domain_error<bp::ignore_error>, bp::pole_error<bp::ignore_error>,
-                          bp::overflow_error<bp::ignore_error>, bp::underflow_error<bp::ignore_error>,
-                          bp::denorm_error<bp::ignore_error>, bp::evaluation_error<bp::user_error>,
-                          bp::rounding_error<bp::ignore_error>, bp::indeterminate_result_error<bp::ignore_error>,
-                          bp::promote_float<false>, bp::promote_double<false>>;
+using Policy = bp::policy<
+    bp::domain_error<bp::ignore_error>,
+    bp::pole_error<bp::ignore_error>,
+    bp::overflow_error<bp::ignore_error>,
+    bp::underflow_error<bp::ignore_error>,
+    bp::denorm_error<bp::ignore_error>,
+    bp::evaluation_error<bp::user_error>,
+    bp::rounding_error<bp::ignore_error>,
+    bp::indeterminate_result_error<bp::ignore_error>,
+    bp::promote_float<false>,
+    bp::promote_double<false>>;
 struct NotEvaluated {};  // thrown for Boost's evaluation error
 }  // namespace sd::special::bst
 
@@ -62,26 +68,54 @@ template <typename F>
 inline double call(F f) {
     try {
         return f();
-    } catch (...) {
-        return kNaN;
-    }
+    } catch (...) { return kNaN; }
 }
 
-inline double tgamma(double x) { return call([&] { return bm::tgamma(x, Policy()); }); }
-inline double digamma(double x) { return call([&] { return bm::digamma(x, Policy()); }); }
-inline double beta(double a, double b) { return call([&] { return bm::beta(a, b, Policy()); }); }
-inline double zeta(double x) { return call([&] { return bm::zeta(x, Policy()); }); }
-inline double gamma_p_inv(double a, double p) { return call([&] { return bm::gamma_p_inv(a, p, Policy()); }); }
-inline double gamma_q_inv(double a, double q) { return call([&] { return bm::gamma_q_inv(a, q, Policy()); }); }
-inline double ibeta(double a, double b, double x) { return call([&] { return bm::ibeta(a, b, x, Policy()); }); }
-inline double ibetac(double a, double b, double x) { return call([&] { return bm::ibetac(a, b, x, Policy()); }); }
-inline double ibeta_inv(double a, double b, double p) { return call([&] { return bm::ibeta_inv(a, b, p, Policy()); }); }
-inline double ibetac_inv(double a, double b, double q) { return call([&] { return bm::ibetac_inv(a, b, q, Policy()); }); }
-inline double expint(double x) { return call([&] { return bm::expint(x, Policy()); }); }
-inline double i(double v, double x) { return call([&] { return bm::cyl_bessel_i(v, x, Policy()); }); }
-inline double k(double v, double x) { return call([&] { return bm::cyl_bessel_k(v, x, Policy()); }); }
-inline double w0(double x) { return call([&] { return bm::lambert_w0(x, Policy()); }); }
-inline double wm1(double x) { return call([&] { return bm::lambert_wm1(x, Policy()); }); }
+inline double tgamma(double x) {
+    return call([&] { return bm::tgamma(x, Policy()); });
+}
+inline double digamma(double x) {
+    return call([&] { return bm::digamma(x, Policy()); });
+}
+inline double beta(double a, double b) {
+    return call([&] { return bm::beta(a, b, Policy()); });
+}
+inline double zeta(double x) {
+    return call([&] { return bm::zeta(x, Policy()); });
+}
+inline double gamma_p_inv(double a, double p) {
+    return call([&] { return bm::gamma_p_inv(a, p, Policy()); });
+}
+inline double gamma_q_inv(double a, double q) {
+    return call([&] { return bm::gamma_q_inv(a, q, Policy()); });
+}
+inline double ibeta(double a, double b, double x) {
+    return call([&] { return bm::ibeta(a, b, x, Policy()); });
+}
+inline double ibetac(double a, double b, double x) {
+    return call([&] { return bm::ibetac(a, b, x, Policy()); });
+}
+inline double ibeta_inv(double a, double b, double p) {
+    return call([&] { return bm::ibeta_inv(a, b, p, Policy()); });
+}
+inline double ibetac_inv(double a, double b, double q) {
+    return call([&] { return bm::ibetac_inv(a, b, q, Policy()); });
+}
+inline double expint(double x) {
+    return call([&] { return bm::expint(x, Policy()); });
+}
+inline double i(double v, double x) {
+    return call([&] { return bm::cyl_bessel_i(v, x, Policy()); });
+}
+inline double k(double v, double x) {
+    return call([&] { return bm::cyl_bessel_k(v, x, Policy()); });
+}
+inline double w0(double x) {
+    return call([&] { return bm::lambert_w0(x, Policy()); });
+}
+inline double wm1(double x) {
+    return call([&] { return bm::lambert_wm1(x, Policy()); });
+}
 inline double hyp1f1(double a, double b, double x) {
     return call([&] { return bm::hypergeometric_1F1(a, b, x, Policy()); });
 }

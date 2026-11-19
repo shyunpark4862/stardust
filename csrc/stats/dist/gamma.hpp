@@ -168,7 +168,9 @@ inline double dist_log_tail(double a, DD y, bool upper) {
 // below 2^-960 (where y's double-double has lost bits, or is 0) the leading term from
 // log nu - log den. Out of line: the cdfs' hot path is ratio_tail.
 inline double ratio_tail(double a, double nu, double den, bool upper, bool log);
-[[gnu::noinline, gnu::cold]] inline double ratio_tail_edge(double a, double nu, double den, DD y, bool upper, bool log) {
+[[gnu::noinline, gnu::cold]] inline double ratio_tail_edge(
+    double a, double nu, double den, DD y, bool upper, bool log
+) {
     if (!(a <= kMaxShape) || y.hi != y.hi) return kNaN;
     if (std::isinf(y.hi)) return upper ? (log ? -kInf : 0.0) : (log ? 0.0 : 1.0);
     if (a < kMinNormalShape) {
@@ -362,11 +364,13 @@ inline constexpr double kMeasuredMinA = 1e-6;
     return std::fabs(lf - lt.hi) <= tol ? r : kNaN;  // false for NaN
 }
 inline double lower_inverse_checked(double a, double s, double p, DD lt) {
-    if (!(a <= kGuaranteedA && a >= kMeasuredMinA)) [[unlikely]] return inverse_beyond(a, s, p, lt, true);
+    if (!(a <= kGuaranteedA && a >= kMeasuredMinA)) [[unlikely]]
+        return inverse_beyond(a, s, p, lt, true);
     return lower_inverse(a, s, p, lt);
 }
 inline double upper_inverse_checked(double a, double s, double q, DD lt) {
-    if (!(a <= kGuaranteedA && a >= kMeasuredMinA)) [[unlikely]] return inverse_beyond(a, s, q, lt, false);
+    if (!(a <= kGuaranteedA && a >= kMeasuredMinA)) [[unlikely]]
+        return inverse_beyond(a, s, q, lt, false);
     return upper_inverse(a, s, q, lt);
 }
 
@@ -464,7 +468,8 @@ inline DD log(DD x) {
     const DD r2 = dd::two_prod(rh, rh);
     const double tail =
         rh * r2.hi *
-        (1.0 / 3 + rh * (-0.25 + rh * (0.2 + rh * (-1.0 / 6 + rh * (1.0 / 7 + rh * (-0.125 + rh * (1.0 / 9 + rh * -0.1)))))));
+        (1.0 / 3 +
+         rh * (-0.25 + rh * (0.2 + rh * (-1.0 / 6 + rh * (1.0 / 7 + rh * (-0.125 + rh * (1.0 / 9 + rh * -0.1)))))));
     const double kd = k;
     const DD kl = dd::two_prod(dd::kLn2.hi, kd);
     DD s = dd::two_sum(kl.hi, c.hi);
@@ -526,7 +531,8 @@ inline void kernel(int n, bool log, double* out, Args&& args, Precise&& precise)
             if (e.ok) {
                 // the first tier where its bound passes for the density (then it does for logpdf
                 // too: T + |l| <= 11.5 + |l| <= kFastBudget max(1, |l|)); the test needs only the logs
-                const double t1 = ck::kVfLog * (std::fabs(e.k1.hi * l1[i]) + (Two ? std::fabs(e.k2.hi * l2[i]) : 0.0)) + 1.0;
+                const double t1 =
+                    ck::kVfLog * (std::fabs(e.k1.hi * l1[i]) + (Two ? std::fabs(e.k2.hi * l2[i]) : 0.0)) + 1.0;
                 if (t1 + ck::kVfExp + 2.0 <= kFastBudget) {
                     combine(e, DD{l1[i], e.x1.lo / e.x1.hi}, Two ? DD{l2[i], e.x2.lo / e.x2.hi} : DD{0.0, 0.0}, lh, ll);
                     fast[i] = std::fabs(lh) < 700.0;
@@ -568,8 +574,9 @@ inline DD quotient(double num, double den) {
 // inverse gamma (its density is the gamma's at y times y^2 / s):
 //     l = k log y - y - (log Gamma(a) + log s).
 template <class Precise>
-inline void gamma_kernel(int n, const double* x, const double* a, const double* s, bool inverse, bool log, double* out,
-                         Precise&& precise) {
+inline void gamma_kernel(
+    int n, const double* x, const double* a, const double* s, bool inverse, bool log, double* out, Precise&& precise
+) {
     thread_local Const cst_gamma, cst_inverse;  // (one each: a gamma and an inverse gamma may alternate)
     Const& cst = inverse ? cst_inverse : cst_gamma;
     kernel<false>(
@@ -587,14 +594,13 @@ inline void gamma_kernel(int n, const double* x, const double* a, const double* 
             in.ok = x[i] > 0.0 && in.x1.hi >= 0x1p-1000 && in.x1.hi <= 0x1p1000 && c.hi == c.hi;  // false for a NaN
             return in;
         },
-        precise);
+        precise
+    );
 }
 
 }  // namespace dens
 
-namespace gamma_detail {
-
-}  // namespace gamma_detail
+namespace gamma_detail {}  // namespace gamma_detail
 
 struct Gamma {
     static constexpr char name[] = "gamma";

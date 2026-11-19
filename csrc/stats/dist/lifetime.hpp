@@ -69,7 +69,8 @@ struct Pareto {
 
     // log(x / s) for x >= s finite.
     static num::DD log_ratio(double x, double s) {
-        if (s < 0x1p-700 && x < 0x1p-600) [[unlikely]] return log_ratio(x * 0x1p200, s * 0x1p200);  // (x - s may be subnormal: scaled, exactly)
+        if (s < 0x1p-700 && x < 0x1p-600) [[unlikely]]
+            return log_ratio(x * 0x1p200, s * 0x1p200);  // (x - s may be subnormal: scaled, exactly)
         if (x <= 2.0 * s) return lifetime_detail::log1p_dd(num::ratio(x - s, s));  // x - s exact
         return weibull_detail::log_ratio(x, s);
     }
@@ -177,10 +178,18 @@ struct Pareto {
         ckd::retry(c, out, fast, [&](const Chunk<2>& s, double* o, bool* f) { tail_kernel(s, o, f, kind, 1); });
         ck::fallback(c.n, fast, out, [&](int i) { return tail(c.x[i], c.p[0][i], c.p[1][i], upper, log); });
     }
-    static void cdf_chunk(const Chunk<2>& c, double* out) { tail_run(c, out, weibull_detail::Tail::kOneExp, false, false); }
-    static void ccdf_chunk(const Chunk<2>& c, double* out) { tail_run(c, out, weibull_detail::Tail::kExp, true, false); }
-    static void logcdf_chunk(const Chunk<2>& c, double* out) { tail_run(c, out, weibull_detail::Tail::kLogOne, false, true); }
-    static void logccdf_chunk(const Chunk<2>& c, double* out) { tail_run(c, out, weibull_detail::Tail::kLogExp, true, true); }
+    static void cdf_chunk(const Chunk<2>& c, double* out) {
+        tail_run(c, out, weibull_detail::Tail::kOneExp, false, false);
+    }
+    static void ccdf_chunk(const Chunk<2>& c, double* out) {
+        tail_run(c, out, weibull_detail::Tail::kExp, true, false);
+    }
+    static void logcdf_chunk(const Chunk<2>& c, double* out) {
+        tail_run(c, out, weibull_detail::Tail::kLogOne, false, true);
+    }
+    static void logccdf_chunk(const Chunk<2>& c, double* out) {
+        tail_run(c, out, weibull_detail::Tail::kLogExp, true, true);
+    }
     // The density. Grade 0: b S / x in double (kPowDd + 2), logpdf its log by vForce
     // (kVfLog |value| more, against the mixed bound of T20). Grade 1: k - b log(x/s) - log(x/s)
     // in the scalar definition's double-doubles: absolute error 2 kLq (b + 1) log(x/s) and the
@@ -310,7 +319,8 @@ struct Pareto {
     }
     static double kurtosis(double b, double) {  // 6 (b^3 + b^2 - 6b - 2) / (b (b - 3) (b - 4))
         if (!(b > 4.0)) return b > 2.0 ? kInf : kNaN;
-        if (b > 1e50) return 6.0 * (1.0 + 1.0 / b) / (1.0 - 7.0 / b);  // b^3 overflows; the 1/b^2 terms are below 1e-100
+        if (b > 1e50)
+            return 6.0 * (1.0 + 1.0 / b) / (1.0 - 7.0 / b);  // b^3 overflows; the 1/b^2 terms are below 1e-100
         return 6.0 * (b * (b * (b + 1.0) - 6.0) - 2.0) / (b * (b - 3.0) * (b - 4.0));
     }
     static double median(double b, double s) { return from_L(num::kLn2, b, s); }  // s 2^(1/b)
@@ -389,10 +399,18 @@ struct Rayleigh {
         for (int i = 0; i < c.n; ++i) fast[i] = tau[i] <= kFastBudget;  // false for NaN
         ck::fallback(c.n, fast, out, [&](int i) { return tail(c.x[i], c.p[0][i], upper, log); });
     }
-    static void cdf_chunk(const Chunk<1>& c, double* out) { tail_chunk(c, out, weibull_detail::Tail::kOneExp, false, false); }
-    static void ccdf_chunk(const Chunk<1>& c, double* out) { tail_chunk(c, out, weibull_detail::Tail::kExp, true, false); }
-    static void logcdf_chunk(const Chunk<1>& c, double* out) { tail_chunk(c, out, weibull_detail::Tail::kLogOne, false, true); }
-    static void logccdf_chunk(const Chunk<1>& c, double* out) { tail_chunk(c, out, weibull_detail::Tail::kLogExp, true, true); }
+    static void cdf_chunk(const Chunk<1>& c, double* out) {
+        tail_chunk(c, out, weibull_detail::Tail::kOneExp, false, false);
+    }
+    static void ccdf_chunk(const Chunk<1>& c, double* out) {
+        tail_chunk(c, out, weibull_detail::Tail::kExp, true, false);
+    }
+    static void logcdf_chunk(const Chunk<1>& c, double* out) {
+        tail_chunk(c, out, weibull_detail::Tail::kLogOne, false, true);
+    }
+    static void logccdf_chunk(const Chunk<1>& c, double* out) {
+        tail_chunk(c, out, weibull_detail::Tail::kLogExp, true, true);
+    }
     // (y / s) e^-t in double, e^-t from the double-double t: kVfExp + 1 and y's rounding, the
     // quotient and the product: kVfExp + 4. logpdf is its log by vForce (kVfLog |value| more:
     // inside the mixed bound of T20 for any value).
@@ -464,10 +482,10 @@ struct Rayleigh {
         return from_t(num::DD{-lp, 0.0}, s);
     }
 
-    static double mean(double s) { return s * 1.2533141373155003; }                   // sqrt(pi / 2)
-    static double variance(double s) { return s * s * 0.4292036732051034; }           // (4 - pi) / 2
+    static double mean(double s) { return s * 1.2533141373155003; }  // sqrt(pi / 2)
+    static double variance(double s) { return s * s * 0.4292036732051034; }  // (4 - pi) / 2
     static double standard_deviation(double s) { return s * 0.6551363775620336; }
-    static double skewness(double) { return 0.6311106578189372; }   // 2 sqrt(pi) (pi - 3) / (4 - pi)^(3/2)
+    static double skewness(double) { return 0.6311106578189372; }  // 2 sqrt(pi) (pi - 3) / (4 - pi)^(3/2)
     static double kurtosis(double) { return 0.24508930068763807; }  // -(6 pi^2 - 24 pi + 16) / (4 - pi)^2
     static double median(double s) { return s * 1.1774100225154747; }  // sqrt(2 log 2)
     static double mode(double s) { return s; }
@@ -586,15 +604,25 @@ struct InverseGamma {
     static double icdf(double p, double a, double s) {
         if (!(p >= 0.0 && p <= 1.0) || a > gamma_detail::kMaxShape) return kNaN;
         if (p == 0.0 || p == 1.0) return p == 0.0 ? 0.0 : kInf;
-        const double r = p > 0.5 ? invert(s, [&](double k) { return gamma_detail::lower_inverse_checked(a, k, 1.0 - p, num::log_dd(1.0 - p)); })
-                                 : invert(s, [&](double k) { return gamma_detail::upper_inverse_checked(a, k, p, num::log_dd(p)); });
+        const double r =
+            p > 0.5
+                ? invert(
+                      s,
+                      [&](double k) { return gamma_detail::lower_inverse_checked(a, k, 1.0 - p, num::log_dd(1.0 - p)); }
+                  )
+                : invert(s, [&](double k) { return gamma_detail::upper_inverse_checked(a, k, p, num::log_dd(p)); });
         return past_the_ends(r, std::log(p), a, s, false);
     }
     static double iccdf(double p, double a, double s) {
         if (!(p >= 0.0 && p <= 1.0) || a > gamma_detail::kMaxShape) return kNaN;
         if (p == 0.0 || p == 1.0) return p == 0.0 ? kInf : 0.0;
-        const double r = p > 0.5 ? invert(s, [&](double k) { return gamma_detail::upper_inverse_checked(a, k, 1.0 - p, num::log_dd(1.0 - p)); })
-                                 : invert(s, [&](double k) { return gamma_detail::lower_inverse_checked(a, k, p, num::log_dd(p)); });
+        const double r =
+            p > 0.5
+                ? invert(
+                      s,
+                      [&](double k) { return gamma_detail::upper_inverse_checked(a, k, 1.0 - p, num::log_dd(1.0 - p)); }
+                  )
+                : invert(s, [&](double k) { return gamma_detail::lower_inverse_checked(a, k, p, num::log_dd(p)); });
         return past_the_ends(r, std::log(p), a, s, true);
     }
     static double from_log(double lp, double a, double s, bool upper) {

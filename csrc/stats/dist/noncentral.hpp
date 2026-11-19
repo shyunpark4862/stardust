@@ -250,12 +250,14 @@ double invert(const Tail& tail, Target tg, double x0, bool positive) {
     namespace nd = special::nc_detail;
     if (positive) {
         if (!(x0 > 0.0 && x0 < kInf)) x0 = 1.0;
-        return nd::solve(g, x0, [](double x) { return std::log(x); }, [](double u) { return std::exp(u); }, 0.125, 0.0,
-                         kInf);
+        return nd::solve(
+            g, x0, [](double x) { return std::log(x); }, [](double u) { return std::exp(u); }, 0.125, 0.0, kInf
+        );
     }
     if (!std::isfinite(x0)) x0 = 0.0;
-    return nd::solve(g, x0, [](double t) { return std::asinh(t); }, [](double u) { return std::sinh(u); }, 0.125, -kInf,
-                     kInf);
+    return nd::solve(
+        g, x0, [](double t) { return std::asinh(t); }, [](double u) { return std::sinh(u); }, 0.125, -kInf, kInf
+    );
 }
 
 // The root of tail(x) = p (the side and p of tg) by Newton steps on log(tail / p), in log x
@@ -289,9 +291,8 @@ bool newton(const Eval& eval, Target tg, double x0, bool positive, double& out) 
             xn = x + std::clamp(d, -4.0 * scale, 4.0 * scale);
         }
         if (!std::isfinite(xn) || (positive && !(xn > 0.0))) return false;
-        if (ad <= 0x1p-48 * scale ||
-            (it > 0 && prev <= 0x1p-5 * scale && ad <= 0x1p-3 * prev &&
-             ad * (ad * ad / (prev * prev) + 0x1p-30) <= 0x1p-52 * scale)) {
+        if (ad <= 0x1p-48 * scale || (it > 0 && prev <= 0x1p-5 * scale && ad <= 0x1p-3 * prev &&
+                                      ad * (ad * ad / (prev * prev) + 0x1p-30) <= 0x1p-52 * scale)) {
             out = xn;
             return true;
         }
@@ -366,7 +367,8 @@ double entropy(LogPdf&& logpdf, ToX&& to_x, Jac&& jac) {
                 if (lv == -kInf) {  // the end of the range
                     if (n < 32) return false;
                     const double last = recent[(n - 1) % 32], ref = recent[n % 32];
-                    if (!(last == 0.0 || (ref > last && 31.0 * last <= 0x1p-40 * sum_abs * std::log(ref / last)))) return false;
+                    if (!(last == 0.0 || (ref > last && 31.0 * last <= 0x1p-40 * sum_abs * std::log(ref / last))))
+                        return false;
                     break;
                 }
                 const double v = -density(l) * lv * jac(u);
@@ -475,7 +477,9 @@ struct NoncentralChiSquared {
         return true;
     }
     // the density at x = 0: df < 2 inf, df = 2 e^(-nc/2) / 2, df > 2 zero
-    static double density0(double df, double nc) { return df < 2.0 ? kInf : (df == 2.0 ? 0.5 * std::exp(-0.5 * nc) : 0.0); }
+    static double density0(double df, double nc) {
+        return df < 2.0 ? kInf : (df == 2.0 ? 0.5 * std::exp(-0.5 * nc) : 0.0);
+    }
     // The bulk: f(x) = chi2(x; df) e^(-mu) 0F1(; a; mu y) (the series above with its j = 0
     // term taken out: t_j / t_0 = (mu y)^j / (j! (a)_j)), the series from j = 0 (hyper_sum)
     // while it has at most kLiteTerms terms; in logs, each a double-double (the central
@@ -487,7 +491,8 @@ struct NoncentralChiSquared {
         // the largest term is near j = sqrt(z); the terms fall off over ~ z^(1/4) around it
         if (!(x >= 0x1p-1020 && z.hi <= 6e4 && z.hi >= 0x1p-1000)) return false;
         ncd::Lite s;
-        if (!ncd::hyper_sum(ncd::HyperRatio{{z.hi, z.lo}, {a, 0.0}, {0.0, 0.0}, false}, ncd::lite::kLiteTol, s)) return false;
+        if (!ncd::hyper_sum(ncd::HyperRatio{{z.hi, z.lo}, {a, 0.0}, {0.0, 0.0}, false}, ncd::lite::kLiteTol, s))
+            return false;
         l = Gamma::log_density(x, a, 2.0) - mu + num::dd::log(ncd::to_dd(s));
         return true;
     }
@@ -573,8 +578,10 @@ struct NoncentralChiSquared {
     }
     static double log_of_tail(double x, double df, double nc, bool upper) {  // 0 < x
         const bool inside = std::isfinite(x);
-        const double v = ncd::log_tail_either([&](bool u, double& t) { return inside && special::nc_detail::ncx2_lite(df, nc, x, u, t); },
-                                              [&](bool u, bool wide) { return tail(x, df, nc, u, wide); }, upper, inside);
+        const double v = ncd::log_tail_either(
+            [&](bool u, double& t) { return inside && special::nc_detail::ncx2_lite(df, nc, x, u, t); },
+            [&](bool u, bool wide) { return tail(x, df, nc, u, wide); }, upper, inside
+        );
         num::DD l;
         if (v != v && upper && far_upper_log(x, df, nc, l)) return l.hi + l.lo;
         return v;
@@ -609,8 +616,12 @@ struct NoncentralChiSquared {
         const double x0 = special::nc_detail::ncx2_start(df, nc, upper ? 1.0 - p : p);
         const ncd::Target tg = ncd::target_p(p, upper);
         double out;
-        if (ncd::newton([&](double x, bool u, double& t, double& f) { return special::nc_detail::ncx2_lite(df, nc, x, u, t, &f); },
-                        tg, x0, true, out))
+        if (ncd::newton(
+                [&](double x, bool u, double& t, double& f) {
+                    return special::nc_detail::ncx2_lite(df, nc, x, u, t, &f);
+                },
+                tg, x0, true, out
+            ))
             return out;
         return ncd::invert([&](double x, bool u, bool wide) { return tail_far(x, df, nc, u, wide); }, tg, x0, true);
     }
@@ -667,16 +678,19 @@ struct NoncentralChiSquared {
         if (!(at0 > 0.0)) return at0 != at0 ? kNaN : 0.0;
         double x0 = std::max(df + nc - 2.0, 1.0);
         auto g = [&](double x) { return -phi(x); };  // increasing
-        return special::nc_detail::solve(g, x0, [](double x) { return std::log(x); },
-                                         [](double u) { return std::exp(u); }, 0.125, 0.0, kInf);
+        return special::nc_detail::solve(
+            g, x0, [](double x) { return std::log(x); }, [](double u) { return std::exp(u); }, 0.125, 0.0, kInf
+        );
     }
     static double entropy(double df, double nc) {
         if (nc == 0.0) return ChiSquared::entropy(df);
         if (atom(df, nc)) return -kInf;  // a point mass: no finite differential entropy
         const double m = std::max(df + nc, 1e-3);  // x = m e^u
         if (!std::isfinite(m)) return kNaN;
-        return ncd::entropy([&](double x) { return x > 0.0 && std::isfinite(x) ? log_density(x, df, nc) : num::DD{-kInf, 0.0}; },
-                            [&](double u) { return m * std::exp(u); }, [&](double u) { return m * std::exp(u); });
+        return ncd::entropy(
+            [&](double x) { return x > 0.0 && std::isfinite(x) ? log_density(x, df, nc) : num::DD{-kInf, 0.0}; },
+            [&](double u) { return m * std::exp(u); }, [&](double u) { return m * std::exp(u); }
+        );
     }
     static double support_lo(double, double) { return 0.0; }
     static double support_hi(double, double) { return kInf; }
@@ -776,8 +790,7 @@ struct NoncentralF {
                 return lp + lw * sh + lv * b - lbeta;
             }
             num::DD l = lp + beta_detail::log_prefix(sh.hi, b, g.x, g.y);
-            if (sh.lo != 0.0)
-                l = l + sh.lo * (lw1 - special::Digamma::f(sh.hi) + special::Digamma::f(sh.hi + b));
+            if (sh.lo != 0.0) l = l + sh.lo * (lw1 - special::Digamma::f(sh.hi) + special::Digamma::f(sh.hi + b));
             return l;
         };
         auto ratio = [&](double j) { return mu * w * (a0 + j + b) / ((j + 1.0) * (a0 + j)); };
@@ -787,7 +800,9 @@ struct NoncentralF {
         return ncd::log_series(j0, 0.0, lt, ratio);
     }
     // the density at 0: dfn < 2 inf, dfn = 2 e^(-nc/2) (the j = 0 term alone), dfn > 2 zero
-    static double density0(double dfn, double nc) { return dfn < 2.0 ? kInf : (dfn == 2.0 ? std::exp(-0.5 * nc) : 0.0); }
+    static double density0(double dfn, double nc) {
+        return dfn < 2.0 ? kInf : (dfn == 2.0 ? std::exp(-0.5 * nc) : 0.0);
+    }
     // The bulk: f(x) = F(x; dfn, dfd) e^(-mu) 1F1(a0 + b; a0; mu w) (the series above over its
     // j = 0 term: t_j / t_0 = (mu w)^j (a0 + b)_j / (j! (a0)_j)), as the chi-square's.
     // The series' sum (false: not in the bulk).
@@ -864,8 +879,10 @@ struct NoncentralF {
     }
     static double log_of_tail(double x, double dfn, double dfd, double nc, bool upper) {  // 0 < x
         const bool inside = std::isfinite(x);
-        return ncd::log_tail_either([&](bool u, double& v) { return inside && special::nc_detail::ncf_lite(dfn, dfd, nc, x, u, v); },
-                                    [&](bool u, bool wide) { return tail(x, dfn, dfd, nc, u, wide); }, upper, inside);
+        return ncd::log_tail_either(
+            [&](bool u, double& v) { return inside && special::nc_detail::ncf_lite(dfn, dfd, nc, x, u, v); },
+            [&](bool u, bool wide) { return tail(x, dfn, dfd, nc, u, wide); }, upper, inside
+        );
     }
     static double logcdf(double x, double dfn, double dfd, double nc) {
         if (!halvable(dfn, dfd)) return kNaN;
@@ -888,8 +905,12 @@ struct NoncentralF {
         const double x0 = c * k / dfn * special::Fdtri::f(k, dfd, upper ? 1.0 - p : p);
         const ncd::Target tg = ncd::target_p(p, upper);
         double out;
-        if (ncd::newton([&](double x, bool u, double& t, double& f) { return special::nc_detail::ncf_lite(dfn, dfd, nc, x, u, t, &f); },
-                        tg, x0, true, out))
+        if (ncd::newton(
+                [&](double x, bool u, double& t, double& f) {
+                    return special::nc_detail::ncf_lite(dfn, dfd, nc, x, u, t, &f);
+                },
+                tg, x0, true, out
+            ))
             return out;
         return ncd::invert([&](double x, bool u, bool wide) { return tail(x, dfn, dfd, nc, u, wide); }, tg, x0, true);
     }
@@ -1003,8 +1024,9 @@ struct NoncentralF {
         if (!(at0 > 0.0)) return at0 != at0 ? kNaN : 0.0;
         auto g = [&](double x) { return -phi(x) / (dfn * (1.0 + b) * x); };  // increasing, scale-free
         const double x0 = std::max(1e-3, (0.5 * dfn + 0.5 * nc - 1.0) * dfd / (dfn * (1.0 + b)));
-        return special::nc_detail::solve(g, x0, [](double x) { return std::log(x); },
-                                         [](double u) { return std::exp(u); }, 0.125, 0.0, kInf);
+        return special::nc_detail::solve(
+            g, x0, [](double x) { return std::log(x); }, [](double u) { return std::exp(u); }, 0.125, 0.0, kInf
+        );
     }
     static double median(double dfn, double dfd, double nc) {
         if (nc == 0.0 && halvable(dfn, dfd)) return F::median(dfn, dfd);
@@ -1017,7 +1039,8 @@ struct NoncentralF {
         if (!std::isfinite(m)) return kNaN;
         return ncd::entropy(
             [&](double x) { return x > 0.0 && std::isfinite(x) ? log_density(x, dfn, dfd, nc) : num::DD{-kInf, 0.0}; },
-            [&](double u) { return m * std::exp(u); }, [&](double u) { return m * std::exp(u); });
+            [&](double u) { return m * std::exp(u); }, [&](double u) { return m * std::exp(u); }
+        );
     }
     static double support_lo(double, double, double) { return 0.0; }
     static double support_hi(double, double, double) { return kInf; }
@@ -1153,9 +1176,13 @@ struct NoncentralT {
     // df = inf: the normal (nc, 1), every method (as special.nctdtr)
     static bool at_limit(double df, double nc) { return df == kInf && std::isfinite(nc); }
     template <class M>
-    static double limit_in(double x, double, double nc) { return method_of<Normal, M>(x, nc, 1.0); }
+    static double limit_in(double x, double, double nc) {
+        return method_of<Normal, M>(x, nc, 1.0);
+    }
     template <class M>
-    static double limit_par(double, double nc) { return method_of<Normal, M>(nc, 1.0); }
+    static double limit_par(double, double nc) {
+        return method_of<Normal, M>(nc, 1.0);
+    }
 
     // The bulk: the density's series in u = nc t sqrt(2 / (df + t^2)),
     //     f(t) = t(t; df) e^(-mu) sum_j Gamma(c + j/2) / Gamma(c) u^j / j!,   c = (df + 1) / 2, mu = nc^2 / 2,
@@ -1187,7 +1214,9 @@ struct NoncentralT {
         const ncd::Lite root{s, (std::fma(-s, s, 2.0 * g.y.hi) + 2.0 * g.y.lo) / (2.0 * s)};
         thread_local num::Memo memo;
         const num::DD G = memo.get(df, 0.0, [&] {
-            return num::exp_full(num::log_gamma(num::dd::two_sum(0.5 * df, 1.0)) - num::log_gamma(num::dd::two_sum(0.5 * df, 0.5)));
+            return num::exp_full(
+                num::log_gamma(num::dd::two_sum(0.5 * df, 1.0)) - num::log_gamma(num::dd::two_sum(0.5 * df, 0.5))
+            );
         });
         const ncd::Lite P = ncd::lite::mul(ncd::lite::mul(ncd::lite::mul({G.hi, G.lo}, {std::fabs(nc), 0.0}), root), O);
         ncd::Lite total = E;
@@ -1233,8 +1262,10 @@ struct NoncentralT {
     }
     static double log_of_tail(double t, double df, double nc, bool upper) {
         const bool inside = std::isfinite(t);
-        return ncd::log_tail_either([&](bool u, double& v) { return inside && special::nc_detail::nct_lite(df, nc, t, u, v); },
-                                    [&](bool u, bool wide) { return tail(t, df, nc, u, wide); }, upper, inside);
+        return ncd::log_tail_either(
+            [&](bool u, double& v) { return inside && special::nc_detail::nct_lite(df, nc, t, u, v); },
+            [&](bool u, bool wide) { return tail(t, df, nc, u, wide); }, upper, inside
+        );
     }
     static double logcdf(double t, double df, double nc) {
         if (!StudentT::halvable(df)) return kNaN;
@@ -1260,8 +1291,10 @@ struct NoncentralT {
     }
     // the bracketing solver on the wide tails (0 < p < 1, nc != 0)
     static double inv_precise(double p, double df, double nc, bool upper) {
-        return ncd::invert([&](double t, bool u, bool wide) { return tail(t, df, nc, u, wide); }, ncd::target_p(p, upper),
-                           start(p, df, nc, upper), false);
+        return ncd::invert(
+            [&](double t, bool u, bool wide) { return tail(t, df, nc, u, wide); }, ncd::target_p(p, upper),
+            start(p, df, nc, upper), false
+        );
     }
     static double inv(double p, double df, double nc, bool upper) {
         if (!(p >= 0.0 && p <= 1.0) || !StudentT::halvable(df)) return kNaN;
@@ -1269,8 +1302,12 @@ struct NoncentralT {
         if (p == 0.0) return upper ? kInf : -kInf;
         if (p == 1.0) return upper ? -kInf : kInf;
         double out;
-        if (ncd::newton([&](double t, bool u, double& v, double& f) { return special::nc_detail::nct_lite(df, nc, t, u, v, &f); },
-                        ncd::target_p(p, upper), start(p, df, nc, upper), false, out))
+        if (ncd::newton(
+                [&](double t, bool u, double& v, double& f) {
+                    return special::nc_detail::nct_lite(df, nc, t, u, v, &f);
+                },
+                ncd::target_p(p, upper), start(p, df, nc, upper), false, out
+            ))
             return out;
         return inv_precise(p, df, nc, upper);
     }
@@ -1374,8 +1411,9 @@ struct NoncentralT {
     static double mode_root(double df, double nc) {
         auto g = [&](double t) { return nct_detail::moment(2, df, nc, t, true).mean_z; };
         const double t0 = nc * std::sqrt(df / (df + 2.5));
-        return special::nc_detail::solve(g, t0, [](double t) { return std::asinh(t); },
-                                         [](double u) { return std::sinh(u); }, 0.125, -kInf, kInf);
+        return special::nc_detail::solve(
+            g, t0, [](double t) { return std::asinh(t); }, [](double u) { return std::sinh(u); }, 0.125, -kInf, kInf
+        );
     }
     static double mode(double df, double nc) {
         if (nc == 0.0) return 0.0;
@@ -1391,8 +1429,10 @@ struct NoncentralT {
         if (nc == 0.0) return StudentT::entropy(df);
         const double m = mode_root(df, nc);  // (the grid's centre: any point of the bell)
         const double s = df > 2.0 ? std::sqrt(variance(df, nc)) : 1.0 + std::fabs(nc);
-        return ncd::entropy([&](double t) { return std::isfinite(t) ? log_density(t, df, nc) : num::DD{-kInf, 0.0}; },
-                            [&](double u) { return m + s * std::sinh(u); }, [&](double u) { return s * std::cosh(u); });
+        return ncd::entropy(
+            [&](double t) { return std::isfinite(t) ? log_density(t, df, nc) : num::DD{-kInf, 0.0}; },
+            [&](double u) { return m + s * std::sinh(u); }, [&](double u) { return s * std::cosh(u); }
+        );
     }
     static double support_lo(double, double) { return -kInf; }
     static double support_hi(double, double) { return kInf; }

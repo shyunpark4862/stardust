@@ -78,10 +78,17 @@ def test_lu_task_cap_changes_nothing(n):
     t = as_sd(np.triu(g) + n * np.eye(n))
     b = as_sd(rng.standard_normal((300, n, 12)))
     lu = sd.linalg.lu(a)
-    calls = [lambda: sd.linalg.solve(a, b), lambda: sd.linalg.inv(a), lambda: sd.linalg.det(a), lambda: sd.linalg.lu(a),
-             lambda: sd.linalg.lu_solve(*lu, b), lambda: sd.linalg.solve_triangular(t, b, upper=True),
-             lambda: sd.linalg.cholesky_solve(sd.linalg.cholesky(a), b), lambda: sd.linalg.matrix_power(a, -2),
-             lambda: sd.linalg.cond(a, ord=1)]
+    calls = [
+        lambda: sd.linalg.solve(a, b),
+        lambda: sd.linalg.inv(a),
+        lambda: sd.linalg.det(a),
+        lambda: sd.linalg.lu(a),
+        lambda: sd.linalg.lu_solve(*lu, b),
+        lambda: sd.linalg.solve_triangular(t, b, upper=True),
+        lambda: sd.linalg.cholesky_solve(sd.linalg.cholesky(a), b),
+        lambda: sd.linalg.matrix_power(a, -2),
+        lambda: sd.linalg.cond(a, ord=1),
+    ]
     for call in calls:
         capped = same_for_all_counts(call)
         _core._set_lu_task_cap(False)
@@ -94,15 +101,21 @@ def test_pool_packing_changes_nothing(layout):
     rng = np.random.default_rng(7)
     n = 400  # above the 2^17-element line
     g = rng.standard_normal((n, n))
-    f = {"C": np.ascontiguousarray, "F": np.asfortranarray,
-         "strided": lambda x: np.repeat(x, 2, axis=1)[:, ::2]}[layout]
+    f = {"C": np.ascontiguousarray, "F": np.asfortranarray, "strided": lambda x: np.repeat(x, 2, axis=1)[:, ::2]}[
+        layout
+    ]
     t = f(np.triu(g) + n * np.eye(n))
     t[5, 3] = np.nan  # below the diagonal: never read by an upper solve
     lu = sd.linalg.lu(as_sd(g))
     L, U = (as_sd(f(np.asarray(v))) for v in (lu.L, lu.U))
     A, T, B = as_sd(f(g)), as_sd(t), as_sd(rng.standard_normal((n, 3)))
-    calls = [lambda: sd.linalg.solve(A, B), lambda: sd.linalg.solve_triangular(T, B, upper=True),
-             lambda: sd.linalg.lu_solve(L, U, lu.perm, B), lambda: sd.linalg.qr(A), lambda: sd.linalg.kron(A, as_sd(np.eye(2)))]
+    calls = [
+        lambda: sd.linalg.solve(A, B),
+        lambda: sd.linalg.solve_triangular(T, B, upper=True),
+        lambda: sd.linalg.lu_solve(L, U, lu.perm, B),
+        lambda: sd.linalg.qr(A),
+        lambda: sd.linalg.kron(A, as_sd(np.eye(2))),
+    ]
     for call in calls:
         pooled = same_for_all_counts(call)
         _core._set_pack_parallel_min(1 << 60)  # always serial

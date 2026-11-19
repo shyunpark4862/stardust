@@ -58,7 +58,9 @@ def sort_key(v):
     return (0, v)
 
 
-FLOATS = st.sampled_from([0.0, -0.0, math.nan, -math.nan, 1.5, -1.5, math.inf]) | st.floats(-3, 3).map(lambda x: round(x))
+FLOATS = st.sampled_from([0.0, -0.0, math.nan, -math.nan, 1.5, -1.5, math.inf]) | st.floats(-3, 3).map(
+    lambda x: round(x)
+)
 ELEMS = {
     "int64": st.integers(-3, 3) | st.integers(-(2**63), 2**63 - 1),
     "float64": FLOATS.map(float),
@@ -167,8 +169,12 @@ def test_value_counts_matches_pandas(dtype):
     values = [3, None, 1, 3, None, 2, 1, 3] if dtype == "Int64" else ["b", None, "a", "b", None, "c", "a", "b"]
     ours = sd.frame.Series(values, name="k")
     theirs = pd.Series(values, dtype=dtype, name="k")
-    for kwargs, pkwargs in (({}, {}), ({"descending": False}, {"ascending": True}), ({"sort": False}, {"sort": False}),
-                            ({"normalize": True}, {"normalize": True})):
+    for kwargs, pkwargs in (
+        ({}, {}),
+        ({"descending": False}, {"ascending": True}),
+        ({"sort": False}, {"sort": False}),
+        ({"normalize": True}, {"normalize": True}),
+    ):
         vc, pvc = ours.value_counts(**kwargs), theirs.value_counts(**pkwargs)
         assert vc["k"].tolist() == [NA if v is pd.NA else v for v in pvc.index.tolist()]
         assert vc["counts" if pvc.name == "count" else pvc.name].tolist() == pvc.tolist()  # [pandas: count]

@@ -13,8 +13,17 @@ import math
 
 from .. import _core as _sd_core
 from ._distribution import _keyword_constructor
-from ._multivariate import (_array, _broadcast, _fast_factors, _lower_symmetric, _param, _public_names, _rows,
-                            _shape_of, _type_name)
+from ._multivariate import (
+    _array,
+    _broadcast,
+    _fast_factors,
+    _lower_symmetric,
+    _param,
+    _public_names,
+    _rows,
+    _shape_of,
+    _type_name,
+)
 
 _k = _sd_core.stats
 
@@ -58,8 +67,9 @@ class _MatrixBase:
         from .. import random as _random
 
         if not isinstance(rng, _random.Generator):
-            raise TypeError(f"sample(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), "
-                            f"not {_type_name(rng)}")
+            raise TypeError(
+                f"sample(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not {_type_name(rng)}"
+            )
         shp = _random._sample_shape(shape)
         N = math.prod(shp) * self._B
         return shp, N, rng._take(N, "sample", 8 * N * math.prod(self._shape))
@@ -106,8 +116,9 @@ class _WishartBase(_MatrixBase):
 
     def _log(self, x, name, as_pdf):
         rows, idx, out = self._points(x, name)
-        v = _k.wishart_logpdf(rows, idx, self._df, self._L, self._Ll, self._ldh, self._ldl, self._ok, self._inverse,
-                              as_pdf)
+        v = _k.wishart_logpdf(
+            rows, idx, self._df, self._L, self._Ll, self._ldh, self._ldl, self._ok, self._inverse, as_pdf
+        )
         return self._result(v, out)
 
     def pdf(self, x, /):
@@ -212,14 +223,19 @@ class MatrixNormal(_MatrixBase):
         v = _param(colcov, cls, "colcov", 2)
         n, p = m.shape[-2], m.shape[-1]
         if tuple(u.shape[-2:]) != (n, n):
-            raise ValueError(f"{cls}(): 'rowcov' must be ({n}, {n}) on its last two axes (mu is {n} x {p}), "
-                             f"not {tuple(u.shape[-2:])}")
+            raise ValueError(
+                f"{cls}(): 'rowcov' must be ({n}, {n}) on its last two axes (mu is {n} x {p}), "
+                f"not {tuple(u.shape[-2:])}"
+            )
         if tuple(v.shape[-2:]) != (p, p):
-            raise ValueError(f"{cls}(): 'colcov' must be ({p}, {p}) on its last two axes (mu is {n} x {p}), "
-                             f"not {tuple(v.shape[-2:])}")
+            raise ValueError(
+                f"{cls}(): 'colcov' must be ({p}, {p}) on its last two axes (mu is {n} x {p}), "
+                f"not {tuple(v.shape[-2:])}"
+            )
         self._p = (mu, rowcov, colcov)
-        batch = _broadcast(tuple(m.shape[:-2]), tuple(u.shape[:-2]), tuple(v.shape[:-2]),
-                           what=f"{cls}(): the parameters")
+        batch = _broadcast(
+            tuple(m.shape[:-2]), tuple(u.shape[:-2]), tuple(v.shape[:-2]), what=f"{cls}(): the parameters"
+        )
         self._batch, self._B, self._shape = batch, math.prod(batch), (n, p)
         self._mean = _rows(m, batch, (n, p))
         U, Ul, luh, lul, oku, _, _ = _k.mv_chol(_rows(u, batch, (n, n)))
@@ -249,8 +265,22 @@ class MatrixNormal(_MatrixBase):
         rows, idx, out = self._points(x, name)
         if self._fast is None:  # the inverse factors of the densities' fast path, on first use
             self._fast = (_fast_factors(self._U, self._Ul, self._ok), _fast_factors(self._V, self._Vl, self._ok))
-        v = _k.matnorm_logpdf(rows, idx, self._mean, self._U, self._Ul, self._V, self._Vl, self._lu[0], self._lu[1],
-                              self._lv[0], self._lv[1], self._ok, *(None if f is False else f for f in self._fast), as_pdf)
+        v = _k.matnorm_logpdf(
+            rows,
+            idx,
+            self._mean,
+            self._U,
+            self._Ul,
+            self._V,
+            self._Vl,
+            self._lu[0],
+            self._lu[1],
+            self._lv[0],
+            self._lv[1],
+            self._ok,
+            *(None if f is False else f for f in self._fast),
+            as_pdf,
+        )
         return self._result(v, out)
 
     def pdf(self, x, /):

@@ -83,7 +83,9 @@ def test_complex_has_no_loop():
 
 
 def test_non_operands_name_the_argument():
-    with pytest.raises(TypeError, match=r"^_fma3\(\): 'b' must be an sd.ndarray or a bool, int, float or complex, not list$"):
+    with pytest.raises(
+        TypeError, match=r"^_fma3\(\): 'b' must be an sd.ndarray or a bool, int, float or complex, not list$"
+    ):
         C._fma3(1.0, [2.0], 3.0)
     with pytest.raises(TypeError, match=r"^_sum4\(\): 'd' must be .*not NoneType$"):
         C._sum4(1.0, 2.0, 3.0, None)

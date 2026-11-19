@@ -104,7 +104,9 @@ NDArray cast_copy(const NDArray& src, DType to, IterMode mode) {
 nb::object astype(nb::handle x, nb::handle dtype_obj, nb::handle copy_obj) {
     const NDArray& a = require_ndarray(x);
     if (dtype_obj.is_none())  // the required dtype argument: None is a wrong value like any other
-        throw nb::type_error("'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names), not NoneType");
+        throw nb::type_error(
+            "'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names), not NoneType"
+        );
     const DType to = *parse_dtype(dtype_obj);
     const std::optional<bool> copy = parse_copy(copy_obj);
     if (to == a.dtype && copy != true) return nb::borrow(x);

@@ -78,9 +78,13 @@ struct StudentT {
     // df = inf: the standard normal, every method (as special.stdtr and MultivariateT)
     static bool at_limit(double df) { return df == kInf; }
     template <class M>
-    static double limit_in(double x, double) { return method_of<Normal, M>(x, 0.0, 1.0); }
+    static double limit_in(double x, double) {
+        return method_of<Normal, M>(x, 0.0, 1.0);
+    }
     template <class M>
-    static double limit_par(double) { return method_of<Normal, M>(0.0, 1.0); }
+    static double limit_par(double) {
+        return method_of<Normal, M>(0.0, 1.0);
+    }
 
     // log density: log f(0) - (a + 1/2) log(1 + t^2/df), log f(0) = -(log df / 2 + log B(a, 1/2)).
     static num::DD log_density(double t, double df) {
@@ -128,7 +132,8 @@ struct StudentT {
             [&](int i) {
                 if (!(c.x[i] == c.x[i] && valid(df[i]))) return kNaN;
                 return log ? logpdf_dd(c.x[i], df[i]) : pdf_dd(c.x[i], df[i]);
-            });
+            }
+        );
     }
     // A df below 2^-1021 has no exact half (the beta and gamma shapes are df / 2): NaN, as the
     // cdfs. Checked once for broadcast parameters.
@@ -161,7 +166,8 @@ struct StudentT {
     // (For |t| <= 2^400 and df >= 2^-160 the quotient is at least 2^-960: two comparisons
     // answer the usual call, without the divisions.)
     static bool far(double t, double df) {
-        if (std::fabs(t) <= 0x1p400 && df >= 0x1p-160) [[likely]] return false;
+        if (std::fabs(t) <= 0x1p400 && df >= 0x1p-160) [[likely]]
+            return false;
         return df / t / t < 0x1p-960;
     }
     static double cdf(double t, double df) {
@@ -210,7 +216,9 @@ struct StudentT {
         if ((df >= 1e-3 && df <= 1e6) || t != t) return t;
         if (!(t <= 0.0)) return kNaN;
         if (std::isinf(t)) {  // a root beyond the doubles: the tail at the last one is still above the target
-            return logcdf(-std::numeric_limits<double>::max(), df) >= lt.hi - 1e-9 * std::max(1.0, std::fabs(lt.hi)) ? t : kNaN;
+            return logcdf(-std::numeric_limits<double>::max(), df) >= lt.hi - 1e-9 * std::max(1.0, std::fabs(lt.hi))
+                       ? t
+                       : kNaN;
         }
         if (t == 0.0) return kNaN;  // (p < 1/2 here)
         const num::DD ld = log_density(t, df);
@@ -220,9 +228,10 @@ struct StudentT {
         const double a = 0.5 * df;
         if (p >= beta_detail::kDeepP) {
             thread_local dens::Const cst;  // log(2 a B(a, 1/2)), once per df
-            const double k = cst.get(df, 0.0, [&] {
-                return num::DD{num::kLn2.hi + std::log(a) + special::Betaln::f(a, 0.5), 0.0};
-            }).hi;
+            const double k =
+                cst.get(
+                       df, 0.0, [&] { return num::DD{num::kLn2.hi + std::log(a) + special::Betaln::f(a, 0.5), 0.0}; }
+                ).hi;
             const double est = (lt.hi + k) / a;
             if (est > -40.0) return special::Stdtrit::f(df, p);
         }
@@ -306,7 +315,8 @@ struct F {
     // below 2^-56 (the next term is p (p - 1) / (2 q)); the log-gammas while both are below
     // 1e15 (their cancellation leaves 1e-32 of q log q); NaN where neither applies.
     static num::DD log_beta_far(double p, double q) {
-        if (p <= q * 0x1p-56 && p * p <= q * 0x1p-56) return num::log_gamma(num::DD{1.0, 0.0} + p) - num::log_dd(p) - num::log_dd(q) * p;
+        if (p <= q * 0x1p-56 && p * p <= q * 0x1p-56)
+            return num::log_gamma(num::DD{1.0, 0.0} + p) - num::log_dd(p) - num::log_dd(q) * p;
         if (p <= 1e15 && q <= 1e15) return beta_detail::log_beta(p, q);
         return {kNaN, 0.0};
     }
@@ -323,7 +333,8 @@ struct F {
             const num::DD lx = num::log_dd(x);
             const num::DD lu = num::log_dd(dfn) + lx - num::log_dd(dfd);
             const num::DD ls = num::log_dd(a + b);
-            const num::DD lb = tiny_w ? (b >= a ? log_beta_far(a, b) : log_beta_far(b, a)) : (a >= b ? log_beta_far(b, a) : log_beta_far(a, b));
+            const num::DD lb = tiny_w ? (b >= a ? log_beta_far(a, b) : log_beta_far(b, a))
+                                      : (a >= b ? log_beta_far(b, a) : log_beta_far(a, b));
             if (tiny_w) return lu * a - num::exp_dd(ls + lu) - lx - lb;
             return -(lu * b) - num::exp_dd(ls - lu) - lx - lb;
         }
@@ -373,7 +384,8 @@ struct F {
             [&](int i) {
                 if (!(c.x[i] == c.x[i] && valid(dfn[i], dfd[i]))) return kNaN;
                 return log ? logpdf_dd(c.x[i], dfn[i], dfd[i]) : pdf_dd(c.x[i], dfn[i], dfd[i]);
-            });
+            }
+        );
     }
     // A df below 2^-1021 has no exact half (the beta and gamma shapes are df / 2): NaN, as the
     // cdfs. Checked once for broadcast parameters.
@@ -517,8 +529,10 @@ struct F {
         if (q < special::Betainc::f(b, a, 0.5)) {  // v < 1/2
             const double v = special::Betaincinv::f(b, a, q);
             if (v < 0x1p-60)  // q = v^b / (b B) (1 + O(v)): x = (dfd/dfn) / v from logs
-                return num::exp_dd(num::log_dd(dfd) - num::log_dd(dfn) -
-                                   special::distr_detail::log_product(q, b * special::Beta::f(a, b)) / b);
+                return num::exp_dd(
+                    num::log_dd(dfd) - num::log_dd(dfn) -
+                    special::distr_detail::log_product(q, b * special::Beta::f(a, b)) / b
+                );
             return from_wv(1.0 - v, v, dfn, dfd);
         }
         const double w = special::Betainccinv::f(a, b, q);  // I_w(a, b) = 1 - q
@@ -558,7 +572,8 @@ struct F {
         if (!(dfd > 4.0)) return dfd > 2.0 ? kInf : kNaN;
         const double r = dfd / (dfd - 2.0);  // 2 dfd^2 (dfn + dfd - 2) / (dfn (dfd - 2)^2 (dfd - 4))
         const double den = dfn * (dfd - 4.0);
-        if (!(den >= 0x1p-900 && den <= 0x1p900)) return 2.0 * r * r * (((dfn + dfd - 2.0) / dfn) / (dfd - 4.0));  // the product leaves the range
+        if (!(den >= 0x1p-900 && den <= 0x1p900))
+            return 2.0 * r * r * (((dfn + dfd - 2.0) / dfn) / (dfd - 4.0));  // the product leaves the range
         return 2.0 * r * r * ((dfn + dfd - 2.0) / den);
     }
     static double standard_deviation(double dfn, double dfd) {
@@ -615,7 +630,8 @@ struct F {
         if (!(dfn >= 1e-2 && dfd >= 1e-2)) return kNaN;
         const double a = 0.5 * dfn, b = 0.5 * dfd;
         const num::DD c = num::dd::two_sum(a, b);
-        const double dpsi = b >= 12.0 ? num::digamma_diff_asym(b, a) : special::Digamma::f(c.hi) - special::Digamma::f(b);
+        const double dpsi =
+            b >= 12.0 ? num::digamma_diff_asym(b, a) : special::Digamma::f(c.hi) - special::Digamma::f(b);
         const num::DD logs = -num::log_dd(a) * 0.5 + (num::log_dd(b) - num::dd::log(c)) * 1.5 + num::kLogSqrt2Pi;
         const double g = num::entropy_g(a, special::Digamma::f) + num::entropy_g(b, special::Digamma::f) +
                          num::entropy_gc(c, special::Digamma::f) + 2.0 * dpsi;

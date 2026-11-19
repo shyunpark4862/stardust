@@ -32,9 +32,15 @@ if __name__ == "__main__":
             y = sd.asarray(rng.standard_normal(n))
             reps = 30 if n * k <= 1e4 else 7
             tq = best(lambda: sd.linalg.qr(X), reps)
-            ts = [best(lambda s=s: sd._core.regression.fit("ols", y, X, None, None, True, -1.0, 0, s), reps)
-                  for s in range(4)]
+            ts = [
+                best(lambda s=s: sd._core.regression.fit("ols", y, X, None, None, True, -1.0, 0, s), reps)
+                for s in range(4)
+            ]
             per = [(ts[s] - ts[0]) / s for s in (1, 2, 3)]
-            print(f"  ({n}, {k}): qr {tq * 1e3:8.3f} ms | fit steps 0..3 " +
-                  " ".join(f"{t * 1e3:8.3f}" for t in ts) + " ms | per step " +
-                  " ".join(f"{p * 1e3:7.3f}" for p in per) + " ms")
+            print(
+                f"  ({n}, {k}): qr {tq * 1e3:8.3f} ms | fit steps 0..3 "
+                + " ".join(f"{t * 1e3:8.3f}" for t in ts)
+                + " ms | per step "
+                + " ".join(f"{p * 1e3:7.3f}" for p in per)
+                + " ms"
+            )

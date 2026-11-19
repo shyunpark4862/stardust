@@ -43,6 +43,8 @@ def arb_error(got, ref, mixed=False):
     """An upper bound of |got - ref| / |ref| (mixed: / max(1, |ref|)) for a float and an arb."""
     one = type(ref)(1)
     return float((abs(type(ref)(float(got)) - ref) / (max(one, abs(ref)) if mixed else abs(ref))).upper())
+
+
 INPUT = ["pmf", "logpmf", "cdf", "logcdf", "ccdf", "logccdf", "icdf", "iccdf", "ilogcdf", "ilogccdf"]
 PARAM = ["mean", "variance", "standard_deviation", "skewness", "kurtosis", "median", "mode", "entropy"]
 
@@ -100,10 +102,17 @@ def test_body_agrees_with_scipy(cls, params, ref, support):
     X = cls(**params)
     p = np.array([0.01, 0.1, 0.3, 0.5, 0.7, 0.9, 0.99])
     k = ref.ppf(p)
-    for ours, theirs in (("pmf", "pmf"), ("logpmf", "logpmf"), ("cdf", "cdf"), ("logcdf", "logcdf"), ("ccdf", "sf"),
-                         ("logccdf", "logsf")):
-        np.testing.assert_allclose(np.asarray(getattr(X, ours)(sd.asarray(k))), getattr(ref, theirs)(k), rtol=1e-12,
-                                   err_msg=ours)
+    for ours, theirs in (
+        ("pmf", "pmf"),
+        ("logpmf", "logpmf"),
+        ("cdf", "cdf"),
+        ("logcdf", "logcdf"),
+        ("ccdf", "sf"),
+        ("logccdf", "logsf"),
+    ):
+        np.testing.assert_allclose(
+            np.asarray(getattr(X, ours)(sd.asarray(k))), getattr(ref, theirs)(k), rtol=1e-12, err_msg=ours
+        )
     assert np.asarray(X.icdf(sd.asarray(p))).tolist() == ref.ppf(p).tolist()
     assert np.asarray(X.iccdf(sd.asarray(p))).tolist() == ref.isf(p).tolist()
     assert np.asarray(X.ilogcdf(sd.asarray(np.log(p)))).tolist() == ref.ppf(p).tolist()
@@ -129,19 +138,35 @@ def test_modes_with_ties_are_nan():
 
 def test_degenerate_parameters():
     # point masses: p = 0 or 1, n = 0, mu = 0
-    for X, at in ((S.Binomial(n=7, p=0.0), 0.0), (S.Binomial(n=7, p=1.0), 7.0), (S.Binomial(n=0, p=0.4), 0.0),
-                  (S.Poisson(mu=0.0), 0.0), (S.Bernoulli(p=1.0), 1.0), (S.Geometric(p=1.0), 1.0),
-                  (S.NegativeBinomial(n=2.0, p=1.0), 0.0), (S.NegativeBinomial(n=0.0, p=0.5), 0.0)):
+    for X, at in (
+        (S.Binomial(n=7, p=0.0), 0.0),
+        (S.Binomial(n=7, p=1.0), 7.0),
+        (S.Binomial(n=0, p=0.4), 0.0),
+        (S.Poisson(mu=0.0), 0.0),
+        (S.Bernoulli(p=1.0), 1.0),
+        (S.Geometric(p=1.0), 1.0),
+        (S.NegativeBinomial(n=2.0, p=1.0), 0.0),
+        (S.NegativeBinomial(n=0.0, p=0.5), 0.0),
+    ):
         assert X.pmf(at) == 1.0 and X.logpmf(at) == 0.0 and X.cdf(at) == 1.0 and X.ccdf(at - 1.0) == 1.0
         assert X.mean() == at and X.variance() == 0.0 and X.mode() == at and X.entropy() == 0.0
         assert math.isnan(X.skewness()) and math.isnan(X.kurtosis())  # undefined for a point mass
 
 
 def test_parameters_outside_the_domain():
-    for X in (S.Binomial(n=5.5, p=0.3), S.Binomial(n=5, p=1.5), S.Poisson(mu=-1.0), S.Geometric(p=0.0),
-              S.NegativeBinomial(n=-1.0, p=0.5), S.Hypergeometric(total=10, successes=11, draws=3),
-              S.DiscreteUniform(low=3, high=3), S.DiscreteUniform(low=0.5, high=3), S.BetaBinomial(n=4, a=0.0, b=1.0),
-              S.LogSeries(p=1.0), S.Zipf(a=1.0)):
+    for X in (
+        S.Binomial(n=5.5, p=0.3),
+        S.Binomial(n=5, p=1.5),
+        S.Poisson(mu=-1.0),
+        S.Geometric(p=0.0),
+        S.NegativeBinomial(n=-1.0, p=0.5),
+        S.Hypergeometric(total=10, successes=11, draws=3),
+        S.DiscreteUniform(low=3, high=3),
+        S.DiscreteUniform(low=0.5, high=3),
+        S.BetaBinomial(n=4, a=0.0, b=1.0),
+        S.LogSeries(p=1.0),
+        S.Zipf(a=1.0),
+    ):
         assert math.isnan(X.pmf(1.0)) and math.isnan(X.cdf(1.0)) and math.isnan(X.mean()) and math.isnan(X.icdf(0.5))
 
 
@@ -200,7 +225,7 @@ def test_array_scalar_and_parameter_arrays_give_the_same_bits(cls, params):
         assert _bits(getattr(X, m)(sd.asarray(arg))) == _bits(got), m
         assert _bits(getattr(PA if inverse else XA, m)(sd.asarray(arg))) == _bits(got), m
         for i in range(0, arg.size, 7 if arg.size < 500 else 23):
-            assert _bits([getattr(X, m)(float(arg[i]))]) == _bits(got[i:i + 1]), (m, i, arg[i])
+            assert _bits([getattr(X, m)(float(arg[i]))]) == _bits(got[i : i + 1]), (m, i, arg[i])
 
 
 @pytest.mark.parametrize("cls, params", BOTH, ids=BOTH_IDS)
@@ -278,8 +303,13 @@ def test_saddle_point_fast_paths_against_arb(arb):
         p = float(rng.uniform(0.001, 0.999))
         z = rng.uniform(-6, 6, 6)
         sdv = math.sqrt(n * p * (1 - p))
-        ks = np.clip(np.floor(n * p + z * sdv), 0, n).tolist() + [math.floor(n * p * 1.124), math.floor(n * p * 0.876), 13.0,
-                                                                 12.0, n - 13.0]
+        ks = np.clip(np.floor(n * p + z * sdv), 0, n).tolist() + [
+            math.floor(n * p * 1.124),
+            math.floor(n * p * 0.876),
+            13.0,
+            12.0,
+            n - 13.0,
+        ]
         cases += [(S.Binomial, {"n": n, "p": p}, k, binom) for k in ks if 0 <= k <= n]
         r = float(10 ** rng.uniform(0.5, 12))
         mean, sdn = r * (1 - p) / p, math.sqrt(r * (1 - p)) / p
@@ -301,8 +331,13 @@ def test_saddle_point_fast_paths_against_arb(arb):
     worst = 0.0
     for cls, params, k, ref in cases:
         X = cls(**params)
-        args = (int(k), *(int(v) if cls is S.Hypergeometric or (cls is S.Binomial and name == "n") else v
-                          for name, v in params.items()))
+        args = (
+            int(k),
+            *(
+                int(v) if cls is S.Hypergeometric or (cls is S.Binomial and name == "n") else v
+                for name, v in params.items()
+            ),
+        )
         t = ref(*args)
         got_l = np.asarray(X.logpmf(sd.asarray(np.full(9, k))))[0]  # an array: the chunk kernel
         got = np.asarray(X.pmf(sd.asarray(np.full(9, k))))[0]
@@ -332,8 +367,15 @@ def test_sum_cdfs_against_arb(arb):
     N, K, n = 676696, 129144, 356741
     X = S.Hypergeometric(total=N, successes=K, draws=n)
     for k in (68000, 68103, 68300, 67500):
-        first = (lg(K + 1) - lg(k + 1) - lg(K - k + 1) + lg(N - K + 1) - lg(n - k + 1) - lg(N - K - n + k + 1)
-                 - (lg(N + 1) - lg(n + 1) - lg(N - n + 1)))
+        first = (
+            lg(K + 1)
+            - lg(k + 1)
+            - lg(K - k + 1)
+            + lg(N - K + 1)
+            - lg(n - k + 1)
+            - lg(N - K - n + k + 1)
+            - (lg(N + 1) - lg(n + 1) - lg(N - n + 1))
+        )
         t = total(first, lambda j: arb(j) * (N - K - n + j) / ((K - j + 1) * (n - j + 1)), k, 0)
         assert arb_error(X.cdf(float(k)), t) < 5e-15, k
         assert arb_error(X.ccdf(float(k)), 1 - t) < 5e-15, k
@@ -341,8 +383,15 @@ def test_sum_cdfs_against_arb(arb):
     Y = S.BetaBinomial(n=nn, a=a, b=b)
     am, bm = arb(a), arb(b)
     for k in (249929, 252000, 240000):
-        first = (lg(nn + 1) - lg(k + 1) - lg(nn - k + 1) + (k + am).lgamma() + (nn - k + bm).lgamma() - (nn + am + bm).lgamma()
-                 - (am.lgamma() + bm.lgamma() - (am + bm).lgamma()))
+        first = (
+            lg(nn + 1)
+            - lg(k + 1)
+            - lg(nn - k + 1)
+            + (k + am).lgamma()
+            + (nn - k + bm).lgamma()
+            - (nn + am + bm).lgamma()
+            - (am.lgamma() + bm.lgamma() - (am + bm).lgamma())
+        )
         t = total(first, lambda j: arb(j) * (nn - j + bm) / ((nn - j + 1) * (j - 1 + am)), k, 0)
         assert arb_error(Y.cdf(float(k)), t) < 5e-15, k
 
@@ -359,13 +408,26 @@ def test_calls_far_outside_the_guaranteed_region_return_at_once():
         lambda: S.Binomial(n=1e15, p=0.3).entropy(),
         lambda: S.NegativeBinomial(n=1e100, p=0.3).entropy(),
         lambda: S.NegativeBinomial(n=2.5, p=1e-9).entropy(),
-        lambda: B.pmf(1e10), lambda: B.cdf(1e10), lambda: B.ccdf(1e10), lambda: B.logcdf(1e10), lambda: B.logccdf(1e10),
-        lambda: B.icdf(0.01), lambda: B.icdf(0.5), lambda: B.iccdf(0.99), lambda: B.ilogcdf(-1.0), lambda: B.median(),
+        lambda: B.pmf(1e10),
+        lambda: B.cdf(1e10),
+        lambda: B.ccdf(1e10),
+        lambda: B.logcdf(1e10),
+        lambda: B.logccdf(1e10),
+        lambda: B.icdf(0.01),
+        lambda: B.icdf(0.5),
+        lambda: B.iccdf(0.99),
+        lambda: B.ilogcdf(-1.0),
+        lambda: B.median(),
         lambda: B.entropy(),
-        lambda: W.cdf(1.5e6), lambda: W.icdf(0.5),
-        lambda: H.cdf(1e13), lambda: H.icdf(0.5), lambda: H.entropy(), lambda: H.kurtosis(),
+        lambda: W.cdf(1.5e6),
+        lambda: W.icdf(0.5),
+        lambda: H.cdf(1e13),
+        lambda: H.icdf(0.5),
+        lambda: H.entropy(),
+        lambda: H.kurtosis(),
         lambda: S.Hypergeometric(total=1e100, successes=1e99, draws=1e99).pmf(1e98),
-        lambda: S.Binomial(n=1e100, p=0.3).cdf(3e99), lambda: S.Binomial(n=1e100, p=0.3).icdf(0.5),
+        lambda: S.Binomial(n=1e100, p=0.3).cdf(3e99),
+        lambda: S.Binomial(n=1e100, p=0.3).icdf(0.5),
     ]
     start = time.perf_counter()
     values = [f() for f in calls]
@@ -375,7 +437,9 @@ def test_calls_far_outside_the_guaranteed_region_return_at_once():
     assert 0.0 < W.cdf(10.0) < 1e-9 and W.icdf(1e-12) < 1e3 and 14.0 < W.entropy() < 15.0  # 3e6 terms: inside the bound
     assert H.logcdf(1e10) < -1e12 and H.cdf(1e10) == 0.0 and H.ccdf(1e10) == 1.0
     # outside the support nothing is summed
-    assert B.cdf(-1.0) == 0.0 and B.cdf(1e12) == 1.0 and B.pmf(2e12) == 0.0 and B.icdf(0.0) == 0.0 and B.icdf(1.0) == 1e12
+    assert (
+        B.cdf(-1.0) == 0.0 and B.cdf(1e12) == 1.0 and B.pmf(2e12) == 0.0 and B.icdf(0.0) == 0.0 and B.icdf(1.0) == 1e12
+    )
 
 
 def test_logseries_entropy_near_p_one_against_arb(arb):
@@ -432,13 +496,17 @@ def test_moments_at_extreme_parameters():
     # the mean of a range that cancels, and a width beyond float64 (no pmf: outside the domain)
     assert S.DiscreteUniform(low=-1e300, high=1e300).mean() == -0.5
     assert math.isnan(S.DiscreteUniform(low=-1.7e308, high=1.7e308).pmf(0.0))
-    assert math.isnan(S.DiscreteUniform(low=-math.inf, high=3).pmf(0.0)) and math.isnan(S.DiscreteUniform(low=0, high=math.inf).cdf(1.0))
+    assert math.isnan(S.DiscreteUniform(low=-math.inf, high=3).pmf(0.0)) and math.isnan(
+        S.DiscreteUniform(low=0, high=math.inf).cdf(1.0)
+    )
     # counts past 2^53 (binomial, hypergeometric) or a beta-binomial n past 2^36: no pmf between the ends
     assert math.isnan(S.Binomial(n=1e100, p=0.3).logpmf(3e99)) and S.Binomial(n=1e100, p=0.3).pmf(2e100) == 0.0
     assert S.Binomial(n=1e100, p=0.3).logpmf(0.0) == pytest.approx(1e100 * math.log1p(-0.3), rel=1e-15)
     assert math.isnan(S.BetaBinomial(n=2.0**35, a=2.5, b=1.7).pmf(5.0))  # n + a + b past 2^35
     assert S.BetaBinomial(n=2.0**35 - 8, a=2.5, b=1.7).pmf(5.0) > 0.0
-    assert math.isnan(S.BetaBinomial(n=1, a=0.1, b=1e100).pmf(1.0)) and math.isnan(S.BetaBinomial(n=5, a=1e-300, b=1.0).mean())
+    assert math.isnan(S.BetaBinomial(n=1, a=0.1, b=1e100).pmf(1.0)) and math.isnan(
+        S.BetaBinomial(n=5, a=1e-300, b=1.0).mean()
+    )
     # the larger end of a pmf that is not unimodal: n for a > b, a tie for a = b
     assert math.isnan(S.BetaBinomial(n=1, a=0.001, b=0.001).mode()) and S.BetaBinomial(n=7, a=0.5, b=0.25).mode() == 7.0
     assert S.BetaBinomial(n=7, a=0.25, b=0.5).mode() == 0.0 and S.BetaBinomial(n=7, a=1.5, b=0.5).mode() == 7.0

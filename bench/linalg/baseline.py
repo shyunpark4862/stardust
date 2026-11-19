@@ -49,7 +49,11 @@ def matrix_rows(shape, rng):
     spd = a @ np.swapaxes(a, -1, -2) + n * eye
     t = np.triu(a) + n * eye
     chol = np.linalg.cholesky(spd)
-    tri = [rng.standard_normal((*batch, n - 1)), rng.standard_normal((*batch, n)) + 10, rng.standard_normal((*batch, n - 1))]
+    tri = [
+        rng.standard_normal((*batch, n - 1)),
+        rng.standard_normal((*batch, n)) + 10,
+        rng.standard_normal((*batch, n - 1)),
+    ]
     ab_tri = np.zeros((*batch, 3, n))
     ab_tri[..., 0, 1:], ab_tri[..., 1, :], ab_tri[..., 2, :-1] = tri[2], tri[1], tri[0]
     ab5 = rng.standard_normal((*batch, 5, n))
@@ -62,7 +66,7 @@ def matrix_rows(shape, rng):
     LU = sdla.lu(A)
     lu_f = sl.lu_factor(a) if not batch else None
     k3 = rng.standard_normal((3, 3))  # kron's second operand: (..., 3n, 3n) results
-    v3, w3 = a[..., :3], c[..., :3]   # cross: the rows' first three entries
+    v3, w3 = a[..., :3], c[..., :3]  # cross: the rows' first three entries
     K3, V3, W3 = sdnp.asarray(k3), sdnp.asarray(v3), sdnp.asarray(w3)
     m_ = a.shape[-2]
 
@@ -90,7 +94,11 @@ def matrix_rows(shape, rng):
         ("matrix_norm 1", lambda: sdla.matrix_norm(A, ord=1), np_(lambda: np.linalg.matrix_norm(a, ord=1))),
         ("matrix_norm 2", lambda: sdla.matrix_norm(A, ord=2), np_(lambda: np.linalg.matrix_norm(a, ord=2))),
         # M3
-        ("solve_triangular", lambda: sdla.solve_triangular(T, B, upper=True), sp(lambda: sl.solve_triangular(t, b, lower=False))),
+        (
+            "solve_triangular",
+            lambda: sdla.solve_triangular(T, B, upper=True),
+            sp(lambda: sl.solve_triangular(t, b, lower=False)),
+        ),
         ("cholesky", lambda: sdla.cholesky(SPD), np_(lambda: np.linalg.cholesky(spd))),
         ("cholesky_solve", lambda: sdla.cholesky_solve(CHOL, B), sp(lambda: sl.cho_solve((chol, True), b))),
         ("lu", lambda: sdla.lu(A), sp(lambda: sl.lu(a, p_indices=True))),
@@ -99,7 +107,11 @@ def matrix_rows(shape, rng):
         ("qr", lambda: sdla.qr(A), np_(lambda: np.linalg.qr(a))),
         ("qr complete", lambda: sdla.qr(A, mode="complete"), np_(lambda: np.linalg.qr(a, mode="complete"))),
         ("qr_pivoted", lambda: sdla.qr_pivoted(A), sp(lambda: sl.qr(a, mode="economic", pivoting=True))),
-        ("lstsq", lambda: sdla.lstsq(A, B), np_(lambda: np.linalg.lstsq(a, b)) if single else sp(lambda: sl.lstsq(a, b))),
+        (
+            "lstsq",
+            lambda: sdla.lstsq(A, B),
+            np_(lambda: np.linalg.lstsq(a, b)) if single else sp(lambda: sl.lstsq(a, b)),
+        ),
         # M5
         ("eigh", lambda: sdla.eigh(H), np_(lambda: np.linalg.eigh(h))),
         ("eigvalsh", lambda: sdla.eigvalsh(H), np_(lambda: np.linalg.eigvalsh(h))),
@@ -116,17 +128,30 @@ def matrix_rows(shape, rng):
         ("hessenberg", lambda: sdla.hessenberg(A), sp(lambda: sl.hessenberg(a, calc_q=True))),
         ("ldl", lambda: sdla.ldl(H), sp(lambda: sl.ldl(h)) if single else None),
         # M7
-        ("solve_tridiagonal", lambda: sdla.solve_tridiagonal(*TRI, B),
-         sp(lambda: sl.solve_banded((1, 1), ab_tri, b)) if single else None),
-        ("solve_banded 2,2", lambda: sdla.solve_banded(AB5, B, lower_bandwidth=2, upper_bandwidth=2),
-         sp(lambda: sl.solve_banded((2, 2), ab5, b)) if single else None),
-        ("solve_banded 1,1", lambda: sdla.solve_banded(AB_TRI, B, lower_bandwidth=1, upper_bandwidth=1),
-         sp(lambda: sl.solve_banded((1, 1), ab_tri, b)) if single else None),
+        (
+            "solve_tridiagonal",
+            lambda: sdla.solve_tridiagonal(*TRI, B),
+            sp(lambda: sl.solve_banded((1, 1), ab_tri, b)) if single else None,
+        ),
+        (
+            "solve_banded 2,2",
+            lambda: sdla.solve_banded(AB5, B, lower_bandwidth=2, upper_bandwidth=2),
+            sp(lambda: sl.solve_banded((2, 2), ab5, b)) if single else None,
+        ),
+        (
+            "solve_banded 1,1",
+            lambda: sdla.solve_banded(AB_TRI, B, lower_bandwidth=1, upper_bandwidth=1),
+            sp(lambda: sl.solve_banded((1, 1), ab_tri, b)) if single else None,
+        ),
         ("solve_sylvester", lambda: sdla.solve_sylvester(A, A, C), sp(lambda: sl.solve_sylvester(a, a, c))),
         # M10 (a batched kron is numpy's broadcast product, reshaped)
-        ("kron with 3x3", lambda: sdla.kron(A, K3),
-         np_(lambda: np.kron(a, k3)) if single
-         else np_(lambda: (a[..., :, None, :, None] * k3[:, None, :]).reshape(*batch, 3 * m_, 3 * n))),
+        (
+            "kron with 3x3",
+            lambda: sdla.kron(A, K3),
+            np_(lambda: np.kron(a, k3))
+            if single
+            else np_(lambda: (a[..., :, None, :, None] * k3[:, None, :]).reshape(*batch, 3 * m_, 3 * n)),
+        ),
         ("cross rows", lambda: sdla.cross(V3, W3), np_(lambda: np.cross(v3, w3))),
         ("expm", lambda: sdla.expm(A), sp(lambda: sl.expm(a))),
     ]
@@ -148,12 +173,24 @@ def long_rows(rng):
     return [
         ("vecdot", "(1000000,)", lambda: sdla.vecdot(V, V), ("numpy", lambda: np.vecdot(v, v))),
         ("vector_norm", "(1000000,)", lambda: sdla.vector_norm(V), ("numpy", lambda: np.linalg.vector_norm(v))),
-        ("vector_norm inf", "(1000000,)", lambda: sdla.vector_norm(V, ord=math.inf),
-         ("numpy", lambda: np.linalg.vector_norm(v, ord=math.inf))),
-        ("solve_tridiagonal", f"n={n}", lambda: sdla.solve_tridiagonal(*TRI, B),
-         ("scipy", lambda: sl.solve_banded((1, 1), ab_tri, b))),
-        ("solve_banded 2,2", f"n={n}", lambda: sdla.solve_banded(AB5, B, lower_bandwidth=2, upper_bandwidth=2),
-         ("scipy", lambda: sl.solve_banded((2, 2), ab5, b))),
+        (
+            "vector_norm inf",
+            "(1000000,)",
+            lambda: sdla.vector_norm(V, ord=math.inf),
+            ("numpy", lambda: np.linalg.vector_norm(v, ord=math.inf)),
+        ),
+        (
+            "solve_tridiagonal",
+            f"n={n}",
+            lambda: sdla.solve_tridiagonal(*TRI, B),
+            ("scipy", lambda: sl.solve_banded((1, 1), ab_tri, b)),
+        ),
+        (
+            "solve_banded 2,2",
+            f"n={n}",
+            lambda: sdla.solve_banded(AB5, B, lower_bandwidth=2, upper_bandwidth=2),
+            ("scipy", lambda: sl.solve_banded((2, 2), ab5, b)),
+        ),
         ("cross", "(1000000,3)", lambda: sdla.cross(P3, Q3), ("numpy", lambda: np.cross(p3, q3))),
     ]
 
@@ -171,8 +208,10 @@ def main():
         print(s, flush=True)
         out.append(s)
 
-    emit(f"baseline {tag}: {datetime.date.today()}, {platform.machine()}, numpy {np.__version__}, "
-         f"scipy {scipy.__version__}, sdnp threads {sdnp.get_num_threads()}")
+    emit(
+        f"baseline {tag}: {datetime.date.today()}, {platform.machine()}, numpy {np.__version__}, "
+        f"scipy {scipy.__version__}, sdnp threads {sdnp.get_num_threads()}"
+    )
     emit(f"{'func':18} {'shape':>14} {'sdla us':>12} {'ref us':>12} {'ref/sdla':>9}  ref")
 
     def run(name, shape, f_sd, ref):

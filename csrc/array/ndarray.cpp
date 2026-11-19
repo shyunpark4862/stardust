@@ -26,14 +26,20 @@ void NDArray::update_flags() {
     c_contiguous = true;
     for (int d = ndim - 1; d >= 0; --d) {
         if (shape[d] == 1) continue;
-        if (strides[d] != expect) { c_contiguous = false; break; }
+        if (strides[d] != expect) {
+            c_contiguous = false;
+            break;
+        }
         expect *= shape[d];
     }
     expect = itemsize();
     f_contiguous = true;
     for (int d = 0; d < ndim; ++d) {
         if (shape[d] == 1) continue;
-        if (strides[d] != expect) { f_contiguous = false; break; }
+        if (strides[d] != expect) {
+            f_contiguous = false;
+            break;
+        }
         expect *= shape[d];
     }
 }
@@ -45,8 +51,7 @@ std::string shape_str(std::span<const std::int64_t> shape) {
 }
 
 std::int64_t checked_size(std::span<const std::int64_t> shape, DType dtype) {
-    if (shape.empty())
-        throw nb::value_error("0-dimensional arrays are not supported (stardust has no 0-d arrays)");
+    if (shape.empty()) throw nb::value_error("0-dimensional arrays are not supported (stardust has no 0-d arrays)");
     if (shape.size() > static_cast<size_t>(kMaxNdim))
         throw nb::value_error(("arrays may have at most " + std::to_string(kMaxNdim) + " dimensions").c_str());
     const std::int64_t limit = std::numeric_limits<std::int64_t>::max() / itemsize(dtype);
@@ -100,8 +105,9 @@ NDArray new_array_like(const NDArray& proto, DType dtype, bool zeroed) {
     return allocate(dtype, proto.shape_span(), {order.data(), static_cast<size_t>(proto.ndim)}, zeroed);
 }
 
-NDArray new_array_strided(DType dtype, std::span<const std::int64_t> shape, std::span<const std::int64_t> strides,
-                          std::int64_t nbytes) {
+NDArray new_array_strided(
+    DType dtype, std::span<const std::int64_t> shape, std::span<const std::int64_t> strides, std::int64_t nbytes
+) {
     NDArray a;
     a.dtype = dtype;
     a.ndim = static_cast<int>(shape.size());

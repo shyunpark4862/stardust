@@ -14,8 +14,13 @@ from .._api_doc import signature_blocks
 
 API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "frame.md"
 MODULE = "frame"  # the owner of module-level names (written bare in the document)
-OWNERS = {"Series": sd.frame.Series, "DataFrame": sd.frame.DataFrame, "Index": sd.frame.Index,
-          "RangeIndex": sd.frame.RangeIndex, "GroupBy": GroupBy}
+OWNERS = {
+    "Series": sd.frame.Series,
+    "DataFrame": sd.frame.DataFrame,
+    "Index": sd.frame.Index,
+    "RangeIndex": sd.frame.RangeIndex,
+    "GroupBy": GroupBy,
+}
 
 
 def listed():
@@ -100,7 +105,7 @@ def actual_params(f, method):
     """The same triples from the function itself (nanobind functions through __nb_signature__)."""
     if hasattr(f, "__nb_signature__"):
         text = f.__nb_signature__[0][0]
-        inner = text[text.index("(") + 1:text.rindex(")")]
+        inner = text[text.index("(") + 1 : text.rindex(")")]
         params = documented_params(re.sub(r":\s*[\w\[\], ]+?(?=\s*(=|,|$))", "", inner)) if inner else []
         return params
     ps = list(inspect.signature(f).parameters.values())

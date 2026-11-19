@@ -17,9 +17,19 @@ import stardust as sd
 from .conftest import assert_same
 
 METHODS = [
-    "inverted_cdf", "averaged_inverted_cdf", "closest_observation", "interpolated_inverted_cdf",
-    "hazen", "weibull", "linear", "median_unbiased", "normal_unbiased",
-    "lower", "higher", "midpoint", "nearest",
+    "inverted_cdf",
+    "averaged_inverted_cdf",
+    "closest_observation",
+    "interpolated_inverted_cdf",
+    "hazen",
+    "weibull",
+    "linear",
+    "median_unbiased",
+    "normal_unbiased",
+    "lower",
+    "higher",
+    "midpoint",
+    "nearest",
 ]
 QS = [0.0, 1e-300, 0.01, 0.1, 0.25, 0.3, 1 / 3, 0.5, 0.6, 2 / 3, 0.75, 0.9, 0.99, 1 - 1e-16, 1.0]
 NAN = float("nan")
@@ -54,6 +64,7 @@ def samples():
 
 
 # ------------------------------------------------------------------ quantile
+
 
 @pytest.mark.parametrize("method", METHODS)
 def test_quantile_bits_every_method(method):
@@ -122,13 +133,15 @@ def test_quantile_errors():
         sd.quantile(x, sd.asarray([[0.5]]))
     # the number-argument form with sd.ndarray (API.md §2.1); an int is a number too
     for bad, shown in [([0.5], "list"), (None, "NoneType"), (True, "bool")]:
-        with pytest.raises(TypeError, match=rf"^quantile\(\): 'q' must be an int, a float or an sd.ndarray, not {shown}$"):
+        with pytest.raises(
+            TypeError, match=rf"^quantile\(\): 'q' must be an int, a float or an sd.ndarray, not {shown}$"
+        ):
             sd.quantile(x, bad)
     assert sd.quantile(x, 1) == sd.quantile(x, 1.0)
     with pytest.raises(TypeError, match="'q' must be real"):
         sd.quantile(x, sd.asarray([0.5j]))
     # The string-option message (API.md §2.1): the same list for a wrong value and a wrong type.
-    methods = (r"'method' must be 'inverted_cdf', 'averaged_inverted_cdf', .*, 'midpoint' or 'nearest', not ")
+    methods = r"'method' must be 'inverted_cdf', 'averaged_inverted_cdf', .*, 'midpoint' or 'nearest', not "
     with pytest.raises(ValueError, match=r"^quantile\(\): " + methods + "'foo'$"):
         sd.quantile(x, 0.5, method="foo")
     with pytest.raises(TypeError, match=r"^quantile\(\): " + methods + "int$"):
@@ -144,6 +157,7 @@ def test_quantile_errors():
 
 
 # -------------------------------------------------------------------- median
+
 
 def test_median_bits():
     for x in samples():
@@ -162,7 +176,9 @@ def test_median_short_lanes(length):
     # Lanes under 6 take an insertion sort, longer ones the NEON sort (stack buffer up to 256).
     x = np.random.default_rng(length).standard_normal((50, length))
     check(sd.median(sd.asarray(x), axis=1), np.median(x, axis=1))
-    check(sd.quantile(sd.asarray(x), sd.asarray(QS), axis=1, method="hazen"), np.quantile(x, QS, axis=1, method="hazen"))
+    check(
+        sd.quantile(sd.asarray(x), sd.asarray(QS), axis=1, method="hazen"), np.quantile(x, QS, axis=1, method="hazen")
+    )
 
 
 def test_median_signed_zero_like_numpy():
@@ -172,6 +188,7 @@ def test_median_signed_zero_like_numpy():
 
 
 # ------------------------------------------------------ nanquantile, nanmedian
+
 
 def nan_data(seed=4):
     rng = np.random.default_rng(seed)
@@ -187,17 +204,23 @@ def test_nanquantile_bits(method):
     a = sd.asarray(x)
     for axis in (None, 0, 1):
         for q in (0.0, 0.3, 0.5, 1.0):
-            check(sd.nanquantile(a, q, axis=axis, method=method), np_quiet(np.nanquantile, x, q, axis=axis, method=method))
-        check(sd.nanquantile(a, sd.asarray(QS), axis=axis, method=method),
-              np_quiet(np.nanquantile, x, QS, axis=axis, method=method))
+            check(
+                sd.nanquantile(a, q, axis=axis, method=method), np_quiet(np.nanquantile, x, q, axis=axis, method=method)
+            )
+        check(
+            sd.nanquantile(a, sd.asarray(QS), axis=axis, method=method),
+            np_quiet(np.nanquantile, x, QS, axis=axis, method=method),
+        )
 
 
 def test_nanmedian_bits():
     x = nan_data()
     for axis in (None, 0, 1):
         for keepdims in (False, True):
-            check(sd.nanmedian(sd.asarray(x), axis=axis, keepdims=keepdims),
-                  np_quiet(np.nanmedian, x, axis=axis, keepdims=keepdims))
+            check(
+                sd.nanmedian(sd.asarray(x), axis=axis, keepdims=keepdims),
+                np_quiet(np.nanmedian, x, axis=axis, keepdims=keepdims),
+            )
 
 
 def test_nan_quantiles_without_nan_equal_the_plain_ones():
@@ -265,8 +288,10 @@ def test_nanvar_nanstd(correction, axis):
         np.testing.assert_allclose(got, want, rtol=1e-13, atol=0)
     y = np.random.default_rng(7).random((5, 6))
     for ours, plain in ((sd.nanvar, sd.var), (sd.nanstd, sd.std)):
-        assert_same(ours(sd.asarray(y), axis=axis if axis is not None else 0, correction=correction),
-                    np.asarray(plain(sd.asarray(y), axis=axis if axis is not None else 0, correction=correction)))
+        assert_same(
+            ours(sd.asarray(y), axis=axis if axis is not None else 0, correction=correction),
+            np.asarray(plain(sd.asarray(y), axis=axis if axis is not None else 0, correction=correction)),
+        )
 
 
 def test_nan_complex():
@@ -322,29 +347,44 @@ def test_nancumulative(axis):
 
 def test_nan_functions_on_integers_are_the_plain_ones():
     i = sd.asarray([[3, 1, 2], [0, 5, 4]])
-    for nanf, plain in ((sd.nansum, sd.sum), (sd.nanprod, sd.prod), (sd.nanmin, sd.min), (sd.nanmax, sd.max),
-                        (sd.nanargmin, sd.argmin), (sd.nanargmax, sd.argmax), (sd.nanmean, sd.mean),
-                        (sd.nanvar, sd.var), (sd.nanstd, sd.std)):
+    for nanf, plain in (
+        (sd.nansum, sd.sum),
+        (sd.nanprod, sd.prod),
+        (sd.nanmin, sd.min),
+        (sd.nanmax, sd.max),
+        (sd.nanargmin, sd.argmin),
+        (sd.nanargmax, sd.argmax),
+        (sd.nanmean, sd.mean),
+        (sd.nanvar, sd.var),
+        (sd.nanstd, sd.std),
+    ):
         assert nanf(i) == plain(i)
         assert np.array_equal(np.asarray(nanf(i, axis=1)), np.asarray(plain(i, axis=1)))
 
 
 # --------------------------------------------------------------- cov, corrcoef
 
+
 @pytest.mark.parametrize("correction", [0, 1, 2])
 def test_cov(correction):
     rng = np.random.default_rng(9)
     x = rng.standard_normal((4, 30))
-    np.testing.assert_allclose(np.asarray(sd.cov(sd.asarray(x), correction=correction)),
-                               np.cov(x, ddof=correction), rtol=1e-13, atol=1e-15)
-    np.testing.assert_allclose(np.asarray(sd.cov(sd.asarray(x.T), rowvar=False, correction=correction)),
-                               np.cov(x.T, rowvar=False, ddof=correction), rtol=1e-13, atol=1e-15)
+    np.testing.assert_allclose(
+        np.asarray(sd.cov(sd.asarray(x), correction=correction)), np.cov(x, ddof=correction), rtol=1e-13, atol=1e-15
+    )
+    np.testing.assert_allclose(
+        np.asarray(sd.cov(sd.asarray(x.T), rowvar=False, correction=correction)),
+        np.cov(x.T, rowvar=False, ddof=correction),
+        rtol=1e-13,
+        atol=1e-15,
+    )
     one = sd.cov(sd.asarray(x[0]), correction=correction)
     assert type(one) is float
     np.testing.assert_allclose(one, np.cov(x[0], ddof=correction), rtol=1e-13)
     z = x[:2] + 1j * x[2:]
-    np.testing.assert_allclose(np.asarray(sd.cov(sd.asarray(z), correction=correction)),
-                               np.cov(z, ddof=correction), rtol=1e-13, atol=1e-15)
+    np.testing.assert_allclose(
+        np.asarray(sd.cov(sd.asarray(z), correction=correction)), np.cov(z, ddof=correction), rtol=1e-13, atol=1e-15
+    )
     i = rng.integers(-5, 5, (3, 8))
     np.testing.assert_allclose(np.asarray(sd.cov(sd.asarray(i))), np.cov(i, ddof=0), rtol=1e-13, atol=1e-15)
 
@@ -370,8 +410,9 @@ def test_corrcoef():
     got = np.asarray(sd.corrcoef(sd.asarray(x)))
     np.testing.assert_allclose(got, np.corrcoef(x), rtol=1e-13, atol=1e-15)
     assert np.all(np.abs(got) <= 1.0)
-    np.testing.assert_allclose(np.asarray(sd.corrcoef(sd.asarray(x.T), rowvar=False)), np.corrcoef(x), rtol=1e-13,
-                               atol=1e-15)
+    np.testing.assert_allclose(
+        np.asarray(sd.corrcoef(sd.asarray(x.T), rowvar=False)), np.corrcoef(x), rtol=1e-13, atol=1e-15
+    )
     assert sd.corrcoef(sd.asarray([1.0, 2.0, 3.0])) == 1.0
     assert math.isnan(sd.corrcoef(sd.asarray([1.0, 1.0])))
     z = x[:2] + 1j * x[2:4]
@@ -402,6 +443,7 @@ def test_cov_errors():
 
 # ---------------------------------------------------------------- threads
 
+
 def test_quantile_same_bits_at_every_thread_count():
     x = sd.asarray(np.random.default_rng(11).standard_normal((300, 400)))
     before = sd.get_num_threads()
@@ -418,6 +460,7 @@ def test_quantile_same_bits_at_every_thread_count():
 
 # ------------------------------------------------- optimized paths (A-C review)
 
+
 def test_quantile_signed_zero_ties_total_order_and_thread_independent():
     # -0.0 ranks below +0.0 on every path (sort, select, parallel sort), so
     # the result is the same at every thread count (docs/api/array.md §7.10).
@@ -427,8 +470,14 @@ def test_quantile_signed_zero_ties_total_order_and_thread_independent():
     try:
         for n in (2, 17, 3000, 5000, 300_000):
             x = rng.choice([-0.0, 0.0, -1.0, 1.0], n)
-            total = np.concatenate([np.sort(x[x < 0]), -np.zeros(np.sum((x == 0) & np.signbit(x))),
-                                    np.zeros(np.sum((x == 0) & ~np.signbit(x))), np.sort(x[x > 0])])
+            total = np.concatenate(
+                [
+                    np.sort(x[x < 0]),
+                    -np.zeros(np.sum((x == 0) & np.signbit(x))),
+                    np.zeros(np.sum((x == 0) & ~np.signbit(x))),
+                    np.sort(x[x > 0]),
+                ]
+            )
             want = total[np.floor((n - 1) * np.linspace(0, 1, 41)).astype(int)]
             got = []
             for t in (1, 3, 10):
@@ -458,7 +507,10 @@ def test_nan_reductions_are_the_plain_ones_on_a_filled_copy(layout, cplx):
     x = {"C": x, "F": np.asfortranarray(x), "T": x.T}[layout]
     a, f0, f1 = sd.asarray(x), sd.asarray(nan_copy(x, 0)), sd.asarray(nan_copy(x, 1))
     for axis in (None, 0, 1, (0, 1)):
-        for got, want in ((sd.nansum(a, axis=axis), sd.sum(f0, axis=axis)), (sd.nanprod(a, axis=axis), sd.prod(f1, axis=axis))):
+        for got, want in (
+            (sd.nansum(a, axis=axis), sd.sum(f0, axis=axis)),
+            (sd.nanprod(a, axis=axis), sd.prod(f1, axis=axis)),
+        ):
             if isinstance(got, sd.ndarray):
                 assert_same(got, np.asarray(want))
             else:

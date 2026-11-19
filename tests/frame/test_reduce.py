@@ -29,11 +29,15 @@ def same(x, y):
     if x is NA or y is NA:
         return x is y
     if isinstance(x, float) or isinstance(y, float):
-        return isinstance(x, float) and isinstance(y, float) and (bits(x) == bits(y) or (math.isnan(x) and math.isnan(y)))
+        return (
+            isinstance(x, float) and isinstance(y, float) and (bits(x) == bits(y) or (math.isnan(x) and math.isnan(y)))
+        )
     return x == y and type(x) is type(y)
 
 
-FLOATS = st.floats(allow_nan=False, allow_infinity=False, min_value=-1e12, max_value=1e12) | st.sampled_from([0.0, -0.0, 1e-300])
+FLOATS = st.floats(allow_nan=False, allow_infinity=False, min_value=-1e12, max_value=1e12) | st.sampled_from(
+    [0.0, -0.0, 1e-300]
+)
 LENGTHS = st.sampled_from([0, 1, 7, 8, 9, 127, 128, 129, 300, 1000, 5000]) | st.integers(0, 64)
 
 

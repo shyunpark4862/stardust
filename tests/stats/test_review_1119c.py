@@ -134,6 +134,7 @@ def test_gelsd_path_is_numpys_for_tiny_systems():
 
 # ---- R75, R77, R78 (2026-11-19, fourth pass)
 
+
 @pytest.mark.parametrize("df", [5e-324, 2.0**-1022, 2.0**-1021, 1e-307, 1e-305, 1e-292])
 def test_chndtrc_tiny_df(df):
     # R77: NaN for df up to ~1e-305 at small x; now the df = 0 law plus the j = 0 term's tail
@@ -170,6 +171,7 @@ def test_descriptive_call_shape_errors():
 
 # ---- R82, R83, R87 (2026-11-19, fifth pass)
 
+
 def _arb_q(a, y):
     ctx.prec = 4000
     try:
@@ -186,8 +188,10 @@ def test_ncfdtr_smallest_dfn():
         assert sp.ncfdtr(5e-324, 5.0, 2.0, f) == sp.ncfdtr(1e-323, 5.0, 2.0, f)
 
 
-@pytest.mark.parametrize("df,nc,x", [(5e-324, 5e-324, 1e-300), (1.5e-323, 1e-300, 1e-300), (1e-310, 1e-310, 1e-20),
-                                     (2.0**-1022, 1e-300, 1e-300)])
+@pytest.mark.parametrize(
+    "df,nc,x",
+    [(5e-324, 5e-324, 1e-300), (1.5e-323, 1e-300, 1e-300), (1e-310, 1e-310, 1e-20), (2.0**-1022, 1e-300, 1e-300)],
+)
 def test_chndtrc_subnormal_df_against_arb(df, nc, x):
     # R83: the j = 0 term's half after the scaling (0.5 * df rounded first: 0 for 1.71e-321)
     ctx.prec = 4000
@@ -236,11 +240,15 @@ def test_inverse_gamma_subnormal_shape():
 
 # ---- R101, R102 (2026-11-19, sixth pass; T52): small shapes' upper roots below 2^-960
 
+
 def _arb_q_rel(a, y, s, q):
     ctx.prec = 3000
     try:
-        return float(arb(y).gamma_upper(arb(a), 1) / arb(q)) - 1 if s is None else \
-            float((arb(y) / arb(s)).gamma_upper(arb(a), 1) / arb(q)) - 1
+        return (
+            float(arb(y).gamma_upper(arb(a), 1) / arb(q)) - 1
+            if s is None
+            else float((arb(y) / arb(s)).gamma_upper(arb(a), 1) / arb(q)) - 1
+        )
     finally:
         ctx.prec = 53
 
@@ -270,7 +278,9 @@ def test_gamma_upper_root_with_a_scale():
         assert 1e47 < x < 1e48
         ctx.prec = 3000
         try:
-            assert float((arb(1e-300) / arb(x)).gamma_upper(arb(1e-100), 1) / arb(800e-100)) == pytest.approx(1.0, abs=1e-14 * 800)
+            assert float((arb(1e-300) / arb(x)).gamma_upper(arb(1e-100), 1) / arb(800e-100)) == pytest.approx(
+                1.0, abs=1e-14 * 800
+            )
         finally:
             ctx.prec = 53
 

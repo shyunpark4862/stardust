@@ -78,11 +78,12 @@ nb::object eig_impl(nb::handle xo, bool vectors) {
         // Unsorted results in scratch (slot 3 and the int-free complex area), then sorted out.
         cplx* w = s.get<cplx>(static_cast<std::size_t>(n * (vectors ? n + 1 : 1)), 3);
         cplx* v = w + n;
-        const int code = complex ? eig_one<cplx>(x, off[0], n, vectors, s, w, v)
-                                 : eig_one<double>(x, off[0], n, vectors, s, w, v);
+        const int code =
+            complex ? eig_one<cplx>(x, off[0], n, vectors, s, w, v) : eig_one<double>(x, off[0], n, vectors, s, w, v);
         if (code) return code;
         // Sorted by (real, imag), stably -- the array's complex order (docs/design/linalg.md §2.6).
-        lint* idx = s.get_ints(static_cast<std::size_t>(n));  // scratch, not a vector per matrix (docs/design/linalg.md §9)
+        lint* idx =
+            s.get_ints(static_cast<std::size_t>(n));  // scratch, not a vector per matrix (docs/design/linalg.md §9)
         std::iota(idx, idx + n, lint(0));
         std::stable_sort(idx, idx + n, [&](lint p, lint q) {
             return w[p].real() < w[q].real() || (w[p].real() == w[q].real() && w[p].imag() < w[q].imag());
@@ -113,14 +114,16 @@ nb::object schur(nb::handle xo) {
     return with_type(computes_complex(x.dtype()), [&]<class T>(std::type_identity<T>) -> nb::object {
         Out to = alloc_matrices(b.shape(), n, n, dtype_of<T>());
         Out zo = alloc_matrices(b.shape(), n, n, dtype_of<T>());
-        const Failure f = run_batch(b, cost(kEig, double(n) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
-            LapackSlot<T> ts(to.as<T>() + i * n * n, n * n, s, Scratch::kAlign0);
-            LapackSlot<T> zs(zo.as<T>() + i * n * n, n * n, s, Scratch::kAlign1);
-            T* t = ts.get();  // packed into T's slot; gees overwrites it with T
-            if (!pack(x.dtype(), x.data() + off[0], n, n, x.stride(-2), x.stride(-1), t, n, true)) return kNonFinite;
-            if (n == 0) return 0;
-            return lapack::gees(n, t, n, zs.get(), n, s) > 0 ? kNoConvergenceEig : 0;
-        });
+        const Failure f =
+            run_batch(b, cost(kEig, double(n) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+                LapackSlot<T> ts(to.as<T>() + i * n * n, n * n, s, Scratch::kAlign0);
+                LapackSlot<T> zs(zo.as<T>() + i * n * n, n * n, s, Scratch::kAlign1);
+                T* t = ts.get();  // packed into T's slot; gees overwrites it with T
+                if (!pack(x.dtype(), x.data() + off[0], n, n, x.stride(-2), x.stride(-1), t, n, true))
+                    return kNonFinite;
+                if (n == 0) return 0;
+                return lapack::gees(n, t, n, zs.get(), n, s) > 0 ? kNoConvergenceEig : 0;
+            });
         if (f) raise(b, f, "schur", "x");
         return make_result(Result::Schur, {to_array(to), to_array(zo)});
     });
@@ -134,23 +137,25 @@ nb::object hessenberg(nb::handle xo) {
     return with_type(computes_complex(x.dtype()), [&]<class T>(std::type_identity<T>) -> nb::object {
         Out ho = alloc_matrices(b.shape(), n, n, dtype_of<T>());
         Out qo = alloc_matrices(b.shape(), n, n, dtype_of<T>());
-        const Failure f = run_batch(b, cost(kQR, double(n) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
-            T* a = s.get<T>(static_cast<std::size_t>(n * n));
-            if (!pack(x.dtype(), x.data() + off[0], n, n, x.stride(-2), x.stride(-1), a, n, true)) return kNonFinite;
-            if (n == 0) return 0;
-            T* tau = s.get<T>(static_cast<std::size_t>(std::max<lint>(n - 1, 1)), 1);
-            lapack::gehrd(n, a, n, tau, s);
-            // H: on and above the subdiagonal; below it are the reflectors.
-            T* h = ho.as<T>() + i * n * n;
-            for (lint j = 0; j < n; ++j)
-                for (lint r = 0; r < n; ++r) h[j * n + r] = r <= j + 1 ? a[j * n + r] : T(0);
-            // Q: the reflectors go to Q's slot, and orghr turns them into Q there.
-            LapackSlot<T> qs(qo.as<T>() + i * n * n, n * n, s, Scratch::kAlign0);
-            T* q = qs.get();
-            std::copy(a, a + n * n, q);
-            lapack::orghr(n, q, n, tau, s);
-            return 0;
-        });
+        const Failure f =
+            run_batch(b, cost(kQR, double(n) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+                T* a = s.get<T>(static_cast<std::size_t>(n * n));
+                if (!pack(x.dtype(), x.data() + off[0], n, n, x.stride(-2), x.stride(-1), a, n, true))
+                    return kNonFinite;
+                if (n == 0) return 0;
+                T* tau = s.get<T>(static_cast<std::size_t>(std::max<lint>(n - 1, 1)), 1);
+                lapack::gehrd(n, a, n, tau, s);
+                // H: on and above the subdiagonal; below it are the reflectors.
+                T* h = ho.as<T>() + i * n * n;
+                for (lint j = 0; j < n; ++j)
+                    for (lint r = 0; r < n; ++r) h[j * n + r] = r <= j + 1 ? a[j * n + r] : T(0);
+                // Q: the reflectors go to Q's slot, and orghr turns them into Q there.
+                LapackSlot<T> qs(qo.as<T>() + i * n * n, n * n, s, Scratch::kAlign0);
+                T* q = qs.get();
+                std::copy(a, a + n * n, q);
+                lapack::orghr(n, q, n, tau, s);
+                return 0;
+            });
         if (f) raise(b, f, "hessenberg", "x");
         return make_result(Result::Hessenberg, {to_array(ho), to_array(qo)});
     });
@@ -225,18 +230,23 @@ nb::object ldl(nb::handle xo) {
         Out lo = alloc_matrices(b.shape(), n, n, dtype_of<T>());
         Out dout = alloc_matrices(b.shape(), n, n, dtype_of<T>());
         Out po = alloc_vectors(b.shape(), n, DType::Int64);
-        const Failure f = run_batch(b, cost(kLU, double(n) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
-            T* a = s.get<T>(static_cast<std::size_t>(n * n));
-            // The lower triangle only (docs/api/linalg.md §1.4), checked as read
-            // (docs/design/linalg.md §5.4).
-            if (!pack_triangle(x.dtype(), x.data() + off[0], n, x.stride(-2), x.stride(-1), a, n, true, true, true))
-                return kNonFinite;
-            if (n == 0) return 0;
-            lint* ipiv = s.get_ints(static_cast<std::size_t>(n));
-            lapack::sytrf(n, a, n, ipiv, s);  // a zero block of D is not an error (like lu, docs/design/linalg.md §10.6)
-            ldl_unpack(a, ipiv, n, s, lo.as<T>() + i * n * n, dout.as<T>() + i * n * n, po.as<std::int64_t>() + i * n);
-            return 0;
-        });
+        const Failure f =
+            run_batch(b, cost(kLU, double(n) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+                T* a = s.get<T>(static_cast<std::size_t>(n * n));
+                // The lower triangle only (docs/api/linalg.md §1.4), checked as read
+                // (docs/design/linalg.md §5.4).
+                if (!pack_triangle(x.dtype(), x.data() + off[0], n, x.stride(-2), x.stride(-1), a, n, true, true, true))
+                    return kNonFinite;
+                if (n == 0) return 0;
+                lint* ipiv = s.get_ints(static_cast<std::size_t>(n));
+                lapack::sytrf(
+                    n, a, n, ipiv, s
+                );  // a zero block of D is not an error (like lu, docs/design/linalg.md §10.6)
+                ldl_unpack(
+                    a, ipiv, n, s, lo.as<T>() + i * n * n, dout.as<T>() + i * n * n, po.as<std::int64_t>() + i * n
+                );
+                return 0;
+            });
         if (f) raise(b, f, "ldl", "x");
         return make_result(Result::LDL, {to_array(lo), to_array(dout), to_array(po)});
     });

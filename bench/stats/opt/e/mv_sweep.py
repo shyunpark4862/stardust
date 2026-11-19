@@ -69,20 +69,26 @@ def main():
             mu = rng.normal(size=d) * 10.0 ** rng.uniform(-1, 3)
             L = np.linalg.cholesky(cov)
             for df in (float("inf"), 3.0, 1e6):
-                D = (S.MultivariateNormal(mu=sd.asarray(mu), cov=sd.asarray(cov)) if np.isinf(df)
-                     else S.MultivariateT(mu=sd.asarray(mu), shape=sd.asarray(cov), df=df))
+                D = (
+                    S.MultivariateNormal(mu=sd.asarray(mu), cov=sd.asarray(cov))
+                    if np.isinf(df)
+                    else S.MultivariateT(mu=sd.asarray(mu), shape=sd.asarray(cov), df=df)
+                )
                 for kind in ("self", "iso", "far", "near", "axis"):
                     x = points(rng, kind, n if d <= 30 else n // 4, d, mu, L)
                     rows, idx, _ = D._points(sd.asarray(x), "logpdf")
                     D.logpdf(sd.asarray(x[:1]))
                     args = (rows, idx, D._mu, D._L, D._Ll, D._ldh, D._ldl, D._ok, D._df, D._ih, D._il)
-                    lf, lp = np.asarray(_k.mv_logpdf(*args, D._fast, False)), np.asarray(_k.mv_logpdf(*args, None, False))
+                    lf, lp = (
+                        np.asarray(_k.mv_logpdf(*args, D._fast, False)),
+                        np.asarray(_k.mv_logpdf(*args, None, False)),
+                    )
                     pf, pp = np.asarray(_k.mv_logpdf(*args, D._fast, True)), np.asarray(_k.mv_logpdf(*args, None, True))
                     dl, dp = mixed(lf, lp), rel(pf, pp)
                     worst_l, worst_p, total = max(worst_l, dl), max(worst_p, dp), total + len(lf)
                     name = "normal" if np.isinf(df) else f"t df={df:g}"
                     print(f"| {name} | {d} | {kappa:.0e} | {kind} | {np.mean(lf != lp):.3f} | {dl:.2e} | {dp:.2e} |")
-    for (r, c) in ((1, 1), (3, 2), (2, 7), (10, 5), (9, 17), (30, 20)):
+    for r, c in ((1, 1), (3, 2), (2, 7), (10, 5), (9, 17), (30, 20)):
         for kappa in (1.0, 1e3, 1e6, 1e9):
             U, V = cov_with_kappa(rng, r, kappa), cov_with_kappa(rng, c, np.sqrt(kappa)) * 10.0 ** rng.uniform(-2, 2)
             M = rng.normal(size=(r, c))
@@ -94,11 +100,19 @@ def main():
                 rows, idx, _ = D._points(sd.asarray(x), "logpdf")
                 D.logpdf(sd.asarray(x[:1]))
                 args = (rows, idx, D._mean, D._U, D._Ul, D._V, D._Vl, D._lu[0], D._lu[1], D._lv[0], D._lv[1], D._ok)
-                lf, lp = np.asarray(_k.matnorm_logpdf(*args, *D._fast, False)), np.asarray(_k.matnorm_logpdf(*args, None, None, False))
-                pf, pp = np.asarray(_k.matnorm_logpdf(*args, *D._fast, True)), np.asarray(_k.matnorm_logpdf(*args, None, None, True))
+                lf, lp = (
+                    np.asarray(_k.matnorm_logpdf(*args, *D._fast, False)),
+                    np.asarray(_k.matnorm_logpdf(*args, None, None, False)),
+                )
+                pf, pp = (
+                    np.asarray(_k.matnorm_logpdf(*args, *D._fast, True)),
+                    np.asarray(_k.matnorm_logpdf(*args, None, None, True)),
+                )
                 dl, dp = mixed(lf, lp), rel(pf, pp)
                 worst_l, worst_p, total = max(worst_l, dl), max(worst_p, dp), total + len(lf)
-                print(f"| matrix normal x{scale:g} | {r}x{c} | {kappa:.0e} | self | {np.mean(lf != lp):.3f} | {dl:.2e} | {dp:.2e} |")
+                print(
+                    f"| matrix normal x{scale:g} | {r}x{c} | {kappa:.0e} | self | {np.mean(lf != lp):.3f} | {dl:.2e} | {dp:.2e} |"
+                )
     print(f"\n{total:,} points. Largest fast - precise: logpdf {worst_l:.3e} (mixed), pdf {worst_p:.3e} (relative).")
 
 

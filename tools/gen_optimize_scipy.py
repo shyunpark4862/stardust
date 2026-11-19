@@ -47,8 +47,20 @@ def _f(v):
 def _res(r, *, vector_fun=False):
     """The fields of a scipy OptimizeResult that the reference keeps."""
     out = {}
-    for k in ("x", "fun", "cost", "optimality", "nfev", "njev", "nhev", "nit", "status", "success", "message",
-              "active_mask"):
+    for k in (
+        "x",
+        "fun",
+        "cost",
+        "optimality",
+        "nfev",
+        "njev",
+        "nhev",
+        "nit",
+        "status",
+        "success",
+        "message",
+        "active_mask",
+    ):
         if k not in r:
             continue
         v = r[k]
@@ -76,15 +88,18 @@ def _guard(fn):
                 return fn(*a)
             except Exception as e:  # the reference records scipy's errors too
                 return {"error": f"{type(e).__name__}: {e}"}
+
     return run
 
 
 # ---- least_squares
 
+
 def _lsq_task(args):
     from scipy.optimize import least_squares
 
     from tests.optimize import mgh
+
     cid, method, jac, box = args
     c = mgh.BY_ID[cid]
     F, J, _, _ = mgh.as_numpy(c)
@@ -96,11 +111,13 @@ def _lsq_task(args):
     def go():
         r = least_squares(F, x0, jac=J if jac == "analytic" else "2-point", method=method, **kw)
         return _res(r, vector_fun=True)
+
     return (cid + ("-box" if box else ""), f"{method}/{jac}"), _guard(go)()
 
 
 def least_squares_tasks():
     from tests.optimize import mgh
+
     tasks = [(c.id, m, j, False) for c in mgh.CASES for m in ("trf", "lm") for j in ("analytic", "2-point")]
     tasks += [(c.id, "trf", j, True) for c in mgh.CASES if c.factor == 1.0 for j in ("analytic", "2-point")]
     return tasks
@@ -108,30 +125,45 @@ def least_squares_tasks():
 
 # ---- minimize
 
+
 def _min_problem(pid):
     """(f, g, h, x0, bounds) of a minimize problem id."""
     from tests.optimize import functions as fn
     from tests.optimize import mgh
+
     if pid.startswith("mgh"):
         c = mgh.BY_ID[pid]
         _, _, f, g = mgh.as_numpy(c)
         return f, g, (lambda x: mgh.hessian(c, x)), np.array(c.x0()), None
     if pid.startswith("rosen"):
         n = int(pid.split("-n")[1])
-        return (lambda x: fn.rosen([np.float64(v) for v in x]),
-                lambda x: np.array(fn.rosen_der([np.float64(v) for v in x])),
-                lambda x: np.array(fn.rosen_hess([np.float64(v) for v in x])), np.array(fn.ROSEN_X0[n]), None)
+        return (
+            lambda x: fn.rosen([np.float64(v) for v in x]),
+            lambda x: np.array(fn.rosen_der([np.float64(v) for v in x])),
+            lambda x: np.array(fn.rosen_hess([np.float64(v) for v in x])),
+            np.array(fn.ROSEN_X0[n]),
+            None,
+        )
     if pid == "maxent":
         from tests.optimize.ad import value_grad_hess
-        return (lambda x: fn.maxent([np.float64(v) for v in x]),
-                lambda x: np.array(fn.maxent_der([np.float64(v) for v in x])),
-                lambda x: value_grad_hess(fn.maxent, x)[2], np.array(fn.MAXENT_X0), None)
+
+        return (
+            lambda x: fn.maxent([np.float64(v) for v in x]),
+            lambda x: np.array(fn.maxent_der([np.float64(v) for v in x])),
+            lambda x: value_grad_hess(fn.maxent, x)[2],
+            np.array(fn.MAXENT_X0),
+            None,
+        )
     if pid == "lbfgsb_driver1":
         from tests.optimize.ad import value_grad_hess
-        return (lambda x: fn.lbfgsb_driver1([np.float64(v) for v in x]),
-                lambda x: np.array(fn.lbfgsb_driver1_der([np.float64(v) for v in x])),
-                lambda x: value_grad_hess(fn.lbfgsb_driver1, x)[2], np.array(fn.LBFGSB_DRIVER1_X0),
-                fn.LBFGSB_DRIVER1_BOUNDS)
+
+        return (
+            lambda x: fn.lbfgsb_driver1([np.float64(v) for v in x]),
+            lambda x: np.array(fn.lbfgsb_driver1_der([np.float64(v) for v in x])),
+            lambda x: value_grad_hess(fn.lbfgsb_driver1, x)[2],
+            np.array(fn.LBFGSB_DRIVER1_X0),
+            fn.LBFGSB_DRIVER1_BOUNDS,
+        )
     raise ValueError(pid)
 
 
@@ -140,6 +172,7 @@ MIN_METHODS = ("Nelder-Mead", "BFGS", "BFGS/fd", "L-BFGS-B", "L-BFGS-B/fd", "New
 
 def _min_task(args):
     from scipy.optimize import minimize
+
     pid, method = args
     f, g, h, x0, bounds = _min_problem(pid)
     meth, _, fd = method.partition("/")
@@ -154,11 +187,13 @@ def _min_task(args):
             kw["bounds"] = bounds
         r = minimize(f, x0, method=meth, **kw)
         return _res(r)
+
     return (pid, method), _guard(go)()
 
 
 def minimize_tasks():
     from tests.optimize import mgh
+
     pids = [c.id for c in mgh.CASES] + ["rosen-n2", "rosen-n5", "maxent", "lbfgsb_driver1"]
     out = []
     for p in pids:
@@ -171,10 +206,12 @@ def minimize_tasks():
 
 # ---- root
 
+
 def _root_task(args):
     from scipy.optimize import root
 
     from tests.optimize import systems
+
     cid, method, jac = args
     c = systems.BY_ID[cid]
     F, J = systems.as_numpy(c)
@@ -183,20 +220,24 @@ def _root_task(args):
         r = root(F, np.array(c.x0()), method=method, jac=J if jac == "analytic" else None)
         out = _res(r, vector_fun=True)
         return out
+
     return (cid, f"{method}/{jac}"), _guard(go)()
 
 
 def root_tasks():
     from tests.optimize import systems
+
     return [(c.id, m, j) for c in systems.CASES for m in ("hybr", "lm") for j in ("analytic", "none")]
 
 
 # ---- root_scalar
 
+
 def _scalar_root_task(args):
     from scipy.optimize import root_scalar
 
     from tests.optimize import functions as fn
+
     cid, method = args
     c = fn.ROOTS_BY_ID[cid]
 
@@ -215,13 +256,20 @@ def _scalar_root_task(args):
                 kw["fprime"] = lambda x: float(c.fprime(np.float64(x)))
                 kw["fprime2"] = lambda x: float(c.fprime2(np.float64(x)))
         r = root_scalar(f, **kw)
-        return {"root": float(r.root), "iterations": int(r.iterations) if r.iterations == r.iterations else None,
-                "function_calls": int(r.function_calls), "converged": bool(r.converged), "flag": str(r.flag)}
+        return {
+            "root": float(r.root),
+            "iterations": int(r.iterations) if r.iterations == r.iterations else None,
+            "function_calls": int(r.function_calls),
+            "converged": bool(r.converged),
+            "flag": str(r.flag),
+        }
+
     return (cid, method), _guard(go)()
 
 
 def root_scalar_tasks():
     from tests.optimize import functions as fn
+
     out = []
     for c in fn.ROOT_CASES:
         out += [(c.id, m) for m in ("brentq", "toms748", "bisect")]
@@ -237,10 +285,12 @@ def root_scalar_tasks():
 
 # ---- minimize_scalar
 
+
 def _scalar_min_task(args):
     from scipy.optimize import minimize_scalar
 
     from tests.optimize import functions as fn
+
     cid, method = args
     c = fn.MINS_BY_ID[cid]
 
@@ -253,20 +303,24 @@ def _scalar_min_task(args):
         else:
             r = minimize_scalar(f, bracket=c.bracket, method=method)
         return _res(r)
+
     return (cid, method), _guard(go)()
 
 
 def minimize_scalar_tasks():
     from tests.optimize import functions as fn
+
     return [(c.id, m) for c in fn.MIN_CASES for m in ("brent", "golden", "bounded")]
 
 
 # ---- elementwise
 
+
 def _vec(c):
     def f(x):
         x = np.asarray(x, dtype=float)
         return np.array([float(c.f(np.float64(t))) for t in np.ravel(x)]).reshape(x.shape)
+
     return f
 
 
@@ -287,6 +341,7 @@ def _elementwise_task(args):
     from scipy.optimize.elementwise import bracket_minimum, bracket_root, find_minimum, find_root
 
     from tests.optimize import functions as fn
+
     kind, cid, tol = args
 
     def go():
@@ -303,11 +358,13 @@ def _elementwise_task(args):
             t = dict(xatol=1e-4, fatol=1e-6, xrtol=1e-16, frtol=1e-16) if tol == "paper" else None
             return _ew(find_minimum(f, c.bracket, tolerances=t))
         return _ew(bracket_minimum(f, c.bracket[0]))
+
     return (cid, kind + ("/paper" if tol == "paper" else "")), _guard(go)()
 
 
 def elementwise_tasks():
     from tests.optimize import functions as fn
+
     out = []
     for c in fn.ROOT_CASES:
         out.append(("find_root", c.id, "scipy"))
@@ -324,10 +381,12 @@ def elementwise_tasks():
 
 # ---- lsq_linear, nnls
 
+
 def _lsq_linear_task(args):
     from scipy.optimize import lsq_linear, nnls
 
     from tests.optimize import functions as fn
+
     pid, method = args
     A, b, bounds = fn.LSQ_LINEAR[pid]
     A, b = np.array(A), np.array(b)
@@ -339,38 +398,48 @@ def _lsq_linear_task(args):
         kw = {} if bounds is None else {"bounds": (np.array(bounds[0]), np.array(bounds[1]))}
         r = lsq_linear(A, b, method=method, **kw)
         return _res(r, vector_fun=True)
+
     return (pid, method), _guard(go)()
 
 
 def lsq_linear_tasks():
     from tests.optimize import functions as fn
+
     return [(p, m) for p in fn.LSQ_LINEAR for m in ("trf", "bvls", "nnls")]
 
 
 # ---- approx_fprime, check_grad
 
+
 def _fprime_task(cid):
     from scipy.optimize import approx_fprime, check_grad
 
     from tests.optimize import mgh
+
     c = mgh.BY_ID[cid]
     F, J, f, g = mgh.as_numpy(c)
     x0 = np.array(c.x0())
 
     def go():
-        return {"grad": _f(approx_fprime(x0, f)), "jac": _f(approx_fprime(x0, F)),
-                "check_grad": float(check_grad(f, g, x0))}
+        return {
+            "grad": _f(approx_fprime(x0, f)),
+            "jac": _f(approx_fprime(x0, F)),
+            "check_grad": float(check_grad(f, g, x0)),
+        }
+
     return (cid, "approx_fprime"), _guard(go)()
 
 
 def fprime_tasks():
     from tests.optimize import mgh
+
     return [c.id for c in mgh.CASES if c.factor == 1.0]
 
 
 def write(name, rows):
     """{id: {method: result}} as JSON, one id per line."""
     import scipy
+
     table = {}
     for (cid, method), res in rows:
         table.setdefault(cid, {})[method] = res
@@ -382,15 +451,18 @@ def write(name, rows):
 
 def main():
     import scipy
+
     assert scipy.__version__ == "1.18.1", scipy.__version__
-    jobs = [("scipy_least_squares.json", _lsq_task, least_squares_tasks()),
-            ("scipy_minimize.json", _min_task, minimize_tasks()),
-            ("scipy_root.json", _root_task, root_tasks()),
-            ("scipy_root_scalar.json", _scalar_root_task, root_scalar_tasks()),
-            ("scipy_minimize_scalar.json", _scalar_min_task, minimize_scalar_tasks()),
-            ("scipy_elementwise.json", _elementwise_task, elementwise_tasks()),
-            ("scipy_lsq_linear.json", _lsq_linear_task, lsq_linear_tasks()),
-            ("scipy_approx_fprime.json", _fprime_task, fprime_tasks())]
+    jobs = [
+        ("scipy_least_squares.json", _lsq_task, least_squares_tasks()),
+        ("scipy_minimize.json", _min_task, minimize_tasks()),
+        ("scipy_root.json", _root_task, root_tasks()),
+        ("scipy_root_scalar.json", _scalar_root_task, root_scalar_tasks()),
+        ("scipy_minimize_scalar.json", _scalar_min_task, minimize_scalar_tasks()),
+        ("scipy_elementwise.json", _elementwise_task, elementwise_tasks()),
+        ("scipy_lsq_linear.json", _lsq_linear_task, lsq_linear_tasks()),
+        ("scipy_approx_fprime.json", _fprime_task, fprime_tasks()),
+    ]
     with mp.get_context("spawn").Pool(8, maxtasksperchild=200) as pool:
         for name, fn, tasks in jobs:
             rows = pool.map(fn, tasks, chunksize=4)

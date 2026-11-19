@@ -21,8 +21,17 @@ import scipy.stats as st
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
 from tests.stats import refdata  # noqa: E402
 
-DISTS = ("logistic", "gumbel", "gev", "pareto", "rayleigh", "inversegamma", "noncentralchisquared", "noncentralt",
-         "noncentralf")
+DISTS = (
+    "logistic",
+    "gumbel",
+    "gev",
+    "pareto",
+    "rayleigh",
+    "inversegamma",
+    "noncentralchisquared",
+    "noncentralt",
+    "noncentralf",
+)
 
 # scipy's classic form of each distribution from the native parameter arrays
 SCIPY = {
@@ -36,8 +45,16 @@ SCIPY = {
     "noncentralt": lambda df, nc: st.nct(df, nc),
     "noncentralf": lambda dfn, dfd, nc: st.ncf(dfn, dfd, nc),
 }
-METHOD = {"pdf": "pdf", "logpdf": "logpdf", "cdf": "cdf", "logcdf": "logcdf", "ccdf": "sf", "logccdf": "logsf",
-          "icdf": "ppf", "iccdf": "isf"}
+METHOD = {
+    "pdf": "pdf",
+    "logpdf": "logpdf",
+    "cdf": "cdf",
+    "logcdf": "logcdf",
+    "ccdf": "sf",
+    "logccdf": "logsf",
+    "icdf": "ppf",
+    "iccdf": "isf",
+}
 # scipy's noncentral inverses take minutes on 4000 points (a root search per point)
 NO_SCIPY_INVERSE = {"noncentralchisquared", "noncentralt", "noncentralf"}
 
@@ -53,7 +70,7 @@ def scipy_values(dist, method, xs):
     with np.errstate(all="ignore"):
         try:
             return np.asarray(getattr(SCIPY[dist](*xs[:nparams]), METHOD[method])(xs[-1]), dtype=np.float64)
-        except (OverflowError, ValueError, MemoryError):  # per point then
+        except OverflowError, ValueError, MemoryError:  # per point then
             v = np.empty(xs[-1].size)
             for i in range(v.size):
                 try:

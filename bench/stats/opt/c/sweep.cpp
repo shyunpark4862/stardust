@@ -67,8 +67,11 @@ void sweep(const char* name, bool log_method, long count, Kernel&& kernel, Scala
             if (!(d <= w.d)) w = Worst{d, x[i], {q[0], q[1], q[2]}, out[i], ref, w.n, w.nfast};
         }
     }
-    std::printf("%-28s max diff %.2e  (differing %5.1f%% of %ld)  worst at x=%.17g p=(%.17g, %.17g, %.17g) fast=%.17g ref=%.17g\n",
-                name, w.d, 100.0 * w.nfast / w.n, w.n, w.x, w.p[0], w.p[1], w.p[2], w.fast, w.ref);
+    std::printf(
+        "%-28s max diff %.2e  (differing %5.1f%% of %ld)  worst at x=%.17g p=(%.17g, %.17g, %.17g) fast=%.17g "
+        "ref=%.17g\n",
+        name, w.d, 100.0 * w.nfast / w.n, w.n, w.x, w.p[0], w.p[1], w.p[2], w.fast, w.ref
+    );
 }
 
 int main(int argc, char** argv) {
@@ -84,10 +87,14 @@ int main(int argc, char** argv) {
         x = std::min(std::max(k, 0.0), n);
         q[0] = n, q[1] = p;
     };
-    sweep<2>("binomial pmf", false, N, [](const Chunk<2>& c, double* o) { Binomial::pmf_kernel(c, o); },
-             [](double x, const double* q) { return Binomial::pmf(x, q[0], q[1]); }, draw_binom);
-    sweep<2>("binomial logpmf", true, N, [](const Chunk<2>& c, double* o) { Binomial::logpmf_kernel(c, o); },
-             [](double x, const double* q) { return Binomial::logpmf(x, q[0], q[1]); }, draw_binom);
+    sweep<2>(
+        "binomial pmf", false, N, [](const Chunk<2>& c, double* o) { Binomial::pmf_kernel(c, o); },
+        [](double x, const double* q) { return Binomial::pmf(x, q[0], q[1]); }, draw_binom
+    );
+    sweep<2>(
+        "binomial logpmf", true, N, [](const Chunk<2>& c, double* o) { Binomial::logpmf_kernel(c, o); },
+        [](double x, const double* q) { return Binomial::logpmf(x, q[0], q[1]); }, draw_binom
+    );
 
     auto draw_nbinom = [](double& x, double* q) {
         const double n = unif(0, 1) < 0.3 ? std::floor(logunif(5, 1e15)) : logunif(5, 1e15), p = prob();
@@ -98,11 +105,15 @@ int main(int argc, char** argv) {
         x = std::min(std::max(k, 0.0), 0x1p60);
         q[0] = n, q[1] = p;
     };
-    sweep<2>("negative binomial pmf", false, N, [](const Chunk<2>& c, double* o) { NegativeBinomial::pmf_kernel(c, o); },
-             [](double x, const double* q) { return NegativeBinomial::pmf(x, q[0], q[1]); }, draw_nbinom);
-    sweep<2>("negative binomial logpmf", true, N,
-             [](const Chunk<2>& c, double* o) { NegativeBinomial::logpmf_kernel(c, o); },
-             [](double x, const double* q) { return NegativeBinomial::logpmf(x, q[0], q[1]); }, draw_nbinom);
+    sweep<2>(
+        "negative binomial pmf", false, N, [](const Chunk<2>& c, double* o) { NegativeBinomial::pmf_kernel(c, o); },
+        [](double x, const double* q) { return NegativeBinomial::pmf(x, q[0], q[1]); }, draw_nbinom
+    );
+    sweep<2>(
+        "negative binomial logpmf", true, N,
+        [](const Chunk<2>& c, double* o) { NegativeBinomial::logpmf_kernel(c, o); },
+        [](double x, const double* q) { return NegativeBinomial::logpmf(x, q[0], q[1]); }, draw_nbinom
+    );
 
     auto draw_pois = [](double& x, double* q) {
         const double mu = logunif(1e-3, 1e18), u = unif(0, 1);
@@ -112,10 +123,14 @@ int main(int argc, char** argv) {
         x = std::max(k, 0.0);
         q[0] = mu;
     };
-    sweep<1>("poisson pmf", false, N, [](const Chunk<1>& c, double* o) { Poisson::pmf_kernel(c, o); },
-             [](double x, const double* q) { return Poisson::pmf(x, q[0]); }, draw_pois);
-    sweep<1>("poisson logpmf", true, N, [](const Chunk<1>& c, double* o) { Poisson::logpmf_kernel(c, o); },
-             [](double x, const double* q) { return Poisson::logpmf(x, q[0]); }, draw_pois);
+    sweep<1>(
+        "poisson pmf", false, N, [](const Chunk<1>& c, double* o) { Poisson::pmf_kernel(c, o); },
+        [](double x, const double* q) { return Poisson::pmf(x, q[0]); }, draw_pois
+    );
+    sweep<1>(
+        "poisson logpmf", true, N, [](const Chunk<1>& c, double* o) { Poisson::logpmf_kernel(c, o); },
+        [](double x, const double* q) { return Poisson::logpmf(x, q[0]); }, draw_pois
+    );
 
     // geometric: p over (0, 1), k over the quantiles (both tails) and the first few
     auto draw_geom = [](double& x, double* q) {
@@ -126,12 +141,18 @@ int main(int argc, char** argv) {
         x = std::max(k, 1.0);
         q[0] = p;
     };
-    sweep<1>("geometric pmf", false, N, [](const Chunk<1>& c, double* o) { Geometric::pmf_kernel(c, o); },
-             [](double x, const double* q) { return Geometric::pmf(x, q[0]); }, draw_geom);
-    sweep<1>("geometric logpmf (same bits)", true, N, [](const Chunk<1>& c, double* o) { Geometric::logpmf_kernel(c, o); },
-             [](double x, const double* q) { return Geometric::logpmf(x, q[0]); }, draw_geom);
-    sweep<1>("geometric logcdf", true, N, [](const Chunk<1>& c, double* o) { Geometric::logcdf_kernel(c, o); },
-             [](double x, const double* q) { return Geometric::logcdf(x, q[0]); }, draw_geom);
+    sweep<1>(
+        "geometric pmf", false, N, [](const Chunk<1>& c, double* o) { Geometric::pmf_kernel(c, o); },
+        [](double x, const double* q) { return Geometric::pmf(x, q[0]); }, draw_geom
+    );
+    sweep<1>(
+        "geometric logpmf (same bits)", true, N, [](const Chunk<1>& c, double* o) { Geometric::logpmf_kernel(c, o); },
+        [](double x, const double* q) { return Geometric::logpmf(x, q[0]); }, draw_geom
+    );
+    sweep<1>(
+        "geometric logcdf", true, N, [](const Chunk<1>& c, double* o) { Geometric::logcdf_kernel(c, o); },
+        [](double x, const double* q) { return Geometric::logcdf(x, q[0]); }, draw_geom
+    );
     // the inverses' shortcut must return what the search returns: 0 differing
     auto draw_geom_inv = [](double& x, double* q) {
         const double u = unif(0, 1);
@@ -142,11 +163,15 @@ int main(int argc, char** argv) {
             x = Geometric::cdf(k, q[0]) * (1.0 + std::floor(unif(-4, 5)) * 0x1p-52);
         }
     };
-    sweep<1>("geometric icdf (same value)", false, N, [](const Chunk<1>& c, double* o) { Geometric::icdf_chunk(c, o); },
-             [](double x, const double* q) { return Geometric::icdf(x, q[0]); }, draw_geom_inv);
-    sweep<1>("geometric iccdf (same value)", false, N, [](const Chunk<1>& c, double* o) { Geometric::iccdf_chunk(c, o); },
-             [](double x, const double* q) { return Geometric::iccdf(x, q[0]); },
-             [&](double& x, double* q) { draw_geom_inv(x, q); });
+    sweep<1>(
+        "geometric icdf (same value)", false, N, [](const Chunk<1>& c, double* o) { Geometric::icdf_chunk(c, o); },
+        [](double x, const double* q) { return Geometric::icdf(x, q[0]); }, draw_geom_inv
+    );
+    sweep<1>(
+        "geometric iccdf (same value)", false, N, [](const Chunk<1>& c, double* o) { Geometric::iccdf_chunk(c, o); },
+        [](double x, const double* q) { return Geometric::iccdf(x, q[0]); },
+        [&](double& x, double* q) { draw_geom_inv(x, q); }
+    );
 
     auto draw_logser = [](double& x, double* q) {
         const double u = unif(0, 1), p = prob();
@@ -155,10 +180,14 @@ int main(int argc, char** argv) {
         x = k;
         q[0] = p;
     };
-    sweep<1>("logseries pmf", false, N, [](const Chunk<1>& c, double* o) { LogSeries::pmf_kernel(c, o); },
-             [](double x, const double* q) { return LogSeries::pmf(x, q[0]); }, draw_logser);
-    sweep<1>("logseries logpmf", true, N, [](const Chunk<1>& c, double* o) { LogSeries::logpmf_kernel(c, o); },
-             [](double x, const double* q) { return LogSeries::logpmf(x, q[0]); }, draw_logser);
+    sweep<1>(
+        "logseries pmf", false, N, [](const Chunk<1>& c, double* o) { LogSeries::pmf_kernel(c, o); },
+        [](double x, const double* q) { return LogSeries::pmf(x, q[0]); }, draw_logser
+    );
+    sweep<1>(
+        "logseries logpmf", true, N, [](const Chunk<1>& c, double* o) { LogSeries::logpmf_kernel(c, o); },
+        [](double x, const double* q) { return LogSeries::logpmf(x, q[0]); }, draw_logser
+    );
 
     // hypergeometric: totals from 121 to 2^53, K and n over (0, N), k around the mean
     auto draw_hyper = [](double& x, double* q) {
@@ -173,10 +202,14 @@ int main(int argc, char** argv) {
         x = std::min(std::max(k, lo), hi);
         q[0] = N, q[1] = K, q[2] = n;
     };
-    sweep<3>("hypergeometric pmf", false, N, [](const Chunk<3>& c, double* o) { Hypergeometric::pmf_kernel(c, o); },
-             [](double x, const double* q) { return Hypergeometric::pmf(x, q[0], q[1], q[2]); }, draw_hyper);
-    sweep<3>("hypergeometric logpmf", true, N, [](const Chunk<3>& c, double* o) { Hypergeometric::logpmf_kernel(c, o); },
-             [](double x, const double* q) { return Hypergeometric::logpmf(x, q[0], q[1], q[2]); }, draw_hyper);
+    sweep<3>(
+        "hypergeometric pmf", false, N, [](const Chunk<3>& c, double* o) { Hypergeometric::pmf_kernel(c, o); },
+        [](double x, const double* q) { return Hypergeometric::pmf(x, q[0], q[1], q[2]); }, draw_hyper
+    );
+    sweep<3>(
+        "hypergeometric logpmf", true, N, [](const Chunk<3>& c, double* o) { Hypergeometric::logpmf_kernel(c, o); },
+        [](double x, const double* q) { return Hypergeometric::logpmf(x, q[0], q[1], q[2]); }, draw_hyper
+    );
 
     // the log tails by one vForce log (disc::log_tail_kernel) against the scalar definitions:
     // k over the whole support, far tails included (those fall back: same bits)
@@ -186,17 +219,31 @@ int main(int argc, char** argv) {
             if (unif(0, 1) < 0.2) x = std::floor(x * logunif(1e-3, 1e3));
         };
     };
-    sweep<2>("binomial logcdf", true, N / 4, [](const Chunk<2>& c, double* o) { Binomial::logcdf_kernel(c, o); },
-             [](double x, const double* q) { return Binomial::logcdf(x, q[0], q[1]); }, wide(draw_binom));
-    sweep<2>("binomial logccdf", true, N / 4, [](const Chunk<2>& c, double* o) { Binomial::logccdf_kernel(c, o); },
-             [](double x, const double* q) { return Binomial::logccdf(x, q[0], q[1]); }, wide(draw_binom));
-    sweep<2>("negative binomial logcdf", true, N / 4, [](const Chunk<2>& c, double* o) { NegativeBinomial::logcdf_kernel(c, o); },
-             [](double x, const double* q) { return NegativeBinomial::logcdf(x, q[0], q[1]); }, wide(draw_nbinom));
-    sweep<2>("negative binomial logccdf", true, N / 4, [](const Chunk<2>& c, double* o) { NegativeBinomial::logccdf_kernel(c, o); },
-             [](double x, const double* q) { return NegativeBinomial::logccdf(x, q[0], q[1]); }, wide(draw_nbinom));
-    sweep<1>("poisson logcdf", true, N / 4, [](const Chunk<1>& c, double* o) { Poisson::logcdf_kernel(c, o); },
-             [](double x, const double* q) { return Poisson::logcdf(x, q[0]); }, wide(draw_pois));
-    sweep<1>("poisson logccdf", true, N / 4, [](const Chunk<1>& c, double* o) { Poisson::logccdf_kernel(c, o); },
-             [](double x, const double* q) { return Poisson::logccdf(x, q[0]); }, wide(draw_pois));
+    sweep<2>(
+        "binomial logcdf", true, N / 4, [](const Chunk<2>& c, double* o) { Binomial::logcdf_kernel(c, o); },
+        [](double x, const double* q) { return Binomial::logcdf(x, q[0], q[1]); }, wide(draw_binom)
+    );
+    sweep<2>(
+        "binomial logccdf", true, N / 4, [](const Chunk<2>& c, double* o) { Binomial::logccdf_kernel(c, o); },
+        [](double x, const double* q) { return Binomial::logccdf(x, q[0], q[1]); }, wide(draw_binom)
+    );
+    sweep<2>(
+        "negative binomial logcdf", true, N / 4,
+        [](const Chunk<2>& c, double* o) { NegativeBinomial::logcdf_kernel(c, o); },
+        [](double x, const double* q) { return NegativeBinomial::logcdf(x, q[0], q[1]); }, wide(draw_nbinom)
+    );
+    sweep<2>(
+        "negative binomial logccdf", true, N / 4,
+        [](const Chunk<2>& c, double* o) { NegativeBinomial::logccdf_kernel(c, o); },
+        [](double x, const double* q) { return NegativeBinomial::logccdf(x, q[0], q[1]); }, wide(draw_nbinom)
+    );
+    sweep<1>(
+        "poisson logcdf", true, N / 4, [](const Chunk<1>& c, double* o) { Poisson::logcdf_kernel(c, o); },
+        [](double x, const double* q) { return Poisson::logcdf(x, q[0]); }, wide(draw_pois)
+    );
+    sweep<1>(
+        "poisson logccdf", true, N / 4, [](const Chunk<1>& c, double* o) { Poisson::logccdf_kernel(c, o); },
+        [](double x, const double* q) { return Poisson::logccdf(x, q[0]); }, wide(draw_pois)
+    );
     return 0;
 }

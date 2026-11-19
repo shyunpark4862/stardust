@@ -11,6 +11,7 @@ from .conftest import assert_same
 
 # --------------------------------------------------------- import (numpy -> sd)
 
+
 @pytest.mark.parametrize("np_dtype", [np.bool_, np.int64, np.float64, np.complex128])
 def test_exact_dtypes_are_shared_without_copy(np_dtype):
     src = np.arange(6).astype(np_dtype).reshape(2, 3)
@@ -29,9 +30,17 @@ def test_strided_numpy_views_are_shared_with_their_strides():
 
 @pytest.mark.parametrize(
     "np_dtype,target",
-    [(np.int8, sd.int64), (np.int16, sd.int64), (np.int32, sd.int64), (np.uint8, sd.int64),
-     (np.uint16, sd.int64), (np.uint32, sd.int64), (np.float16, sd.float64), (np.float32, sd.float64),
-     (np.complex64, sd.complex128)],
+    [
+        (np.int8, sd.int64),
+        (np.int16, sd.int64),
+        (np.int32, sd.int64),
+        (np.uint8, sd.int64),
+        (np.uint16, sd.int64),
+        (np.uint32, sd.int64),
+        (np.float16, sd.float64),
+        (np.float32, sd.float64),
+        (np.complex64, sd.complex128),
+    ],
 )
 def test_lossless_widening_copies(np_dtype, target):
     src = np.array([[1, 2], [3, 250]]).astype(np_dtype)
@@ -61,8 +70,12 @@ def test_big_endian_buffers_are_read_by_value(code):
     a = sd.asarray(src)
     assert (a.base is src) == (code == ">?")  # a bool byte has no order: shared; int8 widens anyway
     native = src.astype(src.dtype.newbyteorder("="))
-    assert_same(a, native.astype({"b": np.bool_, "i": np.int64, "u": np.int64, "f": np.float64,
-                                  "c": np.complex128}[src.dtype.kind]))
+    assert_same(
+        a,
+        native.astype(
+            {"b": np.bool_, "i": np.int64, "u": np.int64, "f": np.float64, "c": np.complex128}[src.dtype.kind]
+        ),
+    )
     if src.dtype.itemsize > 1:
         with pytest.raises(ValueError, match="can only be converted by copying"):
             sd.asarray(src, copy=False)
@@ -133,6 +146,7 @@ def test_bool_bytes_other_than_0_and_1_are_normalized():
     ok = np.frombuffer(bytes([1, 0] * 8), dtype=np.bool_)
     assert sd.asarray(ok, copy=False).base is ok
 
+
 def test_numpy_sees_our_memory():
     a = sd.zeros((2, 3), dtype=sd.int64)
     view = np.asarray(a)
@@ -145,19 +159,23 @@ def test_numpy_sees_our_memory():
 def test_exported_view_keeps_array_alive():
     view = np.asarray(sd.full(4, 7))
     import gc
+
     gc.collect()
     assert view.tolist() == [7, 7, 7, 7]
 
 
-@given(hnp.arrays(
-    dtype=st.sampled_from([np.bool_, np.int64, np.float64, np.complex128]),
-    shape=hnp.array_shapes(min_dims=1, max_dims=4, min_side=0, max_side=5),
-))
+@given(
+    hnp.arrays(
+        dtype=st.sampled_from([np.bool_, np.int64, np.float64, np.complex128]),
+        shape=hnp.array_shapes(min_dims=1, max_dims=4, min_side=0, max_side=5),
+    )
+)
 def test_roundtrip_any_numpy_array(src):
     assert_same(sd.asarray(src), src)
 
 
 # --------------------------------------------------------- tolist / repr / str
+
 
 def test_tolist_gives_python_scalars(dtype):
     out = sd.ones((2, 2), dtype=dtype).tolist()

@@ -31,8 +31,16 @@ def best(f, n=1):
     return min(timeit.repeat(f, number=n, repeat=5)) / n * 1e3
 
 
-SCIPY = {"pmf": "pmf", "logpmf": "logpmf", "cdf": "cdf", "logcdf": "logcdf", "ccdf": "sf", "logccdf": "logsf",
-         "icdf": "ppf", "iccdf": "isf"}
+SCIPY = {
+    "pmf": "pmf",
+    "logpmf": "logpmf",
+    "cdf": "cdf",
+    "logcdf": "logcdf",
+    "ccdf": "sf",
+    "logccdf": "logsf",
+    "icdf": "ppf",
+    "iccdf": "isf",
+}
 
 # (class, parameters, scipy frozen classic distribution)
 CASES = [
@@ -78,8 +86,10 @@ def main():
                 except RuntimeError:  # scipy's zipf ppf: "updating stopped, endless loop"
                     print(f"| {cls.__name__} | `{m}` | {t1:.2f} | {t10:.2f} | — | — | — |", flush=True)
                     continue
-                print(f"| {cls.__name__} | `{m}` | {t1:.2f} | {t10:.2f} | {ts:.2f} | {ts / t1:.2f} | {ts / t10:.1f} |",
-                      flush=True)
+                print(
+                    f"| {cls.__name__} | `{m}` | {t1:.2f} | {t10:.2f} | {ts:.2f} | {ts / t1:.2f} | {ts / t10:.1f} |",
+                    flush=True,
+                )
             v = float(x[N // 3])
             ts1 = best(lambda: X.cdf(v), 2000)
             tsc = best(lambda: ref.cdf(v), 2000)
@@ -100,8 +110,11 @@ WIDE = [
     (S.Poisson, {"mu": 3e8}, st.poisson(3e8)),
     (S.Geometric, {"p": 1e-6}, st.geom(1e-6)),
     (S.NegativeBinomial, {"n": 2.5e6, "p": 1e-3}, st.nbinom(2.5e6, 1e-3)),
-    (S.Hypergeometric, {"total": 5 * 10**6, "successes": 12 * 10**5, "draws": 2 * 10**6},
-     st.hypergeom(5 * 10**6, 12 * 10**5, 2 * 10**6)),
+    (
+        S.Hypergeometric,
+        {"total": 5 * 10**6, "successes": 12 * 10**5, "draws": 2 * 10**6},
+        st.hypergeom(5 * 10**6, 12 * 10**5, 2 * 10**6),
+    ),
     (S.DiscreteUniform, {"low": 2, "high": 10**9}, st.randint(2, 10**9)),
     (S.BetaBinomial, {"n": 20000, "a": 2.5, "b": 1.7}, st.betabinom(20000, 2.5, 1.7)),
     (S.LogSeries, {"p": 1 - 1e-7}, st.logser(1 - 1e-7)),

@@ -42,8 +42,10 @@ def cmd_list(a) -> int:
         refs = ", ".join(r.label for r in c.refs)
         flags = ("Q " if c.quick else "  ") + ("C " if c.cost else "  ")
         print(f"{flags}{c.id}  [{', '.join(map(str, c.threads))}T; {refs or '-'}]")
-    print(f"사례 {len(cases)}개 (Q: 빠른 묶음 {sum(c.quick for c in cases)}개, C: 비용표 {sum(bool(c.cost) for c in cases)}개)",
-          file=sys.stderr)
+    print(
+        f"사례 {len(cases)}개 (Q: 빠른 묶음 {sum(c.quick for c in cases)}개, C: 비용표 {sum(bool(c.cost) for c in cases)}개)",
+        file=sys.stderr,
+    )
     return 0
 
 
@@ -67,8 +69,12 @@ def cmd_estimate(a) -> int:
 def cmd_run(a) -> int:
     from .run import Limits, run
 
-    limits = Limits(case_timeout_s=a.timeout * 60, rss_bytes=int(a.max_rss * 2**30),
-                    quiet_cores=a.quiet_cores, busy_cores=a.quiet_cores)
+    limits = Limits(
+        case_timeout_s=a.timeout * 60,
+        rss_bytes=int(a.max_rss * 2**30),
+        quiet_cores=a.quiet_cores,
+        busy_cores=a.quiet_cores,
+    )
     if a.rerun_busy:
         prev = results.load(a.rerun_busy)
         busy = [c["id"] for c in prev["cases"] if c.get("busy")]
@@ -91,9 +97,19 @@ def cmd_run(a) -> int:
             print("고른 사례가 없다", file=sys.stderr)
             return 2
     threads = tuple(int(t) for t in a.threads.split(",")) if a.threads else None
-    data = run(cases, rounds=a.rounds, threads=threads, use_r=not a.no_r, out=a.out, label=a.label,
-               limits=limits, notify=not a.no_notify, resume=a.resume, smoke=a.smoke,
-               quiet="strict" if a.strict else ("no" if a.no_wait else "wait"))
+    data = run(
+        cases,
+        rounds=a.rounds,
+        threads=threads,
+        use_r=not a.no_r,
+        out=a.out,
+        label=a.label,
+        limits=limits,
+        notify=not a.no_notify,
+        resume=a.resume,
+        smoke=a.smoke,
+        quiet="strict" if a.strict else ("no" if a.no_wait else "wait"),
+    )
     if data.get("stopped_busy"):
         return 3
     if data.get("interrupted"):
@@ -211,8 +227,12 @@ def main(argv=None) -> int:
     s.add_argument("--rerun-busy", metavar="RUN.json", help="measure again the cases a run marked busy")
     s.add_argument("--no-wait", action="store_true", help="do not wait for a quiet machine")
     s.add_argument("--strict", action="store_true", help="stop when the machine does not get quiet")
-    s.add_argument("--quiet-cores", type=float, default=1.0,
-                   help="cores other processes may use: before the run, and per case (default 1)")
+    s.add_argument(
+        "--quiet-cores",
+        type=float,
+        default=1.0,
+        help="cores other processes may use: before the run, and per case (default 1)",
+    )
     s.set_defaults(fn=cmd_run)
 
     s = sub.add_parser("compare", help="flag slowdowns against a baseline")

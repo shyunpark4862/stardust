@@ -19,8 +19,9 @@ def _str_list(value, what):  # for read_csv()
     return list(value)
 
 
-def read_csv(path, /, *, sep=",", header=True, names=None, usecols=None, dtype=None, na_values=None, nrows=None,
-             index_col=None):
+def read_csv(
+    path, /, *, sep=",", header=True, names=None, usecols=None, dtype=None, na_values=None, nrows=None, index_col=None
+):
     """A DataFrame from a UTF-8 CSV file (RFC 4180 quoting).
 
     Types are inferred per column (int64, then float64, then bool, then
@@ -39,7 +40,11 @@ def read_csv(path, /, *, sep=",", header=True, names=None, usecols=None, dtype=N
     check_bool(header, "header", "read_csv")
     if index_col is not None and not isinstance(index_col, str):
         raise TypeError(f"read_csv(): 'index_col' must be a column name (str) or None, not {type_name(index_col)}")
-    names, usecols, na_values = _str_list(names, "names"), _str_list(usecols, "usecols"), _str_list(na_values, "na_values")
+    names, usecols, na_values = (
+        _str_list(names, "names"),
+        _str_list(usecols, "usecols"),
+        _str_list(na_values, "na_values"),
+    )
     if not header and not names:
         raise ValueError("read_csv(): 'names' is required when header=False")
     if usecols and len(set(usecols)) != len(usecols):
@@ -54,8 +59,9 @@ def read_csv(path, /, *, sep=",", header=True, names=None, usecols=None, dtype=N
 
     with open(os.fspath(path), "rb") as f:
         data = f.read()
-    out_names, cols = _core.read_csv(data, sep, header, names, usecols, dtypes, all_dtype, na_values,
-                                     -1 if nrows is None else nrows)
+    out_names, cols = _core.read_csv(
+        data, sep, header, names, usecols, dtypes, all_dtype, na_values, -1 if nrows is None else nrows
+    )
     unknown = [k for k in dtypes if k not in out_names]
     if unknown:
         raise KeyError(f"read_csv(): 'dtype' names columns that are not read: {unknown}")
@@ -67,7 +73,9 @@ def read_csv(path, /, *, sep=",", header=True, names=None, usecols=None, dtype=N
             raise KeyError(f"read_csv(): 'index_col' names a column that is not read: {index_col!r}")
         labels = columns.pop(index_col)
         if labels.dtype not in ("int64", "string") or labels.null_count:
-            raise ValueError(f"read_csv(): the 'index_col' column {index_col!r} must be int64 or string without NA, "
-                             f"got {labels.dtype}")
+            raise ValueError(
+                f"read_csv(): the 'index_col' column {index_col!r} must be int64 or string without NA, "
+                f"got {labels.dtype}"
+            )
         index = Index._new(labels, index_col)
     return DataFrame._new(columns, index)

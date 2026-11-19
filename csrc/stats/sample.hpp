@@ -110,8 +110,15 @@ inline void each_first(random::Key key, std::uint64_t pos, std::int64_t i0, std:
 // at a time (buf: scratch). For the kernels whose elements draw several words each (a row
 // of a multivariate sample).
 template <class F>
-inline void each_words(random::Stream& s, std::uint64_t pos, std::int64_t i0, std::int64_t i1, std::uint64_t nb,
-                       std::vector<std::uint64_t>& buf, F&& fn) {
+inline void each_words(
+    random::Stream& s,
+    std::uint64_t pos,
+    std::int64_t i0,
+    std::int64_t i1,
+    std::uint64_t nb,
+    std::vector<std::uint64_t>& buf,
+    F&& fn
+) {
     buf.resize(static_cast<std::size_t>(16 * nb));
     std::uint64_t es[4] = {}, fw[4] = {};
     std::int64_t at4 = 0;

@@ -50,7 +50,9 @@ class DataFrame(Reductions):
             if columns is not None:
                 cols = {k: cols.get(k) for k in columns}
             if target is not None:  # labels given: rearrange to them (docs/api/frame.md §2.1)
-                cols = {k: c if c is None else _select.reindexed(c, natural, target, "DataFrame") for k, c in cols.items()}
+                cols = {
+                    k: c if c is None else _select.reindexed(c, natural, target, "DataFrame") for k, c in cols.items()
+                }
                 natural = target
         elif isinstance(data, dict):
             cols, natural = _from_dict(data, dtype, target)
@@ -135,8 +137,10 @@ class DataFrame(Reductions):
         """df["a"] (a Series), df[["a", "b"]] (a DataFrame) or df[mask] (rows) (docs/api/frame.md §5.3)."""
         if isinstance(key, Series):  # rows by a bool mask: each column compacted directly (docs/design/frame.md §7.3)
             sel = ("mask", _select.aligned_mask(key, self._index))
-            return DataFrame._new({k: _select.select_column(c, sel) for k, c in self._cols.items()},
-                                  _select.select_index(self._index, sel))
+            return DataFrame._new(
+                {k: _select.select_column(c, sel) for k, c in self._cols.items()},
+                _select.select_index(self._index, sel),
+            )
         if isinstance(key, list) or _column.is_ndarray(key):  # an array of names as a list (docs/api/frame.md §5.4)
             names = _check_columns(key)
             return DataFrame._new({k: self._column(k) for k in names}, self._index)
@@ -187,7 +191,9 @@ class DataFrame(Reductions):
             return DataFrame._new({k: f(c) for k, c in self._cols.items()}, self._index)
         for k in per_column:  # the first missing one, as every other column argument (_column)
             self._column(k, func)
-        return DataFrame._new({k: f(c, per_column[k]) if k in per_column else c for k, c in self._cols.items()}, self._index)
+        return DataFrame._new(
+            {k: f(c, per_column[k]) if k in per_column else c for k, c in self._cols.items()}, self._index
+        )
 
     def _reduce(self, op, skipna, correction):
         """One row, labelled by the operation, each column keeping its own result
@@ -260,7 +266,9 @@ class DataFrame(Reductions):
         if count_name in names:
             raise ValueError(f"value_counts(): a key column cannot be named {count_name!r}")
         frame = self.dropna(subset=names) if dropna else self
-        keys, counts = _unique.value_counts([frame._cols[k] for k in names], normalize, sort, descending, "value_counts")
+        keys, counts = _unique.value_counts(
+            [frame._cols[k] for k in names], normalize, sort, descending, "value_counts"
+        )
         cols = dict(zip(names, keys))
         cols[count_name] = counts
         return DataFrame._new(cols, RangeIndex(len(counts)))
@@ -423,7 +431,9 @@ _ops.attach(DataFrame, lambda: ())  # DataFrame._binary itself rejects a Series
 
 def _require_columns(columns, ncols):  # for DataFrame()
     if columns is None:
-        raise ValueError("DataFrame(): 'columns' is required to name the columns of row or 2-D array data")  # docs/api/frame.md §2.5
+        raise ValueError(
+            "DataFrame(): 'columns' is required to name the columns of row or 2-D array data"
+        )  # docs/api/frame.md §2.5
     if len(columns) != ncols:
         raise ValueError(f"DataFrame(): {len(columns)} column names for {ncols} columns")
     return columns
@@ -462,7 +472,9 @@ def _from_dict(data, dtype, target):
         cols[k] = col
     if length is None:
         if cols:
-            raise ValueError("DataFrame(): cannot make a DataFrame from scalars alone; give at least one column as a list")
+            raise ValueError(
+                "DataFrame(): cannot make a DataFrame from scalars alone; give at least one column as a list"
+            )
         length = 0
     for k, v in cols.items():
         if _column.is_scalar(v):

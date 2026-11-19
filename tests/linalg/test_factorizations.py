@@ -41,8 +41,11 @@ def poison(x, keep_lower, keep_diag=True):
     """Fill the triangle a function must not read with NaN (float dtypes only)."""
     x = x.copy()
     n = x.shape[-1]
-    mask = np.tril(np.ones((n, n), bool), 0 if keep_diag else -1) if keep_lower else np.triu(
-        np.ones((n, n), bool), 0 if keep_diag else 1)
+    mask = (
+        np.tril(np.ones((n, n), bool), 0 if keep_diag else -1)
+        if keep_lower
+        else np.triu(np.ones((n, n), bool), 0 if keep_diag else 1)
+    )
     x[..., ~mask] = np.nan
     return x
 
@@ -335,12 +338,21 @@ def test_results_do_not_depend_on_input_layout(seed, n, dtype):
     rng = np.random.default_rng(seed)
     s = spd(rng, (2,), n, dtype)
     b = random_values(rng, (2, n, 2), dtype)
+
     def run(layout):
         S = as_sd(with_layout(s, layout))
         B = as_sd(with_layout(b, layout))
         r = sd.linalg.lu(S)
-        return [npy(sd.linalg.cholesky(S)), npy(sd.linalg.solve_triangular(S, B, upper=False)), npy(sd.linalg.solve(S, B)),
-                npy(r.L), npy(r.U), npy(sd.linalg.inv(S)), npy(sd.linalg.det(S))]
+        return [
+            npy(sd.linalg.cholesky(S)),
+            npy(sd.linalg.solve_triangular(S, B, upper=False)),
+            npy(sd.linalg.solve(S, B)),
+            npy(r.L),
+            npy(r.U),
+            npy(sd.linalg.inv(S)),
+            npy(sd.linalg.det(S)),
+        ]
+
     ref = run("C")
     for layout in ("F", "strided", "reversed"):
         for got, want in zip(run(layout), ref):

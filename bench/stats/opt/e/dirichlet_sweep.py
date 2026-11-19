@@ -34,12 +34,17 @@ def main():
     print("| K | shapes | logpdf max error (mixed) | pdf max error (rel) |")
     print("|---:|---|---:|---:|")
     for K in (2, 3, 4, 8):
-        kinds = {"0.5..4": rng.uniform(0.5, 4, K), "0.01..1": rng.uniform(0.01, 1, K), "1..200": rng.uniform(1, 200, K),
-                 "1e-3..1e3": 10.0 ** rng.uniform(-3, 3, K), "with 1s": np.r_[1.0, rng.uniform(0.2, 3, K - 1)]}
+        kinds = {
+            "0.5..4": rng.uniform(0.5, 4, K),
+            "0.01..1": rng.uniform(0.01, 1, K),
+            "1..200": rng.uniform(1, 200, K),
+            "1e-3..1e3": 10.0 ** rng.uniform(-3, 3, K),
+            "with 1s": np.r_[1.0, rng.uniform(0.2, 3, K - 1)],
+        }
         for name, al in kinds.items():
             x = rng.dirichlet(np.maximum(al, 0.05), size=n)
-            x[: n // 10] = rng.dirichlet(np.ones(K), size=n // 10)        # off the bulk
-            x[n // 10: n // 5] = rng.dirichlet(np.full(K, 0.05), size=n // 10)  # the corners
+            x[: n // 10] = rng.dirichlet(np.ones(K), size=n // 10)  # off the bulk
+            x[n // 10 : n // 5] = rng.dirichlet(np.full(K, 0.05), size=n // 10)  # the corners
             x = np.maximum(x, 1e-300)
             x = x / x.sum(axis=1, keepdims=True)
             D = S.Dirichlet(alpha=sd.asarray(al))

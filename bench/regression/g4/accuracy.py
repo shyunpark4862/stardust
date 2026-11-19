@@ -43,10 +43,12 @@ def arb():
         f = p["ref"]
         hi = np.array([v[0] for v in f["params"]])
         lo = np.array([v[1] for v in f["params"]])
-        e = [np.linalg.norm((a(r.params) - hi) - lo) / np.linalg.norm(hi + lo),
-             abs(r.scale - sum(f["scale"])) / sum(f["scale"]),
-             np.max(np.abs(a(r.bse) - dd(f["bse"])) / dd(f["bse"])),
-             np.max(np.abs(a(r.weights) - dd(f["weights"])))]
+        e = [
+            np.linalg.norm((a(r.params) - hi) - lo) / np.linalg.norm(hi + lo),
+            abs(r.scale - sum(f["scale"])) / sum(f["scale"]),
+            np.max(np.abs(a(r.bse) - dd(f["bse"])) / dd(f["bse"])),
+            np.max(np.abs(a(r.weights) - dd(f["weights"]))),
+        ]
         worst = np.maximum(worst, e)
         print(f"| {name} | {e[0]:.1e} | {e[1]:.1e} | {e[2]:.1e} | {e[3]:.1e} | {r.n_iter} |")
     print(f"| largest | {worst[0]:.1e} | {worst[1]:.1e} | {worst[2]:.1e} | {worst[3]:.1e} | |")
@@ -77,13 +79,21 @@ def statsmodels():
                     warnings.simplefilter("ignore")
                     s = sm.RLM(y, sm.add_constant(X), M=M).fit(scale_est=est, tol=1e-15, maxiter=1000)
                 p = a(r.params)
-                w = np.maximum(w, [np.max(np.abs(p - s.params)) / np.max(np.abs(s.params)),
-                                   abs(r.scale - s.scale) / s.scale, np.max(np.abs(a(r.bse) - s.bse) / s.bse),
-                                   np.max(np.abs(a(r.weights) - s.weights))])
+                w = np.maximum(
+                    w,
+                    [
+                        np.max(np.abs(p - s.params)) / np.max(np.abs(s.params)),
+                        abs(r.scale - s.scale) / s.scale,
+                        np.max(np.abs(a(r.bse) - s.bse) / s.bse),
+                        np.max(np.abs(a(r.weights) - s.weights)),
+                    ],
+                )
                 its.append(r.n_iter)
                 smit.append(s.fit_history["iteration"])
-            print(f"| {norm} | {se} | {w[0]:.1e} | {w[1]:.1e} | {w[2]:.1e} | {w[3]:.1e} | "
-                  f"{'/'.join(map(str, its))} | {'/'.join(map(str, smit))} |")
+            print(
+                f"| {norm} | {se} | {w[0]:.1e} | {w[1]:.1e} | {w[2]:.1e} | {w[3]:.1e} | "
+                f"{'/'.join(map(str, its))} | {'/'.join(map(str, smit))} |"
+            )
 
 
 def r_refs():

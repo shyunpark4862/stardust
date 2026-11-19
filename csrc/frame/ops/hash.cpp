@@ -40,21 +40,23 @@ Factorized factorize_with(const Column& col, KeyOf key_of) {
 Factorized factorize(const Column& col) {
     using U = std::uint64_t;
     switch (col.dtype) {
-    case DType::Bool: {
-        const auto* v = col.data<std::uint8_t>();
-        return factorize_with<U, Fmix64>(col, [v](std::int64_t i) -> U { return v[i]; });
-    }
-    case DType::Int64: {
-        const auto* v = col.data<std::int64_t>();
-        return factorize_with<U, Fmix64>(col, [v](std::int64_t i) { return static_cast<U>(v[i]); });
-    }
-    case DType::Float64: {
-        const auto* v = col.data<double>();
-        return factorize_with<U, Fmix64>(col, [v](std::int64_t i) { return float_key(v[i]); });
-    }
-    case DType::String:
-        return factorize_with<std::string_view, HashBytes>(col, [&col](std::int64_t i) { return col.string_at(i); });
-    case DType::Complex128: break;  // not a frame dtype
+        case DType::Bool: {
+            const auto* v = col.data<std::uint8_t>();
+            return factorize_with<U, Fmix64>(col, [v](std::int64_t i) -> U { return v[i]; });
+        }
+        case DType::Int64: {
+            const auto* v = col.data<std::int64_t>();
+            return factorize_with<U, Fmix64>(col, [v](std::int64_t i) { return static_cast<U>(v[i]); });
+        }
+        case DType::Float64: {
+            const auto* v = col.data<double>();
+            return factorize_with<U, Fmix64>(col, [v](std::int64_t i) { return float_key(v[i]); });
+        }
+        case DType::String:
+            return factorize_with<std::string_view, HashBytes>(col, [&col](std::int64_t i) {
+                return col.string_at(i);
+            });
+        case DType::Complex128: break;  // not a frame dtype
     }
     throw nb::type_error("unknown dtype");
 }
@@ -120,16 +122,17 @@ Column stable_order(const Column& counts, bool ascending) {
 namespace sd::frame {
 
 bool contains_key(const Column& col, const Column& value) {
-    if (col.dtype != value.dtype || value.length != 1) throw nb::type_error("contains_key: one value of the column's dtype");
+    if (col.dtype != value.dtype || value.length != 1)
+        throw nb::type_error("contains_key: one value of the column's dtype");
     if (!value.is_valid(0)) return col.null_count > 0;
     auto same = [&](std::int64_t i) {
         if (!col.is_valid(i)) return false;
         switch (col.dtype) {
-        case DType::Bool: return col.data<std::uint8_t>()[i] == value.data<std::uint8_t>()[0];
-        case DType::Int64: return col.data<std::int64_t>()[i] == value.data<std::int64_t>()[0];
-        case DType::Float64: return float_key(col.data<double>()[i]) == float_key(value.data<double>()[0]);
-        case DType::String: return col.string_at(i) == value.string_at(0);
-        case DType::Complex128: break;  // not a frame dtype
+            case DType::Bool: return col.data<std::uint8_t>()[i] == value.data<std::uint8_t>()[0];
+            case DType::Int64: return col.data<std::int64_t>()[i] == value.data<std::int64_t>()[0];
+            case DType::Float64: return float_key(col.data<double>()[i]) == float_key(value.data<double>()[0]);
+            case DType::String: return col.string_at(i) == value.string_at(0);
+            case DType::Complex128: break;  // not a frame dtype
         }
         return false;
     };
@@ -150,32 +153,37 @@ namespace {
 // half of a one-thread 1M-row merge. Everything the loop reads is a local
 // of the task, so the int64 stores cannot alias it (docs/design/frame.md §7.6).
 template <class Key, class Hash, class KeyOf>
-void find_rows(const Partitioned<Key, Hash>& table, const Column& probe, KeyOf key_of, std::int64_t skip,
-               std::int64_t* out) {
+void find_rows(
+    const Partitioned<Key, Hash>& table, const Column& probe, KeyOf key_of, std::int64_t skip, std::int64_t* out
+) {
     const bool nulls = probe.null_count > 0;
-    for_chunks(probe.length, [&](std::int64_t lo, std::int64_t hi) {
-        const Partitioned<Key, Hash>& t = table;
-        const KeyOf key = key_of;
-        const std::int64_t s = skip;
-        std::int64_t* o = out;
-        if (!nulls) {
-            for (std::int64_t i = lo; i < hi; ++i) {
-                const std::int64_t c = t.find(key(i));
-                o[i] = c - (c > s);
-            }
-        } else {
-            const std::uint8_t* bits = probe.validity_bits();
-            const std::int64_t off = probe.offset;
-            for (std::int64_t i = lo; i < hi; ++i) {
-                if (!bitmap::get(bits, off + i)) {
-                    o[i] = -1;
-                    continue;
+    for_chunks(
+        probe.length,
+        [&](std::int64_t lo, std::int64_t hi) {
+            const Partitioned<Key, Hash>& t = table;
+            const KeyOf key = key_of;
+            const std::int64_t s = skip;
+            std::int64_t* o = out;
+            if (!nulls) {
+                for (std::int64_t i = lo; i < hi; ++i) {
+                    const std::int64_t c = t.find(key(i));
+                    o[i] = c - (c > s);
                 }
-                const std::int64_t c = t.find(key(i));
-                o[i] = c - (c > s);
+            } else {
+                const std::uint8_t* bits = probe.validity_bits();
+                const std::int64_t off = probe.offset;
+                for (std::int64_t i = lo; i < hi; ++i) {
+                    if (!bitmap::get(bits, off + i)) {
+                        o[i] = -1;
+                        continue;
+                    }
+                    const std::int64_t c = t.find(key(i));
+                    o[i] = c - (c > s);
+                }
             }
-        }
-    }, 8);
+        },
+        8
+    );
 }
 
 // Row i's string from pointers held by the closure (not reloaded through
@@ -272,9 +280,9 @@ namespace {
 
 std::uint64_t word_key(const Column& c, std::int64_t i) {
     switch (c.dtype) {
-    case DType::Int64: return static_cast<std::uint64_t>(c.data<std::int64_t>()[i]);
-    case DType::Float64: return float_key(c.data<double>()[i]);
-    default: return c.data<std::uint8_t>()[i];
+        case DType::Int64: return static_cast<std::uint64_t>(c.data<std::int64_t>()[i]);
+        case DType::Float64: return float_key(c.data<double>()[i]);
+        default: return c.data<std::uint8_t>()[i];
     }
 }
 
@@ -315,25 +323,23 @@ std::vector<std::int64_t> ValueCodes::lookup(const Column& probe) const {
     const std::int64_t skip = na_code_ >= 0 ? na_code_ : kNoSkip;  // the same renumbering as the build rows
     std::int64_t* o = out.data();
     switch (probe.dtype) {
-    case DType::String:
-        find_rows(*strings_, probe, string_keys(probe), skip, o);
-        break;
-    case DType::Int64: {
-        const auto* v = probe.data<std::int64_t>();
-        find_rows(*words_, probe, [v](std::int64_t i) { return static_cast<std::uint64_t>(v[i]); }, skip, o);
-        break;
-    }
-    case DType::Float64: {
-        const auto* v = probe.data<double>();
-        find_rows(*words_, probe, [v](std::int64_t i) { return float_key(v[i]); }, skip, o);
-        break;
-    }
-    case DType::Bool: {
-        const auto* v = probe.data<std::uint8_t>();
-        find_rows(*words_, probe, [v](std::int64_t i) { return std::uint64_t{v[i]}; }, skip, o);
-        break;
-    }
-    case DType::Complex128: break;  // not a frame dtype
+        case DType::String: find_rows(*strings_, probe, string_keys(probe), skip, o); break;
+        case DType::Int64: {
+            const auto* v = probe.data<std::int64_t>();
+            find_rows(*words_, probe, [v](std::int64_t i) { return static_cast<std::uint64_t>(v[i]); }, skip, o);
+            break;
+        }
+        case DType::Float64: {
+            const auto* v = probe.data<double>();
+            find_rows(*words_, probe, [v](std::int64_t i) { return float_key(v[i]); }, skip, o);
+            break;
+        }
+        case DType::Bool: {
+            const auto* v = probe.data<std::uint8_t>();
+            find_rows(*words_, probe, [v](std::int64_t i) { return std::uint64_t{v[i]}; }, skip, o);
+            break;
+        }
+        case DType::Complex128: break;  // not a frame dtype
     }
     return out;
 }

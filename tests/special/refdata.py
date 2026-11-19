@@ -31,10 +31,14 @@ PART = {"airy_ai": ("airy", 0), "airy_aip": ("airy", 1), "airy_bi": ("airy", 2),
 KW = {
     "lambertw_m1": ("lambertw", {"k": -1}),
     # S8: complex arguments (x0 is complex128; hi, lo hold both parts as double-doubles)
-    "erf_complex": ("erf", {}), "erfc_complex": ("erfc", {}), "erfcx_complex": ("erfcx", {}),
+    "erf_complex": ("erf", {}),
+    "erfc_complex": ("erfc", {}),
+    "erfcx_complex": ("erfcx", {}),
     "loggamma_complex": ("loggamma", {}),
-    "lambertw_c0": ("lambertw", {"k": 0}), "lambertw_cm1": ("lambertw", {"k": -1}),
-    "lambertw_c1": ("lambertw", {"k": 1}), "lambertw_c4": ("lambertw", {"k": 4}),
+    "lambertw_c0": ("lambertw", {"k": 0}),
+    "lambertw_cm1": ("lambertw", {"k": -1}),
+    "lambertw_c1": ("lambertw", {"k": 1}),
+    "lambertw_c4": ("lambertw", {"k": 4}),
 }
 
 
@@ -75,8 +79,10 @@ def _special(got, hi):
     if np.iscomplexobj(hi):
         got = np.asarray(got, dtype=np.complex128)
         finite = np.isfinite(hi) & np.isfinite(got)
+
         def same(g, h):
             return (np.isnan(h) & np.isnan(g)) | (g == h)
+
         match = same(got.real, hi.real) & same(got.imag, hi.imag)
         return finite, np.where(match, 0.0, np.inf)
     got = np.asarray(got, dtype=np.float64)

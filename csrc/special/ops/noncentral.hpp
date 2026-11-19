@@ -215,11 +215,14 @@ struct GammaFamily {
                 const double k = n;
                 return std::pair{-k * (k - s), y + 2.0 * k + 1.0 - s};
             },
-            100000);
+            100000
+        );
         if (!tail.converged) return kNotSummed;
         return d * scaled(s / tail.value);
     }
-    Scaled G(dd::DD s) const { return at_shape([&](double v) { return G0(v); }, s); }
+    Scaled G(dd::DD s) const {
+        return at_shape([&](double v) { return G0(v); }, s);
+    }
     Scaled T(dd::DD s) const {
         const Scaled t = prefix_s(s.hi, y);
         return s.lo == 0.0 ? t : t * scaled(1.0 + s.lo * (std::log(y) - Digamma::f(s.hi + 1.0)));
@@ -278,7 +281,9 @@ struct BetaFamily {
         const Scaled t = beta_prefix_w(b, s, beta_exponent(b, s, y, x)) / scaled(b);
         return t * ratio_series([&](int k) { return y.hi * (b + k + s) / (b + k + 1.0); });
     }
-    Scaled G(dd::DD s) const { return at_shape([&](double v) { return G0(v); }, s); }
+    Scaled G(dd::DD s) const {
+        return at_shape([&](double v) { return G0(v); }, s);
+    }
     Scaled T(dd::DD s) const {
         const Scaled t = beta_prefix_w(s.hi, b, beta_exponent(s.hi, b, x, y)) / scaled(s.hi);
         if (s.lo == 0.0) return t;
@@ -308,7 +313,8 @@ struct BetaFamily {
         if (s > 0x1p40 || b > 0x1p40) {
             if (!upper) {
                 const double r = x.hi * (s + b) / (s + 1.0) * (b < 1.0 ? std::exp((1.0 - b) / (s + b)) : 1.0);
-                return r < 1.0 ? log_abs(beta_prefix_w(s, b, beta_exponent(s, b, x, y)) / scaled(s)) - std::log1p(-r) : 0.0;
+                return r < 1.0 ? log_abs(beta_prefix_w(s, b, beta_exponent(s, b, x, y)) / scaled(s)) - std::log1p(-r)
+                               : 0.0;
             }
             const double r = y.hi * (b + s) / (b + 1.0) * (s < 1.0 ? std::exp((1.0 - s) / (b + s)) : 1.0);
             return r < 1.0 ? log_abs(beta_prefix_w(b, s, beta_exponent(b, s, y, x)) / scaled(b)) - std::log1p(-r) : 0.0;
@@ -659,7 +665,7 @@ struct GammaRatio {
         return r;
     }
     double later(double r) const { return r; }  // a bound on the ratios after one of r
-    double dweight() const { return 1.0; }      // density(s0 + k + 1) / T(s0 + k), up to the family's factor
+    double dweight() const { return 1.0; }  // density(s0 + k + 1) / T(s0 + k), up to the family's factor
 };
 // of the beta family: x (s0 + k + b) / (s0 + k + 1); falls to x for b > 1, climbs to x for b < 1.
 struct BetaRatio {
@@ -777,8 +783,8 @@ inline bool beta_first_pow(double a, double b, dd::DD x, dd::DD y, dd::DD mu, do
     if (!(px >= kLitePow && py >= kLitePow && a <= 0x1p20 && b <= 0x1p20)) return false;
     thread_local Memo3 m;
     if (!m.hit(a, b, mu)) {
-        const dd::DD l = dd::loggamma(dd::two_sum(a, b)) - dd::loggamma(dd::DD{a, 0.0} + 1.0) -
-                         dd::loggamma(dd::DD{b, 0.0}) - mu;
+        const dd::DD l =
+            dd::loggamma(dd::two_sum(a, b)) - dd::loggamma(dd::DD{a, 0.0} + 1.0) - dd::loggamma(dd::DD{b, 0.0}) - mu;
         m = {a, b, mu.hi, mu.lo, std::exp(l.hi) * (1.0 + l.lo)};
     }
     if (!lite_normal(m.v)) return false;
@@ -811,8 +817,17 @@ inline double lite_terms_beta(double s0, double b, double x, double y) {
 // an upper sum at most 1/4 (a third of its error, which includes its kernel's: P, Q and the
 // incomplete beta were measured to 2-3e-15 at small shapes).
 template <class L, class U>
-inline bool lite_pick(bool upper, double mu, double nl, double nu, double direct, double z, const L& lower,
-                      const U& upper_sum_of, double& out) {
+inline bool lite_pick(
+    bool upper,
+    double mu,
+    double nl,
+    double nu,
+    double direct,
+    double z,
+    const L& lower,
+    const U& upper_sum_of,
+    double& out
+) {
     const bool below = z < 0.0, above = z > 0.75;  // (a normal's upper tail at 0.75 is 0.23)
     // The far-end walk costs about one incomplete function and the prefixes (60 terms' worth)
     // and four times a term for each of its own (the weights' width, both sides): a lower
@@ -859,12 +874,16 @@ inline bool ncx2_lite(double df, double nc, double x, bool upper, double& out, d
     auto upper_of = [&](double& v) {
         double s;
         const double q0 = a == 0.0 ? 0.0 : igam_detail::igam(a, y).q;
-        if (!(q0 >= kTinyG || a == 0.0) || !lite::upper_sum(tr, dd::DD{mu, 0.0}, 0.0, std::exp(-mu) / tw, s, dens)) return false;
+        if (!(q0 >= kTinyG || a == 0.0) || !lite::upper_sum(tr, dd::DD{mu, 0.0}, 0.0, std::exp(-mu) / tw, s, dens))
+            return false;
         v = at_most_one(q0 + tw * s);
         return v >= 0x1p-1000;
     };
-    if (!lite_pick(upper, mu, lite_terms_gamma(a, y), lite_terms_weights(mu), 30.0, (x - (df + nc)) / std::sqrt(2.0 * (df + 2.0 * nc)),
-                   lower, upper_of, out)) return false;
+    if (!lite_pick(
+            upper, mu, lite_terms_gamma(a, y), lite_terms_weights(mu), 30.0,
+            (x - (df + nc)) / std::sqrt(2.0 * (df + 2.0 * nc)), lower, upper_of, out
+        ))
+        return false;
     if (pdf) *pdf = 0.5 * tw * (a / y + dens);
     return true;
 }
@@ -930,8 +949,8 @@ inline Scaled or_complement(const Sum& sum, bool upper, bool wide) {
 // chndtr (upper: chndtrc) for 0 < df, nc, x finite (df = 0 too), as m 2^e (wide: see mixture_s).
 inline Scaled ncx2_s(double df, double nc, double x, bool upper, bool wide = false) {
     return or_complement(
-        [&](bool u, bool w) { return mixture_s(0.5 * nc, 0.0, 0.5 * df, GammaFamily{0.5 * x, u}, 0.0, w); }, upper,
-        wide);
+        [&](bool u, bool w) { return mixture_s(0.5 * nc, 0.0, 0.5 * df, GammaFamily{0.5 * x, u}, 0.0, w); }, upper, wide
+    );
 }
 inline double ncx2(double df, double nc, double x, bool upper) {
     double out;
@@ -970,7 +989,8 @@ inline Scaled ncf_s(double dfn, double dfd, double nc, double x, bool upper, boo
     }
     return or_complement(
         [&](bool u, bool w) { return mixture_s(0.5 * nc, 0.0, 0.5 * dfn, BetaFamily{0.5 * dfd, g.x, g.y, u}, 0.0, w); },
-        upper, wide);
+        upper, wide
+    );
 }
 inline double ncf(double dfn, double dfd, double nc, double x, bool upper) {
     double out;
@@ -1018,8 +1038,8 @@ inline Scaled nct_opposite_s(double df, double a, double t) {
     const dd::DD s2 = dd::two_prod(sstar, sstar);
     // E* and E'(v*) (~0 up to rounding: kept, so the remainder below stays exact)
     const dd::DD hstar = s2 - 1.0 - dd::log(sstar) * 2.0;
-    const dd::DD Estar = -(zdd * zdd) * 0.5 + (dd::log(df) - dd::log(kPi)) * 0.5 - hstar * (0.5 * df) -
-                         std::log(gamma_star(0.5 * df));
+    const dd::DD Estar =
+        -(zdd * zdd) * 0.5 + (dd::log(df) - dd::log(kPi)) * 0.5 - hstar * (0.5 * df) - std::log(gamma_star(0.5 * df));
     const double c1 = (-(zdd * dd::DD{p, 0.0}) - (s2 - 1.0) * df).hi;
     const double kappa = p * p + z * p + 2.0 * df * sstar * sstar;
     const double sigma = 1.0 / std::sqrt(kappa);
@@ -1081,11 +1101,16 @@ inline Scaled nct_s(double df, double nc, double t, bool upper, bool wide = fals
         // df / (df + t^2) below 2^-1000: the far tail on the noncentrality's side from y^b
         const dd::DD logy = dd::log(df) - dd::log(t) * 2.0;
         const Scaled up = clamp01(times(
-            add_s(tiny_upper_s(mu.hi, 0.0, 0.5, 0.5 * df, logy, mu.lo), tiny_upper_s(mu.hi, 0.5, 1.0, 0.5 * df, logy, mu.lo)),
-            0.5));
+            add_s(
+                tiny_upper_s(mu.hi, 0.0, 0.5, 0.5 * df, logy, mu.lo),
+                tiny_upper_s(mu.hi, 0.5, 1.0, 0.5 * df, logy, mu.lo)
+            ),
+            0.5
+        ));
         return upper ? up : one_minus(up);
     }
-    if (g.x.hi < distr_detail::kTinyArg) return upper ? nct_opposite_s(df, -nc, t) : one_minus(nct_opposite_s(df, -nc, t));
+    if (g.x.hi < distr_detail::kTinyArg)
+        return upper ? nct_opposite_s(df, -nc, t) : one_minus(nct_opposite_s(df, -nc, t));
     // t^2 / (df + t^2) below 2^-1000: t S, S = sqrt(V / df), is t to 1e-148 (and t itself below
     // 1e-148 unless df is past 1e296), so T <= t is Z + nc <= t
     if (g.y.hi < distr_detail::kTinyArg) return upper ? ndtr_neg_s(t - nc) : ndtr_neg_s(nc - t);
@@ -1119,7 +1144,7 @@ inline bool nct_lite(double df, double nc, double t, bool upper, double& out, do
     const double pw = std::pow(g.x.hi, b), em = std::exp(-mu.hi);
     if (!(pw >= kLitePow && em >= kLitePow)) return false;
     const double corr = 1.0 + ((g.y.lo / g.y.hi + b * (g.x.lo / g.x.hi)) - mu.lo);
-    const double ybw = pw * corr * em;                                         // y^b e^-mu
+    const double ybw = pw * corr * em;  // y^b e^-mu
     const double tq = std::fabs(nc) * 0.79788456080286535588 * b * g.y.hi * ybw;  // T(1) D(1/2, mu)
     if (!(tp >= 0x1p-900 && tq >= 0x1p-900)) return false;
     const lite::BetaRatio rp(0.5, b, g.y), rq(1.0, b, g.y);
@@ -1129,7 +1154,8 @@ inline bool nct_lite(double df, double nc, double t, bool upper, double& out, do
         double sp, sq;
         // the weights' totals over their first: sum_j D(j, mu) = 1, sum_j D(j + 1/2, mu) = erf(sqrt(mu)) <= 1
         const double wq = std::fabs(nc) * 0.79788456080286535588 * em;
-        if (!lite::lower_sum(rp, mu, 0.0, (1.0 + 0x1p-40) / em, sp, dp) || !lite::lower_sum(rq, mu, 0.5, 1.0 / wq, sq, dq))
+        if (!lite::lower_sum(rp, mu, 0.0, (1.0 + 0x1p-40) / em, sp, dp) ||
+            !lite::lower_sum(rq, mu, 0.5, 1.0 / wq, sq, dq))
             return false;
         v = at_most_one(value(ndtr_neg_s(nc)) + 0.5 * (tp * sp + sign * (tq * sq)));
         return v >= 0x1p-1000;
@@ -1141,7 +1167,8 @@ inline bool nct_lite(double df, double nc, double t, bool upper, double& out, do
         const double qp = 2.0 * distr_detail::t_tail(df, t), qq = pw * (1.0 + b * (g.x.lo / g.x.hi));
         if (!(qp >= kTinyG)) return false;
         const double wq = std::fabs(nc) * 0.79788456080286535588 * em;
-        if (!lite::upper_sum(rp, mu, 0.0, em / tp, sp, dp) || !lite::upper_sum(rq, mu, 0.5, wq / tq, sq, dq)) return false;
+        if (!lite::upper_sum(rp, mu, 0.0, em / tp, sp, dp) || !lite::upper_sum(rq, mu, 0.5, wq / tq, sq, dq))
+            return false;
         const double eq = std::erf(std::fabs(nc) * 0.70710678118654752440);  // sum_j D(j + 1/2, mu)
         v = at_most_one(0.5 * ((qp + tp * sp) + (qq * eq + tq * sq)));
         return v >= 0x1p-1000;
@@ -1252,8 +1279,9 @@ inline double zeroin(const G& g, double a, double fa, double b, double fb) {
 // that wide down to 1/2, or to neighbouring doubles: under 64 halvings. Then zeroin.
 inline constexpr int kBracketSteps = 256;
 template <class G, class To, class From>
-inline double solve(const G& g, double x0, const To& to_u, const From& from_u, double step, double lowest,
-                    double highest) {
+inline double solve(
+    const G& g, double x0, const To& to_u, const From& from_u, double step, double lowest, double highest
+) {
     double glo = g(x0);
     if (glo == 0.0) return x0;
     if (glo != glo) return kNaN;
@@ -1264,7 +1292,8 @@ inline double solve(const G& g, double x0, const To& to_u, const From& from_u, d
     // walk away from x0 until the sign changes; past the last finite value (the largest
     // double, the smallest subnormal) the root is beyond the double range
     const double top = highest > 0.0 ? std::numeric_limits<double>::max() : 0.0;
-    const double bottom = lowest < 0.0 ? -std::numeric_limits<double>::max() : std::numeric_limits<double>::denorm_min();
+    const double bottom =
+        lowest < 0.0 ? -std::numeric_limits<double>::max() : std::numeric_limits<double>::denorm_min();
     bool bracketed = false;
     for (int k = 0; k < kBracketSteps; ++k) {
         u += up ? step : -step;
@@ -1326,7 +1355,8 @@ inline double invert_positive(const L& F, const U& Fc, double p, double x0) {
     // 546 eps of absolute error, 1e-13 of F (the root moved by 190 ULP)
     auto g = [&](double x) { return low ? std::log(F(x) / target) : std::log(target / Fc(x)); };
     if (!(x0 > 0.0 && x0 < kInf)) x0 = 1.0;
-    const double r = solve(g, x0, [](double x) { return std::log(x); }, [](double u) { return std::exp(u); }, 0.125, 0.0, kInf);
+    const double r =
+        solve(g, x0, [](double x) { return std::log(x); }, [](double u) { return std::exp(u); }, 0.125, 0.0, kInf);
     if (r == r) return r;
     // no bracket inside the doubles: a root beyond the largest one is inf (the tail there is
     // still short of the target: ncfdtri(5e-324, 5, 2, 1/2), 2026-11-19), below the smallest 0
@@ -1345,8 +1375,9 @@ inline double invert_real(const L& F, const U& Fc, double p, double t0) {
     // 546 eps of absolute error, 1e-13 of F (the root moved by 190 ULP)
     auto g = [&](double t) { return low ? std::log(F(t) / target) : std::log(target / Fc(t)); };
     if (!std::isfinite(t0)) t0 = 0.0;
-    return solve(g, t0, [](double t) { return std::asinh(t); }, [](double u) { return std::sinh(u); }, 0.125, -kInf,
-                 kInf);
+    return solve(
+        g, t0, [](double t) { return std::asinh(t); }, [](double u) { return std::sinh(u); }, 0.125, -kInf, kInf
+    );
 }
 
 // Starting points: Patnaik's approximation, chi-square(k, nc) ~ c chi-square(k'),
@@ -1443,9 +1474,10 @@ struct Chndtrix : Real {
         if (p == 1.0 || std::isinf(df) || std::isinf(nc)) return kInf;
         if (p < nc_detail::kMinInverseP) return kNaN;
         if (df == 0.0 && p <= std::exp(-0.5 * nc)) return 0.0;  // inside the point mass at 0
-        return nc_detail::invert_positive([&](double x) { return Chndtr::f(df, nc, x); },
-                                          [&](double x) { return Chndtrc::f(df, nc, x); }, p,
-                                          nc_detail::ncx2_start(df, nc, p));
+        return nc_detail::invert_positive(
+            [&](double x) { return Chndtr::f(df, nc, x); }, [&](double x) { return Chndtrc::f(df, nc, x); }, p,
+            nc_detail::ncx2_start(df, nc, p)
+        );
     }
 };
 
@@ -1518,8 +1550,9 @@ struct Nctdtrit : Real {
             const double disc = A * A * nc * nc - qa * (nc * nc - z * z);
             if (disc >= 0.0) t0 = (A * nc + std::copysign(std::sqrt(disc), z)) / qa;
         }
-        return nc_detail::invert_real([&](double t) { return Nctdtr::f(df, nc, t); },
-                                      [&](double t) { return Nctdtrc::f(df, nc, t); }, p, t0);
+        return nc_detail::invert_real(
+            [&](double t) { return Nctdtr::f(df, nc, t); }, [&](double t) { return Nctdtrc::f(df, nc, t); }, p, t0
+        );
     }
 };
 
@@ -1603,8 +1636,10 @@ struct Ncfdtri : Real {
         // start: dfn F ~ c chi-square(k') over chi-square(dfd) / dfd (Patnaik), a central F
         const double c = (dfn + 2.0 * nc) / (dfn + nc), k = (dfn + nc) / c;
         const double x0 = c * k / dfn * Fdtri::f(k, dfd, p);
-        return nc_detail::invert_positive([&](double x) { return Ncfdtr::f(dfn, dfd, nc, x); },
-                                          [&](double x) { return Ncfdtrc::f(dfn, dfd, nc, x); }, p, x0);
+        return nc_detail::invert_positive(
+            [&](double x) { return Ncfdtr::f(dfn, dfd, nc, x); }, [&](double x) { return Ncfdtrc::f(dfn, dfd, nc, x); },
+            p, x0
+        );
     }
 };
 

@@ -90,8 +90,9 @@ bool positive_definite(const double* S, int d) {
     return true;
 }
 
-nb::tuple mv_cdf(nb::handle cov_o, nb::handle x_o, nb::handle batch_o, nb::handle df_o, double atol,
-                 std::int64_t max_points) {
+nb::tuple mv_cdf(
+    nb::handle cov_o, nb::handle x_o, nb::handle batch_o, nb::handle df_o, double atol, std::int64_t max_points
+) {
     const NDArray& cov_a = arg(cov_o, "cov", DType::Float64, 3);
     const NDArray& x_a = arg(x_o, "x", DType::Float64, 2);
     const NDArray& batch_a = arg(batch_o, "batch", DType::Int64, 1);
@@ -196,13 +197,15 @@ nb::tuple mv_cdf(nb::handle cov_o, nb::handle x_o, nb::handle batch_o, nb::handl
         std::vector<std::int64_t> ts;
         for (std::int64_t p = 0; p < M; ++p)
             if (kind[p] == 2) ts.push_back(p);
-        for_pieces(static_cast<std::int64_t>(ts.size()), 1, static_cast<std::int64_t>(ts.size()) << 20,
-                   [&](std::int64_t, std::int64_t q0, std::int64_t q1) {
-                       for (std::int64_t q = q0; q < q1; ++q) {
-                           val[ts[q]] = exact(ts[q]);
-                           if (std::isnan(val[ts[q]])) err[ts[q]] = kNaN;
-                       }
-                   });
+        for_pieces(
+            static_cast<std::int64_t>(ts.size()), 1, static_cast<std::int64_t>(ts.size()) << 20,
+            [&](std::int64_t, std::int64_t q0, std::int64_t q1) {
+                for (std::int64_t q = q0; q < q1; ++q) {
+                    val[ts[q]] = exact(ts[q]);
+                    if (std::isnan(val[ts[q]])) err[ts[q]] = kNaN;
+                }
+            }
+        );
         // pass 2: the QMC points
         std::vector<std::int64_t> qs;
         for (std::int64_t p = 0; p < M; ++p)
@@ -215,10 +218,12 @@ nb::tuple mv_cdf(nb::handle cov_o, nb::handle x_o, nb::handle batch_o, nb::handl
             std::sort(dfs.begin(), dfs.end());
             dfs.erase(std::unique(dfs.begin(), dfs.end()), dfs.end());
             std::vector<ChiTable> chis(dfs.size());
-            for_pieces(static_cast<std::int64_t>(dfs.size()), 1, static_cast<std::int64_t>(dfs.size()) << 20,
-                       [&](std::int64_t, std::int64_t c0, std::int64_t c1) {
-                           for (std::int64_t c = c0; c < c1; ++c) chis[c] = chi_table(dfs[c]);
-                       });
+            for_pieces(
+                static_cast<std::int64_t>(dfs.size()), 1, static_cast<std::int64_t>(dfs.size()) << 20,
+                [&](std::int64_t, std::int64_t c0, std::int64_t c1) {
+                    for (std::int64_t c = c0; c < c1; ++c) chis[c] = chi_table(dfs[c]);
+                }
+            );
             auto one = [&](std::int64_t p) {
                 const std::int64_t b = batch[p];
                 const double* xp = x.data() + p * d;
@@ -236,8 +241,7 @@ nb::tuple mv_cdf(nb::handle cov_o, nb::handle x_o, nb::handle batch_o, nb::handl
                     }
                 }
                 Problem P;
-                if (std::isfinite(df[b]))
-                    P.chi = &chis[std::lower_bound(dfs.begin(), dfs.end(), df[b]) - dfs.begin()];
+                if (std::isfinite(df[b])) P.chi = &chis[std::lower_bound(dfs.begin(), dfs.end(), df[b]) - dfs.begin()];
                 if (!reorder(std::move(Sub), std::move(lim), n, df[b], P)) {
                     val[p] = err[p] = kNaN;
                     return;
@@ -248,10 +252,12 @@ nb::tuple mv_cdf(nb::handle cov_o, nb::handle x_o, nb::handle batch_o, nb::handl
             };
             const std::int64_t nq = static_cast<std::int64_t>(qs.size());
             if (nq >= parallel::num_threads()) {
-                for_pieces(nq, 1, std::numeric_limits<std::int64_t>::max() / 2,
-                           [&](std::int64_t, std::int64_t q0, std::int64_t q1) {
-                               for (std::int64_t q = q0; q < q1; ++q) one(qs[static_cast<std::size_t>(q)]);
-                           });
+                for_pieces(
+                    nq, 1, std::numeric_limits<std::int64_t>::max() / 2,
+                    [&](std::int64_t, std::int64_t q0, std::int64_t q1) {
+                        for (std::int64_t q = q0; q < q1; ++q) one(qs[static_cast<std::size_t>(q)]);
+                    }
+                );
             } else {
                 for (std::int64_t p : qs) one(p);
             }
@@ -263,8 +269,10 @@ nb::tuple mv_cdf(nb::handle cov_o, nb::handle x_o, nb::handle batch_o, nb::handl
 }  // namespace
 
 void bind_stats_mvcdf(nb::module_& m) {
-    m.def("mv_cdf", &mv_cdf, nb::arg("cov"), nb::arg("x"), nb::arg("batch"), nb::arg("df"), nb::arg("atol"),
-          nb::arg("max_points"));
+    m.def(
+        "mv_cdf", &mv_cdf, nb::arg("cov"), nb::arg("x"), nb::arg("batch"), nb::arg("df"), nb::arg("atol"),
+        nb::arg("max_points")
+    );
 }
 
 }  // namespace sd

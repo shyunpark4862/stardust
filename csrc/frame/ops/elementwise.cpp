@@ -30,11 +30,24 @@ struct OpInfo {
 };
 
 constexpr OpInfo kOps[] = {
-    {"add", Op::Add, "+"},       {"sub", Op::Sub, "-"}, {"mul", Op::Mul, "*"},  {"truediv", Op::TrueDiv, "/"},
-    {"floordiv", Op::FloorDiv, "//"}, {"mod", Op::Mod, "%"}, {"pow", Op::Pow, "**"}, {"eq", Op::Eq, "=="},
-    {"ne", Op::Ne, "!="},        {"lt", Op::Lt, "<"},   {"le", Op::Le, "<="},   {"gt", Op::Gt, ">"},
-    {"ge", Op::Ge, ">="},        {"and", Op::And, "&"}, {"or", Op::Or, "|"},    {"xor", Op::Xor, "^"},
-    {"lshift", Op::LShift, "<<"}, {"rshift", Op::RShift, ">>"},
+    {"add", Op::Add, "+"},
+    {"sub", Op::Sub, "-"},
+    {"mul", Op::Mul, "*"},
+    {"truediv", Op::TrueDiv, "/"},
+    {"floordiv", Op::FloorDiv, "//"},
+    {"mod", Op::Mod, "%"},
+    {"pow", Op::Pow, "**"},
+    {"eq", Op::Eq, "=="},
+    {"ne", Op::Ne, "!="},
+    {"lt", Op::Lt, "<"},
+    {"le", Op::Le, "<="},
+    {"gt", Op::Gt, ">"},
+    {"ge", Op::Ge, ">="},
+    {"and", Op::And, "&"},
+    {"or", Op::Or, "|"},
+    {"xor", Op::Xor, "^"},
+    {"lshift", Op::LShift, "<<"},
+    {"rshift", Op::RShift, ">>"},
 };
 
 const OpInfo& parse_op(std::string_view name) {
@@ -112,16 +125,25 @@ Column map2(const Column& a, const Column& b, int scalar_side, DType result, F f
 // --- int64 arithmetic: overflow wraps (docs/api/frame.md §1.5), done in uint64 where
 // signed overflow would be undefined behavior in C++. ---
 
-std::int64_t wrap_add(std::int64_t x, std::int64_t y) { return static_cast<std::int64_t>(static_cast<std::uint64_t>(x) + static_cast<std::uint64_t>(y)); }
-std::int64_t wrap_sub(std::int64_t x, std::int64_t y) { return static_cast<std::int64_t>(static_cast<std::uint64_t>(x) - static_cast<std::uint64_t>(y)); }
-std::int64_t wrap_mul(std::int64_t x, std::int64_t y) { return static_cast<std::int64_t>(static_cast<std::uint64_t>(x) * static_cast<std::uint64_t>(y)); }
+std::int64_t wrap_add(std::int64_t x, std::int64_t y) {
+    return static_cast<std::int64_t>(static_cast<std::uint64_t>(x) + static_cast<std::uint64_t>(y));
+}
+std::int64_t wrap_sub(std::int64_t x, std::int64_t y) {
+    return static_cast<std::int64_t>(static_cast<std::uint64_t>(x) - static_cast<std::uint64_t>(y));
+}
+std::int64_t wrap_mul(std::int64_t x, std::int64_t y) {
+    return static_cast<std::int64_t>(static_cast<std::uint64_t>(x) * static_cast<std::uint64_t>(y));
+}
 std::int64_t wrap_neg(std::int64_t x) { return static_cast<std::int64_t>(0 - static_cast<std::uint64_t>(x)); }
 
 // Floor division and its remainder (the result takes the divisor's sign),
 // as in Python. x / -1 is handled apart: INT64_MIN / -1 overflows, which C++
 // leaves undefined; wrapping gives INT64_MIN.
 std::int64_t int_floordiv(std::int64_t x, std::int64_t y, bool& na) {
-    if (y == 0) { na = true; return 0; }
+    if (y == 0) {
+        na = true;
+        return 0;
+    }
     if (y == -1) return wrap_neg(x);
     std::int64_t q = x / y;
     if (x % y != 0 && ((x < 0) != (y < 0))) --q;
@@ -129,7 +151,10 @@ std::int64_t int_floordiv(std::int64_t x, std::int64_t y, bool& na) {
 }
 
 std::int64_t int_mod(std::int64_t x, std::int64_t y, bool& na) {
-    if (y == 0) { na = true; return 0; }
+    if (y == 0) {
+        na = true;
+        return 0;
+    }
     if (y == -1) return 0;
     std::int64_t r = x % y;
     if (r != 0 && ((r < 0) != (y < 0))) r += y;
@@ -139,7 +164,10 @@ std::int64_t int_mod(std::int64_t x, std::int64_t y, bool& na) {
 // Exponentiation by squaring, wrapping. A negative exponent has no int
 // result: NA (docs/api/frame.md §1.5).
 std::int64_t int_pow(std::int64_t x, std::int64_t y, bool& na) {
-    if (y < 0) { na = true; return 0; }
+    if (y < 0) {
+        na = true;
+        return 0;
+    }
     std::uint64_t result = 1, base = static_cast<std::uint64_t>(x);
     for (std::uint64_t e = static_cast<std::uint64_t>(y); e != 0; e >>= 1) {
         if (e & 1) result *= base;
@@ -230,14 +258,14 @@ Column float_arith(Op op, const Column& a, const Column& b, int side) {
     auto run = [&](auto f) { return map2<double, A, B>(a, b, side, DType::Float64, f); };
     auto d = [](auto v) { return static_cast<double>(v); };
     switch (op) {
-    case Op::Add: return run([&](auto x, auto y) { return d(x) + d(y); });
-    case Op::Sub: return run([&](auto x, auto y) { return d(x) - d(y); });
-    case Op::Mul: return run([&](auto x, auto y) { return d(x) * d(y); });
-    case Op::TrueDiv: return run([&](auto x, auto y) { return d(x) / d(y); });
-    case Op::FloorDiv: return run([&](auto x, auto y) { return float_floordiv(d(x), d(y)); });
-    case Op::Mod: return run([&](auto x, auto y) { return float_mod(d(x), d(y)); });
-    case Op::Pow: return float_pow<A, B>(a, b, side);
-    default: break;
+        case Op::Add: return run([&](auto x, auto y) { return d(x) + d(y); });
+        case Op::Sub: return run([&](auto x, auto y) { return d(x) - d(y); });
+        case Op::Mul: return run([&](auto x, auto y) { return d(x) * d(y); });
+        case Op::TrueDiv: return run([&](auto x, auto y) { return d(x) / d(y); });
+        case Op::FloorDiv: return run([&](auto x, auto y) { return float_floordiv(d(x), d(y)); });
+        case Op::Mod: return run([&](auto x, auto y) { return float_mod(d(x), d(y)); });
+        case Op::Pow: return float_pow<A, B>(a, b, side);
+        default: break;
     }
     throw nb::value_error("not an arithmetic operator");
 }
@@ -247,16 +275,16 @@ Column int_arith(Op op, const Column& a, const Column& b, int side) {
     auto run = [&](auto f) { return map2<I, I, I>(a, b, side, DType::Int64, f); };
     auto run_na = [&](auto f) { return map2<I, I, I, true>(a, b, side, DType::Int64, f); };
     switch (op) {
-    // Lambdas, not function pointers: the loop body is compiled once inside
-    // a task, where a pointer would be an indirect call per row (docs/design/frame.md §7.6).
-    case Op::Add: return run([](I x, I y) { return wrap_add(x, y); });
-    case Op::Sub: return run([](I x, I y) { return wrap_sub(x, y); });
-    case Op::Mul: return run([](I x, I y) { return wrap_mul(x, y); });
-    case Op::TrueDiv: return float_arith<I, I>(op, a, b, side);  // int / int is float64 (docs/api/frame.md §1.5)
-    case Op::FloorDiv: return run_na([](I x, I y, bool& na) { return int_floordiv(x, y, na); });
-    case Op::Mod: return run_na([](I x, I y, bool& na) { return int_mod(x, y, na); });
-    case Op::Pow: return run_na([](I x, I y, bool& na) { return int_pow(x, y, na); });
-    default: break;
+        // Lambdas, not function pointers: the loop body is compiled once inside
+        // a task, where a pointer would be an indirect call per row (docs/design/frame.md §7.6).
+        case Op::Add: return run([](I x, I y) { return wrap_add(x, y); });
+        case Op::Sub: return run([](I x, I y) { return wrap_sub(x, y); });
+        case Op::Mul: return run([](I x, I y) { return wrap_mul(x, y); });
+        case Op::TrueDiv: return float_arith<I, I>(op, a, b, side);  // int / int is float64 (docs/api/frame.md §1.5)
+        case Op::FloorDiv: return run_na([](I x, I y, bool& na) { return int_floordiv(x, y, na); });
+        case Op::Mod: return run_na([](I x, I y, bool& na) { return int_mod(x, y, na); });
+        case Op::Pow: return run_na([](I x, I y, bool& na) { return int_pow(x, y, na); });
+        default: break;
     }
     throw nb::value_error("not an arithmetic operator");
 }
@@ -265,13 +293,13 @@ Column int_arith(Op op, const Column& a, const Column& b, int side) {
 
 constexpr bool from_three_way(Op op, int c) {
     switch (op) {
-    case Op::Eq: return c == 0;
-    case Op::Ne: return c != 0;  // NaN != anything is True
-    case Op::Lt: return c == -1;
-    case Op::Le: return c == -1 || c == 0;
-    case Op::Gt: return c == 1;
-    case Op::Ge: return c == 1 || c == 0;
-    default: return false;
+        case Op::Eq: return c == 0;
+        case Op::Ne: return c != 0;  // NaN != anything is True
+        case Op::Lt: return c == -1;
+        case Op::Le: return c == -1 || c == 0;
+        case Op::Gt: return c == 1;
+        case Op::Ge: return c == 1 || c == 0;
+        default: return false;
     }
 }
 
@@ -280,13 +308,13 @@ constexpr bool from_three_way(Op op, int c) {
 template <class F>
 Column with_compare_op(Op op, F f) {
     switch (op) {
-    case Op::Eq: return f(std::integral_constant<Op, Op::Eq>{});
-    case Op::Ne: return f(std::integral_constant<Op, Op::Ne>{});
-    case Op::Lt: return f(std::integral_constant<Op, Op::Lt>{});
-    case Op::Le: return f(std::integral_constant<Op, Op::Le>{});
-    case Op::Gt: return f(std::integral_constant<Op, Op::Gt>{});
-    case Op::Ge: return f(std::integral_constant<Op, Op::Ge>{});
-    default: break;
+        case Op::Eq: return f(std::integral_constant<Op, Op::Eq>{});
+        case Op::Ne: return f(std::integral_constant<Op, Op::Ne>{});
+        case Op::Lt: return f(std::integral_constant<Op, Op::Lt>{});
+        case Op::Le: return f(std::integral_constant<Op, Op::Le>{});
+        case Op::Gt: return f(std::integral_constant<Op, Op::Gt>{});
+        case Op::Ge: return f(std::integral_constant<Op, Op::Ge>{});
+        default: break;
     }
     throw nb::value_error("not a comparison");
 }
@@ -295,13 +323,13 @@ template <class A, class B>
 Column compare_plain(Op op, const Column& a, const Column& b, int side) {
     auto run = [&](auto f) { return map2<std::uint8_t, A, B>(a, b, side, DType::Bool, f); };
     switch (op) {  // the C++ operators on doubles are IEEE 754 comparisons
-    case Op::Eq: return run([](A x, B y) -> std::uint8_t { return x == y; });
-    case Op::Ne: return run([](A x, B y) -> std::uint8_t { return x != y; });
-    case Op::Lt: return run([](A x, B y) -> std::uint8_t { return x < y; });
-    case Op::Le: return run([](A x, B y) -> std::uint8_t { return x <= y; });
-    case Op::Gt: return run([](A x, B y) -> std::uint8_t { return x > y; });
-    case Op::Ge: return run([](A x, B y) -> std::uint8_t { return x >= y; });
-    default: break;
+        case Op::Eq: return run([](A x, B y) -> std::uint8_t { return x == y; });
+        case Op::Ne: return run([](A x, B y) -> std::uint8_t { return x != y; });
+        case Op::Lt: return run([](A x, B y) -> std::uint8_t { return x < y; });
+        case Op::Le: return run([](A x, B y) -> std::uint8_t { return x <= y; });
+        case Op::Gt: return run([](A x, B y) -> std::uint8_t { return x > y; });
+        case Op::Ge: return run([](A x, B y) -> std::uint8_t { return x >= y; });
+        default: break;
     }
     throw nb::value_error("not a comparison");
 }
@@ -319,14 +347,18 @@ Column compare_strings(Op op, const Column& a, const Column& b, int side) {
     Column out = make_fixed(DType::Bool, n);
     out.validity = and_validity(a, b, side, n);
     auto* o = reinterpret_cast<std::uint8_t*>(out.values->data());
-    for_chunks(n, [&](std::int64_t lo, std::int64_t hi) {
-        for (std::int64_t i = lo; i < hi; ++i) {
-            // char_traits<char>::compare compares as unsigned char, so this is
-            // UTF-8 byte order, which is code point order (docs/api/frame.md §3.3).
-            const int c = a.string_at(side == 1 ? 0 : i).compare(b.string_at(side == 2 ? 0 : i));
-            o[i] = from_three_way(op, c < 0 ? -1 : c > 0 ? 1 : 0);
-        }
-    }, 4);
+    for_chunks(
+        n,
+        [&](std::int64_t lo, std::int64_t hi) {
+            for (std::int64_t i = lo; i < hi; ++i) {
+                // char_traits<char>::compare compares as unsigned char, so this is
+                // UTF-8 byte order, which is code point order (docs/api/frame.md §3.3).
+                const int c = a.string_at(side == 1 ? 0 : i).compare(b.string_at(side == 2 ? 0 : i));
+                o[i] = from_three_way(op, c < 0 ? -1 : c > 0 ? 1 : 0);
+            }
+        },
+        4
+    );
     finish_fixed(out);
     return out;
 }
@@ -378,8 +410,16 @@ Column concat_strings(const Column& a, const Column& b, int side) {
 
 // Rows [lo, n) with lo a multiple of 8: bitmap bytes lo / 8 onward.
 template <Op O, int Side>
-void logic_rows(const std::uint8_t* x, const std::uint8_t* vx, const std::uint8_t* y, const std::uint8_t* vy,
-                std::int64_t lo, std::int64_t n, std::uint8_t* o, std::uint8_t* bits) {
+void logic_rows(
+    const std::uint8_t* x,
+    const std::uint8_t* vx,
+    const std::uint8_t* y,
+    const std::uint8_t* vy,
+    std::int64_t lo,
+    std::int64_t n,
+    std::uint8_t* o,
+    std::uint8_t* bits
+) {
     for (std::int64_t j = lo / 8; j < bitmap::num_bytes(n); ++j) {
         unsigned byte = 0;
         for (std::int64_t i = j * 8; i < std::min(n, j * 8 + 8); ++i) {
@@ -436,12 +476,18 @@ Column int_bitwise(Op op, const Column& a, const Column& b, int side) {
     using U = std::uint64_t;
     auto run = [&](auto f) { return map2<I, I, I>(a, b, side, DType::Int64, f); };
     switch (op) {
-    case Op::And: return run([](I x, I y) { return x & y; });
-    case Op::Or: return run([](I x, I y) { return x | y; });
-    case Op::Xor: return run([](I x, I y) { return x ^ y; });
-    case Op::LShift: return run([](I x, I y) { return static_cast<U>(y) >= 64 ? I{0} : static_cast<I>(static_cast<U>(x) << y); });
-    case Op::RShift: return run([](I x, I y) { return static_cast<U>(y) >= 64 ? (x < 0 ? I{-1} : I{0}) : x >> y; });  // arithmetic
-    default: break;
+        case Op::And: return run([](I x, I y) { return x & y; });
+        case Op::Or: return run([](I x, I y) { return x | y; });
+        case Op::Xor: return run([](I x, I y) { return x ^ y; });
+        case Op::LShift:
+            return run([](I x, I y) {
+                return static_cast<U>(y) >= 64 ? I{0} : static_cast<I>(static_cast<U>(x) << y);
+            });
+        case Op::RShift:
+            return run([](I x, I y) {
+                return static_cast<U>(y) >= 64 ? (x < 0 ? I{-1} : I{0}) : x >> y;
+            });  // arithmetic
+        default: break;
     }
     throw nb::value_error("not a bitwise operator");
 }
@@ -468,8 +514,10 @@ Column binary_op(std::string_view name, const Column& a, const Column& b, int sc
         // bool takes part as int64, as in the array area (docs/api/frame.md §3.2):
         // True + True == 2, and the int rules (NA for // 0) apply from there.
         if (da == DType::Bool || db == DType::Bool)
-            return binary_op(name, da == DType::Bool ? astype(a, DType::Int64) : a,
-                             db == DType::Bool ? astype(b, DType::Int64) : b, scalar_side);
+            return binary_op(
+                name, da == DType::Bool ? astype(a, DType::Int64) : a, db == DType::Bool ? astype(b, DType::Int64) : b,
+                scalar_side
+            );
         if (da == DType::Int64 && db == DType::Int64) return int_arith(op, a, b, scalar_side);
         if (da == DType::Int64) return float_arith<I, double>(op, a, b, scalar_side);
         if (db == DType::Int64) return float_arith<double, I>(op, a, b, scalar_side);
@@ -479,14 +527,18 @@ Column binary_op(std::string_view name, const Column& a, const Column& b, int sc
         // A bool meeting a number takes part as int64, as in the array area
         // (promote_columns, docs/api/frame.md §3.3): True == 1, False < 0.5.
         if ((da == DType::Bool && is_numeric(db)) || (db == DType::Bool && is_numeric(da)))
-            return binary_op(name, da == DType::Bool ? astype(a, DType::Int64) : a,
-                             db == DType::Bool ? astype(b, DType::Int64) : b, scalar_side);
+            return binary_op(
+                name, da == DType::Bool ? astype(a, DType::Int64) : a, db == DType::Bool ? astype(b, DType::Int64) : b,
+                scalar_side
+            );
         if (is_numeric(da) && is_numeric(db)) {
-            if (da == db) return da == DType::Int64 ? compare_plain<I, I>(op, a, b, scalar_side)
-                                                    : compare_plain<double, double>(op, a, b, scalar_side);
+            if (da == db)
+                return da == DType::Int64 ? compare_plain<I, I>(op, a, b, scalar_side)
+                                          : compare_plain<double, double>(op, a, b, scalar_side);
             return compare_mixed(op, a, b, scalar_side);
         }
-        if (da == DType::Bool && db == DType::Bool) return compare_plain<std::uint8_t, std::uint8_t>(op, a, b, scalar_side);
+        if (da == DType::Bool && db == DType::Bool)
+            return compare_plain<std::uint8_t, std::uint8_t>(op, a, b, scalar_side);
         if (da == DType::String && db == DType::String) return compare_strings(op, a, b, scalar_side);
         return unsupported(" (these dtypes cannot be compared)");
     }
@@ -501,8 +553,10 @@ Column binary_op(std::string_view name, const Column& a, const Column& b, int sc
     if (da == DType::Bool && db == DType::Bool) return logic(op, a, b, scalar_side);
     auto int_like = [](DType dt) { return dt == DType::Int64 || dt == DType::Bool; };
     if (int_like(da) && int_like(db))
-        return int_bitwise(op, da == DType::Bool ? astype(a, DType::Int64) : a,
-                           db == DType::Bool ? astype(b, DType::Int64) : b, scalar_side);
+        return int_bitwise(
+            op, da == DType::Bool ? astype(a, DType::Int64) : a, db == DType::Bool ? astype(b, DType::Int64) : b,
+            scalar_side
+        );
     return unsupported(" (bitwise operators take bool and int64)");
 }
 
@@ -523,7 +577,9 @@ Column unary_op(std::string_view name, const Column& a) {
     };
     auto unsupported = [&]() -> Column {  // Python's form: -s, abs(s), ~s
         const char* symbol = name == "neg" ? "unary -" : name == "abs" ? "abs()" : "unary ~";
-        throw nb::type_error((std::string("unsupported operand dtype for ") + symbol + ": " + dtype_name(a.dtype)).c_str());
+        throw nb::type_error(
+            (std::string("unsupported operand dtype for ") + symbol + ": " + dtype_name(a.dtype)).c_str()
+        );
     };
     if (name == "neg" || name == "abs") {
         if (a.dtype == DType::Bool) return unary_op(name, astype(a, DType::Int64));  // as in the array area
@@ -535,7 +591,8 @@ Column unary_op(std::string_view name, const Column& a) {
     }
     if (name == "invert") {
         if (a.dtype == DType::Bool) return map1(DType::Bool, [](std::uint8_t x) -> std::uint8_t { return !x; });
-        if (a.dtype == DType::Int64) return map1(DType::Int64, [](std::int64_t x) { return ~x; });  // bitwise, as in the array area
+        if (a.dtype == DType::Int64)
+            return map1(DType::Int64, [](std::int64_t x) { return ~x; });  // bitwise, as in the array area
         return unsupported();
     }
     throw nb::value_error(("unknown operator '" + std::string(name) + "'").c_str());

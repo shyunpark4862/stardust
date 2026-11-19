@@ -16,8 +16,18 @@ _k = _sd_core.stats
 
 # Methods with an input (and out=) besides the density, and the parameter-only ones (T9, T22).
 _INPUT_METHODS = ("cdf", "logcdf", "ccdf", "logccdf", "icdf", "iccdf", "ilogcdf", "ilogccdf")
-_PARAM_METHODS = ("mean", "variance", "standard_deviation", "skewness", "kurtosis", "median", "mode", "entropy",
-                  "support_lo", "support_hi")
+_PARAM_METHODS = (
+    "mean",
+    "variance",
+    "standard_deviation",
+    "skewness",
+    "kurtosis",
+    "median",
+    "mode",
+    "entropy",
+    "support_lo",
+    "support_hi",
+)
 
 
 _MAX_DOUBLE_INT = int(1.7976931348623157e308)  # ints above it round to inf or raise in float()
@@ -47,7 +57,9 @@ def _renamed(e, method, arg, value=None):
         if msg.startswith("not supported for") and "complex128" in msg:
             msg = f"'{arg}' must be real, not {'complex' if isinstance(value, complex) else 'a complex128 array'}"
         else:  # the kernels' table takes complex too; the methods do not
-            msg = msg.replace("must be an sd.ndarray or a bool, int, float or complex,", "must be an sd.ndarray or a real number,")
+            msg = msg.replace(
+                "must be an sd.ndarray or a bool, int, float or complex,", "must be an sd.ndarray or a real number,"
+            )
     return type(e)(f"{method}(): {msg}")
 
 
@@ -97,17 +109,18 @@ def _keyword_constructor(cls):
     def __init__(self, *args, **kwargs):
         if args:
             n = len(args)
-            raise TypeError(f"{type(self).__name__}(): takes no positional arguments but {n} "
-                            f"{'was' if n == 1 else 'were'} given")
+            raise TypeError(
+                f"{type(self).__name__}(): takes no positional arguments but {n} {'was' if n == 1 else 'were'} given"
+            )
         try:
             init(self, **kwargs)
         except TypeError as e:
             msg = str(e)
             if not msg.startswith(head):  # a parameter's own check (already "Normal(): ...")
                 raise
-            rest = msg[len(head):]
+            rest = msg[len(head) :]
             if rest.startswith("got an unexpected"):
-                rest = rest[len("got an "):]
+                rest = rest[len("got an ") :]
             raise TypeError(f"{type(self).__name__}(): {rest}") from None
 
     __init__.__wrapped__ = init  # (inspect.signature shows the keyword-only parameters)
@@ -120,6 +133,7 @@ def _keyword_constructor(cls):
 def _parameter(i, name):
     def get(self):
         return self._p[i]
+
     get.__name__ = name
     return property(get, doc=f"The parameter {name}, as given (read-only).")
 
@@ -148,8 +162,10 @@ class _Distribution:
 
     def __init__(self, *args, **kwargs):
         # (every distribution defines its own __init__: only the bases arrive here)
-        raise TypeError(f"{type(self).__name__}(): a base class for isinstance checks, not a distribution "
-                        "(make one of its subclasses, e.g. sd.stats.Normal)")
+        raise TypeError(
+            f"{type(self).__name__}(): a base class for isinstance checks, not a distribution "
+            "(make one of its subclasses, e.g. sd.stats.Normal)"
+        )
 
     def _set(self, *values):
         cls = type(self).__name__
@@ -179,7 +195,7 @@ class _Distribution:
         try:
             return self._ops["cdf"](*self._p, x, out=out)
         except _RENAMED as e:
-            raise _renamed(e, 'cdf', 'x', x) from None
+            raise _renamed(e, "cdf", "x", x) from None
 
     def logcdf(self, x, /, *, out=None):
         """log P(X <= x), without underflow."""
@@ -188,7 +204,7 @@ class _Distribution:
         try:
             return self._ops["logcdf"](*self._p, x, out=out)
         except _RENAMED as e:
-            raise _renamed(e, 'logcdf', 'x', x) from None
+            raise _renamed(e, "logcdf", "x", x) from None
 
     def ccdf(self, x, /, *, out=None):
         """P(X > x), computed directly (accurate in the upper tail, not 1 - cdf)."""
@@ -197,7 +213,7 @@ class _Distribution:
         try:
             return self._ops["ccdf"](*self._p, x, out=out)
         except _RENAMED as e:
-            raise _renamed(e, 'ccdf', 'x', x) from None
+            raise _renamed(e, "ccdf", "x", x) from None
 
     def logccdf(self, x, /, *, out=None):
         """log P(X > x), without underflow."""
@@ -206,7 +222,7 @@ class _Distribution:
         try:
             return self._ops["logccdf"](*self._p, x, out=out)
         except _RENAMED as e:
-            raise _renamed(e, 'logccdf', 'x', x) from None
+            raise _renamed(e, "logccdf", "x", x) from None
 
     def icdf(self, p, /, *, out=None):
         """The x with cdf(x) = p (the inverse of cdf)."""
@@ -215,7 +231,7 @@ class _Distribution:
         try:
             return self._ops["icdf"](*self._p, p, out=out)
         except _RENAMED as e:
-            raise _renamed(e, 'icdf', 'p', p) from None
+            raise _renamed(e, "icdf", "p", p) from None
 
     def iccdf(self, p, /, *, out=None):
         """The x with ccdf(x) = p (the inverse of ccdf)."""
@@ -224,7 +240,7 @@ class _Distribution:
         try:
             return self._ops["iccdf"](*self._p, p, out=out)
         except _RENAMED as e:
-            raise _renamed(e, 'iccdf', 'p', p) from None
+            raise _renamed(e, "iccdf", "p", p) from None
 
     def ilogcdf(self, logp, /, *, out=None):
         """The x with logcdf(x) = logp."""
@@ -233,7 +249,7 @@ class _Distribution:
         try:
             return self._ops["ilogcdf"](*self._p, logp, out=out)
         except _RENAMED as e:
-            raise _renamed(e, 'ilogcdf', 'logp', logp) from None
+            raise _renamed(e, "ilogcdf", "logp", logp) from None
 
     def ilogccdf(self, logp, /, *, out=None):
         """The x with logccdf(x) = logp."""
@@ -242,7 +258,7 @@ class _Distribution:
         try:
             return self._ops["ilogccdf"](*self._p, logp, out=out)
         except _RENAMED as e:
-            raise _renamed(e, 'ilogccdf', 'logp', logp) from None
+            raise _renamed(e, "ilogccdf", "logp", logp) from None
 
     # ---- parameter-only methods: the parameters' broadcast shape (a float for scalars)
 
@@ -251,42 +267,42 @@ class _Distribution:
         try:
             return self._ops["mean"](*self._p)
         except _RENAMED as e:
-            raise _renamed(e, 'mean', None) from None
+            raise _renamed(e, "mean", None) from None
 
     def variance(self):
         """The variance."""
         try:
             return self._ops["variance"](*self._p)
         except _RENAMED as e:
-            raise _renamed(e, 'variance', None) from None
+            raise _renamed(e, "variance", None) from None
 
     def standard_deviation(self):
         """The standard deviation."""
         try:
             return self._ops["standard_deviation"](*self._p)
         except _RENAMED as e:
-            raise _renamed(e, 'standard_deviation', None) from None
+            raise _renamed(e, "standard_deviation", None) from None
 
     def skewness(self):
         """The skewness."""
         try:
             return self._ops["skewness"](*self._p)
         except _RENAMED as e:
-            raise _renamed(e, 'skewness', None) from None
+            raise _renamed(e, "skewness", None) from None
 
     def kurtosis(self):
         """The excess kurtosis (0 for the normal distribution; T23)."""
         try:
             return self._ops["kurtosis"](*self._p)
         except _RENAMED as e:
-            raise _renamed(e, 'kurtosis', None) from None
+            raise _renamed(e, "kurtosis", None) from None
 
     def median(self):
         """The median."""
         try:
             return self._ops["median"](*self._p)
         except _RENAMED as e:
-            raise _renamed(e, 'median', None) from None
+            raise _renamed(e, "median", None) from None
 
     def mode(self):
         """The mode: the point of the largest density, even at an end of the support where the
@@ -294,7 +310,7 @@ class _Distribution:
         try:
             return self._ops["mode"](*self._p)
         except _RENAMED as e:
-            raise _renamed(e, 'mode', None) from None
+            raise _renamed(e, "mode", None) from None
 
     def entropy(self):
         """The entropy, in nats: differential for a continuous distribution, Shannon's for a
@@ -302,7 +318,7 @@ class _Distribution:
         try:
             return self._ops["entropy"](*self._p)
         except _RENAMED as e:
-            raise _renamed(e, 'entropy', None) from None
+            raise _renamed(e, "entropy", None) from None
 
     def support(self):
         """(lo, hi): the ends of the support."""
@@ -319,8 +335,10 @@ class _Distribution:
         sd.random.Generator (sd.random.default_rng(seed)); the values depend on its state only,
         not on the thread count (docs/api/stats.md §2.5)."""
         if not isinstance(rng, _random.Generator):
-            raise TypeError(f"sample(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), "
-                            f"not {_sd_core._type_name(rng)}")
+            raise TypeError(
+                f"sample(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), "
+                f"not {_sd_core._type_name(rng)}"
+            )
         if shape is None and self._scalar is not None:  # one float: no arrays on the way
             key, pos = rng._reserve(1)
             return self._ops["sample1"](key[0], key[1], pos, *self._scalar)
@@ -358,7 +376,7 @@ class ContinuousDistribution(_Distribution):
         try:
             return self._ops["pdf"](*self._p, x, out=out)
         except _RENAMED as e:
-            raise _renamed(e, 'pdf', 'x', x) from None
+            raise _renamed(e, "pdf", "x", x) from None
 
     def logpdf(self, x, /, *, out=None):
         """log pdf(x), without underflow."""
@@ -367,7 +385,7 @@ class ContinuousDistribution(_Distribution):
         try:
             return self._ops["logpdf"](*self._p, x, out=out)
         except _RENAMED as e:
-            raise _renamed(e, 'logpdf', 'x', x) from None
+            raise _renamed(e, "logpdf", "x", x) from None
 
 
 class DiscreteDistribution(_Distribution):
@@ -385,7 +403,7 @@ class DiscreteDistribution(_Distribution):
         try:
             return self._ops["pmf"](*self._p, k, out=out)
         except _RENAMED as e:
-            raise _renamed(e, 'pmf', 'k', k) from None
+            raise _renamed(e, "pmf", "k", k) from None
 
     def logpmf(self, k, /, *, out=None):
         """log pmf(k), without underflow."""
@@ -394,7 +412,7 @@ class DiscreteDistribution(_Distribution):
         try:
             return self._ops["logpmf"](*self._p, k, out=out)
         except _RENAMED as e:
-            raise _renamed(e, 'logpmf', 'k', k) from None
+            raise _renamed(e, "logpmf", "k", k) from None
 
 
 # Python's own call errors (a missing rng=, an unknown keyword such as mean(out=...)) name a

@@ -36,12 +36,14 @@ void Groups::for_groups(F f) const {
     }
     std::vector<std::int64_t> cuts{0};
     for (std::int64_t r = kChunkRows; r < n; r += kChunkRows) {
-        const auto g = static_cast<std::int64_t>(std::lower_bound(start_.begin(), start_.end() - 1, r) - start_.begin());
+        const auto g =
+            static_cast<std::int64_t>(std::lower_bound(start_.begin(), start_.end() - 1, r) - start_.begin());
         if (g > cuts.back()) cuts.push_back(g);
     }
     if (ngroups_ > cuts.back()) cuts.push_back(ngroups_);
-    run_unlocked(static_cast<std::int64_t>(cuts.size()) - 1,
-                 [&](std::int64_t t) { f(cuts[static_cast<std::size_t>(t)], cuts[static_cast<std::size_t>(t) + 1]); });
+    run_unlocked(static_cast<std::int64_t>(cuts.size()) - 1, [&](std::int64_t t) {
+        f(cuts[static_cast<std::size_t>(t)], cuts[static_cast<std::size_t>(t) + 1]);
+    });
 }
 
 Column Groups::sizes() const {
@@ -55,9 +57,9 @@ namespace {
 
 double row_double(const Column& c, std::int64_t i) {
     switch (c.dtype) {
-    case DType::Int64: return static_cast<double>(c.data<std::int64_t>()[i]);
-    case DType::Float64: return c.data<double>()[i];
-    default: return static_cast<double>(c.data<std::uint8_t>()[i]);
+        case DType::Int64: return static_cast<double>(c.data<std::int64_t>()[i]);
+        case DType::Float64: return c.data<double>()[i];
+        default: return static_cast<double>(c.data<std::uint8_t>()[i]);
     }
 }
 
@@ -67,17 +69,21 @@ double row_double(const Column& c, std::int64_t i) {
 template <bool Max>
 bool beats(const Column& c, std::int64_t a, std::int64_t b) {
     switch (c.dtype) {
-    case DType::Int64: return Max ? c.data<std::int64_t>()[a] > c.data<std::int64_t>()[b] : c.data<std::int64_t>()[a] < c.data<std::int64_t>()[b];
-    case DType::Bool: return Max ? c.data<std::uint8_t>()[a] > c.data<std::uint8_t>()[b] : c.data<std::uint8_t>()[a] < c.data<std::uint8_t>()[b];
-    case DType::String: return Max ? c.string_at(a) > c.string_at(b) : c.string_at(a) < c.string_at(b);
-    case DType::Float64: {
-        const double x = c.data<double>()[a], y = c.data<double>()[b];
-        if (std::isnan(y)) return false;  // the first NaN stays
-        if (std::isnan(x)) return true;
-        const double m = ieee_minmax<Max>(x, y);
-        return std::memcmp(&m, &x, sizeof m) == 0 && std::memcmp(&x, &y, sizeof x) != 0;
-    }
-    case DType::Complex128: break;  // not a frame dtype
+        case DType::Int64:
+            return Max ? c.data<std::int64_t>()[a] > c.data<std::int64_t>()[b]
+                       : c.data<std::int64_t>()[a] < c.data<std::int64_t>()[b];
+        case DType::Bool:
+            return Max ? c.data<std::uint8_t>()[a] > c.data<std::uint8_t>()[b]
+                       : c.data<std::uint8_t>()[a] < c.data<std::uint8_t>()[b];
+        case DType::String: return Max ? c.string_at(a) > c.string_at(b) : c.string_at(a) < c.string_at(b);
+        case DType::Float64: {
+            const double x = c.data<double>()[a], y = c.data<double>()[b];
+            if (std::isnan(y)) return false;  // the first NaN stays
+            if (std::isnan(x)) return true;
+            const double m = ieee_minmax<Max>(x, y);
+            return std::memcmp(&m, &x, sizeof m) == 0 && std::memcmp(&x, &y, sizeof x) != 0;
+        }
+        case DType::Complex128: break;  // not a frame dtype
     }
     return false;
 }
@@ -100,32 +106,32 @@ Column Groups::reduce(std::string_view op, const Column& col, bool skipna, doubl
         Column winners = make_fixed(DType::Int64, G);
         auto* w = reinterpret_cast<std::int64_t*>(winners.values->data());
         for_groups([&](std::int64_t g_lo, std::int64_t g_hi) {
-        for (std::int64_t g = g_lo; g < g_hi; ++g) {
-            const std::int64_t b = start_[g], e = start_[g + 1];
-            std::int64_t at = -1;
-            if (op == "first" || op == "last") {
-                const bool fwd = op == "first";
-                for (std::int64_t k = 0; k < e - b; ++k) {
-                    const std::int64_t r = rows_[fwd ? b + k : e - 1 - k];
-                    if (!skipna || col.is_valid(r)) {
-                        at = col.is_valid(r) ? r : -1;  // skipna=False: the first row, NA or not
-                        break;
+            for (std::int64_t g = g_lo; g < g_hi; ++g) {
+                const std::int64_t b = start_[g], e = start_[g + 1];
+                std::int64_t at = -1;
+                if (op == "first" || op == "last") {
+                    const bool fwd = op == "first";
+                    for (std::int64_t k = 0; k < e - b; ++k) {
+                        const std::int64_t r = rows_[fwd ? b + k : e - 1 - k];
+                        if (!skipna || col.is_valid(r)) {
+                            at = col.is_valid(r) ? r : -1;  // skipna=False: the first row, NA or not
+                            break;
+                        }
                     }
-                }
-            } else {
-                bool any_na = false;
-                for (std::int64_t j = b; j < e; ++j) {
-                    const std::int64_t r = rows_[j];
-                    if (!col.is_valid(r)) {
-                        any_na = true;
-                        continue;
+                } else {
+                    bool any_na = false;
+                    for (std::int64_t j = b; j < e; ++j) {
+                        const std::int64_t r = rows_[j];
+                        if (!col.is_valid(r)) {
+                            any_na = true;
+                            continue;
+                        }
+                        if (at < 0 || (op == "max" ? beats<true>(col, r, at) : beats<false>(col, r, at))) at = r;
                     }
-                    if (at < 0 || (op == "max" ? beats<true>(col, r, at) : beats<false>(col, r, at))) at = r;
+                    if (!skipna && any_na) at = -1;
                 }
-                if (!skipna && any_na) at = -1;
+                w[g] = at;
             }
-            w[g] = at;
-        }
         });
         return take(col, winners);
     }
@@ -135,59 +141,59 @@ Column Groups::reduce(std::string_view op, const Column& col, bool skipna, doubl
     // into the bitmap at the end.
     std::vector<std::uint8_t> valid(static_cast<std::size_t>(G), 1);
     for_groups([&](std::int64_t g_lo, std::int64_t g_hi) {
-    for (std::int64_t g = g_lo; g < g_hi; ++g) {
-        const std::int64_t b = start_[g], n = start_[g + 1] - b;
-        const std::int64_t count = count_of(g);
-        auto set_na = [&] { valid[static_cast<std::size_t>(g)] = 0; };
-        auto get = [&](std::int64_t k) { return row_double(col, rows_[b + k]); };  // NA rows hold 0
-        if (op == "count") {
-            reinterpret_cast<std::int64_t*>(out.values->data())[g] = count;
-            continue;
-        }
-        if (!skipna && count < n) {
-            set_na();
-            continue;
-        }
-        if (op == "sum") {
-            if (result == DType::Float64) {
-                reinterpret_cast<double*>(out.values->data())[g] = float_sum(n, get);
-            } else {
-                std::uint64_t total = 0;  // int64 wraps (docs/api/frame.md §1.5); bool counts True
-                for (std::int64_t k = 0; k < n; ++k) {
-                    const std::int64_t r = rows_[b + k];
-                    total += col.dtype == DType::Int64 ? static_cast<std::uint64_t>(col.data<std::int64_t>()[r])
-                                                       : col.data<std::uint8_t>()[r];
-                }
-                reinterpret_cast<std::int64_t*>(out.values->data())[g] = static_cast<std::int64_t>(total);
+        for (std::int64_t g = g_lo; g < g_hi; ++g) {
+            const std::int64_t b = start_[g], n = start_[g + 1] - b;
+            const std::int64_t count = count_of(g);
+            auto set_na = [&] { valid[static_cast<std::size_t>(g)] = 0; };
+            auto get = [&](std::int64_t k) { return row_double(col, rows_[b + k]); };  // NA rows hold 0
+            if (op == "count") {
+                reinterpret_cast<std::int64_t*>(out.values->data())[g] = count;
+                continue;
             }
-            continue;
-        }
-        if (count == 0 || (is_var && static_cast<double>(count) - correction <= 0)) {
-            set_na();
-            continue;
-        }
-        double mean;
-        if (col.dtype == DType::Bool) {
-            std::int64_t trues = 0;
-            for (std::int64_t k = 0; k < n; ++k) trues += col.data<std::uint8_t>()[rows_[b + k]];
-            mean = static_cast<double>(trues) / static_cast<double>(count);
-        } else {  // float64, and int64 as float64 the way the array area sums it: 0 + pairwise,
+            if (!skipna && count < n) {
+                set_na();
+                continue;
+            }
+            if (op == "sum") {
+                if (result == DType::Float64) {
+                    reinterpret_cast<double*>(out.values->data())[g] = float_sum(n, get);
+                } else {
+                    std::uint64_t total = 0;  // int64 wraps (docs/api/frame.md §1.5); bool counts True
+                    for (std::int64_t k = 0; k < n; ++k) {
+                        const std::int64_t r = rows_[b + k];
+                        total += col.dtype == DType::Int64 ? static_cast<std::uint64_t>(col.data<std::int64_t>()[r])
+                                                           : col.data<std::uint8_t>()[r];
+                    }
+                    reinterpret_cast<std::int64_t*>(out.values->data())[g] = static_cast<std::int64_t>(total);
+                }
+                continue;
+            }
+            if (count == 0 || (is_var && static_cast<double>(count) - correction <= 0)) {
+                set_na();
+                continue;
+            }
+            double mean;
+            if (col.dtype == DType::Bool) {
+                std::int64_t trues = 0;
+                for (std::int64_t k = 0; k < n; ++k) trues += col.data<std::uint8_t>()[rows_[b + k]];
+                mean = static_cast<double>(trues) / static_cast<double>(count);
+            } else {  // float64, and int64 as float64 the way the array area sums it: 0 + pairwise,
                   // the column mean's bits for groups of up to 4096 rows (docs/api/frame.md §7.5)
-            mean = float_sum(n, get) / static_cast<double>(count);
+                mean = float_sum(n, get) / static_cast<double>(count);
+            }
+            double value = mean;
+            if (is_var) {
+                const double ssd = float_sum(n, [&](std::int64_t k) {
+                    const std::int64_t r = rows_[b + k];
+                    if (!col.is_valid(r)) return 0.0;
+                    const double d = row_double(col, r) - mean;
+                    return d * d;
+                });
+                value = ssd / (static_cast<double>(count) - correction);
+                if (op == "std") value = std::sqrt(value);
+            }
+            reinterpret_cast<double*>(out.values->data())[g] = value;
         }
-        double value = mean;
-        if (is_var) {
-            const double ssd = float_sum(n, [&](std::int64_t k) {
-                const std::int64_t r = rows_[b + k];
-                if (!col.is_valid(r)) return 0.0;
-                const double d = row_double(col, r) - mean;
-                return d * d;
-            });
-            value = ssd / (static_cast<double>(count) - correction);
-            if (op == "std") value = std::sqrt(value);
-        }
-        reinterpret_cast<double*>(out.values->data())[g] = value;
-    }
     });
     std::uint8_t* bits = add_validity(out);
     for (std::int64_t g = 0; g < G; ++g)

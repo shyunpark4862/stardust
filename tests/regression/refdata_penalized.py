@@ -38,16 +38,17 @@ def problems():
     w = rng.uniform(0.2, 2.0, n)
     w[[3, 11]] = 0.0
     for name, kind, alpha, rho, extra in [
-            ("lasso", "lasso", 0.1, 1.0, {}),
-            ("lasso_small_alpha", "lasso", 0.002, 1.0, {}),
-            ("lasso_weights_std", "lasso", 0.1, 1.0, dict(weights=w.tolist(), standardize=True)),
-            ("enet", "elastic_net", 0.2, 0.3, {}),
-            ("enet_weights", "elastic_net", 0.05, 0.8, dict(weights=w.tolist())),
-            ("enet_noint", "elastic_net", 0.2, 0.7, dict(intercept=False)),
-            ("enet_std", "elastic_net", 0.3, 0.5, dict(standardize=True)),
-            ("ridge", "ridge", 0.05, 0.0, {}),
-            ("ridge_weights_std", "ridge", 0.5, 0.0, dict(weights=w.tolist(), standardize=True)),
-            ("ridge_noint", "ridge", 0.05, 0.0, dict(intercept=False))]:
+        ("lasso", "lasso", 0.1, 1.0, {}),
+        ("lasso_small_alpha", "lasso", 0.002, 1.0, {}),
+        ("lasso_weights_std", "lasso", 0.1, 1.0, dict(weights=w.tolist(), standardize=True)),
+        ("enet", "elastic_net", 0.2, 0.3, {}),
+        ("enet_weights", "elastic_net", 0.05, 0.8, dict(weights=w.tolist())),
+        ("enet_noint", "elastic_net", 0.2, 0.7, dict(intercept=False)),
+        ("enet_std", "elastic_net", 0.3, 0.5, dict(standardize=True)),
+        ("ridge", "ridge", 0.05, 0.0, {}),
+        ("ridge_weights_std", "ridge", 0.5, 0.0, dict(weights=w.tolist(), standardize=True)),
+        ("ridge_noint", "ridge", 0.05, 0.0, dict(intercept=False)),
+    ]:
         out[name] = dict(base, kind=kind, y=y.tolist(), X=X.tolist(), alpha=alpha, l1_ratio=rho, **extra)
     # a constant column (out of the fit)
     Xc = X.copy()
@@ -61,8 +62,9 @@ def problems():
     yk = Xk @ rng.standard_normal(p) + 0.1 * rng.standard_normal(n)
     out["lasso_kappa1e6"] = dict(base, kind="lasso", y=yk.tolist(), X=Xk.tolist(), alpha=1e-4, l1_ratio=1.0)
     # an active set whose Gram block has condition number about 1e9: the polish refines with the data
-    out["enet_kappa1e6_refined"] = dict(base, kind="elastic_net", y=yk.tolist(), X=Xk.tolist(), alpha=3e-5,
-                                        l1_ratio=0.5, max_iter=100000)
+    out["enet_kappa1e6_refined"] = dict(
+        base, kind="elastic_net", y=yk.tolist(), X=Xk.tolist(), alpha=3e-5, l1_ratio=0.5, max_iter=100000
+    )
     out["ridge_kappa1e6"] = dict(base, kind="ridge", y=yk.tolist(), X=Xk.tolist(), alpha=1e-8, l1_ratio=0.0)
     # the penalized GLMs
     Xg = rng.standard_normal((n, p))
@@ -71,10 +73,20 @@ def problems():
     yp = rng.poisson(np.exp(0.3 * eta)).astype(float)
     for fam, yy in (("binomial", yb), ("poisson", yp)):
         for rho, alpha in ((1.0, 0.02), (0.5, 0.03), (0.0, 0.05)):
-            out[f"{fam}_{rho:g}"] = dict(base, kind="glm", family=fam, y=yy.tolist(), X=Xg.tolist(), alpha=alpha,
-                                         l1_ratio=rho)
-    out["binomial_weights_std"] = dict(base, kind="glm", family="binomial", y=yb.tolist(), X=Xg.tolist(), alpha=0.02,
-                                       l1_ratio=0.7, weights=w.tolist(), standardize=True)
+            out[f"{fam}_{rho:g}"] = dict(
+                base, kind="glm", family=fam, y=yy.tolist(), X=Xg.tolist(), alpha=alpha, l1_ratio=rho
+            )
+    out["binomial_weights_std"] = dict(
+        base,
+        kind="glm",
+        family="binomial",
+        y=yb.tolist(),
+        X=Xg.tolist(),
+        alpha=0.02,
+        l1_ratio=0.7,
+        weights=w.tolist(),
+        standardize=True,
+    )
     return out
 
 
@@ -101,8 +113,17 @@ def _one(item):
 
     r = fit(p)
     beta0 = [float(v) for v in r.params.tolist()]
-    ref = regref.penalized(p["y"], p["X"], alpha=p["alpha"], l1_ratio=p["l1_ratio"], beta0=beta0, family=p["family"],
-                           weights=p["weights"], intercept=p["intercept"], standardize=p["standardize"])
+    ref = regref.penalized(
+        p["y"],
+        p["X"],
+        alpha=p["alpha"],
+        l1_ratio=p["l1_ratio"],
+        beta0=beta0,
+        family=p["family"],
+        weights=p["weights"],
+        intercept=p["intercept"],
+        standardize=p["standardize"],
+    )
     vals = {key: ([list(v) for v in x] if isinstance(x, list) else list(x)) for key, x in ref.items()}
     return name, dict(p, ref=vals)
 

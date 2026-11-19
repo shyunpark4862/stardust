@@ -50,6 +50,7 @@ YD = 2.5 * np.exp(-1.3 * TD) + 0.5 + 0.01 * RNG.normal(size=40)
 
 # ---- G93: converged needs the polish; n_iter <= max_iter
 
+
 def _conv_invariant(fit, ref, n_iter_cap=None, tol=1e-12):
     """converged implies the coefficients of the full fit to rounding."""
     full = a(ref.params)
@@ -80,8 +81,9 @@ def test_rlm_converged_means_polished():
         _conv_invariant([(R.rlm(y, X, max_iter=m, **kw), m) for m in range(1, 15)], ref, n_iter_cap=True, tol=1e-11)
     ref = R.rlm(y, X, method="MM", rng=gen())
     assert ref.converged
-    _conv_invariant([(R.rlm(y, X, method="MM", rng=gen(), max_iter=m), m) for m in range(1, 10)], ref,
-                    n_iter_cap=True, tol=1e-11)
+    _conv_invariant(
+        [(R.rlm(y, X, method="MM", rng=gen(), max_iter=m), m) for m in range(1, 10)], ref, n_iter_cap=True, tol=1e-11
+    )
 
 
 def test_penalized_glm_newton_start_capped():
@@ -103,11 +105,19 @@ def test_penalized_glm_newton_start_capped():
 def test_lasso_and_pglm_converged_invariant():
     Xd = np.column_stack([X, X[:, 0] + 1e-3 * RNG.normal(size=N)])
     ref = R.elastic_net(Y, Xd, alpha=0.05, l1_ratio=0.7)
-    _conv_invariant([(R.elastic_net(Y, Xd, alpha=0.05, l1_ratio=0.7, max_iter=m), m) for m in range(1, 40)], ref,
-                    n_iter_cap=True, tol=1e-10)
+    _conv_invariant(
+        [(R.elastic_net(Y, Xd, alpha=0.05, l1_ratio=0.7, max_iter=m), m) for m in range(1, 40)],
+        ref,
+        n_iter_cap=True,
+        tol=1e-10,
+    )
     ref = R.penalized_glm(YB, X, family="binomial", alpha=0.01, l1_ratio=0.5)
-    _conv_invariant([(R.penalized_glm(YB, X, family="binomial", alpha=0.01, l1_ratio=0.5, max_iter=m), m)
-                     for m in range(1, 10)], ref, n_iter_cap=True, tol=1e-10)
+    _conv_invariant(
+        [(R.penalized_glm(YB, X, family="binomial", alpha=0.01, l1_ratio=0.5, max_iter=m), m) for m in range(1, 10)],
+        ref,
+        n_iter_cap=True,
+        tol=1e-10,
+    )
 
 
 def test_nls_polish_counts_against_max_nfev():
@@ -123,6 +133,7 @@ def test_nls_polish_counts_against_max_nfev():
 
 
 # ---- G94: constant y
+
 
 def test_constant_y_exact_solution():
     yc = np.full(N, 2.0)
@@ -157,10 +168,11 @@ def test_glm_zero_scale_llnull_minus_inf():
 
 # ---- G95: df_resid = 0, the perfect fit's tolerance
 
+
 def test_df_resid_zero_is_nan():
     x = np.array([1.0, 2.0, 4.0])
     y = np.array([1.0, 3.0, 2.0])
-    Xs = np.column_stack([x, x ** 2])
+    Xs = np.column_stack([x, x**2])
     for ct in ("nonrobust", "HC0", "HC1", "HC3"):
         r = R.ols(y, Xs, cov_type=ct)
         assert r.df_resid == 0 and math.isnan(r.scale)
@@ -182,8 +194,8 @@ def test_perfect_fit_by_tolerance():
     """y = 1 + 2x + 3x^2 exactly: the QR leaves residuals of rounding size; within the
     (k + 16) u tolerance they are a perfect fit (ssr 0, bse 0, p 0, llf +inf, diagnostics NaN)."""
     x = np.arange(10.0)
-    y = 1 + 2 * x + 3 * x ** 2
-    Xs = np.column_stack([x, x ** 2])
+    y = 1 + 2 * x + 3 * x**2
+    Xs = np.column_stack([x, x**2])
     r = R.ols(y, Xs)
     assert r.ssr == 0.0 and r.scale == 0.0 and np.all(a(r.bse) == 0.0) and np.all(a(r.pvalues) == 0.0)
     assert r.llf == math.inf and r.rsquared == 1.0
@@ -201,6 +213,7 @@ def test_perfect_fit_by_tolerance():
 
 
 # ---- G96: empty inputs
+
 
 def _empty_ok(r):
     assert r.nobs == 0
@@ -239,11 +252,16 @@ def test_empty_input(name):
 
 def test_zero_weights_are_empty():
     w0 = np.zeros(N)
-    for r in (R.wls(Y, X, weights=w0), R.glm(Y, X, family="gaussian", var_weights=w0),
-              R.glm(YP, X, family="poisson", freq_weights=w0), R.lasso(Y, X, alpha=0.1, weights=w0),
-              R.lasso_cv(Y, X, rng=gen(), cv=3, weights=w0), R.ridge(Y, X, alpha=0.1, weights=w0),
-              R.penalized_glm(YP, X, family="poisson", alpha=0.1, weights=w0),
-              R.nls(decay, TD, YD, p0=[1.0, 1.0, 0.0], weights=np.zeros(40))):
+    for r in (
+        R.wls(Y, X, weights=w0),
+        R.glm(Y, X, family="gaussian", var_weights=w0),
+        R.glm(YP, X, family="poisson", freq_weights=w0),
+        R.lasso(Y, X, alpha=0.1, weights=w0),
+        R.lasso_cv(Y, X, rng=gen(), cv=3, weights=w0),
+        R.ridge(Y, X, alpha=0.1, weights=w0),
+        R.penalized_glm(YP, X, family="poisson", alpha=0.1, weights=w0),
+        R.nls(decay, TD, YD, p0=[1.0, 1.0, 0.0], weights=np.zeros(40)),
+    ):
         _empty_ok(r)
     # in a batch only that regression is NaN
     rb = R.wls(Y, X, weights=np.stack([np.ones(N), w0]))
@@ -252,20 +270,29 @@ def test_zero_weights_are_empty():
 
 
 def test_linregress_and_slopes_too_few_points():
-    for f in (lambda: R.linregress([1.0], [2.0]), lambda: R.linregress([], []),
-              lambda: R.theilslopes([1.0]), lambda: R.siegelslopes([1.0, np.nan], nan_policy="omit")):
+    for f in (
+        lambda: R.linregress([1.0], [2.0]),
+        lambda: R.linregress([], []),
+        lambda: R.theilslopes([1.0]),
+        lambda: R.siegelslopes([1.0, np.nan], nan_policy="omit"),
+    ):
         with pytest.raises(ValueError, match=r"'x' and 'y' must have length at least 2$"):
             f()
 
 
 # ---- G98, G99: read-only configuration, conf_int's keyword
 
+
 def test_read_only_fields():
-    cases = [(R.ols(Y, X), ("param_names", "cov_type")), (R.glm(YB, X, family="binomial"), ("family", "link")),
-             (R.lasso(Y, X, alpha=0.1), ("alpha", "l1_ratio", "standardize", "param_names")),
-             (R.penalized_glm(YB, X, family="binomial", alpha=0.1), ("family",)),
-             (R.rlm(Y, X), ("method", "norm", "cov_type")), (R.quantreg(Y, X, q=[0.3, 0.6]), ("q", "cov_type")),
-             (R.nls(decay, TD, YD, p0=[1.0, 1.0, 0.0]), ("method", "param_names"))]
+    cases = [
+        (R.ols(Y, X), ("param_names", "cov_type")),
+        (R.glm(YB, X, family="binomial"), ("family", "link")),
+        (R.lasso(Y, X, alpha=0.1), ("alpha", "l1_ratio", "standardize", "param_names")),
+        (R.penalized_glm(YB, X, family="binomial", alpha=0.1), ("family",)),
+        (R.rlm(Y, X), ("method", "norm", "cov_type")),
+        (R.quantreg(Y, X, q=[0.3, 0.6]), ("q", "cov_type")),
+        (R.nls(decay, TD, YD, p0=[1.0, 1.0, 0.0]), ("method", "param_names")),
+    ]
     for r, names in cases:
         for nm in names:
             old = getattr(r, nm)
@@ -274,8 +301,13 @@ def test_read_only_fields():
 
 
 def test_conf_int_keyword_only():
-    for r in (R.ols(Y, X), R.glm(YB, X, family="binomial"), R.rlm(Y, X), R.quantreg(Y, X),
-              R.nls(decay, TD, YD, p0=[1.0, 1.0, 0.0])):
+    for r in (
+        R.ols(Y, X),
+        R.glm(YB, X, family="binomial"),
+        R.rlm(Y, X),
+        R.quantreg(Y, X),
+        R.nls(decay, TD, YD, p0=[1.0, 1.0, 0.0]),
+    ):
         with pytest.raises(TypeError):
             r.conf_int(0.1)
         assert a(r.conf_int(alpha=0.1)).shape[-1] == 2
@@ -289,6 +321,7 @@ def test_quantreg_q_is_a_copy():
 
 
 # ---- G100: pseudo R^2
+
 
 def test_pseudo_rsquared_like_statsmodels():
     sm = pytest.importorskip("statsmodels.api")
@@ -304,15 +337,21 @@ def test_pseudo_rsquared_like_statsmodels():
 
 # ---- G101: no parameters
 
+
 def test_no_parameters_everywhere():
     Z = np.zeros((N, 0))
-    for f in (lambda: R.ols(Y, Z, intercept=False), lambda: R.wls(Y, Z, weights=np.ones(N), intercept=False),
-              lambda: R.gls(Y, Z, sigma=np.eye(N), intercept=False),
-              lambda: R.glm(YP, Z, family="poisson", intercept=False),
-              lambda: R.ridge(Y, Z, alpha=0.1, intercept=False), lambda: R.lasso(Y, Z, alpha=0.1, intercept=False),
-              lambda: R.lasso_cv(Y, Z, rng=gen(), intercept=False),
-              lambda: R.penalized_glm(YP, Z, family="poisson", alpha=0.1, intercept=False),
-              lambda: R.rlm(Y, Z, intercept=False), lambda: R.quantreg(Y, Z, intercept=False)):
+    for f in (
+        lambda: R.ols(Y, Z, intercept=False),
+        lambda: R.wls(Y, Z, weights=np.ones(N), intercept=False),
+        lambda: R.gls(Y, Z, sigma=np.eye(N), intercept=False),
+        lambda: R.glm(YP, Z, family="poisson", intercept=False),
+        lambda: R.ridge(Y, Z, alpha=0.1, intercept=False),
+        lambda: R.lasso(Y, Z, alpha=0.1, intercept=False),
+        lambda: R.lasso_cv(Y, Z, rng=gen(), intercept=False),
+        lambda: R.penalized_glm(YP, Z, family="poisson", alpha=0.1, intercept=False),
+        lambda: R.rlm(Y, Z, intercept=False),
+        lambda: R.quantreg(Y, Z, intercept=False),
+    ):
         with pytest.raises(ValueError, match=r"the model has no parameters \(no columns in 'X' and intercept=False\)"):
             f()
     with pytest.raises(ValueError, match=r"^nls\(\): the model has no parameters \('p0' is empty\)$"):
@@ -320,6 +359,7 @@ def test_no_parameters_everywhere():
 
 
 # ---- G102: linregress' nan_policy
+
 
 def test_linregress_nan_policy():
     x = np.arange(10.0)
@@ -353,6 +393,7 @@ def test_linregress_nan_policy():
 
 
 # ---- G103: prediction intervals of rlm, quantreg, nls
+
 
 def test_rlm_quantreg_predict_interval():
     Xn = RNG.normal(size=(5, 2))
@@ -389,11 +430,13 @@ def test_nls_predict_interval_delta_method():
 
 # ---- G104: nls's x_new
 
+
 def test_nls_predict_inputs():
     df = sd.frame.DataFrame({"t": TD.tolist(), "u": (TD * 0).tolist()})
 
     def f2(x, a_, k, c):
         return a_ * sd.exp(-k * x[:, 0]) + c + 0 * x[:, 1]
+
     r = R.nls(f2, df, YD, p0=[1.0, 1.0, 0.0])
     swapped = sd.frame.DataFrame({"u": [0.0, 0.0], "t": [1.0, 2.0]})
     with pytest.raises(ValueError, match=r"'x_new' must have the columns \['t', 'u'\] in the fit's order"):
@@ -407,20 +450,30 @@ def test_nls_predict_inputs():
 
 # ---- G105: a one-column y
 
+
 def test_one_column_dataframe_y():
     dfy = sd.frame.DataFrame({"y": Y.tolist()})
-    for fit in (lambda y: R.ols(y, X), lambda y: R.glm(y, X, family="gaussian"), lambda y: R.rlm(y, X),
-                lambda y: R.quantreg(y, X), lambda y: R.lasso(y, X, alpha=0.1)):
+    for fit in (
+        lambda y: R.ols(y, X),
+        lambda y: R.glm(y, X, family="gaussian"),
+        lambda y: R.rlm(y, X),
+        lambda y: R.quantreg(y, X),
+        lambda y: R.lasso(y, X, alpha=0.1),
+    ):
         assert a(fit(dfy).params).tolist() == a(fit(Y).params).tolist()
     assert R.linregress(X[:, 0], dfy) == R.linregress(X[:, 0], Y)
-    with pytest.raises(ValueError, match=r"^ols\(\): 'X' must have 1 row like 'y', not 60 \('y' of shape \(60, 1\) "
-                                         r"is a batch of regressions with 1 row each"):
+    with pytest.raises(
+        ValueError,
+        match=r"^ols\(\): 'X' must have 1 row like 'y', not 60 \('y' of shape \(60, 1\) "
+        r"is a batch of regressions with 1 row each",
+    ):
         R.ols(sd.asarray(Y.reshape(-1, 1)), X)
     with pytest.raises(ValueError, match=r"^ols\(\): 'X' must have 5 rows like 'y', not 4$"):
         R.ols(Y[:5], X[:4])
 
 
 # ---- G107: empty folds
+
 
 def test_cv_skips_empty_folds():
     Xs = np.arange(10.0).reshape(5, 2) ** 1.3
@@ -446,6 +499,7 @@ def test_cv_skips_empty_folds():
 
 # ---- G108: one cluster and a constant y
 
+
 def test_one_cluster_constant_y():
     r = R.ols(np.full(N, 2.0), X, cov_type="cluster", groups=np.zeros(N))
     assert np.all(np.isnan(a(r.cov_params()))) and np.all(np.isnan(a(r.bse)))
@@ -457,9 +511,11 @@ def test_one_cluster_constant_y():
 
 # ---- the review's fixes: crashes of wide penalized fits (run in a subprocess: they aborted)
 
+
 def _run(code):
     import subprocess
     import sys
+
     p = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=600)
     assert p.returncode == 0, p.stderr[-2000:]
     return p.stdout
@@ -515,6 +571,7 @@ def test_penalized_glm_naive_path_matches_active_columns():
 
 # ---- GLM: frequency weights' HC2/HC3 and HAC lags; predict's offset
 
+
 def test_glm_freq_weights_hc2_hc3_are_the_repeated_data():
     f = RNG.integers(1, 4, size=N).astype(float)
     Xr, yr = np.repeat(X, f.astype(int), axis=0), np.repeat(YP, f.astype(int))
@@ -533,7 +590,10 @@ def test_glm_hac_default_lags_from_nobs():
 
 def test_glm_predict_offset_inf():
     r = R.glm(YP, X, family="poisson")
-    for kw, nm in ((dict(offset=np.array([0.0, np.inf])), "offset"), (dict(exposure=np.array([1.0, np.inf])), "exposure")):
+    for kw, nm in (
+        (dict(offset=np.array([0.0, np.inf])), "offset"),
+        (dict(exposure=np.array([1.0, np.inf])), "exposure"),
+    ):
         with pytest.raises(ValueError, match=rf"^predict\(\): '{nm}' contains infinity$"):
             r.predict(X[:2], **kw)
         with pytest.raises(ValueError, match=rf"^predict_interval\(\): '{nm}' contains infinity$"):
@@ -543,13 +603,16 @@ def test_glm_predict_offset_inf():
 def test_glm_omit_keeps_errors_in_nan_rows():
     y = YP.copy()
     y[0] = np.nan
-    for kw, msg in ((dict(var_weights=np.r_[-1.0, np.ones(N - 1)]), "'var_weights' must be >= 0"),
-                    (dict(offset=np.r_[np.inf, np.zeros(N - 1)]), "'offset' contains infinity")):
+    for kw, msg in (
+        (dict(var_weights=np.r_[-1.0, np.ones(N - 1)]), "'var_weights' must be >= 0"),
+        (dict(offset=np.r_[np.inf, np.zeros(N - 1)]), "'offset' contains infinity"),
+    ):
         with pytest.raises(ValueError, match=msg):
             R.glm(y, X, family="poisson", nan_policy="omit", **kw)
 
 
 # ---- penalized: messages, grids, the boundary's null deviance
+
 
 def test_penalized_messages():
     with pytest.raises(OverflowError, match=r"^elastic_net\(\): 'l1_ratio' is out of range$"):
@@ -560,8 +623,11 @@ def test_penalized_messages():
         R.lasso_cv(Y, X, rng=gen(), eps=10**400)
     with pytest.raises(OverflowError, match=r"^conf_int\(\): 'alpha' is out of range$"):
         R.ols(Y, X).conf_int(alpha=10**400)
-    with pytest.raises(TypeError, match=r"^lasso_cv\(\): 'alphas' must be an int \(the grid's length\) or a "
-                                        r"1-dimensional array of numbers, not float$"):
+    with pytest.raises(
+        TypeError,
+        match=r"^lasso_cv\(\): 'alphas' must be an int \(the grid's length\) or a "
+        r"1-dimensional array of numbers, not float$",
+    ):
         R.lasso_cv(Y, X, rng=gen(), alphas=1.5)
     with pytest.raises(ValueError, match=r"^ridge_cv\(\): 'rng' is only used when 'cv' is a number of folds"):
         R.ridge_cv(Y, X, cv="gcv", rng=gen())
@@ -576,11 +642,14 @@ def test_penalized_glm_boundary_null_deviance():
 def test_penalized_repr_names_the_axes():
     assert repr(R.lasso(np.vstack([Y, Y]), X, alpha=0.1)) == "LassoResult(batch shape (2,), 3 parameters)"
     assert repr(R.lasso(Y, X, alpha=[0.1, 0.2])) == "LassoResult(a path of 2 alphas, 3 parameters)"
-    assert repr(R.ridge(np.vstack([Y, Y]), X, alpha=[0.1, 0.2])) == \
-        "RidgeResult(batch shape (2,) and a path of 2 alphas, 3 parameters)"
+    assert (
+        repr(R.ridge(np.vstack([Y, Y]), X, alpha=[0.1, 0.2]))
+        == "RidgeResult(batch shape (2,) and a path of 2 alphas, 3 parameters)"
+    )
 
 
 # ---- linear: predictions, scales, messages
+
 
 def test_predict_nan_under_zero_and_aliased_coefficients():
     Xd = np.column_stack([X, X[:, 0]])  # the third column is aliased
@@ -596,8 +665,21 @@ def test_predict_nan_under_zero_and_aliased_coefficients():
     assert math.isnan(float(las.predict(np.array([[0.1, 0.2, np.nan]]))[0]))
 
 
-@pytest.mark.parametrize("sy,sx", [(1e-160, 1.0), (1e-170, 1.0), (1e-300, 1.0), (1e160, 1.0), (1e300, 1.0),
-                                   (1.0, 1e-170), (1.0, 1e160), (1.0, 1e-300), (1e-200, 1e-200), (1e140, 1e-140)])
+@pytest.mark.parametrize(
+    "sy,sx",
+    [
+        (1e-160, 1.0),
+        (1e-170, 1.0),
+        (1e-300, 1.0),
+        (1e160, 1.0),
+        (1e300, 1.0),
+        (1.0, 1e-170),
+        (1.0, 1e160),
+        (1.0, 1e-300),
+        (1e-200, 1e-200),
+        (1e140, 1e-140),
+    ],
+)
 def test_extreme_scales_are_equivariant(sy, sx):
     x = np.arange(8.0)
     y = np.array([1.0, 2.9, 5.2, 6.8, 9.1, 11.2, 12.8, 15.1])
@@ -615,11 +697,11 @@ def test_extreme_scales_are_equivariant(sy, sx):
         np.testing.assert_allclose(ci, a(b.predict_interval(Xs[:3], kind="observation")), rtol=1e-12)
         np.testing.assert_allclose(a(r.resid_studentized_internal), a(b.resid_studentized_internal), rtol=1e-11)
     w = np.linspace(1, 2, 8)
-    np.testing.assert_allclose(a(R.wls(y * sy, Xs * sx, weights=w).tvalues), a(R.wls(y, Xs, weights=w).tvalues),
-                               rtol=1e-12)
+    np.testing.assert_allclose(
+        a(R.wls(y * sy, Xs * sx, weights=w).tvalues), a(R.wls(y, Xs, weights=w).tvalues), rtol=1e-12
+    )
     S = np.eye(8) + 0.3 * np.eye(8, k=1) + 0.3 * np.eye(8, k=-1)
-    np.testing.assert_allclose(a(R.gls(y * sy, Xs * sx, sigma=S).tvalues), a(R.gls(y, Xs, sigma=S).tvalues),
-                               rtol=1e-11)
+    np.testing.assert_allclose(a(R.gls(y * sy, Xs * sx, sigma=S).tvalues), a(R.gls(y, Xs, sigma=S).tvalues), rtol=1e-11)
     lr, lb = R.linregress(x * sx, y * sy), R.linregress(x, y)
     assert lr.pvalue == pytest.approx(lb.pvalue, rel=1e-11) and lr.rvalue == pytest.approx(lb.rvalue, rel=1e-13)
 
@@ -651,8 +733,11 @@ def test_linear_input_messages():
 
 def test_predict_batch_message():
     r = R.ols(RNG.normal(size=(3, 10)), RNG.normal(size=(10, 2)))
-    with pytest.raises(ValueError, match=r"^predict\(\): the batch shapes of 'X_new' \(2,\) and the fit \(3,\) do not "
-                                         r"broadcast$"):
+    with pytest.raises(
+        ValueError,
+        match=r"^predict\(\): the batch shapes of 'X_new' \(2,\) and the fit \(3,\) do not "
+        r"broadcast$",
+    ):
         r.predict(RNG.normal(size=(2, 4, 2)))
     with pytest.raises(ValueError, match=r"^predict_interval\(\): the batch shapes of 'X_new' \(2,\)"):
         r.predict_interval(RNG.normal(size=(2, 4, 2)))
@@ -672,6 +757,7 @@ def test_cluster_batch_labels_per_regression():
 
 
 # ---- robust and quantile
+
 
 def test_rlm_mm_degenerate_designs():
     r = R.rlm(np.zeros(0), np.zeros((0, 2)), method="MM", rng=gen())
@@ -727,6 +813,7 @@ def test_robust_summaries_say_covariance_type():
 
 # ---- nls inputs
 
+
 def test_nls_input_messages():
     with pytest.raises(ValueError, match=r"^nls\(\): 'bounds' must be a pair \(lower, upper\), not 3 values$"):
         R.nls(decay, TD, YD, p0=[1.0, 1.0, 0.0], bounds=(0, 1, 2))
@@ -739,6 +826,7 @@ def test_nls_input_messages():
 
 
 # ---- G109: nls's perfect fit
+
 
 def test_nls_perfect_fit_no_significance():
     """ssr exactly 0 with df_resid > 0: bse 0, t and p NaN (no theta / 0), conf_int [theta, theta]."""
@@ -756,6 +844,7 @@ def test_nls_perfect_fit_no_significance():
 
 
 # ---- R88-R100 (2026-11-19) and G110-G113
+
 
 def test_configuration_fields_are_fresh_copies():
     """G113: a list or array field is a new copy at each access."""
@@ -777,15 +866,24 @@ def test_configuration_fields_are_fresh_copies():
 
 def test_method_call_shape_messages():
     """R89: the methods' call-shape errors say the method's name (sd.stats' form)."""
-    cases = [R.ols(Y, X), R.glm(YB, X, family="binomial"), R.rlm(Y, X), R.quantreg(Y, X),
-             R.nls(decay, TD, YD, p0=[1.0, 1.0, 0.0])]
+    cases = [
+        R.ols(Y, X),
+        R.glm(YB, X, family="binomial"),
+        R.rlm(Y, X),
+        R.quantreg(Y, X),
+        R.nls(decay, TD, YD, p0=[1.0, 1.0, 0.0]),
+    ]
     for r in cases:
-        for call, msg in ((lambda: r.conf_int(0.1), r"^conf_int\(\): takes 0 positional arguments but 1 was given$"),
-                          (lambda: r.summary(0.1), r"^summary\(\): takes 0 positional arguments but 1 was given$"),
-                          (lambda: r.predict(), r"^predict\(\): missing 1 required positional argument: '[xX]_new'$"),
-                          (lambda: r.predict_interval(X[:2], 0.1),
-                           r"^predict_interval\(\): takes 1 positional argument but 2 were given$"),
-                          (lambda: r.cov_params(1, 2), r"^cov_params\(\): takes 0 positional arguments but 2 were given$")):
+        for call, msg in (
+            (lambda: r.conf_int(0.1), r"^conf_int\(\): takes 0 positional arguments but 1 was given$"),
+            (lambda: r.summary(0.1), r"^summary\(\): takes 0 positional arguments but 1 was given$"),
+            (lambda: r.predict(), r"^predict\(\): missing 1 required positional argument: '[xX]_new'$"),
+            (
+                lambda: r.predict_interval(X[:2], 0.1),
+                r"^predict_interval\(\): takes 1 positional argument but 2 were given$",
+            ),
+            (lambda: r.cov_params(1, 2), r"^cov_params\(\): takes 0 positional arguments but 2 were given$"),
+        ):
             with pytest.raises(TypeError, match=msg):
                 call()
         with pytest.raises(TypeError, match=r"^predict\(\): unexpected keyword argument 'foo'$"):
@@ -801,6 +899,7 @@ def test_method_call_shape_messages():
     with pytest.raises(TypeError, match=r"^conf_int\(\): 'alpha' must be an int or a float, not str$"):
         R.ols(Y, X).conf_int(alpha="x")
     import inspect
+
     assert str(inspect.signature(R.ols(Y, X).conf_int)) == "(*, alpha=0.05)"
 
 
@@ -883,19 +982,36 @@ def test_lasso_alpha_zero_is_ridges():
     assert np.all(np.isnan(a(r.params))) and not r.converged and r.n_iter == 0
 
 
-@pytest.mark.parametrize("fam,link,y0,kw", [
-    ("poisson", "log", 3.0, {}), ("poisson", "sqrt", 3.0, {}), ("poisson", "identity", 3.0, {}),
-    ("gamma", "inverse", 2.0, {}), ("gamma", "log", 2.0, {}), ("gamma", "identity", 2.0, {}), ("gaussian", "log", 2.0, {}),
-    ("binomial", "logit", 0.3, {"trials": 10.0}), ("binomial", "probit", 0.3, {"trials": 10.0}),
-    ("binomial", "cloglog", 0.3, {"trials": 10.0}), ("binomial", "log", 0.3, {"trials": 10.0})])
+@pytest.mark.parametrize(
+    "fam,link,y0,kw",
+    [
+        ("poisson", "log", 3.0, {}),
+        ("poisson", "sqrt", 3.0, {}),
+        ("poisson", "identity", 3.0, {}),
+        ("gamma", "inverse", 2.0, {}),
+        ("gamma", "log", 2.0, {}),
+        ("gamma", "identity", 2.0, {}),
+        ("gaussian", "log", 2.0, {}),
+        ("binomial", "logit", 0.3, {"trials": 10.0}),
+        ("binomial", "probit", 0.3, {"trials": 10.0}),
+        ("binomial", "cloglog", 0.3, {"trials": 10.0}),
+        ("binomial", "log", 0.3, {"trials": 10.0}),
+    ],
+)
 def test_glm_constant_y_every_family(fam, link, y0, kw):
     """G111: the exact solution (g(y0), 0, ...) with mu = y0; no spurious significance: NaN for
     an estimated scale (0/0), t 0 and p 1 for a fixed one."""
     kw = {k: np.full(N, v) for k, v in kw.items()}
     r = R.glm(np.full(N, y0), X, family=fam, link=link, **kw)
-    sm_link = {"logit": lambda m: math.log(m / (1 - m)), "probit": lambda m: float(sd.special.ndtri(m)),
-               "cloglog": lambda m: math.log(-math.log1p(-m)), "log": math.log, "identity": lambda m: m,
-               "sqrt": math.sqrt, "inverse": lambda m: 1 / m}[link]
+    sm_link = {
+        "logit": lambda m: math.log(m / (1 - m)),
+        "probit": lambda m: float(sd.special.ndtri(m)),
+        "cloglog": lambda m: math.log(-math.log1p(-m)),
+        "log": math.log,
+        "identity": lambda m: m,
+        "sqrt": math.sqrt,
+        "inverse": lambda m: 1 / m,
+    }[link]
     assert a(r.params)[1:].tolist() == [0.0, 0.0] and float(r.params[0]) == pytest.approx(sm_link(y0), rel=1e-15)
     assert np.all(a(r.fittedvalues) == y0) and r.deviance == 0.0 and r.null_deviance == 0.0
     assert r.converged and not r.separation and r.llnull == r.llf
@@ -923,6 +1039,7 @@ def test_mcfadden_nan_for_infinite_llf():
 
 # ---- R103-R112 (2026-11-20) and G114-G116
 
+
 def test_conf_int_ends_overflow_with_their_signs():
     """R103: conf_int's ends in the fitted units, then scaled as the parameter: an overflowing
     coefficient's interval is [inf, inf] (or [-inf, -inf]), never NaN from inf - inf."""
@@ -930,8 +1047,12 @@ def test_conf_int_ends_overflow_with_their_signs():
     h = np.arange(1.0, 7.0)
     W = np.array([1.0, 2.0, 1.0, 2.0, 1.0, 2.0])
     S = np.diag(W) + 0.1
-    fits = (lambda y, x: R.ols(y, x), lambda y, x: R.ols(y, x, cov_type="HC1"),
-            lambda y, x: R.wls(y, x, weights=W), lambda y, x: R.gls(y, x, sigma=S))
+    fits = (
+        lambda y, x: R.ols(y, x),
+        lambda y, x: R.ols(y, x, cov_type="HC1"),
+        lambda y, x: R.wls(y, x, weights=W),
+        lambda y, x: R.gls(y, x, sigma=S),
+    )
     for fit in fits:
         b = a(fit(s, h).conf_int())
         for sy, sx in ((1e300, 1e-300), (-1e300, 1e-300), (1e300, -1e-300)):
@@ -950,9 +1071,15 @@ def test_conf_int_ends_overflow_with_their_signs():
     assert ci[0, 1].tolist() == [math.inf, math.inf] and np.all(np.isfinite(ci[1]))
 
 
-@pytest.mark.parametrize("fam,link,y0,kw", [
-    ("poisson", "identity", 0.0, {}), ("poisson", "sqrt", 0.0, {}),
-    ("binomial", "log", 1.0, {}), ("binomial", "log", 1.0, {"trials": 3.0})])
+@pytest.mark.parametrize(
+    "fam,link,y0,kw",
+    [
+        ("poisson", "identity", 0.0, {}),
+        ("poisson", "sqrt", 0.0, {}),
+        ("binomial", "log", 1.0, {}),
+        ("binomial", "log", 1.0, {"trials": 3.0}),
+    ],
+)
 def test_glm_constant_y_on_the_boundary_is_exact(fam, link, y0, kw):
     """G114: y constant at the boundary of the family's range with g(y0) finite: the exact
     solution (0, ..., 0) without iterations, converged, no separation, llf 0; the inference NaN
@@ -999,6 +1126,7 @@ def test_lasso_alpha_zero_runs_no_descent():
     """R111: alpha = 0 goes straight to ridge's solve: its time is ridge(alpha=0)'s, not the
     coordinate descent's (X 200 x 400, where the descent took 4 ms more than the solve)."""
     import time
+
     rng = np.random.default_rng(2)
     Xw, y = rng.normal(size=(200, 400)), rng.normal(size=200)
 
@@ -1010,6 +1138,7 @@ def test_lasso_alpha_zero_runs_no_descent():
             f()
             ts.append(time.perf_counter() - t0)
         return min(ts)
+
     t_ridge = best(lambda: R.ridge(y, Xw, alpha=0.0))
     t_lasso = best(lambda: R.lasso(y, Xw, alpha=0.0))
     assert t_lasso < 1.3 * t_ridge + 1e-3

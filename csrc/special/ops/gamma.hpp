@@ -63,16 +63,15 @@ inline double gamma_cephes_pos(double x) {
 // Gamma(y), y > 0, as m 2^e: candidate B where it is finite (S3 chose it:
 // more accurate and 3.4x faster), the scaled
 // Lanczos form A beyond.
-inline Scaled gamma_pos_scaled(double y) {
-    return y <= 171.6 ? scaled(gamma_cephes_pos(y)) : gamma_scaled(y);
-}
+inline Scaled gamma_pos_scaled(double y) { return y <= 171.6 ? scaled(gamma_cephes_pos(y)) : gamma_scaled(y); }
 
 // Gamma(x) for x < 0, not an integer, as m 2^e: -pi / (x sinpi(x) Gamma(-x)).
 inline Scaled gamma_neg(double x) {
     // (no shortcut to 0 for a large |x|: as m 2^e the value is still a factor of quotients
     // that come back into range, binom(0.1, 1000) and beta(-500.5, 1000.5))
     const double y = -x;
-    if (y < 0x1p-30) return Scaled{1.0, 0} / scaled(x) * scaled(1.0 - kEuler * x);  // 1/x - euler (x sinpi(x) underflows)
+    if (y < 0x1p-30)
+        return Scaled{1.0, 0} / scaled(x) * scaled(1.0 - kEuler * x);  // 1/x - euler (x sinpi(x) underflows)
     return scaled(-kPi / (x * sinpi(x))) / gamma_pos_scaled(y);
 }
 // The same as a double where Gamma(-x) is finite: one division, rounded once
@@ -393,7 +392,8 @@ struct Beta : Real {
             if (bst::normal(r)) return r;
         }
         if (std::fabs(a) < std::fabs(b)) std::swap(a, b);
-        if (a == kInf) return b == kInf ? kNaN : (b > 0.0 ? 0.0 : (Gamma::f(b) > 0 ? kInf : -kInf));  // B(inf, inf): NaN (scipy)
+        if (a == kInf)
+            return b == kInf ? kNaN : (b > 0.0 ? 0.0 : (Gamma::f(b) > 0 ? kInf : -kInf));  // B(inf, inf): NaN (scipy)
         if (a > 0.0 && b > 0.0 && a + b <= 170.0) {
             // no Gamma overflows: Cephes' Gamma three times, a + b kept as hi + lo
             // (Gamma(a)/Gamma(c) <= 1 for c > a, so the order cannot overflow)
@@ -493,7 +493,8 @@ struct Binom : Real {
         // k = +inf: no limit. k = -inf: |binom| ~ Gamma(n + 1) |k|^-(n+1) / pi with an oscillating
         // sign, so the limit is 0 for finite n > -1 (user decision 2026-11-17) and none below.
         if (std::isinf(k)) return k < 0.0 && n > -1.0 && std::isfinite(n) ? 0.0 : kNaN;
-        if (std::isinf(n)) return 1.0 / ((n + 1.0) * Beta::f(n - k + 1.0, k + 1.0));  // scipy's formula, its conventions
+        if (std::isinf(n))
+            return 1.0 / ((n + 1.0) * Beta::f(n - k + 1.0, k + 1.0));  // scipy's formula, its conventions
         const TwoSum d1 = two_sum(n, -k);
         const TwoSum d = two_sum(d1.s, 1.0);
         const double dlo = d.err + d1.err;

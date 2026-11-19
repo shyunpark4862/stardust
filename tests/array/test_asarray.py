@@ -87,6 +87,7 @@ def test_int_out_of_int64_range_overflows_only_when_target_is_int64():
 
 # -------------------------------------------------- explicit dtype= rules --
 
+
 def test_float_to_int_truncates_and_saturates():
     a = sd.asarray([1.5, -1.5, 2.7, math.nan, math.inf, -math.inf, 1e300], dtype=sd.int64)
     assert a.tolist() == [1, -1, 2, 0, INT64_MAX, INT64_MIN, INT64_MAX]
@@ -99,9 +100,7 @@ def test_complex_to_real_is_type_error(target):
 
 
 def test_anything_to_bool_is_nonzero():
-    assert sd.asarray([0j, 1j, 2, -0.0, math.nan, 0], dtype=sd.bool).tolist() == [
-        False, True, True, False, True, False
-    ]
+    assert sd.asarray([0j, 1j, 2, -0.0, math.nan, 0], dtype=sd.bool).tolist() == [False, True, True, False, True, False]
 
 
 def test_upcasts():
@@ -109,6 +108,7 @@ def test_upcasts():
 
 
 # ------------------------------------------------------- ndarray inputs ----
+
 
 def test_ndarray_input_is_returned_as_is():
     a = sd.asarray([1, 2])

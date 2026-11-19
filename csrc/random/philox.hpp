@@ -83,9 +83,7 @@ public:
         return words_[e & 15];
     }
     // Extra word k (0, 1, 2, ...) of element e: word k mod 4 of block j = 1 + k / 4.
-    std::uint64_t extra(std::uint64_t e, std::uint64_t k) const {
-        return philox({e, 1 + (k >> 2), 0, 0}, key_)[k & 3];
-    }
+    std::uint64_t extra(std::uint64_t e, std::uint64_t k) const { return philox({e, 1 + (k >> 2), 0, 0}, key_)[k & 3]; }
     Key key() const { return key_; }
 
 private:

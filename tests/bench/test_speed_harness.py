@@ -101,10 +101,17 @@ def test_registry_ids_unique_and_areas_match():
 
 
 def _run_data(run_id, cases):
-    return {"schema": results.SCHEMA, "run": run_id,
-            "env": {"git": {"commit": "abc1234", "dirty": False}, "machine": {"chip": "M", "cpus": 14},
-                    "versions": {"numpy": "2"}},
-            "options": {"complete": True}, "cases": cases}
+    return {
+        "schema": results.SCHEMA,
+        "run": run_id,
+        "env": {
+            "git": {"commit": "abc1234", "dirty": False},
+            "machine": {"chip": "M", "cpus": 14},
+            "versions": {"numpy": "2"},
+        },
+        "options": {"complete": True},
+        "cases": cases,
+    }
 
 
 def _rec(name, sd1, sd10=None, ref=None, *, noise=0.01, n=1000, cost_key=None, group="g", area="array"):
@@ -113,8 +120,17 @@ def _rec(name, sd1, sd10=None, ref=None, *, noise=0.01, n=1000, cost_key=None, g
         ts.append({"label": "sd", "lib": "sd", "threads": 10, "n": n, "min": sd10, "noise": noise})
     if ref is not None:
         ts.append({"label": "numpy", "lib": "numpy", "threads": None, "n": n, "min": ref, "noise": noise})
-    return {"id": f"{area}/{group}/{name}", "area": area, "group": group, "name": name, "size": "", "n": n,
-            "cost": list(cost_key) if cost_key else None, "note": "", "timings": ts}
+    return {
+        "id": f"{area}/{group}/{name}",
+        "area": area,
+        "group": group,
+        "name": name,
+        "size": "",
+        "n": n,
+        "cost": list(cost_key) if cost_key else None,
+        "note": "",
+        "timings": ts,
+    }
 
 
 def test_promote_replaces_measured_cases_keeps_others(tmp_path, monkeypatch):
@@ -144,9 +160,11 @@ def test_table_compact_and_ratios():
 
 def test_table_follow_rows_per_thread_and_scaled_sample():
     rec = _rec("fit", 1.0, 0.5)
-    rec["timings"] += [{"label": "statsmodels", "lib": "statsmodels", "threads": 1, "n": 1000, "min": 2.0, "noise": 0},
-                       {"label": "statsmodels", "lib": "statsmodels", "threads": 10, "n": 1000, "min": 1.5, "noise": 0},
-                       {"label": "R", "lib": "R", "threads": None, "n": 100, "min": 0.3, "noise": 0}]
+    rec["timings"] += [
+        {"label": "statsmodels", "lib": "statsmodels", "threads": 1, "n": 1000, "min": 2.0, "noise": 0},
+        {"label": "statsmodels", "lib": "statsmodels", "threads": 10, "n": 1000, "min": 1.5, "noise": 0},
+        {"label": "R", "lib": "R", "threads": None, "n": 100, "min": 0.3, "noise": 0},
+    ]
     md = tables.render("array", _run_data("r1", [rec]), [_case("fit")], "x.json")
     assert "| `fit` | 1 | 1.00 s | 2.00 s | 2.00 | 3.00 s\\* | 3.00 | 1% |" in md
     assert "| `fit` | 10 | 500 ms | 1.50 s | 3.00 | 3.00 s\\* | 6.00 | 1% |" in md
@@ -220,8 +238,15 @@ def test_supervisor_limits_and_failures(tmp_path, monkeypatch):
     monkeypatch.setenv("SDBENCH_CASES_MODULE", FAKE)
     cases = registry.load(["array"])
     out = tmp_path / "run.json"
-    data = run(cases, out=out, limits=_limits(case_timeout_s=8, rss_bytes=600 * 2**20), notify=False,
-               progress=False, keep_awake=False, quiet="no")
+    data = run(
+        cases,
+        out=out,
+        limits=_limits(case_timeout_s=8, rss_bytes=600 * 2**20),
+        notify=False,
+        progress=False,
+        keep_awake=False,
+        quiet="no",
+    )
     by = {c["name"]: c for c in data["cases"]}
     assert by["sum"]["timings"][0]["min"] > 0 and by["sum"]["rounds"] == 1
     assert {(t["label"], t["threads"]) for t in by["sum"]["timings"]} == {("sd", 1), ("sd", 10), ("numpy", None)}
@@ -250,8 +275,9 @@ def test_supervisor_resume(tmp_path, monkeypatch):
                 t["times"] = t["times"][: len(t["times"]) // 2]
             c["rounds"] = 1
     out.write_text(json.dumps(partial))
-    data = run(cases, out=None, limits=_limits(), notify=False, progress=False, keep_awake=False, resume=out,
-               quiet="no")
+    data = run(
+        cases, out=None, limits=_limits(), notify=False, progress=False, keep_awake=False, resume=out, quiet="no"
+    )
     assert data["options"]["complete"] and data["run"] == full["run"]
     again = {c["name"]: results.timing(c, "sd", 1)["batches"] for c in data["cases"]}
     assert again["sum"] == sums["sum"]  # not re-run

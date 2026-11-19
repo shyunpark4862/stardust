@@ -72,11 +72,11 @@ double float_value(PyObject* o) {
 
 const char* kind_name(Kind k) {
     switch (k) {
-    case Kind::NA: return "NA";
-    case Kind::Bool: return "bool";
-    case Kind::Int: return "int";
-    case Kind::Float: return "float";
-    case Kind::Str: return "str";
+        case Kind::NA: return "NA";
+        case Kind::Bool: return "bool";
+        case Kind::Int: return "int";
+        case Kind::Float: return "float";
+        case Kind::Str: return "str";
     }
     return "?";
 }
@@ -98,8 +98,9 @@ const char* kind_name(Kind k) {
     const bool s = seen[int(Kind::Str)];
     if (s && (seen[int(Kind::Bool)] || seen[int(Kind::Int)] || seen[int(Kind::Float)])) str_mixed(seen);
     std::optional<DType> d;
-    for (auto [k, dt] : {std::pair{Kind::Bool, DType::Bool}, std::pair{Kind::Int, DType::Int64},
-                         std::pair{Kind::Float, DType::Float64}, std::pair{Kind::Str, DType::String}})
+    for (auto [k, dt] :
+         {std::pair{Kind::Bool, DType::Bool}, std::pair{Kind::Int, DType::Int64},
+          std::pair{Kind::Float, DType::Float64}, std::pair{Kind::Str, DType::String}})
         if (seen[int(k)]) d = d ? promote_columns(*d, dt) : dt;
     return d.value_or(DType::Float64);
 }
@@ -125,30 +126,30 @@ Column from_list(nb::handle seq, nb::handle na, std::optional<DType> dtype) {
         kinds[i] = k;
         seen[static_cast<int>(k)] = true;
         switch (k) {
-        case Kind::NA: ++nulls; break;
-        case Kind::Bool: scratch[i] = PyObject_IsTrue(o); break;
-        case Kind::Int: {
-            bool is_big = false;
-            double d = 0;
-            scratch[i] = int_value(o, is_big, d);
-            if (is_big) {
-                big.resize(static_cast<std::size_t>(n));
-                big[i] = 1;
-                std::memcpy(&scratch[i], &d, sizeof d);
+            case Kind::NA: ++nulls; break;
+            case Kind::Bool: scratch[i] = PyObject_IsTrue(o); break;
+            case Kind::Int: {
+                bool is_big = false;
+                double d = 0;
+                scratch[i] = int_value(o, is_big, d);
+                if (is_big) {
+                    big.resize(static_cast<std::size_t>(n));
+                    big[i] = 1;
+                    std::memcpy(&scratch[i], &d, sizeof d);
+                }
+                break;
             }
-            break;
-        }
-        case Kind::Float: {
-            double d = float_value(o);
-            std::memcpy(&scratch[i], &d, sizeof d);
-            break;
-        }
-        case Kind::Str: {
-            Py_ssize_t size = 0;
-            if (PyUnicode_AsUTF8AndSize(o, &size) == nullptr) throw nb::python_error();
-            nbytes += size;
-            break;
-        }
+            case Kind::Float: {
+                double d = float_value(o);
+                std::memcpy(&scratch[i], &d, sizeof d);
+                break;
+            }
+            case Kind::Str: {
+                Py_ssize_t size = 0;
+                if (PyUnicode_AsUTF8AndSize(o, &size) == nullptr) throw nb::python_error();
+                nbytes += size;
+                break;
+            }
         }
     }
     DType target = inferred_dtype(seen);
@@ -181,30 +182,32 @@ Column from_list(nb::handle seq, nb::handle na, std::optional<DType> dtype) {
         const Kind k = kinds[i];
         if (k == Kind::NA) bitmap::clear(bits, i);
         switch (target) {
-        case DType::Bool:
-            reinterpret_cast<std::uint8_t*>(out)[i] = static_cast<std::uint8_t>(k == Kind::NA ? 0 : scratch[i]);
-            break;
-        case DType::Int64:  // ints, bools (0 and 1) and NA get here
-            if (k == Kind::Int && !big.empty() && big[i]) int_too_large();
-            reinterpret_cast<std::int64_t*>(out)[i] = k == Kind::NA ? 0 : scratch[i];  // NA rows hold 0 (docs/design/frame.md §4.5)
-            break;
-        case DType::Float64: {
-            double d = 0.0;
-            if (k == Kind::Float || (k == Kind::Int && !big.empty() && big[i])) std::memcpy(&d, &scratch[i], sizeof d);
-            else if (k == Kind::Int || k == Kind::Bool) d = static_cast<double>(scratch[i]);
-            reinterpret_cast<double*>(out)[i] = d;
-            break;
-        }
-        case DType::String:
-            if (k == Kind::Str) {
-                Py_ssize_t size = 0;
-                const char* utf8 = PyUnicode_AsUTF8AndSize(o, &size);  // cached by pass 1
-                std::memcpy(out + pos, utf8, static_cast<std::size_t>(size));
-                pos += size;
+            case DType::Bool:
+                reinterpret_cast<std::uint8_t*>(out)[i] = static_cast<std::uint8_t>(k == Kind::NA ? 0 : scratch[i]);
+                break;
+            case DType::Int64:  // ints, bools (0 and 1) and NA get here
+                if (k == Kind::Int && !big.empty() && big[i]) int_too_large();
+                reinterpret_cast<std::int64_t*>(out)[i] =
+                    k == Kind::NA ? 0 : scratch[i];  // NA rows hold 0 (docs/design/frame.md §4.5)
+                break;
+            case DType::Float64: {
+                double d = 0.0;
+                if (k == Kind::Float || (k == Kind::Int && !big.empty() && big[i]))
+                    std::memcpy(&d, &scratch[i], sizeof d);
+                else if (k == Kind::Int || k == Kind::Bool) d = static_cast<double>(scratch[i]);
+                reinterpret_cast<double*>(out)[i] = d;
+                break;
             }
-            offs[i + 1] = pos;  // NA rows are empty strings (docs/design/frame.md §4.5)
-            break;
-        case DType::Complex128: break;  // not a frame dtype
+            case DType::String:
+                if (k == Kind::Str) {
+                    Py_ssize_t size = 0;
+                    const char* utf8 = PyUnicode_AsUTF8AndSize(o, &size);  // cached by pass 1
+                    std::memcpy(out + pos, utf8, static_cast<std::size_t>(size));
+                    pos += size;
+                }
+                offs[i + 1] = pos;  // NA rows are empty strings (docs/design/frame.md §4.5)
+                break;
+            case DType::Complex128: break;  // not a frame dtype
         }
     }
     if (dtype && *dtype != col.dtype) return astype(col, *dtype);
@@ -243,11 +246,11 @@ Column from_numpy(const nb::ndarray<nb::ro, nb::ndim<1>, nb::device::cpu>& arr) 
         Column col = make_fixed(DType::Int64, n);
         auto* out = reinterpret_cast<std::int64_t*>(col.values->data());
         switch (dt.bits) {
-        case 8: widen<std::int64_t, std::int8_t>(out, data, n, stride); break;
-        case 16: widen<std::int64_t, std::int16_t>(out, data, n, stride); break;
-        case 32: widen<std::int64_t, std::int32_t>(out, data, n, stride); break;
-        case 64: widen<std::int64_t, std::int64_t>(out, data, n, stride); break;
-        default: return unsupported();
+            case 8: widen<std::int64_t, std::int8_t>(out, data, n, stride); break;
+            case 16: widen<std::int64_t, std::int16_t>(out, data, n, stride); break;
+            case 32: widen<std::int64_t, std::int32_t>(out, data, n, stride); break;
+            case 64: widen<std::int64_t, std::int64_t>(out, data, n, stride); break;
+            default: return unsupported();
         }
         return col;
     }
@@ -255,12 +258,12 @@ Column from_numpy(const nb::ndarray<nb::ro, nb::ndim<1>, nb::device::cpu>& arr) 
         Column col = make_fixed(DType::Int64, n);
         auto* out = reinterpret_cast<std::int64_t*>(col.values->data());
         switch (dt.bits) {
-        case 8: widen<std::int64_t, std::uint8_t>(out, data, n, stride); break;
-        case 16: widen<std::int64_t, std::uint16_t>(out, data, n, stride); break;
-        case 32: widen<std::int64_t, std::uint32_t>(out, data, n, stride); break;
-        case 64:  // by dtype, not by value, as sd.asarray (DESIGN.md §10.1 #10)
-            throw nb::type_error("uint64 buffers cannot be converted to int64 without loss");
-        default: return unsupported();
+            case 8: widen<std::int64_t, std::uint8_t>(out, data, n, stride); break;
+            case 16: widen<std::int64_t, std::uint16_t>(out, data, n, stride); break;
+            case 32: widen<std::int64_t, std::uint32_t>(out, data, n, stride); break;
+            case 64:  // by dtype, not by value, as sd.asarray (DESIGN.md §10.1 #10)
+                throw nb::type_error("uint64 buffers cannot be converted to int64 without loss");
+            default: return unsupported();
         }
         return col;
     }
@@ -268,10 +271,10 @@ Column from_numpy(const nb::ndarray<nb::ro, nb::ndim<1>, nb::device::cpu>& arr) 
         Column col = make_fixed(DType::Float64, n);
         auto* out = reinterpret_cast<double*>(col.values->data());
         switch (dt.bits) {
-        case 16: widen<double, _Float16>(out, data, n, stride); break;
-        case 32: widen<double, float>(out, data, n, stride); break;
-        case 64: widen<double, double>(out, data, n, stride); break;
-        default: return unsupported();
+            case 16: widen<double, _Float16>(out, data, n, stride); break;
+            case 32: widen<double, float>(out, data, n, stride); break;
+            case 64: widen<double, double>(out, data, n, stride); break;
+            default: return unsupported();
         }
         return col;
     }
@@ -288,15 +291,15 @@ nb::list to_list(const Column& col, nb::handle na) {
             item = Py_NewRef(na.ptr());
         } else {
             switch (col.dtype) {
-            case DType::Bool: item = PyBool_FromLong(col.data<std::uint8_t>()[i]); break;
-            case DType::Int64: item = PyLong_FromLongLong(col.data<std::int64_t>()[i]); break;
-            case DType::Float64: item = PyFloat_FromDouble(col.data<double>()[i]); break;
-            case DType::String: {
-                std::string_view sv = col.string_at(i);
-                item = PyUnicode_DecodeUTF8(sv.data(), static_cast<Py_ssize_t>(sv.size()), "strict");
-                break;
-            }
-            default: item = nullptr;
+                case DType::Bool: item = PyBool_FromLong(col.data<std::uint8_t>()[i]); break;
+                case DType::Int64: item = PyLong_FromLongLong(col.data<std::int64_t>()[i]); break;
+                case DType::Float64: item = PyFloat_FromDouble(col.data<double>()[i]); break;
+                case DType::String: {
+                    std::string_view sv = col.string_at(i);
+                    item = PyUnicode_DecodeUTF8(sv.data(), static_cast<Py_ssize_t>(sv.size()), "strict");
+                    break;
+                }
+                default: item = nullptr;
             }
             if (item == nullptr) throw nb::python_error();
         }
@@ -315,11 +318,11 @@ nb::capsule buffer_owner(const std::shared_ptr<Buffer>& buf) {
 
 nb::dlpack::dtype numpy_dtype(DType dt) {
     switch (dt) {
-    case DType::Bool: return nb::dtype<bool>();
-    case DType::Int64: return nb::dtype<std::int64_t>();
-    case DType::Float64: return nb::dtype<double>();
-    case DType::String: break;
-    case DType::Complex128: break;  // not a frame dtype
+        case DType::Bool: return nb::dtype<bool>();
+        case DType::Int64: return nb::dtype<std::int64_t>();
+        case DType::Float64: return nb::dtype<double>();
+        case DType::String: break;
+        case DType::Complex128: break;  // not a frame dtype
     }
     throw nb::type_error("a string column has no numpy view");
 }

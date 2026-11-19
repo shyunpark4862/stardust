@@ -36,14 +36,15 @@ MID = 10_000
 
 # ----------------------------------------------------------------- data
 
+
 def make_data():
     r = np.random.default_rng(0)
     d = {}
-    d["f"] = r.random(N) + 0.5                      # positive: log, sqrt
+    d["f"] = r.random(N) + 0.5  # positive: log, sqrt
     d["g"] = r.random(N) + 0.5
-    d["fs"] = r.standard_normal(N)                   # both signs
-    d["u"] = r.random(N) * 1.98 - 0.99               # (-1, 1): asin, acos, atanh
-    d["fh"] = r.random(N) + 1.5                      # > 1: acosh
+    d["fs"] = r.standard_normal(N)  # both signs
+    d["u"] = r.random(N) * 1.98 - 0.99  # (-1, 1): asin, acos, atanh
+    d["fh"] = r.random(N) + 1.5  # > 1: acosh
     d["fn"] = np.where(r.random(N) < 0.1, np.nan, d["fs"])  # 10% NaN
     d["i"] = r.integers(-1000, 1000, N)
     d["j"] = r.integers(1, 1000, N)
@@ -57,7 +58,7 @@ def make_data():
     d["i2"] = r.integers(-1000, 1000, (1000, 1000))
     d["v"] = r.random(1000)
     d["t3"] = r.random((100, 100, 100))
-    d["big2"] = r.random(2 * N)                      # strided views come from here
+    d["big2"] = r.random(2 * N)  # strided views come from here
     d["m512"] = r.random((512, 512))
     d["m1k"] = r.random((1000, 1000))
     d["im"] = r.integers(-100, 100, (200, 200))
@@ -95,20 +96,26 @@ def namespaces(d):
         npn[k] = v.copy()
         sdn[k] = sd.asarray(v, copy=True)
     for ns, lib in ((npn, np), (sdn, sd)):
-        ns["fst"] = ns["big2"][::2]                  # strided, 1e6
-        ns["ft"] = ns["f2"].T                        # transposed
-        ns["x"] = lib.asarray(d["f"], copy=True)     # mutated in place
+        ns["fst"] = ns["big2"][::2]  # strided, 1e6
+        ns["ft"] = ns["f2"].T  # transposed
+        ns["x"] = lib.asarray(d["f"], copy=True)  # mutated in place
         ns["gz"] = lib.zeros(N)
         ns["fw"] = lib.asarray(d["f"], copy=True)
     # conversions: numpy arrays given to both
     r = np.random.default_rng(1)
     m = r.random((2000, 2000))
     conv = {
-        "np_f": d["f"], "np_fst": d["big2"][::2], "np_ft": d["f2"].T,
-        "np_f32": d["f"].astype(np.float32), "np_f32t": m.astype(np.float32)[:1000, :1000].T,
-        "np_f32r": m.astype(np.float32)[:1000, 1:1001], "np_be": d["f"].astype(">f8"),
-        "np_be2": r.random((2000, 1000)).astype(">f8")[::2], "np_i32": d["i"].astype(np.int32),
-        "np_list3": [1.0, 2.0, 3.0], "np_list": d["f"][:10_000].tolist(),
+        "np_f": d["f"],
+        "np_fst": d["big2"][::2],
+        "np_ft": d["f2"].T,
+        "np_f32": d["f"].astype(np.float32),
+        "np_f32t": m.astype(np.float32)[:1000, :1000].T,
+        "np_f32r": m.astype(np.float32)[:1000, 1:1001],
+        "np_be": d["f"].astype(">f8"),
+        "np_be2": r.random((2000, 1000)).astype(">f8")[::2],
+        "np_i32": d["i"].astype(np.int32),
+        "np_list3": [1.0, 2.0, 3.0],
+        "np_list": d["f"][:10_000].tolist(),
     }
     npn.update(conv)
     sdn.update(conv)
@@ -120,14 +127,29 @@ def namespaces(d):
 #  numpy statement for the result check only, when the timed one may legitimately
 #  differ: an unstable sort's tie order, numpy's unsorted unique_values; "skip")
 
+
 def cases():
     C = []
     add = lambda g, name, s, n=None, chk=None: C.append((g, name, s, n, chk))
 
     # creation
-    for s in ["zeros(N)", "ones(N)", "empty(N)", "full(N, 2.5)", "zeros_like(f)", "ones_like(f)", "empty_like(f)",
-              "full_like(f, 2.5)", "arange(N)", "linspace(0.0, 1.0, N)", "eye(1000)", "meshgrid(v, v)", "tril(f2)",
-              "triu(f2)", "zeros((1000, 1000))"]:
+    for s in [
+        "zeros(N)",
+        "ones(N)",
+        "empty(N)",
+        "full(N, 2.5)",
+        "zeros_like(f)",
+        "ones_like(f)",
+        "empty_like(f)",
+        "full_like(f, 2.5)",
+        "arange(N)",
+        "linspace(0.0, 1.0, N)",
+        "eye(1000)",
+        "meshgrid(v, v)",
+        "tril(f2)",
+        "triu(f2)",
+        "zeros((1000, 1000))",
+    ]:
         add("creation", s, "M." + s)
     add("creation", "arange(N, float64)", "sd.arange(N, dtype=sd.float64)", "np.arange(N, dtype=np.float64)")
     add("creation", "asarray(copy=True)", "M.asarray(f, copy=True)")
@@ -139,7 +161,12 @@ def cases():
     add("convert", "asarray numpy f64 .T", "sd.asarray(np_ft)", "np.asarray(np_ft)")
     add("convert", "asarray numpy f32", "sd.asarray(np_f32)", "np.asarray(np_f32, dtype=np.float64)")
     add("convert", "asarray numpy f32 .T (np keeps F)", "sd.asarray(np_f32t)", "np.asarray(np_f32t, dtype=np.float64)")
-    add("convert", "asarray numpy f32 .T (np C order)", "sd.asarray(np_f32t)", "np.ascontiguousarray(np_f32t, dtype=np.float64)")
+    add(
+        "convert",
+        "asarray numpy f32 .T (np C order)",
+        "sd.asarray(np_f32t)",
+        "np.ascontiguousarray(np_f32t, dtype=np.float64)",
+    )
     add("convert", "asarray numpy f32 rows m[:,1:1001]", "sd.asarray(np_f32r)", "np.asarray(np_f32r, dtype=np.float64)")
     add("convert", "asarray numpy >f8", "sd.asarray(np_be)", "np.asarray(np_be, dtype=np.float64)")
     add("convert", "asarray numpy >f8 2-D [::2]", "sd.asarray(np_be2)", "np.asarray(np_be2, dtype=np.float64)")
@@ -150,22 +177,69 @@ def cases():
     add("convert", "numpy.asarray(sd array)", "np.asarray(f)", "np.asarray(f)")
 
     # manipulation
-    for s in ["reshape(f, (1000, 1000))", "reshape(ft, (N,))", "permute_dims(t3, (2, 0, 1))", "matrix_transpose(f2)",
-              "moveaxis(t3, 0, -1)", "squeeze(M.reshape(f, (1, N)), axis=0)", "expand_dims(f, axis=0)", "broadcast_to(v, (1000, 1000))",
-              "broadcast_arrays(f2, v)", "concat([f, g])", "concat([f2, g2], axis=1)", "stack([f, g])", "flip(f)", "roll(f, 1)",
-              "roll(f2, 1, axis=1)", "repeat(f, 2)", "tile(v, (1000,))", "unstack(f2)", "astype(f, M.int64)", "astype(i, M.float64)",
-              "astype(f, M.complex128)", "astype(b, M.float64)", "astype(ft, M.float64)"]:
+    for s in [
+        "reshape(f, (1000, 1000))",
+        "reshape(ft, (N,))",
+        "permute_dims(t3, (2, 0, 1))",
+        "matrix_transpose(f2)",
+        "moveaxis(t3, 0, -1)",
+        "squeeze(M.reshape(f, (1, N)), axis=0)",
+        "expand_dims(f, axis=0)",
+        "broadcast_to(v, (1000, 1000))",
+        "broadcast_arrays(f2, v)",
+        "concat([f, g])",
+        "concat([f2, g2], axis=1)",
+        "stack([f, g])",
+        "flip(f)",
+        "roll(f, 1)",
+        "roll(f2, 1, axis=1)",
+        "repeat(f, 2)",
+        "tile(v, (1000,))",
+        "unstack(f2)",
+        "astype(f, M.int64)",
+        "astype(i, M.float64)",
+        "astype(f, M.complex128)",
+        "astype(b, M.float64)",
+        "astype(ft, M.float64)",
+    ]:
         add("manip", s, "M." + s)
     add("manip", "ravel(ft) (copy)", "sd.reshape(ft, (-1,))", "np.reshape(ft, (-1,))")
     add("manip", "diff(f)", "M.diff(f)")
 
     # elementwise: binary float
-    for op in ["add", "subtract", "multiply", "divide", "floor_divide", "remainder", "pow", "atan2", "maximum", "minimum",
-               "copysign", "hypot", "logaddexp", "nextafter", "equal", "less", "greater_equal"]:
+    for op in [
+        "add",
+        "subtract",
+        "multiply",
+        "divide",
+        "floor_divide",
+        "remainder",
+        "pow",
+        "atan2",
+        "maximum",
+        "minimum",
+        "copysign",
+        "hypot",
+        "logaddexp",
+        "nextafter",
+        "equal",
+        "less",
+        "greater_equal",
+    ]:
         add("binary f64", op, f"M.{op}(f, g)")
     for op in ["logical_and", "logical_or", "logical_xor"]:
         add("binary bool", op, f"M.{op}(b, b2)")
-    for op in ["add", "multiply", "floor_divide", "remainder", "maximum", "equal", "bitwise_and", "bitwise_or", "bitwise_xor"]:
+    for op in [
+        "add",
+        "multiply",
+        "floor_divide",
+        "remainder",
+        "maximum",
+        "equal",
+        "bitwise_and",
+        "bitwise_or",
+        "bitwise_xor",
+    ]:
         add("binary i64", op, f"M.{op}(i, j)")
     add("binary i64", "bitwise_left_shift", "M.bitwise_left_shift(i, sh)")
     add("binary i64", "bitwise_right_shift", "M.bitwise_right_shift(i, sh)")
@@ -188,9 +262,37 @@ def cases():
     add("binary mid", "fm * 2.0 (1e4)", "fm * 2.0")
 
     # elementwise: unary
-    unary_f = ["negative", "positive", "abs", "square", "sqrt", "sign", "exp", "expm1", "log", "log1p", "log2", "log10",
-               "sin", "cos", "tan", "atan", "sinh", "cosh", "tanh", "asinh", "floor", "ceil", "trunc", "round",
-               "isnan", "isinf", "isfinite", "signbit", "reciprocal"]
+    unary_f = [
+        "negative",
+        "positive",
+        "abs",
+        "square",
+        "sqrt",
+        "sign",
+        "exp",
+        "expm1",
+        "log",
+        "log1p",
+        "log2",
+        "log10",
+        "sin",
+        "cos",
+        "tan",
+        "atan",
+        "sinh",
+        "cosh",
+        "tanh",
+        "asinh",
+        "floor",
+        "ceil",
+        "trunc",
+        "round",
+        "isnan",
+        "isinf",
+        "isfinite",
+        "signbit",
+        "reciprocal",
+    ]
     for op in unary_f:
         add("unary f64", op, f"M.{op}(f)")
     for op in ["asin", "acos", "atanh"]:
@@ -379,6 +481,7 @@ def cases():
 
 # ------------------------------------------------------------- checking
 
+
 def to_np(x):
     if isinstance(x, (tuple, list)) and not isinstance(x, str):
         return [to_np(e) for e in x]
@@ -445,7 +548,10 @@ def run_case(case, npn, sdn, repeat, check):
     row = {"group": g, "name": name}
     if check:
         try:
-            is_expr = "=" not in s.replace("==", "").replace("<=", "").replace(">=", "").replace("!=", "") or "(" in s.split("=")[0]
+            is_expr = (
+                "=" not in s.replace("==", "").replace("<=", "").replace(">=", "").replace("!=", "")
+                or "(" in s.split("=")[0]
+            )
             if chk == "skip":
                 row["check"] = "ok"
             elif is_expr:
@@ -479,27 +585,50 @@ def fmt_t(t):
 
 
 def table(rows, env):
-    out = ["# 배열 영역 전체 측정 (numpy 대비)", "", env, "",
-           "배율 = numpy 시간 ÷ stardust 시간 (1보다 크면 stardust가 빠르다). numpy는 1스레드(BLAS만 여러 스레드).",
-           "시간은 7번 반복 중 최솟값을 다시 라운드 사이 최솟값으로 잡았다. **굵은 배율**은 1스레드에서 numpy보다 느린 줄이다.", ""]
+    out = [
+        "# 배열 영역 전체 측정 (numpy 대비)",
+        "",
+        env,
+        "",
+        "배율 = numpy 시간 ÷ stardust 시간 (1보다 크면 stardust가 빠르다). numpy는 1스레드(BLAS만 여러 스레드).",
+        "시간은 7번 반복 중 최솟값을 다시 라운드 사이 최솟값으로 잡았다. **굵은 배율**은 1스레드에서 numpy보다 느린 줄이다.",
+        "",
+    ]
     slow1 = [r for r in rows if r.get("sd1") and r["np"] / r["sd1"] < 1.0]
     slow10 = [r for r in rows if r.get("sd10") and r["np"] / r["sd10"] < 1.0]
     bad = [r for r in rows if r.get("check") not in ("ok", "stmt")]
-    out += [f"- 케이스 {len(rows)}개. 1스레드에서 numpy보다 느린 것 {len(slow1)}개, 10스레드에서도 느린 것 {len(slow10)}개.",
-            f"- 결과가 numpy와 다른 것: {len(bad)}개" + ("" if not bad else " (아래 '결과 확인' 열)"), ""]
+    out += [
+        f"- 케이스 {len(rows)}개. 1스레드에서 numpy보다 느린 것 {len(slow1)}개, 10스레드에서도 느린 것 {len(slow10)}개.",
+        f"- 결과가 numpy와 다른 것: {len(bad)}개" + ("" if not bad else " (아래 '결과 확인' 열)"),
+        "",
+    ]
     if slow1:
-        out += ["## 1스레드에서 numpy보다 느린 것 (배율 낮은 순)", "", "| 묶음 | 케이스 | numpy | sd 1T | 배율 1T | sd 10T | 배율 10T |", "|---|---|---:|---:|---:|---:|---:|"]
+        out += [
+            "## 1스레드에서 numpy보다 느린 것 (배율 낮은 순)",
+            "",
+            "| 묶음 | 케이스 | numpy | sd 1T | 배율 1T | sd 10T | 배율 10T |",
+            "|---|---|---:|---:|---:|---:|---:|",
+        ]
         for r in sorted(slow1, key=lambda r: r["np"] / r["sd1"]):
-            out.append(f"| {r['group']} | `{r['name']}` | {fmt_t(r['np'])} | {fmt_t(r['sd1'])} | {r['np'] / r['sd1']:.2f} | {fmt_t(r['sd10'])} | {r['np'] / r['sd10']:.2f} |")
+            out.append(
+                f"| {r['group']} | `{r['name']}` | {fmt_t(r['np'])} | {fmt_t(r['sd1'])} | {r['np'] / r['sd1']:.2f} | {fmt_t(r['sd10'])} | {r['np'] / r['sd10']:.2f} |"
+            )
         out.append("")
-    out += ["## 전체", "", "| 묶음 | 케이스 | numpy | sd 1T | 배율 1T | sd 10T | 배율 10T | 결과 확인 |", "|---|---|---:|---:|---:|---:|---:|---|"]
+    out += [
+        "## 전체",
+        "",
+        "| 묶음 | 케이스 | numpy | sd 1T | 배율 1T | sd 10T | 배율 10T | 결과 확인 |",
+        "|---|---|---:|---:|---:|---:|---:|---|",
+    ]
     for r in rows:
         if not r.get("sd1"):
             out.append(f"| {r['group']} | `{r['name']}` | - | - | - | - | - | {r.get('check')} |")
             continue
         q1, q10 = r["np"] / r["sd1"], r["np"] / r["sd10"]
         b1 = f"**{q1:.2f}**" if q1 < 1 else f"{q1:.2f}"
-        out.append(f"| {r['group']} | `{r['name']}` | {fmt_t(r['np'])} | {fmt_t(r['sd1'])} | {b1} | {fmt_t(r['sd10'])} | {q10:.2f} | {r.get('check')} |")
+        out.append(
+            f"| {r['group']} | `{r['name']}` | {fmt_t(r['np'])} | {fmt_t(r['sd1'])} | {b1} | {fmt_t(r['sd10'])} | {q10:.2f} | {r.get('check')} |"
+        )
     return "\n".join(out) + "\n"
 
 
@@ -516,10 +645,14 @@ def main():
     if args.only:
         allc = [c for c in allc if re.search(args.only, c[1])]
     commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
-    dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"], capture_output=True, text=True).stdout.strip()
-    env = (f"환경: {platform.machine()} macOS, Python {platform.python_version()}, numpy {np.__version__}, "
-           f"stardust {commit}{' + 작업 중 변경' if dirty else ''}, 원소 {N:,}개 기준, {args.rounds}라운드, "
-           f"{time.strftime('%Y-%m-%d %H:%M')}")
+    dirty = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=no"], capture_output=True, text=True
+    ).stdout.strip()
+    env = (
+        f"환경: {platform.machine()} macOS, Python {platform.python_version()}, numpy {np.__version__}, "
+        f"stardust {commit}{' + 작업 중 변경' if dirty else ''}, 원소 {N:,}개 기준, {args.rounds}라운드, "
+        f"{time.strftime('%Y-%m-%d %H:%M')}"
+    )
     print(env, flush=True)
     d = make_data()
     rounds = []

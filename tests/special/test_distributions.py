@@ -25,30 +25,62 @@ def eq(got, want):
         assert got == want, (got, want)
 
 
-@pytest.mark.parametrize("call,want", [
-    (lambda: S.stdtr(INF, 1.0), sc.ndtr(1.0)),
-    (lambda: S.stdtr(2.0, INF), 1.0), (lambda: S.stdtr(2.0, -INF), 0.0), (lambda: S.stdtr(2.0, 0.0), 0.5),
-    (lambda: S.stdtr(0.0, 1.0), NAN), (lambda: S.stdtr(-1.0, 1.0), NAN), (lambda: S.stdtr(NAN, 1.0), NAN),
-    (lambda: S.stdtrit(2.0, 0.0), -INF), (lambda: S.stdtrit(2.0, 1.0), INF), (lambda: S.stdtrit(2.0, 0.5), 0.0),
-    (lambda: S.stdtrit(2.0, 1.5), NAN), (lambda: S.stdtrit(INF, 0.975), S.ndtri(0.975)),
-    (lambda: S.chdtr(0.0, 1.0), 1.0), (lambda: S.chdtr(0.0, 0.0), NAN), (lambda: S.chdtr(2.0, -1.0), NAN),
-    (lambda: S.chdtrc(2.0, INF), 0.0), (lambda: S.chdtri(2.0, 1.0), 0.0), (lambda: S.chdtri(2.0, 0.0), INF),
-    (lambda: S.fdtr(2.0, 3.0, 0.0), 0.0), (lambda: S.fdtrc(2.0, 3.0, INF), 0.0), (lambda: S.fdtr(0.0, 3.0, 1.0), NAN),
-    (lambda: S.fdtr(INF, INF, 0.5), 0.0), (lambda: S.fdtr(INF, INF, 1.0), 1.0), (lambda: S.fdtrc(INF, INF, 2.0), 0.0),
-    (lambda: S.fdtr(2.0, INF, 1.5), S.gammainc(1.0, 1.5)), (lambda: S.fdtr(INF, 4.0, 2.0), S.gammaincc(2.0, 1.0)),
-    (lambda: S.fdtri(2.0, INF, 0.3), 2.0 * S.gammaincinv(1.0, 0.3) / 2.0),
-    (lambda: S.fdtri(INF, 4.0, 0.3), 4.0 / (2.0 * S.gammainccinv(2.0, 0.3))), (lambda: S.fdtri(INF, INF, 0.3), 1.0),
-    (lambda: S.pdtr(-1.0, 1.0), 0.0), (lambda: S.pdtrc(-0.5, 1.0), 1.0), (lambda: S.pdtr(2.7, 1.0), S.pdtr(2.0, 1.0)),
-    (lambda: S.pdtr(2.0, -1.0), NAN), (lambda: S.pdtr(INF, 1.0), 1.0),
-    (lambda: S.bdtr(-1.0, 5.0, 0.3), 0.0), (lambda: S.bdtrc(-1.0, 5.0, 0.3), 1.0),
-    (lambda: S.bdtr(6.0, 5.0, 0.3), 1.0), (lambda: S.bdtrc(5.0, 5.0, 0.3), 0.0),
-    (lambda: S.bdtr(2.0, 5.5, 0.3), NAN), (lambda: S.bdtr(2.0, INF, 0.3), NAN), (lambda: S.bdtr(2.0, 5.0, 1.5), NAN),
-    (lambda: S.bdtr(2.7, 5.0, 0.3), S.bdtr(2.0, 5.0, 0.3)),
-    (lambda: S.nbdtr(2.0, 5.5, 0.3), S.betainc(5.5, 3.0, 0.3)), (lambda: S.nbdtr(2.0, 0.0, 0.3), 1.0),
-    (lambda: S.nbdtr(2.0, INF, 0.3), 0.0), (lambda: S.nbdtr(-1.0, 5.0, 0.3), 0.0), (lambda: S.nbdtrc(-1.0, 5.0, 0.3), 1.0),
-    (lambda: S.ndtri_exp(0.0), INF), (lambda: S.ndtri_exp(-INF), -INF), (lambda: S.ndtri_exp(1.0), NAN),
-    (lambda: S.ndtri_exp(NAN), NAN),
-])
+@pytest.mark.parametrize(
+    "call,want",
+    [
+        (lambda: S.stdtr(INF, 1.0), sc.ndtr(1.0)),
+        (lambda: S.stdtr(2.0, INF), 1.0),
+        (lambda: S.stdtr(2.0, -INF), 0.0),
+        (lambda: S.stdtr(2.0, 0.0), 0.5),
+        (lambda: S.stdtr(0.0, 1.0), NAN),
+        (lambda: S.stdtr(-1.0, 1.0), NAN),
+        (lambda: S.stdtr(NAN, 1.0), NAN),
+        (lambda: S.stdtrit(2.0, 0.0), -INF),
+        (lambda: S.stdtrit(2.0, 1.0), INF),
+        (lambda: S.stdtrit(2.0, 0.5), 0.0),
+        (lambda: S.stdtrit(2.0, 1.5), NAN),
+        (lambda: S.stdtrit(INF, 0.975), S.ndtri(0.975)),
+        (lambda: S.chdtr(0.0, 1.0), 1.0),
+        (lambda: S.chdtr(0.0, 0.0), NAN),
+        (lambda: S.chdtr(2.0, -1.0), NAN),
+        (lambda: S.chdtrc(2.0, INF), 0.0),
+        (lambda: S.chdtri(2.0, 1.0), 0.0),
+        (lambda: S.chdtri(2.0, 0.0), INF),
+        (lambda: S.fdtr(2.0, 3.0, 0.0), 0.0),
+        (lambda: S.fdtrc(2.0, 3.0, INF), 0.0),
+        (lambda: S.fdtr(0.0, 3.0, 1.0), NAN),
+        (lambda: S.fdtr(INF, INF, 0.5), 0.0),
+        (lambda: S.fdtr(INF, INF, 1.0), 1.0),
+        (lambda: S.fdtrc(INF, INF, 2.0), 0.0),
+        (lambda: S.fdtr(2.0, INF, 1.5), S.gammainc(1.0, 1.5)),
+        (lambda: S.fdtr(INF, 4.0, 2.0), S.gammaincc(2.0, 1.0)),
+        (lambda: S.fdtri(2.0, INF, 0.3), 2.0 * S.gammaincinv(1.0, 0.3) / 2.0),
+        (lambda: S.fdtri(INF, 4.0, 0.3), 4.0 / (2.0 * S.gammainccinv(2.0, 0.3))),
+        (lambda: S.fdtri(INF, INF, 0.3), 1.0),
+        (lambda: S.pdtr(-1.0, 1.0), 0.0),
+        (lambda: S.pdtrc(-0.5, 1.0), 1.0),
+        (lambda: S.pdtr(2.7, 1.0), S.pdtr(2.0, 1.0)),
+        (lambda: S.pdtr(2.0, -1.0), NAN),
+        (lambda: S.pdtr(INF, 1.0), 1.0),
+        (lambda: S.bdtr(-1.0, 5.0, 0.3), 0.0),
+        (lambda: S.bdtrc(-1.0, 5.0, 0.3), 1.0),
+        (lambda: S.bdtr(6.0, 5.0, 0.3), 1.0),
+        (lambda: S.bdtrc(5.0, 5.0, 0.3), 0.0),
+        (lambda: S.bdtr(2.0, 5.5, 0.3), NAN),
+        (lambda: S.bdtr(2.0, INF, 0.3), NAN),
+        (lambda: S.bdtr(2.0, 5.0, 1.5), NAN),
+        (lambda: S.bdtr(2.7, 5.0, 0.3), S.bdtr(2.0, 5.0, 0.3)),
+        (lambda: S.nbdtr(2.0, 5.5, 0.3), S.betainc(5.5, 3.0, 0.3)),
+        (lambda: S.nbdtr(2.0, 0.0, 0.3), 1.0),
+        (lambda: S.nbdtr(2.0, INF, 0.3), 0.0),
+        (lambda: S.nbdtr(-1.0, 5.0, 0.3), 0.0),
+        (lambda: S.nbdtrc(-1.0, 5.0, 0.3), 1.0),
+        (lambda: S.ndtri_exp(0.0), INF),
+        (lambda: S.ndtri_exp(-INF), -INF),
+        (lambda: S.ndtri_exp(1.0), NAN),
+        (lambda: S.ndtri_exp(NAN), NAN),
+    ],
+)
 def test_special_values(call, want):
     eq(call(), float(want))
 
@@ -121,7 +153,11 @@ def test_inverses_beyond_the_double_range():
     # subnormal already has fdtr >= p; stdtrit overflows to -inf only when even
     # -DBL_MAX still has stdtr >= p (T1: these points have no reference value).
     rng = np.random.default_rng(3)
-    dfn, dfd, p = np.exp(rng.uniform(-4.6, 0, 3000)), np.exp(rng.uniform(-4.6, 9, 3000)), np.exp(rng.uniform(-230, -1, 3000))
+    dfn, dfd, p = (
+        np.exp(rng.uniform(-4.6, 0, 3000)),
+        np.exp(rng.uniform(-4.6, 9, 3000)),
+        np.exp(rng.uniform(-230, -1, 3000)),
+    )
     x = np.asarray(S.fdtri(sd.asarray(dfn), sd.asarray(dfd), sd.asarray(p)))
     zero = x == 0
     assert zero.any()
@@ -137,14 +173,16 @@ def test_fdtr_where_one_shape_is_past_2_900_review_regression():
     # dfd (or dfn) so large that the beta argument is below 2^-1000 while its product with
     # the shape is not small: the chi-square limit. The leading term alone, used before, gave
     # fdtr(2, 1e308, 1) = 1 (true: 1 - 1/e) and NaN at dfn = 200. Values: the series in Arb.
-    rows = [(2.0, 1e308, 1.0, 0.6321205588285577, 0.36787944117144233),
-            (200.0, 1e308, 1.0, 0.5132987982791487, 0.48670120172085135),
-            (2e-5, 1e300, 1e-320, 0.992550258327848, 0.007449741672151913),
-            (0.5, 1e305, 40.0, 0.9999979169695914, 2.083030408649431e-06),
-            (1e308, 2.0, 1.0, 0.36787944117144233, 0.6321205588285577),
-            (1e300, 2e-5, 1e305, 0.007106867638463068, 0.992893132361537),
-            (7.0, 1e300, 1e-05, 2.1806304891469145e-17, 1.0),
-            (16.419704325584377, 7.37960052026974e277, 5.776808771711861, 0.9999999999995333, 4.667669003019092e-13)]
+    rows = [
+        (2.0, 1e308, 1.0, 0.6321205588285577, 0.36787944117144233),
+        (200.0, 1e308, 1.0, 0.5132987982791487, 0.48670120172085135),
+        (2e-5, 1e300, 1e-320, 0.992550258327848, 0.007449741672151913),
+        (0.5, 1e305, 40.0, 0.9999979169695914, 2.083030408649431e-06),
+        (1e308, 2.0, 1.0, 0.36787944117144233, 0.6321205588285577),
+        (1e300, 2e-5, 1e305, 0.007106867638463068, 0.992893132361537),
+        (7.0, 1e300, 1e-05, 2.1806304891469145e-17, 1.0),
+        (16.419704325584377, 7.37960052026974e277, 5.776808771711861, 0.9999999999995333, 4.667669003019092e-13),
+    ]
     for dfn, dfd, x, lo, up in rows:
         assert abs(S.fdtr(dfn, dfd, x) / lo - 1) < 2e-15, (dfn, dfd, x)
         assert abs(S.fdtrc(dfn, dfd, x) / up - 1) < 2e-15, (dfn, dfd, x)

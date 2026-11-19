@@ -190,7 +190,8 @@ inline constexpr std::int64_t kBlasTaskWork = 1 << 15;
 nb::object matmul(nb::handle x1, nb::handle x2) {
     const NDArray& a0 = require_ndarray(x1, "x1");
     const NDArray& b0 = require_ndarray(x2, "x2");
-    const DType d = promote(promote(a0.dtype, b0.dtype), DType::Int64);  // bool @ bool is int64: docs/design/array.md §9.1
+    const DType d =
+        promote(promote(a0.dtype, b0.dtype), DType::Int64);  // bool @ bool is int64: docs/design/array.md §9.1
     const NDArray a = a0.dtype == d ? a0 : cast_copy(a0, d);
     const NDArray b = b0.dtype == d ? b0 : cast_copy(b0, d);
     const bool a_vec = a.ndim == 1, b_vec = b.ndim == 1;
@@ -203,8 +204,9 @@ nb::object matmul(nb::handle x1, nb::handle x2) {
 
     // Batch axes: everything before the matrix axes, broadcast together.
     const int a_batch = a_vec ? 0 : a.ndim - 2, b_batch = b_vec ? 0 : b.ndim - 2;
-    const std::span<const std::int64_t> spans[] = {{a.shape.data(), static_cast<size_t>(a_batch)},
-                                                   {b.shape.data(), static_cast<size_t>(b_batch)}};
+    const std::span<const std::int64_t> spans[] = {
+        {a.shape.data(), static_cast<size_t>(a_batch)}, {b.shape.data(), static_cast<size_t>(b_batch)}
+    };
     const std::vector<std::int64_t> batch = broadcast_shapes(spans);
     const int bd = static_cast<int>(batch.size());
     std::vector<std::int64_t> full = batch;  // batch + (m, n), what we compute into

@@ -31,7 +31,8 @@ def main():
         "#pragma once\n\n#include <array>\n\nnamespace sd::stats {\n\n"
         f"inline constexpr int kZetaMinusOneMax = {J};\n"
         f"inline constexpr std::array<std::array<double, 2>, {J - 1}> kZetaMinusOne = {{{{\n"
-        + "\n".join(rows) + "\n}};\n\n}  // namespace sd::stats\n"
+        + "\n".join(rows)
+        + "\n}};\n\n}  // namespace sd::stats\n"
     )
     print(f"wrote {OUT}")
 

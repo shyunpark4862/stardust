@@ -1,6 +1,7 @@
 """One flagged row timed in a fresh process (ROADMAP: flagged rows are checked
 over several processes). Prints min/median µs of 15 runs.
     python bench/merge/m5/procs.py   (stardust_pandas: the old package, or the shim)"""
+
 import statistics
 import time
 

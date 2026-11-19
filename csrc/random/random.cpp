@@ -72,8 +72,9 @@ std::int64_t offset_of(const NDArray& a, std::int64_t i) {
 // result's shape (any strides: broadcast views). The checks (low < high) are the
 // caller's; here low + bounded(high - low) in unsigned arithmetic, which is exact
 // for any int64 pair with low <= high.
-nb::object integers(std::uint64_t k0, std::uint64_t k1, std::uint64_t pos, const NDArray& lo, const NDArray& hi,
-                    bool endpoint) {
+nb::object integers(
+    std::uint64_t k0, std::uint64_t k1, std::uint64_t pos, const NDArray& lo, const NDArray& hi, bool endpoint
+) {
     NDArray out = new_array(DType::Int64, lo.shape_span());
     auto* o = reinterpret_cast<std::int64_t*>(out.data);
     const std::int64_t n = out.size();
@@ -155,37 +156,40 @@ nb::object fisher_yates(std::uint64_t k0, std::uint64_t k1, std::uint64_t pos, s
     Stream s({k0, k1});
     auto draw = [&](std::int64_t i) {
         const std::uint64_t e = pos + static_cast<std::uint64_t>(i);
-        return i + static_cast<std::int64_t>(
-                       random::bounded(s.first(e), static_cast<std::uint64_t>(n - i), [&](std::uint64_t t) { return s.extra(e, t); }));
+        return i + static_cast<std::int64_t>(random::bounded(
+                       s.first(e), static_cast<std::uint64_t>(n - i), [&](std::uint64_t t) { return s.extra(e, t); }
+                   ));
     };
     {
-    nb::gil_scoped_release release;  // the loop only: wrap() below needs the GIL
-    if (k <= n / 16) {
-        std::unordered_map<std::int64_t, std::int64_t> moved;  // entries that are not their own index
-        moved.reserve(static_cast<std::size_t>(2 * k));
-        auto at = [&](std::int64_t i) {
-            const auto it = moved.find(i);
-            return it == moved.end() ? i : it->second;
-        };
-        for (std::int64_t i = 0; i < k; ++i) {
-            const std::int64_t j = draw(i);
-            const std::int64_t vi = at(i), vj = at(j);
-            moved[j] = vi;
-            o[i] = vj;
+        nb::gil_scoped_release release;  // the loop only: wrap() below needs the GIL
+        if (k <= n / 16) {
+            std::unordered_map<std::int64_t, std::int64_t> moved;  // entries that are not their own index
+            moved.reserve(static_cast<std::size_t>(2 * k));
+            auto at = [&](std::int64_t i) {
+                const auto it = moved.find(i);
+                return it == moved.end() ? i : it->second;
+            };
+            for (std::int64_t i = 0; i < k; ++i) {
+                const std::int64_t j = draw(i);
+                const std::int64_t vi = at(i), vj = at(j);
+                moved[j] = vi;
+                o[i] = vj;
+            }
+        } else {
+            std::vector<std::int64_t> a(static_cast<std::size_t>(n));
+            for (std::int64_t i = 0; i < n; ++i) a[static_cast<std::size_t>(i)] = i;
+            for (std::int64_t i = 0; i < k; ++i)
+                std::swap(a[static_cast<std::size_t>(i)], a[static_cast<std::size_t>(draw(i))]);
+            std::copy(a.begin(), a.begin() + k, o);
         }
-    } else {
-        std::vector<std::int64_t> a(static_cast<std::size_t>(n));
-        for (std::int64_t i = 0; i < n; ++i) a[static_cast<std::size_t>(i)] = i;
-        for (std::int64_t i = 0; i < k; ++i) std::swap(a[static_cast<std::size_t>(i)], a[static_cast<std::size_t>(draw(i))]);
-        std::copy(a.begin(), a.begin() + k, o);
-    }
     }
     return wrap(std::move(out));
 }
 
 // One Philox block, for the known-answer tests.
-nb::tuple philox_block(std::uint64_t c0, std::uint64_t c1, std::uint64_t c2, std::uint64_t c3, std::uint64_t k0,
-                       std::uint64_t k1) {
+nb::tuple philox_block(
+    std::uint64_t c0, std::uint64_t c1, std::uint64_t c2, std::uint64_t c3, std::uint64_t k0, std::uint64_t k1
+) {
     const random::Block b = random::philox({c0, c1, c2, c3}, {k0, k1});
     return nb::make_tuple(b[0], b[1], b[2], b[3]);
 }

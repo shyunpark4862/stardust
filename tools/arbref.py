@@ -24,7 +24,7 @@ from flint import acb, arb, ctx
 TARGET_BITS = 110  # hi + lo is exact to rounding (2^-106 relative) with a margin
 START_PREC = 128
 MAX_PREC = 1 << 13  # 8192 bits, ~2500 digits
-DOUBLE_TINY = 2.0 ** -1022  # the smallest normal double: settled's floor for double-double references
+DOUBLE_TINY = 2.0**-1022  # the smallest normal double: settled's floor for double-double references
 
 
 class NotSettled(ArithmeticError):
@@ -118,7 +118,7 @@ def add_error(v, err):
     return v + arb(0, abs(arb(err).upper()))
 
 
-def certify_root(g, x, rel=2.0 ** -TARGET_BITS, increasing=True):
+def certify_root(g, x, rel=2.0**-TARGET_BITS, increasing=True):
     """x (a float or arb point) is the root of g to rel: g(x (1 - rel)) and g(x (1 + rel))
     have the signs of an increasing (or decreasing) g across its root. Raises NotSettled
     when the signs are not certain."""
@@ -158,8 +158,8 @@ def solve_settled(g, dg, x0, increasing=True, rel_bits=TARGET_BITS, start=START_
         with precision(p):
             try:
                 x = newton(g, dg, x)
-                return certify_root(g, x, 2.0 ** -rel_bits, increasing)
-            except (NotSettled, ZeroDivisionError, ValueError):
+                return certify_root(g, x, 2.0**-rel_bits, increasing)
+            except NotSettled, ZeroDivisionError, ValueError:
                 pass
         p *= 2
     raise NotSettled("root")
@@ -188,8 +188,7 @@ def newton_log(g, xdg, x0, iters=200, hi=None):
     return x
 
 
-def solve_log_settled(g, xdg, x0, increasing=True, hi=None, rel_bits=TARGET_BITS, start=START_PREC,
-                      max_prec=MAX_PREC):
+def solve_log_settled(g, xdg, x0, increasing=True, hi=None, rel_bits=TARGET_BITS, start=START_PREC, max_prec=MAX_PREC):
     """solve_settled for a positive root, with Newton in log x (newton_log): the root of g as
     an arb point certified to 2^-rel_bits relative by a sign change."""
     p = start
@@ -198,8 +197,8 @@ def solve_log_settled(g, xdg, x0, increasing=True, hi=None, rel_bits=TARGET_BITS
         with precision(p):
             try:
                 x = newton_log(g, xdg, x, hi=hi)
-                return certify_root(g, x, 2.0 ** -rel_bits, increasing)
-            except (NotSettled, ZeroDivisionError, ValueError):
+                return certify_root(g, x, 2.0**-rel_bits, increasing)
+            except NotSettled, ZeroDivisionError, ValueError:
                 pass
         p *= 2
     raise NotSettled("root")

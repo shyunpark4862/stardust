@@ -133,8 +133,12 @@ def encode(x, L):
     if idx is not None:
         return idx
     if isinstance(x, np.ndarray):
-        out = {"ndarray": str(x.dtype), "shape": list(x.shape), "strides": list(x.strides),
-               "writeable": bool(x.flags.writeable)}
+        out = {
+            "ndarray": str(x.dtype),
+            "shape": list(x.shape),
+            "strides": list(x.strides),
+            "writeable": bool(x.flags.writeable),
+        }
         if x.dtype == object:
             out["sha"] = _jsha([_obj(v, F) for v in x.ravel().tolist()])
         else:
@@ -188,9 +192,16 @@ class _Data:
         fl[r.random(N) < 0.001] = np.inf
         words = [("é" if v % 7 == 0 else "w") + str(v) if v % 97 else "" for v in r.integers(0, 5000, N).tolist()]
         bools = (r.random(N) < 0.5).tolist()
-        return {"na": na, "ints": ints, "floats": fl.tolist(), "words": words, "bools": bools,
-                "mask": (r.random(N) < 0.3).tolist(), "mask_na": (r.random(N) < 0.05).tolist(),
-                "perm": r.permutation(N)[: N // 2].tolist()}
+        return {
+            "na": na,
+            "ints": ints,
+            "floats": fl.tolist(),
+            "words": words,
+            "bools": bools,
+            "mask": (r.random(N) < 0.3).tolist(),
+            "mask_na": (r.random(N) < 0.05).tolist(),
+            "perm": r.permutation(N)[: N // 2].tolist(),
+        }
 
     @functools.cached_property
     def BI(self):
@@ -260,11 +271,18 @@ class _Data:
         fpool = [-0.0, 0.0, nan, inf, -inf] + [float(j) / 4 for j in range(-20, 25)]
         k_f = self._na_list([fpool[j] for j in r.integers(0, len(fpool), N).tolist()], (r.random(N) < 0.01).tolist())
         k_b = self._na_list((r.random(N) < 0.3).tolist(), (r.random(N) < 0.01).tolist())
-        return F.DataFrame({
-            "k_i": k_i, "k_s": k_s, "k_f": k_f, "k_b": k_b,
-            "v_f": self._na_list(b["floats"], b["na"]), "v_i": self._na_list(b["ints"], b["na"]),
-            "v_b": self._na_list(b["bools"], b["na"]), "v_s": self._na_list(b["words"], b["na"]),
-        })
+        return F.DataFrame(
+            {
+                "k_i": k_i,
+                "k_s": k_s,
+                "k_f": k_f,
+                "k_b": k_b,
+                "v_f": self._na_list(b["floats"], b["na"]),
+                "v_i": self._na_list(b["ints"], b["na"]),
+                "v_b": self._na_list(b["bools"], b["na"]),
+                "v_s": self._na_list(b["words"], b["na"]),
+            }
+        )
 
     @functools.cached_property
     def BDF_noNaN(self):  # value columns without NaN, so sums do not just give NaN
@@ -284,29 +302,49 @@ class _Data:
         lk = self._na_list(r.integers(0, 200_000, nl).tolist(), (r.random(nl) < 0.01).tolist())
         rk = self._na_list(r.integers(0, 250_000, nr).tolist(), (r.random(nr) < 0.01).tolist())
         tags = ["a", "b", "c", "d", "e"]
-        left = F.DataFrame({
-            "key": lk,
-            "tag": [tags[j] for j in r.integers(0, 5, nl).tolist()],
-            "lv": r.standard_normal(nl).tolist(),
-            "same": r.integers(0, 10, nl).tolist(),
-        })
-        right = F.DataFrame({
-            "key": rk,
-            "tag": [tags[j] for j in r.integers(0, 5, nr).tolist()],
-            "rv": r.integers(-100, 100, nr).tolist(),
-            "same": r.integers(0, 10, nr).tolist(),
-        })
+        left = F.DataFrame(
+            {
+                "key": lk,
+                "tag": [tags[j] for j in r.integers(0, 5, nl).tolist()],
+                "lv": r.standard_normal(nl).tolist(),
+                "same": r.integers(0, 10, nl).tolist(),
+            }
+        )
+        right = F.DataFrame(
+            {
+                "key": rk,
+                "tag": [tags[j] for j in r.integers(0, 5, nr).tolist()],
+                "rv": r.integers(-100, 100, nr).tolist(),
+                "same": r.integers(0, 10, nr).tolist(),
+            }
+        )
         fpool = [-0.0, 0.0, nan, 1.5, -2.25, inf] + [float(j) for j in range(1000)]
-        lf = F.DataFrame({"fk": self._na_list([fpool[j] for j in r.integers(0, len(fpool), 200_003).tolist()],
-                                              (r.random(200_003) < 0.01).tolist()),
-                          "x": r.integers(0, 9, 200_003).tolist()})
-        rf = F.DataFrame({"fk": [fpool[j] for j in r.integers(0, len(fpool), 5_003).tolist()],
-                          "y": r.standard_normal(5_003).tolist()})
+        lf = F.DataFrame(
+            {
+                "fk": self._na_list(
+                    [fpool[j] for j in r.integers(0, len(fpool), 200_003).tolist()], (r.random(200_003) < 0.01).tolist()
+                ),
+                "x": r.integers(0, 9, 200_003).tolist(),
+            }
+        )
+        rf = F.DataFrame(
+            {
+                "fk": [fpool[j] for j in r.integers(0, len(fpool), 5_003).tolist()],
+                "y": r.standard_normal(5_003).tolist(),
+            }
+        )
         spool = [f"name{j}" for j in range(150_000)]
-        ls = F.DataFrame({"s": self._na_list([spool[j] for j in r.integers(0, 150_000, nl).tolist()],
-                                             (r.random(nl) < 0.01).tolist()), "a": r.integers(0, 5, nl).tolist()})
-        rs = F.DataFrame({"s": [spool[j] for j in r.integers(0, 150_000, 120_000).tolist()],
-                          "b": r.integers(0, 5, 120_000).tolist()})
+        ls = F.DataFrame(
+            {
+                "s": self._na_list(
+                    [spool[j] for j in r.integers(0, 150_000, nl).tolist()], (r.random(nl) < 0.01).tolist()
+                ),
+                "a": r.integers(0, 5, nl).tolist(),
+            }
+        )
+        rs = F.DataFrame(
+            {"s": [spool[j] for j in r.integers(0, 150_000, 120_000).tolist()], "b": r.integers(0, 5, 120_000).tolist()}
+        )
         return left, right, lf, rf, ls, rs
 
     @functools.cached_property
@@ -377,10 +415,23 @@ def _csv_path(text):
 # cases
 
 
-ARITH = [("add", operator.add), ("sub", operator.sub), ("mul", operator.mul), ("truediv", operator.truediv),
-         ("floordiv", operator.floordiv), ("mod", operator.mod), ("pow", operator.pow)]
-COMPARE = [("eq", operator.eq), ("ne", operator.ne), ("lt", operator.lt), ("le", operator.le),
-           ("gt", operator.gt), ("ge", operator.ge)]
+ARITH = [
+    ("add", operator.add),
+    ("sub", operator.sub),
+    ("mul", operator.mul),
+    ("truediv", operator.truediv),
+    ("floordiv", operator.floordiv),
+    ("mod", operator.mod),
+    ("pow", operator.pow),
+]
+COMPARE = [
+    ("eq", operator.eq),
+    ("ne", operator.ne),
+    ("lt", operator.lt),
+    ("le", operator.le),
+    ("gt", operator.gt),
+    ("ge", operator.ge),
+]
 LOGIC = [("and", operator.and_), ("or", operator.or_), ("xor", operator.xor)]
 REDUCTIONS = ["sum", "mean", "min", "max", "std", "var"]
 
@@ -494,7 +545,20 @@ def cases(L):
     add("err ctor reindex range to string labels", lambda: F.Series(F.Series([1, 2]), index=["a", "b"]))
     add("err ctor index float labels", lambda: F.Series([1], index=[1.5]))
     add("err ctor scalar", lambda: F.Series(5))
-    for dt in ["int8", "int16", "int32", "uint8", "uint16", "uint32", "uint64", "float16", "float32", "int64", "float64", "bool"]:
+    for dt in [
+        "int8",
+        "int16",
+        "int32",
+        "uint8",
+        "uint16",
+        "uint32",
+        "uint64",
+        "float16",
+        "float32",
+        "int64",
+        "float64",
+        "bool",
+    ]:
         add(f"ctor numpy {dt}", lambda dt=dt: F.Series(np_.array([0, 1, 7, 100], dtype=dt)))
     add("ctor numpy uint64 max int64", lambda: F.Series(np_.array([2**63 - 1], dtype="uint64")))
     add("err ctor numpy uint64 too big", lambda: F.Series(np_.array([2**63], dtype="uint64")))
@@ -519,10 +583,16 @@ def cases(L):
     add("ctor DataFrame dict", sdf)
     add("ctor DataFrame dict labelled", sdf_l)
     add("ctor DataFrame dict numpy", lambda: F.DataFrame({"a": np_.arange(4), "b": np_.linspace(0, 1, 4)}))
-    add("ctor DataFrame dict series aligned", lambda: F.DataFrame({
-        "a": F.Series([1, 2, 3], index=["x", "y", "z"]), "b": F.Series([10.0, 20.0], index=["w", "x"])}))
-    add("ctor DataFrame dict series + index", lambda: F.DataFrame(
-        {"a": F.Series([1, 2, 3], index=["x", "y", "z"])}, index=["z", "q"]))
+    add(
+        "ctor DataFrame dict series aligned",
+        lambda: F.DataFrame(
+            {"a": F.Series([1, 2, 3], index=["x", "y", "z"]), "b": F.Series([10.0, 20.0], index=["w", "x"])}
+        ),
+    )
+    add(
+        "ctor DataFrame dict series + index",
+        lambda: F.DataFrame({"a": F.Series([1, 2, 3], index=["x", "y", "z"])}, index=["z", "q"]),
+    )
     add("ctor DataFrame dict scalar broadcast", lambda: F.DataFrame({"a": [1, 2, 3], "c": "k", "d": 1.5}))
     add("ctor DataFrame dict dtype", lambda: F.DataFrame({"a": [1, 2], "b": [3, None]}, dtype="float64"))
     add("ctor DataFrame dict columns select", lambda: F.DataFrame({"a": [1, 2], "b": [3, 4]}, columns=["b", "zz"]))
@@ -587,15 +657,23 @@ def cases(L):
     add("in df", lambda: ("s" in sdf(), "zz" in sdf(), 1 in sdf()))
     add("prop big df dtypes", lambda: D.BDF.dtypes)
     add("prop big df columns", lambda: D.BDF.columns)
-    add("in series values", lambda: [x in F.Series([1.5, nan, None, -0.0]) for x in (1.5, nan, NA, None, 0.0, 2.0, "a", True)])
+    add(
+        "in series values",
+        lambda: [x in F.Series([1.5, nan, None, -0.0]) for x in (1.5, nan, NA, None, 0.0, 2.0, "a", True)],
+    )
     add("in series int", lambda: [x in F.Series([1, None, 3]) for x in (1, 1.0, 3.5, NA, "a", True, 2**70)])
     add("in series string", lambda: [x in F.Series(["a", None]) for x in ("a", "b", NA, 1)])
     add("in series bool", lambda: [x in F.Series([True, True]) for x in (True, False, NA, 1)])
     add("in big series", lambda: [x in D.BF for x in (nan, NA, 0.0, inf, 1234.5)])
     add("in big string series", lambda: [x in D.BS for x in ("w1", "é7", "", "nope", NA)])
-    for nm, mk in [("Index str", lambda: F.Index(["a", "b", "a"], name="n")), ("Index int", lambda: F.Index([3, 1, 2])),
-                   ("RangeIndex", lambda: F.RangeIndex(2, 20, 3, name="r")), ("RangeIndex neg", lambda: F.RangeIndex(10, 0, -2)),
-                   ("Index big", lambda: F.Index(D.base["words"])), ("RangeIndex big", lambda: F.RangeIndex(H))]:
+    for nm, mk in [
+        ("Index str", lambda: F.Index(["a", "b", "a"], name="n")),
+        ("Index int", lambda: F.Index([3, 1, 2])),
+        ("RangeIndex", lambda: F.RangeIndex(2, 20, 3, name="r")),
+        ("RangeIndex neg", lambda: F.RangeIndex(10, 0, -2)),
+        ("Index big", lambda: F.Index(D.base["words"])),
+        ("RangeIndex big", lambda: F.RangeIndex(H)),
+    ]:
         add(f"index dtype {nm}", lambda mk=mk: mk().dtype)
         add(f"index name {nm}", lambda mk=mk: mk().name)
         add(f"index is_unique {nm}", lambda mk=mk: mk().is_unique)
@@ -605,14 +683,28 @@ def cases(L):
         add(f"index in {nm}", lambda mk=mk: [x in mk() for x in (1, 2, 5, 8, "a", "b", "w1", 1.0, True, "zz")])
     add("index start/stop/step", lambda: (lambda r: (r.start, r.stop, r.step))(F.RangeIndex(2, 20, 3)))
     add("index start/stop/step stop only", lambda: (lambda r: (r.start, r.stop, r.step))(F.RangeIndex(7)))
-    add("index equals", lambda: [
-        F.Index([1, 2]).equals(F.Index([1, 2], name="x")), F.Index([1, 2]).equals(F.Index([2, 1])),
-        F.Index([0, 1, 2]).equals(F.RangeIndex(3)), F.RangeIndex(3).equals(F.Index([0, 1, 2])),
-        F.RangeIndex(3).equals(F.RangeIndex(0, 3, 1, name="q")), F.RangeIndex(0).equals(F.RangeIndex(5, 5)),
-        F.Index(["a"]).equals(F.Index([1])), F.Index(["a"]).equals(["a"]), F.Index([1]).equals(F.Index([1, 1]))])
-    add("index equals big", lambda: [F.Index(D.base["words"]).equals(F.Index(list(D.base["words"]))),
-                                     F.Index(list(range(N))).equals(F.RangeIndex(N)),
-                                     F.Index(D.PERM).equals(F.Index(D.PERM[::-1]))])
+    add(
+        "index equals",
+        lambda: [
+            F.Index([1, 2]).equals(F.Index([1, 2], name="x")),
+            F.Index([1, 2]).equals(F.Index([2, 1])),
+            F.Index([0, 1, 2]).equals(F.RangeIndex(3)),
+            F.RangeIndex(3).equals(F.Index([0, 1, 2])),
+            F.RangeIndex(3).equals(F.RangeIndex(0, 3, 1, name="q")),
+            F.RangeIndex(0).equals(F.RangeIndex(5, 5)),
+            F.Index(["a"]).equals(F.Index([1])),
+            F.Index(["a"]).equals(["a"]),
+            F.Index([1]).equals(F.Index([1, 1])),
+        ],
+    )
+    add(
+        "index equals big",
+        lambda: [
+            F.Index(D.base["words"]).equals(F.Index(list(D.base["words"]))),
+            F.Index(list(range(N))).equals(F.RangeIndex(N)),
+            F.Index(D.PERM).equals(F.Index(D.PERM[::-1])),
+        ],
+    )
     add("index is_unique big int", lambda: (F.Index(D.PERM).is_unique, F.Index(D.base["ints"]).is_unique))
 
     # ---------------------------------------------------------------- to_numpy, to_list (§10)
@@ -651,8 +743,12 @@ def cases(L):
     add("df to_numpy big", lambda: D.BDF[["v_f", "v_i"]].to_numpy(na_value=nan))
     add("to_list big float", lambda: _jsha([_fkey(v) if isinstance(v, float) else repr(v) for v in _tl(D.BF)]))
     add("to_list big string", lambda: _jsha([v if isinstance(v, str) else repr(v) for v in _tl(D.BS)]))
-    add("to_list types", lambda: [type(v).__name__ for v in _tl(F.Series([1, None]))]
-        + [type(v).__name__ for v in _tl(F.Series([True]))])
+    add(
+        "to_list types",
+        lambda: (
+            [type(v).__name__ for v in _tl(F.Series([1, None]))] + [type(v).__name__ for v in _tl(F.Series([True]))]
+        ),
+    )
 
     # ---------------------------------------------------------------- head, tail
     for n in [None, 0, 3, -3, 100, -100]:
@@ -667,12 +763,23 @@ def cases(L):
 
     # ---------------------------------------------------------------- element-wise (§3, §12)
     pairs = [
-        ("i,i2", si, si2), ("i,f2", si, sf2), ("f,i2", sf, si2), ("f,f2", sf, sf2),
-        ("i,3", si, lambda: 3), ("3,i2", lambda: 3, si2), ("i,0", si, lambda: 0), ("i,-1", si, lambda: -1),
-        ("f,0.0", sf, lambda: 0.0), ("f,-0.0", sf, lambda: -0.0), ("2.5,f2", lambda: 2.5, sf2),
-        ("i,2.5", si, lambda: 2.5), ("i,NA", si, lambda: NA), ("NA,f", lambda: NA, sf),
-        ("i,np.int64", si, lambda: np_.int64(3)), ("np.float64,f", lambda: np_.float64(2.5), sf),
-        ("f,np.float32", sf, lambda: np_.float32(0.1)), 
+        ("i,i2", si, si2),
+        ("i,f2", si, sf2),
+        ("f,i2", sf, si2),
+        ("f,f2", sf, sf2),
+        ("i,3", si, lambda: 3),
+        ("3,i2", lambda: 3, si2),
+        ("i,0", si, lambda: 0),
+        ("i,-1", si, lambda: -1),
+        ("f,0.0", sf, lambda: 0.0),
+        ("f,-0.0", sf, lambda: -0.0),
+        ("2.5,f2", lambda: 2.5, sf2),
+        ("i,2.5", si, lambda: 2.5),
+        ("i,NA", si, lambda: NA),
+        ("NA,f", lambda: NA, sf),
+        ("i,np.int64", si, lambda: np_.int64(3)),
+        ("np.float64,f", lambda: np_.float64(2.5), sf),
+        ("f,np.float32", sf, lambda: np_.float32(0.1)),
     ]
     for opn, op in ARITH:
         for pn, a, b in pairs:
@@ -692,17 +799,28 @@ def cases(L):
     add("err arith add i,str", lambda: si() + "x")
     add("err arith add i,2**64", lambda: si() + 2**64)
     add("err arith add i,list", lambda: si() + [1] * 15)
-    add("arith int edge", lambda: [
-        _tl(F.Series([I64_MIN]) // -1), _tl(abs(F.Series([I64_MIN]))), _tl(-F.Series([I64_MIN])),
-        _tl(F.Series([I64_MAX]) + 1), _tl(F.Series([I64_MAX]) * F.Series([I64_MAX])),
-        _tl(F.Series([7, -7, 7, -7]) // F.Series([2, 2, -2, -2])),
-        _tl(F.Series([7, -7, 7, -7]) % F.Series([2, 2, -2, -2])),
-        _tl(F.Series([7.5, -7.5, 7.5, -7.5]) % F.Series([2.0, 2.0, -2.0, -2.0])),
-        _tl(F.Series([2, 0, -1, 3]) ** F.Series([-1, -2, -3, 40])),
-        _tl(F.Series([0, 1, -1]) ** F.Series([0, 0, 0])),
-        _tl(F.Series([1, 2]) / F.Series([0, 0])), _tl(F.Series([0]) / F.Series([0])),
-        _tl(F.Series([1.0, -1.0, 0.0]) / 0.0), _tl(F.Series([1.0, -1.0]) // 0.0),
-        _tl(F.Series([5.0]) % 0.0), _tl(F.Series([1]) ** NA), _tl(NA ** F.Series([0]))])
+    add(
+        "arith int edge",
+        lambda: [
+            _tl(F.Series([I64_MIN]) // -1),
+            _tl(abs(F.Series([I64_MIN]))),
+            _tl(-F.Series([I64_MIN])),
+            _tl(F.Series([I64_MAX]) + 1),
+            _tl(F.Series([I64_MAX]) * F.Series([I64_MAX])),
+            _tl(F.Series([7, -7, 7, -7]) // F.Series([2, 2, -2, -2])),
+            _tl(F.Series([7, -7, 7, -7]) % F.Series([2, 2, -2, -2])),
+            _tl(F.Series([7.5, -7.5, 7.5, -7.5]) % F.Series([2.0, 2.0, -2.0, -2.0])),
+            _tl(F.Series([2, 0, -1, 3]) ** F.Series([-1, -2, -3, 40])),
+            _tl(F.Series([0, 1, -1]) ** F.Series([0, 0, 0])),
+            _tl(F.Series([1, 2]) / F.Series([0, 0])),
+            _tl(F.Series([0]) / F.Series([0])),
+            _tl(F.Series([1.0, -1.0, 0.0]) / 0.0),
+            _tl(F.Series([1.0, -1.0]) // 0.0),
+            _tl(F.Series([5.0]) % 0.0),
+            _tl(F.Series([1]) ** NA),
+            _tl(NA ** F.Series([0])),
+        ],
+    )
     for k in ["i", "f"]:
         add(f"unary neg {k}", lambda k=k: -small[k]())
         add(f"unary pos {k}", lambda k=k: +small[k]())
@@ -715,11 +833,25 @@ def cases(L):
     add("err unary invert i", lambda: ~si())
     add("err unary invert s", lambda: ~ss())
     cpairs = [
-        ("i,i2", si, si2), ("i,f2", si, sf2), ("f,f2", sf, sf2), ("f,i2", sf, si2), ("s,s2", ss, ss2), ("b,b2", sb, sb2),
-        ("i,3", si, lambda: 3), ("3,i", lambda: 3, si), ("f,nan", sf, lambda: nan), ("f,2.5", sf, lambda: 2.5),
-        ("s,b", ss, lambda: "b"), ("b,True", sb, lambda: True), ("i,NA", si, lambda: NA), ("f,-0.0", sf, lambda: -0.0),
-        ("exact", lambda: F.Series([2**53 + 1, 2**53, I64_MIN, I64_MAX, 3]),
-         lambda: F.Series([2.0**53, 2.0**53, -(2.0**63), 2.0**63, 3.0])),
+        ("i,i2", si, si2),
+        ("i,f2", si, sf2),
+        ("f,f2", sf, sf2),
+        ("f,i2", sf, si2),
+        ("s,s2", ss, ss2),
+        ("b,b2", sb, sb2),
+        ("i,3", si, lambda: 3),
+        ("3,i", lambda: 3, si),
+        ("f,nan", sf, lambda: nan),
+        ("f,2.5", sf, lambda: 2.5),
+        ("s,b", ss, lambda: "b"),
+        ("b,True", sb, lambda: True),
+        ("i,NA", si, lambda: NA),
+        ("f,-0.0", sf, lambda: -0.0),
+        (
+            "exact",
+            lambda: F.Series([2**53 + 1, 2**53, I64_MIN, I64_MAX, 3]),
+            lambda: F.Series([2.0**53, 2.0**53, -(2.0**63), 2.0**63, 3.0]),
+        ),
         ("exact scalar", lambda: F.Series([2**53 + 1, 2**53, I64_MAX]), lambda: 2.0**53),
         ("int vs float scalar 2**63", lambda: F.Series([I64_MAX, I64_MIN]), lambda: 9.223372036854775807e18),
     ]
@@ -745,13 +877,20 @@ def cases(L):
     add("names same kept", lambda: (F.Series([1], name="a") + F.Series([2], name="a")).name)
     add("names differ None", lambda: (F.Series([1], name="a") + F.Series([2], name="b")).name)
     add("names scalar kept", lambda: (F.Series([1], name="a") * 2).name)
-    add("align union order", lambda: F.Series([1, 2, 3], index=["a", "b", "c"], name="x")
-        + F.Series([10, 20, 30], index=["c", "d", "a"], name="x"))
+    add(
+        "align union order",
+        lambda: (
+            F.Series([1, 2, 3], index=["a", "b", "c"], name="x")
+            + F.Series([10, 20, 30], index=["c", "d", "a"], name="x")
+        ),
+    )
     add("align int labels", lambda: F.Series([1.5, 2.5], index=[5, 3]) * F.Series([2.0, 3.0, 4.0], index=[3, 9, 5]))
     add("align range vs int", lambda: F.Series([1, 2, 3]) + F.Series([10, 20], index=[2, 0]))
     add("align same dup positional", lambda: F.Series([1, 2], index=["a", "a"]) + F.Series([3, 4], index=["a", "a"]))
-    add("align index names", lambda: (F.Series([1], index=F.Index(["a"], name="n"))
-                                       + F.Series([1], index=F.Index(["b"], name="n"))).index)
+    add(
+        "align index names",
+        lambda: (F.Series([1], index=F.Index(["a"], name="n")) + F.Series([1], index=F.Index(["b"], name="n"))).index,
+    )
     add("align compare", lambda: F.Series([1, 2], index=["a", "b"]) < F.Series([2, 1], index=["b", "c"]))
     add("err align duplicates", lambda: F.Series([1, 2], index=["a", "a"]) + F.Series([3], index=["a"]))
     add("err align int vs string", lambda: F.Series([1], index=[0]) + F.Series([1], index=["a"]))
@@ -801,7 +940,7 @@ def cases(L):
         "float truediv": lambda: D.BF / D.BF_raw,
         "float floordiv": lambda: D.BF // 0.3,
         "float mod": lambda: D.BF % -0.7,
-        "float pow": lambda: D.BF ** 2.5,
+        "float pow": lambda: D.BF**2.5,
         "huge float add": lambda: D.HF + D.HF,
         "huge float mul scalar": lambda: D.HF * 1.1,
         "huge int add wrap": lambda: D.HI + D.HI,
@@ -841,9 +980,15 @@ def cases(L):
     add("err astype f->int inf", lambda: F.Series([inf]).astype("int64"))
     add("err astype f->int range", lambda: F.Series([2.0**63]).astype("int64"))
     add("astype i->f rounding", lambda: F.Series([2**53 + 1, 2**63 - 1, -(2**63)]).astype("float64"))
-    add("astype f->string specials", lambda: F.Series([1.0, 1e20, nan, -0.0, inf, 0.1, 1e-7, 123456789.125, None]).astype("string"))
+    add(
+        "astype f->string specials",
+        lambda: F.Series([1.0, 1e20, nan, -0.0, inf, 0.1, 1e-7, 123456789.125, None]).astype("string"),
+    )
     add("astype s->int", lambda: F.Series(["+5", "-0", "007", "9223372036854775807", None]).astype("int64"))
-    add("astype s->float", lambda: F.Series(["nan", "inf", "-inf", "1e5", ".5", "5.", "+1.5E-3", "NaN", "-0"]).astype("float64"))
+    add(
+        "astype s->float",
+        lambda: F.Series(["nan", "inf", "-inf", "1e5", ".5", "5.", "+1.5E-3", "NaN", "-0"]).astype("float64"),
+    )
     add("astype s->bool", lambda: F.Series(["True", "False", None]).astype("bool"))
     add("err astype s->int space", lambda: F.Series([" 1"]).astype("int64"))
     add("err astype s->int underscore", lambda: F.Series(["1_0"]).astype("int64"))
@@ -908,10 +1053,18 @@ def cases(L):
 
     # ---------------------------------------------------------------- unique values and duplicates (§13)
     uniq_small = {
-        "f": lambda: F.Series([-0.0, 0.0, nan, float.fromhex("-0x1.8p+1023") * 0 + nan, None, 1.5, None, nan, 1.5], name="u"),
-        "nanpayload": lambda: F.Series(np_.frombuffer(np_.array([0x7FF8000000000001, 0x7FF8000000000002, 0xFFF8000000000000],
-                                                               dtype=np_.uint64).tobytes(), dtype=np_.float64).copy()),
-        "i": si, "b": sb, "s": ss,
+        "f": lambda: F.Series(
+            [-0.0, 0.0, nan, float.fromhex("-0x1.8p+1023") * 0 + nan, None, 1.5, None, nan, 1.5], name="u"
+        ),
+        "nanpayload": lambda: F.Series(
+            np_.frombuffer(
+                np_.array([0x7FF8000000000001, 0x7FF8000000000002, 0xFFF8000000000000], dtype=np_.uint64).tobytes(),
+                dtype=np_.float64,
+            ).copy()
+        ),
+        "i": si,
+        "b": sb,
+        "s": ss,
         "empty": lambda: F.Series([], dtype="int64"),
         "allNA": lambda: F.Series([None, None], dtype="string"),
     }
@@ -938,28 +1091,48 @@ def cases(L):
     add("err nunique positional", lambda: F.Series([1]).nunique(False))
     add("df nunique", lambda: sdf().nunique())
     add("df nunique dropna=False", lambda: sdf().nunique(dropna=False))
-    add("df duplicated", lambda: F.DataFrame({"a": [1, 1, 2, 1, None, None], "b": ["x", "x", "x", "y", None, None]}).duplicated())
+    add(
+        "df duplicated",
+        lambda: F.DataFrame({"a": [1, 1, 2, 1, None, None], "b": ["x", "x", "x", "y", None, None]}).duplicated(),
+    )
     for keep in ["first", "last", "none"]:
         add(f"df duplicated subset {keep}", lambda keep=keep: sdf().duplicated(["b", "s"], keep=keep))
         add(f"df drop_duplicates subset {keep}", lambda keep=keep: sdf_l().drop_duplicates("b", keep=keep))
     add("df drop_duplicates ignore_index", lambda: sdf_l().drop_duplicates(["b"], ignore_index=True))
-    add("df value_counts", lambda: F.DataFrame({"a": [1, 1, 2, 1, None], "b": ["x", "x", "x", "y", "y"]}).value_counts())
+    add(
+        "df value_counts", lambda: F.DataFrame({"a": [1, 1, 2, 1, None], "b": ["x", "x", "x", "y", "y"]}).value_counts()
+    )
     add("df value_counts subset", lambda: sdf().value_counts(["b", "s"], dropna=False))
     add("df value_counts subset str normalize", lambda: sdf().value_counts("b", normalize=True))
-    add("df value_counts ascending sort=False", lambda: sdf().value_counts(["b"], **_kw(dict(ascending=True, sort=False, dropna=False))))
+    add(
+        "df value_counts ascending sort=False",
+        lambda: sdf().value_counts(["b"], **_kw(dict(ascending=True, sort=False, dropna=False))),
+    )
     add("err df value_counts count column", lambda: F.DataFrame({"count": [1]}).value_counts())
     add("err df duplicated unknown", lambda: sdf().duplicated(["zz"]))
     add("err df duplicated empty subset", lambda: sdf().duplicated([]))
-    for nm, get in [("f", lambda: D.BF), ("i", lambda: D.BI), ("s", lambda: D.BS), ("b", lambda: D.BB),
-                    ("huge f", lambda: D.HF), ("huge i", lambda: D.HI)]:
+    for nm, get in [
+        ("f", lambda: D.BF),
+        ("i", lambda: D.BI),
+        ("s", lambda: D.BS),
+        ("b", lambda: D.BB),
+        ("huge f", lambda: D.HF),
+        ("huge i", lambda: D.HI),
+    ]:
         add(f"big unique {nm}", lambda get=get: _uv(get()))
         add(f"big nunique {nm}", lambda get=get: (get().nunique(), get().nunique(dropna=False)))
         for keep in ["first", "last", "none"]:
             add(f"big duplicated {nm} {keep}", lambda get=get, keep=keep: get().duplicated(keep=keep))
         add(f"big drop_duplicates {nm}", lambda get=get: get().drop_duplicates(keep="last"))
         add(f"big value_counts {nm}", lambda get=get: get().value_counts())
-        add(f"big value_counts {nm} dropna=False sort=False", lambda get=get: get().value_counts(dropna=False, sort=False))
-        add(f"big value_counts {nm} normalize ascending", lambda get=get: get().value_counts(**_kw(dict(normalize=True, ascending=True))))
+        add(
+            f"big value_counts {nm} dropna=False sort=False",
+            lambda get=get: get().value_counts(dropna=False, sort=False),
+        )
+        add(
+            f"big value_counts {nm} normalize ascending",
+            lambda get=get: get().value_counts(**_kw(dict(normalize=True, ascending=True))),
+        )
     add("big df nunique", lambda: D.BDF.nunique())
     for keep in ["first", "last", "none"]:
         add(f"big df duplicated {keep}", lambda keep=keep: D.BDF.duplicated(["k_i", "k_s"], keep=keep))
@@ -979,40 +1152,69 @@ def cases(L):
         return F.Series([1.5, 2.5, 3.5, 4.5], index=[10, 30, 20, 40])
 
     sel = [
-        ("loc label", lambda: sl().loc["r4"]), ("[] label", lambda: sl()["r0"]), ("loc NA value", lambda: sl().loc["r1"]),
-        ("loc list", lambda: sl().loc[["r3", "r0", "r3"]]), ("loc Index", lambda: sl().loc[F.Index(["r2", "r1"])]),
+        ("loc label", lambda: sl().loc["r4"]),
+        ("[] label", lambda: sl()["r0"]),
+        ("loc NA value", lambda: sl().loc["r1"]),
+        ("loc list", lambda: sl().loc[["r3", "r0", "r3"]]),
+        ("loc Index", lambda: sl().loc[F.Index(["r2", "r1"])]),
         ("loc numpy labels", lambda: sl().loc[np_.array(["r2", "r1"])]),
-        ("loc slice", lambda: sl().loc["r2":"r6"]), ("loc slice step", lambda: sl().loc["r1":"r9":3]),
-        ("loc slice reversed", lambda: sl().loc["r6":"r2":-1]), ("loc slice open", lambda: sl().loc[:"r3"]),
-        ("loc slice open end", lambda: sl().loc["r12":]), ("loc slice empty", lambda: sl().loc["r6":"r2"]),
-        ("loc mask", lambda: sl().loc[sl() > 2]), ("[] mask", lambda: sl()[sl().notna()]),
-        ("loc dup list", lambda: sdup().loc[["a", "c"]]), ("loc int label", lambda: sint().loc[20]),
-        ("loc np int label", lambda: sint().loc[np_.int64(40)]), ("loc int slice", lambda: sint().loc[30:40]),
-        ("loc range label", lambda: si().loc[3]), ("loc range slice", lambda: si().loc[2:9]),
-        ("loc range slice step", lambda: si().loc[1:13:4]), ("loc range list", lambda: si().loc[[4, 0]]),
-        ("iloc int", lambda: sl().iloc[2]), ("iloc neg", lambda: sl().iloc[-1]), ("iloc NA", lambda: sl().iloc[1]),
-        ("iloc slice", lambda: sl().iloc[2:8]), ("iloc slice step", lambda: sl().iloc[1:13:3]),
-        ("iloc slice neg step", lambda: sl().iloc[::-2]), ("iloc slice out", lambda: sl().iloc[10:100]),
-        ("iloc list", lambda: sl().iloc[[0, -1, 3, 3]]), ("iloc np int", lambda: sl().iloc[np_.int64(4)]),
-        ("iloc numpy list", lambda: sl().iloc[np_.array([1, 2])]), ("iloc range keeps RangeIndex", lambda: si().iloc[3:9:2]),
-        ("iloc range list Index", lambda: si().iloc[[3, 4]]), ("mask range Index", lambda: si()[si() > 0]),
-        ("mask NA dropped", lambda: si()[F.Series(SB)]), ("mask reordered labels", lambda: sl()[F.Series(
-            [x > 5 for x in range(15)], index=list(reversed(LBL)))]),
-        ("loc float series label", lambda: sf().loc[3]), ("loc string series", lambda: ss().loc[[0, 1, 2]]),
+        ("loc slice", lambda: sl().loc["r2":"r6"]),
+        ("loc slice step", lambda: sl().loc["r1":"r9":3]),
+        ("loc slice reversed", lambda: sl().loc["r6":"r2":-1]),
+        ("loc slice open", lambda: sl().loc[:"r3"]),
+        ("loc slice open end", lambda: sl().loc["r12":]),
+        ("loc slice empty", lambda: sl().loc["r6":"r2"]),
+        ("loc mask", lambda: sl().loc[sl() > 2]),
+        ("[] mask", lambda: sl()[sl().notna()]),
+        ("loc dup list", lambda: sdup().loc[["a", "c"]]),
+        ("loc int label", lambda: sint().loc[20]),
+        ("loc np int label", lambda: sint().loc[np_.int64(40)]),
+        ("loc int slice", lambda: sint().loc[30:40]),
+        ("loc range label", lambda: si().loc[3]),
+        ("loc range slice", lambda: si().loc[2:9]),
+        ("loc range slice step", lambda: si().loc[1:13:4]),
+        ("loc range list", lambda: si().loc[[4, 0]]),
+        ("iloc int", lambda: sl().iloc[2]),
+        ("iloc neg", lambda: sl().iloc[-1]),
+        ("iloc NA", lambda: sl().iloc[1]),
+        ("iloc slice", lambda: sl().iloc[2:8]),
+        ("iloc slice step", lambda: sl().iloc[1:13:3]),
+        ("iloc slice neg step", lambda: sl().iloc[::-2]),
+        ("iloc slice out", lambda: sl().iloc[10:100]),
+        ("iloc list", lambda: sl().iloc[[0, -1, 3, 3]]),
+        ("iloc np int", lambda: sl().iloc[np_.int64(4)]),
+        ("iloc numpy list", lambda: sl().iloc[np_.array([1, 2])]),
+        ("iloc range keeps RangeIndex", lambda: si().iloc[3:9:2]),
+        ("iloc range list Index", lambda: si().iloc[[3, 4]]),
+        ("mask range Index", lambda: si()[si() > 0]),
+        ("mask NA dropped", lambda: si()[F.Series(SB)]),
+        ("mask reordered labels", lambda: sl()[F.Series([x > 5 for x in range(15)], index=list(reversed(LBL)))]),
+        ("loc float series label", lambda: sf().loc[3]),
+        ("loc string series", lambda: ss().loc[[0, 1, 2]]),
     ]
     for nm, fn in sel:
         add(f"sel {nm}", fn)
     errs = [
-        ("loc missing", KeyError, lambda: sl().loc["zz"]), ("loc list missing", KeyError, lambda: sl().loc[["r0", "zz", "yy"]]),
-        ("loc dup label", KeyError, lambda: sdup().loc["a"]), ("loc slice dup end", KeyError, lambda: sdup().loc["a":"c"]),
-        ("loc slice missing end", KeyError, lambda: sl().loc["r1":"zz"]), ("loc wrong type", TypeError, lambda: sl().loc[0]),
-        ("loc bool label", TypeError, lambda: sint().loc[True]), ("loc float label", TypeError, lambda: sint().loc[20.0]),
-        ("loc tuple", TypeError, lambda: sl().loc[("r0", "r1")]), ("loc slice step 0", ValueError, lambda: sl().loc["r0":"r3":0]),
-        ("loc range missing", KeyError, lambda: si().loc[15]), ("[] missing", KeyError, lambda: sl()["zz"]),
-        ("iloc out", IndexError, lambda: sl().iloc[15]), ("iloc neg out", IndexError, lambda: sl().iloc[-16]),
-        ("iloc list out", IndexError, lambda: sl().iloc[[0, 20]]), ("iloc str", TypeError, lambda: sl().iloc["r0"]),
-        ("iloc float", TypeError, lambda: sl().iloc[1.0]), ("iloc list float", TypeError, lambda: sl().iloc[[1.0]]),
-        ("mask not bool", TypeError, lambda: si()[si()]), ("mask labels differ", ValueError, lambda: sl()[F.Series([True] * 15)]),
+        ("loc missing", KeyError, lambda: sl().loc["zz"]),
+        ("loc list missing", KeyError, lambda: sl().loc[["r0", "zz", "yy"]]),
+        ("loc dup label", KeyError, lambda: sdup().loc["a"]),
+        ("loc slice dup end", KeyError, lambda: sdup().loc["a":"c"]),
+        ("loc slice missing end", KeyError, lambda: sl().loc["r1":"zz"]),
+        ("loc wrong type", TypeError, lambda: sl().loc[0]),
+        ("loc bool label", TypeError, lambda: sint().loc[True]),
+        ("loc float label", TypeError, lambda: sint().loc[20.0]),
+        ("loc tuple", TypeError, lambda: sl().loc[("r0", "r1")]),
+        ("loc slice step 0", ValueError, lambda: sl().loc["r0":"r3":0]),
+        ("loc range missing", KeyError, lambda: si().loc[15]),
+        ("[] missing", KeyError, lambda: sl()["zz"]),
+        ("iloc out", IndexError, lambda: sl().iloc[15]),
+        ("iloc neg out", IndexError, lambda: sl().iloc[-16]),
+        ("iloc list out", IndexError, lambda: sl().iloc[[0, 20]]),
+        ("iloc str", TypeError, lambda: sl().iloc["r0"]),
+        ("iloc float", TypeError, lambda: sl().iloc[1.0]),
+        ("iloc list float", TypeError, lambda: sl().iloc[[1.0]]),
+        ("mask not bool", TypeError, lambda: si()[si()]),
+        ("mask labels differ", ValueError, lambda: sl()[F.Series([True] * 15)]),
         ("mask shorter", ValueError, lambda: si()[F.Series([True, False])]),
         ("mask dup labels", ValueError, lambda: sdup()[F.Series([True] * 4, index=["a", "b", "c", "d"])]),
     ]
@@ -1068,8 +1270,11 @@ def cases(L):
     add("big sel loc list", lambda: F.Series(_tl(D.BF), index=D.base["words"]).loc[["w1", "é7", ""]])
     add("big sel loc labels", lambda: D.ALIGN[0].loc[D.PERM[:200_000]])
     add("big sel loc string labels", lambda: D.ALIGN[2].loc[[f"k{j}" for j in D.PERM[:150_000]]])
-    add("big sel loc slice", lambda: D.ALIGN[0].loc[D.PERM[0]:D.PERM[1]])
-    add("big sel mask aligned", lambda: D.ALIGN[0][F.Series((D.ALIGN[0] > 0).to_numpy(), index=_tl(D.ALIGN[0].index)[::-1])])
+    add("big sel loc slice", lambda: D.ALIGN[0].loc[D.PERM[0] : D.PERM[1]])
+    add(
+        "big sel mask aligned",
+        lambda: D.ALIGN[0][F.Series((D.ALIGN[0] > 0).to_numpy(), index=_tl(D.ALIGN[0].index)[::-1])],
+    )
     add("big reindex", lambda: D.ALIGN[0].reindex(list(range(-5, N, 2))))
     add("big df reindex", lambda: D.BDF.reindex(D.PERM))
     add("err big sel mask labels", lambda: D.BDF[F.Series(D.base["mask"], index=list(range(1, N + 1)))])
@@ -1080,6 +1285,7 @@ def cases(L):
             obj = target()
             r = fn(obj)
             return obj if r is None else (obj, r)
+
         return run
 
     add("set loc label", assign(sl, lambda s: s.loc.__setitem__("r1", 20)))
@@ -1087,7 +1293,10 @@ def cases(L):
     add("set iloc neg NA", assign(sl, lambda s: s.iloc.__setitem__(-1, NA)))
     add("set loc list", assign(sl, lambda s: s.loc.__setitem__(["r0", "r2"], [100, 300])))
     add("set loc slice scalar lossless", assign(sl, lambda s: s.loc.__setitem__(slice("r2", "r5"), 7.0)))
-    add("set loc series aligned", assign(sl, lambda s: s.loc.__setitem__(["r4", "r0"], F.Series([1, 2], index=["r0", "r4"]))))
+    add(
+        "set loc series aligned",
+        assign(sl, lambda s: s.loc.__setitem__(["r4", "r0"], F.Series([1, 2], index=["r0", "r4"]))),
+    )
     add("set loc mask", assign(sl, lambda s: s.loc.__setitem__(s > 2, 0)))
     add("set [] mask NA", assign(sl, lambda s: s.__setitem__(F.Series(SB, index=list(LBL)), NA)))
     add("set iloc slice list", assign(sl, lambda s: s.iloc.__setitem__(slice(0, 3), [9, None, 7])))
@@ -1107,7 +1316,10 @@ def cases(L):
     add("err set list to one row", assign(sl, lambda s: s.iloc.__setitem__(0, [1])))
     add("err set series to one row", assign(sl, lambda s: s.iloc.__setitem__(0, F.Series([1]))))
     add("err set iloc out", assign(sl, lambda s: s.iloc.__setitem__(15, 1)))
-    add("set series missing label gives NA", assign(sl, lambda s: s.loc.__setitem__(["r0"], F.Series([1], index=["r1"]))))
+    add(
+        "set series missing label gives NA",
+        assign(sl, lambda s: s.loc.__setitem__(["r0"], F.Series([1], index=["r1"]))),
+    )
 
     def cow_col():
         df = sdf_l()
@@ -1166,8 +1378,16 @@ def cases(L):
         m.iloc[0] = 1
         return s, m
 
-    for nm, fn in [("column", cow_col), ("head", cow_head), ("copy", cow_copy), ("to_numpy view", cow_view),
-                   ("df copy", cow_df_copy), ("slice", cow_slice), ("groupby", cow_groupby), ("mask", cow_mask_result)]:
+    for nm, fn in [
+        ("column", cow_col),
+        ("head", cow_head),
+        ("copy", cow_copy),
+        ("to_numpy view", cow_view),
+        ("df copy", cow_df_copy),
+        ("slice", cow_slice),
+        ("groupby", cow_groupby),
+        ("mask", cow_mask_result),
+    ]:
         add(f"cow {nm}", fn)
 
     def dset(fn, mk=sdf_l):
@@ -1186,7 +1406,10 @@ def cases(L):
     add("df set iloc NA", dset(lambda d: d.iloc.__setitem__((0, 1), NA)))
     add("df set loc mask", dset(lambda d: d.loc.__setitem__((d["b"].notna(), "s"), "z")))
     add("df set loc slice list", dset(lambda d: d.loc.__setitem__((slice("r1", "r3"), "f"), [1, 2, 3])))
-    add("df set iloc list series", dset(lambda d: d.iloc.__setitem__(([0, 1], 0), F.Series([5.5, 6.5], index=["r1", "r0"]))))
+    add(
+        "df set iloc list series",
+        dset(lambda d: d.iloc.__setitem__(([0, 1], 0), F.Series([5.5, 6.5], index=["r1", "r0"]))),
+    )
     add("err df set loc new column", dset(lambda d: d.loc.__setitem__(("r2", "new"), 1)))
     add("err df set loc new row", dset(lambda d: d.loc.__setitem__(("zz", "i"), 1)))
     add("err df set loc two columns", dset(lambda d: d.loc.__setitem__(("r2", ["f", "i"]), 1)))
@@ -1221,14 +1444,23 @@ def cases(L):
 
     # ---------------------------------------------------------------- reductions (§2, §15)
     red_small = {
-        "f": sf, "f2": sf2, "i": si, "i2": si2, "b": sb, "s": ss,
+        "f": sf,
+        "f2": sf2,
+        "i": si,
+        "i2": si2,
+        "b": sb,
+        "s": ss,
         "f noNaN": lambda: F.Series([1.5, None, -0.0, 0.0, 2.25, -7.0]),
-        "negzero": lambda: F.Series([-0.0, 0.0, None]), "zeroneg": lambda: F.Series([0.0, -0.0]),
+        "negzero": lambda: F.Series([-0.0, 0.0, None]),
+        "zeroneg": lambda: F.Series([0.0, -0.0]),
         "i exact mean": lambda: F.Series([I64_MAX, I64_MAX, I64_MAX, 1]),
         "i wrap sum": lambda: F.Series([I64_MAX, 1, None]),
-        "allNA f": lambda: F.Series([None, None]), "allNA i": lambda: F.Series([None], dtype="int64"),
-        "allNA s": lambda: F.Series([None], dtype="string"), "allNA b": lambda: F.Series([None], dtype="bool"),
-        "empty f": lambda: F.Series([]), "empty i": lambda: F.Series([], dtype="int64"),
+        "allNA f": lambda: F.Series([None, None]),
+        "allNA i": lambda: F.Series([None], dtype="int64"),
+        "allNA s": lambda: F.Series([None], dtype="string"),
+        "allNA b": lambda: F.Series([None], dtype="bool"),
+        "empty f": lambda: F.Series([]),
+        "empty i": lambda: F.Series([], dtype="int64"),
         "one": lambda: F.Series([4.0, None]),
     }
     for k, mk in red_small.items():
@@ -1242,14 +1474,19 @@ def cases(L):
             if op in ("std", "var"):
                 for dd in (0, 2, 5):
                     add(f"{p}reduce {op} {k} ddof={dd}", lambda mk=mk, op=op, dd=dd: _red(mk(), op, ddof=dd))
-                    add(f"{p}reduce {op} {k} ddof={dd} skipna=False",
-                        lambda mk=mk, op=op, dd=dd: _red(mk(), op, ddof=dd, skipna=False))
+                    add(
+                        f"{p}reduce {op} {k} ddof={dd} skipna=False",
+                        lambda mk=mk, op=op, dd=dd: _red(mk(), op, ddof=dd, skipna=False),
+                    )
         add(f"reduce count {k}", lambda mk=mk: mk().count())
     add("err reduce std ddof negative", lambda: _red(sf(), "std", ddof=-1))
     add("err reduce var ddof float", lambda: _red(sf(), "var", ddof=1.5))
     add("err reduce sum positional", lambda: sf().sum(False))
     add("err reduce sum axis", lambda: sf().sum(axis=0))
-    add("reduce result types", lambda: [type(v).__name__ for v in (si().sum(), si().mean(), sb().sum(), sb().min(), ss().max())])
+    add(
+        "reduce result types",
+        lambda: [type(v).__name__ for v in (si().sum(), si().mean(), sb().sum(), sb().min(), ss().max())],
+    )
     for op in REDUCTIONS:
         add(f"df reduce {op}", lambda op=op: _red(F.DataFrame({"f": SF, "i": SI, "b2": SF2}), op))
         add(f"df reduce {op} skipna=False", lambda op=op: _red(F.DataFrame({"i": SI, "f": SF2}), op, skipna=False))
@@ -1261,9 +1498,18 @@ def cases(L):
     add("df reduce empty", lambda: F.DataFrame().sum())
     add("err df reduce mean string", lambda: sdf().mean())
     add("err df reduce std bool", lambda: F.DataFrame({"f": SF, "b": SB}).std())
-    big_red = {"huge f": lambda: D.HF, "huge i": lambda: D.HI, "huge fNA": lambda: D.HFN, "f": lambda: D.BF,
-               "f raw": lambda: D.BF_raw, "i": lambda: D.BI, "b": lambda: D.BB, "s": lambda: D.BS,
-               "noNaN v": lambda: D.BDF_noNaN["v"], "mask": lambda: D.MASK}
+    big_red = {
+        "huge f": lambda: D.HF,
+        "huge i": lambda: D.HI,
+        "huge fNA": lambda: D.HFN,
+        "f": lambda: D.BF,
+        "f raw": lambda: D.BF_raw,
+        "i": lambda: D.BI,
+        "b": lambda: D.BB,
+        "s": lambda: D.BS,
+        "noNaN v": lambda: D.BDF_noNaN["v"],
+        "mask": lambda: D.MASK,
+    }
     for k, get in big_red.items():
         for op in REDUCTIONS:
             if k == "s" and op not in ("min", "max"):
@@ -1284,21 +1530,38 @@ def cases(L):
 
     # ---------------------------------------------------------------- groupby (§4, §16)
     def gdf():
-        return F.DataFrame({
-            "k": [1, 2, 1, None, 2, 3, 1, None, 3, 2, 1, 2],
-            "kf": [0.0, -0.0, nan, 1.5, nan, None, 0.0, 2.5, -0.0, 1.5, None, inf],
-            "ks": ["b", "a", "b", None, "a", "c", "b", None, "c", "a", "b", "é"],
-            "kb": [True, False, True, None, False, True, True, None, False, False, True, False],
-            "v": [1.5, None, 2.5, 4.0, nan, 3.0, None, 7.0, -0.0, 0.25, 1e300, 1e300],
-            "n": [1, 2, None, 4, 5, 6, I64_MAX, 8, 9, None, 11, 1],
-            "s": ["x", "y", None, "z", "w", "v", "u", "t", None, "r", "q", "p"],
-            "t": [True, None, False, True, False, None, True, True, False, True, True, None],
-        })
+        return F.DataFrame(
+            {
+                "k": [1, 2, 1, None, 2, 3, 1, None, 3, 2, 1, 2],
+                "kf": [0.0, -0.0, nan, 1.5, nan, None, 0.0, 2.5, -0.0, 1.5, None, inf],
+                "ks": ["b", "a", "b", None, "a", "c", "b", None, "c", "a", "b", "é"],
+                "kb": [True, False, True, None, False, True, True, None, False, False, True, False],
+                "v": [1.5, None, 2.5, 4.0, nan, 3.0, None, 7.0, -0.0, 0.25, 1e300, 1e300],
+                "n": [1, 2, None, 4, 5, 6, I64_MAX, 8, 9, None, 11, 1],
+                "s": ["x", "y", None, "z", "w", "v", "u", "t", None, "r", "q", "p"],
+                "t": [True, None, False, True, False, None, True, True, False, True, True, None],
+            }
+        )
 
-    gfuncs = [("sum", {}), ("mean", {}), ("min", {}), ("max", {}), ("std", {}), ("var", {}), ("count", None),
-              ("size", None), ("first", {}), ("last", {}), ("first", {"skipna": False}), ("last", {"skipna": False}),
-              ("sum", {"skipna": False}), ("max", {"skipna": False}), ("std", {"ddof": 0}), ("var", {"ddof": 3}),
-              ("mean", {"skipna": False})]
+    gfuncs = [
+        ("sum", {}),
+        ("mean", {}),
+        ("min", {}),
+        ("max", {}),
+        ("std", {}),
+        ("var", {}),
+        ("count", None),
+        ("size", None),
+        ("first", {}),
+        ("last", {}),
+        ("first", {"skipna": False}),
+        ("last", {"skipna": False}),
+        ("sum", {"skipna": False}),
+        ("max", {"skipna": False}),
+        ("std", {"ddof": 0}),
+        ("var", {"ddof": 3}),
+        ("mean", {"skipna": False}),
+    ]
 
     def gcall(g, f, kw):
         return getattr(g, f)() if kw is None else getattr(g, f)(**_kw(kw))
@@ -1315,17 +1578,34 @@ def cases(L):
                 if vals is not None:
                     vals = [c for c in vals if not (f in ("std", "var") and c == "t")]
                     fn = lambda by=by, sort=sort, dropna=dropna, f=f, kw=kw, vals=vals: gcall(
-                        gdf().groupby(by, sort=sort, dropna=dropna)[vals], f, kw)
+                        gdf().groupby(by, sort=sort, dropna=dropna)[vals], f, kw
+                    )
                 else:
                     fn = lambda by=by, sort=sort, dropna=dropna, f=f, kw=kw: gcall(
-                        gdf().groupby(by, sort=sort, dropna=dropna), f, kw)
+                        gdf().groupby(by, sort=sort, dropna=dropna), f, kw
+                    )
                 add(f"groupby {bn} sort={sort} dropna={dropna} {gname(f, kw)}", fn)
     add("groupby agg str", lambda: gdf().groupby("k")[["v", "n"]].agg("sum"))
     add("groupby agg str all", lambda: gdf().groupby("ks").agg("first"))
     add("groupby agg dict", lambda: gdf().groupby("k").agg({"v": "mean", "n": "max", "s": "last"}))
-    add("groupby agg named", lambda: gdf().groupby(["ks"], sort=False, dropna=False).agg(
-        total=("v", "sum"), n=("n", "count"), m=("v", "mean"), lo=("s", "min"), sd=("n", "std"), vr=("v", "var"),
-        f=("t", "first"), l=("t", "last"), hi=("n", "max")))
+    add(
+        "groupby agg named",
+        lambda: (
+            gdf()
+            .groupby(["ks"], sort=False, dropna=False)
+            .agg(
+                total=("v", "sum"),
+                n=("n", "count"),
+                m=("v", "mean"),
+                lo=("s", "min"),
+                sd=("n", "std"),
+                vr=("v", "var"),
+                f=("t", "first"),
+                l=("t", "last"),
+                hi=("n", "max"),
+            )
+        ),
+    )
     add("groupby single column", lambda: gdf().groupby("k")["v"].sum())
     add("groupby select list", lambda: gdf().groupby("k")[["n", "v"]].max())
     add("groupby keys only", lambda: F.DataFrame({"a": [2, 1, 2], "b": ["x", "y", "x"]}).groupby(["a", "b"]).size())
@@ -1369,40 +1649,62 @@ def cases(L):
                     vals = None
                 if vals is not None:
                     fn = lambda by=by, sort=sort, dropna=dropna, f=f, kw=kw, vals=vals: gcall(
-                        D.BDF.groupby(by, sort=sort, dropna=dropna)[vals], f, kw)
+                        D.BDF.groupby(by, sort=sort, dropna=dropna)[vals], f, kw
+                    )
                 else:
                     fn = lambda by=by, sort=sort, dropna=dropna, f=f, kw=kw: gcall(
-                        D.BDF.groupby(by, sort=sort, dropna=dropna), f, kw)
+                        D.BDF.groupby(by, sort=sort, dropna=dropna), f, kw
+                    )
                 add(f"big groupby {bn} sort={sort} dropna={dropna} {gname(f, kw)}", fn)
     for f in ["sum", "mean", "std", "var", "min", "max"]:
         add(f"big groupby noNaN {f}", lambda f=f: getattr(D.BDF_noNaN.groupby("k")[["v", "w"]], f)())
-        add(f"big groupby noNaN multi {f}", lambda f=f: getattr(D.BDF_noNaN.groupby(["k2", "k"], sort=False)[["v", "w"]], f)())
-    add("big groupby agg named", lambda: D.BDF.groupby("k_s").agg(a=("v_f", "sum"), b=("v_i", "mean"), c=("v_s", "max"),
-                                                                  d=("v_f", "std"), e=("v_b", "count")))
+        add(
+            f"big groupby noNaN multi {f}",
+            lambda f=f: getattr(D.BDF_noNaN.groupby(["k2", "k"], sort=False)[["v", "w"]], f)(),
+        )
+    add(
+        "big groupby agg named",
+        lambda: D.BDF.groupby("k_s").agg(
+            a=("v_f", "sum"), b=("v_i", "mean"), c=("v_s", "max"), d=("v_f", "std"), e=("v_b", "count")
+        ),
+    )
     add("big groupby agg dict", lambda: D.BDF.groupby(["k_b", "k_i"], dropna=False).agg({"v_s": "first", "v_f": "var"}))
 
     # ---------------------------------------------------------------- sorting (§17)
     for k, mk in [("f", sf), ("i", si), ("b", sb), ("s", ss), ("f2", sf2)]:
         for asc in (True, False):
             for nap in ("last", "first"):
-                add(f"sort_values {k} asc={asc} na={nap}", lambda mk=mk, asc=asc, nap=nap: mk().sort_values(
-                    **_kw(dict(ascending=asc, na_position=nap))))
+                add(
+                    f"sort_values {k} asc={asc} na={nap}",
+                    lambda mk=mk, asc=asc, nap=nap: mk().sort_values(**_kw(dict(ascending=asc, na_position=nap))),
+                )
         add(f"sort_values {k} ignore_index", lambda mk=mk: mk().sort_values(ignore_index=True))
     add("sort_values labelled", lambda: sl().sort_values(**_kw(dict(ascending=False))))
     add("sort_values empty", lambda: F.Series([], dtype="string").sort_values())
     for asc in (True, False):
         kw = dict(ascending=asc)
-        add(f"sort_index str asc={asc}", lambda kw=kw: F.Series(list(range(15)), index=list(reversed(LBL))).sort_index(**_kw(kw)))
+        add(
+            f"sort_index str asc={asc}",
+            lambda kw=kw: F.Series(list(range(15)), index=list(reversed(LBL))).sort_index(**_kw(kw)),
+        )
         add(f"sort_index int asc={asc}", lambda kw=kw: sint().sort_index(**_kw(kw)))
         add(f"sort_index range asc={asc}", lambda kw=kw: sf().sort_index(**_kw(kw)))
         add(f"sort_index dup asc={asc}", lambda kw=kw: sdup().sort_index(**_kw(kw)))
         add(f"df sort_index asc={asc}", lambda kw=kw: sdf_l().iloc[[5, 0, 12, 3]].sort_index(**_kw(kw)))
     add("sort_index ignore_index", lambda: sint().sort_index(ignore_index=True))
     add("df sort_index ignore_index", lambda: sdf_l().sort_index(**_kw(dict(ascending=False, ignore_index=True))))
-    for by, asc, nap in [("f", True, "last"), ("s", False, "first"), (["b", "f"], [True, False], ["first", "last"]),
-                         (["b", "s", "i"], False, "first"), (["i"], [False], ["last"]), (["s", "b"], True, ["last", "first"])]:
-        add(f"df sort_values {by} {asc} {nap}", lambda by=by, asc=asc, nap=nap: sdf_l().sort_values(
-            by, **_kw(dict(ascending=asc, na_position=nap))))
+    for by, asc, nap in [
+        ("f", True, "last"),
+        ("s", False, "first"),
+        (["b", "f"], [True, False], ["first", "last"]),
+        (["b", "s", "i"], False, "first"),
+        (["i"], [False], ["last"]),
+        (["s", "b"], True, ["last", "first"]),
+    ]:
+        add(
+            f"df sort_values {by} {asc} {nap}",
+            lambda by=by, asc=asc, nap=nap: sdf_l().sort_values(by, **_kw(dict(ascending=asc, na_position=nap))),
+        )
     add("df sort_values ignore_index", lambda: sdf_l().sort_values("i", ignore_index=True))
     add("err sort_values na_position", lambda: sf().sort_values(na_position="middle"))
     add("err sort_values ascending int", lambda: sf().sort_values(**_kw(dict(ascending=1))))
@@ -1412,42 +1714,81 @@ def cases(L):
     add("err df sort_values ascending length", lambda: sdf().sort_values(["f", "i"], **_kw(dict(ascending=[True]))))
     add("err df sort_values na length", lambda: sdf().sort_values(["f"], na_position=["first", "last"]))
     add("err sort_values kind", lambda: sf().sort_values(kind="stable"))
-    for k, get in [("f", lambda: D.BF), ("i", lambda: D.BI), ("s", lambda: D.BS), ("b", lambda: D.BB),
-                   ("huge f", lambda: D.HF), ("huge i", lambda: D.HI)]:
+    for k, get in [
+        ("f", lambda: D.BF),
+        ("i", lambda: D.BI),
+        ("s", lambda: D.BS),
+        ("b", lambda: D.BB),
+        ("huge f", lambda: D.HF),
+        ("huge i", lambda: D.HI),
+    ]:
         for asc, nap in [(True, "last"), (False, "first"), (False, "last")]:
-            add(f"big sort_values {k} asc={asc} na={nap}", lambda get=get, asc=asc, nap=nap: get().sort_values(
-                **_kw(dict(ascending=asc, na_position=nap))))
+            add(
+                f"big sort_values {k} asc={asc} na={nap}",
+                lambda get=get, asc=asc, nap=nap: get().sort_values(**_kw(dict(ascending=asc, na_position=nap))),
+            )
     add("big sort_values ignore_index", lambda: D.BF.sort_values(ignore_index=True))
     add("big sort_index int", lambda: D.ALIGN[0].sort_index())
     add("big sort_index int desc", lambda: D.ALIGN[0].sort_index(**_kw(dict(ascending=False))))
     add("big sort_index string", lambda: D.ALIGN[2].sort_index())
-    add("big sort_index dup", lambda: F.Series(D.base["ints"], index=D.base["ints"]).sort_index(**_kw(dict(ascending=False))))
-    add("big df sort_values multi", lambda: D.BDF.sort_values(["k_s", "v_f"], **_kw(dict(ascending=[True, False],
-                                                                                         na_position=["last", "first"]))))
-    add("big df sort_values 4 keys", lambda: D.BDF.sort_values(["k_b", "k_f", "k_i", "v_s"], **_kw(dict(ascending=False))))
+    add(
+        "big sort_index dup",
+        lambda: F.Series(D.base["ints"], index=D.base["ints"]).sort_index(**_kw(dict(ascending=False))),
+    )
+    add(
+        "big df sort_values multi",
+        lambda: D.BDF.sort_values(["k_s", "v_f"], **_kw(dict(ascending=[True, False], na_position=["last", "first"]))),
+    )
+    add(
+        "big df sort_values 4 keys",
+        lambda: D.BDF.sort_values(["k_b", "k_f", "k_i", "v_s"], **_kw(dict(ascending=False))),
+    )
     add("big df sort_values ignore_index", lambda: D.BDF.sort_values("v_i", ignore_index=True, na_position="first"))
     add("big df sort_index", lambda: D.BDF.iloc[D.PERM].sort_index(**_kw(dict(ascending=False))))
 
     # ---------------------------------------------------------------- merge (§5, §18)
     def ml():
-        return F.DataFrame({"k": [1, 2, 2, None, 3, 5, 1], "kf": [0.0, nan, -0.0, 1.5, nan, None, 2.5],
-                            "ks": ["a", "b", "b", None, "c", "e", "a"], "lv": [10, 20, 21, 30, 40, 50, 11],
-                            "x": ["l0", "l1", "l2", "l3", "l4", "l5", "l6"]})
+        return F.DataFrame(
+            {
+                "k": [1, 2, 2, None, 3, 5, 1],
+                "kf": [0.0, nan, -0.0, 1.5, nan, None, 2.5],
+                "ks": ["a", "b", "b", None, "c", "e", "a"],
+                "lv": [10, 20, 21, 30, 40, 50, 11],
+                "x": ["l0", "l1", "l2", "l3", "l4", "l5", "l6"],
+            }
+        )
 
     def mr():
-        return F.DataFrame({"k": [2, 1, None, 4, 2, 6], "kf": [-0.0, nan, 1.5, None, 0.0, 9.0],
-                            "ks": ["b", "a", None, "d", "b", "f"], "rv": [1.5, 2.5, 3.5, 4.5, 5.5, 6.5],
-                            "x": ["r0", "r1", "r2", "r3", "r4", "r5"]})
+        return F.DataFrame(
+            {
+                "k": [2, 1, None, 4, 2, 6],
+                "kf": [-0.0, nan, 1.5, None, 0.0, 9.0],
+                "ks": ["b", "a", None, "d", "b", "f"],
+                "rv": [1.5, 2.5, 3.5, 4.5, 5.5, 6.5],
+                "x": ["r0", "r1", "r2", "r3", "r4", "r5"],
+            }
+        )
 
     for how in ["inner", "left", "right", "outer"]:
         for key in ["k", "kf", "ks", ["k", "ks"]]:
             kn = key if isinstance(key, str) else "+".join(key)
             add(f"merge {how} on {kn}", lambda how=how, key=key: F.merge(ml(), mr(), how=how, on=key))
             add(f"merge {how} on {kn} sort", lambda how=how, key=key: F.merge(ml(), mr(), how=how, on=key, sort=True))
-        add(f"merge {how} left_on/right_on", lambda how=how: F.merge(ml(), mr().iloc[:, [0, 3, 4]], how=how, left_on="lv",
-                                                                       right_on="k"))
-        add(f"merge {how} left_on/right_on sort", lambda how=how: F.merge(
-            ml(), F.DataFrame({"kk": [21, 10, 99, 11], "z": [1, 2, 3, 4]}), how=how, left_on=["lv"], right_on=["kk"], sort=True))
+        add(
+            f"merge {how} left_on/right_on",
+            lambda how=how: F.merge(ml(), mr().iloc[:, [0, 3, 4]], how=how, left_on="lv", right_on="k"),
+        )
+        add(
+            f"merge {how} left_on/right_on sort",
+            lambda how=how: F.merge(
+                ml(),
+                F.DataFrame({"kk": [21, 10, 99, 11], "z": [1, 2, 3, 4]}),
+                how=how,
+                left_on=["lv"],
+                right_on=["kk"],
+                sort=True,
+            ),
+        )
         add(f"merge {how} method", lambda how=how: ml().merge(mr(), how=how, on="ks", suffixes=("_L", "_R")))
     add("merge left_on/right_on same name", lambda: F.merge(ml(), mr(), left_on="k", right_on="k", how="outer"))
     add("merge on overlapping key names kept", lambda: F.merge(ml(), mr(), left_on=["ks"], right_on=["x"], how="outer"))
@@ -1459,8 +1800,10 @@ def cases(L):
     add("err merge dtype mismatch", lambda: F.merge(ml(), mr(), left_on="k", right_on="kf"))
     add("err merge how cross", lambda: F.merge(ml(), mr(), how="cross", on="k"))
     add("err merge unknown key", lambda: F.merge(ml(), mr(), on="zz"))
-    add("err merge suffix collision", lambda: F.merge(F.DataFrame({"k": [1], "a": [1], "a_x": [2]}),
-                                                      F.DataFrame({"k": [1], "a": [3]}), on="k"))
+    add(
+        "err merge suffix collision",
+        lambda: F.merge(F.DataFrame({"k": [1], "a": [1], "a_x": [2]}), F.DataFrame({"k": [1], "a": [3]}), on="k"),
+    )
     add("err merge suffixes list", lambda: F.merge(ml(), mr(), on="k", suffixes=["_a", "_b"]))
     add("err merge series", lambda: F.merge(ml(), mr()["k"], on="k"))
     add("err merge on empty", lambda: F.merge(ml(), mr(), on=[]))
@@ -1471,19 +1814,37 @@ def cases(L):
         add(f"big merge {how} multi", lambda how=how: F.merge(D.MERGE[0], D.MERGE[1], how=how, on=["key", "tag"]))
         add(f"big merge {how} float", lambda how=how: F.merge(D.MERGE[2], D.MERGE[3], how=how, on="fk"))
         add(f"big merge {how} string", lambda how=how: D.MERGE[4].merge(D.MERGE[5], how=how, on="s"))
-        add(f"big merge {how} left_on sort", lambda how=how: F.merge(D.MERGE[0], D.MERGE[1], how=how, left_on="key",
-                                                                     right_on="key", sort=True))
-    add("big merge outer sort multi", lambda: F.merge(D.MERGE[0], D.MERGE[1], how="outer", on=["tag", "key"], sort=True))
+        add(
+            f"big merge {how} left_on sort",
+            lambda how=how: F.merge(D.MERGE[0], D.MERGE[1], how=how, left_on="key", right_on="key", sort=True),
+        )
+    add(
+        "big merge outer sort multi", lambda: F.merge(D.MERGE[0], D.MERGE[1], how="outer", on=["tag", "key"], sort=True)
+    )
 
     # ---------------------------------------------------------------- concat (§18)
     add("concat dfs outer", lambda: F.concat([sdf_l().iloc[:3], F.DataFrame({"s": ["q"], "z": [1.5]}, index=["n0"])]))
     add("concat dfs inner", lambda: F.concat([sdf().iloc[:3], F.DataFrame({"s": ["q"], "i": [7]})], join="inner"))
     add("concat dfs ignore_index", lambda: F.concat([sdf().iloc[2:4], sdf().iloc[:2]], ignore_index=True))
     add("concat dfs labels dup", lambda: F.concat([sdf().iloc[2:4], sdf().iloc[:3]]))
-    add("concat dfs index names", lambda: F.concat([F.DataFrame({"a": [1]}, index=F.Index(["x"], name="n")),
-                                                    F.DataFrame({"a": [2]}, index=F.Index(["y"], name="n"))]))
-    add("concat dfs index names differ", lambda: F.concat([F.DataFrame({"a": [1]}, index=F.Index(["x"], name="n")),
-                                                           F.DataFrame({"a": [2]}, index=F.Index(["y"], name="m"))]))
+    add(
+        "concat dfs index names",
+        lambda: F.concat(
+            [
+                F.DataFrame({"a": [1]}, index=F.Index(["x"], name="n")),
+                F.DataFrame({"a": [2]}, index=F.Index(["y"], name="n")),
+            ]
+        ),
+    )
+    add(
+        "concat dfs index names differ",
+        lambda: F.concat(
+            [
+                F.DataFrame({"a": [1]}, index=F.Index(["x"], name="n")),
+                F.DataFrame({"a": [2]}, index=F.Index(["y"], name="m")),
+            ]
+        ),
+    )
     add("concat series", lambda: F.concat([sf(), sf2()]))
     add("concat series same name", lambda: F.concat([sf(), sf().iloc[:2]]))
     add("concat series labelled", lambda: F.concat([sl(), sl().iloc[::-3]]))
@@ -1500,7 +1861,10 @@ def cases(L):
     add("err concat axis", lambda: F.concat([sf()], axis=1))
     add("err concat positional", lambda: F.concat([sf()], "outer"))
     add("big concat dfs", lambda: F.concat([D.BDF, D.BDF.iloc[::-5], F.DataFrame({"k_i": [1], "zz": ["q"]})]))
-    add("big concat dfs inner ignore", lambda: F.concat([D.BDF.iloc[D.PERM], D.BDF[["v_s", "k_i"]]], join="inner", ignore_index=True))
+    add(
+        "big concat dfs inner ignore",
+        lambda: F.concat([D.BDF.iloc[D.PERM], D.BDF[["v_s", "k_i"]]], join="inner", ignore_index=True),
+    )
     add("big concat series", lambda: F.concat([D.BS, D.BS.iloc[1000:], D.BS[D.MASK]]))
     add("big concat series ignore", lambda: F.concat([D.HF, D.BF_raw], ignore_index=True))
 
@@ -1516,8 +1880,12 @@ def cases(L):
         ("na_values", "a,b\n1.5,x\nNaN,NA\n,null\n", {"na_values": ["NA", "null"]}),
         ("na_values numeric", "a,b\n1,-999\n-999,2\n", {"na_values": ["-999"]}),
         ("blank line one column", "a\n1\n\n3\n", {}),
-        ("inference", "i,f,b,s,big,inexact,space,under,allna,e\n1,1.5,True,x,1,9007199254740993,1,1,,1e5\n"
-                      "-2,nan,False,2,18446744073709551616,0.5, 1,1_0,,-inf\n+3,1e400,,,3,2,3,3,,inf\n", {}),
+        (
+            "inference",
+            "i,f,b,s,big,inexact,space,under,allna,e\n1,1.5,True,x,1,9007199254740993,1,1,,1e5\n"
+            "-2,nan,False,2,18446744073709551616,0.5, 1,1_0,,-inf\n+3,1e400,,,3,2,3,3,,inf\n",
+            {},
+        ),
         ("float specials", "x\nnan\nNaN\n-inf\nInfinity\n-0.0\n.5\n5.\n1E-5\n+7\n", {}),
         ("int bounds", "x\n9223372036854775807\n-9223372036854775808\n", {}),
         ("int over", "x\n9223372036854775808\n1\n", {}),
@@ -1530,8 +1898,11 @@ def cases(L):
         ("quoted header", '"a,1","b""q"\n1,2\n', {}),
         ("sep semicolon", "k;x;y\nb;1;2.5\na;2;3.5\nc;3;4.5\n", {"sep": ";"}),
         ("sep tab", "a\tb\n1\t2\n", {"sep": "\t"}),
-        ("options", "k;x;y\nb;1;2.5\na;2;3.5\nc;3;4.5\n",
-         {"sep": ";", "usecols": ["y", "k"], "index_col": "k", "nrows": 2, "dtype": {"y": "string"}}),
+        (
+            "options",
+            "k;x;y\nb;1;2.5\na;2;3.5\nc;3;4.5\n",
+            {"sep": ";", "usecols": ["y", "k"], "index_col": "k", "nrows": 2, "dtype": {"y": "string"}},
+        ),
         ("dtype all string", "k;x;y\nb;1;2.5\n", {"sep": ";", "dtype": "string"}),
         ("dtype float for ints", "a,b\n1,2\n3,4\n", {"dtype": {"a": "float64"}}),
         ("dtype bool", "a\nTrue\n\nFalse\n", {"dtype": {"a": "bool"}}),
@@ -1549,18 +1920,34 @@ def cases(L):
         add(f"csv {nm}", rc(text, **kw))
     add("csv str path", lambda: F.read_csv(str(_csv_path("a\n1\n"))))
     csv_errs = [
-        ("fields short", "a,b\n1\n", {}), ("fields long", "a,b\n1,2,3\n", {}), ("text after quote", 'a\n"x"y\n', {}),
-        ("quote in unquoted", 'a\nx"y\n', {}), ("never closed", 'a\n"never closed\n', {}), ("dup header", "a,a\n1,2\n", {}),
-        ("blank line two columns", "a,b\n1,2\n\n3,4\n", {}), ("quote then cr", b'a,b\n"q"\r,z\n', {}),
-        ("empty file", "", {}), ("invalid utf8", b"a\n\xff\xfe\n", {}), ("header False no names", "1,2\n", {"header": False}),
-        ("sep two chars", "a\n", {"sep": ";;"}), ("sep quote", "a\n", {"sep": '"'}), ("usecols unknown", "a\n1\n", {"usecols": ["zz"]}),
-        ("usecols repeat", "a\n1\n", {"usecols": ["a", "a"]}), ("usecols str", "a\n1\n", {"usecols": "a"}),
-        ("dtype parse", "a\n1\nx\n", {"dtype": {"a": "int64"}}), ("dtype bool parse", "a\n1\n", {"dtype": {"a": "bool"}}),
-        ("dtype unknown column", "a\n1\n", {"dtype": {"zz": "int64"}}), ("dtype bad", "a\n1\n", {"dtype": "int32"}),
-        ("index_col float", "a,b\n1.5,2\n", {"index_col": "a"}), ("index_col NA", "a,b\n,2\n", {"index_col": "a"}),
-        ("index_col unknown", "a,b\n1,2\n", {"index_col": "zz"}), ("nrows negative", "a\n1\n", {"nrows": -1}),
-        ("nrows bool", "a\n1\n", {"nrows": True}), ("names count", "a,b\n1,2\n", {"names": ["x"]}),
-        ("header not bool", "a\n1\n", {"header": 1}), ("na_values str", "a\n1\n", {"na_values": "NA"}),
+        ("fields short", "a,b\n1\n", {}),
+        ("fields long", "a,b\n1,2,3\n", {}),
+        ("text after quote", 'a\n"x"y\n', {}),
+        ("quote in unquoted", 'a\nx"y\n', {}),
+        ("never closed", 'a\n"never closed\n', {}),
+        ("dup header", "a,a\n1,2\n", {}),
+        ("blank line two columns", "a,b\n1,2\n\n3,4\n", {}),
+        ("quote then cr", b'a,b\n"q"\r,z\n', {}),
+        ("empty file", "", {}),
+        ("invalid utf8", b"a\n\xff\xfe\n", {}),
+        ("header False no names", "1,2\n", {"header": False}),
+        ("sep two chars", "a\n", {"sep": ";;"}),
+        ("sep quote", "a\n", {"sep": '"'}),
+        ("usecols unknown", "a\n1\n", {"usecols": ["zz"]}),
+        ("usecols repeat", "a\n1\n", {"usecols": ["a", "a"]}),
+        ("usecols str", "a\n1\n", {"usecols": "a"}),
+        ("dtype parse", "a\n1\nx\n", {"dtype": {"a": "int64"}}),
+        ("dtype bool parse", "a\n1\n", {"dtype": {"a": "bool"}}),
+        ("dtype unknown column", "a\n1\n", {"dtype": {"zz": "int64"}}),
+        ("dtype bad", "a\n1\n", {"dtype": "int32"}),
+        ("index_col float", "a,b\n1.5,2\n", {"index_col": "a"}),
+        ("index_col NA", "a,b\n,2\n", {"index_col": "a"}),
+        ("index_col unknown", "a,b\n1,2\n", {"index_col": "zz"}),
+        ("nrows negative", "a\n1\n", {"nrows": -1}),
+        ("nrows bool", "a\n1\n", {"nrows": True}),
+        ("names count", "a,b\n1,2\n", {"names": ["x"]}),
+        ("header not bool", "a\n1\n", {"header": 1}),
+        ("na_values str", "a\n1\n", {"na_values": "NA"}),
         ("names dup", "1,2\n", {"header": False, "names": ["a", "a"]}),
         ("string invalid utf8 in quotes", b'a\n"\xc3"\n', {}),
     ]
@@ -1571,18 +1958,29 @@ def cases(L):
 
     add("big csv", lambda: F.read_csv(_csv_path(D.BIG_CSV)))
     add("big csv crlf bom", lambda: F.read_csv(_csv_path(b"\xef\xbb\xbf" + D.BIG_CSV.replace("\n", "\r\n").encode())))
-    add("big csv usecols index_col", lambda: F.read_csv(_csv_path(D.BIG_CSV), usecols=["name", "x", "id"], index_col="id"))
+    add(
+        "big csv usecols index_col",
+        lambda: F.read_csv(_csv_path(D.BIG_CSV), usecols=["name", "x", "id"], index_col="id"),
+    )
     add("big csv nrows", lambda: F.read_csv(_csv_path(D.BIG_CSV), nrows=100_000))
-    add("big csv dtype", lambda: F.read_csv(_csv_path(D.BIG_CSV), dtype={"qint": "float64", "flag": "string", "id": "string"}))
+    add(
+        "big csv dtype",
+        lambda: F.read_csv(_csv_path(D.BIG_CSV), dtype={"qint": "float64", "flag": "string", "id": "string"}),
+    )
     add("big csv na_values", lambda: F.read_csv(_csv_path(D.BIG_CSV), na_values=["NaN", "True", "n7"]))
-    add("big csv header False", lambda: F.read_csv(_csv_path(D.BIG_CSV.split("\n", 1)[1]), header=False,
-                                                   names=["a", "b", "c", "d", "e", "f", "g", "h"]))
+    add(
+        "big csv header False",
+        lambda: F.read_csv(
+            _csv_path(D.BIG_CSV.split("\n", 1)[1]), header=False, names=["a", "b", "c", "d", "e", "f", "g", "h"]
+        ),
+    )
 
     def big_err(mutate):
         def run():
             lines = D.BIG_CSV.split("\n")
             mutate(lines)
             return F.read_csv(_csv_path("\n".join(lines)))
+
         return run
 
     def two_bad(lines):
@@ -1629,30 +2027,55 @@ def cases(L):
         return F.DataFrame({f"c{j}": [j * 1.5 if j % 2 else j for _ in range(n)] for j in range(ncols)})
 
     reprs = {
-        "series f": sf, "series f2": sf2, "series i": si, "series b": sb, "series s": ss,
-        "series labelled": sl, "series named index": lambda: F.Series([1, -2], index=F.Index(["a", "bb"], name="ix"), name="v"),
-        "series unnamed": lambda: F.Series([1, None, -1]), "series empty": lambda: F.Series([]),
-        "series empty string": lambda: F.Series([], dtype="string"), "series long": lambda: F.Series(range(100)),
-        "series 60": lambda: F.Series(range(60)), "series 61": lambda: F.Series(range(61)),
-        "series exp": lambda: F.Series([1e-10, 1.0, 1e10]), "series exp big": lambda: F.Series([1e17, 2.5]),
+        "series f": sf,
+        "series f2": sf2,
+        "series i": si,
+        "series b": sb,
+        "series s": ss,
+        "series labelled": sl,
+        "series named index": lambda: F.Series([1, -2], index=F.Index(["a", "bb"], name="ix"), name="v"),
+        "series unnamed": lambda: F.Series([1, None, -1]),
+        "series empty": lambda: F.Series([]),
+        "series empty string": lambda: F.Series([], dtype="string"),
+        "series long": lambda: F.Series(range(100)),
+        "series 60": lambda: F.Series(range(60)),
+        "series 61": lambda: F.Series(range(61)),
+        "series exp": lambda: F.Series([1e-10, 1.0, 1e10]),
+        "series exp big": lambda: F.Series([1e17, 2.5]),
         "series small floats": lambda: F.Series([0.000123456, 12.5, None, nan]),
-        "series ints float": lambda: F.Series([1.0, 2.0, -0.0]), "series int64 bounds": lambda: F.Series([I64_MIN, I64_MAX, None]),
+        "series ints float": lambda: F.Series([1.0, 2.0, -0.0]),
+        "series int64 bounds": lambda: F.Series([I64_MIN, I64_MAX, None]),
         "series inf": lambda: F.Series([inf, -inf, nan, 1.0]),
-        "df": sdf, "df labelled": sdf_l, "df empty": lambda: F.DataFrame(), "df no rows": lambda: F.DataFrame(columns=["a", "b"]),
+        "df": sdf,
+        "df labelled": sdf_l,
+        "df empty": lambda: F.DataFrame(),
+        "df no rows": lambda: F.DataFrame(columns=["a", "b"]),
         "df no columns": lambda: F.DataFrame(index=[1, 2]),
         "df long": lambda: F.DataFrame({"a": list(range(100)), "b": [x / 3 for x in range(100)], "c": ["s"] * 100}),
-        "df wide": lambda: wide(25), "df wide 20": lambda: wide(20), "df wide 21": lambda: wide(21),
-        "df wide long": lambda: wide(30, 80), "df named index": lambda: F.DataFrame({"a": [1]}, index=F.Index([7], name="k")),
+        "df wide": lambda: wide(25),
+        "df wide 20": lambda: wide(20),
+        "df wide 21": lambda: wide(21),
+        "df wide long": lambda: wide(30, 80),
+        "df named index": lambda: F.DataFrame({"a": [1]}, index=F.Index([7], name="k")),
         "df mixed exp": lambda: F.DataFrame({"a": [1e-8, 1.0], "b": [1, 2], "c": [True, None]}),
         "groupby result": lambda: gdf().groupby("ks", dropna=False).agg(m=("v", "mean"), c=("n", "count")),
         "value_counts": lambda: ss().value_counts(dropna=False),
-        "index str": lambda: F.Index(["a", "b"]), "index int named": lambda: F.Index([1, 2, 3], name="ix"),
-        "index long": lambda: F.Index(list(range(200))), "index long str": lambda: F.Index([f"x{j}" for j in range(150)], name="n"),
-        "index empty": lambda: F.Index([]), "rangeindex": lambda: F.RangeIndex(5), "rangeindex named": lambda: F.RangeIndex(2, 20, 3, name="r"),
-        "columns": lambda: sdf().columns, "dtypes": lambda: sdf().dtypes, "nunique": lambda: sdf().nunique(),
+        "index str": lambda: F.Index(["a", "b"]),
+        "index int named": lambda: F.Index([1, 2, 3], name="ix"),
+        "index long": lambda: F.Index(list(range(200))),
+        "index long str": lambda: F.Index([f"x{j}" for j in range(150)], name="n"),
+        "index empty": lambda: F.Index([]),
+        "rangeindex": lambda: F.RangeIndex(5),
+        "rangeindex named": lambda: F.RangeIndex(2, 20, 3, name="r"),
+        "columns": lambda: sdf().columns,
+        "dtypes": lambda: sdf().dtypes,
+        "nunique": lambda: sdf().nunique(),
         "df reduce": lambda: F.DataFrame({"f": SF, "i": SI}).sum(),
-        "big series": lambda: D.BF, "big series string": lambda: D.BS, "big df": lambda: D.BDF,
-        "big index": lambda: D.ALIGN[0].index, "huge series": lambda: D.HF,
+        "big series": lambda: D.BF,
+        "big series string": lambda: D.BS,
+        "big df": lambda: D.BDF,
+        "big index": lambda: D.ALIGN[0].index,
+        "huge series": lambda: D.HF,
     }
     for nm, mk in reprs.items():
         add(f"repr {nm}", lambda mk=mk: repr(mk()))
@@ -1684,6 +2107,7 @@ def cases(L):
     # The thread count is library-wide: stardust_pandas.set_num_threads became
     # sd.set_num_threads (ROADMAP M5).
     T = L._threads
+
     def threads_roundtrip():
         n = T.get_num_threads()
         T.set_num_threads(n)
@@ -1696,6 +2120,7 @@ def cases(L):
                 return T.set_num_threads(arg, **kw) if not kw else T.set_num_threads(**kw)
             finally:
                 T.set_num_threads(n)
+
         return run
 
     add("threads roundtrip", threads_roundtrip)

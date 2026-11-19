@@ -13,7 +13,7 @@ import stardust_numpy as sdnp
 rng = np.random.default_rng(0)
 S = sdnp.asarray
 b = S(rng.random(10**7) < 0.5)
-i = S(rng.integers(-10**6, 10**6, 10**7))
+i = S(rng.integers(-(10**6), 10**6, 10**7))
 f = S(rng.random(10**7))
 rows = S(rng.random((100_000, 8)))
 f1 = S(rng.random(10**6))

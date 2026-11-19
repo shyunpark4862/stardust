@@ -14,7 +14,10 @@ S, DF, NA = sd.frame.Series, sd.frame.DataFrame, sd.frame.NA
 
 # --- frame -> array -------------------------------------------------------------
 
-@pytest.mark.parametrize(("values", "dtype"), [([1, 2, 3], sd.int64), ([0.5, -1.0], sd.float64), ([True, False], sd.bool)])
+
+@pytest.mark.parametrize(
+    ("values", "dtype"), [([1, 2, 3], sd.int64), ([0.5, -1.0], sd.float64), ([True, False], sd.bool)]
+)
 def test_to_array_is_a_read_only_view(values, dtype):
     a = S(values).to_array()
     assert isinstance(a, sd.ndarray) and a.dtype is dtype and a.tolist() == values
@@ -80,6 +83,7 @@ def test_linalg_takes_a_frame_through_to_array():
 
 # --- array -> frame -------------------------------------------------------------
 
+
 def test_series_from_an_array_copies():
     x = sd.asarray([1, 2, 3])
     s = S(x)
@@ -110,6 +114,7 @@ def test_roundtrip():
 
 
 # --- rules the two areas share (DESIGN.md §9) -------------------------------------
+
 
 def test_int_mean_has_the_array_bits():
     rng = np.random.default_rng(0)
@@ -162,7 +167,11 @@ def test_numpy_protocol_for_dataframe_and_index():
         np.asarray(DF({"a": [1, None]}))  # NA needs na_value=, as to_numpy
     with pytest.raises(ValueError):
         np.asarray(df, copy=False)  # a 2-D array of separate columns is always new
-    for idx, want in ((sd.frame.Index([3, 1]), [3, 1]), (sd.frame.RangeIndex(1, 7, 2), [1, 3, 5]), (df.columns, ["a", "b"])):
+    for idx, want in (
+        (sd.frame.Index([3, 1]), [3, 1]),
+        (sd.frame.RangeIndex(1, 7, 2), [1, 3, 5]),
+        (df.columns, ["a", "b"]),
+    ):
         arr = np.asarray(idx)
         assert arr.tolist() == want and arr.dtype == (np.int64 if want and isinstance(want[0], int) else object)
 
@@ -180,8 +189,14 @@ def test_array_keys_select_as_numpy_keys(key):
         except Exception as e:  # noqa: BLE001 - compared below
             return type(e)
 
-    for f in (lambda k: s.iloc[k], lambda k: df.iloc[k], lambda k: df.iloc[:, k], lambda k: s.loc[k],
-              lambda k: s[k], lambda k: df.loc[k]):
+    for f in (
+        lambda k: s.iloc[k],
+        lambda k: df.iloc[k],
+        lambda k: df.iloc[:, k],
+        lambda k: s.loc[k],
+        lambda k: s[k],
+        lambda k: df.loc[k],
+    ):
         assert outcome(lambda: f(np.asarray(key))) == outcome(lambda: f(sd.asarray(key)))
 
 
@@ -198,6 +213,7 @@ def test_array_keys_examples():
 
 
 # --- one rule in both areas (DESIGN.md §10.1 #10, #12, #13; §10.3) ---------------
+
 
 @pytest.mark.parametrize("code", [">i2", ">i4", ">i8", ">u4", ">f4", ">f8"])
 def test_big_endian_numpy_input_is_read_by_value_in_both_areas(code):
@@ -238,16 +254,25 @@ def test_numpy_integers_are_ints_in_all_three_areas():
     assert sd.linalg.vector_norm(sd.asarray([3.0, 4.0]), ord=n) == 5.0
     assert len(S([1, 2, 3]).head(n)) == 2 and sd.frame.RangeIndex(n).tolist() == [0, 1]
     assert S([1, 2, 3]).iloc[n] == 3 and x[n - 1, n - 2] == 3.0
-    for call in (lambda: sd.zeros(np.True_), lambda: sd.linalg.matrix_power(x, np.True_), lambda: S([1]).head(np.True_),
-                 lambda: sd.frame.RangeIndex(np.True_)):
-        with pytest.raises(TypeError, match=r"must be an int, not numpy.bool$|must be an int or a tuple of ints, not numpy.bool$"):
+    for call in (
+        lambda: sd.zeros(np.True_),
+        lambda: sd.linalg.matrix_power(x, np.True_),
+        lambda: S([1]).head(np.True_),
+        lambda: sd.frame.RangeIndex(np.True_),
+    ):
+        with pytest.raises(
+            TypeError, match=r"must be an int, not numpy.bool$|must be an int or a tuple of ints, not numpy.bool$"
+        ):
             call()
 
 
 def test_to_array_dtype_and_na_value_messages():
     s = S([1, None])
-    with pytest.raises(TypeError, match=r"^to_array\(\): 'dtype' must be sd\.bool, sd\.int64 or sd\.float64 \(or their "
-                                        r"names\), not sd\.string"):
+    with pytest.raises(
+        TypeError,
+        match=r"^to_array\(\): 'dtype' must be sd\.bool, sd\.int64 or sd\.float64 \(or their "
+        r"names\), not sd\.string",
+    ):
         S([1, 2]).to_array(dtype=sd.string)
     with pytest.raises(TypeError, match=r"^to_array\(\): 'dtype' must be"):
         DF({"a": [1]}).to_array(dtype="string")

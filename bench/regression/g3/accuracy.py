@@ -48,10 +48,17 @@ def err(got, ref):
 
 
 def reference(y, X, *, alpha, l1_ratio, r, family="gaussian", weights=None, intercept=True, standardize=False):
-    return regref.penalized(list(map(float, y)), np.asarray(X, float).tolist(), alpha=alpha, l1_ratio=l1_ratio,
-                            beta0=[float(v) for v in np.asarray(r.params)], family=family,
-                            weights=None if weights is None else list(map(float, weights)), intercept=intercept,
-                            standardize=standardize)
+    return regref.penalized(
+        list(map(float, y)),
+        np.asarray(X, float).tolist(),
+        alpha=alpha,
+        l1_ratio=l1_ratio,
+        beta0=[float(v) for v in np.asarray(r.params)],
+        family=family,
+        weights=None if weights is None else list(map(float, weights)),
+        intercept=intercept,
+        standardize=standardize,
+    )
 
 
 def sk_fit(p, tol):
@@ -73,8 +80,13 @@ def sk_fit(p, tol):
     elif p["family"] == "binomial":
         n = len(y) if w is None else w.sum()
         solver = "newton-cholesky" if p["l1_ratio"] == 0 else "saga"
-        m = LogisticRegression(C=1 / (n * p["alpha"]), l1_ratio=p["l1_ratio"], solver=solver, tol=tol,
-                               max_iter=10**6 if tol < 1e-6 else 100).fit(X, y, w)
+        m = LogisticRegression(
+            C=1 / (n * p["alpha"]),
+            l1_ratio=p["l1_ratio"],
+            solver=solver,
+            tol=tol,
+            max_iter=10**6 if tol < 1e-6 else 100,
+        ).fit(X, y, w)
     else:
         if p["l1_ratio"] != 0:
             return None
@@ -121,16 +133,31 @@ def section2():
         for seed in (0, 1):
             y, X = kappa_problem(kappa, seed)
             amax = sd._core.regression.alpha_max("x", sd.asarray(y), sd.asarray(X), None, 1.0, 0, True, False)
-            cases = [("l20", lambda: R.lasso(y, X, alpha=amax / 20, max_iter=10**6), amax / 20, 1.0,
-                      lambda: Lasso(alpha=amax / 20).fit(X, y)),
-                     ("l1e3", lambda: R.lasso(y, X, alpha=amax * 1e-3, max_iter=10**6), amax * 1e-3, 1.0,
-                      lambda: Lasso(alpha=amax * 1e-3).fit(X, y)),
-                     ("e1e3", lambda: R.elastic_net(y, X, alpha=1e-3, max_iter=10**6), 1e-3, 0.5,
-                      lambda: ElasticNet(alpha=1e-3).fit(X, y)),
-                     ("r1e3", lambda: R.ridge(y, X, alpha=1e-3), 1e-3, 0.0,
-                      lambda: Ridge(alpha=1e-3 * len(y)).fit(X, y)),
-                     ("r1e8", lambda: R.ridge(y, X, alpha=1e-8), 1e-8, 0.0,
-                      lambda: Ridge(alpha=1e-8 * len(y)).fit(X, y))]
+            cases = [
+                (
+                    "l20",
+                    lambda: R.lasso(y, X, alpha=amax / 20, max_iter=10**6),
+                    amax / 20,
+                    1.0,
+                    lambda: Lasso(alpha=amax / 20).fit(X, y),
+                ),
+                (
+                    "l1e3",
+                    lambda: R.lasso(y, X, alpha=amax * 1e-3, max_iter=10**6),
+                    amax * 1e-3,
+                    1.0,
+                    lambda: Lasso(alpha=amax * 1e-3).fit(X, y),
+                ),
+                (
+                    "e1e3",
+                    lambda: R.elastic_net(y, X, alpha=1e-3, max_iter=10**6),
+                    1e-3,
+                    0.5,
+                    lambda: ElasticNet(alpha=1e-3).fit(X, y),
+                ),
+                ("r1e3", lambda: R.ridge(y, X, alpha=1e-3), 1e-3, 0.0, lambda: Ridge(alpha=1e-3 * len(y)).fit(X, y)),
+                ("r1e8", lambda: R.ridge(y, X, alpha=1e-8), 1e-8, 0.0, lambda: Ridge(alpha=1e-8 * len(y)).fit(X, y)),
+            ]
             for key, fit, alpha, rho, skf in cases:
                 r = fit()
                 if hasattr(r, "converged") and not r.converged:
@@ -160,9 +187,13 @@ def section3():
         yb = (rng.uniform(size=n) < 1 / (1 + np.exp(-(X - 1.0) @ b))).astype(float)
         yp = rng.poisson(np.exp(0.3 * (X - 1.0) @ b)).astype(float)
         out = []
-        for fit, rho, fam, yy, alpha in ((R.lasso, 1.0, "gaussian", y, 0.02), (R.elastic_net, 0.5, "gaussian", y, 0.02),
-                                         (R.ridge, 0.0, "gaussian", y, 0.02), (None, 1.0, "binomial", yb, 0.005),
-                                         (None, 0.0, "poisson", yp, 0.005)):
+        for fit, rho, fam, yy, alpha in (
+            (R.lasso, 1.0, "gaussian", y, 0.02),
+            (R.elastic_net, 0.5, "gaussian", y, 0.02),
+            (R.ridge, 0.0, "gaussian", y, 0.02),
+            (None, 1.0, "binomial", yb, 0.005),
+            (None, 0.0, "poisson", yp, 0.005),
+        ):
             if fit is None:
                 r = GLMNET(yy, X, family=fam, alpha=alpha, l1_ratio=rho)
             elif fit is R.elastic_net:

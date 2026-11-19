@@ -60,8 +60,7 @@ void rethrow_named(const char* func) {
             case nb::exception_type::key_error:
             case nb::exception_type::buffer_error:
                 throw nb::builtin_exception(e.type(), with_name(func, e.what()).c_str());
-            default:
-                throw;  // stop_iteration, next_overload, ...: control flow, not messages
+            default: throw;  // stop_iteration, next_overload, ...: control flow, not messages
         }
     } catch (const linalg::LinAlgError& e) {
         throw linalg::LinAlgError(with_name(func, e.what()));
