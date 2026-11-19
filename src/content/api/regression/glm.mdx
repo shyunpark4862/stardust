@@ -795,7 +795,23 @@ array([20.991877519299344,                nan], dtype=float64)
 (0.0, 0.0, 0.0)
 ```
 
-감마와 포아송의 절편 1.0986…은 $\log 3$이에요. $g(y_0)$가 무한하면(이항에서 모두 0이나 모두 1, log 링크의 포아송에서 모두 0) 이 규칙이 아니라 [분리](#분리)의 규칙이에요.
+감마와 포아송의 절편 1.0986…은 $\log 3$이에요.
+
+$y_0$가 분포족 범위의 끝이어도 $g(y_0)$가 유한하면 정확한 해가 있어요. 포아송 identity·sqrt 링크의 `y`가 모두 0일 때와, 이항 log 링크의 `y`가 모두 1일 때(`trials`를 준 비율도)예요. 이때 해는 정확히 $(0, \dots, 0)$이고, 반복 없이(`n_iter` 0) `converged=True`, `separation=False`예요. 적합값은 모두 $y_0$, 쓰인 행의 잔차는 0이고, 편차·Pearson χ²·`null_deviance`·`llf`·`llnull`이 모두 0이에요. 다만 범위의 끝에서는 분산 $V(y_0)$가 0이라 계수의 정보가 없어서, 공분산 전체가 NaN이고 `bse`, t, p, `conf_int()`, `predict_interval()`도 NaN이에요.
+
+```python
+>>> b = sd.regression.glm([0.0] * 8, x, family='poisson', link='identity')
+>>> b.params, b.converged, b.n_iter, b.separation
+(array([0.0, 0.0], dtype=float64), True, 0, False)
+>>> b.deviance, b.llf, b.llnull, b.resid_response.tolist()
+(0.0, 0.0, 0.0, [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+>>> b.bse, b.pvalues
+(array([nan, nan], dtype=float64), array([nan, nan], dtype=float64))
+>>> sd.regression.glm([1.0] * 8, x, family='binomial', link='log').params
+array([0.0, 0.0], dtype=float64)
+```
+
+$g(y_0)$가 무한하면(이항에서 모두 0, logit·probit·cloglog 링크의 이항에서 모두 1, log 링크의 포아송에서 모두 0) 이 규칙이 아니라 [분리](#분리)의 규칙이에요.
 
 `y`가 상수가 아니어도 모형이 자료를 정확히 지나가면 **완전 적합**이에요. 척도를 추정하는 분포족(gaussian, gamma, `scale='X2'`·`'dev'`)에서는 척도가 0이 되어 표준오차가 0, t가 ±inf(계수가 정확히 0이면 NaN), p가 0이고, `llf`는 +inf(`aic`, `bic`는 −inf)예요. 정규분포의 잔차가 반올림 수준이면 0으로 보는 기준은 `ols`와 같아요([완전 적합](/api/regression/collinearity/#완전-적합)).
 
@@ -969,7 +985,7 @@ array([1.76099431, 0.62872085])
 - **`resid_response`**: `trials`가 있으면 statsmodels(두 열 반응)는 성공 수의 척도, 여기는 비율의 척도예요.
 - **절편 없는 모형**: statsmodels는 `llnull`에 상수를 맞추고 `df_model`을 rank − 1로 세요. 여기는 귀무 모형이 $\eta = \text{offset}$이고 `df_model`이 rank예요(R의 `glm`과 같아요).
 - **`get_prediction`**: statsmodels는 감마 inverse 링크에서 구간의 아래·위가 뒤바뀌고 정규분포를 써요. 여기는 언제나 아래·위 순서이고 검정 분포(감마는 t)를 써요. statsmodels의 `predict`는 `offset`의 inf를 받아 inf를 내고, 여기는 `ValueError`예요.
-- **상수 y와 완전 적합**: statsmodels GLM은 `y`가 상수인 gaussian에서 `ValueError`("The first guess on the deviance function returned a nan")를 내요. 위의 완전 적합 `1 + 2x`에서는 표준오차 1.6e-15, 3.1e-16, 척도 4.1e-30, `llf` 261.2처럼 반올림이 남긴 값을 내고, 의사 R²는 Cox–Snell과 McFadden이 모두 1.0이에요(`llnull` −2.0e31). 여기는 표준오차 0과 `llf` +inf이고, 의사 R²는 1과 NaN이에요. 감마 log 링크의 상수 `y`에도 statsmodels는 같은 `ValueError`예요. `y`가 모두 3인 포아송에서는 `PerfectSeparationWarning`과 함께 기울기 7.6e-17, 그 p 0.9999999999999993을 내요. 여기는 경고 없이 기울기가 정확히 0이고 t 0, p 1이에요.
+- **상수 y와 완전 적합**: statsmodels GLM은 `y`가 상수인 gaussian에서 `ValueError`("The first guess on the deviance function returned a nan")를 내요. 위의 완전 적합 `1 + 2x`에서는 표준오차 1.6e-15, 3.1e-16, 척도 4.1e-30, `llf` 261.2처럼 반올림이 남긴 값을 내고, 의사 R²는 Cox–Snell과 McFadden이 모두 1.0이에요(`llnull` −2.0e31). 여기는 표준오차 0과 `llf` +inf이고, 의사 R²는 1과 NaN이에요. 감마 log 링크의 상수 `y`에도 statsmodels는 같은 `ValueError`예요. `y`가 모두 3인 포아송에서는 `PerfectSeparationWarning`과 함께 기울기 7.6e-17, 그 p 0.9999999999999993을 내요. 여기는 경고 없이 기울기가 정확히 0이고 t 0, p 1이에요. 포아송 identity·sqrt 링크의 `y`가 모두 0일 때도 statsmodels는 같은 `ValueError`이고, 여기는 정확한 해 (0, 0)이에요.
 - **자유도 0과 빈 입력**: `df_resid`가 0이면 statsmodels는 척도와 표준오차가 inf이고, 여기는 NaN이에요. 행이 0개인 입력에 statsmodels는 numpy의 `ValueError`("zero-size array to reduction operation maximum which has no identity")를 내고, 여기는 `nobs` 0의 NaN 결과예요.
 - **`bic`**: statsmodels 0.15의 `bic`(= `bic_llf`)와 같아요. 편차로 만든 `bic_deviance`는 없어요.
 - **분리**: statsmodels는 `PerfectSeparationWarning`을 내고 큰 계수를 돌려줘요(위 완전 분리 예에서 계수 (−223.8, 40.7), 표준오차 (1.2e5, 2.3e4), `converged=True`). 여기는 `separation=True`와 NaN 계수예요.

@@ -601,6 +601,48 @@ inline double upper_inverse(double a, double s, double q, DD lt) {
 
 Arb 참값 대비 근의 상대오차는 $2.2 \times 10^{-14}$와 $1.7 \times 10^{-14}$이고, 조건수가 각각 약 700, 800이에요($\kappa \approx c$). 둘째는 감마의 근 $e^{-800.6}$이 가장 작은 서브노멀 아래인데, 척도를 곱한 값은 double 안이에요. 같은 식이 `InverseGamma`의 아래꼬리 근 $s/y$도 줘요([극값·수명·비중심 분포](/internals/stats/extreme-noncentral/#역감마)).
 
+### 감마: 기준 모양 아래의 역함수
+
+모양이 기준 모양 $a_0 = 2^{-600}$보다 작으면 역함수의 두 꼬리를 모두 따로 풀어요(`inverse_beyond`). 그렇게 작은 모양에서는 불완전 감마의 조각($a/\text{tail}$, $\sqrt{2\pi a}$, $y/a$)이 모양의 비트를 잃어서, 확률이 $2^{-1000}$ 아래일 때 부르는 깊은 역함수가 $2^{-1022}$ 근처에서 NaN이 되거나 $10^{-13}$쯤 틀리기 때문이에요. 서브노멀 모양만이 아니라 $a \lt a_0$ 전체가 이 길로 가요.
+
+- **위꼬리는 기준 모양에서.** $a$와 $a_0$ 모두에서 $Q(a, y) = a\,E_1(y)$가 반올림 안에서 맞으므로 $Q(a, y) = (a/a_0)\,Q(a_0, y)$예요([아래](#아주-작은-모양과-아주-큰-모양)). 그래서 목표 $\log Q$에서 $\log(a/a_0)$(`log_shape_ratio`, double-double)를 빼고 $a_0$에서 풀어요. 옮긴 목표가 $1600a_0$ 이상이면 근이 $2^{-2300}$ 아래라 어떤 척도에서도 0이에요.
+- **아래꼬리는 닫힌 꼴.** $P(a, y) = \frac{y^a}{\Gamma(1+a)}(1 + O(y))$이고 $P \le y^a/\Gamma(1 + a)$이므로
+  $$
+  \log y = \frac{l_t + \log\Gamma(1 + a)}{a}
+  $$
+  가 $y \lt 2^{-960}$에서 double로 정확해요(위꼬리의 `small_upper_log_root`와 같은 식이에요). $l_t$는 목표의 log(double-double), $\log\Gamma(1 + a)$는 `lgamma1p`예요. 척도는 $\log s$로 지수에 넣어 `exp_dd` 한 번에 $sy$를 만들어요. $l_t/a \lt -2000$이면 가장 큰 척도($e^{709.8}$)를 곱해도 가장 작은 서브노멀 아래라 바로 0이에요. 근이 $2^{-960}$ 위로 오면 정규수 모양은 보통 경로로 가고, 서브노멀 모양은 NaN이에요.
+
+```cpp
+// csrc/stats/dist/gamma.hpp (inverse_beyond, 발췌)
+double r_lower = kNaN;
+if (lower && a < kRefShape) {
+    if (lt.hi / a < -2000.0) return 0.0;
+    const DD ly = (lt + num::lgamma1p(a)) / a;
+    if (ly.hi < -960.0 * num::kLn2.hi) r_lower = num::exp_dd(ly + num::log_dd(s));
+    else if (a < kMinNormalShape) return kNaN;
+}
+const bool shifted = !lower && a < kRefShape;
+if (shifted) {
+    lt = lt - log_shape_ratio(a);
+    a = kRefShape;
+}
+if (!lower && a <= kRefShape && lt.hi >= std::log(a) + kLogRootZero) return 0.0;
+if (shifted) p = num::exp_dd(lt);  // the shifted target: below 1600 a0
+```
+
+```python
+>>> sd.stats.Gamma(a=1e-307).iccdf(5e-307)
+0.0037974640015846902
+>>> sd.stats.Gamma(a=2.0**-1022).icdf(sd.asarray([1e-300, 0.3, 0.999]))
+array([0.0, 0.0, 0.0], dtype=float64)
+>>> sd.stats.Gamma(a=1e-200, scale=1e300).ilogcdf(-1e-197)
+2.8499452612251773e-135
+```
+
+첫째는 $Q = 5a$의 근이라 special의 `gammainccinv(1e-307, 5e-307)`과 같은 $E_1(y) = 5$의 근이에요. Arb 참값 대비 상대오차는 $4.4 \times 10^{-17}$이에요. 둘째는 $\log y = \log p / 2^{-1022}$ 꼴이라 어떤 $p \lt 1$에서도 근이 모든 double 아래예요. 셋째는 $\log\Gamma(1 + a) \approx -\gamma a$라서 $\log y \approx -1000 - \gamma$, 곧 $y \approx e^{-1000.58}$이 모든 double 아래인데, 척도를 지수에 넣어서 $sy$가 나와요. 그 근에서 Arb로 잰 $\log P$는 목표와 상대 $1.2 \times 10^{-16}$ 안이에요.
+
+Arb로 $a$를 $5 \times 10^{-324}$부터 $2^{-601}$까지 9개, $Q = ca$의 $c$를 0.01–700의 8개로 잡아 근이 정규수인 점마다 근에서 $Q$를 다시 계산하면, 목표와의 상대오차가 $4.5 \times 10^{-16}$ 이하예요. special의 `gammainccinv`도 같은 크기의 오차라서 두 값은 마지막 몇 비트만 달라요.
+
 ### 베타·t·F: deep_log_inverse
 
 베타의 깊은 역함수는 처음부터 $\log x$를 풀어요.
@@ -894,7 +936,7 @@ nan
 
 검증 말고도 모양의 양 끝에는 장치가 넷 더 있어요.
 
-- **서브노멀 모양(감마).** $a \lt 2^{-1022}$이면 $a$ 자체가 비트를 잃었고, 불완전 감마의 조각($a/\text{tail}$, $\sqrt{2\pi a}$, $y/a$)도 마찬가지예요. 그런데 작은 모양에서는 $Q(a, y) = aE_1(y)(1 + O(a(1 + \log^2 y)))$라서 $Q$가 $a$에 비례해요. 그래서 기준 모양 $a_0 = 2^{-600}$에서 계산해 옮겨요: $Q(a, y) = (a/a_0)\,Q(a_0, y)$이고 상대 오차가 $2^{-570}$ 안이에요. $P = 1 - Q$는 1과 $2^{-1010}$ 안이에요. 역함수도 목표를 $\log(a/a_0)$만큼 옮겨 기준 모양에서 풀어요. $a \le a_0$에서 위꼬리 목표가 $1600a$ 이상이면 근이 $2^{-2300}$ 아래라 0이에요.
+- **서브노멀 모양(감마).** $a \lt 2^{-1022}$이면 $a$ 자체가 비트를 잃었고, 불완전 감마의 조각($a/\text{tail}$, $\sqrt{2\pi a}$, $y/a$)도 마찬가지예요. 그런데 작은 모양에서는 $Q(a, y) = aE_1(y)(1 + O(a(1 + \log^2 y)))$라서 $Q$가 $a$에 비례해요. 그래서 기준 모양 $a_0 = 2^{-600}$에서 계산해 옮겨요: $Q(a, y) = (a/a_0)\,Q(a_0, y)$이고 상대 오차가 $2^{-570}$ 안이에요. $P = 1 - Q$는 1과 $2^{-1010}$ 안이에요. 역함수는 $a \lt a_0$ 전체에서 위꼬리를 목표를 $\log(a/a_0)$만큼 옮겨 기준 모양에서 풀고, 아래꼬리를 닫힌 꼴 $\log y = (l_t + \log\Gamma(1 + a))/a$로 풀어요([감마: 기준 모양 아래의 역함수](#감마-기준-모양-아래의-역함수)). $a \le a_0$에서 위꼬리 목표가 $1600a$ 이상이면 근이 $2^{-2300}$ 아래라 0이에요.
 - **아주 작은 자유도(카이제곱·t·F).** 세 분포의 감마·베타 모양은 자유도의 절반이에요. df가 $2^{-1021}$ 아래이면 그 절반이 double로 정확하지 않아요. 서브노멀 df는 반으로 나누면 비트를 잃거나 0이 되고, 가장 작은 정규수 구간 $[2^{-1022}, 2^{-1021})$의 df도 절반이 서브노멀이라 마지막 비트가 1이면 반올림돼요. 그래서 `halvable`(df $\ge 2^{-1021}$, F는 두 자유도 모두)이 거짓이면 밀도, cdf 계열, 역함수, 중앙값, 엔트로피가 NaN이에요. 경계 위의 절반은 정규수라 언제나 정확해요. F의 `halvable`은 두 자유도가 모두 $2^{101}$을 넘을 때도 거짓이에요(아래 거대한 모양). 표본과 비중심 t·F도 같은 경계예요([표본 뽑기](/internals/stats/sampling/), [극값·수명·비중심 분포](/internals/stats/extreme-noncentral/#아주-작은-자유도)).
 - **아주 작은 모양(베타).** $a$나 $b$가 $2^{-1021}$ 아래이면 베타는 0과 1의 두 점 분포예요($P(1) = a/(a + b)$). 모양이 0으로 가면 $(0, 1)$ 안의 질량이 모양 크기로 줄어 double에서 보이지 않고, 베타 함수와 불완전 베타의 조각도 모양의 비트를 잃어요. 그래서 엔진의 극한 장치가 모든 메서드를 두 점 분포의 값으로 보내요. 밀도는 질량이 있는 점에서 inf, cdf는 계단, 엔트로피는 −inf예요([작은 모양의 두 점](/internals/stats/engine/#작은-모양의-두-점-two_point)). 경계는 t·F와 같은 $2^{-1021}$이고, 지날 때 값이 이어져요.
 - **거대한 모양.** 감마의 $a > 2^{100}$, 베타의 두 모양이 모두 $2^{100}$ 초과면 분포의 상대 폭($1/\sqrt a$)이 $2^{-50}$ 아래라서 cdf가 이웃한 double 몇 개 사이에서 0에서 1로 바뀌어요. special의 불완전 함수도 그 근처에서 잰 적이 없어요. 그래서 cdf 계열과 역함수는 NaN이에요.

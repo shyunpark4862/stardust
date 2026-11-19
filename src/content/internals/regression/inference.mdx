@@ -92,7 +92,7 @@ $$
 p_j = 2\,\bar F_{t(\nu)}(\lvert t_j \rvert), \qquad \hat\beta_j \pm \bar F_{t(\nu)}^{-1}(\alpha/2)\cdot\operatorname{se}_j
 $$
 
-열이나 $y$를 2의 거듭제곱으로 옮겨 적합했으면 t는 데이터 단위의 계수와 `bse`로 나누지 않고, 적합의 단위의 계수와 $\sqrt{\operatorname{diag}C'}$로 바로 나눠요. 비는 단위와 상관없는데, 데이터 단위의 계수나 표준오차는 따로 double을 넘치거나 아래로 넘칠 수 있기 때문이에요. 그래서 계수가 inf로 넘친 회귀에서도 t와 p는 유한한 참값이에요([최소제곱 풀이](/internals/regression/least-squares/)의 극단적인 척도).
+열이나 $y$를 2의 거듭제곱으로 옮겨 적합했으면 t는 데이터 단위의 계수와 `bse`로 나누지 않고, 적합의 단위의 계수와 $\sqrt{\operatorname{diag}C'}$로 바로 나눠요. 비는 단위와 상관없는데, 데이터 단위의 계수나 표준오차는 따로 double을 넘치거나 아래로 넘칠 수 있기 때문이에요. 그래서 계수가 inf로 넘친 회귀에서도 t와 p는 유한한 참값이에요([최소제곱 풀이](/internals/regression/least-squares/)의 극단적인 척도). 신뢰구간도 그때는 두 끝을 적합의 단위에서 $\beta'_j \mp q\sqrt{C'_{jj}}$로 구해 계수처럼 되돌려요. 넘친 끝은 제 부호의 $\pm\infty$, 아래로 넘친 끝은 0이고, $\infty - \infty$의 NaN은 나오지 않아요.
 
 $\bar F$는 위꼬리 확률(`ccdf`), $\bar F^{-1}$은 그 역함수(`iccdf`)예요. $1 - F$(`1 - cdf`)로 구하지 않으므로 아주 작은 p값도 상대 정확도가 있어요. 두 함수는 sd.stats의 보장 영역에서 상대오차 10⁻¹⁴ 안이에요([Student t 분포](/api/stats/student-t/)).
 
@@ -110,7 +110,7 @@ $\bar F$는 위꼬리 확률(`ccdf`), $\bar F^{-1}$은 그 역함수(`iccdf`)예
         return _sd.stack([self.params - half, self.params + half], axis=-1)
 ```
 
-`_dist()`는 자유도 `df_resid_inference`의 `sd.stats.StudentT`예요. `alpha`는 키워드로만 받아요. 회귀 영역에서 `alpha`는 정규화의 벌점, `theilslopes`의 신뢰수준이기도 해서, 위치 인자로 받으면 `conf_int(0.1)`이 무엇을 뜻하는지 읽는 쪽이 헷갈리기 때문이에요.
+위 `conf_int`는 기본 클래스(`_RegressionResult`)의 것이고, 척도를 옮겨 적합한 `ols`·`wls`·`gls`의 결과만 `_LinearResult`가 적합 단위의 계산으로 덮어써요. `_dist()`는 자유도 `df_resid_inference`의 `sd.stats.StudentT`예요. `alpha`는 키워드로만 받아요. 회귀 영역에서 `alpha`는 정규화의 벌점, `theilslopes`의 신뢰수준이기도 해서, 위치 인자로 받으면 `conf_int(0.1)`이 무엇을 뜻하는지 읽는 쪽이 헷갈리기 때문이에요.
 
 ```python
 >>> x = sd.arange(20.0)

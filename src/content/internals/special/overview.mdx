@@ -432,7 +432,7 @@ Boost를 쓰지 않는 함수도 이유가 있어요. `erf` 계열, `gammaln`, `
 | `loggamma` (복소수) | Stirling 8항, 1–2 둘레의 상쇄 없는 꼴, 반사(분기 $2\pi i k$), 점화식 | 같은 글 |
 | `gammainc`, `gammaincc` | 작은 $a$의 $\Gamma(1+a) - 1$ 꼴, 거듭제곱급수 $P$, Lentz 연분수 $Q$, $a > 20$이고 $\lvert x - a \rvert < 0.4a$는 Temme 균등 점근전개. 앞 인자는 double-double 지수 | [불완전 감마와 베타](/internals/special/incomplete/) |
 | `betainc`, `betaincc` | Boost($a, b \le 6$, 서브노멀 $x$와 Boost가 빼서 만드는 쪽 제외), 그 밖은 BRATIO 구조(BPSER, BUP, BGRAT, BFRAC, BASYM), 아주 작은 $x$의 로그 꼴, 거대한 모양의 감마 극한 | 같은 글 |
-| `gammaincinv`, `gammainccinv` | Boost + 우리 순방향 함수로 Halley 한 걸음, 그 밖은 초기값(작은 $x$ 근사, 큰 $x$ 점근, Wilson–Hilferty) + Halley | 같은 글 |
+| `gammaincinv`, `gammainccinv` | Boost + 우리 순방향 함수로 Halley 한 걸음, 그 밖은 초기값(작은 $x$ 근사, 큰 $x$ 점근, Wilson–Hilferty) + Halley. `gammainccinv`의 $a \lt 2^{-900}$은 $Q = a\,E_1(y)$로 보고 $E_1(y) = q/a$를 풀어요 | 같은 글 |
 | `betaincinv`, `betainccinv` | Boost(모양 $10$–$10^6$ / $1$–$10^6$), 그 밖은 AS 109 [13] 초기값 + Halley | 같은 글 |
 | `i0 i1 k0 k1` (와 e-스케일 판) | Boost, 결과가 정상 범위 밖이면 Cephes Chebyshev 전개 두 구간 | [Bessel과 Airy](/internals/special/bessel-airy/) |
 | `j0 j1 y0 y1` | Cephes: $x \le 5$는 유리식, $x > 5$는 Hankel 진폭·위상 유리식(위상은 반올림하지 않음) | 같은 글 |

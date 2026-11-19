@@ -243,7 +243,7 @@ $Z_A$는 A의 열에서 평균을 뺀 것(`standardize`면 표준화한 것), $\
 - `l1_ratio=1`(라소)이면 0 아닌 계수의 수예요.
 - `l1_ratio=0`(릿지)이면 A가 모든 열이고 릿지의 $\sum s^2/(s^2 + \alpha)$예요.
 - 그 사이에서는 0 아닌 계수의 수보다 작아요. L2 벌점이 남은 계수도 묶어 두기 때문이에요.
-- `alpha=0`이면 `l1_ratio`와 상관없이 `ridge(..., alpha=0)`의 값, 곧 평균을 뺀 설계의 랭크예요(아래 특수한 경우).
+- `alpha=0`이면 `l1_ratio`와 상관없이 라소처럼 0 아닌 계수의 수예요. 똑같은 열이 있으면 그 열과 사본을 둘 다 세므로, 랭크를 세는 `ridge(..., alpha=0)`의 `df_model`보다 클 수 있어요(아래 특수한 경우).
 
 ```python
 >>> e.df_model
@@ -281,7 +281,7 @@ True
 
 상수 열, `y`가 모두 같을 때(`rsquared`가 NaN), NaN과 inf, 가중치가 모두 0이거나 행이 없을 때(`nobs` 0, 계수 NaN, `converged` False, `n_iter` 0), 모수가 없는 모형의 `ValueError`, 배치와 그 출력 꼴은 [`lasso`](/api/regression/lasso/)와 같아요.
 
-`alpha=0`이면 벌점이 사라져서 `l1_ratio`와 상관없이 [`lasso`](/api/regression/lasso/)의 `alpha=0`과 같은 결과예요. 반복 없이 `ridge(..., alpha=0)`과 비트까지 같은 최소제곱 해를 내고, `converged`는 True, `n_iter`는 0, `dual_gap`은 0, `df_model`은 `ridge`의 것이에요. 열이 겹치지 않으면 [`ols`](/api/regression/ols/)와 같은 해이고, 똑같은 열이 있으면 계수의 제곱합이 가장 작은 해(두 열에 똑같이 나눈 해)예요. 열이 행보다 많아도 마찬가지예요.
+`alpha=0`이면 벌점이 사라져서 `l1_ratio`와 상관없이 [`lasso`](/api/regression/lasso/)의 `alpha=0`과 같은 결과예요. 반복 없이 `ridge(..., alpha=0)`과 비트까지 같은 최소제곱 해를 내고, `converged`는 True, `n_iter`는 0, `dual_gap`은 0, `df_model`은 0 아닌 계수의 수예요. 열이 겹치지 않으면 [`ols`](/api/regression/ols/)와 같은 해이고, 똑같은 열이 있으면 계수의 제곱합이 가장 작은 해(두 열에 똑같이 나눈 해)예요. 열이 행보다 많아도 마찬가지예요.
 
 ```python
 >>> R.elastic_net(y, X, alpha=0.0).params.tolist() == R.lasso(y, X, alpha=0.0).params.tolist()
@@ -289,7 +289,7 @@ True
 >>> Xd = sd.stack([x1, x1, x3], axis=1)
 >>> z = R.elastic_net(y, Xd, alpha=0.0)
 >>> [round(v, 4) for v in z.params.tolist()], z.converged, z.n_iter, z.dual_gap, z.df_model
-([1.15, 1.0462, 1.0462, 0.161], True, 0, 0.0, 2.0)
+([1.15, 1.0462, 1.0462, 0.161], True, 0, 0.0, 3.0)
 >>> z.params.tolist() == R.ridge(y, Xd, alpha=0.0).params.tolist()
 True
 >>> [round(v, 4) for v in R.elastic_net(y, Xd, alpha=1e-6).params.tolist()]

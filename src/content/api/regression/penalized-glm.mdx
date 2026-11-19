@@ -396,6 +396,18 @@ PenalizedGLMResult(a path of 3 alphas, 4 parameters)
 0.0
 ```
 
+### 똑같은 열
+
+`l1_ratio=1`(라소 벌점)이면 똑같은 두 열의 해가 하나로 정해지지 않아요. 두 계수의 합만 정해져요. 이때는 [`lasso`](/api/regression/lasso/)처럼 대개 앞의 열이 합을 모두 받고, 뒤의 사본은 반올림 크기의 수가 아니라 정확히 0이라서 `df_model`에 들어가지 않아요. `l1_ratio < 1`이면 L2 벌점이 두 열에 똑같이 나눠요. 위의 `Xdup`으로 보면 이래요.
+
+```python
+>>> zl = R.penalized_glm(y, Xdup, family='binomial', alpha=[0.05, 0.01, 1e-4], l1_ratio=1.0)
+>>> zl.params[:, 2].tolist(), zl.df_model.tolist()
+([0.0, 0.0, 0.0], [2.0, 2.0, 2.0])
+>>> [round(v, 4) for v in R.penalized_glm(y, Xdup, family='binomial', alpha=0.01).params.tolist()]
+[-0.2209, 0.8409, 0.8409, -0.3361]
+```
+
 ### 가중치와 NaN
 
 `weights`는 편차에 곱해지는 가중치예요(`glm`의 `var_weights`). 0인 행은 적합과 `nobs`에서 빠지고, 적합값·선형 예측은 그 행에도 계산해요. NaN과 inf, 배치는 [`ridge`](/api/regression/ridge/), [`lasso`](/api/regression/lasso/)와 같아요.

@@ -2,7 +2,7 @@
 title: 일반화 선형 모형의 IRLS
 group: 일반화 선형 모형
 order: 1
-summary: glm이 안에서 하는 일을 설명해요. 우도에서 끌어낸 Fisher 득점법으로서의 IRLS, 작업 반응과 가중치, 분포족마다의 시작값, 편차로 하는 수렴 판정, 중간 반복의 Cholesky 정규방정식과 QR(그리고 크기 문턱), 계수를 반올림 수준까지 가져가는 연마(정준 링크는 정규방정식, 정준이 아닌 링크는 얇은 Q로 푸는 관측 정보의 뉴턴 걸음), 걸음의 비가 1/2 아래로 줄지 않을 때 뉴턴으로 넘어가는 규칙, 최대우도 추정이 없음을 증명하는 분리의 증명서와 그 극한 적합, 척도와 z·t의 선택, 귀무 모형, 완전 적합과 남은 자유도가 없을 때의 규칙(φ = 0의 로그우도), pseudo R², 관측 정보로 만든 강건 공분산, freq_weights와 var_weights(사본 하나의 지렛대 h/f)를 다뤄요.
+summary: glm이 안에서 하는 일을 설명해요. 우도에서 끌어낸 Fisher 득점법으로서의 IRLS, 작업 반응과 가중치, 분포족마다의 시작값, 편차로 하는 수렴 판정, 중간 반복의 Cholesky 정규방정식과 QR(그리고 크기 문턱), 계수를 반올림 수준까지 가져가는 연마(정준 링크는 정규방정식, 정준이 아닌 링크는 얇은 Q로 푸는 관측 정보의 뉴턴 걸음), 걸음의 비가 1/2 아래로 줄지 않을 때 뉴턴으로 넘어가는 규칙, 최대우도 추정이 없음을 증명하는 분리의 증명서와 그 극한 적합, 척도와 z·t의 선택, 귀무 모형, 반응이 모두 같을 때의 정확한 해(분포족 범위의 경계 포함), 완전 적합과 남은 자유도가 없을 때의 규칙(φ = 0의 로그우도), pseudo R², 관측 정보로 만든 강건 공분산, freq_weights와 var_weights(사본 하나의 지렛대 h/f)를 다뤄요.
 seeAlso: [overview, least-squares, inference, robust, accuracy-performance]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -636,35 +636,103 @@ array([0.9999999999999997, 1.1547005383792512], dtype=float64)
 
 절편이 있고 오프셋이 없으며 적합의 행의 $y$가 정확히 한 값 $y_0$이면, 모든 행에서 $\mu = y_0$인 모형이 최대우도 추정이에요. 점수 $\sum_i x_i m_i(y_i - \mu_i)\mu'_i/V(\mu_i)$의 모든 항이 정확히 0이기 때문이에요. 그 모형은 계수 $(g(y_0), 0, \dots, 0)$이고, 분포족과 링크와 상관없이 자명해요. 그런데 IRLS는 이 해에 반올림을 남겨요. 기울기가 $10^{-32}$ 크기로 남고, 척도를 추정하는 분포족은 Pearson χ²가 $10^{-66}$ 크기라 그 반올림을 거의 0인 표준오차로 나눈 가짜 t가 생겨요([최소제곱 풀이](/internals/regression/least-squares/)의 같은 규칙).
 
-그래서 커널이 마지막 풀이 뒤에 쓰인 행(가중치 > 0)의 $y$를 보고, 정확히 한 값이면 정확한 해로 바꿔요. 바꾸는 조건은 넷이에요.
-
-- 링크의 값 $\eta_0 = g(y_0)$가 유한해요.
-- $y_0$가 분포족의 범위 안이에요($V(y_0) > 0$).
-- $(\eta_0, y_0)$가 걸음 반감과 같은 유효 범위 안이에요(`row_valid`).
-- $d\mu/d\eta$가 $\eta_0$에서 유한하고 0이 아니에요(작업 잔차를 그것으로 나눠요).
-
-이항의 $y$가 모두 0이나 모두 1이면 logit이 $\pm\infty$이고, 포아송 log의 $y$가 모두 0이면 $\log 0 = -\infty$예요. 그런 자료는 이 길을 타지 않고 분리와 경계의 규칙 그대로예요(위 분리의 증명서 절).
+그래서 커널이 IRLS 전에 쓰인 행(가중치 > 0)의 $y$를 보고, 정확히 한 값 $y_0$이면 링크의 값 $\eta_0 = g(y_0)$, $\eta_0$에서의 $d\mu/d\eta$, 분산 $V(y_0)$를 한 번 구해 둬요. $\eta_0$가 유한해야 정확한 해가 있어요. 이항의 $y$가 모두 0이면 네 링크 모두, 모두 1이면 logit·probit·cloglog가 $\pm\infty$이고, 포아송 log의 $y$가 모두 0이면 $\log 0 = -\infty$예요. 그런 자료는 이 길을 타지 않고 분리와 경계의 규칙 그대로예요(위 분리의 증명서 절). $\eta_0$가 유한하면 $V(y_0)$가 길을 둘로 나눠요. $V(y_0) > 0$이면 $y_0$가 분포족의 범위 안이라 IRLS를 그대로 돌리고 그 결과를 정확한 해로 바꿔요. $V(y_0) = 0$이면 $y_0$가 범위의 경계라 IRLS를 건너뛰어요(아래 경계의 상수 $y$ 절).
 
 ```cpp
-    // y exactly constant over the fit's rows (y0) with an intercept and no offset: the exact
-    // solution (g(y0), 0, ..., 0) for every family and link where g(y0) is finite and y0 inside
-    // the family's range (V(y0) > 0; else the boundary's rules), as ols. The
-    // iterations leave rounding there (a slope of 1e-32, a scale of 1e-66 and a spurious t)
-    bool gconst = op.intercept && !has_offset && !separated && have_beta && o.kept[0];
+// csrc/regression/glm.cpp (glm_one)
+    // y exactly constant over the fit's rows (y0) with an intercept and no offset, g(y0) finite:
+    // the exact solution (g(y0), 0, ..., 0) for every family and link. With y0
+    // inside the family's range (V(y0) > 0) the iterations run and their result is replaced (§5);
+    // with y0 on its boundary (V(y0) = 0: poisson identity or sqrt with y = 0, binomial log with
+    // y = 1) the iterations only creep towards it (mu -> 0 at a linear rate) and are skipped:
+    // the final solve at the start's weights gives the columns, the inference is NaN
+    bool yconst = op.intercept && !has_offset;
     double y0 = kNaN;
-    for (lint i = 0; i < n && gconst; ++i) {
+    for (lint i = 0; i < n && yconst; ++i) {
         if (!(pw[i] > 0.0)) continue;
         if (std::isnan(y0)) y0 = y[i];
-        else gconst = y[i] == y0;
+        else yconst = y[i] == y0;
     }
-    double etac = kNaN, muc0 = kNaN, d10 = kNaN;
-    if (gconst) {
+    double etac = kNaN, muc0 = kNaN, d10 = kNaN, V0 = kNaN;
+    if (yconst) {
         double m0 = y0, mt, mct;
         muc0 = op.fam == fBinomial ? 1.0 - y0 : 0.0;
         link_fun(M, &m0, &etac, 0, 1);
         link_eval(M, &etac, &mt, &mct, &d10, 0, 1);
-        gconst = std::isfinite(etac) && variance(op.fam, y0, muc0) > 0.0 && row_valid(M, etac, y0, muc0) &&
-                 std::isfinite(d10) && d10 != 0.0;
+        V0 = variance(op.fam, y0, muc0);
+        yconst = std::isfinite(etac);
+    }
+    const bool bconst = yconst && V0 == 0.0;  // on the boundary
+
+    // ---- 2. IRLS
+    Work W(n, k);
+    if (!start(M, W.cur, W.part)) return eNoStart;
+    int total_iters = 0;
+    IrlsOut ir;
+    if (bconst) {
+        ir.ok = false;  // no iterate: the final solve below is all there is
+    } else if (W.cur.valid) {
+        ir = irls(M, W, std::max(op.max_iter - 1, 0), op.tol, op.inner_steps, op.inner_chol, sc, op.newton);
+    } else {
+        ir.ok = false;  // the start itself is not valid (cannot happen for R's starts)
+    }
+```
+
+범위 안의 $y_0$는 마지막 풀이 뒤에 정확한 해로 바꿔요. 바꾸는 조건은 넷이에요.
+
+- 분리가 아니고 계수가 있으며 절편 열이 겹친 열로 빠지지 않았어요.
+- $y_0$가 분포족의 범위 안이에요($V(y_0) > 0$).
+- $(\eta_0, y_0)$가 걸음 반감과 같은 유효 범위 안이에요(`row_valid`).
+- $d\mu/d\eta$가 $\eta_0$에서 유한하고 0이 아니에요(작업 잔차를 그것으로 나눠요).
+
+```cpp
+// csrc/regression/glm.cpp (glm_one)
+    // y constant inside the family's range (see bconst above): the iterations leave rounding
+    // in place of the exact solution (a slope of 1e-32, a scale of 1e-66 and a spurious t)
+    const bool gconst = (yconst && !bconst && !separated && have_beta && o.kept[0] && V0 > 0.0 &&
+                         row_valid(M, etac, y0, muc0) && std::isfinite(d10) && d10 != 0.0) ||
+                        bconst;
+    if (bconst) {
+        // on the boundary: every row of the fit at mu = y0 (residuals 0, as a separated row's);
+        // V(y0) = 0 leaves no information, so the covariance is NaN
+        o.params[0] = etac;
+        for (lint c = 1; c < k; ++c) o.params[c] = o.kept[c] ? 0.0 : kNaN;
+        std::fill(o.cov, o.cov + k * k, kNaN);
+        for (lint i = 0; i < n; ++i) {
+            const double r = y_minus_mu(op.fam, y[i], y0, muc0);
+            o.mu[i] = y0;
+            o.eta[i] = etac;
+            if (r == 0.0) {
+                o.rresp[i] = o.rpear[i] = o.rdev[i] = o.rwork[i] = 0.0;
+                continue;
+            }
+            // a row out of the fit off the boundary: the limits (its unit deviance is +inf, the
+            // Pearson residual +-inf, the working one too where mu' is 0)
+            o.rresp[i] = r;
+            o.rwork[i] = r / d10;
+            o.rpear[i] = std::sqrt(m[i]) * r / std::sqrt(V0);
+            o.rdev[i] = std::copysign(std::sqrt(m[i] * kInf), r);
+        }
+        D = P = 0.0;
+        converged = true;
+        total_iters = 0;  // the exact solution: no iteration (the final solve only finds the columns)
+    } else if (gconst) {
+        o.params[0] = etac;
+        for (lint c = 1; c < k; ++c) o.params[c] = o.kept[c] ? 0.0 : kNaN;
+        for (lint i = 0; i < n; ++i) {
+            const double r = y_minus_mu(op.fam, y[i], y0, muc0);
+            o.mu[i] = y0;
+            o.eta[i] = etac;
+            o.rresp[i] = r;
+            o.rwork[i] = r / d10;
+            o.rpear[i] = std::sqrt(m[i]) * r / std::sqrt(V0);
+            o.rdev[i] = std::copysign(std::sqrt(std::max(m[i] * unit_dev(op.fam, y[i], y0, muc0), 0.0)), r);
+        }
+        if (op.cov != kNonrobust && !(op.cov == kCluster && !(o.stats[gNGroups] >= 2.0)))  // the scores vanish
+            for (lint a = 0; a < k; ++a)
+                for (lint b = 0; b < k; ++b)
+                    if (o.kept[a] && o.kept[b]) o.cov[a * k + b] = 0.0;
+        D = P = 0.0;
     }
 ```
 
@@ -695,6 +763,31 @@ array([0.9999999999999997, 1.1547005383792512], dtype=float64)
 ```
 
 감마 inverse의 절편은 $1/3$을 반올림한 값이지만 적합값은 정확히 3이에요. 포아송의 절편 t는 $\log\mu = 0$($\mu = 1$)인지를 묻는 보통의 검정이라 유한한 값이고, 기울기만 정확히 0, p 1이에요.
+
+### 경계의 상수 y
+
+$g(y_0)$가 유한한데 $V(y_0) = 0$인 경우가 셋 있어요. 포아송 identity·sqrt의 $y$가 모두 0($g(0) = 0$, $V(0) = 0$)이고, 이항 log의 $y$가 모두 1($\log 1 = 0$, $V = \mu(1 - \mu) = 0$)이에요. 시행 수를 준 비율이 모두 1인 것도 같아요. 여기서도 $\mu = y_0$가 모든 행을 정확히 맞추는 최대우도 추정이고, 계수는 $(g(y_0), 0, \dots, 0) = (0, \dots, 0)$이에요.
+
+이 해는 분포족 범위의 경계에 있어서 IRLS가 닿지 못해요. IRLS로 풀면 $\mu$가 0(이항 log는 $1 - \mu$가 0)으로 선형으로만 다가가서, 해에서 $10^{-31}$(identity)이나 $10^{-36}$(sqrt) 크기만큼 떨어진 값에 머물고, identity는 `max_iter`에 닿아 `converged`가 False가 돼요. 그래서 커널은 반복하지 않아요(위 `bconst`). 시작점의 가중치로 마지막 풀이만 한 번 해 겹친 열을 정하고(겹친 열은 NaN), 그 뒤 정확한 해를 써요. `n_iter`는 0, `converged`는 True, `separation`은 False예요. 해가 유한하니 분리가 아니에요.
+
+쓰인 행은 모두 $\mu = y_0$라 반응·작업·Pearson·편차 잔차가 0이고(분리된 행과 같아요), 편차·Pearson χ²·귀무 편차도 0이에요. $y = 0$에서 $\mu = 0$인 포아송의 우도와 $y = 1$에서 $\mu = 1$인 이항의 우도는 1이라 `llf` = `llnull` = 0이에요. 척도를 `'X2'`·`'dev'`로 추정하면 척도가 0이라 `llf`는 위 φ = 0의 규칙대로 +inf예요. 가중치가 0인 행의 $y$가 $y_0$와 다르면 그 행만 극한값이에요(단위 편차가 +inf라 편차 잔차 ±inf).
+
+공분산은 전체를 NaN으로 둬요. $V(y_0) = 0$에서는 정보 행렬의 가중치 $m\mu'^2/V$가 정의되지 않아요(identity와 이항 log는 $1/0$, sqrt는 $\mu' = 2\eta = 0$이라 $0/0$). 해가 모수 공간의 경계에 있어서 공분산이 기대는 점근 정규 근사도 서지 않아요. 그래서 `bse`, t, p, `conf_int()`, `predict_interval()`이 NaN이고, 강건 공분산도 NaN이에요. 범위 안의 상수 $y$처럼 유한한 공분산과 p = 1을 내지 않는 것은, 그 값이 기댈 근사가 여기에는 없기 때문이에요.
+
+```python
+>>> z8 = sd.regression.glm(sd.zeros(8), x8, family="poisson", link="identity")
+>>> z8.params.tolist(), z8.converged, z8.n_iter, z8.separation
+([0.0, 0.0], True, 0, False)
+>>> z8.llf, z8.llnull, z8.deviance, z8.bse.tolist()
+(0.0, 0.0, 0.0, [nan, nan])
+>>> b8 = sd.regression.glm(sd.ones(8), x8, family="binomial", link="log", trials=sd.full(8, 3.0))
+>>> b8.params.tolist(), b8.n_iter, b8.conf_int().tolist()
+([0.0, 0.0], 0, [[nan, nan], [nan, nan]])
+>>> sd.regression.glm(sd.zeros(8), x8, family="poisson").separation
+True
+```
+
+포아송 log의 $y$가 모두 0은 $g(0) = -\infty$라 이 길이 아니고, 분리의 규칙대로 `separation`이 True예요.
 
 ### φ = 0의 로그우도
 
@@ -746,7 +839,7 @@ array([0.9999999999999997, 1.1547005383792512], dtype=float64)
 
 `pseudo_rsquared(kind='cs')`(기본)는 Cox–Snell의 $1 - e^{2(\ell_0 - \ell)/n}$이고, `summary()`가 적는 값이에요. $2(\ell - \ell_0)$이 `llr`이라 $-\operatorname{expm1}(-\text{llr}/n)$으로 구해요. `llr`이 작을 때 $1 - e^{-x}$를 그대로 빼면 상쇄로 자릿수를 잃기 때문이에요. `kind='mcf'`는 McFadden의 $1 - \ell/\ell_0$이에요. 둘 다 statsmodels의 이름과 정의예요. 반응이 모두 같은 완전 적합은 $\ell = \ell_0 = +\infty$라 `llr`이 $\infty - \infty$이고, 두 값 모두 $0/0$꼴이라 NaN이에요.
 
-척도를 추정하는 분포족의 다른 완전 적합은 $\ell = +\infty$이고 $\ell_0$은 유한하거나(정규·identity의 집중 로그우도) $-\infty$예요. 그때 `llr`은 $+\infty$이고, Cox–Snell은 $1 - e^{-\infty}$의 극한 1을 그대로 내요. 모형이 모든 것을 설명했다는 뜻으로 읽을 수 있는 값이에요. McFadden의 $\ell/\ell_0$은 그렇지 않아요. $\ell_0$이 유한하면 $\ell_0$의 부호에 따라 $1 - \ell/\ell_0$이 $+\infty$나 $-\infty$가 되고, $\ell_0 = -\infty$면 $\infty/\infty$예요. 어느 쪽도 0과 1 사이의 비율로 읽을 수 없어서, `llf`가 무한하면 McFadden은 NaN이에요. $\ell_0 = 0$일 때도(포아송의 $y$가 모두 0처럼 모든 행이 경계라 로그우도가 0) 나눌 수 없어 NaN이에요. 척도가 고정인 분포족의 상수 $y$는 $\ell = \ell_0$이 유한해서 두 값 모두 0이에요.
+척도를 추정하는 분포족의 다른 완전 적합은 $\ell = +\infty$이고 $\ell_0$은 유한하거나(정규·identity의 집중 로그우도) $-\infty$예요. 그때 `llr`은 $+\infty$이고, Cox–Snell은 $1 - e^{-\infty}$의 극한 1을 그대로 내요. 모형이 모든 것을 설명했다는 뜻으로 읽을 수 있는 값이에요. McFadden의 $\ell/\ell_0$은 그렇지 않아요. $\ell_0$이 유한하면 $\ell_0$의 부호에 따라 $1 - \ell/\ell_0$이 $+\infty$나 $-\infty$가 되고, $\ell_0 = -\infty$면 $\infty/\infty$예요. 어느 쪽도 0과 1 사이의 비율로 읽을 수 없어서, `llf`가 무한하면 McFadden은 NaN이에요. $\ell_0 = 0$일 때도(포아송의 $y$가 모두 0이나 위 경계의 상수 $y$처럼 모든 행이 경계라 로그우도가 0) 나눌 수 없어 NaN이에요. 그때 Cox–Snell은 `llr`이 0이라 0이에요. 척도가 고정인 분포족의 상수 $y$는 $\ell = \ell_0$이 유한해서 두 값 모두 0이에요.
 
 ```python
             else:

@@ -673,7 +673,7 @@ ValueError: summary(): takes one regression, not a batch of shape (3,)
 - 계수 벡터의 상대오차는 조건수(`condition_number`) $\kappa \le 10^{11}$이면 1e-14 이하예요. 잔차가 $\lVert X\hat\beta\rVert$의 100배인 문제까지 잰 값이에요.
 - 그보다 예민한 문제는 약속하지 않지만 잰 값은 $\kappa = 10^{12}$에서 1.6e-12, $10^{13}$에서 3.4e-9, $10^{14}$에서 2.5e-7이에요.
 - 표준오차는 상대오차가 대략 $\kappa \times 10^{-16}$이에요.
-- 데이터의 크기가 극단이어도 추론은 같아요. `y`와 `X`의 열을 1e-300에서 1e300 사이의 어떤 수로 곱해도 `tvalues`, `pvalues`, `rsquared`, `fvalue`는 (반올림 차이 안에서) 그대로이고, 계수와 표준오차는 곱한 비율만큼만 바뀌어요. 제곱합이 double의 범위를 벗어나는 크기에서도 그래요. 곱한 비율 때문에 계수나 표준오차 자체가 double의 범위를 넘으면 그 값만 inf(아래로 넘치면 0)이고, `tvalues`와 `pvalues`는 적합 안의 단위에서 계산해서 그때도 그대로예요.
+- 데이터의 크기가 극단이어도 추론은 같아요. `y`와 `X`의 열을 1e-300에서 1e300 사이의 어떤 수로 곱해도 `tvalues`, `pvalues`, `rsquared`, `fvalue`는 (반올림 차이 안에서) 그대로이고, 계수와 표준오차는 곱한 비율만큼만 바뀌어요. 제곱합이 double의 범위를 벗어나는 크기에서도 그래요. 곱한 비율 때문에 계수나 표준오차 자체가 double의 범위를 넘으면 그 값만 inf(아래로 넘치면 0)이고, `tvalues`와 `pvalues`는 적합 안의 단위에서 계산해서 그때도 그대로예요. `conf_int()`의 두 끝도 적합 안의 단위에서 계산한 뒤 곱한 비율만큼 옮기므로, 넘치면 끝마다 제 부호의 inf(음수 쪽이면 −inf, 아래로 넘치면 0)이고 NaN이 되지 않아요. `wls`, `gls`, 강건 표준오차(`cov_type`), 배치도 같아요.
 - 같은 입력이면 스레드 수와 상관없이 같은 비트가 나오고, 배치 결과는 하나씩 부른 결과와 같은 비트예요.
 
 ```python
@@ -685,6 +685,13 @@ array([1.7319466828098448e-300, 3.6074394763119597e-301], dtype=float64)
 >>> under = sd.regression.ols(score * 1e-300, hours * 1e300)
 >>> under.params[1], under.bse[1], round(float(under.tvalues[1]), 9)
 (0.0, 0.0, 11.234094447)
+>>> under.conf_int()[1]
+array([0.0, 0.0], dtype=float64)
+>>> over = sd.regression.ols(score * 1e300, hours * 1e-300)
+>>> over.params[1], over.bse[1], round(float(over.tvalues[1]), 9)
+(inf, inf, 11.234094447)
+>>> over.conf_int()[1], sd.regression.ols(-score * 1e300, hours * 1e-300).conf_int()[1]
+(array([inf, inf], dtype=float64), array([-inf, -inf], dtype=float64))
 ```
 
 위의 3차식 예에서 $y$가 정확히 $1 + 2t + 3t^2 + 4t^3$이면, 조건수가 5.7e10인데도 계수가 정확히 나와요.

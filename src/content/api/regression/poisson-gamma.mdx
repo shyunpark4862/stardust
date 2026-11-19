@@ -284,12 +284,15 @@ array([1.0982353830909853e-17,                    3.0], dtype=float64)
 
 경계에 닿은 해의 표준오차와 p값은 해가 안쪽에 있다고 보고 만든 근사라 그대로 믿기 어려워요.
 
-반대로 모든 행의 횟수가 같은 양수 $y_0$이면 군 사이에 차이가 없는 자료예요. 답은 정확히 $(\log y_0, 0)$이고, 기울기의 t는 0, p는 1이에요. 반복이 남기는 아주 작은 기울기 없이 0을 그대로 내요. 모든 행이 0이면 모든 군이 0만 있는 군이라 분리예요. 그때는 `llf`와 `llnull`이 모두 0이라 McFadden 의사 R²는 NaN이에요.
+반대로 모든 행의 횟수가 같은 양수 $y_0$이면 군 사이에 차이가 없는 자료예요. 답은 정확히 $(\log y_0, 0)$이고, 기울기의 t는 0, p는 1이에요. 반복이 남기는 아주 작은 기울기 없이 0을 그대로 내요. 모든 행이 0이면 모든 군이 0만 있는 군이라 분리예요. 그때는 `llf`와 `llnull`이 모두 0이라 McFadden 의사 R²는 NaN이에요. identity·sqrt 링크면 모든 행이 0이어도 분리가 아니고 해가 정확히 $(0, 0)$이에요. 평균 0에서는 분산도 0이라 계수의 정보가 없어서, 표준오차와 p값은 NaN이에요([`glm`](/api/regression/glm/#상수-y와-완전-적합)).
 
 ```python
 >>> same = sd.regression.glm([2] * 10, g, family='poisson')
 >>> same.params, same.pvalues
 (array([0.6931471805599453,                0.0], dtype=float64), array([0.02838500603904046,                 1.0], dtype=float64))
+>>> z0 = sd.regression.glm([0] * 10, g, family='poisson', link='identity')
+>>> z0.params, z0.separation, z0.n_iter, z0.bse
+(array([0.0, 0.0], dtype=float64), False, 0, array([nan, nan], dtype=float64))
 ```
 
 ## 감마 회귀

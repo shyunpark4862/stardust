@@ -759,6 +759,7 @@ def _pow2(m):
 |---|---|---|
 | `bse` | $\sqrt{\operatorname{diag}C'}$ | $\times f_y/f_{x_j}$ |
 | `tvalues` | $\beta'_j/\sqrt{C'_{jj}}$ | 단위가 없어요 |
+| `conf_int()` | $\beta'_j \mp q\sqrt{C'_{jj}}$ | 끝마다 $\times f_y/f_{x_j}$ |
 | `scale`, `ssr`, `ess` | $\text{SSR}'/\text{df}$ 등 | $\times f_y^2$ |
 | `cov_params()` | $C'$ | $\times (f_y/f_{x_a})(f_y/f_{x_b})$ |
 | `llf` | $\log\text{SSR}'$ | $+\,2\log f_y$ |
@@ -792,7 +793,7 @@ array([4.3403891381277555,  2.444902493779801], dtype=float64)
         return self._cached("tvalues", make)
 ```
 
-p는 이 t에서 구하므로 넘친 계수의 p도 맞아요. 구간 $\beta \pm q\cdot\text{bse}$는 데이터의 단위라 그 원소가 inf이거나 $\infty - \infty$ = NaN이에요. `linregress`도 p와 r을 이 t에서 만들고, r의 부호를 기울기가 아니라 t에서 읽어요(t가 유한하고 0이 아닐 때). 기울기가 아래로 넘쳐 0이 되어도 r의 부호가 남아요.
+p는 이 t에서 구하므로 넘친 계수의 p도 맞아요. `linregress`도 p와 r을 이 t에서 만들고, r의 부호를 기울기가 아니라 t에서 읽어요(t가 유한하고 0이 아닐 때). 기울기가 아래로 넘쳐 0이 되어도 r의 부호가 남아요.
 
 ```python
 >>> big = sd.regression.ols(1e300 * ys, 1e-300 * xs)
@@ -801,6 +802,39 @@ p는 이 t에서 구하므로 넘친 계수의 p도 맞아요. 구간 $\beta \pm
 >>> sd.regression.linregress(1e160 * xs, -1e-165 * ys)
 LinregressResult(slope=0.0, intercept=-9.706892633147886e-166, rvalue=-0.49929723052004504, pvalue=0.025005323114196457, stderr=0.0, intercept_stderr=2.2364106821387434e-166)
 ```
+
+신뢰구간도 같은 이유로 적합의 단위에서 만들어요. 데이터 단위의 $\beta \pm q\cdot\text{bse}$로 구하면 계수와 `bse`가 함께 inf로 넘친 원소에서 $\infty - \infty$ = NaN이 나와요. 그래서 `_LinearResult.conf_int`는 두 끝을 적합의 단위에서 $\beta'_j \mp q\sqrt{C'_{jj}}$로 구한 뒤 계수처럼 $f_y/f_{x_j}$를 곱해요. 적합의 단위에서는 두 끝이 유한하고, 배율을 곱할 때 끝마다 제 부호를 지킨 채 넘쳐요. 그래서 넘친 끝은 $+\infty$나 $-\infty$이고 아래로 넘친 끝은 0이며, NaN은 나오지 않아요. 넘치지 않은 원소는 데이터 단위로 구한 구간과 반올림 안에서 같아요. 척도를 바꾸지 않은 적합(`beff_params_s`가 없음)은 기본 클래스의 $\beta \pm q\cdot\text{bse}$ 그대로예요([추론](/internals/regression/inference/)). `ols`·`wls`·`gls`와 강건 공분산, 배치가 모두 이 길이에요.
+
+```python
+    def conf_int(self, *, alpha=0.05):
+        """(..., k, 2): the lower and upper bounds of the 1 - alpha confidence intervals
+        (alpha keyword-only)."""
+        if "beff_params_s" not in self._extra:
+            return super().conf_int(alpha=alpha)
+        alpha = _check_alpha(alpha, "conf_int")
+        # the ends in the fit's own units, beta' -+ q sqrt(C'), then scaled as the parameter is:
+        # each end keeps its sign and may overflow to +-inf, never inf - inf = NaN
+        q = self._dist().iccdf(alpha / 2)
+        b = self._extra["beff_params_s"]
+        half = q * _sd.sqrt(_linalg.diagonal(self._cov_s()))
+        fy = self._fy()
+        fy1 = _expand(fy, 1) if isinstance(fy, _sd.ndarray) else fy
+        fxk = self._extra["fx"]
+        return _sd.stack([(b - half) * fy1 / fxk, (b + half) * fy1 / fxk], axis=-1)
+```
+
+```python
+>>> base.conf_int().tolist()
+[[0.5008368140012105, 1.4405417126283668], [0.09028202653263795, 1.1931092216754058]]
+>>> big.conf_int().tolist()
+[[5.008368140012105e+299, 1.440541712628367e+300], [inf, inf]]
+>>> sd.regression.ols(-1e300 * ys, 1e-300 * xs).conf_int()[1].tolist()
+[-inf, -inf]
+>>> sd.regression.ols(1e-300 * ys, 1e300 * xs).conf_int()[1].tolist()
+[0.0, 0.0]
+```
+
+절편의 구간은 $10^{300}$배 그대로이고, 기울기는 참값 자체가 double 밖이라 두 끝이 모두 inf(부호를 바꾸면 −inf, 아래로 넘치면 0)예요. 구간이 양수라는 정보는 남아요.
 
 ## NIST StRD
 

@@ -498,7 +498,13 @@ array([nan], dtype=float64)
 nan
 ```
 
-[`lasso`](/api/regression/lasso/)와 [`elastic_net`](/api/regression/elastic-net/)의 `alpha=0`도 이 해와 비트까지 같아요. 그쪽은 `alpha > 0`이면 반복해서 풀지만, `alpha=0`에서는 반복 없이 같은 최소제곱 해를 내요.
+[`lasso`](/api/regression/lasso/)와 [`elastic_net`](/api/regression/elastic-net/)의 `alpha=0`도 이 해와 비트까지 같아요. 그쪽은 `alpha > 0`이면 반복해서 풀지만, `alpha=0`에서는 반복 없이 같은 최소제곱 해를 내요. 같은 것은 계수이고, 그쪽의 `df_model`은 0 아닌 계수의 수라서 똑같은 두 열을 둘 다 세요.
+
+```python
+>>> zl = sd.regression.lasso(y, Xd, alpha=0.0)
+>>> zl.params.tolist() == sd.regression.ridge(y, Xd, alpha=0.0).params.tolist(), zl.df_model
+(True, 3.0)
+```
 
 벌점을 준 GLM인 [`penalized_glm`](/api/regression/penalized-glm/)은 다르게 해요. 거기서 `alpha=0`은 벌점 없는 [`glm`](/api/regression/glm/)의 적합 그대로라서, 똑같은 열의 뒤쪽 계수가 `ols`처럼 NaN이에요. 릿지의 결과는 예측을 위한 것이라 경로를 따라 계수가 이어지는 편이 더 쓸모 있고, `penalized_glm`의 `alpha=0`은 `glm`과 같은 답(분리 판정 포함)을 주는 편이 쓸모 있기 때문이에요.
 

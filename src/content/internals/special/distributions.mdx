@@ -281,7 +281,7 @@ inline double chi2_tiny(double v, double x) {
 
 ### chdtri: Boost의 역 불완전 감마
 
-`chdtri(v, p)`는 scipy와 같이 **`chdtrc`의** 역함수예요: `2 * gammainccinv(v/2, p)`. `gammainccinv`는 $q \ge 10^{-300}$이고 $a < 10^{10}$이면 Boost.Math의 `gamma_q_inv`를 부르고 그 근을 우리 불완전 감마로 Halley 한 걸음 다듬어요(`igam_polish`). 결과가 정상 범위가 아니면(서브노멀 근, 0) stardust의 역함수로 다시 풀어요. Boost가 안에서 하는 일은 이래요(`special_functions/detail/igamma_inverse.hpp`, Boost 문서 [11]).
+`chdtri(v, p)`는 scipy와 같이 **`chdtrc`의** 역함수예요: `2 * gammainccinv(v/2, p)`. `gammainccinv`는 $q \ge 10^{-300}$이고 $2^{-900} \le a < 10^{10}$이면 Boost.Math의 `gamma_q_inv`를 부르고 그 근을 우리 불완전 감마로 Halley 한 걸음 다듬어요(`igam_polish`). 결과가 정상 범위가 아니면(서브노멀 근, 0) stardust의 역함수로 다시 풀어요. Boost가 안에서 하는 일은 이래요(`special_functions/detail/igamma_inverse.hpp`, Boost 문서 [11]).
 
 1. **초기값: DiDonato–Morris(1986) [2]의 식들.** $a = 1$이면 $x = -\log q$(정확한 답)예요. $a < 1$이면 $b = q\,\Gamma(a)$의 크기로 다섯 식(논문의 식 21–25) 중 하나를 골라요. 예를 들어 $b$가 아주 작으면 $y = -\log b$에 대한 점근 전개 $x \approx y + c_1 + c_2/y + c_3/y^2 + c_4/y^3 + c_5/y^4$, $c_1 = (a-1)\log y$예요. $a > 1$이면 정규 편차 $s$(식 32의 유리 근사로 $p$나 $q$에서 구해요)로 Cornish–Fisher형 전개
 
