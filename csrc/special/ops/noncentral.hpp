@@ -949,9 +949,13 @@ inline Scaled ncf_s(double dfn, double dfd, double nc, double x, bool upper, boo
     if (g.x.hi < distr_detail::kTinyArg) {
         // w below 2^-1000: only the j = 0 term counts (the next carries a factor w), fdtr's own series;
         // wide, from I_w(a, b) = w^a / (a B(a, b)) (1 + O(w)) in logs (fdtr's value may underflow).
-        // (The factor is mu w (a + b) / a, with w = dfn x / dfd here: for a dfd so large that it
-        // is not below 2^-60, the term counts and the sum is not this one.)
-        if (!(0.5 * nc * (x * (dfn / dfd)) * (0.5 * dfn + 0.5 * dfd + 1.0) <= 0x1p-60 * std::min(1.0, 0.5 * dfn))) return kNotSummed;
+        // (The terms' ratio t_1 / t_0 = mu I_w(a + 1, b) / I_w(a, b) = mu w (a + b) / (a + 1) to
+        // first order, with w = dfn x / dfd here; it is taken against the lower tail and, for
+        // the upper one 1 - e^-mu ~ mu, against mu: max(1, mu) w (a + b) / (a + 1) <= 2^-60, or
+        // the sum is not this one. It was (a + b + 1) / min(1, a): a dfn below ~2^-997 never
+        // passed, NaN, while 1e-300 had its value; 2026-11-19.)
+        if (!(std::max(1.0, 0.5 * nc) * (x * (dfn / dfd)) * ((0.5 * dfn + 0.5 * dfd) / (0.5 * dfn + 1.0)) <= 0x1p-60))
+            return kNotSummed;
         Scaled lower = scaled(std::exp(-0.5 * nc) * Fdtr::f(dfn, dfd, x));
         if (wide && !(value(lower) >= 0x1p-1000)) {
             const double a = 0.5 * dfn, b = 0.5 * dfd;
@@ -1362,6 +1366,14 @@ inline bool ncx2_edge(double df, double nc, double x, bool upper, double& out) {
     } else if (x == 0.0) {
         // P(X <= 0): the point mass e^(-nc/2) for df = 0 (chdtr(0, 0) is NaN, as gammainc(0, 0)), else 0
         out = df == 0.0 ? kNaN : (upper ? 1.0 : 0.0);
+    } else if (df < 0x1p-1021 && df > 0.0 && nc >= 0x1p-899) {
+        // df/2 below the normals (gammainc's subnormal shapes): the df = 0 values. The j = 0
+        // term's Q(df/2, x/2) ~ (df/2) E1(x/2) is below 2^-1022 * 745 and, beside the rest
+        // (at least mu e^-mu e^-y; 1 - e^-mu ~ mu next to 0), under 2^-110 of the tail for
+        // mu >= 2^-900 (2026-11-19; the upper tail was NaN, chndtrc(2^-1022, 1, 1e-300))
+        double o;
+        if (!ncx2_edge(0.0, nc, x, upper, o)) o = nc_detail::ncx2(0.0, nc, x, upper);
+        out = o;
     } else if (x < 0x1p-1021) {
         // x/2 below the normals: only the j = 0 term counts (the next carries a factor x/2),
         // e^-mu P; the upper tail as Q + P (1 - e^-mu), both positive (1 - e^-mu P would

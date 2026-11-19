@@ -174,14 +174,12 @@ nb::object lstsq(nb::handle ao, nb::handle bo, nb::handle rtol_o) {
                 if (all_zero) {
                     rank = 0;
                     std::fill(xi, xi + n * r.k, T(0));
-                } else if (r.k > 0 && rank > 0 && sv.get()[rank - 1] < kTinySingular) {
-                    // a kept singular value in the subnormals (a matrix of tiny entries):
-                    // gelsd's 1/sigma overflowed into NaN where entries are 0 or finite
-                    // (diag(5e-324, 5e-324) with rtol=1e-300). gelsd's rank, the SVD solve.
-                    if (!pack(a.dtype(), a.data() + off[0], m, n, a.stride(-2), a.stride(-1), A, lda, true)) return kNonFinite;
-                    if (!pack(y.dtype(), y.data() + off[1], m, r.k, r.rs, r.cs, B, ldb, true)) return kNonFiniteB;
-                    if (const int code = svd_solve(rank)) return code;
                 } else {
+                    // (A kept value in the subnormals needs nothing here: with rcond >= eps it
+                    // means sigma_max < 2^-970, and gelsd scales such a matrix (norm below
+                    // its smlnum, ~1e-146) into range and the solution back, so exact zeros
+                    // stay zero and overflow is inf: 9000 random tiny systems gave no NaN,
+                    // the same as numpy's; 2026-11-19.)
                     for (lint j = 0; j < r.k; ++j) std::copy(B + j * ldb, B + j * ldb + n, xi + j * n);
                 }
             } else {

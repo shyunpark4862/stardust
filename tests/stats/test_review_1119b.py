@@ -94,7 +94,8 @@ def test_noncentral_chi_square_small_df_keeps_values():
     # a Poisson mixture with a point mass at 0 (user decision 2026-11-19: the intended exception)
     X = S.NoncentralChiSquared(df=2.0**-1022, nc=1.0)
     assert X.cdf(1.0) == pytest.approx(0.7328798037968203, rel=1e-14)
-    assert X.cdf(0.0) == 0.0 and math.isfinite(X.pdf(1.0)) and math.isfinite(X.icdf(0.9))
+    # (cdf(0) holds the point mass, T46: test_review_1119c.py)
+    assert X.cdf(0.0) == math.exp(-0.5) and math.isfinite(X.pdf(1.0)) and math.isfinite(X.icdf(0.9))
     assert math.isnan(S.NoncentralChiSquared(df=2.0**-1022, nc=0.0).cdf(1.0))  # ChiSquared's
 
 

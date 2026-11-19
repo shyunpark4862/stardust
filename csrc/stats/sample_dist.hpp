@@ -539,6 +539,12 @@ struct Custom<Rayleigh> {
     static double draw(Words& w, double scale) { return scale * std::sqrt(2.0 * std_exp(w)); }
 };
 
+// A degree of freedom below 2^-1021 has no exact half (the subnormals and the smallest
+// normal binade): the t's sample is not drawn (its half has no gamma to draw from: NaN, the
+// same boundary as the value methods' StudentT::halvable, docs/api/stats.md §2.2, §2.5);
+// df = inf is the normal's.
+inline constexpr double kMinSampleDf = 0x1p-1021;
+
 template <>
 struct Custom<Gamma> {
     static constexpr bool kExtra = true;  // draws extra words
@@ -556,8 +562,14 @@ struct Custom<Gamma> {
 template <>
 struct Custom<ChiSquared> {
     static constexpr bool kExtra = true;  // draws extra words
-    static GammaPrep prep(double df) { return gamma_prep(0.5 * df); }
-    static double draw(Words& w, const GammaPrep& g) { return 2.0 * gamma_draw(w, g); }
+    struct State {
+        GammaPrep g;
+        bool nan;  // df < 2^-1021: NaN, as the value methods (user decision 2026-11-19; was 0)
+    };
+    static State prep(double df) { return {gamma_prep(0.5 * df), df < kMinSampleDf}; }
+    static double draw(Words& w, const State& s) {
+        return s.nan ? std::numeric_limits<double>::quiet_NaN() : 2.0 * gamma_draw(w, s.g);
+    }
 };
 template <>
 struct Custom<InverseGamma> {
@@ -619,11 +631,6 @@ struct Custom<Beta> {
         return beta_of_logs(lx, log_gamma_draw(w, s.gb));
     }
 };
-// A degree of freedom below 2^-1021 has no exact half (the subnormals and the smallest
-// normal binade): the t's sample is not drawn (its half has no gamma to draw from: NaN, the
-// same boundary as the value methods' StudentT::halvable, docs/api/stats.md §2.2, §2.5);
-// df = inf is the normal's.
-inline constexpr double kMinSampleDf = 0x1p-1021;
 
 // Z sqrt(df / V), V = 2 G(df / 2): Z exp((log df - log 2 - log G) / 2)
 template <>
@@ -687,7 +694,7 @@ struct Custom<NoncentralChiSquared> {
                 gamma_prep(df > 1.0 ? 0.5 * (df - 1.0) : 1.0)};
     }
     static double draw(Words& w, const State& s) {
-        if (s.snc == 0.0) return Custom<ChiSquared>::draw(w, s.g0);
+        if (s.snc == 0.0) return Custom<ChiSquared>::draw(w, {s.g0, s.df < kMinSampleDf});
         if (s.df >= 1.0) {
             const double z = std_normal(w) + s.snc;
             return s.df == 1.0 ? z * z : 2.0 * gamma_draw(w, s.g1) + z * z;

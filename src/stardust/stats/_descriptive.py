@@ -304,7 +304,9 @@ def describe(x, /, *, axis=None, correction=1, bias=True, nan_policy="propagate"
 def _orders(order, name):
     if order is None:
         raise TypeError(f"{name}(): missing the keyword argument 'order'")
-    scalar = isinstance(order, (bool, int, float))
+    # one number (numpy integers too, API.md §2; an int beyond the doubles is "'order' is out
+    # of range") or a sequence of them
+    scalar = isinstance(order, bool) or _real_option(order, name, "order") is not None
     try:
         items = [order] if scalar else list(order.tolist() if isinstance(order, _sd_core.ndarray) else order)
     except TypeError:
@@ -313,11 +315,12 @@ def _orders(order, name):
         raise ValueError(f"{name}(): 'order' must not be empty")
     out = []
     for o in items:
-        if isinstance(o, bool) or not isinstance(o, (int, float)):
+        v = _real_option(o, name, "order")
+        if v is None:
             raise TypeError(f"{name}(): 'order' must be an int or a sequence of ints, not {_type_name(o)}")
-        if o != math.floor(o):
+        if not (math.isfinite(v) and v == math.floor(v)):
             raise ValueError(f"{name}(): every 'order' must be integral")
-        out.append(float(o))
+        out.append(v)
     return out, scalar
 
 

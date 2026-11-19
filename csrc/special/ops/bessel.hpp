@@ -56,7 +56,8 @@ inline constexpr double kTiny = 0x1p-1000;
 
 // The loops below are bounded (docs/design/stats.md 1.3): a recurrence over the order takes
 // at most kMaxOrderSteps steps and a continued fraction at most kMaxCfTerms terms (about
-// 0.25 s each: jv(2e7, 1e7), 1e7 steps, takes 0.23 s); a call that would need more is NaN.
+// 0.25 s each: yv(2e7, 1e7), 1e7 steps, takes 0.23 s; jv there is 0 at once, j_underflows);
+// a call that would need more is NaN.
 // J and Y have no uniform expansion here, so that is x > |nu| > 1e7 below the Hankel
 // expansion's reach (x < (nu + 1)^2 / 4, jy_upward), and |nu| - x > 1e7 where J is not
 // proven to underflow (j_underflows; order_saturates gives J = 0 and Y = -inf at once).

@@ -52,7 +52,7 @@ def test_rotated():
 
 @pytest.mark.parametrize("rtol", [None, 1e-300, 1e-12])
 def test_gelsd_path_with_tiny_values(rtol):
-    # rtol >= eps is gelsd; with every value tiny it kept them and gave NaN at rtol=1e-300
+    # rtol >= eps is gelsd (scales a tiny matrix itself; numpy's values), 1e-300 the SVD path
     a = _a([[5e-324, 0.0], [0.0, 5e-324]])
     r = L.lstsq(a, _a([1.0, 0.0]), rtol=rtol)
     assert r.rank == 2 and r.solution.tolist() == [math.inf, 0.0]

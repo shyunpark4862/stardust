@@ -501,25 +501,38 @@ struct NoncentralChiSquared {
         num::DD l;
         return log_density_bulk(x, df, nc, l) ? l : summed(x, df, nc).log;
     }
+    // (df < 2^-1021 with nc > 0, atom below: the density off 0 is the df = 0 limit's, the
+    // mixture's j >= 1 terms; at 0 the point mass, inf as density0's df < 2)
     static double pdf(double x, double df, double nc) {
         if (nc == 0.0) return ChiSquared::pdf(x, df);
         if (x < 0.0 || std::isinf(x)) return 0.0;
         if (x == 0.0) return density0(df, nc);
-        return ncd::density(log_density(x, df, nc));
+        return ncd::density(log_density(x, atom(df, nc) ? 0.0 : df, nc));
     }
     static double logpdf(double x, double df, double nc) {
         if (nc == 0.0) return ChiSquared::logpdf(x, df);
         if (x < 0.0 || std::isinf(x)) return -kInf;
+        if (atom(df, nc)) df = x == 0.0 ? df : 0.0;
         if (x == 0.0) return std::log(density0(df, nc));
         const num::DD l = log_density(x, df, nc);
         return l.hi + l.lo;
     }
+    // df < 2^-1021 with nc > 0 (T44, user decision 2026-11-19): the df = 0 limit, a point mass
+    // e^(-nc/2) at 0 (the j = 0 term, chi-square(df) with a shape below the normals: its whole
+    // mass lies below every positive double but the last few) plus the rest, a Poisson mixture
+    // of chi-square(2j), j >= 1. cdf(0) holds the mass, ccdf(0) its complement, the inverses
+    // give 0 for a target inside it, the entropy is -inf (no density for the atom). The
+    // functions are special's at df = 0 (chndtr's point mass). df = 0 itself stays outside the
+    // domain (NaN), as ChiSquared's.
+    static bool atom(double df, double nc) { return df < 0x1p-1021 && nc > 0.0; }
     static double cdf(double x, double df, double nc) {
         if (nc == 0.0) return ChiSquared::cdf(x, df);
+        if (atom(df, nc)) return x < 0.0 ? 0.0 : (x == 0.0 ? std::exp(-0.5 * nc) : special::Chndtr::f(0.0, nc, x));
         return x <= 0.0 ? 0.0 : special::Chndtr::f(df, nc, x);
     }
     static double ccdf(double x, double df, double nc) {
         if (nc == 0.0) return ChiSquared::ccdf(x, df);
+        if (atom(df, nc)) return x < 0.0 ? 1.0 : (x == 0.0 ? -std::expm1(-0.5 * nc) : special::Chndtrc::f(0.0, nc, x));
         return x <= 0.0 ? 1.0 : special::Chndtrc::f(df, nc, x);
     }
     // the tail as m 2^e (sd.special's chndtr sum before its rounding: the log forms and
@@ -568,11 +581,19 @@ struct NoncentralChiSquared {
     }
     static double logcdf(double x, double df, double nc) {
         if (nc == 0.0) return ChiSquared::logcdf(x, df);
+        if (atom(df, nc)) {
+            if (x <= 0.0) return x < 0.0 ? -kInf : -0.5 * nc;
+            df = 0.0;
+        }
         if (x <= 0.0) return -kInf;
         return log_of_tail(x, df, nc, false);
     }
     static double logccdf(double x, double df, double nc) {
         if (nc == 0.0) return ChiSquared::logccdf(x, df);
+        if (atom(df, nc)) {
+            if (x <= 0.0) return x < 0.0 ? 0.0 : std::log(-std::expm1(-0.5 * nc));
+            df = 0.0;
+        }
         if (x <= 0.0) return 0.0;
         return log_of_tail(x, df, nc, true);
     }
@@ -581,6 +602,10 @@ struct NoncentralChiSquared {
         if (nc == 0.0) return upper ? ChiSquared::iccdf(p, df) : ChiSquared::icdf(p, df);
         if (p == 0.0) return upper ? kInf : 0.0;
         if (p == 1.0) return upper ? 0.0 : kInf;
+        if (atom(df, nc)) {  // a target inside the point mass: 0
+            if (upper ? p >= -std::expm1(-0.5 * nc) : p <= std::exp(-0.5 * nc)) return 0.0;
+            df = 0.0;
+        }
         const double x0 = special::nc_detail::ncx2_start(df, nc, upper ? 1.0 - p : p);
         const ncd::Target tg = ncd::target_p(p, upper);
         double out;
@@ -596,6 +621,10 @@ struct NoncentralChiSquared {
         if (nc == 0.0) return upper ? ChiSquared::ilogccdf(lp, df) : ChiSquared::ilogcdf(lp, df);
         if (!(lp <= 0.0)) return kNaN;
         if (lp == -kInf) return inv(0.0, df, nc, upper);
+        if (atom(df, nc) && lp != 0.0) {  // (lp = 0: p = 1, the end)
+            if (upper ? lp >= std::log(-std::expm1(-0.5 * nc)) : lp <= -0.5 * nc) return 0.0;
+            df = 0.0;
+        }
         if (!ncd::log_target_ok(lp)) return kNaN;
         const ncd::Target tg = ncd::target_log(lp, upper);
         if (tg.p.m == 0.0) return inv(1.0, df, nc, upper);  // 1 - e^lp rounds to 0: p = 1
@@ -643,6 +672,7 @@ struct NoncentralChiSquared {
     }
     static double entropy(double df, double nc) {
         if (nc == 0.0) return ChiSquared::entropy(df);
+        if (atom(df, nc)) return -kInf;  // a point mass: no finite differential entropy
         const double m = std::max(df + nc, 1e-3);  // x = m e^u
         if (!std::isfinite(m)) return kNaN;
         return ncd::entropy([&](double x) { return x > 0.0 && std::isfinite(x) ? log_density(x, df, nc) : num::DD{-kInf, 0.0}; },
