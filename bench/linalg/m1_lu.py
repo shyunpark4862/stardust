@@ -43,7 +43,6 @@ def cases():
         (100, 32, 32),
         (10, 256, 256),
     ]:
-        n = shape[-1]
         a = rng.standard_normal(shape)  # general: LU pivots (no diagonal boost)
         b = rng.standard_normal(shape[:-1])  # one vector per matrix: (..., n)
         yield shape, a, b
@@ -63,7 +62,7 @@ def main():
     )
     emit(f"{'func':8} {'shape':>16} {'sdla us':>10} {'numpy us':>10} {'scipy us':>10} {'np/sdla':>8} {'sp/sdla':>8}")
     for shape, a, b in cases():
-        A, B = sdnp.asarray(a), sdnp.asarray(b)
+        A = sdnp.asarray(a)
         bm = b[..., None]  # numpy 2 and sdla read a 1-D b as one vector; batched b needs a column
         Bm = sdnp.asarray(np.ascontiguousarray(bm))
         rows = {

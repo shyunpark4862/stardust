@@ -60,7 +60,7 @@ sd.special이 부르는 Boost.Math 헤더만 옮겨 둔 것이다 (docs/design/s
 - 라이선스: Boost Software License 1.0 (`LICENSE`)
 - 헤더 {len(files)}개, {size / 1e6:.1f} MB. standalone 모드(`BOOST_MATH_STANDALONE`)라 다른 Boost 라이브러리가 필요 없다.
 - 고치지 않는다. 다시 만들려면 `tools/vendor_boost_math.py <checkout>`
-""")
+""")  # noqa: E501  (the README's text, one bullet per line)
     print(f"{len(files)} headers, {size / 1e6:.1f} MB, commit {commit} -> {OUT.relative_to(ROOT)}")
 
 

@@ -4,7 +4,6 @@ import numpy as np
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
-from hypothesis.extra import numpy as hnp
 
 import stardust as sd
 
@@ -153,11 +152,11 @@ def test_T_and_mT():
     assert_same(a3.mT, np.swapaxes(n3, -1, -2))
     assert_same(sd.matrix_transpose(a3), np.swapaxes(n3, -1, -2))
     with pytest.raises(ValueError):
-        a3.T  # only 2-D (docs/api/array.md §10.1)
+        a3.T  # noqa: B018  # only 2-D (docs/api/array.md §10.1)
     with pytest.raises(ValueError):
-        sd.arange(3).T
+        sd.arange(3).T  # noqa: B018
     with pytest.raises(ValueError):
-        sd.arange(3).mT
+        sd.arange(3).mT  # noqa: B018
 
 
 def test_permute_dims():

@@ -1781,7 +1781,8 @@ def _ref_nctdtrit(df, d, p):
 
 
 def _ncf_logpdf(dfn, dfd, nc, x):
-    """log density (arb in, arb out): e^(-nc/2) (central F density) 1F1((dfn+dfd)/2; dfn/2; nc dfn x / (2 (dfn x + dfd)))."""
+    """log density (arb in, arb out): e^(-nc/2) (central F density)
+    1F1((dfn+dfd)/2; dfn/2; nc dfn x / (2 (dfn x + dfd)))."""
     dfn, dfd, nc, x = _a(dfn), _a(dfd), _a(nc), _a(x)
     a, b = dfn / 2, dfd / 2
     central = a * (dfn / dfd).log() + (a - 1) * x.log() - (a + b) * (dfn * x / dfd).log1p() - _lbeta(a, b)
@@ -2192,7 +2193,7 @@ def build_reduce():
     Each case's values are settled together (rigorous over the whole list)."""
     rng = np.random.default_rng(20261114)
     cases = []
-    for k in range(120):
+    for _ in range(120):
         n = int(rng.choice([1, 2, 3, 10, 100, 1000, 5000]))
         scale = float(rng.choice([1e-3, 1, 10, 300, 1e5]))
         x = rng.normal(0, scale, n) + float(rng.choice([0.0, -700.0, 700.0, 1e10]))

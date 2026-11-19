@@ -19,7 +19,7 @@ from hypothesis.extra import numpy as hnp
 
 import stardust as sd
 
-from .conftest import ALL_DTYPES, NP_DTYPE, assert_same, assert_ulp
+from .conftest import NP_DTYPE, assert_same, assert_ulp
 
 B, I, F, C = sd.bool, sd.int64, sd.float64, sd.complex128
 ORDER = [B, I, F, C]
@@ -455,7 +455,7 @@ def test_complex_has_no_order():
         with pytest.raises(TypeError):
             fn(c, c)
     with pytest.raises(TypeError):
-        c < c
+        c < c  # noqa: B015
     with pytest.raises(TypeError):
         sd.floor(c)
     assert (c == c).tolist() == [True]
@@ -483,7 +483,7 @@ def test_python_scalar_promotion():
     with pytest.raises(OverflowError):
         i + 2**70  # must become int64 (docs/api/array.md §1.5)
     with pytest.raises(OverflowError):
-        i < 2**70
+        i < 2**70  # noqa: B015
 
 
 @pytest.mark.parametrize(

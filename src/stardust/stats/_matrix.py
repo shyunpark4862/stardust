@@ -1,12 +1,13 @@
 """Matrix distributions (T10, docs/api/stats.md §3.1, docs/design/stats.md §6.3; decisions T30).
 
 Wishart(df=, scale=), InverseWishart(df=, scale=) and MatrixNormal(mu=, rowcov=, colcov=),
-with scipy's names (mu for the matrix normal's mean: T18, and mean() is a method) and methods (pdf, logpdf, sample, mean, mode, var, entropy; the matrix
-normal without mode and var). Batched as the multivariate ones (T29): the leading axes of the
-parameters broadcast, an input x (..., p, p) (or (..., n, p)) broadcasts its leading axes
-against them. A matrix argument's lower triangle is read; x not positive definite is off the
-support (pdf 0). Invalid parameters (df <= p - 1, a scale that is not positive definite) give
-NaN in every method of that batch element (T8).
+with scipy's names (mu for the matrix normal's mean: T18, and mean() is a method) and methods
+(pdf, logpdf, sample, mean, mode, var, entropy; the matrix normal without mode and var).
+Batched as the multivariate ones (T29): the leading axes of the parameters broadcast, an input
+x (..., p, p) (or (..., n, p)) broadcasts its leading axes against them. A matrix argument's
+lower triangle is read; x not positive definite is off the support (pdf 0). Invalid parameters
+(df <= p - 1, a scale that is not positive definite) give NaN in every method of that batch
+element (T8).
 """
 
 import math
@@ -38,7 +39,6 @@ class _MatrixBase:
 
     def _points(self, x, name):
         sd = _sd_core
-        cls = type(self).__name__
         a = _array(x, f"{name}()", "x", 2)
         if tuple(a.shape[-2:]) != self._shape:
             raise ValueError(f"{name}(): 'x' must be {self._shape} on its last two axes, not {tuple(a.shape[-2:])}")
@@ -209,8 +209,8 @@ class InverseWishart(_WishartBase):
 
 class MatrixNormal(_MatrixBase):
     """The matrix normal MN(mu, rowcov, colcov) of n x p matrices: vec(X) ~ N(vec(mu),
-    colcov (x) rowcov) (scipy's matrix_normal(mean, rowcov, colcov)); rowcov (..., n, n) and colcov (..., p, p) symmetric positive definite
-    (their lower triangles read)."""
+    colcov (x) rowcov) (scipy's matrix_normal(mean, rowcov, colcov)); rowcov (..., n, n) and
+    colcov (..., p, p) symmetric positive definite (their lower triangles read)."""
 
     __slots__ = ("_mean", "_U", "_Ul", "_V", "_Vl", "_lu", "_lv", "_fast")
     _names = ("mu", "rowcov", "colcov")

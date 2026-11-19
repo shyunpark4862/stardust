@@ -9,8 +9,9 @@ and nls.control(tol = 1e-10, maxiter = 1000) (1e-8 for twod), Gauss-Newton or, w
 algorithm = "port": coefficients, summary()'s standard errors, t values and p-values,
 sigma, the residual degrees of freedom, the deviance (weighted sum of squares), fitted values,
 residuals, logLik, AIC and BIC (logLik.nls counts sigma: df = p + 1). Problems: an
-exponential decay, the same with weights (some zero), R's Puromycin (treated: Michaelis-Menten), a model of two predictors (x is (n, 2)), a logistic
-curve, and the decay with a lower bound that is active at the solution (port).
+exponential decay, the same with weights (some zero), R's Puromycin (treated:
+Michaelis-Menten), a model of two predictors (x is (n, 2)), a logistic curve, and the decay
+with a lower bound that is active at the solution (port).
 """
 
 import json

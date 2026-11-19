@@ -142,7 +142,6 @@ class _Batched:
     def _points(self, x, name):
         """x (..., d) against the batch: (x rows (M, d), batch index (M,), the result's shape)."""
         sd = _sd_core
-        cls = type(self).__name__
         a = _array(x, f"{name}()", "x", 1)
         if a.shape[-1] != self._d:
             raise ValueError(f"{name}(): 'x' must have {self._d} components on its last axis, not {a.shape[-1]}")

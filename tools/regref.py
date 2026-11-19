@@ -82,7 +82,7 @@ def _solve_ls(Z, v):
     try:
         Gi = G.inv()
     except ZeroDivisionError:
-        raise ValueError("singular auxiliary regression")
+        raise ValueError("singular auxiliary regression") from None
     c = [sum((Gi[a, b] * h[b] for b in range(k)), arb(0)) for a in range(k)]
     return c, [sum((r[a] * c[a] for a in range(k)), arb(0)) for r in Z]
 
@@ -109,7 +109,7 @@ def _fit(y, X, w, intercept, alpha, t_guess, groups=None, maxlags=None):
     try:
         Ginv = Gm.inv()
     except ZeroDivisionError:
-        raise ValueError("X^T W X is singular (or not certified nonsingular at this precision)")
+        raise ValueError("X^T W X is singular (or not certified nonsingular at this precision)") from None
     beta = [sum((Ginv[a, b] * h[b] for b in range(k)), arb(0)) for a in range(k)]
     fitted = [sum((A[i][a] * beta[a] for a in range(k)), arb(0)) for i in range(n)]
     resid = [Y[i] - fitted[i] for i in range(n)]
@@ -214,7 +214,7 @@ def _fit(y, X, w, intercept, alpha, t_guess, groups=None, maxlags=None):
             try:
                 V22i = V22.inv()
             except ZeroDivisionError:
-                raise ValueError("cluster covariance not certified nonsingular at this precision")
+                raise ValueError("cluster covariance not certified nonsingular at this precision") from None
             fc = (b2.transpose() * V22i * b2)[0, 0] / q
             hc["fvalue_cluster"] = fc
             hc["f_pvalue_cluster"] = _f_upper(fc, arb(q), dfc)
@@ -1454,7 +1454,7 @@ def nls(f, jac, x, y, theta0, *, weights=None, prec=320, tol_bits=120, max_iter=
             return r, J
 
         it = 0
-        for it in range(1, max_iter + 1):
+        for it in range(1, max_iter + 1):  # noqa: B007  (it is read after the loop: iterations=it)
             r, J = system(th)
             A = arb_mat(J)
             At = A.transpose()

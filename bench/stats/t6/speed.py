@@ -11,7 +11,6 @@ takes minutes for 1e5). Scalar calls: one Python float.
     .venv/bin/python bench/stats/t6/speed.py > bench/stats/t6/speed.md
 """
 
-import math
 import timeit
 import warnings
 

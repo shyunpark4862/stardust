@@ -81,7 +81,7 @@ def test_absent_fields():
     r = one()
     assert not hasattr(r, "hess_inv")
     with pytest.raises(AttributeError, match="has no attribute 'hess_inv' \\(its method does not give it\\)"):
-        r.hess_inv
+        r.hess_inv  # noqa: B018
 
 
 def test_unknown_field_at_construction():

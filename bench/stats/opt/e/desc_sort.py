@@ -10,7 +10,6 @@ import sys
 import timeit
 
 import numpy as np
-import scipy.stats as st
 
 import stardust as sd
 

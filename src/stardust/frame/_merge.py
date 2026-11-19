@@ -1,8 +1,8 @@
 """merge (a hash join) and concat (docs/api/frame.md §9)."""
 
-from . import _column, _core, _dtypes, _select, _sort
+from . import _column, _core, _dtypes, _sort
 from ._errors import check_bool, check_choice, name_list, type_name
-from ._index import Index, RangeIndex, _IndexBase
+from ._index import Index, RangeIndex
 
 Column = _core.Column
 

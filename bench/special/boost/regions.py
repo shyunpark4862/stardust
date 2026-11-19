@@ -8,7 +8,6 @@ speed on 2e5 points drawn from that region (sd: one array call; Boost: the C++ l
 import pathlib
 import subprocess
 import sys
-import time
 
 import numpy as np
 

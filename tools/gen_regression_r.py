@@ -57,7 +57,8 @@ if (sandwich_ok) {
   for (ty in c("HC0", "HC1", "HC2", "HC3")) {
     V <- vcovHC(f, type=ty); out(paste0("se_", ty), sqrt(diag(V))); out(paste0("p_", ty), coeftest(f, vcov.=V)[, 4])
   }
-  V <- NeweyWest(f, lag=L, prewhite=FALSE, adjust=FALSE); out("se_HAC", sqrt(diag(V))); out("p_HAC", coeftest(f, vcov.=V)[, 4])
+  V <- NeweyWest(f, lag=L, prewhite=FALSE, adjust=FALSE)
+  out("se_HAC", sqrt(diag(V))); out("p_HAC", coeftest(f, vcov.=V)[, 4])
   V <- vcovCL(f, cluster=g, type="HC1"); out("se_CL", sqrt(diag(V)))
   out("p_CL", coeftest(f, vcov.=V, df=length(unique(g)) - 1)[, 4])
 }
@@ -74,8 +75,9 @@ y <- rv("y"); X <- rd("X"); w <- rv("w"); off <- rv("off"); g <- rv("g"); st <- 
 fams <- c("gaussian", "binomial", "poisson", "Gamma", "quasibinomial", "quasipoisson")
 links <- c("identity", "log", "logit", "probit", "cloglog", "sqrt", "inverse")
 fam <- get(fams[meta[1]])(link=links[meta[2]]); icpt <- meta[3] == 1; L <- meta[4]; robust <- meta[5]
-fit <- function(ctl, start=NULL) suppressWarnings(if (icpt) glm(y ~ X, family=fam, weights=w, offset=off, control=ctl, start=start)
-                                                  else glm(y ~ 0 + X, family=fam, weights=w, offset=off, control=ctl, start=start))
+fit <- function(ctl, start=NULL) suppressWarnings(
+  if (icpt) glm(y ~ X, family=fam, weights=w, offset=off, control=ctl, start=start)
+  else glm(y ~ 0 + X, family=fam, weights=w, offset=off, control=ctl, start=start))
 f <- fit(glm.control(maxit=1), st)
 s <- suppressWarnings(summary(f))
 out("coef", coef(f)); out("se", sqrt(diag(vcov(f)))); out("stat", coef(s)[, 3]); out("p", coef(s)[, 4])
@@ -85,7 +87,8 @@ if (robust == 1) {
   for (ty in c("HC0", "HC1", "HC2", "HC3")) {
     V <- vcovHC(f, type=ty); out(paste0("se_", ty), sqrt(diag(V))); out(paste0("p_", ty), coeftest(f, vcov.=V)[, 4])
   }
-  V <- NeweyWest(f, lag=L, prewhite=FALSE, adjust=FALSE); out("se_HAC", sqrt(diag(V))); out("p_HAC", coeftest(f, vcov.=V)[, 4])
+  V <- NeweyWest(f, lag=L, prewhite=FALSE, adjust=FALSE)
+  out("se_HAC", sqrt(diag(V))); out("p_HAC", coeftest(f, vcov.=V)[, 4])
   V <- vcovCL(f, cluster=g, type="HC1"); out("se_CL", sqrt(diag(V)))
   out("p_CL", coeftest(f, vcov.=V, df=length(unique(g)) - 1)[, 4])
 }
@@ -99,7 +102,8 @@ R_GLMNET = r"""
 y <- rv("y"); X <- rd("X"); w <- rv("w"); lam <- rv("lam"); meta <- rv("meta")
 fam <- c("gaussian", "binomial", "poisson")[meta[1]]; alpha <- meta[2]; std <- meta[3] == 1; icpt <- meta[4] == 1
 for (i in seq_along(lam)) {
-  f <- glmnet(X, y, family=fam, weights=w, alpha=alpha, lambda=lam[i], standardize=std, intercept=icpt, thresh=1e-20, maxit=1e8)
+  f <- glmnet(X, y, family=fam, weights=w, alpha=alpha, lambda=lam[i], standardize=std, intercept=icpt,
+              thresh=1e-20, maxit=1e8)
   out(paste0("coef", i), as.numeric(coef(f))); out(paste0("df", i), f$df); out(paste0("dev_ratio", i), f$dev.ratio)
 }
 out("lambda_max", glmnet(X, y, family=fam, weights=w, alpha=alpha, standardize=std, intercept=icpt)$lambda[1])

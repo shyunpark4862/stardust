@@ -14,7 +14,6 @@ Run: uv run --no-sync python bench/regression/g1/refine.py [out.json]
 """
 
 import json
-import math
 import multiprocessing as mp
 import os
 import sys

@@ -15,7 +15,6 @@ of one evaluation.
     .venv/bin/python bench/stats/t5/speed.py > bench/stats/t5/speed.md
 """
 
-import math
 import timeit
 import warnings
 

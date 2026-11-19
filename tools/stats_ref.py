@@ -3453,13 +3453,14 @@ def discrete_inverse(D, m, pf, t, k0, pert=0):
     return _smallest_int(lo, hi, k0, _pred(D, pf, upper, q, None))
 
 
-# The discrete inverses' contract is a backward error (user decision 2026-11-16): the
-# answer is right when it is the exact quantile of some target within relative 1e-14 of the
-# given one: for icdf and iccdf on the small side (p or 1 - p, whichever is below 1/2), for
-# the log forms relative in t itself (as the continuous inverses' kappa; t = -1e5 has an ULP
-# of 1.5e-11, so no bound finer than relative is meaningful there). That covers a target within the cdf's last bits of a step (the
-# neighbour is as good) and a quantile so large that the steps are finer than the cdf's
-# resolution (Zipf near a = 1). Each point stores the interval [kmin, kmax] of such answers.
+# The discrete inverses' contract is a backward error (user decision 2026-11-16): the answer
+# is right when it is the exact quantile of some target within relative 1e-14 of the given
+# one: for icdf and iccdf on the small side (p or 1 - p, whichever is below 1/2), for the log
+# forms relative in t itself (as the continuous inverses' kappa; t = -1e5 has an ULP of
+# 1.5e-11, so no bound finer than relative is meaningful there). That covers a target within
+# the cdf's last bits of a step (the neighbour is as good) and a quantile so large that the
+# steps are finer than the cdf's resolution (Zipf near a = 1). Each point stores the interval
+# [kmin, kmax] of such answers.
 BACKWARD = 1e-14
 
 

@@ -14,7 +14,7 @@ import pytest
 
 import stardust as sd
 
-from .conftest import as_sd, npy
+from .conftest import as_sd
 
 DEFAULT = sd.get_num_threads()
 COUNTS = sorted({1, 3, DEFAULT})

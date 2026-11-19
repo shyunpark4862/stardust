@@ -8,7 +8,6 @@ compared with a tolerance.
 """
 
 import gc
-import math
 import warnings
 
 import numpy as np
@@ -448,7 +447,10 @@ def test_dtype_functions():
     with pytest.raises(TypeError, match=r"can_cast\(\): 'from_' must be sd.bool, .* or an sd.ndarray, not sd.string"):
         sd.can_cast(sd.string, sd.float64)
     # The accepted values are exactly the ones each takes, whatever was wrong.
-    finfo_msg = r"^finfo\(\): 'type' must be sd.float64 or sd.complex128 \(or their names\) or an sd.ndarray of those dtypes, not "
+    finfo_msg = (
+        r"^finfo\(\): 'type' must be sd.float64 or sd.complex128 \(or their names\) "
+        r"or an sd.ndarray of those dtypes, not "
+    )
     iinfo_msg = r"^iinfo\(\): 'type' must be sd.int64 \(or its name\) or an sd.ndarray of int64, not "
     for arg, shown in [
         (sd.int64, "sd.int64"),
@@ -606,7 +608,8 @@ def test_bincount():
         sd.bincount(sd.asarray([1, -1]))
     with pytest.raises(TypeError, match="bool or int64"):
         sd.bincount(sd.asarray([1.0]))
-    # weights: any real dtype (bool, int64, float64), summed as float64; complex is a TypeError (docs/api/array.md §7.12)
+    # weights: any real dtype (bool, int64, float64), summed as float64; complex is a TypeError
+    # (docs/api/array.md §7.12)
     xi = sd.asarray([0, 1, 1])
     for w in ([2, 3, 4], [True, False, True]):
         same(sd.bincount(xi, weights=sd.asarray(w)), np.bincount([0, 1, 1], weights=w))

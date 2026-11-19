@@ -27,7 +27,6 @@ Run: uv run --no-sync python tools/gen_optimize_scipy.py
 """
 
 import json
-import math
 import multiprocessing as mp
 import pathlib
 import sys

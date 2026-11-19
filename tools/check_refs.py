@@ -41,7 +41,10 @@ SCAN = [
     "CMakeLists.txt",
 ]
 SUFFIXES = {".cpp", ".hpp", ".py", ".md", ".txt", ".sh"}
-NAME = r"(?<![\w/.-])((?:docs/(?:api|design)/)?(?:array|linalg|frame)\.md|API\.md|DESIGN(?:\.md)?|ARCHITECTURE(?:\.md)?|ROADMAP\.md)"
+NAME = (
+    r"(?<![\w/.-])((?:docs/(?:api|design)/)?(?:array|linalg|frame)\.md"
+    r"|API\.md|DESIGN(?:\.md)?|ARCHITECTURE(?:\.md)?|ROADMAP\.md)"
+)
 REF = re.compile(NAME + r"((?:(?:[ ,]|and|및|와|과)+§\d+(?:\.\d+)*)+)")
 
 

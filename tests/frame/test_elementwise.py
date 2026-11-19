@@ -315,9 +315,9 @@ def test_equality_with_an_unsupported_operand_raises(other):
             with pytest.raises(TypeError):
                 op(obj, other)
     with pytest.raises(TypeError, match=r"^'==' not supported between instances of 'Series' and 'list'$"):
-        s == [1, 2]
+        s == [1, 2]  # noqa: B015
     with pytest.raises(TypeError, match="DataFrame and a Series"):
-        s == df
+        s == df  # noqa: B015
 
 
 # --- logic --------------------------------------------------------------------

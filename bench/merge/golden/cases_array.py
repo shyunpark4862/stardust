@@ -529,7 +529,7 @@ def _setitem(x, key, value):
 
 
 def shapes(c):
-    A, DT = c.A, c.DT
+    A = c.A
     srcs = {
         "C": c.S("f", (4, 6)),
         "F": c.S("f", (6, 4)).T,

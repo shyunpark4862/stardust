@@ -365,7 +365,10 @@ def test_descriptive_edges_as_scipy():
         S.entropy(A([0.2, 0.8]), base="e")
     with pytest.raises(
         ValueError,
-        match=r"^differential_entropy\(\): 'method' must be 'vasicek', 'van es', 'ebrahimi', 'correa' or 'auto', not 'VASICEK'$",
+        match=(
+            r"^differential_entropy\(\): 'method' must be 'vasicek', 'van es', 'ebrahimi', 'correa' or 'auto', "
+            r"not 'VASICEK'$"
+        ),
     ):
         S.differential_entropy(x, method="VASICEK")
 

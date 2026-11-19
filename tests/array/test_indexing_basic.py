@@ -241,4 +241,4 @@ def test_iteration_yields_views():
 
 def test_in_is_not_supported():
     with pytest.raises(TypeError):
-        1 in sd.arange(3)
+        1 in sd.arange(3)  # noqa: B015

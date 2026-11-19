@@ -7,7 +7,7 @@ from ._errors import check_bool, check_choice, check_int, name_list, named, type
 from ._index import Index, RangeIndex, _IndexBase, ensure_index
 from ._na import NA
 from ._reduce import Reductions, own_reductions
-from ._series import Series, assignment_values, fill_column
+from ._series import Series, fill_column
 
 Column = _core.Column
 

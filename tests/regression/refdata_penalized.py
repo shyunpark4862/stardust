@@ -5,10 +5,11 @@ tests/regression/ref/penalized.json holds, per problem, the inputs as doubles (y
 weights, alpha, l1_ratio, family, intercept, standardize) and regref.penalized's certified
 solution (params and ssr or deviance) as [hi, lo] pairs: the lasso, the elastic net and ridge
 with and without weights (zeros among them), standardize, no intercept, a constant column, an
-ill-conditioned design (condition number 1e6 after centering; in one of its fits the polish refines), and the penalized binomial and
-poisson GLMs at l1_ratio 1, 0.5 and 0. The active set and signs given to the reference are
-those of sd.regression's solution; the reference certifies them (the strict KKT inequalities
-of the inactive columns), so a wrong active set would fail to generate. Regenerate with
+ill-conditioned design (condition number 1e6 after centering; in one of its fits the polish
+refines), and the penalized binomial and poisson GLMs at l1_ratio 1, 0.5 and 0. The active set
+and signs given to the reference are those of sd.regression's solution; the reference
+certifies them (the strict KKT inequalities of the inactive columns), so a wrong active set
+would fail to generate. Regenerate with
 
     uv run --no-sync python -m tests.regression.refdata_penalized
 """

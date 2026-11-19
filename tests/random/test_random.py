@@ -1,7 +1,6 @@
 """T3: sd.random (docs/api/random.md, docs/design/random.md)."""
 
 import copy
-import math
 import pickle
 import threading
 

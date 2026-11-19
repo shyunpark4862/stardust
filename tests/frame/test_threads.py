@@ -8,13 +8,11 @@ against numpy/pandas make sure the chunked code is also right, since a
 """
 
 import hashlib
-import math
 import os
 import struct
 import threading
 
 import numpy as np
-import pandas as pd
 import pytest
 
 import stardust as sd

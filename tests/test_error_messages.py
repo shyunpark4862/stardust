@@ -54,7 +54,8 @@ NAMED = [
     (
         lambda: sd.finfo(sd.int64),
         TypeError,
-        "finfo(): 'type' must be sd.float64 or sd.complex128 (or their names) or an sd.ndarray of those dtypes, not sd.int64",
+        "finfo(): 'type' must be sd.float64 or sd.complex128 (or their names) "
+        "or an sd.ndarray of those dtypes, not sd.int64",
     ),
     # no constructor: the class name, as a constructor would say (docs/api/array.md §10)
     (lambda: sd.ndarray(), TypeError, "ndarray(): there is no constructor; use asarray() or another creation function"),
@@ -244,7 +245,8 @@ SAME_MISTAKE = [
     (lambda: sd.zeros(np.float64(2)), "zeros(): 'shape' must be an int or a tuple of ints, not numpy.float64"),
     (
         lambda: sd.zeros(2, dtype=np.dtype("int64")),
-        "zeros(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names), not numpy.dtypes.Int64DType",
+        "zeros(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names), "
+        "not numpy.dtypes.Int64DType",
     ),
     (
         lambda: sd.zeros(2, dtype=np.int64),

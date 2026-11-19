@@ -5,8 +5,6 @@ envelope scale stored with their references). Here: the special values against s
 except where docs/design/special.md §2.4 says otherwise (S6 user decision: true values),
 the reflection and argument rules, and AiryResult."""
 
-import itertools
-
 import numpy as np
 import pytest
 import scipy.special as sp

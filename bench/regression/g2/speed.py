@@ -19,6 +19,9 @@ scikit-learn) with threadpoolctl.
 Run: uv run --no-sync python bench/regression/g2/speed.py
 """
 
+# Closures read loop variables that the iteration's `del` removes afterwards; ruff takes them as undefined.
+# ruff: noqa: F821
+
 import gc
 import time
 import warnings

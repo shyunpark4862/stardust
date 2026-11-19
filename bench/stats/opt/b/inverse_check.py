@@ -14,7 +14,7 @@ import sys
 from collections import defaultdict
 
 from arb_check import CDF, A
-from flint import arb, ctx
+from flint import ctx
 
 ctx.prec = 400
 

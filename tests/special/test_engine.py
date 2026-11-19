@@ -153,7 +153,7 @@ def test_four_outputs():
     x = np.linspace(-3, 3, 11)
     r = C._powers4(sd.asarray(x))
     assert type(r) is tuple and len(r) == 4
-    for k, part in enumerate(r, start=1):
+    for _k, part in enumerate(r, start=1):
         assert part.dtype == sd.float64 and part.shape == x.shape
     x2 = x * x
     for got, want in zip(r, [x, x2, x2 * x, x2 * x2]):
