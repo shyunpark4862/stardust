@@ -275,10 +275,16 @@ def test_gamma_upper_root_with_a_scale():
             ctx.prec = 53
 
 
-@pytest.mark.parametrize("a", [1e-310, 2.0**-1023, 5e-324])
+@pytest.mark.parametrize("a", [1e-310, 2.0**-1023, 5e-324, 2.0**-1022, 1e-307, 1e-303])
 @pytest.mark.parametrize("c", [1.0, 5.0, 39.0, 41.0, 300.0, 665.0, 700.0])
 def test_gammainccinv_subnormal_shape(a, c):
-    # E1(y) = q / a (Q(a, y) = a E1(y)): was NaN for every subnormal a
+    # E1(y) = q / a (Q(a, y) = a E1(y)): was NaN for every subnormal a. R105: c = q / a in one
+    # division (log q - log a carried 1e-13 into c: Q 5e-14 off), and the normal a near
+    # 2^-1022 with q < 1e-300 by the same equation (NaN or 7e-13 off); stats' Gamma too
     y = sp.gammainccinv(a, c * a)
-    assert y > 0.0 and abs(_arb_q_rel(a, y, None, c * a)) <= 1e-14 * max(1.0, c) * 2
+    assert y > 0.0 and abs(_arb_q_rel(a, y, None, c * a)) <= 1e-15
+    ys = S.Gamma(a=a).iccdf(c * a)
+    assert ys > 0.0 and abs(_arb_q_rel(a, ys, None, c * a)) <= 1e-15
     assert sp.gammainccinv(a, 760 * a) == 0.0 and sp.gammaincinv(a, 0.3) == 0.0
+    # the lower side's root is below every double (it was NaN in stats for a normal a here)
+    assert S.Gamma(a=a).icdf(0.3) == 0.0 and S.Gamma(a=a).icdf(1e-20) == 0.0

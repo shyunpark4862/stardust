@@ -303,21 +303,34 @@ inline constexpr double kMeasuredMinA = 1e-6;
 // and is never above its bound: y f / P <= a (P >= y^a e^-y / Gamma(a + 1)) and
 // y f / Q <= y + 1 (Q >= y^a e^-y / (Gamma(a) (y + 1)), the fraction's first convergent for
 // a < 1, and without the + 1 above).
-// A subnormal shape is solved at the reference shape (log_shape_ratio): P(a, y) = p <= 1/2
-// has log y = log(p) / a, a root below every double; Q(a, y) = e^lt is
-// Q(a0, y) = e^(lt - log(a / a0)). For a <= a0 a target Q >= 1600 a has the root 0
-// (kLogRootZero). Out of line.
+// For a subnormal shape P(a, y) = p <= 1/2 has log y = log(p) / a, a root below every double.
+// The upper side of a shape below the reference one is solved there (log_shape_ratio):
+// Q(a, y) = e^lt is Q(a0, y) = e^(lt - log(a / a0)). For a <= a0 a target Q >= 1600 a has the
+// root 0 (kLogRootZero). Out of line.
 [[gnu::noinline, gnu::cold]] inline double inverse_beyond(double a, double s, double p, DD lt, bool lower) {
     if (!(a <= kMaxShape)) return kNaN;
-    const bool subnormal = a < kMinNormalShape;
-    if (subnormal) {
-        if (lower) return lt.hi <= -0x1p-900 ? 0.0 : kNaN;
+    // the lower side below the reference shape: P(a, y) = y^a / Gamma(1 + a) (1 + O(y)) and
+    // P <= y^a / Gamma(1 + a), so log y = (lt + log Gamma(1 + a)) / a, exact to the doubles
+    // below 2^-960 (as small_upper_log_root); a log y below -2000 is 0 for every scale. Else a
+    // subnormal shape's root is NaN (the deep inverse loses such a shape)
+    double r_lower = kNaN;
+    if (lower && a < kRefShape) {
+        if (lt.hi / a < -2000.0) return 0.0;
+        const DD ly = (lt + num::lgamma1p(a)) / a;
+        if (ly.hi < -960.0 * num::kLn2.hi) r_lower = num::exp_dd(ly + num::log_dd(s));
+        else if (a < kMinNormalShape) return kNaN;
+    }
+    // the upper side below the reference shape: Q(a, y) = a E1(y) to the doubles for a and a0
+    // alike, so it is solved at a0 (the deep inverse, which a target below 2^-1000 reaches,
+    // loses such a shape: NaN or 1e-13 off near 2^-1022)
+    const bool shifted = !lower && a < kRefShape;
+    if (shifted) {
         lt = lt - log_shape_ratio(a);
         a = kRefShape;
     }
     if (!lower && a <= kRefShape && lt.hi >= std::log(a) + kLogRootZero) return 0.0;
-    if (subnormal) p = num::exp_dd(lt);  // the shifted target: below 1600 a0
-    const double r = lower ? lower_inverse(a, s, p, lt) : upper_inverse(a, s, p, lt);
+    if (shifted) p = num::exp_dd(lt);  // the shifted target: below 1600 a0
+    const double r = !std::isnan(r_lower) ? r_lower : lower ? lower_inverse(a, s, p, lt) : upper_inverse(a, s, p, lt);
     if (r != r || r < 0.0) return kNaN;
     if (r == 0.0 || std::isinf(r)) {
         // a root beyond the doubles: the tail at the last double on that side is already past

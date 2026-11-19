@@ -154,7 +154,7 @@ betainccinv(a, b, q, /, *, out=None)
   | `betaincinv(a, b, 0)`, `betaincinv(a, b, 1)` | 0, 1 | `betainccinv`은 반대. a, b가 0이면 끝점에서도 NaN, inf이면 (0, 1) 안에서 NaN |
   | `betaincinv(2, 3, 5e-324)`, `betainccinv(2, 3, 5e-324)` | 9.07e-163, 1.0 | **scipy는 NaN** |
   | `betaincinv(0.0102, 36.2, 3.13e-169)` | 0 | **scipy는 2.2e-308** (DBL_MIN에 고정. 근은 1e-16522) |
-- **서브노멀 a의 역함수** (2026-11-19): `gammainccinv(a, q)`는 Q(a, y) = a·E₁(y)이므로 E₁(y) = q/a의 근이다(q/a > 40이면 y = e^(−q/a−γ), 그 밖은 이분). 전에는 NaN이었다. `gammaincinv(a, p)`는 p < 1에서 0이다(근이 e^(log p / a), 모든 double 아래).
+- **아주 작은 a의 역함수** (2026-11-19, T52): a < 2⁻⁹⁰⁰(서브노멀 a 포함)이면 double이 닿는 모든 y에서 Q(a, y) = a·E₁(y)가 반올림 안에서 맞으므로, `gammainccinv(a, q)`는 E₁(y) = c의 근이다. c = q/a는 나눗셈 한 번으로 구한다(log q − log a는 −710 근처의 두 로그의 차라 c에 1e-13의 오차를 넣고, 근의 상대오차는 c배가 된다). c > 40이면 y = e^(−c−γ), 그 밖은 이분이다. Arb 대비 Q의 상대오차는 c = 5–700에서 2.2e-16 이하다(`gammainccinv(1e-310, 5e-310)` = 0.0037974640015846885). 2⁻¹⁰²² 근처의 정규수 a에서 q < 1e-300이면(Boost를 쓰지 않는 곳) 다른 경로가 NaN이나 7e-13의 오차를 냈는데, 이 식은 거기도 같다. `gammaincinv(a, p)`는 서브노멀 a에서 p < 1이면 0이다(근이 e^(log p / a), 모든 double 아래).
 
 ## §5. 로지스틱과 정보량
 ```

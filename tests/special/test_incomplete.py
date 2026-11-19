@@ -206,3 +206,21 @@ def test_betainc_and_betaincc_add_to_one():
     A, B, X = (sd.asarray(v[ok]) for v in (a, b, x))
     lo, up = np.asarray(S.betainc(A, B, X)), np.asarray(S.betaincc(A, B, X))
     assert np.max(np.abs((lo - 0.5) + (up - 0.5))) <= 8 * 2.0**-52
+
+
+@pytest.mark.parametrize("a", [5e-324, 1e-320, 1e-310, 2.0**-1022, 1e-307, 1e-300, 2.0**-901])
+def test_gammainccinv_tiny_shape_against_arb(a):
+    """R105: below 2^-900 Q(a, y) = a E1(y) to the doubles and E1(y) = q / a is solved with c =
+    q / a in one division: Q at the root within 1e-15 of the target for c in 5-700 (the root's
+    relative error is then about kappa u, kappa ~ c)."""
+    from flint import arb, ctx
+    ctx.prec = 3000
+    try:
+        for c in (5.0, 39.0, 300.0, 700.0):
+            q = c * a
+            y = S.gammainccinv(a, q)
+            assert y > 0.0
+            assert abs(float(arb(y).gamma_upper(arb(a), 1) / arb(q)) - 1) <= 1e-15, (a, c, y)
+    finally:
+        ctx.prec = 53
+    assert S.gammainccinv(1e-310, 5e-310) == pytest.approx(0.00379746400158469, rel=1e-15)
