@@ -2,7 +2,7 @@
 title: 회귀 영역의 구조
 group: 구조
 order: 1
-summary: sd.regression 전체의 지도예요. 입력을 정리하고 결과 객체를 만드는 Python 층, 모형마다 하나씩인 C++ 커널, 그 사이의 공용 부품(최소제곱 핵심 lsq.hpp, double-double 내적 dot2.hpp, 설계 행렬 꾸리기)을 차례로 보고, 배치와 스레드를 나누는 방법, 결과가 스레드 수와 상관없이 같은 비트인 이유, GIL 규칙, 에러와 NaN의 꼴을 설명해요.
+summary: sd.regression 전체의 지도예요. 입력을 정리하고 결과 객체를 만드는 Python 층, 모형마다 하나씩인 C++ 커널, 그 사이의 공용 부품(최소제곱 핵심 lsq.hpp, double-double 내적 dot2.hpp, 설계 행렬 꾸리기)을 차례로 보고, 배치와 스레드를 나누는 방법, 결과가 스레드 수와 상관없이 같은 비트인 이유, GIL 규칙, 에러와 NaN과 빈 입력의 꼴, 예측이 겹친 열을 빼는 열 표시, 읽기 전용 설정 필드를 설명해요.
 seeAlso: [least-squares, inference, glm, penalized, robust, slopes, quantile, nls, accuracy-performance]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -41,12 +41,13 @@ import Layers from '../../../components/fig/Layers.astro';
   <Steps
     steps={[
       { label: 'ols(y, X)', where: 'regression/_linear.py', note: 'intercept, cov_type, maxlags, rtol, nan_policy를 검사해요. rtol=None은 커널에 −1로 넘겨 기본값 max(nobs, k)·eps를 뜻하게 해요.' },
-      { label: '_prepare', where: 'regression/_linear.py', note: 'y, X를 float64 sd.ndarray로 바꾸고 frame이면 컬럼 이름을 들고 가요. X가 1차원이면 (n, 1)로. nan_policy가 omit이면 NaN 행을 여기서 빼고, raise면 여기서 에러를 내요.' },
+      { label: '_prepare', where: 'regression/_linear.py', note: 'y, X를 float64 sd.ndarray로 바꾸고 frame이면 컬럼 이름을 들고 가요. X가 1차원이면 (n, 1)로. 모수가 하나도 없는 모형은 여기서 에러예요. nan_policy가 omit이면 inf와 음수 가중치를 먼저 보고 NaN 행을 빼고, raise면 여기서 에러를 내요.' },
+      { label: '_fit_kernel', where: 'regression/_linear.py', note: 'y와 X의 열마다 최대 절댓값을 보고, [2⁻²⁵⁶, 2²⁵⁶] 밖인 것만 2의 거듭제곱으로 나눠 커널에 줘요. 보통의 자료는 그대로 지나가요.' },
       { label: '_core.regression.fit', where: 'regression/linear.cpp', note: 'y (…, n), X (…, n, p), 가중치의 배치 모양을 linalg의 Batch로 브로드캐스트하고 결과 배열 일곱 개를 할당해요.' },
       { label: 'run_batch', depth: 1, where: 'linalg/batch.hpp', note: '회귀 하나의 추정 시간 element_ns로 태스크를 나눠요. 회귀가 하나뿐이면 호출 스레드에서 돌고, 추정 시간이 10 µs 이상이면 GIL을 놓아요.' },
       { label: 'lsq::fit_one', depth: 2, where: 'regression/linear.cpp', note: '검사, 쓰인 행과 백색화, 꾸리기, geqrf와 겹친 열, 처음 해, 증강 시스템의 반복 개선, 적합값·잔차·제곱합, 공분산.' },
       { label: 'OLSResult(raw, …)', where: 'regression/_linear.py', note: '커널의 일곱 배열을 그대로 들고(계수의 −0은 +0으로), 커널에 준 입력(y, X, 가중치, 군집 번호)을 들고 있어요. y, X, 가중치는 적합할 때 복사한 것이에요.' },
-      { label: 'r.bse', where: 'regression/_linear.py', note: 'scale = ssr / df_resid를 곱한 cov_params의 대각의 제곱근이에요. 계산한 값은 _cache에 남아 다음에는 그대로 돌려줘요.' },
+      { label: 'r.bse', where: 'regression/_linear.py', note: '적합의 단위로 둔 공분산 _cov_s(척도 scale_s = ssr / df_resid를 곱한 (RᵀR)⁻¹)의 대각의 제곱근이에요. 척도를 바꿔 적합했으면 마지막에 열의 배율을 한 번 곱해요. 계산한 값은 _cache에 남아 다음에는 그대로 돌려줘요.' },
     ]}
   />
 </Fig>
@@ -67,8 +68,10 @@ import Layers from '../../../components/fig/Layers.astro';
 >>> r.bse
 array([ 0.07054680610666837, 0.018633899812498265,  0.06364688465216445], dtype=float64)
 >>> sorted(r._cache)
-['bse', 'cov_params', 'df_resid', 'scale']
+['bse', 'cov_s', 'df_resid', 'scale_s']
 ```
+
+`bse`를 읽으면 그 재료인 `df_resid`, 적합의 단위의 척도 `scale_s`와 공분산 `cov_s`가 함께 남아요. 공개 필드 `scale`과 `cov_params()`는 이것을 데이터의 단위로 옮긴 값이고, 읽을 때 따로 만들어요. 단위가 둘인 이유는 [최소제곱 풀이](/internals/regression/least-squares/)의 극단적인 척도 절에 있어요.
 
 `fit`의 인자는 차례로 함수 이름(에러 메시지에 쓰여요), y, X, 가중치, GLS의 백색화한 1의 열, 절편, rtol, 공분산 종류의 번호, 개선 횟수의 상한이에요.
 
@@ -142,7 +145,7 @@ array([ 0.07054680610666837, 0.018633899812498265,  0.06364688465216445], dtype=
 
 Python 층의 결과 클래스는 두 갈래예요.
 
-- **추론이 있는 결과**는 `_RegressionResult`를 이어받아요. 계수의 추론(`bse`, `tvalues`, `pvalues`, `conf_int`), 새 X의 설계 검사, 겹친 열을 0으로 둔 계수(`_beff`)가 여기 있어요. `OLSResult`, `WLSResult`, `GLSResult`는 그 아래 `_LinearResult`(제곱합, R², 정보 기준, F, 진단, `summary`)를 거치고, `GLMResult`, `RLMResult`, `QuantRegResult`, `NLSResult`는 바로 이어받아요.
+- **추론이 있는 결과**는 `_RegressionResult`를 이어받아요. 계수의 추론(`bse`, `tvalues`, `pvalues`, `conf_int`), 새 X의 설계 검사, 예측 $X_{\text{new}}\beta$와 평균의 구간(`_xbeta`, `_interval`)이 여기 있어서, `predict`와 `predict_interval`이 모든 결과에서 같은 규칙이에요. `OLSResult`, `WLSResult`, `GLSResult`는 그 아래 `_LinearResult`(제곱합, R², 정보 기준, F, 진단, `summary`)를 거치고, `GLMResult`, `RLMResult`, `QuantRegResult`, `NLSResult`는 바로 이어받아요.
 - **예측 중심의 결과**(`RidgeResult`, `LassoResult`, `ElasticNetResult`, 교차검증의 결과, `PenalizedGLMResult`)는 `_PenalizedResult`를 이어받아요. 표준오차와 p값이 없어요.
 
 `linregress`, `theilslopes`, `siegelslopes`의 결과와 `jarque_bera()`, `breusch_pagan()`의 결과는 scipy·statsmodels처럼 namedtuple이에요.
@@ -176,7 +179,20 @@ def _as_real(x, func, arg, per_row=None):
 - 숫자가 아닌 원소가 든 리스트는 `TypeError`이고, 메시지에 처음 걸린 원소의 형을 적어요("not list of str"). 리스트 자체는 받는 형이니까요.
 - 행마다 값이 하나씩인 인자(`weights`, GLM의 `offset` 등)에 스칼라를 주면 `per_row`로 무엇이 필요한지 말해요("'weights' must have 4 values like 'y', not a scalar").
 - X가 1차원 (n,)이면 설명변수 하나짜리 (n, 1)로 바꿔요.
+- y가 열 하나짜리 frame `DataFrame`이면 그 열 (n,)으로 읽어요(`_read_y`). 표에서 반응 하나를 골라 내면 흔히 이 꼴이라서요. sd 배열 (n, 1)은 그대로 배치 규칙을 따라 "행 하나짜리 회귀 n개"예요. 그러면 X의 행 수가 맞지 않으므로, 메시지가 그 경우를 짚어 1차원 y를 주라고 적어요.
+- X에 열이 없고 `intercept=False`이면 추정할 모수가 없어요. 커널에 가기 전에 `ValueError`("the model has no parameters")예요.
 - 계수 이름은 절편이 있으면 `'const'`가 앞에 오고, 나머지는 frame의 컬럼 이름이거나 `'x1'`, `'x2'`, …예요.
+
+```python
+>>> sd.regression.ols(sd.ones((5, 1)), sd.ones((5, 2)))
+Traceback (most recent call last):
+    ...
+ValueError: ols(): 'X' must have 1 row like 'y', not 5 ('y' of shape (5, 1) is a batch of regressions with 1 row each; give a 1-dimensional 'y' for one regression)
+>>> sd.regression.ols([1.0, 2.0, 3.0], sd.zeros((3, 0)), intercept=False)
+Traceback (most recent call last):
+    ...
+ValueError: ols(): the model has no parameters (no columns in 'X' and intercept=False)
+```
 
 ### 절편은 커널이 붙여요
 
@@ -202,8 +218,13 @@ def _as_real(x, func, arg, per_row=None):
 | `nan_policy='propagate'`(기본), NaN이 있음 | 커널 | 그 회귀의 모든 값이 NaN, `rank` 0 |
 | `nan_policy='omit'` | Python(`_prepare`) | NaN이 있는 행을 빼고 적합해요. 배치면 회귀마다 남는 행이 달라지므로 `ValueError` |
 | `nan_policy='raise'` | Python(`_prepare`) | NaN이 하나라도 있으면 `ValueError` |
-| inf | 커널 | 정책과 상관없이 `ValueError`. 배치면 몇 번째 회귀인지 붙여요 |
+| inf, 음수 가중치 | 커널(`'omit'`이면 Python의 `_check_rows`가 먼저) | 정책과 상관없이 `ValueError`. 배치면 몇 번째 회귀인지 붙여요 |
+| 쓰인 행이 없음 | 커널 | NaN 결과에 `nobs` 0, `df_model`·`df_resid`도 NaN |
 | 예측의 `X_new`에 inf | Python(`_new_design`) | `ValueError`("'X_new' contains infinity"). NaN은 그 행의 예측이 NaN이에요 |
+
+`'omit'`은 NaN이 있는 행을 지우므로, inf와 음수 가중치를 그 뒤에 보면 같은 행의 NaN이 그 잘못을 숨겨요. 그래서 `'omit'`일 때는 행을 빼기 전에 Python이 inf와 음수 가중치를 먼저 봐요. 잘못된 값은 어느 정책에서나 같은 에러예요.
+
+쓰인 행이 하나도 없으면(n = 0, `'omit'`이 모든 행을 뺌, 가중치가 모두 0) 풀 문제가 없어요. 커널은 QR에 가기 전에 그 회귀를 NaN으로 채우고 `nobs`만 0으로 둬요. 자유도도 셀 것이 없으니 NaN이에요. 반복하는 모형은 여기에 `converged=False`, `n_iter` 0이 더해져요. 배치 안에서는 그 회귀만 이렇게 되고 나머지는 그대로예요. 점 두 개가 있어야 기울기가 정의되는 `linregress`, `theilslopes`, `siegelslopes`는 이 경우가 `ValueError`예요.
 
 ```python
 >>> x = sd.asarray([0.0, 1.0, 2.0, 3.0])
@@ -225,6 +246,13 @@ ValueError: ols(): nan_policy='omit' takes one regression, not a batch (the regr
 Traceback (most recent call last):
     ...
 ValueError: ols(): 'y' contains infinity (at batch index (1,))
+>>> sd.regression.ols([1.0, float("nan"), 3.0, 4.0], [1.0, float("inf"), 3.0, 5.0], nan_policy="omit")
+Traceback (most recent call last):
+    ...
+ValueError: ols(): 'X' contains infinity
+>>> e = sd.regression.wls([1.0, 2.0, 3.0], [0.0, 1.0, 2.0], weights=[0.0, 0.0, 0.0])
+>>> e.nobs, e.params, e.df_resid
+(0.0, array([nan, nan], dtype=float64), nan)
 ```
 
 커널은 X를 메모리 순서로 훑어요(`lsq::scan_x`). 행 우선 X는 행을 바깥에, 열 우선 X는 열을 바깥에 두고, 1,024줄 블록마다 지수 비트가 모두 1인 값(NaN이거나 inf)이 있는지만 비트 연산으로 봐요. 그런 값이 있는 블록만 다시 훑어 NaN과 inf를 가려요. 큰 X(원소 2²⁰개 이상)는 블록을 스레드풀에 나눠요.
@@ -282,9 +310,9 @@ enum Stat : int {
 
 결과 객체의 필드는 세 종류예요.
 
-- **커널이 낸 그대로**: `params`, `fittedvalues`, `resid`, `nobs`, `rank`, `ssr`, `centered_tss`, `uncentered_tss`.
+- **커널이 낸 그대로**: `params`, `fittedvalues`, `resid`, `nobs`, `rank`, `ssr`, `centered_tss`, `uncentered_tss`. 선형 모형을 2의 거듭제곱으로 척도를 바꿔 적합했으면, 계수·적합값·잔차는 결과를 만들 때 데이터의 단위로 돌려놓고, 제곱합은 읽을 때 $f_y^2$를 한 번 곱해요(정확한 곱이에요).
 - **처음 읽을 때 sd 배열 연산과 sd.stats로**: `scale`, `cov_params()`, `bse`, `tvalues`, `pvalues`, `rsquared`, `rsquared_adj`, `llf`, `aic`, `bic`, `fvalue`, `f_pvalue`. `_cached(name, make)`가 계산한 값을 `_cache`에 남겨요(statsmodels의 `cache_readonly`와 같은 방식). p값은 `sd.stats.StudentT`와 `sd.stats.F`의 `ccdf`, 구간은 `iccdf`예요.
-- **처음 읽을 때 커널을 다시 불러서**: `leverage`(지렛대), `durbin_watson`, `jarque_bera()`, `breusch_pagan()`, `condition_number`. 결과는 커널에 준 입력을 `_fitargs`로 들고 있다가 그대로 다시 넘겨요. 그 y, X, 가중치는 적합할 때 복사해 둔 것이라(`_own`), 적합 뒤에 넘긴 배열(이나 그 배열이 가리키는 numpy 배열)을 고쳐도 나중에 읽는 진단이 바뀌지 않아요. 메모리는 X 하나만큼 더 들어요. GLS는 백색화한 y와 X를 새로 만들어 들고 있으므로 따로 복사하지 않아요. 정규화의 결과도 적합값을 읽을 때 쓰는 y, X, 가중치를 같은 방식으로 복사해 둬요. 지렛대는 같은 커널의 `hat_only` 방식이 적합과 같은 열 선택과 같은 QR로 얇은 Q를 만들어 구해요. 적합할 때 늘 Q를 만들면 모든 적합이 QR 한 번 꼴의 비용을 더 내므로 따로 불러요([추론과 진단](/internals/regression/inference/)).
+- **처음 읽을 때 커널을 다시 불러서**: `leverage`(지렛대), `durbin_watson`, `jarque_bera()`, `breusch_pagan()`, `condition_number`. 결과는 커널에 준 입력을 `_fitargs`로 들고 있다가 그대로 다시 넘겨요. 그 y, X, 가중치는 적합할 때 복사해 둔 것이라(`_own`), 적합 뒤에 넘긴 배열(이나 그 배열이 가리키는 numpy 배열)을 고쳐도 나중에 읽는 진단이 바뀌지 않아요. 메모리는 X 하나만큼 더 들어요. GLS는 백색화한 y와 X를 새로 만들어 들고 있으므로 따로 복사하지 않아요. 척도를 바꿔 적합했으면 들고 있는 것도 바꾼 y와 X라서, 진단이 커널을 다시 불러도 적합과 같은 단위의 문제예요. 정규화의 결과도 적합값을 읽을 때 쓰는 y, X, 가중치를 같은 방식으로 복사해 둬요. 지렛대는 같은 커널의 `hat_only` 방식이 적합과 같은 열 선택과 같은 QR로 얇은 Q를 만들어 구해요. 적합할 때 늘 Q를 만들면 모든 적합이 QR 한 번 꼴의 비용을 더 내므로 따로 불러요([추론과 진단](/internals/regression/inference/)).
 
 ```python
     def _cached(self, name, make):
@@ -306,6 +334,8 @@ True
 ```
 
 적합 뒤에 `y`를 고쳤지만, 처음 읽는 `durbin_watson`은 적합할 때의 값으로 계산돼요.
+
+적합의 설정을 적은 필드(`param_names`, `cov_type`, `family`, `link`, `alpha`, `l1_ratio`, `standardize`, `method`, `norm`, `q`)는 `__slots__`의 밑줄 붙은 자리에 두고 setter 없는 속성으로 내보여요. 지연 계산한 필드는 그 설정으로 만든 값이라, 설정을 나중에 바꿀 수 있으면 캐시와 어긋나기 때문이에요. 바꾸려 하면 `AttributeError`예요. `quantreg`의 배열 `q`는 넘긴 배열의 복사본이라 넘긴 쪽을 고쳐도 결과가 그대로예요.
 
 결과를 만들 때 계수에 $+0.0$을 더해요(`_RegressionResult.__init__`과 `_PenalizedResult.__init__`). QR 풀이나 꼭짓점 계산이 내는 $-0.0$은 연산 순서가 남긴 부호일 뿐이라, 정확히 0인 계수는 어느 함수에서나 $+0.0$이에요.
 
@@ -333,7 +363,44 @@ Traceback (most recent call last):
 ValueError: predict(): 'X_new' contains infinity
 ```
 
-같은 이름이 순서만 바뀌었으면 "in the fit's order", 이름이 다르면 "like the fit's 'X'"라고 적어요. 이름을 보는 것은 둘 다 이름이 있을 때뿐이에요. 배열에는 이름이 없으니 위치가 유일한 정보예요.
+같은 이름이 순서만 바뀌었으면 "in the fit's order", 이름이 다르면 "like the fit's 'X'"라고 적어요. 이름을 보는 것은 둘 다 이름이 있을 때뿐이에요. 배열에는 이름이 없으니 위치가 유일한 정보예요. `X_new`의 배치 축이 적합의 배치와 브로드캐스트하지 않으면 `_check_pred_batch`가 두 배치 모양을 적어 `ValueError`를 내요. 커널의 브로드캐스트 에러는 인자 이름을 모르기 때문이에요.
+
+예측 $X_{\text{new}}\beta$는 커널 `apply`가 Dot2로 더해요. 이때 계수와 함께 **열 표시**를 넘겨요. 모형에 든 열은 1, 겹친 열은 0이에요(`_pred_args`).
+
+```python
+    def _pred_args(self):
+        """(params, mask) of a prediction (the kernel's apply): mask is 1.0 for the columns in
+        the model, whatever their coefficient (a NaN in X_new there gives NaN, also under a
+        coefficient 0), and 0.0 for the aliased ones, which take no part (R's predict.lm); every
+        column of a NaN regression, whose NaN params give NaN."""
+        def make():
+            keep = _sd.logical_or(self._raw[5], self._per(self._isnan(), 1))
+            return self.params, _sd.where(keep, 1.0, 0.0)
+        return self._cached("pred_args", make)
+```
+
+```cpp
+                for (lint c = 0; c < k; ++c) {
+                    if (mb && rd(mb + c * mk->stride(-1)) == 0.0) continue;  // aliased: no term (nor in the fit)
+                    const double bj = rd(bb + c * be.stride(-1));
+```
+
+항을 건너뛰는 기준을 계수 값이 아니라 열 표시로 두는 이유는 NaN이에요. 계수가 0인 열을 건너뛰면 $0 \cdot \text{NaN}$이 생기지 않아, 그 열의 `X_new`가 NaN이어도 예측이 유한한 값으로 나와요. 모형에 든 열이면 계수가 정확히 0이어도(lasso의 0인 계수 등) 그 값을 읽었다는 뜻이니 NaN이 전파되어야 해요. 겹친 열은 모형에 없는 열이라(R의 `predict.lm`과 같아요) 그 열의 NaN은 예측에 닿지 않아요. 정규화의 결과는 겹친 열이 없어서 열 표시 없이 모든 열을 써요. `predict_interval`의 분산 $x C x^{\mathsf T}$도 같은 열 표시로 겹친 열을 0으로 두고 구해서, 두 함수가 같은 행에서 NaN이에요.
+
+```python
+>>> y6 = sd.asarray([1.0, 2.1, 2.9, 4.2, 4.8, 6.1])
+>>> x6 = sd.asarray([0.0, 1, 2, 3, 4, 5])
+>>> ra = sd.regression.ols(y6, sd.stack([x6, 2.0 * x6], axis=1))
+>>> ra.params
+array([ 1.023809523809524, 0.9971428571428571,                nan], dtype=float64)
+>>> ra.predict(sd.asarray([[6.0, float("nan")]]))
+array([7.006666666666667], dtype=float64)
+>>> la = sd.regression.lasso(y6, sd.stack([x6, sd.asarray([1.0, 0, 1, 0, 1, 0])], axis=1), alpha=0.5)
+>>> la.params
+array([1.4523809523809523, 0.8257142857142857,                0.0], dtype=float64)
+>>> la.predict(sd.asarray([[6.0, float("nan")]]))
+array([nan], dtype=float64)
+```
 
 ## 공용 부품
 
@@ -552,5 +619,5 @@ ValueError: wls(): 'weights' must be >= 0
 ```
 
 <Callout type="note">
-값 때문에 생기는 상태는 에러가 아니에요. 겹친 열은 그 계수가 NaN이고 `rank`가 줄어요. 잔차가 정확히 0인 완전 적합은 `bse`가 0, t가 ±inf예요. NaN이 있는 회귀는 모든 값이 NaN이에요. 이런 상태에서 경고도 내지 않아요.
+값 때문에 생기는 상태는 에러가 아니에요. 겹친 열은 그 계수가 NaN이고 `rank`가 줄어요. 모든 잔차가 반올림 수준 안인 완전 적합은 `bse`가 0, t가 ±inf예요. 남은 자유도가 없으면(`df_resid` = 0) 척도가 0/0이라 추론 전부가 NaN이에요. NaN이 있는 회귀는 모든 값이 NaN이고, 쓰인 행이 없는 회귀는 NaN에 `nobs` 0이에요. 이런 상태에서 경고도 내지 않아요.
 </Callout>

@@ -175,6 +175,7 @@ SiegelslopesResult(slope=1.9775, intercept=1.241666666666664)
 
 - `x`를 주지 않으면 0, 1, …, n − 1이에요. `nan_policy='omit'`으로 점을 빼도 나머지 점의 위치는 그대로예요.
 - x가 같은 두 점의 기울기는 없으니 각 점의 중앙값에서 빼요. x가 모두 같으면 모든 값이 NaN이에요.
+- x와 y가 ±1e308 근처까지 퍼져 두 점의 차가 모두 inf로 넘치면, 그 쌍의 기울기는 inf/inf라 값이 없어요. x가 같은 쌍처럼 각 점의 중앙값에서 빼요.
 - 기울기가 0이면 +0.0을 내요.
 
 ```python
@@ -189,9 +190,15 @@ SiegelslopesResult(slope=nan, intercept=nan)
 SiegelslopesResult(slope=nan, intercept=nan)
 >>> sd.regression.siegelslopes(yn, nan_policy='omit')
 SiegelslopesResult(slope=1.0, intercept=1.0)
+>>> xb = [-1e308, 0.0, 1.0, 2.0, 3.0, 1e308]
+>>> yb = [-1e308, 0.5, 1.4, 2.6, 3.5, 1e308]
+>>> sd.regression.siegelslopes(yb, xb)
+SiegelslopesResult(slope=1.0, intercept=0.44999999999999996)
 ```
 
-inf는 `nan_policy`와 상관없이 에러이고, 점이 2개보다 적어도 에러예요.
+마지막 예에서 양 끝 두 점을 잇는 쌍만 inf/inf라, 두 끝점은 나머지 네 점으로의 기울기로 중앙값을 구해요.
+
+inf는 `nan_policy`와 상관없이 에러예요. `'omit'`도 점을 빼기 전에 inf를 보므로 NaN이 든 점의 inf도 에러예요. 점이 2개보다 적으면(NaN을 뺀 뒤도) 에러예요.
 
 ```python
 >>> sd.regression.siegelslopes([1.0, 2.0, float('inf'), 4.0])
@@ -199,6 +206,10 @@ Traceback (most recent call last):
     ...
 ValueError: siegelslopes(): 'y' contains infinity
 >>> sd.regression.siegelslopes([1.0])
+Traceback (most recent call last):
+    ...
+ValueError: siegelslopes(): 'x' and 'y' must have length at least 2
+>>> sd.regression.siegelslopes([1.0, float('nan')], nan_policy='omit')
 Traceback (most recent call last):
     ...
 ValueError: siegelslopes(): 'x' and 'y' must have length at least 2
@@ -254,6 +265,13 @@ SiegelslopesResult(slope=np.float64(1.81), intercept=np.float64(1.71999999999999
   ```python
   >>> scipy.stats.siegelslopes([1.0, 2.0, float('inf'), 4.0])
   SiegelslopesResult(slope=np.float64(nan), intercept=np.float64(nan))
+  ```
+
+- 차가 넘쳐 기울기가 inf/inf인 쌍은 둘 다 빼고 셈해서 값이 같아요(위의 ±1e308 예; scipy는 넘침의 `RuntimeWarning`도 내요).
+
+  ```python
+  >>> scipy.stats.siegelslopes(yb, xb)
+  SiegelslopesResult(slope=np.float64(1.0), intercept=np.float64(0.44999999999999996))
   ```
 
 - `method`는 키워드로만 받아요.

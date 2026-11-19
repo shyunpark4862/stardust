@@ -8,9 +8,9 @@ signatures:
 summary: 계수의 절댓값 합에 벌점을 주는 라소 회귀예요. 쓸모가 적은 열의 계수를 정확히 0으로 만들어서, 적합과 변수 고르기를 한 번에 해요. alpha에 배열을 주면 경로 전체를 한 번에 풀어요.
 params:
   - name: y
-    type: ndarray, 실수의 시퀀스, 또는 Series
+    type: ndarray, 실수의 시퀀스, Series, 또는 한 열짜리 DataFrame
     kind: positional-only
-    desc: 반응. 모양은 (..., n)이에요. 앞 축은 배치예요.
+    desc: 반응. 모양은 (..., n)이에요. 앞 축은 배치예요. 한 열짜리 DataFrame은 그 열을 반응으로 써요.
   - name: X
     type: ndarray, 실수의 시퀀스, 또는 DataFrame
     kind: positional-only
@@ -34,7 +34,7 @@ params:
   - name: max_iter
     type: int
     kind: keyword-only
-    desc: alpha 하나마다 반복의 상한. 1 이상이에요. 기본값은 1000이에요. 닿으면 마지막 값을 내고 converged가 False예요.
+    desc: alpha 하나마다 반복의 상한. 1 이상이에요. 기본값은 1000이에요. 닿으면 마지막 값을 내고 converged가 False예요(판정을 통과한 뒤의 다듬기가 닿아도요).
   - name: tol
     type: float
     kind: keyword-only
@@ -48,11 +48,11 @@ returns:
   desc: "계수 params(절편이 params[0], 0인 계수는 정확히 0.0), df_model(0 아닌 계수의 수), converged, n_iter, dual_gap, fittedvalues, resid, ssr, rsquared, nobs와 predict(). 표준오차·p값은 없어요."
 raises:
   - type: TypeError
-    desc: y나 X를 이름으로 줬을 때, alpha가 수나 1차원 배열이 아닐 때, max_iter가 int가 아닐 때, tol이 수가 아닐 때, intercept·standardize가 True·False가 아닐 때, 입력이 복소수일 때.
+    desc: y나 X를 이름으로 줬을 때, alpha가 수나 1차원 배열이 아닐 때(bool·bool 배열·문자열·None 포함), max_iter가 int가 아닐 때, tol이 수가 아닐 때, intercept·standardize가 True·False가 아닐 때, 입력이 복소수일 때.
   - type: ValueError
-    desc: alpha가 음수·inf·NaN이거나 빈 배열·2차원 배열일 때, max_iter < 1, tol ≤ 0이거나 유한하지 않을 때, 모양이 맞지 않을 때, weights가 음수일 때, inf가 있을 때, nan_policy가 틀렸거나 'raise'인데 NaN이 있을 때, 배치에서 nan_policy='omit'일 때.
+    desc: alpha가 음수·inf·NaN이거나 빈 배열·2차원 배열일 때, X에 열이 없는데 intercept=False라 모수가 없을 때, max_iter < 1, tol ≤ 0이거나 유한하지 않을 때, 모양이 맞지 않을 때, weights가 음수일 때, inf가 있을 때, nan_policy가 틀렸거나 'raise'인데 NaN이 있을 때, 배치에서 nan_policy='omit'일 때.
   - type: OverflowError
-    desc: alpha나 max_iter가 너무 큰 정수일 때.
+    desc: alpha, max_iter, tol이 너무 큰 정수일 때.
 seeAlso: [ridge, elastic-net, cross-validation, penalized-glm, ols, results, basics]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -242,7 +242,7 @@ True
 ```python
 >>> p = sd.regression.lasso(y, X, alpha=[1.0, 0.5, 0.2, 0.05])
 >>> p
-LassoResult(shape (4,), 4 parameters)
+LassoResult(a path of 4 alphas, 4 parameters)
 >>> [[round(v, 3) for v in row] for row in p.params.tolist()]
 [[0.696, 1.262, 0.0, 0.0], [0.756, 1.613, 0.268, 0.0], [0.811, 1.823, 0.574, 0.0], [0.838, 1.927, 0.73, -0.007]]
 >>> p.df_model
@@ -366,7 +366,7 @@ True
 |---|---|
 | `params` | 계수. 절편이 있으면 `params[0]`. 0인 계수는 정확히 `0.0`이에요. |
 | `param_names` | 계수의 이름 |
-| `alpha`, `l1_ratio`, `standardize` | 준 `alpha`(수 또는 배열), 1.0, 준 `standardize` |
+| `alpha`, `l1_ratio`, `standardize` | 준 `alpha`(수 또는 배열), 1.0, 준 `standardize`. 읽기 전용이에요. |
 | `nobs` | 적합에 쓴 행 수(가중치 > 0), `float` |
 | `df_model` | 0이 아닌 계수의 수(절편은 세지 않아요), `float` |
 | `converged` | 수렴했는지(`bool`) |
@@ -386,7 +386,14 @@ True
 [2.7217, 1.5052]
 ```
 
-릿지처럼 표준오차, p값, 신뢰구간, `summary()`는 없어요. 결과는 예측을 위한 것이고, 라소의 계수는 0 쪽으로 당겨진 데다 어떤 열이 남을지도 데이터로 정해져서 최소제곱의 검정 공식이 그대로 성립하지 않아요. 까닭은 [`ridge`](/api/regression/ridge/)의 "표준오차와 p값이 없는 까닭"과 같아요.
+릿지처럼 표준오차, p값, 신뢰구간, `summary()`는 없어요. 결과는 예측을 위한 것이고, 라소의 계수는 0 쪽으로 당겨진 데다 어떤 열이 남을지도 데이터로 정해져서 최소제곱의 검정 공식이 그대로 성립하지 않아요. 까닭은 [`ridge`](/api/regression/ridge/)의 "표준오차와 p값이 없는 까닭"과 같아요. `rank`도 없어요. 겹친 열을 빼는 일이 없어서 셀 것이 없고, 모형의 크기는 `df_model`(0 아닌 계수의 수)이 말해 줘요.
+
+계수가 0인 열도 모형에 남아 있는 열이에요. 그래서 `X_new`의 그 열에 NaN이 있으면 예측이 NaN이에요. 0을 곱한다고 NaN을 덮지 않아요.
+
+```python
+>>> r.predict([[1.0, 0.0, float('nan')]])
+array([nan], dtype=float64)
+```
 
 ## 특수한 경우
 
@@ -411,6 +418,30 @@ True
 (True, 1.925255)
 ```
 
+### `alpha=0`
+
+`alpha=0`이면 벌점이 없으니 최소제곱 문제를 같은 반복 계산으로 푼 거예요. 열이 겹치지 않으면 해가 하나라서 [`ols`](/api/regression/ols/)와 같아요.
+
+```python
+>>> z = sd.regression.lasso(y, X, alpha=0.0)
+>>> [round(v, 6) for v in z.params.tolist()]
+[0.851274, 1.958005, 0.799323, -0.067613]
+>>> z.converged, z.df_model
+(True, 3.0)
+```
+
+똑같은 열이 있으면 `ols`는 뒤의 열을 NaN으로 두지만, 라소는 두 열 모두에 계수를 줘요. 다만 나눔은 위와 같이 반복 계산이 닿은 값이에요. 두 계수의 합만 정해지고, [`ridge`](/api/regression/ridge/)의 `alpha=0`처럼 똑같이 나누지도, 아주 작은 `alpha`의 라소처럼 한쪽을 0으로 두지도 않을 수 있어요.
+
+```python
+>>> zd = sd.regression.lasso(ya, Xd, alpha=0.0)
+>>> [round(v, 4) for v in zd.params.tolist()], round(zd.params[1] + zd.params[2], 6)
+([1.15, 2.1323, -0.0399, 0.161], 2.092418)
+>>> [round(v, 4) for v in sd.regression.lasso(ya, Xd, alpha=1e-6).params.tolist()]
+[1.15, 2.0924, 0.0, 0.161]
+```
+
+예측에는 두 계수의 합만 쓰이므로 예측은 어느 쪽이든 같아요. [`penalized_glm`](/api/regression/penalized-glm/)의 `alpha=0`은 이와 달리 [`glm`](/api/regression/glm/)의 적합 그대로라서, 똑같은 열의 뒤쪽 계수가 NaN이에요.
+
 ### NaN과 inf
 
 [`ridge`](/api/regression/ridge/)와 같아요. `'propagate'`면 그 회귀의 모든 값이 NaN이고, `converged`는 False, `n_iter`는 0이에요.
@@ -423,6 +454,14 @@ True
 (False, 0, nan)
 >>> sd.regression.lasso(yn, X, alpha=0.1, nan_policy='omit').nobs
 49.0
+```
+
+가중치가 모두 0이거나 행이 하나도 없으면(`'omit'`이 모든 행을 뺀 경우도) 맞출 데이터가 없어요. 그 회귀는 `nobs`가 0이고 계수가 NaN이며, 반복하지 않았으니 `converged`는 False, `n_iter`는 0이에요.
+
+```python
+>>> e0 = sd.regression.lasso(y, X, alpha=0.1, weights=sd.zeros(50))
+>>> e0.nobs, e0.converged, e0.n_iter, e0.params.tolist()
+(0.0, False, 0, [nan, nan, nan, nan])
 ```
 
 ### 옵션의 에러
@@ -444,6 +483,18 @@ ValueError: lasso(): 'alpha' must be finite and >= 0
 Traceback (most recent call last):
     ...
 TypeError: lasso() missing 1 required keyword-only argument: 'alpha'
+>>> sd.regression.lasso(y, X, alpha=[True, False])
+Traceback (most recent call last):
+    ...
+TypeError: lasso(): 'alpha' must be a number or a 1-dimensional array of numbers, not a bool array
+>>> sd.regression.lasso(y, X, alpha=0.1, tol=10**400)
+Traceback (most recent call last):
+    ...
+OverflowError: lasso(): 'tol' is out of range
+>>> sd.regression.lasso(y, sd.zeros((50, 0)), alpha=0.1, intercept=False)
+Traceback (most recent call last):
+    ...
+ValueError: lasso(): the model has no parameters (no columns in 'X' and intercept=False)
 ```
 
 ## 배치
@@ -457,7 +508,11 @@ TypeError: lasso() missing 1 required keyword-only argument: 'alpha'
 ((3, 2, 4), (3, 2), (3, 2, 5))
 >>> bp.params[2, 1].tolist() == sd.regression.lasso(-y, X, alpha=0.1).params.tolist()
 True
+>>> bp
+LassoResult(batch shape (3,) and a path of 2 alphas, 4 parameters)
 ```
+
+결과를 그대로 찍으면 앞 축의 이름을 적어요. 배치만 있으면 `LassoResult(batch shape (3,), 4 parameters)`, 경로만 있으면 `LassoResult(a path of 4 alphas, 4 parameters)`예요.
 
 ## 정확도
 
@@ -486,6 +541,17 @@ True
 
   `tol`을 아주 작게 하고 `max_iter`를 키워야 scikit-learn도 같은 해에 닿아요.
 - **`dual_gap`은 scikit-learn 1.9.1의 `dual_gap_`과 같은 단위예요**(목적함수 단위). 다듬기 전의 반복은 scikit-learn과 같은 순서로 계수를 고치므로, `max_iter`를 같게 주면 수렴 전의 계수와 간격도 반올림 수준에서 같아요(위의 `max_iter=3`에서 둘 다 0.4901). 판정을 통과한 뒤의 `n_iter`는 scikit-learn의 `n_iter_`와 같지 않아요. 이 페이지의 첫 예에서 scikit-learn은 3, 여기는 2이고, `tol=1.0`이면 scikit-learn은 0, 여기는 다듬기에 실패해 이어 간 반복까지 세어 4예요.
+- `alpha=0`은 둘 다 벌점 없는 최소제곱을 좌표 하강으로 풀어요(scikit-learn은 이때 경고를 내요). 열이 겹치지 않으면 같은 해이지만, 똑같은 열의 나눔은 반복이 닿은 값이라 서로 달라요. 위의 `Xd`에서 scikit-learn은 한쪽을 거의 0으로 둬요. 합은 같아요.
+
+  ```python
+  >>> Xdn = np.array(Xd.tolist())
+  >>> with warnings.catch_warnings():
+  ...     warnings.simplefilter('ignore')
+  ...     m0 = Lasso(alpha=0.0, tol=1e-14, max_iter=10**6).fit(Xdn, yn)
+  >>> [round(v, 4) for v in m0.coef_.tolist()], round(float(m0.coef_[0] + m0.coef_[1]), 6)
+  ([2.0924, -0.0, 0.161], 2.092418)
+  ```
+
 - `y`가 모두 같으면 `rsquared`가 NaN이에요. scikit-learn의 `score`는 이때 1.0이나 0.0을 내요.
 - 결과는 `coef_`, `intercept_` 대신 `params`(절편이 `params[0]`) 하나예요. `alpha`에 배열을 주면 `lasso_path`·`enet_path`처럼 경로가 나와요.
 - scikit-learn에는 `standardize`가 없어요.

@@ -870,7 +870,9 @@ stardust의 `Scratch` 슬롯은 언제나 16바이트 경계에서 시작해요(
 // ops/qr.cpp의 lstsq (줄임)
 // B를 numpy가 두는 자리에(numpy는 A, B, S를 malloc 하나에 이어 둬요): 16바이트 경계에서
 // 8mn바이트 뒤예요. Accelerate의 dgelsd는 열이 더 많은 경로에서 B가 16바이트 경계를
-// 벗어나 있으면 다른 끝비트를 내요. 그래서 B는 numpy와 같은 어긋남을 지켜요.
+// 벗어나 있으면 다른 끝비트를 내요(같은 루틴을 B만 8바이트 옮겨 부르면 무작위 9×11 40개 중
+// 35개, 5×7 40개 중 34개의 비트가 바뀌고, 3×8과 11×9는 0개). 그래서 B는 numpy와 같은
+// 어긋남을 지켜요. LAPACK에 넘기는 배열 가운데 일부러 16바이트 경계를 따르지 않는 유일한 것이에요.
 T* B = s.get<T>(static_cast<std::size_t>(ldb * nrhs) + 1, 1);
 if constexpr (std::is_same_v<T, double>) B += (m * n) % 2;
 ```

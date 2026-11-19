@@ -9,9 +9,9 @@ signatures:
 summary: 일반화 최소제곱(GLS) 회귀예요. 오차들이 서로 상관되어 있고 그 공분산 행렬을 알 때, 상관을 걷어 낸 문제를 풀어 계수와 올바른 표준오차를 구해요. 결과 GLSResult의 필드는 ols의 OLSResult와 같아요.
 params:
   - name: y
-    type: ndarray, 실수의 시퀀스, 또는 frame Series
+    type: ndarray, 실수의 시퀀스, frame Series, 또는 열 하나의 DataFrame
     kind: positional-only
-    desc: "설명하려는 값. 모양은 (n,)이고, 앞에 축이 더 있으면 배치예요."
+    desc: "설명하려는 값. 모양은 (n,)이고, 앞에 축이 더 있으면 배치예요. 열이 하나인 DataFrame은 그 열로 읽어요."
   - name: X
     type: ndarray, 실수의 시퀀스, frame Series, 또는 DataFrame
     kind: positional-only
@@ -51,7 +51,7 @@ raises:
   - type: TypeError
     desc: sigma를 주지 않았을 때(None 포함), 입력이 배열·숫자의 시퀀스·frame이 아니거나 복소수일 때, 옵션의 형이 틀렸을 때.
   - type: ValueError
-    desc: sigma의 모양이 (n, n)이 아닐 때, sigma·y·X에 inf가 있을 때, nan_policy='raise'인데 NaN이 있을 때, 배치에서 nan_policy='omit'을 줬을 때, 그 밖에 ols와 같은 경우.
+    desc: sigma의 모양이 (n, n)이 아닐 때, sigma·y·X에 inf가 있을 때(nan_policy='omit'이어도), X에 열이 없는데 intercept=False일 때, nan_policy='raise'인데 NaN이 있을 때, 배치에서 nan_policy='omit'을 줬을 때, 그 밖에 ols와 같은 경우.
   - type: LinAlgError
     desc: sigma가 양정치가 아닐 때(sd.linalg.LinAlgError). 배치면 메시지에 그 배치 위치가 붙어요.
 seeAlso: [ols, wls, covariance, diagnostics, basics, results]
@@ -151,9 +151,13 @@ True
 
 다만 NaN과 inf는 위 삼각에 있어도 찾아내요. `sigma`는 대칭 행렬이어야 해서, 읽지 않는 칸이라도 NaN이나 inf가 있으면 행렬 전체를 믿을 수 없다고 보기 때문이에요([NaN과 inf](#nan과-inf)).
 
-모양이 맞지 않으면 `ValueError`예요. 대각만 있는 분산 벡터(1차원)는 받지 않아요. 그럴 때는 [`wls`](/api/regression/wls/)에 `weights=1/분산`으로 주거나, 대각 행렬을 만들어 주세요.
+`sigma`를 주지 않거나 `None`을 주면 `TypeError`예요. 모양이 맞지 않으면 `ValueError`예요. 대각만 있는 분산 벡터(1차원)는 받지 않아요. 그럴 때는 [`wls`](/api/regression/wls/)에 `weights=1/분산`으로 주거나, 대각 행렬을 만들어 주세요.
 
 ```python
+>>> sd.regression.gls(y, t, sigma=None)
+Traceback (most recent call last):
+    ...
+TypeError: gls(): 'sigma' must be an sd.ndarray, a sequence of numbers or a frame Series or DataFrame, not NoneType
 >>> sd.regression.gls(y, t, sigma=sd.ones(n))
 Traceback (most recent call last):
     ...
@@ -283,7 +287,15 @@ ValueError: gls(): the input contains NaN (nan_policy='raise')
 True
 ```
 
-inf는 `nan_policy`와 상관없이 `ValueError`예요. 위 삼각에 있어도 같아요.
+`'omit'`으로 모든 관측이 빠지면 에러가 아니라 모든 값이 NaN인 결과예요(`nobs` 0, `df_model`·`df_resid` NaN). [`ols`](/api/regression/ols/#특수한-경우)의 빈 입력과 같아요.
+
+```python
+>>> e = sd.regression.gls(sd.full(n, math.nan), t, sigma=S, nan_policy='omit')
+>>> e.nobs, e.df_resid, e.params
+(0.0, nan, array([nan, nan], dtype=float64))
+```
+
+inf는 `nan_policy`와 상관없이 `ValueError`예요. `sigma`의 위 삼각에 있어도, `'omit'`이 뺄 관측에 있어도 같아요. `y`와 `X`의 inf도 그 인자의 이름으로 알려 줘요.
 
 ```python
 >>> rows = S.tolist()
@@ -298,6 +310,12 @@ ValueError: gls(): 'sigma' contains infinity
 Traceback (most recent call last):
     ...
 ValueError: gls(): 'sigma' contains infinity
+>>> yi = y.tolist()
+>>> yi[3] = math.inf
+>>> sd.regression.gls(yi, t, sigma=S)
+Traceback (most recent call last):
+    ...
+ValueError: gls(): 'y' contains infinity
 ```
 
 ## 배치

@@ -50,12 +50,12 @@ params:
     desc: "NaN을 다루는 방법. 'propagate'(기본값; 결과가 모두 NaN), 'omit'(NaN이 있는 행을 빼고 풂), 'raise'(ValueError) 중 하나예요."
 returns:
   type: QuantRegResult
-  desc: 계수(params), 표준오차(bse), t값, p값, 신뢰구간(conf_int), 적합값과 잔차, 목적함수(objective), 의사 결정계수(prsquared), 수렴 정보(converged, nonunique, n_iter, n_pivots), predict와 summary를 가진 결과 객체예요.
+  desc: 계수(params), 표준오차(bse), t값, p값, 신뢰구간(conf_int), 적합값과 잔차, 목적함수(objective), 의사 결정계수(prsquared), 수렴 정보(converged, nonunique, n_iter, n_pivots), predict·predict_interval과 summary를 가진 결과 객체예요.
 raises:
   - type: TypeError
-    desc: y나 X가 복소수일 때, q가 bool이나 문자열일 때, intercept가 True·False가 아닐 때, 없는 인자(weights 등)를 줬을 때.
+    desc: y나 X가 복소수일 때, q가 bool, 문자열, bool 배열일 때, intercept가 True·False가 아닐 때, 없는 인자(weights 등)를 줬을 때.
   - type: ValueError
-    desc: q가 0 이하나 1 이상이거나 2차원 이상일 때, cov_type·bandwidth·nan_policy 이름이 틀렸을 때, X의 행 수가 y와 다를 때, 열도 없고 intercept=False일 때, y나 X가 Python 스칼라일 때, inf가 있을 때, nan_policy='raise'인데 NaN이 있을 때, 배치에 nan_policy='omit'을 줬을 때, max_iter가 1보다 작거나 tol이 0 이하일 때.
+    desc: q가 0 이하나 1 이상이거나 비었거나 2차원 이상일 때, cov_type·bandwidth·nan_policy 이름이 틀렸을 때, X의 행 수가 y와 다를 때, 열도 없고 intercept=False일 때, y나 X가 Python 스칼라일 때, inf가 있을 때, nan_policy='raise'인데 NaN이 있을 때, 배치에 nan_policy='omit'을 줬을 때, max_iter가 1보다 작거나 tol이 0 이하일 때.
 seeAlso: [basics, results, ols, rlm, theilslopes, collinearity]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -225,6 +225,14 @@ $$
 0.5079029626784556
 ```
 
+y가 모두 같으면 절편만으로 모든 점을 맞춰서 분모가 0이에요. 그때 `prsquared`는 0/0이라 NaN이에요. 해는 정확히 (y₀, 0, …, 0)이고, 기울기에 반올림 크기의 값이 남지 않아요.
+
+```python
+>>> flat = sd.regression.quantreg([4.0] * 6, [1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+>>> flat.params, flat.objective, flat.prsquared
+(array([4.0, 0.0], dtype=float64), 0.0, nan)
+```
+
 ## 인자
 
 ### q: 분위 하나 또는 여러 개
@@ -255,8 +263,17 @@ array([0.1, 0.5, 0.9], dtype=float64)
 | `conf_int()` | (k, 2) | (L, k, 2) |
 | `cov_params()` | (k, k) | (L, k, k) |
 | `predict(X_new)` | (m,) | (L, m) |
+| `predict_interval(X_new)` | (m, 2) | (L, m, 2) |
 
-k는 절편을 포함한 계수의 수예요. 배치(y가 (B, n))와 함께 쓰면 분위 축은 배치 축 뒤에 붙어요(`params`가 (B, L, k)). `q`는 준 값 그대로 돌려줘요.
+k는 절편을 포함한 계수의 수예요. 배치(y가 (B, n))와 함께 쓰면 분위 축은 배치 축 뒤에 붙어요(`params`가 (B, L, k)). 결과의 `q`는 준 값이에요. 배열을 줬으면 적합할 때 만든 복사본이라, 나중에 넘긴 배열을 고쳐도 결과의 `q`는 그대로예요.
+
+```python
+>>> qa = sd.asarray([0.1, 0.9])
+>>> r2 = sd.regression.quantreg(y, x, q=qa)
+>>> qa[0] = 0.3
+>>> r2.q
+array([0.1, 0.9], dtype=float64)
+```
 
 여러 분위를 한 번에 풀어도 결과는 분위마다 따로 부른 것과 비트까지 같아요.
 
@@ -343,12 +360,12 @@ TypeError: quantreg() got an unexpected keyword argument 'weights'
 |---|---|
 | `params` | 계수. 절편이 있으면 `params[0]`이에요. 정확히 0인 계수는 언제나 `0.0`이에요(`-0.0`이 아니에요). |
 | `bse`, `tvalues`, `pvalues` | 표준오차, t값(계수 ÷ 표준오차), p값(자유도 `df_resid`의 t 분포) |
-| `conf_int(alpha=0.05)` | 1 − alpha 신뢰구간. (k, 2) 배열이에요. |
+| `conf_int(*, alpha=0.05)` | 1 − alpha 신뢰구간. (k, 2) 배열이에요. `alpha`는 키워드로만 받아요. |
 | `cov_params()` | 계수의 공분산 행렬 (k, k). 대각선의 제곱근이 `bse`예요. |
 | `fittedvalues`, `resid` | 적합값 $x_i\hat\beta$와 잔차 $y_i - x_i\hat\beta$ |
-| `q` | 준 분위(수 또는 배열) |
+| `q` | 준 분위(수, 또는 준 배열의 복사본) |
 | `objective` | 최소 목적함수 $\sum \rho_q(r_i)$ |
-| `prsquared` | 의사 결정계수 $R^1$ |
+| `prsquared` | 의사 결정계수 $R^1$. 분모가 0이면(y가 모두 같으면) NaN이에요. |
 | `nobs`, `df_model`, `df_resid` | 쓰인 관측 수, 모형 자유도(절편 뺀 계수 수), 잔차 자유도(nobs − rank). 모두 float예요. |
 | `rank`, `condition_number` | 겹치지 않은 열의 수, 설계 행렬의 조건수 |
 | `converged`, `nonunique` | 최적임이 확인됐는지, 최소점이 여럿인지(아래) |
@@ -356,7 +373,10 @@ TypeError: quantreg() got an unexpected keyword argument 'weights'
 | `cov_type`, `bandwidth` | 표준오차 방법, 쓴 대역폭 h |
 | `param_names` | 계수 이름 |
 | `predict(X_new, /)` | 새 X의 적합값 |
+| `predict_interval(X_new, /, *, alpha=0.05)` | 새 X에서 적합한 분위 직선의 신뢰구간 (m, 2) |
 | `summary(*, alpha=0.05)` | 결과 표(문자열) |
+
+`q`, `cov_type`, `param_names`는 적합의 설정이라 읽기만 할 수 있어요. 값을 넣으면 `AttributeError`예요.
 
 `summary()`는 이렇게 생겼어요.
 
@@ -367,7 +387,7 @@ TypeError: quantreg() got an unexpected keyword argument 'weights'
 Model:                        QuantReg  Pseudo R-squared:               0.5079
 Method:                  Frisch-Newton  Bandwidth:                      0.2482
 Quantile:                          0.5  No. Observations:                   60
-Cov Type:                          nid  Df Residuals:                       58
+Covariance Type:                   nid  Df Residuals:                       58
 Bandwidth rule:          hall-sheather  Df Model:                            1
 ==============================================================================
                  coef    std err          t      P>|t|     [0.025     0.975]
@@ -458,7 +478,29 @@ array([[1.7781590268058434,  4.813620635812161],
 
 분위 배열이면 결과가 (L, m)이에요. 줄마다 그 분위의 예측이에요.
 
-`X_new`에 inf가 있으면 `ValueError`이고, NaN이 있는 행은 예측이 NaN이에요. `DataFrame`으로 적합하고 `DataFrame`으로 예측하면 열 이름과 순서가 적합과 같아야 해요. 순서만 달라도 알아서 맞추지 않고 `ValueError`를 내요. 한쪽만 `DataFrame`이면 열을 위치로 맞춰요.
+`predict_interval(X_new)`는 그 예측값의 신뢰구간이에요. 줄마다 [아래 끝, 위 끝]이고 기본은 95%(`alpha=0.05`)예요. x = 0에서는 절편의 `conf_int()`와 같아요.
+
+```python
+>>> r.predict_interval([0.0, 5.0, 10.0])
+array([[1.5236946741425657,  2.148650667868895],
+       [ 4.032472116494633, 5.0550673602745295],
+       [ 6.096695980220334,  8.406037631306532]], dtype=float64)
+>>> r.predict_interval([5.0], alpha=0.1)
+array([[4.116805914030668, 4.970733562738494]], dtype=float64)
+```
+
+구간은 $x\hat\beta \pm t\cdot\text{se}$, $\text{se}^2 = x\,C\,x^\top$예요. $C$는 `cov_params()`(곧 고른 `cov_type`의 공분산), $t$는 자유도 `df_resid`인 t 분포의 분위수예요. 데이터를 다시 모으면 **그 x에서의 q분위수**(분위 직선의 높이)가 이 안에 들 것이라는 범위예요.
+
+새 관측 하나가 떨어질 범위는 주지 않아요. 그것은 조건부 분포의 퍼짐인데, 분위 하나는 퍼짐을 말해 주지 않기 때문이에요. 퍼짐이 궁금하면 양쪽 분위를 맞춰요. 예를 들어 q = 0.05와 0.95의 두 직선 사이가 x마다 y의 90%가 드는 띠예요.
+
+분위 배열이면 (L, m, 2)예요.
+
+```python
+>>> rq.predict_interval([5.0]).shape
+(3, 1, 2)
+```
+
+`X_new`에 inf가 있으면 `ValueError`이고, NaN이 있는 행은 `predict`와 `predict_interval`이 함께 NaN이에요. 겹쳐서 빠진 열(아래)은 예측에 쓰이지 않아서 그 열의 NaN은 결과에 닿지 않아요. `DataFrame`으로 적합하고 `DataFrame`으로 예측하면 열 이름과 순서가 적합과 같아야 해요. 순서만 달라도 알아서 맞추지 않고 `ValueError`를 내요. 한쪽만 `DataFrame`이면 열을 위치로 맞춰요.
 
 ```python
 >>> r.predict([float('inf')])
@@ -479,7 +521,7 @@ ValueError: predict(): 'X_new' must have the columns ['size', 'age'] in the fit'
 
 밀도를 잴 수 없는 곳에서는 표준오차와 그에 딸린 값(`tvalues`, `pvalues`, `conf_int`, `cov_params`)이 NaN이에요. 계수는 그대로 나와요.
 
-- **완전 적합**: 모든 점이 한 직선 위에 있어 잔차가 모두 0이면 밀도가 무한이라 정의되지 않아요.
+- **완전 적합**: 모든 점이 한 직선 위에 있어 잔차가 모두 0이면 밀도가 무한이라 정의되지 않아요. 세 `cov_type`이 모두 그래요. 'ker'의 커널 폭도 잔차의 퍼짐에서 정하는데, 잔차가 반올림 수준이면 그 폭이 반올림 잡음이라 쓸 수 없어요.
 - **q가 0이나 1에 아주 가까울 때**: q ± h의 두 직선이 같은 꼭짓점이면 간격이 0이라 잴 수 없어요.
 - **잔차 자유도가 0 이하일 때**: 점이 계수 수보다 많지 않으면 그래요.
 
@@ -487,6 +529,8 @@ ValueError: predict(): 'X_new' must have the columns ['size', 'age'] in the fit'
 >>> line = sd.regression.quantreg([3.0, 5.0, 7.0, 9.0, 11.0, 13.0], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
 >>> line.params, line.bse
 (array([1.0, 2.0], dtype=float64), array([nan, nan], dtype=float64))
+>>> sd.regression.quantreg([3.0, 5.0, 7.0, 9.0, 11.0, 13.0], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], cov_type='ker').bse
+array([nan, nan], dtype=float64)
 >>> sd.regression.quantreg(y, x, q=0.01).bse
 array([nan, nan], dtype=float64)
 >>> sd.regression.quantreg(y, x, q=0.02).bse
@@ -514,6 +558,26 @@ n = 60에서 q = 0.01은 맨 아래 점 한두 개로 정해지는 분위라 밀
 Traceback (most recent call last):
     ...
 ValueError: quantreg(): the input contains NaN (nan_policy='raise')
+```
+
+`'omit'`도 행을 빼기 전에 inf를 보므로 NaN이 든 행의 inf도 에러예요.
+
+### 빈 입력, 쓰인 열이 없을 때
+
+쓰인 행이 없으면(n = 0, 또는 `'omit'`이 모든 행을 뺐을 때) 에러 대신 NaN 결과예요. `nobs`는 0, `converged`는 False, `n_iter`는 0이고 `df_model`, `df_resid`도 NaN이에요. 풀 문제가 없으니 최적임을 확인한 것도 없어요.
+
+```python
+>>> e0 = sd.regression.quantreg([float('nan')] * 4, [1.0, 2.0, 3.0, 4.0], nan_policy='omit')
+>>> e0.params, e0.nobs, e0.converged, e0.n_iter
+(array([nan, nan], dtype=float64), 0.0, False, 0)
+```
+
+행은 있는데 쓰인 열이 없으면(`rank` 0, 예를 들어 절편 없이 0인 열 하나) 계수는 NaN이지만 풀 것이 없는 것 자체는 확인된 답이라 `converged`는 True, `n_iter`는 0이에요. `objective`는 $\sum \rho_q(y_i)$예요.
+
+```python
+>>> z0 = sd.regression.quantreg(yn[:2] + yn[3:], [0.0] * 7, intercept=False)
+>>> z0.params, z0.rank, z0.converged, z0.n_iter, z0.objective
+(array([nan], dtype=float64), 0, True, 0, 16.8)
 ```
 
 ### 겹친 열
@@ -571,7 +635,7 @@ ValueError: quantreg(): 'X' must have 60 rows like 'y', not 59
 >>> sd.regression.quantreg(y, x, q=True)
 Traceback (most recent call last):
     ...
-TypeError: quantreg(): 'q' must be a number or a 1-dimensional array, not bool
+TypeError: quantreg(): 'q' must be a number or a 1-dimensional array of numbers, not bool
 ```
 
 ## ols·rlm과 어떻게 다를까요
@@ -614,6 +678,8 @@ array([-0.060000000000001205,                  2.04], dtype=float64)
 - 필드 이름(`params`, `bse`, `tvalues`, `pvalues`, `conf_int`, `prsquared`, `nobs`, `df_model`, `df_resid`)은 같아요. statsmodels에 없는 것은 `objective`, `converged`, `nonunique`, `n_pivots`예요. statsmodels의 `iterations`는 그쪽 반복의 수라 `n_iter`와 뜻이 달라요. `q`에 배열을 주는 것도 `quantreg`만 돼요.
 - 계수: statsmodels는 반복을 `p_tol`(기본 1e-6)에서 멈춘 근사이고, `quantreg`는 정확한 꼭짓점이에요. 그래서 계수가 조금 다르고 목적함수는 `quantreg`가 작거나 같아요. 위의 60개 데이터에서 statsmodels의 계수는 1.83617146, 0.54152101이에요.
 - 표준오차: statsmodels의 기본(`vcov='robust'`, Epanechnikov 커널)은 다른 추정이라 값이 달라요. 같은 데이터에서 statsmodels는 0.300, 0.0536, `quantreg`의 'nid'는 0.156, 0.0673이에요. statsmodels의 `bandwidth`(summary의 Bandwidth)는 잔차 단위의 커널 폭이고, `quantreg`의 `bandwidth`는 q 단위의 h예요.
+- y가 모두 같으면 statsmodels는 기울기에 반올림 크기의 값(y = 4가 6개면 2.7e-15)을 남기고 `prsquared`를 −inf로 내요. `quantreg`는 정확한 (4, 0)과 NaN(0/0)이에요.
+- statsmodels의 `get_prediction(X).conf_int()`도 적합값의 신뢰구간이라 `predict_interval`과 같은 뜻이에요. 표준오차의 추정이 달라서(위) 값은 달라요.
 - 유일하지 않은 해에서 statsmodels는 최소점 집합 안의 아무 점이나 낼 수 있어요. 1, 2, 3, 5, 7, 8의 중앙값을 statsmodels는 4.333, `quantreg`는 3.0으로 내요.
 - `prsquared`: statsmodels는 절편만인 모형의 값을 보간한 백분위수에서 재요. 그 점이 최소점이 아니면 `quantreg`보다 커요. y = 3, 1, 4, 1, 5, 9, 2, 6, 5, 3.5와 x = 0, …, 9, q = 0.25에서 statsmodels는 0.1674, `quantreg`는 0.1523이에요.
 

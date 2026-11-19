@@ -161,6 +161,21 @@ array([[-1.5543652850170449,  0.9221655647084511]], dtype=float64)
 0.8
 ```
 
+### 의사 R²
+
+`ols`의 R²처럼 "모형이 얼마나 설명하나"를 한 수로 보고 싶으면 `pseudo_rsquared`를 써요. 설명변수 없이 전체 합격률 하나만 쓰는 귀무 모형과 견줘 로그우도가 얼마나 나아졌는지예요. 0이면 설명변수가 쓸모없고, 클수록 나아요.
+
+```python
+>>> r.pseudo_rsquared(), r.pseudo_rsquared(kind='mcf')
+(0.44194988828117465, 0.42076670802744265)
+>>> r2.pseudo_rsquared(kind='mcf')
+0.5097144182833857
+```
+
+기본 `kind='cs'`는 Cox–Snell이고 `summary()`에 적히는 값이에요. `kind='mcf'`는 McFadden $1 - \text{llf}/\text{llnull}$이에요. 0/1 자료에서 Cox–Snell은 완벽히 맞아도 1에 닿지 않아요. 이 자료의 상한은 0.75이고, 아래 [완전 분리](#완전-분리) 예처럼 우도가 1에 닿으면 Cox–Snell은 그 상한 0.75, McFadden은 1이에요.
+
+`ols`의 R²처럼 설명변수를 더하면 의사 R²는 줄지 않아요(`prep`을 더한 `r2`가 0.42에서 0.51). 변수를 더할 만한지는 의사 R²가 아니라 `aic`나 계수의 p값으로 판단하세요.
+
 ## 링크 고르기
 
 이항분포족은 링크 네 가지를 받아요. 모두 실수를 (0, 1)로 보내는 S자 곡선(log는 예외)이고, 곡선의 모양이 조금씩 달라요.
@@ -379,11 +394,15 @@ array([0.3559466024813182,                0.5, 0.6440533975186818], dtype=float6
 
 ## statsmodels·scikit-learn을 아는 분께
 
-- statsmodels의 `sm.Logit(y, sm.add_constant(X)).fit()`과 `sm.GLM(..., family=sm.families.Binomial()).fit()`은 이 페이지의 `glm(y, X, family='binomial')`과 같은 모형이에요. 절편은 `glm`이 자동으로 넣어요. `Logit` 결과의 `prsquared`(McFadden 의사 R²)는 `1 - r.llf / r.llnull`로 계산해요. `summary()`에 적히는 의사 R²는 Cox–Snell이라 값이 달라요.
+- statsmodels의 `sm.Logit(y, sm.add_constant(X)).fit()`과 `sm.GLM(..., family=sm.families.Binomial()).fit()`은 이 페이지의 `glm(y, X, family='binomial')`과 같은 모형이에요. 절편은 `glm`이 자동으로 넣어요. `Logit` 결과의 `prsquared`(McFadden 의사 R²)는 `r.pseudo_rsquared(kind='mcf')`예요. `pseudo_rsquared()`의 기본은 statsmodels GLM의 `pseudo_rsquared()`와 같은 Cox–Snell이라 `prsquared`와 값이 달라요.
 
 ```python
->>> 1 - r.llf / r.llnull
+>>> import numpy as np
+>>> import statsmodels.api as sm
+>>> float(sm.Logit(np.array(passed), sm.add_constant(np.array(hours))).fit(disp=0).prsquared)
 0.42076670802744265
+>>> r.pseudo_rsquared(kind='mcf'), r.pseudo_rsquared()
+(0.42076670802744265, 0.44194988828117465)
 ```
 
 - statsmodels에서 비율 자료는 (성공 수, 실패 수) 두 열의 반응으로 주고, 여기서는 비율과 `trials`로 줘요. 계수와 편차, `llf`는 같아요. 다만 statsmodels의 `resid_response`는 성공 수의 척도이고, 여기는 비율의 척도예요.
@@ -391,7 +410,6 @@ array([0.3559466024813182,                0.5, 0.6440533975186818], dtype=float6
 - scikit-learn의 `LogisticRegression()`은 기본으로 L2 벌점(`C=1.0`)을 줘서 계수가 0 쪽으로 줄어요. 벌점 없는 최대우도 추정값과 견주려면 `C=np.inf`를 줘요. 그래도 반복의 허용오차 때문에 넷째 자리쯤부터 달라요. 표준오차와 p값은 내지 않아요. 벌점을 준 적합은 [`penalized_glm`](/api/regression/penalized-glm/)이 맡아요.
 
 ```python
->>> import numpy as np
 >>> from sklearn.linear_model import LogisticRegression
 >>> H = np.array(hours).reshape(-1, 1)
 >>> c = LogisticRegression().fit(H, passed)

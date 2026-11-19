@@ -2,7 +2,7 @@
 title: 분위 회귀의 내부점법과 심플렉스
 group: 강건과 분위
 order: 3
-summary: quantreg가 분위 회귀의 선형계획을 푸는 방법을 설명해요. 선형계획과 그 쌍대, Frisch–Newton 내부점법(Portnoy–Koenker, Mehrotra의 예측–보정, 경계까지 0.99995의 걸음), 꼭짓점으로의 교차, 꺾이는 점 위의 정확한 직선 탐색을 하는 Barrodale–Roberts 심플렉스, 최적성 증명서, 같은 행 합치기와 0 잔차의 허용오차, 유일하지 않은 해의 사전식 최소점과 Bland 규칙, 분위 배열의 따뜻한 시작, ε를 y의 크기에 맞춘 nid·iid·ker 표준오차와 Hall–Sheather·Bofinger 대역폭, R quantreg·statsmodels와의 비교를 다뤄요.
+summary: quantreg가 분위 회귀의 선형계획을 푸는 방법을 설명해요. 선형계획과 그 쌍대, Frisch–Newton 내부점법(Portnoy–Koenker, Mehrotra의 예측–보정, 경계까지 0.99995의 걸음), 꼭짓점으로의 교차, 꺾이는 점 위의 정확한 직선 탐색을 하는 Barrodale–Roberts 심플렉스, 최적성 증명서, 같은 행 합치기와 0 잔차의 허용오차, 유일하지 않은 해의 사전식 최소점과 Bland 규칙, 분위 배열의 따뜻한 시작, 정확히 0인 꼭짓점 좌표, ε를 y의 크기에 맞춘 nid·iid·ker 표준오차(완전 적합의 NaN)와 평균의 구간, Hall–Sheather·Bofinger 대역폭, R quantreg·statsmodels와의 비교를 다뤄요.
 seeAlso: [robust, slopes, least-squares, inference, overview, accuracy-performance]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -27,7 +27,7 @@ import Steps from '../../../components/fig/Steps.astro';
 <Fig column caption="quantreg_fit의 회귀 하나(quantreg_one).">
   <Steps
     steps={[
-      { label: '검사와 최소제곱', note: 'inf는 에러, NaN은 모든 값 NaN. 선형 모형의 최소제곱 핵심이 겹친 열, R, (RᵀR)⁻¹, 내부점법의 시작을 줘요', where: 'lsq.hpp' },
+      { label: '검사와 최소제곱', note: 'inf는 에러, NaN은 모든 값 NaN, 행이 없으면 NaN 결과(nobs 0, converged False). 선형 모형의 최소제곱 핵심이 겹친 열, R, (RᵀR)⁻¹, 내부점법의 시작을 줘요', where: 'lsq.hpp' },
       { label: 'pack', note: '쓰인 열(절편 먼저)을 행 우선으로 꾸리고, y와 x가 같은 행을 개수 mᵢ로 합쳐요' },
       { label: 'solve_q (분위마다)', note: '첫 분위는 ipm → crossover, 다음 분위는 앞 분위의 기저에서', depth: 0 },
       { label: 'simplex', note: 'Barrodale–Roberts 걸음, 증명서', depth: 1 },
@@ -197,7 +197,22 @@ True
 
 ### 꼭짓점의 계산
 
-기저 $B$에서 $\beta$는 $X_B\beta = y_B$의 해예요. $k\times k$ 행렬 $X_B$를 Householder QR(`geqrf`)로 분해해 풀고, 잔차 $y_B - X_B\beta$를 TwoProduct와 TwoSum으로 double-double에서 구해 보정을 최대 3번 해요(보정이 어떤 성분도 바꾸지 않으면 멈춰요). 쌍대 변수는 $X_B^{\mathsf T}\lambda_B = -g$,
+기저 $B$에서 $\beta$는 $X_B\beta = y_B$의 해예요. $k\times k$ 행렬 $X_B$를 Householder QR(`geqrf`)로 분해해 풀고, 잔차 $y_B - X_B\beta$를 TwoProduct와 TwoSum으로 double-double에서 구해 보정을 최대 3번 해요. $u\lVert v\rVert_\infty$ 아래의 보정은 바뀐 것으로 세지 않고, 바뀐 성분이 없으면 멈춰요. double-double 잔차는 해의 큰 성분이 정하는 크기만 풀어내므로, 그보다 작은 보정은 잔차 자신의 반올림이에요.
+
+그 반올림은 참값이 정확히 0인 꼭짓점 좌표에 흔적을 남겨요. 상수 $y$의 기울기처럼 0이어야 할 성분이 $10^{-63}$ 같은 값으로 나와요. 그래서 끝에 $u\lVert v\rVert_\infty$ 아래의 성분을 0으로 둔 해를 만들어, 기저 행의 잔차의 최댓값이 늘지 않으면 그것을 써요. 0으로 두는 것이 기저 행을 지나는 정도를 나쁘게 하지 않을 때만이라, 참값이 0이 아닌 작은 성분은 그대로 남아요.
+
+```cpp
+        double vmax = 0.0;
+        for (lint r = 0; r < k; ++r) vmax = std::max(vmax, std::fabs(v[r]));
+        std::vector<double> w(v, v + k);
+        bool any = false;
+        for (lint r = 0; r < k; ++r)
+            if (w[r] != 0.0 && std::fabs(w[r]) <= 0x1p-53 * vmax) w[r] = 0.0, any = true;
+        if (any && residual_max(bh, bl, w.data(), trans) <= residual_max(bh, bl, v, trans))
+            std::copy(w.begin(), w.end(), v);
+```
+
+`residual_max`는 $\max_r\lvert(b - Av)_r\rvert$를 double-double로 구해 한 번 반올림해요. 그래서 상수 $y$의 해는 정확히 $(y_0, 0, \dots, 0)$이에요. 쌍대 변수는 $X_B^{\mathsf T}\lambda_B = -g$,
 
 $$
 g = \sum_{i \notin B}\psi_q(r_i)\,m_i\,x_i = q\sum_{i\notin B}m_ix_i - \sum_{\text{쪽 } -1}m_ix_i
@@ -260,7 +275,7 @@ $(k + 16)u(\lvert y_i\rvert + \lVert x_i\rVert_1\lVert\beta\rVert_\infty)$는 �
 
 ### 증명서와 피벗 상한
 
-음의 축소 비용이 없으면, 갱신해 온 합과 잔차를 처음부터 다시 계산해(기저 풀이, 모든 행의 잔차와 쪽, $g$를 Sum2로) 다시 판정해요. 그래도 음수가 없으면 그 $\lambda$가 증명서이고 `converged=True`예요. 피벗은 $4n + 64k + 1000$번까지예요. 닿으면 그때의 꼭짓점을 내고 `converged=False`예요. 잰 문제에서 교차 뒤의 피벗은 0–35번이에요.
+음의 축소 비용이 없으면, 갱신해 온 합과 잔차를 처음부터 다시 계산해(기저 풀이, 모든 행의 잔차와 쪽, $g$를 Sum2로) 다시 판정해요. 그래도 음수가 없으면 그 $\lambda$가 증명서이고 `converged=True`예요. 피벗은 $4n + 64k + 1000$번까지예요. 닿으면 그때의 꼭짓점을 내고 `converged=False`예요. 잰 문제에서 교차 뒤의 피벗은 0–35번이에요. 쓰인 열이 없으면(랭크 0) 꼭짓점이 빈 계수 하나뿐이라 풀 것 없이 `converged=True`, `n_iter` 0이에요. 행이 하나도 없으면 증명서를 만들 문제 자체가 없어서 NaN 결과에 `converged=False`예요.
 
 ## 유일하지 않은 해
 
@@ -381,6 +396,23 @@ $$
 ### ker (Powell)
 
 $h' = (\Phi^{-1}(q + h) - \Phi^{-1}(q - h))\cdot\min(\operatorname{sd}(r), \operatorname{IQR}(r)/1.34)$(sd는 $n - 1$로 나누고 IQR은 R의 type 7 분위수), $f_i = \phi(r_i/h')/h'$로 'nid'와 같은 샌드위치예요(Powell 1991). $h'$가 잔차의 척도를 따르므로 절대적인 상수가 없어요. 평균과 제곱합은 Sum2예요.
+
+모든 잔차가 $\epsilon$ 안이면(완전 적합) 잔차의 퍼짐이 반올림 잡음뿐이라 $h'$도 잡음이에요. 그 폭으로 만든 $f_i$는 희소도에 대해 아무것도 말하지 않으므로, 'nid'·'iid'가 그 경우 NaN인 것과 같이 `bse`는 NaN이에요. 희소도를 정할 수 없는 상태를 0이나 반올림 크기의 표준오차로 보이지 않으려는 거예요.
+
+```python
+>>> x8 = sd.arange(1.0, 9.0)
+>>> [sd.regression.quantreg(0.5 + 2.0 * x8, x8, cov_type=c).bse.tolist() for c in ("nid", "iid", "ker")]
+[[nan, nan], [nan, nan], [nan, nan]]
+>>> c8 = sd.regression.quantreg(sd.full(8, 3.0), x8)
+>>> c8.params, c8.prsquared
+(array([3.0, 0.0], dtype=float64), nan)
+```
+
+상수 $y$에서는 절편만인 모형의 목적함수도 0이라 `prsquared` $= 1 - 0/0$이 NaN이에요.
+
+### 평균의 구간
+
+`predict_interval`은 적합한 $q$분위수의 신뢰구간 $x\hat\beta \pm t(\text{df\_resid})\cdot\text{se}$, $\text{se}^2 = x\,V x^{\mathsf T}$만 내요($V$는 위의 `cov_type`의 공분산). 선형 모형과 같은 `_interval`이고, 분위 배열이면 분위 축이 앞에 붙어요. 새 관측의 예측 구간은 두지 않아요. 분위 하나는 조건부 분포의 한 점이라 그 퍼짐을 말하지 않고, 퍼짐이 필요하면 $q/2$와 $1 - q/2$를 적합하면 되기 때문이에요.
 
 ## 정확도
 

@@ -138,6 +138,22 @@ array([1.2444444444444445, 0.5454545454545455], dtype=float64)
 array([  24.8888888888889, 10.909090909090915], dtype=float64)
 ```
 
+`predict`·`predict_interval`의 `exposure`도 적합 때와 같은 규칙이에요. 0 이하와 inf는 `ValueError`이고, NaN인 행은 예측이 NaN이에요. `offset`도 inf는 `ValueError`, NaN은 그 행의 NaN이에요.
+
+```python
+>>> e.predict(sd.asarray([0.0, 1.0]), exposure=[20.0, sd.inf])
+Traceback (most recent call last):
+    ...
+ValueError: predict(): 'exposure' contains infinity
+>>> e.predict(sd.asarray([0.0, 1.0]), exposure=[20.0, 0.0])
+Traceback (most recent call last):
+    ...
+ValueError: predict(): 'exposure' must be > 0
+>>> e.predict_interval(sd.asarray([0.0, 1.0]), exposure=[20.0, sd.nan])
+array([[19.15397508283607, 32.34089986253319],
+       [             nan,               nan]], dtype=float64)
+```
+
 ### `offset`과의 관계
 
 `exposure=t`는 `offset=log(t)`와 같아요(비트까지). `offset`은 계수 없이 $\eta$에 더하는 항 무엇이든 받고, 링크와 상관없이 써요. `exposure`는 log 링크에서만 받고 0보다 커야 해요.
@@ -384,7 +400,7 @@ array([ 2.826263618106065, 1.2392707415252828], dtype=float64)
 
 ## statsmodels·R을 아는 분께
 
-- statsmodels의 `sm.GLM(y, sm.add_constant(X), family=sm.families.Poisson(), exposure=t).fit()`이 여기의 `glm(y, X, family='poisson', exposure=t)`예요. `offset`, `exposure`의 이름과 뜻이 같고, `predict`에 노출을 주지 않으면 노출 1로 보는 것도 같아요(위 기계 예에서 1.2444, 0.5455).
+- statsmodels의 `sm.GLM(y, sm.add_constant(X), family=sm.families.Poisson(), exposure=t).fit()`이 여기의 `glm(y, X, family='poisson', exposure=t)`예요. `offset`, `exposure`의 이름과 뜻이 같고, `predict`에 노출을 주지 않으면 노출 1로 보는 것도 같아요(위 기계 예에서 1.2444, 0.5455). statsmodels의 `predict`는 노출 inf에 inf를, 노출 0에 기대 횟수 0을 내고, 여기는 둘 다 `ValueError`예요.
 - `scale='X2'`의 척도는 statsmodels와 같지만, statsmodels는 기본(`use_t=False`)이 정규분포라 p값이 z로 계산돼요. 여기는 척도를 추정했으니 t(`df_resid`)이고, R의 `quasipoisson`의 `summary`와 같은 p값이에요.
 - 0만 있는 군: statsmodels GLM은 계수 (−21.3, 22.4)에 표준오차 1.1e4로 `converged=True`, R `glm`은 (−20.3, 21.4)에 표준오차 6.95e3로 `converged=TRUE`를 내요. 편차는 셋 모두 3.5906…이에요. 여기는 `separation=True`와 NaN 계수예요.
 - statsmodels는 감마의 inverse 링크에 `DomainWarning`을 내요. 여기는 경고를 내지 않고, $\eta > 0$을 지키며 맞춰요.

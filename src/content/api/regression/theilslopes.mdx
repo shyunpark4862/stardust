@@ -18,7 +18,7 @@ params:
   - name: alpha
     type: float
     kind: keyword-only
-    desc: 기울기 신뢰구간의 신뢰수준(0과 1 사이, 끝은 빼고). 기본값 0.95는 95% 구간이에요. 0.5보다 작으면 1 - alpha로 바꿔서 읽으므로 0.1과 0.9는 같은 90% 구간이에요.
+    desc: 기울기 신뢰구간의 신뢰수준(0과 1 사이, 끝은 빼고). 기본값 0.95는 95% 구간이에요. 0.5보다 작으면 1 - alpha로 바꿔서 읽으므로 0.1과 0.9는 같은 90% 구간이에요. 다른 회귀 결과의 conf_int(alpha=0.05)는 유의수준이라 같은 이름이 반대 쪽을 가리켜요.
   - name: method
     type: str
     kind: keyword-only
@@ -187,7 +187,7 @@ $$
 
 ## `alpha`: 기울기의 신뢰구간
 
-`low_slope`와 `high_slope`는 Sen(1968)의 신뢰구간이에요. 기울기의 순위를 이용한 구간이라 오차의 분포를 가정하지 않아요. `alpha`는 **신뢰수준**이에요(보통 쓰는 유의수준과 반대예요). 0.95면 95% 구간이에요.
+`low_slope`와 `high_slope`는 Sen(1968)의 신뢰구간이에요. 기울기의 순위를 이용한 구간이라 오차의 분포를 가정하지 않아요. `alpha`는 **신뢰수준**이에요(보통 쓰는 유의수준과 반대예요). 0.95면 95% 구간이에요. [`ols`](/api/regression/ols/) 같은 다른 회귀 결과의 `conf_int(alpha=0.05)`는 유의수준이라, 같은 95% 구간을 거기서는 `alpha=0.05`, 여기서는 `alpha=0.95`로 써요.
 
 ```python
 >>> r95 = sd.regression.theilslopes(y_clean, x)
@@ -264,6 +264,17 @@ y가 모두 같으면 기울기는 0이에요. 0은 언제나 +0.0으로 내요.
 TheilslopesResult(slope=0.0, intercept=1.0, low_slope=0.0, high_slope=0.0)
 ```
 
+x와 y가 double의 끝(±1e308 근처)까지 퍼져 있으면 두 점의 차 $x_i - x_j$, $y_i - y_j$가 모두 inf로 넘칠 수 있어요. 그 쌍의 기울기는 inf/inf라 값이 없으니, x가 같은 쌍처럼 빼고 셈해요. 구간의 $N$(유한한 기울기의 수)에도 넣지 않아요.
+
+```python
+>>> xb = [-1e308, 0.0, 1.0, 2.0, 3.0, 1e308]
+>>> yb = [-1e308, 0.5, 1.4, 2.6, 3.5, 1e308]
+>>> sd.regression.theilslopes(yb, xb)
+TheilslopesResult(slope=1.0, intercept=0.5, low_slope=0.8999999999999999, high_slope=1.05)
+```
+
+양 끝 두 점을 잇는 쌍만 inf/inf이고, 나머지 14쌍의 기울기로 중앙값과 구간을 구했어요.
+
 ## NaN, inf, 점의 수
 
 `nan_policy`로 NaN을 다뤄요.
@@ -282,14 +293,22 @@ ValueError: theilslopes(): the input contains NaN (nan_policy='raise')
 
 `'omit'`은 y나 x 가운데 하나라도 NaN인 점을 빼요. 위의 예는 x = 0, 1, 3, 4의 네 점이 남아서 기울기가 정확히 1이에요.
 
-inf는 `nan_policy`와 상관없이 에러예요. 남은 점(NaN을 뺀 뒤)이 2개보다 적어도 에러예요.
+inf는 `nan_policy`와 상관없이 에러예요. `'omit'`도 점을 빼기 전에 inf를 보므로, NaN이 든 점의 inf도 에러예요. 점이 2개보다 적으면(NaN을 뺀 뒤도) 직선을 정할 수 없어서 에러예요.
 
 ```python
 >>> sd.regression.theilslopes([1.0, 2.0, float('inf'), 4.0])
 Traceback (most recent call last):
     ...
 ValueError: theilslopes(): 'y' contains infinity
+>>> sd.regression.theilslopes([1.0, float('nan'), 3.0], [1.0, float('inf'), 3.0], nan_policy='omit')
+Traceback (most recent call last):
+    ...
+ValueError: theilslopes(): 'x' contains infinity
 >>> sd.regression.theilslopes([1.0])
+Traceback (most recent call last):
+    ...
+ValueError: theilslopes(): 'x' and 'y' must have length at least 2
+>>> sd.regression.theilslopes([1.0, float('nan')], nan_policy='omit')
 Traceback (most recent call last):
     ...
 ValueError: theilslopes(): 'x' and 'y' must have length at least 2
@@ -359,6 +378,13 @@ TheilslopesResult(slope=np.float64(1.876388888888889), intercept=np.float64(-5.1
   ```
 
 - **inf**: scipy는 inf를 받아서 기울기에 ±inf가 섞인 채 계산해요. sd는 `ValueError`예요.
+- **넘친 차의 쌍**: 유한한 x, y의 차가 넘쳐 기울기가 inf/inf인 쌍은 두 라이브러리 모두 빼고 셈해요. 위의 ±1e308 예에서 값이 같아요(scipy는 넘침의 `RuntimeWarning`도 내요).
+
+  ```python
+  >>> scipy.stats.theilslopes(yb, xb)
+  TheilslopesResult(slope=np.float64(1.0), intercept=np.float64(0.5), low_slope=np.float64(0.8999999999999999), high_slope=np.float64(1.05))
+  ```
+
 - **`alpha`, `method`는 키워드로만** 받아요. scipy의 `theilslopes(y, x, 0.9)`는 `theilslopes(y, x, alpha=0.9)`로 써요.
 - **배치**: sd는 마지막 축을 점의 축으로 보고 앞 축을 배치로 받아요. scipy는 기본(`axis=None`)이 모든 원소를 한 줄로 펴고, `axis=-1`을 주면 sd와 같아요. sd에는 `axis`, `keepdims`가 없어요.
 - **`x=None`에 `nan_policy='omit'`**: sd는 빼기 전의 위치(0, 1, 3, 4, …)를 x로 써요. scipy는 뺀 뒤의 점에 0, 1, 2, …를 다시 매겨서 값이 달라요.

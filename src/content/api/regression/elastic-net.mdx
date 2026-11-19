@@ -8,9 +8,9 @@ signatures:
 summary: 라소의 절댓값 벌점과 릿지의 제곱 벌점을 섞은 엘라스틱 넷이에요. 라소처럼 계수를 정확히 0으로 만들면서도, 서로 비슷한 열들은 하나만 고르지 않고 함께 남겨요. l1_ratio가 섞는 비율이에요.
 params:
   - name: y
-    type: ndarray, 실수의 시퀀스, 또는 Series
+    type: ndarray, 실수의 시퀀스, Series, 또는 한 열짜리 DataFrame
     kind: positional-only
-    desc: 반응. 모양은 (..., n)이에요.
+    desc: 반응. 모양은 (..., n)이에요. 한 열짜리 DataFrame은 그 열을 반응으로 써요.
   - name: X
     type: ndarray, 실수의 시퀀스, 또는 DataFrame
     kind: positional-only
@@ -52,11 +52,11 @@ returns:
   desc: "계수 params(절편이 params[0]), 유효 자유도 df_model, converged, n_iter, dual_gap, fittedvalues, resid, ssr, rsquared, nobs와 predict(). 표준오차·p값은 없어요."
 raises:
   - type: TypeError
-    desc: y나 X를 이름으로 줬을 때, alpha가 수나 1차원 배열이 아닐 때, l1_ratio·tol이 수가 아닐 때, max_iter가 int가 아닐 때, intercept·standardize가 True·False가 아닐 때, 입력이 복소수일 때.
+    desc: y나 X를 이름으로 줬을 때, alpha가 수나 1차원 배열이 아닐 때(bool·bool 배열·문자열·None 포함), l1_ratio·tol이 수가 아닐 때, max_iter가 int가 아닐 때, intercept·standardize가 True·False가 아닐 때, 입력이 복소수일 때.
   - type: ValueError
-    desc: l1_ratio가 0과 1 사이가 아닐 때, alpha가 음수·inf·NaN이거나 빈 배열·2차원 배열일 때, max_iter < 1, tol ≤ 0일 때, 모양이 맞지 않을 때, weights가 음수일 때, inf가 있을 때, nan_policy가 틀렸거나 'raise'인데 NaN이 있을 때, 배치에서 nan_policy='omit'일 때.
+    desc: l1_ratio가 0과 1 사이가 아닐 때, alpha가 음수·inf·NaN이거나 빈 배열·2차원 배열일 때, X에 열이 없는데 intercept=False라 모수가 없을 때, max_iter < 1, tol ≤ 0일 때, 모양이 맞지 않을 때, weights가 음수일 때, inf가 있을 때, nan_policy가 틀렸거나 'raise'인데 NaN이 있을 때, 배치에서 nan_policy='omit'일 때.
   - type: OverflowError
-    desc: alpha나 max_iter가 너무 큰 정수일 때.
+    desc: alpha, l1_ratio, max_iter, tol이 너무 큰 정수일 때.
 seeAlso: [lasso, ridge, cross-validation, penalized-glm, results, basics]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -210,7 +210,7 @@ L2 쪽이 조금만 있어도(0.9) `x1`이 0에서 나와요. 제곱 벌점은 �
 | 필드 | 뜻 |
 |---|---|
 | `params`, `param_names` | 계수(절편이 `params[0]`, 0인 계수는 정확히 0.0)와 이름 |
-| `alpha`, `l1_ratio`, `standardize` | 준 값 |
+| `alpha`, `l1_ratio`, `standardize` | 준 값(읽기 전용) |
 | `nobs` | 적합에 쓴 행 수(가중치 > 0) |
 | `df_model` | 유효 자유도(아래) |
 | `converged`, `n_iter`, `dual_gap` | 수렴했는지, 반복 횟수, 쌍대 간격([`lasso`](/api/regression/lasso/)의 수렴 절) |
@@ -253,18 +253,20 @@ $Z_A$는 A의 열에서 평균을 뺀 것(`standardize`면 표준화한 것), $\
 
 계수 셋이 0이 아니지만 유효 자유도는 1.94예요.
 
-표준오차·p값·`summary()`가 없는 것도 [`ridge`](/api/regression/ridge/), [`lasso`](/api/regression/lasso/)와 같아요. 결과는 예측을 위한 것이에요.
+표준오차·p값·`summary()`, `rank`가 없는 것도 [`ridge`](/api/regression/ridge/), [`lasso`](/api/regression/lasso/)와 같아요. 결과는 예측을 위한 것이에요.
 
 ## 다른 인자
 
 `alpha`의 경로, `standardize`, `weights`, `intercept`, `max_iter`, `tol`, `nan_policy`는 [`lasso`](/api/regression/lasso/)와 같은 뜻이에요.
 
 - **경로**: `alpha`에 1차원 배열을 주면 큰 값부터 앞의 해에서 시작해 풀고, 결과는 준 순서예요. 각 해는 그 `alpha`로 따로 부른 것과 비트까지 같아요.
-- **수렴**: 수렴한 해를 최적성 조건으로 다듬으므로 계수는 `tol`과 상관없이 정확한 해에 반올림 수준으로 가까워요. 판정을 통과하기 전에 `max_iter`에 닿으면 `converged=False`이고 경고는 없어요. `tol`이 아주 크면 다듬기에 실패해 반복을 이어 가므로 `n_iter`가 오히려 클 수 있어요. 그렇게 이어 간 반복이 `max_iter`에 닿아도 다듬지 못한 마지막 반복의 계수와 그 `dual_gap`을 내고 `converged=False`예요. 경로에서는 `alpha`마다 따로 판정해요. `dual_gap`은 목적함수 단위예요. 자세한 것은 [`lasso`](/api/regression/lasso/)의 수렴 절에 있어요.
+- **수렴**: 수렴한 해를 최적성 조건으로 다듬으므로 계수는 `tol`과 상관없이 정확한 해에 반올림 수준으로 가까워요. `converged=True`는 판정을 통과하고 다듬기까지 마쳤다는 뜻이에요. 판정을 통과하기 전에 `max_iter`에 닿으면 `converged=False`이고 경고는 없어요. `n_iter`는 언제나 `max_iter` 이하예요. `tol`이 아주 크면 다듬기에 실패해 반복을 이어 가므로 `n_iter`가 오히려 클 수 있어요. 그렇게 이어 간 반복이 `max_iter`에 닿아도 다듬지 못한 마지막 반복의 계수와 그 `dual_gap`을 내고 `converged=False`예요. 경로에서는 `alpha`마다 따로 판정해요. `dual_gap`은 목적함수 단위예요. 자세한 것은 [`lasso`](/api/regression/lasso/)의 수렴 절에 있어요.
 - **표준화**: 열의 단위가 서로 다르면 `standardize=True`를 쓰세요. 단위만 바꿔도 고르는 열이 달라지는 것을 막아 줘요.
 
 ```python
 >>> pe = R.elastic_net(y, X, alpha=[1.0, 0.1, 0.01])
+>>> pe
+ElasticNetResult(a path of 3 alphas, 4 parameters)
 >>> pe.params.shape, pe.df_model.shape, pe.converged.shape
 ((3, 4), (3,), (3,))
 >>> pe.params[1].tolist() == e.params.tolist()
@@ -276,7 +278,16 @@ True
 
 ## 특수한 경우와 에러
 
-상수 열, `y`가 모두 같을 때(`rsquared`가 NaN), NaN과 inf, 배치는 [`lasso`](/api/regression/lasso/)와 같아요. `l1_ratio`의 에러는 이래요.
+상수 열, `y`가 모두 같을 때(`rsquared`가 NaN), NaN과 inf, 가중치가 모두 0이거나 행이 없을 때(`nobs` 0, 계수 NaN, `converged` False, `n_iter` 0), 모수가 없는 모형의 `ValueError`, 배치와 그 출력 꼴은 [`lasso`](/api/regression/lasso/)와 같아요.
+
+`alpha=0`이면 벌점이 사라져서 `l1_ratio`와 상관없이 `lasso(..., alpha=0)`과 같은 결과예요. 열이 겹치지 않으면 [`ols`](/api/regression/ols/)와 같은 해이고, 똑같은 열의 나눔은 [`lasso`](/api/regression/lasso/)의 `alpha=0` 절처럼 반복 계산이 닿은 값이에요.
+
+```python
+>>> R.elastic_net(y, X, alpha=0.0).params.tolist() == R.lasso(y, X, alpha=0.0).params.tolist()
+True
+```
+
+`l1_ratio`의 에러는 이래요.
 
 ```python
 >>> R.elastic_net(y, X, alpha=0.1, l1_ratio=1.5)
@@ -287,6 +298,10 @@ ValueError: elastic_net(): 'l1_ratio' must be between 0 and 1 (inclusive)
 Traceback (most recent call last):
     ...
 TypeError: elastic_net(): 'l1_ratio' must be an int or a float, not str
+>>> R.elastic_net(y, X, alpha=0.1, l1_ratio=10**400)
+Traceback (most recent call last):
+    ...
+OverflowError: elastic_net(): 'l1_ratio' is out of range
 ```
 
 ## 정확도

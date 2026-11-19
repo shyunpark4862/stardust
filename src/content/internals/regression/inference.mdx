@@ -2,7 +2,7 @@
 title: 추론과 진단
 group: 선형 모형
 order: 2
-summary: ols·wls·gls의 결과가 표준오차, p값, 진단을 구하는 방법이에요. XᵀX의 역행렬 없이 R에서 공분산을 만드는 방법, 얇은 Q의 점수로 짓는 HC0–HC3·HAC(Newey–West)·군집 샌드위치, 강건 공분산의 Wald F, sd.stats로 구하는 t·F의 p값, 지렛대·스튜던트화 잔차·Cook 거리, double-double로 더하는 Durbin–Watson과 Jarque–Bera, Breusch–Pagan의 보조 회귀, 가중치 0인 행의 처리, summary()의 짜임을 다뤄요.
+summary: ols·wls·gls의 결과가 표준오차, p값, 진단을 구하는 방법이에요. XᵀX의 역행렬 없이 R에서 공분산을 만드는 방법, 얇은 Q의 점수로 짓는 HC0–HC3·HAC(Newey–West)·군집 샌드위치, 강건 공분산의 Wald F, sd.stats로 구하는 t·F의 p값, 지렛대·스튜던트화 잔차·Cook 거리, double-double로 더하는 Durbin–Watson과 Jarque–Bera, Breusch–Pagan의 보조 회귀, 가중치 0인 행의 처리, 남은 자유도가 없을 때의 NaN, summary()의 짜임을 다뤄요.
 seeAlso: [least-squares, overview, glm, accuracy-performance]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -27,7 +27,7 @@ import Bench from '../../../components/fig/Bench.astro';
 
 처음 읽을 때 커널을 다시 부르는 진단은 적합할 때 복사해 둔 y, X, 가중치를 읽어요. 그래서 적합 뒤에 넘긴 배열을 고쳐도 진단은 적합한 자료의 값이에요([회귀 영역의 구조](/internals/regression/overview/)).
 
-자유도는 `df_resid` $= \text{nobs} - \text{rank}$예요. 군집 공분산에서만 t와 F의 분모 자유도가 군집 수 − 1이고, 그 값이 `df_resid_inference`에 있어요.
+자유도는 `df_resid` $= \text{nobs} - \text{rank}$예요. 군집 공분산에서만 t와 F의 분모 자유도가 군집 수 − 1이고, 그 값이 `df_resid_inference`에 있어요. `df_resid`가 0이면 잔차가 늘 0이라 오차의 크기를 추정할 자유도가 없어요. 척도 $\text{SSR}/\text{df\_resid}$가 $0/0$이고, 고전형이든 강건형이든 공분산과 그 뒤의 추론(표준오차, t, p, 구간, F)이 모두 NaN이에요([최소제곱 풀이](/internals/regression/least-squares/)).
 
 ## 고전형 공분산
 
@@ -54,16 +54,33 @@ $$
         }
 ```
 
-커널이 내는 것은 척도를 곱하기 전의 $(R^{\mathsf T}R)^{-1}$이에요. Python의 `cov_params()`가 처음 읽을 때 `scale`을 곱하고, `bse`는 그 대각의 제곱근이에요. 겹친 열의 행과 열은 NaN이에요.
+커널이 내는 것은 척도를 곱하기 전의 $(R^{\mathsf T}R)^{-1}$이에요. Python이 처음 읽을 때 적합의 단위의 척도(`_scale_s`, `df_resid` = 0이면 NaN)를 곱해 `_cov_s`를 만들어요. 강건 공분산은 커널이 낸 것이 이미 공분산이라 그대로 쓰고, `df_resid` = 0일 때만 NaN으로 둬요. 겹친 열의 행과 열은 NaN이에요.
+
+```python
+    def _cov_s(self):
+        def make():
+            c = self._raw[1]
+            if self._robust:
+                # no degree of freedom left: 0/0 like the classical one
+                df = self.df_resid
+                if self._batch:
+                    return _sd.where(_expand(df == 0.0, 2), math.nan, c)
+                return c * math.nan if df == 0 else c
+            return self._per(self._scale_s(), 2) * c
+        return self._cached("cov_s", make)
+```
+
+`cov_params()`와 `bse`는 이것을 데이터의 단위로 옮긴 값이에요. 열과 $y$를 2의 거듭제곱 $f_{x_j}$, $f_y$로 옮겨 적합했으면 계수마다의 배율 $g_j = f_y/f_{x_j}$를 곱하고(`_colfactor`), 아니면 그대로예요. 배율을 공분산을 다 만든 뒤 한 번만 곱하므로, 중간의 $(R^{\mathsf T}R)^{-1}$과 척도가 double을 벗어나지 않아요.
 
 ```python
     def cov_params(self):
         """The covariance of the parameters (k x k); rows and columns of aliased parameters are NaN."""
         def make():
-            c = self._raw[1]
-            if self._robust:
+            g = self._colfactor()
+            c = self._cov_s()
+            if g is None:
                 return c
-            return self._per(self.scale, 2) * c
+            return c * (_sd.expand_dims(g, axis=-1) * _sd.expand_dims(g, axis=-2))
         return self._cached("cov_params", make)
 ```
 
@@ -82,15 +99,16 @@ $\bar F$는 위꼬리 확률(`ccdf`), $\bar F^{-1}$은 그 역함수(`iccdf`)예
     def pvalues(self):
         return self._cached("pvalues", lambda: 2.0 * self._dist().ccdf(_sd.abs(self.tvalues)))
 
-    def conf_int(self, alpha=0.05):
-        """(..., k, 2): the lower and upper bounds of the 1 - alpha confidence intervals."""
+    def conf_int(self, *, alpha=0.05):
+        """(..., k, 2): the lower and upper bounds of the 1 - alpha confidence intervals
+        (alpha keyword-only)."""
         alpha = _check_alpha(alpha, "conf_int")
         q = self._dist().iccdf(alpha / 2)
         half = q * self.bse
         return _sd.stack([self.params - half, self.params + half], axis=-1)
 ```
 
-`_dist()`는 자유도 `df_resid_inference`의 `sd.stats.StudentT`예요.
+`_dist()`는 자유도 `df_resid_inference`의 `sd.stats.StudentT`예요. `alpha`는 키워드로만 받아요. 회귀 영역에서 `alpha`는 정규화의 벌점, `theilslopes`의 신뢰수준이기도 해서, 위치 인자로 받으면 `conf_int(0.1)`이 무엇을 뜻하는지 읽는 쪽이 헷갈리기 때문이에요.
 
 ```python
 >>> x = sd.arange(20.0)
@@ -150,8 +168,11 @@ HC는 $\sqrt{\omega_t}$를 Q의 행에 곱해 $U$를 만들고 `syrk`로 $U^{\ma
         // HAC), not the square of the summed copies (statsmodels' convention)
         if (d.smult && pb.cov != kCluster) e *= d.smult[idx[t]];
         double sq = e;                 // HC: sqrt(omega) (the sign drops out of the squares)
-        if (pb.cov == kHC2) sq = e / std::sqrt(1.0 - hat[t]);
-        else if (pb.cov == kHC3) sq = e / (1.0 - hat[t]);
+        // a GLM row of frequency f stands for f copies, each with the leverage h / f (the
+        // repeated data's value)
+        const double ht = d.smult ? hat[t] * (d.smult[idx[t]] * d.smult[idx[t]]) : hat[t];
+        if (pb.cov == kHC2) sq = e / std::sqrt(1.0 - ht);
+        else if (pb.cov == kHC3) sq = e / (1.0 - ht);
         cv[t] = sq;
     }
     for (lint jj = 0; jj < kk; ++jj)
@@ -162,11 +183,11 @@ HC는 $\sqrt{\omega_t}$를 Q의 행에 곱해 $U$를 만들고 `syrk`로 $U^{\ma
         if (pb.cov == kHC1) c1 = n_eff / (n_eff - static_cast<double>(kk));
 ```
 
-HC2·HC3만 지렛대가 필요해서, 그때만 `orgqr`로 만든 Q에서 $h_t$를 함께 구해요. 네 가지는 MacKinnon과 White(1985)의 이름이에요. HC0이 White(1980)의 원래 추정량이고, HC1은 자유도 보정, HC2와 HC3은 지렛대가 큰 행의 잔차가 작게 나오는 것($\operatorname{E}\tilde e_t^2 = \sigma^2(1 - h_t)$)을 되돌리는 보정이에요.
+HC2·HC3만 지렛대가 필요해서, 그때만 `orgqr`로 만든 Q에서 $h_t$를 함께 구해요. `smult`는 GLM의 빈도 가중치 $f_t$가 있을 때의 $1/\sqrt{f_t}$예요. 빈도 $f_t$인 행은 같은 관측 $f_t$개라, 그 행의 지렛대 $h_t$는 사본 $f_t$개가 나눠 가진 합이고 사본 하나의 지렛대는 $h_t/f_t$예요. 그래서 HC2·HC3의 보정에 $h_t/f_t$를 써요. 그러면 행을 $f_t$번 반복한 자료로 적합한 것과 같은 표준오차예요([일반화 선형 모형](/internals/regression/glm/)). 네 가지는 MacKinnon과 White(1985)의 이름이에요. HC0이 White(1980)의 원래 추정량이고, HC1은 자유도 보정, HC2와 HC3은 지렛대가 큰 행의 잔차가 작게 나오는 것($\operatorname{E}\tilde e_t^2 = \sigma^2(1 - h_t)$)을 되돌리는 보정이에요.
 
 ### HAC: Newey–West
 
-시계열처럼 가까운 행끼리 오차가 상관이 있으면 점수의 곱 $u_tu_{t-l}^{\mathsf T}$도 고기에 들어가야 해요. Newey와 West(1987)는 지연 $l$의 항에 Bartlett 가중치 $w_l = 1 - l/(L+1)$을 곱했어요. 이 가중치를 쓰면 $S$가 언제나 양의 준정부호라서 공분산의 대각이 음수가 되지 않아요. 지연 수의 기본은 Newey와 West(1994)의 경험식 $L = \lfloor 4(n/100)^{2/9} \rfloor$이고, statsmodels와 같은 double 연산으로 구해요. 자동 대역폭 선택과 사전 백색화는 하지 않아요.
+시계열처럼 가까운 행끼리 오차가 상관이 있으면 점수의 곱 $u_tu_{t-l}^{\mathsf T}$도 고기에 들어가야 해요. Newey와 West(1987)는 지연 $l$의 항에 Bartlett 가중치 $w_l = 1 - l/(L+1)$을 곱했어요. 이 가중치를 쓰면 $S$가 언제나 양의 준정부호라서 공분산의 대각이 음수가 되지 않아요. 지연 수의 기본은 Newey와 West(1994)의 경험식 $L = \lfloor 4(\text{nobs}/100)^{2/9} \rfloor$이고, statsmodels와 같은 double 연산으로 구해요. nobs는 쓰인 행의 수이고, GLM이면 빈도 가중치의 합이에요. 자동 대역폭 선택과 사전 백색화는 하지 않아요.
 
 지연 $L$개의 행렬곱을 따로 하지 않아요. 열마다 필터 $v_t = \sum_{l=1}^{L} w_l u_{t-l}$을 만들면
 
@@ -206,12 +227,13 @@ $V$는 4,096행 덩어리로 만들고(열마다 스레드풀), 덩어리마다�
 
 ### 군집
 
-같은 군집(학교, 회사, 지역) 안에서 오차가 상관이 있고 군집끼리는 독립이면, 군집마다 점수를 더한 $s_g$가 독립인 단위가 돼요. 고기는 $\sum_g s_gs_g^{\mathsf T}$이고, Stata와 statsmodels의 보정 $\tfrac{G}{G-1}\tfrac{n-1}{n-k}$를 곱해요. t와 F의 분모 자유도는 $G - 1$이에요(Stata와 같아요). 군집이 하나뿐이면 점수의 합이 0이고 $G/(G-1)$이 무한이라 공분산이 NaN이에요.
+같은 군집(학교, 회사, 지역) 안에서 오차가 상관이 있고 군집끼리는 독립이면, 군집마다 점수를 더한 $s_g$가 독립인 단위가 돼요. 고기는 $\sum_g s_gs_g^{\mathsf T}$이고, Stata와 statsmodels의 보정 $\tfrac{G}{G-1}\tfrac{n-1}{n-k}$를 곱해요. t와 F의 분모 자유도는 $G - 1$이에요(Stata와 같아요). 군집이 하나뿐이면 점수의 합이 0이고 $G/(G-1)$이 무한이라 공분산이 NaN이에요. $y$가 상수라 점수가 모두 0이어도 이 NaN을 0으로 바꾸지 않아요. 군집 하나로는 군집 사이의 변동을 잴 수 없다는 사실이 먼저예요.
 
 ```cpp
         lint G = 0;
         for (lint t = 0; t < m; ++t) {
-            const std::int64_t code = rd_i64(d.g + idx[t] * d.gs);
+            std::int64_t code = rd_i64(d.g + idx[t] * d.gs);
+            if (dense) code = std::lower_bound(uniq.begin(), uniq.end(), code) - uniq.begin();
             lint& l = loc[code];
             if (l < 0) l = G++;
             lab[t] = l;
@@ -229,6 +251,7 @@ $V$는 4,096행 덩어리로 만들고(열마다 스레드풀), 덩어리마다�
 ```
 
 - 커널은 쓰인 행에 나오는 군집 번호를 처음 나온 순서로 다시 매겨요. 그래서 $G$는 적합에 쓰인 행에 있는 군집 수이고, 결과는 Python이 번호를 매긴 방법과 상관없어요.
+- Python은 배치 전체의 레이블에 걸쳐 번호 $0, \dots, G_{\text{tot}} - 1$을 매겨요. 다시 매기는 표(`loc`)를 $G_{\text{tot}}$칸으로 두면 회귀마다 배치 전체의 레이블 수만큼 비용과 메모리가 들어요. 그래서 $G_{\text{tot}}$이 그 회귀의 행 수 $m$보다 크면, 먼저 그 회귀에 나오는 번호만 정렬해 중복을 지운 배열(`uniq`)을 만들고 이분 탐색으로 촘촘한 번호($m$칸 안)로 바꾼 뒤 같은 표를 써요. 비용은 $O(m\log m)$이에요. 처음 나온 순서의 지역 번호는 어느 길이든 같아서, 합의 순서와 비트도 같아요.
 - 군집 수 × 열 수가 2²²(32 MB) 이하이면 $G \times k$ 행렬에 행을 순서대로 흩뿌려 더하고 `syrk` 한 번이에요. 그보다 크면 행을 군집별로 안정 정렬해 군집 덩어리마다 합을 만들고 `syrk`를 누적해요. 두 길 모두 한 군집의 행을 같은 순서로 더하므로 같은 값이에요.
 
 ```python
@@ -308,7 +331,7 @@ True
 
 군집 3개에 기울기 3개($q = 3$)라 F가 NaN이고, 군집이 4개면 F가 나와요. statsmodels는 3개에서도 F(4.78)를 내요.
 
-y가 모두 같아 TSS가 정확히 0이면 강건형이든 고전형이든 `fvalue`와 `f_pvalue`가 NaN이에요(`rsquared`와 같은 규칙, [최소제곱 풀이](/internals/regression/least-squares/)). 절편이 있으면 이때 해가 정확한 완전 적합이라 잔차와 점수가 모두 0이고, 강건 공분산도 0이에요. 이 F는 statsmodels가 강건 공분산에서 내는 `fvalue`(`f_test`)와 같은 통계량이에요.
+y가 모두 같아 TSS가 정확히 0이면 강건형이든 고전형이든 `fvalue`와 `f_pvalue`가 NaN이에요(`rsquared`와 같은 규칙, [최소제곱 풀이](/internals/regression/least-squares/)). 절편이 있으면 이때 해가 정확한 완전 적합이라 잔차와 점수가 모두 0이고, 강건 공분산도 0이에요(군집이 하나면 위의 NaN 그대로예요). 이 F는 statsmodels가 강건 공분산에서 내는 `fvalue`(`f_test`)와 같은 통계량이에요.
 
 ## 지렛대
 
@@ -404,7 +427,7 @@ $$
 
 statsmodels의 `resid_studentized_external`은 행을 하나씩 뺀 적합을 $n$번 해요. (10⁵, 10)에서 sd의 외적 스튜던트화 잔차는 적합을 포함해 14.5 ms(1스레드)예요.
 
-잔차가 정확히 0인 완전 적합에서는 $s = 0$이고 $h_t < 1$이라 스튜던트화 잔차와 Cook 거리가 $0/0$ = NaN이에요.
+완전 적합(SSR이 판정으로 0)에서는 백색화 잔차 $\tilde e_t$를 0으로 보고(`_wresid`), $s = 0$이고 $h_t < 1$이라 스튜던트화 잔차와 Cook 거리가 $0/0$ = NaN이에요. 잔차 필드에 남은 반올림 크기의 값으로 나누면 그 반올림이 정한 유한한 값이 나오므로, 판정과 같은 기준으로 0으로 둬요. DW, JB, BP도 같은 이유로 NaN이에요.
 
 ## 잔차의 합: Durbin–Watson과 Jarque–Bera
 
@@ -435,7 +458,7 @@ Durbin–Watson $d$는 이웃한 잔차의 차이로 1차 자기상관을 봐요
             });
 ```
 
-덩어리는 4,096행으로 n만으로 정하고 순서대로 더하므로 스레드 수와 상관없는 비트예요. 덩어리 경계의 차 $\tilde e_{t_0} - \tilde e_{t_0-1}$도 그 덩어리가 맡아요(`t > 0`이면 앞 덩어리의 마지막 행을 읽어요). Durbin–Watson의 분모는 적합의 `ssr`이에요.
+덩어리는 4,096행으로 n만으로 정하고 순서대로 더하므로 스레드 수와 상관없는 비트예요. 덩어리 경계의 차 $\tilde e_{t_0} - \tilde e_{t_0-1}$도 그 덩어리가 맡아요(`t > 0`이면 앞 덩어리의 마지막 행을 읽어요). Durbin–Watson의 분모는 적합의 SSR이에요. 진단은 모두 적합의 단위(척도를 바꿔 적합했으면 바꾼 $y$의 잔차)에서 만들어요. 진단은 잔차끼리의 비라서 단위가 약분되고, 제곱이 double을 벗어나지 않아요.
 
 이 합들은 적합 안에서 구하지 않고 처음 읽을 때 따로 구해요. (10⁵, 10)·1스레드에서 적합 안에서 더하면 적합이 9.0 ms에서 10.3 ms로 느려지기 때문이에요(`bench/regression/g1b/speed.md`).
 

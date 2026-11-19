@@ -2,7 +2,7 @@
 title: 정규화 회귀의 풀이
 group: 정규화
 order: 1
-summary: ridge, lasso, elastic_net, 교차검증, penalized_glm이 안에서 하는 일을 설명해요. 중심화한 설계의 QR 한 번과 R의 SVD로 모든 alpha를 푸는 ridge와 조건이 나쁠 때의 double-double 개선, 소프트 문턱으로 쓰는 좌표 하강(Friedman–Hastie–Tibshirani)과 활성 집합 스윕, 쌍대 간격과 수렴 판정, 활성 집합과 부호로 정상 조건을 풀고 비활성 부등식을 검사하는 KKT 연마, 경로의 따뜻한 시작, 표준화, 유효 자유도, 교차검증의 겹과 1-SE 규칙, 닫힌 꼴의 GCV, 바깥 IRLS와 안쪽 좌표 하강·걸음 반감·뉴턴 연마로 푸는 정규화 GLM, alpha = 0을 glm에 맡기는 길을 다뤄요.
+summary: ridge, lasso, elastic_net, 교차검증, penalized_glm이 안에서 하는 일을 설명해요. 중심화한 설계의 QR 한 번과 R의 SVD로 모든 alpha를 푸는 ridge와 조건이 나쁠 때의 double-double 개선, 소프트 문턱으로 쓰는 좌표 하강(Friedman–Hastie–Tibshirani)과 활성 집합 스윕, 쌍대 간격과 수렴 판정, 활성 집합과 부호로 정상 조건을 풀고 비활성 부등식을 검사하는 KKT 연마, 경로의 따뜻한 시작, 표준화, 유효 자유도, 교차검증의 겹과 1-SE 규칙, 닫힌 꼴의 GCV, 바깥 IRLS와 안쪽 좌표 하강·걸음 반감·뉴턴 연마로 푸는 정규화 GLM, 선형 정규화의 alpha = 0 극한과 alpha = 0을 glm에 맡기는 정규화 GLM의 길, 시험 가중치가 없는 겹, 수렴의 뜻을 다뤄요.
 seeAlso: [overview, least-squares, glm, accuracy-performance]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -309,7 +309,7 @@ $$
 (Z_A^{\mathsf T}\Omega Z_A + l_2 I)\,b_A = Z_A^{\mathsf T}\Omega v - l_1\sigma .
 $$
 
-연마는 좌표 하강이 찾은 $A$와 $\sigma$로 이것을 Gram 블록의 Cholesky로 풀어요. LAPACK이 그 인자에서 어림한 1-노름 조건수가 $64a$($a = \lvert A\rvert$)를 넘으면 ridge와 같은 double-double 잔차로 최대 3번 개선해요. 1-노름 조건수는 2-노름 조건수보다 차원 $a$배까지 클 수 있어서 문턱에 $a$를 곱해요. 그다음 두 가지를 검사해요.
+연마는 좌표 하강이 찾은 $A$와 $\sigma$로 이것을 Gram 블록의 Cholesky로 풀어요. $A$가 비면(해가 모두 0) 풀 연립방정식이 없어서 Gram 블록을 만들지 않고 비활성 부등식만 봐요. 열 0개의 블록을 BLAS(`dsyrk`)에 넘기면 선행 차원 0이 잘못된 인자라 호출 자체가 거부되기 때문에, `active_gram`은 그 경우를 먼저 걸러요. LAPACK이 그 인자에서 어림한 1-노름 조건수가 $64a$($a = \lvert A\rvert$)를 넘으면 ridge와 같은 double-double 잔차로 최대 3번 개선해요. 1-노름 조건수는 2-노름 조건수보다 차원 $a$배까지 클 수 있어서 문턱에 $a$를 곱해요. 그다음 두 가지를 검사해요.
 
 ```cpp
 // csrc/regression/penalized.cpp (polish)
@@ -363,7 +363,7 @@ True
 
 ### 언제 연마하나
 
-- **간격 판정을 통과했을 때.** 연마가 실패하면(alpha_max 바로 아래처럼 아직 활성 집합이 다르면) 허용오차를 $10^{-6}$배로 줄여 좌표 하강을 이어 간 뒤 다시 연마해요(최대 2번). 끝내 통과하지 못하면(똑같은 열이 둘이라 해가 하나가 아니고 Gram 블록이 특이한 경우 등) 좌표 하강의 해를 내요. 다시 도는 좌표 하강이 `max_iter`에 닿으면 거기서 멈추고, 연마하지 않은 마지막 반복의 계수와 그 간격을 내며 `converged`를 False로 둬요. 처음의 간격 판정을 통과했어도 그 해는 좁힌 허용오차에도, 연마한 해에도 이르지 못했기 때문이에요. 반복 수의 상한이 alpha마다라서 경로에서도 alpha마다 따로 정해져요.
+- **간격 판정을 통과했을 때.** 연마가 실패하면(alpha_max 바로 아래처럼 아직 활성 집합이 다르면) 허용오차를 $10^{-6}$배로 줄여 좌표 하강을 이어 간 뒤 다시 연마해요(최대 2번). 끝내 통과하지 못하면(똑같은 열이 둘이라 해가 하나가 아니고 Gram 블록이 특이한 경우 등) 좌표 하강의 해를 내요. 다시 도는 좌표 하강이 `max_iter`에 닿으면 거기서 멈추고, 연마하지 않은 마지막 반복의 계수와 그 간격을 내며 `converged`를 False로 둬요. 처음의 간격 판정을 통과했어도 그 해는 좁힌 허용오차에도, 연마한 해에도 이르지 못했기 때문이에요. 다시 도는 좌표 하강이 좁힌 판정을 통과했더라도, 그 사이에 `max_iter`를 다 써서 연마를 더 시도할 수 없으면 같은 이유로 False예요. `converged=True`는 언제나 "연마한 해, 또는 연마할 수 없음이 밝혀질 때까지 좁힌 해"라는 뜻이에요. 반복 수의 상한이 alpha마다라서 경로에서도 alpha마다 따로 정해져요.
 - **좌표 하강 도중, 두 스윕 연달아 모든 계수의 부호가 같을 때**(활성 집합이 자리를 잡았을 때). 부호 꼴마다 한 번만 시도해요. 통과하면 그 해의 간격으로 수렴을 판정해요. 좌표 하강은 조건이 나쁜 활성 집합에서 선형으로만 수렴하는데, 연마는 그것을 한 번에 풀어요.
 
 ```cpp
@@ -404,6 +404,8 @@ True
                 if (!more.converged) break;
                 po = polish(s, src, P, op.intercept, l1, l2, op.refine_cond);
             }
+            // max_iter cut the retries before a polish took: not converged
+            if (!po.ok && cd.n_iter >= op.max_iter) cd.converged = false;
         }
 ```
 
@@ -484,6 +486,28 @@ ridge에는 해가 0이 되는 alpha가 없어서 이 $\alpha_{\max}$는 lasso�
   />
 </Fig>
 
+### alpha = 0
+
+`ridge`, `lasso`, `elastic_net`의 alpha = 0은 `ols`에 맡기지 않고 같은 풀이로 풀어요. 그래서 결과는 벌점 문제의 alpha → 0 극한이고, 경로에서 끊기지 않아요.
+
+- **ridge**는 SVD의 닫힌 꼴에서 `cut` 아래의 특이값을 0으로 보므로, alpha = 0에서 최소 노름 해예요. 똑같은 열 둘은 계수를 반씩 나눠 가져요.
+- **lasso·엘라스틱 넷**은 좌표 하강이 앞의 해에서 이어 가요. 똑같은 열 둘이면 먼저 갱신된 열이 계수를 다 받고, 그 뒤 열은 기울기가 이미 0이라 0에 머물러요. scikit-learn의 좌표 하강과 같은 결과예요.
+
+`ols`처럼 겹친 열을 NaN으로 두지 않는 것은 이 결과들이 예측에 맞춘 것이기 때문이에요. 경로의 작은 alpha에서 계수가 연속으로 이어지는 것이, 마지막 점 하나에서 계수가 NaN으로 끊기는 것보다 쓸모 있어요. 같은 이유로 이 결과에는 `rank`가 없어요. 겹친 열도 계수를 받아 빠지는 열이 없으므로(상수 열만 0) 셀 것이 쓰인 열의 수뿐이고, 모형의 실제 크기는 유효 자유도 `df_model`이 말해요. `penalized_glm`의 alpha = 0은 다르게 `glm`에 맡겨요(아래 정규화 GLM 절). 벌점이 없는 GLM은 분리된 자료에서 최대우도 추정이 없을 수 있어서, 그 판정을 glm의 증명서로 해야 하기 때문이에요.
+
+```python
+>>> rz = sd.random.default_rng(7)
+>>> xz, zz = sd.stats.Normal().sample(30, rng=rz), sd.stats.Normal().sample(30, rng=rz)
+>>> yz = 1.0 + 2.0 * xz - zz + 0.1 * sd.stats.Normal().sample(30, rng=rz)
+>>> Xz = sd.stack([xz, xz, zz], axis=1)
+>>> sd.regression.ridge(yz, Xz, alpha=0.0).params.tolist()
+[0.9779479184525101, 0.997664907786031, 0.9976649077860318, -0.9960953609050904]
+>>> sd.regression.lasso(yz, Xz, alpha=[0.01, 0.0]).params.tolist()
+[[0.9760269144014911, 1.986147817261111, 0.0, -0.9874908708702548], [0.9779479184525101, 1.995329815572063, 0.0, -0.9960953609050911]]
+>>> sd.regression.ols(yz, Xz).params.tolist()
+[0.97794791845251, 1.9953298155720627, nan, -0.9960953609050907]
+```
+
 ## 유효 자유도
 
 `df_model`은 적합값이 $v$에 대해 갖는 선형 사상의 대각합이에요. 활성 집합 $A$에서
@@ -535,15 +559,36 @@ double effective_df(std::vector<double> H, lint a, double l2) {
         tw = test * base
         trw = (1.0 - test) * base
         _, S = _run(func, kind, y, X, trw, grid, l1_ratio, "gaussian", intercept, standardize, max_iter, tol, tw=tw)
-        mse = S[..., _TEST_SSE] / S[..., _TEST_SW]  # (cv, batch..., L)
-        err = _sd.mean(mse, axis=0)
-        se = _sd.std(mse, axis=0, correction=1) / math.sqrt(cv)
+        sw = S[..., _TEST_SW]
+        mse = S[..., _TEST_SSE] / sw  # (cv, batch..., L)
+        empty = sw == 0.0
+        if not bool(_sd.any(empty)):
+            err = _sd.mean(mse, axis=0)
+            se = _sd.std(mse, axis=0, correction=1) / math.sqrt(cv)
+        else:
+            # a fold whose test rows all have weight 0 measures nothing: out of the mean and
+            # the standard error; a regression whose every row has weight 0 is NaN
+            used = _sd.logical_not(empty)
+            cnt = _sd.sum(_sd.where(used, 1.0, 0.0), axis=0)
+            err = _sd.sum(_sd.where(used, mse, 0.0), axis=0) / cnt
+            dev = _sd.where(used, mse - err, 0.0)
+            se = _sd.sqrt(_sd.sum(dev * dev, axis=0) / (cnt - 1.0)) / _sd.sqrt(cnt)
 ```
 
 겹의 크기는 많아야 1 차이가 나요(0, 1, …, cv − 1을 되풀이한 이름표를 순열로 섞어요). 순열은 [`rng.permutation(n)`](/api/random/permutation/) 하나라 스레드 수와 상관없고, 배치의 모든 회귀가 같은 겹을 써요. 격자는 모든 데이터에서 한 번 정해요(scikit-learn의 `LassoCV`와 같아요). 시험 행의 오차는 경로의 모든 alpha에 대해 시험 행의 덩어리마다 `dgemm`으로 예측을 만들어 $\sum w(y - \hat y)^2$을 순서대로 더해요.
 
 - `cv_error`는 겹마다의 가중 평균 제곱오차의 평균이에요. 겹의 적합이 `max_iter`에 닿아 수렴하지 않았어도 그 계수의 예측으로 재요(그 겹의 수렴 표시는 쓰지 않아요). 결과의 `converged`는 고른 alpha로 모든 데이터를 다시 맞춘 적합의 것이에요.
 - `cv_se`는 겹 오차의 표준편차(자유도 cv − 1)/$\sqrt{\text{cv}}$예요. glmnet의 `cvsd`는 겹 크기의 가중 평균을 써서, 겹 크기가 같을 때만 같아요.
+- 가중치가 0인 행은 겹을 나눌 때도 그대로 남으므로, 어떤 겹은 시험 행의 가중치가 모두 0일 수 있어요. 그 겹은 잴 오차가 없어 평균 제곱오차가 $0/0$이에요. 그래서 그런 겹을 빼고, 시험 오차가 있는 겹의 수 $c'$로 평균과 표준편차/$\sqrt{c'}$를 구해요. 커널은 그 겹의 시험 행이 없으므로 예측의 `dgemm`을 부르지 않고 오차의 합을 0으로 둬요(행이 0개인 행렬곱은 BLAS가 거부해요). 모든 겹이 비는 것은 가중치가 모두 0일 때뿐이고, 그때는 쓰인 행이 없는 회귀의 NaN 결과(`nobs` 0)예요.
+
+```python
+>>> w12 = sd.where(sd.arange(50) < 12, 1.0, 0.0)
+>>> cw = sd.regression.lasso_cv(y, X, weights=w12, rng=sd.random.default_rng(0), cv=20, alphas=5)
+>>> bool(sd.all(sd.isfinite(cw.cv_error))), cw.nobs
+(True, 12.0)
+```
+
+가중치가 있는 행이 12개뿐이라 20겹 가운데 적어도 8겹은 시험 오차가 없지만, 남은 겹으로 `cv_error`가 정해져요.
 
 ### 고르기와 1-SE 규칙
 
@@ -644,7 +689,26 @@ struct WG {
 };
 ```
 
-열이 1,024개를 넘으면 naive 갱신을 위해 설계를 꾸려요.
+열이 1,024개를 넘으면 naive 갱신을 위해 설계를 꾸려요. 그때는 $(p + 3)^2$ 크기의 Gram을 만들지 않아요($p$ = 4,000이면 128 MB예요). 좌표 하강은 꾸린 설계로 돌고, 연마의 KKT 검사와 마지막 값(쌍대 간격, 유효 자유도)에 필요한 것은 열마다의 합 세 개와 $[\sqrt W, \sqrt W\eta, u]$의 3×3 블록뿐이에요. 그래서 한 번 훑어 그것만 모아요(`wvec`, 메모리 $O(p)$).
+
+```cpp
+struct WV {
+    lint na = 0;
+    std::vector<double> v;  // S(a) | G(a, u) | G(a, a) | one.one, one.eta, one.u, eta.eta, eta.u, u.u
+    double S(lint a) const { return v[static_cast<std::size_t>(a)]; }
+    double gu(lint a) const { return v[static_cast<std::size_t>(na + a)]; }
+    double daa(lint a) const { return v[static_cast<std::size_t>(2 * na + a)]; }
+    double blk(int i) const { return v[static_cast<std::size_t>(3 * na + i)]; }
+    double sW() const { return blk(0); }
+    double g0() const { return blk(2); }
+    double uu() const { return blk(5); }
+    double zbar() const { return (blk(1) + g0()) / sW(); }
+    double gc(lint a) const { return gu(a) - S(a) * g0() / sW(); }
+    double Hcd(lint a) const { return daa(a) - S(a) * S(a) / sW(); }
+};
+```
+
+비활성 열의 KKT 부등식은 열마다의 중심화한 기울기 `gc`와 대각 `Hcd`만 쓰고, 유효 자유도의 $H$는 활성 열의 Gram만 있으면 돼요(그것은 활성 열만 따로 `wgram`으로 만들어요). 공분산 갱신의 길(열 1,024개 이하)과 같은 식을 같은 합으로 계산하므로, 두 길이 내는 값의 뜻은 같아요.
 
 ### 걸음 반감과 수렴
 
@@ -670,7 +734,22 @@ IRLS가 수렴하면 $A$와 부호를 고정한 매끄러운 문제를 뉴턴법
                 prev = step_size;
 ```
 
-그다음 부호와 $A$ 밖 열의 KKT 부등식(선형과 같은 꼴, $v^{\mathsf T}\Omega v$ 자리에 편차/$s_w$)을 검사하고, 통과하면 그 해를 써요. 실패하면 안쪽 허용오차를 $10^{-6}$배로 줄여 IRLS를 이어 가요(최대 2번). $L_1$ 항이 없으면(`l1_ratio = 0`) 처음부터 매끄러운 문제라 뉴턴법으로 바로 풀고(정확한 안쪽 풀이의 IRLS와 같아요), 실패할 때만 IRLS예요. `n_iter`는 IRLS(또는 뉴턴) 반복 수예요.
+그다음 부호와 $A$ 밖 열의 KKT 부등식(선형과 같은 꼴, $v^{\mathsf T}\Omega v$ 자리에 편차/$s_w$)을 검사하고, 통과하면 그 해를 써요. 실패하면 안쪽 허용오차를 $10^{-6}$배로 줄여 IRLS를 이어 가요(최대 2번). $L_1$ 항이 없으면(`l1_ratio = 0`) 처음부터 매끄러운 문제라 뉴턴법으로 바로 풀고(정확한 안쪽 풀이의 IRLS와 같아요), 실패할 때만 IRLS예요. `n_iter`는 IRLS(또는 뉴턴) 반복 수이고, 어느 길로 가도 `max_iter`를 넘지 않아요. 처음의 뉴턴 걸음 수를 `max_iter`로 자르고, 상한에 잘리면 그 반복점이 목적함수를 줄인 점일 때 거기서 남은 반복으로 IRLS를 이어 가요($L_1$ 항이 없어 지켜야 할 부호가 없으니 그 점을 그대로 써도 돼요). 뉴턴이 반올림까지 못 간 것이 귀무 모형에서 다시 시작할 이유는 아니기 때문이에요.
+
+```cpp
+            if (!settled) {
+                if (keep && newton_steps == steps && steps < kNewtonSteps && gp.valid && Fp <= objective(g, beta)) {
+                    // the budget ran out on the way: the Newton iterate stands (no L1 term, so
+                    // no sign to keep), IRLS goes on from it with what is left
+                    beta = nbeta;
+                    b0 = nb0;
+                    std::swap(g, gp);
+                }
+                return false;
+            }
+```
+
+연마가 실패해 다시 도는 IRLS가 `max_iter`에 닿아 연마가 끝내 서지 못하면 `converged`는 False예요(선형의 `lasso`·`elastic_net`과 같은 규칙).
 
 `dual_gap`은 돌려준 계수에서의 이차 근사 문제의 쌍대 간격(목적함수 단위)이에요. 해에서 이차 근사와 목적함수의 기울기가 같으므로 최적성의 척도이지만, 목적함수 값 차이의 상한은 아니에요.
 
@@ -685,11 +764,16 @@ IRLS가 수렴하면 $A$와 부호를 고정한 매끄러운 문제를 뉴턴법
 >>> q2 = sd.regression.penalized_glm(yb, Xb, family="binomial", alpha=0.02, l1_ratio=1.0, tol=1e-3)
 >>> float(sd.max(sd.abs(q.params - q2.params) / sd.abs(q.params)))
 1.3039...e-16
+>>> [(f.n_iter, f.converged) for f in (sd.regression.penalized_glm(yb, Xb, family="binomial", alpha=0.02, l1_ratio=0.0,
+...                                                              max_iter=m) for m in (2, 4, 10))]
+[(2, False), (4, False), (6, True)]
 ```
+
+`l1_ratio = 0`에서 `max_iter`를 줄이면 `n_iter`가 그 상한에서 멈추고 `converged`가 False예요. 상한이 넉넉하면 6번에 끝나요.
 
 ### 귀무 모형과 alpha = 0
 
-귀무 모형은 가중 평균 $\bar y$의 절편만이에요(절편이 없으면 $\eta = 0$). $\bar y$가 경계(포아송 0, 이항 0이나 1)면 유한한 해가 없어 계수가 NaN이고 `converged=False`예요.
+귀무 모형은 가중 평균 $\bar y$의 절편만이에요(절편이 없으면 $\eta = 0$). $\bar y$가 경계(포아송 0, 이항 0이나 1)면 유한한 해가 없어 계수가 NaN이고 `converged=False`예요. 그래도 귀무 모형 $\mu = \bar y$는 $y$ 자체라 `null_deviance`는 0이에요(`glm`과 같아요).
 
 `null_deviance`는 이 귀무 모형의 편차인데, 절편 $\eta_0 = \log\bar y$(이항은 $\operatorname{logit}\bar y$)에서 되돌린 $\mu$가 아니라 $\mu = \bar y$에서 바로 재요. $e^{\log\bar y}$나 $\operatorname{expit}(\operatorname{logit}\bar y)$는 반올림 때문에 $\bar y$와 정확히 같지 않아서, 그 $\mu$로 재면 $y$가 모두 같을 때도 편차가 0이 아니에요($y = 3$이면 $5\times10^{-31}$). 가중 평균 $\bar y$ 자체도 나눗셈의 반올림이 있으므로, 쓰인 행의 $y$가 모두 같으면 $\bar y$ 대신 그 값 $y_0$를 써요. 그러면 단위 편차가 행마다 정확히 0이라 `null_deviance`가 정확히 0이고, `deviance_ratio`는 $0/0$ = NaN이에요. 상수가 아닌 자료에서는 [`glm`](/api/regression/glm/)의 귀무 편차와 같은 값이에요.
 

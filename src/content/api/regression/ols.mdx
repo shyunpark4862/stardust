@@ -9,9 +9,9 @@ signatures:
 summary: 보통 최소제곱(OLS) 회귀예요. 데이터에 가장 잘 맞는 직선(또는 평면)을 찾고, 계수와 표준오차, t값, p값, 신뢰구간, R², 예측과 진단을 결과 객체 OLSResult 하나에 담아 돌려줘요.
 params:
   - name: y
-    type: ndarray, 실수의 시퀀스, 또는 frame Series
+    type: ndarray, 실수의 시퀀스, frame Series, 또는 열 하나의 DataFrame
     kind: positional-only
-    desc: "설명하려는 값(반응 변수). 모양은 (n,)이고, 앞에 축이 더 있으면 회귀 여러 개를 한 번에 풀어요(배치). bool·정수는 float64로 바꿔서 계산해요."
+    desc: "설명하려는 값(반응 변수). 모양은 (n,)이고, 앞에 축이 더 있으면 회귀 여러 개를 한 번에 풀어요(배치). 열이 하나인 DataFrame은 그 열로 읽어요. bool·정수는 float64로 바꿔서 계산해요."
   - name: X
     type: ndarray, 실수의 시퀀스, frame Series, 또는 DataFrame
     kind: positional-only
@@ -47,7 +47,7 @@ raises:
   - type: TypeError
     desc: y·X가 배열·숫자의 시퀀스·frame이 아닐 때, 복소수일 때, intercept가 True·False가 아닐 때, cov_type·nan_policy가 문자열이 아닐 때, rtol이 수가 아닐 때, maxlags가 int가 아닐 때, 없는 옵션을 줬을 때.
   - type: ValueError
-    desc: y·X가 0차원일 때, X의 행 수가 y와 다를 때, y·X에 inf가 있을 때, nan_policy='raise'인데 NaN이 있을 때, 배치에서 nan_policy='omit'을 줬을 때, cov_type·nan_policy 이름이 틀렸을 때, rtol이 음수이거나 유한하지 않을 때, maxlags·groups를 맞지 않는 cov_type과 함께 줬을 때, cov_type='cluster'인데 groups가 없거나 길이가 다를 때.
+    desc: y·X가 0차원일 때, X의 행 수가 y와 다를 때, X에 열이 없는데 intercept=False일 때(모수가 없는 모형), y·X에 inf가 있을 때(nan_policy='omit'이어도), nan_policy='raise'인데 NaN이 있을 때, 배치에서 nan_policy='omit'을 줬을 때, cov_type·nan_policy 이름이 틀렸을 때, rtol이 음수이거나 유한하지 않을 때, maxlags·groups를 맞지 않는 cov_type과 함께 줬을 때, cov_type='cluster'인데 groups가 없거나 길이가 다를 때.
 seeAlso: [basics, results, covariance, collinearity, wls, gls, linregress, diagnostics]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -268,6 +268,17 @@ Traceback (most recent call last):
 ValueError: ols(): 'X' must have 3 rows like 'y', not 2
 ```
 
+`y`가 열이 하나인 frame `DataFrame`이면 그 열 하나로 읽어요. 반면 `sd` 배열의 (n, 1) 모양은 [배치](#배치-회귀-여러-개를-한-번에) 규칙대로 "행이 하나인 회귀 n개"라서 `X`의 행 수가 맞지 않아요. 메시지가 그 경우를 짚어 줘요.
+
+```python
+>>> sd.regression.ols(sd.frame.DataFrame({'score': score.tolist()}), hours).params
+array([47.973684210526315,  4.052631578947368], dtype=float64)
+>>> sd.regression.ols(sd.reshape(score, (10, 1)), hours)
+Traceback (most recent call last):
+    ...
+ValueError: ols(): 'X' must have 1 row like 'y', not 10 ('y' of shape (10, 1) is a batch of regressions with 1 row each; give a 1-dimensional 'y' for one regression)
+```
+
 ### `intercept`: 절편을 넣을지
 
 기본은 절편을 넣어요. 이론상 원점을 지나야 하는 관계(예: 0을 넣으면 0이 나오는 비례 관계)라면 `intercept=False`로 끄세요.
@@ -278,6 +289,17 @@ ValueError: ols(): 'X' must have 3 rows like 'y', not 2
 (array([1.99], dtype=float64), ['x1'])
 >>> r0.df_model, r0.df_resid
 (1.0, 3.0)
+```
+
+`X`에 열이 없으면 절편만 맞추는 모형이에요(계수는 `y`의 평균). 여기서 절편까지 끄면 맞출 계수가 하나도 없어서 `ValueError`예요.
+
+```python
+>>> sd.regression.ols(score, sd.zeros((10, 0))).params
+array([65.4], dtype=float64)
+>>> sd.regression.ols(score, sd.zeros((10, 0)), intercept=False)
+Traceback (most recent call last):
+    ...
+ValueError: ols(): the model has no parameters (no columns in 'X' and intercept=False)
 ```
 
 <Callout type="warn" title="절편을 끄면 R²의 기준이 바뀌어요">
@@ -345,13 +367,19 @@ ValueError: ols(): the input contains NaN (nan_policy='raise')
 - `'omit'`: `y`나 `X`의 그 행에 NaN이 있는 행을 빼고 맞춰요. `fittedvalues`와 `resid`도 남은 행만 있어요.
 - `'raise'`: `ValueError`를 내요.
 
-inf는 `nan_policy`와 상관없이 언제나 `ValueError`예요. NaN은 "값이 없음"으로 다룰 수 있지만 inf는 데이터가 잘못 들어왔다는 신호이기 때문이에요.
+`'omit'`으로 남은 행이 하나도 없으면 에러가 아니라 [빈 입력](#특수한-경우)의 NaN 결과예요.
+
+inf는 `nan_policy`와 상관없이 언제나 `ValueError`예요. NaN은 "값이 없음"으로 다룰 수 있지만 inf는 데이터가 잘못 들어왔다는 신호이기 때문이에요. `'omit'`이 어차피 뺄 행(NaN이 있는 행)에 inf가 있어도 마찬가지예요.
 
 ```python
 >>> sd.regression.ols(sd.asarray([1.0, 2.0, float('inf')]), sd.asarray([1.0, 2.0, 3.0]))
 Traceback (most recent call last):
     ...
 ValueError: ols(): 'y' contains infinity
+>>> sd.regression.ols([float('nan'), 2.0, 3.0, 4.0], [float('inf'), 2.0, 3.0, 4.0], nan_policy='omit')
+Traceback (most recent call last):
+    ...
+ValueError: ols(): 'X' contains infinity
 ```
 
 ## frame에서 바로 쓰기
@@ -411,7 +439,7 @@ Notes:
 | `params` | (k,) | 계수 $\hat\beta$. 절편이 맨 앞이에요. |
 | `bse` | (k,) | 계수의 표준오차 |
 | `tvalues`, `pvalues` | (k,) | t값과 두 꼬리 p값(자유도 `df_resid_inference`의 t분포) |
-| `conf_int(alpha=0.05)` | (k, 2) | 1 − alpha 신뢰구간의 (아래 끝, 위 끝) |
+| `conf_int(*, alpha=0.05)` | (k, 2) | 1 − alpha 신뢰구간의 (아래 끝, 위 끝). `alpha`는 키워드로만 받아요. |
 | `cov_params()` | (k, k) | 계수의 공분산 행렬. 대각의 제곱근이 `bse`예요. |
 | `fittedvalues`, `resid` | (n,) | 적합값 $\hat y = X\hat\beta$와 잔차 $y - \hat y$ |
 | `nobs` | 수 | 적합에 쓴 관측 수 |
@@ -426,8 +454,8 @@ Notes:
 | `scale` | 수 | 오차 분산의 어림 $\hat\sigma^2 = \mathrm{SSR}/\mathrm{df\_resid}$ |
 | `rank` | int | 쓰인 열 수(절편 포함). 겹친 열은 세지 않아요. |
 | `condition_number` | 수 | 쓰인 열(절편 열 포함)의 조건수 |
-| `param_names` | list | 계수 이름 |
-| `cov_type` | str | 고른 표준오차의 종류 |
+| `param_names` | list | 계수 이름(읽기 전용) |
+| `cov_type` | str | 고른 표준오차의 종류(읽기 전용) |
 | `predict(X_new)`, `predict_interval(X_new, ...)` | (m,), (m, 2) | 예측값과 예측 구간 |
 | `leverage`, `resid_studentized_internal`, `resid_studentized_external`, `cooks_distance` | (n,) | 행마다의 진단([회귀 진단](/api/regression/diagnostics/)) |
 | `durbin_watson`, `jarque_bera()`, `breusch_pagan()` | 수, 튜플 | 잔차 전체의 진단 |
@@ -451,6 +479,18 @@ Notes:
 `aic`와 `bic`는 모형끼리 견줄 때 써요. 같은 `y`에 대한 모형이면 작은 쪽이 "덜 복잡하면서 잘 맞는" 모형이에요. 읽는 법은 [결과 객체 읽기](/api/regression/results/)에 있어요.
 
 추론 필드(`bse`, `pvalues`, `rsquared`, …)는 처음 읽을 때 계산해서 기억해 둬요. 쓰지 않는 필드는 계산하지 않아요.
+
+`param_names`와 `cov_type`은 적합의 설정이라 읽기만 할 수 있어요. 구간의 `alpha`는 `r.conf_int(alpha=0.1)`처럼 이름을 붙여 줘요.
+
+```python
+>>> r.conf_int(alpha=0.1)
+array([[ 44.75304615539912,  51.19432226565351],
+       [3.3818108790786283,  4.723452278816108]], dtype=float64)
+>>> r.param_names = ['a', 'b']
+Traceback (most recent call last):
+    ...
+AttributeError: property 'param_names' of 'OLSResult' object has no setter
+```
 
 ## 예측
 
@@ -519,17 +559,30 @@ Traceback (most recent call last):
 ValueError: predict(): 'X_new' must have 2 columns like the fit's 'X', not 1-dimensional
 ```
 
-`DataFrame`으로 적합하고 `X_new`도 `DataFrame`으로 주면 컬럼 이름과 순서가 적합 때와 같아야 하고, 다르면 `ValueError`예요. 한쪽만 `DataFrame`이면 열을 위치로 맞춰요. `X_new`에 inf가 있으면 `ValueError`이고, NaN이 있는 행은 그 행의 예측이 NaN이에요. 자세한 규칙은 [결과 객체 읽기](/api/regression/results/#predict)에 있어요.
+`DataFrame`으로 적합하고 `X_new`도 `DataFrame`으로 주면 컬럼 이름과 순서가 적합 때와 같아야 하고, 다르면 `ValueError`예요. 한쪽만 `DataFrame`이면 열을 위치로 맞춰요. `X_new`에 inf가 있으면 `ValueError`예요. 자세한 규칙은 [결과 객체 읽기](/api/regression/results/#predict)에 있어요.
 
-겹친 열이 있는 적합에서는 그 열을 쓰지 않고 예측해요. 구간의 자유도는 `df_resid_inference`예요.
+`X_new`의 NaN은 그 행의 예측값과 구간을 NaN으로 만들어요. 계수가 정확히 0인 열이어도 그래요. 0을 곱해도 값을 모르는 것은 그대로이기 때문이에요. 다만 [겹친 열](#rtol-겹친-열의-기준)은 모형에 들어 있지 않아서, 예측에 쓰지 않고 그 열의 NaN도 무시해요. 아래에서 `dup`의 둘째 열(`2 * hours`)이 겹친 열이에요.
+
+```python
+>>> nan = float('nan')
+>>> dup.predict(sd.asarray([[5.0, nan], [nan, 10.0]]))
+array([68.23684210526315,               nan], dtype=float64)
+>>> dup.predict_interval(sd.asarray([[5.0, nan], [nan, 10.0]]))
+array([[66.36743097424777, 70.10625323627853],
+       [              nan,               nan]], dtype=float64)
+```
+
+구간의 자유도는 `df_resid_inference`예요. 배치 적합에서 `X_new`의 배치 모양이 적합과 맞지 않으면 두 모양을 적은 `ValueError`예요([배치](#배치-회귀-여러-개를-한-번에)).
 
 ## 특수한 경우
 
 - **NaN**: 위의 [nan_policy](#nan_policy-nan이-있을-때)를 보세요.
 - **겹친 열**: 그 계수와 표준오차·t·p가 NaN이고 나머지는 그 열을 뺀 적합과 비트까지 같아요. `rank`가 그만큼 줄어요.
-- **완전 적합**(잔차가 정확히 0): `bse`가 0, `tvalues`가 ±inf, `pvalues`가 0, `llf`가 +inf예요. 0으로 나눈 값의 극한을 그대로 줘요.
+- **완전 적합**(점이 모형 위에 정확히 놓일 때): `ssr`과 `scale`이 0, `bse`가 0(강건 표준오차도 0), `tvalues`가 ±inf, `pvalues`가 0, `llf`가 +inf예요. 0으로 나눈 값의 극한을 그대로 줘요. 계산한 잔차는 반올림 때문에 정확히 0이 되지 않을 때가 많아서, 쓰인 행마다 $|e_i| \le (k + 16)\,u\,(|y_i| + \lVert x_i\rVert_1 \lVert\hat\beta\rVert_\infty)$이면 완전 적합으로 봐요($k$는 쓰인 열 수, $u = 2^{-53}$). 반올림 크기의 잔차가 가짜 표준오차와 p값을 만들지 않게 하려는 기준이에요. `resid` 필드는 계산한 값 그대로예요.
+- **잔차 자유도가 0일 때**(`df_resid` = 0, 예: 점 세 개에 2차식): 오차의 크기를 어림할 자료가 남지 않아요. `scale`, `bse`, `tvalues`, `pvalues`, `conf_int()`, `cov_params()`, `predict_interval()`이 모두 NaN이에요(0 ÷ 0). 강건 표준오차도 같아요. 계수와 적합값, `predict()`는 정상이에요.
+- **빈 입력**(행이 없거나, `'omit'`으로 모든 행이 빠질 때): 에러가 아니라 모든 값이 NaN인 결과예요. `nobs`는 0, `rank`는 0, `df_model`과 `df_resid`는 NaN이에요. 배치에서는 그 회귀만 NaN이에요.
 - **열이 행보다 많을 때**: 앞의 열부터 `nobs`개까지만 쓰이고 나머지는 겹친 열로 NaN이에요.
-- **반응이 모두 같을 때**(모두 $y_0$, TSS가 0): 절편이 있으면 계수는 정확히 $(y_0, 0, \dots, 0)$이에요(겹친 열은 그대로 NaN). 적합값은 모두 $y_0$, 잔차는 0이라 완전 적합이고, `bse`는 0(강건 표준오차도 0), `tvalues`는 절편이 ±inf($y_0 = 0$이면 NaN)·기울기가 NaN(0 ÷ 0), `llf`는 +inf예요. 설명할 흩어짐이 없어서 `rsquared`, `rsquared_adj`, `fvalue`, `f_pvalue`는 NaN이고 `ess`는 0이에요. 절편이 없으면 이 해가 따로 없어서 다른 `y`와 똑같이 풀어요.
+- **반응이 모두 같을 때**(모두 $y_0$, TSS가 0): 절편이 있으면 계수는 정확히 $(y_0, 0, \dots, 0)$이에요(겹친 열은 그대로 NaN). 적합값은 모두 $y_0$, 잔차는 0이라 완전 적합이고, `bse`는 0(강건 표준오차도 0. 다만 군집이 하나뿐인 `cov_type='cluster'`는 군집 하나의 규칙대로 NaN), `tvalues`는 절편이 ±inf($y_0 = 0$이면 NaN)·기울기가 NaN(0 ÷ 0), `llf`는 +inf예요. 설명할 흩어짐이 없어서 `rsquared`, `rsquared_adj`, `fvalue`, `f_pvalue`는 NaN이고 `ess`는 0이에요. 절편이 없으면 이 해가 따로 없어서 다른 `y`와 똑같이 풀어요.
 
 ```python
 >>> xp = sd.arange(6.0)
@@ -541,6 +594,31 @@ ValueError: predict(): 'X_new' must have 2 columns like the fit's 'X', not 1-dim
 (array([3.0, 0.0], dtype=float64), array([0.0, 0.0], dtype=float64), array([inf, nan], dtype=float64))
 >>> flat.resid.tolist(), flat.llf, flat.rsquared
 ([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], inf, nan)
+```
+
+$y = 0.1 + x/3$은 $1/3$이 2진수로 정확하지 않아 계산한 잔차가 1e-16 크기로 남지만, 기준 안이라 완전 적합이에요.
+
+```python
+>>> x10 = sd.arange(10.0)
+>>> third = sd.regression.ols(0.1 + x10 / 3.0, x10)
+>>> max(abs(v) for v in third.resid.tolist()) > 0.0
+True
+>>> third.ssr, third.bse, third.pvalues
+(0.0, array([0.0, 0.0], dtype=float64), array([0.0, 0.0], dtype=float64))
+```
+
+잔차 자유도가 0이면 추론이 NaN이고, 행이 없으면 결과 전체가 NaN이에요.
+
+```python
+>>> x3 = sd.asarray([1.0, 2.0, 4.0])
+>>> d0 = sd.regression.ols(sd.asarray([1.0, 3.0, 2.0]), sd.stack([x3, x3 * x3], axis=-1))
+>>> d0.params, d0.df_resid
+(array([-2.6666666666666665,                 4.5, -0.8333333333333334], dtype=float64), 0.0)
+>>> d0.scale, d0.bse, d0.pvalues
+(nan, array([nan, nan, nan], dtype=float64), array([nan, nan, nan], dtype=float64))
+>>> empty = sd.regression.ols(sd.asarray([float('nan')] * 4), sd.asarray([1.0, 2.0, 3.0, 4.0]), nan_policy='omit')
+>>> empty.nobs, empty.df_model, empty.df_resid, empty.params
+(0.0, nan, nan, array([nan, nan], dtype=float64))
 ```
 
 자세한 규칙과 각 필드의 값은 [겹친 열과 완전 적합](/api/regression/collinearity/)에 있어요.
@@ -591,7 +669,16 @@ ValueError: summary(): takes one regression, not a batch of shape (3,)
 - 계수 벡터의 상대오차는 조건수(`condition_number`) $\kappa \le 10^{11}$이면 1e-14 이하예요. 잔차가 $\lVert X\hat\beta\rVert$의 100배인 문제까지 잰 값이에요.
 - 그보다 예민한 문제는 약속하지 않지만 잰 값은 $\kappa = 10^{12}$에서 1.6e-12, $10^{13}$에서 3.4e-9, $10^{14}$에서 2.5e-7이에요.
 - 표준오차는 상대오차가 대략 $\kappa \times 10^{-16}$이에요.
+- 데이터의 크기가 극단이어도 추론은 같아요. `y`와 `X`의 열을 1e-300에서 1e300 사이의 어떤 수로 곱해도 `tvalues`, `pvalues`, `rsquared`, `fvalue`는 (반올림 차이 안에서) 그대로이고, 계수와 표준오차는 곱한 비율만큼만 바뀌어요. 제곱합이 double의 범위를 벗어나는 크기에서도 그래요.
 - 같은 입력이면 스레드 수와 상관없이 같은 비트가 나오고, 배치 결과는 하나씩 부른 결과와 같은 비트예요.
+
+```python
+>>> tiny = sd.regression.ols(score * 1e-300, hours)
+>>> [round(v, 9) for v in tiny.tvalues.tolist()], [round(v, 9) for v in r.tvalues.tolist()]
+([27.699284676, 11.234094447], [27.699284676, 11.234094447])
+>>> tiny.bse
+array([1.7319466828098448e-300, 3.6074394763119597e-301], dtype=float64)
+```
 
 위의 3차식 예에서 $y$가 정확히 $1 + 2t + 3t^2 + 4t^3$이면, 조건수가 5.7e10인데도 계수가 정확히 나와요.
 
@@ -614,7 +701,9 @@ statsmodels 0.15.0, scikit-learn 1.9.1, numpy 2.5.4 기준이에요.
 - statsmodels는 `X`에서 상수 열을 찾아 절편으로 봐요(`k_constant`). sd는 `intercept`만 봐요. 1의 열을 넣으면 `intercept=True`에서는 겹친 열(NaN)이고, `intercept=False`에서는 R²가 0을 기준으로 해요. 위의 공부 시간 데이터에서 statsmodels의 R²는 0.940, `intercept=False`의 sd는 0.9989예요.
 - `cov_type='HC0'`–`'HC3'`의 표준오차는 같지만 p값과 구간은 다르게 구해요. sd는 언제나 t분포(`df_resid_inference`)를 쓰고, statsmodels의 기본(`use_t=False`)은 정규분포예요. 위 데이터의 HC3 절편 p값이 statsmodels는 1.2e-203, sd는 1.5e-9예요. statsmodels에 `use_t=True`를 주면 sd와 같아요.
 - 겹친 열: 위의 `[hours, 2 * hours]` 예에서 statsmodels는 의사역행렬로 두 열에 값을 나눠 줘요(`[47.97, 0.811, 1.621]`, 경고와 함께). sd는 앞 열을 남기고 뒤 열을 NaN으로 둬요(`[47.97, 4.053, nan]`).
-- 완전 적합: statsmodels는 잔차가 반올림 수준으로 남아 표준오차 1e-14 안팎, t 1e13–1e15, p 1e-90–1e-103 같은 값을 내요($x = 0, \dots, 9$, $y = 1 + 2x + 3x^2$). sd는 0, inf, 0이에요.
+- 완전 적합: statsmodels는 잔차가 반올림 수준으로 남아 표준오차 1e-14 안팎, t 1e13–1e15, p 1e-90–1e-103 같은 값을 내요($x = 0, \dots, 9$, $y = 1 + 2x + 3x^2$). sd는 0, inf, 0이에요. 위의 `third`($y = 0.1 + x/3$)에서도 statsmodels는 표준오차 `[3.3e-16, 6.2e-17]`, p `[1.5e-113, 1.5e-123]`이에요.
+- 잔차 자유도가 0이면(위의 `d0`) statsmodels는 `scale`과 `bse`가 inf, p값과 구간이 NaN이에요. sd는 모두 NaN이에요.
+- 극단 척도: 위 데이터의 `y`에 1e-300을 곱하면 statsmodels는 t가 inf, p가 0, R²가 NaN이고, `X`에 1e300을 곱하면 R²가 −4.78이에요. sd는 어느 쪽이든 원래 데이터와 같은 t(27.70, 11.23)와 R²(0.940)예요.
 - NaN: statsmodels의 기본(`missing='none'`)은 에러 없이 NaN 계수를 줘요. `missing='drop'`이 sd의 `nan_policy='omit'`이에요.
 - 반응이 모두 같으면 statsmodels는 R²에 −inf, F에 음수 같은 반올림의 값을 내요. sd는 R²와 F가 NaN, `ess`가 0이에요. 계수도 statsmodels는 반올림을 남겨서, 위의 `flat`에서 기울기 1.7e-16, 그 t 1.24, 절편의 t 4.4e15를 내요. sd는 정확히 (3, 0)과 완전 적합의 값(0, inf, NaN)이에요.
 - `predict`: statsmodels는 pandas `DataFrame`의 컬럼 이름을 보지 않고 위치로 곱해요. sd는 적합과 예측이 둘 다 `DataFrame`이면 이름과 순서를 확인해요.

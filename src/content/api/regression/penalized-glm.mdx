@@ -8,9 +8,9 @@ signatures:
 summary: 로지스틱 회귀(이항)와 포아송 회귀에 라소·릿지·엘라스틱 넷의 벌점을 준 정규화 GLM이에요. 0과 1의 반응이나 셈 자료에서 열이 많거나 겹칠 때, 또는 분리 때문에 최대우도 추정이 없을 때도 유한하고 안정된 계수를 줘요.
 params:
   - name: y
-    type: ndarray, 실수의 시퀀스, 또는 Series
+    type: ndarray, 실수의 시퀀스, Series, 또는 한 열짜리 DataFrame
     kind: positional-only
-    desc: "반응 (..., n). family='binomial'이면 0 또는 1, 'poisson'이면 0 이상(정수가 아니어도 돼요)."
+    desc: "반응 (..., n). family='binomial'이면 0 또는 1, 'poisson'이면 0 이상(정수가 아니어도 돼요). 한 열짜리 DataFrame은 그 열을 반응으로 써요."
   - name: X
     type: ndarray, 실수의 시퀀스, 또는 DataFrame
     kind: positional-only
@@ -22,7 +22,7 @@ params:
   - name: alpha
     type: float 또는 1차원 배열
     kind: keyword-only
-    desc: 벌점의 세기. 0 이상의 유한한 수이고 꼭 줘야 해요. 0이면 glm과 같은 적합이에요. 1차원 배열이면 경로예요.
+    desc: 벌점의 세기. 0 이상의 유한한 수이고 꼭 줘야 해요. 0이면 glm과 같은 적합이에요(겹친 열은 NaN, 분리 판정 포함). 1차원 배열이면 경로예요.
   - name: l1_ratio
     type: float
     kind: keyword-only
@@ -42,7 +42,7 @@ params:
   - name: max_iter
     type: int
     kind: keyword-only
-    desc: alpha 하나마다 바깥 반복의 상한. 1 이상, 기본값 100이에요.
+    desc: alpha 하나마다 바깥 반복의 상한. 1 이상, 기본값 100이에요. n_iter는 언제나 이 값 이하이고, 닿으면 converged가 False예요.
   - name: tol
     type: float
     kind: keyword-only
@@ -56,11 +56,11 @@ returns:
   desc: "계수 params(절편이 params[0]), fittedvalues(평균 μ), linear_predictor(η), resid_response, deviance, null_deviance, deviance_ratio, df_model, converged, n_iter, dual_gap, separation, family, nobs와 predict(which=). 표준오차·p값은 없어요."
 raises:
   - type: TypeError
-    desc: family를 빠뜨렸을 때, y나 X를 이름으로 줬을 때, alpha가 수나 1차원 배열이 아닐 때, l1_ratio·tol이 수가 아닐 때, max_iter가 int가 아닐 때, link·offset 같은 없는 인자를 줬을 때, 입력이 복소수일 때.
+    desc: family를 빠뜨렸을 때, y나 X를 이름으로 줬을 때, alpha가 수나 1차원 배열이 아닐 때(bool·bool 배열·문자열·None 포함), l1_ratio·tol이 수가 아닐 때, max_iter가 int가 아닐 때, link·offset 같은 없는 인자를 줬을 때, 입력이 복소수일 때.
   - type: ValueError
-    desc: family가 'binomial'·'poisson'이 아닐 때, y가 분포족의 범위 밖일 때(이항은 0·1이 아닌 값, 포아송은 음수), l1_ratio가 0과 1 사이가 아닐 때, alpha가 음수·inf·NaN일 때, max_iter < 1, tol ≤ 0일 때, 모양이 맞지 않을 때, weights가 음수일 때, inf가 있을 때, nan_policy가 틀렸거나 'raise'인데 NaN이 있을 때, 배치에서 nan_policy='omit'일 때.
+    desc: family가 'binomial'·'poisson'이 아닐 때, y가 분포족의 범위 밖일 때(이항은 0·1이 아닌 값, 포아송은 음수), l1_ratio가 0과 1 사이가 아닐 때, alpha가 음수·inf·NaN이거나 빈 배열·2차원 배열일 때, X에 열이 없는데 intercept=False라 모수가 없을 때, max_iter < 1, tol ≤ 0일 때, 모양이 맞지 않을 때, weights가 음수일 때, inf가 있을 때, nan_policy가 틀렸거나 'raise'인데 NaN이 있을 때, 배치에서 nan_policy='omit'일 때.
   - type: OverflowError
-    desc: alpha나 max_iter가 너무 큰 정수일 때.
+    desc: alpha, l1_ratio, max_iter, tol이 너무 큰 정수일 때.
 seeAlso: [glm, logistic, poisson-gamma, lasso, elastic-net, ridge, cross-validation]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -180,7 +180,7 @@ ValueError: penalized_glm(): 'family' must be 'binomial' or 'poisson', not 'gamm
 | 필드 | 뜻 |
 |---|---|
 | `params`, `param_names` | 계수(절편이 `params[0]`, 0인 계수는 정확히 0.0)와 이름 |
-| `family`, `alpha`, `l1_ratio`, `standardize` | 준 값 |
+| `family`, `alpha`, `l1_ratio`, `standardize` | 준 값(읽기 전용, 대입하면 `AttributeError`) |
 | `nobs` | 적합에 쓴 행 수(가중치 > 0), `float` |
 | `fittedvalues` | 평균 $\mu_i$(이항은 확률) |
 | `linear_predictor` | 선형 예측 $\eta_i = b_0 + x_i^\top\beta$ |
@@ -205,7 +205,7 @@ ValueError: penalized_glm(): 'family' must be 'binomial' or 'poisson', not 'gamm
 2.5222
 ```
 
-선형 회귀의 결과와 달리 `resid`, `ssr`, `rsquared`는 없고, 그 자리에 `resid_response`, `deviance`, `deviance_ratio`가 있어요. 표준오차·p값·`summary()`는 [`ridge`](/api/regression/ridge/)와 같은 까닭으로 없어요. 계수의 추론이 필요하면 벌점 없는 [`glm`](/api/regression/glm/)을 쓰세요.
+선형 회귀의 결과와 달리 `resid`, `ssr`, `rsquared`는 없고, 그 자리에 `resid_response`, `deviance`, `deviance_ratio`가 있어요. 표준오차·p값·`summary()`는 [`ridge`](/api/regression/ridge/)와 같은 까닭으로 없어요. 계수의 추론이 필요하면 벌점 없는 [`glm`](/api/regression/glm/)을 쓰세요. `rank`도 없어요. `alpha > 0`이면 겹친 열도 계수를 받아 빼는 열이 없고, 모형의 크기는 유효 자유도 `df_model`이 말해 줘요(`alpha=0`이면 `df_model`이 `glm`의 것이에요, 아래).
 
 ### `deviance_ratio`
 
@@ -272,6 +272,19 @@ ValueError: predict(): 'X_new' contains infinity
 (True, True, True)
 ```
 
+선형 정규화의 `alpha=0`과는 규칙이 달라요. [`ridge`](/api/regression/ridge/)의 `alpha=0`은 벌점을 0으로 줄여 간 극한이라 똑같은 열에 계수를 똑같이 나누지만, `penalized_glm`의 `alpha=0`은 `glm`의 답 그대로라 똑같은 열의 뒤쪽 계수가 NaN이고 `df_model`도 남은 열로 세요. 그래서 `alpha=0`을 포함한 경로는 0에서 끊겨요. 벌점이 아주 작은 해와 견주면 차이가 보여요.
+
+```python
+>>> Xdup = sd.stack([X[:, 0], X[:, 0], X[:, 2]], axis=1)
+>>> zp = R.penalized_glm(y, Xdup, family='binomial', alpha=[1e-6, 0.0], l1_ratio=0.0)
+>>> [[round(v, 4) for v in row] for row in zp.params.tolist()]
+[[-0.2363, 0.9118, 0.9118, -0.3905], [-0.2363, 1.8236, nan, -0.3905]]
+>>> zp.df_model.tolist()[1]
+2.0
+```
+
+벌점이 없을 때는 분리 판정까지 `glm`과 같은 답을 주는 편이 쓸모 있어서 이렇게 해요. 경로처럼 이어지는 계수가 필요하면 0 대신 아주 작은 `alpha`를 주세요.
+
 ### 분리
 
 0과 1이 설명변수 하나로 완전히 갈리면(예: `x < 0`이면 모두 0, `x > 0`이면 모두 1), 계수를 키울수록 가능도가 끝없이 커져서 최대우도 추정이 존재하지 않아요. 이것을 **분리**라고 해요. 자세한 이야기는 [로지스틱 회귀](/api/regression/logistic/)에 있어요.
@@ -313,14 +326,17 @@ array([False,  True], dtype=bool)
 
 `penalized_glm`은 현재 계수에서 목적함수를 이차식으로 어림해 푸는 일을 되풀이해요. 목적함수 F의 상대 변화 $\lvert F - F_{\text{old}}\rvert / (\lvert F\rvert + 0.1)$가 `tol`(기본 1e-8, `glm`과 같은 꼴)보다 작아지면 수렴이에요. 목적함수가 오히려 커지면 걸음을 반씩 줄여요.
 
-- `n_iter`: 바깥 반복의 횟수예요. `max_iter`(기본 100)가 상한이고, 닿으면 마지막 값을 내고 `converged=False`예요. 경고는 없어요.
+- `n_iter`: 바깥 반복의 횟수예요. `max_iter`(기본 100)가 상한이고, 닿으면 마지막 값을 내고 `converged=False`예요. 경고는 없어요. `l1_ratio=0`에서 처음에 쓰는 뉴턴 걸음도 이 횟수에 들어가서, `n_iter`는 언제나 `max_iter` 이하예요.
 - `dual_gap`: 돌려준 계수에서 마지막 이차 어림 문제의 쌍대 간격(목적함수 단위)이에요. 해에서는 이차 어림과 목적함수의 기울기가 같아서 0에 가까울수록 최적에 가깝다는 척도지만, 선형 라소와 달리 목적함수 값 차이의 상한은 아니에요.
 
-수렴한 해는 0 아닌 계수와 부호를 고정한 최적성 조건으로 다시 다듬으므로, 계수는 `tol`의 정밀도가 아니라 정확한 해에 반올림 수준으로 가까워요.
+수렴한 해는 0 아닌 계수와 부호를 고정한 최적성 조건으로 다시 다듬으므로, 계수는 `tol`의 정밀도가 아니라 정확한 해에 반올림 수준으로 가까워요. `converged=True`는 판정을 통과하고 다듬기까지 마쳤다는 뜻이에요. 판정을 통과했어도 다듬기가 실패해 이어 간 반복이 `max_iter`에 닿으면 `converged`는 False예요.
 
 ```python
 >>> e.converged, e.n_iter, abs(e.dual_gap) < 1e-15
 (True, 5, True)
+>>> e4 = R.penalized_glm(y, X, family='binomial', alpha=0.05, max_iter=4)
+>>> e4.converged, e4.n_iter
+(False, 4)
 ```
 
 ## 경로
@@ -329,6 +345,8 @@ array([False,  True], dtype=bool)
 
 ```python
 >>> pg = R.penalized_glm(y, X, family='binomial', alpha=[0.2, 0.05, 0.0], l1_ratio=1.0)
+>>> pg
+PenalizedGLMResult(a path of 3 alphas, 4 parameters)
 >>> pg.params.shape, pg.deviance.shape, pg.n_iter
 ((3, 4), (3,), array([3, 5, 8], dtype=int64))
 >>> [[round(v, 4) for v in row] for row in pg.params.tolist()]
@@ -341,12 +359,16 @@ array([False,  True], dtype=bool)
 
 ### 유한한 해가 없는 반응
 
-포아송의 `y`가 모두 0이거나 이항의 `y`가 모두 0 또는 모두 1이면, 절편만의 모형부터 유한한 해가 없어요(평균이 0이나 1로 가야 해서 η가 ±inf예요). 그때는 계수가 NaN이고 `converged=False`예요.
+포아송의 `y`가 모두 0이거나 이항의 `y`가 모두 0 또는 모두 1이면, 절편만의 모형부터 유한한 해가 없어요(평균이 0이나 1로 가야 해서 η가 ±inf예요). 그때는 계수가 NaN이고 `converged=False`예요. `null_deviance`는 0이에요. 절편만의 모형의 평균 $\mu = \bar y$가 `y` 자체라서 편차가 없기 때문이에요([`glm`](/api/regression/glm/)과 같아요).
 
 ```python
 >>> allzero = R.penalized_glm(sd.zeros(8), xs, family='poisson', alpha=0.1)
 >>> allzero.params.tolist(), allzero.converged, allzero.nobs
 ([nan, nan], False, 8.0)
+>>> allzero.null_deviance
+0.0
+>>> R.penalized_glm(sd.ones(8), xs, family='binomial', alpha=0.1).null_deviance
+0.0
 ```
 
 ### `y`가 모두 같을 때
@@ -377,6 +399,18 @@ array([False,  True], dtype=bool)
 (80,)
 ```
 
+가중치가 모두 0이거나 행이 하나도 없으면(`nan_policy='omit'`이 모든 행을 뺀 경우도) `nobs`가 0이고 계수와 편차가 NaN이며, `converged`는 False, `n_iter`는 0이에요. `X`에 열이 없는데 `intercept=False`면 모수가 없어서 `ValueError`예요.
+
+```python
+>>> w0 = R.penalized_glm(y, X, family='binomial', alpha=0.05, weights=sd.zeros(80))
+>>> w0.nobs, w0.converged, w0.n_iter, w0.params.tolist()
+(0.0, False, 0, [nan, nan, nan, nan])
+>>> R.penalized_glm(y, sd.zeros((80, 0)), family='binomial', alpha=0.05, intercept=False)
+Traceback (most recent call last):
+    ...
+ValueError: penalized_glm(): the model has no parameters (no columns in 'X' and intercept=False)
+```
+
 ### 배치
 
 ```python
@@ -385,6 +419,8 @@ array([False,  True], dtype=bool)
 ((2, 4), [False, False])
 >>> b.params[1].tolist() == R.penalized_glm(1 - y, X, family='binomial', alpha=0.05).params.tolist()
 True
+>>> b
+PenalizedGLMResult(batch shape (2,), 4 parameters)
 ```
 
 배치의 각 결과는 하나씩 부른 것과 비트까지 같아요.

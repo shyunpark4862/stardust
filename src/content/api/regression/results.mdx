@@ -3,7 +3,7 @@ kind: concept
 title: 결과 객체 읽기
 group: 기본 개념
 order: 2
-summary: 회귀 함수가 돌려주는 결과 객체의 필드를 하나씩 풀어 설명해요. 계수와 표준오차, t값, p값, 신뢰구간, 공분산 행렬, 적합값과 잔차, 결정계수, F 검정, 로그우도와 정보 기준, 자유도, 예측과 예측 구간, summary, 처음 읽을 때 계산하는 필드가 여기에 있어요.
+summary: 회귀 함수가 돌려주는 결과 객체의 필드를 하나씩 풀어 설명해요. 계수와 표준오차, t값, p값, 신뢰구간, 공분산 행렬, 적합값과 잔차, 결정계수, F 검정, 로그우도와 정보 기준, 자유도, 예측과 예측 구간, summary, 읽기 전용인 설정 필드, 처음 읽을 때 계산하는 필드, 반복의 상태가 여기에 있어요.
 seeAlso: [basics, covariance, collinearity, ols, diagnostics]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -182,7 +182,7 @@ True
 
 ## 신뢰구간: conf_int
 
-`conf_int(alpha=0.05)`는 계수마다 **신뢰구간**의 두 끝을 돌려줘요. 모양은 (k, 2)이고, 각 행이 [아래 끝, 위 끝]이에요. 구간은 계수 ± q × 표준오차이고, q는 t분포의 위쪽 alpha/2 분위수(여기서는 약 2.05)예요.
+`conf_int(*, alpha=0.05)`는 계수마다 **신뢰구간**의 두 끝을 돌려줘요. 모양은 (k, 2)이고, 각 행이 [아래 끝, 위 끝]이에요. 구간은 계수 ± q × 표준오차이고, q는 t분포의 위쪽 alpha/2 분위수(여기서는 약 2.05)예요.
 
 ```python
 >>> r.conf_int()
@@ -225,7 +225,7 @@ True
   />
 </Fig>
 
-`alpha`를 바꾸면 신뢰수준이 1 − alpha가 돼요. 90% 구간은 95% 구간보다 좁아요. `alpha`는 0과 1 사이여야 해요.
+`alpha`를 바꾸면 신뢰수준이 1 − alpha가 돼요. 90% 구간은 95% 구간보다 좁아요. `alpha`는 0과 1 사이여야 하고, 이름을 붙여 **키워드로만** 줘요. `conf_int(0.1)`처럼 위치로 주면 `TypeError`예요. 여기의 `alpha`는 유의수준이고, 정규화 함수의 `alpha`(벌점의 세기)와는 뜻이 달라요([같은 이름, 다른 뜻](/api/regression/basics/#같은-이름-다른-뜻)).
 
 ```python
 >>> r.conf_int(alpha=0.1)[1]
@@ -234,6 +234,10 @@ array([2.5316813057404692, 3.4632145872771147], dtype=float64)
 Traceback (most recent call last):
     ...
 ValueError: conf_int(): 'alpha' must be between 0 and 1 (exclusive)
+>>> r.conf_int(0.1)
+Traceback (most recent call last):
+    ...
+TypeError: _RegressionResult.conf_int() takes 1 positional argument but 2 were given
 ```
 
 ## 공분산 행렬: cov_params
@@ -270,7 +274,7 @@ array([13.883151715150095, -2.451511719013796,  17.49127198429389], dtype=float6
 `resid`는 $y - \hat y$를 `fittedvalues`보다 정밀한 값에서 구해요. 그래서 두 배열을 직접 빼면 마지막 자리에서 다를 수 있어요. 절편이 있으면 잔차의 합은 0이에요(계산에서는 반올림 수준의 값).
 
 - `ssr`: 잔차 제곱합 $\sum_i e_i^2$이에요.
-- `scale`: 오차 분산의 어림 $\hat\sigma^2 = \text{ssr} / \text{df\_resid}$예요. 그 제곱근은 오차의 표준편차 어림(잔차 표준오차)이에요. 여기서는 7.77로, 참값 8에 가까워요.
+- `scale`: 오차 분산의 어림 $\hat\sigma^2 = \text{ssr} / \text{df\_resid}$예요. 그 제곱근은 오차의 표준편차 어림(잔차 표준오차)이에요. 여기서는 7.77로, 참값 8에 가까워요. `df_resid`가 0이면(관측 수 = 계수 수) 어림할 자유도가 없어 NaN이고, 표준오차와 t, p, 구간도 함께 NaN이에요([자유도가 없을 때](/api/regression/collinearity/#열이-행보다-많을-때)).
 
 ```python
 >>> r.ssr, r.scale
@@ -327,7 +331,7 @@ $$R^2_{\text{adj}} = 1 - \frac{n - 1}{\text{df\_resid}}(1 - R^2)$$
 
 반응이 모두 같은 값 $y_0$이면 TSS가 0이에요. 설명할 흩어짐이 처음부터 없으니 R²는 0/0이라 `rsquared`와 `rsquared_adj`가 NaN이고, `ess`는 0이에요.
 
-절편이 있으면 이때의 해는 정확히 $(y_0, 0, \dots, 0)$이고(겹친 열은 그대로 NaN), 적합값이 모두 $y_0$, 잔차가 0인 [완전 적합](/api/regression/collinearity/#완전-적합)이에요. 그래서 `scale`과 `bse`는 0(강건 공분산도 0), `tvalues`는 절편이 ±inf($y_0 = 0$이면 0 ÷ 0이라 NaN)이고 기울기는 0 ÷ 0이라 NaN, `llf`는 +inf, 스튜던트화 잔차는 NaN이에요. `wls`는 가중치가 0보다 큰 행의 `y`가 모두 같을 때 같은 규칙이고, 가중치 0인 행의 잔차는 $y - y_0$이에요.
+절편이 있으면 이때의 해는 정확히 $(y_0, 0, \dots, 0)$이고(겹친 열은 그대로 NaN), 적합값이 모두 $y_0$, 잔차가 0인 [완전 적합](/api/regression/collinearity/#완전-적합)이에요. 그래서 `scale`과 `bse`는 0(강건 공분산도 0이고, `cov_type='cluster'`에 군집이 하나뿐이면 [군집의 규칙](/api/regression/covariance/#groups)대로 NaN), `tvalues`는 절편이 ±inf($y_0 = 0$이면 0 ÷ 0이라 NaN)이고 기울기는 0 ÷ 0이라 NaN, `llf`는 +inf, 스튜던트화 잔차는 NaN이에요. `wls`는 가중치가 0보다 큰 행의 `y`가 모두 같을 때 같은 규칙이고, 가중치 0인 행의 잔차는 $y - y_0$이에요. 절편이 있는 [`glm`](/api/regression/glm/)의 정규분포·identity 링크(offset 없음)와 [`rlm`](/api/regression/rlm/)도 같은 정확한 해를 내요.
 
 ```python
 >>> rc = sd.regression.ols([3.0, 3, 3, 3, 3], [1.0, 2, 3, 4, 5])
@@ -390,6 +394,8 @@ True
 - `cov_type='cluster'`이면 군집 수 − 1이에요. 군집이 적으면 표준오차의 어림이 불안정해서 더 두꺼운 꼬리의 t분포를 써요([cluster](/api/regression/covariance/#cluster-묶음-안의-상관)).
 - [`glm`](/api/regression/glm/)에서 척도를 고정하는 분포족(이항, 포아송)은 t분포 대신 정규분포로 검정해서 `inf`예요.
 
+`df_resid`가 0이면 오차의 크기를 어림할 자유도가 없어요. 그때는 `scale`, `bse`, `tvalues`, `pvalues`, `conf_int()`, `cov_params()`가 모두 NaN이에요(척도를 고정하는 `glm`의 분포족은 빼고요). 예는 [열이 행보다 많을 때](/api/regression/collinearity/#열이-행보다-많을-때)에 있어요.
+
 ## 예측: predict와 predict_interval
 
 ### predict
@@ -438,9 +444,37 @@ ValueError: predict(): 'X_new' contains infinity
 array([               nan, 109.44255377871427], dtype=float64)
 ```
 
+모형에 든 열은 계수가 정확히 0이어도 예측에 들어가요. 그래서 그 열이 NaN이면 예측도 NaN이에요. 값이 없는 것을 0으로 어림하지 않아요. [겹친 열](/api/regression/collinearity/)로 빠진 열만 예측에 쓰지 않으니, 그 열의 NaN은 예측에 닿지 않아요. `predict_interval()`도 같은 행에서 NaN이에요.
+
+```python
+>>> rz = sd.regression.ols([3.0, 3, 3, 3, 3], [1.0, 2, 3, 4, 5])
+>>> rz.params
+array([3.0, 0.0], dtype=float64)
+>>> rz.predict([sd.nan, 6.0])
+array([nan, 3.0], dtype=float64)
+```
+
+[배치](/api/regression/basics/#배치-회귀-여러-개를-한-번에) 결과로 예측하면, `X_new`도 마지막 두 축(행, 열) 앞의 배치 모양이 적합의 배치 모양과 브로드캐스트해야 해요. 회귀마다 같은 `X_new`를 쓰려면 배치 축 없이 주면 돼요.
+
+```python
+>>> hours = [1.0, 2, 3, 4, 5, 6, 7, 8]
+>>> Y = sd.asarray([[51.0, 58, 57, 66, 64, 73, 75, 80],
+...                 [50.0, 54, 57, 63, 66, 71, 73, 78],
+...                 [60.0, 59, 62, 61, 63, 62, 64, 63]])
+>>> rb = sd.regression.ols(Y, hours)
+>>> rb.predict([10.0, 20.0])
+array([[ 87.36904761904762, 127.13095238095238],
+       [              86.0,              126.0],
+       [ 64.89285714285714,  70.60714285714286]], dtype=float64)
+>>> rb.predict(sd.ones((2, 4, 1)))
+Traceback (most recent call last):
+    ...
+ValueError: predict(): the batch shapes of 'X_new' (2,) and the fit (3,) do not broadcast
+```
+
 ### predict_interval
 
-`predict_interval(X_new, alpha=0.05, kind='mean')`는 예측의 구간을 (m, 2) 배열로 돌려줘요. 각 행이 [아래 끝, 위 끝]이에요. `kind`에 따라 묻는 것이 달라요.
+`predict_interval(X_new, *, alpha=0.05, kind='mean')`는 예측의 구간을 (m, 2) 배열로 돌려줘요. 각 행이 [아래 끝, 위 끝]이에요. `kind`에 따라 묻는 것이 달라요.
 
 | `kind` | 묻는 것 | 구간에 드는 불확실성 |
 |---|---|---|
@@ -489,9 +523,18 @@ ValueError: predict_interval(): 'kind' must be 'mean' or 'observation', not 'x'
 
 `predict_interval`의 t분포 자유도도 `df_resid_inference`예요. 그래서 `cov_type='cluster'`이면 `conf_int()`와 같은 군집 수 − 1을 써요.
 
+`rlm`, `quantreg`, `nls`의 `predict_interval(X_new, *, alpha=0.05)`은 `kind='mean'`에 해당하는 구간, 곧 적합한 값(평균이나 분위)의 신뢰구간만 내요. 하루의 값에 대한 구간(`'observation'`)은 없어요. 강건한 척도는 오차의 표준편차가 아니고, 분위 하나는 분포의 퍼짐을 말하지 않아서, 하루의 오차를 더할 근거가 없기 때문이에요.
+
+```python
+>>> rr = sd.regression.rlm(df['sales'], df[['temp', 'rain']])
+>>> rr.predict_interval([[20.0, 5.0], [30.0, 5.0]])
+array([[ 75.36863139543865,  83.49631325144964],
+       [105.64035934011257, 112.99303004702246]], dtype=float64)
+```
+
 ## summary
 
-`summary(alpha=0.05)`는 [맨 위](#한눈에-보기)의 표를 글(`str`)로 돌려줘요. `alpha`는 계수 표의 구간 칸을 바꿔요. 위의 반쪽은 모형과 적합의 요약, 가운데는 계수 표, 아래는 진단 값이고, 끝의 Notes는 공분산의 종류와 겹친 열을 적어요. 날짜와 시각은 넣지 않아서 같은 결과면 늘 같은 글이에요.
+`summary(*, alpha=0.05)`는 [맨 위](#한눈에-보기)의 표를 글(`str`)로 돌려줘요. `alpha`는 계수 표의 구간 칸을 바꿔요. 위의 반쪽은 모형과 적합의 요약, 가운데는 계수 표, 아래는 진단 값이고, 끝의 Notes는 공분산의 종류와 겹친 열을 적어요. 날짜와 시각은 넣지 않아서 같은 결과면 늘 같은 글이에요.
 
 ```python
 >>> print(r.summary(alpha=0.1).splitlines()[10])
@@ -501,6 +544,19 @@ rain          -0.0379      0.410     -0.093      0.927     -0.735      0.660
 ```
 
 `summary()`는 회귀 하나의 결과만 받아요. 배치 결과에서는 `ValueError`예요([배치](/api/regression/basics/#배치의-규칙)).
+
+## 설정 필드는 읽기 전용
+
+결과에는 계산한 값 말고도 적합을 어떻게 했는지 적은 필드가 있어요. `param_names`, `cov_type`과 함수에 따라 `family`, `link`, `alpha`, `l1_ratio`, `standardize`, `method`, `norm`, `q`예요. 이 필드는 **대입할 수 없어요**. 결과의 다른 값은 모두 그 설정으로 계산한 것이라, 설정만 바꾸면 결과가 스스로 어긋나기 때문이에요. 다른 설정이 필요하면 그 설정으로 다시 맞추세요.
+
+```python
+>>> r.cov_type = 'HC3'
+Traceback (most recent call last):
+    ...
+AttributeError: property 'cov_type' of 'OLSResult' object has no setter
+>>> sd.regression.ols(df['sales'], df[['temp', 'rain']], cov_type='HC3').cov_type
+'HC3'
+```
 
 ## 처음 읽을 때 계산하는 필드
 
@@ -534,26 +590,49 @@ True
 | `df_resid`, `rank`, `condition_number`, `cov_type`, `summary()` | ○ | ○ | ○ | ○ | ○ | |
 | `fittedvalues` | ○ | ○ | ○ | ○ | ○ | ○ |
 | `resid` | ○ | | ○ | ○ | ○ | 선형만 |
-| `predict_interval()` | ○ | ○ | | | | |
+| `predict_interval()` | ○ | ○ | 평균만 | 평균만 | 평균만 | |
 | `ssr` | ○ | | | | ○ | 선형만 |
 | `rsquared` | ○ | | | | | 선형만 |
 | `rsquared_adj`, `ess`, `centered_tss`, `uncentered_tss`, `fvalue`, `f_pvalue` | ○ | | | | | |
 | `llf`, `aic`, `bic` | ○ | ○ | | | ○ | |
 | `scale` | ○ | ○ | ○ | | ○ | |
 
-- **GLM**(`GLMResult`)은 잔차가 네 가지(`resid_response`, `resid_pearson`, `resid_deviance`, `resid_working`)라서 `resid`가 없어요. R² 대신 편차(`deviance`, `null_deviance`)와 우도비(`llr`)가 있어요. [glm](/api/regression/glm/)을 보세요.
-- **RLM**(`RLMResult`)의 `scale`은 오차 분산이 아니라 강건한 척도(표준편차의 단위)예요. 관측마다의 무게 `weights`가 있어요. [rlm](/api/regression/rlm/)을 보세요.
+- **GLM**(`GLMResult`)은 잔차가 네 가지(`resid_response`, `resid_pearson`, `resid_deviance`, `resid_working`)라서 `resid`가 없어요. R² 대신 편차(`deviance`, `null_deviance`), 우도비(`llr`), 의사 결정계수 `pseudo_rsquared()`가 있어요. [glm](/api/regression/glm/)을 보세요.
+- **RLM**(`RLMResult`)의 `scale`은 오차 분산이 아니라 강건한 척도(표준편차의 단위)예요. OLS·GLM·NLS의 `scale`은 분산(제곱의 단위)이라서, 같은 데이터면 RLM의 `scale`은 그 제곱근에 견줄 값이에요. 관측마다의 무게 `weights`가 있어요. [rlm](/api/regression/rlm/)을 보세요.
 - **QuantReg**(`QuantRegResult`)는 R² 대신 `prsquared`, 목적함수 `objective`가 있어요. [quantreg](/api/regression/quantreg/)을 보세요.
 - **NLS**(`NLSResult`)의 `param_names`는 모형 함수의 인자 이름이에요. [nls](/api/regression/nls/)를 보세요.
 - **정규화**(`RidgeResult`, `LassoResult`, `ElasticNetResult`와 교차검증 결과, `PenalizedGLMResult`)는 예측이 목적이라 표준오차·p값·구간과 `summary()`가 없어요. `resid`, `ssr`, `rsquared`는 선형(`ridge`, `lasso`, `elastic_net`)에만 있고, `penalized_glm`은 `resid_response`와 편차를 줘요. [ridge](/api/regression/ridge/)를 보세요.
 - `linregress`, `theilslopes`, `siegelslopes`의 결과는 이름 붙은 튜플이에요. 필드는 [linregress](/api/regression/linregress/), [theilslopes](/api/regression/theilslopes/), [siegelslopes](/api/regression/siegelslopes/)에 있어요.
 
-반복으로 푸는 결과(GLM, RLM, QuantReg, NLS, lasso 등)에는 `converged`, `n_iter`처럼 반복의 상태를 알려 주는 필드가 더 있어요. 각 함수의 페이지에 있어요.
+```python
+>>> rr.scale, r.scale ** 0.5
+(5.646710246149384, 7.772593791503707)
+```
+
+반복으로 푸는 결과(GLM, RLM, QuantReg, NLS, lasso 등)에는 `converged`, `n_iter`처럼 반복의 상태를 알려 주는 필드가 더 있어요. 어느 함수에서나 같은 규칙이에요.
+
+- `converged`는 멈춤 판정을 통과하고 그 뒤에 해를 반올림 수준까지 다듬는 일까지 끝났을 때만 True예요. 다듬는 도중에 반복 상한(`max_iter` 등)에 닿으면 False예요. False인 결과의 계수는 멈춤 허용오차의 정밀도까지만 믿을 수 있어요.
+- `n_iter`는 `max_iter`를 넘지 않아요.
+- 쓸 행이 없으면 `converged`는 False, `n_iter`는 0이에요([쓸 행이 없을 때](/api/regression/basics/#쓸-행이-없을-때)).
+
+```python
+>>> rng = sd.random.default_rng(0)
+>>> xg = sd.stats.Normal().sample(50, rng=rng)
+>>> yg = sd.stats.Poisson(mu=3.0).sample(50, rng=rng) * 1.0
+>>> g = sd.regression.glm(yg, xg, family='poisson')
+>>> g.converged, g.n_iter
+(True, 6)
+>>> g3 = sd.regression.glm(yg, xg, family='poisson', max_iter=3)
+>>> g3.converged, g3.n_iter
+(False, 3)
+```
+
+각 함수의 반복과 멈춤 규칙은 그 함수의 페이지에 있어요.
 
 ## statsmodels를 아는 분께
 
 - 필드 이름은 statsmodels의 결과와 같아요(`params`, `bse`, `tvalues`, `pvalues`, `fittedvalues`, `resid`, `rsquared`, `rsquared_adj`, `fvalue`, `f_pvalue`, `llf`, `aic`, `bic`, `scale`, `ssr`, `ess`, `centered_tss`, `uncentered_tss`, `df_model`, `df_resid`, `condition_number`). 위 예의 계수, 표준오차, 수정 결정계수, `llf`, `aic`, `bic`는 statsmodels 0.15.0의 `OLS(...).fit()`과 같은 값이에요.
-- `conf_int()`와 `cov_params()`는 statsmodels처럼 메서드이고, 결과는 numpy 배열이 아니라 `sd.ndarray`예요. statsmodels는 pandas 입력이면 이름 붙은 표를 돌려주지만, 여기서는 이름을 `param_names`로 따로 읽어요.
+- `conf_int()`와 `cov_params()`는 statsmodels처럼 메서드이고, 결과는 numpy 배열이 아니라 `sd.ndarray`예요. statsmodels의 `conf_int(0.1)`처럼 `alpha`를 위치로 주는 꼴은 받지 않아요. `conf_int(alpha=0.1)`로 주세요. statsmodels는 pandas 입력이면 이름 붙은 표를 돌려주지만, 여기서는 이름을 `param_names`로 따로 읽어요.
 - 예측 구간은 statsmodels의 `get_prediction(X_new).summary_frame()`에 해당해요. `kind='mean'`이 `mean_ci_lower`·`mean_ci_upper`, `kind='observation'`이 `obs_ci_lower`·`obs_ci_upper`와 같은 값이에요. statsmodels와 달리 `X_new`에 절편 열을 넣지 않아요.
 - 강건 공분산(`cov_type='HC3'` 등)에서 statsmodels의 기본은 p값과 구간을 정규분포로 계산해요(`use_t=False`). 여기서는 늘 t분포예요. statsmodels의 `fit(cov_type=..., use_t=True)`와 같은 값이에요([표준오차의 종류](/api/regression/covariance/)).
 - `summary()`의 꼴은 statsmodels의 OLS summary와 같지만 날짜와 시각 줄이 없어요.

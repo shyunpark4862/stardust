@@ -3,7 +3,7 @@ kind: concept
 title: 표준오차의 종류
 group: 기본 개념
 order: 3
-summary: cov_type으로 표준오차를 계산하는 방법을 고르는 법을 설명해요. 기본(nonrobust), 오차의 크기가 관측마다 다를 때의 HC0–HC3, 시간 순서로 오차가 이어질 때의 HAC와 maxlags, 묶음 안에서 오차가 이어질 때의 cluster와 groups, 그리고 각각의 자유도와 에러가 여기에 있어요.
+summary: cov_type으로 표준오차를 계산하는 방법을 고르는 법을 설명해요. 기본(nonrobust), 오차의 크기가 관측마다 다를 때의 HC0–HC3, 시간 순서로 오차가 이어질 때의 HAC와 maxlags, 묶음 안에서 오차가 이어질 때의 cluster와 groups, 그리고 각각의 자유도, 가중치가 0인 행과 glm의 빈도 가중치, 에러가 여기에 있어요.
 seeAlso: [results, basics, ols, wls, glm, diagnostics]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -154,13 +154,22 @@ HAC 표준오차가 기본보다 60% 넘게 커요. 잔차의 Durbin–Watson �
 
 $$L = \left\lfloor 4 \left(\frac{n}{100}\right)^{2/9} \right\rfloor$$
 
-n = 120이면 4, n = 1,000이면 6, n = 100,000이면 18이에요. 쓴 지연 수는 `summary()`의 끝에 적혀 있어요.
+n은 결과의 `nobs`, 곧 적합에 쓰인 관측 수예요. `wls`에서 가중치가 0인 행은 세지 않고, `glm`의 `freq_weights`는 그 합을 세요. n = 120이면 4, n = 1,000이면 6, n = 100,000이면 18이에요. 쓴 지연 수는 `summary()`의 끝에 적혀 있어요.
 
 ```python
 >>> print(sd.regression.ols(yt, xt, cov_type='HAC').summary().splitlines()[-1])
     using 4 lags (Bartlett kernel) and without small sample correction.
 >>> sd.regression.ols(yt, xt, cov_type='HAC', maxlags=8).bse
 array([0.28593933345817113, 0.15915981938814616], dtype=float64)
+```
+
+관측 30개의 가중치가 0이면 남은 90개로 세서 4가 아니라 3이에요.
+
+```python
+>>> w = sd.ones(n)
+>>> w[:30] = 0.0
+>>> print(sd.regression.wls(yt, xt, weights=w, cov_type='HAC').summary().splitlines()[-1])
+    using 3 lags (Bartlett kernel) and without small sample correction.
 ```
 
 `maxlags=0`이면 이웃의 공분산을 더하지 않으니 `'HC0'`과 같아요. 자기상관이 오래 이어진다고 생각되면 `maxlags`를 키우세요. 소표본 보정은 하지 않아요.
@@ -217,11 +226,15 @@ nan
 7.0
 ```
 
-군집 수 G는 적합에 쓰인 행에 나오는 레이블의 수예요. 공분산에는 소표본 보정 $\frac{G}{G-1} \cdot \frac{n-1}{n-k}$을 곱해요. 군집이 하나뿐이면 묶음끼리의 비교가 없으니 공분산이 NaN이에요.
+군집 수 G는 적합에 쓰인 행에 나오는 레이블의 수예요. 공분산에는 소표본 보정 $\frac{G}{G-1} \cdot \frac{n-1}{n-k}$을 곱해요. 군집이 하나뿐이면 묶음끼리의 비교가 없으니 공분산이 NaN이에요. 반응이 모두 같아서 다른 `cov_type`이면 표준오차가 0인 [완전 적합](/api/regression/collinearity/#완전-적합)이어도, 군집이 하나면 NaN이에요. 흔들림을 잴 수 없다는 것이 먼저예요.
 
 ```python
 >>> sd.regression.ols(y8, h8, cov_type='cluster', groups=[1] * 8).bse
 array([nan, nan], dtype=float64)
+>>> sd.regression.ols([3.0] * 8, h8, cov_type='cluster', groups=[1] * 8).bse
+array([nan, nan], dtype=float64)
+>>> sd.regression.ols([3.0] * 8, h8, cov_type='cluster', groups=[1, 1, 1, 1, 2, 2, 2, 2]).bse
+array([0.0, 0.0], dtype=float64)
 ```
 
 군집 표준오차는 군집이 많을수록 믿을 만해요. 군집이 수십 개 아래면 아래의 자유도 보정이 중요해요.
@@ -267,6 +280,35 @@ True
 ## 가중치가 0인 행
 
 `wls`에서 가중치가 0인 행은 적합에 쓰이지 않으니 강건 공분산에서도 빠져요. HAC의 시점은 적합에 쓰인 행만 이어서 세고, 그 행에만 나오는 군집은 G에 들지 않아요. 그래서 가중치 0인 행이 있는 `wls`의 강건 표준오차는 그 행을 지우고 맞춘 것과 비트까지 같아요.
+
+## glm의 빈도 가중치
+
+[`glm`](/api/regression/glm/)의 `freq_weights`는 "이 행이 f번 나왔다"는 뜻이에요. 그래서 HC0–HC3와 군집 표준오차는 그 행을 f번 되풀이해 적은 자료로 맞춘 것과 같아요. HC2와 HC3의 지렛대도 되풀이한 자료의 값, 곧 그 행의 지렛대를 f로 나눈 값을 써요. 사본 f개가 한 행의 지렛대를 나눠 가지기 때문이에요.
+
+```python
+>>> rng = sd.random.default_rng(3)
+>>> xf = sd.stats.Normal().sample(12, rng=rng)
+>>> yf = sd.stats.Poisson(mu=3.0).sample(12, rng=rng) * 1.0
+>>> f = sd.asarray([1.0, 2, 3] * 4)
+>>> rep = sd.asarray([i for i in range(12) for _ in range(int(f[i]))])
+>>> a = sd.regression.glm(yf, xf, family='poisson', freq_weights=f, cov_type='HC3')
+>>> b = sd.regression.glm(yf[rep], xf[rep], family='poisson', cov_type='HC3')
+>>> a.nobs, b.nobs
+(24.0, 24.0)
+>>> float(sd.max(sd.abs(a.bse / b.bse - 1))) < 1e-14
+True
+```
+
+`'HAC'`만은 다르게 세요. HAC는 **행의 순서**에서 이웃한 행끼리 짝을 지으므로, 빈도 f인 행은 한 시점으로 남고 그 앞뒤 행이 이웃이에요. 되풀이한 자료에서는 같은 행의 사본끼리 이웃이 되니 값이 달라요. 기본 지연 수의 n은 빈도의 합(`nobs`)이에요.
+
+```python
+>>> h = sd.regression.glm(yf, xf, family='poisson', freq_weights=f, cov_type='HAC', maxlags=1)
+>>> hr = sd.regression.glm(yf[rep], xf[rep], family='poisson', cov_type='HAC', maxlags=1)
+>>> h.bse, hr.bse
+(array([0.10420598530866058, 0.09626056326838224], dtype=float64), array([ 0.1271137332687105, 0.12147998766763889], dtype=float64))
+```
+
+되풀이한 자료의 HAC 값이 필요하면 행을 직접 되풀이해서 주세요(`hr`처럼).
 
 ## 에러
 
@@ -333,4 +375,5 @@ ValueError: quantreg(): 'cov_type' must be 'iid', 'nid' or 'ker', not 'HC3'
 - **p값과 구간의 분포가 달라요.** statsmodels는 강건 공분산이면 기본으로 정규분포를 써요(`use_t=False`). 여기서는 늘 t분포예요. statsmodels의 `fit(cov_type=..., use_t=True)`와 같은 값이고, 위의 HC3 기울기 p값은 statsmodels 기본이 $9.9 \times 10^{-7}$, 여기가 $3.7 \times 10^{-5}$예요.
 - statsmodels의 `'HAC'`은 `maxlags`를 꼭 줘야 해요. 여기서는 빼면 $\lfloor 4(n/100)^{2/9} \rfloor$예요. 같은 `maxlags`면 값이 같아요. 소표본 보정을 하지 않는 것(`use_correction=False`)도 statsmodels의 기본과 같아요.
 - `'cluster'`의 자유도 G − 1, 소표본 보정, `fvalue`는 statsmodels의 `use_t=True`와 같아요. 군집 수 − 1이 검정할 계수 수보다 작을 때 statsmodels는 `ValueWarning`과 함께 F 값을 내고, 여기서는 `fvalue`·`f_pvalue`가 NaN이에요. 다만 statsmodels의 `get_prediction`은 군집에서도 `df_resid`로 구간을 만들고, 여기의 `predict_interval`은 G − 1을 써요.
+- `glm`에서 statsmodels 0.15.0의 `'HC1'`–`'HC3'`는 `'HC0'`과 같은 값을 내요(위의 `xf`, `yf`에서 넷 모두 0.14556, 0.17366). 여기서는 OLS와 같은 보정을 해서 HC1 0.15945, HC3 0.17559처럼 달라요. `freq_weights`의 `'HAC'`은 statsmodels와 같은 값이에요(statsmodels는 `SpecificationWarning`을 내요).
 - `wls`에서 가중치가 0인 행을 statsmodels는 점수 0인 관측으로 남겨서, 그 행에만 나오는 군집도 군집 수에 세고 HAC의 지연 짝도 달라져요. 여기서는 그 행을 뺀 적합과 같아요.

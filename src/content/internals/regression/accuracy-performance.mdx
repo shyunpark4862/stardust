@@ -191,14 +191,14 @@ NIST의 통계 참조 자료(StRD)는 공인된 참값과 극단적인 조건수
 | Filip | 1.8e15 | 4e-8 | 1e-17 | 7e-8 | 1.1 | 1.0 | 1.1 |
 | Longley | 4.9e9 | 6e-13 | 2e-17 | 2e-13 | 1.4e-11 | 1.2e-14 | 1.4e-11 |
 | Wampler1 | 6.4e6 | 1e-10 | 0 | 0 (완전 적합) | 2.9e-10 | 0.65 | 2.9e-10 |
-| Wampler2 | 6.4e6 | 9e-15 | 4e-17 | 0.8 (아래) | 4.1e-11 | 3.4 | 4.2e-11 |
+| Wampler2 | 6.4e6 | 9e-15 | 4e-17 | — (아래) | 4.1e-11 | 3.4 | 4.2e-11 |
 | Wampler3 | 6.4e6 | 2e-10 | 0 | 3e-14 | | | |
 | Wampler4 | 6.4e6 | 2e-9 | 0 | 3e-14 | 3.9e-9 | 0.65 | 3.6e-9 |
 | Wampler5 | 6.4e6 | 2e-7 | 0 | 3e-14 | 3.8e-7 | 0.65 | 4.0e-7 |
 
 - Filip은 세 참조 라이브러리 모두 맞는 자릿수가 없어요. scikit-learn은 다항식 문제(Pontius, Wampler)에서 크게 틀려요.
 - 잔차가 큰 문제(Longley, Wampler4·5)는 QR 해에 $\kappa^2 u\,\lVert r\rVert$ 꼴의 항이 남아요. 증강 시스템의 반복 개선이 그 항을 지워요([최소제곱 풀이](/internals/regression/least-squares/)).
-- 표준오차는 개선해도 $R$이 그대로라 상대오차가 대략 $\kappa u$예요(Filip $7 \times 10^{-8}$). Wampler2는 double 입력의 참 제곱합이 아주 작아, $\beta$를 double로 반올림한 것만으로 잔차가 바뀌어 표준오차에 상대 정확도가 없어요(값 자체는 $10^{-16}$ 수준).
+- 표준오차는 개선해도 $R$이 그대로라 상대오차가 대략 $\kappa u$예요(Filip $7 \times 10^{-8}$). Wampler2는 double 입력의 참 제곱합이 아주 작아, $\beta$를 double로 반올림한 것만으로 잔차가 바뀌어 표준오차에 상대 정확도가 없어요. 잔차가 모두 반올림 크기 안이라 sd는 완전 적합으로 판정하고 `bse` 0을 내요([최소제곱 풀이](/internals/regression/least-squares/)).
 
 **조건수를 바꾼 무작위 문제**($X = U\operatorname{diag}(s)V^{\mathsf T}$, $n = 100$, $k = 8$, 잔차는 $X$에 수직이고 $\lVert r\rVert = \rho\lVert X\beta\rVert$, $\rho = 10^{-10}, 1, 100$, $\kappa$마다 9개의 최대).
 
@@ -207,6 +207,16 @@ NIST의 통계 참조 자료(StRD)는 공인된 참값과 극단적인 조건수
 | 계수(sd) | 5.4e-16 | 1.4e-15 | 1.1e-15 | 1.6e-12 | 3.4e-9 | 2.5e-7 |
 
 $10^{11}$까지가 약속이고, 그 위는 잰 값이에요. 개선 한 번에 오차가 대략 $\kappa u$배 주는데, $\kappa \approx 10^{16}$($\kappa u \approx 1$)이면 개선이 수렴하지 않아요. 그런 $X$는 기본 `rtol`에서 열 하나가 겹친다고 판정돼요.
+
+**극단적인 척도.** 조건수는 열의 척도를 바꿔도 그대로지만, 열이나 $y$의 크기가 $2^{\pm256}$ 밖이면 $(R^{\mathsf T}R)^{-1}$이나 잔차의 제곱이 double을 벗어나요. 그런 열과 $y$는 2의 거듭제곱으로 옮겨 풀고 추론은 적합의 단위에서 만들어서([최소제곱 풀이](/internals/regression/least-squares/)), $x$나 $y$에 $10^{\pm300}$ 범위의 배율을 곱해도 t·p·$R^2$·표준오차의 비가 반올림 몇 개 안에서 같아요.
+
+```python
+>>> rng = sd.random.default_rng(3)
+>>> xs = sd.stats.Normal().sample(20, rng=rng)
+>>> ys = 1.0 + 0.5 * xs + sd.stats.Normal().sample(20, rng=rng)
+>>> [sd.regression.ols(ys * a, xs * b).pvalues[1] for a, b in ((1.0, 1.0), (1.0, 1e160), (1e-165, 1.0), (1e300, 1e290))]
+[0.025005323114196457, 0.025005323114196457, 0.025005323114196436, 0.025005323114196457]
+```
 
 **R과의 비교**(R 4.6.2 `lm`, sandwich 3.1.3, lmtest 0.9.40; `tests/regression/test_against_r.py`): 조건이 좋은 7개 문제에서 계수·표준오차·R²·F·잔차·`hatvalues`·`rstandard`·`rstudent`·`cooks.distance`·`vcovHC`·`NeweyWest`·`vcovCL`이 $4 \times 10^{-15}$, `coeftest`의 p값 $10^{-13}$, `dwtest` $5 \times 10^{-16}$, `bptest` $8 \times 10^{-15}$ 안이에요. 조건이 나쁘면 R 쪽이 틀려요. $\kappa = 10^8$($n = 100$, 절편 없음)에서 R `lm`의 계수가 $3 \times 10^{-9}$, 강건 표준오차가 0.01–0.18 틀리고(빵과 고기를 $X^{\mathsf T}X$ 꼴로 곱해 $\kappa^2 u$), sd는 계수 0, 표준오차 $7 \times 10^{-10}$ 안이에요.
 

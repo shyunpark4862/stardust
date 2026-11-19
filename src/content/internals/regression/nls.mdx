@@ -2,7 +2,7 @@
 title: 비선형 최소제곱
 group: 비선형
 order: 1
-summary: nls가 안에서 하는 일을 설명해요. 반복과 다듬기의 두 단계로 나눈 까닭, MINPACK lmder의 Levenberg–Marquardt(신뢰 영역, 열 척도, LM 매개변수 찾기, 멈춤 판정 info 1–8), scipy least_squares의 신뢰 영역 반사법(Coleman–Li 척도, 반사 걸음, SVD 부분문제), 반복의 전진 차분과 해의 5점 중앙 차분(모수마다 간격 고르기), 선형 모형의 QR 커널로 푸는 가우스–뉴턴 다듬기와 곡률 항 S를 넣은 뉴턴 전환, 경계에 걸린 모수, 겹친 모수와 rtol, 공분산, GIL, f 호출의 비용을 다뤄요.
+summary: nls가 안에서 하는 일을 설명해요. 반복과 다듬기의 두 단계로 나눈 까닭, MINPACK lmder의 Levenberg–Marquardt(신뢰 영역, 열 척도, LM 매개변수 찾기, 멈춤 판정 info 1–8), scipy least_squares의 신뢰 영역 반사법(Coleman–Li 척도, 반사 걸음, SVD 부분문제), 반복의 전진 차분과 해의 5점 중앙 차분(모수마다 간격 고르기), 선형 모형의 QR 커널로 푸는 가우스–뉴턴 다듬기와 곡률 항 S를 넣은 뉴턴 전환, max_nfev 안의 다듬기 예산, 경계에 걸린 모수, 겹친 모수와 rtol, 공분산과 완전 적합, 델타 방법의 평균 구간, GIL, f 호출의 비용을 다뤄요.
 seeAlso: [overview, least-squares, glm, accuracy-performance]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -29,7 +29,7 @@ $$
 
 <Fig column caption="nls 한 번의 흐름. 반복은 C++ 커널이고, f와 jac은 Python 콜백이에요.">
   <Steps steps={[
-    { label: 'nls()', note: '입력 검사, NaN 처리, 가중치 0인 행 빼기, 방법과 max_nfev·rtol의 기본값', where: '_nls.py' },
+    { label: 'nls()', note: '입력 검사, NaN 처리, 가중치 0인 행 빼기(남는 행이 없으면 NaN 결과), 방법과 max_nfev·rtol의 기본값', where: '_nls.py' },
     { label: '_Model', note: '쓰인 행의 잔차 √w(f − y)와 사용자 jac을 돌려주는 콜백, f 호출 수 세기', where: '_nls.py', depth: 1 },
     { label: 'nls_solve', note: "'lm'(lmder) 또는 'trf'(trf_bounds). 야코비안마다 Householder QR 한 번, 그 뒤는 p 크기", where: 'csrc/regression/nls.cpp' },
     { label: 'accurate_jac', note: '해의 5점 중앙 차분. 모수마다 간격을 처음 한 번 고르고 그 뒤에도 써요(jac이 있으면 그것)', where: '_nls.py' },
@@ -502,6 +502,32 @@ $$
 - 시험점이 유한하지 않거나, 경계 밖이거나, 제곱합이 $1/16$ 넘게 오르면(걸음이 $2^{-30}$ 밑이 아닐 때) 멈춰요.
 - 마지막 걸음이 $2^{-45}$ 넘으면 받은 점에서 야코비안을 다시 구해요. 공분산이 돌려준 $\theta$의 야코비안이 되게 하려는 거예요.
 - 모두 10걸음까지예요.
+- 걸음마다 그 비용을 먼저 봐요. 아래의 예산 절이에요.
+
+### max_nfev의 예산
+
+다듬기의 $f$ 호출도 `max_nfev` 안에서 해요. 반복이 쓰고 남은 호출 수가 다듬기의 예산이고, 걸음을 하기 전에 그 걸음의 비용(새 점 1번과 그 점의 정확한 야코비안, 차분이면 $4p$번, `jac`이면 0번)이 남았는지 봐요. 뉴턴으로 바꿀 때는 $S$의 비용 $2p^2$번도 먼저 봐요.
+
+```python
+    def afford(calls):
+        return M.nfev - start + calls <= budget
+
+    for _ in range(_POLISH_STEPS):
+        if not afford(M.step_cost()):
+            return theta, v, r, J, steps, True
+```
+
+걸음이 아직 필요한데 예산이 모자라 멈추면(`True`를 돌려줘요) `converged`는 False예요. 다듬기가 끝나야 결과가 반올림 수준의 해라서, 끝나지 않은 다듬기를 수렴이라고 하지 않아요.
+
+해의 값과 정확한 야코비안(간격 고르기 포함)은 이 예산 밖이에요. 공분산과 겹친 모수의 판정에 늘 필요해서, 상한이 작아도 결과에서 뺄 수 없기 때문이에요. 그래서 `max_nfev`는 해를 찾는 호출(반복과 다듬기)의 상한이고, `nfev`에는 그 위에 공분산용 야코비안의 정해진 호출 수(모수 수에 비례해요)가 더해져요. 아래 Misra1a는 반복이 51번을 쓰고, 해의 야코비안이 25번, 다듬기 세 걸음이 9번씩이에요.
+
+```python
+>>> [(m, fm.converged, fm.nfev) for m, fm in
+...  ((m, sd.regression.nls(f, sd.asarray(x), sd.asarray(y), p0=[500, 1e-4], max_nfev=m)) for m in (55, 70, 78))]
+[(55, False, 76), (70, False, 94), (78, True, 103)]
+```
+
+`max_nfev=55`면 다듬기에 4번이 남아 걸음 하나(9번)도 못 하고, 70이면 두 걸음 뒤 세 번째를 못 해요. 78이면 세 걸음을 다 해서 기본값과 같은 결과예요.
 
 ### 느린 가우스–뉴턴과 뉴턴 걸음
 
@@ -643,6 +669,48 @@ $$
 
 $k = 100$에 머문 적합은 $c$가 첫 행을 뺀 나머지의 평균이고 $a + c$가 첫 행이에요. 겹친 모수는 $k$이고, $a$와 $c$의 표준오차는 유한해요. 식별되는 시작점에서는 세 열이 모두 남아요.
 
+## 완전 적합, 자유도, 평균의 구간
+
+### 남은 자유도가 없을 때와 완전 적합
+
+- `df_resid` $= \text{nobs} - \text{rank}$가 0이면 $\hat\sigma^2 = \text{ssr}/0$이 $0/0$이라 `scale`과 추론 전부(`bse`, t, p, 구간, `cov_params()`)가 NaN이에요. 선형 모형과 같은 규칙이에요.
+- `ssr`이 정확히 0이고 `df_resid` > 0이면 `bse`는 0 그대로이고, `tvalues`와 `pvalues`는 NaN이에요. 구간은 `bse`가 0이라 $[\theta, \theta]$예요. 선형 모형은 같은 경우 t가 ±inf, p가 0인데, 그쪽은 완전 적합의 해가 정확해서 t의 극한에 뜻이 있어요. 비선형 반복이 멈춘 점은 그렇지 않아요. 모형을 모르므로 상수 $y$의 정확한 해를 정해 넣을 수도 없어서, $a + bx$ 꼴 모형에 상수 $y$를 맞추면 $b$에 반올림 크기의 값이 남아요. 그 값을 0으로 나눈 ±inf는 있지도 않은 유의성을 보여요.
+- 쓰인 행이 없으면(모두 NaN이라 빠졌거나 가중치가 모두 0) $f$를 부르지 않고 NaN 결과에 `nobs` 0이에요.
+
+```python
+>>> xl = sd.arange(1.0, 9.0)
+>>> lin = lambda x, a, b: a + b * x
+>>> pf = sd.regression.nls(lin, xl, 0.5 + 2.0 * xl, p0=[0.0, 1.0])
+>>> pf.ssr, pf.bse, pf.tvalues
+(0.0, array([0.0, 0.0], dtype=float64), array([nan, nan], dtype=float64))
+>>> sd.regression.nls(lin, sd.asarray([0.0, 1.0]), sd.asarray([1.0, 3.0]), p0=[0.0, 1.0]).bse
+array([nan, nan], dtype=float64)
+```
+
+### 평균의 구간: 델타 방법
+
+`predict_interval(x_new)`은 적합값 $f(x_{\text{new}}, \hat\theta)$의 신뢰구간이에요. $f$를 해 둘레에서 일차로 펼치면 $\operatorname{Var} f(x, \hat\theta) \approx J_{\text{new}}\,C\,J_{\text{new}}^{\mathsf T}$이고($C$는 `cov_params()`), 구간은 $f \pm t(\text{df\_resid})\cdot\text{se}$예요.
+
+$J_{\text{new}}$는 $x_{\text{new}}$의 행에서 해의 야코비안이에요. 사용자 `jac`이 있으면 그것이고, 없으면 해에서 고른 간격 그대로의 5점 차분이에요(잡음 열의 규칙도 같아요). 간격은 모수의 국소 척도이지 행의 것이 아니라서 다시 고르지 않아요.
+
+```python
+        fm = self._model
+        M = _Model(func, fm.f, fm.jac, xn, _sd.zeros((m,)), None, None, fm.p, fm.lb, fm.ub)
+        M.steps = list(fm.steps)
+        J = M.accurate_jac(theta, mean)
+        var = _sd.sum(_sd.matmul(J, self.cov_params()) * J, axis=-1)
+```
+
+새 관측의 예측 구간은 두지 않아요. 델타 방법은 $\hat\theta$의 불확실성만 옮기고, 새 관측의 오차분포에 대해서는 비선형 적합이 아무것도 말하지 않기 때문이에요. `x_new`는 `predict`와 같이 적합의 `x`와 같은 열이어야 하고(둘 다 frame `DataFrame`이면 열 이름과 순서까지), inf는 `ValueError`예요. 위의 완전 적합은 `bse`가 0이라 구간의 폭도 0이에요.
+
+```python
+>>> r.predict_interval(sd.asarray([100.0, 800.0]))
+array([[ 12.74499263840247, 12.835988260163083],
+       [ 84.89279618295112,  85.25510894276701]], dtype=float64)
+>>> pf.predict_interval(sd.asarray([10.0]))
+array([[20.5, 20.5]], dtype=float64)
+```
+
 ## GIL, 스레드, 결정성
 
 - 반복의 루프는 GIL을 쥐고 돌아요. $f$와 `jac`을 부를 때마다 Python으로 돌아가야 하니까요. GIL을 놓는 곳은 위의 큰 QR($2mp^2 > 2 \times 10^5$)과, $f$ 안의 큰 sd 연산(sd 배열 연산이 스스로 놓아요)이에요.
@@ -661,7 +729,7 @@ $k = 100$에 머문 적합은 $c$가 첫 행을 뺀 나머지의 평균이고 $a
 | 가우스–뉴턴 3걸음 × (시험점 1번 + 야코비안 $4p$ = 8번) | 27 |
 | 합 | 103 |
 
-일반적으로 간격 고르기가 약 $16p$, 야코비안마다 $4p$, 가우스–뉴턴 걸음이 보통 2–4번이에요. 해석적 `jac`을 주면 이 비용이 거의 사라져요(Misra1a 23번).
+일반적으로 간격 고르기가 약 $16p$, 야코비안마다 $4p$, 가우스–뉴턴 걸음이 보통 2–4번이에요. 이 가운데 반복과 다듬기의 걸음이 `max_nfev`의 상한 안이고, 해의 값과 간격 고르기는 그 위에 더해져요(위 예산 절). 해석적 `jac`을 주면 이 비용이 거의 사라져요(Misra1a 23번).
 
 `bench/regression/g6/speed.md`(Apple M4 Pro, scipy 1.18.1·numpy 2.5.4, R 4.6.2; 시간은 ms, 여러 번 가운데 가장 빠른 값)의 모형은 $x \in [0.01, 5]$ 균등, 잡음은 신호 범위의 2%, `p0`는 참값의 1.1배이고, $p = 2$는 $a e^{-bx}$, $p = 4$는 네 모수 로지스틱, $p = 10$은 가우스 다섯 개의 합이에요. sd의 스레드는 모형 안의 sd 연산과 QR에만 들어가요.
 
