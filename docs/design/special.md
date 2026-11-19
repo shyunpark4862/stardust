@@ -97,7 +97,8 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
   | `special/gamma_core.hpp`, `special/dd.hpp`, `special/halley.hpp`, `special/cplx.hpp`, `special/boost.hpp` | 감마 계열의 바닥(정확한 인자, `sinpi`, 가수·지수 분리), double-double, 역함수의 Halley, 복소수 보조 함수, Boost.Math 호출(§5.14) |
   | `special/reduce.cpp` | `logsumexp`, `softmax`, `log_softmax` |
   | `special/coeffs/*.hpp` | 가져온 계수 표. 파일 머리에 출처와 라이선스 |
-  | `special/cost.hpp` | 함수마다 원소당 비용 (§3.3) |
+  | `special/cost.hpp` | 연산마다 원소당 비용과 가중치 (§3.3) |
+  | `special/cost_table.hpp` | 함수마다 잰 원소당 비용. `python -m bench.speed cost`가 만든다 (§3.3) |
 - 테스트 `tests/special/`, 벤치마크 `bench/special/`, 기준값 생성 `tools/special_ref.py` (§6)
 
 ---
@@ -189,9 +190,9 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 - 그래서 배열의 기준값(`kParallelThreshold`, 원소 2¹⁵개)을 그대로 쓰지 않는다. 함수마다 원소당 비용 `c`(ns)를 `special/cost.hpp`에 두고, 일의 양을 `n·c`로 센다. linalg의 비용 모델(linalg.md §7)과 같은 생각이다.
   - 배열의 이터레이터는 이미 작업량 가중치를 받는다 (레인 처리, array.md §4.5). 같은 장치를 쓴다.
   - S4에서 더함: 가중치의 상한 `kMaxWeight` = 256. 이터레이터는 태스크를 4096/가중치 원소로 자르는데, 가중치 800–8500인 불완전 함수는 태스크 하나가 원소 하나가 되어 10스레드가 4.8–7.8배에 그쳤다. 상한 256(태스크 16원소)에서 8.1–8.9배다 (bench/special/s4/threads.md).
-  - `c`는 S0의 측정 도구로 함수마다 재고, 입력 분포는 보장 영역에서 고르게 뽑는다.
-  - `cost.hpp`의 값은 각 마일스톤에서 잰 값이고 §5의 속도 개선 뒤에 다시 재지 않았다. 48.6 ns(가중치 256) 이상인 값은 상한에 걸려 분할이 같으므로, 무거운 함수의 값이 달라져도 영향이 없다.
-  - 가중치의 단위는 연속 float64 `add`의 원소당 비용이다 (`kAddNs`, 1스레드에서 0.18–0.19ns). 가중치 `w`인 함수는 원소 `2¹⁵/w`개부터 병렬이 되고, 태스크 하나는 원소 약 `2¹²/w`개다 (`bench/special/cost.py`).
+  - `c`는 함수마다 원소 10⁶개, 1스레드로 잰다. 입력은 참값 파일의 입력(보장 영역)에서 뽑는다. 잰 값은 special 속도 기준선(`bench/speed/results/special.json`)에 있고, `python -m bench.speed cost`가 그것으로 `special/cost_table.hpp`를 만든다(bench/README.md). `cost.hpp`는 연산마다 그 표의 어느 함수 값을 쓰는지만 적는다. 표에 없는 이름은 컴파일되지 않는다.
+  - 표의 처음 값은 각 마일스톤에서 잰 손 상수를 옮긴 것이라 §5의 속도 개선 뒤의 값이 아니다. special 기준선을 재고 `cost`를 다시 돌리면 바뀐다. 48.6 ns(가중치 256) 이상인 값은 상한에 걸려 분할이 같으므로, 무거운 함수의 값이 달라져도 영향이 없다.
+  - 가중치의 단위는 연속 float64 `add`의 원소당 비용이다 (`kAddNs`, 표의 `_add` 줄, 1스레드에서 0.18–0.19ns). 가중치 `w`인 함수는 원소 `2¹⁵/w`개부터 병렬이 되고, 태스크 하나는 원소 약 `2¹²/w`개다.
 - 원소마다 반복 횟수가 다르다(연분수, Halley 반복). 정적 분할이면 스레드마다 일이 달라진다. 풀의 청크 분할(array.md §10)이 이것을 얼마나 흡수하는지 S4에서 잰다.
 
 ### 3.4 NEON (Q5)

@@ -194,7 +194,7 @@ T4–T10을 마치고 속도를 재 보니 1스레드에서 scipy보다 느린 �
   - 표본: 첫 단어를 16개씩 받고 ziggurat·감마의 흔한 경로를 인라인했다(비트 같음). 모양 < 1의 감마 계열은 U^(1/a) = exp(−E/a), 비중심 카이제곱(df ≥ 1)은 χ²(df − 1) + (Z + √nc)²로 바꿨다. 이 둘과 Dirichlet, d ≥ 9의 다변량 정규·t는 같은 시드의 값이 바뀐다(사용자 결정 2026-11-17: 허용).
   - 기술통계: 보정 합을 NEON으로 쓰고(비트 같음), 긴 lane 하나의 정렬은 결정적 samplesort로 풀에서 돈다.
 - **역함수의 계약 단위** (사용자 결정 2026-11-17: 허용): 정규·라플라스·로지스틱·Gumbel·GEV의 빠른 역함수는 결과가 0 근처로 상쇄하는 점에서 max(1, κ) 단위의 계약만 지킨다(예: Normal(1.5, 2).icdf(0.2267) = 4.824e-4의 상대 오차 3.3e-13이고, κ = 3120이라 계약 단위로 1.1e-16이다).
-- **병렬 분할의 비용** (`csrc/stats/cost_table.hpp`, `tools/gen_stats_cost.py`): 커널이 빨라진 뒤에도 비용 추정이 20 ns로 남아 있어, 작업이 39원소씩 잘려 10스레드가 1스레드보다 느렸다. 공식 속도표의 1스레드 시간에서 (분포, 메서드)별 비용표를 만들어 쓴다.
+- **병렬 분할의 비용** (`csrc/stats/cost_table.hpp`): 커널이 빨라진 뒤에도 비용 추정이 20 ns로 남아 있어, 작업이 39원소씩 잘려 10스레드가 1스레드보다 느렸다. 속도 기준선(`bench/speed/results/stats.json`)의 연속·이산·극값 분포 사례의 1스레드 시간에서 (분포, 메서드)별 비용표를 만들어 쓴다(`python -m bench.speed cost`, bench/README.md). 매개변수 묶음이 여럿이면 기하평균이다.
 - **작은 모양의 불완전 베타** (사용자 결정 2026-11-17: 계약을 넘는 것은 지금 고친다): Beta·F의 cdf 계열이 모양 1e-4–1e-2에서 5e-15–1.3e-13이었다. 원인은 a, b ≤ 1일 때 BRATIO(와 그것을 따른 Boost)가 I가 0.9에 이르러도 멱급수로 I를 구해 1 − I를 빼기로 만드는 것이다(급수 오차의 9배). 이제 급수가 I > 1/2를 주면 1 − I를 BRATIO의 다른 두 방법으로 직접 구한다. x < 2⁻¹⁰⁰⁰은 log x를 받는 `ibeta_tiny`로 간다(양의 항만; 전에는 서브노멀 x에서 Boost가 25%까지 틀리고 우리 경로는 NaN이었다). Arb로 잰 21만 점에서 여덟 메서드 모두 4.2e-15 이하다(`bench/stats/opt/f/tiny_shapes.py`). special 쪽은 docs/design/special.md §5.5.
 - **이 과정에서 찾은 기존 오류**: Exponential pdf·logpdf가 x/scale이 넘칠 때 NaN, StudentT pdf(0)이 df ≥ 4에서 NaN, Gamma logpdf가 아주 작은 x와 큰 모양에서 NaN, 베타이항 cdf의 6.8e-14, Dirichlet pdf의 3.8e-14(α − 1의 반올림이 log x에 곱해졌다. Wishart의 n − p − 1도 같은 꼴이라 둘 다 two_sum으로 정확히 둔다).
 
