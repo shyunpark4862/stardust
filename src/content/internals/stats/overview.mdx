@@ -157,7 +157,7 @@ class _Distribution:
         ops = {m: getattr(_k, f"{cls._name}_{m}") for m in cls._density + _INPUT_METHODS + _PARAM_METHODS}
         ...
         cls._ops = ops
-        for i, p in enumerate(cls._params):  # read-only attributes (T19)
+        for i, p in enumerate(cls._params):  # read-only attributes
             setattr(cls, p, _parameter(i, p))
         _keyword_constructor(cls)
 

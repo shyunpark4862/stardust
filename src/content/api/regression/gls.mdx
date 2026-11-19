@@ -236,6 +236,16 @@ array([1.3203718845692922, 0.5921648968669377], dtype=float64)
 
 진단의 뜻은 [회귀 진단](/api/regression/diagnostics/)에 있어요.
 
+`y`가 모두 같은 값 $y_0$이면, 절편이 있는 모형의 계수는 `sigma`와 상관없이 정확히 $(y_0, 0, \dots, 0)$이에요. 절편의 열이 모형에 있어서 백색화한 문제에서도 $y_0$배의 절편 열이 $L^{-1}y$를 그대로 만들기 때문이에요. 적합값은 모두 $y_0$, 잔차와 백색화한 잔차는 0이라 완전 적합이고, 결과의 값은 [`ols`](/api/regression/ols/#특수한-경우)의 "반응이 모두 같을 때"와 같아요.
+
+```python
+>>> c = sd.regression.gls(sd.full(n, 2.5), t, sigma=S)
+>>> c.params, c.bse, c.tvalues
+(array([2.5, 0.0], dtype=float64), array([0.0, 0.0], dtype=float64), array([inf, nan], dtype=float64))
+>>> c.ssr, float(sd.max(sd.abs(c.resid))), c.rsquared
+(0.0, 0.0, nan)
+```
+
 ## NaN과 inf
 
 `nan_policy`는 `y`, `X`뿐 아니라 `sigma`도 봐요.

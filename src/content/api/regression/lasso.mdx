@@ -262,7 +262,7 @@ array([True, True, True, True], dtype=bool)
 133
 ```
 
-출발점이 달라도 결과는 같아요. 경로의 각 해는 그 `alpha` 하나로 따로 푼 것과 비트까지 같고, `alpha`를 어떤 순서로 줘도 돼요. 수렴한 뒤 해를 최적성 조건으로 다듬어서, 결과가 출발점이 아니라 0이 아닌 계수와 그 부호에만 달려 있기 때문이에요(아래 수렴 절).
+출발점이 달라도 결과는 같아요. 경로의 각 해는 그 `alpha` 하나로 따로 푼 것과 비트까지 같고, `alpha`를 어떤 순서로 줘도 돼요. 수렴한 뒤 해를 최적성 조건으로 다듬어서, 결과가 출발점이 아니라 0이 아닌 계수와 그 부호에만 달려 있기 때문이에요. 다듬지 못하고 `max_iter`에 닿은 해(`converged=False`)는 예외예요(아래 수렴 절).
 
 ```python
 >>> all(pa.params[i].tolist() == sd.regression.lasso(ya, Xa, alpha=a).params.tolist()
@@ -276,7 +276,7 @@ True
 
 - `n_iter`: 반복한 횟수(int). `alpha`마다 `max_iter`가 상한이에요.
 - `dual_gap`: **쌍대 간격**. 지금 해의 목적함수 값이 진짜 최솟값보다 얼마나 클 수 있는지의 상한이에요(목적함수와 같은 단위). 0에 가까울수록 최솟값에 가까워요.
-- `converged`: 쌍대 간격이 `tol` × $\frac{1}{s_w}\sum_i w_i (y_i - \bar y)^2$(절편이 없으면 $\frac{1}{s_w}\sum_i w_i y_i^2$) 이하가 되어 멈췄으면 True예요.
+- `converged`: 쌍대 간격이 `tol` × $\frac{1}{s_w}\sum_i w_i (y_i - \bar y)^2$(절편이 없으면 $\frac{1}{s_w}\sum_i w_i y_i^2$) 이하가 되어 멈췄으면 True예요. 판정 뒤 다듬기를 이어 가다 `max_iter`에 닿으면 False예요(아래).
 
 ```python
 >>> r.converged, r.n_iter
@@ -294,13 +294,23 @@ True
 (2, 4)
 ```
 
-이어 간 반복이 `max_iter`에 닿으면 다듬지 못한 마지막 값을 내요. `tol`의 판정은 통과했으니 `converged`는 True이고, 계수는 `tol`만큼의 정밀도예요. 이때도 `dual_gap`이 그 크기를 알려 줘요.
+이어 간 반복이 `max_iter`에 닿으면 다듬지 못한 마지막 반복의 계수와 그 `dual_gap`을 내고, `converged`는 False예요. 처음의 판정을 통과했어도 다듬은 해에 이르지 못했으니 수렴으로 치지 않아요. 계수는 `tol`만큼의 정밀도이고, `dual_gap`이 그 크기를 알려 줘요.
 
 ```python
 >>> kt = sd.regression.lasso(ya, Xa, alpha=0.001, tol=0.1)
 >>> kt.converged, kt.n_iter, round(kt.dual_gap, 4)
-(True, 1000, 0.1358)
+(False, 1000, 0.1358)
 ```
+
+경로에서는 `alpha`마다 따로 판정해요. 같은 `tol=0.1`로 경로를 풀면 앞의 두 `alpha`는 다듬기까지 마치고, 마지막 `alpha`만 상한에 닿아요.
+
+```python
+>>> pt = sd.regression.lasso(ya, Xa, alpha=[0.1, 0.01, 0.001], tol=0.1)
+>>> pt.converged, pt.n_iter
+(array([ True,  True, False], dtype=bool), array([ 106,    0, 1000], dtype=int64))
+```
+
+수렴하지 않은 해는 출발점에 따라 달라서, 이 경로의 마지막 해는 `alpha=0.001` 하나로 따로 푼 `kt`와 비트까지 같지는 않아요.
 
 ```python
 >>> a = sd.regression.lasso(y, X, alpha=0.1)

@@ -318,7 +318,7 @@ TypeError: breusch_pagan(): 'studentize' must be True or False, not int
 
 ## 특수한 경우
 
-- **완전 적합**(잔차가 정확히 0): 잔차를 0으로 나누게 되어 스튜던트화 잔차, Cook 거리, `durbin_watson`, `jarque_bera()`, `breusch_pagan()`이 NaN이에요. `leverage`는 $x$만 보니 정상이에요.
+- **완전 적합**(잔차가 정확히 0. 절편이 있고 반응이 모두 같을 때도 그래요): 잔차를 0으로 나누게 되어 스튜던트화 잔차, Cook 거리, `durbin_watson`, `jarque_bera()`, `breusch_pagan()`이 NaN이에요. `leverage`는 $x$만 보니 정상이에요.
 - **겹친 열**: 그 열을 뺀 적합의 진단과 같아요. Cook 거리는 `rank`로 나눠요.
 - **NaN**(`nan_policy='propagate'`): 모든 진단이 NaN이에요. `'omit'`이면 남은 행에 대해 구해요.
 - **배치**: 행마다의 진단은 (배치, n), 나머지는 배치 모양이고, `jarque_bera()`·`breusch_pagan()`의 칸도 배치 모양의 배열이에요.

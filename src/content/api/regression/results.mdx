@@ -325,7 +325,9 @@ $$R^2_{\text{adj}} = 1 - \frac{n - 1}{\text{df\_resid}}(1 - R^2)$$
 
 절편만 있는 모형(설명변수가 없음)은 설명한 것이 없으니 `ess`와 `rsquared`가 0이에요.
 
-반응이 모두 같은 값이면 TSS가 0이에요. 설명할 흩어짐이 처음부터 없으니 R²는 0/0이라 `rsquared`와 `rsquared_adj`가 NaN이고, `ess`는 0이에요. 계수와 표준오차는 그대로 계산돼요.
+반응이 모두 같은 값 $y_0$이면 TSS가 0이에요. 설명할 흩어짐이 처음부터 없으니 R²는 0/0이라 `rsquared`와 `rsquared_adj`가 NaN이고, `ess`는 0이에요.
+
+절편이 있으면 이때의 해는 정확히 $(y_0, 0, \dots, 0)$이고(겹친 열은 그대로 NaN), 적합값이 모두 $y_0$, 잔차가 0인 [완전 적합](/api/regression/collinearity/#완전-적합)이에요. 그래서 `scale`과 `bse`는 0(강건 공분산도 0), `tvalues`는 절편이 ±inf($y_0 = 0$이면 0 ÷ 0이라 NaN)이고 기울기는 0 ÷ 0이라 NaN, `llf`는 +inf, 스튜던트화 잔차는 NaN이에요. `wls`는 가중치가 0보다 큰 행의 `y`가 모두 같을 때 같은 규칙이고, 가중치 0인 행의 잔차는 $y - y_0$이에요.
 
 ```python
 >>> rc = sd.regression.ols([3.0, 3, 3, 3, 3], [1.0, 2, 3, 4, 5])
@@ -333,6 +335,12 @@ $$R^2_{\text{adj}} = 1 - \frac{n - 1}{\text{df\_resid}}(1 - R^2)$$
 (0.0, 0.0)
 >>> rc.rsquared, rc.rsquared_adj, rc.fvalue, rc.f_pvalue
 (nan, nan, nan, nan)
+>>> rc.params, rc.bse, rc.tvalues
+(array([3.0, 0.0], dtype=float64), array([0.0, 0.0], dtype=float64), array([inf, nan], dtype=float64))
+>>> rc.scale, rc.llf
+(0.0, inf)
+>>> rc.resid_studentized_internal
+array([nan, nan, nan, nan, nan], dtype=float64)
 ```
 
 ## F 검정: fvalue와 f_pvalue

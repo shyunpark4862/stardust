@@ -300,6 +300,16 @@ True
 
 그 밖의 필드는 [`ridge`](/api/regression/ridge/), [`lasso`](/api/regression/lasso/), [`elastic_net`](/api/regression/elastic-net/)의 결과와 같아요. 다시 적합한 결과는 `alpha` 하나의 결과라서 경로 축이 없어요.
 
+`converged`, `n_iter`, `dual_gap`도 다시 적합한 것의 값이에요. 겹마다의 적합은 `max_iter`에 닿아 수렴하지 않아도 그때의 계수로 떼어 둔 겹의 오차를 재서 `cv_error`에 넣어요. 경고는 없고, 겹의 수렴 여부는 결과에 남지 않아요. 아래는 반복을 한 번으로 묶은 예예요. 겹들의 적합도 덜 풀린 채라 `cv_error`가 위와 조금 달라요.
+
+```python
+>>> c1 = sd.regression.lasso_cv(y, X, rng=sd.random.default_rng(0), max_iter=1)
+>>> c1.converged, c1.n_iter
+(False, 1)
+>>> bool(sd.all(sd.isfinite(c1.cv_error))), c1.cv_error.tolist() == cv.cv_error.tolist()
+(True, False)
+```
+
 `elastic_net_cv`는 `l1_ratio`를 하나 받아 그 값에서 `alpha`만 골라요.
 
 ```python
@@ -431,6 +441,7 @@ TypeError: ridge_cv(): 'rng' must be an sd.random.Generator (sd.random.default_r
 
   마지막 줄은 scikit-learn의 기본(섞지 않은 5겹)이 고른 값이라 0.1968과 달라요.
 - `lasso_cv`·`elastic_net_cv`의 기본 격자(`alphas=100`, `eps=1e-3`)와 겹 수 5는 `LassoCV`와 같아요. `cv_error`는 `mse_path_.mean(axis=1)`, `alpha_min`은 `alpha_`에 해당해요. 1-SE 규칙(`alpha_1se`, `select='1se'`)은 scikit-learn에 없어요.
+- 겹의 적합이 `max_iter`에 닿아도 그 계수로 오차를 재는 것은 scikit-learn과 같아요. scikit-learn은 그때 `ConvergenceWarning`을 내고, 여기는 경고가 없어요.
 - `ElasticNetCV`는 `l1_ratio`를 여러 개 받아 함께 고르지만, `elastic_net_cv`는 하나만 받아요.
 - scikit-learn의 `RidgeCV`는 기본으로 한 행씩 떼는 교차검증을 닫힌 꼴로 하고, `alphas` 기본값이 (0.1, 1, 10)이며 `alpha`의 척도가 여기의 n배예요([`ridge`](/api/regression/ridge/)). `ridge_cv(cv='gcv')`와는 기준이 달라요.
 - R의 `cv.glmnet`은 겹 수 기본이 10이고, `predict`의 기본이 `lambda.1se`예요(여기는 `select='min'`). 기본 겹은 `sample(rep(seq(nfolds), length = N))`로 섞은 번호라 여기와 같은 꼴이에요. glmnet은 기본으로 열을 표준화하고, 격자의 가장 작은 비율이 1e-4(행이 열보다 많을 때)예요(여기는 라소·엘라스틱 넷이 1e-3, 릿지가 1e-6).

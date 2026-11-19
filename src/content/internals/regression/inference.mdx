@@ -308,7 +308,7 @@ True
 
 군집 3개에 기울기 3개($q = 3$)라 F가 NaN이고, 군집이 4개면 F가 나와요. statsmodels는 3개에서도 F(4.78)를 내요.
 
-y가 모두 같아 TSS가 정확히 0이면 강건형이든 고전형이든 `fvalue`와 `f_pvalue`가 NaN이에요(`rsquared`와 같은 규칙, [최소제곱 풀이](/internals/regression/least-squares/)). 이 F는 statsmodels가 강건 공분산에서 내는 `fvalue`(`f_test`)와 같은 통계량이에요.
+y가 모두 같아 TSS가 정확히 0이면 강건형이든 고전형이든 `fvalue`와 `f_pvalue`가 NaN이에요(`rsquared`와 같은 규칙, [최소제곱 풀이](/internals/regression/least-squares/)). 절편이 있으면 이때 해가 정확한 완전 적합이라 잔차와 점수가 모두 0이고, 강건 공분산도 0이에요. 이 F는 statsmodels가 강건 공분산에서 내는 `fvalue`(`f_test`)와 같은 통계량이에요.
 
 ## 지렛대
 

@@ -253,7 +253,7 @@ ValueError: ols(): 'y' contains infinity (at batch index (1,))
 
 ### 배치 모양
 
-y (…, n), X (…, n, p), 가중치 (…, n), 군집 번호 (…, n)(GLS는 `sigma` (…, n, n))의 앞 축은 배치이고 서로 브로드캐스트해요. 맞지 않으면 커널에 가기 전에 `_check_batches`가 인자마다의 배치 모양을 적어 `ValueError`를 내요.
+y (…, n), X (…, n, p), 가중치 (…, n), 군집 번호 (…, n)(GLS는 `sigma` (…, n, n))의 앞 축은 배치이고 서로 브로드캐스트해요. 맞지 않으면 커널에 가기 전에 `_check_batches`가 인자마다의 배치 모양을 적어 `ValueError`를 내요. `linregress`·`theilslopes`·`siegelslopes`(`x`와 `y`), `glm`(행마다 값이 있는 인자와 `groups`), 정규화, `rlm`, `quantreg`도 같은 함수로 검사해요. 커널의 검사는 인자 이름을 모르기 때문이에요.
 
 ```python
 >>> sd.regression.wls(sd.ones((3, 4)), sd.ones((2, 4, 1)), weights=sd.ones((2, 4)))

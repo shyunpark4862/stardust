@@ -2,7 +2,7 @@
 title: 최소제곱 풀이
 group: 선형 모형
 order: 1
-summary: ols·wls·gls가 계수를 구하는 방법이에요. 최소제곱의 오차가 κ·u와 κ²·u·‖r‖ 두 항으로 이뤄지는 이유, 정규방정식을 쓰지 않는 이유, Householder QR(LAPACK geqrf)로 처음 해를 구하고 증강 시스템에서 double-double 잔차로 반복 개선(Björck)하는 방법, 그 횟수를 LAPACK trcon의 조건수 어림으로 정하는 규칙, 피벗 없는 QR로 겹친 열을 고르는 규칙, R²를 R² = 0 근처에서도 정확하게 구하는 방법, 가중치와 GLS의 백색화, NIST StRD에서의 성적과 속도를 다뤄요.
+summary: ols·wls·gls가 계수를 구하는 방법이에요. 최소제곱의 오차가 κ·u와 κ²·u·‖r‖ 두 항으로 이뤄지는 이유, 정규방정식을 쓰지 않는 이유, Householder QR(LAPACK geqrf)로 처음 해를 구하고 증강 시스템에서 double-double 잔차로 반복 개선(Björck)하는 방법, 그 횟수를 LAPACK trcon의 조건수 어림으로 정하는 규칙, 피벗 없는 QR로 겹친 열을 고르는 규칙, R²를 R² = 0 근처에서도 정확하게 구하는 방법, 가중치와 GLS의 백색화, 반응이 모두 같을 때 정확한 해로 바꾸는 규칙, NIST StRD에서의 성적과 속도를 다뤄요.
 seeAlso: [overview, inference, glm, accuracy-performance]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -563,6 +563,76 @@ ESS < SSR($R^2 < 1/2$)이면 ESS/TSS, 그 밖은 1 − SSR/TSS예요. 어느 쪽
 고전형 공분산은 $\hat\sigma^2(X^{\mathsf T}WX)^{-1} = \hat\sigma^2(R^{\mathsf T}R)^{-1}$이에요. 커널은 $R$에서 LAPACK `potri`로 $(R^{\mathsf T}R)^{-1}$을 바로 만들고($X^{\mathsf T}WX$를 만들지 않아요), Python이 처음 읽을 때 `scale` $= \text{SSR}/\text{df\_resid}$를 곱해요. 반복 개선은 $\beta$를 고치지만 $R$은 그대로이므로, 표준오차의 상대오차는 대략 $\kappa u$예요(κ = 10⁶에서 3×10⁻¹¹, 10⁸에서 10⁻⁹, 10¹⁰에서 3×10⁻⁷, Filip 7×10⁻⁸). 강건 공분산과 진단은 [추론과 진단](/internals/regression/inference/)에 있어요.
 
 SSR이 정확히 0이면(Wampler1처럼 double 입력의 참 해가 잔차를 정확히 0으로 만들 때) IEEE 연산 그대로 `bse`는 0, t는 ±inf, p는 0, `llf`는 +inf예요. 개선이 잔차를 반올림 수준이 아니라 정확한 0까지 줄이기 때문에 생기는 값이에요. 같은 Wampler1에서 statsmodels 0.15.0은 반올림 수준의 잔차로 표준오차 2×10⁻¹²–4×10⁻⁸, t 2.5×10⁷–5.2×10¹¹을 내고, R(`summary.lm`)은 "essentially perfect fit" 경고와 함께 표준오차 6×10⁻¹⁵–1.4×10⁻¹⁰을 내요.
+
+### 반응이 모두 같을 때
+
+절편이 있고 적합에 쓰인 행(가중치 > 0)의 $y$가 모두 같은 값 $y_0$이면, 설계가 무엇이든 $(y_0, 0, \dots, 0)$이 잔차를 정확히 0으로 만드는 해예요. 그런데 QR과 반복 개선은 이 해에 반올림을 남겨요. QR의 처음 해는 기울기가 $10^{-16}$ 크기이고, 개선 한 번이 그것을 $10^{-32}$ 크기로 줄여요. 그 보정은 가장 큰 계수($y_0$)에 비해 반올림 아래라서 위의 판정대로 개선이 멈추고, 기울기와 잔차에 그 크기가 남아요. 그러면 SSR이 $10^{-61}$ 같은 작은 양수라서 표준오차와 t가 완전 적합의 극한값이 아니라 반올림이 정한 값이 돼요.
+
+```python
+>>> fit = sd._core.regression.fit
+>>> x8 = sd.arange(1.0, 9.0)
+>>> y8 = sd.full(8, 3.0)
+>>> fit("ols", y8, x8[:, None], None, None, True, -1.0, 0, 0)[0]     # QR만
+array([    2.9999999999999987, 1.0467283057891835e-16], dtype=float64)
+>>> raw = fit("ols", y8, x8[:, None], None, None, True, -1.0, 0, 3)
+>>> raw[0]
+array([                  3.0, 6.162975822039155e-32], dtype=float64)
+>>> sd.regression.ols(y8, x8).params
+array([3.0, 0.0], dtype=float64)
+```
+
+그래서 Python 층의 `_exact_constant`가 커널의 결과를 받아, 쓰인 행의 $y$가 정확히 한 값이면 정확한 해로 바꿔요. 계수는 $(y_0, 0, \dots, 0)$(겹친 열은 그대로 NaN), SSR·중심 TSS·중심 ESS는 0, 적합값은 모든 행에서 $y_0$, 잔차는 $y - y_0$(쓰인 행에서 0, 가중치 0인 행에서 그 차)이에요. 잔차가 0이면 강건 공분산의 점수 $u_t = \tilde e_t\,q_t$([추론과 진단](/internals/regression/inference/))도 모두 0이라 강건 공분산도 0으로 둬요. 판정은 쓰인 행의 최댓값과 최솟값이 같은지이고, NaN인 회귀와 절편 열이 빠진 회귀는 건드리지 않아요. 절편이 없으면 해가 자명하지 않아 하지 않아요.
+
+```python
+    if not intercept:
+        return None
+    params, cov, kept, st = raw[0], raw[1], raw[5], raw[6]
+    batch = tuple(params.shape[:-1])
+    if w is None:
+        hi, lo = _sd.max(y, axis=-1), _sd.min(y, axis=-1)
+    else:
+        used = w > 0
+        hi = _sd.max(_sd.where(used, y, -math.inf), axis=-1)
+        lo = _sd.min(_sd.where(used, y, math.inf), axis=-1)
+    if not batch:
+        hi, lo = float(hi), float(lo)
+        const = hi == lo and math.isfinite(hi) and float(st[_ISNAN]) == 0 and bool(kept[0])
+        if not const:
+            return None
+        k = params.shape[-1]
+        target = [hi] + [0.0 if bool(kept[j]) else math.nan for j in range(1, k)]
+        raw[0] = _sd.asarray(target)
+        if robust:
+            both = _sd.logical_and(_sd.expand_dims(kept, axis=-1), _sd.expand_dims(kept, axis=-2))
+            raw[1] = _sd.where(both, 0.0, cov)
+        s = st.tolist()
+        s[_SSR] = s[_CTSS] = s[_ESSC] = 0.0
+        raw[6] = _sd.asarray(s)
+        if original_scale:
+            raw[3] = _sd.full(tuple(raw[3].shape), hi)
+            raw[4] = y - hi
+```
+
+그 뒤는 위의 완전 적합과 같아요. `scale`이 0이라 `bse`는 0, t는 절편이 ±inf($y_0 = 0$이면 $0/0$), 기울기가 $0/0$ = NaN이고, `llf`는 +inf예요. TSS가 0이니 $R^2$와 F는 `_no_tss`의 NaN이에요.
+
+GLS에서도 같은 해예요. 백색화한 문제의 절편 열은 $L^{-1}\mathbf 1$이고 반응은 $L^{-1}y = y_0 L^{-1}\mathbf 1$이라, $y_0$배의 절편 열이 반응을 그대로 만들어요. 다만 이 등식은 정확한 산술에서만 성립하고, 반올림한 $L^{-1}y$는 $L^{-1}\mathbf 1$의 정확히 $y_0$배가 아니에요. 그래서 판정은 백색화한 반응이 아니라 원래 $y$로 해요. 원래 척도의 적합값과 잔차는 바뀐 계수로 다시 구하므로 정확히 $y_0$와 0이 되고, 백색화한 잔차 $L^{-1}(y - y_0\mathbf 1)$도 0으로 둬요.
+
+```python
+    # the whitened problem's constant: y itself (L^-1 y = y0 L^-1 1 holds exactly only in exact
+    # arithmetic); the original-scale fit below then gives fitted y0, residuals y - y0 exactly
+    const = _exact_constant(raw, y, None, intercept, cov_type != "nonrobust", original_scale=False)
+    res = GLSResult(raw, param_names=_names(names, X.shape[-1], intercept), intercept=intercept, cov_type=cov_type,
+                    batch=_batch_shape(raw), fitargs=(func, yt, Xt, None, ones, tol, codes, gtot), columns=columns)
+    # fitted values and residuals on the original scale (statsmodels' fittedvalues and resid)
+    fitted, resid = _k.apply(func, X, res._beff(), intercept, y)
+    if raw[3].shape != fitted.shape:  # sigma's batch axes added to y's
+        fitted, resid = _sd.broadcast_to(fitted, raw[3].shape), _sd.broadcast_to(resid, raw[3].shape)
+    raw[3], raw[4] = fitted, resid
+    if const is not None:  # the whitened residuals L^-1 (y - y0 1) are exactly 0 there
+        wr = res._wresid()
+        res._cache["wresid"] = (_sd.where(_sd.expand_dims(const, axis=-1), 0.0, wr) if res._batch
+                                else _sd.zeros(tuple(wr.shape)))
+```
 
 ## NIST StRD
 

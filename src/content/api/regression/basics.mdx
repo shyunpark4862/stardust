@@ -368,6 +368,15 @@ Traceback (most recent call last):
 ValueError: ols(): the batch shapes of 'y' (3,), 'X' (2,) do not broadcast
 ```
 
+메시지에는 배치를 이루는 인자마다 그 이름과 배치 모양이 적혀서, 어느 인자가 맞지 않는지 바로 보여요. `linregress`, `theilslopes`, `siegelslopes`, `glm`(행마다 값이 있는 인자와 `groups`까지), 정규화 함수들도 같은 꼴이에요.
+
+```python
+>>> sd.regression.linregress([[1.0, 2.0, 3.0]] * 2, [[1.0, 2.0, 4.0]] * 3)
+Traceback (most recent call last):
+    ...
+ValueError: linregress(): the batch shapes of 'x' (2,), 'y' (3,) do not broadcast
+```
+
 ### 배치의 규칙
 
 - 배치의 결과는 회귀를 **하나씩 부른 결과와 비트까지 같아요**. 묶어서 부른다고 값이 달라지지 않아요.

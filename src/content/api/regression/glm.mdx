@@ -86,7 +86,7 @@ raises:
   - type: TypeError
     desc: family를 주지 않았을 때, 옵션을 위치로 줬을 때, y나 X가 복소수일 때, link가 문자열이 아닐 때, max_iter가 int가 아닐 때, scale·tol이 수가 아닐 때.
   - type: ValueError
-    desc: "family·link·cov_type·nan_policy의 이름이 틀렸을 때, y가 분포족의 범위 밖일 때, 행 수가 맞지 않을 때, 가중치가 음수일 때, trials가 0 이하이거나 binomial이 아닐 때, exposure가 0 이하이거나 링크가 log가 아닐 때, 입력에 inf가 있을 때, nan_policy='raise'인데 NaN이 있을 때, 배치에 nan_policy='omit'을 줬을 때, scale이 0 이하일 때, max_iter < 1, tol ≤ 0일 때, maxlags·groups를 맞지 않는 cov_type에 줬을 때."
+    desc: "family·link·cov_type·nan_policy의 이름이 틀렸을 때, y가 분포족의 범위 밖일 때, 행 수가 맞지 않을 때, 가중치가 음수일 때, trials가 0 이하이거나 binomial이 아닐 때, exposure가 0 이하이거나 링크가 log가 아닐 때, 입력에 inf가 있을 때, nan_policy='raise'인데 NaN이 있을 때, 배치에 nan_policy='omit'을 줬을 때, 배치 모양이 서로 브로드캐스트하지 않을 때, scale이 0 이하일 때, max_iter < 1, tol ≤ 0일 때, maxlags·groups를 맞지 않는 cov_type에 줬을 때."
   - type: OverflowError
     desc: max_iter가 2³¹ 이상일 때, tol·scale이 float64로 나타낼 수 없을 만큼 큰 Python 정수일 때.
 seeAlso: [logistic, poisson-gamma, results, covariance, collinearity, basics, ols, wls, penalized-glm]
@@ -731,6 +731,15 @@ array([[  0.668284190716704, 0.23758513873909173],
 Traceback (most recent call last):
     ...
 ValueError: summary(): takes one regression, not a batch of shape (2,)
+```
+
+배치 모양이 서로 브로드캐스트하지 않으면 배치를 이루는 인자마다 이름과 배치 모양을 적은 `ValueError`예요(`groups`도 들어가요).
+
+```python
+>>> sd.regression.glm(Y, xp, family='poisson', var_weights=sd.ones((3, 10)))
+Traceback (most recent call last):
+    ...
+ValueError: glm(): the batch shapes of 'y' (2,), 'X' (), 'var_weights' (3,) do not broadcast
 ```
 
 배치에서는 `nan_policy='omit'`을 쓸 수 없어요(회귀마다 남는 행이 달라지니까요). 배치 안의 한 회귀가 수렴하지 않거나 분리여도 다른 회귀는 영향을 받지 않아요.

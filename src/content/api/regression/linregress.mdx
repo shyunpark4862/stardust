@@ -23,7 +23,7 @@ raises:
   - type: TypeError
     desc: x·y가 배열·숫자의 시퀀스·frame이 아니거나 복소수일 때, 인자를 하나만 줬을 때.
   - type: ValueError
-    desc: x·y가 0차원일 때, 길이가 다를 때, 비어 있을 때, inf가 있을 때.
+    desc: x·y가 0차원일 때, 길이가 다를 때, 비어 있을 때, inf가 있을 때, 앞 축(배치 모양)이 서로 브로드캐스트하지 않을 때.
 seeAlso: [ols, theilslopes, siegelslopes, results, basics]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -206,6 +206,15 @@ TypeError: linregress() missing 1 required positional argument: 'y'
 array([ 1.99,  0.52, -0.99], dtype=float64)
 >>> b.rvalue
 array([ 0.9991551336721896,  0.9934089358711311, -0.9974083346927147], dtype=float64)
+```
+
+앞 축이 서로 브로드캐스트하지 않으면 두 인자의 배치 모양을 적은 `ValueError`예요.
+
+```python
+>>> sd.regression.linregress(sd.stack([x, x]), Y)
+Traceback (most recent call last):
+    ...
+ValueError: linregress(): the batch shapes of 'x' (2,), 'y' (3,) do not broadcast
 ```
 
 배치의 결과는 직선을 하나씩 맞춘 결과와 비트까지 같아요. 위의 특수한 경우도 칸마다 따로 적용돼요.

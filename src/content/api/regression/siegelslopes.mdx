@@ -30,7 +30,7 @@ raises:
   - type: TypeError
     desc: y나 x가 복소수일 때, 없는 인자(axis 등)를 주거나 method를 위치로 줬을 때.
   - type: ValueError
-    desc: "점이 2개보다 적을 때, x의 길이가 y와 다를 때, y나 x가 0차원일 때, inf가 있을 때, method·nan_policy 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때, 배치에서 nan_policy='omit'을 줬을 때."
+    desc: "점이 2개보다 적을 때, x의 길이가 y와 다를 때, y나 x가 0차원일 때, inf가 있을 때, method·nan_policy 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때, 배치에서 nan_policy='omit'을 줬을 때, y와 x의 앞 축(배치 모양)이 서로 브로드캐스트하지 않을 때."
 seeAlso: [theilslopes, rlm, quantreg, basics]
 ---
 import Fig from '../../../components/fig/Fig.astro';
@@ -216,6 +216,15 @@ ValueError: siegelslopes(): 'method' must be 'hierarchical' or 'separate', not '
 >>> rb = sd.regression.siegelslopes(sd.asarray([y, y_clean]), x)
 >>> rb.slope
 array([ 1.81, 1.9775], dtype=float64)
+```
+
+앞 축이 서로 브로드캐스트하지 않으면 두 인자의 배치 모양을 적은 `ValueError`예요.
+
+```python
+>>> sd.regression.siegelslopes([y, y_clean, y], [x, x])
+Traceback (most recent call last):
+    ...
+ValueError: siegelslopes(): the batch shapes of 'y' (3,), 'x' (2,) do not broadcast
 ```
 
 배치에서는 `nan_policy='omit'`을 쓸 수 없어요. 공통 규칙은 [기본 개념](/api/regression/basics/)에 있어요.

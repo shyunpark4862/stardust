@@ -529,13 +529,18 @@ ValueError: predict(): 'X_new' must have 2 columns like the fit's 'X', not 1-dim
 - **겹친 열**: 그 계수와 표준오차·t·p가 NaN이고 나머지는 그 열을 뺀 적합과 비트까지 같아요. `rank`가 그만큼 줄어요.
 - **완전 적합**(잔차가 정확히 0): `bse`가 0, `tvalues`가 ±inf, `pvalues`가 0, `llf`가 +inf예요. 0으로 나눈 값의 극한을 그대로 줘요.
 - **열이 행보다 많을 때**: 앞의 열부터 `nobs`개까지만 쓰이고 나머지는 겹친 열로 NaN이에요.
-- **반응이 모두 같을 때**(TSS가 0): 설명할 흩어짐이 없어서 `rsquared`, `rsquared_adj`, `fvalue`, `f_pvalue`가 NaN이고 `ess`는 0이에요. 계수와 표준오차는 그대로 나와요.
+- **반응이 모두 같을 때**(모두 $y_0$, TSS가 0): 절편이 있으면 계수는 정확히 $(y_0, 0, \dots, 0)$이에요(겹친 열은 그대로 NaN). 적합값은 모두 $y_0$, 잔차는 0이라 완전 적합이고, `bse`는 0(강건 표준오차도 0), `tvalues`는 절편이 ±inf($y_0 = 0$이면 NaN)·기울기가 NaN(0 ÷ 0), `llf`는 +inf예요. 설명할 흩어짐이 없어서 `rsquared`, `rsquared_adj`, `fvalue`, `f_pvalue`는 NaN이고 `ess`는 0이에요. 절편이 없으면 이 해가 따로 없어서 다른 `y`와 똑같이 풀어요.
 
 ```python
 >>> xp = sd.arange(6.0)
 >>> perfect = sd.regression.ols(1.0 + 2.0 * xp, xp)
 >>> perfect.params, perfect.bse, perfect.tvalues, perfect.pvalues
 (array([1.0, 2.0], dtype=float64), array([0.0, 0.0], dtype=float64), array([inf, inf], dtype=float64), array([0.0, 0.0], dtype=float64))
+>>> flat = sd.regression.ols([3.0] * 8, [1.0, 2, 3, 4, 5, 6, 7, 8])
+>>> flat.params, flat.bse, flat.tvalues
+(array([3.0, 0.0], dtype=float64), array([0.0, 0.0], dtype=float64), array([inf, nan], dtype=float64))
+>>> flat.resid.tolist(), flat.llf, flat.rsquared
+([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], inf, nan)
 ```
 
 자세한 규칙과 각 필드의 값은 [겹친 열과 완전 적합](/api/regression/collinearity/)에 있어요.
@@ -611,7 +616,7 @@ statsmodels 0.15.0, scikit-learn 1.9.1, numpy 2.5.4 기준이에요.
 - 겹친 열: 위의 `[hours, 2 * hours]` 예에서 statsmodels는 의사역행렬로 두 열에 값을 나눠 줘요(`[47.97, 0.811, 1.621]`, 경고와 함께). sd는 앞 열을 남기고 뒤 열을 NaN으로 둬요(`[47.97, 4.053, nan]`).
 - 완전 적합: statsmodels는 잔차가 반올림 수준으로 남아 표준오차 1e-14 안팎, t 1e13–1e15, p 1e-90–1e-103 같은 값을 내요($x = 0, \dots, 9$, $y = 1 + 2x + 3x^2$). sd는 0, inf, 0이에요.
 - NaN: statsmodels의 기본(`missing='none'`)은 에러 없이 NaN 계수를 줘요. `missing='drop'`이 sd의 `nan_policy='omit'`이에요.
-- 반응이 모두 같으면 statsmodels는 R²에 −inf, F에 음수 같은 반올림의 값을 내요. sd는 R²와 F가 NaN, `ess`가 0이에요.
+- 반응이 모두 같으면 statsmodels는 R²에 −inf, F에 음수 같은 반올림의 값을 내요. sd는 R²와 F가 NaN, `ess`가 0이에요. 계수도 statsmodels는 반올림을 남겨서, 위의 `flat`에서 기울기 1.7e-16, 그 t 1.24, 절편의 t 4.4e15를 내요. sd는 정확히 (3, 0)과 완전 적합의 값(0, inf, NaN)이에요.
 - `predict`: statsmodels는 pandas `DataFrame`의 컬럼 이름을 보지 않고 위치로 곱해요. sd는 적합과 예측이 둘 다 `DataFrame`이면 이름과 순서를 확인해요.
 - 진단(`get_influence()` 등)을 statsmodels는 모형이 들고 있는 배열로 나중에 계산해서, 적합 뒤에 그 배열을 고치면 값이 바뀌어요. sd는 적합할 때 입력을 복사해 둬서 바뀌지 않아요.
 - `summary()`의 꼴과 숫자 형식은 statsmodels와 같아요. `Dep. Variable`, 날짜, 시각 줄과 `Omnibus`, `Skew`, `Kurtosis` 줄은 없어요.

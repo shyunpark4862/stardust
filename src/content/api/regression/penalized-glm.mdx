@@ -351,15 +351,18 @@ array([False,  True], dtype=bool)
 
 ### `y`가 모두 같을 때
 
-포아송의 `y`가 모두 같은 양수면 절편만의 모형이 이미 완전히 맞아서 `null_deviance`가 0이에요. 그러면 `deviance_ratio`는 0/0이라 NaN이에요. 계수는 그대로 구해져서 절편이 $\log y$이고 나머지는 0이에요.
+포아송의 `y`가 모두 같은 양수면 절편만의 모형이 이미 완전히 맞아요. `null_deviance`는 절편만의 모형의 평균 $\mu = \bar y$에서 바로 재므로 정확히 0이고, `deviance_ratio`는 0/0이라 NaN이에요. 계수는 그대로 구해져서 절편이 $\log y$이고 나머지는 0이에요.
 
 ```python
 >>> same = R.penalized_glm(sd.ones(8) * 2.0, xs, family='poisson', alpha=0.1)
 >>> same.params.tolist(), same.null_deviance, same.deviance_ratio
 ([0.6931471805599453, 0.0], 0.0, nan)
+>>> same3 = R.penalized_glm(sd.ones(8) * 3.0, xs, family='poisson', alpha=0.1)
+>>> same3.null_deviance, same3.deviance_ratio, same3.deviance
+(0.0, nan, 5.259072701473411e-31)
 ```
 
-$e^{\log y}$가 반올림 때문에 `y`와 정확히 같지 않으면 `null_deviance`가 0 대신 반올림 수준의 작은 수(`y`가 3이면 5.3e-31)가 되고, `deviance_ratio`는 NaN이 아니라 0.0이에요. 어느 쪽이든 설명할 흩어짐이 없다는 뜻이라 이 값은 해석하지 않아요.
+`deviance`는 적합한 계수의 $\mu = e^{\log y}$에서 재므로, 그 값이 반올림 때문에 `y`와 정확히 같지 않으면 0 대신 반올림 수준의 작은 수예요(`y`가 3이면 5.3e-31). 설명할 흩어짐이 없다는 뜻은 같아서 이 값은 해석하지 않아요.
 
 ### 가중치와 NaN
 
@@ -413,7 +416,7 @@ True
   True
   ```
 
-- scikit-learn의 `PoissonRegressor(alpha=a)`는 L2 벌점만 있고, 여기의 `alpha=a, l1_ratio=0.0`과 같아요. `score`는 `deviance_ratio`와 같아요(다만 `y`가 모두 같으면 scikit-learn은 NaN 대신 0.0을 내요).
+- scikit-learn의 `PoissonRegressor(alpha=a)`는 L2 벌점만 있고, 여기의 `alpha=a, l1_ratio=0.0`과 같아요. `score`는 `deviance_ratio`와 같아요(다만 `y`가 모두 같으면 scikit-learn은 값에 따라 NaN(`y`가 2)이나 0.0(`y`가 3)을 내고, 여기는 늘 NaN이에요).
 
   ```python
   >>> from sklearn.linear_model import PoissonRegressor

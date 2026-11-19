@@ -260,7 +260,7 @@ $Z_A$는 A의 열에서 평균을 뺀 것(`standardize`면 표준화한 것), $\
 `alpha`의 경로, `standardize`, `weights`, `intercept`, `max_iter`, `tol`, `nan_policy`는 [`lasso`](/api/regression/lasso/)와 같은 뜻이에요.
 
 - **경로**: `alpha`에 1차원 배열을 주면 큰 값부터 앞의 해에서 시작해 풀고, 결과는 준 순서예요. 각 해는 그 `alpha`로 따로 부른 것과 비트까지 같아요.
-- **수렴**: 수렴한 해를 최적성 조건으로 다듬으므로 계수는 `tol`과 상관없이 정확한 해에 반올림 수준으로 가까워요. 판정을 통과하기 전에 `max_iter`에 닿으면 `converged=False`이고 경고는 없어요. `tol`이 아주 크면 다듬기에 실패해 반복을 이어 가므로 `n_iter`가 오히려 클 수 있어요. `dual_gap`은 목적함수 단위예요. 자세한 것은 [`lasso`](/api/regression/lasso/)의 수렴 절에 있어요.
+- **수렴**: 수렴한 해를 최적성 조건으로 다듬으므로 계수는 `tol`과 상관없이 정확한 해에 반올림 수준으로 가까워요. 판정을 통과하기 전에 `max_iter`에 닿으면 `converged=False`이고 경고는 없어요. `tol`이 아주 크면 다듬기에 실패해 반복을 이어 가므로 `n_iter`가 오히려 클 수 있어요. 그렇게 이어 간 반복이 `max_iter`에 닿아도 다듬지 못한 마지막 반복의 계수와 그 `dual_gap`을 내고 `converged=False`예요. 경로에서는 `alpha`마다 따로 판정해요. `dual_gap`은 목적함수 단위예요. 자세한 것은 [`lasso`](/api/regression/lasso/)의 수렴 절에 있어요.
 - **표준화**: 열의 단위가 서로 다르면 `standardize=True`를 쓰세요. 단위만 바꿔도 고르는 열이 달라지는 것을 막아 줘요.
 
 ```python
@@ -269,6 +269,9 @@ $Z_A$는 A의 열에서 평균을 뺀 것(`standardize`면 표준화한 것), $\
 ((3, 4), (3,), (3,))
 >>> pe.params[1].tolist() == e.params.tolist()
 True
+>>> et = R.elastic_net(y, X, alpha=0.001, tol=0.5)
+>>> et.converged, et.n_iter, round(et.dual_gap, 4)
+(False, 1000, 0.0897)
 ```
 
 ## 특수한 경우와 에러
