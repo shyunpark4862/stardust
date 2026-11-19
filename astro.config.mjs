@@ -19,6 +19,22 @@ function stripPrefix(line, count) {
 }
 
 /**
+ * Code excerpts cut from inside a function keep the function's indentation
+ * in the source, so the page can match the file line for line. On the page
+ * that shared indentation is only an empty margin: drop the indent every
+ * non-blank line has in common, keeping the lines' relative indentation.
+ */
+const dedentTransformer = {
+  name: 'dedent',
+  preprocess(code) {
+    const lines = code.split('\n');
+    const indents = lines.filter((l) => l.trim()).map((l) => l.match(/^[ \t]*/)[0].length);
+    const cut = indents.length ? Math.min(...indents) : 0;
+    return cut ? lines.map((l) => l.slice(Math.min(cut, l.match(/^[ \t]*/)[0].length))).join('\n') : code;
+  },
+};
+
+/**
  * Interactive-session examples (`>>> ` input, bare output). The prompts are
  * drawn by CSS, so selecting the code copies only what one would type, and
  * output lines are marked so they can be set apart from input.
@@ -91,6 +107,6 @@ export default defineConfig({
     // Ids first, so a heading's id and text come from its TeX source, not
     // from the rendered SVG.
     rehypePlugins: [rehypeHeadingIds, rehypeHeadingMath, rehypeMathjax],
-    shikiConfig: { theme: 'github-light', wrap: false, transformers: [replTransformer] },
+    shikiConfig: { theme: 'github-light', wrap: false, transformers: [dedentTransformer, replTransformer] },
   },
 });
