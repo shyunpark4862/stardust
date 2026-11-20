@@ -1,0 +1,221 @@
+---
+/**
+ * Accuracy measured against the reference values, from src/data/accuracy.json
+ * (written by tools/sync_accuracy.py from the library's accuracy baselines).
+ *
+ * Without `area`: one row per measured area (sweeps, points, how many
+ * (function, region) rows are within the contract, the largest contract ratio).
+ * With `area`: that area's rows, one per (function, region): points, max and
+ * 99.9% ULP, ULP over the bound's multiplier, mixed error, relative errors and
+ * the contract ratio (columns no shown row has are left out).
+ *
+ *   area     'special' | 'stats' | 'regression'
+ *   names    only these sweeps (reference files; regression: kind/problem)
+ *   regions  only these regions (guaranteed, loose, mixed; regression: field names)
+ *   caption  text under the table
+ */
+import data from '../../data/accuracy.json';
+
+type Cell = number | string | null;
+interface AreaData {
+  summary: {
+    sweeps: number;
+    points: number;
+    regions: number;
+    judged: number;
+    within: number;
+    worst?: { contract: number; name: string; region: string };
+  };
+  regions: string[];
+  sweeps: [string, number, Cell[][]][];
+}
+interface Props {
+  area?: string;
+  names?: string[];
+  regions?: string[];
+  caption?: string;
+}
+const { area, names, regions: onlyRegions, caption } = Astro.props;
+const D = data as unknown as { fields: string[]; areas: Record<string, AreaData> };
+const col = Object.fromEntries(D.fields.map((f, i) => [f, i]));
+
+const AREA_NAMES: Record<string, string> = { special: 'sd.special', stats: 'sd.stats', regression: 'sd.regression' };
+const REGION_NAMES: Record<string, string> = { guaranteed: '보장', loose: '느슨', mixed: '혼합' };
+
+/** Three significant digits; outside [1e-3, 1e5) as m × 10^e. */
+function parts(v: Cell): { m: string; e?: number } {
+  if (v === null || v === undefined) return { m: '' };
+  if (typeof v === 'string') return { m: v };
+  if (v === 0) return { m: '0' };
+  const a = Math.abs(v);
+  if (a >= 1e-3 && a < 1e5) return { m: String(Number(v.toPrecision(3))) };
+  const [m, e] = v.toExponential(2).split('e');
+  return { m: String(Number(m)), e: Number(e) };
+}
+const int = (n: number) => n.toLocaleString('en-US');
+
+const one = area ? D.areas[area] : undefined;
+if (area && !one) throw new Error(`AccuracySummary: no accuracy data for area ${area}`);
+
+interface Row {
+  name: string;
+  region: string;
+  cells: Cell[];
+}
+let rows: Row[] = [];
+if (one) {
+  for (const [name, , rs] of one.sweeps) {
+    if (names && !names.includes(name)) continue;
+    for (const r of rs) {
+      const region = one.regions[r[0] as number];
+      if (onlyRegions && !onlyRegions.includes(region)) continue;
+      rows.push({ name, region, cells: r });
+    }
+  }
+  if (names) rows.sort((a, b) => names.indexOf(a.name) - names.indexOf(b.name));
+}
+const get = (r: Row, f: string) => (r.cells.length > col[f] ? r.cells[col[f]] : null);
+const has = (f: string) => rows.some((r) => get(r, f) !== null);
+const regression = area === 'regression';
+const columns: { key: string; head: string; show: boolean; pair?: string }[] = [
+  { key: 'ulp_max', head: '최대 ULP', show: true },
+  { key: 'ulp_p999', head: '99.9% ULP', show: true },
+  { key: 'ulp_cond_max', head: 'ULP / 배율', show: has('ulp_cond_max') },
+  { key: 'mixed_max', head: 'mixed (최대 / 99.9%)', show: has('mixed_max'), pair: 'mixed_p999' },
+  { key: 'rel_max', head: '최대 상대오차', show: true },
+  { key: 'norm_rel', head: '노름 상대오차', show: has('norm_rel') },
+  { key: 'contract', head: '계약 대비', show: has('contract') },
+].filter((c) => c.show);
+---
+
+{
+  !area && (
+    <figure class="acc">
+      <table>
+        <thead>
+          <tr>
+            <th>영역</th>
+            <th class="acc__num">스윕</th>
+            <th class="acc__num">점</th>
+            <th class="acc__num">(함수, 영역) 줄</th>
+            <th class="acc__num">계약 안</th>
+            <th>가장 큰 계약 대비</th>
+          </tr>
+        </thead>
+        <tbody>
+          {Object.entries(D.areas).map(([key, a]) => {
+            const s = a.summary;
+            const w = s.worst ? parts(s.worst.contract) : undefined;
+            return (
+              <tr>
+                <td>
+                  <code>{AREA_NAMES[key] ?? key}</code>
+                </td>
+                <td class="acc__num">{int(s.sweeps)}</td>
+                <td class="acc__num">{int(s.points)}</td>
+                <td class="acc__num">{int(s.regions)}</td>
+                <td class="acc__num">{s.judged ? `${int(s.within)} / ${int(s.judged)}` : '계약 없음'}</td>
+                <td>
+                  {s.worst && w ? (
+                    <>
+                      <span class:list={['acc__ratio', s.worst.contract > 1 && 'is-over']}>{w.m}</span>{' '}
+                      <code>{s.worst.name}</code> {REGION_NAMES[s.worst.region] ?? s.worst.region}
+                    </>
+                  ) : (
+                    '기준선과 비교만'
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {caption && <figcaption class="acc__caption">{caption}</figcaption>}
+    </figure>
+  )
+}
+{
+  area && (
+    <figure class="acc">
+      <table>
+        <thead>
+          <tr>
+            <th>{regression ? '문제' : '함수'}</th>
+            <th>{regression ? '필드' : '영역'}</th>
+            <th class="acc__num">점</th>
+            {columns.map((c) => (
+              <th class="acc__num">{c.head}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr>
+              <td>
+                <code>{r.name}</code>
+              </td>
+              <td>{regression ? <code>{r.region}</code> : (REGION_NAMES[r.region] ?? r.region)}</td>
+              <td class="acc__num">{int(get(r, 'points') as number)}</td>
+              {columns.map((c) => {
+                const v = get(r, c.key);
+                const over = c.key === 'contract' && typeof v === 'number' && v > 1;
+                const shown = v === null ? [] : c.pair ? [parts(v), parts(get(r, c.pair))] : [parts(v)];
+                return (
+                  <td class:list={['acc__num', over && 'is-over']}>
+                    {shown.map((p, i) => (
+                      <>
+                        {i > 0 && ' / '}
+                        {p.m}
+                        {p.e !== undefined && (
+                          <>
+                            {' '}× 10<sup>{p.e}</sup>
+                          </>
+                        )}
+                      </>
+                    ))}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {caption && <figcaption class="acc__caption">{caption}</figcaption>}
+    </figure>
+  )
+}
+
+<style>
+  .acc {
+    margin-inline: 0;
+  }
+  /* The per-function tables have many numeric columns; a step smaller
+     keeps most of them inside the text column (the rest scroll). */
+  .acc table {
+    font-size: var(--text-sm);
+  }
+  .acc__num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .acc sup {
+    font-size: 0.75em;
+    line-height: 0;
+  }
+  .acc__ratio {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+  }
+  .is-over {
+    color: var(--warn);
+    font-weight: 600;
+  }
+  .acc__caption {
+    margin-top: var(--space-3);
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    color: var(--fg-muted);
+    text-align: center;
+  }
+</style>

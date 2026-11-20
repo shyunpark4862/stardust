@@ -5,6 +5,7 @@ import Button from './Button.astro';
 <section class="hero" data-surface="dark" data-hero>
   <div class="hero__sky" aria-hidden="true">
     <div class="hero__glow"></div>
+    <div class="hero__core"></div>
     <canvas class="hero__canvas"></canvas>
     <div class="hero__veil"></div>
   </div>
@@ -25,26 +26,42 @@ import Button from './Button.astro';
     </div>
   </div>
 
-  <div class="container hero__foot">
-    <ul class="hero__facts">
-      <li>C++20 core</li>
-      <li>nanobind</li>
-      <li>NEON</li>
-      <li>Accelerate</li>
-    </ul>
-    <a class="hero__scroll" href="#strengths">
-      <span>Scroll</span>
-      <span class="hero__scroll-line" aria-hidden="true"></span>
-    </a>
+  <!-- The run's clock, shown while the merger backdrop is in use. It
+       changes many times a second, so it is kept from screen readers. -->
+  <div class="container hero__sim" aria-hidden="true">
+    <dl class="sim">
+      <div class="sim__item">
+        <dt>Elapsed</dt>
+        <dd><span data-sim-time>0.00</span><small>억 년</small></dd>
+      </div>
+      <div class="sim__item">
+        <dt>Pace</dt>
+        <dd><span data-sim-rate>0</span><small>만 년/초</small></dd>
+      </div>
+      <div class="sim__item sim__item--phase">
+        <dt>Phase</dt>
+        <dd data-sim-phase>Approach</dd>
+      </div>
+    </dl>
   </div>
+
 </section>
 
 <script>
-  import { mountStardust } from '../scripts/stardust';
+  // Two backdrops: the galaxy (1) and two galaxies merging into it (2).
+  // "?sky=1" or "?sky=2" in the address picks one for comparison.
+  const SKY = 2;
 
   const host = document.querySelector<HTMLElement>('.hero');
   const canvas = document.querySelector<HTMLCanvasElement>('.hero__canvas');
-  if (host && canvas) mountStardust(canvas, host);
+  if (host && canvas) {
+    const asked = Number(new URLSearchParams(location.search).get('sky'));
+    if ((asked || SKY) === 2) {
+      import('../scripts/stardust-merge').then((m) => m.mountMerger(canvas, host));
+    } else {
+      import('../scripts/stardust').then((m) => m.mountStardust(canvas, host));
+    }
+  }
 </script>
 
 <style>
@@ -72,10 +89,22 @@ import Button from './Button.astro';
     position: absolute;
     inset: 0;
     background:
-      radial-gradient(38rem 22rem at var(--core-x) var(--core-y), rgb(72 118 255 / 0.22), transparent 70%),
-      radial-gradient(14rem 8rem at var(--core-x) var(--core-y), rgb(190 214 255 / 0.2), transparent 70%),
       radial-gradient(90rem 50rem at 80% 110%, rgb(28 68 184 / 0.28), transparent 70%),
       linear-gradient(180deg, var(--night-950), var(--night-900) 60%, #07102a);
+  }
+  /* The light around the core of the galaxy. While two galaxies are still
+     merging there is no core yet, and it waits. */
+  .hero__core {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(38rem 24rem at var(--core-x) var(--core-y), rgb(72 118 255 / 0.18), transparent 70%),
+      radial-gradient(12rem 8rem at var(--core-x) var(--core-y), rgb(255 228 196 / 0.14), transparent 70%);
+    transition: opacity 5s var(--ease);
+  }
+  .hero[data-merging] .hero__core {
+    opacity: 0.25;
+    transition: none;
   }
   .hero__canvas {
     position: absolute;
@@ -99,7 +128,7 @@ import Button from './Button.astro';
 
   /* ---- Copy ---- */
   .hero__inner {
-    padding-block: var(--space-20) var(--space-32);
+    padding-block: var(--space-20) var(--space-24);
   }
   .hero__title {
     margin-top: var(--space-6);
@@ -133,83 +162,64 @@ import Button from './Button.astro';
     margin-top: var(--space-10);
   }
 
-  /* ---- Foot ---- */
-  .hero__foot {
+  /* ---- Simulation readout ---- */
+  .hero__sim {
     position: absolute;
     inset: auto 0 0;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+    display: none;
+    justify-content: flex-end;
     padding-block: var(--space-8);
+    pointer-events: none;
   }
-  .hero__facts {
+  .hero[data-sim] .hero__sim {
     display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2) var(--space-6);
+  }
+  .sim {
+    display: flex;
+    gap: var(--space-8);
     margin: 0;
-    padding: 0;
-    list-style: none;
     font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    letter-spacing: 0.04em;
-    color: var(--fg-subtle);
+    font-variant-numeric: tabular-nums;
   }
-  .hero__facts li + li::before {
-    content: '';
-    display: inline-block;
-    width: 3px;
-    height: 3px;
-    margin-right: var(--space-6);
-    border-radius: 50%;
-    background: currentColor;
-    vertical-align: middle;
-    opacity: 0.6;
-  }
-  .hero__scroll {
+  .sim__item {
     display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    font-family: var(--font-mono);
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+  .sim dt {
     font-size: var(--text-xs);
     letter-spacing: var(--tracking-caps);
     text-transform: uppercase;
     color: var(--fg-subtle);
-    transition: color var(--dur-fast) var(--ease);
   }
-  .hero__scroll:hover {
+  .sim dd {
+    margin: 0;
+    font-size: var(--text-base);
     color: var(--fg);
+    white-space: nowrap;
   }
-  .hero__scroll-line {
-    position: relative;
-    width: 48px;
-    height: 1px;
-    background: var(--line-strong);
-    overflow: hidden;
+  .sim small {
+    margin-left: 0.2em;
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    color: var(--fg-muted);
   }
-  .hero__scroll-line::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: var(--fg);
-    transform: translateX(-100%);
-    animation: scroll-cue 2.4s var(--ease) infinite;
+  /* Wide enough for the longest value, so the row does not shift. */
+  .sim__item:nth-child(1) dd {
+    min-width: 10ch;
   }
-  @keyframes scroll-cue {
-    0% {
-      transform: translateX(-100%);
-    }
-    60%,
-    100% {
-      transform: translateX(100%);
-    }
+  .sim__item:nth-child(2) dd {
+    min-width: 13ch;
+  }
+  .sim__item--phase dd {
+    min-width: 16ch;
   }
 
   /* ---- Entrance ---- */
   .hero__eyebrow,
   .hero__line,
   .hero__lead,
-  .hero__actions,
-  .hero__foot {
+  .hero__actions {
     animation: rise 1100ms var(--ease) backwards;
   }
   .hero__eyebrow {
@@ -227,10 +237,6 @@ import Button from './Button.astro';
   .hero__actions {
     animation-delay: 680ms;
   }
-  .hero__foot {
-    animation-name: fade;
-    animation-delay: 1200ms;
-  }
   /* The entrance starts from a faint, not an invisible, state: where
      animations never run (a background tab, print, some readers) the text
      is still there to read. */
@@ -238,11 +244,6 @@ import Button from './Button.astro';
     from {
       opacity: 0.25;
       transform: translateY(18px);
-    }
-  }
-  @keyframes fade {
-    from {
-      opacity: 0.25;
     }
   }
 
@@ -259,25 +260,22 @@ import Button from './Button.astro';
     .hero__veil {
       background: linear-gradient(180deg, rgb(4 8 22 / 0.7), rgb(4 8 22 / 0.2) 55%, rgb(4 8 22 / 0.5));
     }
-    .hero__scroll {
+    .hero__sim {
+      justify-content: flex-start;
+      padding-block: var(--space-5);
+    }
+    .sim {
+      gap: var(--space-5);
+    }
+    .sim__item--phase {
       display: none;
-    }
-    .hero__facts {
-      flex-wrap: nowrap;
-      gap: var(--space-3);
-      white-space: nowrap;
-    }
-    .hero__facts li + li::before {
-      margin-right: var(--space-3);
     }
   }
   @media (prefers-reduced-motion: reduce) {
     .hero__eyebrow,
     .hero__line,
     .hero__lead,
-    .hero__actions,
-    .hero__foot,
-    .hero__scroll-line::after {
+    .hero__actions {
       animation: none;
     }
   }

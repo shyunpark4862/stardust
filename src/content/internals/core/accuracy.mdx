@@ -1,0 +1,325 @@
+---
+title: 정확도 측정
+group: 검증과 측정
+order: 2
+summary: 특수함수, 통계, 회귀의 결과를 Arb 구간 산술로 미리 만든 참값의 모든 점에 대고 재는 체계예요. 오차를 계약의 단위로 바꿔 1 이하인지 보고, 기준선보다 나빠진 칸을 하나도 빠짐없이 찾아요.
+seeAlso: [testing, benchmarks]
+---
+import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+stardust는 함수마다 정확도를 약속해요. `sd.special`과 `sd.stats`는 보장 영역에서 참값 대비 상대오차 $10^{-14}$ 이하, `sd.regression`의 선형 모형은 조건수 $\kappa(X) \le 10^{11}$에서 계수 벡터의 상대오차 $10^{-14}$ 이하예요. 이 약속을 지키는지, 그리고 얼마나 여유 있게 지키는지를 재는 도구가 `bench/accuracy/`이고, 저장소 맨 위에서 `python -m bench.accuracy`로 불러요.
+
+| 단계 | 하는 일 | 어디에 |
+|---|---|---|
+| 참값 | Arb(구간 산술)로 계산해 파일로 저장해요. 측정할 때는 Arb를 부르지 않아요 | `tests/special/ref`, `tests/stats/ref`, `tests/regression/ref` |
+| 측정 | 참값 파일의 모든 점에서 stardust를 불러 오차를 여러 척도로 재요 | `bench/accuracy/sources.py` |
+| 기준선 | 영역마다 잰 값을 저장소에 넣어 두고, 새 측정과 비교해요 | `bench/accuracy/results/<영역>.json` |
+| 표 | 기준선에서 영역마다 표를 만들어요 | `bench/<영역>/accuracy.md` |
+
+지금 재는 영역은 셋이에요. `sd.special`의 참값 파일 전부, `sd.stats`의 단변량 분포 31개, `sd.regression`의 선형·일반화 선형·정규화·강건 회귀 문제예요. 배열, 선형대수, 데이터프레임, 난수, 최적화, 다변량·행렬 분포와 다변량 누적확률, 비선형·분위 회귀는 이 측정에 들어 있지 않아요. 그 정확도는 각 영역의 테스트가 확인해요.
+
+<AccuracySummary caption="영역별 요약. 스윕은 참값 파일(회귀는 문제) 하나이고, 줄은 (함수, 영역) 한 칸이에요. 계약 안은 계약 대비가 1 이하인 줄의 수예요." />
+
+## 테스트와 따로 재는 이유
+
+테스트는 통과와 실패만 알려 줘요. 대부분의 테스트는 고른 몇 점에서 결과가 허용오차 안인지 보고, 참값 테스트(`tests/special/test_reference.py`, `tests/stats/test_reference.py`)는 참값 파일의 모든 점을 보지만 계약을 넘는 점이 있는지만 따져요. 그래서 어떤 함수의 최대 오차가 3 ULP에서 30 ULP로 커져도, 계약($10^{-14}$은 45–90 ULP예요) 안이면 테스트는 그대로 통과해요.
+
+정확도 측정은 같은 참값 파일을 읽고 숫자를 남겨요.
+
+- **분포를 남겨요.** (함수, 영역)마다 최대 오차만이 아니라 99.9% 분위수, 역함수의 조건수로 나눈 값, 상대오차를 함께 적어요. 나쁜 점이 드문 끝점 하나인지, 영역 전체가 고르게 나쁜지가 보여요.
+- **시간에 따라 비교해요.** 잰 값을 기준선으로 저장하고, 다음 측정에서 어느 척도든 커진 칸을 모두 짚어요. 계약 안에서 나빠진 것도 잡아요.
+- **판정은 테스트와 같아요.** 계약 대비를 계산할 때 테스트의 판정 함수(`contract_error`)를 그대로 불러요. 그래서 표와 테스트가 "계약 안"을 서로 다르게 판단하는 일이 없어요.
+
+측정은 빨라요. 참값이 파일에 있으니 stardust 쪽만 계산하면 되고, special과 stats 두 영역을 합쳐 약 1초예요. 그래서 deep 등급의 테스트(`tests/golden/test_golden.py`)가 매번 전체 측정을 돌리고 기준선과 비교해요. 테스트 등급은 [테스트 체계](/internals/core/testing/)에 있어요.
+
+## 참값 만들기
+
+### Arb의 공
+
+참값은 [Arb](https://arblib.org/)(Python에서는 python-flint)로 계산해요. Arb의 수는 중심 $m$과 반지름 $r$을 가진 공 $[m \pm r]$이고, 참값이 그 안에 있다는 것을 Arb가 보장해요. 연산마다 반올림 오차를 반지름에 넣기 때문에, 계산이 끝났을 때 공이 작으면 참값을 그만큼 정확히 안 거예요.
+
+공통 도구 `tools/arbref.py`가 정밀도를 올리는 방식을 정해요.
+
+```python
+TARGET_BITS = 110  # hi + lo is exact to rounding (2^-106 relative) with a margin
+START_PREC = 128
+MAX_PREC = 1 << 13  # 8192 bits, ~2500 digits
+```
+
+`rigorous`는 128비트에서 시작해 정밀도를 두 배씩 올리며 다시 계산하고, 반지름이 값의 $2^{-110}$배 아래가 되면 멈춰요(`settled`). 값이 정규 double보다 작으면 절대 기준 $2^{-110} \cdot 2^{-1022} = 2^{-1132}$를 써요. 8192비트까지 올려도 공이 줄지 않거나 한 점에 30초가 넘게 걸리면 그 점은 파일에 넣지 않아요. 정하지 못한 참값을 어림값으로 채우지 않는 거예요.
+
+"두 정밀도에서 30자리가 같으면 맞다" 같은 규칙은 쓰지 않아요. 두 정밀도에서 똑같이 틀리는 값을 받아들이기 때문이에요. 예를 들어 $1 - p$를 계산하면서 $p = 3 \times 10^{-123}$을 잃는 식은 어느 정밀도에서나 같은 틀린 답을 내요. 공의 반지름은 그런 상쇄를 그대로 드러내요.
+
+Arb의 함수는 자기 오차를 스스로 반지름에 넣어요. 도구가 직접 쓴 계산만 따로 챙기면 돼요.
+
+- **잘라 낸 급수.** 불완전 감마·베타의 급수나 비중심 분포의 포아송 혼합처럼 도구가 직접 더하는 합은, 멈춘 뒤 남은 꼬리의 상한을 공에 더해요(`add_error`).
+- **역함수.** $F(x) = p$의 근 $x$는 뉴턴법으로 찾은 뒤, $F(x) - p$의 부호가 $x(1 - 2^{-110})$과 $x(1 + 2^{-110})$에서 다르다는 것을 공으로 보여서 증명해요(`certify_root`). 뉴턴의 시작점이 stardust의 답이어도 상관없어요. 증명은 부호만 봐요.
+
+### double-double로 저장하기
+
+공이 정해지면 `to_dd`가 중심을 두 double의 합 $hi + lo$로 바꿔요. $hi$는 중심에 가장 가까운 double(같은 거리면 짝수 쪽)이고, $lo$는 나머지 $m - hi$에 가장 가까운 double이에요.
+
+이렇게 저장하는 데는 이유가 둘 있어요.
+
+- **참값 자체의 반올림이 측정에 끼지 않아요.** 참값을 double 하나로 저장하면 그 안에 이미 최대 0.5 ULP의 반올림이 들어 있어서, stardust가 올바르게 반올림한 답을 내도 오차가 0.5 ULP까지 나올 수 있어요. $hi + lo$는 참값과 상대 $2^{-106}$ 정도 안에서 같으므로, 오차를 ULP의 몇 분의 1까지 잴 수 있어요.
+- **$hi$는 올바르게 반올림한 답이에요.** 공의 폭($2^{-110}$)이 double의 간격($2^{-52}$ 상대)보다 $2^{58}$배쯤 좁아서, 공 안의 모든 값이 같은 double로 반올림돼요. 예외는 참값이 두 double의 한가운데에서 $2^{-110}$ 안에 있을 때뿐이고, 이때도 비교에는 $hi + lo$를 쓰므로 잰 오차는 달라지지 않아요.
+
+### 점을 고르는 방법
+
+입력 집합은 함수마다 손으로 정하고, 난수는 시드를 고정해서 다시 만들어도 같은 파일이 나와요(`tools/special_ref.py`, `tools/stats_ref.py`). 세 가지를 섞어요.
+
+- **격자.** 보장 영역 위에 고르게 놓은 점이에요.
+- **로그 균등 무작위.** $\log\lvert x\rvert$가 고르게 퍼지도록 뽑아서, 예를 들어 $10^{-300}$부터 $10^{308}$까지의 크기가 비슷한 수만큼 들어가요. 정의역에 음수가 있으면 두 부호를 모두 뽑고, 보장 영역 둘레의 느슨한 영역에서도 뽑아요.
+- **경계 점.** 구현이 방법을 바꾸는 경계, 극점과 영점, 0, 정의역의 끝, 서브노멀(`5e-324`)과 그 양쪽 이웃 double 4개씩이에요(`around`). 갈래가 바뀌는 곳이 가장 틀리기 쉬워서 일부러 넣어요.
+
+정규분포의 역함수 `ndtri`의 입력 집합이 전형적이에요(`tools/special_ref.py`).
+
+```python
+def _ndtri_inputs(rng):
+    tail = np.exp(-25.0)  # where AS241 switches its tail rational (s = 5)
+    p = np.concatenate(
+        [
+            rng.uniform(0, 1, 3000),
+            loguniform(rng, 5e-324, 0.5, 2500),
+            1 - loguniform(rng, 2**-53, 0.5, 2000),
+            around([0.075, 0.925, 0.5, tail, 1 - tail, 5e-324, 2.5e-317]),
+        ]
+    )
+    p = p[(p > 0) & (p < 1)]
+    return (p,), np.ones(p.size, dtype=bool)
+```
+
+균등한 점, 아래 꼬리를 서브노멀까지, 위 꼬리를 $1 - 2^{-53}$까지 로그 균등으로 뽑고, AS241 알고리즘이 유리식을 바꾸는 $p = 0.075, 0.925$와 꼬리 유리식으로 넘어가는 $e^{-25}$ 둘레에 이웃 점을 넣어요.
+
+분포는 매개변수와 입력을 함께 뽑아요. 위치·척도 분포의 $\mu$는 0을 자주, 그 밖은 넓게 뽑고, 역함수의 확률은 균등한 점, 두 꼬리의 $10^{-300}$까지, 서브노멀 확률, $1/2$ 바로 옆을 섞어요(`_p_values`). 분포의 파일은 한 번 만든 입력을 다음에 다시 계산할 때도 그대로 써요(`--resample`을 줄 때만 새로 뽑아요). 표본 생성기나 분위수 함수의 버전이 달라져도 같은 점에서 참값을 다시 계산하려는 거예요.
+
+### 파일의 모양
+
+special과 stats의 참값은 함수(분포는 분포와 메서드)마다 `.npz` 파일 하나예요.
+
+| 이름 | 내용 |
+|---|---|
+| `x0`, `x1`, … | 입력(float64, 복소수 함수는 complex128). 분포는 매개변수 다음에 메서드의 입력 |
+| `hi`, `lo` | 참값의 double-double |
+| `guaranteed` | 점마다 보장 영역인지(bool) |
+| `scale` | 점마다 계약의 배율. 역함수는 $\max(1, \kappa)$, 진동 함수는 $\max(1, M/\lvert f\rvert)$, 나머지는 1 |
+| `kmin`, `kmax` | 이산 분포의 역함수만. 목표를 상대 $10^{-14}$ 안에서 움직였을 때 맞는 정수 답의 범위 |
+| `arb`, `bits`(stats는 `target_bits`) | 만든 python-flint의 버전과 목표 비트 수 |
+
+### 회귀의 참값
+
+회귀의 참값도 Arb로 만들어요(`tools/regref.py`). 입력은 사용자가 실제로 주는 double이고, double은 Arb에서 반지름 0인 정확한 공이에요. 정규방정식 $X^\top W X \beta = X^\top W y$를 높은 정밀도에서 풀고, 어떤 값이 정해지지 않으면 정밀도를 두 배로 올려 처음부터 다시 풀어요. 높은 정밀도에서는 조건수의 제곱이 비트를 더 쓰게 할 뿐 답을 틀리게 하지 않아요. 반복으로 푸는 모형(GLM, 강건 회귀)은 해 둘레의 상자에서 Krawczyk 판정으로, 정규화 회귀는 0인 계수의 엄격한 KKT 부등식으로 해를 증명해요.
+
+문제는 고정된 목록이에요. `tests/regression/ref/`의 `linear.json`(17개), `glm.json`(17개), `penalized.json`(21개), `robust.json`(19개)에 입력과 필드별 참값을 `[hi, lo]` 쌍으로 넣어 두었어요.
+
+- 선형 모형에는 무작위 문제(절편 유무, 가중치가 0인 행이 있는 WLS), 조건수 $10^5$와 $10^{11}$의 문제, 그리고 [NIST StRD](https://www.itl.nist.gov/div898/strd/lls/)의 선형 최소제곱 11개가 있어요.
+- NIST 문제는 10진 자료와 거듭제곱 열을 double로 한 번 반올림한 것, 곧 사용자가 실제로 넣는 입력으로 참값을 만들어요. NIST의 인증값은 10진 자료의 정확한 답이라, double로 반올림한 자료의 답과 $\kappa u$쯤 달라요. 인증값과의 비교는 조건이 좋은 문제(Norris, NoInt1, NoInt2)에서 테스트가 따로 해요.
+
+회귀의 결과는 필드가 많아서(계수, 표준오차, t값, p값, 잔차, 지렛값, 진단 통계량 등), 측정에서는 문제 하나가 스윕 하나이고 필드 하나가 영역 한 칸이에요.
+
+## 오차 척도
+
+### ULP
+
+double은 수직선 위의 띄엄띄엄한 점이에요. 이웃한 두 double 사이의 간격을 ULP(unit in the last place)라고 하고, 그 크기는 값의 크기에 비례해요. 1 근처에서는 $2^{-52} \approx 2.2 \times 10^{-16}$, 1000 근처에서는 그 1024배예요. ULP로 잰 오차는 "참값에서 double 몇 칸 떨어졌나"예요.
+
+$$
+\text{ULP 오차} = \frac{\lvert \text{sd} - (hi + lo)\rvert}{\operatorname{ulp}(hi)}
+$$
+
+$\operatorname{ulp}(hi)$는 참값에서의 간격(`np.spacing(abs(hi))`)이에요. 올바르게 반올림한 답은 0.5 ULP 이하이고, 그보다 잘할 수는 없어요. 1 ULP의 상대 크기는 $1.1$–$2.2 \times 10^{-16}$이라 계약의 $10^{-14}$은 45–90 ULP예요.
+
+참값이 NaN이나 무한대인 점은 같은 값을 내면 0, 아니면 무한대 오차로 쳐요. 참값이 유한한데 NaN을 낸 점도 무한대예요. 그래서 최댓값이 inf인 칸은 어딘가에서 값을 아예 놓쳤다는 뜻이에요.
+
+### 99.9% 분위수
+
+최댓값은 점 하나의 이야기예요. 99.9% 분위수는 점을 오차 순으로 세웠을 때 위에서 0.1% 자리의 값이고(`np.quantile(..., method="higher")`), 나쁜 점이 드문 끝점 몇 개인지 영역 전체인지를 보여 줘요. 최대 6.7 ULP에 99.9%가 5.4 ULP면 고르게 몇 ULP인 함수이고, 최대가 수천인데 99.9%가 한 자리면 특정 끝점의 문제예요.
+
+`higher` 방식이라 점이 1000개 이하인 칸은 99.9% 값이 최댓값과 같아요. 회귀의 필드와 느슨한 영역의 작은 칸이 그래요.
+
+### ULP / 배율: 역함수와 진동 함수
+
+어떤 값은 입력이 조금만 흔들려도 답이 크게 움직여요. 그 민감도가 조건수 $\kappa$예요. 입력의 상대 변화가 출력의 상대 변화로 몇 배가 되어 나오는지를 재요. 분위수 $x = F^{-1}(p)$라면
+
+$$
+\kappa = \left\lvert \frac{p}{x\,F'(x)} \right\rvert
+$$
+
+예요. 입력 $p$는 이미 double로 반올림된 값이라 상대 $2^{-53}$쯤의 불확실성을 안고 들어와요. 그것만으로도 정확한 $F^{-1}$의 답은 상대 $\kappa \cdot 2^{-53}$만큼 움직이므로, 어떤 구현도 그보다 정확할 수는 없어요. 그래서 역함수의 계약은 $\lvert\Delta x / x\rvert \le 10^{-14}\max(1, \kappa)$이고, 표도 ULP를 $\max(1, \kappa)$로 나눈 값을 따로 보여 줘요.
+
+진동 함수(`j0`, `y1`, `jv`, 음의 $x$의 `airy` 등)는 영점에서 상대오차를 정의할 수 없어서, 계약이 $\lvert \text{오차}\rvert \le 10^{-14} M$이에요($M$은 포락선). 이것도 상대오차의 한계에 $\max(1, M/\lvert f\rvert)$를 곱한 꼴이라 같은 열로 보여요. 참값 파일의 `scale`이 이 배율이고, 배율이 1보다 큰 점이 있는 함수에만 열이 생겨요(`bench/accuracy/sources.py`).
+
+```python
+        if (s > 1).any():  # the inverses: ULP / max(1, kappa), their contract's unit
+            entry["ulp_cond_max"] = _finite_max(u / s)
+            entry["ulp_cond_p999"] = _p999(u / s)
+```
+
+차이는 커요. `ndtri_exp`(log 확률을 받는 정규분포 역함수)의 보장 영역은 최대 ULP가 $4.7 \times 10^{15}$이지만 ULP / 배율은 6.53이에요. 답이 0을 지나는 $y = \log(1/2)$ 둘레에서는 $\kappa$가 $10^{16}$을 넘어서, 답의 ULP가 아주 작은 데 비해 입력의 반올림만으로 그보다 훨씬 크게 움직이기 때문이에요. `airy_ai`도 최대 ULP 5060, ULP / 배율 57.3이에요.
+
+### mixed: 0을 지나는 값
+
+$\log\Gamma(x)$, 로그 밀도, 엔트로피처럼 값이 0을 지나는 양은 0 근처에서 상대오차가 아무 뜻이 없어져요. 참값이 $10^{-20}$인 곳에서 절대오차 $10^{-17}$은 상대오차로 1000이에요. 이런 값은 크기가 1보다 크면 상대오차, 작으면 절대오차로 재요.
+
+$$
+\text{mixed} = \frac{\lvert \text{sd} - (hi + lo)\rvert}{\max(1, \lvert hi\rvert)} \Big/ 2^{-52}
+$$
+
+$2^{-52}$ 단위라 계약의 $10^{-14}$이 약 45예요. 이 척도를 쓰는 곳은 정해져 있어요. special은 `gammaln`, `digamma`, `polygamma`, `beta`, `betaln`, `binom`, `zeta_hurwitz`의 보장 영역 밖(표의 "혼합" 영역)이고, stats는 `logpdf`, `entropy`, Weibull과 GEV의 왜도·첨도의 모든 점이에요.
+
+예를 들어 `gammaln`의 혼합 영역은 최대 ULP가 $4.4 \times 10^{15}$이지만 mixed는 2.09이고, `Beta.entropy`는 참값이 0인 점이 있어서 상대오차가 inf인데 mixed는 33.3이에요.
+
+### 상대오차와 노름 상대오차
+
+상대오차는 $\lvert \text{sd} - (hi + lo)\rvert / \lvert hi\rvert$예요. 계약이 상대오차로 적혀 있어서, 계약 대비와 함께 보면 한계까지 얼마나 남았는지가 바로 보여요.
+
+회귀의 벡터 필드(계수, 표준오차, 잔차 등)에는 노름 상대오차 $\lVert \text{sd} - \text{참값}\rVert_2 / \lVert \text{참값}\rVert_2$도 있어요. 선형 모형의 약속이 계수 벡터의 노름 상대오차로 적혀 있기 때문이에요. 원소 하나가 0에 가까워 상대오차가 커져도 벡터 전체로는 정확할 수 있어요.
+
+### 계약 대비
+
+계약 대비는 그 영역의 계약 척도로 잰 가장 큰 오차를 한계로 나눈 값이에요.
+
+$$
+\text{계약 대비} = \frac{\max_i e_i}{B}
+$$
+
+1 이하면 계약 안이에요. 0.08이면 한계의 8%만 쓰고 있다는 뜻이에요. $e_i$는 테스트의 판정 함수가 점마다 낸 값이고, 영역에 따라 이렇게 정해져요.
+
+- **보장 영역**: 상대오차를 배율로 나눈 값, $B = 10^{-14}$. 참값이 서브노멀이면 상대오차 대신 절대오차를 써요. 절대 한계 $45 \cdot 2^{-1074}$가 $10^{-14}$에 오도록 비율을 맞춰요.
+- **mixed를 쓰는 곳**: mixed 오차(이번에는 $2^{-52}$ 단위가 아닌 원래 값), $B = 10^{-14}$.
+- **이산 분포의 역함수**: 답이 허용 구간 `[kmin, kmax]` 안이면 0, 밖이면 $10^{-14}$에 구간까지의 상대 거리를 더한 값이에요. 정수 답은 맞거나 틀리거나 둘 중 하나라서예요.
+- **느슨한 영역**: 함수마다 문서에 적은 잰 한계가 $B$예요.
+
+판정 함수의 몸통은 짧아요(`tests/special/test_reference.py`의 `contract_error`).
+
+```python
+    rel = refdata.rel_error(got, hi, lo)
+    sub = np.isfinite(hi) & (np.abs(hi) < 2.0**-1022)
+    with np.errstate(invalid="ignore", over="ignore"):
+        absolute = refdata._diff(got, hi, lo) / SUBNORMAL_ABS * GUARANTEED
+    return np.where(sub, absolute, rel)
+```
+
+회귀는 문서에 적힌 수치 계약이 필드마다 있지 않아서 계약 대비가 없어요. 이 영역은 기준선과의 비교만으로 지켜봐요.
+
+### 보장 영역과 그 밖
+
+보장 영역은 계약($10^{-14}$)을 약속하는 입력의 범위예요. 함수마다 정하고, 참값 파일의 `guaranteed`가 점마다 그 판정을 들고 있어요. 보장 영역 밖이라도 정의역 안이면 값을 계산하고, 잰 값을 적어요. 표의 영역 열은 셋이에요.
+
+| 영역 | 뜻 | 한계 |
+|---|---|---|
+| 보장 | 보장 영역의 점 | 상대 $10^{-14}$(배율 포함) |
+| 혼합 | special의 감마 계열에서 보장 영역 밖의 점 | mixed $10^{-14}$ |
+| 느슨 | 그 밖의 보장 영역 밖 점 | special은 함수마다 잰 한계(`hyp1f1`, `hyp2f1`은 $10^{-12}$), stats는 $10^{-14}$ |
+
+stats의 보장 영역은 입력 집합의 영역을 다시 매개변수 범위로 좁힌 거예요. 예를 들어 감마 분포는 모양 $a \le 10^6$, 베타 분포는 $a, b \le 10^5$, 비중심 분포는 special의 비중심 함수가 잰 범위와 확률 $10^{-300}$ 이상이에요(`tools/stats_ref.py`의 `PARAM_RANGE`, `NC_RANGE`). 범위 밖의 점도 파일에 남아서 느슨 영역으로 재요.
+
+## 측정의 흐름
+
+<Fig column caption="정확도 측정의 흐름. 실행 파일은 저장소에 넣지 않고, 기준선과 표는 넣어요.">
+  <Steps steps={[
+    { label: 'tests/<영역>/ref', note: 'Arb 참값 파일. 테스트와 측정이 함께 써요', where: 'tests/' },
+    { label: 'bench.accuracy run', note: '스윕마다 stardust를 불러 (함수, 영역)별 척도를 계산', where: 'sources.py' },
+    { label: 'build/accuracy/<실행>.json', note: '실행 파일(저장소에 넣지 않음)', depth: 1 },
+    { label: 'bench.accuracy compare', note: '기준선과 견줘 나빠진 칸, 새 칸, 사라진 칸', where: '__main__.py' },
+    { label: 'bench.accuracy promote', note: '실행의 스윕을 기준선에 넣고 표를 다시 만듦', where: 'results.py' },
+    { label: 'bench/accuracy/results/<영역>.json', note: '기준선', depth: 1 },
+    { label: 'bench/<영역>/accuracy.md', note: '기준선에서 만든 표(손으로 고치지 않음)', where: 'tables.py', depth: 1 },
+  ]} />
+</Fig>
+
+명령은 저장소 맨 위에서 돌려요.
+
+```bash
+.venv/bin/python -m bench.accuracy list --area special              # 스윕 목록
+.venv/bin/python -m bench.accuracy run                              # 모든 영역을 재서 build/accuracy/에 저장
+.venv/bin/python -m bench.accuracy run --area special --match erf   # 일부만
+.venv/bin/python -m bench.accuracy compare build/accuracy/<실행>.json
+.venv/bin/python -m bench.accuracy promote build/accuracy/<실행>.json
+.venv/bin/python -m bench.accuracy table                            # 기준선에서 표만 다시
+```
+
+`--area`는 여러 번 줄 수 있고(기본은 모든 영역), `--match`는 스윕 이름(`영역/이름`)에 대한 정규식이에요. `run --promote`는 재고 곧바로 기준선에 넣어요.
+
+### 결과 파일
+
+실행 파일과 기준선은 같은 모양의 JSON이에요. 스윕마다 이름, 점의 수, 영역별 항목이 있고, 영역 항목에는 이런 값이 들어가요.
+
+| 키 | 뜻 |
+|---|---|
+| `points` | 그 영역의 점 수 |
+| `ulp_max`, `ulp_p999` | 최대와 99.9% ULP 오차 |
+| `ulp_cond_max`, `ulp_cond_p999` | 배율로 나눈 ULP(배율이 1보다 큰 점이 있는 함수만) |
+| `mixed_max`, `mixed_p999` | mixed 오차($2^{-52}$ 단위, mixed를 쓰는 곳만) |
+| `rel_max`, `norm_rel` | 최대 상대오차, 노름 상대오차(회귀의 벡터 필드) |
+| `contract`, `bound` | 계약 대비와 그 한계(회귀는 없음) |
+| `worst` | 계약 대비가 가장 큰 점의 입력(회귀는 원소 번호) |
+
+기준선은 여기에 스윕마다 어느 실행에서 왔는지와 그 실행의 환경(기계, Python 버전)을 더해요. `promote`는 실행이 잰 스윕만 바꾸고 나머지는 그대로 두므로, 함수 하나만 다시 재서 넣을 수 있어요.
+
+### 나빠진 칸 찾기
+
+`compare`는 실행의 모든 칸을 기준선의 같은 칸과 견줘요(`bench/accuracy/__main__.py`).
+
+```python
+            for m in MEASURES:
+                new, old = r.get(m), rb.get(m)
+                if new is None or old is None or new == old:
+                    continue
+                if new > old:
+                    got_worse.append(f"{m} {tables.num(old)} -> {tables.num(new)}")
+                else:
+                    better += 1
+```
+
+`MEASURES`는 계약 대비, ULP의 최대와 99.9%, 배율로 나눈 ULP, mixed, 상대오차, 노름 상대오차예요. 비교에는 허용폭이 없어요. 같은 입력이면 스레드 수와 상관없이 같은 비트가 나오므로, 측정값이 달라졌다면 결과가 달라진 거예요.
+
+출력 줄은 네 가지예요.
+
+| 줄 | 뜻 |
+|---|---|
+| `FAIL` | 계약을 넘은 칸. 그 점의 입력을 함께 적어요 |
+| `WORSE` | 어느 척도든 기준선보다 커진 칸. 척도마다 이전 값과 새 값을 적어요 |
+| `NEW` | 기준선에 없는 스윕이나 영역 |
+| `GONE` | 기준선에는 있는데 실행에 없는 스윕(`--match`로 일부만 잰 실행에서는 적지 않아요) |
+
+`FAIL`이나 `WORSE`가 하나라도 있으면 종료 코드가 1이에요. 좋아진 척도의 수도 마지막 줄에 세어 줘요. 좋아진 것은 실패가 아니므로, 확인한 뒤 `promote`로 기준선에 넣으면 돼요. `run`도 계약을 넘는 칸이 있으면 종료 코드 1이에요.
+
+### 영역별 표
+
+`bench/<영역>/accuracy.md`는 기준선에서 `tables.py`가 만들어요. (함수, 영역)마다 한 줄이고, 열은 그 영역에 값이 있는 척도만 나와요. 그래서 special과 stats의 표에는 ULP / 배율과 mixed 열이 있고, 회귀의 표에는 노름 상대오차가 있고 계약 대비가 없어요. 계약을 넘은 칸은 굵게 "초과"로 적어요. 표는 생성물이라 손으로 고치지 않고, 바꾸려면 측정을 다시 해서 `promote`해요.
+
+## 영역별 요약
+
+### 특수함수
+
+`sd.special`은 참값 파일 97개(복소수 인자, Airy의 네 출력, 엔진의 시험 함수 하나 포함)를 재요. 모든 줄이 계약 안이고, 계약 대비가 가장 큰 줄은 `airy_ai`의 보장 영역(0.90)이에요. 음의 큰 $x$에서 포락선 계약에 가장 가까이 가요. 보장 영역 밖에서는 엔진 시험 함수 `_cf_tan`의 느슨 영역이 자기 한계의 0.83이에요.
+
+<AccuracySummary area="special" names={['erf', 'ndtri', 'ndtri_exp', 'gammaln', 'gammaincinv', 'airy_ai', 'hyp2f1']} caption="특수함수 일부. 역함수와 진동 함수는 최대 ULP가 커도 ULP / 배율은 한 자리나 두 자리이고, gammaln의 혼합 영역은 ULP가 아닌 mixed로 판정해요." />
+
+함수별 표와 scipy 비교, 원인 분석은 [특수함수의 정확도와 성능](/internals/special/accuracy-performance/)에 있어요.
+
+### 통계
+
+`sd.stats`는 단변량 분포 31개의 메서드마다 파일 하나, 모두 555개를 재요. 모든 줄이 계약 안이고, 가장 큰 계약 대비는 F 분포의 `entropy`(0.92, mixed 척도)예요. 보장 영역 밖 점은 모두 $10^{-14}$ 안이에요.
+
+<AccuracySummary area="stats" names={['normal_cdf', 'normal_logpdf', 'gamma_icdf', 'studentt_icdf', 'binomial_icdf', 'beta_entropy', 'f_entropy']} caption="통계 일부. 이산 분포의 역함수는 정수 답이 허용 구간 안이면 오차가 0이에요." />
+
+분포 묶음별 결과와 보장 영역의 범위는 [통계의 정확도와 성능](/internals/stats/accuracy-performance/)에 있어요.
+
+### 회귀
+
+`sd.regression`은 문제 74개(선형 17, GLM 17, 정규화 21, 강건 19)의 필드를 재요. 계수(`params`)의 노름 상대오차는 모든 문제에서 $1.5 \times 10^{-15}$ 이하예요. 다른 필드에는 상대오차가 큰 칸도 있어요. 표준오차는 QR의 $R$에서 계산해 상대오차가 $\kappa u$ 꼴이라, 조건수가 큰 문제(NIST Filip, $\kappa \approx 1.8 \times 10^{15}$)에서 $10^{-8}$–$10^{-7}$이에요. 이런 칸도 기준선에 남아서, 더 나빠지면 `compare`가 짚어요.
+
+<AccuracySummary area="regression" names={['linear/nist_Longley', 'linear/nist_Filip', 'glm/poisson_log', 'robust/stackloss_huber']} regions={['params', 'bse', 'ssr']} caption="회귀 일부(계수, 표준오차, SSR). 필드 하나가 한 줄이고, 점은 그 필드의 원소 수예요." />
+
+모형별 참값과 참조 라이브러리 비교는 [회귀의 정확도와 성능](/internals/regression/accuracy-performance/)에 있어요.
+
+<Callout title="숫자를 읽는 순서">
+계약 대비부터 봐요. 1 이하면 약속 안이고, 그 값이 한계까지 남은 여유예요. 다음으로 역함수와 진동 함수는 ULP / 배율을, 0을 지나는 값은 mixed를 봐요. 최대 ULP는 그다음이에요. 마지막으로 최대와 99.9%의 차이로 나쁜 점이 드문 끝점인지 영역 전체인지 가려요.
+</Callout>
