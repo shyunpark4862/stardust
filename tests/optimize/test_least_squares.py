@@ -55,8 +55,8 @@ AGREE = {  # status, nfev (scipy's count: sd's less the difference calls), njev,
     "trf/analytic/box": (47, 45, 46, 45),
     "trf/2-point": (106, 97, 94, 93),
     "trf/2-point/box": (47, 42, 43, 41),
-    "lm/analytic": (108, 101, 97, 102),
-    "lm/2-point": (109, 84, 110, 87),
+    "lm/analytic": (110, 108, 108, 108),
+    "lm/2-point": (110, 104, 110, 104),
 }
 # trf with the analytic Jacobian: every status agrees; the paths that part
 TRF_APART = {
@@ -105,7 +105,7 @@ def calls_of(fn):
     return wrapped, seen
 
 
-@pytest.mark.parametrize("method, bounded, least", [("trf", False, 103), ("trf", True, 43), ("lm", False, 81)])
+@pytest.mark.parametrize("method, bounded, least", [("trf", False, 103), ("trf", True, 43), ("lm", False, 104)])
 def test_every_call_point_follows_scipy(method, bounded, least):
     # live: the points where fun is called, in order, with the analytic Jacobian (no
     # difference noise): the same number of calls and every point within 1e-10 in this many
@@ -128,6 +128,75 @@ def test_every_call_point_follows_scipy(method, bounded, least):
         # the start and the first Jacobian's point are the same bits
         assert a[0] == b[0]
     assert good >= least, good
+
+
+def as_scipy_calls(log, jac):
+    """sd's calls as scipy makes them. scipy's VectorFunction keeps the values at the last x, so
+    the residuals at a trial point equal to x (a step lost to rounding), which MINPACK evaluates
+    again, are not computed again; with differences a call at the point just called is such a
+    call."""
+    if jac != "analytic":
+        return [t for i, t in enumerate(log) if i == 0 or t != log[i - 1]]
+    out, last, have = [], None, set()
+    for kind, x in log:
+        if x != last:
+            last, have = x, set()
+        if kind in have:
+            continue
+        have.add(kind)
+        out.append((kind, x))
+    return out
+
+
+# where the call points of 'lm' part from scipy's, by the decisions (of 110): a trial point
+# where the residuals are not finite is rejected (G74; scipy goes on with NaN), and max_nfev
+# counts the difference calls (O25; the trials then stop elsewhere when steps are rejected)
+LM_APART = {
+    "analytic": {"mgh09-n3-m15-x100", "mgh18-n6-m13-x10"},
+    "2-point": {
+        "mgh09-n3-m15-x100",
+        "mgh03-n2-m2-x10",
+        "mgh03-n2-m2-x100",
+        "mgh05-n2-m3-x10",
+        "mgh05-n2-m3-x100",
+        "mgh20-n12-m31-x100",
+    },
+}
+
+
+@pytest.mark.parametrize("jac", ["analytic", "2-point"])
+def test_lm_calls_scipys_points_to_the_bit(jac):
+    # O95: lmder in scipy's build. Live, the same residual function for both: every point fun
+    # and jac are called at, in order, to the bit, and x, fun and jac of the result; scipy then
+    # computes jac(x) once more where the last Jacobian is already x's (O24), which sd does not
+    for c in mgh.CASES:
+        a, b = [], []
+
+        def logged(log, kind, fn):
+            def w(x):
+                log.append((kind, [float(v) for v in x.tolist()]))
+                return fn([float(v) for v in x.tolist()])
+
+            return w
+
+        def jn(x):
+            return np.array(c.jac(x), dtype=float).reshape(c.m, c.n)
+
+        with warnings.catch_warnings(), np.errstate(all="ignore"):
+            warnings.simplefilter("ignore")
+            sj = logged(a, "j", lambda x: sd.asarray(c.jac(x))) if jac == "analytic" else jac
+            r = sd.optimize.least_squares(logged(a, "f", lambda x: sd.asarray(c.fun(x))), c.x0(), jac=sj, method="lm")
+            qj = logged(b, "j", jn) if jac == "analytic" else jac
+            q = scipy_ls(logged(b, "f", lambda x: np.array(c.fun(x))), np.array(c.x0()), jac=qj, method="lm")
+        mine, theirs = as_scipy_calls(a, jac), as_scipy_calls(b, jac) if jac != "analytic" else b
+        xf = r.x.tolist()
+        rest = theirs[len(mine) :]
+        same = theirs[: len(mine)] == mine and all(sum(u != v for u, v in zip(x, xf)) <= 1 for _, x in rest)
+        assert same == (c.id not in LM_APART[jac]), c.id
+        if same:
+            assert len(rest) <= c.n + 1, c.id
+            assert xf == q.x.tolist() and r.fun.tolist() == q.fun.tolist(), c.id
+            assert r.jac.tolist() == q.jac.tolist() and r.status == q.status, c.id
 
 
 def test_3_point_and_diff_step_follow_scipy():
@@ -157,7 +226,14 @@ def test_3_point_and_diff_step_follow_scipy():
 # ---- NIST StRD and MINPACK
 
 
+# 'lm' parts from scipy only where a trial point's residuals are not finite (G74: MGH17 and
+# BoxBOD from start 1) or at max_nfev (O25: Bennett5 from start 1)
+NIST_LM_APART = {"analytic": {"MGH17/start1", "BoxBOD/start1"}, "2-point": {"MGH17/start1", "Bennett5/start1"}}
+
+
 def test_nist_against_scipy():
+    # 'trf' with each library's model (sd's and numpy's functions round differently); 'lm' with
+    # numpy's model for both, since its steps are scipy's to the bit (O95)
     agree = {}
     for name in N.NAMES:
         d = N.load(name)
@@ -169,14 +245,14 @@ def test_nist_against_scipy():
             p0 = [float(v) for v in d[start]]
             for method in ("trf", "lm"):
                 for jac in ("analytic", "2-point"):
-                    r = sd.optimize.least_squares(
-                        lambda b: fs(xs, *b.tolist()) - ys,
-                        p0,
-                        method=method,
-                        jac=(lambda b: js(xs, *b.tolist())) if jac == "analytic" else jac,
-                    )
+                    if method == "trf":
+                        f, j = (lambda b: fs(xs, *b.tolist()) - ys), (lambda b: js(xs, *b.tolist()))
+                    else:
+                        f = lambda b: sd.asarray(fn(xn, *np.array(b.tolist())) - yn)  # noqa: E731
+                        j = lambda b: sd.asarray(jn(xn, *np.array(b.tolist())))  # noqa: E731
                     with warnings.catch_warnings(), np.errstate(all="ignore"):
                         warnings.simplefilter("ignore")
+                        r = sd.optimize.least_squares(f, p0, method=method, jac=j if jac == "analytic" else jac)
                         q = scipy_ls(
                             lambda b: fn(xn, *b) - yn,
                             np.array(p0),
@@ -190,22 +266,27 @@ def test_nist_against_scipy():
                     a[2] += (min(N.lre(v, cv) for v, cv in zip(r.x.tolist(), d["params"])) >= 6) - (
                         min(N.lre(v, cv) for v, cv in zip(q.x, d["params"])) >= 6
                     )
-    # of 54 fits each: the differences are MGH09, MGH10, MGH17, BoxBOD and Bennett5 (start 1)
+                    if method == "lm":
+                        same = r.x.tolist() == q.x.tolist() and r.status == q.status
+                        assert same == (f"{name}/{start}" not in NIST_LM_APART[jac]), (name, start, jac)
+    # of 54 fits each: 'trf' parts on MGH09, MGH10, MGH17, BoxBOD and Bennett5 (start 1)
     least = {
         ("trf", "analytic"): (52, 54),
         ("trf", "2-point"): (49, 50),
-        ("lm", "analytic"): (50, 51),
-        ("lm", "2-point"): (52, 52),
+        ("lm", "analytic"): (52, 52),
+        ("lm", "2-point"): (53, 52),
     }
     for k, (st, x) in least.items():
         assert agree[k][0] >= st and agree[k][1] >= x, (k, agree[k])
-        assert agree[k][2] >= 0, (k, agree[k])
+    assert agree["trf", "analytic"][2] >= 0 and agree["trf", "2-point"][2] >= 0, agree
+    # 'lm': one more from start 1 of MGH17 with the analytic Jacobian, one fewer with differences
+    assert agree["lm", "analytic"][2] + agree["lm", "2-point"][2] >= 0, agree
 
 
 def test_lm_against_fortran_lmder1():
     # MINPACK's LMDER1 driver runs (tol = sqrt(u), gtol 0, maxfev 100 (n + 1)), compiled from
-    # netlib: as close as scipy's leastsq (docs/design/optimize.md §7: info 44, calls 47, x 37/45
-    # of 53)
+    # netlib: as close as scipy's leastsq (docs/design/optimize.md §7: calls 47, x 37/45 of 53),
+    # whose steps 'lm' takes to the bit (O95)
     tol = math.sqrt(2.0**-52)
     info_of = {2: 1, 3: 2, 4: 3, 1: 4, 0: 5}
     same = [0, 0, 0, 0]
@@ -220,7 +301,7 @@ def test_lm_against_fortran_lmder1():
         same[1] += r.nfev == rec["calls_f"] and r.n_iter == rec["calls_j"]
         same[2] += d <= 1e-12
         same[3] += d <= 1e-6
-    assert same[0] >= 48 and same[1] >= 47 and same[2] >= 35 and same[3] >= 44, same
+    assert same[0] >= 47 and same[1] >= 47 and same[2] >= 37 and same[3] >= 45, same
 
 
 # ---- counts (O18, O23), bounds (O19), stopping (O20)

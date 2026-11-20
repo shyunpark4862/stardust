@@ -11,9 +11,10 @@
 // past the memo (counted in njev, as scipy's ngev counts them). A product with p = 0 is 0.
 //
 // hess(x) returns (n, n) and hessp(x, p) returns (n,) (O63): a value that is not a float64
-// sd.ndarray of that shape goes through Python's check. The matrix is kept row-major (numpy's
-// C order, as scipy's np.asarray of the user's value), a copy shared with the subproblems that
-// hold it: hess called again while one is held fills another buffer (kept for reuse).
+// sd.ndarray of that shape goes through Python's check. The matrix is row-major (numpy's C order,
+// as scipy's np.asarray of the user's value): the returned array itself when it is C-ordered (a
+// reference, as scipy keeps it), else a copy; shared with the subproblems that hold it, so hess
+// called again while one is held fills another holder (kept for reuse).
 #pragma once
 
 #include "optimize/diff.hpp"
@@ -48,6 +49,16 @@ inline void np_matvec(const double* H, const double* p, double* out, std::size_t
     cblas_dgemv(CblasRowMajor, CblasNoTrans, ln, ln, 1.0, H, ln, p, 1, 0.0, out, 1);
 }
 
+// The matrix of hess at a point, row-major (n, n): the user's C-ordered float64 array itself
+// (ref), or a copy of another layout (own). Released only with the GIL held.
+struct HessMatrix {
+    nb::object ref;
+    std::vector<double> own;
+    const double* p = nullptr;
+    const double* data() const { return p; }
+    double operator[](std::size_t i) const { return p[i]; }
+};
+
 enum HessMode : int {
     kHessNone = 0,        // no hess: hessp, or (newton-cg) the gradient's differences
     kHessCallable = 1,    // hess(x) -> (n, n)
@@ -63,8 +74,8 @@ struct Hessian {
     int mode = kHessNone;
     std::size_t n;
 
-    std::shared_ptr<vec> H;                  // kHessCallable: the matrix at the memo's point
-    std::vector<std::shared_ptr<vec>> pool;  // the matrices' buffers (one held only here is free)
+    std::shared_ptr<HessMatrix> H;                  // kHessCallable: the matrix at the memo's point
+    std::vector<std::shared_ptr<HessMatrix>> pool;  // the holders (one held only here is free)
     vec hx, hg;  // differences: the point and its gradient
     std::uint64_t at = 0;
     bool valid = false;
@@ -78,35 +89,36 @@ struct Hessian {
         g2.resize(n);
     }
 
-    std::shared_ptr<vec> buffer() {
+    std::shared_ptr<HessMatrix> buffer() {
         for (auto& b : pool)
             if (b.use_count() == 1) return b;
-        pool.push_back(std::make_shared<vec>(n * n));
+        pool.push_back(std::make_shared<HessMatrix>());
         return pool.back();
     }
 
-    // A returned (n, n) matrix into out (row-major).
-    void matrix(nb::handle o, double* out) const {
-        nb::object keep;
+    // A returned (n, n) matrix into out: the array itself when it is C-ordered, else a copy.
+    void matrix(nb::object o, HessMatrix& out) const {
         const auto ln = static_cast<std::int64_t>(n);
         if (!(is_ndarray(o) && as_ndarray(o).dtype == DType::Float64 && as_ndarray(o).ndim == 2 &&
-              as_ndarray(o).shape[0] == ln && as_ndarray(o).shape[1] == ln)) {
-            keep = obj.check(o, "hess");
-            o = keep;
-        }
+              as_ndarray(o).shape[0] == ln && as_ndarray(o).shape[1] == ln))
+            o = obj.check(o, "hess");
         const NDArray& a = as_ndarray(o);
         const std::byte* d = a.data;
         const std::int64_t s0 = a.strides[0], s1 = a.strides[1];
-        if (s1 == static_cast<std::int64_t>(sizeof(double)) && s0 == ln * s1) {  // C order
-            std::memcpy(out, d, n * n * sizeof(double));
+        if ((s1 == static_cast<std::int64_t>(sizeof(double)) || n == 1) && (s0 == ln * s1 || n == 1)) {  // C order
+            out.p = reinterpret_cast<const double*>(d);
+            out.ref = std::move(o);
             return;
         }
+        out.ref = nb::object();
+        out.own.resize(n * n);
         for (std::size_t i = 0; i < n; ++i)
             for (std::size_t j = 0; j < n; ++j)
                 std::memcpy(
-                    &out[i * n + j], d + static_cast<std::int64_t>(i) * s0 + static_cast<std::int64_t>(j) * s1,
+                    &out.own[i * n + j], d + static_cast<std::int64_t>(i) * s0 + static_cast<std::int64_t>(j) * s1,
                     sizeof(double)
                 );
+        out.p = out.own.data();
     }
 
     // A returned (n,) product into out.
@@ -130,7 +142,7 @@ struct Hessian {
         if (mode == kHessCallable) {
             H.reset();
             H = buffer();  // the last one unless a subproblem holds it
-            matrix(hess(obj.array(obj.x.data())), H->data());
+            matrix(hess(obj.array(obj.x.data())), *H);
             ++calls;
         } else {
             obj.update_grad();
@@ -142,8 +154,8 @@ struct Hessian {
     }
 
     bool matrix_finite() const {
-        for (double t : *H)
-            if (!std::isfinite(t)) return false;
+        for (std::size_t i = 0; i < n * n; ++i)
+            if (!std::isfinite(H->p[i])) return false;
         return true;
     }
 

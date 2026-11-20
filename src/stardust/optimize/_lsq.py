@@ -196,7 +196,7 @@ def least_squares(
         xl,
         lb,
         ub,
-        1 if method == "trf" else 0,
+        1 if method == "trf" else 2,  # 'lm' in scipy's build of lmder (nls runs 0)
         ftol,
         xtol,
         gtol,

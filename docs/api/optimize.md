@@ -14,7 +14,7 @@
 - 옵션의 검사와 메시지는 다른 영역과 같은 꼴이다(API.md §2.1): bool은 `'adaptive' must be True or False, not int`, int는 `'max_iter' must be an int, not float`, 수는 `'tol' must be a finite number >= 0`, 문자열은 `'method' must be 'trf' or 'lm', not 'x'`.
 - 방법마다 다른 옵션은 scipy처럼 `options=`의 dict로 받는다(O16; 키는 scipy의 이름(반복 상한만 O14의 이름), 기본값도 scipy의 것). 방법이 모르는 키는 경고가 아니라 `ValueError`다(scipy는 `OptimizeWarning`만 낸다): `minimize(): method='bfgs' has no option 'xatol'`. dict가 아닌 값은 `TypeError`(`minimize(): 'options' must be a dict or None, not list`)다.
 - **`status`와 `message`는 scipy의 것**이다(O17): 방법마다 scipy 1.18.1의 번호와 글을 그대로 쓴다(MINPACK의 info, L-BFGS-B의 task 글 등). 이 라이브러리에만 있는 멈춤(예: 유한하지 않은 마지막 값)의 번호와 글은 그 마일스톤에서 정한다.
-- **scipy와 같은 걸음** (O9): 각 방법은 scipy 1.18.1과 같은 순서로 계산한다. 같은 문제에서 반복점, `nfev`·`njev`, 멈춘 이유가 같다. 합과 노름처럼 반올림의 순서가 다른 곳은 끝자리가 다를 수 있고, 비트까지 같게 하지는 않는다. 대조 자료는 `tests/optimize/data/`다(docs/design/optimize.md §7).
+- **scipy와 같은 걸음** (O9): 각 방법은 scipy 1.18.1과 같은 순서로 계산한다. 같은 문제에서 반복점, `nfev`·`njev`, 멈춘 이유가 같다. 합과 노름처럼 반올림의 순서가 다른 곳은 끝자리가 다를 수 있고, 비트까지 같게 하지는 않는다. 예외: BFGS는 H를 O(n²)의 순서로 갱신하므로(O99) 걸음이 scipy와 반올림만큼 다르다(반복 수와 멈춘 이유가 가끔 다르다). 대조 자료는 `tests/optimize/data/`다(docs/design/optimize.md §7).
 
 ### §1.2 사용자 함수
 - 사용자 함수는 Python 호출 가능한 객체다. 반복은 C++ 커널이 돌고 함수값은 콜백으로 받는다(`sd.regression.nls`와 같다).
@@ -40,7 +40,7 @@ OptimizeResult
 | `fun` | 해에서의 함수값: 스칼라 목적함수는 `float`, `least_squares`·`root`·`lsq_linear`·`nnls`는 잔차 (m,) | 모두(`root_scalar`·`bracket_root`·`bracket_minimum` 빼고) |
 | `jac` | 해에서의 기울기(최소화) 또는 야코비안 (m, n)(최소제곱) | `minimize`의 기울기를 쓰는 방법, `least_squares` |
 | `hess` | 해에서의 헤시안 | `minimize`의 trust-ncg·trust-exact(`hess`를 줄 때) |
-| `hess_inv` | 헤시안 역행렬의 근사 (n, n): BFGS는 반복의 행렬, L-BFGS-B는 저장된 쌍으로 처음 읽을 때 만든다(O55) | `minimize`의 BFGS, L-BFGS-B |
+| `hess_inv` | 헤시안 역행렬의 근사 (n, n): BFGS는 반복의 행렬(O(n²) 갱신, O99; 비트까지 대칭), L-BFGS-B는 저장된 쌍으로 처음 읽을 때 만든다(O55) | `minimize`의 BFGS, L-BFGS-B |
 | `grad`, `cost`, `optimality`, `active_mask` | scipy `least_squares`와 같은 뜻: Jᵀf, ½‖f‖², 1차 최적성의 척도, 경계에 걸린 변수(−1 아래, 0 안, 1 위) | `least_squares`, `lsq_linear`(`grad` 빼고), `nnls`(`cost`만) |
 | `bracket`, `f_bracket` | 마지막 구간과 그 끝의 함수값(배열의 튜플) | 배치 스칼라(§6) |
 | `final_simplex` | 마지막 단체와 그 꼭짓점의 함수값: 튜플 ((N + 1, N), (N + 1,)), 값의 순서(O56) | `minimize`의 Nelder–Mead |
@@ -89,7 +89,7 @@ lsq_linear(A, b, /, *, bounds=None, method='trf', tol=1e-10, max_iter=None)
 nnls(A, b, /, *, max_iter=None)
 ```
 - **`least_squares`** (O1): ½Σ f_i(x)²를 `x0`에서 시작해 최소화한다. 커널은 nls의 것을 옮겼다(O6: nls는 이것을 쓰고 추론만 맡으며 결과는 비트까지 같다).
-  - `method='trf'`(scipy의 기본): 신뢰 영역 반사법(scipy 1.18.1 `trf`의 'exact' 부분문제, x_scale = 1, 손실 함수 없음), 경계를 받는다. 경계가 없으면 scipy의 `trf_no_bounds`와 같은 걸음이다. 잔차가 변수보다 적어도(m < n) 된다. `'lm'`: MINPACK `lmder`의 Levenberg–Marquardt(factor 100, 야코비안 열 노름의 척도 = scipy 1.16부터의 `x_scale='jac'`), 경계를 받지 않고 m ≥ n이어야 한다(`least_squares(): method='lm' needs at least as many residuals as variables, not 2 < 3`). scipy의 `'dogbox'`는 없다.
+  - `method='trf'`(scipy의 기본): 신뢰 영역 반사법(scipy 1.18.1 `trf`의 'exact' 부분문제, x_scale = 1, 손실 함수 없음), 경계를 받는다. 경계가 없으면 scipy의 `trf_no_bounds`와 같은 걸음이다. 잔차가 변수보다 적어도(m < n) 된다. `'lm'`: MINPACK `lmder`의 Levenberg–Marquardt(factor 100, 야코비안 열 노름의 척도 = scipy 1.16부터의 `x_scale='jac'`)이고 scipy와 부르는 점이 차례대로 비트까지 같다(O95; nls는 지금까지의 계산 그대로다). 갈리는 곳은 결정의 자리뿐이다: 시험점의 잔차가 유한하지 않을 때(nls G74의 규칙), 차분의 호출을 센 `max_nfev`(O25)에 닿을 때, 그리고 걸음이 반올림에 묻혀 x가 그대로인 시험점은 MINPACK대로 다시 부른다(scipy는 마지막 x의 값을 기억해 부르지 않는다). 경계를 받지 않고 m ≥ n이어야 한다(`least_squares(): method='lm' needs at least as many residuals as variables, not 2 < 3`). scipy의 `'dogbox'`는 없다.
   - `fun(x)`는 길이 m(≥ 1; 없으면 `ValueError`, 빈 `x0`도 `ValueError`, O28)의 1차원 값을 돌려준다(`sd.ndarray`, 실수의 시퀀스, numpy 배열). x는 새 float64 `sd.ndarray`다.
   - `jac`: 호출 가능한 객체((m, n)을 돌려준다; n = 1이면 (m,)도), `'2-point'`(기본), `'3-point'`(O21). 차분은 scipy 1.18.1 `approx_derivative`와 같다: 2점은 h = √u·sign(x)·max(1, |x|), 3점은 h = u^(1/3)·max(1, |x|)의 중앙 차분, 경계에 걸리면 scipy처럼 한쪽(2점은 반대쪽, 3점은 (x, x + h, x + 2h))으로 바꾸고 간격을 줄인다. 2점에서 한쪽의 값이 유한하지 않으면 반대쪽으로 한 번 더 해 보고(nls와 같다), 3점은 바로 `ValueError`다(O27). `'cs'`(복소 걸음)는 없다(사용자 함수에 complex를 넘기지 않는다).
   - `diff_step`: 차분의 상대 간격(scipy와 같다: h = diff_step·sign(x)·|x|, x + h가 x로 반올림되면 기본 간격), 양수 하나 또는 n개. `jac`가 호출 가능한 객체면 `ValueError`(`least_squares(): 'diff_step' is only used when 'jac' is '2-point' or '3-point'`)다(O29).
@@ -198,7 +198,7 @@ minimize(fun, x0, /, *, method=None, jac=None, hess=None, hessp=None, bounds=Non
 root(fun, x0, /, *, method='hybr', jac=None, tol=None, options=None)
 ```
 - n개 식의 방정식계 `fun(x) = 0`의 근을 `x0`에서 시작해 찾는다. `fun(x)`는 길이 n의 1차원 값을 돌려준다(x는 새 float64 `sd.ndarray` (n,); `root(): 'fun' must return 3 values (one per variable), not 2`). 식이 변수보다 많으면 `least_squares`를 쓴다.
-- `method`(O78): `'hybr'`(MINPACK의 hybrj(`jac`을 줄 때)·hybrd(전진 차분), Powell의 혼성법: dogleg 걸음과 야코비안 QR 인자의 Broyden 갱신)와 `'lm'`(§3의 `lmder` 커널, m = n; `jac`이 없으면 lmdif의 차분). 'hybr'은 scipy 1.18.1과 사용자 함수를 부르는 점이 차례대로 비트까지 같다. 'lm'은 같은 걸음이지만 끝자리가 달라 반올림이 결정하는 문제에서 갈릴 수 있고, 같은 정방 문제의 `least_squares(method='lm')`과도 끝자리가 다를 수 있다(O87; 비트까지 맞추는 일은 O6, docs/design/optimize.md §7). 식은 변수와 같은 수여야 한다(O84). scipy의 broyden1·broyden2·anderson·linearmixing·diagbroyden·excitingmixing·krylov·df-sane은 없다.
+- `method`(O78): `'hybr'`(MINPACK의 hybrj(`jac`을 줄 때)·hybrd(전진 차분), Powell의 혼성법: dogleg 걸음과 야코비안 QR 인자의 Broyden 갱신)와 `'lm'`(§3의 `lmder` 커널, m = n; `jac`이 없으면 lmdif의 차분). 'hybr'은 scipy 1.18.1과 사용자 함수를 부르는 점이 차례대로 비트까지 같다. 'lm'도 scipy와 부르는 점이 차례대로 비트까지 같다(O95: scipy의 빌드를 따른 lmder; docs/design/optimize.md §7). 같은 정방 문제의 `least_squares(method='lm')`과도 같은 계산이다. 식은 변수와 같은 수여야 한다(O84). scipy의 broyden1·broyden2·anderson·linearmixing·diagbroyden·excitingmixing·krylov·df-sane은 없다.
 - `jac`: 야코비안 함수(`jac(x)`가 (n, n)을 돌려준다; n = 1이면 (1,)도), `True`(`fun`이 (F, J)를 돌려준다; scipy의 `MemoizeJac`처럼 마지막 x의 값을 쓰고 다른 점에서만 다시 부른다), None(차분). 차분은 MINPACK의 fdjac1·fdjac2다: (F(x + h e_j) − F(x))/h, h = √max(`eps`, u)·|x_j|(x_j = 0이면 √max(`eps`, u)). 한쪽 값이 유한하지 않으면 반대쪽으로 한 번 더 해 본다(`least_squares`의 '2-point'와 같다).
 - 옵션(scipy의 이름과 기본값, O80; 반복 상한은 O14의 이름):
 

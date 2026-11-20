@@ -1,6 +1,6 @@
 # stardust 로드맵
 
-> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6, 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 시작 전)이다.
+> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6, 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 1부 완료·승인 대기)이다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -371,7 +371,7 @@
 
 # 최적화 영역 (sd.optimize)
 
-> 상태: **O0 완료·승인**, **O1 완료·승인**, **O2 완료·승인**, **O3 완료·승인**, **O4 완료·승인**, **O5 완료·승인** (2026-11-20). 설계는 [docs/design/optimize.md](docs/design/optimize.md), API의 초안은 [docs/api/optimize.md](docs/api/optimize.md)다.
+> 상태: **O0 완료·승인**, **O1 완료·승인**, **O2 완료·승인**, **O3 완료·승인**, **O4 완료·승인**, **O5 완료·승인**, **O6 1부(성능) 완료(승인 대기)** (2026-11-20). 설계는 [docs/design/optimize.md](docs/design/optimize.md), API의 초안은 [docs/api/optimize.md](docs/api/optimize.md)다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -384,6 +384,7 @@
 - O3의 결정(사용자, 2026-11-20): 기본 방법은 scipy의 것, `bounds`는 `(lower, upper)` 하나, 경계 밖의 `x0`는 `ValueError`, 반복 중의 유한하지 않은 값은 scipy의 처리(`x0`에서는 `ValueError`), `callback` 없음, L-BFGS-B의 `hess_inv`는 처음 읽을 때 만드는 (n, n) 행렬, `final_simplex`는 scipy처럼, 선 탐색 상한은 `max_ls` (O50–O57). 구현 뒤의 결정(2026-11-20): 고정 변수는 scipy처럼(뺀 변수가 있으면 `hess_inv` 필드 없음), ABNORMAL의 `fun`은 `x`의 값(scipy와 다름), `hess_inv`는 scipy의 순서, BFGS의 n³ 갱신은 O6에서 다시, 옵션 검사는 그대로 (O58–O62).
 - O4의 결정(사용자, 2026-11-20): `hess`는 (n, n), `hessp`는 (n,)을 돌려준다(`LinearOperator`·희소 행렬·`HessianUpdateStrategy`는 받지 않는다), `hess='2-point'`·`'3-point'`를 받는다(`'cs'` 없음), 세 방법은 `jac`이 꼭 있다, `bounds`는 `ValueError` (O63–O66). 구현 뒤의 결정(2026-11-20): trust-ncg의 CG는 20n번까지(status 3), `nhev`는 실제 호출만(자리 채움 1 없음, trust-ncg 결과의 `hess` 호출 포함), newton-cg의 `jac`은 x의 기울기, 반복 중의 유한하지 않은 기울기·헤시안은 점을 적은 `ValueError`, trust-exact 부분문제의 상한은 status 3, `subproblem_max_iter`, newton-cg의 `hess`+`hessp`는 `ValueError`, 신뢰 영역의 `max_iter=0`은 반복 없음, trust-exact의 차분 `hess`는 `ValueError` (O67–O76).
 - O5의 결정(사용자, 2026-11-20): `nnls`는 `OptimizeResult`(상한에서 예외 없이 `converged=False`), `root`는 'hybr'·'lm'만, `fjac`·`r`·`qtf`는 없음, `root`의 기본 허용오차는 scipy의 것, `lsq_linear`에 lsmr과 `unbounded_sol`은 없음 (O77–O81). 구현 뒤의 결정(2026-11-20): `root`에 `n_iter`, 차분에도 `njev`, 정방 계만, hybr 시험점의 유한하지 않은 F는 실패한 걸음(랭크 1 갱신 건너뜀), scipy의 글 그대로, lm의 비트 동일은 O6(`root('lm')`과 `least_squares('lm')`은 끝자리가 다를 수 있다), 옵션 검사는 `ValueError`, `nnls`의 status 1·3, `nnls`에 `method`·`rnorm` 없음, 유한하지 않거나 빈 입력은 `ValueError`, trf의 backtracking은 scipy대로, `active_mask`는 int64 (O82–O93).
+- O6의 결정(사용자, 2026-11-20): 비트와 속도가 부딪히면 비트를 지키고 비트를 바꾸는 큰 개선은 재서 하나씩 묻는다, `least_squares('lm')`·`root('lm')`은 scipy의 빌드(FMA)로 비트 동일하게 하고 nls는 지금의 빌드(한 소스의 두 템플릿 인스턴스), 성능 뒤에 영역 전체의 코드 리뷰, 최적화는 알려진 것과 모든 함수의 scipy 대조 (O94–O97). 1부 뒤의 결정(2026-11-20): 골든의 'lm' 경우를 다시 기록, BFGS는 O(n²) 갱신(O9의 예외: 걸음이 반올림만큼 다름; n = 1은 scipy의 곱의 꼴), 'trf'의 SVD는 그대로, bench/speed 사례는 벤치 세션 (O98–O102).
 - 기존 영역의 결과는 비트까지 같아야 한다(nls를 옮겨도).
 
 ## 진행 상태
@@ -395,7 +396,7 @@
 | O3 최소화 1: Nelder–Mead, BFGS, L-BFGS-B | 완료·승인 (2026-11-20) |
 | O4 최소화 2: Newton-CG, trust-ncg, trust-exact | 완료·승인 (2026-11-20) |
 | O5 방정식계와 선형 최소제곱: `root`(hybr, lm), `lsq_linear`, `nnls` | 완료·승인 (2026-11-20) |
-| O6 최적화와 일관성 점검(BFGS의 n² 갱신, O61; `root('lm')`·`least_squares('lm')`의 scipy 비트 동일, O87) | 시작 전 |
+| O6 최적화와 일관성 점검(BFGS의 n² 갱신, O61; `root('lm')`·`least_squares('lm')`의 scipy 비트 동일, O87) | 1부(성능) 완료·승인 대기 (2026-11-20; BFGS O(n²) 갱신 포함); 2부 코드 리뷰(O96) 남음 |
 
 ## 마일스톤
 
@@ -439,3 +440,9 @@
 - 결과: csrc/optimize/(hybrd.cpp, root.hpp, linear.cpp, linear.hpp, lsq.cpp의 lmder 옵션(factor, diag, epsfcn, lmder의 info, m = n의 바로 QR)과 `lm_solve`), csrc/bind/optimize_bind.cpp, CMakeLists.txt, src/stardust/optimize/(`_root.py`, `_linear.py`, `__init__.py`); docs/api/optimize.md §1·§3·§8·§9, docs/design/optimize.md §1.1·§3.4·§3.6·§6·§7·§8·§9; 측정 bench/optimize/o5/(speed.py, speed.md); 테스트 tests/optimize/(test_root.py, test_lsq_linear.py, test_api_surface.py).
 - 결과 수치: 'hybr'은 MINPACK 계 55경우 × 야코비안 유무 110번 모두 scipy 1.18.1과 호출점이 비트까지 같고 기록된 필드(x의 비트, F, status, message, njev, nfev − 2)가 같다(옵션 42번, `jac=True`도). Fortran HYBRJ1·HYBRD1 110번은 scipy `fsolve`의 기록과 x의 비트까지 같아 원본과의 거리도 scipy와 같다(HYBRJ1 같은 info 50/55, x 10⁻⁶ 안 44; HYBRD1 48, 44). 'lm'은 같은 status 54/55(해석적·차분), x 10⁻⁶ 안 49·45. `lsq_linear`('trf'·'bvls')는 기록된 12문제와 무작위 824번씩, 작은 모양 480번, (10⁴, 100)까지 모든 필드가 비트까지 같고, `nnls`는 무작위 801번(반복 상한 포함)에서 x가 비트까지 같다. nls 골든 출력 338적합은 바이트까지 같다. 반복당 자기 비용은 `root`가 scipy와 비슷하고(scipy도 반복이 C; lm 작은 n은 1/2), `lsq_linear` (100, 10) 'trf'는 1/9, 큰 문제는 같은 LAPACK이라 같다.
 - 찾은 것: scipy의 C 판 MINPACK은 FMA 축약으로 빌드되어 있고, 제곱(`t**2`)은 따로 반올림하며, qrfac의 내적만 clang이 벡터화해 8개씩의 곱을 따로 반올림한다: 셋 다 맞춰야 비트까지 같다(이쪽 clang은 다른 합 고리도 같은 식으로 벡터화해, 합을 `std::fma`로 적었다). Accelerate의 gelsd는 numpy의 버퍼 배치(정렬)에 따라 끝자리가 달라 그 배치를 따랐다. scipy `nnls`의 C 판은 기계어에서 읽어 옮겼다(dlarfgp·dlarf·dlartgp; 떨어진 열의 꼬리를 바꾼 채 두고, P가 비면 음수 개수로 계속 가는 버그가 있다). `trf_linear`의 `backtracking`은 x를 바꾸지 않는다. scipy의 `root`는 x0에서 `fun`을 두 번 더 부르고 `nfev`에 센다.
+
+### O6. 최적화와 일관성 점검 (1부: 성능)
+- 결정(사용자, 2026-11-20): docs/design/optimize.md §1.1 O94–O97, 1부 뒤에 O98–O102.
+- 결과: csrc/optimize/(minpack.hpp: scipy MINPACK의 enorm·dot8·열 여덟 개의 반사를 hybrd.cpp와 같이 씀; lsq.cpp: lmder를 템플릿 `Fu`의 두 빌드로, scipy 빌드는 m × n의 피벗 QR·열 묶음·스레드, 야코비안 읽기; hybrd.cpp: qrfac·qform의 열 묶음; batch.cpp: `args` 모으기와 원소 패스의 스레드; hessian.hpp·trust.cpp: C 순서의 사용자 헤시안을 그대로 쥠; bfgs.cpp: H의 O(n²) 갱신(O99; n = 1은 곱의 꼴, O102); linear.cpp: nnls의 남는 계산, 유한성 검사를 커널에서), src/stardust/optimize/(`_lsq.py`: 'lm'은 scipy 빌드, `_linear.py`); docs/api/optimize.md §3·§8, docs/design/optimize.md §1.1·§3.3.1·§3.4·§3.5·§3.6·§7·§8·§9; 측정 bench/optimize/o6/(speed.py: O1–O5의 사례를 그대로 돌리는 전체 대조, speed.md, speed_before.json, speed_after.json); 테스트 tests/optimize/(test_root.py, test_least_squares.py, test_elementwise.py, test_minimize.py: BFGS는 허용오차로 견줌); 골든 tests/golden/data/optimize.json(O98: 'lm' 175경우를 다시 기록).
+- 결과 수치: `root('lm')`은 55계 × 야코비안 유무 110번 모두 scipy와 호출점과 결과가 비트까지 같다(옵션 36번도). `least_squares('lm')`은 MGH 110경우 가운데 해석적 108, 2점 104경우가 비트까지 같다(scipy가 기억으로 건너뛰는 같은 x의 호출과 O24의 끝 호출을 빼고; 나머지는 G74의 유한하지 않은 시험점과 O25의 `max_nfev`). NIST 54적합 52·52. nls 골든 338적합은 바이트까지 같다. 고정 골든은 optimize의 'lm' 175경우만 바뀌어 다시 기록했다(O98). BFGS는 O(n²) 갱신으로 n = 1000의 반복당 8.8 → 0.28 ms, scipy와 status가 같은 것 113/114(기록된 113번에서 해석적 112, 차분 107). 속도는 bench/optimize/o6/speed.md: hybr n = 300 자기 비용이 scipy의 0.55배, `root('lm')` n = 100 0.17 → 0.11 ms, m = n = 40의 'lm' 0.063 → 0.036 ms, 배치 10⁶ 10스레드 find_root 89 → 31 ms, newton-cg·trust-ncg `hess` n = 1000 0.23 → 0.15, 0.16 → 0.10 ms. O95로 m ≫ n의 'lm'은 느려졌다((10⁴, 100) 6.6 → 17 ms; scipy 37 ms).
+- 비트를 바꾸는 후보(O94로 재서 물음): BFGS O(n²) 갱신은 넣었고(O99), 경계 없는 'trf'의 n × n SVD(5%)는 넣지 않는다(O100).

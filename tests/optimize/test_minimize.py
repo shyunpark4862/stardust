@@ -1,8 +1,9 @@
 """sd.optimize.minimize (docs/api/optimize.md §7, docs/design/optimize.md §3.5, §7): scipy 1.18.1 on
 the Moré-Garbow-Hillstrom collection as minimization of the sum of squares and on scipy's test
 functions (the recorded runs, tests/optimize/data/scipy_minimize.json, and every call point live, bit
-for bit), the options and the edge cases live, hess_inv, L-BFGS-B 3.0's Fortran original
-(fortran_lbfgsb.json), the decisions O50-O57, the result and the errors."""
+for bit; BFGS's O(n^2) update (O99) to rounding instead), the options and the edge cases live,
+hess_inv, L-BFGS-B 3.0's Fortran original (fortran_lbfgsb.json), the decisions O50-O57, the result and
+the errors."""
 
 import json
 import math
@@ -110,10 +111,11 @@ def run_scipy(method, f, g, x0, bounds, fd, log, **kw):
         return so.minimize(F, np.array(x0, dtype=float), method=method, **kw)
 
 
-# ---- scipy 1.18.1, recorded (O9): the same steps bit for bit, so every field is scipy's
+# ---- scipy 1.18.1, recorded (O9): the same steps bit for bit, so every field is scipy's (BFGS:
+# below)
 
 
-RECORDED = ("Nelder-Mead", "BFGS", "BFGS/fd", "L-BFGS-B", "L-BFGS-B/fd")
+RECORDED = ("Nelder-Mead", "L-BFGS-B", "L-BFGS-B/fd")
 
 
 @pytest.mark.parametrize("group", RECORDED)
@@ -133,13 +135,70 @@ def test_against_recorded_scipy(group):
             assert r.njev == rec["njev"], pid
 
 
+# BFGS forms scipy's update in the O(n^2) order (O99): the steps differ from scipy's by rounding.
+# Of the 113 recorded runs: the status where it is the same, the optimality where it converged,
+# and x and f near scipy's in this many runs (the rest are minima reached to different digits in
+# flat or ill-conditioned problems, and other local minima).
+BFGS_AGREE = {  # status, x within 1e-6 (of max(|x|, |x0|)), f within 1e-8 max(1, |f|)
+    "BFGS": (112, 94, 102),
+    "BFGS/fd": (107, 79, 88),
+}
+# the runs whose status differs: scipy converges, sd stops with 2 (the line search finds no
+# step) near the same minimum
+BFGS_STATUS_APART = {
+    "BFGS": {"mgh16-n4-m20-x100"},
+    "BFGS/fd": {
+        "mgh04-n2-m3-x1",
+        "mgh04-n2-m3-x100",
+        "mgh07-n3-m3-x100",
+        "mgh15-n4-m11-x100",
+        "mgh23-n10-m11-x100",
+        "mgh31-n10-m10-x100",
+    },
+}
+
+
+@pytest.mark.parametrize("group", sorted(BFGS_AGREE))
+def test_bfgs_against_recorded_scipy(group):
+    fd = group.endswith("/fd")
+    got = [0, 0, 0]
+    for pid, f, g, x0, _bounds in PROBLEMS:
+        rec = REF[pid].get(group)
+        if rec is None:  # BFGS takes no bounds (driver1)
+            continue
+        r = run_sd("bfgs", f, g, x0, None, fd)
+        same = r.status == rec["status"]
+        assert same == (pid not in BFGS_STATUS_APART[group]), pid
+        assert r.message == rec["message"] or not same, pid
+        if r.converged:  # the stopping test: |g|_inf <= gtol
+            assert float(np.max(np.abs(np.array(r.jac.tolist())))) <= 1e-5, pid
+        scale = max(max(abs(v) for v in rec["x"]), max(abs(v) for v in x0), 1e-300)
+        got[0] += same
+        got[1] += max(abs(u - v) for u, v in zip(r.x.tolist(), rec["x"])) / scale <= 1e-6
+        got[2] += abs(r.fun - rec["fun"]) <= 1e-8 * max(1.0, abs(rec["fun"]))
+    assert all(a >= b for a, b in zip(got, BFGS_AGREE[group])), got
+
+
+@pytest.mark.parametrize("fd", [False, True])
+def test_bfgs_one_variable_is_scipys_product_form(fd):
+    # O102: for n = 1 the update is scipy's product form, so Chebyquad n = 1 converges from 10 and
+    # 100 times x0 (the expanded form loses the curvature there to cancellation: s/y << H), with
+    # scipy's run to the bit
+    group = "BFGS/fd" if fd else "BFGS"
+    for factor in ("x1", "x10", "x100"):
+        pid = f"mgh35-n1-m8-{factor}"
+        _, f, g, x0, _ = next(p for p in PROBLEMS if p[0] == pid)
+        rec = REF[pid][group]
+        r = run_sd("bfgs", f, g, x0, None, fd)
+        assert r.converged and float(abs(r.jac[0])) <= 1e-5, pid
+        assert r.x.tolist() == rec["x"] and (r.nfev, r.n_iter, r.status) == (rec["nfev"], rec["nit"], rec["status"])
+
+
 # ---- live: the points where fun and jac are called, in order, bit for bit (and all fields)
 
 LIVE_GROUPS = {
     "nelder-mead": ("Nelder-Mead", False, False),
     "nelder-mead/box": ("Nelder-Mead", False, True),
-    "bfgs": ("BFGS", False, False),
-    "bfgs/fd": ("BFGS", True, False),
     "l-bfgs-b": ("L-BFGS-B", False, False),
     "l-bfgs-b/fd": ("L-BFGS-B", True, False),
     "l-bfgs-b/box": ("L-BFGS-B", False, True),
@@ -299,8 +358,25 @@ def test_options_and_edge_cases_follow_scipy(case):
         warnings.simplefilter("ignore")
         a = so.minimize(Fa, np.array(x0, dtype=float), method=method, options=scipy_options(method, opts), **skw)
         b = sd.optimize.minimize(Fb, x0, method=method, options=dopts, **dkw)
+    if method == "bfgs":  # O99: the same steps to rounding
+        close_bfgs(a, b, x0)
+        return
     assert la == lb
     same_run(a, b, f)
+
+
+def close_bfgs(a, b, x0):
+    """BFGS (O99): scipy's status and message, its iterations to within a few, and x near scipy's;
+    at the end of a converging run, rounding may decide between 0 (converged) and 2 (no step)."""
+    if b.status == a.status:
+        assert (b.message, b.converged) == (a.message, bool(a.success))
+        assert abs(b.n_iter - a.nit) <= max(3, a.nit // 10)
+    else:  # then f is scipy's to the accuracy the gradient allows (a coarse difference step too)
+        assert {a.status, b.status} == {0, 2}
+        assert abs(b.fun - a.fun) <= 1e-6 * max(1.0, abs(a.fun))
+        return
+    scale = max(max(abs(v) for v in a.x), max(abs(v) for v in x0), 1.0)
+    assert max(abs(u - v) for u, v in zip(b.x.tolist(), a.x)) / scale <= 1e-5
 
 
 # ---- hess_inv (O55)
@@ -308,19 +384,24 @@ def test_options_and_edge_cases_follow_scipy(case):
 
 @LIVE
 def test_hess_inv_is_scipys():
-    # BFGS: the same matrix bit for bit (scipy's products, by the same BLAS). L-BFGS-B: the dense
-    # matrix of scipy's LbfgsInvHessProduct(...).todense(), the pairs in scipy's storage order
-    # (also when the memory has wrapped around), to rounding
-    worst = 0.0
+    # BFGS (O99, O102): after one update, scipy's matrix to rounding (n >= 2: the O(n^2) order of
+    # the same formula; n = 1: scipy's product form), and symmetric to the bit. L-BFGS-B: the dense matrix of scipy's
+    # LbfgsInvHessProduct(...).todense(), the pairs in scipy's storage order (also when the memory
+    # has wrapped around), to rounding
+    worst = worst_bfgs = 0.0
     wrapped = 0
-    for c in mgh.CASES[::3]:
+    for c in mgh.CASES:
         _, _, f, g = mgh.as_numpy(c)
         F, G = sd_side(f, g)
         with np.errstate(all="ignore"), warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            a = so.minimize(f, np.array(c.x0()), jac=g, method="BFGS")
-            b = sd.optimize.minimize(F, c.x0(), jac=G, method="bfgs")
-            assert np.array(b.hess_inv.tolist()).tolist() == a.hess_inv.tolist(), c.id
+            a = so.minimize(f, np.array(c.x0()), jac=g, method="BFGS", options={"maxiter": 1})
+            b = sd.optimize.minimize(F, c.x0(), jac=G, method="bfgs", options={"max_iter": 1})
+            A, B = a.hess_inv, np.array(b.hess_inv.tolist())
+            assert (B == B.T).all(), c.id
+            worst_bfgs = max(worst_bfgs, float(np.max(np.abs(A - B)) / np.max(np.abs(A))))
+            if c not in mgh.CASES[::3]:
+                continue
             for maxcor in (10, 3):
                 a = so.minimize(f, np.array(c.x0()), jac=g, method="L-BFGS-B", options={"maxcor": maxcor})
                 b = sd.optimize.minimize(F, c.x0(), jac=G, method="l-bfgs-b", options={"maxcor": maxcor})
@@ -328,6 +409,7 @@ def test_hess_inv_is_scipys():
                 wrapped += a.hess_inv.n_corrs == maxcor and a.nit > maxcor
                 worst = max(worst, float(np.max(np.abs(A - B)) / max(np.max(np.abs(A)), 1e-300)))
     assert worst <= 1e-12 and wrapped >= 20
+    assert worst_bfgs <= 1e-12, worst_bfgs
 
 
 def test_lbfgsb_hess_inv_is_dense_and_lazy():

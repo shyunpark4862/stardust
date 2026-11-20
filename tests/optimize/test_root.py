@@ -82,13 +82,14 @@ def dist(a, b, x0):
 # ---- scipy 1.18.1, recorded (O9)
 
 
+@pytest.mark.parametrize("method", ["hybr", "lm"])
 @pytest.mark.parametrize("jac", ["analytic", "none"])
-def test_hybr_is_scipy_to_the_bit(jac):
+def test_root_is_scipy_to_the_bit(method, jac):
     # every field of all 55 runs: x's bits, F, status, message, converged; nfev is scipy's less
-    # its two extra calls at x0, njev scipy's
+    # its two extra calls at x0, njev scipy's ('lm': lmder in scipy's build, O95)
     for c in systems.CASES:
-        rec = REF[c.id][f"hybr/{jac}"]
-        r = run(c, "hybr", jac == "analytic")
+        rec = REF[c.id][f"{method}/{jac}"]
+        r = run(c, method, jac == "analytic")
         assert r.x.tolist() == rec["x"], c.id
         assert r.fun.tolist() == rec["fun"], c.id
         assert (r.status, r.message, r.converged) == (rec["status"], rec["message"], rec["success"]), c.id
@@ -97,43 +98,15 @@ def test_hybr_is_scipy_to_the_bit(jac):
             assert r.njev == rec["njev"], c.id
 
 
-# 'lm' is least_squares' lmder kernel (O6), built without scipy's fused multiply-adds: the
-# rounding differs, so the paths part where rounding decides (Watson n = 9 and Chebyquad n = 5-7
-# far from a root, which mostly stop at max_nfev; with differences also Powell singular's x -> 0).
-# Counts of agreement of 55:
-LM_AGREE = {  # status, nfev (scipy's less 2), njev, x within 1e-6
-    "analytic": (54, 49, 45, 49),
-    "none": (54, 42, None, 45),
-}
-
-
-@pytest.mark.parametrize("jac", ["analytic", "none"])
-def test_lm_against_recorded_scipy(jac):
-    got = [0, 0, 0, 0]
-    for c in systems.CASES:
-        rec = REF[c.id][f"lm/{jac}"]
-        r = run(c, "lm", jac == "analytic")
-        same = [
-            r.status == rec["status"],
-            r.nfev == rec["nfev"] - 2,
-            "njev" in rec and r.njev == rec["njev"],
-            dist(r.x.tolist(), rec["x"], c.x0()) <= 1e-6,
-        ]
-        for i, s in enumerate(same):
-            got[i] += s
-        assert r.converged == (1 <= r.status <= 4)
-        assert r.message == rec["message"] or not same[0], c.id
-    want = LM_AGREE[jac]
-    assert all(w is None or g >= w for g, w in zip(got, want)), got
-
-
+@pytest.mark.parametrize("method", ["hybr", "lm"])
 @pytest.mark.parametrize("jac", [True, False])
-def test_hybr_calls_scipys_points(jac):
-    # live: every point fun and jac are called at, in order, to the bit (hybrj / hybrd)
+def test_root_calls_scipys_points(method, jac):
+    # live: every point fun and jac are called at, in order, to the bit (hybrj / hybrd, lmder /
+    # lmdif)
     for c in systems.CASES:
         log = []
-        run(c, "hybr", jac, log)
-        _, want = scipy_calls(c, "hybr", jac)
+        run(c, method, jac, log)
+        _, want = scipy_calls(c, method, jac)
         assert log == want, c.id
 
 
@@ -170,6 +143,33 @@ def test_hybr_options_follow_scipy(jac, sd_options, scipy_options):
         rs, want = scipy_calls(c, "hybr", jac, **so)
         assert log == want, cid
         assert (r.status, r.message, r.nfev) == (rs.status, rs.message, rs.nfev - 2), cid
+
+
+@pytest.mark.parametrize(
+    "jac, options",
+    [
+        (True, {"factor": 1.0}),
+        (True, {"xtol": 1e-3, "ftol": 1e-3}),
+        (True, {"gtol": 1e-6}),
+        (True, {"diag": [2.0]}),
+        (False, {"eps": 1e-10}),
+        (False, {"factor": 0.5}),
+    ],
+)
+def test_lm_options_follow_scipy(jac, options):
+    # the options of lmder / lmdif: the same call points to the bit (scipy's names; max_nfev is
+    # its maxfev, tested above)
+    for cid in OPTION_CASES:
+        c = systems.BY_ID[cid]
+        o = dict(options)
+        if "diag" in o:
+            o["diag"] = o["diag"] * c.n
+        log = []
+        r = run(c, "lm", jac, log, **o)
+        rs, want = scipy_calls(c, "lm", jac, **o)
+        assert log == want, cid
+        assert (r.status, r.message, r.nfev) == (rs.status, rs.message, rs.nfev - 2), cid
+        assert r.x.tolist() == rs.x.tolist(), cid
 
 
 def test_jac_true_is_memoized_as_scipy():
@@ -355,12 +355,14 @@ def test_same_bits_with_1_and_10_threads():
     old = sd.get_num_threads()
     out = []
     try:
-        for t in (1, 10):
-            sd.set_num_threads(t)
-            out.append(run(c, "hybr", False))
+        for method in ("hybr", "lm"):
+            for t in (1, 10):
+                sd.set_num_threads(t)
+                out.append(run(c, method, False))
     finally:
         sd.set_num_threads(old)
-    assert out[0].x.tolist() == out[1].x.tolist() and out[0].nfev == out[1].nfev
+    for a, b in (out[0:2], out[2:4]):
+        assert a.x.tolist() == b.x.tolist() and a.nfev == b.nfev
 
 
 def test_errors():

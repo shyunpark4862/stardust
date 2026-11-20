@@ -105,7 +105,7 @@ struct Model {
     vec x;
     double f = 0;
     vec g;
-    std::shared_ptr<const vec> H;
+    std::shared_ptr<const HessMatrix> H;
     double gmag = 0;
     bool has_f = false, has_g = false, has_gmag = false, has_H = false;
     // IterativeSubproblem
@@ -154,7 +154,7 @@ struct Trust {
         }
         return m.gmag;
     }
-    const vec& hess(Model& m) {
+    const HessMatrix& hess(Model& m) {
         if (!m.has_H) {
             hs.update(m.x.data());
             m.H = hs.H;
@@ -257,7 +257,7 @@ struct Trust {
     // IterativeSubproblem.__init__: hess at the point (scipy's norm(hess, inf) checks it is
     // finite), its Gershgorin bounds and norms.
     void init_exact(Model& m) {
-        const vec& H = hess(m);
+        const HessMatrix& H = hess(m);
         if (!all_finite(H.data(), n * n)) throw Stop{trHessNotFinite};
         work.resize(n);
         double lb = 0, ub = 0;
@@ -279,7 +279,7 @@ struct Trust {
     }
 
     // numpy's H + lambda np.eye(n), row-major, into Hr.
-    void shifted(const vec& H, double lambda) {
+    void shifted(const HessMatrix& H, double lambda) {
         Hr.resize(n * n);
         for (std::size_t i = 0; i < n; ++i)
             for (std::size_t j = 0; j < n; ++j) Hr[i * n + j] = H[i * n + j] + lambda * (i == j ? 1.0 : 0.0);
@@ -288,7 +288,7 @@ struct Trust {
     // The upper Cholesky factor of H + lambda I in out (column-major as scipy's copy for potrf,
     // the lower triangle cleared as its wrapper does): potrf's info. potrf reads only the upper
     // triangle, so only that is copied (by tiles: the copy is a transpose).
-    lint factor(const vec& H, double lambda, vec& out) {
+    lint factor(const HessMatrix& H, double lambda, vec& out) {
         out.resize(n * n);
         constexpr std::size_t kTile = 64;
         for (std::size_t ib = 0; ib < n; ib += kTile)
@@ -388,7 +388,7 @@ struct Trust {
     // IterativeSubproblem.solve
     void solve_exact(Model& m, double tr, vec& p, bool& hits) {
         const double jm = jac_mag(m);
-        const vec& H = *m.H;
+        const HessMatrix& H = *m.H;
         // _initial_values
         double lambda_ub = pymax(0.0, jm / tr + pymin(pymin(-m.gersh_lb, m.hfro), m.hinf));
         double dmin = H[0];
@@ -602,7 +602,7 @@ nb::object trust_solve(
         const vec& g = T.jac(m);
         nb::object H = nb::none();
         if (hmode == kHessCallable) {
-            const vec& Hm = T.hess(m);
+            const HessMatrix& Hm = T.hess(m);
             H = out_matrix(Hm.data(), n, n);
         }
         const std::int64_t nhev = hs.calls + T.nhessp;  // O68, O69: the calls made

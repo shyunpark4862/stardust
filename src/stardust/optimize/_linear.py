@@ -33,7 +33,7 @@ _NNLS_MESSAGES = {
 
 
 def _system(A, b, func):
-    """A as a float64 sd.ndarray (m, n) and b (m,), both finite and not empty."""
+    """A as a float64 sd.ndarray (m, n) and b (m,), not empty."""
     a = _as_array(A, func, "A") if not _is_scalar(A) else None
     if a is None or a.ndim != 2:
         shape = "a scalar" if a is None else f"shape {tuple(a.shape)}"
@@ -48,9 +48,7 @@ def _system(A, b, func):
         raise ValueError(f"{func}(): 'b' must be 1-dimensional, not shape {tuple(bb.shape)}")
     if bb.shape[0] != m:
         raise ValueError(f"{func}(): 'b' must have {m} values (one per row of 'A'), not {bb.shape[0]}")
-    for name, v in (("A", a), ("b", bb)):
-        if not bool(_sd.all(_sd.isfinite(v))):
-            raise ValueError(f"{func}(): {name!r} must be finite")
+    # (the kernel checks that A and b are finite as it reads them)
     return a, bb, m, n
 
 

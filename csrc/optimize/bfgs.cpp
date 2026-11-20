@@ -4,14 +4,18 @@
 // The inverse Hessian approximation H starts at the identity (or hess_inv0); each iteration
 // searches along p = -H g with scipy's _line_search_wolfe12 (wolfe.hpp: line_search_wolfe1 with
 // steps in [1e-100, 1e100], then line_search_wolfe2 with amax 1e100); no step from either stops
-// with status 2. Then H = (I - rho s y^T) H (I - rho y s^T) + rho s s^T as scipy forms it: the two
-// matrix products by BLAS (dgemm; the GIL is let go for them by the 10 us rule). It stops when the
-// gradient's norm ('norm', the largest |g_i| by default) is at most gtol, at max_iter iterations,
-// when the step is below xrtol (|x| + xrtol), or when f is not finite.
+// with status 2. Then H = (I - rho s y^T) H (I - rho y s^T) + rho s s^T, BFGS's update: for n >= 2
+// in the O(n^2) order (O99): with v = H y (H is symmetric), H - rho (s v^T + v s^T) + (rho^2 y^T v
+// + rho) s s^T, each entry written so that H stays symmetric to the bit. scipy forms the same
+// matrix by two O(n^3) products, so the steps differ from scipy's by rounding (the one exception
+// to O9 in minimize). For n = 1 it is scipy's product form (O102): the expanded form computes
+// H - 2H + H + s/y there and loses the curvature to cancellation when s/y << H. It stops when the gradient's norm ('norm', the largest |g_i| by default) is at most
+// gtol, at max_iter iterations, when the step is below xrtol (|x| + xrtol), or when f is not
+// finite.
 //
-// The arithmetic is scipy's (numpy's, without fused multiply-adds): the dot products and the
-// matrix-vector product are numpy's BLAS calls (Accelerate's cblas_ddot, cblas_dgemv,
-// cblas_dgemm, which give numpy's bits), the 2-norms numpy's pairwise sums.
+// The rest of the arithmetic is scipy's (numpy's, without fused multiply-adds): the dot products
+// and the matrix-vector product are numpy's BLAS calls (Accelerate's cblas_ddot, cblas_dgemv), the
+// 2-norms numpy's pairwise sums.
 #include "optimize/minimize.hpp"
 
 #include "optimize/objective.hpp"
@@ -82,13 +86,13 @@ nb::object bfgs_solve(
         B.gfk = obj.gradient(x0.data());
         std::int64_t k = 0;
         const auto ln = static_cast<lint>(n);
-        vec Hk(n * n, 0.0), A1(n * n), A2(n * n), T(n * n);
+        vec Hk(n * n, 0.0), Hy(n);
         if (H0.empty()) {
             for (std::size_t i = 0; i < n; ++i) Hk[i * n + i] = 1.0;
         } else {
             Hk = H0;
         }
-        const bool big = 2.0 * double(n) * double(n) * double(n) > 2e5;  // the 10 us rule
+        const bool big = 8.0 * double(n) * double(n) > 2e5;  // the 10 us rule (the update's flops)
         double old_old_fval = old_fval + std::sqrt(dot(B.gfk, B.gfk)) / 2;
         B.xk = x0;
         B.pk.resize(n);
@@ -134,22 +138,32 @@ nb::object bfgs_solve(
             {
                 std::optional<nb::gil_scoped_release> rel;
                 if (big) rel.emplace();
-                for (std::size_t i = 0; i < n; ++i)
-                    for (std::size_t j = 0; j < n; ++j) {
-                        const double I = i == j ? 1.0 : 0.0;
-                        A1[i * n + j] = I - sk[i] * yk[j] * rhok;
-                        A2[i * n + j] = I - yk[i] * sk[j] * rhok;
+                if (n == 1) {  // scipy's (1 - rho s y) H (1 - rho y s) + rho s s, its products by dgemm
+                    const double a1 = 1.0 - sk[0] * yk[0] * rhok, a2 = 1.0 - yk[0] * sk[0] * rhok;
+                    double t = 0;
+                    cblas_dgemm(
+                        CblasRowMajor, CblasNoTrans, CblasNoTrans, 1, 1, 1, 1.0, Hk.data(), 1, &a2, 1, 0.0, &t, 1
+                    );
+                    cblas_dgemm(
+                        CblasRowMajor, CblasNoTrans, CblasNoTrans, 1, 1, 1, 1.0, &a1, 1, &t, 1, 0.0, Hk.data(), 1
+                    );
+                    Hk[0] = Hk[0] + rhok * sk[0] * sk[0];
+                } else {
+                    cblas_dgemv(
+                        CblasRowMajor, CblasNoTrans, ln, ln, 1.0, Hk.data(), ln, yk.data(), 1, 0.0, Hy.data(), 1
+                    );
+                    double yHy = 0;
+                    for (std::size_t i = 0; i < n; ++i) yHy += yk[i] * Hy[i];
+                    const double c = rhok * rhok * yHy + rhok;
+                    // entry (i, j) and (j, i) are the same expression with its symmetric terms
+                    // swapped (s_i v_j + v_i s_j, s_i s_j), so a symmetric H stays symmetric
+                    for (std::size_t i = 0; i < n; ++i) {
+                        const double si = sk[i], vi = Hy[i];
+                        double* row = Hk.data() + i * n;
+                        for (std::size_t j = 0; j < n; ++j)
+                            row[j] = row[j] - rhok * (si * Hy[j] + vi * sk[j]) + c * (si * sk[j]);
                     }
-                cblas_dgemm(
-                    CblasRowMajor, CblasNoTrans, CblasNoTrans, ln, ln, ln, 1.0, Hk.data(), ln, A2.data(), ln, 0.0,
-                    T.data(), ln
-                );
-                cblas_dgemm(
-                    CblasRowMajor, CblasNoTrans, CblasNoTrans, ln, ln, ln, 1.0, A1.data(), ln, T.data(), ln, 0.0,
-                    Hk.data(), ln
-                );
-                for (std::size_t i = 0; i < n; ++i)
-                    for (std::size_t j = 0; j < n; ++j) Hk[i * n + j] = Hk[i * n + j] + rhok * sk[i] * sk[j];
+                }
             }
         }
         const double fval = old_fval;

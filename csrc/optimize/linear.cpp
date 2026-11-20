@@ -120,11 +120,11 @@ struct Problem {
     vec b;
     Scratch sc;
 
-    // r = A x - b, g = A^T r, 0.5 r.r
-    double residual(const vec& x, vec& r, vec& g) const {
+    // r = A x - b, g = A^T r (when g is given), 0.5 r.r
+    double residual(const vec& x, vec& r, vec* g) const {
         np_matvec(A.data(), m, n, x.data(), r.data());
         for (lint i = 0; i < m; ++i) r[i] = r[i] - b[i];
-        np_rmatvec(A.data(), m, n, r.data(), g.data());
+        if (g) np_rmatvec(A.data(), m, n, r.data(), g->data());
         return 0.5 * npdot(r.data(), r.data(), m);
     }
 
@@ -455,7 +455,7 @@ int trf_linear(
 
     r.assign(static_cast<std::size_t>(m), 0.0);
     g.assign(un, 0.0);
-    cost = P.residual(x, r, g);
+    cost = P.residual(x, r, &g);
     if (max_iter < 0) max_iter = 100;
     int status = -2;  // None
     vec v(un), dv(un), d(un), g_h(un), diag_h(un), diag_root_h(un), QTr(un, 0.0), Rd(un * un), vv(un), xs(un), p_h(un),
@@ -585,7 +585,7 @@ int bvls(
     }
     r.assign(static_cast<std::size_t>(m), 0.0);
     g.assign(un, 0.0);
-    cost = P.residual(x, r, g);
+    cost = P.residual(x, r, &g);
     vec xa(un), bf(static_cast<std::size_t>(m)), z(un), Af;
     // b - A.dot(x * active_set)
     auto b_free = [&]() {
@@ -889,6 +889,10 @@ void load(Problem& P, nb::handle A, nb::handle b, const char* fn) {
         for (lint j = 0; j < P.n; ++j) std::memcpy(&P.A[i * P.n + j], ia.data() + i * s0 + j * s1, sizeof(double));
         std::memcpy(&P.b[i], ib.data() + i * sb, sizeof(double));
     }
+    for (double v : P.A)
+        if (!std::isfinite(v)) throw nb::value_error("'A' must be finite");
+    for (double v : P.b)
+        if (!std::isfinite(v)) throw nb::value_error("'b' must be finite");
 }
 
 // lsq_linear_solve(func, A, b, lb, ub, method, tol, max_iter)
@@ -924,7 +928,7 @@ nb::object lsq_linear_solve(
                 x = x_lsq;
                 r.assign(static_cast<std::size_t>(m), 0.0);
                 g.assign(static_cast<std::size_t>(n), 0.0);
-                cost = P.residual(x, r, g);
+                cost = P.residual(x, r, &g);
                 for (lint j = 0; j < n; ++j) g[j] = std::abs(g[j]);
                 optimality = npmax(g.data(), n);
                 active.assign(static_cast<std::size_t>(n), 0);
@@ -959,14 +963,14 @@ nb::object nnls_solve(const std::string& func, nb::handle A, nb::handle b, std::
         std::memcpy(W.b(), P.b.data(), static_cast<std::size_t>(m) * sizeof(double));
         lint iters = 0;
         int info;
-        vec x(static_cast<std::size_t>(n)), r(static_cast<std::size_t>(m)), g(static_cast<std::size_t>(n));
+        vec x(static_cast<std::size_t>(n)), r(static_cast<std::size_t>(m));
         double cost;
         {
             std::optional<nb::gil_scoped_release> rel;
             if (2.0 * double(m) * double(n) * double(n) > 2e5) rel.emplace();
             info = nnls_kernel(W, max_iter, iters);
             std::memcpy(x.data(), W.x(), static_cast<std::size_t>(n) * sizeof(double));
-            cost = P.residual(x, r, g);
+            cost = P.residual(x, r, nullptr);
         }
         return nb::make_tuple(
             vector_out(x.data(), n), vector_out(r.data(), m), cost, info, static_cast<std::int64_t>(iters)

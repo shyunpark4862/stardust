@@ -12,11 +12,13 @@
 //
 // scipy 1.15 and later run a C translation of MINPACK (its _minpack module), built with clang's
 // default contraction (-ffp-contract=on: a*b + c in one expression is one FMA). Read from that
-// machine code: enorm's constants are rdwarf = 2^-64.5 and rgiant = 2^63.5 (rounded); squares
-// written t**2 in MINPACK are rounded on their own (sq below); every running sum is fused except
-// qrfac's inner product, which clang vectorizes (dot8). This file asks for the same contraction
-// (the pragma below), writes the sums with std::fma so that this compiler's vectorizer cannot
-// split them, and keeps MINPACK's expressions, 0-based. Its call points are scipy's to the bit.
+// machine code (minpack.hpp): enorm's constants are rdwarf = 2^-64.5 and rgiant = 2^63.5
+// (rounded); squares written t**2 in MINPACK are rounded on their own (sq); every running sum is
+// fused except qrfac's inner product, which clang vectorizes (dot8). This file asks for the same
+// contraction (the pragma below), writes the sums with std::fma so that this compiler's
+// vectorizer cannot split them, and keeps MINPACK's expressions, 0-based. Its call points are
+// scipy's to the bit. qrfac and qform reflect eight columns at a time (minpack.hpp's
+// reflect_columns: each column's sum in its own order, so the same bits).
 // Differences from scipy, the decisions of docs/design/optimize.md §1.1:
 //   - x0's value comes from the caller (Python's shape check; nfev counts it once). scipy calls
 //     fun twice more at x0 (its shape check and its wrapper), and its nfev counts both.
@@ -28,6 +30,8 @@
 //   - jac=True: fun returns (F, J), memoized by x as scipy's MemoizeJac.
 #include "optimize/root.hpp"
 
+#include "optimize/minpack.hpp"
+
 #include "array/ndarray.hpp"
 #include "bind/errors.hpp"
 #include "bind/pyutil.hpp"
@@ -37,7 +41,6 @@
 #include <nanobind/stl/vector.h>
 
 #include <algorithm>
-#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -61,48 +64,9 @@ using lint = std::int64_t;
 
 constexpr double kEps = std::numeric_limits<double>::epsilon();
 constexpr double kGiant = std::numeric_limits<double>::max();
-// scipy's enorm constants: 2^-64.5 and 2^63.5, as double
-const double kRdwarf = std::bit_cast<double>(std::uint64_t{0x3be6a09e667f3bccULL});
-const double kRgiant = std::bit_cast<double>(std::uint64_t{0x43e6a09e667f3bcdULL});
 
-// t^2 rounded on its own (MINPACK's t**2; scipy's pow(t, 2)), never fused into a sum
-inline double sq(double t) { return t * t; }
-
-// MINPACK's enorm: the Euclidean norm with separate sums for the small, the intermediate and the
-// large components (no overflow or destructive underflow).
-double enorm(lint n, const double* x) {
-    double s1 = 0, s2 = 0, s3 = 0, x1max = 0, x3max = 0;
-    const double agiant = kRgiant / static_cast<double>(n);
-    for (lint i = 0; i < n; ++i) {
-        const double xabs = std::abs(x[i]);
-        // (the squares of the ratios are rounded before they are used: scipy's pow(t, 2))
-        if (xabs > kRdwarf && xabs < agiant) {
-            s2 = std::fma(xabs, xabs, s2);
-        } else if (xabs > kRdwarf) {
-            if (xabs > x1max) {
-                const double t2 = sq(x1max / xabs);
-                s1 = 1.0 + s1 * t2;
-                x1max = xabs;
-            } else {
-                s1 = s1 + sq(xabs / x1max);
-            }
-        } else {
-            if (xabs > x3max) {
-                const double t2 = sq(x3max / xabs);
-                s3 = 1.0 + s3 * t2;
-                x3max = xabs;
-            } else if (xabs != 0) {
-                s3 = s3 + sq(xabs / x3max);
-            }
-        }
-    }
-    if (s1 != 0) return x1max * std::sqrt(s1 + (s2 / x1max) / x1max);
-    if (s2 != 0) {
-        if (s2 >= x3max) return std::sqrt(s2 * (1.0 + (x3max / s2) * (x3max * s3)));
-        return std::sqrt(x3max * ((s2 / x3max) + (x3max * s3)));
-    }
-    return x3max * std::sqrt(s3);
-}
+using minpack::enorm;
+using minpack::sq;
 
 // ---- the system and its Jacobian (Python callbacks)
 
@@ -270,20 +234,6 @@ struct System {
     }
 };
 
-// The inner product of qrfac as scipy's build computes it: clang vectorizes that loop, so the
-// products of each full block of 8 are rounded and added in order; the rest are fused.
-double dot8(lint len, const double* a, const double* b) {
-    double sum = 0;
-    lint i = 0;
-    for (; i + 8 <= len; i += 8)
-        for (lint k = i; k < i + 8; ++k) {
-            const double p = a[k] * b[k];
-            sum = sum + p;
-        }
-    for (; i < len; ++i) sum = std::fma(a[i], b[i], sum);
-    return sum;
-}
-
 // ---- MINPACK (Moré, Garbow, Hillstrom 1980), 0-based; n x n matrices column-major; the upper
 // triangle R packed by rows (lr = n (n + 1) / 2)
 
@@ -301,10 +251,8 @@ void qrfac(lint n, double* a, double* rdiag, double* acnorm) {
             if (A(j, j) < 0) ajnorm = -ajnorm;
             for (lint i = j; i < n; ++i) A(i, j) = A(i, j) / ajnorm;
             A(j, j) = A(j, j) + 1.0;
-            for (lint k = j + 1; k < n; ++k) {
-                const double temp = dot8(n - j, &A(j, j), &A(j, k)) / A(j, j);
-                for (lint i = j; i < n; ++i) A(i, k) = A(i, k) - temp * A(i, j);
-            }
+            // each column k > j: temp = dot8(A(j:, j), A(j:, k)) / A(j, j), A(j:, k) -= temp A(j:, j)
+            minpack::reflect_columns(n - j, (n - j) / 8 * 8, &A(j, j), &A(j, 0), n, j + 1, n);
         }
         rdiag[j] = -ajnorm;
     }
@@ -323,12 +271,8 @@ void qform(lint n, double* q, double* wa) {
         }
         Q(k, k) = 1;
         if (wa[k] == 0) continue;
-        for (lint j = k; j < n; ++j) {
-            double sum = 0;
-            for (lint i = k; i < n; ++i) sum = std::fma(Q(i, j), wa[i], sum);
-            const double temp = sum / wa[k];
-            for (lint i = k; i < n; ++i) Q(i, j) = Q(i, j) - temp * wa[i];
-        }
+        // each column j >= k: temp = (the fused sum of Q(k:, j) wa(k:)) / wa(k), Q(k:, j) -= temp wa(k:)
+        minpack::reflect_columns(n - k, 0, &wa[k], &Q(k, 0), n, k, n);
     }
 }
 

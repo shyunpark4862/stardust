@@ -20,6 +20,7 @@
 #include "array/ndarray.hpp"
 #include "bind/errors.hpp"
 #include "bind/pyutil.hpp"
+#include "parallel/pool.hpp"
 
 #include <nanobind/stl/string.h>
 
@@ -93,6 +94,59 @@ nb::object out(const ivec& v) {
     return wrap(std::move(a));
 }
 
+// From this many elements in progress the passes over them (the next points, the arguments'
+// gathering, the updates) split over the threads, in tasks of kBatchTask elements: an element's
+// work is a few ns. Each element's arithmetic is the same on any thread, and the elements that go
+// on keep their order, so the results are the same for any thread count.
+constexpr std::size_t kBatchParallel = std::size_t{1} << 15;
+constexpr std::size_t kBatchTask = std::size_t{1} << 13;
+
+// fn(r0, r1) over [0, k) in pieces (no Python objects inside)
+template <class Fn>
+void for_elements(std::size_t k, Fn&& fn) {
+    if (k >= kBatchParallel && parallel::available()) {
+        const auto tasks = static_cast<std::int64_t>((k + kBatchTask - 1) / kBatchTask);
+        parallel::parallel_for(tasks, [&](std::int64_t t) {
+            const std::size_t r0 = static_cast<std::size_t>(t) * kBatchTask;
+            fn(r0, std::min(k, r0 + kBatchTask));
+        });
+    } else {
+        parallel::Unlocked u(k >= kBatchParallel);
+        fn(std::size_t{0}, k);
+    }
+}
+
+// dst[q] = src[e(q)] for q < k (items of isz bytes; src's stride st), e(q) = idx[q] mod n (idx[q]
+// < 2 n; q when idx is null). The values are copied as they are, so any split gives the same.
+void gather(
+    std::byte* dst,
+    const std::byte* src,
+    std::int64_t st,
+    std::int64_t isz,
+    const std::int64_t* idx,
+    std::int64_t n,
+    std::int64_t k
+) {
+    for_elements(static_cast<std::size_t>(k), [=](std::size_t q0, std::size_t q1) {
+        const auto b = static_cast<std::int64_t>(q0), c = static_cast<std::int64_t>(q1);
+        auto elem = [=](std::int64_t q) {
+            const std::int64_t e = idx ? idx[q] : q;
+            return e >= n ? e - n : e;
+        };
+        if (isz == 8) {
+            auto* out = reinterpret_cast<std::uint64_t*>(dst);
+            for (std::int64_t q = b; q < c; ++q) {
+                std::uint64_t v;
+                std::memcpy(&v, src + elem(q) * st, 8);
+                out[q] = v;
+            }
+        } else {
+            for (std::int64_t q = b; q < c; ++q)
+                std::memcpy(dst + q * isz, src + elem(q) * st, static_cast<std::size_t>(isz));
+        }
+    });
+}
+
 // One call of the user's function on k points. put(r, x) writes the r-th point (into a new
 // float64 sd.ndarray (k,) and a copy kept here: the function may change its argument), run(idx)
 // calls f(x, *args) with each of the user's args (1-D, one value per element, O39) gathered at
@@ -132,11 +186,8 @@ public:
             for (std::size_t j = 0; j < args_.size(); ++j) {
                 const NDArray& src = *args_[j];
                 NDArray a = new_array(src.dtype, shape);
-                const std::int64_t isz = src.itemsize(), st = src.strides[0];
-                for (std::int64_t q = 0; q < k_; ++q) {
-                    const std::int64_t e = idx ? idx[q] % n_ : q;
-                    std::memcpy(a.data + q * isz, src.data + e * st, static_cast<std::size_t>(isz));
-                }
+                // the element of q: idx[q] < 2 n (bracket_root's sides), so mod n is one subtraction
+                gather(a.data, src.data, src.strides[0], src.itemsize(), idx, n_, k_);
                 PyTuple_SET_ITEM(call.ptr(), static_cast<Py_ssize_t>(j + 1), wrap(std::move(a)).release().ptr());
             }
             PyObject* out = PyObject_Call(f_.ptr(), call.ptr(), nullptr);
@@ -207,6 +258,27 @@ struct Progress {
         active.clear();
     }
 };
+
+// The update of the elements in progress: goes_on(r) for the r-th of them (it updates the element
+// and records it when it stops), then the ones that go on stay in progress, in their order.
+template <class Fn>
+void advance(Progress& P, std::vector<std::uint32_t>& on, Fn&& goes_on) {
+    const std::size_t k = P.active.size();
+    std::size_t w = 0;
+    if (k >= kBatchParallel && parallel::available()) {
+        on.resize(k);
+        for_elements(k, [&](std::size_t r0, std::size_t r1) {
+            for (std::size_t r = r0; r < r1; ++r) on[r] = goes_on(r);
+        });
+        for (std::size_t r = 0; r < k; ++r)
+            if (on[r]) P.active[w++] = P.active[r];
+    } else {
+        parallel::Unlocked u(k >= kBatchParallel);
+        for (std::size_t r = 0; r < k; ++r)
+            if (goes_on(r)) P.active[w++] = P.active[r];
+    }
+    P.active.resize(w);
+}
 
 // ---- find_root: scipy's _chandrupatla
 
@@ -284,28 +356,28 @@ nb::object find_root_solve(
             return false;
         };
 
-        {  // the first test (before any iteration) has no step after it: t stays 0.5
-            std::size_t w = 0;
-            for (std::int64_t ii : P.active) {
-                const auto i = static_cast<std::size_t>(ii);
-                if (step(i)) P.stopped(i, nit, nfev);
-                else P.active[w++] = ii;
-                S[i].t = 0.5;
-            }
-            P.active.resize(w);
-        }
+        std::vector<std::uint32_t> on;
+        // the first test (before any iteration) has no step after it: t stays 0.5
+        advance(P, on, [&](std::size_t r) {
+            const auto i = static_cast<std::size_t>(P.active[r]);
+            const bool s = step(i);
+            if (s) P.stopped(i, nit, nfev);
+            S[i].t = 0.5;
+            return !s;
+        });
         while (nit < max_iter && !P.active.empty()) {
             const std::size_t k = P.active.size();
             F.start(k);
-            for (std::size_t r = 0; r < k; ++r) {
-                const E& e = S[static_cast<std::size_t>(P.active[r])];
-                F.put(r, e.x1 + e.t * (e.x2 - e.x1));
-            }
+            for_elements(k, [&](std::size_t r0, std::size_t r1) {
+                for (std::size_t r = r0; r < r1; ++r) {
+                    const E& e = S[static_cast<std::size_t>(P.active[r])];
+                    F.put(r, e.x1 + e.t * (e.x2 - e.x1));
+                }
+            });
             F.run(P.active.data());
             nfev += 1;
             nit += 1;
-            std::size_t w = 0;
-            for (std::size_t r = 0; r < k; ++r) {
+            advance(P, on, [&](std::size_t r) {
                 const auto i = static_cast<std::size_t>(P.active[r]);
                 E& e = S[i];
                 const double fx = F.value(r);
@@ -320,10 +392,10 @@ nb::object find_root_solve(
                 }
                 e.x1 = F.x(r);
                 e.f1 = fx;
-                if (step(i)) P.stopped(i, nit, nfev);
-                else P.active[w++] = P.active[r];
-            }
-            P.active.resize(w);
+                const bool s = step(i);
+                if (s) P.stopped(i, nit, nfev);
+                return !s;
+            });
         }
         P.finish(nit, nfev);
         vec xmin(n), fmin(n), bl(n), br(n), fl(n), fr(n);
@@ -423,41 +495,41 @@ nb::object find_minimum_solve(
             return s;
         };
 
-        {
-            std::size_t w = 0;
-            for (std::int64_t ii : P.active) {
-                const auto i = static_cast<std::size_t>(ii);
-                if (stops(i)) P.stopped(i, nit, nfev);
-                else P.active[w++] = ii;
-            }
-            P.active.resize(w);
-        }
+        std::vector<std::uint32_t> on;
+        auto test = [&](std::size_t r) {
+            const auto i = static_cast<std::size_t>(P.active[r]);
+            const bool s = stops(i);
+            if (s) P.stopped(i, nit, nfev);
+            return !s;
+        };
+        advance(P, on, test);
         while (nit < max_iter && !P.active.empty()) {
             const std::size_t k = P.active.size();
             F.start(k);
-            for (std::size_t r = 0; r < k; ++r) {
-                E& e = S[static_cast<std::size_t>(P.active[r])];
-                const double x21 = e.x2 - e.x1;
-                const double x32 = e.x3 - e.x2;
-                const double A = x21 * (e.f3 - e.f2);
-                const double B = x32 * (e.f1 - e.f2);
-                const double C = A / (A + B);
-                const double q1 = 0.5 * (C * (e.x1 - e.x3) + e.x2 + e.x3);
-                double x;
-                if (std::abs(q1 - e.q0) < 0.5 * std::abs(x21)) {  // the parabola's minimum
-                    x = q1;
-                    if (std::abs(q1 - e.x2) <= e.xtol) x = e.x2 + npsign(x32) * e.xtol;
-                } else {  // golden section
-                    x = e.x2 + (2 - phi) * x32;
+            for_elements(k, [&](std::size_t r0, std::size_t r1) {
+                for (std::size_t r = r0; r < r1; ++r) {
+                    E& e = S[static_cast<std::size_t>(P.active[r])];
+                    const double x21 = e.x2 - e.x1;
+                    const double x32 = e.x3 - e.x2;
+                    const double A = x21 * (e.f3 - e.f2);
+                    const double B = x32 * (e.f1 - e.f2);
+                    const double C = A / (A + B);
+                    const double q1 = 0.5 * (C * (e.x1 - e.x3) + e.x2 + e.x3);
+                    double x;
+                    if (std::abs(q1 - e.q0) < 0.5 * std::abs(x21)) {  // the parabola's minimum
+                        x = q1;
+                        if (std::abs(q1 - e.x2) <= e.xtol) x = e.x2 + npsign(x32) * e.xtol;
+                    } else {  // golden section
+                        x = e.x2 + (2 - phi) * x32;
+                    }
+                    e.q0 = q1;
+                    F.put(r, x);
                 }
-                e.q0 = q1;
-                F.put(r, x);
-            }
+            });
             F.run(P.active.data());
             nfev += 1;
             nit += 1;
-            std::size_t w = 0;
-            for (std::size_t r = 0; r < k; ++r) {
+            advance(P, on, [&](std::size_t r) {
                 const auto i = static_cast<std::size_t>(P.active[r]);
                 E& e = S[i];
                 const double xi = F.x(r), fi = F.value(r);
@@ -482,10 +554,8 @@ nb::object find_minimum_solve(
                         e.f2 = fi;
                     }
                 }
-                if (stops(i)) P.stopped(i, nit, nfev);
-                else P.active[w++] = P.active[r];
-            }
-            P.active.resize(w);
+                return test(r);
+            });
         }
         P.finish(nit, nfev);
         vec x(n), fx(n), bl(n), br(n), fl(n), fr(n);
@@ -594,16 +664,18 @@ nb::object bracket_root_solve(
         while (nit < max_iter && !P.active.empty()) {
             const std::size_t k = P.active.size();
             F.start(k);
-            for (std::size_t r = 0; r < k; ++r) {
-                E& e = S[static_cast<std::size_t>(P.active[r])];
-                if (std::isinf(e.limit)) {
-                    e.d *= e.factor;
-                    F.put(r, e.x0 + e.d);
-                } else {
-                    e.d /= e.factor;
-                    F.put(r, e.limit - e.d);
+            for_elements(k, [&](std::size_t r0, std::size_t r1) {
+                for (std::size_t r = r0; r < r1; ++r) {
+                    E& e = S[static_cast<std::size_t>(P.active[r])];
+                    if (std::isinf(e.limit)) {
+                        e.d *= e.factor;
+                        F.put(r, e.x0 + e.d);
+                    } else {
+                        e.d /= e.factor;
+                        F.put(r, e.limit - e.d);
+                    }
                 }
-            }
+            });
             F.run(P.active.data());
             nfev += 1;
             nit += 1;
@@ -727,35 +799,35 @@ nb::object bracket_minimum_solve(
             return s;
         };
 
-        {
-            std::size_t w = 0;
-            for (std::int64_t ii : P.active) {
-                const auto i = static_cast<std::size_t>(ii);
-                if (stops(i)) P.stopped(i, nit, nfev);
-                else P.active[w++] = ii;
-            }
-            P.active.resize(w);
-        }
+        std::vector<std::uint32_t> on;
+        auto test = [&](std::size_t r) {
+            const auto i = static_cast<std::size_t>(P.active[r]);
+            const bool s = stops(i);
+            if (s) P.stopped(i, nit, nfev);
+            return !s;
+        };
+        advance(P, on, test);
         while (nit < max_iter && !P.active.empty()) {
             const std::size_t k = P.active.size();
             F.start(k);
-            for (std::size_t r = 0; r < k; ++r) {
-                E& e = S[static_cast<std::size_t>(P.active[r])];
-                e.step *= e.factor;
-                double x;
-                if (e.limited) {
-                    x = e.limit - e.step;
-                    if (x == e.xr) x = e.limit;
-                } else {
-                    x = e.xr0 + e.step;
+            for_elements(k, [&](std::size_t r0, std::size_t r1) {
+                for (std::size_t r = r0; r < r1; ++r) {
+                    E& e = S[static_cast<std::size_t>(P.active[r])];
+                    e.step *= e.factor;
+                    double x;
+                    if (e.limited) {
+                        x = e.limit - e.step;
+                        if (x == e.xr) x = e.limit;
+                    } else {
+                        x = e.xr0 + e.step;
+                    }
+                    F.put(r, x);
                 }
-                F.put(r, x);
-            }
+            });
             F.run(P.active.data());
             nfev += 1;
             nit += 1;
-            std::size_t w = 0;
-            for (std::size_t r = 0; r < k; ++r) {
+            advance(P, on, [&](std::size_t r) {
                 const auto i = static_cast<std::size_t>(P.active[r]);
                 E& e = S[i];
                 e.xl = e.xm;
@@ -764,10 +836,8 @@ nb::object bracket_minimum_solve(
                 e.fl = e.fm;
                 e.fm = e.fr;
                 e.fr = F.value(r);
-                if (stops(i)) P.stopped(i, nit, nfev);
-                else P.active[w++] = P.active[r];
-            }
-            P.active.resize(w);
+                return test(r);
+            });
         }
         P.finish(nit, nfev);
         vec bl(n), bm(n), br(n), gl(n), gm(n), gr(n);

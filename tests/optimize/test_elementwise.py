@@ -253,6 +253,49 @@ def test_batch_equals_each_element_alone():
         assert all(same(as_np(p)[a, j], q) for p, q in zip(b.bracket, e.bracket))
 
 
+def test_large_batches_split_over_threads_keep_every_bit():
+    # from 2^15 elements in progress the passes over them split over the threads: every field is
+    # the same with 1 and 10 threads, and the same as for each block of the batch on its own
+    n = 150_000
+    c = np.linspace(1.0, 10.0, n)
+    sc = sd.asarray(c)
+
+    def f(x, c):
+        return x * x * x - 2.0 * x - c
+
+    def g(x, c):
+        return (x - c) * (x - c) + 0.01 * c * x * x * x * x
+
+    runs = {
+        "find_root": lambda c: sd.optimize.find_root(f, (0.0, 3.0), args=(c,)),
+        "bracket_root": lambda c: sd.optimize.bracket_root(f, 0.0, args=(c,)),
+        "find_minimum": lambda c: sd.optimize.find_minimum(g, (-1.0, 0.5, 11.0), args=(c,)),
+        "bracket_minimum": lambda c: sd.optimize.bracket_minimum(g, 0.0, args=(c,)),
+    }
+    fields = ("x", "fun", "bracket", "f_bracket", "converged", "status", "n_iter", "nfev")
+
+    def flat(r):
+        out = []
+        for k in fields:
+            if hasattr(r, k):
+                v = getattr(r, k)
+                out += [as_np(t).tolist() for t in v] if isinstance(v, tuple) else [as_np(v).tolist()]
+        return out
+
+    old = sd.get_num_threads()
+    try:
+        for name, run in runs.items():
+            got = []
+            for t in (1, 10):
+                sd.set_num_threads(t)
+                got.append(flat(run(sc)))
+            assert got[0] == got[1], name
+            parts = [flat(run(sd.asarray(c[i : i + 30_000]))) for i in range(0, n, 30_000)]
+            assert got[0] == [sum((p[k] for p in parts), []) for k in range(len(got[0]))], name
+    finally:
+        sd.set_num_threads(old)
+
+
 def test_roots_agree_with_root_scalar():
     # the same roots as root_scalar's brentq to the tolerances, element by element
     c0 = np.linspace(-20, 20, 101)

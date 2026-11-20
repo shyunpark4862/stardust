@@ -15,23 +15,27 @@
 // Difference Jacobians (whose calls nfev counts): MINPACK's fdjac2 (nls), or scipy's
 // approx_derivative '2-point' and '3-point' with its steps and their adjustment to the bounds
 // (least_squares; diff.hpp).
-// The m x p work per Jacobian is one Householder QR (LAPACK geqrf, then ormqr for Q0^T r):
-// J = Q0 R0. Everything after it is p-sized: lmder's pivoted QR of J is the pivoted QR of R0
-// (Q0 keeps the columns' norms and inner products), and TRF's SVD of [J d; D] is the SVD of
-// [R0 d; D] (with the first p entries of U^T [r; 0] from Q0^T r). With fewer residuals than
-// variables (trf only) J gets zero rows up to p: the same problem.
+// lmder comes in two builds of one source (O95, below): scipy's (least_squares and root), which
+// factors J (m x n) with MINPACK's own pivoted QR as scipy does, and nls's, for which the m x p
+// work per Jacobian is one Householder QR (LAPACK geqrf, then ormqr for Q0^T r): J = Q0 R0, and
+// everything after it is p-sized (lmder's pivoted QR of J is the pivoted QR of R0: Q0 keeps the
+// columns' norms and inner products). TRF's SVD of [J d; D] is the SVD of [R0 d; D] (with the
+// first p entries of U^T [r; 0] from Q0^T r). With fewer residuals than variables (trf only) J
+// gets zero rows up to p: the same problem.
 // A trial point whose residuals are not all finite is rejected and the trust region shrunk
 // (regression G74): lm takes its norm as +inf (lmder's own rule then shrinks the bound
 // tenfold), trf sets Delta to a quarter of the step (scipy's rule).
 #include "optimize/lsq.hpp"
 
 #include "optimize/diff.hpp"
+#include "optimize/minpack.hpp"
 
 #include "array/ndarray.hpp"
 #include "bind/errors.hpp"
 #include "bind/pyutil.hpp"
 #include "linalg/input.hpp"
 #include "linalg/lapack.hpp"
+#include "parallel/pool.hpp"
 
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
@@ -175,14 +179,15 @@ struct Model {
             Input in(o, fn, "jac");  // float64 (m, p)
             const std::byte* d = in.data();
             const std::int64_t s0 = in.stride(0), s1 = in.stride(1);
+            // column-major from any strides, eight rows at a time (a C-ordered J is read along
+            // its rows), then the finiteness check along the copy
+            for (lint i0 = 0; i0 < m; i0 += 8) {
+                const lint i1 = std::min<lint>(m, i0 + 8);
+                for (lint j = 0; j < p; ++j)
+                    for (lint i = i0; i < i1; ++i) std::memcpy(&J[i + j * m], d + i * s0 + j * s1, sizeof(double));
+            }
             bool ok = true;
-            for (lint j = 0; j < p; ++j)
-                for (lint i = 0; i < m; ++i) {
-                    double v;
-                    std::memcpy(&v, d + i * s0 + j * s1, sizeof v);
-                    J[i + j * m] = v;
-                    ok = ok && std::isfinite(v);
-                }
+            for (lint t = 0; t < m * p; ++t) ok = ok && std::isfinite(J[t]);
             return ok;
         }
         if (diff == kTwoPoint) return two_point(x, r, J, wa);
@@ -318,14 +323,109 @@ struct Final {
     }
 };
 
-// ---- MINPACK (Moré, Garbow, Hillstrom 1980), 0-based, n x n column-major matrices
+// ---- MINPACK (Moré, Garbow, Hillstrom 1980), 0-based, column-major matrices
+//
+// lmder's arithmetic comes in two builds of the same code, chosen by the template argument
+// Fu (docs/design/optimize.md §3.4, O95):
+//   - Fu = true: scipy 1.18.1's, whose C translation of MINPACK clang built with its default
+//     contraction (minpack.hpp): a*b + c in one expression is one fused multiply-add (clang
+//     fuses the left product of a*b + c*d), squares written t**2 are rounded on their own,
+//     MINPACK's enorm, and the two loops clang vectorized (qrfac's inner product, the gradient
+//     test) add rounded products in blocks of 8 (dot8). lmder factors J itself (m x n).
+//     least_squares and root run it: their call points are scipy's to the bit.
+//   - Fu = false: nls's, unfused, with a plain norm (enorm above) after LAPACK's QR of J
+//     (Model::qr), so the column-pivoted QR is of the p x p R0. Its results stay as they were.
 
-// qrfac with column pivoting of the n x n matrix a: on return the strict upper triangle of
-// R is in a, its diagonal in rdiag, the Householder vectors below; acnorm: a's column norms.
-void qrfac(lint n, double* a, lint* ipvt, double* rdiag, double* acnorm, double* wa) {
-    auto A = [&](lint i, lint j) -> double& { return a[i + j * n]; };
+// qrfac splits a step (and the column norms) over the threads from this many flops (about 50 us
+// on one thread), in tasks of at least eight columns, at most this many
+constexpr double kQrfacParallel = 4e5;
+constexpr lint kQrfacTasks = 32;
+
+// a*b + c: one rounding (fused) or two
+template <bool Fu>
+inline double mad(double a, double b, double c) {
+    if constexpr (Fu) return std::fma(a, b, c);
+    else return a * b + c;
+}
+
+template <bool Fu>
+inline double norm(lint n, const double* v) {
+    if constexpr (Fu) return minpack::enorm(n, v);
+    else return enorm(v, n);
+}
+template <bool Fu>
+inline double norm(const vec& v) {
+    return norm<Fu>(static_cast<lint>(v.size()), v.data());
+}
+
+// Step j of qrfac on the columns [k0, k1): the reflection v = A(j:, j) applied to each column and
+// the downdate of its norm (rdiag, wa). The columns are independent, each computed in MINPACK's
+// order, so any grouping of them (eight at a time here) or any thread gives the same bits.
+template <bool Fu>
+void qrfac_columns(lint m, lint j, double* a, lint lda, double* rdiag, double* wa, lint k0, lint k1) {
+    const lint len = m - j;
+    const double* v = a + j + j * lda;
+    // the first products are rounded and added in order; from split on fused (dot8)
+    const lint split = Fu ? len / 8 * 8 : len;
+    const double head = v[0];
+    // c_g -= (s_g / head) v for G columns in one pass over v, then the downdates of their norms
+    auto finish = [&]<int G>(lint k, double* const* c, const double* s) {
+        double t[G];
+        for (int g = 0; g < G; ++g) t[g] = -(s[g] / head);
+        if constexpr (Fu) {
+            minpack::column_axpy<G>(len, v, c, t);
+        } else {
+            for (lint i = 0; i < len; ++i)
+                for (int g = 0; g < G; ++g) c[g][i] = t[g] * v[i] + c[g][i];
+        }
+        for (int g = 0; g < G; ++g) {
+            const lint kk = k + g;
+            if (rdiag[kk] == 0) continue;
+            const double r = c[g][0] / rdiag[kk];
+            rdiag[kk] *= std::sqrt(std::max(0.0, mad<Fu>(-r, r, 1.0)));
+            const double q = rdiag[kk] / wa[kk];
+            const double test = Fu ? 0.05 * minpack::sq(q) : 0.05 * q * q;
+            if (test <= kEps) {
+                rdiag[kk] = j + 1 < m ? norm<Fu>(m - j - 1, c[g] + 1) : 0.0;
+                wa[kk] = rdiag[kk];
+            }
+        }
+    };
+    constexpr int G = 8;
+    double* c[G];
+    double s[G];
+    lint k = k0;
+    for (; k + G <= k1; k += G) {
+        for (int g = 0; g < G; ++g) c[g] = a + j + (k + g) * lda;
+        minpack::column_sums<G>(len, split, v, c, s);
+        finish.template operator()<G>(k, c, s);
+    }
+    for (; k < k1; ++k) {
+        c[0] = a + j + k * lda;
+        minpack::column_sums<1>(len, split, v, c, s);
+        finish.template operator()<1>(k, c, s);
+    }
+}
+
+// qrfac with column pivoting of the m x n matrix a (m >= n, leading dimension lda): on return the
+// strict upper triangle of R is in a, its diagonal in rdiag, the Householder vectors below;
+// acnorm: a's column norms. Large steps split their columns over the threads.
+template <bool Fu>
+void qrfac(lint m, lint n, double* a, lint lda, lint* ipvt, double* rdiag, double* acnorm, double* wa) {
+    auto A = [&](lint i, lint j) -> double& { return a[i + j * lda]; };
+    auto norms = [&](lint j0, lint j1) {
+        for (lint j = j0; j < j1; ++j) acnorm[j] = norm<Fu>(m, a + j * lda);
+    };
+    if (double(m) * double(n) >= kQrfacParallel && n >= 2 && parallel::available()) {
+        const lint per = std::max<lint>(1, (n + kQrfacTasks - 1) / kQrfacTasks);
+        parallel::parallel_for((n + per - 1) / per, [&](std::int64_t t) {
+            norms(t * per, std::min<lint>(n, (t + 1) * per));
+        });
+    } else {
+        parallel::Unlocked u(double(m) * double(n) >= kQrfacParallel);
+        norms(0, n);
+    }
     for (lint j = 0; j < n; ++j) {
-        acnorm[j] = enorm(a + j * n, n);
         rdiag[j] = acnorm[j];
         wa[j] = rdiag[j];
         ipvt[j] = j;
@@ -335,30 +435,28 @@ void qrfac(lint n, double* a, lint* ipvt, double* rdiag, double* acnorm, double*
         for (lint k = j; k < n; ++k)
             if (rdiag[k] > rdiag[kmax]) kmax = k;
         if (kmax != j) {
-            for (lint i = 0; i < n; ++i) std::swap(A(i, j), A(i, kmax));
+            for (lint i = 0; i < m; ++i) std::swap(A(i, j), A(i, kmax));
             rdiag[kmax] = rdiag[j];
             wa[kmax] = wa[j];
             std::swap(ipvt[j], ipvt[kmax]);
         }
-        double ajnorm = enorm(&A(j, j), n - j);
+        double ajnorm = norm<Fu>(m - j, &A(j, j));
         if (ajnorm != 0) {
             if (A(j, j) < 0) ajnorm = -ajnorm;
-            for (lint i = j; i < n; ++i) A(i, j) /= ajnorm;
+            for (lint i = j; i < m; ++i) A(i, j) /= ajnorm;
             A(j, j) += 1;
-            for (lint k = j + 1; k < n; ++k) {
-                double sum = 0;
-                for (lint i = j; i < n; ++i) sum += A(i, j) * A(i, k);
-                const double temp = sum / A(j, j);
-                for (lint i = j; i < n; ++i) A(i, k) -= temp * A(i, j);
-                if (rdiag[k] != 0) {
-                    const double t = A(j, k) / rdiag[k];
-                    rdiag[k] *= std::sqrt(std::max(0.0, 1 - t * t));
-                    const double q = rdiag[k] / wa[k];
-                    if (0.05 * q * q <= kEps) {
-                        rdiag[k] = j + 1 < n ? enorm(&A(j + 1, k), n - j - 1) : 0.0;
-                        wa[k] = rdiag[k];
-                    }
-                }
+            const lint cols = n - j - 1;
+            const double work = 4.0 * double(m - j) * double(cols);  // flops of the step
+            if (work >= kQrfacParallel && cols >= 8 && parallel::available()) {
+                const lint per = std::max<lint>(8, (cols + 8 * kQrfacTasks - 1) / (8 * kQrfacTasks) * 8);
+                const lint tasks = (cols + per - 1) / per;
+                parallel::parallel_for(tasks, [&](std::int64_t t) {
+                    const lint k0 = j + 1 + t * per;
+                    qrfac_columns<Fu>(m, j, a, lda, rdiag, wa, k0, std::min(n, k0 + per));
+                });
+            } else {
+                parallel::Unlocked u(work >= kQrfacParallel);
+                qrfac_columns<Fu>(m, j, a, lda, rdiag, wa, j + 1, n);
             }
         }
         rdiag[j] = -ajnorm;
@@ -368,10 +466,13 @@ void qrfac(lint n, double* a, lint* ipvt, double* rdiag, double* acnorm, double*
 // qrsolv: solves min || [A; D] x - [b; 0] || given the pivoted QR of A (r's upper triangle,
 // ipvt, qtb = Q^T b); the strict lower triangle of r receives S's strict upper triangle
 // (transposed), sdiag S's diagonal.
+template <bool Fu>
 void qrsolv(
     lint n, double* r, const lint* ipvt, const double* diag, const double* qtb, double* x, double* sdiag, double* wa
 ) {
     auto R = [&](lint i, lint j) -> double& { return r[i + j * n]; };
+    // 1/sqrt(1/4 + t^2/4) of a Givens rotation
+    auto quarter = [](double t) { return Fu ? std::fma(0.25, minpack::sq(t), 0.25) : 0.25 + 0.25 * t * t; };
     for (lint j = 0; j < n; ++j) {
         for (lint i = j; i < n; ++i) R(i, j) = R(j, i);
         x[j] = R(j, j);
@@ -388,20 +489,21 @@ void qrsolv(
                 double c, s;
                 if (std::abs(R(k, k)) < std::abs(sdiag[k])) {
                     const double cotan = R(k, k) / sdiag[k];
-                    s = 0.5 / std::sqrt(0.25 + 0.25 * cotan * cotan);
+                    s = 0.5 / std::sqrt(quarter(cotan));
                     c = s * cotan;
                 } else {
                     const double tan = sdiag[k] / R(k, k);
-                    c = 0.5 / std::sqrt(0.25 + 0.25 * tan * tan);
+                    c = 0.5 / std::sqrt(quarter(tan));
                     s = c * tan;
                 }
-                R(k, k) = c * R(k, k) + s * sdiag[k];
-                const double temp = c * wa[k] + s * qtbpj;
-                qtbpj = -s * wa[k] + c * qtbpj;
+                // (scipy's build fuses the second product here: two statements in its C)
+                R(k, k) = mad<Fu>(s, sdiag[k], c * R(k, k));
+                const double temp = mad<Fu>(c, wa[k], s * qtbpj);
+                qtbpj = mad<Fu>(-s, wa[k], c * qtbpj);
                 wa[k] = temp;
                 for (lint i = k + 1; i < n; ++i) {
-                    const double t = c * R(i, k) + s * sdiag[i];
-                    sdiag[i] = -s * R(i, k) + c * sdiag[i];
+                    const double t = mad<Fu>(c, R(i, k), s * sdiag[i]);
+                    sdiag[i] = mad<Fu>(-s, R(i, k), c * sdiag[i]);
                     R(i, k) = t;
                 }
             }
@@ -417,7 +519,7 @@ void qrsolv(
     for (lint k = 0; k < nsing; ++k) {
         const lint j = nsing - 1 - k;
         double sum = 0;
-        for (lint i = j + 1; i < nsing; ++i) sum += R(i, j) * wa[i];
+        for (lint i = j + 1; i < nsing; ++i) sum = mad<Fu>(R(i, j), wa[i], sum);
         wa[j] = (wa[j] - sum) / sdiag[j];
     }
     for (lint j = 0; j < n; ++j) x[ipvt[j]] = wa[j];
@@ -425,6 +527,7 @@ void qrsolv(
 
 // lmpar: the Levenberg-Marquardt parameter par whose step x has ||D x|| within 10% of delta
 // (or the Gauss-Newton step when it is inside), r and ipvt from qrfac.
+template <bool Fu>
 void lmpar(
     lint n,
     double* r,
@@ -449,12 +552,12 @@ void lmpar(
         const lint j = nsing - 1 - k;
         wa1[j] /= R(j, j);
         const double temp = wa1[j];
-        for (lint i = 0; i < j; ++i) wa1[i] -= R(i, j) * temp;
+        for (lint i = 0; i < j; ++i) wa1[i] = mad<Fu>(-R(i, j), temp, wa1[i]);
     }
     for (lint j = 0; j < n; ++j) x[ipvt[j]] = wa1[j];
     lint iter = 0;
     for (lint j = 0; j < n; ++j) wa2[j] = diag[j] * x[j];
-    double dxnorm = enorm(wa2, n);
+    double dxnorm = norm<Fu>(n, wa2);
     double fp = dxnorm - delta;
     if (fp <= 0.1 * delta) {
         par = 0;
@@ -468,18 +571,18 @@ void lmpar(
         }
         for (lint j = 0; j < n; ++j) {
             double sum = 0;
-            for (lint i = 0; i < j; ++i) sum += R(i, j) * wa1[i];
+            for (lint i = 0; i < j; ++i) sum = mad<Fu>(R(i, j), wa1[i], sum);
             wa1[j] = (wa1[j] - sum) / R(j, j);
         }
-        const double temp = enorm(wa1, n);
+        const double temp = norm<Fu>(n, wa1);
         parl = ((fp / delta) / temp) / temp;
     }
     for (lint j = 0; j < n; ++j) {
         double sum = 0;
-        for (lint i = 0; i <= j; ++i) sum += R(i, j) * qtb[i];
+        for (lint i = 0; i <= j; ++i) sum = mad<Fu>(R(i, j), qtb[i], sum);
         wa1[j] = sum / diag[ipvt[j]];
     }
-    const double gnorm = enorm(wa1, n);
+    const double gnorm = norm<Fu>(n, wa1);
     double paru = gnorm / delta;
     if (paru == 0) paru = kDwarf / std::min(delta, 0.1);
     par = std::max(par, parl);
@@ -490,9 +593,9 @@ void lmpar(
         if (par == 0) par = std::max(kDwarf, 0.001 * paru);
         const double sp = std::sqrt(par);
         for (lint j = 0; j < n; ++j) wa1[j] = sp * diag[j];
-        qrsolv(n, r, ipvt, wa1, qtb, x, sdiag, wa2);
+        qrsolv<Fu>(n, r, ipvt, wa1, qtb, x, sdiag, wa2);
         for (lint j = 0; j < n; ++j) wa2[j] = diag[j] * x[j];
-        dxnorm = enorm(wa2, n);
+        dxnorm = norm<Fu>(n, wa2);
         const double temp = fp;
         fp = dxnorm - delta;
         if (std::abs(fp) <= 0.1 * delta || (parl == 0 && fp <= temp && temp < 0) || iter == 10) break;
@@ -503,9 +606,9 @@ void lmpar(
         for (lint j = 0; j < n; ++j) {
             wa1[j] /= sdiag[j];
             const double t = wa1[j];
-            for (lint i = j + 1; i < n; ++i) wa1[i] -= R(i, j) * t;
+            for (lint i = j + 1; i < n; ++i) wa1[i] = mad<Fu>(-R(i, j), t, wa1[i]);
         }
-        const double t = enorm(wa1, n);
+        const double t = norm<Fu>(n, wa1);
         const double parc = ((fp / delta) / t) / t;
         if (fp > 0) parl = std::max(parl, par);
         if (fp < 0) paru = std::min(paru, par);
@@ -520,10 +623,10 @@ struct LmOptions {
     double factor = 100;
     const vec* diag = nullptr;  // mode 2's scaling (nullptr: mode 1)
     bool info = false;          // return lmder's info, not least_squares' status
-    bool direct = false;        // m = n: no QR of J before lmder's (root)
 };
 
 // lmder's loop.
+template <bool Fu>
 int levenberg_marquardt(
     Model& M,
     vec& x,
@@ -539,11 +642,11 @@ int levenberg_marquardt(
 ) {
     const lint m = M.m, n = M.p;
     const auto un = static_cast<std::size_t>(n), um = static_cast<std::size_t>(m);
-    vec wa4(um), J(um * un), R0(un * un), qtf0(un), fjac(un * un), diag(un), qtf(un), wa1(un), wa2(un), wa3(un),
-        wa5(un), xt(un);
+    vec wa4(um), J(um * un), R0(Fu ? 0 : un * un), qtf0(Fu ? 0 : un), fjac(un * un), diag(un), qtf(un), qn(un), wa1(un),
+        wa2(un), wa3(un), wa5(un), xt(un);
     std::vector<lint> ipvt(un);
     if (!have_f0 && !M.eval(x, fvec.data())) return sStartNonfinite;
-    double fnorm = enorm(fvec);
+    double fnorm = norm<Fu>(fvec);
     double par = 0, delta = 0, xnorm = 0;
     lint iter = 1;
     int info = 0;
@@ -555,40 +658,58 @@ int levenberg_marquardt(
         if (!M.jacobian(x, fvec.data(), J.data(), wa4.data())) return sJacNonfinite;
         ++n_iter;
         fin.keep(J.data(), m, n);
-        if (opt.direct) {  // m = n: lmder's own QR of J (qrfac below), Q^T f from its reflections
-            R0.assign(J.begin(), J.end());
-            qtf0.assign(fvec.begin(), fvec.end());
+        if constexpr (Fu) {
+            // lmder's QR of J (m x n) and Q^T f from its reflections, as MINPACK
+            qrfac<Fu>(m, n, J.data(), m, ipvt.data(), wa1.data(), wa2.data(), wa3.data());
+            for (lint i = 0; i < m; ++i) wa4[i] = fvec[i];
+            for (lint j = 0; j < n; ++j) {
+                const double* c = J.data() + j * m;
+                if (c[j] != 0) {
+                    double sum = 0;
+                    for (lint i = j; i < m; ++i) sum = std::fma(c[i], wa4[i], sum);
+                    const double temp = -sum / c[j];
+                    for (lint i = j; i < m; ++i) wa4[i] = std::fma(c[i], temp, wa4[i]);
+                }
+                for (lint i = 0; i < n; ++i) F(i, j) = c[i];
+                F(j, j) = wa1[j];
+                qtf[j] = wa4[j];
+            }
         } else {
             M.qr(J.data(), fvec.data(), R0.data(), qtf0.data());
+            fjac = R0;
+            qrfac<Fu>(n, n, fjac.data(), n, ipvt.data(), wa1.data(), wa2.data(), wa3.data());
+            for (lint i = 0; i < n; ++i) wa5[i] = qtf0[i];
+            for (lint j = 0; j < n; ++j) {
+                if (F(j, j) != 0) {
+                    double sum = 0;
+                    for (lint i = j; i < n; ++i) sum += F(i, j) * wa5[i];
+                    const double temp = -sum / F(j, j);
+                    for (lint i = j; i < n; ++i) wa5[i] += F(i, j) * temp;
+                }
+                F(j, j) = wa1[j];
+                qtf[j] = wa5[j];
+            }
         }
-        fjac = R0;
-        qrfac(n, fjac.data(), ipvt.data(), wa1.data(), wa2.data(), wa3.data());
         if (iter == 1) {
             if (!mode2)
                 for (lint j = 0; j < n; ++j) diag[j] = wa2[j] == 0 ? 1.0 : wa2[j];
             for (lint j = 0; j < n; ++j) wa3[j] = diag[j] * x[j];
-            xnorm = enorm(wa3);
+            xnorm = norm<Fu>(wa3);
             delta = factor * xnorm;
             if (delta == 0) delta = factor;
         }
-        for (lint i = 0; i < n; ++i) wa5[i] = qtf0[i];
-        for (lint j = 0; j < n; ++j) {
-            if (F(j, j) != 0) {
-                double sum = 0;
-                for (lint i = j; i < n; ++i) sum += F(i, j) * wa5[i];
-                const double temp = -sum / F(j, j);
-                for (lint i = j; i < n; ++i) wa5[i] += F(i, j) * temp;
-            }
-            F(j, j) = wa1[j];
-            qtf[j] = wa5[j];
-        }
         double gnorm = 0;
         if (fnorm != 0) {
+            for (lint i = 0; i < n; ++i) qn[i] = qtf[i] / fnorm;
             for (lint j = 0; j < n; ++j) {
                 const lint l = ipvt[j];
                 if (wa2[l] == 0) continue;
                 double sum = 0;
-                for (lint i = 0; i <= j; ++i) sum += F(i, j) * (qtf[i] / fnorm);
+                if constexpr (Fu) {
+                    sum = minpack::dot8(j + 1, &F(0, j), qn.data());
+                } else {
+                    for (lint i = 0; i <= j; ++i) sum += F(i, j) * qn[i];
+                }
                 gnorm = std::max(gnorm, std::abs(sum / wa2[l]));
             }
         }
@@ -598,7 +719,7 @@ int levenberg_marquardt(
             for (lint j = 0; j < n; ++j) diag[j] = std::max(diag[j], wa2[j]);
         double ratio = 0;
         do {
-            lmpar(
+            lmpar<Fu>(
                 n, fjac.data(), ipvt.data(), diag.data(), qtf.data(), delta, par, wa1.data(), wa2.data(), wa3.data(),
                 wa5.data()
             );
@@ -607,23 +728,23 @@ int levenberg_marquardt(
                 xt[j] = x[j] + wa1[j];
                 wa3[j] = diag[j] * wa1[j];
             }
-            const double pnorm = enorm(wa3);
+            const double pnorm = norm<Fu>(wa3);
             if (iter == 1) delta = std::min(delta, pnorm);
             const bool ok = M.eval(xt, wa4.data());
-            const double fnorm1 = ok ? enorm(wa4) : kInf;  // G74: not finite = rejected, bound / 10
+            const double fnorm1 = ok ? norm<Fu>(wa4) : kInf;  // G74: not finite = rejected, bound / 10
             double actred = -1;
             if (0.1 * fnorm1 < fnorm) actred = 1 - (fnorm1 / fnorm) * (fnorm1 / fnorm);
             for (lint j = 0; j < n; ++j) {
                 wa3[j] = 0;
                 const double temp = wa1[ipvt[j]];
-                for (lint i = 0; i <= j; ++i) wa3[i] += F(i, j) * temp;
+                for (lint i = 0; i <= j; ++i) wa3[i] = mad<Fu>(F(i, j), temp, wa3[i]);
             }
-            const double temp1 = enorm(wa3) / fnorm, temp2 = std::sqrt(par) * pnorm / fnorm;
-            const double prered = temp1 * temp1 + temp2 * temp2 / 0.5;
-            const double dirder = -(temp1 * temp1 + temp2 * temp2);
+            const double temp1 = norm<Fu>(wa3) / fnorm, temp2 = std::sqrt(par) * pnorm / fnorm;
+            const double prered = mad<Fu>(temp1, temp1, temp2 * temp2 / 0.5);
+            const double dirder = -mad<Fu>(temp1, temp1, temp2 * temp2);
             ratio = prered != 0 ? actred / prered : 0.0;
             if (ratio <= 0.25) {
-                double temp = actred >= 0 ? 0.5 : 0.5 * dirder / (dirder + 0.5 * actred);
+                double temp = actred >= 0 ? 0.5 : 0.5 * dirder / mad<Fu>(0.5, actred, dirder);
                 if (0.1 * fnorm1 >= fnorm || temp < 0.1) temp = 0.1;
                 delta = temp * std::min(delta, pnorm / 0.1);
                 par /= temp;
@@ -635,7 +756,7 @@ int levenberg_marquardt(
                 x = xt;
                 for (lint j = 0; j < n; ++j) wa2[j] = diag[j] * x[j];
                 fvec.swap(wa4);
-                xnorm = enorm(wa2);
+                xnorm = norm<Fu>(wa2);
                 fnorm = fnorm1;
                 ++iter;
                 fin.fresh = false;
@@ -1084,8 +1205,9 @@ nb::object matrix_out(const vec& Jc, lint m, lint p) {  // column-major m x p ->
 //   -> (x [p] list, status, nfev, njev, n_iter, f (m,) or None, J (m, p) or None)
 // fun(x) -> residuals (m,); jac(x) -> (m, p), or None for differences (diff: 0 fdjac2, 1
 // '2-point', 2 '3-point'; diff_step: scipy's relative steps, empty for none). x is a list of
-// floats, or a new float64 sd.ndarray when array_x. check: see Model. method 0 'lm', 1 'trf'
-// (lb, ub: the bounds, +-inf for none). f0: the residuals at x0 when the caller has them (its
+// floats, or a new float64 sd.ndarray when array_x. check: see Model. method 0 'lm' in nls's
+// build, 2 'lm' in scipy's (least_squares; the template argument Fu of lmder), 1 'trf' (lb, ub:
+// the bounds, +-inf for none). f0: the residuals at x0 when the caller has them (its
 // call counts in nfev). final: return the last iterate's residuals and Jacobian (lm
 // evaluates the Jacobian there when its last one is elsewhere).
 nb::object lsq_solve(
@@ -1136,7 +1258,9 @@ nb::object lsq_solve(
         fin.want = final;
         lint n_iter = 0;
         int status;
-        if (method == 0) status = levenberg_marquardt(M, x, f, have_f0, ftol, xtol, gtol, max_nfev, n_iter, fin);
+        if (method == 0) status = levenberg_marquardt<false>(M, x, f, have_f0, ftol, xtol, gtol, max_nfev, n_iter, fin);
+        else if (method == 2)
+            status = levenberg_marquardt<true>(M, x, f, have_f0, ftol, xtol, gtol, max_nfev, n_iter, fin);
         else status = trust_region_reflective(M, x, f, have_f0, lb, ub, ftol, xtol, gtol, max_nfev, n_iter, fin);
         nb::list xs;
         for (double v : x) xs.append(v);
@@ -1195,9 +1319,8 @@ nb::object lm_solve(
         opt.factor = factor;
         if (!diag.empty()) opt.diag = &diag;
         opt.info = true;
-        opt.direct = M.m == M.p;
         lint n_iter = 0;
-        const int info = levenberg_marquardt(M, x, f, true, ftol, xtol, gtol, max_nfev, n_iter, fin, opt);
+        const int info = levenberg_marquardt<true>(M, x, f, true, ftol, xtol, gtol, max_nfev, n_iter, fin, opt);
         nb::list xs;
         for (double v : x) xs.append(v);
         return nb::make_tuple(
