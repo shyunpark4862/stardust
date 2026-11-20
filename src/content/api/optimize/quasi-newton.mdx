@@ -1,0 +1,361 @@
+---
+kind: concept
+title: 준뉴턴 방법 (BFGS, L-BFGS-B)
+group: 다변수 최소화
+order: 3
+summary: 기울기만으로 곡률을 어림해 뉴턴 방법에 가까운 걸음을 만드는 BFGS와, 기억을 조금만 쓰고 변수의 경계를 받는 L-BFGS-B예요. 매끄러운 함수의 기본 선택이고, 기울기를 주는 방법과 옵션을 다뤄요.
+seeAlso: [minimize, nelder-mead, newton-methods, results, approx_fprime, check_grad]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const qp_bfgs = [[-1.2,1.0],[-1.017,1.0747],[-0.8759,0.7356],[-0.8221,0.6374],[-0.7585,0.5424],[-0.6382,0.3779],[-0.471,0.2006],[-0.314,0.081],[-0.1392,0.0401],[-0.0321,-0.0106],[0.0213,-0.0255],[0.0692,-0.0228],[0.1298,-0.0046],[0.2494,0.0436],[0.3449,0.1195],[0.4052,0.1511],[0.5158,0.2354],[0.5147,0.2487],[0.5917,0.3443],[0.7067,0.4769],[0.7016,0.485],[0.7661,0.583],[0.8155,0.6574],[0.8821,0.7701],[0.9081,0.8267],[0.9688,0.9334],[0.9572,0.9155],[0.9729,0.9461],[0.9964,0.9919],[0.9976,0.9953],[0.9998,0.9997],[1.0,1.0],[1.0,1.0]];
+
+export const qg_bfgs = [[0,2.334],[1,1.092],[2,1.171],[3,1.212],[4,1.13],[5,1.033],[6,0.842],[7,0.684],[8,0.618],[9,0.367],[10,0.716],[11,0.742],[12,0.632],[13,0.571],[14,0.14],[15,0.417],[16,0.787],[17,0.513],[18,0.07],[19,0.764],[20,0.161],[21,-0.098],[22,0.329],[23,0.416],[24,-0.028],[25,0.296],[26,-0.802],[27,-0.816],[28,-0.44],[29,-2.156],[30,-2.535],[31,-3.886],[32,-5.768]];
+
+export const qp_lb = [[-1.2,1.0],[-1.0174,1.0745],[-1.027,1.0684],[-1.0285,1.0653],[-1.0281,1.0619],[-1.0214,1.0393],[-1.002,0.9886],[-0.9494,0.867],[-0.8876,0.7418],[-0.7873,0.5671],[-0.6778,0.4259],[-0.5512,0.2792],[-0.3926,0.1312],[-0.2312,0.0977],[-0.0617,-0.0033],[-0.0257,-0.02],[0.0043,-0.0242],[0.1354,-0.0202],[0.1641,0.0085],[0.3081,0.0675],[0.3702,0.1323],[0.4478,0.1839],[0.5463,0.2736],[0.5892,0.3426],[0.7072,0.4796],[0.7049,0.4929],[0.7776,0.5995],[0.827,0.6755],[0.8843,0.7763],[0.9129,0.8341],[0.9481,0.8963],[0.9737,0.9453],[0.9863,0.9728],[0.9982,0.9961],[0.9994,0.9988],[1.0,1.0],[1.0,1.0]];
+
+export const qg_lb = [[0,2.334],[1,1.079],[2,0.434],[3,0.174],[4,0.3],[5,0.752],[6,1.009],[7,1.229],[8,1.304],[9,1.304],[10,1.096],[11,0.931],[12,0.806],[13,0.946],[14,0.361],[15,0.616],[16,0.685],[17,0.887],[18,0.567],[19,0.74],[20,-0.024],[21,0.52],[22,0.697],[23,-0.037],[24,0.719],[25,-0.095],[26,0.067],[27,0.383],[28,0.247],[29,-0.387],[30,-0.043],[31,0.017],[32,-1.316],[33,-0.856],[34,-1.775],[35,-3.04],[36,-4.266]];
+
+export const qp_lbb = [[-1.2,1.0],[-1.1919,1.421],[-0.94,0.8164],[-0.9739,0.937],[-0.8402,0.6875],[-0.737,0.5048],[-0.5866,0.2887],[-0.5092,0.2462],[-0.4292,0.1606],[-0.3052,0.0523],[-0.2144,0.0176],[-0.1125,0.0039],[-0.0465,-0.0228],[0.1015,-0.0309],[0.1426,0.0148],[0.3026,0.0586],[0.3065,0.0846],[0.4376,0.1738],[0.5,0.2573],[0.5,0.2499],[0.5,0.25]];
+
+export const qg_bfgsd = [[0,2.334],[1,1.092],[2,1.171],[3,1.212],[4,1.13],[5,1.033],[6,0.842],[7,0.684],[8,0.616],[9,0.367],[10,0.716],[11,0.743],[12,0.632],[13,0.572],[14,0.151],[15,0.413],[16,0.796],[17,0.555],[18,0.029],[19,0.68],[20,0.054],[21,0.401],[22,0.276],[23,-0.188],[24,-0.004],[25,0.255],[26,-0.332],[27,-0.529],[28,-1.833],[29,-1.354],[30,-2.071],[31,-5.075]];
+
+export const Valley = ({ id, label, paths = [], polys = [], view = [-1.6, 1.6, -0.6, 1.6], levels = [0.25, 1, 4, 16, 64, 256], xTicks = [-1.5, -1, -0.5, 0, 0.5, 1, 1.5], yTicks = [-0.5, 0, 0.5, 1, 1.5], marks = [] }) => {
+  const W = 640, H = 440, L = 40, R = 12, T = 12, B = 30;
+  const [X0, X1, Y0, Y1] = view;
+  const sx = (v) => L + ((v - X0) / (X1 - X0)) * (W - L - R);
+  const sy = (v) => H - B - ((v - Y0) / (Y1 - Y0)) * (H - T - B);
+  const ring = (c) => {
+    const s = Math.sqrt(c), N = 2880;
+    let d = '', pen = false, lx = 0, ly = 0;
+    for (let i = 0; i <= N; i++) {
+      const t = (2 * Math.PI * i) / N, x = 1 - s * Math.cos(t), y = x * x + (s / 10) * Math.sin(t);
+      const px = sx(x), py = sy(y);
+      if (px < L - 30 || px > W - R + 30 || py < T - 30 || py > H - B + 30) { pen = false; continue; }
+      if (pen && i < N && Math.hypot(px - lx, py - ly) < 2.5) continue;
+      d += `${pen ? 'L' : 'M'}${px.toFixed(1)} ${py.toFixed(1)}`;
+      pen = true; lx = px; ly = py;
+    }
+    return d;
+  };
+  const line = (pts) => pts.map(([a, b], i) => `${i ? 'L' : 'M'}${sx(a).toFixed(1)} ${sy(b).toFixed(1)}`).join('');
+  const tick = { fill: 'var(--fg-subtle)', 'font-family': 'var(--font-mono)', 'font-size': '11px' };
+  return (
+    <div style={{ width: '100%', 'max-width': '640px' }}>
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label} style={{ width: '100%', height: 'auto' }}>
+        <defs><clipPath id={id}><rect x={L} y={T} width={W - L - R} height={H - T - B} /></clipPath></defs>
+        {xTicks.map((t) => <text x={sx(t)} y={H - 10} text-anchor="middle" style={tick}>{t}</text>)}
+        {yTicks.map((t) => <text x={L - 6} y={sy(t) + 4} text-anchor="end" style={tick}>{t}</text>)}
+        <rect x={L} y={T} width={W - L - R} height={H - T - B} style={{ fill: 'none', stroke: 'var(--line)' }} />
+        <g clip-path={`url(#${id})`}>
+          {levels.map((c) => <path d={ring(c)} style={{ fill: 'none', stroke: 'var(--slate-300)', 'stroke-width': 1 }} />)}
+          {polys.map((p) => <path d={line(p.pts) + 'Z'} style={{ fill: p.fill ?? 'none', 'fill-opacity': 0.12, stroke: p.color, 'stroke-width': 1.2 }} />)}
+          {paths.map((p) => <path d={line(p.pts)} style={{ fill: 'none', stroke: p.color, 'stroke-width': 1.8, 'stroke-dasharray': p.dash ?? 'none', 'stroke-linejoin': 'round' }} />)}
+          {paths.map((p) => p.pts.map(([a, b]) => <circle cx={sx(a)} cy={sy(b)} r="2.3" style={{ fill: p.color }} />))}
+          {marks.map((m) => <text x={sx(m.at[0]) + (m.dx ?? 6)} y={sy(m.at[1]) + (m.dy ?? -6)} text-anchor={m.anchor ?? 'start'} style={{ fill: 'var(--fg-muted)', 'font-family': 'var(--font-mono)', 'font-size': '12px' }}>{m.text}</text>)}
+          <path d={`M${sx(1) - 6} ${sy(1)}h12M${sx(1)} ${sy(1) - 6}v12`} style={{ stroke: 'var(--fg)', 'stroke-width': 2 }} />
+        </g>
+      </svg>
+      <ul style={{ display: 'flex', 'flex-wrap': 'wrap', 'justify-content': 'center', gap: 'var(--space-5)', margin: 'var(--space-2) 0 0', padding: 0, 'list-style': 'none', 'font-family': 'var(--font-mono)', 'font-size': 'var(--text-xs)', color: 'var(--fg-muted)' }}>
+        {paths.map((p) => <li style={{ display: 'flex', 'align-items': 'center', gap: 'var(--space-2)', margin: 0 }}><svg width="22" height="6"><line x1="0" y1="3" x2="22" y2="3" style={{ stroke: p.color, 'stroke-width': 2, 'stroke-dasharray': p.dash ?? 'none' }} /></svg>{p.label}</li>)}
+      </ul>
+    </div>
+  );
+};
+
+## 무엇을 하나요
+
+내리막을 걸을 때 가장 가파른 방향($-\nabla f$)으로만 가면 좁은 골짜기에서 벽 사이를 지그재그로 오가요. 골짜기의 휜 정도(곡률)를 알면 바닥을 곧장 가리키는 방향을 계산할 수 있어요. 뉴턴 방법은 헤시안 $H = \nabla^2 f$로 그 방향 $-H^{-1}\nabla f$를 구하지만, 헤시안을 계산해야 해요.
+
+**준뉴턴 방법**은 헤시안을 계산하지 않고 기울기의 변화로 곡률을 배워요. 한 걸음 $s = x_{k+1} - x_k$ 사이에 기울기가 $y = \nabla f(x_{k+1}) - \nabla f(x_k)$만큼 바뀌었다면, 그 방향의 곡률은 대략 $y$를 $s$로 나눈 값이에요. 이 정보를 걸음마다 쌓아 헤시안 역행렬의 근사 $H_k$를 고쳐 가요.
+
+반복 하나는 이래요.
+
+1. 방향 $p = -H_k \nabla f(x_k)$를 정해요. 처음에는 $H_0 = I$라 가장 가파른 내리막이에요.
+2. 그 방향의 직선 위에서 **선 탐색**으로 걸음 크기 $\alpha$를 골라요. f가 충분히 줄고(Armijo 조건), 그 점의 기울기가 충분히 평평해지는(곡률 조건) 걸음이에요. 두 조건을 합쳐 Wolfe 조건이라고 해요.
+3. $x_{k+1} = x_k + \alpha p$로 가서, 새 $s$와 $y$로 $H_k$를 고쳐요(BFGS 갱신).
+
+**BFGS**(Broyden–Fletcher–Goldfarb–Shanno, 1970)는 $H_k$를 n × n 행렬로 들고 다녀요. 반복을 거듭하면 $H_k$가 참 헤시안의 역행렬에 다가가고, 해 근처에서는 뉴턴 방법처럼 빨라져요(초선형 수렴). **L-BFGS-B**(Byrd, Lu, Nocedal, Zhu 1995)는 행렬 대신 최근의 $(s, y)$ 쌍 `maxcor`개(기본 10)만 기억해 같은 일을 해서, 변수가 수만 개여도 메모리가 적어요. 그리고 변수의 경계 $l \le x \le u$를 받아요.
+
+<Fig caption="Rosenbrock 함수에서 (−1.2, 1)에서 출발한 BFGS(32번 반복), L-BFGS-B(36번), 그리고 x ≤ 0.5의 경계를 준 L-BFGS-B(20번, 회색 영역은 경계 밖). 경계가 있으면 해는 경계 위의 (0.5, 0.25)예요.">
+  <Valley
+    id="qn-valley"
+    label="Rosenbrock 등고선 위의 BFGS, L-BFGS-B, 경계 있는 L-BFGS-B의 반복점 경로"
+    polys={[{ pts: [[0.5, -0.7], [1.7, -0.7], [1.7, 1.7], [0.5, 1.7]], color: 'var(--slate-400)', fill: 'var(--slate-400)' }]}
+    paths={[
+      { pts: qp_bfgs, label: 'bfgs', color: 'var(--blue-600)' },
+      { pts: qp_lb, label: 'l-bfgs-b', color: 'var(--blue-400)', dash: '7 4' },
+      { pts: qp_lbb, label: 'l-bfgs-b, x ≤ 0.5', color: 'var(--slate-500)', dash: '2 3' },
+    ]}
+    marks={[{ at: [-1.2, 1.0], text: 'x0', dx: -8, dy: 16, anchor: 'end' }]}
+  />
+</Fig>
+
+처음 몇 걸음은 곡률을 모르니 가장 가파른 내리막과 비슷하게 더듬거려요. 쌓인 정보로 골짜기의 모양을 알게 되면 골짜기를 따라 큰 걸음으로 나아가고, 바닥 근처에서는 기울기가 반복마다 몇 자리씩 줄어요.
+
+<Fig caption="같은 풀이에서 반복마다의 기울기 크기 max|∂f/∂x_i|(로그 눈금). 끝의 몇 반복에서 급히 떨어지는 것이 초선형 수렴이에요. 차분의 BFGS도 기울기가 1e-5 근처에 올 때까지는 같은 길을 가요.">
+  <Plot
+    curves={[
+      { points: qg_bfgs, label: 'bfgs, jac' },
+      { points: qg_lb, label: 'l-bfgs-b, jac', dashed: true },
+      { points: qg_bfgsd, label: 'bfgs, 차분' },
+    ]}
+    domain={[0, 37]}
+    range={[-6, 3]}
+    xTicks={[{ v: 0, label: '0' }, { v: 10, label: '10' }, { v: 20, label: '20' }, { v: 30, label: '30' }]}
+    yTicks={[{ v: -6, label: '1e-6' }, { v: -4, label: '1e-4' }, { v: -2, label: '0.01' }, { v: 0, label: '1' }, { v: 2, label: '100' }]}
+  />
+</Fig>
+
+## 기본 사용
+
+```python
+>>> import math
+>>> import stardust as sd
+>>> def rosen(x):
+...     return 100.0 * (x[1] - x[0]**2)**2 + (1 - x[0])**2
+>>> def rosen_grad(x):
+...     return [-400.0 * x[0] * (x[1] - x[0]**2) - 2.0 * (1 - x[0]), 200.0 * (x[1] - x[0]**2)]
+>>> sd.optimize.minimize(rosen, [-1.2, 1.0], method='bfgs', jac=rosen_grad)
+OptimizeResult(method='bfgs', converged=True, fun=2.5353e-15, n_iter=32, nfev=39, x=[0.9999999710014291 0.9999999461191459])
+>>> sd.optimize.minimize(rosen, [-1.2, 1.0], method='l-bfgs-b', jac=rosen_grad)
+OptimizeResult(method='l-bfgs-b', converged=True, fun=2.80765e-12, n_iter=36, nfev=44, x=[0.9999989453492616 0.9999980209056968])
+```
+
+`method`를 주지 않으면 경계가 없을 때 BFGS, 있을 때 L-BFGS-B예요. 반복 하나에 `fun`과 기울기를 보통 한 번씩, 선 탐색이 걸음을 줄일 때 몇 번 더 불러요.
+
+## 기울기 주기
+
+두 방법 모두 기울기가 필요해요. 주지 않으면 차분으로 계산하지만, 직접 주는 편이 빠르고 정확해요.
+
+### 기울기 함수
+
+`jac(x)`는 n개의 값을 돌려줘요. 변수가 많으면 sd의 배열 연산으로 한 번에 계산해요. n차원 Rosenbrock $\sum_{i=1}^{n-1} 100(x_{i+1} - x_i^2)^2 + (1 - x_i)^2$의 기울기는 이렇게 써요.
+
+```python
+>>> def rosen_n(x):
+...     return float(sd.sum(100.0 * (x[1:] - x[:-1]**2)**2 + (1 - x[:-1])**2))
+>>> def rosen_n_grad(x):
+...     d = x[1:] - x[:-1]**2
+...     g = sd.zeros(x.shape[0])
+...     g[:-1] = -400.0 * x[:-1] * d - 2.0 * (1 - x[:-1])
+...     g[1:] += 200.0 * d
+...     return g
+>>> sd.optimize.check_grad(rosen_n, rosen_n_grad, [1.3, 0.7, 0.8, 1.9, 1.2]) < 1e-6
+True
+>>> r = sd.optimize.minimize(rosen_n, sd.zeros(100), jac=rosen_n_grad)
+>>> r.converged, r.n_iter, r.nfev
+(True, 489, 648)
+```
+
+손으로 계산한 기울기는 틀리기 쉬워요. 틀린 기울기를 주면 선 탐색이 내리막을 찾지 못해 status 2로 멈추거나 엉뚱한 점에서 멈춰요. 처음 한 번은 [`check_grad`](/api/optimize/check_grad/)로 차분과 견줘 봐요. 맞는 기울기면 차이가 $10^{-6}$보다 훨씬 작아요.
+
+### jac=True: 값과 기울기를 함께
+
+값과 기울기에 같은 계산이 많으면 `fun`이 `(값, 기울기)`를 돌려주게 하고 `jac=True`를 줘요. 같은 x에서는 한 번만 불러요.
+
+```python
+>>> def rosen_n_both(x):
+...     d = x[1:] - x[:-1]**2
+...     e = 1 - x[:-1]
+...     g = sd.zeros(x.shape[0])
+...     g[:-1] = -400.0 * x[:-1] * d - 2.0 * e
+...     g[1:] += 200.0 * d
+...     return float(sd.sum(100.0 * d**2 + e**2)), g
+>>> r = sd.optimize.minimize(rosen_n_both, sd.zeros(100), jac=True)
+>>> r.converged, r.n_iter, r.nfev, r.njev
+(True, 489, 648, 648)
+```
+
+### 차분
+
+`jac`를 주지 않으면(None) 전진 차분 $(f(x + h e_j) - f(x))/h$로 기울기를 구해요. 간격은 절대 간격 `eps`(BFGS $\sqrt{\varepsilon} \approx 1.49 \times 10^{-8}$, L-BFGS-B $10^{-8}$)예요. `'2-point'`는 같은 전진 차분을 상대 간격 $\sqrt{\varepsilon}\,\max(1, \lvert x_j\rvert)$로, `'3-point'`는 중앙 차분을 $\varepsilon^{1/3} \max(1, \lvert x_j\rvert)$로 해요($\varepsilon = 2^{-52}$, 간격의 부호는 $x_j$의 부호). 기울기 하나에 `fun`을 n번(중앙 차분은 2n번) 더 불러요.
+
+```python
+>>> for jac in [None, '2-point', '3-point', rosen_grad]:
+...     r = sd.optimize.minimize(rosen, [-1.2, 1.0], jac=jac)
+...     name = jac if jac is None or isinstance(jac, str) else 'function'
+...     print(name, r.nfev, r.njev, f"{max(abs(v - 1) for v in r.x.tolist()):.0e}")
+None 114 38 1e-05
+2-point 120 40 1e-05
+3-point 195 39 8e-08
+function 39 39 5e-08
+```
+
+전진 차분의 기울기는 $\sqrt{\varepsilon} \approx 1.5 \times 10^{-8}$ 정도의 상대오차가 있어서, 해가 대략 $10^{-5}$까지만 맞아요. 중앙 차분은 $\varepsilon^{2/3} \approx 4 \times 10^{-11}$ 정도라 더 가요. 간격은 `options`의 `eps`(`jac=None`일 때)나 `finite_diff_rel_step`(`'2-point'`·`'3-point'`일 때)으로 바꿔요. 다른 `jac`와 함께 주면 쓰이지 않으므로 `ValueError`예요.
+
+```python
+>>> r = sd.optimize.minimize(rosen, [-1.2, 1.0], jac='3-point', options={'finite_diff_rel_step': 1e-6})
+>>> r.nfev, f"{r.fun:.1e}"
+(195, '2.0e-16')
+>>> sd.optimize.minimize(rosen, [-1.2, 1.0], jac=rosen_grad, options={'eps': 1e-6})
+Traceback (most recent call last):
+    ...
+ValueError: minimize(): 'eps' is only used when 'jac' is None
+```
+
+경계가 있는 L-BFGS-B에서는 차분의 점이 경계 밖으로 나가지 않도록 경계 쪽에서는 반대쪽 차분으로 바꿔요. 그래서 경계 밖에서 정의되지 않는 함수도 차분으로 풀 수 있어요.
+
+## BFGS
+
+### 옵션
+
+| 옵션 | 기본값 | 뜻 |
+|---|---|---|
+| `gtol` | 1e-05 | 기울기의 노름이 이 값 이하이면 멈춰요(`tol`이 정하는 값) |
+| `norm` | inf | `gtol`에 쓰는 노름. inf는 가장 큰 $\lvert g_i\rvert$, −inf는 가장 작은 것, 그 밖의 p는 p-노름 |
+| `max_iter` | 200n | 반복 수의 상한 |
+| `xrtol` | 0 | 걸음 $\lVert \alpha p\rVert_2$가 `xrtol`·($\lVert x\rVert_2$ + `xrtol`) 이하이면 멈춰요 |
+| `c1`, `c2` | 0.0001, 0.9 | 선 탐색의 Armijo 조건과 곡률 조건의 상수(0 < c1 < c2 < 1) |
+| `hess_inv0` | None | 처음 $H_0$(대칭 양정치 (n, n)). None이면 단위행렬 |
+| `eps` | 1.4901161193847656e-08 | `jac=None` 차분의 절대 간격(수 하나 또는 n개) |
+| `finite_diff_rel_step` | None | `'2-point'`·`'3-point'`의 상대 간격 |
+
+```python
+>>> r = sd.optimize.minimize(rosen, [-1.2, 1.0], jac=rosen_grad, options={'gtol': 1e-9})
+>>> r.n_iter, f"{r.fun:.1e}"
+(34, '4.4e-25')
+>>> r = sd.optimize.minimize(rosen, [-1.2, 1.0], jac=rosen_grad, options={'c2': 0.1})
+>>> r.n_iter, r.nfev
+(22, 62)
+```
+
+`c2`를 줄이면 선 탐색이 기울기가 더 평평한 점까지 가서(정확한 선 탐색에 가까움) 반복 수는 줄지만 반복 하나에 부르는 수가 늘어요. 위에서는 반복이 32번에서 22번으로 줄고 `nfev`는 39번에서 62번으로 늘었어요. 준뉴턴 방법에는 보통 0.9를 써요.
+
+`hess_inv0`는 헤시안 역행렬을 미리 알 때 줘요. 단, 해에서의 값을 시작점에 주는 것이 늘 도움이 되지는 않아요. 시작점의 곡률은 해의 것과 다를 수 있으니까요.
+
+### 결과의 hess_inv
+
+결과의 `hess_inv`는 반복이 쌓은 $H_k$예요. Rosenbrock의 해 (1, 1)에서 참 헤시안의 역행렬은 $\begin{bmatrix} 0.5 & 1 \\ 1 & 2.005 \end{bmatrix}$이고 BFGS의 것은 그에 가까워요.
+
+```python
+>>> r = sd.optimize.minimize(rosen, [-1.2, 1.0], jac=rosen_grad)
+>>> r.hess_inv
+array([[0.5018600892282898,  1.003153259362335],
+       [ 1.003153259362335,  2.010274659708603]], dtype=float64)
+```
+
+$H_k$는 지나온 방향의 곡률만 담기 때문에 늘 이렇게 가깝지는 않아요. 표준오차처럼 불확실성을 재는 데 쓰려면 해에서 헤시안을 따로 계산하는 편이 맞아요(곡선 적합의 표준오차는 [`sd.regression.nls`](/api/regression/nls/)가 줘요).
+
+### status
+
+| `status` | `message` | 언제 |
+|---|---|---|
+| 0 | `Optimization terminated successfully.` | 기울기 노름 ≤ `gtol`, 또는 걸음 ≤ `xrtol` 기준 |
+| 1 | `Maximum number of iterations has been exceeded.` | `max_iter` |
+| 2 | `Desired error not necessarily achieved due to precision loss.` | 선 탐색이 Wolfe 조건을 만족하는 걸음을 찾지 못했거나, f가 유한하지 않아요 |
+| 3 | `NaN result encountered.` | 기울기나 x가 NaN |
+
+status 2는 해 근처에서 반올림 때문에 f를 더 줄일 수 없을 때도 나요. 특히 차분의 기울기는 해 근처에서 잡음이 커서, `gtol`에 닿기 전에 이 상태로 멈추는 일이 흔해요. 그때는 `fun`과 `jac`이 이미 충분히 작은지 보고, 기울기 함수나 `'3-point'`를 써요.
+
+## L-BFGS-B
+
+### 경계
+
+`bounds=(lower, upper)`로 변수마다 범위를 줘요. 경계에 닿은 변수는 경계에 머물고, 나머지 변수로 내려가요. 멈춤은 경계를 고려한 **투영된 기울기**로 판정해요. 경계 위의 해에서 기울기가 경계 바깥을 가리키면 그 성분은 0으로 봐요.
+
+```python
+>>> r = sd.optimize.minimize(rosen, [-1.2, 1.0], method='l-bfgs-b', jac=rosen_grad,
+...                          bounds=([-2.0, -2.0], [0.5, 2.0]))
+>>> r.x, r.jac
+(array([ 0.5, 0.25], dtype=float64), array([-1.0,  0.0], dtype=float64))
+>>> r.message
+'CONVERGENCE: NORM OF PROJECTED GRADIENT <= PGTOL'
+```
+
+x 방향의 기울기는 −1이지만(x를 늘리면 f가 줄지만) x ≤ 0.5에 막혀 있으니 이 점이 해예요. 경계는 정확히 지켜요. 결과의 `x`는 경계 위에 정확히 놓여요.
+
+lower = upper인 변수는 그 값에 고정돼요. 모든 변수가 고정이면 `fun`을 한 번 부르고 끝나요.
+
+```python
+>>> r = sd.optimize.minimize(rosen, [0.0, 2.0], bounds=([0.0, 2.0], [0.0, 2.0]))
+>>> r.fun, r.n_iter, r.nfev, r.message
+(401.0, 0, 1, 'All independent variables were fixed by bounds.')
+```
+
+일부만 고정이고 기울기가 차분이면 그 변수를 빼고 풀어요. 그때 결과의 `jac`은 고정한 자리가 NaN이고 `hess_inv` 필드가 없어요.
+
+### 옵션
+
+| 옵션 | 기본값 | 뜻 |
+|---|---|---|
+| `maxcor` | 10 | 기억하는 $(s, y)$ 쌍의 수 m. 메모리는 대략 2mn개의 수예요 |
+| `ftol` | 2.220446049250313e-09 | $(f_k - f_{k+1}) / \max(\lvert f_k\rvert, \lvert f_{k+1}\rvert, 1) \le$ `ftol`이면 멈춰요 |
+| `gtol` | 1e-05 | 투영된 기울기의 가장 큰 성분이 이 값 이하이면 멈춰요 |
+| `max_iter` | 15000 | 반복 수의 상한 |
+| `max_nfev` | 15000 | `fun`을 부른 수의 상한(반복이 끝날 때 넘었는지 봐서 조금 넘을 수 있어요) |
+| `max_ls` | 20 | 반복 하나에서 선 탐색이 시험하는 점의 상한 |
+| `eps` | 1e-08 | `jac=None` 차분의 절대 간격 |
+| `finite_diff_rel_step` | None | `'2-point'`·`'3-point'`의 상대 간격 |
+
+`tol`을 주면 `ftol`과 `gtol`을 모두 그 값으로 정해요. L-BFGS-B는 f의 상대 감소로도 멈추므로, 기본값으로는 기울기가 `gtol`에 닿기 전에 멈출 때가 많아요(위 Rosenbrock의 `message`). 기울기로만 멈추게 하려면 `ftol`을 0으로 줘요.
+
+```python
+>>> r = sd.optimize.minimize(rosen, [-1.2, 1.0], method='l-bfgs-b', jac=rosen_grad, options={'ftol': 0.0, 'gtol': 1e-9})
+>>> r.n_iter, f"{r.fun:.1e}", r.message
+(38, '3.0e-22', 'CONVERGENCE: NORM OF PROJECTED GRADIENT <= PGTOL')
+```
+
+`maxcor`를 늘리면 곡률 정보를 더 오래 기억해요. 반복 수는 조금 줄 수 있지만 반복 하나의 계산이 늘어요. 3–20 사이가 흔히 써요.
+
+### 변수가 많을 때
+
+BFGS의 $H_k$는 n × n 행렬이라 n = 10⁴이면 800 MB이고 반복마다 n²의 계산이 들어요. L-BFGS-B는 `maxcor`개의 쌍만 쓰므로 반복 하나가 n에 비례해요.
+
+```python
+>>> r = sd.optimize.minimize(rosen_n, sd.full(10000, 1.2), method='l-bfgs-b', jac=rosen_n_grad)
+>>> r.converged, r.n_iter, r.nfev, f"{r.fun:.1e}"
+(True, 43, 48, '1.7e-10')
+```
+
+결과의 `hess_inv`도 n × n이지만 처음 읽을 때 만들어요. 큰 n에서는 읽지 않으면 메모리를 쓰지 않아요.
+
+### status
+
+| `status` | `message` |
+|---|---|
+| 0 | `CONVERGENCE: NORM OF PROJECTED GRADIENT <= PGTOL` 또는 `CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH` |
+| 1 | `STOP: TOTAL NO. OF ITERATIONS REACHED LIMIT` 또는 `STOP: TOTAL NO. OF F,G EVALUATIONS EXCEEDS LIMIT` |
+| 2 | `ABNORMAL: `(선 탐색이 `max_ls`번 안에 걸음을 찾지 못했고 다시 시작할 기억도 없어요) |
+
+선 탐색이 실패하면 L-BFGS-B는 먼저 기억을 비우고 가장 가파른 내리막으로 다시 시작해요. 기억이 이미 빈 채로 또 실패하면 `ABNORMAL`이고, `x`와 `fun`은 마지막으로 받아들인 점의 것이에요.
+
+```python
+>>> r = sd.optimize.minimize(rosen, [-1.2, 1.0], method='l-bfgs-b', jac=rosen_grad, options={'max_ls': 1})
+>>> r.status, r.message, r.n_iter
+(2, 'ABNORMAL: ', 0)
+```
+
+<Callout type="warn">
+L-BFGS-B에서 정의역 밖을 `math.inf`로 막지 마세요. 시험점의 값이 inf면 차분의 기울기가 NaN이 되고, 선 탐색이 실패한 뒤 "f가 줄지 않았다"를 상대 감소 판정으로 읽어 해가 아닌 곳에서 `converged=True`로 멈출 수 있어요. 범위는 `bounds`로 주세요. BFGS와 Nelder–Mead는 inf를 돌려주는 점을 피해 가요([`minimize`](/api/optimize/minimize/)의 예).
+</Callout>
+
+## BFGS와 L-BFGS-B 고르기
+
+| | BFGS | L-BFGS-B |
+|---|---|---|
+| 경계 | 받지 않음 | 받음 |
+| 메모리 | n × n 행렬 | `maxcor` × n 행렬 둘 |
+| 반복 하나의 계산 | n²(큰 n에서 커요) | `maxcor`·n |
+| 수렴 | 해 근처에서 초선형 | 선형(대개 BFGS와 비슷한 반복 수) |
+| 멈춤 | 기울기 노름 | 투영된 기울기, 또는 f의 상대 감소 |
+| 결과의 `hess_inv` | 반복의 $H_k$ | 기억한 쌍으로 만든 행렬 |
+
+경계가 없고 n이 수백 개까지면 둘 다 잘 맞아요. 경계가 있거나 n이 수천 개 넘으면 L-BFGS-B예요. 헤시안을 계산할 수 있으면 [뉴턴 방법](/api/optimize/newton-methods/)이 반복 수가 더 적어요.
+
+## 정확도와 비용
+
+- 기울기 함수를 주면 해의 정확도는 `gtol`이 정하고, 허용오차를 줄이면 반올림 가까이까지 가요. 차분의 기울기로는 해가 $10^{-5}$–$10^{-8}$ 안팎에서 막혀요.
+- 비용은 대개 `fun`과 `jac`을 부르는 수예요. 방법 자체의 계산(선 탐색, 갱신)은 C++이라 작은 n에서 반복 하나에 몇 µs예요. BFGS의 n × n 갱신, L-BFGS-B의 방향 계산처럼 큰 계산은 GIL을 놓고 해요.
+- L-BFGS-B는 scipy 1.18.1의 `method='L-BFGS-B'`와 같은 점에서 사용자 함수를 같은 차례로 불러, `x`의 비트까지 같은 결과를 줘요. BFGS는 $H_k$의 갱신을 n²의 계산 순서로 해서 scipy와 걸음이 반올림만큼 다르고, 반복 수와 `nfev`가 가끔 몇 번 달라요. 자세한 알고리즘은 [구현 글](/internals/optimize/quasi-newton/)에 있어요.
+
+## scipy를 아는 분께
+
+- 이름: `maxiter`는 `max_iter`, L-BFGS-B의 `maxfun`은 `max_nfev`, `maxls`는 `max_ls`예요. `maxcor`, `ftol`, `gtol`, `eps`, `norm`, `xrtol`, `c1`, `c2`, `hess_inv0`, `finite_diff_rel_step`은 같고 기본값도 같아요. `disp`, `iprint`, `return_all`, `workers`는 없어요.
+- `eps`와 `finite_diff_rel_step`은 쓰이는 `jac`에서만 받아요(scipy는 쓰지 않는 것을 무시해요).
+- BFGS에 `bounds`를 주면 scipy는 경고하고 무시하지만 여기서는 `ValueError`예요.
+- `bounds`는 `(lower, upper)` 꼴이고, `x0`가 경계 밖이면 `ValueError`예요(scipy는 말없이 경계 안으로 옮겨요).
+- L-BFGS-B의 `hess_inv`는 scipy의 `LbfgsInvHessProduct` 객체가 아니라 (n, n) 배열이에요. scipy의 `.todense()`가 만드는 행렬과 반올림만큼만 달라요. `ABNORMAL`에서 `fun`은 돌려주는 `x`의 값이에요(scipy는 마지막 시험점의 값).
+- BFGS의 걸음은 scipy와 반올림만큼 달라요. `jac`를 준 Rosenbrock에서는 반복 수와 `nfev`가 같지만, 차분에서는 scipy가 `nit=32`, `nfev=117`, 여기는 31, 114예요.

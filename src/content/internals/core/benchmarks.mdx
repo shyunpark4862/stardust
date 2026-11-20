@@ -41,7 +41,7 @@ import Tree from '../../../components/fig/Tree.astro';
   ]} />
 </Fig>
 
-등록된 사례는 1844개예요. 영역별로는 이래요(`python -m bench.speed list`로 센 값이에요).
+등록된 사례는 1861개예요. 영역별로는 이래요(`python -m bench.speed list`로 센 값이에요).
 
 | 영역 | 사례 | 묶음 | 빠른 묶음 | 비용표 사례 | 비교 대상 |
 |---|---:|---:|---:|---:|---|
@@ -52,7 +52,8 @@ import Tree from '../../../components/fig/Tree.astro';
 | special | 232 | 6 | 17 | 98 | scipy |
 | stats | 577 | 16 | 26 | 362 | scipy, numpy |
 | regression | 158 | 19 | 13 | 0 | statsmodels, scikit-learn, scipy, R |
-| 합계 | 1844 | 88 | 113 | 460 | |
+| optimize | 17 | 5 | 5 | 0 | scipy |
+| 합계 | 1861 | 93 | 118 | 460 | |
 
 모든 숫자는 한 기계에서 나와요. Apple M4 Pro(성능 코어 10개와 효율 코어 4개, macOS)예요. stardust는 이 기계를 겨냥해 기준값과 비용을 정하고, 측정도 이 기계에서 해요. 다른 기계에서는 절대 시간이 다르고, 배율도 캐시 크기와 코어 수에 따라 달라질 수 있어요.
 
@@ -190,7 +191,7 @@ stardust와 비교 대상이 각각 몇 스레드로 도는지 정해 두지 않
 
 사례의 `threads`가 sd를 잴 스레드 수들이에요. 기본은 `(1, 10)`이고, 10은 이 기계의 성능 코어 수이자 sd의 기본 스레드 수예요. 측정 프로세스는 `harness.sd_threads(n)` 안에서 `sd.set_num_threads(n)`을 부르고, 측정이 끝나면 원래 값으로 되돌려요.
 
-1844개 중 1492개는 1·10스레드를 모두 재고, 350개는 1스레드만, 2개는 10스레드만 재요. 1스레드만 재는 사례는 나눌 일이 없는 호출이에요. 3×3 행렬 하나, 원소 $10^3$개, 스칼라 하나, 뷰 만들기처럼 병렬 경로가 없거나 병렬 기준값 아래인 경우예요. 그중 몇 개는 일부러 10스레드로도 재요. 기준값 아래에서 풀을 쓰는 실수를 잡으려는 줄이에요.
+1861개 중 1501개는 1·10스레드를 모두 재고, 358개는 1스레드만, 2개는 10스레드만 재요. 1스레드만 재는 사례는 나눌 일이 없는 호출이에요. 3×3 행렬 하나, 원소 $10^3$개, 스칼라 하나, 뷰 만들기처럼 병렬 경로가 없거나 병렬 기준값 아래인 경우예요. 그중 몇 개는 일부러 10스레드로도 재요. 기준값 아래에서 풀을 쓰는 실수를 잡으려는 줄이에요.
 
 ### 비교 대상의 스레드: `fixed`와 `follow`
 
@@ -198,10 +199,10 @@ Python 비교 대상(`Ref`)은 두 방식 중 하나로 재요.
 
 | 방식 | 언제 | 어떻게 재나 |
 |---|---|---|
-| `"fixed"` (기본) | regression 밖의 모든 비교 대상과 regression의 scipy·R | 라운드마다 한 번, 그 라이브러리의 기본 스레드로 재요. numpy·scipy의 원소별 계산과 pandas는 1스레드, BLAS는 기본 스레드예요 |
-| `"follow"` | 회귀처럼 BLAS가 일의 대부분인 비교 | sd의 스레드 수마다, 비교 대상의 BLAS·OpenMP 스레드를 같은 수로 묶어 재요(threadpoolctl의 `threadpool_limits`) |
+| `"fixed"` (기본) | regression·optimize 밖의 모든 비교 대상과 regression의 scipy·R | 라운드마다 한 번, 그 라이브러리의 기본 스레드로 재요. numpy·scipy의 원소별 계산과 pandas는 1스레드, BLAS는 기본 스레드예요 |
+| `"follow"` | 회귀처럼 BLAS가 일의 대부분인 비교, optimize의 scipy | sd의 스레드 수마다, 비교 대상의 BLAS·OpenMP 스레드를 같은 수로 묶어 재요(threadpoolctl의 `threadpool_limits`) |
 
-`fixed`는 사용자가 그 라이브러리를 그대로 쓸 때의 시간이에요. numpy의 `sin`은 설정을 바꿔도 1스레드로 도니, sd의 1스레드와 10스레드를 모두 numpy 하나와 견줘요. `follow`는 같은 스레드 수에서 누가 빠른지를 봐요. 회귀는 일의 대부분이 BLAS라, 비교 대상의 BLAS 스레드를 sd와 같게 두어야 스레드 수마다 견줄 수 있어요. regression의 158개 중 100개가 `follow` 비교 대상을 가져요.
+`fixed`는 사용자가 그 라이브러리를 그대로 쓸 때의 시간이에요. numpy의 `sin`은 설정을 바꿔도 1스레드로 도니, sd의 1스레드와 10스레드를 모두 numpy 하나와 견줘요. `follow`는 같은 스레드 수에서 누가 빠른지를 봐요. 회귀는 일의 대부분이 BLAS라, 비교 대상의 BLAS 스레드를 sd와 같게 두어야 스레드 수마다 견줄 수 있어요. regression의 158개 중 100개가 `follow` 비교 대상을 가져요. optimize는 17개 모두 scipy를 `follow`로 재요.
 
 ### BLAS 스레드는 측정 프로세스마다 묶어요
 
@@ -304,7 +305,7 @@ Q   regression/최소제곱/ols(y, X) [(100,000, 10)]  [1, 10T; statsmodels, sci
 .venv/bin/python -m bench.speed list --area stats --quick
 ```
 
-**빠른 묶음**(`quick=True`)은 영역마다 대표 사례를 골라 둔 것이에요. 합쳐서 113개이고, 영역마다 1–3분 안에 돌아요. 짧은 시간에 여러 영역을 훑어볼 때 써요. **비용표 사례**(`cost`가 있는 사례)는 460개로, special 98개와 stats 362개예요([비용표](#비용표)).
+**빠른 묶음**(`quick=True`)은 영역마다 대표 사례를 골라 둔 것이에요. 합쳐서 118개이고, 영역마다 1–3분 안에 돌아요. 짧은 시간에 여러 영역을 훑어볼 때 써요. **비용표 사례**(`cost`가 있는 사례)는 460개로, special 98개와 stats 362개예요([비용표](#비용표)).
 
 ### 공정하게 맞추기
 
@@ -587,7 +588,7 @@ constexpr double find(std::string_view dist, std::string_view method, bool memo 
 - **1스레드 줄은 BLAS도 1스레드예요.** BLAS를 부르는 사례에서 sd의 1스레드 줄은 Accelerate까지 1스레드로 묶은 시간이에요.
 - **†와 \*를 놓치지 않아요.** †는 기계가 바쁠 때 잰 줄이고, \*는 입력의 일부로 재서 늘린 값이에요.
 
-영역별로 실제 속도를 정리한 글은 [배열 성능](/internals/array/performance/), [데이터프레임 성능](/internals/frame/performance/), [난수 성능과 검증](/internals/random/performance/), [특수함수 정확도와 성능](/internals/special/accuracy-performance/), [통계 정확도와 성능](/internals/stats/accuracy-performance/), [회귀 정확도와 성능](/internals/regression/accuracy-performance/)에 있어요.
+영역별로 실제 속도를 정리한 글은 [배열 성능](/internals/array/performance/), [데이터프레임 성능](/internals/frame/performance/), [난수 성능과 검증](/internals/random/performance/), [특수함수 정확도와 성능](/internals/special/accuracy-performance/), [통계 정확도와 성능](/internals/stats/accuracy-performance/), [회귀 정확도와 성능](/internals/regression/accuracy-performance/), [최적화 정확도와 성능](/internals/optimize/accuracy-performance/)에 있어요.
 
 ## 명령 모음
 

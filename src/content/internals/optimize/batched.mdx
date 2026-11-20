@@ -1,0 +1,357 @@
+---
+title: 배치 스칼라
+group: 스칼라
+order: 3
+summary: 원소마다 따로 푸는 스칼라 문제 수백만 개를, 남은 원소만 모아 사용자 함수를 한 번씩 부르는 고리로 묶는 방법을 설명해요. 원소 하나만 보면 scipy와 같은 점에서 함수를 불러요.
+seeAlso: [overview, scalar-roots, scalar-minimum, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+export const activeK = [[1,1000],[2,1000],[3,1000],[4,1000],[5,1000],[6,1000],[7,1000],[8,1000],[9,992],[10,788],[11,242]];
+
+## 한눈에 보기
+
+[`find_root`](/api/optimize/find_root/)와 [`find_minimum`](/api/optimize/find_minimum/)은 같은 꼴의 스칼라 문제 n개를 원소마다 따로 풀어요. 원소마다 [root_scalar](/internals/optimize/scalar-roots/)를 한 번씩 부르면 Python 함수 호출이 (원소 수) × (반복 수)번 일어나요. 사용자 함수가 Python이라 호출 하나에 µs 단위의 고정 비용이 드니, 원소가 많으면 그 비용이 시간을 다 차지해요. 배치 함수는 반복마다 **아직 끝나지 않은 모든 원소를 한 배열에 모아** 사용자 함수를 한 번 불러요. 호출 수가 반복 수로 줄고, 사용자 함수 안에서는 sd의 배열 연산(스레드를 쓰는)이 한 번에 돌아요.
+
+| 함수 | 알고리즘 | 옮긴 곳(scipy 1.18.1 `optimize.elementwise`) |
+|---|---|---|
+| `find_root` | Chandrupatla(1997): 역 2차 보간과 이분의 혼합 | `_chandrupatla` |
+| `find_minimum` | Chandrupatla(1998): 포물선 맞춤과 황금분할 | `_chandrupatla_minimize` |
+| `bracket_root` | 양쪽으로 넓혀 부호 바뀜 찾기 | `_bracket_root` |
+| `bracket_minimum` | 내리막으로 걸음을 늘려 세 점 찾기 | `_bracket_minimum` |
+
+커널은 `csrc/optimize/batch.cpp`의 `find_root_solve`, `find_minimum_solve`, `bracket_root_solve`, `bracket_minimum_solve`예요. Python 층(`src/stardust/optimize/_elementwise.py`)은 입력과 `args`를 브로드캐스트해 1차원 배열로 펴고, 허용오차의 기본값을 정하고, 결과를 배치 모양으로 되돌려요.
+
+## 고리: 남은 원소만 모아 한 번 부르기
+
+scipy의 `elementwise`는 모든 함수가 공통 고리 `eim._loop`를 써요. 반복 하나는 이래요.
+
+1. `pre_func_eval`: 남은 원소마다 다음 점을 계산해요.
+2. 그 점들로 사용자 함수를 한 번 불러요.
+3. `post_func_eval`: 새 값으로 원소마다 상태를 갱신해요.
+4. `check_termination`: 원소마다 멈춤 판정을 하고 멈춘 원소의 결과를 기록해요.
+5. 멈춘 원소를 배열에서 빼고(압축), `post_termination_check`로 남은 원소의 다음 걸음 모수를 정해요.
+
+scipy는 단계마다 남은 원소 전체에 numpy 연산을 하고 배열을 줄여요. 단계 하나하나가 원소별 연산이라, 원소 하나에서 보면 계산 순서가 원소 하나만 풀 때와 같아요. stardust는 그 순서를 원소 하나 안에서 그대로 지키면서, 단계마다 배열을 만드는 대신 **원소를 한 번 지나가며** 갱신, 판정, 압축, 다음 걸음 모수까지 하고, 한 번 더 지나가며 다음 호출의 점을 써요.
+
+<Fig column caption="find_root의 반복 하나. 사용자 함수는 Python이라 GIL을 쥔 채 부르고, 원소를 지나가는 두 패스는 원소가 많으면 GIL을 놓고 스레드에 나눠요.">
+  <Steps steps={[
+    { label: '점 쓰기', note: '남은 원소 r마다 x = x1 + t·(x2 − x1)을 새 float64 sd.ndarray (k,)에 써요', where: 'for_elements' },
+    { label: 'args 모으기', note: '사용자 args마다 남은 원소의 값을 새 1차원 배열(자기 dtype)에 모아요', where: 'gather' },
+    { label: 'f(x, *args)', note: 'Python 호출 한 번. 돌려받은 값이 (k,) float64 sd.ndarray가 아니면 확인 함수로 바꾸거나 에러', where: 'Call::run' },
+    { label: '갱신·판정·압축·다음 t', note: '원소 r마다 새 값으로 세 점을 바꾸고, 멈춤 판정, 멈추면 기록, 계속 가면 다음 t를 정하고 남은 목록에 차례대로 남겨요', where: 'advance' },
+  ]} />
+</Fig>
+
+원소가 멈추는 반복은 원소마다 달라서, 사용자 함수가 받는 배열은 반복이 갈수록 짧아져요. 아래는 c = linspace(1, 10, 1000)마다 $x^3 - 2x - c$의 근을 구간 (0, 3)에서 찾을 때예요.
+
+```python
+>>> sizes = []
+>>> def f(x, c):
+...     sizes.append(x.shape[0])
+...     return x**3 - 2*x - c
+>>> r = sd.optimize.find_root(f, (0.0, 3.0), args=(sd.linspace(1, 10, 1000),))
+>>> sizes
+[1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 992, 788, 242]
+>>> int(sd.sum(r.nfev)), len(sizes)
+(10022, 11)
+```
+
+<Fig caption="위 실행에서 호출마다 사용자 함수가 받은 원소 수. 처음 두 번은 구간의 두 끝이고, 일곱 번째 반복부터 원소가 멈추며 빠져요. 함수값은 모두 10,022개를 계산했지만 호출은 11번이에요.">
+  <Plot
+    curves={[{ points: activeK, label: '받은 원소 수' }]}
+    domain={[0.5, 11.5]}
+    range={[0, 1100]}
+    xTicks={[{ v: 1, label: '1' }, { v: 3, label: '3' }, { v: 5, label: '5' }, { v: 7, label: '7' }, { v: 9, label: '9' }, { v: 11, label: '11' }]}
+    yTicks={[{ v: 250, label: '250' }, { v: 500, label: '500' }, { v: 750, label: '750' }, { v: 1000, label: '1000' }]}
+  />
+</Fig>
+
+원소마다 `root_scalar`(brentq)를 불렀다면 같은 1,000문제에 Python 호출이 10,909번이에요.
+
+원소의 `n_iter`와 `nfev`는 그 원소가 멈출 때까지의 반복 수와 함수값 수예요(scipy의 고리와 같아요). `nfev`는 사용자 함수를 부른 횟수가 아니라 그 원소의 값을 계산한 횟수예요. 처음 점들(find_root 두 끝, find_minimum 세 점)에서의 계산은 모든 원소를 한 배열로 받아요.
+
+### 원소의 상태를 한곳에
+
+원소 하나의 상태는 구조체 하나에 모아 둬요. find_root는 double 10개예요.
+
+```cpp
+        // csrc/optimize/batch.cpp
+        // one element's state, together in memory: a pass over the elements reads it in order
+        struct E {
+            double x1, f1, x2, f2, x3, f3, t, xmin, fmin, frt;
+        };
+        std::vector<E> S(n);
+        for (std::size_t i = 0; i < n; ++i) {
+            const double frt = frtol * npmin(std::abs(fl0[i]), std::abs(fr0[i]));
+            S[i] = {xl0[i], fl0[i], xr0[i], fr0[i], kNaN, kNaN, 0.5, kNaN, kNaN, frt};
+        }
+```
+
+반복마다 남은 원소를 차례로 지나가니 이 배치에서는 원소의 상태를 한 번에 읽어요. scipy처럼 필드마다 다른 배열(x1의 배열, f1의 배열, …)에 두면 한 패스가 열 개 넘는 배열을 동시에 흘려 읽게 되어, 10⁶ 원소에서 같은 계산이 4–5배 느렸어요. 남은 원소의 목록(`active`)만 압축하고 상태 자체는 옮기지 않아요.
+
+### 사용자 함수를 부르는 자리
+
+`Call`이 한 번의 호출을 맡아요. 점은 새 `sd.ndarray`와 커널 안의 복사본에 함께 써요(사용자 함수가 인자를 고쳐도 반복에는 영향이 없게). 사용자의 `args`는 Python에서 배치 모양으로 브로드캐스트해 원소 n개의 1차원 배열로 펴 두고, 호출마다 남은 원소의 값을 새 배열에 모아 `f(x, *args)`로 넘겨요. 값은 dtype 그대로 바이트를 옮겨요.
+
+```cpp
+        // csrc/optimize/batch.cpp
+        if (args_.empty()) {
+            r = f_(arr_);
+        } else {
+            nb::tuple call = nb::steal<nb::tuple>(PyTuple_New(static_cast<Py_ssize_t>(args_.size() + 1)));
+            PyTuple_SET_ITEM(call.ptr(), 0, arr_.release().ptr());
+            const std::int64_t shape[1] = {k_};
+            for (std::size_t j = 0; j < args_.size(); ++j) {
+                const NDArray& src = *args_[j];
+                NDArray a = new_array(src.dtype, shape);
+                // the element of q: idx[q] < 2 n (bracket_root's sides), so mod n is one subtraction
+                gather(a.data, src.data, src.strides[0], src.itemsize(), idx, n_, k_);
+                PyTuple_SET_ITEM(call.ptr(), static_cast<Py_ssize_t>(j + 1), wrap(std::move(a)).release().ptr());
+            }
+            PyObject* out = PyObject_Call(f_.ptr(), call.ptr(), nullptr);
+            if (!out) throw nb::python_error();
+            r = nb::steal(out);
+        }
+```
+
+돌려받은 값이 길이 k의 float64 `sd.ndarray`이면 그대로 읽고, 아니면 Python의 확인 함수가 `sd.asarray`로 바꾸거나 모양·형의 에러를 내요.
+
+## find_root: Chandrupatla의 근
+
+### 세 점
+
+Chandrupatla(1997)는 Brent법과 같은 재료(이분, 역 2차 보간)를 더 단순한 규칙으로 섞어요. 원소마다 세 점을 들고 다녀요.
+
+- $x_1$: 가장 최근에 계산한 점
+- $x_2$: $f$의 부호가 $x_1$과 반대인 점. $[x_1, x_2]$가 늘 근을 껴요.
+- $x_3$: 직전 반복에서 버린 점
+
+새 점은 $x = x_1 + t\,(x_2 - x_1)$이에요. $t = 1/2$이면 이분이에요. 새 값의 부호가 $f_1$과 같으면 $x_1$이 $x_3$으로 밀려나고 $x_2$는 그대로, 다르면 $x_2$가 $x_3$으로 밀려나고 $x_1$이 반대쪽 끝이 돼요. 그다음 새 점이 $x_1$이에요.
+
+### 언제 보간하나요
+
+세 점을 정규화해요.
+
+$$
+\xi = \frac{x_1 - x_2}{x_3 - x_2}, \qquad \Phi = \frac{f_1 - f_2}{f_3 - f_2}
+$$
+
+그리고
+
+$$
+1 - \sqrt{1 - \xi} < \Phi < \sqrt{\xi}
+$$
+
+이면 세 점의 역 2차 보간을 쓰고, 아니면 이분(t = 1/2)해요. 이 조건은 세 점을 지나는 역 2차식 $x = q(y)$가 세 함수값 사이에서 꺾이지 않는다(단조이다)는 조건과 같아요. 꺾이지 않아야 $q(0)$이 구간 안에 떨어지고 보간이 함수의 모양을 제대로 따라가요. 보간의 t는 라그랑주 꼴로
+
+$$
+t = \frac{f_1}{f_1 - f_2}\cdot\frac{f_3}{f_3 - f_2} \;-\; \alpha\,\frac{f_1}{f_3 - f_1}\cdot\frac{f_2}{f_2 - f_3},
+\qquad \alpha = \frac{x_3 - x_1}{x_2 - x_1}
+$$
+
+예요. 마지막으로 t를 $[t_l,\ 1 - t_l]$($t_l = \tfrac12\,\text{tol}/|x_2 - x_1|$)로 잘라서, 새 점이 두 끝에서 적어도 tol/2 떨어지게 해요. 근 바로 옆에서 보간이 같은 끝을 되풀이해 고르며 구간이 줄지 않는 것을 막는 장치로, 논문 부록의 BASIC 코드에 있는 그대로예요.
+
+```cpp
+        // csrc/optimize/batch.cpp
+        auto step = [&](std::size_t i) -> bool {
+            E& e = S[i];
+            const bool lo = std::abs(e.f1) < std::abs(e.f2);
+            e.xmin = lo ? e.x1 : e.x2;
+            e.fmin = lo ? e.f1 : e.f2;
+            bool s = false;
+            if (std::abs(e.fmin) <= fatol + e.frt) {
+                P.status[i] = sConverged;
+                s = true;
+            }
+            if (!s && npsign(e.f1) == npsign(e.f2)) {
+                e.xmin = e.fmin = kNaN;
+                P.status[i] = sSignErr;
+                s = true;
+            }
+            const bool x_nonfinite = !(std::isfinite(e.x1) && std::isfinite(e.x2));
+            if (!s && (x_nonfinite || (std::isnan(e.f1) && std::isnan(e.f2)))) {
+                e.xmin = e.fmin = kNaN;
+                P.status[i] = sValueErr;
+                s = true;
+            }
+            const double dx = std::abs(e.x2 - e.x1);
+            const double tol = std::abs(e.xmin) * xrtol + xatol;
+            if (dx < tol) {
+                P.status[i] = sConverged;
+                s = true;
+            }
+            if (s) return true;
+            const double xi1 = (e.x1 - e.x2) / (e.x3 - e.x2);
+            const double phi1 = (e.f1 - e.f2) / (e.f3 - e.f2);
+            const double alpha = (e.x3 - e.x1) / (e.x2 - e.x1);
+            double ti = 0.5;
+            if (((1 - std::sqrt(1 - xi1)) < phi1) && (phi1 < std::sqrt(xi1)))
+                ti = e.f1 / (e.f1 - e.f2) * e.f3 / (e.f3 - e.f2) - alpha * e.f1 / (e.f3 - e.f1) * e.f2 / (e.f2 - e.f3);
+            const double tl = 0.5 * tol / dx;
+            e.t = npmin(npmax(ti, tl), 1 - tl);
+            return false;
+        };
+```
+
+### 멈춤
+
+원소마다 아래 가운데 하나면 멈춰요. $x_{\min}$은 $x_1, x_2$ 가운데 $|f|$가 작은 쪽이에요.
+
+| 판정 | status | 결과의 x |
+|---|---|---|
+| $\lvert f(x_{\min})\rvert \le \text{fatol} + \text{frtol}\cdot\min(\lvert f(x_{l0})\rvert, \lvert f(x_{r0})\rvert)$ | 0 | $x_{\min}$ |
+| $f_1$과 $f_2$의 부호가 같아요(처음 구간이 근을 끼지 않음) | −1 | NaN |
+| $x_1$이나 $x_2$가 유한하지 않거나, $f_1, f_2$가 모두 NaN | −3 | NaN |
+| $\lvert x_2 - x_1\rvert < \lvert x_{\min}\rvert\cdot\text{xrtol} + \text{xatol}$ | 0 | $x_{\min}$ |
+| 반복이 `max_iter`에 닿음 | −2 | $x_{\min}$ |
+
+기본은 xatol = 4·tiny, xrtol = 4ε, fatol = tiny, frtol = 0이에요(tiny는 가장 작은 정규수 2.2×10⁻³⁰⁸). 구간 폭 판정은 bisect의 판정과 같은 꼴이고, Chandrupatla의 원래 판정은 xrtol에 4를 곱한 것과 같아요. `max_iter`의 기본 2046은 $\log_2(\text{최대 double}) - \log_2(\text{tiny})$로, 이분만으로도 어떤 구간이든 tiny까지 줄일 수 있는 수예요.
+
+### 예
+
+$x^3 - 2x - 5$를 넓은 구간 (0, 200)에서 풀면 처음 여덟 번은 Φ가 조건을 벗어나 이분이고, 근 근처에 오면 역 2차 보간이 두세 반복에 끝자리까지 가요.
+
+| 반복 | 걸음 | t | x | f(x) |
+|---|---|---|---|---|
+| 1–8 | 이분 | 0.5 | 100, 50, 25, 12.5, 6.25, 3.125, 1.5625, 2.34375 | |
+| 9 | 역 2차 | 0.384 | 2.044050946610759 | −0.548 |
+| 10 | 역 2차 | 0.184 | 2.0991220959549013 | 5.1×10⁻² |
+| 11 | 역 2차 | 0.0835 | 2.0945236948947237 | −3.1×10⁻⁴ |
+| 12 | 역 2차 | 0.0060 | 2.0945514851338785 | 4.0×10⁻⁸ |
+| 13 | 역 2차 | 1.3×10⁻⁴ | 2.0945514815423265 | −8.9×10⁻¹⁶ |
+| 14 | 역 2차(잘림) | 2.6×10⁻⁷ | 2.0945514815423274 | 9.8×10⁻¹⁵ |
+
+14번째 점은 t가 $t_l$로 잘려 근의 반대쪽 이웃 double에 놓였고, 구간이 두 double로 좁아져 멈췄어요.
+
+```python
+>>> r = sd.optimize.find_root(lambda x: x**3 - 2*x - 5, (0.0, 200.0))
+>>> r.x, r.bracket, r.n_iter
+(2.0945514815423265, (2.0945514815423265, 2.0945514815423274), 14)
+```
+
+## find_minimum: Chandrupatla의 최솟값
+
+Chandrupatla(1998)의 최솟값 판은 세 점 $x_1 < x_2 < x_3$(가운데 값이 가장 작음)을 들고 다녀요. 반복마다 세 점의 포물선 꼭짓점
+
+$$
+q_1 = \tfrac12\bigl[C\,(x_1 - x_3) + x_2 + x_3\bigr], \qquad
+C = \frac{A}{A + B},\ A = (x_2 - x_1)(f_3 - f_2),\ B = (x_3 - x_2)(f_1 - f_2)
+$$
+
+을 구하고, 직전 반복의 꼭짓점 $q_0$와 가까우면($|q_1 - q_0| < |x_2 - x_1|/2$, 논문의 식 (7)) $q_1$을 새 점으로 써요. 꼭짓점이 자리를 잡아 가고 있다는 신호예요. 아니면 넓은 쪽 구간 $[x_2, x_3]$을 황금분할해 $x_2 + (2 - \varphi)(x_3 - x_2)$를 써요($2 - \varphi \approx 0.382$). $q_1$이 가운데 점에서 허용오차 안이면 넓은 쪽으로 허용오차만큼 떼어 놓아요. 처음 $q_0$는 $x_3$이에요.
+
+```cpp
+            // csrc/optimize/batch.cpp
+            for_elements(k, [&](std::size_t r0, std::size_t r1) {
+                for (std::size_t r = r0; r < r1; ++r) {
+                    E& e = S[static_cast<std::size_t>(P.active[r])];
+                    const double x21 = e.x2 - e.x1;
+                    const double x32 = e.x3 - e.x2;
+                    const double A = x21 * (e.f3 - e.f2);
+                    const double B = x32 * (e.f1 - e.f2);
+                    const double C = A / (A + B);
+                    const double q1 = 0.5 * (C * (e.x1 - e.x3) + e.x2 + e.x3);
+                    double x;
+                    if (std::abs(q1 - e.q0) < 0.5 * std::abs(x21)) {  // the parabola's minimum
+                        x = q1;
+                        if (std::abs(q1 - e.x2) <= e.xtol) x = e.x2 + npsign(x32) * e.xtol;
+                    } else {  // golden section
+                        x = e.x2 + (2 - phi) * x32;
+                    }
+                    e.q0 = q1;
+                    F.put(r, x);
+                }
+            });
+```
+
+멈춤 판정 전에 늘 $x_3$이 가운데에서 먼 쪽이 되게 $x_1$과 $x_3$을 바꿔 둬요. 그래서 위의 $x_3 - x_2$가 넓은 쪽이에요. 판정은
+
+$$
+|x_3 - x_2| \le 2\,(|x_2|\,\text{xrtol} + \text{xatol})
+\quad\text{또는}\quad
+f_1 - 2f_2 + f_3 \le 2\,(|f_2|\,\text{frtol} + \text{fatol})
+$$
+
+예요. 둘째는 세 값의 이계 차분, 곧 세 점에서 본 굽음이 반올림 크기로 줄었다는 판정이에요. 기본 xrtol은 $\sqrt\varepsilon$이에요. 최솟값의 위치를 그보다 정확히 정할 수 없기 때문이에요([스칼라 최솟값](/internals/optimize/scalar-minimum/)의 정확도의 한계). 가운데 값이 양 끝보다 크면 −1, 점이나 값이 유한하지 않으면 −3이에요.
+
+## bracket_root: 양쪽으로 넓히기
+
+scipy처럼 원소 하나를 **두 쪽**으로 나눠, 왼쪽 끝 n개와 오른쪽 끝 n개를 길이 2n의 한 배치로 다뤄요. 쪽마다 상태는 지금 점 x, 그 앞의 점, 출발점 $x_0$(반대쪽의 처음 점), 한계, 거리 d예요.
+
+- 한계가 없는 쪽: $d \leftarrow d \cdot \text{factor}$, 새 점 $x_0 + d$. 처음 d는 $x - x_0$라 거리가 2배, 4배, …로 커져요.
+- 한계가 있는 쪽: $d \leftarrow d / \text{factor}$, 새 점 $\text{limit} - d$. 처음 d는 한계까지의 거리라 한계에 반씩 다가가요.
+
+```cpp
+            // csrc/optimize/batch.cpp
+            for_elements(k, [&](std::size_t r0, std::size_t r1) {
+                for (std::size_t r = r0; r < r1; ++r) {
+                    E& e = S[static_cast<std::size_t>(P.active[r])];
+                    if (std::isinf(e.limit)) {
+                        e.d *= e.factor;
+                        F.put(r, e.x0 + e.d);
+                    } else {
+                        e.d /= e.factor;
+                        F.put(r, e.limit - e.d);
+                    }
+                }
+            });
+```
+
+판정은 scipy의 순서를 따라 두 단계예요. 먼저 남은 모든 쪽에서 부호 바뀜($f$와 앞의 $f$의 부호가 반대이거나 어느 하나가 0)을 보고, 찾은 쪽은 status 0, 그 반대쪽에는 표시를 해 둬요. 그다음 표시된 반대쪽(내부 status 2), 한계에 닿은 쪽(−1), 유한하지 않은 쪽(−3)을 멈추고 압축해요. 사용자 `args`는 쪽 i에 원소 i mod n의 값을 모아 넘겨요. 결과는 scipy의 `customize_result`처럼 수렴한 쪽(둘 다면 좁은 쪽)의 마지막 두 점이고, `n_iter`는 두 쪽의 큰 값, `nfev`는 두 쪽의 합이에요. `xr0`의 기본값은 $x_{l0} + \min((x_{\max} - x_{l0})/8,\ 1)$이에요.
+
+## bracket_minimum: 내리막으로 걸음 늘리기
+
+처음 세 점 $(x_{l0}, x_{m0}, x_{r0})$에서 값이 작은 끝 쪽으로만 가요(그쪽을 오른쪽이라 부르도록 필요하면 두 끝을 바꿔요). 한계가 없으면 걸음을 factor배씩 늘려 $x_{r0} + \text{step}$을, 한계가 있으면 한계까지의 거리를 1/factor씩 줄여 $\text{limit} - \text{step}$을 계산해요. 새 점이 들어올 때마다 세 점을 한 칸씩 밀고, 가운데 값이 양 끝 이하(하나는 엄격)가 되면 멈춰요. 한계 쪽 점이 반올림으로 앞의 점과 같아지면 한계 자체를 써요. 그래서 한계가 0이 아니면 대개 50번 남짓에 한계에 닿아 −1이지만, 한계가 0이면 거리가 정규수 끝까지 줄어야 해서 기본 `max_iter` 1000번에 −2로 멈춰요.
+
+## 스레드와 비트
+
+남은 원소가 2¹⁵개 이상이면 원소를 지나가는 패스(점 쓰기, `args` 모으기, 갱신과 판정)를 2¹³개씩의 조각으로 나눠 스레드에서 돌려요. 그동안 GIL은 놓아요.
+
+```cpp
+// csrc/optimize/batch.cpp
+// fn(r0, r1) over [0, k) in pieces (no Python objects inside)
+template <class Fn>
+void for_elements(std::size_t k, Fn&& fn) {
+    if (k >= kBatchParallel && parallel::available()) {
+        const auto tasks = static_cast<std::int64_t>((k + kBatchTask - 1) / kBatchTask);
+        parallel::parallel_for(tasks, [&](std::int64_t t) {
+            const std::size_t r0 = static_cast<std::size_t>(t) * kBatchTask;
+            fn(r0, std::min(k, r0 + kBatchTask));
+        });
+    } else {
+        parallel::Unlocked u(k >= kBatchParallel);
+        fn(std::size_t{0}, k);
+    }
+}
+```
+
+원소마다의 계산은 어느 스레드에서 하든 같고, 계속 가는 원소는 조각을 나눈 뒤에도 원래 차례대로 목록에 남겨요(각 원소의 결과를 표시해 두고 한 번 더 지나가며 압축). 그래서 스레드 수와 상관없이 사용자 함수가 받는 배열과 결과가 비트까지 같아요. 사용자 함수 호출 자체는 GIL을 쥐고 한 번이라, 병렬은 그 사이의 패스와 사용자 함수 안의 sd 연산에만 있어요.
+
+## scipy와 같은 점
+
+원소 하나의 계산은 scipy의 numpy 연산을 원소 하나에 적용한 것과 같은 순서예요(numpy의 `sign`, `minimum`·`maximum`의 NaN 규칙, 안정 정렬 `argsort` 포함). 그래서 원소마다 scipy와 같은 점에서 f를 불러요.
+
+- scipy로 기록한 원소 하나의 실행 621번(네 함수, scipy의 허용오차와 논문의 허용오차; 근 문제 204개, 최솟값 문제 57개)에서 결과의 필드가 모두 같고, scipy를 실행하며 f를 부른 점을 견주면 차례대로 비트까지 같아요.
+- 2,000원소 배치 일곱 가지(NaN, 무한한 끝, 근을 끼지 않는 구간, 한계, `max_iter`가 섞인 것)에서 필드 전부와 호출마다의 점이 scipy와 같아요. 원소마다 그 원소 하나로 부른 결과와도 같아요.
+- `args`는 원소마다 다른 c의 $x^3 - c$와 $(x - c/10)^2 + kx^4$(k는 (5, 1)로 브로드캐스트)에서 네 함수 모두 scipy와 필드 전부, 호출마다의 x와 args가 같아요.
+- Chandrupatla의 두 논문이 적은 횟수(근 45문제의 함수 계산 수, 최소화 55문제의 반복 수)를 scipy가 논문의 허용오차로 그대로 내고, stardust도 같은 값을 내요. 옮겨 쓴 시험 문제와 구간이 논문과 같다는 증거이기도 해요.
+
+scipy와 다른 것은 호출의 모양뿐이에요. scipy는 처음 점들에서 입력의 모양 그대로(실수면 0차원) 부르지만, stardust는 늘 1차원 (k,)로 불러요.
+
+## 비용
+
+반복 사이의 커널 계산(점 쓰기, `args` 모으기, 갱신·판정·압축)은 함수값 하나에 find_root 6.5–7.1 ns, find_minimum 4.4–5.6 ns예요. scipy는 같은 일을 반복마다 numpy의 마스크, 배열 줄이기와 복사로 해서 10³ 원소에서 71–97 ns, 10⁶ 원소에서 24–26 ns예요(Apple M4 Pro, scipy 1.18.1·numpy 2.5.4, `bench/optimize/o6/speed.md`). 문제는 $x^3 - 2x - c$(구간 (0, 3))와 $(x - c)^2 + 0.01\,c\,x^4$(세 점 (−1, 0.5, 11))이고 c = linspace(1, 10, n)을 `args`로 넘겨요. 사용자 함수는 각 라이브러리의 배열로 썼어요.
+
+| 원소 수 | 함수 | stardust ms (1/10스레드) | scipy ms (1/10스레드) |
+|---:|---|---:|---:|
+| 10⁴ | find_root | 1.19 / 1.14 | 3.29 / 3.22 |
+| 10⁴ | find_minimum | 1.94 / 1.98 | 7.65 / 7.67 |
+| 10⁶ | find_root | 123 / 32 | 286 / 290 |
+| 10⁶ | bracket_root | 58.6 / 40.5 | 95.7 / 97.3 |
+| 10⁶ | find_minimum | 189 / 57.2 | 588 / 592 |
+| 10⁶ | bracket_minimum | 54 / 26.7 | 61.7 / 62.7 |
+
+10스레드에서 빨라지는 것은 원소 패스와 사용자 함수 안의 sd 연산(10⁵ 이상의 `x**3` 등)이 나뉘기 때문이에요. 원소마다 `root_scalar`(brentq)를 부르는 고리는 10⁴ 원소에서 61.3 ms(scipy의 `brentq` 고리 72.1 ms)로, 배치 한 번의 약 50배예요.

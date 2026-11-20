@@ -729,7 +729,7 @@ private:
 
 **큰 BLAS 호출도 놓아요.** `matmul`의 float64·complex128 경로는 곱셈-덧셈이 $2^{15}$개(`kBlasTaskWork`) 이상이면, `cov`와 `corrcoef`는 언제나 BLAS를 부르는 동안 GIL을 놓아요. 이 호출은 Accelerate가 안에서 스레드를 정하므로(`sd.set_num_threads`를 따르지 않아요) 1스레드 설정에서도 여러 코어를 쓸 수 있어요. BLAS와 행렬을 모으는 준비 코드는 Python 객체를 만지지 않아요.
 
-**기준값 이상이어도 GIL을 쥐는 곳**도 있어요. Python 객체를 읽거나 만드는 변환(리스트를 받는 `asarray`, `tolist`), 인덱스 배열 하나로 하는 대입 `x[idx] = v`(같은 인덱스의 마지막 쓰기가 남도록 한 스레드에서 순서대로 써요), `unique_all`·`unique_counts`·`unique_inverse`의 묶음 세기, 메모리를 받기만 하는 `zeros`와 `eye`예요.
+**기준값 이상이어도 GIL을 쥐는 곳**도 있어요. Python 객체를 읽거나 만드는 변환(리스트를 받는 `asarray`, `tolist`), 인덱스 배열 하나로 하는 대입 `x[idx] = v`(같은 인덱스의 마지막 쓰기가 남도록 한 스레드에서 순서대로 써요), `unique_all`·`unique_counts`·`unique_inverse`의 묶음 세기, 메모리를 받기만 하는 `zeros`와 `eye`예요. 사용자의 Python 함수를 부르는 `sd.optimize`의 반복과 `sd.regression.nls`의 반복도 GIL을 쥔 채 돌아요. 반복마다 그 함수를 불러야 하기 때문이에요.
 
 ### 영역마다의 기준값
 
@@ -740,8 +740,9 @@ private:
 | special, stats의 분포 함수 | 배열의 이터레이터를 거치므로 배열과 같아요 |
 | random | 배열과 같은 기준을 `for_pieces`로 적용해요(원소 4096개부터). `permutation`과 비복원 추출은 언제나 |
 | frame | 2¹⁷행(`frame/parallel.hpp`의 `Unlocked`) |
+| optimize | 반복은 쥐어요. 사용자 함수를 부르는 사이의 큰 선형대수(BFGS의 H 갱신, L-BFGS-B의 방향 계산, Nelder–Mead의 무게중심, 야코비안의 QR 등)는 linalg와 같은 10µs 규칙(추정 2×10⁵ 플롭), 배치 스칼라의 원소 패스는 2¹⁵개부터 놓아요. 사용자 함수가 없는 `lsq_linear`과 `nnls`는 2mn² > 2×10⁵이면 풀이 전체에서 놓아요 |
 
-모든 영역이 같은 규칙을 쓰고, 다른 것은 기준값뿐이에요. 비용은 기준값 이상인 호출마다 GIL을 한 번 놓았다 잡는 것으로, 호출당 0.1µs 안팎이에요([스레드풀과 결정성](/internals/core/threads/)).
+모든 영역이 같은 규칙을 쓰고, 다른 것은 기준값과 사용자 함수를 부르는 동안 쥐는 optimize뿐이에요. 비용은 기준값 이상인 호출마다 GIL을 한 번 놓았다 잡는 것으로, 호출당 0.1µs 안팎이에요([스레드풀과 결정성](/internals/core/threads/)).
 
 ### 다른 스레드에서 GIL을 다시 잡는 곳
 

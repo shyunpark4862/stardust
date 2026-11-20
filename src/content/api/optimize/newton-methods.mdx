@@ -1,0 +1,360 @@
+---
+kind: concept
+title: 뉴턴 방법 (Newton-CG, trust-ncg, trust-exact)
+group: 다변수 최소화
+order: 4
+summary: 헤시안(이계도함수)까지 써서 f를 이차식으로 어림하고 그 바닥으로 가는 방법들이에요. 선 탐색의 Newton-CG와 신뢰 영역의 trust-ncg·trust-exact가 있고, 헤시안을 주는 방법과 옵션을 다뤄요.
+seeAlso: [minimize, quasi-newton, nelder-mead, results, check_grad]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const path_ncg = [[-1.2,1.0],[-1.0567,1.0585],[-1.0309,1.0689],[-1.0226,1.0621],[-1.0257,1.0582],[-1.0177,1.0518],[-1.0207,1.0479],[-1.0129,1.0418],[-1.0158,1.0379],[-1.0082,1.0322],[-1.0111,1.0283],[-1.0036,1.0228],[-1.0065,1.0188],[-0.9991,1.0136],[-1.0019,1.0096],[-0.9947,1.0047],[-0.9974,1.0006],[-0.9904,0.9959],[-0.9931,0.9918],[-0.9861,0.9873],[-0.9887,0.9832],[-0.9819,0.9788],[-0.9845,0.9747],[-0.9777,0.9705],[-0.9802,0.9663],[-0.9736,0.9623],[-0.9761,0.9581],[-0.9695,0.9542],[-0.9719,0.9499],[-0.9654,0.9462],[-0.9678,0.9419],[-0.9613,0.9383],[-0.9637,0.9339],[-0.9573,0.9305],[-0.9596,0.926],[-0.9533,0.9227],[-0.9556,0.9182],[-0.9493,0.915],[-0.9516,0.9104],[-0.7567,0.5396],[-0.7362,0.5496],[-0.4508,0.2012],[-0.3145,0.0787],[-0.2941,0.0947],[-0.2399,0.0403],[-0.2201,0.0568],[-0.177,0.0144],[-0.1576,0.0328],[-0.1154,-0.0044],[-0.0974,0.0166],[-0.0522,-0.0168],[-0.0372,0.0066],[0.016,-0.0212],[0.027,0.0045],[0.1723,0.0122],[0.1748,0.0317],[0.2821,0.0691],[0.3687,0.1219],[0.3657,0.1322],[0.4915,0.2246],[0.4855,0.2334],[0.5287,0.2757],[0.617,0.3704],[0.6134,0.3746],[0.7131,0.4975],[0.7088,0.5011],[0.7418,0.548],[0.8107,0.6511],[0.8084,0.6528],[0.8827,0.7731],[0.8804,0.7746],[0.9055,0.819],[0.9053,0.8193],[0.9164,0.8395],[0.9403,0.8833],[0.9401,0.8835],[0.9541,0.91],[0.9865,0.972],[0.986,0.9722],[0.9944,0.9888],[0.9944,0.9889],[0.9964,0.9928],[1.0,1.0]];
+
+export const path_tncg = [[-1.2,1.0],[-1.0567,1.0585],[-1.0309,1.0689],[-0.9177,0.846],[-0.675,0.4089],[-0.6471,0.4252],[-0.3284,0.04],[-0.289,0.0861],[-0.1695,0.0495],[0.0584,-0.0531],[0.0613,0.0042],[0.1237,0.0013],[0.2404,0.046],[0.4609,0.1639],[0.44,0.1896],[0.6246,0.3583],[0.6107,0.3705],[0.7673,0.5654],[0.7574,0.5723],[0.8944,0.7814],[0.8868,0.7858],[0.9869,0.964],[0.9829,0.966],[0.9996,0.9989],[0.9995,0.999],[1.0,1.0]];
+
+export const path_texact = [[-1.2,1.0],[-1.1753,1.3807],[-1.0745,1.1519],[-0.86,0.7002],[-0.6505,0.3792],[-0.4817,0.2035],[-0.2605,0.0189],[-0.1436,0.007],[0.1001,-0.0489],[0.1705,0.0241],[0.2289,0.0466],[0.3411,0.1016],[0.5082,0.2304],[0.5829,0.3342],[0.7431,0.5261],[0.7845,0.6137],[0.9181,0.8249],[0.9359,0.8756],[0.9653,0.9308],[0.9942,0.9876],[0.9992,0.9983],[1.0,1.0]];
+
+export const fit_ncg = [[0,1.384],[1,0.66],[2,0.616],[3,0.615],[4,0.614],[5,0.612],[6,0.611],[7,0.61],[8,0.609],[9,0.608],[10,0.607],[11,0.606],[12,0.605],[13,0.604],[14,0.603],[15,0.602],[16,0.601],[17,0.6],[18,0.599],[19,0.598],[20,0.597],[21,0.597],[22,0.596],[23,0.595],[24,0.594],[25,0.593],[26,0.592],[27,0.591],[28,0.59],[29,0.589],[30,0.588],[31,0.587],[32,0.586],[33,0.586],[34,0.585],[35,0.584],[36,0.583],[37,0.582],[38,0.581],[39,0.504],[40,0.48],[41,0.323],[42,0.248],[43,0.226],[44,0.195],[45,0.175],[46,0.15],[47,0.129],[48,0.106],[49,0.083],[50,0.059],[51,0.033],[52,0.006],[53,-0.023],[54,-0.145],[55,-0.167],[56,-0.279],[57,-0.378],[58,-0.395],[59,-0.542],[60,-0.576],[61,-0.651],[62,-0.803],[63,-0.825],[64,-1.025],[65,-1.071],[66,-1.173],[67,-1.402],[68,-1.435],[69,-1.761],[70,-1.844],[71,-2.044],[72,-2.047],[73,-2.155],[74,-2.439],[75,-2.444],[76,-2.674],[77,-3.506],[78,-3.709],[79,-4.499],[80,-4.507],[81,-4.888],[82,-7.78],[83,-9.518]];
+
+export const fit_tncg = [[0,1.384],[1,0.66],[2,0.616],[3,0.616],[4,0.566],[5,0.48],[6,0.434],[7,0.347],[8,0.221],[9,0.221],[10,0.149],[11,0.081],[12,-0.055],[13,-0.055],[14,-0.104],[15,-0.228],[16,-0.279],[17,-0.501],[18,-0.616],[19,-0.818],[20,-0.963],[21,-1.229],[22,-1.342],[23,-1.891],[24,-1.991],[25,-3.532],[26,-5.101],[27,-6.599],[28,-11.198],[29,-13.033]];
+
+export const fit_texact = [[0,1.384],[1,0.675],[2,0.675],[3,0.634],[4,0.558],[5,0.465],[6,0.357],[7,0.262],[8,0.123],[9,0.123],[10,0.063],[11,-0.161],[12,-0.161],[13,-0.223],[14,-0.341],[15,-0.495],[16,-0.752],[17,-0.873],[18,-1.33],[19,-1.407],[20,-2.385],[21,-2.884],[22,-3.985],[23,-6.125],[24,-10.201],[25,-18.477]];
+
+export const Valley = ({ id, label, paths = [], polys = [], view = [-1.6, 1.6, -0.6, 1.6], levels = [0.25, 1, 4, 16, 64, 256], xTicks = [-1.5, -1, -0.5, 0, 0.5, 1, 1.5], yTicks = [-0.5, 0, 0.5, 1, 1.5], marks = [] }) => {
+  const W = 640, H = 440, L = 40, R = 12, T = 12, B = 30;
+  const [X0, X1, Y0, Y1] = view;
+  const sx = (v) => L + ((v - X0) / (X1 - X0)) * (W - L - R);
+  const sy = (v) => H - B - ((v - Y0) / (Y1 - Y0)) * (H - T - B);
+  const ring = (c) => {
+    const s = Math.sqrt(c), N = 2880;
+    let d = '', pen = false, lx = 0, ly = 0;
+    for (let i = 0; i <= N; i++) {
+      const t = (2 * Math.PI * i) / N, x = 1 - s * Math.cos(t), y = x * x + (s / 10) * Math.sin(t);
+      const px = sx(x), py = sy(y);
+      if (px < L - 30 || px > W - R + 30 || py < T - 30 || py > H - B + 30) { pen = false; continue; }
+      if (pen && i < N && Math.hypot(px - lx, py - ly) < 2.5) continue;
+      d += `${pen ? 'L' : 'M'}${px.toFixed(1)} ${py.toFixed(1)}`;
+      pen = true; lx = px; ly = py;
+    }
+    return d;
+  };
+  const line = (pts) => pts.map(([a, b], i) => `${i ? 'L' : 'M'}${sx(a).toFixed(1)} ${sy(b).toFixed(1)}`).join('');
+  const tick = { fill: 'var(--fg-subtle)', 'font-family': 'var(--font-mono)', 'font-size': '11px' };
+  return (
+    <div style={{ width: '100%', 'max-width': '640px' }}>
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label} style={{ width: '100%', height: 'auto' }}>
+        <defs><clipPath id={id}><rect x={L} y={T} width={W - L - R} height={H - T - B} /></clipPath></defs>
+        {xTicks.map((t) => <text x={sx(t)} y={H - 10} text-anchor="middle" style={tick}>{t}</text>)}
+        {yTicks.map((t) => <text x={L - 6} y={sy(t) + 4} text-anchor="end" style={tick}>{t}</text>)}
+        <rect x={L} y={T} width={W - L - R} height={H - T - B} style={{ fill: 'none', stroke: 'var(--line)' }} />
+        <g clip-path={`url(#${id})`}>
+          {levels.map((c) => <path d={ring(c)} style={{ fill: 'none', stroke: 'var(--slate-300)', 'stroke-width': 1 }} />)}
+          {polys.map((p) => <path d={line(p.pts) + 'Z'} style={{ fill: p.fill ?? 'none', 'fill-opacity': 0.12, stroke: p.color, 'stroke-width': 1.2 }} />)}
+          {paths.map((p) => <path d={line(p.pts)} style={{ fill: 'none', stroke: p.color, 'stroke-width': 1.8, 'stroke-dasharray': p.dash ?? 'none', 'stroke-linejoin': 'round' }} />)}
+          {paths.map((p) => p.pts.map(([a, b]) => <circle cx={sx(a)} cy={sy(b)} r="2.3" style={{ fill: p.color }} />))}
+          {marks.map((m) => <text x={sx(m.at[0]) + (m.dx ?? 6)} y={sy(m.at[1]) + (m.dy ?? -6)} text-anchor={m.anchor ?? 'start'} style={{ fill: 'var(--fg-muted)', 'font-family': 'var(--font-mono)', 'font-size': '12px' }}>{m.text}</text>)}
+          <path d={`M${sx(1) - 6} ${sy(1)}h12M${sx(1)} ${sy(1) - 6}v12`} style={{ stroke: 'var(--fg)', 'stroke-width': 2 }} />
+        </g>
+      </svg>
+      <ul style={{ display: 'flex', 'flex-wrap': 'wrap', 'justify-content': 'center', gap: 'var(--space-5)', margin: 'var(--space-2) 0 0', padding: 0, 'list-style': 'none', 'font-family': 'var(--font-mono)', 'font-size': 'var(--text-xs)', color: 'var(--fg-muted)' }}>
+        {paths.map((p) => <li style={{ display: 'flex', 'align-items': 'center', gap: 'var(--space-2)', margin: 0 }}><svg width="22" height="6"><line x1="0" y1="3" x2="22" y2="3" style={{ stroke: p.color, 'stroke-width': 2, 'stroke-dasharray': p.dash ?? 'none' }} /></svg>{p.label}</li>)}
+      </ul>
+    </div>
+  );
+};
+
+## 무엇을 하나요
+
+점 x 근처에서 f를 이차식으로 어림하면
+
+$$
+f(x + p) \approx m(p) = f(x) + g^{\mathsf T} p + \tfrac12\, p^{\mathsf T} H p, \qquad g = \nabla f(x),\ H = \nabla^2 f(x)
+$$
+
+이에요. $H$가 양정치(모든 방향으로 위로 휜 그릇 모양)이면 이 이차식의 바닥은 $Hp = -g$를 푼 **뉴턴 걸음** $p = -H^{-1} g$예요. f가 정말 이차식이면 한 걸음에 최솟값에 닿고, 해 근처에서는 맞는 자릿수가 반복마다 두 배가 돼요(2차 수렴).
+
+해에서 멀면 두 가지가 문제예요. 이차식 어림이 맞지 않아 뉴턴 걸음이 너무 멀리 가고, $H$가 양정치가 아니면(안장 모양) 뉴턴 걸음이 오르막을 가리킬 수도 있어요. 세 방법은 이것을 다르게 다뤄요.
+
+- **Newton-CG**: $Hp = -g$를 공액 기울기(CG)법으로 대략 풀어 방향을 정하고, 그 방향으로 선 탐색을 해요. CG가 음의 곡률(내려가는 쪽으로 휜 방향)을 만나면 거기서 멈춰서 오르막으로 가지 않아요.
+- **trust-ncg**: 이차식을 믿을 수 있는 반지름 $\Delta$의 공(**신뢰 영역**) 안에서만 $m(p)$를 줄이는 걸음을 CG로 찾아요(Steihaug–Toint). 공의 경계에 닿거나 음의 곡률을 만나면 경계에서 멈춰요.
+- **trust-exact**: 같은 신뢰 영역의 문제를 $H$ 행렬의 Cholesky 분해로 거의 정확히 풀어요(Moré–Sorensen). 음의 곡률 방향도 정확히 써요.
+
+신뢰 영역 방법은 걸음마다 실제 감소 $f(x) - f(x + p)$를 예측 감소 $m(0) - m(p)$와 견줘요. 비 ρ가 크면(어림이 잘 맞으면) 걸음을 받고 반지름을 넓히고, 작으면 걸음을 버리고 반지름을 줄여요.
+
+<Fig caption="Rosenbrock 함수에서 (−1.2, 1)에서 출발한 세 방법의 반복점. 반복 수는 newton-cg 83, trust-ncg 29, trust-exact 25예요. 신뢰 영역 방법은 받지 않은 걸음에서 점이 그대로 있어요.">
+  <Valley
+    id="nt-valley"
+    label="Rosenbrock 등고선 위의 Newton-CG, trust-ncg, trust-exact의 반복점 경로"
+    paths={[
+      { pts: path_ncg, label: 'newton-cg', color: 'var(--slate-500)', dash: '2 3' },
+      { pts: path_tncg, label: 'trust-ncg', color: 'var(--blue-400)', dash: '7 4' },
+      { pts: path_texact, label: 'trust-exact', color: 'var(--blue-600)' },
+    ]}
+    marks={[{ at: [-1.2, 1.0], text: 'x0', dx: -8, dy: 16, anchor: 'end' }]}
+  />
+</Fig>
+
+Newton-CG는 처음 (−1, 1) 근처에서 40번쯤 머물러요(그림의 굵은 점 무더기). 그 근처에서는 헤시안에 음의 고유값이 있어서(값 −0.9 안팎, 다른 하나는 1,000 안팎) CG가 음의 곡률을 만나 일찍 멈추고, 그 방향으로는 아주 짧은 걸음만 나와요. 신뢰 영역 방법은 같은 곳에서도 반지름 안에서 이차식을 줄이는 걸음을 만들어 골짜기를 따라 내려가요. 해 근처에서는 세 방법 모두 뉴턴 걸음이라 빠르게 끝나요.
+
+<Fig caption="같은 풀이에서 반복마다의 f(x) − f*(로그 눈금, f* = 0). 마지막 몇 반복에서 맞는 자릿수가 크게 느는 것이 뉴턴 방법의 빠른 수렴이에요.">
+  <Plot
+    curves={[
+      { points: fit_texact, label: 'trust-exact' },
+      { points: fit_tncg, label: 'trust-ncg', dashed: true },
+      { points: fit_ncg, label: 'newton-cg' },
+    ]}
+    domain={[0, 85]}
+    range={[-20, 2]}
+    xTicks={[{ v: 0, label: '0' }, { v: 20, label: '20' }, { v: 40, label: '40' }, { v: 60, label: '60' }, { v: 80, label: '80' }]}
+    yTicks={[{ v: -20, label: '1e-20' }, { v: -15, label: '1e-15' }, { v: -10, label: '1e-10' }, { v: -5, label: '1e-5' }, { v: 0, label: '1' }]}
+  />
+</Fig>
+
+## 기본 사용
+
+세 방법 모두 기울기 함수(`jac`)가 꼭 있어야 해요. 헤시안은 `hess`(행렬)나 `hessp`(곱)로 줘요.
+
+```python
+>>> import stardust as sd
+>>> def rosen(x):
+...     return 100.0 * (x[1] - x[0]**2)**2 + (1 - x[0])**2
+>>> def rosen_grad(x):
+...     return [-400.0 * x[0] * (x[1] - x[0]**2) - 2.0 * (1 - x[0]), 200.0 * (x[1] - x[0]**2)]
+>>> def rosen_hess(x):
+...     return [[1200.0 * x[0]**2 - 400.0 * x[1] + 2.0, -400.0 * x[0]],
+...             [-400.0 * x[0], 200.0]]
+>>> for method in ['newton-cg', 'trust-ncg', 'trust-exact']:
+...     r = sd.optimize.minimize(rosen, [-1.2, 1.0], method=method, jac=rosen_grad, hess=rosen_hess)
+...     print(method, r.converged, r.n_iter, r.nfev, r.njev, r.nhev, f"{r.fun:.1e}")
+newton-cg True 83 105 105 83 3.0e-10
+trust-ncg True 29 30 27 27 9.3e-14
+trust-exact True 25 26 23 26 3.3e-19
+```
+
+`nhev`는 `hess`(또는 `hessp`)를 부른 수예요. 신뢰 영역 방법은 받지 않은 걸음이 있어서 `nfev`가 `njev`보다 많아요. 받지 않은 점에서는 기울기와 헤시안을 계산하지 않아요(trust-exact는 시험점에서 헤시안을 먼저 계산해요).
+
+## 헤시안 주기
+
+| 꼴 | 뜻 | `newton-cg` | `trust-ncg` | `trust-exact` |
+|---|---|---|---|---|
+| `hess` 함수 | `hess(x)`가 (n, n) 행렬을 돌려줘요 | 받음(반복마다 한 번 계산) | 받음 | 꼭 있어야 함 |
+| `hessp` 함수 | `hessp(x, p)`가 곱 $Hp$ (n,)을 돌려줘요 | 받음 | 받음 | 받지 않음 |
+| `hess='2-point'`·`'3-point'` | 기울기의 차분으로 곱을 만들어요 | 받음 | 받음 | 받지 않음 |
+| 둘 다 없음 | 기울기의 전진 차분으로 곱을 만들어요(간격 `eps`) | 받음 | 받지 않음 | 받지 않음 |
+
+### hess: 행렬
+
+`hess(x)`는 (n, n) 배열을 돌려줘요. `sd.ndarray`, 중첩 리스트, numpy 배열을 받고, n = 1이면 수 하나도 돼요. 행렬은 대칭이어야 해요(대칭이 아니면 결과를 믿을 수 없어요). n차원 Rosenbrock의 헤시안은 세 대각선만 0이 아니에요.
+
+```python
+>>> def rosen_n(x):
+...     return float(sd.sum(100.0 * (x[1:] - x[:-1]**2)**2 + (1 - x[:-1])**2))
+>>> def rosen_n_grad(x):
+...     d = x[1:] - x[:-1]**2
+...     g = sd.zeros(x.shape[0])
+...     g[:-1] = -400.0 * x[:-1] * d - 2.0 * (1 - x[:-1])
+...     g[1:] += 200.0 * d
+...     return g
+>>> def diag_off(x):
+...     dg = sd.zeros(x.shape[0])
+...     dg[:-1] = 1200.0 * x[:-1]**2 - 400.0 * x[1:] + 2.0
+...     dg[1:] += 200.0
+...     return dg, -400.0 * x[:-1]
+>>> def rosen_n_hess(x):
+...     n = x.shape[0]
+...     dg, off = diag_off(x)
+...     i = sd.arange(n)
+...     H = sd.zeros((n, n))
+...     H[i, i] = dg
+...     H[i[:-1], i[1:]] = off
+...     H[i[1:], i[:-1]] = off
+...     return H
+>>> r = sd.optimize.minimize(rosen_n, sd.zeros(10), method='trust-exact', jac=rosen_n_grad, hess=rosen_n_hess)
+>>> r.converged, r.n_iter, f"{r.fun:.1e}"
+(True, 26, '1.6e-18')
+```
+
+trust-ncg와 trust-exact는 `hess`를 줄 때 결과에 해의 헤시안 `hess`를 담아요.
+
+```python
+>>> r = sd.optimize.minimize(rosen, [-1.2, 1.0], method='trust-exact', jac=rosen_grad, hess=rosen_hess)
+>>> r.hess
+array([[801.9999991214037, -399.999999778706],
+       [-399.999999778706,             200.0]], dtype=float64)
+```
+
+### hessp: 곱만
+
+변수가 많으면 n × n 행렬을 만드는 데만 n²의 메모리가 들어요. Newton-CG와 trust-ncg는 행렬이 아니라 곱 $Hp$만 쓰므로, 곱을 직접 계산하는 `hessp(x, p)`를 주면 행렬을 만들지 않아도 돼요. Rosenbrock의 곱은 세 대각선으로 이렇게 써요.
+
+```python
+>>> def rosen_n_hessp(x, p):
+...     dg, off = diag_off(x)
+...     hp = dg * p
+...     hp[:-1] += off * p[1:]
+...     hp[1:] += off * p[:-1]
+...     return hp
+>>> r = sd.optimize.minimize(rosen_n, sd.full(10000, 1.2), method='trust-ncg', jac=rosen_n_grad, hessp=rosen_n_hessp)
+>>> r.converged, r.n_iter, r.nhev, f"{r.fun:.1e}"
+(True, 24, 128, '5.1e-12')
+```
+
+`nhev`는 `hessp`를 부른 수예요. 반복 하나의 CG가 곱을 여러 번 부르므로 반복 수보다 많아요.
+
+### 차분으로 만드는 곱
+
+헤시안을 손으로 쓰기 어려우면 `hess='2-point'`(또는 `'3-point'`)를 줘요. 곱 $Hp$를 기울기의 차분 $(\nabla f(x + h p) - \nabla f(x))/h$로 만들어요. 곱 하나에 `jac`를 한 번(중앙 차분은 두 번) 더 불러요. Newton-CG는 아무것도 주지 않아도 같은 방식(간격은 옵션 `eps`)으로 해요.
+
+```python
+>>> for hess in [rosen_n_hess, '2-point']:
+...     r = sd.optimize.minimize(rosen_n, sd.zeros(10), method='trust-ncg', jac=rosen_n_grad, hess=hess)
+...     name = hess if isinstance(hess, str) else 'function'
+...     print(name, r.n_iter, r.njev, r.nhev, f"{r.fun:.1e}")
+function 66 58 58 1.8e-13
+2-point 63 362 298 1.8e-16
+```
+
+차분의 곱은 $10^{-8}$ 정도의 상대오차가 있어요. 대개 문제없지만, 그 오차로 CG가 20n번 안에 끝나지 않아 status 3으로 멈추기도 해요. 아래는 기울기 차분의 Newton-CG가 n = 100의 Rosenbrock에서 그렇게 멈춘 경우예요(같은 문제를 `hessp`로는 풀어요). 그럴 때는 헤시안을 직접 주거나 [BFGS](/api/optimize/quasi-newton/)를 써요.
+
+```python
+>>> r = sd.optimize.minimize(rosen_n, sd.zeros(100), method='newton-cg', jac=rosen_n_grad)
+>>> r.converged, r.status, r.message
+(False, 3, "Warning: CG iterations didn't converge. The Hessian is not positive definite.")
+```
+
+## Newton-CG
+
+### 옵션
+
+| 옵션 | 기본값 | 뜻 |
+|---|---|---|
+| `xtol` | 1e-05 | 걸음의 성분 절댓값 합 $\lVert \alpha p\rVert_1$이 n·`xtol` 이하이면 멈춰요(`tol`이 정하는 값) |
+| `max_iter` | 200n | 반복 수의 상한 |
+| `eps` | 1.4901161193847656e-08 | `hess`·`hessp`가 없을 때 기울기 차분의 간격(수 하나 또는 n개) |
+| `c1`, `c2` | 0.0001, 0.9 | 선 탐색의 Wolfe 조건 상수 |
+
+반복 하나의 CG는 20n번까지 돌아요. 그 안에 끝나지 않으면 status 3이에요.
+
+<Callout type="warn">
+Newton-CG는 **걸음의 크기**로 멈춰요. 기준 n·`xtol`은 변수가 많을수록 느슨해져서, 기울기가 아직 큰데 멈출 수 있어요. 아래에서 n = 10⁴의 기본값은 f = 0.026에서 `converged=True`예요. 정확한 해가 필요하면 `tol`을 줄여요.
+</Callout>
+
+```python
+>>> x0 = sd.full(10000, 1.2)
+>>> for tol in [None, 1e-8]:
+...     r = sd.optimize.minimize(rosen_n, x0, method='newton-cg', jac=rosen_n_grad, hessp=rosen_n_hessp, tol=tol)
+...     print(tol, r.converged, r.n_iter, f"{r.fun:.1e}", f"{float(sd.max(sd.abs(r.jac))):.1e}")
+None True 9 2.6e-02 1.6e-01
+1e-08 True 24 2.9e-15 4.4e-07
+```
+
+### status
+
+| `status` | `message` |
+|---|---|
+| 0 | `Optimization terminated successfully.` |
+| 1 | `Warning: Maximum number of iterations has been exceeded.` |
+| 2 | `Warning: Desired error not necessarily achieved due to precision loss.`(선 탐색이 걸음을 찾지 못함) |
+| 3 | `Warning: CG iterations didn't converge. The Hessian is not positive definite.` 또는 `NaN result encountered.` |
+
+## trust-ncg와 trust-exact
+
+### 옵션
+
+| 옵션 | 기본값 | 뜻 |
+|---|---|---|
+| `gtol` | 0.0001 | 기울기의 2-노름이 이 값보다 작으면 멈춰요(`tol`이 정하는 값) |
+| `max_iter` | 200n | 반복 수의 상한 |
+| `initial_trust_radius` | 1.0 | 처음 반지름 $\Delta_0$ |
+| `max_trust_radius` | 1000.0 | 반지름의 상한(inf도 돼요) |
+| `eta` | 0.15 | ρ가 이 값보다 크면 걸음을 받아요(0 ≤ η < 0.25) |
+| `subproblem_max_iter` | 25 | trust-exact만: 부분문제를 푸는 분해 반복의 상한(1 이상) |
+
+반지름은 ρ < 1/4이면 1/4로 줄고, ρ > 3/4이고 걸음이 경계에 닿았으면 두 배(`max_trust_radius`까지)가 돼요. 이렇게 반복마다 스스로 맞춰지므로 `initial_trust_radius`는 반복 수를 조금만 바꿔요. 변수의 크기가 1과 크게 다르면 그 크기에 맞춰 줘요.
+
+```python
+>>> for r0 in [0.1, 1.0, 10.0]:
+...     r = sd.optimize.minimize(rosen, [-1.2, 1.0], method='trust-exact', jac=rosen_grad, hess=rosen_hess,
+...                              options={'initial_trust_radius': r0})
+...     print(r0, r.n_iter, r.nfev)
+0.1 24 25
+1.0 25 26
+10.0 27 28
+```
+
+`gtol`은 기울기의 2-노름에 대한 기준이에요(BFGS의 `gtol`은 가장 큰 성분이에요). 신뢰 영역 방법은 해 근처에서 빠르게 수렴하므로 `gtol`을 줄여도 반복이 한두 번만 늘어요.
+
+```python
+>>> for tol in [None, 1e-10]:
+...     r = sd.optimize.minimize(rosen, [-1.2, 1.0], method='trust-ncg', jac=rosen_grad, hess=rosen_hess, tol=tol)
+...     print(tol, r.n_iter, f"{r.fun:.1e}")
+None 29 9.3e-14
+1e-10 30 8.6e-25
+```
+
+### 음의 곡률과 안장점
+
+기울기만 쓰는 방법은 기울기가 0인 안장점에서 멈출 수 있어요. 헤시안을 쓰는 방법은 그 점에서 아래로 휜 방향을 볼 수 있어요. $f(x, y) = (x^2 - 1)^2 + y^2$에서 x = 0 위의 점은 x 방향의 기울기가 늘 0이라 BFGS는 안장점 (0, 0)으로 가요. trust-exact는 x 방향의 음의 곡률을 써서 최솟값 (−1, 0)에 닿아요.
+
+```python
+>>> def two_wells(x):
+...     return (x[0]**2 - 1)**2 + x[1]**2
+>>> def tw_grad(x):
+...     return [4 * x[0] * (x[0]**2 - 1), 2 * x[1]]
+>>> def tw_hess(x):
+...     return [[12 * x[0]**2 - 4, 0.0], [0.0, 2.0]]
+>>> sd.optimize.minimize(two_wells, [0.0, 1.0], method='bfgs', jac=tw_grad).x
+array([0.0, 0.0], dtype=float64)
+>>> r = sd.optimize.minimize(two_wells, [0.0, 1.0], method='trust-exact', jac=tw_grad, hess=tw_hess)
+>>> [round(v, 6) for v in r.x.tolist()]
+[-1.0, 0.0]
+>>> sd.optimize.minimize(two_wells, [0.0, 1.0], method='trust-ncg', jac=tw_grad, hess=tw_hess).x
+array([0.0, 0.0], dtype=float64)
+```
+
+trust-ncg의 CG는 기울기 방향에서 시작해서, 기울기와 수직인 음의 곡률 방향을 보지 못하면 그 방향으로 가지 않아요. 기울기가 정확히 0인 점(안장점 자체)에서 출발하면 세 방법 모두 그 점에서 멈춰요.
+
+### status
+
+| `status` | `message` | 언제 |
+|---|---|---|
+| 0 | `Optimization terminated successfully.` | 기울기의 2-노름 < `gtol` |
+| 1 | `Maximum number of iterations has been exceeded.` | `max_iter` |
+| 2 | `A bad approximation caused failure to predict improvement.` | 예측 감소가 양수가 아니에요(헤시안이나 기울기가 틀렸을 때 흔해요) |
+| 3 | `A linalg error occurred, such as a non-psd Hessian.` | trust-ncg의 CG가 20n번 안에 끝나지 않음(대칭이 아닌 헤시안), trust-exact의 부분문제가 걸음을 만들지 못함 |
+
+`max_iter=0`이면 반복 없이 `x0`에서 멈춰요(`n_iter` 0, status 1). 받아들인 점에서 기울기나 trust-exact의 헤시안이 유한하지 않으면 그 점을 적은 `ValueError`예요.
+
+## 고르기
+
+| | Newton-CG | trust-ncg | trust-exact |
+|---|---|---|---|
+| 필요한 것 | `jac`, 헤세 곱(없으면 차분) | `jac`, `hess`나 `hessp` | `jac`, `hess` 행렬 |
+| 큰 n | 좋음(곱만) | 좋음(곱만) | n³ 분해라 수백 개까지 |
+| 음의 곡률 | CG를 멈추고 그때까지의 방향 | 신뢰 영역 경계로 | 정확히 다룸(안장점을 벗어남) |
+| 멈춤 | 걸음의 크기(`xtol`) | 기울기(`gtol`) | 기울기(`gtol`) |
+| 반복 하나에 `fun` | 선 탐색이라 한 번 이상 | 한 번 | 한 번 |
+
+헤시안 행렬을 쉽게 만들 수 있고 n이 수백 개까지면 trust-exact가 반복이 가장 적어요. n이 크면 `hessp`와 trust-ncg예요. 헤시안을 쓸 수 없으면 [BFGS, L-BFGS-B](/api/optimize/quasi-newton/)가 기울기만으로 곡률을 어림해요.
+
+## 정확도와 비용
+
+- 해 근처의 수렴이 빨라서 허용오차를 줄여도 반복이 조금만 늘어요. 기울기와 헤시안이 정확하면 해를 반올림 가까이까지 구할 수 있어요.
+- 반복 하나의 비용은 `fun`, `jac`, `hess`(또는 `hessp` 여러 번)예요. trust-exact는 반복마다 n × n 행렬의 Cholesky 분해를 몇 번 해서 n이 크면 이것이 커져요. 큰 분해는 GIL을 놓고 해요.
+- 세 방법 모두 scipy 1.18.1과 같은 점에서 `fun`, `jac`, `hess`, `hessp`를 같은 차례로 불러, `x`의 비트까지 같은 결과를 줘요. 셈(`njev`, `nhev`)만 아래처럼 조금 달라요. 자세한 알고리즘은 [구현 글](/internals/optimize/newton-trust/)에 있어요.
+
+## scipy를 아는 분께
+
+- 메서드 이름은 소문자예요(`'newton-cg'`, scipy의 `'Newton-CG'`). `'dogleg'`, `'trust-krylov'`, `'trust-constr'`은 없어요.
+- `jac`가 없거나 `'2-point'`·`'3-point'`이면 `ValueError`예요(scipy와 같이 기울기 함수가 꼭 필요해요). `jac=True`는 받아요.
+- `hess`의 `HessianUpdateStrategy`(scipy의 `BFGS()`, `SR1()`)와 `LinearOperator`·희소 행렬은 받지 않아요. `hess='cs'`도 없어요.
+- Newton-CG에 `hess`와 `hessp`를 함께 주면 `ValueError`예요(scipy는 `hessp`를 버려요). trust-ncg는 scipy처럼 둘을 함께 받아 곱에 `hessp`를, 결과의 `hess`에 `hess`를 써요.
+- `bounds`를 주면 `ValueError`예요(scipy는 경고하고 무시해요).
+- trust-exact의 `subproblem_maxiter`는 `subproblem_max_iter`, `maxiter`는 `max_iter`예요.
+- 값이 다른 곳은 다음과 같아요.
+  - newton-cg의 결과 `jac`은 `x`에서의 기울기예요. scipy는 마지막 반복을 시작한 점의 기울기를 줘요. 그 기울기를 새로 계산하면 `njev`가 하나 많아요.
+  - `nhev`는 실제로 부른 수예요. `hessp`만 준 trust-ncg는 scipy보다 하나 적고, `hess`를 준 trust-ncg는 결과의 `hess`를 위한 마지막 호출을 세어 하나 많을 수 있어요(위 Rosenbrock에서 27, scipy 26).
+  - trust-ncg·trust-exact에 `max_iter=0`을 주면 반복 없이 멈춰요(scipy는 한 번 반복해요).
+  - trust-ncg의 CG는 20n번에서 status 3으로 멈춰요. scipy는 상한이 없어 대칭이 아닌 헤시안에서 끝나지 않을 수 있어요. trust-exact의 부분문제가 걸음 없이 `subproblem_max_iter`에 닿으면 status 3이에요(scipy는 `UnboundLocalError`).

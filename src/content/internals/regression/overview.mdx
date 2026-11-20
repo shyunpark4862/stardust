@@ -22,9 +22,9 @@ import Layers from '../../../components/fig/Layers.astro';
 | 강건 | `rlm` | `rlm_fit` | `csrc/regression/robust.cpp` |
 | 기울기 | `theilslopes`, `siegelslopes` | `slopes` | `csrc/regression/slopes.cpp` |
 | 분위 | `quantreg` | `quantreg_fit` | `csrc/regression/quantile.cpp` |
-| 비선형 | `nls` | `nls_solve` | `csrc/regression/nls.cpp` |
+| 비선형 | `nls` | `lsq_solve`(`stardust._core.optimize`) | `csrc/optimize/lsq.cpp` |
 
-커널은 모두 `stardust._core.regression` 아래에 있고, `csrc/bind/regression_bind.cpp`가 파일마다 하나씩인 `bind_*` 함수를 불러 등록해요.
+nls 말고는 커널이 모두 `stardust._core.regression` 아래에 있고, `csrc/bind/regression_bind.cpp`가 파일마다 하나씩인 `bind_*` 함수를 불러 등록해요. nls는 `sd.optimize`의 [`least_squares`](/api/optimize/least_squares/)와 같은 커널 `stardust._core.optimize.lsq_solve`를 써요([최소제곱의 구현](/internals/optimize/least-squares/)).
 
 이 영역의 뼈대는 여섯 가지예요.
 
@@ -91,7 +91,7 @@ array([ 0.07054680610666837, 0.018633899812498265,  0.06364688465216445], dtype=
 
 ## 층과 파일
 
-<Fig column caption="회귀 영역의 층. 모형마다 Python 모듈 하나와 C++ 파일 하나가 짝이에요. 최소제곱 핵심과 Dot2는 여러 커널이 함께 쓰고, 그 아래는 linalg의 배치 드라이버와 LAPACK, 스레드풀이에요.">
+<Fig column caption="회귀 영역의 층. 모형마다 Python 모듈 하나와 C++ 파일 하나가 짝이에요(nls는 sd.optimize의 최소제곱 커널을 써요). 최소제곱 핵심과 Dot2는 여러 커널이 함께 쓰고, 그 아래는 linalg의 배치 드라이버와 LAPACK, 스레드풀이에요.">
   <Layers
     layers={[
       {
@@ -101,7 +101,7 @@ array([ 0.07054680610666837, 0.018633899812498265,  0.06364688465216445], dtype=
           { name: '_linear.py', note: 'ols, wls, gls, linregress. 입력 정리(_as_real, _prepare, _groups), 결과의 공통 틀 _RegressionResult, 선형 결과 _LinearResult, summary' },
           { name: '_glm.py', note: 'glm과 GLMResult: 분포족·링크 이름, 가중치와 trials, 척도' },
           { name: '_penalized.py', note: 'ridge, lasso, elastic_net, 교차검증, penalized_glm. 결과는 _PenalizedResult(추론 없음)' },
-          { name: '_robust.py · _quantile.py · _nls.py', note: 'rlm과 Theil–Sen·Siegel, quantreg, nls(사용자 함수의 호출)' },
+          { name: '_robust.py · _quantile.py · _nls.py', note: 'rlm과 Theil–Sen·Siegel, quantreg, nls(사용자 함수의 호출, 해의 야코비안은 optimize/_diff.py의 Differences)' },
           { name: '../_results.py', note: 'namedtuple: LinregressResult, JarqueBeraResult, BreuschPaganResult, TheilslopesResult, SiegelslopesResult' },
         ],
       },
@@ -109,7 +109,7 @@ array([ 0.07054680610666837, 0.018633899812498265,  0.06364688465216445], dtype=
         title: '바인딩',
         note: 'csrc/bind/',
         items: [
-          { name: 'regression_bind.cpp', note: '_core.regression 하위 모듈을 만들고 bind_linear, bind_glm, … 여섯 개를 불러요' },
+          { name: 'regression_bind.cpp', note: '_core.regression 하위 모듈을 만들고 bind_linear, bind_glm, … 다섯 개를 불러요(bind_slopes는 bind_robust가 불러요)' },
         ],
       },
       {
@@ -118,16 +118,17 @@ array([ 0.07054680610666837, 0.018633899812498265,  0.06364688465216445], dtype=
         items: [
           { name: 'linear.cpp', note: 'lsq::fit_one의 본체, apply(Xβ와 y − Xβ), cond, resid_stats' },
           { name: 'glm.cpp · penalized.cpp · robust.cpp', note: 'IRLS, 좌표 하강과 ridge의 SVD, M·MM 추정' },
-          { name: 'quantile.cpp · slopes.cpp · nls.cpp', note: '내부점법과 심플렉스, 쌍 기울기의 선택, LM과 TRF' },
+          { name: 'quantile.cpp · slopes.cpp', note: '내부점법과 심플렉스, 쌍 기울기의 선택' },
         ],
       },
       {
         title: '공용 부품',
-        note: 'csrc/regression/, csrc/special/',
+        note: 'csrc/regression/, csrc/special/, csrc/optimize/',
         items: [
           { name: 'lsq.hpp', note: 'Problem, Data, Dest 구조체와 fit_one, scan_x의 선언' },
           { name: 'dot2.hpp', note: 'Dot2의 한 걸음(row_step, col_step)과 NEON 레인 네 개짜리 행 합·열 합' },
           { name: 'special/dd.hpp', note: 'double-double 형 DD와 그 사칙연산(제곱합, 평균)' },
+          { name: 'optimize/lsq.cpp', note: 'nls의 반복(LM과 TRF). sd.optimize의 least_squares와 같은 커널' },
         ],
       },
       {
@@ -169,7 +170,7 @@ def _as_real(x, func, arg, per_row=None):
             names = [str(c) for c in x.columns]
         try:
             a = x.to_array(dtype=_sd.float64, na_value=math.nan)
-        except (TypeError, ValueError):  # a string column is a ValueError of to_array
+        except TypeError, ValueError:  # a string column is a ValueError of to_array
             raise TypeError(f"{func}(): '{arg}' must have numeric columns") from None
         return a, names
 ```
@@ -301,7 +302,19 @@ ValueError: wls(): the batch shapes of 'y' (3,), 'X' (2,), 'weights' (2,) do not
 
 ```cpp
 enum Stat : int {
-    kNobs = 0, kRank, kSsr, kCtss, kUtss, kEssC, kEssU, kSumLogW, kWaldF, kWaldQ, kIsNaN, kNGroups, kLags,
+    kNobs = 0,
+    kRank,
+    kSsr,
+    kCtss,
+    kUtss,
+    kEssC,
+    kEssU,
+    kSumLogW,
+    kWaldF,
+    kWaldQ,
+    kIsNaN,
+    kNGroups,
+    kLags,
     kNStat
 };
 ```
@@ -536,7 +549,8 @@ y (…, n), X (…, n, p), 가중치 (…, n), 군집 번호 (…, n)의 앞 축
 ```cpp
         // estimated serial ns of one regression: the QR, the passes and the fixed cost
         double element_ns = 1500.0 + nk * (0.6 * double(k) + 3.0 * (2 + steps)) + (cov ? 2.0 * nk * k : 0.0);
-        if (cov == kHAC) element_ns += nk * (maxlags >= 0 ? double(maxlags) : 4.0 * std::pow(double(n) / 100.0, 2.0 / 9.0));
+        if (cov == kHAC)
+            element_ns += nk * (maxlags >= 0 ? double(maxlags) : 4.0 * std::pow(double(n) / 100.0, 2.0 / 9.0));
 ```
 
 `nk`는 n·k예요. 배치 전체의 추정 시간이 10 µs 이상이면 원소를 약 5 µs짜리 태스크로 묶어 스레드풀에 보내요([배치 드라이버](/internals/linalg/batch/)). 원소 하나는 자기 `Scratch`(태스크마다 하나인 작업 버퍼)에서 어디서 돌든 같은 계산을 하므로, 배치 결과는 회귀를 하나씩 부른 것과 비트까지 같아요.
@@ -654,7 +668,8 @@ LAPACK 호출(`geqrf`, `orgqr`, `trtrs` 등)의 결과도 스레드 수와 상�
                     # only the call's own binding error (no frame of fn beneath this one)
                     if not msg.startswith(head) or e.__traceback__.tb_next is not None:
                         raise
-                    raise TypeError(_call_message(name, msg[len(head):])) from None
+                    raise TypeError(_call_message(name, msg[len(head) :])) from None
+
             method._call_errors = True
             return method
 ```

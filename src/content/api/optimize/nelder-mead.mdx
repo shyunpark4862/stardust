@@ -1,0 +1,336 @@
+---
+kind: concept
+title: Nelder–Mead
+group: 다변수 최소화
+order: 2
+summary: 함수값만 비교하며 꼭짓점 n + 1개의 단체를 뒤집고 늘이고 줄여 최솟값으로 옮겨 가는 방법이에요. 기울기가 없거나 f가 매끄럽지 않을 때, 변수가 몇 개뿐일 때 써요.
+seeAlso: [minimize, quasi-newton, newton-methods, results, minimize_scalar]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const simp = [[[-1.2,1.05],[-1.2,1.0],[-1.26,1.0]],[[-1.0519,1.1031],[-1.0312,1.0938],[-1.0462,1.1187]],[[-0.8962,0.7949],[-0.9742,0.9292],[-0.9995,1.0111]],[[-0.6347,0.4214],[-0.6885,0.4181],[-0.7918,0.6344]],[[-0.2587,0.0281],[-0.3327,0.1305],[-0.372,0.1037]],[[0.0959,-0.0165],[-0.0196,-0.0189],[-0.0278,0.0329]],[[0.4407,0.1983],[0.5319,0.2475],[0.4437,0.167]],[[0.6943,0.4732],[0.6806,0.4651],[0.6691,0.4445]],[[0.9417,0.8843],[0.8963,0.8039],[0.8954,0.794]]];
+
+export const nm_f = [[0,1.302],[1,0.713],[2,0.653],[3,0.653],[4,0.642],[5,0.628],[6,0.625],[7,0.624],[8,0.617],[9,0.617],[10,0.603],[11,0.595],[12,0.557],[13,0.557],[14,0.54],[15,0.507],[16,0.5],[17,0.432],[18,0.432],[19,0.302],[20,0.302],[21,0.302],[22,0.259],[23,0.239],[24,0.12],[25,0.12],[26,0.12],[27,0.064],[28,0.032],[29,-0.054],[30,-0.054],[31,-0.174],[32,-0.174],[33,-0.174],[34,-0.27],[35,-0.27],[36,-0.373],[37,-0.373],[38,-0.4],[39,-0.502],[40,-0.502],[41,-0.721],[42,-0.721],[43,-0.721],[44,-0.863],[45,-0.863],[46,-0.946],[47,-0.957],[48,-0.99],[49,-0.995],[50,-1.1],[51,-1.1],[52,-1.1],[53,-1.245],[54,-1.245],[55,-1.462],[56,-1.746],[57,-1.771],[58,-2.396],[59,-2.396],[60,-2.396],[61,-3.432],[62,-3.432],[63,-3.432],[64,-3.432],[65,-4.229],[66,-4.473],[67,-4.473],[68,-4.723],[69,-5.073],[70,-5.54],[71,-5.54],[72,-6.126],[73,-6.126],[74,-6.207],[75,-6.664],[76,-6.999],[77,-7.281],[78,-7.298],[79,-7.698],[80,-8.95],[81,-8.95],[82,-8.95],[83,-8.956],[84,-9.087]];
+
+export const nm_dx = [[0,-1.222],[1,-0.921],[2,-0.921],[3,-1.222],[4,-1.347],[5,-1.472],[6,-1.472],[7,-1.686],[8,-1.344],[9,-1.344],[10,-1.119],[11,-0.891],[12,-0.665],[13,-0.872],[14,-0.665],[15,-0.794],[16,-0.665],[17,-0.672],[18,-0.665],[19,-0.498],[20,-0.498],[21,-0.718],[22,-0.684],[23,-0.946],[24,-0.722],[25,-0.938],[26,-0.722],[27,-0.938],[28,-0.908],[29,-0.908],[30,-0.938],[31,-0.731],[32,-0.934],[33,-0.934],[34,-0.934],[35,-1.023],[36,-0.827],[37,-1.175],[38,-1.04],[39,-1.055],[40,-1.04],[41,-0.865],[42,-0.865],[43,-1.107],[44,-0.865],[45,-0.865],[46,-1.076],[47,-1.326],[48,-1.481],[49,-1.542],[50,-1.272],[51,-1.344],[52,-1.272],[53,-1.195],[54,-1.195],[55,-0.931],[56,-0.73],[57,-0.937],[58,-0.937],[59,-1.044],[60,-1.095],[61,-1.044],[62,-1.044],[63,-1.202],[64,-1.56],[65,-1.483],[66,-1.658],[67,-1.717],[68,-1.909],[69,-2.186],[70,-2.379],[71,-2.186],[72,-2.43],[73,-2.43],[74,-2.656],[75,-2.812],[76,-3.035],[77,-3.193],[78,-3.284],[79,-3.455],[80,-3.633],[81,-3.633],[82,-3.762],[83,-3.898],[84,-4.055]];
+
+export const nm_df = [[0,1.292],[1,1.28],[2,1.192],[3,-0.178],[4,-0.382],[5,-0.598],[6,-0.786],[7,-1.469],[8,-1.086],[9,-1.121],[10,-0.822],[11,-0.703],[12,-0.387],[13,-0.475],[14,-0.615],[15,-0.413],[16,-0.521],[17,-0.293],[18,-0.339],[19,-0.027],[20,-0.152],[21,-0.383],[22,-0.254],[23,-0.573],[24,-0.302],[25,-0.379],[26,-0.383],[27,-0.58],[28,-0.619],[29,-0.559],[30,-0.714],[31,-0.487],[32,-0.669],[33,-0.726],[34,-0.73],[35,-0.878],[36,-0.672],[37,-0.945],[38,-1.184],[39,-0.963],[40,-1.075],[41,-0.813],[42,-0.906],[43,-1.25],[44,-1.166],[45,-1.273],[46,-1.467],[47,-1.578],[48,-1.967],[49,-2.029],[50,-1.641],[51,-1.664],[52,-1.692],[53,-1.572],[54,-1.647],[55,-1.468],[56,-1.409],[57,-1.756],[58,-1.856],[59,-1.888],[60,-2.17],[61,-2.211],[62,-2.438],[63,-2.644],[64,-3.224],[65,-3.419],[66,-3.473],[67,-4.255],[68,-4.397],[69,-4.598],[70,-4.795],[71,-5.253],[72,-5.129],[73,-5.671],[74,-5.815],[75,-6.274],[76,-6.284],[77,-6.784],[78,-7.302],[79,-7.491],[80,-7.308],[81,-7.723],[82,-8.265],[83,-8.48],[84,-9.515]];
+
+export const Moves = ({ label }) => {
+  const W = 640, H = 270;
+  const sx = (v) => 30 + v * 52, sy = (v) => H - 20 - v * 40;
+  const B = [4, 5], G = [4, 1], Wv = [1, 3], C0 = [4, 3];
+  const at = (t) => [C0[0] + t * (C0[0] - Wv[0]), C0[1] + t * (C0[1] - Wv[1])];
+  const pts = [
+    { p: at(1), t: 'r 반사', a: 'middle', dy: -12 },
+    { p: at(2), t: 'e 확장', a: 'middle', dy: -12 },
+    { p: at(0.5), t: 'c 바깥 수축', a: 'middle', dy: 22 },
+    { p: at(-0.5), t: 'cc 안쪽 수축', a: 'middle', dy: 22 },
+  ];
+  const half = (p) => [B[0] + 0.5 * (p[0] - B[0]), B[1] + 0.5 * (p[1] - B[1])];
+  const tri = (a, b, c) => `M${sx(a[0])} ${sy(a[1])}L${sx(b[0])} ${sy(b[1])}L${sx(c[0])} ${sy(c[1])}Z`;
+  const txt = { fill: 'var(--fg-muted)', 'font-family': 'var(--font-mono)', 'font-size': '12px' };
+  return (
+    <div style={{ width: '100%', 'max-width': '640px' }}>
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label} style={{ width: '100%', height: 'auto' }}>
+        <path d={tri(B, G, Wv)} style={{ fill: 'var(--blue-600)', 'fill-opacity': 0.08, stroke: 'var(--blue-600)', 'stroke-width': 1.6 }} />
+        <path d={tri(B, half(G), half(Wv))} style={{ fill: 'none', stroke: 'var(--slate-500)', 'stroke-width': 1.2, 'stroke-dasharray': '3 3' }} />
+        <line x1={sx(Wv[0])} y1={sy(Wv[1])} x2={sx(at(2)[0])} y2={sy(at(2)[1])} style={{ stroke: 'var(--slate-400)', 'stroke-dasharray': '5 4' }} />
+        {[B, G, Wv].map((p) => <circle cx={sx(p[0])} cy={sy(p[1])} r="4" style={{ fill: 'var(--blue-600)' }} />)}
+        <text x={sx(B[0]) + 8} y={sy(B[1]) - 6} style={txt}>x1 가장 좋음</text>
+        <text x={sx(G[0]) + 8} y={sy(G[1]) + 14} style={txt}>x2</text>
+        <text x={sx(Wv[0]) - 8} y={sy(Wv[1]) - 10} text-anchor="middle" style={txt}>x3 가장 나쁨</text>
+        <circle cx={sx(C0[0])} cy={sy(C0[1])} r="3.5" style={{ fill: 'var(--fg)' }} />
+        <text x={sx(C0[0]) + 6} y={sy(C0[1]) - 8} style={txt}>x̄ 무게중심</text>
+        {pts.map((q) => <circle cx={sx(q.p[0])} cy={sy(q.p[1])} r="4" style={{ fill: 'var(--bg)', stroke: 'var(--blue-400)', 'stroke-width': 2 }} />)}
+        {pts.map((q) => <text x={sx(q.p[0])} y={sy(q.p[1]) + q.dy} text-anchor={q.a} style={txt}>{q.t}</text>)}
+        <circle cx={sx(half(Wv)[0])} cy={sy(half(Wv)[1])} r="3" style={{ fill: 'var(--slate-500)' }} />
+        <text x={sx(half(Wv)[0]) - 6} y={sy(half(Wv)[1]) - 8} text-anchor="end" style={txt}>축소</text>
+      </svg>
+    </div>
+  );
+};
+
+export const Valley = ({ id, label, paths = [], polys = [], view = [-1.6, 1.6, -0.6, 1.6], levels = [0.25, 1, 4, 16, 64, 256], xTicks = [-1.5, -1, -0.5, 0, 0.5, 1, 1.5], yTicks = [-0.5, 0, 0.5, 1, 1.5], marks = [] }) => {
+  const W = 640, H = 440, L = 40, R = 12, T = 12, B = 30;
+  const [X0, X1, Y0, Y1] = view;
+  const sx = (v) => L + ((v - X0) / (X1 - X0)) * (W - L - R);
+  const sy = (v) => H - B - ((v - Y0) / (Y1 - Y0)) * (H - T - B);
+  const ring = (c) => {
+    const s = Math.sqrt(c), N = 2880;
+    let d = '', pen = false, lx = 0, ly = 0;
+    for (let i = 0; i <= N; i++) {
+      const t = (2 * Math.PI * i) / N, x = 1 - s * Math.cos(t), y = x * x + (s / 10) * Math.sin(t);
+      const px = sx(x), py = sy(y);
+      if (px < L - 30 || px > W - R + 30 || py < T - 30 || py > H - B + 30) { pen = false; continue; }
+      if (pen && i < N && Math.hypot(px - lx, py - ly) < 2.5) continue;
+      d += `${pen ? 'L' : 'M'}${px.toFixed(1)} ${py.toFixed(1)}`;
+      pen = true; lx = px; ly = py;
+    }
+    return d;
+  };
+  const line = (pts) => pts.map(([a, b], i) => `${i ? 'L' : 'M'}${sx(a).toFixed(1)} ${sy(b).toFixed(1)}`).join('');
+  const tick = { fill: 'var(--fg-subtle)', 'font-family': 'var(--font-mono)', 'font-size': '11px' };
+  return (
+    <div style={{ width: '100%', 'max-width': '640px' }}>
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label} style={{ width: '100%', height: 'auto' }}>
+        <defs><clipPath id={id}><rect x={L} y={T} width={W - L - R} height={H - T - B} /></clipPath></defs>
+        {xTicks.map((t) => <text x={sx(t)} y={H - 10} text-anchor="middle" style={tick}>{t}</text>)}
+        {yTicks.map((t) => <text x={L - 6} y={sy(t) + 4} text-anchor="end" style={tick}>{t}</text>)}
+        <rect x={L} y={T} width={W - L - R} height={H - T - B} style={{ fill: 'none', stroke: 'var(--line)' }} />
+        <g clip-path={`url(#${id})`}>
+          {levels.map((c) => <path d={ring(c)} style={{ fill: 'none', stroke: 'var(--slate-300)', 'stroke-width': 1 }} />)}
+          {polys.map((p) => <path d={line(p.pts) + 'Z'} style={{ fill: p.fill ?? 'none', 'fill-opacity': 0.12, stroke: p.color, 'stroke-width': 1.2 }} />)}
+          {paths.map((p) => <path d={line(p.pts)} style={{ fill: 'none', stroke: p.color, 'stroke-width': 1.8, 'stroke-dasharray': p.dash ?? 'none', 'stroke-linejoin': 'round' }} />)}
+          {paths.map((p) => p.pts.map(([a, b]) => <circle cx={sx(a)} cy={sy(b)} r="2.3" style={{ fill: p.color }} />))}
+          {marks.map((m) => <text x={sx(m.at[0]) + (m.dx ?? 6)} y={sy(m.at[1]) + (m.dy ?? -6)} text-anchor={m.anchor ?? 'start'} style={{ fill: 'var(--fg-muted)', 'font-family': 'var(--font-mono)', 'font-size': '12px' }}>{m.text}</text>)}
+          <path d={`M${sx(1) - 6} ${sy(1)}h12M${sx(1)} ${sy(1) - 6}v12`} style={{ stroke: 'var(--fg)', 'stroke-width': 2 }} />
+        </g>
+      </svg>
+      <ul style={{ display: 'flex', 'flex-wrap': 'wrap', 'justify-content': 'center', gap: 'var(--space-5)', margin: 'var(--space-2) 0 0', padding: 0, 'list-style': 'none', 'font-family': 'var(--font-mono)', 'font-size': 'var(--text-xs)', color: 'var(--fg-muted)' }}>
+        {paths.map((p) => <li style={{ display: 'flex', 'align-items': 'center', gap: 'var(--space-2)', margin: 0 }}><svg width="22" height="6"><line x1="0" y1="3" x2="22" y2="3" style={{ stroke: p.color, 'stroke-width': 2, 'stroke-dasharray': p.dash ?? 'none' }} /></svg>{p.label}</li>)}
+      </ul>
+    </div>
+  );
+};
+
+## 무엇을 하나요
+
+Nelder–Mead(1965)는 기울기 없이 **함수값의 크기 비교만으로** 내려가는 방법이에요. 변수가 n개면 점 n + 1개로 된 **단체**(simplex)를 들고 다녀요. 2차원에서는 삼각형, 3차원에서는 사면체예요.
+
+반복마다 가장 나쁜(값이 가장 큰) 꼭짓점을 나머지 꼭짓점의 무게중심 너머로 옮겨 봐요. 나쁜 점의 반대쪽이 대체로 내리막이라는 생각이에요. 옮긴 점이 얼마나 좋은지에 따라 단체를 늘이거나 줄여요.
+
+<Fig caption="2차원에서 Nelder–Mead가 시험하는 점. 가장 나쁜 꼭짓점 x3를 나머지 둘의 무게중심 x̄ 너머로 반사(r)하고, 결과에 따라 더 멀리 확장(e)하거나, 바깥(c)이나 안쪽(cc)으로 수축해요. 어느 것도 x3보다 낫지 않으면 단체 전체를 가장 좋은 꼭짓점 x1 쪽으로 반만큼 축소해요(점선).">
+  <Moves label="Nelder-Mead의 반사, 확장, 바깥 수축, 안쪽 수축, 축소를 보여 주는 삼각형 그림" />
+</Fig>
+
+한 반복의 규칙은 이래요. 꼭짓점을 값 순서로 $f(x_1) \le \dots \le f(x_{n+1})$로 놓고, $x_{n+1}$을 뺀 무게중심을 $\bar x$라고 해요.
+
+1. **반사** $x_r = \bar x + (\bar x - x_{n+1})$을 계산해요. $f(x_1) \le f(x_r) < f(x_n)$이면 $x_r$로 바꾸고 끝이에요.
+2. $x_r$이 가장 좋은 꼭짓점보다도 좋으면 그쪽이 확실한 내리막이니 **확장** $x_e = \bar x + 2(\bar x - x_{n+1})$을 시험하고, 둘 가운데 나은 것을 받아요.
+3. $x_r$이 두 번째로 나쁜 꼭짓점보다 나쁘면 너무 멀리 간 거예요. **수축**해요. $x_r$이 원래의 가장 나쁜 점보다는 나으면 바깥 수축 $\bar x + \tfrac12(\bar x - x_{n+1})$, 아니면 안쪽 수축 $\bar x - \tfrac12(\bar x - x_{n+1})$이에요.
+4. 수축한 점도 받을 수 없으면 가장 좋은 꼭짓점만 두고 나머지를 그쪽으로 반만큼 당기는 **축소**를 해요.
+
+반복 하나에 함수를 보통 한두 번 불러요. 축소할 때만 n + 2번이에요. 아래 그림은 Rosenbrock 함수에서 단체가 골짜기를 따라 기어가는 모습이에요. 골짜기 방향으로 길쭉해지며 나아가다가 바닥 근처에서 오그라들어요.
+
+<Fig caption="Rosenbrock 함수에서 (−1.2, 1)에서 출발한 Nelder–Mead의 단체. 반복 0, 7, 12, 17, 23, 29, 40, 49, 59번 뒤의 삼각형이고, 85번째에 (1, 1)에서 멈췄어요.">
+  <Valley
+    id="nm-simplex"
+    label="Rosenbrock 등고선 위에 그린 Nelder-Mead 단체의 변화"
+    polys={simp.map((s) => ({ pts: s, color: 'var(--blue-600)', fill: 'var(--blue-400)' }))}
+    marks={[{ at: [-1.2, 1.0], text: 'x0', dx: -8, dy: 16, anchor: 'end' }]}
+  />
+</Fig>
+
+## 기본 사용
+
+`sd.optimize.minimize`에 `method='nelder-mead'`를 줘요. 목적함수만 있으면 돼요.
+
+```python
+>>> import math
+>>> import stardust as sd
+>>> def rosen(x):
+...     return 100.0 * (x[1] - x[0]**2)**2 + (1 - x[0])**2
+>>> r = sd.optimize.minimize(rosen, [-1.2, 1.0], method='nelder-mead')
+>>> r
+OptimizeResult(method='nelder-mead', converged=True, fun=8.17766e-10, n_iter=85, nfev=159, x=[1.0000220217835696 1.0000422197517715])
+>>> r.message
+'Optimization terminated successfully.'
+```
+
+`n_iter`는 1에서 세요. 위 결과는 84번 반복하고 85에서 멈췄다는 뜻이에요. `nfev`는 처음 꼭짓점 n + 1개를 계산한 것을 포함한 함수 호출 수예요.
+
+결과에는 기울기(`jac`)가 없고, 대신 마지막 단체 `final_simplex`가 있어요. 꼭짓점 (n + 1, n)과 그 값 (n + 1,)의 튜플이고 값이 작은 순서예요. `x`는 첫 꼭짓점, `fun`은 값의 최솟값이에요.
+
+```python
+>>> vertices, values = r.final_simplex
+>>> vertices
+array([[1.0000220217835696, 1.0000422197517715],
+       [0.9999952919648114, 0.9999872894360756],
+       [0.9999758857897321, 0.9999540990355993]], dtype=float64)
+>>> values
+array([ 8.177661197416674e-10, 1.1075489735209213e-09,
+       1.1229296958589735e-09], dtype=float64)
+```
+
+## 언제 쓰나요
+
+### 기울기가 없거나 f가 매끄럽지 않을 때
+
+Nelder–Mead는 값의 크기만 비교하므로 f가 꺾이거나 계단이 있어도 움직여요. $\lvert x - 1\rvert + 2\lvert y + 0.5\rvert$는 최솟값 (1, −0.5)에서 뾰족해서 기울기가 정의되지 않아요. BFGS는 그 근처까지는 가지만 선 탐색이 걸음을 찾지 못해 status 2로 멈춰요.
+
+```python
+>>> def kink(x):
+...     return abs(x[0] - 1) + 2 * abs(x[1] + 0.5)
+>>> r = sd.optimize.minimize(kink, [3.0, 2.0], method='nelder-mead')
+>>> r.converged, r.nfev, [round(v, 4) for v in r.x.tolist()]
+(True, 108, [1.0, -0.5])
+>>> r = sd.optimize.minimize(kink, [3.0, 2.0], method='bfgs')
+>>> r.converged, r.status, r.nfev
+(False, 2, 276)
+```
+
+### 값에 잡음이 있을 때
+
+시뮬레이션이나 측정처럼 값에 작은 잡음이 섞이면, 차분으로 구한 기울기는 잡음에 지배돼요. Nelder–Mead의 단체는 잡음보다 큰 규모에서 값을 비교하므로 큰 모양을 따라가요. 아래는 Rosenbrock에 진폭 $10^{-4}$의 빠른 물결을 더한 함수예요.
+
+```python
+>>> def rippled(x):
+...     return rosen(x) + 1e-4 * math.sin(1e4 * x[0]) * math.sin(1e4 * x[1])
+>>> r = sd.optimize.minimize(rippled, [-1.2, 1.0], method='nelder-mead')
+>>> r.converged, [round(v, 2) for v in r.x.tolist()]
+(True, [1.0, 1.01])
+>>> r = sd.optimize.minimize(rippled, [-1.2, 1.0], method='bfgs')
+>>> r.converged, r.status, [round(v, 2) for v in r.x.tolist()]
+(False, 2, [0.74, 0.55])
+```
+
+물결의 크기($10^{-4}$)보다 정확한 답은 어느 방법으로도 얻을 수 없어요. Nelder–Mead는 그 크기의 해까지 데려다줘요.
+
+### 쓰지 않는 게 좋을 때
+
+- **f가 매끄럽고 기울기를 구할 수 있을 때**: BFGS가 훨씬 적은 계산으로 더 정확한 해를 줘요. 기울기 함수가 없어도 차분의 BFGS가 대개 더 빨라요([`minimize`](/api/optimize/minimize/)의 그림).
+- **변수가 많을 때**: 단체가 n차원을 채워야 해서 n이 커지면 계산이 급히 늘고, 멈추지 않는 듯 오래 돌거나 해가 아닌 곳에서 오그라들기도 해요. 10개 남짓이 실용적인 한계예요. 아래는 Rosenbrock을 0에서 풀 때 `fun`을 부른 수예요.
+
+```python
+>>> def rosen_n(x):
+...     return float(sd.sum(100.0 * (x[1:] - x[:-1]**2)**2 + (1 - x[:-1])**2))
+>>> for n in [2, 3, 5, 10]:
+...     r = sd.optimize.minimize(rosen_n, sd.zeros(n), method='nelder-mead')
+...     print(n, r.converged, r.status, r.nfev, f"{r.fun:.1e}")
+2 True 0 146 3.7e-10
+3 True 0 289 1.2e-09
+5 True 0 883 5.9e-09
+10 False 1 2000 5.5e+00
+```
+
+n = 10에서는 기본 상한(fun 200n = 2,000번)에 닿았어요. 상한을 늘리면 4,729번 만에 수렴해요. 같은 문제를 차분의 기울기로 푸는 L-BFGS-B는 825번 불러요(차분의 호출 포함).
+
+## 옵션
+
+| 옵션 | 기본값 | 뜻 |
+|---|---|---|
+| `xatol` | 0.0001 | 모든 꼭짓점이 가장 좋은 꼭짓점과 좌표마다 이만큼 안이면… |
+| `fatol` | 0.0001 | …그리고 모든 값이 가장 좋은 값과 이만큼 안이면 멈춰요 |
+| `max_iter` | None | 반복 수의 상한 |
+| `max_nfev` | None | `fun`을 부르는 수의 상한 |
+| `adaptive` | False | 계수를 차원에 맞춰요(Gao–Han) |
+| `initial_simplex` | None | 처음 단체 (n + 1, n) |
+
+`tol`을 주면 `xatol`과 `fatol`을 모두 그 값으로 정해요. `bounds`도 받아요.
+
+### xatol, fatol: 언제 멈추나요
+
+두 조건이 **모두** 서야 멈춰요. 단체가 좌표마다 `xatol` 안으로 오그라들었고, 꼭짓점의 값이 `fatol` 안으로 모였을 때예요. 둘 다 절대 기준이라 변수와 값의 크기에 맞춰 골라야 해요(변수가 $10^{-6}$ 크기면 기본값으로는 처음부터 멈춰요).
+
+<Fig caption="위의 Rosenbrock 풀이에서 반복마다의 가장 좋은 값 f(x1), 단체의 크기(가장 좋은 꼭짓점과의 좌표 차이의 최댓값), 꼭짓점 값의 퍼짐(로그 눈금). 크기와 퍼짐이 모두 1e-4 밑으로 내려간 84번째 반복 뒤에 멈췄어요.">
+  <Plot
+    curves={[
+      { points: nm_f, label: 'f(x1)' },
+      { points: nm_dx, label: '단체 크기', dashed: true },
+      { points: nm_df, label: '값의 퍼짐' },
+    ]}
+    domain={[0, 85]}
+    range={[-10, 2]}
+    xTicks={[{ v: 0, label: '0' }, { v: 20, label: '20' }, { v: 40, label: '40' }, { v: 60, label: '60' }, { v: 80, label: '80' }]}
+    yTicks={[{ v: -8, label: '1e-8' }, { v: -4, label: '1e-4' }, { v: 0, label: '1' }]}
+  />
+</Fig>
+
+멈췄을 때 해의 오차는 단체의 크기 정도예요. 위 결과의 x도 (1, 1)에서 $4 \times 10^{-5}$ 떨어져 있어요. 더 정확한 해가 필요하면 허용오차를 줄여요.
+
+```python
+>>> r = sd.optimize.minimize(rosen, [-1.2, 1.0], method='nelder-mead', tol=1e-10)
+>>> r.nfev, [f"{v - 1:.1e}" for v in r.x.tolist()]
+(249, ['-2.4e-11', '-4.8e-11'])
+```
+
+### max_iter, max_nfev: 상한
+
+둘 다 주지 않으면 각각 200n이에요. 하나만 주면 다른 하나는 상한이 없어요. 상한에 닿으면 에러 없이 그때의 가장 좋은 점과 `converged=False`를 돌려줘요. `max_nfev`를 넘는 호출은 하지 않아요(그 반복은 중간에 끝나요).
+
+```python
+>>> r = sd.optimize.minimize(rosen, [-1.2, 1.0], method='nelder-mead', options={'max_nfev': 50})
+>>> r.nfev, r.status, r.message
+(50, 1, 'Maximum number of function evaluations has been exceeded.')
+>>> r = sd.optimize.minimize(rosen, [-1.2, 1.0], method='nelder-mead', options={'max_iter': 30})
+>>> r.n_iter, r.status, r.message
+(30, 2, 'Maximum number of iterations has been exceeded.')
+```
+
+### adaptive: 차원이 클 때
+
+기본 계수(반사 1, 확장 2, 수축 1/2, 축소 1/2)는 차원이 커지면 단체가 너무 빨리 납작해져 해가 아닌 곳에서 멈출 수 있어요. `adaptive=True`이면 Gao와 Han(2012)의 계수(확장 $1 + 2/n$, 수축 $3/4 - 1/(2n)$, 축소 $1 - 1/n$)를 써요. n = 2에서는 두 계수가 같아서 결과도 같아요.
+
+n = 20인 Rosenbrock에서는 기본 계수가 f = 11.8인 점에서 "수렴"하고, 적응 계수는 최솟값에 닿아요.
+
+```python
+>>> opts = {'max_nfev': 50000, 'max_iter': 50000}
+>>> r = sd.optimize.minimize(rosen_n, sd.zeros(20), method='nelder-mead', options=opts)
+>>> r.converged, round(r.fun, 2), r.nfev
+(True, 11.83, 32304)
+>>> r = sd.optimize.minimize(rosen_n, sd.zeros(20), method='nelder-mead', options={**opts, 'adaptive': True})
+>>> r.converged, f"{r.fun:.1e}", r.nfev
+(True, '1.4e-08', 22659)
+```
+
+<Callout type="warn">
+Nelder–Mead의 `converged=True`는 "단체가 작아졌다"는 뜻이지 "최솟값에 닿았다"는 뜻이 아니에요. 단체가 해가 아닌 곳에서 오그라들 수도 있어요. 결과의 `x`에서 다시 시작하면 처음 단체가 새로 만들어져 더 내려가기도 해요. 위의 n = 20에서 기본 계수로 다시 시작할 때마다 f가 11.2, 8.4, 5.7, 2.3으로 내려가지만 느려요. 차원이 크면 `adaptive=True`가 나아요.
+</Callout>
+
+### initial_simplex: 처음 단체
+
+주지 않으면 처음 단체는 `x0`와, `x0`의 좌표 하나씩을 5% 늘린 점 n개예요(0인 좌표는 0.00025로). 그래서 `x0`가 0이면 단체가 아주 작게 시작하고, 해가 멀면 확장을 여러 번 해야 해요. 문제의 크기를 알면 단체를 직접 줘요. 행이 꼭짓점이고 모양은 (n + 1, n)이에요.
+
+```python
+>>> def far(x):
+...     return (x[0] - 300.0)**2 + (x[1] + 200.0)**2
+>>> sd.optimize.minimize(far, [0.0, 0.0], method='nelder-mead').nfev
+229
+>>> big = [[0.0, 0.0], [100.0, 0.0], [0.0, 100.0]]
+>>> sd.optimize.minimize(far, [0.0, 0.0], method='nelder-mead', options={'initial_simplex': big}).nfev
+94
+>>> sd.optimize.minimize(far, [0.0, 0.0], method='nelder-mead', options={'initial_simplex': [[0.0, 0.0], [1.0, 0.0]]})
+Traceback (most recent call last):
+    ...
+ValueError: minimize(): 'initial_simplex' must have shape (N + 1, N), not (2, 2)
+```
+
+`initial_simplex`를 주면 `x0`는 변수의 수를 정하는 데만 써요. 단체의 첫 꼭짓점에서 `fun`이 유한해야 해요.
+
+### bounds
+
+`bounds=(lower, upper)`를 주면 새로 만드는 점마다 좌표를 경계로 잘라요(`numpy.clip`과 같아요). 기본 처음 단체에서 위 경계를 넘는 꼭짓점은 경계 안쪽으로 반사한 뒤 잘라요. `x0`는 경계 안이어야 해요.
+
+```python
+>>> r = sd.optimize.minimize(rosen, [-1.2, 1.0], method='nelder-mead', bounds=([-2.0, -2.0], [0.5, 2.0]))
+>>> r.converged, r.x
+(True, array([               0.5, 0.2500195980022476], dtype=float64))
+```
+
+경계로 자르면 단체가 경계 면에 납작하게 붙어 차원 하나를 잃을 수 있어요. 경계 위에 해가 있고 정확한 해가 필요하면 `'l-bfgs-b'`가 더 잘 맞아요.
+
+## 결과의 status
+
+| `status` | `message` | `converged` |
+|---|---|---|
+| 0 | `Optimization terminated successfully.` | True(마지막 값이 유한할 때) |
+| 1 | `Maximum number of function evaluations has been exceeded.` | False |
+| 2 | `Maximum number of iterations has been exceeded.` | False |
+
+반복 중에 `fun`이 inf나 NaN을 돌려주면 그 꼭짓점이 가장 나쁜 것으로 정렬돼서 다음 반복에 바뀌어요. 영역 밖에서 `math.inf`를 돌려주면 단체가 그쪽으로 가지 않아요. 처음 꼭짓점(`x0`, 또는 `initial_simplex`의 첫 행)에서 유한하지 않으면 `ValueError`예요.
+
+## 정확도와 비용
+
+- 해는 멈춘 단체의 크기만큼 정확해요(`xatol` 안팎). Nelder–Mead는 해 근처에서도 빨라지지 않아서, 자릿수 하나를 더 얻는 데 드는 반복이 거의 일정해요(위 그림의 기울기). 기울기를 쓰는 방법은 해에 가까울수록 빨라져요.
+- 반복 하나의 계산은 무게중심(n² 덧셈)과 비교뿐이라 작아요. 시간은 거의 `fun`을 부르는 데 들어요.
+- scipy 1.18.1의 `method='Nelder-Mead'`와 같은 점에서 `fun`을 같은 차례로 불러, 결과의 `x`, `fun`, `nfev`, `n_iter`, `status`가 같아요. 자세한 계산은 [구현 글](/internals/optimize/nelder-mead/)에 있어요.
+
+## scipy를 아는 분께
+
+- 옵션 이름: `maxiter`는 `max_iter`, `maxfev`는 `max_nfev`예요. `xatol`, `fatol`, `adaptive`, `initial_simplex`는 같고 기본값도 같아요. `disp`, `return_all`은 없어요.
+- `jac`를 주면 scipy는 경고하고 무시하지만 여기서는 `ValueError`예요.
+- `bounds`는 `(lower, upper)` 꼴이고, `x0`가 경계 밖이면 `ValueError`예요(scipy는 경계 안으로 옮겨요).
+- `n_iter`는 scipy의 `nit`와 같은 수예요(1에서 세요).

@@ -201,6 +201,11 @@
   --area-soft: #fdedf2;
   --area-line: #f5c3d2;
 }
+[data-area='optimize'] {
+  --area: #a1279f;
+  --area-soft: #fbeefb;
+  --area-line: #efc4ee;
+}
 [data-area='random'] {
   --area: #0c6f8c;
   --area-soft: #e7f5f9;

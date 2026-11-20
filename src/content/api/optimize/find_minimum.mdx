@@ -1,0 +1,350 @@
+---
+kind: function
+title: find_minimum
+names: [find_minimum, bracket_minimum]
+group: 스칼라
+order: 4
+signatures:
+  - "sd.optimize.find_minimum(f, init, /, *, args=(), xatol=None, xrtol=None, fatol=None, frtol=None, max_iter=100)"
+  - "sd.optimize.bracket_minimum(f, xm0, /, *, xl0=None, xr0=None, xmin=None, xmax=None, factor=None, args=(), max_iter=1000)"
+summary: 같은 꼴의 스칼라 최소화 문제 여럿을 원소마다 따로, 한꺼번에 풀어요. 사용자 함수를 남은 원소의 배열로 한 번씩 불러요. bracket_minimum은 최솟값을 끼는 세 점을 찾아요.
+params:
+  - name: f
+    type: 호출 가능한 객체
+    kind: positional-only
+    desc: "f(x, *args). x는 아직 끝나지 않은 원소만 모은 float64 sd.ndarray (k,)이고, 원소마다의 값 k개((k,)의 sd.ndarray, 실수의 시퀀스, numpy 배열)를 돌려줘요."
+  - name: init
+    type: (x1, x2, x3)
+    kind: positional-only
+    desc: "find_minimum의 처음 세 점. 튜플이나 리스트(또는 첫 축으로 나누는 배열)이고, 값은 실수나 배열이에요. 원소마다 정렬한 뒤 가운데 점의 f가 양 끝 이하여야 해요(아니면 그 원소의 status가 −1)."
+  - name: xm0
+    type: 실수 또는 배열
+    kind: positional-only
+    desc: bracket_minimum이 출발할 가운데 점.
+  - name: xl0, xr0
+    type: 실수, 배열 또는 None
+    kind: keyword-only
+    desc: "bracket_minimum의 처음 양 끝. None(기본값)이면 xm0 − min((xm0 − xmin)/16, 0.5), xm0 + min((xmax − xm0)/16, 0.5)예요. xmin ≤ xl0 < xm0 < xr0 ≤ xmax여야 해요(아니면 그 원소의 status가 −5)."
+  - name: args
+    type: tuple
+    kind: keyword-only
+    desc: "f에 넘길 원소마다의 상수. 값마다 실수나 배열(dtype은 그대로)이고, 다른 입력과 함께 브로드캐스트해서 배치 모양을 정해요. 호출마다 x와 같은 원소만 모은 1차원 배열로 넘겨요. 기본값 ()."
+  - name: xatol, xrtol
+    type: float 또는 None
+    kind: keyword-only
+    desc: "find_minimum의 구간 판정. 가운데 점에서 먼 쪽 끝까지가 2(|x2|·xrtol + xatol) 이하이면 멈춰요. None이면 xatol = tiny(2.2e-308), xrtol = √ε(1.49e-8)예요."
+  - name: fatol, frtol
+    type: float 또는 None
+    kind: keyword-only
+    desc: "find_minimum의 곡률 판정. f1 − 2f2 + f3 ≤ 2(|f2|·frtol + fatol)이면 멈춰요. None이면 둘 다 tiny예요."
+  - name: max_iter
+    type: int
+    kind: keyword-only
+    desc: "반복의 상한(0 이상). find_minimum 100, bracket_minimum 1000이 기본값이에요. 닿은 원소는 status가 −2예요."
+  - name: xmin, xmax
+    type: 실수, 배열 또는 None
+    kind: keyword-only
+    desc: "bracket_minimum이 넘지 않을 한계. None(기본값)이면 −inf, inf예요. 한계가 있으면 한계까지의 거리를 1/factor씩 줄이며 다가가요."
+  - name: factor
+    type: 실수, 배열 또는 None
+    kind: keyword-only
+    desc: "bracket_minimum의 걸음을 늘리는 비율(1보다 커야 해요). None(기본값)이면 2예요."
+returns:
+  type: OptimizeResult
+  desc: "find_minimum은 x, fun, bracket, f_bracket, converged, status, n_iter, nfev, bracket_minimum은 bracket, f_bracket, converged, status, n_iter, nfev가 든 결과 객체예요. bracket은 세 점 (xl, xm, xr)이에요. 필드마다 배치 모양의 sd.ndarray이고, 입력이 모두 실수이면 Python 수예요. message와 method는 없어요."
+raises:
+  - type: TypeError
+    desc: f가 호출 가능하지 않을 때, init이 튜플·리스트·배열이 아닐 때, 입력이 실수나 배열이 아닐 때(bool, complex 포함), args가 튜플이 아니거나 그 값이 수나 배열이 아닐 때, 허용오차가 수가 아닐 때, max_iter가 정수가 아닐 때(None 포함), f가 수의 배열이 아닌 것이나 complex 값을 돌려줄 때. f 안에서 난 에러도 그대로 나와요.
+  - type: ValueError
+    desc: init의 값이 세 개가 아닐 때, 입력과 args가 서로 브로드캐스트되지 않을 때, f가 받은 x와 다른 모양(스칼라 포함)을 돌려줄 때, 허용오차가 음수이거나 유한하지 않을 때, max_iter가 음수일 때, factor가 1 이하일 때.
+seeAlso: [basics, results, minimize_scalar, find_root]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+
+export const expCurve = [[-0.6,3.5488],[-0.55,3.3269],[-0.5,3.1065],[-0.45,2.8876],[-0.4,2.6703],[-0.35,2.4547],[-0.3,2.2408],[-0.25,2.0288],[-0.2,1.8187],[-0.15,1.6107],[-0.1,1.4048],[-0.05,1.2012],[0.0,1.0],[0.05,0.8013],[0.1,0.6052],[0.15,0.4118],[0.2,0.2214],[0.25,0.034],[0.3,-0.1501],[0.35,-0.3309],[0.4,-0.5082],[0.45,-0.6817],[0.5,-0.8513],[0.55,-1.0167],[0.6,-1.1779],[0.65,-1.3345],[0.7,-1.4862],[0.75,-1.633],[0.8,-1.7745],[0.85,-1.9104],[0.9,-2.0404],[0.95,-2.1643],[1.0,-2.2817],[1.05,-2.3923],[1.1,-2.4958],[1.15,-2.5918],[1.2,-2.6799],[1.25,-2.7597],[1.3,-2.8307],[1.35,-2.8926],[1.4,-2.9448],[1.45,-2.9869],[1.5,-3.0183],[1.55,-3.0385],[1.6,-3.047],[1.65,-3.043],[1.7,-3.0261],[1.75,-2.9954],[1.8,-2.9504],[1.85,-2.8902],[1.9,-2.8141],[1.95,-2.7213],[2.0,-2.6109],[2.05,-2.4821],[2.1,-2.3338],[2.15,-2.1651],[2.2,-1.975],[2.25,-1.7623],[2.3,-1.5258],[2.35,-1.2644],[2.4,-0.9768],[2.45,-0.6617],[2.5,-0.3175],[2.55,0.0571],[2.6,0.4637],[2.65,0.904],[2.7,1.3797]];
+export const bmRows = [{"a":-0.5,"b":0.5,"label":"0","marks":[{"x":-0.5,"sign":-1},{"x":0,"sign":1},{"x":0.5,"sign":-1}]},{"a":0,"b":1.5,"label":"1","marks":[{"x":0,"sign":-1},{"x":0.5,"sign":1},{"x":1.5,"sign":-1}]},{"a":0.5,"b":2.5,"label":"2","marks":[{"x":0.5,"sign":-1},{"x":1.5,"sign":1},{"x":2.5,"sign":-1}]}];
+export const fmRows = [{"a":0.5,"b":2.5,"label":"0","marks":[{"x":0.5,"sign":-1},{"x":1.5,"sign":1},{"x":2.5,"sign":-1}]},{"a":0.5,"b":1.882,"label":"1","marks":[{"x":0.5,"sign":-1},{"x":1.5,"sign":1},{"x":1.882,"sign":-1}]},{"a":1.5,"b":1.882,"label":"2","marks":[{"x":1.5,"sign":-1},{"x":1.5705,"sign":1},{"x":1.882,"sign":-1}]},{"a":1.5705,"b":1.882,"label":"3","marks":[{"x":1.5705,"sign":-1},{"x":1.6034,"sign":1},{"x":1.882,"sign":-1}]},{"a":1.6034,"b":1.882,"label":"4","marks":[{"x":1.6034,"sign":-1},{"x":1.6075,"sign":1},{"x":1.882,"sign":-1}]},{"a":1.6075,"b":1.882,"label":"5","marks":[{"x":1.6075,"sign":-1},{"x":1.6091,"sign":1},{"x":1.882,"sign":-1}]}];
+
+export const Sketch = ({ curve = [], domain, range, xTicks = [], yTicks = [], segs = [], dots = [], rows = [], guides = [], label, plotH = 200 }) => {
+  const W = 640, L = 48, R = 16, T = 12, rowH = 22;
+  const bottom = T + plotH;
+  const rowTop = bottom + 40;
+  const H = rows.length ? rowTop + rows.length * rowH : bottom + 28;
+  const sx = (v) => L + ((v - domain[0]) / (domain[1] - domain[0])) * (W - L - R);
+  const sy = (v) => bottom - ((v - range[0]) / (range[1] - range[0])) * plotH;
+  const d = (pts) => pts.map(([a, b], i) => `${i ? 'L' : 'M'}${sx(a).toFixed(1)} ${sy(b).toFixed(1)}`).join('');
+  const tick = { fill: 'var(--fg-subtle)', 'font-family': 'var(--font-mono)', 'font-size': '12px' };
+  const note = { fill: 'var(--fg-muted)', 'font-family': 'var(--font-mono)', 'font-size': '12px' };
+  const ry = (i) => rowTop + i * rowH;
+  const mark = (m) => (m.sign > 0 ? 'var(--blue-600)' : m.sign < 0 ? 'var(--slate-400)' : 'var(--fg)');
+  return (
+    <div style={{ width: '100%', 'max-width': '640px' }}>
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label} style={{ width: '100%', height: 'auto' }}>
+        {xTicks.map((t) => <line x1={sx(t.v)} x2={sx(t.v)} y1={T} y2={bottom} style={{ stroke: 'var(--line)' }} />)}
+        {yTicks.map((t) => <line x1={L} x2={W - R} y1={sy(t.v)} y2={sy(t.v)} style={{ stroke: 'var(--line)' }} />)}
+        {range[0] < 0 && range[1] > 0 && <line x1={L} x2={W - R} y1={sy(0)} y2={sy(0)} style={{ stroke: 'var(--slate-400)' }} />}
+        {xTicks.map((t) => <text x={sx(t.v)} y={bottom + 18} text-anchor="middle" style={tick}>{t.label}</text>)}
+        {yTicks.map((t) => <text x={L - 8} y={sy(t.v) + 4} text-anchor="end" style={tick}>{t.label}</text>)}
+        {guides.map((g) => <line x1={sx(g)} x2={sx(g)} y1={T} y2={H - 6} style={{ stroke: 'var(--slate-400)', 'stroke-dasharray': '2 4' }} />)}
+        {segs.map((s) => <path d={d(s.pts)} style={{ fill: 'none', stroke: s.color ?? 'var(--slate-600)', 'stroke-width': 1.5, 'stroke-dasharray': s.dashed ? '4 4' : 'none' }} />)}
+        {curve.length > 0 && <path d={d(curve)} style={{ fill: 'none', stroke: 'var(--blue-600)', 'stroke-width': 2 }} />}
+        {dots.map((p) => <circle cx={sx(p.x)} cy={sy(p.y)} r={p.r ?? 4} style={{ fill: p.hollow ? 'var(--bg)' : (p.color ?? 'var(--blue-600)'), stroke: p.color ?? 'var(--blue-600)', 'stroke-width': 1.5 }} />)}
+        {dots.filter((p) => p.label).map((p) => <text x={sx(p.x) + (p.dx ?? 6)} y={sy(p.y) + (p.dy ?? -8)} text-anchor={p.anchor ?? 'start'} style={note}>{p.label}</text>)}
+        {rows.map((r, i) => <line x1={sx(r.a)} x2={sx(r.b)} y1={ry(i)} y2={ry(i)} style={{ stroke: 'var(--blue-300)', 'stroke-width': 4 }} />)}
+        {rows.map((r, i) => <text x={L - 8} y={ry(i) + 4} text-anchor="end" style={tick}>{r.label}</text>)}
+        {rows.flatMap((r, i) => (r.marks ?? []).map((m) => <circle cx={sx(m.x)} cy={ry(i)} r="4" style={{ fill: mark(m), stroke: 'var(--bg)', 'stroke-width': 1 }} />))}
+        {rows.filter((r) => r.note).map((r) => <text x={sx(r.b) + 10} y={ry(rows.indexOf(r)) + 4} style={note}>{r.note}</text>)}
+      </svg>
+    </div>
+  );
+};
+
+## 무엇을 하나요
+
+같은 꼴의 최소화 문제를 상수만 바꿔 여러 번 풀 때 써요. 예를 들어 $e^x - c\,x$의 최솟값을 c마다 찾는 일이에요. [minimize_scalar](/api/optimize/minimize_scalar/)는 문제 하나를 풀고, `find_minimum`은 문제 묶음(**배치**)을 원소마다 따로, 한꺼번에 풀어요.
+
+- 원소마다 최솟값을 끼는 세 점 $x_1 < x_2 < x_3$($f(x_2)$가 양 끝 이하)에서 시작해 세 점을 좁혀 가요. 방법은 Chandrupatla(1998)의 것으로, 세 점을 지나는 포물선의 꼭짓점을 쓰고 그것이 잘 줄지 않으면 황금분할을 해요.
+- 사용자 함수는 반복마다 한 번, 아직 끝나지 않은 원소의 x를 모은 배열로 불러요.
+- 찾는 것은 원소마다 **지역 최솟값**이에요. 세 점 안의 골짜기 바닥 하나예요.
+
+세 점을 모르면 `bracket_minimum`이 찾아요. 한 점에서 내리막 쪽으로 걸음을 두 배씩 늘리며 가다가, f가 다시 올라가는 점을 만나면 세 점이 생겨요.
+
+<Fig caption="f(x) = eˣ − 5x에서 bracket_minimum(f, 0)이 세 점을 찾는 모습. 막대마다 그때의 세 점이고, 진한 점이 가운데 점이에요. (−0.5, 0, 0.5)에서 오른쪽이 낮아 그쪽으로 1.5, 2.5를 계산했고, f(2.5) > f(1.5)라 (0.5, 1.5, 2.5)가 최솟값을 껴요.">
+  <Sketch
+    label="e^x - 5x에서 bracket_minimum이 세 점을 찾는 모습"
+    curve={expCurve}
+    domain={[-0.7, 2.7]}
+    range={[-3.6, 3.6]}
+    xTicks={[{ v: -0.5, label: '-0.5' }, { v: 0, label: '0' }, { v: 0.5, label: '0.5' }, { v: 1, label: '1' }, { v: 1.5, label: '1.5' }, { v: 2, label: '2' }, { v: 2.5, label: '2.5' }]}
+    yTicks={[{ v: -3, label: '-3' }, { v: -2, label: '-2' }, { v: -1, label: '-1' }, { v: 1, label: '1' }, { v: 2, label: '2' }, { v: 3, label: '3' }]}
+    rows={bmRows}
+    guides={[1.6094379124341003]}
+  />
+</Fig>
+
+<Reference />
+
+## 기본 사용
+
+$e^x - c\,x$는 $x = \ln c$에서 가장 작아요. c마다 세 점을 찾고, 그 세 점에서 최솟값을 찾아요.
+
+```python
+>>> import stardust as sd
+>>> c = sd.asarray([1.0, 2.0, 5.0, 10.0])
+>>> def f(x, c):
+...     return sd.exp(x) - c*x
+>>> b = sd.optimize.bracket_minimum(f, 0.0, args=(c,))
+>>> b.bracket
+(array([-0.5,  0.0,  0.5,  1.5], dtype=float64), array([0.0, 0.5, 1.5, 2.5], dtype=float64), array([0.5, 1.5, 2.5, 4.5], dtype=float64))
+>>> r = sd.optimize.find_minimum(f, b.bracket, args=(c,))
+>>> r
+OptimizeResult(batch shape (4,), 4 of 4 converged)
+>>> r.x
+array([-8.631853881842233e-10,    0.6931471958282459,    1.6094379206854648,
+          2.3025850873253324], dtype=float64)
+>>> sd.log(c)
+array([               0.0, 0.6931471805599453, 1.6094379124341003,
+       2.3025850929940455], dtype=float64)
+```
+
+`bracket`은 세 배열 (xl, xm, xr)의 튜플이고, 그대로 `find_minimum`의 `init`으로 넘기면 돼요. 결과의 x는 $\ln c$와 $10^{-9}$ 안쪽에서 맞아요. 최솟값의 위치는 상대 $10^{-8}$쯤까지만 정해져요. 까닭은 [minimize_scalar의 정확도의 한계](/api/optimize/minimize_scalar/#정확도의-한계)와 같아요.
+
+입력이 모두 실수이면 필드는 Python 수예요. `init`의 세 점은 정렬되어 있지 않아도 돼요.
+
+```python
+>>> r = sd.optimize.find_minimum(lambda x: sd.exp(x) - 5*x, (0.0, 3.0, 1.0))
+>>> r
+OptimizeResult(converged=True, fun=-3.04719, n_iter=13, nfev=16, x=1.6094379044732805)
+>>> r.bracket
+(1.609437880490787, 1.6094379044732805, 1.609437928455774)
+```
+
+## minimize_scalar와 무엇이 다른가요
+
+| | `minimize_scalar` | `find_minimum` |
+|---|---|---|
+| 푸는 것 | 문제 하나 | 문제 여럿(원소마다 따로). 하나도 돼요. |
+| f가 받는 것 | Python `float` 하나 | 남은 원소의 1차원 `sd.ndarray` (k,) |
+| 세 점 | `bracket`(두 점이면 스스로 찾아요) | `init`에 세 점을 꼭 줘요. 찾기는 `bracket_minimum` |
+| 범위 | `bounds`('bounded') | 없어요. `bracket_minimum`의 `xmin`, `xmax`로 세 점을 범위 안에서 찾아요 |
+| 상수 넘기기 | 클로저 | `args`(원소마다 다른 값) |
+| 방법 | brent, golden, bounded | Chandrupatla의 포물선·황금분할 하나 |
+| 맞지 않는 세 점 | `ValueError` | 그 원소만 `status` −1 |
+| 결과 | Python 수, `message`·`method` 있음 | 배치 모양의 배열, `bracket` 있음 |
+
+f를 배열로 쓸 수 있으면 문제가 여럿일 때 `find_minimum`이 훨씬 빨라요. 10⁴개의 문제에서 `find_minimum` 한 번이 1.94 ms였어요(Apple M4 Pro, $(x - c)^2 + 0.01\,c\,x^4$의 최솟값). 반복 사이의 계산은 함수값 하나에 4–6 ns이고 시간은 대부분 f예요.
+
+## 사용자 함수의 약속
+
+[find_root](/api/optimize/find_root/#사용자-함수의-약속)와 같아요. f는 아직 끝나지 않은 원소만 모은 새 float64 `sd.ndarray` (k,)를 받고(원소의 차례는 배치 모양을 C 순서로 편 것), 같은 모양의 값을 돌려줘요. `args`의 값도 같은 원소만 모은 1차원 배열로 넘어가요. 처음에는 세 점(`bracket_minimum`은 xl0, xm0, xr0)에서 모든 원소를 한 번씩, 그 뒤 반복마다 한 번 불러요.
+
+```python
+>>> sizes = []
+>>> def g(x):
+...     sizes.append(x.shape[0])
+...     return x**4 - 4*x**2 + x
+>>> r = sd.optimize.find_minimum(g, (sd.asarray([-2.0, 0.5]), sd.asarray([-1.0, 1.0]), sd.asarray([-0.5, 2.0])))
+>>> r.x, r.n_iter
+(array([-1.4729976098975956,   1.346997412557977], dtype=float64), array([11, 13], dtype=int64))
+>>> sizes
+[2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1]
+```
+
+f는 GIL을 쥔 채 불려요. f 안의 sd 연산은 그 연산의 규칙대로 여러 스레드를 써요.
+
+## find_minimum의 반복
+
+반복마다 세 점을 지나는 포물선의 꼭짓점 $q_1$을 구해요. 직전 반복의 꼭짓점 $q_0$와 가까우면($|q_1 - q_0| < |x_2 - x_1|/2$) $q_1$을 새 점으로 쓰고, 아니면 넓은 쪽 구간을 황금분할해요. 새 점이 가운데 점과 너무 가까우면 허용오차만큼 떼어 놓아요. 새 점의 f가 가운데보다 작으면 그 점이 새 가운데가 되고, 크면 그쪽 끝을 바꿔요.
+
+<Fig caption="f(x) = eˣ − 5x를 세 점 (0.5, 1.5, 2.5)에서 시작한 find_minimum의 처음 다섯 반복. 첫 반복은 황금분할(1.88), 그 뒤는 포물선의 꼭짓점이 가운데 점이 되며 ln 5(점선)에 다가가요.">
+  <Sketch
+    label="e^x - 5x에서 find_minimum이 세 점을 좁히는 모습"
+    curve={expCurve}
+    domain={[-0.7, 2.7]}
+    range={[-3.6, 3.6]}
+    xTicks={[{ v: 0, label: '0' }, { v: 0.5, label: '0.5' }, { v: 1, label: '1' }, { v: 1.5, label: '1.5' }, { v: 2, label: '2' }, { v: 2.5, label: '2.5' }]}
+    yTicks={[{ v: -3, label: '-3' }, { v: -2, label: '-2' }, { v: -1, label: '-1' }, { v: 1, label: '1' }, { v: 2, label: '2' }, { v: 3, label: '3' }]}
+    rows={fmRows}
+    guides={[1.6094379124341003]}
+  />
+</Fig>
+
+원소마다 둘 가운데 하나를 만족하면 멈춰요. 가운데 점 $x_2$에서 먼 쪽 끝까지의 거리를 $d$라 하면,
+
+$$
+d \le 2\,(|x_2|\cdot\text{xrtol} + \text{xatol})
+\qquad\text{또는}\qquad
+f_1 - 2f_2 + f_3 \le 2\,(|f_2|\cdot\text{frtol} + \text{fatol})
+$$
+
+앞의 것은 세 점의 폭, 뒤의 것은 세 점의 값이 이루는 굽음(이계 차분)이 충분히 작다는 판정이에요. 기본값은 xrtol = √ε ≈ 1.49×10⁻⁸, xatol = fatol = frtol = tiny(가장 작은 정규수)예요. 기본으로는 x의 상대 크기 $10^{-8}$에서 멈추고, 이것이 최솟값 위치를 정할 수 있는 한계와 같은 크기예요. 더 느슨하게 해서 f를 덜 부를 수 있어요.
+
+```python
+>>> f5 = lambda x: sd.exp(x) - 5*x
+>>> r = sd.optimize.find_minimum(f5, (0.0, 1.0, 3.0), xrtol=1e-4)
+>>> r.x, r.nfev
+(1.6093610418897448, 10)
+```
+
+### 결과 읽기
+
+| 필드 | 뜻 |
+|---|---|
+| `x`, `fun` | 최소점(마지막 세 점의 가운데)과 그 점의 f 값 |
+| `bracket`, `f_bracket` | 마지막 세 점 (xl, xm, xr)의 튜플(xl ≤ xr)과 그 점의 값 |
+| `converged` | `status == 0`인지(bool 배열) |
+| `status` | 멈춘 이유(아래, int64 배열) |
+| `n_iter`, `nfev` | 그 원소가 멈출 때까지의 반복 수와 함수값 수(처음 세 점 포함, n_iter + 3) |
+
+| status | 뜻 | x, fun |
+|---|---|---|
+| 0 | 수렴 | 최소점 |
+| −1 | 세 점의 가운데 f가 양 끝 이하가 아니에요(최솟값을 끼지 않아요) | NaN |
+| −2 | `max_iter`(기본 100)에 닿았어요 | 마지막 가운데 점 |
+| −3 | 점이나 f 값이 유한하지 않아요 | NaN |
+
+맞지 않는 원소가 있어도 예외 없이 그 원소만 표시하고, 나머지는 풀려요. `message`와 `method`는 없어요.
+
+```python
+>>> r = sd.optimize.find_minimum(f5, (sd.asarray([0.0, 2.0]), sd.asarray([1.0, 3.0]), sd.asarray([3.0, 4.0])))
+>>> r.status, r.x
+(array([ 0, -1], dtype=int64), array([1.6094379044732805,                nan], dtype=float64))
+>>> r = sd.optimize.find_minimum(f5, (0.0, 1.0, 3.0), max_iter=3)
+>>> r.status, r.x
+(-2, 1.600857528514855)
+>>> sd.optimize.find_minimum(f5, (0.0, 3.0))
+Traceback (most recent call last):
+    ...
+ValueError: find_minimum(): 'init' must be a triple (x1, x2, x3), not 2 values
+```
+
+`max_iter`는 정수여야 해요. find_root와 달리 None을 받지 않아요(기본 100).
+
+## bracket_minimum: 최솟값을 끼는 세 점 찾기
+
+`bracket_minimum(f, xm0)`은 xm0 둘레의 세 점 (xl0, xm0, xr0)에서 출발해요. 기본으로 양 끝은 xm0 ± 0.5예요(한계가 가까우면 한계까지 거리의 1/16).
+
+1. 두 끝 가운데 f가 작은 쪽이 내리막이에요. 그쪽으로만 나아가요.
+2. 한계가 없으면 걸음을 `factor`(기본 2)배씩 늘려요. 처음 걸음이 xr0 − xm0 = 0.5이면 새 점은 xr0 + 1, xr0 + 2, xr0 + 4, …예요.
+3. 새 점을 계산할 때마다 세 점을 한 칸씩 밀어요(앞의 가운데가 새 끝, 앞의 끝이 새 가운데).
+4. 가운데 f가 양 끝 이하(하나는 엄격히 작게)가 되면 끝나요.
+
+```python
+>>> r = sd.optimize.bracket_minimum(f5, 0.0)
+>>> r
+OptimizeResult(converged=True, n_iter=2, nfev=5)
+>>> r.bracket, r.f_bracket
+((0.5, 1.5, 2.5), (-0.8512787292998718, -3.0183109296619355, -0.31750603929652677))
+>>> sd.optimize.bracket_minimum(f5, 0.0, factor=4.0).bracket
+(0.0, 0.5, 2.5)
+>>> sd.optimize.bracket_minimum(f5, 0.0, xl0=-1.0, xr0=0.1).bracket
+(0.9, 1.7000000000000002, 3.3000000000000003)
+```
+
+`factor`가 크면 멀리 있는 최솟값을 빨리 끼지만 세 점이 넓어져서, 그 뒤의 `find_minimum`이 반복을 조금 더 해요.
+
+여러 곳에서 출발하면 원소마다 다른 골짜기를 찾을 수 있어요. 아래는 $x^4 - 4x^2 + x$를 네 점에서 출발한 것으로, 왼쪽 둘은 깊은 골짜기(−1.473), 오른쪽 둘은 얕은 골짜기(1.347)에 닿아요.
+
+```python
+>>> g4 = lambda x: x**4 - 4*x**2 + x
+>>> b = sd.optimize.bracket_minimum(g4, sd.asarray([-2.0, -0.5, 0.5, 2.0]))
+>>> m = sd.optimize.find_minimum(g4, b.bracket)
+>>> m.x
+array([ -1.472997598755292, -1.4729976098975956,   1.346997412557977,
+         1.346997413297345], dtype=float64)
+```
+
+### 한계 xmin, xmax
+
+한계가 있는 쪽으로 가면 걸음을 늘리지 않고, 한계까지 남은 거리를 1/factor씩 줄이며 다가가요. 한계를 넘는 점에서는 f를 부르지 않아요. 한계에 닿을 때까지 f가 내려가기만 하면 `status` −1이에요.
+
+```python
+>>> r = sd.optimize.bracket_minimum(f5, 1.0, xmax=1.2)
+>>> r.status, r.bracket
+(-1, (1.1999999999999993, 1.1999999999999997, 1.2))
+```
+
+다만 한계가 0이면 거리를 반씩 줄여도 0에 닿기까지 1,000번이 넘게 걸려서, 기본 `max_iter`(1000)에서 −2로 멈춰요.
+
+```python
+>>> r = sd.optimize.bracket_minimum(lambda x: x, 0.5, xmin=0.0)
+>>> r.status, r.n_iter
+(-2, 1000)
+```
+
+### bracket_minimum의 status
+
+| status | 뜻 |
+|---|---|
+| 0 | 최솟값을 끼는 세 점을 찾았어요 |
+| −1 | 한계(`xmin` 또는 `xmax`)에 닿았어요 |
+| −2 | `max_iter`(기본 1000)에 닿았어요 |
+| −3 | 점이나 f 값이 유한하지 않아요(넘침 등) |
+| −5 | 처음 세 점이 xmin ≤ xl0 < xm0 < xr0 ≤ xmax가 아니에요 |
+
+아래로 끝없이 내려가는 함수는 넘칠 때까지 가서 −3이에요.
+
+```python
+>>> r = sd.optimize.bracket_minimum(lambda x: -x*x, 0.5)
+>>> r.status, r.n_iter
+(-3, 513)
+>>> sd.optimize.bracket_minimum(f5, 0.0, xl0=1.0).status
+-5
+>>> sd.optimize.bracket_minimum(f5, 0.0, factor=0.5)
+Traceback (most recent call last):
+    ...
+ValueError: bracket_minimum(): 'factor' must be > 1
+```
+
+## 정확도와 비용
+
+- 원소 하나의 계산은 그 원소만 풀 때와 같아요. 배치의 다른 원소나 스레드 수와 상관없이 결과의 비트가 같아요.
+- 최솟값의 위치는 상대 $\sqrt{u} \approx 10^{-8}$ 근처까지만 정해져요(f가 최솟값 근처에서 평평하기 때문이에요). `fun`은 끝자리 근처까지 맞아요.
+- 10⁶ 원소에서 `find_minimum` 한 번이 1스레드 189 ms, 10스레드 57 ms, `bracket_minimum`이 54 ms, 27 ms였어요(Apple M4 Pro, $(x - c)^2 + 0.01\,c\,x^4$). 자세한 방법은 [배치 스칼라의 구현](/internals/optimize/batched/)에 있어요.
+
+## scipy를 아는 분께
+
+- scipy 1.18.1의 `scipy.optimize.elementwise.find_minimum`, `bracket_minimum`과 같은 방법, 같은 걸음이에요. 원소 하나마다 scipy와 같은 점에서 f를 불러 같은 x, `n_iter`, `nfev`, `status`를 내요(같은 f일 때). 최솟값 근처에서는 f의 끝자리가 걸음을 바꾸므로, f 안의 수학 함수가 다르면(`sd.exp`와 `np.exp`) 걸음이 갈릴 수 있어요. 위의 $e^x - 5x$도 `np.exp`로 쓴 scipy는 반복 14번, 이쪽은 13번이에요.
+- scipy의 `f_x`는 `fun`, `success`는 `converged`, `nit`은 `n_iter`예요. 허용오차는 `tolerances` dict 대신 키워드이고, `maxiter`는 `max_iter`, `callback`은 없어요(status −4도 없어요).
+- 처음 세 점의 호출도 늘 1차원 배열 (k,)이에요. 입력이 모두 실수이면 필드는 Python 수예요.

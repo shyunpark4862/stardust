@@ -274,8 +274,7 @@ beta = sd.linalg.lstsq(X, y).solution
   }
   /* Seven cards on a three-column grid: the first and the sixth take two
      columns, so every row is full (2+1, 1+1+1, 2+1). */
-  .areas__cell--array,
-  .areas__cell--regression {
+  .areas__cell--array {
     grid-column: span 2;
   }
 
@@ -459,8 +458,8 @@ beta = sd.linalg.lstsq(X, y).solution
     .fact:nth-child(n + 3) {
       border-top: 1px solid var(--line);
     }
-    /* Two columns: only the first card is wide (2, 1+1, 1+1, 1+1). */
-    .areas__cell--regression {
+    /* Two columns: eight cards fill four rows, none wide. */
+    .areas__cell--array {
       grid-column: auto;
     }
   }

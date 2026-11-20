@@ -1,0 +1,298 @@
+---
+title: 스칼라 최솟값
+group: 스칼라
+order: 2
+summary: 함수 하나의 최솟값을 찾는 세 방법과, 최솟값을 끼는 세 점을 찾는 법을 설명해요. 황금분할의 안전함에 포물선 보간의 빠르기를 더한 것이 Brent법이에요.
+seeAlso: [overview, scalar-roots, batched, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const expCurve = [[-0.1,1.4048],[-0.05,1.2012],[0.0,1.0],[0.05,0.8013],[0.1,0.6052],[0.15,0.4118],[0.2,0.2214],[0.25,0.034],[0.3,-0.1501],[0.35,-0.3309],[0.4,-0.5082],[0.45,-0.6817],[0.5,-0.8513],[0.55,-1.0167],[0.6,-1.1779],[0.65,-1.3345],[0.7,-1.4862],[0.75,-1.633],[0.8,-1.7745],[0.85,-1.9104],[0.9,-2.0404],[0.95,-2.1643],[1.0,-2.2817],[1.05,-2.3923],[1.1,-2.4958],[1.15,-2.5918],[1.2,-2.6799],[1.25,-2.7597],[1.3,-2.8307],[1.35,-2.8926],[1.4,-2.9448],[1.45,-2.9869],[1.5,-3.0183],[1.55,-3.0385],[1.6,-3.047],[1.65,-3.043],[1.7,-3.0261],[1.75,-2.9954],[1.8,-2.9504],[1.85,-2.8902],[1.9,-2.8141],[1.95,-2.7213],[2.0,-2.6109],[2.05,-2.4821],[2.1,-2.3338],[2.15,-2.1651],[2.2,-1.975],[2.25,-1.7623],[2.3,-1.5258],[2.35,-1.2644],[2.4,-0.9768],[2.45,-0.6617],[2.5,-0.3175],[2.55,0.0571],[2.6,0.4637],[2.65,0.904],[2.7,1.3797],[2.75,1.8926],[2.8,2.4446],[2.85,3.0378],[2.9,3.6741],[2.95,4.356],[3.0,5.0855],[3.05,5.8653]];
+export const goldRows = [{"a":0.0,"b":3.0,"label":"0","marks":[{"x":0.0,"sign":-1},{"x":1.0,"sign":-1},{"x":1.7639,"sign":1},{"x":3.0,"sign":-1}]},{"a":1.0,"b":3.0,"label":"1","marks":[{"x":1.0,"sign":-1},{"x":1.7639,"sign":1},{"x":2.2361,"sign":-1},{"x":3.0,"sign":-1}]},{"a":1.0,"b":2.2361,"label":"2","marks":[{"x":1.0,"sign":-1},{"x":1.4721,"sign":1},{"x":1.7639,"sign":-1},{"x":2.2361,"sign":-1}]},{"a":1.0,"b":1.7639,"label":"3","marks":[{"x":1.0,"sign":-1},{"x":1.2918,"sign":-1},{"x":1.4721,"sign":1},{"x":1.7639,"sign":-1}]},{"a":1.2918,"b":1.7639,"label":"4","marks":[{"x":1.2918,"sign":-1},{"x":1.4721,"sign":-1},{"x":1.5836,"sign":1},{"x":1.7639,"sign":-1}]},{"a":1.4721,"b":1.7639,"label":"5","marks":[{"x":1.4721,"sign":-1},{"x":1.5836,"sign":1},{"x":1.6525,"sign":-1},{"x":1.7639,"sign":-1}]}];
+export const conv_brent = [[1,0.207],[2,-0.215],[3,0.143],[4,-0.811],[5,-0.203],[6,-1.228],[7,-1.925],[8,-2.768],[9,-3.859],[10,-5.513],[11,-7.397],[12,-10.817],[13,-7.623]];
+export const conv_golden = [[1,0.207],[2,-0.215],[3,0.143],[4,-0.215],[5,-0.811],[6,-0.203],[7,-0.862],[8,-0.498],[9,-1.588],[10,-1.366],[11,-1.165],[12,-3.332],[13,-1.777],[14,-2.018],[15,-2.175],[16,-2.472],[17,-2.547],[18,-3.0],[19,-2.863],[20,-4.024],[21,-3.356],[22,-3.923],[23,-3.644],[24,-4.889],[25,-4.425],[26,-4.355],[27,-5.194],[28,-4.737],[29,-6.01],[30,-5.257],[31,-5.736],[32,-5.566],[33,-7.01],[34,-6.118],[35,-6.505],[36,-6.454],[37,-7.229],[38,-6.807],[39,-9.045],[40,-7.421],[41,-7.658],[42,-7.442],[43,-7.878]];
+export const conv_bounded = [[1,-0.334],[2,-0.611],[3,-0.166],[4,-1.412],[5,-1.745],[6,-2.664],[7,-3.862],[8,-5.219],[9,-7.287],[10,-5.467]];
+
+export const Sketch = ({ curve = [], domain, range, xTicks = [], yTicks = [], segs = [], dots = [], rows = [], guides = [], label, plotH = 200 }) => {
+  const W = 640, L = 48, R = 16, T = 12, rowH = 22;
+  const bottom = T + plotH;
+  const rowTop = bottom + 40;
+  const H = rows.length ? rowTop + rows.length * rowH : bottom + 28;
+  const sx = (v) => L + ((v - domain[0]) / (domain[1] - domain[0])) * (W - L - R);
+  const sy = (v) => bottom - ((v - range[0]) / (range[1] - range[0])) * plotH;
+  const d = (pts) => pts.map(([a, b], i) => `${i ? 'L' : 'M'}${sx(a).toFixed(1)} ${sy(b).toFixed(1)}`).join('');
+  const tick = { fill: 'var(--fg-subtle)', 'font-family': 'var(--font-mono)', 'font-size': '12px' };
+  const note = { fill: 'var(--fg-muted)', 'font-family': 'var(--font-mono)', 'font-size': '12px' };
+  const ry = (i) => rowTop + i * rowH;
+  const mark = (m) => (m.sign > 0 ? 'var(--blue-600)' : m.sign < 0 ? 'var(--slate-400)' : 'var(--fg)');
+  return (
+    <div style={{ width: '100%', 'max-width': '640px' }}>
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label} style={{ width: '100%', height: 'auto' }}>
+        {xTicks.map((t) => <line x1={sx(t.v)} x2={sx(t.v)} y1={T} y2={bottom} style={{ stroke: 'var(--line)' }} />)}
+        {yTicks.map((t) => <line x1={L} x2={W - R} y1={sy(t.v)} y2={sy(t.v)} style={{ stroke: 'var(--line)' }} />)}
+        {range[0] < 0 && range[1] > 0 && <line x1={L} x2={W - R} y1={sy(0)} y2={sy(0)} style={{ stroke: 'var(--slate-400)' }} />}
+        {xTicks.map((t) => <text x={sx(t.v)} y={bottom + 18} text-anchor="middle" style={tick}>{t.label}</text>)}
+        {yTicks.map((t) => <text x={L - 8} y={sy(t.v) + 4} text-anchor="end" style={tick}>{t.label}</text>)}
+        {guides.map((g) => <line x1={sx(g)} x2={sx(g)} y1={T} y2={H - 6} style={{ stroke: 'var(--slate-400)', 'stroke-dasharray': '2 4' }} />)}
+        {segs.map((s) => <path d={d(s.pts)} style={{ fill: 'none', stroke: s.color ?? 'var(--slate-600)', 'stroke-width': 1.5, 'stroke-dasharray': s.dashed ? '4 4' : 'none' }} />)}
+        {curve.length > 0 && <path d={d(curve)} style={{ fill: 'none', stroke: 'var(--blue-600)', 'stroke-width': 2 }} />}
+        {dots.map((p) => <circle cx={sx(p.x)} cy={sy(p.y)} r={p.r ?? 4} style={{ fill: p.hollow ? 'var(--bg)' : (p.color ?? 'var(--blue-600)'), stroke: p.color ?? 'var(--blue-600)', 'stroke-width': 1.5 }} />)}
+        {dots.filter((p) => p.label).map((p) => <text x={sx(p.x) + (p.dx ?? 6)} y={sy(p.y) + (p.dy ?? -8)} text-anchor={p.anchor ?? 'start'} style={note}>{p.label}</text>)}
+        {rows.map((r, i) => <line x1={sx(r.a)} x2={sx(r.b)} y1={ry(i)} y2={ry(i)} style={{ stroke: 'var(--blue-300)', 'stroke-width': 4 }} />)}
+        {rows.map((r, i) => <text x={L - 8} y={ry(i) + 4} text-anchor="end" style={tick}>{r.label}</text>)}
+        {rows.flatMap((r, i) => (r.marks ?? []).map((m) => <circle cx={sx(m.x)} cy={ry(i)} r="4" style={{ fill: mark(m), stroke: 'var(--bg)', 'stroke-width': 1 }} />))}
+        {rows.filter((r) => r.note).map((r) => <text x={sx(r.b) + 10} y={ry(rows.indexOf(r)) + 4} style={note}>{r.note}</text>)}
+      </svg>
+    </div>
+  );
+};
+
+## 한눈에 보기
+
+[`minimize_scalar`](/api/optimize/minimize_scalar/)는 Python 층(`src/stardust/optimize/_scalar.py`)에서 방법과 옵션을 확인하고, C++ 커널 `min_solve`(`csrc/optimize/scalar.cpp`)를 한 번 불러요. 사용자 함수는 근 찾기와 같은 `Fn` 콜백으로, Python float를 받아요([스칼라 근](/internals/optimize/scalar-roots/#사용자-함수를-부르는-자리)). 반복은 GIL을 쥔 채 돌아요.
+
+| method | 하는 일 | 옮긴 곳(scipy 1.18.1, 모두 Python) |
+|---|---|---|
+| `'brent'` | 세 점을 찾고(`bracket`), Brent의 포물선 보간과 황금분할로 좁혀요 | `Brent` 클래스와 `bracket()` |
+| `'golden'` | 세 점을 찾고, 황금분할만으로 좁혀요 | `_minimize_scalar_golden`과 `bracket()` |
+| `'bounded'` | 범위 [a, b] 안에서 Brent의 방법(fminbound) | `_minimize_scalar_bounded` |
+
+scipy의 이 셋은 Python으로 쓰여 있어서 FMA 없이 연산마다 반올림해요. stardust는 축약 없이 빌드하므로(`-ffp-contract=off`) 같은 순서로 옮기기만 하면 같은 비트예요. scipy로 기록한 실행 171번과 결과가 같고, scipy를 실행하며 f를 부른 점을 견주면 세 방법과 두 점·없는 구간의 brent·golden 399번 모두 차례대로 비트까지 같아요.
+
+## 세 점 찾기: bracket
+
+brent와 golden은 최솟값을 끼는 세 점 $x_a, x_b, x_c$($x_b$가 가운데, $f(x_b)$가 양 끝 이하이고 하나는 엄격히 작음)에서 시작해요. 사용자가 두 점만 주거나 아무것도 주지 않으면(그때는 0과 1) scipy의 `bracket()`으로 세 점을 찾아요.
+
+1. 두 점 가운데 f가 큰 쪽을 $x_a$, 작은 쪽을 $x_b$로 두고, 내리막 방향으로 $x_c = x_b + 1.618034\,(x_b - x_a)$를 계산해요.
+2. $f(x_c) < f(x_b)$인 동안(아직 내려가는 동안) 세 점을 지나는 포물선의 꼭짓점 w로 크게 건너뛰기를 시도해요. w가 $x_b$와 $x_c$ 사이면 거기서 세 점이 생기는지 보고, $x_c$ 너머면 받되 $x_b + 110\,(x_c - x_b)$까지로 자르고, 쓸모없으면 다시 황금비로 넓혀요.
+3. 세 점을 한 칸씩 밀고 되풀이해요. 1,000번을 넘으면 그만둬요.
+
+```cpp
+    // csrc/optimize/scalar.cpp
+    while (fc < fb) {
+        const double tmp1 = (xb - xa) * (fb - fc);
+        const double tmp2 = (xb - xc) * (fb - fa);
+        const double val = tmp2 - tmp1;
+        const double denom = std::abs(val) < verysmall ? 2.0 * verysmall : 2.0 * val;
+        double w = xb - ((xb - xc) * tmp2 - (xb - xa) * tmp1) / denom;
+        const double wlim = xb + grow_limit * (xc - xb);
+        if (iter > maxiter) return {xa, xb, xc, fa, fb, fc, funcalls, mBracketLimit};
+        iter += 1;
+```
+
+포물선의 분모가 $10^{-21}$보다 작으면(세 점이 거의 한 직선) $2 \times 10^{-21}$로 바꿔 0으로 나누지 않게 해요. 끝나면 세 점의 순서, 가운데 값의 조건, 세 점이 유한한지를 확인해요. 통과하지 못하면 scipy의 `_recover_from_bracket_error`처럼 세 점 가운데 f가 가장 작은 점(NaN이 섞이면 NaN)을 `converged=False`로 돌려줘요. scipy의 brent·golden 결과에는 `status`가 없어서, stardust는 bounded의 번호(0 수렴, 1 상한, 2 NaN)에 3(세 점을 찾지 못함)과 4(1,000번을 넘음; scipy는 `RuntimeError`)를 더해 써요.
+
+세 점을 사용자가 주면 찾기를 건너뛰고, 세 값을 계산한 뒤 $f(x_b) < f(x_a)$, $f(x_b) < f(x_c)$(둘 다 엄격히)인지 확인해요. 아니면 `ValueError`예요.
+
+## 황금분할: golden
+
+세 점 $x_0 < x_1 < x_2 < x_3$ 가운데 안쪽 두 점 $x_1, x_2$의 값을 비교해, 큰 쪽의 바깥 구간을 버려요. $f(x_1) < f(x_2)$면 최솟값은 $[x_0, x_2]$에 있고, 아니면 $[x_1, x_3]$에 있어요. 남은 구간에는 계산해 둔 안쪽 점 하나가 남으니, 새 점 하나만 계산하면 다시 네 점이 돼요.
+
+안쪽 점을 구간의 $1 - r$과 $r$ 자리에 두고 남은 구간에서도 같은 비율이 유지되려면 $r^2 = 1 - r$, 곧
+
+$$
+r = \frac{\sqrt5 - 1}{2} \approx 0.618
+$$
+
+이어야 해요(황금비 φ의 역수). 그래서 f를 한 번 부를 때마다 구간이 정확히 0.618배가 돼요. 1차 수렴이지만 f의 모양과 상관없이 늘 같은 빠르기라, 매끈하지 않은 함수에도 써요.
+
+<Fig caption="eˣ − 5x를 세 점 (0, 1, 3)에서 황금분할로 좁히는 처음 여섯 단계. 막대는 바깥 두 점 x₀, x₃이고, 진한 점은 안쪽 두 점 가운데 f가 작은 쪽이에요. 첫 단계 뒤로는 구간 폭이 2, 1.24, 0.76, 0.47, 0.29로 0.618배씩 줄어요. 점선은 최소점 ln 5예요.">
+  <Sketch
+    label="e^x - 5x에서 황금분할이 구간을 줄이는 모습"
+    curve={expCurve}
+    domain={[-0.1, 3.1]}
+    range={[-3.4, 6]}
+    xTicks={[{ v: 0, label: '0' }, { v: 0.5, label: '0.5' }, { v: 1, label: '1' }, { v: 1.5, label: '1.5' }, { v: 2, label: '2' }, { v: 2.5, label: '2.5' }, { v: 3, label: '3' }]}
+    yTicks={[{ v: -3, label: '-3' }, { v: -2, label: '-2' }, { v: -1, label: '-1' }, { v: 2, label: '2' }, { v: 4, label: '4' }, { v: 6, label: '6' }]}
+    rows={goldRows}
+    guides={[1.6094379124341003]}
+  />
+</Fig>
+
+```cpp
+    // csrc/optimize/scalar.cpp
+    for (std::int64_t i = 0; i < maxiter; ++i) {
+        if (std::abs(x3 - x0) <= tol * (std::abs(x1) + std::abs(x2))) break;
+        if (f2 < f1) {
+            x0 = x1;
+            x1 = x2;
+            x2 = gR * x1 + gC * x3;
+            f1 = f2;
+            f2 = f(x2);
+        } else {
+            x3 = x2;
+            x2 = x1;
+            x1 = gR * x2 + gC * x0;
+            f2 = f1;
+            f1 = f(x1);
+        }
+        funcalls += 1;
+        nit += 1;
+    }
+```
+
+scipy처럼 r을 0.61803399로 둬요(정확한 값과 $10^{-9}$쯤 달라요). 처음 네 점은 주어진 세 점 가운데 넓은 쪽에 새 점을 넣어 만들어요. 멈춤은 $|x_3 - x_0| \le \text{xtol}\,(|x_1| + |x_2|)$로, 구간 폭이 x의 크기에 비해 xtol의 두 배쯤이 될 때예요. 기본 xtol은 $\sqrt\varepsilon \approx 1.49 \times 10^{-8}$이에요.
+
+## Brent법: brent
+
+### 생각
+
+최솟값 근처의 매끈한 함수는 포물선과 비슷해요. 세 점을 지나는 포물선의 꼭짓점으로 가면 황금분할보다 훨씬 빨리 다가가요(**연속 포물선 보간**, 차수 약 1.3247). 하지만 포물선 걸음만으로는 수렴을 보장하지 못해요. 세 점이 한 직선에 가까우면 꼭짓점이 아주 멀리 가고, 함수가 포물선과 다르면 같은 자리를 맴돌 수 있어요. Brent(1973)는 근 찾기의 Brent법처럼 안전장치를 달아 황금분할과 섞었어요. 여섯 점을 들고 다녀요.
+
+- a, b: 최솟값을 끼는 구간의 두 끝
+- x: 지금까지 f가 가장 작은 점, w: 두 번째로 작은 점, v: 그 앞의 w
+- u: 마지막으로 계산한 점
+
+포물선은 x, w, v 세 점을 지나게 맞춰요. 꼭짓점까지의 걸음은
+
+$$
+\frac{p}{q} = \frac{(x - v)^2 (f_x - f_w) - (x - w)^2 (f_x - f_v)}{2\bigl[(x - v)(f_x - f_w) - (x - w)(f_x - f_v)\bigr]}
+$$
+
+이에요(부호는 q > 0이 되게 맞춰요). 이 걸음은 두 조건을 모두 만족할 때만 받아요.
+
+1. 새 점 x + p/q가 구간 (a, b) 안이에요.
+2. 걸음이 **두 번 전 걸음의 반**보다 작아요($|p/q| < |e|/2$). 걸음이 두 반복마다 반 넘게 줄게 해서 맴돌기를 막아요.
+
+받은 점이 구간의 끝에서 2·tol1 안이면 끝에 붙지 않게 가운데 쪽으로 tol1만 움직여요.
+
+받지 못하면 황금분할 걸음이에요. x에서 넓은 쪽 끝까지의 0.381966배($= (3 - \sqrt5)/2 = 1 - r$)를 가요. 어느 걸음이든 크기가 tol1보다 작으면 tol1로 키워요. 같은 점을 다시 계산하지 않기 위해서예요.
+
+```cpp
+        // csrc/optimize/scalar.cpp
+        if (std::abs(deltax) <= tol1) {
+            deltax = x >= xmid ? a - x : b - x;  // golden section step
+            rat = cg * deltax;
+        } else {  // parabolic step
+            const double tmp1 = (x - w) * (fx - fv);
+            double tmp2 = (x - v) * (fx - fw);
+            double p = (x - v) * tmp2 - (x - w) * tmp1;
+            tmp2 = 2.0 * (tmp2 - tmp1);
+            if (tmp2 > 0.0) p = -p;
+            tmp2 = std::abs(tmp2);
+            const double dx_temp = deltax;
+            deltax = rat;
+            if ((p > tmp2 * (a - x)) && (p < tmp2 * (b - x)) && (std::abs(p) < std::abs(0.5 * tmp2 * dx_temp))) {
+                rat = p * 1.0 / tmp2;  // the parabolic step is useful
+                const double u = x + rat;
+                if ((u - a) < tol2 || (b - u) < tol2) rat = xmid - x >= 0 ? tol1 : -tol1;
+            } else {
+                deltax = x >= xmid ? a - x : b - x;  // golden section step
+                rat = cg * deltax;
+            }
+        }
+        double u;
+        if (std::abs(rat) < tol1) u = rat >= 0 ? x + tol1 : x - tol1;  // at least tol1
+        else u = x + rat;
+```
+
+새 점의 f가 x보다 작으면 x가 되고 구간의 반대쪽 끝을 옮겨요. 크면 그쪽 끝을 u로 옮기고, f의 순위에 따라 w나 v를 바꿔요.
+
+### 멈춤
+
+$\text{tol1} = \text{xtol}\cdot|x| + 10^{-11}$로 두고, 구간의 두 끝이 모두 x에서 $2\,\text{tol1}$ 안이면 멈춰요. 식으로는 $|x - m| < 2\,\text{tol1} - (b - a)/2$(m은 구간의 가운데)예요. 기본 xtol은 $1.48 \times 10^{-8}$이에요. $10^{-11}$은 x가 0 근처일 때도 걸음이 0으로 줄지 않게 하는 절대 하한이에요.
+
+### 예
+
+$e^x - 5x$를 세 점 (0, 1, 3)에서 시작하면, 처음 두 걸음은 포물선을 그릴 서로 다른 세 점이 아직 없어 황금분할이고(x, w, v가 같은 점에서 시작해요), 그 뒤로는 포물선 걸음이 최소점에 빠르게 다가가요.
+
+| 호출 | 걸음 | u | 구간 [a, b] | \|u − ln 5\| |
+|---|---|---|---|---|
+| 4 | 황금분할 | 1.7639320 | [0, 3] | 0.15 |
+| 5 | 황금분할 | 2.2360679 | [1, 3] | 0.63 |
+| 6 | 포물선 | 1.5502570 | [1, 2.2361] | 5.9×10⁻² |
+| 7 | 포물선 | 1.5975489 | [1, 1.7639] | 1.2×10⁻² |
+| 8 | 포물선 | 1.6077333 | [1.5503, 1.7639] | 1.7×10⁻³ |
+| 9 | 포물선 | 1.6095763 | [1.5975, 1.7639] | 1.4×10⁻⁴ |
+| 10 | 포물선 | 1.6094410 | [1.6077, 1.7639] | 3.1×10⁻⁶ |
+| 11 | 포물선 | 1.6094378723 | [1.6077, 1.6096] | 4.0×10⁻⁸ |
+| 12 | 포물선 | 1.6094379124 | [1.6077, 1.6094410] | 1.5×10⁻¹¹ |
+| 13 | tol1 걸음 | 1.6094379363 | [1.6094379, 1.6094410] | 2.4×10⁻⁸ |
+
+(호출 1–3은 세 점이에요.) 12번째 점이 ln 5와 $1.5 \times 10^{-11}$ 거리라 운이 좋은 경우이고, 마지막 호출은 끝에 붙은 포물선 걸음을 tol1로 바꾼 확인용 걸음이에요. 돌려주는 것은 f가 가장 작은 x(12번째 점)예요.
+
+```python
+>>> import math
+>>> r = sd.optimize.minimize_scalar(lambda x: math.exp(x) - 5*x, bracket=(0, 1, 3))
+>>> r.x, r.n_iter, r.nfev
+(1.6094379124493254, 10, 13)
+```
+
+## 범위 안에서: bounded (fminbound)
+
+`'bounded'`는 Forsythe, Malcolm, Moler(1977)의 `fmin`, 곧 Brent의 방법을 범위 [a, b]에 맞춘 판이에요. brent와 걸음의 규칙(포물선, 두 번 전 걸음의 반, 황금분할)은 같고 다른 점은 이래요.
+
+- 세 점을 찾지 않아요. 첫 점을 $a + 0.381966\,(b - a)$(황금분할 자리)에 두고 시작해요. 그래서 범위의 끝에서는 f를 부르지 않아요.
+- 허용오차가 $\text{tol1} = \sqrt{2.2\times10^{-16}}\,|x| + \text{xatol}/3$으로, 상대 부분이 $\sqrt{\varepsilon} \approx 1.48\times10^{-8}$에 고정되고 사용자는 **절대** 허용오차 xatol(기본 $10^{-5}$)을 정해요. 멈춤은 brent와 같은 꼴(구간의 두 끝이 x에서 2·tol1 안)이에요.
+- 상한 `max_iter`(기본 500)는 f를 부른 횟수예요. 반복마다 f를 한 번 부르므로 `n_iter`와 `nfev`가 같아요.
+
+```cpp
+    // csrc/optimize/scalar.cpp
+    const double sqrt_eps = std::sqrt(2.2e-16);
+    const double golden_mean = 0.5 * (3.0 - std::sqrt(5.0));
+    double a = x1, b = x2;
+    double fulc = a + golden_mean * (b - a);
+    double nfc = fulc, xf = fulc;
+    double rat = 0.0, e = 0.0;
+    double x = xf;
+    double fx = f(x);
+    std::int64_t num = 1;
+    double fu = kInf;
+    double ffulc = fx, fnfc = fx;
+    double xm = 0.5 * (a + b);
+    double tol1 = sqrt_eps * std::abs(xf) + xatol / 3.0;
+    double tol2 = 2.0 * tol1;
+    while (std::abs(xf - xm) > (tol2 - 0.5 * (b - a))) {
+```
+
+최솟값이 범위의 끝에 있으면(f가 범위 안에서 내려가기만 하면) 걸음이 그 끝으로 몰리며 tol1 크기로 다가가요. 끝 자체는 계산하지 않으므로 답은 끝에서 대략 xatol 안쪽이에요. lower == upper이면 그 점 하나를 계산하고 끝나요.
+
+## 수렴 비교
+
+<Fig caption="eˣ − 5x에서 f를 부를 때마다 그 점과 ln 5의 거리(로그 축). brent와 golden은 세 점 (0, 1, 3), bounded는 범위 (0, 3)이에요.">
+  <Plot
+    curves={[
+      { points: conv_golden, label: 'golden' },
+      { points: conv_brent, label: 'brent' },
+      { points: conv_bounded, label: 'bounded' },
+    ]}
+    domain={[0, 44]}
+    range={[-11.5, 0.5]}
+    xTicks={[{ v: 10, label: '10' }, { v: 20, label: '20' }, { v: 30, label: '30' }, { v: 40, label: '40' }]}
+    yTicks={[{ v: -10, label: '1e-10' }, { v: -8, label: '1e-8' }, { v: -6, label: '1e-6' }, { v: -4, label: '1e-4' }, { v: -2, label: '0.01' }, { v: 0, label: '1' }]}
+  />
+</Fig>
+
+golden은 호출 하나에 약 0.21자리($-\log_{10} 0.618$)씩 일정하게 줄고, brent와 bounded는 포물선 걸음이 시작되면 빠르게 줄어요. 셋 모두 $10^{-8}$ 근처에서 멈추는 것은 허용오차가 그 크기이기도 하지만, 아래처럼 그보다 정확히 정할 수 없기 때문이기도 해요.
+
+## 정확도의 한계: √u
+
+최소점 $x^*$에서 $f'(x^*) = 0$이므로 테일러 전개는
+
+$$
+f(x^* + \delta) = f(x^*) + \tfrac12 f''(x^*)\,\delta^2 + O(\delta^3)
+$$
+
+이에요. f를 double로 계산하면 값에 대략 $u\,|f(x^*)|$($u = 2^{-53}$)의 반올림 오차가 붙어요. $\tfrac12 f''\delta^2$이 그보다 작으면 $x^* + \delta$와 $x^*$의 f를 비교해도 어느 쪽이 작은지 알 수 없어요. 그래서 최소점은
+
+$$
+|\delta| \gtrsim \sqrt{\frac{2u\,|f(x^*)|}{f''(x^*)}} \;\approx\; \sqrt{u}\,|x^*| \quad (\text{척도가 1 근처일 때})
+$$
+
+보다 정확히 정할 수 없어요. $\sqrt u \approx 1.05 \times 10^{-8}$이니, 최소점의 위치는 8자리쯤이 한계예요. 근 찾기에서는 f가 근을 지나며 일차로 변해서 끝자리까지 갈 수 있는 것과 대조돼요. 세 방법의 기본 허용오차(brent 1.48e-8, golden √ε ≈ 1.49e-8, bounded의 상대 부분 √(2.2e-16))가 모두 이 크기인 것도 그래서예요. 반면 f의 최솟값 $f(x^*)$ 자체는 δ²에만 영향을 받으므로 끝자리 근처까지 맞아요.
+
+$e^x - 5x$에서는 $|f(x^*)| \approx 3.05$, $f''(x^*) = 5$라 이 한계가 약 $1.2 \times 10^{-8}$이에요.
+
+```python
+>>> x0 = math.log(5)
+>>> f = lambda x: math.exp(x) - 5*x
+>>> [f(x0 + d) - f(x0) for d in (1e-9, 1e-8, 3e-8)]
+[0.0, 1.7763568394002505e-15, 2.6645352591003757e-15]
+```
+
+$10^{-9}$ 떨어진 점은 최솟값과 같은 double이고, $3 \times 10^{-8}$ 떨어져도 끝자리 몇 개만 달라요. 최소점을 더 정확히 원하면 도함수의 근을 찾는 것이 맞아요.
+
+## 비용
+
+방법 자체(걸음 계산과 콜백을 부르는 고리)의 비용은 f 호출 하나에 brent 0.44 µs, golden 0.21 µs, bounded 0.43 µs예요. scipy는 같은 문제에서 1.46, 0.38, 2.15 µs예요(Apple M4 Pro, scipy 1.18.1, $e^x - 5x$를 세 점 (0, 1, 3)과 범위 (0, 3)에서; `bench/optimize/o6/speed.md`). f를 부르는 횟수는 같으니(brent 13, golden 43, bounded 10), 차이는 방법 자체의 비용이에요. 어느 쪽이든 µs 단위라 f가 조금만 무거워도 시간은 f가 정해요.

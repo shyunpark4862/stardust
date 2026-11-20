@@ -1,0 +1,626 @@
+---
+kind: function
+title: minimize
+names: [minimize]
+group: 다변수 최소화
+order: 1
+signatures:
+  - "sd.optimize.minimize(fun, x0, /, *, method=None, jac=None, hess=None, hessp=None, bounds=None, tol=None, options=None)"
+summary: 변수가 여럿인 함수 f(x)의 지역 최솟값을 시작점 x0에서 찾아요. 기울기와 헤시안을 줄 수 있는지, 변수에 경계가 있는지에 따라 여섯 방법 가운데 하나를 method로 골라요.
+params:
+  - name: fun
+    type: 호출 가능한 객체
+    kind: positional-only
+    desc: "목적함수 fun(x). x는 길이 n의 새 float64 sd.ndarray이고, 실수 하나(Python이나 numpy의 수)를 돌려줘요. jac=True이면 (값, 기울기) 쌍을 돌려줘요."
+  - name: x0
+    type: ndarray, 실수의 시퀀스, 또는 numpy 배열
+    kind: positional-only
+    desc: 시작점. 1차원이고 비어 있지 않으며 유한해야 해요. float64로 바꿔서 계산해요. bounds를 주면 그 안(경계 위도 돼요)이어야 해요.
+  - name: method
+    type: str 또는 None
+    kind: keyword-only
+    desc: "'nelder-mead', 'bfgs', 'l-bfgs-b', 'newton-cg', 'trust-ncg', 'trust-exact' 가운데 하나(소문자만). None(기본값)이면 bounds가 없을 때 'bfgs', 있을 때 'l-bfgs-b'예요."
+  - name: jac
+    type: 호출 가능한 객체, True, '2-point', '3-point', 또는 None
+    kind: keyword-only
+    desc: "기울기. jac(x)가 n개의 값을 돌려주는 함수, fun이 (값, 기울기)를 돌려준다는 True, 상대 간격의 차분 '2-point'·'3-point', 또는 None(기본값; 절대 간격 eps의 전진 차분)이에요. 'nelder-mead'는 받지 않고, 'newton-cg'·'trust-ncg'·'trust-exact'는 함수나 True가 꼭 있어야 해요."
+  - name: hess
+    type: 호출 가능한 객체, '2-point', '3-point', 또는 None
+    kind: keyword-only
+    desc: "헤시안. hess(x)가 (n, n) 배열을 돌려주는 함수, 또는 기울기의 차분으로 헤세 곱을 만드는 '2-point'·'3-point'예요. 'newton-cg', 'trust-ncg', 'trust-exact'만 받아요(trust-exact는 함수만)."
+  - name: hessp
+    type: 호출 가능한 객체 또는 None
+    kind: keyword-only
+    desc: "헤시안과 벡터의 곱 hessp(x, p). 길이 n의 값을 돌려줘요. 'newton-cg'와 'trust-ncg'만 받아요."
+  - name: bounds
+    type: (lower, upper) 또는 None
+    kind: keyword-only
+    desc: 변수의 범위. lower와 upper는 각각 수 하나(모든 변수에)이거나 n개의 수이고, ±inf는 범위 없음이에요. lower = upper이면 그 변수를 고정해요. 'l-bfgs-b'와 'nelder-mead'만 받아요.
+  - name: tol
+    type: float 또는 None
+    kind: keyword-only
+    desc: "방법의 주된 허용오차를 한 번에 정해요(nelder-mead의 xatol·fatol, bfgs의 gtol, l-bfgs-b의 ftol·gtol, newton-cg의 xtol, 신뢰 영역 두 방법의 gtol). 0 이상의 유한한 수예요. None(기본값)이면 방법마다의 기본값이에요."
+  - name: options
+    type: dict 또는 None
+    kind: keyword-only
+    desc: "방법마다의 옵션(max_iter, max_nfev, gtol, maxcor 등). 키와 기본값은 아래 표에 있어요. 방법이 모르는 키는 ValueError예요."
+returns:
+  type: OptimizeResult
+  desc: 해(x), 그 점의 값(fun), 수렴 여부(converged), 멈춘 이유(status, message), 반복 수(n_iter), 함수와 도함수의 계산 수(nfev, njev, nhev), 방법(method)과 방법마다의 필드(jac, hess, hess_inv, final_simplex)가 들어 있는 결과 객체예요.
+raises:
+  - type: TypeError
+    desc: fun, jac, hess, hessp가 호출 가능한 객체나 받는 문자열이 아닐 때, x0가 복소수이거나 수가 아닐 때, options가 dict가 아닐 때, 옵션의 값이 맞는 형(int, bool, 수)이 아닐 때, bounds가 쌍의 꼴이 아닐 때, 사용자 함수가 수가 아닌 것을 돌려줄 때. 사용자 함수 안에서 난 에러도 그대로 나와요.
+  - type: ValueError
+    desc: method 이름이 틀렸거나 소문자가 아닐 때, 방법이 받지 않는 jac·hess·hessp·bounds·옵션을 줬을 때, 방법에 꼭 필요한 jac·hess가 없을 때, x0가 비었거나 1차원이 아니거나 유한하지 않을 때, x0가 bounds 밖일 때, lower > upper이거나 bounds에 NaN이 있을 때, tol과 같은 옵션을 options에도 줬을 때, 옵션의 값이 범위 밖일 때, fun이 실수 하나가 아닌 것을, jac·hess가 틀린 모양을 돌려줄 때, x0에서 fun·jac·hess가 유한하지 않을 때, 반복 중에 받아들인 점의 기울기나 헤시안이 유한하지 않을 때.
+seeAlso: [nelder-mead, quasi-newton, newton-methods, results, least_squares, minimize_scalar, check_grad]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const path_nm = [[-1.2,1.0],[-1.2,1.05],[-1.08,1.075],[-1.08,1.125],[-1.065,1.1],[-1.0462,1.1187],[-1.0312,1.0938],[-1.0519,1.1031],[-1.0322,1.0578],[-0.9995,1.0111],[-0.9742,0.9292],[-0.8962,0.7949],[-0.7929,0.5786],[-0.7918,0.6344],[-0.6885,0.4181],[-0.6347,0.4214],[-0.372,0.1037],[-0.3327,0.1305],[-0.2587,0.0281],[-0.1432,0.0305],[-0.0278,0.0329],[-0.0196,-0.0189],[0.0959,-0.0165],[0.1908,0.0244],[0.2857,0.0653],[0.3526,0.1179],[0.4437,0.167],[0.4407,0.1983],[0.5714,0.3347],[0.7021,0.471],[0.7136,0.4917],[0.6691,0.4445],[0.6806,0.4651],[0.6943,0.4732],[0.7241,0.5185],[0.762,0.5823],[0.8278,0.6783],[0.8741,0.7686],[0.8954,0.794],[0.9417,0.8843],[0.988,0.9747],[1.0041,1.0076],[0.9981,0.9967],[0.9978,0.9952],[1.001,1.0018],[0.9987,0.9976],[1.0007,1.0013],[0.9997,0.9996],[0.9999,0.9998],[1.0002,1.0005],[0.9999,0.9998],[1.0,1.0],[1.0001,1.0002],[1.0,1.0]];
+
+export const path_bfgs = [[-1.2,1.0],[-1.017,1.0747],[-0.8759,0.7356],[-0.8221,0.6374],[-0.7585,0.5424],[-0.6382,0.3779],[-0.471,0.2006],[-0.314,0.081],[-0.1392,0.0401],[-0.0321,-0.0106],[0.0213,-0.0255],[0.0692,-0.0228],[0.1298,-0.0046],[0.2494,0.0436],[0.3449,0.1195],[0.4052,0.1511],[0.5158,0.2354],[0.5147,0.2487],[0.5917,0.3443],[0.7067,0.4769],[0.7016,0.485],[0.7661,0.583],[0.8155,0.6574],[0.8821,0.7701],[0.9081,0.8267],[0.9688,0.9334],[0.9572,0.9155],[0.9729,0.9461],[0.9964,0.9919],[0.9976,0.9953],[0.9998,0.9997],[1.0,1.0]];
+
+export const path_texact = [[-1.2,1.0],[-1.1753,1.3807],[-1.0745,1.1519],[-0.86,0.7002],[-0.6505,0.3792],[-0.4817,0.2035],[-0.2605,0.0189],[-0.1436,0.007],[0.1001,-0.0489],[0.1705,0.0241],[0.2289,0.0466],[0.3411,0.1016],[0.5082,0.2304],[0.5829,0.3342],[0.7431,0.5261],[0.7845,0.6137],[0.9181,0.8249],[0.9359,0.8756],[0.9653,0.9308],[0.9942,0.9876],[0.9992,0.9983],[1.0,1.0]];
+
+export const ev_nm = [[3,1.302],[5,0.713],[7,0.653],[9,0.653],[11,0.642],[13,0.628],[15,0.625],[17,0.624],[19,0.617],[21,0.617],[23,0.603],[25,0.595],[27,0.557],[28,0.557],[30,0.54],[32,0.507],[34,0.5],[36,0.432],[37,0.432],[39,0.302],[41,0.302],[43,0.302],[45,0.259],[47,0.239],[49,0.12],[50,0.12],[51,0.12],[53,0.064],[55,0.032],[57,-0.054],[59,-0.054],[61,-0.174],[63,-0.174],[64,-0.174],[66,-0.27],[68,-0.27],[70,-0.373],[72,-0.373],[74,-0.4],[76,-0.502],[77,-0.502],[79,-0.721],[81,-0.721],[82,-0.721],[84,-0.863],[86,-0.863],[88,-0.946],[90,-0.957],[92,-0.99],[94,-0.995],[96,-1.1],[97,-1.1],[98,-1.1],[100,-1.245],[102,-1.245],[104,-1.462],[106,-1.746],[108,-1.771],[110,-2.396],[112,-2.396],[113,-2.396],[115,-3.432],[117,-3.432],[118,-3.432],[120,-3.432],[122,-4.229],[124,-4.473],[126,-4.473],[128,-4.723],[130,-5.073],[132,-5.54],[133,-5.54],[135,-6.126],[137,-6.126],[139,-6.207],[141,-6.664],[143,-6.999],[145,-7.281],[147,-7.298],[149,-7.698],[151,-8.95],[153,-8.95],[155,-8.95],[157,-8.956],[159,-9.087]];
+
+export const ev_bfgsd = [[3,1.384],[9,0.626],[15,0.559],[18,0.54],[21,0.505],[24,0.443],[27,0.344],[30,0.245],[33,0.127],[39,0.033],[45,0.011],[48,-0.026],[51,-0.095],[54,-0.224],[57,-0.368],[63,-0.432],[66,-0.482],[69,-0.572],[72,-0.748],[75,-0.879],[78,-1.036],[81,-1.288],[84,-1.54],[87,-1.85],[93,-2.117],[96,-2.362],[99,-2.92],[102,-3.729],[105,-4.857],[108,-5.897],[111,-7.347],[114,-10.57]];
+
+export const ev_bfgs = [[1,1.384],[3,0.626],[5,0.559],[6,0.54],[7,0.505],[8,0.443],[9,0.344],[10,0.245],[11,0.127],[13,0.033],[15,0.011],[16,-0.026],[17,-0.095],[18,-0.223],[19,-0.367],[21,-0.431],[22,-0.484],[23,-0.582],[24,-0.769],[25,-0.863],[26,-1.025],[27,-1.25],[29,-1.399],[30,-1.691],[31,-2.052],[32,-2.427],[33,-2.727],[34,-3.119],[35,-4.004],[36,-5.248],[37,-7.464],[38,-10.76],[39,-14.596]];
+
+export const Valley = ({ id, label, paths = [], polys = [], view = [-1.6, 1.6, -0.6, 1.6], levels = [0.25, 1, 4, 16, 64, 256], xTicks = [-1.5, -1, -0.5, 0, 0.5, 1, 1.5], yTicks = [-0.5, 0, 0.5, 1, 1.5], marks = [] }) => {
+  const W = 640, H = 440, L = 40, R = 12, T = 12, B = 30;
+  const [X0, X1, Y0, Y1] = view;
+  const sx = (v) => L + ((v - X0) / (X1 - X0)) * (W - L - R);
+  const sy = (v) => H - B - ((v - Y0) / (Y1 - Y0)) * (H - T - B);
+  const ring = (c) => {
+    const s = Math.sqrt(c), N = 2880;
+    let d = '', pen = false, lx = 0, ly = 0;
+    for (let i = 0; i <= N; i++) {
+      const t = (2 * Math.PI * i) / N, x = 1 - s * Math.cos(t), y = x * x + (s / 10) * Math.sin(t);
+      const px = sx(x), py = sy(y);
+      if (px < L - 30 || px > W - R + 30 || py < T - 30 || py > H - B + 30) { pen = false; continue; }
+      if (pen && i < N && Math.hypot(px - lx, py - ly) < 2.5) continue;
+      d += `${pen ? 'L' : 'M'}${px.toFixed(1)} ${py.toFixed(1)}`;
+      pen = true; lx = px; ly = py;
+    }
+    return d;
+  };
+  const line = (pts) => pts.map(([a, b], i) => `${i ? 'L' : 'M'}${sx(a).toFixed(1)} ${sy(b).toFixed(1)}`).join('');
+  const tick = { fill: 'var(--fg-subtle)', 'font-family': 'var(--font-mono)', 'font-size': '11px' };
+  return (
+    <div style={{ width: '100%', 'max-width': '640px' }}>
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label} style={{ width: '100%', height: 'auto' }}>
+        <defs><clipPath id={id}><rect x={L} y={T} width={W - L - R} height={H - T - B} /></clipPath></defs>
+        {xTicks.map((t) => <text x={sx(t)} y={H - 10} text-anchor="middle" style={tick}>{t}</text>)}
+        {yTicks.map((t) => <text x={L - 6} y={sy(t) + 4} text-anchor="end" style={tick}>{t}</text>)}
+        <rect x={L} y={T} width={W - L - R} height={H - T - B} style={{ fill: 'none', stroke: 'var(--line)' }} />
+        <g clip-path={`url(#${id})`}>
+          {levels.map((c) => <path d={ring(c)} style={{ fill: 'none', stroke: 'var(--slate-300)', 'stroke-width': 1 }} />)}
+          {polys.map((p) => <path d={line(p.pts) + 'Z'} style={{ fill: p.fill ?? 'none', 'fill-opacity': 0.12, stroke: p.color, 'stroke-width': 1.2 }} />)}
+          {paths.map((p) => <path d={line(p.pts)} style={{ fill: 'none', stroke: p.color, 'stroke-width': 1.8, 'stroke-dasharray': p.dash ?? 'none', 'stroke-linejoin': 'round' }} />)}
+          {paths.map((p) => p.pts.map(([a, b]) => <circle cx={sx(a)} cy={sy(b)} r="2.3" style={{ fill: p.color }} />))}
+          {marks.map((m) => <text x={sx(m.at[0]) + (m.dx ?? 6)} y={sy(m.at[1]) + (m.dy ?? -6)} text-anchor={m.anchor ?? 'start'} style={{ fill: 'var(--fg-muted)', 'font-family': 'var(--font-mono)', 'font-size': '12px' }}>{m.text}</text>)}
+          <path d={`M${sx(1) - 6} ${sy(1)}h12M${sx(1)} ${sy(1) - 6}v12`} style={{ stroke: 'var(--fg)', 'stroke-width': 2 }} />
+        </g>
+      </svg>
+      <ul style={{ display: 'flex', 'flex-wrap': 'wrap', 'justify-content': 'center', gap: 'var(--space-5)', margin: 'var(--space-2) 0 0', padding: 0, 'list-style': 'none', 'font-family': 'var(--font-mono)', 'font-size': 'var(--text-xs)', color: 'var(--fg-muted)' }}>
+        {paths.map((p) => <li style={{ display: 'flex', 'align-items': 'center', gap: 'var(--space-2)', margin: 0 }}><svg width="22" height="6"><line x1="0" y1="3" x2="22" y2="3" style={{ stroke: p.color, 'stroke-width': 2, 'stroke-dasharray': p.dash ?? 'none' }} /></svg>{p.label}</li>)}
+      </ul>
+    </div>
+  );
+};
+
+## 무엇을 하나요
+
+변수가 n개인 함수 $f(x_1, \dots, x_n)$를 땅의 높이라고 생각해 봐요. `minimize`는 시작점 `x0`에 서서 내리막을 따라 걸어 내려가다가, 어느 쪽으로 가도 더 내려가지 않는 바닥에 닿으면 멈춰요. 그 바닥의 위치가 결과의 `x`이고 높이가 `fun`이에요.
+
+$$
+\min_{x \in \mathbb{R}^n} f(x)
+$$
+
+이렇게 찾은 점은 **지역 최솟값**이에요. 둘레에서는 가장 낮지만, 산 너머에 더 낮은 골짜기가 있을 수 있어요. `minimize`는 지금 서 있는 골짜기의 바닥만 찾아요. 어느 골짜기에 닿을지는 시작점이 정해요.
+
+아래 그림은 최적화 방법을 시험할 때 자주 쓰는 Rosenbrock 함수예요.
+
+$$
+f(x, y) = 100\,(y - x^2)^2 + (1 - x)^2
+$$
+
+포물선 $y = x^2$를 따라 좁고 휘어진 골짜기가 있고, 그 바닥은 (1, 1)에서 0이에요. 골짜기 벽은 가파르지만 바닥은 거의 평평해서, 내리막만 보고 걸으면 벽 사이를 지그재그로 오가며 아주 느리게 나아가요. 세 방법이 (−1.2, 1)에서 출발해 바닥까지 간 길을 점으로 찍었어요.
+
+<Fig caption="Rosenbrock 함수의 등고선(값 0.25, 1, 4, 16, 64, 256)과 (−1.2, 1)에서 출발한 세 방법의 반복점. 십자는 최솟값 (1, 1)이에요. Nelder–Mead는 84번, BFGS는 32번, trust-exact는 25번 반복했어요.">
+  <Valley
+    id="mz-valley"
+    label="Rosenbrock 함수의 등고선 위에 그린 Nelder-Mead, BFGS, trust-exact의 반복점 경로"
+    paths={[
+      { pts: path_nm, label: 'nelder-mead', color: 'var(--slate-500)', dash: '2 3' },
+      { pts: path_bfgs, label: 'bfgs', color: 'var(--blue-600)' },
+      { pts: path_texact, label: 'trust-exact', color: 'var(--blue-400)', dash: '7 4' },
+    ]}
+    marks={[{ at: [-1.2, 1.0], text: 'x0', dx: -8, dy: 16, anchor: 'end' }]}
+  />
+</Fig>
+
+세 방법은 쓰는 정보가 달라요. Nelder–Mead는 함수값만 보고, BFGS는 기울기(가장 가파른 오르막의 방향)도 보고, trust-exact는 곡률(헤시안)까지 봐요. 정보가 많을수록 반복이 적어요. 대신 그 정보를 계산해서 넘겨 줘야 해요.
+
+<Reference />
+
+## 기본 사용
+
+목적함수는 x(길이 n의 `sd.ndarray`)를 받아 실수 하나를 돌려주는 Python 함수예요. `x[0]`, `x[1]`처럼 원소를 꺼내면 Python `float`예요.
+
+```python
+>>> import stardust as sd
+>>> def rosen(x):
+...     return 100.0 * (x[1] - x[0]**2)**2 + (1 - x[0])**2
+>>> r = sd.optimize.minimize(rosen, [-1.2, 1.0])
+>>> r
+OptimizeResult(method='bfgs', converged=True, fun=2.69158e-11, n_iter=31, nfev=114, x=[0.9999948121915613 0.9999896195042199])
+```
+
+`method`를 주지 않았고 경계도 없으니 BFGS를 썼어요. `converged=True`는 방법의 멈춤 판정을 통과했다는 뜻이에요. BFGS의 판정은 "기울기의 가장 큰 성분이 `gtol`(기본 $10^{-5}$) 이하"예요. 그래서 x는 (1, 1)에 $10^{-5}$ 정도까지 가까워요.
+
+```python
+>>> r.x
+array([0.9999948121915613, 0.9999896195042199], dtype=float64)
+>>> r.fun
+2.691576309991872e-11
+>>> r.converged, r.status, r.message
+(True, 0, 'Optimization terminated successfully.')
+>>> r.n_iter, r.nfev, r.njev
+(31, 114, 38)
+```
+
+기울기 함수를 주지 않았으므로 BFGS는 기울기를 차분으로 구했어요. 차분 하나에 `fun`을 n번 더 부르므로, 반복은 31번인데 `nfev`(fun을 부른 수)는 114번이에요. `njev`는 기울기를 계산한 수예요.
+
+기울기를 손으로 계산할 수 있으면 `jac`로 넘겨요. Rosenbrock의 기울기는 $\partial f/\partial x = -400x(y - x^2) - 2(1 - x)$, $\partial f/\partial y = 200(y - x^2)$예요.
+
+```python
+>>> def rosen_grad(x):
+...     return [-400.0 * x[0] * (x[1] - x[0]**2) - 2.0 * (1 - x[0]), 200.0 * (x[1] - x[0]**2)]
+>>> r = sd.optimize.minimize(rosen, [-1.2, 1.0], jac=rosen_grad)
+>>> r.n_iter, r.nfev, r.njev
+(32, 39, 39)
+>>> r.x
+array([0.9999999710014291, 0.9999999461191459], dtype=float64)
+```
+
+`fun`을 부른 수가 114번에서 39번으로 줄고, 기울기에 차분 오차가 없어서 같은 `gtol`로도 x가 참값 (1, 1)에 $10^{-8}$까지 다가갔어요.
+
+## 방법 고르기
+
+`method`는 내가 줄 수 있는 정보와 문제의 모양으로 골라요.
+
+| 상황 | 방법 |
+|---|---|
+| 기울기를 쓸 수 없어요. f가 매끄럽지 않거나(꺾인 점, 계단), 값에 잡음이 있어요. 변수가 몇 개뿐이에요 | `'nelder-mead'` |
+| f가 매끄러워요. 기울기 함수가 있거나, 없어도 차분으로 충분해요. 경계가 없어요 | `'bfgs'`(기본값) |
+| 변수에 경계가 있어요. 또는 변수가 수천 개 넘게 많아요 | `'l-bfgs-b'` |
+| 헤시안 행렬을 줄 수 있고 변수가 수백 개까지예요 | `'trust-exact'` |
+| 헤시안이나 헤시안·벡터 곱을 줄 수 있어요(변수가 많아도) | `'trust-ncg'`, `'newton-cg'` |
+| f가 잔차의 제곱합 $\tfrac12\sum_i r_i(x)^2$이에요 | [`least_squares`](/api/optimize/least_squares/) |
+| 변수가 하나예요 | [`minimize_scalar`](/api/optimize/minimize_scalar/) |
+
+방법마다 필요한 것과 받는 것이 달라요.
+
+| 방법 | 쓰는 정보 | `jac` | `hess`·`hessp` | `bounds` | 반복 하나의 일 | 해 근처의 수렴 |
+|---|---|---|---|---|---|---|
+| `'nelder-mead'` | f만 | 받지 않음 | 받지 않음 | 받음 | f 1–2번(가끔 n + 2번) | 느림 |
+| `'bfgs'` | f, 기울기 | 없으면 차분 | 받지 않음 | 받지 않음 | 선 탐색, n × n 행렬 갱신 | 초선형 |
+| `'l-bfgs-b'` | f, 기울기 | 없으면 차분 | 받지 않음 | 받음 | 선 탐색, 기울기 쌍 `maxcor`개 | 선형 |
+| `'newton-cg'` | f, 기울기, 헤세 곱 | 꼭 있어야 함 | 둘 중 하나(없으면 기울기의 차분) | 받지 않음 | 공액 기울기 몇 걸음, 선 탐색 | 초선형 |
+| `'trust-ncg'` | f, 기울기, 헤세 곱 | 꼭 있어야 함 | 둘 중 하나는 꼭 | 받지 않음 | 공액 기울기 몇 걸음 | 초선형 |
+| `'trust-exact'` | f, 기울기, 헤시안 행렬 | 꼭 있어야 함 | `hess` 함수가 꼭 | 받지 않음 | n × n 행렬의 Cholesky 몇 번 | 2차 |
+
+"초선형", "2차"는 해에 가까워졌을 때 오차가 줄어드는 빠르기예요. 선형이면 반복마다 오차가 일정한 비율로 줄고, 2차면 맞는 자릿수가 반복마다 거의 두 배가 돼요. 방법마다의 생각과 옵션은 [Nelder–Mead](/api/optimize/nelder-mead/), [준뉴턴 방법](/api/optimize/quasi-newton/), [뉴턴 방법](/api/optimize/newton-methods/)에 있어요.
+
+비용은 보통 `fun`(과 `jac`, `hess`)을 부르는 수가 정해요. 방법 자체의 계산은 C++이라 작고, 시간 대부분은 Python으로 쓴 사용자 함수 안에서 들어요. 아래 그림은 Rosenbrock에서 `fun`을 부른 수에 따라 함숫값이 줄어드는 모습이에요. 기울기를 주지 않은 BFGS도 Nelder–Mead보다 `fun`을 적게 불렀어요.
+
+<Fig caption="Rosenbrock를 (−1.2, 1)에서 풀 때 fun을 부른 수(nfev)에 따른 f(x) − f*(로그 눈금). 기울기 함수를 준 BFGS는 그 39번 말고도 기울기를 39번 계산했어요.">
+  <Plot
+    curves={[
+      { points: ev_nm, label: 'nelder-mead' },
+      { points: ev_bfgsd, label: 'bfgs, 차분', dashed: true },
+      { points: ev_bfgs, label: 'bfgs, jac' },
+    ]}
+    domain={[0, 160]}
+    range={[-15, 2]}
+    xTicks={[{ v: 0, label: '0' }, { v: 40, label: '40' }, { v: 80, label: '80' }, { v: 120, label: '120' }, { v: 160, label: '160' }]}
+    yTicks={[{ v: -15, label: '1e-15' }, { v: -10, label: '1e-10' }, { v: -5, label: '1e-5' }, { v: 0, label: '1' }]}
+  />
+</Fig>
+
+## 인자
+
+### fun과 x0
+
+`fun(x)`는 실수 하나를 돌려줘요. Python `float`, numpy의 수, 0차원 numpy 배열을 받아요. 길이 1의 배열처럼 다른 것을 돌려주면 `ValueError`예요.
+
+```python
+>>> sd.optimize.minimize(lambda x: [x[0]**2 + x[1]**2], [1.0, 2.0])
+Traceback (most recent call last):
+    ...
+ValueError: minimize(): 'fun' must return a real number, not shape (1,)
+```
+
+x는 부를 때마다 새로 만든 float64 `sd.ndarray`예요. 함수 안에서 x를 고쳐도 반복에는 영향이 없어요. 변수가 많으면 원소를 하나씩 꺼내지 말고 sd의 배열 연산으로 쓰는 편이 빨라요. 아래는 n차원 Rosenbrock $\sum_{i} 100(x_{i+1} - x_i^2)^2 + (1 - x_i)^2$이에요.
+
+```python
+>>> def rosen_n(x):
+...     return float(sd.sum(100.0 * (x[1:] - x[:-1]**2)**2 + (1 - x[:-1])**2))
+>>> r = sd.optimize.minimize(rosen_n, sd.full(10, 0.5))
+>>> r.converged, r.n_iter, r.nfev
+(True, 41, 550)
+```
+
+사용자 함수에 상수를 넘기는 `args` 인자는 없어요. 상수는 클로저나 `lambda`로 넘겨요.
+
+```python
+>>> def shifted(x, c):
+...     return (x[0] - c)**2 + (x[1] + c)**2
+>>> sd.optimize.minimize(lambda x: shifted(x, 3.0), [0.0, 0.0]).x
+array([ 2.999999978698613, -3.000000019539455], dtype=float64)
+```
+
+`x0`는 1차원이고 유한해야 해요. `sd.ndarray`, 실수의 시퀀스, numpy 배열을 받고 정수는 float64로 바꿔요. 시작점에서 `fun`이 유한하지 않으면 출발할 수 없어서 `ValueError`예요.
+
+```python
+>>> import math
+>>> sd.optimize.minimize(lambda x: math.log(x[0]) if x[0] > 0 else math.inf, [-1.0])
+Traceback (most recent call last):
+    ...
+ValueError: minimize(): 'fun' is not finite at 'x0'
+```
+
+### method
+
+이름은 소문자로만 줘요.
+
+```python
+>>> sd.optimize.minimize(rosen, [-1.2, 1.0], method='BFGS')
+Traceback (most recent call last):
+    ...
+ValueError: minimize(): 'method' must be lowercase: 'bfgs', not 'BFGS'
+```
+
+### jac
+
+기울기를 주는 방법은 다섯 가지예요.
+
+| `jac` | 뜻 | 기울기 하나에 `fun`을 부르는 수 |
+|---|---|---|
+| 함수 | `jac(x)`가 n개의 값(`sd.ndarray`, 실수의 시퀀스, numpy 배열)을 돌려줘요. n = 1이면 수 하나도 돼요 | 0(대신 `jac`을 한 번) |
+| `True` | `fun(x)`가 `(값, 기울기)` 쌍을 돌려줘요. 값과 기울기에 같은 계산이 많을 때 써요 | 0(같은 x면 한 번만 불러요) |
+| `None`(기본값) | 전진 차분 $(f(x + h e_j) - f(x))/h$, 간격은 절대 간격 `eps` | n |
+| `'2-point'` | 같은 전진 차분, 간격은 상대 간격 $h = \sqrt{\varepsilon}\,\operatorname{sign}(x_j)\max(1, \lvert x_j\rvert)$ | n |
+| `'3-point'` | 중앙 차분 $(f(x + h e_j) - f(x - h e_j))/(2h)$, $h = \varepsilon^{1/3} \operatorname{sign}(x_j)\max(1, \lvert x_j\rvert)$ | 2n |
+
+$\varepsilon = 2^{-52}$는 기계 엡실론이에요. 차분의 간격은 `options`의 `eps`(None일 때)와 `finite_diff_rel_step`('2-point'·'3-point'일 때)으로 바꿀 수 있어요. 경계가 있으면 차분도 경계 안에서 해요.
+
+```python
+>>> for jac in [None, '2-point', '3-point']:
+...     r = sd.optimize.minimize(rosen, [-1.2, 1.0], jac=jac)
+...     print(jac, r.n_iter, r.nfev, r.njev, f"{r.fun:.1e}")
+None 31 114 38 2.7e-11
+2-point 31 120 40 2.8e-11
+3-point 32 195 39 4.4e-15
+>>> def rosen_and_grad(x):
+...     return rosen(x), rosen_grad(x)
+>>> r = sd.optimize.minimize(rosen_and_grad, [-1.2, 1.0], jac=True)
+>>> r.nfev, r.njev
+(39, 39)
+```
+
+전진 차분의 기울기는 $10^{-8}$ 정도의 오차가 있어서, 해 근처에서 기울기가 그만큼 작아지면 방향이 흐려져요. 그래서 차분을 쓰면 해가 대략 $10^{-5}$–$10^{-6}$까지만 맞아요. 더 정확해야 하면 기울기 함수를 주거나 `'3-point'`를 써요. 기울기 함수가 맞는지는 [`check_grad`](/api/optimize/check_grad/)로 확인해요.
+
+```python
+>>> sd.optimize.check_grad(rosen, rosen_grad, [-1.2, 1.0]) < 1e-5
+True
+```
+
+`'nelder-mead'`는 기울기를 쓰지 않으므로 `jac`를 받지 않아요. `'newton-cg'`, `'trust-ncg'`, `'trust-exact'`는 기울기 함수나 `jac=True`가 꼭 있어야 해요.
+
+```python
+>>> sd.optimize.minimize(rosen, [-1.2, 1.0], method='nelder-mead', jac=rosen_grad)
+Traceback (most recent call last):
+    ...
+ValueError: minimize(): method='nelder-mead' takes no 'jac'
+>>> sd.optimize.minimize(rosen, [-1.2, 1.0], method='newton-cg')
+Traceback (most recent call last):
+    ...
+ValueError: minimize(): 'jac' is required when method='newton-cg' (a callable, or True when 'fun' returns (f, g))
+```
+
+### hess와 hessp
+
+헤시안은 이계도함수의 행렬 $H_{ij} = \partial^2 f / \partial x_i \partial x_j$로, 골짜기가 방향마다 얼마나 휘었는지를 알려 줘요. `'newton-cg'`, `'trust-ncg'`, `'trust-exact'`만 받아요. `hess(x)`는 (n, n) 행렬을, `hessp(x, p)`는 행렬을 만들지 않고 곱 $H p$만 돌려줘요. 자세한 쓰임은 [뉴턴 방법](/api/optimize/newton-methods/)에 있어요.
+
+```python
+>>> def rosen_hess(x):
+...     return [[1200.0 * x[0]**2 - 400.0 * x[1] + 2.0, -400.0 * x[0]],
+...             [-400.0 * x[0], 200.0]]
+>>> r = sd.optimize.minimize(rosen, [-1.2, 1.0], method='trust-exact', jac=rosen_grad, hess=rosen_hess)
+>>> r
+OptimizeResult(method='trust-exact', converged=True, fun=3.33125e-19, n_iter=25, nfev=26, x=[0.9999999994467651 0.9999999988770814])
+>>> r.njev, r.nhev
+(23, 26)
+>>> sd.optimize.minimize(rosen, [-1.2, 1.0], hess=rosen_hess)
+Traceback (most recent call last):
+    ...
+ValueError: minimize(): method='bfgs' takes no 'hess'
+```
+
+### bounds
+
+`bounds=(lower, upper)`는 변수마다 $l_j \le x_j \le u_j$로 범위를 정해요. lower와 upper는 각각 수 하나(모든 변수에 같게)이거나 n개의 수이고, `-math.inf`·`math.inf`는 그쪽에 범위가 없다는 뜻이에요. `'l-bfgs-b'`와 `'nelder-mead'`만 받아요. `method`를 주지 않고 `bounds`를 주면 `'l-bfgs-b'`를 써요.
+
+Rosenbrock에 $x \le 0.5$를 걸면 골짜기 바닥 (1, 1)에 갈 수 없어요. 해는 경계 위의 (0.5, 0.25)예요.
+
+```python
+>>> r = sd.optimize.minimize(rosen, [-1.2, 1.0], bounds=([-math.inf, -math.inf], [0.5, math.inf]))
+>>> r
+OptimizeResult(method='l-bfgs-b', converged=True, fun=0.25, n_iter=20, nfev=87, x=[                0.5 0.24999999500294875])
+>>> r.message
+'CONVERGENCE: NORM OF PROJECTED GRADIENT <= PGTOL'
+```
+
+경계 위의 해에서는 기울기가 0이 아니에요. x 방향의 기울기가 경계 바깥을 가리키면(더 가고 싶지만 막힌 것) 그 점이 해예요. 그래서 L-BFGS-B는 기울기를 경계 안으로 투영한 값으로 멈춤을 판정해요.
+
+`x0`는 경계 안이어야 해요(경계 위는 안이에요). 경계 밖이면 옮기지 않고 `ValueError`예요. lower = upper이면 그 변수는 그 값으로 고정돼요.
+
+```python
+>>> sd.optimize.minimize(rosen, [-1.2, 1.0], bounds=(0.0, 2.0))
+Traceback (most recent call last):
+    ...
+ValueError: minimize(): 'x0' must be within 'bounds'
+>>> sd.optimize.minimize(rosen, [0.5, 1.0], bounds=([-2.0, 1.0], [2.0, 1.0])).x
+array([0.9999999954190891,                1.0], dtype=float64)
+>>> sd.optimize.minimize(rosen, [-1.2, 1.0], method='bfgs', bounds=(-2.0, 2.0))
+Traceback (most recent call last):
+    ...
+ValueError: minimize(): method='bfgs' takes no bounds (method='l-bfgs-b' and method='nelder-mead' do)
+```
+
+`bounds`는 언제나 `(lower, upper)` 두 개짜리예요. 변수마다의 쌍 `[(l1, u1), (l2, u2), ...]`가 아니에요. 변수가 셋 이상이면 쌍의 목록은 길이가 2가 아니라서 `ValueError`가 나지만, 변수가 둘이면 `[(0, 2), (0, 2)]`가 lower = (0, 2), upper = (0, 2)로 읽혀 두 변수가 모두 고정돼요. 변수마다 범위를 줄 때는 `([l1, l2], [u1, u2])`로 써요.
+
+### tol과 options
+
+방법마다의 옵션은 `options` dict로 줘요. 키와 기본값은 아래와 같아요(n은 변수 수).
+
+| 방법 | 옵션(기본값) |
+|---|---|
+| `'nelder-mead'` | `max_iter`·`max_nfev`(둘 다 None이면 200n씩; 하나만 주면 다른 것은 상한 없음), `xatol=0.0001`, `fatol=0.0001`, `adaptive=False`, `initial_simplex=None` |
+| `'bfgs'` | `gtol=1e-05`, `norm=inf`, `eps=1.4901161193847656e-08`, `max_iter=None`(200n), `finite_diff_rel_step=None`, `xrtol=0`, `c1=0.0001`, `c2=0.9`, `hess_inv0=None` |
+| `'l-bfgs-b'` | `maxcor=10`, `ftol=2.220446049250313e-09`, `gtol=1e-05`, `eps=1e-08`, `max_nfev=15000`, `max_iter=15000`, `max_ls=20`, `finite_diff_rel_step=None` |
+| `'newton-cg'` | `xtol=1e-05`, `eps=1.4901161193847656e-08`, `max_iter=None`(200n), `c1=0.0001`, `c2=0.9` |
+| `'trust-ncg'` | `initial_trust_radius=1.0`, `max_trust_radius=1000.0`, `eta=0.15`, `gtol=0.0001`, `max_iter=None`(200n) |
+| `'trust-exact'` | `'trust-ncg'`의 것과 `subproblem_max_iter=25` |
+
+`eps`는 `jac=None`일 때, `finite_diff_rel_step`은 `jac`가 `'2-point'`·`'3-point'`일 때만 받아요(newton-cg의 `eps`는 `hess`·`hessp`가 없을 때 기울기 차분의 간격이에요). 방법이 모르는 키를 주면 경고가 아니라 `ValueError`예요. 오타를 바로 알 수 있어요.
+
+```python
+>>> r = sd.optimize.minimize(rosen, [-1.2, 1.0], jac=rosen_grad, options={'max_iter': 10})
+>>> r.converged, r.status, r.message
+(False, 1, 'Maximum number of iterations has been exceeded.')
+>>> sd.optimize.minimize(rosen, [-1.2, 1.0], options={'xatol': 1e-6})
+Traceback (most recent call last):
+    ...
+ValueError: minimize(): method='bfgs' has no option 'xatol'
+```
+
+`tol`은 방법의 주된 허용오차를 한 번에 정하는 지름길이에요. 무엇을 정하는지는 방법마다 달라요.
+
+| 방법 | `tol`이 정하는 옵션 | 뜻 |
+|---|---|---|
+| `'nelder-mead'` | `xatol`, `fatol` | 모든 꼭짓점이 가장 좋은 꼭짓점과 좌표마다 `xatol`, 값이 `fatol` 안이면 멈춰요(절대 기준) |
+| `'bfgs'` | `gtol` | 기울기의 노름(기본은 가장 큰 $\lvert g_i\rvert$)이 `gtol` 이하이면 멈춰요 |
+| `'l-bfgs-b'` | `ftol`, `gtol` | 투영된 기울기의 가장 큰 성분이 `gtol` 이하이거나, 반복 하나의 f의 상대 감소가 `ftol` 이하이면 멈춰요 |
+| `'newton-cg'` | `xtol` | 걸음의 성분 절댓값 합이 n·`xtol` 이하이면 멈춰요 |
+| `'trust-ncg'`, `'trust-exact'` | `gtol` | 기울기의 2-노름이 `gtol`보다 작으면 멈춰요 |
+
+허용오차는 해의 정확도를 직접 보장하지 않아요. 기울기가 작다는 것은 바닥 근처라는 뜻이지만, 골짜기 바닥이 평평하면 기울기가 작아도 해에서 멀 수 있어요. 해의 오차는 대략 (기울기) ÷ (그 방향의 곡률)이에요.
+
+```python
+>>> for tol in [None, 1e-8]:
+...     r = sd.optimize.minimize(rosen, [-1.2, 1.0], jac=rosen_grad, tol=tol)
+...     print(tol, r.n_iter, f"{max(abs(v - 1) for v in r.x.tolist()):.1e}")
+None 32 5.4e-08
+1e-08 34 1.1e-12
+>>> sd.optimize.minimize(rosen, [-1.2, 1.0], tol=1e-8, options={'gtol': 1e-8})
+Traceback (most recent call last):
+    ...
+ValueError: minimize(): give 'tol' or options['gtol'], not both
+```
+
+반복 상한의 이름은 `max_iter`(반복 수)와 `max_nfev`(fun을 부른 수)예요. 상한에 닿으면 에러 없이 그때의 점과 `converged=False`를 돌려줘요.
+
+## 결과 읽기
+
+결과는 [`OptimizeResult`](/api/optimize/results/)예요. 모든 방법에 `x fun converged status message n_iter nfev method`가 있고, 방법마다 더 있는 필드가 달라요.
+
+| 방법 | 더 있는 필드 |
+|---|---|
+| `'nelder-mead'` | `final_simplex` |
+| `'bfgs'`, `'l-bfgs-b'` | `jac`, `hess_inv`, `njev` |
+| `'newton-cg'` | `jac`, `njev`, `nhev` |
+| `'trust-ncg'`, `'trust-exact'` | `jac`, `njev`, `nhev`, `hess`(`hess` 함수를 줄 때) |
+
+- `x`, `fun`: 해와 그 점의 값이에요. `jac`(그리고 `hess`)도 `x`에서의 기울기(헤시안)예요.
+- `hess_inv`: BFGS와 L-BFGS-B가 반복하며 쌓은 헤시안 역행렬의 근사 (n, n)이에요. 참값의 역행렬과는 다를 수 있어서 불확실성의 추정으로 쓰기에는 맞지 않아요.
+- `final_simplex`: Nelder–Mead의 마지막 꼭짓점 (n + 1, n)과 그 값 (n + 1,)의 튜플이에요. 값이 작은 순서예요.
+- `nfev`: `fun`을 부른 수예요. 차분의 기울기가 부른 것도 세요. `njev`는 기울기를 계산한 수(사용자 `jac`의 호출, 또는 차분 하나), `nhev`는 `hess`·`hessp`를 부른 수예요.
+- 방법이 주지 않는 필드를 읽으면 `AttributeError`예요. 있는지는 `hasattr`로 알아봐요.
+
+```python
+>>> r = sd.optimize.minimize(rosen, [-1.2, 1.0], method='nelder-mead')
+>>> r.final_simplex[1]
+array([ 8.177661197416674e-10, 1.1075489735209213e-09,
+       1.1229296958589735e-09], dtype=float64)
+>>> hasattr(r, 'jac')
+False
+>>> r.jac
+Traceback (most recent call last):
+    ...
+AttributeError: 'OptimizeResult' object has no attribute 'jac' (its method does not give it)
+```
+
+`converged`는 `status`가 0이고 `fun`이 유한할 때 True예요. `status`와 `message`는 방법마다 번호와 글이 달라요.
+
+| 방법 | `status`: `message` |
+|---|---|
+| `'nelder-mead'` | 0: `Optimization terminated successfully.`, 1: `Maximum number of function evaluations has been exceeded.`, 2: `Maximum number of iterations has been exceeded.` |
+| `'bfgs'` | 0: 위의 성공 글, 1: `max_iter`에 닿음, 2: `Desired error not necessarily achieved due to precision loss.`(선 탐색이 더 내려가는 걸음을 찾지 못함), 3: `NaN result encountered.` |
+| `'l-bfgs-b'` | 0: `CONVERGENCE: NORM OF PROJECTED GRADIENT <= PGTOL` 또는 `CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH`, 1: `STOP: TOTAL NO. OF ITERATIONS REACHED LIMIT` 또는 `STOP: TOTAL NO. OF F,G EVALUATIONS EXCEEDS LIMIT`, 2: `ABNORMAL: `(선 탐색이 `max_ls`번 안에 걸음을 찾지 못함) |
+| `'newton-cg'` | 0: 성공 글, 1·2: 앞에 `Warning: `이 붙은 상한·정밀도 글, 3: `Warning: CG iterations didn't converge. The Hessian is not positive definite.` 또는 `NaN result encountered.` |
+| `'trust-ncg'`, `'trust-exact'` | 0: 성공 글, 1: `max_iter`에 닿음, 2: `A bad approximation caused failure to predict improvement.`, 3: `A linalg error occurred, such as a non-psd Hessian.` |
+
+status 2(BFGS, newton-cg)는 선 탐색이 f를 충분히 줄이는 걸음을 찾지 못했다는 뜻이에요. 해 근처에서 반올림 때문에 더 줄일 수 없을 때도 나고(그때는 x가 이미 좋은 해예요), 기울기 함수가 틀렸을 때도 나요. `jac`을 줬는데 status 2가 나면 먼저 `check_grad`로 기울기를 확인해요.
+
+```python
+>>> def bad_grad(x):
+...     return [-400.0 * x[0] * (x[1] - x[0]**2) - 2.0 * (1 - x[0]), 100.0 * (x[1] - x[0]**2)]
+>>> r = sd.optimize.minimize(rosen, [-1.2, 1.0], jac=bad_grad)
+>>> r.converged, r.status
+(False, 2)
+>>> sd.optimize.check_grad(rosen, bad_grad, [-1.2, 1.0]) > 1
+True
+```
+
+## 조심할 것
+
+### 지역 최솟값과 시작점
+
+`minimize`는 시작점이 속한 골짜기의 바닥을 찾아요. Himmelblau 함수 $(x^2 + y - 11)^2 + (x + y^2 - 7)^2$에는 값이 0인 바닥이 넷 있고, 시작점에 따라 다른 바닥에 닿아요.
+
+```python
+>>> def himmelblau(x):
+...     return (x[0]**2 + x[1] - 11)**2 + (x[0] + x[1]**2 - 7)**2
+>>> for x0 in ([0.0, 0.0], [-1.0, 1.0], [-1.0, -1.0], [1.0, -1.0]):
+...     r = sd.optimize.minimize(himmelblau, x0)
+...     print(x0, [round(v, 4) for v in r.x.tolist()])
+[0.0, 0.0] [3.0, 2.0]
+[-1.0, 1.0] [-2.8051, 3.1313]
+[-1.0, -1.0] [-3.7793, -3.2832]
+[1.0, -1.0] [3.5844, -1.8481]
+```
+
+골짜기가 여럿일 수 있으면 여러 시작점에서 풀어 가장 낮은 값을 골라요. 문제를 알면 답 근처의 시작점을 주는 것이 가장 좋아요.
+
+### 기울기가 0인 점에서 멈춰요
+
+기울기를 쓰는 방법은 기울기가 (거의) 0인 점을 찾아요. 그런 점에는 최솟값 말고도 안장점과 최댓값이 있어요. $f(x, y) = (x^2 - 1)^2 + y^2$의 최솟값은 (±1, 0)이고 (0, 0)은 안장점이에요(x 방향으로는 꼭대기, y 방향으로는 바닥). x = 0에서 출발하면 기울기의 x 성분이 늘 0이라 반복이 x = 0 위에 머물고, 안장점에서 `converged=True`로 멈춰요.
+
+```python
+>>> def two_wells(x):
+...     return (x[0]**2 - 1)**2 + x[1]**2
+>>> sd.optimize.minimize(two_wells, [0.0, 1.0])
+OptimizeResult(method='bfgs', converged=True, fun=1, n_iter=2, nfev=9, x=[1.0371798405709289e-07 -9.442323121305884e-09])
+>>> sd.optimize.minimize(two_wells, [0.1, 1.0]).x
+array([     0.9999999777808422, -2.2591758443137532e-08], dtype=float64)
+```
+
+`converged=True`는 판정을 통과했다는 뜻일 뿐이에요. 대칭인 시작점(0, 모든 성분이 같은 값)은 이런 일을 부르기 쉬우니 피해요. 헤시안을 계산할 수 있으면 해에서 고유값이 모두 양수인지 확인해서 최솟값인지 알 수 있어요.
+
+### 변수의 척도
+
+허용오차는 절대 기준이에요. 변수가 $10^{-6}$ 크기라면 Nelder–Mead의 `xatol=0.0001`은 처음부터 만족돼서 반복 없이 멈추고, BFGS의 `gtol=1e-05`도 기울기가 원래 작아서 거의 바로 멈춰요.
+
+```python
+>>> def tiny(x):
+...     return (x[0] - 3e-6)**2 + (x[1] + 2e-6)**2
+>>> r = sd.optimize.minimize(tiny, [1e-5, 1e-5], method='nelder-mead')
+>>> r.x, r.n_iter
+(array([1e-05, 1e-05], dtype=float64), 1)
+```
+
+변수를 1 안팎의 크기로 바꿔서 풀고 결과를 되돌리면 모든 방법이 제대로 움직여요. 값의 크기도 마찬가지로 1 안팎이 좋아요.
+
+```python
+>>> r = sd.optimize.minimize(lambda u: 1e12 * tiny(1e-6 * u), [10.0, 10.0], method='nelder-mead')
+>>> [round(v * 1e-6, 10) for v in r.x.tolist()]
+[3e-06, -2e-06]
+```
+
+### 유한하지 않은 값
+
+반복 중에 `fun`이 inf나 NaN을 돌려줘도 에러가 아니에요. BFGS와 newton-cg는 선 탐색이 걸음을 줄여 피하고, Nelder–Mead는 그 꼭짓점을 가장 나쁜 것으로 다뤄요. 그래서 정의역 밖에서 `math.inf`를 돌려주는 것으로 범위를 표시할 수 있어요.
+
+```python
+>>> def entropy_like(x):
+...     if x[0] <= 0 or x[1] <= 0:
+...         return math.inf
+...     return x[0] * math.log(x[0]) + x[1] * math.log(x[1]) - x[0] - 2 * x[1]
+>>> sd.optimize.minimize(entropy_like, [5.0, 5.0])
+OptimizeResult(method='bfgs', converged=True, fun=-3.71828, n_iter=9, nfev=33, x=[ 0.999998352983895 2.7182851639401058])
+```
+
+L-BFGS-B에는 이 방법이 맞지 않아요. 차분의 기울기가 NaN이 되고, 선 탐색이 실패한 뒤 f가 줄지 않은 것을 "상대 감소가 `ftol` 이하"로 읽어 해가 아닌 점에서 `converged=True`로 멈출 수 있어요. L-BFGS-B에서는 범위를 `bounds`로 줘요.
+
+```python
+>>> r = sd.optimize.minimize(entropy_like, [5.0, 5.0], method='l-bfgs-b')
+>>> r.converged, [round(v, 3) for v in r.x.tolist()]
+(True, [4.065, 4.646])
+>>> r = sd.optimize.minimize(entropy_like, [5.0, 5.0], bounds=(1e-12, math.inf))
+>>> r.converged, [round(v, 4) for v in r.x.tolist()]
+(True, [1.0, 2.7183])
+```
+
+시작점에서 유한하지 않으면 `ValueError`예요. trust-ncg·trust-exact에서 받아들인 점의 기울기나 헤시안이 유한하지 않으면 그 점을 적은 `ValueError`가 나요(`'jac' is not finite at x = [...]`). 마지막 `fun`이 유한하지 않으면 `converged=False`예요.
+
+### 수렴하지 않을 때
+
+`converged=False`이면 `status`와 `message`를 봐요.
+
+- 반복 상한(status 1)이면 `options={'max_iter': ...}`를 늘리거나, 더 나은 시작점이나 기울기 함수를 줘요.
+- 선 탐색 실패(BFGS·newton-cg status 2, L-BFGS-B `ABNORMAL`)는 기울기가 틀렸거나, 해 근처에서 반올림 때문에 더 줄일 수 없을 때 나요. `fun`과 `jac`의 값이 이미 충분히 작은지 봐요. 차분의 기울기는 해 근처에서 잡음이 커서 이런 일이 흔해요. 아래는 해에 닿고도 status 2로 멈춘 경우예요.
+- 신뢰 영역 방법의 status 3은 헤시안이 대칭이 아니거나 계산이 무너졌을 때예요.
+
+```python
+>>> r = sd.optimize.minimize(rosen_n, sd.zeros(10))
+>>> r.converged, r.status, r.fun
+(False, 2, 5.666719760853182e-11)
+```
+
+결과의 `x`는 그때까지 찾은 가장 좋은 점이라 다시 풀 때 시작점으로 쓸 수 있어요.
+
+## minimize와 비슷한 함수
+
+- **[`least_squares`](/api/optimize/least_squares/)**: f가 잔차의 제곱합 $\tfrac12 \sum_i r_i(x)^2$이면 잔차 벡터 r과 그 야코비안을 직접 쓰는 `least_squares`가 더 빠르고 안정해요. 야코비안 $J$만으로 헤시안을 $J^{\mathsf T} J$로 어림하기 때문이에요. Rosenbrock는 $r = (10(y - x^2),\ 1 - x)$의 제곱합이라 그렇게도 풀 수 있어요.
+
+  ```python
+  >>> def rosen_res(x):
+  ...     return [10.0 * (x[1] - x[0]**2), 1.0 - x[0]]
+  >>> sd.optimize.least_squares(rosen_res, [-1.2, 1.0])
+  OptimizeResult(method='trf', converged=True, cost=0, n_iter=18, nfev=61, x=[1.0 1.0])
+  ```
+
+  데이터에 모형을 맞추는 일이고 표준오차까지 필요하면 [`sd.regression.nls`](/api/regression/nls/)가 그 일을 해요.
+- **[`minimize_scalar`](/api/optimize/minimize_scalar/)**: 변수가 하나면 구간을 줄여 가는 전용 방법이 더 적은 계산으로 풀어요. 원소마다 따로인 스칼라 문제가 많으면 [`find_minimum`](/api/optimize/find_minimum/)이 한 번에 풀어요.
+- **[`root`](/api/optimize/root/)**: 기울기가 0인 점을 찾는 것은 방정식계 $\nabla f(x) = 0$을 푸는 것과 같지만, `root`는 최솟값과 최댓값, 안장점을 구별하지 않아요. 최솟값을 찾을 때는 `minimize`를 써요.
+
+## 정확도와 비용
+
+- **정확도**: 결과는 "멈춤 판정을 만족한 점"이에요. 기울기 함수를 주고 허용오차를 줄이면 해를 반올림 가까이까지 구할 수 있어요(위의 `tol=1e-8`에서 $10^{-12}$). 차분의 기울기로는 $10^{-5}$–$10^{-8}$ 안팎에서 막혀요. 해 근처에서 f는 x의 오차의 제곱만큼만 변하므로, `fun`은 `x`보다 훨씬 많은 자리가 맞아 보여도 x의 정확도를 뜻하지 않아요.
+- **비용**: 반복의 계산은 C++에서 하고, `fun`·`jac`·`hess`만 Python으로 불러요. 그래서 시간은 대부분 사용자 함수의 몫이고, 방법끼리의 비용은 `nfev`, `njev`, `nhev`로 견줄 수 있어요. 같은 점에서는 다시 부르지 않아요(같은 x의 값과 기울기는 기억해 둬요).
+- **스레드와 GIL**: 사용자 함수가 Python이라 반복은 GIL을 쥔 채 돌아요. BFGS의 행렬 갱신, trust-exact의 Cholesky처럼 큰 선형대수만 계산하는 동안 GIL을 놓아요. 사용자 함수 안의 sd 연산은 그 영역의 규칙대로 스레드를 써요. 결과는 스레드 수와 상관없이 같은 비트예요.
+- **scipy와 같은 걸음**: `'nelder-mead'`, `'l-bfgs-b'`, `'newton-cg'`, `'trust-ncg'`, `'trust-exact'`는 scipy 1.18.1과 같은 점에서 사용자 함수를 같은 차례로 불러, `x`의 비트, `fun`, `nfev`, 반복 수, `status`가 scipy와 같아요. `'bfgs'`는 행렬 갱신을 더 싼 순서로 해서 걸음이 scipy와 반올림만큼 다르고, 반복 수와 `nfev`가 가끔 몇 번 달라요(멈춘 이유는 거의 언제나 같아요).
+
+## scipy를 아는 분께
+
+- 결과의 이름이 달라요: `success`는 `converged`, `nit`는 `n_iter`예요. `r['x']`처럼 dict로 읽을 수 없어요.
+- `method`는 소문자만 받아요(`'BFGS'`는 `ValueError`). `'cg'`, `'powell'`, `'tnc'`, `'slsqp'`, `'cobyla'`, `'trust-constr'`, `'dogleg'`, `'trust-krylov'`는 없고, `constraints`도 없어요.
+- `args`, `callback`은 받지 않아요(상수는 클로저로). `options`의 `disp`, `return_all`도 없어요.
+- `fun`이 길이 1의 배열을 돌려주면 scipy는 그 원소를 쓰지만 여기서는 `ValueError`예요. 실수 하나를 돌려줘요.
+- 반복 상한의 이름이 달라요: `maxiter`는 `max_iter`, `maxfev`·`maxfun`은 `max_nfev`, L-BFGS-B의 `maxls`는 `max_ls`, trust-exact의 `subproblem_maxiter`는 `subproblem_max_iter`예요. scipy의 이름을 주면 새 이름을 알려 주는 `ValueError`예요.
+- 방법이 모르는 옵션, 방법이 쓰지 않는 `jac`·`hess`·`bounds`는 scipy가 경고만 내고 무시하지만, 여기서는 `ValueError`예요. `eps`와 `finite_diff_rel_step`도 쓰이는 `jac`에서만 받아요.
+- `bounds`는 `(lower, upper)` 꼴만 받아요. scipy의 `Bounds` 객체와 변수마다의 쌍 목록은 받지 않아요(변수가 둘이면 쌍 목록이 다른 뜻으로 읽혀요). `x0`가 경계 밖이면 scipy는 말없이 경계 안으로 옮기고, 여기서는 `ValueError`예요.
+- `jac='cs'`, `hess`의 `HessianUpdateStrategy`, `LinearOperator`·희소 행렬은 받지 않아요.
+- 기본값은 scipy와 같아요(`method`를 고르는 규칙, 허용오차, 반복 상한). 값이 다른 곳은 다음과 같아요.
+  - `'bfgs'`의 걸음은 반올림만큼 달라요. 위의 기본 사용에서 scipy는 `nit=32`, `nfev=117`이에요.
+  - `'newton-cg'`의 `jac`은 `x`에서의 기울기예요(scipy는 마지막 반복을 시작한 점의 것). 그 기울기를 새로 계산하면 `njev`가 하나 많아요.
+  - `nhev`는 실제로 부른 수예요. `hessp`만 준 trust-ncg는 scipy보다 하나 적고(scipy는 부르지 않은 자리도 하나로 세요), `hess`를 준 trust-ncg는 결과의 `hess`를 위해 끝에 부른 것을 세어 하나 많을 수 있어요.
+  - 신뢰 영역 두 방법에 `max_iter=0`을 주면 반복 없이 x0에서 멈춰요(scipy는 한 번 반복해요).
+  - L-BFGS-B가 `ABNORMAL`로 멈추면 `fun`은 돌려주는 `x`에서의 값이에요(scipy는 마지막 시험점의 값).

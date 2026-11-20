@@ -2,7 +2,7 @@
 title: 전체 구조
 group: 전체 구조
 order: 1
-summary: stardust의 일곱 영역이 어떤 층으로 쌓이고 서로 어떻게 기대는지 보여 줘요. 모든 영역을 확장 모듈 하나에 넣어 스레드풀과 배열 타입을 함께 쓰고, Apple M4 Pro 한 대만 겨냥해 빌드해요.
+summary: stardust의 여덟 영역이 어떤 층으로 쌓이고 서로 어떻게 기대는지 보여 줘요. 모든 영역을 확장 모듈 하나에 넣어 스레드풀과 배열 타입을 함께 쓰고, Apple M4 Pro 한 대만 겨냥해 빌드해요.
 seeAlso: [python-boundary, threads]
 ---
 import Steps from '../../../components/fig/Steps.astro';
@@ -13,7 +13,7 @@ import Bench from '../../../components/fig/Bench.astro';
 
 ## 한눈에 보기
 
-stardust는 numpy, 선형대수(scipy.linalg 계열), 데이터프레임(pandas 계열), 특수함수(scipy.special), 확률분포와 기술통계(scipy.stats 계열), 난수(numpy.random 계열), 회귀분석(statsmodels 계열)을 C++20으로 다시 만든 Python 라이브러리예요. 사용자는 `import stardust as sd` 하나로 일곱 영역을 써요.
+stardust는 numpy, 선형대수(scipy.linalg 계열), 데이터프레임(pandas 계열), 특수함수(scipy.special), 확률분포와 기술통계(scipy.stats 계열), 난수(numpy.random 계열), 회귀분석(statsmodels 계열), 최적화(scipy.optimize 계열)를 C++20으로 다시 만든 Python 라이브러리예요. 사용자는 `import stardust as sd` 하나로 여덟 영역을 써요.
 
 | 영역 | Python 이름공간 | C++ 디렉터리 | 하는 일 |
 |:---:|:---:|:---:|---|
@@ -24,11 +24,12 @@ stardust는 numpy, 선형대수(scipy.linalg 계열), 데이터프레임(pandas 
 | 통계 | `sd.stats` | `csrc/stats/` | 단변량 확률분포 31개(연속 21개, 이산 10개. 정규, t, 감마, 베타, 극값, 비중심 분포, 이항, 포아송 …)의 밀도, 누적분포, 분위수, 모멘트, 표본. 다변량 분포 4개와 행렬 분포 3개. 기술통계(`describe`, `skew`, `rankdata` …) |
 | 난수 | `sd.random` | `csrc/random/` | 계수기형 생성기(Philox), 균등 실수, 범위 정수, `choice`, `permutation` |
 | 회귀 | `sd.regression` | `csrc/regression/` | 선형(OLS, WLS, GLS), 일반화 선형(GLM), 정규화(ridge, lasso, elastic net), 강건(RLM, Theil–Sen, Siegel), 분위, 비선형(NLS) 회귀와 그 추론 |
+| 최적화 | `sd.optimize` | `csrc/optimize/` | 스칼라 근과 최솟값(원소마다 푸는 배치 포함), 다변수 최소화(Nelder–Mead, BFGS, L-BFGS-B, Newton-CG, 신뢰 영역), 비선형·선형 최소제곱, 방정식계의 근, 수치 미분 |
 
-일곱 영역이 엮이는 방식은 네 가지로 요약돼요.
+여덟 영역이 엮이는 방식은 네 가지로 요약돼요.
 
-1. **확장 모듈은 `stardust._core` 하나예요.** 영역은 그 안의 하위 모듈(`_core.linalg`, `_core.frame`, `_core.special`, `_core.stats`, `_core.random`, `_core.regression`)이에요. 그래서 스레드풀, dtype 객체, 배열 타입이 프로세스 안에 하나씩만 있고, 어느 영역의 C++ 코드든 배열을 C++ 객체 그대로 주고받아요.
-2. **Python은 얇고 C++은 두꺼워요.** 배열 타입 자체, 연산자, 인자 해석, 브로드캐스팅, dtype 결정까지 C++이 해요. Python에는 재노출, 출력 형식(`repr`), 결과 namedtuple처럼 자주 불리지 않는 부분만 남아요. 예외는 객체가 상태를 지녀야 하는 곳이에요. 데이터프레임의 `Series`와 `DataFrame`, 통계의 분포 클래스, 난수의 `Generator`, 회귀의 결과 객체(`OLSResult` …)는 Python 클래스예요.
+1. **확장 모듈은 `stardust._core` 하나예요.** 영역은 그 안의 하위 모듈(`_core.linalg`, `_core.frame`, `_core.special`, `_core.stats`, `_core.random`, `_core.regression`, `_core.optimize`)이에요. 그래서 스레드풀, dtype 객체, 배열 타입이 프로세스 안에 하나씩만 있고, 어느 영역의 C++ 코드든 배열을 C++ 객체 그대로 주고받아요.
+2. **Python은 얇고 C++은 두꺼워요.** 배열 타입 자체, 연산자, 인자 해석, 브로드캐스팅, dtype 결정까지 C++이 해요. Python에는 재노출, 출력 형식(`repr`), 결과 namedtuple처럼 자주 불리지 않는 부분만 남아요. 예외는 객체가 상태를 지녀야 하는 곳이에요. 데이터프레임의 `Series`와 `DataFrame`, 통계의 분포 클래스, 난수의 `Generator`, 회귀의 결과 객체(`OLSResult` …), 최적화의 결과 객체(`OptimizeResult`)는 Python 클래스예요.
 3. **의존은 아래로만 흘러요.** 위 층은 아래 층을 쓰고, 아래 층은 위 층을 몰라요. 새 영역은 디렉터리 하나와 Python 하위 모듈 하나로 붙고, 기존 영역을 고치지 않아요.
 4. **대상 기계는 Apple M4 Pro 한 대예요.** `-mcpu=native`로 빌드하고, 런타임 CPU 디스패치가 없고, 병렬화 기준값과 버퍼 크기 같은 상수는 모두 이 기계에서 잰 값이에요.
 
@@ -48,6 +49,7 @@ stardust는 numpy, 선형대수(scipy.linalg 계열), 데이터프레임(pandas 
           { name: 'sd.stats', note: '확률분포' },
           { name: 'sd.random', note: '난수' },
           { name: 'sd.regression', note: '회귀' },
+          { name: 'sd.optimize', note: '최적화' },
         ],
       },
       {
@@ -70,6 +72,7 @@ stardust는 numpy, 선형대수(scipy.linalg 계열), 데이터프레임(pandas 
           { name: 'stats/', uses: 'special, array, random' },
           { name: 'random/', uses: 'array' },
           { name: 'regression/', uses: 'linalg, special, random' },
+          { name: 'optimize/', uses: 'linalg, array' },
         ],
       },
       {
@@ -108,11 +111,11 @@ Python에서 `sd.add(x, y)`를 부르면 이런 길을 지나요.
 
 ### Python 패키지 (`src/stardust/`)
 
-Python 코드는 전부 합쳐 약 10,800줄이에요. 그중 회귀가 약 4,500줄, 데이터프레임이 약 3,000줄, 통계가 약 2,200줄, 난수가 약 500줄이에요. 배열·선형대수·특수함수 쪽 Python은 거의 재노출뿐이에요.
+Python 코드는 전부 합쳐 약 14,300줄이에요. 그중 회귀가 약 5,300줄, 데이터프레임이 약 3,100줄, 최적화가 약 2,500줄, 통계가 약 2,300줄, 난수가 약 500줄이에요. 배열·선형대수·특수함수 쪽 Python은 거의 재노출뿐이에요.
 
 | 파일 | 하는 일 |
 |---|---|
-| `__init__.py` | `_core`의 배열 함수와 dtype 객체 약 160개를 재노출하고, 상수 `e`, `pi`, `inf`, `nan`, `newaxis`를 정의해요. 끝에서 `linalg`, `frame`, `special`, `random`, `stats`, `regression` 하위 패키지를 import해요 |
+| `__init__.py` | `_core`의 배열 함수와 dtype 객체 약 160개를 재노출하고, 상수 `e`, `pi`, `inf`, `nan`, `newaxis`를 정의해요. 끝에서 `linalg`, `frame`, `special`, `random`, `stats`, `regression`, `optimize` 하위 패키지를 import해요 |
 | `_format.py` | 배열의 `repr`/`str` (76줄). C++이 넘긴 요약 값을 문자열로 배치해요 |
 | `_results.py` | 결과 namedtuple 대부분 (`UniqueAllResult`, `SVDResult`, `AiryResult`, `LinregressResult` …). 기술통계의 `DescribeResult`, `ModeResult`만 `stats/_descriptive.py`에 있어요 |
 | `linalg/__init__.py` | `_core.linalg`의 함수를 `globals().update(...)`로 옮겨 오고, `LinAlgError`와 결과 namedtuple을 C++에 한 번 넘겨요(`_core._setup`) |
@@ -122,6 +125,7 @@ Python 코드는 전부 합쳐 약 10,800줄이에요. 그중 회귀가 약 4,50
 | `random/__init__.py` | `Generator` 클래스와 `default_rng`. 시드에서 키 만들기, 수열 위치 관리, 인자 검증, `choice`와 `permutation`의 조합 절차 |
 | `frame/*.py` | `Series`, `DataFrame`, `Index`, `GroupBy` 클래스, 인자 검증, 정렬(alignment) 절차, `repr`. 공개 이름은 `frame/__init__.py`에만 있고 다른 모듈은 모두 밑줄로 시작해요 |
 | `regression/*.py` | 모형 함수(`ols`, `glm`, `lasso` …)와 결과 클래스(`OLSResult` …). 인자 검사, frame 컬럼과 NaN 정책 처리, 커널(`_core.regression`) 한 번 호출, 결과 객체 만들기. 표준오차나 p값 같은 추론 필드는 처음 읽을 때 `sd.stats`의 분포로 계산해요 |
+| `optimize/*.py` | 공개 함수(`root_scalar`, `minimize`, `least_squares` …)와 결과 클래스 `OptimizeResult`. 인자와 `options` 검사, 사용자 함수가 돌려준 값의 모양과 형 확인, 커널(`_core.optimize`) 호출, 결과 객체 만들기. 정확한 5점 차분(`_diff.py`)은 Python에 있고 `regression`의 `nls`도 써요 |
 
 `sd.vecdot`은 `sd.linalg.vecdot`과 같은 함수예요. Array API 표준이 이 함수를 최상위와 `linalg` 양쪽에 두라고 정해서, `__init__.py`의 끝 부분에서 `from .linalg import vecdot`으로 가져와요. 최상위 이름공간에는 배열만 있고 다른 영역은 하위 모듈에만 있는데, 이 함수가 유일한 예외예요.
 
@@ -135,7 +139,7 @@ Python 코드는 전부 합쳐 약 10,800줄이에요. 그중 회귀가 약 4,50
 | `array_bind.cpp` | `ndarray` 타입: 속성, 연산자, 버퍼 프로토콜 내보내기, 스칼라 변환 금지 |
 | `pyutil.{hpp,cpp}` | dtype 객체 다섯, 인자 해석(`parse_int`, `parse_axes`, `parse_bool` …), `is_ndarray`/`as_ndarray`, `view_of` |
 | `errors.{hpp,cpp}` | 공개 함수 이름을 에러 메시지 앞에 붙이는 `named`, `call_named`, 메시지에 넣을 타입 이름 `py_type_name`(짧은 이름, numpy의 타입은 `numpy.bool`처럼 공개 모듈을 붙여요) |
-| `linalg_bind.cpp`, `frame_bind.cpp`, `special_bind.cpp`, `stats_bind.cpp`, `regression_bind.cpp` | 하위 모듈 `_core.linalg`, `_core.frame`, `_core.special`, `_core.stats`, `_core.regression` |
+| `linalg_bind.cpp`, `frame_bind.cpp`, `special_bind.cpp`, `stats_bind.cpp`, `regression_bind.cpp`, `optimize_bind.cpp` | 하위 모듈 `_core.linalg`, `_core.frame`, `_core.special`, `_core.stats`, `_core.regression`, `_core.optimize` |
 | `stats_sample.cpp`, `stats_desc.cpp`, `stats_mv.cpp`, `stats_mvcdf.cpp`, `stats_matrix.cpp` | `_core.stats`의 나머지 커널: 분포의 표본, 기술통계, 다변량 분포와 그 누적분포, 행렬 분포 |
 | `nary_bind.hpp` | 원소별 연산 정의 하나를 배열의 n항 디스패처에 얹어 Python 함수로 등록해요. special과 stats가 함께 써요 |
 
@@ -156,16 +160,18 @@ NB_MODULE(_core, m) {
     sd::bind_special(m);  // 배열 다음, linalg와 같은 이유
     sd::bind_stats(m);    // 배열 다음, special과 같은 이유
     sd::bind_random(m);   // 배열 다음: ndarray를 돌려준다
+    sd::bind_regression(m);  // linalg 다음: 배치 드라이버와 결과 블록을 쓴다
+    sd::bind_optimize(m);    // 배열 다음: ndarray를 돌려준다
 }
 ```
 
 - dtype 객체(`sd.float64` 등)가 먼저 있어야 `ndarray.dtype` 같은 속성이 그 객체를 돌려줄 수 있어요.
-- linalg, special, stats, random은 배열 타입이 nanobind에 등록된 뒤에야 `NDArray`를 인자로 받고 돌려줄 수 있어요.
-- regression(`sd::bind_regression`)은 맨 끝, linalg 다음이에요. linalg의 배치 드라이버(`run_batch`)와 결과 블록(`outblock`)을 그대로 쓰기 때문이에요.
+- linalg, special, stats, random, optimize는 배열 타입이 nanobind에 등록된 뒤에야 `NDArray`를 인자로 받고 돌려줄 수 있어요. optimize는 사용자 함수에 넘기는 x도 `sd.ndarray`로 만들어요.
+- regression(`sd::bind_regression`)은 linalg 다음이에요. linalg의 배치 드라이버(`run_batch`)와 결과 블록(`outblock`)을 그대로 쓰기 때문이에요. optimize(`sd::bind_optimize`)는 그 뒤, 맨 끝이에요.
 
-배열의 공개 함수 대부분은 `bind/`가 아니라 `array/ops/*.cpp` 안의 `bind_xxx(m)` 함수가 등록해요. 예를 들어 `asarray`, `zeros`는 `array/ops/creation.cpp`의 `bind_creation`이, 원소별 함수는 `array/ops/ufunc.cpp`의 `bind_ufuncs`가 등록해요. 그래서 `array/ops/`는 "C++ 연산"과 "그 연산의 Python 입구"를 함께 담은 층이에요. 반면 `array/kernels/`, `array/iter.*`, `array/ndarray.*`, `array/convert.*`는 `bind/`를 include하지 않아요. 계산 코드는 Python을 모르고, Python 객체를 다루는 곳은 연산의 입구로 한정돼요. 난수도 같은 방식이라, 하위 모듈 `_core.random`은 `random/random.cpp`의 `bind_random`이 등록해요. 회귀는 `bind/regression_bind.cpp`가 하위 모듈을 만들고, 커널은 `regression/*.cpp`마다 있는 `bind_*` 함수가 그 안에 등록해요.
+배열의 공개 함수 대부분은 `bind/`가 아니라 `array/ops/*.cpp` 안의 `bind_xxx(m)` 함수가 등록해요. 예를 들어 `asarray`, `zeros`는 `array/ops/creation.cpp`의 `bind_creation`이, 원소별 함수는 `array/ops/ufunc.cpp`의 `bind_ufuncs`가 등록해요. 그래서 `array/ops/`는 "C++ 연산"과 "그 연산의 Python 입구"를 함께 담은 층이에요. 반면 `array/kernels/`, `array/iter.*`, `array/ndarray.*`, `array/convert.*`는 `bind/`를 include하지 않아요. 계산 코드는 Python을 모르고, Python 객체를 다루는 곳은 연산의 입구로 한정돼요. 난수도 같은 방식이라, 하위 모듈 `_core.random`은 `random/random.cpp`의 `bind_random`이 등록해요. 회귀는 `bind/regression_bind.cpp`가 하위 모듈을 만들고, 커널은 `regression/*.cpp`마다 있는 `bind_*` 함수가 그 안에 등록해요. 최적화도 같은 방식이에요(`bind/optimize_bind.cpp`와 `optimize/*.cpp`의 `bind_*`).
 
-### 영역 (`csrc/array/`, `csrc/linalg/`, `csrc/frame/`, `csrc/special/`, `csrc/stats/`, `csrc/random/`, `csrc/regression/`)
+### 영역 (`csrc/array/`, `csrc/linalg/`, `csrc/frame/`, `csrc/special/`, `csrc/stats/`, `csrc/random/`, `csrc/regression/`, `csrc/optimize/`)
 
 | 영역 | C++ 줄 수 | 번역 단위(.cpp) | 구성 |
 |:---:|---:|:---:|---|
@@ -175,14 +181,15 @@ NB_MODULE(_core, m) {
 | special | 약 10,100 (+ 계수표 약 3,800) | 1 | `ops/`와 `kernels/`가 모두 헤더라서 실제 컴파일은 `bind/special_bind.cpp`에서 일어나요. 자기 번역 단위는 `reduce.cpp` 하나예요 |
 | stats | 약 14,300 (+ 계수표 약 400) | 0 | `engine.hpp`, `numeric.hpp`, `discrete.hpp`, `sample.hpp`, `mvcdf.hpp`, `dd_linalg.hpp`, `dist/`(분포별 헤더), `coeffs/`. 전부 헤더이고 `bind/stats_*.cpp` 여섯 파일에서 컴파일돼요 |
 | random | 약 330 | 1 | `philox.hpp`(생성기), `random.cpp`(커널과 등록) |
-| regression | 약 10,300 | 7 | 모형마다 하나인 `linear`, `glm`, `penalized`, `robust`, `slopes`, `quantile`, `nls`와 공용 헤더 `lsq.hpp`(최소제곱 핵심), `dot2.hpp`(double-double 내적) |
+| regression | 약 9,900 | 6 | 모형마다 하나인 `linear`, `glm`, `penalized`, `robust`, `slopes`, `quantile`과 공용 헤더 `lsq.hpp`(최소제곱 핵심), `dot2.hpp`(double-double 내적). `nls`의 반복은 optimize의 `lsq.cpp`예요 |
+| optimize | 약 9,100 | 10 | 방법 묶음마다 하나인 `scalar`, `batch`, `nelder_mead`, `bfgs`, `lbfgsb`, `newton_cg`, `trust`, `lsq`, `hybrd`, `linear`와 공용 헤더 `objective.hpp`(함수값과 기울기의 기억), `wolfe.hpp`(선 탐색), `hessian.hpp`, `diff.hpp`(scipy의 차분 간격), `minpack.hpp`(scipy 빌드의 MINPACK 산술) |
 
 ### 바닥 (`csrc/base/`, `csrc/parallel/`, `csrc/accelerate/`)
 
 | 디렉터리 | 줄 수 | 내용 | 쓰는 영역 |
 |:---:|---:|---|:---:|
 | `base/` | 약 400 | `dtype.hpp`(DType enum), `buffer.{hpp,cpp}`(참조 카운트 메모리 블록), `pairwise.hpp`(numpy식 pairwise 합의 정의), `saturate.hpp`(float64 → int64 포화 변환) | array, linalg, frame이 직접, 나머지는 배열을 거쳐 |
-| `parallel/` | 약 350 | `pool.{hpp,cpp}`: 스레드풀 하나, `GilRelease`, `FirstRow` | array, linalg, frame, stats, regression이 직접, 나머지는 배열을 거쳐 |
+| `parallel/` | 약 350 | `pool.{hpp,cpp}`: 스레드풀 하나, `GilRelease`, `FirstRow` | array, linalg, frame, stats, regression, optimize가 직접, 나머지는 배열을 거쳐 |
 | `accelerate/` | 약 150 | `blas.hpp`(dot, gemv, gemm, syrk), `vforce.hpp`(vForce 래퍼) | array, special, stats |
 
 ## 디렉터리 지도
@@ -214,13 +221,15 @@ stardust/
       dist/                 normal t_f gamma beta exponential uniform laplace cauchy lognormal weibull
                             extreme lifetime noncentral two_point discrete_basic discrete_more
     random/                 philox.hpp  random.*
-    regression/             linear glm penalized robust slopes quantile nls lsq.hpp dot2.hpp
+    regression/             linear glm penalized robust slopes quantile lsq.hpp dot2.hpp
+    optimize/               scalar batch nelder_mead bfgs lbfgsb newton_cg trust lsq hybrd linear
+                            objective.hpp wolfe.hpp hessian.hpp diff.hpp minpack.hpp
     bind/                   module array_bind pyutil errors nary_bind
-                            linalg_bind frame_bind special_bind regression_bind
+                            linalg_bind frame_bind special_bind regression_bind optimize_bind
                             stats_bind stats_sample stats_desc stats_mv stats_mvcdf stats_matrix
-  tests/                    array/ linalg/ frame/ special/ stats/ random/ regression/ interop/
+  tests/                    array/ linalg/ frame/ special/ stats/ random/ regression/ optimize/ interop/
                             test_build.py  test_error_messages.py  test_gil_release.py  test_out_of_range.py
-  bench/                    array/ linalg/ frame/ special/ stats/ random/ regression/  merge/ (골든 출력)
+  bench/                    array/ linalg/ frame/ special/ stats/ random/ regression/ optimize/  merge/ (골든 출력)
   docs/design/  docs/api/   영역별 설계 문서와 API 문서
 ```
 
@@ -289,7 +298,7 @@ True
 | 영역마다 확장 모듈 (`_core`, `_linalg`, `_frame`) | 영역을 따로 빌드할 수 있어요 | 모듈마다 nanobind 타입 등록과 정적으로 링크한 부품(스레드풀 등)이 따로 생겨요. 풀이 여러 벌이고 타입을 직접 넘기지 못하는 문제가 그대로 남아요 |
 | 공유 라이브러리(.dylib) + 영역별 얇은 모듈 | 위 문제가 풀리고, 영역별 빌드도 돼요 | 빌드와 설치가 복잡해져요(rpath 설정, nanobind의 공유 빌드). 영역이 아주 많아져 빌드 시간이 문제가 될 때에야 값을 하는 안이에요 |
 
-대가는 빌드 시간이에요. 번역 단위가 71개이고, 한 영역만 고쳐도 전체 빌드는 모든 영역을 컴파일해요. 개발 중에는 editable 설치가 바뀐 파일만 다시 컴파일하므로(`editable.rebuild = true`) 크게 문제되지 않아요.
+대가는 빌드 시간이에요. 번역 단위가 81개이고, 한 영역만 고쳐도 전체 빌드는 모든 영역을 컴파일해요. 개발 중에는 editable 설치가 바뀐 파일만 다시 컴파일하므로(`editable.rebuild = true`) 크게 문제되지 않아요.
 
 ## 얇은 Python, 두꺼운 C++
 
@@ -303,7 +312,8 @@ True
 | 통계 | 단변량 분포마다 메서드 20개의 원소별 함수(special과 같은 디스패처 위에), 표본, 다변량·행렬 분포, 기술통계의 커널 | 분포 클래스: 매개변수 보관과 검증, 메서드 이름을 네이티브 함수로 잇기. 기술통계의 인자 처리와 결과 namedtuple |
 | 난수 | Philox 생성기와 배열을 채우는 커널(균등 실수, 범위 정수, 원시 단어, 섞기) | `Generator` 클래스, 시드 처리, 인자 검증, `choice`와 `permutation`의 조합 절차 |
 | 데이터프레임 | Buffer, 비트맵, Column, 해시 테이블, 모든 커널(원소별, 필터, factorize, 집계, 정렬, groupby, join, CSV) | `Series`, `DataFrame`, `Index`, `GroupBy` 클래스, 인자 검증, 정렬(alignment) 절차, `repr` |
-| 회귀 | 회귀 하나의 적합 전체(QR과 겹친 열 판정, IRLS, 좌표 하강, 내점법, 비선형 최소제곱의 반복, 공분산) | 모형 함수와 결과 클래스, 인자 검사, frame 컬럼과 NaN 정책, 처음 읽을 때 계산하는 추론 필드 |
+| 회귀 | 회귀 하나의 적합 전체(QR과 겹친 열 판정, IRLS, 좌표 하강, 내점법, 공분산). 비선형 최소제곱의 반복은 최적화의 커널 | 모형 함수와 결과 클래스, 인자 검사, frame 컬럼과 NaN 정책, 처음 읽을 때 계산하는 추론 필드, `nls`의 다듬기 |
+| 최적화 | 반복 전체(구간법과 배치의 원소마다의 갱신, 선 탐색과 준뉴턴 갱신, 신뢰 영역 부분문제, MINPACK, L-BFGS-B, 선형 최소제곱)와 사용자 함수를 부르는 고리, 반복 안의 차분 야코비안 | 공개 함수와 `OptimizeResult`, 인자와 `options` 검사, 사용자 함수가 돌려준 값의 확인, 정확한 5점 차분(`approx_fprime`, `check_grad`, `nls`의 해의 야코비안) |
 
 ### 배열에 Python을 거의 두지 않는 이유
 
@@ -340,13 +350,14 @@ True
 ### 규칙
 
 - **아래로만 의존해요.** `base/`, `parallel/`은 다른 디렉터리를 include하지 않아요. 영역은 바닥을 쓰고, 바닥은 영역을 몰라요.
-- **`array/`는 다른 영역을 몰라요.** `linalg/`, `frame/`, `special/`, `stats/`, `random/`, `regression/`을 include하지 않아요.
+- **`array/`는 다른 영역을 몰라요.** `linalg/`, `frame/`, `special/`, `stats/`, `random/`, `regression/`, `optimize/`를 include하지 않아요.
 - **`linalg/`는 `array/`의 `NDArray`를 직접 받아요.** 버퍼 프로토콜을 거치지 않아요. 결과 레이아웃(행렬마다 열 우선, 배치 축은 바깥에 C 순서)은 linalg의 정책이라 linalg가 정하고, 배열은 `new_array_strided(dtype, shape, strides, nbytes)`로 메모리와 플래그만 맡아요.
 - **`frame/`은 배열을 한 파일로만 만나요.** Column(1차원, validity 비트맵, 문자열 offsets)과 NDArray(N차원, 임의의 strides, 결측 없음)는 다른 물건이라, Column을 NDArray 위에 올리지 않아요. 둘을 잇는 코드(`to_array`, 배열에서 Series 만들기, int64 평균이 배열의 합을 부르는 것)는 `frame/interop.cpp` 한 곳에만 있어요. 그 밖에 `array/` 헤더를 include하는 frame 파일은 `frame/ops/elementwise.cpp` 하나예요. float64 거듭제곱에 배열의 커널(`array/kernels/elementwise.hpp`의 `pow_float_run`)을 그대로 써서, Series와 배열의 `**`가 같은 비트를 내게 해요. 이 커널은 포인터와 stride로 도는 루프라서 Column을 NDArray로 바꾸지 않고 그대로 불러요.
 - **`special/`은 배열의 원소별 엔진 위에 올라가요.** 특수함수는 `logsumexp`, `softmax` 같은 몇 개를 빼면 모두 원소별 함수라서, 배열의 n항 디스패처(`array/ops/ufunc.hpp`의 `nary`)와 연속 fast path(`array/kernels/elementwise.hpp`), 스칼라 규칙(`array/kernels/scalar_ops.hpp`)을 그대로 써요. 특수함수 때문에 배열 쪽에 일반 n항 디스패처가 있고, 피연산자 상한(`kMaxOperands`)이 5예요.
 - **`stats/`는 `special/` 위에 올라가요.** 분포의 메서드는 감마, 불완전 감마·베타, 오차함수 같은 특수함수로 계산하므로, `stats/`의 include는 대부분 `special/`이에요. 메서드 하나하나가 원소별 함수라서 special과 같은 방법(`bind/nary_bind.hpp`)으로 배열의 n항 디스패처에 얹혀요. 그 밖에는 배열의 연속 fast path(`array/kernels/elementwise.hpp`)와 조각 실행기(`array/ops/pieces.hpp`), 표본과 다변량 누적분포의 몬테카를로 점을 만드는 Philox(`random/philox.hpp`), vForce 래퍼를 써요.
 - **`random/`은 배열만 써요.** 결과 배열을 만들고 채울 범위를 조각내 풀에 나누는 데에 배열 헤더 둘(`array/convert.hpp`, `array/ops/pieces.hpp`)을 써요. 원소 하나의 값이 키와 수열 위치만으로 정해지므로, 조각을 어떻게 나누든 결과가 같아요.
 - **`regression/`은 `linalg/` 위에 올라가요.** 회귀 하나가 배치의 원소 하나라서 linalg의 배치 드라이버와 입력·결과 블록(`linalg/ops/common.hpp`), LAPACK 래퍼(`linalg/lapack.hpp`)를 그대로 써요. double-double 산술은 `special/dd.hpp`, GLM과 정규화 회귀의 링크 함수와 로그우도는 special의 `erf`, `gamma`, `logistic` 헤더에서 가져와요. `rlm`의 후보 부분집합과 기울기 추정의 피벗 표본은 고정 키의 Philox(`random/philox.hpp`)로 뽑아요. `array/`는 직접 include하지 않고 linalg를 거쳐 `NDArray`를 만나요.
+- **`optimize/`는 `linalg/`와 배열 타입 위에 올라가요.** 사용자 함수가 Python이라 반복은 C++ 커널이 돌고 함수값은 Python 콜백으로 받아요. 콜백에 넘기는 x는 새 float64 `sd.ndarray`(`array/ndarray.hpp`)이고, 돌려받은 배열은 linalg의 입력 읽기(`linalg/input.hpp`)로 읽어요. QR, Cholesky, SVD, 삼각 풀이는 LAPACK 래퍼(`linalg/lapack.hpp`)를 쓰고, 내적과 행렬·벡터 곱(BLAS)과 선형 최소제곱의 몇 루틴(`gelsd`, `dlarfgp` 등)은 Accelerate를 직접 불러요(`linalg/types.hpp`가 Accelerate 헤더를 가져와요). special, stats, random, regression은 include하지 않아요. 방향은 반대예요. `sd.regression`의 `nls`가 Python 층에서 최적화의 커널(`_core.optimize.lsq_solve`)과 차분(`optimize/_diff.py`)을 불러요. optimize는 regression을 몰라요.
 - **새 영역은 디렉터리 하나와 Python 하위 모듈 하나로 붙어요.** 아래 층만 쓰고 기존 영역을 고치지 않아요. 영역마다 `docs/design/`, `docs/api/`의 문서와 `tests/<영역>/`, `bench/<영역>/`이 함께 있어요.
 
 ### 영역 사이의 일관성
@@ -370,33 +381,36 @@ True
 | stats | special의 가중치 방식을 그대로 쓰고, 분포와 메서드마다 이 기계에서 잰 원소당 비용(ns)을 써요 | `stats/engine.hpp`, `stats/cost_table.hpp` |
 | random | 배열의 기준값과 태스크 크기를 쓰고, 원소 하나를 일 8로 쳐요(`kWordWork`) | `random/random.cpp` |
 | regression | 회귀끼리는 linalg의 배치 드라이버가 비용 모델로 나눠요. 회귀 하나 안의 행 합은 모형마다 기준을 따로 둬요(선형과 정규화는 행×열 65,536 이상, GLM과 `rlm`은 2¹⁶행 이상, `quantreg`는 2¹⁵행 이상) | `regression/*.cpp` |
+| optimize | 배치 스칼라는 아직 끝나지 않은 원소가 2¹⁵개 이상이면 원소 2¹³개씩 나눠요(`kBatchParallel`, `kBatchTask`). lmder의 열 피벗 QR은 한 단계의 일이 4×10⁵ 플롭 이상이면 열을 나눠요(`kQrfacParallel`). 그 밖의 반복은 사용자 함수를 부르는 사이의 계산이 작아 나누지 않아요 | `optimize/batch.cpp`, `optimize/lsq.cpp` |
 
 ### 실제 include 관계
 
 아래 표는 실제 `#include` 줄을 센 값이에요. 칸의 숫자는 그 디렉터리의 파일이 다른 디렉터리의 헤더를 include하는 줄 수예요.
 
-| 누가 → 무엇을 | base | parallel | accelerate | array | linalg | frame | special | stats | random | regression | bind |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| base | · | | | | | | | | | | |
-| parallel | | · | | | | | | | | | |
-| accelerate | | | · | | | | | | | | |
-| array | 6 | 13 | 3 | · | | | | | | | 30 |
-| linalg | 3 | 2 | | 2 | · | | | | | | 15 |
-| frame | 4 | 1 | | 3 | | · | | | | | 2 |
-| special | | | 1 | 6 | | | · | | | | 1 |
-| stats | | 1 | 2 | 2 | | | 36 | · | 2 | | |
-| random | | | | 2 | | | | | · | | 2 |
-| regression | | 6 | | | 9 | | 9 | | 2 | · | 7 |
-| bind | 1 | 2 | | 33 | 16 | 12 | 25 | 42 | 4 | 6 | · |
+| 누가 → 무엇을 | base | parallel | accelerate | array | linalg | frame | special | stats | random | regression | optimize | bind |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| base | · | | | | | | | | | | | |
+| parallel | | · | | | | | | | | | | |
+| accelerate | | | · | | | | | | | | | |
+| array | 6 | 13 | 3 | · | | | | | | | | 30 |
+| linalg | 3 | 2 | | 2 | · | | | | | | | 15 |
+| frame | 4 | 1 | | 3 | | · | | | | | | 2 |
+| special | | | 1 | 6 | | | · | | | | | 1 |
+| stats | | 1 | 2 | 2 | | | 36 | · | 2 | | | |
+| random | | | | 2 | | | | | · | | | 2 |
+| regression | | 6 | | | 7 | | 9 | | 2 | · | | 6 |
+| optimize | | 2 | | 5 | 13 | | | | | | · | 15 |
+| bind | 1 | 2 | | 33 | 16 | 12 | 25 | 42 | 4 | 5 | 5 | · |
 
-읽을 때 알아 둘 점이 여섯 있어요.
+읽을 때 알아 둘 점이 일곱 있어요.
 
-- `array`, `linalg`, `special`, `random`, `regression`이 `bind/`를 include하는 것은 연산의 입구(`ops/*.cpp`)가 인자 해석 도구(`bind/pyutil.hpp`)와 에러 이름(`bind/errors.hpp`)을 쓰기 때문이에요. `array/kernels/`에는 `bind/` include가 하나도 없어요.
-- `accelerate/`는 위의 어느 디렉터리도 include하지 않아요. LAPACK 래퍼는 linalg의 타입(LAPACK 정수 타입 `lint`, 배치 구조 `linalg/batch.hpp`)에 묶여 있고 linalg와 그 위의 regression만 쓰므로 `linalg/lapack.hpp`에 둬요. 바닥에 두면 바닥이 영역의 헤더를 include하게 돼요. linalg는 Accelerate 프레임워크 헤더를 직접 include하므로 `accelerate/` 헤더가 필요 없어요.
+- `array`, `linalg`, `special`, `random`, `regression`, `optimize`가 `bind/`를 include하는 것은 연산의 입구(`ops/*.cpp`)가 인자 해석 도구(`bind/pyutil.hpp`)와 에러 이름(`bind/errors.hpp`)을 쓰기 때문이에요. `array/kernels/`에는 `bind/` include가 하나도 없어요.
+- `accelerate/`는 위의 어느 디렉터리도 include하지 않아요. LAPACK 래퍼는 linalg의 타입(LAPACK 정수 타입 `lint`, 배치 구조 `linalg/batch.hpp`)에 묶여 있고 linalg와 그 위의 regression, optimize만 쓰므로 `linalg/lapack.hpp`에 둬요. 바닥에 두면 바닥이 영역의 헤더를 include하게 돼요. linalg는 Accelerate 프레임워크 헤더를 직접 include하므로 `accelerate/` 헤더가 필요 없어요.
 - linalg의 `array/` 2줄은 `NDArray`를 받고 돌려주는 `linalg/input.hpp`, `linalg/outblock.hpp`예요. float64 → int64 변환 규칙은 `linalg/types.hpp`가 `base/saturate.hpp`에서 직접 가져와요. 배열의 변환 헤더를 거치지 않으므로 linalg의 타입 정의가 배열 내부에 기대지 않아요.
 - frame의 `array/` 3줄 중 2줄과 `bind/pyutil.hpp` 1줄은 `interop.cpp`에 있고, 나머지 1줄은 float64 거듭제곱 커널을 쓰는 `ops/elementwise.cpp`예요. `frame/convert.cpp`는 에러 메시지의 타입 이름(`py_type_name`)만 필요해서 `bind/errors.hpp`를 include해요. 이 헤더는 nanobind 말고는 아무것도 끌어오지 않으므로, 배열 헤더가 frame에 들어오는 곳은 이 두 파일로 남아요.
 - stats 행은 대부분 `special/`이에요. 배열의 n항 디스패처에 분포를 얹는 곳과 `NDArray`를 받고 돌려주는 곳은 `bind/stats_*.cpp`와 `bind/nary_bind.hpp`라서, `stats/`의 헤더는 nanobind를 include하지 않아요. `array/` 2줄은 연속 fast path(`array/kernels/elementwise.hpp`)와 조각 실행기(`array/ops/pieces.hpp`)이고, `random/` 2줄은 표본(`sample.hpp`)과 다변량 누적분포(`mvcdf.hpp`)가 쓰는 Philox예요.
-- regression 행에는 `array/`가 없어요. 입력과 결과의 `NDArray`는 linalg의 블록(`linalg/ops/common.hpp`)을 거쳐 만나고, `bind/` 7줄은 모두 에러 이름(`bind/errors.hpp`)이에요.
+- regression 행에는 `array/`가 없어요. 입력과 결과의 `NDArray`는 linalg의 블록(`linalg/ops/common.hpp`)을 거쳐 만나고, `bind/` 6줄은 모두 에러 이름(`bind/errors.hpp`)이에요.
+- optimize 행의 `array/` 5줄은 사용자 함수에 넘길 `sd.ndarray`를 만드는 `array/ndarray.hpp`예요. `linalg/` 13줄은 입력 읽기(`input.hpp`) 3줄, LAPACK 래퍼(`lapack.hpp`) 4줄, 정수 타입과 Accelerate 헤더(`types.hpp`) 6줄이고, `parallel/` 2줄은 배치 스칼라(`batch.cpp`)와 lmder의 QR(`lsq.cpp`)이에요. regression의 `nls`가 optimize를 쓰는 것은 Python 층이라 이 표에 나오지 않아요.
 
 ## 공통 부품
 
@@ -532,7 +546,7 @@ Apple의 Accelerate 프레임워크는 BLAS, LAPACK, vForce(배열 단위 초월
 | 파일 | 감싸는 것 | 쓰는 곳 |
 |---|---|---|
 | `blas.hpp` | `dot`, `gemv`, `gemm`, `syrk`/`herk` (실수판 `d`, 복소수판 `z`) | 배열의 `matmul`, `cov` |
-| `linalg/lapack.hpp` | `getrf`, `getrs` 등 LAPACK 루틴. 템플릿 하나가 d(실수)/z(복소수) 판을 골라요. linalg의 타입에 묶여 있어 linalg 안에 둬요 | linalg, regression |
+| `linalg/lapack.hpp` | `getrf`, `getrs` 등 LAPACK 루틴. 템플릿 하나가 d(실수)/z(복소수) 판을 골라요. linalg의 타입에 묶여 있어 linalg 안에 둬요 | linalg, regression, optimize |
 | `vforce.hpp` | `vvexp`, `vvsin` 등 함수 포인터 타입, 인자 순서 래퍼, strided 실행기 | 배열의 초월함수, special, stats |
 
 컴파일 정의 `ACCELERATE_NEW_LAPACK`, `ACCELERATE_LAPACK_ILP64`를 모듈 전체에 걸어서, 새 LAPACK 인터페이스와 64비트 정수 인자를 써요. 행렬의 차원이 2³¹을 넘어도 정수가 넘치지 않아요.
@@ -575,7 +589,7 @@ find_package(nanobind CONFIG REQUIRED)
 
 nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/base/buffer.cpp
-  csrc/array/...    # 71개 번역 단위
+  csrc/array/...    # 81개 번역 단위
   csrc/bind/module.cpp)
 
 target_include_directories(_core PRIVATE csrc)
@@ -627,7 +641,7 @@ $$
 
 둘은 다른 값을 낼 수 있어요. $a = 1 + 2^{-30}$, $b = 1 - 2^{-30}$, $c = -1$이면 정확한 $ab$는 $1 - 2^{-60}$이에요. 따로 계산하면 $\operatorname{fl}(ab) = 1$이 되어 결과가 $0$이고, FMA는 $-2^{-60}$을 내요.
 
-clang은 기본으로 소스의 `a * b + c`를 FMA로 바꿀 수 있어요(`-ffp-contract=on`) [5]. 그러면 결과가 소스에 적힌 식과도, numpy와도 달라져요. 그래서 모듈 전체에서 끄고, FMA가 필요한 곳은 `std::fma`로 명시해요. 명시하는 자리도 정해져 있어요. 이 기계의 numpy 바이너리는 컴파일러의 기본 FMA 축약으로 빌드되어 있어서, complex 곱셈의 `ar*br - ai*bi`가 numpy 안에서는 `fma(ar, br, -(ai*bi))`로 계산돼요. stardust는 같은 자리(complex 곱셈, 나눗셈, 제곱, `expm1`)에만 `std::fma`를 적어서 numpy와 비트를 맞춰요. 무작위 곱 4000개에서 이 방식의 결과가 numpy와 비트까지 같아요.
+clang은 기본으로 소스의 `a * b + c`를 FMA로 바꿀 수 있어요(`-ffp-contract=on`) [5]. 그러면 결과가 소스에 적힌 식과도, numpy와도 달라져요. 그래서 모듈 전체에서 끄고, FMA가 필요한 곳은 `std::fma`로 명시해요. 명시하는 자리도 정해져 있어요. 이 기계의 numpy 바이너리는 컴파일러의 기본 FMA 축약으로 빌드되어 있어서, complex 곱셈의 `ar*br - ai*bi`가 numpy 안에서는 `fma(ar, br, -(ai*bi))`로 계산돼요. stardust는 같은 자리(complex 곱셈, 나눗셈, 제곱, `expm1`)에만 `std::fma`를 적어서 numpy와 비트를 맞춰요. 무작위 곱 4000개에서 이 방식의 결과가 numpy와 비트까지 같아요. optimize도 같은 이유로 scipy를 따라요. scipy의 MINPACK과 L-BFGS-B C 코드가 clang의 기본 축약으로 빌드되어 있어서, 그 계산을 옮긴 `optimize/hybrd.cpp`와 `optimize/lbfgsb.cpp`만 파일 안의 `#pragma clang fp contract(on)`으로 같은 축약을 켜고, lmder(`optimize/lsq.cpp`)는 축약 자리를 `std::fma`로 적어요.
 
 ```cpp
 // csrc/array/kernels/scalar_ops.hpp (발췌): numpy와 같은 자리의 FMA
